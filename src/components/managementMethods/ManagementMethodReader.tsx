@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { managementMethodApi } from '../../managementMethods/apiClient'
 import { managementMethodHeadingId } from '../../managementMethods/headings'
 import type { EditorMarkV1, EditorNodeV1, ManagementMethodV1 } from '../../managementMethods/types'
 
@@ -7,6 +8,33 @@ function marks(text: string, list: EditorMarkV1[] | undefined): ReactNode { retu
 function plainText(node: EditorNodeV1): string {
   if (node.type === 'text') return node.text ?? ''
   return (node.content ?? []).map(plainText).join('')
+}
+
+function ManagementMethodImage({ method, node, view, onImage }: { method: ManagementMethodV1; node: EditorNodeV1; view: 'draft' | 'readable'; onImage?: (mediaId: string) => void }) {
+  const mediaId = String(node.attrs?.mediaId ?? '')
+  const altText = String(node.attrs?.altText ?? '')
+  const caption = typeof node.attrs?.caption === 'string' ? node.attrs.caption : ''
+  const [source, setSource] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let objectUrl: string | null = null
+    setSource(null)
+    setFailed(false)
+    void managementMethodApi.media(method.id, mediaId, view, controller.signal).then((blob) => {
+      objectUrl = URL.createObjectURL(blob)
+      setSource(objectUrl)
+    }).catch(() => {
+      if (!controller.signal.aborted) setFailed(true)
+    })
+    return () => {
+      controller.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [mediaId, method.id, view])
+
+  return <figure className="management-method-image"><button type="button" disabled={!source} onClick={() => onImage?.(mediaId)}>{source ? <img src={source} alt={altText} /> : <span role={failed ? 'alert' : 'status'}>{failed ? '圖片無法載入' : '圖片載入中'}</span>}</button>{caption ? <figcaption>{caption}</figcaption> : null}</figure>
 }
 
 function renderNode(node: EditorNodeV1, method: ManagementMethodV1, view: 'draft' | 'readable', headingIndex: { value: number }, onImage?: (mediaId: string) => void): ReactNode {
@@ -20,7 +48,7 @@ function renderNode(node: EditorNodeV1, method: ManagementMethodV1, view: 'draft
     return <Tag id={id} tabIndex={id ? -1 : undefined}>{node.content?.map((child, index) => <span key={`heading-${index}`}>{renderNode(child, method, view, headingIndex, onImage)}</span>)}</Tag>
   }
   if (node.type === 'table') return <div className="management-method-table-wrap"><table><tbody>{node.content?.map((row, index) => <tr key={index}>{row.content?.map((cell, cellIndex) => cell.type === 'tableHeader' ? <th key={cellIndex}>{renderNode(cell, method, view, headingIndex, onImage)}</th> : <td key={cellIndex}>{renderNode(cell, method, view, headingIndex, onImage)}</td>)}</tr>)}</tbody></table></div>
-  if (node.type === 'methodImage') { const mediaId = String(node.attrs?.mediaId ?? ''); const caption = typeof node.attrs?.caption === 'string' ? node.attrs.caption : ''; const src = `/api/orgmaster/management-methods/media/${encodeURIComponent(mediaId)}?methodId=${encodeURIComponent(method.id)}&view=${view}`; return <figure className="management-method-image"><button type="button" onClick={() => onImage?.(mediaId)}><img src={src} alt={String(node.attrs?.altText ?? '')} /></button>{caption ? <figcaption>{caption}</figcaption> : null}</figure> }
+  if (node.type === 'methodImage') return <ManagementMethodImage method={method} node={node} view={view} onImage={onImage} />
   const children = node.content?.map((child, index) => <span key={`${node.type}-${index}`}>{renderNode(child, method, view, headingIndex, onImage)}</span>)
   if (node.type === 'paragraph') return <p>{children}</p>
   if (node.type === 'blockquote') return <blockquote>{children}</blockquote>

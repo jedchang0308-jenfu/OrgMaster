@@ -53,4 +53,21 @@ describe('ManagementMethodReader', () => {
     expect(html).not.toContain('management-method-heading-3')
     expect(html).toContain('自由內容')
   })
+
+  it('does not expose a protected media URL before the authorized client request completes', () => {
+    const imageMethod: ManagementMethodV1 = {
+      ...method,
+      workingDraft: {
+        ...method.workingDraft,
+        mediaIds: ['media-1'],
+        body: { type: 'doc', content: [{ type: 'methodImage', attrs: { mediaId: 'media-1', altText: '招募範例', caption: '附件' } }] },
+      },
+    }
+
+    const html = renderToStaticMarkup(<ManagementMethodReader method={imageMethod} view="draft" />)
+
+    expect(html).toContain('圖片載入中')
+    expect(html).toContain('附件')
+    expect(html).not.toContain('/api/orgmaster/management-methods/media/')
+  })
 })
