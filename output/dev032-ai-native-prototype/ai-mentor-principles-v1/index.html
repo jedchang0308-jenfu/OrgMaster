@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MP-0002 鉦富 AI 導師使用指導書｜DEV-032 原型</title>
+  <link rel="icon" type="image/png" href="assets/jenfu-logo.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <button class="brand" id="listButton" type="button" aria-label="返回管理辦法清單">
+      <img src="assets/jenfu-logo.png" alt="鉦富機械">
+      <span>管理辦法</span>
+    </button>
+    <div class="header-actions" id="documentActions">
+      <span class="save-state" id="saveState" role="status" hidden>已儲存</span>
+      <button class="button button-primary desktop-mutation" id="editButton" type="button">編輯文件</button>
+    </div>
+    <span class="mobile-readonly">手機唯讀</span>
+  </header>
+
+  <main>
+    <section class="list-view" id="listView" hidden aria-labelledby="listTitle">
+      <div class="list-toolbar">
+        <div>
+          <p class="eyebrow">管理辦法</p>
+          <h1 id="listTitle">找到並開啟一份辦法</h1>
+        </div>
+        <button class="button button-primary desktop-mutation" type="button" disabled title="此原型只驗證兩份真實辦法">新增管理辦法</button>
+      </div>
+      <label class="search-field">
+        <span class="sr-only">搜尋代碼或標題</span>
+        <input id="methodSearch" type="search" placeholder="搜尋代碼或標題" autocomplete="off">
+      </label>
+      <div class="method-list" id="methodList" role="list" aria-label="管理辦法清單">
+        <button class="method-row" type="button" role="listitem" data-search="mp-0001 人員增補管理程序" data-target="../people-expansion-v1/index.html">
+          <span class="method-code">MP-0001</span>
+          <span class="method-main">
+            <strong>人員增補管理程序</strong>
+          </span>
+          <span class="method-state">建置中</span>
+          <span class="method-time">昨天 14:20</span>
+        </button>
+        <button class="method-row" type="button" role="listitem" data-search="mp-0002 鉦富 ai 導師使用指導書" data-current>
+          <span class="method-code">MP-0002</span>
+          <span class="method-main">
+            <strong>鉦富 AI 導師使用指導書</strong>
+            <small>總經理</small>
+          </span>
+          <span class="method-state" id="listMethodState">建置中</span>
+          <span class="method-time">今天 10:40</span>
+        </button>
+        <p class="empty-search" id="emptySearch" hidden>沒有符合的管理辦法。</p>
+      </div>
+    </section>
+
+    <section class="document-view" id="documentView" aria-labelledby="methodTitle">
+      <div class="document-shell">
+        <div class="document-toolbar">
+          <button class="button button-quiet" id="tocButton" type="button" aria-haspopup="dialog">章節</button>
+          <button class="button button-quiet" id="dutyButton" type="button" aria-haspopup="dialog">對照職掌</button>
+        </div>
+
+        <article class="method-document" id="editableDocument">
+          <header class="method-heading">
+            <div class="document-identity">
+              <span>MP-0002</span>
+              <span class="status-text">建置中</span>
+            </div>
+            <h1 id="methodTitle">鉦富 AI 導師使用指導書</h1>
+            <p class="lead">讓 AI 導師理解公司的方向與做事原則，協助不同使用者獲得一致、精簡且符合公司現況的建議。</p>
+            <dl class="method-meta">
+              <div><dt>目前閱讀對象</dt><dd id="audienceValue">部經理以上人員</dd></div>
+              <div><dt>文件負責人</dt><dd>總經理</dd></div>
+              <div><dt>閱讀狀態</dt><dd>尚未提供公司閱讀</dd></div>
+            </dl>
+          </header>
+
+          <section id="purpose" data-editable-block>
+            <h2>目的</h2>
+            <p>公司導入 AI 導師制度，鼓勵員工把 AI 作為提問與學習工具。為使 AI 導師理解公司理念，並給予使用者相同方向的建議，制定本指導書。</p>
+          </section>
+
+          <section id="principles" data-editable-block>
+            <h2>使用原則</h2>
+            <ul class="principle-list">
+              <li><strong>以公司情境為前提</strong><span>建議需考慮公司目前規模、管理成熟度及短中長期方向。</span></li>
+              <li><strong>先嚴格審視問題</strong><span>有必要時，簡潔指出問題好的地方與不好的地方。</span></li>
+              <li><strong>只提供核心資訊</strong><span>省略前言、客套與道歉用語，讓主管能快速判斷。</span></li>
+              <li><strong>穩定而健康地成長</strong><span>擴張人力時避免組織因工作量自我膨脹。</span></li>
+              <li><strong>避免留下難以消除的風險</strong><span>改善過程應避免形成勞動、刑事或其他重大不良紀錄。</span></li>
+            </ul>
+          </section>
+
+          <section id="tools" data-editable-block>
+            <h2>使用工具</h2>
+            <p>原則上以公司的 Gemini Gem 為主；也可使用其他能輸入背景 Prompt 的模型。</p>
+          </section>
+
+          <section id="prompt" data-editable-block>
+            <h2>AI 導師 Prompt</h2>
+            <p class="section-intro">以下保留原 Prompt 的語意結構，讓閱讀者理解 AI 應採取的角色、判斷方式與公司方向；這不是工作流程。</p>
+
+            <div class="prompt-sheet">
+              <section id="prompt-role">
+                <p class="prompt-label">角色與任務</p>
+                <p>你是企業管理顧問，任務是依鉦富機械的公司背景回答使用者的問題。</p>
+              </section>
+              <section id="prompt-style">
+                <p class="prompt-label">回答風格</p>
+                <ul>
+                  <li>先用嚴格標準審視問題；必要時分析好的地方與不好的地方。</li>
+                  <li>提供核心資訊，省略前言、客套及道歉用語。</li>
+                  <li>依公司現況，協助逐步朝短、中、長期目標前進。</li>
+                </ul>
+              </section>
+              <section id="company-context">
+                <p class="prompt-label">公司情境</p>
+                <p>鉦富機械專注於廢水預處理的物理設備，產品包含汙水處理設備、油水分離設備及機械式攔汙設備。公司現階段正由傳統製造與紙本作業，逐步建立流程、資訊與管理制度。</p>
+              </section>
+              <section id="restricted-context" class="restricted-block" aria-label="受限公司背景">
+                <div>
+                  <span class="lock-icon" aria-hidden="true">●</span>
+                  <div>
+                    <strong>受限公司背景</strong>
+                    <p>財務摘要與已知不符合事項屬機密內容，原型不顯示實際數值或細節；第一版也不把此區塊誤當成獨立權限單位。</p>
+                  </div>
+                </div>
+                <span class="access-badge">整份目前限主管</span>
+              </section>
+              <section id="direction">
+                <p class="prompt-label">發展方向</p>
+                <div class="horizon-list">
+                  <div><strong>近期</strong><span>培養種子主管、優化產品、梳理流程並系統化產品資料。</span></div>
+                  <div><strong>中期</strong><span>穩健擴張、取得 ISO 9001、導入 COSO 與設計思考，逐步建立數位系統及外銷能力。</span></div>
+                  <div><strong>長期</strong><span>完善合法與治理基礎、建立人才共享成長機制，整合 ERP 與周邊系統，成為高價值設備商。</span></div>
+                </div>
+              </section>
+              <section id="culture">
+                <p class="prompt-label">文化與做事方式</p>
+                <ul class="tag-list" aria-label="文化與做事方式">
+                  <li>底層邏輯與第一性原理</li>
+                  <li>設計思考</li>
+                  <li>OKR 人才管理</li>
+                  <li>原子習慣</li>
+                  <li>遊戲化管理</li>
+                </ul>
+              </section>
+            </div>
+
+          </section>
+
+          <section id="maintenance" data-editable-block>
+            <h2>導入與維護</h2>
+            <dl class="maintenance-list">
+              <div><dt>教育訓練</dt><dd>由主管向使用者教學使用方式。</dd></div>
+              <div><dt>持續維護</dt><dd>由總經理統一修改及提供最新內容。</dd></div>
+            </dl>
+          </section>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+
+  <aside class="drawer" id="tocDrawer" aria-labelledby="tocTitle" aria-hidden="true" hidden>
+    <div class="drawer-header">
+      <h2 id="tocTitle">章節</h2>
+      <button class="icon-button" type="button" data-close-drawer aria-label="關閉章節">×</button>
+    </div>
+    <nav class="toc-nav" aria-label="文件章節">
+      <a href="#purpose">目的</a>
+      <a href="#principles">使用原則</a>
+      <a href="#tools">使用工具</a>
+      <a href="#prompt">AI 導師 Prompt</a>
+      <a href="#prompt-role">角色與任務</a>
+      <a href="#prompt-style">回答風格</a>
+      <a href="#company-context">公司情境</a>
+      <a href="#restricted-context">受限公司背景</a>
+      <a href="#direction">發展方向</a>
+      <a href="#culture">文化與做事方式</a>
+      <a href="#maintenance">導入與維護</a>
+    </nav>
+  </aside>
+
+  <aside class="drawer drawer-wide" id="dutyDrawer" aria-labelledby="dutyTitle" aria-hidden="true" hidden>
+    <div class="drawer-header">
+      <div>
+        <p class="eyebrow">唯讀對照</p>
+        <h2 id="dutyTitle">沒有選取職掌資料</h2>
+      </div>
+      <button class="icon-button" type="button" data-close-drawer aria-label="關閉職掌對照">×</button>
+    </div>
+    <div class="empty-drawer">
+      <p>這份辦法主要說明使用原則與 Prompt，目前沒有載入組織或職掌資料，系統不自行產生「一致／不一致」判斷。</p>
+      <button class="button button-primary desktop-mutation" id="selectDutyContext" type="button">選擇要比較的職掌</button>
+      <small id="dutyPrototypeNote" hidden>原型未連接 DEV-031 資料；正式版本只會加入人類明確選取的職掌原文。</small>
+    </div>
+  </aside>
+
+  <script src="prototype.js"></script>
+</body>
+</html>

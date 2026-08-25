@@ -1,0 +1,2 @@
+import type { ReactNode } from 'react'
+export function GovernanceDetailDrawer({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: ReactNode }) { if (!open) return null; return <aside className="governance-drawer" role="dialog" aria-modal="true" aria-label={title}><header><div><small>治理詳細資料</small><h2>{title}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="關閉詳細資料">×</button></header><div className="governance-drawer__body">{children}</div></aside> }

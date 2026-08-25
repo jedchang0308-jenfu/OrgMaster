@@ -1,0 +1,2505 @@
+{
+  "source": "C:\\VIBE CODING\\OrgMaster\\output\\dev032-ai-native-prototype\\source\\3-AD-XXX_人員增補管理程序_V1.docx",
+  "paragraphCount": 69,
+  "tableCount": 0,
+  "inlineShapeCount": 2,
+  "sectionCount": 1,
+  "packageParts": [
+    "[Content_Types].xml",
+    "_rels/.rels",
+    "word/document.xml",
+    "word/_rels/document.xml.rels",
+    "word/footnotes.xml",
+    "word/endnotes.xml",
+    "word/header1.xml",
+    "word/footer1.xml",
+    "word/footer2.xml",
+    "word/media/image1.png",
+    "word/media/image2.png",
+    "word/media/image3.png",
+    "word/theme/theme1.xml",
+    "word/settings.xml",
+    "customXml/item1.xml",
+    "customXml/itemProps1.xml",
+    "customXml/item2.xml",
+    "customXml/itemProps2.xml",
+    "word/numbering.xml",
+    "word/styles.xml",
+    "word/webSettings.xml",
+    "word/fontTable.xml",
+    "docProps/core.xml",
+    "docProps/app.xml",
+    "customXml/_rels/item1.xml.rels",
+    "customXml/_rels/item2.xml.rels",
+    "word/_rels/numbering.xml.rels"
+  ],
+  "body": [
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "目的",
+      "xmlText": "目的",
+      "numbering": {
+        "numId": 17,
+        "level": 0
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "目的",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "為使公司的新增人員的作業流程順暢且符合公司目標，故制定此標準程序。",
+      "xmlText": "為使公司的新增人員的作業流程順暢且符合公司目標，故制定此標準程序。",
+      "numbering": null,
+      "alignment": null,
+      "runs": [
+        {
+          "text": "為",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "使公司的",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "新增人",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "員",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "的作業",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "流程順暢且符合公司目標，故制定此",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "標準",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "程序。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "",
+      "xmlText": "",
+      "numbering": null,
+      "alignment": null,
+      "runs": [],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "適用範圍",
+      "xmlText": "適用範圍",
+      "numbering": {
+        "numId": 17,
+        "level": 0
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "適用範圍",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "本辦法適用於公司所有主管欲新聘員工時使用",
+      "xmlText": "本辦法適用於公司所有主管欲新聘員工時使用",
+      "numbering": null,
+      "alignment": null,
+      "runs": [
+        {
+          "text": "本辦法適用於公司所有",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "主管欲新聘",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "員工時使用",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "",
+      "xmlText": "",
+      "numbering": null,
+      "alignment": null,
+      "runs": [],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "權責單位",
+      "xmlText": "權責單位",
+      "numbering": {
+        "numId": 17,
+        "level": 0
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "權責單位",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "用人單位主管：提出增員需求、職缺頁面內容撰寫、專業能力面試、試用期考核。",
+      "xmlText": "用人單位主管：提出增員需求、職缺頁面內容撰寫、專業能力面試、試用期考核。",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "用人單位主管",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "：提",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "出",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "增員",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "需求",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "、",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "職缺頁面",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "內容撰寫",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "、",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "專業能力面試、",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "試用期",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "考核",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "人資單位：負責招募管道維護、薪資制度規劃、勞動契約簽訂、入職手續。",
+      "xmlText": "人資單位：負責招募管道維護、薪資制度規劃、勞動契約簽訂、入職手續。",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "人資",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "單位：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "負責招募管道維護、薪資制度規劃、勞動契約簽訂、入職手續",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "總經理：負責最終錄用核決、核定薪資結構。",
+      "xmlText": "總經理：負責最終錄用核決、核定薪資結構。",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "總經理",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "負責最終",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "錄用核決",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "、核定薪資結構",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "Normal",
+      "text": "",
+      "xmlText": "",
+      "numbering": null,
+      "alignment": null,
+      "runs": [],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "作業流程",
+      "xmlText": "作業流程",
+      "numbering": {
+        "numId": 17,
+        "level": 0
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "作業流程",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "階段一：人力需求提出",
+      "xmlText": "階段一：人力需求提出",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "階段",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "一",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "：人力需求提出",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "提出方式：",
+      "xmlText": "提出方式：",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "提出方式：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "用人單位依據公司/部門發展目標或人員異動，於主管會議上提出人員增補申請，闡述新聘人員的目標用途與預估薪資。",
+      "xmlText": "用人單位依據公司/部門發展目標或人員異動，於主管會議上提出人員增補申請，闡述新聘人員的目標用途與預估薪資。",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "用人單位依據",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "公司/部門發展",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "目標或人員異動，",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "於主管會議上提出",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "人員增補申",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "請，闡述新聘人員的目標用途與預估薪資",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "任何主管若發現不錯的人才，也可於主管會議上提出，與各單位主管進行開放性討論。",
+      "xmlText": "任何主管若發現不錯的人才，也可於主管會議上提出，與各單位主管進行開放性討論。",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "任何主管若發現不錯的人才，也可於主管會議上提出，與各單位主管進行開放性討論。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "各單位主管共同評估其必要性、替代方案及風險控制，共同決議是否開此職缺。",
+      "xmlText": "各單位主管共同評估其必要性、替代方案及風險控制，共同決議是否開此職缺。",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "各單位主管共同",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "評估",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "其必要性、替代方案及風險控制，共同",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "決議是否開此職缺",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "階段二：招募與甄選",
+      "xmlText": "階段二：招募與甄選",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "階段二：招募與甄選",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "徵才內容制定: 由用人主管撰寫徵才內容，人資單位調整優化。",
+      "xmlText": "徵才內容制定: 由用人主管撰寫徵才內容，人資單位調整優化。",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "徵才內容制定: 由用人主管撰寫徵才內容，人資單位調整優化。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "徵才發佈： 人資單位統一發佈徵才資訊，管道不限，但優先考慮104人力銀行。其中由人資單位負責請購徵才管道之相關費用，採購執行後續採購作業。",
+      "xmlText": "徵才發佈： 人資單位統一發佈徵才資訊，管道不限，但優先考慮104人力銀行。其中由人資單位負責請購徵才管道之相關費用，採購執行後續採購作業。",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "徵才",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "發佈： ",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "人資單位統一發佈徵才資訊，管道不限，但優先考慮104人力銀行",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。其中由人資單位負責請購徵才管道之相關費用，採購執行後續採購作業。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "履歷篩選：人資單位負責徵才履歷的資訊傳遞，讓用人單位主管親自執行履歷篩選。",
+      "xmlText": "履歷篩選：人資單位負責徵才履歷的資訊傳遞，讓用人單位主管親自執行履歷篩選。",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "履歷篩選：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "人資單位負責徵才履歷的資訊傳遞，讓用",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "人單位主管",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "親自執行履歷篩選",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "面試聯繫：由用人單位主管直接聯繫應徵人員",
+      "xmlText": "面試聯繫：由用人單位主管直接聯繫應徵人員",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "面試聯繫：由用人單位主管直接聯繫",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "應徵人員",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "該階段要點如下：",
+      "xmlText": "該階段要點如下：",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "該階段要點如下：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "善用數據分析了解徵才效益並適時調整策略，譬如104後台可看徵才效益。當公司無法展現強勢的徵才效益時，應以”積極態度”或”主動出擊”方式與市場人才接洽。 ",
+      "xmlText": "善用數據分析了解徵才效益並適時調整策略，譬如104後台可看徵才效益。當公司無法展現強勢的徵才效益時，應以”積極態度”或”主動出擊”方式與市場人才接洽。 ",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "善用數據分析了解徵才效益並適時調整策略，譬如104後台可看徵才效益。當",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "公司無法展現",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "強勢的徵才效益時，應以",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "”",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "積極態度",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "”",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "或",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "”",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "主動出擊",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "”",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "方式與市場人才接洽。 ",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "承上，盡量避免以制式罐頭訊息的方式聯繫，於聯繫階段即可向人才展示我司的專業、誠懇、尊重及其他想表達的特質(ex. 活潑、熱血或謹慎…等)。",
+      "xmlText": "承上，盡量避免以制式罐頭訊息的方式聯繫，於聯繫階段即可向人才展示我司的專業、誠懇、尊重及其他想表達的特質(ex. 活潑、熱血或謹慎…等)。",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "承上，盡量避免以制式",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "罐頭",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "訊息",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "的方式",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "聯繫，於聯繫階段即可向人才",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "展示我司的",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "專業、誠",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "懇",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "、尊重及其他想表達的特質",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "(",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "ex. 活潑",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "、熱血或謹慎",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "…",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "等)",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "平時即可蒐集人才庫（先留電話），並在一個時段集中邀請面試。",
+      "xmlText": "平時即可蒐集人才庫（先留電話），並在一個時段集中邀請面試。",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "平時即可蒐集人才庫（先留電話），並在一個時段集中邀請面試。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "階段三：面試流程：",
+      "xmlText": "階段三：面試流程：",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "階段",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "三",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "面試流程：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "原則上由用人主管主導整個面試過程，面試方式(現場或視訊)、是否上機操作、是否到外地面試…等，皆可自行單獨決定及執行，也可請人資單位協助及邀請其他人共同參與面試。",
+      "xmlText": "原則上由用人主管主導整個面試過程，面試方式(現場或視訊)、是否上機操作、是否到外地面試…等，皆可自行單獨決定及執行，也可請人資單位協助及邀請其他人共同參與面試。",
+      "numbering": null,
+      "alignment": null,
+      "runs": [
+        {
+          "text": "原則上",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "由",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "用人主管",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "主導整個面試過程",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "，面試方式",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "(現場或視訊)",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "、是否上機操作、是否到外地面試",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "…",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "等，皆可自行",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "單獨",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "決定及執行，也可請人資單位協助及邀請",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "其他人",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "共同參與面試",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "後續以現場面試情境來說明，若為視訊面試則可自行刪減流程",
+      "xmlText": "後續以現場面試情境來說明，若為視訊面試則可自行刪減流程",
+      "numbering": null,
+      "alignment": null,
+      "runs": [
+        {
+          "text": "後續",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "以現場面試",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "情境",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "來說明，若為視訊面試則可自行刪減流程",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "面試前準備: 紙本履歷（1份/per面試官）、<應徵人員資料表>、<面試評估問題集>",
+      "xmlText": "面試前準備: 紙本履歷（1份/per面試官）、<應徵人員資料表>、<面試評估問題集>",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "面試",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "前準備: 紙本履歷（1份/per面試官",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "）",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "、",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "<",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "應徵人員資料表",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": ">",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "、",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "<",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "面試",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "評估問題",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "集",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": ">",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "應徵人員抵達時，請他先至面試地點（盡量選有隱私處ex.會議室）先花10mins填寫<應徵人員資料表>，通知其他面試官10mins後開始面試",
+      "xmlText": "應徵人員抵達時，請他先至面試地點（盡量選有隱私處ex.會議室）先花10mins填寫<應徵人員資料表>，通知其他面試官10mins後開始面試",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "應徵人員",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "抵達時，請他先至面試地點",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "（",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "盡量選有隱私處ex.會議室",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "）",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "先",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "花10mins",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "填寫",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "<應徵人員資料表>",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "，",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "通知其他面試官10mins後開始面試",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "分工：用人主管主導面試，評估面向包括但不限於: 專業技能、態度、學習能力、職涯願景與經濟契合度。若人資單位共同參與面試，則可協助於非專業技能之評估，並提供建議給用人主管。",
+      "xmlText": "分工：用人主管主導面試，評估面向包括但不限於: 專業技能、態度、學習能力、職涯願景與經濟契合度。若人資單位共同參與面試，則可協助於非專業技能之評估，並提供建議給用人主管。",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "分工：用人主管主導面試，評估面向包括但不限於: 專業技能、態度、學習能力、職",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "涯",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "願景與經濟契合度。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "若人",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "資單位共同參與面試，則可協助於非專業技能之評估，並提供建議給用人主",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "管",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "該階段要點如下:",
+      "xmlText": "該階段要點如下:",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "該階段",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "要點如下:",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "盡量取得<應徵人員資料表>上*欄位資訊，以供後續評估",
+      "xmlText": "盡量取得<應徵人員資料表>上*欄位資訊，以供後續評估",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "盡量",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "取得",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "<應徵人員資料表>上*欄位資訊，以供後續評估",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "若很早即決定不錄用，也應尊重應徵人員完成整個面試",
+      "xmlText": "若很早即決定不錄用，也應尊重應徵人員完成整個面試",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "若很早即決定不錄用，也應尊重",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "應徵人員",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "完成整個面試",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "盡量給予應徵人員我司預計回覆的時間，避免對方無盡等待",
+      "xmlText": "盡量給予應徵人員我司預計回覆的時間，避免對方無盡等待",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "盡量給予",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "應徵",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "人員",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "我司預計",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "回覆的時間，避免對方無盡等待",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "若遇到欲招募之人才，可向對方進行公司介紹以展現誠意",
+      "xmlText": "若遇到欲招募之人才，可向對方進行公司介紹以展現誠意",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "若遇到欲招募之人才，可向對方進行公司介紹以展現誠意",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "階段三：內部審核",
+      "xmlText": "階段三：內部審核",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "階段",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "三",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "內部審核",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "用人主管於主管會議報告是否錄用及相關細節（薪資條件、工作內容…等），主管共同決議最終方案。",
+      "xmlText": "用人主管於主管會議報告是否錄用及相關細節（薪資條件、工作內容…等），主管共同決議最終方案。",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "用人",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "主管於主管會議報告是否錄用及相關細節（薪資條件、工作內容",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "…",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "等），主管共同決議最終方案",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "以上盡量於面試後1個月內完成, 若需要更長時間(ex.多面試幾位)則特別提出即可，過程可與應徵人員來回討論溝通。",
+      "xmlText": "以上盡量於面試後1個月內完成, 若需要更長時間(ex.多面試幾位)則特別提出即可，過程可與應徵人員來回討論溝通。",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "以上盡量於面試後1個月內完成, 若需要更長時間(ex.多面試幾位)則特別提出即可，過程可與",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "應徵人員",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "來回討論溝通。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "新人報到日盡量安排在月初，預留時間在發薪日前完成勞健保投保、薪資計算等相關作業",
+      "xmlText": "新人報到日盡量安排在月初，預留時間在發薪日前完成勞健保投保、薪資計算等相關作業",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "新人報到日盡量安排在月初，預留時間在發薪日前完成",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "勞",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "健保投保、薪資計算等相關作業",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "階段四：錄用與報到",
+      "xmlText": "階段四：錄用與報到",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "階段四：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "錄用與報到",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "由人資單位主導、用人主管協作，與應徵人員聯繫溝通，可先提供<員工勞動契約書>及<員工基本資料表>提早進行報到作業",
+      "xmlText": "由人資單位主導、用人主管協作，與應徵人員聯繫溝通，可先提供<員工勞動契約書>及<員工基本資料表>提早進行報到作業",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "由",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "人資單位主導",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "、用人主管協作",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "，與",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "應徵人員",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "聯繫溝通，",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "可",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "先提供",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "<員工勞動契約書>及",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "<員工基本資料表>提早進行報到作業",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "新人報到先由人資單位接洽，進行公司環境＆作業流程的基本介紹，並請對方以<員工基本資料表>為依據，完成報到流程。",
+      "xmlText": "新人報到先由人資單位接洽，進行公司環境＆作業流程的基本介紹，並請對方以<員工基本資料表>為依據，完成報到流程。",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "新人報到先由人資單位接洽，進行公司環境",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "＆",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "作業流程的基本介紹，並請對方以<員工基本資料表>為依據，完成報到流程",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "人資單位將新人交接給用人主管進行後續",
+      "xmlText": "人資單位將新人交接給用人主管進行後續",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "人資單位",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "將",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "新人交接給",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "用人",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "主管進行後續",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "新人提供完成之<員工基本資料表>即完成報到流程，人資接續完成以下後續作業",
+      "xmlText": "新人提供完成之<員工基本資料表>即完成報到流程，人資接續完成以下後續作業",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "新人提供完成之<員工基本資料表>即完成報到流程，",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "人資接續完成以下後續作業",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "投保勞健保",
+      "xmlText": "投保勞健保",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "投保",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "勞",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "健保",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "其他",
+      "xmlText": "其他",
+      "numbering": {
+        "numId": 17,
+        "level": 3
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "其他",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "階段四：試用與考核",
+      "xmlText": "階段四：試用與考核",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "階段四：試用與考核",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "試用期：基本設定為 3 個月，由主管決定並記錄在<員工勞動契約書>中，此為調薪依據，而非資遣依據。",
+      "xmlText": "試用期：基本設定為 3 個月，由主管決定並記錄在<員工勞動契約書>中，此為調薪依據，而非資遣依據。",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "試用期：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "基本",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "設定為 3 ",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "個",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "月",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "，由主管決定並記錄在<員工勞動契約書>中，此為調薪依據，而非資遣依據。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "考核：用人主管主導，應參考CH4.1階段一: 人力需求及CH4.2階段二: 徵才內容，檢視該員是否達到預期目標，於主管會議上提出最終調薪結果，所有主管共同決議最終方案。　",
+      "xmlText": "考核：用人主管主導，應參考CH4.1階段一: 人力需求及CH4.2階段二: 徵才內容，檢視該員是否達到預期目標，於主管會議上提出最終調薪結果，所有主管共同決議最終方案。　",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "考核：",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "用人主管主導，應參考CH4.1階段",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "一",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": ": ",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "人力需求",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "及CH4.2階段二: 徵才內容，檢視該員是否達到預期目標，於主管會議上提出最終調薪結果，所有主管共同決議最終方案。　",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "人資單位執行調薪作業",
+      "xmlText": "人資單位執行調薪作業",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "人資單位執行調薪作業",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "Normal",
+      "text": "",
+      "xmlText": "",
+      "numbering": null,
+      "alignment": null,
+      "runs": [],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "結案＆後續維護",
+      "xmlText": "結案＆後續維護",
+      "numbering": {
+        "numId": 17,
+        "level": 0
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "結案",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "＆",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "後續維護",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "人資單位以人為單位，將上述資訊收集在一起，並持續維護之。",
+      "xmlText": "人資單位以人為單位，將上述資訊收集在一起，並持續維護之。",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "人資單位以人為單位，將上述資訊收集在一起，並",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "持續",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "維護之",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "。",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "",
+      "xmlText": "",
+      "numbering": null,
+      "alignment": null,
+      "runs": [],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "參考文件",
+      "xmlText": "參考文件",
+      "numbering": {
+        "numId": 17,
+        "level": 0
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "參考文件",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "3-AD-XXX_面試評估問題集",
+      "xmlText": "3-AD-XXX_面試評估問題集",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "3-AD-XXX_",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "面試",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "評估問題",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "集",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "4-AD-001_員工勞動契約書",
+      "xmlText": "4-AD-001_員工勞動契約書",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "4-AD-00",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "1_",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "員工勞動契約書",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "4-AD-XXX_員工基本資料表",
+      "xmlText": "4-AD-XXX_員工基本資料表",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "4-AD-XX",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "X_",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "員工基本資料表",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "4-AD-XXX_應徵人員資料表",
+      "xmlText": "4-AD-XXX_應徵人員資料表",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "4-AD-XXX",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "_",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "應徵人員資料表",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "Normal",
+      "text": "",
+      "xmlText": "",
+      "numbering": null,
+      "alignment": null,
+      "runs": [],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "Normal",
+      "text": "",
+      "xmlText": "",
+      "numbering": null,
+      "alignment": null,
+      "runs": [],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "參考附件",
+      "xmlText": "參考附件",
+      "numbering": {
+        "numId": 17,
+        "level": 0
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "參考附件",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "附件1-各類範例",
+      "xmlText": "附件1-各類範例",
+      "numbering": {
+        "numId": 17,
+        "level": 1
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "附件1-各類範例",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "招募平台上的客製化信函範例",
+      "xmlText": "招募平台上的客製化信函範例",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "招募平台上的客製化信函範例",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "Normal",
+      "text": "",
+      "xmlText": "",
+      "numbering": null,
+      "alignment": null,
+      "runs": [
+        {
+          "text": "",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": [
+        {
+          "relationshipId": "rId9",
+          "partName": "/word/media/image2.png",
+          "contentType": "image/png"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "style": "List Paragraph",
+      "text": "招募平台後台的招募進度",
+      "xmlText": "招募平台後台的招募進度",
+      "numbering": {
+        "numId": 17,
+        "level": 2
+      },
+      "alignment": null,
+      "runs": [
+        {
+          "text": "招募平台",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        },
+        {
+          "text": "後台的招募進度",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": []
+    },
+    {
+      "type": "paragraph",
+      "style": "Normal",
+      "text": "",
+      "xmlText": "",
+      "numbering": null,
+      "alignment": null,
+      "runs": [
+        {
+          "text": "",
+          "bold": null,
+          "italic": null,
+          "underline": null
+        }
+      ],
+      "images": [
+        {
+          "relationshipId": "rId10",
+          "partName": "/word/media/image3.png",
+          "contentType": "image/png"
+        }
+      ]
+    }
+  ],
+  "headersAndFooters": {
+    "section-1-header": [
+      {
+        "type": "paragraph",
+        "style": "Header",
+        "text": "",
+        "xmlText": "",
+        "numbering": null,
+        "alignment": null,
+        "runs": [],
+        "images": []
+      },
+      {
+        "type": "table",
+        "style": "Normal Table",
+        "rows": [
+          [
+            {
+              "text": "人員增補標準程序",
+              "xmlText": "人員增補標準程序",
+              "images": []
+            },
+            {
+              "text": "文件編號：",
+              "xmlText": "文件編號：",
+              "images": []
+            },
+            {
+              "text": "3-AD-XXX",
+              "xmlText": "3-AD-XXX",
+              "images": []
+            },
+            {
+              "text": "版次：",
+              "xmlText": "版次：",
+              "images": []
+            },
+            {
+              "text": "1",
+              "xmlText": "1",
+              "images": []
+            }
+          ]
+        ],
+        "images": []
+      }
+    ]
+  },
+  "media": [
+    "output\\dev032-ai-native-prototype\\extracted\\media\\image1.png",
+    "output\\dev032-ai-native-prototype\\extracted\\media\\image2.png",
+    "output\\dev032-ai-native-prototype\\extracted\\media\\image3.png"
+  ]
+}

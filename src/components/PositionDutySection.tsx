@@ -1,0 +1,8 @@
+import type { Duty, DutyPositionRelation, PositionView } from '../types'
+import { dutyRelationLabels } from './DutyDetailDrawer'
+import { DutyCard } from './DutyCard'
+
+export function PositionDutySection({ member, duties, relations, onOpenCenter, editingEnabled }: { member: PositionView; duties: Duty[]; relations: DutyPositionRelation[]; onOpenCenter: (positionId: string) => void; editingEnabled: boolean }) {
+  const groups = (['execute', 'review', 'collaborate', 'countersign'] as const).map((type) => ({ type, items: relations.filter((relation) => relation.relationType === type) }))
+  return <section className="inspector__section position-duty-section"><div className="section-heading"><span>工作執掌</span><small>{relations.length} 筆關係</small></div>{groups.map((group) => <div className="position-duty-group" key={group.type}><span>{dutyRelationLabels[group.type]}</span>{group.items.length === 0 ? <small className="muted">尚未設定</small> : group.items.map((relation) => { const duty = duties.find((item) => item.id === relation.dutyId) ?? { id: relation.dutyId, title: '未知執掌' }; const pending = relation.target.kind === 'pending-reassignment'; return <DutyCard duty={duty} density="compact" badges={[...(relation.isPrimaryExecutor ? [{ label: '主執行' as const, tone: 'info' as const }] : []), ...(pending ? [{ label: '待重新分配' as const, tone: 'danger' as const }] : [])]} onClick={() => onOpenCenter(member.id)} aria-label={`${duty.title}${relation.isPrimaryExecutor ? '，主執行' : ''}${pending ? '，待重新分配' : ''}，開啟中央職掌規劃`} key={relation.id} /> })}</div>)}<button type="button" className="secondary-button position-duty-section__button" onClick={() => onOpenCenter(member.id)} disabled={!editingEnabled && relations.length === 0}>開啟中央職掌規劃</button></section>
+}

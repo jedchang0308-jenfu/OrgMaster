@@ -1,0 +1,24 @@
+# Dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Local tooling and temporary browser artifacts
+.codex-tmp/
+.playwright-cli/
+getComputedStyle(e).display!
+
+# Local runtime/company data (may contain operational or personal information)
+data/
+
+# Generated evidence and recovered browser state
+output/*
+!output/dev032-ai-native-prototype/
+!output/dev032-ai-native-prototype/**
+
+# Local environment secrets
+.env
+.env.*
+!.env.example

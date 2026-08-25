@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MP-0001 人員增補管理程序｜DEV-032 原型</title>
+  <link rel="icon" type="image/png" href="assets/jenfu-logo.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <button class="brand" id="listButton" type="button" aria-label="返回管理辦法清單">
+      <img src="assets/jenfu-logo.png" alt="鉦富機械">
+      <span>管理辦法</span>
+    </button>
+    <div class="header-actions" id="documentActions">
+      <span class="save-state" id="saveState" role="status" hidden>已儲存</span>
+      <button class="button button-primary desktop-mutation" id="editButton" type="button">編輯文件</button>
+    </div>
+    <span class="mobile-readonly">手機唯讀</span>
+  </header>
+
+  <main>
+    <section class="list-view" id="listView" hidden aria-labelledby="listTitle">
+      <div class="list-toolbar">
+        <div>
+          <p class="eyebrow">管理辦法</p>
+          <h1 id="listTitle">找到並開啟一份辦法</h1>
+        </div>
+        <button class="button button-primary desktop-mutation" type="button" disabled title="此原型只驗證第一份真實辦法">新增管理辦法</button>
+      </div>
+      <label class="search-field">
+        <span class="sr-only">搜尋代碼或標題</span>
+        <input id="methodSearch" type="search" placeholder="搜尋代碼或標題" autocomplete="off">
+      </label>
+      <div class="method-list" role="list" aria-label="管理辦法清單">
+        <button class="method-row" id="methodRow" type="button" role="listitem">
+          <span class="method-code">MP-0001</span>
+          <span class="method-main">
+            <strong>人員增補管理程序</strong>
+          </span>
+          <span class="method-state">建置中</span>
+          <span class="method-time">今天 14:20</span>
+        </button>
+        <p class="empty-search" id="emptySearch" hidden>沒有符合的管理辦法。</p>
+      </div>
+    </section>
+
+    <section class="document-view" id="documentView" aria-labelledby="methodTitle">
+      <div class="document-shell">
+        <div class="document-toolbar">
+          <button class="button button-quiet" id="tocButton" type="button" aria-haspopup="dialog">章節</button>
+          <button class="button button-quiet" id="dutyButton" type="button" aria-haspopup="dialog">對照職掌</button>
+        </div>
+
+        <article class="method-document" id="editableDocument">
+          <header class="method-heading">
+            <div class="document-identity">
+              <span>MP-0001</span>
+              <span class="status-text">建置中</span>
+            </div>
+            <h1 id="methodTitle">人員增補管理程序</h1>
+            <p class="lead">讓新增人員的需求提出、招募、面試、錄用、報到與試用考核有一致且可理解的作法，並支持公司發展目標。</p>
+            <dl class="method-meta">
+              <div><dt>適用對象</dt><dd>提出新聘需求的主管及參與招募、錄用與報到的人員</dd></div>
+              <div><dt>閱讀狀態</dt><dd>尚未提供公司閱讀</dd></div>
+            </dl>
+          </header>
+
+          <section id="scope" data-editable-block>
+            <h2>適用範圍</h2>
+            <p>本辦法適用於公司各單位主管提出人員增補需求，以及後續招募、甄選、錄用、報到與試用考核作業。</p>
+          </section>
+
+          <section id="roles" data-editable-block>
+            <h2>權責分工</h2>
+            <div class="table-scroll" tabindex="0" aria-label="權責分工表，可水平捲動">
+              <table>
+                <thead>
+                  <tr><th scope="col">角色</th><th scope="col">主要責任</th></tr>
+                </thead>
+                <tbody>
+                  <tr><th scope="row">用人單位主管</th><td>提出增員需求、撰寫職缺內容、篩選履歷、主導專業面試與試用期考核。</td></tr>
+                  <tr><th scope="row">人資單位</th><td>維護招募管道、調整職缺內容、規劃薪資制度、簽訂勞動契約及辦理入職作業。</td></tr>
+                  <tr><th scope="row">主管會議</th><td>評估增補必要性、替代方案與風險，討論是否開設職缺及錄用條件。</td></tr>
+                  <tr><th scope="row">總經理</th><td>依現行文件負責最終錄用核決及薪資結構核定；主管會議共同討論錄用條件。</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="overview" data-editable-block>
+            <h2>流程總覽</h2>
+            <ol class="stage-overview">
+              <li><span>1</span><strong>需求提出</strong><small>確認是否開缺</small></li>
+              <li><span>2</span><strong>招募甄選</strong><small>接觸合適人才</small></li>
+              <li><span>3</span><strong>面試</strong><small>完成評估</small></li>
+              <li><span>4</span><strong>內部審核</strong><small>形成錄用方案</small></li>
+              <li><span>5</span><strong>錄用報到</strong><small>完成入職</small></li>
+              <li><span>6</span><strong>試用考核</strong><small>檢視預期目標</small></li>
+            </ol>
+          </section>
+
+          <section id="request" data-editable-block>
+            <div class="section-kicker">階段 1</div>
+            <h2>人力需求提出</h2>
+            <ul>
+              <li>用人單位依公司／部門發展目標或人員異動，在主管會議提出人員增補需求，說明新聘人員的目標用途與預估薪資。</li>
+              <li>主管若發現合適人才，也可在主管會議提出，由各單位主管進行開放討論。</li>
+              <li>各單位主管共同評估必要性、替代方案與風險控制，再決定是否開設職缺。</li>
+            </ul>
+          </section>
+
+          <section id="recruit" data-editable-block>
+            <div class="section-kicker">階段 2</div>
+            <h2>招募與甄選</h2>
+            <dl class="action-list">
+              <div><dt>制定職缺內容</dt><dd>用人主管撰寫，人資單位調整與優化。</dd></div>
+              <div><dt>發布職缺</dt><dd>人資單位統一發布，管道不限並優先考慮 104 人力銀行；相關費用由人資請購、採購執行後續作業。</dd></div>
+              <div><dt>篩選履歷</dt><dd>人資傳遞履歷資訊，由用人單位主管親自篩選。</dd></div>
+              <div><dt>聯繫面試</dt><dd>由用人單位主管直接聯繫應徵人員。</dd></div>
+            </dl>
+            <h3>執行原則</h3>
+            <ul>
+              <li>利用招募平台數據理解徵才效益，必要時調整策略並主動接觸人才。</li>
+              <li>避免只用制式訊息；聯繫時展現公司的專業、誠懇與尊重。</li>
+              <li>可持續蒐集人才名單，並安排集中時段邀請面試。</li>
+            </ul>
+          </section>
+
+          <section id="interview" data-editable-block>
+            <div class="section-kicker">階段 3</div>
+            <h2>面試</h2>
+            <p>原則上由用人主管主導，並依職務需要決定現場／視訊、上機操作或外地面試；可請人資或其他人員共同參與。以下以現場面試為主要情境。</p>
+            <ol class="numbered-actions">
+              <li><strong>準備資料</strong><span>每位面試官一份履歷，並備妥應徵人員資料表及面試評估問題集。</span></li>
+              <li><strong>候選人抵達</strong><span>安排具隱私的面試地點，先提供約 10 分鐘填寫應徵人員資料表，再通知其他面試官開始。</span></li>
+              <li><strong>進行評估</strong><span>用人主管評估專業技能、態度、學習能力、職涯願景等面向；人資可協助非專業面向並提供建議。</span></li>
+              <li><strong>結束面試</strong><span>尊重候選人完成面試，說明預計回覆時間；對有意招募的人才可進一步介紹公司。</span></li>
+            </ol>
+          </section>
+
+          <section id="approval" data-editable-block>
+            <div class="section-kicker">階段 4</div>
+            <h2>內部審核</h2>
+            <ul>
+              <li>用人主管在主管會議報告是否建議錄用，以及薪資條件、工作內容等細節。</li>
+              <li>原文件要求盡量在面試後一個月內完成；若需延長，例如繼續面試其他人選，應另外提出並持續與候選人溝通。</li>
+              <li>新人報到日盡量安排於月初，預留勞健保投保與薪資計算作業時間。</li>
+            </ul>
+          </section>
+
+          <section id="onboarding" data-editable-block>
+            <div class="section-kicker">階段 5</div>
+            <h2>錄用與報到</h2>
+            <ul>
+              <li>人資主導、用人主管協作聯繫錄取人員，可預先提供員工勞動契約書及員工基本資料表。</li>
+              <li>報到當日由人資介紹公司環境與基本作業流程，依員工基本資料表完成報到。</li>
+              <li>人資將新人交接給用人主管，並接續辦理勞健保投保等後續作業。</li>
+            </ul>
+          </section>
+
+          <section id="probation" data-editable-block>
+            <div class="section-kicker">階段 6</div>
+            <h2>試用與考核</h2>
+            <ul>
+              <li>試用期原則為三個月，由主管決定並記錄於員工勞動契約書；原文件將其定位為調薪參考，而非資遣依據。</li>
+              <li>用人主管應回顧人力需求與職缺內容，檢視新人是否達成預期目標，並在主管會議提出調薪建議。</li>
+              <li>確認結果後，由人資執行調薪作業。</li>
+            </ul>
+          </section>
+
+          <section id="records" data-editable-block>
+            <h2>紀錄與後續維護</h2>
+            <p>人資單位以個人為單位彙整招募、面試、錄用、報到與考核資訊，並持續維護。</p>
+          </section>
+
+          <section id="resources" data-editable-block>
+            <h2>使用文件</h2>
+            <ul class="resource-list">
+              <li><span>面試評估問題集</span><em>尚未連結</em></li>
+              <li><span>員工勞動契約書</span><em>尚未連結</em></li>
+              <li><span>員工基本資料表</span><em>尚未連結</em></li>
+              <li><span>應徵人員資料表</span><em>尚未連結</em></li>
+            </ul>
+          </section>
+
+          <section id="examples">
+            <h2>招募操作範例</h2>
+            <figure>
+              <div class="image-button privacy-mask" aria-label="招募平台客製化信函範例，姓名與電話已在原型畫面遮罩">
+                <img src="assets/recruit-message-example.png" alt="招募平台客製化邀請信範例畫面">
+                <span class="privacy-mask-name" aria-hidden="true"></span>
+                <span class="privacy-mask-phone" aria-hidden="true"></span>
+              </div>
+              <figcaption>招募平台客製化邀請信範例。原圖中的姓名與電話已在原型畫面遮罩。</figcaption>
+            </figure>
+            <figure>
+              <button class="image-button" type="button" data-image="assets/recruit-progress-example.png" aria-label="放大招募平台招募進度範例">
+                <img src="assets/recruit-progress-example.png" alt="招募平台職缺曝光與應徵數據畫面">
+              </button>
+              <figcaption>招募平台招募進度範例，用於說明如何觀察曝光與應徵成效。</figcaption>
+            </figure>
+          </section>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+
+  <aside class="drawer" id="tocDrawer" aria-labelledby="tocTitle" aria-hidden="true" hidden>
+    <div class="drawer-header">
+      <h2 id="tocTitle">章節</h2>
+      <button class="icon-button" type="button" data-close-drawer aria-label="關閉章節">×</button>
+    </div>
+    <nav class="toc-nav" aria-label="文件章節">
+      <a href="#scope">適用範圍</a>
+      <a href="#roles">權責分工</a>
+      <a href="#overview">流程總覽</a>
+      <a href="#request">1 人力需求提出</a>
+      <a href="#recruit">2 招募與甄選</a>
+      <a href="#interview">3 面試</a>
+      <a href="#approval">4 內部審核</a>
+      <a href="#onboarding">5 錄用與報到</a>
+      <a href="#probation">6 試用與考核</a>
+      <a href="#records">紀錄與維護</a>
+      <a href="#resources">使用文件</a>
+      <a href="#examples">招募操作範例</a>
+    </nav>
+  </aside>
+
+  <aside class="drawer drawer-wide" id="dutyDrawer" aria-labelledby="dutyTitle" aria-hidden="true" hidden>
+    <div class="drawer-header">
+      <div>
+        <p class="eyebrow">唯讀對照</p>
+        <h2 id="dutyTitle">職掌尚未加入此次內容</h2>
+      </div>
+      <button class="icon-button" type="button" data-close-drawer aria-label="關閉職掌對照">×</button>
+    </div>
+    <div class="empty-drawer">
+      <p>這份原型只使用原 DOCX，沒有載入組織與職掌資料，因此不產生「一致／不一致」判斷。</p>
+      <button class="button button-primary" id="selectDutyContext" type="button">選擇要比較的職掌</button>
+      <small id="dutyPrototypeNote" hidden>原型未連接 DEV-031 資料；正式版本應在此選取既有職掌原文。</small>
+    </div>
+  </aside>
+
+  <dialog class="lightbox" id="lightbox">
+    <button class="icon-button lightbox-close" id="lightboxClose" type="button" aria-label="關閉圖片">×</button>
+    <img id="lightboxImage" src="" alt="">
+  </dialog>
+
+  <script src="prototype.js"></script>
+</body>
+</html>
