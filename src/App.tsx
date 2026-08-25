@@ -2103,7 +2103,7 @@ export default function App() {
   }
 
   if (managementMethodRoute.isDocumentPage && managementMethodRoute.methodId) {
-    return <ManagementMethodDocumentPage methodId={managementMethodRoute.methodId} initialView={managementMethodRoute.view} state={currentState} onClose={closeManagementMethodPage} />
+    return <ManagementMethodDocumentPage methodId={managementMethodRoute.methodId} initialView={managementMethodRoute.view} initialChapter={managementMethodRoute.chapter} state={currentState} onClose={closeManagementMethodPage} />
   }
 
   if (managementMethodLocation.isEditorPage) {

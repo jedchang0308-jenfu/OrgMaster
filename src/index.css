@@ -4317,6 +4317,8 @@ button.directory-detail__department-link:not(.is-static):focus-visible {
 .management-method-document-page h1 { font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1.12; max-width: 820px; margin: 0 0 34px; letter-spacing: -.03em; }
 .management-method-reader { max-width: 820px; font-size: 1.05rem; line-height: 1.9; }
 .management-method-reader h1, .management-method-reader h2, .management-method-reader h3 { line-height: 1.3; margin: 2.2em 0 .65em; }
+.management-method-reader h1, .management-method-reader h2, .management-method-reader h3 { scroll-margin-top: 82px; }
+.management-method-reader h1:focus-visible, .management-method-reader h2:focus-visible, .management-method-reader h3:focus-visible { outline: 2px solid #5b79b9; outline-offset: 5px; }
 .management-method-reader h1 { font-size: 1.75rem; }
 .management-method-reader h2 { font-size: 1.4rem; }
 .management-method-reader h3 { font-size: 1.15rem; }
@@ -4359,13 +4361,26 @@ button.directory-detail__department-link:not(.is-static):focus-visible {
 .management-method-duty-drawer__rows > div { border-bottom: 1px solid #e1e5eb; padding-bottom: 12px; }
 .management-method-duty-drawer__rows span { display: block; color: #67748a; font-size: .85rem; margin-top: 3px; }
 .management-method-duty-drawer__rows p { color: #4d5a70; margin: 7px 0 0; }
+.management-method-chapter-backdrop { position: fixed; inset: 0; z-index: 920; background: rgb(20 27 42 / .18); }
+.management-method-chapter-drawer { position: absolute; top: 0; right: 0; width: min(360px, 92vw); height: 100%; overflow: auto; box-sizing: border-box; padding: 22px; background: #fff; border-left: 1px solid #d7dde8; box-shadow: -12px 0 34px rgb(25 40 65 / .15); }
+.management-method-chapter-drawer header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+.management-method-chapter-drawer header button { border: 0; background: transparent; cursor: pointer; }
+.management-method-chapter-drawer ul { margin: 0; padding: 0; list-style: none; }
+.management-method-chapter-drawer li { border-bottom: 1px solid #e5e9f0; }
+.management-method-chapter-drawer li[data-level="2"] { padding-left: 18px; }
+.management-method-chapter-drawer li[data-level="3"] { padding-left: 36px; }
+.management-method-chapter-drawer li button { width: 100%; border: 0; padding: 13px 0; background: transparent; color: #26334a; text-align: left; line-height: 1.45; cursor: pointer; }
+.management-method-chapter-drawer li button:hover { color: #285bc4; }
 @media (max-width: 767px) {
   .management-methods-page__header, .management-method-document-page__header { padding: 0 16px; gap: 10px; }
   .management-methods-page__main, .management-method-document-page__main { width: calc(100% - 32px); padding-top: 24px; }
   .management-method-list__row { grid-template-columns: 1fr; gap: 5px; padding: 15px 0; }
   .management-method-list__status { text-align: left; font-size: .85rem; }
-  .management-method-document-page__header .management-method-document-page__actions { display: none; }
-  .management-method-document-page__header > div:nth-child(2) { margin-left: auto; }
+  .management-method-document-page__header .management-method-document-page__actions { margin-left: auto; gap: 4px; }
+  .management-method-document-page__header > div:nth-child(2) { display: none; }
+  .management-method-document-page__header .management-method-document-page__actions button { min-width: 38px; padding: 7px; }
+  .management-method-document-page__header .management-method-document-page__actions button span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .management-method-document-page__header .management-method-document-page__edit-action { display: none; }
   .management-method-document-page h1 { font-size: 2rem; }
   .management-method-reader { font-size: 1rem; }
   .management-method-edit-surface__meta { grid-template-columns: 1fr; }
