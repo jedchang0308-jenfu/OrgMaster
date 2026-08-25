@@ -4288,6 +4288,91 @@ button.directory-detail__department-link:not(.is-static):focus-visible {
   .method-prototype__identification dl > div { grid-template-columns: 110px minmax(0, 1fr); gap: 12px; }
 }
 
+/* DEV-032 minimal reading-first surface */
+.management-methods-page,
+.management-method-document-page { min-height: 100vh; background: #f7f8fb; color: #172033; }
+.management-methods-page__header,
+.management-method-document-page__header { min-height: 62px; display: flex; align-items: center; gap: 18px; padding: 0 28px; border-bottom: 1px solid #dde2ea; background: #fff; }
+.management-methods-page__header > div,
+.management-method-document-page__header > div { display: inline-flex; align-items: center; gap: 8px; }
+.management-methods-page__header .button-primary { margin-left: auto; }
+.management-methods-page__back,
+.management-method-document-page__header > button:first-child { border: 0; background: none; color: #52617a; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.management-methods-page__main,
+.management-method-document-page__main { width: min(1080px, calc(100% - 48px)); margin: 0 auto; padding: 34px 0 80px; }
+.management-methods-page__tools { display: flex; justify-content: flex-end; margin-bottom: 18px; }
+.management-methods-search { width: min(360px, 100%); display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #aeb8c9; padding: 8px 0; }
+.management-methods-search input { border: 0; outline: 0; background: transparent; width: 100%; font: inherit; }
+.management-method-list { border-top: 1px solid #d7dce5; }
+.management-method-list__row { width: 100%; display: grid; grid-template-columns: 110px minmax(0,1fr) 130px; gap: 18px; align-items: center; padding: 18px 4px; border: 0; border-bottom: 1px solid #d7dce5; background: transparent; text-align: left; cursor: pointer; }
+.management-method-list__row:hover, .management-method-list__row:focus-visible { background: #eef2ff; outline: 0; }
+.management-method-list__code { color: #52617a; font-variant-numeric: tabular-nums; }
+.management-method-list__title { font-weight: 650; }
+.management-method-list__status { color: #65728a; text-align: right; }
+.management-methods-empty { color: #6b778c; padding: 48px 0; }
+.management-method-document-page__header .management-method-document-page__actions { margin-left: auto; display: inline-flex; gap: 8px; }
+.management-method-document-page__main { width: min(1180px, calc(100% - 48px)); }
+.management-method-document-page__identity { display: flex; gap: 10px; color: #69758a; font-size: .9rem; margin-bottom: 10px; }
+.management-method-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; color: #3f4d68; }
+.management-method-document-page h1 { font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1.12; max-width: 820px; margin: 0 0 34px; letter-spacing: -.03em; }
+.management-method-reader { max-width: 820px; font-size: 1.05rem; line-height: 1.9; }
+.management-method-reader h1, .management-method-reader h2, .management-method-reader h3 { line-height: 1.3; margin: 2.2em 0 .65em; }
+.management-method-reader h1 { font-size: 1.75rem; }
+.management-method-reader h2 { font-size: 1.4rem; }
+.management-method-reader h3 { font-size: 1.15rem; }
+.management-method-reader p { margin: .8em 0; }
+.management-method-reader blockquote { border-left: 3px solid #a8b7d9; margin: 1.25em 0; padding: .15em 1.25em; color: #44536f; }
+.management-method-reader a { color: #285bc4; }
+.management-method-table-wrap { overflow-x: auto; margin: 1.3em 0; }
+.management-method-reader table { border-collapse: collapse; min-width: 100%; font-size: .96rem; }
+.management-method-reader th, .management-method-reader td { border: 1px solid #ccd3df; padding: 9px 12px; text-align: left; vertical-align: top; }
+.management-method-reader th { background: #f0f3f8; font-weight: 650; }
+.management-method-image { margin: 1.5em 0; }
+.management-method-image button { display: block; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.management-method-image img { max-width: 100%; height: auto; border-radius: 6px; }
+.management-method-image figcaption { color: #6d788b; font-size: .9rem; margin-top: 5px; }
+.management-method-edit-surface { max-width: 920px; }
+.management-method-edit-surface__meta { display: grid; grid-template-columns: minmax(0,1fr) 240px auto; gap: 12px; align-items: end; border-bottom: 1px solid #d8dee8; padding-bottom: 18px; margin-bottom: 18px; }
+.management-method-edit-surface__meta label, .management-method-create__body label { display: grid; gap: 6px; color: #5c6980; font-size: .88rem; }
+.management-method-edit-surface__meta input, .management-method-create__body input, .management-method-create__body textarea { width: 100%; border: 1px solid #c8d0dc; border-radius: 5px; padding: 9px 10px; font: inherit; background: #fff; box-sizing: border-box; }
+.management-method-editor { border: 1px solid #cbd3df; background: #fff; border-radius: 7px; }
+.management-method-editor__toolbar { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid #e0e4ea; }
+.management-method-editor__toolbar button { border: 0; background: transparent; padding: 5px 8px; cursor: pointer; color: #46536b; }
+.management-method-editor .ProseMirror { min-height: 420px; padding: 26px; outline: 0; line-height: 1.75; }
+.management-method-document-page__footer { display: flex; justify-content: space-between; align-items: center; gap: 14px; max-width: 920px; margin-top: 28px; color: #5a6982; }
+.management-method-document-page__footer > span { display: inline-flex; align-items: center; gap: 5px; }
+.management-method-edit-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.management-method-error { display: flex; gap: 12px; align-items: center; color: #a23c3c; background: #fff0f0; border-left: 3px solid #c85a5a; padding: 10px 12px; margin: 0 0 18px; }
+.management-method-error button { border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; }
+.management-method-dialog-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgb(20 27 42 / .42); display: grid; place-items: center; padding: 22px; }
+.management-method-create { width: min(680px, 100%); max-height: min(86vh, 760px); overflow: auto; background: #fff; border-radius: 8px; box-shadow: 0 20px 60px rgb(17 31 55 / .25); }
+.management-method-create > header, .management-method-create > footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 22px; border-bottom: 1px solid #e0e5ed; }
+.management-method-create > header button { border: 0; background: transparent; cursor: pointer; }
+.management-method-create h2 { margin: 4px 0 0; font-size: 1.2rem; }
+.management-method-create__body { display: grid; gap: 14px; padding: 22px; }
+.management-method-create > footer { justify-content: flex-end; border-top: 1px solid #e0e5ed; border-bottom: 0; }
+.management-method-duty-drawer { position: fixed; z-index: 900; top: 0; right: 0; width: min(420px, 92vw); height: 100vh; padding: 22px; overflow: auto; background: #fff; border-left: 1px solid #d7dde8; box-shadow: -12px 0 34px rgb(25 40 65 / .15); box-sizing: border-box; }
+.management-method-duty-drawer header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.management-method-duty-drawer header button { border: 0; background: transparent; cursor: pointer; }
+.management-method-duty-drawer > input { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid #cbd3df; border-radius: 5px; margin-bottom: 14px; }
+.management-method-duty-drawer__rows { display: grid; gap: 14px; }
+.management-method-duty-drawer__rows > div { border-bottom: 1px solid #e1e5eb; padding-bottom: 12px; }
+.management-method-duty-drawer__rows span { display: block; color: #67748a; font-size: .85rem; margin-top: 3px; }
+.management-method-duty-drawer__rows p { color: #4d5a70; margin: 7px 0 0; }
+@media (max-width: 767px) {
+  .management-methods-page__header, .management-method-document-page__header { padding: 0 16px; gap: 10px; }
+  .management-methods-page__main, .management-method-document-page__main { width: calc(100% - 32px); padding-top: 24px; }
+  .management-method-list__row { grid-template-columns: 1fr; gap: 5px; padding: 15px 0; }
+  .management-method-list__status { text-align: left; font-size: .85rem; }
+  .management-method-document-page__header .management-method-document-page__actions { display: none; }
+  .management-method-document-page__header > div:nth-child(2) { margin-left: auto; }
+  .management-method-document-page h1 { font-size: 2rem; }
+  .management-method-reader { font-size: 1rem; }
+  .management-method-edit-surface__meta { grid-template-columns: 1fr; }
+  .management-method-document-page__footer { align-items: flex-start; flex-direction: column; }
+  .management-method-edit-actions { margin-left: 0; }
+}
+
 /* DEV-029 compact header and reference workbench layout */
 .duty-center__header {
   display: grid;

@@ -69,6 +69,9 @@ import { DutyCenter } from './components/DutyCenter'
 import { ManagementMethodPrototype } from './components/ManagementMethodPrototype'
 import { GovernanceCenter } from './components/GovernanceCenter'
 import { VersionWorkspacePanel } from './components/VersionWorkspacePanel'
+import { ManagementMethodListPage } from './components/managementMethods/ManagementMethodListPage'
+import { ManagementMethodDocumentPage } from './components/managementMethods/ManagementMethodDocumentPage'
+import { buildManagementMethodsUrl, readManagementMethodLocation, type ManagementMethodLocation } from './managementMethods/route'
 import {
   RoleCombinationRiskPanel,
   type RoleCombinationRiskDraft,
@@ -402,6 +405,7 @@ export default function App() {
   const [dutyPlanningLocation, setDutyPlanningLocation] = useState<DutyPlanningLocation>(() => readDutyPlanningLocation(window.location))
   const [managementMethodState, setManagementMethodState] = useState(initialManagementMethodPrototype)
   const [managementMethodLocation, setManagementMethodLocation] = useState<ManagementMethodPrototypeLocation>(() => readManagementMethodPrototypeLocation(window.location))
+  const [managementMethodRoute, setManagementMethodRoute] = useState<ManagementMethodLocation>(() => readManagementMethodLocation(window.location))
   const [mobileReadOnly, setMobileReadOnly] = useState(() => window.matchMedia('(max-width: 767px)').matches)
   const lastInteractedPanelRef = useRef<WorkspacePanelId | null>(null)
 
@@ -412,7 +416,10 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const syncManagementMethodLocation = () => setManagementMethodLocation(readManagementMethodPrototypeLocation(window.location))
+    const syncManagementMethodLocation = () => {
+      setManagementMethodLocation(readManagementMethodPrototypeLocation(window.location))
+      setManagementMethodRoute(readManagementMethodLocation(window.location))
+    }
     window.addEventListener('popstate', syncManagementMethodLocation)
     return () => window.removeEventListener('popstate', syncManagementMethodLocation)
   }, [])
@@ -429,17 +436,20 @@ export default function App() {
     if (!mobileReadOnly || !context) return
     window.history.replaceState({}, '', buildManagementMethodPrototypeUrl(context.stepId))
     setManagementMethodLocation(readManagementMethodPrototypeLocation(window.location))
+    setManagementMethodRoute(readManagementMethodLocation(window.location))
   }, [managementMethodLocation.responsibilityContext, mobileReadOnly])
 
   useEffect(() => {
-    document.title = managementMethodLocation.isEditorPage
+    document.title = managementMethodRoute.isListPage || managementMethodRoute.isDocumentPage
+      ? '管理辦法｜OrgMaster'
+      : managementMethodLocation.isEditorPage
       ? `${managementMethodState.method.code} ${managementMethodState.method.title}｜OrgMaster`
       : dutyPlanningLocation.isDutyPlanningPage
         ? '工作職掌規劃台｜OrgMaster'
         : managementMethodLocation.responsibilityContext
           ? '工作事項責任配置｜OrgMaster'
           : 'OrgMaster 組織架構圖'
-  }, [dutyPlanningLocation.isDutyPlanningPage, managementMethodLocation.isEditorPage, managementMethodLocation.responsibilityContext, managementMethodState.method.code, managementMethodState.method.title])
+  }, [dutyPlanningLocation.isDutyPlanningPage, managementMethodLocation.isEditorPage, managementMethodLocation.responsibilityContext, managementMethodRoute.isDocumentPage, managementMethodRoute.isListPage, managementMethodState.method.code, managementMethodState.method.title])
 
   const openDutyPlanningPage = useCallback((focusPositionId?: string | null, surface: DutyPlanningSurface = 'workbench') => {
     const nextUrl = buildDutyPlanningUrl({ focusPositionId, surface })
@@ -454,22 +464,24 @@ export default function App() {
   }, [])
 
   const openManagementMethodPage = useCallback((focusStepId?: string | null) => {
-    const nextUrl = buildManagementMethodPrototypeUrl(focusStepId)
+    const nextUrl = focusStepId ? buildManagementMethodPrototypeUrl(focusStepId) : buildManagementMethodsUrl()
     window.history.pushState({}, '', nextUrl)
-    setDutyPlanningLocation(readDutyPlanningLocation(window.location))
     setManagementMethodLocation(readManagementMethodPrototypeLocation(window.location))
+    setManagementMethodRoute(readManagementMethodLocation(window.location))
   }, [])
 
   const closeManagementMethodPage = useCallback(() => {
     window.history.pushState({}, '', '/')
     setDutyPlanningLocation(readDutyPlanningLocation(window.location))
     setManagementMethodLocation(readManagementMethodPrototypeLocation(window.location))
+    setManagementMethodRoute(readManagementMethodLocation(window.location))
   }, [])
 
   const openPrototypeResponsibility = useCallback((context: PrototypeResponsibilityContext) => {
     window.history.pushState({}, '', buildPrototypeResponsibilityUrl(context))
     setDutyPlanningLocation(readDutyPlanningLocation(window.location))
     setManagementMethodLocation(readManagementMethodPrototypeLocation(window.location))
+    setManagementMethodRoute(readManagementMethodLocation(window.location))
     setActiveDirectory(null)
     setSelectedId(null)
     setDirectorySelection(null)
@@ -2081,6 +2093,18 @@ export default function App() {
   const prototypeContextStepNumber = prototypeResponsibilityContext
     ? getPrototypeStepNumber(managementMethodState, prototypeResponsibilityContext.stepId)
     : '--'
+
+  if (managementMethodRoute.isListPage) {
+    return <ManagementMethodListPage onClose={closeManagementMethodPage} onOpen={(methodId, view) => {
+      const next = `/management-methods/${encodeURIComponent(methodId)}?view=${view ?? 'draft'}`
+      window.history.pushState({}, '', next)
+      setManagementMethodRoute(readManagementMethodLocation(window.location))
+    }} />
+  }
+
+  if (managementMethodRoute.isDocumentPage && managementMethodRoute.methodId) {
+    return <ManagementMethodDocumentPage methodId={managementMethodRoute.methodId} initialView={managementMethodRoute.view} state={currentState} onClose={closeManagementMethodPage} />
+  }
 
   if (managementMethodLocation.isEditorPage) {
     return (

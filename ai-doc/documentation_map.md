@@ -9,7 +9,7 @@
 ## Cold start
 
 - 最新專案級待規劃交付：`DEV-033` 手機唯讀與桌面編輯的產品能力邊界，狀態為 `Brief Ready / Human Confirmed Principle / Implementation Pending`。權威 Brief：`ai-doc/dev_task.md#dev-033手機唯讀與桌面編輯的產品能力邊界`。下一步先確認平板能力及手機模式判定，再補跨模組 UI／command guard／QA-QC 契約；目前不得直接派 RD 實作。
-- 最新可執行交付：`DEV-032` 精簡自由管理辦法系統，狀態為 `RD Implementation Ready / Human Confirmed Minimal Reading-First Current Phase / Two Concept Prototypes Accepted / Third Prototype Cancelled / Product Implementation Not Started`。
+- 最新完成交付：`DEV-032` 精簡自由管理辦法系統，狀態為 `RD Implementation Complete / QA-QC Passed / Human Confirmed Minimal Reading-First Current Phase / Two Concept Prototypes Accepted / Third Prototype Cancelled / Local Release Gate Pending`。
   - 第一版 AI 只在人類一次提供目標、事實或既有內容後產生自由多媒體初稿；一般文件頁不顯示 `待確認`、AI 訪談、AI 編修、差異提案或接受／拒絕。桌面只保留單一人工「編輯文件」入口，手機完全唯讀。
   - 產品只保留管理辦法清單與完整文件兩個主要表面；未編號建立輸入成功提交後才配置不可修改／重用的 `MP-xxxx`。資料不足不阻擋初稿，AI 不得反問或補造事實；原則型不強迫流程化，正文不建立智能引用或 Stage／Step，職掌只作按需同頁唯讀對照。
   - Current Phase 以 working draft＋零或一份 readable snapshot 推導三種閱讀狀態，並以五項概念能力區分閱讀、草稿、編輯、提供閱讀與 metadata；能力只套用整份 Management Method／snapshot，不做段落級權限、同篇多讀者版本或動態遮罩。混合敏感度內容須整份限制，或先移除機密內容再提供閱讀。
@@ -18,7 +18,7 @@
 - DEV-032 RD Implementation Contract：`ai-doc/specs/DEV-032-management-method-system.md`。正式方案固定 Tiptap 3 OSS、OpenAI Responses adapter、獨立 Management Method V1 store、自由 editor JSON、永久 `MP-xxxx`、working draft＋單一 readable snapshot、media、固定 API/CAS、DEV-027 catalog sync、scoped desktop capability、Duty read adapter 與 S0–S7；現有 `managementMethodPrototype.ts` 的固定 14 章／Stage／Step 不得作正式 schema。
 - DEV-032 第一份真實原型：`output/dev032-ai-native-prototype/people-expansion-v1/manifest.md`。《人員增補管理程序》已轉為 `MP-0001` 自由長文件，保留權責表格與圖片；精簡版已移除全部 `待確認`、文件內 AI 編修及 AI 整理說明，只保留桌面「編輯文件」、章節導覽、按需職掌閱讀及手機唯讀。1440×900／390×844 技術重驗通過，使用者已確認概念方向。
 - DEV-032 第二份真實原型：`output/dev032-ai-native-prototype/ai-mentor-principles-v1/manifest.md`。《鉦富 AI 導師使用指導書》已轉為 `MP-0002` 原則型長文件，保留原則、Prompt、策略方向與維護語意，不建立流程階段；來源機密細節未進入原型。精簡版已移除全部 `待確認` 與文件內 AI 編修，1440×900／390×844 技術重驗通過，使用者已確認概念方向。
-- 第三份概念原型已取消；不同表格／圖片情境改為正式 QA fixture。下一步由 RD 依 S0→S7 直接執行本機實作；真實公司資料送往 OpenAI、credential／額度、durable backend、deploy 與 release 仍須 release gate。舊 `output/playwright/dev032-prototype/manifest.md` 仍只證明被取代範圍。
+- 第三份概念原型已取消；不同表格／圖片情境改為正式 QA fixture。S0→S7 本機實作、50 files／226 tests、build 與 1440×900／1024×768／390×844 browser QC 已完成，證據位於 `output/playwright/dev032/manifest.md`；真實公司資料送往 OpenAI、credential／額度、durable backend、deploy 與 release 仍須 release gate。舊 `output/playwright/dev032-prototype/manifest.md` 仍只證明被取代範圍。
 
 - 歷史保存流程修訂（2026-08-21）：DEV-028／DEV-029 與 ADR-006 已以 `Intentional replacement` 統一為 organization version 單一路徑。樹狀圖、Duty CRUD、矩陣拖放與異常修復共用 `currentState`、Undo／Redo、500ms autosave、Ctrl+S 與 version CAS；plan toolbar／preview／apply／discard、600ms plan autosave、plan API／store runtime 已移除。當時「viewport 不額外限制編輯」的產品條款已於 2026-08-23 被 DEV-033 取代；保存契約與既有證據不變，手機唯讀的產品實作尚待 DEV-033。
 - 最新介面收斂（2026-08-21）：移除顯示設定面板、快捷鍵說明入口與版本比較功能；版本工作區保留版本切換、建立草稿、維護、重新命名、封存與還原。
@@ -43,7 +43,7 @@
 - 最新完成交付：`DEV-027` OrgMaster 權限與審核治理中心，狀態為 `RD Implementation Complete / QA-QC Passed / OrgMaster Only`
 - DEV-027 PM 摘要：`ai-doc/dev_task.md#dev-027orgmaster-權限與審核治理中心`
 - DEV-027 RD Implementation Contract：`ai-doc/specs/DEV-027-orgmaster-access-approval-governance.md`
-- DEV-027／DEV-032 相容修訂：DEV-032 將在既有 `orgmaster` catalog 新增六項管理辦法 permissions，並以 draft-only audited catalog sync 支援現有 V1 store；active published policy 不自動改變。此修訂目前為 `RD Implementation Ready / Product Implementation Not Started`，權威細節見 DEV-032 contract 第 10、18、19 節。
+- DEV-027／DEV-032 相容修訂：DEV-032 已在既有 `orgmaster` catalog 新增六項管理辦法 permissions，並以 draft-only audited catalog sync 支援現有 V1 store；active published policy 不自動改變。此修訂已完成本機實作與治理測試，正式發布仍依 release gate，權威細節見 DEV-032 contract 第 10、18、19 節。
 - DEV-027 Architecture Decisions：`ai-doc/adr/ADR-004-authorization-approval-policy-boundary.md`、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
 - DEV-027 QA／QC Plan：`ai-doc/qa/DEV-027-governance-foundation-validation-plan.md`
 - DEV-027 完成證據：`npm test -- --run`、`npm run build`、governance targeted 9/9、localhost API smoke、三 viewport browser QC 與 `output/playwright/dev-027/` 五項 artifacts；Phase 3 仍需另行授權與 integration ADR
@@ -69,12 +69,12 @@
 
 - `DEV-033`（`Brief Ready / Human Confirmed Principle / Implementation Pending`）：專案最高原則固定手機只讀、桌面／筆電依既有治理條件編輯。手機保留完整資料閱讀、搜尋、篩選與關聯導覽，不呈現或觸發任何 mutation；deep link 進入編輯 route 仍須唯讀。此原則取代 DEV-028／029／031 的手機可編輯／窄版不唯讀條款，但不改寫其歷史完成證據。現行程式可能仍符合舊契約；平板與 deterministic mobile boundary 確認後才可升級 RD Contract，現階段未實作。權威 Brief：`ai-doc/dev_task.md#dev-033手機唯讀與桌面編輯的產品能力邊界`。
 
-- `DEV-032`（`RD Implementation Ready / Human Confirmed Minimal Reading-First Current Phase / Two Concept Prototypes Accepted / Third Prototype Cancelled / Product Implementation Not Started`）：
+- `DEV-032`（`RD Implementation Complete / QA-QC Passed / Human Confirmed Minimal Reading-First Current Phase / Two Concept Prototypes Accepted / Third Prototype Cancelled / Local Release Gate Pending`）：
   - 第一版不是 AI-only；AI 只在人類一次提供目標、事實或既有內容後產生自由多媒體初稿。文件頁沒有 `待確認`、訪談、AI 編修、修改提案或差異，桌面只保留單一人工「編輯文件」入口；人類確認事實、制度選擇及是否提供公司閱讀。
   - Current Phase 只保留清單與完整文件表面；建立確認時配置永久 `MP-xxxx`，提供代碼／標題搜尋。文件不做智能引用、Stage／Step、固定14章、無範圍全文重寫或 AI 自動修改職掌；按需職掌對照以人類判斷為主。
   - working draft＋單一 readable snapshot 保護一般閱讀者；五項概念能力只套用整份文件／snapshot，不提供段落級權限或同篇多版本。混合一般與機密內容時，人類須整份限制、先移除機密內容，或維持建置中；手機一律移除 mutation。
   - 《人員增補管理程序》與《鉦富 AI 導師使用指導書》原型均已依閱讀優先決策移除全部 `待確認` 與文件內 AI 編修；桌面單一人工編輯、完成後零可編輯節點、手機零 mutation／零可編輯節點、無水平溢出及 console 0 error／0 warning 均通過，且兩份概念方向已獲使用者確認。
-  - 第三份概念原型已取消；不同表格／圖片情境改為正式 QA fixture。RD Implementation Contract 已固定 Tiptap 3 OSS、OpenAI Responses adapter、store/editor/media/API、DEV-027 permission sync、snapshot、Duty adapter、scoped mobile gate、repo files、migration/recovery 與 S0–S7。DEV-031 繼續作為現行職掌基線；下一步可直接派 RD，正式資料外送與 production 仍須 release gate。權威 Brief：`ai-doc/dev_task.md#dev-032精簡自由管理辦法系統`，契約：`ai-doc/specs/DEV-032-management-method-system.md`。
+  - 第三份概念原型已取消；不同表格／圖片情境已改為正式 QA fixture。RD Implementation Contract 已完成 Tiptap 3 OSS、OpenAI Responses adapter、store/editor/media/API、DEV-027 permission sync、snapshot、Duty adapter、scoped mobile gate、repo files、migration/recovery 與 S0–S7；50 files／226 tests、build 及 browser QC 證據見 `output/playwright/dev032/manifest.md`。DEV-031 繼續作為現行職掌基線；正式資料外送與 production 仍須 release gate。權威 Brief：`ai-doc/dev_task.md#dev-032精簡自由管理辦法系統`，契約：`ai-doc/specs/DEV-032-management-method-system.md`。
 
 - `DEV-031`（`RD Implementation Complete / QA-QC Passed`）：三個Duty planning routes呈現同一工作面；桌面由最左側待處理分類來源向右以原生 draggable（必要時 Pointer fallback）拖到任一全展開position section，成功後就地更新、不導頁。待處理依「無執行職位／缺少主執行／待重新分配」分組，分類文字只顯示一次；position與group不得顯示`執／審／協`或其他counts。右側所有符合條件active positions一次展開，空group省略、空position仍可drop；長文自然換行，桌面密集右側 editor、edge auto-scroll契約、exact lane、主執行固定move、其他relation move／copy、current-state release revalidation、Undo與keyboard／touch placement menu均保留。Current Phase不改domain、API、保存或權限；人工排序與跨類型轉換仍為Future Phase。完成證據：`output/playwright/dev031-revision/manifest.md`、`output/playwright/dev031-compact-right/manifest.md`；權威契約：`ai-doc/specs/DEV-031-duty-master-detail-editor.md`。DEV-032 已撤回 future replacement，故本項維持現行產品基線；任何組織圖責任配置改版須另立 DEV／phase contract。
 

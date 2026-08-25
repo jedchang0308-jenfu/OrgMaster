@@ -8,7 +8,7 @@
 - 平板是否可編輯及全系統手機／桌面能力判定仍由 DEV-033 確認；未確認事項不得反向解讀為手機可編輯。DEV-032 為解除自身實作阻塞，採更保守的 scoped gate：只有至少 1024px、hover＋fine pointer 同時成立才開放管理辦法 mutation，其餘先唯讀；這不替代 DEV-033。
 - 本原則優先於 DEV-028、DEV-029、DEV-031 及其他既有文件中允許手機／窄 viewport 編輯的舊契約；既有測試與截圖仍是當時完成狀態的歷史證據。產品程式尚未依本原則修改，由 DEV-033 追蹤，不得將文件完成誤報為產品完成。
 
-文件成熟度：DEV-033 為 `Brief Ready / Human Confirmed Principle / Implementation Pending`；DEV-032 為 `RD Implementation Ready / Human Confirmed Minimal Reading-First Current Phase / Two Concept Prototypes Accepted / Third Prototype Cancelled / Product Implementation Not Started`；DEV-031 為 `RD Implementation Complete / QA-QC Passed / Mobile Editing Contract Superseded`；DEV-030 為 `RD Implementation Complete / QA-QC Passed`；DEV-029 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Mobile Editing Contract Superseded`；DEV-028 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Mobile Editing Contract Superseded`；DEV-027 為 `RD Implementation Complete / QA-QC Passed / OrgMaster Only`；DEV-026 為 `RD Implementation Complete / QA-QC Passed`；DEV-025 為 `RD Implementation Complete / QA-QC Passed`；DEV-024 為 `RD Implementation Complete / QA-QC Passed`；DEV-023 為 `RD Implementation Complete / QA-QC Passed`；DEV-022 為 `RD Implementation Complete / QA-QC Passed`；DEV-021 為 `RD Implementation Complete / QA-QC Passed`；DEV-020 為 `RD Implementation Complete / QA-QC Passed`；DEV-019 為 `RD Implementation Complete / QA-QC Passed`；既有完成 DEV、DEV-017 與 DEV-018 均已完成其 RD 文件／實作交接
+文件成熟度：DEV-033 為 `Brief Ready / Human Confirmed Principle / Implementation Pending`；DEV-032 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed Minimal Reading-First Current Phase / Two Concept Prototypes Accepted / Third Prototype Cancelled / Local Release Gate Pending`；DEV-031 為 `RD Implementation Complete / QA-QC Passed / Mobile Editing Contract Superseded`；DEV-030 為 `RD Implementation Complete / QA-QC Passed`；DEV-029 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Mobile Editing Contract Superseded`；DEV-028 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Mobile Editing Contract Superseded`；DEV-027 為 `RD Implementation Complete / QA-QC Passed / OrgMaster Only`；DEV-026 為 `RD Implementation Complete / QA-QC Passed`；DEV-025 為 `RD Implementation Complete / QA-QC Passed`；DEV-024 為 `RD Implementation Complete / QA-QC Passed`；DEV-023 為 `RD Implementation Complete / QA-QC Passed`；DEV-022 為 `RD Implementation Complete / QA-QC Passed`；DEV-021 為 `RD Implementation Complete / QA-QC Passed`；DEV-020 為 `RD Implementation Complete / QA-QC Passed`；DEV-019 為 `RD Implementation Complete / QA-QC Passed`；既有完成 DEV、DEV-017 與 DEV-018 均已完成其 RD 文件／實作交接
 
 ## 總任務清單
 
@@ -20,7 +20,7 @@
   - 阻塞 / 恢復條件：平板是否可編輯及 mobile capability 的 deterministic boundary 尚未確認；本輪只有專案文件授權，未授權產品程式、測試或既有資料修改。
   - 計入交付：是
 
-- ☐ DEV-032 [交付點] [可執行] [P0] [RD Implementation Ready] 精簡自由管理辦法系統
+- ✓ DEV-032 [交付點] [完成] [P0] [RD Implementation Complete / QA-QC Passed / Local Release Gate Pending] 精簡自由管理辦法系統
   - 摘要：第一版只保留 AI 一次產生初稿、乾淨的自由多媒體文件閱讀、桌面「編輯文件」及按需職掌對照；不提供待確認標記、AI 訪談、文件內 AI 編修或差異提案。
     人類對公司事實、制度取捨與提供公司閱讀負全責。正文仍是自由多媒體
     文件，不建立智能引用或 Stage／Step；提供公司閱讀後保留單一閱讀快照，新修改只進工作草稿；職掌以
@@ -52,10 +52,10 @@
     - `USER-2026-08-25-DEV032-CONCEPT-ACCEPTED-NO-THIRD-PROTOTYPE`
     - `USER-2026-08-25-DEV032-IMPLEMENTATION-READY`
   - 父任務：DEV-008、DEV-020、DEV-027、DEV-028、DEV-031
-  - 下一步：RD 依 authoritative contract 的 S0→S7 執行本機實作；先做 dependency／schema baseline，再做治理權限、store/API、media/editor、AI create、UI/Duty、mobile/security 及完整 regression handoff。不同表格／圖片情境只作正式 QA fixture，不再製作第三份概念原型。
+  - 下一步：本機 S0→S7 已完成，後續只需依 release gate 確認 durable backend、正式身分、media 備份、OpenAI retention／額度與 production smoke；不同表格／圖片情境已作正式 QA fixture，不再製作第三份概念原型。
   - 阻塞 / 恢復條件：本機實作沒有 P0/P1 readiness 缺口；正式 OpenAI credential、真實公司資料外送、額度、durable backend、deploy 與 release 仍須 release gate。DEV-031 現行職掌工作台不由本 DEV 取代。
   - 契約：`ai-doc/specs/DEV-032-management-method-system.md`
-  - 證據：概念證據為兩份已確認原型 manifest 與 `output/playwright/dev032-ai-native-first/`、`output/playwright/dev032-ai-native-second/`；正式實作證據目標為 `output/playwright/dev032/manifest.md`
+  - 證據：概念證據為兩份已確認原型 manifest；正式實作、測試與三 viewport browser QC 見 `output/playwright/dev032/manifest.md`
   - 計入交付：是
 
 - ✓ DEV-031 [交付點] [完成] [P1] [RD Implementation Complete / QA-QC Passed / Mobile Editing Contract Superseded] 同頁待處理來源欄與全職位展開式職掌編輯器
@@ -483,7 +483,7 @@ OrgMaster 的主要規劃與治理工作需要大範圍比較、拖放、關係�
 父任務：DEV-008、DEV-020、DEV-027、DEV-028、DEV-031  
 計入交付：是  
 風險等級：Medium（AI 只在建立時起草，仍會影響制度事實、內容保存、外部模型資料邊界及人類覆核；最低閱讀狀態涉及後續權限及保存契約，但不新增跨領域寫入、正式文件治理或段落智能關聯）  
-執行邊界：使用者於 2026-08-25 確認兩份精簡閱讀優先概念原型、取消第三份概念原型，並要求補到 `RD Implementation Ready`。Current Phase 只保留一次 AI 初稿、乾淨閱讀、桌面人工編輯與按需職掌對照；不同表格／圖片情境改列正式 QA fixture。`ai-doc/specs/DEV-032-management-method-system.md` 已固定 Tiptap 3、OpenAI Responses adapter、資料／API／權限、repo/file、store/media、migration/recovery、scoped mobile gate、S0–S7 與 evidence。下一次執行型指令可直接進入本機 RD；本輪只更新文件，未修改產品程式、正式資料、credential、deploy 或 release，且不授權 DEV-031 退場。
+執行邊界：使用者於 2026-08-25 確認兩份精簡閱讀優先概念原型、取消第三份概念原型，並要求補到 `RD Implementation Ready`；本輪已依 authoritative contract 完成本機 S0–S7。Current Phase 只保留一次 AI 初稿、乾淨閱讀、桌面人工編輯與按需職掌對照；不同表格／圖片情境列為正式 QA fixture。產品程式、測試、治理相容同步、local store／media 與 browser evidence 已完成；未建立正式 credential、未送出真實公司資料、未 deploy 或 release，且不授權 DEV-031 退場。
 
 Current Phase RD Implementation Contract：`ai-doc/specs/DEV-032-management-method-system.md`
 
@@ -859,15 +859,15 @@ AI 預設只取得「建立畫面中人類本次輸入＋此次明確選取的�
 - 單一「編輯文件」入口無法由鍵盤使用，完成編輯後仍殘留編修狀態，或手機存在任何 mutation path。
 - 兩份已確認內容與正式 table／image fixture 中，AI 初稿普遍比人工直接撰寫更費力，且沒有可觀察的初稿時間或修正負擔改善。
 
-#### RD Implementation Contract 與派工順序
+#### RD Implementation Contract 與交付狀態
 
-Current Phase 已達 `RD Implementation Ready`；authoritative contract：`ai-doc/specs/DEV-032-management-method-system.md`。
+Current Phase 已達 `RD Implementation Complete / QA-QC Passed / Local Release Gate Pending`；authoritative contract：`ai-doc/specs/DEV-032-management-method-system.md`。
 
 契約已固定 Tiptap 3 OSS、OpenAI Responses provider adapter、獨立 Management Method store、自由 editor JSON、永久代碼交易、working draft＋單一 readable snapshot、media、固定 API/CAS、DEV-027 catalog sync、Duty read adapter、scoped desktop mutation gate、failure recovery、正式 acceptance 與 evidence。第三份原型已取消。
 
-RD 依 S0 dependency/schema → S1 governance → S2 store/API → S3 media/editor → S4 AI create → S5 UI/Duty → S6 mobile/security → S7 regression/handoff 推進。每一 slice 的檔案 allowlist、gate、targeted tests、完整 regression、browser runtime lifecycle 與 evidence path 已寫入 spec；不得跳過前一 safety gate。
+RD 已依 S0 dependency/schema → S1 governance → S2 store/API → S3 media/editor → S4 AI create → S5 UI/Duty → S6 mobile/security → S7 regression/handoff 完成。每一 slice 的檔案 allowlist、gate、targeted tests、完整 regression、browser runtime lifecycle 與 evidence path 已寫入 spec；本機 handoff 證據見 `output/playwright/dev032/manifest.md`。
 
-本輪只補文件，尚未修改正式產品，也不產生 deploy／release artifacts。OpenAI real-data retention／額度、正式 identity、durable backend、media storage、deploy 與 production smoke 由 release gate 處理，不阻塞本機 RD。
+本機產品程式、測試與 evidence 已完成；未建立正式 credential、未送出真實公司資料，也不產生 deploy／release artifacts。OpenAI real-data retention／額度、正式 identity、durable backend、media storage、deploy 與 production smoke 由 release gate 處理。
 
 #### Future Phase Capsule
 
@@ -895,6 +895,7 @@ RD 依 S0 dependency/schema → S1 governance → S2 store/API → S3 media/edit
 
 #### Current Change Record
 
+- 2026-08-25：依 `USER-2026-08-25-DEV032-IMPLEMENTATION-EXECUTED` 完成本機 S0–S7。新增獨立 Management Method V1 domain／store／API／media、Tiptap 3 editor／reader、paste sanitizer、fake＋OpenAI adapter、Duty read adapter、DEV-027 catalog sync、desktop mutation gate 與 50 files／226 tests；`npm run build` 與 1440×900／1024×768／390×844 browser QC 通過，證據見 `output/playwright/dev032/manifest.md`。狀態升級為 `RD Implementation Complete / QA-QC Passed / Local Release Gate Pending`；正式資料、credential、deploy 與 release 仍未執行。
 - 2026-08-25：依 `USER-2026-08-25-DEV032-IMPLEMENTATION-READY` 將同一份 authoritative spec 升級為 `RD Implementation Ready`。固定 Tiptap 3 OSS、OpenAI Responses adapter、structured draft envelope、資料大小／timeout／retention gate、固定 API routes、DEV-027 compatible permission sync、1024px＋hover＋fine-pointer scoped edit gate、repo/file allowlist、V1 store／media migration/recovery、S0–S7、test/build/browser evidence 與 release feasibility。DEV-032 由待排改為可執行；本輪仍只修改文件，未修改產品、正式資料、credential、deploy 或 release。下列紀錄均是當時狀態的歷史證據。
 - 2026-08-25：依 `USER-2026-08-25-DEV032-CONCEPT-ACCEPTED-NO-THIRD-PROTOTYPE` 記錄使用者確認兩份精簡閱讀優先概念原型，取消第三份概念原型，並將不同表格／圖片情境轉為正式 QA fixture。建立 `ai-doc/specs/DEV-032-management-method-system.md`，固定獨立 Management Method store、自由 editor JSON、永久代碼交易、working draft＋單一 readable snapshot、provider-neutral AI 初稿、media、API/CAS、DEV-027 permission mapping、Duty read adapter、failure recovery 與 evidence contract；DEV-032 升級為 `RD Contract Ready / Implementation Planning Required`。本輪只修改文件與原型證據狀態，未修改正式產品、schema、資料、credential、deploy 或 release。下列紀錄均是當時狀態的歷史證據，其中的 `Brief Ready`、待人類確認、訪談或 AI 編修不得解讀為現行狀態。
 - 2026-08-25：依 `USER-2026-08-25-DEV032-MINIMAL-READING-FIRST`，以 `Intentional replacement` 移除 DEV-032 Current Phase 的全部 `待確認` 標記／清單／處理流程及文件內 AI 編修、提案、差異與接受／拒絕。AI 第一版只在人類一次提交建立資訊後產生初稿；一般文件頁預設乾淨閱讀，桌面僅保留單一人工「編輯文件」入口，職掌只供人類按需對照，手機完全唯讀。兩份 HTML 原型均通過 1440×900／390×844 Chromium 重驗：桌面只顯示單一編輯入口，完成後可編輯節點歸零；手機沒有編輯入口、`contenteditable` 為 0、無水平溢出，console 0 error／0 warning。文件維持 `Brief Ready`，不新增 ADR／spec，未修改正式產品、schema、API、persistence、權限、deploy 或 release；下列較早紀錄只作歷史決策證據，不能作 Current Phase 實作依據。

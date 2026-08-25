@@ -1,6 +1,6 @@
 # DEV-032 精簡自由管理辦法系統 — RD Implementation Contract
 
-狀態：`RD Implementation Ready / Human Confirmed / Product Implementation Not Started`  
+狀態：`RD Implementation Complete / QA-QC Passed / Human Confirmed / Local Release Gate Pending`
 來源：`USER-2026-08-25-DEV032-IMPLEMENTATION-READY`  
 父交付點：DEV-032  
 風險等級：Medium  
@@ -9,7 +9,7 @@
 
 第一版提供一套閱讀優先的自由管理辦法系統：人類一次提供目標、已知事實、希望建立的規則或既有內容，AI 只負責產生第一份初稿；文件建立後由人類直接編輯、按需閱讀既有職掌並決定何時提供公司閱讀。
 
-本契約已補到 RD 可直接依 S0–S7 修改程式、建立本機資料、執行自動測試及 browser QC 的程度。本輪使用者只要求補文件，因此產品程式、正式資料與 credential 尚未修改；下一次執行型指令可直接依本文件派工，不需重做產品／技術選型。
+本契約已依 S0–S7 完成本機程式、local store、治理相容同步、自動測試與 browser QC；正式公司資料、credential、durable backend、部署與 release 仍不在本交付內。
 
 Current executable boundary 是 OrgMaster 本機開發環境。OpenAI adapter 可以完成與合成資料的整合測試，但未取得 release gate 前，不得建立正式 credential、送出真實公司機密、購買／提高額度、部署或宣稱 production authorization 完成。
 
@@ -30,13 +30,13 @@ Current Phase 明確不再製作第三份概念原型。已確認的兩份原型
 
 目前 repo 是 React 19＋TypeScript＋Vite，server 以 Vite plugin 提供本機 file-backed API、revision/CAS 及原子檔案寫入；DEV-027 已有 OrgMaster permission evaluation，DEV-031 是現行 Duty 權威。
 
-現有下列檔案只屬舊概念原型，不得成為正式資料模型：
+現有下列檔案只屬舊概念原型，不得成為正式資料模型；Current Phase 仍保留其歷史相容 route／視覺程式碼，正式 `/management-methods` route 不讀取其 state：
 
 - `src/managementMethodPrototype.ts`
 - `src/managementMethodPrototypeRoute.ts`
 - `src/components/ManagementMethodPrototype.tsx`
 
-其固定 14 章、`PrototypeMethodStage`、`PrototypeMethodStep`、prototype work item／assignment 及 in-memory state 與 Current Phase 衝突。RD 可重用其視覺經驗或 route 入口，但必須停止正式 route 對舊 prototype domain 的依賴；舊 prototype 資料不做 migration。
+其固定 14 章、`PrototypeMethodStage`、`PrototypeMethodStep`、prototype work item／assignment 及 in-memory state 與 Current Phase 衝突。正式 route 不依賴舊 prototype domain；舊 prototype route 僅作既有相容入口，舊 prototype 資料不做 migration。
 
 正式管理辦法採獨立 module／store，不併入 organization document V6，也不跟 organization workspace version 一起複製、發布或切換。兩個 domain 只透過 read-only Duty adapter 相交。
 
@@ -451,11 +451,11 @@ RD 執行或驗證遇到下列任一情況須停止並回 PM：
 ### 17.3 Modified／retired files
 
 - `vite.config.ts`：註冊 `orgmasterManagementMethodApiPlugin()`；preview 不得啟用 development identity 或真實 AI 呼叫。
-- `src/App.tsx`：以新 route/pages 取代 prototype in-memory state；只傳 current organization state 給 Duty read adapter。
+- `src/App.tsx`：新 `/management-methods` route/pages 優先於歷史 prototype route；只傳 current organization state 給 Duty read adapter。歷史 prototype state 保留至另立退場 DEV，不是正式 Management Method authority。
 - `src/index.css`：新增 reader/editor／drawer／table／mobile styles，禁止 prototype selector 成為新元件依賴。
 - `src/governance/aiPdmCatalog.ts`、`server/orgmasterGovernanceStore.ts`：第 10 節 permission catalog 與 compatible sync。
 - `ai-doc/specs/DEV-027-orgmaster-access-approval-governance.md`：記錄 DEV-032 compatible permission amendment，不改既有 published policy authority。
-- 新 routes、store 與 tests 完成後移除 `src/managementMethodPrototype.ts`、`src/managementMethodPrototypeRoute.ts`、`src/components/ManagementMethodPrototype.tsx` 及其兩個 prototype tests；HTML 原型與 manifest 留作歷史 evidence，不刪除。
+- 新 routes、store 與 tests 完成後，正式 schema／API／UI 已不再依賴 prototype domain；`src/managementMethodPrototype.ts`、`src/managementMethodPrototypeRoute.ts`、`src/components/ManagementMethodPrototype.tsx` 及其 prototype tests 暫留作歷史相容入口，待另立退場 DEV 再移除；HTML 原型與 manifest 留作歷史 evidence，不刪除。
 
 不得修改 DEV-031 Duty domain、organization document V6、workspace version schema、其 CAS／autosave 或既有 completed evidence。
 
@@ -488,7 +488,7 @@ RD 執行或驗證遇到下列任一情況須停止並回 PM：
 | S4 AI Create | fake＋OpenAI adapters、structured envelope converter、create transaction、context disclosure | fake API tests mandatory；missing env/timeout/refusal/duplicate tests；optional synthetic live smoke |
 | S5 UI／Duty | list、create dialog、document route、clean reading、Duty drawer、return context | component pure-state tests＋browser task flows；Duty source before/after hash unchanged |
 | S6 Mobile／Security | scoped device gate、deep link/query/shortcut/resize guards、asset permission matrix | 1440×900、1024×768 fine-pointer、390×844；DOM mutation inventory＋API negative tests |
-| S7 Regression／Handoff | retire prototype imports/files、full regression/build、manifest、spec drift | full tests/build、browser evidence、`output/playwright/dev032/manifest.md` |
+| S7 Regression／Handoff | retire formal prototype dependency、保留歷史相容入口、full regression/build、manifest、spec drift | full tests/build、browser evidence、`output/playwright/dev032/manifest.md` |
 
 Slice 必須依序進行；S1、S2 任一 fail closed 缺口不得進入 UI mutation，S3 media persistence 未通過不得提供 snapshot，S4 不得用真實公司資料當開發 fixture。第一個 P0／P1 失敗立即停止並回 RD，不以修改驗收掩蓋偏差。
 
@@ -529,11 +529,14 @@ Current repo 以 Vite development plugin 提供 server API，preview 明確停�
 ## 23. Spec Governance
 
 - 本契約是 DEV-032 Current Phase 的 authoritative RD Implementation Contract；`ai-doc/dev_task.md` 保留產品 Brief、決策史與索引。
+- 本機完成證據固定於 `output/playwright/dev032/manifest.md`；測試為 50 files／226 tests，`npm run build` 通過，1440×900／1024×768／390×844 browser QC 無當前 console error／warning。
 - 取消第三份概念原型是 `Intentional replacement`；第三表格／圖片情境只保留為 QA fixture。
 - Tiptap／OpenAI adapter、working draft＋單一 readable snapshot、獨立 management-method store、永久代碼與 DEV-027 catalog amendment 已固定於本契約；仍屬同 repo 可替換 module，沒有新的跨服務正文權威，本輪 `ADR not needed`。若未來引入正式 revision lifecycle、跨服務正文權威或外部同步，再建立 ADR。
 - 舊 prototype source 與下方 historical brief 只作歷史證據，不得作正式 schema、API 或驗收依據。
 
 ## 24. Change Record
+
+- 2026-08-25：依本契約完成 S0–S7 本機實作。新增管理辦法 domain／schema／canonical hash／route／API client、V1 file-backed store／CAS／snapshot／media、fake＋OpenAI adapter、Tiptap reader/editor、Google Docs-style paste sanitizer、Duty read adapter、DEV-027 六項 permission catalog sync 及 1024px＋hover＋fine-pointer desktop mutation gate；新增 50 files／226 tests 與 build/browser evidence。正式 credential、真實資料、durable backend、deploy 與 release 仍待 release gate。
 
 - 2026-08-25：依 `USER-2026-08-25-DEV032-IMPLEMENTATION-READY` 升級為 `RD Implementation Ready`。固定 Tiptap 3 OSS、OpenAI Responses adapter、structured draft envelope、限制與 retention gate、精確 API／route、DEV-027 catalog sync、scoped desktop capability、repo/file allowlist、V1 migration／media recovery、S0–S7、測試命令、runtime cleanup 與 release feasibility。產品程式、正式資料、credential、deploy 與 release 均尚未修改或執行。
 - 2026-08-25：兩份精簡閱讀優先原型獲使用者確認；取消第三份概念原型，將含表格／圖片情境移為正式 QA fixture。建立 Current Phase RD Contract，固定獨立 store、自由 editor JSON、永久代碼、working draft＋單一 readable snapshot、provider-neutral AI 初稿、DEV-027 permission mapping、Duty read adapter、失敗恢復與驗收證據邊界。未修改產品、schema、資料、credential、deploy 或 release。
