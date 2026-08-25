@@ -4290,7 +4290,13 @@ button.directory-detail__department-link:not(.is-static):focus-visible {
 
 /* DEV-032 minimal reading-first surface */
 .management-methods-page,
-.management-method-document-page { min-height: 100vh; background: #f7f8fb; color: #172033; }
+.management-method-document-page {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  background: #f7f8fb;
+  color: #172033;
+}
 .management-methods-page__header,
 .management-method-document-page__header { min-height: 62px; display: flex; align-items: center; gap: 18px; padding: 0 28px; border-bottom: 1px solid #dde2ea; background: #fff; }
 .management-methods-page__header > div,
