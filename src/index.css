@@ -4346,7 +4346,21 @@ button.directory-detail__department-link:not(.is-static):focus-visible {
 .management-method-editor { border: 1px solid #cbd3df; background: #fff; border-radius: 7px; }
 .management-method-editor__toolbar { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid #e0e4ea; }
 .management-method-editor__toolbar button { border: 0; background: transparent; padding: 5px 8px; cursor: pointer; color: #46536b; }
+.management-method-editor__toolbar button:disabled { cursor: default; opacity: .55; }
 .management-method-editor .ProseMirror { min-height: 420px; padding: 26px; outline: 0; line-height: 1.75; }
+.management-method-editor-image { margin: 1.5em 0; padding: 8px; border: 1px solid transparent; border-radius: 8px; }
+.management-method-editor-image.is-selected { border-color: #7b98c7; background: #f6f9fe; }
+.management-method-editor-image__preview { display: block; max-width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; text-align: left; }
+.management-method-editor-image__preview img { display: block; width: 100%; max-width: 100%; height: auto; border-radius: 6px; }
+.management-method-editor-image__preview > span { display: inline-block; padding: 20px; border: 1px dashed #bdc7d7; color: #6a768b; background: #fafbfd; }
+.management-method-editor-image figcaption { margin-top: 5px; color: #6d788b; font-size: .9rem; }
+.management-method-editor-image__controls { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) 130px; gap: 10px; align-items: end; margin-top: 10px; padding-top: 10px; border-top: 1px solid #dbe2ed; }
+.management-method-editor-image__controls label { display: grid; gap: 4px; color: #58667d; font-size: .8rem; }
+.management-method-editor-image__controls input, .management-method-editor-image__controls select { width: 100%; box-sizing: border-box; padding: 7px 8px; border: 1px solid #c7d0de; border-radius: 5px; background: #fff; font: inherit; }
+.management-method-editor-image__actions { display: flex; gap: 6px; grid-column: 1 / -1; }
+.management-method-editor-image__actions button { padding: 6px 9px; border: 1px solid #c5cfdd; border-radius: 5px; background: #fff; color: #40506a; cursor: pointer; }
+.management-method-editor-image__actions button.is-danger { color: #a33d38; }
+.management-method-editor-image__error { grid-column: 1 / -1; color: #a33d38; font-size: .85rem; }
 .management-method-document-page__footer { display: flex; justify-content: space-between; align-items: center; gap: 14px; max-width: 920px; margin-top: 28px; color: #5a6982; }
 .management-method-document-page__footer > span { display: inline-flex; align-items: center; gap: 5px; }
 .management-method-edit-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { managementMethodApi } from '../../managementMethods/apiClient'
 import { managementMethodHeadingId } from '../../managementMethods/headings'
+import { managementMethodImageWidth } from '../../managementMethods/imageEditing'
 import type { EditorMarkV1, EditorNodeV1, ManagementMethodV1 } from '../../managementMethods/types'
 
 function marks(text: string, list: EditorMarkV1[] | undefined): ReactNode { return (list ?? []).reduce<ReactNode>((content, mark) => { if (mark.type === 'bold') return <strong>{content}</strong>; if (mark.type === 'italic') return <em>{content}</em>; if (mark.type === 'underline') return <u>{content}</u>; if (mark.type === 'strike') return <s>{content}</s>; if (mark.type === 'code') return <code>{content}</code>; if (mark.type === 'link') return <a href={String(mark.attrs?.href ?? '')} target="_blank" rel="noreferrer">{content}</a>; return <span style={{ color: typeof mark.attrs?.color === 'string' ? mark.attrs.color : undefined }}>{content}</span> }, text)
@@ -14,6 +15,7 @@ function ManagementMethodImage({ method, node, view, onImage }: { method: Manage
   const mediaId = String(node.attrs?.mediaId ?? '')
   const altText = String(node.attrs?.altText ?? '')
   const caption = typeof node.attrs?.caption === 'string' ? node.attrs.caption : ''
+  const width = managementMethodImageWidth(node.attrs?.width)
   const [source, setSource] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -34,7 +36,7 @@ function ManagementMethodImage({ method, node, view, onImage }: { method: Manage
     }
   }, [mediaId, method.id, view])
 
-  return <figure className="management-method-image"><button type="button" disabled={!source} onClick={() => onImage?.(mediaId)}>{source ? <img src={source} alt={altText} /> : <span role={failed ? 'alert' : 'status'}>{failed ? '圖片無法載入' : '圖片載入中'}</span>}</button>{caption ? <figcaption>{caption}</figcaption> : null}</figure>
+  return <figure className="management-method-image"><button type="button" disabled={!source} onClick={() => onImage?.(mediaId)} style={width ? { width: `${width}px` } : undefined}>{source ? <img src={source} alt={altText} /> : <span role={failed ? 'alert' : 'status'}>{failed ? '圖片無法載入' : '圖片載入中'}</span>}</button>{caption ? <figcaption>{caption}</figcaption> : null}</figure>
 }
 
 function renderNode(node: EditorNodeV1, method: ManagementMethodV1, view: 'draft' | 'readable', headingIndex: { value: number }, onImage?: (mediaId: string) => void): ReactNode {

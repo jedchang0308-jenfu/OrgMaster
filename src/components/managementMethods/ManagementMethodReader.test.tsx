@@ -60,7 +60,7 @@ describe('ManagementMethodReader', () => {
       workingDraft: {
         ...method.workingDraft,
         mediaIds: ['media-1'],
-        body: { type: 'doc', content: [{ type: 'methodImage', attrs: { mediaId: 'media-1', altText: '招募範例', caption: '附件' } }] },
+        body: { type: 'doc', content: [{ type: 'methodImage', attrs: { mediaId: 'media-1', altText: '招募範例', caption: '附件', width: 640 } }] },
       },
     }
 
@@ -68,6 +68,7 @@ describe('ManagementMethodReader', () => {
 
     expect(html).toContain('圖片載入中')
     expect(html).toContain('附件')
+    expect(html).toContain('width:640px')
     expect(html).not.toContain('/api/orgmaster/management-methods/media/')
   })
 })
