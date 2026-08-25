@@ -4350,14 +4350,20 @@ button.directory-detail__department-link:not(.is-static):focus-visible {
 .management-method-editor .ProseMirror { min-height: 420px; padding: 26px; outline: 0; line-height: 1.75; }
 .management-method-editor-image { margin: 1.5em 0; padding: 8px; border: 1px solid transparent; border-radius: 8px; }
 .management-method-editor-image.is-selected { border-color: #7b98c7; background: #f6f9fe; }
-.management-method-editor-image__preview { display: block; max-width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; text-align: left; }
+.management-method-editor-image__canvas { position: relative; width: fit-content; max-width: 100%; }
+.management-method-editor-image__preview { display: block; width: 100%; max-width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; text-align: left; }
 .management-method-editor-image__preview img { display: block; width: 100%; max-width: 100%; height: auto; border-radius: 6px; }
 .management-method-editor-image__preview > span { display: inline-block; padding: 20px; border: 1px dashed #bdc7d7; color: #6a768b; background: #fafbfd; }
+.management-method-editor-image__resize-handle { position: absolute; top: 50%; right: -10px; width: 20px; height: 54px; transform: translateY(-50%); border: 1px solid #6f8fbe; border-radius: 10px; background: #fff; box-shadow: 0 2px 8px rgb(42 66 105 / .2); cursor: ew-resize; touch-action: none; }
+.management-method-editor-image__resize-handle span, .management-method-editor-image__resize-handle::before, .management-method-editor-image__resize-handle::after { position: absolute; top: 50%; width: 1px; height: 18px; background: #6f8fbe; content: ''; transform: translateY(-50%); }
+.management-method-editor-image__resize-handle span { left: 9px; }.management-method-editor-image__resize-handle::before { left: 6px; }.management-method-editor-image__resize-handle::after { right: 6px; }
+.management-method-editor-image__resize-handle:focus-visible { outline: 3px solid rgb(61 112 190 / .3); outline-offset: 3px; }
 .management-method-editor-image figcaption { margin-top: 5px; color: #6d788b; font-size: .9rem; }
-.management-method-editor-image__controls { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) 130px; gap: 10px; align-items: end; margin-top: 10px; padding-top: 10px; border-top: 1px solid #dbe2ed; }
+.management-method-editor-image__controls { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 10px; align-items: end; margin-top: 10px; padding-top: 10px; border-top: 1px solid #dbe2ed; }
 .management-method-editor-image__controls label { display: grid; gap: 4px; color: #58667d; font-size: .8rem; }
 .management-method-editor-image__controls input, .management-method-editor-image__controls select { width: 100%; box-sizing: border-box; padding: 7px 8px; border: 1px solid #c7d0de; border-radius: 5px; background: #fff; font: inherit; }
-.management-method-editor-image__actions { display: flex; gap: 6px; grid-column: 1 / -1; }
+.management-method-editor-image__actions { display: flex; align-items: center; gap: 6px; grid-column: 1 / -1; }
+.management-method-editor-image__actions output { min-width: 72px; color: #58667d; font-size: .82rem; font-variant-numeric: tabular-nums; }
 .management-method-editor-image__actions button { padding: 6px 9px; border: 1px solid #c5cfdd; border-radius: 5px; background: #fff; color: #40506a; cursor: pointer; }
 .management-method-editor-image__actions button.is-danger { color: #a33d38; }
 .management-method-editor-image__error { grid-column: 1 / -1; color: #a33d38; font-size: .85rem; }
