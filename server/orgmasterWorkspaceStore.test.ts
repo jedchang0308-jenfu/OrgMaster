@@ -25,7 +25,7 @@ describe('workspace disk store', () => {
     expect(index.versions[0]).toMatchObject({ kind: 'current', name: '現行版', loadStatus: 'ready' })
     expect(await readFile(legacyPath, 'utf8')).toBe(raw)
     const current = await getWorkspaceVersion(path, index.currentVersionId)
-    expect(current.document.version).toBe(6)
+    expect(current.document.version).toBe(7)
   })
 
   it('keeps drafts isolated and rejects stale version writes', async () => {

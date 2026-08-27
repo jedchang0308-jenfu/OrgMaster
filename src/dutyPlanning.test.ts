@@ -17,6 +17,10 @@ const state: OrgDirectoryState = {
   organizationLayout: { mode: 'tree', showLevelGuides: true },
   duties: [{ id: 'duty-a', title: '工作', description: null }],
   dutyPositionRelations: [{ id: 'rel-a', dutyId: 'duty-a', relationType: 'execute', target: { kind: 'position', positionId: 'pos-a' }, isPrimaryExecutor: false, order: 0 }],
+  processes: [],
+  processNodes: [],
+  processEdges: [],
+  processNodeDutyLinks: [],
 }
 
 describe('duty plan projector', () => {

@@ -157,4 +157,8 @@ export const screenshotOrganizationState: OrgDirectoryState = {
   organizationLayout: { mode: 'tree', showLevelGuides: true, positionYOverrides: {} },
   duties: [],
   dutyPositionRelations: [],
+  processes: [],
+  processNodes: [],
+  processEdges: [],
+  processNodeDutyLinks: [],
 }

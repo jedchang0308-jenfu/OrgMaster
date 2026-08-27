@@ -25,6 +25,7 @@ interface ToolbarProps {
   governanceOpen: boolean
   onOpenGovernance: () => void
   onOpenManagementMethods: () => void
+  onOpenProcessPlanning?: () => void
   governanceButtonRef: RefObject<HTMLButtonElement | null>
   isDirty: boolean
   savedAt: string | null
@@ -54,6 +55,7 @@ export function Toolbar({
   governanceOpen,
   onOpenGovernance,
   onOpenManagementMethods,
+  onOpenProcessPlanning,
   governanceButtonRef,
   isDirty,
   savedAt,
@@ -207,6 +209,7 @@ export function Toolbar({
         <button type="button" className="icon-button" onClick={onOpenManagementMethods} aria-label="管理辦法" title="管理辦法">
           <BookOpenText size={18} />
         </button>
+        {onOpenProcessPlanning && <button type="button" className="icon-button" onClick={onOpenProcessPlanning} aria-label="流程規劃" title="流程規劃"><GitFork size={18} /></button>}
       </div>
     </header>
   )

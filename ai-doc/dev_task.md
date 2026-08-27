@@ -8,9 +8,19 @@
 - 平板是否可編輯及全系統手機／桌面能力判定仍由 DEV-033 確認；未確認事項不得反向解讀為手機可編輯。DEV-032 為解除自身實作阻塞，採更保守的 scoped gate：只有至少 1024px、hover＋fine pointer 同時成立才開放管理辦法 mutation，其餘先唯讀；這不替代 DEV-033。
 - 本原則優先於 DEV-028、DEV-029、DEV-031 及其他既有文件中允許手機／窄 viewport 編輯的舊契約；既有測試與截圖仍是當時完成狀態的歷史證據。產品程式尚未依本原則修改，由 DEV-033 追蹤，不得將文件完成誤報為產品完成。
 
-文件成熟度：DEV-037 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Intentional Replacement / Local Release Gate Pending / OrgMaster Only`；DEV-036 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed Minimum Viable Dual-Perspective Scope / Local Release Gate Pending`；DEV-035 為 `RD Implementation Complete / QA-QC Passed / Historical Local V1 / OrgMaster Only`，並恢復 DEV-027 的 local governance QC 完成狀態；DEV-034 R2 為 `RD Implementation Complete / Human Confirmed Direction / QA-QC Pending Browser Gate / Local Release Gate Pending`，R2.1 複選式規劃狀態視角為 `Brief Ready / Human Confirmed / Implementation Not Requested`，R1 的 `RD Implementation Complete / QA-QC Passed` 只保留為歷史基線；DEV-033 為 `Brief Ready / Human Confirmed Principle / Implementation Pending`；DEV-032 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed Minimal Reading-First Current Phase / Two Concept Prototypes Accepted / Third Prototype Cancelled / Local Release Gate Pending`；DEV-031 為 `RD Implementation Complete / QA-QC Passed / Mobile Editing Contract Superseded`；DEV-030 為 `RD Implementation Complete / QA-QC Passed`；DEV-029 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Mobile Editing Contract Superseded`；DEV-028 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Mobile Editing Contract Superseded`；DEV-027 為 `RD Implementation Complete / QA-QC Passed / Historical Local MVP / Target Boundary Superseded by ADR-007`；DEV-026 為 `RD Implementation Complete / QA-QC Passed`；DEV-025 為 `RD Implementation Complete / QA-QC Passed`；DEV-024 為 `RD Implementation Complete / QA-QC Passed`；DEV-023 為 `RD Implementation Complete / QA-QC Passed`；DEV-022 為 `RD Implementation Complete / QA-QC Passed`；DEV-021 為 `RD Implementation Complete / QA-QC Passed`；DEV-020 為 `RD Implementation Complete / QA-QC Passed`；DEV-019 為 `RD Implementation Complete / QA-QC Passed`；既有完成 DEV、DEV-017 與 DEV-018 均已完成其 RD 文件／實作交接
+文件成熟度：DEV-038 為 `RD Implementation Ready / MVP Implementation In Progress / QA-QC Pending / Local Release Gate Pending`；其餘 DEV 狀態以「總任務清單」與各 DEV 權威段落為準。
 
 ## 總任務清單
+
+- ◐ DEV-038 [交付點] [執行中] [P1] [RD Implementation Ready／MVP 實作中／QA-QC 待完成] 流程－職掌－責任聯動規劃工作台
+  - 摘要：讓總經理與主管先用同一組 ProcessNode 的心智圖拆解工作、再用流程圖安排順序，接著連結既有 Duty、選定主執行／協作／審核／會簽並拖到 Position；ProcessNode↔Duty↔DutyPositionRelation↔Position 為固定資料鏈，DEV-034 繼續負責 relation mutation，DEV-036 繼續負責唯讀責任盤點／分布。MVP 已有本機候選實作，仍需完成 UI 編輯控制項與 QA/QC gate。
+  - 來源 ID：`USER-2026-08-27-PROCESS-DUTY-RESPONSIBILITY-WORKBENCH`、`USER-2026-08-27-MINDMAP-FLOWCHART-OSS-DESIGN`
+  - 父任務：DEV-034、DEV-036
+  - 下一步：依權威契約完成 S4 Process editing、S5 完整責任配置與 S6 全量 QA／QC；保留完整組織 React Flow 同頁重用、keyboard placement、三向高亮與六 viewport evidence 為本輪 gate。
+  - 阻塞 / 恢復條件：P0／P1 readiness blocker 為 0。若需越出 allowlist、修改 ADR-008、複製 Duty／Position、建立第二套 Process／relation store、process-scoped responsibility、BPMN、AI 自動配置或即時多人共編，立即停止並回 PM。
+  - 規格：`ai-doc/specs/DEV-038-process-duty-responsibility-planning-workbench.md`
+  - 架構決策：`ai-doc/adr/ADR-008-process-planning-organization-version-authority.md`
+  - 計入交付：是
 
 - ✓ DEV-037 [開發點] [完成] [P0] [RD Implementation Complete／QA-QC Passed／Local Release Gate Pending／OrgMaster Only] 外部角色目錄與角色指派權責重整
   - 摘要：外部系統擁有自己的 Application Role、Permission、Role-Permission mapping 與領域審核政策；OrgMaster 只讀取具版本的角色目錄，集中治理員工角色指派、scope、有效期間、代理、指派審核及 audit。
@@ -390,6 +400,175 @@
   - 父任務：DEV-020、DEV-022、DEV-023
   - 證據：`npm test -- --run`（19 files／126 tests）、`npm run build`、localhost:5000 真實瀏覽器 1440×900／1024×768／390×844 UI QC；`output/playwright/orgmaster-mode-status-1440x900.png`、`output/playwright/orgmaster-mode-status-1024x768.png`、`output/playwright/orgmaster-mode-status-390x844.png`；右上角狀態 pill 可見、無重疊／水平溢出，並提供 `role=status`、ARIA label 與 title 說明。
   - 計入交付：否
+
+## DEV-038：流程－職掌－責任聯動規劃工作台
+
+狀態：執行中（MVP 實作中，QA／QC 待完成）
+文件成熟度：`RD Implementation Ready / MVP Implementation In Progress / QA-QC Pending / Local Release Gate Pending`
+節點類型：交付點
+優先級：P1
+來源 ID：`USER-2026-08-27-PROCESS-DUTY-RESPONSIBILITY-WORKBENCH`、`USER-2026-08-27-MINDMAP-FLOWCHART-OSS-DESIGN`
+父任務：DEV-034、DEV-036
+計入交付：是
+風險等級：High（OrganizationDocument V6→V7、兩個圖形投影、跨畫布 selection／drag、Duty referential delete guard 與既有 relation transaction 共用）
+權威契約：`ai-doc/specs/DEV-038-process-duty-responsibility-planning-workbench.md`
+架構決策：`ai-doc/adr/ADR-008-process-planning-organization-version-authority.md`
+執行邊界：Current Phase 的產品、資料權威、exact symbols、repo/file allowlist、route、command／transaction、V6→V7 migration、Dagre gate、S0→S6、能力、失敗與 executable evidence contract 已固定。MVP 已在本機 worktree 可 smoke；仍須依權威契約完成剩餘 UI／QA gate，不得擴張 Future Phase、deploy 或 release。
+
+### 真正問題與使用者價值
+
+DEV-034 已能在知道 Duty 與責任種類後，把工作由左向右拖到 Position；DEV-036 已能從 Duty／Position 兩個視角盤點既有責任。但總經理與主管在規劃公司時，還缺少「先從成果拆工作、再建立最佳流程、最後才配置責任」的共同工作表面。
+
+若先照現有人員撰寫職掌，制度容易因人設事；若把心智圖、流程圖、組織圖與所有關聯線同時堆疊，又會造成不可閱讀的蜘蛛網。DEV-038 的價值是讓三種圖共用同一組領域身分，以選取式聯動保持全貌，同時讓每個視角只回答一種問題。
+
+### Human-confirmed 方向
+
+核心規劃順序固定為：
+
+```text
+心智圖拆解 ProcessNode
+  → 流程圖安排 next-step
+    → ProcessNode 連結穩定 Duty
+      → 選主執行／協作／審核／會簽
+        → 拖到組織圖 Position
+```
+
+核心資料鏈固定為：
+
+```text
+ProcessNode ↔ Duty ↔ DutyPositionRelation ↔ Position ↔ EmployeeAssignment
+```
+
+- ProcessNode 是流程情境中的工作發生點；Duty 是可重用、穩定的工作責任主檔。
+- Position 承擔 Duty；Employee 只透過任職關係進入 Position，不直接成為永久 Duty authority。
+- 心智圖與流程圖共用 ProcessNode identity，但 parent-child 與 next-step 是兩種獨立 edge，不互相推導。
+- Current Phase 的 Duty→Position relation 是全域事實，不做 process-scoped responsibility override。
+- 人類判斷流程、職掌與適任職位；AI 自動設計／配置不是 Current Phase。
+- 桌面可規劃；手機遵守專案最高原則，只讀且零 mutation。
+
+使用思考習慣：#系統描繪、#權責劃分、#可驗證性
+
+### 工作台系統描繪
+
+```text
+完整 URL 聯動工作台
+├─ 左側：心智圖／流程圖切換
+│  ├─ 心智圖只顯示 parent-child
+│  └─ 流程圖只顯示 next-step
+├─ 中央：所選 ProcessNode 的 Duty 橋接欄
+│  ├─ 連結既有 Duty／按需建立新 Duty
+│  └─ 選擇主執行／協作／審核／會簽
+└─ 右側：既有組織架構圖
+   └─ Position 作為 Duty＋exact lane drop target
+```
+
+- 中央欄只在已選 ProcessNode 時展開，建議約 `300～340px`；未選時收合，不能永久遮擋兩側畫布。
+- 心智圖／流程圖一次只顯示一種 edge 語意；組織圖只顯示既有 reporting line。
+- ProcessNode→Duty 與 Duty→Position 以中央欄、交叉高亮及短暫引導呈現，不常駐畫滿跨畫布 edge。
+- 選 ProcessNode、Duty 或 Position 會高亮相鄰物件；其餘降噪但不消失，點空白恢復全貌。
+- 兩側畫布可調整；空間不足時切換焦點，不把三區縮成不可讀縮圖。手機以 `流程／職掌／組織` 唯讀切換呈現。
+
+### Current Phase：Minimum Viable Slice
+
+- 正常 UI 入口、正式 URL 與單一 Process editing context。
+- Process 清單；同一 ProcessNode 的結構化左到右心智圖與簡單 directed flow 投影。
+- 心智圖支援 parent-child、新增、改名、刪除、排序與折疊；流程圖只支援 next-step edge 新增／刪除。
+- ProcessNode 與既有 Duty 的多對多 stable link；找不到時可呼叫既有 Duty 建立流程，成功後回填原節點。
+- 中央橋接欄顯示所選節點 Duty 與四種 exact lane。
+- 選定 Duty＋lane 後，沿用 DEV-034 relation command 拖到 Position，不建立第二套 relation store／command。
+- ProcessNode、Duty、Position 三向選取與交叉高亮。
+- 最小資料完整性視角：未連 Duty、無執行職位、缺主執行、待重新分配；不新增配置健康分數。
+- 桌面一人操作、多人討論；手機唯讀。
+
+### 既有 DEV 相容邊界
+
+| 既有交付 | DEV-038 處理方式 |
+| --- | --- |
+| DEV-034 | 繼續是 Duty→Position relation mutation、Undo／Redo、autosave、CAS、primary transfer、pending recovery 與 explicit remove 權威 |
+| DEV-036 | 繼續是唯讀責任盤點／分布結果層；DEV-038 異動應由同一 organization state 反映，不把 DEV-036 改成第二套 editor |
+| DEV-032 | 管理辦法維持自由多媒體文件與人類語意編輯；Current Phase 不恢復正文智能引用 |
+| DEV-033 | 手機只讀最高原則完全適用 |
+
+Spec Impact：`Compatible extension + New authority / ADR-008`。ProcessDefinition／ProcessNode／ProcessEdge／ProcessNodeDutyLink 進入 OrganizationDocument V7；既有 Duty、DutyPositionRelation、Position、EmployeeAssignment 不複製、不改名、不轉移 ownership。DEV-034 R2 待 browser gate 與 DEV-036 已完成證據均不因本 Contract 改變。
+
+### Architecture Memory Capsule
+
+Current Phase 權威模型：
+
+```text
+Process
+  └─ ProcessNode
+       ├─ parent-child: parentNodeId + sortOrder
+       ├─ next-step: ProcessEdge(fromNodeId, toNodeId)
+       └─ Duty link: ProcessNodeDutyLink(processNodeId, dutyId)
+
+Duty
+  └─ DutyPositionRelation(dutyId, positionId, role, isPrimaryExecutor, ...)
+```
+
+不變量：
+
+1. ProcessNode 不複製 Duty title、Position 或責任人，只保存 stable link。
+2. ProcessNodeDutyLink 不保存責任 lane；Current Phase lane 屬於全域 DutyPositionRelation。
+3. 只有 leaf ProcessNode 可刪；同一 history commit 移除自身 edge／link，不連帶刪除 Duty、relation、Position 或 Employee。
+4. `x/y`、viewport、zoom、selection 與 collapsed 是投影／UI state，不是領域關係權威。
+5. Duty 被 ProcessNodeDutyLink 引用時，Duty delete fail closed 並回傳引用位置；invalid persisted reference 不能 render crash、靜默造資料或保存假成功。
+6. 兩個 React Flow canvas 使用獨立 `ReactFlowProvider`；共用 domain／selection owner 位於兩畫布之上。
+7. 跨畫布 drag 使用 stable `dutyId`＋exact lane，release 以 latest state 重驗；invalid／noop／rejected 不產生 revision、Undo entry 或假成功。
+
+持久化決策：OrganizationDocument 由 V6 升為 V7，新增 `processes`、`processNodes`、`processEdges`、`processNodeDutyLinks` 四個集合；與 Duty／Position 共用 organization version、revision、Undo／Redo、dirty、500ms autosave、Ctrl+S、下載及 CAS。V6 記憶體 migration 只補空集合，第一次合法保存才寫 V7；不新增 ProcessPlanningDocument、Process API、第二 autosave 或跨文件 journal。
+
+route 契約：canonical route 為 `/process-planning`；URL 固定保存 `view`、`process`、可選 `node` 與可選 linked `duty`，lane／Position／drag／viewport 不進 URL。正常入口為組織圖的工作執掌清單→DEV-036 責任工作台→`流程規劃`，頁首只保留一個 `返回責任工作台`。
+
+開源方向：沿用專案既有 `@xyflow/react` 繪製心智圖、流程圖與組織圖；Current Phase layout dependency 固定為 exact `@dagrejs/dagre 3.1.1`（MIT、內建型別），並設 gzip delta／graph benchmark gate，未通過則 clean fallback 至 repo 內 deterministic layout。ELK.js、bpmn-js、Mind Elixir 均不進第一階段；本輪只固定契約，尚未安裝 dependency。
+
+### Out of Scope
+
+- AI 自動拆流程、連 Duty、推薦／指定 Position。
+- BPMN gateway／event／timer／condition、流程執行引擎、表單流轉或自動化。
+- process-scoped responsibility override、工作量／產能／績效／健康分數／排名。
+- 即時多人共編、留言、投票、版本合併或白板。
+- 永久顯示所有跨畫布 edge、第二份職位清單或第二套 Duty editor。
+- 手機 mutation、管理辦法正文智能引用、正式流程核准／發布／訓練／稽核生命週期。
+- deploy、release、production migration。
+
+### 驗收方向
+
+1. 正常 UI 可發現工作台；direct URL 不算可發現性證據。
+2. 心智圖與流程圖共用 ProcessNode identity；改名同步，parent-child 與 next-step 不互相改寫。
+3. ProcessNode 可連結既有 Duty，取消／錯誤不留半成品；同一 Duty 可被多節點重用而不複製主檔。
+4. 只有 Duty＋exact lane ready 時才可配置 Position，所有 mutation 遵守 DEV-034。
+5. ProcessNode／Duty／Position 三向選取及高亮一致，未相關物件仍保留全貌。
+6. Position node 不塞長 Duty 文字，三種 edge 不形成永久蜘蛛網。
+7. 刪 ProcessNode 不刪共用 Duty／relation／Position／Employee。
+8. 手機只讀且零 mutation；桌面、窄桌面與手機無遮擋、白屏、假成功或非預期 overflow。
+9. invalid reference、保存衝突、取消、reload、back／forward 均有可恢復狀態。
+
+### RD Implementation Handoff
+
+- Readiness 結果：`Ready`；P0／P1 blocker 為 0，產品程式仍未開始。
+- S0 readiness baseline 已通過；目前 MVP 候選已落地：typecheck、targeted `12 files／40 tests`、full `128 test files／565 tests`、build 均通過；client JS `368.67 kB gzip`。既有 Vite native-config extension 與大 chunk warning 已記錄，不是 DEV-038 failure；browser smoke runtime 已依 AGENTS 規則停止並確認 port 5000 釋放。
+- Repo 已固定為 V7 domain／migration、Process modules、`App.tsx` integration、DutyCenter入口、OrgNode高亮、scoped CSS及 whole-document server validation；`src/main.tsx`、DEV-034 resolver／drag semantics、DEV-036 tables、governance、管理辦法及 workspace manifest禁止修改。
+- Exact domain 已固定四型別、十二個 organization commands、完整 validation codes、expanded command issue shape、Duty process-link delete guard、normalization與 failure recovery。
+- Exact composition 固定為 App 共用 owner、新 `ProcessPlanningWorkbench` nested `ReactFlowProvider` 與現有 organization `.canvas-wrap`；不複製組織圖或建立第二份 Position truth。
+- V6→V7 固定只加四個空集合；local／recovery V7-first、V6 source保留、server V7-first fallback、workspace 422／409、governance explicit snapshot不含 Process。
+- Dagre 固定 exact `3.1.1`（MIT、built-in types），gzip JS delta `<=100 KiB`、250 nodes／400 edges p95 `<=150ms`；gate失敗 clean fallback至 repo內 deterministic layout，不升 ELK。
+- 實作順序固定 S0 baseline → S1 domain/V7 → S2 layout gate → S3 route/read-only composition → S4 Process editing → S5 Duty bridge/organization linkage → S6 full QA/QC。
+- 可執行 automated、API、native HTML5 drag、keyboard alternative、1440／1280／1279／1024／1023／390 viewport、visible-error、data-sanity、evidence manifest與 task-owned runtime cleanup均已寫入 spec 第14節。
+
+### 下一步與恢復條件
+
+RD 現可直接依 spec 第 14 節 S0→S6 實作。若需要 allowlist 外 production file、修改 ADR-008、複製 Duty／Position、第二套 Process／relation store、process-scoped responsibility、BPMN、AI 自動配置或即時多人共編，停止並重新確認 scope。
+
+### Future Phase Capsule
+
+狀態：`Future Phase Captured / Not Requested`。真實試用後才考慮流程泳道、節點輸入輸出／風險、RACI 延伸、流程版本比較、process-scoped responsibility、AI 輔助找遺漏／斷線、ELK 大型排版、BPMN、多人共編及管理辦法穩定語意 reference；不得先建立 disabled 功能或空泛 plugin system。
+
+### 變更紀錄
+
+- 2026-08-27：依使用者要求把 DEV-038 補至 `RD Implementation Ready`，並記錄 MVP implementation in progress。已完成 V7 domain／migration、Dagre layout、`/process-planning` route、雙視角、Process／node 基本建立、Duty link、四 lane click／native drag、Position drop projection 與 workspace 422 reason；typecheck、targeted `12 files／40 tests`、full `128 files／565 tests`、build pass（`368.67 kB gzip`）。完整 Process 編輯控制項、既有組織 React Flow 同頁重用、keyboard placement、三向高亮、component harness 與六 viewport evidence 仍是 QA gate；未 deploy／release。
+- 2026-08-27：升級 DEV-038 為 `RD Contract Ready`；以 ADR-008 固定 OrganizationDocument V7 單一權威與 V6→V7 migration，補齊 command／transaction、route／URL、正常入口、selection owner、viewport、capability、failure recovery、referential delete guard 與 High-risk evidence contract。仍缺 repo/file、exact symbols、implementation slices、dependency lockfile與 executable tests，因此尚非 `RD Implementation Ready`；未修改產品程式、測試、資料或 dependency。
+- 2026-08-27：建立 DEV-038 `Brief Ready`，記錄流程優先的規劃順序、三種圖形投影、ProcessNode↔Duty↔DutyPositionRelation↔Position 資料鏈、中央橋接欄、由左向右配置、React Flow＋Dagre 優先、DEV-034／036 相容邊界、Minimum Viable Slice、驗收及 Future Phase。未修改產品程式、測試、資料、dependency、deploy 或 release。
 
 ## DEV-037：外部角色目錄與角色指派權責重整
 

@@ -5,7 +5,7 @@ import type { OrgDirectoryState } from './types'
 const state: OrgDirectoryState = {
   employees: [], departments: [], roles: [], assignments: [], members: [], roleCombinationRiskRules: [], organizationLevels: [], organizationLayout: { mode: 'tree', showLevelGuides: true },
   positions: [{ id: 'pos-a', roleId: 'role', departmentId: null, parentPositionId: null, organizationLevelId: null, title: 'A', status: 'active', allowMultipleAssignees: false }],
-  duties: [{ id: 'duty-a', title: '工作', description: null }], dutyPositionRelations: [],
+  duties: [{ id: 'duty-a', title: '工作', description: null }], dutyPositionRelations: [], processes: [], processNodes: [], processEdges: [], processNodeDutyLinks: [],
 }
 
 describe('duty planning presentation', () => {

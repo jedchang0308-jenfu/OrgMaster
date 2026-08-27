@@ -5,7 +5,7 @@ import { layoutOrganization, ORG_NODE_HEIGHT, ORG_NODE_WIDTH } from './layout'
 import { buildHierarchyNodes } from './organizationHierarchy'
 import type { HierarchyNode } from './types'
 
-const hierarchy = buildHierarchyNodes({ employees: initialEmployees, departments: initialDepartments, roles: initialRoles, positions: initialPositions, assignments: initialAssignments, members: initialMembers, roleCombinationRiskRules: [], organizationLevels: initialOrganizationLevels, organizationLayout: { mode: 'tree', showLevelGuides: true }, duties: [], dutyPositionRelations: [] })
+const hierarchy = buildHierarchyNodes({ employees: initialEmployees, departments: initialDepartments, roles: initialRoles, positions: initialPositions, assignments: initialAssignments, members: initialMembers, roleCombinationRiskRules: [], organizationLevels: initialOrganizationLevels, organizationLayout: { mode: 'tree', showLevelGuides: true }, duties: [], dutyPositionRelations: [], processes: [], processNodes: [], processEdges: [], processNodeDutyLinks: [] })
 
 function nodesFromLayout(members = hierarchy) {
   const layout = layoutOrganization(members)

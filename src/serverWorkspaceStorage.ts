@@ -21,7 +21,8 @@ async function readJson(response: Response) {
 
 function failure(response: Response, payload: Record<string, unknown>, fallback: string): WorkspaceClientResult<never> {
   const code = typeof payload.error === 'string' ? payload.error : fallback
-  return { status: 'failed', message: `版本工作區無法完成操作：${code}`, statusCode: response.status, code }
+  const reason = typeof payload.reason === 'string' && payload.reason.trim() ? payload.reason.trim() : code
+  return { status: 'failed', message: `版本工作區無法完成操作：${reason}`, statusCode: response.status, code }
 }
 
 export async function loadWorkspaceIndex(): Promise<WorkspaceClientResult<OrgWorkspaceIndex>> {

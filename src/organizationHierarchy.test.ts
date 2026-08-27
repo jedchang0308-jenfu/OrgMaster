@@ -21,6 +21,10 @@ const state: OrgDirectoryState = {
   organizationLayout: { mode: 'tree', showLevelGuides: true },
   duties: [],
   dutyPositionRelations: [],
+  processes: [],
+  processNodes: [],
+  processEdges: [],
+  processNodeDutyLinks: [],
   members: [
     { id: 'root-a', order: 0, childrenAxis: 'horizontal' },
     { id: 'child-a', order: 0, childrenAxis: 'horizontal' },

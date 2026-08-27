@@ -96,6 +96,8 @@ import { loadWorkspaceIndex, loadWorkspaceVersion, saveWorkspaceDocument, create
 import { buildDutyPlanningUrl, readDutyPlanningLocation, type DutyPlanningLocation, type DutyPlanningStatusFilter, type DutyPlanningView } from './dutyPlanningRoute'
 import { buildDutyConfigurationUrl, normalizeDutyConfigurationLocation, readDutyConfigurationLocation, type DutyConfigurationExactLane, type DutyConfigurationLocation } from './dutyConfigurationRoute'
 import { canMutateDutyConfiguration } from './dutyConfigurationCapability'
+import { buildProcessPlanningUrl, canonicalProcessPlanningUrl, normalizeProcessPlanningLocation, readProcessPlanningLocation, type ProcessPlanningLocation } from './processPlanningRoute'
+import { ProcessPlanningWorkbench } from './components/ProcessPlanningWorkbench'
 import { dutyConfigurationIssueMessage, dutyConfigurationLaneLabels, resolveDutyConfigurationDropCommand, type DutyConfigurationIssueCode } from './dutyConfiguration'
 import {
   DUTY_CONFIGURATION_DRAG_MIME,
@@ -371,6 +373,10 @@ export default function App() {
     organizationLayout,
     duties,
     dutyPositionRelations,
+    processes,
+    processNodes,
+    processEdges,
+    processNodeDutyLinks,
     commit: commitHistory,
     commitState: commitStateHistory,
     undo,
@@ -389,7 +395,11 @@ export default function App() {
     organizationLayout,
     duties,
     dutyPositionRelations,
-  }), [assignments, departments, duties, dutyPositionRelations, employees, members, organizationLayout, organizationLevels, positions, roleCombinationRiskRules, roles])
+    processes,
+    processNodes,
+    processEdges,
+    processNodeDutyLinks,
+  }), [assignments, departments, duties, dutyPositionRelations, employees, members, organizationLayout, organizationLevels, positions, processEdges, processNodeDutyLinks, processNodes, processes, roleCombinationRiskRules, roles])
   const currentSignature = useMemo(() => orgStateSignature(currentState), [currentState])
   const [organizationIssue, setOrganizationIssue] = useState<string | null>(null)
   const [organizationIssueTarget, setOrganizationIssueTarget] = useState<OrganizationUiIssue['target'] | null>(null)
@@ -422,6 +432,7 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [dutyPlanningLocation, setDutyPlanningLocation] = useState<DutyPlanningLocation>(() => readDutyPlanningLocation(window.location))
   const [dutyConfigurationLocation, setDutyConfigurationLocation] = useState<DutyConfigurationLocation>(() => readDutyConfigurationLocation(window.location))
+  const [processPlanningLocation, setProcessPlanningLocation] = useState<ProcessPlanningLocation>(() => readProcessPlanningLocation(window.location))
   const [dutyConfigurationExpandedDutyId, setDutyConfigurationExpandedDutyId] = useState<string | null>(() => readDutyConfigurationLocation(window.location).dutyId)
   const [dutyConfigurationError, setDutyConfigurationError] = useState<string | null>(null)
   const [dutyDetailOpen, setDutyDetailOpen] = useState(false)
@@ -443,10 +454,22 @@ export default function App() {
       const nextDutyLocation = readDutyConfigurationLocation(window.location)
       setDutyConfigurationLocation(nextDutyLocation)
       setDutyConfigurationExpandedDutyId(nextDutyLocation.dutyId)
+      setProcessPlanningLocation(readProcessPlanningLocation(window.location))
     }
     window.addEventListener('popstate', syncDutyPlanningLocation)
     return () => window.removeEventListener('popstate', syncDutyPlanningLocation)
   }, [])
+
+  useEffect(() => {
+    if (!processPlanningLocation.active) return
+    const normalized = normalizeProcessPlanningLocation(processPlanningLocation, currentState)
+    const canonical = canonicalProcessPlanningUrl(processPlanningLocation, currentState)
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+    if (canonical && canonical !== currentUrl) {
+      window.history.replaceState({}, '', canonical)
+      setProcessPlanningLocation(normalized)
+    }
+  }, [currentState, processPlanningLocation])
 
   useEffect(() => {
     const syncManagementMethodLocation = () => {
@@ -515,6 +538,24 @@ export default function App() {
     setDutyConfigurationLocation(nextDutyConfigurationLocation)
     setDutyConfigurationExpandedDutyId(nextDutyConfigurationLocation.dutyId)
     setDutyDetailOpen(false)
+  }, [])
+
+  const openProcessPlanningPage = useCallback((processId?: string | null, view: 'mindmap' | 'flow' = 'mindmap') => {
+    const nextUrl = buildProcessPlanningUrl({ view, processId: processId ?? null, processNodeId: null, dutyId: null })
+    window.history.pushState({}, '', nextUrl)
+    setProcessPlanningLocation(readProcessPlanningLocation(window.location))
+    setDutyPlanningLocation(readDutyPlanningLocation(window.location))
+    setDutyConfigurationLocation(readDutyConfigurationLocation(window.location))
+  }, [])
+
+  const navigateProcessPlanning = useCallback((url: string) => {
+    if (`${window.location.pathname}${window.location.search}` !== url) window.history.pushState({}, '', url)
+    setProcessPlanningLocation(readProcessPlanningLocation(window.location))
+  }, [])
+
+  const closeProcessPlanningPage = useCallback(() => {
+    window.history.pushState({}, '', '/')
+    setProcessPlanningLocation(readProcessPlanningLocation(window.location))
   }, [])
 
   const navigateDutyPlanningView = useCallback((view: DutyPlanningView) => {
@@ -2424,6 +2465,20 @@ export default function App() {
     )
   }
 
+  if (processPlanningLocation.active) {
+    return <ProcessPlanningWorkbench
+      state={currentState}
+      location={processPlanningLocation}
+      editingEnabled={editingEnabled}
+      serverReady={serverReady}
+      recoveryOpen={recoveryOpen}
+      mobileReadOnly={mobileReadOnly}
+      onCommand={runOrganizationCommand}
+      onNavigate={navigateProcessPlanning}
+      onClose={closeProcessPlanningPage}
+    />
+  }
+
   if (dutyPlanningLocation.isDutyPlanningPage && !dutyConfigurationLocation.active) {
     return (
       <DutyCenter
@@ -2449,6 +2504,7 @@ export default function App() {
         onAnomalyTypesChange={updateDutyPlanningStatuses}
         onClearFilters={clearDutyPlanningFilters}
         onOpenDutyConfiguration={(dutyId) => openDutyConfiguration(null, dutyId)}
+        onOpenProcessPlanning={() => openProcessPlanningPage()}
       />
     )
   }
@@ -2470,6 +2526,7 @@ export default function App() {
         governanceOpen={governanceOpen}
         onOpenGovernance={() => setGovernanceOpen(true)}
         onOpenManagementMethods={() => openManagementMethodPage()}
+        onOpenProcessPlanning={() => openProcessPlanningPage()}
         governanceButtonRef={governanceButtonRef}
         isDirty={isDirty}
         savedAt={savedAt}

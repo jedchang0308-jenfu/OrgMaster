@@ -5218,3 +5218,67 @@ button.duty-card:focus-visible { outline: 2px solid rgba(63, 109, 246, .55); out
   .duty-relation-editor-row__content { gap: 6px; padding: 8px 0; }
   .duty-relation-editor-row__title { font-size: 12px; }
 }
+/* DEV-038 process planning workbench */
+.process-planning-page {
+  min-height: 100vh;
+  background: #f7f9fc;
+  color: #24324a;
+}
+.process-planning-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 14px 28px;
+  background: #fff;
+  border-bottom: 1px solid #dce3ee;
+}
+.process-planning-page__header h1 { margin: 2px 0 0; font-size: 22px; letter-spacing: .01em; }
+.process-planning-page__actions { display: flex; align-items: center; gap: 12px; }
+.process-capability-pill { border-radius: 999px; padding: 7px 11px; background: #eef1f5; color: #6c7788; font-size: 12px; }
+.process-capability-pill.is-writable { background: #e8f6ef; color: #217648; }
+.process-planning-tabs { display: flex; gap: 4px; padding: 0 28px; background: #fff; border-bottom: 1px solid #dce3ee; }
+.process-planning-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 12px 16px 10px; background: transparent; color: #627087; cursor: pointer; }
+.process-planning-tabs button.is-active { border-bottom-color: #3f6df6; color: #2458dc; font-weight: 700; }
+.process-planning-grid { display: grid; grid-template-columns: 210px minmax(350px, 1fr) 290px 300px; gap: 12px; padding: 16px; height: calc(100vh - 128px); min-height: 560px; }
+.process-planning-processes, .process-planning-graph-panel, .process-duty-bridge, .process-planning-org-panel { min-width: 0; overflow: hidden; border: 1px solid #dce3ee; border-radius: 10px; background: #fff; }
+.process-panel-heading { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 14px; border-bottom: 1px solid #e7ebf2; color: #34445f; font-weight: 700; }
+.process-panel-heading small { color: #8b96a7; font-size: 11px; font-weight: 500; }
+.process-planning-processes > button, .process-planning-org-panel button { width: calc(100% - 16px); margin: 4px 8px; border: 1px solid transparent; border-radius: 7px; padding: 9px 10px; background: #f7f9fc; color: #34445f; text-align: left; cursor: pointer; }
+.process-planning-processes > button { display: flex; justify-content: space-between; align-items: center; }
+.process-planning-processes > button small, .process-planning-org-panel button small { color: #8b96a7; font-size: 11px; }
+.process-planning-processes > button.is-active, .process-planning-org-panel button.is-active { border-color: #93adff; background: #edf2ff; color: #2458dc; }
+.process-planning-processes > button.process-add-button, .process-add-inline { border-color: #c5d3fa; background: #f2f5ff; color: #3159d9; }
+.process-drop-notice { margin: 4px 10px 8px; padding: 6px 8px; border-radius: 6px; background: #f2f5ff; color: #3159d9; font-size: 12px; }
+.process-add-inline { margin-right: 8px; border: 1px solid #c5d3fa; border-radius: 5px; padding: 4px 7px; font-size: 11px; cursor: pointer; }
+.process-planning-canvas { position: relative; height: calc(100% - 44px); min-height: 400px; }
+.process-planning-canvas .react-flow { background: #fbfcfe; }
+.process-canvas-node { display: flex; align-items: center; gap: 8px; width: 220px; min-height: 54px; box-sizing: border-box; border: 1px solid #cfd8e8; border-radius: 9px; padding: 11px 13px; background: #fff; color: #24324a; box-shadow: 0 3px 10px rgba(36, 50, 74, .08); }
+.process-canvas-node.is-selected { border-color: #3f6df6; box-shadow: 0 0 0 2px rgba(63,109,246,.2); }
+.process-canvas-node__dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #8da7de; }
+.process-planning-canvas__meta { position: absolute; right: 10px; bottom: 10px; color: #8994a5; font-size: 11px; pointer-events: none; }
+.process-duty-bridge { display: flex; flex-direction: column; }
+.process-duty-bridge__linked, .process-duty-bridge__all, .process-duty-bridge__responsibility { padding: 12px 14px; border-bottom: 1px solid #e7ebf2; overflow: auto; }
+.process-duty-bridge__linked button, .process-duty-bridge__all button { display: block; width: 100%; margin: 3px 0; border: 1px solid #dce3ee; border-radius: 6px; padding: 7px 9px; background: #fff; color: #34445f; text-align: left; cursor: pointer; }
+.process-duty-bridge__linked button.is-active { border-color: #93adff; background: #edf2ff; color: #2458dc; }
+.process-duty-bridge select { width: 100%; margin: 8px 0; border: 1px solid #cfd8e8; border-radius: 6px; padding: 8px; background: #fff; }
+.process-subheading { display: block; margin-bottom: 6px; color: #65738a; font-size: 12px; font-weight: 700; }
+.process-lane-buttons { display: flex; flex-wrap: wrap; gap: 5px; }
+.process-lane-buttons button { border: 1px solid #cfd8e8; border-radius: 5px; padding: 5px 7px; background: #f8faff; color: #395b9c; font-size: 11px; cursor: pointer; }
+.process-lane-buttons button[draggable="true"] { cursor: grab; }
+.process-lane-buttons button[draggable="true"]:active { cursor: grabbing; }
+.process-empty { margin: 14px; color: #8b96a7; font-size: 12px; line-height: 1.6; }
+.process-org-group { padding: 7px 0; border-bottom: 1px solid #edf0f5; }
+.process-org-group h2 { margin: 3px 14px 5px; color: #65738a; font-size: 12px; }
+.process-org-group button { display: flex; justify-content: space-between; margin-top: 2px; margin-bottom: 2px; padding: 7px 9px; }
+@media (max-width: 1100px) {
+  .process-planning-grid { grid-template-columns: 190px minmax(300px, 1fr) 270px; }
+  .process-planning-org-panel { display: none; }
+}
+@media (max-width: 767px) {
+  .process-planning-page__header { padding: 12px 16px; }
+  .process-planning-page__header h1 { font-size: 18px; }
+  .process-planning-grid { grid-template-columns: 1fr; height: auto; }
+  .process-planning-processes, .process-duty-bridge { min-height: 260px; }
+  .process-planning-graph-panel { min-height: 450px; }
+}

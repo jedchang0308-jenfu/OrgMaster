@@ -6,11 +6,14 @@ import {
 import { validateEmployeeResponsibilities, type EmployeeResponsibilityValidationCode } from './employeeResponsibilities'
 import { normalizeDutyState, validateDutyState, type DutyValidationCode } from './duties'
 import { createDefaultOrganizationLevels } from './organizationLevels'
+import { createEmptyProcessPlanningCollections, normalizeProcessPlanningState, validateProcessPlanningState, type ProcessPlanningValidationCode } from './processPlanning'
 import type { Employee, OrgDirectoryState, OrgMember, Position } from './types'
 
-export const ORG_DOCUMENT_VERSION = 6 as const
-export const ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v6'
-export const ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v6'
+export const ORG_DOCUMENT_VERSION = 7 as const
+export const ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v7'
+export const ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v7'
+export const LEGACY_V6_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v6'
+export const LEGACY_V6_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v6'
 export const LEGACY_V5_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v5'
 export const LEGACY_V5_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v5'
 export const LEGACY_V4_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v4'
@@ -20,8 +23,10 @@ export const LEGACY_V3_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v
 export const LEGACY_V2_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v2'
 export const LEGACY_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v1'
 export const LEGACY_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v1'
-export const RECOVERY_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.recovery.v6'
-export const RECOVERY_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.recovery.v6'
+export const RECOVERY_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.recovery.v7'
+export const RECOVERY_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.recovery.v7'
+export const LEGACY_V6_RECOVERY_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.recovery.v6'
+export const LEGACY_V6_RECOVERY_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.recovery.v6'
 // Backward-compatible alias for callers that used the earlier name.
 export const ORG_DOCUMENT_RECOVERY_KEY = RECOVERY_ORG_DOCUMENT_STORAGE_KEY
 
@@ -45,16 +50,17 @@ export type DocumentFailureCode =
   | OrganizationValidationCode
   | EmployeeResponsibilityValidationCode
   | DutyValidationCode
+  | ProcessPlanningValidationCode
   | 'STORAGE_READ_FAILED'
   | 'STORAGE_WRITE_FAILED'
 
 export type ParseOrgDocumentResult =
-  | { ok: true; document: OrgDocumentFile; sourceVersion: 1 | 2 | 3 | 4 | 5 | 6 }
-  | { ok: false; code: DocumentFailureCode; positionIds: string[]; departmentIds: string[] }
+  | { ok: true; document: OrgDocumentFile; sourceVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 }
+  | { ok: false; code: DocumentFailureCode; positionIds: string[]; departmentIds: string[]; dutyIds: string[]; processIds: string[]; processNodeIds: string[] }
 
 export type LocalDocumentLoadResult =
   | { status: 'empty' }
-  | { status: 'loaded'; document: OrgDocumentFile; sourceVersion: 1 | 2 | 3 | 4 | 5 | 6 }
+  | { status: 'loaded'; document: OrgDocumentFile; sourceVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 }
   | {
       status: 'failed'
       code: DocumentFailureCode
@@ -62,9 +68,13 @@ export type LocalDocumentLoadResult =
       raw: string
       positionIds: string[]
       departmentIds: string[]
+      dutyIds: string[]
+      processIds: string[]
+      processNodeIds: string[]
     }
 
-type OrgDirectoryStateV5 = Omit<OrgDirectoryState, 'duties' | 'dutyPositionRelations'>
+type OrgDirectoryStateV6 = Omit<OrgDirectoryState, 'processes' | 'processNodes' | 'processEdges' | 'processNodeDutyLinks'>
+type OrgDirectoryStateV5 = Omit<OrgDirectoryStateV6, 'duties' | 'dutyPositionRelations'>
 type LegacyPosition = Omit<Position, 'organizationLevelId'> & { organizationLevelId?: unknown }
 
 type V4OrgDirectoryState = Omit<OrgDirectoryStateV5, 'positions' | 'organizationLevels' | 'organizationLayout'> & {
@@ -108,10 +118,18 @@ function isV5OrgDirectoryState(value: unknown): value is OrgDirectoryStateV5 {
     && typeof value.organizationLayout.showLevelGuides === 'boolean'
 }
 
-function isOrgDirectoryState(value: unknown): value is OrgDirectoryState {
+function isV6OrgDirectoryState(value: unknown): value is OrgDirectoryStateV6 {
   return isV5OrgDirectoryState(value)
     && Array.isArray((value as Record<string, unknown>).duties)
     && Array.isArray((value as Record<string, unknown>).dutyPositionRelations)
+}
+
+function isOrgDirectoryState(value: unknown): value is OrgDirectoryState {
+  return isV6OrgDirectoryState(value)
+    && Array.isArray((value as Record<string, unknown>).processes)
+    && Array.isArray((value as Record<string, unknown>).processNodes)
+    && Array.isArray((value as Record<string, unknown>).processEdges)
+    && Array.isArray((value as Record<string, unknown>).processNodeDutyLinks)
 }
 
 function normalizePositionYOverrides(value: unknown): Record<string, number> | null {
@@ -139,8 +157,15 @@ export function orgStateSignature(state: OrgDirectoryState): string {
   return JSON.stringify(state)
 }
 
-function failure(code: DocumentFailureCode, positionIds: string[] = [], departmentIds: string[] = []): ParseOrgDocumentResult {
-  return { ok: false, code, positionIds, departmentIds }
+function failure(
+  code: DocumentFailureCode,
+  positionIds: string[] = [],
+  departmentIds: string[] = [],
+  dutyIds: string[] = [],
+  processIds: string[] = [],
+  processNodeIds: string[] = [],
+): ParseOrgDocumentResult {
+  return { ok: false, code, positionIds, departmentIds, dutyIds, processIds, processNodeIds }
 }
 
 function validationFailure(state: OrgDirectoryState): ParseOrgDocumentResult | null {
@@ -152,7 +177,7 @@ function validationFailure(state: OrgDirectoryState): ParseOrgDocumentResult | n
     : failure(responsibilityResult.code, responsibilityResult.assignmentIds)
 }
 
-function normalizeSiblingOrders<T extends OrgDirectoryStateV5>(state: T): T {
+function normalizeSiblingOrders<T extends Pick<OrgDirectoryState, 'positions' | 'members'>>(state: T): T {
   const memberById = new Map(state.members.map((member) => [member.id, member]))
   const groups = new Map<string | null, string[]>()
   for (const position of state.positions) {
@@ -173,7 +198,11 @@ function normalizeSiblingOrders<T extends OrgDirectoryStateV5>(state: T): T {
 }
 
 function addEmptyDuties(state: OrgDirectoryStateV5): OrgDirectoryState {
-  return { ...state, duties: [], dutyPositionRelations: [] }
+  return { ...state, duties: [], dutyPositionRelations: [], ...createEmptyProcessPlanningCollections() }
+}
+
+function addEmptyProcessPlanning(state: OrgDirectoryStateV6): OrgDirectoryState {
+  return { ...state, ...createEmptyProcessPlanningCollections() }
 }
 
 function containsLegacyParentField(state: Pick<OrgDirectoryState, 'members'>) {
@@ -453,7 +482,7 @@ function normalizeV5State(state: OrgDirectoryStateV5, source: Record<string, unk
     ?? { ok: true, document: createOrgDocumentFile(withDuties, source.kind as OrgDocumentKind, source.savedAt as string), sourceVersion: 5 }
 }
 
-function normalizeV6State(state: OrgDirectoryState, source: Record<string, unknown>): ParseOrgDocumentResult {
+function normalizeV6State(state: OrgDirectoryStateV6, source: Record<string, unknown>): ParseOrgDocumentResult {
   if (containsLegacyParentField(state)) return failure('INVALID_DOCUMENT_SHAPE')
   if (state.positions.some((position) => !('parentPositionId' in position) || !('organizationLevelId' in position))) return failure('INVALID_DOCUMENT_SHAPE')
   if (state.positions.some((position) => position.organizationLevelId !== null && typeof position.organizationLevelId !== 'string')) return failure('INVALID_DOCUMENT_SHAPE')
@@ -471,6 +500,7 @@ function normalizeV6State(state: OrgDirectoryState, source: Record<string, unkno
   if (!riskValidation.ok) return failure(riskValidation.code)
   const normalized = normalizeDutyState(normalizeSiblingOrders({
     ...state,
+    ...createEmptyProcessPlanningCollections(),
     employees,
     assignments,
     positions: state.positions.map((position) => ({ ...position, parentPositionId: position.parentPositionId ?? null })),
@@ -485,22 +515,62 @@ function normalizeV6State(state: OrgDirectoryState, source: Record<string, unkno
     ?? { ok: true, document: createOrgDocumentFile(normalized, source.kind as OrgDocumentKind, source.savedAt as string), sourceVersion: 6 }
 }
 
+function normalizeV7State(state: OrgDirectoryState, source: Record<string, unknown>): ParseOrgDocumentResult {
+  if (containsLegacyParentField(state)) return failure('INVALID_DOCUMENT_SHAPE')
+  if (state.positions.some((position) => !('parentPositionId' in position) || !('organizationLevelId' in position))) return failure('INVALID_DOCUMENT_SHAPE')
+  if (state.positions.some((position) => position.organizationLevelId !== null && typeof position.organizationLevelId !== 'string')) return failure('INVALID_DOCUMENT_SHAPE')
+  if (state.organizationLevels.some((level) => !isRecord(level)
+    || typeof level.id !== 'string'
+    || typeof level.name !== 'string'
+    || typeof level.order !== 'number')) return failure('INVALID_DOCUMENT_SHAPE')
+  const employees = normalizeV4Employees(state.employees)
+  const assignments = normalizeV4Assignments(state.assignments)
+  if (!employees || !assignments) return failure('INVALID_DOCUMENT_SHAPE')
+  const roleCombinationRiskRules = state.roleCombinationRiskRules.map((rule) => ({ ...rule, reason: typeof rule.reason === 'string' ? rule.reason.trim() : '' }))
+  const positionYOverrides = normalizePositionYOverrides(state.organizationLayout.positionYOverrides)
+  if (!positionYOverrides) return failure('INVALID_DOCUMENT_SHAPE')
+  const riskValidation = validateRoleCombinationRiskRules(roleCombinationRiskRules, state.roles)
+  if (!riskValidation.ok) return failure(riskValidation.code)
+  const normalized = normalizeProcessPlanningState(normalizeDutyState(normalizeSiblingOrders({
+    ...state,
+    employees,
+    assignments,
+    positions: state.positions.map((position) => ({ ...position, parentPositionId: position.parentPositionId ?? null })),
+    members: state.members.map((member) => ({ ...member })),
+    roleCombinationRiskRules,
+    organizationLevels: state.organizationLevels.map((level) => ({ ...level, name: level.name.trim() })),
+    organizationLayout: { ...state.organizationLayout, positionYOverrides },
+  })))
+  const dutyValidation = validateDutyState(normalized)
+  if (!dutyValidation.ok) return failure(dutyValidation.issue.code, dutyValidation.issue.positionIds)
+  const processValidation = validateProcessPlanningState(normalized)
+  if (!processValidation.ok) return failure(processValidation.issue.code, [], [], processValidation.issue.dutyIds, processValidation.issue.processIds, processValidation.issue.processNodeIds)
+  return validationFailure(normalized)
+    ?? { ok: true, document: createOrgDocumentFile(normalized, source.kind as OrgDocumentKind, source.savedAt as string), sourceVersion: 7 }
+}
+
 export function createOrgDocumentFile(
   state: OrgDirectoryState,
   kind: OrgDocumentKind,
   savedAt = new Date().toISOString(),
 ): OrgDocumentFile {
-  return { app: 'OrgMaster', version: ORG_DOCUMENT_VERSION, kind, savedAt, state: cloneOrgState(normalizeDutyState(stripLegacyParentField(state))) }
+  const normalized = normalizeProcessPlanningState(normalizeDutyState(stripLegacyParentField(state)))
+  return { app: 'OrgMaster', version: ORG_DOCUMENT_VERSION, kind, savedAt, state: cloneOrgState(normalized) }
 }
 
 export function parseOrgDocument(input: unknown): ParseOrgDocumentResult {
   if (!isRecord(input)) return failure('INVALID_DOCUMENT_SHAPE')
   if (input.app !== 'OrgMaster') return failure('INVALID_APP')
-  if (input.version !== 1 && input.version !== 2 && input.version !== 3 && input.version !== 4 && input.version !== 5 && input.version !== 6) return failure('UNSUPPORTED_VERSION')
+  if (input.version !== 1 && input.version !== 2 && input.version !== 3 && input.version !== 4 && input.version !== 5 && input.version !== 6 && input.version !== 7) return failure('UNSUPPORTED_VERSION')
   if (input.kind !== 'document' && input.kind !== 'draft' && input.kind !== 'copy' && input.kind !== 'backup') return failure('INVALID_DOCUMENT_SHAPE')
   if (typeof input.savedAt !== 'string') return failure('INVALID_DOCUMENT_SHAPE')
-  if (input.version === 6) {
+  if (input.version === 7) {
     return isOrgDirectoryState(input.state)
+      ? normalizeV7State(input.state, input)
+      : failure('INVALID_DOCUMENT_SHAPE')
+  }
+  if (input.version === 6) {
+    return isV6OrgDirectoryState(input.state)
       ? normalizeV6State(input.state, input)
       : failure('INVALID_DOCUMENT_SHAPE')
   }
@@ -534,7 +604,7 @@ function parseRaw(raw: string): ParseOrgDocumentResult {
 }
 
 function loadFailure(sourceKey: string, raw: string, result: Extract<ParseOrgDocumentResult, { ok: false }>): LocalDocumentLoadResult {
-  return { status: 'failed', sourceKey, raw, code: result.code, positionIds: result.positionIds, departmentIds: result.departmentIds }
+  return { status: 'failed', sourceKey, raw, code: result.code, positionIds: result.positionIds, departmentIds: result.departmentIds, dutyIds: result.dutyIds, processIds: result.processIds, processNodeIds: result.processNodeIds }
 }
 
 function preferNewerDocument(first: OrgDocumentFile, second: OrgDocumentFile): OrgDocumentFile {
@@ -550,6 +620,8 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
   if (!storage) return { status: 'empty' }
   let draftRaw: string | null
   let currentRaw: string | null
+  let v6DraftRaw: string | null
+  let v6Raw: string | null
   let v5DraftRaw: string | null
   let v5Raw: string | null
   let v4DraftRaw: string | null
@@ -562,6 +634,8 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
   try {
     draftRaw = storage.getItem(ORG_DOCUMENT_DRAFT_STORAGE_KEY)
     currentRaw = storage.getItem(ORG_DOCUMENT_STORAGE_KEY)
+    v6DraftRaw = storage.getItem(LEGACY_V6_ORG_DOCUMENT_DRAFT_STORAGE_KEY)
+    v6Raw = storage.getItem(LEGACY_V6_ORG_DOCUMENT_STORAGE_KEY)
     v5DraftRaw = storage.getItem(LEGACY_V5_ORG_DOCUMENT_DRAFT_STORAGE_KEY)
     v5Raw = storage.getItem(LEGACY_V5_ORG_DOCUMENT_STORAGE_KEY)
     v4DraftRaw = storage.getItem(LEGACY_V4_ORG_DOCUMENT_DRAFT_STORAGE_KEY)
@@ -572,7 +646,7 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
     v2Raw = storage.getItem(LEGACY_V2_ORG_DOCUMENT_STORAGE_KEY)
     v1Raw = storage.getItem(LEGACY_ORG_DOCUMENT_STORAGE_KEY)
   } catch {
-    return { status: 'failed', sourceKey: ORG_DOCUMENT_STORAGE_KEY, raw: '', code: 'STORAGE_READ_FAILED', positionIds: [], departmentIds: [] }
+    return { status: 'failed', sourceKey: ORG_DOCUMENT_STORAGE_KEY, raw: '', code: 'STORAGE_READ_FAILED', positionIds: [], departmentIds: [], dutyIds: [], processIds: [], processNodeIds: [] }
   }
 
   const parsedDraft = draftRaw ? parseRaw(draftRaw) : null
@@ -592,6 +666,23 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
     return { status: 'loaded', document: parsed.document, sourceVersion: parsed.sourceVersion }
   }
 
+  const parsedV6Draft = v6DraftRaw ? parseRaw(v6DraftRaw) : null
+  if (parsedV6Draft && !parsedV6Draft.ok) return loadFailure(LEGACY_V6_ORG_DOCUMENT_DRAFT_STORAGE_KEY, v6DraftRaw!, parsedV6Draft)
+  const parsedV6 = v6Raw ? parseRaw(v6Raw) : null
+  if (parsedV6 && !parsedV6.ok) return loadFailure(LEGACY_V6_ORG_DOCUMENT_STORAGE_KEY, v6Raw!, parsedV6)
+  if (parsedV6Draft?.ok || parsedV6?.ok) {
+    const parsed = parsedV6Draft?.ok && parsedV6?.ok
+      ? (preferNewerDocument(parsedV6Draft.document, parsedV6.document) === parsedV6Draft.document ? parsedV6Draft : parsedV6)
+      : parsedV6Draft?.ok ? parsedV6Draft : parsedV6!
+    const destinationKey = parsed.document.kind === 'draft' ? ORG_DOCUMENT_DRAFT_STORAGE_KEY : ORG_DOCUMENT_STORAGE_KEY
+    try {
+      storage.setItem(destinationKey, JSON.stringify(parsed.document))
+    } catch {
+      return { status: 'failed', sourceKey: parsed.document.kind === 'draft' ? LEGACY_V6_ORG_DOCUMENT_DRAFT_STORAGE_KEY : LEGACY_V6_ORG_DOCUMENT_STORAGE_KEY, raw: parsed.document.kind === 'draft' ? v6DraftRaw! : v6Raw!, code: 'STORAGE_WRITE_FAILED', positionIds: [], departmentIds: [], dutyIds: [], processIds: [], processNodeIds: [] }
+    }
+    return { status: 'loaded', document: parsed.document, sourceVersion: parsed.sourceVersion }
+  }
+
   const parsedV5Draft = v5DraftRaw ? parseRaw(v5DraftRaw) : null
   if (parsedV5Draft && !parsedV5Draft.ok) return loadFailure(LEGACY_V5_ORG_DOCUMENT_DRAFT_STORAGE_KEY, v5DraftRaw!, parsedV5Draft)
   const parsedV5 = v5Raw ? parseRaw(v5Raw) : null
@@ -604,7 +695,7 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
     try {
       storage.setItem(destinationKey, JSON.stringify(parsed.document))
     } catch {
-      return { status: 'failed', sourceKey: parsed.document.kind === 'draft' ? LEGACY_V5_ORG_DOCUMENT_DRAFT_STORAGE_KEY : LEGACY_V5_ORG_DOCUMENT_STORAGE_KEY, raw: parsed.document.kind === 'draft' ? v5DraftRaw! : v5Raw!, code: 'STORAGE_WRITE_FAILED', positionIds: [], departmentIds: [] }
+      return { status: 'failed', sourceKey: parsed.document.kind === 'draft' ? LEGACY_V5_ORG_DOCUMENT_DRAFT_STORAGE_KEY : LEGACY_V5_ORG_DOCUMENT_STORAGE_KEY, raw: parsed.document.kind === 'draft' ? v5DraftRaw! : v5Raw!, code: 'STORAGE_WRITE_FAILED', positionIds: [], departmentIds: [], dutyIds: [], processIds: [], processNodeIds: [] }
     }
     return { status: 'loaded', document: parsed.document, sourceVersion: parsed.sourceVersion }
   }
@@ -623,7 +714,7 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
     try {
       storage.setItem(destinationKey, JSON.stringify(parsed.document))
     } catch {
-      return { status: 'failed', sourceKey: parsed.document.kind === 'draft' ? LEGACY_V4_ORG_DOCUMENT_DRAFT_STORAGE_KEY : LEGACY_V4_ORG_DOCUMENT_STORAGE_KEY, raw: parsed.document.kind === 'draft' ? v4DraftRaw! : v4Raw!, code: 'STORAGE_WRITE_FAILED', positionIds: [], departmentIds: [] }
+      return { status: 'failed', sourceKey: parsed.document.kind === 'draft' ? LEGACY_V4_ORG_DOCUMENT_DRAFT_STORAGE_KEY : LEGACY_V4_ORG_DOCUMENT_STORAGE_KEY, raw: parsed.document.kind === 'draft' ? v4DraftRaw! : v4Raw!, code: 'STORAGE_WRITE_FAILED', positionIds: [], departmentIds: [], dutyIds: [], processIds: [], processNodeIds: [] }
     }
     return { status: 'loaded', document: parsed.document, sourceVersion: parsed.sourceVersion }
   }
@@ -661,7 +752,7 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
     try {
       storage.setItem(destinationKey, JSON.stringify(legacyCandidate.parsed.document))
     } catch {
-      return { status: 'failed', sourceKey: legacyCandidate.sourceKey, raw: legacyCandidate.raw, code: 'STORAGE_WRITE_FAILED', positionIds: [], departmentIds: [] }
+      return { status: 'failed', sourceKey: legacyCandidate.sourceKey, raw: legacyCandidate.raw, code: 'STORAGE_WRITE_FAILED', positionIds: [], departmentIds: [], dutyIds: [], processIds: [], processNodeIds: [] }
     }
     return { status: 'loaded', document: legacyCandidate.parsed.document, sourceVersion: legacyCandidate.parsed.sourceVersion }
   }
@@ -672,7 +763,7 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
   try {
     storage.setItem(ORG_DOCUMENT_STORAGE_KEY, JSON.stringify(parsedV1.document))
   } catch {
-    return { status: 'failed', sourceKey: LEGACY_ORG_DOCUMENT_STORAGE_KEY, raw: v1Raw, code: 'STORAGE_WRITE_FAILED', positionIds: [], departmentIds: [] }
+    return { status: 'failed', sourceKey: LEGACY_ORG_DOCUMENT_STORAGE_KEY, raw: v1Raw, code: 'STORAGE_WRITE_FAILED', positionIds: [], departmentIds: [], dutyIds: [], processIds: [], processNodeIds: [] }
   }
   return { status: 'loaded', document: parsedV1.document, sourceVersion: parsedV1.sourceVersion }
 }
@@ -690,6 +781,8 @@ export function archiveFailedLocalDocument(
   if (!storage) return false
   if (
     result.sourceKey === LEGACY_ORG_DOCUMENT_STORAGE_KEY
+    || result.sourceKey === LEGACY_V6_ORG_DOCUMENT_STORAGE_KEY
+    || result.sourceKey === LEGACY_V6_ORG_DOCUMENT_DRAFT_STORAGE_KEY
     || result.sourceKey === LEGACY_V5_ORG_DOCUMENT_STORAGE_KEY
     || result.sourceKey === LEGACY_V5_ORG_DOCUMENT_DRAFT_STORAGE_KEY
     || result.sourceKey === LEGACY_V4_ORG_DOCUMENT_STORAGE_KEY
@@ -749,6 +842,7 @@ function saveDocumentToStorage(
   if (!validateRoleCombinationRiskRules(normalized.roleCombinationRiskRules, normalized.roles).ok) return null
   if (!validateEmployeeResponsibilities(normalized).ok) return null
   if (!validateDutyState(normalized).ok) return null
+  if (!validateProcessPlanningState(normalized).ok) return null
   const document = createOrgDocumentFile(normalized, kind, savedAt)
   try {
     storage.setItem(key, JSON.stringify(document))

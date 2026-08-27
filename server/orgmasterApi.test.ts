@@ -36,9 +36,9 @@ describe('OrgMaster local document file compatibility', () => {
     await writeFile(paths.v2, rawV2, 'utf8')
 
     const loaded = await readStoredDocument(root)
-    expect(loaded.document).toMatchObject({ version: 6, state: { roleCombinationRiskRules: [], duties: [], dutyPositionRelations: [], organizationLayout: { mode: 'tree' } } })
+    expect(loaded.document).toMatchObject({ version: 7, state: { roleCombinationRiskRules: [], duties: [], dutyPositionRelations: [], processes: [], processNodes: [], processEdges: [], processNodeDutyLinks: [], organizationLayout: { mode: 'tree' } } })
     await writeStoredDocument(loaded.document, root)
-    expect(JSON.parse(await readFile(paths.v6, 'utf8'))).toMatchObject({ version: 6 })
+    expect(JSON.parse(await readFile(paths.v7, 'utf8'))).toMatchObject({ version: 7 })
     expect(await readFile(paths.v2, 'utf8')).toBe(rawV2)
   })
 

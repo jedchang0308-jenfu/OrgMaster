@@ -24,6 +24,10 @@ const baseState: OrgDirectoryState = {
   organizationLayout: { mode: 'tree', showLevelGuides: true },
   duties: [{ id: 'duty-a', title: '每日檢查', description: null }],
   dutyPositionRelations: [],
+  processes: [],
+  processNodes: [],
+  processEdges: [],
+  processNodeDutyLinks: [],
 }
 
 describe('duty domain', () => {

@@ -18,6 +18,7 @@ const WORKSPACE_PATH = '/api/orgmaster/workspace'
 
 export function getOrgMasterDocumentPaths(rootDirectory = process.cwd()) {
   return {
+    v7: resolve(rootDirectory, 'data', 'orgmaster-document.v7.json'),
     v6: resolve(rootDirectory, 'data', 'orgmaster-document.v6.json'),
     v5: resolve(rootDirectory, 'data', 'orgmaster-document.v5.json'),
     v4: resolve(rootDirectory, 'data', 'orgmaster-document.v4.json'),
@@ -68,22 +69,27 @@ async function workspaceExists(rootDirectory = process.cwd()) {
 export async function readStoredDocument(rootDirectory = process.cwd()) {
   const paths = getOrgMasterDocumentPaths(rootDirectory)
   try {
-    return await readDocumentAtPath(paths.v6)
+    return await readDocumentAtPath(paths.v7)
   } catch (error) {
     if (!isMissingFile(error)) throw error
     try {
-      return await readDocumentAtPath(paths.v5)
-    } catch (v4Error) {
-      if (!isMissingFile(v4Error)) throw v4Error
+      return await readDocumentAtPath(paths.v6)
+    } catch (v6Error) {
+      if (!isMissingFile(v6Error)) throw v6Error
       try {
-        return await readDocumentAtPath(paths.v4)
-      } catch (v3Error) {
-        if (!isMissingFile(v3Error)) throw v3Error
+        return await readDocumentAtPath(paths.v5)
+      } catch (v5Error) {
+        if (!isMissingFile(v5Error)) throw v5Error
         try {
-          return await readDocumentAtPath(paths.v3)
-        } catch (v2Error) {
-          if (!isMissingFile(v2Error)) throw v2Error
-          return readDocumentAtPath(paths.v2)
+          return await readDocumentAtPath(paths.v4)
+        } catch (v4Error) {
+          if (!isMissingFile(v4Error)) throw v4Error
+          try {
+            return await readDocumentAtPath(paths.v3)
+          } catch (v3Error) {
+            if (!isMissingFile(v3Error)) throw v3Error
+            return readDocumentAtPath(paths.v2)
+          }
         }
       }
     }
@@ -91,9 +97,9 @@ export async function readStoredDocument(rootDirectory = process.cwd()) {
 }
 
 export async function writeStoredDocument(document: OrgDocumentFile, rootDirectory = process.cwd()) {
-  const { v6 } = getOrgMasterDocumentPaths(rootDirectory)
-  await mkdir(dirname(v6), { recursive: true })
-  await writeFile(v6, `${JSON.stringify(document, null, 2)}\n`, 'utf8')
+  const { v7 } = getOrgMasterDocumentPaths(rootDirectory)
+  await mkdir(dirname(v7), { recursive: true })
+  await writeFile(v7, `${JSON.stringify(document, null, 2)}\n`, 'utf8')
   return readStoredDocument(rootDirectory)
 }
 
@@ -144,7 +150,10 @@ function workspaceError(response: ServerResponse, error: unknown) {
     : error.code === 'WORKSPACE_ENTRY_NOT_FOUND' ? 404
       : error.code === 'VERSION_INVALID' ? 422
         : 400
-  sendJson(response, status, { error: error.code })
+  sendJson(response, status, {
+    error: error.code,
+    ...(error.code === 'VERSION_INVALID' ? { reason: error.message || error.code } : {}),
+  })
 }
 
 async function parseJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {

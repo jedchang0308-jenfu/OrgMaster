@@ -28,7 +28,7 @@ const assignments: Assignment[] = [
 ]
 
 function state(overrides: Partial<OrgDirectoryState> = {}): OrgDirectoryState {
-  return { employees, departments, roles, positions, assignments, members, roleCombinationRiskRules: [], organizationLevels: createDefaultOrganizationLevels(), organizationLayout: { mode: 'tree', showLevelGuides: true }, duties: [], dutyPositionRelations: [], ...overrides }
+  return { employees, departments, roles, positions, assignments, members, roleCombinationRiskRules: [], organizationLevels: createDefaultOrganizationLevels(), organizationLayout: { mode: 'tree', showLevelGuides: true }, duties: [], dutyPositionRelations: [], processes: [], processNodes: [], processEdges: [], processNodeDutyLinks: [], ...overrides }
 }
 
 describe('administrative approval route', () => {

@@ -8,6 +8,10 @@ function baseState() {
     ...screenshotOrganizationState,
     duties: [{ id: 'duty-invoice', title: '發票審核', description: '確認發票與付款資料' }],
     dutyPositionRelations: [],
+    processes: [],
+    processNodes: [],
+    processEdges: [],
+    processNodeDutyLinks: [],
   }
 }
 

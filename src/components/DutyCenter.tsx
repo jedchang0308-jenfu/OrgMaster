@@ -28,10 +28,11 @@ interface DutyCenterProps {
   onAnomalyTypesChange: (value: DutyPlanningStatusFilter[]) => void
   onClearFilters: () => void
   onOpenDutyConfiguration: (dutyId: string) => void
+  onOpenProcessPlanning?: () => void
   presentation?: 'page' | 'modal'
 }
 
-export function DutyCenter({ open, onClose, state, departments: _departments, organizationLevels: _organizationLevels, isDirty, savedAt, persistenceKind, autoSavePending, autoSaveError, onSave, onSaveCopy, onBackup, view, query, anomalyTypes, onNavigateView, onQueryChange, onAnomalyTypesChange, onClearFilters, onOpenDutyConfiguration, presentation = 'page' }: DutyCenterProps) {
+export function DutyCenter({ open, onClose, state, departments: _departments, organizationLevels: _organizationLevels, isDirty, savedAt, persistenceKind, autoSavePending, autoSaveError, onSave, onSaveCopy, onBackup, view, query, anomalyTypes, onNavigateView, onQueryChange, onAnomalyTypesChange, onClearFilters, onOpenDutyConfiguration, onOpenProcessPlanning, presentation = 'page' }: DutyCenterProps) {
   const [selectedDutyId, setSelectedDutyId] = useState<string | null>(null)
   useEffect(() => {
     if (selectedDutyId && !state.duties.some((duty) => duty.id === selectedDutyId)) setSelectedDutyId(null)
@@ -42,7 +43,7 @@ export function DutyCenter({ open, onClose, state, departments: _departments, or
   const content = <section className={`duty-center duty-center--minimal${isPage ? ' duty-center--page' : ''}`} role={isPage ? undefined : 'dialog'} aria-modal={isPage ? undefined : 'true'} aria-labelledby="duty-center-title">
     <header className="duty-center__header">
       <div className="duty-center__brand"><span className="duty-center__eyebrow">工作執掌</span><h1 id="duty-center-title">責任規劃工作台</h1></div>
-      <div className="duty-center__header-actions"><DocumentMenu isDirty={isDirty} savedAt={savedAt} persistenceKind={persistenceKind} autoSavePending={autoSavePending} autoSaveError={autoSaveError} onSave={onSave} onSaveCopy={onSaveCopy} onBackup={onBackup} /><span className="duty-mode-pill">唯讀工作台</span><button type="button" className="secondary-button" onClick={onClose}>{isPage ? '← 返回組織圖' : '×'}</button></div>
+      <div className="duty-center__header-actions"><DocumentMenu isDirty={isDirty} savedAt={savedAt} persistenceKind={persistenceKind} autoSavePending={autoSavePending} autoSaveError={autoSaveError} onSave={onSave} onSaveCopy={onSaveCopy} onBackup={onBackup} />{onOpenProcessPlanning && <button type="button" className="secondary-button" onClick={onOpenProcessPlanning}>流程規劃</button>}<span className="duty-mode-pill">唯讀工作台</span><button type="button" className="secondary-button" onClick={onClose}>{isPage ? '← 返回組織圖' : '×'}</button></div>
     </header>
     <nav className="duty-planning-tabs" aria-label="責任規劃視角"><a href="/duty-planning?view=audit" aria-current={view === 'audit' ? 'page' : undefined} className={view === 'audit' ? 'is-active' : undefined} onClick={(event) => { event.preventDefault(); onNavigateView('audit') }}>責任盤點</a><a href="/duty-planning?view=distribution" aria-current={view === 'distribution' ? 'page' : undefined} className={view === 'distribution' ? 'is-active' : undefined} onClick={(event) => { event.preventDefault(); onNavigateView('distribution') }}>責任分布</a></nav>
     <div className="duty-center__content"><DutyPlanningWorkbench state={state} view={view} query={query} anomalyTypes={anomalyTypes} onQueryChange={onQueryChange} onAnomalyTypesChange={onAnomalyTypesChange} onClearFilters={onClearFilters} onSelectDuty={setSelectedDutyId} /></div>

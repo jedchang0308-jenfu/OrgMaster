@@ -45,7 +45,7 @@ const assignments: Assignment[] = [
 ]
 
 function state(overrides: Partial<OrgDirectoryState> = {}): OrgDirectoryState {
-  return { departments, employees, roles, positions, assignments, members, roleCombinationRiskRules: [], organizationLevels: createDefaultOrganizationLevels(), organizationLayout: { mode: 'tree', showLevelGuides: true }, duties: [], dutyPositionRelations: [], ...overrides }
+  return { departments, employees, roles, positions, assignments, members, roleCombinationRiskRules: [], organizationLevels: createDefaultOrganizationLevels(), organizationLayout: { mode: 'tree', showLevelGuides: true }, duties: [], dutyPositionRelations: [], processes: [], processNodes: [], processEdges: [], processNodeDutyLinks: [], ...overrides }
 }
 
 describe('summarizeDepartments', () => {

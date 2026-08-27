@@ -14,6 +14,10 @@ const state: OrgDirectoryState = {
     { id: 'rel-primary', dutyId: 'duty-a', relationType: 'execute', target: { kind: 'position', positionId: 'pos-a' }, isPrimaryExecutor: true, order: 0 },
     { id: 'rel-review', dutyId: 'duty-a', relationType: 'review', target: { kind: 'position', positionId: 'pos-a' }, isPrimaryExecutor: false, order: 0 },
   ],
+  processes: [],
+  processNodes: [],
+  processEdges: [],
+  processNodeDutyLinks: [],
 }
 
 describe('duty placement validator', () => {

@@ -3,6 +3,7 @@ import { reconcileEmployeeResponsibilities } from './employeeResponsibilities'
 import { removeDepartmentFromDirectory } from './directories'
 import { duplicatePosition } from './positions'
 import { invalidateDutyRelationsForPositions, normalizeDutyRelationOrders, normalizeDutyState, validateDutyState, type DutyValidationCode } from './duties'
+import { normalizeProcessPlanningState, validateProcessPlanningState, type ProcessPlanningValidationCode } from './processPlanning'
 import { projectDutyPlan, type DutyPlanIntent } from './dutyPlanning'
 import {
   buildHierarchyNodes,
@@ -12,7 +13,7 @@ import {
   type OrganizationValidationOptions,
   type OrganizationValidationCode,
 } from './organizationHierarchy'
-import type { ChildrenAxis, Duty, DutyPositionRelation, OrganizationLayoutMode, OrgDirectoryState, Position, Role } from './types'
+import type { ChildrenAxis, Duty, DutyPositionRelation, OrganizationLayoutMode, OrgDirectoryState, Position, ProcessDefinition, ProcessEdge, ProcessNode, ProcessNodeDutyLink, Role } from './types'
 
 export type OrganizationCommand =
   | {
@@ -42,9 +43,22 @@ export type OrganizationCommand =
   | { type: 'REORDER_DUTY_RELATION'; relationId: string; delta: -1 | 1 }
   | { type: 'TRANSFER_PRIMARY_DUTY_EXECUTOR'; dutyId: string; sourceRelationId: string; targetPositionId: string; targetRelationId: string }
   | { type: 'COMMIT_DUTY_PLANNING_CHANGE'; intent: DutyPlanIntent }
+  | { type: 'CREATE_PROCESS'; process: ProcessDefinition }
+  | { type: 'UPDATE_PROCESS'; processId: string; title?: string; description?: string | null }
+  | { type: 'DELETE_EMPTY_PROCESS'; processId: string }
+  | { type: 'CREATE_PROCESS_NODE'; node: ProcessNode }
+  | { type: 'UPDATE_PROCESS_NODE'; nodeId: string; title: string }
+  | { type: 'MOVE_PROCESS_NODE'; nodeId: string; parentNodeId: string | null; insertIndex: number }
+  | { type: 'DELETE_PROCESS_LEAF_NODE'; nodeId: string }
+  | { type: 'CREATE_PROCESS_EDGE'; edge: ProcessEdge }
+  | { type: 'DELETE_PROCESS_EDGE'; edgeId: string }
+  | { type: 'LINK_PROCESS_NODE_DUTY'; link: ProcessNodeDutyLink }
+  | { type: 'UNLINK_PROCESS_NODE_DUTY'; linkId: string }
+  | { type: 'CREATE_DUTY_AND_LINK_PROCESS_NODE'; duty: Duty; link: ProcessNodeDutyLink }
 
 export type OrganizationCommandIssueCode = OrganizationValidationCode
   | DutyValidationCode
+  | ProcessPlanningValidationCode
   | 'POSITION_NOT_FOUND'
   | 'DEPARTMENT_NOT_FOUND'
   | 'INVALID_DEPARTMENT_REPLACEMENT'
@@ -68,7 +82,7 @@ export type OrganizationCommandResult =
   | {
       status: 'rejected'
       state: OrgDirectoryState
-      issue: { code: OrganizationCommandIssueCode; positionIds: string[]; departmentIds: string[] }
+      issue: { code: OrganizationCommandIssueCode; positionIds: string[]; departmentIds: string[]; dutyIds: string[]; processIds: string[]; processNodeIds: string[] }
     }
 
 function reject(
@@ -76,8 +90,11 @@ function reject(
   code: OrganizationCommandIssueCode,
   positionIds: string[] = [],
   departmentIds: string[] = [],
+  dutyIds: string[] = [],
+  processIds: string[] = [],
+  processNodeIds: string[] = [],
 ): OrganizationCommandResult {
-  return { status: 'rejected', state, issue: { code, positionIds, departmentIds } }
+  return { status: 'rejected', state, issue: { code, positionIds, departmentIds, dutyIds, processIds, processNodeIds } }
 }
 
 function normalizeOrders(state: OrgDirectoryState, parentPositionId: string | null) {
@@ -115,11 +132,49 @@ function validateApplied(
   asOf?: string,
 ): OrganizationCommandResult {
   const repaired = normalizeDutyState(reconcileEmployeeResponsibilities(state, asOf))
-  const validation = validateOrganizationState(repaired, validationOptions)
+  const normalized = normalizeProcessPlanningState(repaired)
+  const validation = validateOrganizationState(normalized, validationOptions)
   if (!validation.ok) return reject(originalState, validation.code, validation.positionIds, validation.departmentIds)
-  const dutyValidation = validateDutyState(repaired)
+  const dutyValidation = validateDutyState(normalized)
   if (!dutyValidation.ok) return reject(originalState, dutyValidation.issue.code, dutyValidation.issue.positionIds)
-  return { status: 'applied', state: repaired, changedPositionIds }
+  const processValidation = validateProcessPlanningState(normalized)
+  if (!processValidation.ok) return reject(originalState, processValidation.issue.code, [], [], processValidation.issue.dutyIds, processValidation.issue.processIds, processValidation.issue.processNodeIds)
+  return { status: 'applied', state: normalized, changedPositionIds }
+}
+
+function processSiblings(state: OrgDirectoryState, processId: string, parentNodeId: string | null) {
+  return state.processNodes
+    .filter((node) => node.processId === processId && node.parentNodeId === parentNodeId)
+    .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+}
+
+function isProcessNodeDescendant(state: OrgDirectoryState, candidateId: string, ancestorId: string) {
+  const byId = new Map(state.processNodes.map((node) => [node.id, node]))
+  let current = byId.get(candidateId)
+  const seen = new Set<string>()
+  while (current?.parentNodeId) {
+    if (current.parentNodeId === ancestorId) return true
+    if (seen.has(current.id)) return true
+    seen.add(current.id)
+    current = byId.get(current.parentNodeId)
+  }
+  return false
+}
+
+function reorderProcessSiblings(state: OrgDirectoryState, nodeId: string, parentNodeId: string | null, insertIndex: number) {
+  const moving = state.processNodes.find((node) => node.id === nodeId)
+  if (!moving) return state
+  const siblings = processSiblings(state, moving.processId, parentNodeId).filter((node) => node.id !== nodeId)
+  const ids = siblings.map((node) => node.id)
+  ids.splice(insertIndex, 0, nodeId)
+  const orderById = new Map(ids.map((id, order) => [id, order]))
+  return {
+    ...state,
+    processNodes: state.processNodes.map((node) => {
+      const order = orderById.get(node.id)
+      return order === undefined ? node : { ...node, order, ...(node.id === nodeId ? { parentNodeId } : {}) }
+    }),
+  }
 }
 
 function positionOrReject(state: OrgDirectoryState, id: string) {
@@ -170,6 +225,12 @@ export function executeOrganizationCommand(
 
   if (command.type === 'DELETE_DUTY') {
     if (!state.duties.some((duty) => duty.id === command.dutyId)) return reject(state, 'DUTY_RELATION_DUTY_MISSING')
+    const processLinks = state.processNodeDutyLinks.filter((link) => link.dutyId === command.dutyId)
+    if (processLinks.length) {
+      const processNodeIds = processLinks.map((link) => link.processNodeId)
+      const processIds = state.processNodes.filter((node) => processNodeIds.includes(node.id)).map((node) => node.processId)
+      return reject(state, 'DUTY_PROCESS_LINK_IN_USE', [], [], [command.dutyId], [...new Set(processIds)], processNodeIds)
+    }
     return validateApplied({
       ...state,
       duties: state.duties.filter((duty) => duty.id !== command.dutyId),
@@ -247,6 +308,124 @@ export function executeOrganizationCommand(
       return reject(state, issueCode, projection.changedRelationIds)
     }
     return validateApplied(projection.state, projection.changedRelationIds, state)
+  }
+
+  if (command.type === 'CREATE_PROCESS') {
+    if (state.processes.some((process) => process.id === command.process.id)) return reject(state, 'PROCESS_ID_DUPLICATE', [], [], [], [command.process.id])
+    const next = { ...state, processes: [...state.processes, { ...command.process, title: command.process.title.trim(), description: command.process.description?.trim() || null }] }
+    return validateApplied(next, [], state)
+  }
+
+  if (command.type === 'UPDATE_PROCESS') {
+    const process = state.processes.find((item) => item.id === command.processId)
+    if (!process) return reject(state, 'PROCESS_NOT_FOUND', [], [], [], [command.processId])
+    const nextProcess = {
+      ...process,
+      ...(command.title === undefined ? {} : { title: command.title.trim() }),
+      ...(command.description === undefined ? {} : { description: command.description?.trim() || null }),
+    }
+    if (JSON.stringify(process) === JSON.stringify(nextProcess)) return { status: 'noop', state }
+    return validateApplied({ ...state, processes: state.processes.map((item) => item.id === process.id ? nextProcess : item) }, [], state)
+  }
+
+  if (command.type === 'DELETE_EMPTY_PROCESS') {
+    if (!state.processes.some((process) => process.id === command.processId)) return reject(state, 'PROCESS_NOT_FOUND', [], [], [], [command.processId])
+    const nodeIds = state.processNodes.filter((node) => node.processId === command.processId).map((node) => node.id)
+    if (nodeIds.length) return reject(state, 'PROCESS_NOT_EMPTY', [], [], [], [command.processId], nodeIds)
+    return validateApplied({ ...state, processes: state.processes.filter((process) => process.id !== command.processId) }, [], state)
+  }
+
+  if (command.type === 'CREATE_PROCESS_NODE') {
+    const node = command.node
+    if (!state.processes.some((process) => process.id === node.processId)) return reject(state, 'PROCESS_NOT_FOUND', [], [], [], [node.processId], [node.id])
+    if (state.processNodes.some((candidate) => candidate.id === node.id)) return reject(state, 'PROCESS_NODE_ID_DUPLICATE', [], [], [], [node.processId], [node.id])
+    if (node.parentNodeId !== null) {
+      const parent = state.processNodes.find((candidate) => candidate.id === node.parentNodeId)
+      if (!parent || parent.processId !== node.processId) return reject(state, 'PROCESS_NODE_PARENT_INVALID', [], [], [], [node.processId], [node.id, node.parentNodeId])
+    }
+    const next = { ...state, processNodes: [...state.processNodes, { ...node, title: node.title.trim() }] }
+    return validateApplied(next, [], state)
+  }
+
+  if (command.type === 'UPDATE_PROCESS_NODE') {
+    const node = state.processNodes.find((candidate) => candidate.id === command.nodeId)
+    if (!node) return reject(state, 'PROCESS_NODE_NOT_FOUND', [], [], [], [command.nodeId], [command.nodeId])
+    const nextNode = { ...node, title: command.title.trim() }
+    if (JSON.stringify(node) === JSON.stringify(nextNode)) return { status: 'noop', state }
+    return validateApplied({ ...state, processNodes: state.processNodes.map((candidate) => candidate.id === node.id ? nextNode : candidate) }, [], state)
+  }
+
+  if (command.type === 'MOVE_PROCESS_NODE') {
+    const node = state.processNodes.find((candidate) => candidate.id === command.nodeId)
+    if (!node) return reject(state, 'PROCESS_NODE_NOT_FOUND', [], [], [], [command.nodeId], [command.nodeId])
+    if (command.parentNodeId === node.id || (command.parentNodeId && isProcessNodeDescendant(state, command.parentNodeId, node.id))) {
+      return reject(state, 'PROCESS_NODE_CYCLE', [], [], [], [node.processId], [node.id, command.parentNodeId ?? node.id])
+    }
+    if (command.parentNodeId !== null) {
+      const parent = state.processNodes.find((candidate) => candidate.id === command.parentNodeId)
+      if (!parent || parent.processId !== node.processId) return reject(state, 'PROCESS_NODE_PARENT_INVALID', [], [], [], [node.processId], [node.id, command.parentNodeId])
+    }
+    const siblingCount = processSiblings(state, node.processId, command.parentNodeId).filter((candidate) => candidate.id !== node.id).length
+    if (!Number.isInteger(command.insertIndex) || command.insertIndex < 0 || command.insertIndex > siblingCount) return reject(state, 'PROCESS_NODE_ORDER_INVALID', [], [], [], [node.processId], [node.id])
+    const next = reorderProcessSiblings(state, node.id, command.parentNodeId, command.insertIndex)
+    return validateApplied(next, [], state)
+  }
+
+  if (command.type === 'DELETE_PROCESS_LEAF_NODE') {
+    const node = state.processNodes.find((candidate) => candidate.id === command.nodeId)
+    if (!node) return reject(state, 'PROCESS_NODE_NOT_FOUND', [], [], [], [command.nodeId], [command.nodeId])
+    const childIds = state.processNodes.filter((candidate) => candidate.parentNodeId === node.id).map((candidate) => candidate.id)
+    if (childIds.length) return reject(state, 'PROCESS_NODE_HAS_CHILDREN', [], [], [], [node.processId], [node.id, ...childIds])
+    const next = {
+      ...state,
+      processNodes: state.processNodes.filter((candidate) => candidate.id !== node.id),
+      processEdges: state.processEdges.filter((edge) => edge.fromNodeId !== node.id && edge.toNodeId !== node.id),
+      processNodeDutyLinks: state.processNodeDutyLinks.filter((link) => link.processNodeId !== node.id),
+    }
+    return validateApplied(next, [], state)
+  }
+
+  if (command.type === 'CREATE_PROCESS_EDGE') {
+    const edge = command.edge
+    const from = state.processNodes.find((node) => node.id === edge.fromNodeId)
+    const to = state.processNodes.find((node) => node.id === edge.toNodeId)
+    if (!state.processes.some((process) => process.id === edge.processId) || !from || !to || from.processId !== edge.processId || to.processId !== edge.processId) return reject(state, 'PROCESS_EDGE_ENDPOINT_INVALID', [], [], [], [edge.processId], [edge.fromNodeId, edge.toNodeId])
+    if (edge.fromNodeId === edge.toNodeId) return reject(state, 'PROCESS_EDGE_SELF_LOOP', [], [], [], [edge.processId], [edge.fromNodeId])
+    if (state.processEdges.some((candidate) => candidate.id === edge.id)) return reject(state, 'PROCESS_EDGE_ID_DUPLICATE', [], [], [], [edge.processId], [edge.id])
+    if (state.processEdges.some((candidate) => candidate.processId === edge.processId && candidate.fromNodeId === edge.fromNodeId && candidate.toNodeId === edge.toNodeId)) return reject(state, 'PROCESS_EDGE_DUPLICATE', [], [], [], [edge.processId], [edge.fromNodeId, edge.toNodeId])
+    return validateApplied({ ...state, processEdges: [...state.processEdges, edge] }, [], state)
+  }
+
+  if (command.type === 'DELETE_PROCESS_EDGE') {
+    if (!state.processEdges.some((edge) => edge.id === command.edgeId)) return { status: 'noop', state }
+    return validateApplied({ ...state, processEdges: state.processEdges.filter((edge) => edge.id !== command.edgeId) }, [], state)
+  }
+
+  if (command.type === 'LINK_PROCESS_NODE_DUTY') {
+    const link = command.link
+    const node = state.processNodes.find((candidate) => candidate.id === link.processNodeId)
+    if (!node || !state.duties.some((duty) => duty.id === link.dutyId)) return reject(state, 'PROCESS_DUTY_LINK_REFERENCE_INVALID', [], [], [link.dutyId], node ? [node.processId] : [], [link.processNodeId])
+    if (state.processNodeDutyLinks.some((candidate) => candidate.id === link.id)) return reject(state, 'PROCESS_DUTY_LINK_ID_DUPLICATE', [], [], [link.dutyId], [node.processId], [node.id])
+    if (state.processNodeDutyLinks.some((candidate) => candidate.processNodeId === link.processNodeId && candidate.dutyId === link.dutyId)) return reject(state, 'PROCESS_DUTY_LINK_DUPLICATE', [], [], [link.dutyId], [node.processId], [node.id])
+    return validateApplied({ ...state, processNodeDutyLinks: [...state.processNodeDutyLinks, link] }, [], state)
+  }
+
+  if (command.type === 'UNLINK_PROCESS_NODE_DUTY') {
+    if (!state.processNodeDutyLinks.some((link) => link.id === command.linkId)) return { status: 'noop', state }
+    return validateApplied({ ...state, processNodeDutyLinks: state.processNodeDutyLinks.filter((link) => link.id !== command.linkId) }, [], state)
+  }
+
+  if (command.type === 'CREATE_DUTY_AND_LINK_PROCESS_NODE') {
+    const node = state.processNodes.find((candidate) => candidate.id === command.link.processNodeId)
+    if (!node) return reject(state, 'PROCESS_NODE_NOT_FOUND', [], [], [], [], [command.link.processNodeId])
+    if (state.duties.some((duty) => duty.id === command.duty.id)) return reject(state, 'DUTY_ID_DUPLICATE', [], [], [command.duty.id], [node.processId], [node.id])
+    if (state.processNodeDutyLinks.some((link) => link.processNodeId === command.link.processNodeId && link.dutyId === command.duty.id)) return reject(state, 'PROCESS_DUTY_LINK_DUPLICATE', [], [], [command.duty.id], [node.processId], [node.id])
+    const next = {
+      ...state,
+      duties: [...state.duties, { ...command.duty, title: command.duty.title.trim(), description: command.duty.description?.trim() || null }],
+      processNodeDutyLinks: [...state.processNodeDutyLinks, { ...command.link, dutyId: command.duty.id }],
+    }
+    return validateApplied(next, [], state)
   }
 
   if (command.type === 'ADD_ORGANIZATION_LEVEL') {

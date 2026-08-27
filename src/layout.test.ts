@@ -16,7 +16,7 @@ import {
 } from './layout'
 
 describe('layoutOrganization', () => {
-  const hierarchy = buildHierarchyNodes({ employees: initialEmployees, departments: initialDepartments, roles: initialRoles, positions: initialPositions, assignments: initialAssignments, members: initialMembers, roleCombinationRiskRules: [], organizationLevels: initialOrganizationLevels, organizationLayout: { mode: 'tree', showLevelGuides: true }, duties: [], dutyPositionRelations: [] })
+  const hierarchy = buildHierarchyNodes({ employees: initialEmployees, departments: initialDepartments, roles: initialRoles, positions: initialPositions, assignments: initialAssignments, members: initialMembers, roleCombinationRiskRules: [], organizationLevels: initialOrganizationLevels, organizationLayout: { mode: 'tree', showLevelGuides: true }, duties: [], dutyPositionRelations: [], processes: [], processNodes: [], processEdges: [], processNodeDutyLinks: [] })
 
   it('uses the requested cross-level and same-level Y spacing', () => {
     expect(ORGANIZATION_LEVEL_BAND_GAP).toBe(30)

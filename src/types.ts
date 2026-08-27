@@ -116,6 +116,35 @@ export interface DutyPositionRelation {
   order: number
 }
 
+export interface ProcessDefinition {
+  id: string
+  title: string
+  description: string | null
+  order: number
+}
+
+export interface ProcessNode {
+  id: string
+  processId: string
+  title: string
+  parentNodeId: string | null
+  order: number
+}
+
+export interface ProcessEdge {
+  id: string
+  processId: string
+  fromNodeId: string
+  toNodeId: string
+}
+
+export interface ProcessNodeDutyLink {
+  id: string
+  processNodeId: string
+  dutyId: string
+  order: number
+}
+
 /**
  * Position data joined with the presentation layout state and current assignment.
  * The primary hierarchy comes from `Position.parentPositionId`; `OrgMember`
@@ -143,6 +172,10 @@ export interface OrgDirectoryState {
   organizationLayout: OrganizationLayoutSettings
   duties: Duty[]
   dutyPositionRelations: DutyPositionRelation[]
+  processes: ProcessDefinition[]
+  processNodes: ProcessNode[]
+  processEdges: ProcessEdge[]
+  processNodeDutyLinks: ProcessNodeDutyLink[]
 }
 
 /**

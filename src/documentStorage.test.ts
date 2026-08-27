@@ -33,6 +33,10 @@ const state: OrgDirectoryState = {
   organizationLayout: { mode: 'tree', showLevelGuides: true, positionYOverrides: {} },
   duties: [],
   dutyPositionRelations: [],
+  processes: [],
+  processNodes: [],
+  processEdges: [],
+  processNodeDutyLinks: [],
 }
 
 function toV4State(source: OrgDirectoryState) {
@@ -63,7 +67,7 @@ function createMemoryStorage(): Storage {
 describe('document storage', () => {
   it('creates a versioned document without sharing mutable state', () => {
     const document = createOrgDocumentFile(state, 'copy', '2026-08-11T09:00:00.000Z')
-    expect(document).toMatchObject({ app: 'OrgMaster', version: 6, kind: 'copy', savedAt: '2026-08-11T09:00:00.000Z' })
+    expect(document).toMatchObject({ app: 'OrgMaster', version: 7, kind: 'copy', savedAt: '2026-08-11T09:00:00.000Z' })
     expect(orgStateSignature(document.state)).toBe(orgStateSignature(state))
     expect(document.state).not.toBe(state)
     expect(document.state.members).not.toBe(state.members)
@@ -84,7 +88,7 @@ describe('document storage', () => {
     expect(saved?.kind).toBe('document')
     expect(storage.getItem(ORG_DOCUMENT_STORAGE_KEY)).toContain('OrgMaster')
     const loaded = loadLocalDocument(storage)
-    expect(loaded).toMatchObject({ status: 'loaded', sourceVersion: 6, document: { kind: 'document', savedAt: '2026-08-11T09:01:00.000Z' } })
+    expect(loaded).toMatchObject({ status: 'loaded', sourceVersion: 7, document: { kind: 'document', savedAt: '2026-08-11T09:01:00.000Z' } })
     if (loaded.status !== 'loaded') return
     expect(orgStateSignature(loaded.document.state)).toBe(orgStateSignature(state))
   })
@@ -114,7 +118,7 @@ describe('document storage', () => {
       }],
     }
     const parsed = parseOrgDocument(createOrgDocumentFile(stateWithRule, 'backup', '2026-08-15T09:00:00.000Z'))
-    expect(parsed).toMatchObject({ ok: true, sourceVersion: 6 })
+    expect(parsed).toMatchObject({ ok: true, sourceVersion: 7 })
     if (!parsed.ok) return
     expect(parsed.document.state.roleCombinationRiskRules).toEqual(stateWithRule.roleCombinationRiskRules)
   })
@@ -127,7 +131,7 @@ describe('document storage', () => {
       savedAt: '2026-08-17T00:00:00.000Z',
       state: toV4State(state),
     })
-    expect(parsed).toMatchObject({ ok: true, sourceVersion: 4, document: { version: 6 } })
+    expect(parsed).toMatchObject({ ok: true, sourceVersion: 4, document: { version: 7 } })
     if (!parsed.ok) return
     expect(parsed.document.state.organizationLayout).toEqual({ mode: 'tree', showLevelGuides: true, positionYOverrides: {} })
     expect(parsed.document.state.positions.find((position) => position.id === 'ceo')?.organizationLevelId).toBe('level-executive')
@@ -137,7 +141,7 @@ describe('document storage', () => {
 
   it('migrates a V5 state to V6 with explicit empty duty collections', () => {
     const parsed = parseOrgDocument({ app: 'OrgMaster', version: 5, kind: 'document', savedAt: '2026-08-18T00:00:00.000Z', state: toV5State(state) })
-    expect(parsed).toMatchObject({ ok: true, sourceVersion: 5, document: { version: 6 } })
+    expect(parsed).toMatchObject({ ok: true, sourceVersion: 5, document: { version: 7 } })
     if (!parsed.ok) return
     expect(parsed.document.state.duties).toEqual([])
     expect(parsed.document.state.dutyPositionRelations).toEqual([])
@@ -175,18 +179,18 @@ describe('document storage', () => {
     const storage = createMemoryStorage()
     const raw = JSON.stringify({ app: 'OrgMaster', version: 4, kind: 'document', savedAt: '2026-08-17T00:00:00.000Z', state: toV4State(state) })
     storage.setItem(LEGACY_V4_ORG_DOCUMENT_STORAGE_KEY, raw)
-    expect(loadLocalDocument(storage)).toMatchObject({ status: 'loaded', sourceVersion: 4, document: { version: 6 } })
+    expect(loadLocalDocument(storage)).toMatchObject({ status: 'loaded', sourceVersion: 4, document: { version: 7 } })
     expect(storage.getItem(LEGACY_V4_ORG_DOCUMENT_STORAGE_KEY)).toBe(raw)
-    expect(storage.getItem(ORG_DOCUMENT_STORAGE_KEY)).toContain('"version":6')
+    expect(storage.getItem(ORG_DOCUMENT_STORAGE_KEY)).toContain('"version":7')
   })
 
   it('promotes a V5 local key to V6 while preserving the legacy bytes', () => {
     const storage = createMemoryStorage()
     const raw = JSON.stringify({ app: 'OrgMaster', version: 5, kind: 'document', savedAt: '2026-08-17T00:00:00.000Z', state: toV5State(state) })
     storage.setItem(LEGACY_V5_ORG_DOCUMENT_STORAGE_KEY, raw)
-    expect(loadLocalDocument(storage)).toMatchObject({ status: 'loaded', sourceVersion: 5, document: { version: 6 } })
+    expect(loadLocalDocument(storage)).toMatchObject({ status: 'loaded', sourceVersion: 5, document: { version: 7 } })
     expect(storage.getItem(LEGACY_V5_ORG_DOCUMENT_STORAGE_KEY)).toBe(raw)
-    expect(storage.getItem(ORG_DOCUMENT_STORAGE_KEY)).toContain('"version":6')
+    expect(storage.getItem(ORG_DOCUMENT_STORAGE_KEY)).toContain('"version":7')
   })
 
   it('migrates the former warning level and keeps an optional missing reason empty when loading V3', () => {
@@ -215,7 +219,7 @@ describe('document storage', () => {
     const parsed = parseOrgDocument({
       app: 'OrgMaster', version: 2, kind: 'document', savedAt: '2026-08-15T09:00:00.000Z', state: stateV2,
     })
-    expect(parsed).toMatchObject({ ok: true, sourceVersion: 2, document: { version: 6 } })
+    expect(parsed).toMatchObject({ ok: true, sourceVersion: 2, document: { version: 7 } })
     if (!parsed.ok) return
     expect(parsed.document.state.roleCombinationRiskRules).toEqual([])
   })
@@ -228,9 +232,9 @@ describe('document storage', () => {
     })
     storage.setItem(LEGACY_V2_ORG_DOCUMENT_STORAGE_KEY, rawV2)
     const loaded = loadLocalDocument(storage)
-    expect(loaded).toMatchObject({ status: 'loaded', sourceVersion: 2, document: { version: 6 } })
+    expect(loaded).toMatchObject({ status: 'loaded', sourceVersion: 2, document: { version: 7 } })
     expect(storage.getItem(LEGACY_V2_ORG_DOCUMENT_STORAGE_KEY)).toBe(rawV2)
-    expect(storage.getItem(ORG_DOCUMENT_STORAGE_KEY)).toContain('"version":6')
+    expect(storage.getItem(ORG_DOCUMENT_STORAGE_KEY)).toContain('"version":7')
   })
 
   it.each([
@@ -284,7 +288,7 @@ describe('document storage', () => {
     expect(draft).toMatchObject({ kind: 'draft', savedAt: '2026-08-12T09:01:00.000Z' })
     expect(storage.getItem(ORG_DOCUMENT_DRAFT_STORAGE_KEY)).toContain('新的執行長')
     const loaded = loadLocalDocument(storage)
-    expect(loaded).toMatchObject({ status: 'loaded', sourceVersion: 6, document: { kind: 'draft' } })
+    expect(loaded).toMatchObject({ status: 'loaded', sourceVersion: 7, document: { kind: 'draft' } })
     if (loaded.status !== 'loaded') return
     expect(loaded.document.state.positions.find((position) => position.id === 'ceo')?.title).toBe('新的執行長')
   })
@@ -365,14 +369,14 @@ describe('document storage', () => {
     const saved = saveLocalDocument(remapped, storage, '2026-08-12T09:02:00.000Z')
     expect(saved).not.toBeNull()
     const loaded = loadLocalDocument(storage)
-    expect(loaded).toMatchObject({ status: 'loaded', sourceVersion: 6 })
+    expect(loaded).toMatchObject({ status: 'loaded', sourceVersion: 7 })
     if (loaded.status !== 'loaded') return
     expect(loaded.document.state.positions.find((position) => position.id === movedPosition!.id)?.departmentId).toBe(targetDepartmentId)
   })
 
   it('rejects unsupported or incomplete documents', () => {
     expect(parseOrgDocument({ app: 'OtherApp', version: 1 })).toMatchObject({ ok: false, code: 'INVALID_APP' })
-    expect(parseOrgDocument({ app: 'OrgMaster', version: 7, kind: 'backup', savedAt: 'now', state })).toMatchObject({ ok: false, code: 'UNSUPPORTED_VERSION' })
+    expect(parseOrgDocument({ app: 'OrgMaster', version: 8, kind: 'backup', savedAt: 'now', state })).toMatchObject({ ok: false, code: 'UNSUPPORTED_VERSION' })
     expect(parseOrgDocument({ app: 'OrgMaster', version: 3, kind: 'backup', savedAt: 'now', state: { ...state, roleCombinationRiskRules: null } })).toMatchObject({ ok: false, code: 'INVALID_DOCUMENT_SHAPE' })
     expect(parseOrgDocument({ app: 'OrgMaster', version: 2, kind: 'backup', savedAt: 'now', state: { ...state, members: null } })).toMatchObject({ ok: false, code: 'INVALID_DOCUMENT_SHAPE' })
   })
@@ -390,11 +394,11 @@ describe('document storage', () => {
     const loaded = loadLocalDocument(storage)
     expect(loaded.status).toBe('loaded')
     if (loaded.status !== 'loaded') return
-    expect(loaded.document.version).toBe(6)
+    expect(loaded.document.version).toBe(7)
     expect(loaded.sourceVersion).toBe(1)
     expect(loaded.document.state.positions.every((position) => 'parentPositionId' in position)).toBe(true)
     expect(loaded.document.state.members.every((member) => !('parentId' in member))).toBe(true)
-    expect(storage.getItem(ORG_DOCUMENT_STORAGE_KEY)).toContain('"version":6')
+    expect(storage.getItem(ORG_DOCUMENT_STORAGE_KEY)).toContain('"version":7')
   })
 
   it('fails closed for V1 ID mismatch and preserves the source key', () => {
@@ -432,7 +436,7 @@ describe('document storage', () => {
     expect(v3).not.toBeNull()
     storage.setItem(LEGACY_ORG_DOCUMENT_STORAGE_KEY, JSON.stringify({ app: 'OrgMaster', version: 1, kind: 'document', savedAt: 'old', state: { ...state, members: [] } }))
     const loaded = loadLocalDocument(storage)
-    expect(loaded).toMatchObject({ status: 'loaded', sourceVersion: 6, document: { savedAt: '2026-08-11T09:04:00.000Z' } })
+    expect(loaded).toMatchObject({ status: 'loaded', sourceVersion: 7, document: { savedAt: '2026-08-11T09:04:00.000Z' } })
   })
 
   it('rejects a V3 payload that attempts to restore a second persisted parent source', () => {
