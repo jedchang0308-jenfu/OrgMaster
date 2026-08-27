@@ -1,9 +1,9 @@
-import { Background, BackgroundVariant, Controls, ReactFlow, type Edge, type Node } from '@xyflow/react'
-import { useMemo } from 'react'
+import { Background, BackgroundVariant, Controls, Handle, Position as FlowPosition, ReactFlow, type Edge, type Node } from '@xyflow/react'
+import { useMemo, type KeyboardEvent } from 'react'
 import { layoutProcessPlanningGraph } from '../processPlanningLayout'
 import type { ProcessEdge, ProcessNode } from '../types'
 
-export type ProcessCanvasNode = Node<{ title: string; selected: boolean; related: boolean }>
+export type ProcessCanvasNode = Node<{ title: string; selected: boolean; related: boolean; onSelect: () => void }>
 export type ProcessCanvasEdge = Edge
 
 interface ProcessPlanningCanvasProps {
@@ -11,28 +11,38 @@ interface ProcessPlanningCanvasProps {
   edges: ProcessEdge[]
   mode: 'mindmap' | 'flow'
   selectedNodeId: string | null
+  relatedNodeIds?: ReadonlySet<string>
   onSelectNode: (nodeId: string) => void
 }
 
-function ProcessNodeCard({ data }: { data: { title: string; selected: boolean; related: boolean } }) {
-  return <div className={`process-canvas-node${data.selected ? ' is-selected' : ''}${data.related ? ' is-related' : ''}`} role="button" tabIndex={0}>
-    <span className="process-canvas-node__dot" aria-hidden="true" />
-    <strong>{data.title}</strong>
-  </div>
+function ProcessNodeCard({ data }: { data: { title: string; selected: boolean; related: boolean; onSelect: () => void } }) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    data.onSelect()
+  }
+  return <>
+    <Handle type="target" position={FlowPosition.Top} isConnectable={false} />
+    <Handle type="source" position={FlowPosition.Bottom} isConnectable={false} />
+    <div className={`process-canvas-node${data.selected ? ' is-selected' : ''}${data.related ? ' is-related' : ''}`} role="button" tabIndex={0} onClick={data.onSelect} onKeyDown={handleKeyDown} aria-pressed={data.selected}>
+      <span className="process-canvas-node__dot" aria-hidden="true" />
+      <strong>{data.title}</strong>
+    </div>
+  </>
 }
 
 const nodeTypes = { process: ProcessNodeCard }
 
-export function ProcessPlanningCanvas({ nodes, edges, mode, selectedNodeId, onSelectNode }: ProcessPlanningCanvasProps) {
+export function ProcessPlanningCanvas({ nodes, edges, mode, selectedNodeId, relatedNodeIds = new Set<string>(), onSelectNode }: ProcessPlanningCanvasProps) {
   const layout = useMemo(() => layoutProcessPlanningGraph({ nodes, edges, mode }), [edges, mode, nodes])
   const flowNodes = useMemo<ProcessCanvasNode[]>(() => layout.nodes.map((node) => ({
     id: node.id,
     type: 'process',
     position: node.position,
-    data: { title: node.title, selected: node.id === selectedNodeId, related: false },
+    data: { title: node.title, selected: node.id === selectedNodeId, related: relatedNodeIds.has(node.id), onSelect: () => onSelectNode(node.id) },
     draggable: false,
     selectable: true,
-  })), [layout.nodes, selectedNodeId])
+  })), [layout.nodes, onSelectNode, relatedNodeIds, selectedNodeId])
   const flowEdges = useMemo<ProcessCanvasEdge[]>(() => layout.edges.map((edge) => ({
     id: edge.id,
     source: edge.source,

@@ -461,7 +461,10 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!processPlanningLocation.active) return
+    // Do not normalize a deep link against the screenshot seed while the
+    // workspace version is still hydrating. Otherwise a valid Process/node
+    // query is stripped before the selected draft is loaded.
+    if (!serverReady || serverHydrationPendingRef.current || !processPlanningLocation.active) return
     const normalized = normalizeProcessPlanningLocation(processPlanningLocation, currentState)
     const canonical = canonicalProcessPlanningUrl(processPlanningLocation, currentState)
     const currentUrl = `${window.location.pathname}${window.location.search}`
@@ -469,7 +472,7 @@ export default function App() {
       window.history.replaceState({}, '', canonical)
       setProcessPlanningLocation(normalized)
     }
-  }, [currentState, processPlanningLocation])
+  }, [currentState, processPlanningLocation, serverReady])
 
   useEffect(() => {
     const syncManagementMethodLocation = () => {
@@ -1181,7 +1184,11 @@ export default function App() {
         return
       }
       setWorkspaceIndex(result.value)
-      const currentVersionId = result.value.currentVersionId
+      let preferredVersionId: string | null = null
+      try { preferredVersionId = window.sessionStorage.getItem('orgmaster.workspace.active-version.v1') } catch { /* best effort */ }
+      const currentVersionId = result.value.versions.some((version) => version.id === preferredVersionId)
+        ? preferredVersionId!
+        : result.value.currentVersionId
       const loaded = await hydrateWorkspaceVersion(currentVersionId)
       if (!active) return
       if (loaded.status !== 'loaded') {
@@ -1189,7 +1196,11 @@ export default function App() {
         setAssignmentNotice(loaded.message)
       } else {
         serverHydrationSignatureRef.current = orgStateSignature(loaded.value.document.state)
-        setWorkspaceMode('current-view')
+        // Restore edit capability for an active draft selected in this browser
+        // session. Without this, a deep link can load the draft data while the
+        // UI remains read-only, preventing process-planning changes from ever
+        // reaching the autosave path after reload.
+        setWorkspaceMode(loaded.value.version.kind === 'draft' && loaded.value.version.status === 'active' ? 'draft-edit' : 'current-view')
       }
       setServerReady(true)
     })

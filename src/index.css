@@ -5242,6 +5242,8 @@ button.duty-card:focus-visible { outline: 2px solid rgba(63, 109, 246, .55); out
 .process-planning-tabs button.is-active { border-bottom-color: #3f6df6; color: #2458dc; font-weight: 700; }
 .process-planning-grid { display: grid; grid-template-columns: 210px minmax(350px, 1fr) 290px 300px; gap: 12px; padding: 16px; height: calc(100vh - 128px); min-height: 560px; }
 .process-planning-processes, .process-planning-graph-panel, .process-duty-bridge, .process-planning-org-panel { min-width: 0; overflow: hidden; border: 1px solid #dce3ee; border-radius: 10px; background: #fff; }
+.process-planning-graph-panel, .process-planning-org-panel { display: flex; flex-direction: column; }
+.process-planning-graph-panel { overflow: auto; }
 .process-panel-heading { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 14px; border-bottom: 1px solid #e7ebf2; color: #34445f; font-weight: 700; }
 .process-panel-heading small { color: #8b96a7; font-size: 11px; font-weight: 500; }
 .process-planning-processes > button, .process-planning-org-panel button { width: calc(100% - 16px); margin: 4px 8px; border: 1px solid transparent; border-radius: 7px; padding: 9px 10px; background: #f7f9fc; color: #34445f; text-align: left; cursor: pointer; }
@@ -5251,7 +5253,16 @@ button.duty-card:focus-visible { outline: 2px solid rgba(63, 109, 246, .55); out
 .process-planning-processes > button.process-add-button, .process-add-inline { border-color: #c5d3fa; background: #f2f5ff; color: #3159d9; }
 .process-drop-notice { margin: 4px 10px 8px; padding: 6px 8px; border-radius: 6px; background: #f2f5ff; color: #3159d9; font-size: 12px; }
 .process-add-inline { margin-right: 8px; border: 1px solid #c5d3fa; border-radius: 5px; padding: 4px 7px; font-size: 11px; cursor: pointer; }
-.process-planning-canvas { position: relative; height: calc(100% - 44px); min-height: 400px; }
+.process-inline-editor, .process-node-editor, .process-edge-editor { display: flex; align-items: end; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-bottom: 1px solid #e7ebf2; background: #fbfcfe; }
+.process-inline-editor label, .process-node-editor label { display: flex; flex: 1 1 140px; flex-direction: column; gap: 3px; color: #65738a; font-size: 11px; }
+.process-inline-editor input, .process-node-editor input, .process-node-editor select, .process-edge-editor select { min-width: 0; border: 1px solid #cfd8e8; border-radius: 5px; padding: 6px 7px; color: #34445f; background: #fff; }
+.process-inline-editor button, .process-node-editor button, .process-edge-editor button { border: 1px solid #cfd8e8; border-radius: 5px; padding: 6px 8px; background: #fff; color: #395b9c; font-size: 11px; cursor: pointer; }
+.process-editor-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.process-editor-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.process-edge-editor { align-items: center; }
+.process-edge-editor .process-subheading { margin: 0 4px 0 0; }
+.process-edge-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-planning-canvas { position: relative; height: 390px; min-height: 280px; flex: 0 0 390px; }
 .process-planning-canvas .react-flow { background: #fbfcfe; }
 .process-canvas-node { display: flex; align-items: center; gap: 8px; width: 220px; min-height: 54px; box-sizing: border-box; border: 1px solid #cfd8e8; border-radius: 9px; padding: 11px 13px; background: #fff; color: #24324a; box-shadow: 0 3px 10px rgba(36, 50, 74, .08); }
 .process-canvas-node.is-selected { border-color: #3f6df6; box-shadow: 0 0 0 2px rgba(63,109,246,.2); }
@@ -5267,10 +5278,24 @@ button.duty-card:focus-visible { outline: 2px solid rgba(63, 109, 246, .55); out
 .process-lane-buttons button { border: 1px solid #cfd8e8; border-radius: 5px; padding: 5px 7px; background: #f8faff; color: #395b9c; font-size: 11px; cursor: pointer; }
 .process-lane-buttons button[draggable="true"] { cursor: grab; }
 .process-lane-buttons button[draggable="true"]:active { cursor: grabbing; }
+.process-duty-bridge__linked button.is-related { border-color: #a2c97c; background: #f1f8e8; }
+.process-canvas-node.is-related { border-color: #8ac26a; box-shadow: 0 0 0 2px rgba(111, 177, 75, .18); }
 .process-empty { margin: 14px; color: #8b96a7; font-size: 12px; line-height: 1.6; }
 .process-org-group { padding: 7px 0; border-bottom: 1px solid #edf0f5; }
 .process-org-group h2 { margin: 3px 14px 5px; color: #65738a; font-size: 12px; }
 .process-org-group button { display: flex; justify-content: space-between; margin-top: 2px; margin-bottom: 2px; padding: 7px 9px; }
+.process-org-canvas { position: relative; min-height: 0; height: 100%; flex: 1 1 auto; }
+.process-org-canvas-collapsed { margin: 18px 14px; }
+.process-org-canvas .react-flow { background: #fbfcfe; }
+.process-org-canvas__meta { position: absolute; right: 8px; bottom: 8px; color: #8994a5; font-size: 10px; pointer-events: none; }
+.process-org-canvas-node { width: 150px; min-height: 62px; box-sizing: border-box; border: 1px solid #cfd8e8; border-radius: 8px; padding: 7px 9px; background: #fff; color: #24324a; box-shadow: 0 2px 8px rgba(36, 50, 74, .08); cursor: pointer; }
+.process-org-canvas-node strong, .process-org-canvas-node span, .process-org-canvas-node small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-org-canvas-node strong { font-size: 12px; }
+.process-org-canvas-node span { margin-top: 3px; color: #66758c; font-size: 10px; }
+.process-org-canvas-node small { margin-top: 3px; color: #8994a5; font-size: 10px; }
+.process-org-canvas-node.is-selected { border-color: #3f6df6; box-shadow: 0 0 0 2px rgba(63,109,246,.2); }
+.process-org-canvas-node.is-related { border-color: #8ac26a; box-shadow: 0 0 0 2px rgba(111,177,75,.18); }
+.process-org-canvas-node.is-keyboard-target { outline: 2px dashed #c27a1a; outline-offset: 2px; }
 @media (max-width: 1100px) {
   .process-planning-grid { grid-template-columns: 190px minmax(300px, 1fr) 270px; }
   .process-planning-org-panel { display: none; }

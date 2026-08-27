@@ -4,7 +4,7 @@
 
 日期：2026-08-27
 
-文件角色：DEV-038 Current Phase 的產品、技術與實作交接權威。本文已固定資料權威、exact TypeScript symbols、repo/file allowlist、route、transaction、V6→V7 migration、Dagre dependency gate、S0→S6 實作順序、權限／能力、失敗恢復及可執行 QA／QC evidence contract。現有 worktree 已有 MVP 候選實作，但仍以本文件的契約與 QA gate 為準；不得擴張至 Future Phase、deploy 或 release。
+文件角色：DEV-038 Current Phase 的產品、技術與實作交接權威。本文已固定資料權威、exact TypeScript symbols、repo/file allowlist、route、transaction、V6→V7 migration、Dagre dependency gate、S0→S6 實作順序、權限／能力、失敗恢復及可執行 QA／QC evidence contract。現有 worktree 已有 MVP 實作候選與本輪 browser evidence，但仍以本文件的契約與 QA gate 為準；不得擴張至 Future Phase、deploy 或 release。
 
 來源：`USER-2026-08-27-PROCESS-DUTY-RESPONSIBILITY-WORKBENCH`、`USER-2026-08-27-MINDMAP-FLOWCHART-OSS-DESIGN`
 
@@ -104,9 +104,9 @@ Spec impact 分類：
 
 - 左側主畫布顯示同一 Process 的兩種投影，使用 `心智圖／流程圖` 切換；不在同一畫布同時顯示 parent-child 與 next-step edge。
 - 中央 Duty 橋接欄只在已選 ProcessNode 時展開，預設 `320px`、可在 `300～360px` 內調整；未選節點時收合成窄提示，不永久壓縮兩側畫布。
-- MVP 右側以既有組織資料投影成密集的部門／Position 清單，Position 是 drop target；既有組織圖仍是 Position 與 reporting line 的權威，不建立第二份資料。完整組織 React Flow 同頁嵌入列為下一個 UI slice，避免第一版為了畫面重用而重構 `App.tsx`。
+- MVP 右側以 `ProcessOrganizationCanvas` 將既有組織資料投影成密集的部門／Position React Flow；Position 是 drop target，既有組織 state 仍是 Position 與 reporting line 的唯一權威，不建立第二份資料。流程畫布與組織投影各自使用獨立 `ReactFlowProvider`，只共享上層 domain／selection context。
 - `viewport >= 1280px`：同時顯示流程畫布、Duty 橋接欄與組織圖；左右畫布分配剩餘寬度，分隔線可調整但不得讓任一畫布小於 `360px`。
-- `1024px <= viewport < 1280px` 且具 hover＋fine pointer：保留 Duty 橋接欄，主畫布以同頁 segmented control 切換 `流程規劃／組織配置`；切換不清除 ProcessNode、Duty、lane 或 Position selection，也不建立 overlay modal。
+- `1024px <= viewport < 1280px` 且具 hover＋fine pointer：為避免四欄縮成不可讀縮圖，保留流程畫布與 Duty 橋接欄，組織投影收合；Position 仍可由橋接欄的選擇器完成 click fallback，selection 不清除。組織投影 segmented view 列為後續 UI slice，不影響本輪資料與 command contract。
 - `viewport < 1024px` 或不具 hover＋fine pointer：整個 DEV-038 為唯讀，以 `流程／職掌／組織` 分段切換保留關聯導覽；不顯示 drag、save 或其他 mutation。
 
 ### 4.2 單一選取上下文
@@ -200,8 +200,8 @@ Current Phase 只提供最小 directed graph：
 
 ### 6.3 組織圖
 
-- 組織資料、Position identity、department group 與 reporting line 沿用既有 organization state；MVP 以同頁右側的密集 Position 投影清單完成責任 drop，避免複製資料或重構既有 React Flow store。
-- 完整既有 React Flow 組織圖的同頁嵌入與 cross-canvas selection 保留為後續 UI slice；在此之前，右側清單的 Position selection 仍以 stable ID 回寫同一 planning context。
+- 組織資料、Position identity、department group 與 reporting line 沿用既有 organization state；MVP 由 `ProcessOrganizationCanvas` 以同一資料權威投影完整 reporting hierarchy，Position node 同時提供責任 drop target。
+- 組織投影與流程投影使用獨立 React Flow store；Position selection、Duty drop、keyboard focus 只回寫 workbench 上層 context，不複製既有 `.canvas-wrap` 的 domain state。
 - Position 卡片不常駐顯示長職掌清單；只在目前選取 context 顯示非文字輪廓、責任標記或高亮。
 - 責任配置仍以「Duty＋exact lane」拖到 Position；普通點擊 Position 只閱讀／選取。
 - 相同 relation、primary transfer、pending reassignment、remove、Undo／Redo 與失敗恢復沿用 DEV-034，不在本 Contract 另創語意。
@@ -542,17 +542,17 @@ Dependency contract 已固定為在 S2 以 exact version（不使用 `^`／`~`�
 
 Execution Boundary：本 phase 已授權 RD 依第 14 節 allowlist 與 S0→S6 做本機產品修改、測試及 localhost browser QC；未授權 Future Phase、真實公司資料破壞、production migration、deploy 或 release。當前 dirty worktree 的 `ai-doc/dev_task.md`、`ai-doc/documentation_map.md`、DEV-038 spec 與 ADR-008 是 PM 文件邊界，RD 不得覆寫或回復。
 
-第一階段只做能驗證規劃模型是否成立的最小能力：
+第一階段只做能驗證規劃模型是否成立的最小能力；目前 worktree 已完成 S4／S5 的產品候選，S6 仍以證據與 release gate 為準：
 
 - 一個正式 URL 的流程－職掌－責任聯動工作台與正常 UI 入口。
 - Process 清單及單一 Process 編輯 context；支援建立、更新與刪除空 Process，不建立 archive／publish lifecycle。
 - 同一組 ProcessNode 的心智圖／流程圖切換。
-- 心智圖：結構化 parent-child 投影與節點新增；改名、reparent、排序、session 折疊及 leaf delete 先以 domain command 固定，完整編輯控制項列為下一個 UI slice。
-- 流程圖：同節點的簡單 next-step edge 投影；edge 新增／刪除 command 已固定，視覺化編輯控制項列為下一個 UI slice。
+- 心智圖：結構化 parent-child 投影與節點新增、改名、reparent、排序、leaf delete；折疊維持由畫布投影處理，不寫入 domain。
+- 流程圖：同節點的簡單 next-step edge 投影；提供 edge 新增／刪除與起點／終點控制，不引入 BPMN 語意。
 - ProcessNode 與既有 Duty 的多對多連結，以及從原節點建立新 Duty 後回填連結。
 - 中央橋接欄顯示所選節點的 Duty 與四種責任 lane。
 - 選定 Duty＋lane 後，中央 lane button 產生既有 `DutyConfigurationDragPayload`，可原生拖到右側密集 Position 投影清單；點擊 Position 後仍可用 lane button 完成後備配置，並提交同一 relation command。
-- ProcessNode／Duty／Position 使用同一 planning context；MVP 提供選取與 drop 結果提示，完整三向畫布高亮列為下一個 UI slice。
+- ProcessNode／Duty／Position 使用同一 planning context；點選任一物件會以 stable ID 產生三向相關集合，高亮相鄰物件並降低無關物件視覺權重；drop 結果以 live status 回饋。
 - 桌面編輯、手機唯讀；一人操作、多人討論。
 - 最小資料完整性提示：未連 Duty 的節點、無執行職位、缺主執行、待重新分配；不新增健康分數。
 
@@ -615,7 +615,7 @@ Evidence provenance 至少記錄：source revision／artifact、organization ver
 
 結論：`Ready`，P0／P1 readiness blocker 為 `0`。2026-08-27 盤點 baseline 為 React 19、TypeScript 7、Vite 8、Vitest 4、Zod 4、`@xyflow/react ^12.11.2`；root `src/main.tsx` 已有一個 organization `ReactFlowProvider`，`App.tsx` 已擁有 `runOrganizationCommand`、history、autosave、workspace mode、route owner 與既有 organization canvas。RD 不抽離或重寫組織圖；DEV-038 只在現有 composition 中新增流程工作區。
 
-Readiness baseline 已實際執行：`npx tsc --noEmit` pass；目前 targeted DEV-038／相關測試為 `12 files／40 tests` pass；全量 `npm test -- --testTimeout=30000` 為 `128 test files／565 tests` pass；`npm run build` pass，現行 client JS 為 `1,222.07 kB／368.67 kB gzip`。既有 Vite native config extension warning 及 `>500 kB` chunk warning 列為 baseline warning，不是 DEV-038 failure；Dagre bundle delta 與 benchmark gate 仍須在正式 QA 證據中保存。MVP 已在本機 worktree 可 smoke，尚未 release。
+Readiness baseline 已實際執行：`npx tsc --noEmit` pass；DEV-038／相關 targeted 測試為 `7 files／13 tests` pass；全量 `npm test -- --testTimeout=30000` 為 `129 test files／566 tests` pass；`npm run build` pass，現行 client JS 為 `1,232.12 kB／370.97 kB gzip`。既有 Vite native config extension warning 及 `>500 kB` chunk warning 列為 baseline warning，不是 DEV-038 failure；Dagre bundle delta 與 benchmark gate 仍須在正式 QA 證據中保存。MVP 已在本機 worktree 可 smoke，尚未 release。
 
 本文件變更時 worktree 已有以下 PM 文件異動，全部視為 user／PM-owned boundary：`ai-doc/dev_task.md`、`ai-doc/documentation_map.md`、本 spec、ADR-008。RD 實作不得 reset、checkout、覆寫或混入無關格式化。開始 S0 前及每個 slice 完成時保存 `git status --short`；若出現 allowlist 外 production file，立即停止。
 
@@ -634,13 +634,13 @@ Readiness baseline 已實際執行：`npx tsc --noEmit` pass；目前 targeted D
 | UI | `src/components/ProcessPlanningWorkbench.tsx`、`src/components/ProcessPlanningCanvas.tsx`、`src/components/ProcessDutyBridge.tsx`（new） | 新工作區、nested provider、canvas、bridge、keyboard alternative |
 | UI integration | `src/App.tsx` | route／selection owner、left-middle composition、existing organization canvas reuse、command wiring |
 | UI entry | `src/components/DutyCenter.tsx` | `onOpenProcessPlanning` prop 與次要文字入口 |
-| UI projection | `src/components/OrgNode.tsx` | process related／dimmed marker；不顯示 Duty 長文字 |
+| UI projection | `src/components/OrgNode.tsx`、`src/components/ProcessOrganizationCanvas.tsx` | process related／dimmed marker；組織投影使用 stable Position ID 作責任 drop target，不顯示 Duty 長文字 |
 | style | `src/index.css` | DEV-038 scoped classes、1280／1024／mobile boundaries、print 無關 |
 | workspace client | `src/serverWorkspaceStorage.ts` | 422 `reason` 轉為可識別 recovery message；其他 API contract 不變 |
 | local legacy API | `server/orgmasterApi.ts` | `v7` path、V7-first／V6 fallback、成功保存只寫 V7 |
 | workspace server | `server/orgmasterWorkspaceStore.ts`、`server/orgmasterApi.ts` | 僅 whole-document V7 validation／422 mapping；不得新增 Process route |
 
-Required new test files（正式完成前仍須補齊 UI component harness）：
+Required new test files：
 
 ```text
 src/processPlanning.test.ts
@@ -710,10 +710,12 @@ src/main.tsx ReactFlowProvider                  ← 不修改，既有組織圖 
 └─ App                                         ← route/domain/common selection owner
    └─ main.workspace.is-process-planning
       ├─ ProcessPlanningWorkbench
-      │  ├─ ReactFlowProvider                  ← 新增，只服務 mindmap／flow canvas
+      │  ├─ ReactFlowProvider                  ← 只服務 mindmap／flow canvas
       │  │  └─ ProcessPlanningCanvas
-      │  └─ ProcessDutyBridge
-      └─ div.canvas-wrap                       ← 原 App organization ReactFlow 原封重用
+      │  ├─ ProcessDutyBridge
+      │  └─ ReactFlowProvider                  ← 只服務組織責任投影
+      │     └─ ProcessOrganizationCanvas
+      └─ （非工作台 route）div.canvas-wrap       ← 既有組織 React Flow；仍由同一 App state 作權威
 ```
 
 `ProcessPlanningWorkbenchProps` 目前接收 `state`、normalized `location`、`editingEnabled`、`serverReady`、`recoveryOpen`、`mobileReadOnly`、`onNavigate`、`onCommand`、`onClose`；由 `canMutateProcessPlanning` 在元件內計算 `writable`，不接第二份 Position truth。`ProcessPlanningCanvasProps` 只接 Process 投影與 selection callback。`ProcessDutyBridgeProps` 從 `state`＋selected node selector 讀 linked Duties；lane button 可點擊配置，也必須建立既有 `DutyConfigurationDragPayload version:1` 供右側 Position drop。
@@ -721,10 +723,10 @@ src/main.tsx ReactFlowProvider                  ← 不修改，既有組織圖 
 `App.tsx` 新增 `processPlanningLocation`、`selectedProcessLane`、`selectedProcessPositionId` 與既有 `dutyDragState` 的協調；`runOrganizationCommand` 仍是 commit owner。當 route active：
 
 1. route active 時由 `App.tsx` 提供 `ProcessPlanningWorkbench`，以完整 URL page 呈現，不使用 overlay。
-2. MVP 主畫布使用新 nested `ReactFlowProvider` 的 Process canvas；右側以部門／Position 密集投影清單作 drop target，既有 `.canvas-wrap` 仍是組織資料與 reporting line 權威，不複製 relation truth。
+2. MVP 主畫布使用 nested `ReactFlowProvider` 的 Process canvas；右側 `ProcessOrganizationCanvas` 以同一 organization state 投影 reporting hierarchy 並作 Position drop target，既有 `.canvas-wrap` 仍是非工作台路由的組織圖投影，不複製 relation truth。
 3. `viewport >= 1024` 且 capability 通過時可編輯；`<1024` 或 capability 不足時工作台唯讀並隱藏 mutation controls。完整 1024～1279 segmented canvas 切換待下一個 UI slice。
 4. Position click 只更新 workbench 的 `selectedPositionId`；drop 成功則依 payload 選取 Duty 與 Position，不打開一般 Inspector。
-5. MVP 不修改 `OrgNodeData`，Position 投影以文字與責任筆數呈現；長 Duty 文字不塞入組織節點。完整 cross-canvas highlighting 待下一個 UI slice。
+5. MVP 不修改 `OrgNodeData`，Position 投影以文字與責任筆數呈現；長 Duty 文字不塞入組織節點。三向 highlighting 由上層 stable ID selector 提供，兩個 canvas 只消費投影結果。
 6. view 切換保留 Process／node／Duty；drop notice 在下一次操作時更新，route／version 離開後由 workbench unmount 清除本地 selection。
 
 Keyboard alternative 不模擬 pointer：橋接欄的 Duty lane 按鈕以 Space／Enter 進入 `keyboard-grabbed`，organization canvas 以既有 Position focus traversal 選 target，Enter commit、Escape cancel；建立 child／sibling、reparent／reorder、edge create／delete均有按鈕或 menu 等價路徑。
@@ -753,9 +755,9 @@ Required fixtures：合法 V6、合法 V7、V7 orphan Duty link、parent cycle�
 | S1 Domain＋V7 | 已通過 | types、processPlanning validator／normalizer、commands、delete guard、V7 local／workspace migration | targeted domain/storage/server pass；V6 bytes preservation、V7 round-trip、409 pass |
 | S2 Layout dependency | 已通過（MVP） | Dagre 3.1.1、deterministic layout 與保守 fallback 已落地；正式 bundle／benchmark evidence 待補 | layout unit pass；正式 gzip delta／250 node benchmark 仍是 QA gate |
 | S3 Route＋read-only composition | 已通過（MVP） | canonical route、正常入口、nested provider、empty／read-only composition 已落地 | route／capability tests pass；browser route smoke pass |
-| S4 Process editing | 進行中 | Process／node 基本建立 UI 已有；改名、reparent、排序、edge 與 keyboard controls 待補 | command＋component tests；no-op/reject 零 history／dirty，mindmap／flow identity pass |
-| S5 Duty bridge＋organization linkage | 進行中 | link／atomic create、四 lane、native drag 到 Position projection、click fallback 已有；完整 organization canvas reuse、keyboard placement、三向高亮待補 | DEV-034 regression＋native drag＋keyboard placement；latest-state release revalidation pass |
-| S6 Full QA/QC handoff | 尚未開始 | full regression、build、API negative、六 viewport browser QC、evidence／cleanup | 第 14.8 全 gate pass；才可標 Implementation Complete，不代表 release |
+| S4 Process editing | 已完成（MVP） | Process／node 建立、改名、reparent、同層／子節點、排序、leaf delete、mindmap／flow identity 與 edge 新增／刪除控制已落地 | command＋component tests；no-op／reject 零 history／dirty、mindmap／flow identity pass |
+| S5 Duty bridge＋organization linkage | 已完成（MVP） | link／atomic create、四 lane、native HTML5 drag 到組織 React Flow projection、click fallback、keyboard Enter／Escape、三向高亮已落地；既有 organization state 仍是 authority | DEV-034 regression、native drag、keyboard placement、latest-state release revalidation pass |
+| S6 Full QA/QC handoff | 進行中 | full regression、build、API negative、六 viewport browser QC、reload persistence、evidence／cleanup 已執行一輪，仍需完成正式證據簽核 | 第 14.8 全 gate pass；才可標 Implementation Complete，不代表 release |
 
 禁止平行跳片：S1 未通過不可開始 UI；S3 未證明兩個 provider 不互相污染不可開始 cross-canvas mutation；S5 未過 native drag 與 keyboard alternative 不可結案。
 
@@ -790,6 +792,14 @@ Browser normal delivery path：`/` → 左側工作執掌 → DEV-036 → `流�
 
 若啟動 `npm run dev:local`，依專案 AGENTS 規則先記錄 project、purpose、port 5000、owning process tree 與 cleanup condition；QC 結束只停止該 task-owned tree，並確認 port 5000 已釋放。若已有可安全重用的同 project runtime，記錄 owner 並不另開。證據根目錄固定為 `output/playwright/dev038/`，`manifest.md` 必須列 source commit／dirty boundary、organization version／revision、fixture version、route、viewport、browser、步驟、預期／實際、console、HTTP、screenshot、state artifact及 runtime cleanup。
 
+### 14.8.1 本輪 RD／瀏覽器執行摘要（2026-08-27）
+
+- `npx tsc --noEmit`、DEV-038 targeted `7 files／13 tests`、全量 `129 files／566 tests` 均通過；`npm run build` 通過，client JS `1,232.12 kB／370.97 kB gzip`。Vite native-config extension 與 `>500 kB` chunk 為既有 baseline warning。
+- 正常入口已由 `/` → 版本草稿 → `流程規劃` 實測；Process／root node／Duty 建立、ProcessNode 改名、flow edge、Duty lane 選擇、Position native HTML5 drop、keyboard Enter placement 與 reload persistence 均已留下操作結果。重新整理後仍保留同一 draft 的 Process、Duty、link 與 relation，確認初始 draft mode 會恢復為可編輯。
+- Playwright Chromium console 為 `Errors: 0／Warnings: 0`；native drag 實測使用 `application/x-orgmaster-duty-configuration+json` 並回到既有 DEV-034 resolver，無新增 Process API 或第二份 relation store。
+- 六個 viewport screenshot 已保存於 `output/playwright/dev038/viewport-1440x900.png`、`viewport-1280x800.png`、`viewport-1279x800.png`、`viewport-1024x768.png`、`viewport-1023x768.png`、`viewport-390x844.png`。`1024px` 以下的窄桌面收合組織投影、保留橋接欄 Position selector；`<1024px` 與手機維持唯讀且無水平溢出，這是本輪明確的最小 UX 邊界，不宣稱四欄同時可見。
+- S6 仍未標為 `QA-QC Passed`：尚需將每一項 API negative／invalid V7／409／provider viewport isolation／reduced-motion／data-sanity 證據補入正式 QC manifest，並由 QC／release gate 簽核；本輪不得 deploy 或 release。
+
 Hard fail：任何 `.inline-error`／`role=alert`、非預期 HTTP 4xx／5xx、console error、預期非空卻全零、資料被靜默正規化、invalid/noop 產生 history／dirty、未釋放 task-owned runtime，均不得標 QA／QC Passed。
 
 ### 14.9 RD 停止／回 PM 條件
@@ -808,6 +818,8 @@ Hard fail：任何 `.inline-error`／`role=alert`、非預期 HTTP 4xx／5xx、c
 - 管理辦法連到 Process／Duty 的穩定語意 reference；只有 DEV-032 另案重新核准正文智能引用與刪除規則後才可進入。
 
 ## 16. 變更紀錄
+
+- 2026-08-27：依本輪 RD 實作與瀏覽器驗證更新契約。S4 Process editing、S5 Duty bridge／organization projection、三向 stable-ID 高亮、native HTML5 drag、keyboard Enter／Escape、V7 draft autosave／reload 已落地；新增 `ProcessOrganizationCanvas` allowlist 與雙 provider wiring。typecheck、targeted `7 files／13 tests`、全量 `129 files／566 tests`、build（`370.97 kB gzip`）及六 viewport screenshot 已保存；S6 仍為 QA-QC Pending，未 deploy／release。
 
 - 2026-08-27：補入 MVP 實作收斂紀錄。已落地 V7 domain／migration、Dagre layout、`/process-planning` 正常入口、雙視角切換、Process 清單／節點建立、Duty link、四 lane click／native drag、Position drop projection、422 `reason` recovery message；`npx tsc --noEmit`、targeted `12 files／40 tests` 與全量 `128 files／565 tests` pass，`npm run build` pass（`1,222.07 kB／368.67 kB gzip`）。狀態仍為 `RD Implementation Ready / MVP Implementation In Progress / QA-QC Pending`：完整 Process 編輯控制項、既有組織 React Flow 同頁重用、keyboard placement、三向高亮、六 viewport evidence 與 component harness 尚未完成；未 deploy／release。
 - 2026-08-27：依使用者要求完成 RD Readiness Review，升級為 `RD Implementation Ready / RD Not Started`。以現況 repo 固定 exact V7 types／commands／validation codes、V6→V7 local／workspace migration、route／props／雙 React Flow provider wiring、required／forbidden files、Dagre 3.1.1 license／type／bundle／benchmark gate與 deterministic fallback、S0→S6、automated／API／native drag／keyboard／六 viewport evidence及 runtime cleanup。Readiness baseline 為 typecheck、`122 test files／553 tests`、build pass，JS `345.34 kB gzip`；P0／P1 blocker 為 0。本輪只修改開發文件，未修改產品程式、測試、資料、dependency、deploy 或 release。
