@@ -1,10 +1,10 @@
 # DEV-027 QA／QC：OrgMaster local governance MVP
 
-狀態：`QA-QC Passed / DEV-027 Complete`  
+狀態：`QA-QC Passed / DEV-027 Complete / DEV-035 Recovery Passed`
 風險：High  
 日期：2026-08-18  
 權威規格：`ai-doc/specs/DEV-027-orgmaster-access-approval-governance.md`  
-架構決策：ADR-004、ADR-005
+架構決策：ADR-004（歷史／已取代）、ADR-005、ADR-007（目前目標權威）
 
 ## 1. Scope and evidence boundary
 
@@ -15,6 +15,7 @@
 - AI-PDM 已串接或已停止使用自身permission／approval rules；
 - shared IAM production validation、service-to-service authentication或production security；
 - remote／durable database、HA、backup／restore、正式migration或release readiness。
+- ADR-007 的外部角色目錄唯讀、禁止外部 Permission mutation、catalog version／stale recovery 或角色指派在 AI-PDM 實際生效。
 
 QC只驗證與收證，不修改產品。任一失敗回送RD；QA只有在QC通過後才能更新DEV完成狀態。
 
@@ -161,7 +162,7 @@ Browser QC臨時runtime若由本任務啟動，完成前只停止該verified pro
 - `通過`：G0–G4全部通過；automated output、build、API／store artifacts、三viewport screenshots、visible-error／information-noise sweep與security boundary共同支持契約。
 - `未通過`：任一P0、targeted/full test、build、publish／revoke、fail-closed、audit chain、data boundary或主要viewport失敗。
 - `未充分驗證`：缺真實browser、必要error／recovery state、viewport、screenshot、runtime來源或security negative evidence。
-- `阻塞`：baseline既有失敗、無法啟動local runtime、canonical data已corrupt、需要AI-PDM／production IAM／remote DB修改或需要使用者改變1B／2A。
+- `阻塞`：baseline既有失敗、無法啟動local runtime、canonical data已corrupt、需要AI-PDM／production IAM／remote DB修改或需要使用者改變ADR-007／2A。
 
 失敗 evidence至少記錄：case ID、環境／artifact、前置資料、重現步驟、expected、actual、第一個有效error、response／hash／screenshot path與回送RD範圍。
 
@@ -173,3 +174,20 @@ Browser QC臨時runtime若由本任務啟動，完成前只停止該verified pro
 - G4：real browser QC 使用 temporary OrgMaster runtime `localhost:5001`（既有 `localhost:5000` runtime 保留）；1440×900、1024×768、390×844 通過，console errors 0，mobile horizontal overflow false，治理入口／測試器／發布確認與 Escape 關閉通過。
 - Artifacts：`output/playwright/dev-027/governance-1440x900.png`、`governance-1024x768.png`、`governance-390x844.png`、`governance-publish-confirm.png`、`governance-simulator-results.png`。
 - Boundary：未修改 `C:\VIBE CODING\AI_PDM`；production IAM／DB、cross-repo adapter、deploy 與 release 仍是 Phase 3／4 gate。Temporary runtime port 5001 已釋放；protected 4173 未操作。
+
+## 10. Recovery evidence (2026-08-26 / DEV-035)
+
+- 觸發原因：normal governance UI 顯示 raw `GOVERNANCE_VALIDATION_FAILED` 且與舊 success 並存，角色指派與安全發布流程不可由 UI 完成；因此 DEV-027 QC 被重新開啟。
+- Automated：`npx tsc --noEmit` passed；governance targeted 7 files／18 tests passed；full regression 60 files／271 tests passed；`npm run build` passed。
+- Server negative：publish／historical reactivation 都要求目前 actor 同時保留 manage＋publish；explicit deny precedence、missing permission 與 non-500 status mapping 有測試。
+- Browser：正常 toolbar delivery path 完成 identity、global role assignment、reload、revoke／reactivate、publish blockers、mandatory reason 與 Policy v1；two-session stale operation 顯示人類 conflict 與 reload recovery，無 raw code／假成功。
+- Responsive／overlay：1440×900、1024×768、390×844 無 body 水平 overflow；手機 mutation action count 0；Escape 依序關 modal、drawer、center；normal flow console 0 error／0 warning。
+- Evidence：`output/playwright/dev035/manifest.md` 與五張 screenshots。隔離 runtime port 5002 已釋放；canonical port 5000 保留且 HTTP 200。
+- Boundary：只修改 OrgMaster；AI-PDM、production IAM／DB、deploy 與 release 均未修改或執行。
+
+## 11. Evidence reuse boundary after ADR-007（2026-08-27）
+
+- DEV-027／035 的 automated、API 與 browser evidence 只證明原 local V1 的角色／Permission／reviewer sandbox 與安全發布流程。
+- 新目標屬權限 ownership、UI 能力與跨系統契約變更，風險等級為 High；DEV-037 已達 `RD Implementation Ready / RD Not Started`，並由 `ai-doc/qa/DEV-037-external-role-assignment-validation-plan.md` 固定 executable matrix 與 evidence path。不能用本計畫的舊 permission evaluator、Permission Matrix domain command 或 reviewer resolver evidence 直接判定通過。
+- DEV-037 至少需驗證：外部 catalog 唯讀、外部 role／permission mutation 不可達、stable role ID assignment、unknown／inactive／unassignable／stale catalog fail closed、未串接時顯示未生效，以及既有 published V1 歷史資料仍可讀。
+- AI-PDM live effect 只有在 Phase 3 integration 具備正常 delivery path、目標角色、來源 catalog version、assignment receipt 與 AI-PDM enforcement evidence 後才能驗收。

@@ -89,6 +89,18 @@ describe('document storage', () => {
     expect(orgStateSignature(loaded.document.state)).toBe(orgStateSignature(state))
   })
 
+  it('canonicalizes legacy collaborate relations when the backend document is loaded', () => {
+    const legacyState: OrgDirectoryState = {
+      ...state,
+      duties: [{ id: 'duty-a', title: '年度計畫', description: null }],
+      dutyPositionRelations: [{ id: 'rel-legacy', dutyId: 'duty-a', relationType: 'collaborate', target: { kind: 'position', positionId: 'ceo' }, isPrimaryExecutor: false, order: 0 }],
+    }
+    const parsed = parseOrgDocument({ app: 'OrgMaster', version: 6, kind: 'document', savedAt: '2026-08-25T00:00:00.000Z', state: legacyState })
+    expect(parsed).toMatchObject({ ok: true, sourceVersion: 6 })
+    if (!parsed.ok) return
+    expect(parsed.document.state.dutyPositionRelations).toEqual([{ id: 'rel-legacy', dutyId: 'duty-a', relationType: 'execute', target: { kind: 'position', positionId: 'ceo' }, isPrimaryExecutor: false, order: 0 }])
+  })
+
   it('round-trips V3 role combination risk rules', () => {
     const stateWithRule: OrgDirectoryState = {
       ...state,

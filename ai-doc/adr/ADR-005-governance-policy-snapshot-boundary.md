@@ -5,6 +5,8 @@
 決策來源：DEV-027 `RD Implementation Ready` engineering decision  
 適用範圍：DEV-027 OrgMaster local governance MVP 與後續 policy persistence
 
+權責修訂：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`。本 ADR 的獨立 store、不可變發布快照與 CAS 原則仍有效；外部應用角色／權限目錄在未來目標模型中只能是具來源版本的唯讀快照，不再是 OrgMaster 可編輯政策主檔。
+
 ## Context
 
 OrgMaster 現有組織資料使用 V5 document 與 workspace manifest。Draft 與 current version各自保存文件，但 current version仍可進入 maintenance 並覆寫相同 version file。權限與審核規則必須能證明某次 evaluation 使用哪一組人員、職位、任職與主管事實；若 published policy 只保存 mutable current version ID，日後維護組織資料會改變歷史政策的解析結果。

@@ -77,17 +77,6 @@ export function DirectoryDetailPanel({
       <aside className="inspector directory-detail-panel" aria-label={`員工 ${employee.name} 細節`} data-workspace-panel="inspector" tabIndex={-1}>
         <DetailHeader eyebrow="員工細節" title={employee.name} onClose={onClose} />
         <section className="inspector__section">
-          <DetailSectionHeading label="唯一主檔" />
-          <div className="directory-detail__identity">
-            <div className="directory-card__avatar" aria-hidden="true">{employee.name.slice(-2)}</div>
-            <div>
-              <strong>{employee.name}</strong>
-              <span>員工</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="inspector__section">
           <DetailSectionHeading label="部門與任職" count={`${employeeDepartments.length} 部門 · ${employeeAssignments.length} 職位`} />
           {employeeDepartments.length > 0 || ungroupedAssignments.length > 0 ? (
             <div className="directory-detail__department-groups">
@@ -149,7 +138,6 @@ export function DirectoryDetailPanel({
                       <div className="directory-detail__assignment-groups">
                         {departmentAssignmentGroups.map((group) => (
                           <div className="directory-detail__assignment-group" key={group.key}>
-                            <div className="directory-detail__assignment-group-label">{group.levelLabel}</div>
                             <div className="directory-detail__assignment-links">
                               {group.items.map(({ assignment, position }) => (
                                 <button key={position.id} type="button" onClick={() => onSelectPosition(position.id)}>
@@ -177,7 +165,6 @@ export function DirectoryDetailPanel({
                   <div className="directory-detail__assignment-groups">
                     {groupByDepartmentAndLevel(ungroupedAssignments, departments, organizationLevels, ({ position }) => position).map((group) => (
                       <div className="directory-detail__assignment-group" key={group.key}>
-                        <div className="directory-detail__assignment-group-label">{group.levelLabel}</div>
                         <div className="directory-detail__assignment-links">
                           {group.items.map(({ assignment, position }) => (
                             <button key={position.id} type="button" onClick={() => onSelectPosition(position.id)}>
@@ -224,18 +211,6 @@ export function DirectoryDetailPanel({
     <aside className="inspector directory-detail-panel" aria-label={`部門 ${department.name} 細節`} data-workspace-panel="inspector" tabIndex={-1}>
       <DetailHeader eyebrow="部門細節" title={department.name} onClose={onClose} />
       <section className="inspector__section">
-        <DetailSectionHeading label="唯一主檔" />
-        <div className="directory-detail__identity">
-          <div className="directory-card__avatar directory-card__avatar--department" aria-hidden="true">{department.name.slice(0, 2)}</div>
-          <div>
-            <strong>{department.name}</strong>
-            <span>部門</span>
-          </div>
-        </div>
-        <DetailField label="階層路徑" value={getDepartmentLabel(departments, department.id)} />
-      </section>
-
-      <section className="inspector__section">
         <DetailSectionHeading label="部門員工" count={`${departmentEmployees.length} 位`} />
         {departmentEmployees.length > 0 ? (
           <div className="directory-detail__links">
@@ -261,7 +236,6 @@ export function DirectoryDetailPanel({
           <div className="directory-detail__position-groups">
             {departmentPositionGroups.map((group) => (
               <div className="directory-detail__position-group" key={group.key}>
-                <div className="directory-detail__position-group-label">{group.levelLabel}</div>
                 <div className="directory-detail__links">
                   {group.items.map((position) => (
                     <button key={position.id} type="button" onClick={() => onSelectPosition(position.id)}>
@@ -312,15 +286,6 @@ function DetailSectionHeading({ label, count }: { label: string; count?: string 
     <div className="section-heading">
       <span>{label}</span>
       {count && <small>{count}</small>}
-    </div>
-  )
-}
-
-function DetailField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="directory-detail__field">
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   )
 }

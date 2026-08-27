@@ -56,6 +56,13 @@ export interface DutyAnomalySummary {
 const SAFE_ID = /^[A-Za-z0-9-]{1,80}$/
 const relationTypes: DutyRelationType[] = ['execute', 'review', 'collaborate', 'countersign']
 
+/**
+ * `collaborate` is retained as a read/migration alias for V6 documents written
+ * before the execution-group convergence. New persisted relations use
+ * `execute + isPrimaryExecutor=false` for the visible 協作 lane.
+ */
+export const LEGACY_DUTY_RELATION_TYPE = 'collaborate' as const
+
 function issue(code: DutyValidationCode, dutyIds: string[] = [], relationIds: string[] = [], positionIds: string[] = []): DutyValidationResult {
   return { ok: false, issue: { code, dutyIds, relationIds, positionIds } }
 }
@@ -70,7 +77,37 @@ function isPendingTarget(target: DutyRelationTarget): target is Extract<DutyRela
 
 function relationGroup(relation: DutyPositionRelation): string {
   if (relation.relationType === 'execute') return relation.isPrimaryExecutor ? 'primary-execute' : 'execute'
+  if (relation.relationType === LEGACY_DUTY_RELATION_TYPE) return 'execute'
   return relation.relationType
+}
+
+function relationTargetKey(relation: DutyPositionRelation) {
+  const target = relation.target.kind === 'position'
+    ? `position:${relation.target.positionId}`
+    : `pending:${relation.target.formerPositionId}`
+  return `${relation.dutyId}:${target}:${relationGroup(relation)}`
+}
+
+/**
+ * Canonicalize legacy collaboration records into the single execution group.
+ * If a document contains both the old collaboration record and its canonical
+ * execute record for the same target, prefer the canonical record and keep its
+ * relation id so references remain stable.
+ */
+export function normalizeDutyRelations(relations: DutyPositionRelation[]) {
+  const byKey = new Map<string, { relation: DutyPositionRelation; priority: number }>()
+  for (const relation of relations) {
+    const priority = relation.relationType === LEGACY_DUTY_RELATION_TYPE ? 1 : 0
+    const canonical = relation.relationType === LEGACY_DUTY_RELATION_TYPE
+      ? { ...relation, relationType: 'execute' as const, isPrimaryExecutor: false }
+      : relation
+    const key = relationTargetKey(canonical)
+    const current = byKey.get(key)
+    if (!current || priority < current.priority) {
+      byKey.set(key, { relation: canonical, priority })
+    }
+  }
+  return [...byKey.values()].map(({ relation }) => relation)
 }
 
 export function normalizeDutyRelationOrders(relations: DutyPositionRelation[]): DutyPositionRelation[] {
@@ -99,7 +136,7 @@ export function normalizeDutyState(state: OrgDirectoryState): OrgDirectoryState 
     title: duty.title.trim(),
     description: duty.description?.trim() || null,
   }))
-  return { ...state, duties, dutyPositionRelations: normalizeDutyRelationOrders(state.dutyPositionRelations) }
+  return { ...state, duties, dutyPositionRelations: normalizeDutyRelationOrders(normalizeDutyRelations(state.dutyPositionRelations)) }
 }
 
 export function validateDutyState(state: OrgDirectoryState): DutyValidationResult {

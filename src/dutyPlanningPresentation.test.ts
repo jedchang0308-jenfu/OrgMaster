@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDutyAnomalyCategories, buildDutyExpandedPositionSections, buildDutyMasterPositionSummaries, buildDutyMasterResponsibilityGroups, buildDutyMatrixRows, getDutyPlanningViewportMode, resolveDutyMasterPositionId, sortDutyMatrixPositions } from './dutyPlanningPresentation'
+import { buildDutyAnomalyCategories, buildDutyAuditRows, buildDutyDistributionRows, buildDutyExpandedPositionSections, buildDutyMasterPositionSummaries, buildDutyMasterResponsibilityGroups, buildDutyMatrixRows, filterDutyAuditRows, filterDutyDistributionRows, getDutyPlanningViewportMode, resolveDutyMasterPositionId, sortDutyMatrixPositions } from './dutyPlanningPresentation'
 import type { OrgDirectoryState } from './types'
 
 const state: OrgDirectoryState = {
@@ -112,15 +112,14 @@ describe('duty planning presentation', () => {
     }
     const summaries = buildDutyMasterPositionSummaries(relationState, relationState.positions, { dutyQuery: '', positionQuery: '', departmentId: '' })
     expect(summaries.map((summary) => [summary.position.id, summary.counts, summary.total])).toEqual([
-      ['pos-a', { execute: 1, review: 2, collaborate: 1 }, 4],
-      ['pos-b', { execute: 0, review: 0, collaborate: 0 }, 0],
+      ['pos-a', { execute: 2, review: 2 }, 4],
+      ['pos-b', { execute: 0, review: 0 }, 0],
     ])
     expect(buildDutyMasterResponsibilityGroups(relationState, 'pos-a', '', 'all').map((group) => [group.id, group.rows.map((row) => row.relationType)])).toEqual([
-      ['execute', ['execute']],
+      ['execute', ['execute', 'collaborate']],
       ['review', ['review', 'countersign']],
-      ['collaborate', ['collaborate']],
     ])
-    expect(buildDutyMasterResponsibilityGroups(relationState, 'pos-a', '物料', 'all').map((group) => group.rows.length)).toEqual([0, 0, 1])
+    expect(buildDutyMasterResponsibilityGroups(relationState, 'pos-a', '物料', 'all').map((group) => group.rows.length)).toEqual([1, 0])
     expect(resolveDutyMasterPositionId(summaries, 'missing', 'pos-b')).toBe('pos-b')
     expect(resolveDutyMasterPositionId(summaries, 'pos-a', 'missing')).toBe('pos-a')
     expect(resolveDutyMasterPositionId([], 'pos-a', null)).toBeNull()
@@ -146,7 +145,7 @@ describe('duty planning presentation', () => {
     const positions = sortDutyMatrixPositions(relationState.positions, relationState.departments, [], [])
     const sections = buildDutyExpandedPositionSections(relationState, positions, { dutyQuery: '', positionQuery: '', departmentId: '' })
     expect(sections.map((section) => section.position.id)).toEqual(['pos-a', 'pos-b'])
-    expect(sections[0].groups.map((group) => group.id)).toEqual(['execute', 'collaborate'])
+    expect(sections[0].groups.map((group) => group.id)).toEqual(['execute'])
     expect(sections[1].groups).toEqual([])
     expect(sections[1].hasAnyRelation).toBe(false)
     const filtered = buildDutyExpandedPositionSections(relationState, positions, { dutyQuery: '採購', positionQuery: '', departmentId: '' })
@@ -179,6 +178,52 @@ describe('duty planning presentation', () => {
     expect(categories.map((category) => category.items[0].duty.title)).toEqual(['無執行職掌', '缺主執行職掌', '待重新分配職掌'])
     expect(categories[2].items[0].context).toBe('原職位：原職位')
     expect(categories.every((category) => category.items.every((item) => !item.context?.includes(category.label)))).toBe(true)
+  })
+
+  it('projects one audit row per duty and applies status OR plus query AND', () => {
+    const auditState: OrgDirectoryState = {
+      ...state,
+      duties: [
+        { id: 'duty-empty', title: '空白職掌', description: null },
+        { id: 'duty-execute', title: '生產規劃', description: null },
+        { id: 'duty-pending', title: '生產待分配', description: null },
+      ],
+      dutyPositionRelations: [
+        { id: 'rel-execute', dutyId: 'duty-execute', relationType: 'execute', target: { kind: 'position', positionId: 'pos-a' }, isPrimaryExecutor: false, order: 0 },
+        { id: 'rel-pending', dutyId: 'duty-pending', relationType: 'review', target: { kind: 'pending-reassignment', formerPositionId: 'former', formerPositionTitle: '原品保職位', formerDepartmentId: null, formerDepartmentName: null }, isPrimaryExecutor: false, order: 0 },
+      ],
+    }
+    const rows = buildDutyAuditRows(auditState)
+    expect(rows.map((row) => row.dutyTitle)).toEqual(['生產待分配', '生產規劃', '空白職掌'])
+    expect(rows.find((row) => row.dutyId === 'duty-execute')?.anomalyTypes).toEqual(['missing-primary-executor'])
+    expect(rows.find((row) => row.dutyId === 'duty-pending')?.assignments.review[0].pending).toBe(true)
+    expect(filterDutyAuditRows(rows, { anomalyTypes: ['missing-primary-executor', 'pending-reassignment'] }).map((row) => row.dutyId)).toEqual(['duty-pending', 'duty-execute'])
+    expect(filterDutyAuditRows(rows, { query: '規劃', anomalyTypes: ['pending-reassignment'] })).toEqual([])
+  })
+
+  it('projects active position distribution into four exact responsibility counts', () => {
+    const distributionState: OrgDirectoryState = {
+      ...state,
+      departments: [{ id: 'dept-a', name: '生產部', parentId: null }],
+      positions: [
+        { ...state.positions[0], id: 'pos-a', title: '生產經理', departmentId: 'dept-a' },
+        { ...state.positions[0], id: 'pos-b', title: '空白職位', departmentId: 'dept-a' },
+        { ...state.positions[0], id: 'pos-inactive', title: '停用職位', departmentId: 'dept-a', status: 'inactive' },
+      ],
+      duties: [{ id: 'duty-a', title: '計畫', description: null }],
+      dutyPositionRelations: [
+        { id: 'rel-primary', dutyId: 'duty-a', relationType: 'execute', target: { kind: 'position', positionId: 'pos-a' }, isPrimaryExecutor: true, order: 0 },
+        { id: 'rel-collaborate', dutyId: 'duty-a', relationType: 'execute', target: { kind: 'position', positionId: 'pos-a' }, isPrimaryExecutor: false, order: 0 },
+        { id: 'rel-review', dutyId: 'duty-a', relationType: 'review', target: { kind: 'position', positionId: 'pos-a' }, isPrimaryExecutor: false, order: 0 },
+        { id: 'rel-pending', dutyId: 'duty-a', relationType: 'countersign', target: { kind: 'pending-reassignment', formerPositionId: 'old', formerPositionTitle: '舊職位', formerDepartmentId: null, formerDepartmentName: null }, isPrimaryExecutor: false, order: 0 },
+      ],
+    }
+    const rows = buildDutyDistributionRows(distributionState)
+    expect(rows.map((row) => row.positionId)).toEqual(['pos-a', 'pos-b'])
+    expect(rows[0].counts).toEqual({ 'primary-execute': 1, collaborate: 1, review: 1, countersign: 0 })
+    expect(rows[1].counts).toEqual({ 'primary-execute': 0, collaborate: 0, review: 0, countersign: 0 })
+    expect(filterDutyDistributionRows(rows, '生產')).toHaveLength(2)
+    expect(filterDutyDistributionRows(rows, '不存在')).toHaveLength(0)
   })
 
 })

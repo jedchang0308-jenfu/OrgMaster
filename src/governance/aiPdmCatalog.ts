@@ -1,4 +1,5 @@
-import type { GovernanceApplicationRoleV1, GovernanceApplicationV1, GovernancePermissionV1 } from './types'
+import { createHash } from 'node:crypto'
+import type { ExternalRoleCatalogRoleV1, ExternalRoleCatalogSnapshotV1, GovernanceApplicationRoleV1, GovernanceApplicationV1, GovernancePermissionV1 } from './types'
 
 export const AI_PDM_CATALOG_SOURCE_HASHES = {
   permissionCodes: '0560A929FDA8D9123B65CDB51577F89C65E2EBA7CCD327454F403D9E1E647362',
@@ -56,3 +57,71 @@ export const AI_PDM_PERMISSIONS: GovernancePermissionV1[] = [
   ...AI_PDM_ACTION_PERMISSION_CODES.map((code, index) => ({ id: `permission-ai-pdm-action-${index + 1}`, applicationId: 'ai-pdm' as const, kind: 'action' as const, code, name: code, risk: ['release', 'numbering.publish', 'numbering.approval.batch.decide', 'numbering.candidate.review.decide'].includes(code) ? 'high' as const : 'normal' as const, status: 'active' as const })),
 ]
 export const ALL_SEED_PERMISSIONS = [...ORGMASTER_PERMISSIONS, ...AI_PDM_PERMISSIONS]
+
+export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm-role-fixture-2026-08-27-v1' as const
+export const AI_PDM_ROLE_CATALOG_SOURCE_REFS = [
+  { path: 'AI_PDM/db/schema.sql', range: '2222-2232', sha256: 'B89925107C6ADC10D085E581EBB9E5FBAC42505155CB0774F1AB46B7F261FCD8' },
+  { path: 'AI_PDM/src/lib/repositories/numbering-repository.ts', range: '4744-4759', sha256: '69E21966C1DA2A8146144CC83251FA606572A5042437342FBEF475C7D771289A' },
+  { path: 'AI_PDM/src/lib/repositories/numbering-repository.ts', range: '4785-4791', sha256: '388291CD51446AA88D5A1B935D109FEB9FC6663FDEE8B1545A2F5B67C448005C' },
+] as const
+
+export const AI_PDM_ROLE_CATALOG_ROLES: readonly ExternalRoleCatalogRoleV1[] = [
+  { stableRoleId: 'role-rd', code: 'rd', displayName: 'RD', status: 'active', assignable: true, riskLevel: 'normal', allowedScopeKinds: ['department'] },
+  { stableRoleId: 'role-rd-manager', code: 'rd_manager', displayName: 'RD 主管', status: 'active', assignable: true, riskLevel: 'high', allowedScopeKinds: ['department'] },
+  { stableRoleId: 'role-pdm-admin', code: 'pdm_admin', displayName: 'PDM 管理員', status: 'active', assignable: true, riskLevel: 'high', allowedScopeKinds: ['global'] },
+  { stableRoleId: 'role-document-admin', code: 'document_admin', displayName: '文件管理員', status: 'active', assignable: true, riskLevel: 'high', allowedScopeKinds: ['department'] },
+  { stableRoleId: 'role-qa', code: 'qa', displayName: 'QA / 品保', status: 'active', assignable: true, riskLevel: 'normal', allowedScopeKinds: ['workspace'] },
+  { stableRoleId: 'role-manufacturing', code: 'manufacturing', displayName: '製造', status: 'active', assignable: true, riskLevel: 'normal', allowedScopeKinds: ['workspace'] },
+  { stableRoleId: 'role-procurement', code: 'procurement', displayName: '採購', status: 'active', assignable: true, riskLevel: 'normal', allowedScopeKinds: ['workspace'] },
+  { stableRoleId: 'role-external-specialist', code: 'external_specialist', displayName: '外部專員', status: 'active', assignable: false, riskLevel: 'high', allowedScopeKinds: ['project'], unassignableReason: 'INTEGRATION_METADATA_REQUIRED' },
+  { stableRoleId: 'role-system-admin', code: 'system_admin', displayName: '系統管理員', status: 'active', assignable: true, riskLevel: 'high', allowedScopeKinds: ['global'] },
+]
+
+function catalogPayload(snapshot: Pick<ExternalRoleCatalogSnapshotV1, 'applicationId' | 'catalogVersion' | 'sourceKind' | 'sourceRefs' | 'capturedAt' | 'roles'>) {
+  return { applicationId: snapshot.applicationId, catalogVersion: snapshot.catalogVersion, sourceKind: snapshot.sourceKind, sourceRefs: snapshot.sourceRefs, capturedAt: snapshot.capturedAt, roles: snapshot.roles }
+}
+function payloadHash(snapshot: Pick<ExternalRoleCatalogSnapshotV1, 'applicationId' | 'catalogVersion' | 'sourceKind' | 'sourceRefs' | 'capturedAt' | 'roles'>) {
+  return createHash('sha256').update(JSON.stringify(catalogPayload(snapshot)), 'utf8').digest('hex').toUpperCase()
+}
+
+export function createAiPdmRoleCatalog(validationState: ExternalRoleCatalogSnapshotV1['validationState'] = 'valid', capturedAt = '2026-08-27T00:00:00+08:00'): ExternalRoleCatalogSnapshotV1 {
+  const base = {
+    applicationId: 'ai-pdm' as const,
+    catalogVersion: AI_PDM_ROLE_CATALOG_VERSION,
+    sourceKind: 'bundled-fixture' as const,
+    sourceRefs: AI_PDM_ROLE_CATALOG_SOURCE_REFS.map((ref) => ({ ...ref })),
+    capturedAt,
+    roles: AI_PDM_ROLE_CATALOG_ROLES.map((role) => ({ ...role, allowedScopeKinds: [...role.allowedScopeKinds] })),
+  }
+  return { ...base, payloadHash: payloadHash(base), validationState, effectState: 'not-synchronized' }
+}
+
+export type ExternalRoleCatalogValidationIssue = { code: string; path: string; message: string }
+export function validateExternalRoleCatalog(snapshot: ExternalRoleCatalogSnapshotV1): ExternalRoleCatalogValidationIssue[] {
+  const issues: ExternalRoleCatalogValidationIssue[] = []
+  const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
+  if (snapshot.applicationId !== 'ai-pdm') add('EXTERNAL_CATALOG_OWNER_INVALID', 'applicationId', 'catalog owner 必須為 ai-pdm')
+  if (snapshot.sourceKind !== 'bundled-fixture') add('EXTERNAL_CATALOG_SOURCE_INVALID', 'sourceKind', 'Current Phase 僅允許 bundled fixture')
+  if (snapshot.catalogVersion !== AI_PDM_ROLE_CATALOG_VERSION) add('EXTERNAL_CATALOG_VERSION_CONFLICT', 'catalogVersion', 'catalog version 不符合目前契約')
+  if (snapshot.effectState !== 'not-synchronized') add('EXTERNAL_CATALOG_EFFECT_INVALID', 'effectState', 'Current Phase 不得宣稱已同步')
+  const expectedHash = payloadHash(snapshot)
+  if (snapshot.payloadHash !== expectedHash) add('EXTERNAL_CATALOG_INVALID', 'payloadHash', 'catalog payload hash 不一致')
+  if (!Array.isArray(snapshot.roles)) { add('EXTERNAL_CATALOG_INVALID', 'roles', 'roles 必須為陣列'); return issues }
+  const stableIds = new Set<string>(); const codes = new Set<string>()
+  snapshot.roles.forEach((role, index) => {
+    if (stableIds.has(role.stableRoleId)) add('EXTERNAL_CATALOG_DUPLICATE_ID', `roles[${index}].stableRoleId`, 'stable role ID 必須唯一')
+    if (codes.has(role.code)) add('EXTERNAL_CATALOG_DUPLICATE_CODE', `roles[${index}].code`, 'role code 必須唯一')
+    stableIds.add(role.stableRoleId); codes.add(role.code)
+    if (!role.displayName.trim() || !role.code.trim()) add('EXTERNAL_CATALOG_ROLE_INVALID', `roles[${index}]`, 'role code／名稱不可為空')
+    if (!role.assignable && !role.unassignableReason) add('EXTERNAL_CATALOG_ROLE_INVALID', `roles[${index}]`, '不可指派角色必須提供原因')
+  })
+  return issues
+}
+
+export function readAiPdmRoleCatalog(validationState?: ExternalRoleCatalogSnapshotV1['validationState']) {
+  const envState = typeof process !== 'undefined' ? process.env.ORGMASTER_DEV_EXTERNAL_CATALOG_STATE as ExternalRoleCatalogSnapshotV1['validationState'] | undefined : undefined
+  const state = validationState ?? envState ?? 'valid'
+  const snapshot = createAiPdmRoleCatalog(state)
+  const issues = validateExternalRoleCatalog(snapshot)
+  return issues.length && state === 'valid' ? { ...snapshot, validationState: 'invalid' as const } : snapshot
+}

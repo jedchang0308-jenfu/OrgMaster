@@ -3,6 +3,7 @@ import {
   deriveDutyAnomalies,
   filterAndSortDutyRows,
   invalidateDutyRelationsForPositions,
+  normalizeDutyState,
   normalizeDutyRelationOrders,
   validateDutyState,
 } from './duties'
@@ -58,5 +59,15 @@ describe('duty domain', () => {
     expect(normalized.dutyPositionRelations[1].order).toBe(0)
     expect(validateDutyState(normalized)).toEqual({ ok: true })
     expect(validateDutyState({ ...duplicate, dutyPositionRelations: [...duplicate.dutyPositionRelations, { ...duplicate.dutyPositionRelations[0], id: 'rel-c' }] }).ok).toBe(false)
+  })
+
+  it('migrates legacy collaboration relations into the execution group and deduplicates collisions', () => {
+    const legacy = { ...baseState, dutyPositionRelations: [
+      { id: 'rel-legacy', dutyId: 'duty-a', relationType: 'collaborate' as const, target: { kind: 'position' as const, positionId: 'pos-a' }, isPrimaryExecutor: false, order: 0 },
+      { id: 'rel-canonical', dutyId: 'duty-a', relationType: 'execute' as const, target: { kind: 'position' as const, positionId: 'pos-a' }, isPrimaryExecutor: false, order: 1 },
+    ] }
+    expect(normalizeDutyState(legacy).dutyPositionRelations).toEqual([
+      { id: 'rel-canonical', dutyId: 'duty-a', relationType: 'execute', target: { kind: 'position', positionId: 'pos-a' }, isPrimaryExecutor: false, order: 0 },
+    ])
   })
 })

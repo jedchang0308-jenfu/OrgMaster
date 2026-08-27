@@ -17,17 +17,16 @@ const state: OrgDirectoryState = {
 }
 
 describe('duty placement validator', () => {
-  it('splits execute relations into primary and other columns', () => {
+  it('splits execute relations into primary and collaboration columns', () => {
     expect(dutyColumnForRelation({ relationType: 'execute', isPrimaryExecutor: true })).toBe('primary-execute')
-    expect(dutyColumnForRelation({ relationType: 'execute', isPrimaryExecutor: false })).toBe('other-execute')
+    expect(dutyColumnForRelation({ relationType: 'execute', isPrimaryExecutor: false })).toBe('collaborate')
   })
 
   it('groups exact responsibility columns into a concise matrix without losing source semantics', () => {
     expect(dutyMatrixColumnForResponsibilityColumn('primary-execute')).toBe('execute')
-    expect(dutyMatrixColumnForResponsibilityColumn('other-execute')).toBe('execute')
+    expect(dutyMatrixColumnForResponsibilityColumn('collaborate')).toBe('execute')
     expect(dutyMatrixColumnForResponsibilityColumn('review')).toBe('review')
     expect(dutyMatrixColumnForResponsibilityColumn('countersign')).toBe('review')
-    expect(dutyMatrixColumnForResponsibilityColumn('collaborate')).toBe('collaborate')
     expect(dutyResponsibilityColumnForSource(state, { kind: 'relation', relationId: 'rel-primary' })).toBe('primary-execute')
     expect(dutyResponsibilityColumnForSource(state, { kind: 'relation', relationId: 'rel-review' })).toBe('review')
     expect(dutyPlacementTargetForMatrixCell(state, { kind: 'relation', relationId: 'rel-primary' }, 'pos-b', 'execute')).toEqual({ positionId: 'pos-b', column: 'primary-execute' })

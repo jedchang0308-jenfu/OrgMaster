@@ -1,5 +1,6 @@
 import { dutyColumnForRelation, dutyMatrixColumnForResponsibilityColumn, type DutyMatrixColumn, type DutyResponsibilityColumn } from './dutyPlacement'
 import { deriveDutyAnomalies, type DutyAnomaly, type DutyAnomalyType } from './duties'
+import type { DutyPlanningStatusFilter } from './dutyPlanningRoute'
 import type { Department, Duty, DutyRelationType, OrganizationLevel, OrgDirectoryState, OrgMember, Position } from './types'
 
 export type DutyPlanningViewportMode = 'wide' | 'medium' | 'narrow'
@@ -25,7 +26,7 @@ export interface DutyPositionSummary {
 
 export interface DutyPositionResponsibilityGroup {
   id: DutyMatrixColumn
-  label: '執行' | '審核' | '協作'
+  label: '執行' | '審核'
   rows: DutyMatrixRow[]
 }
 
@@ -52,7 +53,6 @@ export interface DutyAnomalyCategory {
 const DUTY_MASTER_COLUMNS: Array<{ id: DutyMatrixColumn; label: DutyPositionResponsibilityGroup['label'] }> = [
   { id: 'execute', label: '執行' },
   { id: 'review', label: '審核' },
-  { id: 'collaborate', label: '協作' },
 ]
 
 export function getDutyPlanningViewportMode(width: number): DutyPlanningViewportMode {
@@ -195,7 +195,7 @@ export function buildDutyMasterPositionSummaries(
   const rows = buildDutyMatrixRows(state, positions)
   const countsByPosition = new Map<string, Record<DutyMatrixColumn, number>>()
   for (const position of positions) {
-    countsByPosition.set(position.id, { execute: 0, review: 0, collaborate: 0 })
+    countsByPosition.set(position.id, { execute: 0, review: 0 })
   }
   for (const row of rows) {
     if (dutyIds && !dutyIds.has(row.dutyId)) continue
@@ -203,8 +203,8 @@ export function buildDutyMasterPositionSummaries(
     if (counts) counts[row.matrixColumn] += 1
   }
   return positions.map((position) => {
-    const counts = countsByPosition.get(position.id) ?? { execute: 0, review: 0, collaborate: 0 }
-    return { position, counts, total: counts.execute + counts.review + counts.collaborate }
+    const counts = countsByPosition.get(position.id) ?? { execute: 0, review: 0 }
+    return { position, counts, total: counts.execute + counts.review }
   })
 }
 
@@ -300,4 +300,126 @@ export function buildDutyAnomalyCategories(state: OrgDirectoryState): DutyAnomal
         || first.anomaly.id.localeCompare(second.anomaly.id))
     return { id, label, items }
   }).filter((category) => category.items.length > 0)
+}
+
+export type DutyPlanningLane = DutyResponsibilityColumn
+
+export interface DutyAssignmentLabel {
+  id: string
+  label: string
+  positionId: string | null
+  pending: boolean
+}
+
+export interface DutyAuditRow {
+  dutyId: string
+  dutyTitle: string
+  assignments: Record<DutyPlanningLane, DutyAssignmentLabel[]>
+  anomalyTypes: DutyPlanningStatusFilter[]
+}
+
+export interface DutyDistributionRow {
+  positionId: string
+  positionTitle: string
+  departmentId: string | null
+  departmentTitle: string
+  counts: Record<DutyPlanningLane, number>
+}
+
+const PLANNING_LANES: DutyPlanningLane[] = ['primary-execute', 'collaborate', 'review', 'countersign']
+const PLANNING_ANOMALIES: DutyPlanningStatusFilter[] = ['no-executor', 'missing-primary-executor', 'pending-reassignment']
+
+function emptyLaneRecord<T>(factory: () => T): Record<DutyPlanningLane, T> {
+  return {
+    'primary-execute': factory(),
+    collaborate: factory(),
+    review: factory(),
+    countersign: factory(),
+  }
+}
+
+function positionTitleForRelation(state: OrgDirectoryState, relation: OrgDirectoryState['dutyPositionRelations'][number]) {
+  const target = relation.target
+  if (target.kind === 'position') {
+    const positionId = target.positionId
+    return state.positions.find((position) => position.id === positionId)?.title ?? '未知職位'
+  }
+  return `${target.formerPositionTitle}（待重新分配）`
+}
+
+function dutyAnomalyTypes(state: OrgDirectoryState) {
+  const byDuty = new Map<string, Set<DutyPlanningStatusFilter>>()
+  for (const anomaly of deriveDutyAnomalies(state)) {
+    const set = byDuty.get(anomaly.dutyId) ?? new Set<DutyPlanningStatusFilter>()
+    set.add(anomaly.type)
+    byDuty.set(anomaly.dutyId, set)
+  }
+  return byDuty
+}
+
+export function buildDutyAuditRows(state: OrgDirectoryState): DutyAuditRow[] {
+  const anomaliesByDuty = dutyAnomalyTypes(state)
+  const relationsByDuty = new Map<string, typeof state.dutyPositionRelations>()
+  for (const relation of state.dutyPositionRelations) {
+    const relations = relationsByDuty.get(relation.dutyId) ?? []
+    relations.push(relation)
+    relationsByDuty.set(relation.dutyId, relations)
+  }
+  return [...state.duties]
+    .sort((first, second) => first.title.localeCompare(second.title, 'zh-Hant') || first.id.localeCompare(second.id))
+    .map((duty) => {
+      const assignments = emptyLaneRecord<DutyAssignmentLabel[]>(() => [])
+      for (const relation of (relationsByDuty.get(duty.id) ?? []).slice().sort((first, second) => first.order - second.order || first.id.localeCompare(second.id))) {
+        const lane = dutyColumnForRelation(relation)
+        assignments[lane].push({
+          id: relation.id,
+          label: `${positionTitleForRelation(state, relation)} · ${lane === 'primary-execute' ? '主執行' : lane === 'collaborate' ? '協作' : lane === 'review' ? '審核' : '會簽'}`,
+          positionId: relation.target.kind === 'position' ? relation.target.positionId : null,
+          pending: relation.target.kind === 'pending-reassignment',
+        })
+      }
+      const anomalyTypes = PLANNING_ANOMALIES.filter((type) => anomaliesByDuty.get(duty.id)?.has(type))
+      return { dutyId: duty.id, dutyTitle: duty.title, assignments, anomalyTypes }
+    })
+}
+
+export function filterDutyAuditRows(rows: DutyAuditRow[], filters: { query?: string; anomalyTypes?: DutyPlanningStatusFilter[] }) {
+  const query = normalizedDutyQuery(filters.query)
+  const statuses = filters.anomalyTypes ?? []
+  return rows.filter((row) => {
+    const matchesQuery = !query || row.dutyTitle.toLocaleLowerCase('zh-Hant').includes(query)
+    const matchesStatus = statuses.length === 0 || statuses.some((status) => row.anomalyTypes.includes(status))
+    return matchesQuery && matchesStatus
+  })
+}
+
+export function buildDutyDistributionRows(state: OrgDirectoryState): DutyDistributionRow[] {
+  const departmentById = new Map(state.departments.map((department) => [department.id, department]))
+  const activePositionIds = new Set(state.positions.filter((position) => position.status === 'active').map((position) => position.id))
+  const countsByPosition = new Map<string, Record<DutyPlanningLane, number>>()
+  for (const position of sortDutyMatrixPositions(state.positions, state.departments, state.members, state.organizationLevels)) {
+    if (!activePositionIds.has(position.id)) continue
+    countsByPosition.set(position.id, emptyLaneRecord(() => 0))
+  }
+  for (const relation of state.dutyPositionRelations) {
+    if (relation.target.kind !== 'position' || !activePositionIds.has(relation.target.positionId) || !state.duties.some((duty) => duty.id === relation.dutyId)) continue
+    const counts = countsByPosition.get(relation.target.positionId)
+    if (!counts) continue
+    counts[dutyColumnForRelation(relation)] += 1
+  }
+  return sortDutyMatrixPositions(state.positions, state.departments, state.members, state.organizationLevels)
+    .filter((position) => activePositionIds.has(position.id))
+    .map((position) => ({
+      positionId: position.id,
+      positionTitle: position.title,
+      departmentId: position.departmentId,
+      departmentTitle: departmentById.get(position.departmentId ?? '')?.name ?? '未設定部門',
+      counts: countsByPosition.get(position.id) ?? emptyLaneRecord(() => 0),
+    }))
+}
+
+export function filterDutyDistributionRows(rows: DutyDistributionRow[], query = '') {
+  const normalized = normalizedDutyQuery(query)
+  if (!normalized) return rows
+  return rows.filter((row) => `${row.positionTitle} ${row.departmentTitle}`.toLocaleLowerCase('zh-Hant').includes(normalized))
 }

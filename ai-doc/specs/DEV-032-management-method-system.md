@@ -5,6 +5,10 @@
 父交付點：DEV-032  
 風險等級：Medium  
 
+## 2026-08-25 DEV-034 Successor Boundary
+
+`DEV-034` 已以 `RD Implementation Ready / RD Not Started` 承接「在既有組織架構頁直接配置工作事項責任」的 future方向，但不修改本契約的完成範圍。DEV-032仍維持自由正文、無 Stage／Step／Work Item智能引用、Duty唯讀對照及不寫入 Duty domain；DEV-034由組織架構／工作事項 surface進入並寫入既有 Duty domain，且會移除 `App` 對 session-only prototype responsibility root mode的 active wiring，歷史 prototype modules／tests／evidence仍保留。若未來要由管理辦法段落攜帶永久 Work Item reference進入 DEV-034，必須另行重新核准 DEV-032的跨 domain reference與刪除規則，不得由文字比對或 AI推論自動建立。
+
 ## 1. 目的與執行邊界
 
 第一版提供一套閱讀優先的自由管理辦法系統：人類一次提供目標、已知事實、希望建立的規則或既有內容，AI 只負責產生第一份初稿；文件建立後由人類直接編輯、按需閱讀既有職掌並決定何時提供公司閱讀。

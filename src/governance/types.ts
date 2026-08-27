@@ -142,6 +142,118 @@ export interface GovernanceDocumentV1 {
   publishedVersions: GovernancePolicyVersionV1[]
   auditEvents: GovernanceAuditEventV1[]
 }
+
+export type GovernanceVersionKind = 'legacy-policy-v1' | 'assignment-governance-v2'
+export type AssignmentEffectState = 'orgmaster-enforced' | 'not-synchronized'
+export type ExternalRoleCatalogState = 'valid' | 'stale' | 'invalid' | 'unavailable'
+export type ExternalRoleCatalogSourceKind = 'bundled-fixture'
+
+export interface ExternalRoleCatalogRoleV1 {
+  stableRoleId: string
+  code: string
+  displayName: string
+  status: GovernanceRecordStatus
+  assignable: boolean
+  riskLevel: GovernanceRisk
+  allowedScopeKinds: GovernanceScopeV1['kind'][]
+  unassignableReason?: 'INTEGRATION_METADATA_REQUIRED'
+}
+
+export interface ExternalRoleCatalogSnapshotV1 {
+  applicationId: 'ai-pdm'
+  catalogVersion: string
+  sourceKind: ExternalRoleCatalogSourceKind
+  sourceRefs: Array<{ path: string; range: string; sha256: string }>
+  capturedAt: string
+  payloadHash: string
+  validationState: ExternalRoleCatalogState
+  effectState: 'not-synchronized'
+  roles: ExternalRoleCatalogRoleV1[]
+}
+
+export interface GovernanceRoleAssignmentV2 {
+  id: string
+  employeeId: string
+  applicationId: 'orgmaster' | 'ai-pdm'
+  roleId: string
+  roleCodeSnapshot: string
+  roleNameSnapshot: string
+  catalogVersion: string | null
+  scope: GovernanceScopeV1
+  status: 'active' | 'revoked'
+  validFrom: string
+  validTo: string | null
+  effectState: AssignmentEffectState
+}
+
+export interface GovernanceRoleDelegationV2 {
+  id: string
+  sourceAssignmentId: string
+  fromEmployeeId: string
+  toEmployeeId: string
+  applicationId: 'ai-pdm'
+  roleId: string
+  catalogVersion: string
+  scope: GovernanceScopeV1
+  status: 'active' | 'revoked'
+  validFrom: string
+  validTo: string
+  reason: string
+  effectState: 'not-synchronized'
+}
+
+export interface GovernancePolicyDataV2 {
+  applications: GovernanceApplicationV1[]
+  identityLinks: GovernanceIdentityLinkV1[]
+  applicationRoles: GovernanceApplicationRoleV1[]
+  permissions: GovernancePermissionV1[]
+  rolePermissionGrants: GovernanceRolePermissionGrantV1[]
+  roleAssignments: GovernanceRoleAssignmentV2[]
+  roleDelegations: GovernanceRoleDelegationV2[]
+}
+
+export interface GovernanceAssignmentVersionV2 {
+  kind: 'assignment-governance-v2'
+  id: string
+  versionNumber: number
+  publishedAt: string
+  publishedByPrincipalId: string
+  publishReason: string
+  snapshotHash: string
+  effectState: 'not-synchronized'
+  policy: GovernancePolicyDataV2
+  externalRoleCatalogs: ExternalRoleCatalogSnapshotV1[]
+  organizationSnapshot: GovernanceOrganizationSnapshotV1
+}
+
+export type GovernancePublishedVersionV2 = (GovernancePolicyVersionV1 & { kind: 'legacy-policy-v1' }) | GovernanceAssignmentVersionV2
+
+export interface GovernanceMigrationStateV2 {
+  sourceSchemaVersion: 1 | null
+  sourceRevision: string | null
+  migratedAt: string | null
+  legacyDraftHash: string | null
+  removedExternalDraftCounts: { roles: number; permissions: number; grants: number; approvalPolicies: number }
+  unresolvedAssignments: Array<{ value: GovernanceRoleAssignmentV1; reason: string }>
+  unresolvedDelegations: Array<{ value: GovernanceDelegationV1; reason: 'PERMISSION_DELEGATION_NOT_MIGRATABLE' }>
+}
+
+export interface GovernanceDocumentV2 {
+  app: 'OrgMaster'
+  schemaVersion: 2
+  draft: GovernancePolicyDataV2 & { basePolicyVersionId: string | null; updatedAt: string }
+  activePolicyVersionId: string | null
+  publishedVersions: GovernancePublishedVersionV2[]
+  auditEvents: GovernanceAuditEventV1[]
+  migration: GovernanceMigrationStateV2
+}
+
+export type GovernanceCommandV2 =
+  | Extract<GovernanceCommand, { type: 'UPSERT_IDENTITY_LINK' | 'SET_IDENTITY_LINK_STATUS' | 'UPSERT_APPLICATION_ROLE' | 'SET_APPLICATION_ROLE_STATUS' | 'UPSERT_PERMISSION' | 'SET_PERMISSION_STATUS' | 'SET_ROLE_PERMISSION_GRANT' | 'REMOVE_ROLE_PERMISSION_GRANT' }>
+  | { type: 'UPSERT_ROLE_ASSIGNMENT'; commandId: string; reason: string; value: GovernanceRoleAssignmentV2 }
+  | { type: 'REVOKE_ROLE_ASSIGNMENT'; commandId: string; reason: string; id: string }
+  | { type: 'UPSERT_ROLE_DELEGATION'; commandId: string; reason: string; value: GovernanceRoleDelegationV2 }
+  | { type: 'REVOKE_ROLE_DELEGATION'; commandId: string; reason: string; id: string }
 export interface GovernanceActorContext {
   principalId: string
   issuer: string

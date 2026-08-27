@@ -66,6 +66,8 @@ import {
 } from './positionDragInteraction'
 import { Toolbar } from './components/Toolbar'
 import { DutyCenter } from './components/DutyCenter'
+import { DutyDetailDrawer } from './components/DutyDetailDrawer'
+import { DutyDeleteDialog, DutyEditDialog } from './components/DutyDialogs'
 import { ManagementMethodPrototype } from './components/ManagementMethodPrototype'
 import { GovernanceCenter } from './components/GovernanceCenter'
 import { VersionWorkspacePanel } from './components/VersionWorkspacePanel'
@@ -91,7 +93,23 @@ import {
   type OrgDocumentKind,
 } from './documentStorage'
 import { loadWorkspaceIndex, loadWorkspaceVersion, saveWorkspaceDocument, createWorkspaceDraft as createWorkspaceDraftRequest, updateWorkspaceEntryClient } from './serverWorkspaceStorage'
-import { buildDutyPlanningUrl, readDutyPlanningLocation, type DutyPlanningLocation, type DutyPlanningSurface } from './dutyPlanningRoute'
+import { buildDutyPlanningUrl, readDutyPlanningLocation, type DutyPlanningLocation, type DutyPlanningStatusFilter, type DutyPlanningView } from './dutyPlanningRoute'
+import { buildDutyConfigurationUrl, normalizeDutyConfigurationLocation, readDutyConfigurationLocation, type DutyConfigurationExactLane, type DutyConfigurationLocation } from './dutyConfigurationRoute'
+import { canMutateDutyConfiguration } from './dutyConfigurationCapability'
+import { dutyConfigurationIssueMessage, dutyConfigurationLaneLabels, resolveDutyConfigurationDropCommand, type DutyConfigurationIssueCode } from './dutyConfiguration'
+import {
+  DUTY_CONFIGURATION_DRAG_MIME,
+  beginDutyConfigurationDrop,
+  createDutyConfigurationDragState,
+  getDutyConfigurationAutoPanDelta,
+  parseDutyConfigurationDragPayload,
+  serializeDutyConfigurationDragPayload,
+  startDutyConfigurationDrag as createDutyDragState,
+  updateDutyConfigurationDragCandidate,
+  type DutyConfigurationDragPayload,
+  type DutyConfigurationDragState,
+  type DutyConfigurationDropCandidate,
+} from './dutyConfigurationDrag'
 import {
   initialManagementMethodPrototype,
   findPrototypeStep,
@@ -398,11 +416,21 @@ export default function App() {
   serverRevisionRef.current = serverRevision
   const isDirty = savedSignature !== currentSignature
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [activeDirectory, setActiveDirectory] = useState<DirectoryKind | null>('employees')
+  const [activeDirectory, setActiveDirectory] = useState<DirectoryKind | null>(() => readDutyConfigurationLocation(window.location).active ? 'duties' : 'employees')
   const [riskInteractionPositionId, setRiskInteractionPositionId] = useState<string | null>(null)
   const [directorySelection, setDirectorySelection] = useState<DirectorySelection | null>(null)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [dutyPlanningLocation, setDutyPlanningLocation] = useState<DutyPlanningLocation>(() => readDutyPlanningLocation(window.location))
+  const [dutyConfigurationLocation, setDutyConfigurationLocation] = useState<DutyConfigurationLocation>(() => readDutyConfigurationLocation(window.location))
+  const [dutyConfigurationExpandedDutyId, setDutyConfigurationExpandedDutyId] = useState<string | null>(() => readDutyConfigurationLocation(window.location).dutyId)
+  const [dutyConfigurationError, setDutyConfigurationError] = useState<string | null>(null)
+  const [dutyDetailOpen, setDutyDetailOpen] = useState(false)
+  const [dutyDragState, setDutyDragState] = useState<DutyConfigurationDragState>(() => createDutyConfigurationDragState())
+  const dutyDragPayloadRef = useRef<DutyConfigurationDragPayload | null>(null)
+  const dutyDragSourceFocusRef = useRef<HTMLElement | null>(null)
+  const dutyDragPointerRef = useRef<{ x: number; y: number } | null>(null)
+  const [dutyEditDialog, setDutyEditDialog] = useState<'create' | null>(null)
+  const [dutyDeleteDialog, setDutyDeleteDialog] = useState(false)
   const [managementMethodState, setManagementMethodState] = useState(initialManagementMethodPrototype)
   const [managementMethodLocation, setManagementMethodLocation] = useState<ManagementMethodPrototypeLocation>(() => readManagementMethodPrototypeLocation(window.location))
   const [managementMethodRoute, setManagementMethodRoute] = useState<ManagementMethodLocation>(() => readManagementMethodLocation(window.location))
@@ -410,7 +438,12 @@ export default function App() {
   const lastInteractedPanelRef = useRef<WorkspacePanelId | null>(null)
 
   useEffect(() => {
-    const syncDutyPlanningLocation = () => setDutyPlanningLocation(readDutyPlanningLocation(window.location))
+    const syncDutyPlanningLocation = () => {
+      setDutyPlanningLocation(readDutyPlanningLocation(window.location))
+      const nextDutyLocation = readDutyConfigurationLocation(window.location)
+      setDutyConfigurationLocation(nextDutyLocation)
+      setDutyConfigurationExpandedDutyId(nextDutyLocation.dutyId)
+    }
     window.addEventListener('popstate', syncDutyPlanningLocation)
     return () => window.removeEventListener('popstate', syncDutyPlanningLocation)
   }, [])
@@ -440,27 +473,92 @@ export default function App() {
   }, [managementMethodLocation.responsibilityContext, mobileReadOnly])
 
   useEffect(() => {
+    if (!dutyConfigurationLocation.active) return
+    const normalized = normalizeDutyConfigurationLocation(dutyConfigurationLocation, currentState)
+    if (!normalized.replaceUrl) return
+    window.history.replaceState({}, '', normalized.replaceUrl)
+    setDutyConfigurationLocation(normalized.location)
+  }, [currentState, dutyConfigurationLocation])
+
+  useEffect(() => {
+    if (!dutyPlanningLocation.isDutyPlanningPage) return
+    const canonical = buildDutyPlanningUrl({ view: dutyPlanningLocation.view ?? 'audit', query: dutyPlanningLocation.query, anomalyTypes: dutyPlanningLocation.anomalyTypes })
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+    if (currentUrl === canonical) return
+    window.history.replaceState({}, '', canonical)
+    setDutyPlanningLocation(readDutyPlanningLocation(window.location))
+  }, [dutyPlanningLocation])
+
+  useEffect(() => {
     document.title = managementMethodRoute.isListPage || managementMethodRoute.isDocumentPage
       ? '管理辦法｜OrgMaster'
       : managementMethodLocation.isEditorPage
       ? `${managementMethodState.method.code} ${managementMethodState.method.title}｜OrgMaster`
+      : dutyConfigurationLocation.active
+        ? '組織架構／工作事項配置｜OrgMaster'
       : dutyPlanningLocation.isDutyPlanningPage
         ? '工作職掌規劃台｜OrgMaster'
         : managementMethodLocation.responsibilityContext
           ? '工作事項責任配置｜OrgMaster'
           : 'OrgMaster 組織架構圖'
-  }, [dutyPlanningLocation.isDutyPlanningPage, managementMethodLocation.isEditorPage, managementMethodLocation.responsibilityContext, managementMethodRoute.isDocumentPage, managementMethodRoute.isListPage, managementMethodState.method.code, managementMethodState.method.title])
+  }, [dutyConfigurationLocation.active, dutyPlanningLocation.isDutyPlanningPage, managementMethodLocation.isEditorPage, managementMethodLocation.responsibilityContext, managementMethodRoute.isDocumentPage, managementMethodRoute.isListPage, managementMethodState.method.code, managementMethodState.method.title])
 
-  const openDutyPlanningPage = useCallback((focusPositionId?: string | null, surface: DutyPlanningSurface = 'workbench') => {
-    const nextUrl = buildDutyPlanningUrl({ focusPositionId, surface })
+  const openDutyPlanningPage = useCallback((view: DutyPlanningView = 'audit', query = '', anomalyTypes: DutyPlanningStatusFilter[] = []) => {
+    const nextUrl = buildDutyPlanningUrl({ view, query, anomalyTypes })
     const currentUrl = `${window.location.pathname}${window.location.search}`
     if (currentUrl !== nextUrl) window.history.pushState({}, '', nextUrl)
     setDutyPlanningLocation(readDutyPlanningLocation(window.location))
+    // Opening the workbench from the duty directory must leave configuration
+    // mode immediately; otherwise the stale configuration flag prevents the
+    // planning page branch from rendering after the URL changes.
+    const nextDutyConfigurationLocation = readDutyConfigurationLocation(window.location)
+    setDutyConfigurationLocation(nextDutyConfigurationLocation)
+    setDutyConfigurationExpandedDutyId(nextDutyConfigurationLocation.dutyId)
+    setDutyDetailOpen(false)
   }, [])
+
+  const navigateDutyPlanningView = useCallback((view: DutyPlanningView) => {
+    const nextUrl = buildDutyPlanningUrl({ view, query: dutyPlanningLocation.query, anomalyTypes: dutyPlanningLocation.anomalyTypes })
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) window.history.pushState({}, '', nextUrl)
+    setDutyPlanningLocation(readDutyPlanningLocation(window.location))
+  }, [dutyPlanningLocation.anomalyTypes, dutyPlanningLocation.query])
+
+  const updateDutyPlanningQuery = useCallback((query: string) => {
+    const nextUrl = buildDutyPlanningUrl({ view: dutyPlanningLocation.view ?? 'audit', query, anomalyTypes: dutyPlanningLocation.anomalyTypes })
+    window.history.replaceState({}, '', nextUrl)
+    setDutyPlanningLocation(readDutyPlanningLocation(window.location))
+  }, [dutyPlanningLocation.anomalyTypes, dutyPlanningLocation.view])
+
+  const updateDutyPlanningStatuses = useCallback((anomalyTypes: DutyPlanningStatusFilter[]) => {
+    const nextUrl = buildDutyPlanningUrl({ view: dutyPlanningLocation.view ?? 'audit', query: dutyPlanningLocation.query, anomalyTypes })
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) window.history.pushState({}, '', nextUrl)
+    setDutyPlanningLocation(readDutyPlanningLocation(window.location))
+  }, [dutyPlanningLocation.query, dutyPlanningLocation.view])
+
+  const clearDutyPlanningFilters = useCallback(() => {
+    const nextUrl = buildDutyPlanningUrl({ view: dutyPlanningLocation.view ?? 'audit', query: '', anomalyTypes: [] })
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) window.history.replaceState({}, '', nextUrl)
+    setDutyPlanningLocation(readDutyPlanningLocation(window.location))
+  }, [dutyPlanningLocation.view])
 
   const closeDutyPlanningPage = useCallback(() => {
     window.history.replaceState({}, '', '/')
     setDutyPlanningLocation(readDutyPlanningLocation(window.location))
+  }, [])
+
+  const openDutyConfiguration = useCallback((focusPositionId?: string | null, dutyId?: string | null) => {
+    const nextUrl = buildDutyConfigurationUrl({ dutyId, focusPositionId, attentionOnly: false })
+    window.history.pushState({}, '', nextUrl)
+    setDutyConfigurationLocation(readDutyConfigurationLocation(window.location))
+    setDutyConfigurationExpandedDutyId(null)
+    setDutyConfigurationError(null)
+    setDutyDetailOpen(false)
+    setActiveDirectory('duties')
+    setDirectorySelection(null)
+    setInspectorOpen(false)
+    setDutyDragState(createDutyConfigurationDragState())
+    dutyDragSourceFocusRef.current = null
+    dutyDragPayloadRef.current = null
   }, [])
 
   const openManagementMethodPage = useCallback((focusStepId?: string | null) => {
@@ -551,6 +649,18 @@ export default function App() {
   }, [selectEntity])
   const changeActiveDirectory = useCallback((next: DirectoryKind | null) => {
     const previous = activeDirectory
+    if (next === 'duties' && !dutyConfigurationLocation.active) {
+      window.history.pushState({}, '', buildDutyConfigurationUrl({ attentionOnly: false }))
+      setDutyConfigurationLocation(readDutyConfigurationLocation(window.location))
+      setDutyConfigurationError(null)
+    } else if (dutyConfigurationLocation.active && next !== 'duties') {
+      window.history.replaceState({}, '', '/')
+      setDutyConfigurationLocation(readDutyConfigurationLocation(window.location))
+      setDutyConfigurationError(null)
+      dutyDragSourceFocusRef.current = null
+      dutyDragPayloadRef.current = null
+      setDutyDragState(createDutyConfigurationDragState())
+    }
     setActiveDirectory(next)
     if (next) {
       lastInteractedPanelRef.current = 'directory'
@@ -562,7 +672,7 @@ export default function App() {
     } else if (previous) {
       focusAfterClose(() => findDataElement('data-directory-rail-kind', previous))
     }
-  }, [activeDirectory, focusAfterClose])
+  }, [activeDirectory, dutyConfigurationLocation.active, focusAfterClose])
   const recordPanelInteraction = useCallback((event: { target: EventTarget | null }) => {
     const panel = workspacePanelFromTarget(event.target)
     if (panel) lastInteractedPanelRef.current = panel
@@ -598,7 +708,16 @@ export default function App() {
   editingEnabledRef.current = workspaceMode === 'draft-edit' || workspaceMode === 'current-maintenance'
   const editingEnabled = editingEnabledRef.current
   const prototypeResponsibilityContext = mobileReadOnly ? null : managementMethodLocation.responsibilityContext
-  const organizationEditingEnabled = editingEnabled && !prototypeResponsibilityContext
+  const dutyConfigurationWritable = dutyConfigurationLocation.active && canMutateDutyConfiguration({
+    editingEnabled,
+    serverReady,
+    recoveryOpen,
+    mobileReadOnly,
+    viewportWidth: window.innerWidth,
+    hoverCapable: window.matchMedia('(hover: hover)').matches,
+    finePointer: window.matchMedia('(pointer: fine)').matches,
+  })
+  const organizationEditingEnabled = editingEnabled && !prototypeResponsibilityContext && !dutyConfigurationLocation.active
   const commitState = useCallback((updater: OrgStateUpdater) => {
     if (!editingEnabledRef.current) {
       setAssignmentNotice('目前版本為唯讀；請選擇草稿或進入現行版維護')
@@ -654,6 +773,8 @@ export default function App() {
     fitView,
     getZoom,
     getNode,
+    getViewport,
+    setViewport,
     setCenter,
     screenToFlowPosition,
   } = useReactFlow<OrgFlowNode, OrgFlowEdge>()
@@ -671,6 +792,116 @@ export default function App() {
     return result
   }, [commitState, currentState, departments])
 
+  const selectDutyFromPicker = useCallback((dutyId: string) => {
+    const nextDutyId = dutyConfigurationExpandedDutyId === dutyId ? null : dutyId
+    const nextUrl = buildDutyConfigurationUrl({ dutyId: nextDutyId, attentionOnly: dutyConfigurationLocation.attentionOnly })
+    window.history.replaceState({}, '', nextUrl)
+    setDutyConfigurationLocation(readDutyConfigurationLocation(window.location))
+    setDutyConfigurationExpandedDutyId(nextDutyId)
+    setDutyConfigurationError(null)
+    setDutyDetailOpen(false)
+  }, [dutyConfigurationExpandedDutyId, dutyConfigurationLocation.attentionOnly])
+
+  const openDutyConfigurationDetail = useCallback((dutyId: string) => {
+    const nextUrl = buildDutyConfigurationUrl({ dutyId, attentionOnly: dutyConfigurationLocation.attentionOnly })
+    window.history.replaceState({}, '', nextUrl)
+    setDutyConfigurationLocation(readDutyConfigurationLocation(window.location))
+    setDutyConfigurationExpandedDutyId((currentDutyId) => currentDutyId === dutyId ? currentDutyId : null)
+    setDutyConfigurationError(null)
+    setDutyDetailOpen(true)
+  }, [dutyConfigurationLocation.attentionOnly])
+
+  const selectDutyLane = useCallback((lane: DutyConfigurationExactLane) => {
+    if (!dutyConfigurationLocation.dutyId) return
+    const nextUrl = buildDutyConfigurationUrl({ ...dutyConfigurationLocation, dutyId: dutyConfigurationLocation.dutyId, lane, attentionOnly: dutyConfigurationLocation.attentionOnly })
+    window.history.replaceState({}, '', nextUrl)
+    setDutyConfigurationLocation(readDutyConfigurationLocation(window.location))
+    setDutyConfigurationError(null)
+  }, [dutyConfigurationLocation])
+
+  const startDutyConfigurationDrag = useCallback((payload: DutyConfigurationDragPayload, mode: 'native' | 'keyboard') => {
+    if (!dutyConfigurationWritable || !dutyConfigurationLocation.active) return
+    dutyDragSourceFocusRef.current = mode === 'keyboard' && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+    dutyDragPayloadRef.current = payload
+    setDutyDragState(createDutyDragState(payload, mode))
+    setDutyConfigurationError(null)
+  }, [dutyConfigurationLocation.active, dutyConfigurationWritable])
+
+  const cancelDutyConfigurationDrag = useCallback(() => {
+    const focusTarget = dutyDragSourceFocusRef.current
+    dutyDragSourceFocusRef.current = null
+    dutyDragPayloadRef.current = null
+    setDutyDragState(createDutyConfigurationDragState())
+    if (focusTarget?.isConnected) {
+      window.requestAnimationFrame(() => focusTarget.focus())
+    }
+  }, [])
+
+  const resolveDutyDropCandidate = useCallback((payload: DutyConfigurationDragPayload, positionId: string): { kind: DutyConfigurationDropCandidate; code?: DutyConfigurationIssueCode } => {
+    const resolution = resolveDutyConfigurationDropCommand(currentStateRef.current, {
+      dutyId: payload.dutyId,
+      positionId,
+      lane: payload.lane,
+      sourceRelationId: payload.sourceRelationId,
+      newRelationId: payload.newRelationId,
+    })
+    if (resolution.status === 'command') return { kind: 'command' }
+    if (resolution.status === 'noop') return { kind: 'noop', code: resolution.code }
+    return { kind: 'invalid', code: resolution.code }
+  }, [])
+
+  const updateDutyDropCandidate = useCallback((positionId: string, event?: DragEvent<HTMLElement>) => {
+    const payload = dutyDragPayloadRef.current ?? parseDutyConfigurationDragPayload(event?.dataTransfer.getData(DUTY_CONFIGURATION_DRAG_MIME))
+    if (!payload || !dutyConfigurationWritable) return
+    dutyDragPayloadRef.current = payload
+    const candidate = resolveDutyDropCandidate(payload, positionId)
+    setDutyDragState((current) => updateDutyConfigurationDragCandidate(current, positionId, candidate.kind))
+    if (event) {
+      dutyDragPointerRef.current = { x: event.clientX, y: event.clientY }
+      const canvas = event.currentTarget.closest<HTMLElement>('.canvas-wrap')
+      if (canvas) {
+        const delta = getDutyConfigurationAutoPanDelta({ x: event.clientX, y: event.clientY }, canvas.getBoundingClientRect())
+        if (delta.x || delta.y) {
+          const viewport = getViewport()
+          void setViewport({ ...viewport, x: viewport.x + delta.x, y: viewport.y + delta.y }, { duration: 0 })
+        }
+      }
+    }
+  }, [dutyConfigurationWritable, getViewport, resolveDutyDropCandidate, setViewport])
+
+  const commitDutyDrop = useCallback((positionId: string) => {
+    const payload = dutyDragPayloadRef.current
+    if (!payload || !dutyConfigurationWritable) return
+    const candidate = resolveDutyDropCandidate(payload, positionId)
+    if (candidate.kind !== 'command') {
+      setDutyConfigurationError(candidate.code ? dutyConfigurationIssueMessage(candidate.code) : candidate.kind === 'noop' ? '此配置已存在，未重複新增' : '此位置無法配置工作執掌')
+      cancelDutyConfigurationDrag()
+      return
+    }
+    const resolution = resolveDutyConfigurationDropCommand(currentStateRef.current, {
+      dutyId: payload.dutyId,
+      positionId,
+      lane: payload.lane,
+      sourceRelationId: payload.sourceRelationId,
+      newRelationId: payload.newRelationId,
+    })
+    if (resolution.status !== 'command') return
+    setDutyDragState(beginDutyConfigurationDrop(dutyDragState, positionId))
+    const result = executeOrganizationCommand(currentStateRef.current, resolution.command)
+    if (result.status === 'applied') {
+      commitState(result.state)
+      setDutyConfigurationError(null)
+      const nextUrl = buildDutyConfigurationUrl({ dutyId: payload.dutyId, lane: payload.lane, attentionOnly: dutyConfigurationLocation.attentionOnly, focusPositionId: positionId, sourceRelationId: null })
+      window.history.replaceState({}, '', nextUrl)
+      setDutyConfigurationLocation(readDutyConfigurationLocation(window.location))
+    } else if (result.status === 'rejected') {
+      setDutyConfigurationError(organizationIssueMessage(result.issue, departments))
+    }
+    cancelDutyConfigurationDrag()
+  }, [cancelDutyConfigurationDrag, commitState, departments, dutyConfigurationLocation.attentionOnly, dutyConfigurationWritable, dutyDragState, resolveDutyDropCandidate])
+
   const positionViews = useMemo(
     () => buildPositionViews(members, positions, assignments, TODAY),
     [assignments, members, positions],
@@ -684,6 +915,16 @@ export default function App() {
     }
     return new Map(Array.from(labels.entries()).map(([positionId, values]) => [positionId, values.join(' · ')]))
   }, [managementMethodState.assignments, prototypeResponsibilityContext])
+  const dutyDropCandidateByPositionId = useMemo(() => {
+    const map = new Map<string, DutyConfigurationDropCandidate>()
+    const payload = dutyDragPayloadRef.current
+    const candidatePositionId = dutyDragState.phase === 'native-dragging' || dutyDragState.phase === 'keyboard-grabbed'
+      ? dutyDragState.candidatePositionId
+      : null
+    if (!payload || !dutyConfigurationLocation.active || !candidatePositionId) return map
+    map.set(candidatePositionId, resolveDutyDropCandidate(payload, candidatePositionId).kind)
+    return map
+  }, [dutyConfigurationLocation.active, dutyDragState, resolveDutyDropCandidate])
 
   const activatePosition = useCallback((positionId: string) => {
     if (!prototypeResponsibilityContext) {
@@ -1243,13 +1484,14 @@ export default function App() {
           const riskState = positionRiskById.get(member.id)
           const riskRelated = relatedRiskPositionIds.has(member.id)
           const employees = previewEmployeesByPositionId.get(member.id) ?? []
-          const prototypeResponsibilityLabel = prototypeResponsibilityLabelsByPositionId.get(member.id)
+          const dutyDropCandidate = dutyDropCandidateByPositionId.get(member.id)
+          const positionSelectHandler = activatePosition
           const dataChanged = !previous
             || previous.data.member !== viewMember
             || previous.data.employees !== employees
             || previous.data.childCount !== childTotal
             || previous.data.onToggle !== toggleCollapse
-            || previous.data.onSelectPosition !== activatePosition
+            || previous.data.onSelectPosition !== positionSelectHandler
             || previous.data.onSelectEmployee !== selectEmployee
             || previous.data.onEmployeeDragStart !== startEmployeeDrag
             || previous.data.onEmployeeDragEnd !== finishEmployeeDrag
@@ -1261,7 +1503,12 @@ export default function App() {
             || previous.data.riskRelated !== riskRelated
             || previous.data.onRiskInteraction !== setRiskInteraction
             || previous.data.editingEnabled !== organizationEditingEnabled
-            || previous.data.prototypeResponsibilityLabel !== prototypeResponsibilityLabel
+            || previous.data.dutyConfigurationActive !== dutyConfigurationLocation.active
+            || previous.data.dutyDropCandidate !== dutyDropCandidate
+            || previous.data.dutyKeyboardGrabbed !== (dutyDragState.phase === 'keyboard-grabbed')
+            || previous.data.dutyKeyboardLaneLabel !== (dutyDragState.phase === 'keyboard-grabbed' ? dutyConfigurationLaneLabels[dutyDragState.payload.lane] : undefined)
+            || previous.data.onDutyDropPosition !== commitDutyDrop
+            || previous.data.onDutyDragOver !== updateDutyDropCandidate
             || !sameOptionalPoint(previous.data.dragOffset, dragOffset)
           if (!previous || !sameOptionalPoint(previous.position, position) || previous.selected !== selectedState || dataChanged) {
             changed = true
@@ -1276,7 +1523,7 @@ export default function App() {
                 employees,
                 childCount: childTotal,
                 onToggle: toggleCollapse,
-                onSelectPosition: activatePosition,
+                onSelectPosition: positionSelectHandler,
                 onSelectEmployee: selectEmployee,
                 onEmployeeDragStart: startEmployeeDrag,
                 onEmployeeDragEnd: finishEmployeeDrag,
@@ -1289,7 +1536,12 @@ export default function App() {
                 riskRelated,
                 onRiskInteraction: setRiskInteraction,
                 editingEnabled: organizationEditingEnabled,
-                prototypeResponsibilityLabel,
+                dutyConfigurationActive: dutyConfigurationLocation.active,
+                dutyDropCandidate,
+                dutyKeyboardGrabbed: dutyDragState.phase === 'keyboard-grabbed',
+                dutyKeyboardLaneLabel: dutyDragState.phase === 'keyboard-grabbed' ? dutyConfigurationLaneLabels[dutyDragState.payload.lane] : undefined,
+                onDutyDropPosition: commitDutyDrop,
+                onDutyDragOver: updateDutyDropCandidate,
               },
             }
           }
@@ -1318,6 +1570,12 @@ export default function App() {
     activatePosition,
     selectEmployee,
     prototypeResponsibilityLabelsByPositionId,
+    dutyDropCandidateByPositionId,
+    dutyDragState,
+    dutyConfigurationLocation.active,
+    dutyConfigurationLocation.dutyId,
+    commitDutyDrop,
+    updateDutyDropCandidate,
     startEmployeeDrag,
     setRiskInteraction,
     toggleCollapse,
@@ -1946,6 +2204,26 @@ export default function App() {
       // A failed document is a recovery gate: keyboard shortcuts must not
       // mutate, save, undo, or dismiss the empty fallback workspace.
       if (recoveryOpen) return
+      if (dutyDragState.phase === 'keyboard-grabbed') {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          cancelDutyConfigurationDrag()
+          return
+        }
+        if (event.key === 'Tab') {
+          event.preventDefault()
+          const targets = Array.from(document.querySelectorAll<HTMLElement>('[data-position-id][tabindex="0"]'))
+          const current = document.activeElement?.closest<HTMLElement>('[data-position-id]')
+          const currentIndex = current ? targets.indexOf(current) : -1
+          const nextIndex = event.shiftKey
+            ? (currentIndex <= 0 ? targets.length - 1 : currentIndex - 1)
+            : (currentIndex + 1) % Math.max(targets.length, 1)
+          targets[nextIndex]?.focus()
+          return
+        }
+        if (event.key === 'Enter' || event.key === ' ') return
+      }
       if (prototypeResponsibilityContext && event.key === 'Escape') {
         event.preventDefault()
         finishPrototypeResponsibility()
@@ -2055,11 +2333,13 @@ export default function App() {
     addChild,
     addSibling,
     activeDirectory,
+    cancelDutyConfigurationDrag,
     closeDirectoryPanel,
     closeInspectorPanel,
     closePositionContextMenu,
     closeRoleRiskPanel,
     deleteOpen,
+    dutyDragState.phase,
     directoryDialog,
     fitOrganization,
     editingEnabled,
@@ -2081,6 +2361,31 @@ export default function App() {
   ])
 
   const selectedChildCount = selected ? childCount.get(selected.id) ?? 0 : 0
+  const selectedDutyForConfiguration = dutyConfigurationLocation.dutyId
+    ? duties.find((duty) => duty.id === dutyConfigurationLocation.dutyId) ?? null
+    : null
+  const runDutyConfigurationCommand = useCallback((command: OrganizationCommand) => {
+    if (!dutyConfigurationWritable) {
+      setDutyConfigurationError('目前版本為唯讀；請先進入草稿編輯或現行版維護')
+      return null
+    }
+    const result = executeOrganizationCommand(currentStateRef.current, command)
+    if (result.status === 'applied') {
+      commitState(result.state)
+      setDutyConfigurationError(null)
+    } else if (result.status === 'rejected') {
+      setDutyConfigurationError(organizationIssueMessage(result.issue, departments))
+    }
+    return result
+  }, [commitState, departments, dutyConfigurationWritable])
+  const saveNewDuty = useCallback((title: string, description: string | null) => {
+    const id = `duty-${crypto.randomUUID()}`
+    const result = runDutyConfigurationCommand({ type: 'CREATE_DUTY', duty: { id, title, description } })
+    if (result?.status === 'applied') {
+      setDutyEditDialog(null)
+      selectDutyFromPicker(id)
+    }
+  }, [runDutyConfigurationCommand, selectDutyFromPicker])
   const directoryDetailSelection: DirectoryDetailSelection | null = directorySelection?.kind === 'employees' || directorySelection?.kind === 'departments'
     ? { kind: directorySelection.kind, id: directorySelection.id }
     : null
@@ -2119,7 +2424,7 @@ export default function App() {
     )
   }
 
-  if (dutyPlanningLocation.isDutyPlanningPage) {
+  if (dutyPlanningLocation.isDutyPlanningPage && !dutyConfigurationLocation.active) {
     return (
       <DutyCenter
         open
@@ -2128,7 +2433,6 @@ export default function App() {
         state={currentState}
         departments={departments}
         organizationLevels={organizationLevels}
-        editingEnabled={editingEnabled}
         isDirty={isDirty}
         savedAt={savedAt}
         persistenceKind={persistenceKind}
@@ -2137,16 +2441,20 @@ export default function App() {
         onSave={saveDocument}
         onSaveCopy={saveDocumentCopy}
         onBackup={backupDocument}
-        onCommand={runOrganizationCommand}
-        focusPositionId={dutyPlanningLocation.focusPositionId}
-        surface={dutyPlanningLocation.surface ?? 'workbench'}
-        onNavigateSurface={(surface) => openDutyPlanningPage(dutyPlanningLocation.focusPositionId, surface)}
+        view={dutyPlanningLocation.view ?? 'audit'}
+        query={dutyPlanningLocation.query}
+        anomalyTypes={dutyPlanningLocation.anomalyTypes}
+        onNavigateView={navigateDutyPlanningView}
+        onQueryChange={updateDutyPlanningQuery}
+        onAnomalyTypesChange={updateDutyPlanningStatuses}
+        onClearFilters={clearDutyPlanningFilters}
+        onOpenDutyConfiguration={(dutyId) => openDutyConfiguration(null, dutyId)}
       />
     )
   }
 
   return (
-    <div className={`app-shell${prototypeResponsibilityContext ? ' is-prototype-responsibility' : ''}`}>
+    <div className={`app-shell${prototypeResponsibilityContext ? ' is-prototype-responsibility' : ''}${dutyConfigurationLocation.active ? ' is-duty-configuration' : ''}${dutyConfigurationLocation.active && !dutyConfigurationWritable ? ' is-duty-configuration-readonly' : ''}`}>
       <Toolbar
         members={positionViews}
         employees={employees}
@@ -2161,7 +2469,6 @@ export default function App() {
         }}
         governanceOpen={governanceOpen}
         onOpenGovernance={() => setGovernanceOpen(true)}
-        onOpenDutyCenter={() => openDutyPlanningPage()}
         onOpenManagementMethods={() => openManagementMethodPage()}
         governanceButtonRef={governanceButtonRef}
         isDirty={isDirty}
@@ -2211,12 +2518,17 @@ export default function App() {
         open={governanceOpen}
         onClose={() => setGovernanceOpen(false)}
         employees={employees}
+        departments={departments}
         roles={roles}
         currentOrganizationVersionId={workspaceIndex?.currentVersionId ?? null}
       />
 
       <main
-        className={inspectorOpen ? 'workspace has-inspector' : 'workspace'}
+        className={[
+          'workspace',
+          inspectorOpen || (dutyConfigurationLocation.active && dutyDetailOpen) ? 'has-inspector' : '',
+          dutyConfigurationLocation.active ? 'is-duty-configuration' : '',
+        ].filter(Boolean).join(' ')}
         onPointerDownCapture={recordPanelInteraction}
         onFocusCapture={recordPanelInteraction}
       >
@@ -2273,6 +2585,26 @@ export default function App() {
           onDeleteOrganizationLevel={deleteOrganizationLevel}
           onReorderOrganizationLevels={reorderOrganizationLevels}
           onPreviewOrganizationLevels={previewOrganizationLevels}
+          duties={duties}
+          dutyPositionRelations={dutyPositionRelations}
+          dutyConfigurationLocation={dutyConfigurationLocation}
+          dutyConfigurationExpandedDutyId={dutyConfigurationExpandedDutyId}
+          dutyConfigurationWritable={dutyConfigurationWritable}
+          dutyConfigurationError={dutyConfigurationError}
+          onSelectDuty={selectDutyFromPicker}
+          onSelectDutyLane={selectDutyLane}
+          onOpenDutyConfigurationDetail={openDutyConfigurationDetail}
+          onStartDutyDrag={startDutyConfigurationDrag}
+          onCancelDutyDrag={cancelDutyConfigurationDrag}
+          dutyDragState={dutyDragState}
+          onOpenDutyPlanning={() => openDutyPlanningPage('audit')}
+          onCreateDuty={() => {
+            if (!dutyConfigurationWritable) {
+              setDutyConfigurationError('目前版本為唯讀；請先進入草稿編輯或現行版維護')
+              return
+            }
+            setDutyEditDialog('create')
+          }}
         />
 
         <div
@@ -2305,7 +2637,7 @@ export default function App() {
               if (!prototypeResponsibilityContext) selectNode(node.id)
               if (organizationEditingEnabled) queueTitleEdit()
             }}
-            onNodeContextMenu={prototypeResponsibilityContext ? undefined : openPositionContextMenu}
+            onNodeContextMenu={prototypeResponsibilityContext || dutyConfigurationLocation.active ? undefined : openPositionContextMenu}
             onNodeDragStart={onNodeDragStart}
             onNodeDrag={onNodeDrag}
             onNodeDragStop={onNodeDragStop}
@@ -2356,7 +2688,6 @@ export default function App() {
           </ReactFlow>
 
           {assignmentNotice && <div className="assignment-notice" role="status">{assignmentNotice}</div>}
-
           {members.length === 0 && (
             <div className="canvas-empty">
               <div><UserRoundPlus size={24} /></div>
@@ -2412,7 +2743,7 @@ export default function App() {
             editingEnabled={organizationEditingEnabled}
             duties={duties}
             dutyRelations={selected ? dutyPositionRelations.filter((relation) => relation.target.kind === 'position' && relation.target.positionId === selected.id) : []}
-            onOpenDutyCenter={(positionId) => { setSelectedId(positionId); openDutyPlanningPage(positionId) }}
+            onOpenDutyConfiguration={(positionId) => openDutyConfiguration(positionId)}
           />
         ))}
 
@@ -2427,7 +2758,44 @@ export default function App() {
             onClose={closeRoleRiskPanel}
           />
         )}
+
+        {dutyConfigurationLocation.active && dutyDetailOpen && <DutyDetailDrawer
+          duty={selectedDutyForConfiguration}
+          state={currentState}
+          editingEnabled={dutyConfigurationWritable}
+          placementMode="organization-chart"
+          displayMode="inspector"
+          onClose={() => setDutyDetailOpen(false)}
+          onPatchDuty={(patch) => {
+            if (!selectedDutyForConfiguration) return
+            runDutyConfigurationCommand({ type: 'PATCH_DUTY', dutyId: selectedDutyForConfiguration.id, ...patch })
+          }}
+          onRemoveRelation={(relationId) => runDutyConfigurationCommand({ type: 'REMOVE_DUTY_RELATION', relationId })}
+          onDeleteDuty={() => setDutyDeleteDialog(true)}
+          onSelectPendingRelation={(relationId) => {
+            const relation = currentState.dutyPositionRelations.find((item) => item.id === relationId)
+            if (!relation) return
+            const lane = relation.relationType === 'execute' ? (relation.isPrimaryExecutor ? 'primary-execute' : 'collaborate') : relation.relationType
+            const nextUrl = buildDutyConfigurationUrl({ dutyId: relation.dutyId, lane, sourceRelationId: relation.id })
+            window.history.replaceState({}, '', nextUrl)
+            setDutyConfigurationLocation(readDutyConfigurationLocation(window.location))
+            setDutyDetailOpen(false)
+            setDutyConfigurationError(null)
+          }}
+        />}
       </main>
+
+      {dutyEditDialog === 'create' && <DutyEditDialog onCancel={() => setDutyEditDialog(null)} onSave={saveNewDuty} />}
+      {dutyDeleteDialog && selectedDutyForConfiguration && <DutyDeleteDialog dutyTitle={selectedDutyForConfiguration.title} relationCount={currentState.dutyPositionRelations.filter((relation) => relation.dutyId === selectedDutyForConfiguration.id).length} onCancel={() => setDutyDeleteDialog(false)} onConfirm={() => {
+        const result = runDutyConfigurationCommand({ type: 'DELETE_DUTY', dutyId: selectedDutyForConfiguration.id })
+        if (result?.status === 'applied') {
+          setDutyDeleteDialog(false)
+          setDutyDetailOpen(false)
+          const nextUrl = buildDutyConfigurationUrl({ attentionOnly: dutyConfigurationLocation.attentionOnly })
+          window.history.replaceState({}, '', nextUrl)
+          setDutyConfigurationLocation(readDutyConfigurationLocation(window.location))
+        }
+      }} />}
 
       {positionContextMenu && contextPosition && (
         <PositionContextMenu

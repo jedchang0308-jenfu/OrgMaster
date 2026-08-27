@@ -2,8 +2,8 @@ import { deriveDutyAnomalies, type DutyAnomaly } from './duties'
 import { getDutyPlanIntentId, type DutyPlanIntent, type DutyRelationPlacementIntent } from './dutyPlanning'
 import type { DutyPositionRelation, DutyRelationType, OrgDirectoryState } from './types'
 
-export type DutyResponsibilityColumn = 'primary-execute' | 'other-execute' | 'review' | 'collaborate' | 'countersign'
-export type DutyMatrixColumn = 'execute' | 'review' | 'collaborate'
+export type DutyResponsibilityColumn = 'primary-execute' | 'collaborate' | 'review' | 'countersign'
+export type DutyMatrixColumn = 'execute' | 'review'
 
 export type DutyPlacementSource =
   | { kind: 'relation'; relationId: string }
@@ -20,18 +20,19 @@ export type DutyDropEvaluation =
   | { kind: 'reject'; code: 'SOURCE_STALE' | 'TARGET_INVALID' | 'TARGET_DUPLICATE' | 'RELATION_TYPE_MISMATCH' | 'PLACEMENT_CONFLICT'; message: string }
 
 export function dutyColumnForRelation(relation: Pick<DutyPositionRelation, 'relationType' | 'isPrimaryExecutor'>): DutyResponsibilityColumn {
-  if (relation.relationType === 'execute') return relation.isPrimaryExecutor ? 'primary-execute' : 'other-execute'
+  if (relation.relationType === 'execute') return relation.isPrimaryExecutor ? 'primary-execute' : 'collaborate'
+  if (relation.relationType === 'collaborate') return 'collaborate'
   return relation.relationType
 }
 
 export function dutyRelationTypeForColumn(column: DutyResponsibilityColumn): DutyRelationType {
-  return column === 'primary-execute' || column === 'other-execute' ? 'execute' : column
+  return column === 'primary-execute' || column === 'collaborate' ? 'execute' : column
 }
 
 export function dutyMatrixColumnForResponsibilityColumn(column: DutyResponsibilityColumn): DutyMatrixColumn {
-  if (column === 'primary-execute' || column === 'other-execute') return 'execute'
+  if (column === 'primary-execute' || column === 'collaborate') return 'execute'
   if (column === 'review' || column === 'countersign') return 'review'
-  return 'collaborate'
+  return 'execute'
 }
 
 function activePosition(state: OrgDirectoryState, positionId: string) {

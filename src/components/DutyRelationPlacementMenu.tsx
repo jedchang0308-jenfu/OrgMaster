@@ -91,7 +91,7 @@ export function DutyRelationPlacementMenu({ state, source, anchor, onRequest, on
 
   if (!duty || !sourceColumn) return null
   const sourceLabel = sourceColumn === 'primary-execute' ? '主責執行'
-    : sourceColumn === 'other-execute' ? '共同執行'
+    : sourceColumn === 'collaborate' ? '執行協作'
       : sourceColumn === 'review' ? '審核'
         : sourceColumn === 'countersign' ? '會簽'
           : '協作'

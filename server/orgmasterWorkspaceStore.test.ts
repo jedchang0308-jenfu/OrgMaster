@@ -54,6 +54,38 @@ describe('workspace disk store', () => {
     expect(current.document.state.organizationLayout.mode).toBe('tree')
   })
 
+  it('canonicalizes legacy collaboration relations at the workspace save boundary', async () => {
+    const path = await root()
+    const legacyPath = getWorkspacePaths(path).manifest.replace('orgmaster-workspace.v1.json', 'orgmaster-document.v4.json')
+    await mkdir(join(path, 'data'), { recursive: true })
+    await writeFile(legacyPath, `${JSON.stringify(createOrgDocumentFile(screenshotOrganizationState, 'document'), null, 2)}\n`, 'utf8')
+    const index = await getWorkspaceIndex(path)
+    const created = await createWorkspaceDraft(path, index.currentVersionId, '協作 canonicalization', index.manifestRevision)
+    const draft = await getWorkspaceVersion(path, created.createdVersionId)
+    const changed = {
+      ...draft.document,
+      state: {
+        ...draft.document.state,
+        duties: [{ id: 'duty-backend-collaboration', title: '後端協作', description: null }],
+        dutyPositionRelations: [{
+          id: 'relation-legacy-collaboration',
+          dutyId: 'duty-backend-collaboration',
+          relationType: 'collaborate' as const,
+          target: { kind: 'position' as const, positionId: 'position-general-manager' },
+          isPrimaryExecutor: false,
+          order: 0,
+        }],
+      },
+    }
+
+    const saved = await saveWorkspaceVersion(path, created.createdVersionId, changed, draft.version.revision, 'draft-edit')
+    expect(saved.document.state.dutyPositionRelations).toMatchObject([{
+      id: 'relation-legacy-collaboration',
+      relationType: 'execute',
+      isPrimaryExecutor: false,
+    }])
+  })
+
   it('fails closed when the manifest is invalid', async () => {
     const path = await root()
     const paths = getWorkspacePaths(path)

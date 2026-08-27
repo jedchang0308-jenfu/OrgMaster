@@ -4,7 +4,7 @@ import {
   type RoleCombinationRiskRuleValidationCode,
 } from './roleCombinationRisks'
 import { validateEmployeeResponsibilities, type EmployeeResponsibilityValidationCode } from './employeeResponsibilities'
-import { validateDutyState, type DutyValidationCode } from './duties'
+import { normalizeDutyState, validateDutyState, type DutyValidationCode } from './duties'
 import { createDefaultOrganizationLevels } from './organizationLevels'
 import type { Employee, OrgDirectoryState, OrgMember, Position } from './types'
 
@@ -469,7 +469,7 @@ function normalizeV6State(state: OrgDirectoryState, source: Record<string, unkno
   if (!positionYOverrides) return failure('INVALID_DOCUMENT_SHAPE')
   const riskValidation = validateRoleCombinationRiskRules(roleCombinationRiskRules, state.roles)
   if (!riskValidation.ok) return failure(riskValidation.code)
-  const normalized = normalizeSiblingOrders({
+  const normalized = normalizeDutyState(normalizeSiblingOrders({
     ...state,
     employees,
     assignments,
@@ -478,7 +478,7 @@ function normalizeV6State(state: OrgDirectoryState, source: Record<string, unkno
     roleCombinationRiskRules,
     organizationLevels: state.organizationLevels.map((level) => ({ ...level, name: level.name.trim() })),
     organizationLayout: { ...state.organizationLayout, positionYOverrides },
-  })
+  }))
   const dutyValidation = validateDutyState(normalized)
   if (!dutyValidation.ok) return failure(dutyValidation.issue.code, dutyValidation.issue.positionIds)
   return validationFailure(normalized)
@@ -490,7 +490,7 @@ export function createOrgDocumentFile(
   kind: OrgDocumentKind,
   savedAt = new Date().toISOString(),
 ): OrgDocumentFile {
-  return { app: 'OrgMaster', version: ORG_DOCUMENT_VERSION, kind, savedAt, state: cloneOrgState(stripLegacyParentField(state)) }
+  return { app: 'OrgMaster', version: ORG_DOCUMENT_VERSION, kind, savedAt, state: cloneOrgState(normalizeDutyState(stripLegacyParentField(state))) }
 }
 
 export function parseOrgDocument(input: unknown): ParseOrgDocumentResult {

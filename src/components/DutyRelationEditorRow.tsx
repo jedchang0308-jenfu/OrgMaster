@@ -18,7 +18,7 @@ interface DutyRelationEditorRowProps {
 
 function exactLaneLabel(row: DutyMatrixRow) {
   if (row.column === 'primary-execute') return '主責執行'
-  if (row.column === 'other-execute') return '共同執行'
+  if (row.column === 'collaborate') return '執行協作'
   if (row.column === 'review') return '審核'
   if (row.column === 'countersign') return '會簽'
   return '協作'
@@ -32,7 +32,7 @@ function badgeTone(row: DutyMatrixRow) {
 
 function badgeLabel(row: DutyMatrixRow) {
   if (row.column === 'primary-execute') return '主責'
-  if (row.column === 'other-execute') return '共同'
+  if (row.column === 'collaborate') return '協作'
   if (row.column === 'review') return '審核'
   if (row.column === 'countersign') return '會簽'
   return null

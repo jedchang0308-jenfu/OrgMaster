@@ -1,31 +1,44 @@
 # DEV-027：OrgMaster 權限與審核規則治理契約
 
-文件成熟度：`RD Implementation Complete / QA-QC Passed / Human Confirmed`  
-狀態：完成（OrgMaster-only local governance MVP）  
+文件成熟度：`RD Implementation Complete / QA-QC Passed / Historical Local MVP / Target Boundary Superseded by ADR-007`
+狀態：local MVP 完成；外部應用權責重整待 DEV-037，現有完成證據不得解讀為新目標已實作
 節點類型：交付點  
 優先級：P0  
 風險等級：High  
 日期：2026-08-18  
 來源 ID：`USER-2026-08-18-ORGMASTER-AI-PDM-AUTHORIZATION-APPROVAL`  
 父任務：DEV-008、DEV-017、DEV-019、DEV-020、DEV-021  
-架構決策：`ai-doc/adr/ADR-004-authorization-approval-policy-boundary.md`、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
+架構決策：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`（目前目標權威）、`ai-doc/adr/ADR-004-authorization-approval-policy-boundary.md`（已取代的歷史決策）、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
+
+## 0. 2026-08-27 target authority amendment
+
+分類：`Intentional replacement / Human Confirmed`
+
+- 外部應用（包含 AI-PDM）擁有自己的 Application Role、Permission、Role-Permission mapping、領域審核政策與最終 enforcement。
+- OrgMaster 對外部系統只負責 principal mapping、角色指派、assignment scope／有效期間／撤銷、角色代理、角色指派審核與 governance-change audit。
+- OrgMaster 的外部 Application Role UI 只能顯示具來源與版本的唯讀角色目錄，不提供外部角色新增／刪除、Permission CRUD 或 Permission Matrix。
+- OrgMaster 自己的 `orgmaster` application role／permission 仍由 OrgMaster 定義與 enforcement；本修訂不移除系統自我治理能力。
+- 第 15～23 節及既有 QA/QC 記錄的是 2026-08-18～26 已完成的 local V1 implementation profile。其 AI-PDM role／permission fixtures、permission evaluator 與 reviewer resolver 保留為歷史相容及 migration 輸入，不再是 future target authority。
+- 新目標的產品重整由 DEV-037 追蹤，目前已達 `RD Implementation Ready / RD Not Started`；權威契約為 `ai-doc/specs/DEV-037-external-role-catalog-assignment-governance.md`，獨立 QA 計畫為 `ai-doc/qa/DEV-037-external-role-assignment-validation-plan.md`。本輪不修改 OrgMaster 產品程式或 AI-PDM。
 
 ## 1. Outcome
 
-OrgMaster 成為 AI-PDM 未來可引用的權限與審核規則治理中心，但不接管 AI-PDM 的審核交易或產品領域狀態。
+OrgMaster 成為跨應用的人員角色指派治理中心，但不成為外部應用的權限或領域審核政策設計器。
 
 - 共用 IAM 是 authentication authority。
-- OrgMaster 是 principal mapping、應用角色／permission／scope、delegation 與審核規則的 policy authority。
-- AI-PDM 未來仍是 enforcement point、approval runtime、審核交易 audit 與 PDM domain apply authority。
+- OrgMaster 是 principal mapping、外部角色指派、assignment scope／有效期間／代理、指派審核與異動 audit 的治理 authority。
+- AI-PDM 是自身 Application Role／Permission catalog、Role-Permission mapping、enforcement point、領域 approval runtime、審核交易 audit 與 PDM domain apply authority。
 
-本文件已把 OrgMaster-only Phase 1 Foundation 與 Phase 2 Policy MVP 補成並完成實作。AI-PDM 仍未修改，不執行 migration、deploy 或 release。
+本文件保留 OrgMaster-only Phase 1 Foundation 與 Phase 2 Policy MVP 的已完成歷史契約。ADR-007 之後的目標重整尚未實作；AI-PDM 仍未修改，不執行 migration、deploy 或 release。
 
 ## 2. Human Decision Brief
 
-決策日期：2026-08-18  
-決策來源：使用者依 HCS `#引導模式` 回覆 `1B 2A`
+原決策日期：2026-08-18
+最新修訂日期：2026-08-27
+決策來源：使用者依 HCS `#引導模式` 回覆 `1B 2A`，其後明確確認外部系統自行設定權限細節、OrgMaster 只負責分配角色
 
-- `Human Confirmed / 1B`：OrgMaster 管理角色、權限、scope 與審核規則；AI-PDM 保存審核申請／工作項、核駁決策、審核交易稽核及領域套用。
+- `Superseded / 1B external policy authority`：OrgMaster 管理 AI-PDM 角色／Permission／領域審核規則的條款已由 ADR-007 取代；只保留為 local V1 歷史實作來源。
+- `Human Confirmed / 2026-08-27`：每個外部系統管理自己的 Application Role、Permission、Role-Permission mapping 與領域審核政策；OrgMaster 管理員工到角色的指派及其治理生命週期。
 - `Human Confirmed / 2A`：採共用 IAM 的不可變 provider UID；OrgMaster 不保存密碼或 MFA secret。
 - `Human Confirmed`：目前只修改 OrgMaster；AI-PDM 僅可唯讀參考。
 - Rejected：OrgMaster 接管 approval work item／approve-reject decision／PDM apply；OrgMaster 自建帳號密碼或 MFA authority；用姓名、email、部門或職稱作授權 key。
@@ -37,10 +50,12 @@ OrgMaster 成為 AI-PDM 未來可引用的權限與審核規則治理中心，�
 
 ## 3. Spec Impact Preflight
 
-分類：`Intentional replacement（future direction）`
+分類：`Intentional replacement（2026-08-27 target authority）`
 
 - DEV-021 已完成的主職、兼任與直屬主管路徑保持有效；DEV-027 只取代其對未來 Auth／簽核的 deferred 假設，不改寫歷史交付。
 - ADR-001～003 的職位階層、版本工作區與排版權威不變。
+- ADR-004 的外部 Application Role／Permission／Approval Policy authority 由 ADR-007 取代；`2A` 共用 IAM 與 AI-PDM approval transaction／domain apply 邊界繼續有效。
+- DEV-027／035 的 local V1 程式與證據不回寫、不冒充新目標；產品差距登錄 DEV-037。
 - AI-PDM 現行實作與文件不屬於本輪受控修改範圍；本契約不宣稱 AI-PDM 已採用 OrgMaster policy。
 - 未來跨 repo 串接必須另建 integration ADR，並由使用者明確授權 AI-PDM 修改。
 
@@ -51,16 +66,17 @@ OrgMaster 成為 AI-PDM 未來可引用的權限與審核規則治理中心，�
 | 登入驗證、密碼、MFA、recovery | 共用 IAM | OrgMaster 不複製 credential，不從 email 推導身分 |
 | IAM subject 與 OrgMaster employee／principal 連結 | OrgMaster | 以不可變 `issuer + subject UID` 唯一對應；衝突或停用時 fail closed |
 | 組織、職位、任職與已發布 organization version | OrgMaster | 沿用既有 OrgMaster version boundary |
-| 應用角色、permission、scope、有效期間、delegation | OrgMaster | 與組織職務 `Role` 分開；組織資料只能成為明確政策輸入 |
-| 審核資格、路由規則、quorum、自審限制、代理規則 | OrgMaster | 回傳版本化 policy resolution，不建立工作項 |
-| principal／角色／政策設定異動 audit | OrgMaster | 只稽核 OrgMaster 自身治理設定異動 |
-| API enforcement 與領域狀態驗證 | AI-PDM | 未來在敏感操作前消費 OrgMaster policy result；目前不修改 |
+| 外部 Application Role、Permission、Role-Permission mapping、角色狀態／可指派性 | 各外部應用；AI-PDM 項目由 AI-PDM | OrgMaster 只保存具來源版本的唯讀 catalog snapshot，不可編輯外部權限細節 |
+| employee／principal 到外部 Application Role 的 assignment、scope、有效期間、撤銷與角色代理 | OrgMaster | 只引用外部 stable role ID；角色未知、停用、不可指派或 catalog version 無法確認時 fail closed |
+| 角色指派申請、核准、發布與治理異動 audit | OrgMaster | 只治理誰取得哪個角色，不等同 AI-PDM 領域審核 |
+| AI-PDM 領域審核資格、路由、quorum、自審限制與代理規則 | AI-PDM | AI-PDM 定義並執行；OrgMaster 不建立第二份可編輯 approval policy |
+| API enforcement 與領域狀態驗證 | AI-PDM | 未來消費已驗證的 role assignment／claim；目前不修改 |
 | 審核申請、工作項、target snapshot、核駁決策 | AI-PDM | OrgMaster 不持久化、不雙寫 |
 | 審核交易 audit、冪等、核准後 PDM apply | AI-PDM | OrgMaster 不接管圖面、BOM、檔案、發布或狀態機 |
 
 稽核必須分成兩種，不可使用模糊的單一 `audit` 宣稱雙方同時擁有同一事實：
 
-1. `Governance Change Audit`：OrgMaster 保存誰在何時變更或發布哪一版身分連結、角色、permission 或審核規則。
+1. `Governance Change Audit`：OrgMaster 保存誰在何時變更或發布哪一版身分連結、角色指派、scope／有效期間、代理或指派審核結果；外部角色目錄同步只記來源版本與狀態，不把外部 Permission 變成 OrgMaster 權威。
 2. `Approval Transaction Audit`：AI-PDM 保存誰送出、系統產生哪些工作項、誰核准／駁回、引用哪一版 policy、以及 apply 結果。
 
 ## 5. Identity contract（2A）
@@ -100,16 +116,16 @@ Current local MVP 只使用第 18.1 節的 loopback development identity adapter
 ### 6.1 Model boundary
 
 - `Organization Role`：既有組織中的職務／角色事實，例如研發主管；它不是應用授權本身。
-- `Application Role`：特定 application 的權限集合，例如 AI-PDM Reviewer；只能由治理設定明確指派或由已發布政策明確推導。
-- `Permission`：穩定的 application action code，不使用 UI 文案作 key。
+- `Application Role`：特定 application 的授權角色。外部角色由該 application 定義，OrgMaster 只引用 stable role ID 並建立 assignment；`orgmaster` 自有角色例外由 OrgMaster 定義。
+- `Permission`：由擁有該 application 的系統定義之穩定 action code；外部 Permission 不在 OrgMaster UI 建立或編輯。
 - `Scope`：工作區、專案、產品、部門或其他受控範圍；未提供必要 scope 時預設拒絕。
-- `Delegation`：有來源、代理人、適用 permission／review rule、有效期間與撤銷狀態的明確資料，不等同一般任職。
+- `Delegation`：ADR-007 目標為具來源 assignment／role、代理人、scope、有效期間與撤銷狀態的角色代理，不等同一般任職；既有 permission／review-rule delegation 只保留為 local V1 歷史資料。
 
-組織職務、Application Role、Permission 與 Scope 不得共用同一可寫欄位或靠同名字串隱式連動。
+組織職務、Application Role、Permission 與 Scope 不得共用同一可寫欄位或靠同名字串隱式連動；外部角色 assignment 必須引用已驗證 catalog 中的 stable role ID。
 
 ### 6.2 Logical operation: permission evaluation
 
-未來 OrgMaster adapter 必須提供等價的邏輯操作；HTTP route 名稱可在 Implementation Ready 決定。
+以下 permission evaluation 是已完成 local V1 的歷史操作。ADR-007 目標模型中，外部應用的 permission evaluation 由外部應用執行；OrgMaster future adapter 只提供或發布具版本的角色 assignment／scope／有效期間資料。live HTTP／event contract 留待 integration ADR。
 
 輸入至少包含：
 
@@ -129,9 +145,11 @@ Current local MVP 只使用第 18.1 節的 loopback development identity adapter
 - evaluation receipt ID 與 evaluated-at；
 - 被採用的 role／scope／delegation reference，必要時為空。
 
-OrgMaster 的 permission evaluation 是 policy evaluation，不是 AI-PDM approval decision。AI-PDM 未來可以保存 receipt snapshot，但不得以 receipt 建立第二套可編輯 policy。
+local V1 的 OrgMaster permission evaluation 只作歷史 sandbox／migration evidence。新目標由 AI-PDM 依自身 Role-Permission mapping 與 OrgMaster assignment reference 執行，且不得把 OrgMaster catalog snapshot當成 AI-PDM 權限權威。
 
 ### 6.3 Decision rules
+
+下列規則記錄 completed local V1 permission evaluator。DEV-037 target contract 已改為驗證 assignment、catalog reference、scope、有效期間及代理；外部 Permission allow／deny precedence 由外部應用定義及測試。
 
 - 只有 active 且已生效的 identity link、application role、permission assignment、scope 與 delegation 可參與判斷。
 - 草稿、compare、archived 或未生效的 organization／policy version 不得改變正式結果。
@@ -139,9 +157,11 @@ OrgMaster 的 permission evaluation 是 policy evaluation，不是 AI-PDM approv
 - deny 優先；不得因使用者同時擁有另一個較寬角色而掩蓋明確 prohibition，實際 precedence 必須在 Implementation Ready 固定並測試。
 - cache 不得成為第二份權威；revocation 與最大 stale window 必須在進入 live integration 前定案。
 
-## 7. Approval-policy resolution contract（1B）
+## 7. Historical local reviewer resolver and target approval boundary
 
-### 7.1 OrgMaster responsibility
+本節 7.1 記錄已完成 local V1 resolver；ADR-007 後不再作為 AI-PDM future target contract。OrgMaster 新目標只審核角色指派治理變更，AI-PDM 自行擁有領域 approval policy／resolver／runtime。
+
+### 7.1 Completed local V1 behavior（historical）
 
 OrgMaster 只回答「依指定 action、scope、requestor 與已發布版本，哪些人具有審核資格、需要幾人、是否允許自審、代理是否有效、以及無法解析的原因」。
 
@@ -160,31 +180,32 @@ OrgMaster 只回答「依指定 action、scope、requestor 與已發布版本，
 AI-PDM 仍負責：
 
 - 建立 request、work item 與 immutable target／impact snapshot；
-- 在送出或工作項建立時保存 OrgMaster resolution receipt／policy version；
+- 定義及版本化自己的 Role-Permission mapping、領域 approval policy、reviewer resolver 與 authorization decision；
+- 必要時保存採用的 OrgMaster assignment reference／version 與外部 catalog version，但不得把它解讀為 OrgMaster 的 reviewer policy；
 - 執行 assign、claim、approve、reject、withdraw、cancel、timeout 與通知；
 - 保存 approval decision、transaction audit、idempotency 與 apply 結果；
-- 在決策或 apply 前依跨 repo integration contract 重新驗證必要權限／資格。
+- 在決策或 apply 前依自身政策與跨 repo assignment integration contract 重新驗證必要權限／資格。
 
 ### 7.3 Prohibited persistence in OrgMaster
 
-在 1B 邊界下，OrgMaster 產品資料不得持久化：
+在 ADR-007 邊界下，OrgMaster 產品資料不得持久化：
 
 - AI-PDM approval request 或 work item；
 - approve／reject／withdraw decision；
 - PDM target snapshot、domain status 或 apply result；
 - AI-PDM transaction audit 的鏡像或雙寫副本。
 
-OrgMaster-only simulator 可使用測試 fixture 或記憶體中的 ephemeral request 驗證 resolver；測試結束後不得成為正式產品資料。
+completed local V1 simulator 可使用測試 fixture 或記憶體中的 ephemeral request 驗證歷史 resolver；測試結束後不得成為正式產品資料，也不得作為 ADR-007 target integration evidence。
 
 ## 8. Version and publication semantics
 
-- 管理者只能在 draft 編輯治理設定；只有明確 publish 後的 immutable policy version 可供正式 evaluation。
-- published version 必須能引用其基準 organization version；後續組織草稿不得改變既有 published policy 的結果。
-- 修改已發布政策必須產生新版本，不得 in-place rewrite 歷史版本。
-- OrgMaster governance-change audit 至少記錄 actor、timestamp、before／after reference、reason、organization version、policy version 與 publish／revoke action。
-- AI-PDM 未來保存 submitted-at／evaluated-at 所採用的 receipt 與 policy version；如何處理進行中 request 的 re-evaluation，必須由 future integration ADR 固定。
+- ADR-007 目標中，管理者只能在 draft 編輯角色 assignment／scope／有效期間／代理與指派審核資料；只有明確 publish 後的 immutable assignment governance version 可供外部系統消費。
+- published version 必須引用基準 organization version 與外部 catalog version；後續組織草稿或 catalog snapshot 不得靜默改寫既有 assignment 結果。
+- 修改已發布 assignment 必須產生新版本，不得 in-place rewrite 歷史版本；既有 local V1 policy versions 仍保持不可變及可讀。
+- OrgMaster governance-change audit 至少記錄 actor、timestamp、before／after assignment reference、reason、organization version、catalog version、assignment version 與 publish／revoke action。
+- AI-PDM 未來保存自己採用的 assignment reference／version，並同時保存自身 authorization／approval policy version；如何處理進行中 request 的 re-evaluation，必須由 future integration ADR 固定。
 
-## 9. Current phase scope
+## 9. Completed local phase scope（historical）
 
 ### 9.1 本輪文件升級
 
@@ -217,6 +238,8 @@ OrgMaster-only simulator 可使用測試 fixture 或記憶體中的 ephemeral re
 - OrgMaster 直接執行 PDM 圖面、BOM、檔案、發布或狀態機副作用。
 
 ## 11. Acceptance contract
+
+第 1～10 項是 DEV-027 local V1 的歷史完成驗收。新目標另由 DEV-037 驗收：外部角色目錄唯讀、無外部 Permission Matrix、assignment 可追溯、catalog stale／unknown fail closed，且未串接時不可宣稱角色在 AI-PDM 生效。
 
 1. 文件與未來實作明確分離 shared IAM、OrgMaster policy authority 與 AI-PDM approval runtime authority。
 2. 使用不可變 `issuer + subject UID`；email、姓名、職稱或部門不能成為授權 key。
@@ -267,10 +290,11 @@ OrgMaster-only simulator 可使用測試 fixture 或記憶體中的 ephemeral re
 
 | Phase | 邊界 | 進入條件 | 完成證據 |
 | --- | --- | --- | --- |
-| Phase 0 / Contract | OrgMaster docs only | 1B／2A confirmed | 本 spec、ADR-004／005、QA plan、map 與 DEV 狀態一致 |
+| Phase 0 / Historical Contract | OrgMaster docs only | 1B／2A confirmed | 本 spec、ADR-004／005 與歷史 QA/QC evidence |
 | Phase 1 / Foundation | OrgMaster only | `RD Implementation Ready`；baseline clean | principal／role／permission／version／governance audit targeted tests |
 | Phase 2 / Policy MVP | OrgMaster only | Phase 1 targeted tests passed | evaluator／resolver／ephemeral simulator tests、build 與 browser QC |
-| Phase 3 / Integration | OrgMaster + AI-PDM | 使用者另行授權；integration ADR | shadow／compatibility／rollback／single-authority evidence |
+| Phase 2.5 / DEV-037 Authority Realignment | OrgMaster only | ADR-007 Accepted；DEV-037 `RD Implementation Ready / RD Not Started`；依 S1→S4 執行 | 外部 catalog 唯讀、禁止外部 permission mutation、assignment governance、migration 與 stale／unknown recovery evidence |
+| Phase 3 / Integration | OrgMaster + AI-PDM | 使用者另行授權；integration ADR | catalog／assignment contract、compatibility／rollback／single-authority evidence |
 | Phase 4 / Release | 明確 production target | release gate、credential、backup／restore、rollback 授權 | production smoke 與 release evidence |
 
 ## 15. Current architecture impact and implementation profile
@@ -293,7 +317,7 @@ OrgMaster-only simulator 可使用測試 fixture 或記憶體中的 ephemeral re
 - published snapshot 不依賴日後可能被 current-maintenance 改寫的 workspace bytes；不得只保存 mutable `currentVersionId`。
 - UI localStorage 不保存 governance authority、identity link、role、policy 或 audit；client state 只作顯示與未送出表單草稿。
 
-### 15.3 AI-PDM compatibility fixtures
+### 15.3 AI-PDM compatibility fixtures（historical local V1）
 
 不得從另一 repo runtime import 或直接讀取 AI-PDM 檔案。RD 在 OrgMaster `aiPdmCatalog.ts` 保存唯讀 fixture，來源與基準為：
 
@@ -312,9 +336,11 @@ OrgMaster-only simulator 可使用測試 fixture 或記憶體中的 ephemeral re
   - `numbering.release_missing_ma_confirm`
   - `drawing_package.supplement_review`
 
-fixture 只是 compatibility seed，不代表 live synchronization。外部檔案 hash 改變時，Phase 3 必須做 contract drift review；本 DEV 不自動覆寫已發布政策。
+fixture 只是 compatibility seed，不代表 live synchronization。ADR-007 後它只能作具來源版本的唯讀 catalog／migration 輸入；不得由 OrgMaster UI 編輯外部角色或 Permission，也不得自動覆寫歷史已發布政策。
 
-## 16. Authoritative V1 data contract
+## 16. Completed local V1 data contract（historical implementation profile）
+
+本節仍是現有檔案與測試的權威資料契約，確保歷史資料可讀及 migration 可執行；它不再是外部角色／Permission 的 target ownership contract。DEV-037 已達 Implementation Ready，固定 V2 優先讀取、V1 bytes 唯讀保留、原子 migration、previous recovery 與 unresolved fail-closed；RD 不得在這套 migration 邊界外直接刪除或改寫歷史欄位。
 
 ### 16.1 Root and lifecycle objects
 
@@ -700,6 +726,8 @@ Management endpoints require `orgmaster.governance.manage`；publish／active-ve
 
 ## 19. UI implementation contract
 
+本節記錄 DEV-027／035 已驗證 UI。ADR-007 目標 UI 的「外部角色目錄唯讀、無外部 Permission Matrix、角色指派治理」已由 DEV-037 Implementation Ready 契約固定，仍待 RD 實作及 fresh verification；既有截圖不可重用為新目標通過證據。
+
 ### 19.1 UX intent
 
 - 使用者：本機治理管理者；不是一般 AI-PDM 審核者。
@@ -861,12 +889,17 @@ QC 只驗證不修改產品；任一 High-risk targeted test、full regression�
 
 - Current implementation不新增 dependency、remote service、database或 production credential；local development可行。
 - 它不是 production release candidate：dev header、single-process lock、local JSON、tamper-evident hash chain與 manual previous snapshot recovery不足以承擔正式權限服務。
-- Phase 3（`Future Phase Captured / Not Requested`）：使用者另行授權修改 AI-PDM 後，建立 integration ADR，決定 real shared IAM validation、service-to-service auth、adapter version、shadow comparison、receipt persistence、cache／revocation、timeout、retry、idempotency與 cutover／rollback。
+- DEV-037（`RD Implementation Ready / RD Not Started`）：先在 OrgMaster 重整外部 catalog 唯讀與角色指派治理邊界；V2 schema、9-role bundled catalog、file allowlist、最終 signatures、V1 非破壞 migration／recovery、UI field matrix 與 S1～S4 executable QA/QC 已固定。RD 依新契約開始，不沿用舊 Permission／reviewer target。
+- Phase 3（`Future Phase Captured / Not Requested`）：使用者另行授權修改 AI-PDM 後，建立 integration ADR，決定 shared IAM validation、catalog delivery、assignment consumption、service-to-service auth、compatibility window、stale／revocation、timeout、retry、idempotency 與 cutover／rollback。
 - Phase 4（`Release Gate Required`）：選定 durable database／hosting、append-only audit enforcement、backup／restore、HA、monitoring、key rotation、security review、正式 migration與 production smoke；由 `$deployment-release-gate` 產生 release artifacts。
 - 不得因本 DEV local QA/QC 通過，就宣稱 AI-PDM 已串接或正式權限治理可上線。
 
 ## 24. Change log
 
+- 2026-08-27：使用者確認外部系統自行管理 Application Role／Permission／Role-Permission mapping 與領域審核政策，OrgMaster 只治理角色指派；新增 ADR-007，將 ADR-004 的外部 policy authority 標為 superseded，並建立 DEV-037 Brief。既有 local V1 程式與 QA/QC 保留為歷史 evidence，本輪未修改產品或 AI-PDM。
+- 2026-08-27：DEV-037 升級為 `RD Contract Ready`；新 target contract 位於 `ai-doc/specs/DEV-037-external-role-catalog-assignment-governance.md`，DEV-027 本文件繼續只記錄 historical local V1。未修改產品或 AI-PDM。
+- 2026-08-27：DEV-037 完成 RD Readiness Review並升級為 `RD Implementation Ready / RD Not Started`；新增獨立 High-risk QA 計畫，固定 V2 schema、catalog source hash、V1 migration／recovery、signatures、UI matrix、allowlist 與 S1～S4 gate。未修改產品或 AI-PDM。
+- 2026-08-26：因實際畫面出現 raw `GOVERNANCE_VALIDATION_FAILED` 與舊 success 並存而重新開啟 QC；DEV-035 補齊 global role assignment、publish counts／blockers／mandatory reason、server manage＋publish continuity、歷史版本重新啟用保護、可恢復 concurrent revision 與手機治理 mutation default-deny。18 targeted／271 full tests、build、API smoke、three-viewport browser 與 runtime cleanup 通過，父交付點恢復 QA-QC Passed；AI-PDM 未修改。
 - 2026-08-18：使用者確認 `1B 2A`；建立 `RD Contract Ready` 行為契約，固定 OrgMaster policy authority、AI-PDM approval runtime authority 與 shared IAM boundary。
 - 2026-08-18：依使用者要求升級為 `RD Implementation Ready`；固定 local governance V1 store、immutable organization snapshot、API、UI、file allowlist、migration／recovery、High-risk QA／QC 與 Phase 3／4 re-entry gate。
 - 2026-08-18：完成 OrgMaster-only Phase 1／2；domain／store／API／UI、targeted tests 9/9、full regression、build、API smoke、三 viewport browser QC 與五項 evidence artifacts 通過；AI-PDM 保持未修改。

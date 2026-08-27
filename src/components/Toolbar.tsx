@@ -4,7 +4,6 @@ import {
   Search,
   ShieldAlert,
   ShieldCheck,
-  ClipboardList,
   BookOpenText,
 } from 'lucide-react'
 import { DocumentMenu } from './DocumentMenu'
@@ -25,7 +24,6 @@ interface ToolbarProps {
   onOpenRoleRiskSettings: () => void
   governanceOpen: boolean
   onOpenGovernance: () => void
-  onOpenDutyCenter: () => void
   onOpenManagementMethods: () => void
   governanceButtonRef: RefObject<HTMLButtonElement | null>
   isDirty: boolean
@@ -55,7 +53,6 @@ export function Toolbar({
   onOpenRoleRiskSettings,
   governanceOpen,
   onOpenGovernance,
-  onOpenDutyCenter,
   onOpenManagementMethods,
   governanceButtonRef,
   isDirty,
@@ -204,11 +201,8 @@ export function Toolbar({
         >
           <ShieldAlert size={18} />
         </button>
-        <button ref={governanceButtonRef} type="button" className="icon-button" onClick={onOpenGovernance} aria-label="權限與審核治理" aria-pressed={governanceOpen} title="權限與審核治理">
+        <button ref={governanceButtonRef} type="button" className="icon-button" onClick={onOpenGovernance} aria-label="角色指派治理" aria-pressed={governanceOpen} title="角色指派治理">
           <ShieldCheck size={18} />
-        </button>
-        <button type="button" className="icon-button" onClick={onOpenDutyCenter} aria-label="工作執掌規劃" title="工作執掌規劃">
-          <ClipboardList size={18} />
         </button>
         <button type="button" className="icon-button" onClick={onOpenManagementMethods} aria-label="管理辦法" title="管理辦法">
           <BookOpenText size={18} />

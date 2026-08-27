@@ -37,7 +37,6 @@ interface DutyMatrixViewProps {
 const columns: Array<{ id: DutyMatrixColumn; label: string }> = [
   { id: 'execute', label: '執行' },
   { id: 'review', label: '審核' },
-  { id: 'collaborate', label: '協作' },
 ]
 
 export function DutyMatrixView({ state, departments, organizationLevels, editingEnabled, focusPositionId, dragSource = null, dragSessionMode = null, dragCandidate = null, onDragStart, onDragEnd, onRequestDrop, onPointerDragStart, onPointerDragMove, onPointerDragEnd, onPointerDragCancel, matrixTitle = '職掌矩陣', onOpenMatrix, onSelectDuty, query: controlledQuery, positionQuery: controlledPositionQuery, departmentFilter: controlledDepartmentFilter, onQueryChange, onPositionQueryChange, onDepartmentFilterChange, showToolbar = true }: DutyMatrixViewProps) {
@@ -76,11 +75,11 @@ export function DutyMatrixView({ state, departments, organizationLevels, editing
     if (!duty) return null
     const rawSource: DutyPlacementSource = { kind: 'relation', relationId: chip.relationId }
     const source = rawSource
-    const label = chip.column === 'primary-execute' ? '執行（主責）' : chip.column === 'other-execute' ? '執行（共同）' : dutyRelationLabels[chip.relationType]
+    const label = chip.column === 'primary-execute' ? '執行（主責）' : chip.column === 'collaborate' ? '執行（協作）' : dutyRelationLabels[chip.relationType]
     const badges = chip.column === 'primary-execute'
       ? [{ label: '主責', tone: 'info' as const }]
-      : chip.column === 'other-execute'
-        ? [{ label: '共同' }]
+      : chip.column === 'collaborate'
+        ? [{ label: '協作' }]
         : chip.column === 'review'
           ? [{ label: '審核' }]
           : chip.column === 'countersign'

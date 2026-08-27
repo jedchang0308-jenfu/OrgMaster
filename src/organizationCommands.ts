@@ -2,7 +2,7 @@ import { closeAssignmentsForPositions } from './assignments'
 import { reconcileEmployeeResponsibilities } from './employeeResponsibilities'
 import { removeDepartmentFromDirectory } from './directories'
 import { duplicatePosition } from './positions'
-import { invalidateDutyRelationsForPositions, normalizeDutyRelationOrders, validateDutyState, type DutyValidationCode } from './duties'
+import { invalidateDutyRelationsForPositions, normalizeDutyRelationOrders, normalizeDutyState, validateDutyState, type DutyValidationCode } from './duties'
 import { projectDutyPlan, type DutyPlanIntent } from './dutyPlanning'
 import {
   buildHierarchyNodes,
@@ -114,7 +114,7 @@ function validateApplied(
   validationOptions?: OrganizationValidationOptions,
   asOf?: string,
 ): OrganizationCommandResult {
-  const repaired = reconcileEmployeeResponsibilities(state, asOf)
+  const repaired = normalizeDutyState(reconcileEmployeeResponsibilities(state, asOf))
   const validation = validateOrganizationState(repaired, validationOptions)
   if (!validation.ok) return reject(originalState, validation.code, validation.positionIds, validation.departmentIds)
   const dutyValidation = validateDutyState(repaired)

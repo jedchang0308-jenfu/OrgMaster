@@ -1,11 +1,14 @@
 # ADR-004：權限政策治理與審核交易執行分離
 
-狀態：Accepted  
+狀態：Superseded by `ADR-007`（2026-08-27）
 日期：2026-08-18  
 決策來源：使用者在 HCS `#引導模式` 回覆 `1B 2A`  
 適用範圍：DEV-027 與後續 OrgMaster／AI-PDM 權限及審核串接
 
+替代決策：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`
 相關決策：`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
+
+> 本 ADR 保留 2026-08-18 決策與 DEV-027 local MVP 的歷史脈絡。2026-08-27 起，外部應用的 Application Role、Permission、Role-Permission mapping 與領域審核政策權威改依 ADR-007；本 ADR 的 `2A` 共用 IAM、AI-PDM approval transaction／domain apply 邊界仍由 ADR-007 延續。
 
 ## Context
 

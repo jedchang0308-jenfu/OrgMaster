@@ -52,7 +52,7 @@ interface InspectorProps {
   editingEnabled?: boolean
   duties?: Duty[]
   dutyRelations?: DutyPositionRelation[]
-  onOpenDutyCenter?: (positionId: string) => void
+  onOpenDutyConfiguration?: (positionId: string) => void
 }
 
 export function Inspector({
@@ -78,7 +78,7 @@ export function Inspector({
   editingEnabled = true,
   duties = [],
   dutyRelations = [],
-  onOpenDutyCenter,
+  onOpenDutyConfiguration,
 }: InspectorProps) {
   const [titleDraft, setTitleDraft] = useState({
     memberId: member?.id ?? null,
@@ -344,7 +344,7 @@ export function Inspector({
         member={member}
         duties={duties}
         relations={dutyRelations}
-        onOpenCenter={onOpenDutyCenter ?? (() => undefined)}
+        onOpenDutyConfiguration={onOpenDutyConfiguration ?? (() => undefined)}
         editingEnabled={editingEnabled}
       />
 

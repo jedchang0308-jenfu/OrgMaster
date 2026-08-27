@@ -8,9 +8,47 @@
 - 平板是否可編輯及全系統手機／桌面能力判定仍由 DEV-033 確認；未確認事項不得反向解讀為手機可編輯。DEV-032 為解除自身實作阻塞，採更保守的 scoped gate：只有至少 1024px、hover＋fine pointer 同時成立才開放管理辦法 mutation，其餘先唯讀；這不替代 DEV-033。
 - 本原則優先於 DEV-028、DEV-029、DEV-031 及其他既有文件中允許手機／窄 viewport 編輯的舊契約；既有測試與截圖仍是當時完成狀態的歷史證據。產品程式尚未依本原則修改，由 DEV-033 追蹤，不得將文件完成誤報為產品完成。
 
-文件成熟度：DEV-033 為 `Brief Ready / Human Confirmed Principle / Implementation Pending`；DEV-032 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed Minimal Reading-First Current Phase / Two Concept Prototypes Accepted / Third Prototype Cancelled / Local Release Gate Pending`；DEV-031 為 `RD Implementation Complete / QA-QC Passed / Mobile Editing Contract Superseded`；DEV-030 為 `RD Implementation Complete / QA-QC Passed`；DEV-029 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Mobile Editing Contract Superseded`；DEV-028 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Mobile Editing Contract Superseded`；DEV-027 為 `RD Implementation Complete / QA-QC Passed / OrgMaster Only`；DEV-026 為 `RD Implementation Complete / QA-QC Passed`；DEV-025 為 `RD Implementation Complete / QA-QC Passed`；DEV-024 為 `RD Implementation Complete / QA-QC Passed`；DEV-023 為 `RD Implementation Complete / QA-QC Passed`；DEV-022 為 `RD Implementation Complete / QA-QC Passed`；DEV-021 為 `RD Implementation Complete / QA-QC Passed`；DEV-020 為 `RD Implementation Complete / QA-QC Passed`；DEV-019 為 `RD Implementation Complete / QA-QC Passed`；既有完成 DEV、DEV-017 與 DEV-018 均已完成其 RD 文件／實作交接
+文件成熟度：DEV-037 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Intentional Replacement / Local Release Gate Pending / OrgMaster Only`；DEV-036 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed Minimum Viable Dual-Perspective Scope / Local Release Gate Pending`；DEV-035 為 `RD Implementation Complete / QA-QC Passed / Historical Local V1 / OrgMaster Only`，並恢復 DEV-027 的 local governance QC 完成狀態；DEV-034 R2 為 `RD Implementation Complete / Human Confirmed Direction / QA-QC Pending Browser Gate / Local Release Gate Pending`，R2.1 複選式規劃狀態視角為 `Brief Ready / Human Confirmed / Implementation Not Requested`，R1 的 `RD Implementation Complete / QA-QC Passed` 只保留為歷史基線；DEV-033 為 `Brief Ready / Human Confirmed Principle / Implementation Pending`；DEV-032 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed Minimal Reading-First Current Phase / Two Concept Prototypes Accepted / Third Prototype Cancelled / Local Release Gate Pending`；DEV-031 為 `RD Implementation Complete / QA-QC Passed / Mobile Editing Contract Superseded`；DEV-030 為 `RD Implementation Complete / QA-QC Passed`；DEV-029 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Mobile Editing Contract Superseded`；DEV-028 為 `RD Implementation Complete / QA-QC Passed / Human Confirmed / Mobile Editing Contract Superseded`；DEV-027 為 `RD Implementation Complete / QA-QC Passed / Historical Local MVP / Target Boundary Superseded by ADR-007`；DEV-026 為 `RD Implementation Complete / QA-QC Passed`；DEV-025 為 `RD Implementation Complete / QA-QC Passed`；DEV-024 為 `RD Implementation Complete / QA-QC Passed`；DEV-023 為 `RD Implementation Complete / QA-QC Passed`；DEV-022 為 `RD Implementation Complete / QA-QC Passed`；DEV-021 為 `RD Implementation Complete / QA-QC Passed`；DEV-020 為 `RD Implementation Complete / QA-QC Passed`；DEV-019 為 `RD Implementation Complete / QA-QC Passed`；既有完成 DEV、DEV-017 與 DEV-018 均已完成其 RD 文件／實作交接
 
 ## 總任務清單
+
+- ✓ DEV-037 [開發點] [完成] [P0] [RD Implementation Complete／QA-QC Passed／Local Release Gate Pending／OrgMaster Only] 外部角色目錄與角色指派權責重整
+  - 摘要：外部系統擁有自己的 Application Role、Permission、Role-Permission mapping 與領域審核政策；OrgMaster 只讀取具版本的角色目錄，集中治理員工角色指派、scope、有效期間、代理、指派審核及 audit。
+  - 來源 ID：`USER-2026-08-27-EXTERNAL-ROLE-CATALOG-ASSIGNMENT-BOUNDARY`
+  - 父任務：DEV-027、DEV-035
+  - 完成內容：已依權威契約完成 S1→S4；V2 domain、bundled read-only catalog、V1→V2 非破壞 migration、server／API ownership guard、assignment／role delegation／publish、UI normal delivery path、stale recovery、legacy compatibility、RWD 與完整 regression 均完成。
+  - 阻塞 / 恢復條件：OrgMaster-only 實作目前無文件 blocker；若需修改 AI-PDM、正式 IAM／DB／credential、deploy／release，或超出 file allowlist，立即停止並進入 integration／release gate。
+  - 證據：`ai-doc/specs/DEV-037-external-role-catalog-assignment-governance.md`、`ai-doc/qa/DEV-037-external-role-assignment-validation-plan.md`、`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`、`output/playwright/dev037/manifest.md`；fresh full regression `122 test files／553 tests`、build、API negative、forbidden scan、三 viewport browser QC 與 runtime cleanup 均通過。
+  - 下一步：若要讓 AI-PDM 實際消費 assignment 或同步 enforcement，另開跨 repo integration ADR／DEV；本 DEV 不修改 AI-PDM、不 deploy、不 release。
+  - 計入交付：是（OrgMaster Current Phase 完成；外部 live integration 另計）
+
+- ✓ DEV-036 [交付點] [完成] [P1] [RD Implementation Complete／QA-QC Passed／Local Release Gate Pending] 雙視角責任規劃完整工作台
+  - 摘要：建立具有正式 URL 的最小唯讀工作台；第一輪固定提供「責任盤點」與「責任分布」兩個視角，盤點頁只做搜尋、三 anomaly 複選、列表與 Drawer，分布頁只做 Position／部門文字搜尋及四類責任 count。
+  - 來源 ID：`USER-2026-08-26-DUTY-DUAL-PERSPECTIVE-WORKBENCH`
+  - 父任務：DEV-029、DEV-031、DEV-034
+  - 證據：`npx tsc --noEmit`、targeted 4 files／20 tests、`npm test -- --testTimeout=30000`（120 files／544 tests）、`npm run build`、Playwright 真實瀏覽器正常入口／tab／filter／Drawer／配置回跳／history／alias、1440×900／1024×768／854×698／390×844；完整清單與截圖：`output/playwright/dev036/manifest.md`。
+  - 阻塞 / 恢復條件：Current Phase 無產品 blocker；尚未授權 deploy／release。若後續需要工作台 mutation、schema／API／server／permission／persistence 修改，或要加入工作量、進階篩選及 drilldown，另開 DEV／回 PM，不得回寫本輪最小範圍。
+  - 計入交付：是
+
+- ✓ DEV-035 [開發點] [完成] [P0] [QA-QC Passed／Historical Local V1] 治理角色指派與安全發布閉環
+  - 摘要：修復 raw `GOVERNANCE_VALIDATION_FAILED` 與成功／失敗並存，補上 desktop global role assignment 建立／撤銷／重新啟用、publish counts／blockers／必填原因、server manage＋publish continuity、歷史版本重新啟用保護，以及 767px 以下治理 mutation default-deny。
+  - 來源 ID：`USER-2026-08-26-GOVERNANCE-NEXT-STEP-DESIGN-THINKING`
+  - 父任務：DEV-027
+  - 規格：`ai-doc/specs/DEV-035-governance-safe-management-loop.md`
+  - 證據：`output/playwright/dev035/manifest.md`；typecheck、governance 7 files／18 tests、full 60 files／271 tests、build、API smoke、three-viewport browser、two-session conflict recovery 與 runtime cleanup 均通過。
+  - 下一步：DEV-027 local governance 的最短管理閉環已完成；後續由已達 Implementation Ready 的 DEV-037 實作外部角色目錄唯讀與角色指派治理，不再開發 AI-PDM Application Role／Permission Matrix／領域 Approval Policy CRUD。
+  - 阻塞 / 恢復條件：DEV-035 不再擴張；V2 governance schema／migration只依 DEV-037 allowlist執行。若需要修改 AI-PDM、production IAM／DB／credential、deploy 或 release，停止並建立對應 integration ADR／release gate。
+  - 計入交付：否（恢復父交付點 DEV-027 的 QC，不重複計數）
+
+- ◐ DEV-034 [交付點] [R2 待瀏覽器 QC／R2.1 Brief] [P1] [R2 QC 可執行／R2.1 未要求實作] 左側主資料職掌清單與組織圖拖曳配置
+  - 摘要：將職掌納入既有左側主資料欄，沿用員工／職位／部門／層級的入口、展開、搜尋、選取與收合骨架；規劃者在選取列設定主執行／協作／審核／會簽後，由左向右拖到組織圖 Position。R2 移除「其他執行」、將協作併入執行群組，並把舊 collaborate relation canonicalize 為 non-primary execute；R2.1 另保存三個既有 anomaly 原子條件的複選式規劃狀態視角 Brief，不另設「待處理」選項，且尚未要求實作。
+  - 來源 ID：`USER-2026-08-25-DEV034-ORG-CHART-INLINE-DUTY-CONFIGURATION`、`USER-2026-08-25-DEV034-UPGRADE-RD-CONTRACT`、`USER-2026-08-25-DEV034-UPGRADE-IMPLEMENTATION-READY`、`USER-2026-08-25-DEV034-DIRECTORY-DUTY-DRAG-REVISION`、`USER-2026-08-26-DEV034-DUTY-PLANNING-STATUS-FILTER`
+  - 父任務：DEV-031、DEV-032、DEV-033
+  - 下一步：R2 仍需在具備原生 `dataTransfer` 與 viewport 控制的本機瀏覽器完成 R2-B1～B9 並建立 `output/playwright/dev034-r2/manifest.md`；R2.1 等使用者要求開始實作後，再由 Brief 升級工程契約，不得以本次文件完成取代產品實作或 browser evidence。
+  - 阻塞 / 恢復條件：P0／P1 readiness 缺口為零；只有命中 schema／API／permission／storage、第二active mutation surface、pending換ID、普通click與drop無法分離或驗證gate失敗等Stop Condition才回PM。不得重用R1證據宣稱R2通過。
+  - 契約：`ai-doc/specs/DEV-034-org-chart-inline-duty-configuration.md`
+  - 證據：R2 automated gate `npx tsc --noEmit`、`npm test -- --testTimeout=30000`（59 files／262 tests）與 `npm run build` 已通過；in-app browser 已完成 partial smoke（duty rail、節點文字隱藏、Inspector 併排、keyboard focus／commit／cancel），且已驗證現行版唯讀與可編輯草稿能力閘門，但因工具不能提供可驗證的 HTML5 `dataTransfer` 且無 viewport setter，未建立 R2 manifest。R1 的 `output/playwright/dev034/manifest.md`、59 files／253 tests 與既有 screenshots 只證明被取代流程；R2 browser gate 完成後才新增 `output/playwright/dev034-r2/manifest.md`。
+  - 計入交付：是
 
 - ○ DEV-033 [交付點] [待排] [P0] [Brief Ready／尚未進入 RD] 手機唯讀與桌面編輯的產品能力邊界
   - 摘要：將「手機只讀、桌面／筆電依既有治理條件編輯」設為 OrgMaster 全專案最高產品原則；手機保留完整閱讀、搜尋、篩選及導覽，但不得呈現或觸發任何資料 mutation。既有允許窄 viewport 編輯的契約只保留為歷史證據，實際產品差距由本 DEV 後續收斂。
@@ -63,7 +101,7 @@
   - 來源 ID：`USER-2026-08-21-DUTY-ONE-PAGE-LEFT-TO-RIGHT-EXPANDED-EDITOR`
   - 父任務：DEV-029、DEV-030
   - 契約：`ai-doc/specs/DEV-031-duty-master-detail-editor.md`
-  - 下一步：既有 S0→S4 實作、targeted QA、build 與三 viewport browser QC 保留為歷史完成證據；手機能力收斂走 DEV-033。簡化後的 DEV-032 不再取代本工作檯；若未來要把責任配置移入組織圖，必須重新提出獨立 DEV／phase contract。目前產品維持 DEV-031 已完成基線。
+  - 下一步：既有 S0→S4 實作、targeted QA、build 與三 viewport browser QC 保留為歷史完成證據；手機能力收斂走 DEV-033。組織圖內嵌責任配置已由 DEV-034 以相容入口承接；DEV-031 程式與證據保留作 regression baseline。
   - 阻塞 / 恢復條件：目前無 P0／P1 readiness 缺口；若必須改 domain／API／schema／保存、無法維持同頁全職位展開、無法保留來源 exact lane 或無法建立單一 scroll owner auto-scroll，立即回 PM。
   - 證據：`npm test -- --run`（36 files／205 tests）、`npm run build`、`output/playwright/dev031-revision/manifest.md`、`output/playwright/dev031-drag-recovery/native-drag-after-drop.png` 與三 viewport screenshots；舊 `output/playwright/dev031/` 為 superseded historical evidence。未部署或 release。
   - 計入交付：是
@@ -97,15 +135,15 @@
   - 阻塞 / 恢復條件：none；Current Phase產品決策、repo落點、migration／recovery及驗證gate均已固定。若要加入每人私有、登入續接、跨裝置或lease／接手，須先重新進入Future Phase契約。
   - 計入交付：是
 
-- ✓ DEV-027 [交付點] [完成] [P0] [RD Implementation Complete / OrgMaster Only] OrgMaster 權限與審核治理中心
-  - 摘要：實作 OrgMaster local governance MVP：身分連結、應用角色／權限、審核規則、發布版本、audit 與 simulator；AI-PDM 保持不修改。
+- ✓ DEV-027 [交付點] [完成] [P0] [Historical Local MVP] OrgMaster 權限與審核治理中心
+  - 摘要：已完成原 1B 的 OrgMaster local governance MVP 與 DEV-035 recovery；2026-08-27 外部角色／Permission／領域 Approval Policy authority 改由各外部系統擁有，新目標差距由 DEV-037 追蹤，既有證據只作歷史基線。
   - 來源 ID：`USER-2026-08-18-ORGMASTER-AI-PDM-AUTHORIZATION-APPROVAL`
   - 父任務：DEV-008、DEV-017、DEV-019、DEV-020、DEV-021
   - 契約：`ai-doc/specs/DEV-027-orgmaster-access-approval-governance.md`
-  - ADR：`ai-doc/adr/ADR-004-authorization-approval-policy-boundary.md`、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
+  - ADR：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`（目前目標）、`ai-doc/adr/ADR-004-authorization-approval-policy-boundary.md`（歷史）、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
   - QA：`ai-doc/qa/DEV-027-governance-foundation-validation-plan.md`
-  - 下一步：Phase 3 只有在使用者另行授權 AI-PDM 修改與 integration ADR 後才能開始；目前維持 OrgMaster-only local MVP。
-  - 阻塞 / 恢復條件：目前無 P0／P1 readiness 缺口；baseline 失敗、需要修改 AI-PDM、正式 IAM／DB／credential／deploy 或偏離 1B／2A 時立即停止。
+  - 下一步：DEV-037 Current Phase 已完成；後續若進入 AI-PDM live integration，需另開跨 repo ADR／DEV，不再依舊方向開發外部 Permission Matrix。
+  - 阻塞 / 恢復條件：DEV-027 歷史 local MVP 無未結 blocker；DEV-037 OrgMaster-only 實作無文件 blocker。需要修改 AI-PDM、正式 IAM／DB／credential／deploy、超出 allowlist 或偏離 ADR-007／2A 時立即停止。
   - 計入交付：是
 
 - ✓ DEV-026 [開發點] [完成] [P0] [Intentional replacement 已完成] 職位拖曳命中、磁吸退出與渲染穩定性
@@ -352,6 +390,503 @@
   - 父任務：DEV-020、DEV-022、DEV-023
   - 證據：`npm test -- --run`（19 files／126 tests）、`npm run build`、localhost:5000 真實瀏覽器 1440×900／1024×768／390×844 UI QC；`output/playwright/orgmaster-mode-status-1440x900.png`、`output/playwright/orgmaster-mode-status-1024x768.png`、`output/playwright/orgmaster-mode-status-390x844.png`；右上角狀態 pill 可見、無重疊／水平溢出，並提供 `role=status`、ARIA label 與 title 說明。
   - 計入交付：否
+
+## DEV-037：外部角色目錄與角色指派權責重整
+
+狀態：完成（`RD Implementation Complete / QA-QC Passed / Local Release Gate Pending / OrgMaster Only`）
+文件成熟度：`RD Implementation Complete`
+節點類型：開發點
+父交付點：DEV-027
+是否計入產品交付完成：是（OrgMaster Current Phase；外部 live integration 另計）
+來源 ID：`USER-2026-08-27-EXTERNAL-ROLE-CATALOG-ASSIGNMENT-BOUNDARY`
+風險等級：High（權限 ownership、跨系統契約、歷史 policy migration 與使用者可見治理能力）
+權威契約：`ai-doc/specs/DEV-037-external-role-catalog-assignment-governance.md`
+架構決策：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
+QA／QC：`ai-doc/qa/DEV-037-external-role-assignment-validation-plan.md`
+
+### Human Decision Brief
+
+- `Human Confirmed / 2026-08-27`：每個外部系統自行定義 Application Role、Permission、Role-Permission mapping 與領域審核政策；OrgMaster 不維護外部 Permission 細節。
+- `Human Confirmed`：OrgMaster 負責員工／principal 到外部 Application Role 的 assignment，以及 scope、有效期間、撤銷／重新啟用、角色代理、角色指派審核與治理 audit。
+- `Human Confirmed`：目前仍只修改 OrgMaster；AI-PDM 不修改，未串接前不得宣稱角色已在 AI-PDM 生效。
+- `Intentional Replacement`：取代 DEV-027／ADR-004 的外部 Application Role／Permission／Approval Policy 可編輯 authority；共用 IAM `2A`、AI-PDM approval transaction／domain apply authority 與 ADR-005 snapshot 原則保留。
+- `Historical Evidence Preserved`：DEV-027／035 local V1 程式、published versions、audit 與 QA/QC 不重寫、不刪除，也不能作為本 DEV 已實作的證據。
+
+使用思考習慣：#權責劃分、#系統描繪、#可驗證性
+
+### 問題與使用者價值
+
+不同應用的 permission code、敏感操作、角色組成與領域審核規則不同。若 OrgMaster 同時設計每個系統的 Permission Matrix，外部系統改版會造成 catalog 漂移、雙重權威與錯誤擴權；但若每個系統自行維護人員指派，離職、調職、代理與跨系統稽核又會重複且分散。
+
+本 DEV 的價值是把兩種責任拆開：外部系統回答「角色代表什麼、能做什麼」，OrgMaster 回答「哪個人於何範圍、何期間取得哪個角色，以及誰核准這次指派」。
+
+### 主要流程
+
+1. 外部系統提供具 application、catalog version、stable role ID／code、名稱、狀態、可指派性與必要風險提示的角色目錄。
+2. OrgMaster 以唯讀方式顯示角色目錄；不能新增、刪除或修改外部角色與 Permission mapping。
+3. 管理者選員工與外部角色，設定 scope、有效期間及必要代理，送出角色指派治理變更。
+4. 高風險角色依 OrgMaster 指派治理規則核准後發布；audit 保存來源 catalog version、assignment 與核准事實。
+5. 未完成 live integration 前，UI 明確顯示「只保存在 OrgMaster／尚未於目標系統生效」。AI-PDM 是否採 push、pull 或 token claim 消費 assignment，留待 integration ADR。
+
+### Current Phase scope
+
+- 把外部 Application Role 定義成具來源版本的唯讀 catalog reference。
+- 把 role assignment、scope、有效期間、撤銷／重新啟用、角色代理與指派審核定義為 OrgMaster 可寫治理資料。
+- OrgMaster 自有 `orgmaster` role／permission 仍由 OrgMaster 定義及 enforcement。
+- 保留既有 local V1 schema、commands、published snapshots 與 audit 作 migration input；Implementation Ready 已固定 V2 優先讀取、V1 唯讀保留、原子寫入、previous recovery 與 unresolved fail-closed migration。
+- 將 DEV-035 原「外部角色／Permission Matrix／Approval Policy 完整 CRUD」future capsule標為 superseded。
+
+### Out of scope
+
+- 修改 `C:\VIBE CODING\AI_PDM`、建立 live catalog API、讓 assignment 在 AI-PDM 實際生效或切換正式權威。
+- 在 OrgMaster 新增／編輯／刪除 AI-PDM 角色、Permission、Role-Permission mapping 或領域 Approval Policy。
+- 直接刪除既有 local V1 role／permission／grant／approval policy 欄位、commands、published version 或 audit。
+- production IAM／DB／credential、遠端 migration、deploy、release 或 production smoke。
+
+### 驗收方向
+
+- 文件與 UI 明確區分外部角色目錄權威和 OrgMaster 角色指派權威。
+- 外部角色目錄在 OrgMaster 唯讀，沒有外部 role／permission mutation 或 Permission Matrix 入口。
+- assignment 引用 stable role ID 與 catalog version；unknown、inactive、unassignable、missing 或 stale catalog 一律 fail closed 並提供恢復方式。
+- OrgMaster 可追溯哪位員工在何種 scope／期間取得哪個角色、誰核准／撤銷，以及使用哪個 catalog version。
+- 未串接 AI-PDM 時，任何成功訊息都不得暗示外部權限已實際生效。
+- 既有 DEV-027／035 published snapshot 與 audit 保持可讀；舊 evidence 只作 regression／migration baseline。
+
+### 依賴、停止條件與下一步
+
+- 依賴：ADR-007、DEV-027 historical local V1 contract、ADR-005、既有 governance store／API／UI 與 QA evidence。
+- `RD Implementation Complete / QA-QC Passed` 已完成 bundled read-only catalog、V2 schema／command／route signatures、非破壞 migration／recovery、角色指派／代理／發布行為、UI field matrix、file allowlist、S1～S4 executable QA/QC 與 Git boundary；完整 fresh evidence 見 `output/playwright/dev037/manifest.md`。
+- 下一步若要讓 AI-PDM 實際消費 assignment、同步 enforcement 或接正式 IAM／DB，必須另開跨 repo integration ADR／DEV 與 release gate；不得把本 DEV 的 local-only 結果宣稱為外部系統已生效。
+- 若需求改為 OrgMaster 可編輯 AI-PDM Permission、Role-Permission mapping 或領域 Approval Policy，停止並回到 Human Decision／ADR，不得當成 RD 細節擴權。
+- 若要驗證 AI-PDM 實際生效，停止 OrgMaster-only lane，取得修改 AI-PDM 授權並建立 integration ADR。
+
+### Future Phase Capsule
+
+Phase 3 live integration 的目的，是讓 AI-PDM 提供權威角色目錄並消費 OrgMaster 已發布 assignment。執行前需確認跨 repo 修改授權、service authentication、catalog delivery、assignment consumption、stale／revocation、compatibility window 與 rollback；驗收必須從正常角色指派入口一路證明 AI-PDM server enforcement，不以 OrgMaster UI 成功或 API fixture 取代。
+
+### 變更紀錄
+
+- 2026-08-27：建立 `Brief Ready`；新增 ADR-007，修訂 ADR-004／005、DEV-027／035、QA evidence boundary、dev_task 與 documentation map。本輪未修改產品程式或 AI-PDM。
+- 2026-08-27：依使用者要求升級為 `RD Contract Ready`；建立權威 spec，固定唯讀 catalog、assignment／role delegation、publish-as-approval、local-only effect、legacy V1 compatibility、UI／API boundary、QA/QC evidence 與 stop conditions。未修改產品程式或 AI-PDM。
+- 2026-08-27：完成 RD Readiness Review，升級為 `RD Implementation Ready / RD Not Started`；固定 V2 schema、9-role bundled catalog 與 source hash、V1 非破壞 migration／recovery、command／route／error signatures、UI field matrix、file allowlist、S1～S4 gate 與獨立 High-risk QA／QC 計畫。未修改產品程式或 AI-PDM。
+
+## DEV-036：雙視角責任規劃完整工作台
+
+狀態：完成／待本機 release gate
+文件成熟度：`RD Implementation Complete / QA-QC Passed / Human Confirmed Minimum Viable Dual-Perspective Scope / Local Release Gate Pending`
+節點類型：交付點
+優先級：P1
+來源 ID：`USER-2026-08-26-DUTY-DUAL-PERSPECTIVE-WORKBENCH`
+父任務：DEV-029、DEV-031、DEV-034
+計入交付：是
+風險等級：Medium（新增正式 URL 導航、雙視角頁籤及跨職掌／跨職位投影；不改 Duty domain、relation schema、API、權限或保存權威）
+執行邊界：工程權威契約為 `ai-doc/specs/DEV-036-duty-dual-perspective-workbench.md`。第一輪只做最小唯讀工作台，不做第二套 mutation、department／lane 進階篩選、distribution cell 展開或工作量推論；實作與 QA／QC 已完成，尚未授權 deploy／release。
+
+### 真正問題與使用者價值
+
+DEV-034 已把單一職掌的責任配置整合進組織圖左側主資料清單，適合「選一項職掌、選一種責任、拖到職位」的快速配置；但 CEO／人資主管進行整體組織設計時，還需要跨多項職掌與多個職位判斷：哪些責任尚未完整、責任集中在哪裡、某個職位承擔哪些類型的責任。
+
+若把這些全局判斷全部塞進 242px 左側清單或組織圖節點，會遮蔽組織圖並造成資訊密度過高；若只保留既有單筆 Drawer，又必須逐筆開關，無法比較。DEV-036 因此新增一層完整 URL 工作台，但不取代快速清單、單筆明細或組織圖配置。
+
+成功結果是：規劃者從既有工作執掌清單進入完整工作台後，可以在同一穩定頁面切換「責任盤點」與「責任分布」，用不同主要物件完成兩種互補判斷；返回組織圖時仍能以 DEV-034 完成精確配置。
+
+### Human-confirmed 產品決策
+
+1. 第一版即提供兩個正式視角頁籤：`責任盤點`、`責任分布`；不等第二個視角完成後才建立頁籤骨架。
+2. 未來視角只有完成產品契約、實作與驗證後才加入；第一版不顯示 disabled、鎖定或「敬請期待」頁籤。
+3. 完整工作台是第三層工作表面：左側快速清單負責快速選取與配置，Duty Drawer 負責單筆閱讀／編修，完整工作台負責跨職掌與跨職位規劃。
+4. 責任是否適合某職位仍由人類判斷；第一版不提供 AI 推薦、自動配置、工作量推論或制度適配結論。
+5. 兩個視角共用同一份 organization version、Duty、DutyPositionRelation、Undo／Redo、autosave 與 CAS 權威；不得建立第二套工作台資料或保存路徑。
+6. 手機遵守專案最高原則，只提供兩視角唯讀閱讀與導覽；不呈現或觸發新增、拖曳、移轉、刪除或其他 relation mutation。
+
+### Current Phase 工程決策
+
+第一輪不在完整工作台建立第二套 relation editor。關係 mutation 只由 DEV-034 組織圖配置承擔；完整工作台只盤點、比較、閱讀及導向配置。這是 Current Phase 已固定的 action ownership，不是待 RD 猜測的 AI assumption；未來若要改，須另做 interaction／transaction impact review。
+
+### 三層資訊架構邊界
+
+| 層級 | 主要任務 | 主要物件 | 寫入邊界 |
+| --- | --- | --- | --- |
+| 左側工作執掌清單＋組織圖 | 選一項職掌，選責任，拖到 Position | 單一 Duty＋組織圖 Position | 沿用 DEV-034 assign-only relation command |
+| Duty Drawer／Inspector | 閱讀或編修單一職掌及其關係 | 單一 Duty | 沿用既有 Duty／relation commands 與 capability gate |
+| `/duty-planning` 完整工作台 | 跨 Duty／Position 盤點、比較、篩選與鑽取 | Duty 集合或 Position 集合 | 第一版不建立第二套批次或直接配置流程；導回 DEV-034 |
+
+左側清單的 R2.1 狀態篩選只縮小當下快速來源，屬 session UI state；完整工作台的視角與篩選屬可重載、可返回、可分享的 URL state。兩者可以使用相同 anomaly 原子狀態，但不得共享隱性 state owner 或彼此改變目前選取。
+
+### 完整工作台共同骨架
+
+```text
+工作執掌規劃
+├─ [責任盤點] [責任分布]
+├─ 當前視角專用篩選工具列
+├─ 當前視角主要內容
+└─ 按需 Duty Drawer／導向組織圖配置
+```
+
+- 頁首只保留返回組織圖、頁面名稱、既有版本／唯讀狀態及必要文件動作；不常駐顯示教學、視角說明卡或未實作功能。
+- 頁籤位於頁面標題之下、視角工具列之上；一次只有一個 active view，active 狀態不能只靠顏色。
+- 視角切換是 URL 導航，不是只存在 component memory 的顯示開關；需支援重新整理、瀏覽器返回／前進與分享同一視角。
+- 每個視角只保留自身任務需要的篩選器；不得把兩個視角全部篩選器放成一列。
+- 點擊 Duty 名稱沿用既有 Duty Drawer；需要修改責任時，提供單一「到組織圖配置」路徑並帶回 Duty context，不在工作台另造平行配置器。
+
+### 視角一：責任盤點
+
+核心問題：哪些職掌的責任配置不完整或需要重新確認？
+
+| 契約項目 | 第一版方向 |
+| --- | --- |
+| 主要物件 | Duty；每列一項工作執掌 |
+| 主要判斷 | 該 Duty 是否已有主執行、協作、審核、會簽，以及是否命中既有 anomaly |
+| 最小欄位 | 工作執掌、主執行、協作、審核、會簽、規劃狀態 |
+| 狀態篩選 | 複選 `no-executor`、`missing-primary-executor`、`pending-reassignment`；空集合代表全部，同群組 OR，與搜尋 AND，不新增「待處理」第二套聚合選項 |
+| 鑽取 | 點 Duty 名稱開啟既有 Drawer；從列或 Drawer 進入組織圖配置時保留 Duty context |
+| 空白狀態 | 清楚區分「目前沒有 Duty」與「篩選後沒有結果」；不得把零結果顯示成全部正常 |
+
+`配置完整`在第一版不是新的永久狀態或 anomaly。系統只呈現可由既有 relation 與 anomaly 可靠推導的事實；不得因有主執行就宣告管理責任完整，也不得自行要求每項 Duty 必須具備協作、審核或會簽。
+
+### 視角二：責任分布
+
+核心問題：目前責任分散或集中在哪些職位與部門？
+
+| 契約項目 | 第一版方向 |
+| --- | --- |
+| 主要物件 | Position；每列一個 active 職位 |
+| 主要判斷 | 該 Position 在主執行、協作、審核、會簽四類責任中承擔哪些 Duty |
+| 最小呈現 | Position × 主執行、協作、審核、會簽四欄；cell 只呈現不可點擊的整數 count，0 也顯示 |
+| 最小篩選 | 一個文字搜尋，同時比對 Position 與 department 名稱 |
+| 延後 | department 下拉、lane 篩選、cell 展開、Duty 清單與分布頁 Drawer |
+| 空白狀態 | 保留 active Position 的零責任事實；只有文字搜尋可隱藏不符合的 Position |
+
+責任數量只代表目前 relation 分布，不是工作量、產能、績效或人力需求。第一版不得以紅黃綠、超載 Badge、健康分數或排名暗示負荷判斷；未來若要判斷負荷，必須先取得頻率、工時、難度或風險等可解釋資料並另建契約。
+
+### Route 與 URL state 方向
+
+第一版固定使用一個 canonical page 與兩個穩定 view 值：
+
+- `/duty-planning`：預設等同責任盤點。
+- `/duty-planning?view=audit`：責任盤點。
+- `/duty-planning?view=distribution`：責任分布。
+- 未知或移除的 `view` 值：安全正規化為 `audit`，不得白屏或保留無效 active tab。
+- `/duty-planning/anomalies`：相容導向 `?view=audit`。
+- `/duty-planning/matrix`：相容導向 `?view=distribution`。
+
+active view 與當前視角篩選條件寫入 URL；重新整理及 browser back／forward 必須恢復。第一輪不記住非 active 視角的上次 filters；切換視角只保留共同 `q`，由 audit 切到 distribution 時清除 `status`。
+
+固定 query 只有 `view`、`q`、`status`，順序亦固定為此；distribution 忽略 `status`。parser、serialization、legacy alias 與 history replace／push 規則見 DEV-036 權威工程契約。
+
+### 正常 UI 入口與返回方向
+
+- Target actor：總經理、人資主管、制度規劃者；一般閱讀者與手機使用者只能讀取。
+- 正常起點：組織架構頁開啟左側 `工作執掌` 清單。
+- 工作台入口：清單 header 提供與其他 header controls 同尺寸的明確「開啟責任規劃工作台」控制；不得只靠 direct URL、隱藏手勢或點擊靜態標題。
+- Destination：進入 canonical `/duty-planning`，預設 active tab 為 `責任盤點`。
+- 返回：頁首「返回組織圖」回到既有組織架構頁；從 Duty 導向配置時，應恢復左側工作執掌清單並選定該 Duty，但不得自動 armed 某個責任 lane 或直接執行 mutation。
+- 窄桌面與手機：頁籤及兩個視角仍可被閱讀；手機隱藏所有 mutation controls，版面不得水平溢出或靠 hover 才能取得必要資訊。
+
+### Current Scope
+
+- 建立完整工作台正常入口、canonical route 與兩個第一版頁籤。
+- 建立責任盤點的 Duty-centric 投影、既有 anomaly 複選篩選、搜尋、Drawer 鑽取及導向組織圖配置。
+- 建立責任分布的 Position-centric 四責任欄 count，以及 Position／department 共用文字搜尋；不展開 cell。
+- active view 與當前視角篩選 URL 化，支援 reload、browser history 與分享。
+- 沿用現行 organization state、Duty／relation identity、commands、Undo／Redo、autosave、CAS、capability gate 與手機唯讀最高原則。
+- 依 `ai-doc/specs/DEV-036-duty-dual-perspective-workbench.md` 的 state owner、required files、S0～S5與 verification contract 實作。
+
+### Out of Scope
+
+- 第三個以上視角、停用頁籤、future 功能預告或自訂儀表板。
+- AI 推薦職位、自動配置、相似職掌合併、制度適配或異常原因生成。
+- 工作量、產能、績效、超載、關鍵人風險或人力需求結論。
+- 新 anomaly、`配置完整`永久狀態、每項 Duty 強制四類責任齊備或新的職責分離規則。
+- 批次移動、批次刪除、跨責任類型轉換、第二套 relation editor 或第二套保存工作流。
+- Duty／relation schema、API、permission、organization command、version authority、management-method 智能引用、deploy 或 release。
+- department 下拉、lane filter、distribution cell 展開、Duty 清單／Drawer及每個視角的篩選偏好記憶。
+
+### 驗收方向
+
+1. 從正常組織架構頁的工作執掌清單可發現並進入工作台；只證明 direct URL 可開啟不算通過。
+2. 第一版始終只顯示兩個已實作頁籤；兩者 active 狀態、鍵盤焦點與 URL 一致，無 disabled future tab。
+3. `/duty-planning` 預設責任盤點；切換責任分布、reload、browser back／forward 後仍回到正確視角及可序列化篩選。
+4. 責任盤點以 Duty 為列，三個 anomaly 原子條件遵守空集合＝全部、同群組 OR、搜尋 AND，不出現第二個「待處理」選項。
+5. 責任分布以 active Position 為列，正確區分主執行、協作、審核、會簽；0 保留，count 不可點擊，文字搜尋可比對 Position／department。
+6. 從責任盤點點擊 Duty 名稱開啟同一 read-only Duty Drawer；返回後保留原視角與篩選，不重設成另一頁籤。
+7. 進入組織圖配置只建立導航與選取 context，不自動選 lane、不自動配置，也不產生 relation mutation。
+8. 唯讀或手機情境可使用頁籤、篩選與鑽取，但不存在可觸發 mutation 的控制；桌面、窄桌面與手機均無遮擋、重疊、截斷或非預期水平溢出。
+9. 正常、載入、無 Duty、無 Position、篩選零結果、未知 view、無效 query 與保存衝突後重載均有可恢復可見狀態；不得出現成功／失敗並存或 visible 4xx／5xx。
+
+### 驗證完整性方向
+
+| Acceptance / risk | Normal delivery path | Fixture boundary | Forbidden shortcut | Fail condition | Required evidence |
+| --- | --- | --- | --- | --- | --- |
+| 工作台入口可發現 | 組織架構→工作執掌清單→工作台入口 | 可使用含既有 Duty 的 organization version | 只貼 `/duty-planning` direct URL | 正常清單沒有入口或入口無反應 | 起始畫面、入口與 destination 截圖／操作紀錄 |
+| 雙頁籤與 URL 恢復 | 正常入口→切換頁籤→套用篩選→reload／back | 可 seed 多種 relation／anomaly 前置資料 | 只測 parser、component state 或單一路由 mount | active tab、URL、結果任一不同步 | 同一 revision 的 route、操作步驟與切換前後截圖 |
+| 責任盤點正確 | 責任盤點→複選狀態→搜尋→開 Duty | 可 seed 已知 anomaly 組合 | 只檢查 `deriveDutyAnomalies` unit output | OR／AND、去重、空集合或零結果錯誤 | 畫面列、篩選狀態與資料合理性對照 |
+| 責任分布正確 | 責任分布→文字搜尋→檢查四類 count | 可 seed 已知 Position relation 分布 | 只查 state、API 或 DB counts | cell count、責任類型或零責任 Position錯誤 | 畫面、fixture 對照與至少一個零責任 Position |
+| 不產生隱性 mutation | 任一視角瀏覽、篩選、鑽取、返回 | 使用可編輯草稿並記錄初始 revision | 只證明唯讀版本不能寫 | 純瀏覽改變 dirty、revision 或 relation | 前後 state／dirty 證據與 UI 操作紀錄 |
+| 手機唯讀 | 手機正常入口→兩頁籤→篩選→Drawer | 可使用相同唯讀 fixture | 只用 CSS source 或桌面縮窗推定 | mutation control 可見／可觸發或版面溢出 | 390×844 實際 viewport 截圖、互動與 visible-error sweep |
+
+### 主要風險與停止條件
+
+- 若兩視角無法使用同一 organization state 投影，或 RD 提議建立第二套 Duty／relation 保存，停止並回 PM。
+- 若責任分布必須新增工作量、風險或「完整性」商業判定才能成立，停止並由使用者確認產品語意。
+- 若完成工作台需要讓 DEV-034 左側清單失去快速配置能力，或同時存在兩套可編輯 relation workflow，停止做 interaction impact review。
+- 若現行 route／component 已被其他尚未收斂的 dirty change 改寫，先保護使用者修改並重新盤點；不得依本 Brief 猜測檔案邊界。
+- 找不到正常 UI 入口、只能 direct URL 開啟、頁籤與 URL 不同步、手機仍可 mutation、責任數量被標成工作量，均為後續 QC hard fail。
+
+### Future Phase Capsule
+
+狀態：`Future Phase Captured / Not Requested`。
+
+第一輪試用後，優先依真實阻礙評估 responsibility distribution 的 department／lane filter、cell 展開與 Duty 鑽取，再逐一考慮關鍵依賴、制度對照、變更影響或職責分離。重新進入條件是使用者完成最小版試用並指出下一個具體阻礙；不得只為預留架構建立空頁、disabled tab 或通用 plugin system。
+
+### Spec Impact 與治理結論
+
+- `Intentional replacement`：使用者本輪明確改變 DEV-031「不採獨立工作台頁籤／矩陣視角」的 future 方向；DEV-036 實作完成後，`/duty-planning` 將恢復為正式雙視角完整工作台，而非三個 route 同一 composition。
+- `Compatible contract`：DEV-034 繼續是組織圖快速配置權威；DEV-036 不取代其左側清單、拖曳、assign-only resolver、Inspector 或 R2 browser gate。
+- `Compatible contract`：DEV-028／029／031 的 Duty identity、relation identity、anomaly 推導、organization state、commands、Undo／Redo、autosave 與 CAS 可沿用；歷史完成證據不因 future Brief 失效。
+- ADR：不需要。Current Phase 不改資料權威、schema、API、permission 或 transaction boundary。
+- Readiness：`RD Implementation Complete / QA-QC Passed`。正常入口、route serialization、component ownership、projection、failure recovery、repo file boundary、targeted／full tests、build、browser evidence provenance 均已完成；本輪只保留 local release gate，未執行 deploy／release。
+
+### 變更紀錄
+
+- 2026-08-26：依使用者「先做最少功能、之後再修」將第一輪收斂為 Minimum Viable Slice，並升級至 `RD Implementation Ready`。保留兩個正式視角；Audit 只做搜尋、三 anomaly 複選、列表與 read-only Drawer，Distribution 只做 Position／department 文字搜尋與四欄 count。工程契約：`ai-doc/specs/DEV-036-duty-dual-perspective-workbench.md`；本輪未修改產品程式或測試。
+- 2026-08-26：依使用者確認建立 DEV-036 `Brief Ready`。第一版固定兩個正式視角「責任盤點／責任分布」，建立三層資訊架構、共同頁面骨架、視角任務邊界、URL／入口方向、Current Scope、Out of Scope、驗收方向與 future re-entry；本輪未修改產品程式或測試。
+
+## DEV-034：組織圖內嵌工作事項責任配置模式
+
+狀態：R2 實作完成／待瀏覽器 QC；R2.1 規劃狀態視角已確認 Brief、尚未要求實作；R1 為歷史基線
+文件成熟度：R2 `RD Implementation Complete`；R2.1 `Brief Ready / Human Confirmed / Implementation Not Requested`
+節點類型：交付點
+優先級：P1
+來源 ID：`USER-2026-08-25-DEV034-ORG-CHART-INLINE-DUTY-CONFIGURATION`、`USER-2026-08-25-DEV034-UPGRADE-RD-CONTRACT`、`USER-2026-08-25-DEV034-UPGRADE-IMPLEMENTATION-READY`、`USER-2026-08-25-DEV034-DIRECTORY-DUTY-DRAG-REVISION`、`USER-2026-08-26-DEV034-DUTY-PLANNING-STATUS-FILTER`
+父任務：DEV-031、DEV-032、DEV-033
+計入交付：是
+風險等級：Medium（改變責任配置主要資訊架構與跨 route 上下文，並寫入既有 DutyPositionRelation；不新增管理辦法智能引用、AI 職掌判斷或正式權限模型）
+執行邊界：R2 產品程式與 automated gates 已完成；本輪只新增 R2.1 Brief，不修改產品程式、測試、資料、正式 migration、deploy 或 release。後端沿用既有 V6 parser／workspace save validation 與 organization command pipeline，在保存／套用邊界將舊 `collaborate` canonicalize 為 `execute + isPrimaryExecutor=false`，不新增 schema、API route 或第二套保存路徑。R1 S0～S5 與 B1～B9 保留為歷史完成證據，不代表 R2 browser gate 已通過；R2.1 文件完成也不代表篩選功能已實作。
+權威契約：`ai-doc/specs/DEV-034-org-chart-inline-duty-configuration.md`
+
+### R2 Active RD Implementation Contract：左側主資料職掌清單與由左向右拖曳配置
+
+#### 真正問題與使用者價值
+
+R1 雖已將工作事項選擇器推到左側，但仍以獨立 duty-config 模式、特殊 picker、底部任務列與「選好責任後點 Position」完成配置。實際操作顯示這套模式與員工／職位／部門／層級清單不同，下一步不易從既有肌肉記憶推得，且點擊 Position 同時可能代表閱讀、選取或 mutation。
+
+R2 把職掌視為第五種主資料，而不是特殊模式。規劃者沿用既有左側欄的固定入口、清單、搜尋、選取、收合與明細規則；唯一新增語意是在選取職掌後設定責任，將該職掌由左向右拖到組織圖 Position。成功結果是使用者不需記憶另一套入口或隱性點擊模式，也能持續看著組織關係作人類判斷。
+
+#### Human-confirmed Product Direction
+
+- 在既有左側主資料 rail 新增第五個「職掌」入口，置於現有四個入口之後，不移動員工、職位、部門及層級的既有位置。
+- 「職掌清單」沿用 DirectoryDock 的同一 panel shell、現行約 `242px` 展開寬度、標題／數量、搜尋、單一列選取、收合、鍵盤焦點與按需 Inspector；職掌名稱是明細入口，名稱旁以獨立 chevron 按鈕控制責任展開，不得再建立 `280～320px` 特殊 picker或文字型「明細」按鈕。
+- 移除頁首「工作執掌規劃」主要入口、底部 DutyConfigurationDock、選定後最小任務列及點擊 Position 直接增刪 relation 的隱性 mutation。
+- 選取一項職掌後，只在該選取列就地展開四種精確責任：主執行、協作、審核、會簽；主執行與協作同屬「執行」群組，切換職掌時責任選擇歸零，避免沿用上一項職掌的責任。
+- 選定精確責任後，選取列才顯示可辨識且可存取的拖曳把手／drag source；拖曳 ghost 必須同時顯示職掌名稱與精確責任。
+- 使用者由左向右將職掌拖到組織圖 Position；普通點擊 Position 恢復為既有選取／閱讀，不產生 relation mutation。
+- 職掌名稱點擊只開啟既有明細 Inspector／Drawer；同列獨立 chevron 才是責任設定的展開／收起入口。明細與展開不得互相觸發；既有 Inspector／明確 relation action contract不因列操作改變。
+- 組織圖 Position 仍是唯一配置目標，不新增第二份職位清單、責任配置專用職位搜尋、部門篩選或另一張組織圖。
+- 手機維持唯讀：可從左側清單閱讀職掌與責任，但不顯示精確責任選擇、拖曳把手或任何 mutation 控制。
+
+#### UX Intent
+
+- 任務／結果：制度規劃者從固定左側主資料入口選職掌、設定責任並拖到正確 Position，配置後仍保留相同職掌與責任以支援連續配置。
+- 主物件／主焦點：組織圖及 Position drop targets；左側職掌清單是來源，不成為第二個主要工作面。
+- 預設刪除：特殊配置模式說明、頁首重複入口、獨立 picker、底部 Dock、常駐步驟文字、成功彈窗、逐列待處理 badge、空白說明及點擊 Position mutation。
+- 保留舉證：固定「職掌」rail 入口與一致 panel 骨架建立肌肉記憶；選取職掌、二次點擊收起、精確責任與 drag ghost 必須保留，否則使用者可能把錯誤職掌或責任放到 Position。
+- 非語言修復：使用一致的選取背景、責任按鈕 pressed state、drag handle、有效／無效 drop 輪廓、ghost、放置後 Position 就地變化與 Undo；不以常駐教學補救結構。
+- 風險與驗證：拖曳失敗不得寫入或假成功；相同 relation drop 必須 no-op；主執行移轉必須原子化；鍵盤替代、非顏色狀態、edge auto-pan、854×698／1440×900 與手機唯讀都須在實作後以正常入口驗證。
+
+#### 主要流程
+
+```text
+既有組織架構頁
+  → 點左側 rail 的「職掌」
+  → 使用與其他主資料相同的搜尋／清單選定職掌
+  → 選取列就地展開並選擇一種精確責任
+  → 從選取列拖曳「職掌＋責任」到組織圖 Position
+  → 有效 drop 才提交既有 OrganizationCommand
+  → Position 就地顯示結果，沿用 Undo／autosave／version CAS
+  → 保留目前職掌與責任供連續配置；切換清單或收合時結束 ready state
+```
+
+#### R2 Current Scope
+
+- 把 Duty 納入既有 DirectoryDock／DirectoryKind 的第一級主資料資訊架構，沿用現有清單 shell 與互動骨架。
+- 在職掌選取列提供四種精確責任與桌面 drag source，並讓組織圖 Position 成為 drop target。
+- Drop 到尚未配置的 Position 時新增 relation；相同 exact relation 已存在時 no-op；主執行 drop 到新 Position 時沿用既有 atomic transfer；協作、審核與會簽可連續配置多個 Position，協作在 backend 保存為 non-primary execute。舊 V6 `collaborate` 載入時 canonicalize 並去重，之後不再產生新 legacy relation。
+- Pending reassignment 繼續保留相同 relation ID 的恢復語意，但其 R2 入口與拖放細節留待升級 RD Contract 時固定。
+- 重用既有 organization V6、Duty／DutyPositionRelation、validator、history、Undo／Redo、500ms autosave、Ctrl+S、revision CAS、workspace mode 與 permission boundary；不新增 schema 或第二套保存路徑。
+- 保留 `?mode=duty-config` 與 `/duty-planning*` 的相容需求，但 canonical 入口必須是正常組織圖左側「職掌」，不能以 direct URL 作可發現性證據。
+
+#### R2 Out of Scope
+
+- AI 自動推薦、判定或配置適合職位。
+- 管理辦法正文智能引用、Stage／Step 或從正文直接建立職掌關係。
+- 新職責重疊演算法；仍只沿用既有兼任風險與 Duty validator。
+- 手機、觸控窄版或不符合 mutation capability 的拖曳配置。
+- 以重複 drop、普通 click、double-click 或不明確 toggle 移除 relation。
+- 新 schema version、API route、server provider、permission model、正式資料 migration、deploy 或 release；本次只新增現有 V6 parser／workspace save 的 canonicalization，不改 version number。
+
+#### R2 Acceptance Direction
+
+- 從一般組織圖可直接發現左側「職掌」入口；頁首不再有重複主要入口。
+- 展開職掌時使用與其他主資料相同的 rail 位置、panel 寬度、標題、搜尋、選取、收合與焦點骨架；點擊名稱開明細，點擊右側 chevron 才展開／收起責任設定，且不遮住組織圖。
+- 使用者不需閱讀常駐教學即可完成「選職掌 → 選責任 → 拖到 Position」；選責任前不可啟動有效 relation drop。
+- Drag ghost、有效／無效 target 與完成結果都能辨識目前職掌及精確責任；狀態不只靠顏色。
+- 普通點擊 Position 不修改 DutyPositionRelation；相同 relation drop no-op，錯誤 drop 不產生 dirty state或假成功。
+- 成功 drop 沿用既有 command、Undo／Redo、autosave、CAS 與 validation；主執行移轉保持原子性。
+- 鍵盤使用者可透過同一職掌與責任上下文選定 Position 並執行等價配置，不以拖曳作唯一可達路徑。
+- 1440×900 與 854×698 桌面 viewport 無遮擋、雙重捲動或主要 drop target 被固定表面覆蓋；手機只讀且零 mutation 控制。
+- QC 必須從一般組織圖入口進入並實際拖放；R1 direct URL、舊 screenshot、unit test或API／state直寫不得替代 R2 delivery-path evidence。
+
+#### R2 RD Implementation Handoff
+
+- 已完成`DirectoryDock`、App、OrgNode、R1 toggle resolver、Duty Inspector、employee native drag、React Flow與現有tests盤點；R2沒有P0／P1 readiness缺口。
+- `DirectoryKind`新增`duties`且固定排第五；selected duty／lane由route持有，不綁右側`DirectorySelection`。普通Position click永遠是閱讀，Duty mutation只可能由native／keyboard drop進入。
+- 新增`src/dutyConfigurationDrag.ts`治理專用MIME、strict payload、native／keyboard drag state與二維auto-pan；`src/dutyConfiguration.ts`新增`resolveDutyConfigurationDropCommand`作assign-only resolver。相同relation與協作→主執行均no-op，drop不會輸出remove／downgrade。
+- R2移除`DutyConfigurationDock.tsx`／test、Toolbar主入口、底部Dock／特殊picker CSS與App click-to-toggle listener；Duty detail改嵌既有右側Inspector，relation移除只用明確action。
+- pending recovery鎖定原exact lane並沿用同一relation ID；release一律以`currentStateRef.current`重算，applied才進單一history，invalid／noop／rejected零history／autosave。
+- required／forbidden files、S0～S5、R2-B1～B9、409／capability／focus recovery、Verification Integrity與FMEA均在權威契約固定。R2 evidence只能寫入`output/playwright/dev034-r2/manifest.md`。
+- ADR不新增；R2不改資料權威、schema、API、permission或跨domain flow，僅在既有 storage parser／workspace save validation 邊界加入舊 `collaborate` 的 canonicalization 與去重。命中權威契約Stop Condition才回PM重判。
+
+#### R2.1 Future Phase Capsule：複選式規劃狀態視角
+
+狀態：`Brief Ready / Human Confirmed / Implementation Not Requested`。詳細產品語意與驗收方向以權威契約第 0.19 節為準。
+
+- 在 `工作執掌` 標題列的「新增」之前加入 icon-only 篩選按鈕，開啟同 panel 內可控寬度的非 modal popover；不得新增頁面、Drawer、永久欄位或第二個 list scroll owner。
+- `規劃狀態`只提供可複選的 `無執行職位`、`缺少主執行`、`待重新分配`。空集合代表全部，同群組採 OR，與文字搜尋採 AND；三項全選只可摘要為「全部待處理」，不得另設「待處理」選項。
+- 異常來源只用既有 `deriveDutyAnomalies`；`attention=1` 相容入口初始化三項全選，不新增 anomaly、backend、schema、API 或保存格式。
+- 篩選只影響左側 Duty 清單，組織圖保持完整。被排除的是目前 armed Duty 時，必須取消 drag並清除隱藏的 duty／lane／sourceRelation context。
+- 責任視角、部門／層級／員工聚焦、配置完整判定、每類 count與全選控制不在本輪；只有真實任務證據成立後才恢復最小必要能力。
+- Re-entry：使用者要求實作或升級 `RD Contract Ready`／`RD Implementation Ready` 時，依當時最新程式固定 state owner、popover pattern、required files、targeted tests與正常入口 browser evidence；在此之前不改 R2 現有完成與 QC 狀態。
+
+### R1 Historical Baseline（已被 R2 主要入口與互動取代）
+
+以下原 DEV-034 內容保存 R1 的「特殊 duty-config 模式、獨立 picker、底部 Dock、選好責任後點 Position」實作契約及 QA／QC 證據。除 organization V6、Duty command、五種 exact lane、Undo／autosave／CAS、手機唯讀與不使用 AI 判位等明確重用不變量外，不得引用以下 R1 UI／route／驗收條款直接實作 R2，也不得用 R1 完成狀態宣稱 R2 已完成。
+
+### 真正問題與使用者價值
+
+現行 DEV-031 以獨立 `/duty-planning*` 工作檯配置責任，規劃者必須在職掌工作面與組織架構之間切換，難以一邊看真實上下層關係、一邊判斷哪個職位適合執行、協作或審核。原先討論過的「組織圖直接選位」曾保存在 DEV-032 的 future 設計，但 DEV-032 後來收斂為自由管理辦法與唯讀職掌對照，因此沒有進入正式實作。
+
+DEV-034 把這個未交付設計獨立成新的可驗收交付點：責任配置仍由人類判斷，組織圖是主要工作物件，系統只提供最小、可恢復的配置工具，不嘗試用 AI 推定適合職位。
+
+### Human-confirmed Product Direction
+
+- 不新增責任配置頁；沿用既有組織架構頁加入「工作事項配置模式」。
+- 工作事項資料與責任關係維持兩層，但規劃者在同一編輯面完成選擇，不被迫先到另一頁配置。
+- 選定工作事項後，來源清單收合為最小任務列；組織圖維持唯一主焦點。
+- 人類選擇責任語意並直接點選 Position；AI 或自動辨識只能是未來輔助，不得成為 Current Phase 的判定者或寫入者。
+- 既有 Inspector 只在選取後按需顯示完整職掌／責任內容，不建立永久第三欄。
+- 不新增第二份全職位清單、責任配置專用搜尋、部門篩選或另一套選位結果；組織圖 Position 是 Current Phase 的配置目標。
+- 手機只讀；桌面／筆電是否可寫仍須同時符合 DEV-033、workspace mode、version status、permission 與既有 validation。
+
+### UX Intent
+
+- 任務／結果：制度規劃者看著組織關係，把一項既有工作事項配置給正確的執行、協作及審核職位，完成後仍留在原組織上下文。
+- 主物件／主焦點：組織圖及其 Position 節點；工作事項只是暫時配置上下文。
+- 預設刪除：新頁面、永久多欄工作檯、重複職位清單、常駐教學、重複摘要、AI 建議區及成功彈窗。
+- 保留舉證：最小任務列必須保留目前工作事項、目前責任類型、完成／離開與可辨識的保存失敗；否則規劃者會把關係配置到錯誤工作事項、無法結束模式或誤以為已保存。
+- 非語言修復：以單一選取狀態、Position 節點輪廓、Dock／Drawer 內容、就地更新與 Undo 表達結果；不把職掌長文字塞入組織圖卡片，也不以多組 badge、色塊及說明文字重複同一事實。
+- 風險與驗證：配置失敗不得留下假成功；模式切換須保留焦點與合理上下文；鍵盤、非顏色辨識、桌面 viewport 及手機唯讀均須可驗證。
+
+### 主要流程
+
+```text
+既有組織架構頁
+  → 進入「工作事項配置模式」
+  → 從既有工作事項中選定一項
+  → 工作事項來源收合成最小任務列
+  → 選擇可見責任群組
+       ├─ 執行 → 主執行／協作
+       └─ 審核 → 審核／會簽
+  → 點選一個或多個 Position 加入／移除關係
+  → 就地顯示配置結果並沿用 Undo／autosave／version CAS
+  → 完成或離開配置模式，回到同一組織圖上下文
+```
+
+兩個可見群組只降低規劃者的第一層認知負荷；協作與主執行同屬執行群組，backend 以 non-primary execute 保存；review／countersign 仍保留既有語意。
+
+### Current Phase Scope
+
+- 在既有組織架構頁增加暫時的工作事項配置模式，不新增主要 route 或第二套責任編輯器。
+- 重用既有 Work Item／Duty 與 DutyPositionRelation；不建立相同名稱或內容的第二份主檔。
+- 提供最小工作事項選擇表面；選定後收合，只保留完成配置所需上下文。
+- 以 Position 節點的 pointer 與鍵盤可達操作配置或解除目前 relation，並提供單一清楚的 selected／assigned 狀態。
+- 配置 mutation 沿用 organization current state、Undo／Redo、500ms autosave、Ctrl+S、version CAS、validator 與可恢復錯誤語意。
+- 配置模式期間暫停會競爭同一 pointer／keyboard gesture 或改變 Position identity 的組織結構 mutation；離開模式後恢復原能力。
+- 保留既有 Inspector 作按需細節；不常駐覆蓋組織圖，也不複製完整工作事項編輯器。
+- DEV-031 的 `/duty-planning*` 已由本 DEV 提供相容入口，導向 root duty-config mode 並保留可相容的 Position／attention 上下文；正式產品 cutover 仍需另案決策。
+
+### Out of Scope
+
+- 管理辦法正文的 Stage／Step／Work Item 智能引用、段落語意標記或從管理辦法直接寫入職掌。
+- AI 自動推薦、判定或套用執行／協作／審核職位。
+- 新的職責重疊風險演算法；Current Phase 只沿用既有「兼任風險設定」及資料完整性驗證。
+- 責任配置專用的第二份職位搜尋、部門篩選、永久職位 rail 或另一張組織圖。
+- 手機、窄版或不具精確指標裝置的責任配置 mutation。
+- 管理辦法核准／發布／生效、ISO／內控符合性判斷或執行證據鏈。
+- production deploy、正式資料 migration、正式權限發布或 release。
+
+### R1 Historical RD Implementation Decisions
+
+- DEV-034 Current Phase 從組織架構／工作事項 surface 進入，不從管理辦法段落建立永久關聯；這與 DEV-032「自由正文、唯讀職掌對照」相容。
+- 正式 relation 重用 organization document V6 與既有 OrganizationCommand；配置模式、選定 duty、exact lane、搜尋及 position focus 都是 route／UI context，不建立 schema、migration 或第二套保存路徑。
+- 三個可見群組「執行／協作／審核」映射至主執行、其他執行、協作、審核、會簽五種 exact lane；主執行移轉沿用 atomic command，所有成功 click 都只產生一個 organization history entry。
+- 「完成」與 Escape 只退出模式，不 rollback 已成功配置；回復使用既有 Undo／Redo，避免建立 transaction plan 或第二個提交流程。
+- `/duty-planning*` 現已改為 root duty-config mode 的相容入口，保留 `?position=` 定位且沒有第二個 active mutation surface；正式部署仍受 release gate 管理。
+- `no-executor`／`missing-primary` 以同一工作事項清單中的單一文字狀態呈現；`pending-reassignment` 從 drawer 選定後直接點 Position，以相同 relation ID 重新配置，不恢復第二份 Position selector。
+- 若 DEV-033 的全系統 capability boundary 尚未完成，DEV-034 mutation 採不寬於 DEV-032 的保守條件：至少 1024px、hover 與 fine pointer 同時成立；server／domain 仍驗證 workspace mode、revision 與 V6 文件。
+- 完整 route、command、failure recovery、permission、QA／QC 與 stop conditions 以 `ai-doc/specs/DEV-034-org-chart-inline-duty-configuration.md` 為權威。
+
+### R1 歷史實作進度（2026-08-25）
+
+- S1 已完成：`src/dutyConfigurationRoute.ts`、`src/dutyConfiguration.ts`、`src/dutyConfigurationCapability.ts` 與對應測試；路由採 root query，五 exact lane 映射既有 `OrganizationCommand`，primary transfer 使用 atomic command，pending 使用同一 relation ID。
+- S2 已完成：`src/components/DutyConfigurationDock.tsx`、`DutyDetailDrawer` 的 `organization-chart` placement variant、OrgNode assigned 輪廓與最小任務列樣式；配置模式不在 Position 卡片渲染職掌文字、不渲染 Directory Dock，也不建立第二份 Position 清單。
+- S3 已完成：`App.tsx` root mode、`/duty-planning*` alias、Toolbar／Inspector／PositionDutySection 入口、workspace mode／mobile／hover／fine-pointer capability gate、既有 command／history／autosave 邊界整合。
+- S4 已完成：`npm test -- --testTimeout=30000` 通過 `58 test files／251 tests`；`npm run build` 與 `git diff --check` 通過，僅保留既有 Vite bundle size warning；配置模式 canvas 單欄與 Dock 安全區修正後 Position 可見且不被固定 Dock 覆蓋。
+- S5 已完成：`output/playwright/dev034/manifest.md` 已記錄 B1～B9；包含 primary transfer／Undo-Redo、pending same relation ID、legacy alias、1440×900／1024×768／390×844、console／network／overflow 及唯讀 controls gate。
+
+### R1 歷史驗收摘要
+
+- 規劃者可在既有組織架構頁進入與退出工作事項配置模式，不需要前往新頁面。
+- 選定工作事項後，工作事項選擇表面收合為最小任務列；首屏主焦點仍是組織圖，沒有永久第三欄或重複全職位清單。
+- 規劃者可在同一表面選擇三類可見語意及必要的五種精確 relation，並以 Position 節點加入或解除關係。
+- 每次成功配置立即反映在相同 Position 與按需 Inspector；失敗保留目前工作事項與選取上下文，不顯示假成功。
+- Undo／Redo、autosave、Ctrl+S、version CAS 與 validator 行為不因新模式產生第二套保存路徑或不一致結果。
+- 配置模式期間不會因拖動組織節點、開啟衝突編輯或快捷鍵誤觸而改變不相關組織資料；退出後既有組織編輯恢復。
+- 鍵盤可完成工作事項選擇、責任類型切換、Position 配置及退出；狀態不只靠顏色表示。
+- 手機與不符合 mutation capability 的 deep link 只能閱讀組織與責任結果，不能觸發配置 command 或產生 dirty state。
+- `no-executor`、`missing-primary` 與 `pending-reassignment` 仍可辨識及修復；pending 重新配置保留原 relation ID。
+- DEV-031 的歷史工作流仍保留作 regression baseline；相容入口已導向 DEV-034，是否正式退場由後續 cutover 決策決定。
+
+### Cross-Spec Consistency
+
+- `Intentional scope transfer`：DEV-031 與 DEV-032 中 2026-08-24 的組織圖責任配置 future 設計，改由 DEV-034 作為唯一 active RD Implementation Contract；歷史段落保留決策脈絡，不再直接授權實作。
+- `Intentional replacement (local)`：DEV-034 已取代 DEV-031 的責任配置主要資訊架構；DEV-031 route、domain、command、保存、測試與證據保留為相容及 regression baseline。
+- `Compatible extension`：DEV-032 仍維持自由管理辦法、無智能引用及 Duty 唯讀對照；DEV-034 不從管理辦法 domain 寫入 Duty，也不修改 DEV-032 store、snapshot 或 editor contract。
+- `No conflict`：DEV-034 遵守 DEV-033 手機只讀最高原則；裝置 capability 不是正式 security credential。
+- ADR 判定：目前不建立 ADR；Current Phase 不改 schema、API、permission、persistence authority 或跨 domain data flow。若後續命中權威契約的 Stop Conditions，再重新判斷 ADR。
+
+### Future Phase Capsule：管理辦法來源上下文
+
+`Future Phase Captured / Not Requested`：若未來重新核准管理辦法段落智能引用，可由管理辦法攜帶 `methodId／anchor／workItemId` 進入 DEV-034，完成、取消或瀏覽器返回後恢復原文件位置。重新進入條件是 DEV-032 另案接受穩定的正文關聯身分與跨 domain 刪除規則；在此之前不得由文字比對、AI 推論或段落順序自動建立永久 reference。
+
+### R1 歷史交接
+
+現行盤點已確認：root 組織圖可承載 mode、歷史原型可作互動參考、正式 Duty 已在 organization V6、五種 exact relation 可由既有 commands 表達、Undo／500ms autosave／revision CAS 可重用，且 `/duty-planning*` 已有明確 route parser 與 Position focus。
+
+R1 當時已完成 RD 實作與 QA／QC handoff；pure route／toggle command／capability modules、Dock／OrgNode／Drawer／App composition、S0→S5與 B1～B9均有歷史實作與證據。R2已取代其入口與互動，RD不得把本段當成現行實作指令或沿用其passed狀態。
+
+### 變更紀錄
+
+- 2026-08-25：依使用者明確要求建立 DEV-034；把先前未交付的組織圖責任配置模式從 DEV-032 歷史 future 段落轉為獨立 `Brief Ready` 交付點。Current Phase 不恢復管理辦法智能引用、AI 職掌判斷、額外職位清單或手機編輯；本輪未修改產品程式、測試或資料。
+- 2026-08-25：依使用者要求盤點 `App` root composition、OrgNode、DutyCenter、Duty commands、organization V6、Undo／autosave／CAS 與三個 legacy routes，建立 `ai-doc/specs/DEV-034-org-chart-inline-duty-configuration.md` 並升級為 `RD Contract Ready`。本輪仍未修改產品程式、測試或資料。
+- 2026-08-25：依使用者要求補至 RD 可開發；固定 required／forbidden repo files、pure module exact symbols、App／Node／Dock／Drawer wiring、S0→S5、failure injection及 B1～B9 evidence contract。盤點期間另有 management-method chapter navigation dirty changes進入工作樹，已列為受保護邊界；current dirty tree baseline為 `52 test files／229 tests`與 build通過。DEV-034升級為 `RD Implementation Ready / RD Not Started`，本輪未修改產品程式或正式資料。
+- 2026-08-25：依 `dev-pm` 完成 DEV-034 S5；`npm test -- --testTimeout=30000` 通過 `58 test files／251 tests`，`npm run build` 與 `git diff --check` 通過。完成 B7 primary transfer／Undo-Redo、B8 pending same-relation-ID fixture、B9 三 viewport／console／network／overflow 與 legacy alias；另修正配置 Dock 遮擋畫布下緣，active workspace 依 viewport 預留 Dock 安全區。證據見 `output/playwright/dev034/manifest.md` 與 browser screenshots；未 deploy／release，狀態升級為 `RD Implementation Complete / QA-QC Passed / Local Release Gate Pending`。
+- 2026-08-25：依瀏覽器回饋完成 DEV-034 UX 微調：Position 卡片不再顯示工作事項／職掌長文字，僅保留 assigned 節點輪廓；責任閱讀集中於 Dock／按需 Drawer。763×698／1440×900 smoke、`58 test files／251 tests` 與 build 通過，補充證據為 `duty-card-compact-763x698.png`。
+- 2026-08-25：依使用者要求執行工作事項選擇表面優化：底部大型 picker 改為左側 `280～320px` 推移式面板，組織圖使用剩餘畫布；`720px` 以下改同 route 全寬表面。清單改為扁平列、單一「待處理（n）」群組，刪除逐列狀態及空白說明；選定後自動收合，唯讀最小任務列仍可更換 Duty 並壓縮為單列。本輪新增 Dock render regression test，854×698／1440×900／390×844 UI QC、`59 test files／253 tests`、build 與 diff check 證據見既有 DEV-034 manifest／補充 screenshots；未改 domain、API、schema、route、command、保存或 release 邊界。
+- 2026-08-25：使用者確認 R2 產品方向：將整個職掌入口納入既有左側主資料 rail，沿用其他清單的固定位置、panel shell、搜尋、選取與收合以建立高度肌肉記憶；選取職掌後就地設定精確責任，再由左向右拖到 Position。R2 明確取代頁首入口、特殊 picker、底部 Dock 與點擊 Position mutation；R1 程式及 `output/playwright/dev034/manifest.md` 只保留歷史證據。本輪將 DEV-034 重新標示為 `R2 Brief Ready / RD Not Started`，未修改產品程式、測試或資料。
+- 2026-08-25：依 `dev-pm` 執行 DEV-034 R2：完成第五 `DirectoryDock` 職掌清單、兩列五 lane、native／keyboard drag handle、assign-only latest-state resolver、React Flow 二維 auto-pan、普通 Position click 閱讀隔離、Inspector explicit remove 及 R1 Dock／Toolbar 入口 cutover。新增拖曳契約與 resolver regression；`npm test -- --testTimeout=30000` 通過 `59 test files／258 tests`，`npm run build` 通過。in-app browser 在本輪重啟 localhost 後受 URL policy 阻擋，尚未建立 `output/playwright/dev034-r2/manifest.md`，故狀態為 `RD Implementation Complete / QA-QC Pending Browser Gate / Local Release Gate Pending`，未 deploy／release。
+- 2026-08-25：依使用者要求把 R2補至`RD Implementation Ready / RD Not Started`。固定第五Directory、route與Inspector selection分離、assign-only drop resolver、專用MIME、native／keyboard drag、React Flow二維auto-pan、pending same-ID、R1 artifacts移除、repo allowlist、S0～S5、R2-B1～B9、Verification Integrity、FMEA及全新`dev034-r2` evidence邊界；本輪只更新開發文件，未修改產品程式、測試或資料。
+- 2026-08-26：依使用者介面回饋將職掌列的兩個動作明確分離：點擊職掌名稱開啟既有明細 Inspector／Drawer；名稱旁獨立 chevron 按鈕負責展開／收起責任 lane，兩者不互相觸發。同步更新 `expandedDutyId` UI state、ARIA、CSS／prop wiring與 route contract；in-app browser smoke已確認名稱開明細時責任 lane不展開、chevron可展開／收起且不產生 relation mutation。
 
 ## DEV-033：手機唯讀與桌面編輯的產品能力邊界
 
@@ -1782,7 +2317,7 @@ PM 升級 `RD Contract Ready` 前仍須完成的工程／原型工作；第 3、
 
 權威契約：`ai-doc/specs/DEV-031-duty-master-detail-editor.md`
 
-Supersession update：DEV-032 的新簡化 Current Phase 已撤回「以組織圖責任配置模式取代本 DEV」的規劃。DEV-031 的 `/duty-planning*` 工作檯、程式、測試與完成證據繼續作為現行產品基線；未來若要改變責任配置資訊架構，必須另立 DEV／phase contract，不得引用 DEV-032 的歷史段落直接實作。
+Supersession update：DEV-032 的新簡化 Current Phase 已撤回「以組織圖責任配置模式取代本 DEV」的規劃；該方向現由 DEV-034 的獨立 RD Contract 承接。DEV-031 的 `/duty-planning*` 工作檯、程式、測試與完成證據繼續作為現行產品基線，直到 DEV-034 另行達到實作與驗證完成；不得引用 DEV-032 的歷史段落直接實作。
 
 ### 原始需求
 
@@ -2677,46 +3212,49 @@ DEV-028 的使用者價值是：
 
 ## DEV-027：OrgMaster 權限與審核治理中心
 
-狀態：完成（`RD Implementation Complete / QA-QC Passed / Human Confirmed / OrgMaster Only`）  
-文件成熟度：`RD Implementation Complete`  
+狀態：完成（`RD Implementation Complete / QA-QC Passed / Historical Local MVP / Target Boundary Superseded by ADR-007`）
+文件成熟度：`RD Implementation Complete`（歷史 local V1）；新目標 DEV-037 Current Phase 已為 `RD Implementation Complete / QA-QC Passed / Local Release Gate Pending / OrgMaster Only`
 節點類型：交付點  
 父交付點：DEV-008、DEV-017、DEV-019、DEV-020、DEV-021  
 是否計入產品交付完成：是  
 原始需求邊界：讓 OrgMaster 未來承擔與 AI-PDM 串接所需的權限及審核規則治理；目前只修改 OrgMaster，不修改 AI-PDM。
 
 權威契約：`ai-doc/specs/DEV-027-orgmaster-access-approval-governance.md`  
-架構決策：`ai-doc/adr/ADR-004-authorization-approval-policy-boundary.md`、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`  
+架構決策：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`（目前目標）、`ai-doc/adr/ADR-004-authorization-approval-policy-boundary.md`（歷史／已取代）、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
 QA／QC：`ai-doc/qa/DEV-027-governance-foundation-validation-plan.md`
 
 ## Human Decision Brief
 
-- 決策日期：2026-08-18。
-- 決策來源：使用者依 HCS `#引導模式` 回覆 `1B 2A`。
-- `Human Confirmed / 1B`：OrgMaster 擁有 principal mapping、應用角色、permission、scope、delegation 與審核規則；AI-PDM 未來仍保存審核申請／工作項、核駁決策、審核交易稽核與領域套用。
+- 原決策日期：2026-08-18；最新修訂日期：2026-08-27。
+- 決策來源：使用者先依 HCS `#引導模式` 回覆 `1B 2A`，其後明確確認外部系統自行設定權限細節、OrgMaster 只負責分配角色。
+- `Superseded / 1B external policy authority`：OrgMaster 擁有 AI-PDM 應用角色、permission 與領域審核規則的條款已由 2026-08-27 ADR-007 取代，只保留為 DEV-027 local V1 歷史來源。
+- `Human Confirmed / 2026-08-27`：外部系統擁有自己的 Application Role／Permission／Role-Permission mapping／領域審核政策；OrgMaster 擁有 principal mapping、角色指派、assignment scope／有效期間／代理、指派審核與治理 audit。
 - `Human Confirmed / 2A`：正式身分採共用 IAM 的不可變 `issuer + subject UID`；OrgMaster 只保存身分連結與狀態，不保存密碼、MFA secret、recovery secret 或長期登入 token。
 - `Human Confirmed`：本次實作只修改 OrgMaster；AI-PDM 僅可作唯讀契約參考，不得修改其程式、schema、設定、資料或文件。
 - `Engineering Completed`：local governance MVP 已完成 Phase 1 Foundation 與 Phase 2 Policy MVP；未執行跨 repo 串接、migration、deploy 或 release。
+- `Engineering Completed / DEV-035`：2026-08-26 依使用者可見 `GOVERNANCE_VALIDATION_FAILED` 重新開啟 QC，補齊 global role assignment、publish blockers／mandatory reason、manage＋publish continuity、可恢復 concurrent revision 與手機治理 mutation default-deny；完成後恢復父交付點的 QA-QC Passed 狀態。
 - `Engineering Contract`：OrgMaster 的組織職務 `Role` 與應用授權角色分開建模，避免職稱或部門異動直接產生高風險權限。
-- `Engineering Contract`：OrgMaster 可以保存自身角色／政策／身分連結異動的治理 audit，但不得保存 AI-PDM 的 approval transaction audit；兩者不可混稱為同一稽核權威。
+- `Engineering Contract`：OrgMaster 可以保存自身角色、身分連結、外部角色 assignment 與指派審核異動的治理 audit，但不得保存 AI-PDM 的 approval transaction audit；兩者不可混稱為同一稽核權威。
 
 ## Spec Impact Preflight
 
-分類：`Intentional replacement（future direction）`
+分類：`Intentional replacement（2026-08-27 target authority）`
 
 - DEV-021 已完成的主職、兼任與直屬主管路徑保持不變；DEV-027 只取代其對未來 Auth／簽核的 deferred 假設，不回寫或改寫 DEV-021 的歷史交付。
+- ADR-004 外部 policy authority 由 ADR-007 取代；DEV-027／035 實作與證據只保留為 historical local V1，產品差距登錄 DEV-037。
 - AI-PDM 既有權限及審核契約不在本輪修改範圍；未來若進入實際串接，必須先建立跨 repo integration ADR，明確指定 adapter、相容期、failure mode 與切換方式。
 - 本輪產品程式、API、資料與 UI 變更均落在 DEV-027 allowlist；完成 targeted／full regression、build 與 browser QC，未產生 unresolved implementation drift。
 
 ## 問題與使用者價值
 
-OrgMaster 已能保存員工、部門、職位、主職、任職有效期間、主管路徑與組織版本，但目前沒有穩定登入身分映射、應用角色、權限碼、適用範圍、審核政策版本或正式服務可用性。若直接用職稱、部門、姓名或 email 控制 AI-PDM，組織異動可能意外改變高風險權限，也無法證明 AI-PDM 的審核交易採用了哪一版治理政策。
+OrgMaster 已能保存員工、部門、職位、任職有效期間與組織版本，但跨系統仍需穩定 principal mapping 與可追溯角色指派。外部系統的 Permission 與領域審核語意不應在 OrgMaster 重複定義；若直接用職稱、部門、姓名或 email 控制 AI-PDM，組織異動仍可能意外擴權。
 
 DEV-027 的價值是讓管理者在 OrgMaster 用同一治理入口回答：
 
-1. 哪一個穩定人員／系統身分可以使用哪項外部系統能力？
-2. 權限適用於哪個工作區、部門、專案、產品或時間區間？
-3. 某類申請有哪些合格審核人與規則，如何處理代理、自審、多人與未解析狀態？
-4. AI-PDM 建立工作項與保存核駁決策時，引用的是哪一個已發布組織／政策版本？
+1. 哪一個穩定人員／系統身分取得哪個外部 Application Role？
+2. 角色指派適用於哪個工作區、部門、專案、產品或時間區間？
+3. 誰核准、撤銷或代理這次角色指派，引用哪個外部 catalog version？
+4. AI-PDM 如何依自身 Role-Permission mapping 消費已發布 assignment，留待跨 repo integration contract。
 
 風險等級：High（身分、權限、審核責任、跨系統契約、稽核與未來正式環境邊界）
 
@@ -2724,21 +3262,21 @@ DEV-027 的價值是讓管理者在 OrgMaster 用同一治理入口回答：
 
 1. 管理者在 OrgMaster 維護員工、職位、部門與有效任職。
 2. 管理者以共用 IAM 的不可變 `issuer + subject UID` 連結 OrgMaster principal；名稱與 email 只作顯示或人工核對，不作授權 key。
-3. 管理者另外指派應用角色、權限碼、適用範圍、有效期間與代理；組織職務只提供候選範圍或審核路徑，不直接等於應用權限。
-4. 管理者建立審核政策，包含 action、適用範圍、審核資格、自審限制、法定人數與未解析處理。
-5. 草稿完成後發布新的組織／治理版本；只有已發布且已生效的版本可供授權與審核判斷。
-6. OrgMaster 對外提供具版本、預設拒絕的 permission evaluation 與 reviewer-policy resolution；AI-PDM 未來負責執行 enforcement、建立工作項、保存核駁決策／交易 audit，並執行核准後領域動作。
+3. OrgMaster 讀取外部系統提供的唯讀 Application Role catalog；管理者只設定員工角色指派、適用範圍、有效期間與代理。
+4. 高風險角色指派依 OrgMaster 治理流程核准並發布；AI-PDM 的領域 action、審核資格、自審與 quorum 規則仍由 AI-PDM 管理。
+5. 草稿完成後發布新的角色指派治理版本；只有已發布且 catalog reference 有效的 assignment 可供外部系統消費。
+6. AI-PDM 未來依自身 Role-Permission mapping 與 OrgMaster assignment 執行 enforcement，並自行保存領域工作項、核駁決策／交易 audit 與核准後動作。
 
 ## 初步產品範圍
 
 - 建立穩定 Person／Employee／External Principal 對應概念，並保留唯一性、停用與衝突拒絕原則。
-- 建立與組織職務分離的 application role、permission、scope、有效期間與 delegation 概念。
-- 建立 approval policy、reviewer eligibility、quorum、自審禁止、代理與 unresolved route 概念。
-- 建立只有已發布版本才可生效的治理版本語意；草稿、比較與封存版本不得改變正式權限。
+- 建立與組織職務分離的外部 application role catalog reference，以及 OrgMaster 可寫的 assignment、scope、有效期間與角色代理概念。
+- 建立角色指派申請／核准／撤銷與 unresolved catalog reference 概念；不建立 AI-PDM 領域 approval policy。
+- 建立只有已發布 assignment version 才可供外部系統消費的治理語意；草稿、比較與封存版本不得改變正式角色指派。
 - 建立 OrgMaster 自身 principal mapping、角色、permission 與政策異動的治理 audit 方向；不接管 AI-PDM 的審核交易 audit。
 - 為未來外部系統串接保留 provider-neutral API／event adapter 邊界；目前只定義責任，不連線 AI-PDM。
 - 第一個產品切片以單一工作區、內部員工、管理者、研發與研發主管角色族群為驗收方向；外部專員與跨工作區列入 future scope。
-- 明確禁止 OrgMaster 在 1B 邊界下持久化 approval request、work item、approve／reject decision 或 PDM domain apply 狀態。
+- 明確禁止 OrgMaster 在 ADR-007 邊界下持久化 AI-PDM approval request、work item、approve／reject decision 或 PDM domain apply 狀態。
 
 ## Out of Scope
 
@@ -2751,61 +3289,69 @@ DEV-027 的價值是讓管理者在 OrgMaster 用同一治理入口回答：
 
 ## 驗收方向
 
-- 文件明確區分組織職務、登入身分、應用角色、權限、適用範圍、審核責任與領域副作用。
-- 任一正式 permission evaluation／reviewer-policy resolution 均可追溯到唯一 principal、已發布 organization version 與 policy version。
-- 草稿組織或草稿政策異動不會改變正式權限或進行中的審核責任。
-- 身分衝突、無有效角色、範圍不符、過期代理、未解析審核人與自審情境預設拒絕，且有可理解原因。
-- OrgMaster 是角色／權限／審核規則的 policy authority；AI-PDM 是審核工作項、核駁決策、審核交易稽核與 PDM apply authority，兩者不得雙寫同一事實。
-- OrgMaster-only MVP 可用測試 adapter 模擬外部請求，驗證 allow／deny 與審核人解析；模擬 request／decision 不得成為持久化產品資料。
+- 文件明確區分組織職務、登入身分、外部角色目錄、角色指派、外部 Permission authority、適用範圍、指派審核與領域副作用。
+- 任一正式角色指派均可追溯到唯一 principal、stable role ID、catalog version、organization version 與 assignment version。
+- 草稿組織或草稿 assignment 異動不會改變已發布角色指派。
+- 身分衝突、角色未知／停用／不可指派、catalog stale、範圍不符或過期代理預設拒絕，且有可理解恢復方式。
+- 外部系統是自身角色／Permission／Role-Permission mapping／領域審核政策 authority；OrgMaster 是人員角色指派及其治理 audit authority，兩者不得雙寫同一事實。
+- DEV-027 local MVP 的 allow／deny 與 reviewer simulator 只作歷史 evidence；DEV-037 必須用新的唯讀 catalog／assignment delivery path 重新驗證。
 - OrgMaster 只保存自身治理設定異動 audit；AI-PDM 的 transaction audit 不寫回 OrgMaster。
 - 文件完成不代表產品完成；只有後續 RD、QA/QC 與適用的 release gate 全部通過才計入交付完成。
 
 ## 限制與工程待定
 
-- 現況使用 Vite middleware 與本機 JSON；要承擔正式權限與審核，後續 phase 必須有可認證的 server boundary、持久化資料庫、append-only audit、備份與可用性設計。
-- OrgMaster 目前不是 Git repo；進入 High-risk RD 前必須先建立可追蹤的原始碼版本邊界，或由使用者指定既有 canonical repository。
-- `HD-027-01` 已確認為 1B；`HD-027-02` 已確認為 2A，產品責任不再待決。
+- 現況使用 Vite middleware 與本機 JSON；要承擔正式角色指派治理，後續 phase 必須有可認證的 server boundary、持久化資料庫、append-only audit、備份與可用性設計。
+- OrgMaster 已是 Git repo；目前工作樹含多項既有未提交變更，DEV-037 實作前必須先確認本輪檔案邊界，不能覆蓋其他進行中工作。
+- `HD-027-01` 原 1B 外部 policy authority 已由 ADR-007 取代；`HD-027-02` 共用 IAM 2A 繼續有效。新目標的產品責任、V2 schema／API、migration／recovery、UI、allowlist 與 executable QA/QC 已由 DEV-037 完成並通過 QA/QC。
 - Current implementation沿用 Vite development middleware＋獨立 local JSON governance store；組織文件維持 V5，published policy依 ADR-005保存最小 immutable organization snapshot。
 - 正式 IAM provider、durable database、service auth、cache／revocation與availability不阻塞local MVP，但不得在本DEV內自行實作或宣稱production ready。
-- 上述工程選擇不得改變 1B／2A；若需要讓 OrgMaster 保存審核工作項／核駁決策或自建身分 authority，必須回到 Human Decision Gate 並修訂 ADR。
+- 上述工程選擇不得改變 ADR-007／2A；若需要讓 OrgMaster 編輯外部 Permission／領域 Approval Policy、保存 AI-PDM 審核工作項／核駁決策或自建身分 authority，必須回到 Human Decision Gate 並修訂 ADR。
 
 使用思考習慣：#問對問題、#限制條件、#可驗證性
 
 ## Architecture Memory Capsule
 
-- OrgMaster 是治理／policy 平面：人員／組織、IAM principal mapping、應用角色／權限／scope、delegation、審核規則、已發布 policy version 與自身設定異動 audit。
-- AI-PDM 是 approval runtime／執行平面：在敏感 API 執行 enforcement，保存 policy receipt、工作項、target snapshot、核駁決策、transaction audit 與冪等，並負責領域狀態及核准後副作用。
+- OrgMaster 是角色指派治理平面：人員／組織、IAM principal mapping、外部角色 assignment／scope／有效期間／角色代理、指派審核、已發布 assignment version 與自身設定異動 audit。
+- AI-PDM 是角色／Permission／領域審核及執行平面：定義自己的 catalog 與 Role-Permission mapping，在敏感 API 執行 enforcement，保存工作項、target snapshot、核駁決策、transaction audit 與冪等，並負責領域狀態及核准後副作用。
 - 共用 IAM 是 authentication authority；OrgMaster 不保存 credential 或 MFA secret，授權 key 使用不可變 `issuer + subject UID`。
-- 組織職務與應用角色是不同主資料；前者可影響候選範圍與審核路徑，但不得直接等同後者。
-- 只有已發布且已生效的組織／政策版本可影響權限；進行中請求保存提交時版本，決策時仍重新確認審核資格。
+- 組織職務與應用角色是不同主資料；前者可作人工指派候選與治理檢核資訊，但不得直接等同或自動產生外部 Application Role。
+- 只有已發布且 catalog reference 有效的 assignment version 可供外部系統消費；AI-PDM 在自身 server boundary 依其 Permission／Approval Policy 重新驗證。
 - 跨系統整合使用具版本 API、event／outbox 與 idempotency，不允許直接跨資料庫寫入。
 
 ## All-Phase Coverage Matrix
 
 | Phase / DEV | 執行邊界 | 文件狀態 | Scope | Out of scope | 進入條件 | 驗收方向 |
 |---|---|---|---|---|---|---|
-| Phase 0 / DEV-027 Contract | OrgMaster 文件 only | `RD Implementation Ready / 本輪完成` | Human decisions、責任矩陣、schema／API／file／migration／recovery／QA／QC | 產品程式與 AI-PDM 修改 | 使用者已確認 1B／2A | 文件治理與 RD Readiness Gate 通過 |
+| Phase 0 / DEV-027 Historical Contract | OrgMaster 文件 only | `RD Implementation Complete / Historical` | 原 1B／2A、schema／API／file／migration／recovery／QA／QC | AI-PDM 修改 | 當時使用者確認 1B／2A；外部 authority 後由 ADR-007 取代 | 歷史文件治理與 evidence 保留 |
 | Phase 1 / DEV-027 Foundation | OrgMaster only | `Completed / QA-QC Passed` | IAM link、application role／permission／scope、published snapshot、governance-change audit、local store／API／UI | approval transaction 與 AI-PDM 串接 | baseline clean | targeted tests、API smoke、audit／CAS evidence |
 | Phase 2 / DEV-027 Policy MVP | OrgMaster only | `Completed / QA-QC Passed` | permission evaluator、reviewer resolver、self-approval／delegation rule 與 ephemeral adapter simulator | 持久化 work item／approve-reject decision、AI-PDM live request | Phase 1 targeted gate通過 | engine tests、full regression、build、High-risk browser QC |
-| Phase 3 / 跨 repo integration | OrgMaster + 外部系統 | `Future Phase Captured / Not Requested` | read-only mapping、shadow comparison、分批 cutover | 一次性全路由切換 | 使用者另行授權修改 AI-PDM，跨 repo ADR 完成 | 單一權威、mismatch 清零、可回復切換 |
+| Phase 2.5 / DEV-037 權責重整 | OrgMaster only | `RD Implementation Complete / QA-QC Passed / Local Release Gate Pending` | 外部 catalog 唯讀、角色指派治理、舊 V1 compatibility | AI-PDM live effect、外部 Permission／領域 Approval Policy 編輯 | S1→S4 fresh gates 通過；未授權 deploy／release | forbidden mutation、catalog reference、assignment、migration、normal delivery path 與三 viewport evidence |
+| Phase 3 / 跨 repo integration | OrgMaster + 外部系統 | `Future Phase Captured / Not Requested` | catalog delivery、assignment consumption、compatibility window、分批 cutover | 一次性全路由切換 | 使用者另行授權修改 AI-PDM，跨 repo ADR 完成 | 單一權威、mismatch 清零、AI-PDM enforcement 與可回復切換 |
 | Phase 4 / release | 正式 target | `Release Gate Required` | migration、備份、可用性、資安、production smoke | 未授權遠端操作 | 明確 target、credential、release scope 與人類授權 | release gate、rollback 與正式 smoke 通過 |
 
 ## Future Phase Re-entry Triggers
 
-- 要開始修改 OrgMaster 產品程式：直接依權威 spec第20節file allowlist與第22節gate執行；Phase 1通過後才進Phase 2。
+- 要依新權責開始修改 OrgMaster 產品程式：DEV-037 Current Phase 已完成；後續變更需另開 DEV 或明確回 PM，不得直接依 DEV-027 舊 Permission／reviewer contract 擴張。
 - 要開始串接 AI-PDM：使用者必須另行授權修改 AI-PDM，建立跨 repo ADR，並確認相容期與唯一權威切換規則。
 - 要接正式身分、資料庫或部署：進入 release gate，確認 provider、正式 target、備份／還原與 rollback；本文件不預寫可執行 release artifacts。
 
 ## 規格治理結論
 
-- DEV-027 已完成 `RD Implementation Complete / QA-QC Passed`；Phase 1／2 依序通過，不表示 AI-PDM 已串接或可直接部署。
+- DEV-027 已完成歷史 local V1 的 `RD Implementation Complete / QA-QC Passed`；Phase 1／2 依序通過，不表示 ADR-007 新目標已實作、AI-PDM 已串接或可直接部署。
+- DEV-035 已針對 2026-08-26 可見錯誤完成同一 normal delivery path 的修復與重驗；證據位於 `ai-doc/specs/DEV-035-governance-safe-management-loop.md` 與 `output/playwright/dev035/manifest.md`。
 - 權威契約已建立於 `ai-doc/specs/DEV-027-orgmaster-access-approval-governance.md`；本節只保留 PM 摘要，不建立第二套實作真相。
-- ADR-004 已 Accepted：採 1B／2A，分離 shared IAM、OrgMaster policy authority 與 AI-PDM approval runtime authority。
+- ADR-004 的外部 policy authority 已由 ADR-007 supersede；共用 IAM 2A 與 AI-PDM transaction／domain apply 邊界保留。
+- ADR-007 已 Accepted：外部系統擁有角色／Permission／Role-Permission mapping／領域審核政策，OrgMaster 擁有角色指派治理。
 - ADR-005 已 Accepted：治理store與organization V5分離，publish保存immutable organization snapshot。
-- 高影響 deferred scope 已以 Phase 1～4 capsule、re-entry trigger 與 release gate 收斂，沒有未登錄的跨系統實作授權。
+- 高影響 deferred scope 已以 Phase 2.5～4 capsule、re-entry trigger 與 release gate 收斂，沒有未登錄的跨系統實作授權。
 
 ## 變更紀錄
 
+- 2026-08-27：建立 DEV-037 Brief 與 ADR-007，將外部角色／Permission／領域 Approval Policy authority 移回各外部系統；DEV-027／035 保留歷史 local V1 evidence，未修改產品程式或 AI-PDM。
+- 2026-08-27：DEV-037 升級為 `RD Contract Ready`；權威契約位於 `ai-doc/specs/DEV-037-external-role-catalog-assignment-governance.md`。DEV-027 仍為 historical local V1，未修改產品程式或 AI-PDM。
+- 2026-08-27：DEV-037 完成 RD Readiness Review並升級為 `RD Implementation Ready / RD Not Started`；V2 schema、catalog manifest／hash、V1 migration／recovery、API／UI、allowlist、S1～S4 與 High-risk QA／QC 已固定。未修改產品程式或 AI-PDM。
+- 2026-08-27：完成 DEV-037 S1～S4 implementation 與 QA/QC；`122 test files／553 tests`、build、normal Toolbar UI、1440×900／1024×768／390×844、stale catalog、legacy migration、API negative、forbidden scan、AI-PDM before／after unchanged 與 runtime cleanup 均通過；證據：`output/playwright/dev037/manifest.md`。升級為 `RD Implementation Complete / QA-QC Passed / Local Release Gate Pending / OrgMaster Only`，未 deploy／release。
+- 2026-08-26：DEV-035 完成治理角色指派與安全發布閉環；typecheck、governance 7 files／18 tests、full regression 60 files／271 tests、build、API smoke、two-session conflict recovery、1440×900／1024×768／390×844 browser QC 與 temporary runtime cleanup 通過。DEV-027 的 QA-QC 完成狀態恢復；AI-PDM 未修改。
 - 2026-08-18：依使用者要求建立 `Brief Ready`；固定本輪只修改 OrgMaster，AI-PDM 保持唯讀、不修改。
 - 2026-08-18：使用者在 `#引導模式` 確認 `1B 2A`；新增 DEV-027 spec 與 ADR-004，升級為 `RD Contract Ready / Human Confirmed / RD Not Started`。
 - 2026-08-18：完成 OrgMaster-only Phase 1／2 實作；targeted tests 9/9、full regression、build、API smoke、browser QC 與五項 evidence artifacts 通過，狀態更新為 `RD Implementation Complete / QA-QC Passed`。

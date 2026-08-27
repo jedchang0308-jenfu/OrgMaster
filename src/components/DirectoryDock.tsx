@@ -22,12 +22,15 @@ import {
 import { summarizeDepartments } from '../directories'
 import { getDepartmentLabel, getDepartmentPath } from '../organization'
 import { groupByDepartmentAndLevel } from '../positionGrouping'
-import type { Assignment, Department, Employee, EmployeeDragPayload, Position, PositionView } from '../types'
+import type { Assignment, Department, Duty, DutyPositionRelation, Employee, EmployeeDragPayload, Position, PositionView } from '../types'
 import type { OrganizationLevel } from '../types'
+import type { DutyConfigurationDragPayload, DutyConfigurationDragState } from '../dutyConfigurationDrag'
+import { dutyConfigurationLaneGroups, dutyConfigurationLaneLabels } from '../dutyConfiguration'
+import type { DutyConfigurationExactLane, DutyConfigurationLocation } from '../dutyConfigurationRoute'
 import { DirectoryContextMenu, type DirectoryContextMenuItem } from './DirectoryContextMenu'
 import { PanelDismissButton } from './PanelDismissButton'
 
-export type DirectoryKind = 'employees' | 'positions' | 'departments' | 'levels'
+export type DirectoryKind = 'employees' | 'positions' | 'departments' | 'levels' | 'duties'
 
 export interface DirectorySelection {
   kind: DirectoryKind
@@ -73,6 +76,20 @@ interface DirectoryDockProps {
   onDeleteOrganizationLevel: (levelId: string) => boolean
   onReorderOrganizationLevels: (levelIds: string[]) => boolean
   onPreviewOrganizationLevels: (levels: OrganizationLevel[] | null) => void
+  duties?: Duty[]
+  dutyPositionRelations?: DutyPositionRelation[]
+  dutyConfigurationLocation?: DutyConfigurationLocation
+  dutyConfigurationExpandedDutyId?: string | null
+  dutyConfigurationWritable?: boolean
+  dutyConfigurationError?: string | null
+  onSelectDuty?: (dutyId: string) => void
+  onSelectDutyLane?: (lane: DutyConfigurationExactLane) => void
+  onOpenDutyConfigurationDetail?: (dutyId: string) => void
+  onStartDutyDrag?: (payload: DutyConfigurationDragPayload, mode: 'native' | 'keyboard') => void
+  onCancelDutyDrag?: () => void
+  dutyDragState?: DutyConfigurationDragState
+  onCreateDuty?: () => void
+  onOpenDutyPlanning?: () => void
 }
 
 const directoryOptions: Array<{
@@ -83,6 +100,7 @@ const directoryOptions: Array<{
   { kind: 'positions', label: '職位' },
   { kind: 'departments', label: '部門' },
   { kind: 'levels', label: '層級' },
+  { kind: 'duties', label: '職掌' },
 ]
 
 export function DirectoryDock({
@@ -117,10 +135,24 @@ export function DirectoryDock({
   onDeleteOrganizationLevel,
   onReorderOrganizationLevels,
   onPreviewOrganizationLevels,
+  duties = [],
+  dutyPositionRelations = [],
+  dutyConfigurationLocation,
+  dutyConfigurationExpandedDutyId = null,
+  dutyConfigurationWritable = false,
+  dutyConfigurationError,
+  onSelectDuty,
+  onSelectDutyLane,
+  onOpenDutyConfigurationDetail,
+  onStartDutyDrag,
+  onCancelDutyDrag,
+  dutyDragState,
+  onCreateDuty,
+  onOpenDutyPlanning,
 }: DirectoryDockProps) {
   const [employeeQuery, setEmployeeQuery] = useState('')
   const [positionQuery, setPositionQuery] = useState('')
-  const [departmentQuery, setDepartmentQuery] = useState('')
+  const [dutyQuery, setDutyQuery] = useState('')
   const [contextMenu, setContextMenu] = useState<DirectoryContextMenuState | null>(null)
   const [newLevelName, setNewLevelName] = useState('')
   const [showLevelAddForm, setShowLevelAddForm] = useState(false)
@@ -195,11 +227,12 @@ export function DirectoryDock({
     return groups
   }, [visiblePositionGroups])
 
-  const visibleDepartments = useMemo(() => {
-    const keyword = normalizeQuery(departmentQuery)
-    if (!keyword) return departmentSummaries
-    return departmentSummaries.filter((department) => normalizeQuery(getDepartmentLabel(departments, department.id)).includes(keyword))
-  }, [departmentQuery, departmentSummaries, departments])
+  const visibleDepartments = departmentSummaries
+  const visibleDuties = useMemo(() => {
+    const keyword = normalizeQuery(dutyQuery)
+    if (!keyword) return duties
+    return duties.filter((duty) => normalizeQuery(`${duty.title} ${duty.description ?? ''}`).includes(keyword))
+  }, [duties, dutyQuery])
 
   const sortedLevels = useMemo(
     () => [...organizationLevels].sort((first, second) => first.order - second.order || first.id.localeCompare(second.id)),
@@ -300,7 +333,7 @@ export function DirectoryDock({
         const department = kind === 'departments' && entityId
           ? departmentSummaries.find((item) => item.id === entityId)
           : null
-    const addItem: DirectoryContextMenuItem = {
+        const addItem: DirectoryContextMenuItem = {
           id: `add-${kind}`,
           label: kind === 'employees' ? '新增員工' : kind === 'positions' ? '新增職位' : kind === 'departments' ? '新增部門' : '新增層級',
           icon: <Plus size={15} />,
@@ -310,9 +343,9 @@ export function DirectoryDock({
               ? onAddPosition
               : kind === 'departments'
               ? onAddDepartment
-              : openLevelAddForm),
+              : kind === 'levels' ? openLevelAddForm : (() => undefined)),
         }
-        if (!entityId) return [addItem]
+        if (!entityId) return kind === 'duties' ? [] : [addItem]
 
         if (kind === 'employees' && employee) {
           return [
@@ -450,9 +483,9 @@ export function DirectoryDock({
       ? employeeById.get(contextMenu.entityId ?? '')?.name ?? '員工清單'
       : contextMenu.kind === 'positions'
         ? members.find((member) => member.id === contextMenu.entityId)?.title ?? '職位清單'
-        : contextMenu.kind === 'departments'
+          : contextMenu.kind === 'departments'
           ? departmentSummaries.find((item) => item.id === contextMenu.entityId)?.name ?? '部門清單'
-          : '層級清單'}操作選單`
+          : contextMenu.kind === 'levels' ? '層級清單' : '工作執掌清單'}操作選單`
     : ''
 
   return (
@@ -608,9 +641,9 @@ export function DirectoryDock({
           count={`${departments.length} 個`}
           addLabel="新增部門"
           onAdd={onAddDepartment}
-          searchLabel="搜尋部門"
-          query={departmentQuery}
-          onQueryChange={setDepartmentQuery}
+          searchLabel=""
+          query=""
+          onQueryChange={() => undefined}
            onCollapse={() => onActiveDirectoryChange(null)}
           onContextMenu={(event) => openContextMenuFromEvent('departments', undefined, event)}
         >
@@ -749,6 +782,39 @@ export function DirectoryDock({
           )}
         </DirectoryPanel>
       )}
+      {activeDirectory === 'duties' && (
+        <DirectoryPanel
+          id="directory-duties"
+          title="工作執掌"
+          addLabel="新增工作執掌"
+          onAdd={() => onCreateDuty?.()}
+          searchLabel="搜尋工作執掌"
+          query={dutyQuery}
+          onQueryChange={setDutyQuery}
+          onCollapse={() => onActiveDirectoryChange(null)}
+          onContextMenu={(event) => openContextMenuFromEvent('duties', undefined, event)}
+          headerAction={onOpenDutyPlanning ? <button type="button" className="directory-panel__workbench" onClick={onOpenDutyPlanning} aria-label="開啟責任規劃工作台" title="開啟責任規劃工作台">工作台</button> : undefined}
+        >
+          {dutyDragState?.phase === 'keyboard-grabbed' && <div className="duty-directory-live-status" role="status" aria-live="polite">使用 Tab 移至職位，Enter 放置，Escape 取消</div>}
+          {dutyConfigurationError && <div className="duty-directory-error" role="alert">{dutyConfigurationError}</div>}
+          {visibleDuties.map((duty) => (
+            <DutyDirectoryRow
+              key={duty.id}
+              duty={duty}
+              relations={dutyPositionRelations}
+              location={dutyConfigurationLocation}
+              expandedDutyId={dutyConfigurationExpandedDutyId}
+              writable={dutyConfigurationWritable}
+              onSelectDuty={onSelectDuty}
+              onSelectLane={onSelectDutyLane}
+              onOpenDetail={onOpenDutyConfigurationDetail}
+              onStartDrag={onStartDutyDrag}
+              onCancelDrag={onCancelDutyDrag}
+            />
+          ))}
+          {visibleDuties.length === 0 && <DirectoryEmpty>找不到符合的工作執掌</DirectoryEmpty>}
+        </DirectoryPanel>
+      )}
       {contextMenu && (
         <DirectoryContextMenu
           x={contextMenu.x}
@@ -765,7 +831,7 @@ export function DirectoryDock({
 interface DirectoryPanelProps {
   id: string
   title: string
-  count: string
+  count?: string
   addLabel: string
   onAdd: () => void
   searchLabel: string
@@ -773,7 +839,9 @@ interface DirectoryPanelProps {
   onQueryChange: (query: string) => void
   onCollapse: () => void
   onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void
+  showAdd?: boolean
   children: ReactNode
+  headerAction?: ReactNode
 }
 
 function DirectoryPanel({
@@ -787,7 +855,9 @@ function DirectoryPanel({
   onQueryChange,
   onCollapse,
   onContextMenu,
+  showAdd = true,
   children,
+  headerAction,
 }: DirectoryPanelProps) {
   const panelRef = useRef<HTMLElement>(null)
 
@@ -817,10 +887,11 @@ function DirectoryPanel({
         </div>
         <div className="directory-panel__meta">
           {count && <span>{count}</span>}
-          <button type="button" className="directory-panel__add" onClick={onAdd} aria-label={addLabel} title={addLabel}>
+          {showAdd && <button type="button" className="directory-panel__add" onClick={onAdd} aria-label={addLabel} title={addLabel}>
             <Plus size={15} aria-hidden="true" />
             <span>新增</span>
-          </button>
+          </button>}
+          {headerAction}
           <PanelDismissButton edge="left" label={`收起${title}`} onDismiss={onCollapse} />
         </div>
       </div>
@@ -844,6 +915,127 @@ function DirectoryPanel({
 
 function DirectoryEmpty({ children }: { children: ReactNode }) {
   return <div className="directory-list__empty">{children}</div>
+}
+
+function DutyDirectoryRow({
+  duty,
+  relations,
+  location,
+  expandedDutyId,
+  writable,
+  onSelectDuty,
+  onSelectLane,
+  onOpenDetail,
+  onStartDrag,
+  onCancelDrag,
+}: {
+  duty: Duty
+  relations: DutyPositionRelation[]
+  location?: DutyConfigurationLocation
+  expandedDutyId?: string | null
+  writable: boolean
+  onSelectDuty?: (dutyId: string) => void
+  onSelectLane?: (lane: DutyConfigurationExactLane) => void
+  onOpenDetail?: (dutyId: string) => void
+  onStartDrag?: (payload: DutyConfigurationDragPayload, mode: 'native' | 'keyboard') => void
+  onCancelDrag?: () => void
+}) {
+  const selected = expandedDutyId === duty.id
+  const selectedLane = selected ? location?.lane ?? null : null
+  const pendingSource = selected && location?.sourceRelationId
+    ? relations.find((relation) => relation.id === location.sourceRelationId && relation.target.kind === 'pending-reassignment') ?? null
+    : null
+  const relationForLane = (lane: DutyConfigurationExactLane) => relations.find((relation) => {
+    if (relation.dutyId !== duty.id || relation.target.kind !== 'pending-reassignment') return false
+    if (lane === 'primary-execute') return relation.relationType === 'execute' && relation.isPrimaryExecutor
+    if (lane === 'collaborate') return (relation.relationType === 'execute' && !relation.isPrimaryExecutor) || relation.relationType === 'collaborate'
+    return relation.relationType === lane
+  })
+  const start = (lane: DutyConfigurationExactLane, mode: 'native' | 'keyboard') => {
+    if (!writable || !selected || !onStartDrag) return
+    onStartDrag({ version: 1, dutyId: duty.id, lane, sourceRelationId: relationForLane(lane)?.id ?? null, newRelationId: `rel-duty-${crypto.randomUUID()}` }, mode)
+  }
+  return (
+    <article className={`directory-card duty-directory-card${selected ? ' is-selected' : ''}`} data-duty-id={duty.id}>
+      <div className="duty-directory-card__header">
+        <button
+          type="button"
+          className="duty-directory-card__detail-trigger"
+          onClick={() => onOpenDetail?.(duty.id)}
+          title={`開啟${duty.title}明細`}
+          aria-label={`${duty.title}，開啟明細`}
+        >
+          <strong>{duty.title}</strong>
+          {duty.description && <small>{duty.description}</small>}
+          {pendingSource && <small className="duty-directory-card__pending">重新配置：{pendingSource.target.kind === 'pending-reassignment' ? pendingSource.target.formerPositionTitle : ''}／{selectedLane ? dutyConfigurationLaneLabels[selectedLane] : ''}</small>}
+        </button>
+        <button
+          type="button"
+          className="duty-directory-card__expand"
+          onClick={() => onSelectDuty?.(duty.id)}
+          aria-expanded={selected}
+          aria-label={selected ? `收起${duty.title}責任設定` : `展開${duty.title}責任設定`}
+          title={selected ? '收起責任設定' : '展開責任設定'}
+        >
+          {selected ? <ChevronUp size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
+        </button>
+      </div>
+      {selected && <div className="duty-directory-lanes" aria-label={`${duty.title}責任類型`}>
+        {dutyConfigurationLaneGroups.map((group) => (
+          <div className="duty-directory-lane-group" key={group.key}>
+            <span>{group.label}</span>
+            <div>
+              {group.lanes.map((lane) => {
+                const source = relationForLane(lane)
+                const active = selectedLane === lane
+                return <div className={`duty-directory-lane${active ? ' is-active' : ''}`} key={lane}>
+                  <button
+                    type="button"
+                    className="duty-directory-lane__select"
+                    onClick={() => onSelectLane?.(lane)}
+                    disabled={Boolean(pendingSource && !active)}
+                    aria-pressed={active}
+                    title={`${dutyConfigurationLaneLabels[lane]}${active ? '，已選擇' : ''}`}
+                  >
+                    {dutyConfigurationLaneLabels[lane]}
+                  </button>
+                  {active && writable && <button
+                    type="button"
+                    className="duty-directory-drag-handle"
+                    draggable
+                    tabIndex={0}
+                    aria-label={`拖曳${duty.title}至組織圖，責任類型${dutyConfigurationLaneLabels[lane]}`}
+                    onDragStart={(event) => {
+                      event.stopPropagation()
+                      const payload: DutyConfigurationDragPayload = { version: 1, dutyId: duty.id, lane, sourceRelationId: source?.id ?? null, newRelationId: `rel-duty-${crypto.randomUUID()}` }
+                      event.dataTransfer.effectAllowed = 'copyMove'
+                      event.dataTransfer.setData('application/x-orgmaster-duty-configuration+json', JSON.stringify(payload))
+                      const ghost = document.createElement('span')
+                      ghost.className = 'duty-directory-drag-ghost'
+                      ghost.textContent = `${duty.title} · ${dutyConfigurationLaneLabels[lane]}`
+                      document.body.appendChild(ghost)
+                      event.dataTransfer.setDragImage(ghost, 10, 10)
+                      window.setTimeout(() => ghost.remove(), 0)
+                      onStartDrag?.(payload, 'native')
+                    }}
+                    onDragEnd={() => onCancelDrag?.()}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      start(lane, 'keyboard')
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    ⇢
+                  </button>}
+                </div>
+              })}
+            </div>
+          </div>
+        ))}
+      </div>}
+    </article>
+  )
 }
 
 function normalizeQuery(value: string) {

@@ -1,4 +1,4 @@
-import { memo, useState, type DragEvent } from 'react'
+import { memo, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { ChevronDown, GitBranch } from 'lucide-react'
 import {
   Handle,
@@ -7,6 +7,7 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import type { Assignment, Employee, EmployeeDragPayload, Point, PositionView, RoleCombinationRiskLevel } from '../types'
+import type { DutyConfigurationDropCandidate } from '../dutyConfigurationDrag'
 
 export interface OrgNodeData extends Record<string, unknown> {
   member: PositionView
@@ -26,7 +27,12 @@ export interface OrgNodeData extends Record<string, unknown> {
   riskRelated: boolean
   onRiskInteraction: (positionId: string | null) => void
   editingEnabled: boolean
-  prototypeResponsibilityLabel?: string
+  dutyConfigurationActive?: boolean
+  dutyDropCandidate?: DutyConfigurationDropCandidate
+  dutyKeyboardGrabbed?: boolean
+  dutyKeyboardLaneLabel?: string
+  onDutyDropPosition?: (positionId: string) => void
+  onDutyDragOver?: (positionId: string, event?: DragEvent<HTMLElement>) => void
 }
 
 export type OrgFlowNode = Node<OrgNodeData, 'org'>
@@ -61,7 +67,12 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
     riskRelated,
     onRiskInteraction,
     editingEnabled,
-    prototypeResponsibilityLabel,
+    dutyConfigurationActive = false,
+    dutyDropCandidate,
+    dutyKeyboardGrabbed = false,
+    dutyKeyboardLaneLabel,
+    onDutyDropPosition,
+    onDutyDragOver,
   } = data
   const [employeeDropHover, setEmployeeDropHover] = useState(false)
   const cardClassName = [
@@ -75,7 +86,9 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
     riskLevel ? 'has-role-risk' : '',
     riskLevel ? `role-risk--${riskLevel}` : '',
     riskRelated ? 'is-role-risk-related' : '',
-    prototypeResponsibilityLabel ? 'has-prototype-responsibility' : '',
+    dutyConfigurationActive ? 'is-duty-drop-target' : '',
+    dutyKeyboardGrabbed ? 'is-duty-keyboard-grabbed' : '',
+    dutyDropCandidate ? `duty-drop-${dutyDropCandidate}` : '',
   ].filter(Boolean).join(' ')
   const cardStyle = showDragPlaceholder && dragOffset
     ? { transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` }
@@ -99,11 +112,14 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
       <article
         className={cardClassName}
         style={cardStyle}
-        aria-label={`${member.title}，${employees.length > 0 ? employees.map((employee) => employee.name).join('、') : '未指派'}${employeeHighlighted ? '，目前選取員工的任職格' : ''}${riskLevel ? `，${riskLevelLabel(riskLevel)}兼任風險` : ''}${prototypeResponsibilityLabel ? `，原型責任：${prototypeResponsibilityLabel}` : ''}`}
+        aria-label={`${member.title}，${employees.length > 0 ? employees.map((employee) => employee.name).join('、') : '未指派'}${employeeHighlighted ? '，目前選取員工的任職格' : ''}${riskLevel ? `，${riskLevelLabel(riskLevel)}兼任風險` : ''}${dutyKeyboardGrabbed ? `，按 Enter 放置${dutyKeyboardLaneLabel ?? '工作執掌'}` : ''}${dutyConfigurationActive && dutyDropCandidate ? `，工作執掌落點${dutyDropCandidate === 'command' ? '可配置' : dutyDropCandidate === 'noop' ? '已存在' : '不可用'}` : ''}`}
         data-position-id={member.id}
         data-employee-highlighted={employeeHighlighted ? 'true' : undefined}
         data-role-risk-level={riskLevel}
-        tabIndex={riskLevel ? 0 : undefined}
+        tabIndex={dutyConfigurationActive || riskLevel ? 0 : undefined}
+        onClick={() => {
+          if (dutyConfigurationActive) return
+        }}
         onPointerEnter={() => {
           if (riskLevel) onRiskInteraction(member.id)
         }}
@@ -119,11 +135,22 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
           if (riskLevel) onRiskInteraction(null)
         }}
         onDragEnter={(event) => {
+          if (dutyConfigurationActive && onDutyDragOver) {
+            event.preventDefault()
+            onDutyDragOver(member.id, event)
+            return
+          }
           if (!editingEnabled || !employeeDragging) return
           event.preventDefault()
           setEmployeeDropHover(true)
         }}
         onDragOver={(event) => {
+          if (dutyConfigurationActive && onDutyDragOver) {
+            event.preventDefault()
+            event.stopPropagation()
+            onDutyDragOver(member.id, event)
+            return
+          }
           if (!editingEnabled || !employeeDragging) return
           event.preventDefault()
           event.dataTransfer.dropEffect = 'move'
@@ -133,22 +160,40 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
           setEmployeeDropHover(false)
         }}
         onDrop={(event) => {
+          if (dutyConfigurationActive && onDutyDropPosition) {
+            event.preventDefault()
+            event.stopPropagation()
+            onDutyDropPosition(member.id)
+            return
+          }
           if (!editingEnabled || !employeeDragging) return
           event.preventDefault()
           event.stopPropagation()
           setEmployeeDropHover(false)
           onEmployeeDrop(event, member.id)
         }}
+        onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
+          if (!dutyConfigurationActive || !onDutyDropPosition || event.target !== event.currentTarget) return
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          onDutyDropPosition(member.id)
+        }}
       >
-        {prototypeResponsibilityLabel && <div className="org-node__prototype-responsibility">{prototypeResponsibilityLabel}</div>}
         <div className="org-node__copy">
           <button
             type="button"
             className="org-node__title nodrag"
-            onPointerDown={(event) => event.stopPropagation()}
+            tabIndex={dutyConfigurationActive ? -1 : undefined}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+            }}
+            onMouseDown={(event) => {
+              event.stopPropagation()
+              if (!dutyConfigurationActive) onSelectPosition(member.id)
+            }}
             onClick={(event) => {
               event.stopPropagation()
-              onSelectPosition(member.id)
+              if (!dutyConfigurationActive) onSelectPosition(member.id)
             }}
             aria-label={`開啟 ${member.title || '未命名職位'} 職位明細`}
           >
@@ -161,6 +206,7 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
                 type="button"
                 key={employee.id}
                 className="org-node__employee nodrag"
+                tabIndex={dutyConfigurationActive ? -1 : undefined}
                 draggable={editingEnabled}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
@@ -196,6 +242,7 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
               'org-node__collapse',
               member.childrenAxis === 'vertical' ? 'is-vertical' : 'is-horizontal',
             ].join(' ')}
+            tabIndex={dutyConfigurationActive ? -1 : undefined}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation()

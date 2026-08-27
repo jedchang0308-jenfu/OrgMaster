@@ -14,9 +14,21 @@
 
 手機只提供唯讀閱讀與導覽。本文「390×844 不得改為唯讀」、手機／觸控完整配置及其他 mobile mutation 條款，均由 DEV-033 的專案最高產品原則 `Intentional replacement`；既有完成狀態、桌面契約、三 viewport 測試與截圖仍為歷史證據。現行產品程式尚未因本文件修訂而改變，後續實作與驗證只由 DEV-033 推進。
 
+## 2026-08-26 Future Dual-Perspective Workbench Direction
+
+來源：`USER-2026-08-26-DUTY-DUAL-PERSPECTIVE-WORKBENCH`；權威摘要：`ai-doc/dev_task.md#dev-036雙視角責任規劃完整工作台`；工程契約：`ai-doc/specs/DEV-036-duty-dual-perspective-workbench.md`。
+
+使用者已明確改變本文「不採獨立工作台頁籤／矩陣視角」的 future 方向。DEV-036 第一版將 canonical `/duty-planning` 規劃為正式雙視角完整工作台，從第一版即提供「責任盤點」與「責任分布」兩個可切換頁籤；前者以 Duty 為主物件盤點既有責任與 anomaly，後者以 Position 為主物件審視主執行／協作／審核／會簽分布。未來視角只有完成後才加入，不先顯示 disabled tab。
+
+此決策是 future `Intentional replacement`，不回寫 DEV-031 的歷史完成狀態、既有程式事實或 QA／QC 證據。DEV-036 已完成 `RD Implementation Complete / QA-QC Passed`；其最小雙視角工作台已取代 `/duty-planning*` 的舊 composition，進階視角與 mutation 仍不在本輪範圍。
+
+DEV-034 繼續承擔組織圖上的快速責任配置，Duty Drawer 繼續承擔單筆明細。DEV-036 Current Phase 已固定為最小唯讀工作台：Audit 提供搜尋、三 anomaly 複選、列表與 Drawer；Distribution 只提供 Position／department 文字搜尋及四類 count，所有異動導回 DEV-034。三者共用現行 organization state、Duty／relation identity、commands、Undo／Redo、autosave 與 CAS；不得恢復第二套 planning store／保存，或把責任數量誤稱為工作量。工程契約：`ai-doc/specs/DEV-036-duty-dual-perspective-workbench.md`。
+
 ## 2026-08-24 Future Information Architecture Supersession Notice
 
-來源：`USER-2026-08-24-ORG-CHART-INLINE-DUTY-ASSIGNMENT-MODE`、`USER-2026-08-24-DEV032-DRAFT-FIRST-PHASE`、`USER-2026-08-24-DEV032-UX-DESIGN-DETAILS`、`USER-2026-08-24-DEV032-BRIEF-DETAIL-CONTINUATION`；future 權威入口：`ai-doc/dev_task.md#dev-032統合管理辦法與組織職掌關聯系統`。
+> 2026-08-25 successor update：組織圖內嵌責任配置的唯一 active successor contract 已移交 `DEV-034`，目前為 `RD Implementation Ready / RD Not Started`。本節保留歷史決策脈絡，但其中由 DEV-032 Method Step／Work Item 智能引用進入配置的敘述已被 DEV-032 精簡 Current Phase取代；未來不得直接引用本節實作。DEV-034完成實作與 QA／QC前，DEV-031的現行 route、domain、保存、測試與證據仍維持權威。
+
+來源：`USER-2026-08-24-ORG-CHART-INLINE-DUTY-ASSIGNMENT-MODE`、`USER-2026-08-24-DEV032-DRAFT-FIRST-PHASE`、`USER-2026-08-24-DEV032-UX-DESIGN-DETAILS`、`USER-2026-08-24-DEV032-BRIEF-DETAIL-CONTINUATION`；future 權威入口：`ai-doc/dev_task.md#dev-034組織圖內嵌工作事項責任配置模式`。
 
 使用者已確認未來責任配置沿用既有組織架構頁，不新增責任配置頁、永久第三欄或第二份全職位清單。目標流程為選定工作事項後收合成最小任務列，選擇責任類型，再以既有組織圖 Position 節點直接加入／移除關係；既有 Inspector 按需顯示配置摘要。本階段不新增責任配置專用的職位搜尋、部門篩選、職位清單或鍵盤選位，也不新增工作事項層級的職責重疊風險規則，只沿用既有兼任風險設定。實作時，`/duty-planning*` 應成為回到組織架構頁並恢復配置上下文的相容入口，不再承載第二套主要工作流。
 
