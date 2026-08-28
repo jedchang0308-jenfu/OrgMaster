@@ -566,6 +566,8 @@ RD 現可直接依 spec 第 14 節 S0→S6 實作。若需要 allowlist 外 prod
 
 ### 變更紀錄
 
+- 2026-08-28：修正流程清單為 0 筆時的入口可發現性。可編輯版本在空狀態直接顯示 `＋ 新增流程`；唯讀版本改顯示切換可編輯草稿提示，不顯示 disabled 建立控制。新增 editable／read-only 空狀態 component harness 驗收；DEV-038 仍維持 `RD Implementation Ready / MVP Implementation In Progress / QA-QC Pending`，未 deploy／release。
+
 - 2026-08-27：依本輪 RD 實作與瀏覽器驗證更新 DEV-038。S4／S5 已完成 MVP：Process／node 編輯與 edge 控制、`ProcessOrganizationCanvas` 組織投影、三向 stable-ID 高亮、native HTML5 drag、keyboard Enter／Escape、V7 draft autosave／reload；typecheck、targeted `7 files／13 tests`、full `129 files／566 tests`、build（`370.97 kB gzip`）與六 viewport screenshot 已保存。S6 仍待 API negative／invalid V7／409／provider isolation／reduced-motion／data-sanity 等正式 QC 證據與 release gate，未 deploy／release。
 
 - 2026-08-27：依使用者要求把 DEV-038 補至 `RD Implementation Ready`，並記錄 MVP implementation in progress。已完成 V7 domain／migration、Dagre layout、`/process-planning` route、雙視角、Process／node 基本建立、Duty link、四 lane click／native drag、Position drop projection 與 workspace 422 reason；typecheck、targeted `12 files／40 tests`、full `128 files／565 tests`、build pass（`368.67 kB gzip`）。完整 Process 編輯控制項、既有組織 React Flow 同頁重用、keyboard placement、三向高亮、component harness 與六 viewport evidence 仍是 QA gate；未 deploy／release。

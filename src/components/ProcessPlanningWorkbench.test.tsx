@@ -16,6 +16,16 @@ function planningState(): OrgDirectoryState {
   }
 }
 
+function emptyPlanningState(): OrgDirectoryState {
+  return {
+    ...planningState(),
+    processes: [],
+    processNodes: [],
+    processEdges: [],
+    processNodeDutyLinks: [],
+  }
+}
+
 describe('ProcessPlanningWorkbench component harness', () => {
   it('renders both planning views and the organization projection from one state', async () => {
     if (!('ResizeObserver' in window)) {
@@ -43,6 +53,53 @@ describe('ProcessPlanningWorkbench component harness', () => {
     expect(host.textContent).toContain('流程圖')
     expect(host.textContent).toContain('確認訂單')
     expect(host.textContent).toContain('組織責任視角')
+    root.unmount()
+    host.remove()
+  })
+
+  it('shows the create entry in an editable empty process list', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => {
+      root.render(<ProcessPlanningWorkbench
+        state={emptyPlanningState()}
+        location={{ active: true, view: 'mindmap', processId: null, processNodeId: null, dutyId: null }}
+        editingEnabled
+        serverReady
+        recoveryOpen={false}
+        mobileReadOnly={false}
+        onCommand={() => undefined}
+        onNavigate={() => undefined}
+        onClose={() => undefined}
+      />)
+      await Promise.resolve()
+    })
+    expect(host.querySelector('.process-empty-state__add')?.textContent).toContain('新增流程')
+    root.unmount()
+    host.remove()
+  })
+
+  it('explains why the create entry is unavailable in a read-only empty list', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => {
+      root.render(<ProcessPlanningWorkbench
+        state={emptyPlanningState()}
+        location={{ active: true, view: 'mindmap', processId: null, processNodeId: null, dutyId: null }}
+        editingEnabled={false}
+        serverReady
+        recoveryOpen={false}
+        mobileReadOnly
+        onCommand={() => undefined}
+        onNavigate={() => undefined}
+        onClose={() => undefined}
+      />)
+      await Promise.resolve()
+    })
+    expect(host.querySelector('.process-empty-state__add')).toBeNull()
+    expect(host.textContent).toContain('目前版本為唯讀，請先切換可編輯草稿。')
     root.unmount()
     host.remove()
   })

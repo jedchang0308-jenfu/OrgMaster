@@ -5281,6 +5281,10 @@ button.duty-card:focus-visible { outline: 2px solid rgba(63, 109, 246, .55); out
 .process-duty-bridge__linked button.is-related { border-color: #a2c97c; background: #f1f8e8; }
 .process-canvas-node.is-related { border-color: #8ac26a; box-shadow: 0 0 0 2px rgba(111, 177, 75, .18); }
 .process-empty { margin: 14px; color: #8b96a7; font-size: 12px; line-height: 1.6; }
+.process-empty-state { margin: 14px; }
+.process-empty-state .process-empty { margin: 0 0 10px; }
+.process-empty-state__add { width: 100%; margin: 0; border: 1px solid #c5d3fa; border-radius: 7px; padding: 9px 10px; background: #f2f5ff; color: #3159d9; text-align: center; cursor: pointer; }
+.process-empty-state__hint { display: block; color: #8b96a7; font-size: 11px; line-height: 1.5; }
 .process-org-group { padding: 7px 0; border-bottom: 1px solid #edf0f5; }
 .process-org-group h2 { margin: 3px 14px 5px; color: #65738a; font-size: 12px; }
 .process-org-group button { display: flex; justify-content: space-between; margin-top: 2px; margin-bottom: 2px; padding: 7px 9px; }

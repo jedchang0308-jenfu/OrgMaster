@@ -430,6 +430,7 @@ duty=<dutyId>             optional，必須與 selected node 有 link
 - Destination：`/process-planning?view=mindmap...`，沿用目前 organization version、workspace mode 與 read-only status。
 - 返回：頁首單一 `返回責任工作台` 回到原 DEV-036 view／filters；由瀏覽器返回也須恢復。組織圖仍可由 DEV-036 原入口返回，不在 DEV-038 頁首放兩個同權重返回 CTA。
 - 空資料：沒有 Process 時主畫布只顯示「尚無流程」與一個 `新增流程`；唯讀時只顯示事實，不顯示 disabled 建立控制。
+- 流程清單空狀態：可編輯版本在空狀態文字下直接提供 `＋ 新增流程`；唯讀版本不顯示建立控制，改顯示「目前版本為唯讀，請先切換可編輯草稿」，避免把不可用的入口誤認為漏載。
 - 載入／錯誤：局部顯示在受影響 canvas／bridge；不能用整頁遮罩阻擋仍可閱讀的另一側資料。
 
 `DutyCenterProps` 增加 `onOpenProcessPlanning: () => void`；頁首 actions 順序固定為 `DocumentMenu → 唯讀工作台 → 流程規劃 → 返回組織圖`。`App.tsx` 的 `openProcessPlanningPage` 以 `history.pushState({ returnTo }, '', url)` 保存原 canonical Duty URL；`closeProcessPlanningPage` 只接受同源且以 `/duty-planning` 開頭的 `returnTo`，非法或缺少時回 `/duty-planning?view=audit`。
@@ -818,6 +819,8 @@ Hard fail：任何 `.inline-error`／`role=alert`、非預期 HTTP 4xx／5xx、c
 - 管理辦法連到 Process／Duty 的穩定語意 reference；只有 DEV-032 另案重新核准正文智能引用與刪除規則後才可進入。
 
 ## 16. 變更紀錄
+
+- 2026-08-28：修正流程清單為 0 筆時的入口可發現性。可編輯版本將 `＋ 新增流程` 放入空狀態，並與非空清單共用建立行為；唯讀版本改顯示切換草稿提示，不提供 disabled mutation control，且不再顯示會誤導使用者的「先新增」指示文案。補上 component harness 的 editable／read-only 空狀態驗收。
 
 - 2026-08-27：依本輪 RD 實作與瀏覽器驗證更新契約。S4 Process editing、S5 Duty bridge／organization projection、三向 stable-ID 高亮、native HTML5 drag、keyboard Enter／Escape、V7 draft autosave／reload 已落地；新增 `ProcessOrganizationCanvas` allowlist 與雙 provider wiring。typecheck、targeted `7 files／13 tests`、全量 `129 files／566 tests`、build（`370.97 kB gzip`）及六 viewport screenshot 已保存；S6 仍為 QA-QC Pending，未 deploy／release。
 
