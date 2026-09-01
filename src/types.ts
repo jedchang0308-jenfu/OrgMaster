@@ -189,11 +189,6 @@ export interface HierarchyNode extends OrgMember {
   title: string
 }
 
-export interface EmployeeDragPayload {
-  employeeId: string
-  sourcePositionId: string | null
-}
-
 export interface Point {
   x: number
   y: number

@@ -22,11 +22,13 @@ import {
 import { summarizeDepartments } from '../directories'
 import { getDepartmentLabel, getDepartmentPath } from '../organization'
 import { groupByDepartmentAndLevel } from '../positionGrouping'
-import type { Assignment, Department, Duty, DutyPositionRelation, Employee, EmployeeDragPayload, Position, PositionView } from '../types'
+import type { Assignment, Department, Duty, DutyPositionRelation, Employee, Position, PositionView } from '../types'
 import type { OrganizationLevel } from '../types'
-import type { DutyConfigurationDragPayload, DutyConfigurationDragState } from '../dutyConfigurationDrag'
 import { dutyConfigurationLaneGroups, dutyConfigurationLaneLabels } from '../dutyConfiguration'
 import type { DutyConfigurationExactLane, DutyConfigurationLocation } from '../dutyConfigurationRoute'
+import { WORKSPACE_ENTITY_DRAG_MIME, writeWorkspaceEntityDrag, type RegisteredDropTarget, type WorkspaceEntityDragPayloadV1 } from '../workspace/entityDrag'
+import type { RelationPlacementInputMode } from '../workspace/relationPlacement'
+import type { WorkspaceModuleId } from '../workspace/types'
 import { DirectoryContextMenu, type DirectoryContextMenuItem } from './DirectoryContextMenu'
 import { PanelDismissButton } from './PanelDismissButton'
 
@@ -45,6 +47,7 @@ interface DirectoryContextMenuState {
 }
 
 interface DirectoryDockProps {
+  presentation?: 'dock' | 'surface'
   employees: Employee[]
   departments: Department[]
   members: PositionView[]
@@ -57,8 +60,10 @@ interface DirectoryDockProps {
   directorySelection: DirectorySelection | null
   activeDirectory: DirectoryKind | null
   onActiveDirectoryChange: (kind: DirectoryKind | null) => void
-  onEmployeeDragStart: (event: DragEvent<HTMLElement>, payload: EmployeeDragPayload) => void
-  onEmployeeDragEnd: () => void
+  onRelationBegin?: (payload: WorkspaceEntityDragPayloadV1, inputMode: RelationPlacementInputMode, source?: HTMLElement | null) => void
+  onRelationPreview?: (target: RegisteredDropTarget, event?: DragEvent<HTMLElement>) => void
+  onRelationCommit?: (target: RegisteredDropTarget, dataTransfer?: DataTransfer) => void
+  onRelationCancel?: () => void
   onAssignEmployee: (employeeId: string, targetPositionId: string) => void
   onSelectPosition: (positionId: string) => void
   onSelectEntity: (selection: DirectorySelection) => void
@@ -85,11 +90,11 @@ interface DirectoryDockProps {
   onSelectDuty?: (dutyId: string) => void
   onSelectDutyLane?: (lane: DutyConfigurationExactLane) => void
   onOpenDutyConfigurationDetail?: (dutyId: string) => void
-  onStartDutyDrag?: (payload: DutyConfigurationDragPayload, mode: 'native' | 'keyboard') => void
-  onCancelDutyDrag?: () => void
-  dutyDragState?: DutyConfigurationDragState
   onCreateDuty?: () => void
   onOpenDutyPlanning?: () => void
+  workspaceEntityDragSource?: WorkspaceModuleId
+  initialQuery?: string
+  onQueryChange?: (query: string) => void
 }
 
 const directoryOptions: Array<{
@@ -104,6 +109,7 @@ const directoryOptions: Array<{
 ]
 
 export function DirectoryDock({
+  presentation = 'dock',
   employees,
   departments,
   members,
@@ -116,8 +122,10 @@ export function DirectoryDock({
   directorySelection,
   activeDirectory,
   onActiveDirectoryChange,
-  onEmployeeDragStart,
-  onEmployeeDragEnd,
+  onRelationBegin,
+  onRelationPreview,
+  onRelationCommit,
+  onRelationCancel,
   onAssignEmployee,
   onSelectPosition,
   onSelectEntity,
@@ -144,11 +152,11 @@ export function DirectoryDock({
   onSelectDuty,
   onSelectDutyLane,
   onOpenDutyConfigurationDetail,
-  onStartDutyDrag,
-  onCancelDutyDrag,
-  dutyDragState,
   onCreateDuty,
   onOpenDutyPlanning,
+  workspaceEntityDragSource,
+  initialQuery = '',
+  onQueryChange,
 }: DirectoryDockProps) {
   const [employeeQuery, setEmployeeQuery] = useState('')
   const [positionQuery, setPositionQuery] = useState('')
@@ -163,6 +171,12 @@ export function DirectoryDock({
   useEffect(() => {
     if (showLevelAddForm) newLevelInputRef.current?.focus()
   }, [showLevelAddForm])
+
+  useEffect(() => {
+    if (activeDirectory === 'employees') setEmployeeQuery(initialQuery)
+    else if (activeDirectory === 'positions') setPositionQuery(initialQuery)
+    else if (activeDirectory === 'duties') setDutyQuery(initialQuery)
+  }, [activeDirectory, initialQuery])
 
   const employeeById = useMemo(
     () => new Map(employees.map((employee) => [employee.id, employee])),
@@ -490,10 +504,10 @@ export function DirectoryDock({
 
   return (
     <div
-      className={activeDirectory ? 'directory-dock is-open' : 'directory-dock is-collapsed'}
+      className={`${activeDirectory ? 'directory-dock is-open' : 'directory-dock is-collapsed'}${presentation === 'surface' ? ' is-surface' : ''}`}
       data-directory-dock
     >
-      <nav className="directory-rail" aria-label="主資料清單">
+      {presentation === 'dock' && <nav className="directory-rail" aria-label="主資料清單">
         {directoryOptions.map(({ kind, label }) => {
           const expanded = activeDirectory === kind
           return (
@@ -512,7 +526,7 @@ export function DirectoryDock({
             </button>
           )
         })}
-      </nav>
+      </nav>}
 
       {activeDirectory === 'employees' && (
         <DirectoryPanel
@@ -521,9 +535,10 @@ export function DirectoryDock({
           count={`${employees.length} 人`}
           addLabel="新增員工"
           onAdd={onAddEmployee}
+          showAdd={editingEnabled}
           searchLabel="搜尋員工"
           query={employeeQuery}
-          onQueryChange={setEmployeeQuery}
+          onQueryChange={(query) => { setEmployeeQuery(query); onQueryChange?.(query) }}
            onCollapse={() => onActiveDirectoryChange(null)}
           onContextMenu={(event) => openContextMenuFromEvent('employees', undefined, event)}
         >
@@ -531,16 +546,12 @@ export function DirectoryDock({
             return (
               <article
                 key={employee.id}
-                className={directorySelection?.kind === 'employees' && directorySelection.id === employee.id
-                  ? 'directory-card directory-card--employee directory-card--master is-selected'
-                  : 'directory-card directory-card--employee directory-card--master'}
-                draggable
+                className={[
+                  'directory-card directory-card--employee directory-card--master',
+                  directorySelection?.kind === 'employees' && directorySelection.id === employee.id ? 'is-selected' : '',
+                  editingEnabled && workspaceEntityDragSource === 'employees' && onRelationBegin ? 'has-placement-action' : '',
+                ].filter(Boolean).join(' ')}
                 data-employee-id={employee.id}
-                onDragStart={(event) => onEmployeeDragStart(event, {
-                  employeeId: employee.id,
-                  sourcePositionId: null,
-                })}
-                onDragEnd={onEmployeeDragEnd}
                 onClick={() => onSelectEntity({ kind: 'employees', id: employee.id })}
                 onContextMenu={(event) => openContextMenuFromEvent('employees', employee.id, event)}
                 onKeyDown={(event) => {
@@ -566,6 +577,32 @@ export function DirectoryDock({
                 <div className="directory-card__copy">
                   <strong>{employee.name}</strong>
                 </div>
+                {editingEnabled && workspaceEntityDragSource === 'employees' && onRelationBegin && <button
+                  type="button"
+                  className="directory-card__placement-action"
+                  draggable
+                  data-relation-placement-source-kind="employee"
+                  data-employee-id={employee.id}
+                  aria-label={`指派${employee.name}至組織職位`}
+                  title="使用鍵盤選擇組織職位"
+                  onDragStart={(event) => {
+                    event.stopPropagation()
+                    const payload: WorkspaceEntityDragPayloadV1 = { version: 1, kind: 'employee', sourceModuleId: workspaceEntityDragSource, employeeId: employee.id, sourcePositionId: null }
+                    writeWorkspaceEntityDrag(event.dataTransfer, payload)
+                    onRelationBegin(payload, 'native-drag', event.currentTarget)
+                  }}
+                  onDragEnd={onRelationCancel}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onRelationBegin({ version: 1, kind: 'employee', sourceModuleId: workspaceEntityDragSource, employeeId: employee.id, sourcePositionId: null }, 'keyboard', event.currentTarget)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    onRelationBegin({ version: 1, kind: 'employee', sourceModuleId: workspaceEntityDragSource, employeeId: employee.id, sourcePositionId: null }, 'keyboard', event.currentTarget)
+                  }}
+                >⇢</button>}
               </article>
             )
           })}
@@ -580,9 +617,10 @@ export function DirectoryDock({
           count={`${members.length} 個`}
           addLabel="新增職位"
           onAdd={onAddPosition}
+          showAdd={editingEnabled}
           searchLabel="搜尋職位"
           query={positionQuery}
-          onQueryChange={setPositionQuery}
+          onQueryChange={(query) => { setPositionQuery(query); onQueryChange?.(query) }}
            onCollapse={() => onActiveDirectoryChange(null)}
           onContextMenu={(event) => openContextMenuFromEvent('positions', undefined, event)}
         >
@@ -641,6 +679,7 @@ export function DirectoryDock({
           count={`${departments.length} 個`}
           addLabel="新增部門"
           onAdd={onAddDepartment}
+          showAdd={editingEnabled}
           searchLabel=""
           query=""
           onQueryChange={() => undefined}
@@ -695,6 +734,7 @@ export function DirectoryDock({
           count=""
           addLabel="新增層級"
           onAdd={openLevelAddForm}
+          showAdd={editingEnabled}
           searchLabel=""
           query=""
           onQueryChange={() => undefined}
@@ -788,14 +828,14 @@ export function DirectoryDock({
           title="工作執掌"
           addLabel="新增工作執掌"
           onAdd={() => onCreateDuty?.()}
+          showAdd={editingEnabled}
           searchLabel="搜尋工作執掌"
           query={dutyQuery}
-          onQueryChange={setDutyQuery}
+          onQueryChange={(query) => { setDutyQuery(query); onQueryChange?.(query) }}
           onCollapse={() => onActiveDirectoryChange(null)}
           onContextMenu={(event) => openContextMenuFromEvent('duties', undefined, event)}
           headerAction={onOpenDutyPlanning ? <button type="button" className="directory-panel__workbench" onClick={onOpenDutyPlanning} aria-label="開啟責任規劃工作台" title="開啟責任規劃工作台">工作台</button> : undefined}
         >
-          {dutyDragState?.phase === 'keyboard-grabbed' && <div className="duty-directory-live-status" role="status" aria-live="polite">使用 Tab 移至職位，Enter 放置，Escape 取消</div>}
           {dutyConfigurationError && <div className="duty-directory-error" role="alert">{dutyConfigurationError}</div>}
           {visibleDuties.map((duty) => (
             <DutyDirectoryRow
@@ -808,8 +848,11 @@ export function DirectoryDock({
               onSelectDuty={onSelectDuty}
               onSelectLane={onSelectDutyLane}
               onOpenDetail={onOpenDutyConfigurationDetail}
-              onStartDrag={onStartDutyDrag}
-              onCancelDrag={onCancelDutyDrag}
+               workspaceEntityDragSource={workspaceEntityDragSource}
+               onRelationBegin={onRelationBegin}
+               onRelationPreview={onRelationPreview}
+               onRelationCommit={onRelationCommit}
+               onRelationCancel={onRelationCancel}
             />
           ))}
           {visibleDuties.length === 0 && <DirectoryEmpty>找不到符合的工作執掌</DirectoryEmpty>}
@@ -926,8 +969,11 @@ function DutyDirectoryRow({
   onSelectDuty,
   onSelectLane,
   onOpenDetail,
-  onStartDrag,
-  onCancelDrag,
+  workspaceEntityDragSource,
+  onRelationBegin,
+  onRelationPreview,
+  onRelationCommit,
+  onRelationCancel,
 }: {
   duty: Duty
   relations: DutyPositionRelation[]
@@ -937,8 +983,11 @@ function DutyDirectoryRow({
   onSelectDuty?: (dutyId: string) => void
   onSelectLane?: (lane: DutyConfigurationExactLane) => void
   onOpenDetail?: (dutyId: string) => void
-  onStartDrag?: (payload: DutyConfigurationDragPayload, mode: 'native' | 'keyboard') => void
-  onCancelDrag?: () => void
+  workspaceEntityDragSource?: WorkspaceModuleId
+  onRelationBegin?: (payload: WorkspaceEntityDragPayloadV1, inputMode: RelationPlacementInputMode, source?: HTMLElement | null) => void
+  onRelationPreview?: (target: RegisteredDropTarget, event?: DragEvent<HTMLElement>) => void
+  onRelationCommit?: (target: RegisteredDropTarget, dataTransfer?: DataTransfer) => void
+  onRelationCancel?: () => void
 }) {
   const selected = expandedDutyId === duty.id
   const selectedLane = selected ? location?.lane ?? null : null
@@ -951,12 +1000,29 @@ function DutyDirectoryRow({
     if (lane === 'collaborate') return (relation.relationType === 'execute' && !relation.isPrimaryExecutor) || relation.relationType === 'collaborate'
     return relation.relationType === lane
   })
-  const start = (lane: DutyConfigurationExactLane, mode: 'native' | 'keyboard') => {
-    if (!writable || !selected || !onStartDrag) return
-    onStartDrag({ version: 1, dutyId: duty.id, lane, sourceRelationId: relationForLane(lane)?.id ?? null, newRelationId: `rel-duty-${crypto.randomUUID()}` }, mode)
+  const start = (lane: DutyConfigurationExactLane, source: HTMLElement) => {
+    if (!writable || !selected || !workspaceEntityDragSource || !onRelationBegin) return
+    onRelationBegin({ version: 1, kind: 'duty', sourceModuleId: workspaceEntityDragSource, dutyId: duty.id, lane, sourceRelationId: relationForLane(lane)?.id ?? null }, 'keyboard', source)
   }
   return (
-    <article className={`directory-card duty-directory-card${selected ? ' is-selected' : ''}`} data-duty-id={duty.id}>
+    <article
+        className={`directory-card duty-directory-card${selected ? ' is-selected' : ''}`}
+        data-relation-placement-target="duty"
+        tabIndex={onRelationCommit ? 0 : undefined}
+      data-duty-id={duty.id}
+      onDragOver={(event) => {
+        if (!onRelationPreview || !Array.from(event.dataTransfer.types).includes(WORKSPACE_ENTITY_DRAG_MIME)) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'link'
+        onRelationPreview?.({ kind: 'duty', dutyId: duty.id }, event)
+      }}
+      onDrop={(event) => {
+        if (!onRelationCommit || !Array.from(event.dataTransfer.types).includes(WORKSPACE_ENTITY_DRAG_MIME)) return
+        event.preventDefault()
+        event.stopPropagation()
+        onRelationCommit({ kind: 'duty', dutyId: duty.id }, event.dataTransfer)
+      }}
+    >
       <div className="duty-directory-card__header">
         <button
           type="button"
@@ -1004,25 +1070,37 @@ function DutyDirectoryRow({
                     className="duty-directory-drag-handle"
                     draggable
                     tabIndex={0}
+                    data-relation-placement-source-kind="duty"
+                    data-duty-id={duty.id}
+                    data-duty-lane={lane}
                     aria-label={`拖曳${duty.title}至組織圖，責任類型${dutyConfigurationLaneLabels[lane]}`}
                     onDragStart={(event) => {
                       event.stopPropagation()
-                      const payload: DutyConfigurationDragPayload = { version: 1, dutyId: duty.id, lane, sourceRelationId: source?.id ?? null, newRelationId: `rel-duty-${crypto.randomUUID()}` }
                       event.dataTransfer.effectAllowed = 'copyMove'
-                      event.dataTransfer.setData('application/x-orgmaster-duty-configuration+json', JSON.stringify(payload))
+                      if (workspaceEntityDragSource && onRelationBegin) {
+                        const payload: WorkspaceEntityDragPayloadV1 = {
+                          version: 1,
+                          kind: 'duty',
+                          sourceModuleId: workspaceEntityDragSource,
+                          dutyId: duty.id,
+                          lane,
+                          sourceRelationId: source?.id ?? null,
+                        }
+                        writeWorkspaceEntityDrag(event.dataTransfer, payload)
+                        onRelationBegin(payload, 'native-drag', event.currentTarget)
+                      }
                       const ghost = document.createElement('span')
                       ghost.className = 'duty-directory-drag-ghost'
                       ghost.textContent = `${duty.title} · ${dutyConfigurationLaneLabels[lane]}`
                       document.body.appendChild(ghost)
                       event.dataTransfer.setDragImage(ghost, 10, 10)
                       window.setTimeout(() => ghost.remove(), 0)
-                      onStartDrag?.(payload, 'native')
                     }}
-                    onDragEnd={() => onCancelDrag?.()}
+                    onDragEnd={onRelationCancel}
                     onKeyDown={(event) => {
                       if (event.key !== 'Enter' && event.key !== ' ') return
                       event.preventDefault()
-                      start(lane, 'keyboard')
+                       start(lane, event.currentTarget)
                     }}
                     onClick={(event) => event.stopPropagation()}
                   >

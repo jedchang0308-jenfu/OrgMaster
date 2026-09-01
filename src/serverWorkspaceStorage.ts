@@ -4,6 +4,7 @@ import type {
   OrgWorkspaceVersionSummary,
   WorkspaceDocumentResult,
 } from './versionWorkspace'
+import { validateWorkspaceIndex, validateWorkspaceVersionSummary } from './versionWorkspace'
 
 export const SERVER_WORKSPACE_API = '/api/orgmaster/workspace'
 
@@ -30,7 +31,10 @@ export async function loadWorkspaceIndex(): Promise<WorkspaceClientResult<OrgWor
     const response = await fetch(SERVER_WORKSPACE_API, { cache: 'no-store' })
     const payload = await readJson(response)
     if (!response.ok) return failure(response, payload, 'WORKSPACE_READ_FAILED')
-    return { status: 'loaded', value: payload as unknown as OrgWorkspaceIndex }
+    const parsed = validateWorkspaceIndex(payload)
+    return parsed.ok
+      ? { status: 'loaded', value: parsed.value }
+      : { status: 'failed', message: `版本工作區索引驗證失敗：${parsed.code}`, code: parsed.code }
   } catch {
     return { status: 'failed', message: '無法連線到本機版本工作區' }
   }
@@ -43,7 +47,9 @@ export async function loadWorkspaceVersion(versionId: string): Promise<Workspace
     if (!response.ok) return failure(response, payload, 'VERSION_READ_FAILED')
     const documentResult = parseOrgDocument(payload.document)
     if (!documentResult.ok) return { status: 'failed', message: `版本文件驗證失敗：${documentResult.code}`, code: documentResult.code }
-    return { status: 'loaded', value: { version: payload.version as OrgWorkspaceVersionSummary, document: documentResult.document } }
+    const versionResult = validateWorkspaceVersionSummary(payload.version)
+    if (!versionResult.ok) return { status: 'failed', message: `版本摘要驗證失敗：${versionResult.code}`, code: versionResult.code }
+    return { status: 'loaded', value: { version: versionResult.value, document: documentResult.document } }
   } catch {
     return { status: 'failed', message: '無法載入選取的組織版本' }
   }
@@ -84,7 +90,9 @@ export async function saveWorkspaceDocument(
     if (!response.ok) return failure(response, payload, 'VERSION_SAVE_FAILED')
     const parsed = parseOrgDocument(payload.document)
     if (!parsed.ok) return { status: 'failed', message: `保存後版本驗證失敗：${parsed.code}`, code: parsed.code }
-    return { status: 'loaded', value: { version: payload.version as OrgWorkspaceVersionSummary, document: parsed.document } }
+    const versionResult = validateWorkspaceVersionSummary(payload.version)
+    if (!versionResult.ok) return { status: 'failed', message: `保存後版本摘要驗證失敗：${versionResult.code}`, code: versionResult.code }
+    return { status: 'loaded', value: { version: versionResult.value, document: parsed.document } }
   } catch {
     return { status: 'failed', message: '無法保存組織版本' }
   }

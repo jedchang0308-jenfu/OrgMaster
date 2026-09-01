@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import {
   GitFork,
   Search,
@@ -14,6 +14,7 @@ import type { OrgWorkspaceVersionSummary, WorkspaceMode } from '../versionWorksp
 import { VersionSwitcher } from './VersionSwitcher'
 
 interface ToolbarProps {
+  workspaceLauncher?: ReactNode
   members: PositionView[]
   employees: Employee[]
   departments: Department[]
@@ -44,6 +45,7 @@ interface ToolbarProps {
 }
 
 export function Toolbar({
+  workspaceLauncher,
   members,
   employees,
   departments,
@@ -126,6 +128,7 @@ export function Toolbar({
       </div>
 
       <div className="topbar__right">
+        {workspaceLauncher}
         <VersionSwitcher
           versions={versions}
           activeVersionId={activeVersionId}
@@ -192,7 +195,7 @@ export function Toolbar({
             </div>
           )}
         </div>
-        <button
+        {!workspaceLauncher && <button
           ref={roleRiskButtonRef}
           type="button"
           className="icon-button"
@@ -202,14 +205,14 @@ export function Toolbar({
           title="兼任風險設定"
         >
           <ShieldAlert size={18} />
-        </button>
-        <button ref={governanceButtonRef} type="button" className="icon-button" onClick={onOpenGovernance} aria-label="角色指派治理" aria-pressed={governanceOpen} title="角色指派治理">
+        </button>}
+        {!workspaceLauncher && <button ref={governanceButtonRef} type="button" className="icon-button" onClick={onOpenGovernance} aria-label="角色指派治理" aria-pressed={governanceOpen} title="角色指派治理">
           <ShieldCheck size={18} />
-        </button>
-        <button type="button" className="icon-button" onClick={onOpenManagementMethods} aria-label="管理辦法" title="管理辦法">
+        </button>}
+        {!workspaceLauncher && <button type="button" className="icon-button" onClick={onOpenManagementMethods} aria-label="管理辦法" title="管理辦法">
           <BookOpenText size={18} />
-        </button>
-        {onOpenProcessPlanning && <button type="button" className="icon-button" onClick={onOpenProcessPlanning} aria-label="流程規劃" title="流程規劃"><GitFork size={18} /></button>}
+        </button>}
+        {!workspaceLauncher && onOpenProcessPlanning && <button type="button" className="icon-button" onClick={onOpenProcessPlanning} aria-label="流程規劃" title="流程規劃"><GitFork size={18} /></button>}
       </div>
     </header>
   )

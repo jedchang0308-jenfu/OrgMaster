@@ -236,3 +236,71 @@ export interface WorkspaceDocumentResult {
   version: OrgWorkspaceVersionSummary
   document: OrgDocumentFile
 }
+
+export type WorkspaceIndexValidationResult =
+  | { ok: true; value: OrgWorkspaceIndex }
+  | { ok: false; code: 'WORKSPACE_INVALID' | 'WORKSPACE_DUPLICATE_ID' | 'WORKSPACE_CURRENT_INVALID' | 'WORKSPACE_ENTRY_INVALID' }
+
+function parseWorkspaceVersionSummary(value: unknown): OrgWorkspaceVersionSummary | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const item = value as Partial<OrgWorkspaceVersionSummary>
+  if (
+    typeof item.id !== 'string'
+    || !isValidWorkspaceId(item.id)
+    || typeof item.name !== 'string'
+    || (item.kind !== 'current' && item.kind !== 'draft')
+    || (item.status !== 'active' && item.status !== 'archived')
+    || (item.basedOnVersionId !== null && typeof item.basedOnVersionId !== 'string')
+    || typeof item.createdAt !== 'string'
+    || !isIsoDate(item.createdAt)
+    || (item.archivedAt !== null && (typeof item.archivedAt !== 'string' || !isIsoDate(item.archivedAt)))
+    || typeof item.updatedAt !== 'string'
+    || !isIsoDate(item.updatedAt)
+    || typeof item.revision !== 'string'
+    || item.revision.length < 1
+    || (item.loadStatus !== undefined && item.loadStatus !== 'ready' && item.loadStatus !== 'failed')
+    || (item.failureCode !== undefined && typeof item.failureCode !== 'string')
+  ) return null
+  if (item.loadStatus === 'failed' && (!item.failureCode || item.failureCode.trim().length === 0)) return null
+  if (item.kind === 'current' && (item.status !== 'active' || item.archivedAt !== null || item.name !== '現行版')) return null
+  if (item.kind === 'draft' && normalizeWorkspaceName(item.name) !== item.name) return null
+  return item as OrgWorkspaceVersionSummary
+}
+
+export function validateWorkspaceVersionSummary(value: unknown) {
+  const summary = parseWorkspaceVersionSummary(value)
+  return summary
+    ? { ok: true as const, value: summary }
+    : { ok: false as const, code: 'WORKSPACE_ENTRY_INVALID' as const }
+}
+
+export function validateWorkspaceIndex(value: unknown): WorkspaceIndexValidationResult {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, code: 'WORKSPACE_INVALID' }
+  const source = value as Partial<OrgWorkspaceIndex>
+  if (
+    source.app !== 'OrgMaster'
+    || source.workspaceVersion !== ORG_WORKSPACE_VERSION
+    || typeof source.currentVersionId !== 'string'
+    || !isValidWorkspaceId(source.currentVersionId)
+    || typeof source.manifestRevision !== 'string'
+    || source.manifestRevision.length < 1
+    || !Array.isArray(source.versions)
+  ) return { ok: false, code: 'WORKSPACE_INVALID' }
+  const versions: OrgWorkspaceVersionSummary[] = []
+  const ids = new Set<string>()
+  for (const raw of source.versions) {
+    const version = parseWorkspaceVersionSummary(raw)
+    if (!version) return { ok: false, code: 'WORKSPACE_ENTRY_INVALID' }
+    if (ids.has(version.id)) return { ok: false, code: 'WORKSPACE_DUPLICATE_ID' }
+    ids.add(version.id)
+    versions.push(version)
+  }
+  const current = versions.filter((version) => version.kind === 'current')
+  if (current.length !== 1 || current[0].id !== source.currentVersionId) return { ok: false, code: 'WORKSPACE_CURRENT_INVALID' }
+  for (const version of versions) {
+    if (version.basedOnVersionId !== null && (!ids.has(version.basedOnVersionId) || version.basedOnVersionId === version.id)) {
+      return { ok: false, code: 'WORKSPACE_ENTRY_INVALID' }
+    }
+  }
+  return { ok: true, value: { ...source, versions } as OrgWorkspaceIndex }
+}
