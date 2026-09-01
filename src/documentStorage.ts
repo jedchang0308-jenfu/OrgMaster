@@ -8,10 +8,13 @@ import { normalizeDutyState, validateDutyState, type DutyValidationCode } from '
 import { createDefaultOrganizationLevels } from './organizationLevels'
 import { createEmptyProcessPlanningCollections, normalizeProcessPlanningState, validateProcessPlanningState, type ProcessPlanningValidationCode } from './processPlanning'
 import type { Employee, OrgDirectoryState, OrgMember, Position } from './types'
+import { isUuidV7 } from './employeeIdentity'
 
-export const ORG_DOCUMENT_VERSION = 7 as const
-export const ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v7'
-export const ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v7'
+export const ORG_DOCUMENT_VERSION = 8 as const
+export const ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v8'
+export const ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v8'
+export const LEGACY_V7_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v7'
+export const LEGACY_V7_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v7'
 export const LEGACY_V6_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v6'
 export const LEGACY_V6_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v6'
 export const LEGACY_V5_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v5'
@@ -23,8 +26,10 @@ export const LEGACY_V3_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v
 export const LEGACY_V2_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v2'
 export const LEGACY_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.v1'
 export const LEGACY_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.v1'
-export const RECOVERY_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.recovery.v7'
-export const RECOVERY_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.recovery.v7'
+export const RECOVERY_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.recovery.v8'
+export const RECOVERY_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.recovery.v8'
+export const LEGACY_V7_RECOVERY_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.recovery.v7'
+export const LEGACY_V7_RECOVERY_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.recovery.v7'
 export const LEGACY_V6_RECOVERY_ORG_DOCUMENT_STORAGE_KEY = 'orgmaster.local-document.recovery.v6'
 export const LEGACY_V6_RECOVERY_ORG_DOCUMENT_DRAFT_STORAGE_KEY = 'orgmaster.local-draft.recovery.v6'
 // Backward-compatible alias for callers that used the earlier name.
@@ -34,7 +39,8 @@ export type OrgDocumentKind = 'document' | 'draft' | 'copy' | 'backup'
 
 export interface OrgDocumentFile {
   app: 'OrgMaster'
-  version: typeof ORG_DOCUMENT_VERSION
+  /** V7 remains readable for pre-rekey local state; canonical post-rekey writes are V8. */
+  version: 7 | typeof ORG_DOCUMENT_VERSION
   kind: OrgDocumentKind
   savedAt: string
   state: OrgDirectoryState
@@ -53,14 +59,15 @@ export type DocumentFailureCode =
   | ProcessPlanningValidationCode
   | 'STORAGE_READ_FAILED'
   | 'STORAGE_WRITE_FAILED'
+  | 'EMPLOYEE_ID_INVALID'
 
 export type ParseOrgDocumentResult =
-  | { ok: true; document: OrgDocumentFile; sourceVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 }
+  | { ok: true; document: OrgDocumentFile; sourceVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; compatibility?: { implicitActiveEmployeeCount: number } }
   | { ok: false; code: DocumentFailureCode; positionIds: string[]; departmentIds: string[]; dutyIds: string[]; processIds: string[]; processNodeIds: string[] }
 
 export type LocalDocumentLoadResult =
   | { status: 'empty' }
-  | { status: 'loaded'; document: OrgDocumentFile; sourceVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 }
+  | { status: 'loaded'; document: OrgDocumentFile; sourceVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 }
   | {
       status: 'failed'
       code: DocumentFailureCode
@@ -267,6 +274,7 @@ function normalizeLegacyEmployees(rawEmployees: unknown[], rawAssignments: unkno
   for (const value of rawEmployees) {
     if (!isRecord(value)) return null
     if (typeof value.id !== 'string' || typeof value.name !== 'string') return null
+    if (value.status !== undefined && value.status !== 'active' && value.status !== 'inactive') return null
     const departmentIds = normalizeDepartmentIds(value)
     if (!departmentIds) return null
     const primaryCandidates = rawAssignments.filter((assignment): assignment is Record<string, unknown> => (
@@ -278,6 +286,7 @@ function normalizeLegacyEmployees(rawEmployees: unknown[], rawAssignments: unkno
     const { departmentId: _legacyDepartmentId, primaryAssignmentId: _legacyPrimaryAssignmentId, administrativeApproverOverrideEmployeeId: _legacyOverride, ...rest } = value
     employees.push({
       ...rest,
+      status: value.status === undefined ? 'active' : value.status,
       departmentIds,
       primaryAssignmentId: primaryCandidates.length === 1 ? primaryCandidates[0].id as string : null,
       administrativeApproverOverrideEmployeeId: null,
@@ -292,10 +301,12 @@ function normalizeV4Employees(rawEmployees: unknown[]): Employee[] | null {
     if (!isRecord(value) || typeof value.id !== 'string' || typeof value.name !== 'string') return null
     const departmentIds = normalizeDepartmentIds(value)
     if (!departmentIds) return null
+    if (value.status !== undefined && value.status !== 'active' && value.status !== 'inactive') return null
     if (value.primaryAssignmentId !== null && typeof value.primaryAssignmentId !== 'string') return null
     if (value.administrativeApproverOverrideEmployeeId !== null && typeof value.administrativeApproverOverrideEmployeeId !== 'string') return null
     employees.push({
       ...value,
+      status: value.status ?? 'active',
       departmentIds,
       primaryAssignmentId: value.primaryAssignmentId as string | null,
       administrativeApproverOverrideEmployeeId: value.administrativeApproverOverrideEmployeeId as string | null,
@@ -554,45 +565,69 @@ export function createOrgDocumentFile(
   kind: OrgDocumentKind,
   savedAt = new Date().toISOString(),
 ): OrgDocumentFile {
-  const normalized = normalizeProcessPlanningState(normalizeDutyState(stripLegacyParentField(state)))
-  return { app: 'OrgMaster', version: ORG_DOCUMENT_VERSION, kind, savedAt, state: cloneOrgState(normalized) }
+  const normalized = normalizeProcessPlanningState(normalizeDutyState(stripLegacyParentField({
+    ...state,
+    employees: state.employees.map((employee) => ({ ...employee, status: employee.status ?? 'active' })),
+  })))
+  const canonicalEmployeeIds = normalized.employees.every((employee) => isUuidV7(employee.id))
+  return { app: 'OrgMaster', version: canonicalEmployeeIds ? ORG_DOCUMENT_VERSION : 7, kind, savedAt, state: cloneOrgState(normalized) }
+}
+
+function withEmployeeCompatibility(result: ParseOrgDocumentResult, state: unknown): ParseOrgDocumentResult {
+  if (!result.ok) return result
+  const employees = isRecord(state) && Array.isArray(state.employees) ? state.employees : []
+  return {
+    ...result,
+    compatibility: {
+      implicitActiveEmployeeCount: employees.filter((employee) => isRecord(employee) && employee.status === undefined).length,
+    },
+  }
 }
 
 export function parseOrgDocument(input: unknown): ParseOrgDocumentResult {
   if (!isRecord(input)) return failure('INVALID_DOCUMENT_SHAPE')
   if (input.app !== 'OrgMaster') return failure('INVALID_APP')
-  if (input.version !== 1 && input.version !== 2 && input.version !== 3 && input.version !== 4 && input.version !== 5 && input.version !== 6 && input.version !== 7) return failure('UNSUPPORTED_VERSION')
+  if (input.version !== 1 && input.version !== 2 && input.version !== 3 && input.version !== 4 && input.version !== 5 && input.version !== 6 && input.version !== 7 && input.version !== 8) return failure('UNSUPPORTED_VERSION')
   if (input.kind !== 'document' && input.kind !== 'draft' && input.kind !== 'copy' && input.kind !== 'backup') return failure('INVALID_DOCUMENT_SHAPE')
   if (typeof input.savedAt !== 'string') return failure('INVALID_DOCUMENT_SHAPE')
+  if (input.version === 8) {
+    if (!isOrgDirectoryState(input.state)) return failure('INVALID_DOCUMENT_SHAPE')
+    const migrated = withEmployeeCompatibility(normalizeV7State(input.state, input), input.state)
+    if (!migrated.ok) return migrated
+    const employees = migrated.document.state.employees
+    const employeeIds = new Set(employees.map((employee) => employee.id))
+    if (employees.some((employee) => !isUuidV7(employee.id)) || migrated.document.state.assignments.some((assignment) => !employeeIds.has(assignment.employeeId)) || employees.some((employee) => employee.administrativeApproverOverrideEmployeeId !== null && !employeeIds.has(employee.administrativeApproverOverrideEmployeeId))) return failure('EMPLOYEE_ID_INVALID')
+    return { ...migrated, sourceVersion: 8 as const }
+  }
   if (input.version === 7) {
     return isOrgDirectoryState(input.state)
-      ? normalizeV7State(input.state, input)
+      ? withEmployeeCompatibility(normalizeV7State(input.state, input), input.state)
       : failure('INVALID_DOCUMENT_SHAPE')
   }
   if (input.version === 6) {
     return isV6OrgDirectoryState(input.state)
-      ? normalizeV6State(input.state, input)
+      ? withEmployeeCompatibility(normalizeV6State(input.state, input), input.state)
       : failure('INVALID_DOCUMENT_SHAPE')
   }
   if (input.version === 5) {
     return isV5OrgDirectoryState(input.state)
-      ? normalizeV5State(input.state, input)
+      ? withEmployeeCompatibility(normalizeV5State(input.state, input), input.state)
       : failure('INVALID_DOCUMENT_SHAPE')
   }
   if (input.version === 4) {
     return isV4OrgDirectoryState(input.state)
-      ? normalizeV4State(input.state, input)
+      ? withEmployeeCompatibility(normalizeV4State(input.state, input), input.state)
       : failure('INVALID_DOCUMENT_SHAPE')
   }
   if (input.version === 3) {
     return isV4OrgDirectoryState(input.state)
-      ? normalizeV3State(input.state, input)
+      ? withEmployeeCompatibility(normalizeV3State(input.state, input), input.state)
       : failure('INVALID_DOCUMENT_SHAPE')
   }
   if (!isLegacyOrgDirectoryState(input.state)) return failure('INVALID_DOCUMENT_SHAPE')
-  return input.version === 2
+  return withEmployeeCompatibility(input.version === 2
     ? normalizeV2State(input.state, input)
-    : migrateV1State(input.state, input)
+    : migrateV1State(input.state, input), input.state)
 }
 
 function parseRaw(raw: string): ParseOrgDocumentResult {
@@ -620,6 +655,8 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
   if (!storage) return { status: 'empty' }
   let draftRaw: string | null
   let currentRaw: string | null
+  let v7DraftRaw: string | null
+  let v7Raw: string | null
   let v6DraftRaw: string | null
   let v6Raw: string | null
   let v5DraftRaw: string | null
@@ -634,6 +671,8 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
   try {
     draftRaw = storage.getItem(ORG_DOCUMENT_DRAFT_STORAGE_KEY)
     currentRaw = storage.getItem(ORG_DOCUMENT_STORAGE_KEY)
+    v7DraftRaw = storage.getItem(LEGACY_V7_ORG_DOCUMENT_DRAFT_STORAGE_KEY)
+    v7Raw = storage.getItem(LEGACY_V7_ORG_DOCUMENT_STORAGE_KEY)
     v6DraftRaw = storage.getItem(LEGACY_V6_ORG_DOCUMENT_DRAFT_STORAGE_KEY)
     v6Raw = storage.getItem(LEGACY_V6_ORG_DOCUMENT_STORAGE_KEY)
     v5DraftRaw = storage.getItem(LEGACY_V5_ORG_DOCUMENT_DRAFT_STORAGE_KEY)
@@ -663,6 +702,20 @@ export function loadLocalDocument(storage: Storage | null = getDefaultStorage())
       }
     }
     const parsed = parsedDraft?.ok ? parsedDraft : parsedCurrent!
+    return { status: 'loaded', document: parsed.document, sourceVersion: parsed.sourceVersion }
+  }
+
+  const parsedV7Draft = v7DraftRaw ? parseRaw(v7DraftRaw) : null
+  if (parsedV7Draft && !parsedV7Draft.ok) return loadFailure(LEGACY_V7_ORG_DOCUMENT_DRAFT_STORAGE_KEY, v7DraftRaw!, parsedV7Draft)
+  const parsedV7 = v7Raw ? parseRaw(v7Raw) : null
+  if (parsedV7 && !parsedV7.ok) return loadFailure(LEGACY_V7_ORG_DOCUMENT_STORAGE_KEY, v7Raw!, parsedV7)
+  if (parsedV7Draft?.ok || parsedV7?.ok) {
+    const parsed = parsedV7Draft?.ok && parsedV7?.ok
+      ? (preferNewerDocument(parsedV7Draft.document, parsedV7.document) === parsedV7Draft.document ? parsedV7Draft : parsedV7)
+      : parsedV7Draft?.ok ? parsedV7Draft : parsedV7!
+    const destinationKey = parsed.document.kind === 'draft' ? ORG_DOCUMENT_DRAFT_STORAGE_KEY : ORG_DOCUMENT_STORAGE_KEY
+    try { storage.setItem(destinationKey, JSON.stringify(parsed.document)) }
+    catch { return { status: 'failed', sourceKey: parsed.document.kind === 'draft' ? LEGACY_V7_ORG_DOCUMENT_DRAFT_STORAGE_KEY : LEGACY_V7_ORG_DOCUMENT_STORAGE_KEY, raw: parsed.document.kind === 'draft' ? v7DraftRaw! : v7Raw!, code: 'STORAGE_WRITE_FAILED', positionIds: [], departmentIds: [], dutyIds: [], processIds: [], processNodeIds: [] } }
     return { status: 'loaded', document: parsed.document, sourceVersion: parsed.sourceVersion }
   }
 
@@ -781,6 +834,8 @@ export function archiveFailedLocalDocument(
   if (!storage) return false
   if (
     result.sourceKey === LEGACY_ORG_DOCUMENT_STORAGE_KEY
+    || result.sourceKey === LEGACY_V7_ORG_DOCUMENT_STORAGE_KEY
+    || result.sourceKey === LEGACY_V7_ORG_DOCUMENT_DRAFT_STORAGE_KEY
     || result.sourceKey === LEGACY_V6_ORG_DOCUMENT_STORAGE_KEY
     || result.sourceKey === LEGACY_V6_ORG_DOCUMENT_DRAFT_STORAGE_KEY
     || result.sourceKey === LEGACY_V5_ORG_DOCUMENT_STORAGE_KEY

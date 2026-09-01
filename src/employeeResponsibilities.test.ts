@@ -18,9 +18,9 @@ const positions: Position[] = [
 ]
 const members: OrgMember[] = positions.map((position, order) => ({ id: position.id, order, childrenAxis: 'horizontal' }))
 const employees: Employee[] = [
-  { id: 'alice', name: 'Alice', departmentIds: ['dept'], primaryAssignmentId: 'alice-staff', administrativeApproverOverrideEmployeeId: null },
-  { id: 'bob', name: 'Bob', departmentIds: ['dept'], primaryAssignmentId: 'bob-manager', administrativeApproverOverrideEmployeeId: null },
-  { id: 'cara', name: 'Cara', departmentIds: ['dept'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null },
+  { id: 'alice', name: 'Alice', status: 'active', departmentIds: ['dept'], primaryAssignmentId: 'alice-staff', administrativeApproverOverrideEmployeeId: null },
+  { id: 'bob', name: 'Bob', status: 'active', departmentIds: ['dept'], primaryAssignmentId: 'bob-manager', administrativeApproverOverrideEmployeeId: null },
+  { id: 'cara', name: 'Cara', status: 'active', departmentIds: ['dept'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null },
 ]
 const assignments: Assignment[] = [
   { id: 'alice-staff', employeeId: 'alice', positionId: 'staff-position', assignmentType: 'regular', validFrom: '2026-01-01', validTo: null },
@@ -44,7 +44,7 @@ describe('administrative approval route', () => {
   it('does not guess when the main job is missing or the parent has multiple people', () => {
     expect(resolveAdministrativeApprover(state(), 'cara', '2026-08-15')).toMatchObject({ status: 'unresolved', reason: 'NO_PRIMARY_ASSIGNMENT' })
     const multipleManagers = state({
-      employees: [...employees, { id: 'david', name: 'David', departmentIds: ['dept'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null }],
+      employees: [...employees, { id: 'david', name: 'David', status: 'active', departmentIds: ['dept'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null }],
       assignments: [...assignments, { id: 'david-manager', employeeId: 'david', positionId: 'manager-position', assignmentType: 'regular', validFrom: '2026-01-01', validTo: null }],
     })
     expect(resolveAdministrativeApprover(multipleManagers, 'alice', '2026-08-15')).toMatchObject({ status: 'unresolved', reason: 'PARENT_POSITION_MULTIPLE_ASSIGNEES' })

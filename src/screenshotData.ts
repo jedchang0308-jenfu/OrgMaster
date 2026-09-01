@@ -13,9 +13,9 @@ const departmentIds = {
 } as const
 
 export const screenshotEmployees: Employee[] = [
-  { id: 'employee-shijie', name: '張仕杰', departmentIds: [departmentIds.executive, departmentIds.research, departmentIds.finance], primaryAssignmentId: 'assignment-general-manager-shijie', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-youhao', name: '張祐豪', departmentIds: [departmentIds.management, departmentIds.marketing], primaryAssignmentId: 'assignment-management-manager-youhao', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-chenghan', name: '張成漢', departmentIds: [departmentIds.production, departmentIds.marketing], primaryAssignmentId: 'assignment-production-manager-chenghan', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-shijie', name: '張仕杰', status: 'active', departmentIds: [departmentIds.executive, departmentIds.research, departmentIds.finance], primaryAssignmentId: 'assignment-general-manager-shijie', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-youhao', name: '張祐豪', status: 'active', departmentIds: [departmentIds.management, departmentIds.marketing], primaryAssignmentId: 'assignment-management-manager-youhao', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-chenghan', name: '張成漢', status: 'active', departmentIds: [departmentIds.production, departmentIds.marketing], primaryAssignmentId: 'assignment-production-manager-chenghan', administrativeApproverOverrideEmployeeId: null },
 ]
 
 export const screenshotDepartments: Department[] = [

@@ -68,7 +68,7 @@ export function createSeedDocumentV2(now = new Date().toISOString(), catalog = r
     applications: [{ id: 'orgmaster', name: 'OrgMaster', status: 'active' }, { id: 'ai-pdm', name: 'AI-PDM', status: 'active' }],
     identityLinks: [], applicationRoles: internalRoles, permissions: orgmasterPermissions,
     rolePermissionGrants: orgmasterPermissions.map((permission) => ({ id: `grant-orgmaster-admin-${permission.id}`, roleId: 'role-orgmaster-admin', permissionId: permission.id, effect: 'allow' as const })),
-    roleAssignments: [], roleDelegations: [],
+    roleAssignments: [], roleDelegations: [], principalAdmissions: [],
   }
   return { app: 'OrgMaster', schemaVersion: 2, draft: { ...policy, basePolicyVersionId: null, updatedAt: now }, activePolicyVersionId: null, publishedVersions: [], auditEvents: [], migration: { ...emptyMigration(), migratedAt: null }, }
 }
@@ -94,7 +94,7 @@ export function migrateGovernanceV1ToV2(v1: GovernanceDocumentV1, sourceRevision
     permissions: v1.draft.permissions.filter((permission) => permission.applicationId === 'orgmaster').map((value) => ({ ...value })),
     rolePermissionGrants: v1.draft.rolePermissionGrants.filter((grant) => v1.draft.applicationRoles.some((role) => role.applicationId === 'orgmaster' && role.id === grant.roleId) && v1.draft.permissions.some((permission) => permission.applicationId === 'orgmaster' && permission.id === grant.permissionId)).map((value) => ({ ...value })),
     roleAssignments: mappedAssignments,
-    roleDelegations: [],
+    roleDelegations: [], principalAdmissions: [],
   }
   return {
     app: 'OrgMaster', schemaVersion: 2,

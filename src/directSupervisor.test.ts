@@ -3,8 +3,8 @@ import { resolveDirectSupervisor } from './directSupervisor'
 import type { Employee, PositionView } from './types'
 
 const employees: Employee[] = [
-  { id: 'employee', name: '員工', departmentIds: [], primaryAssignmentId: 'assignment-employee', administrativeApproverOverrideEmployeeId: null },
-  { id: 'supervisor', name: '主管', departmentIds: [], primaryAssignmentId: 'assignment-supervisor', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee', name: '員工', status: 'active', departmentIds: [], primaryAssignmentId: 'assignment-employee', administrativeApproverOverrideEmployeeId: null },
+  { id: 'supervisor', name: '主管', status: 'active', departmentIds: [], primaryAssignmentId: 'assignment-supervisor', administrativeApproverOverrideEmployeeId: null },
 ]
 
 const members: PositionView[] = [

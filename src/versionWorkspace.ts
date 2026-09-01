@@ -147,6 +147,11 @@ export function createWorkspaceManifest(currentVersionId: string, createdAt: str
   }
 }
 
+/** Build the one-entry canonical manifest used by the DEV-040 clean V8 baseline. */
+export function createCleanV8WorkspaceManifest(currentVersionId: string, createdAt: string): OrgWorkspaceManifest {
+  return createWorkspaceManifest(currentVersionId, createdAt)
+}
+
 export function createDraftEntry(
   manifest: OrgWorkspaceManifest,
   sourceVersionId: string,

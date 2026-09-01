@@ -15,6 +15,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { AlertTriangle, Check, MousePointerClick, Trash2, UserRoundPlus } from 'lucide-react'
+import { createUuidV7 } from './employeeIdentity'
 import { screenshotOrganizationState } from './screenshotData'
 import { removeEmployeeFromDirectory, updateDepartmentInDirectory, updateEmployeeInDirectory } from './directories'
 import {
@@ -1772,8 +1773,9 @@ export default function App() {
     commitState((current) => ({
       ...current,
       employees: [...current.employees, {
-        id: crypto.randomUUID(),
+        id: createUuidV7(),
         name,
+        status: 'active',
         departmentIds,
         primaryAssignmentId: null,
         administrativeApproverOverrideEmployeeId: null,

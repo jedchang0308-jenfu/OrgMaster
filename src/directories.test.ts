@@ -16,9 +16,9 @@ const departments: Department[] = [
 ]
 
 const employees: Employee[] = [
-  { id: 'amy', name: 'Amy', departmentIds: ['design'], primaryAssignmentId: 'lead-assignment', administrativeApproverOverrideEmployeeId: null },
-  { id: 'ben', name: 'Ben', departmentIds: ['design'], primaryAssignmentId: 'designer-assignment', administrativeApproverOverrideEmployeeId: null },
-  { id: 'cara', name: 'Cara', departmentIds: ['sales'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null },
+  { id: 'amy', name: 'Amy', status: 'active', departmentIds: ['design'], primaryAssignmentId: 'lead-assignment', administrativeApproverOverrideEmployeeId: null },
+  { id: 'ben', name: 'Ben', status: 'active', departmentIds: ['design'], primaryAssignmentId: 'designer-assignment', administrativeApproverOverrideEmployeeId: null },
+  { id: 'cara', name: 'Cara', status: 'active', departmentIds: ['sales'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null },
 ]
 
 const members: OrgMember[] = [
@@ -146,6 +146,7 @@ describe('directory mutations', () => {
     expect(next.employees.find((employee) => employee.id === 'amy')).toEqual({
       id: 'amy',
       name: 'Amy Chen',
+      status: 'active',
       departmentIds: ['sales'],
       primaryAssignmentId: 'lead-assignment',
       administrativeApproverOverrideEmployeeId: null,

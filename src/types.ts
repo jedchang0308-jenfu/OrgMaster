@@ -18,8 +18,10 @@ export interface OrganizationLayoutSettings {
 }
 
 export interface Employee {
+  /** Canonical employee identity: UUIDv7 after DEV-040 clean baseline. */
   id: string
   name: string
+  status: 'active' | 'inactive'
   departmentIds: string[]
   primaryAssignmentId: string | null
   administrativeApproverOverrideEmployeeId: string | null
