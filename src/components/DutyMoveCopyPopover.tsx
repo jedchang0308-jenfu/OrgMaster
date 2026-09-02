@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { createPortal } from 'react-dom'
+import { resolvePanelAnchoredPosition, WorkspacePortal } from './workspace/WorkspaceOverlayHosts'
 
 interface DutyMoveCopyPopoverProps {
   anchor: HTMLElement
@@ -15,7 +15,12 @@ function focusableElements(dialog: HTMLElement) {
 export function DutyMoveCopyPopover({ anchor, returnFocus = null, onSelect, onCancel }: DutyMoveCopyPopoverProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const rect = anchor.getBoundingClientRect()
-  const style = useMemo(() => ({ left: Math.max(12, Math.min(rect.right + 8, window.innerWidth - 220)), top: Math.max(12, Math.min(rect.top, window.innerHeight - 180)) }), [rect.right, rect.top])
+  const style = useMemo(() => {
+    const host = anchor.closest<HTMLElement>('[data-workspace-panel-content]')?.querySelector<HTMLElement>('[data-workspace-overlay-host="panel"]')
+    const hostRect = host?.getBoundingClientRect()
+    const position = hostRect ? resolvePanelAnchoredPosition(rect, hostRect, { width: 220, height: 180 }) : { left: 8, top: 8 }
+    return { left: position.left, top: position.top, position: 'absolute' as const }
+  }, [anchor, rect.bottom, rect.left, rect.right, rect.top])
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const first = dialogRef.current ? focusableElements(dialogRef.current)[0] : null
@@ -58,10 +63,10 @@ export function DutyMoveCopyPopover({ anchor, returnFocus = null, onSelect, onCa
       first.focus()
     }
   }
-  return createPortal(<div ref={dialogRef} className="duty-move-copy-popover" role="dialog" aria-modal="false" aria-label="選擇關係移動方式" style={style} onKeyDown={handleKeyDown}>
+  return <WorkspacePortal scope="panel"><div ref={dialogRef} className="duty-move-copy-popover" role="dialog" aria-modal="false" aria-label="選擇關係移動方式" style={style} onKeyDown={handleKeyDown}>
     <strong>要如何處理這筆關係？</strong>
     <button type="button" onClick={() => onSelect('move')}>移動</button>
     <button type="button" onClick={() => onSelect('copy')}>複製</button>
     <button type="button" className="duty-move-copy-popover__cancel" onClick={onCancel}>取消</button>
-  </div>, document.body)
+  </div></WorkspacePortal>
 }

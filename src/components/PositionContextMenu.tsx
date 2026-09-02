@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import {
   Copy,
   Pencil,
@@ -31,10 +31,19 @@ export function PositionContextMenu({
   onClose,
 }: PositionContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
+  const layerRef = useRef<HTMLDivElement>(null)
+  const [localPosition, setLocalPosition] = useState({ left: x, top: y })
 
   useEffect(() => {
     menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
   }, [])
+
+  useLayoutEffect(() => {
+    const layer = layerRef.current
+    if (!layer) return
+    const rect = layer.getBoundingClientRect()
+    setLocalPosition({ left: x - rect.left, top: y - rect.top })
+  }, [x, y])
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation()
@@ -61,6 +70,7 @@ export function PositionContextMenu({
 
   return (
     <div
+      ref={layerRef}
       className="context-menu-layer"
       onPointerDown={onClose}
       onContextMenu={(event) => {
@@ -73,7 +83,7 @@ export function PositionContextMenu({
         className="position-context-menu"
         role="menu"
         aria-label={`${title}操作選單`}
-        style={{ left: x, top: y }}
+        style={{ left: localPosition.left, top: localPosition.top }}
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >

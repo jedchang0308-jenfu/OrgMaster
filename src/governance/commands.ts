@@ -17,6 +17,7 @@ function entityInfo(command: GovernanceCommand) {
   if (command.type === 'REMOVE_ROLE_PERMISSION_GRANT') return ['rolePermissionGrant', `${value.roleId}:${value.permissionId}`]
   if (command.type === 'SET_ROLE_PERMISSION_GRANT') return ['rolePermissionGrant', value.value.id]
   if (command.type.includes('ROLE_ASSIGNMENT')) return ['roleAssignment', value.id ?? value.value?.id]
+  if (command.type.includes('PRINCIPAL_ADMISSION')) return ['principalAdmission', value.id ?? value.value?.id]
   if (command.type.includes('DELEGATION')) return ['delegation', value.id ?? value.value?.id]
   return ['approvalPolicy', value.id ?? value.value?.id]
 }
@@ -68,6 +69,7 @@ function entityInfoV2(command: GovernanceCommandV2) {
   if (command.type === 'REMOVE_ROLE_PERMISSION_GRANT') return ['rolePermissionGrant', `${value.roleId}:${value.permissionId}`]
   if (command.type === 'SET_ROLE_PERMISSION_GRANT') return ['rolePermissionGrant', value.value.id]
   if (command.type.includes('ROLE_ASSIGNMENT')) return ['roleAssignment', value.id ?? value.value?.id]
+  if (command.type.includes('PRINCIPAL_ADMISSION')) return ['principalAdmission', value.id ?? value.value?.id]
   return ['roleDelegation', value.id ?? value.value?.id]
 }
 function replaceByIdV2<T extends { id: string }>(items: T[], value: T) { const index = items.findIndex((item) => item.id === value.id); if (index < 0) return [...items, value]; const next = [...items]; next[index] = value; return next }
@@ -92,6 +94,8 @@ export function applyGovernanceCommandV2(document: GovernanceDocumentV2, command
     case 'REVOKE_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: data.roleAssignments.map((value) => value.id === command.id ? { ...value, status: 'revoked' as const } : value) }; break
     case 'UPSERT_ROLE_DELEGATION': data = { ...data, roleDelegations: replaceByIdV2(data.roleDelegations, command.value) }; break
     case 'REVOKE_ROLE_DELEGATION': data = { ...data, roleDelegations: data.roleDelegations.map((value) => value.id === command.id ? { ...value, status: 'revoked' as const } : value) }; break
+    case 'UPSERT_PRINCIPAL_ADMISSION': data = { ...data, principalAdmissions: replaceByIdV2(data.principalAdmissions ?? [], command.value) }; break
+    case 'SET_PRINCIPAL_ADMISSION_STATUS': data = { ...data, principalAdmissions: (data.principalAdmissions ?? []).map((value) => value.id === command.id ? { ...value, status: command.status } : value) }; break
   }
   const nextDraftBase = { ...data, basePolicyVersionId: document.draft.basePolicyVersionId }
   const stripTimestamp = (draft: GovernancePolicyDataV2 & { basePolicyVersionId?: string | null; updatedAt?: string }) => { const { updatedAt: _updatedAt, ...comparable } = draft; return comparable }

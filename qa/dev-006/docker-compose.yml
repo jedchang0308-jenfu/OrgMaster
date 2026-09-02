@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: jenfu_dev006
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev006-local-fixture-only
+    ports:
+      - "127.0.0.1:${DEV006_POSTGRES_PORT:-55425}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d jenfu_dev006"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - dev006-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  dev006-postgres-data:

@@ -3,6 +3,7 @@ import { mkdir, readFile, unlink } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { getManagementMethodPaths } from './managementMethodStore'
 import { fileExists, withOrgMasterRootLock, writeVerifiedAtomicFile } from './orgmasterFileStore'
+import { readPersistenceMedia, removePersistenceMedia, usesCloudSqlPersistence, writePersistenceMedia } from './orgmasterPersistenceRepository'
 import type { ManagementMethodStoreV1, MethodMediaAssetV1 } from '../src/managementMethods/types'
 
 const MAX_MEDIA_BYTES = 8 * 1024 * 1024
@@ -23,9 +24,10 @@ export async function ingestManagementMethodMedia(root: string, input: { bytes: 
   if (Boolean(input.methodId) === Boolean(input.creationRequestId)) throw new ManagementMethodMediaError('MEDIA_CONTEXT_REQUIRED')
   const contentHash = createHash('sha256').update(input.bytes).digest('hex')
   return withOrgMasterRootLock(root, async () => {
-    const paths = getManagementMethodPaths(root); await mkdir(paths.media, { recursive: true })
+    const paths = getManagementMethodPaths(root); if (!usesCloudSqlPersistence()) await mkdir(paths.media, { recursive: true })
     const id = `media-${randomUUID()}`; const storedFileRef = `${id}.${input.mimeType === 'image/png' ? 'png' : input.mimeType === 'image/webp' ? 'webp' : 'jpg'}`
-    await writeVerifiedAtomicFile(resolve(paths.media, storedFileRef), input.bytes.toString('base64'))
+    if (usesCloudSqlPersistence()) await writePersistenceMedia({ mediaKey: `orgmaster-management-method-media/${storedFileRef}`, bytes: input.bytes, mimeType: input.mimeType })
+    else await writeVerifiedAtomicFile(resolve(paths.media, storedFileRef), input.bytes.toString('base64'))
     const asset: MethodMediaAssetV1 = { id, contentHash, mimeType: input.mimeType as MethodMediaAssetV1['mimeType'], byteSize: input.bytes.byteLength, width: null, height: null, altText: input.altText.trim().slice(0, 300), storedFileRef, methodId: input.methodId ?? null, pendingCreationRequestId: input.creationRequestId ?? null, createdByPrincipalId: input.principalId, createdAt: new Date().toISOString(), unreferencedSince: null }
     return asset
   })
@@ -38,11 +40,20 @@ export async function readManagementMethodMedia(root: string, store: ManagementM
   const body = view === 'readable' ? method.readableSnapshot?.body : method.workingDraft.body
   const ids = view === 'readable' ? method.readableSnapshot?.mediaIds ?? [] : method.workingDraft.mediaIds
   if (!body || !ids.includes(mediaId) || asset.methodId !== methodId) throw new ManagementMethodMediaError('MEDIA_NOT_FOUND')
+  if (usesCloudSqlPersistence()) {
+    const stored = await readPersistenceMedia({ mediaKey: `orgmaster-management-method-media/${asset.storedFileRef}` })
+    if (stored.contentSha256 !== asset.contentHash || stored.mimeType !== asset.mimeType) throw new ManagementMethodMediaError('MEDIA_NOT_FOUND')
+    return { asset, bytes: stored.bytes }
+  }
   const raw = await readFile(resolve(getManagementMethodPaths(root).media, asset.storedFileRef), 'utf8')
   return { asset, bytes: Buffer.from(raw, 'base64') }
 }
 
 export async function removeMediaFileIfExists(root: string, storedFileRef: string) {
+  if (usesCloudSqlPersistence()) {
+    await removePersistenceMedia({ mediaKey: `orgmaster-management-method-media/${storedFileRef}` })
+    return
+  }
   const path = resolve(getManagementMethodPaths(root).media, storedFileRef)
   if (await fileExists(path)) await unlink(path)
 }

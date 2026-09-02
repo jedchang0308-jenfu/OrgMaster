@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react'
 import type { RoleCombinationRiskRuleMutationResult } from '../roleCombinationRisks'
 import type { Role, RoleCombinationRiskLevel, RoleCombinationRiskRule } from '../types'
-import { PanelDismissButton } from './PanelDismissButton'
 
 export interface RoleCombinationRiskDraft {
   id: string | null
@@ -20,7 +19,7 @@ interface RoleCombinationRiskPanelProps {
   onSetEnabled: (ruleId: string, enabled: boolean) => void
   onDelete: (ruleId: string) => void
   editingEnabled?: boolean
-  onClose: () => void
+  requestCloseGuardRegistration?: (guard: (() => Promise<{ kind: 'allow' } | { kind: 'keep-open'; focusTarget?: string }>) | null) => void
 }
 
 function createDraft(roles: Role[]): RoleCombinationRiskDraft {
@@ -58,7 +57,7 @@ export function RoleCombinationRiskPanel({
   onSetEnabled,
   onDelete,
   editingEnabled = true,
-  onClose,
+  requestCloseGuardRegistration,
 }: RoleCombinationRiskPanelProps) {
   const [draft, setDraft] = useState<RoleCombinationRiskDraft | null>(null)
   const [error, setError] = useState('')
@@ -77,6 +76,11 @@ export function RoleCombinationRiskPanel({
   useEffect(() => {
     if (draft) firstSelectRef.current?.focus()
   }, [draft?.id])
+
+  useEffect(() => {
+    requestCloseGuardRegistration?.(draft ? async () => ({ kind: 'keep-open', focusTarget: 'role-risk-panel-title' }) : null)
+    return () => requestCloseGuardRegistration?.(null)
+  }, [draft, requestCloseGuardRegistration])
 
   const startCreate = () => {
     if (!editingEnabled) return
@@ -105,8 +109,8 @@ export function RoleCombinationRiskPanel({
   return (
     <aside
       ref={panelRef}
-      className="role-risk-panel"
-      role="dialog"
+      className="role-risk-panel role-risk-panel--workspace"
+      role="region"
       aria-modal="false"
       aria-labelledby="role-risk-panel-title"
       tabIndex={-1}
@@ -119,8 +123,6 @@ export function RoleCombinationRiskPanel({
           setDraft(null)
           setError('')
           window.requestAnimationFrame(() => panelRef.current?.focus())
-        } else {
-          onClose()
         }
       }}
     >
@@ -129,18 +131,17 @@ export function RoleCombinationRiskPanel({
           <ShieldAlert size={16} aria-hidden="true" />
           <h2 id="role-risk-panel-title">兼任風險設定</h2>
         </div>
-        <div className="panel-header-actions">
-          <PanelDismissButton edge="right" label="關閉兼任風險設定" onDismiss={onClose} className="role-risk-panel__close" />
-        </div>
       </header>
 
       <div className="role-risk-panel__body">
         <div className="role-risk-panel__actions">
           <span>{rules.length} 組</span>
-          <button type="button" onClick={startCreate} disabled={!editingEnabled || sortedRoles.length < 2 || draft !== null}>
-            <Plus size={14} aria-hidden="true" />
-            新增規則
-          </button>
+          {editingEnabled && (
+            <button type="button" onClick={startCreate} disabled={sortedRoles.length < 2 || draft !== null}>
+              <Plus size={14} aria-hidden="true" />
+              新增規則
+            </button>
+          )}
         </div>
 
         {draft && (
@@ -211,12 +212,12 @@ export function RoleCombinationRiskPanel({
           </form>
         )}
 
-        <div className="role-risk-list" role="table" aria-label="兼任風險規則">
+        <div className={`role-risk-list${editingEnabled ? '' : ' role-risk-list--readonly'}`} role="table" aria-label="兼任風險規則">
           <div className="role-risk-list__head" role="row">
             <span role="columnheader">職務組合與原因</span>
             <span role="columnheader">等級</span>
             <span role="columnheader">啟用</span>
-            <span role="columnheader">動作</span>
+            {editingEnabled && <span role="columnheader">動作</span>}
           </div>
           {rules.length === 0 ? (
             <div className="role-risk-list__empty">尚無規則</div>
@@ -243,14 +244,16 @@ export function RoleCombinationRiskPanel({
                 />
                 <span aria-hidden="true" />
               </label>
-              <div className="role-risk-list__row-actions" role="cell">
-                <button type="button" onClick={() => startEdit(rule)} disabled={!editingEnabled} aria-label="編輯規則" title="編輯">
-                  <Pencil size={14} />
-                </button>
-                <button type="button" onClick={() => onDelete(rule.id)} disabled={!editingEnabled} aria-label="刪除規則" title="刪除">
-                  <Trash2 size={14} />
-                </button>
-              </div>
+              {editingEnabled && (
+                <div className="role-risk-list__row-actions" role="cell">
+                  <button type="button" onClick={() => startEdit(rule)} aria-label="編輯規則" title="編輯">
+                    <Pencil size={14} />
+                  </button>
+                  <button type="button" onClick={() => onDelete(rule.id)} aria-label="刪除規則" title="刪除">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

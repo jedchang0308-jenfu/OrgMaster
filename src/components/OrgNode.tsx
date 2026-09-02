@@ -1,4 +1,4 @@
-import { memo, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { memo, useMemo, useState, type KeyboardEvent } from 'react'
 import { ChevronDown, GitBranch } from 'lucide-react'
 import {
   Handle,
@@ -6,8 +6,11 @@ import {
   type Node,
   type NodeProps,
 } from '@xyflow/react'
-import type { Assignment, Employee, EmployeeDragPayload, Point, PositionView, RoleCombinationRiskLevel } from '../types'
-import type { DutyConfigurationDropCandidate } from '../dutyConfigurationDrag'
+import type { Assignment, Employee, Point, PositionView, RoleCombinationRiskLevel } from '../types'
+import type { RegisteredDropTarget, WorkspaceEntityDragPayloadV1 } from '../workspace/entityDrag'
+import type { RelationPlacementCandidate } from '../workspace/relationPlacement'
+import type { RelationPlacementBegin, RelationPlacementCancel, RelationPlacementCommit, RelationPlacementOutcome, RelationPlacementPreview } from '../workspace/relationDragInteraction'
+import { createRelationDropTargetProps, createRelationDragSourceProps } from './workspace/relationPlacementBindings'
 
 export interface OrgNodeData extends Record<string, unknown> {
   member: PositionView
@@ -16,10 +19,12 @@ export interface OrgNodeData extends Record<string, unknown> {
   onToggle: (id: string) => void
   onSelectPosition: (id: string) => void
   onSelectEmployee: (id: string) => void
-  onEmployeeDragStart: (event: DragEvent<HTMLElement>, payload: EmployeeDragPayload) => void
-  onEmployeeDragEnd: () => void
-  onEmployeeDrop: (event: DragEvent<HTMLElement>, targetPositionId: string) => void
-  employeeDragging: boolean
+  onRelationBegin?: RelationPlacementBegin
+  onRelationCommit?: RelationPlacementCommit
+  onRelationCancel?: RelationPlacementCancel
+  relationPlacementActive?: boolean
+  relationPlacementCandidate?: RelationPlacementCandidate | null
+  relationPlacementOutcome?: RelationPlacementOutcome | null
   dragOffset?: Point
   showDragPlaceholder?: boolean
   employeeHighlighted: boolean
@@ -27,12 +32,7 @@ export interface OrgNodeData extends Record<string, unknown> {
   riskRelated: boolean
   onRiskInteraction: (positionId: string | null) => void
   editingEnabled: boolean
-  dutyConfigurationActive?: boolean
-  dutyDropCandidate?: DutyConfigurationDropCandidate
-  dutyKeyboardGrabbed?: boolean
-  dutyKeyboardLaneLabel?: string
-  onDutyDropPosition?: (positionId: string) => void
-  onDutyDragOver?: (positionId: string, event?: DragEvent<HTMLElement>) => void
+  onRelationPreview?: RelationPlacementPreview
 }
 
 export type OrgFlowNode = Node<OrgNodeData, 'org'>
@@ -56,10 +56,12 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
     onToggle,
     onSelectPosition,
     onSelectEmployee,
-    onEmployeeDragStart,
-    onEmployeeDragEnd,
-    onEmployeeDrop,
-    employeeDragging,
+    onRelationBegin,
+    onRelationCommit,
+    onRelationCancel,
+    relationPlacementActive = false,
+    relationPlacementCandidate,
+    relationPlacementOutcome = null,
     dragOffset,
     showDragPlaceholder = false,
     employeeHighlighted,
@@ -67,28 +69,36 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
     riskRelated,
     onRiskInteraction,
     editingEnabled,
-    dutyConfigurationActive = false,
-    dutyDropCandidate,
-    dutyKeyboardGrabbed = false,
-    dutyKeyboardLaneLabel,
-    onDutyDropPosition,
-    onDutyDragOver,
+    onRelationPreview,
   } = data
-  const [employeeDropHover, setEmployeeDropHover] = useState(false)
+  const [relationDropHover, setRelationDropHover] = useState(false)
+  const positionDropProps = useMemo(() => createRelationDropTargetProps({
+    active: relationPlacementActive,
+    // Relation placement is a cross-panel capability.  The canvas may be
+    // read-only for ordinary position edits while a duty/employee source
+    // remains writable in another panel, so do not gate the drop target on
+    // the position editor's local `editingEnabled` flag.
+    available: relationPlacementActive && Boolean(onRelationPreview && onRelationCommit),
+    target: { kind: 'position', positionId: member.id },
+    candidate: relationPlacementCandidate,
+    outcome: relationPlacementOutcome,
+    onPreview: onRelationPreview,
+    onCommit: onRelationCommit,
+    onEnter: () => setRelationDropHover(true),
+    onLeave: () => setRelationDropHover(false),
+  }), [editingEnabled, member.id, onRelationCommit, onRelationPreview, relationPlacementActive, relationPlacementCandidate, relationPlacementOutcome])
   const cardClassName = [
     'org-node',
     editingEnabled ? 'is-position-drag-enabled' : '',
     selected ? 'is-selected' : '',
-    employeeDragging ? 'is-employee-drop-target' : '',
-    employeeDragging && employeeDropHover ? 'is-employee-drop-hover' : '',
+    relationPlacementActive ? 'is-relation-placement-target' : '',
+    relationPlacementActive && relationDropHover ? 'is-relation-placement-hover' : '',
     showDragPlaceholder ? 'is-drag-ghost' : '',
     employeeHighlighted ? 'is-employee-highlighted' : '',
     riskLevel ? 'has-role-risk' : '',
     riskLevel ? `role-risk--${riskLevel}` : '',
     riskRelated ? 'is-role-risk-related' : '',
-    dutyConfigurationActive ? 'is-duty-drop-target' : '',
-    dutyKeyboardGrabbed ? 'is-duty-keyboard-grabbed' : '',
-    dutyDropCandidate ? `duty-drop-${dutyDropCandidate}` : '',
+    relationPlacementCandidate ? `relation-placement-${relationPlacementCandidate.effect}` : '',
   ].filter(Boolean).join(' ')
   const cardStyle = showDragPlaceholder && dragOffset
     ? { transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` }
@@ -112,14 +122,13 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
       <article
         className={cardClassName}
         style={cardStyle}
-        aria-label={`${member.title}，${employees.length > 0 ? employees.map((employee) => employee.name).join('、') : '未指派'}${employeeHighlighted ? '，目前選取員工的任職格' : ''}${riskLevel ? `，${riskLevelLabel(riskLevel)}兼任風險` : ''}${dutyKeyboardGrabbed ? `，按 Enter 放置${dutyKeyboardLaneLabel ?? '工作執掌'}` : ''}${dutyConfigurationActive && dutyDropCandidate ? `，工作執掌落點${dutyDropCandidate === 'command' ? '可配置' : dutyDropCandidate === 'noop' ? '已存在' : '不可用'}` : ''}`}
+        aria-label={`${member.title}，${employees.length > 0 ? employees.map((employee) => employee.name).join('、') : '未指派'}${employeeHighlighted ? '，目前選取員工的任職格' : ''}${riskLevel ? `，${riskLevelLabel(riskLevel)}兼任風險` : ''}${relationPlacementActive && relationPlacementCandidate ? `，關聯落點${relationPlacementCandidate.effect === 'noop' ? '已存在' : relationPlacementCandidate.effect === 'rejected' ? '不可用' : '可用'}` : ''}`}
         data-position-id={member.id}
+        {...positionDropProps}
         data-employee-highlighted={employeeHighlighted ? 'true' : undefined}
         data-role-risk-level={riskLevel}
-        tabIndex={dutyConfigurationActive || riskLevel ? 0 : undefined}
-        onClick={() => {
-          if (dutyConfigurationActive) return
-        }}
+        tabIndex={relationPlacementActive || riskLevel ? 0 : undefined}
+        onClick={() => onSelectPosition(member.id)}
         onPointerEnter={() => {
           if (riskLevel) onRiskInteraction(member.id)
         }}
@@ -134,66 +143,28 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
           if (event.relatedTarget instanceof HTMLElement && event.currentTarget.contains(event.relatedTarget)) return
           if (riskLevel) onRiskInteraction(null)
         }}
-        onDragEnter={(event) => {
-          if (dutyConfigurationActive && onDutyDragOver) {
-            event.preventDefault()
-            onDutyDragOver(member.id, event)
-            return
-          }
-          if (!editingEnabled || !employeeDragging) return
-          event.preventDefault()
-          setEmployeeDropHover(true)
-        }}
-        onDragOver={(event) => {
-          if (dutyConfigurationActive && onDutyDragOver) {
-            event.preventDefault()
-            event.stopPropagation()
-            onDutyDragOver(member.id, event)
-            return
-          }
-          if (!editingEnabled || !employeeDragging) return
-          event.preventDefault()
-          event.dataTransfer.dropEffect = 'move'
-        }}
-        onDragLeave={(event) => {
-          if (event.relatedTarget instanceof HTMLElement && event.currentTarget.contains(event.relatedTarget)) return
-          setEmployeeDropHover(false)
-        }}
-        onDrop={(event) => {
-          if (dutyConfigurationActive && onDutyDropPosition) {
-            event.preventDefault()
-            event.stopPropagation()
-            onDutyDropPosition(member.id)
-            return
-          }
-          if (!editingEnabled || !employeeDragging) return
-          event.preventDefault()
-          event.stopPropagation()
-          setEmployeeDropHover(false)
-          onEmployeeDrop(event, member.id)
-        }}
         onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
-          if (!dutyConfigurationActive || !onDutyDropPosition || event.target !== event.currentTarget) return
-          if (event.key !== 'Enter' && event.key !== ' ') return
-          event.preventDefault()
-          onDutyDropPosition(member.id)
+          if (relationPlacementActive && onRelationCommit && event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault()
+            onRelationCommit({ kind: 'position', positionId: member.id })
+          }
         }}
       >
         <div className="org-node__copy">
           <button
             type="button"
             className="org-node__title nodrag"
-            tabIndex={dutyConfigurationActive ? -1 : undefined}
+            tabIndex={undefined}
             onPointerDown={(event) => {
               event.stopPropagation()
             }}
             onMouseDown={(event) => {
               event.stopPropagation()
-              if (!dutyConfigurationActive) onSelectPosition(member.id)
+              onSelectPosition(member.id)
             }}
             onClick={(event) => {
               event.stopPropagation()
-              if (!dutyConfigurationActive) onSelectPosition(member.id)
+              onSelectPosition(member.id)
             }}
             aria-label={`開啟 ${member.title || '未命名職位'} 職位明細`}
           >
@@ -203,30 +174,42 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
             const assignmentType = assignmentLabel(member.activeAssignments.find((assignment) => assignment.employeeId === employee.id), employee)
             return (
               <button
-                type="button"
-                key={employee.id}
-                className="org-node__employee nodrag"
-                tabIndex={dutyConfigurationActive ? -1 : undefined}
-                draggable={editingEnabled}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onSelectEmployee(employee.id)
-                }}
-                onDragStart={(event) => onEmployeeDragStart(event, {
-                  employeeId: employee.id,
-                  sourcePositionId: member.id,
-                })}
-                onDragEnd={onEmployeeDragEnd}
-                title={`開啟 ${employee.name} 員工明細；拖曳以移動職位`}
-                aria-label={`${employee.name}，${assignmentType}職`}
-              >
-                <span>
-                  {employee.name}
-                  <small className={`org-node__employee-type${assignmentType === '兼' ? ' org-node__employee-type--secondary' : ''}`}>
-                    {assignmentType}
-                  </small>
-                </span>
+                  key={employee.id}
+                  type="button"
+                  className="org-node__employee-row org-node__employee nodrag"
+                  tabIndex={undefined}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onSelectEmployee(employee.id)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== ' ' || !editingEnabled || !onRelationBegin) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    onRelationBegin({ version: 1, kind: 'employee', sourceModuleId: 'organization', employeeId: employee.id, sourcePositionId: member.id }, 'keyboard', event.currentTarget)
+                  }}
+                  title={`開啟 ${employee.name} 員工明細`}
+                  aria-label={`${employee.name}，${assignmentType}職`}
+                  {...(editingEnabled && onRelationBegin && onRelationCancel
+                    ? createRelationDragSourceProps({
+                      enabled: true,
+                      payload: { version: 1, kind: 'employee', sourceModuleId: 'organization', employeeId: employee.id, sourcePositionId: member.id },
+                      // React Flow owns the node's ancestor mouse gesture. Keep
+                      // the employee row's native drag promotion from being
+                      // cancelled before the browser emits dragstart.
+                      stopMouseDownPropagation: true,
+                      onBegin: onRelationBegin,
+                      onCancel: onRelationCancel,
+                    })
+                    : {})}
+                >
+                  <span>
+                    {employee.name}
+                    <small className={`org-node__employee-type${assignmentType === '兼' ? ' org-node__employee-type--secondary' : ''}`}>
+                      {assignmentType}
+                    </small>
+                  </span>
               </button>
             )
           }) : (
@@ -242,7 +225,7 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
               'org-node__collapse',
               member.childrenAxis === 'vertical' ? 'is-vertical' : 'is-horizontal',
             ].join(' ')}
-            tabIndex={dutyConfigurationActive ? -1 : undefined}
+            tabIndex={undefined}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation()

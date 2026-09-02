@@ -23,7 +23,7 @@ interface DutyDetailDrawerProps {
   onOpenConfiguration?: () => void
   configurationActionLabel?: string
   placementMode?: 'legacy-list' | 'organization-chart'
-  displayMode?: 'drawer' | 'inspector'
+  displayMode?: 'drawer' | 'inspector' | 'panel'
   onSelectPendingRelation?: (relationId: string) => void
 }
 
@@ -70,7 +70,7 @@ export function DutyDetailDrawer({ duty, state, editingEnabled, onClose, onPatch
   const primary = relations.find((relation) => relation.isPrimaryExecutor && relation.relationType === 'execute')
   const primaryTargetId = primary?.target.kind === 'position' ? primary.target.positionId : ''
   return (
-    <aside className={`duty-drawer${displayMode === 'inspector' ? ' duty-drawer--inspector' : ''}`} aria-label="工作執掌明細" data-workspace-panel={displayMode === 'inspector' ? 'inspector' : undefined}>
+    <aside className={`duty-drawer${displayMode === 'inspector' ? ' duty-drawer--inspector' : ''}${displayMode === 'panel' ? ' duty-drawer--panel' : ''}`} aria-label="工作執掌明細" data-workspace-panel={displayMode === 'inspector' ? 'inspector' : undefined}>
       <div className="duty-drawer__header"><div><span>工作執掌明細</span><h2>{duty.title}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="關閉工作執掌明細">×</button></div>
       <div className="duty-drawer__body">
         {editingEnabled ? <>

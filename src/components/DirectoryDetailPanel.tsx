@@ -1,8 +1,7 @@
 import { BriefcaseBusiness, Building2, ChevronRight, UserRound } from 'lucide-react'
-import { getDepartmentLabel } from '../organization'
 import { groupByDepartmentAndLevel } from '../positionGrouping'
 import { resolveDirectSupervisor, type DirectSupervisorUnresolvedReason } from '../directSupervisor'
-import type { Department, Employee, OrganizationLevel, PositionView } from '../types'
+import type { Assignment, Department, Employee, OrganizationLevel, PositionView } from '../types'
 import type { DirectorySelection } from './DirectoryDock'
 import { PanelDismissButton } from './PanelDismissButton'
 
@@ -59,119 +58,58 @@ export function DirectoryDetailPanel({
       .sort((first, second) => (
         Number(second.id === primaryDepartmentId) - Number(first.id === primaryDepartmentId)
       ))
-    const groupedAssignmentIds = new Set(
-      employeeDepartments.flatMap((department) => employeeAssignments
-        .filter(({ position }) => position.departmentId === department.id)
-        .map(({ assignment }) => assignment.id)),
-    )
-    const ungroupedAssignments = employeeAssignments.filter(({ assignment }) => !groupedAssignmentIds.has(assignment.id))
     const directSupervisor = resolveDirectSupervisor(members, employees, employee.id)
-    const primaryAssignmentGroups = groupByDepartmentAndLevel(
-      employeeAssignments.filter(({ assignment }) => assignment.assignmentType === 'regular'),
-      departments,
-      organizationLevels,
-      ({ position }) => position,
-    )
+    const assignmentRoleGroups = [
+      {
+        key: 'primary',
+        label: '主職',
+        items: employeeAssignments.filter(({ assignment }) => assignment.id === employee.primaryAssignmentId),
+      },
+      {
+        key: 'secondary',
+        label: '兼職',
+        items: employeeAssignments.filter(({ assignment }) => assignment.id !== employee.primaryAssignmentId),
+      },
+    ].map((group) => ({ ...group, departmentGroups: groupEmployeeAssignmentsByDepartment(group.items, departments) }))
+      .filter((group) => group.items.length > 0)
 
     return (
       <aside className="inspector directory-detail-panel" aria-label={`員工 ${employee.name} 細節`} data-workspace-panel="inspector" tabIndex={-1}>
-        <DetailHeader eyebrow="員工細節" title={employee.name} onClose={onClose} />
+        <DetailHeader title={employee.name} onClose={onClose} />
         <section className="inspector__section">
           <DetailSectionHeading label="部門與任職" count={`${employeeDepartments.length} 部門 · ${employeeAssignments.length} 職位`} />
-          {employeeDepartments.length > 0 || ungroupedAssignments.length > 0 ? (
-            <div className="directory-detail__department-groups">
-              {employeeDepartments.map((department) => {
-                const departmentAssignments = employeeAssignments.filter(({ position }) => position.departmentId === department.id)
-                const departmentAssignmentGroups = groupByDepartmentAndLevel(
-                  departmentAssignments,
-                  departments,
-                  organizationLevels,
-                  ({ position }) => position,
-                )
-                const isPrimaryDepartment = department.id === primaryDepartmentId
-                const departmentLabel = departmentAssignments.some(({ assignment }) => assignment.id === employee.primaryAssignmentId)
-                  ? '主職'
-                  : departmentAssignments.some(({ assignment }) => assignment.assignmentType === 'acting')
-                    ? '代理'
-                    : departmentAssignments.length > 0 ? '兼任' : '未指派'
-
-                return (
-                  <div key={department.id} className="directory-detail__department-group">
-                    {isPrimaryDepartment ? (
-                      <div className="directory-detail__department-link directory-detail__department-link--primary">
-                        <label className="directory-detail__primary-assignment">
-                          <span>主職</span>
-                          <select
-                            aria-label={`${employee.name} 主職`}
-                            value={employee.primaryAssignmentId ?? ''}
-                            disabled={!editingEnabled}
-                            onChange={(event) => event.target.value && onSetPrimaryAssignment(employee.id, event.target.value)}
+          {assignmentRoleGroups.length > 0 ? (
+            <div className="directory-detail__assignment-tree">
+              {assignmentRoleGroups.map((roleGroup) => (
+                <div key={roleGroup.key} className="directory-detail__assignment-role-group">
+                  <div className="directory-detail__assignment-role-heading">
+                    <strong>{roleGroup.label}</strong>
+                  </div>
+                  <div className="directory-detail__assignment-departments">
+                    {roleGroup.departmentGroups.map((departmentGroup) => (
+                      <div key={departmentGroup.key} className="directory-detail__assignment-department">
+                        {departmentGroup.departmentId ? (
+                          <button
+                            className="directory-detail__assignment-department-link"
+                            type="button"
+                            onClick={() => onSelectEntity({ kind: 'departments', id: departmentGroup.departmentId! })}
                           >
-                            <option value="">尚未設定主職</option>
-                            {primaryAssignmentGroups.map((group) => (
-                              <optgroup key={group.key} label={group.label}>
-                                {group.items.map(({ assignment, position }) => (
-                                  <option key={assignment.id} value={assignment.id}>{position.title} · {getDepartmentLabel(departments, position.departmentId)}</option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
-                        </label>
-                        <button
-                          className="directory-detail__department-link-action"
-                          type="button"
-                          aria-label={`開啟 ${department.name} 部門明細`}
-                          onClick={() => onSelectEntity({ kind: 'departments', id: department.id })}
-                        >
-                          <ChevronRight size={15} aria-hidden="true" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button className="directory-detail__department-link" type="button" onClick={() => onSelectEntity({ kind: 'departments', id: department.id })}>
-                        <span>
-                          <strong>{department.name} · {departmentLabel}</strong>
-                        </span>
-                        <ChevronRight size={15} aria-hidden="true" />
-                      </button>
-                    )}
-                    {departmentAssignments.length > 0 && (
-                      <div className="directory-detail__assignment-groups">
-                        {departmentAssignmentGroups.map((group) => (
-                          <div className="directory-detail__assignment-group" key={group.key}>
-                            <div className="directory-detail__assignment-links">
-                              {group.items.map(({ assignment, position }) => (
-                                <button key={position.id} type="button" onClick={() => onSelectPosition(position.id)}>
-                                  <span>
-                                    <strong>{position.title} · {assignment.assignmentType === 'acting' ? '代理' : assignment.id === employee.primaryAssignmentId ? '主職' : '兼任'}</strong>
-                                  </span>
-                                  <ChevronRight size={15} aria-hidden="true" />
-                                </button>
-                              ))}
-                            </div>
+                            <span><strong>{departmentGroup.departmentLabel}</strong></span>
+                            <ChevronRight size={14} aria-hidden="true" />
+                          </button>
+                        ) : (
+                          <div className="directory-detail__assignment-department-link is-static">
+                            <span><strong>未設定部門</strong></span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-              {ungroupedAssignments.length > 0 && (
-                <div className="directory-detail__department-group">
-                  <div className="directory-detail__department-link is-static">
-                    <span>
-                      <strong>未設定部門</strong>
-                    </span>
-                  </div>
-                  <div className="directory-detail__assignment-groups">
-                    {groupByDepartmentAndLevel(ungroupedAssignments, departments, organizationLevels, ({ position }) => position).map((group) => (
-                      <div className="directory-detail__assignment-group" key={group.key}>
-                        <div className="directory-detail__assignment-links">
-                          {group.items.map(({ assignment, position }) => (
+                        )}
+                        <div className="directory-detail__assignment-positions">
+                          {departmentGroup.items.map(({ assignment, position }) => (
                             <button key={position.id} type="button" onClick={() => onSelectPosition(position.id)}>
                               <span>
-                                <strong>{position.title} · {assignment.assignmentType === 'acting' ? '代理' : assignment.id === employee.primaryAssignmentId ? '主職' : '兼任'}</strong>
+                                <strong>{position.title}</strong>
+                                {assignment.assignmentType === 'acting' && <small>代理</small>}
                               </span>
-                              <ChevronRight size={15} aria-hidden="true" />
+                              <ChevronRight size={14} aria-hidden="true" />
                             </button>
                           ))}
                         </div>
@@ -179,7 +117,7 @@ export function DirectoryDetailPanel({
                     ))}
                   </div>
                 </div>
-              )}
+              ))}
             </div>
           ) : (
             <DetailEmpty>尚未設定部門或任職</DetailEmpty>
@@ -264,14 +202,14 @@ function DetailHeader({
   title,
   onClose,
 }: {
-  eyebrow: string
+  eyebrow?: string
   title: string
   onClose: () => void
 }) {
   return (
-    <div className="inspector__header">
+    <div className={`inspector__header${eyebrow ? '' : ' inspector__header--title-only'}`}>
       <div className="inspector__header-copy">
-        <span>{eyebrow}</span>
+        {eyebrow && <span>{eyebrow}</span>}
         <strong>{title}</strong>
       </div>
       <div className="panel-header-actions">
@@ -292,6 +230,43 @@ function DetailSectionHeading({ label, count }: { label: string; count?: string 
 
 function DetailEmpty({ children }: { children: string }) {
   return <div className="directory-detail__empty">{children}</div>
+}
+
+type EmployeeAssignmentItem = {
+  assignment: Assignment
+  position: PositionView
+}
+
+type EmployeeAssignmentDepartmentGroup = {
+  key: string
+  departmentId: string | null
+  departmentLabel: string
+  items: EmployeeAssignmentItem[]
+}
+
+function groupEmployeeAssignmentsByDepartment(items: EmployeeAssignmentItem[], departments: Department[]): EmployeeAssignmentDepartmentGroup[] {
+  const departmentOrder = new Map(departments.map((department, index) => [department.id, index]))
+  const departmentById = new Map(departments.map((department) => [department.id, department]))
+  const groups = new Map<string, EmployeeAssignmentDepartmentGroup & { departmentIndex: number }>()
+
+  for (const item of items) {
+    const departmentId = item.position.departmentId
+    const key = departmentId ?? 'unassigned-department'
+    const department = departmentId ? departmentById.get(departmentId) : undefined
+    const group = groups.get(key) ?? {
+      key,
+      departmentId,
+      departmentLabel: department?.name ?? '未設定部門',
+      items: [],
+      departmentIndex: departmentId ? departmentOrder.get(departmentId) ?? departments.length : departments.length,
+    }
+    group.items.push(item)
+    groups.set(key, group)
+  }
+
+  return [...groups.values()]
+    .sort((first, second) => first.departmentIndex - second.departmentIndex || first.key.localeCompare(second.key))
+    .map(({ departmentIndex: _departmentIndex, ...group }) => group)
 }
 
 function unresolvedDirectSupervisorLabel(reason: DirectSupervisorUnresolvedReason) {

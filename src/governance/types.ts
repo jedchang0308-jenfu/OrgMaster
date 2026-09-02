@@ -1,10 +1,15 @@
 export type GovernanceRecordStatus = 'active' | 'inactive'
 export type GovernancePermissionKind = 'page' | 'action' | 'system'
 export type GovernancePermissionEffect = 'allow' | 'deny'
-export type GovernanceRisk = 'normal' | 'high'
+export type GovernanceRisk = 'normal' | 'high' | 'critical'
 export type GovernanceScopeV1 =
   | { kind: 'global' }
   | { kind: 'workspace' | 'department' | 'project' | 'product'; value: string }
+
+export type PositionRolePolicyStatusV1 = 'draft' | 'active' | 'retired'
+export type PositionRolePolicyScopeSourceV1 = 'jenfu_workspace' | 'fixed_project'
+export type RecommendationDecisionStateV1 = 'dismissed' | 'accepted'
+export type PositionRoleRecommendationStateV1 = 'ready' | 'scope_conflict' | 'dismissed' | 'already_assigned'
 
 export interface GovernanceApplicationV1 {
   id: 'orgmaster' | 'ai-pdm'
@@ -148,6 +153,20 @@ export type AssignmentEffectState = 'orgmaster-enforced' | 'not-synchronized'
 export type ExternalRoleCatalogState = 'valid' | 'stale' | 'invalid' | 'unavailable'
 export type ExternalRoleCatalogSourceKind = 'bundled-fixture'
 
+export type PrincipalAccountTypeV1 = 'human_personal' | 'human_privileged' | 'legacy_shared' | 'service'
+export type SharedRetirementStateV1 = 'not_applicable' | 'pending_replacement' | 'replacement_verified' | 'login_disabled' | 'retired'
+export interface GovernancePrincipalAdmissionV1 {
+  id: string
+  principalFingerprintSha256: string
+  issuerFingerprintSha256: string
+  accountType: PrincipalAccountTypeV1
+  identityLinkId: string | null
+  sharedRetirementState: SharedRetirementStateV1
+  status: GovernanceRecordStatus
+  recordedAt: string
+  evidenceRefSha256: string
+}
+
 export interface ExternalRoleCatalogRoleV1 {
   stableRoleId: string
   code: string
@@ -210,6 +229,7 @@ export interface GovernancePolicyDataV2 {
   rolePermissionGrants: GovernanceRolePermissionGrantV1[]
   roleAssignments: GovernanceRoleAssignmentV2[]
   roleDelegations: GovernanceRoleDelegationV2[]
+  principalAdmissions?: GovernancePrincipalAdmissionV1[]
 }
 
 export interface GovernanceAssignmentVersionV2 {
@@ -248,12 +268,117 @@ export interface GovernanceDocumentV2 {
   migration: GovernanceMigrationStateV2
 }
 
+export interface PositionRolePolicyV1 {
+  id: string
+  version: number
+  applicationId: 'ai-pdm'
+  positionId: string
+  stableRoleId: string
+  catalogVersion: string
+  defaultScopeSource: PositionRolePolicyScopeSourceV1
+  fixedScopeKey: string | null
+  status: PositionRolePolicyStatusV1
+  createdAt: string
+  createdBy: string
+  updatedAt: string
+  updatedBy: string
+  reason: string
+}
+
+export interface RecommendationDecisionV1 {
+  recommendationId: string
+  decision: RecommendationDecisionStateV1
+  actorPrincipalId: string
+  reason: string
+  decidedAt: string
+}
+
+export interface ManagementGrantV1 {
+  id: string
+  principalId: string
+  employeeId: string
+  applicationId: 'ai-pdm'
+  capability: 'ai-pdm.position_role_policy.manage' | 'ai-pdm.role_assignment.manage' | 'ai-pdm.role_assignment.publish' | 'orgmaster.cross_app_override' | 'platform.entitlement_authority.switch'
+  status: 'active' | 'revoked'
+  validFrom: string
+  validTo: string | null
+  grantedByPrincipalId: string
+  reason: string
+}
+
+export interface GovernanceRoleAssignmentV3 {
+  id: string
+  employeeId: string
+  applicationId: 'orgmaster' | 'ai-pdm'
+  roleId: string
+  roleCodeSnapshot: string
+  roleNameSnapshot: string
+  catalogVersion: string | null
+  scope: GovernanceScopeV1
+  status: 'active' | 'revoked'
+  validFrom: string
+  validTo: string | null
+  effectState: AssignmentEffectState
+  basis: 'manual' | 'position_recommendation'
+  subjectKind: 'employee' | 'principal'
+  targetPrincipalId: string | null
+  sources: Array<{
+    positionId: string
+    positionAssignmentId: string
+    positionRolePolicyId: string
+    positionRolePolicyVersion: number
+    organizationVersionId: string
+    organizationRevision: string
+    scopeSource: PositionRolePolicyScopeSourceV1
+    scopeKeySnapshot: string | null
+  }>
+  metadata: {
+    sponsorEmployeeId: string | null
+    reviewDueAt: string | null
+  }
+  createdByPrincipalId: string
+  createdReason: string
+}
+
+export interface GovernancePolicyDataV3 extends Omit<GovernancePolicyDataV2, 'roleAssignments'> {
+  roleAssignments: GovernanceRoleAssignmentV3[]
+  positionRolePolicies: PositionRolePolicyV1[]
+  recommendationDecisions: RecommendationDecisionV1[]
+  managementGrants: ManagementGrantV1[]
+}
+
+export interface GovernanceAssignmentVersionV3 {
+  kind: 'assignment-governance-v3'
+  id: string
+  versionNumber: number
+  publishedAt: string
+  publishedByPrincipalId: string
+  publishReason: string
+  snapshotHash: string
+  effectState: 'not-synchronized'
+  policy: GovernancePolicyDataV3
+  externalRoleCatalogs: ExternalRoleCatalogSnapshotV1[]
+  organizationSnapshot: GovernanceOrganizationSnapshotV1
+}
+
+export interface GovernanceDocumentV3 {
+  app: 'OrgMaster'
+  schemaVersion: 3
+  draft: GovernancePolicyDataV3 & { basePolicyVersionId: string | null; updatedAt: string }
+  activePolicyVersionId: string | null
+  publishedVersions: Array<GovernanceAssignmentVersionV3 | GovernancePublishedVersionV2>
+  auditEvents: GovernanceAuditEventV1[]
+  migration: GovernanceMigrationStateV2
+}
+
 export type GovernanceCommandV2 =
   | Extract<GovernanceCommand, { type: 'UPSERT_IDENTITY_LINK' | 'SET_IDENTITY_LINK_STATUS' | 'UPSERT_APPLICATION_ROLE' | 'SET_APPLICATION_ROLE_STATUS' | 'UPSERT_PERMISSION' | 'SET_PERMISSION_STATUS' | 'SET_ROLE_PERMISSION_GRANT' | 'REMOVE_ROLE_PERMISSION_GRANT' }>
   | { type: 'UPSERT_ROLE_ASSIGNMENT'; commandId: string; reason: string; value: GovernanceRoleAssignmentV2 }
   | { type: 'REVOKE_ROLE_ASSIGNMENT'; commandId: string; reason: string; id: string }
   | { type: 'UPSERT_ROLE_DELEGATION'; commandId: string; reason: string; value: GovernanceRoleDelegationV2 }
   | { type: 'REVOKE_ROLE_DELEGATION'; commandId: string; reason: string; id: string }
+  | { type: 'UPSERT_PRINCIPAL_ADMISSION'; commandId: string; reason: string; value: GovernancePrincipalAdmissionV1 }
+  | { type: 'SET_PRINCIPAL_ADMISSION_STATUS'; commandId: string; reason: string; id: string; status: GovernanceRecordStatus }
 export interface GovernanceActorContext {
   principalId: string
   issuer: string

@@ -1,5 +1,6 @@
 import { validateExternalRoleCatalog } from './aiPdmCatalog'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceOrgSource, GovernancePolicyDataV1, GovernancePolicyDataV2, GovernancePolicyVersionV1, GovernanceRoleAssignmentV2, GovernanceRoleDelegationV2, GovernanceScopeV1 } from './types'
+import { isSha256, issuerFingerprintSha256, principalFingerprintSha256 } from './identityAdmission'
 
 export type GovernanceValidationIssue = { code: string; path: string; message: string }
 export class GovernanceValidationError extends Error {
@@ -71,7 +72,22 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
   const issues: GovernanceValidationIssue[] = []
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
   const ids = <T extends { id: string }>(items: T[], path: string) => { const seen = new Set<string>(); items.forEach((item, index) => { if (!item.id || seen.has(item.id)) add('DUPLICATE_ID', `${path}[${index}].id`, 'id 必須唯一'); seen.add(item.id) }) }
-  ids(data.applications, 'applications'); ids(data.identityLinks, 'identityLinks'); ids(data.applicationRoles, 'applicationRoles'); ids(data.permissions, 'permissions'); ids(data.rolePermissionGrants, 'rolePermissionGrants'); ids(data.roleAssignments, 'roleAssignments'); ids(data.roleDelegations, 'roleDelegations')
+  ids(data.applications, 'applications'); ids(data.identityLinks, 'identityLinks'); ids(data.applicationRoles, 'applicationRoles'); ids(data.permissions, 'permissions'); ids(data.rolePermissionGrants, 'rolePermissionGrants'); ids(data.roleAssignments, 'roleAssignments'); ids(data.roleDelegations, 'roleDelegations'); ids(data.principalAdmissions ?? [], 'principalAdmissions')
+  const identityById = new Map(data.identityLinks.map((link) => [link.id, link]))
+  for (const [index, admission] of (data.principalAdmissions ?? []).entries()) {
+    if (!isSha256(admission.principalFingerprintSha256) || !isSha256(admission.issuerFingerprintSha256) || !isSha256(admission.evidenceRefSha256)) add('ADMISSION_FINGERPRINT_INVALID', `principalAdmissions[${index}]`, 'fingerprint 必須為 64 位小寫 SHA-256')
+    if (!['human_personal', 'human_privileged', 'legacy_shared', 'service'].includes(admission.accountType)) add('ADMISSION_ACCOUNT_TYPE_INVALID', `principalAdmissions[${index}].accountType`, 'accountType 無效')
+    if (!['not_applicable', 'pending_replacement', 'replacement_verified', 'login_disabled', 'retired'].includes(admission.sharedRetirementState)) add('ADMISSION_RETIREMENT_STATE_INVALID', `principalAdmissions[${index}].sharedRetirementState`, 'sharedRetirementState 無效')
+    if (!iso(admission.recordedAt)) add('ADMISSION_RECORDED_AT_INVALID', `principalAdmissions[${index}].recordedAt`, 'recordedAt 無效')
+    const link = admission.identityLinkId ? identityById.get(admission.identityLinkId) : undefined
+    if (admission.accountType === 'human_personal' || admission.accountType === 'human_privileged') {
+      if (!link || link.status !== 'active') add('ADMISSION_IDENTITY_LINK_REQUIRED', `principalAdmissions[${index}].identityLinkId`, 'human admission 必須指向 active identity link')
+      else {
+        if (admission.principalFingerprintSha256 !== principalFingerprintSha256(link.issuer, link.subject) || admission.issuerFingerprintSha256 !== issuerFingerprintSha256(link.issuer)) add('ADMISSION_FINGERPRINT_MISMATCH', `principalAdmissions[${index}]`, 'fingerprint 與 identity link 不符')
+      }
+      if (admission.sharedRetirementState !== 'not_applicable') add('ADMISSION_RETIREMENT_STATE_INVALID', `principalAdmissions[${index}].sharedRetirementState`, 'human admission 必須為 not_applicable')
+    } else if (admission.identityLinkId !== null || admission.sharedRetirementState === 'not_applicable' && admission.accountType === 'legacy_shared') add('ADMISSION_IDENTITY_LINK_FORBIDDEN', `principalAdmissions[${index}]`, 'shared/service admission 不得建立 identity link')
+  }
   const appIds = new Set(data.applications.filter((v) => v.status === 'active').map((v) => v.id)); const employeeIds = new Set(source?.state.employees.map((v) => v.id) ?? []); const roles = new Map(data.applicationRoles.map((role) => [role.id, role])); const permissions = new Map(data.permissions.map((permission) => [permission.id, permission])); const catalogByApp = new Map(catalogs.map((catalog) => [catalog.applicationId, catalog]))
   for (const catalog of catalogs) { if (catalog.validationState === 'stale') add('EXTERNAL_CATALOG_STALE', `catalogs.${catalog.applicationId}`, '外部 catalog 已過期'); if (catalog.validationState === 'invalid') add('EXTERNAL_CATALOG_INVALID', `catalogs.${catalog.applicationId}`, '外部 catalog 驗證失敗'); if (catalog.validationState === 'unavailable') add('EXTERNAL_CATALOG_UNAVAILABLE', `catalogs.${catalog.applicationId}`, '外部 catalog 暫時無法取得') }
   for (const [index, role] of data.applicationRoles.entries()) { if (role.applicationId !== 'orgmaster') add('EXTERNAL_CATALOG_READ_ONLY', `applicationRoles[${index}]`, '外部 application role 只能由外部系統定義'); if (!appIds.has(role.applicationId)) add('APPLICATION_NOT_FOUND', `applicationRoles[${index}]`, 'application 不存在') }

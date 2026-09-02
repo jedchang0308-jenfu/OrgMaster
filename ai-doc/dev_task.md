@@ -1,22 +1,95 @@
 # OrgMaster 開發任務
 
+> **2026-09-02 DEV-041 final acceptance override — Chromium native behavior accepted**：使用者正式接受noop／rejected在`dropEffect=none`時Chromium不派送terminal `drop`的原生行為。合法拖放仍要求terminal `drop`、恰好一次mutation與revision change；noop／rejected改以terminal `dragend`、zero mutation、revision unchanged、session cleanup與0 console/pageerror判定。既有aggregate已滿足條件，產品程式與effect policy不變；DEV-041現行狀態為`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`。本段優先於下方gap／Partial歷史文字；未授權freeze、commit、merge、deploy或release。
+
+> **2026-09-02 DEV-042 validation closure override**：依權威spec完成 single-layer workspace replacement：正式移除快速抽屜／promotion control flow，十個模組由頂部 launcher 統一 open-or-focus；employees／positions／departments／duties／management-methods 採相鄰 list-detail，detail 由 session-owned `openDetails` 控制，`details=none` 明確保留清單脈絡，窄 panel 轉為單一 surface。四個 DEV-040 governance／catalog 測試契約漂移已改為 workspace scope／current catalog version，local-development management-method authorization亦已修正並補 regression。完整回歸 `174 files／716 passed／1 skipped`，targeted gate、typecheck、client＋server build與production source scan均通過。Fresh Browser S7 已完成 E1～E9：E5 API／UI不再出現`FORBIDDEN`，E7 split／resize／pin／close／zero-panel通過，DEV-041四向 native、zero-mutation、auto-pan與console/pageerror沿用最新aggregate覆核。唯一 manifest=`output/playwright/dev042/manifest.md`，fixture已archive；task-owned 5080 runtime已停止並確認port釋放。DEV-042 現行狀態為`RD Implementation Complete / Browser QA-QC Passed / Local Release Gate Pending`；未授權candidate freeze、commit、merge、deploy或release。權威契約：`ai-doc/specs/DEV-042-single-layer-workspace-contract.md`。
+
+> **2026-09-02 DEV-041 targeted-count correction**：同一組 7 個 DEV-041 targeted test files 已於本輪重新執行，最新輸出為 `36 tests passed`；current override 若仍列 `37 tests`，僅代表較早計數 provenance，不得覆寫本次結果。
+
+> **2026-09-02 DEV-041 current override — fresh native aggregate completed with one browser-policy gap**：依 RD Technical Lead 審查，`effectAllowed` 已從各 caller 選填收斂至 `relationEffectAllowedFor(payload)`：Employee=`copyMove`、Duty=`all`（涵蓋 Position 的 copy／move 與 ProcessNode 的 link）、ProcessNode=`link`；target 仍依既有 resolver 設定實際 `dropEffect`，且只有 `active && available && onPreview && onCommit` 才宣告可接收。ProcessNode關係來源以`data-relation-drag-handle="true"`明確保留native promotion，非互動區仍維持整列可拖、內層控制項仍排除。latest targeted `7 files／37 tests`、typecheck與build通過。四個獨立 fresh fixture 由正常入口及 system Chrome 完成 `EMP-POS`、`DUT-POS`、`PROC-DUT`、`DUT-PROC`：均有 strict MIME、正確 `effectAllowed／dropEffect`、terminal `drop／dragend`、revision變更與canonical readback；Organization／Process owner canvas 四邊 auto-pan、zoom保留與取消後revision不變亦已驗證，全部 console／pageerror sweep為0。aggregate=`output/playwright/dev041/F041-QA-QC-native-aggregate.json`，所有fixture cleanup均`archived`，5080已釋放、5000未觸碰。`NOOP-EMP-POS`／`REJECT-PROC-POS`確認zero mutation與terminal dragend，但Chromium在`dropEffect=none`不派送terminal drop；此為待決定的effect policy browser gap，故現行狀態為`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Partial / Effect Policy Decision Pending`，不得宣稱QA-QC Passed、candidate freeze或commit。
+
+> **2026-09-01 DEV-039 E1 paired strict pass 最新覆寫**：產品只將 `ProcessDutyBridge` responsibility lane source 的 HTML5 `effectAllowed` 由 `copy` 對齊既有 target 的 `link`；未新增 MIME、resolver、Command、API、state、listener或第二輸入路徑。全新隔離 fixture `draft-4af67fa3-4e33-4644-8768-cb65d4642396` 以 `功能 → 流程規劃 → 在工作台開啟 → 流程圖`及真實滑鼠路徑，完成 `duty-dev039-b16-primary / primary-execute → process-node-dev039-b16-open` 的完整 `dragstart→dragenter／dragover→drop→dragend`、strict `application/x-orgmaster-entity`、`effectAllowed=link`／`dropEffect=link`、UI成功結果、API `200`／revision變化與canonical `process-duty-2` readback；既有 link保留。artifact=`output/playwright/dev039/F039-S7-E1-duty-process-native-strict.json`，archive manifest revision=`f253ca113db5ad40ef32349f56f3778a558370af1e72008da39d5fb802b56e0f`，5080已釋放、5000未觸碰。四個 E1 minimum directions現均有strict evidence，E1 aggregate可標為`Pass（evidence）`；正式 QA-QC已完成覆核，E4為`Candidate Freeze Ready / Authorization Pending`，不代表commit、merge、deploy或release。權威細節見主spec第26.21.25節、Parity第16.15.21節與evidence manifest最新QA-QC段落。這段優先於下方較早的E1／E4快照。
+
+> **2026-09-01 DEV-039 現行覆寫**：E2 五案已依主spec第2.3／26.14節完成 `historyEvidence` 行為性 Undo round-trip 重跑；同一 runner 加兩案 E3 共 `7 passed`，fixture `draft-02d6deb8-9c2b-4653-85a9-a970b9bff50c`，archive manifest revision=`562a844e860c2baf9714986f5ce61a93fc92c565f06750c85022b21f517e656c`。E2 aggregate現為 `Pass（evidence）`，正式 QA-QC已覆核；E1四向strict native亦已通過，E4只剩候選凍結授權。這段優先於下方較早的 E2 `Partial／Open` 快照。
+> **2026-09-01 DEV-039 E1 runner補充（歷史 runner provenance）**：headful Playwright 一次性 probe 未取得可採用的 strict `dragstart→dragover→drop`／`DataTransfer.types`，第一次因未先選取 ProcessNode無可見 target，修正 harness後第二次超時中止；當時不改 E1 `Partial／Open`、paired `not-run`或E4。後續已由 strict native paired record與正式 QA-QC覆寫，現行判定見主spec第26.21.25節、Parity第16.15.21節，且不得新增第二runner、fallback或第二證據清冊。
+
+> **2026-09-01 DEV-039 E1 strict native 單方向覆寫**：在 ProcessNode source handle 的 pointer／mouse capture與 App deferred placement begin 窄修正後，以全新隔離 fixture `draft-f002b99c-88a4-417f-8892-a32b64e2b673` 完成 `ProcessNode→Duty` strict native 單案：`dragstart→dragenter／dragover→drop→dragend`、strict `application/x-orgmaster-entity`、UI成功結果、明確 `Control+S`後API `200`／revision變化與canonical `process-duty-2` readback；artifact=`output/playwright/dev039/F039-S7-E1-process-duty-native-strict.json`，archive manifest revision=`9fad8fcae1594dae4e9c7ef72116f6aa2a8aad5ff33fc2abd28198304b10f2dd`。僅將 `E1-PROC-DUT-NATIVE`標為`pass`，paired direction已由後續 record補齊，四向aggregate為`Pass（evidence）`並已完成正式 QA-QC；一次性runner已移除，不新增第二輸入路徑、resolver、MIME或第二 evidence manifest。權威細節見主spec第26.21.23節、Parity第16.15.19節。
+
+> **2026-09-01 DEV-039 E1 paired reverse boundary（historical provenance）**：全新隔離 fixture `draft-fac7242d-f6b5-4e48-80f7-2d1424548be0`以既有 canonical `功能 → 流程規劃 → 在工作台開啟 → 流程圖`與真實滑鼠路徑，從`duty-dev039-b16-primary / primary-execute`拖至`process-node-dev039-b16-open`；觀察到`dragstart／dragenter／dragover／dragend`及 strict `application/x-orgmaster-entity`，但沒有 terminal `drop`、UI成功結果或domain mutation，API status=`200`且revision／既有link IDs不變。artifact=`output/playwright/dev039/F039-S7-E1-duty-process-native-blocked.json`，archive manifest revision=`3294af10da7136c203ca3cac0f3a049e9d69563421cda22f09584d253e3313d0`，5080已釋放、5000未觸碰。正式判定`E1-DUT-PROC-NATIVE=blocked／not-run`，不是resolver／API失敗；E1 aggregate、正式QA-QC與E4不變。除非取得可讀真實`DataTransfer`並完成terminal `drop`的新runner，否則停止同類重試，不新增synthetic fallback、第二MIME／resolver／mutation owner或第二證據清冊。權威細節見主spec第26.21.24節、Parity第16.15.20節。
+
+> **2026-09-01 DEV-041 RD technical lead follow-up**：隔離 5080 system Chrome probe 確認 ProcessNode 位於 React Flow 時，ancestor `mousedown` 會在瀏覽器 `dragstart` 前阻斷 native promotion；以 shared relation source adapter 的 `stopMouseDownPropagation` 窄選項修正，ProcessNode root 啟用，其他 source surface 不改事件流。其後以全新 fixture及正常入口完成一條 `ProcessNode→Duty` native RD probe：strict MIME、完整 terminal event chain、`link` effect、revision變更與 canonical `process-duty-2` readback 均成立，artifact=`output/playwright/dev041/F041-S7-PROC-DUT-native-rd-probe.json`。另將 `onBegin` 收斂為必要callback，缺失時 fail-closed；再將pointer origin移至module-local WeakMap，避免factory重建遺失gesture狀態，並將`onCancel`收斂為required，缺失時不輸出draggable；target若缺`onPreview`／`onCommit`也不宣告可接收，補齊factory重建／terminal cancel／target fail-closed regression tests。targeted `11 files／52 tests`、required regression `170 files／693 tests（1 skipped）`、typecheck與build通過。四向 API／revision、zero-mutation、console、cleanup與auto-pan evidence仍是QA／QC gate，DEV-041維持`RD Implementation Partial / P1 Native Reverse-Direction Open / Automated Gate Passed / Browser Native Evidence Pending`。
+
+> **2026-09-01 DEV-041 RD final document audit**：依 RD Technical Lead review 修正主spec第11.4節的過期測試數字（`52／693`）及第18.3節 fixture cleanup 的實際成功條件（`archived` readback），並統一 task-owned runtime 範例使用 `127.0.0.1:5080`。這些是文件一致性修正，不改產品契約或狀態；四向 fresh native QA／QC evidence仍是唯一開放gate，未宣稱 `QA-QC Passed`、candidate freeze、commit、merge、deploy或release。
+
+> **2026-09-01 DEV-041 RD review／native observation follow-up**：依技術主管檢視，Organization employee row 已與 ProcessNode 一樣接入 shared relation source adapter 的 `stopMouseDownPropagation`（pointer／mouse capture），不新增第二拖曳實作；targeted adapter／OrgNode tests、typecheck通過。fresh fixture 的 Employee directory→Position與Organization keyboard→Position可讀回mutation；Organization native row→Position與Duty lane→Position於本次 Chrome CUA未產生mutation，partial record=`output/playwright/dev041/F041-QA-QC-partial-native-evidence.json`。該 record 所用 B16 fixture 已完成 cleanup `archived` readback（manifestRevision=`2f83ad7d801f9c8644f81531d1326b2c9177e59a9cf8ade0dab69cb371b1b375`），task-owned `5080` runtime已釋放；user-owned `localhost:5000`未觸碰。因此 DEV-041仍為 `RD Implementation Partial / P1 Native Reverse-Direction Open / Automated Gate Passed / Browser Native Evidence Pending`，不可把partial observation或keyboard結果當作四向QA／QC通過。另重跑 full regression 得 `171 files／695 tests passed，1 skipped`；該 broad run包含目前工作樹 supplemental／未追蹤測試，只作回歸觀察，不提升native QA／QC或candidate freeze。
+
+> **2026-09-01 DEV-041 console-noise closure**：補上`OrgNode`員工映射的穩定`key={employee.id}`，不改變拖曳／資料契約；targeted component／adapter rerun `7 files／32 tests`通過，React key warning不再出現。Vite extension／bundle-size advisory與測試環境`act`提示仍列為baseline；native四向QA／QC gate不變。
+
+> **2026-09-02 DEV-041 browser-plugin CUA observation**：以全新 task-owned fixture `draft-4c97fb76-bff9-44a2-b743-de86eeb0501d`確認 ProcessNode source 與合法 Duty target 均可見；跨面板 CUA drag transport call完成，但未觀察到 terminal `drop`／domain mutation，API readback仍只有既有 link。此筆只作 runner capability provenance，判定 `blocked／not-run`，不推論產品失效；完整 cleanup／runtime release與停止同runner重試規則見主spec第11.4節，DEV-041維持 `RD Implementation Partial / P1 Native Reverse-Direction Open / Automated Gate Passed / Browser Native Evidence Pending`。
+
+> **2026-09-02 DEV-041 native reverse-direction P1 observation**：以全新 fixture `draft-5069a060-3786-40f6-874c-4e87434e6ba2`重演職掌抽屜 `duty-dev039-b16-primary／primary-execute` → 尚未連結 `process-node-dev039-b16-open`；source／target均為 shared binding，但真實事件止於 `dragstart→dragenter／dragover→dragleave→dragend`，API未新增link。source `effectAllowed=copyMove` 與 link target 要求的 `dropEffect=link` 不相容，登錄為可重現 implementation blocker；修正 shared multi-target effect capability並取得fresh evidence前，不得標示四向 QA／QC、candidate freeze或commit。
+
+> **2026-09-02 DEV-041 native reverse-direction correction closure**：依 RD Technical Lead review，shared adapter新增`relationEffectAllowedFor(payload)`（Employee=`copyMove`、Duty=`all`、ProcessNode=`link`），移除caller自行指定`effectAllowed`，並補 `6 files／26 tests`、typecheck與build。全新 fixture `draft-2e844948-3bec-4d3e-a2eb-824c26453bdf` 以system Chrome正常入口完成 Duty lane→ProcessNode correction probe：strict MIME、source `effectAllowed=all`、target `dropEffect=link`、target `dragenter／dragover`、terminal `dragend`、API revision變更與canonical `process-duty-2` readback成立；runner trace未單獨列出`drop` listener，故只作RD correction probe，不計入四向QA／QC aggregate。fixture以`archived` readback清理（manifestRevision=`cdb021ae3122fd708fda8aebbaea07ea96db5d910a97d428d928e740437a7a0b`），5080已釋放、5000未觸碰。P1 implementation blocker已關閉；四向native、zero-mutation、auto-pan、console與獨立cleanup gate仍待QA／QC。
+
 ## 專案最高產品原則
 
 - `Human Confirmed / 2026-08-23`：OrgMaster 手機版只提供唯讀閱讀與導覽，不提供任何建立、修改、刪除、排序、拖放、配置、移轉、核准、發布或其他資料寫入能力。
 - 手機版可閱讀組織架構、工作事項／職掌、責任配置及管理辦法，並使用搜尋、篩選、切換與明細導覽；寫入控制不呈現，直接進入既有編輯 URL 也只能取得唯讀內容。
 - 桌面／筆電仍依 organization workspace mode、version status、治理權限及既有 validation 決定能否編輯；手機唯讀是額外的產品能力邊界，不取代安全授權，也不得只靠隱藏 CSS 控制。
 - 平板是否可編輯及全系統手機／桌面能力判定仍由 DEV-033 確認；未確認事項不得反向解讀為手機可編輯。DEV-032 為解除自身實作阻塞，採更保守的 scoped gate：只有至少 1024px、hover＋fine pointer 同時成立才開放管理辦法 mutation，其餘先唯讀；這不替代 DEV-033。
-- 本原則優先於 DEV-028、DEV-029、DEV-031 及其他既有文件中允許手機／窄 viewport 編輯的舊契約；既有測試與截圖仍是當時完成狀態的歷史證據。產品程式尚未依本原則修改，由 DEV-033 追蹤，不得將文件完成誤報為產品完成。
+- 本原則優先於 DEV-028、DEV-029、DEV-031 及其他既有文件中允許手機／窄 viewport 編輯的舊契約；既有測試與截圖仍是當時完成狀態的歷史證據。DEV-039已在新版workspace的Directory、管理辦法與治理surface採default-deny唯讀intersection，但這只證明其在DEV-039範圍內的部分落地；全系統 deterministic boundary仍由DEV-033追蹤，不得將局部完成誤報為全產品完成。
 
-文件成熟度：DEV-038 為 `RD Implementation Ready / MVP Implementation In Progress / QA-QC Pending / Local Release Gate Pending`；其餘 DEV 狀態以「總任務清單」與各 DEV 權威段落為準。
+文件成熟度：DEV-042為`RD Implementation Complete / Browser QA-QC Passed / Local Release Gate Pending`；P0／P1 readiness gap=`0`。DEV-041為`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`；DEV-040整體為 `RD Contract Ready / ID1A-ID1B Local Implementation Complete / Activation Candidate Verified / Production Switch Gated`，其中`040-ID1A／ID1B`已完成local／isolated implementation與targeted QA／QC；`JMS-PLATFORM-005 OrgMaster slice`已完成`005-S0／S1／UI0／S2／S3 Local-Isolated PASS`，S3包含migration 005、V3-compatible effective／authority views、commit-first outbox wrapper與dispatcher，`005-S4A～S5`及production authority switch仍未實作；`JMS-PLATFORM-009 OrgMaster slice`為`RD Implementation Ready / Documents Only / Implementation Not Started`，固定system_admin exact privileged-principal專屬治理、V2拒絕與alert outbox，下一步`009-S0`；Jenfu Platform DEV-004 `004-S0～S5`皆為`Local PASS / Live G2 Gated`，DEV-006 persistence為`Cloud SQL Adapter Implemented / Fresh G1 PASS / Private-Only Candidate PASS and Cleaned / Production Not Activated`。DEV-039 為 `S0～S6 Historical Complete / S7 Relation Placement Implemented / QA-QC Passed / E4 Candidate Freeze Ready / Authorization Pending`；DEV-038 為 `RD Implementation Ready / MVP Implemented / QA-QC Pending / UI Composition Replaced by DEV-039`；其餘 DEV 狀態以「總任務清單」與各 DEV 權威段落為準。
 
 ## 總任務清單
 
-- ◐ DEV-038 [交付點] [執行中] [P1] [RD Implementation Ready／MVP 實作完成／QA-QC 待完成] 流程－職掌－責任聯動規劃工作台
-  - 摘要：讓總經理與主管先用同一組 ProcessNode 的心智圖拆解工作、再用流程圖安排順序，接著連結既有 Duty、選定主執行／協作／審核／會簽並拖到 Position；ProcessNode↔Duty↔DutyPositionRelation↔Position 為固定資料鏈，DEV-034 繼續負責 relation mutation，DEV-036 繼續負責唯讀責任盤點／分布。S4／S5 已落地，包含 Process 編輯、雙 React Flow 投影、三向高亮、native drag、keyboard placement 與 V7 draft autosave／reload；S6 QA/QC gate 尚未簽核。
+- ✓ DEV-042 [交付點] [完成] [P1] [RD Implementation Complete／Browser QA-QC Passed／Local Release Gate Pending] 單層功能工作台與可收合清單明細
+  - 摘要：移除「功能抽屜 → 在工作台開啟」第二層入口；頂部功能選單直接新增或聚焦唯一對應面板。有清單的模組統一採「清單＋緊鄰明細」工作台，明細可收合而保留清單、查詢、篩選與捲動脈絡。
+  - 來源 ID：`USER-2026-09-02-SINGLE-LAYER-WORKSPACE-INTENTIONAL-REPLACEMENT`、`USER-2026-09-02-DEV042-RD-IMPLEMENTATION-READY`、`USER-2026-09-02-DEV042-RD-TECH-LEAD-REVIEW`
+  - 父交付點：DEV-039；DEV-041 的共用關係拖曳互動列為不得回歸基線
+  - 權威契約：`ai-doc/specs/DEV-042-single-layer-workspace-contract.md`；ADR-009 DEV-042 amendment。
+  - 進度補充：既有 localhost:5000 smoke與fresh task-owned 5080 Browser S7均已完成；E1～E9通過，manifest為`output/playwright/dev042/manifest.md`，fixture已archive。四個DEV-040 full-regression failures已依目前workspace-scoped catalog contract修正並完成回歸。
+  - 下一步：僅剩 local release gate與使用者／PM對candidate freeze、commit、merge、deploy或release的個別明確授權；不得自行執行上述動作。
+  - 計入交付：是
+
+- ✓ DEV-041 [開發點] [完成] [P1] [RD Implementation Complete／Automated Gate Passed／Browser Native QA-QC Passed／Candidate Freeze Ready／Authorization Pending] 跨面板關係拖曳互動一致化
+  - 摘要：以員工清單整列拖曳與組織圖即時定位作為標準互動契約，將所有已登錄關係配置來源的整個物件／卡片設為拖曳表面，並把落點回饋、完成後行為及畫布邊緣平移收斂到共用互動核心。
+  - 來源 ID：`USER-2026-09-01-RELATION-DRAG-INTERACTION-TEMPLATE`、`USER-2026-09-01-DEV041-HCS-R1-1A-2B-3A`、`USER-2026-09-01-DEV041-HCS-R2-4A-5A-6A`、`USER-2026-09-01-DEV041-HCS-R3-7A-8A-9C`、`USER-2026-09-01-DEV041-HCS-R4-10A-11A-12A`、`USER-2026-09-01-DEV041-HCS-R5-13A`、`USER-2026-09-01-DEV041-RD-IMPLEMENTATION-READY`
+  - 父任務：DEV-039
+  - 權威契約：`ai-doc/specs/DEV-041-relation-drag-interaction-contract.md`（現行狀態以主spec §0.1／§20 為唯一來源；本清單只作派工摘要）
+  - 下一步：QA／QC已關閉；只有取得使用者／PM明確授權後才可執行candidate freeze或commit，merge、deploy與release仍各自受原有gate約束。
+  - 計入交付：否（統一 DEV-039 既有關係配置能力，不重複計算產品交付）
+
+- ◐ DEV-040 [開發點] [部分完成] [P0] [040-ID1A／ID1B local implementation＋targeted QA/QC complete；JMS-PLATFORM-005 S0／S1／UI0／S2／S3 Local-Isolated PASS；JMS-PLATFORM-009 RD Implementation Ready／Documents Only；Production Switch Gated] 鉦富平台角色生效與 AI-PDM 既有使用者整合
+  - 摘要：保留可歸責的AI-PDM個人身分但重設既有role；3筆human identity連Employee，1筆legacy shared account非破壞退場；一般管理用日常身分＋step-up，高權限用同人專用privileged identity，待生效assignment經pilot後分批切換。
+  - 來源 ID：`USER-2026-08-30-JENFU-PLATFORM-HCS-4A-5A-6B`、`USER-2026-08-30-JENFU-PLATFORM-HCS-ROLE-RESET-CUTOVER-ADMIN-SCOPE`、`USER-2026-08-30-JENFU-PLATFORM-HCS-PRESTAGE-PILOT-LEGACY-OBSERVATION`、`USER-2026-08-30-JENFU-PLATFORM-HCS-SUPERADMIN-ZERO-TOLERANCE-OBSERVATION-WINDOW`、`USER-2026-09-01-JENFU-ACCOUNT-TAXONOMY-1B-2A-3D`
+  - 父任務：DEV-037；跨 repository 交付為 `Jenfu-Management-system` DEV-001／DEV-004～006
+  - 下一步：保留ID1A／ID1B與JMS-PLATFORM-005 S3 local evidence；跨repo可執行新安全切片為`009-S0` canonical v2 contract＋current catalog完整metadata＋shared full-policy classifier＋V2 generic system_admin deny，由Platform contract與OrgMaster guard共同驗證。既有DEV-005下一步仍為AI-PDM `005-S4A` request enforcement。之後仍須owner提供3筆human exact link、1筆legacy shared退場與active policy產生production IAR，另經release gate才可apply migration或切production authority。
+  - 阻塞 / 恢復條件：ID1A／ID1B皆無文件blocker；舊`ready=0 / missing_employee=4`只是歷史快照。production仍需owner-approved`human ready=3／3`、`legacy shared=1／login enabled=0`、`unresolved=0`、production issuer aligned與active policy，並另進release gate。
+  - 證據：`contracts/jenfu-platform-auth/v1/contract-lock.json`；Platform S0=`output/dev-004/DEV004-S0-20260831T011207701Z-feb3f724/`、S1 fresh=`output/dev-004/DEV004-S1-20260831T044053020Z-b4c799d6/`、S4=`output/playwright/dev004-s4/manifest.md`；AI-PDM S2=`../AI_PDM/output/qa/dev-004/DEV004-S2-20260831T030530606Z/`（focused 14／14、DEV-046 16／16、login alias 21／21）；OrgMaster S3=`output/playwright/dev004-s3/manifest.md`；S5=`../../Jenfu-Management-system/output/dev-004/DEV004-S5-20260831T054317661Z-75bb1fcc/manifest.json`；DEV-006 activation=`../../Jenfu-Management-system/output/dev-006/releases/DEV006-R1-c617c6cf9e0d/`；JMS-PLATFORM-005 S1=`../../Jenfu-Management-system/ai-doc/qc/qc-dev-005-s1-publication-acl-2026-09-02.md`，S3=`../../Jenfu-Management-system/ai-doc/qc/qc-dev-005-s3-projection-authority-invalidation-2026-09-02.md`
+  - 規格：`ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md`；跨系統主契約與QA／QC位於`C:\VIBE CODING\Jenfu-Management-system\ai-doc\specs`／`qa`
+  - ADR：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md` 2026-08-30 amendment
+  - 計入交付：否（跨 repository 交付由 Jenfu Management System DEV-001 計算）
+
+- ◐ DEV-039 [交付點] [執行中] [P1] [S0～S6 Historical Complete／S7 Relation Placement Implemented／QA-QC Passed／E4 Candidate Freeze Ready／Authorization Pending] 可組合規劃桌面與跨面板關聯配置
+  - 摘要：S0～S6工作台與面板邊界保留；S7以單一 typed Placement Session 統一 native／keyboard，沿用既有 resolver 與 mutation authority。最新 B16 fixture `draft-02d6deb8-9c2b-4653-85a9-a970b9bff50c` 合併 E2 五案＋E3-LIFECYCLE＋E3-WARNING native CDP 共 `7 passed`；五案均含 `historyEvidence` 行為性 Undo round-trip，E2 aggregate為 `Pass（evidence）`，E3兩案為`pass`。另以全新隔離 fixture `draft-f002b99c-88a4-417f-8892-a32b64e2b673`完成 ProcessNode→Duty、`draft-4af67fa3-4e33-4644-8768-cb65d4642396`完成 paired Duty→ProcessNode，四個 E1 minimum directions均有strict native pass evidence；正式 QA-QC已覆核，E4進入候選凍結但尚待明確授權，不代表commit／merge／deploy／release。
+  - 來源 ID：`USER-2026-08-28-COMPOSABLE-PLANNING-DESKTOP`、`USER-2026-08-28-BRANCH-LEVEL-UI-REPLACEMENT`、`USER-2026-08-28-DEV039-HCS-ROUND-1`、`USER-2026-08-28-DEV039-HCS-ROUND-2`、`USER-2026-08-28-DEV039-HCS-ROUND-3`、`USER-2026-08-28-DEV039-HCS-ROUND-4`、`USER-2026-08-28-DEV039-MATURE-MODULE-SLICE-1`、`USER-2026-08-28-DEV039-ALL-CURRENT-FUNCTION-PARITY`、`USER-2026-08-30-STABLE-PANEL-OWNERSHIP-ARCHITECTURE`、`USER-2026-08-30-DEV039-S6-IMPLEMENTATION-READY`、`USER-2026-08-31-NATIVE-CROSS-PANEL-RELATION-PLACEMENT`、`USER-2026-08-31-FIRST-PRINCIPLES-RELATION-PLACEMENT-ARCHITECTURE`
+  - 父任務：DEV-038
+  - 下一步：讀主spec第2.1～2.5.2節、parity第0.1～0.2節及 evidence manifest 的 Current gate snapshot／QA-QC record。E1四個 minimum directions、E2五案 `historyEvidence`及E3兩案均已具備可採用 evidence，正式 QA-QC已完成；不重跑同一證據，不新增 runner、fallback、resolver、mutation owner或第二證據清冊。只有使用者／PM明確回覆例如`授權 DEV-039 candidate freeze 並 commit`，且依主spec第2.4.1節針對 `git status --short` 的97筆項目（展開未追蹤目錄共168檔）完成 DEV-039 exact allowlist selective staging 後，才可執行 E4 candidate freeze 的 immutable commit／merge／release gate。`output/playwright/dev039/**` 受 `.gitignore` 的 `output/*` 保護，證據不 force-add；候選只納入 allowlist 程式與文件。
+  - 阻塞 / 恢復條件：目前 P0／P1 readiness blocker 為0；產品與證據 gate已通過，剩餘唯一邊界是 E4 仍等待使用者／PM 明確授權，不得自行commit、merge、deploy或release。若未來實作需要 schema／API／permission、第二 business state、generic event bus、plugin 或任意未登錄關係，立即停止回PM。
+  - 證據：S0～S6歷史證據與S7 B16 evidence位於`output/playwright/dev039/manifest.md`；S7新增`relationPlacement.test.ts`、`entityDrag.test.ts`、`ProcessPlanningWorkbench.test.tsx` composition harness、`ProcessDutyBridge.test.tsx`、`ProcessPlanningCanvas.lifecycle.test.tsx`、workspace architecture／layout regression及`scripts/dev039-s7-fixture.test.ts`，最新 targeted pure／fixture `11 files／57 tests`、component／composition `6 files／24 tests`（關聯與lifecycle合併重跑 `4 files／20 tests`）、full regression `160 files／664 tests（1 skipped）`、typecheck、build與source scan通過；Process canvas after-fix artifact為`F039-S7-E3-process-geometry-after-fix.png`，同一B16 split／reload／flow量測與產品 console `0／0`已記錄。B16 fixture已建立、讀回並封存；最新 E2／E3 record fixture為`draft-02d6deb8-9c2b-4653-85a9-a970b9bff50c`，archive manifest revision=`562a844e860c2baf9714986f5ce61a93fc92c565f06750c85022b21f517e656c`。Playwright E2 fresh artifacts為`F039-S7-E2-invalid-pair.png`、`F039-S7-E2-invalid.png`（語意為COMMIT-REJECT）、`F039-S7-E2-capability-loss.png`、`F039-S7-E2-409-recovery.png`、`F039-S7-E2-unload.png`，五案 status `200`、hydrated→after assignment／relation／link IDs與revision不變、persistence snapshot無「未儲存變更」、產品 diagnostics為空；五案均含 `historyEvidence` 合法 mutation＋恰好一次 Undo round-trip 回完整 canonical baseline，E2 aggregate為`Pass（evidence）`，E3兩案為`pass`。最新 E1 CUA evidence為主spec第26.21.18節／parity第16.15.16節（fixture `draft-5e4cbfa1-db5c-4c7c-af22-2b3000d0fcbc`、新增link `process-duty-5ca3f40b-7335-4bf0-9679-fde86117c778`、API status `200`、archive manifest revision `005fda19cd0655480ee0a4d71cdaf3a8ac0140bf783e6045e536d9dc6f372c56`）；該筆未驗證 strict `DataTransfer.types`，不計為 E1 pass。可重跑 script為`output/playwright/dev039/e2-admission.pw.ts`（本機需使用與helper相同的 Playwright `1.62.1` CLI，並可用`DEV039_E2_VERSION_ID`指定新fixture，避免`npx`另載一份測試runtime造成雙module）；fixture helper現已補loopback identity headers、Windows CLI entrypoint、timestamp-only 409 revision bump與stale route recovery；新增自動化 E2 fail-closed與Process canvas lifecycle tests 不改產品契約。
+  - 分支：`codex/dev-039-composable-workspace`
+  - 計入交付：是
+
+  - 最新 E1 證據：`output/playwright/dev039/F039-S7-E1-process-duty-native-strict.json`與`output/playwright/dev039/F039-S7-E1-duty-process-native-strict.json`分別記錄兩個 Process↔Duty strict native方向的完整事件鏈、strict MIME、UI結果、API readback與cleanup；Employee→Position與Duty→Position單案strict record保留於manifest。四個 E1 minimum directions均為`pass`，E1 aggregate為`Pass（evidence）`；舊`F039-S7-E1-duty-process-native-blocked.json`僅作 reverse runner provenance。
+  - 正式 QA-QC：E1～E3 evidence、四方文件與cleanup已覆核；本輪 `npm test -- --run --pool=forks --maxWorkers=1` 為 `160 test files／664 tests passed／1 skipped`，`npx tsc --noEmit --pretty false`、`npm run build`與`git diff --check`通過。E4為`Candidate Freeze Ready / Authorization Pending`，未經明確授權不執行commit／merge／deploy／release。
+  - 桌面 viewport extension（2026-09-01）：同一既有 native relation contract 另以 evidence-only runner 驗證 `1440×900` 與 `1024×768`；兩案均完成正常入口、完整 `dragstart→dragenter／dragover→drop→dragend`、strict MIME、`effectAllowed=link`／`dropEffect=link`、`diagnosticsCount=0`、UI成功結果、API revision變化、canonical `process-duty-2` readback及cleanup。record／screenshot：`output/playwright/dev039/F039-S7-E1-process-duty-native-1440x900.json`、`F039-S7-E1-process-duty-native-1024x768.json`、`F039-S7-E1-cdp-process-duty-1440x900.png`、`F039-S7-E1-cdp-process-duty-1024x768.png`；主spec第26.21.26節為權威說明。`1024×768` archive manifest revision未由compact runner輸出，已以`null`保留，不推測未知值；不新增產品路徑、resolver或清冊，E4授權邊界不變。
+
+- ◐ DEV-038 [交付點] [執行中] [P1] [RD Implementation Ready／MVP 實作完成／QA-QC 待完成／UI Composition Replaced by DEV-039] 流程－職掌－責任聯動規劃工作台
+  - 摘要：讓總經理與主管先用同一組 ProcessNode 的心智圖拆解工作、再用流程圖安排順序，接著連結既有 Duty、選定主執行／協作／審核／會簽並拖到 Position；ProcessNode↔Duty↔DutyPositionRelation↔Position 為固定資料鏈，DEV-034 繼續負責 relation mutation，DEV-036 繼續負責唯讀責任盤點／分布。S4／S5 已落地，包含 Process 編輯、雙 React Flow 投影、三向高亮、native drag、keyboard placement 與 V7 draft autosave／reload；其固定工作台 UI 編排已由 DEV-039 啟動 intentional replacement，領域、Command、儲存與可重用投影仍是新版基線。
   - 來源 ID：`USER-2026-08-27-PROCESS-DUTY-RESPONSIBILITY-WORKBENCH`、`USER-2026-08-27-MINDMAP-FLOWCHART-OSS-DESIGN`
   - 父任務：DEV-034、DEV-036
-  - 下一步：依權威契約補齊 S6 全量 QA／QC 證據（API negative、invalid V7、409、provider isolation、reduced-motion、data-sanity）並完成 QC／release gate；1024 以下組織投影收合、由 Duty bridge Position selector 完成 fallback，列為後續 UI slice。
+  - 下一步：固定版面已由DEV-039完成替換；DEV-038只保留V7、API negative、invalid V7、409、domain validation、autosave／reload與relation transaction等非版面權威。若需對domain作Independent QA/QC，依本DEV基線執行，不復活舊composition。
   - 阻塞 / 恢復條件：P0／P1 readiness blocker 為 0。若需越出 allowlist、修改 ADR-008、複製 Duty／Position、建立第二套 Process／relation store、process-scoped responsibility、BPMN、AI 自動配置或即時多人共編，立即停止並回 PM。
   - 規格：`ai-doc/specs/DEV-038-process-duty-responsibility-planning-workbench.md`
   - 架構決策：`ai-doc/adr/ADR-008-process-planning-organization-version-authority.md`
@@ -29,7 +102,7 @@
   - 完成內容：已依權威契約完成 S1→S4；V2 domain、bundled read-only catalog、V1→V2 非破壞 migration、server／API ownership guard、assignment／role delegation／publish、UI normal delivery path、stale recovery、legacy compatibility、RWD 與完整 regression 均完成。
   - 阻塞 / 恢復條件：OrgMaster-only 實作目前無文件 blocker；若需修改 AI-PDM、正式 IAM／DB／credential、deploy／release，或超出 file allowlist，立即停止並進入 integration／release gate。
   - 證據：`ai-doc/specs/DEV-037-external-role-catalog-assignment-governance.md`、`ai-doc/qa/DEV-037-external-role-assignment-validation-plan.md`、`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`、`output/playwright/dev037/manifest.md`；fresh full regression `122 test files／553 tests`、build、API negative、forbidden scan、三 viewport browser QC 與 runtime cleanup 均通過。
-  - 下一步：若要讓 AI-PDM 實際消費 assignment 或同步 enforcement，另開跨 repo integration ADR／DEV；本 DEV 不修改 AI-PDM、不 deploy、不 release。
+  - 下一步：live access view、AI-PDM 既有使用者 migration 與角色直接生效已由 DEV-040 承接；本 DEV 的 local-only evidence 不得作為 DEV-040 完成證據。
   - 計入交付：是（OrgMaster Current Phase 完成；外部 live integration 另計）
 
 - ✓ DEV-036 [交付點] [完成] [P1] [RD Implementation Complete／QA-QC Passed／Local Release Gate Pending] 雙視角責任規劃完整工作台
@@ -401,10 +474,1133 @@
   - 證據：`npm test -- --run`（19 files／126 tests）、`npm run build`、localhost:5000 真實瀏覽器 1440×900／1024×768／390×844 UI QC；`output/playwright/orgmaster-mode-status-1440x900.png`、`output/playwright/orgmaster-mode-status-1024x768.png`、`output/playwright/orgmaster-mode-status-390x844.png`；右上角狀態 pill 可見、無重疊／水平溢出，並提供 `role=status`、ARIA label 與 title 說明。
   - 計入交付：否
 
+## DEV-042：單層功能工作台與可收合清單明細
+
+狀態：完成（production code、完整回歸與 Browser S7 均已關閉）
+文件成熟度：`RD Implementation Complete / Browser QA-QC Passed / Local Release Gate Pending`
+節點類型：交付點
+父交付點：DEV-039
+是否計入產品交付完成：是
+原始需求邊界：拆除所有快速抽屜與「在工作台開啟」的第二層轉換；所有功能由頂部入口直接進入工作台。有清單的工作台比照員工工作台，提供清單、緊鄰明細與可收合明細。
+來源 ID：`USER-2026-09-02-SINGLE-LAYER-WORKSPACE-INTENTIONAL-REPLACEMENT`、`USER-2026-09-02-DEV042-RD-IMPLEMENTATION-READY`、`USER-2026-09-02-DEV042-RD-TECH-LEAD-REVIEW`
+風險等級：Medium（跨全部功能入口、工作台狀態、URL 還原及既有跨面板互動，但預期不變更資料模型、API 或權限）
+權威文件：`ai-doc/specs/DEV-042-single-layer-workspace-contract.md`
+架構決策：`ai-doc/adr/ADR-009-composable-workspace-shell-boundary.md` DEV-042 amendment
+Readiness：`P0 gap=0 / P1 gap=0`
+
+### RD Technical Lead Review（2026-09-02）
+
+- 結論：`Pass after contract optimization`；DEV-042 production implementation、完整回歸與 Browser S7 均已通過，正式交付 gate 已達成，僅保留 release authority boundary。
+- 核心因果鏈：drawer／panel雙入口造成context與render owner同步責任，進而增加操作層級並允許跨region明細串位；完整移除drawer控制流、只留panel owner才是根因修正。
+- 已移除三個不必要抽象：逐panel detail副本、`contextMode`與`none／collapsible／embedded` runtime taxonomy；改為session-owned唯一`openDetails`＋route projection、optional-context open intent與registry單一boolean。
+- production allowlist已縮到必要shell／state／adapter；Process與Management Method領域page維持不變，只列required regression。source scan排除test檔，避免「測試必須引用禁用symbol、scan又要求全src零字串」的矛盾。
+- `App.tsx`暫維持composition root，不為本DEV新增workspace service；只有context映射出現三個以上非App consumer或integration test無法隔離時，才另立重構DEV。
+
+### 問題與目標
+
+- 現行「頂部功能 → 快速抽屜 → 在工作台開啟 → 完整面板」讓同一功能同時存在抽屜狀態與面板狀態，使用者必須理解兩種容器及 promotion 行為，也讓 RD 維護兩份開啟、選取與脈絡同步路徑。
+- 目標不是單純隱藏底部按鈕，而是把每個功能收斂為一個可組合面板：頂部入口負責開啟或聚焦；面板自己負責清單、選取、明細、編輯及其領域行為。
+- 「單層」指只有一種工作空間容器與一條正式進入路徑；不代表把清單與明細混成同一內容，也不取消工作台內必要的資訊階層。
+- 成功後，使用者只需記住「從功能入口開面板、在面板內完成工作」；系統只需維護一份 module context，不再同步 drawer context 與 panel context。
+
+### Human Confirmed Product Decision
+
+- 所有現有功能模組均由頂部「功能」入口直接開啟工作台；若該類型面板尚未開啟則新增，已存在則聚焦、展開並帶到可視區，不重複新增同類面板。
+- 移除快速抽屜層、底部「在工作台開啟」按鈕，以及以 promotion 將抽屜轉成面板的產品概念。
+- 有清單的模組採一致的 master-detail 骨架：清單靠左、明細緊鄰其右；點選清單項目開啟明細，關閉明細後只留下清單。
+- 關閉明細不得清空清單搜尋、篩選、排序、選取來源脈絡或捲動位置；再次選取項目可於同一面板重新開啟明細。
+- 組織架構圖等本質為畫布／完整 surface 的模組直接顯示其工作台，不被迫套入空的清單或明細欄。
+
+### Intentional Replacement 邊界
+
+- DEV-042取代DEV-039的`WorkspaceQuickDrawer`、drawer module registry／renderer、drawer session state、open／close drawer intent及drawer-to-panel promotion intent；exact symbols、刪除項目與保留邊界已由權威spec第3、10節固定，RD不得擴張allowlist。
+- DEV-039 的 composable workspace、單一同類面板、分割／標籤排列、拖曳展開多視窗、可調整分隔線、固定／關閉、URL 還原、版本與 capability 判定仍是基線，不在本輪重建。
+- DEV-041 的 Employee→Position、Duty→Position、ProcessNode↔Duty 共用 relation drag source／target、owner-canvas auto-pan、strict MIME、resolver、mutation owner與 zero-mutation guard必須完整保留。
+- 現行 DEV-039／041 runtime 的既有能力已在 DEV-042 實作與 QA／QC 中完成回歸；不得將 `Browser QA-QC Passed` 解讀為 candidate freeze、commit、merge、deploy 或 release 已獲授權。
+- 採 `Intentional Replacement`，禁止長期並存 `openDrawer → promote` 與 `openOrFocusPanel` 兩條正式路徑；若需要相容舊 URL，只能在入口做一次性 normalization，不能復活舊 UI 與第二份 business state。
+
+### Current Phase Scope
+
+- 將頂部所有已登錄功能統一接到「不存在則開啟、已存在則聚焦」的面板入口。
+- 為有清單模組建立薄的共用 `ListDetailSurface` 概念：只擁有版面、明細開關、窄寬度投影、焦點與脈絡保存；清單欄位、明細內容、mutation、validation與權限仍由各領域 adapter 擁有。
+- 員工、職位、部門、工作職掌與管理辦法使用共用可收合list-detail骨架；層級維持既有list-only surface，流程維持內建清單＋graph＋bridge的workbench。各模組保留既有完整功能，不以版面統一為由刪除其明細、編輯、風險、規劃或閱讀能力。
+- 組織架構圖採直接畫布工作台；兼任風險與治理功能依既有資訊模型直接呈現完整 surface，若本身具有清單再採相同骨架，不為形式一致而製造空白欄。
+- 清單與明細由左向右緊鄰排列；有足夠寬度時並排，面板被分割到窄寬度時允許在同一 surface 內切換成單欄明細，關閉明細回到原清單脈絡。
+- drawer現況為session-only，沒有可分享drawer URL；既有Duty／Duty Planning／Process Planning／Management Method standalone route做一次性canonical normalization，新產生URL只表達panel、focus、合法module context與detail visibility。
+
+### 模組 Surface 初始對照
+
+| 模組 | DEV-042 預設 surface | 必須保留的核心能力 |
+|---|---|---|
+| 組織架構圖 | 直接畫布 | 組織圖、節點明細、viewport／zoom、關係落點與 auto-pan |
+| 員工 | 清單＋可收合明細 | 搜尋、員工明細、職位／部門關係、整列關係拖曳 |
+| 職位 | 清單＋可收合明細 | 搜尋、職位屬性、層級／部門／上級／員工指派 |
+| 部門 | 清單＋可收合明細 | 部門資料與其職位／人員脈絡 |
+| 層級 | 既有內嵌／清單 surface | 層級資料與所屬職位脈絡；現況沒有獨立detail owner，不製造空白明細 |
+| 工作職掌 | 清單＋可收合明細 | 職掌資料、責任配置、責任盤點／分布及 Duty 關係拖曳 |
+| 流程 | 既有內嵌 workbench | `ProcessPlanningWorkbench`內建流程清單、心智圖／流程圖與ProcessNode↔Duty關係配置；禁止外包成雙清單 |
+| 管理辦法 | 清單＋可收合明細 | 自由創作、多媒體閱讀／編輯、既有治理與唯讀邊界 |
+| 兼任風險 | 直接完整 surface；有清單時沿用共用骨架 | 現有兼任風險設定、啟用狀態與既有判定，不新增風險模型 |
+| 治理 | 直接完整 surface | 現有治理資訊、版本／權限／唯讀規則與操作入口 |
+
+### 主要操作流程
+
+1. 使用者從頂部「功能」選擇模組。
+2. 系統以 module ID 查找已開啟面板：不存在就新增到目前工作台，存在就聚焦既有面板；不得開啟 drawer 或建立重複面板。
+3. 清單型面板第一次開啟時顯示清單；若 URL 或既有可還原 context 指定合法項目，可同時顯示該項明細。
+4. 使用者點選清單項目，在緊鄰區域開啟同一項目的明細；工作台焦點與其他面板排列保持不變。
+5. 使用者關閉明細，回到原清單搜尋、篩選與捲動位置；不關閉整個模組面板。
+6. 使用者再次從頂部選同一功能時，只聚焦面板，不重設 query、selection、detail、scroll 或內部 viewport。
+
+### 狀態與 URL 原則
+
+- 每個 module panel 只有一個 context owner；清單 query／filter、selected entity、detail visibility、module view及可還原的 viewport 不得在 drawer 與 panel 間複製。
+- URL 是可重新整理、返回／前進與分享的session快照，也是初始載入與Back／Forward時的hydration輸入；互動中的runtime authority仍是`WorkspaceSessionState`。session-only scroll／暫態hover可留在面板visual state，但不得形成第二份業務真相。
+- `WorkspaceSessionState.openDetails`是唯一runtime明細開關，`WorkspaceRouteState.openDetails`只由既有`routeFromState／reconcileRoute`投影；canonical URL以`details=<module-id,...>`或`details=none`序列化。不在PanelSession建立逐panel副本。關閉明細只移除module ID並保留context ID、local selection、query、filter及mounted list scroll；關閉panel才移除layout／session／route context。
+- detail close必須由可見close control完成並將focus還給來源row；不得新增global Escape listener。管理辦法dirty detail先走既有save／discard／keep-open guard，guard allow後才收合。
+- invalid／deleted entity由registry sanitizer清除ID／local selection並移出`openDetails`，回到合法list surface；不得render空白detail。
+- `WorkspaceOpenIntent`不帶context時只focus／reveal並保留既有context，明確帶context時才sanitize後替換；不另加`contextMode`造成重複語意。launcher永遠不帶context。
+- exact types、route schema、history相容與舊standalone route normalization以權威spec第4節為準；不得發明第二router或第二state store。
+
+### RD Implementation Contract 摘要
+
+- 目標型別移除`DrawerWorkspaceModuleId`、`surface` drawer分流、`WorkspaceSessionState.drawer`與`PromotionIntent`；registry只新增`supportsCollapsibleDetail: boolean`，完整surface／內嵌workbench差異仍由module adapter擁有。
+- exact replacement橫跨types、registry、reducer、controller、route、shell、launcher、App wiring、surface primitives與對應tests；`WorkspaceQuickDrawer.tsx`為唯一明確刪除的production檔案。
+- 實作分為S0 contract guard、S1 core state／route、S2 shell／launcher removal、S3 master-data ownership、S4 Duty／Process／Management Method、S5 App convergence、S6 automated regression、S7 fresh browser QA／QC。
+- production／test／document allowlist、targeted commands、三viewport、十模組normal-entry、DEV-041四向DnD、FMEA、cleanup及Git邊界均由`ai-doc/specs/DEV-042-single-layer-workspace-contract.md`擁有。
+- Readiness：`P0 gap=0 / P1 gap=0`；RD可以開始，但`Implementation Complete`、`QA-QC Passed`與candidate authority仍須各自取得事實證據。
+
+### 驗收方向
+
+- 所有現有模組都能由頂部功能入口直接開啟或聚焦完整面板；產品畫面不再出現快速抽屜、底部「在工作台開啟」或 drawer promotion 中間態。
+- 重複點擊同一功能不建立第二個同類面板、不重設既有工作脈絡，也不改動其他面板排列。
+- 所有清單型模組均能完成「清單 → 開明細 → 關明細 → 回原清單位置」；搜尋、篩選、選取來源與捲動脈絡不遺失。
+- 寬面板採左清單、右明細緊鄰；窄面板仍可完整完成清單與明細工作，不出現不可操作的壓縮雙欄、水平溢出或被遮蔽控制。
+- 重新整理、瀏覽器返回／前進與可分享URL能還原已開啟panel、focus及合法的選取／detail context；既有standalone routes被一次性正規化且不重新顯示drawer。
+- DEV-039 的 panel tab／split、分隔線調整、pin／close、read-only及狀態保護不回歸；DEV-041 四向跨面板關係拖曳、即時定位、auto-pan、zero-mutation及 console cleanliness不回歸。
+- 手機延續專案最高原則唯讀；本 DEV 不因統一入口而暴露 mutation control。
+- QA／QC 必須從正常頂部入口覆蓋所有模組，並以 source scan 證明舊正式 drawer／promotion 路徑已被移除，而不是只靠 CSS 隱藏。
+
+### Out of Scope
+
+- 不新增領域功能、資料實體、資料表、API、permission、role、Command、resolver、MIME 或第三方 workspace／DnD 套件。
+- 不允許同一 module type 同時開啟多份面板，不重做工作台自由排列演算法，也不改寫 DEV-041 關係拖曳狀態機。
+- 不把各領域清單與明細內容合併成大型共用元件；共用只限版面、開關、焦點與 context 接口。
+- 不在本輪新增行動裝置編輯、多人即時共編、AI 自動選版或新的跨面板關係類型。
+- 不因移除抽屜而刪除任何現有模組、兼任風險、管理辦法、流程、職掌或治理能力。
+
+### 風險與控制
+
+| 風險 | 影響 | Contract 控制方向 |
+|---|---|---|
+| 只隱藏抽屜而保留雙 state | 新舊路徑漂移、持續技術債 | Intentional Replacement＋source scan，正式路徑只留 open-or-focus |
+| 共用元件持有領域規則 | mega component、回歸面擴大 | 共用骨架只處理 layout／context；領域 adapter 保持獨立 |
+| 窄面板雙欄不可用 | 操作被壓縮、明細遮蔽 | responsive 單 surface 投影，關明細必回原清單脈絡 |
+| 移除 drawer 造成能力遺失 | feature parity 回歸 | 以 DEV-039 parity manifest 為基線，逐模組核對所有入口與能力 |
+| URL／返回行為失真 | 重新整理或分享後遺失工作狀態 | 依權威spec採唯一module context、`details` query與standalone route一次性normalization |
+| 跨面板拖曳 source 消失 | 核心規劃流程中斷 | DEV-041 contract列為 required regression，不另建第二 binding |
+
+### 限制、停止條件與下一步
+
+- 本文件與 production code 已達 `RD Implementation Complete / Browser QA-QC Passed`；full regression 為 `174 files／716 passed／1 skipped`，S7 E1～E9與fixture cleanup均完成。僅 release gate與個別 Git authority 仍待明確授權。
+- 若實作需要更動 schema、API、permission、DEV-041 resolver／mutation owner，或無法避免新舊正式路徑長期並存，立即停止並回 PM；不得以 facade、duplicate store或 feature flag 永久包住兩套架構。
+- 若某模組無法在單一panel context保留必要脈絡，立即依spec stop condition回PM；不得為追求形式一致犧牲核心任務。Process與Level差異已在surface matrix固定，不再是待確認問題。
+- 下一步只執行 local release gate 的核對；未取得使用者／PM明確授權，不執行candidate freeze、commit、merge、deploy或release。
+- 本次已執行 DEV-042 production code與測試；未執行candidate freeze、commit、merge、deploy或release。
+
+### 變更紀錄
+
+- 2026-09-02：既有使用者 localhost:5000 完成探索性 browser smoke，確認十個頂部功能入口均可直接加入／聚焦，員工清單與相鄰明細可開關，關閉後來源列 focus restore且舊 `WorkspaceQuickDrawer` 未掛載；未使用 fresh fixture／task-owned runtime，正式 S7 仍維持 pending。
+- 2026-09-02：依權威契約完成 DEV-042 production implementation。移除正式 drawer／promotion control flow，十模組統一頂部 open-or-focus；master-data／Duty／Management Method採相鄰list-detail，`openDetails`為session唯一明細權威，URL支援`details=none`與無效明細fail-closed，窄panel採單surface投影，明細關閉後恢復來源row focus。targeted `8 files／34 tests`＋`6 files／16 tests`、typecheck、client／server build、source scan與allowlist diff check通過；full regression `170 files／711 passed／4 failed／1 skipped`，四個失敗均為既有 DEV-040 tests；Browser S7尚未執行。狀態更新為`Implementation Code Complete / Targeted Automated Gate Passed / Full Regression Blocked by Pre-existing DEV-040 Failures / Browser QA-QC Pending`。
+- 2026-09-02：依RD技術主管審查優化DEV-042契約，結論`Pass after contract optimization`。移除逐panel detail副本、`contextMode`及三態runtime taxonomy，固定session-owned唯一`openDetails`＋route projection、optional-context open intent與`supportsCollapsibleDetail:boolean`；補上`details=none`相容歧義修正、context／localSelection原子不變量、窄化production allowlist及排除test的source scan。P0／P1 readiness gap維持0；未修改產品程式或執行測試／commit／deploy。
+- 2026-09-02：升級至`RD Implementation Ready`。建立權威spec並完成現況symbol、single open intent、session-owned detail state與route／URL projection、`details` route、十模組surface matrix、container responsive、accessibility、exact allowlist、S0～S7、targeted／browser evidence、FMEA、failure recovery及dirty-worktree Git boundary；ADR-009新增DEV-042 amendment。P0／P1 readiness gap=0；未修改產品程式或執行測試／commit／deploy。
+- 2026-09-02：依使用者確認建立 DEV-042；固定單層功能工作台、頂部直接 open-or-focus、清單＋可收合明細、全模組 feature parity及 DEV-039／041 保留邊界。文件成熟度為 `Brief Ready`，未進入產品實作。
+- 2026-09-02：依使用者要求直RD修復並完成驗證。修正 DEV-040 governance／catalog 測試契約漂移與 management-method local-development actor precedence，fresh Browser S7 E1～E9通過；全回歸 `174 files／716 passed／1 skipped`，typecheck、client／server build通過，fixture已archive。DEV-042狀態升為`RD Implementation Complete / Browser QA-QC Passed / Local Release Gate Pending`；未執行candidate freeze、commit、merge、deploy或release。
+
+## DEV-041：跨面板關係拖曳互動一致化
+
+狀態：完成（RD implementation、automated gate、四向native、owner canvas auto-pan、zero-mutation revision guard、console sweep與fixture cleanup均已通過；Chromium `dropEffect=none`原生行為已由使用者接受；現行gate以主spec §0.1／§20為準）
+文件成熟度：`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`
+節點類型：開發點
+父交付點：DEV-039
+是否計入產品交付完成：否（統一既有能力，不重複計算 DEV-039）
+原始需求邊界：以目前員工清單拖曳的觸發條件與組織圖即時定位作為理想範本，其他相關關係配置拖曳比照辦理，並優先共用程式元件。
+來源 ID：`USER-2026-09-01-RELATION-DRAG-INTERACTION-TEMPLATE`、`USER-2026-09-01-DEV041-HCS-R1-1A-2B-3A`、`USER-2026-09-01-DEV041-HCS-R2-4A-5A-6A`、`USER-2026-09-01-DEV041-HCS-R3-7A-8A-9C`、`USER-2026-09-01-DEV041-HCS-R4-10A-11A-12A`、`USER-2026-09-01-DEV041-HCS-R5-13A`、`USER-2026-09-01-DEV041-RD-IMPLEMENTATION-READY`
+風險等級：Medium（跨多個使用者可見互動表面、React Flow 畫布與關係配置狀態機）
+權威契約：`ai-doc/specs/DEV-041-relation-drag-interaction-contract.md`
+
+### RD Technical Lead Review（2026-09-01）
+
+- 結論：`Pass after contract optimization; P1 implementation correction closed`；共用 source／target binding 與 owner-canvas auto-pan 的邊界足夠薄，未新增第二 resolver、MIME、mutation owner、schema、API 或 drag dependency；原 Duty lane→ProcessNode source effect capability mismatch 已由 shared policy 修正並取得 RD probe。
+- 核心因果鏈：分散 raw binding／錯誤 canvas owner → 各面板的 promotion、preview、auto-pan 不一致 → 使用者無法形成可預期的拖曳肌肉記憶，RD 只能持續局部修補。最小修正是共用互動 adapter，保留既有 domain authority。
+- 已關閉：pointer origin 改用 module-local `WeakMap`；source `onBegin`／`onCancel` 與 target owner callbacks fail-closed；React Flow source 的 pointer／mouse capture 隔離；factory 重建、terminal cancel 與 target fail-closed regression 均有測試。
+- 最終判定：使用者已接受noop／rejected在`dropEffect=none`下Chromium不派送terminal `drop`的原生行為；合法拖放仍要求terminal `drop`與恰好一次mutation，noop／rejected以terminal `dragend`、zero mutation、revision unchanged、session cleanup及0 console/pageerror判定。四向正常入口真實HTML5 native、Organization／Process四邊auto-pan、zero-mutation、console與cleanup aggregate均已取得，故狀態為`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`。
+
+### P1 implementation blocker（2026-09-02；已關閉）
+
+- 真實 system Chrome／Playwright 以全新 fixture `draft-5069a060-3786-40f6-874c-4e87434e6ba2`從職掌抽屜 `duty-dev039-b16-primary／primary-execute` 拖向未連結 `process-node-dev039-b16-open`；source／target皆為 shared binding，但事件止於 `dragstart→dragenter／dragover→dragleave→dragend`，沒有 `drop`，API未新增link。
+- 根因候選已由靜態契約對照縮小為 source `effectAllowed=copyMove` 不涵蓋 link target 的 `dropEffect=link`；這不是新增 resolver 的理由。修正方向是由 shared adapter 計算多目標 source 的 effect union，再重跑四向 native evidence；禁止以 synthetic drop、鍵盤、API直寫或第二 binding 繞過。
+
+### P1 implementation correction closure（2026-09-02）
+
+- 根因已修正：`relationPlacementBindings` 不再接受 caller 自行指定 `effectAllowed`，改由 `relationEffectAllowedFor(payload)`集中推導；Employee=`copyMove`、Duty=`all`、ProcessNode=`link`，target仍由既有resolver投影實際`dropEffect`。
+- 全新 fixture `draft-2e844948-3bec-4d3e-a2eb-824c26453bdf` 的 system Chrome 正常入口 probe 已觀察 strict MIME、`effectAllowed=all`、target `dropEffect=link`、target `preventDefault`、terminal `dragend`、API revision變更及canonical `process-duty-2` readback；fixture以`archived` readback清理，5080已釋放、5000未觸碰。
+- P1 implementation blocker closed；runner未單獨列出`drop` listener，因此本筆不提升四向QA／QC aggregate。剩餘 gate為第11.2節定義的四向native、failure、auto-pan、console與cleanup。
+
+### Fresh browser QA／QC gate（2026-09-02）
+
+- 四向 native aggregate：四個彼此隔離 fixture、正常產品入口、system Chrome及真實 HTML5 `DataTransfer` 完成 `EMP-POS`、`DUT-POS`、`PROC-DUT`、`DUT-PROC`；每案均有 strict MIME、矩陣對應 `effectAllowed／dropEffect`、terminal `drop／dragend`、revision change、canonical relation readback及 0 console/pageerror。證據索引：`output/playwright/dev041/F041-QA-QC-native-aggregate.json`。
+- Owner canvas auto-pan：Organization `canvas-wrap`與Process `process-planning-canvas`各自以真實 native drag驗證 left／right／top／bottom 四邊 translation改變、zoom不變、取消後revision不變，且兩案 console/pageerror均為0；同一aggregate的`autoPan.records`保存before／after viewport。
+- Zero mutation：`NOOP-EMP-POS`與`REJECT-PROC-POS`均確認revision before／after相同、strict MIME、terminal dragend、session cleanup及0 console/pageerror。Chromium在`dropEffect=none`時不派送terminal `drop`；使用者已接受此原生行為，因此aggregate disposition為`pass`，且不得為補事件而新增第二resolver、synthetic drop或fallback。
+- Fixture／runtime cleanup：四向、zero-mutation與auto-pan fixture均以同一 version id取得 `archived` readback；task-owned `5080`已釋放，user-owned `localhost:5000`未觸碰。aggregate保存各 cleanup manifest revision。
+- Gate判定：`四向 native=Pass`、`auto-pan=Pass`、`console sweep=Pass`、`zero mutation=Pass`、`Browser native QA/QC=Pass`。DEV-041已達`Candidate Freeze Ready / Authorization Pending`；未授權freeze／commit／merge／deploy／release。
+
+### 問題與使用者價值
+
+目前員工、組織圖內員工、工作職掌、流程節點與流程－職掌橋接雖共用 typed payload、registered drop resolver 與 Relation Placement Session，但各元件仍分別實作 `dragstart`、`dragover`、`drop`、焦點復原及畫布定位。相同行為分散後，員工拖曳改善不會自然套用到其他來源，容易出現可拖範圍、落點回饋、取消行為與自動平移不一致。
+
+本 DEV 的價值是把已獲使用者確認的員工互動轉成可重用契約：使用者不必重新學習不同模組的拖曳方式；RD 只維護一套互動核心；新增關係來源時能沿用同一安全、可及與效能邊界。
+
+### Human Decision Brief
+
+- `Human Confirmed`：員工清單整列可拖曳、拖向組織圖時提供即時落點定位與畫布邊緣平移，作為其他相關關係配置拖曳的理想行為範本。
+- `Human Confirmed`：其他已登錄的關係配置拖曳應比照相同觸發、落點回饋、完成後行為、取消、焦點復原與即時定位規則。
+- `Human Confirmed`：優先共用元件，避免每個模組複製事件處理。
+- `1A / Human Confirmed`：「其他相關拖曳」固定為 DEV-039 已登錄的 Employee→Position、Duty→Position、ProcessNode↔Duty Relation Placement；職位階層重排、工作台面板排列與舊職掌矩陣／異常卡片內部拖曳不在本輪。
+- `2B / Human Confirmed / Intentional Replacement`：所有上述來源都以整個來源物件／卡片作為拖曳表面，不使用只有部分區域可拖或永久顯示的專用拖曳把手。此決策取代先前「各領域自行選擇拖曳表面」的 PM refinement；互動控制排除與拖曳啟動門檻依 `4A／5A`。
+- `3A / Human Confirmed`：同一 DEV 內先以員工作 reference migration，再依序遷移其餘已登錄來源；每一步可獨立測試，但所有來源完成 parity 後才交付，不發布或長期保留新舊兩套 drag binding。
+- `4A / Human Confirmed`：整個來源物件／卡片是主要拖曳表面；其內的按鈕、輸入框、選單、連結及其他互動控制保留原操作，且不得啟動 Relation Placement 拖曳。共用 source binding 必須以一致 interactive-descendant policy 隔離這些事件，不由各卡片自行補例外。
+- `5A / Human Confirmed`：沿用員工範本的瀏覽器原生滑鼠移動門檻；主要滑鼠鍵按下後，只有移動超過原生門檻才進入拖曳。短按 click 保留既有選取／開啟行為，不採 pointerdown 立即抓取或 450ms 長按。
+- `6A / Human Confirmed`：即時定位只在游標接近目前 owner canvas 四邊時平移該畫布；保留使用者當下 zoom 與 viewport，不自動置中、fit view 或重設縮放。組織圖與流程圖必須各自使用所屬 React Flow instance。
+- `7A / Human Confirmed`：所有 registered target 沿用一致三態回饋：藍色表示可放置、黃色表示已存在／不需變更、紅色表示拒絕；每一態同時提供圖示、文字或等價非色彩提示，不得只靠顏色判讀。
+- `8A / Human Confirmed`：成功放置後保留目前 canvas viewport 與 zoom，只短暫強調實際落點並顯示非阻斷式成功狀態；不自動開啟明細、不重新置中，也不把使用者帶離目前規劃脈絡。
+- `9C / Human Confirmed / Intentional Replacement`：第一版只標準化與驗收滑鼠 Relation Placement，不在本輪新增或重設 Space／Tab／Enter／Escape 鍵盤抓取與落點循環。DEV-039 已存在的鍵盤 placement 保留為相容基線，不得因整卡 source migration 被刪除或降級；新的完整鍵盤 UX 保留為 future capsule。
+- `10A / Human Confirmed`：在 noop 或 rejected target 放開時零 mutation、零 modal，來源留在原工作脈絡；系統短暫顯示「關係已存在」或 resolver 提供的具體拒絕原因，不得靜默失敗。
+- `11A / Human Confirmed`：拖曳開始後，只有目前 payload 可接受的 registered targets 顯示低強度候選提示；游標實際指向的 target 才升級為明確藍／黃／紅三態及原因。不得把整張畫布預先染成完整警示狀態。
+- `12A / Human Confirmed`：成功配置後保留來源選取與清單捲動位置；只要 domain resolver 仍允許，使用者可立即把同一來源拖向其他目標。系統不自動跳到下一來源，也不清除來源選取。
+
+### 主要流程
+
+1. 桌面可編輯狀態下，使用者從來源物件／卡片的非互動區域按住主要滑鼠鍵並移動超過瀏覽器原生門檻後開始拖曳；短按仍執行既有選取／開啟。第一版不新增鍵盤抓取入口或新提示，DEV-039 既有鍵盤路徑維持相容。
+2. 系統沿用唯一 typed payload 與 Relation Placement Session；拖曳開始時，以低強度提示目前 payload 可接受的 registered targets，不建立第二套 drag state、MIME 或 resolver。
+3. 游標接近目前 owner 畫布四邊時，該畫布即時平移；組織圖與流程圖分別由自己的 React Flow adapter 執行，且不自動置中、fit view 或改變 zoom。
+4. 游標指向的 target 以藍色、黃色、紅色及相應非色彩提示，一致呈現可建立、已存在／不需變更及拒絕；放下前仍由 registered resolver 重新判斷。noop／rejected 放置零 mutation、零 modal，並短暫顯示具體原因。
+5. 合法放置沿用既有 mutation authority、Undo／Redo、autosave 與版本 CAS；成功後保留 viewport／zoom、來源選取與清單位置，短暫強調落點並顯示非阻斷式狀態，不自動開明細。若 resolver 允許，同一來源可立即繼續配置；取消、能力撤銷或 surface 關閉皆不得 mutation，並恢復來源焦點。
+
+### Current Phase Scope
+
+- 建立薄型共用互動層，責任至少分成 Relation Drag Source、Relation Drop Target 與 Canvas Auto-pan adapter；由各領域傳入 typed payload 與 registered target，來源元件根節點統一掛載整物件 drag binding。
+- Relation Drag Source 內建唯一 interactive-descendant policy：`button`、表單控制、連結、選單及等價互動元件不得啟動關係拖曳，也不得破壞其 click、focus、keyboard 或既有命令；各領域不得另建不一致的事件白名單。
+- 以員工清單作 reference implementation，在行為不變的前提下先遷移到共用層，再依序遷移組織圖內員工、職掌責任來源、流程節點與流程－職掌橋接；各步可獨立驗證，但交付前必須移除所有被取代的舊 binding。
+- 統一第一版 native mouse drag 的 begin／cancel、source identity、焦點復原、strict MIME、effectAllowed／dropEffect 及狀態提示；滑鼠採瀏覽器原生移動門檻，短按不得建立 session，也不新增長按計時器。
+- 既有 DEV-039 keyboard placement 若仍能由產品入口觸發，必須維持相同 session／resolver／mutation 結果；本輪不重設計、不擴張，也不得為移除 mouse-only 把手而誤刪其可用能力。
+- 統一 valid／noop／rejected 候選回饋為藍／黃／紅三態，並提供圖示、文字或等價非色彩提示；候選相同時不得重複更新狀態。
+- 統一提示密度：drag begin 只為目前 payload 可接受的 registered targets 顯示低強度候選提示，hovered target 才顯示完整三態、原因與強調邊界；不得預先高亮全部不相容目標。
+- noop／rejected release 只結束本次 drag preview，維持零 mutation、來源選取及畫面脈絡，並以非阻斷式狀態顯示既有關係或具體拒絕原因。
+- 統一成功完成回饋：保留 owner canvas viewport／zoom，短暫強調實際落點並發布非阻斷式成功狀態；不得自動開明細或改變工作台焦點。
+- 成功後保留來源選取及來源清單 scroll offset；只有 registered resolver 允許時，同一來源才能再次配置到其他目標，不另建批次配置規則。
+- 畫布平移必須以 `requestAnimationFrame` 節流，並由實際 owner canvas 的 React Flow instance 執行；不得由組織圖 instance 控制流程圖，也不得自動置中、fit view 或改變使用者 zoom。
+- 新增 source／target matrix regression 與 architecture policy，防止 raw drag binding 再散落回各領域元件。
+
+### RD Contract Handoff
+
+- Existing truth：`workspace/entityDrag.ts` 保持唯一 strict MIME／typed resolver；`workspace/relationPlacement.ts` 保持唯一 session；App composition root 保持 latest-state／capability revalidation、mutation、notice與focus owner。
+- 共用層固定為三個薄責任：Source Binding只處理整卡native source與interactive-descendant policy；Target Binding只把唯一resolver結果投影為available／valid／noop／rejected；Canvas Auto-pan Adapter只操作自己owner的React Flow instance與`requestAnimationFrame` lifecycle。
+- 事件固定為 browser `dragstart`後才begin、`dragenter／dragover`只preview、`drop`重新parse並以latest state重算、valid只commit一次、noop／rejected／stale／capability loss／unmount全數zero mutation並清理candidate及pending frame。
+- Source／target矩陣固定為Employee→Position、Duty→Position、ProcessNode→Duty與Duty→ProcessNode；資料、API、permission、version、autosave、CAS與dependency impact皆為`None expected`。
+- 正常入口固定由`/`進入，透過頂部「功能」把來源與目標開到工作台；RD實作後必須以真實滑鼠、strict DataTransfer、normal-entry browser evidence驗證，direct URL、synthetic event或API直寫不得單獨宣稱通過。
+- 詳細行為、失敗復原、UI狀態、QA／QC、evidence欄位與停止條件以`ai-doc/specs/DEV-041-relation-drag-interaction-contract.md`為唯一Current Phase權威。
+
+### RD Implementation Handoff
+
+- Exact新增邊界固定為`src/workspace/relationDragInteraction.ts`、`src/components/workspace/relationPlacementBindings.ts`、`src/components/workspace/useRelationCanvasAutoPan.ts`及對應測試（含`OrgNode.relation-drag.test.tsx`）；共用層只做純投影、React event接線及owner-canvas rAF，不擁有domain rule。
+- Exact遷移邊界固定為`App.tsx`、`DirectoryDock.tsx`、`OrgNode.tsx`、`ProcessPlanningCanvas.tsx`、`ProcessPlanningWorkbench.tsx`、`ProcessDutyBridge.tsx`與shared CSS；`entityDrag.ts`、`relationPlacement.ts`、Commands、API、schema、permission、package及lockfile維持不變。
+- RD依`S0 red tests → S1 pure interaction → S2 shared adapters → S3 Employee → S4 Duty→Position → S5 ProcessNode↔Duty → S6 convergence → S7 verification`執行；中間態不得候選交付。
+- Organization與Process各自呼叫一次auto-pan hook並操作自己的React Flow instance；App移除organization-specific preview pan，只保留唯一session、latest-state／capability revalidation、commit與約900ms UI-only outcome lifecycle。
+- Source adapter的`onBegin`／`onCancel`是required lifecycle callbacks；任一缺失時不輸出native draggable。Target adapter只有在`available`且同時具備owner `onPreview`／`onCommit`時才攔截native dragover／drop，否則fail-closed。
+- 永久mouse handles移除；Duty directory與Process node原keyboard action轉為不佔版面的focus-only action，其他既有Space／Enter路徑保留。無法同時達成時停止回PM。
+- RD Technical Lead Review固定五個exact source roots；button本身可作source root，但其互動後代須排除。available只消費既有`resolveRelationPlacementCapability()`結果，DEV-041不得另建pair table／switch。
+- `preview`必須同步回傳latest-state candidate；registered target的dragover不停止冒泡，讓owner canvas可在空白區及node上持續auto-pan。target leave只清hover，owner leave只清該canvas rAF，terminal cancel才清全部placement。
+- 未追蹤`src/components/DirectoryDock.employee-drag.test.tsx`不屬於required gate或allowlist；Employee／Duty正式parity由shared adapter tests、既有Process tests、OrgNode parity test與source policy共同承接。
+- Targeted command、FMEA、fresh fixture、browser evidence provenance、dirty overlap及exact Git allowlist均以權威spec第15～20節為準；P0／P1 specification gap=`0`。
+
+### Out of Scope
+
+- 不新增 employee／duty／process-node 以外的新 payload kind、關係類型或未登錄落點。
+- 不修改 domain resolver、Command、schema、API、permission、version storage、autosave 或持久化格式。
+- 不建立一個同時擁有所有領域版面與商業規則的大型視覺元件；各領域仍保留自己的卡片呈現，但卡片根節點共用同一 drag source binding。
+- 不重構職位階層拖曳、工作台面板排列或歷史職掌矩陣／異常修復拖曳。
+- 不新增手機／觸控編輯；手機延續專案最高原則唯讀。
+- 不為桌面 Relation Placement 新增 450ms 長按、pointerdown 立即抓取、強制置中或自動縮放等第二套互動模式。
+- 第一版不新增鍵盤抓取、落點循環或新的等價配置 UI；DEV-039 既有鍵盤相容基線保留，但不以此宣稱 DEV-041 已完成新的鍵盤 UX。
+- 不為 noop／rejected 結果開啟 modal，不自動選取下一來源、清空來源選取或重設來源清單位置。
+
+### 驗收方向
+
+- 員工清單整列的標題區、文字區與可用空白區都能啟動同一拖曳；卡片內互動控制除外，普通 click／Enter 仍只選取或開啟既有行為。
+- 員工、組織圖內員工、職掌責任與流程節點的整個來源物件／卡片均可啟動相同 begin／preview／commit／cancel 契約；永久拖曳把手與部分區域拖曳入口不存在。
+- 卡片內嵌套按鈕、輸入框、選單、連結、明細入口、責任選擇與 React Flow 畫布操作不得誤觸拖曳，且仍可 click、focus 與鍵盤操作；所有來源共用同一 interactive-descendant policy。
+- 主要滑鼠鍵短按不得建立 Relation Placement Session；只有移動超過瀏覽器原生門檻才開始 native drag，且不得因計時器、pointerdown 或輕微手抖誤觸。
+- 合法落點以藍色、noop 以黃色、拒絕以紅色呈現，三者均有非色彩提示；放下時以最新 state 重新驗證，失敗不 mutation。
+- drag begin 後只有目前 payload 可接受的 registered targets 出現低強度候選提示；只有 hovered target 顯示強烈三態與原因，畫布其餘節點不被大量警示色覆蓋。
+- noop／rejected release 不產生 Command、history、dirty、autosave 或 version mutation；畫面不開 modal，並能分辨「關係已存在」與具體拒絕原因。
+- 組織圖及流程圖在四邊都能即時平移，且不跳動、不跨 canvas 操作、不因高頻 `dragover` 造成明顯重繪抖動；全程保留原 zoom，不自動置中、fit view 或重設 viewport。
+- 成功放置後 viewport／zoom 與工作台焦點保持不變；實際落點短暫強調並出現非阻斷式成功狀態，且不自動開啟明細。
+- 成功放置後來源仍維持選取，來源清單 scroll offset 不跳動；resolver 允許多重關係時可立即重複拖曳同一來源，否則下一次候選正確顯示 noop／rejected。
+- 第一版不新增或宣稱 DEV-041 的 Space／Tab／Enter／Escape 鍵盤 UX；DEV-039 既有可達鍵盤 placement 不得回歸，滑鼠流程仍須維持來源焦點可恢復，新的完整鍵盤等價配置依 future capsule 重新進入。
+- 唯讀、手機、來源／目標 surface 關閉、capability loss 及 stale payload 均 fail closed；既有 Undo／Redo、autosave、版本 CAS 與跨面板關係結果不回歸。
+- RD 實作後至少以 targeted unit／component tests、architecture source policy、typecheck、build，以及正常產品入口的桌面原生滑鼠拖曳 targeted QC 支持結論；direct URL 或 synthetic event 不得單獨宣稱 UI 交付通過。
+
+### 限制與重新進入條件
+
+- 現有 `workspace/entityDrag.ts` 的 typed payload／registered resolver、`workspace/relationPlacement.ts` 的唯一 session，以及 App composition root 的 mutation ownership 均為既有權威，不得在共用元件內複製商業規則。
+- 若遷移必須新增第二 MIME、第二 resolver／mutation owner、global event bus、第三方 DnD dependency、跨畫布單一 React Flow instance，無法避免與職位階層／流程節點 gesture 衝突，或必須刪除DEV-039既有鍵盤能力，停止並回 PM 做架構決策。
+- 本輪已完成S0～S7 shared-boundary automated implementation並通過automated gate；`Duty lane→ProcessNode` native effect capability P1 blocker已由shared policy correction關閉，且正常入口的真實 HTML5 `DataTransfer` 四向、zero-mutation revision guard、auto-pan、API／revision、cleanup／console aggregate已取得。唯一開放項為 noop／rejected `dropEffect=none` 的 Chromium terminal drop effect policy；candidate commit、merge、deploy及release仍未授權。
+
+### Future Phase Capsule：鍵盤等價配置
+
+狀態：`Future Phase Captured / Not Requested`
+
+- 目的：在保留DEV-039現有鍵盤相容基線的前提下，讓無法使用滑鼠或偏好鍵盤的使用者，以可發現且可完整完成的方式建立同一 registered relation；不得新增第二 resolver、mutation owner 或商業規則。
+- 邊界：未來再統一抓取、目標循環、提交、取消、焦點復原與狀態宣告；Current Phase不新增半套快捷鍵、隱藏入口或只供自動化使用的鍵盤捷徑，也不刪除既有可用能力。
+- 依賴：共用 Relation Drag Source／Drop Target 狀態與 registered target matrix 先穩定，且需完成可及性與 React Flow gesture 衝突評估。
+- 驗收方向：鍵盤與滑鼠產生相同 resolver／Command 結果、拒絕相同非法關係，並可在正常產品入口完成整段操作。
+- 重新進入條件：使用者要求鍵盤／輔助科技支援、產品需達成對應 accessibility conformance，或第一版滑鼠核心完成後進入下一輪互動能力規劃。
+
+### 變更紀錄
+
+- 2026-09-01：依使用者確認的員工拖曳觸發與即時定位範本建立 `DEV-041 Brief Ready`；採共用 headless 互動核心，不擴張 DEV-039 frozen scope。
+- 2026-09-01：引導決策 `1A／2B／3A` 寫回；固定已登錄 Relation Placement 範圍、所有來源整物件／整卡拖曳，以及同一 DEV 內分步遷移但全部 parity 後才交付。
+- 2026-09-01：引導決策 `4A／5A／6A` 寫回；固定整卡拖曳但排除互動控制、採瀏覽器原生移動門檻區分 click／drag，以及只做 owner canvas 四邊平移且保留 viewport／zoom。
+- 2026-09-01：引導決策 `7A／8A／9C` 寫回；固定三態且非僅色彩的落點回饋、成功後保留工作脈絡，以及第一版只交付滑鼠拖曳並將鍵盤等價配置移至 future capsule。
+- 2026-09-01：引導決策 `10A／11A／12A` 寫回；固定 noop／rejected 零 mutation 且顯示原因、低強度候選加 hovered 強回饋，以及成功後保留來源選取／清單位置供合法連續配置。主要產品決策完成至 `12A`。
+- 2026-09-01：依 `13A` 升級為 `RD Contract Ready`；盤點既有 single MIME／resolver／session／mutation owner，建立intentional replacement、三個共用薄層、狀態事件、來源目標矩陣、資料／API／權限／相容、normal-entry UI、QA／QC evidence與停止條件。未進入產品實作。
+- 2026-09-01：依使用者要求升級為`RD Implementation Ready`；補齊exact新增／修改／維持不變檔案、共用adapter API、keyboard相容策略、S0～S7遷移、failure recovery、targeted commands、fresh evidence、FMEA、dirty-worktree provenance及Git allowlist。P0／P1 spec gap=0；未進入產品實作。
+- 2026-09-01：完成RD Technical Lead Review並優化DEV-041權威contract；關閉第二pair矩陣、主要文字區被interactive policy排除、非同步preview／事件冒泡未定、target與canvas cleanup混用及未追蹤測試作Gate五項風險。狀態維持`RD Implementation Ready / Implementation Not Started`，review verdict=`Pass after contract optimization`。
+- 2026-09-01：依DEV-041 contract完成S0～S6及S7 automated implementation：新增純互動、headless source／target binding與owner auto-pan；完成Employee／Duty／ProcessNode四向surface migration、outcome lifecycle、shared CSS、keyboard compatibility與source policy；新增OrgNode parity test。targeted `11 files／48 tests`、full `170 files／689 tests（1 skipped）`、typecheck與build均通過；browser smoke確認正常入口 selectors及舊handle移除。狀態更新為`RD Implementation Complete / Automated Gate Passed / Browser Native Evidence Pending`；native DataTransfer QA／QC仍開放，未授權candidate freeze或commit。
+- 2026-09-01：RD Technical Lead follow-up定位ProcessNode在React Flow內的native promotion阻斷：ancestor `mousedown`會在瀏覽器`dragstart`前攔截。未新增第二拖曳路徑，僅在共用source adapter加入明確的`stopMouseDownPropagation`選項並由ProcessNode root啟用；補shared adapter regression，保留其他surface事件流。其後以全新fixture及system Chrome正常入口完成一條`ProcessNode→Duty` native RD probe，artifact=`output/playwright/dev041/F041-S7-PROC-DUT-native-rd-probe.json`；另將`onBegin`收斂為必要callback，缺失時fail-closed，並將`onCancel`收斂為required，缺失時不輸出draggable；target若缺`onPreview`／`onCommit`亦 fail-closed。targeted `11 files／52 tests`、full `170 files／693 tests（1 skipped）`、typecheck與build通過；另補factory重建後pointer-origin、terminal cancel及target fail-closed regression，四向native、failure cases、console與cleanup仍由QA／QC gate獨立補齊。
+
+- 2026-09-02：完成 DEV-041 fresh browser QA／QC aggregate。四向 `EMP-POS`／`DUT-POS`／`PROC-DUT`／`DUT-PROC` 以四個獨立 fixture、正常產品入口、system Chrome及真實 HTML5 DataTransfer取得 strict MIME、正確 effect negotiation、terminal drop／dragend、revision change、canonical readback與 0 console/pageerror；Organization／Process owner canvas 四邊 auto-pan、zoom保留、取消後revision不變亦通過。`NOOP-EMP-POS`／`REJECT-PROC-POS`確認zero mutation與terminal dragend，但Chromium在 `dropEffect=none` 不派送terminal drop，記為 `pass-with-browser-gap`；aggregate=`output/playwright/dev041/F041-QA-QC-native-aggregate.json`。所有fixture cleanup均`archived`，5080已釋放、5000未觸碰。DEV-041現行狀態更新為`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Partial / Effect Policy Decision Pending`，未授權candidate freeze／commit／merge／deploy／release。
+- 2026-09-02：使用者接受Chromium在`dropEffect=none`時不派送terminal `drop`的原生行為。驗收契約收斂為：合法拖放要求terminal `drop`與恰好一次mutation；noop／rejected要求terminal `dragend`、zero mutation、revision unchanged、session cleanup及0 console/pageerror。aggregate增加`contractDecision`並將zero-mutation disposition更新為`pass`；產品程式與effect policy不變。DEV-041更新為`Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`，未授權freeze／commit／merge／deploy／release。
+
+## DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
+
+狀態：部分完成（整體`RD Contract Ready / ID1A-ID1B Local Implementation Complete / Human Decision Gate Complete through 1B／2A／3D`；DEV-004=`004-S0～S5 Local PASS / Live G2 Gated`；DEV-006=`S1～S3 Complete / S4A Consumer Fixture Gate PASS / S4B Release Gate Required`；`040-ID1A／ID1B=Local Implementation Complete / Targeted QA-QC PASS`；`JMS-PLATFORM-005 OrgMaster slice=005-S0／S1／UI0／S2／S3 Local-Isolated PASS / 005-S4A～S5 Not Implemented / Production Authority Switch Gated`）
+文件成熟度：`RD Contract Ready；040-ID1A／ID1B RD Implementation Complete／Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice RD Implementation Ready / Local Foundation Implemented；DEV-004 Local Implementation Complete；DEV-006 S1～S3 RD Implementation Complete / S4A Consumer Fixture Gate PASS`
+節點類型：開發點
+父開發點：DEV-037
+是否計入產品交付完成：否（跨 repository 交付由 Jenfu Management System DEV-001 計算）
+來源 ID：`USER-2026-08-30-JENFU-PLATFORM-HCS-4A-5A-6B`、`USER-2026-08-30-JENFU-PLATFORM-HCS-ROLE-RESET-CUTOVER-ADMIN-SCOPE`、`USER-2026-08-30-JENFU-PLATFORM-HCS-PRESTAGE-PILOT-LEGACY-OBSERVATION`、`USER-2026-08-30-JENFU-PLATFORM-HCS-SUPERADMIN-ZERO-TOLERANCE-OBSERVATION-WINDOW`、`USER-2026-09-01-JENFU-ACCOUNT-TAXONOMY-1B-2A-3D`、`USER-2026-09-01-POSITION-ROLE-UTILITY`、`USER-2026-09-01-DEV040-ONE-TIME-DIRECT-UUIDV7-REKEY-EXCEPTION`
+風險等級：High（身分准入、既有帳號 migration、跨 schema entitlement 與直接角色生效）
+權威 RD Contract：`ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md`
+架構決策：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md` 2026-08-30 amendment
+
+### Human Decision Brief
+
+- `4A / Human Confirmed`：Phase 1 在共同 Cloud SQL logical database 由 OrgMaster 發布 `access_governance.v_effective_role_assignments_v1`，作為 versioned read-only pull adapter；禁止 app 讀 OrgMaster 私有 table 或跨 schema DML。
+- `5A / Human Confirmed`：human共同IAM subject必須唯一對應active OrgMaster employee；AI-PDM現有帳號保留Firebase UID、`pdm_user_id`與生命週期納入inventory，再依taxonomy分流human migration／shared retirement。
+- `6B / Human Confirmed`：所有外部 app role 由具授權的角色管理者發布後直接生效；Phase 1 不依 high-risk metadata 另設 maker-checker，但 risk 顯示、reason、before / after 與 immutable audit 必須保留。
+- `7B / Human Confirmed`：AI-PDM 既有 role 全部重設，不 mapping、不匯入、不發預設 role；切換後只信任 OrgMaster assignment。
+- `8A / Human Confirmed`：cutover 採 dry-run、freeze、分批 authority switch、session invalidation、reconciliation 與 rollback point，不採一次切換或長期雙權威。
+- `9A / Human Confirmed`：角色直接生效能力採 app-scoped role administrator，只能管理被授權 application。
+- `10A / Human Confirmed`：cutover 前先建立待生效 assignment，通過 identity、catalog、scope 與 completeness validation；只在所屬 batch switch 時原子啟用，不得提前授權。
+- `11A / Human Confirmed`：先做涵蓋一般使用者、主管與管理員的 cross-role pilot；gate 全數通過後再按部門分批。
+- `12A / Human Confirmed`：legacy AI-PDM role 欄位於 cutover 後唯讀觀察，不參與授權；完成 reconciliation 與 rollback window 且通過移除 gate 後才移除。
+- `13B / Human Confirmed`：OrgMaster super administrator 永久具跨 app role-management override；這是 `9A` 的唯一例外，每次使用需理由、不可變 audit 與即時告警。
+- `14A / Human Confirmed＋Safety Refinement`：P0／P1 mismatch或非預期擴權／失權零容忍；session refresh pending停止下一批並由durable outbox重試，只有錯誤授權才rollback。
+- `15A / Human Confirmed`：legacy role 自最後一批通過起唯讀保留 30 日或兩個 production release cycle，取較晚者；雙方 owner 簽核對帳且 rollback dependency 解除後才移除。
+- `1B / Human Confirmed`：互動使用者一人一個公司managed identity；需郵件者用Workspace，只需內部系統者可用Cloud Identity Free，個人Gmail只作有期限例外，員工編號只作login alias。
+- `2A / Human Confirmed`：移除泛用／共用管理員帳號；一般管理角色直接指派employee。`info@`／`sales@`等共用信箱退出平台登入、principal與role模型。
+- `3D / Human Confirmed`：一般app-scoped管理用日常個人identity＋step-up；基礎設施、production switch、OrgMaster super-admin／cross-app override與授予管理能力用同employee下person-specific privileged identity。
+- `Position-to-Role / Human Confirmed`：採`User → Position → Application Role → Permission`，不採`Position = Role`；新任職只產生建議，經app-scoped role administrator發布後才授權。`#效用理論`
+- `App-local Role UI / Human Confirmed`：AI-PDM一般角色指派改在AI-PDM「角色能力」，採Role→adopted Position→Employee；AI-PDM BFF呼叫OrgMaster governance API，OrgMaster仍是canonical assignment／version／audit authority。
+- `System Administrator Privileged Governance / Human Confirmed`：不將`system_admin`移出OrgMaster，而是從一般Position／Employee指派抽離；OrgMaster既有「角色指派」選到該角色時就地顯示「特權設定」，只授予exact active `human_privileged` principal，不新增頁面。AI-PDM只保留Permission mapping、runtime enforcement與redacted導引。OrgMaster離線凍結mutation，不中斷Tier-0 runtime authorization。
+- `Intentional Replacement`：修訂 ADR-007 原本只列 API／manifest／event adapter，以及 high-risk 外部角色申請／核准的 future target。
+- `Intentional Replacement`：修訂四筆AI-PDM帳號都映射employee與`info@`作管理員帳號的舊假設；歷史reconciliation不回寫。
+- `Intentional Replacement / One-time Exception`：`040-ID1`把目前 OrgMaster 非UUIDv7 Employee ID直接改鍵為UUIDv7，既有有效UUIDv7原值保留；同步重寫所有受影響的當前有效reference，只產生一份新V8 baseline。舊Employee ID、舊organization version及舊ID audit不作為保留條件，不建產品級legacy mapping；不改變`info@`非破壞退場及AI-PDM role cutover。
+- `Historical Evidence Preserved`：DEV-037 local-only V2、published versions、audit 與 QA/QC 不回寫、不刪除，也不能證明 DEV-040 已實作。
+
+決策來源：2026-08-30使用者完成原角色／cutover引導決策；2026-09-01確認帳號治理`1B、2A、3D`，並對`040-ID1`確認一次性直接 UUIDv7 rekey 豁免。
+
+使用思考習慣：#效用理論、#系統描繪、#當責
+
+### 問題與使用者價值
+
+OrgMaster 已能在本機治理外部角色指派，但 AI-PDM 仍有自己的既有 users、Firebase UID、local role 與 session。若新平台只建立新帳號或以 email 對人，會造成重複帳號、歷史資料失聯與錯誤授權；若 app 直接查 OrgMaster 私有 table，又會破壞資料 ownership。
+
+本 DEV 的價值是以既有 stable identity 做非破壞整合，並把 OrgMaster 指派轉成 app 可安全消費的版本化 read model。管理流程保持單一授權管理者直接生效，但用最小權限、不可變 audit、撤銷與 fail-closed 控制單人誤操作風險。
+
+### Current-state Evidence
+
+- AI-PDM `platform_principal_mappings.external_subject` 已保存 Firebase UID，並以 `pdm_user_id` 唯一連回既有 user。
+- AI-PDM Firebase session repository 先依 UID 解析 principal，再檢查既有 account lifecycle；此 bridge 可作 migration source，不需重建帳號。
+- AI-PDM `users.role` 只作 legacy inventory／歷史資料；依 `7B` 不自動轉為 OrgMaster assignment，也不得在新權威下單獨授權。
+- canonical identity 仍必須固定為 `issuer + subject`；email、姓名與員工編號只能協助候選比對，不能單獨自動合併。
+- production-bound歷史classifier盤點4筆帳號為`ready=0 / missing_employee=4`；後續人工情境確認其中3筆是個人身分、1筆`info@`是多人共用行政帳號。歷史證據保留，尚未用新taxonomy重跑，也未修改AI-PDM repository或資料。
+- target Employee ID由OrgMaster產生immutable UUIDv7；既有semantic ID以一次性rekey同步改寫當前有效reference，不保留舊ID mapping，未完成前不得寫production human identity link。
+
+### Current Phase Scope
+
+- OrgMaster Cloud SQL persistence 與 `access_governance` publisher contract。
+- versioned effective assignment view、app-scoped DB grants 與 `EntitlementRepository` replacement boundary。
+- AI-PDM 既有 principal inventory、active employee reconciliation、exception report、冪等 migration 與 counts 對帳。
+- `040-ID1A` Employee UUIDv7一次性direct rekey／當前有效reference全量重寫／單一V8 baseline。
+- `040-ID1B` account taxonomy、redacted projection、owner-approved baseline與跨repo read-only IAR v2 classifier／receipt。
+- 外部角色直接發布的 authorization、reason、before / after、revoke 與 immutable audit。
+- AI-PDM role catalog／permission enforcement、session invalidation、cutover／rollback 與 cross-repo QA/QC contract。
+- app-scoped role administrator capability 與跨 app deny boundary。
+- Position-to-Application-Role recommendation、AI-PDM app-scoped Position adoption、來源provenance、OrgMaster app-scoped projection／cursor change feed、需複核與source Position失效fail-closed contract。
+- `system_admin` exact privileged-principal read／preview／publish、V2 generic deny、V2→V3 exception、immutable audit、durable security alert與AI-PDM redacted holder projection。
+
+### Out of Scope
+
+- 本輪不修改 production OrgMaster／AI-PDM資料、Firebase或Cloud SQL；local／isolated程式、schema契約、fixture與targeted QC屬本DEV允許範圍。
+- 立即停用／刪除`info@`、改寫歷史actor，或在替代使用者／角色／mail流程未驗證前中止現有使用。
+- first-login 自動建立 employee，或以 email／姓名自動合併 identity。
+- 由 OrgMaster 編輯 AI-PDM Permission 或 role-permission mapping。
+- 將Position視為Application Role、以職位／部門名稱自動授權，或讓新任職／mapping擴權直接生效。
+- 將 legacy AI-PDM role 自動 mapping／匯入 OrgMaster，或讓 legacy role 與 OrgMaster assignment 長期雙權威。
+- high-risk maker-checker、多階段角色審核、ProJED integration、deploy 或 release。
+
+### 主要流程
+
+1. `040-ID1A`只為非UUIDv7 Employee產生新UUIDv7，既有有效UUIDv7原值保留；依同一exact sensitive execution plan重寫workspace、governance與management-method所有受影響reference，形成單一新V8 baseline，不建立legacy mapping或雙讀resolver。local JSON跨三store以maintenance sentinel＋recovery journal保證最終全成或全退，不宣稱單一原子commit。
+2. `040-ID1B`的read-only IAR runner讀取AI-PDM既有`pdm_user_id ↔ Firebase UID`、OrgMaster redacted projection與owner baseline，分類human／privileged／legacy shared／service，再以exact fingerprint對帳；不由DEV-006重算。
+3. 三筆human唯一對應者進`human_ready`；無對應、多重對應、inactive或衝突進exception report。`info@`進`legacy_shared`，不得連employee。
+4. 正式human migration只建立／更新mapping，不重建Firebase identity、不改`pdm_user_id`、不要求重設密碼。
+5. 盤點`info@`實際使用者、補個人managed identities與employee roles、驗證mail／業務替代流程後，才停用shared platform login並標記`retired_legacy_shared`；保留帳號與歷史actor。
+6. legacy role全部重設；沒有OrgMaster assignment的使用者在新權威下不取得AI-PDM role。
+7. app-scoped role administrator使用日常個人identity＋step-up，可預先建立已驗證但待生效的assignment；切換前不得進effective view或AI-PDM authorization。
+7A. AI-PDM管理者在AI-PDM「角色能力」檢視recommended／adopted／assigned三態；建議只在首次adoption draft預填，採用Position後仍須逐人preview／publish。兩種operation共用BFF preview／publish facade；read model只合併OrgMaster app-scoped projection與AI-PDM active catalog。AI-PDM BFF寫入OrgMaster V3；新任職不自動grant，移除Position只撤銷失去最後source者。Position改名不改權限；來源任職失效立即fail closed。
+8. OrgMaster super administrator是唯一永久cross-app override；只接受同employee下person-specific privileged principal，每次需強驗證、reason、before／after、immutable audit與即時告警。
+8A. `system_admin`只能從OrgMaster既有「角色指派」內的條件式「特權設定」授予exact active `human_privileged` principal；一般V2 submit／API固定拒絕，AI-PDM不提供fallback write。UI／validation／command共用full-policy classifier；privileged publish只接受provider `auth_time`派生的fresh AAL2 OrgMaster session，不另建step-up receipt。holder數以特權principal計數並標示「特權身分 N 個」，不得誤稱自然人數。
+9. cutover依dry-run → exception處理 → freeze → cross-role pilot → 按部門分批switch → session invalidation → reconciliation執行；pilot與每批都有pass／rollback gate，不形成長期雙權威。
+10. 每批authority switch原子啟用該批待生效assignment、使legacy role退出授權並更新versioned effective view；AI-PDM只讀自己的有效assignment，再做app-owned permission enforcement。
+11. P0／P1 mismatch或非預期擴權／失權零容忍；session refresh pending停止該批後續動作並由outbox重試，只有protected request仍錯誤授權才切回reviewed單一legacy authority，不得同時接受兩套權威。
+12. legacy role正常狀態只可唯讀供observation／reconciliation使用；自最後一批通過起滿30日或兩個production release cycle（取較晚者），雙方owner簽核且解除rollback dependency後才移除。
+13. 撤銷、到期、inactive employee、catalog invalid、scope mismatch或contract version不相容時fail closed；cutover／rollback保留identity、歷史assignment與audit。
+
+### `040-ID1A／040-ID1B` RD Handoff Contract
+
+- `040-ID1A`執行邊界：UUIDv7建立器、一次性Employee rekey planner、當前有效reference全量重寫、單一新V8 baseline與local／isolated rekey QA-QC。
+- `040-ID1B`執行邊界：治理account taxonomy、`organization.v_identity_admission_reconciliation_v2` redacted view、owner baseline、Platform-hosted IAR generator與identity-domain QA-QC。
+- 直接rekey策略：非UUIDv7 Employee才產生新UUIDv7；既有有效UUIDv7原值保留。old→new mapping與target hashes只存在repo外限制ACL的task-owned execution plan／rollback snapshot，不進產品或一般evidence；遺失plan不得重新產生同一組ID。新baseline不得有semantic Employee ID、legacy alias、雙讀resolver或舊organization version。
+- 完整性邊界：workspace assignment／administrative override、governance identity link／role assignment／delegation／current snapshot／current unresolved、management-method owner均使用同一mapping改寫；V3存在時另含assignment sponsor與management grant。Target V3沒有per-employee recommendation decision。local OrgMaster sessions撤銷；production Portal／OrgMaster／AI-PDM sessions及central epoch由release gate全數失效。所有browser無法由server同步清除，V8 client在下次載入時忽略並移除Employee-scoped V1～V7 state。任一unknown reference即整批FAIL，不靜默丟棄。
+- 相依順序：actual rekey先於JMS-PLATFORM-005 live management grant、employee authority override／receipt／outbox。這些Employee-scoped runtime state非空即BLOCKED並回release migration，不擴張local runner。
+- Taxonomy固定`human_personal|human_privileged|legacy_shared|service`；shared retirement固定`pending_replacement -> replacement_verified -> login_disabled -> retired`。human須連exact active identity link／Employee；shared／service不得連Employee。
+- Redacted projection只輸出contract／source／policy version、principal與issuer兩種SHA-256 fingerprint、taxonomy、retirement state、match counts及active／UUIDv7 boolean；不輸出subject-only／Employee UUID hash、raw issuer、subject、principal／Employee ID、email、姓名或員編。
+- Identity-admission view固定使用`006_dev040_identity_admission_projection.sql`；ordinal `005`已由JMS-PLATFORM-005 entitlement-governance預留。若V3已存在，V2→V3必須保留並重寫`principalAdmissions`，production bundle依005→006套用。
+- Exact files、commands、schema columns、idempotency、failure recovery、QA／QC與stop conditions以權威spec第20節為準；兩個slice的P0／P1 readiness gap皆為`0`。
+- ID1A出口：OrgMaster `test／qc:dev-040:id1`；ID1B出口：Platform `test／qc:dev-040:id1b`與contract check。各自build／diff、source non-mutation、redaction與cleanup皆須PASS；只證明local／isolated capability，不證明production 3＋1或activation。
+- 2026-09-01 實作 evidence：OrgMaster `npm run test:dev-040:id1`（7 files／16 tests PASS）、`npm run qc:dev-040:id1`（V7 fixture→V8、reference rewrite、clean baseline、runtime-state／unknown-reference／source-drift fail-closed、no-active-policy、apply readback、exact plan second-apply=`NOOP`、crash recovery、fixture session revoke skip與cleanup PASS）、相關回歸（18 files／104 tests PASS）、`npm run build`與`npx tsc --noEmit` PASS；Platform `npm run test:dev-040:id1b`（5 tests PASS，含fingerprint case-sensitivity、taxonomy exception matrix與baseline denominator mismatch reject）、`npm run qc:dev-040:id1b`（redacted 3＋1 fixture、classifiedCount=4、databaseWrites=0 PASS）、`npm run contracts:check:dev-040`與`npm run typecheck` PASS。`apply-local`未執行；正式資料／remote migration、live link、policy publish、deploy或release均未執行。
+
+### 驗收契約摘要
+
+- ready 使用者保留原 Firebase UID 與 `pdm_user_id`，且唯一對應一筆 active OrgMaster employee；例外不被靜默忽略或自動合併。
+- Employee canonical ID為immutable UUIDv7；新V8 baseline的當前Employee reference全數為UUIDv7，無semantic ID、legacy mapping或舊id alias，employeeNumber不是PK或credential。
+- fresh gate為`human expected=3／ready=3`、`legacy shared=1／login enabled=0`、`unresolved=0`；舊`ready=0／missing_employee=4`仍標為歷史。
+- 共用信箱沒有employee mapping、role或新app session；退場前後帳號／歷史actor與mail業務連續性均保留。
+- migration dry-run／正式執行／重跑 counts 可對帳，evidence 不輸出 identity subject、email 等個資。
+- legacy role 即使仍存在於 AI-PDM 歷史資料，只要沒有 OrgMaster assignment，就不能在新權威下產生權限。
+- 授權角色管理者的發布可反映到 view；unauthorized actor、self-elevation、越 app scope 或 invalid role 一律拒絕。
+- AI-PDM app-scoped 管理員不能管理 OrgMaster 或其他 app role；一般 OrgMaster admin 不自然擁有 AI-PDM 角色治理 capability。
+- OrgMaster super administrator 是唯一跨 app override；每次使用需 reason、before / after、immutable audit 與即時告警。
+- 日常identity不能行使super-admin／infra權限；person-specific privileged identity的capability不傳播到同employee其他identity。
+- 待生效 assignment 在 batch switch 前不出現在 effective view、session claim、cache 或 AI-PDM allow decision。
+- audit 可重建 actor、reason、before / after、employee / principal reference、app、role、scope、validity、catalog / assignment version 與時間。
+- AI-PDM runtime DB role只能讀自己的 versioned contract，不能跨 schema 寫入或看其他 app entitlement。
+- 無 active employee mapping／有效 assignment、撤銷、到期或 stale session 時，AI-PDM 後端拒絕受保護操作。
+- cross-role pilot 涵蓋一般使用者、主管與管理員，且登入、allow / deny、撤銷、session invalidation、audit、reconciliation 與 rollback evidence 全部通過後才能進入部門 batch。
+- P0／P1 authorization mismatch或非預期擴權／失權零容忍；session refresh pending停止下一批並重試，只有錯誤授權才rollback。
+- legacy role 正常觀察期內唯讀且不參與授權；自最後一批通過起滿 30 日或兩個 production release cycle（取較晚者），雙方 owner 簽核 reconciliation 且解除 rollback dependency 後才可 archive／remove。
+
+### Human Decision Gate Result
+
+13. [x] `13B`：OrgMaster super administrator 永久具跨 app override；不採 time-limited activation 或雙人取用。
+14. [x] `14A＋Safety Refinement`：P0／P1授權mismatch零容忍；session refresh pending停止下一批並由outbox重試，只有錯誤授權才rollback。
+15. [x] `15A`：legacy role 唯讀保留 30 日或兩個 production release cycle（取較晚者），由雙方 owner 簽核 reconciliation 且解除 rollback dependency 後移除。
+16. [x] `1B`：互動使用者採公司managed identity；Workspace／Cloud Identity依mail需求分級，個人Gmail只作有期限例外。
+17. [x] `2A`：共用／泛用管理帳號退出平台identity與role model；`info@`採非破壞退場。
+18. [x] `3D`：一般管理用日常identity＋step-up，高權限用同employee下獨立person-specific privileged identity。
+19. [x] `040-ID1 One-time Exception`：目前非UUIDv7 Employee直接改鍵，既有有效UUIDv7保留，受影響current reference完整重寫；舊ID、舊organization version與舊ID audit不保留，不建立legacy mapping。
+
+Phase 1無剩餘P0／P1人類產品決策。DEV-004 `004-S0～S5`與DEV-006 S1～S3已完成；`040-ID1A／ID1B`已完成local／isolated產品實作與targeted QA／QC，JMS-PLATFORM-005已完成local contract/catalog/recommendation foundation與targeted tests，live persistence、authority與API／UI仍未完成。DEV-006 S4A只消費ID1B IAR receipt，不擁有classifier或3＋1 baseline。JMS-PLATFORM-005不得拿DEV-037 V2 local evidence冒充完成；repository／authority／traffic仍未切換。
+
+### 停止條件與下一步
+
+- 若現有 Firebase UID 無法穩定取得、同一 subject 對應多個 AI-PDM user、需要合併／刪除 production account，停止並回 Human Decision Gate。
+- 若 access view 無法用 DB grants 隔離 app、需要讀 OrgMaster 私有 table，停止並重新評估 API / event projection。
+- 若需要雙權威、一般admin可取得cross-app override、告警無receipt或mobile需開放mutation，停止並回PM／ADR。
+- production credential、remote Cloud SQL migration、deploy／release 必須另進 release gate。
+- 下一步：ID1A／ID1B與Platform DEV-006 S4A receipt consumer local gate已通過；先完成JMS-PLATFORM-005 live publication／persistence，再由owner提供production 3＋1 evidence；production切換仍須release gate。migration順序固定Platform 002→AI-PDM 055→OrgMaster 005→006；不得在目前autosave運行中直接切換。
+- DEV-009安全切片的下一步獨立固定為`009-S0`：建立canonical v2 contract／雙vendor lock，讓current bundled／live catalog保留完整policy metadata，以shared full-policy classifier統一UI、V2 validation與command guard，並讓所有generic V2 publish path對`system_admin` fail closed。Platform contract與OrgMaster guard必須共同通過；這不授權schema apply、真實principal／role mutation、bootstrap、deploy或release。
+
+### 變更紀錄
+
+- 2026-09-02（原始提案，UI入口已由下一筆取代）：將JMS-PLATFORM-009 OrgMaster slice升級為`RD Implementation Ready / Documents Only`，固定exact `human_privileged` principal、專用read／preview／publish、V2 generic deny、legacy V2 exception、alert／audit／invalidation同交易、offline control-plane isolation、projection v2與`009-S0→S4／R1`；當時的獨立「特權管理」入口不再是現行方案。未修改程式、schema、資料、runtime、bootstrap、deploy或release。
+- 2026-09-02：依使用者UI簡化決策，取消獨立「特權管理」頁與route，改為既有`assignments`選到AI-PDM `system_admin`時就地顯示「特權設定」。專用read／preview／publish、V2 generic deny、exact principal、step-up、audit／alert／invalidation及offline isolation不變；Documents Only，未修改產品runtime。
+- 2026-09-02（前一版，已由下一筆技術主管複審取代）：依Dev PM完成頁內方案的implementation-ready收斂：補ordinary／privileged／unsupported mode matrix、當時的exact五欄catalog discriminator、adapter metadata保留、role切換清draft／忽略late response、`GovernancePrivilegedAssignments`元件邊界與`QA-009-01～16` evidence contract。下一步仍只執行`009-S0`；Documents Only。
+- 2026-09-02：依RD技術主管複審修正DEV-009：以shared full-policy classifier取代分散五欄判斷，current bundled／live adapter必須保留完整policy、歷史V1缺欄snapshot只讀；以provider `auth_time`→session `authenticatedAt`的AAL2五分鐘gate取代獨立step-up receipt；補auth／session／live catalog exact files、S0共同ownership及viewport/client interaction boundary。P0／P1=`0`，維持`RD Implementation Ready / Documents Only`。
+- 2026-09-01：同步Platform DEV-006 `006-S4A` consumer gate完成：IAR v2 vendor lock、receipt hash／freshness／redaction／count validation、PCR／IAR independent preflight與8-fixture QC均PASS；Platform僅消費DEV-040 receipt，不讀projection、不重算taxonomy、不建立Employee。JMS-PLATFORM-005與production identity／authority仍未切換。
+- 2026-09-01：依RD技術主管ownership審查，將原`040-ID1`拆成`040-ID1A` Employee rekey與`040-ID1B` identity admission／IAR。IAR schema、3＋1 owner baseline、classifier與receipt歸DEV-040，Platform repo只託管cross-repo runner；DEV-006 S4A改為receipt consumer。同步移除循環的PCR→IAR source revision、重複classifier與重複fixture，不改產品行為、資料、runtime或release。
+- 2026-09-01：依使用者「繼續升級DEV-005」補齊JMS-PLATFORM-005的OrgMaster direct implementation contract。第21節固定Governance V3、V2非破壞轉換、live AI-PDM catalog、recommendation SHA、principal-scoped management grants、app-scoped API、migration 005、current-workspace source invalidation、session refresh、effective／authority views、ACL、UI、commands與rollback。狀態升為`RD Implementation Ready / Not Implemented`；本輪只改文件，未建立contract／migration／程式／測試或改資料、runtime、release。
+- 2026-09-01：依使用者授權執行JMS-PLATFORM-005第一波local／isolated implementation：新增`server/aiPdmRoleCatalogRepository.ts` read-only contract catalog adapter、Governance V3 supporting types、Position-to-Role recommendation domain與5項 targeted tests；catalog fixture、system／external role restrictions、scope conflict、recommendation-only與catalog tamper／missing fail-closed語意均通過。另完成Platform task-owned PostgreSQL migration 055 fresh／立即 replay、active view readback、active uniqueness與view read-only boundary probe。Live OrgMaster persistence、API／UI、migration 005、authority switch與production資料仍未執行。
+- 2026-09-01：依DEV-005 RD技術主管複審修正OrgMaster direct contract：V3 assignment補`subjectKind／targetPrincipalId`，system admin限exact privileged principal且不可recommendation／delegation，external role改為零組織任職Employee anchor的manual-direct assignment並必填finite hard expiry；catalog version改為provenance、active catalog為policy authority；撤權／切換改成authority mutation＋outbox先commit、session refresh post-commit重試。文件維持`RD Implementation Ready / Not Implemented`，產品與資料均未變更。
+- 2026-09-01：依DEV-005角色能力focused technical review同步OrgMaster契約：新增唯一app-scoped role capability projection與cursor change feed；target V3移除未上線per-employee recommendation decision／legacy basis；一般AI-PDM採用能力改為`ai-pdm.position_adoption.manage`並與OrgMaster recommendation governance分權；BFF四route收斂為兩facade。契約層`P0/P1=0`，本輪只改文件，未修改產品、schema、資料、runtime或release。
+- 2026-09-01：依RD技術主管審查優化`040-ID1`，關閉五項契約缺口：migration boundary改為maintenance sentinel＋crash-recovery journal，並補齊V3 sponsor／grant／decision與跨app session closure；UUIDv7隨機plan改為exact sensitive execution plan重用；只rekey非UUIDv7並保留有效UUIDv7；`principalAdmissions`移除重複`employeeId`權威；projection移除subject-only／Employee UUID fingerprint。同步Platform DEV-005／006與QA契約後，P0／P1 readiness gap維持0，判定`RD Implementation Ready / Not Implemented`。
+- 2026-09-01：依使用者要求補齊DEV-040開發文件，並依一次性豁免取代原擬兩段式bridge。`040-ID1`固定非UUIDv7 Employee直接rekey、有效UUIDv7保留、受影響reference完整重寫、單一V8 baseline、無產品級legacy mapping，以及governance taxonomy schema／commands、redacted V2 view columns、fingerprint公式、Platform IAR v2 consumer boundary、exact OrgMaster file allowlist、failure recovery、QA／QC與future re-entry；另關閉JMS-PLATFORM-005與`040-ID1`同用migration 005的衝突，固定005→006並要求V3保留`principalAdmissions`。P0／P1 readiness gap為0，狀態為`RD Implementation Ready / Not Implemented`。本輪只改文件，未修改產品、schema、資料、帳號、runtime、traffic、deploy或release。
+- 2026-09-01（已由本節上方ownership審查取代）：當時規劃由DEV-006 S4A負責IAR classifier／preflight；現行契約已改為DEV-040 `040-ID1B`擁有classifier／receipt，DEV-006只消費receipt。本筆只保存文件演進。
+- 2026-09-01：使用者確認帳號治理`1B / 2A / 3D`。DEV-040改採一人一公司managed identity、共用信箱退出平台登入／角色、一般管理日常identity＋step-up、高權限同人專用privileged identity；`info@`採非破壞退場。舊`ready=0 / missing_employee=4`只作當時快照，現行gate改為3筆human ready＋1筆legacy shared login disabled。另固定`Employee.id=UUIDv7` target；Employee舊ID的實際遷移方式已由同日one-time exception取代為直接rekey。本次只修訂文件，未改產品程式、Employee／帳號／角色資料、Firebase、Cloud SQL、runtime、traffic、deploy或release。
+- 2026-09-01：完成 DEV-039 paired Duty→ProcessNode strict native admission 的新鮮重演與文件同步。全新 fixture `draft-fac7242d-f6b5-4e48-80f7-2d1424548be0`於既有 canonical 流程入口，從已連結職掌 lane拖至 ProcessNode；觀察到`dragstart／dragenter／dragover／dragend`與 strict MIME，但沒有 terminal `drop`、UI成功結果或domain mutation，API `200`且revision／既有link IDs不變。artifact=`output/playwright/dev039/F039-S7-E1-duty-process-native-blocked.json`，fixture archive manifest=`3294af10da7136c203ca3cac0f3a049e9d69563421cda22f09584d253e3313d0`，5080已釋放、5000未觸碰。正式判定`E1-DUT-PROC-NATIVE=blocked／not-run`，E1 aggregate、正式 QA-QC與E4不變；不新增runner、fallback、resolver、mutation owner或第二證據清冊。
+
+- 2026-09-01：完成 DEV-039 現行 runner／文件計數一致性修正。`output/playwright/dev039/e2-admission.pw.ts`目前宣告七個 test case（五案 E2＋`E3-LIFECYCLE`＋`E3-WARNING`），現行摘要與索引統一為`7 passed`；舊的`8 passed`僅作必要的歷史 provenance，不覆寫現行判定。本次只改文件，不修改產品契約、測試、資料、dependency、runtime、commit、merge、deploy或release。
+
+- 2026-09-01：補齊 DEV-039 `Current readiness audit` 文件索引。主spec第2.2節集中區分 RD Implementation `Ready`（P0／P1 readiness gap=`0`）與交付 gate：E1=`Partial／Open`、E2=`Partial／Open`、E3=`Pass`、E4=`Blocked`；parity第0.1節與evidence manifest頂部同步相同快照。此更新只改善冷啟動判讀與防止歷史段落誤讀，不新增產品架構、debug API、第二history／layout store、synthetic fallback或第二份證據清冊。
+
+- 2026-09-01：完成 DEV-039 E2 history authority／E3 warning source audit。`useOrgHistory` 的 `past／present／future` 僅由 App 內部持有，runner `0→1→0` 只屬行為性 Undo round-trip，不能填充嚴格 `historyLength`；Process canvas／WorkspaceLayout無直接 `console.warn`，Vite tooling advisory、React Flow transient warning與產品 error boundary分開治理。新增 targeted `2 files／10 tests passed` provenance；E2／E3維持`Partial／Open`，不新增產品debug state、history API、第二 history／layout store、global suppress或其他技術債。
+- 2026-09-01：使用者5000 runtime E1補充。在既有 `http://localhost:5000`（PID `23840`，非本任務owned）以全新 fixture `draft-3778d6ea-b4cb-4ce0-b93f-5a8b3afc8b3a`重跑一次性 CDP probe；`1280×720`、HeadlessChrome `149.0.0.0`下source／target geometry preflight可通過，但`intercepted=null`、事件與strict事件均為空，未取得可採用`dragstart→dragover→drop`／`DataTransfer.types`。API before／after均`200`、revision均為`7f09bc...`且既有process link不變，fixture archive final manifest revision `b6e50360dd1aeeb7880918e0d3439189ccf79cbb07df031dca07778b6ef1b538`；5000未停止。此筆只確認換runtime仍是runner capability blocked，不提升E1、不新增synthetic path或第二resolver／mutation owner；詳見主spec§26.21.11、Parity§16.15.9。
+- 2026-09-01：補記 DEV-039 文件／靜態 gate：`git diff --check`、`npx tsc --noEmit --pretty false`、`npm run build` 均通過；Vite extension／chunk-size advisory 歸類為 tooling，不改產品 warning 或 E2／E3 判定。
+- 2026-09-01：補記 DEV-039 execution-hygiene provenance。B16 fixture `draft-2357c0ad-871c-4876-b3d2-935242dad73f` 僅完成 prepare／cleanup，沒有可採用拖曳操作；archive manifest revision=`e1db06f6c35dfa96c1af3ead409c8c50ed73528ac175a2966a766cdf29273a28`，不得計入E1／E2／E3案例。同步確認 typecheck、build、diff check通過；5000 user-owned PID `23840`保留、task-owned 5080未遺留，DEV-039判定與QA-QC狀態不變。
+- 2026-09-01：補記 DEV-039 E3-LIFECYCLE task-owned raw-console／lifecycle rerun。隔離 fixture `draft-fd5238aa-6bf9-4d90-949a-9e22706a8fe2` 只執行既有 `e2-admission.pw.ts` 的 E3-LIFECYCLE，結果 `1 passed (11.5s)`；mount／close／reveal／mindmap→flow／reload皆維持active Process canvas observer最多`1`、pending rAF=`0`，raw與product diagnostics均為空，archive final manifest revision=`2d40124a3851b98cb41e8b46745fcc997a4f9b118950790d48c87c6cb0848e1d`。task-owned `5080`已停止並釋放，user-owned `5000`未觸碰；此筆只補E3-LIFECYCLE個案，不關閉E3-WARNING aggregate、E1 native、E2 aggregate或E4，不新增產品架構或第二輸入路徑。
+- 2026-09-01：補記 DEV-039 E3 geometry／listener evidence hardening。既有 runner 以隔離 fixture `draft-2adac105-5202-4554-a7d0-6233cbdf32ac` 增加可見 canvas geometry與document／window keydown scoped inventory，結果 `1 passed (10.2s)`；mount／reveal／flow／reload canvas不超過parent，close後visible count=`0`，document capture keydown回baseline `0`，observer最多`1`且pending rAF=`0`，archive final manifest revision=`848e8b7bf861957022fa8fcb0b505b80439b60fea616eedfd77bccc9c42ee10c`。這是驗證層增量，不新增產品debug state、API、global listener或第二套lifecycle owner；E3-LIFECYCLE個案維持`pass`，E3-WARNING aggregate仍開放。
+- 2026-09-01：補記 DEV-039 E3 full listener inventory exploratory observation。隔離 fixture `draft-373f011e-0b0d-4636-a344-89145edd552d` 重跑既有 E3-LIFECYCLE，結果 `1 passed (18.9s)`；test-only EventTarget listener與`isConnected`分類觀察到 close／reveal／flow 的 React Flow portal target計數增加，但 reload後回到 `disconnected=0`。probe持有DOM target，故不得把 disconnected count直接判為產品 leak；E3-LIFECYCLE個案維持`pass`、E3-WARNING aggregate仍`Partial／Open`，待QA-QC用未注入instrumentation的DevTools listener／heap或production-like remount profile判定。archive final manifest revision=`f99a52978576269240a7f3f25069e61d1240cba26ddc456f910c44aca16dd29d`，5080已停止釋放、5000 user-owned未觸碰；不新增產品架構、debug API或第二輸入路徑。
+
+- 2026-08-31：同步使用者核准的DEV-006 activation／repository-switch slice。新增default-off Cloud SQL product repository adapter、runtime CAS／media functions與stores整合；targeted 10 files／26 tests、full 159 files／661 tests、typecheck／build、fresh G1 12／12通過。capsule=`DEV006-R1-c617c6cf9e0d`在private-only／zero-traffic candidate完成4 migrations×2、13 artifacts／2 media import／replay、RCN-01～09與transactional active read／CAS write／stale-CAS／media probe，rollback後authority=0/null、batch=1、membership=0。專案缺漏的Google-managed Cloud SQL service agent已補建且只具標準`roles/cloudsql.serviceAgent`。4 jobs、candidate、secret、image、build source、local context/temp全數清理；source metadata與AI-PDM traffic不變，5000 runtime保留。未部署、未持久切authority或改traffic；evidence=`../../Jenfu-Management-system/output/dev-006/releases/DEV006-R1-c617c6cf9e0d/`。
+- 2026-08-31：同步Platform DEV-006 production-bound candidate closure。使用者核准exact target與private-only、zero-traffic restore candidate；Cloud SQL rehearsal完成admin bootstrap、低權限shadow import／replay、rollback-only role verifier、RCN-01～08與preflight blockers=0。final G1=`DEV006-G1-20260831T110155230Z-bb41efa2`，capsule=`DEV006-R1-be8d4e071328`，13 artifacts／2 media／784066 bytes。OrgMaster live workspace在驗證期間持續autosave，已列為concurrent drift並排除於immutable capsule，本任務未寫local data。未切產品repository／authority、未deploy／改traffic；candidate、Job、task secrets/images/build sources/local contexts全數刪除。evidence=`../../Jenfu-Management-system/output/dev-006/releases/DEV006-R1-be8d4e071328/`。
+- 2026-08-31：同步Platform DEV-006 R1 blocker closure（歷史pre-approval capsule）。建立content-addressed capsule `DEV006-R1-16d70f8da53e`，12項input與4項ordered migration逐檔hash驗證，dirty worktree不進artifact；當時preflight blocker由8項降為3項，已由後續`DEV006-R1-be8d4e071328` supersede。
+- 2026-08-31：同步Platform DEV-006 G1與Lane 3 release preflight。OrgMaster新增additive `002_dev006_orgmaster_persistence.sql`、migration CLI與task-owned QC runner；現行local source只讀inventory，fresh runner實測canonical source bytes＋mtime不變及cleanup redaction，generated fixture在隔離PostgreSQL完成12／12、P0／P1=0。evidence=`../../Jenfu-Management-system/output/dev-006/DEV006-G1-20260831T072459383Z-d373abd4/`；前一run已被fresh evidence取代。preflight因release source／target／backup／reconciliation／rollback／candidate缺件而`BLOCKED`。未切換產品runtime預設、未寫現行資料、未碰live Cloud SQL／Firebase、未deploy或release。
+- 2026-08-31：同步Platform DEV-004 `004-S5 Local PASS`。三repo cross-contract／regression／build、fresh PostgreSQL 43／43、redaction／cleanup與10張browser evidence全部PASS，OrgMaster部分含focused 14、full 651、client＋server build及actual Node BFF fail-closed畫面；evidence=`../../Jenfu-Management-system/output/dev-004/DEV004-S5-20260831T054317661Z-75bb1fcc/`。本次只同步OrgMaster開發文件，未修改OrgMaster產品行為、schema、資料、production runtime或release。
+- 2026-08-31：同步Platform DEV-004 `004-S4 Local Complete`。Platform建立Next.js 16.3 auth shell、Portal opaque session、active-principal／central epoch per-request gate、local／global logout及failure UI；contract與focused 6 files／24 tests、production build、fresh isolated PostgreSQL 43／43＋cleanup、HTTP fail-closed、1440／1024／390 browser、login keyboard與failure focus recovery均PASS，evidence=`../Jenfu-Management-system/output/playwright/dev004-s4/manifest.md`。本次只同步OrgMaster開發文件，未修改OrgMaster產品、schema、資料、runtime或release；下一個共同IAM slice為S5。
+- 2026-08-31：依使用者指令完成DEV-004 `004-S3`。OrgMaster新增production Node BFF、Firebase token exchange、opaque app-local session、active-principal／central epoch per-request gate、全business API先驗證、Employee lifecycle adapter及不先render資料的AuthGate；development只允許loopback＋exact headers並維持既有`dev:local`。contract PASS、focused 4 files／14 tests、full 159 files／651 tests、TypeScript、client＋server build、server restart及1440／1024／390三視窗browser均PASS；evidence=`output/playwright/dev004-s3/manifest.md`。未修改AI-PDM、未連live DB／Firebase、未套production migration、未deploy或release。
+- 2026-08-31：同步Platform DEV-004 `004-S2 Gate Closure`。AI-PDM只修正兩支QC runner，fresh focused 14／14、DEV-046 16／16、login alias 21／21及targeted engineering checks通過，S2改為`Local Complete`。本次只同步OrgMaster開發文件，未修改OrgMaster產品、schema、資料、runtime或release；OrgMaster下一slice仍為`004-S3`。
+- 2026-08-31：同步Platform本輪`14A`／DEV-004 `004-S2`初始狀態。AI-PDM完成default-off、cookie-only、single-mode Jenfu adapter，focused 14／14、isolated auth 12／12、typecheck、lint與isolated build通過，完整legacy基準無新增失敗；當時兩個pre-existing exceptions使S2 exit gate仍open。本次只同步OrgMaster開發文件，未修改OrgMaster產品、schema、資料、runtime或release；OrgMaster下一slice仍為`004-S3`。
+
+- 2026-08-31：使用者選擇平台引導題`12A`；完成DEV-004 `004-S0`。OrgMaster新增byte-identical vendor contract、SHA lock、`contracts:check`／`test:dev-004`／`qc:dev-004`，aggregate SHA=`4d27c1e297b516207f931f57e443ecda99e260c56369132f9a269d11920cda96`且drift self-test PASS。尚未修改OrgMaster auth產品程式、Employee、DB、UI、runtime或release；下一個app slice為`004-S3`。
+- 2026-08-31：使用者選擇平台引導題`11B`；DEV-004共同IAM／app-local session補到RD Implementation Ready，DEV-040同步固定OrgMaster production Node BFF、全business API auth gate、active employee lifecycle、opaque local session、central epoch與exact file／test boundary。只開放DEV-004 local／isolated實作，未修改產品程式、schema、資料、環境或release。
+- 2026-08-30：依 `4A / 5A / 6B` 建立 Brief Ready；修訂 ADR-007、DEV-037 spec／QA evidence boundary，並連結 Jenfu Management System ADR-003。本輪未修改產品程式、測試、資料、Firebase、Cloud SQL、deploy 或 release。
+- 2026-08-30：記錄下一輪 `1B / 2A / 3A`（本 DEV 對應 `7B / 8A / 9A`）；固定 legacy role 全部重設、staged cutover 與 app-scoped role administrator。文件維持 Brief Ready，未進 RD／QA／QC／release。
+- 2026-08-30：記錄本輪 `4A / 5A / 6A`（本 DEV 對應 `10A / 11A / 12A`）；固定待生效 assignment、cross-role pilot 後按部門分批，以及 legacy role 唯讀觀察期。文件維持 Brief Ready，未進 RD／QA／QC／release。
+- 2026-08-30：記錄本輪 `7B / 8A / 9A`（本 DEV 對應 `13B / 14A / 15A`）；固定 OrgMaster super-admin 永久跨 app override、P0／P1 零容忍 rollback，以及 legacy role 30 日或兩個 production release cycle 的較晚觀察期限。Human Decision Gate 完成；文件仍維持 Brief Ready，未進 RD／QA／QC／release。
+- 2026-08-30：使用者選擇平台引導題`10A`；DEV-040補齊published assignment state、role catalog input、permission／super-admin、UI Entry、Cloud SQL persistence migration、batch authority／rollback與QA／QC evidence contract，升為`RD Contract Ready / RD Not Started / Documents Only`。未修改產品程式、schema、資料或環境。
+
+## DEV-039：可組合規劃桌面與跨面板關聯配置
+
+狀態：`S0～S6 Historical Complete / S7 Relation Placement Implemented / QA-QC Passed / E4 Candidate Freeze Ready / Authorization Pending`
+文件成熟度：`RD Implementation Ready / Implementation Complete / QA-QC Passed / Candidate Freeze Ready / Authorization Pending`
+節點類型：交付點
+是否計入產品交付完成：是
+來源 ID：`USER-2026-08-28-COMPOSABLE-PLANNING-DESKTOP`、`USER-2026-08-28-BRANCH-LEVEL-UI-REPLACEMENT`、`USER-2026-08-28-DEV039-HCS-ROUND-1`、`USER-2026-08-28-DEV039-HCS-ROUND-2`、`USER-2026-08-28-DEV039-HCS-ROUND-3`、`USER-2026-08-28-DEV039-HCS-ROUND-4`、`USER-2026-08-28-DEV039-MATURE-MODULE-SLICE-1`、`USER-2026-08-28-DEV039-ALL-CURRENT-FUNCTION-PARITY`、`USER-2026-08-30-STABLE-PANEL-OWNERSHIP-ARCHITECTURE`、`USER-2026-08-30-DEV039-S6-IMPLEMENTATION-READY`、`USER-2026-08-31-NATIVE-CROSS-PANEL-RELATION-PLACEMENT`、`USER-2026-08-31-FIRST-PRINCIPLES-RELATION-PLACEMENT-ARCHITECTURE`
+父任務：DEV-038
+風險等級：Medium（主要 UI flow、跨面板互動與舊版移除改變；Current Phase 不改 schema、API、權限或 domain authority）
+分支：`codex/dev-039-composable-workspace`
+現行判讀優先序：先讀主spec第2.1～2.5.2節、parity第0.1～0.2節及`output/playwright/dev039/manifest.md`頂部Current gate snapshot／RD handoff；本節下方標示日期的runner／QA／QC段落均為provenance，若與上述快照不同，以現行快照為準，不得把歷史`E1 not-run`或`E3 warning open`當成目前狀態。最新 paired strict record見主spec第26.21.25節，桌面 viewport extension見第26.21.26節，歷史 blocked runner見第26.21.24節。
+執行邊界：S0～S6產品與證據維持歷史完成；S7已完成Implementation Readiness Review、relation core實作與正式 QA-QC：`relationPlacement.ts` pure reducer、App唯一協調器、typed effect／capability path、Employee／Duty／Process source handle／target wiring、舊平行state清理、Process composition harness與B16 pure fixture harness已完成；targeted component `3 files／19 tests`、full regression `160 files／664 tests（1 skipped）`、typecheck、build與source scan已通過。本輪新增E2 fail-closed與Process canvas lifecycle自動化測試不改產品契約。Process canvas 幾何窄修正後 split／reload／flow source handles、owner canvas與overflow observation已通過，artifact為`F039-S7-E3-process-geometry-after-fix.png`。最新隔離 fixture 七案 B16 合併 browser runner（五個E2 failure-path＋`E3-LIFECYCLE`＋`E3-WARNING`）為`7 passed`；五案 E2 `historyEvidence`與E3兩案 evidence均已完成並覆核。ProcessNode→Duty與paired Duty→ProcessNode均有strict native pass（artifact分別為`F039-S7-E1-process-duty-native-strict.json`與`F039-S7-E1-duty-process-native-strict.json`），四個 E1 minimum directions aggregate為`Pass（evidence）`；E4只剩候選凍結授權。不執行commit、merge、deploy或release。下方單案pass、blocked provenance與舊keyboard baseline不得取代最新aggregate判定。
+
+> **細部紀錄閱讀邊界（現行）**：本節以下帶日期的 runner／QA／QC／browser 段落，除非標示「現行覆寫」或「current closure」，均只保存可追溯 provenance；其中較早的 `E1／E2／E3 Partial／Open`、`blocked／not-run`、`E4 Blocked` 不得覆寫本節現行狀態。下一步只依主spec第2.4節執行 `E4-CANDIDATE-FREEZE`，且仍需使用者／PM明確授權。
+
+2026-09-01 audit補充（歷史 provenance）：已完成 `useOrgHistory`、App Undo／Redo與 Process warning source audit。既有 history stack 未暴露為產品 API，runner 的 `0→1→0` 只代表一次有效配置加 Undo round-trip；`ProcessPlanningCanvas`／`WorkspaceLayout`無直接 `console.warn`，Vite extension advisory與React Flow warning分開判定。這次只更新 evidence boundary，不新增 production debug state、history API、第二 history／layout store或global suppress；E2現行判定以最新 `historyEvidence` record為`Pass（evidence）`，E3-WARNING亦為`pass`。
+
+自動化回歸重驗（2026-08-31 16:05，幾何窄修正前歷史基線）：以`npm test -- --run --pool=forks --maxWorkers=1`取得`159 files／656 tests passed`；前次平行執行的5個worker timeout以低併發重跑後不再重現，視為驗證環境噪音。此結果只更新歷史aggregate regression provenance，不關閉native `dataTransfer`、invalid／target卸載／capability-loss failure或React Flow warning gate；現行`160／663`以主spec第26.13節及第26.17節為準。
+
+最新自動化增量（2026-08-31）：依主spec第26.13.1節新增 `E2-UNLOAD`、`E2-INVALID`、`E2-CAPABILITY-LOSS` pure／component fail-closed coverage，並新增 `ProcessPlanningCanvas.lifecycle.test.tsx` 的兩 frame 單次 fit、observer disconnect與hidden pending rAF cancellation coverage；targeted pure／fixture `11 files／57 tests`、component／composition `6 files／24 tests`，關聯與lifecycle合併重跑 `4 files／20 tests`，aggregate `160 files／663 tests`。這只補測試證據，不改產品狀態；瀏覽器 unload／capability-loss與listener inventory record 仍開放。
+
+E3 lifecycle browser admission（2026-09-01）：以隔離 fixture `draft-3983041c-deb2-4e9e-badf-5e1aa5ecbee0` 重跑同一 `output/playwright/dev039/e2-admission.pw.ts`，五個 E2 failure-path 加 `E3-LIFECYCLE` 共 `6 passed (31.5s)`。browser-init probe只包裝既有 `ResizeObserver.observe/disconnect` 與 `requestAnimationFrame/cancelAnimationFrame`，在Process canvas mount／close／reveal／mindmap→flow／reload觀察到可見canvas active observer不累積（為`1`或close後`0`）、pending animation frame為`0`，產品diagnostics為空；archive final manifest revision `28390b5c0322c842d28ddc0b31f7fa0db9074810e37e5a890db38495ce322beb`，5080 runtime／port已cleanup。`E3-LIFECYCLE`個案標`pass`，`E3-WARNING` aggregate仍`Partial／Open`，不新增產品debug state、listener、resolver、MIME、mutation owner、schema、API或第二輸入路徑。
+
+E2／E3 final stability rerun after transient-notice hardening（2026-09-01，歷史 provenance）：以隔離 fixture `draft-dbdd513f-a15b-4297-a4f5-819a4f08d80c` 重跑五案 E2 加 `E3-LIFECYCLE`，結果 `6 passed (34.4s)`；archive manifest revision `e647287fd737dbf35e185ce081a1351b92bced7352ea10e06e370867cbf03e76`，task-owned `5080` runtime／port已cleanup。runner維持 history evidence numeric baseline／recovery，並將 capability-loss re-entry 的穩定准入改為 persisted process-link readback；不新增產品debug state、history API、resolver、MIME、mutation owner、schema或第二保存路徑。現行 E2 aggregate以第S7 latest checkpoint的 `historyEvidence` record為`Pass（evidence）`，E3-LIFECYCLE仍為`pass`。
+
+E3 raw-console assertion hardening（2026-09-01）：既有 `e2-admission.pw.ts` 的 `E3-LIFECYCLE` test layer 新增嚴格 `expect(diagnostics).toEqual([])`；隔離 fixture `draft-ee9cb1d2-b8f8-45e9-8f47-491adc7375b9` 結果 `1 passed (11.0s)`，raw／product diagnostics均為`[]`，archive final manifest revision `d5445aad498c8cb3ff140905e762ba33a1f93f62108f6c02f74082cb6b03ed9c`，5080 runtime／port已cleanup。此為 evidence-only assertion，不提升 E3-WARNING aggregate、不改產品契約或第二輸入路徑；E1 native、E2 history-length與E4不變。
+
+E2／E3 authority audit（2026-09-01，歷史 provenance）：`useOrgHistory` 僅由 App 持有 `past／present／future`，無產品可讀 `historyLength` 表面；E2 runner 的數值 baseline只作行為性證據，不能填充第26.14節舊版嚴格欄位。source search亦確認 Process canvas／WorkspaceLayout沒有直接 `console.warn`；E3-WARNING已以同一 fixture 的原生CDP listener、strict raw-console、geometry與lifecycle record關閉，E2現行改採 `historyEvidence` 並為`Pass（evidence）`。本輪沒有產品程式、API、schema、dependency或輸入路徑變更。
+
+E3 native DevTools listener／warning closure（2026-09-01，歷史 provenance）：同一隔離 fixture `draft-5ab9ff12-e5f0-4bfc-8141-eddc1fb4e078` 以既有 runner 合併重跑 `E3-LIFECYCLE` 與 E3-WARNING native CDP case，結果 `2 passed (15.7s)`，與同 fixture 的五案 E2 合計 `7 passed`；不注入 `EventTarget` monkey-patch，也不持有 DOM target，raw diagnostics為`[]`，Process canvas close後為`0`、reveal／flow／reload為`1`，window／document／viewport portal listener回到`40／8／139` mount baseline。archive final manifest revision=`2903c3813ccd0cd38de638c10d6646a8c5b4ab02da5b6055b5e96a300179eee6`，artifact=`F039-S7-E3-warning-cdp-listeners.png`；5080 task-owned runtime已停止並釋放，5000 user-owned PID `23840`未觸碰。依主spec第26.21.17節，E3-WARNING現為`pass`；E1 native仍`blocked／not-run`、E2現行以第26.21.19節為`Pass（evidence）`、E4仍`Blocked`。
+
+RD 讀取邊界：主spec第26.13.1節的自動化覆蓋表將「邏輯已測」與「瀏覽器可採用 evidence」分開；不得把 pure／component pass 當成 visible failure、focus return、zero-mutation 或真實 target unload／capability-loss 的 pass。`E2-COMMIT-REJECT`只在既有拒絕路徑可重演且不需新增 fallback 時補測。
+
+權威工程契約：`ai-doc/specs/DEV-039-composable-planning-workspace.md`
+
+零功能遺失清冊：`ai-doc/specs/DEV-039-feature-parity-manifest.md`
+
+架構決策：`ai-doc/adr/ADR-009-composable-workspace-shell-boundary.md`
+
+### S6 Panel Boundary Hardening摘要（2026-08-30）
+
+後續同類缺口盤查顯示，既有`LAYOUT-OWNERSHIP-01`只關閉Duty configuration明細錯掛組織圖的單一路徑，尚未形成全系統強制邊界：Duty audit／distribution仍可顯示viewport-fixed persistent detail；master-data共享detail ReactNode存在organization與module adapter雙mount風險；Management Method Duty對照及部分Duty popover／preview尚未經panel／global overlay分級。這些缺口不能再用逐頁CSS specificity修補。
+
+S6固定四項工程契約：
+
+1. Persistent list／canvas／document／settings／detail／editor只能由owner `WorkspacePanelFrame[data-module]`掛載，且DOM最多一份。
+2. Panel transient只進`PanelOverlayHost`；global recovery／blocking modal／toast／drag preview只進`GlobalOverlayHost`；feature不得raw portal到body或以fixed persistent surface跨region。
+3. Shared selection只傳stable `EntityRef`與revision；panel-local detail selection／open state由各module context／session擁有，`App`不得以共享ReactNode或全域Inspector boolean控制多module明細。
+4. Panel container只決定排版，desktop／mobile mutation capability仍由workspace environment決定；桌面窄panel不得被誤判為手機。
+
+文件已同步主spec第4.7、12.4、22.5、25.5、26.7節、parity manifest四項S6 ID及ADR-009 amendment。Current execution boundary是`Implementation Complete / QA-QC Passed / Local Release Gate Pending`；exact exports、owner factories、overlay allowlist、S6-0～S6-5、failure recovery及B14～B15皆已完成。S6沒有schema、API、permission、domain、dependency或資料migration。
+
+### S7 Relation Placement Session Implementation Contract（2026-08-31）
+
+#### 真正問題
+
+試用畫面顯示Employee清單與Organization panel可同時存在，但在目前正常操作下無法完成Employee→Position原生跨面板拖曳；畫面當時為`current-view／唯讀`，程式也只在editable mode啟用來源，然而既有`F039-REL-01`實機證據主要只證明keyboard placement與focus return，不能支持「native跨面板拖曳已交付」的結論。S7因此重新開啟受影響acceptance；S0～S6其他workspace、owner、overlay及keyboard證據不因本缺口失效。
+
+#### 第一性架構方向
+
+核心能力不是「拖曳」，而是`來源物件 → 關係語意 → 合法目標 → 預覽 → 建立關係 → 可復原`。S7採單一、typed、短生命週期的`Relation Placement Session`統一native drag與keyboard placement；`application/x-orgmaster-entity`仍是native transport，`resolveRegisteredDrop`仍是preview與commit的唯一規則來源，drop時以latest canonical state及capability重新解析。Session不得進URL、local layout、OrganizationDocument、domain history或autosave，也不得成為第二business state。
+
+Current Phase依序涵蓋：
+
+1. Employee Drawer／Employee panel→Position新增任職；Employee已無regular assignment時建立第一筆並修復主職指標，已有任職時沿用既有helper新增兼任。
+2. Organization既有Employee→另一Position移轉exact source assignment；只有此來源可放到organization unassign zone解除該筆任職，Employee清單放到空白區只取消。
+3. Duty＋exact lane→Position，以及Duty↔ProcessNode沿用同一Placement生命週期與各自既有Command／transaction。
+4. native與keyboard共用`beginPlacement／previewTarget／commitTarget／cancelPlacement`；source focus另以短生命週期ref保存，不進serializable state。
+5. 候選版本前刪除被取代的`employeeDrag`、`employeeKeyboardDrag`、`dutyDragState`或等效平行正常路徑；不得讓新的Placement與舊drag coordinator永久並存。
+
+#### UX與可見狀態
+
+- 唯讀、mobile、recovery或capability loss時不顯示drag handle且不能開始Placement；不得以disabled假控制暗示可寫入。
+- Editable desktop在來源列尾使用一致的最小drag handle；點名稱仍只選取／開明細，避免整列drag與click競爭。
+- Drag／keyboard placing期間只標示resolver判定的合法target；candidate就地呈現新增兼任、移轉、解除、取代、已存在或不可用語意，不增加教學面板或逐次確認Modal。
+- 有效drop只commit一次並以projection更新、最小結果回饋與既有Undo呈現；invalid、same target、duplicate、cancel、Escape及來源／目標卸載均零domain change、零dirty、零history、零autosave。
+
+#### Scope外與停止條件
+
+- 不新增任意物件互拖、generic event bus、plugin registry、service locator、multi-instance、批次配置或手機／touch編輯。
+- 不新增DnD dependency、後端drag API、schema、OrganizationDocument版本、permission語意或第二save path。
+- 若Implementation Readiness發現不能在既有typed payload、resolver、assignment helper／OrganizationCommand及App composition root內完成，停止回PM，不得先擴張架構。
+
+#### 驗收方向
+
+- 從canonical `/`的正常頂部功能入口，在1440×900與1024×768 editable draft開啟Employee Drawer／panel及Organization，實際以native `dataTransfer`完成新增任職、兼任、移轉與解除，並驗證合法／非法target、結果預覽、cancel、noop、Undo、autosave及reload。
+- 1440×900 current read-only、1023×768與390×844不得顯示或啟動mutation；拖曳途中若capability喪失，drop必須以latest state fail closed。
+- 鍵盤使用同一Placement session與resolver完成等價關係，Tab／Shift+Tab、Enter／Space、Escape、live status及source focus return均可觀察。
+- QA／QC必須建立新的native browser evidence；既有`F039-REL-01` keyboard screenshot、unit resolver test、build或API/data直寫只能作baseline，不能關閉S7。
+
+#### RD Contract補強
+
+- UI Entry：具mutation capability的總經理／主管由canonical `/`頂部功能入口開啟Organization與來源Drawer／panel；名稱click維持選取／明細，只有列尾一致把手開始Placement。系統不在placing期間自動開啟、切換或重排panel。
+- Interaction：native與keyboard共用`idle → placing → committing → idle`；preview與commit前都走`resolveRegisteredDrop`，commit再以latest payload／state／capability重驗。一般畫布空白只取消；只有exact Employee assignment在Organization owner內顯示的暫時解除區可以解除任職。
+- Result：第一任職、兼任、exact移轉、解除、取代現有人員、Duty主執行移轉與Process link有可辨識結果語意；有效結果只commit一次，成功用projection＋單一live result＋Undo，不開逐次Modal。
+- Data／API／Permission：OrganizationDocument V7、relation schema、backend API、permission與save path均不變；Session永不進URL、local layout、domain history或autosave。Employee沿用assignment helpers，Duty／Process沿用Organization Commands。
+- Failure：invalid MIME／pair、stale source、target卸載、capability loss、mode／version切換與command rejection全部fail closed；autosave／409沿用既有workspace recovery，不另做第二補償或保存。
+- Evidence：代表fixture需包含無／單一／多任職Employee、空／多人／單人Position、無relation／已有primary Duty及重複／非重複Process link；B16以正常入口、實際native及keyboard、Undo、save／reload、readonly viewport與visible error sweep建立fresh evidence。
+
+#### RD Implementation Contract（Ready）
+
+- 唯一owner：`App`以一個`useReducer(reduceRelationPlacementSession, createRelationPlacementSession())`、一個source focus ref及一個同步commit lock擁有整個placement生命週期；`src/workspace/relationPlacement.ts`只提供pure state transition、payload equality與auto-pan，不執行domain mutation。
+- 唯一規則／提交：preview與commit都以latest canonical state及capability重跑`resolveRegisteredDrop()`；只有`intent`可由App的`commitDomainMutationIntent`分派至既有Employee assignment helper或Organization Command，noop／rejected不得產生dirty、history或autosave。
+- Exact migration：修改`entityDrag.ts`、`App.tsx`、`DirectoryDock.tsx`、`OrgNode.tsx`、Process三個surface及Organization panel／CSS；刪除未使用的`WorkspaceDragSession` placeholder、Employee／Duty平行state、legacy Duty MIME／handler及其CSS。完整file／symbol與禁止事項見主spec第22.6節。
+- Slice：S7-0先鎖pure reducer／resolver／source-policy；S7-1接唯一owner與commit dispatcher；S7-2完成Employee新增／兼任／exact移轉／解除；S7-3完成Duty＋lane→Position；S7-4完成Duty↔ProcessNode；S7-5刪舊路徑、跑aggregate與B16 candidate freeze。每一slice都必須在新路徑接通後同slice刪除其舊owner，不允許永久雙軌。
+- 可執行Gate：新增`relationPlacement.test.ts`與`scripts/dev039-s7-fixture.test.ts`，以既有`ProcessPlanningWorkbench.test.tsx`作跨來源／目標composition harness，擴充既有resolver／component／architecture policy tests，跑typecheck、targeted、full regression與build；`scripts/dev039-s7-fixture.mjs`經現有workspace API建立、檢查並recoverably archive task-owned fixture，B16產出`F039-S7-B16-*`及provenance。Exact命令、stable fixture IDs與cleanup條件見主spec第26.8節。
+- Recovery：任一slice未通過時只回退該slice，保留S0～S6；invalid MIME、stale source、target卸載、capability loss、mode／version切換及command rejection全部fail closed。若需要新schema／API／permission、第二business state、未登錄relation或新dependency，立即停止回PM。
+
+#### S7 execution checkpoint（2026-08-31）
+
+- 靜態與自動化 Gate 已完成：最新 targeted pure／fixture `11 files／57 tests`、component／composition `6 files／24 tests`（關聯與lifecycle合併重跑 `4 files／20 tests`）、full regression `160 files／663 tests`、`npx tsc --noEmit --pretty false`、`npm run build`、legacy source scan及`git diff --check`均通過；本輪新增E2 fail-closed與Process canvas lifecycle tests不改產品契約，Process canvas after-fix geometry observation另於第26.17節記錄。
+- B16 loopback execution：以task-owned Vite `127.0.0.1:8080`、Playwright Chromium `HeadlessChrome/151.0.0.0`、viewport `1280×720`及loopback dev identity（issuer `urn:orgmaster:dev`、subject `local-admin`）經正常頂部 `功能` 入口執行；fixture version `draft-ae49e198-ff78-4ace-96af-6cab7cf080e5`（`DEV-039-S7-B16-1788156467803`）由`scripts/dev039-s7-fixture.mjs`建立、讀回後已archive，archive manifest revision為`108fd7d058d44db20e50b477d7cd1260dd21f95bf60af1ecd9299a7d7a583cb5`，最終version revision與link readback見`output/playwright/dev039/manifest.md`。
+- 成功證據：ProcessNode→Duty與Duty→ProcessNode keyboard均由同一Placement Session建立canonical link；同target duplicate為noop；另有Employee／Duty keyboard／native、Escape cancel、current readonly無drag handle及draft reload persistence均已由API readback／UI操作確認；1440／1024／390 viewport與document overflow亦已補測。較早 in-app browser CUA未觀察到HTML5 `dataTransfer` drop／mutation；後續 task-created Chrome CUA則觀察到Employee→Position native DOM mutation、same-target noop及Duty→Process invalid＋Escape cancel，但strict MIME與同操作API／revision仍未讀回，不能宣稱native通過；截圖與逐案結果見`output/playwright/dev039/manifest.md`。
+- 恢復／下一步：E3-LIFECYCLE與E3-WARNING已由同一 fixture 的 browser／native CDP record 補得 mount／close／reveal／mindmap→flow／reload bounded evidence，E3兩個個案均為 `pass`；E2五案亦已由最新 runner 輸出 `historyEvidence` 行為性 Undo record並通過，現行下一步只剩可讀取真實 `DataTransfer` 的 E1 native runner、正式 QA-QC／E4 freeze，不需修改產品 schema、API或新增 dependency。loopback dev identity不代表正式登入或production auth。
+
+#### S7 closure checkpoint（2026-08-31）
+
+目前不需要重新定義架構；最小RD產品工作包已完成：`ProcessDutyBridge`將Duty列註冊成可供native／keyboard使用的target，`ProcessPlanningWorkbench`只傳遞App既有preview／commit窄Props。`entityDrag.ts`、resolver及既有`LINK_PROCESS_NODE_DUTY` intent仍是唯一權威；後續只補fresh QA／QC與viewport evidence。
+
+派工邊界固定如下：
+
+1. 已完成`src/components/ProcessDutyBridge.tsx`與`src/components/ProcessPlanningWorkbench.tsx`的Props／target wrapper；linked／available Duty row皆可被解析為`{ kind: 'duty', dutyId }`，名稱click仍是選取、解除按鈕仍是解除。
+2. target wrapper保持接受strict `application/x-orgmaster-entity`、具可觀察的`tabIndex=0`及accessible name，並回呼App既有`onRelationPreview`／`onRelationCommit`；不得在component內新增resolver、commit、state、MIME或API。
+3. 已執行`ProcessPlanningWorkbench.test.tsx`、`ProcessDutyBridge.test.tsx`及`WorkspaceArchitecturePolicy.test.ts`，並用同一B16 fixture重跑ProcessNode→Duty／Duty→ProcessNode native＋keyboard、duplicate及API readback；invalid／Escape／capability loss／focus return列入fresh QA重驗。
+4. Fresh B16 evidence已回填`output/playwright/dev039/manifest.md`，並同步主spec第26.13節、feature parity manifest第16.6節及ADR-009；keyboard relation、no-op、cancel、reload與viewport已閉合。較早 in-app CUA未觸發可觀察`dataTransfer`，後續 Chrome CUA補到Employee→Position native DOM mutation與Duty→Process invalid＋Escape cancel，但strict MIME、API／revision、target卸載／capability-loss failure evidence與React Flow warning仍開放，維持`Relation Placement Implemented / QA-QC Reopened`。後續重跑只補剩餘native／失敗／warning證據，不新增架構或第二份證據清冊。
+
+此工作包不允許新增DnD dependency、schema／API／permission、第二business state、generic event bus、plugin、multi-instance或第二mutation path；也不授權commit、merge、deploy或release。
+
+#### S7 remaining closure execution packet（2026-08-31）
+
+主spec第26.13節及第26.13.1節已將剩餘工作固定成四個可派工 closure ID與最小單案矩陣：`E1-NATIVE`（真實 HTML5 `DataTransfer` 與 API readback）、`E2-FAILURE`（invalid／target卸載／capability loss 的 visible fail-closed）、`E3-WARNING`（React Flow parent-size warning 時序與處置）、`E4-FREEZE`（文件／證據／cleanup同步）。E2五案與E3兩個個案均已取得 browser record與完整行為性 evidence，E2／E3均為現行 `Pass（evidence）`；目前只開放 E1 strict native runner、正式 QA-QC與 `E4`，故 DEV-039 維持 `Relation Placement Implemented / QA-QC Reopened`。
+
+RD 執行順序固定：targeted relation／component／fixture tests → `npm test -- --run --pool=forks --maxWorkers=1` → `npx tsc --noEmit --pretty false` → `npm run build` → `git diff --check` → canonical `/` 頂部`功能`入口的 fresh browser evidence。若不需程式修正，只補 `output/playwright/dev039/manifest.md`；若需修正，只能落在既有 `entityDrag`／`relationPlacement`／App coordinator／target wrapper／Process canvas lifecycle，禁止新增 dependency、MIME、resolver、mutation path、schema／API／permission或全域 console suppress。每案必須記錄 stable IDs、revision、dirty／history／autosave、focus、console、network、viewport、identity、fixture與cleanup；E1 不得以 CUA 未產生 `dataTransfer` 的結果代替。
+
+#### S7 evidence record contract（2026-08-31）
+
+主spec第26.14節是 E1～E3 的唯一 evidence record schema 與保守判定演算法；`output/playwright/dev039/manifest.md`只保存 records，不另造狀態機。每筆 record 必須來自同一 B16 fixture version，包含 case／closure／relation／input mode、canonical route、viewport、mode、browser／identity、before／action／after、visible result、產品 console、API readback 與 cleanup。`before／after`至少要有 relation IDs、version revision、dirty、autosave state；history length若可取得只作 optional diagnostic。E2另必須有 `historyEvidence`，以一次合法 mutation＋恰好一次既有 `Control+Z` 證明完整 canonical relation IDs 回到 baseline；native case另需實際從 drop event 讀到 strict `application/x-orgmaster-entity` 的 `dataTransfer.types`。
+
+判定順序為 `blocked → fail → partial → pass → observed → not-run`：必要欄位缺失不得推論通過；CUA／工具無法取得 `dataTransfer`、API／revision、zero mutation或 E2 `historyEvidence` 時，只能標 partial／blocked。E4 只採用 records、acceptance與清冊內容，不採聊天、舊截圖、unit或API直寫推論。若新增 runner，僅可放 `scripts/`／測試目錄，不得進 production bundle、不得呼叫第二 resolver／mutation owner，也不得用 `page.evaluate` 直接提交產品 mutation。
+
+最低 case ID 固定為 `E1-EMP-POS-NATIVE`、`E1-DUT-POS-NATIVE`、`E1-PROC-DUT-NATIVE`、`E1-DUT-PROC-NATIVE`、`E2-INVALID`、`E2-UNLOAD`、`E2-CAPABILITY-LOSS`、`E3-LIFECYCLE`；`E2-COMMIT-REJECT`與`E2-409-RECOVERY`是已取得的 optional 補充 case，不改最低 gate。同一artifact可被多案引用，但每案仍須有獨立 assertion與status。
+
+#### S7 latest E2 evidence checkpoint（2026-09-01）
+
+依主spec第26.21.19節，隔離 B16 fixture `draft-02d6deb8-9c2b-4653-85a9-a970b9bff50c` 以固定 Playwright `1.62.1`／Chromium `149.0.7827.55`重跑 `e2-admission.pw.ts`，五案 E2 加兩案 E3 共 `7 passed`。五案 E2 均輸出 `historyEvidence`（合法 mutation、恰好一次 `Control+Z`、完整 canonical relation IDs回 baseline），並通過 zero-mutation、dirty／autosave、focus、document listener、re-entry與409 recovery；E2 aggregate現為`Pass（evidence）`，待正式 QA-QC覆核。為降低假陰性，runner明確切換流程圖視角並在合法 mutation後等待既有 autosave settle；沒有新增產品 debug API、第二 history store、resolver、mutation owner或輸入路徑。archive final manifest revision=`562a844e860c2baf9714986f5ce61a93fc92c565f06750c85022b21f517e656c`，5080已停止／釋放，5000未觸碰。E1 strict native／paired direction與E4仍未閉合。
+
+#### S7 RD handoff index（2026-09-01，現行）
+
+下一輪派工只保留三個工作包：
+
+1. `E1-STRICT-NATIVE`：沿用同一 B16 fixture、canonical `/`、既有 strict MIME與 registered resolver；取得真實 `dragstart→dragover→drop`、`DataTransfer.types`、API／revision／canonical readback後，成對完成 ProcessNode↔Duty。
+2. `QA-QC-REVIEW`：覆核最新 E2 `historyEvidence`、E3 lifecycle／warning與 E1 records，確認 artifact、cleanup與主spec／Parity／manifest／dev_task四方同版。
+3. `E4-CANDIDATE-FREEZE`：只有 E1～E3 required pass且 cleanup／source scan／build均可重演時，才由 PM 另行取得使用者授權進入 candidate freeze。
+
+這三個工作包只讀取既有契約，不新增 DnD dependency、第二 MIME／resolver／mutation owner、schema／API／permission、global listener、feature flag或第二份 evidence manifest；若 strict runner仍不可用，保存 `blocked／not-run` provenance後停止同類重試。
+
+#### S7 fresh native evidence records（2026-08-31）
+
+主spec第26.15節與Parity第16.8節已補兩筆同一 B16 fixture 的 fresh native record：`E1-EMP-POS-NATIVE=pass`（Employee→Position，strict MIME、PUT #608=200、assignment readback、response revision）及 `E1-DUT-POS-NATIVE=pass`（Duty主執行→Position，strict MIME、PUT #738=200、rel-duty-7、response revision）。對應截圖為 `F039-S7-B16-native-employee-position.png` 與 `F039-S7-B16-native-duty-position.png`，fixture `draft-508a1fcd-e705-4bd1-98bf-72a140e607eb` 已 recoverably archive，8080 未啟用，使用者 owned 5000 未停止。
+
+這兩筆只關閉單案，不改變 DEV-039 狀態；ProcessNode↔Duty native 成對案例仍須依第26.14節補齊。Process source→Duty 本輪因 duty drawer 展開後 source 位於不可見 transformed viewport，正常 pointer path `not-run`；不得用 `page.evaluate`、style 注入或 API 直寫補造結果。`E1-NATIVE`仍為 `Partial／Open`，`E2-FAILURE`現為`Pass（evidence）`（最新五案詳見S7 latest E2 checkpoint），`E3-WARNING`已由原生 CDP listener record標為 `pass`，`E4-FREEZE`仍為 `Blocked`。
+
+#### S7 現行證據讀取規則（2026-08-31）
+
+下一輪 RD／QA／QC 不再從歷史段落自行推導狀態，固定依序讀取：主spec第26.13節（派工）→第26.13.1節（最小 failure／lifecycle case matrix）→第26.14節（record schema／判定）→第26.15節（最新逐案結果）→第26.17節（Process canvas 幾何／生命週期窄修正）→第26.18節（native runner admission）→第26.21.17～26.21.21節（E3／E1／E2最新補強與 ProcessNode source handle 窄修正）→Parity第0.1～0.2、16.6～16.15.17節及 `output/playwright/dev039/manifest.md`（索引／artifact）。本節前面的S7 execution／closure checkpoint與manifest較早loopback／CUA紀錄只作provenance，不能把單案 `pass`、unit／build、API直寫或工具限制上推為aggregate pass。
+
+現行狀態快照固定為：`E1-NATIVE=Partial／Open`（Employee→Position、Duty→Position及ProcessNode→Duty各一筆strict單案pass；paired Duty→ProcessNode 最新 reverse runner 僅到 `dragover`，正式記為`blocked／not-run`）、`E2-FAILURE=Pass（evidence）`（五案均有 browser record、dirty／autosave／document listener、重新 editable／409 recovery與 `historyEvidence`）、`E3-WARNING=pass`（native CDP listener、geometry／observer／rAF與strict raw-console均通過）、`E4-FREEZE=Blocked`。新增E1～E3證據時，先追加主spec第26.15節，再同步Parity與evidence manifest；`dev_task.md`及`documentation_map.md`只更新摘要，不建立第二套record欄位或判定演算法。下一輪接續順序、runner blocked處置與禁止擴張項目以主spec第2.1節為單一冷啟動入口。
+
+2026-09-01 fresh strict-runner probe 已在滾動後可見的 Process source／Duty target 重演；`elementFromPoint` 可命中產品 source／target，但未產生可觀察 `dragstart／dragover／drop` 或 strict `DataTransfer`，且沒有 API 直寫或新增Process link。fixture `draft-22e0c2bc-29e2-4460-a222-86664fc4cdde` 已以既有 archive path 清理（final manifest revision=`51e3a8f1834595939f00337f2854e3e5c5042af95f45dce0acd2f45038bef5bf`），task-owned `5080` runtime已釋放。依主spec第26.21.20節，ProcessNode→Duty標為`blocked`、paired Duty→ProcessNode標為`not-run`；此結果只說明runner能力，不改寫成產品故障或native pass。後續不得重複同類 runner，除非取得能讀取真實 `DataTransfer` 的新環境。
+
+2026-09-01 第二次 strict-runner capability probe 改用全新 fixture `draft-dc8cdb58-488c-42ee-9430-e20276fa255b`，在 source／target geometry與`elementFromPoint`均命中產品元素後，Chromium CDP `Input.setInterceptDrags`、原生滑鼠路徑與最小 HTML5 probe仍未取得可採用的產品事件序列或 strict `DataTransfer.types`；沒有 synthetic event、API直寫或 domain mutation。fixture archive response=`200`、final manifest revision=`99cda30acc92c181d0e1ae99769e54dae131515316c7c9e7e20aa7bb724bb584`，5080已清理、5000（PID `23840`）未觸碰。依主spec第2.5.1節，E1 ProcessNode→Duty維持`blocked／not-run`；paired Duty→ProcessNode的最新正式 reverse boundary 另見主spec第26.21.24節，維持`blocked／not-run`；除非取得新的可讀取真實 `DataTransfer` harness，否則停止同類重試，不新增第二輸入路徑、resolver、mutation owner或證據清冊。
+
+2026-09-01 ProcessNode source handle 窄修正：盤查確認 React Flow pane 的 d3 pan 可能在 HTML5 drag promotion 前攔截 source `mousedown`；既有 `ProcessNodeCard` handle 加入 `onMouseDownCapture` stopPropagation，未新增 state／listener／MIME／resolver／Command／API。`ProcessPlanningWorkbench` targeted regression為`1 file／5 tests passed`，`npx tsc --noEmit --pretty false`與`npm run build`通過。修正後 browser diagnostics可觀察 strict MIME `dragstart／dragend`，runner仍缺可採用`dragover／drop`，因此 E1／E4判定不變；詳見主spec第26.21.21節。
+
+本輪另嘗試全量 `npm test -- --run --pool=forks --maxWorkers=1`；超過四分鐘無測試結果輸出後已安全停止 task-owned Vitest process，不覆蓋既有成功基線 `160 files／663 tests`。本輪可採用 gate 仍為 targeted、typecheck、build；不以未完成的全量重跑宣稱通過。
+
+#### S7 continuation gate（2026-08-31）
+
+本小節只作 dev_task 的短索引，詳細契約仍由主spec第2.1節及第26.13～26.21節擁有：
+
+1. 先跑 targeted → aggregate → typecheck → build → diff check；任何失敗先停止，不以文件改寫狀態。
+2. 依第26.18節判定 runner。若無法讀取真實 `DataTransfer`，將 E1 記為 `blocked／not-run`，保存環境與cleanup後停止同類嘗試。
+3. runner admitted 才補 E1；E2／E3 可獨立補，但每案仍需同一 B16 fixture、visible result、focus／cleanup與zero-mutation或listener evidence。
+4. 只在 E1～E3 全部 pass、fixture／runtime cleanup可讀回且四方文件同版後，才進 E4 candidate freeze；未達成前不得 commit、merge、deploy或release。
+5. 禁止新增 DnD dependency、第二MIME／resolver／mutation owner、schema／API／permission、global listener、feature flag或第二份 evidence 清冊。
+
+#### S7 Process canvas 幾何 blocker 與窄修正結果（2026-08-31）
+
+- before blocker：`localhost:5000` B16 draft 量測曾顯示 `process-planning-graph-panel` 約 `360×206px`、`process-planning-canvas` 約 `358×390px`（`flex: 0 0 390px`），React Flow root 約 `637.5×617px`，source handle 延伸至 graph panel 可見範圍外；快照 `F039-S7-E3-process-geometry-blocker.png` 保留作 provenance。
+- 已完成窄修正：既有 Process canvas／React Flow root 使用 `min-width／min-height:0`、正常文件流，移除固定 `flex-basis:390px`；shared split 中欄可收縮；`ResizeObserver` 在兩個 animation frame 等待 custom node measurement 後執行一次 `fitView`，unmount／hidden 清理 observer／rAF。未新增 DnD dependency、resolver、MIME、mutation owner、global CSS／portal或layout state。
+- after-fix browser evidence：同一 B16 split fixture 量得 graph panel `276.1875×536px`、mindmap canvas `274.1875×224px`，兩個 source handle 均落在 canvas／panel 內，canvas／React Flow `scrollWidth／scrollHeight` 與 client 尺寸一致；reload／切換 flow 的產品 console `errors=0／warnings=0`。artifact 為 `F039-S7-E3-process-geometry-after-fix.png`。
+- 判定：`E3-GEO-SPLIT` 與 reload／flow geometry observation 可標 pass；standalone／reveal／listener cleanup 尚未形成完整 `E3-LIFECYCLE` record。ProcessNode↔Duty native 本輪仍因 Playwright 未產生可採用的 `dataTransfer` 事件而 `not-run`，不得將幾何 pass 推論為 relation pass；詳細契約與剩餘驗收以主spec第26.17節、Parity第16.10節為準。
+
+- 短面板 editor saturation follow-up：同一 B16 split fixture 在 graph panel 約`342.7625×212.3px`時，既有 canvas 以`min-height:180px; flex:1 1 180px`保留`325.9625×180px`非零操作區；兩個 relation handle 約`17.303×17.303px`，`elementFromPoint`命中產品`BUTTON`。artifact為`F039-S7-E3-process-canvas-min-height.png`。此窄修正只關閉短面板零高度的幾何 observation，不改 layout／relation契約；E3 warning／standalone／reveal正式QA-QC、E1 Process native與E4 freeze仍開放，E2只剩嚴格 history-length gate。
+
+- Native runner availability decision：task-owned Playwright `dev039-e2`、In-app Browser CUA與Chrome extension CUA在canonical B16 split中確認source／target owner geometry與strict MIME元件存在，但均未產生可採用`dragstart → dragover → drop`／`DataTransfer.types`；Chrome browser-client先無可連線tab，後建立隔離分頁重跑仍無native事件，本輪無產品mutation／console error。另觀察keyboard placing後切換現行版會離開placing狀態，但缺API／revision／zero-mutation完整record。依主spec第26.19節，ProcessNode↔Duty native維持`not-run`、E1 aggregate維持`Partial／Open`，停止重複同類工具嘗試；下一次只在具備真實HTML5 DataTransfer的runner重跑，不新增synthetic path、第二resolver／mutation owner、API直寫或產品fallback。
+
+- E3 lifecycle fresh observation：以 task-owned In-app Browser 完成 Process standalone mount、close/unmount、`功能→流程規劃` promotion、mindmap／flow切換、開啟工作職掌再返回及 reload。standalone／reveal／reload 幾何與單一 graph／canvas owner surface 局部通過，產品 console 無 error／warning；artifact為`F039-S7-E3-lifecycle-iab.png`。工具未提供 listener inventory，故只標局部 observation，`E3-LIFECYCLE`仍為`Partial／Open`。
+
+- E3 lifecycle automation coverage：`src/components/ProcessPlanningCanvas.lifecycle.test.tsx` 已補受控 jsdom 測試，證明可見 surface 兩 frame settle 後只 fit 一次、unmount disconnect observer、hidden surface 取消 pending rAF 且不 fit。這只覆蓋 Process canvas 自身 cleanup 子項；瀏覽器 listener inventory仍未取得，故`E3-LIFECYCLE`維持`Partial／Open`，不得把 unit pass 上推為 aggregate pass。
+
+Final code gate（2026-08-31）：本次幾何窄修正、E2 fail-closed test與Process canvas lifecycle test增補後，targeted pure／fixture `11 files／57 tests`、component／composition `6 files／24 tests`（關聯與lifecycle合併重跑 `4 files／20 tests`）、aggregate `160 files／663 tests`、`npx tsc --noEmit --pretty false`、`npm run build`與`git diff --check`均通過；Vite native-config extension advisory與既有 chunk-size advisory為非阻擋提示。這只證明程式與幾何 observation 基線，不關閉 E1 native strict MIME／API、E2 browser failure、E3 standalone／reveal／listener lifecycle或E4 freeze。
+
+### 真正問題與使用者價值
+
+### 試用修正：清單與明細相鄰排列（2026-08-30）
+
+實際開啟員工panel時發現，`MasterDataModuleAdapter`原以`34%`作清單欄，但共用Directory內容實際固定約`242px`，兩者不一致會在清單右側留下空白，並把明細推離清單；窄版Inspector的絕對定位也可能覆蓋整個panel。Current Phase採最小修正：將同型主資料panel的清單欄固定為Directory寬度（桌面／窄桌面`242px`、`690px`以下`190px`），明細強制回到adapter正常文件流並緊接右側；員工、職位、部門共用此規則，層級維持單欄。此修正不增加頁面、資料、Command或workspace split能力，只修正共用CSS projection，並以`data-layout="adjacent-list-detail"`及子節點順序測試固定契約。
+
+Process的「流程清單→圖形→Duty bridge」是三欄不同語意，不誤套兩欄固定寬度；未來新增相同清單／明細形狀的adapter，必須重用同一相鄰排列契約。
+
+DEV-038 已證明 ProcessNode、Duty、DutyPositionRelation 與 Position 可以用同一份 OrganizationDocument V7 聯動，也已具備心智圖、流程圖、職掌橋接與組織投影。但固定的左／中／右工作台替使用者預先決定了觀看順序與畫面比例；當規劃者只想比較其中兩種資料，或需要同時開啟另一份清單與明細時，固定版面會造成遮擋、縮圖化及持續增加新視角頁面的壓力。
+
+DEV-039 的價值不是再增加一個新視角，而是提供一個受控的可組合規劃桌面：總經理與主管依當下問題，自行開啟需要的資料面板、並排比較、選取聯動，並把具型別的領域物件拖到合法目標以建立關係。系統仍負責資料正確性與可執行 command，使用者只負責選擇工作視角及業務判斷。
+
+### Human-confirmed 方向
+
+1. 新版以「使用者自訂視角」取代系統持續增加固定視角頁面。
+2. 使用者可在同一個完整 URL 工作台開啟多個面板並排比較，面板內仍沿用相同的清單、選取與明細肌肉記憶。
+3. 面板之間可拖曳資料物件；拖放只建立系統明確登錄的關係，不允許面板自行寫入任意資料。
+4. 新版與舊版的替換在專用 branch 內完成；新版核心流程通過後，合併前刪除舊固定工作台，不在正式 runtime 維護永久雙模式或長期 feature flag。
+5. 替換的是規劃 UI shell，不是重寫 OrgMaster。DEV-038 的 V7 領域模型、ADR-008、Command、Undo／Redo、autosave、CAS、validation、Dagre／React Flow 投影及 DEV-034 relation mutation原則持續沿用。
+6. 手機仍遵守專案最高原則，只提供唯讀閱讀及關聯導覽；第一版可組合編排只服務桌面／筆電。
+
+### Human Decision Brief — Round 1（2026-08-28）
+
+來源：使用者於 `#引導模式` 明確回答 `1A／2A／3A`。
+
+| 決策 | Human Confirmed rule | 拒絕／延後方向 |
+| --- | --- | --- |
+| `1A` 面板自由度 | 第一版採受控 Dock／Split；面板可開關、並排、換位及調整大小，但不可互相重疊 | 不採完整 Windows 式浮動／最小化／最大化；固定模板不作唯一操作方式 |
+| `2A` 拖曳寫入 | 拖曳期間顯示合法目標與結果預覽；放開後立即執行一個既有 Command，顯示成功／失敗結果並提供 Undo | 不在每次 drop 後開確認視窗；不建立批次暫存／統一套用模式 |
+| `3A` 版面保存 | 第一版版面只保存在目前瀏覽器，重新整理後恢復；layout 不進 OrganizationDocument、organization version或server account | 跨裝置、跨帳號及公司共用 layout 延後 Future Phase |
+
+AI／RD 可自行決定 dock library 或自製方式、layout storage key／version、preview視覺、結果訊息文案與Undo控制位置；但不得改變上述產品語意。若真實試用證明必須重疊視窗、drop前逐次確認、批次套用或跨裝置同步，重新進入Human Decision，不得由實作自行擴張。
+
+### Human Decision Brief — Round 2（2026-08-28）
+
+來源：使用者於 `#引導模式` 明確回答 `4B（自訂：預設只顯示組織架構圖）／5C／6A`。
+
+| 決策 | Human Confirmed rule | 拒絕／延後方向 |
+| --- | --- | --- |
+| `4B 自訂` 初始配置 | 第一次進入與恢復預設配置時，只開啟組織架構圖；其他面板由使用者按需開啟 | 不使用空白桌面、模板選擇Modal，也不預設同時開啟心智圖或工作職掌 |
+| `5C` 選取聯動 | 所有未釘選面板預設跟隨同一個shared selection；使用者可釘選個別面板，使其暫停跟隨後續全域選取 | 不強制所有面板永遠同步，也不讓全部面板預設完全獨立 |
+| `6A` 面板數量 | 第一版每種panel type最多開啟一份；再次開啟相同類型時應定位既有面板，不建立第二份 | 多份相同類型面板及其獨立context延後Future Phase；第一版不要求預建隱藏的multi-instance能力 |
+
+AI／RD 可自行決定預設組織圖的初始縮放、同類型重複開啟時的focus／reveal效果、pin icon與accessible name；但不得預先打開其他面板、建立第二份同類面板或把pin改成複製資料。若真實規劃需要同時比較兩個同類視角，再重新進入多實例產品決策。
+
+### Human Decision Brief — Round 3（2026-08-28）
+
+來源：使用者於 `#引導模式` 明確回答 `7B／8A／9B`，並提出「入口統一在頂部、每個功能最多兩層：現有抽屜與完整工作台」作為待收斂設計原則。
+
+| 決策 | Human Confirmed rule | 拒絕／延後方向 |
+| --- | --- | --- |
+| `7B` 面板入口 | 面板開啟入口固定於頂部，以單一控制開啟Popover；不常駐左側面板庫 | 不使用左側固定面板清單或畫布右鍵作主要可發現入口 |
+| `8A` pin互動 | pin只固定panel context並隔離其panel-local selection；panel仍可正常操作與作drag source，所有mutation仍寫入canonical domain並由其他投影即時反映 | pin不是資料快照、不是唯讀副本，互動也不得自動取消pin |
+| `9B` 空工作台 | 組織架構圖與其他panel都可關閉，允許零panel的空工作台；不自動重開組織圖 | 不把組織圖設為不可關閉，也不強制至少保留一個panel |
+
+「每個功能最多兩層操作介面」已於Round 4確認：第一層是該功能的快速Drawer，第二層是單一共用完整URL工作台中的對應panel；panel只是第二層的layout region，不是第三層。組織架構功能是明確例外，只有完整工作台panel，從頂部入口直接加入或聚焦。此限制是UI／導航深度，不限制OrganizationDocument內部資料關係深度。
+
+### Human Decision Brief — Round 4（2026-08-28）
+
+來源：使用者於`#引導模式`明確回答`13A／14A／15A`，並以「聚焦對應面板」參照對話補充加入／聚焦語意；參照對話只作需求背景，不視為額外執行指令。
+
+| 決策 | Human Confirmed rule | 拒絕／延後方向 |
+| --- | --- | --- |
+| `13A` Drawer脈絡延續 | 點選Drawer清單項目時只在同一Drawer內選取並展開最小摘要；按`在工作台開啟`才進入第二層，並攜帶該模組已登錄的selected object、query與filters | 不因row click直接跳完整工作台；不再開第二個Drawer或第三層明細 |
+| `14A` 單一模組panel | 第一版每個module／panel type最多一份；再次開啟時聚焦既有panel並依pin規則處理context，不建立第二份 | multi-instance與`複製面板`延後Future Phase；不得為未來多實例先暴露UI |
+| `15A` promotion保留layout | `在工作台開啟`關閉目前Drawer，保留所有既有panel與排列，加入尚未存在的對應panel，或聚焦已存在的對應panel | 不清空其他panel、不切成獨立模組工作台、不開新瀏覽器頁籤 |
+
+`加入／聚焦`只描述系統演算法，不是使用者必須選擇的兩個動作。UI固定顯示`在工作台開啟`：panel不存在時加入；已存在時reveal／focus並提供短暫就地高亮，必要時將收合panel恢復可見，但不得擅自重排、縮放或清除其他panel。
+
+pin優先序固定如下：panel不存在時以Drawer context建立；既有panel未pin時，聚焦並接收Drawer promotion context；既有panel已pin時只聚焦，保留原panel-local context並以既有pin狀態讓使用者辨識，不以Drawer選取覆寫，也不因此建立第二份panel。
+
+目標功能介面目錄固定為：組織架構、兼任風險與角色治理直接使用完整工作台panel；職位、員工、部門、層級、流程、工作職掌與管理辦法提供快速Drawer＋共用工作台panel；版本、文件、儲存、搜尋與mode狀態保留全域chrome。最新零功能遺失決策要求Current Phase一次納入所有現有功能，但仍按需開啟，不預開全部panel。
+
+### Human Decision Brief — Slice 1模組範圍（2026-08-28）
+
+狀態：`Superseded by 全部現有功能零遺失覆寫 / Historical Decision Only`
+
+來源：使用者明確指定「現有成熟的都先啟用組織架構圖、員工、職位、部門、層級」。
+
+第一個最小可開發切片只啟用以下五個module surface：
+
+| 模組 | 頂部入口結果 | Slice 1完整panel邊界 |
+| --- | --- | --- |
+| 組織架構圖 | 直接加入／聚焦panel | 重用既有組織圖投影與合法操作；不建立Drawer |
+| 員工 | 先開員工Drawer | 重用既有員工清單、選取、明細與已存在合法command |
+| 職位 | 先開職位Drawer | 重用既有職位清單、選取、明細與已存在合法command |
+| 部門 | 先開部門Drawer | 重用既有部門清單、選取、明細與已存在合法command |
+| 層級 | 先開層級Drawer | 重用既有層級清單、選取、明細與已存在合法command |
+
+「成熟」在本切片只代表已有canonical OrganizationDocument投影、既有command／validation及現行UI行為可重用；不得藉由panel化新增主資料語意、第二套CRUD、第二套保存或新權限。員工／職位／部門／層級的完整panel是既有能力的workspace projection，不要求第一輪另造大型分析儀表板。
+
+流程、工作職掌、管理辦法、Process心智圖／流程圖及typed relation drag均移入Future Phase Capsule；它們仍屬長期module surface architecture，但不作Slice 1完成條件。DEV-038固定工作台在後續替代能力通過前保留於branch作歷史與回歸基線，Slice 1不得執行舊UI deletion gate。
+
+### Human Decision Brief — 全部現有功能零遺失覆寫（2026-08-28）
+
+來源：使用者明確改變前一輪決策，要求「現有的功能模組都要一起啟用，包含兼任風險等，避免弄丟任何一個功能」。本節是`Intentional replacement`，覆寫前一節只啟用五種成熟主資料surface及把流程／職掌／管理辦法／跨面板資料拖曳延後的Current Phase範圍；前一節只保留決策歷史，不再作實作或驗收依據。
+
+「全部啟用」固定解讀為所有現有功能都能由新版正常入口到達並完成原有任務，不代表第一次載入預開全部panel。第一次進入與恢復預設仍依`4B自訂`只顯示組織架構圖；其他功能從頂部launcher按需開啟。
+
+依目前repo正常UI與route盤點，Current Phase至少包含以下功能面：
+
+| 類別 | 現有功能 | 新架構責任 |
+| --- | --- | --- |
+| 模組panel | 組織架構圖 | 頂部入口直接加入／聚焦panel；保留canvas、Inspector、context操作、employee assignment及risk overlay |
+| Drawer＋panel | 員工、職位、部門、層級 | 頂部先開各自Drawer，再promotion至完整panel；CRUD、排序、定位、指派及既有錯誤／唯讀gate不得遺失 |
+| Drawer＋panel | 工作職掌 | 保留Duty清單、明細、建立／編修／刪除、責任lane、組織圖配置、責任盤點／分布及既有篩選 |
+| Drawer＋panel | 流程規劃 | 保留流程清單、心智圖／流程圖view、節點／edge編修、Duty link與現有合法command |
+| Drawer＋panel | 管理辦法 | 保留清單／搜尋／建立、閱讀／草稿、完整編輯、圖片、章節導覽、提供閱讀／還原／停止閱讀及既有職掌對照 |
+| 直接panel | 兼任風險設定 | 保留rule新增／修改／啟停／刪除、風險等級及組織圖relation overlay；不另造無價值的前置Drawer |
+| 直接panel | 角色指派治理 | 保留現有治理中心、指派／scope／期間／代理／發布、明細與模擬／檢查等已存在能力；不因搬入workspace改變authority |
+| 全域頂部控制 | 版本切換／版本工作區、文件選單、儲存／另存／備份、全域職位／姓名搜尋、workspace mode／唯讀與autosave狀態 | 保持全域chrome，不硬轉成panel；所有現有keyboard、focus return、狀態與failure feedback必須保留 |
+
+上表是高階module catalog；逐項權威清冊已建立於`ai-doc/specs/DEV-039-feature-parity-manifest.md`。該清冊從現行route、Toolbar、DirectoryDock、各full-page workbench、dialog／drawer、keyboard與permission／capability gate盤點正常入口、可見操作、authority、state及新surface mapping。任何漏列但由正常入口可達的現有功能仍自動納入Current Phase，不因文件未寫到就視為可刪。
+
+### Feature Parity Manifest Authority
+
+- 權威文件：`ai-doc/specs/DEV-039-feature-parity-manifest.md`。
+- 狀態：`Baseline Inventory Complete / Target Mapping Complete / F039 Consolidated / Layout Amendment Implemented / QA-QC Passed / Local Release Gate Pending`；這是新版替換與驗收權威，原F039證據仍有效，本輪版面修正已補齊layout evidence，不等同commit、deploy或release。
+- 清冊已涵蓋14個正常入口／route surface、全域chrome、組織圖與五種Directory、Duty與雙責任視角、Process、管理辦法、兼任風險、角色治理、keyboard、14類共通state及4條drag/session registry。
+- P1 Recovery closure：新`WorkspaceRecoveryGate`與hydration capability intersection已接線，legacy `recoveryOpen=false`及`DocumentRecoveryDialog`已移除；B6證明index failure時全域fail closed，既有DEV-020 automated regression承接missing／invalid／failed draft、409、下載副本、回現行版與重載契約。Final QA-QC已依風險抽驗workspace整合，不阻塞replacement。
+- Intentional exclusions：版本比較、standalone `GovernanceSimulator`、正式管理辦法頁已取代的舊prototype、DEV-034歷史picker及DEV-038固定composition不要求復活；但其仍適用的domain、Command、投影、tests及現行check能力必須保留。
+- 所有列項目標證據已統一回填至`output/playwright/dev039/manifest.md`；F039、final QA-QC、full regression、build與source removal scan均完成，deletion gate已關閉。manifest仍明確標示證據為未提交worktree，不得誤報為immutable commit或release artifact。
+
+功能模組、全域控制與panel內情境操作採三類管理：只有可獨立完成任務的功能進module launcher；版本、文件、儲存、搜尋與唯讀狀態留在頂部全域chrome；Inspector、Dialog、Popover、章節導覽等留在所屬panel內。這是位置重整，不是功能刪減。
+
+### Current Phase主要流程
+
+```text
+從頂部統一功能入口選擇模組
+  → 有Drawer的模組先開快速清單；直接型模組直接加入／聚焦panel
+    → 在Drawer選取物件、搜尋或篩選，再按「在工作台開啟」
+      → 保留既有layout，加入或聚焦單一對應panel並關閉Drawer
+        → 將需要比較的面板並排、調整寬度或關閉
+          → 在任一面板選取 Employee、Position、Department、Level、Duty 或 ProcessNode
+            → 其他支援該 stable ID 的面板與組織圖顯示一致選取
+              → 使用既有模組command，或將已登錄typed物件拖到合法跨面板目標
+                → preview／result／Undo、autosave、reload由同一權威資料重建投影
+```
+
+### Current Phase Scope — 全部現有功能零遺失
+
+- 一個桌面版完整 URL 規劃工作台，以及從既有 OrgMaster 正常導航可發現的入口。
+- 頂部提供單一功能launcher與Popover，作為各模組第一入口；有Drawer的模組先開快速清單，直接型模組直接加入／聚焦panel。不建立常駐左側panel library或以右鍵作唯一入口。
+- 同一時間最多一個快速Drawer；切換頂部功能時替換目前Drawer。Drawer只承擔清單、搜尋、篩選、選取、最小inline摘要與`在工作台開啟`，不得承擔完整編輯、開第二Drawer或形成第三層導航。
+- `在工作台開啟`使用模組註冊的promotion mapper，把支援的selected object／query／filters轉成workspace context；不得複製領域資料、建立第二store或把任意Drawer local state寫進OrganizationDocument。
+- 受控 dock／split 式面板編排：開啟、關閉、並排、調整尺寸、重排及恢復預設配置；第一版不允許任意重疊、浮動、最小化或最大化視窗。
+- 第一次進入或使用「恢復預設配置」時只開啟組織架構圖；其餘面板由使用者從統一面板入口按需開啟，不顯示模板選擇Modal。
+- 第一版每種panel type最多一份；相同類型已開啟時，再次要求開啟只reveal／focus既有面板並短暫就地高亮，不建立第二instance、不重排或縮放既有layout。未pin panel接收Drawer promotion context；已pin panel只聚焦並保留原context。
+- 所有panel皆可關閉；零panel時保留完整工作台shell及頂部launcher，不自動重開組織架構圖。第一次進入或恢復預設配置仍依`4B自訂`只開組織架構圖。
+- Current Phase module catalog至少包含組織架構圖、員工、職位、部門、層級、工作職掌、流程規劃、管理辦法、兼任風險設定與角色指派治理；parity inventory發現的其他現有獨立模組亦自動納入，不得因未列名而刪除。
+- 組織架構圖、兼任風險與角色治理可直接加入／聚焦panel；員工、職位、部門、層級、工作職掌、流程與管理辦法使用Drawer＋panel。功能本身沒有快速清單價值時，不為形式一致強制建立空Drawer。
+- 單一workspace shared selection context以stable ID聯動Employee、Position、Department、Level、Duty與ProcessNode，以及支援相同物件的投影；未釘選panel跟隨全域選取。pin只固定該panel context並隔離panel-local selection，所有既有mutation仍經canonical Command反映到各投影，不建立snapshot或直接修改其他panel state。
+- Current Phase同時保留panel編排拖曳與所有現有資料拖曳；跨panel registry至少納入Employee→Position assignment、Duty＋責任lane→Position責任配置、Duty→ProcessNode link。每條關係沿用現有command、permission、duplicate／noop、keyboard alternative與Undo語意。
+- 版本切換／版本工作區、DocumentMenu、save／save-copy／backup、global search、workspace mode、read-only／autosave status及其keyboard／focus／failure feedback保留為全域能力，不塞入module panel。
+- 面板編排狀態與 OrganizationDocument V7 分離；第一版只保存在目前瀏覽器並於重新整理後恢復，不進 organization version、server API、帳號或跨使用者同步。確切 local storage／URL 契約已由主工程契約固定。
+- 分支內保留舊 UI 作短期對照；新版通過 deletion gate 後，在合併前移除被取代 route composition、shell state、專屬 CSS、專屬 handlers 與只驗證舊 composition 的 tests。
+
+### Out of Scope
+
+- 不建立第二套 Process、Duty、Position、relation store、API、revision、autosave 或權限模型。
+- Current Phase不重寫任何既有module domain、business command、permission、version或save authority；只建立Drawer／panel／global-chrome adapter與workspace projection。功能搬移不得改變可用能力或靜默降低權限／錯誤處理。
+- 不提供任意重疊視窗、作業系統式桌面、無限制 panel plugin、使用者撰寫 command 或第三方面板執行任意程式。
+- 不在第一版提供具名版面模板分享、跨裝置同步、多人即時共編、評論、AI 自動排版、AI 自動建立關係、BPMN 或流程執行引擎。
+- 不因 UI 替換修改 ADR-008 的 OrganizationDocument V7 單一資料權威。
+- 不 deploy、不 release；正式合併與發布另走 release gate。
+
+### Architecture Memory Capsule
+
+```text
+OrganizationDocument V7（唯一領域權威）
+  ├─ selectors / projections ──> Panel instances
+  ├─ shared selection context ─> 各 panel 高亮與定位
+  └─ registered commands <───── Panel adapters
+
+Current typed object drag registry
+  └─ registered payload／target／command mapping；只呼叫既有command authority
+
+Workspace layout state（純 UI 偏好）
+  └─ panel id / type / order / size / local view state
+     不包含 Process、Duty、Position 或 relation truth
+
+Module surface registry（純metadata／context宣告）
+  └─ exact module id / label / hasDrawer / minimum / context parser與sanitizer
+     Current：組織圖／兼任風險／治理 hasDrawer=false
+               員工／職位／部門／層級／職掌／流程／管理辦法 hasDrawer=true
+
+WorkspaceModuleSurfaces（唯一render owner）
+  └─ typed adapter map / panel與Drawer renderer / visibility / close guard registration
+```
+
+- Workspace shell擁有panel instances、layout、shared selection、panel-layout drag session及registered typed object drag session。
+- Module surface registry決定頂部入口要開Drawer或直接加入／聚焦panel；通用演算法不得散落成各頁面的module-specific `if/else`。
+- Panel adapter 只宣告可讀投影、可接受的 typed payload 及要呼叫的既有 command；禁止 panel A 直接 import 或修改 panel B 的內部 state。
+- 關係 mutation 必須經 `App`／既有 command owner；workspace shell 不新增旁路保存。
+- DEV-038 的 `ProcessPlanningWorkbench` 固定 composition 是被替換的 UI shell；主契約第22、25節已固定保留其 canvas projection、layout resolver、selection resolver、domain modules與測試fixture，依S3 adapter抽取後才可把舊composition列入S5 removal allowlist，不以檔名先刪除。
+- 跨模組UI composition的長期邊界已由ADR-009固定；ADR-008繼續擁有OrganizationDocument V7資料權威，不因版面替換重寫。
+
+### 舊版移除 Gate（零功能遺失）
+
+舊 UI 不在第一個 commit 刪除；必須同時滿足下列條件後，才於本 branch 內移除：
+
+1. 已建立`ai-doc/specs/DEV-039-feature-parity-manifest.md`作逐項權威；現行每個normal entry、route、visible action、keyboard、read／write gate、空白／錯誤狀態及command都必須維持新surface mapping並取得`F039` fresh evidence，不得以「可能無人使用」省略。清冊建立本身不等於本Gate通過。
+2. 所有現有模組可從新頂部入口開啟、排列、關閉或進入其完整工作面；預設仍只開組織圖，按需啟用不等於預開全部。
+3. Employee→Position、ProcessNode↔Duty與Duty＋lane↔Position等現有主要配置路徑可由新UI完成，Undo／Redo、autosave、reload與validation通過。
+4. 唯讀版本、capability loss、invalid drop、duplicate／noop、keyboard alternative、focus return及窄版唯讀退化均有targeted evidence。
+5. 已建立舊route／component／state／CSS／test removal allowlist，確認沒有正常入口、panel、dialog、drawer、popover、shortcut或error recovery仍依賴舊composition。
+6. 移除後typecheck、targeted tests、full regression、build及桌面／手機browser QC通過；evidence能追溯source、route、viewport、mode與fixture。
+7. 正式runtime不殘留隱藏legacy mode、永久feature flag、第二套save path或只能由direct URL進入的舊功能。
+
+Git history 是舊版可回查來源；不為了保留比較能力而把舊 UI 留在產品 runtime。
+
+### Current Phase驗收方向
+
+- 使用者能從正常入口進入工作台，從頂部launcher看見並開啟全部現有模組；在同一畫面至少同時開啟組織架構圖與另外兩種不同模組panel，重排與調整尺寸後不遮蔽必要操作。
+- 第一次進入與恢復預設配置時只顯示組織架構圖；使用者能從統一入口開啟其他面板，同類型已存在時只定位既有面板。
+- 有Drawer的模組由頂部入口開啟唯一快速Drawer；row click只在Drawer選取／展開最小摘要，按`在工作台開啟`後Drawer關閉且既有layout保持不變。panel不存在時加入，已存在時只reveal／focus並短暫高亮。
+- Drawer promotion會把該模組支援的selected object／query／filters帶到新建或未pin panel；已pin panel不被覆寫，只被聚焦且原context可辨識。任何情況均不得建立第二份同類panel。
+- 使用者可關閉最後一個panel並得到零panel工作台；系統不自動重開組織圖，頂部launcher仍可操作且是恢復內容的可發現入口。
+- 管理辦法等module有未保存buffer時，close與browser Back必須先走module guard；取消關閉時panel、URL、context、buffer與focus均不變，只有allow後才commit移除。
+- 預設只開組織圖時不得mount或fetch其他module；首次開啟才lazy mount，inactive停止可見性poll／fit／observer，close後釋放listener、timer與observer。
+- 選取Employee、Position、Department、Level、Duty或ProcessNode時，其他支援該stable ID的已開啟panel與組織圖顯示一致選取；關閉或重開panel不改變領域資料。
+- 未釘選面板跟隨shared selection；釘選面板保持context但仍可操作，其panel-local selection不覆寫全域selection；取消pin後重新跟隨目前全域選取。所有mutation仍即時反映canonical state，不建立資料副本。
+- 現有Employee assignment、Duty responsibility與ProcessNode↔Duty等合法資料拖曳在新surface仍可完成；panel編排拖曳與資料拖曳必須明確區分，invalid／cancel不產生domain command、dirty、history或autosave。
+- reload 後領域資料仍由 OrganizationDocument V7 恢復，第一版 panel layout只由同一瀏覽器local state恢復；layout損壞時安全回到預設配置，不影響organization state，也不向server寫入layout。
+- 正常桌面入口、唯讀狀態、空白／載入／錯誤狀態及手機唯讀皆可觀察；direct URL 只證明 route recovery，不取代入口可發現性。
+- feature parity manifest全部列項均有normal-entry browser evidence或與風險相稱的功能證據；任一現有功能無對應surface、只能direct URL到達或行為被靜默降級，即判定替換未通過。
+
+### S0～S6既有RD Implementation Ready工程契約
+
+`ai-doc/specs/DEV-039-composable-planning-workspace.md`已固定canonical `/`、十模組keyed context map、純metadata registry、唯一typed adapter render owner、242px推移式Drawer、split-tree＋tab stack、module minimum、單一panel identity、request／guard／commit close、lazy／hidden／close lifecycle、URL／local／session權威、promotion／pin、shared selection、typed drag、capability、legacy alias、recovery與Medium-risk QA/QC。Process心智圖／流程圖仍是同一Process panel內的既有view；不因workspace再拆成不同panel type。
+
+S6 Implementation Readiness Review固定沿用React 19＋現有CSS Grid／Flex，不新增dependency或改動lockfile。主契約第22.5節列出`WorkspaceOverlayProvider`、Panel／Global hosts、`WorkspacePortal`、ListDetail／ListOnly Props、App owner factories、Duty三view panel mode、Management Method與Duty overlay分類及CSS owner；第25.5節固定S6-0～S6-5遷移與fail-closed recovery；第26.7節固定targeted／aggregate命令、source policy、B14～B15 fixture及Fail條件。P0／P1 readiness blocker及四項S6 product acceptance均已關閉；若會改變受控dock、單一panel、同一資料權威、全功能零遺失或deletion gate，才重新進入Human Decision。
+
+S7目前為`Relation Placement Implemented / QA-QC Reopened`。S7-0～S7-4已完成pure reducer、single App owner、typed effect／capability path、source／target wiring、舊平行state刪除、composition harness與B16 pure transformer；最新 targeted pure／fixture `11 files／57 tests`、component／composition `6 files／24 tests`、full regression `160 files／663 tests`、typecheck、build與source scan均已通過；本輪新增E2 fail-closed與Process canvas lifecycle tests不改產品契約。Process canvas 幾何窄修正後 split／reload／flow source handles均在owner canvas、無overflow且產品console `0／0`，artifact為`F039-S7-E3-process-geometry-after-fix.png`。fresh QA已補ProcessNode↔Duty keyboard、duplicate/no-op、Escape、readonly、reload與1440／1024／390 viewport／overflow；最新B16又取得Employee→Position與Duty→Position各一筆strict MIME／API／revision單案pass，但ProcessNode↔Duty native本輪`not-run`，E2 failure、E3完整lifecycle及E1 aggregate仍開放，不能以單案、目前 automated tests或S0～S6歷史測試宣稱S7完成。若偏離single App owner、pure reducer、既有domain authority、deletion allowlist或no-new-dependency邊界，立即停止回PM。
+
+### RD主管架構審查與實作檢查點
+
+結論：S0～S5的有限自製split／tab、單一module panel、browser-local layout及單一domain authority方向仍足夠簡潔；S6已完成`WorkspaceModuleSurfaces`的persistent render／overlay／selection owner強制邊界，並通過targeted／full regression、build及browser re-QC。S6只強化panel工程邊界，不加入通用桌面框架、event bus、plugin、multi-instance或第二套資料流，仍符合「現在從簡、未來可擴張」。
+
+| 範圍 | 目前狀態 | 下一個closure |
+| --- | --- | --- |
+| S0 pure core | 完成／QA-QC通過 | 149-file full regression證明workspace core未建立第二domain truth |
+| S1 shell | 完成 | canonical shell、十模組入口、Drawer promotion、split/tab/pin、零panel、reload、responsive focus、recovery及close unmount均有`F039`／automated evidence |
+| S2 master data | 完成（replacement範圍） | 五模組正常入口、stable context、desktop／mobile capability與Employee→Position keyboard path通過；既有CRUD authority由full regression承接 |
+| S3 Duty／Process | 完成 | 四lane與三條registered relation有exact IDs、keyboard/focus、Undo restore及full regression證據 |
+| S4辦法／風險／治理 | 完成（replacement範圍） | 三模組正常入口、document lifecycle、current/mobile readonly與Role Risk 1023/390 mutation absence通過 |
+| S5 replacement | 完成／QA-QC通過 | `F039`、removal allowlist、legacy source removal、source scan 0 matches、149 files／614 tests與build通過 |
+| S6 panel boundary hardening | 完成／QA-QC通過 | Exact hosts／portal API、persistent owner factory、selection isolation、container／capability、S6-0～S6-5及B14～B15已有產品、測試、source policy與browser re-QC證據 |
+| S7 relation placement | Relation Placement Implemented／QA-QC Reopened | `relationPlacement.ts`、single App owner、typed effect／capability path、Employee／Duty／Process source／target wiring、舊state刪除、composition harness與B16 pure fixture已完成；fresh QA已證明ProcessNode↔Duty keyboard、duplicate/no-op、Escape、readonly、reload與viewport；同一 fixture 七案合併 runner 證明 E3-LIFECYCLE／E3-WARNING（native CDP listener inventory、geometry／observer／rAF、raw diagnostics）均為`pass`，listener回到 `40／8／139` baseline；ProcessNode→Duty strict native單案為`pass`、Duty→ProcessNode最新 reverse runner為`blocked／not-run`，E1 aggregate仍`Partial／Open`、E2 aggregate為`Pass（evidence）` |
+
+S0～S6 QA-QC checkpoint：2026-08-30既有`output/playwright/dev039/manifest.md`證明十模組正常入口、七個Drawer promotion、B1～B13、desktop／1024／1023／390 capability、recovery、layout damage、legacy alias、三relation及已修版面案例；同一manifest新增S6 owner／overlay／container re-QC、targeted／full／build與source policy結果。2026-08-31另新增S7 B16 loopback checkpoint；未commit、merge、deploy或release。
+
+架構優雅度的維持條件固定為：依賴方向只能是`workspace core → shell/controller → typed adapter → existing domain owner`；workspace core不得執行domain mutation或import業務surface；App不得保留可正常到達的雙composition或跨module共享persistent detail；adapter不得保存第二份business state；registry不得render或重算domain capability；只被layout owner使用的region component維持private；所有舊surface都必須在fresh parity與allowlist後才刪除。主契約`AR-01`～`AR-07`保留S5結果，`AR-08`～`AR-11`新增persistent owner、overlay scope、state isolation與container／capability Gate。
+
+### Future Phase Capsule
+
+狀態：`Future Phase Captured / Not Requested`。
+
+- 具名版面模板、最近使用版面、跨裝置／跨使用者分享與權限。
+- 同一panel type多實例、各實例獨立context及同類視角並排比較。
+- 更多唯讀分析面板、工作量／交接／異常視角及管理辦法關聯。
+- 依真實使用需求評估浮動視窗、多螢幕、panel plugin SDK 或即時多人共編。
+- AI 可建議開啟哪些面板或標示可能缺口，但不得自行建立永久關係。
+
+Re-entry trigger：全部現有功能完成parity manifest並通過正常入口、Drawer promotion、layout reload、selection／pin、typed drag與回歸證據後，若真實規劃會議證明需要新分析panel、具名模板、跨裝置分享或同類多實例，再補Future契約；不得先建立disabled面板或空泛plugin system。
+
+### S7 B16 loopback checkpoint（2026-08-31，歷史摘要）
+
+- Runtime：task-owned Vite `127.0.0.1:8080`、Playwright CLI `dev039-s7`、Chromium `HeadlessChrome/151.0.0.0`、viewport `1280×720`；以loopback dev identity（`urn:orgmaster:dev`／`local-admin`）執行，非正式登入或production auth。
+- Fixture：`draft-ae49e198-ff78-4ace-96af-6cab7cf080e5`（`DEV-039-S7-B16-1788156467803`）由`scripts/dev039-s7-fixture.mjs`建立、讀回並封存；最終revision與link readback見`output/playwright/dev039/manifest.md`。
+- 結果：早期 loopback 紀錄曾以 `process-duty-2`／`process-duty-4` 標記 ProcessNode↔Duty native 嘗試；該段只作歷史來源。最新 fresh B16另有Employee→Position與Duty→Position各一筆strict MIME／API／revision單案pass，但ProcessNode↔Duty native本輪因transformed viewport／drawer條件為`not-run`。`process-duty-2`／`process-duty-3` 的 keyboard、同target duplicate noop、Escape cancel、current readonly與draft reload persistence仍有 API／UI readback；E2／E3與E1 aggregate仍開放，逐案證據見`output/playwright/dev039/manifest.md`。
+- 後續：依主spec第26.13節固定 `E1 Native delivery → E2 Failure paths → E3 React Flow warning → E4 Candidate freeze`；native、invalid／target卸載／capability loss、visible failure與console warning未全通過前，S7維持`Relation Placement Implemented / QA-QC Reopened`。
+
+### S7 文件升級檢核（2026-08-31，歷史摘要）
+
+- 契約狀態：`RD Implementation Ready` 仍代表 RD 可依 exact file／symbol 開始或續接；`QA-QC Reopened` 代表產品完成條件尚未滿足，兩者不可互相取代。
+- 證據分層：CUA 未觸發 `dataTransfer` 不得被寫成 native pass；unit／keyboard／API readback只能支持各自覆蓋的層級。每個新 evidence 必須記錄 route、viewport、browser、loopback identity、fixture、前後 revision、console／visible error及cleanup。
+- 架構凍結：後續只允許在既有 `RelationPlacementSession`、registered resolver、target adapter與lifecycle中收斂；禁止新增 DnD dependency、第二 MIME／resolver／business state、generic event bus、schema／API／permission或永久雙軌。
+- 關閉條件：依主spec第26.13節完成 E1～E4，並同步主spec、parity manifest、`documentation_map.md`與 evidence manifest；未全通過時只保留 active blocker，不新增另一份 QA 清冊。
+- 證據契約：E1～E3 每筆 case 依主spec第26.14節與parity第16.7節記錄同一fixture的before／after revision、dirty／history／autosave、strict MIME、API readback、visible result、console與cleanup；判定固定為`blocked → fail → partial → pass → observed → not-run`，必要欄位未知不得推論通過。新增runner僅能在`scripts/`／測試目錄，禁止第二resolver、mutation owner或`page.evaluate`直寫mutation。
+
+#### S7 Chrome CUA evidence note（2026-08-31，歷史摘要）
+
+- 已在 task-created Chrome tab、B16 draft、`localhost:5000` 觀察 Employee→Position native drop 的 DOM 結果：`B16 空職位` 出現 `B16 無任職員工，主職`，`role=alert=0`。同target 再拖曳維持原結果；Duty→Process invalid target 未增加連結，`Escape` 後回到 idle。
+- 此筆 evidence 沒有獨立保存 `dataTransfer.types`、API／revision readback；瀏覽器擴充套件的 message-channel error 另列為工具雜訊，不當成產品 console 判定。E1／E2 仍須依主spec第26.13節補齊，E3 warning 亦未關閉。
+
+### 變更紀錄
+
+- 2026-09-02：依實際 946×698 桌面試用修正 DEV-039 工作台 tab 無法拖曳分割的回歸。根因是 Shell 把 `viewportWidth < 1024` 直接當成 mobile single-surface，導致 fine-pointer 桌面的 tab `draggable=false` 且 pin／arrange 消失；改由 `resolveWorkspaceCompositionCapability` 只以 hover＋fine pointer 判斷 layout composition，split 方向仍由 module minimum 動態限制，domain mutation capability 不變。新增 `LAYOUT-TAB-DRAG-01`／B17、capability 與 native MIME drop-zone 回歸；targeted `2 files／8 tests`、typecheck、946×698 真實滑鼠拖曳由 1 個 stack 形成 2 個 region 通過，證據為 `F039-QC-13-narrow-desktop-tab-drag-split.png`。本次修正尚未 commit、merge、deploy 或 release。
+- 2026-09-01：DEV-039新增 E1 paired Duty→ProcessNode reverse native boundary。全新 B16 fixture `draft-fac7242d-f6b5-4e48-80f7-2d1424548be0`命中 source／target geometry並讀到 strict `application/x-orgmaster-entity` 至 `dragover`，但未產生 terminal `drop`、UI結果或domain mutation；API `200`且revision不變。artifact=`output/playwright/dev039/F039-S7-E1-duty-process-native-blocked.json`，archive manifest=`3294af10da7136c203ca3cac0f3a049e9d69563421cda22f09584d253e3313d0`。正式判定`E1-DUT-PROC-NATIVE=blocked／not-run`，E1 aggregate、正式 QA-QC與E4不變；除非取得可讀真實 HTML5 `DataTransfer`的新runner，否則停止同類重試，不新增synthetic fallback、第二MIME／resolver／mutation owner或第二份證據清冊。
+
+- 2026-09-01：同步 DEV-039 ProcessNode source handle pan-arbitration 窄修正與索引邊界。`onMouseDownCapture` stopPropagation 已於既有 handle 落地並由 `ProcessPlanningWorkbench` `1 file／5 tests` 覆核；typecheck／build通過，strict runner仍缺可採用 `dragover／drop`，E1／E4不變。此為局部事件仲裁修正，不新增 state、listener、MIME、resolver、Command、API或第二輸入路徑。
+
+- 2026-09-01：依 DEV-039 E2 authority audit 將不可由正常產品入口取得的內部 `historyLength` 從 required evidence 改為 optional diagnostic，新增唯一 `historyEvidence` 行為性 Undo round-trip（合法 mutation → 恰好一次 `Control+Z` → 完整 canonical relation IDs 回 baseline）。同步主spec第2.3／26.14節、Parity第16.6.1節、evidence runner與本摘要；不新增產品 debug API、第二 history store、resolver、mutation owner、schema或輸入路徑。E2 五案需以新 record 重跑後才可提升 aggregate；E1 strict native、E4 freeze與正式 QA-QC仍開放。
+
+- 2026-09-01：補齊 DEV-039 E3 native DevTools listener／warning closure。以隔離 fixture `draft-5ab9ff12-e5f0-4bfc-8141-eddc1fb4e078` 使用既有 `output/playwright/dev039/e2-admission.pw.ts` 合併重跑 `E3-LIFECYCLE` 與 E3-WARNING native CDP case，結果 `2 passed (15.7s)`；與同 fixture 五案 E2 合計 `7 passed`。不注入 `EventTarget` monkey-patch、不持有 DOM target，raw diagnostics=`[]`；Process canvas close後為`0`、reveal／flow／reload為`1`，window／document／viewport portal listener回到`40／8／139` mount baseline。artifact=`F039-S7-E3-warning-cdp-listeners.png`，archive final manifest revision=`2903c3813ccd0cd38de638c10d6646a8c5b4ab02da5b6055b5e96a300179eee6`；5080 task-owned runtime已停止並釋放，5000 user-owned未觸碰。依主spec第26.21.17節，E3-WARNING現為`pass`；E1 native仍`blocked／not-run`、E2 history-length仍`Partial／Open`、E4仍`Blocked`，不改產品架構、資料模型或輸入路徑。
+
+- 2026-09-01：補上 DEV-039 E1 CDP native transport capability probe。以全新 B16 fixture `draft-011e0e3a-d7ca-4b00-9b35-a481d9bf8c5c`、canonical `/`、`1280×720`、Chromium `149.0.0.0`與 task-owned `127.0.0.1:5080`確認 ProcessNode source／Duty target geometry；CDP僅觀察到注入 strict MIME的 `dragenter／dragover`，未建立可採用真實 `dragstart／drop`，API前後revision與既有process link不變。fixture archive response `200`、final manifest revision `8dbcc25d675cbf42bce7862918e8160233cfa5b3d89ded4772df1dba541d8101`，5080 runtime／listen port已cleanup，5000 user-owned runtime保留。依保守判定E1 ProcessNode↔Duty仍`blocked／not-run`、paired direction仍`not-run`、E1 aggregate`Partial／Open`；只新增 evidence provenance與一次性 probe，不新增產品架構、synthetic path、MIME／resolver／mutation owner、schema、API或fallback。
+
+- 2026-09-01：補齊 DEV-039 final stability rerun。隔離 fixture `draft-dbdd513f-a15b-4297-a4f5-819a4f08d80c` 重跑五案 E2 加 `E3-LIFECYCLE`，結果 `6 passed (34.4s)`，archive final manifest revision `e647287fd737dbf35e185ce081a1351b92bced7352ea10e06e370867cbf03e76`；capability-loss re-entry 以 persisted process-link readback 取代短暫 toast 作唯一准入，未改產品契約或資料模型。E2 aggregate仍`Partial／Open`，E3-LIFECYCLE個案`pass`，E3-WARNING／E1 native／E4仍開放。
+
+- 2026-09-01：補齊 DEV-039 最新 E2／E3 fresh rerun 與 evidence serializer correction。以隔離 fixture `draft-17e1204c-7d3f-47c2-bd50-c692823be999` 重跑五案 E2 加 `E3-LIFECYCLE`，結果 `6 passed (32.5s)`，archive final manifest revision `d7f7eb9cf31a58f693801d0d46f27866d03659bc8441483f5004131526cbffd9`；5080 runtime與port已cleanup。runner將 E2 duplicate／409 recovery history欄位正規化為數值 baseline／recovery，避免把API snapshot誤寫入history；產品未新增debug state、history API、resolver、MIME、mutation owner、schema或第二保存路徑。E2 aggregate仍因嚴格 history-length 未直接暴露維持`Partial／Open`，E3-LIFECYCLE個案`pass`、E3-WARNING／E1 native／E4仍開放。
+
+- 2026-09-01：完成 DEV-039 現行文件一致性稽核。修正 dev_task 入口與 S7 索引中仍把 E2 re-entry／409 或 E3 standalone／reveal 寫成待補的舊摘要；現行判定統一為 E2 五案 browser record 已補齊（僅嚴格 history-length 未直接暴露）、E3-LIFECYCLE 個案 `pass`（E3 warning／正式 QA-QC仍 open），E1 ProcessNode↔Duty native `blocked／not-run`、E4 `Blocked`。本次只做文件來源與狀態收斂，不修改產品契約、資料、測試、dependency、runtime、commit、merge、deploy或release。
+- 2026-09-01：補記 DEV-039 headful native runner capability probe。建立一次性 `scripts/dev039-headful-native-probe.mjs`，以 Playwright `headless:false`與實際滑鼠路徑排除既有 headless／CDP runner限制；隔離 fixture `draft-cdd24b6d-d8de-404a-ac9a-1ee9a257b899`、task-owned `127.0.0.1:5080`、`1280×720`。第一次因未先選取 ProcessNode而無可見 Duty target，修正 harness後第二次在原生拖曳期間超過75秒無輸出並中止；未取得strict `dragstart→dragover→drop`、`DataTransfer.types`、API mutation或paired direction，亦未使用synthetic／API直寫。fixture cleanup CLI exit=`0`、final `manifestRevision=49bf03ff348e27e5dc66b0d428119e6ef759e9b99eb6e504de5bfff61bad728b`。此筆只作runner provenance，E1 ProcessNode→Duty維持`blocked／not-run`、paired `not-run`、E1 aggregate與E4不變；不新增第二runner、fallback、resolver、mutation owner或證據清冊。完整欄位見主spec第26.21.22節、parity第16.15.18節。
+- 2026-09-01：補記最後一次 `ProcessPlanningWorkbench.test.tsx` targeted rerun 超過60秒無輸出後已安全停止；保留既有 `1 file／5 tests passed`成功紀錄，不以未完成重跑覆蓋基線。此筆不改產品判定、E1／E4或既有測試基線。
+
+- 2026-09-01：補齊DEV-039 E3 lifecycle browser probe／combined admission。以隔離 fixture `draft-3983041c-deb2-4e9e-badf-5e1aa5ecbee0` 重跑同一 `output/playwright/dev039/e2-admission.pw.ts`，五個E2 failure-path加`E3-LIFECYCLE`共 `6 passed (31.5s)`；mount／close／reveal／mindmap→flow／reload均觀察到Process canvas active observer不累積（可見時為`1`、close後為`0`）、pending animation frame為`0`，產品diagnostics為空。archive final manifest revision為`28390b5c0322c842d28ddc0b31f7fa0db9074810e37e5a890db38495ce322beb`，5080 runtime與port已cleanup。`E3-LIFECYCLE`個案標`pass`，`E3-WARNING` aggregate仍`Partial／Open`；不新增產品debug state、listener、resolver、MIME、mutation owner、schema、API或第二輸入路徑。
+- 2026-09-01：補齊DEV-039 E2 editable re-entry／409 recovery browser admission。以隔離 fixture `draft-1e4eaddc-43cd-487c-836e-8ec35dd1a6a0` 重跑五案，結果 `5 passed (25.9s)`；E2-CAPABILITY-LOSS 完成 mobile readonly後切回桌面重新進入並以 Undo 還原，E2-409-RECOVERY 以 timestamp-only server revision bump 重演 stale PUT `409`、複製未保存內容與明確重新載入，五案同步 assignment／relation／link zero-mutation、dirty／autosave、document keydown listener與fixture cleanup。archive final manifest revision為`9b0ec78e6fbf8135978910517db8724722acd4bd4344786bda6569f862854cbd`，5080 runtime與port已cleanup；E2 aggregate仍因嚴格history-length schema與E1／E3未閉合維持`Partial／Open`，不改產品資料模型、API、resolver、MIME或第二輸入路徑。
+
+- 2026-09-01：補上DEV-039 E2 listener lifecycle／owner cleanup rerun。以隔離 fixture `draft-e85b3c44-0c70-4cb1-baf2-16f2bbdf9fae` 重跑四案，結果 `4 passed (22.6s)`；document capture `keydown` 均由 placing 的`1`回 baseline `0`，並同步 assignment／relation zero-mutation、history／Undo、dirty／autosave、focus與fixture cleanup。`App.tsx`新增owner-driven cleanup effect，必要source／target surface或drawer關閉即沿用`cancelRelationPlacement()`，不新增listener、resolver、MIME、mutation owner、store、schema或第二輸入路徑。archive final manifest revision為`4ab018e15bbcc319f8cbc13139147670eaaaaa5a8375b8bb27ecf6fe6164a5c2`，5080 runtime與port已cleanup；E2仍因重新editable與409/recovery欄位未完整維持`Partial／Open`，E1／E3／E4不變。
+
+- 2026-09-01：補齊DEV-039 E2-INVALID fresh browser evidence。以同一 B16 fixture 執行 Employee→ProcessNode 不相容 pair，取得 visible fail-closed、source focus recovery、API `200`、hydrated→after relation／process-link IDs與revision zero-mutation、產品 diagnostics `[]`；因runner未輸出 dirty／history／autosave欄位，單案標`partial`，E2 aggregate與E4不提升。同步主spec第26.21.1節、parity第16.15節、evidence manifest與documentation_map；另修正 `scripts/dev039-s7-fixture.mjs` 的dev identity headers與Windows CLI entrypoint判斷，fixture與5080 runtime已cleanup，未新增產品契約、resolver、MIME、mutation owner、輸入路徑、schema或資料模型。
+- 2026-09-01：補上DEV-039 E2 persistence／history probe rerun。以新隔離 fixture `draft-67c6e1cc-6e2d-4f7e-be9b-bfd32840e41f` 重跑四案，結果 `4 passed (20.0s)`；四案 assignment／relation／link zero-mutation、persistence snapshot均無「未儲存變更」，E2-INVALID另完成有效 Employee→Position配置後單次Undo還原，並在開啟 persistence menu 前捕捉到拒絕後焦點。測試 helper改以`DEV039_E2_VERSION_ID`指定fixture並以既有DocumentMenu trigger click收闔，未改產品契約；完整history／listener／409 recovery欄位仍開放，E2 aggregate維持`Partial／Open`。fixture archive final manifest revision為`434adf105d33a8acc9486ab20507a85af047a6195b9d510075426ad6e05ffd2c`，5080 runtime與port已cleanup。
+
+- 2026-08-31：補齊主spec第26.13.1節對應的自動化 fail-closed coverage。新增 `E2-UNLOAD`、`E2-INVALID`、`E2-CAPABILITY-LOSS` pure／component tests；並新增 `ProcessPlanningCanvas.lifecycle.test.tsx` 的兩 frame 單次 fit、observer disconnect與hidden pending rAF cancellation coverage；最新 targeted pure／fixture `11 files／57 tests`、component／composition `6 files／24 tests`（關聯三檔合併重跑 `3 files／18 tests`）、aggregate `160 files／663 tests`，typecheck、build與diff check通過。瀏覽器 unload／capability-loss與listener inventory record仍開放，產品契約與S7狀態不變。
+
+- 2026-08-31：新增DEV-039 E2 failure-path fresh browser evidence。以同一 B16 fixture 的 task-owned Playwright 補得 `E2-COMMIT-REJECT`、`E2-CAPABILITY-LOSS`、`E2-UNLOAD`；三案 status `200`、hydrated→after relation／link IDs與revision不變、產品 diagnostics為空，並補記 typed source payload 的兩個 animation frame focus recovery。`E2-INVALID`、完整 dirty／history／autosave／listener inventory仍開放，E2 aggregate不提升；證據與索引見主spec第26.21節、parity第16.15節、`output/playwright/dev039/manifest.md`。fixture已recoverably archive，5080 runtime已cleanup。
+
+- 2026-08-31：收斂DEV-039文件現行摘要，將幾何窄修正前的 `656 tests` 明確標為歷史基線，現行數字與判定統一回主spec第26.15～26.18節；不改寫歷史證據、不改產品契約。
+
+- 2026-08-31：補上DEV-039 E1 native runner admission邊界，將真實 `DataTransfer`／可見owner geometry preflight固定回主spec第26.18節；工具無法產生native事件時只記 `blocked／not-run`，不新增第二runner、輸入路徑或產品fallback。
+
+- 2026-08-31：補齊DEV-039主spec第26.13.1節的最小 failure／lifecycle case matrix，將E2 invalid／unload／capability／command rejection與E3 mount／split-reveal／close-reload固定成可派工單案；同步更新現行測試基線為`159 files／657 tests`，不新增產品狀態、resolver、evidence schema或輸入路徑。
+
+- 2026-08-31：完成 Process canvas 幾何／生命週期窄修正並更新最終程式 gate。既有 surface 改用 `min-width／min-height:0`、正常文件流、兩個 animation frame 後單次 `fitView`及observer／rAF cleanup；B16 split／reload／flow量得 owner canvas內 source handles、無 overflow、產品 console `0／0`，artifact為`F039-S7-E3-process-geometry-after-fix.png`。targeted `3 files／17 tests`、full regression `159 files／657 tests`、typecheck、build與diff check通過；E1 native、E2 failure、E3完整lifecycle及E4 freeze仍開放，未commit、merge、deploy或release。
+
+- 2026-08-31：補記短高度 split panel 的 editor saturation 幾何 follow-up；以既有 canvas `min-height:180px; flex:1 1 180px`避免 editor 區塊將 canvas 壓成零高度，並保存 `F039-S7-E3-process-canvas-min-height.png` 與 hit-test 量測。只關閉局部幾何 observation，不提升 E1／E3 aggregate 或改動資料／關聯契約；本輪未新增 dependency、resolver、MIME、mutation owner、commit、merge、deploy或release。
+
+- 2026-08-31：依最新 B16 分割版面量測補上 Process canvas 幾何／生命週期 blocker。記錄 graph panel 約 `360×206px`、canvas 約 `358×390px`、React Flow root 約 `637.5×617px`及 source handle 超出可見範圍；新增主spec第26.17節與Parity第16.10節的最小修正／窄測試索引。維持 `E1-NATIVE`、`E2-FAILURE`、`E3-WARNING` Partial／Open、`E4-FREEZE` Blocked；本輪只修改文件，未修改產品程式、資料、dependency、commit、merge、deploy或release。
+
+- 2026-08-31：補齊DEV-039現行證據讀取規則。主spec第26.13～26.18節分別作為派工、record契約、最新逐案結果、Process canvas 幾何窄修正、native runner admission與同步優先序；Parity第16.6～16.11節及evidence manifest只作索引／provenance。明確固定E1／E2／E3為Partial／Open、E4為Blocked，避免單案pass或歷史段落被誤判為aggregate完成；本輪只修改開發文件，未修改產品程式、資料、dependency、commit、merge、deploy或release。
+
+- 2026-08-31：補記Chrome CUA fresh observation：Employee→Position native DOM mutation、same-target noop與Duty→Process invalid＋Escape cancel；E1／E2仍未因缺strict MIME、API／revision、target unload／capability-loss與E3 warning而關閉。本輪只同步DEV-039文件與evidence manifest。
+
+- 2026-08-31：完成S7 native runner availability decision。task-owned Playwright未產生可採用native事件，Chrome browser-client亦無可連線tab；依主spec第26.19節將ProcessNode↔Duty維持`not-run`、E1 aggregate維持`Partial／Open`，停止重複同類工具嘗試並保留single resolver／mutation owner邊界。本輪只同步開發文件與證據邊界，未修改產品、資料、dependency、commit、merge、deploy或release。
+- 2026-08-31：補充In-app Browser CUA與keyboard capability-loss observation。CUA未產生可採用native事件；keyboard placing切換現行版會離開placing狀態，但缺API／revision／zero-mutation完整record，因此E2與E1 aggregate不變；本輪只同步文件與證據邊界。
+- 2026-08-31：補充Chrome extension CUA重試結果。隔離Chrome分頁沿用B16 source／target與canonical入口仍未產生可採用native事件；E1 aggregate不變，本輪只同步文件與證據邊界。
+- 2026-08-31：新增E3 lifecycle fresh observation。完成Process standalone／close／reveal／視角切換／Duty往返／reload，保存`F039-S7-E3-lifecycle-iab.png`；幾何與owner局部pass，但listener inventory未取得，E3 aggregate維持`Partial／Open`。
+
+- 2026-08-31：校正DEV-039現行closure索引至主spec第26.13節／parity第16.6節，補記targeted `7 files／34 tests`與aggregate `159 files／656 tests`基線；歷史節保留，native／failure／warning仍未關閉。
+
+- 2026-08-31：將DEV-039 S7剩餘收斂整理為主spec第26.13節的`E1-NATIVE → E2-FAILURE → E3-WARNING → E4-FREEZE` RD execution packet，固定owner、允許修改範圍、命令、artifact欄位、cleanup與stop conditions；本輪只同步開發文件，不改產品程式、資料、dependency、commit、merge、deploy或release。
+
+- 2026-08-31：以單一 fork worker 重跑 DEV-039 全量回歸，`159 test files／656 tests`通過；前次5個平行worker timeout未重現。同步主spec、parity與evidence manifest，保留S7 native／failure／warning開放狀態；本輪未修改產品程式或測試設定。
+
+- 2026-08-31：依最新fresh CUA結果完成DEV-039 S7文件收斂。修正早期B16 native紀錄與目前可關閉證據的分層，明確標示CUA未觸發`dataTransfer`為`Not proven`；新增主spec第26.12節的`E1 Native delivery → E2 Failure paths → E3 React Flow warning → E4 Candidate freeze`收斂順序，並同步 parity、documentation_map與evidence manifest。後續只沿用既有`RelationPlacementSession`／resolver／target adapter；本輪未修改產品程式、資料、dependency、commit、merge、deploy或release。
+
+- 2026-08-31：完成DEV-039 S7 fresh QA／QC補跑與文件同步。以task-owned `127.0.0.1:8080`及B16 fixture `draft-84ff0ba0-4ff7-48f4-889a-d66693d4c46b`重驗正常功能入口、ProcessNode↔Duty keyboard、duplicate/no-op、Escape focus、readonly、draft reload及1440／1024／390 viewport；links `process-duty-2`／`process-duty-3`由API讀回一致，fixture已封存、8080已釋放，5000（PID 23840）未停止。以in-app browser CUA實際執行ProcessNode→Duty、Employee→Position、Duty→ProcessNode native drag均未觀察到HTML5 `dataTransfer` drop／mutation，且fresh session保留一次React Flow parent-size console warning；invalid／target卸載與完整native evidence仍未收斂。狀態維持`Relation Placement Implemented / QA-QC Reopened`，不進candidate freeze、commit、merge、deploy或release。
+
+- 2026-08-31：完成S7-PROC-01窄接線與B16 ProcessNode↔Duty雙向native驗證。`ProcessDutyBridge`新增strict MIME Duty targets與App preview／commit props；B16以`process-duty-2`及`process-duty-4`建立canonical link，duplicate為noop，並補1024×768 editable與390×844 readonly spot-check。targeted `2 files／9 tests`、full regression `159 files／656 tests`、typecheck、build、source scan與diff check通過；fresh QA-QC、完整viewport matrix與正式auth仍待收斂，狀態更新為`Relation Placement Implemented / QA-QC Reopened`，未commit、merge、deploy或release。
+
+- 2026-08-31：依B16 loopback結果繼續升級DEV-039開發文件。新增S7 Remaining implementation package，將ProcessNode→Duty native唯一缺口定位為`ProcessDutyBridge`的Duty target wrapper與`ProcessPlanningWorkbench` preview／commit窄Props接線；固定S7-PROC-01～S7-CLOSE-04的派工順序、驗收、fresh evidence、cleanup與停止條件。沿用既有`RelationPlacementSession`、resolver與`LINK_PROCESS_NODE_DUTY`，不新增架構。狀態維持`Relation Placement Partial Evidence / QA-QC Reopened`，本輪只修改文件，未修改產品程式、資料、dependency、commit、merge、deploy或release。
+- 2026-08-31：完成S7 Playwright runner admission fresh attempt。以task-owned `127.0.0.1:5080`、Chromium `149.0.7827.55`、`1280x720`、canonical `功能→流程規劃→在工作台開啟`及B16 fixture執行；ProcessNode source與Duty target皆在可見owner panel，但`locator.drag_to`與pointer path未產生可觀察`dragstart／dragover／drop`或strict `dataTransferTypes`。API `200` readback確認fixture只保留既有Process link、沒有domain mutation；fixture已recoverably archive，5080 runtime已停止且port已釋放。依主spec第26.15.1節判定`E1-PROC-DUT-NATIVE=blocked`、paired `E1-DUT-PROC-NATIVE=not-run`，E1 aggregate仍`Partial／Open`；本輪只補evidence與停止條件，未修改產品契約、dependency、schema、resolver、mutation owner、commit、merge、deploy或release。
+
+- 2026-08-31：依使用者要求繼續升級DEV-039 S7開發文件，完成Implementation Readiness Review。固定`App`唯一Relation Placement owner、`relationPlacement.ts` pure reducer、latest-state resolver、single commit dispatcher、來源模組capability、exact file／symbol與runtime migration；建立S7-0～S7-5、舊Employee／Duty state／MIME／handler／CSS deletion allowlist、failure recovery、targeted／aggregate命令及task-owned B16 fixture／cleanup／evidence。P0／P1 readiness缺口為0，狀態升為`S7 RD Implementation Ready / RD Not Started / QA-QC Reopened`；本輪只修改開發文件，未修改產品程式、測試、資料、dependency、commit、merge、deploy或release。
+
+- 2026-08-31：完成S7 B16 loopback smoke。以task-owned `127.0.0.1:8080`、Playwright `dev039-s7`、Chromium `HeadlessChrome/151.0.0.0`、`1280×720`及loopback dev identity經正常入口建立fixture；Employee native新增任職、Employee keyboard兼任、Duty＋lane native主執行、same-target noop、Escape cancel、current readonly與draft reload通過API／UI readback，ProcessNode↔Duty native未閉合。fixture version `draft-01b4ed05-2b86-48b9-85c3-669a7f258476`已recoverably archive；證據與兩張native截圖見`output/playwright/dev039/manifest.md`。狀態維持`Relation Placement Partial Evidence / QA-QC Reopened`，未commit、merge、deploy或release。
+
+- 2026-08-31：依開始實作的結果同步DEV-039狀態為`Relation Placement Partial Evidence / QA-QC Reopened`。已新增`relationPlacement.ts` pure reducer與effect／capability測試，App已建立唯一session owner與single commit boundary，Employee／Duty／Process source handle及registered target完成接線；舊平行state與legacy MIME／未使用檔案已移除，Process composition harness、source-policy regression及B16 pure fixture CLI／test已加入；relation／component／fixture targeted `6 files／28 tests`、full regression `159 files／655 tests`、typecheck、build與source scan通過。B16 loopback native／keyboard partial evidence已建立並封存fixture；ProcessNode↔Duty native、fresh QA／QC、正式auth與全viewport matrix仍待完成，未宣稱S7／DEV-039完成，未commit、merge、deploy或release。
+- 2026-08-31：繼續補齊S7 Current Phase RD Contract。新增canonical UI Entry、來源把手與明確解除區、`idle／placing／committing`轉換、single commit、Employee取代／Duty主執行移轉結果語意、Data／API／Permission／Dependency不變、failure recovery、representative fixture及evidence layer；沒有待人類產品決策，狀態升級為`S0～S6 Historical Complete / S7 RD Contract Ready / RD Not Started / QA-QC Reopened`。Exact repo／symbol migration、test命令與B16 executable fixture仍待Implementation Readiness；本輪只修改開發文件。
+- 2026-08-31：依使用者試用回饋與第一性架構審查建立DEV-039 S7 Relation Placement Session Brief。將真正能力從「跨面板拖曳」改定義為「typed關係配置」，固定native與keyboard共用Placement生命週期、`resolveRegisteredDrop`單一preview／commit規則、既有assignment helper／OrganizationCommand mutation authority及候選版本前刪除舊重複drag state。`F039-REL-01`因只有keyboard baseline而重新開啟；S0～S6其他證據保留。狀態改為`S0～S6 Historical Complete / S7 Brief Ready / Implementation Not Requested / QA-QC Reopened`。本輪只修改開發文件，未修改產品程式、測試、dependency、資料、API、commit、deploy或release。
+
+- 2026-08-30：依使用者要求完成S6 Implementation Readiness Review。主spec固定exact exports／Props、App owner factories、Duty三view、overlay allowlist、host-local定位、named container、S6-0～S6-5、failure recovery及targeted／aggregate／B14～B15 Gate；ADR及parity manifest同步。P0／P1 readiness缺口為0，DEV-039改為`可執行 / S6 RD Implementation Ready / RD Not Started / QA-QC Reopened`。本輪只修改開發文件，未修改產品程式或執行測試、commit、deploy、release。
+
+- 2026-08-30：依RD主管「穩定且不累積技術債」要求，把同類缺口盤查轉成DEV-039 S6 Panel Boundary Hardening開發契約。ADR-009新增Panel Surface Ownership amendment；主spec新增persistent／panel transient／global transient三層、selection state authority、container／capability分離、exact file impact、migration、failure recovery、source policy、B14～B15與AR-08～AR-11；parity manifest新增四項S6 ID並登錄Duty fixed detail、master-data dual mount及Management Method／Duty overlay gaps。DEV-039由完成改為`S6 RD Contract Ready / RD Not Started / QA-QC Reopened`。本輪只修改開發文件，未修改產品程式、測試、dependency、資料、API、commit、deploy或release。
+
+- 2026-08-30：修正工作職掌明細錯誤跟隨組織圖panel的所有權缺口。原本`DutyDetailDrawer`固定掛載於`organizationSurface`，因此工作職掌移到左下region後，明細仍出現在左上；改由`DutyModuleAdapter`在configuration mode內統一擁有清單與明細，並以相鄰兩欄正常文件流呈現。新增`LAYOUT-OWNERSHIP-01`與`B13`；targeted `1 file／3 tests`、full `149 files／617 tests`、build及1900×960三panel browser geometry通過，證據為`F039-QC-12-duty-detail-panel-ownership.png`。未commit、merge、deploy或release。
+
+- 2026-08-30：修正DEV-039 split separator只有resize游標、實際無法連續調整的缺口。原因是recursive render產生的新container ref在第一次pointer move觸發layout rerender後取代舊ref；原listener遂失去父容器幾何。改由separator直接透過React Pointer Events與pointer capture讀取目前父split，up／cancel釋放capture，並新增rerender regression及hover／active回饋。新增`LAYOUT-RESIZE-01`與`B12`；targeted `1 file／5 tests`、full `149 files／615 tests`、build、1280×800 browser drag及console 0 error／0 warning通過，ratio由50%連續調至59%，證據為`F039-QC-11-split-resize.png`。未commit、merge、deploy或release。
+
+- 2026-08-30：修正兼任風險無法成為獨立工作台的版面缺口。原因是舊版`.role-risk-panel { position:absolute; right:0; width:min(420px,...) }`在樣式載入順序上覆蓋workspace adapter；新增較高範圍選擇器`.composable-workspace .role-risk-panel--workspace`，使直接型panel回到正常文件流並填滿自身region，外層split／tab仍可控制並排。新增`LAYOUT-DIRECT-01`與`B11`；977×698 standalone route計算為`regions=1`、`x=0`、`width=977`、`position:relative`、無水平溢出，證據為`F039-QC-10-role-risk-standalone-page.png`。未commit、merge、deploy或release。
+
+- 2026-08-30：依試用回饋將DEV-039工作台結構分隔線改為共用藍色token。`workspace.css`新增`--workspace-divider-color`／`--workspace-divider-strong-color`，套用至chrome、Drawer、清單／明細、region tab、管理辦法panel action列及split separator；卡片、表格與表單內部分隔維持中性。新增`LAYOUT-SEP-01`，1440×900／390×844 visual、computed-style與overflow QC通過，證據為`F039-QC-07-blue-structural-dividers.png`及`F039-QC-08-blue-dividers-narrow.png`。未commit、merge、deploy或release。
+
+- 2026-08-30：依試用回饋修正DEV-039共用主資料panel。`MasterDataModuleAdapter`清單欄由比例欄改為Directory固定寬度（桌面／窄桌面`242px`、`690px`以下`190px`），明細Inspector回到adapter正常文件流並與清單緊鄰，避免中間空白與窄版絕對定位覆蓋；員工、職位、部門共用`data-layout="adjacent-list-detail"`相鄰契約，層級使用`list-only`維持單欄。新增`LAYOUT-ADJ-01`及component order regression；targeted `4 files／12 tests`、full `149 files／614 tests`、`npm run build`、1440×900／1024×768及390×844 browser geometry／visual QC通過，證據已回填`output/playwright/dev039/manifest.md`。未commit、merge、deploy或release。
+
+- 2026-08-30：完成DEV-039 S6 Panel Boundary Hardening。以`WorkspaceOverlayProvider`、`PanelOverlayHost`、`GlobalOverlayHost`及`WorkspacePortal`建立typed overlay邊界；各module persistent surface改由owner panel／owner factory掛載，Duty三view、Management Method transient、drag preview與Role Risk standalone均完成分層；移除feature viewport-fixed selectors、App共享master-data detail與raw portal。新增source policy、owner／DOM count／host missing／surface primitive regression；S6 targeted `8 files／21 tests`、full `154 files／631 tests`、`npm run build`與`git diff --check`通過，browser re-QC確認Duty／Management Method／Role Risk owner與overflow。狀態升級為`S0～S6 Implementation Complete / QA-QC Passed / Local Release Gate Pending / No Release Requested`；未commit、merge、deploy或release。
+
+- 2026-08-28：完成DEV-039 final QA-QC。依既定QA計畫重新執行desktop／1023／390 fail-seeking QC，發現並修正窄版仍顯示pin／drag-grip、手機頂欄裁切`功能`入口兩項缺口；新增component regression後重跑targeted `84 files／366 tests`、full `149 files／614 tests`與build，全部通過。狀態升級為`RD Implementation Complete / QA-QC Passed / Local Release Gate Pending / No Release Requested`；未commit、merge、deploy或release。
+
+- 2026-08-28：完成DEV-039 Current Phase RD實作與S5 replacement。建立`output/playwright/dev039/manifest.md`，補齊十模組正常入口、七個Drawer promotion、三typed relation、B1～B8、responsive/mobile、current readonly、reduced motion、recovery、damaged layout及legacy alias證據；修復Role Risk窄版mutation顯示與窄版focus回桌面active tab不一致。retired source scan 0 matches，full regression `149 files／612 tests`與build通過。狀態改為`RD Implementation Complete / Local RD Gates Passed / Independent QA-QC Pending`；未commit、merge、deploy或release。
+
+- 2026-08-28：依最新RD實作與browser walkthrough修改DEV-039開發文件。狀態更新為`S1 Core Gates Browser-Proven / S2～S4 Partial Parity Evidence / F039 Consolidation Pending / S5 Not Started`；`recoveryOpen=false`舊假狀態已移除，並記錄十模組入口、initial organization-only network、hidden lifecycle、三region layout、pin、零panel、canonical history、layout／route修復、桌面／手機唯讀、editable draft、管理辦法dirty/focus與部分typed keyboard結果。剩餘工作固定為`F039`、完整relation／failure矩陣、full regression及S5 allowlist／legacy removal；未授權merge、deploy或release。
+
+- 2026-08-28：依RD主管架構審查修改DEV-039開發文件。把實作狀態由`S1 Integration In Progress`校正為`S1～S4 Product Wiring Present / Parity Closure Pending / S5 Not Started`；補上單向依賴、單一render／mutation／canonical composition、bounded extensibility、surface lifecycle與safe replacement七項closure。最新targeted `20 files／45 tests`通過；full regression、B1～B8、F039、legacy removal、QA／QC、deploy與release仍未完成。
+
+- 2026-08-28：依RD主管實作期審查，把DEV-039由`RD Not Started`校正為`RD Implementation In Progress（S0 Complete / S1 Integration In Progress）`。記錄workspace targeted `13 files／28 tests`與build通過，並區分S0完成、S1 primitives完成／App整合未完、S2～S5待執行；補上P0／P1 closure及架構優雅度守則。未宣稱browser、QA／QC、removal、deploy或release完成。
+
+- 2026-08-28：依RD主管審視修改DEV-039工程契約與摘要。十module改由keyed context map統一exact ID與route/session/promotion型別；registry只保留metadata/context，typed adapter composition成為唯一render owner，capability仍由既有module resolver擁有。Panel close補成request／guard／commit並涵蓋Back；重型surface補上lazy first mount、hidden suspension與close cleanup。同步更新parity state、FMEA、acceptance及S0／S1／S4驗證。本輪只改開發文件，未改產品程式、測試、dependency、資料、deploy或release。
+
+- 2026-08-28：完成Implementation Readiness Review，DEV-039升級為`RD Implementation Ready / RD Not Started`。選定React 19＋CSS Grid／Flex有限自製split-tree／tab engine且不新增dependency；固定S0～S5實際檔案／symbol、pure reducer與effect boundary、App bootstrap／recovery／409 wiring、module adapters、provider isolation及exact targeted／full／build／browser command。P0／P1文件阻塞為0；本輪只修改開發文件，未改產品程式、測試、dependency、資料、deploy或release。
+
+- 2026-08-28：建立`ai-doc/specs/DEV-039-composable-planning-workspace.md`與ADR-009，將DEV-039升級為`RD Contract Ready / RD Not Started`。固定canonical `/`、十模組registry、242px左側推移Drawer、split-tree＋tab stack、minimum placement、URL／local／session三權威、promotion／pin、typed drag、global capability、DEV-020相容recovery、legacy alias、S0～S5及Medium-riskQA/QC。沒有待人類產品決策；dock engine、repo/file/symbol與exact tests留待Implementation Readiness Review。本輪未修改產品程式、測試、dependency、資料、deploy或release。
+
+- 2026-08-28：完成`ai-doc/specs/DEV-039-feature-parity-manifest.md`第一版baseline inventory與target mapping。清冊涵蓋全部現有module、全域chrome、keyboard、state、authority與typed relation，並把current document recovery列為P1 Restore；版本比較、standalone治理模擬器、管理辦法舊prototype及被取代composition列為intentional exclusions。DEV-039仍維持`Brief Ready / Implementation Not Requested`，所有`F039` fresh evidence、Contract決策、removal allowlist、產品實作與QA/QC均未完成。
+
+- 2026-08-28：使用者明確覆寫前一輪最小Slice決策，要求Current Phase一起啟用所有現有功能，包含兼任風險，避免改版遺失任何能力。新增零功能遺失parity manifest與deletion gate，將流程、職掌、管理辦法、角色治理、兼任風險及現有typed drag恢復Current Phase；版本／文件／儲存／搜尋／唯讀狀態列為全域chrome。預設仍只開組織圖。文件維持`Brief Ready`，未修改產品程式。
+
+- 2026-08-28：使用者固定DEV-039第一個最小可開發切片只啟用成熟的組織架構圖、員工、職位、部門、層級。Current Phase改為驗證共用workspace shell、四種Drawer promotion、五種單一panel、shared selection／pin與browser-local layout；流程、職掌、管理辦法、Process心智圖／流程圖及typed relation drag移入Future Phase。Slice 1不得刪DEV-038舊UI，文件維持`Brief Ready`，未修改產品程式。
+
+- 2026-08-28：寫入`#引導模式` Round 4 Human Decision Brief。使用者確認`13A` Drawer內選取／最小摘要並攜帶脈絡、`14A` 第一版單一模組panel、`15A` promotion保留既有layout；固定`在工作台開啟`背後自動加入或聚焦、pin優先及module surface registry。員工／職位／流程／職掌／管理辦法Drawer＋panel與組織圖單層panel記為目標surface architecture，第一個可開發slice啟用集合待下一輪最小scope決策。文件維持`Brief Ready`，未修改產品程式。
+
+- 2026-08-28：寫入 `#引導模式` Round 3 Human Decision Brief。使用者確認 `7B` 面板入口移至頂部單一Popover、`8A` pin隔離panel context但仍可操作、`9B` 所有panel可關閉並允許零panel工作台；另提出「每個功能最多兩層：Drawer＋完整工作台」作為待Round 4收斂的Human Proposed原則。文件維持`Brief Ready`，未修改產品程式或新增spec／ADR。
+
+- 2026-08-28：寫入 `#引導模式` Round 2 Human Decision Brief。使用者確認 `4B自訂` 預設配置只顯示組織架構圖、`5C` 未釘選面板跟隨shared selection且個別面板可pin、`6A` 第一版每種panel type只允許一份；空白桌面、模板Modal、預開心智圖／職掌及同類多實例均不進Current Phase。文件維持`Brief Ready`，未修改產品程式或新增spec／ADR。
+
+- 2026-08-28：寫入 `#引導模式` Round 1 Human Decision Brief。使用者確認 `1A` 受控Dock／Split且不重疊、`2A` drop預覽後立即執行既有Command並提供結果提示＋Undo、`3A` layout只在目前瀏覽器保存並於reload恢復；拒絕完整浮動Windows、逐次確認dialog、批次暫存與第一版跨裝置／帳號同步。文件維持`Brief Ready`，未修改產品程式或新增spec／ADR。
+
+- 2026-08-28：依使用者確認建立 DEV-039 `Brief Ready` 與 branch `codex/dev-039-composable-workspace`。固定可組合規劃桌面、受控 dock、第一版 panel catalog、兩條 typed drag 關係、OrganizationDocument V7／既有 Command 單一權威、分支內先新後刪及合併前無 runtime 雙模式；本輪未修改產品程式、測試、資料、dependency、deploy 或 release。
+
 ## DEV-038：流程－職掌－責任聯動規劃工作台
 
-狀態：執行中（MVP 實作中，QA／QC 待完成）
-文件成熟度：`RD Implementation Ready / MVP Implementation In Progress / QA-QC Pending / Local Release Gate Pending`
+狀態：執行中（MVP 已落地，QA／QC 待完成；固定 UI composition 已由 DEV-039 替換）
+文件成熟度：`RD Implementation Ready / MVP Implemented / QA-QC Pending / UI Composition Replaced by DEV-039`
 節點類型：交付點
 優先級：P1
 來源 ID：`USER-2026-08-27-PROCESS-DUTY-RESPONSIBILITY-WORKBENCH`、`USER-2026-08-27-MINDMAP-FLOWCHART-OSS-DESIGN`
@@ -413,7 +1609,14 @@
 風險等級：High（OrganizationDocument V6→V7、兩個圖形投影、跨畫布 selection／drag、Duty referential delete guard 與既有 relation transaction 共用）
 權威契約：`ai-doc/specs/DEV-038-process-duty-responsibility-planning-workbench.md`
 架構決策：`ai-doc/adr/ADR-008-process-planning-organization-version-authority.md`
-執行邊界：Current Phase 的產品、資料權威、exact symbols、repo/file allowlist、route、command／transaction、V6→V7 migration、Dagre gate、S0→S6、能力、失敗與 executable evidence contract 已固定。MVP 已在本機 worktree 完成可 smoke 實作與 reload persistence；仍須依權威契約完成 S6 QA／QC gate，不得擴張 Future Phase、deploy 或 release。
+執行邊界：OrganizationDocument V7、domain、command／transaction、V6→V7 migration、Dagre／React Flow 投影、能力、失敗恢復與非版面 evidence contract 繼續有效。固定左／中／右工作台 composition、route wiring 與其專屬 UI acceptance 自 2026-08-28 起由 DEV-039 intentional replacement；DEV-039 未達 removal gate 前不得先刪舊 UI，也不得將 DEV-038 固定 composition進入 release。
+
+### DEV-039 Intentional Replacement Notice
+
+- 使用者已確認以可組合規劃桌面取代本 DEV 的固定工作台編排，權威 Brief 為 `ai-doc/dev_task.md#dev-039可組合規劃桌面與跨面板關聯配置`。
+- 本 DEV 仍是 Process／ProcessNode／ProcessEdge／ProcessNodeDutyLink、OrganizationDocument V7、ADR-008、既有 relation transaction、Undo／Redo、autosave、CAS、validation 與可重用圖形投影的工程基線。
+- 本 DEV 第 4 節固定頁面骨架、第 14.5 節固定 component composition 及只驗證該 composition 的 UI gate，均視為 historical replacement baseline，不再限制 DEV-039 的 panel workspace contract。
+- 舊 UI 保留到 DEV-039 新工作台通過 deletion gate；之後在同一 replacement branch 內移除，正式 runtime 不保留雙模式。DEV-038 的 Git 歷史與非版面證據繼續可追溯。
 
 ### 真正問題與使用者價值
 
@@ -592,6 +1795,7 @@ QA／QC：`ai-doc/qa/DEV-037-external-role-assignment-validation-plan.md`
 - `Human Confirmed / 2026-08-27`：每個外部系統自行定義 Application Role、Permission、Role-Permission mapping 與領域審核政策；OrgMaster 不維護外部 Permission 細節。
 - `Human Confirmed`：OrgMaster 負責員工／principal 到外部 Application Role 的 assignment，以及 scope、有效期間、撤銷／重新啟用、角色代理、角色指派審核與治理 audit。
 - `Human Confirmed`：目前仍只修改 OrgMaster；AI-PDM 不修改，未串接前不得宣稱角色已在 AI-PDM 生效。
+- `Subsequent Intentional Replacement / 2026-08-30`：`4A / 5A / 6B` 的 live access view、既有使用者 migration 與角色直接生效由 DEV-040 承接；本 DEV 的 local-only、publish-as-approval 與 high-risk evidence 只保留歷史語意。
 - `Intentional Replacement`：取代 DEV-027／ADR-004 的外部 Application Role／Permission／Approval Policy 可編輯 authority；共用 IAM `2A`、AI-PDM approval transaction／domain apply authority 與 ADR-005 snapshot 原則保留。
 - `Historical Evidence Preserved`：DEV-027／035 local V1 程式、published versions、audit 與 QA/QC 不重寫、不刪除，也不能作為本 DEV 已實作的證據。
 
@@ -5003,3 +6207,4 @@ DEV-027 的價值是讓管理者在 OrgMaster 用同一治理入口回答：
 - 2026-08-17：完成 DEV-026 P0 實作；新增 `src/positionDragInteraction.ts` pure state helpers、drag-start geometry snapshot、preview stability／exit hysteresis、strict release validation 與 memoized employee references；補 5 個 drag interaction／geometry regression tests。
 - 2026-08-17：依使用者明確要求執行 `Intentional replacement`，移除專用拖曳把手，改為卡片 pointer gesture／`nodeDragThreshold=6`；完成 21 files／148 tests、production build 與三 viewport browser QC，未 deploy／release。
 - 2026-08-21：依使用者要求調整職掌矩陣「職位」欄寬：workbench table 改用 auto layout，職位欄以 `width: 1%` 搭配 `white-space: nowrap` 依最長職位名稱與內距收斂；執行／審核／協作欄與水平溢出邊界維持不變，完成本機瀏覽器量測。
+- 2026-09-01：DEV-039 完成 paired Duty→ProcessNode strict native evidence 與正式 QA-QC。`ProcessDutyBridge` 只將 source `effectAllowed` 由`copy`對齊既有 target `link`；全新 fixture `draft-4af67fa3-4e33-4644-8768-cb65d4642396`完成完整 native event chain、strict MIME、UI成功結果、API `200`／revision變化／canonical readback與cleanup，artifact=`output/playwright/dev039/F039-S7-E1-duty-process-native-strict.json`。E1四個 minimum directions、E2五案`historyEvidence`與E3兩案均通過正式 QA-QC；full regression `160 files／664 tests passed／1 skipped`、typecheck、build、source scan與文件一致性均通過。DEV-039現為`QA-QC Passed / E4 Candidate Freeze Ready / Authorization Pending`；未取得使用者／PM明確授權前，不commit、merge、deploy或release。

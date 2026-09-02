@@ -18,8 +18,10 @@ export interface OrganizationLayoutSettings {
 }
 
 export interface Employee {
+  /** Canonical employee identity: UUIDv7 after DEV-040 clean baseline. */
   id: string
   name: string
+  status: 'active' | 'inactive'
   departmentIds: string[]
   primaryAssignmentId: string | null
   administrativeApproverOverrideEmployeeId: string | null
@@ -187,11 +189,6 @@ export interface HierarchyNode extends OrgMember {
   organizationLevelId: string | null
   departmentId: string | null
   title: string
-}
-
-export interface EmployeeDragPayload {
-  employeeId: string
-  sourcePositionId: string | null
 }
 
 export interface Point {

@@ -4,6 +4,7 @@ import type { GovernanceActorContext } from '../src/governance/types'
 import { DEV_ISSUER, DEV_PRINCIPAL_ID, DEV_SUBJECT, resolveDevelopmentIdentity } from './orgmasterGovernanceIdentity'
 import { readGovernanceStore } from './orgmasterGovernanceStore'
 import type { ManagementMethodCapability } from '../src/managementMethods/types'
+import { verifiedGovernanceActor } from './orgmasterRequestIdentity'
 
 export const managementMethodPermissionCodes: Record<ManagementMethodCapability, string> = {
   create: 'orgmaster.management_method.create',
@@ -15,7 +16,12 @@ export const managementMethodPermissionCodes: Record<ManagementMethodCapability,
 }
 
 export function actorFromRequest(request: IncomingMessage, enabled: boolean) {
-  return resolveDevelopmentIdentity(request, enabled)
+  // In local development the fixed loopback identity is the bootstrap actor.
+  // Auth middleware also attaches a short-lived verified dev session to the
+  // same request, but that session intentionally has bootstrap=false. Prefer
+  // the explicit dev identity here; production (enabled=false) still uses the
+  // verified session exclusively.
+  return resolveDevelopmentIdentity(request, enabled) ?? verifiedGovernanceActor(request)
 }
 
 export async function capabilityFor(root: string, actor: GovernanceActorContext, capability: ManagementMethodCapability) {

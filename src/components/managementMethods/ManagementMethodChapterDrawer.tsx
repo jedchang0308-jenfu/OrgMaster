@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import type { ManagementMethodHeading } from '../../managementMethods/headings'
+import { WorkspacePortal } from '../workspace/WorkspaceOverlayHosts'
 
 interface Props {
   headings: ManagementMethodHeading[]
@@ -14,13 +15,16 @@ export function ManagementMethodChapterDrawer({ headings, onClose, onNavigate }:
   useEffect(() => {
     closeButtonRef.current?.focus()
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
     }
-    window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
+    document.addEventListener('keydown', closeOnEscape, true)
+    return () => document.removeEventListener('keydown', closeOnEscape, true)
   }, [onClose])
 
-  return (
+  return <WorkspacePortal scope="panel">
     <div className="management-method-chapter-backdrop" onMouseDown={onClose}>
       <aside
         className="management-method-chapter-drawer"
@@ -46,5 +50,5 @@ export function ManagementMethodChapterDrawer({ headings, onClose, onNavigate }:
         </nav>
       </aside>
     </div>
-  )
+  </WorkspacePortal>
 }

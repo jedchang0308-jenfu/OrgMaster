@@ -5,18 +5,18 @@ export const initialOrganizationLevels = createDefaultOrganizationLevels()
 
 export const initialEmployees: Employee[] = [
   // Restored from the user's saved local organization document (2026-08-11).
-  { id: 'employee-lin', name: '張仕杰', departmentIds: ['department-executive'], primaryAssignmentId: 'assignment-ceo', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-chen', name: '陳思妤', departmentIds: ['department-operations'], primaryAssignmentId: 'assignment-operations', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-chou', name: '周柏廷', departmentIds: ['department-product-rd'], primaryAssignmentId: 'assignment-product', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-huang', name: '黃怡安', departmentIds: ['department-finance'], primaryAssignmentId: 'assignment-finance', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-wu', name: '吳佳穎', departmentIds: ['department-hr'], primaryAssignmentId: 'assignment-hr', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-chang', name: '張雅雯', departmentIds: ['department-admin'], primaryAssignmentId: 'assignment-admin', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-hsu', name: '許庭瑋', departmentIds: ['department-design'], primaryAssignmentId: 'assignment-design', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-wang', name: '王俊傑', departmentIds: ['department-engineering'], primaryAssignmentId: 'assignment-engineering', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-tseng', name: '曾郁婷', departmentIds: ['department-accounting'], primaryAssignmentId: 'assignment-accounting', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-chiang', name: '江承翰', departmentIds: ['department-supply'], primaryAssignmentId: 'assignment-procurement', administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-li', name: '李冠廷', departmentIds: ['department-project'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null },
-  { id: 'employee-liao', name: '廖婉如', departmentIds: ['department-customer-success'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-lin', name: '張仕杰', status: 'active', departmentIds: ['department-executive'], primaryAssignmentId: 'assignment-ceo', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-chen', name: '陳思妤', status: 'active', departmentIds: ['department-operations'], primaryAssignmentId: 'assignment-operations', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-chou', name: '周柏廷', status: 'active', departmentIds: ['department-product-rd'], primaryAssignmentId: 'assignment-product', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-huang', name: '黃怡安', status: 'active', departmentIds: ['department-finance'], primaryAssignmentId: 'assignment-finance', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-wu', name: '吳佳穎', status: 'active', departmentIds: ['department-hr'], primaryAssignmentId: 'assignment-hr', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-chang', name: '張雅雯', status: 'active', departmentIds: ['department-admin'], primaryAssignmentId: 'assignment-admin', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-hsu', name: '許庭瑋', status: 'active', departmentIds: ['department-design'], primaryAssignmentId: 'assignment-design', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-wang', name: '王俊傑', status: 'active', departmentIds: ['department-engineering'], primaryAssignmentId: 'assignment-engineering', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-tseng', name: '曾郁婷', status: 'active', departmentIds: ['department-accounting'], primaryAssignmentId: 'assignment-accounting', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-chiang', name: '江承翰', status: 'active', departmentIds: ['department-supply'], primaryAssignmentId: 'assignment-procurement', administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-li', name: '李冠廷', status: 'active', departmentIds: ['department-project'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null },
+  { id: 'employee-liao', name: '廖婉如', status: 'active', departmentIds: ['department-customer-success'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null },
 ]
 
 export const initialDepartments: Department[] = [

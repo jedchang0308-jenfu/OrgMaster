@@ -376,7 +376,7 @@ describe('document storage', () => {
 
   it('rejects unsupported or incomplete documents', () => {
     expect(parseOrgDocument({ app: 'OtherApp', version: 1 })).toMatchObject({ ok: false, code: 'INVALID_APP' })
-    expect(parseOrgDocument({ app: 'OrgMaster', version: 8, kind: 'backup', savedAt: 'now', state })).toMatchObject({ ok: false, code: 'UNSUPPORTED_VERSION' })
+    expect(parseOrgDocument({ app: 'OrgMaster', version: 8, kind: 'backup', savedAt: 'now', state })).toMatchObject({ ok: false, code: 'EMPLOYEE_ID_INVALID' })
     expect(parseOrgDocument({ app: 'OrgMaster', version: 3, kind: 'backup', savedAt: 'now', state: { ...state, roleCombinationRiskRules: null } })).toMatchObject({ ok: false, code: 'INVALID_DOCUMENT_SHAPE' })
     expect(parseOrgDocument({ app: 'OrgMaster', version: 2, kind: 'backup', savedAt: 'now', state: { ...state, members: null } })).toMatchObject({ ok: false, code: 'INVALID_DOCUMENT_SHAPE' })
   })
