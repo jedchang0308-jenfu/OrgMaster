@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 import { defaultWorkspaceLayout, emptyWorkspaceLayout, insertWorkspacePanel, resizeWorkspaceSplit } from '../../workspace/layout'
 import { createWorkspaceSessionState } from '../../workspace/state'
-import { WorkspaceLayout } from './WorkspaceLayout'
+import { WORKSPACE_PANEL_DRAG_MIME, WorkspaceLayout } from './WorkspaceLayout'
 import { WorkspaceOverlayProvider } from './WorkspaceOverlayHosts'
 
 function renderWorkspace(root: ReturnType<typeof createRoot>, node: ReactNode) {
@@ -15,14 +15,14 @@ describe('WorkspaceLayout', () => {
   it('renders a true empty state', async () => {
     const host = document.createElement('div')
     const root = createRoot(host)
-    await act(async () => renderWorkspace(root, <WorkspaceLayout layout={emptyWorkspaceLayout()} session={createWorkspaceSessionState({ openPanels: [], focusedPanel: null, selection: null, contexts: {} })} mobileSingleSurface={false} dispatch={() => undefined} requestClose={async () => ({ kind: 'allow' })} renderPanel={() => null} />))
+    await act(async () => renderWorkspace(root, <WorkspaceLayout layout={emptyWorkspaceLayout()} session={createWorkspaceSessionState({ openPanels: [], focusedPanel: null, selection: null, openDetails: [], contexts: {} })} mobileSingleSurface={false} dispatch={() => undefined} requestClose={async () => ({ kind: 'allow' })} renderPanel={() => null} />))
     expect(host.textContent).toContain('工作台目前沒有開啟功能')
     root.unmount()
   })
 
   it('keeps inactive desktop panels mounted but hidden and exposes keyboard separator', async () => {
     const layout = insertWorkspacePanel(defaultWorkspaceLayout(), 'duties', { kind: 'edge', stackPath: [], edge: 'right' })
-    const route = { openPanels: ['organization', 'duties'] as const, focusedPanel: 'organization' as const, selection: null, contexts: {} }
+    const route = { openPanels: ['organization', 'duties'] as const, focusedPanel: 'organization' as const, selection: null, openDetails: [], contexts: {} }
     const session = createWorkspaceSessionState({ ...route, openPanels: [...route.openPanels] })
     const dispatch = vi.fn()
     const host = document.createElement('div')
@@ -37,7 +37,7 @@ describe('WorkspaceLayout', () => {
 
   it('keeps pointer resizing after the first layout rerender', async () => {
     const initialLayout = insertWorkspacePanel(defaultWorkspaceLayout(), 'employees', { kind: 'edge', stackPath: [], edge: 'right' })
-    const route = { openPanels: ['organization', 'employees'] as const, focusedPanel: 'organization' as const, selection: null, contexts: {} }
+    const route = { openPanels: ['organization', 'employees'] as const, focusedPanel: 'organization' as const, selection: null, openDetails: [], contexts: {} }
     const session = createWorkspaceSessionState({ ...route, openPanels: [...route.openPanels] })
     const host = document.createElement('div')
     const root = createRoot(host)
@@ -80,7 +80,7 @@ describe('WorkspaceLayout', () => {
 
   it('offers a keyboard menu that can split a tab out of its current stack', async () => {
     const layout = insertWorkspacePanel(defaultWorkspaceLayout(), 'duties', { kind: 'stack', stackPath: [] })
-    const session = createWorkspaceSessionState({ openPanels: ['organization', 'duties'], focusedPanel: 'duties', selection: null, contexts: {} })
+    const session = createWorkspaceSessionState({ openPanels: ['organization', 'duties'], focusedPanel: 'duties', selection: null, openDetails: [], contexts: {} })
     const dispatch = vi.fn()
     const host = document.createElement('div')
     const root = createRoot(host)
@@ -94,9 +94,40 @@ describe('WorkspaceLayout', () => {
     root.unmount()
   })
 
+  it('moves a draggable desktop tab through the panel-layout MIME drop zone', async () => {
+    const layout = insertWorkspacePanel(defaultWorkspaceLayout(), 'employees', { kind: 'stack', stackPath: [] })
+    const session = createWorkspaceSessionState({ openPanels: ['organization', 'employees'], focusedPanel: 'employees', selection: null, openDetails: [], contexts: {} })
+    const dispatch = vi.fn()
+    const host = document.createElement('div')
+    const root = createRoot(host)
+    const values = new Map<string, string>()
+    const dataTransfer = {
+      effectAllowed: 'none',
+      dropEffect: 'none',
+      setData: vi.fn((type: string, value: string) => values.set(type, value)),
+      getData: vi.fn((type: string) => values.get(type) ?? ''),
+    }
+    const dragEvent = (type: string) => {
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
+      return event
+    }
+
+    await act(async () => renderWorkspace(root, <WorkspaceLayout layout={layout} session={session} mobileSingleSurface={false} dispatch={dispatch} requestClose={async () => ({ kind: 'allow' })} renderPanel={() => null} />))
+    const employeeTab = host.querySelector('#workspace-tab-employees') as HTMLButtonElement
+    expect(employeeTab.draggable).toBe(true)
+    await act(async () => employeeTab.dispatchEvent(dragEvent('dragstart')))
+    expect(dataTransfer.setData).toHaveBeenCalledWith(WORKSPACE_PANEL_DRAG_MIME, JSON.stringify({ moduleId: 'employees' }))
+    const rightDropZone = host.querySelector('.workspace-region__drop-zones .is-right') as HTMLDivElement
+    expect(rightDropZone).not.toBeNull()
+    await act(async () => rightDropZone.dispatchEvent(dragEvent('drop')))
+    expect(dispatch).toHaveBeenCalledWith({ type: 'MOVE_PANEL', moduleId: 'employees', target: { kind: 'edge', stackPath: [], edge: 'right' } })
+    root.unmount()
+  })
+
   it('removes composition controls and inactive surfaces in single-surface mode', async () => {
     const layout = insertWorkspacePanel(defaultWorkspaceLayout(), 'duties', { kind: 'edge', stackPath: [], edge: 'right' })
-    const session = createWorkspaceSessionState({ openPanels: ['organization', 'duties'], focusedPanel: 'duties', selection: null, contexts: {} })
+    const session = createWorkspaceSessionState({ openPanels: ['organization', 'duties'], focusedPanel: 'duties', selection: null, openDetails: [], contexts: {} })
     const host = document.createElement('div')
     const root = createRoot(host)
     await act(async () => renderWorkspace(root, <WorkspaceLayout layout={layout} session={session} mobileSingleSurface dispatch={() => undefined} requestClose={async () => ({ kind: 'allow' })} renderPanel={(moduleId) => <div data-panel={moduleId}>{moduleId}</div>} />))

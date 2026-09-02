@@ -15,6 +15,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { AlertTriangle, Check, MousePointerClick, Trash2, UserRoundPlus } from 'lucide-react'
+import { AuthGate } from './auth/AuthGate'
 import { createUuidV7 } from './employeeIdentity'
 import { screenshotOrganizationState } from './screenshotData'
 import { removeEmployeeFromDirectory, updateDepartmentInDirectory, updateEmployeeInDirectory } from './directories'
@@ -24,13 +25,13 @@ import {
   ORG_NODE_WIDTH,
   getOrgNodeHeight,
 } from './layout'
-import { Inspector, type OrganizationUiIssue, type PositionParentGroup, type PositionParentOption } from './components/Inspector'
+import { Inspector, type OrganizationUiIssue } from './components/Inspector'
 import { DepartmentGroupLayer } from './components/DepartmentGroupLayer'
 import { OrganizationLevelGuideLayer } from './components/OrganizationLevelGuideLayer'
 import { PositionYSnapGuide } from './components/PositionYSnapGuide'
 import { RoleRiskRelationLayer } from './components/RoleRiskRelationLayer'
 import { DirectoryDock, type DirectoryKind, type DirectorySelection } from './components/DirectoryDock'
-import { DirectoryDetailPanel, type DirectoryDetailSelection } from './components/DirectoryDetailPanel'
+import { DirectoryDetailPanel } from './components/DirectoryDetailPanel'
 import {
   AddDepartmentDialog,
   AddEmployeeDialog,
@@ -78,9 +79,8 @@ import {
   type RoleCombinationRiskDraft,
 } from './components/RoleCombinationRiskPanel'
 import { buildPositionViews, getDepartmentName, TODAY } from './organization'
-import { groupByDepartmentAndLevel } from './positionGrouping'
 import { getNextOrganizationLevelId } from './organizationLevels'
-import { buildHierarchyNodes, getHierarchyDepth, isHierarchyDescendant } from './organizationHierarchy'
+import { buildHierarchyNodes, getHierarchyDepth } from './organizationHierarchy'
 import { buildDepartmentGroups } from './departmentGroups'
 import { resolveEscapeDismissAction, type WorkspacePanelId } from './panelDismissal'
 import { executeOrganizationCommand, type OrganizationCommand, type OrganizationCommandResult } from './organizationCommands'
@@ -116,8 +116,10 @@ import type { OrgWorkspaceIndex, OrgWorkspaceVersionSummary, WorkspaceMode } fro
 import { WorkspaceShell } from './components/workspace/WorkspaceShell'
 import { WorkspaceOverlayProvider, WorkspacePortal } from './components/workspace/WorkspaceOverlayHosts'
 import { WorkspaceLauncher } from './components/workspace/WorkspaceLauncher'
+import { useRelationCanvasAutoPan } from './components/workspace/useRelationCanvasAutoPan'
+import { createRelationDropTargetProps } from './components/workspace/relationPlacementBindings'
 import { OrganizationPanel } from './components/workspace/OrganizationPanel'
-import { renderWorkspaceDrawer, renderWorkspacePanel, type WorkspaceDrawerRenderer, type WorkspacePanelRenderer } from './components/workspace/WorkspaceModuleSurfaces'
+import { renderWorkspacePanel, type WorkspacePanelRenderer } from './components/workspace/WorkspaceModuleSurfaces'
 import { MasterDataModuleAdapter, type MasterDataModuleId } from './components/workspace/adapters/MasterDataModuleAdapter'
 import { DutyModuleAdapter } from './components/workspace/adapters/DutyModuleAdapter'
 import { ProcessModuleAdapter } from './components/workspace/adapters/ProcessModuleAdapter'
@@ -125,12 +127,12 @@ import { ManagementMethodModuleAdapter } from './components/workspace/adapters/M
 import { RoleRiskModuleAdapter } from './components/workspace/adapters/RoleRiskModuleAdapter'
 import { GovernanceModuleAdapter } from './components/workspace/adapters/GovernanceModuleAdapter'
 import { useWorkspaceController } from './workspace/useWorkspaceController'
+import { sameRelationPlacementTarget, type RelationPlacementOutcome } from './workspace/relationDragInteraction'
 import { classifyIndexFailure, classifyVersionFailure } from './workspace/hydration'
-import { observeWorkspaceEnvironment, resolveModuleCapability } from './workspace/capability'
+import { observeWorkspaceEnvironment, resolveModuleCapability, resolveWorkspaceCompositionCapability } from './workspace/capability'
 import { describeRegisteredDropEffect, readWorkspaceEntityDrag, resolveRegisteredDrop, type DomainMutationIntent, type RegisteredDropTarget, type WorkspaceEntityDragPayloadV1 } from './workspace/entityDrag'
 import {
   createRelationPlacementSession,
-  getRelationPlacementAutoPanDelta,
   reduceRelationPlacementSession,
   resolveRelationPlacementCapability,
   sameRelationPlacementPayload,
@@ -138,7 +140,7 @@ import {
   type RelationPlacementInputMode,
 } from './workspace/relationPlacement'
 import { getWorkspaceModule } from './workspace/moduleRegistry'
-import type { DrawerWorkspaceModuleId, PromotionIntent, WorkspaceEnvironment, WorkspaceHydrationState, WorkspaceModuleId } from './workspace/types'
+import type { WorkspaceEnvironment, WorkspaceHydrationState, WorkspaceModuleContextMap, WorkspaceModuleId } from './workspace/types'
 
 const nodeTypes: NodeTypes = { org: OrgNode }
 const edgeTypes: EdgeTypes = { orthogonal: OrthogonalEdge }
@@ -347,7 +349,12 @@ function findDataElement(attribute: string, value: string) {
     .find((element) => element.getAttribute(attribute) === value) ?? null
 }
 
-export default function App() {
+function findDirectoryDataElement(attribute: string, value: string) {
+  return Array.from(document.querySelectorAll<HTMLElement>(`[data-workspace-panel="directory"] [${attribute}]`))
+    .find((element) => element.getAttribute(attribute) === value) ?? null
+}
+
+function ProtectedApp() {
   const initialState = screenshotOrganizationState
   const [serverReady, setServerReady] = useState(false)
   const [serverRevision, setServerRevision] = useState<string | null>(null)
@@ -433,14 +440,12 @@ export default function App() {
   serverRevisionRef.current = serverRevision
   const isDirty = savedSignature !== currentSignature
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [activeDirectory, setActiveDirectory] = useState<DirectoryKind | null>(() => readDutyConfigurationLocation(window.location).active ? 'duties' : 'employees')
   const [riskInteractionPositionId, setRiskInteractionPositionId] = useState<string | null>(null)
   const [directorySelection, setDirectorySelection] = useState<DirectorySelection | null>(null)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [dutyConfigurationLocation, setDutyConfigurationLocation] = useState<DutyConfigurationLocation>(() => readDutyConfigurationLocation(window.location))
   const [dutyConfigurationExpandedDutyId, setDutyConfigurationExpandedDutyId] = useState<string | null>(() => readDutyConfigurationLocation(window.location).dutyId)
   const [dutyConfigurationError, setDutyConfigurationError] = useState<string | null>(null)
-  const [dutyDetailOpen, setDutyDetailOpen] = useState(false)
   const [relationPlacement, dispatchRelationPlacement] = useReducer(
     reduceRelationPlacementSession,
     undefined,
@@ -450,12 +455,30 @@ export default function App() {
   const relationPlacementSourcePayloadRef = useRef<WorkspaceEntityDragPayloadV1 | null>(null)
   const relationPlacementCommitLockRef = useRef(false)
   const relationPlacementBeginTimerRef = useRef<number | null>(null)
+  const [relationPlacementOutcome, setRelationPlacementOutcome] = useState<RelationPlacementOutcome | null>(null)
+  const relationPlacementOutcomeTimerRef = useRef<number | null>(null)
   const clearRelationPlacementBeginTimer = useCallback(() => {
     if (relationPlacementBeginTimerRef.current === null) return
     window.clearTimeout(relationPlacementBeginTimerRef.current)
     relationPlacementBeginTimerRef.current = null
   }, [])
+  const clearRelationPlacementOutcome = useCallback(() => {
+    if (relationPlacementOutcomeTimerRef.current !== null) window.clearTimeout(relationPlacementOutcomeTimerRef.current)
+    relationPlacementOutcomeTimerRef.current = null
+    setRelationPlacementOutcome(null)
+  }, [])
+  const publishRelationPlacementOutcome = useCallback((outcome: RelationPlacementOutcome) => {
+    if (relationPlacementOutcomeTimerRef.current !== null) window.clearTimeout(relationPlacementOutcomeTimerRef.current)
+    setRelationPlacementOutcome(outcome)
+    relationPlacementOutcomeTimerRef.current = window.setTimeout(() => {
+      relationPlacementOutcomeTimerRef.current = null
+      setRelationPlacementOutcome(null)
+    }, 900)
+  }, [])
   useEffect(() => () => clearRelationPlacementBeginTimer(), [clearRelationPlacementBeginTimer])
+  useEffect(() => () => {
+    if (relationPlacementOutcomeTimerRef.current !== null) window.clearTimeout(relationPlacementOutcomeTimerRef.current)
+  }, [])
   const [dutyEditDialog, setDutyEditDialog] = useState<'create' | null>(null)
   const [dutyDeleteDialog, setDutyDeleteDialog] = useState(false)
   const [mobileReadOnly, setMobileReadOnly] = useState(() => window.matchMedia('(max-width: 1023px), (hover: none), (pointer: coarse)').matches)
@@ -517,11 +540,18 @@ export default function App() {
     const next = { active: true, attentionOnly: false, dutyId: dutyId ?? null, lane: null, focusPositionId: focusPositionId ?? null, sourceRelationId: null, legacySurface: null } satisfies DutyConfigurationLocation
     setDutyConfigurationLocation(next)
     workspaceController.openOrFocus('organization', {}, 'cross-panel')
-    workspaceController.openDrawer('duties')
+    workspaceController.openOrFocus('duties', {
+      dutyId: next.dutyId,
+      lane: next.lane,
+      view: 'configuration',
+      query: workspaceModuleQueries.duties,
+      statusFilters: [],
+      focusPositionId: next.focusPositionId,
+      sourceRelationId: next.sourceRelationId,
+      attentionOnly: next.attentionOnly,
+    }, 'cross-panel')
     setDutyConfigurationExpandedDutyId(null)
     setDutyConfigurationError(null)
-    setDutyDetailOpen(false)
-    setActiveDirectory('duties')
     setDirectorySelection(null)
     setInspectorOpen(false)
     clearRelationPlacementBeginTimer()
@@ -529,7 +559,7 @@ export default function App() {
     relationPlacementSourceFocusRef.current = null
     relationPlacementSourcePayloadRef.current = null
     relationPlacementCommitLockRef.current = false
-  }, [clearRelationPlacementBeginTimer, workspaceController.openDrawer, workspaceController.openOrFocus])
+  }, [clearRelationPlacementBeginTimer, workspaceController.openOrFocus, workspaceModuleQueries.duties])
 
   const focusAfterClose = useCallback((resolveTarget: () => HTMLElement | null) => {
     window.requestAnimationFrame(() => {
@@ -541,13 +571,6 @@ export default function App() {
       document.querySelector<HTMLElement>('[data-workspace-focus-fallback]')?.focus()
     })
   }, [])
-
-  const closeDirectoryPanel = useCallback(() => {
-    const kind = activeDirectory
-    if (!kind) return
-    setActiveDirectory(null)
-    focusAfterClose(() => findDataElement('data-directory-rail-kind', kind))
-  }, [activeDirectory, focusAfterClose])
 
   const closeInspectorPanel = useCallback(() => {
     const selection = directorySelection
@@ -569,13 +592,11 @@ export default function App() {
     setDirectorySelection({ kind: 'positions', id })
     setInspectorOpen(true)
     lastInteractedPanelRef.current = 'inspector'
-    if (window.innerWidth <= 1100) setActiveDirectory(null)
   }, [])
   const selectEntity = useCallback((selection: DirectorySelection) => {
     setDirectorySelection(selection)
     setInspectorOpen(true)
     lastInteractedPanelRef.current = 'inspector'
-    if (window.innerWidth <= 1100) setActiveDirectory(null)
   }, [])
   const selectEmployee = useCallback((employeeId: string) => {
     selectEntity({ kind: 'employees', id: employeeId })
@@ -601,32 +622,6 @@ export default function App() {
     else if (ref.kind === 'duty') setDirectorySelection({ kind: 'duties', id: ref.id })
     setInspectorOpen(sharedWorkspaceSelection.sourcePanelId === 'organization')
   }, [sharedWorkspaceSelection.ref, sharedWorkspaceSelection.revision, sharedWorkspaceSelection.sourcePanelId])
-  const changeActiveDirectory = useCallback((next: DirectoryKind | null) => {
-    const previous = activeDirectory
-    if (next === 'duties' && !dutyConfigurationLocation.active) {
-      setDutyConfigurationLocation({ active: true, attentionOnly: false, dutyId: null, lane: null, focusPositionId: null, sourceRelationId: null, legacySurface: null })
-      setDutyConfigurationError(null)
-    } else if (dutyConfigurationLocation.active && next !== 'duties') {
-      setDutyConfigurationLocation({ active: false, attentionOnly: false, dutyId: null, lane: null, focusPositionId: null, sourceRelationId: null, legacySurface: null })
-      setDutyConfigurationError(null)
-      clearRelationPlacementBeginTimer()
-      dispatchRelationPlacement({ type: 'CANCEL' })
-      relationPlacementSourceFocusRef.current = null
-      relationPlacementSourcePayloadRef.current = null
-      relationPlacementCommitLockRef.current = false
-    }
-    setActiveDirectory(next)
-    if (next) {
-      lastInteractedPanelRef.current = 'directory'
-      if (window.innerWidth <= 1100) {
-        setInspectorOpen(false)
-        setSelectedId(null)
-        setDirectorySelection(null)
-      }
-    } else if (previous) {
-      focusAfterClose(() => findDataElement('data-directory-rail-kind', previous))
-    }
-  }, [activeDirectory, clearRelationPlacementBeginTimer, dutyConfigurationLocation.active, focusAfterClose])
   const recordPanelInteraction = useCallback((event: { target: EventTarget | null }) => {
     const panel = workspacePanelFromTarget(event.target)
     if (panel) lastInteractedPanelRef.current = panel
@@ -655,7 +650,6 @@ export default function App() {
     && serverReady
     && workspaceHydration.kind === 'ready'
   const editingEnabled = editingEnabledRef.current
-  const currentDrawer = workspaceController.state.session.drawer
   const dutyPanelContext = workspaceController.state.session.panels.duties?.context
   const effectiveDutyConfigurationLocation = useMemo<DutyConfigurationLocation>(() => dutyPanelContext?.view === 'configuration'
     ? {
@@ -667,7 +661,7 @@ export default function App() {
         sourceRelationId: dutyPanelContext.sourceRelationId,
         legacySurface: null,
       }
-    : { ...dutyConfigurationLocation, active: currentDrawer === 'duties' }, [currentDrawer, dutyConfigurationLocation, dutyPanelContext])
+    : { ...dutyConfigurationLocation, active: false }, [dutyConfigurationLocation, dutyPanelContext])
   const dutyConfigurationActive = effectiveDutyConfigurationLocation.active
   const dutyConfigurationWritable = dutyConfigurationActive && canMutateDutyConfiguration({
     editingEnabled,
@@ -681,6 +675,7 @@ export default function App() {
   const masterDataEditingEnabled = editingEnabled
   const organizationEditingEnabled = masterDataEditingEnabled && !dutyConfigurationActive
   const workspaceMutationAllowed = resolveModuleCapability('organization', workspaceEnvironment, { canRead: true, canMutate: true }).canMutate
+  const workspaceCompositionCapability = resolveWorkspaceCompositionCapability(workspaceEnvironment)
   const relationPlacementCapabilities = useMemo(() => ({
     organizationAssignment: resolveModuleCapability('organization', workspaceEnvironment, {
       canRead: true,
@@ -724,6 +719,7 @@ export default function App() {
       setAssignmentNotice('目前版本為唯讀；請先進入草稿編輯或現行版維護')
       return false
     }
+    clearRelationPlacementOutcome()
     if (inputMode === 'keyboard') {
       relationPlacementSourceFocusRef.current = source ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)
       relationPlacementSourcePayloadRef.current = payload
@@ -735,12 +731,19 @@ export default function App() {
     relationPlacementBeginTimerRef.current = window.setTimeout(() => {
       relationPlacementBeginTimerRef.current = null
       dispatchRelationPlacement({ type: 'BEGIN', inputMode, payload })
-      setAssignmentNotice('已抓取關係；請移至可用落點，Enter 放置，Escape 取消')
+      setAssignmentNotice(inputMode === 'keyboard'
+        ? '已抓取關係；請移至可用落點，Enter 放置，Escape 取消'
+        : '已抓取關係；請移至可用落點放置')
     }, 0)
     return true
-  }, [clearRelationPlacementBeginTimer, mobileReadOnly])
+  }, [clearRelationPlacementBeginTimer, clearRelationPlacementOutcome, mobileReadOnly])
 
   const cancelRelationPlacement = useCallback(() => {
+    // Native dragend can arrive immediately after a successful drop. The
+    // commit already returned the session to idle; keep its short-lived
+    // outcome visible instead of treating that terminal dragend as a second
+    // user cancellation.
+    if (relationPlacement.phase === 'idle' && relationPlacementOutcome) return
     clearRelationPlacementBeginTimer()
     const source = relationPlacementSourceFocusRef.current
     const payload = relationPlacementSourcePayloadRef.current
@@ -748,17 +751,19 @@ export default function App() {
     relationPlacementSourcePayloadRef.current = null
     relationPlacementCommitLockRef.current = false
     dispatchRelationPlacement({ type: 'CANCEL' })
+    clearRelationPlacementOutcome()
     if (source || payload) window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
       let fallback: HTMLElement | null = null
       if (payload?.kind === 'process-node') {
-        fallback = Array.from(document.querySelectorAll<HTMLElement>('.process-canvas-node__relation-handle'))
-          .find((element) => element.closest<HTMLElement>('[data-process-node-id]')?.dataset.processNodeId === payload.processNodeId) ?? null
+        const node = Array.from(document.querySelectorAll<HTMLElement>('.process-canvas-node[data-process-node-id]'))
+          .find((element) => element.dataset.processNodeId === payload.processNodeId) ?? null
+        fallback = node?.querySelector<HTMLElement>('.process-canvas-node__relation-handle') ?? node
       } else if (payload?.kind === 'duty') {
         fallback = Array.from(document.querySelectorAll<HTMLElement>('[data-relation-placement-source-kind="duty"]'))
           .find((element) => element.dataset.dutyId === payload.dutyId && element.dataset.dutyLane === payload.lane) ?? null
       } else if (payload?.kind === 'employee') {
         fallback = Array.from(document.querySelectorAll<HTMLElement>('[data-relation-placement-source-kind="employee"]'))
-          .find((element) => element.dataset.employeeId === payload.employeeId) ?? null
+          .find((element) => element.dataset.employeeId === payload.employeeId && element.dataset.sourcePositionId === (payload.sourcePositionId ?? undefined)) ?? null
       }
       if (fallback?.isConnected) {
         fallback.focus()
@@ -766,7 +771,7 @@ export default function App() {
       }
       if (source?.isConnected) source.focus()
     }))
-  }, [clearRelationPlacementBeginTimer])
+  }, [clearRelationPlacementBeginTimer, clearRelationPlacementOutcome, relationPlacement.phase, relationPlacementOutcome])
 
   useEffect(() => {
     if (relationPlacement.phase !== 'placing') return
@@ -795,10 +800,9 @@ export default function App() {
       requiredModules.add(target.kind === 'position' || target.kind === 'employee-unassign' ? 'organization' : 'processes')
     }
     const openPanels = workspaceController.state.route.openPanels
-    const drawer = workspaceController.state.session.drawer
-    const surfaceClosed = [...requiredModules].some((moduleId) => !openPanels.includes(moduleId) && drawer !== moduleId)
+    const surfaceClosed = [...requiredModules].some((moduleId) => !openPanels.includes(moduleId))
     if (surfaceClosed) cancelRelationPlacement()
-  }, [cancelRelationPlacement, relationPlacement, workspaceController.state.route.openPanels, workspaceController.state.session.drawer])
+  }, [cancelRelationPlacement, relationPlacement, workspaceController.state.route.openPanels])
 
   const relationPlacementCandidate = useCallback((payload: WorkspaceEntityDragPayloadV1, target: RegisteredDropTarget): RelationPlacementCandidate => {
     const capability = resolveRelationPlacementCapability(payload, target, relationPlacementCapabilities)
@@ -810,13 +814,6 @@ export default function App() {
       code: resolution.status === 'intent' ? null : resolution.code,
     }
   }, [relationPlacementCapabilities])
-
-  const previewRelationPlacementTarget = useCallback((target: RegisteredDropTarget, event?: DragEvent<HTMLElement>) => {
-    if (relationPlacement.phase !== 'placing') return null
-    const candidate = relationPlacementCandidate(relationPlacement.payload, target)
-    dispatchRelationPlacement({ type: 'PREVIEW', candidate })
-    return candidate
-  }, [relationPlacement, relationPlacementCandidate])
 
   const commitDomainMutationIntent = useCallback((intent: DomainMutationIntent) => {
     const base = currentStateRef.current
@@ -873,18 +870,28 @@ export default function App() {
     }
     dispatchRelationPlacement({ type: 'PREVIEW', candidate })
     if (resolution.status !== 'intent') {
-      setAssignmentNotice(resolution.status === 'noop' ? '關係已存在，未重複建立' : resolution.code === 'READ_ONLY' ? '目前為唯讀，無法建立關係' : '此資料無法放到該落點')
       cancelRelationPlacement()
+      publishRelationPlacementOutcome({
+        target,
+        state: resolution.status === 'noop' ? 'noop' : 'rejected',
+        message: resolution.status === 'noop'
+          ? '關係已存在，未重複建立'
+          : resolution.code === 'READ_ONLY' ? '目前為唯讀，無法建立關係' : '此資料無法放到該落點',
+        token: Date.now(),
+      })
       return false
     }
     relationPlacementCommitLockRef.current = true
     dispatchRelationPlacement({ type: 'BEGIN_COMMIT', target })
     try {
-      return commitDomainMutationIntent(resolution.intent)
+      const committed = commitDomainMutationIntent(resolution.intent)
+      if (committed) publishRelationPlacementOutcome({ target, state: 'valid', message: '已建立關係', token: Date.now() })
+      else publishRelationPlacementOutcome({ target, state: 'rejected', message: '關係建立失敗，資料未變更', token: Date.now() })
+      return committed
     } finally {
       finishRelationPlacement()
     }
-  }, [cancelRelationPlacement, commitDomainMutationIntent, finishRelationPlacement, relationPlacement, relationPlacementCapabilities])
+  }, [cancelRelationPlacement, commitDomainMutationIntent, finishRelationPlacement, publishRelationPlacementOutcome, relationPlacement, relationPlacementCapabilities])
   const [positionContextMenu, setPositionContextMenu] = useState<PositionContextMenuState | null>(null)
   const [directoryDialog, setDirectoryDialog] = useState<DirectoryDialogState | null>(null)
   const positionDragRef = useRef<PositionDragState>(createPositionDragState())
@@ -932,6 +939,27 @@ export default function App() {
     screenToFlowPosition,
   } = useReactFlow<OrgFlowNode, OrgFlowEdge>()
 
+  const organizationRelationAutoPan = useRelationCanvasAutoPan({
+    active: relationPlacement.phase === 'placing',
+    getViewport,
+    setViewport,
+  })
+
+  const previewRelationPlacementTarget = useCallback((target: RegisteredDropTarget) => {
+    if (relationPlacement.phase !== 'placing') return null
+    const candidate = relationPlacementCandidate(relationPlacement.payload, target)
+    const previous = relationPlacement.candidate
+    const changed = !previous
+      || !sameRelationPlacementTarget(previous.target, candidate.target)
+      || previous.status !== candidate.status
+      || previous.effect !== candidate.effect
+      || previous.code !== candidate.code
+    if (changed) {
+      dispatchRelationPlacement({ type: 'PREVIEW', candidate })
+    }
+    return candidate
+  }, [relationPlacement, relationPlacementCandidate])
+
   const runOrganizationCommand = useCallback((command: OrganizationCommand) => {
     const result = executeOrganizationCommand(currentState, command)
     if (result.status === 'applied') {
@@ -950,19 +978,17 @@ export default function App() {
     const next = { ...effectiveDutyConfigurationLocation, active: true, dutyId: nextDutyId, lane: nextDutyId ? effectiveDutyConfigurationLocation.lane : null }
     setDutyConfigurationLocation(next)
     const current = workspaceController.state.session.panels.duties?.context
-    if (current) workspaceController.updatePanelContext('duties', { ...current, view: 'configuration', dutyId: nextDutyId, lane: next.lane })
+    if (current) workspaceController.updatePanelContext('duties', { ...current, view: 'configuration', dutyId: nextDutyId, lane: next.lane }, { openDetail: Boolean(nextDutyId) })
     setDutyConfigurationExpandedDutyId(nextDutyId)
     setDutyConfigurationError(null)
-    setDutyDetailOpen(false)
   }, [dutyConfigurationExpandedDutyId, effectiveDutyConfigurationLocation, workspaceController.state.session.panels.duties?.context, workspaceController.updatePanelContext])
 
   const openDutyConfigurationDetail = useCallback((dutyId: string) => {
     setDutyConfigurationLocation((current) => ({ ...current, active: true, dutyId }))
     const current = workspaceController.state.session.panels.duties?.context
-    if (current) workspaceController.updatePanelContext('duties', { ...current, view: 'configuration', dutyId })
+    if (current) workspaceController.updatePanelContext('duties', { ...current, view: 'configuration', dutyId }, { openDetail: true })
     setDutyConfigurationExpandedDutyId((currentDutyId) => currentDutyId === dutyId ? currentDutyId : null)
     setDutyConfigurationError(null)
-    setDutyDetailOpen(true)
   }, [workspaceController.state.session.panels.duties?.context, workspaceController.updatePanelContext])
 
   const selectDutyLane = useCallback((lane: DutyConfigurationExactLane) => {
@@ -1018,23 +1044,6 @@ export default function App() {
     : []
   const selectedDepartmentName = selected ? getDepartmentName(departments, selected.departmentId) : ''
   const contextPosition = positionContextMenu ? positionViewById.get(positionContextMenu.positionId) ?? null : null
-  const parentOptions = useMemo<PositionParentOption[]>(() => (
-    selected ? [{ id: null, label: '最高層（無上級）' }] : []
-  ), [selected])
-  const parentOptionGroups = useMemo<PositionParentGroup[]>(() => {
-    if (!selected) return []
-    const candidates = hierarchyNodes
-      .filter((node) => node.id !== selected.id && !isHierarchyDescendant(hierarchyNodes, node.id, selected.id))
-      .sort((a, b) => getHierarchyDepth(hierarchyNodes, a.id) - getHierarchyDepth(hierarchyNodes, b.id) || a.order - b.order || a.id.localeCompare(b.id))
-    return groupByDepartmentAndLevel(candidates, departments, organizationLevels, (node) => node).map((group) => ({
-      key: group.key,
-      label: group.label,
-      options: group.items.map((node) => ({
-        id: node.id,
-        label: `${node.title} · ${getDepartmentName(departments, node.departmentId)}`,
-      })),
-    }))
-  }, [departments, hierarchyNodes, organizationLevels, selected])
   const inspectorIssue: OrganizationUiIssue | null = organizationIssue && organizationIssueTarget
     ? { target: organizationIssueTarget, code: 'organization', message: organizationIssue }
     : null
@@ -1515,6 +1524,10 @@ export default function App() {
             && relationPlacement.candidate.target.positionId === member.id
             ? relationPlacement.candidate
             : null
+          const relationPlacementOutcomeForPosition = relationPlacementOutcome?.target.kind === 'position'
+            && relationPlacementOutcome.target.positionId === member.id
+            ? relationPlacementOutcome
+            : null
           const positionSelectHandler = selectPosition
           const dataChanged = !previous
             || previous.data.member !== viewMember
@@ -1528,6 +1541,7 @@ export default function App() {
             || previous.data.onRelationCancel !== cancelRelationPlacement
             || previous.data.relationPlacementActive !== relationPlacementActive
             || previous.data.relationPlacementCandidate !== relationPlacementCandidate
+            || previous.data.relationPlacementOutcome !== relationPlacementOutcomeForPosition
             || previous.data.showDragPlaceholder !== showDragPlaceholder
             || previous.data.employeeHighlighted !== employeeHighlighted
             || previous.data.riskLevel !== riskState?.level
@@ -1556,6 +1570,7 @@ export default function App() {
                 onRelationCancel: cancelRelationPlacement,
                 relationPlacementActive,
                 relationPlacementCandidate,
+                relationPlacementOutcome: relationPlacementOutcomeForPosition,
                 dragOffset,
                 showDragPlaceholder,
                 employeeHighlighted,
@@ -1580,6 +1595,7 @@ export default function App() {
     cancelRelationPlacement,
     commitRelationPlacementTarget,
     relationPlacement,
+    relationPlacementOutcome,
     previewRelationPlacementTarget,
     previewLayout,
     previewMembers,
@@ -1867,23 +1883,25 @@ export default function App() {
     centerNodeInCanvas(id)
   }, [centerNodeInCanvas, queueTitleEdit, runOrganizationCommand, selected])
 
-  const patchSelected = useCallback((patch: Partial<Pick<PositionView, 'title' | 'roleId' | 'departmentId' | 'organizationLevelId' | 'childrenAxis' | 'allowMultipleAssignees'>>) => {
-    if (!selectedId) return
+  const patchPosition = useCallback((positionId: string, patch: Partial<Pick<PositionView, 'title' | 'departmentId' | 'organizationLevelId' | 'childrenAxis' | 'allowMultipleAssignees'>>) => {
     const roleInput = patch.title !== undefined
       ? resolvePositionRole(roles, patch.title, () => crypto.randomUUID())
       : null
     runOrganizationCommand({
       type: 'PATCH_POSITION',
-      positionId: selectedId,
+      positionId,
       title: patch.title,
-      roleId: roleInput?.roleId ?? patch.roleId,
+      roleId: roleInput?.roleId,
       role: roleInput?.role,
       departmentId: patch.departmentId,
       organizationLevelId: patch.organizationLevelId,
       allowMultipleAssignees: patch.allowMultipleAssignees,
       childrenAxis: patch.childrenAxis,
     })
-  }, [roles, runOrganizationCommand, selectedId])
+  }, [roles, runOrganizationCommand])
+  const patchSelected = useCallback((patch: Partial<Pick<PositionView, 'title' | 'departmentId' | 'organizationLevelId' | 'childrenAxis' | 'allowMultipleAssignees'>>) => {
+    if (selectedId) patchPosition(selectedId, patch)
+  }, [patchPosition, selectedId])
 
   const previewOrganizationLevels = useCallback((levels: OrganizationLevel[] | null) => {
     setLevelOrderPreview(levels)
@@ -2261,9 +2279,8 @@ export default function App() {
       }
     }
 
-    // Keyboard relation placement owns Escape/Tab before the quick drawer's
-    // document-level dismiss handler. This keeps the source drawer mounted so
-    // cancellation can restore focus to the original grab control.
+    // Keyboard relation placement owns Escape/Tab before the global dismiss
+    // handler so cancellation can restore focus to the original grab control.
     document.addEventListener('keydown', onKeyboardPlacementKeyDown, true)
     return () => document.removeEventListener('keydown', onKeyboardPlacementKeyDown, true)
   }, [
@@ -2296,14 +2313,13 @@ export default function App() {
           focusedPanel: workspacePanelFromTarget(event.target) ?? workspacePanelFromTarget(document.activeElement),
           lastInteractedPanel: lastInteractedPanelRef.current,
           inspectorOpen,
-          directoryOpen: activeDirectory !== null,
+          directoryOpen: false,
         })
         if (action === 'none') return
         event.preventDefault()
         if (action === 'close-delete-dialog') setDeleteOpen(false)
         else if (action === 'close-directory-dialog') setDirectoryDialog(null)
         else if (action === 'close-inspector') closeInspectorPanel()
-        else if (action === 'close-directory') closeDirectoryPanel()
         return
       }
 
@@ -2377,9 +2393,7 @@ export default function App() {
   }, [
     addChild,
     addSibling,
-    activeDirectory,
     cancelRelationPlacement,
-    closeDirectoryPanel,
     closeInspectorPanel,
     closePositionContextMenu,
     deleteOpen,
@@ -2426,7 +2440,43 @@ export default function App() {
       selectDutyFromPicker(id)
     }
   }, [runDutyConfigurationCommand, selectDutyFromPicker])
-  const renderDirectorySurface = (kind: DirectoryKind) => (
+  const renderDirectorySurface = (kind: DirectoryKind) => {
+    const panelContext = workspaceController.state.session.panels[kind]?.context as Record<string, unknown> | undefined
+    const panelSelection: DirectorySelection | null = kind === 'employees'
+      ? typeof panelContext?.employeeId === 'string' ? { kind, id: panelContext.employeeId } : null
+      : kind === 'positions'
+        ? typeof panelContext?.positionId === 'string' ? { kind, id: panelContext.positionId } : null
+        : kind === 'departments'
+          ? typeof panelContext?.departmentId === 'string' ? { kind, id: panelContext.departmentId } : null
+          : kind === 'levels'
+            ? typeof panelContext?.levelId === 'string' ? { kind, id: panelContext.levelId } : null
+            : typeof panelContext?.dutyId === 'string' ? { kind, id: panelContext.dutyId } : null
+    const panelSelected = kind === 'positions' && typeof panelContext?.positionId === 'string'
+      ? positionViewById.get(panelContext.positionId) ?? null
+      : null
+    const selectPanelEntity = (selection: DirectorySelection) => {
+      const entityKind = selection.kind === 'employees' ? 'employee'
+        : selection.kind === 'positions' ? 'position'
+          : selection.kind === 'departments' ? 'department'
+            : selection.kind === 'levels' ? 'level'
+              : 'duty'
+      workspaceController.setSharedSelection({ kind: entityKind, id: selection.id }, kind)
+      if (selection.kind === 'employees') {
+        const context = workspaceController.state.session.panels.employees?.context
+        if (context) workspaceController.updatePanelContext('employees', { ...context, employeeId: selection.id }, { openDetail: true })
+      } else if (selection.kind === 'positions') {
+        setSelectedId(selection.id)
+        const context = workspaceController.state.session.panels.positions?.context
+        if (context) workspaceController.updatePanelContext('positions', { ...context, positionId: selection.id }, { openDetail: true })
+      } else if (selection.kind === 'departments') {
+        const context = workspaceController.state.session.panels.departments?.context
+        if (context) workspaceController.updatePanelContext('departments', { departmentId: selection.id }, { openDetail: true })
+      } else if (selection.kind === 'levels') {
+        const context = workspaceController.state.session.panels.levels?.context
+        if (context) workspaceController.updatePanelContext('levels', { levelId: selection.id })
+      } else if (selection.kind === 'duties') selectDutyFromPicker(selection.id)
+    }
+    return (
     <DirectoryDock
       presentation="surface"
       employees={employees}
@@ -2437,42 +2487,16 @@ export default function App() {
       organizationLevels={organizationLevels}
       levelIssue={organizationIssueTarget === 'level' ? organizationIssue : null}
       editingEnabled={kind === 'duties' ? dutyConfigurationWritable : masterDataEditingEnabled}
-      selected={selected}
-      directorySelection={directorySelection}
+      selected={panelSelected}
+      directorySelection={panelSelection}
       activeDirectory={kind}
       onActiveDirectoryChange={() => undefined}
       onRelationBegin={beginRelationPlacement}
       onRelationPreview={previewRelationPlacementTarget}
       onRelationCancel={cancelRelationPlacement}
       onAssignEmployee={(employeeId, targetPositionId) => changeAssignment(employeeId, targetPositionId)}
-      onSelectPosition={(positionId) => {
-        showSelected(positionId)
-        workspaceController.setSharedSelection({ kind: 'position', id: positionId }, kind === 'duties' ? 'duties' : 'positions')
-        const context = workspaceController.state.session.panels.positions?.context
-        if (context) workspaceController.updatePanelContext('positions', { ...context, positionId })
-      }}
-      onSelectEntity={(selection) => {
-        selectEntity(selection)
-        const entityKind = selection.kind === 'employees' ? 'employee'
-          : selection.kind === 'positions' ? 'position'
-            : selection.kind === 'departments' ? 'department'
-              : selection.kind === 'levels' ? 'level'
-                : 'duty'
-        workspaceController.setSharedSelection({ kind: entityKind, id: selection.id }, kind === 'duties' ? 'duties' : kind)
-        if (selection.kind === 'employees') {
-          const context = workspaceController.state.session.panels.employees?.context
-          if (context) workspaceController.updatePanelContext('employees', { ...context, employeeId: selection.id })
-        } else if (selection.kind === 'positions') {
-          const context = workspaceController.state.session.panels.positions?.context
-          if (context) workspaceController.updatePanelContext('positions', { ...context, positionId: selection.id })
-        } else if (selection.kind === 'departments') {
-          const context = workspaceController.state.session.panels.departments?.context
-          if (context) workspaceController.updatePanelContext('departments', { departmentId: selection.id })
-        } else if (selection.kind === 'levels') {
-          const context = workspaceController.state.session.panels.levels?.context
-          if (context) workspaceController.updatePanelContext('levels', { levelId: selection.id })
-        }
-      }}
+      onSelectPosition={(positionId) => selectPanelEntity({ kind: 'positions', id: positionId })}
+      onSelectEntity={selectPanelEntity}
       onAddEmployee={() => {
         if (!masterDataEditingEnabled) { setAssignmentNotice('目前版本為唯讀，無法修改員工資料'); return }
         setDirectoryDialog({ type: 'add-employee' })
@@ -2547,36 +2571,76 @@ export default function App() {
         setDutyEditDialog('create')
       }}
     />
-  )
-  const directoryDetailSelection: DirectoryDetailSelection | null = directorySelection?.kind === 'employees' || directorySelection?.kind === 'departments'
-    ? { kind: directorySelection.kind, id: directorySelection.id }
-    : null
+    )
+  }
   const selectPositionFromMasterDetail = (positionId: string) => {
-    showSelected(positionId)
-    const source = workspaceController.state.session.focusedPanel
-    workspaceController.setSharedSelection({ kind: 'position', id: positionId }, source === 'employees' || source === 'departments' || source === 'positions' ? source : 'positions')
-    const context = workspaceController.state.session.panels.positions?.context
-    if (context) workspaceController.updatePanelContext('positions', { ...context, positionId })
+    workspaceController.openOrFocus('positions', { positionId, query: workspaceModuleQueries.positions }, 'cross-panel')
+    workspaceController.setSharedSelection({ kind: 'position', id: positionId }, 'positions')
+    setSelectedId(positionId)
   }
   const selectEntityFromMasterDetail = (selection: DirectorySelection) => {
-    selectEntity(selection)
-    const source = workspaceController.state.session.focusedPanel
-    const sourcePanel = source === 'employees' || source === 'departments' || source === 'positions' ? source : selection.kind === 'employees' ? 'employees' : selection.kind === 'departments' ? 'departments' : 'positions'
-    const kind = selection.kind === 'employees' ? 'employee' : selection.kind === 'departments' ? 'department' : selection.kind === 'positions' ? 'position' : selection.kind === 'levels' ? 'level' : 'duty'
-    workspaceController.setSharedSelection({ kind, id: selection.id }, sourcePanel)
-    if (selection.kind === 'employees') {
-      const context = workspaceController.state.session.panels.employees?.context
-      if (context) workspaceController.updatePanelContext('employees', { ...context, employeeId: selection.id })
-    } else if (selection.kind === 'departments') {
-      const context = workspaceController.state.session.panels.departments?.context
-      if (context) workspaceController.updatePanelContext('departments', { departmentId: selection.id })
-    }
+    const targetModule = selection.kind
+    const kind = selection.kind === 'employees' ? 'employee'
+      : selection.kind === 'positions' ? 'position'
+        : selection.kind === 'departments' ? 'department'
+          : selection.kind === 'levels' ? 'level' : 'duty'
+    const context = targetModule === 'employees'
+      ? { employeeId: selection.id, query: workspaceModuleQueries.employees }
+      : targetModule === 'positions'
+        ? { positionId: selection.id, query: workspaceModuleQueries.positions }
+        : targetModule === 'departments'
+          ? { departmentId: selection.id }
+          : targetModule === 'levels'
+            ? { levelId: selection.id }
+            : { dutyId: selection.id, lane: null, view: 'configuration' as const, query: workspaceModuleQueries.duties, statusFilters: [], focusPositionId: null, sourceRelationId: null, attentionOnly: false }
+    workspaceController.openOrFocus(targetModule, context as never, 'cross-panel')
+    workspaceController.setSharedSelection({ kind, id: selection.id }, targetModule)
   }
-  const renderMasterDataDetail = (moduleId: MasterDataModuleId) => {
-    if (!directorySelection || directorySelection.kind !== moduleId) return null
-    if (directoryDetailSelection) return (
+  const renderOrganizationInspector = () => {
+    if (!directorySelection || directorySelection.kind !== 'positions') return null
+    return renderPositionInspector(directorySelection.id, closeInspectorPanel)
+  }
+  const renderPositionInspector = (positionId: string, onClose: () => void) => {
+    const member = positionViewById.get(positionId) ?? null
+    if (!member) return null
+    const memberEmployees = member.activeAssignments
+      .map((assignment) => employeeById.get(assignment.employeeId))
+      .filter((employee): employee is NonNullable<typeof employee> => Boolean(employee))
+    return (
+      <Inspector
+      member={member}
+      employees={memberEmployees}
+      departments={departments}
+      organizationLevels={organizationLevels}
+      activeAssignments={member.activeAssignments}
+      focusTitleToken={focusTitleToken}
+      issue={inspectorIssue}
+      onPatch={(patch) => patchPosition(member.id, patch)}
+      onUnassignEmployee={(employeeId) => removeAssignment(member.id, employeeId)}
+      onDelete={() => { setSelectedId(member.id); setDeleteOpen(true) }}
+      onOpenLevelDirectory={() => workspaceController.openOrFocus('levels', { levelId: null }, 'cross-panel')}
+      onClose={onClose}
+      editingEnabled={masterDataEditingEnabled}
+      duties={duties}
+      dutyRelations={dutyPositionRelations.filter((relation) => relation.target.kind === 'position' && relation.target.positionId === member.id)}
+      onOpenDutyConfiguration={(positionId) => openDutyConfiguration(positionId)}
+      />
+    )
+  }
+  const renderPanelMasterDataDetail = (moduleId: MasterDataModuleId) => {
+    const context = workspaceController.state.session.panels[moduleId]?.context
+    const closePanelDetail = (selection: DirectorySelection | null) => {
+      workspaceController.setDetailVisibility(moduleId, false)
+      focusAfterClose(() => {
+        if (selection?.kind === 'employees') return findDirectoryDataElement('data-employee-id', selection.id)
+        if (selection?.kind === 'positions') return findDirectoryDataElement('data-directory-position-id', selection.id)
+        if (selection?.kind === 'departments') return findDirectoryDataElement('data-department-id', selection.id)
+        return null
+      })
+    }
+    if (moduleId === 'employees' && (context as WorkspaceModuleContextMap['employees'] | undefined)?.employeeId) return (
       <DirectoryDetailPanel
-        selection={directoryDetailSelection}
+        selection={{ kind: 'employees', id: (context as WorkspaceModuleContextMap['employees']).employeeId! }}
         employees={employees}
         departments={departments}
         organizationLevels={organizationLevels}
@@ -2585,55 +2649,43 @@ export default function App() {
         editingEnabled={masterDataEditingEnabled}
         onSelectPosition={selectPositionFromMasterDetail}
         onSelectEntity={selectEntityFromMasterDetail}
-        onClose={closeInspectorPanel}
+        onClose={() => closePanelDetail({ kind: 'employees', id: (context as WorkspaceModuleContextMap['employees']).employeeId! })}
       />
     )
-    if (directorySelection.kind !== 'positions') return null
-    return (
-      <Inspector
-      member={selected}
-      employees={selectedEmployees}
-      departments={departments}
-      roles={roles}
-      organizationLevels={organizationLevels}
-      activeAssignments={selected?.activeAssignments ?? []}
-      departmentName={selectedDepartmentName}
-      childCount={selectedChildCount}
-      depth={selected ? getHierarchyDepth(hierarchyNodes, selected.id) : 0}
-      focusTitleToken={focusTitleToken}
-      parentOptions={parentOptions}
-      parentOptionGroups={parentOptionGroups}
-      issue={inspectorIssue}
-      onPatch={patchSelected}
-      onParentChange={(parentPositionId) => {
-        if (!selected) return
-        runOrganizationCommand({
-          type: 'MOVE_POSITION',
-          positionId: selected.id,
-          parentPositionId,
-          insertIndex: hierarchyNodes.filter((node) => node.parentId === parentPositionId && node.id !== selected.id).length,
-        })
-      }}
-      onUnassignEmployee={(employeeId) => selected && removeAssignment(selected.id, employeeId)}
-      onDelete={() => setDeleteOpen(true)}
-      onOpenLevelDirectory={() => workspaceController.openDrawer('levels')}
-      onClose={closeInspectorPanel}
-      editingEnabled={masterDataEditingEnabled}
-      duties={duties}
-      dutyRelations={selected ? dutyPositionRelations.filter((relation) => relation.target.kind === 'position' && relation.target.positionId === selected.id) : []}
-      onOpenDutyConfiguration={(positionId) => openDutyConfiguration(positionId)}
+    if (moduleId === 'departments' && (context as WorkspaceModuleContextMap['departments'] | undefined)?.departmentId) return (
+      <DirectoryDetailPanel
+        selection={{ kind: 'departments', id: (context as WorkspaceModuleContextMap['departments']).departmentId! }}
+        employees={employees}
+        departments={departments}
+        organizationLevels={organizationLevels}
+        members={positionViews}
+        onSetPrimaryAssignment={changePrimaryAssignment}
+        editingEnabled={masterDataEditingEnabled}
+        onSelectPosition={selectPositionFromMasterDetail}
+        onSelectEntity={selectEntityFromMasterDetail}
+        onClose={() => closePanelDetail({ kind: 'departments', id: (context as WorkspaceModuleContextMap['departments']).departmentId! })}
       />
     )
+    if (moduleId === 'positions' && (context as WorkspaceModuleContextMap['positions'] | undefined)?.positionId) {
+      const positionId = (context as WorkspaceModuleContextMap['positions']).positionId!
+      return renderPositionInspector(positionId, () => closePanelDetail({ kind: 'positions', id: positionId }))
+    }
+    return null
   }
-  const organizationInspector = renderMasterDataDetail('positions')
-  const dutyConfigurationDetail = dutyConfigurationActive && dutyDetailOpen ? (
+  const closeDutyConfigurationDetail = () => {
+    const dutyId = selectedDutyForConfiguration?.id ?? null
+    workspaceController.setDetailVisibility('duties', false)
+    focusAfterClose(() => dutyId ? findDirectoryDataElement('data-duty-id', dutyId) : null)
+  }
+  const organizationInspector = renderOrganizationInspector()
+  const dutyConfigurationDetail = dutyConfigurationActive && workspaceController.state.session.openDetails.includes('duties') ? (
     <DutyDetailDrawer
       duty={selectedDutyForConfiguration}
       state={currentState}
       editingEnabled={dutyConfigurationWritable}
       placementMode="organization-chart"
       displayMode="panel"
-      onClose={() => setDutyDetailOpen(false)}
+       onClose={closeDutyConfigurationDetail}
       onPatchDuty={(patch) => {
         if (!selectedDutyForConfiguration) return
         runDutyConfigurationCommand({ type: 'PATCH_DUTY', dutyId: selectedDutyForConfiguration.id, ...patch })
@@ -2647,7 +2699,7 @@ export default function App() {
         setDutyConfigurationLocation((current) => ({ ...current, active: true, dutyId: relation.dutyId, lane, sourceRelationId: relation.id }))
         const current = workspaceController.state.session.panels.duties?.context
         if (current) workspaceController.updatePanelContext('duties', { ...current, view: 'configuration', dutyId: relation.dutyId, lane, sourceRelationId: relation.id })
-        setDutyDetailOpen(false)
+        workspaceController.setDetailVisibility('duties', false)
         setDutyConfigurationError(null)
       }}
     />
@@ -2663,25 +2715,21 @@ export default function App() {
         className="canvas-wrap"
         tabIndex={-1}
         data-workspace-focus-fallback
+        onDragOver={organizationRelationAutoPan.onCanvasDragOver}
       >
         {relationPlacement.phase === 'placing'
           && relationPlacement.payload.kind === 'employee'
           && relationPlacement.payload.sourcePositionId
-          && <button
+            && <button
             type="button"
             className="relation-placement-unassign"
-            data-relation-placement-target="employee-unassign"
-            onDragOver={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              event.dataTransfer.dropEffect = 'move'
-              previewRelationPlacementTarget({ kind: 'employee-unassign' }, event)
-            }}
-            onDrop={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              commitRelationPlacementTarget({ kind: 'employee-unassign' }, event.dataTransfer)
-            }}
+            {...createRelationDropTargetProps({
+              active: relationPlacement.phase === 'placing',
+              available: organizationEditingEnabled,
+              target: { kind: 'employee-unassign' },
+              onPreview: previewRelationPlacementTarget,
+              onCommit: commitRelationPlacementTarget,
+            })}
           >解除目前任職</button>}
         <ReactFlow<OrgFlowNode, OrgFlowEdge>
           className={draggingId ? 'is-dragging' : undefined}
@@ -2799,7 +2847,8 @@ export default function App() {
       moduleId={moduleId}
       visibility={visibility}
       list={renderDirectorySurface(moduleId)}
-      detail={renderMasterDataDetail(moduleId) || undefined}
+      detail={renderPanelMasterDataDetail(moduleId) || undefined}
+      detailVisible={workspaceController.state.session.openDetails.includes(moduleId)}
     />
   )
 
@@ -2811,7 +2860,7 @@ export default function App() {
     levels: (visibility) => renderMasterDataPanel('levels', visibility),
     duties: (visibility) => {
       const context = workspaceController.state.session.panels.duties?.context
-      if (!context || context.view === 'configuration') return <DutyModuleAdapter mode="configuration" visibility={visibility} detail={dutyConfigurationDetail}>{renderDirectorySurface('duties')}</DutyModuleAdapter>
+       if (!context || context.view === 'configuration') return <DutyModuleAdapter mode="configuration" visibility={visibility} detail={dutyConfigurationDetail} detailVisible={workspaceController.state.session.openDetails.includes('duties')}>{renderDirectorySurface('duties')}</DutyModuleAdapter>
       return (
         <DutyModuleAdapter mode={context.view} visibility={visibility}>
           <DutyCenter
@@ -2848,36 +2897,39 @@ export default function App() {
           onRelationPreview={previewRelationPlacementTarget}
           onRelationCommit={commitRelationPlacementTarget}
           onRelationCancel={cancelRelationPlacement}
+          relationPlacementActive={relationPlacement.phase === 'placing'}
+          relationPlacementCandidate={relationPlacement.phase === 'placing' ? relationPlacement.candidate : null}
+          relationPlacementOutcome={relationPlacementOutcome}
           />
         </ProcessModuleAdapter>
       )
     },
     'management-methods': (visibility) => {
       const context = workspaceController.state.session.panels['management-methods']?.context
-      if (!context || !context.methodId || context.view === 'list') {
-        return <ManagementMethodModuleAdapter mode="list" visibility={visibility}><ManagementMethodListPage
-            visibility={visibility}
-            workspaceMutationAllowed={workspaceMutationAllowed}
-            initialQuery={context?.query ?? workspaceModuleQueries.managementMethods}
-            onQueryChange={(query) => {
-              setWorkspaceModuleQueries((current) => ({ ...current, managementMethods: query }))
-              workspaceController.updatePanelContext('management-methods', { methodId: null, view: 'list', query, chapter: null })
-            }}
-            onOpen={(methodId, view) => workspaceController.updatePanelContext('management-methods', { methodId, view: view ?? 'draft', query: context?.query ?? '', chapter: null })}
-          /></ManagementMethodModuleAdapter>
-      }
-      return <ManagementMethodModuleAdapter mode={context.view} visibility={visibility}><ManagementMethodDocumentPage
-          methodId={context.methodId}
-          initialView={context.view}
-          initialChapter={context.chapter}
-          state={currentState}
-          onClose={() => workspaceController.updatePanelContext('management-methods', { ...context, methodId: null, view: 'list', chapter: null })}
-          visibility={visibility}
-          workspaceMutationAllowed={workspaceMutationAllowed}
-          requestCloseGuardRegistration={registerManagementMethodCloseGuard}
-          onViewChange={(view) => workspaceController.updatePanelContext('management-methods', { ...context, view })}
-          onChapterChange={(chapter) => workspaceController.updatePanelContext('management-methods', { ...context, chapter })}
-        /></ManagementMethodModuleAdapter>
+      const detailVisible = workspaceController.state.session.openDetails.includes('management-methods') && Boolean(context?.methodId)
+      const list = <ManagementMethodListPage
+        visibility={visibility}
+        workspaceMutationAllowed={workspaceMutationAllowed}
+        initialQuery={context?.query ?? workspaceModuleQueries.managementMethods}
+        onQueryChange={(query) => {
+          setWorkspaceModuleQueries((current) => ({ ...current, managementMethods: query }))
+          workspaceController.updatePanelContext('management-methods', { ...(context ?? { methodId: null, view: 'list' as const, query: '', chapter: null }), query })
+        }}
+        onOpen={(methodId, view) => workspaceController.updatePanelContext('management-methods', { ...(context ?? { methodId: null, view: 'list' as const, query: '', chapter: null }), methodId, view: view ?? 'draft', chapter: null }, { openDetail: true })}
+      />
+      const detail = context?.methodId && context.view !== 'list' ? <ManagementMethodDocumentPage
+        methodId={context.methodId}
+        initialView={context.view}
+        initialChapter={context.chapter}
+        state={currentState}
+        onClose={() => workspaceController.setDetailVisibility('management-methods', false)}
+        visibility={visibility}
+        workspaceMutationAllowed={workspaceMutationAllowed}
+        requestCloseGuardRegistration={registerManagementMethodCloseGuard}
+        onViewChange={(view) => workspaceController.updatePanelContext('management-methods', { ...context, view })}
+        onChapterChange={(chapter) => workspaceController.updatePanelContext('management-methods', { ...context, chapter })}
+      /> : null
+      return <ManagementMethodModuleAdapter mode={context?.view ?? 'list'} visibility={visibility} list={list} detail={detail} detailVisible={detailVisible} />
     },
     'role-risks': (visibility) => <RoleRiskModuleAdapter visibility={visibility}><RoleCombinationRiskPanel
         roles={roles}
@@ -2900,43 +2952,12 @@ export default function App() {
       /></GovernanceModuleAdapter>,
   }
 
-  const drawerRenderers: Partial<Record<DrawerWorkspaceModuleId, WorkspaceDrawerRenderer>> = {
-    employees: () => renderDirectorySurface('employees'),
-    positions: () => renderDirectorySurface('positions'),
-    departments: () => renderDirectorySurface('departments'),
-    levels: () => renderDirectorySurface('levels'),
-    duties: () => renderDirectorySurface('duties'),
-    processes: () => <div className="workspace-quick-list" role="list">{[...processes].sort((a, b) => a.order - b.order).map((process) => <button type="button" role="listitem" key={process.id} onClick={() => workspaceController.promote({ moduleId: 'processes', source: 'drawer', context: { processId: process.id, processNodeId: null, dutyId: null, view: 'mindmap' } })}>{process.title}</button>)}</div>,
-    'management-methods': () => <ManagementMethodListPage
-      visibility="active"
-      workspaceMutationAllowed={workspaceMutationAllowed}
-      initialQuery={workspaceController.state.session.panels['management-methods']?.context.query ?? workspaceModuleQueries.managementMethods}
-      onQueryChange={(query) => {
-        setWorkspaceModuleQueries((current) => ({ ...current, managementMethods: query }))
-        const context = workspaceController.state.session.panels['management-methods']?.context
-        if (context) workspaceController.updatePanelContext('management-methods', { ...context, query })
-      }}
-      onOpen={(methodId, view) => workspaceController.promote({ moduleId: 'management-methods', source: 'drawer', context: { methodId, view: view ?? 'draft', query: '', chapter: null } })}
-    />,
-  }
-
   const openPanels = workspaceController.state.route.openPanels
   const workspaceLauncher = <WorkspaceLauncher
     openPanels={openPanels}
-    onOpenDrawer={workspaceController.openDrawer}
-    onOpenPanel={(moduleId) => workspaceController.openOrFocus(moduleId)}
+    onOpenModule={(moduleId) => workspaceController.openOrFocus(moduleId)}
     disabled={workspaceHydration.kind !== 'ready'}
   />
-
-  const drawerPromotionIntent: PromotionIntent | undefined = currentDrawer ? (() => {
-    if (currentDrawer === 'employees') return { moduleId: 'employees', source: 'drawer' as const, context: { employeeId: directorySelection?.kind === 'employees' ? directorySelection.id : null, query: workspaceModuleQueries.employees } }
-    if (currentDrawer === 'positions') return { moduleId: 'positions', source: 'drawer' as const, context: { positionId: directorySelection?.kind === 'positions' ? directorySelection.id : selectedId, query: workspaceModuleQueries.positions } }
-    if (currentDrawer === 'departments') return { moduleId: 'departments', source: 'drawer' as const, context: { departmentId: directorySelection?.kind === 'departments' ? directorySelection.id : null } }
-    if (currentDrawer === 'levels') return { moduleId: 'levels', source: 'drawer' as const, context: { levelId: directorySelection?.kind === 'levels' ? directorySelection.id : null } }
-    if (currentDrawer === 'duties') return { moduleId: 'duties', source: 'drawer' as const, context: { dutyId: effectiveDutyConfigurationLocation.dutyId, lane: effectiveDutyConfigurationLocation.lane, view: 'configuration' as const, query: workspaceModuleQueries.duties, statusFilters: [], focusPositionId: effectiveDutyConfigurationLocation.focusPositionId, sourceRelationId: effectiveDutyConfigurationLocation.sourceRelationId, attentionOnly: effectiveDutyConfigurationLocation.attentionOnly } }
-    if (currentDrawer === 'processes') return { moduleId: 'processes', source: 'drawer' as const, context: workspaceController.state.session.panels.processes?.context ?? { processId: processes[0]?.id ?? null, processNodeId: null, dutyId: null, view: 'mindmap' as const } }
-    return { moduleId: 'management-methods', source: 'drawer' as const, context: workspaceController.state.session.panels['management-methods']?.context ?? { methodId: null, view: 'list' as const, query: workspaceModuleQueries.managementMethods, chapter: null } }
-  })() as PromotionIntent : undefined
   const renderGlobalOverlay = (node: ReactNode) => <WorkspacePortal scope="global">{node}</WorkspacePortal>
 
   return (
@@ -2945,8 +2966,7 @@ export default function App() {
       <WorkspaceShell
         controller={workspaceController}
         hydration={workspaceHydration}
-        mobileSingleSurface={mobileReadOnly || workspaceEnvironment.viewportWidth < 1024}
-        drawerPromotionIntent={drawerPromotionIntent}
+        mobileSingleSurface={!workspaceCompositionCapability.canCompose}
         onRetry={() => {
           if (workspaceHydration.kind === 'conflict' && isDirty && !window.confirm('重新載入會捨棄目前尚未儲存的內容，確定繼續？')) return
           setWorkspaceHydrationRetry((value) => value + 1)
@@ -2972,8 +2992,8 @@ export default function App() {
           onOpenRoleRiskSettings={() => workspaceController.openOrFocus('role-risks')}
           governanceOpen={Boolean(workspaceController.state.session.panels.governance)}
           onOpenGovernance={() => workspaceController.openOrFocus('governance')}
-          onOpenManagementMethods={() => workspaceController.openDrawer('management-methods')}
-          onOpenProcessPlanning={() => workspaceController.openDrawer('processes')}
+          onOpenManagementMethods={() => workspaceController.openOrFocus('management-methods')}
+          onOpenProcessPlanning={() => workspaceController.openOrFocus('processes')}
           governanceButtonRef={governanceButtonRef}
           isDirty={isDirty}
           savedAt={savedAt}
@@ -2991,7 +3011,6 @@ export default function App() {
           onToggleCurrentMaintenance={() => { void toggleCurrentMaintenance() }}
         />}
         renderPanel={(moduleId, visibility) => renderWorkspacePanel(moduleId, visibility, panelRenderers)}
-        renderDrawer={(moduleId) => renderWorkspaceDrawer(moduleId, drawerRenderers)}
       />
       {workspaceLayoutNotice && renderGlobalOverlay(<div className="workspace-layout-notice" role="status">{workspaceLayoutNotice}</div>)}
 
@@ -3000,7 +3019,7 @@ export default function App() {
         const result = runDutyConfigurationCommand({ type: 'DELETE_DUTY', dutyId: selectedDutyForConfiguration.id })
         if (result?.status === 'applied') {
           setDutyDeleteDialog(false)
-          setDutyDetailOpen(false)
+           workspaceController.setDetailVisibility('duties', false)
           const next = { ...effectiveDutyConfigurationLocation, active: dutyConfigurationActive, dutyId: null, lane: null, focusPositionId: null, sourceRelationId: null }
           setDutyConfigurationLocation(next)
           const current = workspaceController.state.session.panels.duties?.context
@@ -3110,4 +3129,8 @@ export default function App() {
       </div>
     </WorkspaceOverlayProvider>
   )
+}
+
+export default function App() {
+  return <AuthGate><ProtectedApp /></AuthGate>
 }

@@ -1,4 +1,4 @@
-import { createPortal } from 'react-dom'
+import { WorkspacePortal } from './workspace/WorkspaceOverlayHosts'
 
 interface DutyCardDragPreviewProps {
   title: string
@@ -8,7 +8,7 @@ interface DutyCardDragPreviewProps {
 }
 
 export function DutyCardDragPreview({ title, label, point, hasCandidate }: DutyCardDragPreviewProps) {
-  return createPortal(
+  return <WorkspacePortal scope="global">
     <div
       className={`duty-anomaly-drag-preview${hasCandidate ? ' is-candidate' : ''}`}
       aria-hidden="true"
@@ -16,7 +16,6 @@ export function DutyCardDragPreview({ title, label, point, hasCandidate }: DutyC
     >
       <strong>{title}</strong>
       <span className="duty-anomaly duty-anomaly--reminder">{label}</span>
-    </div>,
-    document.body,
-  )
+    </div>
+  </WorkspacePortal>
 }

@@ -84,6 +84,7 @@ describe('ProcessPlanningWorkbench component harness', () => {
         onRelationBegin={onRelationBegin}
         onRelationPreview={onRelationPreview}
         onRelationCommit={onRelationCommit}
+        relationPlacementActive
       />)
       await Promise.resolve()
     })
@@ -115,7 +116,7 @@ describe('ProcessPlanningWorkbench component harness', () => {
       processNode?.dispatchEvent(drop)
       await Promise.resolve()
     })
-    expect(onRelationPreview).toHaveBeenCalledWith({ kind: 'process-node', processNodeId: 'n1' }, expect.anything())
+    expect(onRelationPreview).toHaveBeenCalledWith({ kind: 'process-node', processNodeId: 'n1' })
     expect(onRelationCommit).toHaveBeenCalledWith({ kind: 'process-node', processNodeId: 'n1' }, dataTransfer)
     const dutyTarget = host.querySelector<HTMLElement>('[data-relation-placement-target="duty"]')
     expect(dutyTarget).not.toBeNull()
@@ -128,7 +129,7 @@ describe('ProcessPlanningWorkbench component harness', () => {
       dutyTarget?.dispatchEvent(dutyDrop)
       await Promise.resolve()
     })
-    expect(onRelationPreview).toHaveBeenCalledWith(expect.objectContaining({ kind: 'duty' }), expect.anything())
+    expect(onRelationPreview).toHaveBeenCalledWith(expect.objectContaining({ kind: 'duty' }))
     expect(onRelationCommit).toHaveBeenCalledWith(expect.objectContaining({ kind: 'duty' }), dataTransfer)
     root.unmount()
     host.remove()

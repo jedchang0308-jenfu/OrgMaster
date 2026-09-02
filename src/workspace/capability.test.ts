@@ -13,10 +13,11 @@ const environment: WorkspaceEnvironment = {
 }
 
 describe('workspace capability', () => {
-  it('uses the global environment rather than panel width for composition', () => {
+  it('keeps fine-pointer desktop composition independent from viewport width', () => {
     expect(resolveWorkspaceCompositionCapability(environment)).toEqual({ canCompose: true, mobileReadOnly: false })
-    expect(resolveWorkspaceCompositionCapability({ ...environment, viewportWidth: 1023 })).toMatchObject({ canCompose: false, mobileReadOnly: true })
+    expect(resolveWorkspaceCompositionCapability({ ...environment, viewportWidth: 946, mobileReadOnly: true })).toEqual({ canCompose: true, mobileReadOnly: true })
     expect(resolveWorkspaceCompositionCapability({ ...environment, finePointer: false })).toMatchObject({ canCompose: false, mobileReadOnly: true })
+    expect(resolveWorkspaceCompositionCapability({ ...environment, hoverCapable: false })).toMatchObject({ canCompose: false, mobileReadOnly: true })
   })
 
   it('intersects recovery, device, workspace mode and domain capability', () => {

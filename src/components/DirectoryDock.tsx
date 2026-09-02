@@ -3,7 +3,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -26,17 +25,31 @@ import type { Assignment, Department, Duty, DutyPositionRelation, Employee, Posi
 import type { OrganizationLevel } from '../types'
 import { dutyConfigurationLaneGroups, dutyConfigurationLaneLabels } from '../dutyConfiguration'
 import type { DutyConfigurationExactLane, DutyConfigurationLocation } from '../dutyConfigurationRoute'
-import { WORKSPACE_ENTITY_DRAG_MIME, writeWorkspaceEntityDrag, type RegisteredDropTarget, type WorkspaceEntityDragPayloadV1 } from '../workspace/entityDrag'
-import type { RelationPlacementInputMode } from '../workspace/relationPlacement'
+import type { RegisteredDropTarget, WorkspaceEntityDragPayloadV1 } from '../workspace/entityDrag'
+import type { RelationPlacementCandidate } from '../workspace/relationPlacement'
+import type { RelationPlacementBegin, RelationPlacementCancel, RelationPlacementCommit, RelationPlacementPreview } from '../workspace/relationDragInteraction'
 import type { WorkspaceModuleId } from '../workspace/types'
 import { DirectoryContextMenu, type DirectoryContextMenuItem } from './DirectoryContextMenu'
 import { PanelDismissButton } from './PanelDismissButton'
+import { createRelationDropTargetProps, createRelationDragSourceProps } from './workspace/relationPlacementBindings'
 
 export type DirectoryKind = 'employees' | 'positions' | 'departments' | 'levels' | 'duties'
 
 export interface DirectorySelection {
   kind: DirectoryKind
   id: string
+}
+
+type EmployeeRelationPlacementPayload = Extract<WorkspaceEntityDragPayloadV1, { kind: 'employee' }>
+
+function createEmployeeRelationPlacementPayload(sourceModuleId: WorkspaceModuleId, employeeId: string): EmployeeRelationPlacementPayload {
+  return {
+    version: 1,
+    kind: 'employee',
+    sourceModuleId,
+    employeeId,
+    sourcePositionId: null,
+  }
 }
 
 interface DirectoryContextMenuState {
@@ -60,10 +73,10 @@ interface DirectoryDockProps {
   directorySelection: DirectorySelection | null
   activeDirectory: DirectoryKind | null
   onActiveDirectoryChange: (kind: DirectoryKind | null) => void
-  onRelationBegin?: (payload: WorkspaceEntityDragPayloadV1, inputMode: RelationPlacementInputMode, source?: HTMLElement | null) => void
-  onRelationPreview?: (target: RegisteredDropTarget, event?: DragEvent<HTMLElement>) => void
-  onRelationCommit?: (target: RegisteredDropTarget, dataTransfer?: DataTransfer) => void
-  onRelationCancel?: () => void
+  onRelationBegin?: RelationPlacementBegin
+  onRelationPreview?: RelationPlacementPreview
+  onRelationCommit?: RelationPlacementCommit
+  onRelationCancel?: RelationPlacementCancel
   onAssignEmployee: (employeeId: string, targetPositionId: string) => void
   onSelectPosition: (positionId: string) => void
   onSelectEntity: (selection: DirectorySelection) => void
@@ -543,15 +556,29 @@ export function DirectoryDock({
           onContextMenu={(event) => openContextMenuFromEvent('employees', undefined, event)}
         >
           {visibleEmployees.map((employee) => {
+            const employeeRelationBegin = editingEnabled
+              && workspaceEntityDragSource === 'employees'
+              && onRelationCancel
+              ? onRelationBegin
+              : undefined
+            const employeePlacementEnabled = Boolean(employeeRelationBegin)
+            const employeeRelationPayload = employeeRelationBegin && workspaceEntityDragSource
+              ? createEmployeeRelationPlacementPayload(workspaceEntityDragSource, employee.id)
+              : null
             return (
               <article
                 key={employee.id}
                 className={[
                   'directory-card directory-card--employee directory-card--master',
                   directorySelection?.kind === 'employees' && directorySelection.id === employee.id ? 'is-selected' : '',
-                  editingEnabled && workspaceEntityDragSource === 'employees' && onRelationBegin ? 'has-placement-action' : '',
                 ].filter(Boolean).join(' ')}
                 data-employee-id={employee.id}
+                {...(employeeRelationPayload && employeeRelationBegin && onRelationCancel ? createRelationDragSourceProps({
+                  enabled: true,
+                  payload: employeeRelationPayload,
+                  onBegin: employeeRelationBegin,
+                  onCancel: onRelationCancel,
+                }) : {})}
                 onClick={() => onSelectEntity({ kind: 'employees', id: employee.id })}
                 onContextMenu={(event) => openContextMenuFromEvent('employees', employee.id, event)}
                 onKeyDown={(event) => {
@@ -559,6 +586,10 @@ export function DirectoryDock({
                   if (openContextMenuFromKeyboard('employees', employee.id, event)) return
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()
+                    if (event.key === ' ' && employeeRelationPayload && onRelationBegin) {
+                      onRelationBegin(employeeRelationPayload, 'keyboard', event.currentTarget)
+                      return
+                    }
                     onSelectEntity({ kind: 'employees', id: employee.id })
                   }
                   if (event.key === 'F2') {
@@ -572,37 +603,11 @@ export function DirectoryDock({
                 }}
                 tabIndex={0}
                 data-selected={directorySelection?.kind === 'employees' && directorySelection.id === employee.id ? 'true' : undefined}
-                aria-label={`${employee.name}，員工主檔`}
+                aria-label={`${employee.name}，員工主檔${employeePlacementEnabled ? '，可拖曳至組織職位' : ''}`}
               >
                 <div className="directory-card__copy">
                   <strong>{employee.name}</strong>
                 </div>
-                {editingEnabled && workspaceEntityDragSource === 'employees' && onRelationBegin && <button
-                  type="button"
-                  className="directory-card__placement-action"
-                  draggable
-                  data-relation-placement-source-kind="employee"
-                  data-employee-id={employee.id}
-                  aria-label={`指派${employee.name}至組織職位`}
-                  title="使用鍵盤選擇組織職位"
-                  onDragStart={(event) => {
-                    event.stopPropagation()
-                    const payload: WorkspaceEntityDragPayloadV1 = { version: 1, kind: 'employee', sourceModuleId: workspaceEntityDragSource, employeeId: employee.id, sourcePositionId: null }
-                    writeWorkspaceEntityDrag(event.dataTransfer, payload)
-                    onRelationBegin(payload, 'native-drag', event.currentTarget)
-                  }}
-                  onDragEnd={onRelationCancel}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onRelationBegin({ version: 1, kind: 'employee', sourceModuleId: workspaceEntityDragSource, employeeId: employee.id, sourcePositionId: null }, 'keyboard', event.currentTarget)
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter' && event.key !== ' ') return
-                    event.preventDefault()
-                    event.stopPropagation()
-                    onRelationBegin({ version: 1, kind: 'employee', sourceModuleId: workspaceEntityDragSource, employeeId: employee.id, sourcePositionId: null }, 'keyboard', event.currentTarget)
-                  }}
-                >⇢</button>}
               </article>
             )
           })}
@@ -984,10 +989,10 @@ function DutyDirectoryRow({
   onSelectLane?: (lane: DutyConfigurationExactLane) => void
   onOpenDetail?: (dutyId: string) => void
   workspaceEntityDragSource?: WorkspaceModuleId
-  onRelationBegin?: (payload: WorkspaceEntityDragPayloadV1, inputMode: RelationPlacementInputMode, source?: HTMLElement | null) => void
-  onRelationPreview?: (target: RegisteredDropTarget, event?: DragEvent<HTMLElement>) => void
-  onRelationCommit?: (target: RegisteredDropTarget, dataTransfer?: DataTransfer) => void
-  onRelationCancel?: () => void
+  onRelationBegin?: RelationPlacementBegin
+  onRelationPreview?: RelationPlacementPreview
+  onRelationCommit?: RelationPlacementCommit
+  onRelationCancel?: RelationPlacementCancel
 }) {
   const selected = expandedDutyId === duty.id
   const selectedLane = selected ? location?.lane ?? null : null
@@ -1004,24 +1009,19 @@ function DutyDirectoryRow({
     if (!writable || !selected || !workspaceEntityDragSource || !onRelationBegin) return
     onRelationBegin({ version: 1, kind: 'duty', sourceModuleId: workspaceEntityDragSource, dutyId: duty.id, lane, sourceRelationId: relationForLane(lane)?.id ?? null }, 'keyboard', source)
   }
+  const dutyDropProps = createRelationDropTargetProps({
+    active: false,
+    available: writable,
+    target: { kind: 'duty', dutyId: duty.id },
+    onPreview: onRelationPreview,
+    onCommit: onRelationCommit,
+  })
   return (
     <article
         className={`directory-card duty-directory-card${selected ? ' is-selected' : ''}`}
-        data-relation-placement-target="duty"
+        {...dutyDropProps}
         tabIndex={onRelationCommit ? 0 : undefined}
       data-duty-id={duty.id}
-      onDragOver={(event) => {
-        if (!onRelationPreview || !Array.from(event.dataTransfer.types).includes(WORKSPACE_ENTITY_DRAG_MIME)) return
-        event.preventDefault()
-        event.dataTransfer.dropEffect = 'link'
-        onRelationPreview?.({ kind: 'duty', dutyId: duty.id }, event)
-      }}
-      onDrop={(event) => {
-        if (!onRelationCommit || !Array.from(event.dataTransfer.types).includes(WORKSPACE_ENTITY_DRAG_MIME)) return
-        event.preventDefault()
-        event.stopPropagation()
-        onRelationCommit({ kind: 'duty', dutyId: duty.id }, event.dataTransfer)
-      }}
     >
       <div className="duty-directory-card__header">
         <button
@@ -1057,55 +1057,28 @@ function DutyDirectoryRow({
                 return <div className={`duty-directory-lane${active ? ' is-active' : ''}`} key={lane}>
                   <button
                     type="button"
-                    className="duty-directory-lane__select"
+                  className="duty-directory-lane__select"
                     onClick={() => onSelectLane?.(lane)}
                     disabled={Boolean(pendingSource && !active)}
                     aria-pressed={active}
                     title={`${dutyConfigurationLaneLabels[lane]}${active ? '，已選擇' : ''}`}
+                    {...(active && writable && workspaceEntityDragSource && onRelationBegin && onRelationCancel
+                      ? createRelationDragSourceProps({
+                        enabled: true,
+                        payload: { version: 1, kind: 'duty', sourceModuleId: workspaceEntityDragSource, dutyId: duty.id, lane, sourceRelationId: source?.id ?? null },
+                        onBegin: onRelationBegin,
+                        onCancel: onRelationCancel,
+                      })
+                      : {})}
+                    onKeyDown={(event) => {
+                      if (event.key !== ' ' || !active || !writable || !workspaceEntityDragSource || !onRelationBegin) return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      start(lane, event.currentTarget)
+                    }}
                   >
                     {dutyConfigurationLaneLabels[lane]}
                   </button>
-                  {active && writable && <button
-                    type="button"
-                    className="duty-directory-drag-handle"
-                    draggable
-                    tabIndex={0}
-                    data-relation-placement-source-kind="duty"
-                    data-duty-id={duty.id}
-                    data-duty-lane={lane}
-                    aria-label={`拖曳${duty.title}至組織圖，責任類型${dutyConfigurationLaneLabels[lane]}`}
-                    onDragStart={(event) => {
-                      event.stopPropagation()
-                      event.dataTransfer.effectAllowed = 'copyMove'
-                      if (workspaceEntityDragSource && onRelationBegin) {
-                        const payload: WorkspaceEntityDragPayloadV1 = {
-                          version: 1,
-                          kind: 'duty',
-                          sourceModuleId: workspaceEntityDragSource,
-                          dutyId: duty.id,
-                          lane,
-                          sourceRelationId: source?.id ?? null,
-                        }
-                        writeWorkspaceEntityDrag(event.dataTransfer, payload)
-                        onRelationBegin(payload, 'native-drag', event.currentTarget)
-                      }
-                      const ghost = document.createElement('span')
-                      ghost.className = 'duty-directory-drag-ghost'
-                      ghost.textContent = `${duty.title} · ${dutyConfigurationLaneLabels[lane]}`
-                      document.body.appendChild(ghost)
-                      event.dataTransfer.setDragImage(ghost, 10, 10)
-                      window.setTimeout(() => ghost.remove(), 0)
-                    }}
-                    onDragEnd={onRelationCancel}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return
-                      event.preventDefault()
-                       start(lane, event.currentTarget)
-                    }}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    ⇢
-                  </button>}
                 </div>
               })}
             </div>

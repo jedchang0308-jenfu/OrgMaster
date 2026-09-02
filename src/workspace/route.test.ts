@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { screenshotOrganizationState } from '../screenshotData'
 import { WORKSPACE_MODULE_ORDER } from './moduleRegistry'
-import { readLegacyPromotionIntent, readWorkspaceRoute, writeWorkspaceRoute } from './route'
+import { readLegacyWorkspaceIntent, readWorkspaceRoute, writeWorkspaceRoute } from './route'
 import type { WorkspaceRouteState } from './types'
 
 const state = {
@@ -18,6 +18,7 @@ describe('workspace route', () => {
       openPanels: [...WORKSPACE_MODULE_ORDER],
       focusedPanel: 'duties',
       selection: { kind: 'duty', id: 'duty-1' },
+      openDetails: ['employees', 'positions', 'departments', 'duties', 'management-methods'],
       contexts: {
         employees: { employeeId: state.employees[0].id, query: '張' },
         positions: { positionId: state.positions[0].id, query: '總經理' },
@@ -44,13 +45,32 @@ describe('workspace route', () => {
   it('supports explicit zero panels and sanitizes stale entity IDs', () => {
     expect(readWorkspaceRoute({ pathname: '/', search: '?panels=none&select=employee:missing' }, state)).toEqual({
       explicitPanels: true,
-      route: { openPanels: [], focusedPanel: null, selection: null, contexts: {} },
+      route: { openPanels: [], focusedPanel: null, selection: null, openDetails: [], contexts: {} },
     })
   })
 
-  it('promotes legacy duty, process and management-method routes', () => {
-    expect(readLegacyPromotionIntent({ pathname: '/', search: '?mode=duty-config&duty=duty-1&lane=review' }, state)).toMatchObject({ moduleId: 'duties', source: 'legacy-route', context: { dutyId: 'duty-1', lane: 'review' } })
-    expect(readLegacyPromotionIntent({ pathname: '/process-planning', search: '?view=flow&process=process-1&node=node-1&duty=duty-1' }, state)).toMatchObject({ moduleId: 'processes', context: { processId: 'process-1', processNodeId: 'node-1', dutyId: 'duty-1', view: 'flow' } })
-    expect(readLegacyPromotionIntent({ pathname: '/management-methods/method-1', search: '?view=readable', hash: '#目的' }, state)).toMatchObject({ moduleId: 'management-methods', context: { methodId: 'method-1', view: 'readable', chapter: '目的' } })
+  it('distinguishes an explicit details=none from legacy detail inference', () => {
+    const legacy = readWorkspaceRoute({
+      pathname: '/',
+      search: `?panels=employees&employee=${encodeURIComponent(state.employees[0].id)}`,
+    }, state).route
+    expect(legacy.openDetails).toEqual(['employees'])
+
+    const explicitNone = readWorkspaceRoute({
+      pathname: '/',
+      search: `?panels=employees&employee=${encodeURIComponent(state.employees[0].id)}&details=none`,
+    }, state).route
+    expect(explicitNone.openDetails).toEqual([])
+  })
+
+  it('rejects an explicit detail token when its module context has no valid entity', () => {
+    const route = readWorkspaceRoute({ pathname: '/', search: '?panels=employees&details=employees' }, state).route
+    expect(route.openDetails).toEqual([])
+  })
+
+  it('maps legacy duty, process and management-method routes into workspace intents', () => {
+    expect(readLegacyWorkspaceIntent({ pathname: '/', search: '?mode=duty-config&duty=duty-1&lane=review' }, state)).toMatchObject({ moduleId: 'duties', source: 'legacy-route', context: { dutyId: 'duty-1', lane: 'review' } })
+    expect(readLegacyWorkspaceIntent({ pathname: '/process-planning', search: '?view=flow&process=process-1&node=node-1&duty=duty-1' }, state)).toMatchObject({ moduleId: 'processes', context: { processId: 'process-1', processNodeId: 'node-1', dutyId: 'duty-1', view: 'flow' } })
+    expect(readLegacyWorkspaceIntent({ pathname: '/management-methods/method-1', search: '?view=readable', hash: '#目的' }, state)).toMatchObject({ moduleId: 'management-methods', context: { methodId: 'method-1', view: 'readable', chapter: '目的' } })
   })
 })

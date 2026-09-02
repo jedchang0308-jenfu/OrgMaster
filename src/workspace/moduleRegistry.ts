@@ -2,7 +2,6 @@ import type { DutyConfigurationExactLane } from '../dutyConfigurationRoute'
 import type { DutyPlanningStatusFilter } from '../dutyPlanningRoute'
 import type { OrgDirectoryState } from '../types'
 import type {
-  DrawerWorkspaceModuleId,
   ModuleSurfaceDescriptor,
   WorkspaceModuleContextMap,
   WorkspaceModuleDescriptorMap,
@@ -21,16 +20,6 @@ export const WORKSPACE_MODULE_ORDER = [
   'role-risks',
   'governance',
 ] as const satisfies readonly WorkspaceModuleId[]
-
-export const WORKSPACE_DRAWER_MODULES = [
-  'employees',
-  'positions',
-  'departments',
-  'levels',
-  'duties',
-  'processes',
-  'management-methods',
-] as const satisfies readonly DrawerWorkspaceModuleId[]
 
 const moduleIds = new Set<string>(WORKSPACE_MODULE_ORDER)
 const dutyLanes = new Set<DutyConfigurationExactLane>(['primary-execute', 'collaborate', 'review', 'countersign'])
@@ -75,7 +64,7 @@ function moduleDescriptor<K extends WorkspaceModuleId>(descriptor: ModuleSurface
 const organization = moduleDescriptor({
   id: 'organization',
   label: '組織架構圖',
-  surface: 'direct-panel',
+  supportsCollapsibleDetail: false,
   minWidth: 480,
   minHeight: 320,
   supportedSelectionKinds: ['employee', 'position', 'department', 'level', 'duty', 'role-risk-rule'],
@@ -89,7 +78,7 @@ const organization = moduleDescriptor({
 const employees = moduleDescriptor({
   id: 'employees',
   label: '員工',
-  surface: 'drawer-panel',
+  supportsCollapsibleDetail: true,
   minWidth: 360,
   minHeight: 280,
   supportedSelectionKinds: ['employee', 'position', 'department'],
@@ -110,7 +99,7 @@ const employees = moduleDescriptor({
 const positions = moduleDescriptor({
   id: 'positions',
   label: '職位',
-  surface: 'drawer-panel',
+  supportsCollapsibleDetail: true,
   minWidth: 360,
   minHeight: 280,
   supportedSelectionKinds: ['employee', 'position', 'department', 'level', 'duty'],
@@ -131,7 +120,7 @@ const positions = moduleDescriptor({
 const departments = moduleDescriptor({
   id: 'departments',
   label: '部門',
-  surface: 'drawer-panel',
+  supportsCollapsibleDetail: true,
   minWidth: 360,
   minHeight: 280,
   supportedSelectionKinds: ['department', 'employee', 'position'],
@@ -150,7 +139,7 @@ const departments = moduleDescriptor({
 const levels = moduleDescriptor({
   id: 'levels',
   label: '層級',
-  surface: 'drawer-panel',
+  supportsCollapsibleDetail: false,
   minWidth: 360,
   minHeight: 280,
   supportedSelectionKinds: ['level', 'position'],
@@ -169,7 +158,7 @@ const levels = moduleDescriptor({
 const duties = moduleDescriptor({
   id: 'duties',
   label: '工作職掌',
-  surface: 'drawer-panel',
+  supportsCollapsibleDetail: true,
   minWidth: 420,
   minHeight: 320,
   supportedSelectionKinds: ['duty', 'position', 'process-node'],
@@ -230,7 +219,7 @@ const duties = moduleDescriptor({
 const processes = moduleDescriptor({
   id: 'processes',
   label: '流程規劃',
-  surface: 'drawer-panel',
+  supportsCollapsibleDetail: false,
   minWidth: 480,
   minHeight: 320,
   supportedSelectionKinds: ['process', 'process-node', 'duty', 'position'],
@@ -265,7 +254,7 @@ const processes = moduleDescriptor({
 const managementMethods = moduleDescriptor({
   id: 'management-methods',
   label: '管理辦法',
-  surface: 'drawer-panel',
+  supportsCollapsibleDetail: true,
   minWidth: 560,
   minHeight: 400,
   supportedSelectionKinds: ['management-method', 'duty'],
@@ -294,7 +283,7 @@ const managementMethods = moduleDescriptor({
 const roleRisks = moduleDescriptor({
   id: 'role-risks',
   label: '兼任風險',
-  surface: 'direct-panel',
+  supportsCollapsibleDetail: false,
   minWidth: 420,
   minHeight: 320,
   supportedSelectionKinds: ['role-risk-rule', 'employee', 'position'],
@@ -315,7 +304,7 @@ const roleRisks = moduleDescriptor({
 const governance = moduleDescriptor({
   id: 'governance',
   label: '角色治理',
-  surface: 'direct-panel',
+  supportsCollapsibleDetail: false,
   minWidth: 560,
   minHeight: 400,
   supportedSelectionKinds: ['employee', 'department'],
@@ -347,10 +336,6 @@ export const WORKSPACE_MODULES = {
 
 export function isWorkspaceModuleId(value: string): value is WorkspaceModuleId {
   return moduleIds.has(value)
-}
-
-export function isDrawerWorkspaceModuleId(value: WorkspaceModuleId): value is DrawerWorkspaceModuleId {
-  return WORKSPACE_MODULES[value].surface === 'drawer-panel'
 }
 
 export function getWorkspaceModule<K extends WorkspaceModuleId>(moduleId: K): ModuleSurfaceDescriptor<K> {

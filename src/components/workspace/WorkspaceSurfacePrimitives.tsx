@@ -5,13 +5,14 @@ export interface WorkspaceListDetailSurfaceProps {
   className?: string
   dataLayout?: 'adjacent-list-detail' | 'list-only'
   dataVisibility?: string
+  detailVisible?: boolean
   listClassName?: string
   detailClassName?: string
   listLabel: string
   detailLabel: string
   list: ReactNode
   detail: ReactNode | null
-  emptyDetail: ReactNode
+  emptyDetail?: ReactNode
 }
 
 export interface WorkspaceListOnlySurfaceProps {
@@ -22,15 +23,15 @@ export interface WorkspaceListOnlySurfaceProps {
   children: ReactNode
 }
 
-export function WorkspaceListDetailSurface({ ariaLabel, className = '', dataLayout = 'adjacent-list-detail', dataVisibility, listClassName = '', detailClassName = '', listLabel, detailLabel, list, detail, emptyDetail }: WorkspaceListDetailSurfaceProps) {
+export function WorkspaceListDetailSurface({ ariaLabel, className = '', dataLayout = 'adjacent-list-detail', dataVisibility, detailVisible = true, listClassName = '', detailClassName = '', listLabel, detailLabel, list, detail, emptyDetail }: WorkspaceListDetailSurfaceProps) {
   return (
-    <section className={`workspace-list-detail-surface${className ? ` ${className}` : ''}`} data-workspace-surface="list-detail" data-layout={dataLayout} data-visibility={dataVisibility} aria-label={ariaLabel}>
+    <section className={`workspace-list-detail-surface${className ? ` ${className}` : ''}`} data-workspace-surface="list-detail" data-layout={detailVisible ? dataLayout : 'list-only'} data-visibility={dataVisibility} aria-label={ariaLabel}>
       <div className={`workspace-list-detail-surface__slot workspace-list-detail-surface__list${listClassName ? ` ${listClassName}` : ''}`} data-workspace-slot="list" aria-label={listLabel}>
         {list}
       </div>
-      <div className={`workspace-list-detail-surface__slot workspace-list-detail-surface__detail${detailClassName ? ` ${detailClassName}` : ''}`} data-workspace-slot="detail" aria-label={detailLabel}>
+      {detailVisible && <div className={`workspace-list-detail-surface__slot workspace-list-detail-surface__detail${detailClassName ? ` ${detailClassName}` : ''}`} data-workspace-slot="detail" aria-label={detailLabel}>
         {detail ?? emptyDetail}
-      </div>
+      </div>}
     </section>
   )
 }

@@ -7,17 +7,19 @@ interface Props {
   visibility: WorkspaceSurfaceVisibility
   children: ReactNode
   detail?: ReactNode
+  detailVisible?: boolean
 }
 
-export function DutyModuleAdapter({ mode, visibility, children, detail }: Props) {
+export function DutyModuleAdapter({ mode, visibility, children, detail, detailVisible = Boolean(detail) }: Props) {
   if (mode !== 'configuration') return <WorkspaceListOnlySurface className={`duty-module-adapter duty-module-adapter--${mode}`} dataMode={mode} dataVisibility={visibility} label="工作職掌完整工作台"><div data-visibility={visibility}>{children}</div></WorkspaceListOnlySurface>
 
   return (
     <WorkspaceListDetailSurface
       ariaLabel="工作職掌完整工作台"
       className="duty-module-adapter duty-module-adapter--configuration duty-configuration-workspace"
-      dataLayout={detail ? 'adjacent-list-detail' : 'list-only'}
+      dataLayout={detailVisible && detail ? 'adjacent-list-detail' : 'list-only'}
       dataVisibility={visibility}
+      detailVisible={detailVisible}
       listClassName="duty-configuration-workspace__list"
       detailClassName={detail ? 'duty-configuration-workspace__detail' : ''}
       listLabel="工作職掌清單"

@@ -11,9 +11,10 @@ import {
 } from './moduleRegistry'
 import type {
   EntityRef,
-  PromotionIntent,
   WorkspaceLayoutV1,
   WorkspaceModuleId,
+  WorkspaceModuleContextMap,
+  WorkspaceOpenIntent,
   WorkspaceRouteContexts,
   WorkspaceRouteSnapshot,
   WorkspaceRouteState,
@@ -53,6 +54,33 @@ function parseSelection(value: string | null): EntityRef | null {
   return entityKinds.has(kind) && id.length > 0 && id.length <= 200 ? { kind, id } : null
 }
 
+function routeContextHasDetail(moduleId: WorkspaceModuleId, context: WorkspaceRouteContexts[WorkspaceModuleId]) {
+  if (!getWorkspaceModule(moduleId).supportsCollapsibleDetail || !context) return false
+  if (moduleId === 'employees') return Boolean((context as WorkspaceModuleContextMap['employees']).employeeId)
+  if (moduleId === 'positions') return Boolean((context as WorkspaceModuleContextMap['positions']).positionId)
+  if (moduleId === 'departments') return Boolean((context as WorkspaceModuleContextMap['departments']).departmentId)
+  if (moduleId === 'duties') return Boolean((context as WorkspaceModuleContextMap['duties']).dutyId)
+  if (moduleId === 'management-methods') return Boolean((context as WorkspaceModuleContextMap['management-methods']).methodId)
+  return false
+}
+
+function parseDetails(value: string | null, openPanels: WorkspaceModuleId[], contexts: WorkspaceRouteContexts): WorkspaceModuleId[] {
+  if (value === 'none') return []
+  if (value === null) {
+    return WORKSPACE_MODULE_ORDER.filter((moduleId) => {
+      if (!openPanels.includes(moduleId) || !getWorkspaceModule(moduleId).supportsCollapsibleDetail) return false
+      return routeContextHasDetail(moduleId, contexts[moduleId])
+    })
+  }
+  const requested = new Set(value.split(',').filter(isWorkspaceModuleId))
+  return WORKSPACE_MODULE_ORDER.filter((moduleId) => (
+    requested.has(moduleId)
+      && openPanels.includes(moduleId)
+      && getWorkspaceModule(moduleId).supportsCollapsibleDetail
+      && routeContextHasDetail(moduleId, contexts[moduleId])
+  ))
+}
+
 export function sanitizeEntityRef(ref: EntityRef | null, state: OrgDirectoryState): EntityRef | null {
   if (!ref) return null
   const exists = ref.kind === 'employee' ? state.employees.some((item) => item.id === ref.id)
@@ -88,6 +116,7 @@ export function readWorkspaceRoute(location: LocationLike, state?: OrgDirectoryS
       openPanels,
       focusedPanel,
       selection: state ? sanitizeEntityRef(rawSelection, state) : rawSelection,
+      openDetails: parseDetails(params.get('details'), openPanels, contexts),
       contexts,
     },
   }
@@ -99,6 +128,8 @@ export function writeWorkspaceRoute(route: WorkspaceRouteState) {
   params.set('panels', openPanels.length > 0 ? openPanels.join(',') : 'none')
   if (route.focusedPanel && openPanels.includes(route.focusedPanel)) params.set('focus', route.focusedPanel)
   if (route.selection) params.set('select', `${route.selection.kind}:${route.selection.id}`)
+  const openDetails = WORKSPACE_MODULE_ORDER.filter((moduleId) => route.openDetails.includes(moduleId) && openPanels.includes(moduleId) && getWorkspaceModule(moduleId).supportsCollapsibleDetail)
+  params.set('details', openDetails.length > 0 ? openDetails.join(',') : 'none')
   let hash = ''
   for (const moduleId of openPanels) {
     const descriptor = getWorkspaceModule(moduleId)
@@ -109,7 +140,7 @@ export function writeWorkspaceRoute(route: WorkspaceRouteState) {
   return `/?${params.toString()}${hash}`
 }
 
-export function readLegacyPromotionIntent(location: LocationLike, state: OrgDirectoryState): PromotionIntent | null {
+export function readLegacyWorkspaceIntent(location: LocationLike, state: OrgDirectoryState): WorkspaceOpenIntent | null {
   const dutyConfiguration = readDutyConfigurationLocation(location as Pick<Location, 'pathname' | 'search'>)
   if (dutyConfiguration.active) {
     return {
@@ -172,11 +203,12 @@ export function readLegacyPromotionIntent(location: LocationLike, state: OrgDire
   return null
 }
 
-export function routeFromPromotion(intent: PromotionIntent): WorkspaceRouteState {
+export function routeFromWorkspaceIntent(intent: WorkspaceOpenIntent): WorkspaceRouteState {
   return {
     openPanels: [intent.moduleId],
     focusedPanel: intent.moduleId,
     selection: null,
+    openDetails: routeContextHasDetail(intent.moduleId, intent.context as never) ? [intent.moduleId] : [],
     contexts: { [intent.moduleId]: intent.context },
   }
 }

@@ -3,14 +3,13 @@ import type { OrgDirectoryState } from '../types'
 import { collectLayoutModules, defaultWorkspaceLayout, reconcileWorkspaceLayout, resolveAutomaticPanelTarget } from './layout'
 import { flushWorkspaceLayoutSave, loadWorkspaceLayout, scheduleWorkspaceLayoutSave } from './layoutStorage'
 import { getWorkspaceDefaultContext } from './moduleRegistry'
-import { readLegacyPromotionIntent, readWorkspaceRoute, writeWorkspaceRoute } from './route'
+import { readLegacyWorkspaceIntent, readWorkspaceRoute, writeWorkspaceRoute } from './route'
 import { createWorkspaceState, reduceWorkspaceState, type WorkspaceAction } from './state'
 import type {
-  DrawerWorkspaceModuleId,
   EntityRef,
   PanelCloseGuard,
   PanelCloseGuardResult,
-  PromotionIntent,
+  WorkspaceOpenIntent,
   RequestPanelClose,
   WorkspaceLayoutV1,
   WorkspaceModuleContextMap,
@@ -38,7 +37,7 @@ export interface WorkspaceBrowserAdapter {
 export interface WorkspaceBootstrapResult {
   state: WorkspaceState
   canonicalUrl: string
-  usedLegacyPromotion: boolean
+  usedLegacyWorkspace: boolean
 }
 
 function routeForLayout(layout: WorkspaceLayoutV1): WorkspaceRouteState {
@@ -47,7 +46,7 @@ function routeForLayout(layout: WorkspaceLayoutV1): WorkspaceRouteState {
   for (const moduleId of openPanels) {
     ;(contexts as Partial<Record<WorkspaceModuleId, unknown>>)[moduleId] = getWorkspaceDefaultContext(moduleId)
   }
-  return { openPanels, focusedPanel: openPanels[0] ?? null, selection: null, contexts }
+  return { openPanels, focusedPanel: openPanels[0] ?? null, selection: null, openDetails: [], contexts }
 }
 
 export function createWorkspaceBootstrap(
@@ -60,16 +59,16 @@ export function createWorkspaceBootstrap(
   if (snapshot.explicitPanels) {
     const layout = reconcileWorkspaceLayout(baseLayout, snapshot.route.openPanels, snapshot.route.focusedPanel)
     const state = createWorkspaceState(layout, snapshot.route)
-    return { state, canonicalUrl: writeWorkspaceRoute(state.route), usedLegacyPromotion: false }
+    return { state, canonicalUrl: writeWorkspaceRoute(state.route), usedLegacyWorkspace: false }
   }
-  const legacy = readLegacyPromotionIntent(location, organizationState)
+  const legacy = readLegacyWorkspaceIntent(location, organizationState)
   if (legacy) {
     const baseState = createWorkspaceState(baseLayout, routeForLayout(baseLayout))
     const transition = reduceWorkspaceState(baseState, { type: 'OPEN_OR_FOCUS', intent: legacy }, { organizationState })
-    return { state: transition.state, canonicalUrl: writeWorkspaceRoute(transition.state.route), usedLegacyPromotion: true }
+    return { state: transition.state, canonicalUrl: writeWorkspaceRoute(transition.state.route), usedLegacyWorkspace: true }
   }
   const state = createWorkspaceState(baseLayout, routeForLayout(baseLayout))
-  return { state, canonicalUrl: writeWorkspaceRoute(state.route), usedLegacyPromotion: false }
+  return { state, canonicalUrl: writeWorkspaceRoute(state.route), usedLegacyWorkspace: false }
 }
 
 function defaultBrowser(): WorkspaceBrowserAdapter {
@@ -100,11 +99,9 @@ export interface WorkspaceController {
   state: WorkspaceState
   announcement: string
   dispatch(action: WorkspaceAction): void
-  openOrFocus<K extends WorkspaceModuleId>(moduleId: K, context?: WorkspaceModuleContextMap[K], source?: PromotionIntent['source']): void
-  updatePanelContext<K extends WorkspaceModuleId>(moduleId: K, context: WorkspaceModuleContextMap[K]): void
-  openDrawer(moduleId: DrawerWorkspaceModuleId): void
-  closeDrawer(): void
-  promote(intent: PromotionIntent): void
+  openOrFocus<K extends WorkspaceModuleId>(moduleId: K, context?: WorkspaceModuleContextMap[K], source?: WorkspaceOpenIntent['source']): void
+  updatePanelContext<K extends WorkspaceModuleId>(moduleId: K, context: WorkspaceModuleContextMap[K], options?: { openDetail?: boolean }): void
+  setDetailVisibility(moduleId: WorkspaceModuleId, visible: boolean): void
   requestWorkspacePanelClose: RequestPanelClose
   registerWorkspacePanelCloseGuard(moduleId: WorkspaceModuleId, guard: PanelCloseGuard | null): () => void
   setSharedSelection(ref: EntityRef | null, sourcePanelId: WorkspaceModuleId | 'global-search'): void
@@ -191,23 +188,23 @@ export function useWorkspaceController({
 
   const openOrFocus = useCallback(<K extends WorkspaceModuleId>(
     moduleId: K,
-    context = getWorkspaceDefaultContext(moduleId),
-    source: PromotionIntent['source'] = 'launcher',
+    context: WorkspaceModuleContextMap[K] | undefined = undefined,
+    source: WorkspaceOpenIntent['source'] = 'launcher',
   ) => {
     const current = stateRef.current
-    const availableWidth = Math.max(0, browser.viewportWidth() - (current.session.drawer ? 242 : 0))
+    const availableWidth = Math.max(0, browser.viewportWidth())
     const target = current.session.panels[moduleId]
       ? undefined
       : resolveAutomaticPanelTarget(current.layout, current.session.focusedPanel, moduleId, availableWidth)
-    dispatch({ type: 'OPEN_OR_FOCUS', intent: { moduleId, context, source } as PromotionIntent, target })
+    dispatch({ type: 'OPEN_OR_FOCUS', intent: { moduleId, ...(context === undefined ? {} : { context }), source } as WorkspaceOpenIntent, target })
   }, [browser, dispatch])
 
-  const openDrawer = useCallback((moduleId: DrawerWorkspaceModuleId) => dispatch({ type: 'OPEN_DRAWER', moduleId }), [dispatch])
-  const updatePanelContext = useCallback(<K extends WorkspaceModuleId>(moduleId: K, context: WorkspaceModuleContextMap[K]) => {
-    dispatch({ type: 'UPDATE_PANEL_CONTEXT', moduleId, context: context as WorkspaceModuleContextMap[WorkspaceModuleId] })
+  const updatePanelContext = useCallback(<K extends WorkspaceModuleId>(moduleId: K, context: WorkspaceModuleContextMap[K], options?: { openDetail?: boolean }) => {
+    dispatch({ type: 'UPDATE_PANEL_CONTEXT', moduleId, context: context as WorkspaceModuleContextMap[WorkspaceModuleId], openDetail: options?.openDetail })
   }, [dispatch])
-  const closeDrawer = useCallback(() => dispatch({ type: 'CLOSE_DRAWER' }), [dispatch])
-  const promote = useCallback((intent: PromotionIntent) => openOrFocus(intent.moduleId, intent.context as never, intent.source), [openOrFocus])
+  const setDetailVisibility = useCallback((moduleId: WorkspaceModuleId, visible: boolean) => {
+    dispatch({ type: 'SET_DETAIL_VISIBILITY', moduleId, visible })
+  }, [dispatch])
   const setSharedSelection = useCallback((ref: EntityRef | null, sourcePanelId: WorkspaceModuleId | 'global-search') => {
     dispatch({ type: 'SET_SHARED_SELECTION', selection: { ref, sourcePanelId, revision: stateRef.current.session.sharedSelection.revision + 1 } })
   }, [dispatch])
@@ -243,7 +240,7 @@ export function useWorkspaceController({
       const route = snapshot.explicitPanels
         ? snapshot.route
         : (() => {
-            const legacy = readLegacyPromotionIntent(browser.location(), organizationStateRef.current)
+            const legacy = readLegacyWorkspaceIntent(browser.location(), organizationStateRef.current)
             return legacy
               ? createWorkspaceBootstrap(organizationStateRef.current, browser.location(), stateRef.current.layout).state.route
               : snapshot.route
@@ -277,9 +274,7 @@ export function useWorkspaceController({
     dispatch,
     openOrFocus,
     updatePanelContext,
-    openDrawer,
-    closeDrawer,
-    promote,
+    setDetailVisibility,
     requestWorkspacePanelClose,
     registerWorkspacePanelCloseGuard,
     setSharedSelection,

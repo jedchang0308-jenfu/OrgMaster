@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  GitBranch,
   Info,
   Trash2,
   UserMinus,
@@ -8,20 +7,9 @@ import {
 } from 'lucide-react'
 import { ChildrenLayoutPreview } from './ChildrenLayoutPreview'
 import { PanelDismissButton } from './PanelDismissButton'
-import type { Assignment, ChildrenAxis, Department, Employee, OrganizationLevel, PositionView, Role } from '../types'
+import type { Assignment, ChildrenAxis, Department, Employee, OrganizationLevel, PositionView } from '../types'
 import type { Duty, DutyPositionRelation } from '../types'
 import { PositionDutySection } from './PositionDutySection'
-
-export interface PositionParentOption {
-  id: string | null
-  label: string
-}
-
-export interface PositionParentGroup {
-  key: string
-  label: string
-  options: PositionParentOption[]
-}
 
 export interface OrganizationUiIssue {
   target: 'department' | 'parent' | 'level' | 'drag' | 'delete' | 'document'
@@ -33,18 +21,11 @@ interface InspectorProps {
   member: PositionView | null
   employees: Employee[]
   departments: Department[]
-  roles: Role[]
   organizationLevels: OrganizationLevel[]
-  parentOptions: PositionParentOption[]
-  parentOptionGroups: PositionParentGroup[]
   issue: OrganizationUiIssue | null
   activeAssignments: Assignment[]
-  departmentName: string
-  childCount: number
-  depth: number
   focusTitleToken: number
-  onPatch: (patch: Partial<Pick<PositionView, 'title' | 'roleId' | 'departmentId' | 'organizationLevelId' | 'childrenAxis' | 'allowMultipleAssignees'>>) => void
-  onParentChange: (parentPositionId: string | null) => void
+  onPatch: (patch: Partial<Pick<PositionView, 'title' | 'departmentId' | 'organizationLevelId' | 'childrenAxis' | 'allowMultipleAssignees'>>) => void
   onUnassignEmployee: (employeeId: string) => void
   onDelete: () => void
   onOpenLevelDirectory: () => void
@@ -59,18 +40,11 @@ export function Inspector({
   member,
   employees,
   departments,
-  roles,
   organizationLevels,
-  parentOptions,
-  parentOptionGroups,
   issue,
   activeAssignments,
-  departmentName,
-  childCount,
-  depth,
   focusTitleToken,
   onPatch,
-  onParentChange,
   onUnassignEmployee,
   onDelete,
   onOpenLevelDirectory,
@@ -128,9 +102,7 @@ export function Inspector({
   const visibleTitle = titleDraft.memberId === member.id
     ? titleDraft.value
     : member.title
-  const sortedRoles = [...roles].sort((first, second) => first.name.localeCompare(second.name, 'zh-Hant'))
   const sortedLevels = [...organizationLevels].sort((first, second) => first.order - second.order)
-  const selectedLevel = sortedLevels.find((level) => level.id === member.organizationLevelId) ?? null
 
   const setChildrenAxis = (childrenAxis: ChildrenAxis) => {
     if (childrenAxis !== member.childrenAxis) onPatch({ childrenAxis })
@@ -139,7 +111,7 @@ export function Inspector({
   return (
     <aside
       ref={panelRef}
-      className="inspector"
+      className="inspector position-detail-panel"
       data-workspace-panel="inspector"
       tabIndex={-1}
       onKeyDown={(event) => {
@@ -156,8 +128,30 @@ export function Inspector({
     >
       <div className="inspector__header">
         <div className="inspector__header-copy">
-          <span>職位屬性</span>
-          <strong>{member.title}</strong>
+          {editingEnabled ? (
+            <input
+              ref={titleRef}
+              className="inspector__header-title-editor"
+              id="position-title"
+              aria-label="職位名稱"
+              data-org-editor
+              value={visibleTitle}
+              onChange={(event) => setTitleDraft({ memberId: member.id, value: event.target.value })}
+              onBlur={commitTitle}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setTitleDraft({ memberId: member.id, value: member.title })
+                  event.currentTarget.blur()
+                  window.requestAnimationFrame(() => panelRef.current?.focus())
+                }
+              }}
+            />
+          ) : (
+            <strong>{member.title}</strong>
+          )}
         </div>
         <div className="panel-header-actions">
           <PanelDismissButton edge="right" label="關閉屬性面板" onDismiss={onClose} className="inspector__close" />
@@ -165,43 +159,6 @@ export function Inspector({
       </div>
 
       <section className="inspector__section">
-        <label htmlFor="position-title">職位</label>
-        <div className="field-with-icon">
-          <GitBranch size={16} />
-          <input
-            id="position-title"
-            ref={titleRef}
-            data-org-editor
-            value={visibleTitle}
-            disabled={!editingEnabled}
-            onChange={(event) => setTitleDraft({ memberId: member.id, value: event.target.value })}
-            onBlur={commitTitle}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') event.currentTarget.blur()
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                event.stopPropagation()
-                setTitleDraft({ memberId: member.id, value: member.title })
-                event.currentTarget.blur()
-                window.requestAnimationFrame(() => panelRef.current?.focus())
-              }
-            }}
-          />
-        </div>
-        <label className="inspector-field">
-          <span>職務定義 Role</span>
-          <select
-            aria-label="職務定義"
-            value={member.roleId}
-            disabled={!editingEnabled}
-            onChange={(event) => onPatch({ roleId: event.target.value })}
-          >
-            {sortedRoles.map((role) => (
-              <option key={role.id} value={role.id}>{role.name}</option>
-            ))}
-          </select>
-          <small className="inspector-field__help">兼任風險規則依此職務定義配對。</small>
-        </label>
         <label className="inspector-field">
           <span>所屬部門</span>
           <select
@@ -218,29 +175,6 @@ export function Inspector({
             ))}
           </select>
           {issue?.target === 'department' && <small id="position-department-error" className="inspector-field__error" role="alert">{issue.message}</small>}
-        </label>
-        <label className="inspector-field">
-          <span>上級職位</span>
-          <select
-            aria-label="上級職位"
-            aria-invalid={issue?.target === 'parent' ? 'true' : undefined}
-            aria-describedby={issue?.target === 'parent' ? 'position-parent-error' : undefined}
-            value={member.parentPositionId ?? ''}
-            disabled={!editingEnabled}
-            onChange={(event) => onParentChange(event.target.value || null)}
-          >
-            {parentOptions.map((option) => (
-              <option key={option.id ?? 'root'} value={option.id ?? ''}>{option.label}</option>
-            ))}
-            {parentOptionGroups.map((group) => (
-              <optgroup key={group.key} label={group.label}>
-                {group.options.map((option) => (
-                  <option key={option.id ?? group.key} value={option.id ?? ''}>{option.label}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          {issue?.target === 'parent' && <small id="position-parent-error" className="inspector-field__error" role="alert">{issue.message}</small>}
         </label>
         <label className="inspector-field">
           <span className="inspector-field__heading">
@@ -263,20 +197,21 @@ export function Inspector({
           {issue?.target === 'level' && <small id="position-level-error" className="inspector-field__error" role="alert">{issue.message}</small>}
         </label>
 
-        <div className="section-heading">
+        <div className="section-heading employee-assignment-heading">
           <span>員工指派</span>
-          <small>{activeAssignments.length > 0 ? `${activeAssignments.length} 位` : '尚未指派'}</small>
+          <div className="employee-assignment-heading__controls">
+            <small>{activeAssignments.length > 0 ? `${activeAssignments.length} 位` : '尚未指派'}</small>
+            <label className="inspector-toggle">
+              <input
+                type="checkbox"
+                checked={member.allowMultipleAssignees}
+                disabled={!editingEnabled}
+                onChange={(event) => onPatch({ allowMultipleAssignees: event.target.checked })}
+              />
+              <span>預設允許</span>
+            </label>
+          </div>
         </div>
-        <label className="inspector-toggle">
-          <input
-            type="checkbox"
-            checked={member.allowMultipleAssignees}
-            disabled={!editingEnabled}
-            onChange={(event) => onPatch({ allowMultipleAssignees: event.target.checked })}
-          />
-          <span>允許多人同時任職</span>
-        </label>
-        <div className="info-line"><Info size={14} /><span>多人職位目前不設人數上限。</span></div>
         {activeAssignments.length > 0 ? activeAssignments.map((assignment) => {
           const employee = employees.find((item) => item.id === assignment.employeeId)
           if (!employee) return null
@@ -285,7 +220,6 @@ export function Inspector({
               <div><UserRound size={15} /></div>
               <span>
                 <strong>{employee.name}</strong>
-                <small>{assignmentTypeLabel(assignment, employee)} · {departmentName}</small>
               </span>
               <button
                 type="button"
@@ -309,7 +243,6 @@ export function Inspector({
       <section className="inspector__section">
         <div className="section-heading">
           <span>子職位排列</span>
-          <small>{childCount} 個直接子職位</small>
         </div>
         <div className="direction-picker">
           <button
@@ -345,14 +278,7 @@ export function Inspector({
         duties={duties}
         relations={dutyRelations}
         onOpenDutyConfiguration={onOpenDutyConfiguration ?? (() => undefined)}
-        editingEnabled={editingEnabled}
       />
-
-      <section className="inspector__section inspector__meta">
-        <div><span>組織層級</span><strong>{selectedLevel ? `L${selectedLevel.order + 1} ${selectedLevel.name}` : '尚未設定'}</strong></div>
-        <div><span>報告深度</span><strong>第 {depth} 階</strong></div>
-        <div><span>直接子職位</span><strong>{childCount} 個職位</strong></div>
-      </section>
 
       <div className="inspector__footer">
         <button type="button" className="danger-link" onClick={onDelete} disabled={!editingEnabled}>
@@ -362,11 +288,6 @@ export function Inspector({
       </div>
     </aside>
   )
-}
-
-function assignmentTypeLabel(assignment: Assignment, employee: Employee) {
-  if (assignment.assignmentType === 'acting') return '代理'
-  return employee.primaryAssignmentId === assignment.id ? '主職' : '兼任'
 }
 
 function CornerIcon() {

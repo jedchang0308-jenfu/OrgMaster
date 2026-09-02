@@ -25,7 +25,7 @@ describe('governance draft commands', () => {
   it('applies a catalog-backed V2 external assignment without importing permissions', () => {
     const document = createSeedDocumentV2()
     const catalog = readAiPdmRoleCatalog('valid'); const role = catalog.roles.find((entry) => entry.stableRoleId === 'role-rd')!
-    const result = applyGovernanceCommandV2(document, { type: 'UPSERT_ROLE_ASSIGNMENT', commandId: 'assignment-1', reason: 'test', value: { id: 'assignment-1', employeeId: 'employee-1', applicationId: 'ai-pdm', roleId: role.stableRoleId, roleCodeSnapshot: role.code, roleNameSnapshot: role.displayName, catalogVersion: catalog.catalogVersion, scope: { kind: 'department', value: 'dept-rd' }, status: 'active', validFrom: '2026-08-27T00:00:00.000Z', validTo: null, effectState: 'not-synchronized' } }, undefined, [catalog])
+    const result = applyGovernanceCommandV2(document, { type: 'UPSERT_ROLE_ASSIGNMENT', commandId: 'assignment-1', reason: 'test', value: { id: 'assignment-1', employeeId: 'employee-1', applicationId: 'ai-pdm', roleId: role.stableRoleId, roleCodeSnapshot: role.code, roleNameSnapshot: role.displayName, catalogVersion: catalog.catalogVersion, scope: { kind: 'workspace', value: 'workspace-1' }, status: 'active', validFrom: '2026-08-27T00:00:00.000Z', validTo: null, effectState: 'not-synchronized' } }, undefined, [catalog])
     expect(result.document.draft.roleAssignments[0].applicationId).toBe('ai-pdm')
     expect(result.document.draft.permissions.every((permission) => permission.applicationId === 'orgmaster')).toBe(true)
   })

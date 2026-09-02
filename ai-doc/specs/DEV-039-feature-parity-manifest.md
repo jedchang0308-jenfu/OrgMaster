@@ -2,6 +2,8 @@
 
 狀態：`Baseline Inventory Complete / S0～S6 Evidence Retained / S7 Relation Placement Implemented / QA-QC Passed / E4 Candidate Freeze Committed / Merge Release Pending`
 
+> **DEV-041 follow-on parity note（2026-09-01）**：DEV-041已達`RD Implementation Complete / Automated Gate Passed / Browser Native Evidence Pending`；S0～S7已把registered relation的mouse source由列尾把手intentional replacement為整個來源物件／卡片的非互動區域，並共用三態target與owner-canvas auto-pan。exact contract固定三個薄層、逐檔impact、failure recovery、targeted commands、fresh normal-entry evidence及dirty-worktree allowlist。此變更不得遺失DEV-039現有關係、readonly、Undo／Redo、autosave、CAS或keyboard相容能力；本清冊與DEV-039 evidence仍是回歸基線，不得取代DEV-041尚待QA／QC完成的native fresh pass。DEV-041 gate與狀態以主spec §0.1／§20為唯一來源。新契約見`ai-doc/specs/DEV-041-relation-drag-interaction-contract.md`。
+
 > **2026-09-01 Candidate freeze commit override（現行）**：已依使用者授權 `DEV-039 candidate freeze 並 commit（僅納入 DEV-039 allowlist）` 完成 selective staging 與 commit `86510f4`（74 個 DEV-039 allowlist 檔案）。DEV-037／038／040、auth／DB／package／環境設定、混合未判定變更及 `output/playwright/dev039/**` 均排除；merge、deploy、release 不在本次授權範圍。
 
 > **2026-09-01 Formal QA-QC 最新覆寫**：E1四個 minimum directions、E2五案`historyEvidence`與E3兩案已完成正式 QA-QC；targeted component `3 files／19 tests`、full regression `160 files／664 tests（1 skipped）`、typecheck、build、source scan、文件一致性與fixture／runtime cleanup均通過。E4僅等待使用者／PM明確授權，不代表commit、merge、deploy或release；下方較早的`QA-QC Reopened`／`Partial／Open`只作歷史 provenance。

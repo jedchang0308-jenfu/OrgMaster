@@ -9,6 +9,7 @@ interface Props {
   visibility: WorkspaceSurfaceVisibility
   list: ReactNode
   detail?: ReactNode
+  detailVisible?: boolean
 }
 
 const labels: Record<MasterDataModuleId, string> = {
@@ -18,14 +19,16 @@ const labels: Record<MasterDataModuleId, string> = {
   levels: '層級',
 }
 
-export function MasterDataModuleAdapter({ moduleId, visibility, list, detail }: Props) {
+export function MasterDataModuleAdapter({ moduleId, visibility, list, detail, detailVisible = Boolean(detail) }: Props) {
   const detailSupported = moduleId !== 'levels'
-  if (!detailSupported) return <WorkspaceListOnlySurface label={`${labels[moduleId]}完整工作台`} className="master-data-workspace is-detail-less" dataVisibility={visibility}>{list}</WorkspaceListOnlySurface>
+  const className = `master-data-workspace master-data-workspace--${moduleId}${detailVisible ? '' : ' is-detail-less'}`
+  if (!detailSupported || !detailVisible) return <WorkspaceListOnlySurface label={`${labels[moduleId]}完整工作台`} className={className} dataVisibility={visibility}>{list}</WorkspaceListOnlySurface>
   return (
     <WorkspaceListDetailSurface
       ariaLabel={`${labels[moduleId]}完整工作台`}
-      className={`master-data-workspace master-data-workspace--${moduleId}`}
+      className={className}
       dataVisibility={visibility}
+      detailVisible={detailVisible}
       listClassName="master-data-workspace__list"
       detailClassName="master-data-workspace__detail"
       listLabel={`${labels[moduleId]}清單`}

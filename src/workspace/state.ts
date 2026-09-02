@@ -11,12 +11,11 @@ import {
   resizeWorkspaceSplit,
   setWorkspaceActiveTab,
 } from './layout'
-import { getWorkspaceDefaultContext, getWorkspaceModule, isDrawerWorkspaceModuleId } from './moduleRegistry'
+import { getWorkspaceDefaultContext, getWorkspaceModule } from './moduleRegistry'
 import { sanitizeEntityRef } from './route'
 import type {
-  DrawerWorkspaceModuleId,
   LayoutDropTarget,
-  PromotionIntent,
+  WorkspaceOpenIntent,
   SharedSelection,
   WorkspaceModuleId,
   WorkspaceModuleContextMap,
@@ -27,16 +26,15 @@ import type {
 } from './types'
 
 export type WorkspaceAction =
-  | { type: 'OPEN_OR_FOCUS'; intent: PromotionIntent; target?: LayoutDropTarget }
-  | { type: 'UPDATE_PANEL_CONTEXT'; moduleId: WorkspaceModuleId; context: WorkspaceModuleContextMap[WorkspaceModuleId] }
+  | { type: 'OPEN_OR_FOCUS'; intent: WorkspaceOpenIntent; target?: LayoutDropTarget }
+  | { type: 'UPDATE_PANEL_CONTEXT'; moduleId: WorkspaceModuleId; context: WorkspaceModuleContextMap[WorkspaceModuleId]; openDetail?: boolean }
+  | { type: 'SET_DETAIL_VISIBILITY'; moduleId: WorkspaceModuleId; visible: boolean }
   | { type: 'COMMIT_CLOSE_PANEL'; moduleId: WorkspaceModuleId }
   | { type: 'SET_ACTIVE_TAB'; stackPath: number[]; moduleId: WorkspaceModuleId }
   | { type: 'MOVE_PANEL'; moduleId: WorkspaceModuleId; target: LayoutDropTarget }
   | { type: 'RESIZE_SPLIT'; splitPath: number[]; ratio: number }
   | { type: 'SET_PINNED'; moduleId: WorkspaceModuleId; pinned: boolean }
   | { type: 'SET_SHARED_SELECTION'; selection: SharedSelection }
-  | { type: 'OPEN_DRAWER'; moduleId: DrawerWorkspaceModuleId }
-  | { type: 'CLOSE_DRAWER' }
   | { type: 'SET_CLOSE_PENDING'; moduleId: WorkspaceModuleId | null }
   | { type: 'RESTORE_DEFAULT' }
   | { type: 'RECONCILE_ROUTE'; route: WorkspaceRouteState }
@@ -48,6 +46,7 @@ export interface WorkspaceReducerContext {
 
 function routeFromState(state: WorkspaceState): WorkspaceRouteState {
   const openPanels = collectLayoutModules(state.layout)
+  const openDetails = state.session.openDetails.filter((moduleId) => openPanels.includes(moduleId))
   const contexts: WorkspaceRouteState['contexts'] = {}
   for (const moduleId of openPanels) {
     const panel = state.session.panels[moduleId]
@@ -57,8 +56,19 @@ function routeFromState(state: WorkspaceState): WorkspaceRouteState {
     openPanels,
     focusedPanel: state.session.focusedPanel && openPanels.includes(state.session.focusedPanel) ? state.session.focusedPanel : null,
     selection: state.session.sharedSelection.ref,
+    openDetails,
     contexts,
   }
+}
+
+function contextHasDetail(moduleId: WorkspaceModuleId, context: WorkspaceModuleContextMap[WorkspaceModuleId]) {
+  if (!getWorkspaceModule(moduleId).supportsCollapsibleDetail) return false
+  if (moduleId === 'employees') return Boolean((context as WorkspaceModuleContextMap['employees']).employeeId)
+  if (moduleId === 'positions') return Boolean((context as WorkspaceModuleContextMap['positions']).positionId)
+  if (moduleId === 'departments') return Boolean((context as WorkspaceModuleContextMap['departments']).departmentId)
+  if (moduleId === 'duties') return Boolean((context as WorkspaceModuleContextMap['duties']).dutyId)
+  if (moduleId === 'management-methods') return Boolean((context as WorkspaceModuleContextMap['management-methods']).methodId)
+  return false
 }
 
 export function createWorkspaceSessionState(route: WorkspaceRouteState): WorkspaceSessionState {
@@ -71,12 +81,15 @@ export function createWorkspaceSessionState(route: WorkspaceRouteState): Workspa
     }
   }
   return {
-    drawer: null,
     focusedPanel: route.focusedPanel && route.openPanels.includes(route.focusedPanel)
       ? route.focusedPanel
       : route.openPanels[0] ?? null,
     sharedSelection: { ref: route.selection, sourcePanelId: 'route', revision: 0 },
     panels,
+    openDetails: route.openDetails.filter((moduleId) => {
+      const panel = panels[moduleId]
+      return Boolean(panel && route.openPanels.includes(moduleId) && contextHasDetail(moduleId, panel.context as never))
+    }),
     closePendingModuleId: null,
   }
 }
@@ -87,6 +100,7 @@ export function createWorkspaceState(layout = defaultWorkspaceLayout(), route?: 
     openPanels,
     focusedPanel: openPanels[0] ?? null,
     selection: null,
+    openDetails: [],
     contexts: {},
   }
   const reconciledLayout = reconcileWorkspaceLayout(layout, initialRoute.openPanels, initialRoute.focusedPanel)
@@ -113,22 +127,29 @@ function withWorkspaceEffects(previous: WorkspaceState, next: WorkspaceState, ro
 
 export function openOrFocusPanel(
   state: WorkspaceState,
-  intent: PromotionIntent,
+  intent: WorkspaceOpenIntent,
   organizationState: OrgDirectoryState,
   target?: LayoutDropTarget,
 ): WorkspaceTransition {
   const descriptor = getWorkspaceModule(intent.moduleId)
-  const context = descriptor.sanitizeContext(intent.context as never, organizationState)
   const existing = state.session.panels[intent.moduleId]
+  const context = descriptor.sanitizeContext(
+    (intent.context ?? existing?.context ?? getWorkspaceDefaultContext(intent.moduleId)) as never,
+    organizationState,
+  )
   let layout = state.layout
   const panels = { ...state.session.panels }
+  let openDetails = state.session.openDetails
   if (!existing) {
     const focusedPath = state.session.focusedPanel ? findWorkspacePanelPath(layout, state.session.focusedPanel) : null
     layout = insertWorkspacePanel(layout, intent.moduleId, target ?? (focusedPath ? { kind: 'stack', stackPath: focusedPath } : undefined))
     if (!collectLayoutModules(layout).includes(intent.moduleId)) return { state, effects: [{ type: 'announce', message: '無法開啟此功能面板' }] }
     panels[intent.moduleId] = { pinned: false, context, localSelection: null } as never
-  } else if (!existing.pinned) {
+    if (contextHasDetail(intent.moduleId, context)) openDetails = [...openDetails, intent.moduleId]
+  } else if (!existing.pinned && intent.context !== undefined) {
     panels[intent.moduleId] = { ...existing, context } as never
+    if (contextHasDetail(intent.moduleId, context) && !openDetails.includes(intent.moduleId)) openDetails = [...openDetails, intent.moduleId]
+    if (!contextHasDetail(intent.moduleId, context)) openDetails = openDetails.filter((moduleId) => moduleId !== intent.moduleId)
   }
   layout = focusWorkspacePanel(layout, intent.moduleId)
   const next: WorkspaceState = {
@@ -136,9 +157,9 @@ export function openOrFocusPanel(
     layout,
     session: {
       ...state.session,
-      drawer: intent.source === 'drawer' ? null : state.session.drawer,
       focusedPanel: intent.moduleId,
       panels,
+      openDetails,
     },
   }
   const transition = withWorkspaceEffects(state, next, 'push-route')
@@ -161,6 +182,7 @@ export function commitCloseWorkspacePanel(state: WorkspaceState, moduleId: Works
     session: {
       ...state.session,
       panels,
+      openDetails: state.session.openDetails.filter((detailModuleId) => detailModuleId !== moduleId),
       focusedPanel,
       closePendingModuleId: null,
     },
@@ -210,7 +232,10 @@ function reconcileRoute(state: WorkspaceState, route: WorkspaceRouteState, organ
         revision: state.session.sharedSelection.revision + 1,
       },
       panels,
-      drawer: null,
+      openDetails: route.openDetails.filter((moduleId) => {
+        const panel = panels[moduleId]
+        return Boolean(panel && contextHasDetail(moduleId, panel.context as never))
+      }),
     },
   }
   return withWorkspaceEffects(state, next, null)
@@ -235,10 +260,25 @@ export function reduceWorkspaceState(
           ...state.session.panels,
           [action.moduleId]: { ...panel, context: nextContext },
         },
+        openDetails: action.openDetail === true && contextHasDetail(action.moduleId, nextContext)
+          ? [...state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId), action.moduleId]
+          : action.openDetail === false || !contextHasDetail(action.moduleId, nextContext)
+            ? state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId)
+            : state.session.openDetails,
       },
     } as WorkspaceState
     const route = routeFromState(next)
     return { state: { ...next, route }, effects: [{ type: 'replace-route', route }] }
+  }
+  if (action.type === 'SET_DETAIL_VISIBILITY') {
+    const panel = state.session.panels[action.moduleId]
+    if (!panel || !getWorkspaceModule(action.moduleId).supportsCollapsibleDetail) return { state, effects: [] }
+    const visible = action.visible && contextHasDetail(action.moduleId, panel.context)
+    const openDetails = visible
+      ? [...state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId), action.moduleId]
+      : state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId)
+    if (JSON.stringify(openDetails) === JSON.stringify(state.session.openDetails)) return { state, effects: [] }
+    return withWorkspaceEffects(state, { ...state, session: { ...state.session, openDetails } }, 'push-route')
   }
   if (action.type === 'COMMIT_CLOSE_PANEL') return commitCloseWorkspacePanel(state, action.moduleId)
   if (action.type === 'SET_ACTIVE_TAB') {
@@ -272,21 +312,13 @@ export function reduceWorkspaceState(
   if (action.type === 'SET_SHARED_SELECTION') {
     return setSharedSelection(state, action.selection, context.organizationState)
   }
-  if (action.type === 'OPEN_DRAWER') {
-    if (!isDrawerWorkspaceModuleId(action.moduleId) || state.session.drawer === action.moduleId) return { state, effects: [] }
-    return { state: { ...state, session: { ...state.session, drawer: action.moduleId } }, effects: [{ type: 'focus-element', target: `workspace-drawer-${action.moduleId}` }] }
-  }
-  if (action.type === 'CLOSE_DRAWER') {
-    if (!state.session.drawer) return { state, effects: [] }
-    return { state: { ...state, session: { ...state.session, drawer: null } }, effects: [{ type: 'focus-element', target: 'workspace-launcher' }] }
-  }
   if (action.type === 'SET_CLOSE_PENDING') {
     if (state.session.closePendingModuleId === action.moduleId) return { state, effects: [] }
     return { state: { ...state, session: { ...state.session, closePendingModuleId: action.moduleId } }, effects: [] }
   }
   if (action.type === 'RESTORE_DEFAULT') {
     const layout = defaultWorkspaceLayout()
-    const route = { openPanels: ['organization'] as WorkspaceModuleId[], focusedPanel: 'organization' as const, selection: null, contexts: {} }
+    const route = { openPanels: ['organization'] as WorkspaceModuleId[], focusedPanel: 'organization' as const, selection: null, openDetails: [], contexts: {} }
     const next = createWorkspaceState(layout, route)
     return { state: next, effects: [{ type: 'push-route', route: next.route }, { type: 'schedule-layout-save', layout }] }
   }
@@ -303,6 +335,10 @@ export function reduceWorkspaceState(
       session: {
         ...state.session,
         panels,
+        openDetails: state.session.openDetails.filter((moduleId) => {
+          const panel = panels[moduleId]
+          return Boolean(panel && contextHasDetail(moduleId, panel.context as never))
+        }),
         sharedSelection: {
           ...state.session.sharedSelection,
           ref: sanitizeEntityRef(state.session.sharedSelection.ref, action.state),

@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it } from 'vitest'
 import { WORKSPACE_MODULE_ORDER } from '../../workspace/moduleRegistry'
-import { WORKSPACE_MODULE_ADAPTERS, renderWorkspaceDrawer, renderWorkspacePanel } from './WorkspaceModuleSurfaces'
+import { WORKSPACE_MODULE_ADAPTERS, renderWorkspacePanel } from './WorkspaceModuleSurfaces'
 
 describe('WorkspaceModuleSurfaces', () => {
   it('owns one typed adapter entry for every module and invokes only the requested renderer', async () => {
@@ -14,8 +14,6 @@ describe('WorkspaceModuleSurfaces', () => {
     await act(async () => root.render(<>{renderWorkspacePanel('organization', 'active', { organization: () => { calls += 1; return <span>組織內容</span> } })}</>))
     expect(calls).toBe(1)
     expect(host.textContent).toContain('組織內容')
-    await act(async () => root.render(<>{renderWorkspaceDrawer('employees', {})}</>))
-    expect(host.textContent).toContain('從清單選取項目')
     root.unmount()
   })
 })

@@ -89,4 +89,26 @@ describe('DEV-039 panel boundary source policy', () => {
     expect(existsSync(join(sourceRoot, 'components', 'DutyMatrixView.tsx'))).toBe(false)
     expect(read(join(sourceRoot, 'components', 'ProcessPlanningCanvas.tsx'))).not.toContain('onWorkspaceEntityDrop')
   })
+
+  it('keeps native relation drag wiring behind the shared adapters', () => {
+    const production = sourceFiles(sourceRoot)
+      .filter((path) => !/\.test\.tsx?$/.test(path))
+      .map((path) => ({ path, source: read(path) }))
+    const mimeWriters = production
+      .filter(({ source }) => /writeWorkspaceEntityDrag\s*\(/.test(source))
+      .map(({ path }) => path)
+    expect(mimeWriters).toEqual(expect.arrayContaining([
+      join(sourceRoot, 'components', 'workspace', 'relationPlacementBindings.ts'),
+      join(sourceRoot, 'workspace', 'entityDrag.ts'),
+    ]))
+    expect(mimeWriters.filter((path) => !path.endsWith(`${join('workspace', 'entityDrag.ts')}`))).toEqual([
+      join(sourceRoot, 'components', 'workspace', 'relationPlacementBindings.ts'),
+    ])
+    for (const file of ['DirectoryDock.tsx', 'OrgNode.tsx', 'ProcessDutyBridge.tsx', 'ProcessPlanningCanvas.tsx']) {
+      const source = read(join(sourceRoot, 'components', file))
+      expect(source).toContain('createRelationDragSourceProps')
+      expect(source).toContain('createRelationDropTargetProps')
+    }
+    expect(read(join(sourceRoot, 'components', 'workspace', 'relationPlacementBindings.ts'))).toContain('event.stopPropagation()')
+  })
 })

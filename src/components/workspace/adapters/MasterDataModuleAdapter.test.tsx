@@ -21,6 +21,18 @@ describe('MasterDataModuleAdapter', () => {
     root.unmount()
   })
 
+  it('renders only the list when the detail is closed', async () => {
+    const host = document.createElement('div')
+    const root = createRoot(host)
+    await act(async () => {
+      root.render(<MasterDataModuleAdapter moduleId="employees" visibility="active" list={<div>員工清單</div>} />)
+    })
+    expect(host.querySelector('[data-layout="list-only"]')).not.toBeNull()
+    expect(host.querySelector('[data-workspace-slot="detail"]')).toBeNull()
+    expect(host.textContent).toBe('員工清單')
+    root.unmount()
+  })
+
   it('uses the full panel for levels without inventing a second detail surface', async () => {
     const host = document.createElement('div')
     const root = createRoot(host)

@@ -32,7 +32,7 @@ describe('governance store', () => {
     const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev037-command-'))
     const initial = await ensureGovernanceStore(root)
     const catalog = readAiPdmRoleCatalog('valid'); const role = catalog.roles.find((entry) => entry.stableRoleId === 'role-rd')!
-    const command = { type: 'UPSERT_ROLE_ASSIGNMENT' as const, commandId: 'assignment-command-1', reason: 'test external assignment', value: { id: 'assignment-rd', employeeId: 'employee-1', applicationId: 'ai-pdm' as const, roleId: role.stableRoleId, roleCodeSnapshot: role.code, roleNameSnapshot: role.displayName, catalogVersion: catalog.catalogVersion, scope: { kind: 'department' as const, value: 'dept-rd' }, status: 'active' as const, validFrom: '2026-08-27T00:00:00.000Z', validTo: null, effectState: 'not-synchronized' as const } }
+    const command = { type: 'UPSERT_ROLE_ASSIGNMENT' as const, commandId: 'assignment-command-1', reason: 'test external assignment', value: { id: 'assignment-rd', employeeId: 'employee-1', applicationId: 'ai-pdm' as const, roleId: role.stableRoleId, roleCodeSnapshot: role.code, roleNameSnapshot: role.displayName, catalogVersion: catalog.catalogVersion, scope: { kind: 'workspace' as const, value: 'workspace-1' }, status: 'active' as const, validFrom: '2026-08-27T00:00:00.000Z', validTo: null, effectState: 'not-synchronized' as const } }
     const actor = { principalId: 'dev-principal-local-admin', issuer: 'urn:orgmaster:dev', subject: 'local-admin', employeeId: null, bootstrap: true }
     const applied = await applyDraftCommand(root, initial.revision, command, actor)
     expect(applied.status).toBe('applied')

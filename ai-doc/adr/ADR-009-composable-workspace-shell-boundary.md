@@ -1,6 +1,12 @@
 # ADR-009：可組合工作台UI Shell與領域權威邊界
 
-狀態：Accepted / S0～S6 Amendments Implemented / S7 Relation Placement Implemented / QA-QC Passed / E4 Candidate Freeze Committed / Merge Release Pending（2026-09-01）
+狀態：Accepted / DEV-039 Candidate Freeze Committed / DEV-042 Single-layer Amendment Accepted / DEV-042 RD Implementation Complete / Browser QA-QC Passed / Local Release Gate Pending（2026-09-02）
+
+> **2026-09-02 DEV-042 single-layer workspace amendment（目標runtime／Tech Lead Optimized）**：使用者決定移除「頂部功能 → 快速Drawer → 在工作台開啟 → panel」的第二層入口。十個既有module統一由頂部launcher直接open-or-focus唯一panel；`DrawerWorkspaceModuleId`、drawer registry／session／controller／renderer、`WorkspaceQuickDrawer`與promotion語意在同一intentional replacement中移除，不以CSS隱藏或長期feature flag保留。技術主管審查後，detail visibility只由`WorkspaceSessionState.openDetails`擁有，`WorkspaceRouteState.openDetails`與browser URL沿用既有`routeFromState／reconcileRoute`作投影，不在PanelSession建立逐panel副本；registry只以`supportsCollapsibleDetail`判斷shell收合責任，不建立三態runtime taxonomy；`WorkspaceOpenIntent`是否帶context直接決定preserve／replace，不另加`contextMode`。Process保留內建流程清單＋graph＋bridge，Level維持既有list-only，禁止為形式一致製造雙清單或空detail。`WorkspaceLayoutV1`、每類一份panel、split／tab／resize／pin、canonical `/`、DEV-041 single relation placement及各domain authority不變。現行runtime在DEV-042實作與QA／QC通過前仍以DEV-039／041為事實；本amendment只授權RD依`ai-doc/specs/DEV-042-single-layer-workspace-contract.md`開始實作，不授權commit、merge、deploy或release。本文其後關於Drawer promotion的歷史條文只作provenance，對DEV-042目標runtime不再具拘束力。
+
+> **2026-09-02 DEV-042 validation closure override（現行）**：四個 DEV-040 governance／catalog 測試契約漂移已依 workspace scope／current catalog version 修正；management-method local-development actor precedence 已修正並補 regression。完整回歸 `174 files／716 passed／1 skipped`，targeted gate、typecheck、client／server build與production source scan通過。Fresh task-owned 5080 fixture完成 E1～E9：E5 API／UI無`FORBIDDEN`，E7 split／resize／pin／close／zero-panel通過；DEV-041四向 native、zero-mutation、auto-pan與console/pageerror沿用最新aggregate覆核，fixture已archive。唯一總表=`output/playwright/dev042/manifest.md`。DEV-042現行狀態為`RD Implementation Complete / Browser QA-QC Passed / Local Release Gate Pending`；未授權candidate freeze、commit、merge、deploy或release。本段優先於下方早期partial／blocked checkpoint。
+
+> **2026-09-02 DEV-042 implementation checkpoint**：依上述 amendment 完成 production single-layer wiring 與 panel-local list-detail projection；targeted `8 files／34 tests`＋`6 files／16 tests`、typecheck、client／server build、production source scan與allowlist diff check通過。既有 localhost:5000 探索性 smoke 確認十個頂部入口、員工清單／相鄰明細開關、關閉後來源列 focus restore及無舊drawer；另以 fresh B16 fixture／task-owned `127.0.0.1:5080`完成 E1～E4、E6 targeted browser slice，唯一 manifest=`output/playwright/dev042/manifest.md`，fixture已archive。管理辦法 E5 因既有 `FORBIDDEN`，E7 layout、E8 DEV-041四向與E9 console/pageerror collector仍未完成；完整回歸仍有四個既有 DEV-040 governance／catalog failures。因此本 ADR 記錄 `Browser QA-QC Partial`，不把本段解讀為 QA-QC Passed、candidate freeze、commit、merge、deploy或release授權。
 
 > **2026-09-01 Candidate freeze commit override（現行）**：DEV-039 已依使用者授權完成 selective candidate freeze，commit=`86510f4`，僅含 DEV-039 exact allowlist 的 74 個檔案。其他 DEV、auth／DB／package／環境設定、混合未判定變更及 ignored evidence 均未納入；merge、deploy、release 仍需另行授權。本段優先於下方較早的 E4 pending 描述。
 
@@ -16,9 +22,9 @@
 
 日期：2026-08-28
 
-決策來源：`USER-2026-08-28-COMPOSABLE-PLANNING-DESKTOP`、DEV-039 Human Decision Round 1～4、`USER-2026-08-28-DEV039-ALL-CURRENT-FUNCTION-PARITY`、`USER-2026-08-30-STABLE-PANEL-OWNERSHIP-ARCHITECTURE`、`USER-2026-08-30-DEV039-S6-IMPLEMENTATION-READY`、`USER-2026-08-31-NATIVE-CROSS-PANEL-RELATION-PLACEMENT`、`USER-2026-08-31-FIRST-PRINCIPLES-RELATION-PLACEMENT-ARCHITECTURE`
+決策來源：`USER-2026-08-28-COMPOSABLE-PLANNING-DESKTOP`、DEV-039 Human Decision Round 1～4、`USER-2026-08-28-DEV039-ALL-CURRENT-FUNCTION-PARITY`、`USER-2026-08-30-STABLE-PANEL-OWNERSHIP-ARCHITECTURE`、`USER-2026-08-30-DEV039-S6-IMPLEMENTATION-READY`、`USER-2026-08-31-NATIVE-CROSS-PANEL-RELATION-PLACEMENT`、`USER-2026-08-31-FIRST-PRINCIPLES-RELATION-PLACEMENT-ARCHITECTURE`、`USER-2026-09-02-SINGLE-LAYER-WORKSPACE-INTENTIONAL-REPLACEMENT`、`USER-2026-09-02-DEV042-RD-IMPLEMENTATION-READY`、`USER-2026-09-02-DEV042-RD-TECH-LEAD-REVIEW`
 
-適用範圍：OrgMaster新版頂部module入口、Drawer promotion、panel composition、layout persistence、URL context、shared selection、pin與跨panel typed relation placement。
+適用範圍：OrgMaster新版頂部module入口、single-layer panel open-or-focus、panel composition、可收合list-detail、layout persistence、URL context、shared selection、pin與跨panel typed relation placement；Drawer promotion只作DEV-039歷史provenance。
 
 關聯決策：ADR-002（版本工作區）、ADR-006（Duty relation authority）、ADR-008（Process與OrganizationDocument V7單一權威）。
 
@@ -107,6 +113,16 @@ Panel內容只採有限surface primitives：圖形主物件使用Canvas surface�
 - 一般Organization畫布空白只取消；exact Employee assignment placing期間，只有owner panel內明確、暫時的解除區可產生`employee-unassign` target。取代現有人員、exact移轉、解除與Duty主執行移轉須在commit前顯示不同結果語意，不以逐次Modal打斷。
 - Candidate freeze前必須刪除`employeeDrag`、`employeeKeyboardDrag`、`dutyDragState`或等效平行正常路徑；不得保留新舊owner長期同步。開發中只允許為分slice驗證而短暫共存。
 - Current Phase不引入generic event bus、plugin registry、service locator、新DnD dependency、後端drag API、schema版本、permission語意、手機／touch編輯或第二save path。
+
+### DEV-041 Relation Drag Interaction follow-on amendment（2026-09-01）
+
+- DEV-041在DEV-039 candidate freeze之後，對registered relation的mouse source affordance作intentional replacement：由永久列尾把手改為整個來源物件／卡片的非互動區域可拖；nested button、form control、link、menu與等價互動節點維持原行為且不得啟動拖曳。
+- Single `RelationPlacementSession`、strict MIME、`resolveRegisteredDrop()`、latest-state／capability revalidation與App唯一mutation owner不變；共用source／target binding只能是headless adapter，不得承擔domain rule、API或第二state。
+- DEV-041 Current Phase只標準化滑鼠互動。DEV-039現有keyboard placement保留為相容基線，不在本輪重設計或擴張；若整卡source migration必須刪除既有鍵盤能力，RD必須停止回PM。
+- Organization與Process各自擁有Canvas Auto-pan Adapter與React Flow instance；`requestAnimationFrame`只合併owner canvas的高頻dragover，不得跨canvas操作、center、fit view或改變zoom。
+- 不新增event bus、provider、dependency、schema、API、permission、MIME、resolver或mutation owner。DEV-039 evidence只作歷史回歸基線，DEV-041實作後需另取normal-entry native fresh evidence。
+- 詳細來源／目標矩陣、狀態事件、驗收、QA／QC與停止條件由`ai-doc/specs/DEV-041-relation-drag-interaction-contract.md`擁有。
+- DEV-041已於2026-09-01完成`RD Implementation Complete / Automated Gate Passed`；新增程式固定為純互動投影、headless source／target binding及owner-canvas rAF hook，S0～S7 automated implementation已落地。真實瀏覽器 HTML5 `DataTransfer` evidence仍待QA／QC，因此不宣稱 `QA-QC Passed` 或 release；這是ADR-009既有composition boundary的實作細化，不建立新架構決策，因此不另開ADR。
 
 ### Compatibility
 

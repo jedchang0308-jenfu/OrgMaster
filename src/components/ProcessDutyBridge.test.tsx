@@ -19,7 +19,7 @@ const state: OrgDirectoryState = {
   processNodeDutyLinks: [{ id: 'link-1', processNodeId: 'node-1', dutyId: 'duty-linked', order: 0 }],
 }
 
-function renderBridge(editingEnabled = true) {
+function renderBridge(editingEnabled = true, relationPlacementActive = true) {
   const host = document.createElement('div')
   document.body.appendChild(host)
   const root = createRoot(host)
@@ -28,6 +28,7 @@ function renderBridge(editingEnabled = true) {
   const onRelationBegin = vi.fn()
   const onRelationPreview = vi.fn()
   const onRelationCommit = vi.fn()
+  const onRelationCancel = vi.fn()
   const render = (nextState = state, selectedDutyId: string | null = 'duty-linked') => act(() => {
     root.render(<ProcessDutyBridge
       state={nextState}
@@ -42,10 +43,12 @@ function renderBridge(editingEnabled = true) {
       onRelationBegin={onRelationBegin}
       onRelationPreview={onRelationPreview}
       onRelationCommit={onRelationCommit}
+      onRelationCancel={onRelationCancel}
+      relationPlacementActive={relationPlacementActive}
     />)
   })
   render()
-  return { host, root, onCommand, onSelectDuty, onRelationBegin, onRelationPreview, onRelationCommit, render }
+  return { host, root, onCommand, onSelectDuty, onRelationBegin, onRelationPreview, onRelationCommit, onRelationCancel, render }
 }
 
 describe('ProcessDutyBridge', () => {
@@ -95,13 +98,13 @@ describe('ProcessDutyBridge', () => {
       target?.dispatchEvent(dragOver)
       target?.dispatchEvent(drop)
     })
-    expect(view.onRelationPreview).toHaveBeenCalledWith({ kind: 'duty', dutyId: 'duty-open' }, expect.anything())
+    expect(view.onRelationPreview).toHaveBeenCalledWith({ kind: 'duty', dutyId: 'duty-open' })
     expect(view.onRelationCommit).toHaveBeenCalledWith({ kind: 'duty', dutyId: 'duty-open' }, dataTransfer)
     view.root.unmount()
     view.host.remove()
   })
 
-  it('declares link as the native effect for Duty to ProcessNode relations', () => {
+  it('declares the full native effect union for a Duty source', () => {
     const view = renderBridge()
     const source = view.host.querySelector<HTMLButtonElement>('[data-relation-placement-source-kind="duty"][data-duty-lane="primary-execute"]')
     expect(source).not.toBeNull()
@@ -113,7 +116,9 @@ describe('ProcessDutyBridge', () => {
     const dragStart = new Event('dragstart', { bubbles: true, cancelable: true })
     Object.defineProperty(dragStart, 'dataTransfer', { value: dataTransfer })
     act(() => source?.dispatchEvent(dragStart))
-    expect(dataTransfer.effectAllowed).toBe('link')
+    // A Duty lane can target both Position (copy/move) and ProcessNode (link).
+    // The target preview still narrows the actual dropEffect.
+    expect(dataTransfer.effectAllowed).toBe('all')
     expect(view.onRelationBegin).toHaveBeenCalledWith(expect.objectContaining({ kind: 'duty', dutyId: 'duty-linked', lane: 'primary-execute' }), 'native-drag', source)
     view.root.unmount()
     view.host.remove()

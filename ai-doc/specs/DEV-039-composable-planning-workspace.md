@@ -4,6 +4,10 @@
 
 文件成熟度：`RD Implementation Ready / Implementation Complete / QA-QC Passed / Candidate Freeze Committed / Merge Release Pending`
 
+> **DEV-042 intentional replacement notice（2026-09-02／Tech Lead Optimized）**：DEV-039的split-tree／tab、每類一份panel、layout persistence、pin／close guard、panel ownership、canonical workspace route與single relation placement繼續是現行工程基線；但使用者已決定以DEV-042移除快速Drawer與「在工作台開啟」promotion層，十個module改由頂部launcher直接open-or-focus。DEV-042以session-owned唯一`openDetails`＋既有route projection、registry單一`supportsCollapsibleDetail`及optional-context open intent收斂清單／明細，不在PanelSession複製逐panel detail state或建立三態runtime taxonomy。現行runtime在DEV-042實作與QA／QC通過前仍是本文件所述DEV-039／041；目標runtime的drawer replacement、exact allowlist、S0→S7與驗收由`ai-doc/specs/DEV-042-single-layer-workspace-contract.md`擁有。本段不重開DEV-039 candidate，也不授權commit、merge、deploy或release。
+
+> **DEV-041 follow-on contract（2026-09-01）**：DEV-041已在DEV-039 candidate freeze之後完成`RD Implementation Complete / Automated Gate Passed / Browser Native Evidence Pending`，並對registered relation的滑鼠來源表面作intentional replacement：由永久列尾把手改為整個來源物件／卡片的非互動區域可拖，同時統一三態落點與owner-canvas auto-pan。exact新增邊界為純互動投影、headless React binding與各畫布自己的rAF hook，S0～S7 automated implementation已落地且不新增資料、API、permission、dependency或第二state。DEV-039的single session、strict MIME、registered resolver、App mutation owner、domain／API／permission／persistence及既有keyboard相容基線不變；DEV-039歷史evidence只作回歸基線，DEV-041真實瀏覽器native fresh evidence仍待QA／QC。DEV-041 gate與狀態以其主spec §0.1／§20為唯一來源。權威契約：`ai-doc/specs/DEV-041-relation-drag-interaction-contract.md`。
+
 > **2026-09-01 Candidate freeze commit override（現行）**：已取得使用者對 `DEV-039 candidate freeze 並 commit（僅納入 DEV-039 allowlist）` 的明確授權，並在 `codex/dev-039-composable-workspace` 以 selective staging 完成 commit `86510f4`（`feat: complete DEV-039 composable planning workspace`）。本 commit 僅含 DEV-039 exact allowlist 的 74 個檔案；DEV-037／038／040、auth／DB／package／環境設定、無法判定的混合變更及 `output/playwright/dev039/**` 均未納入。此 override 優先於下方較早的 E4 pending 描述；merge、deploy、release 仍需另行授權。
 
 > **2026-09-01 Formal QA-QC 最新覆寫**：E1四個 minimum directions、E2五案`historyEvidence`與E3兩案已由同一份 evidence manifest正式覆核；targeted component `3 files／19 tests`、full regression `160 files／664 tests（1 skipped）`、`npx tsc --noEmit --pretty false`、`npm run build`、文件一致性、fixture archive與task-owned runtime cleanup均通過。E4只剩使用者／PM明確授權，未取得授權前不執行commit、merge、deploy或release。此段優先於下方較早的QA-QC Reopened／E1 Partial快照。
@@ -218,7 +222,7 @@ Popover使用平面清單，不顯示功能介紹、helper或disabled future ite
 - Row name承擔選取／明細入口，不另加重複「明細」按鈕。展開控制只負責展開／收合，再點一次可收起。
 - `在工作台開啟`即使未選row也可開啟該module panel，並攜帶目前query／filters；有selected object時再攜帶stable ID。
 - Promotion成功後Drawer關閉；Escape或關閉鈕取消Drawer並把focus送回`功能`launcher。
-- `<1024px`或compose capability不成立時，Drawer改成global chrome下方的單一全寬閱讀surface；不得以242px欄壓縮主內容，也不得提供mutation。
+- compose capability不成立（無hover或無fine pointer）時，Drawer改成global chrome下方的單一全寬閱讀surface；不得以242px欄壓縮主內容。Viewport寬度只影響排版與split minimum，不得單獨把滑鼠桌面降級成手機單一surface；domain mutation仍由各module capability獨立判斷。
 
 ### 4.4 Panel第二層
 
@@ -744,7 +748,7 @@ interface ModuleCapability {
 }
 ```
 
-- Desktop composition：`viewportWidth >= 1024`且hover＋fine pointer；可在唯讀版本調整layout，因layout不是domain mutation。
+- Desktop composition：hover＋fine pointer成立即可調整layout；viewport寬度只交由module minimum與`canSplit`判斷可用方向。即使版本或module為唯讀，仍可調整layout，因layout不是domain mutation。
 - 不符合composition capability：同時間顯示單一全寬module surface；launcher作module導航，無split／resize／layout drag／pin。
 - 手機最高原則：所有module mutation為false；只保留閱讀、搜尋、篩選、view切換及關聯導覽。不得只靠CSS隱藏，server/domain仍fail closed。
 - Duty／Process desktop mutation沿用各自`canMutate...`；Management Method沿用細粒度session capabilities；Governance沿用manage、catalog freshness與publish blocker；Risk沿用organization editing。
@@ -889,6 +893,7 @@ S0～S6核取項目由本地RD、automated regression與QA／QC歷史證據支�
 - [x] `OVERLAY-SCOPE-01`：panel-scoped popover／Drawer／dialog只進`PanelOverlayHost`，global recovery／blocking modal／toast／drag preview只進`GlobalOverlayHost`；feature source不得直接portal到`document.body`，persistent surface不得使用`position:fixed`或viewport定位。具名allowlist以外source scan為0 matches。
 - [x] `STATE-OWNERSHIP-01`：移除可被兩個module同時掛載的共享detail ReactNode及跨module全域`inspectorOpen`控制；shared selection只傳遞stable ref／revision。選取Employee、Position、Department或Duty時，同一detail最多存在一份且owner正確，其他panel只highlight／reveal。
 - [x] `CONTAINER-RESPONSIVE-01`：feature以panel container決定清單／明細排列；1440桌面將panel縮至其minimum附近時仍保持desktop capability，不套手機fixed Inspector、不出現雙重捲動、遮擋或水平溢出。
+- [x] `LAYOUT-TAB-DRAG-01`：workspace composition與domain mutation分離；946×698 hover＋fine pointer桌面即使目前版本唯讀，tab仍為`draggable=true`並顯示pin／arrange。Employee native tab drag到右側合法drop zone後由一個stack形成Organization／Employee兩個region；`application/x-orgmaster-panel-layout`不得與relation MIME共用。
 
 ### 17.2 Context與navigation
 
@@ -921,7 +926,7 @@ S0～S6核取項目由本地RD、automated regression與QA／QC歷史證據支�
 ### 17.5 Accessibility與viewport
 
 - [x] 1440×900與1024×768可由正常入口完成launcher、Drawer、三module、split/tab、pin、native relation placement及keyboard alternative。
-- [x] 1023×768退化為單一全寬surface，不顯示composition mutation。
+- [x] 946×698及1023×768的hover＋fine pointer桌面仍顯示tab drag／pin／arrange；可用split方向由module minimum決定。無hover／fine pointer裝置才退化為單一全寬surface。
 - [x] 390×844完整唯讀，可閱讀／搜尋／篩選／導覽，無新增、編輯、drag、發布或水平溢出。
 - [x] focus順序、focus return、accessible name、live result與reduced motion通過。
 
@@ -985,7 +990,7 @@ Fresh artifacts統一進`output/playwright/dev039/manifest.md`，並以parity ID
 | --- | --- | --- |
 | `B1` | 1440×900 editable draft | 十模組正常入口依序開啟、initial org-only network、Drawer promotion、三panel、split/tab/pin、inactive lifecycle、close release、三typed relation |
 | `B2` | 1024×768 editable draft | minimum、Drawer推移、focus、menu/dialog、long content |
-| `B3` | 1023×768 readonly fallback | 單一surface、無composition/mutation |
+| `B3` | 1023×768 touch／coarse readonly fallback | 單一surface、無composition/mutation |
 | `B4` | 390×844 mobile readonly | 閱讀、搜尋、篩選、導覽、無overflow與mutation |
 | `B5` | 1440×900 current read-only | layout可調，domain mutation全部拒絕且只顯示一份mode狀態 |
 | `B6` | 1440×900 recovery/conflict | unavailable、invalid current、failed draft、409、Retry／switch |
@@ -994,6 +999,7 @@ Fresh artifacts統一進`output/playwright/dev039/manifest.md`，並以parity ID
 | `B14` | 1900×960 editable draft、四region＋tab | 逐module開啟persistent detail／editor；owner `data-module`、DOM唯一性、bounding containment、move／split／tab後所有權不變 |
 | `B15` | 1440×900 editable draft＋1023×768 readonly | panel/global overlay分類、Escape／focus return、無跨region遮擋；桌面窄panel維持desktop capability，1023 device仍default-deny mutation |
 | `B16` | 1440×900、1024×768 editable draft＋1440 current-view＋1023／390 readonly | 正常入口開Employee與Organization；native建立第一任職／兼任、exact移轉／解除、unsupported target、same／duplicate／cancel、拖曳中capability loss、Undo／Redo、autosave／reload；keyboard使用同一session並focus return；唯讀零handle／零mutation |
+| `B17` | 946×698 hover＋fine pointer current readonly | Organization＋Employee同stack時兩個tab均可拖曳；Employee native tab drag到右側合法drop zone後成為兩個region。domain仍為唯讀，panel layout MIME與relation MIME不得混用 |
 
 ## 20. Stop Conditions
 
@@ -1040,7 +1046,7 @@ Fresh artifacts統一進`output/playwright/dev039/manifest.md`，並以parity ID
 - stack：`role="tablist"`＋`role="tab"`＋`role="tabpanel"`；只有active tab進一般tab order，hidden panel不得接受focus。
 - layout drag：只從tab handle啟動，使用`application/x-orgmaster-panel-layout`；drop zone只在drag期間出現。
 - domain drag：只從業務物件專用handle啟動，使用`application/x-orgmaster-entity`；不得由separator、tab、panel空白區啟動。
-- container小於minimum時不靠overflow硬塞；resolver回到focused stack。`1023px`以下不mount split controls。
+- container小於minimum時不靠overflow硬塞；resolver回到focused stack。只有composition capability不成立時不mount split controls；viewport寬度本身不得停用hover＋fine pointer桌面的tab drag。
 
 ## 22. Repo、Module、File與Symbol Impact
 

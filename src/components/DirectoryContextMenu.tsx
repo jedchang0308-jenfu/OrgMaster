@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 export interface DirectoryContextMenuItem {
   id: string
@@ -21,10 +21,19 @@ interface DirectoryContextMenuProps {
 
 export function DirectoryContextMenu({ x, y, label, items, onClose }: DirectoryContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
+  const layerRef = useRef<HTMLDivElement>(null)
+  const [localPosition, setLocalPosition] = useState({ left: x, top: y })
 
   useEffect(() => {
     menuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
   }, [])
+
+  useLayoutEffect(() => {
+    const layer = layerRef.current
+    if (!layer) return
+    const rect = layer.getBoundingClientRect()
+    setLocalPosition({ left: x - rect.left, top: y - rect.top })
+  }, [x, y])
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation()
@@ -51,6 +60,7 @@ export function DirectoryContextMenu({ x, y, label, items, onClose }: DirectoryC
 
   return (
     <div
+      ref={layerRef}
       className="context-menu-layer"
       onPointerDown={onClose}
       onContextMenu={(event) => {
@@ -63,7 +73,7 @@ export function DirectoryContextMenu({ x, y, label, items, onClose }: DirectoryC
         className="position-context-menu directory-context-menu"
         role="menu"
         aria-label={label}
-        style={{ left: x, top: y }}
+        style={{ left: localPosition.left, top: localPosition.top }}
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >

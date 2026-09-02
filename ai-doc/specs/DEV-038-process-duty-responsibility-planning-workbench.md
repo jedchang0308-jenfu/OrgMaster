@@ -1,10 +1,10 @@
 # DEV-038：流程－職掌－責任聯動規劃工作台 RD Implementation Contract
 
-狀態：`RD Implementation Ready / MVP Implementation In Progress / QA-QC Pending / Local Release Gate Pending`
+狀態：`RD Implementation Ready / MVP Implemented / QA-QC Pending / UI Composition Replaced by DEV-039`
 
 日期：2026-08-27
 
-文件角色：DEV-038 Current Phase 的產品、技術與實作交接權威。本文已固定資料權威、exact TypeScript symbols、repo/file allowlist、route、transaction、V6→V7 migration、Dagre dependency gate、S0→S6 實作順序、權限／能力、失敗恢復及可執行 QA／QC evidence contract。現有 worktree 已有 MVP 實作候選與本輪 browser evidence，但仍以本文件的契約與 QA gate 為準；不得擴張至 Future Phase、deploy 或 release。
+文件角色：DEV-038 的 OrganizationDocument V7、Process domain、Command／transaction、migration、Dagre／React Flow 投影、能力、失敗恢復與非版面 evidence contract 權威。2026-08-28 起，固定工作台 composition、route wiring 及 composition-specific UI acceptance 由 DEV-039 intentional replacement；本文相關段落保留為歷史實作基線，不再作新版面目標。不得擴張至 Future Phase、deploy 或 release。
 
 來源：`USER-2026-08-27-PROCESS-DUTY-RESPONSIBILITY-WORKBENCH`、`USER-2026-08-27-MINDMAP-FLOWCHART-OSS-DESIGN`
 
@@ -15,6 +15,15 @@
 風險等級：High（OrganizationDocument V6→V7、四個新領域集合、Duty delete referential guard、同頁雙畫布 selection／drag，以及跨 DEV-034／036 的同 revision 驗證）
 
 架構決策：`ai-doc/adr/ADR-008-process-planning-organization-version-authority.md`
+
+## DEV-039 UI successor notice（2026-08-28）
+
+使用者已確認在 branch `codex/dev-039-composable-workspace` 以可組合規劃桌面取代固定工作台 UI。DEV-039 已達`RD Implementation Complete / QA-QC Passed / Local Release Gate Pending`；固定composition與`ProcessOrganizationCanvas`已移除，Process domain、canvas projection、Command、V7資料及ADR-008仍為唯一權威。主契約位於`ai-doc/specs/DEV-039-composable-planning-workspace.md`，零遺失清冊位於`ai-doc/specs/DEV-039-feature-parity-manifest.md`，證據位於`output/playwright/dev039/manifest.md`，UI shell長期邊界由ADR-009擁有。
+
+- 繼續有效：ADR-008、OrganizationDocument V7、Process／Duty／Position stable identity、domain validation、commands、Undo／Redo、autosave、CAS、V6→V7 migration、typed failures 及可重用 canvas／layout／selector。
+- 已替換：第 4 節固定左／中／右 composition、第 14.5 節 exact fixed component wiring、舊 route shell state，以及只驗證該固定 composition 的 UI gate，均只作DEV-038歷史實作記錄，不再是runtime契約。
+- 移除結果：DEV-039已完成十模組正常入口、Employee→Position、Duty＋lane→Position、Duty→ProcessNode三條typed relation、recovery、唯讀／keyboard／reload及`F039` fresh regression evidence；固定composition與duplicate organization canvas已依allowlist移除，正式runtime只保留canonical workspace。
+- Spec impact：`Intentional replacement at UI composition layer`；不是 schema、API、permission 或 domain authority replacement。
 
 ## 0. RD Implementation Readiness 結論
 
@@ -81,7 +90,7 @@ Spec impact 分類：
 - `Compatible extension`：DEV-034 的 Duty identity、四種責任 lane、assign-only relation command、Position drop target、Undo／Redo、autosave 與 CAS 繼續有效。
 - `Compatible extension`：DEV-036 繼續是只讀責任盤點／分布工作台；DEV-038 完成的責任異動應由同一 organization state 立即反映到 DEV-036。
 - `New authority / Accepted ADR-008`：Process、ProcessNode、ProcessEdge、ProcessNodeDutyLink 進入 OrganizationDocument V7，與既有 Duty／Position 共用 organization version、revision、Undo／Redo、dirty、autosave 與 CAS；不建立獨立 Process store。
-- `No replacement`：本 Contract 不改寫 DEV-034 R2 的待 browser gate 狀態，也不改寫 DEV-036 已完成證據。
+- `Intentional replacement / DEV-039`：本 Contract 的固定 UI composition 將由可組合規劃桌面取代；DEV-034 R2 的 relation authority、DEV-036 已完成歷史證據、ADR-008 與 OrganizationDocument V7 不因 UI replacement 改寫。
 
 ## 4. 工作台資訊架構
 
@@ -819,6 +828,10 @@ Hard fail：任何 `.inline-error`／`role=alert`、非預期 HTTP 4xx／5xx、c
 - 管理辦法連到 Process／Duty 的穩定語意 reference；只有 DEV-032 另案重新核准正文智能引用與刪除規則後才可進入。
 
 ## 16. 變更紀錄
+
+- 2026-08-28：DEV-039 已完成Implementation Readiness Review並升級為`RD Implementation Ready / RD Not Started`。本文件同步 successor 權威連結與 removal gate：新版必須覆蓋十個模組、三條 typed relation、復原門檻及完整`F039`證據後，才可移除 DEV-038 固定工作台 UI；V7 domain、ADR-008、commands、storage、validation與既有實作證據不變。
+
+- 2026-08-28：依使用者確認登錄 DEV-039 UI successor。固定左／中／右工作台 composition、exact fixed component wiring 與 composition-specific UI gate 改列 intentional replacement baseline；V7 domain、ADR-008、commands、storage、validation與可重用投影保持權威。舊 UI 只在 DEV-039 新版通過 deletion gate 後於 replacement branch 移除，本輪未修改產品程式、測試、資料、dependency、deploy 或 release。
 
 - 2026-08-28：修正流程清單為 0 筆時的入口可發現性。可編輯版本將 `＋ 新增流程` 放入空狀態，並與非空清單共用建立行為；唯讀版本改顯示切換草稿提示，不提供 disabled mutation control，且不再顯示會誤導使用者的「先新增」指示文案。補上 component harness 的 editable／read-only 空狀態驗收。
 

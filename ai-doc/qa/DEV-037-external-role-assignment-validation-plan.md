@@ -6,6 +6,10 @@
 權威 spec：`ai-doc/specs/DEV-037-external-role-catalog-assignment-governance.md`
 執行邊界：OrgMaster local Current Phase；不修改 AI-PDM、不 deploy、不 release
 
+## 2026-08-30 Evidence Compatibility Note
+
+本計畫與 `output/playwright/dev037/` 保持不可回寫的歷史證據，只能證明 local-only V2、bundled catalog、publish-as-approval 與「尚未同步」行為。使用者後續確認的 `4A / 5A / 6B`——live access view、AI-PDM 既有使用者 migration、外部角色直接生效——必須由 DEV-040 建立新的 QA／QC 計畫與 fresh evidence；不得重用本計畫的 pass 結論。
+
 ## 1. Verification Objective
 
 證明 DEV-037 從正常 Toolbar 入口到 V2 store 的同一 delivery path確實做到：

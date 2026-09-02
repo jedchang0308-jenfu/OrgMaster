@@ -38,7 +38,6 @@ export interface WorkspaceModuleContextMap {
 }
 
 export type WorkspaceModuleId = keyof WorkspaceModuleContextMap
-export type DrawerWorkspaceModuleId = Exclude<WorkspaceModuleId, 'organization' | 'role-risks' | 'governance'>
 
 export type EntityRef =
   | { kind: 'employee'; id: string }
@@ -54,7 +53,7 @@ export type EntityRef =
 export interface ModuleSurfaceDescriptor<K extends WorkspaceModuleId> {
   id: K
   label: string
-  surface: 'direct-panel' | 'drawer-panel'
+  supportsCollapsibleDetail: boolean
   minWidth: number
   minHeight: number
   supportedSelectionKinds: EntityRef['kind'][]
@@ -105,6 +104,7 @@ export interface WorkspaceRouteState {
   openPanels: WorkspaceModuleId[]
   focusedPanel: WorkspaceModuleId | null
   selection: EntityRef | null
+  openDetails: WorkspaceModuleId[]
   contexts: WorkspaceRouteContexts
 }
 
@@ -130,10 +130,10 @@ export type WorkspacePanelSessionMap = Partial<{
 }>
 
 export interface WorkspaceSessionState {
-  drawer: DrawerWorkspaceModuleId | null
   focusedPanel: WorkspaceModuleId | null
   sharedSelection: SharedSelection
   panels: WorkspacePanelSessionMap
+  openDetails: WorkspaceModuleId[]
   closePendingModuleId: WorkspaceModuleId | null
 }
 
@@ -143,13 +143,13 @@ export interface WorkspaceState {
   session: WorkspaceSessionState
 }
 
-export type PromotionSource = 'launcher' | 'drawer' | 'legacy-route' | 'global-search' | 'cross-panel'
+export type WorkspaceOpenSource = 'launcher' | 'legacy-route' | 'global-search' | 'cross-panel'
 
-export type PromotionIntent = {
+export type WorkspaceOpenIntent = {
   [K in WorkspaceModuleId]: {
     moduleId: K
-    context: WorkspaceModuleContextMap[K]
-    source: PromotionSource
+    context?: WorkspaceModuleContextMap[K]
+    source: WorkspaceOpenSource
   }
 }[WorkspaceModuleId]
 

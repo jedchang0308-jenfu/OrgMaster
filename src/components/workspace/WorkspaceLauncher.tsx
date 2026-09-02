@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, LayoutGrid } from 'lucide-react'
-import { isDrawerWorkspaceModuleId, WORKSPACE_MODULE_ORDER, getWorkspaceModule } from '../../workspace/moduleRegistry'
-import type { DrawerWorkspaceModuleId, WorkspaceModuleId } from '../../workspace/types'
+import { WORKSPACE_MODULE_ORDER, getWorkspaceModule } from '../../workspace/moduleRegistry'
+import type { WorkspaceModuleId } from '../../workspace/types'
 
 interface Props {
   openPanels: readonly WorkspaceModuleId[]
-  onOpenDrawer: (moduleId: DrawerWorkspaceModuleId) => void
-  onOpenPanel: (moduleId: WorkspaceModuleId) => void
+  onOpenModule: (moduleId: WorkspaceModuleId) => void
   disabled?: boolean
 }
 
-export function WorkspaceLauncher({ openPanels, onOpenDrawer, onOpenPanel, disabled = false }: Props) {
+export function WorkspaceLauncher({ openPanels, onOpenModule, disabled = false }: Props) {
   const [open, setOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -67,8 +66,7 @@ export function WorkspaceLauncher({ openPanels, onOpenDrawer, onOpenPanel, disab
                 role="menuitem"
                 onClick={() => {
                   setOpen(false)
-                  if (isDrawerWorkspaceModuleId(moduleId)) onOpenDrawer(moduleId)
-                  else onOpenPanel(moduleId)
+                  onOpenModule(moduleId)
                 }}
               >
                 <span>{descriptor.label}</span>

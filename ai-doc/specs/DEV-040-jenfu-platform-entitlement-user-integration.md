@@ -1,14 +1,14 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
-文件成熟度：`RD Contract Ready；040-ID1A／040-ID1B = Local Implementation Complete / Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice = 005-S0 Local PASS / 005-S1 Foundation PASS / 005-S2～S5 Not Implemented；DEV-040 principal admission projection = Candidate Verified；DEV-004 = 004-S0～S5 Local PASS；DEV-006 persistence = Production-Bound App Boundary PASS / Production Switch Blocked`
-狀態：Human Decision Gate Complete through account taxonomy `1B / 2A / 3D`；`040-ID1A／040-ID1B`已完成local／isolated implementation與targeted QA／QC，含UUIDv7 clean rekey runner、V8 baseline、redacted projection與IAR v2 fixture gate；JMS-PLATFORM-005 OrgMaster slice與DEV-006 S4A consumer仍未實作；production human link、shared-login retirement、active policy、persistent product switch、entitlement cutover與release仍阻塞
+文件成熟度：`RD Contract Ready；040-ID1A／040-ID1B = Local Implementation Complete / Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice = 005-S0／S1／UI0／S2／S3 Local-Isolated PASS / 005-S4A～S5 Not Implemented；JMS-PLATFORM-008 OrgMaster slice = Local S0～S3＋C1 Implemented / Targeted QA-QC PASS / Production Release Gated；JMS-PLATFORM-009 OrgMaster slice = RD Implementation Ready / Documents Only / Implementation Not Started；DEV-040 principal admission projection = Candidate Verified；DEV-004 = 004-S0～S5 Local PASS；DEV-006 persistence = Production-Bound App Boundary PASS / Production Switch Blocked`
+狀態：Human Decision Gate Complete through account taxonomy `1B / 2A / 3D`；`040-ID1A／040-ID1B`已完成local／isolated implementation與targeted QA／QC，含UUIDv7 clean rekey runner、V8 baseline、redacted projection與IAR v2 fixture gate；DEV-006 S4A consumer亦已完成local／isolated gate；JMS-PLATFORM-005 OrgMaster slice已完成S3 migration／projection／authority／outbox local-isolated gate；JMS-PLATFORM-008已完成Local S0～S3＋C1 targeted QA-QC；JMS-PLATFORM-009已完成RD可實作文檔、尚未進入code／schema實作。production human link、shared-login retirement、active policy、persistent product switch、entitlement cutover與release仍阻塞
 節點類型：開發點
 優先級：P0
 風險等級：High
 日期：2026-08-30
 來源 ID：`USER-2026-08-30-JENFU-PLATFORM-HCS-4A-5A-6B`、`USER-2026-08-30-JENFU-PLATFORM-HCS-ROLE-RESET-CUTOVER-ADMIN-SCOPE`、`USER-2026-08-30-JENFU-PLATFORM-HCS-PRESTAGE-PILOT-LEGACY-OBSERVATION`、`USER-2026-08-30-JENFU-PLATFORM-HCS-SUPERADMIN-ZERO-TOLERANCE-OBSERVATION-WINDOW`、`USER-2026-09-01-JENFU-ACCOUNT-TAXONOMY-1B-2A-3D`、`USER-2026-09-01-DEV040-ONE-TIME-DIRECT-UUIDV7-REKEY-EXCEPTION`
 父開發點：DEV-037
-跨 repository 交付：`C:\VIBE CODING\Jenfu-Management-system\ai-doc\dev_task.md` 的 DEV-001／DEV-004～006
+跨 repository 交付：`C:\VIBE CODING\Jenfu-Management-system\ai-doc\dev_task.md` 的 DEV-001／DEV-004～009
 架構決策：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md` 2026-08-30 amendment
 
 ## 1. Outcome
@@ -20,7 +20,7 @@
 - AI-PDM既有帳號保留Firebase UID、`pdm_user_id`與生命週期；human identity對帳至active OrgMaster employee，legacy shared account非破壞退場，不重建或刪除帳號。
 - 具授權的角色管理者發布後，所有外部 app role 直接生效；不依 high-risk metadata 增加第二人核准，但每次異動必須可稽核、可撤銷、可對帳。
 
-本文件固定 OrgMaster 在Phase 1的直接RD Contract；跨系統主契約與QA／QC由 Jenfu Management System DEV-001持有。第20節是`040-ID1A／040-ID1B`、第21節是`JMS-PLATFORM-005` OrgMaster slice的exact implementation contract；其餘phase仍不是DDL、migration runbook、AI-PDM implementation contract或release authorization。
+本文件固定 OrgMaster 在Phase 1的直接RD Contract；跨系統主契約與QA／QC由 Jenfu Management System DEV-001持有。第20節是`040-ID1A／040-ID1B`、第21節是`JMS-PLATFORM-005`、第22節是`JMS-PLATFORM-008`、第23節是`JMS-PLATFORM-009` OrgMaster slice的exact implementation contract；其餘phase仍不是DDL、migration runbook、AI-PDM implementation contract或release authorization。
 
 ## 2. Human Decision Brief
 
@@ -40,6 +40,7 @@
 - `2A / Human Confirmed`：移除泛用／共用管理員帳號；一般管理角色直接指派employee。`info@`／`sales@`等共用信箱退出平台登入、principal mapping與role assignment，mail用途可保留。
 - `3D / Human Confirmed`：一般app-scoped管理與組織資料維護使用日常個人identity＋step-up；基礎設施、production switch、OrgMaster super-admin／cross-app override與授予管理能力使用同一employee下person-specific privileged identity。
 - `Position-to-Role / Human Confirmed`：採`User → Position → Application Role → Permission`，不採`Position = Role`；Position只產生角色建議，經app-scoped role administrator發布後才形成有效assignment。`#效用理論`
+- `App-local Role UI / Human Confirmed`：一般角色指派治理放在各app；AI-PDM採`Role → adopted Position → Employee`與集中職位設定。AI-PDM BFF呼叫OrgMaster governance API，OrgMaster仍是canonical assignment／version／audit authority。
 - `Intentional Replacement`：取代 ADR-007 原本只列 API／manifest／event adapter，以及 high-risk 外部角色另行申請／核准的 future target。
 - `Intentional Replacement`：取代「四筆AI-PDM帳號都必須映射employee」與「`info@`可承接管理角色」的舊假設；歷史`ready=0 / missing_employee=4` evidence保留，不回寫。
 - `Intentional Replacement / One-time Exception`：`040-ID1`只對目前 OrgMaster 資料集中的非UUIDv7 Employee ID執行一次性直接rekey，既有有效UUIDv7原值保留；同步重寫所有受影響reference，並以一份新V8 baseline取代舊版本。舊 Employee ID、舊 organization version與舊變更追溯不是本次保留條件；不建立產品級 legacy mapping。此豁免不改變 AI-PDM `info@`非破壞退場及 role authority cutover 決策。
@@ -427,7 +428,7 @@ Exact dependency、file allowlist、env、API／cookie／error、S0～S5、comma
 - `Human Confirmed / 2026-09-01`：目前資料採一次性直接遷移；既有歷史版本、舊ID追溯與legacy mapping不列為產品保留條件。這項決策取代本文件較早的additive bridge假設。
 - `RD Tech Lead Review / 2026-09-01`：已關閉migration boundary（跨store假原子性、V3／跨app session漏列）、UUIDv7 plan不可重現、有效ID無效輪替、admission重複Employee權威與多餘fingerprint五項設計缺口；優化後維持`RD Implementation Ready`。
 - `RD Tech Lead Ownership Review / 2026-09-01`：原`040-ID1`同時承擔一次性Employee rekey與持續性identity admission，並把IAR classifier誤交給DEV-006。現拆為`040-ID1A`（Employee rekey）與`040-ID1B`（taxonomy／projection／IAR），DEV-006只消費receipt；產品決策與production gate不變。
-- 文件判定：`040-ID1A／040-ID1B Local Implementation Complete / Targeted QA-QC PASS`；兩個slice的P0／P1 readiness gap皆為`0`。JMS-PLATFORM-005 OrgMaster slice已完成`005-S0 Local PASS / 005-S1 Foundation PASS`；live persistence、API／UI、authority switch仍為`Not Implemented`。
+- 文件判定：`040-ID1A／040-ID1B Local Implementation Complete / Targeted QA-QC PASS`；兩個slice的P0／P1 readiness gap皆為`0`。JMS-PLATFORM-005 OrgMaster slice已完成`005-S0／S1／UI0／S2／S3 Local-Isolated PASS`；exact catalog adapter、role capability API／UI、migration 005、effective／authority views與durable invalidation已完成，production persistence apply與正式authority switch仍為`Not Implemented`。
 - `040-ID1A`可實作：current canonical資料的非UUIDv7 Employee rekey planner／local isolated apply、既有有效UUIDv7保留、所有current employee reference驗證與受影響reference同步改寫、單一乾淨V8 baseline。
 - `040-ID1B`可實作：governance account taxonomy、redacted PostgreSQL projection、owner-approved baseline、跨repo read-only IAR v2 classifier／receipt與targeted QA／QC。
 - 兩個slice的fixture／isolated apply與read-only classifier已完成；仍不可執行真實local／production資料apply、3筆human live link、停用shared login、production active-policy publish、remote Cloud SQL migration、repository／authority／traffic switch、deploy或release。
@@ -471,7 +472,6 @@ Current canonical input只取：
 | governance V3 `roleAssignments[].metadata.sponsorEmployeeId` | null保留；非null依mapping改寫 |
 | governance draft `roleDelegations[].fromEmployeeId／toEmployeeId` | 依mapping改寫 |
 | governance V3 `managementGrants[].employeeId` | 依mapping改寫；`principalId`不變，且仍須與該Employee的exact personal identity一致 |
-| governance V3 `recommendationDecisions[].recommendationId` | 以frozen source重算old／new recommendation tuple並一對一換hash；無法唯一對應即FAIL，不清空current decision |
 | retained active policy | 若原本有active V2／V3，以目前最高supported governance version重建唯一一筆migration baseline version並重算organization snapshot／snapshotHash；不得將V3降級為V2；若原本無active policy則維持null |
 | governance historical versions／audit／migration provenance | 不帶入新baseline；重新建立一筆`ONE_TIME_EMPLOYEE_UUIDV7_REKEY` system migration audit |
 | governance organization snapshot `employees[].id`／`assignments[].employeeId` | 由新V8 workspace重新產生，不直接搬舊snapshot |
@@ -795,7 +795,7 @@ qc:dev-040:id1b = node scripts/qc-dev-040-id1b.mjs
 - UUIDv7 version／variant／same-millisecond monotonicity與new Employee不再產生v4；
 - V7 current fixture把非UUIDv7值一次rekey成全UUIDv7 V8，既有有效UUIDv7保持不變；exact plan第二次apply為idempotent no-op，遺失plan不得重建同一組new ID；
 - workspace assignment／admin override、governance identity／assignment／delegation／snapshot／unresolved、management-method owner完整rewrite；
-- V3存在時，assignment sponsor、management grant與recommendation decision hash完整rewrite；employee authority override／switch receipt／outbox非空時BLOCKED；
+- V3存在時，assignment sponsor與management grant完整rewrite；target schema不得出現per-employee recommendation decision或legacy basis；employee authority override／switch receipt／outbox非空時BLOCKED；
 - dangling／duplicate／cross-person old ID、source drift與partial write fail closed；
 - active policy有／無兩種clean baseline；舊history／audit不進new baseline；
 - ID1A不得以taxonomy fixture代替rekey／reference closure證據。
@@ -840,19 +840,19 @@ ADR判定：ADR-007已記錄`040-ID1 One-time Rekey Amendment`。本次ID1A／ID
 - `GovernanceDocumentV2` non-destructive升為`GovernanceDocumentV3`，published kind新增`assignment-governance-v3`。V1／V2歷史、audit與source bytes保留，但migration後不得重新activate legacy version。
 - V3 local current artifact／Cloud SQL artifact key固定為`orgmaster-governance.v3.json`；V2只作migration source／rollback evidence，V2與V3不得同時宣稱current。
 - 現有AI-PDM bundled catalog只保留為historical fixture／validator，runtime改讀`ai_pdm_contract.v_application_role_catalog_v1`；OrgMaster不得讀AI-PDM `roles`／`role_permissions`私表。
-- Position只產生recommendation。接受recommendation只建立V3 draft；`POST /applications/ai-pdm/versions`發布後，仍須該employee authority切到OrgMaster才可能effective。
+- Position recommendation只提供唯讀`（建議）`與首次adoption draft預填。AI-PDM另發布app-scoped adopted Position，再逐人發布Position source；`POST /applications/ai-pdm/versions`後仍須該employee authority切到OrgMaster才可能effective。
 - Published assignment固定`status=active|revoked`，batch activation由authority state計算，不修改immutable published JSON。
 
 ### 21.2 Exact V3 model
 
-`GovernancePolicyDataV3`新增`positionRolePolicies`、`recommendationDecisions`、`managementGrants`；`GovernanceRoleAssignmentV3`新增`basis`、`subjectKind=employee|principal`、`targetPrincipalId`、`sources[]`、external metadata與created audit snapshot。若`040-ID1B`已實作，V3同時保留第20.4節`principalAdmissions`契約，不得因V2→V3丟失taxonomy／fingerprint／identity-link reference。完整欄位、recommendation SHA-256 tuple、multiple-source規則與Current phase scope見Platform direct spec第17節。
+`GovernancePolicyDataV3`新增`positionRolePolicies`、`applicationPositionAdoptions`與`managementGrants`；`GovernanceRoleAssignmentV3`新增`basis=manual|position_adoption`、`subjectKind=employee|principal`、`targetPrincipalId`、`sources[]`、external metadata與created audit snapshot。`PositionRolePolicyV1`是recommendation；`ApplicationPositionAdoptionV1`是AI-PDM app-scoped採用，兩者不得共用status／version／audit。Target V3沒有per-employee recommendation ID／accept／dismiss decision或legacy basis；未上線local foundation在`005-S2`前刪除／重構，fixture直接重建，不建立production migration相容層。若`040-ID1B`已實作，V3同時保留第20.4節`principalAdmissions`契約。完整欄位見Platform direct spec第17節與[角色能力UI契約](../../../Jenfu-Management-system/ai-doc/specs/DEV-005-ai-pdm-role-capability-ui.md)。
 
-OrgMaster只接受AI-PDM active catalog，並使用每個entry的`role_definition_hash`建立recommendation ID／permission preview：internal roles為`workspace=company-jenfu`；external specialist固定manual direct、exact project且必填另一位active internal sponsor／review date／finite hard expiry，其active Employee identity anchor必須`departmentIds=[]`、`primaryAssignmentId=null`且無active Position assignment，不進內部組織樹或recommendation；system admin為`principal` subject、exact active `human_privileged` target及global scope，固定manual direct且禁止recommendation／delegation／self-assignment。一般內部role為`employee` subject且只投影active `human_personal` principal。`department` scope在Current phase拒絕；不得用Position／department名稱取代resource scope。assignment catalog version只作核准時provenance；active catalog仍有相同stable ID／code且subject／scope相容時，version不同本身不阻擋effective。missing／retired／code drift／subject-scope不相容deny，catalog unavailable回503，payload／lock／hash mismatch回409。
+OrgMaster只接受AI-PDM active catalog，並使用每個entry的`role_definition_hash`驗證recommendation policy與permission preview：internal roles為`workspace=company-jenfu`；external specialist固定manual direct、exact project且必填另一位active internal sponsor／review date／finite hard expiry，其active Employee identity anchor必須`departmentIds=[]`、`primaryAssignmentId=null`且無active Position assignment，不進內部組織樹或recommendation；system admin為`principal` subject、exact active `human_privileged` target及global scope，固定manual direct且禁止recommendation／delegation／self-assignment。一般內部role為`employee` subject且只投影active `human_personal` principal。`department` scope在Current phase拒絕；不得用Position／department名稱取代resource scope。assignment catalog version只作核准時provenance；active catalog仍有相同stable ID／code且subject／scope相容時，version不同本身不阻擋effective。missing／retired／code drift／subject-scope不相容deny，catalog unavailable回503，payload／lock／hash mismatch回409。
 
 V2→V3 migration：
 
 1. 完整複製identity links、`principalAdmissions`（若存在）、OrgMaster internal policy、audit與published history；human admission的`identityLinkId`必須唯一解析到active link與UUIDv7 Employee，不接受admission內重複employee欄位或legacy resolver。
-2. V2 AI-PDM assignment轉`basis=manual`、`sources=[]`、published active但computed pending activation；不形成effective row。
+2. V2 AI-PDM一般employee-subject assignment轉`basis=manual`、`subjectKind=employee`、`targetPrincipalId=null`、`sources=[]`、published active但computed pending activation；不形成effective row。V2 `system_admin`是DEV-009明定例外：進`SYSTEM_ADMIN_PRINCIPAL_REQUIRED`、零effective，不猜測exact principal或grandfather。
 3. unresolved assignment／delegation仍阻擋publish；不從AI-PDM legacy assignment反向匯入。
 4. management grant預設空；首次app publish前由reviewed bootstrap建立person-specific principal grant，不能從OrgMaster admin或職稱推導。
 
@@ -876,6 +876,7 @@ server/orgmasterGovernanceStore.ts
 server/orgmasterGovernanceApi.ts
 server/orgmasterWorkspaceStore.ts                          (atomic entitlement mutation＋outbox)
 server/orgmasterEntitlementInvalidationDispatcher.ts       (new; post-commit idempotent dispatch)
+server/orgmasterApplicationChangeOutbox.ts                 (new; app projection envelope／change feed)
 server/orgmasterGovernanceStore.test.ts
 server/orgmasterGovernanceApi.test.ts
 src/components/GovernanceCenter.tsx
@@ -886,13 +887,14 @@ scripts/qc-dev-005-governance-browser.mjs                   (new)
 package.json                                               (scripts only)
 ```
 
-API新增`GET /catalogs/ai-pdm`、`GET /position-role-recommendations`、四種Position recommendation commands與`POST /applications/ai-pdm/versions`。既有`/versions`只處理OrgMaster internal governance；app-scoped publisher不可發布其他app diff或management grant。所有mutation要求verified actor、expected revision、stable command ID、nonblank reason、server recompute與before／after；decision code與HTTP mapping以Platform direct spec第18節為準。
+API新增`GET /catalogs/ai-pdm`、`GET /applications/ai-pdm/role-capabilities/{stableRoleId}`、`GET /applications/ai-pdm/change-feed`、`SET_APPLICATION_POSITION_ADOPTIONS`、`SET_POSITION_ROLE_ASSIGNMENT_SOURCES`與`POST /applications/ai-pdm/versions`。normal AI-PDM read不得以recommendation endpoint或private schema自行拼裝；recommendation policy mutation只供OrgMaster內部治理，target沒有legacy recommendation decision command。既有`/versions`只處理OrgMaster internal governance；app-scoped publisher不可發布其他app diff或management grant。所有mutation要求verified actor、expected revision、organization revision、stable command ID、preview hash、server recompute與before／after；reason為選填，缺值正規化為空字串，非空時trim後最多240字元並寫入audit。Decision code與HTTP mapping以Platform direct spec第18節為準。
 
 ### 21.4 Capability and self-elevation gate
 
 management grant綁`principalId + employeeId + applicationId + capability`，不是只綁employee：
 
-- daily personal principal可持有AI-PDM policy manage、assignment manage、assignment publish；publish要求近期step-up。
+- daily personal principal可持有`ai-pdm.position_adoption.manage`、assignment manage、assignment publish；publish要求近期step-up。
+- `orgmaster.position_role_recommendation.manage`只給OrgMaster內部治理角色，不提供給一般AI-PDM role administrator。
 - person-specific privileged principal才可持有cross-app override、management grant授予與authority switch。
 - app manager不可修改grant、不可把自己升成PDM／system admin、不可碰其他app；server判斷，不靠UI隱藏。
 - bootstrap是一個reviewed one-time command；fixture可測，真實principal apply屬release/data-owner gate。
@@ -922,12 +924,15 @@ OrgMaster在publish／revoke role、Position source結束、Position inactive／
 
 Dispatcher以`FOR UPDATE SKIP LOCKED`＋短lease claim due rows；crash後可reclaim。重試節奏固定1／5／15／60分鐘後每60分鐘持續，不因attempt上限丟棄；第5次失敗與pending超過24小時送deduplicated alert。Platform成功但response lost必須以原operation ID replay並得到同receipt；完成後保存receipt與completed time。雙worker、lease recovery與outage recovery均列入PostgreSQL QC。
 
+OrgMaster另以durable outbox只發布`orgmaster.application_projection.changed.v1`，欄位為event ID、`applicationId=ai-pdm`、opaque server-ordered cursor、time、organization version／revision、position IDs與`changeKinds[]`，不帶姓名、email、subject或完整assignment。AI-PDM server以`GET /applications/ai-pdm/change-feed?after={cursor}&limit={1..100}` at-least-once拉取；重送以event ID冪等，cursor gap／expired或revision不連續時須列舉AI-PDM active catalog所有stable Role，取得同一current organization revision的完整projection後才從server current cursor續讀。event只invalidate並pull `GET /applications/ai-pdm/role-capabilities/{stableRoleId}`，延遲不能讓已失效source繼續effective。
+
 ### 21.7 UI contract
 
-- Governance Center增加Position role policy／recommendation／review list；區分「建議」「草稿」「已發布／待切換」「有效」「已撤銷」。
-- 預覽顯示employee、subject kind、target principal的redacted label、source Position、stable role、active permission摘要、scope、validity、risk、assignment catalog provenance、before／after與reason；不顯示raw identity subject。
-- 相同role＋scope可合併sources；scope conflict明確阻擋，不自動union。
-- 390×844只讀；desktop mutation仍需server capability與step-up。成功文案只在authorization commit receipt存在時顯示；authority尚未切換則明確標示「已發布，尚未生效」，refresh pending則標示「權限已生效，登入狀態更新中」。
+- AI-PDM一般角色管理者在AI-PDM`/settings/workflow`的「角色能力」操作；OrgMaster Governance Center不再提供AI-PDM normal assignment editor，只保留組織資料、recommendation governance、audit與super-admin cross-app override。
+- AI-PDM正常層級為Role → adopted Position → Employee；所有Position增刪集中在單一「職位設定」。`（建議）`與adopted checkbox分離，建議只在uninitialized draft預勾。
+- AI-PDM browser只呼叫AI-PDM BFF；OrgMaster server仍重算Position／Employee、source、before／after與preview hash，拒絕client actor／impact count。
+- Position adoption與Employee assignment分別publish。相同role＋scope可合併sources；移除Position只撤銷失去最後active source者，scope conflict明確阻擋，不自動union。
+- 390×844只讀；desktop mutation仍需server capability與step-up。成功文案只在authorization commit receipt存在時顯示；authority尚未切換標示「已發布，尚未生效」，refresh pending標示「權限已生效，登入狀態更新中」。
 
 ### 21.8 Required commands and gates
 
@@ -941,7 +946,7 @@ npm run qc:dev-005:browser
 npm run build
 ```
 
-固定驗證至少涵蓋：V2→V3 byte-preserving history、active catalog hash／unavailable／retired／version provenance、recommendation ready／stale／conflict／dismissed、manual／position／delegated、multi-source、position rename／end、system-admin exact privileged principal與recommendation／delegation負例、external零組織任職anchor／manual-direct／finite hard expiry與sponsor負例、management grant isolation、self-elevation、CAS／idempotency、mutation＋outbox原子性、Platform outage pending／replay、authority legacy／orgmaster／rollback、fresh／replay migration、view negative rows、runtime ACL及三viewport。
+固定驗證至少涵蓋：V2→V3 byte-preserving history、target V3不存在recommendation decision／legacy basis、active catalog hash／unavailable／retired／version provenance、recommended／adopted／assigned三態、首次預填、建議漂移不覆寫、nonrecommended adoption、新Employee預設未勾選、manual／position／delegated、multi-source與最後source撤銷、position rename／end、system-admin與external負例、management grant isolation、self-elevation、CAS／idempotency、mutation＋outbox原子性、app-scoped projection redaction、change-feed重送／cursor gap／expired recovery、Platform outage pending／replay、authority rollback、fresh／replay migration、runtime ACL及三viewport。
 
 ### 21.9 Recovery and stop conditions
 
@@ -951,6 +956,230 @@ npm run build
 - 不得以重新啟用不實Position恢復權限；必要存取另建有期限manual assignment。
 - production migration、真實grant、catalog publish、authority switch、traffic、legacy removal與release仍需獨立gate。
 
-本節 ID1A／ID1B 已完成程式、migration、contract package、fixture與targeted QA／QC；僅證明local／isolated capability，不增加production交付完成率。JMS-PLATFORM-005與DEV-006 S4A仍未完成。
+本節 ID1A／ID1B 已完成程式、migration、contract package、fixture與targeted QA／QC；Platform DEV-006 S4A consumer亦已完成並以8-fixture gate驗證。上述僅證明local／isolated capability，不增加production交付完成率。JMS-PLATFORM-005仍未完成，production release仍受獨立gate阻塞。
 
 使用思考習慣：#效用理論、#系統描繪、#當責
+
+## 22. JMS-PLATFORM-008 Governance Availability — OrgMaster RD Implementation Contract
+
+分類：`Human Confirmed / Compatible Reliability Amendment / RD Tech Lead Re-review PASS / RD Implementation Ready / Local S0～S3＋C1 Implemented / Targeted QA-QC PASS / Production Release Gated`
+
+跨repo authority為[Platform DEV-008](../../../Jenfu-Management-system/ai-doc/dev_task.md)。本節只固定OrgMaster bulk read、command receipt與isolated test runtime邊界；不改canonical assignment、recommended／adopted／assigned、effective entitlement或DEV-005 transaction語意。
+
+### 22.1 Bulk projection and authority time
+
+新增：
+
+```text
+GET /api/orgmaster/governance/applications/ai-pdm/role-capabilities
+contractVersion = ai-pdm.role-capability-workspace.v2
+applicationId = ai-pdm
+catalogVersion
+catalogPayloadHash
+governanceRevision
+organizationVersionId
+organizationRevision
+changeCursor
+sourceDataAt
+roles[9]
+```
+
+`server/aiPdmRoleCapabilityStore.ts`在單一store lock／synchronized read中，以同一governance document與organization workspace建立九個projection；不得由API連續呼叫九次per-role read後拼裝。九角色stable ID／metadata必須與AI-PDM active catalog request一致且revision／cursor完全相同，`catalogVersion + catalogPayloadHash`必須來自同一Platform published／bundled artifact並與request expected值相符，否則整包fail、零partial response。`sourceDataAt=workspaceVersion.savedAt`且必須為RFC3339 authority timestamp，不以request時間或revision hash代替。原per-role GET保留相容但不再是normal whole-page delivery path。
+
+`readOrganizationSource()` product path必須移除workspace read錯誤後的legacy fallback與`test-current`／`test-revision`合成資料。legacy／test fixture只可透過明確注入的test adapter；manifest、version、source bytes缺失、損壞、read throw或不相容時，統一回dependency／contract error，`current state`、cursor、events與consumer最後成功snapshot bytes不得被寫入或推進。
+
+### 22.2 Command receipt and post-dispatch uncertainty
+
+新增查詢與終態收斂endpoint：
+
+```text
+GET /api/orgmaster/governance/applications/ai-pdm/commands/{commandId}
+POST /api/orgmaster/governance/applications/ai-pdm/commands/{commandId}/resolve-unknown
+     { requestHash, action = cancel_if_absent_or_expired }
+
+receipt = {
+  commandId, requestHash?,
+  receiptStatus = processing | applied | rejected | not_found,
+  acceptedAt?, leaseUntil?, terminalAt?, decisionCode,
+  auditReference?, changeCursor?, governanceRevision?,
+  replayed, attempt
+}
+```
+
+- Durable ledger只保存`processing | applied | rejected`；absence由GET project成`not_found`。Existing stable `commandId` idempotency延伸為可查receipt；terminal exact replay回同decision／audit／cursor／revision且`replayed=true`，不得重複mutation或audit。同command不同`requestHash`固定409。
+- `requestHash`是`jenfu.canonical-json.v1`序列化的immutable publish command body之SHA-256 lowercase hex；只含stable Role、operation／payload、normalized reason、preview hash、expected catalog version／payload hash及expected governance／organization revisions，不含token、actor display data、correlation ID或transport metadata。
+- processing具`acceptedAt`、`leaseUntil=acceptedAt+30s`、`terminalAt=null`；processing轉terminal時保留前兩者並填server UTC RFC3339 `terminalAt`。absent resolve tombstone固定`requestHash=resolve request hash / acceptedAt=null / leaseUntil=null / terminalAt=resolve time / attempt=0`；GET not_found為null hash／timestamps、attempt=0且不寫ledger。首次接受publish為attempt=1，duplicate／GET／resolve不增加；只有publish handler回既存terminal時`replayed=true`。
+- Lifecycle decision固定為`COMMAND_PROCESSING`、`COMMAND_APPLIED`、`COMMAND_NOOP`、`COMMAND_NOT_FOUND`、`COMMAND_NOT_OBSERVED`、`COMMAND_PROCESSING_LEASE_EXPIRED`；validation rejection保留deterministic domain decision。`COMMAND_STILL_PROCESSING`與`COMMAND_REQUEST_HASH_MISMATCH`只作409 response且不改ledger。
+- publish handler接受command時第一個durable write為`absent → processing`，processing lease固定30秒並以fake clock測試；正常流程只可`processing → applied|rejected`，terminal receipt immutable。no-op亦保存為`applied / COMMAND_NOOP`，`auditReference=null`且cursor／revision不變。
+- governance mutation與`applied` receipt須在同一atomic state commit；processing先於該commit持久化且使用同一command scope。process在兩者之間crash時mutation尚未commit；late commit必須在同一store lock重查ledger仍是該attempt的active processing，否則拒絕。
+- `resolve-unknown`在相同store lock內處理：absent→建立immutable `rejected / COMMAND_NOT_OBSERVED` tombstone並阻擋遲到原request；active processing lease→`409 COMMAND_STILL_PROCESSING`且不改狀態；expired processing→`rejected / COMMAND_PROCESSING_LEASE_EXPIRED`且阻擋late commit；已terminal→回原receipt。resolve只改command ledger，不改governance／assignment。
+- response lost時AI-PDM只查原command並由人工觸發resolve；不得因client timeout自動取消已commit mutation，也不得讓另一command越過unknown command或自動replay。terminal後AI-PDM仍須reload current並重新preview才可建立新command。
+- receipt只回opaque command ID／request hash、狀態時間／lease／attempt、decision、audit reference、cursor與revision，不回actor subject、email、token、before／after個資或raw payload；request／response echo同一`x-correlation-id`，operational log只記redacted decision。
+
+### 22.3 Exact file／command boundary
+
+```text
+package.json                                                   (scripts only)
+src/governance/aiPdmRoleCapability.ts
+src/governance/aiPdmRoleCapability.test.ts
+server/aiPdmRoleCapabilityStore.ts
+server/aiPdmRoleCapabilityStore.test.ts                        (new)
+server/orgmasterGovernanceApi.ts
+server/orgmasterGovernanceApi.test.ts
+contracts/jenfu-platform-governance-availability/v1/**          (new vendor snapshot＋contract-lock.json)
+ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md
+```
+
+已執行命令（Local targeted evidence）：
+
+```text
+npm run test:dev-008
+npx tsc --noEmit
+npm run build
+```
+
+`npm run test:dev-008` 已通過 3 個測試檔、15 個測試；`npx tsc --noEmit`、`npm run build`、AI-PDM `typecheck:app`／`build:isolated`、兩 repo targeted QC 與 Platform cross-repo contract QC 均已通過。這些是 local／isolated evidence；response-loss drill、Cloud SQL 同交易 durability、Tier-0 outage、SLO／RTO／RPO／rollback 仍屬 `008-R1`，未宣稱 production PASS。
+
+`contracts/.../**`只含Platform DEV-008第6節逐檔列出的3 schemas／error codes／manifest／9 fixtures／lock；除lock外須與canonical package逐檔byte-identical。`test:dev-008`固定涵蓋：九角色同revision／cursor、catalog version／payload hash、authority time、角色缺漏、store lock一致性、workspace manifest／version missing／corrupt／read throw時零legacy／test fallback、bulk redaction、correlation echo、command applied／exact replay／hash mismatch／rejected／processing／not_found、30秒lease、absent／active／expired resolve、late request／commit拒絕、no-op terminal、response-loss recovery及API status mapping。不得修改DEV-005 effective entitlement view、private DB grants、production adapter或role catalog來取得PASS。
+
+DEV-008 core不新增`dev:local:no-browser`或Platform三repo launcher。OrgMaster test runner可在configurable non-primary port啟動task-owned isolated runtime，固定task-owned `ORGMASTER_GOVERNANCE_DATA_DIR`，記錄PID／tree／port／purpose／cleanup並於結束時只清理該tree；不得管理或重啟primary 5000／AI-PDM 3000／Platform 3100。
+
+### 22.4 Recovery／acceptance／stop
+
+- OrgMaster process不可用時沒有新mutation可由本repo執行；AI-PDM已知離線preflight應零dispatch。若request已送達後才失聯，OrgMaster可能已commit，故只能以receipt收斂，禁止宣稱零寫入。
+- Bulk read、receipt或publish不得讀寫AI-PDM display snapshot；snapshot由AI-PDM擁有且永不參與OrgMaster authorization。
+- 同command response lost、process restart後仍須從durable ledger取得相同terminal receipt；local JSON state不得只把receipt留在memory。Cloud SQL target日後必須讓mutation與terminal receipt同一transaction，但屬DEV-006／release integration，不在本地JSON slice切authority。
+- 無法保證source fail-closed、九角色同revision、catalog version／hash、command idempotency／receipt持久化、固定lease後terminal recovery、late commit deny、payload hash mismatch deny、redaction或unknown-outcome freeze時立即BLOCKED。需要production migration、Cloud SQL switch、traffic、deploy或release時轉release gate。
+
+本節已關閉RD技術主管指出的source fail-open、永久unknown receipt、contract drift與launcher過度設計，並完成 mandatory catalog／governance／organization precondition、authority timestamp、timeout／correlation、snapshot metadata 與 durable receipt／resolve 邊界；`RD Tech Lead Re-review=PASS / P0=0 / P1=0`。OrgMaster local `S0～S3＋C1` code、15 項 targeted tests 與 build 已完成；production state、cross-DB durability、Tier-0 outage evidence、runtime ownership與release仍受`008-R1` gate限制。
+
+使用思考習慣：#批判思考、#多層次分析、#系統描繪、#當責
+
+## 23. JMS-PLATFORM-009 System Administrator Privileged Governance — OrgMaster RD Implementation Contract
+
+分類：`Human Confirmed / Compatible Security Refinement / RD Implementation Ready / Documents Only / Production Release Gated`
+
+RD技術主管複審：`PASS after correction / P0=0 / P1=0`。本節以shared full-policy classifier取代分散五欄判斷，並以既有verified OrgMaster session＋provider `auth_time`取代未落地的獨立step-up receipt。
+
+跨repo authority為[Platform DEV-009](../../../Jenfu-Management-system/ai-doc/specs/DEV-009-system-admin-privileged-principal-governance.md)。本節只固定OrgMaster direct implementation；不改AI-PDM role／Permission ownership、不新增runtime同步HTTP dependency，也不推翻第21節的一般Role → Position → Employee流程。
+
+### 23.1 Product boundary and normal entry
+
+- `GovernanceCenter`不新增section；沿用既有`assignments`。application=`ai-pdm`且role=`system_admin`時，隱藏一般Employee／scope／validity表單並在原位置顯示「特權設定」，先列redacted exact privileged principals，再提供單筆授予／撤銷。generic V2 submit仍不得接受principal-only role。
+- 管理者先選active Employee，再從其active `human_privileged` admissions選exact target；若有多個不得預選或猜測。沒有eligible principal時導向既有身分連結／准入流程，OrgMaster不在此頁建立IAM帳號。
+- Browser只接觸`principalAdmissionId`與server redacted hint；raw issuer、subject、完整fingerprint、token、cookie不得進response、URL、DOM、log、screenshot或evidence。
+- 具view capability但沒有`orgmaster.cross_app_override`者只讀；390×844由client interaction gate固定只讀，1440×900與1024×768才render並驗證完整grant／revoke。Server不信任viewport／user-agent，只依verified actor、capability、fresh AAL2 session與request contract授權。
+- View capability固定為`orgmaster.governance.manage`或`orgmaster.cross_app_override`；只回redacted workspace。`orgmaster.governance.manage`本身不得grant／revoke，mutation仍只接受exact active privileged principal的`orgmaster.cross_app_override`。
+- Normal-entry route沿用`/?panels=governance&focus=governance&details=none&governanceSection=assignments`；不新增typed governance section或route key。Route不得接受actor／employee／principal／assignment／command等target參數；進頁後由使用者選擇AI-PDM／`system_admin`，並按目前登入身分重新授權與讀current。
+- 共用application／role selector之後只允許一種renderer。UI、V2 validation與command guard共同呼叫`classifyAssignmentSurface`：internal／完整employee-app-admin policy進既有ordinary renderer；只有AI-PDM `role-system-admin／system_admin`同時為active、assignable、critical、principal、cross-app override、global-only且recommendation／delegation=false，才進`GovernancePrivilegedAssignments`。其餘缺欄或矛盾組合固定`CATALOG_ROLE_CONTRACT_MISMATCH`且零submit。
+- `ExternalRoleCatalogRoleV1`已存在於歷史published snapshot，新增canonical policy欄位採optional相容；current bundled／live adapter必須全部填入，歷史缺欄snapshot不得回填且只能唯讀。`aiPdmCatalog.ts`與live catalog adapter mapping不得丟欄。切離privileged mode時清除reason／preview／selected admission並取消或忽略late response，禁止污染ordinary mode。
+- 一般`AssignmentForm`、一般assignment清單與其revoke control屬ordinary renderer；privileged holder清單、grant／revoke、preview與drawer只屬`GovernancePrivilegedAssignments`。選到`system_admin`時兩者不得同時render。
+
+### 23.2 Read, preview and publish API
+
+```text
+GET  /api/orgmaster/governance/privileged-assignments?applicationId=ai-pdm&stableRoleId=role-system-admin
+POST /api/orgmaster/governance/privileged-assignments/preview
+POST /api/orgmaster/governance/privileged-assignments/publish
+```
+
+Read contract固定為`orgmaster.privileged-assignment-workspace.v1`，回catalog version／payload hash、governance與organization revisions、`sourceDataAt`、mutation capability／blockers、eligible principal summaries與active／revoked assignments。Assignment顯示employee reference、`principalAdmissionId`、redacted hint、status、validity與audit reference；不得回raw principal。
+
+Operation只接受：
+
+```text
+grant_system_admin  { employeeId, principalAdmissionId }
+revoke_system_admin { assignmentId }
+```
+
+共同preconditions為exact application／stable role、expected catalog version／hash與expected governance／organization revisions。Publish另要求stable`commandId`、canonical`requestHash`、`previewHash`與非空reason；不新增第二套`stepUpReceipt`或browser bearer credential。Server重算並固定`basis=manual`、`subjectKind=principal`、`scope=global`、`sources=[]`、grant `validFrom=committedAt`、`validTo=null`；client不可自訂scope、subject、target、source或validity。
+
+Fresh-session gate重用既有Firebase→OrgMaster session exchange：Firebase adapter從verified token `auth_time`產生`authenticatedAt`，session repository保存它；不得用session `issuedAt`、exchange時間或client clock代替。只有provider MFA／reauthentication可建立新的authentication window；force refresh ID token或重送舊token仍保留原`auth_time`，不得被視為step-up。Publish從verified request context要求AAL2、exact actor principal與`serverCommitAt-authenticatedAt<=5分鐘`。Legacy null、future time、AAL1、過期或actor mismatch固定`STEP_UP_REQUIRED`、零寫入。Server以actor＋operation＋expected versions重算request hash，並由既有command ledger綁定command／request／preview；相同terminal command replay只回原receipt、不重做mutation，新command仍須在fresh window內。這是re-auth window，不是role期限。
+
+Actor必須以exact active `human_privileged` principal持有`orgmaster.cross_app_override`；同Employee daily principal仍deny。Grant self-assignment固定`PRIVILEGED_SELF_ASSIGNMENT_DENIED`；revoke仍須override但不受self-grant條款阻擋。Preview回before／after、holder delta、redacted target、受影響session數、alert行為、blockers與hash；publish沿用第22節durable command receipt、unknown-outcome freeze與resolve流程。
+
+### 23.3 V2 guard and V3 migration
+
+- AI-PDM catalog可保留`assignable=true`，共用role selector也可列出`system_admin`作mode trigger；但一般Employee／scope／period form與generic V2 submit必須排除`subjectKind=principal`或`assignmentTier=cross_app_override`。
+- V2 `/validate/assignment`、`UPSERT_ROLE_ASSIGNMENT`與所有generic publish path收到`role-system-admin`／`system_admin`時固定回`PRIVILEGED_ASSIGNMENT_SURFACE_REQUIRED`，零version、audit、event或effective effect。
+- V2→V3 migration對一般role補`subjectKind=employee`、`targetPrincipalId=null`；既有V2 `system_admin`進`SYSTEM_ADMIN_PRINCIPAL_REQUIRED` exception，零effective，不猜target、不grandfather。
+- Privileged path只寫`GovernanceDocumentV3`／`GovernanceCommandV3`；不得downcast回V2。既有migration 005 effective projection仍是唯一授權資料面；新增additive `007_dev009_privileged_governance.sql`只增加OrgMaster session `authenticated_at`與redacted alert intent／delivery receipt，不建立第二assignment或step-up receipt table。
+
+### 23.4 Atomic effects, alert and outage behavior
+
+每個grant／revoke以單一transaction提交Governance V3 version、immutable audit、`orgmaster.application_projection.changed.v1` outbox、session invalidation outbox與redacted privileged security alert intent。成功receipt必須含governance version、audit reference、`securityAlertReference`與`sessionRefresh=completed|pending`。
+
+Durable alert intent寫入失敗固定`SECURITY_ALERT_PERSIST_FAILED`且整個authority mutation rollback。外部alert delivery可pending並idempotent重試；撤權一旦authority commit，effective view立即deny，不等待session refresh或外部通知送達，也不因dispatcher失敗回滾。OrgMaster unavailable時全mutation deny；AI-PDM既有業務authorization不呼叫OrgMaster HTTP，last-known-good display snapshot永不參與allow／deny。
+
+### 23.5 Projection and display semantics
+
+OrgMaster role capability projection升為`orgmaster.role-capability-projection.v2`；`manualAssignments`可回redacted principal holder摘要，AI-PDM workspace同步升為`ai-pdm.role-capability-workspace.v3`。舊v1／workspace v2 snapshot只能由相容renderer唯讀顯示，不得作current或mutation precondition。
+
+`effectiveHolderCount`對principal role依distinct exact target principal計算，不依Employee去重；consumer對`system_admin`固定顯示「特權身分 N 個」，不得稱「持有人 N 人」，也不得把同Employee daily identity列入。
+
+### 23.6 Exact OrgMaster file boundary
+
+```text
+contracts/jenfu-platform-governance-availability/v2/**          (vendored)
+src/governance/types.ts
+src/governance/aiPdmCatalog.ts
+src/governance/aiPdmCatalog.test.ts
+src/governance/assignmentSurface.ts                              (new shared pure classifier)
+src/governance/assignmentSurface.test.ts                         (new)
+src/governance/validation.ts
+src/governance/commands.ts
+src/governance/apiClient.ts
+src/governance/governancePresentation.ts
+src/governance/migrateGovernanceV2ToV3.ts                       (new)
+src/governance/privilegedAssignments.ts                         (new)
+src/governance/*.test.ts                                        (focused)
+src/components/GovernanceCenter.tsx
+src/components/GovernanceCenter.css
+src/components/GovernanceDialogs.tsx
+src/components/GovernancePrivilegedAssignments.tsx               (new)
+src/components/GovernanceCenter.test.tsx                          (new focused mode tests)
+src/auth/firebaseClient.ts
+src/auth/authApiClient.ts
+server/orgmasterGovernanceStore.ts
+server/orgmasterGovernanceApi.ts
+server/aiPdmRoleCatalogRepository.ts
+server/aiPdmRoleCatalogRepository.test.ts
+server/aiPdmRoleCapabilityStore.ts
+server/orgmasterFirebaseIdentityProvider.ts
+server/orgmasterAuthApi.ts
+server/orgmasterAuthApi.test.ts
+server/orgmasterRequestIdentity.ts
+server/orgmasterSessionRepository.ts
+server/orgmasterSessionRepository.test.ts
+server/privilegedAssignmentStore.ts                             (new)
+server/privilegedSecurityAlertDispatcher.ts                     (new)
+server/*.test.ts                                                (focused)
+db/migrations/007_dev009_privileged_governance.sql               (new authenticated_at＋alert outbox)
+scripts/qc-dev-009-privileged-postgres.mjs                      (new)
+scripts/qc-dev-009-privileged-browser.mjs                       (new)
+package.json                                                    (scripts only)
+ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md
+ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md
+ai-doc/dev_task.md
+ai-doc/documentation_map.md
+```
+
+Allowlist外產品檔案先回PM補why／risk／test；不得順手重構一般role治理或工作台。
+
+### 23.7 Delivery, acceptance and gates
+
+| Slice | OrgMaster work | Exit |
+|---|---|---|
+| `009-S0` | vendor v2 contract、current catalog完整projection、shared classifier、V2 generic deny、migration fixture | one-byte drift、完整policy drift、principal-only負例、legacy V2 exception PASS |
+| `009-S1` | V3 migration／validation、provider-authenticated fresh AAL2 session、read／preview／publish、alert outbox | `auth_time`、exact principal、self-grant、CAS、idempotency、audit／alert atomicity PASS |
+| `009-S2` | 既有「角色指派」內嵌「特權設定」、grant／revoke、empty／denied／stale | 條件式renderer與generic submit隔離；1440／1024完整操作、390只讀、keyboard與redaction PASS |
+| `009-S4` | 配合Platform cross-repo entitlement／session／outage regression | daily deny、exact privileged allow、revoke immediate deny、OrgMaster outage isolation PASS |
+| `009-R1` | initial bootstrap、production target、alert channel、fresh smoke | 獨立release gate；本節不執行 |
+
+Minimum acceptance：一般V2 UI／API無法建立`system_admin`；完整role policy drift fail closed；只有exact active privileged principal取得effective row；daily／shared／service／inactive及self-grant皆deny；provider `auth_time`→session `authenticatedAt`可證明AAL2五分鐘freshness，且不以issuedAt假冒；grant／revoke只有一個authority effect並可由command receipt replay；alert intent persist失敗零commit；revoke後下一個protected request deny；OrgMaster離線時治理零mutation但AI-PDM非治理route仍可依Tier-0運作；evidence無raw identity／credential。P0／P1容忍值為0。
+
+初始環境沒有任何active override actor時，只能由reviewed bootstrap manifest建立第一個principal-scoped management grant；bootstrap不進一般UI、不接受daily／shared principal，且只在`009-R1`授權後執行。需要production credential、真實principal／role mutation、schema apply、deploy或release時立即轉release gate。
+
+本節文件已達`RD Implementation Ready`。目前只授權文件；下一個local slice固定`009-S0`，不得以本節宣稱code、schema、資料、runtime或production已改變。
+
+使用思考習慣：#設計思考、#效用理論、#系統描繪、#風險導向思考、#當責

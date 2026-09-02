@@ -11,6 +11,8 @@ npm run dev:local
 
 固定本機網址：[http://localhost:5000](http://localhost:5000)
 
+若從檔案總管或其他會自動回收終端視窗的啟動器開啟，請改用 `npm run dev:local:window`，或雙擊 `scripts\\dev-local.cmd`。它會另開一個 PowerShell 視窗持續執行；若服務因錯誤停止，視窗會保留錯誤訊息，不會一閃即逝。
+
 組織架構會由 `localhost:5000` 的本機服務管理版本工作區：`data/orgmaster-workspace.v1.json` 保存現行版／草稿清單，`data/orgmaster-versions/<versionId>.json` 保存各版本的 V5 文件。首次啟動會由既有 V4／V3／V2 文件建立現行版並在讀取時升級；原始來源不會被覆寫或刪除。同一台電腦上的不同 Chrome 視窗會共用版本工作區，草稿自動保存並以版本修訂避免舊視窗覆蓋新內容。
 
 ## 核心操作

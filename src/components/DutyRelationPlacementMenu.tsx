@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { deriveDutyAnomalies } from '../duties'
 import { dutyResponsibilityColumnForSource, evaluateDutyDrop, type DutyPlacementSource, type DutyPlacementTarget } from '../dutyPlacement'
 import type { OrgDirectoryState, Position } from '../types'
+import { resolvePanelAnchoredPosition, WorkspacePortal } from './workspace/WorkspaceOverlayHosts'
 
 interface DutyRelationPlacementMenuProps {
   state: OrgDirectoryState
@@ -35,10 +35,12 @@ export function DutyRelationPlacementMenu({ state, source, anchor, onRequest, on
   }, [source, sourceColumn, sourcePositionId, state])
   const [targetPositionId, setTargetPositionId] = useState(availableTargets[0]?.id ?? '')
   const rect = anchor.getBoundingClientRect()
-  const style = useMemo(() => ({
-    left: Math.max(12, Math.min(rect.right + 8, window.innerWidth - 300)),
-    top: Math.max(12, Math.min(rect.top, window.innerHeight - 250)),
-  }), [rect.right, rect.top])
+  const style = useMemo(() => {
+    const host = anchor.closest<HTMLElement>('[data-workspace-panel-content]')?.querySelector<HTMLElement>('[data-workspace-overlay-host="panel"]')
+    const hostRect = host?.getBoundingClientRect()
+    const position = hostRect ? resolvePanelAnchoredPosition(rect, hostRect, { width: 300, height: 250 }) : { left: 8, top: 8 }
+    return { left: position.left, top: position.top, position: 'absolute' as const }
+  }, [anchor, rect.bottom, rect.left, rect.right, rect.top])
 
   useEffect(() => {
     setTargetPositionId(availableTargets[0]?.id ?? '')
@@ -99,7 +101,7 @@ export function DutyRelationPlacementMenu({ state, source, anchor, onRequest, on
   const sourceContext = source.kind === 'anomaly'
     ? anomaly?.type === 'pending-reassignment' ? '待重新分配' : anomaly?.type === 'no-executor' ? '無執行職位' : '缺少主執行'
     : sourcePosition?.title ?? '目前職位'
-  return createPortal(
+  return <WorkspacePortal scope="panel">
     <div
       ref={dialogRef}
       className="duty-relation-placement-menu"
@@ -121,7 +123,6 @@ export function DutyRelationPlacementMenu({ state, source, anchor, onRequest, on
         <button type="button" className="primary-button" onClick={submit}>繼續</button>
       </> : <p className="duty-relation-placement-menu__empty" role="status">目前沒有可用的其他職位。</p>}
       <button type="button" className="duty-relation-placement-menu__cancel" onClick={onCancel}>取消</button>
-    </div>,
-    document.body,
-  )
+    </div>
+  </WorkspacePortal>
 }

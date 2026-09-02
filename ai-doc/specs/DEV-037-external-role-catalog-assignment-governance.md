@@ -10,6 +10,12 @@
 父交付點：DEV-027
 架構決策：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
 
+## 2026-08-30 Compatibility Amendment
+
+`DEV-037` 的完成狀態與 fresh evidence 只證明 2026-08-27 的 OrgMaster local-only V2 delivery，不證明 Jenfu Platform live integration。使用者後續確認 `4A / 5A / 6B`：Phase 1 改由 versioned read-only access view 發布有效指派；AI-PDM 既有 Firebase principal 納入 active employee migration；外部角色由授權角色管理者直接生效，不另設 high-risk maker-checker。新目標由 `DEV-040` 與 ADR-007 amendment 追蹤。
+
+本修訂不回寫既有 V1／V2 bytes、published snapshot、audit、程式或 QA 結果。下文的 `local-only`、`not-synchronized`、`publish-as-approval` 與 high-risk 檢查仍是 DEV-037 當時驗收語意；RD 不得只修改這些歷史敘述後宣稱 live integration 已完成。
+
 ## 1. Outcome
 
 OrgMaster 成為外部 Application Role 的集中指派治理端，但不成為外部 Permission 設計器：

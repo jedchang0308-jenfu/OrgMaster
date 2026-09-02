@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { readFile, stat } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import {
   createOrgDocumentFile,
@@ -23,6 +23,14 @@ import {
 } from '../src/versionWorkspace'
 import { readStoredDocument } from './orgmasterApi'
 import { hashFileContent, withOrgMasterRootLock, writeVerifiedAtomicFile } from './orgmasterFileStore'
+import { assertMigrationWritesAllowed } from './orgmasterMigrationGate'
+import {
+  OrgmasterPersistenceError,
+  persistenceArtifactExists,
+  readPersistenceArtifact,
+  usesCloudSqlPersistence,
+  writePersistenceArtifacts,
+} from './orgmasterPersistenceRepository'
 
 export class WorkspaceStoreError extends Error {
   constructor(public readonly code: WorkspaceValidationCode | 'VERSION_CONFLICT' | 'VERSION_INVALID' | 'MANIFEST_CONFLICT' | 'WORKSPACE_NOT_FOUND' | string, message = code) {
@@ -58,28 +66,27 @@ async function exists(path: string) {
 
 async function readManifest(rootDirectory: string) {
   const path = getWorkspacePaths(rootDirectory).manifest
-  const raw = await readFile(path, 'utf8')
-  const parsed = validateWorkspaceManifest(JSON.parse(raw))
+  const stored = await readPersistenceArtifact({ localPath: path, artifactKey: 'orgmaster-workspace.v1.json', artifactKind: 'workspace-manifest' })
+  const parsed = validateWorkspaceManifest(stored.payload)
   if (!parsed.ok) throw new WorkspaceStoreError(parsed.code)
-  return { manifest: parsed.value, raw, revision: hashBytes(raw) }
+  return { manifest: parsed.value, raw: stored.raw, revision: stored.revision }
 }
 
 const writeAtomic = writeVerifiedAtomicFile
 
 async function readVersion(rootDirectory: string, entry: OrgWorkspaceEntry): Promise<WorkspaceDocumentResult> {
   const path = versionPath(rootDirectory, entry.id)
-  const raw = await readFile(path, 'utf8')
-  const parsed = parseOrgDocument(JSON.parse(raw))
+  const stored = await readPersistenceArtifact({ localPath: path, artifactKey: `orgmaster-versions/${entry.id}.json`, artifactKind: 'workspace-version' })
+  const parsed = parseOrgDocument(stored.payload)
   if (!parsed.ok) throw new WorkspaceStoreError('VERSION_INVALID', parsed.code)
   if ((entry.kind === 'current' && parsed.document.kind !== 'document') || (entry.kind === 'draft' && parsed.document.kind !== 'draft')) {
     throw new WorkspaceStoreError('VERSION_INVALID')
   }
-  const metadata = await stat(path)
   return {
     version: {
       ...entry,
       updatedAt: parsed.document.savedAt,
-      revision: hashBytes(raw),
+      revision: stored.revision,
       loadStatus: 'ready',
     },
     document: parsed.document,
@@ -110,7 +117,10 @@ async function migrateWorkspace(rootDirectory: string) {
 
 async function ensureManifest(rootDirectory: string) {
   const paths = getWorkspacePaths(rootDirectory)
-  if (!(await exists(paths.manifest))) return migrateWorkspace(rootDirectory)
+  if (!(await persistenceArtifactExists(paths.manifest, 'orgmaster-workspace.v1.json'))) {
+    if (usesCloudSqlPersistence()) throw new WorkspaceStoreError('WORKSPACE_NOT_FOUND')
+    return migrateWorkspace(rootDirectory)
+  }
   return (await readManifest(rootDirectory)).manifest
 }
 
@@ -119,6 +129,7 @@ export async function getWorkspaceIndex(rootDirectory = process.cwd()): Promise<
   const manifestRead = await readManifest(rootDirectory)
   const manifest = manifestRead.manifest
   const summaries = await Promise.all(manifest.entries.map(async (entry) => {
+    await assertMigrationWritesAllowed(rootDirectory)
     try {
       return (await readVersion(rootDirectory, entry)).version
     } catch (error) {
@@ -152,6 +163,7 @@ export async function createWorkspaceDraft(
   expectedManifestRevision: string,
 ) {
   return withOrgMasterRootLock(rootDirectory, async () => {
+    await assertMigrationWritesAllowed(rootDirectory)
     const current = await readManifest(rootDirectory)
     if (current.revision !== expectedManifestRevision) throw new WorkspaceStoreError('MANIFEST_CONFLICT')
     const source = await getWorkspaceVersion(rootDirectory, sourceVersionId)
@@ -159,8 +171,23 @@ export async function createWorkspaceDraft(
     const entryResult = createDraftEntry(current.manifest, sourceVersionId, name, id, new Date().toISOString())
     if (!entryResult.ok) throw new WorkspaceStoreError(entryResult.code)
     const document = createOrgDocumentFile(source.document.state, 'draft')
-    await writeAtomic(versionPath(rootDirectory, id), `${JSON.stringify(document, null, 2)}\n`)
-    await writeAtomic(getWorkspacePaths(rootDirectory).manifest, `${JSON.stringify({ ...current.manifest, entries: [...current.manifest.entries, entryResult.value] }, null, 2)}\n`)
+    const nextManifest = { ...current.manifest, entries: [...current.manifest.entries, entryResult.value] }
+    await assertMigrationWritesAllowed(rootDirectory)
+    try {
+      await writePersistenceArtifacts([
+        {
+          artifactKey: `orgmaster-versions/${id}.json`, artifactKind: 'workspace-version', localPath: versionPath(rootDirectory, id),
+          payload: document as unknown as Record<string, unknown>, raw: `${JSON.stringify(document, null, 2)}\n`, expectedRevision: null,
+        },
+        {
+          artifactKey: 'orgmaster-workspace.v1.json', artifactKind: 'workspace-manifest', localPath: getWorkspacePaths(rootDirectory).manifest,
+          payload: nextManifest as unknown as Record<string, unknown>, raw: `${JSON.stringify(nextManifest, null, 2)}\n`, expectedRevision: current.revision,
+        },
+      ], { reasonCode: 'workspace_draft_create' })
+    } catch (error) {
+      if (error instanceof OrgmasterPersistenceError && error.code === 'PERSISTENCE_REVISION_CONFLICT') throw new WorkspaceStoreError('MANIFEST_CONFLICT')
+      throw error
+    }
     return { workspace: await getWorkspaceIndex(rootDirectory), createdVersionId: id }
   })
 }
@@ -172,6 +199,7 @@ export async function saveWorkspaceVersion(
   expectedVersionRevision: string,
   mode: 'draft-edit' | 'current-maintenance',
 ) {
+    await assertMigrationWritesAllowed(rootDirectory)
   return withOrgMasterRootLock(rootDirectory, () => saveWorkspaceVersionUnlocked(rootDirectory, versionId, document, expectedVersionRevision, mode))
 }
 
@@ -191,7 +219,16 @@ export async function saveWorkspaceVersionUnlocked(
     if (current.version.revision !== expectedVersionRevision) throw new WorkspaceStoreError('VERSION_CONFLICT')
     const parsed = parseOrgDocument(document)
     if (!parsed.ok || parsed.document.kind !== (entry.kind === 'current' ? 'document' : 'draft')) throw new WorkspaceStoreError('VERSION_INVALID')
-    await writeAtomic(versionPath(rootDirectory, versionId), `${JSON.stringify(parsed.document, null, 2)}\n`)
+    await assertMigrationWritesAllowed(rootDirectory)
+    try {
+      await writePersistenceArtifacts([{
+        artifactKey: `orgmaster-versions/${versionId}.json`, artifactKind: 'workspace-version', localPath: versionPath(rootDirectory, versionId),
+        payload: parsed.document as unknown as Record<string, unknown>, raw: `${JSON.stringify(parsed.document, null, 2)}\n`, expectedRevision: current.version.revision,
+      }], { reasonCode: 'workspace_version_save' })
+    } catch (error) {
+      if (error instanceof OrgmasterPersistenceError && error.code === 'PERSISTENCE_REVISION_CONFLICT') throw new WorkspaceStoreError('VERSION_CONFLICT')
+      throw error
+    }
     return readVersion(rootDirectory, entry)
 }
 
@@ -211,7 +248,16 @@ export async function updateWorkspaceEntry(
         ? archiveDraftEntry(current.manifest, versionId, new Date().toISOString())
         : restoreDraftEntry(current.manifest, versionId)
     if (!result.ok) throw new WorkspaceStoreError(result.code)
-    await writeAtomic(getWorkspacePaths(rootDirectory).manifest, `${JSON.stringify(result.value, null, 2)}\n`)
+    await assertMigrationWritesAllowed(rootDirectory)
+    try {
+      await writePersistenceArtifacts([{
+        artifactKey: 'orgmaster-workspace.v1.json', artifactKind: 'workspace-manifest', localPath: getWorkspacePaths(rootDirectory).manifest,
+        payload: result.value as unknown as Record<string, unknown>, raw: `${JSON.stringify(result.value, null, 2)}\n`, expectedRevision: current.revision,
+      }], { reasonCode: `workspace_${action}` })
+    } catch (error) {
+      if (error instanceof OrgmasterPersistenceError && error.code === 'PERSISTENCE_REVISION_CONFLICT') throw new WorkspaceStoreError('MANIFEST_CONFLICT')
+      throw error
+    }
     return getWorkspaceIndex(rootDirectory)
   })
 }

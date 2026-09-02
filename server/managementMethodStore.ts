@@ -6,6 +6,8 @@ import { canonicalJson, canonicalizeEditorDocument } from '../src/managementMeth
 import type { EditorDocumentV1, ManagementMethodCreateInputV1, ManagementMethodStoreV1, ManagementMethodV1, MethodCommandReceiptV1, MethodGenerationMetaV1, MethodReadableSnapshotV1 } from '../src/managementMethods/types'
 import { deriveMethodStatus, toMethodSummary } from '../src/managementMethods/status'
 import { fileExists, withOrgMasterRootLock, writeVerifiedAtomicFile } from './orgmasterFileStore'
+import { OrgmasterPersistenceError, persistenceArtifactExists, readPersistenceArtifact, usesCloudSqlPersistence, writePersistenceArtifacts } from './orgmasterPersistenceRepository'
+import { assertMigrationWritesAllowed } from './orgmasterMigrationGate'
 
 export class ManagementMethodStoreError extends Error {
   constructor(public readonly code: string, message = code, public readonly issues?: unknown[]) { super(message); this.name = 'ManagementMethodStoreError' }
@@ -49,12 +51,16 @@ function validateStore(store: unknown): asserts store is ManagementMethodStoreV1
 
 async function readRaw(root: string) {
   const path = getManagementMethodPaths(root).current
-  try { const raw = await readFile(path, 'utf8'); const store = JSON.parse(raw); validateStore(store); return { raw, store } }
+  try { const stored = await readPersistenceArtifact({ localPath: path, artifactKey: 'orgmaster-management-methods.v1.json', artifactKind: 'management-methods' }); const store = stored.payload; validateStore(store); return { raw: stored.raw, store, revision: stored.revision } }
   catch (error) { if (error instanceof ManagementMethodStoreError) throw error; if ((error as { code?: string })?.code !== 'ENOENT') throw new ManagementMethodStoreError('MANAGEMENT_METHOD_STORE_INVALID'); throw new ManagementMethodStoreError('MANAGEMENT_METHOD_STORE_MISSING') }
 }
 
 export async function ensureManagementMethodStore(root = process.cwd()) {
   const paths = getManagementMethodPaths(root)
+  if (usesCloudSqlPersistence()) {
+    if (!await persistenceArtifactExists(paths.current, 'orgmaster-management-methods.v1.json')) throw new ManagementMethodStoreError('MANAGEMENT_METHOD_STORE_MISSING')
+    return readRaw(root)
+  }
   await mkdir(resolve(root, 'data'), { recursive: true })
   if (!await fileExists(paths.current)) await writeVerifiedAtomicFile(paths.current, `${JSON.stringify(defaultStore(), null, 2)}\n`)
   return readRaw(root)
@@ -62,16 +68,26 @@ export async function ensureManagementMethodStore(root = process.cwd()) {
 
 export async function readManagementMethodStore(root = process.cwd()) { try { return await readRaw(root) } catch (error) { if (error instanceof ManagementMethodStoreError && error.code === 'MANAGEMENT_METHOD_STORE_MISSING') return ensureManagementMethodStore(root); throw error } }
 
-async function persist(root: string, current: { raw: string }, next: ManagementMethodStoreV1) {
+async function persist(root: string, current: { raw: string; revision: string }, next: ManagementMethodStoreV1) {
+  await assertMigrationWritesAllowed(root)
   validateStore(next)
   const paths = getManagementMethodPaths(root)
-  await writeVerifiedAtomicFile(paths.previous, current.raw)
   const raw = `${JSON.stringify(next, null, 2)}\n`
-  await writeVerifiedAtomicFile(paths.current, raw)
-  return { raw, store: next }
+  try {
+    if (!usesCloudSqlPersistence()) await writeVerifiedAtomicFile(paths.previous, current.raw)
+    const written = await writePersistenceArtifacts([{
+      artifactKey: 'orgmaster-management-methods.v1.json', artifactKind: 'management-methods', localPath: paths.current,
+      payload: next as unknown as Record<string, unknown>, raw, expectedRevision: current.revision,
+    }], { reasonCode: 'management_methods_write' })
+    return { raw: usesCloudSqlPersistence() ? canonicalJson(next) : raw, store: next, revision: written.revisions['orgmaster-management-methods.v1.json'] }
+  } catch (error) {
+    if (error instanceof OrgmasterPersistenceError && error.code === 'PERSISTENCE_REVISION_CONFLICT') throw new ManagementMethodStoreError('STORE_REVISION_CONFLICT')
+    throw error
+  }
 }
 
-export async function withStoreMutation<T>(root: string, operation: (current: { raw: string; store: ManagementMethodStoreV1 }) => Promise<{ store: ManagementMethodStoreV1; result: T }>) {
+export async function withStoreMutation<T>(root: string, operation: (current: { raw: string; store: ManagementMethodStoreV1; revision: string }) => Promise<{ store: ManagementMethodStoreV1; result: T }>) {
+  await assertMigrationWritesAllowed(root)
   return withOrgMasterRootLock(root, async () => {
     const current = await readManagementMethodStore(root)
     const outcome = await operation(current)

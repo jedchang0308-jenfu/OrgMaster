@@ -18,7 +18,7 @@ describe('workspace state', () => {
     current = reduceWorkspaceState(current, { type: 'SET_PINNED', moduleId: 'employees', pinned: true }, context).state
     const promoted = reduceWorkspaceState(current, {
       type: 'OPEN_OR_FOCUS',
-      intent: { moduleId: 'employees', source: 'drawer', context: { employeeId: screenshotOrganizationState.employees[1].id, query: 'new' } },
+      intent: { moduleId: 'employees', source: 'launcher', context: { employeeId: screenshotOrganizationState.employees[1].id, query: 'new' } },
     }, context)
     expect(collectLayoutModules(promoted.state.layout)).toEqual(['organization', 'employees'])
     expect(promoted.state.session.panels.employees?.context).toEqual({ employeeId: screenshotOrganizationState.employees[0].id, query: '' })
@@ -31,6 +31,35 @@ describe('workspace state', () => {
     expect(collectLayoutModules(closed.state.layout)).toEqual([])
     expect(closed.state.session.focusedPanel).toBeNull()
     expect(closed.state.route.openPanels).toEqual([])
+  })
+
+  it('preserves existing context when launcher focus has no explicit context', () => {
+    let current = createWorkspaceState(defaultWorkspaceLayout())
+    current = reduceWorkspaceState(current, {
+      type: 'OPEN_OR_FOCUS',
+      intent: { moduleId: 'employees', source: 'launcher', context: { employeeId: screenshotOrganizationState.employees[0].id, query: '張' } },
+    }, context).state
+    const focused = reduceWorkspaceState(current, {
+      type: 'OPEN_OR_FOCUS',
+      intent: { moduleId: 'employees', source: 'launcher' },
+    }, context)
+    expect(focused.state.session.panels.employees?.context).toEqual({ employeeId: screenshotOrganizationState.employees[0].id, query: '張' })
+  })
+
+  it('collapses and reopens detail without changing the selected context', () => {
+    let current = createWorkspaceState(defaultWorkspaceLayout())
+    current = reduceWorkspaceState(current, {
+      type: 'OPEN_OR_FOCUS',
+      intent: { moduleId: 'employees', source: 'launcher', context: { employeeId: screenshotOrganizationState.employees[0].id, query: '張' } },
+    }, context).state
+    const collapsed = reduceWorkspaceState(current, { type: 'SET_DETAIL_VISIBILITY', moduleId: 'employees', visible: false }, context)
+    expect(collapsed.state.session.openDetails).toEqual([])
+    expect(collapsed.state.session.panels.employees?.context).toEqual({ employeeId: screenshotOrganizationState.employees[0].id, query: '張' })
+    expect(collapsed.state.route.openDetails).toEqual([])
+
+    const reopened = reduceWorkspaceState(collapsed.state, { type: 'SET_DETAIL_VISIBILITY', moduleId: 'employees', visible: true }, context)
+    expect(reopened.state.session.openDetails).toEqual(['employees'])
+    expect(reopened.state.session.panels.employees?.context).toEqual({ employeeId: screenshotOrganizationState.employees[0].id, query: '張' })
   })
 
   it('focuses an already-active tab in another visible region', () => {

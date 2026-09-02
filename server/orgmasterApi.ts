@@ -12,6 +12,7 @@ import {
   WorkspaceStoreError,
   getWorkspacePaths,
 } from './orgmasterWorkspaceStore'
+import { persistenceArtifactExists, usesCloudSqlPersistence } from './orgmasterPersistenceRepository'
 
 const API_PATH = '/api/orgmaster/document'
 const WORKSPACE_PATH = '/api/orgmaster/workspace'
@@ -58,6 +59,7 @@ function isMissingFile(error: unknown) {
 }
 
 async function workspaceExists(rootDirectory = process.cwd()) {
+  if (usesCloudSqlPersistence()) return persistenceArtifactExists(getWorkspacePaths(rootDirectory).manifest, 'orgmaster-workspace.v1.json')
   try {
     await access(getWorkspacePaths(rootDirectory).manifest)
     return true
@@ -105,6 +107,10 @@ export async function writeStoredDocument(document: OrgDocumentFile, rootDirecto
 
 function handleDocumentRequest(request: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) {
   if (request.method === 'GET') {
+    if (usesCloudSqlPersistence()) {
+      sendJson(response, 409, { error: 'WORKSPACE_MODE_REQUIRED' })
+      return
+    }
     void readStoredDocument()
       .then(({ document, revision }) => sendJson(response, 200, document, revision))
       .catch(() => sendJson(response, 500, { error: 'LOCAL_DOCUMENT_READ_FAILED' }))
@@ -139,6 +145,12 @@ function handleApiRequest(request: IncomingMessage, response: ServerResponse, ne
 
 function handleMountedApiRequest(request: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) {
   handleDocumentRequest(request, response, next)
+}
+
+export function createOrgmasterApiMiddleware(): Connect.NextHandleFunction {
+  return (request, response, next) => {
+    handleWorkspaceRequest(request, response, () => handleApiRequest(request, response, next))
+  }
 }
 
 function workspaceError(response: ServerResponse, error: unknown) {

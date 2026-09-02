@@ -6,11 +6,15 @@ import type {
 } from './types'
 
 export function resolveWorkspaceCompositionCapability(environment: WorkspaceEnvironment): WorkspaceCompositionCapability {
-  if (environment.viewportWidth < 1024 || !environment.hoverCapable || !environment.finePointer) {
+  // Workspace composition is a layout capability, not a domain mutation
+  // capability. A narrow desktop with a mouse can still arrange tabs; the
+  // layout resolver remains responsible for rejecting splits that cannot meet
+  // the participating modules' minimum sizes.
+  if (!environment.hoverCapable || !environment.finePointer) {
     return {
       canCompose: false,
       mobileReadOnly: true,
-      reason: '此裝置使用單一唯讀功能畫面',
+      reason: '此裝置使用單一觸控功能畫面',
     }
   }
   return { canCompose: true, mobileReadOnly: environment.mobileReadOnly }
