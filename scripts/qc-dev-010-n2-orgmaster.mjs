@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { canonicalize, loadPackageConfig, redactEvidence, sha256 } from './lib/dev010-n2-manifest.mjs'
+import { canonicalize, loadPackageConfig, redactEvidence, sha256, sourceSha256 } from './lib/dev010-n2-manifest.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const config = loadPackageConfig(path.join(root, 'config', 'dev-010', 'n2', 'orgmaster-package.json'))
@@ -48,7 +48,7 @@ try {
   const sourceManifest = JSON.parse(fs.readFileSync(path.join(freezeDir, 'source-manifest.json'), 'utf8'))
   const expectedPaths = [...new Set([...config.baseline.files, ...config.changeAllowlist.modify, ...config.changeAllowlist.new])].sort()
   assert.deepEqual(sourceManifest.files.map((entry) => entry.path), expectedPaths)
-  for (const entry of sourceManifest.files) assert.equal(entry.sha256, sha256(fs.readFileSync(path.join(root, ...entry.path.split('/')))))
+  for (const entry of sourceManifest.files) assert.equal(entry.sha256, sourceSha256(fs.readFileSync(path.join(root, ...entry.path.split('/')))))
   assert.equal(sourceManifest.sourceManifestSha256, sha256(canonicalize({ aggregateSha256: sourceManifest.aggregateSha256, files: sourceManifest.files, head: sourceManifest.head })))
   cases.push(receipt('N2-ORGMASTER-QC-01', 'Frozen baseline and every candidate allowlist file are content-addressed', { ...freeze, candidateFileCount: sourceManifest.files.length }, ['source-manifest.json', 'package-manifest.json'], sourceManifestSha256))
   run(process.execPath, ['--test', 'scripts/dev010-n2-source-freeze.test.mjs', 'scripts/dev010-n2-orgmaster.test.mjs'])
