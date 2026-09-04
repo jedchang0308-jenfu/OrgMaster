@@ -12,6 +12,7 @@ const fixture = JSON.parse(fs.readFileSync(path.join(root, 'qa', 'dev-010', 'n2'
 const migration = fs.readFileSync(path.join(root, 'db', 'migrations', '010_dev010_neutral_schema_boundary.sql'), 'utf8')
 const databaseSource = fs.readFileSync(path.join(root, 'server', 'orgmasterDatabase.ts'), 'utf8')
 const persistenceSource = fs.readFileSync(path.join(root, 'server', 'orgmasterPersistenceRepository.ts'), 'utf8')
+const browserSource = fs.readFileSync(path.join(root, 'qa', 'dev-010', 'n2', 'browser', 'normal-entry.mjs'), 'utf8')
 
 const expected = {
   org_principal: '1c431017194a06dfc61c36849ff93c42ab14291871f12f1a04d762823a3e2ced',
@@ -48,4 +49,9 @@ test('N2-ORG-05 manifest declares one pool with exact timeout ordering', () => {
   assert.equal(config.connectionBudget.poolMax, 6)
   assert.equal(config.connectionBudget.poolsPerInstance, 1)
   assert.ok(config.connectionBudget.queryTimeoutMs > config.connectionBudget.statementTimeoutMs)
+})
+
+test('N2-ORG-06 browser rehearsal builds synthetic governance state without local business data', () => {
+  assert.match(browserSource, /createSyntheticGovernanceFixture/u)
+  assert.doesNotMatch(browserSource, /path\.join\(orgRoot, 'data', 'orgmaster-(?:governance|workspace)/u)
 })

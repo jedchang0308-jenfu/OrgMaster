@@ -11,6 +11,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { chromium } from 'playwright'
+import { createServer as createViteModuleLoader } from 'vite'
 import {
   createTaskOwnedNextTsconfig,
   getFreePort,
@@ -57,6 +58,45 @@ let failure = null
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 const writeJson = (name, value) => fs.writeFileSync(path.join(evidenceDir, name), `${JSON.stringify(value, null, 2)}\n`)
 const record = (id, actual) => observations.push({ id, status: 'PASS', actual })
+
+async function createSyntheticGovernanceFixture() {
+  const loader = await createViteModuleLoader({ root: orgRoot, configFile: false, appType: 'custom', logLevel: 'silent', server: { middlewareMode: true } })
+  try {
+    const [{ createSeedDocumentV2 }, { migrateGovernanceV2ToV3 }, { readAiPdmRoleCatalog }] = await Promise.all([
+      loader.ssrLoadModule('/src/governance/migrateGovernanceV1ToV2.ts'),
+      loader.ssrLoadModule('/src/governance/migrateGovernanceV2ToV3.ts'),
+      loader.ssrLoadModule('/src/governance/aiPdmCatalog.ts'),
+    ])
+    const at = '2026-09-03T00:00:00.000Z'
+    const document = migrateGovernanceV2ToV3(createSeedDocumentV2(at), 'dev010-n2-synthetic-source', readAiPdmRoleCatalog(), at)
+    document.draft.identityLinks.push({
+      id: 'fixture-dev010-local-admin-link', principalId: 'dev-principal-local-admin', issuer: 'urn:orgmaster:dev',
+      subject: 'local-admin', employeeId: 'employee-shijie', status: 'active', validFrom: at, validTo: null,
+    })
+    document.draft.roleAssignments.push({
+      id: 'fixture-dev010-role-manager', employeeId: 'employee-shijie', applicationId: 'orgmaster',
+      roleId: 'role-orgmaster-admin', roleCodeSnapshot: 'orgmaster_admin', roleNameSnapshot: 'OrgMaster 管理者',
+      catalogVersion: null, scope: { kind: 'global' }, status: 'active', validFrom: at, validTo: null,
+      effectState: 'orgmaster-enforced', basis: 'manual', subjectKind: 'employee', targetPrincipalId: null, sources: [],
+      metadata: { sponsorEmployeeId: null, reviewDueAt: null }, createdByPrincipalId: 'fixture:dev010',
+      createdReason: 'DEV-010 task-owned role-manager actor prerequisite',
+    })
+    const { basePolicyVersionId: _fixtureBase, updatedAt: _fixtureUpdated, ...fixturePolicy } = document.draft
+    const fixtureVersionId = 'fixture-dev010-role-manager-policy'
+    document.draft.basePolicyVersionId = fixtureVersionId
+    document.activePolicyVersionId = fixtureVersionId
+    document.publishedVersions.push({
+      kind: 'assignment-governance-v3', id: fixtureVersionId, versionNumber: 1,
+      publishedAt: at, publishedByPrincipalId: 'fixture:dev010',
+      publishReason: 'DEV-010 task-owned role-manager actor prerequisite', snapshotHash: '0'.repeat(64), effectState: 'not-synchronized',
+      policy: fixturePolicy, externalRoleCatalogs: [],
+      organizationSnapshot: { workspaceVersionId: 'test-current', workspaceRevision: 'dev010-n2-synthetic', capturedAt: at, employees: [], departments: [], organizationRoles: [], positions: [], assignments: [] },
+    })
+    return document
+  } finally {
+    await loader.close()
+  }
+}
 
 async function canBind(port) {
   return await new Promise((resolve) => {
@@ -572,26 +612,7 @@ function runAiGovernanceBrowser() {
 try {
   fs.mkdirSync(screenshotDir, { recursive: true })
   fs.mkdirSync(orgDataDir, { recursive: true })
-  const orgGovernanceFixture = JSON.parse(fs.readFileSync(path.join(orgRoot, 'data', 'orgmaster-governance.v3.json'), 'utf8'))
-  orgGovernanceFixture.draft.roleAssignments.push({
-    id: 'fixture-dev010-role-manager', employeeId: 'employee-shijie', applicationId: 'orgmaster',
-    roleId: 'role-orgmaster-admin', roleCodeSnapshot: 'orgmaster_admin', roleNameSnapshot: 'OrgMaster 管理者',
-    catalogVersion: null, scope: { kind: 'global' }, status: 'active', validFrom: '2026-09-03T00:00:00.000Z', validTo: null,
-    effectState: 'orgmaster-enforced', basis: 'manual', subjectKind: 'employee', targetPrincipalId: null, sources: [],
-    metadata: { sponsorEmployeeId: null, reviewDueAt: null }, createdByPrincipalId: 'fixture:dev010', createdReason: 'DEV-010 task-owned role-manager actor prerequisite',
-  })
-  const workspaceFixture = JSON.parse(fs.readFileSync(path.join(orgRoot, 'data', 'orgmaster-workspace.v1.json'), 'utf8'))
-  const { basePolicyVersionId: _fixtureBase, updatedAt: _fixtureUpdated, ...fixturePolicy } = orgGovernanceFixture.draft
-  const fixtureVersionId = 'fixture-dev010-role-manager-policy'
-  orgGovernanceFixture.draft.basePolicyVersionId = fixtureVersionId
-  orgGovernanceFixture.activePolicyVersionId = fixtureVersionId
-  orgGovernanceFixture.publishedVersions.push({
-    kind: 'assignment-governance-v3', id: fixtureVersionId, versionNumber: 1,
-    publishedAt: '2026-09-03T00:00:00.000Z', publishedByPrincipalId: 'fixture:dev010',
-    publishReason: 'DEV-010 task-owned role-manager actor prerequisite', snapshotHash: '0'.repeat(64), effectState: 'not-synchronized',
-    policy: fixturePolicy, externalRoleCatalogs: [],
-    organizationSnapshot: { workspaceVersionId: workspaceFixture.currentVersionId, workspaceRevision: 'fixture-dev010', capturedAt: '2026-09-03T00:00:00.000Z', employees: [], departments: [], organizationRoles: [], positions: [], assignments: [] },
-  })
+  const orgGovernanceFixture = await createSyntheticGovernanceFixture()
   fs.writeFileSync(path.join(orgDataDir, 'orgmaster-governance.v3.json'), `${JSON.stringify(orgGovernanceFixture, null, 2)}\n`)
   platformPort = await getFreePort(); orgPort = await getFreePort(); aiPort = await getFreePort()
   platformApp = startPlatformMirror()

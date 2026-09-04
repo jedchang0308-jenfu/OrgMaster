@@ -52,7 +52,7 @@ try {
   assert.equal(sourceManifest.sourceManifestSha256, sha256(canonicalize({ aggregateSha256: sourceManifest.aggregateSha256, files: sourceManifest.files, head: sourceManifest.head })))
   cases.push(receipt('N2-ORGMASTER-QC-01', 'Frozen baseline and every candidate allowlist file are content-addressed', { ...freeze, candidateFileCount: sourceManifest.files.length }, ['source-manifest.json', 'package-manifest.json'], sourceManifestSha256))
   run(process.execPath, ['--test', 'scripts/dev010-n2-source-freeze.test.mjs', 'scripts/dev010-n2-orgmaster.test.mjs'])
-  cases.push(receipt('N2-ORGMASTER-QC-02', 'Manifest, fixture, migration and shared-pool unit gates pass', '14/14 node:test cases passed', ['command-results.json'], sourceManifestSha256))
+  cases.push(receipt('N2-ORGMASTER-QC-02', 'Manifest, fixture, migration and shared-pool unit gates pass', '16/16 node:test cases passed', ['command-results.json'], sourceManifestSha256))
   run(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', 'server/dev010DatabaseBoundary.test.ts'])
   cases.push(receipt('N2-ORGMASTER-QC-03', 'Typed neutral database boundary tests pass', '2/2 Vitest cases passed', ['command-results.json'], sourceManifestSha256))
   run(process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit'])
