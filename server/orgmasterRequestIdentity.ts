@@ -20,5 +20,8 @@ export function verifiedGovernanceActor(request: IncomingMessage): GovernanceAct
     subject: session.identitySubject,
     employeeId: session.employeeId,
     bootstrap: false,
+    assuranceLevel: session.assuranceLevel,
+    authenticatedAt: session.authenticatedAt,
+    sessionId: session.id,
   } : null
 }

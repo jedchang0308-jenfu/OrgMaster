@@ -2,10 +2,11 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
+import { buildPositionViews } from '../organization'
 import { screenshotOrganizationState } from '../screenshotData'
-import { DirectoryDock } from './DirectoryDock'
+import { DirectoryDock, type DirectoryKind } from './DirectoryDock'
 
-function renderEmployeeDirectory() {
+function renderDirectory(activeDirectory: DirectoryKind = 'employees') {
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
@@ -15,7 +16,9 @@ function renderEmployeeDirectory() {
   act(() => root.render(<DirectoryDock
     employees={screenshotOrganizationState.employees}
     departments={screenshotOrganizationState.departments}
-    members={[]}
+    members={activeDirectory === 'positions'
+      ? buildPositionViews(screenshotOrganizationState.members, screenshotOrganizationState.positions, screenshotOrganizationState.assignments, '2026-03-01')
+      : []}
     positions={screenshotOrganizationState.positions}
     assignments={screenshotOrganizationState.assignments}
     organizationLevels={screenshotOrganizationState.organizationLevels}
@@ -23,7 +26,7 @@ function renderEmployeeDirectory() {
     editingEnabled
     selected={null}
     directorySelection={null}
-    activeDirectory="employees"
+    activeDirectory={activeDirectory}
     onActiveDirectoryChange={vi.fn()}
     onRelationBegin={onRelationBegin}
     onRelationCancel={vi.fn()}
@@ -44,7 +47,7 @@ function renderEmployeeDirectory() {
     onDeleteOrganizationLevel={() => true}
     onReorderOrganizationLevels={() => true}
     onPreviewOrganizationLevels={vi.fn()}
-    workspaceEntityDragSource="employees"
+    workspaceEntityDragSource={activeDirectory === 'employees' ? 'employees' : undefined}
   />))
 
   return { host, root, onRelationBegin, onSelectEntity }
@@ -52,7 +55,7 @@ function renderEmployeeDirectory() {
 
 describe('DirectoryDock employee drag surface', () => {
   it('uses the whole employee card as the relation source', () => {
-    const { host, root, onRelationBegin } = renderEmployeeDirectory()
+    const { host, root, onRelationBegin } = renderDirectory()
     const card = host.querySelector<HTMLElement>('[data-employee-id="employee-shijie"]')
 
     expect(card).not.toBeNull()
@@ -94,7 +97,7 @@ describe('DirectoryDock employee drag surface', () => {
   })
 
   it('keeps Space as the keyboard relation trigger while Enter selects', () => {
-    const { host, root, onRelationBegin, onSelectEntity } = renderEmployeeDirectory()
+    const { host, root, onRelationBegin, onSelectEntity } = renderDirectory()
     const card = host.querySelector<HTMLElement>('[data-employee-id="employee-shijie"]')
     expect(card).not.toBeNull()
 
@@ -108,6 +111,31 @@ describe('DirectoryDock employee drag surface', () => {
 
     act(() => card?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
     expect(onSelectEntity).toHaveBeenCalledWith({ kind: 'employees', id: 'employee-shijie' })
+
+    act(() => root.unmount())
+    host.remove()
+  })
+
+  it('removes local search controls from the employee and position directories', () => {
+    for (const activeDirectory of ['employees', 'positions'] as const) {
+      const { host, root } = renderDirectory(activeDirectory)
+
+      expect(host.querySelector(`#directory-${activeDirectory} .directory-search`)).toBeNull()
+
+      act(() => root.unmount())
+      host.remove()
+    }
+  })
+
+  it('renders levels with the same compact directory-card structure as employees', () => {
+    const { host, root } = renderDirectory('levels')
+    const rows = [...host.querySelectorAll<HTMLElement>('.level-directory-row')]
+
+    expect(rows).toHaveLength(screenshotOrganizationState.organizationLevels.length)
+    expect(rows[0]?.classList.contains('directory-card')).toBe(true)
+    expect(rows[0]?.classList.contains('directory-card--master')).toBe(true)
+    expect(rows[0]?.querySelector('.level-directory-row__code')?.textContent).toBe('L1')
+    expect(rows[0]?.querySelector('.level-directory-row__main input')?.getAttribute('aria-label')).toBe('重新命名 經營決策層')
 
     act(() => root.unmount())
     host.remove()

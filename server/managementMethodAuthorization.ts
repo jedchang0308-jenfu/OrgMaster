@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http'
 import { evaluatePermission } from '../src/governance/evaluatePermission'
 import type { GovernanceActorContext } from '../src/governance/types'
-import { DEV_ISSUER, DEV_PRINCIPAL_ID, DEV_SUBJECT, resolveDevelopmentIdentity } from './orgmasterGovernanceIdentity'
+import { DEV_ISSUER, DEV_PRINCIPAL_ID, DEV_SUBJECT, developmentPermissionForActor, resolveDevelopmentIdentity } from './orgmasterGovernanceIdentity'
 import { readGovernanceStore } from './orgmasterGovernanceStore'
 import type { ManagementMethodCapability } from '../src/managementMethods/types'
 import { verifiedGovernanceActor } from './orgmasterRequestIdentity'
@@ -25,6 +25,8 @@ export function actorFromRequest(request: IncomingMessage, enabled: boolean) {
 }
 
 export async function capabilityFor(root: string, actor: GovernanceActorContext, capability: ManagementMethodCapability) {
+  const development = developmentPermissionForActor(actor, managementMethodPermissionCodes[capability])
+  if (development !== null) return development
   const governance = await readGovernanceStore(root)
   if (actor.bootstrap && !governance.document.activePolicyVersionId) return true
   return evaluatePermission(governance.document, { applicationId: 'orgmaster', issuer: actor.issuer, subject: actor.subject, permissionCode: managementMethodPermissionCodes[capability], scope: { kind: 'global' } }).status === 'allowed'

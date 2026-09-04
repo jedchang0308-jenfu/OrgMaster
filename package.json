@@ -8,6 +8,11 @@
     "npm": ">=11 <12"
   },
   "scripts": {
+    "check:db-boundary": "node scripts/check-shared-database-boundary.mjs",
+    "dev-010:n2:freeze": "node scripts/dev010-n2-source-freeze.mjs",
+    "test:dev-010:n2": "node --test scripts/dev010-n2-source-freeze.test.mjs scripts/dev010-n2-orgmaster.test.mjs",
+    "qc:dev-010:n2:orgmaster": "node scripts/qc-dev-010-n2-orgmaster.mjs",
+    "qc:dev-010:n2:browser": "node qa/dev-010/n2/browser/normal-entry.mjs",
     "contracts:check": "node scripts/qc-dev-004-auth.mjs",
     "dev006:inventory": "node scripts/dev006-orgmaster-migrate.mjs --mode inventory",
     "plan:dev-040:id1": "node scripts/dev040-rekey-employee-ids.mjs --mode plan",
@@ -18,6 +23,13 @@
     "test:dev-005": "vitest run src/governance/positionRoleRecommendations.test.ts src/governance/aiPdmRoleCapability.test.ts server/aiPdmRoleCatalogRepository.test.ts server/aiPdmRoleCapabilityStore.test.ts server/orgmasterEntitlementInvalidationDispatcher.test.ts",
     "qc:dev-005:postgres": "node scripts/qc-dev-005-entitlement-postgres.mjs",
     "test:dev-008": "vitest run server/aiPdmRoleCapabilityStore.test.ts server/orgmasterGovernanceApi.test.ts",
+    "test:dev-009": "vitest run src/governance/assignmentSurface.test.ts src/governance/aiPdmCatalog.test.ts src/governance/validation.test.ts src/governance/commands.test.ts src/governance/evaluatePermission.test.ts src/governance/privilegedAssignments.test.ts src/governance/apiClient.test.ts src/components/GovernancePrivilegedAssignments.test.tsx server/aiPdmRoleCatalogRepository.test.ts server/orgmasterSessionRepository.test.ts server/orgmasterAuthApi.test.ts server/orgmasterGovernanceStore.test.ts server/privilegedAssignmentStore.test.ts server/orgmasterGovernanceApi.test.ts",
+    "test:dev039": "vitest run src/governance/assignmentSurface.test.ts server/applicationEntitlement.test.ts",
+    "qc:dev039:contract": "node scripts/qc-dev039-entitlement-contract.mjs",
+    "qc:dev039:postgres": "node scripts/qc-dev039-entitlement-postgres.mjs",
+    "qc:dev039": "npm run qc:dev039:contract && npm run qc:dev039:postgres && npm run test:dev039 && npm run build",
+    "qc:dev-009:browser": "node scripts/qc-dev-009-privileged-browser.mjs",
+    "qc:dev-009:postgres": "node scripts/qc-dev-009-privileged-postgres.mjs",
     "test:dev-004:auth": "vitest run server/orgmasterAuthApi.test.ts server/orgmasterServer.test.ts src/auth/AuthGate.test.tsx src/documentStorage.employee-status.test.ts",
     "test:dev-004": "npm run contracts:check && npm run test:dev-004:auth",
     "qc:dev-004": "npm run test:dev-004 && npm run build",
@@ -59,6 +71,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "playwright": "^1.62.1",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.10"

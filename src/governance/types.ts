@@ -12,7 +12,7 @@ export type RecommendationDecisionStateV1 = 'dismissed' | 'accepted'
 export type PositionRoleRecommendationStateV1 = 'ready' | 'scope_conflict' | 'dismissed' | 'already_assigned'
 
 export interface GovernanceApplicationV1 {
-  id: 'orgmaster' | 'ai-pdm'
+  id: 'orgmaster' | 'ai-pdm' | 'financial-management-system'
   name: string
   status: GovernanceRecordStatus
 }
@@ -148,7 +148,7 @@ export interface GovernanceDocumentV1 {
   auditEvents: GovernanceAuditEventV1[]
 }
 
-export type GovernanceVersionKind = 'legacy-policy-v1' | 'assignment-governance-v2'
+export type GovernanceVersionKind = 'legacy-policy-v1' | 'assignment-governance-v2' | 'assignment-governance-v3'
 export type AssignmentEffectState = 'orgmaster-enforced' | 'not-synchronized'
 export type ExternalRoleCatalogState = 'valid' | 'stale' | 'invalid' | 'unavailable'
 export type ExternalRoleCatalogSourceKind = 'bundled-fixture'
@@ -175,16 +175,21 @@ export interface ExternalRoleCatalogRoleV1 {
   assignable: boolean
   riskLevel: GovernanceRisk
   allowedScopeKinds: GovernanceScopeV1['kind'][]
+  subjectKind?: 'employee' | 'principal'
+  recommendationAllowed?: boolean
+  delegationAllowed?: boolean
+  assignmentTier?: 'app_admin' | 'cross_app_override'
   unassignableReason?: 'INTEGRATION_METADATA_REQUIRED'
 }
 
 export interface ExternalRoleCatalogSnapshotV1 {
-  applicationId: 'ai-pdm'
+  applicationId: 'ai-pdm' | 'financial-management-system'
   catalogVersion: string
   sourceKind: ExternalRoleCatalogSourceKind
   sourceRefs: Array<{ path: string; range: string; sha256: string }>
   capturedAt: string
   payloadHash: string
+  catalogSha256?: string
   validationState: ExternalRoleCatalogState
   effectState: 'not-synchronized'
   roles: ExternalRoleCatalogRoleV1[]
@@ -193,7 +198,7 @@ export interface ExternalRoleCatalogSnapshotV1 {
 export interface GovernanceRoleAssignmentV2 {
   id: string
   employeeId: string
-  applicationId: 'orgmaster' | 'ai-pdm'
+  applicationId: 'orgmaster' | 'ai-pdm' | 'financial-management-system'
   roleId: string
   roleCodeSnapshot: string
   roleNameSnapshot: string
@@ -293,12 +298,27 @@ export interface RecommendationDecisionV1 {
   decidedAt: string
 }
 
+export interface ApplicationPositionAdoptionV1 {
+  id: string
+  version: number
+  applicationId: 'ai-pdm' | 'financial-management-system'
+  stableRoleId: string
+  positionId: string
+  status: 'active' | 'retired'
+  recommendationVersionAtPublish: number | null
+  createdAt: string
+  createdBy: string
+  updatedAt: string
+  updatedBy: string
+  reason: string
+}
+
 export interface ManagementGrantV1 {
   id: string
   principalId: string
   employeeId: string
-  applicationId: 'ai-pdm'
-  capability: 'ai-pdm.position_role_policy.manage' | 'ai-pdm.role_assignment.manage' | 'ai-pdm.role_assignment.publish' | 'orgmaster.cross_app_override' | 'platform.entitlement_authority.switch'
+  applicationId: 'ai-pdm' | 'financial-management-system'
+  capability: 'orgmaster.position_role_recommendation.manage' | 'ai-pdm.position_adoption.manage' | 'ai-pdm.role_assignment.manage' | 'ai-pdm.role_assignment.publish' | 'financial-management-system.role_assignment.manage' | 'financial-management-system.role_assignment.publish' | 'orgmaster.cross_app_override' | 'platform.entitlement_authority.switch'
   status: 'active' | 'revoked'
   validFrom: string
   validTo: string | null
@@ -309,7 +329,7 @@ export interface ManagementGrantV1 {
 export interface GovernanceRoleAssignmentV3 {
   id: string
   employeeId: string
-  applicationId: 'orgmaster' | 'ai-pdm'
+  applicationId: 'orgmaster' | 'ai-pdm' | 'financial-management-system'
   roleId: string
   roleCodeSnapshot: string
   roleNameSnapshot: string
@@ -319,7 +339,7 @@ export interface GovernanceRoleAssignmentV3 {
   validFrom: string
   validTo: string | null
   effectState: AssignmentEffectState
-  basis: 'manual' | 'position_recommendation'
+  basis: 'manual' | 'position_adoption'
   subjectKind: 'employee' | 'principal'
   targetPrincipalId: string | null
   sources: Array<{
@@ -343,8 +363,31 @@ export interface GovernanceRoleAssignmentV3 {
 export interface GovernancePolicyDataV3 extends Omit<GovernancePolicyDataV2, 'roleAssignments'> {
   roleAssignments: GovernanceRoleAssignmentV3[]
   positionRolePolicies: PositionRolePolicyV1[]
-  recommendationDecisions: RecommendationDecisionV1[]
+  applicationPositionAdoptions: ApplicationPositionAdoptionV1[]
   managementGrants: ManagementGrantV1[]
+}
+
+export interface GovernanceMigrationStateV3 extends Omit<GovernanceMigrationStateV2, 'sourceSchemaVersion'> {
+  sourceSchemaVersion: 2
+}
+
+export interface GovernanceAuditEventV3 extends GovernanceAuditEventV1 {
+  detail?: {
+    targetPrincipalAdmissionId: string
+    employeeId: string
+    applicationId: 'ai-pdm'
+    stableRoleId: 'role-system-admin'
+    scope: { kind: 'global' }
+    requestHash: string
+    previewHash: string
+    catalogVersion: string
+    catalogPayloadHash: string
+    organizationRevision: string
+    governanceRevisionBefore: string
+    assuranceLevel: 'aal2'
+    authenticatedAt: string
+    sessionReference: string
+  }
 }
 
 export interface GovernanceAssignmentVersionV3 {
@@ -367,8 +410,50 @@ export interface GovernanceDocumentV3 {
   draft: GovernancePolicyDataV3 & { basePolicyVersionId: string | null; updatedAt: string }
   activePolicyVersionId: string | null
   publishedVersions: Array<GovernanceAssignmentVersionV3 | GovernancePublishedVersionV2>
-  auditEvents: GovernanceAuditEventV1[]
-  migration: GovernanceMigrationStateV2
+  auditEvents: GovernanceAuditEventV3[]
+  migration: GovernanceMigrationStateV3
+  securityAlertIntents: SecurityAlertIntentV1[]
+  sessionInvalidationOutbox: SessionInvalidationIntentV1[]
+  commandReceipts: GovernanceCommandReceiptV2[]
+}
+
+export interface SecurityAlertIntentV1 {
+  id: string
+  commandId: string
+  operation: 'grant_system_admin' | 'revoke_system_admin'
+  actorPrincipalId: string
+  employeeId: string
+  targetHint: string
+  auditReference: string
+  reasonSha256: string
+  status: 'pending' | 'delivered' | 'failed'
+  createdAt: string
+}
+
+export interface SessionInvalidationIntentV1 {
+  id: string
+  commandId: string
+  targetPrincipalId: string
+  reason: 'privileged_assignment_changed'
+  status: 'pending' | 'completed'
+  createdAt: string
+}
+
+export interface GovernanceCommandReceiptV2 {
+  contractVersion: 'orgmaster.governance-command-receipt.v2'
+  commandId: string
+  requestHash: string
+  previewHash: string
+  receiptStatus: 'processing' | 'applied' | 'rejected' | 'not_found'
+  acceptedAt: string | null
+  terminalAt: string | null
+  decisionCode: string | null
+  auditReference: string | null
+  securityAlertReference: string | null
+  sessionRefresh: 'completed' | 'pending'
+  governanceRevision: string
+  replayed: boolean
+  attempt: number
 }
 
 export type GovernanceCommandV2 =
@@ -379,12 +464,18 @@ export type GovernanceCommandV2 =
   | { type: 'REVOKE_ROLE_DELEGATION'; commandId: string; reason: string; id: string }
   | { type: 'UPSERT_PRINCIPAL_ADMISSION'; commandId: string; reason: string; value: GovernancePrincipalAdmissionV1 }
   | { type: 'SET_PRINCIPAL_ADMISSION_STATUS'; commandId: string; reason: string; id: string; status: GovernanceRecordStatus }
+export type GovernanceCommandV3 =
+  | Exclude<GovernanceCommandV2, { type: 'UPSERT_ROLE_ASSIGNMENT' }>
+  | { type: 'UPSERT_ROLE_ASSIGNMENT'; commandId: string; reason: string; value: GovernanceRoleAssignmentV3 }
 export interface GovernanceActorContext {
   principalId: string
   issuer: string
   subject: string
   employeeId: string | null
   bootstrap: boolean
+  assuranceLevel?: 'aal1' | 'aal2'
+  authenticatedAt?: string | null
+  sessionId?: string
 }
 export interface GovernanceRevisionResult { revision: string; document: GovernanceDocumentV1 }
 
@@ -453,8 +544,9 @@ export type GovernanceCommand =
 export interface GovernanceOrgSource {
   workspaceVersionId: string
   workspaceRevision: string
+  sourceDataAt?: string
   state: {
-    employees: Array<{ id: string; primaryAssignmentId: string | null }>
+    employees: Array<{ id: string; primaryAssignmentId: string | null; status?: 'active' | 'inactive' }>
     departments: Array<{ id: string; parentId: string | null }>
     roles: Array<{ id: string }>
     positions: GovernanceOrganizationSnapshotV1['positions']

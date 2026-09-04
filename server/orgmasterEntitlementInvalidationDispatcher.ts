@@ -42,7 +42,7 @@ export async function dispatchEntitlementInvalidations(
   const claimed = await database.query<EntitlementInvalidationEvent>(
     `SELECT event_id, operation_id, employee_id, application_id, event_kind,
             actor, reason_code, attempt_count, lease_until::text
-       FROM access_governance.claim_entitlement_change_outbox_v1($1, $2, $3)`,
+       FROM orgmaster_contract.claim_entitlement_change_outbox_v1($1, $2, $3)`,
     [workerId, limit, leaseSeconds],
   )
   const results: EntitlementInvalidationDispatchResult[] = []
@@ -50,13 +50,13 @@ export async function dispatchEntitlementInvalidations(
     try {
       const invalidation = await database.query<{ receipt_id: string; affected_principal_count: number }>(
         `SELECT receipt_id, affected_principal_count
-           FROM platform_core.invalidate_employee_app_sessions_v1($1, $2, $3, $4, $5)`,
+           FROM platform_contract.invalidate_employee_app_sessions_v1($1, $2, $3, $4, $5)`,
         [event.employee_id, event.application_id, event.operation_id, event.actor, event.reason_code],
       )
       if (invalidation.rowCount !== 1) throw new Error('PLATFORM_INVALIDATION_RECEIPT_INVALID')
       const receipt = invalidation.rows[0]
       await database.query(
-        'SELECT access_governance.complete_entitlement_change_outbox_v1($1, $2, $3)',
+        'SELECT orgmaster_contract.complete_entitlement_change_outbox_v1($1, $2, $3)',
         [event.event_id, workerId, receipt.receipt_id],
       )
       results.push({
@@ -69,7 +69,7 @@ export async function dispatchEntitlementInvalidations(
       })
     } catch (error) {
       await database.query(
-        'SELECT access_governance.retry_entitlement_change_outbox_v1($1, $2, $3)',
+        'SELECT orgmaster_contract.retry_entitlement_change_outbox_v1($1, $2, $3)',
         [event.event_id, workerId, redactedErrorCode(error)],
       )
       results.push({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveModuleCapability, resolveWorkspaceCompositionCapability } from './capability'
+import { isDesktopMutationEnvironment, resolveModuleCapability, resolveWorkspaceCompositionCapability } from './capability'
 import type { WorkspaceEnvironment } from './types'
 
 const environment: WorkspaceEnvironment = {
@@ -26,5 +26,14 @@ describe('workspace capability', () => {
     expect(resolveModuleCapability('organization', { ...environment, serverReady: false }, writable)).toMatchObject({ canRead: true, canMutate: false })
     expect(resolveModuleCapability('organization', { ...environment, workspaceMode: 'current-view' }, writable)).toMatchObject({ canRead: true, canMutate: false })
     expect(resolveModuleCapability('organization', environment, { canRead: false, canMutate: false, reason: 'forbidden' })).toEqual({ canRead: false, canMutate: false, reason: 'forbidden' })
+  })
+
+  it('uses the deterministic 1024px hover/fine-pointer boundary for writes', () => {
+    expect(isDesktopMutationEnvironment(environment)).toBe(true)
+    expect(isDesktopMutationEnvironment({ ...environment, viewportWidth: 1023 })).toBe(false)
+    expect(isDesktopMutationEnvironment({ ...environment, hoverCapable: false })).toBe(false)
+    expect(isDesktopMutationEnvironment({ ...environment, finePointer: false })).toBe(false)
+    expect(isDesktopMutationEnvironment({ ...environment, mobileReadOnly: true })).toBe(false)
+    expect(isDesktopMutationEnvironment({ ...environment, recoveryState: 'blocked' })).toBe(false)
   })
 })

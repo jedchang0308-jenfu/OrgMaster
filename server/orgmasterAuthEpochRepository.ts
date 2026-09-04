@@ -13,7 +13,7 @@ export function createAuthEpochRepository(database: OrgmasterDatabase): AuthEpoc
     async read(issuer, subject) {
       try {
         const result = await database.query<{ auth_epoch: string | number }>(
-          'SELECT platform_core.read_principal_auth_epoch_v1($1, $2) AS auth_epoch',
+          'SELECT platform_contract.read_principal_auth_epoch_v1($1, $2) AS auth_epoch',
           [issuer, subject],
         )
         const epoch = Number(result.rows[0]?.auth_epoch ?? 0)

@@ -62,8 +62,12 @@ const FAILURE_MESSAGES: Record<string, string> = {
   GOVERNANCE_READ_FAILED: '治理資料目前無法讀取，請重新載入。',
   GOVERNANCE_VALIDATION_FAILED: '治理資料未通過驗證，請檢查目前區段後再試。',
   GOVERNANCE_WRITE_FAILED: '治理資料未保存，請重新操作。',
+  ORGMASTER_UNAVAILABLE: 'OrgMaster 暫時無法使用；請稍後重新載入。',
   IDENTITY_CONTEXT_REQUIRED: '找不到目前登入身分，請重新開啟治理中心。',
   IDENTITY_PROVIDER_NOT_CONFIGURED: '目前環境未設定可用的身分提供者。',
+  IDENTITY_LINK_CONFLICT: '目前登入身分已連結其他員工，不能在此改綁。',
+  EMPLOYEE_NOT_ACTIVE: '停用員工不能連結登入身分。',
+  SELF_IDENTITY_LINK_DEACTIVATION_FORBIDDEN: '不能停用目前登入身分；請由另一位治理管理者處理。',
   ORGANIZATION_VERSION_INVALID: '現行組織版本已變更，請重新載入後再發布。',
   PAYLOAD_TOO_LARGE: '送出的治理資料超過大小限制。',
   POLICY_VERSION_NOT_FOUND: '找不到指定的治理政策版本。',
@@ -83,6 +87,20 @@ const FAILURE_MESSAGES: Record<string, string> = {
   LEGACY_POLICY_REACTIVATION_FORBIDDEN: '歷史 V1 版本只能閱讀，請建立新的 V2 版本。',
   LEGACY_GOVERNANCE_EVALUATOR_RETIRED: '舊權限／審核模擬器已停用，請使用角色指派檢查。',
   EXTERNAL_PERMISSION_EVALUATION_UNSUPPORTED: '外部權限由目標系統自行執行，OrgMaster 不模擬。',
+  PRIVILEGED_VIEW_REQUIRED: '目前身分沒有檢視特權設定的權限。',
+  PRIVILEGED_MUTATION_REQUIRED: '特權設定需要既有的 cross-app override 授權。',
+  STEP_UP_REQUIRED: '特權設定需要五分鐘內完成的二次驗證，請重新驗證後再試。',
+  PRIVILEGED_SELF_ASSIGNMENT_DENIED: '不可將特權身分授予目前登入身分。',
+  PRINCIPAL_ADMISSION_INELIGIBLE: '選取的特權身分已失效，請重新載入。',
+  PRIVILEGED_ASSIGNMENT_NOT_FOUND: '找不到這筆特權指派，請重新載入。',
+  CATALOG_ROLE_CONTRACT_MISMATCH: 'system_admin 角色契約已漂移；目前只提供唯讀檢視。',
+  CATALOG_VERSION_CONFLICT: '角色目錄已更新，請重新載入後再試。',
+  CATALOG_PAYLOAD_HASH_MISMATCH: '角色目錄內容驗證失敗，請重新載入。',
+  REQUEST_HASH_MISMATCH: '操作內容已變更，請重新產生預覽。',
+  PREVIEW_HASH_MISMATCH: '預覽已過期，請重新產生預覽。',
+  NO_ELIGIBLE_PRINCIPAL: '目前沒有可授予的 human_privileged 身分。',
+  SYSTEM_ADMIN_PRINCIPAL_REQUIRED: '特權指派缺少有效身分資料，請重新載入。',
+  COMMAND_NOT_OBSERVED: '操作收據尚未建立，請重新查詢。',
 }
 
 const ISSUE_MESSAGES: Record<string, string> = {
@@ -122,7 +140,7 @@ export function describeGovernanceFailure(error: unknown): GovernanceFailureView
   return {
     code,
     message: uniqueMessages.length ? uniqueMessages.join('；') : FAILURE_MESSAGES[code] ?? '治理操作未完成，請重新操作。',
-    canReload: ['REVISION_CONFLICT', 'ORGANIZATION_VERSION_INVALID', 'GOVERNANCE_READ_FAILED', 'EXTERNAL_CATALOG_VERSION_CONFLICT', 'EXTERNAL_CATALOG_STALE', 'EXTERNAL_CATALOG_UNAVAILABLE'].includes(code),
+    canReload: ['REVISION_CONFLICT', 'ORGANIZATION_VERSION_INVALID', 'GOVERNANCE_READ_FAILED', 'ORGMASTER_UNAVAILABLE', 'EXTERNAL_CATALOG_VERSION_CONFLICT', 'EXTERNAL_CATALOG_STALE', 'EXTERNAL_CATALOG_UNAVAILABLE'].includes(code),
   }
 }
 

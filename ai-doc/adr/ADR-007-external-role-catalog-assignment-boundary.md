@@ -81,7 +81,7 @@
 
 本 amendment 的實作邊界已在 Platform DEV-005 與 OrgMaster DEV-040 §21 固定；以下條款是本 ADR 的相容細化，不另建第二套 authority：
 
-1. AI-PDM initial target catalog固定為`ai-pdm.role-catalog.2026-09-02.v2`，依序包含`role-rd`、`role-rd-manager`、`role-qa`、`role-manufacturing`、`role-production-planning`、`role-procurement`、`role-external-specialist`、`role-pdm-admin`、`role-system-admin`九個stable ID，exact SHA=`ebdaa2960960e0683b480c721d2c27df59031b4af23b124f2ac7e882309f6b6e`；`role-document-admin`不在active catalog。OrgMaster只保存帶vendor-lock的唯讀snapshot與reference，不可修改role或permission內容。request time以AI-PDM active catalog作policy authority；assignment catalog version只作provenance，version不同本身不deny，missing／retired／code drift／subject-scope不相容才deny。
+1. AI-PDM current target catalog固定為`ai-pdm.role-catalog.2026-09-03.v3`，依序包含`role-rd`、`role-rd-manager`、`role-qa`、`role-manufacturing`、`role-production-planning`、`role-procurement`、`role-external-specialist`、`role-pdm-admin`、`role-system-admin`九個stable ID，exact SHA=`46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8`；`role-document-admin`與已退役`bom.review.*`不在active catalog。OrgMaster只保存帶vendor-lock的唯讀snapshot與reference，不可修改role或permission內容。request time以AI-PDM active catalog作policy authority；assignment catalog version只作provenance，version不同本身不deny，missing／retired／code drift／subject-scope不相容才deny。
 2. Current Phase的scope只接受：一般內部role=`workspace`；`role-external-specialist`=`project`、manual direct，使用零department／零Position的active Employee identity anchor並必須有另一位active internal sponsor／review metadata／finite hard expiry；`role-system-admin`=`global`、`subjectKind=principal`且只可直接指向同employee的active `human_privileged` principal。External與system admin均禁止Position recommendation／delegation；system admin另禁止self-assignment與employee-wide傳播。AI-PDM尚未具備一致的department resource evaluator，因此不得以文件宣稱department scope已受server enforcement。
 3. `GovernanceDocumentV3`新增versioned `positionRolePolicies`、`applicationPositionAdoptions`、`managementGrants`與assignment provenance；assignment另固定`basis=manual|position_adoption`、`subjectKind`及`targetPrincipalId`。Target V3不保存per-employee recommendation ID／accept／dismiss decision或legacy basis；未上線local foundation在`005-S2`前刪除／重構並重建fixture，不建立production migration相容層。
 4. Assignment生命週期分為兩軸：immutable published assignment的`active | revoked`與依authority source即時計算的`pending | active`。來源Position assignment失效時只關閉該position-based assignment；manual assignment不受連帶撤銷。
@@ -94,7 +94,7 @@
 
 ## 2026-09-02 System Administrator Privileged Governance Amendment
 
-分類：`Human Confirmed / Compatible Security Refinement / Documents Only`
+分類：`Human Confirmed / Compatible Security Refinement / 009-S0～S4 Local-Isolated Complete / Targeted QA-QC PASS / 009-R1 Release Gate Required / Production Release Gated`
 
 使用者確認不把 AI-PDM `system_admin` 移出 OrgMaster 治理，而是把它從一般 Position／Employee 指派流程抽離，建立 exact privileged principal 的單一路徑：
 
@@ -107,7 +107,7 @@
 7. OrgMaster不可用時只凍結治理mutation。AI-PDM runtime只讀Tier-0 app-filtered effective entitlement，不同步呼叫OrgMaster HTTP；AI-PDM可永久顯示last-known-good holder snapshot，但必須標示authority資料時間且不得拿snapshot參與授權或mutation precondition。
 8. AI-PDM `system_admin`頁不顯示「尚未採用職位」或Position控制，只顯示「由 OrgMaster 管理」、redacted特權身分、資料時間與前往既有「角色指派」的導引。principal role計數單位是「特權身分 N 個」，不是自然人數。
 
-跨系統權威契約見[Jenfu Platform DEV-009](../../../Jenfu-Management-system/ai-doc/specs/DEV-009-system-admin-privileged-principal-governance.md)；OrgMaster direct implementation contract見DEV-040 §23。本amendment不代表產品、schema、資料、runtime或release已變更。
+跨系統權威契約見[Jenfu Platform DEV-009](../../../Jenfu-Management-system/ai-doc/specs/DEV-009-system-admin-privileged-principal-governance.md)；OrgMaster direct implementation contract見DEV-040 §23。`009-S0～S4`已完成local／isolated implementation與targeted QA-QC；S1 PostgreSQL、S2 OrgMaster normal-path browser、S3 AI-PDM aggregate與S4 cross-repo均有frozen report／candidate SHA，S4另逐檔驗章S1～S3 receipt。此狀態不代表production schema已apply、真實principal／grant已建立、bootstrap、deploy或release已完成；下一步固定為`009-R1 Release Gate Required`。
 
 ## Context
 

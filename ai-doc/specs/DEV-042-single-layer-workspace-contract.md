@@ -1,6 +1,10 @@
 # DEV-042：單層功能工作台與可收合清單明細實作契約
 
-狀態：`RD Implementation Complete / Browser QA-QC Passed / Local Release Gate Pending`
+狀態：`RD Implementation Complete / Browser QA-QC Passed / Merged to master`
+
+> **2026-09-04 DEV-046 intentional successor（現行產品方向）**：DEV-042 的完成狀態、single-layer launcher、panel owner、route／session authority與歷史證據保持有效；但 list-only module、固定 `242px／190px` 清單寬度、detail 關閉即移除右欄，以及 Process 保留專用最外層三區例外，已由 [DEV-046](DEV-046-unified-list-detail-workbench-framework.md) 明確取代。現行待實作契約是八個指定功能共用左清單＋永遠存在的右detail frame、click／Arrow／Escape互動、帳號層級可調清單寬度及DEV-041 typed relation extension path。本文件後續相反敘述只作DEV-042歷史provenance，不得覆寫DEV-046。
+
+> **2026-09-02 repository integration override（現行）**：DEV-042 single-layer workspace與DEV-041 relation baseline已由final integration commit `4e3b2ce`收斂，並經merge commit `c8cc16f`進入`master`。因此本文件舊段落中的candidate freeze、commit、merge authorization pending只作整合前provenance；現行無獨立開發或Git尾項。deploy／release未被本文件授權，僅在使用者另行提出release型指令時進入共用gate。
 
 來源：`USER-2026-09-02-SINGLE-LAYER-WORKSPACE-INTENTIONAL-REPLACEMENT`、`USER-2026-09-02-DEV042-RD-IMPLEMENTATION-READY`、`USER-2026-09-02-DEV042-RD-TECH-LEAD-REVIEW`
 
@@ -12,7 +16,7 @@
 
 - 本文件已把產品決策、現況 symbol、目標 state／route、模組差異、檔案 allowlist、分片、失敗復原與 QA／QC 證據契約固定到 RD 可直接派工。
 - `P0 readiness gap=0`；`P1 readiness gap=0`。RD 可依 S0→S7 實作，不需再發明入口、第二 state store、第二 router 或替代 DnD 架構。
-- DEV-042 production implementation 已完成；targeted automated gate、typecheck、build 與 source scan 通過。完整回歸 `174 files／716 passed／1 skipped`；先前四個 DEV-040 governance／catalog 契約漂移已修正。Fresh browser QA／QC 已完成 E1～E9，並以唯一 manifest 固化證據，因此本 DEV 達 `RD Implementation Complete / Browser QA-QC Passed`；僅保留 local release gate，未授權 candidate freeze、commit、merge、deploy 或 release。
+- DEV-042 production implementation 已完成；targeted automated gate、typecheck、build 與 source scan 通過。完整回歸 `174 files／716 passed／1 skipped`；先前四個 DEV-040 governance／catalog 契約漂移已修正。Fresh browser QA／QC 已完成 E1～E9，並以唯一 manifest 固化證據；final integration=`4e3b2ce`、merge=`c8cc16f`。本DEV已完成且納入`master`，只保留未被要求的deploy／release邊界。
 - 本文件不授權 candidate freeze、commit、merge、deploy 或 release。
 
 ### 0.1 RD Technical Lead Review（2026-09-02）
@@ -480,10 +484,19 @@ rg -n "WorkspaceQuickDrawer|DrawerWorkspaceModuleId|WORKSPACE_DRAWER_MODULES|isD
 
 - `RD Implementation Complete`：S0～S6通過（包含 `174 files／716 passed／1 skipped` full regression）、source scan 0 match、無 DEV-042 allowlist 外產品變更；本案已達此 gate。
 - `Browser QA-QC Passed`：S7全部 required scenario 有可採用 evidence、diagnostics 為 0、fresh fixture 已 archive；task-owned `5080` runtime 停止並確認 port 釋放後，本案已達此 gate。
-- `Candidate Freeze Ready`：前兩者完成、文件與evidence同版、Git allowlist review完成。
-- commit／merge／deploy／release仍須各自明確授權；不得因本文件達`RD Implementation Ready`提前宣稱完成。
+- `Repository Integrated`：前兩者完成、文件與evidence同版，並由`4e3b2ce`／`c8cc16f`進入`master`；本案已達此gate。
+- deploy／release仍須使用者明確提出並依共用release gate處理；不得從repository integration推論已發布。
 
-## 17. 變更紀錄
+## 17. Future Phase Capsule：工作職掌 anomaly 複選篩選
+
+狀態：`Captured / Not Requested`。本capsule由DEV-034 R2.1整併而來，只保留「在現行Duty configuration清單中，以單一popover複選三個既有anomaly原子條件」的產品意圖；不新增「待處理」狀態、責任類型、部門聚焦、資料模型、API或後端契約。
+
+- 目的：讓規劃者在不離開DEV-042單層Duty panel的情況下，組合既有「無執行職位／缺少主執行／待重新分配」條件縮小清單。
+- 依賴：沿用既有anomaly selector、Duty panel query／filter state及mobile read-only；不得復活DEV-034固定DirectoryDock或專用配置模式。
+- 驗收方向：三條件可獨立或複選、結果為OR集合、清除後恢復完整清單、URL／session行為需與現行panel context一致，且不改domain state。
+- Re-entry trigger：只有使用者明確要求實作此篩選時另開DEV；不得因本capsule存在重開DEV-034或DEV-042完成狀態。
+
+## 18. 變更紀錄
 
 - 2026-09-02：依使用者要求直RD修復並完成驗證。修正四個 DEV-040 governance／catalog 測試契約漂移（改用 workspace scope／current catalog version），修正 management-method local-development actor precedence 使隔離草稿 API／UI 可用；新增 loopback auth regression。fresh fixture `draft-03043049-90bd-4918-add0-ca044905eddf` 上 E5、E7（split／resize／pin／close／zero-panel）與 console sweep 通過；DEV-041 最新 aggregate 已覆核四向 DnD、zero-mutation、auto-pan、console/pageerror。全回歸 `174 files／716 passed／1 skipped`，typecheck、client／server build 通過；證據總表為 `output/playwright/dev042/manifest.md`。本輪尚未執行 candidate freeze、commit、merge、deploy 或 release。
 

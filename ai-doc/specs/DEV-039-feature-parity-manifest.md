@@ -4,7 +4,7 @@
 
 > **DEV-041 follow-on parity note（2026-09-01）**：DEV-041已達`RD Implementation Complete / Automated Gate Passed / Browser Native Evidence Pending`；S0～S7已把registered relation的mouse source由列尾把手intentional replacement為整個來源物件／卡片的非互動區域，並共用三態target與owner-canvas auto-pan。exact contract固定三個薄層、逐檔impact、failure recovery、targeted commands、fresh normal-entry evidence及dirty-worktree allowlist。此變更不得遺失DEV-039現有關係、readonly、Undo／Redo、autosave、CAS或keyboard相容能力；本清冊與DEV-039 evidence仍是回歸基線，不得取代DEV-041尚待QA／QC完成的native fresh pass。DEV-041 gate與狀態以主spec §0.1／§20為唯一來源。新契約見`ai-doc/specs/DEV-041-relation-drag-interaction-contract.md`。
 
-> **2026-09-01 Candidate freeze commit override（現行）**：已依使用者授權 `DEV-039 candidate freeze 並 commit（僅納入 DEV-039 allowlist）` 完成 selective staging 與 commit `86510f4`（74 個 DEV-039 allowlist 檔案）。DEV-037／038／040、auth／DB／package／環境設定、混合未判定變更及 `output/playwright/dev039/**` 均排除；merge、deploy、release 不在本次授權範圍。
+> **2026-09-02 repository integration correction（現行）**：本清冊對應的workspace baseline已由`164a779`建立，DEV-041／042及最終整合位於`4e3b2ce`，並由merge commit `c8cc16f`納入`master`。舊工作樹記錄的`86510f4`在目前repository不可達，只作歷史provenance。E1～E3與DEV-042 Browser QA／QC均已通過；E4 candidate、commit與merge已由目前Git歷史完成，不再是active gate。deploy／release未被本清冊授權。
 
 > **2026-09-01 Formal QA-QC 最新覆寫**：E1四個 minimum directions、E2五案`historyEvidence`與E3兩案已完成正式 QA-QC；targeted component `3 files／19 tests`、full regression `160 files／664 tests（1 skipped）`、typecheck、build、source scan、文件一致性與fixture／runtime cleanup均通過。E4僅等待使用者／PM明確授權，不代表commit、merge、deploy或release；下方較早的`QA-QC Reopened`／`Partial／Open`只作歷史 provenance。
 
@@ -16,7 +16,7 @@
 
 盤點日期：`2026-09-01`
 
-盤點分支／基準：`codex/dev-039-composable-workspace` / `86510f4`（candidate freeze commit）
+盤點分支／基準：`master` / `c8cc16f`（整合merge；workspace baseline=`164a779`，final integration=`4e3b2ce`）
 
 文件成熟度影響（歷史摘要；現行狀態以第0.1～0.2節覆寫為準）：本清冊已完成DEV-039零遺失mapping、fresh `F039`整合證據及S5 removal allowlist closure，S0～S6證據維持歷史有效。S7已落地`relationPlacement.ts` pure session、App唯一協調器、typed effect／capability path、Employee／Duty／Process source／registered target接線、舊平行state移除、Process composition harness與B16 pure fixture transformer，並通過targeted tests、typecheck、full regression（160 files／664 tests，1 skipped）與build。E1四個 minimum directions、E2五案`historyEvidence`與E3兩案均具可採用 evidence並完成正式 QA-QC覆核；E4僅待使用者／PM明確授權，不代表immutable commit、正式auth、deploy或release已通過。
 
@@ -38,14 +38,14 @@
 | E1 native delivery | `Pass（evidence）` | 四個 minimum directions（Employee→Position、Duty→Position、ProcessNode→Duty、paired Duty→ProcessNode）均保留 strict native record；paired最新record見第16.15.21節。正式 QA-QC已覆核四筆逐案 record、artifact、cleanup與文件同版。 |
 | E2 failure paths | `Pass（evidence）` | 五案新 browser record 均含 `historyEvidence` 行為性 Undo round-trip、zero-mutation與persistence／focus／listener欄位；正式 QA-QC已覆核，不新增debug API／第二history store。 |
 | E3 lifecycle／warning | `Pass` | 正式 QA-QC已覆核既有record與artifact |
-| E4 candidate freeze | `Candidate Freeze Committed` | commit=`86510f4`；74 個 allowlist 檔案已完成 selective staging；merge／deploy／release 另待授權 |
+| E4 repository integration | `Merged to master` | workspace baseline=`164a779`；final integration=`4e3b2ce`；merge=`c8cc16f`；deploy／release未要求 |
 | E4 scope preflight | `Frozen` | commit 前已完成 `git status` 快照、allowlist 對照與 staged diff check；DEV-037／038／040、混合未判定變更及 `.gitignore` 的 `output/*` 證據均未納入 |
 
-本 snapshot 不改任何 parity row 的 `P／R／X` disposition；不授權刪除舊功能、merge、deploy或release。E1四向與E2／E3均已具備可採用 evidence並完成正式 QA-QC；E4 candidate freeze 已由 commit `86510f4` 完成。
+本 snapshot 不改任何 parity row 的 `P／R／X` disposition；E1四向、E2／E3與DEV-042 single-layer Browser QA／QC均已完成。repository integration已由`c8cc16f`完成；本清冊不授權deploy或release。
 
 ### 0.2 RD handoff index（2026-09-01）
 
-下一輪只沿用主spec第2.4～2.4.1節的 `E4-CANDIDATE-FREEZE` 後續工作包；`QA-QC-REVIEW`與candidate commit已完成。E1 paired reverse已由第16.15.21節取得 strict pass，不需重做；第16.15.20節只作 blocked provenance。下一個 gate 是另行授權的 merge／release；`output/playwright/dev039/**` 受 `output/*` 忽略規則保護，不 force-add，portable evidence另走release artifact gate。
+DEV-039 Current Phase不再有續接工作包；E1 paired reverse已由第16.15.21節取得strict pass，不需重做，第16.15.20節只作blocked provenance。未來只有使用者明確提出deploy／release時才建立release gate；`output/playwright/dev039/**`仍受`output/*`忽略規則保護，portable evidence另走release artifact gate。
 
 同日第二次 capability probe（窄修正前歷史 provenance）改用全新 fixture `draft-dc8cdb58-488c-42ee-9430-e20276fa255b`，在 source／target geometry可命中後，仍未取得產品原生事件序列或 strict MIME；API前後無 domain mutation，archive final manifest revision=`99cda30acc92c181d0e1ae99769e54dae131515316c7c9e7e20aa7bb724bb584`。此筆只作 runner provenance；窄修正後的 ProcessNode→Duty 單方向 strict pass見第16.15.19節，paired strict pass見第16.15.21節，不再重試同類工具。
 

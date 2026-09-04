@@ -13,6 +13,7 @@ interface VersionWorkspacePanelProps {
   onEnterCurrentMaintenance: () => void
   onClose: () => void
   busy?: boolean
+  mutationAllowed?: boolean
 }
 
 export function VersionWorkspacePanel({
@@ -26,6 +27,7 @@ export function VersionWorkspacePanel({
   onEnterCurrentMaintenance,
   onClose,
   busy = false,
+  mutationAllowed = true,
 }: VersionWorkspacePanelProps) {
   const [draftName, setDraftName] = useState('')
   const [sourceVersionId, setSourceVersionId] = useState(activeVersionId ?? versions[0]?.id ?? '')
@@ -48,7 +50,8 @@ export function VersionWorkspacePanel({
           <button type="button" className="icon-button" onClick={onClose} aria-label="關閉版本工作區"><X size={17} /></button>
         </header>
 
-        <section className="workspace-drawer__create">
+        {!mutationAllowed && <div className="workspace-mode-status" role="status">目前裝置僅提供唯讀；可切換版本查看內容</div>}
+        {mutationAllowed && <section className="workspace-drawer__create">
           <label>
             <span>從版本建立草稿</span>
             <select value={sourceVersionId} onChange={(event) => setSourceVersionId(event.target.value)}>
@@ -59,7 +62,7 @@ export function VersionWorkspacePanel({
             <input value={draftName} onChange={(event) => setDraftName(event.target.value)} placeholder="例如：管理部整併方案" maxLength={60} aria-label="草稿名稱" />
             <button type="button" className="button-primary" onClick={submitCreate} disabled={busy || !draftName.trim()}><CopyPlus size={15} />建立</button>
           </div>
-        </section>
+        </section>}
 
         <div className="workspace-drawer__body">
           <div className="workspace-drawer__section-label">目前版本</div>
@@ -75,8 +78,8 @@ export function VersionWorkspacePanel({
                     {selected && <Check size={15} aria-label="目前選取" />}
                   </button>
                   <div className="workspace-version-row__actions">
-                    {isCurrent && selected && <button type="button" className="button-secondary workspace-version-row__maintain" onClick={onEnterCurrentMaintenance}>維護</button>}
-                    {!isCurrent && <>
+                    {isCurrent && selected && mutationAllowed && <button type="button" className="button-secondary workspace-version-row__maintain" onClick={onEnterCurrentMaintenance}>維護</button>}
+                    {!isCurrent && mutationAllowed && <>
                       <button type="button" className="icon-button" onClick={() => { setRenameId(version.id); setRenameName(version.name) }} aria-label={`重新命名 ${version.name}`} title="重新命名">⋯</button>
                       <button type="button" className="icon-button" onClick={() => onArchive(version.id)} aria-label={`封存 ${version.name}`} title="封存"><Archive size={14} /></button>
                     </>}
@@ -94,14 +97,14 @@ export function VersionWorkspacePanel({
                   <button type="button" className="workspace-version-row__main" onClick={() => onSelect(version.id)} disabled={version.loadStatus === 'failed'}>
                     <span className="workspace-version-row__badge">封存</span><span><strong>{version.name}</strong><small>可還原</small></span>
                   </button>
-                  <button type="button" className="icon-button" onClick={() => onRestore(version.id)} aria-label={`還原 ${version.name}`} title="還原"><RotateCcw size={14} /></button>
+                  {mutationAllowed && <button type="button" className="icon-button" onClick={() => onRestore(version.id)} aria-label={`還原 ${version.name}`} title="還原"><RotateCcw size={14} /></button>}
                 </div>
               ))}
             </div>
           </>}
         </div>
 
-        {renameId && <div className="workspace-inline-dialog" role="dialog" aria-label="重新命名草稿">
+        {mutationAllowed && renameId && <div className="workspace-inline-dialog" role="dialog" aria-label="重新命名草稿">
           <input autoFocus value={renameName} onChange={(event) => setRenameName(event.target.value)} maxLength={60} />
           <button type="button" className="button-secondary" onClick={() => setRenameId(null)}>取消</button>
           <button type="button" className="button-primary" onClick={() => { onRename(renameId, renameName); setRenameId(null) }}>儲存</button>

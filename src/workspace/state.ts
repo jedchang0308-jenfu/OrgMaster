@@ -251,20 +251,22 @@ export function reduceWorkspaceState(
     const panel = state.session.panels[action.moduleId]
     if (!panel) return { state, effects: [] }
     const nextContext = getWorkspaceModule(action.moduleId).sanitizeContext(action.context as never, context.organizationState)
-    if (JSON.stringify(panel.context) === JSON.stringify(nextContext)) return { state, effects: [] }
+    const contextUnchanged = JSON.stringify(panel.context) === JSON.stringify(nextContext)
+    const nextOpenDetails = action.openDetail === true && contextHasDetail(action.moduleId, nextContext)
+      ? [...state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId), action.moduleId]
+      : action.openDetail === false || !contextHasDetail(action.moduleId, nextContext)
+        ? state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId)
+        : state.session.openDetails
+    if (contextUnchanged && JSON.stringify(nextOpenDetails) === JSON.stringify(state.session.openDetails)) return { state, effects: [] }
     const next = {
       ...state,
       session: {
         ...state.session,
-        panels: {
+        panels: contextUnchanged ? state.session.panels : {
           ...state.session.panels,
           [action.moduleId]: { ...panel, context: nextContext },
         },
-        openDetails: action.openDetail === true && contextHasDetail(action.moduleId, nextContext)
-          ? [...state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId), action.moduleId]
-          : action.openDetail === false || !contextHasDetail(action.moduleId, nextContext)
-            ? state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId)
-            : state.session.openDetails,
+        openDetails: nextOpenDetails,
       },
     } as WorkspaceState
     const route = routeFromState(next)

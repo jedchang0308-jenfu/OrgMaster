@@ -34,11 +34,16 @@ export const AI_PDM_APPROVAL_ACTION_CODES = [
 export const GOVERNANCE_APPLICATIONS: GovernanceApplicationV1[] = [
   { id: 'orgmaster', name: 'OrgMaster', status: 'active' },
   { id: 'ai-pdm', name: 'AI-PDM', status: 'active' },
+  { id: 'financial-management-system', name: 'Financial Management System', status: 'active' },
 ]
 export const ORGMASTER_PERMISSIONS: GovernancePermissionV1[] = [
   { id: 'permission-orgmaster-governance-manage', applicationId: 'orgmaster', kind: 'system', code: 'orgmaster.governance.manage', name: '管理治理設定', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-governance-publish', applicationId: 'orgmaster', kind: 'system', code: 'orgmaster.governance.publish', name: '發布治理政策', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-governance-simulate', applicationId: 'orgmaster', kind: 'system', code: 'orgmaster.governance.simulate', name: '執行治理測試器', risk: 'normal', status: 'active' },
+  { id: 'permission-orgmaster-identity-view', applicationId: 'orgmaster', kind: 'page', code: 'orgmaster.identity.view', name: '查看員工登入帳號', risk: 'normal', status: 'active' },
+  { id: 'permission-orgmaster-identity-invite', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.identity.invite', name: '邀請員工登入帳號', risk: 'high', status: 'active' },
+  { id: 'permission-orgmaster-identity-link', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.identity.link', name: '連結既有登入帳號', risk: 'high', status: 'active' },
+  { id: 'permission-orgmaster-identity-invitation-manage', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.identity.invitation.manage', name: '管理登入帳號邀請', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-management-method-create', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.management_method.create', name: '建立管理辦法', risk: 'normal', status: 'active' },
   { id: 'permission-orgmaster-management-method-read-readable', applicationId: 'orgmaster', kind: 'page', code: 'orgmaster.management_method.read_readable', name: '閱讀管理辦法', risk: 'normal', status: 'active' },
   { id: 'permission-orgmaster-management-method-read-draft', applicationId: 'orgmaster', kind: 'page', code: 'orgmaster.management_method.read_draft', name: '閱讀管理辦法草稿', risk: 'normal', status: 'active' },
@@ -58,8 +63,8 @@ export const AI_PDM_PERMISSIONS: GovernancePermissionV1[] = [
 ]
 export const ALL_SEED_PERMISSIONS = [...ORGMASTER_PERMISSIONS, ...AI_PDM_PERMISSIONS]
 
-export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-02.v2' as const
-export const AI_PDM_ROLE_CATALOG_SHA256 = 'ebdaa2960960e0683b480c721d2c27df59031b4af23b124f2ac7e882309f6b6e' as const
+export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-03.v3' as const
+export const AI_PDM_ROLE_CATALOG_SHA256 = '46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8' as const
 const AI_PDM_ROLE_CATALOG_IDS = [
   'role-rd', 'role-rd-manager', 'role-qa', 'role-manufacturing', 'role-production-planning',
   'role-procurement', 'role-external-specialist', 'role-pdm-admin', 'role-system-admin',
@@ -81,6 +86,10 @@ export const AI_PDM_ROLE_CATALOG_ROLES: readonly ExternalRoleCatalogRoleV1[] = a
   assignable: role.assignable,
   riskLevel: role.risk as ExternalRoleCatalogRoleV1['riskLevel'],
   allowedScopeKinds: [...role.allowedScopeKinds] as ExternalRoleCatalogRoleV1['allowedScopeKinds'],
+  subjectKind: role.subjectKind as ExternalRoleCatalogRoleV1['subjectKind'],
+  recommendationAllowed: role.recommendationAllowed,
+  delegationAllowed: role.delegationAllowed,
+  assignmentTier: role.assignmentTier as ExternalRoleCatalogRoleV1['assignmentTier'],
 }))
 
 export function createAiPdmRoleCatalog(validationState: ExternalRoleCatalogSnapshotV1['validationState'] = 'valid', capturedAt = aiPdmCatalogFixture.publishedAt): ExternalRoleCatalogSnapshotV1 {

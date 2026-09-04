@@ -217,7 +217,7 @@ function OrgNodeComponent({ data, selected }: NodeProps<OrgFlowNode>) {
           )}
         </div>
 
-        {childCount > 0 && (
+        {childCount > 0 && editingEnabled && (
           <button
             type="button"
             className={[

@@ -1,10 +1,12 @@
 # DEV-038：流程－職掌－責任聯動規劃工作台 RD Implementation Contract
 
-狀態：`RD Implementation Ready / MVP Implemented / QA-QC Pending / UI Composition Replaced by DEV-039`
+狀態：`Completed / Domain Baseline Retained / UI Composition Superseded / QA-QC Consolidated into DEV-039／042 / Merged to master`
 
 日期：2026-08-27
 
 文件角色：DEV-038 的 OrganizationDocument V7、Process domain、Command／transaction、migration、Dagre／React Flow 投影、能力、失敗恢復與非版面 evidence contract 權威。2026-08-28 起，固定工作台 composition、route wiring 及 composition-specific UI acceptance 由 DEV-039 intentional replacement；本文相關段落保留為歷史實作基線，不再作新版面目標。不得擴張至 Future Phase、deploy 或 release。
+
+> **2026-09-02 RD Technical Lead consolidation（現行）**：DEV-038的domain、V7 migration、validation、Command／transaction與可重用Process投影維持權威；固定四欄composition與`ProcessOrganizationCanvas`已退出runtime，現行Process UI由DEV-039／042承接。原S6要求的獨立DEV-038 fixed-composition manifest不再是有效交付gate；其domain targeted／migration／API negative tests仍由目前full regression覆蓋，workspace／Process lifecycle、relation、409、responsive與diagnostics則由DEV-039／041／042正式QA／QC承接。故本DEV結案，不另跑已被替換的composition QC。整合commit `4e3b2ce`已由merge commit `c8cc16f`進入`master`。
 
 來源：`USER-2026-08-27-PROCESS-DUTY-RESPONSIBILITY-WORKBENCH`、`USER-2026-08-27-MINDMAP-FLOWCHART-OSS-DESIGN`
 
@@ -767,7 +769,7 @@ Required fixtures：合法 V6、合法 V7、V7 orphan Duty link、parent cycle�
 | S3 Route＋read-only composition | 已通過（MVP） | canonical route、正常入口、nested provider、empty／read-only composition 已落地 | route／capability tests pass；browser route smoke pass |
 | S4 Process editing | 已完成（MVP） | Process／node 建立、改名、reparent、同層／子節點、排序、leaf delete、mindmap／flow identity 與 edge 新增／刪除控制已落地 | command＋component tests；no-op／reject 零 history／dirty、mindmap／flow identity pass |
 | S5 Duty bridge＋organization linkage | 已完成（MVP） | link／atomic create、四 lane、native HTML5 drag 到組織 React Flow projection、click fallback、keyboard Enter／Escape、三向高亮已落地；既有 organization state 仍是 authority | DEV-034 regression、native drag、keyboard placement、latest-state release revalidation pass |
-| S6 Full QA/QC handoff | 進行中 | full regression、build、API negative、六 viewport browser QC、reload persistence、evidence／cleanup 已執行一輪，仍需完成正式證據簽核 | 第 14.8 全 gate pass；才可標 Implementation Complete，不代表 release |
+| S6 Full QA/QC handoff | 完成（整併） | domain／migration automated evidence保留；已退出runtime的fixed-composition browser gate退休，現行UI與relation evidence由DEV-039／041／042承接 | 不再建立獨立DEV-038 completion gate；release另走共用gate |
 
 禁止平行跳片：S1 未通過不可開始 UI；S3 未證明兩個 provider 不互相污染不可開始 cross-canvas mutation；S5 未過 native drag 與 keyboard alternative 不可結案。
 
@@ -808,7 +810,7 @@ Browser normal delivery path：`/` → 左側工作執掌 → DEV-036 → `流�
 - 正常入口已由 `/` → 版本草稿 → `流程規劃` 實測；Process／root node／Duty 建立、ProcessNode 改名、flow edge、Duty lane 選擇、Position native HTML5 drop、keyboard Enter placement 與 reload persistence 均已留下操作結果。重新整理後仍保留同一 draft 的 Process、Duty、link 與 relation，確認初始 draft mode 會恢復為可編輯。
 - Playwright Chromium console 為 `Errors: 0／Warnings: 0`；native drag 實測使用 `application/x-orgmaster-duty-configuration+json` 並回到既有 DEV-034 resolver，無新增 Process API 或第二份 relation store。
 - 六個 viewport screenshot 已保存於 `output/playwright/dev038/viewport-1440x900.png`、`viewport-1280x800.png`、`viewport-1279x800.png`、`viewport-1024x768.png`、`viewport-1023x768.png`、`viewport-390x844.png`。`1024px` 以下的窄桌面收合組織投影、保留橋接欄 Position selector；`<1024px` 與手機維持唯讀且無水平溢出，這是本輪明確的最小 UX 邊界，不宣稱四欄同時可見。
-- S6 仍未標為 `QA-QC Passed`：尚需將每一項 API negative／invalid V7／409／provider viewport isolation／reduced-motion／data-sanity 證據補入正式 QC manifest，並由 QC／release gate 簽核；本輪不得 deploy 或 release。
+- 2026-09-02整併後，S6不再要求重建已退出runtime的fixed-composition QC manifest。API negative／invalid V7等domain automated assertions保留在現行回歸；409、provider lifecycle、reduced-motion、data-sanity與現行視覺交付由DEV-039／041／042證據承接。本結論只關閉重複開發文件尾項，不授權deploy或release。
 
 Hard fail：任何 `.inline-error`／`role=alert`、非預期 HTTP 4xx／5xx、console error、預期非空卻全零、資料被靜默正規化、invalid/noop 產生 history／dirty、未釋放 task-owned runtime，均不得標 QA／QC Passed。
 

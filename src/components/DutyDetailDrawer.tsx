@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Duty, DutyPositionRelation, DutyRelationType, OrgDirectoryState } from '../types'
+import { PanelDismissButton } from './PanelDismissButton'
 
 export const dutyRelationLabels: Record<DutyRelationType, string> = {
   execute: '執行',
@@ -70,8 +71,11 @@ export function DutyDetailDrawer({ duty, state, editingEnabled, onClose, onPatch
   const primary = relations.find((relation) => relation.isPrimaryExecutor && relation.relationType === 'execute')
   const primaryTargetId = primary?.target.kind === 'position' ? primary.target.positionId : ''
   return (
-    <aside className={`duty-drawer${displayMode === 'inspector' ? ' duty-drawer--inspector' : ''}${displayMode === 'panel' ? ' duty-drawer--panel' : ''}`} aria-label="工作執掌明細" data-workspace-panel={displayMode === 'inspector' ? 'inspector' : undefined}>
-      <div className="duty-drawer__header"><div><span>工作執掌明細</span><h2>{duty.title}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="關閉工作執掌明細">×</button></div>
+    <aside className={`duty-drawer${displayMode === 'inspector' ? ' duty-drawer--inspector' : ''}${displayMode === 'panel' ? ' duty-drawer--panel' : ''}`} aria-label="工作執掌明細" data-workspace-panel={displayMode === 'inspector' ? 'inspector' : displayMode === 'panel' ? 'detail' : undefined}>
+      <div className="duty-drawer__header">
+        <div><span>工作執掌明細</span><h2>{duty.title}</h2></div>
+        <PanelDismissButton edge="right" label="關閉工作執掌明細" onDismiss={onClose} />
+      </div>
       <div className="duty-drawer__body">
         {editingEnabled ? <>
           <label className="duty-field">名稱<input value={draftTitle} maxLength={120} onChange={(event) => setDraftTitle(event.target.value)} onBlur={commitText} /></label>

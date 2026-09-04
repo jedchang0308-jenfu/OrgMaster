@@ -1,5 +1,15 @@
 # OrgMaster 開發任務
 
+> **2026-09-03 Platform DEV-010 physical-topology successor（現行）**：OrgMaster local product與DEV-040證據保留；三系統共用資料庫的neutral target、`orgmaster_core/orgmaster_contract` placement、roles與producer／consumer migration dependency contract由Platform [DEV-010 direct spec](../../Jenfu-Management-system/ai-doc/specs/DEV-010-three-system-database-consolidation-contract.md) 接管。Platform-only N1A與N2均達Implementation Ready；N1A只寫`jenfu_infra` ledger，OrgMaster app ledger／migration由N2C負責。N2C的17-input baseline、exact files／commands／contract hashes／fixture／single pool max 6已固定，執行仍須N1A 10 unit＋30 QC PASS→N2A freeze，不得跳序。N2 fixed 48案、N1B 10案與R1 15案未完成前，DEV-040 production switch不得沿舊AI-PDM-named target直接執行。本通知只更新文件，不修改產品或環境。
+
+> **2026-09-02 RD Technical Lead consolidation override（現行）**：以目前 Git 事實校正開發文件：DEV-039 的 workspace baseline 已由 commit `164a779` 建立，DEV-041／042 與最終整合由 `4e3b2ce` 收斂，並經 merge commit `c8cc16f` 進入 `master`。舊文件所列不可達 commit `86510f4` 與「Candidate Freeze／Authorization Pending」只保留為舊分支 provenance，不再代表現況。DEV-034 的 R2 配置語意與 DEV-038 的 Process／V7 domain baseline已由 DEV-039 保留；其被取代的固定 UI／專用拖曳入口分別由 DEV-039、DEV-041、DEV-042 完成替換與 QA／QC，因此 DEV-034、DEV-038、DEV-039、DEV-041、DEV-042 統一視為已完成並併入目前 `master` 基線，不再各自保留 browser QC、candidate freeze、commit 或 merge 尾項。共用 deploy／release 只在使用者明確提出 release 型指令時走單一 release gate。DEV-034 R2.1 的三個 anomaly 複選意圖移至 DEV-042 Future Phase Capsule，未要求實作。現行 local product implementation 已完成；DEV-040 的 local／isolated slices 已完成，僅保留 production switch／release gate。
+
+> **2026-09-03 DEV-009 S3 consumer closure override（現行）**：AI-PDM contract＋repository＋real Chromium aggregate PASS；browser `7／7 PASS`涵蓋current／stale／unavailable／invalid navigation與1440／1024／390。Frozen aggregate=`../../AI_PDM/output/qa/dev-009/aggregate/DEV009-S3-AGGREGATE-2026-09-02T18-19-00-268Z/report.json`，report SHA=`c93b124b79824bb76271aadb32aa27899527b4b9ddc5a97a77d6b31091951502`，candidate SHA=`4ea4689cd9579f3aa4bf26f77fdba4e21ce01386b3abce163173bc1c7381eb0a`；production authority switch、bootstrap、deploy、release仍由相應gate管制。
+
+> **2026-09-03 DEV-009 S4 cross-repo closure override（現行）**：Platform cross-repo fixed cases與S1～S3 frozen receipt驗章PASS。Frozen report=`../../Jenfu-Management-system/output/qa/dev-009/cross-repo/DEV009-S4-2026-09-02T18-21-31-904Z/report.json`，report SHA=`f8fa0128ba7304efd4cd326cbe4f94952be3095986ad3006b86a61acce213a9b`，candidate SHA=`4ab63077b3425028c9ffc0df7be84126c199cd10856ce82db746b4de106c554f`；下一步為`009-R1 Release Gate Required`，不代表production schema／資料／bootstrap／deploy／release已執行。
+
+> **2026-09-03 DEV-040／JMS-PLATFORM-005 closure override（現行）**：OrgMaster、Jenfu Management System與AI-PDM的`005-S0～S4B` local／isolated implementation與`005-S5` local targeted consumer／cross-repo gate均已完成；本輪 fresh evidence：OrgMaster `test:dev-005`=`5 files／16 tests PASS`、`qc:dev-005:postgres`=`7／7 PASS`、full regression=`180 files／749 passed／1 skipped`、build PASS；Platform `contracts:dev-005:check`與`qc:dev-005:cross-repo` PASS；AI-PDM contract／repository／consumer／authorization／runtime／migration／typecheck／isolated build與`qc:jms-dev-005:postgres`=`7／7 PASS`。所有隔離執行均`productionWrites=false`並完成清理。正式 human identity link、shared-login retirement、Cloud SQL production migration、persistent authority switch、deploy、traffic、production smoke與release仍由DEV-001／DEV-006／DEV-009獨立 gate 控制。
+
 > **2026-09-02 DEV-041 final acceptance override — Chromium native behavior accepted**：使用者正式接受noop／rejected在`dropEffect=none`時Chromium不派送terminal `drop`的原生行為。合法拖放仍要求terminal `drop`、恰好一次mutation與revision change；noop／rejected改以terminal `dragend`、zero mutation、revision unchanged、session cleanup與0 console/pageerror判定。既有aggregate已滿足條件，產品程式與effect policy不變；DEV-041現行狀態為`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`。本段優先於下方gap／Partial歷史文字；未授權freeze、commit、merge、deploy或release。
 
 > **2026-09-02 DEV-042 validation closure override**：依權威spec完成 single-layer workspace replacement：正式移除快速抽屜／promotion control flow，十個模組由頂部 launcher 統一 open-or-focus；employees／positions／departments／duties／management-methods 採相鄰 list-detail，detail 由 session-owned `openDetails` 控制，`details=none` 明確保留清單脈絡，窄 panel 轉為單一 surface。四個 DEV-040 governance／catalog 測試契約漂移已改為 workspace scope／current catalog version，local-development management-method authorization亦已修正並補 regression。完整回歸 `174 files／716 passed／1 skipped`，targeted gate、typecheck、client＋server build與production source scan均通過。Fresh Browser S7 已完成 E1～E9：E5 API／UI不再出現`FORBIDDEN`，E7 split／resize／pin／close／zero-panel通過，DEV-041四向 native、zero-mutation、auto-pan與console/pageerror沿用最新aggregate覆核。唯一 manifest=`output/playwright/dev042/manifest.md`，fixture已archive；task-owned 5080 runtime已停止並確認port釋放。DEV-042 現行狀態為`RD Implementation Complete / Browser QA-QC Passed / Local Release Gate Pending`；未授權candidate freeze、commit、merge、deploy或release。權威契約：`ai-doc/specs/DEV-042-single-layer-workspace-contract.md`。
@@ -36,60 +46,94 @@
 - `Human Confirmed / 2026-08-23`：OrgMaster 手機版只提供唯讀閱讀與導覽，不提供任何建立、修改、刪除、排序、拖放、配置、移轉、核准、發布或其他資料寫入能力。
 - 手機版可閱讀組織架構、工作事項／職掌、責任配置及管理辦法，並使用搜尋、篩選、切換與明細導覽；寫入控制不呈現，直接進入既有編輯 URL 也只能取得唯讀內容。
 - 桌面／筆電仍依 organization workspace mode、version status、治理權限及既有 validation 決定能否編輯；手機唯讀是額外的產品能力邊界，不取代安全授權，也不得只靠隱藏 CSS 控制。
-- 平板是否可編輯及全系統手機／桌面能力判定仍由 DEV-033 確認；未確認事項不得反向解讀為手機可編輯。DEV-032 為解除自身實作阻塞，採更保守的 scoped gate：只有至少 1024px、hover＋fine pointer 同時成立才開放管理辦法 mutation，其餘先唯讀；這不替代 DEV-033。
-- 本原則優先於 DEV-028、DEV-029、DEV-031 及其他既有文件中允許手機／窄 viewport 編輯的舊契約；既有測試與截圖仍是當時完成狀態的歷史證據。DEV-039已在新版workspace的Directory、管理辦法與治理surface採default-deny唯讀intersection，但這只證明其在DEV-039範圍內的部分落地；全系統 deterministic boundary仍由DEV-033追蹤，不得將局部完成誤報為全產品完成。
+- 平板與全系統手機／桌面能力判定已由 DEV-033 收斂為 deterministic default-deny gate：只有至少 1024px、hover＋fine pointer 同時成立才開放 mutation，其餘先唯讀。這不取代正式 Auth、role、permission 或 server validation。
+- 本原則優先於 DEV-028、DEV-029、DEV-031 及其他既有文件中允許手機／窄 viewport 編輯的舊契約；既有測試與截圖仍是當時完成狀態的歷史證據。DEV-033 現已將同一 boundary 落實到全系統 mutation entry、command guard 與版本／工作台 UI，不得將局部舊證據反向解讀為手機可編輯。
 
-文件成熟度：DEV-042為`RD Implementation Complete / Browser QA-QC Passed / Local Release Gate Pending`；P0／P1 readiness gap=`0`。DEV-041為`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`；DEV-040整體為 `RD Contract Ready / ID1A-ID1B Local Implementation Complete / Activation Candidate Verified / Production Switch Gated`，其中`040-ID1A／ID1B`已完成local／isolated implementation與targeted QA／QC；`JMS-PLATFORM-005 OrgMaster slice`已完成`005-S0／S1／UI0／S2／S3 Local-Isolated PASS`，S3包含migration 005、V3-compatible effective／authority views、commit-first outbox wrapper與dispatcher，`005-S4A～S5`及production authority switch仍未實作；`JMS-PLATFORM-009 OrgMaster slice`為`RD Implementation Ready / Documents Only / Implementation Not Started`，固定system_admin exact privileged-principal專屬治理、V2拒絕與alert outbox，下一步`009-S0`；Jenfu Platform DEV-004 `004-S0～S5`皆為`Local PASS / Live G2 Gated`，DEV-006 persistence為`Cloud SQL Adapter Implemented / Fresh G1 PASS / Private-Only Candidate PASS and Cleaned / Production Not Activated`。DEV-039 為 `S0～S6 Historical Complete / S7 Relation Placement Implemented / QA-QC Passed / E4 Candidate Freeze Ready / Authorization Pending`；DEV-038 為 `RD Implementation Ready / MVP Implemented / QA-QC Pending / UI Composition Replaced by DEV-039`；其餘 DEV 狀態以「總任務清單」與各 DEV 權威段落為準。
+- 文件成熟度：DEV-046已達`RD Implementation Ready / RD Tech Lead Review Passed after Contract Optimization / RD Not Started / Documents Only`，八module共用frame、selection/detail state machine、account-scoped list width、011 migration、relation typed extension、S0～S6及A1～E4均已固定，P0／P1 readiness gap=0，可開始local／isolated RD。DEV-045仍維持`RD Implementation Ready / RD Tech Lead Re-review Passed / RD Not Started / Local-Isolated Current Phase / Production Provisioning Gated`；one-to-many projection、append-only command receipts、shared identity-link policy、single-writer fence、production default-disabled activation與runtime failure isolation均已補齊，可獨立排程且P0／P1 readiness gap=0。DEV-043已達`RD Implementation Complete / RD Technical Lead Passed / Targeted Gates Passed / Browser QA-QC Passed / Full Regression Follow-up Open`，是現行local product implementation；DEV-034／038／039／041／042已整併為目前`master@c8cc16f`的完成基線，DEV-046只接管DEV-042被明確取代的list-detail行為，不回開歷史證據。DEV-033、DEV-040與Platform slices狀態以各自權威段落為準。
 
 ## 總任務清單
 
-- ✓ DEV-042 [交付點] [完成] [P1] [RD Implementation Complete／Browser QA-QC Passed／Local Release Gate Pending] 單層功能工作台與可收合清單明細
+- ☐ DEV-046 [交付點] [可執行] [P1] [RD Implementation Ready／Tech Lead Passed／Documents Only] 統一清單明細工作台與可擴充關係拖曳框架
+  - 摘要：將員工、職位、部門、層級、工作職掌、流程、管理辦法與兼任風險統一為左清單＋永遠存在的右detail frame，並共用選取、鍵盤、調寬、帳號偏好與relation binding。
+  - 來源 ID：`USER-2026-09-04-COMMON-LIST-DETAIL-WORKBENCH`、`USER-2026-09-04-DETAIL-CLICK-ARROW-ESC-BEHAVIOR`、`USER-2026-09-04-ACCOUNT-SCOPED-LIST-WIDTH`、`USER-2026-09-04-DEV046-RD-IMPLEMENTATION-READY-TECH-LEAD-REVIEW`
+  - 父任務：DEV-039；intentional successor：DEV-042 list-detail behavior；relation baseline：DEV-041；ADR-009 amendment
+  - 下一步：RD依權威spec第16節執行S0→S6；targeted、full regression、build、DB boundary及task-owned browser QA／QC通過後才可進完成判定。
+  - 阻塞 / 恢復條件：現行P0／P1 readiness gap=0；若需改domain schema／Command／permission、DEV-033 mobile mutation boundary、建立第二selection／resolver／mutation owner、allowlist外核心檔或production migration／release，立即停止回PM／Tech Lead。
+  - 證據：`ai-doc/specs/DEV-046-unified-list-detail-workbench-framework.md`
+  - 計入交付：是
+
+- ☐ DEV-045 [交付點] [可執行] [P1] [RD Implementation Ready／Tech Lead Re-review Passed／Local-Isolated] 員工帳號邀請與登入身分設定
+  - 摘要：以Employee為人員唯一真相，讓授權管理者從員工明細發起「邀請新帳號」或「連結既有帳號」；OrgMaster治理與編排關係，共同IAM／provider執行帳號、驗證與邀請。
+  - 來源 ID：`USER-2026-09-04-EMPLOYEE-ACCOUNT-PROVISIONING-PLACEMENT`、`USER-2026-09-04-DEV045-DEVELOPMENT-DOCUMENT`、`USER-2026-09-04-DEV045-RD-TECH-LEAD-REMEDIATION`、`USER-2026-09-04-DEV045-ARCHITECTURE-COMPLETION`
+  - 父任務：DEV-043、DEV-040；架構權威ADR-007
+  - 下一步：RD依權威spec第18節執行S0→S4；targeted、build、full regression與task-owned browser QC通過後才可進完成判定。
+  - 阻塞 / 恢復條件：前次技術審查與本次architecture completion缺口均已關閉，現行P0／P1 readiness gap=0；若需production provider／Email／Cloud SQL、raw identity進Browser或dirty overlap無法隔離，立即停止並回PM／release gate。
+  - 證據：`ai-doc/specs/DEV-045-employee-account-enrollment.md`
+  - 計入交付：是
+
+- ✓ DEV-044 [開發點] [local完成] [P1] [Local development only] 地端測試角色一鍵登入
+  - 摘要：在development＋loopback提供四個server-defined測試角色與一鍵登入／切換，修正未配置正式Auth runtime時的地端登出失敗，並以實際server capability驗證DEV-043權限差異。
+  - 來源 ID：`USER-2026-09-04-LOCAL-ROLE-ONE-CLICK-LOGIN`
+  - 父任務：DEV-040、DEV-043
+  - 結果：四角色一鍵登入／切換、server capability matrix、地端logout修正、三viewport與鍵盤QA-QC均PASS；production authority未變。
+  - 證據：`ai-doc/specs/DEV-044-local-test-role-one-click-login.md`
+  - 計入交付：否（local development測試能力，不代表production Auth／role交付）
+
+- ✓ DEV-043 [交付點] [local完成／回歸追蹤] [P1] [RD Implementation Complete／Browser QA-QC Passed] 員工明細登入身分與帳號治理入口
+  - 摘要：Employee維持人員唯一真相；員工明細新增「登入身分」作主要關係治理入口，全域`identity` section改名「帳號治理」並只作跨Employee檢視、異常定位與進入Employee明細。
+  - 來源 ID：`USER-2026-09-03-EMPLOYEE-SOURCE-OF-TRUTH`、`USER-2026-09-03-EMPLOYEE-IDENTITY-UI-PLACEMENT`、`USER-2026-09-03-DEV043-DOCUMENT-REVIEW-IMPLEMENT`
+  - 父交付點：DEV-040 identity authority、DEV-042 Employee list-detail、ADR-007。
+  - 權威契約：`ai-doc/specs/DEV-043-employee-identity-link-management.md`。
+  - 下一步：另立追蹤兩個既有 `dev010-n2` script fixture 的 Vitest test-discovery cleanup；DEV-043產品面不再新增scope，不進production identity、deploy或release。
+  - 計入交付：是
+
+- ✓ DEV-042 [交付點] [完成] [P1] [RD Implementation Complete／Browser QA-QC Passed／Merged to master] 單層功能工作台與可收合清單明細
   - 摘要：移除「功能抽屜 → 在工作台開啟」第二層入口；頂部功能選單直接新增或聚焦唯一對應面板。有清單的模組統一採「清單＋緊鄰明細」工作台，明細可收合而保留清單、查詢、篩選與捲動脈絡。
   - 來源 ID：`USER-2026-09-02-SINGLE-LAYER-WORKSPACE-INTENTIONAL-REPLACEMENT`、`USER-2026-09-02-DEV042-RD-IMPLEMENTATION-READY`、`USER-2026-09-02-DEV042-RD-TECH-LEAD-REVIEW`
   - 父交付點：DEV-039；DEV-041 的共用關係拖曳互動列為不得回歸基線
   - 權威契約：`ai-doc/specs/DEV-042-single-layer-workspace-contract.md`；ADR-009 DEV-042 amendment。
   - 進度補充：既有 localhost:5000 smoke與fresh task-owned 5080 Browser S7均已完成；E1～E9通過，manifest為`output/playwright/dev042/manifest.md`，fixture已archive。四個DEV-040 full-regression failures已依目前workspace-scoped catalog contract修正並完成回歸。
-  - 下一步：僅剩 local release gate與使用者／PM對candidate freeze、commit、merge、deploy或release的個別明確授權；不得自行執行上述動作。
+  - 下一步：已併入 DEV-039 現行基線，無獨立開發、candidate freeze、commit或merge尾項；deploy／release僅在使用者另行提出release型指令時進入共用gate。
   - 計入交付：是
 
-- ✓ DEV-041 [開發點] [完成] [P1] [RD Implementation Complete／Automated Gate Passed／Browser Native QA-QC Passed／Candidate Freeze Ready／Authorization Pending] 跨面板關係拖曳互動一致化
+- ✓ DEV-041 [開發點] [完成] [P1] [RD Implementation Complete／Browser Native QA-QC Passed／Merged to master] 跨面板關係拖曳互動一致化
   - 摘要：以員工清單整列拖曳與組織圖即時定位作為標準互動契約，將所有已登錄關係配置來源的整個物件／卡片設為拖曳表面，並把落點回饋、完成後行為及畫布邊緣平移收斂到共用互動核心。
   - 來源 ID：`USER-2026-09-01-RELATION-DRAG-INTERACTION-TEMPLATE`、`USER-2026-09-01-DEV041-HCS-R1-1A-2B-3A`、`USER-2026-09-01-DEV041-HCS-R2-4A-5A-6A`、`USER-2026-09-01-DEV041-HCS-R3-7A-8A-9C`、`USER-2026-09-01-DEV041-HCS-R4-10A-11A-12A`、`USER-2026-09-01-DEV041-HCS-R5-13A`、`USER-2026-09-01-DEV041-RD-IMPLEMENTATION-READY`
   - 父任務：DEV-039
   - 權威契約：`ai-doc/specs/DEV-041-relation-drag-interaction-contract.md`（現行狀態以主spec §0.1／§20 為唯一來源；本清單只作派工摘要）
-  - 下一步：QA／QC已關閉；只有取得使用者／PM明確授權後才可執行candidate freeze或commit，merge、deploy與release仍各自受原有gate約束。
+  - 下一步：已併入 DEV-039／042 現行基線，無獨立candidate freeze、commit或merge尾項；未來若新增關係方向或改動resolver，再以新DEV重新進入。
   - 計入交付：否（統一 DEV-039 既有關係配置能力，不重複計算產品交付）
 
-- ◐ DEV-040 [開發點] [部分完成] [P0] [040-ID1A／ID1B local implementation＋targeted QA/QC complete；JMS-PLATFORM-005 S0／S1／UI0／S2／S3 Local-Isolated PASS；JMS-PLATFORM-009 RD Implementation Ready／Documents Only；Production Switch Gated] 鉦富平台角色生效與 AI-PDM 既有使用者整合
+- ◐ DEV-040 [開發點] [部分完成] [P0] [040-ID1A／ID1B local implementation＋targeted QA/QC complete；JMS-PLATFORM-005 S0～S4B Local-Isolated PASS／S5 Local Targeted PASS；JMS-PLATFORM-009 S0～S4 Local-Isolated Complete／Targeted QA-QC PASS／009-R1 Release Gate Required；Production Switch Gated] 鉦富平台角色生效與 AI-PDM 既有使用者整合
   - 摘要：保留可歸責的AI-PDM個人身分但重設既有role；3筆human identity連Employee，1筆legacy shared account非破壞退場；一般管理用日常身分＋step-up，高權限用同人專用privileged identity，待生效assignment經pilot後分批切換。
   - 來源 ID：`USER-2026-08-30-JENFU-PLATFORM-HCS-4A-5A-6B`、`USER-2026-08-30-JENFU-PLATFORM-HCS-ROLE-RESET-CUTOVER-ADMIN-SCOPE`、`USER-2026-08-30-JENFU-PLATFORM-HCS-PRESTAGE-PILOT-LEGACY-OBSERVATION`、`USER-2026-08-30-JENFU-PLATFORM-HCS-SUPERADMIN-ZERO-TOLERANCE-OBSERVATION-WINDOW`、`USER-2026-09-01-JENFU-ACCOUNT-TAXONOMY-1B-2A-3D`
   - 父任務：DEV-037；跨 repository 交付為 `Jenfu-Management-system` DEV-001／DEV-004～006
-  - 下一步：保留ID1A／ID1B與JMS-PLATFORM-005 S3 local evidence；跨repo可執行新安全切片為`009-S0` canonical v2 contract＋current catalog完整metadata＋shared full-policy classifier＋V2 generic system_admin deny，由Platform contract與OrgMaster guard共同驗證。既有DEV-005下一步仍為AI-PDM `005-S4A` request enforcement。之後仍須owner提供3筆human exact link、1筆legacy shared退場與active policy產生production IAR，另經release gate才可apply migration或切production authority。
+  - 下一步：保留ID1A／ID1B、JMS-PLATFORM-005 `005-S0～S4B`與`005-S5` local／isolated evidence；DEV-009 local cross-repo四案已PASS，下一步為`009-R1` production release gate。之後仍須owner提供3筆human exact link、1筆legacy shared退場與active policy產生production IAR，另經DEV-006 S4B／DEV-001 release gate才可apply migration或切production authority。
   - 阻塞 / 恢復條件：ID1A／ID1B皆無文件blocker；舊`ready=0 / missing_employee=4`只是歷史快照。production仍需owner-approved`human ready=3／3`、`legacy shared=1／login enabled=0`、`unresolved=0`、production issuer aligned與active policy，並另進release gate。
-  - 證據：`contracts/jenfu-platform-auth/v1/contract-lock.json`；Platform S0=`output/dev-004/DEV004-S0-20260831T011207701Z-feb3f724/`、S1 fresh=`output/dev-004/DEV004-S1-20260831T044053020Z-b4c799d6/`、S4=`output/playwright/dev004-s4/manifest.md`；AI-PDM S2=`../AI_PDM/output/qa/dev-004/DEV004-S2-20260831T030530606Z/`（focused 14／14、DEV-046 16／16、login alias 21／21）；OrgMaster S3=`output/playwright/dev004-s3/manifest.md`；S5=`../../Jenfu-Management-system/output/dev-004/DEV004-S5-20260831T054317661Z-75bb1fcc/manifest.json`；DEV-006 activation=`../../Jenfu-Management-system/output/dev-006/releases/DEV006-R1-c617c6cf9e0d/`；JMS-PLATFORM-005 S1=`../../Jenfu-Management-system/ai-doc/qc/qc-dev-005-s1-publication-acl-2026-09-02.md`，S3=`../../Jenfu-Management-system/ai-doc/qc/qc-dev-005-s3-projection-authority-invalidation-2026-09-02.md`
+  - 證據：`contracts/jenfu-platform-auth/v1/contract-lock.json`；Platform S0=`output/dev-004/DEV004-S0-20260831T011207701Z-feb3f724/`、S1 fresh=`output/dev-004/DEV004-S1-20260831T044053020Z-b4c799d6/`、S4=`output/playwright/dev004-s4/manifest.md`；AI-PDM S2=`../AI_PDM/output/qa/dev-004/DEV004-S2-20260831T030530606Z/`；OrgMaster S3=`output/playwright/dev004-s3/manifest.md`；S5=`../../Jenfu-Management-system/output/dev-004/DEV004-S5-20260831T054317661Z-75bb1fcc/manifest.json`；DEV-006 activation=`../../Jenfu-Management-system/output/dev-006/releases/DEV006-R1-c617c6cf9e0d/`；JMS-PLATFORM-005 S1=`../../Jenfu-Management-system/ai-doc/qc/qc-dev-005-s1-publication-acl-2026-09-02.md`、S3=`../../Jenfu-Management-system/ai-doc/qc/qc-dev-005-s3-projection-authority-invalidation-2026-09-02.md`、S4B=`../../Jenfu-Management-system/ai-doc/qc/qc-dev-005-s4b-route-boundary-2026-09-02.md`、S5=`../../Jenfu-Management-system/ai-doc/qc/qc-dev-005-s5-change-feed-cross-repo-2026-09-02.md`；JMS-PLATFORM-009 S2 frozen=`output/qa/dev-009/browser-real/DEV009-S2-2026-09-02T18-09-45-579Z/report.json`
   - 規格：`ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md`；跨系統主契約與QA／QC位於`C:\VIBE CODING\Jenfu-Management-system\ai-doc\specs`／`qa`
   - ADR：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md` 2026-08-30 amendment
   - 計入交付：否（跨 repository 交付由 Jenfu Management System DEV-001 計算）
 
-- ◐ DEV-039 [交付點] [執行中] [P1] [S0～S6 Historical Complete／S7 Relation Placement Implemented／QA-QC Passed／E4 Candidate Freeze Ready／Authorization Pending] 可組合規劃桌面與跨面板關聯配置
-  - 摘要：S0～S6工作台與面板邊界保留；S7以單一 typed Placement Session 統一 native／keyboard，沿用既有 resolver 與 mutation authority。最新 B16 fixture `draft-02d6deb8-9c2b-4653-85a9-a970b9bff50c` 合併 E2 五案＋E3-LIFECYCLE＋E3-WARNING native CDP 共 `7 passed`；五案均含 `historyEvidence` 行為性 Undo round-trip，E2 aggregate為 `Pass（evidence）`，E3兩案為`pass`。另以全新隔離 fixture `draft-f002b99c-88a4-417f-8892-a32b64e2b673`完成 ProcessNode→Duty、`draft-4af67fa3-4e33-4644-8768-cb65d4642396`完成 paired Duty→ProcessNode，四個 E1 minimum directions均有strict native pass evidence；正式 QA-QC已覆核，E4進入候選凍結但尚待明確授權，不代表commit／merge／deploy／release。
+- ✓ DEV-039 [交付點] [完成] [P1] [Implementation Complete／QA-QC Passed／Merged to master／Current workspace baseline] 可組合規劃桌面與跨面板關聯配置
+  - 摘要：S0～S6工作台與面板邊界保留；S7以單一 typed Placement Session 統一 native／keyboard，沿用既有 resolver 與 mutation authority。最新 B16 fixture `draft-02d6deb8-9c2b-4653-85a9-a970b9bff50c` 合併 E2 五案＋E3-LIFECYCLE＋E3-WARNING native CDP 共 `7 passed`；五案均含 `historyEvidence` 行為性 Undo round-trip，E2 aggregate為 `Pass（evidence）`，E3兩案為`pass`。另以全新隔離 fixture `draft-f002b99c-88a4-417f-8892-a32b64e2b673`完成 ProcessNode→Duty、`draft-4af67fa3-4e33-4644-8768-cb65d4642396`完成 paired Duty→ProcessNode，四個 E1 minimum directions均有strict native pass evidence；正式 QA-QC已覆核，並已由`164a779`、`4e3b2ce`與`c8cc16f`完成repository integration。deploy／release未要求。
   - 來源 ID：`USER-2026-08-28-COMPOSABLE-PLANNING-DESKTOP`、`USER-2026-08-28-BRANCH-LEVEL-UI-REPLACEMENT`、`USER-2026-08-28-DEV039-HCS-ROUND-1`、`USER-2026-08-28-DEV039-HCS-ROUND-2`、`USER-2026-08-28-DEV039-HCS-ROUND-3`、`USER-2026-08-28-DEV039-HCS-ROUND-4`、`USER-2026-08-28-DEV039-MATURE-MODULE-SLICE-1`、`USER-2026-08-28-DEV039-ALL-CURRENT-FUNCTION-PARITY`、`USER-2026-08-30-STABLE-PANEL-OWNERSHIP-ARCHITECTURE`、`USER-2026-08-30-DEV039-S6-IMPLEMENTATION-READY`、`USER-2026-08-31-NATIVE-CROSS-PANEL-RELATION-PLACEMENT`、`USER-2026-08-31-FIRST-PRINCIPLES-RELATION-PLACEMENT-ARCHITECTURE`
   - 父任務：DEV-038
-  - 下一步：讀主spec第2.1～2.5.2節、parity第0.1～0.2節及 evidence manifest 的 Current gate snapshot／QA-QC record。E1四個 minimum directions、E2五案 `historyEvidence`及E3兩案均已具備可採用 evidence，正式 QA-QC已完成；不重跑同一證據，不新增 runner、fallback、resolver、mutation owner或第二證據清冊。只有使用者／PM明確回覆例如`授權 DEV-039 candidate freeze 並 commit`，且依主spec第2.4.1節針對 `git status --short` 的97筆項目（展開未追蹤目錄共168檔）完成 DEV-039 exact allowlist selective staging 後，才可執行 E4 candidate freeze 的 immutable commit／merge／release gate。`output/playwright/dev039/**` 受 `.gitignore` 的 `output/*` 保護，證據不 force-add；候選只納入 allowlist 程式與文件。
-  - 阻塞 / 恢復條件：目前 P0／P1 readiness blocker 為0；產品與證據 gate已通過，剩餘唯一邊界是 E4 仍等待使用者／PM 明確授權，不得自行commit、merge、deploy或release。若未來實作需要 schema／API／permission、第二 business state、generic event bus、plugin 或任意未登錄關係，立即停止回PM。
+  - 下一步：Current Phase 已經 `4e3b2ce` 整合並由 `c8cc16f` 合併至 `master`；不重跑既有 E1～E3 證據，不再建立獨立candidate freeze／commit／merge任務。deploy／release只在使用者明確提出時進入單一release gate。
+  - 阻塞 / 恢復條件：Current Phase無開發 blocker。若未來需要schema／API／permission、第二business state、generic event bus、plugin、未登錄關係或改變ADR-008／009，另開DEV並重新做impact review。
   - 證據：S0～S6歷史證據與S7 B16 evidence位於`output/playwright/dev039/manifest.md`；S7新增`relationPlacement.test.ts`、`entityDrag.test.ts`、`ProcessPlanningWorkbench.test.tsx` composition harness、`ProcessDutyBridge.test.tsx`、`ProcessPlanningCanvas.lifecycle.test.tsx`、workspace architecture／layout regression及`scripts/dev039-s7-fixture.test.ts`，最新 targeted pure／fixture `11 files／57 tests`、component／composition `6 files／24 tests`（關聯與lifecycle合併重跑 `4 files／20 tests`）、full regression `160 files／664 tests（1 skipped）`、typecheck、build與source scan通過；Process canvas after-fix artifact為`F039-S7-E3-process-geometry-after-fix.png`，同一B16 split／reload／flow量測與產品 console `0／0`已記錄。B16 fixture已建立、讀回並封存；最新 E2／E3 record fixture為`draft-02d6deb8-9c2b-4653-85a9-a970b9bff50c`，archive manifest revision=`562a844e860c2baf9714986f5ce61a93fc92c565f06750c85022b21f517e656c`。Playwright E2 fresh artifacts為`F039-S7-E2-invalid-pair.png`、`F039-S7-E2-invalid.png`（語意為COMMIT-REJECT）、`F039-S7-E2-capability-loss.png`、`F039-S7-E2-409-recovery.png`、`F039-S7-E2-unload.png`，五案 status `200`、hydrated→after assignment／relation／link IDs與revision不變、persistence snapshot無「未儲存變更」、產品 diagnostics為空；五案均含 `historyEvidence` 合法 mutation＋恰好一次 Undo round-trip 回完整 canonical baseline，E2 aggregate為`Pass（evidence）`，E3兩案為`pass`。最新 E1 CUA evidence為主spec第26.21.18節／parity第16.15.16節（fixture `draft-5e4cbfa1-db5c-4c7c-af22-2b3000d0fcbc`、新增link `process-duty-5ca3f40b-7335-4bf0-9679-fde86117c778`、API status `200`、archive manifest revision `005fda19cd0655480ee0a4d71cdaf3a8ac0140bf783e6045e536d9dc6f372c56`）；該筆未驗證 strict `DataTransfer.types`，不計為 E1 pass。可重跑 script為`output/playwright/dev039/e2-admission.pw.ts`（本機需使用與helper相同的 Playwright `1.62.1` CLI，並可用`DEV039_E2_VERSION_ID`指定新fixture，避免`npx`另載一份測試runtime造成雙module）；fixture helper現已補loopback identity headers、Windows CLI entrypoint、timestamp-only 409 revision bump與stale route recovery；新增自動化 E2 fail-closed與Process canvas lifecycle tests 不改產品契約。
-  - 分支：`codex/dev-039-composable-workspace`
+  - 歷史分支：`codex/dev-039-composable-workspace`；現行權威為`master@c8cc16f`
   - 計入交付：是
 
   - 最新 E1 證據：`output/playwright/dev039/F039-S7-E1-process-duty-native-strict.json`與`output/playwright/dev039/F039-S7-E1-duty-process-native-strict.json`分別記錄兩個 Process↔Duty strict native方向的完整事件鏈、strict MIME、UI結果、API readback與cleanup；Employee→Position與Duty→Position單案strict record保留於manifest。四個 E1 minimum directions均為`pass`，E1 aggregate為`Pass（evidence）`；舊`F039-S7-E1-duty-process-native-blocked.json`僅作 reverse runner provenance。
-  - 正式 QA-QC：E1～E3 evidence、四方文件與cleanup已覆核；本輪 `npm test -- --run --pool=forks --maxWorkers=1` 為 `160 test files／664 tests passed／1 skipped`，`npx tsc --noEmit --pretty false`、`npm run build`與`git diff --check`通過。E4為`Candidate Freeze Ready / Authorization Pending`，未經明確授權不執行commit／merge／deploy／release。
-  - 桌面 viewport extension（2026-09-01）：同一既有 native relation contract 另以 evidence-only runner 驗證 `1440×900` 與 `1024×768`；兩案均完成正常入口、完整 `dragstart→dragenter／dragover→drop→dragend`、strict MIME、`effectAllowed=link`／`dropEffect=link`、`diagnosticsCount=0`、UI成功結果、API revision變化、canonical `process-duty-2` readback及cleanup。record／screenshot：`output/playwright/dev039/F039-S7-E1-process-duty-native-1440x900.json`、`F039-S7-E1-process-duty-native-1024x768.json`、`F039-S7-E1-cdp-process-duty-1440x900.png`、`F039-S7-E1-cdp-process-duty-1024x768.png`；主spec第26.21.26節為權威說明。`1024×768` archive manifest revision未由compact runner輸出，已以`null`保留，不推測未知值；不新增產品路徑、resolver或清冊，E4授權邊界不變。
+  - 正式 QA-QC：E1～E3 evidence、四方文件與cleanup已覆核；`160 test files／664 tests passed／1 skipped`、typecheck、build與diff check通過。後續DEV-041／042 final integration已由`4e3b2ce`完成並以`c8cc16f`併入`master`；無candidate／commit／merge尾項。
+  - 桌面 viewport extension（2026-09-01）：同一既有 native relation contract 另以 evidence-only runner 驗證 `1440×900` 與 `1024×768`；兩案均完成正常入口、完整 `dragstart→dragenter／dragover→drop→dragend`、strict MIME、`effectAllowed=link`／`dropEffect=link`、`diagnosticsCount=0`、UI成功結果、API revision變化、canonical `process-duty-2` readback及cleanup。record／screenshot：`output/playwright/dev039/F039-S7-E1-process-duty-native-1440x900.json`、`F039-S7-E1-process-duty-native-1024x768.json`、`F039-S7-E1-cdp-process-duty-1440x900.png`、`F039-S7-E1-cdp-process-duty-1024x768.png`；主spec第26.21.26節為權威說明。`1024×768` archive manifest revision未由compact runner輸出，已以`null`保留，不推測未知值；不新增產品路徑、resolver或清冊。該段原E4邊界只作整合前provenance。
 
-- ◐ DEV-038 [交付點] [執行中] [P1] [RD Implementation Ready／MVP 實作完成／QA-QC 待完成／UI Composition Replaced by DEV-039] 流程－職掌－責任聯動規劃工作台
+- ✓ DEV-038 [交付點] [完成] [P1] [Domain baseline complete／UI composition superseded／QA-QC consolidated into DEV-039／042] 流程－職掌－責任聯動規劃工作台
   - 摘要：讓總經理與主管先用同一組 ProcessNode 的心智圖拆解工作、再用流程圖安排順序，接著連結既有 Duty、選定主執行／協作／審核／會簽並拖到 Position；ProcessNode↔Duty↔DutyPositionRelation↔Position 為固定資料鏈，DEV-034 繼續負責 relation mutation，DEV-036 繼續負責唯讀責任盤點／分布。S4／S5 已落地，包含 Process 編輯、雙 React Flow 投影、三向高亮、native drag、keyboard placement 與 V7 draft autosave／reload；其固定工作台 UI 編排已由 DEV-039 啟動 intentional replacement，領域、Command、儲存與可重用投影仍是新版基線。
   - 來源 ID：`USER-2026-08-27-PROCESS-DUTY-RESPONSIBILITY-WORKBENCH`、`USER-2026-08-27-MINDMAP-FLOWCHART-OSS-DESIGN`
   - 父任務：DEV-034、DEV-036
-  - 下一步：固定版面已由DEV-039完成替換；DEV-038只保留V7、API negative、invalid V7、409、domain validation、autosave／reload與relation transaction等非版面權威。若需對domain作Independent QA/QC，依本DEV基線執行，不復活舊composition。
+  - 下一步：無獨立QA／QC尾項；固定composition已退出runtime，V7、migration、domain validation、Command與transaction不變量繼續由本spec／ADR-008提供給DEV-039現行工作台。未來改動domain時另開DEV，不復活舊composition。
   - 阻塞 / 恢復條件：P0／P1 readiness blocker 為 0。若需越出 allowlist、修改 ADR-008、複製 Duty／Position、建立第二套 Process／relation store、process-scoped responsibility、BPMN、AI 自動配置或即時多人共編，立即停止並回 PM。
   - 規格：`ai-doc/specs/DEV-038-process-duty-responsibility-planning-workbench.md`
   - 架構決策：`ai-doc/adr/ADR-008-process-planning-organization-version-authority.md`
@@ -123,22 +167,24 @@
   - 阻塞 / 恢復條件：DEV-035 不再擴張；V2 governance schema／migration只依 DEV-037 allowlist執行。若需要修改 AI-PDM、production IAM／DB／credential、deploy 或 release，停止並建立對應 integration ADR／release gate。
   - 計入交付：否（恢復父交付點 DEV-027 的 QC，不重複計數）
 
-- ◐ DEV-034 [交付點] [R2 待瀏覽器 QC／R2.1 Brief] [P1] [R2 QC 可執行／R2.1 未要求實作] 左側主資料職掌清單與組織圖拖曳配置
+- ✓ DEV-034 [交付點] [完成] [P1] [R2 semantics retained／UI and DnD superseded by DEV-039／041／042] 左側主資料職掌清單與組織圖拖曳配置
   - 摘要：將職掌納入既有左側主資料欄，沿用員工／職位／部門／層級的入口、展開、搜尋、選取與收合骨架；規劃者在選取列設定主執行／協作／審核／會簽後，由左向右拖到組織圖 Position。R2 移除「其他執行」、將協作併入執行群組，並把舊 collaborate relation canonicalize 為 non-primary execute；R2.1 另保存三個既有 anomaly 原子條件的複選式規劃狀態視角 Brief，不另設「待處理」選項，且尚未要求實作。
   - 來源 ID：`USER-2026-08-25-DEV034-ORG-CHART-INLINE-DUTY-CONFIGURATION`、`USER-2026-08-25-DEV034-UPGRADE-RD-CONTRACT`、`USER-2026-08-25-DEV034-UPGRADE-IMPLEMENTATION-READY`、`USER-2026-08-25-DEV034-DIRECTORY-DUTY-DRAG-REVISION`、`USER-2026-08-26-DEV034-DUTY-PLANNING-STATUS-FILTER`
   - 父任務：DEV-031、DEV-032、DEV-033
-  - 下一步：R2 仍需在具備原生 `dataTransfer` 與 viewport 控制的本機瀏覽器完成 R2-B1～B9 並建立 `output/playwright/dev034-r2/manifest.md`；R2.1 等使用者要求開始實作後，再由 Brief 升級工程契約，不得以本次文件完成取代產品實作或 browser evidence。
-  - 阻塞 / 恢復條件：P0／P1 readiness 缺口為零；只有命中 schema／API／permission／storage、第二active mutation surface、pending換ID、普通click與drop無法分離或驗證gate失敗等Stop Condition才回PM。不得重用R1證據宣稱R2通過。
+  - 下一步：舊R2專用handle／固定DirectoryDock composition與B1～B9 gate已被現行workspace與shared relation contract取代，不再建立`dev034-r2`獨立manifest。R2.1三個anomaly複選意圖已移至DEV-042 Future Phase Capsule，只有使用者重新要求時才另開實作DEV。
+  - 阻塞 / 恢復條件：既有Duty relation、primary transfer、pending same-ID、Undo／autosave／CAS仍是不可回歸domain基線；若要改變其語意，另開DEV並做ADR-008／009 impact review。
   - 契約：`ai-doc/specs/DEV-034-org-chart-inline-duty-configuration.md`
-  - 證據：R2 automated gate `npx tsc --noEmit`、`npm test -- --testTimeout=30000`（59 files／262 tests）與 `npm run build` 已通過；in-app browser 已完成 partial smoke（duty rail、節點文字隱藏、Inspector 併排、keyboard focus／commit／cancel），且已驗證現行版唯讀與可編輯草稿能力閘門，但因工具不能提供可驗證的 HTML5 `dataTransfer` 且無 viewport setter，未建立 R2 manifest。R1 的 `output/playwright/dev034/manifest.md`、59 files／253 tests 與既有 screenshots 只證明被取代流程；R2 browser gate 完成後才新增 `output/playwright/dev034-r2/manifest.md`。
+  - 證據：原R2 automated gate `59 files／262 tests`與build保留為domain／migration基線；現行UI、四向native DnD、keyboard、responsive、zero-mutation與diagnostics由`output/playwright/dev039/manifest.md`、`output/playwright/dev041/F041-QA-QC-native-aggregate.json`及`output/playwright/dev042/manifest.md`承接。
   - 計入交付：是
 
-- ○ DEV-033 [交付點] [待排] [P0] [Brief Ready／尚未進入 RD] 手機唯讀與桌面編輯的產品能力邊界
-  - 摘要：將「手機只讀、桌面／筆電依既有治理條件編輯」設為 OrgMaster 全專案最高產品原則；手機保留完整閱讀、搜尋、篩選及導覽，但不得呈現或觸發任何資料 mutation。既有允許窄 viewport 編輯的契約只保留為歷史證據，實際產品差距由本 DEV 後續收斂。
+- ✓ DEV-033 [交付點] [完成] [P0] [RD Implementation Complete／Automated Gate Passed／Browser QA-QC Passed／Local Release Gate Pending] 手機唯讀與桌面編輯的產品能力邊界
+  - 摘要：以 deterministic capability 將手機／觸控窄版固定為完整唯讀閱讀與導覽；桌面／筆電仍沿用 workspace、version、治理權限與 domain validation。全系統 mutation 入口、command、快捷鍵、拖放、版本工作區與 deep link 均已共用 default-deny gate。
   - 來源 ID：`USER-2026-08-23-MOBILE-READ-ONLY-HIGHEST-PRINCIPLE`
   - 父任務：DEV-020、DEV-027、DEV-028、DEV-029、DEV-031、DEV-032
-  - 下一步：確認平板能力邊界與手機／桌面模式的可驗證判定方式，再補足跨模組 UI、command guard、驗收及 QC 契約，升級為 `RD Contract Ready`。
-  - 阻塞 / 恢復條件：平板是否可編輯及 mobile capability 的 deterministic boundary 尚未確認；本輪只有專案文件授權，未授權產品程式、測試或既有資料修改。
+  - 權威契約：`ai-doc/specs/DEV-033-mobile-readonly-desktop-mutation-boundary.md`
+  - 下一步：本地產品實作、automated gate 與 browser QA-QC 已完成；如需 production rollout，依共用 release gate 另行授權。
+  - 阻塞 / 恢復條件：本 DEV 無 local implementation blocker；production deploy／release 不在本次授權範圍。
+  - 證據：`npm test`（181 files／749 passed／1 skipped）、`npm run build`、`output/playwright/dev033/dev033-mobile-390x844.png`、`output/playwright/dev033/dev033-desktop-1440x900.png`；390×844 mode=`current-view`且 editor／layout／collapse controls 不可見，1024×768與1440×900 draft-edit editor 可見，fresh console error sweep=0。
   - 計入交付：是
 
 - ✓ DEV-032 [交付點] [完成] [P0] [RD Implementation Complete / QA-QC Passed / Local Release Gate Pending] 精簡自由管理辦法系統
@@ -184,7 +230,7 @@
   - 來源 ID：`USER-2026-08-21-DUTY-ONE-PAGE-LEFT-TO-RIGHT-EXPANDED-EDITOR`
   - 父任務：DEV-029、DEV-030
   - 契約：`ai-doc/specs/DEV-031-duty-master-detail-editor.md`
-  - 下一步：既有 S0→S4 實作、targeted QA、build 與三 viewport browser QC 保留為歷史完成證據；手機能力收斂走 DEV-033。組織圖內嵌責任配置已由 DEV-034 以相容入口承接；DEV-031 程式與證據保留作 regression baseline。
+  - 下一步：既有 S0→S4 實作、targeted QA、build 與三 viewport browser QC 保留為歷史完成證據；手機能力已由 DEV-033 統一收斂。組織圖內嵌責任配置已由 DEV-034 以相容入口承接；DEV-031 程式與證據保留作 regression baseline。
   - 阻塞 / 恢復條件：目前無 P0／P1 readiness 缺口；若必須改 domain／API／schema／保存、無法維持同頁全職位展開、無法保留來源 exact lane 或無法建立單一 scroll owner auto-scroll，立即回 PM。
   - 證據：`npm test -- --run`（36 files／205 tests）、`npm run build`、`output/playwright/dev031-revision/manifest.md`、`output/playwright/dev031-drag-recovery/native-drag-after-drop.png` 與三 viewport screenshots；舊 `output/playwright/dev031/` 為 superseded historical evidence。未部署或 release。
   - 計入交付：是
@@ -474,10 +520,144 @@
   - 證據：`npm test -- --run`（19 files／126 tests）、`npm run build`、localhost:5000 真實瀏覽器 1440×900／1024×768／390×844 UI QC；`output/playwright/orgmaster-mode-status-1440x900.png`、`output/playwright/orgmaster-mode-status-1024x768.png`、`output/playwright/orgmaster-mode-status-390x844.png`；右上角狀態 pill 可見、無重疊／水平溢出，並提供 `role=status`、ARIA label 與 title 說明。
   - 計入交付：否
 
+## DEV-046：統一清單明細工作台與可擴充關係拖曳框架
+
+狀態：可執行；RD尚未開始
+文件成熟度：`RD Implementation Ready / RD Tech Lead Review Passed after Contract Optimization / Documents Only`
+節點類型：交付點
+優先級：P1
+父交付點：DEV-039；intentional successor：DEV-042 list-detail behavior；relation baseline：DEV-041；架構權威ADR-009
+是否計入產品交付完成：是
+權威規格：`ai-doc/specs/DEV-046-unified-list-detail-workbench-framework.md`
+執行邊界：local／isolated S0～S6；未修改產品程式、資料、runtime，未apply production migration或執行release
+風險等級：High（八個主要UI、selection／detail state、帳號偏好API／migration與relation回歸）
+
+### Current Phase交付契約
+
+- 八個consumer固定為employees、positions、departments、levels、duties、processes、management-methods、role-risks；Organization與Governance不在本次scope。
+- 沿用`WorkspaceListDetailSurface`作唯一frame，桌面永遠render list／separator／detail；Level先保留空detail slot，不為形式一致虛構domain內容。
+- 同列click關閉／重開detail，另一列click與ArrowUp／Down切換，Escape依modal／editor／relation／dirty guard precedence關閉；selection不因detail關閉而清除。
+- 無帳號偏好時只做一次content-fit；preferred width依verified principal＋module經GET／PUT保存，effective clamp不回寫。Local-json與Cloud SQL以同一repository contract實作，新增forward-only 011 migration。
+- Relation仍只有DEV-041 strict MIME、single `RelationPlacementSession`、`resolveRegisteredDrop()`、shared bindings及App mutation owner；新增pair依typed extension checklist另立可驗收DEV。
+- RD依S0 contract guard→S1 frame／interaction→S2 preference vertical slice→S3 master／Duty→S4 Process／Management Method／Role Risk→S5 relation cleanup→S6 candidate verification執行。
+
+### RD Technical Lead review
+
+- 結論：`Pass after Contract Optimization`；P0／P1 readiness gap=0。
+- 核心原因：應共用的是layout、互動、偏好與drag binding，不是各domain detail。建立generic renderer或第二shell會把差異藏進mega component，無法降低維護成本。
+- 最小修正：取消第二`WorkbenchShell`；限制八個consumer；保留單一typed relation resolver；帳號偏好與OrganizationDocument／workspace layout隔離；preferred與effective width分離。
+- 技術債：`DirectoryDock.tsx`與`App.tsx`仍是composition hotspot，只允許抽出本次slot migration直接需要的部分；全面拆檔另立開發點。
+
+### 驗收與下一步
+
+- 驗收：權威spec A1～E4、F046-01～08與FMEA全部通過；targeted、full regression、typecheck、client／server build、DB boundary、diff check及三viewport normal-entry evidence齊全。
+- 下一步：RD依權威spec第16節執行S0→S6。
+- 停止條件：需要改domain schema／Command／permission、DEV-033 mobile boundary、第二selection／resolver／mutation owner、allowlist外核心檔或production migration／release時停止回PM／Tech Lead。
+
+### 變更紀錄
+
+- 2026-09-04：依使用者要求建立並補至`RD Implementation Ready`；RD Technical Lead完成根因、最小架構、技術債、FMEA與證據審查後通過。本輪只修改權威spec、ADR amendment與索引，未修改產品程式或執行runtime／測試。
+
+## DEV-045：員工帳號邀請與登入身分設定
+
+狀態：可執行；RD尚未開始
+文件成熟度：`RD Implementation Ready / RD Tech Lead Re-review Passed / Documents Only / Local-Isolated Current Phase / Production Provisioning Gated`
+節點類型：交付點
+優先級：P1
+父交付點：DEV-043、DEV-040；架構權威ADR-007
+是否計入產品交付完成：是
+權威規格：`ai-doc/specs/DEV-045-employee-account-enrollment.md`
+執行邊界：本輪只完成RD Implementation Contract；未修改產品程式、provider設定、正式資料、部署或release
+風險等級：Medium（新增主要互動、帳號狀態、權限與跨UI／BFF／共同IAM資料路徑）
+
+### Current Phase交付契約
+
+- 主要入口固定為「員工 → 員工明細 → 登入帳號」；空白狀態只顯示「尚未設定登入帳號」與唯一主動作「設定登入帳號」，非空狀態完整呈現多個person-specific accounts與相關enrollments，並只保留一個低權重「新增登入帳號」。
+- Modal提供互斥的「邀請新帳號」與「連結既有帳號」，邀請為預設；一般empty state不得再顯示目前管理者自身identity的衝突。
+- Current Phase固定為`Local／Isolated Employee Account Enrollment Foundation`：交付真實產品UI、server permission、含append-only command receipts的enrollment ledger、每次provider mutation前持久化的request key、冪等／reconciliation、shared identity-link policy、既有identity-link整合及deterministic local provider adapter；Employee ID沿用Organization source的opaque exact ID，GET固定pure read。
+- DEV-045啟用後，account-enrollment API是identity link建立／重新啟用／狀態變更的唯一產品HTTP寫入入口；舊current-actor與generic identity HTTP mutations回`IDENTITY_ACCOUNT_FLOW_REQUIRED`且零mutation，internal `applyDraftCommand`仍為唯一canonical store command boundary。
+- Vite與production server各自只建立一個account service／provider與一個startup recovery promise；只有account routes等待readiness，ledger故障不得拖垮Employee其他明細、document或非identity governance routes。
+- Production server的`accountEnrollmentEnabled`預設false且本階段沒有environment activation；Vite local與QA harness顯式啟用。未來正式切換前必須另過production provider／persistence／release gate，不能因程式存在就先封鎖production DEV-043入口。
+- 正式Firebase／共同IAM帳號建立、Email投遞、production persistence、migration、deploy與release不在本階段；local adapter證據不得宣稱正式帳號或邀請信已產生。
+- 帳號完成不自動授予Application Role；已屬其他Employee的帳號不得靜默移轉。
+- 權限細分為`orgmaster.identity.view`、`orgmaster.identity.invite`、`orgmaster.identity.link`與`orgmaster.identity.invitation.manage`；`orgmaster.governance.manage`不隱含帳號治理權限。
+- DEV-044的administrator與governance-manager可執行Current Phase流程；method-manager與employee不得看見mutation control。窄版／手機依DEV-033保持完整唯讀。
+
+### Readiness與下一步
+
+- Spec Impact Preflight：`Compatible future successor / Compatible security and implementation refinement / Intentional successor surface replacement`；DEV-043完成狀態與既有證據保持有效，只有DEV-045啟用後的舊identity HTTP mutation surface由新流程取代。
+- ADR Gate：不新增ADR；OrgMaster治理／編排、共同IAM authentication／credential authority已由ADR-007固定。
+- 已固定domain狀態機、one-to-many UI projection、permission matrix、API behavior、provider port、shared identity-link policy、pre-dispatch request-key saga、錯誤恢復、FMEA與A1～A15驗收案例。
+- 已固定opaque Employee ID、pure GET、append-only command receipt、create／replay disposition、exact request／provider／audit DTO、same-origin mutation gate、single-writer HTTP fence、runtime singleton／failure isolation、development startup recovery、exact repo／file／symbol、local ledger schema與path、S0→S4、test scripts、browser provenance及runtime cleanup；RD Technical Lead re-review=`PASS`，P0 gap=`0`、P1 gap=`0`。
+- RD可直接開始local／isolated implementation；正式provider、Email、Cloud SQL、deploy與release仍未授權。
+
+### 變更紀錄
+
+- 2026-09-04：依使用者要求補齊DEV-045架構：把Employee ↔ identity的一對多不變量落到plural DTO、mixed-state projection與A14；抽出shared identity-link policy；以account API single-writer fence取代啟用後的舊current／generic identity HTTP mutation surface；固定runtime singleton、單一startup readiness與account-only failure isolation；另移除不存在的candidate enrollment狀態，以append-only command receipts及每次resend獨立request key補齊管理操作冪等／crash recovery，並新增純讀`readExistingGovernanceStore()`避免GET觸發seed／migration，新增A15及S0～S4對應Gate。Spec Impact為compatible refinement加intentional successor surface replacement，不新增ADR；文件維持`RD Implementation Ready`，未修改產品程式或runtime。
+- 2026-09-04：依RD Technical Lead review關閉1個P0與4個P1：新增provider call前持久化的`providerRequestKey`、同flow／development startup recovery與response-loss reconciliation，改採opaque Employee ID、固定GET pure read、補齊create／replay disposition及request／provider／audit types，並新增same-origin mutation Gate與A13；re-review=`PASS`，文件維持`RD Implementation Ready`，未修改產品程式或runtime。
+- 2026-09-04：升級為`RD Implementation Ready / RD Not Started / Documents Only`。固定exact file／symbol allowlist、V1 local ledger、provider port、service／route DTO、Employee UI wiring、現行版與帳號治理解耦、S0→S4、targeted／aggregate／browser Gate及cleanup；P0／P1 gap=0，未修改產品程式或runtime。
+- 2026-09-04：升級為`RD Contract Ready / RD Not Started / Documents Only / Production Provisioning Gated`；建立權威spec，固定local／isolated Current Phase、權限、狀態機、API／provider port、冪等與QA／QC契約。未修改產品程式、provider環境或production資料。
+- 2026-09-04：依使用者確認建立DEV-045 `Brief Ready`。固定Employee主入口、邀請新帳號／連結既有帳號雙路徑、OrgMaster治理編排／共同IAM執行責任、狀態與驗收方向；未修改產品程式或provider環境。
+
+## DEV-044：地端測試角色一鍵登入
+
+狀態：local implementation complete
+文件成熟度：`RD Implementation Complete / Targeted Gates Passed / Browser QA-QC Passed / Full Regression Passed`
+節點類型：開發點
+優先級：P1
+父交付點：DEV-040、DEV-043
+是否計入產品交付完成：否
+權威文件：`ai-doc/specs/DEV-044-local-test-role-one-click-login.md`
+Readiness：`P0 gap=0 / P1 gap=0`
+
+### Current Phase與驗收
+
+- S1：✓ development profile registry、HttpOnly cookie、profiles／session／logout API與production negative gate。
+- S2：✓ governance與management-method server capability依profile權限判斷。
+- S3：✓ AuthGate四角色一鍵登入、登入狀態顯示姓名／角色與「切換角色」恢復流程。
+- S4：✓ targeted 7 files／36 tests、typecheck、client／server build、A1～A8 browser QA／QC及可執行full regression 185 files／776 tests PASS、1 skipped。
+- Stop condition：需要production identity／role寫入、跨repo契約、正式credential、deploy或release時停止。
+
+### 變更紀錄
+
+- 2026-09-04：依使用者要求建立DEV-044。Spec Impact Preflight=`Compatible exception`；保留正式Firebase/BFF與自動化exact-header入口，只新增development＋loopback測試角色。四個profile與API／cookie／permission／UI／failure recovery／QA-QC契約已達RD Implementation Ready，開始local implementation。
+- 2026-09-04：local implementation完成。修正未配置production dependency時的地端logout與初始401 console噪音；四角色權限、重新整理、切換、HttpOnly cookie、員工登入身分入口、發布／模擬UI gate、三viewport、鍵盤與visible-error sweep均PASS。完整證據見`output/playwright/dev044/manifest.md`；既有localhost:5000 PID 12468保留運行。
+
+## DEV-043：員工明細登入身分與帳號治理入口
+
+狀態：local implementation complete（full regression follow-up open）
+文件成熟度：`RD Implementation Complete / RD Technical Lead Passed / Targeted Gates Passed / Browser QA-QC Passed / Full Regression Follow-up Open`
+節點類型：交付點
+優先級：P1
+父交付點：DEV-040、DEV-042；架構權威ADR-007
+是否計入產品交付完成：是
+權威文件：`ai-doc/specs/DEV-043-employee-identity-link-management.md`
+Readiness：`P0 gap=0 / P1 gap=0`
+
+### RD Technical Lead Review（2026-09-03）
+
+- 結論：`Pass after contract optimization`；Employee維持主物件，identity link只作Employee relation，全域帳號治理不得升格為第二份帳號主檔。
+- API只把verified actor轉成既有`UPSERT_IDENTITY_LINK` command，CAS、audit、validation與persistence重用現有store boundary；browser不得提交raw identity。
+- current identity create／noop／reactivate／conflict、active-admission唯讀、global Employee CTA與App-owned refresh token已固定；identity mutation不依賴不相干的role catalog ready。
+- 不新增schema、migration、provider adapter、event bus或client cache；任意IAM帳號搜尋／邀請留在DEV-040 production provider gate。
+
+### Current Phase與驗收
+
+- S1：新增server-derived current identity endpoint，補active principal／issuer-subject唯一性與API／validation tests。
+- S2：Employee明細新增局部loading／empty／error／read-only／mutation完整狀態的「登入身分」區段。
+- S3：全域section可見名稱改為「帳號治理」，Employee名稱open-or-focus員工明細，雙surface以App refresh token重讀canonical governance state。
+- S4：targeted、typecheck、client/server build、B1～B7 browser QA／QC與排除兩個既有非 Vitest fixture的功能回歸通過；標準 full regression為`185 passed／771 tests／1 skipped`，另有兩個既有`No test suite found` discovery failures，已獨立追蹤；task-owned runtime完成清理。
+- Stop condition：raw identity暴露、權限繞過、需要改schema／provider／production data或越出spec allowlist時立即回PM；不得另建帳號主檔或第二mutation path。
+
+### 變更紀錄
+
+- 2026-09-03：依使用者確認完成DEV-043 RD文件與RD技術主管審查。將主要入口固定在Employee detail，global identity section改為帳號治理索引；補server-derived actor endpoint、狀態矩陣、唯一性、permission、failure recovery、S1～S4與browser evidence contract。P0／P1 gap=0，開始local implementation。
+- 2026-09-03：完成DEV-043 local implementation與B1～B7 browser evidence；targeted `6 files／25 tests`、typecheck、client/server build通過。標準 full regression為`185 passed／771 tests／1 skipped`，僅兩個既有`dev010-n2` script fixture因無 Vitest suite回報失敗；明確排除該兩檔後功能回歸仍為`185 passed／771 tests／1 skipped`。證據見`output/playwright/dev043/manifest.md`；未commit、merge、deploy或release。
+
 ## DEV-042：單層功能工作台與可收合清單明細
 
 狀態：完成（production code、完整回歸與 Browser S7 均已關閉）
-文件成熟度：`RD Implementation Complete / Browser QA-QC Passed / Local Release Gate Pending`
+文件成熟度：`RD Implementation Complete / Browser QA-QC Passed / Merged to master`
 節點類型：交付點
 父交付點：DEV-039
 是否計入產品交付完成：是
@@ -619,8 +799,8 @@ Readiness：`P0 gap=0 / P1 gap=0`
 
 ## DEV-041：跨面板關係拖曳互動一致化
 
-狀態：完成（RD implementation、automated gate、四向native、owner canvas auto-pan、zero-mutation revision guard、console sweep與fixture cleanup均已通過；Chromium `dropEffect=none`原生行為已由使用者接受；現行gate以主spec §0.1／§20為準）
-文件成熟度：`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`
+狀態：完成（RD implementation、automated gate、四向native、owner canvas auto-pan、zero-mutation revision guard、console sweep與fixture cleanup均已通過，並已併入master）
+文件成熟度：`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Merged to master`
 節點類型：開發點
 父交付點：DEV-039
 是否計入產品交付完成：否（統一既有能力，不重複計算 DEV-039）
@@ -785,8 +965,8 @@ Readiness：`P0 gap=0 / P1 gap=0`
 
 ## DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
-狀態：部分完成（整體`RD Contract Ready / ID1A-ID1B Local Implementation Complete / Human Decision Gate Complete through 1B／2A／3D`；DEV-004=`004-S0～S5 Local PASS / Live G2 Gated`；DEV-006=`S1～S3 Complete / S4A Consumer Fixture Gate PASS / S4B Release Gate Required`；`040-ID1A／ID1B=Local Implementation Complete / Targeted QA-QC PASS`；`JMS-PLATFORM-005 OrgMaster slice=005-S0／S1／UI0／S2／S3 Local-Isolated PASS / 005-S4A～S5 Not Implemented / Production Authority Switch Gated`）
-文件成熟度：`RD Contract Ready；040-ID1A／ID1B RD Implementation Complete／Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice RD Implementation Ready / Local Foundation Implemented；DEV-004 Local Implementation Complete；DEV-006 S1～S3 RD Implementation Complete / S4A Consumer Fixture Gate PASS`
+狀態：部分完成（整體`RD Contract Ready / ID1A-ID1B Local Implementation Complete / Human Decision Gate Complete through 1B／2A／3D`；DEV-004=`004-S0～S5 Local PASS / Live G2 Gated`；DEV-006=`S1～S3 Complete / S4A Consumer Fixture Gate PASS / S4B Release Gate Required`；`040-ID1A／ID1B=Local Implementation Complete / Targeted QA-QC PASS`；`JMS-PLATFORM-005 OrgMaster slice=005-S0～S4B Local-Isolated PASS / 005-S5 Local Targeted PASS / Production Authority Switch Gated`；`JMS-PLATFORM-009=009-S0～S4 Local-Isolated Complete / Targeted QA-QC PASS / 009-R1 Release Gate Required / Production Release Gated`）
+文件成熟度：`RD Contract Ready；040-ID1A／ID1B RD Implementation Complete／Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice RD Implementation Complete / 005-S0～S4B Local-Isolated PASS / S5 Local Targeted PASS；JMS-PLATFORM-009 OrgMaster slice Local Implementation Complete／Targeted QA-QC PASS；DEV-004 Local Implementation Complete；DEV-006 S1～S3 RD Implementation Complete / S4A Consumer Fixture Gate PASS`
 節點類型：開發點
 父開發點：DEV-037
 是否計入產品交付完成：否（跨 repository 交付由 Jenfu Management System DEV-001 計算）
@@ -924,7 +1104,7 @@ OrgMaster 已能在本機治理外部角色指派，但 AI-PDM 仍有自己的�
 18. [x] `3D`：一般管理用日常identity＋step-up，高權限用同employee下獨立person-specific privileged identity。
 19. [x] `040-ID1 One-time Exception`：目前非UUIDv7 Employee直接改鍵，既有有效UUIDv7保留，受影響current reference完整重寫；舊ID、舊organization version與舊ID audit不保留，不建立legacy mapping。
 
-Phase 1無剩餘P0／P1人類產品決策。DEV-004 `004-S0～S5`與DEV-006 S1～S3已完成；`040-ID1A／ID1B`已完成local／isolated產品實作與targeted QA／QC，JMS-PLATFORM-005已完成local contract/catalog/recommendation foundation與targeted tests，live persistence、authority與API／UI仍未完成。DEV-006 S4A只消費ID1B IAR receipt，不擁有classifier或3＋1 baseline。JMS-PLATFORM-005不得拿DEV-037 V2 local evidence冒充完成；repository／authority／traffic仍未切換。
+Phase 1無剩餘P0／P1人類產品決策。DEV-004 `004-S0～S5`與DEV-006 S1～S3已完成；`040-ID1A／ID1B`已完成local／isolated產品實作與targeted QA／QC；JMS-PLATFORM-005 `005-S0～S4B`與`005-S5` local／isolated implementation及targeted gate已完成，包含catalog publication、V3 projection／authority／invalidation、route enforcement與change-feed consumer。DEV-006 S4A只消費ID1B IAR receipt，不擁有classifier或3＋1 baseline。正式Cloud SQL persistence、repository／authority／traffic切換仍未執行，不得以local evidence冒充production完成。
 
 ### 停止條件與下一步
 
@@ -932,11 +1112,14 @@ Phase 1無剩餘P0／P1人類產品決策。DEV-004 `004-S0～S5`與DEV-006 S1�
 - 若 access view 無法用 DB grants 隔離 app、需要讀 OrgMaster 私有 table，停止並重新評估 API / event projection。
 - 若需要雙權威、一般admin可取得cross-app override、告警無receipt或mobile需開放mutation，停止並回PM／ADR。
 - production credential、remote Cloud SQL migration、deploy／release 必須另進 release gate。
-- 下一步：ID1A／ID1B與Platform DEV-006 S4A receipt consumer local gate已通過；先完成JMS-PLATFORM-005 live publication／persistence，再由owner提供production 3＋1 evidence；production切換仍須release gate。migration順序固定Platform 002→AI-PDM 055→OrgMaster 005→006；不得在目前autosave運行中直接切換。
-- DEV-009安全切片的下一步獨立固定為`009-S0`：建立canonical v2 contract／雙vendor lock，讓current bundled／live catalog保留完整policy metadata，以shared full-policy classifier統一UI、V2 validation與command guard，並讓所有generic V2 publish path對`system_admin` fail closed。Platform contract與OrgMaster guard必須共同通過；這不授權schema apply、真實principal／role mutation、bootstrap、deploy或release。
+- 下一步：ID1A／ID1B、JMS-PLATFORM-005 `005-S0～S4B`／`S5`與Platform DEV-006 S4A receipt consumer local gate已通過；由owner提供production 3＋1 evidence，完成DEV-006 S4B release preflight後，才可依`Platform 002→AI-PDM 055→OrgMaster 005→006`順序進行正式 migration、candidate／repository switch與production authority cutover。不得在目前autosave運行中直接切換。
+- DEV-009安全切片`009-S0～009-S4`已完成：S1 PostgreSQL、S2 OrgMaster normal-path browser、S3 AI-PDM aggregate與S4 cross-repo皆有frozen report／candidate SHA。S4 frozen report=`../../Jenfu-Management-system/output/qa/dev-009/cross-repo/DEV009-S4-2026-09-02T18-21-31-904Z/report.json`，report SHA=`f8fa0128ba7304efd4cd326cbe4f94952be3095986ad3006b86a61acce213a9b`，candidate SHA=`4ab63077b3425028c9ffc0df7be84126c199cd10856ce82db746b4de106c554f`。下一步為`009-R1 Release Gate Required`；本slice不授權schema apply、真實principal／role mutation、bootstrap、deploy或release。
 
 ### 變更紀錄
 
+- 2026-09-02（DEV-009 S1 local completion，歷史分母）：當時`test:dev-009`=`17 files／68 tests PASS`；目前已擴增並重跑為`19 files／75 tests PASS`，S1 frozen PostgreSQL report=`output/qa/dev-009/postgres/DEV009-S1-2026-09-02T18-10-44-005Z/report.json`。未執行schema apply、真實principal／grant、bootstrap、runtime／deploy／release。
+- 2026-09-02（DEV-009 S2 local completion，早期證據已被取代）：當時`18 files／72 tests`與`output/playwright/dev009-s2/manifest.md`使用local mock transport；現行S2證據改為frozen production artifact real Chromium `8／8 PASS`，report=`output/qa/dev-009/browser-real/DEV009-S2-2026-09-02T18-09-45-579Z/report.json`。
+- 2026-09-03（DEV-009 S4 cross-repo closure）：Platform cross-repo fixed cases與S1～S3 frozen receipt驗章PASS；報告=`../../Jenfu-Management-system/output/qa/dev-009/cross-repo/DEV009-S4-2026-09-02T18-21-31-904Z/report.json`，report SHA=`f8fa0128ba7304efd4cd326cbe4f94952be3095986ad3006b86a61acce213a9b`；下一步`009-R1 Release Gate Required`。
 - 2026-09-02（原始提案，UI入口已由下一筆取代）：將JMS-PLATFORM-009 OrgMaster slice升級為`RD Implementation Ready / Documents Only`，固定exact `human_privileged` principal、專用read／preview／publish、V2 generic deny、legacy V2 exception、alert／audit／invalidation同交易、offline control-plane isolation、projection v2與`009-S0→S4／R1`；當時的獨立「特權管理」入口不再是現行方案。未修改程式、schema、資料、runtime、bootstrap、deploy或release。
 - 2026-09-02：依使用者UI簡化決策，取消獨立「特權管理」頁與route，改為既有`assignments`選到AI-PDM `system_admin`時就地顯示「特權設定」。專用read／preview／publish、V2 generic deny、exact principal、step-up、audit／alert／invalidation及offline isolation不變；Documents Only，未修改產品runtime。
 - 2026-09-02（前一版，已由下一筆技術主管複審取代）：依Dev PM完成頁內方案的implementation-ready收斂：補ordinary／privileged／unsupported mode matrix、當時的exact五欄catalog discriminator、adapter metadata保留、role切換清draft／忽略late response、`GovernancePrivilegedAssignments`元件邊界與`QA-009-01～16` evidence contract。下一步仍只執行`009-S0`；Documents Only。
@@ -972,7 +1155,7 @@ Phase 1無剩餘P0／P1人類產品決策。DEV-004 `004-S0～S5`與DEV-006 S1�
 - 2026-08-31：同步Platform DEV-004 `004-S5 Local PASS`。三repo cross-contract／regression／build、fresh PostgreSQL 43／43、redaction／cleanup與10張browser evidence全部PASS，OrgMaster部分含focused 14、full 651、client＋server build及actual Node BFF fail-closed畫面；evidence=`../../Jenfu-Management-system/output/dev-004/DEV004-S5-20260831T054317661Z-75bb1fcc/`。本次只同步OrgMaster開發文件，未修改OrgMaster產品行為、schema、資料、production runtime或release。
 - 2026-08-31：同步Platform DEV-004 `004-S4 Local Complete`。Platform建立Next.js 16.3 auth shell、Portal opaque session、active-principal／central epoch per-request gate、local／global logout及failure UI；contract與focused 6 files／24 tests、production build、fresh isolated PostgreSQL 43／43＋cleanup、HTTP fail-closed、1440／1024／390 browser、login keyboard與failure focus recovery均PASS，evidence=`../Jenfu-Management-system/output/playwright/dev004-s4/manifest.md`。本次只同步OrgMaster開發文件，未修改OrgMaster產品、schema、資料、runtime或release；下一個共同IAM slice為S5。
 - 2026-08-31：依使用者指令完成DEV-004 `004-S3`。OrgMaster新增production Node BFF、Firebase token exchange、opaque app-local session、active-principal／central epoch per-request gate、全business API先驗證、Employee lifecycle adapter及不先render資料的AuthGate；development只允許loopback＋exact headers並維持既有`dev:local`。contract PASS、focused 4 files／14 tests、full 159 files／651 tests、TypeScript、client＋server build、server restart及1440／1024／390三視窗browser均PASS；evidence=`output/playwright/dev004-s3/manifest.md`。未修改AI-PDM、未連live DB／Firebase、未套production migration、未deploy或release。
-- 2026-08-31：同步Platform DEV-004 `004-S2 Gate Closure`。AI-PDM只修正兩支QC runner，fresh focused 14／14、DEV-046 16／16、login alias 21／21及targeted engineering checks通過，S2改為`Local Complete`。本次只同步OrgMaster開發文件，未修改OrgMaster產品、schema、資料、runtime或release；OrgMaster下一slice仍為`004-S3`。
+- 2026-08-31：同步Platform DEV-004 `004-S2 Gate Closure`。AI-PDM只修正兩支QC runner，fresh focused 14／14、AI-PDM DEV-046 16／16、login alias 21／21及targeted engineering checks通過，S2改為`Local Complete`。本次只同步OrgMaster開發文件，未修改OrgMaster產品、schema、資料、runtime或release；OrgMaster下一slice仍為`004-S3`。
 - 2026-08-31：同步Platform本輪`14A`／DEV-004 `004-S2`初始狀態。AI-PDM完成default-off、cookie-only、single-mode Jenfu adapter，focused 14／14、isolated auth 12／12、typecheck、lint與isolated build通過，完整legacy基準無新增失敗；當時兩個pre-existing exceptions使S2 exit gate仍open。本次只同步OrgMaster開發文件，未修改OrgMaster產品、schema、資料、runtime或release；OrgMaster下一slice仍為`004-S3`。
 
 - 2026-08-31：使用者選擇平台引導題`12A`；完成DEV-004 `004-S0`。OrgMaster新增byte-identical vendor contract、SHA lock、`contracts:check`／`test:dev-004`／`qc:dev-004`，aggregate SHA=`4d27c1e297b516207f931f57e443ecda99e260c56369132f9a269d11920cda96`且drift self-test PASS。尚未修改OrgMaster auth產品程式、Employee、DB、UI、runtime或release；下一個app slice為`004-S3`。
@@ -985,8 +1168,8 @@ Phase 1無剩餘P0／P1人類產品決策。DEV-004 `004-S0～S5`與DEV-006 S1�
 
 ## DEV-039：可組合規劃桌面與跨面板關聯配置
 
-狀態：`S0～S6 Historical Complete / S7 Relation Placement Implemented / QA-QC Passed / E4 Candidate Freeze Ready / Authorization Pending`
-文件成熟度：`RD Implementation Ready / Implementation Complete / QA-QC Passed / Candidate Freeze Ready / Authorization Pending`
+狀態：`Current Phase Complete / QA-QC Passed / Merged to master / Release Not Requested`
+文件成熟度：`Implementation Complete / QA-QC Passed / Repository Integrated`
 節點類型：交付點
 是否計入產品交付完成：是
 來源 ID：`USER-2026-08-28-COMPOSABLE-PLANNING-DESKTOP`、`USER-2026-08-28-BRANCH-LEVEL-UI-REPLACEMENT`、`USER-2026-08-28-DEV039-HCS-ROUND-1`、`USER-2026-08-28-DEV039-HCS-ROUND-2`、`USER-2026-08-28-DEV039-HCS-ROUND-3`、`USER-2026-08-28-DEV039-HCS-ROUND-4`、`USER-2026-08-28-DEV039-MATURE-MODULE-SLICE-1`、`USER-2026-08-28-DEV039-ALL-CURRENT-FUNCTION-PARITY`、`USER-2026-08-30-STABLE-PANEL-OWNERSHIP-ARCHITECTURE`、`USER-2026-08-30-DEV039-S6-IMPLEMENTATION-READY`、`USER-2026-08-31-NATIVE-CROSS-PANEL-RELATION-PLACEMENT`、`USER-2026-08-31-FIRST-PRINCIPLES-RELATION-PLACEMENT-ARCHITECTURE`
@@ -1599,8 +1782,8 @@ Re-entry trigger：全部現有功能完成parity manifest並通過正常入口�
 
 ## DEV-038：流程－職掌－責任聯動規劃工作台
 
-狀態：執行中（MVP 已落地，QA／QC 待完成；固定 UI composition 已由 DEV-039 替換）
-文件成熟度：`RD Implementation Ready / MVP Implemented / QA-QC Pending / UI Composition Replaced by DEV-039`
+狀態：完成（Process／V7 domain baseline保留；固定UI composition已由DEV-039／042替換，QA／QC併入現行交付證據）
+文件成熟度：`Domain Baseline Complete / UI Composition Superseded / Merged to master`
 節點類型：交付點
 優先級：P1
 來源 ID：`USER-2026-08-27-PROCESS-DUTY-RESPONSIBILITY-WORKBENCH`、`USER-2026-08-27-MINDMAP-FLOWCHART-OSS-DESIGN`
@@ -2041,8 +2224,8 @@ active view 與當前視角篩選條件寫入 URL；重新整理及 browser back
 
 ## DEV-034：組織圖內嵌工作事項責任配置模式
 
-狀態：R2 實作完成／待瀏覽器 QC；R2.1 規劃狀態視角已確認 Brief、尚未要求實作；R1 為歷史基線
-文件成熟度：R2 `RD Implementation Complete`；R2.1 `Brief Ready / Human Confirmed / Implementation Not Requested`
+狀態：完成（R2 domain語意保留；固定UI／專用DnD已由DEV-039／041／042取代並驗證；R2.1移至DEV-042 Future Phase Capsule）
+文件成熟度：`Completed / Historical UI Contract / Domain Baseline Retained`
 節點類型：交付點
 優先級：P1
 來源 ID：`USER-2026-08-25-DEV034-ORG-CHART-INLINE-DUTY-CONFIGURATION`、`USER-2026-08-25-DEV034-UPGRADE-RD-CONTRACT`、`USER-2026-08-25-DEV034-UPGRADE-IMPLEMENTATION-READY`、`USER-2026-08-25-DEV034-DIRECTORY-DUTY-DRAG-REVISION`、`USER-2026-08-26-DEV034-DUTY-PLANNING-STATUS-FILTER`
@@ -2220,7 +2403,7 @@ DEV-034 把這個未交付設計獨立成新的可驗收交付點：責任配置
 - 「完成」與 Escape 只退出模式，不 rollback 已成功配置；回復使用既有 Undo／Redo，避免建立 transaction plan 或第二個提交流程。
 - `/duty-planning*` 現已改為 root duty-config mode 的相容入口，保留 `?position=` 定位且沒有第二個 active mutation surface；正式部署仍受 release gate 管理。
 - `no-executor`／`missing-primary` 以同一工作事項清單中的單一文字狀態呈現；`pending-reassignment` 從 drawer 選定後直接點 Position，以相同 relation ID 重新配置，不恢復第二份 Position selector。
-- 若 DEV-033 的全系統 capability boundary 尚未完成，DEV-034 mutation 採不寬於 DEV-032 的保守條件：至少 1024px、hover 與 fine pointer 同時成立；server／domain 仍驗證 workspace mode、revision 與 V6 文件。
+- DEV-034 重用 DEV-033 的全系統 capability boundary：至少 1024px、hover 與 fine pointer 同時成立才呈現 mutation；server／domain 仍驗證 workspace mode、revision 與 V6 文件。
 - 完整 route、command、failure recovery、permission、QA／QC 與 stop conditions 以 `ai-doc/specs/DEV-034-org-chart-inline-duty-configuration.md` 為權威。
 
 ### R1 歷史實作進度（2026-08-25）
@@ -2277,15 +2460,15 @@ R1 當時已完成 RD 實作與 QA／QC handoff；pure route／toggle command／
 
 ## DEV-033：手機唯讀與桌面編輯的產品能力邊界
 
-狀態：待排（`Brief Ready / Human Confirmed Principle / Implementation Pending`）  
-文件成熟度：`Brief Ready`  
+狀態：完成（`RD Implementation Complete / Automated Gate Passed / Browser QA-QC Passed / Local Release Gate Pending`）
+文件成熟度：`RD Implementation Complete`
 節點類型：交付點  
 優先級：P0  
 來源 ID：`USER-2026-08-23-MOBILE-READ-ONLY-HIGHEST-PRINCIPLE`  
 父任務：DEV-020、DEV-027、DEV-028、DEV-029、DEV-031、DEV-032  
 計入交付：是  
 風險等級：Medium（跨既有與未來所有編輯 surface、responsive layout、command entry 與 browser QC；不改正式權限模型、資料內容或 server authorization）  
-執行邊界：本輪只建立專案最高原則與 PM Brief；未修改產品程式、測試、資料、schema、API、deploy 或 release。
+執行邊界：已完成 deterministic capability、跨模組 UI、command／submit guard、deep-link／快捷鍵／拖放 fail-closed 及真實 viewport QA；未修改正式資料、schema、API、deploy 或 release。
 
 ### 真正問題與使用者價值
 
@@ -2331,15 +2514,23 @@ OrgMaster 的主要規劃與治理工作需要大範圍比較、拖放、關係�
 - 桌面／筆電既有編輯流程在具備 workspace／governance 條件時維持可用。
 - 對既有完成 DEV 的手機編輯條文建立 supersession，不改寫其歷史測試結果。
 
+### RD Implementation Contract
+
+- `isDesktopMutationEnvironment()` 是所有 mutation surface 的共同物理／runtime gate：`serverReady`、非 blocked recovery、`viewportWidth >= 1024`、hover、fine pointer 且非 `mobileReadOnly` 必須同時成立。
+- `resolveModuleCapability()` 另檢查 workspace mode、version status、domain capability 與治理條件；current-view、無權限、無效版本或 recovery 狀態不可寫入。
+- App 的 `commit`、`commitState`、`commitDomainMutationIntent`、`runOrganizationCommand`、`saveDocument`、`persistDraft`、版本工作區 action、快捷鍵、拖放、Directory、Inspector、Duty、Process、Management Method、Governance 與 Role Risk 均由同一 gate 重驗。
+- 手機保留完整閱讀、搜尋、篩選、版本切換與明細導覽；VersionSwitcher／DocumentMenu／VersionWorkspacePanel／Inspector／DirectoryDock／OrgNode 不 render mutation affordance。桌面 draft-edit 與 current-maintenance 維持既有編輯流程。
+- 平板採 default-deny：`<1024px`、無 hover 或無 fine pointer 均唯讀；這是 UX capability，不是 security credential。
+
 ### Out of Scope
 
 - 手機建立、修改或核准任何 OrgMaster 資料。
 - 手機離線編輯、稍後同步、草稿暫存、觸控拖放及手機專用快速修改。
 - 原生 iOS／Android App、推播通知或手機專屬身分驗證。
 - 以手機判定取代正式 Auth、role、permission、workspace mode、version status 或 server validation。
-- 平板編輯能力；其產品邊界留待 RD Contract 前確認。
+- 正式 production authority、Auth、role、permission、資料 migration、deploy 或 release；這些維持既有 release gate。
 
-### 驗收方向（Brief 層級）
+### 驗收方向
 
 - 390×844 或後續 RD Contract 定義的手機模式可閱讀全部核心資料，沒有水平溢出、遮擋、文字裁切或被固定區域吃掉的主要內容。
 - 手機版不存在可見的新增、編輯、刪除、拖放、配置、移轉、核准、發布或保存入口；直接進入編輯 deep link 仍為唯讀。
@@ -2347,6 +2538,8 @@ OrgMaster 的主要規劃與治理工作需要大範圍比較、拖放、關係�
 - 只靠 CSS 顯示隱藏不足以通過驗收；可達的 command／submit handler 必須遵守 mobile read-only capability。
 - 桌面／筆電在既有可編輯 mode 與治理條件下仍可完成相同功能，不因 mobile principle 全域誤鎖。
 - 唯讀狀態不用只靠顏色表達，鍵盤、screen reader、直向／橫向手機畫面均能理解目前不可寫入。
+- `390×844` fresh Chromium：mode=`current-view`、editor／layout／collapse controls 不可見，document／body `scrollWidth === viewport width`，visible error=0。
+- `1024×768` 與 `1440×900` fresh Chromium：draft-edit editor、結構配置與既有桌面 mutation controls 可用，document／body `scrollWidth === viewport width`，console error=0。
 
 ### Cross-Spec Consistency
 
@@ -2355,19 +2548,19 @@ OrgMaster 的主要規劃與治理工作需要大範圍比較、拖放、關係�
 - 取代 DEV-028 於 2026-08-21 記錄的「所有 viewport 同等編輯」條款。
 - 取代 DEV-029 的 `<1024 CSS px` 不再唯讀條款。
 - 取代 DEV-031 的「390×844 不得改為唯讀」及手機／觸控完整配置路徑條款。
-- 不取代上述 DEV 的 domain、資料、保存、Undo、桌面拖放或歷史完成證據；現行程式仍可能符合舊契約，必須由 DEV-033 後續實作與驗證，不能只改文件宣稱完成。
+- 不取代上述 DEV 的 domain、資料、保存、Undo、桌面拖放或歷史完成證據；現行程式已由 DEV-033 的 deterministic gate 統一收斂，不能只以舊文件或歷史 evidence 推定手機可編輯。
 
-### 升級 RD Contract 前必須確認
+### 驗證與文件
 
-1. 平板是唯讀或可編輯；此決策不改變手機唯讀。
-2. 手機模式採可驗證 viewport class、layout capability 或其他 deterministic criterion；不得把可偽造 user-agent 當成安全授權。
-3. 手機唯讀要覆蓋的既有 routes、commands、dialogs、drawers、快捷鍵及 deep links 清單。
-
-上述決策完成後，再補跨模組行為契約、failure recovery、targeted QA 及真實 viewport QC，升級為 `RD Contract Ready`。目前不建立 spec 或 ADR；若能力判定形成長期跨模組架構基準，於 RD Contract 階段再評估 ADR。
+- 權威契約：`ai-doc/specs/DEV-033-mobile-readonly-desktop-mutation-boundary.md`。
+- Automated gate：`npm test`（181 files／749 passed／1 skipped）、`npm run build`；`src/workspace/capability.test.ts` 覆蓋 desktop／1023／hover／fine pointer／mobile／recovery boundary。
+- Browser evidence：`output/playwright/dev033/dev033-mobile-390x844.png`、`output/playwright/dev033/dev033-desktop-1440x900.png`；fresh console error sweep=0。
+- 本 DEV 完成 local implementation 與 QA／QC；不授權 candidate freeze、commit、merge、deploy 或 release。
 
 ### 變更紀錄
 
 - 2026-08-23：依使用者明確決策建立專案最高產品原則與 `Brief Ready`；手機固定唯讀、桌面／筆電沿用既有治理條件，平板及 deterministic capability boundary 待後續確認。本輪未修改產品程式。
+- 2026-09-03：依 DEV-033 RD contract 完成全系統 deterministic mutation boundary；採 `>=1024px + hover + fine pointer` 的 desktop gate，手機／觸控窄版唯讀；補齊 global chrome、version workspace、Organization／Duty／Process／Management Method／Governance／Role Risk 的 UI 與 handler guards。`npm test`、build、390／1024／1440 fresh Chromium與console sweep通過；production rollout 仍走 release gate。
 
 ## DEV-032：精簡自由管理辦法系統
 
@@ -2638,7 +2831,7 @@ AI 預設只取得「建立畫面中人類本次輸入＋此次明確選取的�
 - 文件建立後不顯示 AI 入口、AI chat sidebar、提案、diff、流程建模器、智能引用面板或合規儀表板。
 - 「對照職掌」是按需唯讀側欄／分割檢視，不是永久第二欄或新 route；沿用既有 Duty 唯讀元件，同時呈現管理辦法原文與職掌原文，由人類自行比較。
 - 頁面只以最小位置呈現 `建置中／可供公司閱讀／有未提供更新`、文件負責人及草稿／閱讀快照修改資訊；一般保存成功不建立通知面板。
-- 閱讀模式依 heading 產生章節目錄，圖片可放大；DEV-032 scoped gate 只有至少 1024px、hover＋fine pointer 才可 mutation，其餘只讀，後續再由 DEV-033 統一全系統規則。一般閱讀者只看 readable snapshot；原本有草稿權限者可在唯讀裝置閱讀明確標示的 working draft，但不得編輯、提供／停止提供閱讀或執行其他 mutation。
+- 閱讀模式依 heading 產生章節目錄，圖片可放大；DEV-033 現已統一採至少 1024px、hover＋fine pointer 才可 mutation，其餘只讀。一般閱讀者只看 readable snapshot；原本有草稿權限者可在唯讀裝置閱讀明確標示的 working draft，但不得編輯、提供／停止提供閱讀或執行其他 mutation。
 
 #### 空白、載入、保存與可及性
 

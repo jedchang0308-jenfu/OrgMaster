@@ -9,11 +9,15 @@ describe('AI-PDM published role catalog adapter', () => {
     const catalog = await readPublishedAiPdmRoleCatalog()
     expect(catalog.contractVersion).toBe('jenfu.platform-entitlement.v1')
     expect(catalog.applicationId).toBe('ai-pdm')
-    expect(catalog.catalogVersion).toBe('ai-pdm.role-catalog.2026-09-02.v2')
-    expect(catalog.catalogSha256).toBe('ebdaa2960960e0683b480c721d2c27df59031b4af23b124f2ac7e882309f6b6e')
+    expect(catalog.catalogVersion).toBe('ai-pdm.role-catalog.2026-09-03.v3')
+    expect(catalog.catalogSha256).toBe('46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8')
     expect(catalog.roles).toHaveLength(9)
     expect(catalog.roles.find((role) => role.roleCode === 'system_admin')).toMatchObject({
+      stableRoleId: 'role-system-admin',
+      assignable: true,
+      risk: 'critical',
       subjectKind: 'principal',
+      assignmentTier: 'cross_app_override',
       recommendationAllowed: false,
       delegationAllowed: false,
       allowedScopeKinds: ['global'],
@@ -76,6 +80,7 @@ describe('AI-PDM published role catalog adapter', () => {
     }))
     const live = await readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows }) }, fixture.catalogSha256)
     expect(live.roles.map((role) => role.stableRoleId)).toEqual(fixture.roles.map((role) => role.stableRoleId))
+    expect(live.roles.find((role) => role.roleCode === 'system_admin')).toMatchObject({ stableRoleId: 'role-system-admin', assignable: true, risk: 'critical', subjectKind: 'principal', assignmentTier: 'cross_app_override', recommendationAllowed: false, delegationAllowed: false, allowedScopeKinds: ['global'] })
     await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: [] }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_UNAVAILABLE' })
     await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: rows.map((row) => ({ ...row, catalog_version: 'ai-pdm.role-catalog.retired.v1' })) }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_STALE' })
     await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: rows.map((row, index) => index === 0 ? { ...row, display_name: 'tampered' } : row) }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })

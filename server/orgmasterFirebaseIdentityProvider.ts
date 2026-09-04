@@ -5,6 +5,7 @@ export type VerifiedFirebaseIdentity = {
   issuer: string
   subject: string
   assuranceLevel: 'aal1' | 'aal2'
+  authenticatedAt: string | null
 }
 
 export type FirebaseIdentityProvider = {
@@ -25,6 +26,9 @@ export function createFirebaseIdentityProvider(expectedIssuer: string, expectedA
         issuer: decoded.iss,
         subject: decoded.sub,
         assuranceLevel: firebaseClaims?.sign_in_second_factor || authenticationMethods.includes('mfa') ? 'aal2' : 'aal1',
+        authenticatedAt: typeof decoded.auth_time === 'number' && Number.isFinite(decoded.auth_time) && decoded.auth_time > 0
+          ? new Date(decoded.auth_time * 1000).toISOString()
+          : null,
       }
     },
   }

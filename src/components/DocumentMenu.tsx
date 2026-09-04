@@ -11,6 +11,7 @@ interface DocumentMenuProps {
   onSave: () => void
   onSaveCopy: () => void
   onBackup: () => void
+  mutationAllowed?: boolean
 }
 
 function formatSavedAt(savedAt: string | null) {
@@ -29,6 +30,7 @@ export function DocumentMenu({
   onSave,
   onSaveCopy,
   onBackup,
+  mutationAllowed = true,
 }: DocumentMenuProps) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -59,10 +61,10 @@ export function DocumentMenu({
       <button
         type="button"
         className={isDirty ? 'icon-button document-menu__trigger is-dirty' : 'icon-button document-menu__trigger'}
-        aria-label="儲存與備份"
+        aria-label={mutationAllowed ? '儲存與備份' : '備份下載'}
         aria-expanded={open}
         aria-haspopup="menu"
-        title={isDirty ? '儲存與備份（有未儲存變更）' : '儲存與備份'}
+        title={mutationAllowed && isDirty ? '儲存與備份（有未儲存變更）' : mutationAllowed ? '儲存與備份' : '備份下載'}
         onClick={() => setOpen((current) => !current)}
       >
         <Save size={17} />
@@ -85,12 +87,14 @@ export function DocumentMenu({
             <span>{formatSavedAt(savedAt)}</span>
           </div>
           <div className="position-context-menu__separator" role="separator" />
-          <button type="button" role="menuitem" onClick={() => run(onSave)}>
-            <Save size={15} /><span>儲存</span><kbd>Ctrl+S</kbd>
-          </button>
-          <button type="button" role="menuitem" onClick={() => run(onSaveCopy)}>
-            <Copy size={15} /><span>存副本</span>
-          </button>
+          {mutationAllowed && <>
+            <button type="button" role="menuitem" onClick={() => run(onSave)}>
+              <Save size={15} /><span>儲存</span><kbd>Ctrl+S</kbd>
+            </button>
+            <button type="button" role="menuitem" onClick={() => run(onSaveCopy)}>
+              <Copy size={15} /><span>存副本</span>
+            </button>
+          </>}
           <button type="button" role="menuitem" onClick={() => run(onBackup)}>
             <Archive size={15} /><span>備份下載</span>
           </button>

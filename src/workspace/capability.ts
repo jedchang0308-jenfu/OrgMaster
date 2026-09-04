@@ -20,6 +20,21 @@ export function resolveWorkspaceCompositionCapability(environment: WorkspaceEnvi
   return { canCompose: true, mobileReadOnly: environment.mobileReadOnly }
 }
 
+/**
+ * Resolves the physical/runtime boundary for any write-capable surface.
+ * Workspace mode and domain permissions are evaluated separately by
+ * resolveModuleCapability; this helper only answers whether the current
+ * device and hydrated runtime may expose a mutation entry point at all.
+ */
+export function isDesktopMutationEnvironment(environment: WorkspaceEnvironment) {
+  return environment.serverReady
+    && environment.recoveryState !== 'blocked'
+    && environment.viewportWidth >= 1024
+    && environment.hoverCapable
+    && environment.finePointer
+    && !environment.mobileReadOnly
+}
+
 export function resolveModuleCapability(
   _moduleId: WorkspaceModuleId,
   environment: WorkspaceEnvironment,
@@ -29,7 +44,7 @@ export function resolveModuleCapability(
   if (environment.recoveryState === 'blocked' || !environment.serverReady) {
     return { canRead: true, canMutate: false, reason: '版本工作區尚未可安全編輯' }
   }
-  if (environment.mobileReadOnly || environment.viewportWidth < 1024 || !environment.hoverCapable || !environment.finePointer) {
+  if (!isDesktopMutationEnvironment(environment)) {
     return { canRead: true, canMutate: false, reason: '手機與觸控窄版僅提供唯讀' }
   }
   if (environment.workspaceMode === 'current-view') {

@@ -103,6 +103,12 @@ export function Inspector({
     ? titleDraft.value
     : member.title
   const sortedLevels = [...organizationLevels].sort((first, second) => first.order - second.order)
+  const departmentName = member.departmentId
+    ? departments.find((department) => department.id === member.departmentId)?.name ?? '未設定部門'
+    : '未設定部門'
+  const organizationLevelName = member.organizationLevelId
+    ? sortedLevels.find((level) => level.id === member.organizationLevelId)?.name ?? '尚未設定'
+    : '尚未設定'
 
   const setChildrenAxis = (childrenAxis: ChildrenAxis) => {
     if (childrenAxis !== member.childrenAxis) onPatch({ childrenAxis })
@@ -161,39 +167,37 @@ export function Inspector({
       <section className="inspector__section">
         <label className="inspector-field">
           <span>所屬部門</span>
-          <select
-            aria-label="所屬部門"
-            aria-invalid={issue?.target === 'department' ? 'true' : undefined}
-            aria-describedby={issue?.target === 'department' ? 'position-department-error' : undefined}
-            value={member.departmentId ?? ''}
-            disabled={!editingEnabled}
-            onChange={(event) => onPatch({ departmentId: event.target.value || null })}
-          >
-            <option value="">未設定部門</option>
-            {departments.map((department) => (
-              <option key={department.id} value={department.id}>{department.name}</option>
-            ))}
-          </select>
+          {editingEnabled ? <select
+              aria-label="所屬部門"
+              aria-invalid={issue?.target === 'department' ? 'true' : undefined}
+              aria-describedby={issue?.target === 'department' ? 'position-department-error' : undefined}
+              value={member.departmentId ?? ''}
+              onChange={(event) => onPatch({ departmentId: event.target.value || null })}
+            >
+              <option value="">未設定部門</option>
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>{department.name}</option>
+              ))}
+            </select> : <p className="inspector-field__value">{departmentName}</p>}
           {issue?.target === 'department' && <small id="position-department-error" className="inspector-field__error" role="alert">{issue.message}</small>}
         </label>
         <label className="inspector-field">
           <span className="inspector-field__heading">
             <span>組織層級</span>
-            <button type="button" onClick={onOpenLevelDirectory}>管理層級</button>
+            {editingEnabled && <button type="button" onClick={onOpenLevelDirectory}>管理層級</button>}
           </span>
-          <select
-            aria-label="組織層級"
-            aria-invalid={issue?.target === 'level' ? 'true' : undefined}
-            aria-describedby={issue?.target === 'level' ? 'position-level-error' : undefined}
-            value={member.organizationLevelId ?? ''}
-            disabled={!editingEnabled}
-            onChange={(event) => onPatch({ organizationLevelId: event.target.value || null })}
-          >
-            <option value="">尚未設定</option>
-            {sortedLevels.map((level) => (
-              <option key={level.id} value={level.id}>L{level.order + 1}　{level.name}</option>
-            ))}
-          </select>
+          {editingEnabled ? <select
+              aria-label="組織層級"
+              aria-invalid={issue?.target === 'level' ? 'true' : undefined}
+              aria-describedby={issue?.target === 'level' ? 'position-level-error' : undefined}
+              value={member.organizationLevelId ?? ''}
+              onChange={(event) => onPatch({ organizationLevelId: event.target.value || null })}
+            >
+              <option value="">尚未設定</option>
+              {sortedLevels.map((level) => (
+                <option key={level.id} value={level.id}>L{level.order + 1}　{level.name}</option>
+              ))}
+            </select> : <p className="inspector-field__value">{organizationLevelName}</p>}
           {issue?.target === 'level' && <small id="position-level-error" className="inspector-field__error" role="alert">{issue.message}</small>}
         </label>
 
@@ -201,15 +205,14 @@ export function Inspector({
           <span>員工指派</span>
           <div className="employee-assignment-heading__controls">
             <small>{activeAssignments.length > 0 ? `${activeAssignments.length} 位` : '尚未指派'}</small>
-            <label className="inspector-toggle">
+            {editingEnabled && <label className="inspector-toggle">
               <input
                 type="checkbox"
                 checked={member.allowMultipleAssignees}
-                disabled={!editingEnabled}
                 onChange={(event) => onPatch({ allowMultipleAssignees: event.target.checked })}
               />
               <span>預設允許</span>
-            </label>
+            </label>}
           </div>
         </div>
         {activeAssignments.length > 0 ? activeAssignments.map((assignment) => {
@@ -221,21 +224,20 @@ export function Inspector({
               <span>
                 <strong>{employee.name}</strong>
               </span>
-              <button
+              {editingEnabled && <button
                 type="button"
                 onClick={() => onUnassignEmployee(employee.id)}
                 aria-label={`將 ${employee.name} 移出此職位`}
                 title="移出職位"
-                disabled={!editingEnabled}
               >
                 <UserMinus size={15} />
-              </button>
+              </button>}
             </div>
           )
         }) : (
           <div className="inspector-assignee inspector-assignee--empty">
             <UserRound size={15} />
-            <span>從左側員工清單拖入</span>
+            <span>{editingEnabled ? '從左側員工清單拖入' : '尚未指派員工'}</span>
           </div>
         )}
       </section>
@@ -244,12 +246,11 @@ export function Inspector({
         <div className="section-heading">
           <span>子職位排列</span>
         </div>
-        <div className="direction-picker">
+        {editingEnabled ? <div className="direction-picker">
           <button
             type="button"
             className={member.childrenAxis === 'horizontal' ? 'is-active' : ''}
             onClick={() => setChildrenAxis('horizontal')}
-            disabled={!editingEnabled}
             aria-label="設定下一階為橫向排列"
             title="下層橫排：下一階由左至右排列"
           >
@@ -261,7 +262,6 @@ export function Inspector({
             type="button"
             className={member.childrenAxis === 'vertical' ? 'is-active' : ''}
             onClick={() => setChildrenAxis('vertical')}
-            disabled={!editingEnabled}
             aria-label="設定下一階為縱向排列"
             title="下層縱排：下一階由上至下排列"
           >
@@ -269,23 +269,24 @@ export function Inspector({
             <span>下層縱排</span>
             <small>下一階垂直排列</small>
           </button>
-        </div>
-        <div className="info-line"><Info size={14} /><span>只影響此職位的直接子職位，其他階層維持原設定。</span></div>
+        </div> : <div className="inspector-field__value">{member.childrenAxis === 'horizontal' ? '下層橫排' : '下層縱排'}</div>}
+        {editingEnabled && <div className="info-line"><Info size={14} /><span>只影響此職位的直接子職位，其他階層維持原設定。</span></div>}
       </section>
 
       <PositionDutySection
         member={member}
         duties={duties}
         relations={dutyRelations}
+        interactive={editingEnabled}
         onOpenDutyConfiguration={onOpenDutyConfiguration ?? (() => undefined)}
       />
 
-      <div className="inspector__footer">
+      {editingEnabled && <div className="inspector__footer">
         <button type="button" className="danger-link" onClick={onDelete} disabled={!editingEnabled}>
           <Trash2 size={16} />
           刪除此職位
         </button>
-      </div>
+      </div>}
     </aside>
   )
 }

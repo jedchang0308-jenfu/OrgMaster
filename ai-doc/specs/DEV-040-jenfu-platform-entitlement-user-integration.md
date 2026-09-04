@@ -1,7 +1,7 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
-文件成熟度：`RD Contract Ready；040-ID1A／040-ID1B = Local Implementation Complete / Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice = 005-S0／S1／UI0／S2／S3 Local-Isolated PASS / 005-S4A～S5 Not Implemented；JMS-PLATFORM-008 OrgMaster slice = Local S0～S3＋C1 Implemented / Targeted QA-QC PASS / Production Release Gated；JMS-PLATFORM-009 OrgMaster slice = RD Implementation Ready / Documents Only / Implementation Not Started；DEV-040 principal admission projection = Candidate Verified；DEV-004 = 004-S0～S5 Local PASS；DEV-006 persistence = Production-Bound App Boundary PASS / Production Switch Blocked`
-狀態：Human Decision Gate Complete through account taxonomy `1B / 2A / 3D`；`040-ID1A／040-ID1B`已完成local／isolated implementation與targeted QA／QC，含UUIDv7 clean rekey runner、V8 baseline、redacted projection與IAR v2 fixture gate；DEV-006 S4A consumer亦已完成local／isolated gate；JMS-PLATFORM-005 OrgMaster slice已完成S3 migration／projection／authority／outbox local-isolated gate；JMS-PLATFORM-008已完成Local S0～S3＋C1 targeted QA-QC；JMS-PLATFORM-009已完成RD可實作文檔、尚未進入code／schema實作。production human link、shared-login retirement、active policy、persistent product switch、entitlement cutover與release仍阻塞
+文件成熟度：`RD Contract Ready；040-ID1A／040-ID1B = Local Implementation Complete / Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice = 005-S0～S4B Local-Isolated PASS / 005-S5 Local Targeted PASS；JMS-PLATFORM-008 OrgMaster slice = Local S0～S3＋C1 Implemented / Targeted QA-QC PASS / Production Release Gated；JMS-PLATFORM-009 OrgMaster slice = 009-S0～S4 Local-Isolated Complete / Targeted QA-QC PASS / 009-R1 Release Gate Required / Production Release Gated；DEV-040 principal admission projection = Candidate Verified；DEV-004 = 004-S0～S5 Local PASS；DEV-006 persistence = Production-Bound App Boundary PASS / Production Switch Blocked`
+狀態：Human Decision Gate Complete through account taxonomy `1B / 2A / 3D`；`040-ID1A／040-ID1B`已完成local／isolated implementation與targeted QA／QC，含UUIDv7 clean rekey runner、V8 baseline、redacted projection與IAR v2 fixture gate；DEV-006 S4A consumer亦已完成local／isolated gate；JMS-PLATFORM-005 OrgMaster slice已完成`005-S0～S4B` implementation與`005-S5` local targeted consumer／cross-repo gate；JMS-PLATFORM-008已完成Local S0～S3＋C1 targeted QA-QC；JMS-PLATFORM-009已完成S0～S4 local／isolated implementation與targeted QA-QC，下一步為`009-R1` production release gate。production human link、shared-login retirement、active policy、persistent product switch、entitlement cutover與release仍阻塞
 節點類型：開發點
 優先級：P0
 風險等級：High
@@ -10,6 +10,12 @@
 父開發點：DEV-037
 跨 repository 交付：`C:\VIBE CODING\Jenfu-Management-system\ai-doc\dev_task.md` 的 DEV-001／DEV-004～009
 架構決策：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md` 2026-08-30 amendment
+
+## 2026-09-03 DEV-010 Physical-Topology Successor Notice
+
+- 本契約的OrgMaster domain、identity、role assignment、entitlement、fail-closed與existing-user reconciliation語意不變，既有local／isolated證據仍可使用。
+- 三系統共用資料庫的physical target與schema end state由Platform [DEV-010 direct spec](../../../Jenfu-Management-system/ai-doc/specs/DEV-010-three-system-database-consolidation-contract.md)接管：現有`orgmaster`及私有`access_governance`物件映射至`orgmaster_core`；跨app `organization`與publication views映射至`orgmaster_contract`，consumer遷移完成前保留compatibility adapters。
+- DEV-010的Platform-only `010-N1A`與三repo `010-N2`均達RD Implementation Ready；N1A只寫`jenfu_infra` bootstrap ledger，不建立OrgMaster migration receipt。OrgMaster app ledger、010 migration、required producer signatures、fixture與single-pool contract由N2C package負責，須先取得N1A 10 unit＋30 QC PASS並完成N2A freeze才可實作。[DEV-010 QA／QC plan](../../../Jenfu-Management-system/ai-doc/qa/DEV-010-three-system-database-consolidation-validation-plan.md)的N2 fixed 48案尚未執行，N1B 10案與R1 15案仍未授權。因此DEV-040 production switch與DEV-006 S4B不得沿舊AI-PDM-named target或尚未驗證的新target直接執行。
 
 ## 1. Outcome
 
@@ -231,7 +237,10 @@ OrgMaster server必須區分以下能力，UI visibility不能代替server gate�
 
 ## 11. UI Entry Contract
 
-- Normal entry：沿用正常頂部／工具列的「角色指派治理」，導覽依序為身分連結、應用角色目錄、角色指派、角色代理、發布版本、稽核、指派檢查。
+- Employee identity primary entry（DEV-043 amendment）：Employee仍是人員唯一真相；由正常頂部「員工」進入清單，選定Employee後在相鄰明細「登入身分」查看與管理Employee ↔ identity relation，不新增平行「帳號」主資料module。
+- Global governance entry（DEV-043 amendment）：沿用正常頂部／工具列的「角色指派治理」；既有`identity` route key保留但可見名稱改為「帳號治理」，只作跨Employee檢視、異常定位與open-or-focus Employee明細。其後依序為應用角色目錄、角色指派、角色代理、發布版本、稽核、指派檢查。
+- Provisioning boundary（DEV-043 amendment）：OrgMaster UI只管理identity relation與狀態；建立、邀請、刪除、停用或搜尋Firebase／Google Workspace／Cloud Identity帳號仍由共同IAM／provider流程與production release gate負責，不得由Employee明細或帳號治理建立第二份credential authority。
+- Provisioning orchestration successor（DEV-045 RD Implementation Contract／2026-09-04）：Employee明細的「設定登入帳號」可發起邀請或既有帳號連結，但Browser只提交Employee上下文與非敏感選擇，實際帳號／邀請／驗證由server-side BFF透過provider port執行。投影與UI必須保留本契約的一Employee對多個person-specific identities，不能壓成單一帳號；account type仍由OrgMaster governance admission判定，provider classification不得成為第二權威。DEV-045顯式啟用後，account-enrollment API是identity link mutation的唯一產品HTTP入口，舊current／generic governance identity HTTP mutations fail closed，但server-internal canonical governance command仍共用同一store boundary；Current Phase production server flag預設false且沒有environment activation，不得在正式release gate前先替換production入口。DEV-045已固定exact local ledger、server port／service／route、permission、Employee UI與S0→S4 Gate，Current Phase只可執行local／isolated enrollment foundation；正式共同IAM／Firebase provisioning、Email、production persistence與release仍由本契約的production gate控制。這是UI與治理編排責任的相容細化與intentional successor surface replacement，不表示OrgMaster成為credential authority，也不得以local deterministic adapter宣稱正式帳號或邀請已成立。直接契約：[DEV-045](DEV-045-employee-account-enrollment.md)。
 - Normal actor：只看見有權管理的application；role由valid catalog選取，不接受自由輸入external role ID／code。
 - Position assistant：顯示目前Position、建議Role、已發布Role、manual Role與需複核原因；接受建議只更新draft，不使用「已授權」文案。
 - Position impact：mapping變更前顯示受影響人數、Role差異與來源；多Position scope衝突不得靜默取聯集。
@@ -353,6 +362,7 @@ Exact dependency、file allowlist、env、API／cookie／error、S0～S5、comma
 - UI：`AuthGate`在session驗證前不mount `ProtectedApp`，具loading、login、inactive／ambiguous、unavailable、logout processing／failed／complete；development fallback只在Vite development＋loopback＋exact headers，production bundle不含可用fallback path。
 - automated evidence：contract gate PASS；S3 focused 4 files／14 tests PASS；full regression 159 files／651 tests PASS；TypeScript、client＋server build與server restart test PASS。
 - browser evidence：正常local development在1440×900、1024×768、390×844均無document overflow；mocked 401 login與503 fail-closed皆無protected-data flash。local artifacts：`output/playwright/dev004-s3/manifest.md`。
+- DEV-044 local test amendment（2026-09-04）：正式Firebase/BFF、opaque `orgmaster_session`及production fail-closed不變；Vite development＋loopback可由server allowlist提供四個地端profile及HttpOnly `orgmaster_dev_profile` cookie，供一鍵登入與權限差異測試。一般browser不再自動注入固定admin header，既有exact-header只保留給自動化fixture；preview／production不得列出或接受development profile。權威契約：`ai-doc/specs/DEV-044-local-test-role-one-click-login.md`。
 - runtime cleanup：Playwright task session已關閉；5000為09:09既有同專案runtime（PID 23840），本輪安全重用且未停止。未建立production runtime、未連live DB、未deploy。
 - 安全殘餘：`npm audit --omit=dev`為0 high／0 critical、6 moderate，均由`firebase-admin -> @google-cloud/storage`未使用的Storage依賴鏈引入；contract固定Firebase Admin 14，不在S3以不相容降版掩蓋，列為release前dependency gate。
 
@@ -417,7 +427,7 @@ Exact dependency、file allowlist、env、API／cookie／error、S0～S5、comma
 - exact app image digest=`sha256:9bcb04327018d93bb2c908e2ea53f57678e0e39fbf4f91933afcb8b125566a16`。runtime SA以automatic IAM DB auth驗證active read與direct table deny；task-owned zero-traffic Cloud Run Job驗證server startup、app shell、Firebase auth mode與unauthenticated fail-closed。
 - Cloud Run CLI不允許新service首revision使用`--no-traffic`，所以沒有建立`orgmaster-prod`或假baseline；provider-native Job evidence不涵蓋external service ingress及positive authenticated admission。
 - release decision=`BLOCKED_PRE_ACTIVATION`。不得以email／姓名／工號推測對應、不得auto-publish draft、不得以臨時super-admin繞過positive admission。
-- 現行恢復條件：先完成`040-ID1A`的非UUIDv7 Employee direct rekey、有效UUIDv7保留、reference closure與單一V8 baseline，再完成`040-ID1B` taxonomy／IAR；owner人工確認3筆human `issuer + subject -> employee` exact link，issuer固定為production Firebase issuer；發布active `assignment-governance-v2`；1筆`legacy_shared`完成替代使用者／角色／mail流程驗證後停用platform login並保留AI-PDM actor資料。fresh reconciliation必須`human_accounts_expected=3`、`human_accounts_ready=3`、`legacy_shared_accounts=1`、`legacy_shared_login_enabled=0`、`unresolved=0`。之後才建立canonical service、maintenance freeze、final import、positive authenticated smoke與rollback／observation。
+- 現行恢復條件：先完成`040-ID1A`的非UUIDv7 Employee direct rekey、有效UUIDv7保留、reference closure與單一V8 baseline，再完成`040-ID1B` taxonomy／IAR；owner人工確認3筆human `issuer + subject -> employee` exact link，issuer固定為production Firebase issuer；依第21節發布active `assignment-governance-v3`；1筆`legacy_shared`完成替代使用者／角色／mail流程驗證後停用platform login並保留AI-PDM actor資料。fresh reconciliation必須`human_accounts_expected=3`、`human_accounts_ready=3`、`legacy_shared_accounts=1`、`legacy_shared_login_enabled=0`、`unresolved=0`。之後才建立canonical service、maintenance freeze、final import、positive authenticated smoke與rollback／observation。
 - cleanup PASS：9 jobs、candidate、2 secrets、2 images、Cloud Build source、runtime SA／IAM、isolated worktree與local temp均刪除；`orgmaster-prod` service不存在、AI-PDM原revision／100% traffic與production Cloud SQL source設定不變、OrgMaster `5000/PID 23840`保留。
 - evidence：`../../../Jenfu-Management-system/output/dev-006/releases/DEV006-R1-47ea0fd49e2c/cloud-candidate/`。
 
@@ -428,7 +438,7 @@ Exact dependency、file allowlist、env、API／cookie／error、S0～S5、comma
 - `Human Confirmed / 2026-09-01`：目前資料採一次性直接遷移；既有歷史版本、舊ID追溯與legacy mapping不列為產品保留條件。這項決策取代本文件較早的additive bridge假設。
 - `RD Tech Lead Review / 2026-09-01`：已關閉migration boundary（跨store假原子性、V3／跨app session漏列）、UUIDv7 plan不可重現、有效ID無效輪替、admission重複Employee權威與多餘fingerprint五項設計缺口；優化後維持`RD Implementation Ready`。
 - `RD Tech Lead Ownership Review / 2026-09-01`：原`040-ID1`同時承擔一次性Employee rekey與持續性identity admission，並把IAR classifier誤交給DEV-006。現拆為`040-ID1A`（Employee rekey）與`040-ID1B`（taxonomy／projection／IAR），DEV-006只消費receipt；產品決策與production gate不變。
-- 文件判定：`040-ID1A／040-ID1B Local Implementation Complete / Targeted QA-QC PASS`；兩個slice的P0／P1 readiness gap皆為`0`。JMS-PLATFORM-005 OrgMaster slice已完成`005-S0／S1／UI0／S2／S3 Local-Isolated PASS`；exact catalog adapter、role capability API／UI、migration 005、effective／authority views與durable invalidation已完成，production persistence apply與正式authority switch仍為`Not Implemented`。
+- 文件判定：`040-ID1A／040-ID1B Local Implementation Complete / Targeted QA-QC PASS`；兩個slice的P0／P1 readiness gap皆為`0`。JMS-PLATFORM-005 OrgMaster slice已完成`005-S0～S4B Local-Isolated PASS / S5 Local Targeted PASS`；exact catalog adapter、role capability API／UI、migration 005、effective／authority views、durable invalidation、route enforcement與change-feed consumer均已完成，production persistence apply與正式authority switch仍為`Not Implemented`。
 - `040-ID1A`可實作：current canonical資料的非UUIDv7 Employee rekey planner／local isolated apply、既有有效UUIDv7保留、所有current employee reference驗證與受影響reference同步改寫、單一乾淨V8 baseline。
 - `040-ID1B`可實作：governance account taxonomy、redacted PostgreSQL projection、owner-approved baseline、跨repo read-only IAR v2 classifier／receipt與targeted QA／QC。
 - 兩個slice的fixture／isolated apply與read-only classifier已完成；仍不可執行真實local／production資料apply、3筆human live link、停用shared login、production active-policy publish、remote Cloud SQL migration、repository／authority／traffic switch、deploy或release。
@@ -831,7 +841,7 @@ ADR判定：ADR-007已記錄`040-ID1 One-time Rekey Amendment`。本次ID1A／ID
 
 ## 21. JMS-PLATFORM-005 Position-to-Role — OrgMaster RD Implementation Contract
 
-分類：`Human Confirmed / Compatible V3 Upgrade / RD Implementation Ready / Not Implemented`
+分類：`Human Confirmed / Compatible V3 Upgrade / RD Implementation Complete / Local-Isolated Targeted QA-QC PASS / Production Release Gated`
 
 跨repo authority為[Platform DEV-005](../../../Jenfu-Management-system/ai-doc/specs/DEV-005-position-derived-application-role-assignment.md)第14～27節；本節固定OrgMaster直接實作，不重複改變AI-PDM Role-to-Permission authority。
 
@@ -865,25 +875,23 @@ contracts/jenfu-platform-entitlement/v1/**
 src/governance/types.ts
 src/governance/aiPdmCatalog.ts
 src/governance/positionRoleRecommendations.ts              (new)
-src/governance/positionEntitlementImpact.ts                (new)
 src/governance/migrateGovernanceV2ToV3.ts                  (new)
 src/governance/commands.ts
 src/governance/validation.ts
 src/governance/apiClient.ts
 src/governance/*.test.ts                                   (affected/new)
-server/aiPdmRoleCatalogRepository.ts                       (new)
+server/aiPdmRoleCatalogRepository.ts
+server/aiPdmRoleCapabilityStore.ts
 server/orgmasterGovernanceStore.ts
 server/orgmasterGovernanceApi.ts
-server/orgmasterWorkspaceStore.ts                          (atomic entitlement mutation＋outbox)
-server/orgmasterEntitlementInvalidationDispatcher.ts       (new; post-commit idempotent dispatch)
-server/orgmasterApplicationChangeOutbox.ts                 (new; app projection envelope／change feed)
+server/orgmasterWorkspaceStore.ts
+server/orgmasterEntitlementInvalidationDispatcher.ts
 server/orgmasterGovernanceStore.test.ts
 server/orgmasterGovernanceApi.test.ts
 src/components/GovernanceCenter.tsx
 src/components/GovernanceCenter.css
 db/migrations/005_dev005_entitlement_governance.sql         (new)
-scripts/qc-dev-005-entitlement-postgres.mjs                 (new)
-scripts/qc-dev-005-governance-browser.mjs                   (new)
+scripts/qc-dev-005-entitlement-postgres.mjs
 package.json                                               (scripts only)
 ```
 
@@ -936,14 +944,29 @@ OrgMaster另以durable outbox只發布`orgmaster.application_projection.changed.
 
 ### 21.8 Required commands and gates
 
-目標commands（尚未建立／未PASS）：
+現行commands與結果：
 
 ```text
-npm run contracts:check
-npm run test:dev-005
-npm run qc:dev-005:postgres
-npm run qc:dev-005:browser
-npm run build
+# OrgMaster
+npm run test:dev-005                 PASS（5 files／16 tests）
+npm run qc:dev-005:postgres          PASS（7／7）
+npm run build                        PASS
+
+# Jenfu-Management-system
+npm run contracts:dev-005:check      PASS
+npm run qc:dev-005:cross-repo        PASS
+npm run qc:dev-005:postgres          PASS（7／7）
+
+# AI_PDM
+npm run qc:jms-dev-005:contract      PASS
+npm run qc:jms-dev-005:repository    PASS
+npm run qc:jms-dev-005:change-feed-consumer PASS
+npm run qc:jms-dev-005:authorization-boundary PASS
+npm run qc:jms-dev-005:runtime-boundary PASS
+npm run qc:jms-dev-005:migration     PASS
+npm run typecheck:app                PASS
+npm run build:isolated               PASS
+npm run qc:jms-dev-005:postgres      PASS（7／7）
 ```
 
 固定驗證至少涵蓋：V2→V3 byte-preserving history、target V3不存在recommendation decision／legacy basis、active catalog hash／unavailable／retired／version provenance、recommended／adopted／assigned三態、首次預填、建議漂移不覆寫、nonrecommended adoption、新Employee預設未勾選、manual／position／delegated、multi-source與最後source撤銷、position rename／end、system-admin與external負例、management grant isolation、self-elevation、CAS／idempotency、mutation＋outbox原子性、app-scoped projection redaction、change-feed重送／cursor gap／expired recovery、Platform outage pending／replay、authority rollback、fresh／replay migration、runtime ACL及三viewport。
@@ -956,7 +979,7 @@ npm run build
 - 不得以重新啟用不實Position恢復權限；必要存取另建有期限manual assignment。
 - production migration、真實grant、catalog publish、authority switch、traffic、legacy removal與release仍需獨立gate。
 
-本節 ID1A／ID1B 已完成程式、migration、contract package、fixture與targeted QA／QC；Platform DEV-006 S4A consumer亦已完成並以8-fixture gate驗證。上述僅證明local／isolated capability，不增加production交付完成率。JMS-PLATFORM-005仍未完成，production release仍受獨立gate阻塞。
+本節 ID1A／ID1B 已完成程式、migration、contract package、fixture與targeted QA／QC；JMS-PLATFORM-005 `005-S0～S4B`與`005-S5` local／isolated implementation／targeted gate、Platform DEV-006 S4A consumer亦已完成。上述僅證明local／isolated capability，不增加production交付完成率；production migration、真實資料／grant、repository／authority switch、traffic、legacy retirement、deploy與release仍受獨立gate阻塞。
 
 使用思考習慣：#效用理論、#系統描繪、#當責
 
@@ -1057,7 +1080,7 @@ DEV-008 core不新增`dev:local:no-browser`或Platform三repo launcher。OrgMast
 
 ## 23. JMS-PLATFORM-009 System Administrator Privileged Governance — OrgMaster RD Implementation Contract
 
-分類：`Human Confirmed / Compatible Security Refinement / RD Implementation Ready / Documents Only / Production Release Gated`
+分類：`Human Confirmed / Compatible Security Refinement / RD Implementation Ready / 009-S0～S4 Local-Isolated Complete / Targeted QA-QC PASS / 009-R1 Release Gate Required / Production Release Gated`
 
 RD技術主管複審：`PASS after correction / P0=0 / P1=0`。本節以shared full-policy classifier取代分散五欄判斷，並以既有verified OrgMaster session＋provider `auth_time`取代未落地的獨立step-up receipt。
 
@@ -1128,6 +1151,7 @@ src/governance/assignmentSurface.ts                              (new shared pur
 src/governance/assignmentSurface.test.ts                         (new)
 src/governance/validation.ts
 src/governance/commands.ts
+src/governance/evaluatePermission.ts                          (V3 current-document compatibility only)
 src/governance/apiClient.ts
 src/governance/governancePresentation.ts
 src/governance/migrateGovernanceV2ToV3.ts                       (new)
@@ -1137,7 +1161,7 @@ src/components/GovernanceCenter.tsx
 src/components/GovernanceCenter.css
 src/components/GovernanceDialogs.tsx
 src/components/GovernancePrivilegedAssignments.tsx               (new)
-src/components/GovernanceCenter.test.tsx                          (new focused mode tests)
+    src/components/GovernancePrivilegedAssignments.test.tsx             (new focused privileged mode tests)
 src/auth/firebaseClient.ts
 src/auth/authApiClient.ts
 server/orgmasterGovernanceStore.ts
@@ -1156,7 +1180,7 @@ server/privilegedSecurityAlertDispatcher.ts                     (new)
 server/*.test.ts                                                (focused)
 db/migrations/007_dev009_privileged_governance.sql               (new authenticated_at＋alert outbox)
 scripts/qc-dev-009-privileged-postgres.mjs                      (new)
-scripts/qc-dev-009-privileged-browser.mjs                       (new)
+output/qa/dev-009/browser-real/<run>/report.json                (frozen production artifact browser evidence)
 package.json                                                    (scripts only)
 ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md
 ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md
@@ -1166,6 +1190,8 @@ ai-doc/documentation_map.md
 
 Allowlist外產品檔案先回PM補why／risk／test；不得順手重構一般role治理或工作台。
 
+`009-S1` allowlist convergence：current governance store升為單一V3後，既有management-method authorization仍需讀OrgMaster內部active policy，因此`src/governance/evaluatePermission.ts`必須接受V3。變更不擴張權威：外部application仍回`EXTERNAL_PERMISSION_EVALUATION_UNSUPPORTED`，不由OrgMaster計算AI-PDM Permission。風險由focused evaluator regression、固定`test:dev-009`分母及client＋server build覆蓋；Spec Drift=`In sync`。
+
 ### 23.7 Delivery, acceptance and gates
 
 | Slice | OrgMaster work | Exit |
@@ -1173,13 +1199,24 @@ Allowlist外產品檔案先回PM補why／risk／test；不得順手重構一般r
 | `009-S0` | vendor v2 contract、current catalog完整projection、shared classifier、V2 generic deny、migration fixture | one-byte drift、完整policy drift、principal-only負例、legacy V2 exception PASS |
 | `009-S1` | V3 migration／validation、provider-authenticated fresh AAL2 session、read／preview／publish、alert outbox | `auth_time`、exact principal、self-grant、CAS、idempotency、audit／alert atomicity PASS |
 | `009-S2` | 既有「角色指派」內嵌「特權設定」、grant／revoke、empty／denied／stale | 條件式renderer與generic submit隔離；1440／1024完整操作、390只讀、keyboard與redaction PASS |
+| `009-S3` | AI-PDM consumer 讀取OrgMaster redacted privileged workspace，投影workspace v3並與一般V2 renderer隔離 | system_admin只顯示OrgMaster管理、特權身分數與固定導引；stale／unavailable唯讀；contract／repository／typecheck／isolated build／real Chromium PASS |
 | `009-S4` | 配合Platform cross-repo entitlement／session／outage regression | daily deny、exact privileged allow、revoke immediate deny、OrgMaster outage isolation PASS |
 | `009-R1` | initial bootstrap、production target、alert channel、fresh smoke | 獨立release gate；本節不執行 |
+
+`009-S0` evidence：canonical denominator=`7 root files＋12 fixtures／18 manifest entries`，OrgMaster／AI-PDM vendor bytes與locks一致；current aggregate SHA-256=`21db33b350f8908402e405c870eb2cf269cee85c57b56ef762b66f36d91b04a3`。
+
+`009-S1` evidence：OrgMaster current `test:dev-009`=`19 files／75 tests PASS`；isolated PostgreSQL `QA-009-S1-DB-01～05 PASS`。Frozen report=`output/qa/dev-009/postgres/DEV009-S1-2026-09-02T18-10-44-005Z/report.json`，report SHA=`c195ffc190c4b7df0d1ee0f5c7f37e05851c55a0424ed8d8ade925a9584bde38`，candidate SHA=`653dff38e45e634af3e4e691f89cc00149c2c2551592860cc2f05a9b40c9165c`；task-owned cluster／port／temp cleanup全為`true`。
+
+`009-S2` evidence：OrgMaster frozen production artifact real Chromium `8／8 PASS`，由正常launcher進入角色指派，覆蓋grant／revoke、late response、empty／denied／stale／error、1440／1024／390、keyboard、overflow、served artifact parity與cleanup。Frozen report=`output/qa/dev-009/browser-real/DEV009-S2-2026-09-02T18-09-45-579Z/report.json`，report SHA=`a1750d90bfba6476c05c2090605b205f81ffea1fc0857eb826561d2bd515ec8d`，candidate SHA=`e9c2c42365a9865785698e87ae4fc2918085650a60ac4d4ee3317078586f9527`。這取代早期`output/playwright/dev009-s2/manifest.md` mock transport作為現行S2 UI evidence。
+
+`009-S3` evidence：AI-PDM contract＋repository＋real Chromium aggregate PASS；browser `7／7 PASS`涵蓋current／stale last-success data time／unavailable／invalid navigation、1440／1024／390與runtime cleanup。Frozen aggregate=`../../../AI_PDM/output/qa/dev-009/aggregate/DEV009-S3-AGGREGATE-2026-09-02T18-19-00-268Z/report.json`，report SHA=`c93b124b79824bb76271aadb32aa27899527b4b9ddc5a97a77d6b31091951502`，candidate SHA=`4ea4689cd9579f3aa4bf26f77fdba4e21ce01386b3abce163173bc1c7381eb0a`。
+
+`009-S4` evidence：Platform cross-repo `QA-009-S4-01～04`與employee-wide negative guard PASS，並逐檔驗章S1～S3 report／candidate SHA。Frozen report=`../../../Jenfu-Management-system/output/qa/dev-009/cross-repo/DEV009-S4-2026-09-02T18-21-31-904Z/report.json`，report SHA=`f8fa0128ba7304efd4cd326cbe4f94952be3095986ad3006b86a61acce213a9b`，candidate SHA=`4ab63077b3425028c9ffc0df7be84126c199cd10856ce82db746b4de106c554f`。此為local-isolated evidence，不替代`009-R1 Release Gate Required`。
 
 Minimum acceptance：一般V2 UI／API無法建立`system_admin`；完整role policy drift fail closed；只有exact active privileged principal取得effective row；daily／shared／service／inactive及self-grant皆deny；provider `auth_time`→session `authenticatedAt`可證明AAL2五分鐘freshness，且不以issuedAt假冒；grant／revoke只有一個authority effect並可由command receipt replay；alert intent persist失敗零commit；revoke後下一個protected request deny；OrgMaster離線時治理零mutation但AI-PDM非治理route仍可依Tier-0運作；evidence無raw identity／credential。P0／P1容忍值為0。
 
 初始環境沒有任何active override actor時，只能由reviewed bootstrap manifest建立第一個principal-scoped management grant；bootstrap不進一般UI、不接受daily／shared principal，且只在`009-R1`授權後執行。需要production credential、真實principal／role mutation、schema apply、deploy或release時立即轉release gate。
 
-本節文件已達`RD Implementation Ready`。目前只授權文件；下一個local slice固定`009-S0`，不得以本節宣稱code、schema、資料、runtime或production已改變。
+本節文件已達`RD Implementation Ready`，且`009-S0～S4` local／isolated implementation／targeted QA-QC已完成。下一步固定為`009-R1` production release gate；bootstrap、真實production authority、schema apply、runtime切換、deploy與release仍未授權，不得越過相應gate。
 
 使用思考習慣：#設計思考、#效用理論、#系統描繪、#風險導向思考、#當責

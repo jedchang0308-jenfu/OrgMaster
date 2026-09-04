@@ -7,16 +7,14 @@ import { WorkspaceLauncher } from './WorkspaceLauncher'
 import { WorkspaceListDetailSurface } from './WorkspaceSurfacePrimitives'
 
 describe('DEV-042 single-layer workspace contract', () => {
-  it('routes every launcher item through one open-or-focus callback', async () => {
+  it('routes every navigation item through one open-or-focus callback', async () => {
     const host = document.createElement('div')
     const root = createRoot(host)
     const onOpenModule = vi.fn()
     await act(async () => root.render(<WorkspaceLauncher openPanels={[]} onOpenModule={onOpenModule} />))
-    await act(async () => (host.querySelector('#workspace-launcher') as HTMLButtonElement).click())
-    expect(host.querySelectorAll('[role="menuitem"]')).toHaveLength(WORKSPACE_MODULE_ORDER.length)
+    expect(host.querySelectorAll('.workspace-launcher__item')).toHaveLength(WORKSPACE_MODULE_ORDER.length)
     for (let index = 0; index < WORKSPACE_MODULE_ORDER.length; index += 1) {
-      if (index > 0) await act(async () => (host.querySelector('#workspace-launcher') as HTMLButtonElement).click())
-      const entry = host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')[index]
+      const entry = host.querySelectorAll<HTMLButtonElement>('.workspace-launcher__item')[index]
       await act(async () => entry.click())
     }
     expect(onOpenModule.mock.calls.map(([moduleId]) => moduleId)).toEqual([...WORKSPACE_MODULE_ORDER])

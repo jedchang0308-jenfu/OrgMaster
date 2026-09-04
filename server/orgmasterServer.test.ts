@@ -32,7 +32,7 @@ describe('OrgMaster production server', () => {
     const port = await listen(first)
     expect(await (await fetch(`http://127.0.0.1:${port}/nested/route`)).text()).toContain('production shell')
     const denied = await fetch(`http://127.0.0.1:${port}/api/unknown`)
-    expect(denied.status).toBe(503)
+    expect(denied.status).toBe(401)
     await new Promise<void>((resolve) => first.close(() => resolve()))
     first.closeAllConnections()
     servers.splice(servers.indexOf(first), 1)

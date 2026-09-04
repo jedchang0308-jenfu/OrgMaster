@@ -1,9 +1,11 @@
-import { BriefcaseBusiness, Building2, ChevronRight, UserRound } from 'lucide-react'
+import { useState } from 'react'
+import { BriefcaseBusiness, Building2, ChevronDown, ChevronRight, UserRound } from 'lucide-react'
 import { groupByDepartmentAndLevel } from '../positionGrouping'
 import { resolveDirectSupervisor, type DirectSupervisorUnresolvedReason } from '../directSupervisor'
 import type { Assignment, Department, Employee, OrganizationLevel, PositionView } from '../types'
 import type { DirectorySelection } from './DirectoryDock'
 import { PanelDismissButton } from './PanelDismissButton'
+import { EmployeeIdentitySection } from './EmployeeIdentitySection'
 
 interface DirectoryDetailPanelProps {
   selection: DirectoryDetailSelection
@@ -16,6 +18,9 @@ interface DirectoryDetailPanelProps {
   onSelectEntity: (selection: DirectorySelection) => void
   onClose: () => void
   editingEnabled?: boolean
+  identityMutationAllowed?: boolean
+  governanceRefreshToken?: number
+  onGovernanceChanged?: () => void
 }
 
 export type DirectoryDetailSelection = {
@@ -34,7 +39,21 @@ export function DirectoryDetailPanel({
   onSelectEntity,
   onClose,
   editingEnabled = true,
+  identityMutationAllowed = false,
+  governanceRefreshToken = 0,
+  onGovernanceChanged,
 }: DirectoryDetailPanelProps) {
+  const [expandedPositionIds, setExpandedPositionIds] = useState<Set<string>>(() => new Set())
+
+  const togglePositionEmployees = (positionId: string) => {
+    setExpandedPositionIds((current) => {
+      const next = new Set(current)
+      if (next.has(positionId)) next.delete(positionId)
+      else next.add(positionId)
+      return next
+    })
+  }
+
   if (selection.kind === 'employees') {
     const employee = employees.find((item) => item.id === selection.id)
     if (!employee) return null
@@ -135,6 +154,13 @@ export function DirectoryDetailPanel({
               : unresolvedDirectSupervisorLabel(directSupervisor.reason)}</small>
           </div>
         </section>
+
+        <EmployeeIdentitySection
+          employee={employee}
+          mutationBoundaryAllowed={identityMutationAllowed}
+          refreshToken={governanceRefreshToken}
+          onChanged={onGovernanceChanged}
+        />
       </aside>
     )
   }
@@ -174,17 +200,51 @@ export function DirectoryDetailPanel({
           <div className="directory-detail__position-groups">
             {departmentPositionGroups.map((group) => (
               <div className="directory-detail__position-group" key={group.key}>
-                <div className="directory-detail__links">
-                  {group.items.map((position) => (
-                    <button key={position.id} type="button" onClick={() => onSelectPosition(position.id)}>
-                      <BriefcaseBusiness size={15} aria-hidden="true" />
-                      <span>
-                        <strong>{position.title}</strong>
-                        <small>{position.activeAssignments.length > 0 ? `${position.activeAssignments.length} 位員工` : '尚未指派員工'}</small>
-                      </span>
-                      <ChevronRight size={15} aria-hidden="true" />
-                    </button>
-                  ))}
+                <div className="directory-detail__position-list">
+                  {group.items.map((position) => {
+                    const isExpanded = expandedPositionIds.has(position.id)
+                    const employeeListId = `department-position-employees-${position.id}`
+                    const positionEmployees = position.activeAssignments
+                      .map((assignment) => employees.find((employee) => employee.id === assignment.employeeId))
+                      .filter((employee): employee is Employee => Boolean(employee))
+
+                    return (
+                      <div className="directory-detail__position-item" key={position.id}>
+                        <button
+                          className="directory-detail__position-toggle"
+                          type="button"
+                          onClick={() => togglePositionEmployees(position.id)}
+                          aria-expanded={isExpanded}
+                          aria-controls={employeeListId}
+                        >
+                          <BriefcaseBusiness size={15} aria-hidden="true" />
+                          <span>
+                            <strong>{position.title}</strong>
+                            <small>{position.activeAssignments.length > 0 ? `${position.activeAssignments.length} 位員工` : '尚未指派員工'}</small>
+                          </span>
+                          <ChevronDown className={isExpanded ? 'is-expanded' : undefined} size={15} aria-hidden="true" />
+                        </button>
+                        {isExpanded && (
+                          <div className="directory-detail__position-members" id={employeeListId}>
+                            {positionEmployees.length > 0 ? positionEmployees.map((employee) => (
+                              <button
+                                className="directory-detail__position-member"
+                                key={employee.id}
+                                type="button"
+                                aria-label={`開啟 ${employee.name} 員工細節`}
+                                onClick={() => onSelectEntity({ kind: 'employees', id: employee.id })}
+                              >
+                                <UserRound size={14} aria-hidden="true" />
+                                <strong>{employee.name}</strong>
+                              </button>
+                            )) : (
+                              <div className="directory-detail__position-members-empty">尚未指派員工</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             ))}

@@ -25,7 +25,7 @@ export function DutyModuleAdapter({ mode, visibility, children, detail, detailVi
       listLabel="工作職掌清單"
       detailLabel="工作職掌明細"
       list={<div data-visibility={visibility} className="duty-configuration-workspace__list">{children}</div>}
-      detail={detail ? <div className="duty-configuration-workspace__detail-content">{detail}</div> : null}
+      detail={detail ?? null}
       emptyDetail={<div className="master-data-workspace__empty" data-workspace-focus-fallback tabIndex={-1}><strong>選擇一筆工作職掌</strong><span>明細會顯示在這裡，清單與配置內容可同時保留。</span></div>}
     />
   )

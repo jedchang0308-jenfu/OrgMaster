@@ -75,6 +75,7 @@ export type OrganizationCommandIssueCode = OrganizationValidationCode
   | 'DUTY_PLAN_TARGET_INVALID'
   | 'DUTY_PLAN_PRIMARY_CONFLICT'
   | 'DUTY_PLAN_DOMAIN_INVALID'
+  | 'READ_ONLY'
 
 export type OrganizationCommandResult =
   | { status: 'applied'; state: OrgDirectoryState; changedPositionIds: string[] }

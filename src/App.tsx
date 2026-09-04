@@ -129,7 +129,7 @@ import { GovernanceModuleAdapter } from './components/workspace/adapters/Governa
 import { useWorkspaceController } from './workspace/useWorkspaceController'
 import { sameRelationPlacementTarget, type RelationPlacementOutcome } from './workspace/relationDragInteraction'
 import { classifyIndexFailure, classifyVersionFailure } from './workspace/hydration'
-import { observeWorkspaceEnvironment, resolveModuleCapability, resolveWorkspaceCompositionCapability } from './workspace/capability'
+import { isDesktopMutationEnvironment, observeWorkspaceEnvironment, resolveModuleCapability, resolveWorkspaceCompositionCapability } from './workspace/capability'
 import { describeRegisteredDropEffect, readWorkspaceEntityDrag, resolveRegisteredDrop, type DomainMutationIntent, type RegisteredDropTarget, type WorkspaceEntityDragPayloadV1 } from './workspace/entityDrag'
 import {
   createRelationPlacementSession,
@@ -213,7 +213,9 @@ function organizationIssueMessage(issue: RejectedOrganizationIssue, departments:
     .map((id) => departments.find((department) => department.id === id)?.name)
     .filter(Boolean)
     .join('、')
-  return issue.code === 'DEPARTMENT_DISCONNECTED'
+  return issue.code === 'READ_ONLY'
+    ? '目前裝置僅提供唯讀，未變更資料'
+    : issue.code === 'DEPARTMENT_DISCONNECTED'
     ? `${departmentName || '此部門'} 會分裂成多個區塊`
     : issue.code === 'HIERARCHY_CYCLE'
       ? '不能將職位放到自己的下層'
@@ -251,7 +253,9 @@ function organizationIssueMessage(issue: RejectedOrganizationIssue, departments:
 }
 
 function resolveOrganizationIssueTarget(command: OrganizationCommand, issue: RejectedOrganizationIssue): OrganizationUiIssue['target'] {
-  return command.type === 'DELETE_POSITION' || command.type === 'DELETE_DEPARTMENT'
+  return issue.code === 'READ_ONLY'
+    ? 'document'
+    : command.type === 'DELETE_POSITION' || command.type === 'DELETE_DEPARTMENT'
     ? 'delete'
     : command.type === 'ADD_ORGANIZATION_LEVEL'
       || command.type === 'RENAME_ORGANIZATION_LEVEL'
@@ -415,6 +419,7 @@ function ProtectedApp() {
     onLayoutPersistenceFailure: reportWorkspaceLayoutPersistenceFailure,
   })
   const [workspaceModuleQueries, setWorkspaceModuleQueries] = useState({ employees: '', positions: '', duties: '', managementMethods: '' })
+  const [governanceRefreshToken, setGovernanceRefreshToken] = useState(0)
   const [organizationIssue, setOrganizationIssue] = useState<string | null>(null)
   const [organizationIssueTarget, setOrganizationIssueTarget] = useState<OrganizationUiIssue['target'] | null>(null)
   const [levelOrderPreview, setLevelOrderPreview] = useState<OrganizationLevel[] | null>(null)
@@ -481,7 +486,6 @@ function ProtectedApp() {
   }, [])
   const [dutyEditDialog, setDutyEditDialog] = useState<'create' | null>(null)
   const [dutyDeleteDialog, setDutyDeleteDialog] = useState(false)
-  const [mobileReadOnly, setMobileReadOnly] = useState(() => window.matchMedia('(max-width: 1023px), (hover: none), (pointer: coarse)').matches)
   const [workspaceEnvironment, setWorkspaceEnvironment] = useState<WorkspaceEnvironment>(() => ({
     viewportWidth: window.innerWidth,
     hoverCapable: window.matchMedia('(hover: hover)').matches,
@@ -491,20 +495,20 @@ function ProtectedApp() {
     recoveryState: 'blocked',
     workspaceMode: 'current-view',
   }))
+  const mobileReadOnly = workspaceEnvironment.mobileReadOnly
   const lastInteractedPanelRef = useRef<WorkspacePanelId | null>(null)
-
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 1023px), (hover: none), (pointer: coarse)')
-    const update = () => setMobileReadOnly(media.matches)
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
 
   useEffect(() => observeWorkspaceEnvironment({
     serverReady,
     recoveryState: workspaceHydration.kind === 'ready' ? 'none' : 'blocked',
     workspaceMode,
   }, setWorkspaceEnvironment), [serverReady, workspaceHydration.kind, workspaceMode])
+
+  useEffect(() => {
+    if (!mobileReadOnly || workspaceMode === 'current-view') return
+    setWorkspaceMode('current-view')
+    setAssignmentNotice('目前裝置僅提供唯讀；已切換為唯讀模式，未儲存內容仍保留')
+  }, [mobileReadOnly, workspaceMode])
 
   useEffect(() => {
     const focused = workspaceController.state.session.focusedPanel
@@ -631,7 +635,6 @@ function ProtectedApp() {
   }, [])
   const [nodes, setNodes] = useState<OrgFlowNode[]>([])
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const governanceButtonRef = useRef<HTMLButtonElement | null>(null)
   const [focusTitleToken, setFocusTitleToken] = useState(0)
   const [searchFocusToken, setSearchFocusToken] = useState(0)
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -643,13 +646,17 @@ function ProtectedApp() {
   const workspaceModeRef = useRef(workspaceMode)
   const workspaceIndexRef = useRef(workspaceIndex)
   const editingEnabledRef = useRef(false)
+  const workspaceMutationAllowedRef = useRef(false)
+  const versionMutationAllowedRef = useRef(false)
+  const mobileReadOnlyRef = useRef(mobileReadOnly)
   activeVersionIdRef.current = activeVersionId
   workspaceModeRef.current = workspaceMode
   workspaceIndexRef.current = workspaceIndex
-  editingEnabledRef.current = (workspaceMode === 'draft-edit' || workspaceMode === 'current-maintenance')
+  const versionEditingEnabled = (workspaceMode === 'draft-edit' || workspaceMode === 'current-maintenance')
     && serverReady
     && workspaceHydration.kind === 'ready'
-  const editingEnabled = editingEnabledRef.current
+  editingEnabledRef.current = versionEditingEnabled
+  const editingEnabled = versionEditingEnabled && !mobileReadOnly
   const dutyPanelContext = workspaceController.state.session.panels.duties?.context
   const effectiveDutyConfigurationLocation = useMemo<DutyConfigurationLocation>(() => dutyPanelContext?.view === 'configuration'
     ? {
@@ -675,7 +682,11 @@ function ProtectedApp() {
   const masterDataEditingEnabled = editingEnabled
   const organizationEditingEnabled = masterDataEditingEnabled && !dutyConfigurationActive
   const workspaceMutationAllowed = resolveModuleCapability('organization', workspaceEnvironment, { canRead: true, canMutate: true }).canMutate
+  const versionMutationAllowed = isDesktopMutationEnvironment(workspaceEnvironment)
   const workspaceCompositionCapability = resolveWorkspaceCompositionCapability(workspaceEnvironment)
+  workspaceMutationAllowedRef.current = workspaceMutationAllowed
+  versionMutationAllowedRef.current = versionMutationAllowed
+  mobileReadOnlyRef.current = mobileReadOnly
   const relationPlacementCapabilities = useMemo(() => ({
     organizationAssignment: resolveModuleCapability('organization', workspaceEnvironment, {
       canRead: true,
@@ -692,18 +703,24 @@ function ProtectedApp() {
     }),
   }), [dutyConfigurationWritable, editingEnabled, organizationEditingEnabled, workspaceEnvironment])
   const commitState = useCallback((updater: OrgStateUpdater) => {
-    if (!editingEnabledRef.current) {
-      setAssignmentNotice('目前版本為唯讀；請選擇草稿或進入現行版維護')
-      return
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；請使用桌面環境進行修改'
+        : '目前版本為唯讀；請選擇草稿或進入現行版維護')
+      return false
     }
     commitStateHistory(updater)
+    return true
   }, [commitStateHistory])
   const commit = useCallback((updater: MemberUpdater) => {
-    if (!editingEnabledRef.current) {
-      setAssignmentNotice('目前版本為唯讀；請選擇草稿或進入現行版維護')
-      return
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；請使用桌面環境進行修改'
+        : '目前版本為唯讀；請選擇草稿或進入現行版維護')
+      return false
     }
     commitHistory(updater)
+    return true
   }, [commitHistory])
 
   const finishRelationPlacement = useCallback(() => {
@@ -817,6 +834,12 @@ function ProtectedApp() {
 
   const commitDomainMutationIntent = useCallback((intent: DomainMutationIntent) => {
     const base = currentStateRef.current
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；無法建立關係'
+        : '目前版本為唯讀；請先進入草稿編輯或現行版維護')
+      return false
+    }
     if (intent.kind === 'employee-assignment') {
       let next: OrgDirectoryState
       if (intent.targetPositionId === null) {
@@ -831,13 +854,13 @@ function ProtectedApp() {
         })
       }
       if (next === base) return false
-      commitState(next)
+      if (!commitState(next)) return false
       setAssignmentNotice(intent.targetPositionId ? '已建立員工任職關係' : '已解除員工任職關係')
       return true
     }
     const result = executeOrganizationCommand(base, intent.command)
     if (result.status === 'applied') {
-      commitState(result.state)
+      if (!commitState(result.state)) return false
       setOrganizationIssue(null)
       setOrganizationIssueTarget(null)
       setAssignmentNotice('已建立跨面板關係')
@@ -852,6 +875,13 @@ function ProtectedApp() {
 
   const commitRelationPlacementTarget = useCallback((target: RegisteredDropTarget, dataTransfer?: DataTransfer) => {
     if (relationPlacement.phase !== 'placing' || relationPlacementCommitLockRef.current) return false
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；無法建立關係'
+        : '目前版本為唯讀；請先進入草稿編輯或現行版維護')
+      cancelRelationPlacement()
+      return false
+    }
     const activePayload = relationPlacement.phase === 'placing' ? relationPlacement.payload : null
     const nativePayload = dataTransfer ? readWorkspaceEntityDrag(dataTransfer) : null
     const payload = dataTransfer ? nativePayload : activePayload
@@ -901,6 +931,17 @@ function ProtectedApp() {
   const dragGrabOffsetRef = useRef<Point | null>(null)
 
   const upsertRoleRiskRule = useCallback((draft: RoleCombinationRiskDraft) => {
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；未變更風險規則' : '目前版本為唯讀；未變更風險規則')
+      return upsertRoleCombinationRiskRule(roleCombinationRiskRules, roles, {
+        id: draft.id ?? crypto.randomUUID(),
+        roleAId: draft.roleAId,
+        roleBId: draft.roleBId,
+        level: draft.level,
+        reason: draft.reason,
+        enabled: draft.enabled,
+      })
+    }
     const result = upsertRoleCombinationRiskRule(roleCombinationRiskRules, roles, {
       id: draft.id ?? crypto.randomUUID(),
       roleAId: draft.roleAId,
@@ -961,7 +1002,28 @@ function ProtectedApp() {
   }, [relationPlacement, relationPlacementCandidate])
 
   const runOrganizationCommand = useCallback((command: OrganizationCommand) => {
-    const result = executeOrganizationCommand(currentState, command)
+    const base = currentStateRef.current
+    if (!workspaceMutationAllowedRef.current) {
+      const result: OrganizationCommandResult = {
+        status: 'rejected',
+        state: base,
+        issue: {
+          code: 'READ_ONLY',
+          positionIds: [],
+          departmentIds: [],
+          dutyIds: [],
+          processIds: [],
+          processNodeIds: [],
+        },
+      }
+      setOrganizationIssue(organizationIssueMessage(result.issue, departments))
+      setOrganizationIssueTarget('document')
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；未變更資料'
+        : '目前版本為唯讀；請先進入草稿編輯或現行版維護')
+      return result
+    }
+    const result = executeOrganizationCommand(base, command)
     if (result.status === 'applied') {
       commitState(result.state)
       setOrganizationIssue(null)
@@ -1253,8 +1315,10 @@ function ProtectedApp() {
       setAssignmentNotice('目前沒有可儲存的版本')
       return
     }
-    if (!editingEnabledRef.current) {
-      setAssignmentNotice('目前版本為唯讀；請先進入草稿編輯或現行版維護')
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；未執行儲存'
+        : '目前版本為唯讀；請先進入草稿編輯或現行版維護')
       return
     }
     const saved = await saveWorkspaceDocument(
@@ -1284,7 +1348,7 @@ function ProtectedApp() {
 
   const persistDraft = useCallback(async () => {
     const version = workspaceIndexRef.current?.versions.find((candidate) => candidate.id === activeVersionIdRef.current)
-    if (!serverReadyRef.current || recoveryOpenRef.current || serverHydrationPendingRef.current || !version || !editingEnabledRef.current) return false
+    if (!serverReadyRef.current || recoveryOpenRef.current || serverHydrationPendingRef.current || !version || !workspaceMutationAllowedRef.current) return false
     const saved = await saveWorkspaceDocument(
       version.id,
       createOrgDocumentFile(currentStateRef.current, version.kind === 'current' ? 'document' : 'draft'),
@@ -1335,6 +1399,12 @@ function ProtectedApp() {
 
   const enterCurrentMaintenance = useCallback(() => {
     if (activeWorkspaceVersion?.kind !== 'current') return
+    if (!versionMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；無法進入現行版維護'
+        : '目前版本工作區尚未可安全編輯')
+      return
+    }
     setWorkspaceMode('current-maintenance')
     setAssignmentNotice('已進入現行版維護；儲存前仍會檢查其他視窗的版本修訂')
   }, [activeWorkspaceVersion])
@@ -1342,6 +1412,12 @@ function ProtectedApp() {
   const toggleCurrentMaintenance = useCallback(async () => {
     if (activeWorkspaceVersion?.kind !== 'current') return
     if (workspaceModeRef.current === 'current-view') {
+      if (!versionMutationAllowedRef.current) {
+        setAssignmentNotice(mobileReadOnlyRef.current
+          ? '目前裝置僅提供唯讀；無法進入現行版維護'
+          : '目前版本工作區尚未可安全編輯')
+        return
+      }
       enterCurrentMaintenance()
       return
     }
@@ -1354,6 +1430,10 @@ function ProtectedApp() {
   const createDraft = useCallback(async (sourceVersionId: string, name: string) => {
     const index = workspaceIndexRef.current
     if (!index) return
+    if (!versionMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；無法建立草稿' : '目前版本工作區尚未可安全編輯')
+      return
+    }
     setWorkspaceBusy(true)
     const result = await createWorkspaceDraftRequest(sourceVersionId, name, index.manifestRevision)
     setWorkspaceBusy(false)
@@ -1375,6 +1455,10 @@ function ProtectedApp() {
   const updateWorkspaceEntry = useCallback(async (versionId: string, action: 'rename' | 'archive' | 'restore', name?: string) => {
     const index = workspaceIndexRef.current
     if (!index) return
+    if (!versionMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；無法變更版本工作區' : '目前版本工作區尚未可安全編輯')
+      return
+    }
     setWorkspaceBusy(true)
     const result = await updateWorkspaceEntryClient(versionId, action, index.manifestRevision, name)
     setWorkspaceBusy(false)
@@ -1390,7 +1474,7 @@ function ProtectedApp() {
   }, [hydrateWorkspaceVersion])
 
   useEffect(() => {
-    if (recoveryOpen || !serverReady || !editingEnabled) {
+    if (recoveryOpen || !serverReady || !editingEnabled || !workspaceMutationAllowed) {
       setAutoSavePending(false)
       return
     }
@@ -1405,7 +1489,7 @@ function ProtectedApp() {
       void persistDraft()
     }, AUTO_SAVE_DELAY_MS)
     return () => window.clearTimeout(timer)
-  }, [currentSignature, editingEnabled, persistDraft, recoveryOpen, serverReady])
+  }, [currentSignature, editingEnabled, persistDraft, recoveryOpen, serverReady, workspaceMutationAllowed])
 
   useEffect(() => {
     const flushDraft = () => {
@@ -1445,8 +1529,10 @@ function ProtectedApp() {
     targetPositionId: string,
     sourcePositionId: string | null = null,
   ) => {
-    if (!editingEnabledRef.current) {
-      setAssignmentNotice('目前版本為唯讀；請先進入草稿編輯或現行版維護')
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；未變更員工任職'
+        : '目前版本為唯讀；請先進入草稿編輯或現行版維護')
       return
     }
     const target = positionViewById.get(targetPositionId)
@@ -1456,24 +1542,26 @@ function ProtectedApp() {
     }
     const replaced = !target.allowMultipleAssignees
       && target.activeAssignments.some((assignment) => assignment.employeeId !== employeeId)
-    commitState((current) => assignEmployeeWithResponsibilities(current, employeeId, targetPositionId, sourcePositionId, {
+    if (!commitState((current) => assignEmployeeWithResponsibilities(current, employeeId, targetPositionId, sourcePositionId, {
         asOf: TODAY,
         allowMultipleAssignees: target.allowMultipleAssignees,
-      }))
+      }))) return
     setAssignmentNotice(
       `${sourcePositionId ? '已移動' : '已指派'} ${employee.name} 至「${target.title}」${replaced ? '，原指派已解除' : ''}`,
     )
   }, [commitState, employeeById, positionViewById])
 
   const removeAssignment = useCallback((positionId: string, employeeId: string) => {
-    if (!editingEnabledRef.current) {
-      setAssignmentNotice('目前版本為唯讀；請先進入草稿編輯或現行版維護')
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；未變更員工任職'
+        : '目前版本為唯讀；請先進入草稿編輯或現行版維護')
       return
     }
     const position = positionViewById.get(positionId)
     const employee = employeeById.get(employeeId) ?? null
     if (!position || !employee) return
-    commitState((current) => unassignEmployeeWithResponsibilities(current, positionId, employeeId, TODAY))
+    if (!commitState((current) => unassignEmployeeWithResponsibilities(current, positionId, employeeId, TODAY))) return
     setAssignmentNotice(`已將 ${employee.name} 移出「${position.title}」`)
   }, [commitState, employeeById, positionViewById])
 
@@ -1547,7 +1635,7 @@ function ProtectedApp() {
             || previous.data.riskLevel !== riskState?.level
             || previous.data.riskRelated !== riskRelated
             || previous.data.onRiskInteraction !== setRiskInteraction
-            || previous.data.editingEnabled !== organizationEditingEnabled
+            || previous.data.editingEnabled !== (organizationEditingEnabled && workspaceMutationAllowed)
             || previous.data.onRelationPreview !== previewRelationPlacementTarget
             || !sameOptionalPoint(previous.data.dragOffset, dragOffset)
           if (!previous || !sameOptionalPoint(previous.position, position) || previous.selected !== selectedState || dataChanged) {
@@ -1577,7 +1665,7 @@ function ProtectedApp() {
                 riskLevel: riskState?.level,
                 riskRelated,
                 onRiskInteraction: setRiskInteraction,
-                editingEnabled: organizationEditingEnabled,
+                editingEnabled: organizationEditingEnabled && workspaceMutationAllowed,
                 onRelationPreview: previewRelationPlacementTarget,
               },
             }
@@ -1611,6 +1699,7 @@ function ProtectedApp() {
     setRiskInteraction,
     toggleCollapse,
     organizationEditingEnabled,
+    workspaceMutationAllowed,
   ])
 
   useEffect(() => {
@@ -1759,8 +1848,10 @@ function ProtectedApp() {
   }, [centerNodeInCanvas, hierarchyNodes, positionViews, queueTitleEdit, roles, runOrganizationCommand, selectedId])
 
   const addPositionFromDirectory = useCallback(() => {
-    if (!editingEnabledRef.current) {
-      setAssignmentNotice('目前版本為唯讀；請先進入草稿編輯或現行版維護')
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；未新增職位'
+        : '目前版本為唯讀；請先進入草稿編輯或現行版維護')
       return
     }
     if (selected) {
@@ -1785,8 +1876,12 @@ function ProtectedApp() {
   }, [addSibling, centerNodeInCanvas, departments, hierarchyNodes, organizationLevels, queueTitleEdit, roles, runOrganizationCommand, selected, selectedId])
 
   const createEmployee = useCallback((name: string, departmentIds: string[]) => {
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；未新增員工' : '目前版本為唯讀；未新增員工')
+      return
+    }
     if (!departmentIds.every((id) => departments.some((item) => item.id === id))) return
-    commitState((current) => ({
+    if (!commitState((current) => ({
       ...current,
       employees: [...current.employees, {
         id: createUuidV7(),
@@ -1796,50 +1891,70 @@ function ProtectedApp() {
         primaryAssignmentId: null,
         administrativeApproverOverrideEmployeeId: null,
       }],
-    }))
+    }))) return
     setDirectoryDialog(null)
     setAssignmentNotice(`已新增員工 ${name}`)
   }, [commitState, departments])
 
   const createDepartment = useCallback((name: string, parentId: string | null) => {
-    commitState((current) => ({
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；未新增部門' : '目前版本為唯讀；未新增部門')
+      return
+    }
+    if (!commitState((current) => ({
       ...current,
       departments: [...current.departments, { id: crypto.randomUUID(), name, parentId }],
-    }))
+    }))) return
     setDirectoryDialog(null)
     setAssignmentNotice(`已新增部門 ${name}`)
   }, [commitState])
 
   const updateEmployee = useCallback((employeeId: string, name: string, departmentIds: string[]) => {
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；未更新員工' : '目前版本為唯讀；未更新員工')
+      return
+    }
     const employee = employees.find((item) => item.id === employeeId)
     if (!employee) return
-    commitState((current) => updateEmployeeInDirectory(current, employeeId, name, departmentIds))
+    if (!commitState((current) => updateEmployeeInDirectory(current, employeeId, name, departmentIds))) return
     setDirectoryDialog(null)
     setAssignmentNotice(`已更新員工 ${name}`)
   }, [commitState, employees])
 
   const updateDepartment = useCallback((departmentId: string, name: string, parentId: string | null) => {
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；未更新部門' : '目前版本為唯讀；未更新部門')
+      return
+    }
     const department = departments.find((item) => item.id === departmentId)
     if (!department) return
-    commitState((current) => updateDepartmentInDirectory(current, departmentId, name, parentId))
+    if (!commitState((current) => updateDepartmentInDirectory(current, departmentId, name, parentId))) return
     setDirectoryDialog(null)
     setAssignmentNotice(`已更新部門 ${name}`)
   }, [commitState, departments])
 
   const changePrimaryAssignment = useCallback((employeeId: string, assignmentId: string) => {
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；未變更主職' : '目前版本為唯讀；未變更主職')
+      return
+    }
     const result = setPrimaryAssignment(currentState, employeeId, assignmentId, TODAY)
     if (result.status === 'rejected') {
       setAssignmentNotice('主職只能選擇本人目前有效的一般任職')
       return
     }
-    commitState(result.state)
+    if (!commitState(result.state)) return
     setAssignmentNotice('已更新主職；直屬主管路徑會依新的主職重新判定')
   }, [commitState, currentState])
 
   const deleteEmployee = useCallback((employeeId: string) => {
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；未刪除員工' : '目前版本為唯讀；未刪除員工')
+      return
+    }
     const employee = employees.find((item) => item.id === employeeId)
     if (!employee) return
-    commitState((current) => removeEmployeeFromDirectory(current, employeeId))
+    if (!commitState((current) => removeEmployeeFromDirectory(current, employeeId))) return
     setDirectoryDialog(null)
     setAssignmentNotice(`已刪除員工 ${employee.name}，並解除其職位指派`)
   }, [commitState, employees])
@@ -1862,8 +1977,10 @@ function ProtectedApp() {
   }, [departments, employees, positions, runOrganizationCommand])
 
   const requestDeletePosition = useCallback((positionId: string) => {
-    if (!editingEnabledRef.current) {
-      setAssignmentNotice('目前版本為唯讀；請先進入草稿編輯或現行版維護')
+    if (!workspaceMutationAllowedRef.current) {
+      setAssignmentNotice(mobileReadOnlyRef.current
+        ? '目前裝置僅提供唯讀；未開啟刪除操作'
+        : '目前版本為唯讀；請先進入草稿編輯或現行版維護')
       return
     }
     setPositionContextMenu(null)
@@ -1951,6 +2068,7 @@ function ProtectedApp() {
   }, [])
 
   const previewPositionCandidate = useCallback((movingId: string, candidate: DropCandidate) => {
+    if (!workspaceMutationAllowedRef.current) return
     const interaction = positionDragRef.current
     if (interaction.movingId !== movingId
       || interaction.phase !== 'candidate-pending'
@@ -1975,7 +2093,7 @@ function ProtectedApp() {
   }, [departments])
 
   const onNodeDragStart: OnNodeDrag<OrgFlowNode> = useCallback((event, draggedNode) => {
-    if (!editingEnabledRef.current) return
+    if (!workspaceMutationAllowedRef.current) return
     clearDragPreviewTimer()
     positionDragGeometryRef.current = {
       nodes: nodes.map((node) => ({ id: node.id, position: { ...node.position } })),
@@ -2000,7 +2118,7 @@ function ProtectedApp() {
 
   const openPositionContextMenu = useCallback((event: React.MouseEvent, node: OrgFlowNode) => {
     event.preventDefault()
-    if (!editingEnabledRef.current) return
+    if (!workspaceMutationAllowedRef.current) return
     const menuWidth = 216
     const menuHeight = 238
     const viewportMargin = 8
@@ -2017,6 +2135,7 @@ function ProtectedApp() {
   }, [])
 
   const onNodeDrag: OnNodeDrag<OrgFlowNode> = useCallback((event, draggedNode) => {
+    if (!workspaceMutationAllowedRef.current) return
     const interaction = positionDragRef.current
     if (interaction.movingId !== draggedNode.id) return
     const geometry = positionDragGeometryRef.current ?? {
@@ -2106,6 +2225,17 @@ function ProtectedApp() {
 
   const onNodeDragStop: OnNodeDrag<OrgFlowNode> = useCallback((event, draggedNode) => {
     clearDragPreviewTimer()
+    if (!workspaceMutationAllowedRef.current) {
+      positionDragRef.current = resetPositionDrag()
+      positionDragGeometryRef.current = null
+      dragOriginRef.current = null
+      dragGrabOffsetRef.current = null
+      setDraggingId(null)
+      setDragVisualOffset(null)
+      setDragSnapTargetId(null)
+      setDragPreview(null)
+      return
+    }
     const interaction = positionDragRef.current
     const origin = dragOriginRef.current ?? draggedNode.position
     const grabOffset = dragGrabOffsetRef.current ?? { x: ORG_NODE_WIDTH / 2, y: ORG_NODE_HEIGHT / 2 }
@@ -2332,7 +2462,10 @@ function ProtectedApp() {
       const command = event.ctrlKey || event.metaKey
       if (command && event.key.toLowerCase() === 's') {
         event.preventDefault()
-        if (event.shiftKey) saveDocumentCopy()
+        if (event.shiftKey) {
+          if (!workspaceMutationAllowed) setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；未下載可編輯副本' : '目前版本為唯讀；未下載可編輯副本')
+          else saveDocumentCopy()
+        }
         else saveDocument()
         return
       }
@@ -2357,6 +2490,10 @@ function ProtectedApp() {
       if (event.key === '/') {
         event.preventDefault()
         setSearchFocusToken((token) => token + 1)
+        return
+      }
+      if (!workspaceMutationAllowed) {
+        if ((event.key === 'Delete' || event.key === 'Backspace') && selected) event.preventDefault()
         return
       }
       if ((event.key === 'Delete' || event.key === 'Backspace') && selected) {
@@ -2410,6 +2547,7 @@ function ProtectedApp() {
     saveDocumentCopy,
     selected,
     inspectorOpen,
+    workspaceMutationAllowed,
     setChildrenAxis,
     undo,
   ])
@@ -2463,7 +2601,11 @@ function ProtectedApp() {
       workspaceController.setSharedSelection({ kind: entityKind, id: selection.id }, kind)
       if (selection.kind === 'employees') {
         const context = workspaceController.state.session.panels.employees?.context
-        if (context) workspaceController.updatePanelContext('employees', { ...context, employeeId: selection.id }, { openDetail: true })
+        if (context?.employeeId === selection.id && workspaceController.state.session.openDetails.includes('employees')) {
+          workspaceController.setDetailVisibility('employees', false)
+        } else if (context) {
+          workspaceController.updatePanelContext('employees', { ...context, employeeId: selection.id }, { openDetail: true })
+        }
       } else if (selection.kind === 'positions') {
         setSelectedId(selection.id)
         const context = workspaceController.state.session.panels.positions?.context
@@ -2519,7 +2661,14 @@ function ProtectedApp() {
         if (!masterDataEditingEnabled) { setAssignmentNotice('目前版本為唯讀，無法修改員工資料'); return }
         setDirectoryDialog({ type: 'edit-employee', employeeId })
       }}
-      onEditPosition={(positionId) => { showSelected(positionId); queueTitleEdit() }}
+       onEditPosition={(positionId) => {
+         if (!masterDataEditingEnabled) {
+           setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；未開啟編輯操作' : '目前版本為唯讀；請先進入草稿編輯或現行版維護')
+           return
+         }
+         showSelected(positionId)
+         queueTitleEdit()
+       }}
       onEditDepartment={(departmentId) => {
         if (!masterDataEditingEnabled) { setAssignmentNotice('目前版本為唯讀，無法修改部門資料'); return }
         setDirectoryDialog({ type: 'edit-department', departmentId })
@@ -2596,6 +2745,12 @@ function ProtectedApp() {
     workspaceController.openOrFocus(targetModule, context as never, 'cross-panel')
     workspaceController.setSharedSelection({ kind, id: selection.id }, targetModule)
   }
+  const openEmployeeFromGovernance = (employeeId: string) => {
+    const context = { employeeId, query: workspaceModuleQueries.employees }
+    workspaceController.openOrFocus('employees', context, 'cross-panel')
+    workspaceController.updatePanelContext('employees', context, { openDetail: true })
+    workspaceController.setSharedSelection({ kind: 'employee', id: employeeId }, 'governance')
+  }
   const renderOrganizationInspector = () => {
     if (!directorySelection || directorySelection.kind !== 'positions') return null
     return renderPositionInspector(directorySelection.id, closeInspectorPanel)
@@ -2647,6 +2802,9 @@ function ProtectedApp() {
         members={positionViews}
         onSetPrimaryAssignment={changePrimaryAssignment}
         editingEnabled={masterDataEditingEnabled}
+        identityMutationAllowed={workspaceMutationAllowed}
+        governanceRefreshToken={governanceRefreshToken}
+        onGovernanceChanged={() => setGovernanceRefreshToken((value) => value + 1)}
         onSelectPosition={selectPositionFromMasterDetail}
         onSelectEntity={selectEntityFromMasterDetail}
         onClose={() => closePanelDetail({ kind: 'employees', id: (context as WorkspaceModuleContextMap['employees']).employeeId! })}
@@ -2947,13 +3105,16 @@ function ProtectedApp() {
         currentOrganizationVersionId={workspaceIndex?.currentVersionId ?? null}
         visibility={visibility}
         workspaceMutationAllowed={workspaceMutationAllowed}
+        refreshToken={governanceRefreshToken}
+        onChanged={() => setGovernanceRefreshToken((value) => value + 1)}
+        onOpenEmployee={openEmployeeFromGovernance}
         initialSection={workspaceController.state.session.panels.governance?.context.section ?? 'identity'}
         onSectionChange={(section) => workspaceController.updatePanelContext('governance', { section })}
       /></GovernanceModuleAdapter>,
   }
 
   const openPanels = workspaceController.state.route.openPanels
-  const workspaceLauncher = <WorkspaceLauncher
+  const workspaceNavigation = <WorkspaceLauncher
     openPanels={openPanels}
     onOpenModule={(moduleId) => workspaceController.openOrFocus(moduleId)}
     disabled={workspaceHydration.kind !== 'ready'}
@@ -2966,7 +3127,8 @@ function ProtectedApp() {
       <WorkspaceShell
         controller={workspaceController}
         hydration={workspaceHydration}
-        mobileSingleSurface={!workspaceCompositionCapability.canCompose}
+        mobileSingleSurface={!workspaceCompositionCapability.canCompose || mobileReadOnly}
+        workspaceNavigation={workspaceNavigation}
         onRetry={() => {
           if (workspaceHydration.kind === 'conflict' && isDirty && !window.confirm('重新載入會捨棄目前尚未儲存的內容，確定繼續？')) return
           setWorkspaceHydrationRetry((value) => value + 1)
@@ -2977,7 +3139,6 @@ function ProtectedApp() {
           if (currentVersionId) void switchWorkspaceVersion(currentVersionId)
         }}
         header={<Toolbar
-          workspaceLauncher={workspaceLauncher}
           members={positionViews}
           employees={employees}
           departments={departments}
@@ -2988,21 +3149,16 @@ function ProtectedApp() {
             workspaceController.setSharedSelection({ kind: 'position', id: positionId }, 'global-search')
             showSelected(positionId)
           }}
-          roleRiskSettingsOpen={Boolean(workspaceController.state.session.panels['role-risks'])}
-          onOpenRoleRiskSettings={() => workspaceController.openOrFocus('role-risks')}
-          governanceOpen={Boolean(workspaceController.state.session.panels.governance)}
-          onOpenGovernance={() => workspaceController.openOrFocus('governance')}
-          onOpenManagementMethods={() => workspaceController.openOrFocus('management-methods')}
-          onOpenProcessPlanning={() => workspaceController.openOrFocus('processes')}
-          governanceButtonRef={governanceButtonRef}
           isDirty={isDirty}
           savedAt={savedAt}
           persistenceKind={persistenceKind}
           autoSavePending={autoSavePending}
           autoSaveError={autoSaveError}
-          onSave={saveDocument}
-          onSaveCopy={saveDocumentCopy}
-          onBackup={backupDocument}
+           onSave={saveDocument}
+           onSaveCopy={saveDocumentCopy}
+           onBackup={backupDocument}
+           workspaceMutationAllowed={workspaceMutationAllowed}
+           versionMutationAllowed={versionMutationAllowed}
           versions={workspaceIndex?.versions ?? []}
           activeVersionId={activeVersionId}
           workspaceMode={workspaceMode}
@@ -3123,6 +3279,7 @@ function ProtectedApp() {
           onEnterCurrentMaintenance={enterCurrentMaintenance}
           onClose={() => setWorkspaceDrawerOpen(false)}
           busy={workspaceBusy}
+          mutationAllowed={versionMutationAllowed}
         />)
       )}
 

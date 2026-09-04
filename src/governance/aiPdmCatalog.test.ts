@@ -8,7 +8,7 @@ describe('AI-PDM external role catalog', () => {
     expect(catalog.roles).toHaveLength(9)
     expect(catalog.sourceRefs).toHaveLength(3)
     expect(catalog.payloadHash).toBe(AI_PDM_ROLE_CATALOG_SHA256)
-    expect(catalog.payloadHash).toBe('ebdaa2960960e0683b480c721d2c27df59031b4af23b124f2ac7e882309f6b6e')
+    expect(catalog.payloadHash).toBe('46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8')
     expect(catalog.roles.map((role) => role.stableRoleId)).toEqual([
       'role-rd', 'role-rd-manager', 'role-qa', 'role-manufacturing', 'role-production-planning',
       'role-procurement', 'role-external-specialist', 'role-pdm-admin', 'role-system-admin'
@@ -20,7 +20,17 @@ describe('AI-PDM external role catalog', () => {
     expect(catalog.roles.find((role) => role.code === 'rd')).toMatchObject({ displayName: '研發人員', allowedScopeKinds: ['workspace'] })
     expect(catalog.roles.find((role) => role.code === 'external_specialist')).toMatchObject({ assignable: true, allowedScopeKinds: ['project'] })
     expect(catalog.roles.find((role) => role.code === 'pdm_admin')).toMatchObject({ displayName: 'PDM管理員', allowedScopeKinds: ['workspace'] })
-    expect(catalog.roles.find((role) => role.code === 'system_admin')).toMatchObject({ riskLevel: 'critical', allowedScopeKinds: ['global'] })
+    expect(catalog.roles.find((role) => role.code === 'system_admin')).toMatchObject({
+      stableRoleId: 'role-system-admin',
+      status: 'active',
+      assignable: true,
+      riskLevel: 'critical',
+      subjectKind: 'principal',
+      assignmentTier: 'cross_app_override',
+      recommendationAllowed: false,
+      delegationAllowed: false,
+      allowedScopeKinds: ['global'],
+    })
   })
 
   it('fails closed when catalog payload is tampered or marked stale', () => {

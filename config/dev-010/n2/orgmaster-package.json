@@ -1,0 +1,117 @@
+{
+  "manifestVersion": "jenfu.dev010.n2.package.v1",
+  "devId": "DEV-010",
+  "packageId": "dev010-n2-orgmaster",
+  "appId": "orgmaster",
+  "lane": "fresh",
+  "repository": {
+    "name": "orgmaster",
+    "head": "c8cc16f515f059febfa84a98900d59fcdec847a5"
+  },
+  "baseline": {
+    "aggregateSha256": "1af4f015b16b185ea6f84666ee5083b76f658f73f132bda87a799d4be2b1fc0c",
+    "files": [
+      "db/migrations/001_dev004_orgmaster_app_sessions.sql",
+      "db/migrations/002_dev006_orgmaster_persistence.sql",
+      "db/migrations/003_dev006_orgmaster_runtime_repository.sql",
+      "db/migrations/004_dev040_active_principal_view.sql",
+      "db/migrations/005_dev005_entitlement_governance.sql",
+      "db/migrations/006_dev040_identity_admission_projection.sql",
+      "db/migrations/007_dev009_privileged_governance.sql",
+      "db/migrations/008_dev002_portal_app_visibility.sql",
+      "db/migrations/009_dev039_application_entitlement_v2.sql",
+      "server/orgmasterDatabase.ts",
+      "server/orgmasterPersistenceRepository.ts",
+      "server/orgmasterSessionRepository.ts",
+      "server/orgmasterPrincipalAdmissionRepository.ts",
+      "server/orgmasterAuthEpochRepository.ts",
+      "server/orgmasterEntitlementInvalidationDispatcher.ts",
+      "server/privilegedSecurityAlertDispatcher.ts",
+      "server/aiPdmRoleCatalogRepository.ts"
+    ]
+  },
+  "changeAllowlist": {
+    "modify": [
+      "package.json",
+      "server/orgmasterDatabase.ts",
+      "server/orgmasterPersistenceRepository.ts",
+      "server/orgmasterSessionRepository.ts",
+      "server/orgmasterPrincipalAdmissionRepository.ts",
+      "server/orgmasterAuthEpochRepository.ts",
+      "server/orgmasterEntitlementInvalidationDispatcher.ts",
+      "server/privilegedSecurityAlertDispatcher.ts",
+      "server/aiPdmRoleCatalogRepository.ts"
+    ],
+    "new": [
+      "config/dev-010/n2/orgmaster-package.json",
+      "db/migrations/010_dev010_neutral_schema_boundary.sql",
+      "scripts/lib/dev010-n2-manifest.mjs",
+      "scripts/dev010-n2-source-freeze.mjs",
+      "scripts/dev010-n2-source-freeze.test.mjs",
+      "scripts/dev010-n2-orgmaster.test.mjs",
+      "scripts/qc-dev-010-n2-orgmaster.mjs",
+      "server/dev010DatabaseBoundary.test.ts",
+      "qa/dev-010/n2/fixtures/orgmaster-state.json",
+      "qa/dev-010/n2/browser/normal-entry.mjs"
+    ],
+    "outputPrefixes": ["output/dev-010/n2/"]
+  },
+  "provides": [
+    {
+      "contractId": "orgmaster.identity-visibility",
+      "contractVersion": "jenfu.orgmaster-contract.identity-visibility.v1",
+      "signatureSha256": "e400a51351fc1b5fab083ed94bcf0c62efdd0606d4316f354b2893f9bf82cf15",
+      "payloadSha256": "4d27c1e297b516207f931f57e443ecda99e260c56369132f9a269d11920cda96",
+      "dependsOn": []
+    },
+    {
+      "contractId": "orgmaster.ai-pdm-entitlement",
+      "contractVersion": "jenfu.platform-entitlement.v1",
+      "signatureSha256": "13a74783a6da2ac210090a6ba56937cb7b2f6d7d06e97a89844d4d6aaaca8306",
+      "payloadSha256": "6587e984f1b9e258ad467213ad6291fa6735233d6e4b173c7a8e66ab93fd721e",
+      "dependsOn": []
+    }
+  ],
+  "requires": [
+    {
+      "contractId": "platform.auth-session",
+      "contractVersion": "jenfu.platform-contract.auth-session.v1",
+      "signatureSha256": "f3688a722db8ee4a21936d599abf21b63105f4fc049436d7071ec54899ee294f",
+      "payloadSha256": null,
+      "fromPackageId": "dev010-n2-platform"
+    },
+    {
+      "contractId": "platform.employee-session-invalidation",
+      "contractVersion": "jenfu.platform-contract.employee-session-invalidation.v1",
+      "signatureSha256": "09c2e01e49e9d4b746256eada33ba6969b9bce8bc23d3f8fd8c8d018a6758ef3",
+      "payloadSha256": null,
+      "fromPackageId": "dev010-n2-platform"
+    },
+    {
+      "contractId": "ai-pdm.role-catalog",
+      "contractVersion": "ai-pdm.role-catalog.2026-09-03.v3",
+      "signatureSha256": "1317eec6191028b9ea9d327687343a000dbb37577e660fd7ad71f179286ced16",
+      "payloadSha256": "46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8",
+      "fromPackageId": "dev010-n2-ai-pdm"
+    }
+  ],
+  "compatibilityObjects": [
+    "organization.v_active_principal_mappings_v1",
+    "access_governance.v_portal_app_visibility_v1",
+    "access_governance.v_ai_pdm_entitlement_authority_v1",
+    "access_governance.v_ai_pdm_effective_role_assignments_v1",
+    "orgmaster.read_active_persistence_artifact_v1(text)"
+  ],
+  "dataClasses": ["org_principal", "org_entitlement", "org_artifacts", "org_outbox", "org_media"],
+  "connectionBudget": {
+    "applicationNamePrefix": "dev010-n2-orgmaster",
+    "connectionTimeoutMs": 5000,
+    "effectiveMaxInstances": 1,
+    "idleTimeoutMs": 30000,
+    "poolMax": 6,
+    "poolsPerInstance": 1,
+    "queryTimeoutMs": 35000,
+    "statementTimeoutMs": 30000
+  },
+  "rollbackBoundary": { "mode": "discard-task-database", "productionWrites": false }
+}

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildPositionRoleRecommendations } from './positionRoleRecommendations'
 
 const catalog = {
-  catalogVersion: 'ai-pdm.role-catalog.2026-09-02.v2',
+  catalogVersion: 'ai-pdm.role-catalog.2026-09-03.v3',
   roles: [{ stableRoleId: 'role-rd-manager', code: 'rd_manager', displayName: '研發主管', status: 'active' as const, assignable: true, riskLevel: 'high' as const, allowedScopeKinds: ['workspace' as const, 'project' as const], recommendationAllowed: true, roleDefinitionHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }]
 }
 

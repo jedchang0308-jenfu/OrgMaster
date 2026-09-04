@@ -1,14 +1,16 @@
-# DEV-034 組織圖內嵌工作事項責任配置模式 — R2 RD Implementation Contract 與 R1 Historical Contract
+# DEV-034 組織圖內嵌工作事項責任配置模式 — Domain Baseline 與 Historical UI Contract
 
-狀態：R2 `RD Implementation Complete / Human Confirmed Direction / QA-QC Pending Browser Gate / Local Release Gate Pending`；R2.1 複選式規劃狀態視角為 `Brief Ready / Human Confirmed / Implementation Not Requested`；R1 `RD Implementation Complete / QA-QC Passed` 只保留為歷史基線
+狀態：`Completed / Domain Semantics Retained / UI and DnD Superseded by DEV-039／041／042 / Merged to master`
 日期：2026-08-26
 來源：`USER-2026-08-25-DEV034-ORG-CHART-INLINE-DUTY-CONFIGURATION`、`USER-2026-08-25-DEV034-UPGRADE-RD-CONTRACT`、`USER-2026-08-25-DEV034-UPGRADE-IMPLEMENTATION-READY`、`USER-2026-08-25-DEV034-DIRECTORY-DUTY-DRAG-REVISION`、`USER-2026-08-26-DEV034-DUTY-PLANNING-STATUS-FILTER`
 父交付點：DEV-031、DEV-032、DEV-033
 優先級：P1
 風險等級：Medium
-權威範圍：R2 的左側主資料職掌入口、責任設定、由左向右拖曳配置、正常 delivery path、R2.1 複選式規劃狀態視角 Brief 與 R1 歷史證據邊界；R1 仍保存已完成的舊實作、Duty domain 寫入、route、保存／失敗恢復及 QA／QC 證據
+權威範圍：保留 Duty relation、primary transfer、pending same-relation-ID、Undo／autosave／CAS、canonicalization與失敗恢復等domain不變量；R1／R2的固定DirectoryDock composition、專用拖曳handle、route與browser gate只作歷史provenance。現行workspace入口由DEV-039／042擁有，滑鼠關係拖曳由DEV-041擁有。
 
-## 0. R2 Active RD Implementation Contract：左側主資料職掌清單與拖曳配置
+> **2026-09-02 RD Technical Lead consolidation（現行）**：DEV-034不再保留獨立R2 browser B1～B9尾項。其專用handle與固定DirectoryDock composition已被DEV-039可組合工作台、DEV-041 shared relation placement及DEV-042 single-layer list-detail有意替換；四向native、keyboard相容、responsive、zero-mutation、API／revision readback與diagnostics已有DEV-039／041／042現行證據。重新執行舊R2 gate只會驗證已退出runtime的composition，不能增加現行產品可信度。R2.1三個anomaly複選意圖移至DEV-042 Future Phase Capsule，未要求實作。Git現況為整合commit `4e3b2ce`已由merge commit `c8cc16f`進入`master`。
+
+## 0. R2 Historical RD Implementation Contract：左側主資料職掌清單與拖曳配置
 
 ### 0.1 Intentional Replacement
 
@@ -359,7 +361,9 @@ R2 readiness結論：repo modules、exact symbols、UI entry、state transitions
 - Browser gate：本輪 in-app browser 已可連線並完成 partial smoke，但未建立 `output/playwright/dev034-r2/manifest.md`；原因是尚未完成四 viewport、native `dataTransfer`、reload／409、pending／capability與全量 B1～B9。下一步仍需在具備原生 drag 與 viewport 控制的本機 browser 依 B1～B9 重跑，不能以 partial smoke、R1 manifest 或 unit／build 代替。
 - Browser partial smoke：左側第五 rail 的 duty 名稱與搜尋列可讀；Position card 不呈現職掌文字；Inspector 以第三 grid column 併排且不覆蓋 canvas；keyboard handle 可進入 grabbed、live status 會提示 Tab／Enter／Escape、Enter 可配置並回復來源 focus、Escape 可取消並回復來源 focus；fresh-load console 未發現本輪新增 error。CUA native drag 未判定為通過，因工具無法提供 HTML5 `dataTransfer`。
 
-### 0.19 R2.1 Future Phase Capsule：複選式規劃狀態視角（2026-08-26）
+### 0.19 R2.1 Historical Capsule：複選式規劃狀態視角（已移至 DEV-042）
+
+本節只保留原始決策來源與產品意圖；現行re-entry與實作邊界改由DEV-042 Future Phase Capsule擁有，避免在已退出runtime的DirectoryDock composition上建立第二份active contract。
 
 狀態：`Brief Ready / Human Confirmed / Implementation Not Requested`。本節記錄下一個可規劃的使用者可見增量，不修改第 0.18 節的 R2 實作與 browser gate 事實；在使用者明確要求開始實作前，不得把本節勾選為完成或併入 R2 現有自動化／瀏覽器證據。
 
@@ -593,7 +597,7 @@ Position click 必須根據最新的 `currentState` 建立一個既有 Organizat
 ### 6.4 Capability 與 permission
 
 - Current Phase 不新增 Duty 專用 permission；寫入仍以既有 `draft-edit | current-maintenance` 為必要條件，server workspace save 持續驗證 mode、revision 與完整 V6 文件。
-- 若 DEV-033 已提供共用 deterministic capability，DEV-034 必須重用；若尚未完成，DEV-034 採不寬於 DEV-032 的 scoped default-deny gate：至少 1024px、hover 與 fine pointer 同時成立才呈現 mutation。
+- DEV-034 重用 DEV-033 的共用 deterministic capability；至少 1024px、hover 與 fine pointer 同時成立才呈現 mutation。既有 duty scoped capability 僅保留作 domain compatibility，不得形成較寬的第二條寫入路徑。
 - 裝置能力只是 UX boundary，不是 security credential；唯讀裝置、唯讀 workspace、無效 version 或 recovery gate 均不得從 query、快捷鍵、node click、drawer 或殘留 handler 觸發 command。
 - DEV-032 的 management-method permissions 不得被解讀為 Duty mutation 權限。
 
@@ -697,7 +701,7 @@ Position click 必須根據最新的 `currentState` 建立一個既有 Organizat
 - 必須保留兩個 active responsibility mutation surfaces 才能滿足功能。
 - 無法在同一配置模式辨識／修復 no-executor、missing-primary 或 pending-reassignment，或必須恢復第二份 Position selector 才能修復。
 - legacy route 轉換會遺失現有資料、Duty／relation identity、Position focus 或造成 browser back loop。
-- DEV-033 裝置能力與 DEV-034 scoped gate 互斥，導致手機或不合格裝置可 mutation。
+- DEV-033 共用裝置能力與 DEV-034 scoped gate 不一致，導致手機或不合格裝置可 mutation。
 - 需要恢復管理辦法智能引用、AI 判斷職掌、額外風險規則、職位搜尋／篩選或 production 操作。
 - `npm test -- --testTimeout=30000`、build、targeted persistence、legacy route、desktop flow、mobile read-only 或 console gate 任一未通過。
 
@@ -706,7 +710,7 @@ Position click 必須根據最新的 `currentState` 建立一個既有 Organizat
 - `Intentional replacement (local)`：本 DEV 已取代 DEV-031 的責任配置主要資訊架構；DEV-031 route、domain、command、保存、測試與證據保留為相容及 regression baseline。
 - `Compatible extension`：重用 DEV-028／029／031 的 Duty identity、五 exact lanes、validator、organization V6、Undo／Redo、autosave 與 CAS。
 - `No conflict`：DEV-032 維持自由管理辦法、無智能引用與 Duty 唯讀對照；DEV-034 不修改其 domain、API、permissions 或完成證據。
-- `No conflict`：遵守 DEV-033 手機唯讀最高原則；若共用 capability 尚未實作，使用更保守 scoped gate。
+- `No conflict`：遵守 DEV-033 手機唯讀最高原則，並重用其共用 capability；DEV-034 的 duty scoped module 僅作相容性封裝。
 - ADR 判定：目前不建立 ADR。Current Phase 不改 schema、API、permission、persistence authority 或跨 domain data flow；root query mode 與 legacy route compatibility 可由本 feature contract 完整治理。若後續命中 Stop Condition，再重新判斷 ADR。
 
 `Future Phase Captured / Not Requested`：若未來重新核准管理辦法正文的穩定 Work Item reference，可由管理辦法攜帶 `methodId／anchor／dutyId` 進入本模式並精確返回。重新進入條件是 DEV-032 另案接受跨 domain reference identity、刪除阻擋與 migration；在此之前不得由文字比對、AI 推論或段落順序自動建立 reference。
@@ -763,7 +767,7 @@ Projection 固定以 `主執行 → 其他執行 → 協作 → 審核 → 會�
 
 ### 15.3 Capability module
 
-DEV-033 尚未完成，因此本 DEV 新增 scoped `src/dutyConfigurationCapability.ts`：
+DEV-033 現已提供全系統共用 capability；既有 `src/dutyConfigurationCapability.ts` 保留作 duty-domain compatibility，但不得繞過共用 mutation boundary：
 
 - `canMutateDutyConfiguration(environment)`：三項條件必須同時成立：`(min-width: 1024px)`、`(hover: hover)`、`(pointer: fine)`。
 - `observeDutyConfigurationCapability(onChange, environment)`：監聽三個 MediaQueryList；任一改變即重新計算，cleanup 只移除自己註冊的 listeners。
@@ -779,7 +783,7 @@ dutyConfigurationWriteEnabled =
   && !recoveryOpen
 ```
 
-query、DOM attribute、viewport override 或殘留 callback 均不能繞過此判定。DEV-033 未來提供共用 capability 時，才以 compatible refactor 取代 scoped module。
+query、DOM attribute、viewport override 或殘留 callback 均不能繞過此判定。App 的全域 organization／version mutation 與本 DEV 的 duty mutation 皆以 DEV-033 boundary 為上限；後續若移除 scoped wrapper，僅屬相容性重構，不改變本契約。
 
 ### 15.4 App composition 與 history ownership
 

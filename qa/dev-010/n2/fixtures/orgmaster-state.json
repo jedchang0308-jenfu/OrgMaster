@@ -1,0 +1,51 @@
+{
+  "fixtureVariant": "dev010-n2-base-v1",
+  "groups": {
+    "org_principal": [
+      {
+        "employee_id": "01991d8e-7a00-7000-8000-000000000001",
+        "employee_status": "active",
+        "principal_issuer": "https://securetoken.google.com/jenfu-dev010",
+        "principal_subject": "employee-a"
+      }
+    ],
+    "org_entitlement": [
+      {
+        "application_id": "ai-pdm",
+        "employee_id": "01991d8e-7a00-7000-8000-000000000001",
+        "role_code": "rd",
+        "status": "active"
+      }
+    ],
+    "org_artifacts": [
+      {
+        "artifact_key": "governance/current",
+        "canonical_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "source_revision": "rev-org-001"
+      },
+      {
+        "artifact_key": "organization/current",
+        "canonical_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "source_revision": "rev-org-001"
+      }
+    ],
+    "org_outbox": [
+      {
+        "event_id": "00000000-0000-4000-8000-000000000020",
+        "operation_id": "op-revoke-01",
+        "status": "completed"
+      },
+      {
+        "event_id": "00000000-0000-4000-8000-000000000021",
+        "operation_id": "op-grant-01",
+        "status": "pending"
+      }
+    ],
+    "org_media": [
+      {
+        "content_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "media_key": "media-org-chart-01"
+      }
+    ]
+  }
+}

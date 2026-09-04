@@ -26,12 +26,13 @@ interface VersionSwitcherProps {
   onSelect: (versionId: string) => void
   onOpenWorkspace: () => void
   onToggleCurrentMaintenance: () => void
+  mutationAllowed?: boolean
 }
 
-export function VersionSwitcher({ versions, activeVersionId, mode, onSelect, onOpenWorkspace, onToggleCurrentMaintenance }: VersionSwitcherProps) {
+export function VersionSwitcher({ versions, activeVersionId, mode, onSelect, onOpenWorkspace, onToggleCurrentMaintenance, mutationAllowed = true }: VersionSwitcherProps) {
   const active = versions.find((version) => version.id === activeVersionId) ?? versions[0]
   const status = MODE_STATUS[mode]
-  const canToggleCurrentMaintenance = active?.kind === 'current' && (mode === 'current-view' || mode === 'current-maintenance')
+  const canToggleCurrentMaintenance = mutationAllowed && active?.kind === 'current' && (mode === 'current-view' || mode === 'current-maintenance')
   const isCurrentMaintenance = mode === 'current-maintenance'
   const toggleLabel = isCurrentMaintenance ? '編輯中' : '唯讀'
   const toggleDescription = isCurrentMaintenance ? '現在可編輯' : '現在不可編輯'

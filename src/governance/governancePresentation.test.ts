@@ -19,6 +19,15 @@ describe('governance presentation', () => {
     expect(failure.message).not.toContain('GOVERNANCE_')
   })
 
+  it('presents OrgMaster unavailability as an explicit reloadable failure', () => {
+    const failure = describeGovernanceFailure({ code: 'ORGMASTER_UNAVAILABLE' })
+    expect(failure).toEqual({
+      code: 'ORGMASTER_UNAVAILABLE',
+      message: 'OrgMaster 暫時無法使用；請稍後重新載入。',
+      canReload: true,
+    })
+  })
+
   it('requires an identity and both management permissions before publishing', () => {
     const empty = createSeedDocument('2026-08-26T00:00:00.000Z').draft as any
     expect(governancePublishBlockers(empty, 'principal-1', 'workspace-1', '2026-08-26T00:00:00.000Z').map((item) => item.code)).toEqual(['IDENTITY_LINK_REQUIRED'])

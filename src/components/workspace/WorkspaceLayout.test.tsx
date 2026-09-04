@@ -4,11 +4,13 @@ import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 import { defaultWorkspaceLayout, emptyWorkspaceLayout, insertWorkspacePanel, resizeWorkspaceSplit } from '../../workspace/layout'
 import { createWorkspaceSessionState } from '../../workspace/state'
+import { WorkspaceLauncher } from './WorkspaceLauncher'
 import { WORKSPACE_PANEL_DRAG_MIME, WorkspaceLayout } from './WorkspaceLayout'
 import { WorkspaceOverlayProvider } from './WorkspaceOverlayHosts'
+import { WorkspacePanelDragProvider } from './WorkspacePanelDragContext'
 
 function renderWorkspace(root: ReturnType<typeof createRoot>, node: ReactNode) {
-  root.render(<WorkspaceOverlayProvider>{node}</WorkspaceOverlayProvider>)
+  root.render(<WorkspaceOverlayProvider><WorkspacePanelDragProvider>{node}</WorkspacePanelDragProvider></WorkspaceOverlayProvider>)
 }
 
 describe('WorkspaceLayout', () => {
@@ -78,19 +80,15 @@ describe('WorkspaceLayout', () => {
     root.unmount()
   })
 
-  it('offers a keyboard menu that can split a tab out of its current stack', async () => {
+  it('removes the panel arrangement control while keeping drag layout controls', async () => {
     const layout = insertWorkspacePanel(defaultWorkspaceLayout(), 'duties', { kind: 'stack', stackPath: [] })
     const session = createWorkspaceSessionState({ openPanels: ['organization', 'duties'], focusedPanel: 'duties', selection: null, openDetails: [], contexts: {} })
-    const dispatch = vi.fn()
     const host = document.createElement('div')
     const root = createRoot(host)
-    await act(async () => renderWorkspace(root, <WorkspaceLayout layout={layout} session={session} mobileSingleSurface={false} dispatch={dispatch} requestClose={async () => ({ kind: 'allow' })} renderPanel={() => null} />))
-    const arrange = [...host.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.getAttribute('aria-label') === '排列工作職掌')!
-    await act(async () => arrange.click())
-    const splitRight = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === '向右分割')!
-    expect(splitRight.disabled).toBe(false)
-    await act(async () => splitRight.click())
-    expect(dispatch).toHaveBeenCalledWith({ type: 'MOVE_PANEL', moduleId: 'duties', target: { kind: 'edge', stackPath: [], edge: 'right' } })
+    await act(async () => renderWorkspace(root, <WorkspaceLayout layout={layout} session={session} mobileSingleSurface={false} dispatch={() => undefined} requestClose={async () => ({ kind: 'allow' })} renderPanel={() => null} />))
+    expect(host.querySelector('.workspace-region__arrange')).toBeNull()
+    expect(host.querySelector('.workspace-region__arrange-menu')).toBeNull()
+    expect(host.querySelector('#workspace-tab-duties')?.getAttribute('draggable')).toBe('true')
     root.unmount()
   })
 
@@ -120,9 +118,87 @@ describe('WorkspaceLayout', () => {
     expect(dataTransfer.setData).toHaveBeenCalledWith(WORKSPACE_PANEL_DRAG_MIME, JSON.stringify({ moduleId: 'employees' }))
     const rightDropZone = host.querySelector('.workspace-region__drop-zones .is-right') as HTMLDivElement
     expect(rightDropZone).not.toBeNull()
+    await act(async () => rightDropZone.dispatchEvent(dragEvent('dragover')))
+    expect(rightDropZone.className).toContain('is-preview')
     await act(async () => rightDropZone.dispatchEvent(dragEvent('drop')))
     expect(dispatch).toHaveBeenCalledWith({ type: 'MOVE_PANEL', moduleId: 'employees', target: { kind: 'edge', stackPath: [], edge: 'right' } })
     root.unmount()
+  })
+
+  it('opens an unopened launcher module when dropped into a panel edge', async () => {
+    const session = createWorkspaceSessionState({ openPanels: ['organization'], focusedPanel: 'organization', selection: null, openDetails: [], contexts: {} })
+    const dispatch = vi.fn()
+    const host = document.createElement('div')
+    const root = createRoot(host)
+    const values = new Map<string, string>()
+    const dataTransfer = {
+      effectAllowed: 'none',
+      dropEffect: 'none',
+      setData: vi.fn((type: string, value: string) => values.set(type, value)),
+      getData: vi.fn((type: string) => values.get(type) ?? ''),
+    }
+    const dragEvent = (type: string) => {
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
+      return event
+    }
+
+    await act(async () => renderWorkspace(root, <>
+      <WorkspaceLauncher openPanels={['organization']} onOpenModule={() => undefined} />
+      <WorkspaceLayout layout={defaultWorkspaceLayout()} session={session} mobileSingleSurface={false} dispatch={dispatch} requestClose={async () => ({ kind: 'allow' })} renderPanel={() => null} />
+    </>))
+    const employees = [...host.querySelectorAll<HTMLButtonElement>('.workspace-launcher__item')].find((button) => button.textContent?.includes('員工'))!
+    await act(async () => employees.dispatchEvent(dragEvent('dragstart')))
+    expect(dataTransfer.setData).toHaveBeenCalledWith(WORKSPACE_PANEL_DRAG_MIME, JSON.stringify({ moduleId: 'employees' }))
+    const rightDropZone = host.querySelector('.workspace-region__drop-zones .is-right') as HTMLDivElement
+    expect(rightDropZone).not.toBeNull()
+    await act(async () => rightDropZone.dispatchEvent(dragEvent('dragover')))
+    expect(rightDropZone.className).toContain('is-preview')
+    await act(async () => rightDropZone.dispatchEvent(dragEvent('drop')))
+    expect(dispatch).toHaveBeenCalledWith({ type: 'OPEN_OR_FOCUS', intent: { moduleId: 'employees', source: 'launcher' }, target: { kind: 'edge', stackPath: [], edge: 'right' } })
+    root.unmount()
+  })
+
+  it('keeps vertical drop targets visible but unavailable when the region is too short', async () => {
+    class TestResizeObserver {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe() {
+        this.callback([{ contentRect: { width: 1200, height: 500 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
+      }
+      disconnect() {}
+    }
+
+    vi.stubGlobal('ResizeObserver', TestResizeObserver)
+    try {
+      const layout = insertWorkspacePanel(defaultWorkspaceLayout(), 'employees', { kind: 'edge', stackPath: [], edge: 'right' })
+      const session = createWorkspaceSessionState({ openPanels: ['organization', 'employees'], focusedPanel: 'employees', selection: null, openDetails: [], contexts: {} })
+      const host = document.createElement('div')
+      const root = createRoot(host)
+      const values = new Map<string, string>()
+      const dataTransfer = {
+        effectAllowed: 'none',
+        dropEffect: 'none',
+        setData: vi.fn((type: string, value: string) => values.set(type, value)),
+        getData: vi.fn((type: string) => values.get(type) ?? ''),
+      }
+      const dragStart = new Event('dragstart', { bubbles: true, cancelable: true })
+      Object.defineProperty(dragStart, 'dataTransfer', { value: dataTransfer })
+
+      await act(async () => renderWorkspace(root, <>
+        <WorkspaceLauncher openPanels={['organization', 'employees']} onOpenModule={() => undefined} />
+        <WorkspaceLayout layout={layout} session={session} mobileSingleSurface={false} dispatch={() => undefined} requestClose={async () => ({ kind: 'allow' })} renderPanel={() => null} />
+      </>))
+      const processes = [...host.querySelectorAll<HTMLButtonElement>('.workspace-launcher__item')].find((button) => button.textContent?.includes('流程規劃'))!
+      await act(async () => processes.dispatchEvent(dragStart))
+      expect(host.querySelectorAll('.workspace-region__drop-zones')).toHaveLength(2)
+      expect(host.querySelector('.workspace-region__drop-zones .is-top')?.className).toContain('is-unavailable')
+      expect(host.querySelector('.workspace-region__drop-zones .is-bottom')?.className).toContain('is-unavailable')
+      expect(host.querySelector('.workspace-region__drop-zones .is-left')?.className).not.toContain('is-unavailable')
+      expect(host.querySelector('.workspace-region__drop-zones .is-right')?.className).not.toContain('is-unavailable')
+      root.unmount()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('removes composition controls and inactive surfaces in single-surface mode', async () => {

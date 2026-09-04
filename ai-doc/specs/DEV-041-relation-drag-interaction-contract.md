@@ -1,12 +1,14 @@
 # DEV-041：跨面板關係拖曳互動一致化契約
 
-> **2026-09-02 final acceptance override — Chromium native behavior accepted**：使用者依 RD Technical Lead 建議正式接受 Chromium 在 `dropEffect=none` 時不派送 terminal `drop` 的原生行為。本決策只替換 noop／rejected 的驗收定義，不修改 production effect policy：合法拖放仍必須有 terminal `drop`、恰好一次正確 mutation 與 revision change；noop／rejected 則必須有 terminal `dragend`、zero mutation、revision unchanged、session cleanup 與 0 console/pageerror，不強迫瀏覽器產生 `drop`。既有 aggregate 已滿足上述條件，因此 Browser native QA／QC=`Pass`，DEV-041 現行狀態為 `RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`。本段優先於下方仍保留的 gap／Partial 歷史文字；未授權 freeze、commit、merge、deploy或release。
+> **2026-09-02 repository integration override（現行）**：DEV-041已完成RD、自動化與Browser native QA／QC，並隨final integration commit `4e3b2ce`由merge commit `c8cc16f`納入`master`。因此舊段落中的`Candidate Freeze Ready / Authorization Pending`、未授權commit／merge與相關下一步只作整合前provenance；現行無獨立candidate、commit或merge尾項。deploy／release未被本文件授權，僅在使用者另行提出release型指令時進入共用gate。
+
+> **2026-09-02 final acceptance override — Chromium native behavior accepted**：使用者依 RD Technical Lead 建議正式接受 Chromium 在 `dropEffect=none` 時不派送 terminal `drop` 的原生行為。本決策只替換 noop／rejected 的驗收定義，不修改 production effect policy：合法拖放仍必須有 terminal `drop`、恰好一次正確 mutation 與 revision change；noop／rejected 則必須有 terminal `dragend`、zero mutation、revision unchanged、session cleanup 與 0 console/pageerror，不強迫瀏覽器產生 `drop`。既有 aggregate 已滿足上述條件，因此 Browser native QA／QC=`Pass`；DEV-041現行狀態為`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Merged to master`。本段優先於下方仍保留的 gap／Partial 歷史文字；deploy／release未要求。
 
 > **2026-09-02 current override — fresh native aggregate completed with one browser-policy gap**：依 RD Technical Lead 審查，`effectAllowed` 已由各 caller 選填收斂至 `relationEffectAllowedFor(payload)`：Employee=`copyMove`、Duty=`all`（同時涵蓋 Position 的 copy／move 與 ProcessNode 的 link）、ProcessNode=`link`；target 仍由既有 resolver 投影實際 `dropEffect`，且只有 `active && available && onPreview && onCommit` 才宣告可接收。ProcessNode 關係來源明確使用 `data-relation-drag-handle="true"`，保留整個非互動區可拖與內層控制項排除。最新 targeted `7 files／37 tests`、typecheck 與 build 通過。以四個全新 fixture 由正常產品入口及 system Chrome 完成四向 native：`EMP-POS`、`DUT-POS`、`PROC-DUT`、`DUT-PROC` 均觀察 strict MIME、正確 `effectAllowed／dropEffect`、terminal `drop／dragend`、revision 變更及對應 canonical relation readback；aggregate=`output/playwright/dev041/F041-QA-QC-native-aggregate.json`。另以全新 fixture 驗證 Organization 與 Process owner canvas 四邊 auto-pan：兩個 owner 的 left／right／top／bottom viewport translation 均改變、zoom 維持不變、取消後 revision 不變；console/pageerror sweep 均為 0。`NOOP-EMP-POS` 與 `REJECT-PROC-POS` 均證明 strict MIME、terminal `dragend`、revision 不變及 zero mutation，但 Chromium 在 `dropEffect=none` 時不發出 terminal `drop`；此為 effect policy 與瀏覽器原生事件的待決策差距，見 aggregate 的 `browserGap`，因此 Browser native QA／QC 仍為 `Partial / Open`，不得冒充全數通過。所有 fresh fixture cleanup 均以 `archived` readback 完成；task-owned `5080` 在本輪結束後釋放，user-owned `5000` 未觸碰。
 
 > **2026-09-02 targeted-count correction**：本輪於文件更新後重新執行同一組 7 個 DEV-041 targeted test files，最新結果為 `36 tests passed`；先前記錄的 `37 tests` 視為較早計數 provenance，不覆寫本次測試輸出。
 
-狀態：`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`
+狀態：`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Merged to master`
 
 日期：`2026-09-02`
 
@@ -26,7 +28,7 @@
 | RD implementation | `Complete` | shared source effect policy 已修正並以 reverse-direction RD probe 驗證；P1 implementation blocker 已關閉，見第11.4節 current correction record |
 | Automated gate | `Pass` | 第11.4節：latest targeted 7 files／36 tests；required regression baseline 170 files／693 tests（1 skipped）；typecheck、build |
 | Browser native QA／QC | `Pass` | 四向 fresh native、兩個 owner canvas 四邊 auto-pan、console sweep、fixture cleanup及zero-mutation均已有aggregate；使用者已接受 noop／rejected 在 `dropEffect=none` 時以terminal `dragend`、zero mutation與revision unchanged作為成功條件，不要求Chromium派送terminal `drop` |
-| Candidate freeze／commit／release | `Ready / Authorization Pending` | QA／QC gate已關閉，但尚未取得使用者／PM對freeze、commit、merge、deploy或release的明確授權 |
+| Repository integration | `Merged to master` | final integration=`4e3b2ce`；merge=`c8cc16f`；deploy／release未要求 |
 
 **最小化原則**：本輪只修正共用互動邊界與文件判定一致性；不得因 native runner 限制新增第二輸入路徑、fallback、resolver、mutation owner、schema、API 或 dependency。
 
@@ -506,11 +508,11 @@ DEV-041候選allowlist僅限第15.1、15.2列出的產品／測試檔，加上�
 - Dirty overlap：`Known implementation hazard`，以hunk provenance處理，不阻擋RD開工；不得據此覆寫使用者變更。
 - Technical debt：`No hidden debt accepted`；完整keyboard UX明確留在第13節future capsule，不以暫時mouse handle、第二pair table或雙binding墊檔。若Current Phase無法保留既有keyboard baseline，依停止條件退回PM。
 - P0／P1 specification gap：`0`；implementation blocker：`0`（原 Duty lane→ProcessNode source effect capability mismatch 已由 shared policy correction 關閉）。
-- Verdict：`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Candidate Freeze Ready / Authorization Pending`。shared S0～S7 implementation、自動化 gate、四向 fresh native、兩個 owner canvas 四邊 auto-pan、zero-mutation revision guard、console sweep與fixture archive均已取得；使用者已接受noop／rejected在`dropEffect=none`時不要求Chromium派送terminal `drop`，並以terminal `dragend`、zero mutation、revision unchanged及session cleanup作為成功條件。產品程式與effect policy不變；未授權freeze、commit、merge、deploy或release。
+- Verdict：`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Merged to master`。shared S0～S7 implementation、自動化gate、四向fresh native、兩個owner canvas四邊auto-pan、zero-mutation revision guard、console sweep與fixture archive均已取得；使用者接受noop／rejected在`dropEffect=none`時不要求Chromium派送terminal `drop`。產品程式與effect policy不變；repository integration已完成，deploy／release未要求。
 
 ## 21. 執行邊界與下一步
 
-本輪已依第16節完成S0～S6與S7 automated implementation，並關閉第11.4節記錄的P1 effect capability blocker；修改僅落在第15節allowlist的產品、測試與文件檔；未修改schema、API、permission、dependency或fixture，不觸碰user-owned `localhost:5000`。四向 native、兩個 owner canvas 四邊 auto-pan、zero-mutation revision guard、console sweep及fixture cleanup aggregate已完成並索引於`output/playwright/dev041/F041-QA-QC-native-aggregate.json`。使用者已接受noop／rejected的Chromium原生行為，Browser native QA／QC=`Pass`；DEV-041已達`Candidate Freeze Ready / Authorization Pending`。下一步只有在取得明確授權後才能freeze或commit；merge、deploy與release仍各自受原有gate約束。若觸發第12節停止條件，回PM而非局部繞過。
+本輪已依第16節完成S0～S6與S7 automated implementation，並關閉第11.4節記錄的P1 effect capability blocker；四向native、兩個owner canvas四邊auto-pan、zero-mutation revision guard、console sweep及fixture cleanup aggregate已完成並索引於`output/playwright/dev041/F041-QA-QC-native-aggregate.json`。DEV-041已隨`4e3b2ce`／`c8cc16f`整合，無獨立開發、candidate、commit或merge下一步。若未來新增關係方向、改resolver／MIME／mutation owner或觸發第12節停止條件，另開DEV回PM；deploy／release另走共用gate。
 
 ## 22. 變更紀錄
 

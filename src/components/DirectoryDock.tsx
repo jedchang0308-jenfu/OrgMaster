@@ -191,6 +191,13 @@ export function DirectoryDock({
     else if (activeDirectory === 'duties') setDutyQuery(initialQuery)
   }, [activeDirectory, initialQuery])
 
+  useEffect(() => {
+    if (editingEnabled) return
+    setContextMenu(null)
+    setShowLevelAddForm(false)
+    setDraftLevelIds(null)
+  }, [editingEnabled])
+
   const employeeById = useMemo(
     () => new Map(employees.map((employee) => [employee.id, employee])),
     [employees],
@@ -321,6 +328,7 @@ export function DirectoryDock({
   }
 
   const openContextMenuAt = (kind: DirectoryKind, entityId: string | undefined, x: number, y: number) => {
+    if (!editingEnabled) return
     const menuWidth = 232
     const menuHeight = 286
     const margin = 8
@@ -335,6 +343,7 @@ export function DirectoryDock({
   const openContextMenuFromEvent = (kind: DirectoryKind, entityId: string | undefined, event: ReactMouseEvent<HTMLElement>) => {
     event.preventDefault()
     event.stopPropagation()
+    if (!editingEnabled) return
     openContextMenuAt(kind, entityId, event.clientX, event.clientY)
   }
 
@@ -342,6 +351,7 @@ export function DirectoryDock({
     if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return false
     event.preventDefault()
     event.stopPropagation()
+    if (!editingEnabled) return true
     const rect = event.currentTarget.getBoundingClientRect()
     openContextMenuAt(kind, entityId, rect.left + Math.min(rect.width, 160), rect.bottom)
     return true
@@ -549,9 +559,6 @@ export function DirectoryDock({
           addLabel="新增員工"
           onAdd={onAddEmployee}
           showAdd={editingEnabled}
-          searchLabel="搜尋員工"
-          query={employeeQuery}
-          onQueryChange={(query) => { setEmployeeQuery(query); onQueryChange?.(query) }}
            onCollapse={() => onActiveDirectoryChange(null)}
           onContextMenu={(event) => openContextMenuFromEvent('employees', undefined, event)}
         >
@@ -623,9 +630,6 @@ export function DirectoryDock({
           addLabel="新增職位"
           onAdd={onAddPosition}
           showAdd={editingEnabled}
-          searchLabel="搜尋職位"
-          query={positionQuery}
-          onQueryChange={(query) => { setPositionQuery(query); onQueryChange?.(query) }}
            onCollapse={() => onActiveDirectoryChange(null)}
           onContextMenu={(event) => openContextMenuFromEvent('positions', undefined, event)}
         >
@@ -774,7 +778,7 @@ export function DirectoryDock({
             {displayedLevels.map((level, index) => {
               return (
                 <article
-                  className="level-directory-row"
+                  className="directory-card directory-card--master level-directory-row"
                   key={level.id}
                   role="listitem"
                   tabIndex={0}
@@ -788,7 +792,7 @@ export function DirectoryDock({
                 >
                   <span className="level-directory-row__code">L{index + 1}</span>
                   <div className="level-directory-row__main">
-                    <input
+                    {editingEnabled ? <input
                       key={`${level.id}:${level.name}`}
                       ref={(element) => {
                         if (element) levelNameInputRefs.current.set(level.id, element)
@@ -812,7 +816,7 @@ export function DirectoryDock({
                           event.currentTarget.blur()
                         }
                       }}
-                    />
+                    /> : <span className="level-directory-row__readonly-name">{level.name}</span>}
                   </div>
                 </article>
               )
@@ -882,9 +886,9 @@ interface DirectoryPanelProps {
   count?: string
   addLabel: string
   onAdd: () => void
-  searchLabel: string
-  query: string
-  onQueryChange: (query: string) => void
+  searchLabel?: string
+  query?: string
+  onQueryChange?: (query: string) => void
   onCollapse: () => void
   onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void
   showAdd?: boolean
@@ -931,7 +935,7 @@ function DirectoryPanel({
     >
       <div className="directory-panel__header">
         <div>
-          <strong>{title}</strong>
+          <strong className="directory-panel__title">{title}</strong>
         </div>
         <div className="directory-panel__meta">
           {count && <span>{count}</span>}
@@ -948,8 +952,8 @@ function DirectoryPanel({
         <label className="directory-search">
           <Search size={14} aria-hidden="true" />
           <input
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
+            value={query ?? ''}
+            onChange={(event) => onQueryChange?.(event.target.value)}
             placeholder={searchLabel}
             aria-label={searchLabel}
           />

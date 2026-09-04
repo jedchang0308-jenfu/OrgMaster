@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import pg from 'pg'
 import { writeVerifiedAtomicFile } from './orgmasterFileStore'
+import { closeOrgmasterDatabase, createOrgmasterDatabase } from './orgmasterDatabase'
 
 export type OrgmasterPersistenceMode = 'local-json' | 'cloud-sql'
 export type PersistenceArtifactKind = 'workspace-manifest' | 'workspace-version' | 'governance' | 'management-methods'
@@ -42,9 +43,6 @@ export class OrgmasterPersistenceError extends Error {
   }
 }
 
-let runtimePool: pg.Pool | null = null
-let runtimePoolUrl = ''
-
 function sha256(value: string | Buffer) {
   return createHash('sha256').update(value).digest('hex')
 }
@@ -77,18 +75,7 @@ export function usesCloudSqlPersistence(environment: NodeJS.ProcessEnv = process
 function poolForRuntime(environment: NodeJS.ProcessEnv = process.env) {
   const url = environment.ORGMASTER_POSTGRES_URL?.trim()
   if (!url) throw new OrgmasterPersistenceError('PERSISTENCE_NOT_CONFIGURED')
-  if (runtimePool && runtimePoolUrl === url) return runtimePool
-  if (runtimePool) void runtimePool.end().catch(() => undefined)
-  runtimePool = new pg.Pool({
-    connectionString: url,
-    max: 5,
-    connectionTimeoutMillis: 5_000,
-    idleTimeoutMillis: 30_000,
-    statement_timeout: 30_000,
-    application_name: 'orgmaster-persistence-runtime',
-  })
-  runtimePoolUrl = url
-  return runtimePool
+  return createOrgmasterDatabase(url, environment)
 }
 
 function database(input?: Queryable) {
@@ -108,7 +95,7 @@ export async function persistenceArtifactExists(localPath: string, artifactKey: 
     try { await stat(localPath); return true } catch { return false }
   }
   try {
-    const result = await database(input).query('SELECT 1 FROM orgmaster.read_active_persistence_artifact_v1($1)', [artifactKey])
+    const result = await database(input).query('SELECT 1 FROM orgmaster_core.read_active_persistence_artifact_v1($1)', [artifactKey])
     return Boolean(result.rowCount)
   } catch (error) {
     throw mappedError(error, 'PERSISTENCE_READ_FAILED')
@@ -122,7 +109,7 @@ export async function readPersistenceArtifact(input: { localPath: string; artifa
   }
   try {
     const result = await database(input.database).query(`SELECT artifact_key, artifact_kind, payload, canonical_sha256, source_revision
-      FROM orgmaster.read_active_persistence_artifact_v1($1)`, [input.artifactKey])
+      FROM orgmaster_core.read_active_persistence_artifact_v1($1)`, [input.artifactKey])
     if (result.rowCount !== 1) throw new OrgmasterPersistenceError('PERSISTENCE_ARTIFACT_NOT_FOUND')
     const row = result.rows[0]
     if (row.artifact_kind !== input.artifactKind) throw new OrgmasterPersistenceError('PERSISTENCE_READ_FAILED')
@@ -156,7 +143,7 @@ export async function writePersistenceArtifacts(changes: PersistenceArtifactWrit
     sourceBytes: Buffer.byteLength(change.raw),
   })).sort((left, right) => left.artifactKey.localeCompare(right.artifactKey))
   try {
-    const authority = await database(input?.database).query('SELECT source_revision FROM orgmaster.read_active_persistence_authority_v1()')
+    const authority = await database(input?.database).query('SELECT source_revision FROM orgmaster_core.read_active_persistence_authority_v1()')
     if (authority.rowCount !== 1) throw new OrgmasterPersistenceError('PERSISTENCE_READ_FAILED')
     const sourceRevision = sha256(canonicalJson({ previousSourceRevision: String(authority.rows[0].source_revision).trim(), changes: prepared.map(({ payload: _payload, ...metadata }) => metadata) }))
     const updatedBy = input?.updatedBy?.trim() || 'orgmaster-runtime'
@@ -164,11 +151,11 @@ export async function writePersistenceArtifacts(changes: PersistenceArtifactWrit
     const entitlementChanges = input?.entitlementChanges ?? []
     const result = entitlementChanges.length
       ? await database(input?.database).query(`SELECT authority_version, source_revision, outbox_count
-          FROM orgmaster.write_active_persistence_artifacts_with_entitlement_outbox_v1($1::jsonb, $2, $3, $4, $5::jsonb)`, [
+          FROM orgmaster_core.write_active_persistence_artifacts_with_entitlement_outbox_v1($1::jsonb, $2, $3, $4, $5::jsonb)`, [
           JSON.stringify(prepared), sourceRevision, updatedBy, reasonCode, JSON.stringify(entitlementChanges),
         ])
       : await database(input?.database).query(`SELECT authority_version, source_revision, NULL::integer AS outbox_count
-          FROM orgmaster.write_active_persistence_artifacts_v1($1::jsonb, $2, $3, $4)`, [
+          FROM orgmaster_core.write_active_persistence_artifacts_v1($1::jsonb, $2, $3, $4)`, [
           JSON.stringify(prepared), sourceRevision, updatedBy, reasonCode,
         ])
     if (result.rowCount !== 1) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
@@ -185,7 +172,7 @@ export async function writePersistenceArtifacts(changes: PersistenceArtifactWrit
 
 export async function writePersistenceMedia(input: { mediaKey: string; bytes: Buffer; mimeType: string; database?: Queryable }) {
   try {
-    await database(input.database).query('SELECT orgmaster.write_persistence_media_v1($1, $2, $3, $4)', [input.mediaKey, input.bytes, input.mimeType, sha256(input.bytes)])
+    await database(input.database).query('SELECT orgmaster_core.write_persistence_media_v1($1, $2, $3, $4)', [input.mediaKey, input.bytes, input.mimeType, sha256(input.bytes)])
   } catch (error) {
     throw mappedError(error, 'PERSISTENCE_WRITE_FAILED')
   }
@@ -193,7 +180,7 @@ export async function writePersistenceMedia(input: { mediaKey: string; bytes: Bu
 
 export async function readPersistenceMedia(input: { mediaKey: string; database?: Queryable }) {
   try {
-    const result = await database(input.database).query('SELECT media_bytes, mime_type, content_sha256 FROM orgmaster.read_persistence_media_v1($1)', [input.mediaKey])
+    const result = await database(input.database).query('SELECT media_bytes, mime_type, content_sha256 FROM orgmaster_core.read_persistence_media_v1($1)', [input.mediaKey])
     if (result.rowCount !== 1) throw new OrgmasterPersistenceError('PERSISTENCE_MEDIA_NOT_FOUND')
     return { bytes: Buffer.from(result.rows[0].media_bytes), mimeType: String(result.rows[0].mime_type), contentSha256: String(result.rows[0].content_sha256).trim() }
   } catch (error) {
@@ -203,14 +190,12 @@ export async function readPersistenceMedia(input: { mediaKey: string; database?:
 
 export async function removePersistenceMedia(input: { mediaKey: string; database?: Queryable }) {
   try {
-    await database(input.database).query('SELECT orgmaster.delete_persistence_media_v1($1)', [input.mediaKey])
+    await database(input.database).query('SELECT orgmaster_core.delete_persistence_media_v1($1)', [input.mediaKey])
   } catch (error) {
     throw mappedError(error, 'PERSISTENCE_WRITE_FAILED')
   }
 }
 
 export async function closeOrgmasterPersistencePool() {
-  await runtimePool?.end()
-  runtimePool = null
-  runtimePoolUrl = ''
+  await closeOrgmasterDatabase()
 }

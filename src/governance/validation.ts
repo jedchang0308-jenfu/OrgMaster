@@ -1,5 +1,7 @@
 import { validateExternalRoleCatalog } from './aiPdmCatalog'
-import type { ExternalRoleCatalogSnapshotV1, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceOrgSource, GovernancePolicyDataV1, GovernancePolicyDataV2, GovernancePolicyVersionV1, GovernanceRoleAssignmentV2, GovernanceRoleDelegationV2, GovernanceScopeV1 } from './types'
+import { validateFinancialExternalRoleCatalog } from './financialCatalog'
+import { classifyAssignmentSurface, genericV2AssignmentSurfaceIssue, isSystemAdminRoleIdentity } from './assignmentSurface'
+import type { ExternalRoleCatalogSnapshotV1, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV1, GovernancePolicyDataV2, GovernancePolicyDataV3, GovernancePolicyVersionV1, GovernanceRoleAssignmentV2, GovernanceRoleDelegationV2, GovernanceScopeV1 } from './types'
 import { isSha256, issuerFingerprintSha256, principalFingerprintSha256 } from './identityAdmission'
 
 export type GovernanceValidationIssue = { code: string; path: string; message: string }
@@ -34,13 +36,14 @@ export function validatePolicyData(data: GovernancePolicyDataV1, source?: Govern
   const employeeIds = new Set(source?.state.employees.map((v) => v.id) ?? [])
   const roleIds = new Set(data.applicationRoles.map((v) => v.id)); const permissionIds = new Set(data.permissions.map((v) => v.id))
   const orgRoleIds = new Set(source?.state.roles.map((v) => v.id) ?? [])
-  const identityKeys = new Set<string>(); const identityEmployees = new Set<string>()
+  const identityKeys = new Set<string>(); const identityPrincipals = new Set<string>()
   data.identityLinks.forEach((link, index) => {
     if (!link.issuer?.trim() || link.issuer.length > 255 || !link.subject?.trim() || link.subject.length > 255) issue('IDENTITY_INVALID', `identityLinks[${index}]`, 'issuer／subject 必須為 1–255 字元')
+    if (!link.principalId?.trim() || link.principalId.length > 255) issue('IDENTITY_INVALID', `identityLinks[${index}].principalId`, 'principalId 必須為 1–255 字元')
     if (source && !employeeIds.has(link.employeeId)) issue('EMPLOYEE_NOT_FOUND', `identityLinks[${index}].employeeId`, 'employee 不存在')
     if (link.status === 'active') {
       const key = `${link.issuer}\0${link.subject}`; if (identityKeys.has(key)) issue('IDENTITY_CONFLICT', `identityLinks[${index}]`, 'active issuer + subject 重複'); identityKeys.add(key)
-      const employeeKey = `${link.issuer}\0${link.employeeId}`; if (identityEmployees.has(employeeKey)) issue('IDENTITY_CONFLICT', `identityLinks[${index}]`, 'active issuer + employee 重複'); identityEmployees.add(employeeKey)
+      if (identityPrincipals.has(link.principalId)) issue('IDENTITY_CONFLICT', `identityLinks[${index}]`, 'active principalId 重複'); identityPrincipals.add(link.principalId)
     }
     if (!iso(link.validFrom) || (link.validTo !== null && !iso(link.validTo)) || (link.validTo !== null && Date.parse(link.validFrom) >= Date.parse(link.validTo))) issue('EFFECTIVE_PERIOD_INVALID', `identityLinks[${index}]`, '有效期間無效')
   })
@@ -68,6 +71,13 @@ export function buildOrganizationSnapshot(source: GovernanceOrgSource, capturedA
 }
 export function isActiveAt(status: string, from: string, to: string | null, at: string) { return status === 'active' && iso(from) && inWindow(from, to, at) }
 
+export function validateGenericV2AssignmentSurface(assignment: GovernanceRoleAssignmentV2, catalog?: ExternalRoleCatalogSnapshotV1): GovernanceValidationIssue[] {
+  if (assignment.applicationId !== 'ai-pdm') return []
+  const catalogRole = catalog?.roles.find((entry) => entry.stableRoleId === assignment.roleId)
+  const issue = genericV2AssignmentSurfaceIssue('ai-pdm', { stableRoleId: assignment.roleId, code: assignment.roleCodeSnapshot }, catalogRole)
+  return issue ? [{ code: issue, path: 'roleAssignments', message: issue === 'PRIVILEGED_ASSIGNMENT_SURFACE_REQUIRED' ? '特權角色必須使用專用治理介面' : 'catalog role policy 不完整或矛盾' }] : []
+}
+
 export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: GovernanceOrgSource, catalogs: ExternalRoleCatalogSnapshotV1[] = [], at = new Date().toISOString()): GovernanceValidationIssue[] {
   const issues: GovernanceValidationIssue[] = []
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
@@ -93,16 +103,40 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
   for (const [index, role] of data.applicationRoles.entries()) { if (role.applicationId !== 'orgmaster') add('EXTERNAL_CATALOG_READ_ONLY', `applicationRoles[${index}]`, '外部 application role 只能由外部系統定義'); if (!appIds.has(role.applicationId)) add('APPLICATION_NOT_FOUND', `applicationRoles[${index}]`, 'application 不存在') }
   for (const [index, permission] of data.permissions.entries()) { if (permission.applicationId !== 'orgmaster') add('EXTERNAL_CATALOG_READ_ONLY', `permissions[${index}]`, '外部 permission 只能由外部系統定義'); if (!appIds.has(permission.applicationId)) add('APPLICATION_NOT_FOUND', `permissions[${index}]`, 'application 不存在') }
   for (const [index, grant] of data.rolePermissionGrants.entries()) { const role = roles.get(grant.roleId); const permission = permissions.get(grant.permissionId); if (!role || !permission) add('REFERENCE_NOT_FOUND', `rolePermissionGrants[${index}]`, 'role／permission 不存在'); else if (role.applicationId !== 'orgmaster' || permission.applicationId !== 'orgmaster') add('EXTERNAL_CATALOG_READ_ONLY', `rolePermissionGrants[${index}]`, '外部 role permission mapping 只讀') }
-  for (const [index, link] of data.identityLinks.entries()) { if (source && !employeeIds.has(link.employeeId)) add('EMPLOYEE_NOT_FOUND', `identityLinks[${index}].employeeId`, 'employee 不存在'); if (!iso(link.validFrom) || (link.validTo !== null && !iso(link.validTo)) || (link.validTo !== null && Date.parse(link.validFrom) >= Date.parse(link.validTo))) add('EFFECTIVE_PERIOD_INVALID', `identityLinks[${index}]`, '有效期間無效') }
+  const activeIdentityKeys = new Set<string>()
+  const activePrincipalIds = new Set<string>()
+  for (const [index, link] of data.identityLinks.entries()) {
+    if (!link.issuer?.trim() || link.issuer.length > 255 || !link.subject?.trim() || link.subject.length > 255 || !link.principalId?.trim() || link.principalId.length > 255) add('IDENTITY_INVALID', `identityLinks[${index}]`, 'principalId／issuer／subject 必須為 1–255 字元')
+    if (source && !employeeIds.has(link.employeeId)) add('EMPLOYEE_NOT_FOUND', `identityLinks[${index}].employeeId`, 'employee 不存在')
+    if (link.status === 'active') {
+      const identityKey = `${link.issuer}\0${link.subject}`
+      if (activeIdentityKeys.has(identityKey)) add('IDENTITY_CONFLICT', `identityLinks[${index}]`, 'active issuer + subject 重複')
+      activeIdentityKeys.add(identityKey)
+      if (activePrincipalIds.has(link.principalId)) add('IDENTITY_CONFLICT', `identityLinks[${index}]`, 'active principalId 重複')
+      activePrincipalIds.add(link.principalId)
+    }
+    if (!iso(link.validFrom) || (link.validTo !== null && !iso(link.validTo)) || (link.validTo !== null && Date.parse(link.validFrom) >= Date.parse(link.validTo))) add('EFFECTIVE_PERIOD_INVALID', `identityLinks[${index}]`, '有效期間無效')
+  }
   const activeAssignments = new Map<string, GovernanceRoleAssignmentV2>()
   for (const [index, assignment] of data.roleAssignments.entries()) {
-    const role = roles.get(assignment.roleId); const catalog = assignment.applicationId === 'ai-pdm' ? catalogByApp.get('ai-pdm') : undefined; const catalogRole = catalog?.roles.find((entry) => entry.stableRoleId === assignment.roleId)
+    const role = roles.get(assignment.roleId); const catalog = assignment.applicationId === 'ai-pdm' || assignment.applicationId === 'financial-management-system' ? catalogByApp.get(assignment.applicationId) : undefined; const catalogRole = catalog?.roles.find((entry) => entry.stableRoleId === assignment.roleId)
     if (source && !employeeIds.has(assignment.employeeId)) add('EMPLOYEE_NOT_FOUND', `roleAssignments[${index}].employeeId`, 'employee 不存在')
     if (!role && assignment.applicationId === 'orgmaster') add('REFERENCE_NOT_FOUND', `roleAssignments[${index}].roleId`, 'OrgMaster role 不存在')
     if (!isScopeValid(assignment.scope)) add('SCOPE_INVALID', `roleAssignments[${index}].scope`, 'scope 無效')
     if (!iso(assignment.validFrom) || (assignment.validTo !== null && !iso(assignment.validTo)) || (assignment.validTo !== null && Date.parse(assignment.validFrom) >= Date.parse(assignment.validTo))) add('EFFECTIVE_PERIOD_INVALID', `roleAssignments[${index}]`, '有效期間無效')
     if (assignment.applicationId === 'orgmaster') { if (!role || role.applicationId !== 'orgmaster' || assignment.catalogVersion !== null || assignment.effectState !== 'orgmaster-enforced' || assignment.roleCodeSnapshot !== role.code || assignment.roleNameSnapshot !== role.name) add('INTERNAL_ASSIGNMENT_INVALID', `roleAssignments[${index}]`, 'OrgMaster assignment snapshot 無效') }
-    if (assignment.applicationId === 'ai-pdm') { if (!catalog || validateExternalRoleCatalog(catalog).length) add('EXTERNAL_CATALOG_INVALID', `roleAssignments[${index}]`, '外部 catalog 無效'); if (!catalogRole) add('EXTERNAL_ROLE_UNKNOWN', `roleAssignments[${index}].roleId`, '外部 role 不存在'); else { if (catalogRole.status !== 'active') add('EXTERNAL_ROLE_INACTIVE', `roleAssignments[${index}].roleId`, '外部 role 已停用'); if (!catalogRole.assignable) add('EXTERNAL_ROLE_UNASSIGNABLE', `roleAssignments[${index}].roleId`, '外部 role 不可指派'); if (!catalogRole.allowedScopeKinds.includes(assignment.scope.kind)) add('EXTERNAL_SCOPE_UNSUPPORTED', `roleAssignments[${index}].scope`, '外部 role 不允許此 scope'); if (assignment.catalogVersion !== catalog?.catalogVersion || assignment.effectState !== 'not-synchronized' || assignment.roleCodeSnapshot !== catalogRole.code || assignment.roleNameSnapshot !== catalogRole.displayName) add('EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID', `roleAssignments[${index}]`, '外部 role snapshot 與 catalog 不一致') } }
+    if (assignment.applicationId === 'ai-pdm' || assignment.applicationId === 'financial-management-system') {
+      if (!catalog || (assignment.applicationId === 'financial-management-system' ? validateFinancialExternalRoleCatalog(catalog) : validateExternalRoleCatalog(catalog)).length) add('EXTERNAL_CATALOG_INVALID', `roleAssignments[${index}]`, '外部 catalog 無效')
+      if (!catalogRole) add('EXTERNAL_ROLE_UNKNOWN', `roleAssignments[${index}].roleId`, '外部 role 不存在')
+      else {
+        const surfaceIssue = genericV2AssignmentSurfaceIssue(assignment.applicationId, { stableRoleId: assignment.roleId, code: assignment.roleCodeSnapshot }, catalogRole)
+        if (surfaceIssue) add(surfaceIssue, `roleAssignments[${index}]`, surfaceIssue === 'PRIVILEGED_ASSIGNMENT_SURFACE_REQUIRED' ? '特權角色必須使用專用治理介面' : 'catalog role policy 不完整或矛盾')
+        if (catalogRole.status !== 'active') add('EXTERNAL_ROLE_INACTIVE', `roleAssignments[${index}].roleId`, '外部 role 已停用')
+        if (!catalogRole.assignable) add('EXTERNAL_ROLE_UNASSIGNABLE', `roleAssignments[${index}].roleId`, '外部 role 不可指派')
+        if (!catalogRole.allowedScopeKinds.includes(assignment.scope.kind)) add('EXTERNAL_SCOPE_UNSUPPORTED', `roleAssignments[${index}].scope`, '外部 role 不允許此 scope')
+        if (assignment.catalogVersion !== catalog?.catalogVersion || assignment.effectState !== 'not-synchronized' || assignment.roleCodeSnapshot !== catalogRole.code || assignment.roleNameSnapshot !== catalogRole.displayName) add('EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID', `roleAssignments[${index}]`, '外部 role snapshot 與 catalog 不一致')
+      }
+    }
     if (assignment.status === 'active') { const key = `${assignment.employeeId}|${assignment.applicationId}|${assignment.roleId}|${scopeKey(assignment.scope)}`; if (activeAssignments.has(key)) add('DUPLICATE_ACTIVE_ASSIGNMENT', `roleAssignments[${index}]`, '同一員工／角色／scope 只能有一筆 active assignment'); activeAssignments.set(key, assignment) }
   }
   for (const [index, delegation] of data.roleDelegations.entries()) {
@@ -111,6 +145,11 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
     if (delegation.fromEmployeeId === delegation.toEmployeeId) add('DELEGATION_SELF', `roleDelegations[${index}]`, '代理人不可與來源相同')
     if (source && (!employeeIds.has(delegation.fromEmployeeId) || !employeeIds.has(delegation.toEmployeeId))) add('EMPLOYEE_NOT_FOUND', `roleDelegations[${index}]`, 'employee 不存在')
     if (!catalog || !catalogRole || delegation.catalogVersion !== catalog.catalogVersion) add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}]`, '代理 catalog role 無效')
+    if (catalogRole) {
+      const surfaceIssue = genericV2AssignmentSurfaceIssue('ai-pdm', { stableRoleId: delegation.roleId, code: catalogRole.code }, catalogRole)
+      if (surfaceIssue) add(surfaceIssue, `roleDelegations[${index}]`, surfaceIssue === 'PRIVILEGED_ASSIGNMENT_SURFACE_REQUIRED' ? '特權角色不得使用一般代理路徑' : 'catalog role policy 不完整或矛盾')
+      if (catalogRole.delegationAllowed !== true) add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}]`, '外部 role 不允許代理')
+    }
     if (delegateSource && (delegation.fromEmployeeId !== delegateSource.employeeId || delegation.applicationId !== delegateSource.applicationId || delegation.roleId !== delegateSource.roleId || delegation.catalogVersion !== delegateSource.catalogVersion || scopeKey(delegation.scope) !== scopeKey(delegateSource.scope) || delegation.effectState !== 'not-synchronized')) add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}]`, '代理必須完整繼承來源 assignment')
     if (!iso(delegation.validFrom) || !iso(delegation.validTo) || Date.parse(delegation.validFrom) >= Date.parse(delegation.validTo) || (delegateSource && (Date.parse(delegation.validFrom) < Date.parse(delegateSource.validFrom) || (delegateSource.validTo !== null && Date.parse(delegation.validTo) > Date.parse(delegateSource.validTo))))) add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}]`, '代理期間不可超出來源 assignment')
   }
@@ -122,5 +161,62 @@ export function validateDocumentV2(document: GovernanceDocumentV2, source?: Gove
   if (document.app !== 'OrgMaster' || document.schemaVersion !== 2) issues.push({ code: 'SCHEMA_UNSUPPORTED', path: '', message: 'schemaVersion 必須為 2' })
   if (document.activePolicyVersionId && !document.publishedVersions.some((version) => version.id === document.activePolicyVersionId)) issues.push({ code: 'ACTIVE_VERSION_NOT_FOUND', path: 'activePolicyVersionId', message: 'active version 不存在' })
   for (const catalog of catalogs) issues.push(...validateExternalRoleCatalog(catalog))
+  return issues
+}
+
+export function validatePolicyDataV3(data: GovernancePolicyDataV3, source?: GovernanceOrgSource, catalogs: ExternalRoleCatalogSnapshotV1[] = [], at = new Date().toISOString()): GovernanceValidationIssue[] {
+  const ordinaryAssignments: GovernanceRoleAssignmentV2[] = data.roleAssignments
+    .filter((assignment) => !isSystemAdminRoleIdentity({ stableRoleId: assignment.roleId, code: assignment.roleCodeSnapshot }))
+    .map(({ basis: _basis, subjectKind: _subjectKind, targetPrincipalId: _targetPrincipalId, sources: _sources, metadata: _metadata, createdByPrincipalId: _createdByPrincipalId, createdReason: _createdReason, ...assignment }) => assignment)
+  const issues = validatePolicyDataV2({ ...data, roleAssignments: ordinaryAssignments }, source, catalogs, at)
+  const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
+  const catalog = catalogs.find((value) => value.applicationId === 'ai-pdm')
+  const admissions = data.principalAdmissions ?? []
+  const links = new Map(data.identityLinks.map((link) => [link.id, link]))
+  const activeKeys = new Set<string>()
+
+  for (const [index, assignment] of data.roleAssignments.entries()) {
+    const path = `roleAssignments[${index}]`
+    const isSystemAdmin = isSystemAdminRoleIdentity({ stableRoleId: assignment.roleId, code: assignment.roleCodeSnapshot })
+    if (assignment.basis === 'manual' && assignment.sources.length) add('ASSIGNMENT_SOURCE_INVALID', `${path}.sources`, 'manual assignment 不得含Position source')
+    if (assignment.basis === 'position_adoption' && !assignment.sources.length) add('ASSIGNMENT_SOURCE_INVALID', `${path}.sources`, 'position adoption assignment 必須至少有一個source')
+    if (!isSystemAdmin && (assignment.subjectKind !== 'employee' || assignment.targetPrincipalId !== null)) add('ASSIGNMENT_SUBJECT_INVALID', path, '一般角色必須以Employee為subject')
+    if (!isSystemAdmin) continue
+
+    const role = catalog?.roles.find((value) => value.stableRoleId === assignment.roleId)
+    if (!role || classifyAssignmentSurface('ai-pdm', role) !== 'privileged_system_admin') add('CATALOG_ROLE_CONTRACT_MISMATCH', path, 'system_admin catalog policy不完整或矛盾')
+    if (assignment.applicationId !== 'ai-pdm' || assignment.roleId !== 'role-system-admin' || assignment.roleCodeSnapshot !== 'system_admin'
+      || assignment.basis !== 'manual' || assignment.subjectKind !== 'principal' || !assignment.targetPrincipalId
+      || assignment.scope.kind !== 'global' || assignment.sources.length || assignment.validTo !== null
+      || assignment.catalogVersion !== catalog?.catalogVersion || assignment.effectState !== 'not-synchronized') {
+      add('PRIVILEGED_ASSIGNMENT_INVALID', path, 'system_admin只允許server-derived principal-scoped V3 assignment')
+    }
+    const matchingAdmissions = admissions.filter((admission) => {
+      const link = admission.identityLinkId ? links.get(admission.identityLinkId) : undefined
+      return admission.accountType === 'human_privileged' && admission.status === 'active' && link?.principalId === assignment.targetPrincipalId
+        && link.employeeId === assignment.employeeId && isActiveAt(link.status, link.validFrom, link.validTo, at)
+    })
+    if (matchingAdmissions.length !== 1) add('PRIVILEGED_PRINCIPAL_REQUIRED', `${path}.targetPrincipalId`, 'target必須唯一解析到同Employee的active human_privileged admission')
+    if (assignment.status === 'active') {
+      const key = `${assignment.targetPrincipalId}|${assignment.applicationId}|${assignment.roleId}|global`
+      if (activeKeys.has(key)) add('DUPLICATE_ACTIVE_ASSIGNMENT', path, '同一exact principal／role／scope只能有一筆active assignment')
+      activeKeys.add(key)
+    }
+  }
+
+  for (const [index, grant] of data.managementGrants.entries()) {
+    const link = data.identityLinks.find((value) => value.principalId === grant.principalId && value.employeeId === grant.employeeId)
+    const admission = admissions.find((value) => value.identityLinkId === link?.id && value.status === 'active')
+    if (!link || !admission || !isActiveAt(link.status, link.validFrom, link.validTo, at)) add('MANAGEMENT_GRANT_PRINCIPAL_INVALID', `managementGrants[${index}]`, 'management grant必須指向active admitted principal')
+    if (grant.capability === 'orgmaster.cross_app_override' && admission?.accountType !== 'human_privileged') add('PRIVILEGED_OVERRIDE_PRINCIPAL_INVALID', `managementGrants[${index}]`, 'cross-app override只允許human_privileged principal')
+  }
+  return issues
+}
+
+export function validateDocumentV3(document: GovernanceDocumentV3, source?: GovernanceOrgSource, catalogs: ExternalRoleCatalogSnapshotV1[] = []): GovernanceValidationIssue[] {
+  const issues = validatePolicyDataV3(document.draft, source, catalogs)
+  if (document.app !== 'OrgMaster' || document.schemaVersion !== 3) issues.push({ code: 'SCHEMA_UNSUPPORTED', path: '', message: 'schemaVersion 必須為 3' })
+  if (document.activePolicyVersionId && !document.publishedVersions.some((version) => version.id === document.activePolicyVersionId && version.kind === 'assignment-governance-v3')) issues.push({ code: 'ACTIVE_VERSION_NOT_FOUND', path: 'activePolicyVersionId', message: 'active version 必須是V3' })
+  for (const catalog of catalogs) issues.push(...(catalog.applicationId === 'financial-management-system' ? validateFinancialExternalRoleCatalog(catalog) : validateExternalRoleCatalog(catalog)))
   return issues
 }

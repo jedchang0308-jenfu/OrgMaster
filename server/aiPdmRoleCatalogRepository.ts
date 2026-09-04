@@ -4,8 +4,8 @@ import { resolve } from 'node:path'
 
 export const JENFU_ENTITLEMENT_CONTRACT_VERSION = 'jenfu.platform-entitlement.v1' as const
 export const AI_PDM_APPLICATION_ID = 'ai-pdm' as const
-export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-02.v2' as const
-export const AI_PDM_ROLE_CATALOG_SHA256 = 'ebdaa2960960e0683b480c721d2c27df59031b4af23b124f2ac7e882309f6b6e' as const
+export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-03.v3' as const
+export const AI_PDM_ROLE_CATALOG_SHA256 = '46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8' as const
 
 export type PublishedAiPdmRole = {
   stableRoleId: string
@@ -89,7 +89,7 @@ function validateCatalog(catalog: PublishedAiPdmRoleCatalog) {
     if (!nonBlank(role.stableRoleId) || !nonBlank(role.roleCode) || stableIds.has(role.stableRoleId) || roleCodes.has(role.roleCode) || !isSha256(role.roleDefinitionHash) || role.roleDefinitionHash !== sha256(canonicalRole(role))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
     stableIds.add(role.stableRoleId)
     roleCodes.add(role.roleCode)
-    if (role.roleCode === 'system_admin' && (role.subjectKind !== 'principal' || role.recommendationAllowed || role.delegationAllowed || JSON.stringify(role.allowedScopeKinds) !== JSON.stringify(['global']))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
+    if (role.roleCode === 'system_admin' && (role.stableRoleId !== 'role-system-admin' || role.assignable !== true || role.risk !== 'critical' || role.subjectKind !== 'principal' || role.assignmentTier !== 'cross_app_override' || role.recommendationAllowed || role.delegationAllowed || JSON.stringify(role.allowedScopeKinds) !== JSON.stringify(['global']))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
     if (role.roleCode === 'external_specialist' && (role.subjectKind !== 'employee' || role.recommendationAllowed || role.delegationAllowed || JSON.stringify(role.allowedScopeKinds) !== JSON.stringify(['project']))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
   }
   return catalog

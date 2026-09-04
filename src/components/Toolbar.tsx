@@ -1,10 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   GitFork,
   Search,
-  ShieldAlert,
-  ShieldCheck,
-  BookOpenText,
 } from 'lucide-react'
 import { DocumentMenu } from './DocumentMenu'
 import type { OrgDocumentKind } from '../documentStorage'
@@ -14,20 +11,12 @@ import type { OrgWorkspaceVersionSummary, WorkspaceMode } from '../versionWorksp
 import { VersionSwitcher } from './VersionSwitcher'
 
 interface ToolbarProps {
-  workspaceLauncher?: ReactNode
   members: PositionView[]
   employees: Employee[]
   departments: Department[]
   organizationLevels: OrganizationLevel[]
   searchFocusToken: number
   onSearchSelect: (id: string) => void
-  roleRiskSettingsOpen: boolean
-  onOpenRoleRiskSettings: () => void
-  governanceOpen: boolean
-  onOpenGovernance: () => void
-  onOpenManagementMethods: () => void
-  onOpenProcessPlanning?: () => void
-  governanceButtonRef: RefObject<HTMLButtonElement | null>
   isDirty: boolean
   savedAt: string | null
   persistenceKind: OrgDocumentKind | null
@@ -36,29 +25,23 @@ interface ToolbarProps {
   onSave: () => void
   onSaveCopy: () => void
   onBackup: () => void
+  workspaceMutationAllowed?: boolean
   versions: OrgWorkspaceVersionSummary[]
   activeVersionId: string | null
   workspaceMode: WorkspaceMode
   onSelectVersion: (versionId: string) => void
   onOpenWorkspace: () => void
   onToggleCurrentMaintenance: () => void
+  versionMutationAllowed?: boolean
 }
 
 export function Toolbar({
-  workspaceLauncher,
   members,
   employees,
   departments,
   organizationLevels,
   searchFocusToken,
   onSearchSelect,
-  roleRiskSettingsOpen,
-  onOpenRoleRiskSettings,
-  governanceOpen,
-  onOpenGovernance,
-  onOpenManagementMethods,
-  onOpenProcessPlanning,
-  governanceButtonRef,
   isDirty,
   savedAt,
   persistenceKind,
@@ -67,18 +50,18 @@ export function Toolbar({
   onSave,
   onSaveCopy,
   onBackup,
+  workspaceMutationAllowed = true,
   versions,
   activeVersionId,
   workspaceMode,
   onSelectVersion,
   onOpenWorkspace,
   onToggleCurrentMaintenance,
+  versionMutationAllowed = true,
 }: ToolbarProps) {
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
-  const roleRiskButtonRef = useRef<HTMLButtonElement>(null)
-  const previousRoleRiskSettingsOpen = useRef(false)
   const employeeById = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees])
 
   useEffect(() => {
@@ -87,11 +70,6 @@ export function Toolbar({
       setSearchOpen(true)
     }
   }, [searchFocusToken])
-
-  useEffect(() => {
-    if (previousRoleRiskSettingsOpen.current && !roleRiskSettingsOpen) roleRiskButtonRef.current?.focus()
-    previousRoleRiskSettingsOpen.current = roleRiskSettingsOpen
-  }, [roleRiskSettingsOpen])
 
   const results = useMemo(() => {
     const keyword = query.trim().toLocaleLowerCase('zh-Hant')
@@ -128,7 +106,6 @@ export function Toolbar({
       </div>
 
       <div className="topbar__right">
-        {workspaceLauncher}
         <VersionSwitcher
           versions={versions}
           activeVersionId={activeVersionId}
@@ -136,6 +113,7 @@ export function Toolbar({
           onSelect={onSelectVersion}
           onOpenWorkspace={onOpenWorkspace}
           onToggleCurrentMaintenance={onToggleCurrentMaintenance}
+          mutationAllowed={versionMutationAllowed}
         />
         <DocumentMenu
           isDirty={isDirty}
@@ -143,6 +121,7 @@ export function Toolbar({
           persistenceKind={persistenceKind}
           autoSavePending={autoSavePending}
           autoSaveError={autoSaveError}
+          mutationAllowed={workspaceMutationAllowed}
           onSave={onSave}
           onSaveCopy={onSaveCopy}
           onBackup={onBackup}
@@ -195,24 +174,6 @@ export function Toolbar({
             </div>
           )}
         </div>
-        {!workspaceLauncher && <button
-          ref={roleRiskButtonRef}
-          type="button"
-          className="icon-button"
-          onClick={onOpenRoleRiskSettings}
-          aria-label="兼任風險設定"
-          aria-pressed={roleRiskSettingsOpen}
-          title="兼任風險設定"
-        >
-          <ShieldAlert size={18} />
-        </button>}
-        {!workspaceLauncher && <button ref={governanceButtonRef} type="button" className="icon-button" onClick={onOpenGovernance} aria-label="角色指派治理" aria-pressed={governanceOpen} title="角色指派治理">
-          <ShieldCheck size={18} />
-        </button>}
-        {!workspaceLauncher && <button type="button" className="icon-button" onClick={onOpenManagementMethods} aria-label="管理辦法" title="管理辦法">
-          <BookOpenText size={18} />
-        </button>}
-        {!workspaceLauncher && onOpenProcessPlanning && <button type="button" className="icon-button" onClick={onOpenProcessPlanning} aria-label="流程規劃" title="流程規劃"><GitFork size={18} /></button>}
       </div>
     </header>
   )

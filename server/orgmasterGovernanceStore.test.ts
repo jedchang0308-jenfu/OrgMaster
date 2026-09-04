@@ -16,19 +16,19 @@ describe('governance store', () => {
     policy.rolePermissionGrants.push({ id: 'deny-manage', roleId: 'role-orgmaster-admin', permissionId: 'permission-orgmaster-governance-manage', effect: 'deny' })
     expect(actorHasPolicyPermission(policy, actor, 'orgmaster.governance.manage', '2026-08-26T00:00:00.000Z')).toBe(false)
   })
-  it('migrates a legacy V1 file into V2 without changing the V1 source', async () => {
+  it('migrates a legacy V1 file through V2 into the single current V3 artifact without changing the V1 source', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev037-migration-'))
     const legacy = createSeedDocument()
     const legacyRaw = `${JSON.stringify(legacy)}\n`
     await mkdir(join(root, 'data'), { recursive: true })
     await writeFile(getGovernancePaths(root).legacyV1, legacyRaw)
     const result = await ensureGovernanceStore(root)
-    expect(result.document.schemaVersion).toBe(2)
-    expect(result.document.migration.sourceSchemaVersion).toBe(1)
-    expect(result.document.auditEvents.at(-1)?.action).toBe('GOVERNANCE_MIGRATED_V1_TO_V2')
+    expect(result.document.schemaVersion).toBe(3)
+    expect(result.document.migration.sourceSchemaVersion).toBe(2)
+    expect(result.document.auditEvents.map((event) => event.action)).toEqual(expect.arrayContaining(['GOVERNANCE_MIGRATED_V1_TO_V2', 'GOVERNANCE_MIGRATED_V2_TO_V3']))
     expect(await readFile(getGovernancePaths(root).legacyV1, 'utf8')).toBe(legacyRaw)
   })
-  it('supports V2 assignment command idempotency and non-persisting candidate validation', async () => {
+  it('adapts ordinary V2 commands into V3 without downcasting current state', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev037-command-'))
     const initial = await ensureGovernanceStore(root)
     const catalog = readAiPdmRoleCatalog('valid'); const role = catalog.roles.find((entry) => entry.stableRoleId === 'role-rd')!
@@ -43,6 +43,8 @@ describe('governance store', () => {
     expect(candidate.status).toBe('invalid')
     expect(candidate.issues.some((issue) => issue.code === 'EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID')).toBe(true)
     const persisted = await readGovernanceStore(root)
+    expect(persisted.document.schemaVersion).toBe(3)
+    expect(persisted.document.draft.roleAssignments[0]).toMatchObject({ basis: 'manual', subjectKind: 'employee', targetPrincipalId: null })
     expect(persisted.document.draft.roleAssignments).toHaveLength(1)
     expect(persisted.document.auditEvents.filter((event) => event.commandId === command.commandId)).toHaveLength(1)
   })

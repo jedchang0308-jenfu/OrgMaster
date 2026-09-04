@@ -57,6 +57,14 @@ describe('workspace state', () => {
     expect(collapsed.state.session.panels.employees?.context).toEqual({ employeeId: screenshotOrganizationState.employees[0].id, query: '張' })
     expect(collapsed.state.route.openDetails).toEqual([])
 
+    const reopenedFromSameSelection = reduceWorkspaceState(collapsed.state, {
+      type: 'UPDATE_PANEL_CONTEXT',
+      moduleId: 'employees',
+      context: { employeeId: screenshotOrganizationState.employees[0].id, query: '張' },
+      openDetail: true,
+    }, context)
+    expect(reopenedFromSameSelection.state.session.openDetails).toEqual(['employees'])
+
     const reopened = reduceWorkspaceState(collapsed.state, { type: 'SET_DETAIL_VISIBILITY', moduleId: 'employees', visible: true }, context)
     expect(reopened.state.session.openDetails).toEqual(['employees'])
     expect(reopened.state.session.panels.employees?.context).toEqual({ employeeId: screenshotOrganizationState.employees[0].id, query: '張' })

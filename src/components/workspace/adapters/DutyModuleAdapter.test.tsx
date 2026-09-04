@@ -15,6 +15,8 @@ describe('DutyModuleAdapter', () => {
     expect(workspace).not.toBeNull()
     expect(workspace?.children[0].classList.contains('duty-configuration-workspace__list')).toBe(true)
     expect(workspace?.children[1].classList.contains('duty-configuration-workspace__detail')).toBe(true)
+    expect(workspace?.children[1].firstElementChild?.getAttribute('aria-label')).toBe('工作執掌明細')
+    expect(host.querySelector('.duty-configuration-workspace__detail-content')).toBeNull()
     expect(host.querySelector('[aria-label="工作職掌明細"]')?.closest('[aria-label="工作職掌完整工作台"]')).not.toBeNull()
     root.unmount()
   })

@@ -6,7 +6,18 @@ import { clearSessionCookie, createOpaqueSessionToken, hashSessionToken, readSes
 import { readOrgmasterAuthConfig, type OrgmasterAuthConfig, type OrgmasterAuthConfigResult } from './orgmasterAuthConfig'
 import { createOrgmasterDatabase } from './orgmasterDatabase'
 import { createFirebaseIdentityProvider, type FirebaseIdentityProvider } from './orgmasterFirebaseIdentityProvider'
-import { DEV_ISSUER, DEV_PRINCIPAL_ID, DEV_SUBJECT, resolveDevelopmentIdentity } from './orgmasterGovernanceIdentity'
+import {
+  DEVELOPMENT_AUTH_PROFILES,
+  DEV_ISSUER,
+  clearDevelopmentProfileCookie,
+  developmentProfileById,
+  developmentProfileCookie,
+  isLoopback,
+  publicDevelopmentProfiles,
+  resolveDevelopmentIdentity,
+  type DevelopmentAuthProfile,
+  type PublicDevelopmentAuthProfile,
+} from './orgmasterGovernanceIdentity'
 import { createPrincipalAdmissionRepository, PrincipalAdmissionError, type PrincipalAdmissionRepository } from './orgmasterPrincipalAdmissionRepository'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 import { createOrgmasterSessionRepository, type OrgmasterSession, type OrgmasterSessionRepository } from './orgmasterSessionRepository'
@@ -71,7 +82,7 @@ function correlationId(request: IncomingMessage) {
   return typeof candidate === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(candidate) ? candidate : randomUUID()
 }
 
-function sendJson(response: ServerResponse, status: number, payload: unknown, id: string, cookie?: string) {
+function sendJson(response: ServerResponse, status: number, payload: unknown, id: string, cookie?: string | string[]) {
   response.statusCode = status
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
   response.setHeader('Cache-Control', 'no-store')
@@ -102,6 +113,20 @@ function dependencies(runtime: OrgmasterAuthRuntime) {
 
 function requireOrigin(request: IncomingMessage, config: OrgmasterAuthConfig) {
   if (request.headers.origin !== config.publicBaseUrl.origin) throw new OrgmasterAuthError(403, 'auth_origin_invalid')
+}
+
+function requireDevelopmentOrigin(request: IncomingMessage) {
+  const origin = request.headers.origin
+  const host = request.headers.host
+  if (typeof origin !== 'string' || typeof host !== 'string') throw new OrgmasterAuthError(403, 'auth_origin_invalid')
+  try {
+    const url = new URL(origin)
+    const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+    const loopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.startsWith('127.')
+    if (!loopback || url.host !== host) throw new Error('origin mismatch')
+  } catch {
+    throw new OrgmasterAuthError(403, 'auth_origin_invalid')
+  }
 }
 
 async function readJsonBody(request: IncomingMessage) {
@@ -144,6 +169,21 @@ function publicUser(session: OrgmasterSession) {
   return { principalId: session.principalId, employeeId: session.employeeId }
 }
 
+function publicDevelopmentProfile(profile: DevelopmentAuthProfile): PublicDevelopmentAuthProfile {
+  const { id, roleCode, roleName, employeeId, employeeName, description } = profile
+  return { id, roleCode, roleName, employeeId, employeeName, description }
+}
+
+function publicSession(session: OrgmasterSession, id: string, developmentProfile?: DevelopmentAuthProfile) {
+  return {
+    user: publicUser(session),
+    session: { expiresAt: session.expiresAt },
+    assuranceLevel: session.assuranceLevel,
+    ...(developmentProfile ? { developmentProfile: publicDevelopmentProfile(developmentProfile) } : {}),
+    correlationId: id,
+  }
+}
+
 async function verifySession(request: IncomingMessage, runtime: OrgmasterAuthRuntime) {
   const { config, principals, epochs, sessions } = dependencies(runtime)
   const token = readSessionToken(request.headers.cookie)
@@ -165,15 +205,27 @@ async function verifySession(request: IncomingMessage, runtime: OrgmasterAuthRun
   return session
 }
 
-function developmentSession(request: IncomingMessage, enabled: boolean): OrgmasterSession | null {
-  const actor = resolveDevelopmentIdentity(request, enabled)
-  if (!actor) return null
+function developmentSessionForProfile(profile: DevelopmentAuthProfile): OrgmasterSession {
   const now = new Date()
   return {
-    id: 'development-loopback', identityIssuer: DEV_ISSUER, identitySubject: DEV_SUBJECT,
-    principalId: DEV_PRINCIPAL_ID, employeeId: 'development-loopback', authEpoch: 0,
-    issuedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 60_000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
+    id: `development-${profile.id}`, identityIssuer: DEV_ISSUER, identitySubject: profile.subject,
+    principalId: profile.principalId, employeeId: profile.employeeId, authEpoch: 0,
+    issuedAt: now.toISOString(), authenticatedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
   }
+}
+
+function developmentSession(request: IncomingMessage, enabled: boolean): { session: OrgmasterSession; profile: DevelopmentAuthProfile | null } | null {
+  const actor = resolveDevelopmentIdentity(request, enabled)
+  if (!actor) return null
+  const profile = DEVELOPMENT_AUTH_PROFILES.find((candidate) => candidate.subject === actor.subject && candidate.principalId === actor.principalId) ?? null
+  if (profile) return { session: developmentSessionForProfile(profile), profile }
+  const now = new Date()
+  const session: OrgmasterSession = {
+    id: 'development-loopback', identityIssuer: actor.issuer, identitySubject: actor.subject,
+    principalId: actor.principalId, employeeId: actor.employeeId ?? 'development-loopback', authEpoch: 0,
+    issuedAt: now.toISOString(), authenticatedAt: null, expiresAt: new Date(now.getTime() + 60_000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
+  }
+  return { session, profile: null }
 }
 
 function createRateLimiter() {
@@ -209,6 +261,35 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
     if (!pathname.startsWith('/api/')) return next()
     const id = correlationId(request)
     const handle = async () => {
+      if (pathname === `${ORGMASTER_AUTH_API_PATH}/development/profiles` && request.method === 'GET') {
+        if (!devEnabled || !isLoopback(request)) {
+          sendJson(response, 404, { code: 'auth_request_invalid', correlationId: id }, id)
+          return
+        }
+        const current = developmentSession(request, devEnabled)
+        sendJson(response, 200, {
+          authMode: 'local_development',
+          profiles: publicDevelopmentProfiles(),
+          session: current ? publicSession(current.session, id, current.profile ?? undefined) : null,
+          correlationId: id,
+        }, id)
+        return
+      }
+      if (pathname === `${ORGMASTER_AUTH_API_PATH}/development/session` && request.method === 'POST') {
+        if (!devEnabled || !isLoopback(request)) {
+          sendJson(response, 404, { code: 'auth_request_invalid', correlationId: id }, id)
+          return
+        }
+        requireDevelopmentOrigin(request)
+        rateLimit(request)
+        const body = await readJsonBody(request)
+        const profile = developmentProfileById(body.profileId)
+        if (!profile) throw new OrgmasterAuthError(400, 'auth_request_invalid')
+        const session = developmentSessionForProfile(profile)
+        setVerifiedRequestIdentity(request, session)
+        sendJson(response, 200, publicSession(session, id, profile), id, developmentProfileCookie(profile.id))
+        return
+      }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/mode` && request.method === 'GET') {
         if (!runtime.configResult.configured) throw new OrgmasterAuthError(503, 'auth_server_not_configured')
         sendJson(response, 200, { authMode: 'jenfu_firebase_bff', firebase: runtime.configResult.config.firebasePublicConfig, correlationId: id }, id)
@@ -235,15 +316,21 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
             sessionIdHash: hashSessionToken(config.sessionHashPepper, token),
             identityIssuer: identity.issuer, identitySubject: identity.subject,
             principalId: principal.principalId, employeeId: principal.employeeId,
-            authEpoch: epoch, issuedAt: issuedAt.toISOString(), expiresAt: expiresAt.toISOString(), assuranceLevel: identity.assuranceLevel,
+            authEpoch: epoch, issuedAt: issuedAt.toISOString(), authenticatedAt: identity.authenticatedAt, expiresAt: expiresAt.toISOString(), assuranceLevel: identity.assuranceLevel,
           })
         } catch {
           throw new OrgmasterAuthError(503, 'auth_server_not_configured')
         }
-        sendJson(response, 200, { user: publicUser(session), session: { expiresAt: session.expiresAt }, assuranceLevel: session.assuranceLevel, correlationId: id }, id, sessionCookie(token, config.secureCookie))
+        sendJson(response, 200, publicSession(session, id), id, sessionCookie(token, config.secureCookie))
         return
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/logout` && request.method === 'POST') {
+        if (devEnabled && isLoopback(request)) {
+          requireDevelopmentOrigin(request)
+          await readJsonBody(request)
+          sendJson(response, 200, { status: 'completed', correlationId: id }, id, [clearDevelopmentProfileCookie(), clearSessionCookie(false)])
+          return
+        }
         const { config, sessions } = dependencies(runtime)
         requireOrigin(request, config)
         await readJsonBody(request)
@@ -260,15 +347,19 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
           sendJson(response, 404, { code: 'auth_request_invalid', correlationId: id }, id)
           return
         }
-        const devSession = developmentSession(request, devEnabled)
-        const session = devSession ?? await verifySession(request, runtime)
-        if (devSession) setVerifiedRequestIdentity(request, devSession)
-        sendJson(response, 200, { user: publicUser(session), session: { expiresAt: session.expiresAt }, assuranceLevel: session.assuranceLevel, correlationId: id }, id)
+        const development = developmentSession(request, devEnabled)
+        if (!development && devEnabled && isLoopback(request) && !runtime.configResult.configured) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
+        const session = development?.session ?? await verifySession(request, runtime)
+        if (development) setVerifiedRequestIdentity(request, session)
+        sendJson(response, 200, publicSession(session, id, development?.profile ?? undefined), id)
         return
       }
-      const devSession = developmentSession(request, devEnabled)
-      if (devSession) setVerifiedRequestIdentity(request, devSession)
-      else await verifySession(request, runtime)
+      const development = developmentSession(request, devEnabled)
+      if (development) setVerifiedRequestIdentity(request, development.session)
+      else {
+        if (devEnabled && isLoopback(request) && !runtime.configResult.configured) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
+        await verifySession(request, runtime)
+      }
       next()
     }
     void handle().catch((unknownError) => {

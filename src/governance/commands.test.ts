@@ -29,4 +29,15 @@ describe('governance draft commands', () => {
     expect(result.document.draft.roleAssignments[0].applicationId).toBe('ai-pdm')
     expect(result.document.draft.permissions.every((permission) => permission.applicationId === 'orgmaster')).toBe(true)
   })
+  it('fails before mutation when generic V2 command targets system admin', () => {
+    const document = createSeedDocumentV2()
+    const catalog = readAiPdmRoleCatalog('valid'); const role = catalog.roles.find((entry) => entry.stableRoleId === 'role-system-admin')!
+    const command = { type: 'UPSERT_ROLE_ASSIGNMENT' as const, commandId: 'system-admin-v2', reason: 'test', value: { id: 'assignment-system-admin', employeeId: 'employee-1', applicationId: 'ai-pdm' as const, roleId: role.stableRoleId, roleCodeSnapshot: role.code, roleNameSnapshot: role.displayName, catalogVersion: catalog.catalogVersion, scope: { kind: 'global' as const }, status: 'active' as const, validFrom: '2026-09-02T00:00:00.000Z', validTo: null, effectState: 'not-synchronized' as const } }
+    expect(() => applyGovernanceCommandV2(document, command, undefined, [catalog])).toThrowError(expect.objectContaining({ issues: expect.arrayContaining([expect.objectContaining({ code: 'PRIVILEGED_ASSIGNMENT_SURFACE_REQUIRED' })]) }))
+    expect(document.draft.roleAssignments).toEqual([])
+
+    const legacyDocument = { ...document, draft: { ...document.draft, roleAssignments: [command.value] } }
+    expect(() => applyGovernanceCommandV2(legacyDocument, { type: 'REVOKE_ROLE_ASSIGNMENT', commandId: 'revoke-system-admin-v2', reason: 'test', id: command.value.id }, undefined, [catalog])).toThrowError(expect.objectContaining({ issues: expect.arrayContaining([expect.objectContaining({ code: 'PRIVILEGED_ASSIGNMENT_SURFACE_REQUIRED' })]) }))
+    expect(() => applyGovernanceCommandV2(legacyDocument, { type: 'UPSERT_ROLE_DELEGATION', commandId: 'delegate-system-admin-v2', reason: 'test', value: { id: 'delegation-system-admin', sourceAssignmentId: command.value.id, fromEmployeeId: 'employee-1', toEmployeeId: 'employee-2', applicationId: 'ai-pdm', roleId: role.stableRoleId, catalogVersion: catalog.catalogVersion, scope: { kind: 'global' }, status: 'active', validFrom: '2026-09-02T00:00:00.000Z', validTo: '2026-09-03T00:00:00.000Z', reason: 'test', effectState: 'not-synchronized' } }, undefined, [catalog])).toThrowError(expect.objectContaining({ issues: expect.arrayContaining([expect.objectContaining({ code: 'PRIVILEGED_ASSIGNMENT_SURFACE_REQUIRED' })]) }))
+  })
 })

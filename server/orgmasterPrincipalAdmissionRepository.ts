@@ -36,7 +36,7 @@ export function createPrincipalAdmissionRepository(database: OrgmasterDatabase):
         const result = await database.query<ActivePrincipalRow>(`
           SELECT contract_version, principal_issuer, principal_subject, principal_id,
                  employee_id, employee_status, mapping_version, published_at
-          FROM organization.v_active_principal_mappings_v1
+          FROM orgmaster_contract.v_active_principal_mappings_v1
           WHERE principal_issuer = $1 AND principal_subject = $2
           ORDER BY mapping_version DESC
           FETCH FIRST 2 ROWS ONLY
