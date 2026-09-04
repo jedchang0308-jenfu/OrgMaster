@@ -144,6 +144,17 @@ AS
 SELECT contract_id, contract_version, signature_sha256::text, payload_sha256::text
 FROM orgmaster_core.contract_manifest;
 
+CREATE OR REPLACE VIEW orgmaster_contract.v_r1_contract_state_v1
+WITH (security_barrier = true)
+AS
+SELECT
+  contract_id,
+  contract_version,
+  signature_sha256::text AS signature_sha256,
+  payload_sha256::text AS payload_sha256,
+  published_at
+FROM orgmaster_core.contract_manifest;
+
 CREATE OR REPLACE FUNCTION orgmaster_contract.claim_entitlement_change_outbox_v1(
   p_worker_id text, p_limit integer DEFAULT 16, p_lease_seconds integer DEFAULT 30
 )
@@ -252,7 +263,7 @@ BEGIN
       AND p.proname <> 'capture_privileged_security_alert_intents_v1'
   LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO jenfu_orgmaster_migrator', routine.signature);
-    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, jenfu_platform_runtime, jenfu_orgmaster_runtime, jenfu_ai_pdm_runtime', routine.signature);
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, jenfu_platform_runtime, jenfu_orgmaster_runtime, jenfu_ai_pdm_runtime, jenfu_r1_verifier', routine.signature);
   END LOOP;
 END;
 $secure_functions$;
@@ -276,7 +287,7 @@ BEGIN
       relation.nspname,
       relation.relname
     );
-    EXECUTE format('REVOKE ALL ON %s %I.%I FROM PUBLIC, jenfu_platform_runtime, jenfu_orgmaster_runtime, jenfu_ai_pdm_runtime',
+    EXECUTE format('REVOKE ALL ON %s %I.%I FROM PUBLIC, jenfu_platform_runtime, jenfu_orgmaster_runtime, jenfu_ai_pdm_runtime, jenfu_r1_verifier',
       CASE WHEN relation.relkind = 'S' THEN 'SEQUENCE' ELSE 'TABLE' END,
       relation.nspname, relation.relname);
   END LOOP;
@@ -298,6 +309,8 @@ TO jenfu_platform_runtime, jenfu_orgmaster_runtime, jenfu_ai_pdm_runtime;
 GRANT SELECT ON TABLE orgmaster_contract.v_active_principal_mappings_v1, orgmaster_contract.v_contract_manifest_v1
   TO jenfu_platform_migrator;
 GRANT SELECT ON TABLE orgmaster_contract.v_portal_app_visibility_v1 TO jenfu_platform_runtime;
+GRANT USAGE ON SCHEMA orgmaster_contract TO jenfu_r1_verifier;
+GRANT SELECT ON TABLE orgmaster_contract.v_r1_contract_state_v1 TO jenfu_r1_verifier;
 GRANT EXECUTE ON FUNCTION
   orgmaster_contract.claim_entitlement_change_outbox_v1(text, integer, integer),
   orgmaster_contract.complete_entitlement_change_outbox_v1(uuid, text, uuid),

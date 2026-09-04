@@ -37,6 +37,9 @@ test('N2-ORG-03 producer contracts use exact signatures and payload hashes', () 
   assert.match(migration, /e400a51351fc1b5fab083ed94bcf0c62efdd0606d4316f354b2893f9bf82cf15/u)
   assert.match(migration, /13a74783a6da2ac210090a6ba56937cb7b2f6d7d06e97a89844d4d6aaaca8306/u)
   assert.match(migration, /orgmaster_contract\.v_ai_pdm_effective_role_assignments_v1/u)
+  assert.match(migration, /CREATE OR REPLACE VIEW orgmaster_contract\.v_r1_contract_state_v1[\s\S]+security_barrier = true/u)
+  assert.match(migration, /GRANT SELECT ON TABLE orgmaster_contract\.v_r1_contract_state_v1 TO jenfu_r1_verifier/u)
+  assert.doesNotMatch(migration, /GRANT (?:SELECT|INSERT|UPDATE|DELETE|ALL)[^;]+orgmaster_core\.[^;]+jenfu_r1_verifier/iu)
 })
 
 test('N2-ORG-04 auth, persistence, and general access share one bounded pool', () => {
