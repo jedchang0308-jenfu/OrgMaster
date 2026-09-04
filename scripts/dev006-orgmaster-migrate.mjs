@@ -296,7 +296,11 @@ export async function run(args) {
   if (args.mode === 'activate-isolated') return activateIsolated(args)
   if (args.mode === 'read-active') return readActive(args)
   const inventory = await inventorySource(args.sourceRoot)
-  if (args.mode === 'inventory') return { status: 'PASS', mode: 'inventory', contractVersion: CONTRACT_VERSION, sourceRevision: inventory.sourceRevision, artifactCount: inventory.artifactCount, mediaCount: inventory.mediaCount, sourceBytes: inventory.sourceBytes, legacy: inventory.legacy, artifacts: inventory.safeManifest.artifacts }
+  if (args.mode === 'inventory') return {
+    status: 'PASS', mode: 'inventory', contractVersion: CONTRACT_VERSION, sourceRevision: inventory.sourceRevision,
+    artifactCount: inventory.artifactCount, mediaCount: inventory.mediaCount, sourceBytes: inventory.sourceBytes,
+    legacy: inventory.legacy, artifacts: inventory.safeManifest.artifacts, media: inventory.safeManifest.media,
+  }
   if (args.mode === 'dry-run') return dryRun(args, inventory)
   return shadowImport(args, inventory)
 }
