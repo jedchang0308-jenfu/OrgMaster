@@ -1,0 +1,122 @@
+{
+  "contract": "DEV-045",
+  "artifact": "dist + dist-server",
+  "baseUrl": "http://127.0.0.1:53110",
+  "port": 53110,
+  "ownerPid": 37028,
+  "purpose": "task-owned DEV-045 browser QC",
+  "temporaryRoot": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev-045-browser-EqvJ1h",
+  "cleanup": "in-process server/browser closed, port probed released, temporary root removed in finally",
+  "gitHead": "c3463e955d0353b7809bc5907c4f6ff178e02557",
+  "dirtyFiles": [
+    "M ai-doc/dev_task.md",
+    " M ai-doc/documentation_map.md",
+    " M ai-doc/specs/DEV-045-employee-account-enrollment.md",
+    " M package.json",
+    " M server/orgmasterAccountEnrollmentApi.ts",
+    " M server/orgmasterAccountEnrollmentService.ts",
+    " M server/orgmasterAccountEnrollmentStore.ts",
+    " M server/orgmasterIdentityLinkPolicy.ts",
+    " M src/App.tsx",
+    " M src/components/DirectoryDetailPanel.tsx",
+    " M src/components/EmployeeIdentitySection.test.tsx",
+    " M src/components/EmployeeIdentitySection.tsx",
+    " M src/index.css",
+    "?? qa/dev-045/",
+    "?? scripts/qc-dev-045-browser.mjs",
+    "?? scripts/tmp-button-drag.mjs",
+    "?? server/orgmasterAccountEnrollmentApi.test.ts",
+    "?? server/orgmasterAccountEnrollmentService.test.ts",
+    "?? server/orgmasterAccountEnrollmentStore.test.ts",
+    "?? server/orgmasterAccountProvisioningPort.test.ts",
+    "?? server/orgmasterIdentityLinkPolicy.test.ts",
+    "?? src/accountEnrollment/apiClient.test.ts",
+    "?? src/accountEnrollment/apiClient.ts",
+    "?? src/components/EmployeeAccountSetupDialog.test.tsx",
+    "?? src/components/EmployeeAccountSetupDialog.tsx",
+    "?? test-results/"
+  ],
+  "nodeVersion": "v24.12.0",
+  "chromiumVersion": "151.0.7922.34",
+  "productionWrites": false,
+  "emailDelivered": false,
+  "servedFiles": [
+    {
+      "path": "dist-server/server.mjs",
+      "bytes": 461503,
+      "sha256": "222b16c48df5cc2bb2278be37f4e514108a8021f40791e4b8a70c042a5e28fb9"
+    },
+    {
+      "path": "dist/assets/index-BeyC-5qg.js",
+      "bytes": 1408524,
+      "sha256": "de87499f85c8a025f2520eee6f7136e6d12984d31ea725d0895a2cc52711f313"
+    },
+    {
+      "path": "dist/assets/index-f1ppB85I.css",
+      "bytes": 175343,
+      "sha256": "9d9061b0d3738575a80835d881fe01b8606b23eecf8c781194defc39caa55ab2"
+    },
+    {
+      "path": "dist/favicon.svg",
+      "bytes": 451,
+      "sha256": "e3a809549b9e2baeb6aa7d0595ea4275b11171b8488e260d86a19cf10bcb78a1"
+    },
+    {
+      "path": "dist/index.html",
+      "bytes": 621,
+      "sha256": "10f8939dbded493a2d2e5716d9b41da3764ca044950e315c17d3c9fc59e1ebd7"
+    }
+  ],
+  "aggregateSha256": "0c7ad411e66c54ad8068aeaa1b4aa2228b5c662877f2c1ba85601c4c82a24471",
+  "results": [
+    {
+      "profileId": "administrator",
+      "viewport": "1024x768",
+      "accountSection": true,
+      "hasMutationCta": true,
+      "invitePending": true
+    },
+    {
+      "profileId": "governance-manager",
+      "viewport": "1024x768",
+      "accountSection": true,
+      "hasMutationCta": true
+    },
+    {
+      "profileId": "method-manager",
+      "viewport": "1024x768",
+      "accountSection": false,
+      "hasMutationCta": false
+    },
+    {
+      "profileId": "employee",
+      "viewport": "1024x768",
+      "accountSection": false,
+      "hasMutationCta": false
+    },
+    {
+      "profileId": "administrator",
+      "viewport": "390x844",
+      "accountSection": true,
+      "hasMutationCta": false,
+      "overflow": {
+        "width": 390,
+        "height": 844,
+        "viewportWidth": 390,
+        "viewportHeight": 844
+      }
+    },
+    {
+      "profileId": "administrator",
+      "viewport": "1440x900",
+      "accountSection": true,
+      "hasMutationCta": true,
+      "overflow": {
+        "width": 1440,
+        "height": 900,
+        "viewportWidth": 1440,
+        "viewportHeight": 900
+      }
+    }
+  ]
+}

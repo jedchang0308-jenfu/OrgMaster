@@ -12,7 +12,7 @@ import { createUuidV7 } from '../src/employeeIdentity'
 import { resolveIdentityLinkUpsert, assertIdentityLinkStatusMutationAllowed, IdentityLinkPolicyError } from './orgmasterIdentityLinkPolicy'
 import type {
   AccountEnrollmentDocumentV1, AccountEnrollmentReasonCode, AccountEnrollmentStatus, EmployeeAccountAccessViewV1,
-  ExistingAccountCandidateRequestV1, ExistingAccountCandidateViewV1, InviteAccountRequestV1, InviteAccountResultV1,
+  ExistingCandidateRequestV1, ExistingAccountCandidateViewV1, InviteAccountRequestV1, InviteAccountResultV1,
   LinkExistingAccountRequestV1, ManageInvitationRequestV1, SetIdentityLinkStatusRequestV1, EmployeeAccountEnrollmentV1,
 } from '../src/accountEnrollment/types'
 
@@ -24,7 +24,7 @@ export interface AccountEnrollmentRecoveryReportV1 { inspected: number; advanced
 export interface AccountEnrollmentServiceV1 {
   readEmployeeAccess(actor: GovernanceActorContext, employeeId: string): Promise<EmployeeAccountAccessViewV1>
   invite(actor: GovernanceActorContext, request: InviteAccountRequestV1): Promise<InviteAccountResultV1>
-  findExisting(actor: GovernanceActorContext, request: ExistingAccountCandidateRequestV1, actorBinding: string): Promise<ExistingAccountCandidateViewV1>
+  findExisting(actor: GovernanceActorContext, request: ExistingCandidateRequestV1, actorBinding: string): Promise<ExistingAccountCandidateViewV1>
   linkExisting(actor: GovernanceActorContext, request: LinkExistingAccountRequestV1, actorBinding: string): Promise<EmployeeAccountAccessViewV1>
   resend(actor: GovernanceActorContext, request: ManageInvitationRequestV1): Promise<EmployeeAccountAccessViewV1>
   cancel(actor: GovernanceActorContext, request: ManageInvitationRequestV1): Promise<EmployeeAccountAccessViewV1>
@@ -99,7 +99,7 @@ export function createAccountEnrollmentService(input: { root: string; provider: 
       const admission = admissions.find((candidate) => candidate.identityLinkId === link.id)
       const linkedEnrollment = byLinkEnrollment.get(link.id)
       const hint = linkedEnrollment?.targetEmailHint ?? (link.subject.length > 4 ? `••••${link.subject.slice(-4)}` : '••••')
-      return { identityLinkId: link.id, accountHint: hint, providerLabel: providerLabel(link.issuer), accountType: admission?.accountType ?? 'unclassified', status: link.status, linkStatusMutable: permission(governance.document, actor, GOVERNANCE_MANAGE) && !admission && !(link.principalId === actor.principalId && link.issuer === actor.issuer && link.subject === actor.subject) }
+      return { identityLinkId: link.id, accountHint: hint, providerLabel: providerLabel(link.issuer), accountType: (admission?.accountType ?? 'unclassified') as 'human_personal' | 'human_privileged' | 'unclassified', status: link.status as 'active' | 'inactive', linkStatusMutable: permission(governance.document, actor, GOVERNANCE_MANAGE) && !admission && !(link.principalId === actor.principalId && link.issuer === actor.issuer && link.subject === actor.subject) }
     })
     const grouped = new Map<string, EmployeeAccountEnrollmentV1[]>()
     for (const enrollment of ledger.document.enrollments.filter((candidate) => candidate.employeeId === employeeId)) { const key = `${enrollment.providerKey}\0${enrollment.targetEmailHash}`; grouped.set(key, [...(grouped.get(key) ?? []), enrollment]) }
@@ -111,11 +111,11 @@ export function createAccountEnrollmentService(input: { root: string; provider: 
     const canLink = permission(governance.document, actor, IDENTITY_LINK)
     const canManageInvitation = permission(governance.document, actor, IDENTITY_MANAGE)
     const canManageLinkStatus = permission(governance.document, actor, GOVERNANCE_MANAGE)
-    const enrollments = visible.map((item) => ({ id: item.id, kind: item.kind, status: item.status, emailHint: item.targetEmailHint, statusReasonCode: item.statusReasonCode, expiresAt: item.expiresAt, revision: item.revision, actions: canManageInvitation ? (item.status === 'pending_acceptance' ? ['resend', 'cancel'] as const : item.status === 'expired' ? ['resend', 'cancel'] as const : item.status === 'outcome_unknown' ? ['cancel'] as const : []) : [] }))
+    const enrollments = visible.map((item) => ({ id: item.id, kind: item.kind, status: item.status, emailHint: item.targetEmailHint, statusReasonCode: item.statusReasonCode, expiresAt: item.expiresAt, revision: item.revision, actions: (canManageInvitation ? (item.status === 'pending_acceptance' ? ['resend', 'cancel'] : item.status === 'expired' ? ['resend', 'cancel'] : item.status === 'outcome_unknown' ? ['cancel'] : []) : []) as Array<'resend' | 'cancel'> }))
     const hasAttention = enrollments.some((item) => ['outcome_unknown', 'expired', 'failed', 'conflict'].includes(item.status))
     const hasOpen = enrollments.some((item) => isOpenEnrollment(item.status))
     const state: EmployeeAccountAccessViewV1['state'] = !governance.document ? 'contract_mismatch' : hasAttention ? 'attention' : hasOpen ? 'in_progress' : accounts.some((item) => item.status === 'active') ? 'ready' : accounts.length > 0 ? 'inactive_only' : 'empty'
-    return { contractVersion: 'orgmaster.employee-account-access.v1', employee: { id: employee.id, status: employee.status }, state, deliveryMode: provider ? 'simulated' : 'unavailable', accounts, enrollments, capabilities: { view: true, invite: canInvite, link: canLink, manageInvitation: canManageInvitation, manageLinkStatus: canManageLinkStatus }, governanceRevision: governance.revision }
+    return { contractVersion: 'orgmaster.employee-account-access.v1', employee: { id: employee.id, status: employee.status === 'inactive' ? 'inactive' : 'active' }, state, deliveryMode: provider ? 'simulated' : 'unavailable', accounts, enrollments, capabilities: { view: true, invite: canInvite, link: canLink, manageInvitation: canManageInvitation, manageLinkStatus: canManageLinkStatus }, governanceRevision: governance.revision }
   }
   const currentView = async (actor: GovernanceActorContext, employeeId: string) => { const governance = await readGovernance(); return viewFor(actor, employeeId, governance) }
   const commitLedger = async (expected: string | null, mutate: (document: AccountEnrollmentDocumentV1) => AccountEnrollmentDocumentV1) => { try { return await store.commit(expected, mutate) } catch (error) { throw mapStoreError(error) } }
@@ -144,7 +144,7 @@ export function createAccountEnrollmentService(input: { root: string; provider: 
     const view = await currentView(actor, request.employeeId); return { disposition: 'created', view }
   }
 
-  async function findExisting(actor: GovernanceActorContext, request: ExistingAccountCandidateRequestV1, binding: string): Promise<ExistingAccountCandidateViewV1> {
+  async function findExisting(actor: GovernanceActorContext, request: ExistingCandidateRequestV1, binding: string): Promise<ExistingAccountCandidateViewV1> {
     const governance = await readGovernance(); const employee = await sourceEmployee(request.employeeId, true); requirePermission(governance.document, actor, IDENTITY_LINK, 'IDENTITY_LINK_REQUIRED'); if (!provider) throw new AccountEnrollmentServiceError('IDENTITY_PROVISIONING_UNAVAILABLE')
     let email: string; try { email = assertEmail(request.email) } catch (error) { throw mapProviderError(error) }
     let candidate: ProviderAccount | null; try { candidate = await provider.findExistingByExactEmail(email) } catch (error) { throw mapProviderError(error) }
@@ -165,7 +165,7 @@ export function createAccountEnrollmentService(input: { root: string; provider: 
 
   async function completeIdentityLink(id: string) { const item = withEnrollment((await readState()).document, id); const governance = await readGovernance(); await applyEnrollmentIdentityLink(id, governance.revision, SYSTEM_ACTOR, true); void item }
   async function applyEnrollmentIdentityLink(id: string, expectedGovernanceRevision: string, actor: GovernanceActorContext, reconcile = false) {
-    const state = await readState(); const enrollment = withEnrollment(state.document, id); const governance = await readGovernance(); const source = await sourceEmployee(enrollment.employeeId, true); const principalId = createHash('sha256').update(`${enrollment.issuer ?? 'urn:orgmaster:local-account-provider'}\0${enrollment.targetEmail}`).digest('hex'); const identity = resolveIdentityLinkUpsert(governance.document, { employeeId: source.id, principalId, issuer: 'urn:orgmaster:local-account-provider', subject: `local-subject-${createHash('sha256').update(enrollment.targetEmail).digest('hex').slice(0, 32)}`, newIdentityLinkId: `identity-account-enrollment:${id}` })
+    const state = await readState(); const enrollment = withEnrollment(state.document, id); const lease = enrollment.candidateLeaseId ? state.document.candidateLeases.find((candidate) => candidate.id === enrollment.candidateLeaseId) : undefined; const governance = await readGovernance(); const source = await sourceEmployee(enrollment.employeeId, true); const issuer = lease?.issuer ?? 'urn:orgmaster:local-account-provider'; const subject = lease?.subject ?? `local-subject-${createHash('sha256').update(enrollment.targetEmail).digest('hex').slice(0, 32)}`; const principalId = createHash('sha256').update(`${issuer}\0${subject}`).digest('hex'); const identity = resolveIdentityLinkUpsert(governance.document, { employeeId: source.id, principalId, issuer, subject, newIdentityLinkId: `identity-account-enrollment:${id}` })
     const command = { type: 'UPSERT_IDENTITY_LINK' as const, commandId: `account-enrollment-link:${id}`, reason: '帳號開通流程連結登入身分', value: identity }
     try {
       const result = await applyDraftCommand(input.root, expectedGovernanceRevision || governance.revision, command, actor, (_current, currentSource) => { const employee = currentSource.state.employees.find((candidate) => candidate.id === enrollment.employeeId); if (!employee) throw new GovernanceStoreError('EMPLOYEE_NOT_FOUND'); if (employee.status !== 'active') throw new GovernanceStoreError('EMPLOYEE_NOT_ACTIVE'); resolveIdentityLinkUpsert(_current.document, { employeeId: employee.id, principalId: identity.principalId, issuer: identity.issuer, subject: identity.subject, newIdentityLinkId: identity.id }) })

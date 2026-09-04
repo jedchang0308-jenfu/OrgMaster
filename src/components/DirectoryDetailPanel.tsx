@@ -19,6 +19,7 @@ interface DirectoryDetailPanelProps {
   onClose: () => void
   editingEnabled?: boolean
   identityMutationAllowed?: boolean
+  accountMutationEnvironmentAllowed?: boolean
   governanceRefreshToken?: number
   onGovernanceChanged?: () => void
 }
@@ -40,6 +41,7 @@ export function DirectoryDetailPanel({
   onClose,
   editingEnabled = true,
   identityMutationAllowed = false,
+  accountMutationEnvironmentAllowed,
   governanceRefreshToken = 0,
   onGovernanceChanged,
 }: DirectoryDetailPanelProps) {
@@ -157,7 +159,7 @@ export function DirectoryDetailPanel({
 
         <EmployeeIdentitySection
           employee={employee}
-          mutationBoundaryAllowed={identityMutationAllowed}
+          accountMutationEnvironmentAllowed={accountMutationEnvironmentAllowed ?? identityMutationAllowed}
           refreshToken={governanceRefreshToken}
           onChanged={onGovernanceChanged}
         />

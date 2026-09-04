@@ -10,7 +10,7 @@ import type {
 import { hashFileContent, fileExists, withOrgMasterRootLock, writeVerifiedAtomicFile } from './orgmasterFileStore'
 
 export type AccountEnrollmentStoreErrorCode = 'ACCOUNT_ENROLLMENT_STORE_INVALID' | 'ACCOUNT_ENROLLMENT_REVISION_CONFLICT' | 'ACCOUNT_ENROLLMENT_WRITE_FAILED'
-export class AccountEnrollmentStoreError extends Error { constructor(readonly code: AccountEnrollmentStoreErrorCode, message = code) { super(message); this.name = 'AccountEnrollmentStoreError' } }
+export class AccountEnrollmentStoreError extends Error { constructor(readonly code: AccountEnrollmentStoreErrorCode, message: string = code) { super(message); this.name = 'AccountEnrollmentStoreError' } }
 
 export function getAccountEnrollmentPaths(root: string) {
   const data = resolve(root, 'data')

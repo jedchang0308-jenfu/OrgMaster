@@ -1,8 +1,8 @@
 # DEV-045：員工帳號邀請與登入身分設定
 
-文件成熟度：`RD Implementation Ready`
+文件成熟度：`RD Implementation Complete / Targeted Gates Passed / Browser QC Passed / Full Regression Follow-up Open`
 
-狀態：`Executable / RD Tech Lead Re-review Passed / RD Not Started / Documents Only / Local-Isolated Current Phase / Production Provisioning Gated`
+狀態：`RD Implementation Complete / Targeted Gates Passed / Browser QC Passed / Full Regression Follow-up Open / Local-Isolated Current Phase / Production Provisioning Gated`
 
 風險等級：`Medium`。本交付新增使用者入口、帳號邀請狀態、細分權限及跨Employee UI／OrgMaster BFF／共同IAM資料路徑；正式provider、郵件與production資料仍屬High release boundary。
 
@@ -466,9 +466,16 @@ Provider raw error不得直出。可重試性、使用者文案與audit reason�
 
 ### Current Phase
 
-- 文件已達`RD Implementation Ready`；RD可依第16～18節的exact file／symbol、slice與Gate直接開始local／isolated實作。
-- 本輪仍為`Documents Only`；沒有產品程式、測試、schema、provider、資料或runtime變更。
+- 文件已達`RD Implementation Ready`；本輪已依第16～18節完成local／isolated implementation，包含account-enrollment service、ledger、provider port、HTTP boundary、治理 fence、Employee UI與測試。
+- Targeted DEV-045 gate已通過：16個測試檔／56個測試通過，`npm run build`成功，task-owned browser QC涵蓋四個development profile與390／1024／1440 viewport，並完成runtime cleanup。
+- Full regression排除兩個已知fixture discovery檔後為192個測試檔通過、790個測試通過、1 skipped；標準`npm test -- --testTimeout=30000`另有既有兩個`No test suite found` discovery failures（`scripts/dev010-n2-orgmaster.test.mjs`、`scripts/dev010-n2-source-freeze.test.mjs`），列為follow-up，不歸因於DEV-045。
 - Current Phase只允許local deterministic provider與ignored local JSON ledger；正式provider、Email、Cloud SQL、migration、deploy與release仍須另進Future Phase／release gate。
+
+### Local implementation evidence (2026-09-04)
+
+- Automated evidence：`npm run test:dev-045`（16 files／56 tests passed）、`npm run build`（client／server build passed）。
+- Browser evidence：`qa/dev-045/browser/manifest.json`與同目錄五張desktop／mobile screenshots（含空白Modal、pending投影）；harness使用ephemeral loopback、四角色權限矩陣、實際邀請送出、mutation control、窄版唯讀與horizontal-overflow檢查，完成後關閉task-owned server／browser。
+- Boundary evidence：local provider只接受`@orgmaster.test` synthetic accounts；`accountEnrollmentEnabled` production default為false；未建立production account、未寄送Email、未修改Cloud SQL或shared migration。
 
 ### Stop conditions
 
@@ -1151,7 +1158,7 @@ Browser harness固定：
 
 - 不使用目前`localhost:5000`；以OS配置的ephemeral loopback port建立task-owned server，記錄PID／port／purpose／cleanup condition，完成後close並確認port released。
 - 使用`dist/`frozen artifact，report記錄Git HEAD、dirty file list、每個served source file bytes／SHA、aggregate SHA、Node／Chromium版本與`productionWrites=false`、`emailDelivered=false`。
-- Evidence path：`output/qa/dev-045/browser/<runId>/report.json`、`screenshots/*.png`與`output/qa/dev-045/browser/latest.json`。
+- Evidence path（Current Phase runner）：`qa/dev-045/browser/manifest.json`與`qa/dev-045/browser/*.png`；future aggregate runner可另建立帶runId的report，但不得覆寫本地runtime evidence。
 - 正常入口一律從功能列開啟「員工」再選Employee；direct URL只能補route reload，不取代入口可發現性。
 - 1440×900與1024×768：administrator、governance-manager各完成empty→Modal→invite pending；administrator另完成existing exact search→link、conflict→查看Employee。
 - Administrator另以A14 fixture驗證兩筆account＋一筆pending enrollment全部可見、順序穩定且只保留一個quiet新增入口。
@@ -1198,6 +1205,6 @@ Readiness結果：
 - P1 gap=`0`：opaque Employee ID、pure GET、create／replay disposition、request／provider／audit DTO、one-to-many projection、shared policy、runtime singleton／failure isolation、exact permission records、same-origin Gate、local migration、UI state／focus、test commands、browser provenance與runtime cleanup皆已固定。
 - Human decision blocker=`0`：公司正式Email domain、production provider owner、mail與production persistence尚未要求，已由Future Phase re-entry gate承接，不阻塞local Current Phase。
 - RD Technical Lead re-review=`PASS`：前次1個P0與4個P1，以及本次architecture completion識別的3個P0／2個P1皆已以最小契約修正關閉；error／pure-read細節併入既有finding，無新增產品scope或ADR需要。
-- RD可開始：是，只限S0→S4 local／isolated implementation。`RD Implementation Ready`不代表產品已完成、QA／QC已通過或可release。
+- RD implementation：local／isolated S0→S4已完成；targeted gates與browser QC通過。Full regression仍保留兩個既有test-discovery follow-up，不阻塞DEV-045 targeted acceptance；`Production Provisioning Gated`仍有效，不代表正式帳號、Email、production persistence或release已完成。
 
 使用思考習慣：#責任歸屬、#系統描繪、#驗收閉環

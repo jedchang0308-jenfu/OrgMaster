@@ -1,0 +1,8 @@
+import { describe, expect, it } from 'vitest'
+import { AccountProvisioningError, createLocalAccountProvisioningAdapter } from './orgmasterAccountProvisioningPort'
+
+describe('local account provisioning port', () => {
+  it('allows only the synthetic managed domain and exact lookup', async () => { const provider = createLocalAccountProvisioningAdapter(); await expect(provider.findExistingByExactEmail(' existing.employee@orgmaster.test ')).resolves.toMatchObject({ accountType: 'human_personal' }); await expect(provider.findExistingByExactEmail('someone@example.com')).rejects.toMatchObject({ code: 'WORK_EMAIL_DOMAIN_NOT_ALLOWED' }) })
+  it('is idempotent by request key without exposing raw provider data through result shape', async () => { const provider = createLocalAccountProvisioningAdapter(); const first = await provider.requestInvitation({ requestKey: 'key-1', enrollmentId: 'enrollment-1', email: 'new@orgmaster.test' }); const replay = await provider.requestInvitation({ requestKey: 'key-1', enrollmentId: 'enrollment-1', email: 'new@orgmaster.test' }); expect(replay).toMatchObject({ disposition: 'replayed', operationRef: first.operationRef }); expect(first.emailDelivered).toBe(false) })
+  it('supports deterministic response loss injection', async () => { const provider = createLocalAccountProvisioningAdapter({ inviteFault: 'timeout_after_commit' }); await expect(provider.requestInvitation({ requestKey: 'key-2', enrollmentId: 'enrollment-2', email: 'new2@orgmaster.test' })).rejects.toBeInstanceOf(AccountProvisioningError); await expect(provider.readInvitation({ requestKey: 'key-2', enrollmentId: 'enrollment-2', operationRef: null })).resolves.toMatchObject({ state: 'pending_acceptance' }) })
+})

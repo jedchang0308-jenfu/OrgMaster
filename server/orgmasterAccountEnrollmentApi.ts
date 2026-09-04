@@ -62,6 +62,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, runtim
       let employeeId: string; try { employeeId = decodeURIComponent(raw) } catch { throw new AccountEnrollmentServiceError('INVALID_REQUEST') }
       sendJson(response, 200, await runtime.service.readEmployeeAccess(actor, employeeId)); return
     }
+    if (request.method !== 'POST') throw new AccountEnrollmentServiceError('METHOD_NOT_ALLOWED')
     const body = await readBody(request)
     if (path === `${ACCOUNT_ENROLLMENT_API_PATH}/invitations` && request.method === 'POST') { const result = await runtime.service.invite(actor, { commandId: String(body.commandId ?? ''), employeeId: String(body.employeeId ?? ''), email: String(body.email ?? '') } as InviteAccountRequestV1); sendJson(response, result.disposition === 'created' ? 201 : 200, result.view); return }
     if (path === `${ACCOUNT_ENROLLMENT_API_PATH}/existing-candidates` && request.method === 'POST') { const result = await runtime.service.findExisting(actor, { employeeId: String(body.employeeId ?? ''), email: String(body.email ?? '') } as ExistingCandidateRequestV1, actorBinding(request, actor)); sendJson(response, 200, result); return }
@@ -69,7 +70,6 @@ async function handle(request: IncomingMessage, response: ServerResponse, runtim
     const resend = path.match(new RegExp(`^${ACCOUNT_ENROLLMENT_API_PATH}/invitations/([^/]+)/resend$`)); if (resend && request.method === 'POST') { const result = await runtime.service.resend(actor, { commandId: String(body.commandId ?? ''), enrollmentId: decodeURIComponent(resend[1]), expectedEnrollmentRevision: Number(body.expectedEnrollmentRevision) } as ManageInvitationRequestV1); sendJson(response, 200, result); return }
     const cancel = path.match(new RegExp(`^${ACCOUNT_ENROLLMENT_API_PATH}/invitations/([^/]+)/cancel$`)); if (cancel && request.method === 'POST') { const result = await runtime.service.cancel(actor, { commandId: String(body.commandId ?? ''), enrollmentId: decodeURIComponent(cancel[1]), expectedEnrollmentRevision: Number(body.expectedEnrollmentRevision) } as ManageInvitationRequestV1); sendJson(response, 200, result); return }
     const status = path.match(new RegExp(`^${ACCOUNT_ENROLLMENT_API_PATH}/identity-links/([^/]+)/status$`)); if (status && request.method === 'POST') { const result = await runtime.service.setIdentityLinkStatus(actor, { commandId: String(body.commandId ?? ''), employeeId: String(body.employeeId ?? ''), identityLinkId: decodeURIComponent(status[1]), status: body.status === 'inactive' ? 'inactive' : 'active', expectedGovernanceRevision: String(body.expectedGovernanceRevision ?? '') } as SetIdentityLinkStatusRequestV1); sendJson(response, 200, result); return }
-    if (!['POST', 'GET'].includes(request.method ?? '')) throw new AccountEnrollmentServiceError('METHOD_NOT_ALLOWED')
     throw new AccountEnrollmentServiceError('ROUTE_NOT_FOUND')
   } catch (error) { const result = errorBody(error); sendJson(response, result.status, result.body) }
 }
@@ -79,7 +79,7 @@ export interface AccountEnrollmentHttpRuntimeV1 { service: AccountEnrollmentServ
 export function createOrgmasterAccountEnrollmentRuntime(input: { root: string; devEnabled: boolean; provider?: AccountProvisioningPort | null; now?: () => Date; token?: () => string }): AccountEnrollmentHttpRuntimeV1 {
   const provider = input.devEnabled ? (input.provider === undefined ? createLocalAccountProvisioningAdapter({ now: input.now }) : input.provider) : null
   const service = createAccountEnrollmentService({ ...input, provider })
-  const startupRecovery = service.recoverIncompleteEnrollments().then((report) => ({ status: 'ready' as const, report })).catch((error) => { if (error instanceof AccountEnrollmentStoreError && error.code === 'ACCOUNT_ENROLLMENT_STORE_INVALID') return { status: 'failed' as const, code: 'ACCOUNT_ENROLLMENT_STORE_INVALID' as const }; return { status: 'ready' as const, report: { inspected: 0, advanced: 0, remaining: 0 } } })
+  const startupRecovery = service.recoverIncompleteEnrollments().then((report) => ({ status: 'ready' as const, report })).catch((error) => { if ((error instanceof AccountEnrollmentStoreError && error.code === 'ACCOUNT_ENROLLMENT_STORE_INVALID') || (error instanceof AccountEnrollmentServiceError && error.code === 'ACCOUNT_ENROLLMENT_STORE_INVALID')) return { status: 'failed' as const, code: 'ACCOUNT_ENROLLMENT_STORE_INVALID' as const }; return { status: 'ready' as const, report: { inspected: 0, advanced: 0, remaining: 0 } } })
   const middleware: Connect.NextHandleFunction = (request, response, next) => { if (!request.url?.startsWith(ACCOUNT_ENROLLMENT_API_PATH)) return next(); void handle(request, response, runtime, input.devEnabled) }
   const runtime = { service, middleware, startupRecovery } as AccountEnrollmentHttpRuntimeV1
   return runtime

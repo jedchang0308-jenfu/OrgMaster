@@ -683,6 +683,7 @@ function ProtectedApp() {
   const organizationEditingEnabled = masterDataEditingEnabled && !dutyConfigurationActive
   const workspaceMutationAllowed = resolveModuleCapability('organization', workspaceEnvironment, { canRead: true, canMutate: true }).canMutate
   const versionMutationAllowed = isDesktopMutationEnvironment(workspaceEnvironment)
+  const accountMutationEnvironmentAllowed = isDesktopMutationEnvironment(workspaceEnvironment)
   const workspaceCompositionCapability = resolveWorkspaceCompositionCapability(workspaceEnvironment)
   workspaceMutationAllowedRef.current = workspaceMutationAllowed
   versionMutationAllowedRef.current = versionMutationAllowed
@@ -2803,6 +2804,7 @@ function ProtectedApp() {
         onSetPrimaryAssignment={changePrimaryAssignment}
         editingEnabled={masterDataEditingEnabled}
         identityMutationAllowed={workspaceMutationAllowed}
+        accountMutationEnvironmentAllowed={accountMutationEnvironmentAllowed}
         governanceRefreshToken={governanceRefreshToken}
         onGovernanceChanged={() => setGovernanceRefreshToken((value) => value + 1)}
         onSelectPosition={selectPositionFromMasterDetail}

@@ -1,133 +1,51 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link2, RefreshCw, ShieldCheck } from 'lucide-react'
-import { describeGovernanceFailure, type GovernanceFailureView } from '../governance/governancePresentation'
-import { linkCurrentGovernanceIdentity, loadGovernance, loadGovernanceSession, patchGovernanceDraft, type GovernanceApiSnapshot, type GovernanceSession } from '../governance/apiClient'
-import type { GovernanceIdentityLinkViewV1 } from '../governance/governancePresentation'
-import type { GovernanceCommandV2 } from '../governance/types'
 import type { Employee } from '../types'
+import { AccountEnrollmentApiError, cancelInvitation, loadEmployeeAccountAccess, resendInvitation, setEmployeeIdentityLinkStatus } from '../accountEnrollment/apiClient'
+import type { EmployeeAccountAccessViewV1 } from '../accountEnrollment/types'
+import { EmployeeAccountSetupDialog } from './EmployeeAccountSetupDialog'
 
 type Props = {
   employee: Employee
-  mutationBoundaryAllowed: boolean
+  accountMutationEnvironmentAllowed?: boolean
+  mutationBoundaryAllowed?: boolean
   refreshToken?: number
   onChanged?: () => void
+  onOpenEmployee?: (employeeId: string) => void
 }
 
-type LoadState = 'loading' | 'ready'
+const accountTypeLabel: Record<string, string> = { human_personal: '日常帳號', human_privileged: '特權帳號', unclassified: '未分類' }
+function visibleError(error: AccountEnrollmentApiError) { if (error.code === 'IDENTITY_VIEW_REQUIRED') return null; if (error.code === 'GOVERNANCE_READ_FAILED') return '目前無法讀取登入帳號，請重新載入。'; return '目前無法完成操作，請稍後再試。' }
 
-const accountTypeLabel: Record<string, string> = {
-  human_personal: '日常帳號',
-  human_privileged: '特權帳號',
-  legacy_shared: '共用帳號',
-  service: '服務帳號',
-}
-
-export function EmployeeIdentitySection({ employee, mutationBoundaryAllowed, refreshToken = 0, onChanged }: Props) {
-  const [snapshot, setSnapshot] = useState<GovernanceApiSnapshot | null>(null)
-  const [session, setSession] = useState<GovernanceSession | null>(null)
-  const [revision, setRevision] = useState('')
-  const [loadState, setLoadState] = useState<LoadState>('loading')
-  const [failure, setFailure] = useState<GovernanceFailureView | null>(null)
+export function EmployeeIdentitySection({ employee, accountMutationEnvironmentAllowed = true, mutationBoundaryAllowed, refreshToken = 0, onChanged }: Props) {
+  const [view, setView] = useState<EmployeeAccountAccessViewV1 | null>(null)
+  const [error, setError] = useState<AccountEnrollmentApiError | null>(null)
   const [busy, setBusy] = useState(false)
-  const requestSequence = useRef(0)
-
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const sequence = useRef(0)
+  const environmentAllowed = mutationBoundaryAllowed ?? accountMutationEnvironmentAllowed
   const reload = useCallback(async () => {
-    const sequence = ++requestSequence.current
-    setLoadState('loading')
-    setFailure(null)
-    try {
-      const [loaded, currentSession] = await Promise.all([loadGovernance(), loadGovernanceSession()])
-      if (sequence !== requestSequence.current) return false
-      setSnapshot(loaded.payload)
-      setRevision(loaded.revision || loaded.payload.revision)
-      setSession(currentSession.payload)
-      setLoadState('ready')
-      return true
-    } catch (error) {
-      if (sequence !== requestSequence.current) return false
-      setFailure(describeGovernanceFailure(error))
-      setLoadState('ready')
-      return false
-    }
-  }, [])
-
-  useEffect(() => { void reload() }, [employee.id, refreshToken, reload])
-
-  const links = useMemo(() => snapshot?.document.draft.identityLinks.filter((link) => link.employeeId === employee.id) ?? [], [employee.id, snapshot])
-  const activeAdmissionIds = useMemo(() => new Set((snapshot?.document.draft.principalAdmissions ?? []).filter((admission) => admission.status === 'active' && admission.identityLinkId).map((admission) => admission.identityLinkId as string)), [snapshot])
-  const actorLink = useMemo(() => snapshot?.document.draft.identityLinks.find((link) => link.principalId === session?.actor.principalId), [session?.actor.principalId, snapshot])
-  const canMutate = mutationBoundaryAllowed && Boolean(session?.capabilities.manage) && employee.status === 'active'
-  const actorIsLinkedElsewhere = Boolean(actorLink && actorLink.employeeId !== employee.id)
-
-  const applyResult = useCallback((result: { payload: { document: GovernanceApiSnapshot['document']; status: string }; revision: string }) => {
-    setSnapshot((current) => current ? { ...current, document: result.payload.document } : current)
-    setRevision(result.revision || revision)
-    onChanged?.()
-  }, [onChanged, revision])
-
-  const linkCurrent = useCallback(async () => {
-    if (!canMutate) return
-    setBusy(true)
-    setFailure(null)
-    try {
-      const result = await linkCurrentGovernanceIdentity(revision, crypto.randomUUID(), employee.id)
-      applyResult(result)
-    } catch (error) {
-      setFailure(describeGovernanceFailure(error))
-    } finally {
-      setBusy(false)
-    }
-  }, [applyResult, canMutate, employee.id, revision])
-
-  const setLinkStatus = useCallback(async (link: GovernanceIdentityLinkViewV1, status: 'active' | 'inactive') => {
-    if (!canMutate || activeAdmissionIds.has(link.id) || link.principalId === session?.actor.principalId) return
-    setBusy(true)
-    setFailure(null)
-    const command: GovernanceCommandV2 = { type: 'SET_IDENTITY_LINK_STATUS', commandId: crypto.randomUUID(), reason: status === 'active' ? '重新啟用身分連結' : '停用身分連結', id: link.id, status }
-    try {
-      const result = await patchGovernanceDraft(revision, command)
-      applyResult(result)
-    } catch (error) {
-      setFailure(describeGovernanceFailure(error))
-    } finally {
-      setBusy(false)
-    }
-  }, [activeAdmissionIds, applyResult, canMutate, revision, session?.actor.principalId])
-
-  const currentLink = actorLink?.employeeId === employee.id ? actorLink : null
-  const showLinkAction = canMutate && !actorLink
-  const showReactivateAction = canMutate && currentLink?.status === 'inactive'
-
-  return (
+    const current = ++sequence.current; setError(null)
+    try { const next = await loadEmployeeAccountAccess(employee.id); if (current !== sequence.current) return; setView(next) }
+    catch (value) { if (current !== sequence.current) return; if (value instanceof AccountEnrollmentApiError && value.code === 'IDENTITY_VIEW_REQUIRED') { setView(null); setError(value); return } setError(value instanceof AccountEnrollmentApiError ? value : new AccountEnrollmentApiError('GOVERNANCE_READ_FAILED', 500)); setView(null) }
+  }, [employee.id])
+  useEffect(() => { void reload() }, [reload, refreshToken])
+  if (error?.code === 'IDENTITY_VIEW_REQUIRED') return null
+  const canSetup = Boolean(view && environmentAllowed && employee.status === 'active' && (view.capabilities.invite || view.capabilities.link))
+  const run = async (action: () => Promise<unknown>) => { if (busy) return; setBusy(true); setError(null); try { await action(); await reload(); onChanged?.() } catch (value) { setError(value instanceof AccountEnrollmentApiError ? value : new AccountEnrollmentApiError('GOVERNANCE_READ_FAILED', 500)) } finally { setBusy(false) } }
+  return <>
     <section className="inspector__section employee-identity-section" aria-labelledby={`employee-identity-heading-${employee.id}`}>
-      <div className="section-heading">
-        <span id={`employee-identity-heading-${employee.id}`}>登入身分</span>
-        {loadState === 'ready' && <small>{links.length} 個連結</small>}
-      </div>
-      {loadState === 'loading' && !snapshot && <div className="directory-detail__identity-state" role="status">載入登入身分…</div>}
-      {failure && <div className="directory-detail__identity-error" role="alert"><span>{failure.message}</span><button type="button" className="button button--quiet" onClick={() => void reload()}><RefreshCw size={13} aria-hidden="true" />重新載入</button></div>}
-      {actorIsLinkedElsewhere && <div className="directory-detail__identity-note" role="status">目前登入身分已連結其他員工，不能在此改綁。</div>}
-      {links.length > 0 ? (
-        <div className="directory-detail__identity-list">
-          {links.map((link) => {
-            const admission = snapshot?.document.draft.principalAdmissions?.find((candidate) => candidate.identityLinkId === link.id && candidate.status === 'active')
-            const isCurrent = link.principalId === session?.actor.principalId
-            const isReadOnly = Boolean(admission) || isCurrent
-            return (
-              <div className="directory-detail__identity-row" key={link.id}>
-                <div className="directory-detail__identity-copy">
-                  <strong>{link.subjectHint}</strong>
-                  <small>{link.issuer} · {accountTypeLabel[admission?.accountType ?? ''] ?? '未分類'}</small>
-                </div>
-                <span className={`directory-detail__identity-status is-${link.status}`}>{link.status === 'active' ? '有效' : '停用'}</span>
-                {isReadOnly ? <small className="directory-detail__identity-readonly">{admission ? '已有帳號准入，請由准入流程管理' : '目前登入身分'}</small> : canMutate ? <button type="button" className="button button--quiet" disabled={busy} onClick={() => void setLinkStatus(link, link.status === 'active' ? 'inactive' : 'active')}>{link.status === 'active' ? '停用' : '重新啟用'}</button> : null}
-              </div>
-            )
-          })}
-        </div>
-      ) : !failure && loadState === 'ready' ? <div className="directory-detail__identity-empty"><Link2 size={15} aria-hidden="true" /><span>尚未連結登入身分</span></div> : null}
-      {(showLinkAction || showReactivateAction) && <button type="button" className="button button--primary directory-detail__identity-primary" disabled={busy} onClick={() => void linkCurrent()}><ShieldCheck size={14} aria-hidden="true" />{showReactivateAction ? '重新啟用目前登入身分' : '連結目前登入身分'}</button>}
-      {!canMutate && !actorIsLinkedElsewhere && employee.status === 'inactive' && <div className="directory-detail__identity-note">停用員工不能連結登入身分。</div>}
+      <div className="section-heading"><span id={`employee-identity-heading-${employee.id}`}>登入帳號</span>{view && canSetup && view.accounts.length + view.enrollments.length > 0 && <button type="button" className="button button--quiet" disabled={busy} onClick={() => setDialogOpen(true)}>新增登入帳號</button>}</div>
+      {!view && !error && <div className="directory-detail__identity-state" role="status">載入登入帳號…</div>}
+      {error && <div className="directory-detail__identity-error" role="alert"><span>{visibleError(error)}</span><button type="button" className="button button--quiet" onClick={() => void reload()}><RefreshCw size={13} aria-hidden="true" />重新載入</button></div>}
+      {view && view.accounts.length === 0 && view.enrollments.length === 0 && <div className="directory-detail__identity-empty"><Link2 size={15} aria-hidden="true" /><span>尚未設定登入帳號</span></div>}
+      {view && (view.accounts.length > 0 || view.enrollments.length > 0) && <div className="directory-detail__identity-list">
+        {view.accounts.map((account) => <div className="directory-detail__identity-row" key={account.identityLinkId}><div className="directory-detail__identity-copy"><strong>{account.accountHint}</strong><small>{account.providerLabel} · {accountTypeLabel[account.accountType] ?? '未分類'}</small></div><span className={`directory-detail__identity-status is-${account.status}`}>{account.status === 'active' ? '已啟用' : '已停用'}</span>{environmentAllowed && account.linkStatusMutable && <button type="button" className="button button--quiet" disabled={busy} onClick={() => void run(() => setEmployeeIdentityLinkStatus(account.identityLinkId, { commandId: crypto.randomUUID(), employeeId: employee.id, status: account.status === 'active' ? 'inactive' : 'active', expectedGovernanceRevision: view.governanceRevision }))}>{account.status === 'active' ? '停用' : '重新啟用'}</button>}</div>)}
+        {view.enrollments.map((enrollment) => <div className="directory-detail__identity-row" key={enrollment.id}><div className="directory-detail__identity-copy"><strong>{enrollment.emailHint}</strong><small>{enrollment.kind === 'invite_new' ? '新帳號邀請' : '既有帳號連結'}</small></div><span className={`directory-detail__identity-status is-${enrollment.status}`}>{enrollment.status === 'pending_acceptance' ? '等待接受' : enrollment.status === 'outcome_unknown' ? '正在確認結果' : enrollment.status === 'failed' || enrollment.status === 'conflict' ? '需要處理' : enrollment.status}</span>{enrollment.expiresAt && <small>到期 {new Date(enrollment.expiresAt).toLocaleDateString('zh-TW')}</small>}{environmentAllowed && enrollment.actions.includes('resend') && <button type="button" className="button button--quiet" disabled={busy} onClick={() => void run(() => resendInvitation(enrollment.id, { commandId: crypto.randomUUID(), expectedEnrollmentRevision: enrollment.revision }))}>重送</button>}{environmentAllowed && enrollment.actions.includes('cancel') && <button type="button" className="button button--quiet" disabled={busy} onClick={() => void run(() => cancelInvitation(enrollment.id, { commandId: crypto.randomUUID(), expectedEnrollmentRevision: enrollment.revision }))}>取消</button>}</div>)}
+      </div>}
+      {view && canSetup && view.accounts.length === 0 && view.enrollments.length === 0 && <button type="button" className="button button--primary directory-detail__identity-primary" disabled={busy} onClick={() => setDialogOpen(true)}><ShieldCheck size={14} aria-hidden="true" />設定登入帳號</button>}
+      {view && employee.status === 'inactive' && <div className="directory-detail__identity-note">停用員工不能設定登入帳號。</div>}
     </section>
-  )
+    {view && <EmployeeAccountSetupDialog employee={employee} view={view} open={dialogOpen} onClose={() => setDialogOpen(false)} onSuccess={() => { void reload(); onChanged?.() }} />}
+  </>
 }

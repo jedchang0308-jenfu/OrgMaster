@@ -2364,6 +2364,22 @@ button.directory-detail__assignment-department-link:not(.is-static):focus-visibl
   color: #687487;
 }
 
+.directory-detail__identity-status.is-pending_acceptance,
+.directory-detail__identity-status.is-requested,
+.directory-detail__identity-status.is-dispatching,
+.directory-detail__identity-status.is-accepted_pending_link {
+  background: #eef4ff;
+  color: #3e63a8;
+}
+
+.directory-detail__identity-status.is-outcome_unknown,
+.directory-detail__identity-status.is-expired,
+.directory-detail__identity-status.is-failed,
+.directory-detail__identity-status.is-conflict {
+  background: #fff1e4;
+  color: #9b571c;
+}
+
 .directory-detail__identity-empty,
 .directory-detail__identity-state {
   display: flex;
@@ -2405,6 +2421,41 @@ button.directory-detail__assignment-department-link:not(.is-static):focus-visibl
 .directory-detail__identity-primary {
   justify-content: center;
   margin-top: 2px;
+}
+
+.employee-account-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(31, 45, 68, .2);
+}
+
+.employee-account-dialog {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #d8e0eb;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 20px 48px rgba(34, 52, 82, .2);
+}
+
+.employee-account-dialog header { display: grid; gap: 4px; }
+.employee-account-dialog h2 { margin: 0; color: #263753; font-size: 16px; }
+.employee-account-dialog header p { margin: 0; color: #7b8799; font-size: 11px; }
+.employee-account-dialog__modes { display: flex; gap: 16px; color: #3d4f69; font-size: 11px; }
+.employee-account-dialog__modes label { display: inline-flex; align-items: center; gap: 6px; }
+.employee-account-dialog__candidate { display: grid; gap: 3px; padding: 10px; border-radius: 8px; background: #f1f6ff; color: #365d9f; font-size: 11px; }
+.employee-account-dialog__candidate small, .employee-account-dialog__hint { color: #8491a4; font-size: 10px; }
+.employee-account-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 520px) {
+  .employee-account-dialog__backdrop { place-items: end center; padding: 10px; }
+  .employee-account-dialog { border-radius: 12px; }
 }
 
 .inspector__footer {
