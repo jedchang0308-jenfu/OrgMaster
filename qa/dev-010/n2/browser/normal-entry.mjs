@@ -276,7 +276,7 @@ async function runOrgBrowser() {
     ])
     if (entryState === 'login') {
       const administrator = page.getByRole('button', { name: /^OrgMaster 管理者/u })
-      await administrator.focus(); await page.keyboard.press('Enter')
+      await administrator.focus(); await administrator.press('Enter')
       await developmentLogin.waitFor({ state: 'hidden', timeout: 30000 })
     }
     if (enableMutation) {
@@ -285,7 +285,7 @@ async function runOrgBrowser() {
         const body = (await page.locator('body').innerText()).replace(/\s+/gu, ' ').slice(0, 3000)
         throw new Error(`DEV010_ORG_MAINTENANCE_TOGGLE_MISSING body=${body} runtime=${orgApp?.getOutput?.().slice(-4000) ?? ''} cause=${error.message}`)
       }
-      await maintenanceToggle.focus(); await page.keyboard.press('Enter')
+      await maintenanceToggle.focus(); await maintenanceToggle.press('Enter')
       await page.getByRole('button', { name: /^編輯中：/u }).waitFor({ timeout: 30000 })
     }
     const launcher = page.getByRole('complementary', { name: '功能導覽' })
@@ -299,10 +299,10 @@ async function runOrgBrowser() {
       const element = [...document.querySelectorAll('button')].find((node) => node.getAttribute('aria-label')?.startsWith('角色治理'))
       return element instanceof HTMLButtonElement && !element.disabled
     }, undefined, { timeout: 30000 })
-    await governance.focus(); await page.keyboard.press('Enter')
+    await governance.focus(); await governance.press('Enter')
     await page.getByRole('region', { name: '角色指派治理' }).waitFor({ timeout: 30000 })
     const assignments = page.getByRole('button', { name: '角色指派', exact: true })
-    await assignments.focus(); await page.keyboard.press('Enter')
+    await assignments.focus(); await assignments.press('Enter')
     await page.getByRole('heading', { name: '角色指派', exact: true }).waitFor({ timeout: 30000 })
   }
   const governanceSnapshot = async (page) => await page.evaluate(async () => {

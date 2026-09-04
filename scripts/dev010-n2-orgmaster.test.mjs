@@ -59,6 +59,8 @@ test('N2-ORG-06 browser rehearsal builds synthetic governance state without loca
   assert.match(browserSource, /name: '選擇測試角色'/u)
   assert.match(browserSource, /\^OrgMaster 管理者/u)
   assert.match(browserSource, /const entryState = await Promise\.race/u)
+  assert.match(browserSource, /await governance\.press\('Enter'\)/u)
+  assert.match(browserSource, /await assignments\.press\('Enter'\)/u)
   assert.match(browserSource, /applyName\.click\(\{ trial: true \}\)/u)
   assert.match(browserSource, /suggested name did not become actionable after hydration/u)
   assert.match(browserSource, /confirmed name was not applied/u)
