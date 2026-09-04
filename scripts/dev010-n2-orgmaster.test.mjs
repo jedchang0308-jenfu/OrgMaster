@@ -13,6 +13,7 @@ const migration = fs.readFileSync(path.join(root, 'db', 'migrations', '010_dev01
 const databaseSource = fs.readFileSync(path.join(root, 'server', 'orgmasterDatabase.ts'), 'utf8')
 const persistenceSource = fs.readFileSync(path.join(root, 'server', 'orgmasterPersistenceRepository.ts'), 'utf8')
 const browserSource = fs.readFileSync(path.join(root, 'qa', 'dev-010', 'n2', 'browser', 'normal-entry.mjs'), 'utf8')
+const gitAttributes = fs.readFileSync(path.join(root, '.gitattributes'), 'utf8')
 
 const expected = {
   org_principal: '1c431017194a06dfc61c36849ff93c42ab14291871f12f1a04d762823a3e2ced',
@@ -69,4 +70,5 @@ test('N2-ORG-06 browser rehearsal builds synthetic governance state without loca
   assert.match(browserSource, /getByRole\('region', \{ name: '角色指派治理' \}\)\.getByLabel\('切換角色'\)/u)
   assert.match(browserSource, /QC_NEXT_USE_WEBPACK: '1'/u)
   assert.doesNotMatch(browserSource, /path\.join\(orgRoot, 'data', 'orgmaster-(?:governance|workspace)/u)
+  assert.match(gitAttributes, /^contracts\/jenfu-platform-entitlement\/v2\/fixtures\/financial-role-catalog\.v1\.json text eol=lf$/mu)
 })
