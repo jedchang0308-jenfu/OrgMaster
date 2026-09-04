@@ -63,13 +63,14 @@ const record = (id, actual) => observations.push({ id, status: 'PASS', actual })
 async function createSyntheticGovernanceFixture() {
   const loader = await createViteModuleLoader({ root: orgRoot, configFile: false, appType: 'custom', logLevel: 'silent', server: { middlewareMode: true } })
   try {
-    const [{ createSeedDocumentV2 }, { migrateGovernanceV2ToV3 }, { readAiPdmRoleCatalog }, { createOrgDocumentFile }, { screenshotOrganizationState }, { buildOrganizationSnapshot }] = await Promise.all([
+    const [{ createSeedDocumentV2 }, { migrateGovernanceV2ToV3 }, { readAiPdmRoleCatalog }, { createOrgDocumentFile }, { screenshotOrganizationState }, { buildOrganizationSnapshot }, { createWorkspaceManifest }] = await Promise.all([
       loader.ssrLoadModule('/src/governance/migrateGovernanceV1ToV2.ts'),
       loader.ssrLoadModule('/src/governance/migrateGovernanceV2ToV3.ts'),
       loader.ssrLoadModule('/src/governance/aiPdmCatalog.ts'),
       loader.ssrLoadModule('/src/documentStorage.ts'),
       loader.ssrLoadModule('/src/screenshotData.ts'),
       loader.ssrLoadModule('/src/governance/validation.ts'),
+      loader.ssrLoadModule('/src/versionWorkspace.ts'),
     ])
     const at = '2026-09-03T00:00:00.000Z'
     const workspaceDocument = createOrgDocumentFile(structuredClone(screenshotOrganizationState), 'document', at)
@@ -100,7 +101,7 @@ async function createSyntheticGovernanceFixture() {
       policy: fixturePolicy, externalRoleCatalogs: [],
       organizationSnapshot,
     })
-    return { governanceDocument: document, workspaceDocument }
+    return { governanceDocument: document, workspaceDocument, workspaceManifest: createWorkspaceManifest(workspaceVersionId, at), workspaceVersionId }
   } finally {
     await loader.close()
   }
@@ -268,9 +269,22 @@ async function runOrgBrowser() {
   const baseUrl = `http://127.0.0.1:${orgPort}`
   const viewports = []
   const navigateToAssignments = async (page, enableMutation = false) => {
+    const developmentLogin = page.getByRole('heading', { name: '選擇測試角色', exact: true })
+    const entryState = await Promise.race([
+      developmentLogin.waitFor({ state: 'visible', timeout: 30000 }).then(() => 'login'),
+      page.getByRole('complementary', { name: '功能導覽' }).waitFor({ state: 'visible', timeout: 30000 }).then(() => 'workspace'),
+    ])
+    if (entryState === 'login') {
+      const administrator = page.getByRole('button', { name: /^OrgMaster 管理者/u })
+      await administrator.focus(); await page.keyboard.press('Enter')
+      await developmentLogin.waitFor({ state: 'hidden', timeout: 30000 })
+    }
     if (enableMutation) {
       const maintenanceToggle = page.getByRole('button', { name: /^唯讀：/u })
-      await maintenanceToggle.waitFor({ state: 'visible', timeout: 30000 })
+      try { await maintenanceToggle.waitFor({ state: 'visible', timeout: 30000 }) } catch (error) {
+        const body = (await page.locator('body').innerText()).replace(/\s+/gu, ' ').slice(0, 3000)
+        throw new Error(`DEV010_ORG_MAINTENANCE_TOGGLE_MISSING body=${body} runtime=${orgApp?.getOutput?.().slice(-4000) ?? ''} cause=${error.message}`)
+      }
       await maintenanceToggle.focus(); await page.keyboard.press('Enter')
       await page.getByRole('button', { name: /^編輯中：/u }).waitFor({ timeout: 30000 })
     }
@@ -321,7 +335,7 @@ async function runOrgBrowser() {
   }
   const applicationSelect = form.getByLabel('應用')
   const employeeSelect = form.getByLabel('員工')
-  const roleSelect = functionalPage.getByLabel('切換角色')
+  const roleSelect = functionalPage.getByRole('region', { name: '角色指派治理' }).getByLabel('切換角色')
   const selectOptionByText = async (locator, pattern) => {
     const options = await locator.locator('option').evaluateAll((nodes) => nodes.map((node) => ({ value: node.value, text: node.textContent ?? '' })))
     const option = options.find((item) => pattern.test(item.text))
@@ -450,9 +464,20 @@ async function runAiBrowser() {
     await noun.focus(); focusTrace.push(await page.evaluate(() => document.activeElement?.getAttribute('placeholder') || document.activeElement?.getAttribute('aria-label') || 'primary-noun'))
     await noun.fill(name)
     const applyName = page.getByRole('button', { name: '套用建議品名' })
-    await applyName.waitFor({ state: 'visible' }); await applyName.focus(); focusTrace.push(await page.evaluate(() => document.activeElement?.textContent?.trim() || ''))
+    await applyName.waitFor({ state: 'visible' })
+    for (let attempt = 0; attempt < 100 && !(await applyName.isEnabled()); attempt += 1) {
+      if (await noun.inputValue() !== name) await noun.fill(name)
+      await page.waitForTimeout(100)
+    }
+    assert.equal(await noun.inputValue(), name)
+    assert.equal(await applyName.isEnabled(), true, 'suggested name did not become actionable after hydration')
+    await applyName.click({ trial: true }); await applyName.focus(); focusTrace.push(await page.evaluate(() => document.activeElement?.textContent?.trim() || ''))
     if (keyboard) await page.keyboard.press('Enter'); else await applyName.click()
+    const confirmedName = page.getByLabel('確定品名')
+    for (let attempt = 0; attempt < 100 && !(await confirmedName.inputValue()).trim(); attempt += 1) await page.waitForTimeout(50)
+    assert.ok((await confirmedName.inputValue()).trim(), 'confirmed name was not applied')
     const submit = page.getByRole('button', { name: '建立編號', exact: true })
+    await submit.click({ trial: true })
     await submit.focus(); focusTrace.push(await page.evaluate(() => document.activeElement?.textContent?.trim() || ''))
     return submit
   }
@@ -479,7 +504,7 @@ async function runAiBrowser() {
   await openCreate(normalPage, normalFocus)
   const normalSubmit = await prepareCreate(normalPage, `DEV010-TEMP-UI03-${process.pid}`, normalFocus)
   const normalResponsePromise = normalPage.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/numbering/records')
-  await normalPage.keyboard.press('Enter')
+  await normalSubmit.press('Enter')
   const normalResponse = await normalResponsePromise
   assert.equal(normalResponse.status(), 201)
   const normalBody = await normalResponse.json()
@@ -526,7 +551,7 @@ async function runAiBrowser() {
   await uncertain.waitFor({ timeout: 30000 })
   assert.equal(await retryPage.getByLabel('主要名詞').inputValue(), `DEV010-TEMP-UI07-${process.pid}`)
   await retrySubmit.focus(); retryFocus.push(await retryPage.evaluate(() => document.activeElement?.textContent?.trim() || ''))
-  await retryPage.keyboard.press('Enter')
+  await retrySubmit.press('Enter')
   await retryPage.getByRole('heading', { name: '編號已建立' }).waitFor({ timeout: 30000 })
   assert.equal(retryKeys.length, 2)
   assert.ok(retryKeys[0])
@@ -643,8 +668,9 @@ try {
   fs.mkdirSync(screenshotDir, { recursive: true })
   fs.mkdirSync(orgDataDir, { recursive: true })
   const orgFixture = await createSyntheticGovernanceFixture()
-  fs.mkdirSync(path.join(orgMirror, 'data'), { recursive: true })
-  fs.writeFileSync(path.join(orgMirror, 'data', 'orgmaster-document.v7.json'), `${JSON.stringify(orgFixture.workspaceDocument, null, 2)}\n`)
+  fs.mkdirSync(path.join(orgMirror, 'data', 'orgmaster-versions'), { recursive: true })
+  fs.writeFileSync(path.join(orgMirror, 'data', 'orgmaster-workspace.v1.json'), `${JSON.stringify(orgFixture.workspaceManifest, null, 2)}\n`)
+  fs.writeFileSync(path.join(orgMirror, 'data', 'orgmaster-versions', `${orgFixture.workspaceVersionId}.json`), `${JSON.stringify(orgFixture.workspaceDocument, null, 2)}\n`)
   fs.writeFileSync(path.join(orgDataDir, 'orgmaster-governance.v3.json'), `${JSON.stringify(orgFixture.governanceDocument, null, 2)}\n`)
   platformPort = await getFreePort(); orgPort = await getFreePort(); aiPort = await getFreePort()
   platformApp = startPlatformMirror()
