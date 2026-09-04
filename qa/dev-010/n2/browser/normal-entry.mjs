@@ -301,7 +301,7 @@ async function runOrgBrowser() {
     }, undefined, { timeout: 30000 })
     await governance.focus(); await governance.press('Enter')
     await page.getByRole('region', { name: '角色指派治理' }).waitFor({ timeout: 30000 })
-    try { await page.getByRole('heading', { name: '帳號治理', exact: true }).waitFor({ timeout: 30000 }) } catch (error) {
+    try { await page.getByRole('region', { name: '角色指派治理' }).getByText(/^草稿 /u).waitFor({ timeout: 30000 }) } catch (error) {
       const body = (await page.locator('body').innerText()).replace(/\s+/gu, ' ').slice(0, 4000)
       const governanceState = await page.evaluate(async () => {
         const response = await fetch('/api/orgmaster/governance/', { headers: { 'X-OrgMaster-Dev-Issuer': 'urn:orgmaster:dev', 'X-OrgMaster-Dev-Subject': 'local-admin' } })
