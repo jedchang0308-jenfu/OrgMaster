@@ -34,15 +34,25 @@ try {
   throw new Error(`DEV010_N2_HEAD_NOT_ANCESTOR: baseline=${baselineHead} head=${head}`)
 }
 
-const baselineCandidate = buildGitSourceManifest({ root: projectRoot, head: baselineHead, files: config.baseline.files })
+const appRoot = path.join(projectRoot, 'output', 'dev-010', 'n2', config.appId)
+const frozenPath = path.join(appRoot, `source-freeze-baseline-${baselineHead.slice(0, 12)}-${config.baseline.aggregateSha256.slice(0, 12)}.json`)
+const legacyFrozenPath = path.join(appRoot, 'source-freeze-baseline.json')
+let migratedLegacyBaseline = null
+if (!fs.existsSync(frozenPath) && fs.existsSync(legacyFrozenPath)) {
+  const legacy = JSON.parse(fs.readFileSync(legacyFrozenPath, 'utf8'))
+  if (legacy.packageId !== config.packageId || legacy.sourceManifest?.head !== baselineHead || legacy.sourceManifest?.aggregateSha256 !== config.baseline.aggregateSha256) {
+    throw new Error('DEV010_N2_LEGACY_BASELINE_MISMATCH')
+  }
+  migratedLegacyBaseline = legacy
+}
+const baselineCandidate = migratedLegacyBaseline?.sourceManifest
+  ?? buildGitSourceManifest({ root: projectRoot, head: baselineHead, files: config.baseline.files })
 const candidateFiles = [...new Set([
   ...config.baseline.files,
   ...config.changeAllowlist.modify,
   ...config.changeAllowlist.new,
 ])]
 const candidate = buildSourceManifest({ root: projectRoot, head, files: candidateFiles })
-const appRoot = path.join(projectRoot, 'output', 'dev-010', 'n2', config.appId)
-const frozenPath = path.join(appRoot, `source-freeze-baseline-${baselineHead.slice(0, 12)}-${config.baseline.aggregateSha256.slice(0, 12)}.json`)
 fs.mkdirSync(appRoot, { recursive: true })
 
 const dirtyPaths = execFileSync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
@@ -63,6 +73,7 @@ if (fs.existsSync(frozenPath)) {
   const knownDirty = new Set(baseline.dirtyPaths)
   const newDirty = dirtyPaths.filter((filePath) => !knownDirty.has(filePath))
   for (const filePath of newDirty) {
+    if (['.next/', '.tmp/', 'coverage/', 'node_modules/', 'output/', 'playwright-report/', 'test-results/'].some((prefix) => filePath.startsWith(prefix)) || /^scripts\/tmp-[^/]+/u.test(filePath)) continue
     const allowed = config.changeAllowlist.modify.includes(filePath)
       || config.changeAllowlist.new.includes(filePath)
       || config.changeAllowlist.outputPrefixes.some((prefix) => filePath.startsWith(prefix))
@@ -72,7 +83,7 @@ if (fs.existsSync(frozenPath)) {
   if (baselineCandidate.aggregateSha256 !== config.baseline.aggregateSha256) {
     throw new Error(`DEV010_N2_HASH_MISMATCH: expected=${config.baseline.aggregateSha256} actual=${baselineCandidate.aggregateSha256}`)
   }
-  baseline = {
+  baseline = migratedLegacyBaseline ?? {
     configPath: configRelative,
     dirtyPaths,
     frozenAt: new Date().toISOString(),
