@@ -42,7 +42,7 @@ const observations = []
 const screenshots = []
 const runtimePlan = { runId, ownerPid: process.pid, purpose: 'DEV-010 N2 real Chromium normal-entry regression', productionWrites: false, runtimes: [], cleanupCondition: 'all exact child trees stopped, ports released, taskRoot removed' }
 const originalEnv = new Map()
-const aiEnvKeys = ['NODE_ENV', 'PDM_AUTH_MODE', 'PDM_ENABLE_LOCAL_QUICK_LOGIN', 'PDM_DB_PROVIDER', 'PDM_DATA_DIR', 'PDM_REPOSITORY_DIR', 'PDM_RELEASE_MODE', 'ORGMASTER_PUBLIC_BASE_URL', 'PDM_NEXT_DIST_DIR', 'PDM_NEXT_TSCONFIG_PATH']
+const aiEnvKeys = ['NODE_ENV', 'PDM_AUTH_MODE', 'PDM_ENABLE_LOCAL_QUICK_LOGIN', 'PDM_DB_PROVIDER', 'PDM_DATA_DIR', 'PDM_REPOSITORY_DIR', 'PDM_RELEASE_MODE', 'ORGMASTER_PUBLIC_BASE_URL', 'PDM_NEXT_DIST_DIR', 'PDM_NEXT_TSCONFIG_PATH', 'QC_NEXT_USE_WEBPACK']
 for (const key of aiEnvKeys) originalEnv.set(key, process.env[key])
 const aiNextEnv = snapshotNextEnv(aiRoot)
 let browser = null
@@ -629,7 +629,7 @@ try {
 
   const nextDistDir = `.tmp/qc-dev010-n2-browser-${aiPort}`
   aiTsconfig = createTaskOwnedNextTsconfig(aiRoot, `dev010-${aiPort}`, nextDistDir)
-  Object.assign(process.env, { NODE_ENV: 'development', PDM_AUTH_MODE: 'demo', PDM_ENABLE_LOCAL_QUICK_LOGIN: '1', PDM_DB_PROVIDER: 'sqlite', PDM_DATA_DIR: aiDataDir, PDM_REPOSITORY_DIR: aiRepositoryDir, PDM_RELEASE_MODE: 'local_stub', ORGMASTER_PUBLIC_BASE_URL: 'http://127.0.0.1:9', PDM_NEXT_DIST_DIR: nextDistDir, PDM_NEXT_TSCONFIG_PATH: aiTsconfig.relativePath })
+  Object.assign(process.env, { NODE_ENV: 'development', PDM_AUTH_MODE: 'demo', PDM_ENABLE_LOCAL_QUICK_LOGIN: '1', PDM_DB_PROVIDER: 'sqlite', PDM_DATA_DIR: aiDataDir, PDM_REPOSITORY_DIR: aiRepositoryDir, PDM_RELEASE_MODE: 'local_stub', ORGMASTER_PUBLIC_BASE_URL: 'http://127.0.0.1:9', PDM_NEXT_DIST_DIR: nextDistDir, PDM_NEXT_TSCONFIG_PATH: aiTsconfig.relativePath, QC_NEXT_USE_WEBPACK: '1' })
   aiApp = startNextApp(aiRoot, 'dev', aiPort)
   runtimePlan.runtimes.push({ project: aiRoot, dataDir: aiDataDir, repositoryDir: aiRepositoryDir, nextDistDir, port: aiPort, pid: aiApp.child.pid, processTree: `runner ${process.pid} -> next ${aiApp.child.pid}`, authorityFixture: 'task-owned canonical workbench cutover for runtimeCommit local-dev after database initialization', cleanup: 'stop exact Next child tree; restore Next env; remove task fixtures/dist' })
   writeJson('runtime-plan.json', runtimePlan)

@@ -53,5 +53,6 @@ test('N2-ORG-05 manifest declares one pool with exact timeout ordering', () => {
 
 test('N2-ORG-06 browser rehearsal builds synthetic governance state without local business data', () => {
   assert.match(browserSource, /createSyntheticGovernanceFixture/u)
+  assert.match(browserSource, /QC_NEXT_USE_WEBPACK: '1'/u)
   assert.doesNotMatch(browserSource, /path\.join\(orgRoot, 'data', 'orgmaster-(?:governance|workspace)/u)
 })
