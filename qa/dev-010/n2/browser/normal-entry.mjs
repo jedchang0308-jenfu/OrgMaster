@@ -35,6 +35,7 @@ const evidenceDir = path.resolve(process.env.DEV010_N2_BROWSER_EVIDENCE_DIR ?? p
 const screenshotDir = path.join(evidenceDir, 'screenshots')
 const taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dev010-n2-browser-'))
 const platformMirror = path.join(taskRoot, 'platform')
+const orgMirror = path.join(taskRoot, 'orgmaster')
 const orgDataDir = path.join(taskRoot, 'org-governance-data')
 const aiDataDir = path.join(taskRoot, 'ai-data')
 const aiRepositoryDir = path.join(taskRoot, 'ai-repository')
@@ -62,12 +63,19 @@ const record = (id, actual) => observations.push({ id, status: 'PASS', actual })
 async function createSyntheticGovernanceFixture() {
   const loader = await createViteModuleLoader({ root: orgRoot, configFile: false, appType: 'custom', logLevel: 'silent', server: { middlewareMode: true } })
   try {
-    const [{ createSeedDocumentV2 }, { migrateGovernanceV2ToV3 }, { readAiPdmRoleCatalog }] = await Promise.all([
+    const [{ createSeedDocumentV2 }, { migrateGovernanceV2ToV3 }, { readAiPdmRoleCatalog }, { createOrgDocumentFile }, { screenshotOrganizationState }, { buildOrganizationSnapshot }] = await Promise.all([
       loader.ssrLoadModule('/src/governance/migrateGovernanceV1ToV2.ts'),
       loader.ssrLoadModule('/src/governance/migrateGovernanceV2ToV3.ts'),
       loader.ssrLoadModule('/src/governance/aiPdmCatalog.ts'),
+      loader.ssrLoadModule('/src/documentStorage.ts'),
+      loader.ssrLoadModule('/src/screenshotData.ts'),
+      loader.ssrLoadModule('/src/governance/validation.ts'),
     ])
     const at = '2026-09-03T00:00:00.000Z'
+    const workspaceDocument = createOrgDocumentFile(structuredClone(screenshotOrganizationState), 'document', at)
+    const workspaceVersionId = `current-${sha256(JSON.stringify(workspaceDocument.state)).slice(0, 20)}`
+    const workspaceRevision = 'dev010-n2-synthetic-workspace'
+    const organizationSnapshot = buildOrganizationSnapshot({ workspaceVersionId, workspaceRevision, sourceDataAt: at, state: workspaceDocument.state })
     const document = migrateGovernanceV2ToV3(createSeedDocumentV2(at), 'dev010-n2-synthetic-source', readAiPdmRoleCatalog(), at)
     document.draft.identityLinks.push({
       id: 'fixture-dev010-local-admin-link', principalId: 'dev-principal-local-admin', issuer: 'urn:orgmaster:dev',
@@ -90,9 +98,9 @@ async function createSyntheticGovernanceFixture() {
       publishedAt: at, publishedByPrincipalId: 'fixture:dev010',
       publishReason: 'DEV-010 task-owned role-manager actor prerequisite', snapshotHash: '0'.repeat(64), effectState: 'not-synchronized',
       policy: fixturePolicy, externalRoleCatalogs: [],
-      organizationSnapshot: { workspaceVersionId: 'test-current', workspaceRevision: 'dev010-n2-synthetic', capturedAt: at, employees: [], departments: [], organizationRoles: [], positions: [], assignments: [] },
+      organizationSnapshot,
     })
-    return document
+    return { governanceDocument: document, workspaceDocument }
   } finally {
     await loader.close()
   }
@@ -142,6 +150,28 @@ function startPlatformMirror() {
   const nextCli = path.join(platformRoot, 'node_modules', 'next', 'dist', 'bin', 'next')
   const child = spawn(process.execPath, [nextCli, 'dev', '--webpack', '--hostname', '127.0.0.1', '--port', String(platformPort)], {
     cwd: platformMirror, env: { ...process.env, NODE_ENV: 'development' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+  })
+  let output = ''
+  child.stdout.on('data', (chunk) => { output += chunk.toString() })
+  child.stderr.on('data', (chunk) => { output += chunk.toString() })
+  return { child, getOutput: () => output }
+}
+
+function startOrgMirror() {
+  fs.cpSync(orgRoot, orgMirror, {
+    recursive: true,
+    filter(source) {
+      const relative = path.relative(orgRoot, source)
+      if (!relative) return true
+      return !['.git', 'data', 'node_modules', 'output', 'test-results'].includes(relative.split(path.sep)[0])
+    },
+  })
+  fs.symlinkSync(path.join(orgRoot, 'node_modules'), path.join(orgMirror, 'node_modules'), 'junction')
+  const viteCli = path.join(orgRoot, 'node_modules', 'vite', 'bin', 'vite.js')
+  const child = spawn(process.execPath, [viteCli, '--host', '127.0.0.1', '--port', String(orgPort), '--strictPort'], {
+    cwd: orgMirror,
+    env: { ...process.env, NODE_ENV: 'development', ORGMASTER_PERSISTENCE_MODE: 'local-json', ORGMASTER_GOVERNANCE_DATA_DIR: orgDataDir },
+    stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
   })
   let output = ''
   child.stdout.on('data', (chunk) => { output += chunk.toString() })
@@ -612,20 +642,20 @@ function runAiGovernanceBrowser() {
 try {
   fs.mkdirSync(screenshotDir, { recursive: true })
   fs.mkdirSync(orgDataDir, { recursive: true })
-  const orgGovernanceFixture = await createSyntheticGovernanceFixture()
-  fs.writeFileSync(path.join(orgDataDir, 'orgmaster-governance.v3.json'), `${JSON.stringify(orgGovernanceFixture, null, 2)}\n`)
+  const orgFixture = await createSyntheticGovernanceFixture()
+  fs.mkdirSync(path.join(orgMirror, 'data'), { recursive: true })
+  fs.writeFileSync(path.join(orgMirror, 'data', 'orgmaster-document.v7.json'), `${JSON.stringify(orgFixture.workspaceDocument, null, 2)}\n`)
+  fs.writeFileSync(path.join(orgDataDir, 'orgmaster-governance.v3.json'), `${JSON.stringify(orgFixture.governanceDocument, null, 2)}\n`)
   platformPort = await getFreePort(); orgPort = await getFreePort(); aiPort = await getFreePort()
   platformApp = startPlatformMirror()
   runtimePlan.runtimes.push({ project: platformRoot, isolation: platformMirror, port: platformPort, pid: platformApp.child.pid, processTree: `runner ${process.pid} -> next ${platformApp.child.pid}`, cleanup: 'taskkill exact child tree; remove mirror' })
   writeJson('runtime-plan.json', runtimePlan)
   await waitHttp(`http://127.0.0.1:${platformPort}/login`, platformApp.getOutput)
 
-  const viteCli = path.join(orgRoot, 'node_modules', 'vite', 'bin', 'vite.js')
-  orgApp = { child: spawn(process.execPath, [viteCli, '--host', '127.0.0.1', '--port', String(orgPort), '--strictPort'], { cwd: orgRoot, env: { ...process.env, NODE_ENV: 'development', ORGMASTER_PERSISTENCE_MODE: 'local-json', ORGMASTER_GOVERNANCE_DATA_DIR: orgDataDir }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }), output: '' }
-  orgApp.child.stdout.on('data', (chunk) => { orgApp.output += chunk.toString() }); orgApp.child.stderr.on('data', (chunk) => { orgApp.output += chunk.toString() })
-  runtimePlan.runtimes.push({ project: orgRoot, dataDir: orgDataDir, port: orgPort, pid: orgApp.child.pid, processTree: `runner ${process.pid} -> vite ${orgApp.child.pid}`, cleanup: 'taskkill exact Vite child tree; remove isolated governance data' })
+  orgApp = startOrgMirror()
+  runtimePlan.runtimes.push({ project: orgRoot, isolation: orgMirror, dataDir: orgDataDir, port: orgPort, pid: orgApp.child.pid, processTree: `runner ${process.pid} -> vite ${orgApp.child.pid}`, cleanup: 'taskkill exact Vite child tree; remove isolated workspace and governance data' })
   writeJson('runtime-plan.json', runtimePlan)
-  await waitHttp(`http://127.0.0.1:${orgPort}`, () => orgApp.output)
+  await waitHttp(`http://127.0.0.1:${orgPort}`, orgApp.getOutput)
 
   const nextDistDir = `.tmp/qc-dev010-n2-browser-${aiPort}`
   aiTsconfig = createTaskOwnedNextTsconfig(aiRoot, `dev010-${aiPort}`, nextDistDir)
