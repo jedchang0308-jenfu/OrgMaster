@@ -301,7 +301,14 @@ async function runOrgBrowser() {
     }, undefined, { timeout: 30000 })
     await governance.focus(); await governance.press('Enter')
     await page.getByRole('region', { name: '角色指派治理' }).waitFor({ timeout: 30000 })
-    await page.getByRole('heading', { name: '帳號治理', exact: true }).waitFor({ timeout: 30000 })
+    try { await page.getByRole('heading', { name: '帳號治理', exact: true }).waitFor({ timeout: 30000 }) } catch (error) {
+      const body = (await page.locator('body').innerText()).replace(/\s+/gu, ' ').slice(0, 4000)
+      const governanceState = await page.evaluate(async () => {
+        const response = await fetch('/api/orgmaster/governance/', { headers: { 'X-OrgMaster-Dev-Issuer': 'urn:orgmaster:dev', 'X-OrgMaster-Dev-Subject': 'local-admin' } })
+        return { status: response.status, body: (await response.text()).slice(0, 4000) }
+      }).catch((cause) => ({ status: 0, body: String(cause) }))
+      throw new Error(`DEV010_ORG_GOVERNANCE_HYDRATION_FAILED state=${JSON.stringify(governanceState)} body=${body} runtime=${orgApp?.getOutput?.().slice(-4000) ?? ''} cause=${error.message}`)
+    }
     const assignments = page.getByRole('button', { name: '角色指派', exact: true })
     await assignments.focus(); await assignments.press('Enter')
     await page.getByRole('heading', { name: '角色指派', exact: true }).waitFor({ timeout: 30000 })
