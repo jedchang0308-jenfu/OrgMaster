@@ -301,6 +301,7 @@ async function runOrgBrowser() {
     }, undefined, { timeout: 30000 })
     await governance.focus(); await governance.press('Enter')
     await page.getByRole('region', { name: '角色指派治理' }).waitFor({ timeout: 30000 })
+    await page.getByRole('heading', { name: '帳號治理', exact: true }).waitFor({ timeout: 30000 })
     const assignments = page.getByRole('button', { name: '角色指派', exact: true })
     await assignments.focus(); await assignments.press('Enter')
     await page.getByRole('heading', { name: '角色指派', exact: true }).waitFor({ timeout: 30000 })
