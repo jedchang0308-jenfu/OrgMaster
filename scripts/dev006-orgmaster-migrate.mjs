@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { readdir, readFile, stat } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import pg from 'pg'
 
@@ -86,19 +86,31 @@ async function listMedia(dataRoot) {
 
 async function legacyInventory(dataRoot) {
   const categories = { legacy: 0, previous: 0, temporary: 0 }
+  const objects = []
   const scan = async (root) => {
     let entries = []
     try { entries = await readdir(root, { withFileTypes: true }) } catch { return }
     for (const entry of entries) {
       if (!entry.isFile()) continue
-      if (entry.name.includes('.tmp')) categories.temporary += 1
-      else if (entry.name.includes('.previous')) categories.previous += 1
-      else if (/orgmaster-(document\.v[1-6]|governance\.v1|duty-plans)/.test(entry.name)) categories.legacy += 1
+      const category = entry.name.includes('.tmp') ? 'temporary'
+        : entry.name.includes('.previous') ? 'previous'
+          : /orgmaster-(document\.v[1-6]|governance\.v1|duty-plans)/.test(entry.name) ? 'legacy' : null
+      if (!category) continue
+      categories[category] += 1
+      const objectPath = resolve(root, entry.name)
+      const bytes = await readFile(objectPath)
+      const relativeKey = relative(dataRoot, objectPath).replaceAll('\\', '/')
+      objects.push({
+        category,
+        identitySha256: sha256(`orgmaster:legacy:${relativeKey}`),
+        contentSha256: sha256(bytes),
+        sourceBytes: bytes.byteLength,
+      })
     }
   }
   await scan(dataRoot)
   await scan(resolve(dataRoot, 'orgmaster-versions'))
-  return categories
+  return { categories, objects: objects.sort((a, b) => a.identitySha256.localeCompare(b.identitySha256)) }
 }
 
 export async function inventorySource(sourceRoot) {
@@ -134,7 +146,8 @@ export async function inventorySource(sourceRoot) {
     contractVersion: CONTRACT_VERSION,
     artifacts: artifacts.map(({ artifactKey, artifactKind, sourceSha256, canonicalSha256, sourceBytes }) => ({ artifactKey, artifactKind, sourceSha256, canonicalSha256, sourceBytes })),
     media: media.map(({ bytes: _bytes, mimeType: _mimeType, ...item }) => item),
-    legacy,
+    legacy: legacy.categories,
+    legacyObjects: legacy.objects,
   }
   return {
     contractVersion: CONTRACT_VERSION,
@@ -145,7 +158,8 @@ export async function inventorySource(sourceRoot) {
     sourceBytes: artifacts.reduce((sum, artifact) => sum + artifact.sourceBytes, 0) + media.reduce((sum, item) => sum + item.sourceBytes, 0),
     artifacts,
     media,
-    legacy,
+    legacy: legacy.categories,
+    legacyObjects: legacy.objects,
     safeManifest,
   }
 }
@@ -299,7 +313,8 @@ export async function run(args) {
   if (args.mode === 'inventory') return {
     status: 'PASS', mode: 'inventory', contractVersion: CONTRACT_VERSION, sourceRevision: inventory.sourceRevision,
     artifactCount: inventory.artifactCount, mediaCount: inventory.mediaCount, sourceBytes: inventory.sourceBytes,
-    legacy: inventory.legacy, artifacts: inventory.safeManifest.artifacts, media: inventory.safeManifest.media,
+    legacy: inventory.legacy, legacyObjects: inventory.legacyObjects,
+    artifacts: inventory.safeManifest.artifacts, media: inventory.safeManifest.media,
   }
   if (args.mode === 'dry-run') return dryRun(args, inventory)
   return shadowImport(args, inventory)
