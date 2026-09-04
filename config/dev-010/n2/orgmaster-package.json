@@ -6,10 +6,10 @@
   "lane": "fresh",
   "repository": {
     "name": "orgmaster",
-    "head": "c8cc16f515f059febfa84a98900d59fcdec847a5"
+    "head": "14c6b5c3f79a64784c4607172d98ce09889b9fef"
   },
   "baseline": {
-    "aggregateSha256": "1af4f015b16b185ea6f84666ee5083b76f658f73f132bda87a799d4be2b1fc0c",
+    "aggregateSha256": "e751e0261db00080a6e985f5c1ce57d58a2aa767082f41deec8599d7e00b6abd",
     "files": [
       "db/migrations/001_dev004_orgmaster_app_sessions.sql",
       "db/migrations/002_dev006_orgmaster_persistence.sql",

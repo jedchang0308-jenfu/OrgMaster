@@ -37,15 +37,16 @@ try {
 const appRoot = path.join(projectRoot, 'output', 'dev-010', 'n2', config.appId)
 const frozenPath = path.join(appRoot, `source-freeze-baseline-${baselineHead.slice(0, 12)}-${config.baseline.aggregateSha256.slice(0, 12)}.json`)
 const legacyFrozenPath = path.join(appRoot, 'source-freeze-baseline.json')
-let migratedLegacyBaseline = null
-if (!fs.existsSync(frozenPath) && fs.existsSync(legacyFrozenPath)) {
+let persistedBaseline = null
+if (fs.existsSync(frozenPath)) {
+  persistedBaseline = JSON.parse(fs.readFileSync(frozenPath, 'utf8'))
+} else if (fs.existsSync(legacyFrozenPath)) {
   const legacy = JSON.parse(fs.readFileSync(legacyFrozenPath, 'utf8'))
-  if (legacy.packageId !== config.packageId || legacy.sourceManifest?.head !== baselineHead || legacy.sourceManifest?.aggregateSha256 !== config.baseline.aggregateSha256) {
-    throw new Error('DEV010_N2_LEGACY_BASELINE_MISMATCH')
+  if (legacy.packageId === config.packageId && legacy.sourceManifest?.head === baselineHead && legacy.sourceManifest?.aggregateSha256 === config.baseline.aggregateSha256) {
+    persistedBaseline = legacy
   }
-  migratedLegacyBaseline = legacy
 }
-const baselineCandidate = migratedLegacyBaseline?.sourceManifest
+const baselineCandidate = persistedBaseline?.sourceManifest
   ?? buildGitSourceManifest({ root: projectRoot, head: baselineHead, files: config.baseline.files })
 const candidateFiles = [...new Set([
   ...config.baseline.files,
@@ -68,7 +69,7 @@ const dirtyPaths = execFileSync('git', ['status', '--porcelain=v1', '-z', '--unt
 let baseline
 let drift = []
 if (fs.existsSync(frozenPath)) {
-  baseline = JSON.parse(fs.readFileSync(frozenPath, 'utf8'))
+  baseline = persistedBaseline
   drift = assertSourceDrift(baseline.sourceManifest, candidate, config.changeAllowlist, { allowDescendantHead: true }).drift
   const knownDirty = new Set(baseline.dirtyPaths)
   const newDirty = dirtyPaths.filter((filePath) => !knownDirty.has(filePath))
@@ -83,7 +84,7 @@ if (fs.existsSync(frozenPath)) {
   if (baselineCandidate.aggregateSha256 !== config.baseline.aggregateSha256) {
     throw new Error(`DEV010_N2_HASH_MISMATCH: expected=${config.baseline.aggregateSha256} actual=${baselineCandidate.aggregateSha256}`)
   }
-  baseline = migratedLegacyBaseline ?? {
+  baseline = persistedBaseline ?? {
     configPath: configRelative,
     dirtyPaths,
     frozenAt: new Date().toISOString(),
