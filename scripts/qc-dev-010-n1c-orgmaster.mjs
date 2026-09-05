@@ -19,7 +19,7 @@ function run(command, args, options = {}) {
 
 try {
   run(process.execPath, ['scripts/dev010-n1c-source-freeze.mjs'])
-  run(process.execPath, ['--test', 'scripts/dev010-n1c-source-freeze.test.mjs', 'scripts/dev010-n1c-orgmaster-package.test.mjs'])
+  run(process.execPath, ['--test', 'scripts/dev010-n1c-source-freeze.test.mjs', 'scripts/dev010-n1c-terraform-plan-gate.test.mjs', 'scripts/dev010-n1c-orgmaster-package.test.mjs'])
   run(process.execPath, ['node_modules/typescript/bin/tsc', '--ignoreConfig', '--noEmit', 'server/orgmasterDatabase.ts', '--types', 'node', '--skipLibCheck', '--module', 'nodenext', '--moduleResolution', 'nodenext', '--target', 'es2024', '--esModuleInterop', '--pretty', 'false'])
   run(process.execPath, ['scripts/check-shared-database-boundary.mjs', `--base=${JSON.parse(fs.readFileSync(path.join(root, 'config', 'dev-010', 'n1c-orgmaster.json'), 'utf8')).repository.inspectionHead}`])
   run('terraform', ['fmt', '-check', terraformRoot])

@@ -13,6 +13,7 @@ test('N1C-ORG-SOURCE-01 source freeze requires a clean candidate and exact outpu
 test('N1C-ORG-SOURCE-02 allowlist contains only the two contract-approved modified files', () => {
   assert.deepEqual(config.sourceFreeze.allowModify, ['package.json', 'server/orgmasterDatabase.ts'])
   assert.ok(config.sourceFreeze.allowNew.includes('scripts/dev010-n1c-source-freeze.mjs'))
+  assert.ok(config.sourceFreeze.allowNew.includes('config/dev-010/n1c-orgmaster-plan-allowlist.json'))
   assert.ok(!config.sourceFreeze.allowNew.some((item) => item.startsWith('src/')))
 })
 

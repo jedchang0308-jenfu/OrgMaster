@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict'
+import path from 'node:path'
+import test from 'node:test'
+import { fileURLToPath } from 'node:url'
+
+import { assertPlanAllowlist, assertPlanProfile, loadPlanAllowlist, normalizePlanChanges } from './lib/dev010-n1c-terraform-plan-contract.mjs'
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const contract = loadPlanAllowlist(path.join(root, 'config', 'dev-010', 'n1c-orgmaster-plan-allowlist.json'))
+const allow = contract.profiles['migration-job'].addresses
+const plan = (profileName, addresses = contract.profiles[profileName].addresses) => ({
+  variables: Object.fromEntries(Object.entries({ ...contract.requiredVariables, ...contract.profiles[profileName].variables }).map(([name, value]) => [name, { value }])),
+  resource_changes: addresses.map((address) => ({ address, change: { actions: ['create'] } })),
+})
+
+test('N1C-ORG-PLAN-01 exact reviewed Terraform address is create-only', () => {
+  assert.deepEqual(allow, ['google_cloud_run_v2_job.migration[0]'])
+  assert.equal(assertPlanProfile(plan('migration-job'), contract, 'migration-job').status, 'PASS')
+  assert.equal(assertPlanProfile(plan('default-off'), contract, 'default-off').changeCount, 0)
+})
+
+test('N1C-ORG-PLAN-02 native Terraform JSON is normalized', () => {
+  assert.deepEqual(normalizePlanChanges({ resource_changes: [{ address: allow[0], change: { actions: ['create'] } }] }), [{ address: allow[0], actions: ['create'] }])
+})
+
+test('N1C-ORG-PLAN-03 unknown, update, delete, replace, and duplicate allowlist fail closed', () => {
+  assert.throws(() => assertPlanAllowlist([{ address: 'google_cloud_run_v2_service.unreviewed[0]', actions: ['create'] }], allow), /DEV010_N1C_UNKNOWN_RESOURCE/u)
+  assert.throws(() => assertPlanAllowlist([{ address: allow[0], actions: ['update'] }], allow), /DEV010_N1C_DESTROY_OR_REPLACE_FORBIDDEN/u)
+  assert.throws(() => assertPlanAllowlist([{ address: allow[0], actions: ['delete'] }], allow), /DEV010_N1C_DESTROY_OR_REPLACE_FORBIDDEN/u)
+  assert.throws(() => assertPlanAllowlist([{ address: allow[0], actions: ['delete', 'create'] }], allow), /DEV010_N1C_DESTROY_OR_REPLACE_FORBIDDEN/u)
+  assert.throws(() => assertPlanAllowlist([], [allow[0], allow[0]]), /DEV010_N1C_INVALID_PLAN_ALLOWLIST/u)
+  assert.throws(() => assertPlanProfile(plan('migration-job', []), contract, 'migration-job'), /DEV010_N1C_PLAN_PROFILE_MISMATCH/u)
+  const wrongTarget = plan('migration-job')
+  wrongTarget.variables.project_id.value = 'jenfu-ai-pdm-prod'
+  assert.throws(() => assertPlanProfile(wrongTarget, contract, 'migration-job'), /DEV010_N1C_PLAN_VARIABLE_MISMATCH/u)
+})
