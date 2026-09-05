@@ -3,13 +3,18 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { assertPlanAllowlist, assertPlanProfile, loadPlanAllowlist, normalizePlanChanges } from './lib/dev010-n1c-terraform-plan-contract.mjs'
+import { assertExpectedPlanInputs, assertPlanAllowlist, assertPlanProfile, loadPlanAllowlist, normalizePlanChanges } from './lib/dev010-n1c-terraform-plan-contract.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const contract = loadPlanAllowlist(path.join(root, 'config', 'dev-010', 'n1c-orgmaster-plan-allowlist.json'))
 const allow = contract.profiles['migration-job'].addresses
+const expectedInputs = {
+  source_revision: 'a'.repeat(40),
+  foundation_manifest_sha256: 'b'.repeat(64),
+  migration_image: `asia-east1-docker.pkg.dev/jenfu-platform-nonprod/dev010-n1c/orgmaster-migration@sha256:${'c'.repeat(64)}`,
+}
 const plan = (profileName, addresses = contract.profiles[profileName].addresses) => ({
-  variables: Object.fromEntries(Object.entries({ ...contract.requiredVariables, ...contract.profiles[profileName].variables }).map(([name, value]) => [name, { value }])),
+  variables: Object.fromEntries(Object.entries({ ...contract.requiredVariables, ...contract.profiles[profileName].variables, ...expectedInputs }).map(([name, value]) => [name, { value }])),
   resource_changes: addresses.map((address) => ({ address, change: { actions: ['create'] } })),
 })
 
@@ -23,7 +28,13 @@ test('N1C-ORG-PLAN-02 native Terraform JSON is normalized', () => {
   assert.deepEqual(normalizePlanChanges({ resource_changes: [{ address: allow[0], change: { actions: ['create'] } }] }), [{ address: allow[0], actions: ['create'] }])
 })
 
-test('N1C-ORG-PLAN-03 unknown, update, delete, replace, and duplicate allowlist fail closed', () => {
+test('N1C-ORG-PLAN-03 source, foundation manifest, and migration digest are exact-bound', () => {
+  const required = Object.keys(expectedInputs)
+  assert.deepEqual(assertExpectedPlanInputs(plan('migration-job'), expectedInputs, required).boundInputs, required)
+  assert.throws(() => assertExpectedPlanInputs(plan('migration-job'), { ...expectedInputs, source_revision: 'd'.repeat(40) }, required), /DEV010_N1C_PLAN_INPUT_MISMATCH/u)
+})
+
+test('N1C-ORG-PLAN-04 unknown, update, delete, replace, and duplicate allowlist fail closed', () => {
   assert.throws(() => assertPlanAllowlist([{ address: 'google_cloud_run_v2_service.unreviewed[0]', actions: ['create'] }], allow), /DEV010_N1C_UNKNOWN_RESOURCE/u)
   assert.throws(() => assertPlanAllowlist([{ address: allow[0], actions: ['update'] }], allow), /DEV010_N1C_DESTROY_OR_REPLACE_FORBIDDEN/u)
   assert.throws(() => assertPlanAllowlist([{ address: allow[0], actions: ['delete'] }], allow), /DEV010_N1C_DESTROY_OR_REPLACE_FORBIDDEN/u)
