@@ -1,0 +1,19 @@
+{
+  "fixtureVersion": "jenfu.dev010.n1c.orgmaster-fixture.v1",
+  "tenantId": "company-staging-smoke",
+  "employee": {
+    "alias": "staging-employee-01",
+    "status": "active",
+    "identityIssuerSha256": "6b74c03b00ab7d20d4047563309e1a854b07d6a3e9a6756be7bb6bcb66b90672",
+    "identitySubjectSha256": "3eeaf9951ec408697679953367d35fe7c16145de7e6f4f12da664853d1527eb7"
+  },
+  "entitlement": {
+    "applicationId": "ai-pdm",
+    "enabled": true,
+    "roles": ["viewer", "editor"]
+  },
+  "productionTenantId": "company-jenfu",
+  "productionRows": 0,
+  "credentials": 0,
+  "externalDeliveries": 0
+}

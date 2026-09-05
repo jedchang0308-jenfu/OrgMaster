@@ -11,6 +11,16 @@ export type OrgmasterDatabaseConfig = {
   statementTimeoutMillis: number
 }
 
+export type OrgmasterN1cTarget = {
+  environment: 'staging'
+  projectId: 'jenfu-platform-nonprod'
+  region: 'asia-east1'
+  instance: 'jenfu-platform-nonprod-pg'
+  connectionName: 'jenfu-platform-nonprod:asia-east1:jenfu-platform-nonprod-pg'
+  database: 'jenfu_stg'
+  login: 'dev010-stg-orgmaster-migrator@jenfu-platform-nonprod.iam'
+}
+
 let runtimePool: pg.Pool | null = null
 let runtimeSignature = ''
 
@@ -19,6 +29,31 @@ function positiveInteger(value: string | undefined, fallback: number, name: stri
   const parsed = normalized ? Number.parseInt(normalized, 10) : fallback
   if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error(`DEV010_N2_${name}_INVALID`)
   return parsed
+}
+
+export function assertOrgmasterN1cTarget(environment: NodeJS.ProcessEnv = process.env): OrgmasterN1cTarget {
+  const target = {
+    environment: environment.ORGMASTER_DEPLOYMENT_ENV,
+    projectId: environment.GOOGLE_CLOUD_PROJECT,
+    region: environment.GOOGLE_CLOUD_REGION,
+    instance: environment.ORGMASTER_CLOUD_SQL_INSTANCE,
+    connectionName: environment.ORGMASTER_CLOUD_SQL_CONNECTION_NAME,
+    database: environment.ORGMASTER_POSTGRES_DATABASE,
+    login: environment.ORGMASTER_POSTGRES_IAM_LOGIN,
+  }
+  const expected: OrgmasterN1cTarget = {
+    environment: 'staging',
+    projectId: 'jenfu-platform-nonprod',
+    region: 'asia-east1',
+    instance: 'jenfu-platform-nonprod-pg',
+    connectionName: 'jenfu-platform-nonprod:asia-east1:jenfu-platform-nonprod-pg',
+    database: 'jenfu_stg',
+    login: 'dev010-stg-orgmaster-migrator@jenfu-platform-nonprod.iam',
+  }
+  if (Object.entries(expected).some(([key, value]) => target[key as keyof typeof target] !== value)) {
+    throw new Error('DEV010_N1C_ORGMASTER_WRONG_TARGET')
+  }
+  return expected
 }
 
 export function resolveOrgmasterDatabaseConfig(environment: NodeJS.ProcessEnv = process.env): OrgmasterDatabaseConfig {
@@ -36,6 +71,7 @@ export function resolveOrgmasterDatabaseConfig(environment: NodeJS.ProcessEnv = 
 }
 
 export function createOrgmasterDatabase(connectionString: string, environment: NodeJS.ProcessEnv = process.env): OrgmasterDatabase {
+  if (environment.DEV010_N1C_TARGET_GUARD === 'required') assertOrgmasterN1cTarget(environment)
   const config = resolveOrgmasterDatabaseConfig(environment)
   const signature = `${connectionString}|${JSON.stringify(config)}`
   if (runtimePool && runtimeSignature !== signature) {
