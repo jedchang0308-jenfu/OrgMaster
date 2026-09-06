@@ -55,6 +55,8 @@ test('N1C-ORG-PLAN-05 migration job reaches private Cloud SQL through a pinned p
   assert.match(terraform, /name\s*=\s*"orgmaster-migration"[\s\S]+depends_on\s*=\s*\["cloud-sql-proxy"\]/u)
   assert.match(terraform, /name\s*=\s*"cloud-sql-proxy"[\s\S]+--unix-socket=\/cloudsql[\s\S]+--private-ip[\s\S]+--auto-iam-authn/u)
   assert.match(terraform, /--health-check[\s\S]+path\s*=\s*"\/startup"/u)
+  assert.match(terraform, /name\s*=\s*"cloudsql-socket"[\s\S]+mount_path\s*=\s*"\/cloudsql"/u)
+  assert.doesNotMatch(terraform, /name\s*=\s*"cloudsql"/u)
   assert.match(terraform, /empty_dir[\s\S]+medium\s*=\s*"MEMORY"/u)
   assert.doesNotMatch(terraform, /cloud_sql_instance\s*\{/u)
   assert.match(variables, /cloud-sql-proxy:2\.22\.0@sha256:[0-9a-f]{64}/u)

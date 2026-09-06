@@ -41,7 +41,7 @@ resource "google_cloud_run_v2_job" "migration" {
         }
 
         volume_mounts {
-          name       = "cloudsql"
+          name       = "cloudsql-socket"
           mount_path = "/cloudsql"
         }
 
@@ -101,7 +101,7 @@ resource "google_cloud_run_v2_job" "migration" {
         }
 
         volume_mounts {
-          name       = "cloudsql"
+          name       = "cloudsql-socket"
           mount_path = "/cloudsql"
         }
 
@@ -118,7 +118,7 @@ resource "google_cloud_run_v2_job" "migration" {
       }
 
       volumes {
-        name = "cloudsql"
+        name = "cloudsql-socket"
         empty_dir {
           medium = "MEMORY"
         }
