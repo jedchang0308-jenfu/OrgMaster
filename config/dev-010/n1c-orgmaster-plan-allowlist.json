@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "jenfu.dev010.n1c.orgmaster-plan-allowlist.v1",
+  "target": {
+    "projectId": "jenfu-platform-nonprod",
+    "region": "asia-east1",
+    "database": "jenfu_stg",
+    "remoteStatePrefix": "dev-010/n1c/orgmaster"
+  },
+  "requiredVariables": {
+    "project_id": "jenfu-platform-nonprod",
+    "region": "asia-east1",
+    "foundation_connection_name": "jenfu-platform-nonprod:asia-east1:jenfu-platform-nonprod-pg",
+    "iac_service_account_email": "dev010-n1b-iac@jenfu-platform-nonprod.iam.gserviceaccount.com",
+    "migration_service_account_email": "dev010-stg-orgmaster-migrator@jenfu-platform-nonprod.iam.gserviceaccount.com"
+  },
+  "profiles": {
+    "default-off": {
+      "variables": {
+        "enable_job": false
+      },
+      "addresses": []
+    },
+    "migration-job": {
+      "variables": {
+        "enable_job": true
+      },
+      "addresses": [
+        "google_cloud_run_v2_job.migration[0]"
+      ]
+    }
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "contractVersion": "jenfu.dev010.n1c.orgmaster.v1",
+  "devId": "DEV-010",
+  "slice": "010-N1C",
+  "repository": {
+    "name": "orgmaster-canvas",
+    "inspectionHead": "e9bf5658712b507c0f366c7206c4f9f21265b832",
+    "branch": "master"
+  },
+  "target": {
+    "environment": "staging",
+    "projectId": "jenfu-platform-nonprod",
+    "region": "asia-east1",
+    "instance": "jenfu-platform-nonprod-pg",
+    "connectionName": "jenfu-platform-nonprod:asia-east1:jenfu-platform-nonprod-pg",
+    "database": "jenfu_stg",
+    "login": "dev010-stg-orgmaster-migrator@jenfu-platform-nonprod.iam"
+  },
+  "migration": {
+    "order": [
+      "db/migrations/001_dev004_orgmaster_app_sessions.sql",
+      "db/migrations/002_dev006_orgmaster_persistence.sql",
+      "db/migrations/003_dev006_orgmaster_runtime_repository.sql",
+      "db/migrations/004_dev040_active_principal_view.sql",
+      "db/migrations/005_dev005_entitlement_governance.sql",
+      "db/migrations/006_dev040_identity_admission_projection.sql",
+      "db/migrations/007_dev009_privileged_governance.sql",
+      "db/migrations/008_dev002_portal_app_visibility.sql",
+      "db/migrations/009_dev039_application_entitlement_v2.sql",
+      "db/migrations/010_dev010_neutral_schema_boundary.sql"
+    ],
+    "transformationId": "jenfu.dev010.n1c.foundation-schema-owner-rebind.v2",
+    "ledger": "orgmaster_core.schema_migrations",
+    "requiredDependency": {
+      "contractId": "ai-pdm.role-catalog",
+      "contractVersion": "ai-pdm.role-catalog.2026-09-03.v3",
+      "signatureSha256": "1317eec6191028b9ea9d327687343a000dbb37577e660fd7ad71f179286ced16",
+      "payloadSha256": "46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8"
+    }
+  },
+  "sourceFreeze": {
+    "outputPrefix": "output/dev-010/n1c/",
+    "requiredCleanCandidate": true,
+    "allowModify": ["package.json", "server/orgmasterDatabase.ts"],
+    "allowNew": [
+      "config/dev-010/n1c-orgmaster.json",
+      "config/dev-010/n1c-orgmaster-plan-allowlist.json",
+      "infra/google-cloud/dev-010-n1c/versions.tf",
+      "infra/google-cloud/dev-010-n1c/variables.tf",
+      "infra/google-cloud/dev-010-n1c/locals.tf",
+      "infra/google-cloud/dev-010-n1c/migration-runner.tf",
+      "infra/google-cloud/dev-010-n1c/outputs.tf",
+      "infra/google-cloud/dev-010-n1c/migration-runner.Dockerfile",
+      "infra/google-cloud/dev-010-n1c/.terraform.lock.hcl",
+      "scripts/dev010-n1c-source-freeze.mjs",
+      "scripts/dev010-n1c-source-freeze.test.mjs",
+      "scripts/dev010-n1c-terraform-plan-gate.mjs",
+      "scripts/dev010-n1c-terraform-plan-gate.test.mjs",
+      "scripts/lib/dev010-n1c-terraform-plan-contract.mjs",
+      "scripts/dev010-n1c-orgmaster-package.mjs",
+      "scripts/dev010-n1c-orgmaster-package.test.mjs",
+      "scripts/qc-dev-010-n1c-orgmaster.mjs",
+      "qa/dev-010/n1c/fixtures/orgmaster-staging-v1.json"
+    ]
+  },
+  "fixture": {
+    "tenantId": "company-staging-smoke",
+    "employeeAlias": "staging-employee-01",
+    "applicationId": "ai-pdm",
+    "productionTenantId": "company-jenfu",
+    "externalDeliveries": 0
+  },
+  "safety": {
+    "runtimeServices": 0,
+    "productionWrites": false,
+    "oldStagingMutations": 0,
+    "billingChanges": 0,
+    "externalDeliveries": 0,
+    "defaultMode": "dry-run"
+  }
+}
