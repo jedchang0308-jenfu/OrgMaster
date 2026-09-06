@@ -36,6 +36,39 @@ variable "foundation_connection_name" {
   }
 }
 
+variable "foundation_network_name" {
+  description = "Existing shared non-production VPC; app state consumes but never owns it."
+  type        = string
+  default     = "jenfu-platform-nonprod-vpc"
+
+  validation {
+    condition     = var.foundation_network_name == "jenfu-platform-nonprod-vpc"
+    error_message = "Unexpected shared VPC."
+  }
+}
+
+variable "foundation_subnetwork_name" {
+  description = "Existing staging/QC subnet used for private Cloud SQL access."
+  type        = string
+  default     = "jenfu-platform-nonprod-qc"
+
+  validation {
+    condition     = var.foundation_subnetwork_name == "jenfu-platform-nonprod-qc"
+    error_message = "Unexpected staging subnet."
+  }
+}
+
+variable "cloud_sql_proxy_image" {
+  description = "Digest-pinned Cloud SQL Auth Proxy used for private-IP IAM authentication."
+  type        = string
+  default     = "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0@sha256:fa4c7308245407157c5e9c4e16f1c0f1113899d6f29dc8f8be3e30efae86467f"
+
+  validation {
+    condition     = can(regex("@sha256:[0-9a-f]{64}$", var.cloud_sql_proxy_image))
+    error_message = "Cloud SQL proxy must be pinned by digest."
+  }
+}
+
 variable "foundation_manifest_sha256" {
   description = "SHA-256 of the reviewed Platform foundation output manifest."
   type        = string
