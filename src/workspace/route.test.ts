@@ -63,9 +63,9 @@ describe('workspace route', () => {
     expect(explicitNone.openDetails).toEqual([])
   })
 
-  it('rejects an explicit detail token when its module context has no valid entity', () => {
+  it('accepts an explicit detail token without a selected entity for empty/create detail', () => {
     const route = readWorkspaceRoute({ pathname: '/', search: '?panels=employees&details=employees' }, state).route
-    expect(route.openDetails).toEqual([])
+    expect(route.openDetails).toEqual(['employees'])
   })
 
   it('maps legacy duty, process and management-method routes into workspace intents', () => {

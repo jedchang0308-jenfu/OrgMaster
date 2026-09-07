@@ -76,6 +76,7 @@ import { ManagementMethodListPage } from './components/managementMethods/Managem
 import { ManagementMethodDocumentPage } from './components/managementMethods/ManagementMethodDocumentPage'
 import {
   RoleCombinationRiskPanel,
+  RoleRiskDetail,
   type RoleCombinationRiskDraft,
 } from './components/RoleCombinationRiskPanel'
 import { buildPositionViews, getDepartmentName, TODAY } from './organization'
@@ -95,8 +96,8 @@ import { loadWorkspaceIndex, loadWorkspaceVersion, saveWorkspaceDocument, create
 import { type DutyPlanningStatusFilter, type DutyPlanningView } from './dutyPlanningRoute'
 import { readDutyConfigurationLocation, type DutyConfigurationExactLane, type DutyConfigurationLocation } from './dutyConfigurationRoute'
 import { canMutateDutyConfiguration } from './dutyConfigurationCapability'
-import { readProcessPlanningLocation, type ProcessPlanningLocation } from './processPlanningRoute'
-import { ProcessPlanningWorkbench } from './components/ProcessPlanningWorkbench'
+import { buildProcessPlanningUrl, readProcessPlanningLocation, type ProcessPlanningLocation } from './processPlanningRoute'
+import { ProcessPlanningList, ProcessPlanningWorkbench } from './components/ProcessPlanningWorkbench'
 import { resolvePositionRole } from './rolePositionMapping'
 import {
   assignEmployeeWithResponsibilities,
@@ -129,6 +130,7 @@ import { GovernanceModuleAdapter } from './components/workspace/adapters/Governa
 import { useWorkspaceController } from './workspace/useWorkspaceController'
 import { sameRelationPlacementTarget, type RelationPlacementOutcome } from './workspace/relationDragInteraction'
 import { classifyIndexFailure, classifyVersionFailure } from './workspace/hydration'
+import { loadWorkbenchPreferences, saveWorkbenchListWidth } from './workspace/workbenchPreferenceClient'
 import { isDesktopMutationEnvironment, observeWorkspaceEnvironment, resolveModuleCapability, resolveWorkspaceCompositionCapability } from './workspace/capability'
 import { describeRegisteredDropEffect, readWorkspaceEntityDrag, resolveRegisteredDrop, type DomainMutationIntent, type RegisteredDropTarget, type WorkspaceEntityDragPayloadV1 } from './workspace/entityDrag'
 import {
@@ -418,6 +420,38 @@ function ProtectedApp() {
     enabled: workspaceHydration.kind === 'ready',
     onLayoutPersistenceFailure: reportWorkspaceLayoutPersistenceFailure,
   })
+  const [workbenchListWidths, setWorkbenchListWidths] = useState<Partial<Record<'employees' | 'positions' | 'departments' | 'levels' | 'duties' | 'processes' | 'management-methods' | 'role-risks', number>>>({})
+  const workbenchPreferenceFailureRef = useRef(false)
+  useEffect(() => {
+    if (workspaceHydration.kind !== 'ready') return
+    let cancelled = false
+    void loadWorkbenchPreferences().then((document) => {
+      if (cancelled) return
+      const values: typeof workbenchListWidths = {}
+      for (const [moduleId, projection] of Object.entries(document.listWidths)) {
+        if (projection && Number.isInteger(projection.preferredPx)) values[moduleId as keyof typeof values] = projection.preferredPx
+      }
+      setWorkbenchListWidths(values)
+    }).catch(() => {
+      if (!cancelled && !workbenchPreferenceFailureRef.current) {
+        workbenchPreferenceFailureRef.current = true
+        setWorkspaceLayoutNotice('清單寬度偏好暫時無法載入；本次仍可調整')
+      }
+    })
+    return () => { cancelled = true }
+  }, [workspaceHydration.kind])
+  const updateWorkbenchListWidth = useCallback((moduleId: keyof typeof workbenchListWidths, width: number) => {
+    setWorkbenchListWidths((current) => ({ ...current, [moduleId]: width }))
+  }, [])
+  const commitWorkbenchListWidth = useCallback((moduleId: keyof typeof workbenchListWidths, width: number) => {
+    updateWorkbenchListWidth(moduleId, width)
+    void saveWorkbenchListWidth(moduleId, width).catch(() => {
+      if (!workbenchPreferenceFailureRef.current) {
+        workbenchPreferenceFailureRef.current = true
+        setWorkspaceLayoutNotice('清單寬度偏好尚未保存；本次寬度仍會保留')
+      }
+    })
+  }, [updateWorkbenchListWidth])
   const [workspaceModuleQueries, setWorkspaceModuleQueries] = useState({ employees: '', positions: '', duties: '', managementMethods: '' })
   const [governanceRefreshToken, setGovernanceRefreshToken] = useState(0)
   const [organizationIssue, setOrganizationIssue] = useState<string | null>(null)
@@ -1039,20 +1073,27 @@ function ProtectedApp() {
   const selectDutyFromPicker = useCallback((dutyId: string) => {
     const nextDutyId = dutyConfigurationExpandedDutyId === dutyId ? null : dutyId
     const next = { ...effectiveDutyConfigurationLocation, active: true, dutyId: nextDutyId, lane: nextDutyId ? effectiveDutyConfigurationLocation.lane : null }
-    setDutyConfigurationLocation(next)
     const current = workspaceController.state.session.panels.duties?.context
-    if (current) workspaceController.updatePanelContext('duties', { ...current, view: 'configuration', dutyId: nextDutyId, lane: next.lane }, { openDetail: Boolean(nextDutyId) })
-    setDutyConfigurationExpandedDutyId(nextDutyId)
-    setDutyConfigurationError(null)
-  }, [dutyConfigurationExpandedDutyId, effectiveDutyConfigurationLocation, workspaceController.state.session.panels.duties?.context, workspaceController.updatePanelContext])
+    const apply = () => {
+      setDutyConfigurationLocation(next)
+      setDutyConfigurationExpandedDutyId(nextDutyId)
+      setDutyConfigurationError(null)
+    }
+    if (current) {
+      void workspaceController.requestWorkspaceDetailTransition('duties', { visible: Boolean(nextDutyId), context: { ...current, view: 'configuration', dutyId: nextDutyId, lane: next.lane } }).then((result) => { if (result.kind === 'allow') apply() })
+    } else apply()
+  }, [dutyConfigurationExpandedDutyId, effectiveDutyConfigurationLocation, workspaceController.state.session.panels.duties?.context, workspaceController.requestWorkspaceDetailTransition])
 
   const openDutyConfigurationDetail = useCallback((dutyId: string) => {
-    setDutyConfigurationLocation((current) => ({ ...current, active: true, dutyId }))
     const current = workspaceController.state.session.panels.duties?.context
-    if (current) workspaceController.updatePanelContext('duties', { ...current, view: 'configuration', dutyId }, { openDetail: true })
-    setDutyConfigurationExpandedDutyId((currentDutyId) => currentDutyId === dutyId ? currentDutyId : null)
-    setDutyConfigurationError(null)
-  }, [workspaceController.state.session.panels.duties?.context, workspaceController.updatePanelContext])
+    const apply = () => {
+      setDutyConfigurationLocation((location) => ({ ...location, active: true, dutyId }))
+      setDutyConfigurationExpandedDutyId((currentDutyId) => currentDutyId === dutyId ? currentDutyId : null)
+      setDutyConfigurationError(null)
+    }
+    if (current) void workspaceController.requestWorkspaceDetailTransition('duties', { visible: true, context: { ...current, view: 'configuration', dutyId } }).then((result) => { if (result.kind === 'allow') apply() })
+    else apply()
+  }, [workspaceController.state.session.panels.duties?.context, workspaceController.requestWorkspaceDetailTransition])
 
   const selectDutyLane = useCallback((lane: DutyConfigurationExactLane) => {
     if (!effectiveDutyConfigurationLocation.dutyId) return
@@ -2430,6 +2471,41 @@ function ProtectedApp() {
       }
       if (event.key === 'Escape') {
         if (event.defaultPrevented) return
+        const focusedWorkbenchPanel = workspaceController.state.session.focusedPanel
+        const detailSlot = focusedWorkbenchPanel
+          ? document.querySelector<HTMLElement>(`[data-workspace-surface][data-module="${focusedWorkbenchPanel}"] [data-workspace-slot="detail"]`)
+          : null
+        if (detailSlot && focusedWorkbenchPanel && workspaceController.state.session.openDetails.includes(focusedWorkbenchPanel) && !isTextEditor(event.target)) {
+          event.preventDefault()
+          void workspaceController.requestWorkspaceDetailTransition(focusedWorkbenchPanel, { visible: false }).then((result) => {
+            if (result.kind !== 'allow') return
+            const context = workspaceController.state.session.panels[focusedWorkbenchPanel]?.context as Record<string, unknown> | undefined
+            const selectedId = focusedWorkbenchPanel === 'employees' ? context?.employeeId
+              : focusedWorkbenchPanel === 'positions' ? context?.positionId
+                : focusedWorkbenchPanel === 'departments' ? context?.departmentId
+                  : focusedWorkbenchPanel === 'levels' ? context?.levelId
+                    : focusedWorkbenchPanel === 'duties' ? context?.dutyId
+                      : focusedWorkbenchPanel === 'processes' ? context?.processId
+                        : focusedWorkbenchPanel === 'role-risks' ? context?.ruleId
+                          : focusedWorkbenchPanel === 'management-methods' ? context?.methodId
+                            : null
+            const rowAttribute = focusedWorkbenchPanel === 'employees' ? 'data-employee-id'
+              : focusedWorkbenchPanel === 'positions' ? 'data-directory-position-id'
+                : focusedWorkbenchPanel === 'departments' ? 'data-department-id'
+                  : focusedWorkbenchPanel === 'levels' ? 'data-level-id'
+                    : focusedWorkbenchPanel === 'duties' ? 'data-duty-id'
+                      : focusedWorkbenchPanel === 'processes' ? 'data-workbench-row-id'
+                        : focusedWorkbenchPanel === 'role-risks' ? 'data-workbench-row-id'
+                          : focusedWorkbenchPanel === 'management-methods' ? 'data-workbench-row-id'
+                            : null
+            focusAfterClose(() => selectedId && rowAttribute
+              ? (focusedWorkbenchPanel === 'employees' || focusedWorkbenchPanel === 'positions' || focusedWorkbenchPanel === 'departments' || focusedWorkbenchPanel === 'levels' || focusedWorkbenchPanel === 'duties'
+                ? findDirectoryDataElement(rowAttribute, String(selectedId))
+                : detailSlot.parentElement?.querySelector<HTMLElement>(`[data-workspace-slot="list"] [${rowAttribute}="${String(selectedId)}"]`) ?? null)
+              : detailSlot.parentElement?.querySelector<HTMLElement>('[data-workspace-slot="list"] [tabindex="0"]') ?? null)
+          })
+          return
+        }
         if (positionContextMenu) {
           event.preventDefault()
           closePositionContextMenu()
@@ -2534,6 +2610,7 @@ function ProtectedApp() {
     cancelRelationPlacement,
     closeInspectorPanel,
     closePositionContextMenu,
+    focusAfterClose,
     deleteOpen,
     relationPlacement,
     directoryDialog,
@@ -2549,6 +2626,7 @@ function ProtectedApp() {
     selected,
     inspectorOpen,
     workspaceMutationAllowed,
+    workspaceController,
     setChildrenAxis,
     undo,
   ])
@@ -2603,20 +2681,34 @@ function ProtectedApp() {
       if (selection.kind === 'employees') {
         const context = workspaceController.state.session.panels.employees?.context
         if (context?.employeeId === selection.id && workspaceController.state.session.openDetails.includes('employees')) {
-          workspaceController.setDetailVisibility('employees', false)
+          void workspaceController.requestWorkspaceDetailTransition('employees', { visible: false }).then((result) => {
+            if (result.kind === 'allow') focusAfterClose(() => findDirectoryDataElement('data-employee-id', selection.id))
+          })
         } else if (context) {
-          workspaceController.updatePanelContext('employees', { ...context, employeeId: selection.id }, { openDetail: true })
+          void workspaceController.requestWorkspaceDetailTransition('employees', { visible: true, context: { ...context, employeeId: selection.id } })
         }
       } else if (selection.kind === 'positions') {
         setSelectedId(selection.id)
         const context = workspaceController.state.session.panels.positions?.context
-        if (context) workspaceController.updatePanelContext('positions', { ...context, positionId: selection.id }, { openDetail: true })
+        if (context && panelSelection?.kind === 'positions' && panelSelection.id === selection.id && workspaceController.state.session.openDetails.includes('positions')) {
+          void workspaceController.requestWorkspaceDetailTransition('positions', { visible: false }).then((result) => {
+            if (result.kind === 'allow') focusAfterClose(() => findDirectoryDataElement('data-directory-position-id', selection.id))
+          })
+        } else if (context) void workspaceController.requestWorkspaceDetailTransition('positions', { visible: true, context: { ...context, positionId: selection.id } })
       } else if (selection.kind === 'departments') {
         const context = workspaceController.state.session.panels.departments?.context
-        if (context) workspaceController.updatePanelContext('departments', { departmentId: selection.id }, { openDetail: true })
+        if (context && panelSelection?.kind === 'departments' && panelSelection.id === selection.id && workspaceController.state.session.openDetails.includes('departments')) {
+          void workspaceController.requestWorkspaceDetailTransition('departments', { visible: false }).then((result) => {
+            if (result.kind === 'allow') focusAfterClose(() => findDirectoryDataElement('data-department-id', selection.id))
+          })
+        } else if (context) void workspaceController.requestWorkspaceDetailTransition('departments', { visible: true, context: { departmentId: selection.id } })
       } else if (selection.kind === 'levels') {
         const context = workspaceController.state.session.panels.levels?.context
-        if (context) workspaceController.updatePanelContext('levels', { levelId: selection.id })
+        if (context && panelSelection?.kind === 'levels' && panelSelection.id === selection.id && workspaceController.state.session.openDetails.includes('levels')) {
+          void workspaceController.requestWorkspaceDetailTransition('levels', { visible: false }).then((result) => {
+            if (result.kind === 'allow') focusAfterClose(() => findDirectoryDataElement('data-level-id', selection.id))
+          })
+        } else if (context) void workspaceController.requestWorkspaceDetailTransition('levels', { visible: true, context: { levelId: selection.id } })
       } else if (selection.kind === 'duties') selectDutyFromPicker(selection.id)
     }
     return (
@@ -2786,12 +2878,14 @@ function ProtectedApp() {
   const renderPanelMasterDataDetail = (moduleId: MasterDataModuleId) => {
     const context = workspaceController.state.session.panels[moduleId]?.context
     const closePanelDetail = (selection: DirectorySelection | null) => {
-      workspaceController.setDetailVisibility(moduleId, false)
-      focusAfterClose(() => {
-        if (selection?.kind === 'employees') return findDirectoryDataElement('data-employee-id', selection.id)
-        if (selection?.kind === 'positions') return findDirectoryDataElement('data-directory-position-id', selection.id)
-        if (selection?.kind === 'departments') return findDirectoryDataElement('data-department-id', selection.id)
-        return null
+      void workspaceController.requestWorkspaceDetailTransition(moduleId, { visible: false }).then((result) => {
+        if (result.kind !== 'allow') return
+        focusAfterClose(() => {
+          if (selection?.kind === 'employees') return findDirectoryDataElement('data-employee-id', selection.id)
+          if (selection?.kind === 'positions') return findDirectoryDataElement('data-directory-position-id', selection.id)
+          if (selection?.kind === 'departments') return findDirectoryDataElement('data-department-id', selection.id)
+          return null
+        })
       })
     }
     if (moduleId === 'employees' && (context as WorkspaceModuleContextMap['employees'] | undefined)?.employeeId) return (
@@ -2834,8 +2928,9 @@ function ProtectedApp() {
   }
   const closeDutyConfigurationDetail = () => {
     const dutyId = selectedDutyForConfiguration?.id ?? null
-    workspaceController.setDetailVisibility('duties', false)
-    focusAfterClose(() => dutyId ? findDirectoryDataElement('data-duty-id', dutyId) : null)
+    void workspaceController.requestWorkspaceDetailTransition('duties', { visible: false }).then((result) => {
+      if (result.kind === 'allow') focusAfterClose(() => dutyId ? findDirectoryDataElement('data-duty-id', dutyId) : null)
+    })
   }
   const organizationInspector = renderOrganizationInspector()
   const dutyConfigurationDetail = dutyConfigurationActive && workspaceController.state.session.openDetails.includes('duties') ? (
@@ -3009,6 +3104,9 @@ function ProtectedApp() {
       list={renderDirectorySurface(moduleId)}
       detail={renderPanelMasterDataDetail(moduleId) || undefined}
       detailVisible={workspaceController.state.session.openDetails.includes(moduleId)}
+      listWidthPx={workbenchListWidths[moduleId] ?? null}
+      onListWidthChange={(width) => updateWorkbenchListWidth(moduleId, width)}
+      onListWidthCommit={(width) => commitWorkbenchListWidth(moduleId, width)}
     />
   )
 
@@ -3020,10 +3118,11 @@ function ProtectedApp() {
     levels: (visibility) => renderMasterDataPanel('levels', visibility),
     duties: (visibility) => {
       const context = workspaceController.state.session.panels.duties?.context
-       if (!context || context.view === 'configuration') return <DutyModuleAdapter mode="configuration" visibility={visibility} detail={dutyConfigurationDetail} detailVisible={workspaceController.state.session.openDetails.includes('duties')}>{renderDirectorySurface('duties')}</DutyModuleAdapter>
-      return (
-        <DutyModuleAdapter mode={context.view} visibility={visibility}>
-          <DutyCenter
+       if (!context || context.view === 'configuration') return <DutyModuleAdapter mode="configuration" visibility={visibility} detail={dutyConfigurationDetail} detailVisible={workspaceController.state.session.openDetails.includes('duties')} listWidthPx={workbenchListWidths.duties ?? null} onListWidthChange={(width) => updateWorkbenchListWidth('duties', width)} onListWidthCommit={(width) => commitWorkbenchListWidth('duties', width)}>{renderDirectorySurface('duties')}</DutyModuleAdapter>
+      const selectPlanningDuty = (dutyId: string | null) => {
+        void workspaceController.requestWorkspaceDetailTransition('duties', { visible: Boolean(dutyId), context: { ...context, dutyId, lane: null } })
+      }
+      const planningList = <DutyCenter
             state={currentState}
             view={context.view}
             query={context.query}
@@ -3034,39 +3133,75 @@ function ProtectedApp() {
             onClearFilters={() => workspaceController.updatePanelContext('duties', { ...context, query: '', statusFilters: [] })}
             onOpenDutyConfiguration={(dutyId) => openDutyConfiguration(null, dutyId)}
             displayMode="panel"
+            selectedDutyId={context.dutyId}
+            onSelectDutyId={selectPlanningDuty}
+            slot="list"
           />
-        </DutyModuleAdapter>
-      )
+      const planningDetail = <DutyCenter
+        state={currentState}
+        view={context.view}
+        query={context.query}
+        anomalyTypes={context.statusFilters}
+        onNavigateView={(view) => workspaceController.updatePanelContext('duties', { ...context, view })}
+        onQueryChange={(query) => workspaceController.updatePanelContext('duties', { ...context, query })}
+        onAnomalyTypesChange={(statusFilters) => workspaceController.updatePanelContext('duties', { ...context, statusFilters })}
+        onClearFilters={() => workspaceController.updatePanelContext('duties', { ...context, query: '', statusFilters: [] })}
+        onOpenDutyConfiguration={(dutyId) => openDutyConfiguration(null, dutyId)}
+        displayMode="panel"
+        selectedDutyId={context.dutyId}
+        onSelectDutyId={selectPlanningDuty}
+        slot="detail"
+      />
+      return <DutyModuleAdapter mode={context.view} visibility={visibility} detail={planningDetail} detailVisible={workspaceController.state.session.openDetails.includes('duties')} onListRowNavigate={(rowId) => selectPlanningDuty(rowId)} listWidthPx={workbenchListWidths.duties ?? null} onListWidthChange={(width) => updateWorkbenchListWidth('duties', width)} onListWidthCommit={(width) => commitWorkbenchListWidth('duties', width)} list={planningList} />
     },
     processes: (visibility) => {
       const context = workspaceController.state.session.panels.processes?.context
       if (!context) return null
       const location: ProcessPlanningLocation = { active: true, ...context }
+      const createProcessFromList = () => {
+        if (!editingEnabled) return
+        const id = `process-${crypto.randomUUID()}`
+        const result = runOrganizationCommand({ type: 'CREATE_PROCESS', process: { id, title: '新流程', description: null, order: processes.length } })
+        if (result.status === 'applied') navigateProcessPlanning(buildProcessPlanningUrl({ view: location.view, processId: id, processNodeId: null, dutyId: null }))
+      }
+      const selectProcessFromList = (processId: string) => {
+        const nextContext = { ...context, processId, processNodeId: null, dutyId: null }
+        if (context.processId === processId && workspaceController.state.session.openDetails.includes('processes')) {
+          return workspaceController.requestWorkspaceDetailTransition('processes', { visible: false })
+        }
+        return workspaceController.requestWorkspaceDetailTransition('processes', { visible: true, context: nextContext })
+      }
+      const processList = <ProcessPlanningList state={currentState} location={location} editingEnabled={editingEnabled} onNavigate={navigateProcessPlanning} onSelectProcess={selectProcessFromList} onCreateProcess={createProcessFromList} />
+      const processDetail = <ProcessPlanningWorkbench
+        detailOnly
+        state={currentState}
+        location={location}
+        editingEnabled={editingEnabled}
+        serverReady={serverReady}
+        recoveryOpen={workspaceHydration.kind !== 'ready'}
+        mobileReadOnly={mobileReadOnly}
+        onCommand={runOrganizationCommand}
+        onNavigate={navigateProcessPlanning}
+        onRelationBegin={beginRelationPlacement}
+        onRelationPreview={previewRelationPlacementTarget}
+        onRelationCommit={commitRelationPlacementTarget}
+        onRelationCancel={cancelRelationPlacement}
+        relationPlacementActive={relationPlacement.phase === 'placing'}
+        relationPlacementCandidate={relationPlacement.phase === 'placing' ? relationPlacement.candidate : null}
+        relationPlacementOutcome={relationPlacementOutcome}
+      />
       return (
-        <ProcessModuleAdapter visibility={visibility}>
-          <ProcessPlanningWorkbench
-          state={currentState}
-          location={location}
-          editingEnabled={editingEnabled}
-          serverReady={serverReady}
-          recoveryOpen={workspaceHydration.kind !== 'ready'}
-          mobileReadOnly={mobileReadOnly}
-          onCommand={runOrganizationCommand}
-          onNavigate={navigateProcessPlanning}
-          onRelationBegin={beginRelationPlacement}
-          onRelationPreview={previewRelationPlacementTarget}
-          onRelationCommit={commitRelationPlacementTarget}
-          onRelationCancel={cancelRelationPlacement}
-          relationPlacementActive={relationPlacement.phase === 'placing'}
-          relationPlacementCandidate={relationPlacement.phase === 'placing' ? relationPlacement.candidate : null}
-          relationPlacementOutcome={relationPlacementOutcome}
-          />
-        </ProcessModuleAdapter>
+        <ProcessModuleAdapter visibility={visibility} list={processList} detail={processDetail} detailVisible={workspaceController.state.session.openDetails.includes('processes')} onListRowNavigate={(rowId) => selectProcessFromList(rowId)} listWidthPx={workbenchListWidths.processes ?? null} onListWidthChange={(width) => updateWorkbenchListWidth('processes', width)} onListWidthCommit={(width) => commitWorkbenchListWidth('processes', width)} />
       )
     },
     'management-methods': (visibility) => {
       const context = workspaceController.state.session.panels['management-methods']?.context
-      const detailVisible = workspaceController.state.session.openDetails.includes('management-methods') && Boolean(context?.methodId)
+      const detailVisible = workspaceController.state.session.openDetails.includes('management-methods')
+      const selectManagementMethod = (methodId: string, view?: 'draft' | 'readable') => {
+        const nextContext = { ...(context ?? { methodId: null, view: 'list' as const, query: '', chapter: null }), methodId, view: view ?? 'draft', chapter: null }
+        if (context?.methodId === methodId && detailVisible) return workspaceController.requestWorkspaceDetailTransition('management-methods', { visible: false })
+        return workspaceController.requestWorkspaceDetailTransition('management-methods', { visible: true, context: nextContext })
+      }
       const list = <ManagementMethodListPage
         visibility={visibility}
         workspaceMutationAllowed={workspaceMutationAllowed}
@@ -3075,31 +3210,46 @@ function ProtectedApp() {
           setWorkspaceModuleQueries((current) => ({ ...current, managementMethods: query }))
           workspaceController.updatePanelContext('management-methods', { ...(context ?? { methodId: null, view: 'list' as const, query: '', chapter: null }), query })
         }}
-        onOpen={(methodId, view) => workspaceController.updatePanelContext('management-methods', { ...(context ?? { methodId: null, view: 'list' as const, query: '', chapter: null }), methodId, view: view ?? 'draft', chapter: null }, { openDetail: true })}
+        onOpen={(methodId, view) => { void selectManagementMethod(methodId, view) }}
+        onSelectMethod={selectManagementMethod}
       />
       const detail = context?.methodId && context.view !== 'list' ? <ManagementMethodDocumentPage
         methodId={context.methodId}
         initialView={context.view}
         initialChapter={context.chapter}
         state={currentState}
-        onClose={() => workspaceController.setDetailVisibility('management-methods', false)}
+        onClose={() => { void workspaceController.requestWorkspaceDetailTransition('management-methods', { visible: false }) }}
         visibility={visibility}
         workspaceMutationAllowed={workspaceMutationAllowed}
         requestCloseGuardRegistration={registerManagementMethodCloseGuard}
         onViewChange={(view) => workspaceController.updatePanelContext('management-methods', { ...context, view })}
         onChapterChange={(chapter) => workspaceController.updatePanelContext('management-methods', { ...context, chapter })}
       /> : null
-      return <ManagementMethodModuleAdapter mode={context?.view ?? 'list'} visibility={visibility} list={list} detail={detail} detailVisible={detailVisible} />
+      return <ManagementMethodModuleAdapter mode={context?.view ?? 'list'} visibility={visibility} list={list} detail={detail} detailVisible={detailVisible} onListRowNavigate={(rowId) => selectManagementMethod(rowId, context?.view === 'readable' ? 'readable' : 'draft')} listWidthPx={workbenchListWidths['management-methods'] ?? null} onListWidthChange={(width) => updateWorkbenchListWidth('management-methods', width)} onListWidthCommit={(width) => commitWorkbenchListWidth('management-methods', width)} />
     },
-    'role-risks': (visibility) => <RoleRiskModuleAdapter visibility={visibility}><RoleCombinationRiskPanel
+    'role-risks': (visibility) => {
+      const context = workspaceController.state.session.panels['role-risks']?.context
+      const detailVisible = workspaceController.state.session.openDetails.includes('role-risks')
+      const selectedRule = context?.ruleId ? roleCombinationRiskRules.find((rule) => rule.id === context.ruleId) ?? null : null
+      const selectRule = (ruleId: string) => {
+        const nextContext = { ...(context ?? { ruleId: null, employeeId: null }), ruleId }
+        if (context?.ruleId === ruleId && detailVisible) return workspaceController.requestWorkspaceDetailTransition('role-risks', { visible: false })
+        return workspaceController.requestWorkspaceDetailTransition('role-risks', { visible: true, context: nextContext })
+      }
+      const detail = <RoleRiskDetail rule={selectedRule} roles={roles} onClose={() => { void workspaceController.requestWorkspaceDetailTransition('role-risks', { visible: false }) }} />
+      const list = <RoleCombinationRiskPanel
         roles={roles}
         rules={roleCombinationRiskRules}
+        selectedRuleId={context?.ruleId ?? null}
+        onSelectRule={selectRule}
         onUpsert={upsertRoleRiskRule}
         onSetEnabled={setRoleRiskRuleEnabled}
         onDelete={deleteRoleRiskRule}
         editingEnabled={workspaceMutationAllowed}
         requestCloseGuardRegistration={registerRiskCloseGuard}
-      /></RoleRiskModuleAdapter>,
+      />
+      return <RoleRiskModuleAdapter visibility={visibility} list={list} detail={detail} detailVisible={detailVisible} onListRowNavigate={(rowId) => selectRule(rowId)} listWidthPx={workbenchListWidths['role-risks'] ?? null} onListWidthChange={(width) => updateWorkbenchListWidth('role-risks', width)} onListWidthCommit={(width) => commitWorkbenchListWidth('role-risks', width)} />
+    },
     governance: (visibility) => <GovernanceModuleAdapter visibility={visibility}><GovernanceCenter
         employees={employees}
         departments={departments}

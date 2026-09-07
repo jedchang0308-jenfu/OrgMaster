@@ -1,8 +1,8 @@
 # DEV-046：統一清單明細工作台與可擴充關係拖曳框架
 
-文件成熟度：`RD Implementation Ready`
+文件成熟度：`RD Implementation Complete`
 
-狀態：`Executable / Human Confirmed / RD Tech Lead Review Passed after Contract Optimization / RD Not Started / Documents Only`
+狀態：`RD Implementation Complete / Automated Gate Passed / Browser QA-QC Passed / RD Tech Lead Review Passed after Contract Optimization / Local Release Gate Pending`
 
 風險等級：`High`。本交付會改變八個既有功能的主要畫面、選取／明細狀態、鍵盤操作與版面偏好保存，並新增帳號層級偏好 API 與 forward-only migration；不得用局部元件測試取代完整正常入口及視覺 QC。
 
@@ -14,6 +14,7 @@
 - `USER-2026-09-04-ACCOUNT-SCOPED-LIST-WIDTH`
 - `USER-2026-09-04-UNIFIED-RELATION-DRAG-EXTENSIBILITY`
 - `USER-2026-09-04-DEV046-RD-IMPLEMENTATION-READY-TECH-LEAD-REVIEW`
+- `USER-2026-09-04-DEV046-EMPLOYEE-VISUAL-BASELINE`
 
 父契約與取代關係：
 
@@ -23,7 +24,7 @@
 - [ADR-009](../adr/ADR-009-composable-workspace-shell-boundary.md)：新增 DEV-046 amendment；不建立第二份 shell ADR。
 - [DEV-033](DEV-033-mobile-readonly-desktop-mutation-boundary.md)：手機／窄 viewport 維持完整唯讀；本 DEV 不以拖曳或寬度調整旁路 mutation boundary。
 
-Spec Impact Preflight：`Intentional replacement`。使用者已明確要求所有本次列入的功能統一為左清單＋右明細、層級先建立空明細框、清單可調寬並保存於帳號、拖曳共用且可逐步擴充；因此不重複要求產品決策。DEV-042 的歷史完成狀態與證據保持有效，只由 DEV-046 接管上述新行為。
+Spec Impact Preflight：`Intentional replacement`。使用者已明確要求所有本次列入的功能統一為左清單＋右明細、層級先建立空明細框、清單可調寬並保存於帳號、拖曳共用且可逐步擴充，且細部風格與排版以現行「員工」工作台為視覺基準；因此不重複要求產品決策。DEV-042 的歷史完成狀態與證據保持有效，只由 DEV-046 接管上述新行為。
 
 ## 1. 真正需求與完成定義
 
@@ -41,7 +42,7 @@ Spec Impact Preflight：`Intentional replacement`。使用者已明確要求所�
 
 成功不以「建立一個共用元件」判定，而以以下事實判定：
 
-1. 八個功能從正常入口呈現一致的左清單＋右明細框。
+1. 八個功能從正常入口呈現一致的左清單＋右明細框，清單標頭、搜尋、列密度、選取、分隔線與明細標頭沿用「員工」版面的共同視覺語言。
 2. 同一列 click、另一列 click、上下鍵與 Escape 的結果跨功能一致。
 3. 桌面清單寬度可調、無偏好時 content-fit、有偏好時由目前登入帳號恢復。
 4. domain detail、permission、dirty guard、autosave、Undo／Redo 與 mutation authority沒有被搬進共用框架。
@@ -60,6 +61,7 @@ Spec Impact Preflight：`Intentional replacement`。使用者已明確要求所�
 7. 清單寬度可由使用者調整；無帳號偏好時初始值只量測一次並剛好容納當下已載入內容，再受 list／detail minimum 約束。
 8. 調整後的 preferred width 依「登入 principal＋module」保存到帳號偏好；不寫入 OrganizationDocument、workspace version、URL 或 browser-local layout。
 9. 拖曳使用一套共用 headless source／target binding、typed payload、session 與 resolver。新關係可以逐項新增，但未登錄 pair 必須 fail closed；方向不自動對稱。
+10. 細部風格與排版以現行 Employee list-detail surface 為基準。各功能必須共用同一批 presentation primitives 與 scoped tokens；只允許清單資料欄位、領域動作及右側 domain body 內容不同，不得各自複製一套近似 CSS。
 
 ## 3. Current Phase scope
 
@@ -67,6 +69,7 @@ Spec Impact Preflight：`Intentional replacement`。使用者已明確要求所�
 
 - 擴充既有 `WorkspaceListDetailSurface`，成為唯一 list-detail frame；不得另建與現有 `WorkspaceShell` 名稱或責任重疊的 `WorkbenchShell`。
 - 建立共用 list-detail interaction controller，統一 row click、ArrowUp／ArrowDown、Escape、focus restore 與 drag-click arbitration。
+- 從現行 Employee surface 抽出共用 `WorkbenchListFrame`、`WorkbenchListRow`、`WorkbenchDetailFrame` presentation primitives，固定第 11 節的版面 anatomy、密度與視覺 tokens；不得用 schema-driven renderer 泛化 domain 內容。
 - 八個 module adapter 全部投影為相同 frame；Process、Duty audit／distribution、Role Risk 只重組 slots，不把其 domain UI 泛化。
 - 桌面 resize separator、content-fit 初值、container clamp、帳號讀寫、失敗回復與 accessibility。
 - 沿用並強制所有 relation consumers 使用 `createRelationDragSourceProps()`／`createRelationDropTargetProps()`；以 contract test 防止新平行 drag path。
@@ -122,6 +125,7 @@ RelationPlacementSession                      existing shared placement state
 | `src/workspace/listDetailWorkbench.ts`（new） | 純狀態轉換、visible order navigation、Escape precedence input、content-fit clamp helpers |
 | `src/components/workspace/useListDetailWorkbenchInteraction.ts`（new） | 將純 contract 綁到 row props、focus registry與detail visibility callback；不保存 domain selection |
 | `src/components/workspace/WorkbenchListSeparator.tsx`（new） | Pointer／keyboard resize、ARIA separator；不自行呼叫 API |
+| `src/components/workspace/WorkbenchPresentationPrimitives.tsx`（new） | 從 Employee 抽出的 `WorkbenchListFrame`、`WorkbenchListRow`、`WorkbenchDetailFrame`；只擁有共同 anatomy、slots、visual states 與合法 DOM，不讀 domain store |
 | `src/workspace/workbenchPreferenceClient.ts`（new） | typed GET／PUT、parse與request coalescing |
 | `src/workspace/state.ts#contextHasDetail` | 移除「必須有selected ID才可open」的admission語意；`openDetails`只依module支援與panel存在判斷，detail node是否為空由adapter投影 |
 | `src/workspace/route.ts#routeContextHasDetail／parseDetails` | explicit `details=<module>`只驗證open panel＋module support；缺少`details`時才保留DEV-042的valid-selection legacy inference |
@@ -156,11 +160,11 @@ type WorkspaceListDetailSurfaceProps = {
 DOM不變量：
 
 - root：`data-workspace-surface="list-detail"`、`data-module`。
-- list：`data-workspace-slot="list"`，是唯一 list scroll owner。
+- list：`data-workspace-slot="list"`，內含唯一 `WorkbenchListFrame`；其中只有 list body 是 list scroll owner，標頭與搜尋不隨列捲動。
 - separator：`data-workbench-separator`，只在雙欄投影顯示。
-- detail：`data-workspace-slot="detail"`，永遠存在；`data-detail-state="open|closed|empty"`。
+- detail：`data-workspace-slot="detail"`，永遠存在；內含唯一 `WorkbenchDetailFrame`，並標記 `data-detail-state="open|closed|empty"`。
 - detailOpen=false 時不得 unmount detail slot，只 unmount／hide domain detail content。空 slot具 accessible label及 focus fallback，但不強制可見教學文字。
-- detailOpen=true 時由frame提供唯一close control，accessible name固定為`關閉{detailLabel}`並呼叫guarded transition；domain detail不得再render第二個同義close。Frame不強制重複可見標題，domain header／actions留在detail content。
+- detailOpen=true 時由 `WorkbenchDetailFrame` 提供 Employee 同款的唯一 header、title與close control；accessible name固定為`關閉{detailLabel}`並呼叫guarded transition。Domain只提供 title、必要 action slot與body，不得再render第二個同義title／header／close。
 - list 與 detail 各自可捲動；root與panel不得再形成第三個同方向 scroll owner。
 
 ## 7. Selection and detail state machine
@@ -237,11 +241,127 @@ effective = clamp(preferred, LIST_MIN, min(LIST_MAX, containerMax))
 - Detail open／close不以動畫作唯一訊號；遵守 reduced motion。
 - 無內容的層級 detail frame不顯示常駐教學卡，但保留 `aria-label="層級明細"`與 focus fallback。
 
-## 11. Module mapping
+## 11. Employee visual baseline and module mapping
+
+### 11.1 Baseline authority
+
+「依據員工版面」指現行 workspace 內的 Employee list-detail surface，不是舊版 Organization canvas 左 rail／右 inspector。RD以以下既有 source 為抽取依據：
+
+- 清單 anatomy：`src/components/DirectoryDock.tsx#DirectoryPanel`與 Employee row。
+- 明細 anatomy：`src/components/DirectoryDetailPanel.tsx#DetailHeader`及 `inspector__section`。
+- 現行 style：`src/index.css` 的 `directory-*`／`inspector-*`與`src/components/workspace/workspace.css`的 surface overrides。
+- 參考畫面：`output/playwright/dev039/F039-QC-05-master-data-list-detail-adjacent.png`（1440×900）與`F039-QC-05-master-data-1024-adjacent.png`（1024×768）。兩張圖只協助辨識設計意圖，不可重用為 DEV-046 candidate pass；最終判定必須以 S6 frozen candidate 重新取證。
+
+若上述舊 CSS 有 cascade衝突，以本節 frozen token contract 為準；若 domain 畫面與 Employee 基準衝突，先修正 domain projection，不得修改全域 Employee 基準去遷就單一功能。
+
+### 11.2 Shared anatomy
+
+~~~text
+WorkspaceListDetailSurface                         flat white surface
+├─ WorkbenchListFrame                              left, fixed header/search
+│  ├─ header: title | count | one primary action   no list-close button
+│  ├─ search (only when a real filter exists)      omitted without reserved gap
+│  └─ list scroller
+│     └─ WorkbenchListRow × n                      primary trigger + optional slots
+├─ WorkbenchListSeparator                          1px visual / 24px hit target
+└─ WorkbenchDetailFrame                            right, permanent owner
+   ├─ header: title | domain actions | close        one header and one close only
+   └─ body: standard sections OR edge-to-edge       one detail scroll owner
+~~~
+
+共用 primitive 合約：
+
+- `WorkbenchListFrame`固定 header → optional search → list body 的順序；接受 `title`、`count`、`primaryAction`、`search`與`children` slots。沒有真正搜尋能力時整個 search slot不render，不能放 disabled／空輸入框。
+- `WorkbenchListRow`固定選取、hover、focus、disabled、dragging與drop-candidate states，並接受 primary／secondary copy、leading、trailing、actions及indent slots。DOM固定為list內的`li`，其第一個互動子項為primary trigger `button`，actions為siblings；不得出現button-in-button。Arrow roving focus只落在 `data-workbench-row-trigger`。
+- Row primary trigger以 `aria-current="true"`表達目前選取，並以`aria-controls={detailId}`／`aria-expanded`表達該選取的detail是否開啟；視覺 selected state套在同一 row root。Relation drag props套在row root且只允許從primary／非action區域啟動；actions不得觸發select或drag。
+- `WorkbenchDetailFrame`接受 `title`、optional `actions`、`onClose`、`bodyMode: 'standard' | 'edge-to-edge'`與body。`standard`供 Employee／一般表單與分段明細；`edge-to-edge`只供 Process canvas、Management Method document等本身已有必要捲動／編輯邊界的內容。Frame root永遠存在，但只有`state='open'`時render可見header／body；`closed`與無domain內容的`empty`維持安靜白底與accessible label。
+- `standard` body可使用共用 section heading／section spacing；`edge-to-edge`不得再包卡片或18px全域padding。兩種 body mode共用同一 header、close、detail state與外框，不得衍生 module-specific frame variant。
+
+最小 props 契約：
+
+```ts
+type WorkbenchListFrameProps = {
+  title: string
+  count?: string
+  primaryAction?: ReactNode
+  search?: { value: string; label: string; onChange: (value: string) => void }
+  listLabel: string
+  children: ReactNode
+}
+
+type WorkbenchListRowProps = {
+  id: string
+  detailId: string
+  selected: boolean
+  detailOpen: boolean
+  disabled?: boolean
+  primary: ReactNode
+  secondary?: ReactNode
+  leading?: ReactNode
+  trailing?: ReactNode
+  actions?: ReactNode
+  expandedContent?: ReactNode
+  indentPx?: number
+  onActivate: () => void
+}
+
+type WorkbenchDetailFrameProps = {
+  id: string
+  label: string
+  title?: string
+  state: 'open' | 'closed' | 'empty'
+  bodyMode: 'standard' | 'edge-to-edge'
+  actions?: ReactNode
+  onClose: () => Promise<'closed' | 'kept-open'>
+  children?: ReactNode
+}
+```
+
+拖曳、row refs與keyboard handlers由第5～8節既有 hooks／bindings注入，不在 props 另造第二份 payload、selection或event authority。
+
+### 11.3 Frozen Employee-derived visual tokens
+
+下列為 Current Phase 必須一致的預設值；應集中在 `.workspace-list-detail-surface` scope，以 CSS custom properties供 primitives使用。Module CSS可以排 domain body，不能覆寫這些 shared tokens。
+
+| Area／token | Required value／rule | Employee basis |
+|---|---|---|
+| Surface | `background:#fff`；無外框、圓角、陰影或額外page padding | `directory-dock.is-surface`／workspace surface |
+| Structural divider | list-detail separator保留8px操作熱區，但只呈現1px idle `#d0d5dd`灰線；hover／active `#98a2b3`；focus `#667085`＋inset focus ring；不得使用多功能workspace split的藍色5px視覺 | Employee surface quiet divider；與多功能分隔線明確區隔 |
+| List header | `min-height:32px`; `padding:2px 10px 2px 12px`; title `10px/1.2`, weight `750`, color `#687487`, letter-spacing `.08em` | Employee surface header override |
+| Header meta／primary action | count `10px #8a94a2`; controls `28×28px`, radius `7px`; primary action `#3159d9` on `#edf2ff`; gap `4px` | `directory-panel__meta` |
+| Search | height `34px`; margin `0 10px 9px`; horizontal padding `9px`; gap `7px`; border `#e0e4e9`; radius `8px`; bg `#f7f8fa`; input `11px` | `directory-search` |
+| Search focus | border `#9bb3ff`; bg `#fff`; ring `0 0 0 3px rgba(63,109,246,.09)` | Employee search focus |
+| List scroller | `padding:0 8px 12px`; `overflow-y:auto`; `overscroll-behavior:contain` | `directory-list` |
+| Standard row | margin-bottom `2px`; padding `2px 6px 2px 7px`; transparent 1px border; radius `9px`; primary text `11px`; optional secondary text `9px #7e8ba0` | current master-data Employee row density |
+| Row hover／focus | border `#dce3ec`; bg `#f7f9fc`; visible keyboard ring不得被`outline:0`移除且無替代 | Employee hover，加上 a11y correction |
+| Row selected | border `#aabfff`; bg `#eef3ff`; inset left indicator `3px #3f6df6`;不得再疊加selected badge／check icon | Employee selected row |
+| Detail header | title-only `min-height:40px`; padding `4px 12px`; gap `8px`; title `16px/1.15`, weight `700`; close `30×30px` | Employee `directory-detail-panel` header |
+| Detail contextual title | 只有必要時可加 eyebrow `9px/1`與 title `12px/1.1`; 不可重複module名或「明細」 | existing department detail variant |
+| Standard detail section | padding `18px`; gap `9px`; bottom divider `#edf0f3`; heading `11px/700 #5f6b7b`; count `10px #929ba8` | Employee inspector sections |
+| Typography／base colors | Inter／Noto Sans TC／Microsoft JhengHei fallback；ink `#1d2735`; muted `#6c7787`; panel `#fff` | root Employee theme |
+
+除 shared header primary action外，一個作用範圍只保留一個同權重主要動作。正常狀態不顯示目的介紹、helper card、成功面板、重複badge或裝飾性空容器。可互動群組只有在具有展開、選取、提交、風險或獨立捲動邊界時才可有邊框；其餘用間距與細分隔線表達。
+
+### 11.4 Responsive presentation
+
+- `>=640px`沿用本節雙欄 anatomy。Account preferred width只改 list track，不改 header、row或detail tokens。
+- `<640px`沿用同一 primitives改為單一 surface；list或detail佔滿可用寬高，不縮成窄雙欄。Detail header成為返回層，仍只有一個close／back control。
+- `<640px`或 coarse pointer時，row trigger、header primary action與detail close的最小hit target為`44×44px`；視覺字級、顏色與selected語言不變。Readonly mobile不顯示新增、編輯、刪除、拖曳handle或空 action gap。
+- 長標題與次要文字單行ellipsis；完整名稱必須透過accessible name取得。不得讓長字串撐破 list preferred width、detail header或產生document水平捲動。
+
+### 11.5 Allowed adaptation vs prohibited divergence
+
+| Must remain Employee-consistent | May vary by domain |
+|---|---|
+| surface背景、header/search/list順序、shared padding、row density、selected／hover／focus、separator、detail header／close、scroll ownership、empty／closed quietness | list title／count、是否有真實搜尋、primary／secondary row fields、leading icon／indent、domain action、detail title、standard section內容、edge-to-edge canvas／document內容 |
+
+禁止：module root另加page card、第二頁首、第二搜尋框、第二close、不同selected色系、以固定像素複製Employee當時寬度、用module CSS覆寫shared token、或將 Process canvas／document editor塞進標準18px section。需要第三種 body mode或新 shared visual state時，先回本 spec／Tech Lead；不得由 consumer 私下新增。
+
+### 11.6 Module mapping
 
 | Module | 左側 list slot | 右側 detail slot | Current Phase adaptation |
 |---|---|---|---|
-| `employees` | 現有Employee directory與搜尋 | `DirectoryDetailPanel`／員工帳號等既有detail | 移除module-specific list width與detail wrapper |
+| `employees` | 現有Employee directory與搜尋 | `DirectoryDetailPanel`／員工帳號等既有detail | 第一個遷移與visual control specimen；抽出primitives後外觀及能力不得回歸 |
 | `positions` | 現有Position directory | 現有Inspector／Position detail | domain編輯與assignment保持原owner |
 | `departments` | 現有Department hierarchy list | 現有Department detail | hierarchy presentation不泛化 |
 | `levels` | 現有Level order list | 空detail slot（V1） | 支援相同selection／open／close；不虛構domain欄位 |
@@ -340,6 +460,7 @@ Production allowlist：
 - `src/App.tsx`
 - `src/workspace/{moduleRegistry,types,state,route,useWorkspaceController,listDetailWorkbench,workbenchPreferenceClient}.ts{,x}`
 - `src/components/workspace/{WorkspaceSurfacePrimitives,WorkbenchListSeparator,useListDetailWorkbenchInteraction}.tsx`
+- `src/components/workspace/WorkbenchPresentationPrimitives.tsx`
 - `src/components/workspace/adapters/{MasterDataModuleAdapter,DutyModuleAdapter,ProcessModuleAdapter,ManagementMethodModuleAdapter,RoleRiskModuleAdapter}.tsx`
 - `src/components/{DirectoryDock,DutyCenter,DutyPlanningWorkbench,ProcessPlanningWorkbench,RoleCombinationRiskPanel}.tsx`
 - `src/components/managementMethods/{ManagementMethodListPage,ManagementMethodDocumentPage}.tsx`，只有slot／owner接線需要時可改。
@@ -354,12 +475,12 @@ Test allowlist為上述檔案的同名 `*.test.ts(x)`、`server/orgmasterServer.
 
 ### S0 — Contract guard
 
-- 先新增 pure state／clamp tests、八module descriptor contract、Escape precedence與source policy scan。
+- 先新增 pure state／clamp tests、八module descriptor contract、Escape precedence、Employee-derived token／anatomy contract與source policy scan。
 - 鎖定 DEV-041 MIME／resolver／mutation owner數量，避免重構期間建立第二路徑。
 
 ### S1 — Shared frame and interaction
 
-- 擴充 `WorkspaceListDetailSurface`、新增separator與interaction controller。
+- 擴充 `WorkspaceListDetailSurface`、新增separator、interaction controller及Employee-derived presentation primitives／scoped tokens。
 - 新增`requestWorkspaceDetailTransition()`並讓same-click、另一列、Arrow、close control、Escape與single-surface back共用同一guard path；allow後原子更新context＋visibility，pending intent不得競賽；調整`openDetails` admission，使empty／create detail不依賴selected ID。
 - 先用 isolated fixtures完成click／arrow／Escape／dirty keep-open／focus／empty／create detail／single-surface。
 
@@ -370,7 +491,7 @@ Test allowlist為上述檔案的同名 `*.test.ts(x)`、`server/orgmasterServer.
 
 ### S3 — Master data and Duty migration
 
-- 遷移employees／positions／departments／levels，再遷移Duty configuration／audit／distribution。
+- 先遷移employees並凍結為visual control specimen；通過shared anatomy／computed-style contract後，再遷移positions／departments／levels與Duty configuration／audit／distribution。
 - 刪除這些consumer的list-only與module-specific width正常路徑；domain controls保持原owner。
 
 ### S4 — Process, Management Method and Role Risk migration
@@ -385,7 +506,7 @@ Test allowlist為上述檔案的同名 `*.test.ts(x)`、`server/orgmasterServer.
 
 ### S6 — Candidate verification
 
-- targeted → full regression → typecheck／client＋server build → DB boundary → task-owned browser QA／QC。
+- targeted → full regression → typecheck／client＋server build → DB boundary → task-owned browser QA／QC；以同一candidate、同一viewport先拍Employee control，再逐module做anatomy／computed-style／quietness比對。
 - Browser修正收斂後凍結一次candidate再取最終visual evidence；不得以舊DEV-042截圖宣稱新框架通過。
 
 S0→S6依序進行；S3／S4可在S0～S2通過後分小批遷移，但production不得永久保留新舊兩套frame或interaction controller。
@@ -394,47 +515,52 @@ S0→S6依序進行；S3／S4可在S0～S2通過後分小批遷移，但producti
 
 ### A. Shared behavior
 
-- [ ] A1 八module皆由正常頂部launcher進入同一list-detail frame，雙欄時DOM順序固定list→separator→detail。
-- [ ] A2 levels即使沒有domain detail也保留右框；無教學卡、無假資料、無runtime error。
-- [ ] A3 點另一列切detail；點同一已選列關閉內容；再點重開；selected highlight始終一致。
-- [ ] A4 ArrowUp／ArrowDown依filtered visible order切換且不循環；輸入欄與editor內按鍵不被攔截。
-- [ ] A5 Same-row close、另一列／Arrow switch、Escape與single-surface back皆經同一async dirty guard；keep-open零state change，closed detail時Escape不關閉panel。
-- [ ] A6 right detail slot在open／closed／empty都維持同一owner；不存在module-specific Drawer或第二detail mount。
-- [ ] A7 `openDetails`與selected ID正交；Level empty及Role Risk create可開啟，Process沒有render-only首筆fallback，Duty audit／distribution沒有component-local第二selection。
-- [ ] A8 open detail只有frame的一個可見／可存取close control；domain detail不重複標題或close，所有close仍經guarded transition。
+- [x] A1 八module皆由正常頂部launcher進入同一list-detail frame，雙欄時DOM順序固定list→separator→detail。
+- [x] A2 levels即使沒有domain detail也保留右框；無教學卡、無假資料、無runtime error。
+- [x] A3 點另一列切detail；點同一已選列關閉內容；再點重開；selected highlight始終一致。
+- [x] A4 ArrowUp／ArrowDown依filtered visible order切換且不循環；輸入欄與editor內按鍵不被攔截。
+- [x] A5 Same-row close、另一列／Arrow switch、Escape與single-surface back皆經同一async dirty guard；keep-open零state change，closed detail時Escape不關閉panel。
+- [x] A6 right detail slot在open／closed／empty都維持同一owner；不存在module-specific Drawer或第二detail mount。
+- [x] A7 `openDetails`與selected ID正交；Level empty及Role Risk create可開啟，Process沒有render-only首筆fallback，Duty audit／distribution沒有component-local第二selection。
+- [x] A8 open detail只有frame的一個可見／可存取close control；domain detail不重複標題或close，所有close仍經guarded transition。
 
 ### B. Width and account preference
 
-- [ ] B1 無偏好時八module各自只執行一次content-fit並依clamp呈現，filter／selection不造成寬度跳動。
-- [ ] B2 Pointer與keyboard separator均可調整；ARIA value、focus與hit target正確。
-- [ ] B3 reload、登出後同帳號重新登入可恢復每module preferred width；A帳號不得讀到B帳號資料。
-- [ ] B4 窄container忽略但不刪除preferred；恢復寬度後套用原值。
-- [ ] B5 GET／PUT失敗不阻斷工作，且不寫localStorage冒充成功。
-- [ ] B6 local-json與cloud-sql repository contract parity；011通過DB boundary與migration isolation tests。
-- [ ] B7 Vite dev與standalone server皆由正常Auth session存取偏好；無session、偽造principal及錯誤middleware順序fail closed。
+- [x] B1 無偏好時八module各自只執行一次content-fit並依clamp呈現，filter／selection不造成寬度跳動。
+- [x] B2 Pointer與keyboard separator均可調整；ARIA value、focus與hit target正確。
+- [x] B3 reload、登出後同帳號重新登入可恢復每module preferred width；A帳號不得讀到B帳號資料。
+- [x] B4 窄container忽略但不刪除preferred；恢復寬度後套用原值。
+- [x] B5 GET／PUT失敗不阻斷工作，且不寫localStorage冒充成功。
+- [x] B6 local-json與cloud-sql repository contract parity；011通過DB boundary與migration isolation tests。
+- [x] B7 Vite dev與standalone server皆由正常Auth session存取偏好；無session、偽造principal及錯誤middleware順序fail closed。
 
 ### C. Module parity
 
-- [ ] C1 Employee／Position／Department既有選取、編輯、帳號入口與assignment能力不回歸。
-- [ ] C2 Level reorder／rename／apply仍可用，空detail frame不搶焦點。
-- [ ] C3 Duty三模式、lanes、anomaly filter與relation placement不回歸。
-- [ ] C4 Process mindmap／flow、node／edge editor、ProcessDutyBridge、canvas geometry與auto-pan不回歸。
-- [ ] C5 Management Method list／draft／readable、chapter、dirty-close與permission不回歸。
-- [ ] C6 Role Risk list／create／edit／enable／delete與dirty-close不回歸。
+- [x] C1 Employee／Position／Department既有選取、編輯、帳號入口與assignment能力不回歸。
+- [x] C2 Level reorder／rename／apply仍可用，空detail frame不搶焦點。
+- [x] C3 Duty三模式、lanes、anomaly filter與relation placement不回歸。
+- [x] C4 Process mindmap／flow、node／edge editor、ProcessDutyBridge、canvas geometry與auto-pan不回歸。
+- [x] C5 Management Method list／draft／readable、chapter、dirty-close與permission不回歸。
+- [x] C6 Role Risk list／create／edit／enable／delete與dirty-close不回歸。
 
 ### D. Drag extensibility and safety
 
-- [ ] D1 所有既有Employee→Position、Duty→Position、ProcessNode↔Duty方向沿用strict MIME、single session、single resolver與single mutation owner。
-- [ ] D2 Row drag不觸發click/detail toggle；nested controls不啟動drag。
-- [ ] D3 unsupported／duplicate／same target／readonly／cancel／target unmount全部zero mutation並清理session。
-- [ ] D4 source policy scan未發現relation consumer自行實作第二套`onDragStart／onDrop`。
+- [x] D1 所有既有Employee→Position、Duty→Position、ProcessNode↔Duty方向沿用strict MIME、single session、single resolver與single mutation owner。
+- [x] D2 Row drag不觸發click/detail toggle；nested controls不啟動drag。
+- [x] D3 unsupported／duplicate／same target／readonly／cancel／target unmount全部zero mutation並清理session。
+- [x] D4 source policy scan未發現relation consumer自行實作第二套`onDragStart／onDrop`。
 
 ### E. UX and viewport
 
-- [ ] E1 `1440×900`、`1024×768`雙欄可讀，沒有非預期document overflow、第三scroll owner或被遮擋control。
-- [ ] E2 `390×844`完整唯讀且single-surface導覽可完成，沒有drag mutation入口。
-- [ ] E3 keyboard-only可由launcher→list→rows→detail→separator→返回完成主要流程；focus可見且順序與畫面一致。
-- [ ] E4 正常畫面沒有重複標題、helper card、成功面板或框中框；detail domain內容仍是唯一主焦點。
+- [x] E1 `1440×900`、`1024×768`雙欄可讀，沒有非預期document overflow、第三scroll owner或被遮擋control。
+- [x] E2 `390×844`完整唯讀且single-surface導覽可完成，沒有drag mutation入口。
+- [x] E3 keyboard-only可由launcher→list→rows→detail→separator→返回完成主要流程；focus可見且順序與畫面一致。
+- [x] E4 正常畫面沒有重複標題、helper card、成功面板或框中框；detail domain內容仍是唯一主焦點。
+- [x] E5 八module都使用 `WorkbenchListFrame`、`WorkbenchListRow`及`WorkbenchDetailFrame`適用部分；source scan沒有consumer複製同義frame／header／selected CSS。
+- [x] E6 `1440×900`與`1024×768`時，八module的surface、list header、search、row、separator及detail header computed styles符合第11.3節；寬度可不同，但共同token不得不同。
+- [x] E7 Employee在primitives抽取前後的清單標頭、搜尋、列密度、選取、明細標頭與section spacing無可見回歸；Employee是candidate control，不以舊截圖直接宣稱通過。
+- [x] E8 `390×844`單surface保留同一視覺語言，所有可見row／back／close target至少44px，readonly mutation controls與其保留空間均不存在。
+- [x] E9 `standard` detail沒有無權利的框中框；Process canvas與Management Method document使用`edge-to-edge`且沒有18px wrapper造成geometry、可讀寬度或雙重捲動回歸。
 
 ## 18. QA／QC evidence contract
 
@@ -468,6 +594,7 @@ Browser normal-entry matrix至少包含：
 | F046-06 | Process＋Duty＋Role Risk | 完成各自主要domain流程 | domain parity、dirty guard、canvas geometry |
 | F046-07 | existing relation fixture | 四個既有minimum directions＋cancel／duplicate／readonly | strict event、UI、revision／zero mutation、cleanup |
 | F046-08 | 390×844 readonly | 八module閱讀與返回 | 無mutation controls、無遮擋／水平overflow |
+| F046-09 | 同一frozen candidate，Employee control＋其餘七module | 於1440×900、1024×768量測shared selectors並取代表截圖；390×844量測touch targets／single-surface | token／anatomy parity、Employee visual non-regression、standard／edge body正確、quietness audit Pass |
 
 Evidence provenance至少記錄：source revision與dirty boundary、task-owned runtime PID／port／purpose／cleanup、actor、fixture、persistence mode、route、browser exact version、viewport、操作、API／DB readback、screenshots及console/pageerror。若啟動暫時runtime，結束前只停止該task-owned process tree並確認port釋放。
 
@@ -483,6 +610,8 @@ Evidence provenance至少記錄：source revision與dirty boundary、task-owned 
 | Process detail被generic frame裁切 | canvas hit-test／drag失效 | geometry＋native relation QC | source／target出owner bounds即Fail |
 | 新relation建立第二resolver | preview與commit不一致 | resolver/source policy scan | 第二pair matrix／mutation owner即停止 |
 | close／switch略過dirty guard或async競賽 | 未儲存資料遺失／選取錯位 | precedence、keep-open、rapid intent case | context先變、detail直接關閉或late Promise覆寫即Fail |
+| Consumer複製Employee CSS形成近似版 | 日後調整仍需八處維護且視覺漂移 | shared primitive／token source scan＋computed-style matrix | 發現module自建frame／header／selected token即停止 |
+| 強迫所有detail套標準padding／卡片 | canvas hit-test、文件可讀寬度或雙重捲動退化 | `standard|edge-to-edge` contract＋geometry／scroll QC | Process／document出現無權利wrapper或第三scroll owner即Fail |
 
 ## 20. Release impact note
 
@@ -501,6 +630,7 @@ Evidence provenance至少記錄：source revision與dirty boundary、task-owned 
 3. 拖曳擴充固定沿用DEV-041 typed resolver，不新增plugin registry、event bus或第二pair matrix。
 4. 帳號偏好以窄API＋private table／local repository實作，與OrganizationDocument、workspace layout及URL完全隔離。
 5. 將preferred width與effective clamp分離，並補cross-account、dirty guard、drag-click、Process geometry及single-surface fail-seeking evidence。
+6. 將「依據員工版面」收斂為一份scoped token與三個slot-based presentation primitives；只共用穩定 anatomy／state，不共用domain renderer，避免八份近似CSS與巨型元件兩種極端。
 
 技術債：`DirectoryDock.tsx`與`App.tsx`仍是大型composition hotspot。本 DEV只允許為slot migration抽出直接需要的list presentation；若重構無法由本 DEV acceptance獨立驗證，另立開發點，不在本輪順手全面拆檔。
 
@@ -514,4 +644,6 @@ ADR判定：`不新增ADR`。本次是ADR-009既有panel owner／surface primiti
 
 ## 23. Change log
 
+- 2026-09-04：完成local／isolated implementation與驗證。八個consumer均接入永久list／separator／detail frame；統一同列click關閉／重開、另一列click、ArrowUp／Down、Escape focus restore、pointer／keyboard resize及verified-principal account preference；011 migration／repository／API、Employee visual baseline、typed relation extension path與pointercancel cleanup已落地。八個正常入口確認frame結構，Employee完成1440×900／1024×768／390×844及互動證據；`npm test` 196 files／797 tests／1 skipped、typecheck、client／server build、DEV-010 N2 16／16、DB boundary與diff check通過。RD Technical Lead結論維持`Pass after Contract Optimization`；production migration、deploy與release仍待local release gate。
+- 2026-09-04：依使用者追加決策，將現行Employee workspace surface固定為八module的細部風格與排版基準；新增baseline authority、shared anatomy、三個presentation primitives、frozen tokens、responsive規則、允許／禁止差異、E5～E9、F046-09及兩個visual FMEA。RD Technical Lead重新覆核後維持`Pass after Contract Optimization`：這是ADR-009與既有DEV-046架構內的compatible refinement，不新增ADR、domain schema、runtime或產品程式變更。
 - 2026-09-04：依使用者確認建立DEV-046並直接補至`RD Implementation Ready`；固定八module共用frame、click／Arrow／Escape state machine、永遠存在的右detail frame、account-scoped resizable list width、DEV-041 relation extension path、011 migration／API／repository、S0～S6、A1～E4、F046-01～08與FMEA。RD Technical Lead完成根因、最小架構、技術債與證據審查，結論為`Pass after Contract Optimization`；本輪未修改產品程式、資料、runtime或release狀態。

@@ -16,6 +16,7 @@ import type {
 } from '../workspace/relationDragInteraction'
 import { ProcessPlanningCanvas } from './ProcessPlanningCanvas'
 import { ProcessDutyBridge } from './ProcessDutyBridge'
+import { WorkbenchListFrame } from './workspace/WorkbenchPresentationPrimitives'
 
 interface ProcessPlanningWorkbenchProps {
   state: OrgDirectoryState
@@ -33,9 +34,28 @@ interface ProcessPlanningWorkbenchProps {
   relationPlacementActive?: boolean
   relationPlacementCandidate?: RelationPlacementCandidate | null
   relationPlacementOutcome?: RelationPlacementOutcome | null
+  detailOnly?: boolean
 }
 
-export function ProcessPlanningWorkbench({ state, location, editingEnabled, serverReady, recoveryOpen, mobileReadOnly, onCommand, onNavigate, onRelationBegin, onRelationPreview, onRelationCommit, onRelationCancel, relationPlacementActive = false, relationPlacementCandidate = null, relationPlacementOutcome = null }: ProcessPlanningWorkbenchProps) {
+interface ProcessPlanningListProps {
+  state: OrgDirectoryState
+  location: ProcessPlanningLocation
+  editingEnabled: boolean
+  onNavigate: (url: string) => void
+  onCreateProcess?: () => void
+  onSelectProcess?: (processId: string) => void | Promise<{ kind: 'allow' | 'keep-open' }>
+}
+
+export function ProcessPlanningList({ state, location, editingEnabled, onNavigate, onCreateProcess, onSelectProcess }: ProcessPlanningListProps) {
+  const processes = [...state.processes].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+  return <WorkbenchListFrame className="process-planning-processes process-planning-processes--frame" title="流程清單" count={`${processes.length} 個`}>
+    {processes.map((process) => <button type="button" key={process.id} data-workbench-row-id={process.id} className={process.id === location.processId ? 'is-active' : undefined} onClick={() => onSelectProcess ? onSelectProcess(process.id) : onNavigate(buildProcessPlanningUrl({ view: location.view, processId: process.id, processNodeId: null, dutyId: null }))}><strong>{process.title}</strong><small>{state.processNodes.filter((node) => node.processId === process.id).length} 節點</small></button>)}
+    {editingEnabled && <button type="button" className="process-add-button" onClick={onCreateProcess}>＋ 新增流程</button>}
+    {processes.length === 0 && !editingEnabled && <div className="process-empty-state"><p className="process-empty">目前版本尚未建立流程。</p></div>}
+  </WorkbenchListFrame>
+}
+
+export function ProcessPlanningWorkbench({ state, location, editingEnabled, serverReady, recoveryOpen, mobileReadOnly, onCommand, onNavigate, onRelationBegin, onRelationPreview, onRelationCommit, onRelationCancel, relationPlacementActive = false, relationPlacementCandidate = null, relationPlacementOutcome = null, detailOnly = false }: ProcessPlanningWorkbenchProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(location.processNodeId)
   const [selectedDutyId, setSelectedDutyId] = useState<string | null>(location.dutyId)
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null)
@@ -45,7 +65,11 @@ export function ProcessPlanningWorkbench({ state, location, editingEnabled, serv
   const [edgeTargetId, setEdgeTargetId] = useState('')
   const writable = canMutateProcessPlanning({ editingEnabled, serverReady, recoveryOpen, mobileReadOnly, viewportWidth: typeof window === 'undefined' ? 1280 : window.innerWidth })
   const processes = useMemo(() => [...state.processes].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)), [state.processes])
-  const activeProcess = processes.find((process) => process.id === location.processId) ?? processes[0] ?? null
+  // The outer List/Detail workbench owns the empty state. Never silently
+  // render the first process when the route has no selected process; doing so
+  // creates a second, render-only selection that cannot be addressed by
+  // Arrow/Escape or restored from the URL.
+  const activeProcess = processes.find((process) => process.id === location.processId) ?? null
   const nodes = useMemo(() => activeProcess ? state.processNodes.filter((node) => node.processId === activeProcess.id).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)) : [], [activeProcess, state.processNodes])
   const edges = useMemo(() => activeProcess ? state.processEdges.filter((edge) => edge.processId === activeProcess.id) : [], [activeProcess, state.processEdges])
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
@@ -107,7 +131,7 @@ export function ProcessPlanningWorkbench({ state, location, editingEnabled, serv
     if (!activeProcess || !writable || !edgeSourceId || !edgeTargetId || edgeSourceId === edgeTargetId) return
     onCommand({ type: 'CREATE_PROCESS_EDGE', edge: { id: `process-edge-${crypto.randomUUID()}`, processId: activeProcess.id, fromNodeId: edgeSourceId, toNodeId: edgeTargetId } })
   }
-  return <main className="process-planning-page process-planning-page--panel" aria-label="流程與職掌規劃工作台">
+  return <main className="process-planning-page process-planning-page--panel" data-detail-only={detailOnly ? 'true' : undefined} aria-label="流程與職掌規劃工作台">
     <nav className="process-planning-tabs" aria-label="流程規劃視角"><button type="button" className={location.view === 'mindmap' ? 'is-active' : undefined} onClick={() => navigate({ view: 'mindmap' })}>責任心智圖</button><button type="button" className={location.view === 'flow' ? 'is-active' : undefined} onClick={() => navigate({ view: 'flow' })}>流程圖</button></nav>
     <div className="process-planning-grid is-shared-organization">
       <aside className="process-planning-processes" aria-label="流程清單"><header className="process-panel-heading"><span>流程清單</span><small>{processes.length} 個</small></header>{processes.map((process) => <button type="button" key={process.id} className={process.id === activeProcess?.id ? 'is-active' : undefined} onClick={() => { setSelectedNodeId(null); setSelectedDutyId(null); navigate({ processId: process.id, processNodeId: null, dutyId: null }) }}><strong>{process.title}</strong><small>{state.processNodes.filter((node) => node.processId === process.id).length} 節點</small></button>)}{processes.length > 0 && writable && <button type="button" className="process-add-button" onClick={createProcess}>＋ 新增流程</button>}{processes.length === 0 && <div className="process-empty-state"><p className="process-empty">{writable ? '尚未建立流程，新增一個流程開始繪製。' : '目前版本尚未建立流程。'}</p>{writable ? <button type="button" className="process-add-button process-empty-state__add" onClick={createProcess}>＋ 新增流程</button> : <small className="process-empty-state__hint">目前版本為唯讀，請先切換可編輯草稿。</small>}</div>}</aside>

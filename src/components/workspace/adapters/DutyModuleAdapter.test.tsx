@@ -14,8 +14,9 @@ describe('DutyModuleAdapter', () => {
     const workspace = host.querySelector<HTMLElement>('[data-layout="adjacent-list-detail"]')
     expect(workspace).not.toBeNull()
     expect(workspace?.children[0].classList.contains('duty-configuration-workspace__list')).toBe(true)
-    expect(workspace?.children[1].classList.contains('duty-configuration-workspace__detail')).toBe(true)
-    expect(workspace?.children[1].firstElementChild?.getAttribute('aria-label')).toBe('工作執掌明細')
+    expect(workspace?.children[1].getAttribute('data-workbench-separator')).toBeTruthy()
+    expect(workspace?.children[2].classList.contains('duty-configuration-workspace__detail')).toBe(true)
+    expect(workspace?.children[2].firstElementChild?.getAttribute('aria-label')).toBe('工作執掌明細')
     expect(host.querySelector('.duty-configuration-workspace__detail-content')).toBeNull()
     expect(host.querySelector('[aria-label="工作職掌明細"]')?.closest('[aria-label="工作職掌完整工作台"]')).not.toBeNull()
     root.unmount()
@@ -27,8 +28,9 @@ describe('DutyModuleAdapter', () => {
     await act(async () => {
       root.render(<DutyModuleAdapter mode="configuration" visibility="active"><div>職掌清單</div></DutyModuleAdapter>)
     })
-    expect(host.querySelector('[data-layout="list-only"]')).not.toBeNull()
-    expect(host.querySelector('.duty-configuration-workspace__detail')).toBeNull()
+    expect(host.querySelector('[data-layout="adjacent-list-detail"]')).not.toBeNull()
+    expect(host.querySelector('[data-detail-state="closed"]')).not.toBeNull()
+    expect(host.querySelector('.duty-configuration-workspace__detail')).not.toBeNull()
     root.unmount()
   })
 

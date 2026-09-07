@@ -60,7 +60,10 @@ function routeContextHasDetail(moduleId: WorkspaceModuleId, context: WorkspaceRo
   if (moduleId === 'positions') return Boolean((context as WorkspaceModuleContextMap['positions']).positionId)
   if (moduleId === 'departments') return Boolean((context as WorkspaceModuleContextMap['departments']).departmentId)
   if (moduleId === 'duties') return Boolean((context as WorkspaceModuleContextMap['duties']).dutyId)
+  if (moduleId === 'levels') return Boolean((context as WorkspaceModuleContextMap['levels']).levelId)
+  if (moduleId === 'processes') return Boolean((context as WorkspaceModuleContextMap['processes']).processId || (context as WorkspaceModuleContextMap['processes']).processNodeId || (context as WorkspaceModuleContextMap['processes']).dutyId)
   if (moduleId === 'management-methods') return Boolean((context as WorkspaceModuleContextMap['management-methods']).methodId)
+  if (moduleId === 'role-risks') return Boolean((context as WorkspaceModuleContextMap['role-risks']).ruleId || (context as WorkspaceModuleContextMap['role-risks']).employeeId)
   return false
 }
 
@@ -77,7 +80,6 @@ function parseDetails(value: string | null, openPanels: WorkspaceModuleId[], con
     requested.has(moduleId)
       && openPanels.includes(moduleId)
       && getWorkspaceModule(moduleId).supportsCollapsibleDetail
-      && routeContextHasDetail(moduleId, contexts[moduleId])
   ))
 }
 

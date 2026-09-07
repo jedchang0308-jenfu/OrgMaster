@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { WorkspaceListDetailSurface, WorkspaceListOnlySurface } from './WorkspaceSurfacePrimitives'
 
 describe('WorkspaceSurfacePrimitives', () => {
@@ -23,6 +23,20 @@ describe('WorkspaceSurfacePrimitives', () => {
     expect(host.querySelector('[data-workspace-surface="list-only"]')).not.toBeNull()
     expect(host.querySelector('[data-workspace-slot="detail"]')).toBeNull()
     expect(host.querySelector('[data-visibility="hidden"]')).not.toBeNull()
+    root.unmount()
+  })
+
+  it('routes arrow navigation through the shared list-detail surface', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    const onListRowNavigate = vi.fn(() => ({ kind: 'allow' as const }))
+    await act(async () => root.render(<WorkspaceListDetailSurface onListRowNavigate={onListRowNavigate} detailVisible={false} listLabel="清單" detailLabel="明細" list={<div><button type="button" data-workbench-row-id="one">一</button><button type="button" data-workbench-row-id="two">二</button></div>} detail={null} />))
+    const rows = host.querySelectorAll<HTMLButtonElement>('[data-workbench-row-id]')
+    rows[0].focus()
+    await act(async () => rows[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
+    expect(onListRowNavigate).toHaveBeenCalledWith('two', 'down')
+    expect(document.activeElement).toBe(rows[1])
     root.unmount()
   })
 })

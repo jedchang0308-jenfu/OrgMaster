@@ -529,6 +529,21 @@ export function DirectoryDock({
     <div
       className={`${activeDirectory ? 'directory-dock is-open' : 'directory-dock is-collapsed'}${presentation === 'surface' ? ' is-surface' : ''}`}
       data-directory-dock
+      onKeyDownCapture={(event) => {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+        if (!activeDirectory || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)) return
+        const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-employee-id], [data-directory-position-id], [data-department-id], [data-level-id], [data-duty-id]') : null
+        if (!target || !event.currentTarget.contains(target)) return
+        const rows = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-employee-id], [data-directory-position-id], [data-department-id], [data-level-id], [data-duty-id]'))
+        const index = rows.indexOf(target)
+        if (index < 0) return
+        event.preventDefault()
+        const next = rows[Math.max(0, Math.min(rows.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))]
+        if (!next || next === target) return
+        next.focus()
+        if (activeDirectory === 'duties') next.querySelector<HTMLElement>('.duty-directory-card__detail-trigger')?.click()
+        else next.click()
+      }}
     >
       {presentation === 'dock' && <nav className="directory-rail" aria-label="主資料清單">
         {directoryOptions.map(({ kind, label }) => {
@@ -580,6 +595,7 @@ export function DirectoryDock({
                   directorySelection?.kind === 'employees' && directorySelection.id === employee.id ? 'is-selected' : '',
                 ].filter(Boolean).join(' ')}
                 data-employee-id={employee.id}
+                data-workbench-row-id={employee.id}
                 {...(employeeRelationPayload && employeeRelationBegin && onRelationCancel ? createRelationDragSourceProps({
                   enabled: true,
                   payload: employeeRelationPayload,
@@ -649,6 +665,7 @@ export function DirectoryDock({
                     ? 'directory-card directory-card--selectable directory-card--master is-selected'
                     : 'directory-card directory-card--selectable directory-card--master'}
                   data-directory-position-id={member.id}
+                  data-workbench-row-id={member.id}
                   tabIndex={0}
                   aria-label={`${member.title}，職位主檔`}
                   onClick={() => onSelectPosition(member.id)}
@@ -704,6 +721,7 @@ export function DirectoryDock({
                 ? 'directory-card directory-card--department directory-card--master is-selected'
                 : 'directory-card directory-card--department directory-card--master'}
               data-department-id={department.id}
+              data-workbench-row-id={department.id}
               data-selected={directorySelection?.kind === 'departments' && directorySelection.id === department.id ? 'true' : undefined}
               tabIndex={0}
               aria-label={`${getDepartmentLabel(departments, department.id)}，部門主檔`}
@@ -778,12 +796,15 @@ export function DirectoryDock({
             {displayedLevels.map((level, index) => {
               return (
                 <article
-                  className="directory-card directory-card--master level-directory-row"
+                  className={`directory-card directory-card--master level-directory-row${directorySelection?.kind === 'levels' && directorySelection.id === level.id ? ' is-selected' : ''}`}
                   key={level.id}
                   role="listitem"
                   tabIndex={0}
                   data-level-id={level.id}
+                  data-workbench-row-id={level.id}
                   aria-label={`${level.name}，組織層級`}
+                  data-selected={directorySelection?.kind === 'levels' && directorySelection.id === level.id ? 'true' : undefined}
+                  onClick={() => onSelectEntity({ kind: 'levels', id: level.id })}
                   onContextMenu={(event) => openContextMenuFromEvent('levels', level.id, event)}
                   onKeyDown={(event) => {
                     if (event.target !== event.currentTarget) return
@@ -1026,6 +1047,7 @@ function DutyDirectoryRow({
         {...dutyDropProps}
         tabIndex={onRelationCommit ? 0 : undefined}
       data-duty-id={duty.id}
+      data-workbench-row-id={duty.id}
     >
       <div className="duty-directory-card__header">
         <button

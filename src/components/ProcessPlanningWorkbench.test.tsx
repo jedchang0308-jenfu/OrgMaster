@@ -135,7 +135,7 @@ describe('ProcessPlanningWorkbench component harness', () => {
     host.remove()
   })
 
-  it('keeps the resolved process id when a node is selected from an implicit first process', async () => {
+  it('keeps the detail empty when no process is selected', async () => {
     if (!('ResizeObserver' in window)) {
       Object.defineProperty(window, 'ResizeObserver', { value: class { observe() {} unobserve() {} disconnect() {} } })
     }
@@ -156,10 +156,8 @@ describe('ProcessPlanningWorkbench component harness', () => {
       />)
       await Promise.resolve()
     })
-    const node = host.querySelector<HTMLElement>('.process-canvas-node[role="button"]')
-    expect(node).not.toBeNull()
-    await act(async () => node?.click())
-    expect(onNavigate).toHaveBeenLastCalledWith('/process-planning?view=mindmap&process=p1&node=n1')
+    expect(host.querySelector<HTMLElement>('.process-canvas-node[role="button"]')).toBeNull()
+    expect(onNavigate).not.toHaveBeenCalled()
     root.unmount()
     host.remove()
   })

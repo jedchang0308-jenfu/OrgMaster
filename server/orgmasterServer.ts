@@ -9,6 +9,7 @@ import { createOrgmasterGovernanceMiddleware } from './orgmasterGovernanceApi'
 import { createOrgmasterManagementMethodMiddleware } from './managementMethodApi'
 import { createOrgmasterMigrationGateMiddleware } from './orgmasterMigrationGate'
 import { createOrgmasterAccountEnrollmentRuntime, type AccountEnrollmentHttpRuntimeV1 } from './orgmasterAccountEnrollmentApi'
+import { createWorkbenchPreferenceMiddleware } from './workbenchPreferenceApi'
 
 type Middleware = Connect.NextHandleFunction
 
@@ -96,6 +97,7 @@ export function createOrgmasterServer(options: OrgmasterServerOptions = {}) {
   const middlewares: Middleware[] = [
     createOrgmasterMigrationGateMiddleware(root),
     createOrgmasterAuthMiddleware(() => runtime, devIdentityEnabled),
+    createWorkbenchPreferenceMiddleware(root),
     ...(accountRuntime ? [accountRuntime.middleware] : []),
     createOrgmasterApiMiddleware(),
     createOrgmasterGovernanceMiddleware(root, devIdentityEnabled, accountEnrollmentEnabled),

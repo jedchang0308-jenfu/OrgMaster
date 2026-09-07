@@ -139,7 +139,7 @@ const departments = moduleDescriptor({
 const levels = moduleDescriptor({
   id: 'levels',
   label: '層級',
-  supportsCollapsibleDetail: false,
+  supportsCollapsibleDetail: true,
   minWidth: 260,
   minHeight: 220,
   supportedSelectionKinds: ['level', 'position'],
@@ -219,7 +219,7 @@ const duties = moduleDescriptor({
 const processes = moduleDescriptor({
   id: 'processes',
   label: '流程規劃',
-  supportsCollapsibleDetail: false,
+  supportsCollapsibleDetail: true,
   minWidth: 480,
   minHeight: 280,
   supportedSelectionKinds: ['process', 'process-node', 'duty', 'position'],
@@ -283,7 +283,7 @@ const managementMethods = moduleDescriptor({
 const roleRisks = moduleDescriptor({
   id: 'role-risks',
   label: '兼任風險',
-  supportsCollapsibleDetail: false,
+  supportsCollapsibleDetail: true,
   minWidth: 360,
   minHeight: 280,
   supportedSelectionKinds: ['role-risk-rule', 'employee', 'position'],

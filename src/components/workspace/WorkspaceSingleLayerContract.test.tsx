@@ -21,14 +21,15 @@ describe('DEV-042 single-layer workspace contract', () => {
     root.unmount()
   })
 
-  it('uses the registry detail capability without manufacturing a detail for embedded modules', () => {
+  it('uses the registry detail capability for every current list-detail module', () => {
     expect(getWorkspaceModule('employees').supportsCollapsibleDetail).toBe(true)
-    expect(getWorkspaceModule('processes').supportsCollapsibleDetail).toBe(false)
+    expect(getWorkspaceModule('processes').supportsCollapsibleDetail).toBe(true)
     const host = document.createElement('div')
     const root = createRoot(host)
     act(() => root.render(<WorkspaceListDetailSurface detailVisible={false} listLabel="清單" detailLabel="明細" list={<span>清單</span>} detail={<span>不應顯示</span>} />))
-    expect(host.querySelector('[data-layout="list-only"]')).not.toBeNull()
-    expect(host.querySelector('[data-workspace-slot="detail"]')).toBeNull()
+    expect(host.querySelector('[data-layout="adjacent-list-detail"]')).not.toBeNull()
+    expect(host.querySelector('[data-workspace-slot="detail"]')).not.toBeNull()
+    expect(host.querySelector('[data-detail-state="closed"]')).not.toBeNull()
     root.unmount()
   })
 })

@@ -1,39 +1,19 @@
 {
   "contract": "DEV-045",
   "artifact": "dist + dist-server",
-  "baseUrl": "http://127.0.0.1:53110",
-  "port": 53110,
-  "ownerPid": 37028,
+  "baseUrl": "http://127.0.0.1:57576",
+  "port": 57576,
+  "ownerPid": 31568,
   "purpose": "task-owned DEV-045 browser QC",
-  "temporaryRoot": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev-045-browser-EqvJ1h",
+  "temporaryRoot": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev-045-browser-qnq3Vq",
   "cleanup": "in-process server/browser closed, port probed released, temporary root removed in finally",
-  "gitHead": "c3463e955d0353b7809bc5907c4f6ff178e02557",
+  "gitHead": "6cbb88a125d35c21610bf2283901b658a422e76a",
   "dirtyFiles": [
     "M ai-doc/dev_task.md",
-    " M ai-doc/documentation_map.md",
     " M ai-doc/specs/DEV-045-employee-account-enrollment.md",
-    " M package.json",
-    " M server/orgmasterAccountEnrollmentApi.ts",
-    " M server/orgmasterAccountEnrollmentService.ts",
-    " M server/orgmasterAccountEnrollmentStore.ts",
-    " M server/orgmasterIdentityLinkPolicy.ts",
-    " M src/App.tsx",
-    " M src/components/DirectoryDetailPanel.tsx",
-    " M src/components/EmployeeIdentitySection.test.tsx",
-    " M src/components/EmployeeIdentitySection.tsx",
-    " M src/index.css",
-    "?? qa/dev-045/",
-    "?? scripts/qc-dev-045-browser.mjs",
+    " M qa/dev-045/browser/administrator-1024x768.png",
+    " M qa/dev-045/browser/manifest.json",
     "?? scripts/tmp-button-drag.mjs",
-    "?? server/orgmasterAccountEnrollmentApi.test.ts",
-    "?? server/orgmasterAccountEnrollmentService.test.ts",
-    "?? server/orgmasterAccountEnrollmentStore.test.ts",
-    "?? server/orgmasterAccountProvisioningPort.test.ts",
-    "?? server/orgmasterIdentityLinkPolicy.test.ts",
-    "?? src/accountEnrollment/apiClient.test.ts",
-    "?? src/accountEnrollment/apiClient.ts",
-    "?? src/components/EmployeeAccountSetupDialog.test.tsx",
-    "?? src/components/EmployeeAccountSetupDialog.tsx",
     "?? test-results/"
   ],
   "nodeVersion": "v24.12.0",
@@ -47,9 +27,9 @@
       "sha256": "222b16c48df5cc2bb2278be37f4e514108a8021f40791e4b8a70c042a5e28fb9"
     },
     {
-      "path": "dist/assets/index-BeyC-5qg.js",
-      "bytes": 1408524,
-      "sha256": "de87499f85c8a025f2520eee6f7136e6d12984d31ea725d0895a2cc52711f313"
+      "path": "dist/assets/index-DMhWx5wC.js",
+      "bytes": 1409061,
+      "sha256": "b29771457dc8a5e58c64b657e51956d4a88f4e8588b4e5cd9003e9c780c788dc"
     },
     {
       "path": "dist/assets/index-f1ppB85I.css",
@@ -64,10 +44,10 @@
     {
       "path": "dist/index.html",
       "bytes": 621,
-      "sha256": "10f8939dbded493a2d2e5716d9b41da3764ca044950e315c17d3c9fc59e1ebd7"
+      "sha256": "d2e4cf9251df363a9aa6108b3a6a735a41db61008c34dda1df9ce18d5423ef93"
     }
   ],
-  "aggregateSha256": "0c7ad411e66c54ad8068aeaa1b4aa2228b5c662877f2c1ba85601c4c82a24471",
+  "aggregateSha256": "2783e3bdf7cf0fe62639c4f981c373aa84a8840c637bac7840ac0cb28722d11d",
   "results": [
     {
       "profileId": "administrator",

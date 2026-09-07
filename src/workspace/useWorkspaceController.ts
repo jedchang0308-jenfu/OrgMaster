@@ -102,6 +102,7 @@ export interface WorkspaceController {
   openOrFocus<K extends WorkspaceModuleId>(moduleId: K, context?: WorkspaceModuleContextMap[K], source?: WorkspaceOpenIntent['source']): void
   updatePanelContext<K extends WorkspaceModuleId>(moduleId: K, context: WorkspaceModuleContextMap[K], options?: { openDetail?: boolean }): void
   setDetailVisibility(moduleId: WorkspaceModuleId, visible: boolean): void
+  requestWorkspaceDetailTransition(moduleId: WorkspaceModuleId, options: { visible: boolean; context?: WorkspaceModuleContextMap[WorkspaceModuleId]; focusTarget?: string }): Promise<PanelCloseGuardResult>
   requestWorkspacePanelClose: RequestPanelClose
   registerWorkspacePanelCloseGuard(moduleId: WorkspaceModuleId, guard: PanelCloseGuard | null): () => void
   setSharedSelection(ref: EntityRef | null, sourcePanelId: WorkspaceModuleId | 'global-search'): void
@@ -130,6 +131,7 @@ export function useWorkspaceController({
   const layoutPersistenceFailureRef = useRef(onLayoutPersistenceFailure)
   layoutPersistenceFailureRef.current = onLayoutPersistenceFailure
   const closeGuards = useRef(new Map<WorkspaceModuleId, PanelCloseGuard>())
+  const detailTransitionRevision = useRef(0)
   const [announcement, setAnnouncement] = useState('')
   const startedRef = useRef(false)
 
@@ -205,6 +207,25 @@ export function useWorkspaceController({
   const setDetailVisibility = useCallback((moduleId: WorkspaceModuleId, visible: boolean) => {
     dispatch({ type: 'SET_DETAIL_VISIBILITY', moduleId, visible })
   }, [dispatch])
+  const requestWorkspaceDetailTransition = useCallback(async (moduleId: WorkspaceModuleId, options: { visible: boolean; context?: WorkspaceModuleContextMap[WorkspaceModuleId]; focusTarget?: string }): Promise<PanelCloseGuardResult> => {
+    const panel = stateRef.current.session.panels[moduleId]
+    if (!panel) return { kind: 'allow' }
+    const revision = ++detailTransitionRevision.current
+    const replacingOpenDetail = options.visible
+      && options.context !== undefined
+      && stateRef.current.session.openDetails.includes(moduleId)
+      && JSON.stringify(panel.context) !== JSON.stringify(options.context)
+    const result = (!options.visible || replacingOpenDetail) ? await runCloseGuard(moduleId) : { kind: 'allow' as const }
+    if (revision !== detailTransitionRevision.current) return { kind: 'keep-open' }
+    if (result.kind === 'allow') {
+      if (options.context !== undefined) dispatch({ type: 'UPDATE_PANEL_CONTEXT', moduleId, context: options.context, openDetail: options.visible })
+      else dispatch({ type: 'SET_DETAIL_VISIBILITY', moduleId, visible: options.visible })
+      if (!options.visible && options.focusTarget) browser.focus(options.focusTarget)
+    } else {
+      browser.focus(result.focusTarget ?? options.focusTarget ?? `workspace-close-${moduleId}`)
+    }
+    return result
+  }, [browser, dispatch, runCloseGuard])
   const setSharedSelection = useCallback((ref: EntityRef | null, sourcePanelId: WorkspaceModuleId | 'global-search') => {
     dispatch({ type: 'SET_SHARED_SELECTION', selection: { ref, sourcePanelId, revision: stateRef.current.session.sharedSelection.revision + 1 } })
   }, [dispatch])
@@ -275,6 +296,7 @@ export function useWorkspaceController({
     openOrFocus,
     updatePanelContext,
     setDetailVisibility,
+    requestWorkspaceDetailTransition,
     requestWorkspacePanelClose,
     registerWorkspacePanelCloseGuard,
     setSharedSelection,

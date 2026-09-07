@@ -468,7 +468,7 @@ Provider raw error不得直出。可重試性、使用者文案與audit reason�
 
 - 文件已達`RD Implementation Ready`；本輪已依第16～18節完成local／isolated implementation，包含account-enrollment service、ledger、provider port、HTTP boundary、治理 fence、Employee UI與測試。
 - Targeted DEV-045 gate已通過：16個測試檔／56個測試通過，`npm run build`成功，task-owned browser QC涵蓋四個development profile與390／1024／1440 viewport，並完成runtime cleanup。
-- Full regression排除兩個已知fixture discovery檔後為192個測試檔通過、790個測試通過、1 skipped；標準`npm test -- --testTimeout=30000`另有既有兩個`No test suite found` discovery failures（`scripts/dev010-n2-orgmaster.test.mjs`、`scripts/dev010-n2-source-freeze.test.mjs`），列為follow-up，不歸因於DEV-045。
+- Full regression排除兩個已知fixture discovery檔後為192個測試檔通過、791個測試通過、1 skipped；標準`npm test -- --testTimeout=30000`另有既有兩個`No test suite found` discovery failures（`scripts/dev010-n2-orgmaster.test.mjs`、`scripts/dev010-n2-source-freeze.test.mjs`），列為follow-up，不歸因於DEV-045。
 - Current Phase只允許local deterministic provider與ignored local JSON ledger；正式provider、Email、Cloud SQL、migration、deploy與release仍須另進Future Phase／release gate。
 
 ### Local implementation evidence (2026-09-04)

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { WorkspaceSurfaceVisibility } from '../../../workspace/types'
-import { WorkspaceListDetailSurface, WorkspaceListOnlySurface } from '../WorkspaceSurfacePrimitives'
+import { WorkspaceListDetailSurface } from '../WorkspaceSurfacePrimitives'
+import { WorkbenchDetailFrame } from '../WorkbenchPresentationPrimitives'
 
 export type MasterDataModuleId = 'employees' | 'positions' | 'departments' | 'levels'
 
@@ -10,6 +11,9 @@ interface Props {
   list: ReactNode
   detail?: ReactNode
   detailVisible?: boolean
+  listWidthPx?: number | null
+  onListWidthChange?: (width: number) => void
+  onListWidthCommit?: (width: number) => void
 }
 
 const labels: Record<MasterDataModuleId, string> = {
@@ -19,23 +23,25 @@ const labels: Record<MasterDataModuleId, string> = {
   levels: '層級',
 }
 
-export function MasterDataModuleAdapter({ moduleId, visibility, list, detail, detailVisible = Boolean(detail) }: Props) {
-  const detailSupported = moduleId !== 'levels'
+export function MasterDataModuleAdapter({ moduleId, visibility, list, detail, detailVisible = Boolean(detail), listWidthPx, onListWidthChange, onListWidthCommit }: Props) {
   const className = `master-data-workspace master-data-workspace--${moduleId}${detailVisible ? '' : ' is-detail-less'}`
-  if (!detailSupported || !detailVisible) return <WorkspaceListOnlySurface label={`${labels[moduleId]}完整工作台`} className={className} dataVisibility={visibility}>{list}</WorkspaceListOnlySurface>
   return (
     <WorkspaceListDetailSurface
       ariaLabel={`${labels[moduleId]}完整工作台`}
       className={className}
       dataVisibility={visibility}
+      dataModule={moduleId}
       detailVisible={detailVisible}
+      listWidthPx={listWidthPx}
+      onListWidthChange={onListWidthChange}
+      onListWidthCommit={onListWidthCommit}
       listClassName="master-data-workspace__list"
       detailClassName="master-data-workspace__detail"
       listLabel={`${labels[moduleId]}清單`}
       detailLabel={`${labels[moduleId]}明細`}
       list={list}
       detail={detail ?? null}
-      emptyDetail={<div className="master-data-workspace__empty" data-workspace-focus-fallback tabIndex={-1}><strong>選擇一筆{labels[moduleId]}資料</strong><span>明細會顯示在這裡，清單與編輯內容可同時保留。</span></div>}
+      emptyDetail={<WorkbenchDetailFrame className="master-data-workspace__empty"><div data-workspace-focus-fallback tabIndex={-1} aria-hidden="true" /></WorkbenchDetailFrame>}
     />
   )
 }

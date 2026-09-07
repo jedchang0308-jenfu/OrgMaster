@@ -61,13 +61,22 @@ function routeFromState(state: WorkspaceState): WorkspaceRouteState {
   }
 }
 
-function contextHasDetail(moduleId: WorkspaceModuleId, context: WorkspaceModuleContextMap[WorkspaceModuleId]) {
+function contextRequestsDetail(moduleId: WorkspaceModuleId, context: WorkspaceModuleContextMap[WorkspaceModuleId]) {
   if (!getWorkspaceModule(moduleId).supportsCollapsibleDetail) return false
   if (moduleId === 'employees') return Boolean((context as WorkspaceModuleContextMap['employees']).employeeId)
   if (moduleId === 'positions') return Boolean((context as WorkspaceModuleContextMap['positions']).positionId)
   if (moduleId === 'departments') return Boolean((context as WorkspaceModuleContextMap['departments']).departmentId)
   if (moduleId === 'duties') return Boolean((context as WorkspaceModuleContextMap['duties']).dutyId)
+  if (moduleId === 'levels') return Boolean((context as WorkspaceModuleContextMap['levels']).levelId)
+  if (moduleId === 'processes') {
+    const processContext = context as WorkspaceModuleContextMap['processes']
+    return Boolean(processContext.processId || processContext.processNodeId || processContext.dutyId)
+  }
   if (moduleId === 'management-methods') return Boolean((context as WorkspaceModuleContextMap['management-methods']).methodId)
+  if (moduleId === 'role-risks') {
+    const riskContext = context as WorkspaceModuleContextMap['role-risks']
+    return Boolean(riskContext.ruleId || riskContext.employeeId)
+  }
   return false
 }
 
@@ -88,7 +97,7 @@ export function createWorkspaceSessionState(route: WorkspaceRouteState): Workspa
     panels,
     openDetails: route.openDetails.filter((moduleId) => {
       const panel = panels[moduleId]
-      return Boolean(panel && route.openPanels.includes(moduleId) && contextHasDetail(moduleId, panel.context as never))
+      return Boolean(panel && route.openPanels.includes(moduleId) && getWorkspaceModule(moduleId).supportsCollapsibleDetail)
     }),
     closePendingModuleId: null,
   }
@@ -145,11 +154,10 @@ export function openOrFocusPanel(
     layout = insertWorkspacePanel(layout, intent.moduleId, target ?? (focusedPath ? { kind: 'stack', stackPath: focusedPath } : undefined))
     if (!collectLayoutModules(layout).includes(intent.moduleId)) return { state, effects: [{ type: 'announce', message: '無法開啟此功能面板' }] }
     panels[intent.moduleId] = { pinned: false, context, localSelection: null } as never
-    if (contextHasDetail(intent.moduleId, context)) openDetails = [...openDetails, intent.moduleId]
+    if (intent.context !== undefined && contextRequestsDetail(intent.moduleId, context)) openDetails = [...openDetails, intent.moduleId]
   } else if (!existing.pinned && intent.context !== undefined) {
     panels[intent.moduleId] = { ...existing, context } as never
-    if (contextHasDetail(intent.moduleId, context) && !openDetails.includes(intent.moduleId)) openDetails = [...openDetails, intent.moduleId]
-    if (!contextHasDetail(intent.moduleId, context)) openDetails = openDetails.filter((moduleId) => moduleId !== intent.moduleId)
+    if (contextRequestsDetail(intent.moduleId, context) && !openDetails.includes(intent.moduleId)) openDetails = [...openDetails, intent.moduleId]
   }
   layout = focusWorkspacePanel(layout, intent.moduleId)
   const next: WorkspaceState = {
@@ -234,7 +242,7 @@ function reconcileRoute(state: WorkspaceState, route: WorkspaceRouteState, organ
       panels,
       openDetails: route.openDetails.filter((moduleId) => {
         const panel = panels[moduleId]
-        return Boolean(panel && contextHasDetail(moduleId, panel.context as never))
+        return Boolean(panel && getWorkspaceModule(moduleId).supportsCollapsibleDetail)
       }),
     },
   }
@@ -252,9 +260,9 @@ export function reduceWorkspaceState(
     if (!panel) return { state, effects: [] }
     const nextContext = getWorkspaceModule(action.moduleId).sanitizeContext(action.context as never, context.organizationState)
     const contextUnchanged = JSON.stringify(panel.context) === JSON.stringify(nextContext)
-    const nextOpenDetails = action.openDetail === true && contextHasDetail(action.moduleId, nextContext)
+    const nextOpenDetails = action.openDetail === true
       ? [...state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId), action.moduleId]
-      : action.openDetail === false || !contextHasDetail(action.moduleId, nextContext)
+      : action.openDetail === false
         ? state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId)
         : state.session.openDetails
     if (contextUnchanged && JSON.stringify(nextOpenDetails) === JSON.stringify(state.session.openDetails)) return { state, effects: [] }
@@ -275,7 +283,7 @@ export function reduceWorkspaceState(
   if (action.type === 'SET_DETAIL_VISIBILITY') {
     const panel = state.session.panels[action.moduleId]
     if (!panel || !getWorkspaceModule(action.moduleId).supportsCollapsibleDetail) return { state, effects: [] }
-    const visible = action.visible && contextHasDetail(action.moduleId, panel.context)
+    const visible = action.visible
     const openDetails = visible
       ? [...state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId), action.moduleId]
       : state.session.openDetails.filter((moduleId) => moduleId !== action.moduleId)
@@ -339,7 +347,7 @@ export function reduceWorkspaceState(
         panels,
         openDetails: state.session.openDetails.filter((moduleId) => {
           const panel = panels[moduleId]
-          return Boolean(panel && contextHasDetail(moduleId, panel.context as never))
+          return Boolean(panel && getWorkspaceModule(moduleId).supportsCollapsibleDetail)
         }),
         sharedSelection: {
           ...state.session.sharedSelection,

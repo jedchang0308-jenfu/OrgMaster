@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import type { RoleCombinationRiskRuleMutationResult } from '../roleCombinationRisks'
 import type { Role, RoleCombinationRiskLevel, RoleCombinationRiskRule } from '../types'
+import { WorkbenchDetailFrame, WorkbenchListFrame } from './workspace/WorkbenchPresentationPrimitives'
 
 export interface RoleCombinationRiskDraft {
   id: string | null
@@ -19,6 +20,8 @@ interface RoleCombinationRiskPanelProps {
   onSetEnabled: (ruleId: string, enabled: boolean) => void
   onDelete: (ruleId: string) => void
   editingEnabled?: boolean
+  selectedRuleId?: string | null
+  onSelectRule?: (ruleId: string) => void | Promise<{ kind: 'allow' | 'keep-open' }>
   requestCloseGuardRegistration?: (guard: (() => Promise<{ kind: 'allow' } | { kind: 'keep-open'; focusTarget?: string }>) | null) => void
 }
 
@@ -57,6 +60,8 @@ export function RoleCombinationRiskPanel({
   onSetEnabled,
   onDelete,
   editingEnabled = true,
+  selectedRuleId = null,
+  onSelectRule,
   requestCloseGuardRegistration,
 }: RoleCombinationRiskPanelProps) {
   const [draft, setDraft] = useState<RoleCombinationRiskDraft | null>(null)
@@ -112,7 +117,7 @@ export function RoleCombinationRiskPanel({
       className="role-risk-panel role-risk-panel--workspace"
       role="region"
       aria-modal="false"
-      aria-labelledby="role-risk-panel-title"
+      aria-label="兼任風險設定"
       tabIndex={-1}
       data-workspace-panel="role-risk"
       onKeyDown={(event) => {
@@ -126,23 +131,13 @@ export function RoleCombinationRiskPanel({
         }
       }}
     >
-      <header className="role-risk-panel__header">
-        <div className="role-risk-panel__header-copy">
-          <ShieldAlert size={16} aria-hidden="true" />
-          <h2 id="role-risk-panel-title">兼任風險設定</h2>
-        </div>
-      </header>
-
+      <WorkbenchListFrame
+        className="role-risk-workbench-list"
+        title="兼任風險清單"
+        count={`${rules.length} 組`}
+        actions={editingEnabled ? <button type="button" onClick={startCreate} disabled={sortedRoles.length < 2 || draft !== null}><Plus size={14} aria-hidden="true" />新增規則</button> : undefined}
+      >
       <div className="role-risk-panel__body">
-        <div className="role-risk-panel__actions">
-          <span>{rules.length} 組</span>
-          {editingEnabled && (
-            <button type="button" onClick={startCreate} disabled={sortedRoles.length < 2 || draft !== null}>
-              <Plus size={14} aria-hidden="true" />
-              新增規則
-            </button>
-          )}
-        </div>
 
         {draft && (
           <form className="role-risk-form" onSubmit={submit} data-org-editor>
@@ -222,7 +217,7 @@ export function RoleCombinationRiskPanel({
           {rules.length === 0 ? (
             <div className="role-risk-list__empty">尚無規則</div>
           ) : rules.map((rule) => (
-            <div className="role-risk-list__row" role="row" key={rule.id}>
+            <div className={`role-risk-list__row${selectedRuleId === rule.id ? ' is-selected' : ''}`} role="row" key={rule.id} tabIndex={0} data-workbench-row-id={rule.id} data-selected={selectedRuleId === rule.id ? 'true' : 'false'} onClick={() => { void onSelectRule?.(rule.id) }} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void onSelectRule?.(rule.id) } }}>
               <div className="role-risk-list__pair" role="cell">
                 <div className="role-risk-list__role-pair">
                   <strong>{roleNameById.get(rule.roleAId) ?? '未知職務'}</strong>
@@ -258,6 +253,21 @@ export function RoleCombinationRiskPanel({
           ))}
         </div>
       </div>
+      </WorkbenchListFrame>
     </aside>
   )
+}
+
+export function RoleRiskDetail({ rule, roles, onClose }: { rule: RoleCombinationRiskRule | null; roles: Role[]; onClose?: () => void }) {
+  const roleNameById = new Map(roles.map((role) => [role.id, role.name]))
+  if (!rule) return <WorkbenchDetailFrame className="role-risk-detail role-risk-detail--empty"><div data-workspace-focus-fallback tabIndex={-1} aria-hidden="true" /></WorkbenchDetailFrame>
+  return <WorkbenchDetailFrame className="role-risk-detail" eyebrow="兼任風險明細" title={`${roleNameById.get(rule.roleAId) ?? '未知職務'}＋${roleNameById.get(rule.roleBId) ?? '未知職務'}`} actions={onClose ? <button type="button" className="panel-dismiss-button" aria-label="關閉兼任風險明細" title="關閉明細" onClick={onClose}>×</button> : undefined}>
+    <div className="role-risk-detail__body">
+      <dl>
+        <div><dt>風險等級</dt><dd>{riskLevelLabel(rule.level)}</dd></div>
+        <div><dt>狀態</dt><dd>{rule.enabled ? '啟用' : '停用'}</dd></div>
+      </dl>
+      <section><h3>原因</h3><p>{rule.reason || '尚未填寫原因。'}</p></section>
+    </div>
+  </WorkbenchDetailFrame>
 }

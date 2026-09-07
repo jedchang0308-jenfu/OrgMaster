@@ -5,9 +5,10 @@ import { canMutateManagementMethods, observeManagementMethodCapability } from '.
 import type { ManagementMethodSessionV1, ManagementMethodSummaryV1 } from '../../managementMethods/types'
 import { buildManagementMethodDocumentUrl } from '../../managementMethods/route'
 import { ManagementMethodCreateDialog } from './ManagementMethodCreateDialog'
+import { WorkbenchListFrame } from '../workspace/WorkbenchPresentationPrimitives'
 
-interface Props { onOpen: (methodId: string, view?: 'draft' | 'readable') => void; visibility?: 'active' | 'hidden'; initialQuery?: string; onQueryChange?: (query: string) => void; workspaceMutationAllowed?: boolean }
-export function ManagementMethodListPage({ onOpen, visibility = 'active', initialQuery = '', onQueryChange, workspaceMutationAllowed = true }: Props) {
+interface Props { onOpen: (methodId: string, view?: 'draft' | 'readable') => void; onSelectMethod?: (methodId: string, view?: 'draft' | 'readable') => void | Promise<{ kind: 'allow' | 'keep-open' }>; visibility?: 'active' | 'hidden'; initialQuery?: string; onQueryChange?: (query: string) => void; workspaceMutationAllowed?: boolean }
+export function ManagementMethodListPage({ onOpen, onSelectMethod, visibility = 'active', initialQuery = '', onQueryChange, workspaceMutationAllowed = true }: Props) {
   const [session, setSession] = useState<ManagementMethodSessionV1 | null>(null)
   const [summaries, setSummaries] = useState<ManagementMethodSummaryV1[]>([])
   const [query, setQuery] = useState(initialQuery)
@@ -22,8 +23,18 @@ export function ManagementMethodListPage({ onOpen, visibility = 'active', initia
   const canCreate = allowed && workspaceMutationAllowed && Boolean(session?.capabilities?.create)
   useEffect(() => { if (!canCreate && createOpen) setCreateOpen(false) }, [canCreate, createOpen])
   return <div className="management-methods-page management-methods-page--panel" data-management-methods-page>
-    {canCreate && <div className="management-methods-page__panel-actions"><button type="button" className="button-primary" onClick={() => setCreateOpen(true)}><Plus size={16} />新增</button></div>}
-    <main className="management-methods-page__main"><div className="management-methods-page__tools"><label className="management-methods-search"><Search size={16} /><span className="sr-only">搜尋管理辦法</span><input value={query} onChange={(event) => { const next = event.target.value; setQuery(next); onQueryChange?.(next) }} placeholder="搜尋代碼或標題" /></label></div>{error && <div className="management-method-error" role="alert">{error}<button type="button" onClick={() => void load()}>重試</button></div>}{busy ? <p className="management-methods-empty">載入中…</p> : summaries.length === 0 ? <p className="management-methods-empty">尚無可閱讀的管理辦法</p> : <div className="management-method-list">{summaries.map((summary) => <button type="button" className="management-method-list__row" key={summary.id} onClick={() => onOpen(summary.id, session?.capabilities?.readDraft ? 'draft' : 'readable')}><span className="management-method-list__code">{summary.code}</span><span className="management-method-list__title">{summary.title}</span><span className="management-method-list__status">{summary.status}</span></button>)}</div>}</main>{createOpen && <ManagementMethodCreateDialog onClose={() => setCreateOpen(false)} onCreated={(method) => { setCreateOpen(false); onOpen(method.id, 'draft') }} />}</div>
+    <WorkbenchListFrame
+      className="management-methods-workbench-list"
+      title="管理辦法清單"
+      count={busy ? undefined : `${summaries.length} 筆`}
+      actions={canCreate ? <button type="button" className="button-primary" onClick={() => setCreateOpen(true)}><Plus size={16} />新增</button> : undefined}
+      search={<label className="management-methods-search"><Search size={16} /><span className="sr-only">搜尋管理辦法</span><input value={query} onChange={(event) => { const next = event.target.value; setQuery(next); onQueryChange?.(next) }} placeholder="搜尋代碼或標題" /></label>}
+    >
+      {error && <div className="management-method-error" role="alert">{error}<button type="button" onClick={() => void load()}>重試</button></div>}
+      {busy ? <p className="management-methods-empty">載入中…</p> : summaries.length === 0 ? <p className="management-methods-empty">尚無可閱讀的管理辦法</p> : <div className="management-method-list">{summaries.map((summary) => <button type="button" data-workbench-row-id={summary.id} className="management-method-list__row" key={summary.id} onClick={() => onSelectMethod ? onSelectMethod(summary.id, session?.capabilities?.readDraft ? 'draft' : 'readable') : onOpen(summary.id, session?.capabilities?.readDraft ? 'draft' : 'readable')}><span className="management-method-list__code">{summary.code}</span><span className="management-method-list__title">{summary.title}</span><span className="management-method-list__status">{summary.status}</span></button>)}</div>}
+    </WorkbenchListFrame>
+    {createOpen && <ManagementMethodCreateDialog onClose={() => setCreateOpen(false)} onCreated={(method) => { setCreateOpen(false); onOpen(method.id, 'draft') }} />}
+  </div>
 }
 
 export const managementMethodListRoute = buildManagementMethodDocumentUrl

@@ -4699,6 +4699,11 @@ button.duty-card:focus-visible { outline: 2px solid rgba(63, 109, 246, .55); out
 .process-planning-processes > button small { color: #8b96a7; font-size: 11px; }
 .process-planning-processes > button.is-active { border-color: #93adff; background: #edf2ff; color: #2458dc; }
 .process-planning-processes > button.process-add-button, .process-add-inline { border-color: #c5d3fa; background: #f2f5ff; color: #3159d9; }
+.process-planning-processes .workbench-list-frame__body > button { width: calc(100% - 16px); margin: 4px 8px; border: 1px solid transparent; border-radius: 7px; padding: 9px 10px; background: #f7f9fc; color: #34445f; text-align: left; cursor: pointer; }
+.process-planning-processes .workbench-list-frame__body > button { display: flex; justify-content: space-between; align-items: center; }
+.process-planning-processes .workbench-list-frame__body > button small { color: #8b96a7; font-size: 11px; }
+.process-planning-processes .workbench-list-frame__body > button.is-active { border-color: #93adff; background: #edf2ff; color: #2458dc; }
+.process-planning-processes .workbench-list-frame__body > button.process-add-button { border-color: #c5d3fa; background: #f2f5ff; color: #3159d9; }
 .process-drop-notice { margin: 4px 10px 8px; padding: 6px 8px; border-radius: 6px; background: #f2f5ff; color: #3159d9; font-size: 12px; }
 .process-add-inline { margin-right: 8px; border: 1px solid #c5d3fa; border-radius: 5px; padding: 4px 7px; font-size: 11px; cursor: pointer; }
 .process-inline-editor, .process-node-editor, .process-edge-editor { display: flex; align-items: end; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-bottom: 1px solid #e7ebf2; background: #fbfcfe; }
@@ -4847,6 +4852,22 @@ button.duty-card:focus-visible { outline: 2px solid rgba(63, 109, 246, .55); out
   color: #17251d;
   text-align: left;
 }
+
+.role-risk-list__row:hover,
+.role-risk-list__row:focus-visible,
+.role-risk-list__row.is-selected {
+  outline: none;
+  background: #eef3ff;
+  box-shadow: inset 3px 0 #3f6df6;
+}
+
+.role-risk-detail__body { display: grid; gap: 18px; padding: 18px; color: #344054; }
+.role-risk-detail__body dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.role-risk-detail__body dl > div { padding: 10px; border: 1px solid #edf0f3; border-radius: 8px; background: #fbfcfe; }
+.role-risk-detail__body dt { color: #7a8594; font-size: 10px; }
+.role-risk-detail__body dd { margin: 4px 0 0; font-size: 13px; font-weight: 700; }
+.role-risk-detail__body h3 { margin: 0 0 6px; font-size: 12px; }
+.role-risk-detail__body p { margin: 0; color: #667085; font-size: 12px; line-height: 1.55; white-space: pre-wrap; }
 .auth-login .auth-development-profile:hover:not(:disabled),
 .auth-login .auth-development-profile:focus-visible { border-color: #40815a; background: #f2faf5; outline: 3px solid rgb(38 115 70 / 14%); outline-offset: 1px; }
 .auth-development-profile strong { min-width: 0; font-size: 15px; }

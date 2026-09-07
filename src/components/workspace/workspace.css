@@ -10,24 +10,24 @@
 .workspace.workspace--organization-panel { width: 100%; height: 100%; grid-template-columns: minmax(0, 1fr); }
 .workspace.workspace--organization-panel.has-inspector { grid-template-columns: minmax(0, 1fr) minmax(280px, 316px); }
 .master-data-workspace { --workspace-directory-list-width: max-content; display: grid; grid-template-columns: var(--workspace-directory-list-width) minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
-.master-data-workspace.is-detail-less { grid-template-columns: minmax(0, 1fr); }
 .master-data-workspace__list, .master-data-workspace__detail { min-width: 0; min-height: 0; overflow: hidden; }
 .master-data-workspace__list > .directory-dock.is-surface { width: 100%; min-width: 0; }
 .master-data-workspace__list { border-right: 1px solid var(--workspace-divider-color); }
-.master-data-workspace.is-detail-less .master-data-workspace__list { border-right: 0; }
 .master-data-workspace__detail > .inspector { position: relative; inset: auto; width: 100%; height: 100%; border-left: 0; border-radius: 0; box-shadow: none; }
 .master-data-workspace__empty { display: grid; place-content: center; justify-items: center; gap: 6px; width: 100%; height: 100%; padding: 24px; text-align: center; color: #667085; }
 .master-data-workspace__empty strong { color: #1d2939; }
 .workspace-layout-notice { position: absolute; right: 18px; bottom: 18px; z-index: 120; max-width: 360px; padding: 9px 12px; border: 1px solid #e2c47c; border-radius: 8px; background: #fffaf0; color: #7a5300; box-shadow: 0 8px 24px rgba(16, 24, 40, .14); }
 .duty-center--panel, .process-planning-page.process-planning-page--panel, .management-methods-page--panel, .management-method-document-page--panel, .governance-center--workspace { width: 100%; height: 100%; min-width: 0; min-height: 0; max-width: none; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
 .duty-module-adapter, .process-module-adapter, .management-method-module-adapter, .role-risk-module-adapter, .governance-module-adapter { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
-.duty-configuration-workspace { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
+.duty-configuration-workspace { display: grid; grid-template-columns: max-content minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
 .duty-configuration-workspace__list, .duty-configuration-workspace__detail { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .duty-configuration-workspace__list > .directory-dock.is-surface { width: 100%; min-width: 0; }
 .duty-configuration-workspace__detail { border-left: 1px solid var(--workspace-divider-color); }
 .duty-configuration-workspace__detail > .duty-drawer--inspector { position: relative; inset: auto; z-index: auto; grid-column: auto; width: 100%; min-width: 0; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
 .process-planning-page.process-planning-page--panel { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .process-planning-page--panel .process-planning-grid { height: 100%; min-height: 0; }
+.process-planning-page--panel[data-detail-only="true"] .process-planning-processes { display: none; }
+.process-planning-page--panel[data-detail-only="true"] .process-planning-grid { grid-template-columns: minmax(0, 1fr) minmax(160px, 26%); }
 .process-planning-grid.is-shared-organization { grid-template-columns: minmax(140px, 24%) minmax(0, 1fr) minmax(160px, 26%); }
 .management-methods-page__panel-actions, .management-method-document-page__panel-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 44px; padding: 6px 14px; border-bottom: 1px solid var(--workspace-divider-color); background: #fff; }
 .governance-center--workspace { position: relative; }
@@ -56,24 +56,51 @@
 [data-workspace-overlay-host="panel"] > * { pointer-events: auto; }
 [data-workspace-overlay-host="global"] { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
 [data-workspace-overlay-host="global"] > * { pointer-events: auto; }
-.workspace-list-detail-surface { display: grid; grid-template-columns: clamp(190px, 32cqw, 242px) minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
-.workspace-list-detail-surface[data-layout="list-only"] { grid-template-columns: minmax(0, 1fr); }
+.workspace-list-detail-surface { display: grid; grid-template-columns: minmax(160px, min(var(--workspace-list-width, max-content), 48cqw)) 8px minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
 .workspace-list-detail-surface__slot { min-width: 0; min-height: 0; overflow: hidden; }
-.workspace-list-detail-surface__list { border-right: 1px solid var(--workspace-divider-color); }
+.workspace-list-detail-surface__list { border-right: 0; }
 .workspace-list-detail-surface__detail { position: relative; overflow: auto; }
+.workspace-list-detail-surface__separator { position: relative; z-index: 3; min-width: 8px; background: transparent; outline: none; cursor: col-resize; touch-action: none; user-select: none; }
+.workspace-list-detail-surface__separator::before { position: absolute; inset: 0 auto 0 3px; width: 1px; background: #d0d5dd; content: ''; }
+.workspace-list-detail-surface__separator:hover::before, .workspace-list-detail-surface__separator:active::before { background: #98a2b3; }
+.workspace-list-detail-surface__separator:focus-visible { box-shadow: inset 0 0 0 1px #98a2b3; }
+.workspace-list-detail-surface__separator:focus-visible::before { background: #667085; }
 .workspace-list-only-surface { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
 .workspace-list-only-surface__slot { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: auto; }
 .workspace-list-detail-surface .directory-dock.is-surface, .workspace-list-only-surface .directory-dock.is-surface { width: 100%; height: 100%; min-width: 0; }
+.workspace-list-detail-surface .directory-dock.is-surface { border-right: 0; }
 .workspace-list-detail-surface .inspector { position: relative; inset: auto; width: 100%; height: 100%; border-left: 0; border-radius: 0; box-shadow: none; }
 .workspace-list-detail-surface .directory-detail-panel { position: relative; inset: auto; width: 100%; height: 100%; max-width: none; border-left: 0; border-radius: 0; box-shadow: none; }
 .workspace-list-detail-surface .master-data-workspace__empty, .workspace-list-detail-surface .duty-configuration-workspace__empty { display: grid; place-content: center; justify-items: center; gap: 6px; width: 100%; height: 100%; padding: 24px; text-align: center; color: #667085; }
 .workspace-list-detail-surface .master-data-workspace__empty strong, .workspace-list-detail-surface .duty-configuration-workspace__empty strong { color: #1d2939; }
-.workspace-list-detail-surface.master-data-workspace { grid-template-columns: var(--workspace-directory-list-width) minmax(0, 1fr); }
-.workspace-list-detail-surface.duty-configuration-workspace { grid-template-columns: max-content minmax(0, 1fr); }
-.workspace-list-detail-surface.duty-configuration-workspace[data-layout="list-only"] { grid-template-columns: minmax(0, 1fr); }
+.workspace-list-detail-surface.master-data-workspace { grid-template-columns: minmax(160px, min(var(--workspace-list-width, var(--workspace-directory-list-width)), 48cqw)) 8px minmax(0, 1fr); }
+.workspace-list-detail-surface.duty-configuration-workspace { grid-template-columns: minmax(160px, min(var(--workspace-list-width, max-content), 48cqw)) 8px minmax(0, 1fr); }
 .workspace-list-only-surface.master-data-workspace { grid-template-columns: var(--workspace-directory-list-width) minmax(0, 1fr); }
 .workspace-list-only-surface.master-data-workspace .workspace-list-only-surface__slot { overflow: hidden; }
 .master-data-workspace .directory-card { margin-bottom: 2px; padding: 2px 6px 2px 7px; }
+.workbench-list-frame { display: grid; grid-template-rows: auto auto minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
+.workbench-list-frame__header { display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 2px 10px 2px 12px; color: #687487; }
+.workbench-list-frame__header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 750; letter-spacing: .08em; line-height: 1.2; }
+.workbench-list-frame__count { color: #8a94a2; font-size: 10px; }
+.workbench-list-frame__actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.workbench-list-frame__search { margin: 0 10px 9px; }
+.workbench-list-frame__body { min-width: 0; min-height: 0; overflow: auto; padding: 0 8px 12px; }
+.workbench-list-row { display: block; margin: 0 0 2px; padding: 2px 6px 2px 7px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #344054; font-size: 11px; line-height: 1.35; cursor: pointer; }
+.workbench-list-row:hover, .workbench-list-row:focus-visible { border-color: #cbd8ff; background: #f7f9ff; outline: none; }
+.workbench-list-row.is-selected { border-color: #aabfff; background: #eef3ff; box-shadow: inset 3px 0 #3f6df6; }
+.workbench-detail-frame { display: grid; grid-template-rows: auto minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
+.workbench-detail-frame__header { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 12px; border-bottom: 1px solid #edf0f3; }
+.workbench-detail-frame__heading { min-width: 0; }
+.workbench-detail-frame__heading span { display: block; color: #929ba8; font-size: 10px; }
+.workbench-detail-frame__heading h2 { margin: 0; overflow: hidden; color: #1d2939; font-size: 16px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.workbench-detail-frame__actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.workbench-detail-frame__body { min-width: 0; min-height: 0; overflow: auto; }
+.management-methods-page--panel { display: block; background: #fff; overflow: hidden; }
+.management-methods-workbench-list { width: 100%; height: 100%; }
+.management-methods-workbench-list .management-methods-search { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid #dfe5ee; border-radius: 7px; background: #fff; }
+.management-methods-workbench-list .management-methods-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font: inherit; }
+.management-methods-workbench-list .management-method-list { border-top: 1px solid #edf0f3; }
+.management-methods-workbench-list .management-method-list__row { min-height: 36px; padding: 7px 8px; border-bottom-color: #edf0f3; font-size: 11px; }
 .duty-module-adapter--audit, .duty-module-adapter--distribution { overflow: auto; }
 .duty-center--panel.has-detail { display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr) minmax(280px, 34%); }
 .duty-center--panel.has-detail .duty-planning-tabs { grid-column: 1 / -1; }
@@ -158,8 +185,11 @@
 
 @container workspace-panel (max-width: 639px) {
   .workspace-list-detail-surface { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .workspace-list-detail-surface[data-layout="adjacent-list-detail"] .workspace-list-detail-surface__list { display: none; }
-  .workspace-list-detail-surface[data-layout="adjacent-list-detail"] .workspace-list-detail-surface__detail { display: block; }
+  .workspace-list-detail-surface__separator { display: none; }
+  .workspace-list-detail-surface[data-detail-state="open"] .workspace-list-detail-surface__list { display: none; }
+  .workspace-list-detail-surface[data-detail-state="open"] .workspace-list-detail-surface__detail { display: block; }
+  .workspace-list-detail-surface[data-detail-state="closed"] .workspace-list-detail-surface__list { display: block; }
+  .workspace-list-detail-surface[data-detail-state="closed"] .workspace-list-detail-surface__detail { display: none; }
 
   .management-methods-page__header,
   .management-method-document-page__header { padding: 0 16px; gap: 10px; }
@@ -204,8 +234,7 @@
 
 @media (min-width: 640px) {
   /* A desktop split panel can be narrow without becoming a mobile single-surface. */
-  .workspace-list-detail-surface.master-data-workspace[data-layout="adjacent-list-detail"] { grid-template-columns: var(--workspace-directory-list-width) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .workspace-list-detail-surface.master-data-workspace[data-layout="adjacent-list-detail"] .workspace-list-detail-surface__list { display: block; }
+  .workspace-list-detail-surface.master-data-workspace { grid-template-columns: var(--workspace-list-width, var(--workspace-directory-list-width)) 8px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 }
 
 @media (max-width: 690px) {
