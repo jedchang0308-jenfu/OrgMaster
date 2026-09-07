@@ -242,14 +242,23 @@ export function Inspector({
         )}
       </section>
 
+      <PositionDutySection
+        member={member}
+        duties={duties}
+        relations={dutyRelations}
+        interactive={editingEnabled}
+        onOpenDutyConfiguration={onOpenDutyConfiguration ?? (() => undefined)}
+      />
+
       <section className="inspector__section">
         <div className="section-heading">
           <span>子職位排列</span>
         </div>
-        {editingEnabled ? <div className="direction-picker">
+        <div className="direction-picker">
           <button
             type="button"
             className={member.childrenAxis === 'horizontal' ? 'is-active' : ''}
+            disabled={!editingEnabled}
             onClick={() => setChildrenAxis('horizontal')}
             aria-label="設定下一階為橫向排列"
             title="下層橫排：下一階由左至右排列"
@@ -261,6 +270,7 @@ export function Inspector({
           <button
             type="button"
             className={member.childrenAxis === 'vertical' ? 'is-active' : ''}
+            disabled={!editingEnabled}
             onClick={() => setChildrenAxis('vertical')}
             aria-label="設定下一階為縱向排列"
             title="下層縱排：下一階由上至下排列"
@@ -269,17 +279,9 @@ export function Inspector({
             <span>下層縱排</span>
             <small>下一階垂直排列</small>
           </button>
-        </div> : <div className="inspector-field__value">{member.childrenAxis === 'horizontal' ? '下層橫排' : '下層縱排'}</div>}
+        </div>
         {editingEnabled && <div className="info-line"><Info size={14} /><span>只影響此職位的直接子職位，其他階層維持原設定。</span></div>}
       </section>
-
-      <PositionDutySection
-        member={member}
-        duties={duties}
-        relations={dutyRelations}
-        interactive={editingEnabled}
-        onOpenDutyConfiguration={onOpenDutyConfiguration ?? (() => undefined)}
-      />
 
       {editingEnabled && <div className="inspector__footer">
         <button type="button" className="danger-link" onClick={onDelete} disabled={!editingEnabled}>

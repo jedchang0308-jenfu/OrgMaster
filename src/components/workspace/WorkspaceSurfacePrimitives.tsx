@@ -35,11 +35,18 @@ export interface WorkspaceListOnlySurfaceProps {
 
 export function WorkspaceListDetailSurface({ ariaLabel, className = '', dataLayout = 'adjacent-list-detail', dataVisibility, dataMode, dataModule, detailVisible = true, listClassName = '', detailClassName = '', listLabel, detailLabel, list, detail, emptyDetail, listWidthPx = null, onListWidthChange, onListWidthCommit, onListRowNavigate }: WorkspaceListDetailSurfaceProps) {
   const [internalWidth, setInternalWidth] = useState<number | null>(listWidthPx)
-  const width = listWidthPx === null ? internalWidth : listWidthPx
+  const [dragWidth, setDragWidth] = useState<number | null>(null)
+  const width = dragWidth ?? (listWidthPx === null ? internalWidth : listWidthPx)
   const handleListKeyDownCapture = useListDetailWorkbenchInteraction({ onNavigate: onListRowNavigate })
   const changeWidth = (next: number) => {
+    setDragWidth(next)
     setInternalWidth(next)
-    onListWidthChange?.(next)
+  }
+  const commitWidth = (next: number) => {
+    setDragWidth(null)
+    setInternalWidth(next)
+    if (onListWidthCommit) onListWidthCommit(next)
+    else onListWidthChange?.(next)
   }
   return (
     <section
@@ -57,7 +64,7 @@ export function WorkspaceListDetailSurface({ ariaLabel, className = '', dataLayo
       <div className={`workspace-list-detail-surface__slot workspace-list-detail-surface__list${listClassName ? ` ${listClassName}` : ''}`} data-workspace-slot="list" aria-label={listLabel}>
         {list}
       </div>
-      <WorkbenchListSeparator value={width} onChange={changeWidth} onCommit={onListWidthCommit} />
+      <WorkbenchListSeparator value={width} onChange={changeWidth} onCommit={commitWidth} />
       <div className={`workspace-list-detail-surface__slot workspace-list-detail-surface__detail${detailClassName ? ` ${detailClassName}` : ''}`} data-workspace-slot="detail" aria-label={detailLabel}>
         {detail ?? emptyDetail}
       </div>

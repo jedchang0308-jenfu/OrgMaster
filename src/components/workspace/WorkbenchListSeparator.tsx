@@ -15,31 +15,20 @@ function clamp(value: number, min: number, max: number) {
 export function WorkbenchListSeparator({ value, min = 160, max = 800, onChange, onCommit }: Props) {
   const draggingRef = useRef(false)
   const startRef = useRef({ x: 0, width: value ?? 240 })
+  const lastWidthRef = useRef(value ?? 240)
 
-  useEffect(() => {
-    if (!draggingRef.current) return
-    const move = (event: PointerEvent) => onChange(clamp(startRef.current.width + event.clientX - startRef.current.x, min, max))
-    const cancel = () => {
-      draggingRef.current = false
-      document.body.style.removeProperty('cursor')
-      document.body.style.removeProperty('user-select')
-    }
-    const up = (event: PointerEvent) => {
-      draggingRef.current = false
-      const next = clamp(startRef.current.width + event.clientX - startRef.current.x, min, max)
-      onCommit?.(next)
-      cancel()
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up, { once: true })
-    window.addEventListener('pointercancel', cancel)
-    return () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', cancel)
-      cancel()
-    }
-  }, [max, min, onChange, onCommit])
+  const widthAt = (clientX: number) => clamp(startRef.current.width + clientX - startRef.current.x, min, max)
+  const stopDragging = (separator: HTMLDivElement, pointerId?: number) => {
+    if (pointerId !== undefined && separator.hasPointerCapture(pointerId)) separator.releasePointerCapture(pointerId)
+    draggingRef.current = false
+    document.body.style.removeProperty('cursor')
+    document.body.style.removeProperty('user-select')
+  }
+
+  useEffect(() => () => {
+    document.body.style.removeProperty('cursor')
+    document.body.style.removeProperty('user-select')
+  }, [])
 
   return (
     <div
@@ -53,11 +42,32 @@ export function WorkbenchListSeparator({ value, min = 160, max = 800, onChange, 
       aria-valuenow={value ?? undefined}
       tabIndex={0}
       onPointerDown={(event) => {
+        if (event.button !== 0) return
         event.preventDefault()
         draggingRef.current = true
         startRef.current = { x: event.clientX, width: value ?? (event.currentTarget.parentElement?.querySelector<HTMLElement>('[data-workspace-slot="list"]')?.getBoundingClientRect().width ?? 240) }
+        lastWidthRef.current = startRef.current.width
+        event.currentTarget.setPointerCapture(event.pointerId)
         document.body.style.cursor = 'col-resize'
         document.body.style.userSelect = 'none'
+      }}
+      onPointerMove={(event) => {
+        if (!draggingRef.current || !event.currentTarget.hasPointerCapture(event.pointerId)) return
+        const next = widthAt(event.clientX)
+        if (next === lastWidthRef.current) return
+        lastWidthRef.current = next
+        onChange(next)
+      }}
+      onPointerUp={(event) => {
+        if (!draggingRef.current || !event.currentTarget.hasPointerCapture(event.pointerId)) return
+        const next = widthAt(event.clientX)
+        if (next !== lastWidthRef.current) onChange(next)
+        onCommit?.(next)
+        stopDragging(event.currentTarget, event.pointerId)
+      }}
+      onPointerCancel={(event) => {
+        if (!draggingRef.current) return
+        stopDragging(event.currentTarget, event.pointerId)
       }}
       onKeyDown={(event) => {
         const current = value ?? 240

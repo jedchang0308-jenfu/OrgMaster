@@ -101,7 +101,6 @@ export function Toolbar({
         <div className="brand__mark"><GitFork size={18} /></div>
         <div>
           <strong>OrgMaster</strong>
-          <span>公司組織圖</span>
         </div>
       </div>
 
@@ -148,7 +147,6 @@ export function Toolbar({
             placeholder="搜尋職位或姓名"
             aria-label="搜尋職位或姓名"
           />
-          <kbd>/</kbd>
           {searchOpen && query.trim() && (
             <div className="search-results">
               {resultGroups.length > 0 ? resultGroups.map((group) => (
