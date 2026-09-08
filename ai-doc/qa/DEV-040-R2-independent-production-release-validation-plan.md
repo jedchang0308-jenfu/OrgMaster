@@ -6,7 +6,7 @@
 - 狀態：`Fixed 12 Owner Cases / NOT_RUN / DEV-012 S1B-21 Owner`
 - 日期：2026-09-08
 - 規格 authority：[DEV-040 §24](../specs/DEV-040-jenfu-platform-entitlement-user-integration.md)
-- 上游 authority：Platform DEV-012 §§25～28；contract SHA-256=`8cfda8b9ce29d5c5f03cd7e240a7adb0c20c51f4a2336d2c6ad3dde3119e838b`；§25～EOF SHA-256=`f3165d43eb703a67894f279e4026fdc17d416c0f78df4ff874999fce52d4296f`
+- 上游 authority：Platform DEV-012 §§25～28；contract SHA-256=`a1bff69cc3f54775fb193c6fb0ba2d2ce6a89e89f7e4aa4edc0433c6780211c1`；§25～EOF SHA-256=`52eca43d8e09505ae8ca9f9c90b1fa9286143898b738825ea5485b589acae5b2`
 
 ## 1. 目標與證據層級
 

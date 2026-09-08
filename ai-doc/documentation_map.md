@@ -6,8 +6,8 @@
 > **2026-09-08 DEV-040 `040-R2` current release entry**：權威為
 > [DEV-040 §24](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與
 > [040-R2 QA](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游Platform DEV-012契約
-> SHA-256=`8cfda8b9ce29d5c5f03cd7e240a7adb0c20c51f4a2336d2c6ad3dde3119e838b`、§25～EOF=
-> `f3165d43eb703a67894f279e4026fdc17d416c0f78df4ff874999fce52d4296f`。狀態=`S1C owner RD Implementation Complete / LOCAL_CONTRACT PASS /
+> SHA-256=`a1bff69cc3f54775fb193c6fb0ba2d2ce6a89e89f7e4aa4edc0433c6780211c1`、§25～EOF=
+> `52eca43d8e09505ae8ca9f9c90b1fa9286143898b738825ea5485b589acae5b2`。狀態=`S1C owner RD Implementation Complete / LOCAL_CONTRACT PASS /
 > S1B-21 LOCAL_CONTRACT PASS / DEV-012 S2 Upfront Prerequisites In Progress`；owner production path已實作，下一步是fresh S2 provider前置。
 > DEV-047、既有staging profile、applied migration及產品UI不在此slice。
 

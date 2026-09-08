@@ -7,8 +7,8 @@
 > `012-S1C owner RD Implementation Complete / LOCAL_CONTRACT PASS / S2 Upfront Prerequisites In Progress`，DEV-047仍不在scope。
 
 > **2026-09-08 DEV-040 `040-R2` continuous production release（current release authority）**：已依Platform
-> DEV-012 §§25～28完成owner direct-doc sync；contract SHA-256=`8cfda8b9ce29d5c5f03cd7e240a7adb0c20c51f4a2336d2c6ad3dde3119e838b`、
-> §25～EOF SHA-256=`f3165d43eb703a67894f279e4026fdc17d416c0f78df4ff874999fce52d4296f`。狀態=
+> DEV-012 §§25～28完成owner direct-doc sync；contract SHA-256=`a1bff69cc3f54775fb193c6fb0ba2d2ce6a89e89f7e4aa4edc0433c6780211c1`、
+> §25～EOF SHA-256=`52eca43d8e09505ae8ca9f9c90b1fa9286143898b738825ea5485b589acae5b2`。狀態=
 > `Implementation Complete / S1B-21 LOCAL_CONTRACT PASS / DEV-012 S2 Gated`。Production profile、001～011
 > manifest、exact-target guard、nine-stage workflow、IaC與abort controller已完成；下一步只做fresh S2 provider
 > 前置，不得修改／完成DEV-047、把staging profile改作production或把本機PASS冒充DB／traffic證據。
