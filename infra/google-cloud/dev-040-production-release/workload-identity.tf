@@ -2,7 +2,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   project                            = var.project_id
   workload_identity_pool_id          = var.workload_identity_pool_id
   workload_identity_pool_provider_id = "orgmaster-github"
-  display_name                       = "OrgMaster production GitHub Actions"
+  display_name                       = "OrgMaster prod GitHub Actions"
   attribute_mapping = {
     "google.subject"                = "assertion.sub"
     "attribute.repository_id"       = "assertion.repository_id"

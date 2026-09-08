@@ -17,6 +17,13 @@ test('S1B-21 OrgMaster production profile preserves staging boundary', () => {
   assert.equal(profile.sideEffects.accountEnrollment, 'DISABLED')
 })
 
+test('S1B-21 OrgMaster WIF provider display name fits provider limit', () => {
+  const source = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/workload-identity.tf', import.meta.url), 'utf8')
+  const displayName = source.match(/display_name\s*=\s*"([^"]+)"/u)?.[1]
+  assert.ok(displayName)
+  assert.ok(displayName.length <= 32)
+})
+
 test('S1B-21 OrgMaster exact 001-011 source bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
