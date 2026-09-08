@@ -1,5 +1,11 @@
 import { getApp, getApps, initializeApp } from 'firebase/app'
-import { getAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import {
+  getAuth,
+  inMemoryPersistence,
+  setPersistence,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth'
 import type { AuthMode } from './authApiClient'
 
 function firebaseAuth(config: AuthMode['firebase']) {
@@ -9,6 +15,7 @@ function firebaseAuth(config: AuthMode['firebase']) {
 
 export async function getFirebaseIdToken(config: AuthMode['firebase'], email: string, password: string) {
   const auth = firebaseAuth(config)
+  await setPersistence(auth, inMemoryPersistence)
   const credential = await signInWithEmailAndPassword(auth, email, password)
   return credential.user.getIdToken(true)
 }

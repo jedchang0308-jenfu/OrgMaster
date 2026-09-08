@@ -1223,7 +1223,7 @@ Minimum acceptance：一般V2 UI／API無法建立`system_admin`；完整role po
 
 ## 24. `040-R2` OrgMaster independent continuous production release（2026-09-08）
 
-本節保留DEV-012 S1B OrgMaster owner slice的歷史v1內容；現行authority為§§25～26，不建立DEV-048，也不得修改或完成DEV-047。上游 authority 為 [Platform DEV-012 §§25～26](../../../Jenfu-Platform/ai-doc/specs/DEV-012-three-system-continuous-release-and-boundary-closure.md)，同步時完整文件 SHA-256=`c29974332ae0193bec330870b84a00766c6ae759b7d1522adc4faddc16490c3b`、§25～EOF SHA-256=`8a80235f2d54375738f89741ed93e1c341894113ffba91bfbed3320df8b1548b`。第一個 owner write 已由本節、task、map與 [040-R2 QA](../qa/DEV-040-R2-independent-production-release-validation-plan.md) 同步完成。
+本節保留DEV-012 S1B OrgMaster owner slice的歷史v1內容；現行authority為§§25～29，不建立DEV-048，也不得修改或完成DEV-047。上游 authority 為 [Platform DEV-012 §§25～28](../../../Jenfu-Platform/ai-doc/specs/DEV-012-three-system-continuous-release-and-boundary-closure.md)，同步時完整文件 SHA-256=`b4ab9cc989962687d9f092b38b2f127879cb92de82bdd4000b5896d7c96d6e20`、§25～EOF SHA-256=`017d058d742a123e13379d3ac378d42c261cff193bc72c3e40f8643a887948fa`。第一個 owner write 已由本節、task、map與 [040-R2 QA](../qa/DEV-040-R2-independent-production-release-validation-plan.md) 同步完成。
 
 ### 24.1 Owner boundary and exact target
 
@@ -1269,3 +1269,23 @@ OrgMaster production transport已對齊官方regional Cloud Build operation、Ar
 ## 27. DEV-012 §26 runtime template bridge
 
 OrgMaster continuous v2 candidate不再複製R1-04F的一容器holding template。`runtimeConfigRef`須由`config/release/dev040-orgmaster-independent-production.json`決定性建立完整`orgmaster`＋digest-pinned `cloud-sql-proxy`兩容器template，plain environment必須exact complete-set，Postgres URL與session pepper只允許own Secret ID及enabled numeric version。Owner build只可將`APPLICATION_IMAGE_DIGEST`替換為本repo immutable digest；holding traffic在candidate建立與0% tag加入後逐項不變。
+
+## 28. DEV-012 §27 production-entry closure owner amendment
+
+OrgMaster official release repository固定為`jedchang0308-jenfu/OrgMaster`、branch=`master`。本owner新增source-freeze／runtime-config／release-intent producer、Workflows internal candidate smoke，以及production data inventory／import／reconciliation與one-time first-principal bootstrap。所有工具只讀own tree、明列local authority paths、own bucket／schema及verified shared receipts；producer input path固定在own `output/dev-012/inputs`且resolved path不可越界，不讀或修改sibling source／state。
+
+Canonical `org.jenfu.com.tw`由DEV-012 shared global HTTPS load balancer穩定路由至`orgmaster-prod`；ordinary OrgMaster release不得修改shared URL map或sibling backend。Service ingress固定`internal-and-cloud-load-balancing`，candidate由own verifier job以ID token存取exact tagged revision；Firebase refresh token只存own numeric Secret version且只授權verifier job讀取。
+
+Local ignored business data不得進image或git archive。S2先建立self-hashed inventory與encrypted handoff，再由owner import job寫`orgmaster_core`，以row/hash/file reconciliation及restore rehearsal驗證。第一個production principal必須由使用者明確指定employee、登入email及Firebase UID；本次bootstrap只允許一筆已驗信Email/Password的active human AAL1 principal、one-time CAS、`system_admin`管理grant與不可變audit，禁止猜用目前登入者、DEV draft、共用或service principal。既有要求fresh AAL2的特權publish／mutation維持fail closed，在未來另立並完成第二因素方案前不可使用，也不得把本次AAL1 bootstrap當成AAL2證據。
+
+本節屬`012-S1C`；owner source與tests完成最多標`S1C owner PASS / S2 Gated`。正式data apply、principal mutation、DNS／TLS、traffic及LIVE_VERIFIED仍須native S2／S3 evidence。
+
+## 29. DEV-012 §28 executable production-entry amendment（current authority）
+
+OrgMaster owner source現已實作own prerequisite producer、source-frozen Terraform saved-plan gate／executor、完整兩容器runtime config、Workflows internal OIDC candidate smoke、production data inventory／import／CAS／reconciliation與Email/Password前端；本次production profile不啟用TOTP。正式source只接受clean、remote-reachable的`jedchang0308-jenfu/OrgMaster@master` exact commit；APP_INFRA_B plan必綁該revision、provider-readback foundation manifest及Artifact Registry immutable controller／migration-runner digests。
+
+Production data authority固定盤點116個workspace versions、current manifest、governance、management methods及2個media；1個無法可靠歸屬principal的preference固定排除為`EXCLUDED_UNATTRIBUTABLE_PRINCIPAL`。同一production migration job先驗immutable data/bootstrap hashes，再套forward-only DDL、import與one-time active-policy CAS，最後做row/hash/media reconciliation；不得以容器filesystem、DDL-only execution或DEV issuer資料冒充完成。
+
+第一位production principal由本機identity bootstrap建立並驗證exactly one verified password user、沒有enrolled MFA factor且production TOTP provider為disabled，再輸出不含PII/Secret的first-principal input。Firebase refresh token只以payload存在OrgMaster GCP Secret Manager numeric version與GitHub `production` environment secret：前者僅供candidate Workflows smoke SA，後者僅供owner canonical smoke；source、一般runtime env、log、receipt、coordinator與sibling不得取得值。
+
+OrgMaster是61-connection序列的第一個owner。Fresh Billing固定驗linked projects=5、planned new links=0、TWD3,200 budget與15-row quota；R1 capacity及N1C staging須用current denominator。Local source/tests最多標`S1C owner PASS / S2 Gated`；production intent仍須等待identity/data、DNS／TLS、notification、foundation與OrgMaster APP_INFRA_A/B native receipts及`remainingHumanAction=0`，正式run中不得要求真人ack或固定觀察期。

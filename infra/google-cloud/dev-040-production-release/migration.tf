@@ -9,7 +9,7 @@ resource "google_storage_bucket_iam_member" "migrator_bundle_viewer" {
   member = "serviceAccount:${data.google_service_account.migrator.email}"
   condition {
     title      = "orgmaster-migrator-bundle-viewer"
-    expression = "resource.name.startsWith('projects/_/buckets/${var.release_bucket_name}/objects/source/migration-bundles/')"
+    expression = "resource.name.startsWith('projects/_/buckets/${var.release_bucket_name}/objects/source/migration-bundles/') || resource.name.startsWith('projects/_/buckets/${var.release_bucket_name}/objects/source/production-data/') || (resource.name.startsWith('projects/_/buckets/${var.release_bucket_name}/objects/receipts/releases/') && resource.name.endsWith('/first-principal-bootstrap.json'))"
   }
 }
 
@@ -91,6 +91,14 @@ resource "google_cloud_run_v2_job" "migration" {
         name = "cloudsql"
         cloud_sql_instance {
           instances = [var.cloud_sql_connection_name]
+        }
+      }
+
+      vpc_access {
+        egress = "ALL_TRAFFIC"
+        network_interfaces {
+          network    = "jenfu-platform-prod-vpc"
+          subnetwork = "jenfu-platform-prod-runtime"
         }
       }
     }

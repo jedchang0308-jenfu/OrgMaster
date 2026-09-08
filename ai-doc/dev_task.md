@@ -1,8 +1,14 @@
 # OrgMaster 開發任務
 
+> **2026-09-08 DEV-012 S1C production-entry correction（current）**：official release source固定為
+> `jedchang0308-jenfu/OrgMaster@master`。S1B-21 LOCAL_CONTRACT PASS保留，但live audit確認仍缺own native
+> source/runtime/intent producer、internal candidate verifier、local authority資料import/reconciliation及第一位production
+> human principal bootstrap。DEV-040 §§28～29 owner source與QC已完成；current=
+> `012-S1C owner RD Implementation Complete / LOCAL_CONTRACT PASS / S2 Upfront Prerequisites In Progress`，DEV-047仍不在scope。
+
 > **2026-09-08 DEV-040 `040-R2` continuous production release（current release authority）**：已依Platform
-> DEV-012 §§25～26完成owner direct-doc-first；contract SHA-256=`c29974332ae0193bec330870b84a00766c6ae759b7d1522adc4faddc16490c3b`、
-> §25～EOF SHA-256=`8a80235f2d54375738f89741ed93e1c341894113ffba91bfbed3320df8b1548b`。狀態=
+> DEV-012 §§25～28完成owner direct-doc sync；contract SHA-256=`b4ab9cc989962687d9f092b38b2f127879cb92de82bdd4000b5896d7c96d6e20`、
+> §25～EOF SHA-256=`017d058d742a123e13379d3ac378d42c261cff193bc72c3e40f8643a887948fa`。狀態=
 > `Implementation Complete / S1B-21 LOCAL_CONTRACT PASS / DEV-012 S2 Gated`。Production profile、001～011
 > manifest、exact-target guard、nine-stage workflow、IaC與abort controller已完成；下一步只做fresh S2 provider
 > 前置，不得修改／完成DEV-047、把staging profile改作production或把本機PASS冒充DB／traffic證據。

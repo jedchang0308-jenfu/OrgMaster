@@ -23,6 +23,12 @@ resource "google_service_account" "invoker" {
   account_id   = "orgmaster-prod-release-invoker"
   display_name = "OrgMaster release controller invoker"
 }
+
+resource "google_service_account" "smoke" {
+  project      = var.project_id
+  account_id   = "orgmaster-prod-smoke"
+  display_name = "OrgMaster production candidate smoke"
+}
 resource "google_project_iam_member" "builder_build_submit" {
   project = var.project_id
   role    = "roles/cloudbuild.builds.editor"

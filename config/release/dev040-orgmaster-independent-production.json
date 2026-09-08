@@ -1,16 +1,16 @@
 {
   "schemaVersion": "jenfu.dev040.orgmaster-continuous-release.v2",
   "profileVersion": "CONTINUOUS_NO_DWELL_V2",
-  "contractSha256": "c29974332ae0193bec330870b84a00766c6ae759b7d1522adc4faddc16490c3b",
+  "contractSha256": "b4ab9cc989962687d9f092b38b2f127879cb92de82bdd4000b5896d7c96d6e20",
   "application": { "id": "orgmaster", "repository": "jedchang0308-jenfu/OrgMaster", "branch": "master" },
   "target": { "projectId": "jenfu-platform-prod", "region": "asia-east1", "serviceName": "orgmaster-prod", "runtimeServiceAccount": "orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com", "canonicalOrigin": "https://org.jenfu.com.tw", "databaseInstance": "jenfu-platform-prod-pg", "database": "jenfu_prod" },
   "runtime": { "containerName": "orgmaster", "cpu": "1", "memory": "512Mi", "port": 8080, "concurrency": 20, "timeoutSeconds": 60, "maxInstances": 1, "poolMax": 6, "startupProbePath": "/api/auth/mode", "cloudSqlConnectionName": "jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg", "cloudSqlProxyContainer": "cloud-sql-proxy", "cloudSqlProxyImage": "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0@sha256:fa4c7308245407157c5e9c4e16f1c0f1113899d6f29dc8f8be3e30efae86467f", "cloudSqlProxyPort": 5432, "cloudSqlProxyMaximumConnections": 24, "network": "jenfu-platform-prod-vpc", "subnet": "jenfu-platform-prod-runtime" },
   "artifact": { "repository": "orgmaster-release", "image": "orgmaster", "uri": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster", "migrationRunnerImage": "orgmaster-migration-runner", "migrationRunnerUri": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-migration-runner", "migrationBundlePrefix": "source/migration-bundles", "releaseBucket": "jenfu-platform-prod-orgmaster-release", "digestRequired": true },
   "state": { "backendKey": "dev-040-r2/production-release/default.tfstate", "foundationReceiptRequired": true },
   "schemas": { "releaseIntent": "jenfu.dev040.orgmaster-release-intent.v2", "deploymentCapsule": "jenfu.dev040.orgmaster-deployment-capsule.v2" },
-  "identities": { "builder": "orgmaster-prod-builder@jenfu-platform-prod.iam.gserviceaccount.com", "deployer": "orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com", "verifier": "orgmaster-prod-verifier@jenfu-platform-prod.iam.gserviceaccount.com", "controller": "orgmaster-prod-controller@jenfu-platform-prod.iam.gserviceaccount.com", "invoker": "orgmaster-prod-release-invoker@jenfu-platform-prod.iam.gserviceaccount.com", "runtimeDbLogin": "orgmaster-prod-runtime@jenfu-platform-prod.iam", "migratorDbLogin": "orgmaster-prod-migrator@jenfu-platform-prod.iam" },
+  "identities": { "builder": "orgmaster-prod-builder@jenfu-platform-prod.iam.gserviceaccount.com", "deployer": "orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com", "verifier": "orgmaster-prod-verifier@jenfu-platform-prod.iam.gserviceaccount.com", "controller": "orgmaster-prod-controller@jenfu-platform-prod.iam.gserviceaccount.com", "invoker": "orgmaster-prod-release-invoker@jenfu-platform-prod.iam.gserviceaccount.com", "smoke": "orgmaster-prod-smoke@jenfu-platform-prod.iam.gserviceaccount.com", "runtimeDbLogin": "orgmaster-prod-runtime@jenfu-platform-prod.iam", "migratorDbLogin": "orgmaster-prod-migrator@jenfu-platform-prod.iam" },
   "build": { "dockerBuilderImage": "gcr.io/cloud-builders/docker@sha256:3d00b6c1a9b862621c30fc74d4f2abfc62bcbdee631ed3febd31e7edbdf6252c", "builderDigestObservedAt": "2026-09-08T00:00:00.000+08:00", "dockerfile": "Dockerfile", "dockerTarget": "runner", "sourceArchiveFormat": "tar.gz", "requestedVerifyOption": "VERIFIED", "maximumAllowedSeverity": "MEDIUM" },
-  "verification": { "refreshTokenEnvironmentName": "DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN", "firebaseApiKeyEnvironmentName": "DEV012_ORGMASTER_FIREBASE_API_KEY", "authModePath": "/api/auth/mode", "sessionPath": "/api/auth/firebase/session", "mePath": "/api/auth/me", "logoutPath": "/api/auth/logout", "authenticatedProbes": [{ "id": "preference-db-read", "path": "/api/orgmaster/preferences/workbench", "method": "GET", "expectedStatus": 200 }], "negativeProbes": [{ "id": "preference-unauthenticated", "path": "/api/orgmaster/preferences/workbench", "method": "GET", "expectedStatus": 401 }] },
+  "verification": { "refreshTokenEnvironmentName": "DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN", "firebaseApiKeyEnvironmentName": "DEV012_ORGMASTER_FIREBASE_API_KEY", "candidateSmokeMode": "WORKFLOWS_INTERNAL_OIDC_V1", "candidateWorkflowName": "orgmaster-prod-candidate-smoke", "candidateRefreshTokenSecretId": "orgmaster-prod-smoke-firebase-refresh-token", "authModePath": "/api/auth/mode", "sessionPath": "/api/auth/firebase/session", "mePath": "/api/auth/me", "logoutPath": "/api/auth/logout", "authenticatedProbes": [{ "id": "preference-db-read", "path": "/api/orgmaster/preferences/workbench", "method": "GET", "expectedStatus": 200 }], "negativeProbes": [{ "id": "preference-unauthenticated", "path": "/api/orgmaster/preferences/workbench", "method": "GET", "expectedStatus": 401 }] },
   "incidentRuntime": { "controllerAudience": "https://release-controller.jenfu.internal/orgmaster", "githubReadTokenSecretId": "orgmaster-prod-controller-github-read-token", "numericSecretVersionRequired": true, "activeControlObject": "control/active.json" },
   "workflow": { "path": ".github/workflows/deploy-orgmaster-independent-production.yml", "onlyInput": "releaseCapsuleRef", "concurrency": "production-release-orgmaster-prod", "jobs": ["prepare", "build", "migrate", "candidate", "verify", "decision", "activate", "canonical", "finalize"], "failureJobs": ["readback", "abort-or-rollback", "publish-terminal"] },
   "environment": {
@@ -39,6 +39,15 @@
       { "order": 10, "version": "dev010-n1c-orgmaster-010", "path": "db/migrations/010_dev010_neutral_schema_boundary.sql", "sourceSha256": "081c6bc81e4565fae79302ac7be29f1999324d63f169bda7c6af1b581be49ff4", "appliedSha256": "a8372527802871ad0747d3877430fa727ff8bd0e4e2736772b201e9223fbd3ac" },
       { "order": 11, "version": "dev040-r2-orgmaster-011", "path": "db/migrations/011_dev046_workbench_list_width_preferences.sql", "sourceSha256": "a4370d5ae2d36efdfa8b6590d2241b2edaa696ad01c5ea7d8f6ab7d715eb0aaf", "appliedSha256": "837df9b0a3377ed50fc233225aef3925ccd66a3adb56bbd0c1b59f73d7ceed8b" }
     ]
+  },
+  "productionData": {
+    "required": true,
+    "packageSchema": "jenfu.dev012.orgmaster-production-data-package.v1",
+    "bootstrapSchema": "jenfu.dev012.orgmaster-first-principal-bootstrap.v1",
+    "dataObjectPrefix": "source/production-data",
+    "bootstrapObjectPrefix": "receipts/releases",
+    "sourceRepository": "jedchang0308-jenfu/OrgMaster",
+    "preferenceDisposition": "EXCLUDED_UNATTRIBUTABLE_PRINCIPAL"
   },
   "sideEffects": { "accountEnrollment": "DISABLED", "externalNotification": "DISABLED", "outboxDelivery": "DISABLED", "fileDelivery": "DISABLED" }
 }

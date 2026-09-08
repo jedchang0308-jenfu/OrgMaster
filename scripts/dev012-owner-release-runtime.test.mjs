@@ -112,6 +112,34 @@ test('migration job readback rejects mutable target fields before jobs.run', asy
   await assert.rejects(() => denied.runMigrationJob({ profile, deployment, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z' }), /MIGRATION_JOB_READBACK_MISMATCH/u)
 })
 
+test('OrgMaster migration job receives exact production-data refs only when required', async () => {
+  const jobName = 'projects/jenfu-platform-prod/locations/asia-east1/jobs/platform-prod-migration-runner'
+  const environment = {
+    OWNER_APPLICATION_ID: 'platform', RELEASE_BUCKET: bucket, GOOGLE_CLOUD_PROJECT: 'jenfu-platform-prod', GOOGLE_CLOUD_REGION: 'asia-east1',
+    CLOUD_SQL_INSTANCE_CONNECTION_NAME: 'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg', POSTGRES_DATABASE: 'jenfu_prod',
+    POSTGRES_IAM_LOGIN: 'platform-prod-migrator@jenfu-platform-prod.iam', POSTGRES_SOCKET: '/cloudsql/jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',
+  }
+  const job = { name: jobName, template: { taskCount: 1, parallelism: 1, template: { serviceAccount: profile.migrations.serviceAccount, maxRetries: 0, timeout: '1800s', containers: [{ name: 'migration', image: `runner@sha256:${H64}`, env: Object.entries(environment).map(([name, value]) => ({ name, value })), volumeMounts: [{ name: 'cloudsql', mountPath: '/cloudsql' }] }], volumes: [{ name: 'cloudsql', cloudSqlInstance: { instances: ['jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg'] } }] } } }
+  let runBody
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
+    if (options.method === 'POST') { runBody = JSON.parse(options.body); return json({ name: 'projects/p/locations/r/operations/run-1', done: true, response: { name: 'projects/p/locations/r/executions/e1' } }) }
+    if (String(url).endsWith('/executions/e1')) return json({ name: 'projects/p/locations/r/executions/e1', succeededCount: 1, failedCount: 0, completionTime: '2026-09-08T00:00:00Z', terminalCondition: { state: 'CONDITION_SUCCEEDED' } })
+    return json(job)
+  } })
+  const productionProfile = { ...profile, productionData: { required: true, dataObjectPrefix: 'source/production-data', bootstrapObjectPrefix: 'receipts/releases' } }
+  const deployment = {
+    migrationRunnerDigest: `runner@sha256:${H64}`,
+    migrationBundleRef: { uri: `gs://${bucket}/source/migration-bundles/b.json`, sha256: H64 },
+    productionDataRef: { uri: `gs://${bucket}/source/production-data/REL-001/data.json`, sha256: H64 },
+    firstPrincipalBootstrapRef: { uri: `gs://${bucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, sha256: H64 },
+    sourceRevision: H40,
+  }
+  await transport.runMigrationJob({ profile: productionProfile, deployment, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z' })
+  const args = runBody.overrides.containerOverrides[0].args
+  assert.deepEqual(args.slice(-8), ['--data-ref', deployment.productionDataRef.uri, '--data-sha256', H64, '--bootstrap-ref', deployment.firstPrincipalBootstrapRef.uri, '--bootstrap-sha256', H64])
+  await assert.rejects(() => transport.runMigrationJob({ profile: productionProfile, deployment: { ...deployment, productionDataRef: { ...deployment.productionDataRef, uri: 'gs://sibling/source/production-data/data.json' } }, outputUri: `gs://${bucket}/receipts/migrate2.json`, deadlineAt: '2999-01-01T00:00:00.000Z' }), /IMMUTABLE_REF_INVALID/u)
+})
+
 test('candidate-tag cleanup distinguishes the candidate from the active rollback target', async () => {
   const before = { name: 'projects/jenfu-platform-prod/locations/asia-east1/services/jenfu-platform-prod', etag: 'e1', reconciling: false, generation: '1', observedGeneration: '1', terminalCondition: { state: 'CONDITION_SUCCEEDED' }, traffic: [{ revision: 'previous-1', percent: 100 }, { revision: 'candidate-1', percent: 0, tag: 'candidate-abc' }], trafficStatuses: [{ revision: 'previous-1', percent: 100 }, { revision: 'candidate-1', percent: 0, tag: 'candidate-abc' }] }
   const after = { ...before, etag: 'e2', traffic: [{ revision: 'previous-1', percent: 100 }], trafficStatuses: [{ revision: 'previous-1', percent: 100 }] }
@@ -212,4 +240,100 @@ test('authenticated smoke refreshes a short-lived Firebase ID token without expo
   assert.equal(result.tokenSource, 'FIREBASE_REFRESH_TOKEN')
   assert.equal(refreshAuthorization, undefined)
   assert.doesNotMatch(JSON.stringify(result), /header\.payload/u)
+})
+
+
+test('internal candidate smoke executes only the app-owned Workflow and returns redacted proof', async () => {
+  const tag = 'candidate-' + 'a'.repeat(12)
+  const revision = 'jenfu-platform-prod-' + 'a'.repeat(12)
+  const digest = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/platform-release/platform@sha256:' + H64
+  const workflow = 'projects/jenfu-platform-prod/locations/asia-east1/workflows/platform-prod-candidate-smoke'
+  const executionName = workflow + '/executions/execution-1'
+  let createBody
+  const result = {
+    schemaVersion: 'jenfu.dev012.internal-candidate-smoke.v1',
+    ownerApplicationId: 'platform',
+    candidateRevision: revision,
+    artifactDigest: digest,
+    tokenSource: 'SECRET_MANAGER_EXACT_VERSION',
+    tokenExpiresInSeconds: '3600',
+    observations: [
+      { id: 'auth-mode', status: 200 },
+      { id: 'session-create', status: 200 },
+      { id: 'session-reload', status: 200 },
+      { id: 'authenticated-probe', status: 200 },
+      { id: 'unauthenticated-probe', status: 401 },
+      { id: 'session-revoked', status: 401 },
+    ],
+    status: 'PASS',
+  }
+  const fetchImpl = async (url, options = {}) => {
+    if (options.method === 'POST') {
+      createBody = JSON.parse(options.body)
+      return json({ name: executionName, state: 'ACTIVE' })
+    }
+    assert.equal(String(url), 'https://workflowexecutions.googleapis.com/v1/' + executionName)
+    return json({ name: executionName, state: 'SUCCEEDED', result: JSON.stringify(result) })
+  }
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl, sleep: async () => undefined })
+  const smokeProfile = {
+    application: { id: 'platform' },
+    target: { projectId: 'jenfu-platform-prod', region: 'asia-east1', serviceName: 'jenfu-platform-prod', canonicalOrigin: 'https://manage.jenfu.com.tw' },
+    artifact: { uri: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/platform-release/platform' },
+    verification: {
+      firebaseApiKeyEnvironmentName: 'FIREBASE_API_KEY',
+      candidateSmokeMode: 'WORKFLOWS_INTERNAL_OIDC_V1',
+      candidateWorkflowName: 'platform-prod-candidate-smoke',
+      candidateRefreshTokenSecretId: 'platform-prod-smoke-firebase-refresh-token',
+    },
+  }
+  const smoke = await transport.runInternalCandidateSmoke({
+    profile: smokeProfile,
+    origin: 'https://' + tag + '---jenfu-platform-prod-abc-de.a.run.app',
+    candidateTag: tag,
+    candidateRevision: revision,
+    artifactDigest: digest,
+    deadlineAt: '2999-01-01T00:00:00.000Z',
+    environment: { FIREBASE_API_KEY: 'A'.repeat(39) },
+  })
+  assert.equal(smoke.status, 'PASS')
+  assert.equal(smoke.executionName, executionName)
+  assert.equal(JSON.parse(createBody.argument).candidateRevision, revision)
+  assert.doesNotMatch(JSON.stringify(smoke), /firebaseApiKey|refreshToken|idToken|sessionCookie/u)
+})
+
+
+test('candidate endpoint stays internal until active revision is ready for the load balancer', async () => {
+  const serviceName = 'projects/jenfu-platform-prod/locations/asia-east1/services/jenfu-platform-prod'
+  let generation = 1
+  let service = {
+    name: serviceName,
+    etag: 'e1',
+    generation: '1',
+    observedGeneration: '1',
+    reconciling: false,
+    terminalCondition: { state: 'CONDITION_SUCCEEDED' },
+    defaultUriDisabled: true,
+    ingress: 'INGRESS_TRAFFIC_INTERNAL_ONLY',
+    template: { containers: [{ name: 'holding' }] },
+    traffic: [{ revision: 'jenfu-platform-prod-active', percent: 100 }],
+    trafficStatuses: [{ revision: 'jenfu-platform-prod-active', percent: 100 }],
+  }
+  const fetchImpl = async (_url, options = {}) => {
+    if (options.method === 'PATCH') {
+      const body = JSON.parse(options.body)
+      const updateMask = new URL(String(_url)).searchParams.get('updateMask')
+      assert.ok(['defaultUriDisabled', 'ingress'].includes(updateMask))
+      service = { ...service, [updateMask]: body[updateMask], etag: 'e' + (++generation), generation: String(generation), observedGeneration: String(generation) }
+      return json({ name: 'projects/p/locations/r/operations/surface-' + generation, done: true, response: {} })
+    }
+    return json(service)
+  }
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl })
+  const surfaceProfile = { target: { projectId: 'jenfu-platform-prod', region: 'asia-east1', serviceName: 'jenfu-platform-prod' } }
+  await transport.prepareCandidateEndpoint({ profile: surfaceProfile, deadlineAt: '2999-01-01T00:00:00.000Z' })
+  assert.equal(service.defaultUriDisabled, false)
+  assert.equal(service.ingress, 'INGRESS_TRAFFIC_INTERNAL_ONLY')
+  await transport.enableCanonicalIngress({ profile: surfaceProfile, expectedRevision: 'jenfu-platform-prod-active', deadlineAt: '2999-01-01T00:00:00.000Z' })
+  assert.equal(service.ingress, 'INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER')
 })

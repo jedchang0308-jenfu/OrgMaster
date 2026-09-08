@@ -1,10 +1,12 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
+> **2026-09-08 DEV-012 S1C amendment**：新增official repo=`jedchang0308-jenfu/OrgMaster`／branch=`master`、owner source/runtime/intent chain、shared-LB host binding、internal verifier job、numeric smoke Secret、local data inventory→encrypted handoff→import→reconcile／restore，以及一筆明確human principal one-time bootstrap的驗證。Local JSON進image/git、漏資料類別、DDL runner冒data import、猜登入者／DEV issuer／shared account、public `run.app`、sibling state或Secret payload皆FAIL。納入中央`S1C-01／05～12`，不預填production PASS。
+
 - 文件成熟度：`QA Contract Ready`
 - 狀態：`Fixed 12 Owner Cases / NOT_RUN / DEV-012 S1B-21 Owner`
 - 日期：2026-09-08
 - 規格 authority：[DEV-040 §24](../specs/DEV-040-jenfu-platform-entitlement-user-integration.md)
-- 上游 authority：Platform DEV-012 §§25～26；contract SHA-256=`c29974332ae0193bec330870b84a00766c6ae759b7d1522adc4faddc16490c3b`；§25～EOF SHA-256=`8a80235f2d54375738f89741ed93e1c341894113ffba91bfbed3320df8b1548b`
+- 上游 authority：Platform DEV-012 §§25～28；contract SHA-256=`b4ab9cc989962687d9f092b38b2f127879cb92de82bdd4000b5896d7c96d6e20`；§25～EOF SHA-256=`017d058d742a123e13379d3ac378d42c261cff193bc72c3e40f8643a887948fa`
 
 ## 1. 目標與證據層級
 
