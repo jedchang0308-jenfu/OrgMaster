@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import test from 'node:test'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040R2Profile, assertDev040ReleaseIntent, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
+import { assertRuntimeConfig, buildRuntimeConfig } from './lib/dev012-owner-release-runtime.mjs'
 
 const read = (file) => JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
 const profile = read('config/release/dev040-orgmaster-independent-production.json')
@@ -15,6 +16,17 @@ test('S1B-21 OrgMaster production profile preserves staging boundary', () => {
   assert.equal(n1c.target.environment, 'staging')
   assert.equal(profile.target.database, 'jenfu_prod')
   assert.equal(profile.sideEffects.accountEnrollment, 'DISABLED')
+})
+
+test('S1B-21 OrgMaster runtime keeps credentials out of plain environment', () => {
+  const plainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames.map((name) => [name, profile.environment.fixedValues[name] ?? `plain-${name}`]))
+  const secretVersions = Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1']))
+  const runtime = buildRuntimeConfig(profile, { plainEnvironment, secretVersions })
+  assert.deepEqual(Object.keys(runtime.plainEnvironment).sort(), [...profile.environment.requiredPlainEnvironmentNames].sort())
+  assert.deepEqual(Object.keys(runtime.secretVersions).sort(), [...profile.environment.requiredSecretNames].sort())
+  assert.equal(runtime.template.containers[0].env.filter((row) => row.name === 'ORGMASTER_POSTGRES_URL').length, 1)
+  assert.equal(runtime.template.containers[0].env.find((row) => row.name === 'ORGMASTER_POSTGRES_URL').valueSource.secretKeyRef.secret, 'orgmaster-prod-postgres-url')
+  assert.equal(assertRuntimeConfig(profile, runtime).containers.length, 2)
 })
 
 test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {

@@ -3,15 +3,15 @@ import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
 
 const H40 = /^[a-f0-9]{40}$/
 const H64 = /^[a-f0-9]{64}$/
-const REQUIRED_ENV = [
-  'ORGMASTER_PERSISTENCE_MODE', 'ORGMASTER_PUBLIC_BASE_URL', 'ORGMASTER_POSTGRES_URL',
+const REQUIRED_PLAIN_ENV = [
+  'ORGMASTER_PERSISTENCE_MODE', 'ORGMASTER_PUBLIC_BASE_URL',
   'ORGMASTER_POSTGRES_POOL_MAX', 'ORGMASTER_POSTGRES_CONNECTION_TIMEOUT_MS',
-  'ORGMASTER_POSTGRES_IDLE_TIMEOUT_MS', 'ORGMASTER_POSTGRES_STATEMENT_TIMEOUT_MS',
-  'ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS', 'ORGMASTER_SESSION_HASH_PEPPER',
+  'ORGMASTER_POSTGRES_IDLE_TIMEOUT_MS', 'ORGMASTER_POSTGRES_STATEMENT_TIMEOUT_MS', 'ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS',
   'JENFU_FIREBASE_PROJECT_ID', 'JENFU_IDENTITY_ISSUER', 'JENFU_IDENTITY_AUDIENCE',
   'VITE_JENFU_FIREBASE_API_KEY', 'VITE_JENFU_FIREBASE_AUTH_DOMAIN',
   'VITE_JENFU_FIREBASE_PROJECT_ID', 'VITE_JENFU_FIREBASE_APP_ID',
 ]
+const REQUIRED_SECRET_ENV = ['ORGMASTER_POSTGRES_URL', 'ORGMASTER_SESSION_HASH_PEPPER']
 
 function fail(code, detail = '') {
   const error = new Error(detail ? `${code}:${detail}` : code)
@@ -44,10 +44,11 @@ export function assertDev040R2Profile(profile, n1c) {
   if (profile.verification?.refreshTokenEnvironmentName !== 'DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN' || profile.verification?.firebaseApiKeyEnvironmentName !== 'DEV012_ORGMASTER_FIREBASE_API_KEY' || profile.verification?.authModePath !== '/api/auth/mode' || profile.verification?.sessionPath !== '/api/auth/firebase/session' || profile.verification?.mePath !== '/api/auth/me' || profile.verification?.logoutPath !== '/api/auth/logout' || profile.verification?.authenticatedProbes?.length !== 1 || profile.verification?.negativeProbes?.length !== 1) fail('VERIFICATION_PROFILE_MISMATCH')
   if (profile.incidentRuntime?.controllerAudience !== 'https://release-controller.jenfu.internal/orgmaster' || profile.incidentRuntime?.githubReadTokenSecretId !== 'orgmaster-prod-controller-github-read-token' || profile.incidentRuntime?.numericSecretVersionRequired !== true || profile.incidentRuntime?.activeControlObject !== 'control/active.json') fail('INCIDENT_RUNTIME_PROFILE_MISMATCH')
   if (profile.migrations?.jobName !== 'orgmaster-prod-migration-runner' || profile.migrations?.serviceAccount !== 'orgmaster-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com') fail('MIGRATION_JOB_MISMATCH')
-  if (JSON.stringify([...profile.environment.requiredNames].sort()) !== JSON.stringify([...REQUIRED_ENV].sort())) fail('ENVIRONMENT_SET_DRIFT')
+  if (JSON.stringify([...profile.environment.requiredPlainEnvironmentNames].sort()) !== JSON.stringify([...REQUIRED_PLAIN_ENV].sort())
+    || JSON.stringify([...profile.environment.requiredSecretNames].sort()) !== JSON.stringify([...REQUIRED_SECRET_ENV].sort())) fail('ENVIRONMENT_SET_DRIFT')
   const fixed = profile.environment.fixedValues || {}
   if (fixed.ORGMASTER_PERSISTENCE_MODE !== 'cloud-sql' || fixed.ORGMASTER_PUBLIC_BASE_URL !== 'https://org.jenfu.com.tw' || fixed.ORGMASTER_POSTGRES_POOL_MAX !== '6' || fixed.ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS !== '35000') fail('ENVIRONMENT_VALUE_DRIFT')
-  if (profile.environment.secretIds?.ORGMASTER_POSTGRES_URL !== 'orgmaster-prod-postgres-url' || profile.environment.secretIds?.ORGMASTER_SESSION_HASH_PEPPER !== 'orgmaster-prod-session-pepper' || profile.environment.numericVersionsRequired !== true) fail('SECRET_BOUNDARY_DRIFT')
+  if (profile.environment.allowedSecretIds?.ORGMASTER_POSTGRES_URL !== 'orgmaster-prod-postgres-url' || profile.environment.allowedSecretIds?.ORGMASTER_SESSION_HASH_PEPPER !== 'orgmaster-prod-session-pepper' || profile.environment.numericVersionsRequired !== true) fail('SECRET_BOUNDARY_DRIFT')
   const order = profile.migrations?.entries?.map((entry) => entry.path)
   if (profile.migrations?.ledger !== 'orgmaster_core.schema_migrations' || profile.migrations?.baselineCount !== 10 || order?.length !== 11 || JSON.stringify(order.slice(0, 10)) !== JSON.stringify(n1c.migration.order) || order[10] !== 'db/migrations/011_dev046_workbench_list_width_preferences.sql') fail('MIGRATION_MANIFEST_DRIFT')
   if (profile.migrations.entries.some((entry, index) => entry.order !== index + 1 || !H64.test(entry.sourceSha256) || !H64.test(entry.appliedSha256))) fail('MIGRATION_MANIFEST_DRIFT')
