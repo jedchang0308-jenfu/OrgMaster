@@ -21,6 +21,16 @@ export type OrgmasterN1cTarget = {
   login: 'dev010-stg-orgmaster-migrator@jenfu-platform-nonprod.iam'
 }
 
+export type OrgmasterProductionTarget = {
+  environment: 'production'
+  projectId: 'jenfu-platform-prod'
+  region: 'asia-east1'
+  instance: 'jenfu-platform-prod-pg'
+  connectionName: 'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg'
+  database: 'jenfu_prod'
+  login: 'orgmaster-prod-runtime@jenfu-platform-prod.iam' | 'orgmaster-prod-migrator@jenfu-platform-prod.iam'
+}
+
 let runtimePool: pg.Pool | null = null
 let runtimeSignature = ''
 
@@ -56,6 +66,31 @@ export function assertOrgmasterN1cTarget(environment: NodeJS.ProcessEnv = proces
   return expected
 }
 
+export function assertOrgmasterProductionTarget(environment: NodeJS.ProcessEnv = process.env, role: 'runtime' | 'migrator' = 'runtime'): OrgmasterProductionTarget {
+  const expected: OrgmasterProductionTarget = {
+    environment: 'production',
+    projectId: 'jenfu-platform-prod',
+    region: 'asia-east1',
+    instance: 'jenfu-platform-prod-pg',
+    connectionName: 'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',
+    database: 'jenfu_prod',
+    login: role === 'runtime' ? 'orgmaster-prod-runtime@jenfu-platform-prod.iam' : 'orgmaster-prod-migrator@jenfu-platform-prod.iam',
+  }
+  const observed = {
+    environment: environment.ORGMASTER_DEPLOYMENT_ENV,
+    projectId: environment.GOOGLE_CLOUD_PROJECT,
+    region: environment.GOOGLE_CLOUD_REGION,
+    instance: environment.ORGMASTER_CLOUD_SQL_INSTANCE,
+    connectionName: environment.ORGMASTER_CLOUD_SQL_CONNECTION_NAME,
+    database: environment.ORGMASTER_POSTGRES_DATABASE,
+    login: environment.ORGMASTER_POSTGRES_IAM_LOGIN,
+  }
+  if (Object.entries(expected).some(([key, value]) => observed[key as keyof typeof observed] !== value)) {
+    throw new Error('DEV040_R2_ORGMASTER_WRONG_PRODUCTION_TARGET')
+  }
+  return expected
+}
+
 export function resolveOrgmasterDatabaseConfig(environment: NodeJS.ProcessEnv = process.env): OrgmasterDatabaseConfig {
   const runId = environment.DEV010_N2_RUN_ID?.trim().replace(/[^A-Za-z0-9_-]/gu, '-').slice(0, 80)
   const config = {
@@ -72,6 +107,7 @@ export function resolveOrgmasterDatabaseConfig(environment: NodeJS.ProcessEnv = 
 
 export function createOrgmasterDatabase(connectionString: string, environment: NodeJS.ProcessEnv = process.env): OrgmasterDatabase {
   if (environment.DEV010_N1C_TARGET_GUARD === 'required') assertOrgmasterN1cTarget(environment)
+  if (environment.DEV040_R2_TARGET_GUARD === 'required') assertOrgmasterProductionTarget(environment, 'runtime')
   const config = resolveOrgmasterDatabaseConfig(environment)
   const signature = `${connectionString}|${JSON.stringify(config)}`
   if (runtimePool && runtimeSignature !== signature) {

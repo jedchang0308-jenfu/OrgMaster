@@ -1,5 +1,13 @@
 # 文件地圖
 
+> **2026-09-08 DEV-040 `040-R2` current release entry**：權威為
+> [DEV-040 §24](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與
+> [040-R2 QA](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游Platform DEV-012契約
+> SHA-256=`47eb972c48549da73ca135509e99bdc8ae4463e87b81785abe8d6cfd8f54b95f`、§25～EOF=
+> `92fd6c7dfdfafee4b438c0ee9ce731d7463da46a7691f05061c54d58cb127507`。狀態=`Implementation Complete /
+> S1B-21 LOCAL_CONTRACT PASS / DEV-012 S2 Gated`；owner production path已實作，下一步是fresh S2 provider前置。
+> DEV-047、既有staging profile、applied migration及產品UI不在此slice。
+
 > **2026-09-05 Platform DEV-010 physical-topology successor（現行）**：OrgMaster既有domain、workspace、DEV-040 entitlement／identity與local／isolated證據不變；三系統共用資料庫的physical target與schema end state改由Platform [DEV-010 direct spec](../../Jenfu-Management-system/ai-doc/specs/DEV-010-three-system-database-consolidation-contract.md) 接管。現有`orgmaster`與`access_governance`私有物件映射至`orgmaster_core`，跨app publication映射至`orgmaster_contract`，並在consumer歸零前保留compatibility adapters。`010-N1A=11＋30 PASS`、`010-N1B=10／10 PASS`、三repo`010-N2=48／48 PASS`、R1E verifier source、R1-04唯讀candidate verifier與R1-04A guarded provider artifact producer source已完成；current production target為`db-custom-1-3840 / ZONAL_DEDICATED / USD 100`，不宣稱HA。OrgMaster R1-04A production package與exact-commit local OCI／SBOM／runtime probe已完成；artifact含`dist-server`／`dist`、production dependencies與hash-bound `contracts` assets，明確排除local operational `data`。Producer unit `6／6`及focused QC PASS，但current 8項foundation blocker使provider build未執行。Production Cloud SQL模式不fallback到container local writable state仍須R1-04B provider negative test。Neutral service不存在時先用無DB／無business route的holding revision，release candidate再以exact digest保持0% canonical traffic。Provider-attested artifact、R1-04F／B、9項preflight blockers、R1 15案、production migration／switch／release均未完成，驗收依[DEV-010 QA／QC plan](../../Jenfu-Management-system/ai-doc/qa/DEV-010-three-system-database-consolidation-validation-plan.md)。
 
 ## 專案最高產品原則

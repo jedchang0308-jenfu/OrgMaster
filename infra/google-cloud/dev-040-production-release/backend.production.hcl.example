@@ -1,0 +1,2 @@
+bucket = "REVIEWED_EXISTING_TERRAFORM_STATE_BUCKET"
+prefix = "dev-040-r2/production-release/default.tfstate"

@@ -1,11 +1,11 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
-文件成熟度：`RD Contract Ready；040-ID1A／040-ID1B = Local Implementation Complete / Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice = 005-S0～S4B Local-Isolated PASS / 005-S5 Local Targeted PASS；JMS-PLATFORM-008 OrgMaster slice = Local S0～S3＋C1 Implemented / Targeted QA-QC PASS / Production Release Gated；JMS-PLATFORM-009 OrgMaster slice = 009-S0～S4 Local-Isolated Complete / Targeted QA-QC PASS / 009-R1 Release Gate Required / Production Release Gated；DEV-040 principal admission projection = Candidate Verified；DEV-004 = 004-S0～S5 Local PASS；DEV-006 persistence = Production-Bound App Boundary PASS / Production Switch Blocked`
-狀態：Human Decision Gate Complete through account taxonomy `1B / 2A / 3D`；`040-ID1A／040-ID1B`已完成local／isolated implementation與targeted QA／QC，含UUIDv7 clean rekey runner、V8 baseline、redacted projection與IAR v2 fixture gate；DEV-006 S4A consumer亦已完成local／isolated gate；JMS-PLATFORM-005 OrgMaster slice已完成`005-S0～S4B` implementation與`005-S5` local targeted consumer／cross-repo gate；JMS-PLATFORM-008已完成Local S0～S3＋C1 targeted QA-QC；JMS-PLATFORM-009已完成S0～S4 local／isolated implementation與targeted QA-QC，下一步為`009-R1` production release gate。production human link、shared-login retirement、active policy、persistent product switch、entitlement cutover與release仍阻塞
+文件成熟度：`RD Contract Ready；040-R2 = Implementation Complete / DEV-012 S1B-21 Local Owner QC PASS / S2 Gated；040-ID1A／040-ID1B = Local Implementation Complete / Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice = 005-S0～S4B Local-Isolated PASS / 005-S5 Local Targeted PASS；JMS-PLATFORM-008 OrgMaster slice = Local S0～S3＋C1 Implemented / Targeted QA-QC PASS / Production Release Gated；JMS-PLATFORM-009 OrgMaster slice = 009-S0～S4 Local-Isolated Complete / Targeted QA-QC PASS / 009-R1 Release Gate Required / Production Release Gated；DEV-040 principal admission projection = Candidate Verified；DEV-004 = 004-S0～S5 Local PASS；DEV-006 persistence = Production-Bound App Boundary PASS / Production Switch Blocked`
+狀態：`040-R2 continuous production release owner slice`已依Platform DEV-012 §23完成owner source、IaC、workflow、runner、abort controller與本機驗證；其餘既有local／isolated完成證據不變。040-R2完成S1B source與owner QC後只解鎖DEV-012 S2，不代表Billing／quota、正式migration、candidate或traffic已完成。production human link、shared-login retirement、active policy、persistent product switch、entitlement cutover與release仍阻塞
 節點類型：開發點
 優先級：P0
 風險等級：High
-日期：2026-08-30
+日期：2026-09-08
 來源 ID：`USER-2026-08-30-JENFU-PLATFORM-HCS-4A-5A-6B`、`USER-2026-08-30-JENFU-PLATFORM-HCS-ROLE-RESET-CUTOVER-ADMIN-SCOPE`、`USER-2026-08-30-JENFU-PLATFORM-HCS-PRESTAGE-PILOT-LEGACY-OBSERVATION`、`USER-2026-08-30-JENFU-PLATFORM-HCS-SUPERADMIN-ZERO-TOLERANCE-OBSERVATION-WINDOW`、`USER-2026-09-01-JENFU-ACCOUNT-TAXONOMY-1B-2A-3D`、`USER-2026-09-01-DEV040-ONE-TIME-DIRECT-UUIDV7-REKEY-EXCEPTION`
 父開發點：DEV-037
 跨 repository 交付：`C:\VIBE CODING\Jenfu-Management-system\ai-doc\dev_task.md` 的 DEV-001／DEV-004～009
@@ -1220,3 +1220,49 @@ Minimum acceptance：一般V2 UI／API無法建立`system_admin`；完整role po
 本節文件已達`RD Implementation Ready`，且`009-S0～S4` local／isolated implementation／targeted QA-QC已完成。下一步固定為`009-R1` production release gate；bootstrap、真實production authority、schema apply、runtime切換、deploy與release仍未授權，不得越過相應gate。
 
 使用思考習慣：#設計思考、#效用理論、#系統描繪、#風險導向思考、#當責
+
+## 24. `040-R2` OrgMaster independent continuous production release（2026-09-08）
+
+本節保留DEV-012 S1B OrgMaster owner slice的歷史v1內容；現行authority為§25，不建立DEV-048，也不得修改或完成DEV-047。上游 authority 為 [Platform DEV-012 §25](../../../Jenfu-Platform/ai-doc/specs/DEV-012-three-system-continuous-release-and-boundary-closure.md)，同步時完整文件 SHA-256=`47eb972c48549da73ca135509e99bdc8ae4463e87b81785abe8d6cfd8f54b95f`、§25～EOF SHA-256=`92fd6c7dfdfafee4b438c0ee9ce731d7463da46a7691f05061c54d58cb127507`。第一個 owner write 已由本節、task、map與 [040-R2 QA](../qa/DEV-040-R2-independent-production-release-validation-plan.md) 同步完成。
+
+### 24.1 Owner boundary and exact target
+
+- OrgMaster 只凍結、建置、驗證、部署及回復自己的 source、artifact、`orgmaster-prod` service、hostname、numeric Secret versions、`orgmaster_core／orgmaster_contract`、migration ledger與owner receipt；不得持有 Platform／AI-PDM deploy權限或變更 sibling traffic／state。
+- Target 固定 project=`jenfu-platform-prod`、region=`asia-east1`、service=`orgmaster-prod`、runtime SA=`orgmaster-prod-runtime`、origin=`https://org.jenfu.com.tw`、CPU=`1`、memory=`512Mi`、concurrency=`20`、timeout=`60s`、max instances=`1`、pool=`6`。Release resources固定 registry=`orgmaster-release`、image=`orgmaster`、bucket=`jenfu-platform-prod-orgmaster-release`、state key=`dev-040-r2/production-release/default.tfstate`。
+- `requiredNewBillingLinks=0` 只表示沿用既有 production project；Billing account、budget、quota、usage、reserve與planned release／incident資源必須在DEV-012 S2 fresh readback，UNKNOWN不得上線。
+
+### 24.2 Runtime and migration contract
+
+Production migration profile是新 v2，不修改 `config/dev-010/n1c-orgmaster.json` 或 staging runner。Manifest逐項複製該profile既有001～010 exact order／checksum，再唯一append `db/migrations/011_dev046_workbench_list_width_preferences.sql`，總數 exactly 11，ledger=`orgmaster_core.schema_migrations`；不得glob、字母排序、修改applied SQL或把execution done冒充ledger／schema readback。
+
+`server/orgmasterDatabase.ts` production guard只接受 environment=`production`、project/instance/database=`jenfu-platform-prod / jenfu-platform-prod-pg / jenfu_prod`與production migrator/runtime；staging guard保持原行為。Runtime fixed env／timeout與Secret names依Platform DEV-012 §23.17；account enrollment及未具正式授權receipt的通知／webhook／outbox／file delivery保持disabled。正常入口驗收固定 login→employee／entitlement update→reload，並證明schema／role／cross-database deny。
+
+### 24.3 Single-capsule workflow, provider and recovery
+
+`.github/workflows/deploy-orgmaster-independent-production.yml` 只有 `workflow_dispatch.releaseCapsuleRef`。Job固定 `prepare→build→candidate→verify→decision→activate→canonical→finalize`，concurrency=`production-release-orgmaster-prod`；禁止 stage／approve／skip／receipt JSON／target override及run中真人GO。Machine decision只在inactive exact candidate與全部PRE_ACTIVATION evidence完成後發布。
+
+Candidate只允許Cloud Run `updateMask=template`且general traffic=0；activation／rollback只允許`updateMask=traffic`。任何write unknown outcome都先provider readback，不blind retry。Incident固定own Pub/Sub→private abort controller，controller只接受`POST /events`與`POST /watchdog`，依owner control head、fresh etag與exact previous revision冪等rollback；錯owner／candidate、重送、412、crash前後與舊worker仍活都要fail closed或readback，不得碰sibling／全DB。
+
+### 24.4 Exact implementation boundary and exit
+
+新增只限：`config/release/dev040-orgmaster-independent-production.json`、`config/release/dev040-production-release-infra-plan.json`、`scripts/lib/dev040-orgmaster-independent-release.mjs`、對應CLI／test／QC、production migration runner與test、owner workflow、`tools/dev-040/abort-controller/{package.json,package-lock.json,server.mjs,server.test.mjs,Dockerfile}`，以及 `infra/google-cloud/dev-040-production-release/` 的 `versions.tf,variables.tf,locals.tf,artifact.tf,storage.tf,identity.tf,workload-identity.tf,incident.tf,service-bindings.tf,outputs.tf,README.md,terraform.tfvars.example,backend.production.hcl.example`。修改只限 Platform DEV-012 §23.13.4 列出的六個 server／test files、`package.json`與`AGENTS.md`及本節 direct docs；產品UI、DEV-047、既有migration SQL與staging profile均no-touch。
+
+Owner commands固定 `npm run test:dev-040:r2`、`npm run qc:dev-040:r2`、`npm run test:dev-040:abort`、`npm run check:db-boundary`、`npm test -- --testTimeout=30000`、`npm run build`、IaC `terraform fmt -check／init -backend=false／validate`與`git diff --check`。S1B完成後最多標示 `040-R2 Implementation Complete / S1B-21 PASS / DEV-012 S2 Gated`；未取得fresh managed與production證據不得寫Release Ready、Deployed或DEV-012 Complete。
+
+## 25. `040-R2 CONTINUOUS_NO_DWELL_V2` executable amendment（2026-09-08）
+
+本節依Platform DEV-012 §25前向取代§24中預先完整capsule、八階段、no-tag candidate與缺少migration job的衝突部分。第一次S1B owner local PASS保留為歷史但標`SUPERSEDED_BY_CONTRACT_V2`。
+
+- 唯一輸入`releaseCapsuleRef`指向OrgMaster immutable release intent，不含artifact／candidate／decision。Build以同source產生application digest與content-addressed migration bundle，綁APP_INFRA_B pinned generic runner digest後發布deployment capsule。
+- Workflow固定`prepare→build→migrate→candidate→verify→decision→activate→canonical→finalize`。Migration job runtime固定production `orgmaster-prod-migrator`，exact target `jenfu_prod`，依001～011順序；runner與ledger／schema／ACL readback共同決定PASS，不能把execution done或staging receipt當完成。
+- Candidate先建立template-only inactive revision，再以traffic-only加入唯一temporary exact tag且general traffic不變；透過provider-readback tag URL完成login→employee／entitlement update→reload及負例。Activation／rollback traffic-only，finalize／rollback移除tag；migration不down-migrate且必須與previous serving revision相容。
+- 既有`scripts/dev040-production-migration-runner.mjs`及test繼續作owner runner；允許新增`infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile`與`migration.tf`，並修改040-R2 profile／lib／CLI／test／QC、workflow、該IaC既有檔及本spec／QA／task／map／AGENTS。產品UI、既有migration SQL、staging profile與DEV-047仍no-touch。
+- 正式CLI必須完成GCS／Cloud Build／Artifact Registry／Cloud Run Job／Run service與operation／candidate smoke／traffic／receipt transport；throw-only或echo-only正式路徑不得通過owner QC。
+
+V2完成最多標`040-R2 Implementation Complete / S1B-21 PASS / S2 Gated`；fresh Billing／quota／auth與production release證據仍另驗。
+
+## 26. DEV-012 §§25.6～25.8 implementation conformance（2026-09-08）
+
+OrgMaster production transport已對齊官方regional Cloud Build operation、Artifact Analysis `v1beta1 exportSBOM`與`discoveryOccurrenceId`、Cloud Run exact service/revision URI及GCS generation-bound immutable publication。Cloud Run service必須`reconciling=false`、terminal success且`observedGeneration=generation`；candidate revision缺Ready success或image digest不合即FAIL。Owner workflow維持唯一`releaseCapsuleRef`、九階段、Firebase refresh-token smoke、temporary tag cleanup與own-only rollback。
+
+首次cohort由Platform coordinator依`OrgMaster → AI-PDM → Platform`首先dispatchOrgMaster exact run；coordinator只讀OrgMaster terminal，OrgMaster deployer仍無sibling權限。OrgMaster APP_INFRA_A/B、controller及migration-runner digests、numeric Secret versions、WIF／GitHub production environment與S2 provider receipts必須在首次dispatch前完成；日常OrgMaster release不讀sibling source、state或build。Local owner PASS最多解鎖S2，不能冒充production readiness或LIVE_VERIFIED；DEV-047仍不在本次scope。

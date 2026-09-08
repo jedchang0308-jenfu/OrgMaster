@@ -1,0 +1,271 @@
+name: Deploy OrgMaster independently
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseCapsuleRef:
+        description: Immutable OrgMaster release-intent URI with sha256 fragment
+        required: true
+        type: string
+
+concurrency:
+  group: production-release-orgmaster-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24.11.0"
+  WIF_PROVIDER: ${{ vars.ORGMASTER_PROD_WIF_PROVIDER }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    outputs:
+      capsule_uri: ${{ steps.bind.outputs.capsule_uri }}
+      capsule_sha256: ${{ steps.bind.outputs.capsule_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - run: npm run test:dev-040:r2
+      - id: bind
+        shell: bash
+        env: { RELEASE_CAPSULE_REF: "${{ inputs.releaseCapsuleRef }}" }
+        run: |
+          set -euo pipefail
+          capsule_uri="${RELEASE_CAPSULE_REF%%#sha256=*}"
+          capsule_sha256="${RELEASE_CAPSULE_REF##*#sha256=}"
+          test "$capsule_uri" != "$RELEASE_CAPSULE_REF"
+          [[ "$capsule_uri" =~ ^gs://jenfu-platform-prod-orgmaster-release/receipts/.+\.json$ ]]
+          [[ "$capsule_sha256" =~ ^[a-f0-9]{64}$ ]]
+          echo "capsule_uri=$capsule_uri" >> "$GITHUB_OUTPUT"
+          echo "capsule_sha256=$capsule_sha256" >> "$GITHUB_OUTPUT"
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-verifier@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Execute prepare
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: "${{ steps.auth.outputs.access_token }}"
+        run: node scripts/dev040-orgmaster-independent-release.mjs --stage prepare --capsule-ref "${{ steps.bind.outputs.capsule_uri }}" --capsule-sha256 "${{ steps.bind.outputs.capsule_sha256 }}"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-builder@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Execute build
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: "${{ steps.auth.outputs.access_token }}"
+        run: node scripts/dev040-orgmaster-independent-release.mjs --stage build --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
+
+  migrate:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Execute migrate
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: "${{ steps.auth.outputs.access_token }}"
+        run: node scripts/dev040-orgmaster-independent-release.mjs --stage migrate --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
+
+  candidate:
+    needs: [prepare, migrate]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Execute candidate
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: "${{ steps.auth.outputs.access_token }}"
+        run: node scripts/dev040-orgmaster-independent-release.mjs --stage candidate --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
+
+  verify:
+    needs: [prepare, candidate]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-verifier@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Execute verify
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: "${{ steps.auth.outputs.access_token }}"
+          DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN: "${{ secrets.DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN }}"
+          DEV012_ORGMASTER_FIREBASE_API_KEY: "${{ secrets.DEV012_ORGMASTER_FIREBASE_API_KEY }}"
+        run: node scripts/dev040-orgmaster-independent-release.mjs --stage verify --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
+
+  decision:
+    needs: [prepare, verify]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-verifier@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Execute decision
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: "${{ steps.auth.outputs.access_token }}"
+        run: node scripts/dev040-orgmaster-independent-release.mjs --stage decision --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
+
+  activate:
+    needs: [prepare, decision]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Execute activate
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: "${{ steps.auth.outputs.access_token }}"
+        run: node scripts/dev040-orgmaster-independent-release.mjs --stage activate --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
+
+  canonical:
+    needs: [prepare, activate]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-verifier@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Execute canonical
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: "${{ steps.auth.outputs.access_token }}"
+          DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN: "${{ secrets.DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN }}"
+          DEV012_ORGMASTER_FIREBASE_API_KEY: "${{ secrets.DEV012_ORGMASTER_FIREBASE_API_KEY }}"
+        run: node scripts/dev040-orgmaster-independent-release.mjs --stage canonical --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
+
+  finalize:
+    needs: [prepare, canonical]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Execute finalize
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: "${{ steps.auth.outputs.access_token }}"
+        run: node scripts/dev040-orgmaster-independent-release.mjs --stage finalize --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
+
+  failure:
+    if: ${{ always() && needs.prepare.result == 'success' && contains(needs.*.result, 'failure') }}
+    needs: [prepare, build, migrate, candidate, verify, decision, activate, canonical]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Read back, roll back own traffic if needed, and publish terminal receipt
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: "${{ steps.auth.outputs.access_token }}"
+        run: node scripts/dev040-orgmaster-independent-release.mjs --stage rollback --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
