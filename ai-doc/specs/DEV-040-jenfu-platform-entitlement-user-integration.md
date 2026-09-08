@@ -1223,7 +1223,7 @@ Minimum acceptance：一般V2 UI／API無法建立`system_admin`；完整role po
 
 ## 24. `040-R2` OrgMaster independent continuous production release（2026-09-08）
 
-本節保留DEV-012 S1B OrgMaster owner slice的歷史v1內容；現行authority為§§25～29，不建立DEV-048，也不得修改或完成DEV-047。上游 authority 為 [Platform DEV-012 §§25～28](../../../Jenfu-Platform/ai-doc/specs/DEV-012-three-system-continuous-release-and-boundary-closure.md)，同步時完整文件 SHA-256=`b4ab9cc989962687d9f092b38b2f127879cb92de82bdd4000b5896d7c96d6e20`、§25～EOF SHA-256=`017d058d742a123e13379d3ac378d42c261cff193bc72c3e40f8643a887948fa`。第一個 owner write 已由本節、task、map與 [040-R2 QA](../qa/DEV-040-R2-independent-production-release-validation-plan.md) 同步完成。
+本節保留DEV-012 S1B OrgMaster owner slice的歷史v1內容；現行authority為§§25～29，不建立DEV-048，也不得修改或完成DEV-047。上游 authority 為 [Platform DEV-012 §§25～28](../../../Jenfu-Platform/ai-doc/specs/DEV-012-three-system-continuous-release-and-boundary-closure.md)，同步時完整文件 SHA-256=`8cfda8b9ce29d5c5f03cd7e240a7adb0c20c51f4a2336d2c6ad3dde3119e838b`、§25～EOF SHA-256=`f3165d43eb703a67894f279e4026fdc17d416c0f78df4ff874999fce52d4296f`。第一個 owner write 已由本節、task、map與 [040-R2 QA](../qa/DEV-040-R2-independent-production-release-validation-plan.md) 同步完成。
 
 ### 24.1 Owner boundary and exact target
 
