@@ -17,7 +17,7 @@ test('S1B-21 OrgMaster production profile preserves staging boundary', () => {
   assert.equal(profile.sideEffects.accountEnrollment, 'DISABLED')
 })
 
-test('S1B-21 OrgMaster WIF provider display name fits provider limit', () => {
+test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   const source = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/workload-identity.tf', import.meta.url), 'utf8')
   const displayName = source.match(/display_name\s*=\s*"([^"]+)"/u)?.[1]
   assert.ok(displayName)
