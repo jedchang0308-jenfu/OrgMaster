@@ -4,7 +4,7 @@
 - 狀態：`Fixed 12 Owner Cases / NOT_RUN / DEV-012 S1B-21 Owner`
 - 日期：2026-09-08
 - 規格 authority：[DEV-040 §24](../specs/DEV-040-jenfu-platform-entitlement-user-integration.md)
-- 上游 authority：Platform DEV-012 §25；contract SHA-256=`47eb972c48549da73ca135509e99bdc8ae4463e87b81785abe8d6cfd8f54b95f`；§25～EOF SHA-256=`92fd6c7dfdfafee4b438c0ee9ce731d7463da46a7691f05061c54d58cb127507`
+- 上游 authority：Platform DEV-012 §§25～26；contract SHA-256=`c29974332ae0193bec330870b84a00766c6ae759b7d1522adc4faddc16490c3b`；§25～EOF SHA-256=`8a80235f2d54375738f89741ed93e1c341894113ffba91bfbed3320df8b1548b`
 
 ## 1. 目標與證據層級
 
@@ -53,3 +53,6 @@ git diff --check
 原十二案分母不變，但040-R2-05～12依DEV-012 §25重跑：single input須自動交接release intent→application digest＋migration bundle＋pinned runner→deployment capsule→migration→inactive candidate/tag→machine decision→activation→canonical→tag cleanup；IaC必含own production migration job與run binding；001～011 ledger／schema／ACL readback在candidate前完成；temporary tag只指exact inactive revision且不改general traffic。
 
 新增負例固定涵蓋intent預填未知facts、漏migration stage／job、staging runner冒production、execution done冒PASS、deployer取得migrator actAs／DDL、candidate無HTTP驗證入口、任意tag或LATEST authority、tag流量漂移／殘留、run中真人GO與CLI／workflow placeholder。第一次local owner PASS標`SUPERSEDED_BY_CONTRACT_V2`，全部v2 oracle與owner commands同source PASS前不得恢復S1B-21。
+## 6. DEV-012 §26 runtime bridge 驗證補充
+
+S1B-21／S1B-15須證明一容器holding baseline可透過已驗章runtime config建立`orgmaster`＋固定Cloud SQL proxy的兩容器0% candidate；缺proxy、mutable tag、非numeric Secret、漏plain env、錯VPC／runtime SA／probe／resource或一般traffic變更皆在provider write前FAIL。

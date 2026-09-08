@@ -1223,7 +1223,7 @@ Minimum acceptance：一般V2 UI／API無法建立`system_admin`；完整role po
 
 ## 24. `040-R2` OrgMaster independent continuous production release（2026-09-08）
 
-本節保留DEV-012 S1B OrgMaster owner slice的歷史v1內容；現行authority為§25，不建立DEV-048，也不得修改或完成DEV-047。上游 authority 為 [Platform DEV-012 §25](../../../Jenfu-Platform/ai-doc/specs/DEV-012-three-system-continuous-release-and-boundary-closure.md)，同步時完整文件 SHA-256=`47eb972c48549da73ca135509e99bdc8ae4463e87b81785abe8d6cfd8f54b95f`、§25～EOF SHA-256=`92fd6c7dfdfafee4b438c0ee9ce731d7463da46a7691f05061c54d58cb127507`。第一個 owner write 已由本節、task、map與 [040-R2 QA](../qa/DEV-040-R2-independent-production-release-validation-plan.md) 同步完成。
+本節保留DEV-012 S1B OrgMaster owner slice的歷史v1內容；現行authority為§§25～26，不建立DEV-048，也不得修改或完成DEV-047。上游 authority 為 [Platform DEV-012 §§25～26](../../../Jenfu-Platform/ai-doc/specs/DEV-012-three-system-continuous-release-and-boundary-closure.md)，同步時完整文件 SHA-256=`c29974332ae0193bec330870b84a00766c6ae759b7d1522adc4faddc16490c3b`、§25～EOF SHA-256=`8a80235f2d54375738f89741ed93e1c341894113ffba91bfbed3320df8b1548b`。第一個 owner write 已由本節、task、map與 [040-R2 QA](../qa/DEV-040-R2-independent-production-release-validation-plan.md) 同步完成。
 
 ### 24.1 Owner boundary and exact target
 
@@ -1266,3 +1266,6 @@ V2完成最多標`040-R2 Implementation Complete / S1B-21 PASS / S2 Gated`；fre
 OrgMaster production transport已對齊官方regional Cloud Build operation、Artifact Analysis `v1beta1 exportSBOM`與`discoveryOccurrenceId`、Cloud Run exact service/revision URI及GCS generation-bound immutable publication。Cloud Run service必須`reconciling=false`、terminal success且`observedGeneration=generation`；candidate revision缺Ready success或image digest不合即FAIL。Owner workflow維持唯一`releaseCapsuleRef`、九階段、Firebase refresh-token smoke、temporary tag cleanup與own-only rollback。
 
 首次cohort由Platform coordinator依`OrgMaster → AI-PDM → Platform`首先dispatchOrgMaster exact run；coordinator只讀OrgMaster terminal，OrgMaster deployer仍無sibling權限。OrgMaster APP_INFRA_A/B、controller及migration-runner digests、numeric Secret versions、WIF／GitHub production environment與S2 provider receipts必須在首次dispatch前完成；日常OrgMaster release不讀sibling source、state或build。Local owner PASS最多解鎖S2，不能冒充production readiness或LIVE_VERIFIED；DEV-047仍不在本次scope。
+## 27. DEV-012 §26 runtime template bridge
+
+OrgMaster continuous v2 candidate不再複製R1-04F的一容器holding template。`runtimeConfigRef`須由`config/release/dev040-orgmaster-independent-production.json`決定性建立完整`orgmaster`＋digest-pinned `cloud-sql-proxy`兩容器template，plain environment必須exact complete-set，Postgres URL與session pepper只允許own Secret ID及enabled numeric version。Owner build只可將`APPLICATION_IMAGE_DIGEST`替換為本repo immutable digest；holding traffic在candidate建立與0% tag加入後逐項不變。

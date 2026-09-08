@@ -1,8 +1,8 @@
 # OrgMaster 開發任務
 
 > **2026-09-08 DEV-040 `040-R2` continuous production release（current release authority）**：已依Platform
-> DEV-012 §25完成owner direct-doc-first；contract SHA-256=`47eb972c48549da73ca135509e99bdc8ae4463e87b81785abe8d6cfd8f54b95f`、
-> §25～EOF SHA-256=`92fd6c7dfdfafee4b438c0ee9ce731d7463da46a7691f05061c54d58cb127507`。狀態=
+> DEV-012 §§25～26完成owner direct-doc-first；contract SHA-256=`c29974332ae0193bec330870b84a00766c6ae759b7d1522adc4faddc16490c3b`、
+> §25～EOF SHA-256=`8a80235f2d54375738f89741ed93e1c341894113ffba91bfbed3320df8b1548b`。狀態=
 > `Implementation Complete / S1B-21 LOCAL_CONTRACT PASS / DEV-012 S2 Gated`。Production profile、001～011
 > manifest、exact-target guard、nine-stage workflow、IaC與abort controller已完成；下一步只做fresh S2 provider
 > 前置，不得修改／完成DEV-047、把staging profile改作production或把本機PASS冒充DB／traffic證據。
