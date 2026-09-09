@@ -34,7 +34,7 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2))
-  const profile = JSON.parse(await fs.readFile(path.join(root, 'config/release/dev040-orgmaster-independent-production.json'), 'utf8'))
+  const profile = JSON.parse(await fs.readFile(path.join(root, 'config/release/dev040-orgmaster-independent-production-v3.json'), 'utf8'))
   if (profile.productionData?.required !== true || repositorySlug(runGit(args.sourceRoot, ['remote', 'get-url', 'origin']))?.toLowerCase() !== 'jedchang0308-jenfu/orgmaster') fail('PRODUCTION_DATA_SOURCE_REPOSITORY_INVALID')
   if (runGit(root, ['rev-parse', 'HEAD']) !== args.sourceRevision || runGit(args.sourceRoot, ['rev-parse', 'HEAD']) !== args.sourceRevision || runGit(args.sourceRoot, ['status', '--porcelain=v1', '--untracked-files=all', '--', 'data']) !== '') fail('PRODUCTION_DATA_SOURCE_REVISION_MISMATCH')
   const inputFile = await fs.realpath(resolveOwnerInputPath(root, args.inputPath))
