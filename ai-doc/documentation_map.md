@@ -2,6 +2,8 @@
 
 > **2026-09-10 DEV-040 R2 V3 authority（current）**：official source固定為[OrgMaster](https://github.com/jedchang0308-jenfu/OrgMaster) `master`。Current owner docs為[DEV-040 §30](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與[040-R2 QA §7](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游為Platform DEV-012 §29，contract SHA-256=`857f8a94ab13f63071156f85e76e5c675b348588b1126c147e0e54b431b6e8c5`，owner profile SHA-256=`5233c5f7d425f0ec48413f9d105649429a7b7d292441b51a8634ee9058f2767c`。Canonical為provider-verified `https://orgmaster-prod-9536592944.asia-east1.run.app`；runtime fixed-value gate已納入current source。狀態=`Architecture Finalized / RD Tech Lead PASS / P0=0 / P1=0 / fresh S2 receipts required / Production NOT_RUN`。Custom domain／Hosting／shared edge只保留歷史／`RETAINED_UNUSED_EDGE`；TOTP與DEV-047不在scope。
 
+> **2026-09-10 DEV-040 R2 dependency gate refresh（current）**：全部直接Tiptap套件固定3.31.3，fresh production audit為`0 HIGH／0 CRITICAL`；owner／abort、529案full regression、DB boundary與雙build皆PASS。更舊master或R13 pre-fix receipt不得作本輪release authority。
+
 > **2026-09-08 DEV-040 `040-R2` V2 historical release entry**：權威為
 > [DEV-040 §24](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與
 > [040-R2 QA](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游Platform DEV-012契約
