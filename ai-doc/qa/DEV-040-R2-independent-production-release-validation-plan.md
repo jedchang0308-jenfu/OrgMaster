@@ -3,10 +3,10 @@
 > **2026-09-08 DEV-012 S1C amendment（V2 historical；current見§7）**：當時新增official repo=`jedchang0308-jenfu/OrgMaster`／branch=`master`、owner source/runtime/intent chain、shared-LB host binding、internal verifier job、numeric smoke Secret、local data inventory→encrypted handoff→import→reconcile／restore，以及一筆明確human principal one-time bootstrap的驗證。Public `run.app`在該V2方案為FAIL；此入口判定已由§7 V3 direct-run contract取代。其data／principal與source provenance仍保留，local結果不得作current release authority。
 
 - 文件成熟度：`V3 Architecture Finalized / RD Tech Lead PASS / Owner QA Contract Executed；V1／V2 Historical`
-- 狀態：`V3 Owner PASS / S1B-21 PASS / DEV-012 S1C 8／8 PASS / S2 Unlocked, Not Started / Production NOT_RUN`
+- 狀態：`V3 Owner PASS / S1B-21 PASS / DEV-012 S1C 8／8 PASS / S2 In Progress / Production NOT_RUN`
 - 日期：2026-09-09
 - 規格 authority：[DEV-040 §30](../specs/DEV-040-jenfu-platform-entitlement-user-integration.md)
-- 上游 authority：Platform DEV-012 §29；contract SHA-256=`d88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05`
+- 上游 authority：Platform DEV-012 §29；contract SHA-256=`857f8a94ab13f63071156f85e76e5c675b348588b1126c147e0e54b431b6e8c5`
 
 ## 1. 目標與證據層級
 
