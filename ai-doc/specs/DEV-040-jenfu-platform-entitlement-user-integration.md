@@ -1,11 +1,11 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
-文件成熟度：`RD Contract Ready；040-R2 = Implementation Complete / DEV-012 S1B-21 Local Owner QC PASS / S2 Gated；040-ID1A／040-ID1B = Local Implementation Complete / Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice = 005-S0～S4B Local-Isolated PASS / 005-S5 Local Targeted PASS；JMS-PLATFORM-008 OrgMaster slice = Local S0～S3＋C1 Implemented / Targeted QA-QC PASS / Production Release Gated；JMS-PLATFORM-009 OrgMaster slice = 009-S0～S4 Local-Isolated Complete / Targeted QA-QC PASS / 009-R1 Release Gate Required / Production Release Gated；DEV-040 principal admission projection = Candidate Verified；DEV-004 = 004-S0～S5 Local PASS；DEV-006 persistence = Production-Bound App Boundary PASS / Production Switch Blocked`
-狀態：`040-R2 continuous production release owner slice`已依Platform DEV-012 §23完成owner source、IaC、workflow、runner、abort controller與本機驗證；其餘既有local／isolated完成證據不變。040-R2完成S1B source與owner QC後只解鎖DEV-012 S2，不代表Billing／quota、正式migration、candidate或traffic已完成。production human link、shared-login retirement、active policy、persistent product switch、entitlement cutover與release仍阻塞
+文件成熟度：`040-R2 V3 = RD Implementation Ready + 架構定案：已定案 / RD Tech Lead PASS / P0=0 / P1=0 / Implementation Complete / DEV-012 S1B-21 PASS / S1C 8／8 PASS / S2 Unlocked；其餘DEV-040 slices維持既有狀態`
+狀態：`040-R2 continuous production release owner slice`已依Platform DEV-012 §29完成V3 owner profile、ten-stage workflow、exact candidate origin、entrypoint／rollback與本機驗證；其餘既有local／isolated完成證據不變。S1C完成只解鎖S2，不代表Billing／quota、正式migration、candidate、entrypoint或traffic已完成。Production data／principal、persistent authority與release仍受S2／S3 gate。
 節點類型：開發點
 優先級：P0
 風險等級：High
-日期：2026-09-08
+日期：2026-09-09
 來源 ID：`USER-2026-08-30-JENFU-PLATFORM-HCS-4A-5A-6B`、`USER-2026-08-30-JENFU-PLATFORM-HCS-ROLE-RESET-CUTOVER-ADMIN-SCOPE`、`USER-2026-08-30-JENFU-PLATFORM-HCS-PRESTAGE-PILOT-LEGACY-OBSERVATION`、`USER-2026-08-30-JENFU-PLATFORM-HCS-SUPERADMIN-ZERO-TOLERANCE-OBSERVATION-WINDOW`、`USER-2026-09-01-JENFU-ACCOUNT-TAXONOMY-1B-2A-3D`、`USER-2026-09-01-DEV040-ONE-TIME-DIRECT-UUIDV7-REKEY-EXCEPTION`
 父開發點：DEV-037
 跨 repository 交付：`C:\VIBE CODING\Jenfu-Management-system\ai-doc\dev_task.md` 的 DEV-001／DEV-004～009
@@ -1223,7 +1223,7 @@ Minimum acceptance：一般V2 UI／API無法建立`system_admin`；完整role po
 
 ## 24. `040-R2` OrgMaster independent continuous production release（2026-09-08）
 
-本節保留DEV-012 S1B OrgMaster owner slice的歷史v1內容；現行authority為§§25～29，不建立DEV-048，也不得修改或完成DEV-047。上游 authority 為 [Platform DEV-012 §§25～28](../../../Jenfu-Platform/ai-doc/specs/DEV-012-three-system-continuous-release-and-boundary-closure.md)，同步時完整文件 SHA-256=`73bfd85abf017f858796004f69b740d45838a1bfcd25cafcf845b4fb530f9efa`、§25～EOF SHA-256=`29f5af2e7d3e699cbec9f1bdc2e3d9f94ca55658e192cbcdf7ff18d9723a369e`。第一個 owner write 已由本節、task、map與 [040-R2 QA](../qa/DEV-040-R2-independent-production-release-validation-plan.md) 同步完成。
+本節保留DEV-012 S1B OrgMaster owner slice的歷史v1內容；current V3 authority為§30，不建立DEV-048，也不得修改或完成DEV-047。V1／V2的transport與data契約保留歷史，入口與owner stage由Platform DEV-012 §29及本文件§30前向取代。
 
 ### 24.1 Owner boundary and exact target
 
@@ -1261,16 +1261,16 @@ Owner commands固定 `npm run test:dev-040:r2`、`npm run qc:dev-040:r2`、`npm 
 
 V2完成最多標`040-R2 Implementation Complete / S1B-21 PASS / S2 Gated`；fresh Billing／quota／auth與production release證據仍另驗。
 
-## 26. DEV-012 §§25.6～25.8 implementation conformance（2026-09-08）
+## 26. DEV-012 §§25.6～25.8 implementation conformance（V3 supporting baseline）
 
 OrgMaster production transport已對齊官方regional Cloud Build operation、Artifact Analysis `v1beta1 exportSBOM`與`discoveryOccurrenceId`、Cloud Run exact service/revision URI及GCS generation-bound immutable publication。Cloud Run service必須`reconciling=false`、terminal success且`observedGeneration=generation`；candidate revision缺Ready success或image digest不合即FAIL。Owner workflow維持唯一`releaseCapsuleRef`、九階段、Firebase refresh-token smoke、temporary tag cleanup與own-only rollback。
 
 首次cohort由Platform coordinator依`OrgMaster → AI-PDM → Platform`首先dispatchOrgMaster exact run；coordinator只讀OrgMaster terminal，OrgMaster deployer仍無sibling權限。OrgMaster APP_INFRA_A/B、controller及migration-runner digests、numeric Secret versions、WIF／GitHub production environment與S2 provider receipts必須在首次dispatch前完成；日常OrgMaster release不讀sibling source、state或build。Local owner PASS最多解鎖S2，不能冒充production readiness或LIVE_VERIFIED；DEV-047仍不在本次scope。
-## 27. DEV-012 §26 runtime template bridge
+## 27. DEV-012 §26 runtime template bridge（V3 supporting baseline）
 
 OrgMaster continuous v2 candidate不再複製R1-04F的一容器holding template。`runtimeConfigRef`須由`config/release/dev040-orgmaster-independent-production.json`決定性建立完整`orgmaster`＋digest-pinned `cloud-sql-proxy`兩容器template，plain environment必須exact complete-set，Postgres URL與session pepper只允許own Secret ID及enabled numeric version。Owner build只可將`APPLICATION_IMAGE_DIGEST`替換為本repo immutable digest；holding traffic在candidate建立與0% tag加入後逐項不變。
 
-## 28. DEV-012 §27 production-entry closure owner amendment
+## 28. DEV-012 §27 production-entry closure owner amendment（V2 predecessor；current見§30）
 
 OrgMaster official release repository固定為`jedchang0308-jenfu/OrgMaster`、branch=`master`。本owner新增source-freeze／runtime-config／release-intent producer、Workflows internal candidate smoke，以及production data inventory／import／reconciliation與one-time first-principal bootstrap。所有工具只讀own tree、明列local authority paths、own bucket／schema及verified shared receipts；producer input path固定在own `output/dev-012/inputs`且resolved path不可越界，不讀或修改sibling source／state。
 
@@ -1280,7 +1280,7 @@ Local ignored business data不得進image或git archive。S2先建立self-hashed
 
 本節屬`012-S1C`；owner source與tests完成最多標`S1C owner PASS / S2 Gated`。正式data apply、principal mutation、DNS／TLS、traffic及LIVE_VERIFIED仍須native S2／S3 evidence。
 
-## 29. DEV-012 §28 executable production-entry amendment（current authority）
+## 29. DEV-012 §28 executable production-entry amendment（V2 predecessor；current由§30取代）
 
 OrgMaster owner source現已實作own prerequisite producer、source-frozen Terraform saved-plan gate／executor、完整兩容器runtime config、Workflows internal OIDC candidate smoke、production data inventory／import／CAS／reconciliation與Email/Password前端；本次production profile不啟用TOTP。正式source只接受clean、remote-reachable的`jedchang0308-jenfu/OrgMaster@master` exact commit；APP_INFRA_B plan必綁該revision、provider-readback foundation manifest及Artifact Registry immutable controller／migration-runner digests。
 
@@ -1288,4 +1288,19 @@ Production data authority固定盤點116個workspace versions、current manifest
 
 第一位production principal由本機identity bootstrap建立並驗證exactly one verified password user、沒有enrolled MFA factor且production TOTP provider為disabled，再輸出不含PII/Secret的first-principal input。Firebase refresh token只以payload存在OrgMaster GCP Secret Manager numeric version與GitHub `production` environment secret：前者僅供candidate Workflows smoke SA，後者僅供owner canonical smoke；source、一般runtime env、log、receipt、coordinator與sibling不得取得值。
 
-OrgMaster是61-connection序列的第一個owner。Fresh Billing固定驗linked projects=5、planned new links=0、TWD3,200 budget與15-row quota；R1 capacity及N1C staging須用current denominator。Local source/tests最多標`S1C owner PASS / S2 Gated`；production intent仍須等待identity/data、DNS／TLS、notification、foundation與OrgMaster APP_INFRA_A/B native receipts及`remainingHumanAction=0`，正式run中不得要求真人ack或固定觀察期。
+OrgMaster是61-connection序列的第一個owner。Fresh Billing固定驗linked projects=5、planned new links=0、TWD3,200 budget與15-row quota；R1 capacity及N1C staging須用current denominator。V2當時production intent另等待DNS／TLS；V3 current由§30移除此custom-domain前置，但identity/data、notification、foundation、OrgMaster APP_INFRA_A/B native receipts及`remainingHumanAction=0`仍必須完成，正式run中不得要求真人ack或固定觀察期。
+
+## 30. `040-R2 CONTINUOUS_NO_DWELL_V3_DIRECT_RUN_APP` architecture-final amendment（current authority）
+
+分類：`Human Confirmed / Intentional replacement / Architecture Finalized / RD Tech Lead PASS / P0=0 / P1=0 / V3 Implementation Complete / S1B-21 PASS / DEV-012 S1C 8／8 PASS / S2 Unlocked, Not Started / Production NOT_RUN`。本節前向取代§§24～29中custom-domain、shared edge、nine-stage與缺少`entrypoint` stage的current指令；source-freeze、兩容器runtime、001～011 migration、production data／principal bootstrap、Billing／quota、Secret與provider provenance契約仍有效。上游唯一architecture authority為Platform DEV-012 §29。
+
+- 真正問題是OrgMaster release不應依賴第三方DNS或central edge authority。最小架構固定使用provider readback所得`https://orgmaster-prod-9536592944.asia-east1.run.app`；V3 owner profile=`config/release/dev040-orgmaster-independent-production-v3.json`，SHA-256=`b5ef110f0dfc431704f41ff05324966a8e0f868946a8c6a8b67c0ecef351dbba`。此profile是OrgMaster endpoint與entry policy唯一deploy authority；Platform只hash-ref及join receipt。
+- Workflow固定`prepare→build→migrate→candidate→entrypoint→verify→decision→activate→canonical→finalize`。Candidate只建立inactive exact revision與0% tag，並注入唯一`ORGMASTER_RELEASE_CANDIDATE_ORIGIN`；canonical及candidate拒絕wildcard、legacy hash-host、wrong project／service／tag／region、port、userinfo與path。
+- `entrypoint`以fresh etag PATCH exact mask `ingress,defaultUriDisabled,invokerIamDisabled`，target為ingress all、default URL enabled、`invokerIamDisabled=true`；before／after template與traffic必須相同。No-op不PATCH，412／timeout／unknown outcome先readback。失敗固定own traffic rollback→tag cleanup→entry baseline restore，中央及sibling不得代改。
+- Public Cloud Run entry只解除infrastructure IAM攔截；OrgMaster既有Firebase identity、host-only session、CSRF、permission、001～011 forward-only migration、`orgmaster_core／orgmaster_contract`、one-time principal CAS、production data reconciliation與AAL2-only fail-closed契約不變。TOTP、DEV-047、existing product UI與migration SQL均no-touch。
+- Existing custom domain、Hosting、shared LB／DNS／certificate只作`RETAINED_UNUSED_EDGE`，不在serving或rollback path，本次不刪除、不修改、不解除Billing。移除需三app `LIVE_VERIFIED`、zero traffic／reference與另案exact-resource retirement gate。
+- 實作模型可決定不改契約的局部命名、純函式分解與fixture；不得改endpoint、stage order、entry mask、origin allowlist、migration／data authority、principal semantics、owner權限或candidate順序。命中任一項即停止回送Platform DEV-012規劃authority。
+
+Fresh evidence由Platform `output/dev-012/s1c/2026-09-09T080312-775Z/qc-report.json`提供，SHA-256=`1761f73d8078da01c5749ddc0a9e963e1a0b0ce952b11079d2090135ea1716e0`；contract=`d88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05`。S1A 32／32、S1B 24／24、S1C 8／8，OrgMaster DB boundary、build／typecheck及diff check PASS，provider／DB／traffic／credential mutation與runtime residue=0。技術主管結論=`PASS / Architecture Finalized / P0=0 / P1=0`，但`releaseAuthority=false`。
+
+Current execution boundary只到DEV-012 S2：fresh remote source freeze、Billing／budget／quota／capacity、Identity／entry baseline、notification／numeric Secret、foundation、OrgMaster APP_INFRA_A/B、encrypted data handoff及first-principal inputs。S3才可執行production migration／data import／CAS、candidate、entrypoint、traffic與canonical smoke；任一UNKNOWN、source/profile drift、`remainingHumanAction>0`或需要改上述架構契約即停止。

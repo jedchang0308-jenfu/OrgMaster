@@ -1,12 +1,12 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
-> **2026-09-08 DEV-012 S1C amendment**：新增official repo=`jedchang0308-jenfu/OrgMaster`／branch=`master`、owner source/runtime/intent chain、shared-LB host binding、internal verifier job、numeric smoke Secret、local data inventory→encrypted handoff→import→reconcile／restore，以及一筆明確human principal one-time bootstrap的驗證。Local JSON進image/git、漏資料類別、DDL runner冒data import、猜登入者／DEV issuer／shared account、public `run.app`、sibling state或Secret payload皆FAIL。納入中央`S1C-01／05～12`，不預填production PASS。
+> **2026-09-08 DEV-012 S1C amendment（V2 historical；current見§7）**：當時新增official repo=`jedchang0308-jenfu/OrgMaster`／branch=`master`、owner source/runtime/intent chain、shared-LB host binding、internal verifier job、numeric smoke Secret、local data inventory→encrypted handoff→import→reconcile／restore，以及一筆明確human principal one-time bootstrap的驗證。Public `run.app`在該V2方案為FAIL；此入口判定已由§7 V3 direct-run contract取代。其data／principal與source provenance仍保留，local結果不得作current release authority。
 
-- 文件成熟度：`QA Contract Ready`
-- 狀態：`Fixed 12 Owner Cases / NOT_RUN / DEV-012 S1B-21 Owner`
-- 日期：2026-09-08
-- 規格 authority：[DEV-040 §24](../specs/DEV-040-jenfu-platform-entitlement-user-integration.md)
-- 上游 authority：Platform DEV-012 §§25～28；contract SHA-256=`73bfd85abf017f858796004f69b740d45838a1bfcd25cafcf845b4fb530f9efa`；§25～EOF SHA-256=`29f5af2e7d3e699cbec9f1bdc2e3d9f94ca55658e192cbcdf7ff18d9723a369e`
+- 文件成熟度：`V3 Architecture Finalized / RD Tech Lead PASS / Owner QA Contract Executed；V1／V2 Historical`
+- 狀態：`V3 Owner PASS / S1B-21 PASS / DEV-012 S1C 8／8 PASS / S2 Unlocked, Not Started / Production NOT_RUN`
+- 日期：2026-09-09
+- 規格 authority：[DEV-040 §30](../specs/DEV-040-jenfu-platform-entitlement-user-integration.md)
+- 上游 authority：Platform DEV-012 §29；contract SHA-256=`d88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05`
 
 ## 1. 目標與證據層級
 
@@ -58,3 +58,20 @@ git diff --check
 ## 6. DEV-012 §26 runtime bridge 驗證補充
 
 S1B-21／S1B-15須證明一容器holding baseline可透過已驗章runtime config建立`orgmaster`＋固定Cloud SQL proxy的兩容器0% candidate；缺proxy、mutable tag、非numeric Secret、漏plain env、錯VPC／runtime SA／probe／resource或一般traffic變更皆在provider write前FAIL。
+
+## 7. `CONTINUOUS_NO_DWELL_V3_DIRECT_RUN_APP` current QA contract and result
+
+本節依SPEC §30及Platform DEV-012 §29前向取代§§4～6中custom-domain、shared edge與nine-stage的current oracle；原12 owner cases保留基線，V3 delta由Platform S1C-01～08固定驗證。
+
+| Gate | Current oracle | 結果 |
+|---|---|---|
+| Owner authority | V3 profile由OrgMaster擁有且hash exact；central只hash-ref；V2 bytes不變 | PASS |
+| Control flow | 十stage，`candidate→entrypoint→verify` receipt鏈不斷，run中human action=0 | PASS |
+| Entrypoint | fresh etag、exact三欄mask、template／traffic零漂移、no-op與unknown readback | PASS |
+| Origin／Auth | canonical＋單一exact `ORGMASTER_RELEASE_CANDIDATE_ORIGIN`；wildcard／legacy host拒絕；session／CSRF／permission不退化 | PASS |
+| Data／migration | 001～011、data inventory／reconciliation、first-principal CAS及cross-schema denial不被entry變更繞過 | PASS |
+| Recovery | own traffic rollback→tag cleanup→entry baseline restore；already-direct baseline為no-op | PASS |
+| Edge／scope | Hosting／LB／DNS=`RETAINED_UNUSED_EDGE`；TOTP、DEV-047、product UI及sibling均no-touch | PASS |
+| Engineering exit | owner test、DB boundary、build／typecheck、diff、central S1C aggregate與cleanup | PASS |
+
+Current evidence=`../../../Jenfu-Platform/output/dev-012/s1c/2026-09-09T080312-775Z/qc-report.json`，SHA-256=`1761f73d8078da01c5749ddc0a9e963e1a0b0ce952b11079d2090135ea1716e0`。結果S1A 32／32、S1B 24／24、S1C 8／8，scope=`LOCAL_RECORDED_PROVIDER`、`releaseAuthority=false`；只證明Architecture Finalized與V3 source implementation。正式data apply、principal mutation、Billing／quota、candidate、entrypoint、traffic與canonical仍`NOT_RUN`。

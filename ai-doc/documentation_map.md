@@ -1,9 +1,8 @@
 # 文件地圖
 
-> **2026-09-08 DEV-012 S1C production-entry correction（current）**：official release source固定為
-> `https://github.com/jedchang0308-jenfu/OrgMaster`的`master`。[DEV-040 §§28～29](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)的own native source/runtime/intent producer、Workflows internal OIDC smoke、production data import/reconciliation與one-time human principal bootstrap均已完成本機實作；canonical由shared HTTPS LB提供。Current=`S1C owner RD Implementation Complete / LOCAL_CONTRACT PASS / S2 Upfront Prerequisites In Progress`；DEV-047不在scope。
+> **2026-09-09 DEV-040 R2 V3 authority（current）**：official source固定為[OrgMaster](https://github.com/jedchang0308-jenfu/OrgMaster) `master`。Current owner docs為[DEV-040 §30](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與[040-R2 QA §7](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游為Platform DEV-012 §29，contract SHA-256=`d88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05`。Canonical為provider-verified `https://orgmaster-prod-9536592944.asia-east1.run.app`；workflow為十stage並含app-owned entrypoint。狀態=`Architecture Finalized / RD Tech Lead PASS / P0=0 / P1=0 / V3 Implementation Complete / S1B-21 PASS / DEV-012 S1C 8／8 PASS / S2 Unlocked, Not Started / Production NOT_RUN`。Custom domain／Hosting／shared edge只保留歷史／`RETAINED_UNUSED_EDGE`；TOTP與DEV-047不在scope。
 
-> **2026-09-08 DEV-040 `040-R2` current release entry**：權威為
+> **2026-09-08 DEV-040 `040-R2` V2 historical release entry**：權威為
 > [DEV-040 §24](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與
 > [040-R2 QA](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游Platform DEV-012契約
 > SHA-256=`73bfd85abf017f858796004f69b740d45838a1bfcd25cafcf845b4fb530f9efa`、§25～EOF=

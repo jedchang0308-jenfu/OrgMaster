@@ -1,12 +1,8 @@
 # OrgMaster 開發任務
 
-> **2026-09-08 DEV-012 S1C production-entry correction（current）**：official release source固定為
-> `jedchang0308-jenfu/OrgMaster@master`。S1B-21 LOCAL_CONTRACT PASS保留，但live audit確認仍缺own native
-> source/runtime/intent producer、internal candidate verifier、local authority資料import/reconciliation及第一位production
-> human principal bootstrap。DEV-040 §§28～29 owner source與QC已完成；current=
-> `012-S1C owner RD Implementation Complete / LOCAL_CONTRACT PASS / S2 Upfront Prerequisites In Progress`，DEV-047仍不在scope。
+> **2026-09-09 DEV-040 R2 V3 architecture-final owner handoff（current）**：official release source固定為`jedchang0308-jenfu/OrgMaster@master`；canonical為provider-verified `https://orgmaster-prod-9536592944.asia-east1.run.app`。DEV-040 §30已固定V3 owner profile、ten-stage workflow、exact candidate origin、entrypoint／rollback與data／principal不變條件；custom domain、Hosting與shared LB只保留歷史／`RETAINED_UNUSED_EDGE`，TOTP與DEV-047不在scope。Current=`Architecture Finalized / RD Tech Lead PASS / P0=0 / P1=0 / V3 Implementation Complete / S1B-21 PASS / DEV-012 S1C 8／8 PASS / S2 Unlocked, Not Started / Production NOT_RUN`；本機證據`releaseAuthority=false`，下一步只依Platform DEV-012 §29執行fresh S2 provider prerequisites。
 
-> **2026-09-08 DEV-040 `040-R2` continuous production release（current release authority）**：已依Platform
+> **2026-09-08 DEV-040 `040-R2` continuous production release（V2 historical authority）**：已依Platform
 > DEV-012 §§25～28完成owner direct-doc sync；contract SHA-256=`73bfd85abf017f858796004f69b740d45838a1bfcd25cafcf845b4fb530f9efa`、
 > §25～EOF SHA-256=`29f5af2e7d3e699cbec9f1bdc2e3d9f94ca55658e192cbcdf7ff18d9723a369e`。狀態=
 > `Implementation Complete / S1B-21 LOCAL_CONTRACT PASS / DEV-012 S2 Gated`。Production profile、001～011
