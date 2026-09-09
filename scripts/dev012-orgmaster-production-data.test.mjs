@@ -7,7 +7,7 @@ const H40 = 'a'.repeat(40)
 const H64 = 'b'.repeat(64)
 const NOW = '2026-09-08T01:00:00.000Z'
 const releaseId = 'REL-ORG-001'
-const identityEvidence = { schemaVersion: 'jenfu.dev012.firebase-identity-readback.v1', status: 'PASS', releaseAuthority: true, projectId: 'jenfu-platform-prod', uid: 'firebase-user-001', emailSha256: sha256('owner@example.com'), mfaEnrolled: false, assuranceLevel: 'aal1', totpProviderState: 'DISABLED' }
+const identityEvidence = { schemaVersion: 'jenfu.dev012.firebase-identity-readback.v1', status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_PROVIDER', projectId: 'jenfu-platform-prod', issuer: ORGMASTER_PRODUCTION_DATA.firebaseIssuer, uid: 'firebase-user-001', emailSha256: sha256('owner@example.com'), emailVerified: true, firstFactor: 'password', mfaEnrolled: false, mfaFactor: null, assuranceLevel: 'aal1', assuranceEvidence: 'SIGNED_ID_TOKEN_AFTER_PASSWORD_SIGNIN', credentialMaterialPresent: false }
 const input = { employeeId: 'employee-1', email: 'owner@example.com', firebaseUid: identityEvidence.uid, issuer: ORGMASTER_PRODUCTION_DATA.firebaseIssuer, identityEvidenceRef: { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/identity.json', sha256: H64 }, authorizedBy: 'OWNER_EXPLICIT_DECISION' }
 
 function catalogFixture() {
@@ -27,6 +27,8 @@ test('first-principal manifest requires an explicit employee and provider-proven
   assert.equal('email' in value, false)
   assertFirstPrincipalBootstrap(value, { releaseId, sourceRevision: H40 })
   assert.throws(() => buildFirstPrincipalBootstrap({ releaseId, sourceRevision: H40, employeeIds: new Set(['employee-1']), input, identityEvidence: { ...identityEvidence, mfaEnrolled: true, assuranceLevel: 'aal2' }, observedAt: NOW }), /FIRST_PRINCIPAL_IDENTITY_EVIDENCE_INVALID/)
+  assert.throws(() => buildFirstPrincipalBootstrap({ releaseId, sourceRevision: H40, employeeIds: new Set(['employee-1']), input, identityEvidence: { ...identityEvidence, mfaFactor: 'totp' }, observedAt: NOW }), /FIRST_PRINCIPAL_IDENTITY_EVIDENCE_INVALID/)
+  assert.throws(() => buildFirstPrincipalBootstrap({ releaseId, sourceRevision: H40, employeeIds: new Set(['employee-1']), input, identityEvidence: { ...identityEvidence, credentialMaterialPresent: true }, observedAt: NOW }), /FIRST_PRINCIPAL_IDENTITY_EVIDENCE_INVALID/)
   assert.throws(() => buildFirstPrincipalBootstrap({ releaseId, sourceRevision: H40, employeeIds: new Set(['employee-1']), input: { ...input, email: 'not-an-email' }, identityEvidence, observedAt: NOW }), /FIRST_PRINCIPAL_INPUT_INVALID/)
   assert.throws(() => buildFirstPrincipalBootstrap({ releaseId, sourceRevision: H40, employeeIds: new Set(['employee-1']), input: { ...input, identityEvidenceRef: { uri: 'gs://another-bucket/receipts/identity.json', sha256: H64 } }, identityEvidence, observedAt: NOW }), /PRODUCTION_DATA_REF_INVALID/)
 })
