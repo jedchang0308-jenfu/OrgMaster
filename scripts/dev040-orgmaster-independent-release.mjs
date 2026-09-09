@@ -7,18 +7,19 @@ import { fileURLToPath } from 'node:url'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { createOwnerTransport } from './lib/dev012-owner-release-runtime.mjs'
-import { createGitArchive, executeOwnerStage, parseOwnerStageArgs } from './lib/dev012-owner-stage-executor.mjs'
+import { createGitArchive, executeOwnerStage, parseOwnerStageArgs, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const profilePath = 'config/release/dev040-orgmaster-independent-production-v3.json'
 
 async function main() {
-  const [profileBytes, n1c] = await Promise.all([fs.readFile(path.join(root, 'config/release/dev040-orgmaster-independent-production-v3.json')), fs.readFile(path.join(root, 'config/dev-010/n1c-orgmaster.json'), 'utf8').then(JSON.parse)])
+  const [profileBytes, n1c] = await Promise.all([fs.readFile(path.join(root, profilePath)), fs.readFile(path.join(root, 'config/dev-010/n1c-orgmaster.json'), 'utf8').then(JSON.parse)])
   const profile = JSON.parse(profileBytes.toString('utf8'))
   assertDev040V3Profile(profile, n1c)
   const args = parseOwnerStageArgs(process.argv.slice(2), profile.artifact.releaseBucket)
   const transport = createOwnerTransport({ token: process.env.GOOGLE_OAUTH_ACCESS_TOKEN ?? '' })
   const result = await executeOwnerStage({
-    ...args, profile, profileSha256: createHash('sha256').update(profileBytes).digest('hex'), transport, validateIntent: assertDev040ReleaseIntent,
+    ...args, profile, profileSha256: createHash('sha256').update(readGitBlob(root, profilePath)).digest('hex'), transport, validateIntent: assertDev040ReleaseIntent,
     createSourceArchive: async (sourceRevision) => createGitArchive(root, sourceRevision),
     buildMigrationBundle: async (sourceRevision) => {
       const files = new Map(await Promise.all(profile.migrations.entries.map(async (entry) => [entry.path, await fs.readFile(path.join(root, ...entry.path.split('/')))])))

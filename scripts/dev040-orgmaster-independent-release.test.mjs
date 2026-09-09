@@ -2,10 +2,13 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import test, { after } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
 import { assertRuntimeConfig, buildRuntimeConfig } from './lib/dev012-owner-release-runtime.mjs'
+import { readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 
+const root = fileURLToPath(new URL('..', import.meta.url))
 const read = (file) => JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
 const profile = read('config/release/dev040-orgmaster-independent-production-v3.json')
 const n1c = read('config/dev-010/n1c-orgmaster.json')
@@ -25,9 +28,9 @@ after(() => {
     'server/orgmasterAuthApi.ts',
     '.github/workflows/deploy-orgmaster-independent-production.yml',
     'package.json',
-  ].map((file) => ({ file, sha256: sha256(fs.readFileSync(new URL(`../${file}`, import.meta.url))) }))
-  const profileBytes = fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url))
-  const historicalProfileBytes = fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production.json', import.meta.url))
+  ].map((file) => ({ file, sha256: sha256(readGitBlob(root, file)) }))
+  const profileBytes = readGitBlob(root, 'config/release/dev040-orgmaster-independent-production-v3.json')
+  const historicalProfileBytes = readGitBlob(root, 'config/release/dev040-orgmaster-independent-production.json')
   const endpoint = {
     projectId: profile.target.projectId,
     projectNumber: profile.target.projectNumber,
