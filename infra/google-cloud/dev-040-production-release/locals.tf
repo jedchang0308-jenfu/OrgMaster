@@ -12,7 +12,7 @@ locals {
   candidate_smoke_secret         = "orgmaster-prod-smoke-firebase-refresh-token"
   candidate_smoke_probe_path     = "/api/orgmaster/preferences/workbench"
   candidate_smoke_negative_path  = "/api/orgmaster/preferences/workbench"
-  candidate_smoke_image_pattern  = "^asia-east1-docker\\.pkg\\.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:[a-f0-9]{64}$"
+  candidate_smoke_image_pattern  = "^asia-east1-docker[.]pkg[.]dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:[a-f0-9]{64}$"
   receipt_prefix                 = "projects/_/buckets/${var.release_bucket_name}/objects/receipts/"
   control_prefix                 = "projects/_/buckets/${var.release_bucket_name}/objects/control/"
   source_prefix                  = "projects/_/buckets/${var.release_bucket_name}/objects/source/"
