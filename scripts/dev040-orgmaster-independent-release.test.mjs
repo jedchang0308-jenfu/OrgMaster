@@ -1,18 +1,65 @@
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
-import test from 'node:test'
+import test, { after } from 'node:test'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
-import { assertDev040R2Profile, assertDev040ReleaseIntent, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
+import { assertDev040ReleaseIntent, assertDev040V3Profile, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
 import { assertRuntimeConfig, buildRuntimeConfig } from './lib/dev012-owner-release-runtime.mjs'
 
 const read = (file) => JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
-const profile = read('config/release/dev040-orgmaster-independent-production.json')
+const profile = read('config/release/dev040-orgmaster-independent-production-v3.json')
 const n1c = read('config/dev-010/n1c-orgmaster.json')
 const H = 'a'.repeat(64)
 const ref = (name) => ({ uri: `gs://${profile.artifact.releaseBucket}/receipts/${name}.json`, sha256: H })
 
-test('S1B-21 OrgMaster production profile preserves staging boundary', () => {
-  assertDev040R2Profile(profile, n1c)
+const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex')
+
+after(() => {
+  if (process.env.DEV012_EMIT_OWNER_REPORT !== '1') return
+  const sources = [
+    'config/release/dev040-orgmaster-independent-production-v3.json',
+    'scripts/dev040-orgmaster-independent-release.mjs',
+    'scripts/lib/dev040-orgmaster-independent-release.mjs',
+    'scripts/lib/dev012-owner-release-runtime.mjs',
+    'scripts/lib/dev012-owner-stage-executor.mjs',
+    'server/orgmasterAuthApi.ts',
+    '.github/workflows/deploy-orgmaster-independent-production.yml',
+    'package.json',
+  ].map((file) => ({ file, sha256: sha256(fs.readFileSync(new URL(`../${file}`, import.meta.url))) }))
+  const profileBytes = fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url))
+  const historicalProfileBytes = fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production.json', import.meta.url))
+  const endpoint = {
+    projectId: profile.target.projectId,
+    projectNumber: profile.target.projectNumber,
+    region: profile.target.region,
+    serviceName: profile.target.serviceName,
+    canonicalOrigin: profile.target.canonicalOrigin,
+    entryPolicy: profile.target.entryPolicy,
+  }
+  console.log(`DEV012_OWNER_REPORT=${JSON.stringify({
+    schemaVersion: 'jenfu.dev012.s1c-owner-report.v1',
+    caseId: 'S1B-21',
+    contractVersion: profile.profileVersion,
+    contractSha256: profile.contractSha256,
+    sourceSnapshotSha256: sha256(Buffer.from(JSON.stringify(sources))),
+    sourceFiles: sources,
+    ownerApplicationId: 'orgmaster',
+    ownerProfileRef: 'config/release/dev040-orgmaster-independent-production-v3.json',
+    ownerProfileSha256: sha256(profileBytes),
+    historicalProfileRef: 'config/release/dev040-orgmaster-independent-production.json',
+    historicalProfileSha256: sha256(historicalProfileBytes),
+    ownerBoundary: { workflowJobs: profile.workflow.jobs, candidateOriginEnvironmentName: profile.environment.candidateOriginEnvironmentName, entrypointOperation: profile.operations.CONFIGURE_ENTRYPOINT, edge: profile.edge },
+    expectedEndpointTuple: endpoint,
+    observedEndpointTuple: endpoint,
+    evidenceRefs: ['npm:test:dev-040:r2'],
+    result: 'PASS',
+    failureCode: null,
+    cleanup: { providerMutations: 0, databaseMutations: 0, trafficMutations: 0, credentialReads: 0, runtimeResidue: 0 },
+  })}`)
+})
+
+test('S1B-21 OrgMaster v3 direct-run profile preserves staging boundary', () => {
+  assertDev040V3Profile(profile, n1c)
   assert.equal(n1c.target.environment, 'staging')
   assert.equal(profile.target.database, 'jenfu_prod')
   assert.equal(profile.sideEffects.accountEnrollment, 'DISABLED')
@@ -53,6 +100,7 @@ test('S1B-21 OrgMaster release intent is exact, owner-bound and immutable', () =
 test('S1B-21 OrgMaster single-capsule workflow and owner masks', () => {
   assert.equal(assertDev040WorkflowSource(fs.readFileSync(new URL('../.github/workflows/deploy-orgmaster-independent-production.yml', import.meta.url), 'utf8')), true)
   assert.equal(buildDev040Mutation({ operation: 'CREATE_CANDIDATE', service: 'orgmaster-prod', updateMask: 'template', revision: 'candidate-1', trafficPercent: 0, etag: 'e' }).trafficPercent, 0)
+  assert.equal(buildDev040Mutation({ operation: 'CONFIGURE_ENTRYPOINT', service: 'orgmaster-prod', updateMask: 'ingress,defaultUriDisabled,invokerIamDisabled', revision: null, trafficPercent: null, etag: 'e' }).updateMask, 'ingress,defaultUriDisabled,invokerIamDisabled')
   assert.equal(buildDev040CandidateTag({ service: 'orgmaster-prod', revision: 'orgmaster-prod-candidate-1', tag: `candidate-${'a'.repeat(12)}`, beforeTraffic: [{ revision: 'orgmaster-prod-prev', percent: 100 }], etag: 'e' }).traffic.at(-1).percent, 0)
   assert.throws(() => buildDev040Mutation({ operation: 'ACTIVATE', service: 'orgmaster-prod', updateMask: 'template,traffic', revision: 'candidate-1', trafficPercent: 100, etag: 'e' }), /MIXED_MUTATION_MASK/)
 })

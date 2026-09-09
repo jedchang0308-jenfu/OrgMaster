@@ -3,6 +3,7 @@ import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
 
 const H40 = /^[a-f0-9]{40}$/
 const H64 = /^[a-f0-9]{64}$/
+const V3_CONTRACT_SHA256 = 'd88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05'
 const REQUIRED_PLAIN_ENV = [
   'ORGMASTER_PERSISTENCE_MODE', 'ORGMASTER_PUBLIC_BASE_URL',
   'ORGMASTER_POSTGRES_POOL_MAX', 'ORGMASTER_POSTGRES_CONNECTION_TIMEOUT_MS',
@@ -30,15 +31,17 @@ export function assertDev040ReleaseIntent(value, profile) {
   return value
 }
 
-export function assertDev040R2Profile(profile, n1c) {
-  if (profile?.schemaVersion !== 'jenfu.dev040.orgmaster-continuous-release.v2' || profile.profileVersion !== 'CONTINUOUS_NO_DWELL_V2') fail('UNSUPPORTED_PROFILE')
+export function assertDev040V3Profile(profile, n1c) {
+  if (profile?.schemaVersion !== 'jenfu.dev040.orgmaster-continuous-release.v3' || profile.profileVersion !== 'CONTINUOUS_NO_DWELL_V3_DIRECT_RUN_APP' || profile.contractSha256 !== V3_CONTRACT_SHA256) fail('UNSUPPORTED_PROFILE')
   if (profile.application?.id !== 'orgmaster' || profile.application?.repository !== 'jedchang0308-jenfu/OrgMaster' || profile.application?.branch !== 'master') fail('SOURCE_SCOPE_MISMATCH')
   const target = profile.target || {}
-  if (target.projectId !== 'jenfu-platform-prod' || target.region !== 'asia-east1' || target.serviceName !== 'orgmaster-prod' || target.canonicalOrigin !== 'https://org.jenfu.com.tw' || target.databaseInstance !== 'jenfu-platform-prod-pg' || target.database !== 'jenfu_prod') fail('TARGET_MISMATCH')
-  if (profile.runtime?.poolMax !== 6 || profile.runtime?.maxInstances !== 1 || profile.artifact?.releaseBucket !== 'jenfu-platform-prod-orgmaster-release' || profile.state?.backendKey !== 'dev-040-r2/production-release/default.tfstate') fail('RUNTIME_OR_STATE_MISMATCH')
+  if (target.projectId !== 'jenfu-platform-prod' || target.projectNumber !== '9536592944' || target.region !== 'asia-east1' || target.serviceName !== 'orgmaster-prod' || target.canonicalOrigin !== 'https://orgmaster-prod-9536592944.asia-east1.run.app' || target.databaseInstance !== 'jenfu-platform-prod-pg' || target.database !== 'jenfu_prod' || JSON.stringify(target.entryPolicy) !== JSON.stringify({ ingress: 'INGRESS_TRAFFIC_ALL', defaultUriDisabled: false, invokerIamDisabled: true })) fail('TARGET_MISMATCH')
+  const runtime = profile.runtime || {}
+  if (runtime.containerName !== 'orgmaster' || runtime.cpu !== '1' || runtime.memory !== '512Mi' || runtime.port !== 8080 || runtime.concurrency !== 20 || runtime.timeoutSeconds !== 60 || runtime.maxInstances !== 1 || runtime.poolMax !== 6 || runtime.startupProbePath !== '/api/auth/mode' || runtime.cloudSqlConnectionName !== 'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg' || runtime.cloudSqlProxyContainer !== 'cloud-sql-proxy' || runtime.cloudSqlProxyImage !== 'gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0@sha256:fa4c7308245407157c5e9c4e16f1c0f1113899d6f29dc8f8be3e30efae86467f' || runtime.cloudSqlProxyPort !== 5432 || runtime.cloudSqlProxyMaximumConnections !== 24 || runtime.network !== 'jenfu-platform-prod-vpc' || runtime.subnet !== 'jenfu-platform-prod-runtime' || profile.artifact?.releaseBucket !== 'jenfu-platform-prod-orgmaster-release' || profile.state?.backendKey !== 'dev-040-r2/production-release/default.tfstate') fail('RUNTIME_OR_STATE_MISMATCH')
+  if (profile.identities?.smoke !== 'orgmaster-prod-smoke@jenfu-platform-prod.iam.gserviceaccount.com') fail('RUNTIME_OR_STATE_MISMATCH')
   if (profile.schemas?.releaseIntent !== 'jenfu.dev040.orgmaster-release-intent.v2' || profile.schemas?.deploymentCapsule !== 'jenfu.dev040.orgmaster-deployment-capsule.v2') fail('SCHEMA_PROFILE_MISMATCH')
   if (profile.workflow?.onlyInput !== 'releaseCapsuleRef' || profile.workflow?.concurrency !== 'production-release-orgmaster-prod') fail('WORKFLOW_CONTRACT_MISMATCH')
-  if (JSON.stringify(profile.workflow.jobs) !== JSON.stringify(['prepare', 'build', 'migrate', 'candidate', 'verify', 'decision', 'activate', 'canonical', 'finalize'])) fail('WORKFLOW_CONTRACT_MISMATCH')
+  if (JSON.stringify(profile.workflow.jobs) !== JSON.stringify(['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize'])) fail('WORKFLOW_CONTRACT_MISMATCH')
   if (profile.artifact?.migrationRunnerUri !== 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-migration-runner' || profile.artifact?.migrationBundlePrefix !== 'source/migration-bundles') fail('MIGRATION_ARTIFACT_MISMATCH')
   if (profile.build?.dockerBuilderImage !== 'gcr.io/cloud-builders/docker@sha256:3d00b6c1a9b862621c30fc74d4f2abfc62bcbdee631ed3febd31e7edbdf6252c' || profile.build?.dockerfile !== 'Dockerfile' || profile.build?.dockerTarget !== 'runner' || profile.build?.sourceArchiveFormat !== 'tar.gz' || profile.build?.requestedVerifyOption !== 'VERIFIED' || profile.build?.maximumAllowedSeverity !== 'MEDIUM' || !Number.isFinite(Date.parse(profile.build?.builderDigestObservedAt))) fail('BUILD_PROFILE_MISMATCH')
   if (profile.verification?.refreshTokenEnvironmentName !== 'DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN' || profile.verification?.firebaseApiKeyEnvironmentName !== 'DEV012_ORGMASTER_FIREBASE_API_KEY' || profile.verification?.authModePath !== '/api/auth/mode' || profile.verification?.sessionPath !== '/api/auth/firebase/session' || profile.verification?.mePath !== '/api/auth/me' || profile.verification?.logoutPath !== '/api/auth/logout' || profile.verification?.authenticatedProbes?.length !== 1 || profile.verification?.negativeProbes?.length !== 1) fail('VERIFICATION_PROFILE_MISMATCH')
@@ -49,12 +52,14 @@ export function assertDev040R2Profile(profile, n1c) {
   if (JSON.stringify([...profile.environment.requiredPlainEnvironmentNames].sort()) !== JSON.stringify([...REQUIRED_PLAIN_ENV].sort())
     || JSON.stringify([...profile.environment.requiredSecretNames].sort()) !== JSON.stringify([...REQUIRED_SECRET_ENV].sort())) fail('ENVIRONMENT_SET_DRIFT')
   const fixed = profile.environment.fixedValues || {}
-  if (fixed.ORGMASTER_PERSISTENCE_MODE !== 'cloud-sql' || fixed.ORGMASTER_PUBLIC_BASE_URL !== 'https://org.jenfu.com.tw' || fixed.ORGMASTER_POSTGRES_POOL_MAX !== '6' || fixed.ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS !== '35000') fail('ENVIRONMENT_VALUE_DRIFT')
+  if (fixed.ORGMASTER_PERSISTENCE_MODE !== 'cloud-sql' || fixed.ORGMASTER_PUBLIC_BASE_URL !== target.canonicalOrigin || fixed.ORGMASTER_POSTGRES_POOL_MAX !== '6' || fixed.ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS !== '35000' || profile.environment.candidateOriginEnvironmentName !== 'ORGMASTER_RELEASE_CANDIDATE_ORIGIN') fail('ENVIRONMENT_VALUE_DRIFT')
   if (profile.environment.allowedSecretIds?.ORGMASTER_POSTGRES_URL !== 'orgmaster-prod-postgres-url' || profile.environment.allowedSecretIds?.ORGMASTER_SESSION_HASH_PEPPER !== 'orgmaster-prod-session-pepper' || profile.environment.numericVersionsRequired !== true) fail('SECRET_BOUNDARY_DRIFT')
   const order = profile.migrations?.entries?.map((entry) => entry.path)
   if (profile.migrations?.ledger !== 'orgmaster_core.schema_migrations' || profile.migrations?.baselineCount !== 10 || order?.length !== 11 || JSON.stringify(order.slice(0, 10)) !== JSON.stringify(n1c.migration.order) || order[10] !== 'db/migrations/011_dev046_workbench_list_width_preferences.sql') fail('MIGRATION_MANIFEST_DRIFT')
   if (profile.migrations.entries.some((entry, index) => entry.order !== index + 1 || !H64.test(entry.sourceSha256) || !H64.test(entry.appliedSha256))) fail('MIGRATION_MANIFEST_DRIFT')
   if (Object.values(profile.sideEffects || {}).some((value) => value !== 'DISABLED')) fail('SIDE_EFFECT_ENABLED')
+  if (profile.operations?.CONFIGURE_ENTRYPOINT !== 'run.projects.locations.services.patch?updateMask=ingress,defaultUriDisabled,invokerIamDisabled') fail('ENTRYPOINT_OPERATION_MISSING')
+  if (JSON.stringify(profile.edge) !== JSON.stringify({ servingDependency: false, rollbackDependency: false, ordinaryReleaseMutations: 0, disposition: 'RETAINED_UNUSED_EDGE' })) fail('EDGE_BOUNDARY_DRIFT')
   return profile
 }
 
@@ -72,17 +77,18 @@ export function assertDev040WorkflowSource(source) {
   if (JSON.stringify(keys) !== JSON.stringify(['releaseCapsuleRef'])) fail('WORKFLOW_INPUT_DRIFT')
   for (const forbidden of ['product_owner_decision:', 'artifact_receipt_ref:', 'candidate_receipt_ref:', 'stage:', 'approve:', 'skip:']) if (source.includes(forbidden)) fail('HISTORICAL_INPUT_ACTIVE', forbidden)
   if (!source.includes('group: production-release-orgmaster-prod')) fail('WORKFLOW_CONCURRENCY_DRIFT')
-  for (const job of ['prepare:', 'build:', 'migrate:', 'candidate:', 'verify:', 'decision:', 'activate:', 'canonical:', 'finalize:', 'failure:']) if (!source.includes(`\n  ${job}`)) fail('WORKFLOW_JOB_MISSING', job)
+  for (const job of ['prepare:', 'build:', 'migrate:', 'candidate:', 'entrypoint:', 'verify:', 'decision:', 'activate:', 'canonical:', 'finalize:', 'failure:']) if (!source.includes(`\n  ${job}`)) fail('WORKFLOW_JOB_MISSING', job)
   if (/CAPSULE_PROVIDER_FETCH_REQUIRED|run:\s*echo\s/iu.test(source)) fail('PROVIDER_PLACEHOLDER_ACTIVE')
-  if ((source.match(/^    environment: production$/gmu) ?? []).length !== 10 || (source.match(/DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN:/gu) ?? []).length !== 1 || (source.match(/DEV012_ORGMASTER_FIREBASE_API_KEY:/gu) ?? []).length !== 2 || source.includes('DEV012_ORGMASTER_FIREBASE_ID_TOKEN')) fail('WORKFLOW_AUTH_PREFLIGHT_DRIFT')
+  if ((source.match(/^    environment: production$/gmu) ?? []).length !== 11 || (source.match(/DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN:/gu) ?? []).length !== 1 || (source.match(/DEV012_ORGMASTER_FIREBASE_API_KEY:/gu) ?? []).length !== 2 || source.includes('DEV012_ORGMASTER_FIREBASE_ID_TOKEN')) fail('WORKFLOW_AUTH_PREFLIGHT_DRIFT')
   for (const block of source.split(/^  (?=[a-z][a-z-]+:)/gmu).filter((value) => value.includes('google-github-actions/auth@v3'))) if (block.indexOf('actions/checkout@v4') < 0 || block.indexOf('actions/checkout@v4') > block.indexOf('google-github-actions/auth@v3')) fail('WORKFLOW_AUTH_ORDER_DRIFT')
   if (/\.\.\/Jenlkbz|\.\.\/Jenfu-Platform|\.\.\/AI_PDM|checkout[^\n]+repository:/i.test(source)) fail('SIBLING_CHECKOUT_DENIED')
   return true
 }
 
 export function buildDev040Mutation({ operation, service, updateMask, revision, trafficPercent, etag }) {
-  if (service !== 'orgmaster-prod' || !etag || !revision || revision === 'latest') fail('TARGET_MISMATCH')
+  if (service !== 'orgmaster-prod' || !etag || revision === 'latest' || (operation !== 'CONFIGURE_ENTRYPOINT' && !revision)) fail('TARGET_MISMATCH')
   if (operation === 'CREATE_CANDIDATE' && (updateMask !== 'template' || trafficPercent !== 0)) fail('MIXED_MUTATION_MASK')
+  if (operation === 'CONFIGURE_ENTRYPOINT' && (updateMask !== 'ingress,defaultUriDisabled,invokerIamDisabled' || revision != null || trafficPercent != null)) fail('MIXED_MUTATION_MASK')
   if (['ACTIVATE', 'ROLLBACK'].includes(operation) && updateMask !== 'traffic') fail('MIXED_MUTATION_MASK')
   return { operation, service, updateMask, revision, trafficPercent, etag }
 }

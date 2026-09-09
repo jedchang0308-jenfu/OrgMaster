@@ -111,8 +111,22 @@ function dependencies(runtime: OrgmasterAuthRuntime) {
   }
 }
 
+export function isAllowedOrgmasterRequestOrigin(origin: string | undefined, config: OrgmasterAuthConfig, environment: NodeJS.ProcessEnv = process.env) {
+  if (origin === config.publicBaseUrl.origin) return true
+  const candidateValue = String(environment.ORGMASTER_RELEASE_CANDIDATE_ORIGIN ?? '').trim()
+  if (!origin || origin !== candidateValue || !candidateValue || config.publicBaseUrl.protocol !== 'https:') return false
+  try {
+    const candidate = new URL(candidateValue)
+    const tag = candidate.hostname.slice(0, candidate.hostname.indexOf('---'))
+    return candidate.protocol === 'https:' && !candidate.port && !candidate.username && !candidate.password && candidate.pathname === '/' && !candidate.search && !candidate.hash && candidate.origin === candidateValue && /^candidate-[a-f0-9]{12}$/u.test(tag) && candidate.hostname === `${tag}---${config.publicBaseUrl.hostname}`
+  } catch {
+    return false
+  }
+}
+
 function requireOrigin(request: IncomingMessage, config: OrgmasterAuthConfig) {
-  if (request.headers.origin !== config.publicBaseUrl.origin) throw new OrgmasterAuthError(403, 'auth_origin_invalid')
+  const origin = typeof request.headers.origin === 'string' ? request.headers.origin : undefined
+  if (!isAllowedOrgmasterRequestOrigin(origin, config)) throw new OrgmasterAuthError(403, 'auth_origin_invalid')
 }
 
 function requireDevelopmentOrigin(request: IncomingMessage) {

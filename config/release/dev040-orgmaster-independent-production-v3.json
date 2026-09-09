@@ -1,0 +1,282 @@
+{
+  "schemaVersion": "jenfu.dev040.orgmaster-continuous-release.v3",
+  "profileVersion": "CONTINUOUS_NO_DWELL_V3_DIRECT_RUN_APP",
+  "contractSha256": "d88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05",
+  "application": {
+    "id": "orgmaster",
+    "repository": "jedchang0308-jenfu/OrgMaster",
+    "branch": "master"
+  },
+  "target": {
+    "projectId": "jenfu-platform-prod",
+    "region": "asia-east1",
+    "serviceName": "orgmaster-prod",
+    "runtimeServiceAccount": "orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com",
+    "canonicalOrigin": "https://orgmaster-prod-9536592944.asia-east1.run.app",
+    "databaseInstance": "jenfu-platform-prod-pg",
+    "database": "jenfu_prod",
+    "projectNumber": "9536592944",
+    "entryPolicy": {
+      "ingress": "INGRESS_TRAFFIC_ALL",
+      "defaultUriDisabled": false,
+      "invokerIamDisabled": true
+    }
+  },
+  "runtime": {
+    "containerName": "orgmaster",
+    "cpu": "1",
+    "memory": "512Mi",
+    "port": 8080,
+    "concurrency": 20,
+    "timeoutSeconds": 60,
+    "maxInstances": 1,
+    "poolMax": 6,
+    "startupProbePath": "/api/auth/mode",
+    "cloudSqlConnectionName": "jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg",
+    "cloudSqlProxyContainer": "cloud-sql-proxy",
+    "cloudSqlProxyImage": "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0@sha256:fa4c7308245407157c5e9c4e16f1c0f1113899d6f29dc8f8be3e30efae86467f",
+    "cloudSqlProxyPort": 5432,
+    "cloudSqlProxyMaximumConnections": 24,
+    "network": "jenfu-platform-prod-vpc",
+    "subnet": "jenfu-platform-prod-runtime"
+  },
+  "artifact": {
+    "repository": "orgmaster-release",
+    "image": "orgmaster",
+    "uri": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster",
+    "migrationRunnerImage": "orgmaster-migration-runner",
+    "migrationRunnerUri": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-migration-runner",
+    "migrationBundlePrefix": "source/migration-bundles",
+    "releaseBucket": "jenfu-platform-prod-orgmaster-release",
+    "digestRequired": true
+  },
+  "state": {
+    "backendKey": "dev-040-r2/production-release/default.tfstate",
+    "foundationReceiptRequired": true
+  },
+  "schemas": {
+    "releaseIntent": "jenfu.dev040.orgmaster-release-intent.v2",
+    "deploymentCapsule": "jenfu.dev040.orgmaster-deployment-capsule.v2"
+  },
+  "identities": {
+    "builder": "orgmaster-prod-builder@jenfu-platform-prod.iam.gserviceaccount.com",
+    "deployer": "orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com",
+    "verifier": "orgmaster-prod-verifier@jenfu-platform-prod.iam.gserviceaccount.com",
+    "controller": "orgmaster-prod-controller@jenfu-platform-prod.iam.gserviceaccount.com",
+    "invoker": "orgmaster-prod-release-invoker@jenfu-platform-prod.iam.gserviceaccount.com",
+    "smoke": "orgmaster-prod-smoke@jenfu-platform-prod.iam.gserviceaccount.com",
+    "runtimeDbLogin": "orgmaster-prod-runtime@jenfu-platform-prod.iam",
+    "migratorDbLogin": "orgmaster-prod-migrator@jenfu-platform-prod.iam"
+  },
+  "build": {
+    "dockerBuilderImage": "gcr.io/cloud-builders/docker@sha256:3d00b6c1a9b862621c30fc74d4f2abfc62bcbdee631ed3febd31e7edbdf6252c",
+    "builderDigestObservedAt": "2026-09-08T00:00:00+08:00",
+    "dockerfile": "Dockerfile",
+    "dockerTarget": "runner",
+    "sourceArchiveFormat": "tar.gz",
+    "requestedVerifyOption": "VERIFIED",
+    "maximumAllowedSeverity": "MEDIUM"
+  },
+  "verification": {
+    "refreshTokenEnvironmentName": "DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN",
+    "firebaseApiKeyEnvironmentName": "DEV012_ORGMASTER_FIREBASE_API_KEY",
+    "authModePath": "/api/auth/mode",
+    "sessionPath": "/api/auth/firebase/session",
+    "mePath": "/api/auth/me",
+    "logoutPath": "/api/auth/logout",
+    "candidateSmokeMode": "WORKFLOWS_INTERNAL_OIDC_V1",
+    "candidateWorkflowName": "orgmaster-prod-candidate-smoke",
+    "candidateRefreshTokenSecretId": "orgmaster-prod-smoke-firebase-refresh-token",
+    "authenticatedProbes": [
+      {
+        "id": "preference-db-read",
+        "path": "/api/orgmaster/preferences/workbench",
+        "method": "GET",
+        "expectedStatus": 200
+      }
+    ],
+    "negativeProbes": [
+      {
+        "id": "preference-unauthenticated",
+        "path": "/api/orgmaster/preferences/workbench",
+        "method": "GET",
+        "expectedStatus": 401
+      }
+    ]
+  },
+  "incidentRuntime": {
+    "controllerAudience": "https://release-controller.jenfu.internal/orgmaster",
+    "githubReadTokenSecretId": "orgmaster-prod-controller-github-read-token",
+    "numericSecretVersionRequired": true,
+    "activeControlObject": "control/active.json"
+  },
+  "workflow": {
+    "path": ".github/workflows/deploy-orgmaster-independent-production.yml",
+    "onlyInput": "releaseCapsuleRef",
+    "concurrency": "production-release-orgmaster-prod",
+    "jobs": [
+      "prepare",
+      "build",
+      "migrate",
+      "candidate",
+      "entrypoint",
+      "verify",
+      "decision",
+      "activate",
+      "canonical",
+      "finalize"
+    ],
+    "failureJobs": [
+      "readback",
+      "abort-or-rollback",
+      "publish-terminal"
+    ]
+  },
+  "environment": {
+    "requiredPlainEnvironmentNames": [
+      "ORGMASTER_PERSISTENCE_MODE",
+      "ORGMASTER_PUBLIC_BASE_URL",
+      "ORGMASTER_POSTGRES_POOL_MAX",
+      "ORGMASTER_POSTGRES_CONNECTION_TIMEOUT_MS",
+      "ORGMASTER_POSTGRES_IDLE_TIMEOUT_MS",
+      "ORGMASTER_POSTGRES_STATEMENT_TIMEOUT_MS",
+      "ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS",
+      "JENFU_FIREBASE_PROJECT_ID",
+      "JENFU_IDENTITY_ISSUER",
+      "JENFU_IDENTITY_AUDIENCE",
+      "VITE_JENFU_FIREBASE_API_KEY",
+      "VITE_JENFU_FIREBASE_AUTH_DOMAIN",
+      "VITE_JENFU_FIREBASE_PROJECT_ID",
+      "VITE_JENFU_FIREBASE_APP_ID"
+    ],
+    "requiredSecretNames": [
+      "ORGMASTER_POSTGRES_URL",
+      "ORGMASTER_SESSION_HASH_PEPPER"
+    ],
+    "allowedSecretIds": {
+      "ORGMASTER_POSTGRES_URL": "orgmaster-prod-postgres-url",
+      "ORGMASTER_SESSION_HASH_PEPPER": "orgmaster-prod-session-pepper"
+    },
+    "numericVersionsRequired": true,
+    "candidateOriginEnvironmentName": "ORGMASTER_RELEASE_CANDIDATE_ORIGIN",
+    "fixedValues": {
+      "ORGMASTER_PERSISTENCE_MODE": "cloud-sql",
+      "ORGMASTER_POSTGRES_POOL_MAX": "6",
+      "ORGMASTER_POSTGRES_CONNECTION_TIMEOUT_MS": "5000",
+      "ORGMASTER_POSTGRES_IDLE_TIMEOUT_MS": "30000",
+      "ORGMASTER_POSTGRES_STATEMENT_TIMEOUT_MS": "30000",
+      "ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS": "35000",
+      "ORGMASTER_PUBLIC_BASE_URL": "https://orgmaster-prod-9536592944.asia-east1.run.app"
+    }
+  },
+  "productionData": {
+    "required": true,
+    "packageSchema": "jenfu.dev012.orgmaster-production-data-package.v1",
+    "bootstrapSchema": "jenfu.dev012.orgmaster-first-principal-bootstrap.v1",
+    "dataObjectPrefix": "source/production-data",
+    "bootstrapObjectPrefix": "receipts/releases",
+    "sourceRepository": "jedchang0308-jenfu/OrgMaster",
+    "preferenceDisposition": "EXCLUDED_UNATTRIBUTABLE_PRINCIPAL"
+  },
+  "migrations": {
+    "jobName": "orgmaster-prod-migration-runner",
+    "serviceAccount": "orgmaster-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com",
+    "sourceProfile": "config/dev-010/n1c-orgmaster.json",
+    "ledger": "orgmaster_core.schema_migrations",
+    "baselineCount": 10,
+    "entries": [
+      {
+        "order": 1,
+        "version": "dev010-n1c-orgmaster-001",
+        "path": "db/migrations/001_dev004_orgmaster_app_sessions.sql",
+        "sourceSha256": "7793c45f3421ea2c956339a705b30631bc9865585c6afec46fc3c1264138ae09",
+        "appliedSha256": "7e79ca8ab1203355351ed9c16c40ce5e3ca77e8068c0eeb582cf9940f85527c3"
+      },
+      {
+        "order": 2,
+        "version": "dev010-n1c-orgmaster-002",
+        "path": "db/migrations/002_dev006_orgmaster_persistence.sql",
+        "sourceSha256": "253f82d8ab2d3d861dc8c56e96840e9916d6f37ae8743a02455631f008648ac0",
+        "appliedSha256": "104cb5e141b0560960a44b94f4aab33ca8cdfde0df00c5c6b6f9f60e4cb367e0"
+      },
+      {
+        "order": 3,
+        "version": "dev010-n1c-orgmaster-003",
+        "path": "db/migrations/003_dev006_orgmaster_runtime_repository.sql",
+        "sourceSha256": "3c3589d383be19934f84e823b47e9a952344247367cdae871d7a85693df4cba9",
+        "appliedSha256": "09673f13e33b1ca454460771b078bf2ac65e8ef0beba2bb8ec17fbad335d1b1e"
+      },
+      {
+        "order": 4,
+        "version": "dev010-n1c-orgmaster-004",
+        "path": "db/migrations/004_dev040_active_principal_view.sql",
+        "sourceSha256": "e96acc37eb528bac3883edccf1ab856f3bd700d31d7f51b706a3dc00b2bce93a",
+        "appliedSha256": "f299efa2918fc09777b99d329577529b5c7f4768a88da0bf726fbfc35893e228"
+      },
+      {
+        "order": 5,
+        "version": "dev010-n1c-orgmaster-005",
+        "path": "db/migrations/005_dev005_entitlement_governance.sql",
+        "sourceSha256": "4e3f5dce7b374620e015425079bd25daf8606f7415a04b22c2698cf19010b54f",
+        "appliedSha256": "82b14114a2f1dff63d6ab6f6ee734a210911dd97ef8c18de89037e7caf40bea1"
+      },
+      {
+        "order": 6,
+        "version": "dev010-n1c-orgmaster-006",
+        "path": "db/migrations/006_dev040_identity_admission_projection.sql",
+        "sourceSha256": "2cf1f7650dd98cc4c7801a511c6d1c02e42a5dc1314a74aeedba74d06600b94f",
+        "appliedSha256": "d003325bb91af5a2fd48ae29370f79e8d114d8990b77fa49a6dba0db5555b94b"
+      },
+      {
+        "order": 7,
+        "version": "dev010-n1c-orgmaster-007",
+        "path": "db/migrations/007_dev009_privileged_governance.sql",
+        "sourceSha256": "4d77b8e62981bd67d97cb4c567e787873f43c187a3f23e50b9f670bde50e5c93",
+        "appliedSha256": "d5d9538cdf593a6799056384ca583d315ab2a950d9e015eb86005c95824b4482"
+      },
+      {
+        "order": 8,
+        "version": "dev010-n1c-orgmaster-008",
+        "path": "db/migrations/008_dev002_portal_app_visibility.sql",
+        "sourceSha256": "9fb17097e01994aa974766d30b60abfe800f5967c9bbcbeb7751231d62a69703",
+        "appliedSha256": "c10ea011625a355f5df0e7cc5e1b81628bbdd64ca9ba6a570b01920171fe5680"
+      },
+      {
+        "order": 9,
+        "version": "dev010-n1c-orgmaster-009",
+        "path": "db/migrations/009_dev039_application_entitlement_v2.sql",
+        "sourceSha256": "d306d3242da919ff1fb52554785def319d06ca3f542a3b2b6cbf832164aea81c",
+        "appliedSha256": "7e1853907c0a5d7004e68a1421aa0c50ffb666c90e400809e08f3d98cc4c0c9c"
+      },
+      {
+        "order": 10,
+        "version": "dev010-n1c-orgmaster-010",
+        "path": "db/migrations/010_dev010_neutral_schema_boundary.sql",
+        "sourceSha256": "081c6bc81e4565fae79302ac7be29f1999324d63f169bda7c6af1b581be49ff4",
+        "appliedSha256": "a8372527802871ad0747d3877430fa727ff8bd0e4e2736772b201e9223fbd3ac"
+      },
+      {
+        "order": 11,
+        "version": "dev040-r2-orgmaster-011",
+        "path": "db/migrations/011_dev046_workbench_list_width_preferences.sql",
+        "sourceSha256": "a4370d5ae2d36efdfa8b6590d2241b2edaa696ad01c5ea7d8f6ab7d715eb0aaf",
+        "appliedSha256": "837df9b0a3377ed50fc233225aef3925ccd66a3adb56bbd0c1b59f73d7ceed8b"
+      }
+    ]
+  },
+  "sideEffects": {
+    "accountEnrollment": "DISABLED",
+    "externalNotification": "DISABLED",
+    "outboxDelivery": "DISABLED",
+    "fileDelivery": "DISABLED"
+  },
+  "operations": {
+    "CONFIGURE_ENTRYPOINT": "run.projects.locations.services.patch?updateMask=ingress,defaultUriDisabled,invokerIamDisabled"
+  },
+  "edge": {
+    "servingDependency": false,
+    "rollbackDependency": false,
+    "ordinaryReleaseMutations": 0,
+    "disposition": "RETAINED_UNUSED_EDGE"
+  }
+}
