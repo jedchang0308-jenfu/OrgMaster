@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createOrgmasterAuthMiddleware, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
+import { createOrgmasterAuthMiddleware, isAllowedOrgmasterRequestOrigin, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
 import { hashSessionToken } from './orgmasterAuthCookies'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
@@ -45,6 +45,21 @@ async function listen(runtime: OrgmasterAuthRuntime, businessRead: () => void = 
 }
 
 describe('OrgMaster auth middleware', () => {
+  it('allows only the canonical and one exact V3 candidate origin', () => {
+    const { config } = configuredRuntime()
+    config.publicBaseUrl = new URL('https://orgmaster-prod-9536592944.asia-east1.run.app')
+    const environment = { ORGMASTER_RELEASE_CANDIDATE_ORIGIN: 'https://candidate-0123456789ab---orgmaster-prod-9536592944.asia-east1.run.app' }
+    expect(isAllowedOrgmasterRequestOrigin(config.publicBaseUrl.origin, config, environment)).toBe(true)
+    expect(isAllowedOrgmasterRequestOrigin(environment.ORGMASTER_RELEASE_CANDIDATE_ORIGIN, config, environment)).toBe(true)
+    for (const origin of [
+      'https://candidate-ffffffffffff---orgmaster-prod-9536592944.asia-east1.run.app',
+      'https://candidate-0123456789ab---ai-pdm-prod-9536592944.asia-east1.run.app',
+      'https://candidate-01234567-9---orgmaster-prod-legacy.a.run.app',
+      'https://candidate-0123456789ab---orgmaster-prod-9536592944.us-central1.run.app',
+      'https://candidate-0123456789ab---orgmaster-prod-9536592944.asia-east1.run.app/path',
+    ]) expect(isAllowedOrgmasterRequestOrigin(origin, config, environment)).toBe(false)
+  })
+
   it('denies an unauthenticated request before any business read', async () => {
     const { runtime } = configuredRuntime()
     let reads = 0
