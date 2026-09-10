@@ -4,6 +4,8 @@
 
 > **2026-09-10 DEV-040 R2 dependency gate refresh（current）**：全部直接Tiptap套件固定3.31.3，fresh production audit為`0 HIGH／0 CRITICAL`；owner／abort、529案full regression、DB boundary與雙build皆PASS。更舊master或R13 pre-fix receipt不得作本輪release authority。
 
+> **2026-09-10 shared-foundation handoff correction（current）**：Platform只apply一次shared foundation，native readiness把相同canonical receipt鏡像到OrgMaster own bucket；foundation保留Platform provenance且是唯一source-equality例外，OrgMaster infra/runtime/data仍綁own source。R15安全停止，fresh cohort才可dispatch。
+
 > **2026-09-08 DEV-040 `040-R2` V2 historical release entry**：權威為
 > [DEV-040 §24](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與
 > [040-R2 QA](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游Platform DEV-012契約

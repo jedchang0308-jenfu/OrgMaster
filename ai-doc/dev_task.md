@@ -4,6 +4,8 @@
 
 > **2026-09-10 DEV-040 R2 production dependency gate（current）**：fresh production audit發現Tiptap 3.30.3的HIGH advisory，已將全部直接Tiptap套件同步固定為3.31.3，避免混合peer graph。`npm audit --omit=dev`現為`0 HIGH／0 CRITICAL`；owner 25／25、abort 6／6、full regression 529／529（另1 skipped）、DB boundary及client／SSR production build均PASS。修正後須以新master commit重建source lock、capacity與downstream receipts，R13舊revision證據只留歷史。
 
+> **2026-09-10 DEV-040 R2 shared-foundation handoff correction（current）**：R15真實intent串接確認shared foundation只由Platform apply，但OrgMaster workflow只能讀own bucket。定案由Platform native readiness鏡像相同foundation canonical bytes至OrgMaster bucket；foundation保留Platform source provenance並是唯一不要求等於OrgMaster source的prerequisite，OrgMaster infra/runtime與production data仍exact join own source。Fresh aggregate=`995e6bde…b411d`且全部exit PASS；R15安全停止，修正提交後須用fresh cohort重建source lock、capacity與intent。
+
 > **2026-09-08 DEV-040 `040-R2` continuous production release（V2 historical authority）**：已依Platform
 > DEV-012 §§25～28完成owner direct-doc sync；contract SHA-256=`73bfd85abf017f858796004f69b740d45838a1bfcd25cafcf845b4fb530f9efa`、
 > §25～EOF SHA-256=`29f5af2e7d3e699cbec9f1bdc2e3d9f94ca55658e192cbcdf7ff18d9723a369e`。狀態=
