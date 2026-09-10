@@ -1,5 +1,7 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
+> **2026-09-11 R28 operation／production DB correction（current additive authority）**：R28已建立OrgMaster exact migration execution，但在任何001～011 app-owned DDL、production data import或principal CAS前，因正式庫尚無DEV-010共用roles／schemas以SQLSTATE `42704`終止；其後generic operation GET另回403。Candidate／entrypoint／traffic=0。Owner runtime不再輪詢operations endpoint，改以exact Service settled readback及run前後child execution差集＋current args唯一匹配。Platform-owned production DB bootstrap immutable receipt成為S2 dispatch硬閘；target、source、role／schema／CONNECT隔離及task-owned Job cleanup未PASS前不得執行本owner migration。R28不得作release authority。
+
 > **2026-09-11 R27 migration-readback correction（current additive authority）**：R27 OrgMaster prepare／build／provenance／SBOM／scan均PASS，migrate則在建立任何execution前因deployer讀取own migration Job缺run.jobs.get而HTTP 403。roles/run.jobsExecutorWithOverrides供應商定義不含Job／execution／operation GET；本owner只在exact orgmaster-prod-migration-runner增補resource-scoped roles/run.viewer並納入APP_INFRA_B complete-set，禁止project-wide或sibling read。Failure receipt只有在有效immutable migrate receipt存在時可標FORWARD_APPLIED，否則標NOT_APPLIED。R27 execution=0且無DB／candidate／entrypoint／traffic mutation，不得作release authority。
 
 > **2026-09-10 R26 staged-IaC correction（current additive authority）**：R26 OrgMaster APP_INFRA_B因三個SBOM地址誤列A而在apply前安全停止；回跑A會規劃destroy既有B並再次被拒，production mutation=0。§31現把SBOM bindings改為`incident_runtime_enabled` APP_INFRA_B additional `[0]` resources；fresh B plan只可create三個own-prefix SBOM bindings與own exact-job override，其餘read/no-op。
@@ -1328,3 +1330,9 @@ R25 coordinator `34483346433`只dispatch OrgMaster owner `34483418416`。Build `
 APP_INFRA stage A新增own builder的project metadata-only `roles/storage.bucketViewer`、`roles/containeranalysis.notes.attacher`，及regional Artifact Analysis bucket上condition鎖定encoded `asia-east1-docker.pkg.dev%2Fjenfu-platform-prod%2Forgmaster-release%2F` prefix的`roles/storage.objectAdmin`。Stage B新增own exact `orgmaster-prod-migration-runner`＋`orgmaster-prod-deployer`的`roles/run.jobsExecutorWithOverrides`。既有exact-job `roles/run.invoker` additive保留以避免已套用state產生replace／delete；project-wide Storage Admin／Object Admin、sibling prefix／job、deployer actAs migrator或Job update一律禁止。
 
 Fresh saved plan只能對新地址create、其餘read／no-op。修正提交後須重建OrgMaster production data／bootstrap與全部source-bound receipts；owner build必自行完成SBOM，不接受human-generated SBOM作新release authority。R25只保留fail-closed證據。
+
+## 32. R28 exact provider readback與shared DB bootstrap prerequisite（current additive authority）
+
+OrgMaster controller不得用Cloud Run generic operation判定Service或Job完成。Service PATCH只輪詢`orgmaster-prod` exact Service至settled，並驗requested ingress／default URI／invoker IAM、fresh etag／generation及template／traffic零漂移。Migration run前後完整分頁列出`orgmaster-prod-migration-runner` child executions，只接受一筆先前不存在且args與current immutable migration bundle、output、production-data及principal-bootstrap refs完全一致的新execution，再以exact execution GET至terminal；零筆、多筆、stale latest、args drift、不可讀或deadline均FAIL。
+
+DEV-010 neutral roles與三app schemas由Platform S2一次性forward-only bootstrap建立，不併入OrgMaster 001～011，也不授權本owner修改sibling core。Bootstrap receipt須綁同一release、Platform source與exact production target，證明`orgmaster_core／orgmaster_contract` ownership prerequisites、IAM login membership、direct CONNECT、group／PUBLIC denial、`public`無business object及bootstrap Job cleanup。Coordinator在receipt PASS前不得dispatch；PASS後本owner仍須執行001～011、data import、one-time principal CAS、reconciliation及所有owner smoke，shared bootstrap不得冒充任何一項。

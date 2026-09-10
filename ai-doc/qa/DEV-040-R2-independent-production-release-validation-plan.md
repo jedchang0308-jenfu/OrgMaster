@@ -1,5 +1,7 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
+> **2026-09-11 R28 amendment（current）**：R28 exact OrgMaster migration execution已建立，但在001～011、data import與principal CAS前因缺shared DB roles／schemas以SQLSTATE `42704`停止，generic operation GET另回403；candidate／entrypoint／traffic=0。新增oracle：禁止operations endpoint，Service PATCH改驗exact Service settled state，Job run以run前後child execution差集＋current args唯一匹配取得exact execution。Platform production DB bootstrap receipt未通過source／target／隔離數值與task-owned Job cleanup前不得dispatch。R28不計production PASS。
+
 > **2026-09-11 R27 amendment（current）**：R27 artifact gates PASS後，migration在execution建立前因exact Job readback缺viewer而安全停止；provider executions=0，DB／candidate／entrypoint／traffic=0。新增固定oracle：APP_INFRA_B complete-set須含google_cloud_run_v2_job_iam_member.migration_runner_viewer[0]，role=roles/run.viewer、resource為own exact Job、member為own deployer；project-wide或sibling binding均FAIL。Rollback／terminal必以immutable migrate receipt區分NOT_APPLIED與FORWARD_APPLIED。
 
 > **2026-09-10 R26 staged-IaC amendment（current）**：provider dry-run證實A／B錯誤分類會分別觸發B-mutates-A或A destroy既有B，兩者均已安全拒絕。SBOM IAM三地址現須為APP_INFRA_B additional `[0]`並由`incident_runtime_enabled=true`啟用；fresh B只允許三個SBOM＋exact-job override create，其他完整set read/no-op。
@@ -95,3 +97,9 @@ Current evidence=`../../../Jenfu-Platform/output/dev-012/s1c/2026-09-09T111340-0
 S1B-21重跑必證明IaC／complete-set含`roles/storage.bucketViewer`、`roles/containeranalysis.notes.attacher`、只限encoded `orgmaster-release` prefix的`roles/storage.objectAdmin`，以及只限`orgmaster-prod-migration-runner`＋`orgmaster-prod-deployer`的`roles/run.jobsExecutorWithOverrides`。Sibling prefix／job／principal、無condition、project-wide object role、只有`run.invoker`或Terraform update／delete／replace均FAIL。
 
 Managed build須由OrgMaster builder自行取得SBOM_REFERENCE與0 High／Critical scan，不接受human-generated SBOM。Managed migration須建立exact execution、完成001～011與data／principal readback，且在其PASS前traffic不變；R25只證明fail closed，不增加最終分子。
+
+## 9. R28 exact provider readback／shared bootstrap oracle
+
+Owner runtime須證明不呼叫`/operations/`；Service mutation只由exact Service settled readback、requested entry fields及零template／traffic drift判定。Migration POST前後完整分頁列出child executions，只接受唯一new＋exact current args match並輪詢該execution terminal；零筆、多筆、舊latest、args drift、unreadable或deadline均FAIL。沒有有效immutable migrate PASS receipt時，failure terminal不得標`FORWARD_APPLIED`，也不得進candidate／entrypoint／traffic。
+
+Upstream negative gate須在production DB bootstrap receipt缺失、self-hash／Platform source／release／target漂移、8 group roles／8 IAM logins／8 memberships／11 schemas／1 extension／8 direct CONNECT不符、group CONNECT非0、PUBLIC CONNECT、`public` business object或task-owned Job cleanup未完成時，於OrgMaster dispatch前FAIL。Bootstrap PASS只建立shared prerequisites；001～011、data import、principal CAS、reconciliation、canonical smoke與最終QA仍須本owner獨立完成。
