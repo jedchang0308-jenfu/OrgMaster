@@ -60,6 +60,7 @@ test('S1B-21 OrgMaster runner validates ten-row baseline and appends only 011', 
       statements.push(sql)
       if (sql.startsWith('SELECT current_database')) return { rows: [{ database: 'jenfu_prod', user: TARGET.login, postgresMajor: 17, migratorMember: true, runtimeCanCreateCore: false }] }
       if (sql.includes('unnest(')) return { rows: TARGET.siblingCoreSchemas.map((schema_name) => ({ schema_name, can_use: false })) }
+      if (sql.includes('FROM pg_catalog.pg_class')) return { rows: [{ exists: true }] }
       if (sql.includes('ORDER BY applied_at')) return { rows: ledger.map((row) => ({ ...row })) }
       if (sql.startsWith('INSERT INTO')) ledger.push({ version: values[0], name: values[1], checksum_sha256: values[2], source_revision: values[3] })
       return { rows: [] }
@@ -74,4 +75,31 @@ test('S1B-21 OrgMaster runner validates ten-row baseline and appends only 011', 
   assert.equal(second.applied, 0)
   const missing = ledger.slice(1)
   assert.throws(() => planMigration(input.bundle, missing), /LEDGER_PREFIX_MISMATCH|BASELINE_INCOMPLETE/)
+})
+
+test('S1B-21 OrgMaster runner bootstraps only its private ledger and applies a fresh database from zero', async () => {
+  const input = fixture()
+  let ledger = []
+  let tableExists = false
+  const statements = []
+  const database = {
+    async query(sql, values) {
+      statements.push(sql)
+      if (sql.startsWith('SELECT current_database')) return { rows: [{ database: 'jenfu_prod', user: TARGET.login, postgresMajor: 17, migratorMember: true, runtimeCanCreateCore: false }] }
+      if (sql.includes('unnest(')) return { rows: TARGET.siblingCoreSchemas.map((schema_name) => ({ schema_name, can_use: false })) }
+      if (sql.includes('FROM pg_catalog.pg_class')) return { rows: [{ exists: tableExists }] }
+      if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) tableExists = true
+      if (sql.includes('ORDER BY applied_at')) return { rows: ledger.map((row) => ({ ...row })) }
+      if (sql.startsWith('INSERT INTO')) ledger.push({ version: values[0], name: values[1], checksum_sha256: values[2], source_revision: values[3] })
+      return { rows: [] }
+    },
+  }
+  const receipt = await executeProductionMigration({ bundle: input.bundle, database, target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true, now: () => '2026-09-11T00:00:00.000Z' })
+  assert.equal(receipt.status, 'PASS')
+  assert.equal(receipt.minimumLedgerCount, 0)
+  assert.deepEqual(receipt.ledgerBootstrap, { enabled: true, created: true })
+  assert.equal(receipt.applied, input.bundle.entries.length)
+  assert.equal(ledger.length, input.bundle.entries.length)
+  assert.ok(statements.some((sql) => sql === `SET LOCAL ROLE ${TARGET.migratorRole}`))
+  assert.ok(statements.some((sql) => sql === `REVOKE ALL ON TABLE ${TARGET.ledger} FROM PUBLIC`))
 })
