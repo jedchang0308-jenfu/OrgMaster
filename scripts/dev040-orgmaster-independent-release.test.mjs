@@ -112,6 +112,7 @@ test('OrgMaster custom Cloud Build service account can act only as itself', () =
   const identity = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/identity.tf', import.meta.url), 'utf8')
   const infraPlan = read('config/release/dev040-production-release-infra-plan.json')
   assert.match(identity, /resource "google_service_account_iam_member" "builder_act_as_self"[\s\S]*service_account_id = google_service_account\.builder\.name[\s\S]*role\s+= "roles\/iam\.serviceAccountUser"[\s\S]*member\s+= "serviceAccount:\$\{google_service_account\.builder\.email\}"/u)
-  assert.ok(infraPlan.stageA.includes('google_service_account_iam_member.builder_act_as_self'))
+  assert.ok(infraPlan.stageBAdditional.includes('google_service_account_iam_member.builder_act_as_self'))
+  assert.ok(!infraPlan.stageA.includes('google_service_account_iam_member.builder_act_as_self'))
   assert.doesNotMatch(identity.match(/resource "google_service_account_iam_member" "builder_act_as_self"[\s\S]*?\n\}/u)?.[0] ?? '', /runtime|deployer|verifier|aipdm|platform/u)
 })

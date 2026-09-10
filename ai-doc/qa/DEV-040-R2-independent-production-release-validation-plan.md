@@ -1,6 +1,6 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
-> **2026-09-10 R20 amendment**：R20證實source identity、source upload及migration bundle PASS；Cloud Build create因custom builder缺own `iam.serviceAccounts.actAs`回403，failure recovery PASS，後續stage未執行。新增固定oracle：stage-A complete-set含`google_service_account_iam_member.builder_act_as_self`，role/member/resource精確綁`orgmaster-prod-builder`自身，且不得含sibling/runtime/deployer/verifier。Fresh app-infra apply/readback前R20不可計為production PASS。
+> **2026-09-10 R20 amendment**：R20證實source identity、source upload及migration bundle PASS；Cloud Build create因custom builder缺own `iam.serviceAccounts.actAs`回403，failure recovery PASS，後續stage未執行。新增固定oracle：APP_INFRA_B additional complete-set含`google_service_account_iam_member.builder_act_as_self`且stage A不得含，role/member/resource精確綁`orgmaster-prod-builder`自身，且不得含sibling/runtime/deployer/verifier。R21舊分類source lock作廢；fresh app-infra apply/readback前R20／R21不可計為production PASS。
 
 > **2026-09-08 DEV-012 S1C amendment（V2 historical；current見§7）**：當時新增official repo=`jedchang0308-jenfu/OrgMaster`／branch=`master`、owner source/runtime/intent chain、shared-LB host binding、internal verifier job、numeric smoke Secret、local data inventory→encrypted handoff→import→reconcile／restore，以及一筆明確human principal one-time bootstrap的驗證。Public `run.app`在該V2方案為FAIL；此入口判定已由§7 V3 direct-run contract取代。其data／principal與source provenance仍保留，local結果不得作current release authority。
 
