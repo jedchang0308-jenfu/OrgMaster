@@ -78,4 +78,4 @@ Current evidence=`../../../Jenfu-Platform/output/dev-012/s1c/2026-09-09T111340-0
 
 2026-09-10 shared-foundation handoff oracle：OrgMaster intent只接受own-bucket foundation mirror，bytes須等於Platform provider receipt；只有foundation可保留`shared-foundation` owner與Platform source provenance，infra/runtime/data owner或source drift仍FAIL。R15／R16安全停止不算正式PASS，須由fresh cohort重證。
 
-2026-09-10 cross-OS source identity oracle：source lock與GitHub runner必對同一未壓縮Git tar取得相同SHA；build上傳gzip須可解回相同tar並另有GCS bytes SHA。任何gzip跨OS bytes比較、tar drift、gunzip不等或identity fail後仍執行Cloud Build／migration／traffic都FAIL；R18安全停止不算正式PASS。
+2026-09-10 cross-OS／cross-Git source identity oracle：source lock與GitHub runner必對同一`git ls-tree -r -z --full-tree <revision>` canonical tree manifest取得相同SHA；manifest逐項綁mode／type／object ID／path，build上傳gzip則另有GCS bytes SHA。任何gzip／raw-tar跨環境bytes比較、tree manifest drift、空archive或identity fail後仍執行Cloud Build／migration／traffic都FAIL；R18／R19安全停止不算正式PASS。

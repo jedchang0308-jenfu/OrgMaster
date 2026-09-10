@@ -6,7 +6,7 @@
 
 > **2026-09-10 DEV-040 R2 shared-foundation handoff correction（current）**：R15確認shared foundation須鏡像至OrgMaster own bucket；R16實際mirror後又由`PREREQUISITE_OWNER_MISMATCH`證實shared owner例外漏實作。定案foundation保留`shared-foundation` owner與Platform source provenance，並是唯一不要求等於OrgMaster owner／source的prerequisite；OrgMaster infra/runtime/data仍exact join own owner／source。R15／R16均安全停止，修正提交後須用fresh cohort重建。
 
-> **2026-09-10 DEV-040 R2 cross-OS source identity correction（current）**：R18 OrgMaster prepare PASS，但build在任何source upload／Cloud Build／migration／candidate／traffic前以`SOURCE_ARCHIVE_HASH_MISMATCH`安全停止；根因為Windows與Linux gzip bytes不可作identity。三owner統一改綁未壓縮Git tar SHA，驗章後才gzip上傳並另記GCS bytes SHA；fresh source/cohort前R18不得重用。
+> **2026-09-10 DEV-040 R2 cross-OS／cross-Git source identity correction（current）**：R18 gzip與R19 raw-tar identity皆在任何source upload／Cloud Build／migration／candidate／traffic前以`SOURCE_ARCHIVE_HASH_MISMATCH`安全停止。三owner統一改綁`git ls-tree -r -z --full-tree <revision>` canonical tree manifest SHA，驗章後才獨立產tar.gz並另記GCS bytes SHA；fresh source/cohort前R18／R19不得重用。
 
 > **2026-09-08 DEV-040 `040-R2` continuous production release（V2 historical authority）**：已依Platform
 > DEV-012 §§25～28完成owner direct-doc sync；contract SHA-256=`73bfd85abf017f858796004f69b740d45838a1bfcd25cafcf845b4fb530f9efa`、

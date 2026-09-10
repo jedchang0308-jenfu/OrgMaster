@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { createOwnerTransport } from './lib/dev012-owner-release-runtime.mjs'
-import { createGitArchive } from './lib/dev012-owner-stage-executor.mjs'
+import { createGitSourceIdentity } from './lib/dev012-owner-stage-executor.mjs'
 import { executePrerequisiteProducer, parsePrerequisiteProducerArgs, resolveOwnerInputPath } from './lib/dev012-owner-prerequisite-producer.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -31,7 +31,7 @@ async function main() {
   const result = await executePrerequisiteProducer({
     ...args, input, profile, root, transport,
     validateIntent: assertDev040ReleaseIntent,
-    createSourceArchive: async (sourceRevision) => createGitArchive(root, sourceRevision),
+    createSourceIdentity: async (sourceRevision) => createGitSourceIdentity(root, sourceRevision),
     buildMigrationBundle: async (sourceRevision) => {
       const files = new Map(await Promise.all(profile.migrations.entries.map(async (entry) => [entry.path, await fs.readFile(path.join(root, ...entry.path.split('/')))])))
       return buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, sourceRevision)
