@@ -77,3 +77,5 @@ S1B-21／S1B-15須證明一容器holding baseline可透過已驗章runtime confi
 Current evidence=`../../../Jenfu-Platform/output/dev-012/s1c/2026-09-09T111340-014Z/qc-report.json`，SHA-256=`bbd767fffb6364a770586cfe6122269ef1095184244a5ed4b2047d05d48b2b7f`。結果S1A 32／32、S1B 24／24、S1C 8／8，V3 Terraform validation PASS，scope=`LOCAL_RECORDED_PROVIDER`、`releaseAuthority=false`；只證明Architecture Finalized與V3 source implementation。正式data apply、principal mutation、Billing／quota、candidate、entrypoint、traffic與canonical仍`NOT_RUN`。
 
 2026-09-10 shared-foundation handoff oracle：OrgMaster intent只接受own-bucket foundation mirror，bytes須等於Platform provider receipt；只有foundation可保留`shared-foundation` owner與Platform source provenance，infra/runtime/data owner或source drift仍FAIL。R15／R16安全停止不算正式PASS，須由fresh cohort重證。
+
+2026-09-10 cross-OS source identity oracle：source lock與GitHub runner必對同一未壓縮Git tar取得相同SHA；build上傳gzip須可解回相同tar並另有GCS bytes SHA。任何gzip跨OS bytes比較、tar drift、gunzip不等或identity fail後仍執行Cloud Build／migration／traffic都FAIL；R18安全停止不算正式PASS。

@@ -6,6 +6,8 @@
 
 > **2026-09-10 shared-foundation handoff correction（current）**：Platform只apply一次shared foundation，native readiness把相同canonical receipt鏡像到OrgMaster own bucket；foundation保留shared owner與Platform source provenance且是唯一owner／source equality例外，OrgMaster infra/runtime/data仍綁own owner／source。R15／R16安全停止，fresh cohort才可dispatch。
 
+> **2026-09-10 cross-OS source identity correction（current）**：三owner source identity改綁未壓縮Git tar SHA，owner build驗章後才gzip上傳並另記GCS bytes SHA；R18在OrgMaster build前安全停止，fresh cohort才可重試。
+
 > **2026-09-08 DEV-040 `040-R2` V2 historical release entry**：權威為
 > [DEV-040 §24](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與
 > [040-R2 QA](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游Platform DEV-012契約
