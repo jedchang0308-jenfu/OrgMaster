@@ -1,5 +1,7 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
+> **2026-09-10 R22 artifact-evidence hardening（current）**：R22 OrgMaster Cloud Build、immutable digest及SLSA Level 3 provenance PASS；Artifact Analysis `exportSBOM`早於discovery完成而HTTP 400，failure recovery產生`PRE_ACTIVATION_ABORTED`且任何migration／candidate／entrypoint／traffic皆未執行。完成後scan顯示舊runner含3 Critical＋15 High，來源為非執行期global npm及Debian Perl／ACL／attr／zlib。Current修正按BUILD／DISCOVERY／SBOM_REFERENCE／VULNERABILITY kind＋exact digest分別完整分頁，先等discovery成功再僅對HTTP 400 bounded retry SBOM，其他status立即FAIL；production runner改為pinned non-root Node 24 Distroless，High／Critical政策不降級。Fresh aggregate `2026-09-10T074043-640Z`已PASS；R22不可重用，提交後須fresh source/cohort。
+
 > **2026-09-10 R20 architecture amendment**：OrgMaster owner build採user-specified `orgmaster-prod-builder`；提交Cloud Build時固定要求該builder對自身service account具`iam.serviceAccounts.actAs`。唯一新增IAM resource為`google_service_account_iam_member.builder_act_as_self`，role=`roles/iam.serviceAccountUser`，resource與member皆為own builder；禁止跨app或對runtime/deployer/verifier act-as。此地址納入app-owned APP_INFRA_B additional complete-set及provider readback，stage A維持不含build-runtime act-as。R20在此缺口以403安全停止，R21舊分類已作廢，且未進入migration/candidate/entrypoint/traffic；後續只能由fresh cohort重試。
 
 文件成熟度：`040-R2 V3 = RD Implementation Ready + 架構定案：已定案 / RD Tech Lead PASS / P0=0 / P1=0 / Implementation Complete / DEV-012 S1B-21 PASS / S1C 8／8 PASS / S2 Unlocked；其餘DEV-040 slices維持既有狀態`
