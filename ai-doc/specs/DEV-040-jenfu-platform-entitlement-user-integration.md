@@ -1,5 +1,7 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
+> **2026-09-10 R25 IAM correction（current additive authority）**：R25 OrgMaster image已通過Cloud Build、provenance、SBOM與0 High／Critical，但migration在Job execution前因deployer缺`run.jobs.runWithOverrides`安全停止；自動SBOM亦曾因builder缺default Artifact Analysis bucket權限而需人工補跑。§31固定own encoded `orgmaster-release` prefix與own exact migration Job權限，fresh source／APP_INFRA／cohort前不得再部署。
+
 > **2026-09-10 R22 artifact-evidence hardening（current）**：R22 OrgMaster Cloud Build、immutable digest及SLSA Level 3 provenance PASS；Artifact Analysis `exportSBOM`早於discovery完成而HTTP 400，failure recovery產生`PRE_ACTIVATION_ABORTED`且任何migration／candidate／entrypoint／traffic皆未執行。完成後scan顯示舊runner含3 Critical＋15 High，來源為非執行期global npm及Debian Perl／ACL／attr／zlib。Current修正按BUILD／DISCOVERY／SBOM_REFERENCE／VULNERABILITY kind＋exact digest分別完整分頁，先等discovery成功再僅對HTTP 400 bounded retry SBOM，其他status立即FAIL；production runner改為pinned non-root Node 24 Distroless，High／Critical政策不降級。Fresh aggregate `2026-09-10T074043-640Z`已PASS；R22不可重用，提交後須fresh source/cohort。
 
 > **2026-09-10 R20 architecture amendment**：OrgMaster owner build採user-specified `orgmaster-prod-builder`；提交Cloud Build時固定要求該builder對自身service account具`iam.serviceAccounts.actAs`。唯一新增IAM resource為`google_service_account_iam_member.builder_act_as_self`，role=`roles/iam.serviceAccountUser`，resource與member皆為own builder；禁止跨app或對runtime/deployer/verifier act-as。此地址納入app-owned APP_INFRA_B additional complete-set及provider readback，stage A維持不含build-runtime act-as。R20在此缺口以403安全停止，R21舊分類已作廢，且未進入migration/candidate/entrypoint/traffic；後續只能由fresh cohort重試。
@@ -1314,3 +1316,11 @@ Current execution boundary只到DEV-012 S2：fresh remote source freeze、Billin
 2026-09-10 cross-OS／cross-Git source identity correction：OrgMaster `sourceSha256`只接受clean official revision的`git ls-tree -r -z --full-tree <revision>` canonical tree manifest bytes SHA，逐項綁mode／type／object ID／path；owner build先重算驗章，再獨立產tar、gzip並上傳Cloud Build source object，壓縮物件GCS SHA獨立記錄。R18 gzip與R19 raw-tar identity均在prepare PASS後安全停止；production data已建立但未migration，必由fresh source/cohort重建。
 
 2026-09-10 R24 artifact-policy correction：OrgMaster Cloud Build成功後，Artifact Analysis以Distroless Debian zlib package的`CVE-2026-85091` effective HIGH拒絕image，故owner在migration、data import／principal CAS、candidate、entrypoint與traffic前安全停止。Current runner維持pinned Node 24 Distroless與non-root UID，透過digest-pinned build-only sanitizer只移除Node未載入的OS `libz.so.1／libz.so.1.3.1`及兩個dpkg metadata path，再由scratch重建final rootfs；不放寬`maximumAllowedSeverity=MEDIUM`。Fresh owner release只有在runtime regression／production build、provider discovery、SBOM、effective HIGH／CRITICAL=0與candidate normal-entry全部PASS後才可activation；啟動或native dependency失敗即own-only rollback／cleanup並停止cohort。
+
+## 31. R25 provider-proven IAM correction（current additive authority）
+
+R25 coordinator `34483346433`只dispatch OrgMaster owner `34483418416`。Build `916f368f-42de-4e51-b066-8d2532881a09`及image `sha256:f9e99b0c95dd08e8f34f72e1baaa29e619e9c01d4ba04a9912a6b9de121842a1`通過artifact gate；migration request在Cloud Run Job execution建立前`DENIED`，所以001～011、production data import、principal CAS、candidate、entrypoint與traffic均未執行。
+
+APP_INFRA stage A新增own builder的project metadata-only `roles/storage.bucketViewer`、`roles/containeranalysis.notes.attacher`，及regional Artifact Analysis bucket上condition鎖定encoded `asia-east1-docker.pkg.dev%2Fjenfu-platform-prod%2Forgmaster-release%2F` prefix的`roles/storage.objectAdmin`。Stage B新增own exact `orgmaster-prod-migration-runner`＋`orgmaster-prod-deployer`的`roles/run.jobsExecutorWithOverrides`。既有exact-job `roles/run.invoker` additive保留以避免已套用state產生replace／delete；project-wide Storage Admin／Object Admin、sibling prefix／job、deployer actAs migrator或Job update一律禁止。
+
+Fresh saved plan只能對新地址create、其餘read／no-op。修正提交後須重建OrgMaster production data／bootstrap與全部source-bound receipts；owner build必自行完成SBOM，不接受human-generated SBOM作新release authority。R25只保留fail-closed證據。

@@ -110,9 +110,18 @@ test('S1B-21 OrgMaster single-capsule workflow and owner masks', () => {
 
 test('OrgMaster custom Cloud Build service account can act only as itself', () => {
   const identity = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/identity.tf', import.meta.url), 'utf8')
+  const storage = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/storage.tf', import.meta.url), 'utf8')
+  const migration = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/migration.tf', import.meta.url), 'utf8')
   const infraPlan = read('config/release/dev040-production-release-infra-plan.json')
   assert.match(identity, /resource "google_service_account_iam_member" "builder_act_as_self"[\s\S]*service_account_id = google_service_account\.builder\.name[\s\S]*role\s+= "roles\/iam\.serviceAccountUser"[\s\S]*member\s+= "serviceAccount:\$\{google_service_account\.builder\.email\}"/u)
   assert.ok(infraPlan.stageBAdditional.includes('google_service_account_iam_member.builder_act_as_self'))
   assert.ok(!infraPlan.stageA.includes('google_service_account_iam_member.builder_act_as_self'))
   assert.doesNotMatch(identity.match(/resource "google_service_account_iam_member" "builder_act_as_self"[\s\S]*?\n\}/u)?.[0] ?? '', /runtime|deployer|verifier|aipdm|platform/u)
+  assert.match(identity, /resource "google_project_iam_member" "builder_sbom_bucket_viewer"[\s\S]*role\s+= "roles\/storage\.bucketViewer"[\s\S]*google_service_account\.builder\.email/u)
+  assert.match(identity, /resource "google_project_iam_member" "builder_sbom_note_attacher"[\s\S]*role\s+= "roles\/containeranalysis\.notes\.attacher"[\s\S]*google_service_account\.builder\.email/u)
+  assert.match(storage, /resource "google_storage_bucket_iam_member" "builder_sbom_object_admin"[\s\S]*role\s+= "roles\/storage\.objectAdmin"[\s\S]*artifact_analysis_object_prefix/u)
+  assert.doesNotMatch(storage.match(/resource "google_storage_bucket_iam_member" "builder_sbom_object_admin"[\s\S]*?\n\}/u)?.[0] ?? '', /aipdm-release|platform-release/u)
+  assert.match(migration, /resource "google_cloud_run_v2_job_iam_member" "migration_runner_with_overrides"[\s\S]*name\s+= google_cloud_run_v2_job\.migration\[0\]\.name[\s\S]*role\s+= "roles\/run\.jobsExecutorWithOverrides"[\s\S]*google_service_account\.deployer\.email/u)
+  for (const address of ['google_project_iam_member.builder_sbom_bucket_viewer', 'google_project_iam_member.builder_sbom_note_attacher', 'google_storage_bucket_iam_member.builder_sbom_object_admin']) assert.ok(infraPlan.stageA.includes(address))
+  assert.ok(infraPlan.stageBAdditional.includes('google_cloud_run_v2_job_iam_member.migration_runner_with_overrides[0]'))
 })

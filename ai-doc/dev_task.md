@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+> **2026-09-10 DEV-040 R25 IAM correction（current）**：fresh Billing／quota／cost／capacity及OrgMaster artifact gate均PASS，但migration Job execution前因缺`run.jobs.runWithOverrides`安全停止；自動SBOM亦揭露default Artifact Analysis bucket權限缺口。Current source新增own-prefix SBOM IAM及own exact-job executor-with-overrides，無DB／candidate／traffic mutation。完成QC後提交push並由fresh cohort重建production data與全部receipts；R25不得重用。
+
 > **2026-09-10 DEV-040 R22 artifact-evidence hardening（current）**：R22已證明Cloud Build self-actAs修正成功並產生immutable digest／SLSA Level 3 provenance；其後Artifact Analysis因pre-discovery SBOM request回400，且舊runner scan出3 Critical＋15 High，於任何migration／candidate／entrypoint／traffic前安全停止。Current修正採四kind＋exact resource查詢、discovery完成後僅對HTTP 400 bounded retry SBOM與pinned non-root Node 24 Distroless runner，High／Critical門檻不放寬。Fresh aggregate `2026-09-10T074043-640Z`已S1A 32／32、S1B 24／24、S1C 8／8及全部OrgMaster exit gate PASS。下一步為提交master與fresh cohort；R22不得重用。
 
 > **2026-09-10 DEV-040 R20 custom build identity correction（historical）**：R20已通過canonical source identity、source archive及migration bundle建立，後於Cloud Build create以HTTP 403 `DENIED`安全停止；migrate／candidate／entrypoint／traffic均未執行。Live IAM顯示builder已有build editor/storage/registry/analysis但缺own `iam.serviceAccounts.actAs`。Current source新增self-only `google_service_account_iam_member.builder_act_as_self`、APP_INFRA_B additional complete-set地址與negative regression，stage A不含此build-runtime權限；R21舊分類source lock作廢。修正提交後必以fresh cohort apply/readback並重建全部source-bound receipts，R20／R21不得重用。

@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-10 R25 current handoff**：DEV-040 R2 current additive authority為[主契約§31](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與[QA§8](qa/DEV-040-R2-independent-production-release-validation-plan.md)。R25在migration execution前安全停止；own-prefix SBOM與exact-job override IAM完成fresh source／provider重證後才可重跑。
+
 > **2026-09-10 R20 provider correction**：OrgMaster source identity與兩個source objects已PASS，Cloud Build create因custom builder缺own `iam.serviceAccounts.actAs`而403安全停止；current source新增self-only IAM resource、APP_INFRA_B additional complete-set及negative regression，stage A不含此build-runtime權限。無migration／candidate／entrypoint／traffic，R21舊分類作廢，fresh source/app-infra/readiness前Production仍NOT_RUN。
 
 > **2026-09-10 DEV-040 R2 V3 authority（current）**：official source固定為[OrgMaster](https://github.com/jedchang0308-jenfu/OrgMaster) `master`。Current owner docs為[DEV-040 §30](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與[040-R2 QA §7](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游為Platform DEV-012 §29，contract SHA-256=`857f8a94ab13f63071156f85e76e5c675b348588b1126c147e0e54b431b6e8c5`，owner profile SHA-256=`5233c5f7d425f0ec48413f9d105649429a7b7d292441b51a8634ee9058f2767c`。Canonical為provider-verified `https://orgmaster-prod-9536592944.asia-east1.run.app`；runtime fixed-value gate已納入current source。狀態=`Architecture Finalized / RD Tech Lead PASS / P0=0 / P1=0 / fresh S2 receipts required / Production NOT_RUN`。Custom domain／Hosting／shared edge只保留歷史／`RETAINED_UNUSED_EDGE`；TOTP與DEV-047不在scope。

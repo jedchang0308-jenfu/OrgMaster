@@ -1,5 +1,7 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
+> **2026-09-10 R25 IAM regression amendment（current）**：§8新增own-prefix SBOM、exact migration Job override與無人工介入oracle。R25 migration execution=0且不計production PASS；修正後須fresh source-frozen APP_INFRA及owner evidence。
+
 > **2026-09-10 R22 amendment（current）**：R22 Cloud Build及provider SLSA Level 3 provenance PASS；Artifact Analysis pre-discovery SBOM request以HTTP 400安全停止，terminal=`PRE_ACTIVATION_ABORTED`，無DB／candidate／entrypoint／traffic mutation。Provider scan為3 Critical＋15 High，依門檻阻擋。新增oracle：四kind＋exact digest occurrence分頁與scope readback、discovery-before-SBOM HTTP-400-only bounded retry、其他status立即FAIL、BUILD＋SBOM reference必備；production runner須為pinned Node 24 Distroless、UID/GID 65532且無global npm／不必要OS toolchain。Fresh aggregate `2026-09-10T074043-640Z`已含OrgMaster audit／DB boundary／build＋typecheck／diff check全PASS；R22不得計入production PASS。
 
 > **2026-09-10 R20 amendment**：R20證實source identity、source upload及migration bundle PASS；Cloud Build create因custom builder缺own `iam.serviceAccounts.actAs`回403，failure recovery PASS，後續stage未執行。新增固定oracle：APP_INFRA_B additional complete-set含`google_service_account_iam_member.builder_act_as_self`且stage A不得含，role/member/resource精確綁`orgmaster-prod-builder`自身，且不得含sibling/runtime/deployer/verifier。R21舊分類source lock作廢；fresh app-infra apply/readback前R20／R21不可計為production PASS。
@@ -83,3 +85,9 @@ Current evidence=`../../../Jenfu-Platform/output/dev-012/s1c/2026-09-09T111340-0
 2026-09-10 shared-foundation handoff oracle：OrgMaster intent只接受own-bucket foundation mirror，bytes須等於Platform provider receipt；只有foundation可保留`shared-foundation` owner與Platform source provenance，infra/runtime/data owner或source drift仍FAIL。R15／R16安全停止不算正式PASS，須由fresh cohort重證。
 
 2026-09-10 cross-OS／cross-Git source identity oracle：source lock與GitHub runner必對同一`git ls-tree -r -z --full-tree <revision>` canonical tree manifest取得相同SHA；manifest逐項綁mode／type／object ID／path，build上傳gzip則另有GCS bytes SHA。任何gzip／raw-tar跨環境bytes比較、tree manifest drift、空archive或identity fail後仍執行Cloud Build／migration／traffic都FAIL；R18／R19安全停止不算正式PASS。
+
+## 8. R25 IAM correction oracle
+
+S1B-21重跑必證明IaC／complete-set含`roles/storage.bucketViewer`、`roles/containeranalysis.notes.attacher`、只限encoded `orgmaster-release` prefix的`roles/storage.objectAdmin`，以及只限`orgmaster-prod-migration-runner`＋`orgmaster-prod-deployer`的`roles/run.jobsExecutorWithOverrides`。Sibling prefix／job／principal、無condition、project-wide object role、只有`run.invoker`或Terraform update／delete／replace均FAIL。
+
+Managed build須由OrgMaster builder自行取得SBOM_REFERENCE與0 High／Critical scan，不接受human-generated SBOM。Managed migration須建立exact execution、完成001～011與data／principal readback，且在其PASS前traffic不變；R25只證明fail closed，不增加最終分子。
