@@ -107,3 +107,11 @@ test('S1B-21 OrgMaster single-capsule workflow and owner masks', () => {
   assert.equal(buildDev040CandidateTag({ service: 'orgmaster-prod', revision: 'orgmaster-prod-candidate-1', tag: `candidate-${'a'.repeat(12)}`, beforeTraffic: [{ revision: 'orgmaster-prod-prev', percent: 100 }], etag: 'e' }).traffic.at(-1).percent, 0)
   assert.throws(() => buildDev040Mutation({ operation: 'ACTIVATE', service: 'orgmaster-prod', updateMask: 'template,traffic', revision: 'candidate-1', trafficPercent: 100, etag: 'e' }), /MIXED_MUTATION_MASK/)
 })
+
+test('OrgMaster custom Cloud Build service account can act only as itself', () => {
+  const identity = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/identity.tf', import.meta.url), 'utf8')
+  const infraPlan = read('config/release/dev040-production-release-infra-plan.json')
+  assert.match(identity, /resource "google_service_account_iam_member" "builder_act_as_self"[\s\S]*service_account_id = google_service_account\.builder\.name[\s\S]*role\s+= "roles\/iam\.serviceAccountUser"[\s\S]*member\s+= "serviceAccount:\$\{google_service_account\.builder\.email\}"/u)
+  assert.ok(infraPlan.stageA.includes('google_service_account_iam_member.builder_act_as_self'))
+  assert.doesNotMatch(identity.match(/resource "google_service_account_iam_member" "builder_act_as_self"[\s\S]*?\n\}/u)?.[0] ?? '', /runtime|deployer|verifier|aipdm|platform/u)
+})
