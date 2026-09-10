@@ -1,5 +1,7 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
+> **2026-09-10 R26 staged-IaC correction（current additive authority）**：R26 OrgMaster APP_INFRA_B因三個SBOM地址誤列A而在apply前安全停止；回跑A會規劃destroy既有B並再次被拒，production mutation=0。§31現把SBOM bindings改為`incident_runtime_enabled` APP_INFRA_B additional `[0]` resources；fresh B plan只可create三個own-prefix SBOM bindings與own exact-job override，其餘read/no-op。
+
 > **2026-09-10 R25 IAM correction（current additive authority）**：R25 OrgMaster image已通過Cloud Build、provenance、SBOM與0 High／Critical，但migration在Job execution前因deployer缺`run.jobs.runWithOverrides`安全停止；自動SBOM亦曾因builder缺default Artifact Analysis bucket權限而需人工補跑。§31固定own encoded `orgmaster-release` prefix與own exact migration Job權限，fresh source／APP_INFRA／cohort前不得再部署。
 
 > **2026-09-10 R22 artifact-evidence hardening（current）**：R22 OrgMaster Cloud Build、immutable digest及SLSA Level 3 provenance PASS；Artifact Analysis `exportSBOM`早於discovery完成而HTTP 400，failure recovery產生`PRE_ACTIVATION_ABORTED`且任何migration／candidate／entrypoint／traffic皆未執行。完成後scan顯示舊runner含3 Critical＋15 High，來源為非執行期global npm及Debian Perl／ACL／attr／zlib。Current修正按BUILD／DISCOVERY／SBOM_REFERENCE／VULNERABILITY kind＋exact digest分別完整分頁，先等discovery成功再僅對HTTP 400 bounded retry SBOM，其他status立即FAIL；production runner改為pinned non-root Node 24 Distroless，High／Critical政策不降級。Fresh aggregate `2026-09-10T074043-640Z`已PASS；R22不可重用，提交後須fresh source/cohort。

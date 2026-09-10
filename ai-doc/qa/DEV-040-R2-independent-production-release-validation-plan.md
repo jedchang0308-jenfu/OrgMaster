@@ -1,5 +1,7 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
+> **2026-09-10 R26 staged-IaC amendment（current）**：provider dry-run證實A／B錯誤分類會分別觸發B-mutates-A或A destroy既有B，兩者均已安全拒絕。SBOM IAM三地址現須為APP_INFRA_B additional `[0]`並由`incident_runtime_enabled=true`啟用；fresh B只允許三個SBOM＋exact-job override create，其他完整set read/no-op。
+
 > **2026-09-10 R25 IAM regression amendment（current）**：§8新增own-prefix SBOM、exact migration Job override與無人工介入oracle。R25 migration execution=0且不計production PASS；修正後須fresh source-frozen APP_INFRA及owner evidence。
 
 > **2026-09-10 R22 amendment（current）**：R22 Cloud Build及provider SLSA Level 3 provenance PASS；Artifact Analysis pre-discovery SBOM request以HTTP 400安全停止，terminal=`PRE_ACTIVATION_ABORTED`，無DB／candidate／entrypoint／traffic mutation。Provider scan為3 Critical＋15 High，依門檻阻擋。新增oracle：四kind＋exact digest occurrence分頁與scope readback、discovery-before-SBOM HTTP-400-only bounded retry、其他status立即FAIL、BUILD＋SBOM reference必備；production runner須為pinned Node 24 Distroless、UID/GID 65532且無global npm／不必要OS toolchain。Fresh aggregate `2026-09-10T074043-640Z`已含OrgMaster audit／DB boundary／build＋typecheck／diff check全PASS；R22不得計入production PASS。
