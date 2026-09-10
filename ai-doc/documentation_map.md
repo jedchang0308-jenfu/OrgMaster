@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-11 R27 current handoff**：OrgMaster run 34506045085 在artifact gates全PASS後，於migration execution建立前因exact Job readback缺roles/run.viewer安全停止；provider execution=0且無DB／candidate／entrypoint／traffic mutation。Current §31／QA§8增補own exact-job resource-scoped viewer、APP_INFRA_B complete-set與真實database disposition；fresh source／APP_INFRA／cohort後才可重跑。
+
 > **2026-09-10 R26 current handoff**：OrgMaster APP_INFRA_A/B錯誤分層已在任何apply前由gate攔下。Current §31／QA§8固定三個SBOM bindings為`incident_runtime_enabled` APP_INFRA_B additional `[0]`，fresh only-create provider readback後才可重新dispatch。
 
 > **2026-09-10 R25 current handoff**：DEV-040 R2 current additive authority為[主契約§31](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與[QA§8](qa/DEV-040-R2-independent-production-release-validation-plan.md)。R25在migration execution前安全停止；own-prefix SBOM與exact-job override IAM完成fresh source／provider重證後才可重跑。

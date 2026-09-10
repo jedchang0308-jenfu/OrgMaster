@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+> **2026-09-11 DEV-040 R27 migration readback correction（current）**：R27 protected owner run 34506045085 的prepare與immutable build／provenance／SBOM／0 High-Critical scan均PASS，但migrate在任何Cloud Run Job execution建立前因deployer缺run.jobs.get回DENIED；provider executions=0，candidate／entrypoint／traffic與DB mutation皆為0。Current在own exact migration Job新增resource-scoped roles/run.viewer並納入APP_INFRA_B complete-set；failure receipt改由immutable migrate receipt判定NOT_APPLIED或FORWARD_APPLIED。完成QC／commit後必以fresh source／app-infra／cohort重跑，R27不得重用。
+
 > **2026-09-10 DEV-040 R26 staged-IaC correction（current）**：R26 source／foundation PASS後，B因SBOM bindings誤列A而安全停止；A回跑亦因會destroy既有B被拒，兩次均無apply／DB／candidate／traffic。Current將三個SBOM bindings改為`incident_runtime_enabled` APP_INFRA_B additional `[0]`；fresh plan應只有它們與exact-job override四個create。QC／commit後使用新cohort，R26不得重用。
 
 > **2026-09-10 DEV-040 R25 IAM correction（current）**：fresh Billing／quota／cost／capacity及OrgMaster artifact gate均PASS，但migration Job execution前因缺`run.jobs.runWithOverrides`安全停止；自動SBOM亦揭露default Artifact Analysis bucket權限缺口。Current source新增own-prefix SBOM IAM及own exact-job executor-with-overrides，無DB／candidate／traffic mutation。完成QC後提交push並由fresh cohort重建production data與全部receipts；R25不得重用。

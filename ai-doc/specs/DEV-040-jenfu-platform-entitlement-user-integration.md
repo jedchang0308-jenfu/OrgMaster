@@ -1,5 +1,7 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
+> **2026-09-11 R27 migration-readback correction（current additive authority）**：R27 OrgMaster prepare／build／provenance／SBOM／scan均PASS，migrate則在建立任何execution前因deployer讀取own migration Job缺run.jobs.get而HTTP 403。roles/run.jobsExecutorWithOverrides供應商定義不含Job／execution／operation GET；本owner只在exact orgmaster-prod-migration-runner增補resource-scoped roles/run.viewer並納入APP_INFRA_B complete-set，禁止project-wide或sibling read。Failure receipt只有在有效immutable migrate receipt存在時可標FORWARD_APPLIED，否則標NOT_APPLIED。R27 execution=0且無DB／candidate／entrypoint／traffic mutation，不得作release authority。
+
 > **2026-09-10 R26 staged-IaC correction（current additive authority）**：R26 OrgMaster APP_INFRA_B因三個SBOM地址誤列A而在apply前安全停止；回跑A會規劃destroy既有B並再次被拒，production mutation=0。§31現把SBOM bindings改為`incident_runtime_enabled` APP_INFRA_B additional `[0]` resources；fresh B plan只可create三個own-prefix SBOM bindings與own exact-job override，其餘read/no-op。
 
 > **2026-09-10 R25 IAM correction（current additive authority）**：R25 OrgMaster image已通過Cloud Build、provenance、SBOM與0 High／Critical，但migration在Job execution前因deployer缺`run.jobs.runWithOverrides`安全停止；自動SBOM亦曾因builder缺default Artifact Analysis bucket權限而需人工補跑。§31固定own encoded `orgmaster-release` prefix與own exact migration Job權限，fresh source／APP_INFRA／cohort前不得再部署。

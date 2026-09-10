@@ -1,5 +1,7 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
+> **2026-09-11 R27 amendment（current）**：R27 artifact gates PASS後，migration在execution建立前因exact Job readback缺viewer而安全停止；provider executions=0，DB／candidate／entrypoint／traffic=0。新增固定oracle：APP_INFRA_B complete-set須含google_cloud_run_v2_job_iam_member.migration_runner_viewer[0]，role=roles/run.viewer、resource為own exact Job、member為own deployer；project-wide或sibling binding均FAIL。Rollback／terminal必以immutable migrate receipt區分NOT_APPLIED與FORWARD_APPLIED。
+
 > **2026-09-10 R26 staged-IaC amendment（current）**：provider dry-run證實A／B錯誤分類會分別觸發B-mutates-A或A destroy既有B，兩者均已安全拒絕。SBOM IAM三地址現須為APP_INFRA_B additional `[0]`並由`incident_runtime_enabled=true`啟用；fresh B只允許三個SBOM＋exact-job override create，其他完整set read/no-op。
 
 > **2026-09-10 R25 IAM regression amendment（current）**：§8新增own-prefix SBOM、exact migration Job override與無人工介入oracle。R25 migration execution=0且不計production PASS；修正後須fresh source-frozen APP_INFRA及owner evidence。
