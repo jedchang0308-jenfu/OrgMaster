@@ -148,7 +148,7 @@ test('migration job readback rejects mutable target fields before jobs.run', asy
   let listCalls = 0
   const requestedArgs = ['--bundle-ref', `gs://${bucket}/source/migration-bundles/b.json`, '--bundle-sha256', H64, '--source-revision', H40, '--output-ref', `gs://${bucket}/receipts/migrate.json`]
   const executionName = `${jobName}/executions/e1`
-  const execution = { name: executionName, template: { containers: [{ name: 'migration', args: requestedArgs }] }, succeededCount: 1, failedCount: 0, completionTime: '2026-09-08T00:00:00Z', terminalCondition: { state: 'CONDITION_SUCCEEDED' } }
+  const execution = { name: executionName, template: { containers: [{ name: 'migration', args: requestedArgs }] }, succeededCount: 1, failedCount: 0, completionTime: '2026-09-08T00:00:00Z', conditions: [{ type: 'Completed', state: 'CONDITION_SUCCEEDED' }] }
   const requestedUrls = []
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
     requestedUrls.push(String(url))
@@ -179,7 +179,7 @@ test('OrgMaster migration job receives exact production-data refs only when requ
   let listCalls = 0
   const requestedArgs = ['--bundle-ref', `gs://${bucket}/source/migration-bundles/b.json`, '--bundle-sha256', H64, '--source-revision', H40, '--output-ref', `gs://${bucket}/receipts/migrate.json`, '--data-ref', `gs://${bucket}/source/production-data/REL-001/data.json`, '--data-sha256', H64, '--bootstrap-ref', `gs://${bucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, '--bootstrap-sha256', H64]
   const executionName = `${jobName}/executions/e1`
-  const execution = { name: executionName, template: { containers: [{ name: 'migration', args: requestedArgs }] }, succeededCount: 1, failedCount: 0, completionTime: '2026-09-08T00:00:00Z', terminalCondition: { state: 'CONDITION_SUCCEEDED' } }
+  const execution = { name: executionName, template: { containers: [{ name: 'migration', args: requestedArgs }] }, succeededCount: 1, failedCount: 0, completionTime: '2026-09-08T00:00:00Z', conditions: [{ type: 'Completed', state: 'CONDITION_SUCCEEDED' }] }
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
     if (options.method === 'POST') { runBody = JSON.parse(options.body); return json({ name: 'projects/p/locations/r/operations/run-1', done: true, response: { name: 'projects/p/locations/r/executions/e1' } }) }
     if (String(url).endsWith('/executions?pageSize=100')) return json({ executions: listCalls++ === 0 ? [] : [execution] })
