@@ -1,5 +1,7 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
+> **2026-09-11 R38 pre-auth amendment（current）**：R34 exact execution `orgmaster-prod-migration-runner-pfnz7`為production migration與data evidence：`7 applied／4 replayed／ledgerCount=11`且data PASS。此結果不等於candidate、entrypoint、traffic或QA-012 PASS；三者仍NOT_RUN。Current回歸要求以`conditions[type=Completed]`判定Cloud Run v2 execution，並驗own exact Job resource-scoped viewer。R37因AI-PDM source drift整體作廢且無OrgMaster app apply；fresh R38須以idempotent replay確認migration，不得人工rollback已套用DDL。
+
 > **2026-09-11 R28 amendment（current）**：R28 exact OrgMaster migration execution已建立，但在001～011、data import與principal CAS前因缺shared DB roles／schemas以SQLSTATE `42704`停止，generic operation GET另回403；candidate／entrypoint／traffic=0。新增oracle：禁止operations endpoint，Service PATCH改驗exact Service settled state，Job run以run前後child execution差集＋current args唯一匹配取得exact execution。Platform production DB bootstrap receipt未通過source／target／隔離數值與task-owned Job cleanup前不得dispatch。R28不計production PASS。
 
 > **2026-09-11 R27 amendment（current）**：R27 artifact gates PASS後，migration在execution建立前因exact Job readback缺viewer而安全停止；provider executions=0，DB／candidate／entrypoint／traffic=0。新增固定oracle：APP_INFRA_B complete-set須含google_cloud_run_v2_job_iam_member.migration_runner_viewer[0]，role=roles/run.viewer、resource為own exact Job、member為own deployer；project-wide或sibling binding均FAIL。Rollback／terminal必以immutable migrate receipt區分NOT_APPLIED與FORWARD_APPLIED。
@@ -15,8 +17,8 @@
 > **2026-09-08 DEV-012 S1C amendment（V2 historical；current見§7）**：當時新增official repo=`jedchang0308-jenfu/OrgMaster`／branch=`master`、owner source/runtime/intent chain、shared-LB host binding、internal verifier job、numeric smoke Secret、local data inventory→encrypted handoff→import→reconcile／restore，以及一筆明確human principal one-time bootstrap的驗證。Public `run.app`在該V2方案為FAIL；此入口判定已由§7 V3 direct-run contract取代。其data／principal與source provenance仍保留，local結果不得作current release authority。
 
 - 文件成熟度：`V3 Architecture Finalized / RD Tech Lead PASS / Owner QA Contract Executed；V1／V2 Historical`
-- 狀態：`V3 Owner PASS / S1B-21 PASS / DEV-012 S1C 8／8 PASS / S2 In Progress / Production NOT_RUN`
-- 日期：2026-09-09
+- 狀態：`V3 Owner PASS / S1B-21 PASS / DEV-012 S1C 8／8 PASS / S2 Paused for Operator Re-auth / Production Migration and Data PASS / Candidate、Entrypoint、Traffic NOT_RUN`
+- 日期：2026-09-11
 - 規格 authority：[DEV-040 §30](../specs/DEV-040-jenfu-platform-entitlement-user-integration.md)
 - 上游 authority：Platform DEV-012 §29；contract SHA-256=`857f8a94ab13f63071156f85e76e5c675b348588b1126c147e0e54b431b6e8c5`
 
