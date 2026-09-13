@@ -105,3 +105,14 @@ Managed build須由OrgMaster builder自行取得SBOM_REFERENCE與0 High／Critic
 Owner runtime須證明不呼叫`/operations/`；Service mutation只由exact Service settled readback、requested entry fields及零template／traffic drift判定。Migration POST前後完整分頁列出child executions，只接受唯一new＋exact current args match並輪詢該execution terminal；零筆、多筆、舊latest、args drift、unreadable或deadline均FAIL。沒有有效immutable migrate PASS receipt時，failure terminal不得標`FORWARD_APPLIED`，也不得進candidate／entrypoint／traffic。
 
 Upstream negative gate須在production DB bootstrap receipt缺失、self-hash／Platform source／release／target漂移、8 group roles／8 IAM logins／8 memberships／11 schemas／1 extension／8 direct CONNECT不符、group CONNECT非0、PUBLIC CONNECT、`public` business object或task-owned Job cleanup未完成時，於OrgMaster dispatch前FAIL。Bootstrap PASS只建立shared prerequisites；001～011、data import、principal CAS、reconciliation、canonical smoke與最終QA仍須本owner獨立完成。
+
+## 10. R40 one-time authority replay oracle
+
+R34的成功data／principal CAS是唯一active authority；R39／R40失敗收據只證明candidate、entrypoint與traffic均未執行。Fresh source測試必新增以下固定oracle：
+
+- 相同原始artifact inventory、governance source、catalog、media、preferences disposition及同一principal重跑時PASS，回傳`replayed=true／oneTimeAuthorityPreserved=true`，active data revision不變，requested revision另列。
+- Replay前後`persistence_batches`筆數、`persistence_authority.active_batch_id／authority_version`與active governance bytes不變；不得把新release envelope當新business-data authority。
+- 任一非governance artifact hash、governance原始source hash、catalog、media、preference、issuer／subject／employee、human admission或兩筆admin assignment漂移時，在candidate前FAIL且transaction rollback。
+- Active batch缺失／非active、authority懸空或governance artifact缺失時固定`PRODUCTION_DATA_ACTIVE_AUTHORITY_INVALID`；不得fallback建立第二個authority。
+
+Managed acceptance須以fresh owner run的migrate receipt及provider／DB readback證明上述正向不變量；local unit PASS只解鎖新source freeze，不冒充production結果。

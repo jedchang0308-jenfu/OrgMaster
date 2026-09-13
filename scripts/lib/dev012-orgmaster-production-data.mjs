@@ -296,6 +296,38 @@ async function reconcileBatch(database, batchId, packageValue) {
   if (canonicalize(normalizedArtifacts) !== canonicalize(expectedArtifacts) || canonicalize(normalizedMedia) !== canonicalize(expectedMedia)) fail('PRODUCTION_DATA_RECONCILIATION_FAILED')
 }
 
+function stableSourceInventory(manifest) {
+  if (manifest?.contractVersion !== PERSISTENCE_CONTRACT || !Array.isArray(manifest.artifacts) || !Array.isArray(manifest.media) || !Array.isArray(manifest.preferences)) fail('PRODUCTION_DATA_ACTIVE_AUTHORITY_INVALID')
+  const artifacts = manifest.artifacts.map((item) => {
+    if (!item?.artifactKey || !item.artifactKind) fail('PRODUCTION_DATA_ACTIVE_AUTHORITY_INVALID')
+    if (item.artifactKey === 'orgmaster-governance.v3.json') {
+      if (!H64.test(item.originalSourceSha256 ?? '')) fail('PRODUCTION_DATA_ACTIVE_AUTHORITY_INVALID')
+      return { artifactKey: item.artifactKey, artifactKind: item.artifactKind, sourceSha256: item.originalSourceSha256 }
+    }
+    if (!H64.test(item.sourceSha256 ?? '') || !H64.test(item.canonicalSha256 ?? '') || !Number.isInteger(Number(item.sourceBytes))) fail('PRODUCTION_DATA_ACTIVE_AUTHORITY_INVALID')
+    return { artifactKey: item.artifactKey, artifactKind: item.artifactKind, sourceSha256: item.sourceSha256, canonicalSha256: item.canonicalSha256, sourceBytes: Number(item.sourceBytes) }
+  }).sort((a, b) => a.artifactKey.localeCompare(b.artifactKey))
+  const media = manifest.media.map((item) => ({ mediaKey: item.mediaKey, sourceSha256: item.sourceSha256, sourceBytes: Number(item.sourceBytes), mimeType: item.mimeType })).sort((a, b) => a.mediaKey.localeCompare(b.mediaKey))
+  const preferences = manifest.preferences.map((item) => ({ identitySha256: item.identitySha256, contentSha256: item.contentSha256, sourceBytes: Number(item.sourceBytes), disposition: item.disposition })).sort((a, b) => a.identitySha256.localeCompare(b.identitySha256))
+  return { contractVersion: manifest.contractVersion, artifacts, media, preferences }
+}
+
+function activeCatalogs(governance) {
+  const active = governance?.publishedVersions?.find((item) => item.id === governance.activePolicyVersionId)
+  if (!active || !Array.isArray(active.externalRoleCatalogs)) fail('PRODUCTION_DATA_ACTIVE_AUTHORITY_INVALID')
+  return active.externalRoleCatalogs
+}
+
+export function assertActiveProductionDataReplay({ activeManifest, activeGovernance, packageValue, bootstrap }) {
+  const expectedGovernance = packageValue?.artifacts?.find((item) => item.artifactKey === 'orgmaster-governance.v3.json')?.payload
+  if (!expectedGovernance || canonicalize(stableSourceInventory(activeManifest)) !== canonicalize(stableSourceInventory(packageValue.safeManifest)) || canonicalize(activeCatalogs(activeGovernance)) !== canonicalize(activeCatalogs(expectedGovernance))) fail('PRODUCTION_DATA_AUTHORITY_CAS_CONFLICT')
+  const activeLinks = activeGovernance.draft?.identityLinks?.filter((item) => item.status === 'active' && item.issuer === bootstrap.identity.issuer && item.subject === bootstrap.identity.subject && item.employeeId === bootstrap.employeeId) ?? []
+  const activeAdmissions = activeGovernance.draft?.principalAdmissions?.filter((item) => item.status === 'active' && item.accountType === 'human_privileged' && activeLinks.some((link) => link.id === item.identityLinkId)) ?? []
+  const adminAssignments = activeGovernance.draft?.roleAssignments?.filter((item) => item.status === 'active' && item.employeeId === bootstrap.employeeId && ['role-orgmaster-admin', 'role-system-admin'].includes(item.roleId)) ?? []
+  if (activeLinks.length !== 1 || activeAdmissions.length !== 1 || adminAssignments.length !== 2) fail('FIRST_PRINCIPAL_RECONCILIATION_FAILED')
+  return true
+}
+
 export async function importProductionData({ database, packageValue, bootstrap, now = () => new Date().toISOString() }) {
   const at = now()
   await database.query('BEGIN')
@@ -303,11 +335,21 @@ export async function importProductionData({ database, packageValue, bootstrap, 
     await database.query('SET LOCAL ROLE jenfu_orgmaster_migrator')
     await database.query("SELECT pg_advisory_xact_lock(hashtext('dev012-orgmaster-production-data'), hashtext(current_database()))")
     const authority = (await database.query('SELECT active_batch_id, authority_version FROM orgmaster_core.persistence_authority WHERE singleton=true FOR UPDATE')).rows[0]
-    const existing = (await database.query('SELECT id,status FROM orgmaster_core.persistence_batches WHERE source_revision=$1', [packageValue.dataRevision])).rows[0]
-    if (authority?.active_batch_id && (!existing || String(authority.active_batch_id) !== String(existing.id))) fail('PRODUCTION_DATA_AUTHORITY_CAS_CONFLICT')
+    const existing = (await database.query('SELECT id,status,source_revision,source_manifest FROM orgmaster_core.persistence_batches WHERE source_revision=$1', [packageValue.dataRevision])).rows[0]
     let batchId = existing?.id
     let replayed = Boolean(existing)
-    if (!existing) {
+    let activeDataRevision = packageValue.dataRevision
+    let oneTimeAuthorityPreserved = false
+    if (authority?.active_batch_id && (!existing || String(authority.active_batch_id) !== String(existing.id))) {
+      const active = (await database.query('SELECT id,status,source_revision,source_manifest FROM orgmaster_core.persistence_batches WHERE id=$1', [authority.active_batch_id])).rows[0]
+      const activeGovernance = (await database.query("SELECT payload FROM orgmaster_core.persistence_artifacts WHERE batch_id=$1 AND artifact_key='orgmaster-governance.v3.json'", [authority.active_batch_id])).rows[0]?.payload
+      if (!active || active.status !== 'active' || !activeGovernance) fail('PRODUCTION_DATA_ACTIVE_AUTHORITY_INVALID')
+      assertActiveProductionDataReplay({ activeManifest: active.source_manifest, activeGovernance, packageValue, bootstrap })
+      batchId = active.id
+      activeDataRevision = active.source_revision
+      replayed = true
+      oneTimeAuthorityPreserved = true
+    } else if (!existing) {
       batchId = randomUUID()
       await database.query("INSERT INTO orgmaster_core.persistence_batches(id,source_revision,contract_version,source_manifest,artifact_count,media_count,source_bytes,status,imported_at,verified_at) VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,'shadow',$8,$8)", [batchId, packageValue.dataRevision, PERSISTENCE_CONTRACT, JSON.stringify(packageValue.safeManifest), packageValue.artifactCount, packageValue.mediaCount, packageValue.sourceBytes, at])
       for (const artifact of packageValue.artifacts) await database.query('INSERT INTO orgmaster_core.persistence_artifacts(batch_id,artifact_key,artifact_kind,payload,source_sha256,canonical_sha256,source_bytes,imported_at) VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8)', [batchId, artifact.artifactKey, artifact.artifactKind, JSON.stringify(artifact.payload), artifact.sourceSha256, artifact.canonicalSha256, artifact.sourceBytes, at])
@@ -318,7 +360,7 @@ export async function importProductionData({ database, packageValue, bootstrap, 
         if (result.rowCount !== 1) fail('PRODUCTION_MEDIA_CONFLICT')
       }
     }
-    await reconcileBatch(database, batchId, packageValue)
+    if (!oneTimeAuthorityPreserved) await reconcileBatch(database, batchId, packageValue)
     if (!authority?.active_batch_id) {
       await database.query("UPDATE orgmaster_core.persistence_batches SET status='active',activated_at=$2 WHERE id=$1 AND status='shadow'", [batchId, at])
       const pointer = await database.query("UPDATE orgmaster_core.persistence_authority SET active_batch_id=$1,authority_version=authority_version+1,updated_at=$2,updated_by='dev012-production-import',reason_code='first_production_authority' WHERE singleton=true AND active_batch_id IS NULL RETURNING authority_version", [batchId, at])
@@ -331,7 +373,7 @@ export async function importProductionData({ database, packageValue, bootstrap, 
     const adminAssignments = governance?.draft?.roleAssignments?.filter((item) => item.status === 'active' && item.employeeId === bootstrap.employeeId && ['role-orgmaster-admin', 'role-system-admin'].includes(item.roleId)) ?? []
     if (governance?.activePolicyVersionId == null || activeLinks.length !== 1 || activeAdmissions.length !== 1 || adminAssignments.length !== 2) fail('FIRST_PRINCIPAL_RECONCILIATION_FAILED')
     await database.query('COMMIT')
-    return { status: 'PASS', dataRevision: packageValue.dataRevision, manifestSha256: packageValue.manifestSha256, bootstrapSha256: bootstrap.bootstrapSha256, artifactCount: packageValue.artifactCount, mediaCount: packageValue.mediaCount, preferenceDisposition: packageValue.preferenceDisposition, firstPrincipalCount: 1, adminAssignmentCount: 2, replayed, completedAt: at }
+    return { status: 'PASS', dataRevision: activeDataRevision, requestedDataRevision: packageValue.dataRevision, manifestSha256: packageValue.manifestSha256, bootstrapSha256: bootstrap.bootstrapSha256, artifactCount: packageValue.artifactCount, mediaCount: packageValue.mediaCount, preferenceDisposition: packageValue.preferenceDisposition, firstPrincipalCount: 1, adminAssignmentCount: 2, replayed, oneTimeAuthorityPreserved, completedAt: at }
   } catch (error) {
     await database.query('ROLLBACK').catch(() => undefined)
     throw error

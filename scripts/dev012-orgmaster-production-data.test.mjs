@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { ORGMASTER_PRODUCTION_DATA, applyFirstPrincipalBootstrap, assertFirstPrincipalBootstrap, assertProductionDataPackage, buildFirstPrincipalBootstrap, canonicalize, sha256 } from './lib/dev012-orgmaster-production-data.mjs'
+import { ORGMASTER_PRODUCTION_DATA, applyFirstPrincipalBootstrap, assertActiveProductionDataReplay, assertFirstPrincipalBootstrap, assertProductionDataPackage, buildFirstPrincipalBootstrap, canonicalize, sha256 } from './lib/dev012-orgmaster-production-data.mjs'
 
 const H40 = 'a'.repeat(40)
 const H64 = 'b'.repeat(64)
@@ -49,4 +49,16 @@ test('package validator fails closed on data mutation and retains explicit prefe
   const bytes = Buffer.from(`${canonicalize(value)}\n`)
   assert.equal(assertProductionDataPackage(value, { bytes, releaseId, sourceRevision: H40, bootstrapSha256: H64 }), value)
   assert.throws(() => assertProductionDataPackage({ ...value, artifactCount: 1 }, { bytes, releaseId, sourceRevision: H40, bootstrapSha256: H64 }), /PRODUCTION_DATA_PACKAGE_HASH_INVALID|PRODUCTION_DATA_PACKAGE_COUNTS_INVALID/)
+})
+
+test('one-time production authority replay accepts only the same source inventory, catalog and principal', () => {
+  const bootstrap = buildFirstPrincipalBootstrap({ releaseId, sourceRevision: H40, employeeIds: new Set(['employee-1']), input, identityEvidence, observedAt: NOW })
+  const activeGovernance = applyFirstPrincipalBootstrap({ governance: governance(), workspace, workspaceVersionId: 'current-1', workspaceRevision: H64, catalogFixture: catalogFixture(), bootstrap })
+  const governanceArtifact = { artifactKey: 'orgmaster-governance.v3.json', artifactKind: 'governance', sourceSha256: 'd'.repeat(64), canonicalSha256: 'e'.repeat(64), sourceBytes: 100, originalSourceSha256: 'f'.repeat(64), payload: activeGovernance }
+  const stableArtifact = { artifactKey: 'orgmaster-workspace.v1.json', artifactKind: 'workspace-manifest', sourceSha256: '1'.repeat(64), canonicalSha256: '2'.repeat(64), sourceBytes: 200 }
+  const activeManifest = { contractVersion: 'jenfu.orgmaster-persistence.v1', releaseId: 'OLDER-RELEASE', sourceRevision: '3'.repeat(40), bootstrapSha256: '4'.repeat(64), artifacts: [{ ...governanceArtifact, sourceSha256: '5'.repeat(64), canonicalSha256: '6'.repeat(64) }, stableArtifact], media: [], preferences: [] }
+  const packageValue = { safeManifest: { contractVersion: 'jenfu.orgmaster-persistence.v1', releaseId, sourceRevision: H40, bootstrapSha256: bootstrap.bootstrapSha256, artifacts: [governanceArtifact, stableArtifact], media: [], preferences: [] }, artifacts: [governanceArtifact] }
+  assert.equal(assertActiveProductionDataReplay({ activeManifest, activeGovernance, packageValue, bootstrap }), true)
+  assert.throws(() => assertActiveProductionDataReplay({ activeManifest, activeGovernance, packageValue: { ...packageValue, safeManifest: { ...packageValue.safeManifest, artifacts: [governanceArtifact, { ...stableArtifact, sourceSha256: '7'.repeat(64) }] } }, bootstrap }), /PRODUCTION_DATA_AUTHORITY_CAS_CONFLICT/)
+  assert.throws(() => assertActiveProductionDataReplay({ activeManifest, activeGovernance, packageValue, bootstrap: { ...bootstrap, employeeId: 'employee-2' } }), /FIRST_PRINCIPAL_RECONCILIATION_FAILED/)
 })
