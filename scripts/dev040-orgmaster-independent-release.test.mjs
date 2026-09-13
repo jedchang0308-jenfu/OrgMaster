@@ -112,6 +112,7 @@ test('OrgMaster custom Cloud Build service account can act only as itself', () =
   const identity = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/identity.tf', import.meta.url), 'utf8')
   const storage = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/storage.tf', import.meta.url), 'utf8')
   const migration = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/migration.tf', import.meta.url), 'utf8')
+  const candidateSmoke = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/candidate-smoke.tf', import.meta.url), 'utf8')
   const infraPlan = read('config/release/dev040-production-release-infra-plan.json')
   assert.match(identity, /resource "google_service_account_iam_member" "builder_act_as_self"[\s\S]*service_account_id = google_service_account\.builder\.name[\s\S]*role\s+= "roles\/iam\.serviceAccountUser"[\s\S]*member\s+= "serviceAccount:\$\{google_service_account\.builder\.email\}"/u)
   assert.ok(infraPlan.stageBAdditional.includes('google_service_account_iam_member.builder_act_as_self'))
@@ -130,4 +131,6 @@ test('OrgMaster custom Cloud Build service account can act only as itself', () =
   }
   assert.ok(infraPlan.stageBAdditional.includes('google_cloud_run_v2_job_iam_member.migration_runner_with_overrides[0]'))
   assert.ok(infraPlan.stageBAdditional.includes('google_cloud_run_v2_job_iam_member.migration_runner_viewer[0]'))
+  assert.match(candidateSmoke, /resource "google_project_iam_member" "verifier_candidate_smoke_execution_invoker"[\s\S]*role\s+= "roles\/workflows\.invoker"[\s\S]*google_service_account\.verifier\.email[\s\S]*resource\.name\.startsWith\('projects\/\$\{var\.project_id\}\/locations\/\$\{var\.region\}\/workflows\/\$\{local\.candidate_smoke_workflow\}\/executions\/'\)/u)
+  assert.ok(infraPlan.stageBAdditional.includes('google_project_iam_member.verifier_candidate_smoke_execution_invoker[0]'))
 })
