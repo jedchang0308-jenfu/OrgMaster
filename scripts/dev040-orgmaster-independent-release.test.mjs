@@ -114,6 +114,11 @@ test('OrgMaster custom Cloud Build service account can act only as itself', () =
   const migration = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/migration.tf', import.meta.url), 'utf8')
   const candidateSmoke = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/candidate-smoke.tf', import.meta.url), 'utf8')
   const infraPlan = read('config/release/dev040-production-release-infra-plan.json')
+  const runtimeFirebaseViewer = identity.match(/resource "google_project_iam_member" "runtime_firebase_auth_viewer"[\s\S]*?\n\}/u)?.[0] ?? ''
+  assert.match(runtimeFirebaseViewer, /count\s+= var\.incident_runtime_enabled \? 1 : 0[\s\S]*role\s+= "roles\/firebaseauth\.viewer"[\s\S]*serviceAccount:\$\{data\.google_service_account\.runtime\.email\}/u)
+  assert.doesNotMatch(runtimeFirebaseViewer, /builder\.email|deployer\.email|verifier\.email|controller\.email|smoke\.email/u)
+  assert.ok(infraPlan.stageBAdditional.includes('google_project_iam_member.runtime_firebase_auth_viewer[0]'))
+  assert.ok(!infraPlan.stageA.includes('google_project_iam_member.runtime_firebase_auth_viewer[0]'))
   assert.match(identity, /resource "google_service_account_iam_member" "builder_act_as_self"[\s\S]*service_account_id = google_service_account\.builder\.name[\s\S]*role\s+= "roles\/iam\.serviceAccountUser"[\s\S]*member\s+= "serviceAccount:\$\{google_service_account\.builder\.email\}"/u)
   assert.ok(infraPlan.stageBAdditional.includes('google_service_account_iam_member.builder_act_as_self'))
   assert.ok(!infraPlan.stageA.includes('google_service_account_iam_member.builder_act_as_self'))
