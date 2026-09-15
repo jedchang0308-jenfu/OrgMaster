@@ -9,6 +9,7 @@ import { createOrgmasterGovernanceMiddleware } from './orgmasterGovernanceApi'
 import { createOrgmasterManagementMethodMiddleware } from './managementMethodApi'
 import { createOrgmasterMigrationGateMiddleware } from './orgmasterMigrationGate'
 import { createOrgmasterAccountEnrollmentRuntime, type AccountEnrollmentHttpRuntimeV1 } from './orgmasterAccountEnrollmentApi'
+import { createOrgmasterManagedIdentityMiddleware } from './orgmasterManagedIdentityApi'
 import { createWorkbenchPreferenceMiddleware } from './workbenchPreferenceApi'
 
 type Middleware = Connect.NextHandleFunction
@@ -19,6 +20,7 @@ export type OrgmasterServerOptions = {
   devIdentityEnabled?: boolean
   accountEnrollmentEnabled?: boolean
   accountEnrollmentRuntime?: AccountEnrollmentHttpRuntimeV1
+  managedIdentityEnabled?: boolean
 }
 
 const contentTypes: Record<string, string> = {
@@ -93,10 +95,12 @@ export function createOrgmasterServer(options: OrgmasterServerOptions = {}) {
   const runtime = options.authRuntime ?? createOrgmasterAuthRuntime()
   const devIdentityEnabled = options.devIdentityEnabled ?? false
   const accountEnrollmentEnabled = options.accountEnrollmentEnabled ?? false
+  const managedIdentityEnabled = options.managedIdentityEnabled ?? (devIdentityEnabled || runtime.managedLoginEnabled === true)
   const accountRuntime = accountEnrollmentEnabled ? (options.accountEnrollmentRuntime ?? createOrgmasterAccountEnrollmentRuntime({ root, devEnabled: devIdentityEnabled })) : null
   const middlewares: Middleware[] = [
     createOrgmasterMigrationGateMiddleware(root),
     createOrgmasterAuthMiddleware(() => runtime, devIdentityEnabled),
+    ...(managedIdentityEnabled ? [createOrgmasterManagedIdentityMiddleware(root, devIdentityEnabled, runtime.managedIdentity)] : []),
     createWorkbenchPreferenceMiddleware(root),
     ...(accountRuntime ? [accountRuntime.middleware] : []),
     createOrgmasterApiMiddleware(),

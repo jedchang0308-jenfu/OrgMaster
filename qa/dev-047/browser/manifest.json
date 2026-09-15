@@ -1,0 +1,46 @@
+{
+  "contract": "DEV-047",
+  "evidenceScope": "LOCAL_ISOLATED",
+  "status": "PASS",
+  "baseUrl": "http://127.0.0.1:52885",
+  "port": 52885,
+  "ownerPid": 28524,
+  "temporaryRoot": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev-047-browser-UCPCAZ",
+  "cleanup": "browser/server closed and temporary root removed",
+  "gitHead": "5ee7968572db259ae48acbaf7acc1cbcbb6507a1",
+  "results": [
+    {
+      "viewport": "1440x900",
+      "hasSection": true,
+      "hasNumber": true,
+      "hasLegacy": false,
+      "overflow": {
+        "width": 1440,
+        "viewportWidth": 1440
+      }
+    },
+    {
+      "viewport": "1024x768",
+      "hasSection": true,
+      "hasNumber": true,
+      "hasLegacy": false,
+      "overflow": {
+        "width": 1024,
+        "viewportWidth": 1024
+      }
+    },
+    {
+      "viewport": "390x844",
+      "hasSection": true,
+      "hasNumber": true,
+      "hasLegacy": false,
+      "overflow": {
+        "width": 390,
+        "viewportWidth": 390
+      }
+    }
+  ],
+  "providerReadCount": 0,
+  "providerWriteCount": 0,
+  "generatedAt": "2026-09-14T18:48:59.186Z"
+}

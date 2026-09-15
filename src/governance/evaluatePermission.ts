@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { GovernanceAssignmentVersionV2, GovernanceAssignmentVersionV3, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernancePolicyVersionV1, PermissionEvaluationRequestV1, PermissionEvaluationResultV1 } from './types'
+import type { GovernanceAssignmentVersionV2, GovernanceAssignmentVersionV3, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyVersionV1, PermissionEvaluationRequestV1, PermissionEvaluationResultV1 } from './types'
 import { isActiveAt, scopeMatches } from './validation'
 
 type Options = { now?: string; receiptId?: string; timeSource?: PermissionEvaluationResultV1['timeSource'] }
@@ -29,4 +29,40 @@ export function evaluatePermission(document: GovernanceDocumentV1 | GovernanceDo
   }
   if (document.schemaVersion === 3) return evaluateV2(document, request, options, now, (active as any)?.kind === 'assignment-governance-v3' ? active as GovernanceAssignmentVersionV3 : null)
   return evaluateV1(document, request, options, now, active as GovernancePolicyVersionV1 | null)
+}
+
+/** Server-only authorization adapter: the Employee status comes from the same current workspace read as the policy decision. */
+export function evaluatePermissionForEmployee(
+  document: GovernanceDocumentV1 | GovernanceDocumentV2 | GovernanceDocumentV3,
+  organizationSource: GovernanceOrgSource,
+  employeeId: string,
+  request: PermissionEvaluationRequestV1,
+  options: Options = {},
+): PermissionEvaluationResultV1 {
+  const employee = organizationSource.state.employees.find((candidate) => candidate.id === employeeId)
+  if (!employee || employee.status === 'inactive') {
+    return { ...base(null, request, options.now ?? request.asOf ?? new Date().toISOString(), options), reason: 'EMPLOYEE_NOT_ACTIVE' }
+  }
+  const active = document.activePolicyVersionId ? document.publishedVersions.find((version) => version.id === document.activePolicyVersionId) ?? null : null
+  const links = active && 'policy' in active ? active.policy.identityLinks.filter((link) => link.employeeId === employeeId && link.issuer === request.issuer && link.subject === request.subject) : []
+  if (links.length !== 1) {
+    return { ...base(active as AnyVersion | null, request, options.now ?? request.asOf ?? new Date().toISOString(), options), reason: links.length ? 'PRINCIPAL_CONFLICT' : 'IDENTITY_NOT_LINKED' }
+  }
+  return evaluatePermission(document, { ...request, issuer: links[0].issuer, subject: links[0].subject }, options)
+}
+
+/** Login qualification is role-based and intentionally independent of any individual permission grant. */
+export function hasEffectiveOrgmasterRoleForEmployee(
+  document: GovernanceDocumentV1 | GovernanceDocumentV2 | GovernanceDocumentV3,
+  organizationSource: GovernanceOrgSource,
+  employeeId: string,
+  now = new Date().toISOString(),
+) {
+  const employee = organizationSource.state.employees.find((candidate) => candidate.id === employeeId)
+  if (!employee || employee.status === 'inactive' || !document.activePolicyVersionId) return false
+  const version = document.publishedVersions.find((candidate) => candidate.id === document.activePolicyVersionId)
+  if (!version || !('policy' in version)) return false
+  const policy = version.policy
+  const activeRoleIds = new Set(policy.applicationRoles.filter((role) => role.applicationId === 'orgmaster' && role.status === 'active').map((role) => role.id))
+  return policy.roleAssignments.some((assignment) => ('applicationId' in assignment ? assignment.applicationId === 'orgmaster' : true) && assignment.employeeId === employeeId && assignment.status === 'active' && activeRoleIds.has(assignment.roleId) && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, now))
 }

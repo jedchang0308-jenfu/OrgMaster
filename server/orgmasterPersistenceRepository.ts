@@ -127,7 +127,7 @@ export async function readPersistenceArtifact(input: { localPath: string; artifa
   }
 }
 
-export async function writePersistenceArtifacts(changes: PersistenceArtifactWrite[], input?: { database?: Queryable; updatedBy?: string; reasonCode?: string; entitlementChanges?: PersistenceEntitlementChange[] }) {
+export async function writePersistenceArtifacts(changes: PersistenceArtifactWrite[], input?: { database?: Queryable; updatedBy?: string; reasonCode?: string; operationId?: string; entitlementChanges?: PersistenceEntitlementChange[] }) {
   if (!changes.length) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
   if (!usesCloudSqlPersistence() && !input?.database) {
     for (const change of changes) await writeVerifiedAtomicFile(change.localPath, change.raw)
@@ -149,15 +149,10 @@ export async function writePersistenceArtifacts(changes: PersistenceArtifactWrit
     const updatedBy = input?.updatedBy?.trim() || 'orgmaster-runtime'
     const reasonCode = input?.reasonCode?.trim() || 'runtime_artifact_write'
     const entitlementChanges = input?.entitlementChanges ?? []
-    const result = entitlementChanges.length
-      ? await database(input?.database).query(`SELECT authority_version, source_revision, outbox_count
-          FROM orgmaster_core.write_active_persistence_artifacts_with_entitlement_outbox_v1($1::jsonb, $2, $3, $4, $5::jsonb)`, [
-          JSON.stringify(prepared), sourceRevision, updatedBy, reasonCode, JSON.stringify(entitlementChanges),
-        ])
-      : await database(input?.database).query(`SELECT authority_version, source_revision, NULL::integer AS outbox_count
-          FROM orgmaster_core.write_active_persistence_artifacts_v1($1::jsonb, $2, $3, $4)`, [
-          JSON.stringify(prepared), sourceRevision, updatedBy, reasonCode,
-        ])
+    const result = await database(input?.database).query(`SELECT authority_version, source_revision, outbox_count
+        FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb, $2, $3, $4, $5, $6::jsonb)`, [
+      JSON.stringify(prepared), sourceRevision, updatedBy, reasonCode, input?.operationId ?? `orgmaster-write-${sourceRevision.slice(0, 24)}`, JSON.stringify(entitlementChanges),
+    ])
     if (result.rowCount !== 1) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
     return {
       authorityVersion: Number(result.rows[0].authority_version),

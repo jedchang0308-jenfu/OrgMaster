@@ -5,7 +5,7 @@ import { resolveDirectSupervisor, type DirectSupervisorUnresolvedReason } from '
 import type { Assignment, Department, Employee, OrganizationLevel, PositionView } from '../types'
 import type { DirectorySelection } from './DirectoryDock'
 import { PanelDismissButton } from './PanelDismissButton'
-import { EmployeeIdentitySection } from './EmployeeIdentitySection'
+import { EmployeeManagedIdentitySection } from './EmployeeManagedIdentitySection'
 
 interface DirectoryDetailPanelProps {
   selection: DirectoryDetailSelection
@@ -157,12 +157,13 @@ export function DirectoryDetailPanel({
           </div>
         </section>
 
-        <EmployeeIdentitySection
+        <EmployeeManagedIdentitySection
           employee={employee}
-          accountMutationEnvironmentAllowed={accountMutationEnvironmentAllowed ?? identityMutationAllowed}
+          mutationAllowed={accountMutationEnvironmentAllowed ?? identityMutationAllowed}
           refreshToken={governanceRefreshToken}
           onChanged={onGovernanceChanged}
         />
+
       </aside>
     )
   }

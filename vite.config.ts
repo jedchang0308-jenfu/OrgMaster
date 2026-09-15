@@ -5,8 +5,9 @@ import { orgmasterGovernanceApiPlugin } from './server/orgmasterGovernanceApi'
 import { orgmasterManagementMethodApiPlugin } from './server/managementMethodApi'
 import { orgmasterAuthApiPlugin } from './server/orgmasterAuthApi'
 import { orgmasterAccountEnrollmentApiPlugin } from './server/orgmasterAccountEnrollmentApi'
+import { orgmasterManagedIdentityApiPlugin } from './server/orgmasterManagedIdentityApi'
 import { workbenchPreferenceApiPlugin } from './server/workbenchPreferenceApi'
 
 export default defineConfig({
-  plugins: [orgmasterAuthApiPlugin(), workbenchPreferenceApiPlugin(), orgmasterAccountEnrollmentApiPlugin(), react(), orgmasterApiPlugin(), orgmasterGovernanceApiPlugin({ accountEnrollmentEnabled: true }), orgmasterManagementMethodApiPlugin()],
+  plugins: [orgmasterAuthApiPlugin(), orgmasterManagedIdentityApiPlugin(), workbenchPreferenceApiPlugin(), orgmasterAccountEnrollmentApiPlugin(), react(), orgmasterApiPlugin(), orgmasterGovernanceApiPlugin({ accountEnrollmentEnabled: true }), orgmasterManagementMethodApiPlugin()],
 })

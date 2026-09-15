@@ -37,7 +37,7 @@ export const DEVELOPMENT_AUTH_PROFILES: readonly DevelopmentAuthProfile[] = [
     subject: DEV_SUBJECT, principalId: DEV_PRINCIPAL_ID, bootstrap: true,
     permissionCodes: [
       'orgmaster.governance.manage', 'orgmaster.governance.publish', 'orgmaster.governance.simulate',
-      'orgmaster.identity.view', 'orgmaster.identity.invite', 'orgmaster.identity.link', 'orgmaster.identity.invitation.manage',
+      'orgmaster.identity.view', 'orgmaster.identity.refresh', 'orgmaster.employee-number.manage', 'orgmaster.identity.invite', 'orgmaster.identity.link', 'orgmaster.identity.invitation.manage',
       ...MANAGEMENT_METHOD_PERMISSIONS,
     ],
   },
@@ -45,7 +45,7 @@ export const DEVELOPMENT_AUTH_PROFILES: readonly DevelopmentAuthProfile[] = [
     id: 'governance-manager', roleCode: 'orgmaster_governance_manager', roleName: '人員治理者',
     employeeId: 'employee-youhao', employeeName: '張祐豪', description: '管理身分與角色；不可發布治理政策',
     subject: 'local-governance-manager', principalId: 'dev-principal-governance-manager', bootstrap: false,
-    permissionCodes: ['orgmaster.governance.manage', 'orgmaster.governance.simulate', 'orgmaster.identity.view', 'orgmaster.identity.invite', 'orgmaster.identity.link', 'orgmaster.identity.invitation.manage', 'orgmaster.management_method.read_readable'],
+    permissionCodes: ['orgmaster.governance.manage', 'orgmaster.governance.simulate', 'orgmaster.identity.view', 'orgmaster.identity.refresh', 'orgmaster.identity.invite', 'orgmaster.identity.invitation.manage', 'orgmaster.management_method.read_readable'],
   },
   {
     id: 'method-manager', roleCode: 'orgmaster_method_manager', roleName: '管理辦法維護者',

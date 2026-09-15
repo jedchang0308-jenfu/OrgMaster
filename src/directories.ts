@@ -110,22 +110,25 @@ export function updateEmployeeInDirectory(
   employeeId: string,
   name: string,
   departmentIds: string[],
+  status: Employee['status'] = 'active',
+  asOf = new Date().toISOString().slice(0, 10),
 ): OrgDirectoryState {
   const employee = state.employees.find((item) => item.id === employeeId)
   const normalizedName = name.trim()
   const normalizedDepartmentIds = [...new Set(departmentIds)]
   if (!employee || !normalizedDepartmentIds.every((id) => state.departments.some((item) => item.id === id)) || !normalizedName) return state
-  if (employee.name === normalizedName && employee.departmentIds.length === normalizedDepartmentIds.length
+  if (employee.name === normalizedName && employee.status === status && employee.departmentIds.length === normalizedDepartmentIds.length
     && employee.departmentIds.every((id, index) => id === normalizedDepartmentIds[index])) return state
 
-  return {
+  const updated = {
     ...state,
     employees: state.employees.map((item) => (
       item.id === employeeId
-        ? { ...item, name: normalizedName, departmentIds: normalizedDepartmentIds }
+        ? { ...item, name: normalizedName, departmentIds: normalizedDepartmentIds, status }
         : item
     )),
   }
+  return status === 'inactive' && employee.status !== 'inactive' ? reconcileEmployeeResponsibilities({ ...updated, assignments: closeAssignmentsForEmployee(updated.assignments, employeeId, { asOf }) }, asOf) : updated
 }
 
 export function updateDepartmentInDirectory(

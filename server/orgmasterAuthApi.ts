@@ -21,6 +21,9 @@ import {
 import { createPrincipalAdmissionRepository, PrincipalAdmissionError, type PrincipalAdmissionRepository } from './orgmasterPrincipalAdmissionRepository'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 import { createOrgmasterSessionRepository, type OrgmasterSession, type OrgmasterSessionRepository } from './orgmasterSessionRepository'
+import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
+import { createManagedIdentityRepository } from './orgmasterManagedIdentityRepository'
+import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort } from './orgmasterManagedDirectoryPort'
 
 export const ORGMASTER_AUTH_API_PATH = '/api/auth'
 const MAX_BODY_BYTES = 32 * 1024
@@ -43,6 +46,7 @@ export type AuthDecisionCode =
   | 'principal_directory_unavailable'
   | 'auth_epoch_unavailable'
   | 'auth_server_not_configured'
+  | 'login_not_available'
 
 export class OrgmasterAuthError extends Error {
   constructor(public readonly status: number, public readonly code: AuthDecisionCode, public readonly clearCookie = false) {
@@ -56,6 +60,8 @@ export type OrgmasterAuthRuntime = {
   principals?: PrincipalAdmissionRepository
   epochs?: AuthEpochRepository
   sessions?: OrgmasterSessionRepository
+  managedIdentity?: ManagedIdentityServiceV1
+  managedLoginEnabled?: boolean
 }
 
 type RuntimeFactory = () => OrgmasterAuthRuntime
@@ -75,6 +81,7 @@ const statusForCode: Record<AuthDecisionCode, number> = {
   principal_directory_unavailable: 503,
   auth_epoch_unavailable: 503,
   auth_server_not_configured: 503,
+  login_not_available: 403,
 }
 
 function correlationId(request: IncomingMessage) {
@@ -258,12 +265,18 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
   const configResult = readOrgmasterAuthConfig(environment)
   if (!configResult.configured) return { configResult }
   const database = createOrgmasterDatabase(configResult.config.postgresUrl)
+  const managedDirectory = environment.ORGMASTER_MANAGED_IDENTITY_ENABLED === 'true' && environment.ORGMASTER_DIRECTORY_CUSTOMER_ID && environment.ORGMASTER_DIRECTORY_DWD_SUBJECT
+    ? createGoogleDirectoryReadOnlyPort({ customerId: environment.ORGMASTER_DIRECTORY_CUSTOMER_ID, domain: environment.ORGMASTER_MANAGED_DOMAIN ?? 'jenfu.com.tw', auth: createGoogleDirectoryAuthPort({ delegatedSubject: environment.ORGMASTER_DIRECTORY_DWD_SUBJECT }) })
+    : undefined
+  const managedRepository = createManagedIdentityRepository({ root: environment.ORGMASTER_ROOT?.trim() || process.cwd(), devEnabled: false, database })
   return {
     configResult,
     firebase: createFirebaseIdentityProvider(configResult.config.identityIssuer, configResult.config.identityAudience),
     principals: createPrincipalAdmissionRepository(database),
     epochs: createAuthEpochRepository(database),
     sessions: createOrgmasterSessionRepository(database),
+    managedIdentity: createManagedIdentityService({ root: environment.ORGMASTER_ROOT?.trim() || process.cwd(), devEnabled: false, repository: managedRepository, directory: managedDirectory, managedDomain: environment.ORGMASTER_MANAGED_DOMAIN ?? 'jenfu.com.tw', directoryCustomerId: environment.ORGMASTER_DIRECTORY_CUSTOMER_ID }),
+    managedLoginEnabled: environment.ORGMASTER_MANAGED_IDENTITY_ENABLED === 'true',
   }
 }
 
@@ -306,7 +319,21 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/mode` && request.method === 'GET') {
         if (!runtime.configResult.configured) throw new OrgmasterAuthError(503, 'auth_server_not_configured')
-        sendJson(response, 200, { authMode: 'jenfu_firebase_bff', firebase: runtime.configResult.config.firebasePublicConfig, correlationId: id }, id)
+        sendJson(response, 200, { authMode: 'jenfu_firebase_bff', firebase: runtime.configResult.config.firebasePublicConfig, managedLoginEnabled: runtime.managedLoginEnabled === true, correlationId: id }, id)
+        return
+      }
+      if (pathname === `${ORGMASTER_AUTH_API_PATH}/managed/alias` && request.method === 'POST') {
+        if (runtime.managedLoginEnabled !== true || !runtime.managedIdentity) throw new OrgmasterAuthError(403, 'login_not_available')
+        const { config } = dependencies(runtime)
+        requireOrigin(request, config)
+        rateLimit(request)
+        const body = await readJsonBody(request)
+        const employeeNumber = typeof body.employeeNumber === 'string' ? body.employeeNumber.trim() : ''
+        if (!employeeNumber || employeeNumber.length > 255) throw new OrgmasterAuthError(400, 'auth_request_invalid')
+        try {
+          const resolved = await runtime.managedIdentity.resolveLoginAlias(employeeNumber)
+          sendJson(response, 200, { provider: resolved.provider, loginHint: resolved.loginHint, expiresAt: resolved.expiresAt, correlationId: id }, id)
+        } catch { throw new OrgmasterAuthError(403, 'login_not_available') }
         return
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/firebase/session` && request.method === 'POST') {
@@ -319,7 +346,16 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         }
         let identity
         try { identity = await firebase.verifyIdToken(body.idToken) } catch { throw new OrgmasterAuthError(401, 'auth_token_invalid') }
-        const principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)
+        let principal
+        try {
+          principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)
+        } catch (error) {
+          if (!(error instanceof PrincipalAdmissionError) || error.code !== 'principal_not_active' || runtime.managedLoginEnabled !== true || !runtime.managedIdentity) throw error
+          try {
+            const managed = await runtime.managedIdentity.resolveFirebaseIdentity({ issuer: identity.issuer, subject: identity.subject, email: identity.email ?? '', signInProvider: identity.signInProvider ?? '', emailVerified: identity.emailVerified === true })
+            principal = { ...managed, mappingVersion: 1, publishedAt: new Date().toISOString() }
+          } catch { throw new PrincipalAdmissionError('principal_not_active') }
+        }
         const epoch = await epochs.read(identity.issuer, identity.subject)
         const token = createOpaqueSessionToken()
         const issuedAt = new Date()

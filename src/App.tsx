@@ -19,6 +19,7 @@ import { AuthGate } from './auth/AuthGate'
 import { createUuidV7 } from './employeeIdentity'
 import { screenshotOrganizationState } from './screenshotData'
 import { removeEmployeeFromDirectory, updateDepartmentInDirectory, updateEmployeeInDirectory } from './directories'
+import { checkManagedIdentityActivation } from './managedIdentity/apiClient'
 import {
   layoutOrganization,
   ORG_NODE_HEIGHT,
@@ -112,7 +113,7 @@ import {
   setRoleCombinationRiskRuleEnabled,
   upsertRoleCombinationRiskRule,
 } from './roleCombinationRisks'
-import type { ChildrenAxis, HierarchyNode, OrganizationLevel, OrgDirectoryState, OrgMember, Point, PositionView, Role } from './types'
+import type { ChildrenAxis, Employee, HierarchyNode, OrganizationLevel, OrgDirectoryState, OrgMember, Point, PositionView, Role } from './types'
 import type { OrgWorkspaceIndex, OrgWorkspaceVersionSummary, WorkspaceMode } from './versionWorkspace'
 import { WorkspaceShell } from './components/workspace/WorkspaceShell'
 import { WorkspaceOverlayProvider, WorkspacePortal } from './components/workspace/WorkspaceOverlayHosts'
@@ -1928,7 +1929,7 @@ function ProtectedApp() {
       employees: [...current.employees, {
         id: createUuidV7(),
         name,
-        status: 'active',
+        status: 'inactive',
         departmentIds,
         primaryAssignmentId: null,
         administrativeApproverOverrideEmployeeId: null,
@@ -1951,17 +1952,23 @@ function ProtectedApp() {
     setAssignmentNotice(`已新增部門 ${name}`)
   }, [commitState])
 
-  const updateEmployee = useCallback((employeeId: string, name: string, departmentIds: string[]) => {
+  const updateEmployee = useCallback(async (employeeId: string, name: string, departmentIds: string[], status: Employee['status']) => {
     if (!workspaceMutationAllowedRef.current) {
       setAssignmentNotice(mobileReadOnlyRef.current ? '目前裝置僅提供唯讀；未更新員工' : '目前版本為唯讀；未更新員工')
       return
     }
     const employee = employees.find((item) => item.id === employeeId)
     if (!employee) return
-    if (!commitState((current) => updateEmployeeInDirectory(current, employeeId, name, departmentIds))) return
+    if (status === 'active' && employee.status !== 'active') {
+      try {
+        const check = await checkManagedIdentityActivation(employeeId, serverRevision ?? activeWorkspaceVersion?.revision ?? '')
+        if (!check.allowed) { setAssignmentNotice(check.correctionRequired ? '員工身分尚未完成補正，無法轉為在職。' : '目前無法啟用此員工。'); return }
+      } catch { setAssignmentNotice('目前無法確認員工身分狀態，未儲存變更。'); return }
+    }
+    if (!commitState((current) => updateEmployeeInDirectory(current, employeeId, name, departmentIds, status))) return
     setDirectoryDialog(null)
     setAssignmentNotice(`已更新員工 ${name}`)
-  }, [commitState, employees])
+  }, [activeWorkspaceVersion?.revision, commitState, employees, serverRevision])
 
   const updateDepartment = useCallback((departmentId: string, name: string, parentId: string | null) => {
     if (!workspaceMutationAllowedRef.current) {
@@ -3356,7 +3363,7 @@ function ProtectedApp() {
           employee={dialogEmployee}
           departments={departments}
           onClose={() => setDirectoryDialog(null)}
-          onSubmit={(name, departmentIds) => updateEmployee(dialogEmployee.id, name, departmentIds)}
+          onSubmit={(name, departmentIds, status) => { void updateEmployee(dialogEmployee.id, name, departmentIds, status) }}
         />)
       )}
 

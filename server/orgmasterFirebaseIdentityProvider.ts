@@ -6,6 +6,9 @@ export type VerifiedFirebaseIdentity = {
   subject: string
   assuranceLevel: 'aal1' | 'aal2'
   authenticatedAt: string | null
+  signInProvider?: string
+  email?: string | null
+  emailVerified?: boolean
 }
 
 export type FirebaseIdentityProvider = {
@@ -29,6 +32,9 @@ export function createFirebaseIdentityProvider(expectedIssuer: string, expectedA
         authenticatedAt: typeof decoded.auth_time === 'number' && Number.isFinite(decoded.auth_time) && decoded.auth_time > 0
           ? new Date(decoded.auth_time * 1000).toISOString()
           : null,
+        signInProvider: typeof firebaseClaims?.sign_in_provider === 'string' ? firebaseClaims.sign_in_provider : undefined,
+        email: typeof decoded.email === 'string' ? decoded.email.trim().toLowerCase() : null,
+        emailVerified: decoded.email_verified === true,
       }
     },
   }

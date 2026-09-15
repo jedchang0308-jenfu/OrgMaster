@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { AuthApiError, exchangeFirebaseToken, getAuthMode, getCurrentSession, getDevelopmentAuthMode, loginDevelopmentProfile, logoutCurrentSession, type AuthMode, type AuthSessionView, type DevelopmentAuthMode, type DevelopmentAuthProfileView } from './authApiClient'
-import { clearFirebaseClientSession, getFirebaseIdToken } from './firebaseClient'
+import { AuthApiError, exchangeFirebaseToken, getAuthMode, getCurrentSession, getDevelopmentAuthMode, loginDevelopmentProfile, logoutCurrentSession, resolveManagedLoginAlias, type AuthMode, type AuthSessionView, type DevelopmentAuthMode, type DevelopmentAuthProfileView } from './authApiClient'
+import { clearFirebaseClientSession, getFirebaseGoogleIdToken, getFirebaseIdToken } from './firebaseClient'
 
 export interface AuthSessionContextValue {
   session: AuthSessionView
@@ -36,6 +36,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>({ kind: 'loading' })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [employeeNumber, setEmployeeNumber] = useState('')
   const [busy, setBusy] = useState(false)
   const [busyProfileId, setBusyProfileId] = useState<DevelopmentAuthProfileView['id'] | null>(null)
 
@@ -91,6 +92,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function submitManagedLogin(event: FormEvent) {
+    event.preventDefault()
+    if (state.kind !== 'login' || busy || !state.mode.managedLoginEnabled) return
+    setBusy(true)
+    try {
+      const alias = await resolveManagedLoginAlias(employeeNumber.trim())
+      const idToken = await getFirebaseGoogleIdToken(state.mode.firebase, alias.loginHint)
+      const session = await exchangeFirebaseToken(idToken)
+      setEmployeeNumber('')
+      setState({ kind: 'authenticated', session, mode: state.mode })
+    } catch (error) {
+      if (error instanceof AuthApiError && (error.code === 'principal_not_active' || error.code === 'principal_ambiguous')) setState(blockedState(error))
+      else setState({ kind: 'login', mode: state.mode, message: '登入失敗，請確認員工編號或聯絡管理員。' })
+    } finally { setBusy(false) }
   }
 
   async function submitDevelopmentLogin(profileId: DevelopmentAuthProfileView['id']) {
@@ -161,7 +178,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
     </section>
   </main>
   return <main className="auth-gate">
-    <form className="auth-login" onSubmit={(event) => { void submitLogin(event) }}>
+    {state.mode.managedLoginEnabled && <form className="auth-login auth-login--managed" onSubmit={(event) => { void submitManagedLogin(event) }}>
+      <div><p className="auth-login__eyebrow">公司統一身分</p><h1>以 JFS 員工編號登入</h1><p>輸入永久員工編號後，使用 Google Cloud Identity 完成驗證。</p></div>
+      {state.message && <p className="auth-login__error" role="alert">{state.message}</p>}
+      <label>JFS 員工編號<input value={employeeNumber} onChange={(event) => setEmployeeNumber(event.target.value)} placeholder="JFS0001" autoComplete="username" required /></label>
+      <button type="submit" disabled={busy}>{busy ? '準備登入…' : '使用 Google 登入'}</button>
+    </form>}
+    <form className="auth-login auth-login--legacy" onSubmit={(event) => { void submitLogin(event) }}>
       <div><p className="auth-login__eyebrow">鉦富管理平台</p><h1>登入 OrgMaster</h1><p>使用公司統一帳號繼續。</p></div>
       {state.message && <p className="auth-login__error" role="alert">{state.message}</p>}
       <label>電子郵件<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
