@@ -1,5 +1,7 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
+> **Final current release status（2026-09-15）**：`040-R2 Production Level 4 Complete / R60 LIVE_VERIFIED / R78 RETAINED_LIVE`。最終authority見§34；較早`NOT_RUN／blocked`段落保留provenance。
+
 > **2026-09-11 R38 pre-auth execution authority（current additive authority）**：R34 provider證據已確認OrgMaster production migration完成`7 applied／4 replayed／ledgerCount=11`且production-data驗證PASS；此forward-only事實不可因owner後續readback bug而回寫為NOT_RUN。Cloud Run v2 execution終止條件固定為`conditions[type=Completed]`，own exact migration Job viewer必須存在於source-frozen IaC complete-set。R37因任一cohort source drift而整體作廢，且operator auth不可用期間沒有OrgMaster app apply；恢復後只接受fresh R38。既有migration以idempotent replay重驗，不執行手動rollback，不重建已由migration移除的legacy schema；candidate／entrypoint／traffic仍為NOT_RUN。
 
 > **2026-09-11 R28 operation／production DB correction（current additive authority）**：R28已建立OrgMaster exact migration execution，但在任何001～011 app-owned DDL、production data import或principal CAS前，因正式庫尚無DEV-010共用roles／schemas以SQLSTATE `42704`終止；其後generic operation GET另回403。Candidate／entrypoint／traffic=0。Owner runtime不再輪詢operations endpoint，改以exact Service settled readback及run前後child execution差集＋current args唯一匹配。Platform-owned production DB bootstrap immutable receipt成為S2 dispatch硬閘；target、source、role／schema／CONNECT隔離及task-owned Job cleanup未PASS前不得執行本owner migration。R28不得作release authority。
@@ -1346,3 +1348,11 @@ R34已成功完成001～011、production data import及第一位production princ
 後續owner migration仍須每次重跑001～011 ledger／ACL readback，但production-data步驟改為二分：active authority不存在時，維持原本的immutable package驗章、完整import、row／hash／media reconciliation與create-if-null CAS；active authority已存在時，只允許`ONE_TIME_AUTHORITY_REPLAY`。Replay必在同一transaction及advisory lock內證明原始workspace／version／governance source、management methods、media、preferences disposition、bundled role catalog、Firebase issuer／subject、employee、human admission、兩筆admin assignment與active policy均相同；只忽略release envelope及bootstrap衍生的ID、timestamp與hash。驗證通過時不得INSERT batch、不得UPDATE authority、不得重寫governance，只回報`replayed=true／oneTimeAuthorityPreserved=true`及active/requested data revisions。
 
 任何原始data artifact、catalog、media、preference disposition、principal或admin assignment差異仍回傳`PRODUCTION_DATA_AUTHORITY_CAS_CONFLICT`或`FIRST_PRINCIPAL_RECONCILIATION_FAILED`，在candidate前停止。實質production data切換不屬ordinary app release，必須另立資料authority transition gate；不得用一般release自動覆寫active batch。本修正不改schema、001～011 migration、entrypoint、traffic、TOTP、DEV-047、sibling或shared infrastructure邊界。
+
+## 34. R60正式結果與R78 retained-live closure（2026-09-15）
+
+OrgMaster已在R60正式完成，source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、artifact=`asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:5f1b11cd78e506a5b40e8f1da04f2019e327133d6e7976f09e8c37167e3b4373`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`。Provider readback為Ready generation 72，ingress=`all`、default URL enabled、`invokerIamDisabled=true`；root與`/api/auth/mode`均HTTP 200。
+
+`DEV012-REL-20260915-R78`未建立OrgMaster intent或dispatch owner；coordinator只驗R60 immutable terminal並標記`RETAINED_LIVE`。AI-PDM／Platform後續狀態不改OrgMaster traffic或rollback。
+
+後續ordinary OrgMaster release只凍結本repo並操作own source、artifact、migration、service、Secret、entrypoint、traffic與rollback，不讀取或重部署siblings。Shared foundation只以verified receipt hash作依賴。DEV-047、TOTP、產品identity lifecycle與`RETAINED_UNUSED_EDGE` retirement是分離scope，不構成040-R2／DEV-012殘留；本節為post-release治理，不改R60 provenance。

@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-15 DEV-040／DEV-012 R78完成（現行）**：OrgMaster沿用R60 immutable terminal，未重部署；source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`，R78 disposition=`RETAINED_LIVE`。Root／auth-mode與entry policy provider readback PASS。後續ordinary release由本repo獨立執行；DEV-047另依自己的task。下方S2／NOT_RUN只屬歷史。
+
 > **2026-09-11 R38 current handoff**：R34 OrgMaster production migration已完成`7 applied／4 replayed／ledgerCount=11`且production-data PASS；candidate／entrypoint／traffic未執行。Current owner已修正Cloud Run v2 completion readback與exact Job viewer，離線owner／abort／DB／529案product regression／build均PASS。AI-PDM後續source drift使R37整體作廢，且R37無OrgMaster app apply；operator重新授權後由fresh R38接續，既有DDL只做idempotent replay，不做人工rollback。
 
 > **2026-09-11 R27 current handoff**：OrgMaster run 34506045085 在artifact gates全PASS後，於migration execution建立前因exact Job readback缺roles/run.viewer安全停止；provider execution=0且無DB／candidate／entrypoint／traffic mutation。Current §31／QA§8增補own exact-job resource-scoped viewer、APP_INFRA_B complete-set與真實database disposition；fresh source／APP_INFRA／cohort後才可重跑。

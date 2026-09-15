@@ -1,5 +1,7 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
+> **Final current result（2026-09-15）**：`R60 LIVE_VERIFIED / DEV012-R78 RETAINED_LIVE / Production Level 4 PASS`。最終證據見§11；較早`NOT_RUN`段落保留歷史。
+
 > **2026-09-11 R38 pre-auth amendment（current）**：R34 exact execution `orgmaster-prod-migration-runner-pfnz7`為production migration與data evidence：`7 applied／4 replayed／ledgerCount=11`且data PASS。此結果不等於candidate、entrypoint、traffic或QA-012 PASS；三者仍NOT_RUN。Current回歸要求以`conditions[type=Completed]`判定Cloud Run v2 execution，並驗own exact Job resource-scoped viewer。R37因AI-PDM source drift整體作廢且無OrgMaster app apply；fresh R38須以idempotent replay確認migration，不得人工rollback已套用DDL。
 
 > **2026-09-11 R28 amendment（current）**：R28 exact OrgMaster migration execution已建立，但在001～011、data import與principal CAS前因缺shared DB roles／schemas以SQLSTATE `42704`停止，generic operation GET另回403；candidate／entrypoint／traffic=0。新增oracle：禁止operations endpoint，Service PATCH改驗exact Service settled state，Job run以run前後child execution差集＋current args唯一匹配取得exact execution。Platform production DB bootstrap receipt未通過source／target／隔離數值與task-owned Job cleanup前不得dispatch。R28不計production PASS。
@@ -116,3 +118,13 @@ R34的成功data／principal CAS是唯一active authority；R39／R40失敗收�
 - Active batch缺失／非active、authority懸空或governance artifact缺失時固定`PRODUCTION_DATA_ACTIVE_AUTHORITY_INVALID`；不得fallback建立第二個authority。
 
 Managed acceptance須以fresh owner run的migrate receipt及provider／DB readback證明上述正向不變量；local unit PASS只解鎖新source freeze，不冒充production結果。
+
+## 11. R60正式結果與R78 retained validation（2026-09-15）
+
+- R60 owner terminal=`RELEASED`；source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`；artifact=`asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:5f1b11cd78e506a5b40e8f1da04f2019e327133d6e7976f09e8c37167e3b4373`；revision=`orgmaster-prod-3f9aa8c7818d`。
+- Provider readback：Ready generation 72，100% traffic；ingress all、default URL enabled、invoker IAM disabled；canonical `https://orgmaster-prod-9536592944.asia-east1.run.app`。
+- Smoke：root=200、`/api/auth/mode`=200；R60既有authenticated、DB、deny、rollback與cleanup分母維持PASS。
+- R78只驗immutable terminal並給`RETAINED_LIVE`；無新intent、dispatch、deploy或traffic mutation。
+- Boundary：ordinary release不需siblings；DEV-047與edge／legacy retirement分離，不是040-R2缺件。
+
+Final=`040-R2 Production Level 4 Complete / R78 retained validation PASS`。本節以R60 terminal、R78 cohort join與2026-09-15 provider readback為authority，不由早期local evidence升格。
