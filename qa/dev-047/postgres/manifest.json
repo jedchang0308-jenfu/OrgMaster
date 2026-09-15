@@ -1,0 +1,8 @@
+{
+  "contract": "DEV-047",
+  "evidenceScope": "LOCAL_ISOLATED",
+  "status": "NOT_RUN",
+  "reason": "Requires DEV047_POSTGRES_URL and DEV047_POSTGRES_DISPOSABLE=true; staging and production are never valid targets.",
+  "targetProvided": false,
+  "generatedAt": "2026-09-14T18:48:26.664Z"
+}

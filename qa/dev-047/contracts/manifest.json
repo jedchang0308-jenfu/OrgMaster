@@ -1,0 +1,57 @@
+{
+  "contract": "DEV-047",
+  "evidenceScope": "LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-09-14T18:48:48.487Z",
+  "migrationSha256": "9a2da31a992c39b021212cd8b5e73cfffe170aa4a2f564f6c40561c0eb8d83e1",
+  "checks": [
+    {
+      "name": "migration header and forward-only boundary",
+      "status": "PASS"
+    },
+    {
+      "name": "required managed tables, sequences and routines",
+      "status": "PASS"
+    },
+    {
+      "name": "zero provider-write and fixed Directory scope",
+      "status": "PASS"
+    },
+    {
+      "name": "Node and DB authorities default off",
+      "status": "PASS"
+    },
+    {
+      "name": "normal Employee entry uses managed UI and no legacy account CTA",
+      "status": "PASS"
+    },
+    {
+      "name": "frozen canonical principal manifest",
+      "status": "PASS"
+    },
+    {
+      "name": "A17 correction-review manifest",
+      "status": "PASS"
+    },
+    {
+      "name": "A18 correction-review manifest",
+      "status": "PASS"
+    },
+    {
+      "name": "A19 correction-review manifest",
+      "status": "PASS"
+    },
+    {
+      "name": "A20 correction-review manifest",
+      "status": "PASS"
+    },
+    {
+      "name": "A21 correction-review manifest",
+      "status": "PASS"
+    },
+    {
+      "name": "A22 correction-review manifest",
+      "status": "PASS"
+    }
+  ]
+}

@@ -2350,6 +2350,14 @@ button.directory-detail__assignment-department-link:not(.is-static):focus-visibl
   background: #fff;
 }
 
+.directory-detail__identity-row.managed-identity-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.managed-identity-row > svg {
+  color: #607a9f;
+}
+
 .directory-detail__identity-copy {
   min-width: 0;
   display: grid;

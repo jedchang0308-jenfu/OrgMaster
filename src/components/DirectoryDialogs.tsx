@@ -148,13 +148,14 @@ export function AddDepartmentDialog({ departments, onClose, onSubmit }: AddDepar
 interface EditEmployeeDialogProps extends BaseDialogProps {
   employee: Employee
   departments: Department[]
-  onSubmit: (name: string, departmentIds: string[]) => void
+  onSubmit: (name: string, departmentIds: string[], status: Employee['status']) => void
 }
 
 export function EditEmployeeDialog({ employee, departments, onClose, onSubmit }: EditEmployeeDialogProps) {
   const initialDepartmentIds = employee.departmentIds.filter((departmentId) => departments.some((department) => department.id === departmentId))
   const [name, setName] = useState(employee.name)
   const [departmentIds, setDepartmentIds] = useState(initialDepartmentIds)
+  const [status, setStatus] = useState<Employee['status']>(employee.status)
   const [error, setError] = useState('')
 
   const submit = (event: FormEvent) => {
@@ -168,7 +169,7 @@ export function EditEmployeeDialog({ employee, departments, onClose, onSubmit }:
       setError('請選擇所屬部門。')
       return
     }
-    onSubmit(normalizedName, departmentIds)
+    onSubmit(normalizedName, departmentIds, status)
   }
 
   return (
@@ -195,6 +196,7 @@ export function EditEmployeeDialog({ employee, departments, onClose, onSubmit }:
               setError('')
             }}
           />
+          <label className="dialog-field"><span>員工狀態</span><select value={status} onChange={(event) => { setStatus(event.target.value as Employee['status']); setError('') }}><option value="active">在職</option><option value="inactive">停用／離職</option></select></label>
           {error && <p className="dialog-field__help is-error" role="alert">{error}</p>}
         </div>
         <div className="dialog__actions">

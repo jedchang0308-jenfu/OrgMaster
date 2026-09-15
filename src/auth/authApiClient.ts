@@ -1,8 +1,11 @@
 export type AuthMode = {
   authMode: 'jenfu_firebase_bff'
   firebase: { apiKey: string; authDomain: string; projectId: string; appId: string }
+  managedLoginEnabled?: boolean
   correlationId: string
 }
+
+export type ManagedAliasResponse = { provider: 'google.com'; loginHint: string; expiresAt: string; correlationId: string }
 
 export type DevelopmentAuthProfileView = {
   id: 'administrator' | 'governance-manager' | 'method-manager' | 'employee'
@@ -59,6 +62,10 @@ export function exchangeFirebaseToken(idToken: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ idToken }),
   })
+}
+
+export function resolveManagedLoginAlias(employeeNumber: string) {
+  return json<ManagedAliasResponse>('/api/auth/managed/alias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeNumber }) })
 }
 
 export function loginDevelopmentProfile(profileId: DevelopmentAuthProfileView['id']) {

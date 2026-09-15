@@ -41,6 +41,8 @@ export const ORGMASTER_PERMISSIONS: GovernancePermissionV1[] = [
   { id: 'permission-orgmaster-governance-publish', applicationId: 'orgmaster', kind: 'system', code: 'orgmaster.governance.publish', name: '發布治理政策', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-governance-simulate', applicationId: 'orgmaster', kind: 'system', code: 'orgmaster.governance.simulate', name: '執行治理測試器', risk: 'normal', status: 'active' },
   { id: 'permission-orgmaster-identity-view', applicationId: 'orgmaster', kind: 'page', code: 'orgmaster.identity.view', name: '查看員工登入帳號', risk: 'normal', status: 'active' },
+  { id: 'permission-orgmaster-identity-refresh', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.identity.refresh', name: '刷新公司登入身分狀態', risk: 'high', status: 'active' },
+  { id: 'permission-orgmaster-employee-number-manage', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.employee-number.manage', name: '管理 JFS 員工編號', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-identity-invite', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.identity.invite', name: '邀請員工登入帳號', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-identity-link', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.identity.link', name: '連結既有登入帳號', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-identity-invitation-manage', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.identity.invitation.manage', name: '管理登入帳號邀請', risk: 'high', status: 'active' },

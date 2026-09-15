@@ -1,0 +1,83 @@
+/** @vitest-environment jsdom */
+import { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EmployeeManagedIdentitySection } from './EmployeeManagedIdentitySection'
+
+vi.mock('./workspace/WorkspaceOverlayHosts', () => ({ WorkspacePortal: ({ children }: { children: React.ReactNode }) => children }))
+
+const api = vi.hoisted(() => ({ loadManagedIdentity: vi.fn(), assignManagedEmployeeNumber: vi.fn() }))
+vi.mock('../managedIdentity/apiClient', () => ({
+  ...api,
+  ManagedIdentityApiError: class ManagedIdentityApiError extends Error {
+    constructor(public readonly code: string, public readonly status: number) { super(code); this.name = 'ManagedIdentityApiError' }
+  },
+}))
+
+const employee = { id: 'employee-1', name: '王小明', status: 'active' as const, departmentIds: [], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null }
+const base = {
+  contractVersion: 'orgmaster.managed-identity.v1' as const,
+  employee: { id: employee.id, status: 'active' as const },
+  employeeNumber: { status: 'unassigned' as const, value: null, derivedUsername: null, revision: null },
+  identity: { state: 'not_linked' as const, provider: 'google.com' as const, note: 'Google Admin 建立後由 OrgMaster 連結' as const },
+  capabilities: { view: true as const, manageNumber: true },
+  registryRevision: null,
+}
+
+function render(props: Partial<React.ComponentProps<typeof EmployeeManagedIdentitySection>> = {}) {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  act(() => root.render(<EmployeeManagedIdentitySection employee={employee} mutationAllowed {...props} />))
+  return { host, root }
+}
+
+async function flush() { await act(async () => { await Promise.resolve(); await Promise.resolve() }) }
+
+describe('EmployeeManagedIdentitySection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    api.loadManagedIdentity.mockResolvedValue({ ...base })
+    api.assignManagedEmployeeNumber.mockResolvedValue({ ...base, employeeNumber: { status: 'assigned', value: 'JFS0001', derivedUsername: 'jfs0001@jenfu.com.tw', revision: 1 }, registryRevision: 'revision-1' })
+  })
+  afterEach(() => document.body.replaceChildren())
+
+  it('shows a single employee-number setup action for an unassigned employee', async () => {
+    const { host, root } = render()
+    await flush()
+    expect(host.textContent).toContain('尚未設定員工編號')
+    expect(host.textContent).toContain('設定編號')
+    expect(host.textContent).not.toContain('邀請')
+    act(() => root.unmount())
+  })
+
+  it('opens the setup dialog and writes a normalized JFS number', async () => {
+    const { host, root } = render()
+    await flush()
+    act(() => host.querySelector<HTMLButtonElement>('button')?.click())
+    expect(host.textContent).toContain('設定員工編號')
+    const input = host.querySelector<HTMLInputElement>('input')
+    expect(input).not.toBeNull()
+    act(() => {
+      if (!input) return
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(input, 'jfs0001')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    const submit = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.includes('儲存編號'))
+    expect(submit?.disabled).toBe(false)
+    act(() => submit?.click())
+    await flush()
+    expect(api.assignManagedEmployeeNumber).toHaveBeenCalledWith('employee-1', expect.objectContaining({ employeeNumber: 'JFS0001', expectedRegistryRevision: null }))
+    act(() => root.unmount())
+  })
+
+  it('keeps the number controls read-only when the environment is not mutation-enabled', async () => {
+    const { host, root } = render({ mutationAllowed: false })
+    await flush()
+    expect(host.querySelectorAll('button')).toHaveLength(0)
+    expect(host.textContent).toContain('請聯絡具員工身分管理權限的管理者')
+    act(() => root.unmount())
+  })
+})
