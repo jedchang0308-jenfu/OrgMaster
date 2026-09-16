@@ -7,7 +7,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const run = spawnSync(process.execPath, ['--test', 'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.test.mjs', 'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs'], { cwd: root, encoding: 'utf8' })
+const run = spawnSync(process.execPath, ['--test', 'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.test.mjs', 'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev012-owner-prerequisite-producer.test.mjs'], { cwd: root, encoding: 'utf8' })
 process.stdout.write(run.stdout)
 process.stderr.write(run.stderr)
 if (run.status !== 0 || (run.stdout.match(/S1B-21/g) || []).length !== 8) process.exit(run.status || 1)
@@ -114,19 +114,23 @@ const files = [
   'ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md',
   'ai-doc/qa/DEV-040-R2-independent-production-release-validation-plan.md',
   'ai-doc/dev_task.md', 'ai-doc/documentation_map.md',
-  'config/release/dev040-orgmaster-independent-production.json', 'config/release/dev040-production-release-infra-plan.json',
+  'config/release/dev040-orgmaster-independent-production-v3.json', 'config/release/dev040-production-release-infra-plan.json',
   'scripts/lib/dev040-orgmaster-independent-release.mjs', 'scripts/dev040-orgmaster-independent-release.mjs',
   'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.mjs',
   'scripts/dev040-production-migration-runner.test.mjs', 'scripts/qc-dev-040-r2-independent-release.mjs',
   'scripts/lib/dev012-owner-release-runtime.mjs', 'scripts/lib/dev012-owner-stage-executor.mjs', 'scripts/lib/dev012-production-migration-runner.mjs',
   'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs',
+  'scripts/lib/dev040-routine-release.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev040-deploy-production.mjs',
+  'scripts/lib/dev012-owner-prerequisite-producer.mjs', 'scripts/dev012-owner-prerequisite-producer.test.mjs',
+  'src/auth/AuthGate.tsx', 'src/auth/AuthGate.test.tsx', 'src/App.tsx', 'src/components/DirectoryDetailPanel.tsx', 'src/components/DirectoryDetailPanel.test.tsx',
   '.github/workflows/deploy-orgmaster-independent-production.yml',
   'server/orgmasterDatabase.ts', 'server/dev010DatabaseBoundary.test.ts', 'AGENTS.md', 'package.json',
   ...['tools/dev-040/abort-controller', 'infra/google-cloud/dev-040-production-release'].flatMap((directory) => fs.readdirSync(path.join(root, directory)).filter((name) => fs.statSync(path.join(root, directory, name)).isFile()).map((name) => `${directory}/${name}`)),
   ...fs.readdirSync(path.join(root, 'db/migrations')).filter((name) => name.endsWith('.sql')).map((name) => `db/migrations/${name}`),
 ].sort()
 const sourceSnapshotSha256 = createHash('sha256').update(files.map((file) => `${file}\0${createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex')}`).join('\n')).digest('hex')
-const report = { schemaVersion: 'jenfu.dev040.r2.s1b-owner-report.v2', runId, ownerApplicationId: 'orgmaster', caseId: 'S1B-21', result: 'PASS', sourceFiles: files, sourceSnapshotAlgorithm: 'sha256(file-null-sha256-bytes)', sourceSnapshotSha256, contractSha256: 'c395f6cead7d311a28402fb0f8d065305e594363d7be51659e9b41a343c0c615', contractVersion: 'CONTINUOUS_NO_DWELL_V2', evidenceScope: 'LOCAL_CONTRACT', releaseAuthority: false, ownerExitCommands: [{ command: 'npm run test:dev-040:r2', result: 'PASS' }, { command: 'npm run qc:dev-040:r2', result: 'SELF' }, ...ownerExitCommands], providerMutationSummary: { cloud: 0, database: 0, traffic: 0, credentials: 0, sibling: 0 }, cleanup: { runtime: 0, ports: 0, containers: 0, temporaryFiles: 0 }, createdAt: new Date().toISOString() }
+const currentProfile = JSON.parse(fs.readFileSync(path.join(root, 'config/release/dev040-orgmaster-independent-production-v3.json'), 'utf8'))
+const report = { schemaVersion: 'jenfu.dev040.r2.s1b-owner-report.v2', runId, ownerApplicationId: 'orgmaster', caseId: 'S1B-21', result: 'PASS', sourceFiles: files, sourceSnapshotAlgorithm: 'sha256(file-null-sha256-bytes)', sourceSnapshotSha256, contractSha256: currentProfile.contractSha256, contractVersion: currentProfile.profileVersion, evidenceScope: 'LOCAL_CONTRACT', releaseAuthority: false, ownerExitCommands: [{ command: 'npm run test:dev-040:r2', result: 'PASS' }, { command: 'npm run qc:dev-040:r2', result: 'SELF' }, ...ownerExitCommands], providerMutationSummary: { cloud: 0, database: 0, traffic: 0, credentials: 0, sibling: 0 }, cleanup: { runtime: 0, ports: 0, containers: 0, temporaryFiles: 0 }, createdAt: new Date().toISOString() }
 report.evidenceSha256 = createHash('sha256').update(JSON.stringify(report)).digest('hex')
 fs.writeFileSync(path.join(dir, 'owner-report.json'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' })
 process.stdout.write(`DEV-040 R2 continuous QC PASS ${path.relative(root, dir)}\n`)

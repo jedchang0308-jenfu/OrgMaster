@@ -128,3 +128,13 @@ Managed acceptance須以fresh owner run的migrate receipt及provider／DB readba
 - Boundary：ordinary release不需siblings；DEV-047與edge／legacy retirement分離，不是040-R2缺件。
 
 Final=`040-R2 Production Level 4 Complete / R78 retained validation PASS`。本節以R60 terminal、R78 cohort join與2026-09-15 provider readback為authority，不由早期local evidence升格。
+
+## 12. APPLICATION_ONLY 回歸（2026-09-16）
+
+正向：來源 SHA 改變、001–011/infra/runtime 不變，可沿用已過期但不可變的歷史 RELEASED 證據；完整十階段且 migration job/data import/bootstrap 呼叫數為 0，terminal DB disposition=`UNCHANGED_VERIFIED`。原首次部署測試保留。
+
+反向：SQL、infra tree、runtime/Secret version、current revision、owner/source/ref hash、未 RELEASED terminal、殘留 tag、缺 baseline verifier 或 fresh authorization 不符均須失敗；新 candidate 仍須通過 build/scan/內部 smoke 才能取得流量。不能把 baseline DB evidence 記成本次 live ledger QC。
+
+UI：resume session 同樣載入 server capability；flag=false 或 capability discovery 失敗時不呼叫 managed API，保留既有 session 與唯讀身分；flag=true/dev profile 才開啟新區塊。後端權限與 fenced writer 不變。
+
+執行：`npm run qc:dev-040:r2` 一次涵蓋 owner/prerequisite/routine tests、abort、DB boundary、全量 Vitest 與 client/server build。正式驗收以本次 workflow terminal 與 provider readback 為準；local PASS 不升格為部署完成。

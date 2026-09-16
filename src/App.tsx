@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { AlertTriangle, Check, MousePointerClick, Trash2, UserRoundPlus } from 'lucide-react'
-import { AuthGate } from './auth/AuthGate'
+import { AuthGate, useAuthSession } from './auth/AuthGate'
 import { createUuidV7 } from './employeeIdentity'
 import { screenshotOrganizationState } from './screenshotData'
 import { removeEmployeeFromDirectory, updateDepartmentInDirectory, updateEmployeeInDirectory } from './directories'
@@ -362,6 +362,7 @@ function findDirectoryDataElement(attribute: string, value: string) {
 }
 
 function ProtectedApp() {
+  const managedIdentityEnabled = useAuthSession()?.managedIdentityEnabled === true
   const initialState = screenshotOrganizationState
   const [serverReady, setServerReady] = useState(false)
   const [serverRevision, setServerRevision] = useState<string | null>(null)
@@ -1959,7 +1960,7 @@ function ProtectedApp() {
     }
     const employee = employees.find((item) => item.id === employeeId)
     if (!employee) return
-    if (status === 'active' && employee.status !== 'active') {
+    if (managedIdentityEnabled && status === 'active' && employee.status !== 'active') {
       try {
         const check = await checkManagedIdentityActivation(employeeId, serverRevision ?? activeWorkspaceVersion?.revision ?? '')
         if (!check.allowed) { setAssignmentNotice(check.correctionRequired ? '員工身分尚未完成補正，無法轉為在職。' : '目前無法啟用此員工。'); return }
@@ -1968,7 +1969,7 @@ function ProtectedApp() {
     if (!commitState((current) => updateEmployeeInDirectory(current, employeeId, name, departmentIds, status))) return
     setDirectoryDialog(null)
     setAssignmentNotice(`已更新員工 ${name}`)
-  }, [activeWorkspaceVersion?.revision, commitState, employees, serverRevision])
+  }, [activeWorkspaceVersion?.revision, commitState, employees, managedIdentityEnabled, serverRevision])
 
   const updateDepartment = useCallback((departmentId: string, name: string, parentId: string | null) => {
     if (!workspaceMutationAllowedRef.current) {

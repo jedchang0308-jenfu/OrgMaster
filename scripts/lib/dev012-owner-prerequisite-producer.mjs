@@ -37,7 +37,7 @@ export function readGitAuthority(root, profile) {
   const sourceRevision = String(runGit(root, ['rev-parse', 'HEAD'])).trim()
   const sourceTree = String(runGit(root, ['rev-parse', 'HEAD^{tree}'])).trim()
   const branch = String(runGit(root, ['branch', '--show-current'])).trim()
-  const status = String(runGit(root, ['status', '--porcelain=v1', '--untracked-files=all'])).trim()
+  const status = String(runGit(root, ['status', '--porcelain=v1', '--untracked-files=no'])).trim()
   const remote = String(runGit(root, ['remote', 'get-url', 'origin'])).trim()
   const remoteRows = String(runGit(root, ['ls-remote', '--heads', 'origin', `refs/heads/${profile.application.branch}`])).trim().split(/\s+/u)
   const remoteRevision = remoteRows[0] ?? ''
@@ -102,11 +102,12 @@ export function buildReleaseIntent({ profile, releaseId, input, sourceLock, prer
     migrationManifestSha256: sourceLock.migrationManifestSha256,
     previousRevision: input.previousRevision,
     deadlineAt: input.deadlineAt,
+    ...(input.baselineIntentRef ? { baselineIntentRef: exactRef(input.baselineIntentRef, profile) } : {}),
   }
   if (!intent.previousRevision || intent.previousRevision === 'latest' || !Number.isFinite(Date.parse(intent.deadlineAt)) || Date.parse(intent.deadlineAt) <= Date.now()) fail('RELEASE_INTENT_INPUT_INVALID')
   for (const [name, value] of Object.entries(prerequisiteValues)) {
     if (name !== 'foundation' && value?.ownerApplicationId && value.ownerApplicationId !== profile.application.id) fail('PREREQUISITE_OWNER_MISMATCH', name)
-    if (name !== 'foundation' && value?.sourceRevision && value.sourceRevision !== sourceLock.sourceRevision) fail('PREREQUISITE_SOURCE_MISMATCH', name)
+    if (name !== 'foundation' && !(intent.baselineIntentRef && name === 'infra') && value?.sourceRevision && value.sourceRevision !== sourceLock.sourceRevision) fail('PREREQUISITE_SOURCE_MISMATCH', name)
   }
   assertPreparePrerequisites({ intent, profile, values: prerequisiteValues })
   validateIntent(intent, profile)

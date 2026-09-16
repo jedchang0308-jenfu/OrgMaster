@@ -1356,3 +1356,18 @@ OrgMaster已在R60正式完成，source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e
 `DEV012-REL-20260915-R78`未建立OrgMaster intent或dispatch owner；coordinator只驗R60 immutable terminal並標記`RETAINED_LIVE`。AI-PDM／Platform後續狀態不改OrgMaster traffic或rollback。
 
 後續ordinary OrgMaster release只凍結本repo並操作own source、artifact、migration、service、Secret、entrypoint、traffic與rollback，不讀取或重部署siblings。Shared foundation只以verified receipt hash作依賴。DEV-047、TOTP、產品identity lifecycle與`RETAINED_UNUSED_EDGE` retirement是分離scope，不構成040-R2／DEV-012殘留；本節為post-release治理，不改R60 provenance。
+
+## 35. 一般程式更新解除首次建置耦合（2026-09-16）
+
+根因：§31–33 的首次建置／資料 authority replay 被實作成所有更新的共同前置條件；infra receipt 又錯綁每次 application source，導致只有 UI/API 改動也要求重建 bootstrap 收據。另 Git freeze 把不會進入 `git archive` 的未追蹤測試檔當成來源污染；DEV-047 UI 未遵循 server flag，功能關閉時仍呼叫不存在的新 API。這些不是新的使用者核准需求。
+
+本節優先於 §31–33 的「每次更新重新 bootstrap/replay」要求，只適用 `APPLICATION_ONLY`：
+
+- `npm run deploy:production` 自動從本 app control head 找上一版 `RELEASED` immutable intent，核對 terminal/candidate/deployment/migration 的 hash 與 source joins、目前正式 revision/image、無殘留 candidate tag；不讀 sibling source。
+- 比對前後已核准的 exact 001–011 migration bundle（忽略 application source envelope）、app infra/config Git tree 與 runtime/Secret version。任何變更均不准套用此路徑；不存在「跳過所有檢查」旗標。
+- 沿用原 foundation/infra evidence，保留原 source/日期，不偽造成新執行。新的 source lock、runtime readback、operator authorization、readiness 與 intent 綁本次 source。歷史收據到期不等於既有基礎設施失效；新發布仍有 deadline。
+- 十階段、protected workflow、service concurrency、immutable image、SBOM/scan、inactive-candidate smoke、machine decision、canonical authenticated/deny/logout smoke 及 rollback 不變。`migrate` 明確回報 `UNCHANGED_VERIFIED`、DDL/import/bootstrap=0；使用前次 DB 證據與本次 runtime smoke，不冒稱本次讀取 live ledger 或重新執行 PostgreSQL QC。
+- Source archive 只含已提交 Git tree；tracked dirt 仍阻擋，未追蹤測試檔保留但排除，不需要 clone 另一份 repo。既有部署授權沿用，不增加人工核准迴圈。
+- DEV-047 compatibility code 可先部署：server flag 關閉時使用既有唯讀登入身分區塊、不呼叫 managed identity/activation API。012、Google Directory delegated credentials 與 admission gate 屬後續功能啟用，不能假裝已完成或因此阻擋相容程式發布。未改既有 DB/正式資料。
+
+`npm run deploy:production -- --check` 只讀正式環境且 `releaseAuthority=false`；不寫收據、不 dispatch。`--prepare-only` 只準備 immutable capsule。無旗標才 dispatch 既有正式 workflow。舊 bootstrap runner 僅留給首次建立／明確資料轉換，不再是 ordinary release 必經流程。

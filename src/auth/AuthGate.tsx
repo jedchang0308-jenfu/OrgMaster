@@ -4,6 +4,7 @@ import { clearFirebaseClientSession, getFirebaseGoogleIdToken, getFirebaseIdToke
 
 export interface AuthSessionContextValue {
   session: AuthSessionView
+  managedIdentityEnabled: boolean
   phase: 'active' | 'processing' | 'failed'
   logout: () => Promise<void>
 }
@@ -59,7 +60,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
       }
       try {
         const session = await getCurrentSession()
-        if (active) setState({ kind: 'authenticated', session, mode: null })
+        // A resumed session needs the same server capability information as a new login.
+        // If mode discovery fails, retain the verified session with new features disabled.
+        const mode = await getAuthMode().catch(() => null)
+        if (active) setState({ kind: 'authenticated', session, mode })
       } catch (error) {
         if (!active) return
         if (error instanceof AuthApiError && error.status === 401) {
@@ -147,6 +151,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (state.kind === 'authenticated' || state.kind === 'logout-processing' || state.kind === 'logout-failed') {
     return <AuthSessionContext.Provider value={{
       session: state.session,
+      managedIdentityEnabled: Boolean(state.session.developmentProfile || state.mode?.managedLoginEnabled),
       phase: state.kind === 'logout-processing' ? 'processing' : state.kind === 'logout-failed' ? 'failed' : 'active',
       logout,
     }}>

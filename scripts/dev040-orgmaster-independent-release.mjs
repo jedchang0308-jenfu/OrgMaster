@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { createOwnerTransport } from './lib/dev012-owner-release-runtime.mjs'
+import { verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
 import { createGitArchive, createGitSourceIdentity, executeOwnerStage, parseOwnerStageArgs, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -18,14 +19,16 @@ async function main() {
   assertDev040V3Profile(profile, n1c)
   const args = parseOwnerStageArgs(process.argv.slice(2), profile.artifact.releaseBucket)
   const transport = createOwnerTransport({ token: process.env.GOOGLE_OAUTH_ACCESS_TOKEN ?? '' })
+  const buildMigrationBundle = async (sourceRevision) => {
+    const files = new Map(profile.migrations.entries.map((entry) => [entry.path, readGitBlob(root, entry.path, sourceRevision)]))
+    return buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, sourceRevision)
+  }
   const result = await executeOwnerStage({
     ...args, profile, profileSha256: createHash('sha256').update(readGitBlob(root, profilePath)).digest('hex'), transport, validateIntent: assertDev040ReleaseIntent,
     createSourceIdentity: async (sourceRevision) => createGitSourceIdentity(root, sourceRevision),
     createSourceArchive: async (sourceRevision) => createGitArchive(root, sourceRevision),
-    buildMigrationBundle: async (sourceRevision) => {
-      const files = new Map(await Promise.all(profile.migrations.entries.map(async (entry) => [entry.path, await fs.readFile(path.join(root, ...entry.path.split('/')))])))
-      return buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, sourceRevision)
-    },
+    buildMigrationBundle,
+    verifyRoutineRelease: (input) => verifyRoutineRelease({ ...input, root, profile, transport, buildMigrationBundle }),
   })
   process.stdout.write(`${JSON.stringify({ stage: args.stage, ref: result.ref, generation: String(result.metadata.generation), status: 'PASS' })}\n`)
 }

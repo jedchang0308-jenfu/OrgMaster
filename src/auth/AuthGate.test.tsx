@@ -13,7 +13,7 @@ vi.mock('./firebaseClient', () => ({ getFirebaseIdToken: vi.fn(), clearFirebaseC
 
 function SessionProbe() {
   const authSession = useAuthSession()
-  return <>{authSession ? <><span>{`員工 ${authSession.session.user.employeeId}`}</span><button type="button" onClick={() => { void authSession.logout() }}>session logout</button></> : <span>尚未登入</span>}</>
+  return <>{authSession ? <><span>{`員工 ${authSession.session.user.employeeId}`}</span><span>{`managed:${authSession.managedIdentityEnabled}`}</span><button type="button" onClick={() => { void authSession.logout() }}>session logout</button></> : <span>尚未登入</span>}</>
 }
 
 let root: Root
@@ -21,6 +21,7 @@ let container: HTMLDivElement
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   api.getDevelopmentAuthMode.mockRejectedValue(new AuthApiError(404, 'auth_request_invalid'))
+  api.getAuthMode.mockResolvedValue({ managedLoginEnabled: false })
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -48,6 +49,7 @@ describe('AuthGate', () => {
     })
     expect(container.textContent).toContain('protected organization data')
     expect(container.textContent).toContain('員工 e1')
+    expect(container.textContent).toContain('managed:false')
   })
 
   it('shows a fail-closed unavailable state without protected content', async () => {
@@ -60,6 +62,21 @@ describe('AuthGate', () => {
     expect(container.textContent).toContain('登入服務暫時無法使用')
     expect(container.textContent).toContain('correlation-2')
     expect(container.textContent).not.toContain('protected organization data')
+  })
+
+  it('restores managed capabilities from the server when resuming a session', async () => {
+    api.getCurrentSession.mockResolvedValue({ user: { principalId: 'p1', employeeId: 'e1' } })
+    api.getAuthMode.mockResolvedValue({ managedLoginEnabled: true })
+    await act(async () => root.render(<AuthGate><SessionProbe /></AuthGate>))
+    expect(container.textContent).toContain('managed:true')
+  })
+
+  it('keeps a verified legacy session usable with new capabilities off when discovery fails', async () => {
+    api.getCurrentSession.mockResolvedValue({ user: { principalId: 'p1', employeeId: 'e1' } })
+    api.getAuthMode.mockRejectedValue(new AuthApiError(503, 'auth_server_not_configured'))
+    await act(async () => root.render(<AuthGate><SessionProbe /></AuthGate>))
+    expect(container.textContent).toContain('員工 e1')
+    expect(container.textContent).toContain('managed:false')
   })
 
   it('offers server-defined development profiles and enters with one click', async () => {

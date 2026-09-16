@@ -42,6 +42,8 @@ npm run qc:dev-047:postgres
 
 ## 2026-09-16 CAPA 修復與有效性證據
 
+相容發布補充（DEV-040 §35）：DEV-047 server capability 關閉時，員工頁沿用唯讀 legacy identity（禁止邀請／建立／重送／停用 CTA），不呼叫 managed identity 或 activation API；已驗證 session 重新整理也須取得 capability，讀取失敗則新功能關閉但不撤銷既有登入。開啟後才使用 managed UI。相容程式部署與 012／外部 Directory／admission 啟用分開，不能以靜態「不得出現舊元件名稱」取代這兩種行為驗證。
+
 - PostgreSQL runner 不再接受 `DEV047_POSTGRES_URL` 或 caller 自稱 disposable 的外部 target；只自行建立 loopback、動態 port、task-owned temp cluster，並記錄 PostgreSQL PID、mutation scope 及 cleanup condition。
 - `npm run qc:dev-047:postgres`：PostgreSQL `18.4`，001～012 fresh apply PASS；A17～A22 共 6 項 SQL 行為案例 PASS，`executedCaseCount=6`；client、cluster、port 與 temp root 全數清理。證據：[manifest](../../qa/dev-047/postgres/manifest.json)。Production PostgreSQL 仍固定 17；runner 接受 17／18 並拒絕其他 major，且保留 exact version。
 - 真實 execution 修復 012 source 中五類阻擋缺陷：managed principal／record UUID 不一致、contract view 欄名不相容、錯誤 routine grant signature、NUL text hash、PL/pgSQL output-column ambiguity。012 尚未套用任何 production target；本輪未連線或修改 shared／staging／production DB。

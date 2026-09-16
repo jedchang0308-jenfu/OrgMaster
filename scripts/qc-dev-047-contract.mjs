@@ -33,8 +33,14 @@ await check('Node and DB authorities default off', async () => {
   const [authApi, server] = await Promise.all([source('server/orgmasterAuthApi.ts'), source('server/orgmasterServer.ts')])
   assert.match(authApi, /ORGMASTER_MANAGED_IDENTITY_ENABLED\s*===\s*['"]true['"]/u); assert.match(server, /managedIdentityEnabled\s*\?\?\s*\(devIdentityEnabled\s*\|\|\s*runtime\.managedLoginEnabled\s*===\s*true\)/u); assert.match(migration, /admission_enabled boolean NOT NULL DEFAULT false/u)
 })
-await check('normal Employee entry uses managed UI and no legacy account CTA', async () => {
-  const panel = await source('src/components/DirectoryDetailPanel.tsx'); assert.match(panel, /EmployeeManagedIdentitySection/u); assert.doesNotMatch(panel, /EmployeeIdentitySection/u)
+await check('Employee entry follows server capability; feature-off legacy identity remains read-only', async () => {
+  const [panel, managed, gate, app, regression] = await Promise.all([source('src/components/DirectoryDetailPanel.tsx'), source('src/components/EmployeeManagedIdentitySection.tsx'), source('src/auth/AuthGate.tsx'), source('src/App.tsx'), source('src/components/DirectoryDetailPanel.test.tsx')])
+  assert.match(panel, /managedIdentityEnabled\s*\?\s*<EmployeeManagedIdentitySection/u)
+  assert.match(panel, /<EmployeeIdentitySection\s+employee=\{employee\}\s+accountMutationEnvironmentAllowed=\{false\}/u)
+  assert.doesNotMatch(managed, /EmployeeAccountSetupDialog|invite_new|resendInvitation/u)
+  assert.match(gate, /state\.mode\?\.managedLoginEnabled/u)
+  assert.match(app, /if \(managedIdentityEnabled && status === 'active'/u)
+  includesAll(regression, ['legacy identity mutable:false', 'auth.managedIdentityEnabled = true'])
 })
 await check('frozen canonical principal manifest', async () => {
   const fixture = JSON.parse(await readFile(join(root, 'qa', 'dev-047', 'contracts', 'active-principal.managed.json'), 'utf8'))

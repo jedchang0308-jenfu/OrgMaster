@@ -6,6 +6,8 @@ import type { Assignment, Department, Employee, OrganizationLevel, PositionView 
 import type { DirectorySelection } from './DirectoryDock'
 import { PanelDismissButton } from './PanelDismissButton'
 import { EmployeeManagedIdentitySection } from './EmployeeManagedIdentitySection'
+import { EmployeeIdentitySection } from './EmployeeIdentitySection'
+import { useAuthSession } from '../auth/AuthGate'
 
 interface DirectoryDetailPanelProps {
   selection: DirectoryDetailSelection
@@ -45,6 +47,7 @@ export function DirectoryDetailPanel({
   governanceRefreshToken = 0,
   onGovernanceChanged,
 }: DirectoryDetailPanelProps) {
+  const managedIdentityEnabled = useAuthSession()?.managedIdentityEnabled === true
   const [expandedPositionIds, setExpandedPositionIds] = useState<Set<string>>(() => new Set())
 
   const togglePositionEmployees = (positionId: string) => {
@@ -157,12 +160,12 @@ export function DirectoryDetailPanel({
           </div>
         </section>
 
-        <EmployeeManagedIdentitySection
+        {managedIdentityEnabled ? <EmployeeManagedIdentitySection
           employee={employee}
           mutationAllowed={accountMutationEnvironmentAllowed ?? identityMutationAllowed}
           refreshToken={governanceRefreshToken}
           onChanged={onGovernanceChanged}
-        />
+        /> : <EmployeeIdentitySection employee={employee} accountMutationEnvironmentAllowed={false} refreshToken={governanceRefreshToken} />}
 
       </aside>
     )

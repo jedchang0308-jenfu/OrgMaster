@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-16 一般發布修正**：DEV-040 主契約 §35／QA §12 為 ordinary release 現行規則。單一 `npm run deploy:production`，未變更 DB/infra/runtime 時沿用 verified baseline，保留十階段與 smoke/rollback，不重做首次資料／管理員 bootstrap。DEV-047 feature-off compatibility 隨程式發布；012 與外部身分功能啟用不混算成已部署。
+
 > **2026-09-15 DEV-040／DEV-012 R78完成（現行）**：OrgMaster沿用R60 immutable terminal，未重部署；source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`，R78 disposition=`RETAINED_LIVE`。Root／auth-mode與entry policy provider readback PASS。後續ordinary release由本repo獨立執行；DEV-047另依自己的task。下方S2／NOT_RUN只屬歷史。
 
 > **2026-09-11 R38 current handoff**：R34 OrgMaster production migration已完成`7 applied／4 replayed／ledgerCount=11`且production-data PASS；candidate／entrypoint／traffic未執行。Current owner已修正Cloud Run v2 completion readback與exact Job viewer，離線owner／abort／DB／529案product regression／build均PASS。AI-PDM後續source drift使R37整體作廢，且R37無OrgMaster app apply；operator重新授權後由fresh R38接續，既有DDL只做idempotent replay，不做人工rollback。

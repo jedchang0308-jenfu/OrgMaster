@@ -122,6 +122,34 @@ async function authorizedRecordedInput(h, releaseId) {
   }
 }
 
+test('application-only release preserves all ten stages without importing data or executing a migration job', async () => {
+  const h = recordedHarness()
+  const { input, intentResult } = await authorizedRecordedInput(h, 'ROUTINE-ALL-STAGES')
+  const intent = JSON.parse((await h.transport.readBytes(intentResult.ref.uri)).bytes)
+  intent.baselineIntentRef = { uri: `gs://${bucket}/receipts/baseline.json`, sha256: 'e'.repeat(64) }
+  const next = await h.transport.putJson(`gs://${bucket}/receipts/routine-intent.json`, intent)
+  input.capsuleRef = next.ref.uri; input.capsuleSha256 = next.ref.sha256
+  // The baseline verifier is independently covered with hash/source/provider negatives.
+  input.verifyRoutineRelease = async () => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) } })
+  h.profile.productionData = { required: true }
+  h.transport.runMigrationJob = async () => assert.fail('routine releases must not run migration/import/bootstrap jobs')
+  let terminal
+  for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']) terminal = await executeOwnerStage({ ...input, stage })
+  const result = JSON.parse((await h.transport.readBytes(terminal.ref.uri)).bytes)
+  assert.equal(result.facts.databaseDisposition, 'UNCHANGED_VERIFIED')
+  assert.equal(result.facts.result, 'RELEASED')
+  assert.equal(h.service().traffic.length, 1)
+})
+
+test('application-only intent cannot skip baseline verification by omitting the verifier', async () => {
+  const h = recordedHarness()
+  const { input, intentResult } = await authorizedRecordedInput(h, 'ROUTINE-NO-VERIFIER')
+  const intent = JSON.parse((await h.transport.readBytes(intentResult.ref.uri)).bytes)
+  intent.baselineIntentRef = { uri: `gs://${bucket}/receipts/baseline.json`, sha256: 'e'.repeat(64) }
+  const next = await h.transport.putJson(`gs://${bucket}/receipts/routine-no-verifier.json`, intent)
+  await assert.rejects(() => executeOwnerStage({ ...input, capsuleRef: next.ref.uri, capsuleSha256: next.ref.sha256, stage: 'prepare' }), /ROUTINE_VERIFIER_REQUIRED/)
+})
+
 
 test('recorded provider transport executes the ten immutable owner stages without sibling state', async () => {
   const h = recordedHarness()
