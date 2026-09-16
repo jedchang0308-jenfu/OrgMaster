@@ -9,6 +9,8 @@ vite.config.d.ts
 # Local tooling and temporary browser artifacts
 .codex-tmp/
 .playwright-cli/
+test-results/
+scripts/tmp-*
 getComputedStyle(e).display!
 
 # Local runtime/company data (may contain operational or personal information)
