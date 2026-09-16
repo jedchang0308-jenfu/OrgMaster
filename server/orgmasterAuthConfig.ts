@@ -46,11 +46,20 @@ export function readOrgmasterAuthConfig(environment: NodeJS.ProcessEnv = process
   const missing = names.filter((name) => !environment[name]?.trim())
   if (missing.length) return { configured: false, missing, reason: 'Required authentication configuration is missing.' }
 
+  const rawPublicBaseUrl = environment.ORGMASTER_PUBLIC_BASE_URL!.trim()
   let publicBaseUrl: URL
   try {
-    publicBaseUrl = new URL(environment.ORGMASTER_PUBLIC_BASE_URL!)
+    publicBaseUrl = new URL(rawPublicBaseUrl)
   } catch {
     return { configured: false, missing: [], reason: 'ORGMASTER_PUBLIC_BASE_URL must be an absolute URL.' }
+  }
+  if (rawPublicBaseUrl !== publicBaseUrl.origin
+    || publicBaseUrl.pathname !== '/'
+    || publicBaseUrl.search
+    || publicBaseUrl.hash
+    || publicBaseUrl.username
+    || publicBaseUrl.password) {
+    return { configured: false, missing: [], reason: 'ORGMASTER_PUBLIC_BASE_URL must be a bare origin without a path, query, fragment, credentials, or trailing slash.' }
   }
 
   const projectId = environment.JENFU_FIREBASE_PROJECT_ID!.trim()

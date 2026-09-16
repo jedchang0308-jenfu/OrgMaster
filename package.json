@@ -43,7 +43,7 @@
     "qc:dev039": "npm run qc:dev039:contract && npm run qc:dev039:postgres && npm run test:dev039 && npm run build",
     "qc:dev-009:browser": "node scripts/qc-dev-009-privileged-browser.mjs",
     "qc:dev-009:postgres": "node scripts/qc-dev-009-privileged-postgres.mjs",
-    "test:dev-004:auth": "vitest run server/orgmasterAuthApi.test.ts server/orgmasterServer.test.ts src/auth/AuthGate.test.tsx src/documentStorage.employee-status.test.ts",
+    "test:dev-004:auth": "vitest run server/orgmasterAuthConfig.test.ts server/orgmasterAuthApi.test.ts server/orgmasterServer.test.ts src/auth/AuthGate.test.tsx src/documentStorage.employee-status.test.ts",
     "test:dev-004": "npm run contracts:check && npm run test:dev-004:auth",
     "qc:dev-004": "npm run test:dev-004 && npm run build",
     "test:dev-045": "vitest run src/accountEnrollment/apiClient.test.ts src/components/EmployeeIdentitySection.test.tsx src/components/EmployeeAccountSetupDialog.test.tsx src/components/DirectoryDetailPanel.test.tsx src/governance/aiPdmCatalog.test.ts src/components/workspace/WorkspaceArchitecturePolicy.test.ts server/orgmasterAccountProvisioningPort.test.ts server/orgmasterIdentityLinkPolicy.test.ts server/orgmasterAccountEnrollmentStore.test.ts server/orgmasterAccountEnrollmentService.test.ts server/orgmasterAccountEnrollmentApi.test.ts server/orgmasterGovernanceApi.test.ts server/orgmasterGovernanceStore.test.ts server/orgmasterServer.test.ts",
