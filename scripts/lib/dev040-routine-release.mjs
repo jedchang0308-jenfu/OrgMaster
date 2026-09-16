@@ -10,11 +10,17 @@ const same = (a, b) => canonicalize(a) === canonicalize(b)
 export function routineInfrastructureFingerprint(root, revision) {
   if (!/^[a-f0-9]{40}$/u.test(revision)) fail('ROUTINE_SOURCE_INVALID')
   const result = spawnSync('git', ['ls-tree', '-r', '-z', revision, '--',
-    'infra/google-cloud/dev-040-production-release', 'config/release/dev040-orgmaster-independent-production-v3.json', 'config/dev-010/n1c-orgmaster.json',
+    'infra/google-cloud/dev-040-production-release', 'config/dev-010/n1c-orgmaster.json',
   ], { cwd: root, encoding: null, windowsHide: true })
   if (result.status !== 0 || !result.stdout?.length) fail('ROUTINE_BASELINE_SOURCE_MISSING')
-  return sha256(result.stdout)
+  const config = spawnSync('git', ['show', `${revision}:config/release/dev040-orgmaster-independent-production-v3.json`], { cwd: root, encoding: 'utf8', windowsHide: true })
+  if (config.status !== 0) fail('ROUTINE_BASELINE_SOURCE_MISSING')
+  return sha256(Buffer.concat([result.stdout, Buffer.from(canonicalize(releaseInfrastructureInputs(JSON.parse(config.stdout))))]))
 }
+
+// Historical initialization metadata is not a provisioned infrastructure input.
+// Every other profile field remains covered, including unknown future fields.
+export function releaseInfrastructureInputs({ productionData, ...profile }) { return profile }
 
 function assertSealedStage(value, profile, intent, stage) {
   const { receiptSha256, ...core } = value ?? {}
@@ -100,7 +106,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const migrationInputsSha256 = assertRoutineMigrationUnchanged(baseline.bundle.value, current.bundle)
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]
-    if (value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.releaseId !== intent.releaseId || value.releaseMode !== 'APPLICATION_ONLY' || !same(value.baselineIntentRef, intent.baselineIntentRef)) fail('ROUTINE_AUTHORITY_MISMATCH')
+    if (value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.releaseId !== intent.releaseId || !same(value.baselineIntentRef, intent.baselineIntentRef)) fail('ROUTINE_AUTHORITY_MISMATCH')
   }
   return { baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, infrastructureSha256, migrationInputsSha256, previousRevision: intent.previousRevision, databaseVerification: 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false }
 }

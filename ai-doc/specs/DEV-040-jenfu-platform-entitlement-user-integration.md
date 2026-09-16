@@ -1,23 +1,23 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
-> **Final current release status（2026-09-15）**：`040-R2 Production Level 4 Complete / R60 LIVE_VERIFIED / R78 RETAINED_LIVE`。最終authority見§34；較早`NOT_RUN／blocked`段落保留provenance。
+> **現行發布契約**：§35 為本次使用者核准的生命週期分離規則；正式版本與 terminal evidence 見 QA §13（run `35063120604`）。下列 R20–R78 為歷史事件，不是一般更新的操作前提；本地重構驗證不代表重新部署。
 
-> **2026-09-11 R38 pre-auth execution authority（current additive authority）**：R34 provider證據已確認OrgMaster production migration完成`7 applied／4 replayed／ledgerCount=11`且production-data驗證PASS；此forward-only事實不可因owner後續readback bug而回寫為NOT_RUN。Cloud Run v2 execution終止條件固定為`conditions[type=Completed]`，own exact migration Job viewer必須存在於source-frozen IaC complete-set。R37因任一cohort source drift而整體作廢，且operator auth不可用期間沒有OrgMaster app apply；恢復後只接受fresh R38。既有migration以idempotent replay重驗，不執行手動rollback，不重建已由migration移除的legacy schema；candidate／entrypoint／traffic仍為NOT_RUN。
+> **歷史事件｜2026-09-11 R38 pre-auth execution authority（歷史）**：R34 provider證據已確認OrgMaster production migration完成`7 applied／4 replayed／ledgerCount=11`且production-data驗證PASS；此forward-only事實不可因owner後續readback bug而回寫為NOT_RUN。Cloud Run v2 execution終止條件固定為`conditions[type=Completed]`，own exact migration Job viewer必須存在於source-frozen IaC complete-set。R37因任一cohort source drift而整體作廢，且operator auth不可用期間沒有OrgMaster app apply；恢復後只接受fresh R38。既有migration以idempotent replay重驗，不執行手動rollback，不重建已由migration移除的legacy schema；candidate／entrypoint／traffic仍為NOT_RUN。
 
-> **2026-09-11 R28 operation／production DB correction（current additive authority）**：R28已建立OrgMaster exact migration execution，但在任何001～011 app-owned DDL、production data import或principal CAS前，因正式庫尚無DEV-010共用roles／schemas以SQLSTATE `42704`終止；其後generic operation GET另回403。Candidate／entrypoint／traffic=0。Owner runtime不再輪詢operations endpoint，改以exact Service settled readback及run前後child execution差集＋current args唯一匹配。Platform-owned production DB bootstrap immutable receipt成為S2 dispatch硬閘；target、source、role／schema／CONNECT隔離及task-owned Job cleanup未PASS前不得執行本owner migration。R28不得作release authority。
+> **歷史事件｜2026-09-11 R28 operation／production DB correction（歷史）**：R28已建立OrgMaster exact migration execution，但在任何001～011 app-owned DDL、production data import或principal CAS前，因正式庫尚無DEV-010共用roles／schemas以SQLSTATE `42704`終止；其後generic operation GET另回403。Candidate／entrypoint／traffic=0。Owner runtime不再輪詢operations endpoint，改以exact Service settled readback及run前後child execution差集＋current args唯一匹配。Platform-owned production DB bootstrap immutable receipt成為S2 dispatch硬閘；target、source、role／schema／CONNECT隔離及task-owned Job cleanup未PASS前不得執行本owner migration。R28不得作release authority。
 
-> **2026-09-11 R27 migration-readback correction（current additive authority）**：R27 OrgMaster prepare／build／provenance／SBOM／scan均PASS，migrate則在建立任何execution前因deployer讀取own migration Job缺run.jobs.get而HTTP 403。roles/run.jobsExecutorWithOverrides供應商定義不含Job／execution／operation GET；本owner只在exact orgmaster-prod-migration-runner增補resource-scoped roles/run.viewer並納入APP_INFRA_B complete-set，禁止project-wide或sibling read。Failure receipt只有在有效immutable migrate receipt存在時可標FORWARD_APPLIED，否則標NOT_APPLIED。R27 execution=0且無DB／candidate／entrypoint／traffic mutation，不得作release authority。
+> **歷史事件｜2026-09-11 R27 migration-readback correction（歷史）**：R27 OrgMaster prepare／build／provenance／SBOM／scan均PASS，migrate則在建立任何execution前因deployer讀取own migration Job缺run.jobs.get而HTTP 403。roles/run.jobsExecutorWithOverrides供應商定義不含Job／execution／operation GET；本owner只在exact orgmaster-prod-migration-runner增補resource-scoped roles/run.viewer並納入APP_INFRA_B complete-set，禁止project-wide或sibling read。Failure receipt只有在有效immutable migrate receipt存在時可標FORWARD_APPLIED，否則標NOT_APPLIED。R27 execution=0且無DB／candidate／entrypoint／traffic mutation，不得作release authority。
 
-> **2026-09-10 R26 staged-IaC correction（current additive authority）**：R26 OrgMaster APP_INFRA_B因三個SBOM地址誤列A而在apply前安全停止；回跑A會規劃destroy既有B並再次被拒，production mutation=0。§31現把SBOM bindings改為`incident_runtime_enabled` APP_INFRA_B additional `[0]` resources；fresh B plan只可create三個own-prefix SBOM bindings與own exact-job override，其餘read/no-op。
+> **歷史事件｜2026-09-10 R26 staged-IaC correction（歷史）**：R26 OrgMaster APP_INFRA_B因三個SBOM地址誤列A而在apply前安全停止；回跑A會規劃destroy既有B並再次被拒，production mutation=0。§31現把SBOM bindings改為`incident_runtime_enabled` APP_INFRA_B additional `[0]` resources；fresh B plan只可create三個own-prefix SBOM bindings與own exact-job override，其餘read/no-op。
 
-> **2026-09-10 R25 IAM correction（current additive authority）**：R25 OrgMaster image已通過Cloud Build、provenance、SBOM與0 High／Critical，但migration在Job execution前因deployer缺`run.jobs.runWithOverrides`安全停止；自動SBOM亦曾因builder缺default Artifact Analysis bucket權限而需人工補跑。§31固定own encoded `orgmaster-release` prefix與own exact migration Job權限，fresh source／APP_INFRA／cohort前不得再部署。
+> **歷史事件｜2026-09-10 R25 IAM correction（歷史）**：R25 OrgMaster image已通過Cloud Build、provenance、SBOM與0 High／Critical，但migration在Job execution前因deployer缺`run.jobs.runWithOverrides`安全停止；自動SBOM亦曾因builder缺default Artifact Analysis bucket權限而需人工補跑。§31固定own encoded `orgmaster-release` prefix與own exact migration Job權限，fresh source／APP_INFRA／cohort前不得再部署。
 
-> **2026-09-10 R22 artifact-evidence hardening（current）**：R22 OrgMaster Cloud Build、immutable digest及SLSA Level 3 provenance PASS；Artifact Analysis `exportSBOM`早於discovery完成而HTTP 400，failure recovery產生`PRE_ACTIVATION_ABORTED`且任何migration／candidate／entrypoint／traffic皆未執行。完成後scan顯示舊runner含3 Critical＋15 High，來源為非執行期global npm及Debian Perl／ACL／attr／zlib。Current修正按BUILD／DISCOVERY／SBOM_REFERENCE／VULNERABILITY kind＋exact digest分別完整分頁，先等discovery成功再僅對HTTP 400 bounded retry SBOM，其他status立即FAIL；production runner改為pinned non-root Node 24 Distroless，High／Critical政策不降級。Fresh aggregate `2026-09-10T074043-640Z`已PASS；R22不可重用，提交後須fresh source/cohort。
+> **歷史事件｜2026-09-10 R22 artifact-evidence hardening（歷史）**：R22 OrgMaster Cloud Build、immutable digest及SLSA Level 3 provenance PASS；Artifact Analysis `exportSBOM`早於discovery完成而HTTP 400，failure recovery產生`PRE_ACTIVATION_ABORTED`且任何migration／candidate／entrypoint／traffic皆未執行。完成後scan顯示舊runner含3 Critical＋15 High，來源為非執行期global npm及Debian Perl／ACL／attr／zlib。Current修正按BUILD／DISCOVERY／SBOM_REFERENCE／VULNERABILITY kind＋exact digest分別完整分頁，先等discovery成功再僅對HTTP 400 bounded retry SBOM，其他status立即FAIL；production runner改為pinned non-root Node 24 Distroless，High／Critical政策不降級。Fresh aggregate `2026-09-10T074043-640Z`已PASS；R22不可重用，提交後須fresh source/cohort。
 
-> **2026-09-10 R20 architecture amendment**：OrgMaster owner build採user-specified `orgmaster-prod-builder`；提交Cloud Build時固定要求該builder對自身service account具`iam.serviceAccounts.actAs`。唯一新增IAM resource為`google_service_account_iam_member.builder_act_as_self`，role=`roles/iam.serviceAccountUser`，resource與member皆為own builder；禁止跨app或對runtime/deployer/verifier act-as。此地址納入app-owned APP_INFRA_B additional complete-set及provider readback，stage A維持不含build-runtime act-as。R20在此缺口以403安全停止，R21舊分類已作廢，且未進入migration/candidate/entrypoint/traffic；後續只能由fresh cohort重試。
+> **歷史事件｜2026-09-10 R20 architecture amendment**：OrgMaster owner build採user-specified `orgmaster-prod-builder`；提交Cloud Build時固定要求該builder對自身service account具`iam.serviceAccounts.actAs`。唯一新增IAM resource為`google_service_account_iam_member.builder_act_as_self`，role=`roles/iam.serviceAccountUser`，resource與member皆為own builder；禁止跨app或對runtime/deployer/verifier act-as。此地址納入app-owned APP_INFRA_B additional complete-set及provider readback，stage A維持不含build-runtime act-as。R20在此缺口以403安全停止，R21舊分類已作廢，且未進入migration/candidate/entrypoint/traffic；後續只能由fresh cohort重試。
 
-文件成熟度：`040-R2 V3 = RD Implementation Ready + 架構定案：已定案 / RD Tech Lead PASS / P0=0 / P1=0 / Implementation Complete / DEV-012 S1B-21 PASS / S1C 8／8 PASS / S2 Unlocked；其餘DEV-040 slices維持既有狀態`
-狀態：`040-R2 continuous production release owner slice`已依Platform DEV-012 §29完成V3 owner profile、ten-stage workflow、exact candidate origin、entrypoint／rollback與本機驗證；R34 production migration與data已PASS，candidate／entrypoint／traffic仍NOT_RUN。S2現因operator re-auth暫停；production principal、persistent release authority與traffic仍受S2／S3 gate。
+文件成熟度：`040-R2 §35 = RD Implementation Ready`；使用者已核准生命週期精簡並要求執行。其餘 DEV-040 slices 不變。
+狀態：既有正式發布已完成（QA §13）；§35 本次控制程式重構本地驗證 PASS，使用者已要求提交及部署，正式結果待 QA §13 回寫。不重新開啟 R34 的初始化或 S2/S3 歷史 gate。
 節點類型：開發點
 優先級：P0
 風險等級：High
@@ -1327,7 +1327,7 @@ Current execution boundary只到DEV-012 S2：fresh remote source freeze、Billin
 
 2026-09-10 R24 artifact-policy correction：OrgMaster Cloud Build成功後，Artifact Analysis以Distroless Debian zlib package的`CVE-2026-85091` effective HIGH拒絕image，故owner在migration、data import／principal CAS、candidate、entrypoint與traffic前安全停止。Current runner維持pinned Node 24 Distroless與non-root UID，透過digest-pinned build-only sanitizer只移除Node未載入的OS `libz.so.1／libz.so.1.3.1`及兩個dpkg metadata path，再由scratch重建final rootfs；不放寬`maximumAllowedSeverity=MEDIUM`。Fresh owner release只有在runtime regression／production build、provider discovery、SBOM、effective HIGH／CRITICAL=0與candidate normal-entry全部PASS後才可activation；啟動或native dependency失敗即own-only rollback／cleanup並停止cohort。
 
-## 31. R25 provider-proven IAM correction（current additive authority）
+## 31. R25 provider-proven IAM correction（歷史事件）
 
 R25 coordinator `34483346433`只dispatch OrgMaster owner `34483418416`。Build `916f368f-42de-4e51-b066-8d2532881a09`及image `sha256:f9e99b0c95dd08e8f34f72e1baaa29e619e9c01d4ba04a9912a6b9de121842a1`通過artifact gate；migration request在Cloud Run Job execution建立前`DENIED`，所以001～011、production data import、principal CAS、candidate、entrypoint與traffic均未執行。
 
@@ -1335,13 +1335,13 @@ APP_INFRA stage A新增own builder的project metadata-only `roles/storage.bucket
 
 Fresh saved plan只能對新地址create、其餘read／no-op。修正提交後須重建OrgMaster production data／bootstrap與全部source-bound receipts；owner build必自行完成SBOM，不接受human-generated SBOM作新release authority。R25只保留fail-closed證據。
 
-## 32. R28 exact provider readback與shared DB bootstrap prerequisite（current additive authority）
+## 32. R28 exact provider readback與shared DB bootstrap prerequisite（歷史事件）
 
 OrgMaster controller不得用Cloud Run generic operation判定Service或Job完成。Service PATCH只輪詢`orgmaster-prod` exact Service至settled，並驗requested ingress／default URI／invoker IAM、fresh etag／generation及template／traffic零漂移。Migration run前後完整分頁列出`orgmaster-prod-migration-runner` child executions，只接受一筆先前不存在且args與current immutable migration bundle、output、production-data及principal-bootstrap refs完全一致的新execution，再以exact execution GET至terminal；零筆、多筆、stale latest、args drift、不可讀或deadline均FAIL。
 
 DEV-010 neutral roles與三app schemas由Platform S2一次性forward-only bootstrap建立，不併入OrgMaster 001～011，也不授權本owner修改sibling core。Bootstrap receipt須綁同一release、Platform source與exact production target，證明`orgmaster_core／orgmaster_contract` ownership prerequisites、IAM login membership、direct CONNECT、group／PUBLIC denial、`public`無business object及bootstrap Job cleanup。Coordinator在receipt PASS前不得dispatch；PASS後本owner仍須執行001～011、data import、one-time principal CAS、reconciliation及所有owner smoke，shared bootstrap不得冒充任何一項。
 
-## 33. R40 one-time production-data authority replay correction（current additive authority）
+## 33. R40 one-time production-data authority replay correction（歷史事件）
 
 R34已成功完成001～011、production data import及第一位production principal的一次性CAS；R39與R40在candidate／entrypoint／traffic前安全停止。R40精確失敗碼=`PRODUCTION_DATA_AUTHORITY_CAS_CONFLICT`，原因是後續release為相同local business data重建了含新`releaseId／sourceRevision／bootstrap authorizedAt`的package，導致release envelope hash改變，但既有active authority本來就不得被第二次bootstrap取代。
 
@@ -1357,19 +1357,24 @@ OrgMaster已在R60正式完成，source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e
 
 後續ordinary OrgMaster release只凍結本repo並操作own source、artifact、migration、service、Secret、entrypoint、traffic與rollback，不讀取或重部署siblings。Shared foundation只以verified receipt hash作依賴。DEV-047、TOTP、產品identity lifecycle與`RETAINED_UNUSED_EDGE` retirement是分離scope，不構成040-R2／DEV-012殘留；本節為post-release治理，不改R60 provenance。
 
-## 35. 一般程式更新解除首次建置耦合（2026-09-16）
+## 35. 現行發布契約：初始化與一般發布分離（2026-09-16）
 
 根因：§31–33 的首次建置／資料 authority replay 被實作成所有更新的共同前置條件；infra receipt 又錯綁每次 application source，導致只有 UI/API 改動也要求重建 bootstrap 收據。另 Git freeze 把不會進入 `git archive` 的未追蹤測試檔當成來源污染；DEV-047 UI 未遵循 server flag，功能關閉時仍呼叫不存在的新 API。這些不是新的使用者核准需求。
 
-本節優先於 §31–33 的「每次更新重新 bootstrap/replay」要求，只適用 `APPLICATION_ONLY`：
+使用者已核准根本精簡方案並要求執行；本次為 Intentional replacement，沿用本 DEV，不另建發布平台或 CAPA。§31–33 為歷史事件，不是現行操作規則。一般發布只有一條正常路徑，不以 `APPLICATION_ONLY` 或 baseline ref 的有無選擇初始化。現行實作範圍如下：
+
+- Release intent 必須引用已成功發布的 baseline；舊 intent/receipt 僅能作歷史讀取與失敗回復，不得重新進入 build/migrate/activate。缺 baseline 明確失敗，不回退 bootstrap。
+- 一般發布 executor 不匯入業務資料、不建立首位管理員、不呼叫 migration job。未變更 SQL 使用原有效 DB 證據；baseline 是證據關聯，不是執行模式旗標。
+- `dev040-production-migration-runner` 僅處理 schema：要求既有 exact 001–010 ledger，重用 `planMigration`，只套用已核准且未套用的 011；空庫、歷史 checksum 異常或 data/bootstrap 參數必須失敗。首次資料/管理員初始化的歷史函式不再被發布或 schema runner 引用；若需新環境啟用，另依明確授權維護作業處理，禁止日常發布自動重播。
+- 不改 shared foundation、正式 DB/IAM、011 SQL 或 migration allowlist；012/Directory/admission 不在本次範圍。此次只修改控制程式與本地驗證，不以 runner 原始碼更新宣稱正式 runner image 已替換。
 
 - `npm run deploy:production` 自動從本 app control head 找上一版 `RELEASED` immutable intent，核對 terminal/candidate/deployment/migration 的 hash 與 source joins、目前正式 revision/image、無殘留 candidate tag；不讀 sibling source。
-- 比對前後已核准的 exact 001–011 migration bundle（忽略 application source envelope）、app infra/config Git tree 與 runtime/Secret version。任何變更均不准套用此路徑；不存在「跳過所有檢查」旗標。
+- 比對前後已核准的 exact 001–011 migration bundle（忽略 application source envelope）、app infra/config 內容與 runtime/Secret version。基礎設施指紋不包含已退役的 productionData 初始化設定，但其餘 profile、IaC、N1C 輸入仍須一致；SQL/infra/runtime 實質變更不得自動退回初始化。不存在「跳過所有檢查」旗標。
 - 沿用原 foundation/infra evidence，保留原 source/日期，不偽造成新執行。新的 source lock、runtime readback、operator authorization、readiness 與 intent 綁本次 source。歷史收據到期不等於既有基礎設施失效；新發布仍有 deadline。
 - 十階段、protected workflow、service concurrency、immutable image、SBOM/scan、inactive-candidate smoke、machine decision、canonical authenticated/deny/logout smoke 及 rollback 不變。`migrate` 明確回報 `UNCHANGED_VERIFIED`、DDL/import/bootstrap=0；使用前次 DB 證據與本次 runtime smoke，不冒稱本次讀取 live ledger 或重新執行 PostgreSQL QC。
 - Source archive 只含已提交 Git tree；tracked dirt 仍阻擋，未追蹤測試檔保留但排除，不需要 clone 另一份 repo。既有部署授權沿用，不增加人工核准迴圈。
 - DEV-047 compatibility code 可先部署：server flag 關閉時使用既有唯讀登入身分區塊、不呼叫 managed identity/activation API。012、Google Directory delegated credentials 與 admission gate 屬後續功能啟用，不能假裝已完成或因此阻擋相容程式發布。未改既有 DB/正式資料。
 
-`npm run deploy:production -- --check` 只讀正式環境且 `releaseAuthority=false`；不寫收據、不 dispatch。`--prepare-only` 只準備 immutable capsule。無旗標才 dispatch 既有正式 workflow。舊 bootstrap runner 僅留給首次建立／明確資料轉換，不再是 ordinary release 必經流程。
+`npm run deploy:production -- --check` 只讀正式環境且 `releaseAuthority=false`；不寫收據、不 dispatch。`--prepare-only` 只準備 immutable capsule。無旗標才 dispatch 既有正式 workflow。遷移資料或首次建立不屬此命令的 fallback；已核准 schema runner 亦不具有業務資料/管理員初始化路徑。
 
 首次 routine run `35062309077` 實測找到另一項首次部署假設：`createCandidate`／`entrypoint` 只接受 deterministic tag URI，但已公開的 Cloud Run service 會回傳 exact provider-hash hostname，與 `verify` 已有的判定不一致。三者統一使用同一 exact service-readback origin projection；不接受 wildcard／陌生 host，不改候選版注入的單一 origin。該 run 在切流量前停止，failure cleanup 成功、原正式版 100% 流量、DB=UNCHANGED_VERIFIED。失敗後的 control head 不算新正式 baseline；僅當 immutable terminal 證明 PRE_ACTIVATION_ABORTED／ROLLED_BACK 且目前服務仍吻合原 baseline，才自動從該 intent 的 baseline ref 重試，無額外核准。

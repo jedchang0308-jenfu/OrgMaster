@@ -11,7 +11,7 @@ import {
   planMigration,
   sha256,
 } from './lib/dev012-production-migration-runner.mjs'
-import { TARGET } from './dev040-production-migration-runner.mjs'
+import { TARGET, runMain } from './dev040-production-migration-runner.mjs'
 
 const H40 = 'a'.repeat(40)
 const environment = {
@@ -43,8 +43,8 @@ test('S1B-21 OrgMaster runner accepts only exact production target and refs', ()
   assert.equal(parseGsUri(`gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, TARGET.releaseBucket, 'source/migration-bundles').object, 'source/migration-bundles/a.json')
   assert.throws(() => parseGsUri('gs://jenfu-platform-prod-aipdm-release/source/migration-bundles/a.json', TARGET.releaseBucket, 'source/migration-bundles'), /GCS_REF_INVALID/)
   const args = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', 'b'.repeat(64), '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/r/migrate.json`, '--data-ref', `gs://${TARGET.releaseBucket}/source/production-data/REL-001/data.json`, '--data-sha256', 'c'.repeat(64), '--bootstrap-ref', `gs://${TARGET.releaseBucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, '--bootstrap-sha256', 'd'.repeat(64)]
-  assert.equal(parseRunnerArgs(args, { productionDataRequired: true }).sourceRevision, H40)
-  assert.throws(() => parseRunnerArgs(args.slice(0, 8), { productionDataRequired: true }), /MIGRATION_ARGUMENT_INVALID/)
+  assert.equal(parseRunnerArgs(args.slice(0, 8)).sourceRevision, H40)
+  assert.throws(() => parseRunnerArgs(args.slice(0, 6)), /MIGRATION_ARGUMENT_INVALID/)
   assert.throws(() => parseRunnerArgs(args), /MIGRATION_ARGUMENT_INVALID/)
   assert.equal(crc32cBase64(Buffer.from('123456789')), '4waSgw==')
 })
@@ -77,29 +77,71 @@ test('S1B-21 OrgMaster runner validates ten-row baseline and appends only 011', 
   assert.throws(() => planMigration(input.bundle, missing), /LEDGER_PREFIX_MISMATCH|BASELINE_INCOMPLETE/)
 })
 
-test('S1B-21 OrgMaster runner bootstraps only its private ledger and applies a fresh database from zero', async () => {
+test('S1B-21 OrgMaster schema runner rejects an empty or changed baseline without writes', async () => {
   const input = fixture()
   let ledger = []
-  let tableExists = false
   const statements = []
   const database = {
     async query(sql, values) {
       statements.push(sql)
       if (sql.startsWith('SELECT current_database')) return { rows: [{ database: 'jenfu_prod', user: TARGET.login, postgresMajor: 17, migratorMember: true, runtimeCanCreateCore: false }] }
       if (sql.includes('unnest(')) return { rows: TARGET.siblingCoreSchemas.map((schema_name) => ({ schema_name, can_use: false })) }
-      if (sql.includes('FROM pg_catalog.pg_class')) return { rows: [{ exists: tableExists }] }
-      if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) tableExists = true
       if (sql.includes('ORDER BY applied_at')) return { rows: ledger.map((row) => ({ ...row })) }
       if (sql.startsWith('INSERT INTO')) ledger.push({ version: values[0], name: values[1], checksum_sha256: values[2], source_revision: values[3] })
       return { rows: [] }
     },
   }
-  const receipt = await executeProductionMigration({ bundle: input.bundle, database, target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true, now: () => '2026-09-11T00:00:00.000Z' })
-  assert.equal(receipt.status, 'PASS')
-  assert.equal(receipt.minimumLedgerCount, 0)
-  assert.deepEqual(receipt.ledgerBootstrap, { enabled: true, created: true })
-  assert.equal(receipt.applied, input.bundle.entries.length)
-  assert.equal(ledger.length, input.bundle.entries.length)
-  assert.ok(statements.some((sql) => sql === `SET LOCAL ROLE ${TARGET.migratorRole}`))
-  assert.ok(statements.some((sql) => sql === `REVOKE ALL ON TABLE ${TARGET.ledger} FROM PUBLIC`))
+  const execute = () => executeProductionMigration({ bundle: input.bundle, database, target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true })
+  await assert.rejects(execute, /MIGRATION_BASELINE_INCOMPLETE/)
+  ledger = input.bundle.entries.slice(0, 10).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256 }))
+  ledger[0].checksum_sha256 = 'f'.repeat(64)
+  await assert.rejects(execute, /MIGRATION_LEDGER_PREFIX_MISMATCH/)
+  database.query = async (sql) => {
+    statements.push(sql)
+    if (sql.startsWith('SELECT current_database')) return { rows: [{ database: 'jenfu_prod', user: TARGET.login, postgresMajor: 17, migratorMember: true, runtimeCanCreateCore: false }] }
+    if (sql.includes('ORDER BY applied_at')) throw Object.assign(new Error('missing relation'), { code: '42P01' })
+    return { rows: [] }
+  }
+  await assert.rejects(execute, /MIGRATION_BASELINE_MISSING/)
+  assert.equal(statements.some((sql) => /^(BEGIN|CREATE|ALTER|INSERT|UPDATE|DELETE|REVOKE)/u.test(sql)), false)
+})
+
+test('schema runner rejects bootstrap arguments before credential, network or database access', async () => {
+  await assert.rejects(() => runMain({ argv: ['--bootstrap-ref', 'gs://irrelevant'], fetchImpl: () => assert.fail('must not fetch credentials'), Client: class { constructor() { assert.fail('must not connect') } } }), /MIGRATION_ARGUMENT_INVALID/)
+})
+
+test('schema runner entrypoint migrates and publishes without reading or importing business data', async () => {
+  const input = fixture()
+  const requests = [], statements = []
+  const ledger = input.bundle.entries.slice(0, 10).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256 }))
+  let published
+  class Client {
+    constructor(options) { this.options = options }
+    async connect() { if (this.options.database !== 'jenfu_prod') throw new Error('denied') }
+    async end() {}
+    async query(sql, values) {
+      statements.push(sql)
+      if (sql.startsWith('SELECT current_database')) return { rows: [{ database: 'jenfu_prod', user: TARGET.login, postgresMajor: 17, migratorMember: true, runtimeCanCreateCore: false }] }
+      if (sql.includes('unnest(')) return { rows: TARGET.siblingCoreSchemas.map((schema_name) => ({ schema_name, can_use: false })) }
+      if (sql.includes('ORDER BY applied_at')) return { rows: ledger.map((row) => ({ ...row })) }
+      if (sql.startsWith('INSERT INTO')) ledger.push({ version: values[0], name: values[1], checksum_sha256: values[2] })
+      return { rows: [] }
+    }
+  }
+  const fetchImpl = async (url, options = {}) => {
+    requests.push(String(url))
+    if (String(url).startsWith('http://metadata.google.internal/')) return Response.json({ access_token: 'x'.repeat(30), expires_in: 3600 })
+    if (options.method === 'POST') { published = Buffer.from(options.body); return Response.json({ generation: '2' }) }
+    const bytes = String(url).includes('migration-bundles') ? input.bytes : published
+    assert.ok(bytes, 'only bundle and published receipt may be requested')
+    return String(url).includes('alt=media') ? new Response(bytes) : Response.json({ generation: bytes === input.bytes ? '1' : '2', crc32c: crc32cBase64(bytes) })
+  }
+  const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`]
+  const result = await runMain({ argv, environment, Client, fetchImpl })
+  assert.equal(result.applied, 1)
+  assert.equal(result.productionData, undefined)
+  assert.equal(result.ledgerBootstrap, undefined)
+  assert.equal(requests.some((url) => /production-data|bootstrap/u.test(url)), false)
+  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, 1)
+  assert.equal(statements.some((sql) => /principal|governance|active_authority/u.test(sql)), false)
 })

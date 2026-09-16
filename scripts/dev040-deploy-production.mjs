@@ -46,7 +46,7 @@ async function main() {
   const sourceLock = buildSourceFreeze({ profile, releaseId, observedAt, git, sourceIdentityBytes: createGitSourceIdentity(root, git.sourceRevision), migrationBundle: await buildMigrationBundle(git.sourceRevision) })
   const previousRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
   const runtimeConfig = buildRuntimeConfigReceipt({ profile, releaseId, sourceLock, plainEnvironment: previousRuntime.plainEnvironment, secretVersions: previousRuntime.secretVersions, observedAt })
-  const authority = { ownerApplicationId: 'orgmaster', projectId: profile.target.projectId, sourceRevision: git.sourceRevision, releaseId, environment: 'production', releaseMode: 'APPLICATION_ONLY', baselineIntentRef, expiresAt: deadlineAt, observedAt, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', remainingHumanAction: 0 }
+  const authority = { ownerApplicationId: 'orgmaster', projectId: profile.target.projectId, sourceRevision: git.sourceRevision, releaseId, environment: 'production', baselineIntentRef, expiresAt: deadlineAt, observedAt, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', remainingHumanAction: 0 }
   const authorization = { ...authority, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
   const readiness = { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
   const values = { sourceLock, runtimeConfig, authorization, readiness,
@@ -58,7 +58,7 @@ async function main() {
   const intent = buildReleaseIntent({ profile, releaseId, input, sourceLock, prerequisiteValues: values, validateIntent: assertDev040ReleaseIntent })
   const verification = await verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle })
   if (args.includes('--check')) {
-    process.stdout.write(`${JSON.stringify({ status: 'READY', releaseAuthority: false, sourceRevision: git.sourceRevision, previousRevision: intent.previousRevision, releaseMode: 'APPLICATION_ONLY', verification })}\n`)
+    process.stdout.write(`${JSON.stringify({ status: 'READY', releaseAuthority: false, sourceRevision: git.sourceRevision, previousRevision: intent.previousRevision, verification })}\n`)
     return
   }
   for (const [name, value] of [['source-lock', sourceLock], ['runtime-config', runtimeConfig], ['owner-authorization', authorization], ['owner-readiness', readiness]]) await transport.putJson(uri(name), value, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })

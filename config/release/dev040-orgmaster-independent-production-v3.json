@@ -174,15 +174,6 @@
       "VITE_JENFU_FIREBASE_PROJECT_ID": "jenfu-platform-prod"
     }
   },
-  "productionData": {
-    "required": true,
-    "packageSchema": "jenfu.dev012.orgmaster-production-data-package.v1",
-    "bootstrapSchema": "jenfu.dev012.orgmaster-first-principal-bootstrap.v1",
-    "dataObjectPrefix": "source/production-data",
-    "bootstrapObjectPrefix": "receipts/releases",
-    "sourceRepository": "jedchang0308-jenfu/OrgMaster",
-    "preferenceDisposition": "EXCLUDED_UNATTRIBUTABLE_PRINCIPAL"
-  },
   "migrations": {
     "jobName": "orgmaster-prod-migration-runner",
     "serviceAccount": "orgmaster-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com",

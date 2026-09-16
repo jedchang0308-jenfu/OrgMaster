@@ -87,6 +87,7 @@ export function buildRuntimeConfigReceipt({ profile, releaseId, sourceLock, plai
 
 export function buildReleaseIntent({ profile, releaseId, input, sourceLock, prerequisiteValues, validateIntent }) {
   if (!RELEASE_ID.test(releaseId ?? '') || sourceLock?.releaseId !== releaseId || sourceLock?.ownerApplicationId !== profile.application.id) fail('RELEASE_INTENT_INPUT_INVALID')
+  if (!input.baselineIntentRef) fail('RELEASE_BASELINE_REQUIRED')
   const intent = {
     schemaVersion: profile.schemas.releaseIntent,
     ownerApplicationId: profile.application.id,
@@ -102,12 +103,12 @@ export function buildReleaseIntent({ profile, releaseId, input, sourceLock, prer
     migrationManifestSha256: sourceLock.migrationManifestSha256,
     previousRevision: input.previousRevision,
     deadlineAt: input.deadlineAt,
-    ...(input.baselineIntentRef ? { baselineIntentRef: exactRef(input.baselineIntentRef, profile) } : {}),
+    baselineIntentRef: exactRef(input.baselineIntentRef, profile),
   }
   if (!intent.previousRevision || intent.previousRevision === 'latest' || !Number.isFinite(Date.parse(intent.deadlineAt)) || Date.parse(intent.deadlineAt) <= Date.now()) fail('RELEASE_INTENT_INPUT_INVALID')
   for (const [name, value] of Object.entries(prerequisiteValues)) {
     if (name !== 'foundation' && value?.ownerApplicationId && value.ownerApplicationId !== profile.application.id) fail('PREREQUISITE_OWNER_MISMATCH', name)
-    if (name !== 'foundation' && !(intent.baselineIntentRef && name === 'infra') && value?.sourceRevision && value.sourceRevision !== sourceLock.sourceRevision) fail('PREREQUISITE_SOURCE_MISMATCH', name)
+    if (!['foundation', 'infra'].includes(name) && value?.sourceRevision && value.sourceRevision !== sourceLock.sourceRevision) fail('PREREQUISITE_SOURCE_MISMATCH', name)
   }
   assertPreparePrerequisites({ intent, profile, values: prerequisiteValues })
   validateIntent(intent, profile)

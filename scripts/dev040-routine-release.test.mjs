@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
+import { assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
 const n1c = JSON.parse(fs.readFileSync('config/dev-010/n1c-orgmaster.json'))
@@ -42,7 +42,7 @@ function harness() {
   const service = { traffic: [{ revision: previousRevision, percent: 100 }], trafficStatuses: [{ revision: previousRevision, percent: 100 }] }
   const transport = { async readBytes(uri) { if (!objects.has(uri)) throw new Error('MISSING'); return objects.get(uri) }, async readJson(ref) { const result = await this.readBytes(ref.uri); assert.equal(ref.sha256, result.ref.sha256); return result }, effectiveRevision: () => previousRevision, assertServiceSettled() {}, assertCanonicalEntrypoint() {}, assertRevisionReady(_profile, value, digest) { assert.equal(value.containers[0].image, digest) }, async getRevision() { return revision } }
   const intent = { ...oldIntent, releaseId: 'ROUTINE-NEXT', sourceRevision: newSource, previousRevision, baselineIntentRef, migrationManifestSha256: newBundle.bundle.manifestSha256 }
-  const authority = { ownerApplicationId: 'orgmaster', sourceRevision: newSource, releaseId: intent.releaseId, releaseMode: 'APPLICATION_ONLY', baselineIntentRef }
+  const authority = { ownerApplicationId: 'orgmaster', sourceRevision: newSource, releaseId: intent.releaseId, baselineIntentRef }
   const values = { runtimeConfig: { runtimeConfig: structuredClone(runtime) }, authorization: { ...authority }, readiness: { ...authority } }
   const input = { root: '.', profile, transport, intent, values, service, buildMigrationBundle: async () => newBundle, fingerprint: () => 'f'.repeat(64) }
   return { input, objects, paths, put, revision }
@@ -54,6 +54,38 @@ test('routine release reuses unchanged SQL and infrastructure with no bootstrap 
   assert.equal(result.liveLedgerRead, false)
   assert.equal(result.baselineMigrationRef.uri, h.paths.migrate)
   assert.equal(result.migrationInputsSha256, assertRoutineMigrationUnchanged(oldBundle.bundle, newBundle.bundle))
+})
+
+test('infrastructure identity ignores retired bootstrap metadata but covers every remaining input', () => {
+  assert.deepEqual(releaseInfrastructureInputs({ ...profile, productionData: { required: true } }), profile)
+  for (const field of ['runtime', 'target', 'identities', 'migrations', 'unknownFutureInput']) {
+    assert.notEqual(canonicalize(releaseInfrastructureInputs({ ...profile, [field]: 'changed' })), canonicalize(profile))
+  }
+})
+
+test('successive source releases reuse the latest sealed baseline without initialization authority', async () => {
+  const h = harness()
+  const first = await verifyRoutineRelease(h.input)
+  const intent = h.input.intent
+  const ref = h.put(`gs://${bucket}/receipts/second/intent.json`, intent)
+  const paths = releasePaths(profile, intent, ref.sha256)
+  const artifactDigest = h.revision.containers[0].image
+  const revision = intent.previousRevision
+  const bundleRef = h.put(`gs://${bucket}/source/migration-bundles/second.json`, newBundle.bundle)
+  const deploymentRef = h.put(paths.deployment, { sourceRevision: intent.sourceRevision, releaseIntentRef: ref, migrationBundleRef: bundleRef, artifactDigest })
+  const seal = (stage, facts) => stageReceipt({ profile, intent, stage, facts, observedAt: '2026-09-16T00:00:00Z' })
+  const migrationRef = h.put(paths.migrate, seal('migrate', { ...first, disposition: 'UNCHANGED_VERIFIED', manifestSha256: intent.migrationManifestSha256 }))
+  h.put(paths.candidate, seal('candidate', { deploymentCapsuleRef: deploymentRef, migrationReceiptRef: migrationRef, candidateRevision: revision }))
+  h.put(paths.terminal, seal('terminal', { result: 'RELEASED', remainingHumanAction: 0, candidateRevision: revision, artifactDigest }))
+  const sourceRevision = 'c'.repeat(40)
+  const nextBundle = buildBundle(sourceRevision)
+  h.input.intent = { ...intent, releaseId: 'ROUTINE-THIRD', sourceRevision, baselineIntentRef: ref, migrationManifestSha256: nextBundle.bundle.manifestSha256 }
+  h.input.buildMigrationBundle = async () => nextBundle
+  for (const name of ['authorization', 'readiness']) h.input.values[name] = { ...h.input.values[name], sourceRevision, releaseId: 'ROUTINE-THIRD', baselineIntentRef: ref }
+  const second = await verifyRoutineRelease(h.input)
+  assert.equal(second.liveLedgerRead, false)
+  assert.deepEqual(second.baselineIntentRef, ref)
+  assert.equal(second.migrationInputsSha256, first.migrationInputsSha256)
 })
 test('routine release rejects changed SQL, not just a changed application source SHA', () => {
   const changed = structuredClone(newBundle.bundle); changed.entries[10].sqlBase64 = 'changed'

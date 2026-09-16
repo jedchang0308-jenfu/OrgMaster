@@ -167,37 +167,13 @@ test('migration job readback rejects mutable target fields before jobs.run', asy
   await assert.rejects(() => denied.runMigrationJob({ profile, deployment, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z' }), /MIGRATION_JOB_READBACK_MISMATCH/u)
 })
 
-test('OrgMaster migration job receives exact production-data refs only when required', async () => {
-  const jobName = 'projects/jenfu-platform-prod/locations/asia-east1/jobs/platform-prod-migration-runner'
-  const environment = {
-    OWNER_APPLICATION_ID: 'platform', RELEASE_BUCKET: bucket, GOOGLE_CLOUD_PROJECT: 'jenfu-platform-prod', GOOGLE_CLOUD_REGION: 'asia-east1',
-    CLOUD_SQL_INSTANCE_CONNECTION_NAME: 'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg', POSTGRES_DATABASE: 'jenfu_prod',
-    POSTGRES_IAM_LOGIN: 'platform-prod-migrator@jenfu-platform-prod.iam', POSTGRES_SOCKET: '/cloudsql/jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',
+test('schema migration transport rejects initialization inputs before any provider request', async () => {
+  let calls = 0
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async () => { calls += 1; assert.fail('must not call provider') } })
+  for (const field of ['productionDataRef', 'firstPrincipalBootstrapRef']) {
+    await assert.rejects(() => transport.runMigrationJob({ profile, deployment: { [field]: { uri: 'gs://old/input.json', sha256: H64 } }, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z' }), /MIGRATION_BOOTSTRAP_INPUT_DENIED/u)
   }
-  const job = { name: jobName, template: { taskCount: 1, parallelism: 1, template: { serviceAccount: profile.migrations.serviceAccount, maxRetries: 0, timeout: '1800s', containers: [{ name: 'migration', image: `runner@sha256:${H64}`, env: Object.entries(environment).map(([name, value]) => ({ name, value })), volumeMounts: [{ name: 'cloudsql', mountPath: '/cloudsql' }] }], volumes: [{ name: 'cloudsql', cloudSqlInstance: { instances: ['jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg'] } }] } } }
-  let runBody
-  let listCalls = 0
-  const requestedArgs = ['--bundle-ref', `gs://${bucket}/source/migration-bundles/b.json`, '--bundle-sha256', H64, '--source-revision', H40, '--output-ref', `gs://${bucket}/receipts/migrate.json`, '--data-ref', `gs://${bucket}/source/production-data/REL-001/data.json`, '--data-sha256', H64, '--bootstrap-ref', `gs://${bucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, '--bootstrap-sha256', H64]
-  const executionName = `${jobName}/executions/e1`
-  const execution = { name: executionName, template: { containers: [{ name: 'migration', args: requestedArgs }] }, succeededCount: 1, failedCount: 0, completionTime: '2026-09-08T00:00:00Z', conditions: [{ type: 'Completed', state: 'CONDITION_SUCCEEDED' }] }
-  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
-    if (options.method === 'POST') { runBody = JSON.parse(options.body); return json({ name: 'projects/p/locations/r/operations/run-1', done: true, response: { name: 'projects/p/locations/r/executions/e1' } }) }
-    if (String(url).endsWith('/executions?pageSize=100')) return json({ executions: listCalls++ === 0 ? [] : [execution] })
-    if (String(url).endsWith('/executions/e1')) return json(execution)
-    return json(job)
-  } })
-  const productionProfile = { ...profile, productionData: { required: true, dataObjectPrefix: 'source/production-data', bootstrapObjectPrefix: 'receipts/releases' } }
-  const deployment = {
-    migrationRunnerDigest: `runner@sha256:${H64}`,
-    migrationBundleRef: { uri: `gs://${bucket}/source/migration-bundles/b.json`, sha256: H64 },
-    productionDataRef: { uri: `gs://${bucket}/source/production-data/REL-001/data.json`, sha256: H64 },
-    firstPrincipalBootstrapRef: { uri: `gs://${bucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, sha256: H64 },
-    sourceRevision: H40,
-  }
-  await transport.runMigrationJob({ profile: productionProfile, deployment, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z' })
-  const args = runBody.overrides.containerOverrides[0].args
-  assert.deepEqual(args.slice(-8), ['--data-ref', deployment.productionDataRef.uri, '--data-sha256', H64, '--bootstrap-ref', deployment.firstPrincipalBootstrapRef.uri, '--bootstrap-sha256', H64])
-  await assert.rejects(() => transport.runMigrationJob({ profile: productionProfile, deployment: { ...deployment, productionDataRef: { ...deployment.productionDataRef, uri: 'gs://sibling/source/production-data/data.json' } }, outputUri: `gs://${bucket}/receipts/migrate2.json`, deadlineAt: '2999-01-01T00:00:00.000Z' }), /IMMUTABLE_REF_INVALID/u)
+  assert.equal(calls, 0)
 })
 
 test('candidate-tag cleanup distinguishes the candidate from the active rollback target', async () => {

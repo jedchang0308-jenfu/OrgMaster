@@ -1,22 +1,22 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
-> **Final current result（2026-09-15）**：`R60 LIVE_VERIFIED / DEV012-R78 RETAINED_LIVE / Production Level 4 PASS`。最終證據見§11；較早`NOT_RUN`段落保留歷史。
+> **現行驗收／正式結果**：發布生命週期驗收見 §12；已部署版本的正式證據見 §13（run `35063120604`）。本次重構的本地驗證不改寫已部署版本。下列早期事件與 oracle 為歷史，不是初始化重播要求。
 
-> **2026-09-11 R38 pre-auth amendment（current）**：R34 exact execution `orgmaster-prod-migration-runner-pfnz7`為production migration與data evidence：`7 applied／4 replayed／ledgerCount=11`且data PASS。此結果不等於candidate、entrypoint、traffic或QA-012 PASS；三者仍NOT_RUN。Current回歸要求以`conditions[type=Completed]`判定Cloud Run v2 execution，並驗own exact Job resource-scoped viewer。R37因AI-PDM source drift整體作廢且無OrgMaster app apply；fresh R38須以idempotent replay確認migration，不得人工rollback已套用DDL。
+> **歷史事件｜2026-09-11 R38 pre-auth amendment（歷史）**：R34 exact execution `orgmaster-prod-migration-runner-pfnz7`為production migration與data evidence：`7 applied／4 replayed／ledgerCount=11`且data PASS。此結果不等於candidate、entrypoint、traffic或QA-012 PASS；三者仍NOT_RUN。Current回歸要求以`conditions[type=Completed]`判定Cloud Run v2 execution，並驗own exact Job resource-scoped viewer。R37因AI-PDM source drift整體作廢且無OrgMaster app apply；fresh R38須以idempotent replay確認migration，不得人工rollback已套用DDL。
 
-> **2026-09-11 R28 amendment（current）**：R28 exact OrgMaster migration execution已建立，但在001～011、data import與principal CAS前因缺shared DB roles／schemas以SQLSTATE `42704`停止，generic operation GET另回403；candidate／entrypoint／traffic=0。新增oracle：禁止operations endpoint，Service PATCH改驗exact Service settled state，Job run以run前後child execution差集＋current args唯一匹配取得exact execution。Platform production DB bootstrap receipt未通過source／target／隔離數值與task-owned Job cleanup前不得dispatch。R28不計production PASS。
+> **歷史事件｜2026-09-11 R28 amendment（歷史）**：R28 exact OrgMaster migration execution已建立，但在001～011、data import與principal CAS前因缺shared DB roles／schemas以SQLSTATE `42704`停止，generic operation GET另回403；candidate／entrypoint／traffic=0。新增oracle：禁止operations endpoint，Service PATCH改驗exact Service settled state，Job run以run前後child execution差集＋current args唯一匹配取得exact execution。Platform production DB bootstrap receipt未通過source／target／隔離數值與task-owned Job cleanup前不得dispatch。R28不計production PASS。
 
-> **2026-09-11 R27 amendment（current）**：R27 artifact gates PASS後，migration在execution建立前因exact Job readback缺viewer而安全停止；provider executions=0，DB／candidate／entrypoint／traffic=0。新增固定oracle：APP_INFRA_B complete-set須含google_cloud_run_v2_job_iam_member.migration_runner_viewer[0]，role=roles/run.viewer、resource為own exact Job、member為own deployer；project-wide或sibling binding均FAIL。Rollback／terminal必以immutable migrate receipt區分NOT_APPLIED與FORWARD_APPLIED。
+> **歷史事件｜2026-09-11 R27 amendment（歷史）**：R27 artifact gates PASS後，migration在execution建立前因exact Job readback缺viewer而安全停止；provider executions=0，DB／candidate／entrypoint／traffic=0。新增固定oracle：APP_INFRA_B complete-set須含google_cloud_run_v2_job_iam_member.migration_runner_viewer[0]，role=roles/run.viewer、resource為own exact Job、member為own deployer；project-wide或sibling binding均FAIL。Rollback／terminal必以immutable migrate receipt區分NOT_APPLIED與FORWARD_APPLIED。
 
-> **2026-09-10 R26 staged-IaC amendment（current）**：provider dry-run證實A／B錯誤分類會分別觸發B-mutates-A或A destroy既有B，兩者均已安全拒絕。SBOM IAM三地址現須為APP_INFRA_B additional `[0]`並由`incident_runtime_enabled=true`啟用；fresh B只允許三個SBOM＋exact-job override create，其他完整set read/no-op。
+> **歷史事件｜2026-09-10 R26 staged-IaC amendment（歷史）**：provider dry-run證實A／B錯誤分類會分別觸發B-mutates-A或A destroy既有B，兩者均已安全拒絕。SBOM IAM三地址現須為APP_INFRA_B additional `[0]`並由`incident_runtime_enabled=true`啟用；fresh B只允許三個SBOM＋exact-job override create，其他完整set read/no-op。
 
-> **2026-09-10 R25 IAM regression amendment（current）**：§8新增own-prefix SBOM、exact migration Job override與無人工介入oracle。R25 migration execution=0且不計production PASS；修正後須fresh source-frozen APP_INFRA及owner evidence。
+> **歷史事件｜2026-09-10 R25 IAM regression amendment（歷史）**：§8新增own-prefix SBOM、exact migration Job override與無人工介入oracle。R25 migration execution=0且不計production PASS；修正後須fresh source-frozen APP_INFRA及owner evidence。
 
-> **2026-09-10 R22 amendment（current）**：R22 Cloud Build及provider SLSA Level 3 provenance PASS；Artifact Analysis pre-discovery SBOM request以HTTP 400安全停止，terminal=`PRE_ACTIVATION_ABORTED`，無DB／candidate／entrypoint／traffic mutation。Provider scan為3 Critical＋15 High，依門檻阻擋。新增oracle：四kind＋exact digest occurrence分頁與scope readback、discovery-before-SBOM HTTP-400-only bounded retry、其他status立即FAIL、BUILD＋SBOM reference必備；production runner須為pinned Node 24 Distroless、UID/GID 65532且無global npm／不必要OS toolchain。Fresh aggregate `2026-09-10T074043-640Z`已含OrgMaster audit／DB boundary／build＋typecheck／diff check全PASS；R22不得計入production PASS。
+> **歷史事件｜2026-09-10 R22 amendment（歷史）**：R22 Cloud Build及provider SLSA Level 3 provenance PASS；Artifact Analysis pre-discovery SBOM request以HTTP 400安全停止，terminal=`PRE_ACTIVATION_ABORTED`，無DB／candidate／entrypoint／traffic mutation。Provider scan為3 Critical＋15 High，依門檻阻擋。新增oracle：四kind＋exact digest occurrence分頁與scope readback、discovery-before-SBOM HTTP-400-only bounded retry、其他status立即FAIL、BUILD＋SBOM reference必備；production runner須為pinned Node 24 Distroless、UID/GID 65532且無global npm／不必要OS toolchain。Fresh aggregate `2026-09-10T074043-640Z`已含OrgMaster audit／DB boundary／build＋typecheck／diff check全PASS；R22不得計入production PASS。
 
-> **2026-09-10 R20 amendment**：R20證實source identity、source upload及migration bundle PASS；Cloud Build create因custom builder缺own `iam.serviceAccounts.actAs`回403，failure recovery PASS，後續stage未執行。新增固定oracle：APP_INFRA_B additional complete-set含`google_service_account_iam_member.builder_act_as_self`且stage A不得含，role/member/resource精確綁`orgmaster-prod-builder`自身，且不得含sibling/runtime/deployer/verifier。R21舊分類source lock作廢；fresh app-infra apply/readback前R20／R21不可計為production PASS。
+> **歷史事件｜2026-09-10 R20 amendment**：R20證實source identity、source upload及migration bundle PASS；Cloud Build create因custom builder缺own `iam.serviceAccounts.actAs`回403，failure recovery PASS，後續stage未執行。新增固定oracle：APP_INFRA_B additional complete-set含`google_service_account_iam_member.builder_act_as_self`且stage A不得含，role/member/resource精確綁`orgmaster-prod-builder`自身，且不得含sibling/runtime/deployer/verifier。R21舊分類source lock作廢；fresh app-infra apply/readback前R20／R21不可計為production PASS。
 
-> **2026-09-08 DEV-012 S1C amendment（V2 historical；current見§7）**：當時新增official repo=`jedchang0308-jenfu/OrgMaster`／branch=`master`、owner source/runtime/intent chain、shared-LB host binding、internal verifier job、numeric smoke Secret、local data inventory→encrypted handoff→import→reconcile／restore，以及一筆明確human principal one-time bootstrap的驗證。Public `run.app`在該V2方案為FAIL；此入口判定已由§7 V3 direct-run contract取代。其data／principal與source provenance仍保留，local結果不得作current release authority。
+> **歷史事件｜2026-09-08 DEV-012 S1C amendment（V2 historical；current見§7）**：當時新增official repo=`jedchang0308-jenfu/OrgMaster`／branch=`master`、owner source/runtime/intent chain、shared-LB host binding、internal verifier job、numeric smoke Secret、local data inventory→encrypted handoff→import→reconcile／restore，以及一筆明確human principal one-time bootstrap的驗證。Public `run.app`在該V2方案為FAIL；此入口判定已由§7 V3 direct-run contract取代。其data／principal與source provenance仍保留，local結果不得作current release authority。
 
 - 文件成熟度：`V3 Architecture Finalized / RD Tech Lead PASS / Owner QA Contract Executed；V1／V2 Historical`
 - 狀態：`V3 Owner PASS / S1B-21 PASS / DEV-012 S1C 8／8 PASS / S2 Paused for Operator Re-auth / Production Migration and Data PASS / Candidate、Entrypoint、Traffic NOT_RUN`
@@ -129,15 +129,23 @@ Managed acceptance須以fresh owner run的migrate receipt及provider／DB readba
 
 Final=`040-R2 Production Level 4 Complete / R78 retained validation PASS`。本節以R60 terminal、R78 cohort join與2026-09-15 provider readback為authority，不由早期local evidence升格。
 
-## 12. APPLICATION_ONLY 回歸（2026-09-16）
+## 12. 發布生命週期回歸（2026-09-16，現行）
 
-正向：來源 SHA 改變、001–011/infra/runtime 不變，可沿用已過期但不可變的歷史 RELEASED 證據；完整十階段且 migration job/data import/bootstrap 呼叫數為 0，terminal DB disposition=`UNCHANGED_VERIFIED`。原首次部署測試保留。
+正向：來源 SHA 改變、001–011/infra/runtime 不變，可沿用已過期但不可變的歷史 RELEASED 證據；完整十階段且 migration job/data import/bootstrap 呼叫數為 0，terminal DB disposition=`UNCHANGED_VERIFIED`。下一次更新使用最近成功版本，不能回到首次建置；不再要求 `APPLICATION_ONLY` 旗標。基礎設施指紋只忽略已移除的 productionData metadata，其餘設定與未知新欄位均納入。
 
-反向：SQL、infra tree、runtime/Secret version、current revision、owner/source/ref hash、未 RELEASED terminal、殘留 tag、缺 baseline verifier 或 fresh authorization 不符均須失敗；新 candidate 仍須通過 build/scan/內部 smoke 才能取得流量。不能把 baseline DB evidence 記成本次 live ledger QC。
+Schema runner：實際 `runMain` 的注入式 provider/PG harness 必須能只帶 bundle/output refs 執行及發布 schema receipt，不讀資料包、不建立 principal。既有十筆 ledger 只追加 011 一次，第二次為 no-op；空 ledger、缺 relation、歷史 checksum 變更在任何 DDL/INSERT 前失敗。Data/bootstrap 參數在 credential/network/DB 前拒絕。此 harness 為本地證據，不冒充 live PostgreSQL 或正式 runner image 驗證。
+
+恢復：舊 intent 缺 baseline 不可進入任一成功發布階段，但 rollback 與歷史證據讀取仍可用；候選 smoke 失敗維持原流量，activation 後 rollback 回到前版並清除 candidate tag，DB disposition 不得誤記成 FORWARD_APPLIED。Rollback 不逆轉已套用 schema。
+
+反向：SQL、infra/config、runtime/Secret version、current revision、owner/source/ref hash、未 RELEASED terminal、殘留 tag、缺 baseline/verifier 或 fresh authorization 不符均須失敗；新 candidate 仍須通過 build/scan/內部 smoke 才能取得流量。不能把 baseline DB evidence 記成本次 live ledger QC。
 
 UI：resume session 同樣載入 server capability；flag=false 或 capability discovery 失敗時不呼叫 managed API，保留既有 session 與唯讀身分；flag=true/dev profile 才開啟新區塊。後端權限與 fenced writer 不變。
 
 執行：`npm run qc:dev-040:r2` 一次涵蓋 owner/prerequisite/routine tests、abort、DB boundary、全量 Vitest 與 client/server build。正式驗收以本次 workflow terminal 與 provider readback 為準；local PASS 不升格為部署完成。
+
+本次本地結果（2026-09-16，生命週期重構工作樹）：`qc:dev-040:r2` PASS，報告=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260916T075205273Z-2AFA5D49/owner-report.json`。涵蓋 `test:dev-040:r2` 55/55、`test:dev-040:abort` 6/6、DB boundary、全量 Vitest 200 files／815 tests PASS（既有 1 file／1 test skipped）、TypeScript 與 client/server production build PASS；另 `test:dev-012:production-data` 4/4、`git diff --check` PASS。這是同一執行者的本地驗證，`releaseAuthority=false`，不冒稱獨立 QC 或正式部署。既有 Vite 未來 native loader 相容性與 chunk size 提示不影響本次建置成功。
+
+容量歷史：上輪固定 25 GiB 預留導致預檢 BLOCKED；本輪使用者於單次例外提案後指示「提交及部屬」，依該續行指示執行既有依賴的小型 Vite 建置（先前 dist/dist-server 共 2,215,465 bytes，執行前 C 槽約 33.5 GiB）。沒有安裝套件、建置本機容器、清理資料或修改全域容量政策。正式發布只更新應用程式，migration runner image 不重建、不執行。
 
 ## 13. 2026-09-16 ordinary release 實測結案
 

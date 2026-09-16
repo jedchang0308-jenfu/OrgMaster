@@ -5,6 +5,8 @@ import { buildRuntimeConfig, canonicalize, sha256 } from './lib/dev012-owner-rel
 import { assertStaleControlSafeToSupersede, candidateTagUriMatches, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
 
 const H40 = 'a'.repeat(40)
+const baselineRef = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/baseline.json', sha256: 'e'.repeat(64) }
+const verifiedBaseline = async ({ intent }) => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: baselineRef.uri, sha256: baselineRef.sha256 } })
 const bucket = 'jenfu-platform-prod-platform-release'
 const previousRevision = 'jenfu-platform-prod-previous'
 const candidateRevision = 'jenfu-platform-prod-candidate'
@@ -60,7 +62,7 @@ function recordedHarness() {
     },
     async readArtifactImage(_profile, artifactDigest) { return { name: 'projects/p/dockerImages/i@sha256:x', uri: artifactDigest } },
     async waitArtifactEvidence({ artifactDigest }) { return { resourceUrl: `https://${artifactDigest}`, buildOccurrenceNames: ['build'], discoveryOccurrenceNames: ['discovery'], sbomOccurrenceNames: ['sbom'], vulnerabilityCount: 0, blockingVulnerabilityCount: 0, sbomExport: { resourceUrl: `https://${artifactDigest}`, discoveryOccurrence: 'discovery' }, observedAt: this.now(), status: 'PASS' } },
-    async runMigrationJob({ profile, deployment, outputUri }) { return putJson(outputUri, { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: deployment.sourceRevision, manifestSha256: migrationManifestSha256, boundaryStatus: 'PASS', status: 'PASS' }, { bucket, prefix: 'receipts' }) },
+    async runMigrationJob() { assert.fail('application releases must never run a migration job') },
     async createCandidate({ artifactDigest }) {
       service = { ...service, etag: 'e2', generation: '2', observedGeneration: '2', latestCreatedRevision: candidateRevision, traffic: [...service.traffic, { revision: candidateRevision, tag: candidateTag }], trafficStatuses: [...service.trafficStatuses, { revision: candidateRevision, tag: candidateTag, uri: candidateOrigin }] }
       return { candidateRevision, tag: candidateTag, tagUri: candidateOrigin, artifactDigest, previousRevision, beforeTraffic: service.traffic.slice(0, 1), etag: 'e2', revisionName: `projects/p/revisions/${candidateRevision}` }
@@ -114,11 +116,11 @@ async function authorizedRecordedInput(h, releaseId) {
   const foundationReceiptRef = await refFor('foundation', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod' })
   const infraReceiptRef = await refFor('infra', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod', migrationRunnerDigest })
   const runtimeConfigRef = await refFor('runtime', { ...common, status: 'VERIFIED', projectId: 'jenfu-platform-prod', ...buildRuntimeConfig(h.profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } }) })
-  const intent = { schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId, sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
+  const intent = { baselineIntentRef: baselineRef, schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId, sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
   const intentResult = await h.transport.putJson(`gs://${bucket}/receipts/intents/${releaseId}.json`, intent, { bucket, prefix: 'receipts' })
   return {
     intentResult,
-    input: { capsuleRef: intentResult.ref.uri, capsuleSha256: intentResult.ref.sha256, profile: h.profile, transport: h.transport, environment: h.environment, validateIntent: (value) => value, createSourceIdentity: async () => h.sourceIdentityBytes, createSourceArchive: async () => h.sourceArchiveBytes, buildMigrationBundle: async () => ({ bundle: { manifestSha256: h.migrationManifestSha256 }, bytes: h.migrationBytes, bundleSha256: sha256(h.migrationBytes) }) },
+    input: { capsuleRef: intentResult.ref.uri, capsuleSha256: intentResult.ref.sha256, profile: h.profile, transport: h.transport, environment: h.environment, verifyRoutineRelease: verifiedBaseline, validateIntent: (value) => value, createSourceIdentity: async () => h.sourceIdentityBytes, createSourceArchive: async () => h.sourceArchiveBytes, buildMigrationBundle: async () => ({ bundle: { manifestSha256: h.migrationManifestSha256 }, bytes: h.migrationBytes, bundleSha256: sha256(h.migrationBytes) }) },
   }
 }
 
@@ -131,7 +133,6 @@ test('application-only release preserves all ten stages without importing data o
   input.capsuleRef = next.ref.uri; input.capsuleSha256 = next.ref.sha256
   // The baseline verifier is independently covered with hash/source/provider negatives.
   input.verifyRoutineRelease = async () => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) } })
-  h.profile.productionData = { required: true }
   h.transport.runMigrationJob = async () => assert.fail('routine releases must not run migration/import/bootstrap jobs')
   let terminal
   for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']) terminal = await executeOwnerStage({ ...input, stage })
@@ -147,7 +148,36 @@ test('application-only intent cannot skip baseline verification by omitting the 
   const intent = JSON.parse((await h.transport.readBytes(intentResult.ref.uri)).bytes)
   intent.baselineIntentRef = { uri: `gs://${bucket}/receipts/baseline.json`, sha256: 'e'.repeat(64) }
   const next = await h.transport.putJson(`gs://${bucket}/receipts/routine-no-verifier.json`, intent)
-  await assert.rejects(() => executeOwnerStage({ ...input, capsuleRef: next.ref.uri, capsuleSha256: next.ref.sha256, stage: 'prepare' }), /ROUTINE_VERIFIER_REQUIRED/)
+  await assert.rejects(() => executeOwnerStage({ ...input, verifyRoutineRelease: undefined, capsuleRef: next.ref.uri, capsuleSha256: next.ref.sha256, stage: 'prepare' }), /ROUTINE_VERIFIER_REQUIRED/)
+})
+
+test('historical intent is readable for recovery but cannot re-enter any release stage', async () => {
+  const h = recordedHarness()
+  const { input, intentResult } = await authorizedRecordedInput(h, 'LEGACY-READ-ONLY')
+  const intent = JSON.parse((await h.transport.readBytes(intentResult.ref.uri)).bytes)
+  delete intent.baselineIntentRef
+  const legacy = await h.transport.putJson(`gs://${bucket}/receipts/legacy-intent.json`, intent)
+  const legacyInput = { ...input, capsuleRef: legacy.ref.uri, capsuleSha256: legacy.ref.sha256 }
+  for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']) {
+    await assert.rejects(() => executeOwnerStage({ ...legacyInput, stage }), /RELEASE_BASELINE_REQUIRED/)
+  }
+  const result = await executeOwnerStage({ ...legacyInput, stage: 'rollback' })
+  assert.equal(JSON.parse((await h.transport.readBytes(result.ref.uri)).bytes).facts.databaseDisposition, 'NOT_APPLIED')
+  assert.equal(h.transport.effectiveRevision(h.service()), previousRevision)
+})
+
+test('candidate smoke failure leaves production data and serving traffic unchanged', async () => {
+  const h = recordedHarness()
+  const { input } = await authorizedRecordedInput(h, 'CANDIDATE-SMOKE-FAIL')
+  for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint']) await executeOwnerStage({ ...input, stage })
+  h.transport.runInternalCandidateSmoke = async () => { throw new Error('CANDIDATE_SMOKE_FAILED') }
+  await assert.rejects(() => executeOwnerStage({ ...input, stage: 'verify' }), /CANDIDATE_SMOKE_FAILED/)
+  const result = await executeOwnerStage({ ...input, stage: 'rollback' })
+  const terminal = JSON.parse((await h.transport.readBytes(result.ref.uri)).bytes)
+  assert.equal(terminal.facts.result, 'PRE_ACTIVATION_ABORTED')
+  assert.equal(terminal.facts.databaseDisposition, 'UNCHANGED_VERIFIED')
+  assert.equal(h.transport.effectiveRevision(h.service()), previousRevision)
+  assert.equal(h.service().trafficStatuses.some((row) => row.tag), false)
 })
 
 
@@ -161,9 +191,9 @@ test('recorded provider transport executes the ten immutable owner stages withou
   const foundationReceiptRef = await refFor('foundation', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod' })
   const infraReceiptRef = await refFor('infra', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod', migrationRunnerDigest })
   const runtimeConfigRef = await refFor('runtime', { ...common, status: 'VERIFIED', projectId: 'jenfu-platform-prod', ...buildRuntimeConfig(h.profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } }) })
-  const intent = { schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId: 'REL-RECORDED-001', sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
+  const intent = { baselineIntentRef: baselineRef, schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId: 'REL-RECORDED-001', sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
   const intentResult = await h.transport.putJson(`gs://${bucket}/receipts/intents/release.json`, intent, { bucket, prefix: 'receipts' })
-  const input = { capsuleRef: intentResult.ref.uri, capsuleSha256: intentResult.ref.sha256, profile: h.profile, transport: h.transport, environment: h.environment, validateIntent: (value) => value, createSourceIdentity: async () => h.sourceIdentityBytes, createSourceArchive: async () => h.sourceArchiveBytes, buildMigrationBundle: async () => ({ bundle: { manifestSha256: h.migrationManifestSha256 }, bytes: h.migrationBytes, bundleSha256: sha256(h.migrationBytes) }) }
+  const input = { capsuleRef: intentResult.ref.uri, capsuleSha256: intentResult.ref.sha256, profile: h.profile, transport: h.transport, environment: h.environment, verifyRoutineRelease: verifiedBaseline, validateIntent: (value) => value, createSourceIdentity: async () => h.sourceIdentityBytes, createSourceArchive: async () => h.sourceArchiveBytes, buildMigrationBundle: async () => ({ bundle: { manifestSha256: h.migrationManifestSha256 }, bytes: h.migrationBytes, bundleSha256: sha256(h.migrationBytes) }) }
   for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']) await executeOwnerStage({ ...input, stage })
   const activation = [...h.objects.entries()].find(([uri]) => uri.endsWith('/activate.json'))
   assert.ok(activation)
@@ -220,9 +250,9 @@ test('rollback reports no database mutation when migrate receipt was never produ
   const foundationReceiptRef = await refFor('foundation', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod' })
   const infraReceiptRef = await refFor('infra', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod', migrationRunnerDigest })
   const runtimeConfigRef = await refFor('runtime', { ...common, status: 'VERIFIED', projectId: 'jenfu-platform-prod', ...buildRuntimeConfig(h.profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } }) })
-  const intent = { schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId: 'REL-RECORDED-ROLLBACK', sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
+  const intent = { baselineIntentRef: baselineRef, schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId: 'REL-RECORDED-ROLLBACK', sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
   const intentResult = await h.transport.putJson(`gs://${bucket}/receipts/intents/rollback.json`, intent, { bucket, prefix: 'receipts' })
-  const input = { capsuleRef: intentResult.ref.uri, capsuleSha256: intentResult.ref.sha256, profile: h.profile, transport: h.transport, environment: h.environment, validateIntent: (value) => value, createSourceIdentity: async () => h.sourceIdentityBytes, createSourceArchive: async () => h.sourceArchiveBytes, buildMigrationBundle: async () => ({ bundle: { manifestSha256: h.migrationManifestSha256 }, bytes: h.migrationBytes, bundleSha256: sha256(h.migrationBytes) }) }
+  const input = { capsuleRef: intentResult.ref.uri, capsuleSha256: intentResult.ref.sha256, profile: h.profile, transport: h.transport, environment: h.environment, verifyRoutineRelease: verifiedBaseline, validateIntent: (value) => value, createSourceIdentity: async () => h.sourceIdentityBytes, createSourceArchive: async () => h.sourceArchiveBytes, buildMigrationBundle: async () => ({ bundle: { manifestSha256: h.migrationManifestSha256 }, bytes: h.migrationBytes, bundleSha256: sha256(h.migrationBytes) }) }
   await executeOwnerStage({ ...input, stage: 'prepare' })
   await executeOwnerStage({ ...input, stage: 'rollback' })
   const terminal = [...h.objects.entries()].find(([uri]) => uri.includes(intentResult.ref.sha256) && uri.endsWith('/terminal.json'))
@@ -240,7 +270,7 @@ test('post-activation rollback switches to the previous revision without rebindi
   assert.ok(terminal)
   const value = JSON.parse(terminal[1].bytes.toString())
   assert.equal(value.facts.result, 'ROLLED_BACK')
-  assert.equal(value.facts.databaseDisposition, 'FORWARD_APPLIED')
+  assert.equal(value.facts.databaseDisposition, 'UNCHANGED_VERIFIED')
   assert.equal(h.transport.effectiveRevision(h.service()), previousRevision)
   assert.equal(h.service().trafficStatuses.some((row) => row.tag), false)
   assert.equal(h.service().ingress, 'INGRESS_TRAFFIC_INTERNAL_ONLY')

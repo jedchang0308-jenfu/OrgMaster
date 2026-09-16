@@ -578,6 +578,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
   }
 
   async function runMigrationJob({ profile, deployment, outputUri, deadlineAt }) {
+    if (deployment.productionDataRef || deployment.firstPrincipalBootstrapRef) fail('MIGRATION_BOOTSTRAP_INPUT_DENIED')
     const jobName = `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/${profile.migrations.jobName}`
     const job = await request(`https://run.googleapis.com/v2/${jobName}`)
     const container = job.template?.template?.containers?.find((item) => item.name === 'migration')
@@ -597,11 +598,6 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     const mount = container?.volumeMounts?.find((item) => item.name === 'cloudsql')
     if (job.name !== jobName || job.template?.template?.serviceAccount !== profile.migrations.serviceAccount || container?.image !== deployment.migrationRunnerDigest || canonicalize(environment) !== canonicalize(expectedEnvironment) || canonicalize(volume?.cloudSqlInstance?.instances) !== canonicalize([connectionName]) || mount?.mountPath !== '/cloudsql' || job.template?.taskCount !== 1 || job.template?.parallelism !== 1 || job.template?.template?.maxRetries !== 0 || job.template?.template?.timeout !== '1800s') fail('MIGRATION_JOB_READBACK_MISMATCH')
     const args = ['--bundle-ref', deployment.migrationBundleRef.uri, '--bundle-sha256', deployment.migrationBundleRef.sha256, '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
-    if (profile.productionData?.required === true) {
-      assertImmutableRef(deployment.productionDataRef, profile.artifact.releaseBucket, [profile.productionData.dataObjectPrefix])
-      assertImmutableRef(deployment.firstPrincipalBootstrapRef, profile.artifact.releaseBucket, [profile.productionData.bootstrapObjectPrefix])
-      args.push('--data-ref', deployment.productionDataRef.uri, '--data-sha256', deployment.productionDataRef.sha256, '--bootstrap-ref', deployment.firstPrincipalBootstrapRef.uri, '--bootstrap-sha256', deployment.firstPrincipalBootstrapRef.sha256)
-    }
     const listExecutions = async () => {
       const executions = []
       let pageToken = ''

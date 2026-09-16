@@ -25,24 +25,19 @@ export function canonicalize(value) {
   return JSON.stringify(value)
 }
 
-export function parseRunnerArgs(argv, { productionDataRequired = false } = {}) {
+export function parseRunnerArgs(argv) {
   const required = ['--bundle-ref', '--bundle-sha256', '--source-revision', '--output-ref']
-  const productionData = ['--data-ref', '--data-sha256', '--bootstrap-ref', '--bootstrap-sha256']
-  const allowed = new Set([...required, ...productionData])
+  const allowed = new Set(required)
   const value = {}
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index]
     if (!allowed.has(key) || !argv[index + 1] || value[key.slice(2).replace(/-([a-z])/gu, (_, letter) => letter.toUpperCase())]) fail('MIGRATION_ARGUMENT_INVALID', key)
     value[key.slice(2).replace(/-([a-z])/gu, (_, letter) => letter.toUpperCase())] = argv[index + 1]
   }
-  const hasProductionData = productionData.every((key) => value[key.slice(2).replace(/-([a-z])/gu, (_, letter) => letter.toUpperCase())])
-  const hasPartialProductionData = productionData.some((key) => value[key.slice(2).replace(/-([a-z])/gu, (_, letter) => letter.toUpperCase())])
   if (
     required.some((key) => !value[key.slice(2).replace(/-([a-z])/gu, (_, letter) => letter.toUpperCase())]) ||
     !H64.test(value.bundleSha256 ?? '') || !H40.test(value.sourceRevision ?? '') ||
-    hasPartialProductionData !== hasProductionData || productionDataRequired !== hasProductionData ||
-    (hasProductionData && (!H64.test(value.dataSha256 ?? '') || !H64.test(value.bootstrapSha256 ?? ''))) ||
-    Object.keys(value).length !== (hasProductionData ? 8 : 4)
+    Object.keys(value).length !== 4
   ) fail('MIGRATION_ARGUMENT_INVALID')
   return value
 }
@@ -185,55 +180,24 @@ export function createMigrationBundle({ target, sourceRevision, entries }) {
   return { bundle, bytes, bundleSha256: sha256(bytes) }
 }
 
-export function planMigration(bundle, ledgerRows, { minimumLedgerCount = bundle.baselineCount } = {}) {
+export function planMigration(bundle, ledgerRows) {
   if (!Array.isArray(ledgerRows) || ledgerRows.length > bundle.entries.length) fail('MIGRATION_LEDGER_LENGTH_INVALID')
-  if (!Number.isInteger(minimumLedgerCount) || minimumLedgerCount < 0 || minimumLedgerCount > bundle.baselineCount) fail('MIGRATION_LEDGER_MINIMUM_INVALID')
   for (const [index, row] of ledgerRows.entries()) {
     const entry = bundle.entries[index]
     if (!entry || row.version !== entry.version || row.name !== entry.name || String(row.checksum_sha256).trim() !== entry.appliedSha256) fail('MIGRATION_LEDGER_PREFIX_MISMATCH', row.version ?? String(index))
   }
-  if (ledgerRows.length < minimumLedgerCount) fail('MIGRATION_BASELINE_INCOMPLETE')
+  if (ledgerRows.length < bundle.baselineCount) fail('MIGRATION_BASELINE_INCOMPLETE')
   return bundle.entries.slice(ledgerRows.length)
 }
 
 async function readLedger(database, ledger) {
   if (!/^[a-z_][a-z0-9_]*\.schema_migrations$/u.test(ledger)) fail('MIGRATION_LEDGER_NAME_INVALID')
-  return (await database.query(`SELECT version, name, btrim(checksum_sha256) AS checksum_sha256, source_revision FROM ${ledger} ORDER BY applied_at, version`)).rows
-}
-
-export async function ensureMigrationLedger(database, target) {
-  const match = /^(?<schema>[a-z_][a-z0-9_]*)\.(?<relation>schema_migrations)$/u.exec(target.ledger ?? '')
-  if (!match || match.groups?.schema !== target.coreSchema || !/^[a-z_][a-z0-9_]*$/u.test(target.migratorRole ?? '')) fail('MIGRATION_LEDGER_BOOTSTRAP_TARGET_INVALID')
-  if (target.allowFreshLedgerBootstrap !== true) return { enabled: false, created: false }
-  const exists = async () => Boolean((await database.query(`
-    SELECT EXISTS (
-      SELECT 1
-      FROM pg_catalog.pg_class AS relation
-      JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-      WHERE namespace.nspname=$1 AND relation.relname=$2 AND relation.relkind IN ('r','p')
-    ) AS exists
-  `, [match.groups.schema, match.groups.relation])).rows[0]?.exists)
-  const existed = await exists()
-  if (existed) return { enabled: true, created: false }
-  await database.query('BEGIN')
   try {
-    await database.query(`SET LOCAL ROLE ${target.migratorRole}`)
-    await database.query(`CREATE TABLE IF NOT EXISTS ${target.ledger} (
-      version text PRIMARY KEY,
-      name text NOT NULL,
-      checksum_sha256 char(64) NOT NULL CHECK (checksum_sha256 ~ '^[0-9a-f]{64}$'),
-      source_revision text NOT NULL,
-      applied_at timestamptz NOT NULL DEFAULT clock_timestamp()
-    )`)
-    await database.query(`ALTER TABLE ${target.ledger} OWNER TO ${target.migratorRole}`)
-    await database.query(`REVOKE ALL ON TABLE ${target.ledger} FROM PUBLIC`)
-    await database.query('COMMIT')
+    return (await database.query(`SELECT version, name, btrim(checksum_sha256) AS checksum_sha256, source_revision FROM ${ledger} ORDER BY applied_at, version`)).rows
   } catch (error) {
-    await database.query('ROLLBACK').catch(() => undefined)
+    if (error.code === '42P01') fail('MIGRATION_BASELINE_MISSING')
     throw error
   }
-  if (!(await exists())) fail('MIGRATION_LEDGER_BOOTSTRAP_READBACK_FAILED')
-  return { enabled: true, created: !existed }
 }
 
 async function readDatabaseBoundary(database, target) {
@@ -247,15 +211,12 @@ export async function executeProductionMigration({ bundle, database, target, sou
   const startedAt = now()
   await readDatabaseBoundary(database, target)
   await database.query("SELECT pg_advisory_lock(hashtext($1), hashtext(current_database()))", [`dev012-${target.ownerApplicationId}`])
-  const minimumLedgerCount = target.minimumLedgerCount ?? bundle.baselineCount
   let ledger = []
   let pending = []
-  let ledgerBootstrap = { enabled: false, created: false }
   let applied = 0
   try {
-    ledgerBootstrap = await ensureMigrationLedger(database, target)
     ledger = await readLedger(database, target.ledger)
-    pending = planMigration(bundle, ledger, { minimumLedgerCount })
+    pending = planMigration(bundle, ledger)
     for (const entry of pending) {
       await database.query('BEGIN')
       try {
@@ -270,7 +231,7 @@ export async function executeProductionMigration({ bundle, database, target, sou
     }
     ledger = await readLedger(database, target.ledger)
     if (ledger.length !== bundle.entries.length) fail('MIGRATION_LEDGER_READBACK_LENGTH_MISMATCH')
-    planMigration(bundle, ledger, { minimumLedgerCount })
+    planMigration(bundle, ledger)
   } finally {
     await database.query("SELECT pg_advisory_unlock(hashtext($1), hashtext(current_database()))", [`dev012-${target.ownerApplicationId}`]).catch(() => undefined)
   }
@@ -289,8 +250,7 @@ export async function executeProductionMigration({ bundle, database, target, sou
     ledger: target.ledger,
     manifestSha256: bundle.manifestSha256,
     baselineCount: bundle.baselineCount,
-    minimumLedgerCount,
-    ledgerBootstrap,
+    minimumLedgerCount: bundle.baselineCount,
     ledgerCount: ledger.length,
     applied,
     replayed: bundle.entries.length - applied,
