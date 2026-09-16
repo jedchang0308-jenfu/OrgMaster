@@ -149,6 +149,21 @@ UI：resume session 同樣載入 server capability；flag=false 或 capability d
 
 ## 13. 2026-09-16 ordinary release 實測結案
 
+### 13.1 現行：生命週期分離發布
+
+- 結果：`RELEASED / LIVE_VERIFIED`；[protected workflow 35070877802](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/35070877802) 十階段全數成功，2026-09-16 16:03:55（Asia/Taipei）finalized，remainingHumanAction=0。本次一次 dispatch 成功，沒有重播初始化或新增人工關卡。
+- Release：`ORGMASTER-REL-20260916075344615-5E35167`；source=`5e3516737f7fc98cf0e2a1a30bdb2852a0817b0e`，已提交及推送 `master`；revision=`orgmaster-prod-293bc6b9e677`，provider Ready、100% traffic、candidate tags=0。前版／rollback reference=`orgmaster-prod-0adafd3cce7d`。
+- Artifact：`asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:bb5981eb368b6f01de4080a717b0afc5a48c4db00e5833bb072dd726e1e54f08`；build/provenance/SBOM/scan PASS，20 findings、blocking findings=0。
+- Capsule：`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20260916075344615-5E35167/release-intent.json#sha256=dd89d32bab4606e15ba261307ce947b3158e1f2cce2c30d6f9f525517b588746`。Terminal 在上述 release 目錄的 `dd89d32bab4606e15ba261307ce947b3158e1f2cce2c30d6f9f525517b588746/terminal.json`，object SHA-256=`be5bce4f528344b011a7d1182aef94e198e3a196dd06e14bd9cfdcf22a660dbf`。
+- DB：`UNCHANGED_VERIFIED`；migrationsExecuted=0、dataImportsExecuted=0、liveLedgerRead=false；未執行 DDL、資料／principal bootstrap、Terraform apply、IAM 或 sibling 變更。Schema runner 原始碼已提交，但正式 runner image 未重建／執行，不能宣稱已驗證該 image。
+- Smoke：inactive candidate 6/6 與 canonical 6/6 PASS，涵蓋 auth-mode、session create/reload、authenticated DB read、unauthenticated 401、logout 後 401。Canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`。
+- 瀏覽器：Playwright 1440×1000 真實載入[登入頁截圖](../../output/playwright/dev040-35070877802/login.png)，HTML/JS/CSS/favicon/auth-mode 均 200，畫面無可見錯誤；console 唯一錯誤是乾淨未登入 session 的 `/api/auth/me=401`（預期拒絕存取），沒有 module/chunk/runtime 載入錯誤。暫時 session=`dev040-release-35070877802`／owner PID=37796 已關閉並確認 process/ports 不存在，未干擾使用者分頁。
+- 本地驗證見 §12；QC 後僅補寫證據文字，受測程式／設定／測試未變。Vite 未來 native loader/chunk 提示、GitHub checkout/setup-node 的 Node 20 棄用提示為非阻擋警告，未混入本次修正。
+- 發布後 `npm run deploy:production -- --check`=`READY`，自動採用本次 RELEASED capsule 與 `orgmaster-prod-293bc6b9e677` 為下一次 baseline；未再次 dispatch。原有未追蹤 `scripts/tmp-button-drag.mjs`、`test-results/` 保留且排除提交／archive。
+- 範圍：DEV-040 發布生命週期精簡已完成；DEV-047 012／Directory／admission 仍未啟用。本段為事後 evidence-only 更新，不另部署文件提交。
+
+### 13.2 歷史：前次 ordinary release
+
 - 結果：`RELEASED / LIVE_VERIFIED`；[protected workflow 35063120604](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/35063120604) 十階段全數成功，2026-09-16 14:28:50（Asia/Taipei）finalized，remainingHumanAction=0。
 - Release：`ORGMASTER-REL-20260916061820313-22566AC`；source=`22566ac41cd1324e0dece1cd06f6a33cd595a00f`；revision=`orgmaster-prod-0adafd3cce7d`；provider Ready、100% traffic、candidate tags=0。
 - Artifact：`asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:e2bee43c498669ecbe34c364f5b30e2b5b695e1aadbddd16987b658069029beb`；build/provenance/SBOM/scan PASS，20 findings、blocking findings=0（不宣稱零弱點）。

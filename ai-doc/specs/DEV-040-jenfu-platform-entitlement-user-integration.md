@@ -1,6 +1,6 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
-> **現行發布契約**：§35 為本次使用者核准的生命週期分離規則；正式版本與 terminal evidence 見 QA §13（run `35063120604`）。下列 R20–R78 為歷史事件，不是一般更新的操作前提；本地重構驗證不代表重新部署。
+> **現行發布契約**：§35 為使用者核准並已實測發布的生命週期分離規則；正式版本與 terminal evidence 見 QA §13（run `35070877802`）。下列 R20–R78 為歷史事件，不是一般更新的操作前提。
 
 > **歷史事件｜2026-09-11 R38 pre-auth execution authority（歷史）**：R34 provider證據已確認OrgMaster production migration完成`7 applied／4 replayed／ledgerCount=11`且production-data驗證PASS；此forward-only事實不可因owner後續readback bug而回寫為NOT_RUN。Cloud Run v2 execution終止條件固定為`conditions[type=Completed]`，own exact migration Job viewer必須存在於source-frozen IaC complete-set。R37因任一cohort source drift而整體作廢，且operator auth不可用期間沒有OrgMaster app apply；恢復後只接受fresh R38。既有migration以idempotent replay重驗，不執行手動rollback，不重建已由migration移除的legacy schema；candidate／entrypoint／traffic仍為NOT_RUN。
 
@@ -17,7 +17,7 @@
 > **歷史事件｜2026-09-10 R20 architecture amendment**：OrgMaster owner build採user-specified `orgmaster-prod-builder`；提交Cloud Build時固定要求該builder對自身service account具`iam.serviceAccounts.actAs`。唯一新增IAM resource為`google_service_account_iam_member.builder_act_as_self`，role=`roles/iam.serviceAccountUser`，resource與member皆為own builder；禁止跨app或對runtime/deployer/verifier act-as。此地址納入app-owned APP_INFRA_B additional complete-set及provider readback，stage A維持不含build-runtime act-as。R20在此缺口以403安全停止，R21舊分類已作廢，且未進入migration/candidate/entrypoint/traffic；後續只能由fresh cohort重試。
 
 文件成熟度：`040-R2 §35 = RD Implementation Ready`；使用者已核准生命週期精簡並要求執行。其餘 DEV-040 slices 不變。
-狀態：既有正式發布已完成（QA §13）；§35 本次控制程式重構本地驗證 PASS，使用者已要求提交及部署，正式結果待 QA §13 回寫。不重新開啟 R34 的初始化或 S2/S3 歷史 gate。
+狀態：§35 控制程式重構、本地驗證與正式發布均完成（QA §13，`RELEASED / LIVE_VERIFIED`）；不重新開啟 R34 的初始化或 S2/S3 歷史 gate。
 節點類型：開發點
 優先級：P0
 風險等級：High

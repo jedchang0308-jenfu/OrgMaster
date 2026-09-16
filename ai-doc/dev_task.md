@@ -1,11 +1,11 @@
 # OrgMaster 開發任務
 
 > **2026-09-16 DEV-040 ordinary release：LIVE_VERIFIED（現行）**
-> `ORGMASTER-REL-20260916061820313-22566AC` 已完成；source `22566ac`，新 revision 100% traffic。
+> `ORGMASTER-REL-20260916075344615-5E35167` 已完成；source `5e35167`，revision `orgmaster-prod-293bc6b9e677` 100% traffic。
 > 證據：[DEV-040 QA §13](qa/DEV-040-R2-independent-production-release-validation-plan.md)。
 > DEV-047 僅相容程式已發布；012／Directory／admission 功能啟用不混算。下列較早 release authority 為歷史。
 
-> DEV-040 同範圍維護（本地驗證完成／發布中）：已將初始化移出一般發布、schema runner 僅做 schema，並收斂既有 §35／QA §12；發布回歸 55/55、產品回歸 815 PASS、abort 6/6、DB boundary、typecheck、client/server build 與整合 QC PASS。使用者已要求提交及部署；正式結果完成後回寫 QA §13。不新增 DEV、CAPA 或交付分母。
+> DEV-040 同範圍維護（完成）：初始化與一般發布分離已於 run `35070877802` 實測發布成功；十階段、candidate/canonical 各 6 項 smoke PASS，DDL/import/bootstrap=0。發布回歸 55/55、產品回歸 815 PASS、abort 6/6、DB boundary、typecheck、client/server build 與整合 QC PASS。成功後唯讀預檢自動採用新正式版為 baseline；完整證據見 QA §13。不新增 DEV、CAPA 或交付分母。
 
 > **歷史事件｜2026-09-15 DEV-040／DEV-012 R78 closure（歷史）**：OrgMaster沿用R60已驗證版本，R78未重部署。Frozen source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、artifact=`asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:5f1b11cd78e506a5b40e8f1da04f2019e327133d6e7976f09e8c37167e3b4373`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`。R78只以immutable R60 terminal標記`RETAINED_LIVE`，root／auth-mode與entry policy readback PASS，未建立intent、未dispatch、未修改traffic或rollback。DEV-040 R2 production slice已完成；ordinary release由本repo獨立執行。DEV-047及edge／legacy retirement另案，不是040-R2／012殘留。下方較早`current／NOT_RUN`段落只保留provenance。
 

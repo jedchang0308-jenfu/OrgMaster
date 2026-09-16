@@ -1,8 +1,8 @@
 # 文件地圖
 
-> **2026-09-16 正式發布完成（現行）**：run `35063120604` 十階段 PASS，source=`22566ac`，revision=`orgmaster-prod-0adafd3cce7d`，100% traffic、候選標籤 0。一般發布解除 bootstrap 耦合；權威與完整驗證見 [DEV-040 QA §13](qa/DEV-040-R2-independent-production-release-validation-plan.md)。DEV-047 相容程式已發布，012／Directory／admission 尚未啟用；下方 R78/R60 是歷史版本。
+> **2026-09-16 正式發布完成（現行）**：run `35070877802` 十階段 PASS，source=`5e35167`，revision=`orgmaster-prod-293bc6b9e677`，100% traffic、候選標籤 0。初始化與一般發布分離已實測成功；權威與完整驗證見 [DEV-040 QA §13](qa/DEV-040-R2-independent-production-release-validation-plan.md)。DEV-047 相容程式已發布，012／Directory／admission 尚未啟用；下方 R78/R60 是歷史版本。
 
-> **2026-09-16 發布生命週期精簡（本地驗證完成／發布中）**：DEV-040 主契約 §35／QA §12 為現行規則。一般發布必有 verified baseline，不以模式例外跳過初始化；schema runner 移除資料／管理員初始化與空庫 bootstrap。保留十階段與 smoke/rollback，不改 001–011 allowlist、正式 DB/IAM 或啟用 012。發布與產品回歸、client/server build、整合 QC 均 PASS；使用者已要求提交及部署，正式結果待 QA §13 回寫。
+> **2026-09-16 發布生命週期精簡（完成）**：DEV-040 主契約 §35／QA §12 為現行規則。一般發布必有 verified baseline，不以模式例外跳過初始化；schema runner 移除資料／管理員初始化與空庫 bootstrap。保留十階段與 smoke/rollback，不改 001–011 allowlist、正式 DB/IAM 或啟用 012。發布與產品回歸、client/server build、整合 QC、正式部署均 PASS；無殘留發布阻塞，後續仍使用單一一般發布入口。
 
 > **歷史事件｜2026-09-15 DEV-040／DEV-012 R78完成（歷史）**：OrgMaster沿用R60 immutable terminal，未重部署；source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`，R78 disposition=`RETAINED_LIVE`。Root／auth-mode與entry policy provider readback PASS。後續ordinary release由本repo獨立執行；DEV-047另依自己的task。下方S2／NOT_RUN只屬歷史。
 
