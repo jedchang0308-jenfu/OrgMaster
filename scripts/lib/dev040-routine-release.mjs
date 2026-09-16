@@ -64,6 +64,23 @@ export async function readRoutineBaseline({ profile, transport, baselineIntentRe
   return { intent, terminal, deployment, migration, candidate, bundle, runtime }
 }
 
+// A safely finalized failed attempt is an audit record, not the new production
+// baseline. Resolve its explicitly recorded prior intent; never guess a revision.
+export async function resolveRoutineControlBaseline({ profile, transport, control, attempt }) {
+  const { controlSha256, ...core } = control ?? {}
+  if (controlSha256 !== sha256(canonicalize(core)) || control.state !== 'FINALIZED' || control.ownerApplicationId !== profile.application.id || control.service !== profile.target.serviceName) fail('ROUTINE_CONTROL_NOT_FINALIZED')
+  const intent = assertDev040ReleaseIntent(attempt.value, profile)
+  if (intent.releaseId !== control.releaseId || intent.sourceRevision !== control.sourceRevision) fail('ROUTINE_CONTROL_JOIN_INVALID')
+  if (control.result === 'RELEASED') return attempt.ref
+  if (!['PRE_ACTIVATION_ABORTED', 'ROLLED_BACK'].includes(control.result) || !intent.baselineIntentRef) fail('ROUTINE_CONTROL_NOT_RELEASED')
+  const paths = releasePaths(profile, intent, attempt.ref.sha256)
+  const result = await transport.readBytes(paths.terminal, { prefixes: ['receipts'] })
+  const terminal = JSON.parse(result.bytes.toString('utf8'))
+  assertSealedStage(terminal, profile, intent, 'terminal')
+  if (terminal.facts.result !== control.result || terminal.facts.previousRevision !== intent.previousRevision) fail('ROUTINE_RECOVERY_NOT_VERIFIED')
+  return intent.baselineIntentRef
+}
+
 export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.terminal.value.facts.candidateRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')

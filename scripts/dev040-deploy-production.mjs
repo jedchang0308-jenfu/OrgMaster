@@ -7,7 +7,7 @@ import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationB
 import { buildReleaseIntent, buildRuntimeConfigReceipt, buildSourceFreeze, readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
 import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 import { canonicalize, createOwnerTransport, sha256 } from './lib/dev012-owner-release-runtime.mjs'
-import { readRoutineBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
+import { readRoutineBaseline, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 function command(name, args) {
@@ -31,11 +31,13 @@ async function main() {
   const head = await transport.readBytes(`gs://${profile.artifact.releaseBucket}/control/active.json`, { prefixes: ['control'] })
   const control = JSON.parse(head.bytes)
   const { controlSha256, ...core } = control
-  if (controlSha256 !== sha256(canonicalize(core)) || control.state !== 'FINALIZED' || control.result !== 'RELEASED' || control.ownerApplicationId !== 'orgmaster' || control.service !== profile.target.serviceName || !/^[A-Z0-9][A-Z0-9-]{5,63}$/u.test(control.releaseId)) throw new Error('ROUTINE_CONTROL_NOT_RELEASED')
+  if (controlSha256 !== sha256(canonicalize(core)) || control.state !== 'FINALIZED' || control.ownerApplicationId !== 'orgmaster' || control.service !== profile.target.serviceName || !/^[A-Z0-9][A-Z0-9-]{5,63}$/u.test(control.releaseId)) throw new Error('ROUTINE_CONTROL_NOT_FINALIZED')
   const previousIntent = await transport.readBytes(`gs://${profile.artifact.releaseBucket}/receipts/releases/${control.releaseId}/release-intent.json`, { prefixes: ['receipts'] })
-  const baselineIntentRef = previousIntent.ref
+  const baselineIntentRef = await resolveRoutineControlBaseline({ profile, transport, control, attempt: { ...previousIntent, value: JSON.parse(previousIntent.bytes) } })
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef })
-  if (baseline.intent.sourceRevision !== control.sourceRevision || baseline.terminal.value.facts.candidateRevision !== control.candidateRevision) throw new Error('ROUTINE_CONTROL_JOIN_INVALID')
+  const previousRevision = baseline.terminal.value.facts.candidateRevision
+  if (control.result === 'RELEASED' && (baseline.intent.sourceRevision !== control.sourceRevision || previousRevision !== control.candidateRevision)) throw new Error('ROUTINE_CONTROL_JOIN_INVALID')
+  if (control.result !== 'RELEASED' && previousRevision !== control.previousRevision) throw new Error('ROUTINE_CONTROL_JOIN_INVALID')
   const service = await transport.getService(profile)
   const buildMigrationBundle = async (revision) => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), new Map(profile.migrations.entries.map((entry) => [entry.path, readGitBlob(root, entry.path, revision)])), revision)
   const observedAt = new Date().toISOString()
@@ -52,7 +54,7 @@ async function main() {
     infra: (await transport.readJson(baseline.intent.infraReceiptRef, profile.artifact.releaseBucket)).value }
   const uri = (name) => `gs://${profile.artifact.releaseBucket}/receipts/releases/${releaseId}/${name}.json`
   const ref = (name, value) => ({ uri: uri(name), sha256: sha256(Buffer.from(`${canonicalize(value)}\n`)) })
-  const input = { baselineIntentRef, previousRevision: control.candidateRevision, deadlineAt, sourceLockRef: ref('source-lock', sourceLock), runtimeConfigRef: ref('runtime-config', runtimeConfig), authorizationPolicyRef: ref('owner-authorization', authorization), readinessReceiptRef: ref('owner-readiness', readiness), foundationReceiptRef: baseline.intent.foundationReceiptRef, infraReceiptRef: baseline.intent.infraReceiptRef }
+  const input = { baselineIntentRef, previousRevision, deadlineAt, sourceLockRef: ref('source-lock', sourceLock), runtimeConfigRef: ref('runtime-config', runtimeConfig), authorizationPolicyRef: ref('owner-authorization', authorization), readinessReceiptRef: ref('owner-readiness', readiness), foundationReceiptRef: baseline.intent.foundationReceiptRef, infraReceiptRef: baseline.intent.infraReceiptRef }
   const intent = buildReleaseIntent({ profile, releaseId, input, sourceLock, prerequisiteValues: values, validateIntent: assertDev040ReleaseIntent })
   const verification = await verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle })
   if (args.includes('--check')) {

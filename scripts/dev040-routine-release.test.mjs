@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
+import { assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
 const n1c = JSON.parse(fs.readFileSync('config/dev-010/n1c-orgmaster.json'))
@@ -114,4 +114,19 @@ test('Git archive excludes untracked files but still rejects modified tracked so
     assert.ok(path.resolve(dir).startsWith(path.resolve(os.tmpdir()) + path.sep))
     fs.rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('a finalized failed attempt resolves only its sealed original production baseline', async () => {
+  const h = harness()
+  const attemptRef = h.put(`gs://${bucket}/receipts/failed-attempt.json`, h.input.intent)
+  const attempt = h.objects.get(attemptRef.uri)
+  const paths = releasePaths(profile, attempt.value, attemptRef.sha256)
+  const core = { ownerApplicationId: 'orgmaster', service: profile.target.serviceName, state: 'FINALIZED', result: 'PRE_ACTIVATION_ABORTED', releaseId: attempt.value.releaseId, sourceRevision: attempt.value.sourceRevision }
+  const control = { ...core, controlSha256: sha256(canonicalize(core)) }
+  const terminal = stageReceipt({ profile, intent: attempt.value, stage: 'terminal', facts: { result: core.result, previousRevision: attempt.value.previousRevision }, observedAt: '2026-09-16T00:00:00Z' })
+  h.put(paths.terminal, terminal)
+  assert.deepEqual(await resolveRoutineControlBaseline({ profile, transport: h.input.transport, control, attempt }), attempt.value.baselineIntentRef)
+  h.objects.delete(paths.terminal)
+  await assert.rejects(() => resolveRoutineControlBaseline({ profile, transport: h.input.transport, control, attempt }), /MISSING/)
+  await assert.rejects(() => resolveRoutineControlBaseline({ profile, transport: h.input.transport, control: { ...control, state: 'ACTIVE' }, attempt }), /ROUTINE_CONTROL_NOT_FINALIZED/)
 })

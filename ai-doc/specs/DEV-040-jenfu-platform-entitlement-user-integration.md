@@ -1371,3 +1371,5 @@ OrgMaster已在R60正式完成，source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e
 - DEV-047 compatibility code 可先部署：server flag 關閉時使用既有唯讀登入身分區塊、不呼叫 managed identity/activation API。012、Google Directory delegated credentials 與 admission gate 屬後續功能啟用，不能假裝已完成或因此阻擋相容程式發布。未改既有 DB/正式資料。
 
 `npm run deploy:production -- --check` 只讀正式環境且 `releaseAuthority=false`；不寫收據、不 dispatch。`--prepare-only` 只準備 immutable capsule。無旗標才 dispatch 既有正式 workflow。舊 bootstrap runner 僅留給首次建立／明確資料轉換，不再是 ordinary release 必經流程。
+
+首次 routine run `35062309077` 實測找到另一項首次部署假設：`createCandidate`／`entrypoint` 只接受 deterministic tag URI，但已公開的 Cloud Run service 會回傳 exact provider-hash hostname，與 `verify` 已有的判定不一致。三者統一使用同一 exact service-readback origin projection；不接受 wildcard／陌生 host，不改候選版注入的單一 origin。該 run 在切流量前停止，failure cleanup 成功、原正式版 100% 流量、DB=UNCHANGED_VERIFIED。失敗後的 control head 不算新正式 baseline；僅當 immutable terminal 證明 PRE_ACTIVATION_ABORTED／ROLLED_BACK 且目前服務仍吻合原 baseline，才自動從該 intent 的 baseline ref 重試，無額外核准。

@@ -268,16 +268,18 @@ test('runtime config carries a complete secret-safe two-container template', () 
   assert.throws(() => assertRuntimeConfig(profile, mutable), /RUNTIME_CONFIG_READBACK_MISMATCH/u)
 })
 
-test('candidate replaces a one-container holding template with the reviewed runtime template at zero traffic', async () => {
+for (const tagFormat of ['canonical', 'provider', 'untrusted']) test(`candidate zero-traffic template and ${tagFormat} tag hostname readback`, async () => {
   const artifact = `${profile.artifact.uri}@sha256:${H64}`
   const candidateRevision = `${profile.target.serviceName}-${H64.slice(0, 12)}`
   const candidateTag = `candidate-${H64.slice(0, 12)}`
   const candidateUri = `https://${candidateTag}---jenfu-platform-prod-9536592944.asia-east1.run.app`
+  const providerUri = 'https://jenfu-platform-prod-providerhash-de.a.run.app'
+  const observedTagUri = tagFormat === 'canonical' ? candidateUri : tagFormat === 'provider' ? `https://${candidateTag}---${new URL(providerUri).hostname}` : `https://${candidateTag}---unrelated.run.app`
   const serviceName = `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`
-  const settled = { name: serviceName, reconciling: false, generation: '1', observedGeneration: '1', terminalCondition: { state: 'CONDITION_SUCCEEDED' } }
+  const settled = { name: serviceName, uri: providerUri, urls: [providerUri, profile.target.canonicalOrigin], reconciling: false, generation: '1', observedGeneration: '1', terminalCondition: { state: 'CONDITION_SUCCEEDED' } }
   const before = { ...settled, etag: 'e1', template: { serviceAccount: 'holding@example.invalid', containers: [{ name: 'holding', image: 'holding@sha256:' + '0'.repeat(64) }] }, traffic: [{ revision: 'holding-1', percent: 100 }], trafficStatuses: [{ revision: 'holding-1', percent: 100 }] }
   const created = { ...before, etag: 'e2', latestCreatedRevision: candidateRevision }
-  const tagged = { ...created, etag: 'e3', traffic: [...before.traffic, { type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: candidateRevision, percent: 0, tag: candidateTag }], trafficStatuses: [...before.trafficStatuses, { revision: candidateRevision, percent: 0, tag: candidateTag, uri: candidateUri }] }
+  const tagged = { ...created, etag: 'e3', traffic: [...before.traffic, { type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: candidateRevision, percent: 0, tag: candidateTag }], trafficStatuses: [...before.trafficStatuses, { revision: candidateRevision, percent: 0, tag: candidateTag, uri: observedTagUri }] }
   const reads = [before, created, created, tagged, tagged]
   const patches = []
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
@@ -286,7 +288,12 @@ test('candidate replaces a one-container holding template with the reviewed runt
     return json(reads.shift())
   } })
   const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } })
+  if (tagFormat === 'untrusted') {
+    await assert.rejects(() => transport.createCandidate({ profile, artifactDigest: artifact, runtimeConfig, fingerprint: H64, deadlineAt: '2999-01-01T00:00:00.000Z' }), /CANDIDATE_TAG_READBACK_MISMATCH/)
+    return
+  }
   const result = await transport.createCandidate({ profile, artifactDigest: artifact, runtimeConfig, fingerprint: H64, deadlineAt: '2999-01-01T00:00:00.000Z' })
+  assert.equal(result.tagUri, candidateUri)
   assert.equal(result.previousRevision, 'holding-1')
   assert.equal(patches[0].template.containers.find((row) => row.name === 'platform').image, artifact)
   assert.equal(patches[0].template.containers.length, 2)
@@ -351,6 +358,11 @@ test('entrypoint patch uses the exact mask, preserves template/traffic, and unkn
 
   const noOp = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async () => json(direct) })
   assert.equal((await noOp.configureEntrypoint({ profile, candidate: { candidateRevision: 'candidate-1', tag, tagUri }, previousRevision: 'previous-1', deadlineAt: '2999-01-01T00:00:00.000Z' })).changed, false)
+  const providerAlias = { ...direct, trafficStatuses: direct.trafficStatuses.map((row) => row.tag === tag ? { ...row, uri: `https://${tag}---${new URL(providerUri).hostname}` } : row) }
+  const aliasTransport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async () => json(providerAlias) })
+  assert.equal((await aliasTransport.configureEntrypoint({ profile, candidate: { candidateRevision: 'candidate-1', tag, tagUri }, previousRevision: 'previous-1', deadlineAt: '2999-01-01T00:00:00.000Z' })).changed, false)
+  providerAlias.trafficStatuses.find((row) => row.tag === tag).uri = `https://${tag}---unrelated.run.app`
+  await assert.rejects(() => aliasTransport.configureEntrypoint({ profile, candidate: { candidateRevision: 'candidate-1', tag, tagUri }, previousRevision: 'previous-1', deadlineAt: '2999-01-01T00:00:00.000Z' }), /ENTRYPOINT_CANDIDATE_JOIN_INVALID/)
 })
 
 test('entrypoint recovery covers pre-patch, 412, candidate-live and already-direct baselines', async () => {
