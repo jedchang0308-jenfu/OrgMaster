@@ -3,7 +3,7 @@
   "runner": "DEV-047-postgres-qc-v1",
   "evidenceScope": "TASK_OWNED_LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-16T04:32:21.633Z",
+  "generatedAt": "2026-09-16T05:19:27.130Z",
   "productionWrites": false,
   "executedCaseCount": 6,
   "serverVersion": "18.4",
@@ -79,7 +79,7 @@
       "label": "managed link, admission, first-login bind and active-principal mapping",
       "status": "PASS",
       "detail": {
-        "identityRecordId": "32c42c7e-f23f-4cc8-a06f-2b43e2418107",
+        "identityRecordId": "423ebd0d-12ca-42cd-8f1c-a72d45473585",
         "mappingVersion": 2
       }
     },
@@ -142,10 +142,10 @@
   "runtime": {
     "project": "C:\\VIBE CODING\\OrgMaster",
     "purpose": "DEV-047 isolated PostgreSQL validation",
-    "port": 51716,
-    "postgresPid": 31540,
-    "owningProcessTree": "node:33924 -> postgres:31540",
-    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev047-qc-DjiNgI",
+    "port": 63849,
+    "postgresPid": 22808,
+    "owningProcessTree": "node:27480 -> postgres:22808",
+    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev047-qc-3AQinL",
     "interruptedBy": null,
     "cleanup": {
       "clientClosed": true,

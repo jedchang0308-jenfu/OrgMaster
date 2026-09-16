@@ -2,12 +2,12 @@
   "contract": "DEV-047",
   "evidenceScope": "LOCAL_ISOLATED",
   "status": "PASS",
-  "baseUrl": "http://127.0.0.1:60482",
-  "port": 60482,
-  "ownerPid": 32404,
-  "temporaryRoot": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev-047-browser-ILkqUb",
+  "baseUrl": "http://127.0.0.1:65506",
+  "port": 65506,
+  "ownerPid": 29216,
+  "temporaryRoot": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev-047-browser-CxygKw",
   "cleanup": "browser/server closed and temporary root removed",
-  "gitHead": "41dc9141cb58c4ffdde0a526502f332db4d43555",
+  "gitHead": "c81d42caaa90254e2ae8daf88bd98edfcd68178b",
   "results": [
     {
       "viewport": "1440x900",
@@ -42,5 +42,5 @@
   ],
   "providerReadCount": 0,
   "providerWriteCount": 0,
-  "generatedAt": "2026-09-16T00:38:19.180Z"
+  "generatedAt": "2026-09-16T05:21:19.127Z"
 }
