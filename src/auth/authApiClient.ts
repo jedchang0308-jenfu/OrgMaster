@@ -2,6 +2,7 @@ export type AuthMode = {
   authMode: 'jenfu_firebase_bff'
   firebase: { apiKey: string; authDomain: string; projectId: string; appId: string }
   managedLoginEnabled?: boolean
+  ssoHandoffEnabled?: boolean
   correlationId: string
 }
 

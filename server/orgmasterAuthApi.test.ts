@@ -19,7 +19,7 @@ function configuredRuntime(overrides: Partial<OrgmasterAuthRuntime> = {}) {
     configResult: { configured: true, config },
     firebase: { verifyIdToken: vi.fn(async () => ({ issuer: config.identityIssuer, subject: 'uid-1', assuranceLevel: 'aal1' as const, authenticatedAt: new Date().toISOString() })) },
     principals: { resolveActivePrincipal: vi.fn(async () => ({ principalId: 'principal-1', employeeId: 'employee-1', mappingVersion: 1, publishedAt: new Date().toISOString() })) },
-    epochs: { read: vi.fn(async () => 0) },
+    epochs: { read: vi.fn(async () => 0), readState: vi.fn(async () => ({ authEpoch: 0, revokedBefore: null })) },
     sessions: {
       create: vi.fn(async (input) => {
         const session: OrgmasterSession = { id: 'session-row-1', identityIssuer: input.identityIssuer, identitySubject: input.identitySubject, principalId: input.principalId, employeeId: input.employeeId, authEpoch: input.authEpoch, issuedAt: input.issuedAt, authenticatedAt: input.authenticatedAt, expiresAt: input.expiresAt, revokedAt: null, assuranceLevel: input.assuranceLevel }
@@ -107,13 +107,13 @@ describe('OrgMaster auth middleware', () => {
     const first = await fetch(`${base}/api/protected`, { headers: { cookie: `orgmaster_session=${token}` } })
     expect(first.status).toBe(200)
     expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(1)
-    expect(runtime.epochs!.read).toHaveBeenCalledTimes(1)
-    vi.mocked(runtime.epochs!.read).mockResolvedValueOnce(1)
+    expect(runtime.epochs!.readState).toHaveBeenCalledTimes(1)
+    vi.mocked(runtime.epochs!.readState).mockResolvedValueOnce({ authEpoch: 1, revokedBefore: null })
     const second = await fetch(`${base}/api/protected`, { headers: { cookie: `orgmaster_session=${token}` } })
     expect(second.status).toBe(401)
     expect(await second.json()).toMatchObject({ code: 'auth_epoch_stale' })
     expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(2)
-    expect(runtime.epochs!.read).toHaveBeenCalledTimes(2)
+    expect(runtime.epochs!.readState).toHaveBeenCalledTimes(2)
   })
 
   it('allows the development identity only for exact headers on loopback', async () => {
