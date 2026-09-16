@@ -138,3 +138,18 @@ Final=`040-R2 Production Level 4 Complete / R78 retained validation PASS`。本�
 UI：resume session 同樣載入 server capability；flag=false 或 capability discovery 失敗時不呼叫 managed API，保留既有 session 與唯讀身分；flag=true/dev profile 才開啟新區塊。後端權限與 fenced writer 不變。
 
 執行：`npm run qc:dev-040:r2` 一次涵蓋 owner/prerequisite/routine tests、abort、DB boundary、全量 Vitest 與 client/server build。正式驗收以本次 workflow terminal 與 provider readback 為準；local PASS 不升格為部署完成。
+
+## 13. 2026-09-16 ordinary release 實測結案
+
+- 結果：`RELEASED / LIVE_VERIFIED`；[protected workflow 35063120604](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/35063120604) 十階段全數成功，2026-09-16 14:28:50（Asia/Taipei）finalized，remainingHumanAction=0。
+- Release：`ORGMASTER-REL-20260916061820313-22566AC`；source=`22566ac41cd1324e0dece1cd06f6a33cd595a00f`；revision=`orgmaster-prod-0adafd3cce7d`；provider Ready、100% traffic、candidate tags=0。
+- Artifact：`asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:e2bee43c498669ecbe34c364f5b30e2b5b695e1aadbddd16987b658069029beb`；build/provenance/SBOM/scan PASS，20 findings、blocking findings=0（不宣稱零弱點）。
+- Capsule：`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20260916061820313-22566AC/release-intent.json#sha256=7161e1e96d803a0e5e4ff1a983fc8a0c760cfc1eb4f9b20707743405b149636a`。
+- Terminal：上述 release 目錄內 `7161e1e96d803a0e5e4ff1a983fc8a0c760cfc1eb4f9b20707743405b149636a/terminal.json`；object SHA-256=`e535140df29040a3a21b9824bf53c0f99b52f62ddfdf142170447f60ddfc83bb`，self receipt SHA-256=`9c1a7ec35355aba90ffedc2bdf9a0fc3a5e35e759a747d8dffe3ca84a988a48f`。
+- DB：`UNCHANGED_VERIFIED`，migrationsExecuted=0、dataImportsExecuted=0、liveLedgerRead=false；沿用 R60 migration 證據，本次 canonical `preference-db-read=200`。沒有重新 bootstrap、Terraform apply、權限變更或 sibling 操作。
+- Smoke：inactive candidate 6/6 與 canonical 6/6 PASS，涵蓋 auth-mode、session create/reload、authenticated DB read、unauthenticated 401、logout 後 401。Public `/api/auth/mode=200`、`managedLoginEnabled=false`。
+- 瀏覽器：Playwright Chromium 1440×1000 已實際載入並人工視覺檢視[正式登入頁](../../output/playwright/dev040-35063120604-login/login.png)。一次性 CLI exit=0、task owner PID 1264 已結束；未啟動 local server。另識別的 `dev068-title-child-drop-*` browser daemon 屬其他工作，未觸碰，cleanup 由原 owner 負責。
+- RD 回歸：owner release/prerequisites 49/49、abort 6/6、DB boundary PASS、Vitest 200 files／815 tests PASS（既有 1 file／1 test skipped）、client/server build PASS；DEV-047 contract 12/12 PASS。最後 local gate report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260916T061751543Z-E87F4D44/owner-report.json`，其 releaseAuthority=false；正式完成依上列 managed evidence，不冒稱獨立 QC。
+- 首次 run `35062309077` 因 provider tag hostname 誤判，在 activation 前停止；failure cleanup PASS，原版仍 100% traffic。修正後重跑成功，失敗證據保留，非人工取消或放寬 hostname wildcard。
+- 成功後再跑 `npm run deploy:production -- --check`=`READY`，已自動採用新正式版為下次 baseline，沒有 dispatch 第二次。原 `scripts/tmp-button-drag.mjs`、`test-results/` 保留且不納入 archive。
+- 範圍：相容程式已部署；DEV-047 的 012／正式 Directory 憑證／admission 啟用未執行，不混算成本次已交付功能。這些不再阻擋一般程式更新。本文為事後 evidence-only 更新，不產生另一輪程式部署。

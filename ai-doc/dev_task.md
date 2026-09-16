@@ -1,5 +1,10 @@
 # OrgMaster 開發任務
 
+> **2026-09-16 DEV-040 ordinary release：LIVE_VERIFIED（現行）**
+> `ORGMASTER-REL-20260916061820313-22566AC` 已完成；source `22566ac`，新 revision 100% traffic。
+> 證據：[DEV-040 QA §13](qa/DEV-040-R2-independent-production-release-validation-plan.md)。
+> DEV-047 僅相容程式已發布；012／Directory／admission 功能啟用不混算。下列較早 release authority 為歷史。
+
 > **2026-09-15 DEV-040／DEV-012 R78 closure（final current release authority）**：OrgMaster沿用R60已驗證版本，R78未重部署。Frozen source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、artifact=`asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:5f1b11cd78e506a5b40e8f1da04f2019e327133d6e7976f09e8c37167e3b4373`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`。R78只以immutable R60 terminal標記`RETAINED_LIVE`，root／auth-mode與entry policy readback PASS，未建立intent、未dispatch、未修改traffic或rollback。DEV-040 R2 production slice已完成；ordinary release由本repo獨立執行。DEV-047及edge／legacy retirement另案，不是040-R2／012殘留。下方較早`current／NOT_RUN`段落只保留provenance。
 
 > **2026-09-11 DEV-040 R38 pre-auth closure（current）**：R34 production bootstrap後，OrgMaster exact migration execution `orgmaster-prod-migration-runner-pfnz7`完成`7 applied／4 replayed／ledgerCount=11`，production-data驗證PASS；candidate／entrypoint／traffic皆未執行。先前owner false failure源自Cloud Run v2不存在的`terminalCondition`，current已改驗`conditions[type=Completed]`，並把own migration Job resource-scoped viewer納入IaC complete-set。Current離線證據為owner 29／29、abort 6／6、DB boundary、529案product regression與production builds PASS。R37因AI-PDM後續source drift而整個cohort失效，且未執行OrgMaster app-infra apply；恢復後只接受fresh R38，以forward-only／idempotent方式重驗已套用migration，不得人工rollback或重建被migration移除的legacy schema。

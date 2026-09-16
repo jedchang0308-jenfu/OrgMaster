@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-16 正式發布完成（現行）**：run `35063120604` 十階段 PASS，source=`22566ac`，revision=`orgmaster-prod-0adafd3cce7d`，100% traffic、候選標籤 0。一般發布解除 bootstrap 耦合；權威與完整驗證見 [DEV-040 QA §13](qa/DEV-040-R2-independent-production-release-validation-plan.md)。DEV-047 相容程式已發布，012／Directory／admission 尚未啟用；下方 R78/R60 是歷史版本。
+
 > **2026-09-16 一般發布修正**：DEV-040 主契約 §35／QA §12 為 ordinary release 現行規則。單一 `npm run deploy:production`，未變更 DB/infra/runtime 時沿用 verified baseline，保留十階段與 smoke/rollback，不重做首次資料／管理員 bootstrap。DEV-047 feature-off compatibility 隨程式發布；012 與外部身分功能啟用不混算成已部署。
 
 > **2026-09-15 DEV-040／DEV-012 R78完成（現行）**：OrgMaster沿用R60 immutable terminal，未重部署；source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`，R78 disposition=`RETAINED_LIVE`。Root／auth-mode與entry policy provider readback PASS。後續ordinary release由本repo獨立執行；DEV-047另依自己的task。下方S2／NOT_RUN只屬歷史。
