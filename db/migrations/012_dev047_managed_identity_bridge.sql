@@ -315,7 +315,7 @@ BEGIN
   IF v_current.employee_number IS NOT NULL AND v_current.employee_number <> v_number THEN UPDATE orgmaster_core.employee_number_tombstones SET retired_at = p_now WHERE employee_number = v_current.employee_number AND first_employee_id = p_employee_id; END IF;
   INSERT INTO orgmaster_core.employee_number_assignments(employee_id, employee_number, revision, assigned_at, assigned_by, updated_at, updated_by) VALUES (p_employee_id, v_number, v_revision, p_now, p_actor, p_now, p_actor)
   ON CONFLICT (employee_id) DO UPDATE SET employee_number = EXCLUDED.employee_number, revision = EXCLUDED.revision, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by;
-  SELECT encode(public.digest(p_employee_id || chr(0) || v_number || chr(0) || p_actor, 'sha256'), 'hex') INTO v_hash;
+  SELECT encode(public.digest(convert_to(p_employee_id, 'UTF8') || decode('00', 'hex') || convert_to(v_number, 'UTF8') || decode('00', 'hex') || convert_to(p_actor, 'UTF8'), 'sha256'), 'hex') INTO v_hash;
   INSERT INTO orgmaster_core.managed_identity_audit_events(action, actor, employee_id, result, reason_code, after_hash, occurred_at) VALUES ('employee_number_assigned', p_actor, p_employee_id, 'applied', 'employee_number_assignment', v_hash, p_now);
   RETURN QUERY SELECT 'applied', to_jsonb(a), '{}'::jsonb, v_hash FROM orgmaster_core.employee_number_assignments a WHERE a.employee_id = p_employee_id;
 END;
@@ -339,16 +339,18 @@ RETURNS TABLE(identity_record_id uuid, employee_id text, principal_id text, link
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog AS $fn$
 DECLARE v_lease orgmaster_core.managed_identity_candidate_leases%ROWTYPE; v_id uuid; v_principal text;
 BEGIN
-  SELECT * INTO v_lease FROM orgmaster_core.managed_identity_candidate_leases WHERE employee_id = p_employee_id AND token_hash_sha256 = encode(public.digest(p_candidate_token, 'sha256'),'hex') FOR UPDATE;
+  SELECT l.* INTO v_lease FROM orgmaster_core.managed_identity_candidate_leases l WHERE l.employee_id = p_employee_id AND l.token_hash_sha256 = encode(public.digest(p_candidate_token, 'sha256'),'hex') FOR UPDATE;
   IF NOT FOUND OR v_lease.consumed_at IS NOT NULL THEN RAISE EXCEPTION 'MANAGED_IDENTITY_CANDIDATE_INVALID'; END IF;
   IF v_lease.invalidated_at IS NOT NULL OR v_lease.expires_at <= clock_timestamp() OR v_lease.workspace_revision IS DISTINCT FROM p_expected_workspace_revision OR v_lease.registry_revision IS DISTINCT FROM p_expected_registry_revision THEN RAISE EXCEPTION 'MANAGED_IDENTITY_CANDIDATE_EXPIRED'; END IF;
-  IF EXISTS (SELECT 1 FROM orgmaster_core.managed_daily_identities WHERE directory_customer_id = v_lease.directory_customer_id AND directory_user_id = v_lease.directory_user_id AND employee_id <> p_employee_id) THEN RAISE EXCEPTION 'MANAGED_IDENTITY_IDENTITY_CONFLICT'; END IF;
-  SELECT identity_record_id INTO v_id FROM orgmaster_core.managed_daily_identities WHERE employee_id = p_employee_id;
+  IF EXISTS (SELECT 1 FROM orgmaster_core.managed_daily_identities d WHERE d.directory_customer_id = v_lease.directory_customer_id AND d.directory_user_id = v_lease.directory_user_id AND d.employee_id <> p_employee_id) THEN RAISE EXCEPTION 'MANAGED_IDENTITY_IDENTITY_CONFLICT'; END IF;
+  SELECT d.identity_record_id INTO v_id FROM orgmaster_core.managed_daily_identities d WHERE d.employee_id = p_employee_id;
   IF v_id IS NULL THEN
-    INSERT INTO orgmaster_core.managed_daily_identities(employee_id, principal_id, directory_customer_id, directory_user_id, last_verified_primary_email, link_state, created_by, updated_by)
-    VALUES(p_employee_id, 'principal-managed:' || public.gen_random_uuid()::text, v_lease.directory_customer_id, v_lease.directory_user_id, v_lease.primary_email, 'directory_linked_pending_auth', p_actor, p_actor) RETURNING identity_record_id, principal_id INTO v_id, v_principal;
+    v_id := public.gen_random_uuid();
+    v_principal := 'principal-managed:' || v_id::text;
+    INSERT INTO orgmaster_core.managed_daily_identities(identity_record_id, employee_id, principal_id, directory_customer_id, directory_user_id, last_verified_primary_email, link_state, created_by, updated_by)
+    VALUES(v_id, p_employee_id, v_principal, v_lease.directory_customer_id, v_lease.directory_user_id, v_lease.primary_email, 'directory_linked_pending_auth', p_actor, p_actor);
     INSERT INTO orgmaster_core.managed_identity_observations(identity_record_id, primary_email, directory_state, source_etag, adapter_outcome, trusted_observed_at, last_attempt_at, freshness) VALUES(v_id, v_lease.primary_email, 'present', v_lease.source_etag, 'success', clock_timestamp(), clock_timestamp(), 'fresh');
-  ELSE SELECT principal_id INTO v_principal FROM orgmaster_core.managed_daily_identities WHERE identity_record_id = v_id; END IF;
+  ELSE SELECT d.principal_id INTO v_principal FROM orgmaster_core.managed_daily_identities d WHERE d.identity_record_id = v_id; END IF;
   UPDATE orgmaster_core.managed_identity_candidate_leases SET consumed_at = clock_timestamp() WHERE lease_id = v_lease.lease_id;
   INSERT INTO orgmaster_core.managed_identity_command_receipts(command_id, request_hash_sha256, action, employee_id, identity_record_id, response_payload) VALUES(p_command_id, encode(public.digest(p_employee_id || p_candidate_token, 'sha256'),'hex'), 'confirm_managed_identity_link_v1', p_employee_id, v_id, jsonb_build_object('state','directory_linked_pending_auth')) ON CONFLICT (command_id) DO NOTHING;
   RETURN QUERY SELECT v_id, p_employee_id, v_principal, 'directory_linked_pending_auth', v_lease.registry_revision;
@@ -361,18 +363,18 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog AS $fn$
 DECLARE v_identity orgmaster_core.managed_daily_identities%ROWTYPE; v_admission bigint;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM orgmaster_core.managed_identity_admission_authority WHERE singleton = true AND admission_enabled) THEN RAISE EXCEPTION 'MANAGED_IDENTITY_ADMISSION_DISABLED'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM orgmaster_core.v_current_workspace_employees_v1 WHERE employee_id = p_employee_id AND employee_status = 'active') THEN RAISE EXCEPTION 'EMPLOYEE_NOT_FOUND'; END IF;
-  SELECT * INTO v_identity FROM orgmaster_core.managed_daily_identities WHERE employee_id = p_employee_id FOR UPDATE;
+  IF NOT EXISTS (SELECT 1 FROM orgmaster_core.v_current_workspace_employees_v1 e WHERE e.employee_id = p_employee_id AND e.employee_status = 'active') THEN RAISE EXCEPTION 'EMPLOYEE_NOT_FOUND'; END IF;
+  SELECT d.* INTO v_identity FROM orgmaster_core.managed_daily_identities d WHERE d.employee_id = p_employee_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'MANAGED_IDENTITY_CANDIDATE_INVALID'; END IF;
-  IF EXISTS (SELECT 1 FROM orgmaster_core.managed_identity_lifecycle_outbox WHERE employee_id = p_employee_id AND status <> 'completed') THEN RAISE EXCEPTION 'INVALIDATION_PENDING'; END IF;
+  IF EXISTS (SELECT 1 FROM orgmaster_core.managed_identity_lifecycle_outbox o WHERE o.employee_id = p_employee_id AND o.status <> 'completed') THEN RAISE EXCEPTION 'INVALIDATION_PENDING'; END IF;
   IF lower(trim(p_email)) <> lower(v_identity.last_verified_primary_email) THEN RAISE EXCEPTION 'MANAGED_IDENTITY_IDENTITY_CONFLICT'; END IF;
-  IF EXISTS (SELECT 1 FROM orgmaster_core.principal_identity_reservations WHERE principal_issuer = p_issuer AND principal_subject = p_subject AND employee_id <> p_employee_id) THEN RAISE EXCEPTION 'MANAGED_IDENTITY_IDENTITY_CONFLICT'; END IF;
+  IF EXISTS (SELECT 1 FROM orgmaster_core.principal_identity_reservations r WHERE r.principal_issuer = p_issuer AND r.principal_subject = p_subject AND r.employee_id <> p_employee_id) THEN RAISE EXCEPTION 'MANAGED_IDENTITY_IDENTITY_CONFLICT'; END IF;
   IF v_identity.auth_issuer IS NOT NULL AND (v_identity.auth_issuer <> p_issuer OR v_identity.auth_subject <> p_subject) THEN RAISE EXCEPTION 'MANAGED_IDENTITY_IDENTITY_CONFLICT'; END IF;
-  IF EXISTS (SELECT 1 FROM orgmaster_contract.v_active_principal_mappings_v1 WHERE principal_issuer = p_issuer AND principal_subject = p_subject AND employee_id <> p_employee_id) THEN RAISE EXCEPTION 'MANAGED_IDENTITY_IDENTITY_CONFLICT'; END IF;
+  IF EXISTS (SELECT 1 FROM orgmaster_contract.v_active_principal_mappings_v1 m WHERE m.principal_issuer = p_issuer AND m.principal_subject = p_subject AND m.employee_id <> p_employee_id) THEN RAISE EXCEPTION 'MANAGED_IDENTITY_IDENTITY_CONFLICT'; END IF;
   SELECT CASE WHEN admission_enabled THEN nextval('orgmaster_core.managed_identity_mapping_version_seq') ELSE NULL END INTO v_admission FROM orgmaster_core.managed_identity_admission_authority WHERE singleton = true;
-  UPDATE orgmaster_core.managed_daily_identities SET auth_issuer = p_issuer, auth_subject = p_subject, bound_at = COALESCE(bound_at, clock_timestamp()), link_state = 'active', revision = revision + 1, admission_revision = v_admission, admission_changed_at = CASE WHEN v_admission IS NULL THEN NULL ELSE clock_timestamp() END, last_verified_primary_email = lower(trim(p_email)), updated_at = clock_timestamp(), updated_by = p_issuer || ':' || p_subject WHERE identity_record_id = v_identity.identity_record_id;
+  UPDATE orgmaster_core.managed_daily_identities d SET auth_issuer = p_issuer, auth_subject = p_subject, bound_at = COALESCE(d.bound_at, clock_timestamp()), link_state = 'active', revision = d.revision + 1, admission_revision = v_admission, admission_changed_at = CASE WHEN v_admission IS NULL THEN NULL ELSE clock_timestamp() END, last_verified_primary_email = lower(trim(p_email)), updated_at = clock_timestamp(), updated_by = p_issuer || ':' || p_subject WHERE d.identity_record_id = v_identity.identity_record_id;
   INSERT INTO orgmaster_core.principal_identity_reservations(principal_issuer, principal_subject, employee_id, first_seen_at, source_kind, source_revision) VALUES(p_issuer, p_subject, p_employee_id, clock_timestamp(), 'managed', 'managed-bind') ON CONFLICT (principal_issuer, principal_subject) DO NOTHING;
-  RETURN QUERY SELECT identity_record_id, principal_id, employee_id, link_state, admission_revision FROM orgmaster_core.managed_daily_identities WHERE identity_record_id = v_identity.identity_record_id;
+  RETURN QUERY SELECT d.identity_record_id, d.principal_id, d.employee_id, d.link_state, d.admission_revision FROM orgmaster_core.managed_daily_identities d WHERE d.identity_record_id = v_identity.identity_record_id;
 END;
 $fn$;
 
@@ -411,9 +413,9 @@ DECLARE v_identity uuid; v_existing uuid; v_id uuid := public.gen_random_uuid();
 BEGIN
   SELECT identity_record_id INTO v_identity FROM orgmaster_core.managed_daily_identities WHERE employee_id = p_employee_id;
   IF v_identity IS NULL THEN RAISE EXCEPTION 'MANAGED_IDENTITY_CANDIDATE_INVALID'; END IF;
-  SELECT request_id INTO v_existing FROM orgmaster_core.managed_identity_refresh_outbox WHERE identity_record_id = v_identity AND state IN ('queued','leased','retry') FOR UPDATE;
+  SELECT o.request_id INTO v_existing FROM orgmaster_core.managed_identity_refresh_outbox o WHERE o.identity_record_id = v_identity AND o.state IN ('queued','leased','retry') FOR UPDATE;
   IF v_existing IS NOT NULL AND p_trigger <> 'domain' THEN RETURN QUERY SELECT 'deduplicated', v_existing, NULL::bigint; RETURN; END IF;
-  IF v_existing IS NOT NULL THEN UPDATE orgmaster_core.managed_identity_refresh_outbox SET rerun_requested = true, updated_at = clock_timestamp() WHERE request_id = v_existing; RETURN QUERY SELECT 'deduplicated', v_existing, NULL::bigint; RETURN; END IF;
+  IF v_existing IS NOT NULL THEN UPDATE orgmaster_core.managed_identity_refresh_outbox o SET rerun_requested = true, updated_at = clock_timestamp() WHERE o.request_id = v_existing; RETURN QUERY SELECT 'deduplicated', v_existing, NULL::bigint; RETURN; END IF;
   SELECT nextval('orgmaster_core.managed_identity_refresh_request_seq') INTO v_seq;
   INSERT INTO orgmaster_core.managed_identity_refresh_outbox(request_id, identity_record_id, trigger, state, request_sequence, available_at) VALUES(v_id, v_identity, p_trigger, 'queued', v_seq, clock_timestamp());
   RETURN QUERY SELECT 'queued', v_id, v_seq;
@@ -435,16 +437,16 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog AS $fn$
 DECLARE v_row orgmaster_core.managed_identity_refresh_outbox%ROWTYPE; v_identity orgmaster_core.managed_daily_identities%ROWTYPE;
 BEGIN
   PERFORM 1 FROM orgmaster_core.managed_identity_admission_authority WHERE singleton=true FOR UPDATE;
-  SELECT * INTO v_row FROM orgmaster_core.managed_identity_refresh_outbox WHERE request_id=p_request_id AND state='leased' AND lease_worker_id=p_worker_id AND lease_version=p_lease_version FOR UPDATE;
+  SELECT o.* INTO v_row FROM orgmaster_core.managed_identity_refresh_outbox o WHERE o.request_id=p_request_id AND o.state='leased' AND o.lease_worker_id=p_worker_id AND o.lease_version=p_lease_version FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'MANAGED_IDENTITY_REFRESH_LEASE_CONFLICT'; END IF;
-  SELECT * INTO v_identity FROM orgmaster_core.managed_daily_identities WHERE identity_record_id=v_row.identity_record_id FOR UPDATE;
+  SELECT d.* INTO v_identity FROM orgmaster_core.managed_daily_identities d WHERE d.identity_record_id=v_row.identity_record_id FOR UPDATE;
   IF v_identity.directory_customer_id <> p_directory_customer_id OR v_identity.directory_user_id <> p_directory_user_id THEN RAISE EXCEPTION 'MANAGED_IDENTITY_REFRESH_LEASE_CONFLICT'; END IF;
   IF p_directory_state IN ('missing','suspended','archived') AND v_identity.link_state <> 'conflict' THEN
     IF EXISTS (SELECT 1 FROM orgmaster_core.managed_identity_admission_authority WHERE singleton=true AND admission_enabled) THEN PERFORM orgmaster_core.enqueue_managed_identity_lifecycle_invalidations_v1(v_identity.employee_id, 'managed-refresh:' || p_request_id::text, p_worker_id, 'managed_directory_known_negative'); END IF;
-    UPDATE orgmaster_core.managed_daily_identities SET link_state='conflict', revision=revision+1, admission_revision=nextval('orgmaster_core.managed_identity_mapping_version_seq'), admission_changed_at=clock_timestamp(), updated_at=clock_timestamp(), updated_by=p_worker_id WHERE identity_record_id=v_identity.identity_record_id;
+    UPDATE orgmaster_core.managed_daily_identities d SET link_state='conflict', revision=d.revision+1, admission_revision=nextval('orgmaster_core.managed_identity_mapping_version_seq'), admission_changed_at=clock_timestamp(), updated_at=clock_timestamp(), updated_by=p_worker_id WHERE d.identity_record_id=v_identity.identity_record_id;
   END IF;
-  INSERT INTO orgmaster_core.managed_identity_observations(identity_record_id, primary_email, directory_state, source_etag, last_applied_request_sequence, adapter_outcome, trusted_observed_at, last_attempt_at, freshness) VALUES(v_row.identity_record_id, p_primary_email, p_directory_state, p_source_etag, v_row.request_sequence, p_adapter_outcome, clock_timestamp(), clock_timestamp(), 'fresh') ON CONFLICT(identity_record_id) DO UPDATE SET primary_email=EXCLUDED.primary_email, directory_state=EXCLUDED.directory_state, source_etag=EXCLUDED.source_etag, last_applied_request_sequence=EXCLUDED.last_applied_request_sequence, adapter_outcome=EXCLUDED.adapter_outcome, trusted_observed_at=EXCLUDED.trusted_observed_at, last_attempt_at=EXCLUDED.last_attempt_at, freshness='fresh';
-  UPDATE orgmaster_core.managed_identity_refresh_outbox SET state='completed', completion_disposition=CASE WHEN rerun_requested THEN 'superseded' ELSE 'applied' END, lease_worker_id=NULL, lease_until=NULL, completed_at=clock_timestamp(), updated_at=clock_timestamp() WHERE request_id=p_request_id;
+  INSERT INTO orgmaster_core.managed_identity_observations(identity_record_id, primary_email, directory_state, source_etag, last_applied_request_sequence, adapter_outcome, trusted_observed_at, last_attempt_at, freshness) VALUES(v_row.identity_record_id, p_primary_email, p_directory_state, p_source_etag, v_row.request_sequence, p_adapter_outcome, clock_timestamp(), clock_timestamp(), 'fresh') ON CONFLICT ON CONSTRAINT managed_identity_observations_pkey DO UPDATE SET primary_email=EXCLUDED.primary_email, directory_state=EXCLUDED.directory_state, source_etag=EXCLUDED.source_etag, last_applied_request_sequence=EXCLUDED.last_applied_request_sequence, adapter_outcome=EXCLUDED.adapter_outcome, trusted_observed_at=EXCLUDED.trusted_observed_at, last_attempt_at=EXCLUDED.last_attempt_at, freshness='fresh';
+  UPDATE orgmaster_core.managed_identity_refresh_outbox o SET state='completed', completion_disposition=CASE WHEN o.rerun_requested THEN 'superseded' ELSE 'applied' END, lease_worker_id=NULL, lease_until=NULL, completed_at=clock_timestamp(), updated_at=clock_timestamp() WHERE o.request_id=p_request_id;
   IF v_row.rerun_requested THEN INSERT INTO orgmaster_core.managed_identity_refresh_outbox(identity_record_id, trigger, state, request_sequence, available_at) VALUES(v_row.identity_record_id, 'domain', 'queued', nextval('orgmaster_core.managed_identity_refresh_request_seq'), clock_timestamp()); END IF;
   RETURN QUERY SELECT CASE WHEN v_row.rerun_requested THEN 'superseded' ELSE 'applied' END, p_request_id, v_row.identity_record_id;
 END;
@@ -455,10 +457,10 @@ RETURNS TABLE(disposition text, request_id uuid, identity_record_id uuid)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog AS $fn$
 DECLARE v_row orgmaster_core.managed_identity_refresh_outbox%ROWTYPE; v_state text;
 BEGIN
-  SELECT * INTO v_row FROM orgmaster_core.managed_identity_refresh_outbox WHERE request_id=p_request_id AND state='leased' AND lease_worker_id=p_worker_id AND lease_version=p_lease_version FOR UPDATE;
+  SELECT o.* INTO v_row FROM orgmaster_core.managed_identity_refresh_outbox o WHERE o.request_id=p_request_id AND o.state='leased' AND o.lease_worker_id=p_worker_id AND o.lease_version=p_lease_version FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'MANAGED_IDENTITY_REFRESH_LEASE_CONFLICT'; END IF;
   v_state := CASE WHEN v_row.attempt_count >= 5 OR p_error_code NOT IN ('TIMEOUT','RATE_LIMITED','DIRECTORY_READ_UNAVAILABLE') THEN 'dead' ELSE 'retry' END;
-  UPDATE orgmaster_core.managed_identity_refresh_outbox SET state=v_state, last_error_code=left(p_error_code,255), lease_worker_id=NULL, lease_until=NULL, completion_disposition=CASE WHEN v_state='dead' THEN 'terminal' ELSE NULL END, available_at=clock_timestamp()+CASE WHEN v_state='retry' THEN make_interval(secs=>power(2,v_row.attempt_count-1)::integer) ELSE interval '0' END, completed_at=CASE WHEN v_state='dead' THEN clock_timestamp() ELSE NULL END, updated_at=clock_timestamp() WHERE request_id=p_request_id;
+  UPDATE orgmaster_core.managed_identity_refresh_outbox o SET state=v_state, last_error_code=left(p_error_code,255), lease_worker_id=NULL, lease_until=NULL, completion_disposition=CASE WHEN v_state='dead' THEN 'terminal' ELSE NULL END, available_at=clock_timestamp()+CASE WHEN v_state='retry' THEN make_interval(secs=>power(2,v_row.attempt_count-1)::integer) ELSE interval '0' END, completed_at=CASE WHEN v_state='dead' THEN clock_timestamp() ELSE NULL END, updated_at=clock_timestamp() WHERE o.request_id=p_request_id;
   RETURN QUERY SELECT CASE WHEN v_state='dead' THEN 'terminal' ELSE 'superseded' END, p_request_id, v_row.identity_record_id;
 END;
 $fn$;
@@ -484,7 +486,7 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog AS $fn$
 DECLARE v_row orgmaster_core.managed_identity_invalidation_applications%ROWTYPE;
 BEGIN
   IF char_length(trim(p_application_id)) < 1 OR char_length(trim(p_evidence_ref)) < 1 OR char_length(trim(p_actor)) < 1 THEN RAISE EXCEPTION 'SUPPORT_ATTESTATION_INVALID'; END IF;
-  SELECT * INTO v_row FROM orgmaster_core.managed_identity_invalidation_applications WHERE application_id=trim(p_application_id) FOR UPDATE;
+  SELECT a.* INTO v_row FROM orgmaster_core.managed_identity_invalidation_applications a WHERE a.application_id=trim(p_application_id) FOR UPDATE;
   IF NOT FOUND THEN
     IF p_expected_support_revision <> 0 THEN RAISE EXCEPTION 'REVISION_CONFLICT'; END IF;
     INSERT INTO orgmaster_core.managed_identity_invalidation_applications(application_id,status,support_state,support_revision,support_evidence_ref,support_verified_at,support_verified_by,updated_at) VALUES(trim(p_application_id),'inactive','verified',1,trim(p_evidence_ref),clock_timestamp(),trim(p_actor),clock_timestamp()) RETURNING * INTO v_row;
@@ -493,7 +495,7 @@ BEGIN
   ELSIF v_row.support_state = 'verified' AND v_row.support_evidence_ref = trim(p_evidence_ref) THEN
     NULL;
   ELSE
-    UPDATE orgmaster_core.managed_identity_invalidation_applications SET support_revision=support_revision+1,support_state='verified',support_evidence_ref=trim(p_evidence_ref),support_verified_at=clock_timestamp(),support_verified_by=trim(p_actor),updated_at=clock_timestamp() WHERE application_id=v_row.application_id RETURNING * INTO v_row;
+    UPDATE orgmaster_core.managed_identity_invalidation_applications a SET support_revision=a.support_revision+1,support_state='verified',support_evidence_ref=trim(p_evidence_ref),support_verified_at=clock_timestamp(),support_verified_by=trim(p_actor),updated_at=clock_timestamp() WHERE a.application_id=v_row.application_id RETURNING a.* INTO v_row;
   END IF;
   RETURN QUERY SELECT a.application_id,a.support_revision,a.support_state FROM orgmaster_core.managed_identity_invalidation_applications a WHERE a.application_id=trim(p_application_id);
 END;
@@ -626,10 +628,24 @@ WITH active_governance AS (
         AND EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(version.payload#>'{policy,applicationRoles}') = 'array' THEN version.payload#>'{policy,applicationRoles}' ELSE '[]'::jsonb END) role(value) WHERE role.value->>'id' = assignment.value->>'roleId' AND role.value->>'applicationId' = 'orgmaster' AND role.value->>'status' = 'active')
     )
 )
-SELECT 'organization.active-principal.v1'::text, identity_payload->>'issuer', identity_payload->>'subject', identity_payload->>'principalId', employee_id, employee_status, (version_payload->>'versionNumber')::bigint, (version_payload->>'publishedAt')::timestamptz
+SELECT 'organization.active-principal.v1'::text AS contract_version,
+       identity_payload->>'issuer' AS principal_issuer,
+       identity_payload->>'subject' AS principal_subject,
+       identity_payload->>'principalId' AS principal_id,
+       employee_id,
+       employee_status,
+       (version_payload->>'versionNumber')::bigint AS mapping_version,
+       (version_payload->>'publishedAt')::timestamptz AS published_at
 FROM legacy_candidates
 UNION ALL
-SELECT 'organization.active-principal.v1', i.auth_issuer, i.auth_subject, i.principal_id, i.employee_id, e.employee_status, i.admission_revision, i.admission_changed_at
+SELECT 'organization.active-principal.v1' AS contract_version,
+       i.auth_issuer AS principal_issuer,
+       i.auth_subject AS principal_subject,
+       i.principal_id,
+       i.employee_id,
+       e.employee_status,
+       i.admission_revision AS mapping_version,
+       i.admission_changed_at AS published_at
 FROM orgmaster_core.managed_daily_identities i
 JOIN orgmaster_core.v_current_workspace_employees_v1 e ON e.employee_id=i.employee_id AND e.employee_status='active'
 JOIN orgmaster_core.managed_identity_admission_authority aa ON aa.singleton=true AND aa.admission_enabled
@@ -650,7 +666,7 @@ REVOKE ALL ON ALL SEQUENCES IN SCHEMA orgmaster_core FROM PUBLIC, jenfu_orgmaste
 REVOKE ALL ON FUNCTION orgmaster_core.write_active_persistence_artifacts_v1(jsonb,text,text,text) FROM jenfu_orgmaster_runtime;
 REVOKE ALL ON FUNCTION orgmaster_core.write_active_persistence_artifacts_with_entitlement_outbox_v1(jsonb,text,text,text,jsonb) FROM jenfu_orgmaster_runtime;
 GRANT USAGE ON SCHEMA orgmaster_core, orgmaster_contract TO jenfu_orgmaster_runtime;
-GRANT EXECUTE ON FUNCTION orgmaster_core.read_employee_managed_identity_v1(text), orgmaster_core.resolve_managed_identity_auth_v1(text), orgmaster_core.assign_employee_number_v1(text,text,text,text,text,timestamptz), orgmaster_core.lease_managed_identity_candidate_v1(text,text,text,text,text,text,text,text,text,text), orgmaster_core.confirm_managed_identity_link_v1(text,text,text,text,text,text), orgmaster_core.bind_managed_identity_auth_v1(text,text,text,text,text), orgmaster_core.resolve_managed_identity_alias_v1(text), orgmaster_core.reserve_managed_directory_read_v1(), orgmaster_core.enqueue_managed_identity_refresh_v1(text,text,text,text), orgmaster_core.claim_managed_identity_refresh_v1(text,integer,integer), orgmaster_core.complete_managed_identity_refresh_v1(uuid,text,bigint,text,text,text,text,text,text,text), orgmaster_core.retry_managed_identity_refresh_v1(uuid,text,bigint,text), orgmaster_core.prune_managed_identity_ephemera_v1(integer), orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1(jsonb,text,text,text,text,jsonb) TO jenfu_orgmaster_runtime;
+GRANT EXECUTE ON FUNCTION orgmaster_core.read_employee_managed_identity_v1(text), orgmaster_core.resolve_managed_identity_auth_v1(text), orgmaster_core.assign_employee_number_v1(text,text,text,text,text,timestamptz), orgmaster_core.lease_managed_identity_candidate_v1(text,text,text,text,text,text,text,text,text,text), orgmaster_core.confirm_managed_identity_link_v1(text,text,text,text,text,text), orgmaster_core.bind_managed_identity_auth_v1(text,text,text,text,text), orgmaster_core.resolve_managed_identity_alias_v1(text), orgmaster_core.reserve_managed_directory_read_v1(), orgmaster_core.enqueue_managed_identity_refresh_v1(text,text,text,text), orgmaster_core.claim_managed_identity_refresh_v1(text,integer,integer), orgmaster_core.complete_managed_identity_refresh_v1(uuid,text,bigint,text,text,text,text,text,text), orgmaster_core.retry_managed_identity_refresh_v1(uuid,text,bigint,text), orgmaster_core.prune_managed_identity_ephemera_v1(integer), orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1(jsonb,text,text,text,text,jsonb) TO jenfu_orgmaster_runtime;
 GRANT SELECT ON orgmaster_contract.v_active_principal_mappings_v1 TO jenfu_orgmaster_runtime, jenfu_platform_runtime, jenfu_ai_pdm_runtime;
 GRANT EXECUTE ON FUNCTION orgmaster_core.read_managed_identity_activation_preflight_v1(), orgmaster_core.attest_managed_identity_invalidation_support_v1(text,bigint,text,text), orgmaster_core.quarantine_managed_identity_v1(uuid,bigint,text,text,text), orgmaster_core.enqueue_managed_identity_lifecycle_invalidations_v1(text,text,text,text), orgmaster_core.claim_managed_identity_lifecycle_invalidations_v1(text,integer,integer), orgmaster_core.complete_managed_identity_lifecycle_invalidation_v1(uuid,text,uuid), orgmaster_core.retry_managed_identity_lifecycle_invalidation_v1(uuid,text,text), orgmaster_core.set_managed_identity_admission_v1(bigint,boolean,text,text) TO jenfu_orgmaster_migrator;
 

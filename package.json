@@ -43,6 +43,7 @@
     "qc:dev-004": "npm run test:dev-004 && npm run build",
     "test:dev-045": "vitest run src/accountEnrollment/apiClient.test.ts src/components/EmployeeIdentitySection.test.tsx src/components/EmployeeAccountSetupDialog.test.tsx src/components/DirectoryDetailPanel.test.tsx src/governance/aiPdmCatalog.test.ts src/components/workspace/WorkspaceArchitecturePolicy.test.ts server/orgmasterAccountProvisioningPort.test.ts server/orgmasterIdentityLinkPolicy.test.ts server/orgmasterAccountEnrollmentStore.test.ts server/orgmasterAccountEnrollmentService.test.ts server/orgmasterAccountEnrollmentApi.test.ts server/orgmasterGovernanceApi.test.ts server/orgmasterGovernanceStore.test.ts server/orgmasterServer.test.ts",
     "test:dev-047": "vitest run src/managedIdentity/employeeNumber.test.ts src/managedIdentity/apiClient.test.ts server/orgmasterManagedIdentityStore.test.ts src/components/EmployeeManagedIdentitySection.test.tsx",
+    "test:dev-047:qc": "node --test scripts/dev047-postgres-qc-contract.test.mjs",
     "qc:dev-047:contract": "node scripts/qc-dev-047-contract.mjs",
     "qc:dev-047:postgres": "node scripts/qc-dev-047-postgres.mjs",
     "qc:dev-047:browser": "node scripts/qc-dev-047-browser.mjs",

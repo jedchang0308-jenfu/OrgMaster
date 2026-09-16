@@ -2,7 +2,9 @@
 
 ## 狀態
 
-`RD Implementation In Progress`。本文件記錄本 worktree 已完成的實作與可重現證據；PostgreSQL disposable target 尚未提供，因此不宣稱 production migration 或 release 已完成，也不代表已取得 production release authority。
+`RD Implementation Complete / Local QA-QC Passed / CAPA Closed / Production Release Gated`。本文件記錄本 worktree 已完成的實作與可重現證據。2026-09-16 的 CAPA 修復已把 PostgreSQL placeholder runner 改為 task-owned isolated runtime，完成 001～012 與 A17～A22 真實行為驗證；不宣稱 production migration／release 完成或已取得 production release authority。
+
+改善與結案見 [PostgreSQL QC CAPA](../reports/capa-dev-047-postgres-qc-readiness-2026-09-16.md)：未另編流水號，`CA/PA Implemented / Effectiveness Verified / Closed`。既有 DEV-047 內同一修復批次已完成真實 DB 執行、目標與清理安全、結果與原因可信三個出口；既定 dev／staging／production 與 disposable 測試分工不變。
 
 ## 本次範圍
 
@@ -23,7 +25,7 @@
 ## 明確不在本切片
 
 - Google Admin 建立／刪除／升降級 Cloud Identity、license、password、MFA、session 與任何 provider write。
-- PostgreSQL migration 的實際套用與 disposable PostgreSQL execution evidence（migration 檔已建立，尚未套用任何 production target）。
+- PostgreSQL migration 套用到 shared／staging／production target（本輪只在 task-owned temp cluster 執行並取得 evidence；尚未套用任何 production target）。
 - 生產環境 feature flag、credential、部署或 release。
 
 ## 驗收命令
@@ -37,6 +39,15 @@ npm run qc:dev-047:contract
 npm run qc:dev-047:browser
 npm run qc:dev-047:postgres
 ```
+
+## 2026-09-16 CAPA 修復與有效性證據
+
+- PostgreSQL runner 不再接受 `DEV047_POSTGRES_URL` 或 caller 自稱 disposable 的外部 target；只自行建立 loopback、動態 port、task-owned temp cluster，並記錄 PostgreSQL PID、mutation scope 及 cleanup condition。
+- `npm run qc:dev-047:postgres`：PostgreSQL `18.4`，001～012 fresh apply PASS；A17～A22 共 6 項 SQL 行為案例 PASS，`executedCaseCount=6`；client、cluster、port 與 temp root 全數清理。證據：[manifest](../../qa/dev-047/postgres/manifest.json)。Production PostgreSQL 仍固定 17；runner 接受 17／18 並拒絕其他 major，且保留 exact version。
+- 真實 execution 修復 012 source 中五類阻擋缺陷：managed principal／record UUID 不一致、contract view 欄名不相容、錯誤 routine grant signature、NUL text hash、PL/pgSQL output-column ambiguity。012 尚未套用任何 production target；本輪未連線或修改 shared／staging／production DB。
+- `npm run test:dev-047:qc`：5 tests PASS；外部 target、runtime／version、NOT_RUN／BLOCKED／FAIL／零案例、缺 required cases 與 cleanup 不完整均 fail closed。
+- `npm run qc:dev-047:contract`：12 checks PASS；A17～A22 已改為對應 product／migration／runner source evidence，不再以固定字串恆真。
+- `npm run test:dev-047`：4 files／12 tests PASS；`npm test -- --testTimeout=30000`：200 files／812 tests PASS、1 file／1 test skipped；`npm run build` 與 DB boundary gate PASS。全量回歸發現並修正既有 source-policy test 的 Windows CRLF/LF 誤判，產品行為未變。CAPA 三出口通過並結案；部署前仍須走 DEV-040 release gate，local evidence 的 `releaseAuthority=false`。
 
 ## 2026-09-15 驗收證據
 
@@ -52,6 +63,8 @@ npm run qc:dev-047:postgres
 - 本機 UI 可由 local admin 逐筆設定編號，顯示 derived username 與 `待連結`；確認連結後顯示 `已啟用`，治理管理者在無 mutation 權限時仍僅可讀取。
 
 `npm test -- --testTimeout=30000`：140 個 test files 通過、1 個 skipped，541 個 tests 通過、1 個 skipped。Vite native config 與 React `act(...)` 僅輸出既有 warning，不影響 exit 0。
+
+上述為歷史回報。2026-09-16 補充查證：PostgreSQL runner 的下一分支仍無條件 `BLOCKED`，不能把「補 URL」當作足以解除阻擋的措施；原始 manifest 保留。Contract runner 的 A17～A22 僅以 `assert.ok(caseId)` 檢查固定字串，其 PASS 不構成對應行為或 DB 測試證據；其他獨立測試結果不由此段推翻。
 
 ## 主要檔案
 

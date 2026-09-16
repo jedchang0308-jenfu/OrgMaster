@@ -1,8 +1,8 @@
 # DEV-047：永久公司身分連結與員工編號登入別名
 
-文件成熟度：`RD Implementation Ready / RD Tech Lead Correction Review 2026-09-14`
+文件成熟度：`RD Implementation Complete / Local QA-QC Passed / CAPA Closed 2026-09-16`
 
-狀態：`RD Implementation Ready / Round 1～13 Human Confirmed / Correction Review 2026-09-14 / I0～I6 Fixed / RD Not Started / Documents Only / External IAM Activation Gated / Production Release Gated`
+狀態：`RD Implementation Complete / Round 1～13 Human Confirmed / I0～I6 Implemented / Local QA-QC Passed / External IAM Activation Gated / Production Release Gated`
 
 風險等級：`High`。本交付同時影響 Employee 主資料、登入身分、外部目錄唯讀整合、權限、稽核與登入路徑；任何把 Email、員工編號、Firebase UID、Google Directory user ID 混為同一主鍵，或讓 OrgMaster 取得 Google provider write scope 的做法都必須停止。
 
@@ -17,6 +17,7 @@
 - `USER-2026-09-08-DEV047-RD-IMPLEMENTATION-READY`
 - `USER-2026-09-08-DEV047-RD-TECH-LEAD-DOCUMENT-OPTIMIZATION`
 - `USER-2026-09-14-DEV047-DOCUMENT-REVIEW-OPTIMIZATION`
+- `USER-2026-09-16-DEV047-CAPA-COMPLETION`
 
 父契約與權威：
 
@@ -29,7 +30,7 @@ Spec Impact Preflight：`Intentional replacement / Cross-spec convergence`。本
 
 ## 1. Current Phase 成果與執行邊界
 
-Current Phase 的成果是讓 RD 可在本文件固定的 I0～I6 execution boundary 內直接實作、測試與產生 local／isolated evidence：
+Current Phase 已依本文件固定的 I0～I6 execution boundary 完成實作、測試與 local／isolated evidence：
 
 1. Employee 可有受治理且永久不重用的 `JFS####` 員工編號；新 active transition 必須有有效編號。
 2. Google Admin 先建立 Cloud Identity managed user；OrgMaster 只搜尋、人工確認並連結該 Employee 的唯一日常公司身分。
@@ -37,7 +38,7 @@ Current Phase 的成果是讓 RD 可在本文件固定的 I0～I6 execution boun
 4. OrgMaster 自動同步 Google Directory 的最小唯讀事實，呈現 alias／lifecycle mismatch 與 freshness，不建立任何 Google write path。
 5. 登入授權仍同時要求 live identity-provider authentication、current active Employee 與 current effective role。
 
-本次對話仍只更新契約文件，未修改產品程式、資料、schema、migration、Firebase／Google Admin 設定、正式帳號、credential、部署或 release。自本版起，`RD Implementation Ready`授權 RD 依第 15～19 節修改明列檔案、建立 `012` forward-only migration source、完成 local deterministic／mocked HTTP／isolated PostgreSQL／browser evidence；不授權連線 production Directory、套用 shared production migration、開啟 production feature flag、部署或 release。
+2026-09-16 已完成明列產品程式、`012` source repair、local deterministic／mocked HTTP／isolated PostgreSQL／browser evidence；隔離 DB 寫入只存在於 task-owned temp cluster。此完成狀態不授權連線 production Directory、套用 shared production migration、開啟 production feature flag、部署或 release。
 
 ## 2. Current Architecture Impact
 
@@ -781,7 +782,7 @@ Browser evidence固定輸出 `qa/dev-047/browser/manifest.json`及 1440x900、10
 
 ## 23. Maturity Verdict
 
-判定：`RD Implementation Ready / RD Not Started`（文件契約，不是實作或獨立QC通過）。Round 1～13產品決策不變；本輪修正已識別的工程缺口，RD可依I0～I6開工，任何未預見的跨repo／權限邊界仍按第22節停止，不把本次review宣稱為沒有其他缺陷的保證。
+判定：`RD Implementation Complete / Local QA-QC Passed / CAPA Closed / Production Release Gated`。Round 1～13產品決策不變；I0～I6、A17～A22 與 CAPA 三出口已有本機／隔離證據，任何未預見的跨repo／權限邊界仍按第22節停止，不把 local evidence 宣稱為 production release authority。
 
 ### 23.1 2026-09-14 review findings and closure
 
@@ -804,7 +805,16 @@ Browser evidence固定輸出 `qa/dev-047/browser/manifest.json`及 1440x900、10
 - Production gates仍未完成：Google provider enable／domain／tenant／DWD唯讀credential／owner／live sandbox／quota、各consumer在mapping移除後仍可失效既有epoch的support receipt、012套用與seed coverage／legacy support attestation、DB admission、post-gate consumer readback及release。缺任一項不得啟用production。
 - DEV-040 R2當前release runner只允許既有001～011範圍；012須另走獲准release契約，不能因DEV-047文件Ready插入現行runner。Local／mock evidence的releaseAuthority始終false。
 
+### 23.3 2026-09-16 implementation and CAPA closure
+
+- 實作與驗證摘要以 [implementation slice](DEV-047-implementation-slice.md) 為準；PostgreSQL evidence 位於 [qa/dev-047/postgres/manifest.json](../../qa/dev-047/postgres/manifest.json)，CAPA 結案位於 [CAPA report](../reports/capa-dev-047-postgres-qc-readiness-2026-09-16.md)。
+- Task-owned PostgreSQL `18.4` 已 fresh apply 001～012；A17～A22 六項 SQL 行為、target拒絕、runtime／version／result fail-closed、cleanup、contract checker、targeted regression、build及DB boundary通過。Runner同時接受 production contract major 17 與 local compatibility major 18，並記錄 exact version；不接受其他 major。
+- 真實 execution 修正 012 source 的 principal UUID、contract view欄名、routine signature、NUL hash與PL/pgSQL ambiguous-column問題。012尚未套用production；本輪未連線shared／staging／production資料庫。
+- 23.1～23.2 保留為2026-09-14文件審查歷史，不得用其中的`NOT_RUN`／`RD Not Started`覆蓋本節現行狀態。
+
 ## 24. Change Log
+
+- 2026-09-16：依 DEV-047 CAPA 完成 runner、contract checker、負向判定測試與 012 source repair；task-owned PostgreSQL 001～012、A17～A22、cleanup、targeted regression、build及DB boundary通過。CAPA三出口結案；production migration／activation／release仍gated。
 
 - 2026-09-14：依使用者「審視及優化開發文件」完成correction review；修正auth client／pre-session路由缺口、舊snapshot view相依、永久pair reservation、gate-off legacy失效及old＋new application集合，將per-key鎖收斂為singleton短交易fence，補local owner／讀取barrier、domain rerun、5次attempt與共用Directory budget。新增A17～A22；保留Human Decisions及I0～I6、production gates。以下2026-09-08紀錄為歷史判定，不代表本輪新驗證通過。
 

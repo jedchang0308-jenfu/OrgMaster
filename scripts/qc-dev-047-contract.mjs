@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const migrationPath = join(root, 'db', 'migrations', '012_dev047_managed_identity_bridge.sql')
-const migration = await readFile(migrationPath, 'utf8')
+const migrationBytes = await readFile(migrationPath)
+const migration = migrationBytes.toString('utf8').replaceAll('\r\n', '\n')
 const source = async (relative) => readFile(join(root, relative), 'utf8')
 const checks = []
 async function check(name, fn) { try { await fn(); checks.push({ name, status: 'PASS' }) } catch (error) { checks.push({ name, status: 'FAIL', error: error instanceof Error ? error.message : String(error) }) } }
@@ -39,10 +40,45 @@ await check('frozen canonical principal manifest', async () => {
   const fixture = JSON.parse(await readFile(join(root, 'qa', 'dev-047', 'contracts', 'active-principal.managed.json'), 'utf8'))
   assert.equal(fixture.contractVersion, 'jenfu.platform-auth.v1'); assert.equal(fixture.directoryContractVersion, 'organization.active-principal.v1'); assert.match(fixture.identityIssuer, /^https:\/\/securetoken\.google\.com\//u); assert.ok(Number.isSafeInteger(fixture.mappingVersion) && fixture.mappingVersion >= 1)
 })
-for (const caseId of ['A17', 'A18', 'A19', 'A20', 'A21', 'A22']) await check(`${caseId} correction-review manifest`, () => assert.ok(caseId))
+const [authApi, localStore, postgresRunner] = await Promise.all([
+  source('server/orgmasterAuthApi.ts'),
+  source('server/orgmasterManagedIdentityStore.ts'),
+  source('scripts/qc-dev-047-postgres.mjs'),
+])
+const correctionEvidence = {
+  A17: () => {
+    includesAll(authApi, ['managedLoginEnabled', 'resolveFirebaseIdentity', 'resolveActivePrincipal', 'epochs.read'])
+    includesAll(migration, ['confirm_managed_identity_link_v1', 'bind_managed_identity_auth_v1', 'v_active_principal_mappings_v1'])
+    includesAll(postgresRunner, ["check('A17'", 'issuer-managed', 'subject-one'])
+  },
+  A18: () => {
+    includesAll(migration, ['managed_identity_admission_authority', 'admission_enabled', 'enqueue_managed_identity_lifecycle_invalidations_v1', 'legacy_candidates'])
+    includesAll(postgresRunner, ["check('A18'", 'QC_OUTBOX_FAILURE', 'rollbackPreservedAdmission'])
+  },
+  A19: () => {
+    includesAll(migration, ['principal_identity_reservations', "source_kind IN ('legacy','managed')", 'MANAGED_IDENTITY_IDENTITY_CONFLICT'])
+    includesAll(localStore, ['principalIdentityReservations', 'sourceKind: \'managed\''])
+    includesAll(postgresRunner, ["check('A19'", 'issuer-historical'])
+  },
+  A20: () => {
+    includesAll(migration, ['employee_number text NOT NULL UNIQUE', 'FOR UPDATE', 'EMPLOYEE_NUMBER_CONFLICT'])
+    includesAll(postgresRunner, ["check('A20'", 'Promise.allSettled', 'successfulWriters'])
+  },
+  A21: () => {
+    includesAll(migration, ['managed_identity_directory_read_budget', 'lease_version', 'rerun_requested', 'MANAGED_IDENTITY_REFRESH_LEASE_CONFLICT'])
+    includesAll(localStore, ['leaseVersion', 'rerunRequested', 'MANAGED_IDENTITY_REFRESH_LEASE_CONFLICT'])
+    includesAll(postgresRunner, ["check('A21'", 'worker-old', 'successorSequence'])
+  },
+  A22: () => {
+    includesAll(localStore, ['orgmaster-managed-identity-txn.v1.json', "journal.status !== 'prepare'", 'writeVerifiedAtomicFile(paths.current', "status: 'committed'"])
+    includesAll(migration, ['v_current_workspace_employees_v1', 'REVOKE ALL ON ALL TABLES IN SCHEMA orgmaster_core', 'GRANT EXECUTE ON FUNCTION'])
+    includesAll(postgresRunner, ["check('A22'", 'employee-old-snapshot', "code: '42501'"])
+  },
+}
+for (const [caseId, verify] of Object.entries(correctionEvidence)) await check(`${caseId} correction-review source evidence`, verify)
 
 const failed = checks.filter((entry) => entry.status === 'FAIL')
-const evidence = { contract: 'DEV-047', evidenceScope: 'LOCAL_ISOLATED', status: failed.length ? 'FAIL' : 'PASS', generatedAt: new Date().toISOString(), migrationSha256: createHash('sha256').update(migration).digest('hex'), checks }
+const evidence = { contract: 'DEV-047', evidenceScope: 'LOCAL_ISOLATED', status: failed.length ? 'FAIL' : 'PASS', generatedAt: new Date().toISOString(), migrationSha256: createHash('sha256').update(migrationBytes).digest('hex'), checks }
 const output = join(root, 'qa', 'dev-047', 'contracts', 'manifest.json')
 await mkdir(dirname(output), { recursive: true }); await writeFile(output, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8')
 process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`)

@@ -57,17 +57,17 @@
 - 平板與全系統手機／桌面能力判定已由 DEV-033 收斂為 deterministic default-deny gate：只有至少 1024px、hover＋fine pointer 同時成立才開放 mutation，其餘先唯讀。這不取代正式 Auth、role、permission 或 server validation。
 - 本原則優先於 DEV-028、DEV-029、DEV-031 及其他既有文件中允許手機／窄 viewport 編輯的舊契約；既有測試與截圖仍是當時完成狀態的歷史證據。DEV-033 現已將同一 boundary 落實到全系統 mutation entry、command guard 與版本／工作台 UI，不得將局部舊證據反向解讀為手機可編輯。
 
-- 文件成熟度：DEV-047維持`RD Implementation Ready / RD Not Started`；2026-09-14 review修正登入串接、永久pair保留、current Employee投影、legacy失效、交易fence與sync競態，新增A17～A22（NOT_RUN）。工程規則只以direct spec為權威，不把文件Ready計為產品交付完成；Google Admin仍擁有外部帳號生命週期，OrgMaster零provider write。
+- 文件成熟度：DEV-047為`RD Implementation Complete / Local QA-QC Passed / CAPA Closed / Production Release Gated`。2026-09-16 已完成 task-owned PostgreSQL 001～012 與 A17～A22、target／cleanup 安全及結果可信修復；Google Admin仍擁有外部帳號生命週期，OrgMaster零provider write。
 
 ## 總任務清單
 
-- ○ DEV-047 [交付點] [待排／RD可實作] [P1] [RD Implementation Ready／Correction Review 2026-09-14／RD Not Started／I0～I6 Fixed／Production Gated] 員工編號公司身分連結與登入別名
+- ✓ DEV-047 [交付點] [local完成／QA-QC通過／production release gated] [P1] [RD Implementation Complete／CAPA Closed 2026-09-16／Production Gated] 員工編號公司身分連結與登入別名
   - 摘要：Google Admin管理完整外部生命週期；OrgMaster精確連結唯一principal並自動唯讀同步。Legacy／managed admission共用current Employee與invalidation barrier；OrgMaster resolver只接受新JFS、current OrgMaster role與原principal last verified username。Refresh由sliding dedup、lease version與request sequence保護；known-negative在前一mapping可見時同commit逐verified app失效。
   - 來源 ID：`USER-2026-09-07-EMPLOYEE-NUMBER-MANAGED-ACCOUNT-DESIGN`、`USER-2026-09-07-DEV047-DEVELOPMENT-BRIEF`、`USER-2026-09-07-DEV047-GUIDED-ROUND1-1B-2B-3C`、`USER-2026-09-07-DEV047-GUIDED-ROUND2-1A-2B-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND3-1C-2A-3C`、`USER-2026-09-07-DEV047-CREDENTIAL-ROTATE-1A`、`USER-2026-09-07-DEV047-GUIDED-ROUND4-1B-2A-3B`、`USER-2026-09-07-DEV047-GUIDED-ROUND5-1A-2A-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND6-JFS4-SINGLE-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND7-1B-2A-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND8-1B-2A-3A`、`USER-2026-09-08-DEV047-GUIDED-ROUND9-1A-2C-3A`、`USER-2026-09-08-DEV047-CLOUD-IDENTITY-BASELINE-WORKSPACE-ENTITLEMENT`、`USER-2026-09-08-DEV047-WORKSPACE-BOUNDARY-1A`、`USER-2026-09-08-DEV047-BOUNDARY-ROUND11-2A-3A`、`USER-2026-09-08-DEV047-GUIDED-ROUND12-4A-5A-6A`、`USER-2026-09-08-DEV047-GUIDED-ROUND13-7A-8A-9A`、`USER-2026-09-08-DEV047-RD-CONTRACT-READY`、`USER-2026-09-08-DEV047-RD-IMPLEMENTATION-READY`、`USER-2026-09-08-DEV047-RD-TECH-LEAD-DOCUMENT-OPTIMIZATION`、`USER-2026-09-08-DEV047-RD-TECH-LEAD-ARCHITECTURE-PASS2`
   - 父任務：DEV-045 production provisioning capsule、DEV-040 identity authority；架構權威ADR-007
-  - 下一步：RD依直接spec第15～21節由I0到I6實作`012`、current-workspace projection、legacy／managed barrier、DB admission／shared lock／multi-app outbox、registry、Directory port、API／UI、auth／OrgMaster-role gate、alias、lease-fenced sync與完整evidence；不得擴張第18節file boundary。
+  - 下一步：只在明確 production release 授權下完成 tenant／credential／DWD／support receipt、012 production migration、DB admission enable與 post-activation readback；不得把 local manifest 當 release authority。
   - 阻塞 / 恢復條件：source implementation無P0／P1契約阻塞。Production仍須DNS／Admin readback、primary／backup owner、credential custody、exact read-only DWD scope、quota、live sandbox、每個application support attestation／central-epoch receipt、post-gate mapping／consumer readback、DB admission enable與release gate；Workspace Licensing API的write-capable scope不是依賴。
-  - 證據：`ai-doc/specs/DEV-047-permanent-managed-identity-link-and-login-alias.md`；本文件`DEV-047`決策歷史；`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`
+  - 證據：`ai-doc/specs/DEV-047-permanent-managed-identity-link-and-login-alias.md`；`ai-doc/specs/DEV-047-implementation-slice.md`；`ai-doc/reports/capa-dev-047-postgres-qc-readiness-2026-09-16.md`；`qa/dev-047/postgres/manifest.json`；本文件`DEV-047`決策歷史；`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`
   - 計入交付：是
 
 - ✓ DEV-046 [交付點] [local完成／回歸通過／release gated] [P1] [RD Implementation Complete／Automated Gate Passed／Browser QA-QC Passed／Local Release Gate Pending] 統一清單明細工作台與可擴充關係拖曳框架
@@ -539,15 +539,15 @@
 
 ## DEV-047：員工編號公司身分連結與登入別名
 
-狀態：待排；`RD Implementation Ready / Correction Review 2026-09-14 / RD Not Started`；production activation仍gated
-文件成熟度：`RD Implementation Ready / Round 1～13 Human Confirmed / I0～I6 Fixed / Documents Only / Production Gated`
+狀態：local完成；`RD Implementation Complete / Local QA-QC Passed / CAPA Closed 2026-09-16`；production activation仍gated
+文件成熟度：`RD Implementation Complete / Round 1～13 Human Confirmed / I0～I6 Implemented / Production Gated`
 節點類型：交付點
 優先級：P1
 父交付點：DEV-045 production identity-link capsule、DEV-040 identity authority；架構權威ADR-007
 是否計入產品交付完成：是
 權威文件：`ai-doc/specs/DEV-047-permanent-managed-identity-link-and-login-alias.md`；本節保留Human Decision歷史與摘要
-本輪來源 ID：`USER-2026-09-14-DEV047-DOCUMENT-REVIEW-OPTIMIZATION`
-執行邊界：本輪只修正同一DEV的RD execution contract；尚未修改產品程式、資料、schema、migration、provider、正式帳號、Email、credential、部署或release
+本輪來源 ID：`USER-2026-09-16-DEV047-CAPA-COMPLETION`
+執行邊界：已完成本機程式、012 source repair、task-owned PostgreSQL 與直接文件；未修改 shared／staging／production資料、provider、正式帳號、Email、credential、部署或release
 風險等級：High（正式身分關聯、外部目錄最小權限、狀態同步與跨UI／API／provider資料路徑）
 
 ### 問題與使用者價值

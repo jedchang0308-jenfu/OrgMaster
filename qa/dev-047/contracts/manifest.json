@@ -2,8 +2,8 @@
   "contract": "DEV-047",
   "evidenceScope": "LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-14T18:48:48.487Z",
-  "migrationSha256": "9a2da31a992c39b021212cd8b5e73cfffe170aa4a2f564f6c40561c0eb8d83e1",
+  "generatedAt": "2026-09-16T04:31:51.725Z",
+  "migrationSha256": "ab18137f7cc8e3abc270bc67b5c93d765cddb8f48584f017eca52c24336c1680",
   "checks": [
     {
       "name": "migration header and forward-only boundary",
@@ -30,27 +30,27 @@
       "status": "PASS"
     },
     {
-      "name": "A17 correction-review manifest",
+      "name": "A17 correction-review source evidence",
       "status": "PASS"
     },
     {
-      "name": "A18 correction-review manifest",
+      "name": "A18 correction-review source evidence",
       "status": "PASS"
     },
     {
-      "name": "A19 correction-review manifest",
+      "name": "A19 correction-review source evidence",
       "status": "PASS"
     },
     {
-      "name": "A20 correction-review manifest",
+      "name": "A20 correction-review source evidence",
       "status": "PASS"
     },
     {
-      "name": "A21 correction-review manifest",
+      "name": "A21 correction-review source evidence",
       "status": "PASS"
     },
     {
-      "name": "A22 correction-review manifest",
+      "name": "A22 correction-review source evidence",
       "status": "PASS"
     }
   ]

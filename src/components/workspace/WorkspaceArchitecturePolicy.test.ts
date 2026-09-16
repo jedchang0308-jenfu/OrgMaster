@@ -15,7 +15,7 @@ function sourceFiles(directory: string): string[] {
 }
 
 function read(path: string) {
-  return readFileSync(path, 'utf8')
+  return readFileSync(path, 'utf8').replaceAll('\r\n', '\n')
 }
 
 describe('DEV-039 panel boundary source policy', () => {
