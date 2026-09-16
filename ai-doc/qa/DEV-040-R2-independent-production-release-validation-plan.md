@@ -1,10 +1,10 @@
 # QA-DEV-040-R2：OrgMaster independent continuous production release
 
-- 文件成熟度：`QA Contract Ready`
-- 狀態：`Fixed 12 Owner Cases / NOT_RUN / DEV-012 S1B-21 Owner`
-- 日期：2026-09-08
-- 規格 authority：[DEV-040 §24](../specs/DEV-040-jenfu-platform-entitlement-user-integration.md)
-- 上游 authority：Platform DEV-012 §25；contract SHA-256=`47eb972c48549da73ca135509e99bdc8ae4463e87b81785abe8d6cfd8f54b95f`；§25～EOF SHA-256=`92fd6c7dfdfafee4b438c0ee9ce731d7463da46a7691f05061c54d58cb127507`
+- 文件成熟度：`V2 Historical QA Contract；V3 Production Level 4 Complete`
+- 狀態：`R60 LIVE_VERIFIED / DEV012-R78 RETAINED_LIVE / production PASS`
+- 日期：2026-09-15
+- 規格 authority：[DEV-040 §27](../specs/DEV-040-jenfu-platform-entitlement-user-integration.md)
+- 上游 authority：Platform DEV-012 §26；contract SHA-256=`d88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05`
 
 ## 1. 目標與證據層級
 
@@ -53,3 +53,31 @@ git diff --check
 原十二案分母不變，但040-R2-05～12依DEV-012 §25重跑：single input須自動交接release intent→application digest＋migration bundle＋pinned runner→deployment capsule→migration→inactive candidate/tag→machine decision→activation→canonical→tag cleanup；IaC必含own production migration job與run binding；001～011 ledger／schema／ACL readback在candidate前完成；temporary tag只指exact inactive revision且不改general traffic。
 
 新增負例固定涵蓋intent預填未知facts、漏migration stage／job、staging runner冒production、execution done冒PASS、deployer取得migrator actAs／DDL、candidate無HTTP驗證入口、任意tag或LATEST authority、tag流量漂移／殘留、run中真人GO與CLI／workflow placeholder。第一次local owner PASS標`SUPERSEDED_BY_CONTRACT_V2`，全部v2 oracle與owner commands同source PASS前不得恢復S1B-21。
+
+## 6. `CONTINUOUS_NO_DWELL_V3_DIRECT_RUN_APP` current QA contract and result
+
+本節前向取代§4～5中把九階段、`jenfu.com.tw`或shared edge視為current release條件的部分；原12案仍保留作owner基線，V3 delta由Platform DEV-012 `S1C-01～08`固定驗證。
+
+| Gate | Current oracle | 結果 |
+|---|---|---|
+| Owner authority | V3 profile由OrgMaster擁有；V2 profile bytes不變；中央只驗hash與receipt | PASS |
+| Control flow | `prepare→build→migrate→candidate→entrypoint→verify→decision→activate→canonical→finalize` exactly once | PASS |
+| Entrypoint mutation | exact mask `ingress,defaultUriDisabled,invokerIamDisabled`；fresh etag；template／traffic零漂移；unknown outcome只readback一次 | PASS |
+| Origin／Auth | canonical加一個exact candidate origin；wildcard／legacy hash-host／port／userinfo／path拒絕；session／CSRF／permission不降級 | PASS |
+| Recovery | own traffic rollback→tag cleanup→entry-baseline restore；412、timeout、candidate-live與already-direct baseline均有負例 | PASS |
+| Edge／scope | Hosting／LB／DNS=`RETAINED_UNUSED_EDGE`且ordinary mutation=0；TOTP、DEV-047與sibling source均no-touch | PASS |
+| Aggregate | S1A 32／32、S1B 24／24、S1C 8／8；三repo build／boundary／diff PASS；runtime residue=0 | PASS |
+
+Current evidence：Platform `output/dev-012/s1c/2026-09-09T070233-600Z/qc-report.json`，SHA-256=`30dc6014c516a024a26556712881f219d1cdac84d4e7acce595eecced181a4ae`。Scope=`LOCAL_RECORDED_PROVIDER`、`releaseAuthority=false`，因此只證明Architecture Finalized與V3 source implementation完成。
+
+Exit判定：`RD Tech Lead Architecture PASS / P0=0 / P1=0 / S2 Unlocked`。S2仍須fresh provider readback證明Billing link count／limit、budget headroom、B01～B10 quota、Identity authorized domains、APP_INFRA_A/B complete-set、immutable digests與numeric Secret versions；任一UNKNOWN或不符即FAIL。正式migration、candidate、entrypoint、traffic、canonical smoke與production closure仍為`NOT_RUN`，不得由本節推論已上線。
+
+## 7. R60正式結果與R78 retained closure（2026-09-15）
+
+- R60 owner terminal=`RELEASED`，source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`，revision=`orgmaster-prod-3f9aa8c7818d`，immutable artifact=`asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:5f1b11cd78e506a5b40e8f1da04f2019e327133d6e7976f09e8c37167e3b4373`。
+- Cloud Run provider readback：Ready、generation=72、100% traffic指向上述revision；ingress=`all`、default URL enabled、`invokerIamDisabled=true`，canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`。
+- Canonical smoke：root=200、`/api/auth/mode`=200；R60 owner既有authenticated、DB、deny、rollback與cleanup分母維持PASS。
+- R78 coordinator只驗immutable R60 terminal並給`RETAINED_LIVE`；沒有建立OrgMaster release intent、沒有dispatch或重部署，也沒有因AI-PDM／Platform release調整OrgMaster traffic。
+- Boundary：後續ordinary OrgMaster release只需本repo own source／artifact／migration／service／Secret／traffic／rollback，不需siblings。DEV-047與edge／legacy retirement是分離範圍，不列為040-R2缺件。
+
+最終判定=`040-R2 Production Level 4 Complete / R78 retained validation PASS`。本節以R60 terminal、R78 cohort join及2026-09-15 provider readback為證據；§6的`Production NOT_RUN`只保留2026-09-09歷史範圍。

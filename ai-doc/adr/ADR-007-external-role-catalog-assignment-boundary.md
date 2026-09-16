@@ -2,7 +2,7 @@
 
 狀態：Accepted
 日期：2026-08-27
-修訂日期：2026-09-02（Jenfu Platform `system_admin` exact privileged-principal治理；前次含account taxonomy `1B / 2A / 3D`、`040-ID1` one-time direct UUIDv7 rekey）
+修訂日期：2026-09-08（Google Admin完整Cloud Identity／Workspace生命週期＋OrgMaster零provider write／exact link／alias login continuity／stale read guard／hybrid read sync；前次含Jenfu Platform `system_admin` exact privileged-principal治理、account taxonomy與`040-ID1` one-time direct UUIDv7 rekey）
 決策來源：使用者確認「各系統權限細節應由該系統設定，OrgMaster 只負責分配角色」
 適用範圍：DEV-027、DEV-035、DEV-037、DEV-040 與後續 OrgMaster／外部應用權限串接
 取代：`ai-doc/adr/ADR-004-authorization-approval-policy-boundary.md` 的外部應用角色／權限／審核政策權威條款
@@ -46,6 +46,59 @@
 7. 新Employee canonical ID目標為OrgMaster建立時一次產生的UUIDv7、不可變且不含姓名／部門／員編語意。既有semantic IDs的遷移方式已由同日`040-ID1 One-time Rekey Amendment`取代；production identity links只可指向完成直接rekey後的UUIDv7 Employee ID。
 
 本amendment不改變`13B`「cross-app override capability永久存在」的決策；它新增的是誰可行使該capability及如何隔離personas。本輪不建立／停用帳號、不改Employee資料、不發布角色、不部署。
+
+## 2026-09-08 Cloud Identity Baseline and Workspace Entitlement Amendment
+
+分類：`Human Confirmed / RD Implementation Ready / Correction Review 2026-09-14 / RD Not Started / Intentional Replacement / Documents Only / Google Admin Full Identity Lifecycle / OrgMaster Zero Provider Writes / Production Gated`
+
+### Context
+
+2026-09-01 Account Identity Amendment已確立一人一個公司managed identity，但把Google Workspace與Cloud Identity描述成依工作需要配置的兩種帳號型態。當員工轉職、離職或復職時，這個語意容易被實作成帳號升級／降級、重建、改綁或第二principal，增加資料交接、識別連續性與稽核風險。
+
+Google的授權模型允許同一managed user同時具有Cloud Identity Free與Google Workspace授權；移除使用者的Workspace授權後，免費Cloud Identity仍可保留。Workspace因此應被視為同一principal上的服務授權，而不是另一個員工帳號。移除Workspace授權可能造成資料損失，所以授權生命週期不能等同Employee或Position生命週期。
+
+後續引導決策`1A／2A／3A`確認Workspace操作及初次Cloud Identity managed user／credential皆屬Google Admin；再以`4A／5A／6A`把既有principal的rename、suspend、reactivate、session與password recovery也全部外移，並固定OrgMaster只接受精確username初次link、以唯讀mismatch收斂員編改名。Round 13 `7A／8A／9A`進一步固定改名過渡期的新員編登入連續性、stale唯讀資料不單獨中斷既有合法存取，以及週期、事件與人工重新整理共用單一同步管線。OrgMaster只管理Employee、Jenfu應用角色／存取、Employee↔principal link與audit，並透過server-side最小read scope同步外部狀態。這是對初版amendment及DEV-047舊identity／license／lifecycle intents的Intentional Replacement，不改變Cloud Identity固定身分模型。
+
+### Options considered
+
+1. **維持Cloud Identity／Workspace兩種帳號型態**：延續既有選擇器，但會保留轉職時換帳號、改綁與雙principal誤用風險。
+2. **全員只用Cloud Identity，完全排除Workspace**：身分最單純，但需要公司Gmail、Calendar或完整Workspace服務的人員無法使用，未來彈性低。
+3. **全員使用Cloud Identity基礎，Workspace作同一principal選配授權**：身分永久且單一，服務按需求增減，兼顧成本、資料治理與未來彈性。
+
+### Decision
+
+採Option 3，並取代2026-09-01 Account Identity Amendment第1點中「依需要配置Google Workspace或Cloud Identity帳號」的語意：
+
+1. 每位Employee最多一個`human_daily_managed`公司日常身分，固定以Cloud Identity作基礎；`JFS####`與`jfs####@jenfu.com.tw`只是受治理的Employee／登入alias。外部永久關係拆為Google Directory customer＋user ID與Firebase verified issuer＋UID兩個穩定鍵，由受治理bridge綁定；Employee ID、兩種外部ID、JFS與Email不得混用。
+2. Google Workspace不是帳號型態，而是既有principal上的可選服務授權。新增／移除授權不得建立第二個daily principal、替換帳號、解除Employee關係或改寫歷史actor。
+3. 身分狀態與Workspace授權狀態必須分軸治理。Employee／principal可以unlinked、awaiting first login、active、inactive或unknown；Workspace只作server-side自動同步的外部唯讀投影，至少區分未啟用、已啟用與結果未知，並帶來源、principal key、觀察時間及`fresh／stale／unknown`。管理者手動值不得成為權威，任一軸失敗不得偽造另一軸成功。
+4. Position、部門、職務或Employee狀態改變最多顯示Google Admin待辦，不得在OrgMaster直接新增、移除、核准或阻擋Workspace，也不得suspend／reactivate principal或撤銷／復原Google session。Employee active→inactive後OrgMaster立即撤銷自身及Jenfu應用可控制的角色／存取；外部仍active時只顯示`identity_lifecycle_mismatch`，不回滾Employee。
+5. Workspace license新增／移除及其Gmail、Calendar、Drive、storage、ownership、sharing、資料交接、匯出、留存、承接責任、核准與操作稽核全部由Google Admin／Workspace管理。OrgMaster不建立license intent、資料案件、責任欄位或fail-closed移除工作流，也不保存Workspace write credential／scope；外部變更只在成功readback後更新唯讀投影。
+6. 現有Workspace使用者導入新模型時保留同一`issuer + subject`、username與Employee mapping，只補齊Cloud Identity基礎與Workspace entitlement投影；不得刪除再建立或以新principal模擬降級。
+7. Cloud Identity managed user、invite、credential、password、rename、suspend、reactivate、session及Workspace license／資料mutation全部由Google Admin／identity provider持有。OrgMaster擁有Employee、Jenfu應用角色／存取、Employee↔identity mapping與link audit，只能以server-side read-only Directory search取得候選，經具權限者人工確認Directory stable key；Browser與workflow domain不得取得provider credential或建立任何write intent／API／worker。
+8. 初次連結只接受provider username精確等於current `lower(employeeNumber)@jenfu.com.tw`的唯一managed candidate；不相符、找不到、多候選或已綁他人一律拒絕並導向Google Admin修正，不提供legacy／migration例外。employeeNumber後續可先在OrgMaster更正，外部username尚未改名時顯示`identity_alias_mismatch`；只有唯讀readback精確相符才清除，不建立rename intent或回滾Employee。
+9. 「永久公司身分」表示principal跨職務與同一自然人復職持續且永不轉讓，不表示登入alias不可行政更正，也不代表Google帳號永不被停用。復職只恢復原Employee與current-position角色，外部帳號由Google Admin另行重新啟用，OrgMaster不建立reactivation intent或恢復舊session。
+10. `identity_alias_mismatch`期間OrgMaster正常登入UI／resolver只接受新current `JFS####`短碼。Resolver必須先取得唯一active Employee，再沿既有`human_daily_managed` link解析同一immutable principal，並使用最後成功驗證的Google username完成identity-provider sign-in；舊`JFS####`在OrgMaster resolver保持tombstoned且generic拒絕。這不表示OrgMaster能控制Google／Firebase provider直接輸入舊Email或provider保留alias的行為。只有新username精確readback才更新投影並清除mismatch，principal與link不變。
+11. freshness `stale`或最近attempt error不是authentication／authorization事實；最後可信Directory state為`present`時，不可只因read adapter outage中斷live IdP＋active Employee＋effective role皆成立的既有合法使用者。never-observed `unknown`不admit；可信`suspended／archived／missing`、Employee inactive或role revoke立即fail closed。stale／unknown不得建立新link、清除alias／lifecycle mismatch，或宣稱Google操作成功。
+12. 外部唯讀同步採三種觸發：週期背景同步、link／employeeNumber／active-status commit後立即enqueue refresh，以及具權管理者由Employee明細發起「重新整理狀態」。三者共用同一server-side read-only adapter／projector與dedup、rate limit、backoff、freshness、telemetry規則；Browser永不直接呼叫Google。事件refresh失敗不回滾Employee commit，人工refresh request成功不等於provider狀態成功。現行工程參數由DEV-047直接spec固定，production quota／SLO不符時須回契約調整。
+13. 初次人工確認只建立`directory_linked_pending_auth`，保存configured customer＋Google Directory `user.id`；不得預先捏造Firebase UID。首次live Google／Firebase登入時，以verified Firebase token、Google provider、verified Email及live Directory readback證明同一Directory user後，才原子綁定Firebase issuer＋UID並轉`active`。不得假設Firebase `sub`等於Directory `user.id`，也不得用Email作永久join key。
+14. Google Directory candidate search只使用`admin.directory.user.readonly`。因`users.get`可由primary Email、alias或ID命中，初次link必須額外驗證回傳`primaryEmail`精確等於current衍生username；alias命中不得接受。
+15. Google Workspace Licensing API公開scope為具license write能力的`apps.licensing`，不符合OrgMaster zero-provider-write最小權限邊界。本階段禁止取得或使用，Workspace entitlement只顯示`unavailable_by_policy／unknown`；不得以mailbox或其他間接欄位推測licensed／unlicensed。
+16. DEV-047直接spec維持`RD Implementation Ready / RD Not Started`；2026-09-14 correction補齊登入client、pre-session router、永久reservation、current Employee producer、transaction fence與sync收斂。Registry只以Employee ID作extension key，不複製姓名／部門／職位／status；managed daily單一writer，legacy／person-specific privileged身分保留。文件Ready不代表source或獨立QC完成。
+17. Managed admission由DB gate控制，不由Node flag決定。所有identity／Employee／governance／gate／support writer先鎖同一admission singleton，鎖內重讀authority；取代可能漏new bind／catalog phantom的per-key advisory方案。Owned legacy producer直接取active V3 policy identityLinks並join current Employee，不經舊snapshot-hash filtered view。Employee停用／移除同transaction失效所有前一可見legacy或managed principal，不能以managed gate=false略過legacy；Directory／quarantine／gate disable只處理managed。未完成receipt前不readmit。
+18. Multi-app invalidation沿用owned core outbox及不變V1 wrappers，不修改舊access_governance object。Affected apps取old active與proposed active catalog聯集；同commit移除app仍必須送其event。Support可先以inactive row attestation，再由fenced writer啟用；所有新active app須有verified support，012初始legacy support也須在新writer服務前備妥。Receipt需證明mapping已移除時仍能更新原session epoch，不能只認function存在／零affected結果；跨repo不相容交由owner另立versioned contract。
+19. Runtime不得保留繞過identity fence的artifact writer；`012`撤銷舊unfenced writer EXECUTE，只授權新fenced writer。Contract schema／manifest hash保持既有V1，managed producer以額外fixture證明相容。Production live managed mapping readback只能在DB gate開啟後進行，失敗時先關DB gate並完成invalidation，再回復traffic。
+20. Candidate維持opaque capability；Firebase pair永久歸屬改由append-only table保存，seed現存draft／published歷史及managed records，後續writer封存old＋proposed pair，移除草稿不釋放。未保留的pre-migration歷史不虛稱可重建。Sync只一條管線：manual60秒dedup、domain rerun、最多5次lease attempts及跨instances共用Directory read budget；exact schema、routine及驗收只在DEV-047第11／16／20節維護。一般runtime無unlink／rebind／delete；release quarantine不影響Google帳號。
+
+### Consequences and compatibility
+
+- DEV-047流程取消Workspace／Cloud Identity帳號類型選擇器及「建立公司帳號」，改為Google Admin先建立、Employee明細只精確搜尋並「連結公司帳號」。找不到或username不精確相符時只提供Google Admin導引，不建立user或顯示credential。身分／Workspace區塊顯示自動唯讀狀態、來源時間與alias／lifecycle mismatch，並可以「重新整理狀態」要求共用同步管線重讀；沒有任何provider mutation入口或provider-write audit，link與refresh本身仍須留下OrgMaster audit／telemetry。
+- DEV-045的Employee↔principal one-to-many投影、獨立`human_privileged`身分、identity-link single-writer、冪等與reconciliation基線保持有效；其local invite/create provider只作歷史／測試證據，不得升格為production Cloud Identity create。`human_daily_managed`新增singleton、Cloud Identity固定基礎及Google Admin-first語意，不回開DEV-045 local完成證據。
+- 2026-09-01 amendment的person-specific privileged principal、shared mailbox非Employee principal、Employee canonical ID及個人Gmail例外政策均不變。
+- Production activation仍須確認`jenfu.com.tw`控制權、Google Admin主責／備援operational owner、Directory read-only credential custody、live sandbox、provider quota／freshness SLO、每個active application invalidation support及production post-gate mapping／consumer readback；未完成I0～I6 evidence及release gate不得連線正式目錄、套用production migration或寫入production mapping。Workspace licensing readback在找到真正不具write capability的受治理來源前維持不可用；任何Cloud Identity／Workspace write能力皆不是OrgMaster依賴或交付。
+- 直接契約：[DEV-047](../specs/DEV-047-permanent-managed-identity-link-and-login-alias.md)。外部依據：[Directory User](https://developers.google.com/workspace/admin/directory/reference/rest/v1/users)、[users.get](https://developers.google.com/workspace/admin/directory/reference/rest/v1/users/get)、[Directory scopes](https://developers.google.com/workspace/admin/directory/v1/guides/authorizing)、[Licensing resource](https://developers.google.com/workspace/admin/licensing/reference/rest/v1/licenseAssignments)、[Firebase token verification](https://firebase.google.com/docs/auth/admin/verify-id-tokens)、[Google OIDC claims](https://developers.google.com/identity/openid-connect/reference)。
+
+2026-09-14 correction只修正上述工程契約並同步DEV-047，未變更Human Decisions、產品程式、schema或production。Direct spec是API／physical schema／鎖序／UI／test的唯一詳細authority；本ADR只保留架構決策，避免重複規格漂移。RD依I0～I6實作及驗證後才可判Implementation Complete；production另需授權與evidence。
 
 ## 2026-09-01 `040-ID1` One-time Rekey Amendment
 

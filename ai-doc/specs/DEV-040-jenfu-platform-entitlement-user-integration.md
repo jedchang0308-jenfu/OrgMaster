@@ -1,11 +1,11 @@
 # DEV-040：鉦富平台角色生效與 AI-PDM 既有使用者整合
 
-文件成熟度：`RD Contract Ready；040-R2 = Implementation Complete / DEV-012 S1B-21 Local Owner QC PASS / S2 Gated；040-ID1A／040-ID1B = Local Implementation Complete / Targeted QA-QC PASS；JMS-PLATFORM-005 OrgMaster slice = 005-S0～S4B Local-Isolated PASS / 005-S5 Local Targeted PASS；JMS-PLATFORM-008 OrgMaster slice = Local S0～S3＋C1 Implemented / Targeted QA-QC PASS / Production Release Gated；JMS-PLATFORM-009 OrgMaster slice = 009-S0～S4 Local-Isolated Complete / Targeted QA-QC PASS / 009-R1 Release Gate Required / Production Release Gated；DEV-040 principal admission projection = Candidate Verified；DEV-004 = 004-S0～S5 Local PASS；DEV-006 persistence = Production-Bound App Boundary PASS / Production Switch Blocked`
-狀態：`040-R2 continuous production release owner slice`已依Platform DEV-012 §23完成owner source、IaC、workflow、runner、abort controller與本機驗證；其餘既有local／isolated完成證據不變。040-R2完成S1B source與owner QC後只解鎖DEV-012 S2，不代表Billing／quota、正式migration、candidate或traffic已完成。production human link、shared-login retirement、active policy、persistent product switch、entitlement cutover與release仍阻塞
+文件成熟度：`RD Contract Ready；040-R2 V3 = Production Level 4 Complete / R60 LIVE_VERIFIED / R78 RETAINED_LIVE；040-ID1A／040-ID1B = Local Implementation Complete / Targeted QA-QC PASS；其餘產品slice依各自DEV狀態`
+狀態：`040-R2 continuous production release owner slice`已正式完成。OrgMaster以R60 source／revision持續100% serving，R78只消費immutable terminal而未重部署；ordinary release boundary已獨立。Production human link、active policy、entitlement等產品功能仍依其各自DEV，不得誤列為040-R2／DEV-012 release尾項
 節點類型：開發點
 優先級：P0
 風險等級：High
-日期：2026-09-08
+日期：2026-09-15
 來源 ID：`USER-2026-08-30-JENFU-PLATFORM-HCS-4A-5A-6B`、`USER-2026-08-30-JENFU-PLATFORM-HCS-ROLE-RESET-CUTOVER-ADMIN-SCOPE`、`USER-2026-08-30-JENFU-PLATFORM-HCS-PRESTAGE-PILOT-LEGACY-OBSERVATION`、`USER-2026-08-30-JENFU-PLATFORM-HCS-SUPERADMIN-ZERO-TOLERANCE-OBSERVATION-WINDOW`、`USER-2026-09-01-JENFU-ACCOUNT-TAXONOMY-1B-2A-3D`、`USER-2026-09-01-DEV040-ONE-TIME-DIRECT-UUIDV7-REKEY-EXCEPTION`
 父開發點：DEV-037
 跨 repository 交付：`C:\VIBE CODING\Jenfu-Management-system\ai-doc\dev_task.md` 的 DEV-001／DEV-004～009
@@ -42,7 +42,7 @@
 - `13B / Human Confirmed`：OrgMaster 超級管理員永久具有跨 app role-management override；這是 app-scoped 管理邊界的唯一例外，一般 OrgMaster admin 仍不得跨 app。
 - `14A / Human Confirmed＋Safety Refinement`：任何P0／P1 authorization mismatch或非預期擴權／失權零容忍；session refresh pending停止下一批並由durable outbox重試，只有protected request仍出現錯誤授權才rollback，不回滾已提交撤權。
 - `15A / Human Confirmed`：legacy role 自最後一批通過起唯讀保留 30 日或兩個 production release cycle，取較晚者；雙方 owner 簽核 reconciliation 且 rollback dependency 解除後才移除。
-- `1B / Human Confirmed`：互動使用者一人一個公司managed identity；需公司郵件者使用Google Workspace，只需內部系統者可用Cloud Identity Free。個人Gmail僅作有期限例外，員工編號只可作登入alias。
+- `1B / Superseded by ADR-007 2026-09-08 Amendment`：互動使用者仍是一人一個公司managed identity，但不再把Google Workspace／Cloud Identity當兩種帳號型態；所有`human_daily_managed`固定使用Cloud Identity基礎，Workspace只作同一principal的選配服務授權。個人Gmail僅作有期限例外，員工編號只可作登入alias。
 - `2A / Human Confirmed`：移除泛用／共用管理員帳號；一般管理角色直接指派employee。`info@`／`sales@`等共用信箱退出平台登入、principal mapping與role assignment，mail用途可保留。
 - `3D / Human Confirmed`：一般app-scoped管理與組織資料維護使用日常個人identity＋step-up；基礎設施、production switch、OrgMaster super-admin／cross-app override與授予管理能力使用同一employee下person-specific privileged identity。
 - `Position-to-Role / Human Confirmed`：採`User → Position → Application Role → Permission`，不採`Position = Role`；Position只產生角色建議，經app-scoped role administrator發布後才形成有效assignment。`#效用理論`
@@ -191,7 +191,7 @@ AI-PDM runtime role只能取得本 app 的 contract read 權限；不能讀 OrgM
 1. `13B`：OrgMaster 超級管理員永久具跨 app override；不採 time-limited activation 或雙人取用。
 2. `14A`：P0／P1授權mismatch零容忍；session refresh pending停止下一批並由outbox重試，只有錯誤授權才rollback。
 3. `15A`：legacy role 唯讀保留 30 日或兩個 production release cycle（取較晚者），由雙方 owner 簽核 reconciliation 且解除 rollback dependency 後移除。
-4. `1B`：互動使用者採一人一個公司managed identity；Workspace與Cloud Identity依是否需要mail分級，個人Gmail只作有期限例外。
+4. `1B`經ADR-007 2026-09-08 amendment取代：互動使用者採一人一個Cloud Identity基礎managed identity；Workspace依服務需要對同一principal配置授權，不形成第二帳號或改綁。個人Gmail只作有期限例外。
 5. `2A`：共用／泛用管理帳號退出平台identity與role model；`info@`採非破壞退場，mail resource可保留。
 6. `3D`：一般管理用日常identity＋step-up，高權限用同一employee下獨立person-specific privileged identity。
 
@@ -239,8 +239,8 @@ OrgMaster server必須區分以下能力，UI visibility不能代替server gate�
 
 - Employee identity primary entry（DEV-043 amendment）：Employee仍是人員唯一真相；由正常頂部「員工」進入清單，選定Employee後在相鄰明細「登入身分」查看與管理Employee ↔ identity relation，不新增平行「帳號」主資料module。
 - Global governance entry（DEV-043 amendment）：沿用正常頂部／工具列的「角色指派治理」；既有`identity` route key保留但可見名稱改為「帳號治理」，只作跨Employee檢視、異常定位與open-or-focus Employee明細。其後依序為應用角色目錄、角色指派、角色代理、發布版本、稽核、指派檢查。
-- Provisioning boundary（DEV-043 amendment）：OrgMaster UI只管理identity relation與狀態；建立、邀請、刪除、停用或搜尋Firebase／Google Workspace／Cloud Identity帳號仍由共同IAM／provider流程與production release gate負責，不得由Employee明細或帳號治理建立第二份credential authority。
-- Provisioning orchestration successor（DEV-045 RD Implementation Contract／2026-09-04）：Employee明細的「設定登入帳號」可發起邀請或既有帳號連結，但Browser只提交Employee上下文與非敏感選擇，實際帳號／邀請／驗證由server-side BFF透過provider port執行。投影與UI必須保留本契約的一Employee對多個person-specific identities，不能壓成單一帳號；account type仍由OrgMaster governance admission判定，provider classification不得成為第二權威。DEV-045顯式啟用後，account-enrollment API是identity link mutation的唯一產品HTTP入口，舊current／generic governance identity HTTP mutations fail closed，但server-internal canonical governance command仍共用同一store boundary；Current Phase production server flag預設false且沒有environment activation，不得在正式release gate前先替換production入口。DEV-045已固定exact local ledger、server port／service／route、permission、Employee UI與S0→S4 Gate，Current Phase只可執行local／isolated enrollment foundation；正式共同IAM／Firebase provisioning、Email、production persistence與release仍由本契約的production gate控制。這是UI與治理編排責任的相容細化與intentional successor surface replacement，不表示OrgMaster成為credential authority，也不得以local deterministic adapter宣稱正式帳號或邀請已成立。直接契約：[DEV-045](DEV-045-employee-account-enrollment.md)。
+- Provisioning boundary（DEV-043 amendment；DEV-047 refinement）：OrgMaster UI只管理identity relation、Employee／Jenfu應用權限與唯讀狀態；Cloud Identity／Workspace建立、邀請、credential、rename、delete／suspend、reactivate、session及所有服務／資料write皆由Google Admin／identity provider負責。OrgMaster唯一外部能力是server-side最小權限read-only search／sync，不得由Employee明細、帳號治理或共同IAM adapter形成第二份credential或provider lifecycle authority。
+- Identity-link successor（DEV-047，2026-09-14 correction；RD Implementation Ready／RD Not Started）：Google Admin擁有全部外部帳號生命週期，OrgMaster零provider write。Employee→Directory customer／user→verified Firebase issuer／UID採永久雙鍵bridge，JFS只作alias。Current Employee投影、legacy／managed失效、append-only reservation、singleton fence、old＋new affected-app outbox與JFS→Google登入UI以[DEV-047](DEV-047-permanent-managed-identity-link-and-login-alias.md)第11、16～23節為唯一工程契約；[ADR-007](../adr/ADR-007-external-role-catalog-assignment-boundary.md)治理責任邊界，[DEV-045](DEV-045-employee-account-enrollment.md)保留local歷史證據。各consumer必須另證明mapping移除後仍能失效既有session epoch；未完成不得啟用production。012屬未實作的DEV-047 forward migration，不加入當前DEV-040 R2的001～011 release runner；本段不變更其release authority、ledger或部署狀態。
 - Normal actor：只看見有權管理的application；role由valid catalog選取，不接受自由輸入external role ID／code。
 - Position assistant：顯示目前Position、建議Role、已發布Role、manual Role與需複核原因；接受建議只更新draft，不使用「已授權」文案。
 - Position impact：mapping變更前顯示受影響人數、Role差異與來源；多Position scope衝突不得靜默取聯集。
@@ -1266,3 +1266,45 @@ V2完成最多標`040-R2 Implementation Complete / S1B-21 PASS / S2 Gated`；fre
 OrgMaster production transport已對齊官方regional Cloud Build operation、Artifact Analysis `v1beta1 exportSBOM`與`discoveryOccurrenceId`、Cloud Run exact service/revision URI及GCS generation-bound immutable publication。Cloud Run service必須`reconciling=false`、terminal success且`observedGeneration=generation`；candidate revision缺Ready success或image digest不合即FAIL。Owner workflow維持唯一`releaseCapsuleRef`、九階段、Firebase refresh-token smoke、temporary tag cleanup與own-only rollback。
 
 首次cohort由Platform coordinator依`OrgMaster → AI-PDM → Platform`首先dispatchOrgMaster exact run；coordinator只讀OrgMaster terminal，OrgMaster deployer仍無sibling權限。OrgMaster APP_INFRA_A/B、controller及migration-runner digests、numeric Secret versions、WIF／GitHub production environment與S2 provider receipts必須在首次dispatch前完成；日常OrgMaster release不讀sibling source、state或build。Local owner PASS最多解鎖S2，不能冒充production readiness或LIVE_VERIFIED；DEV-047仍不在本次scope。
+
+## 27. `040-R2 CONTINUOUS_NO_DWELL_V3_DIRECT_RUN_APP` architecture-final amendment（2026-09-09）
+
+分類：`Human Confirmed / Architecture Finalized / RD Tech Lead PASS / V3 Implementation Complete / S1B-21 Owner PASS / DEV-012 S1C 8 of 8 PASS / S2 Unlocked, Not Started / Production NOT_RUN`。本節前向取代§24～26中與自訂網域、shared edge、九階段或缺少`entrypoint` stage衝突的現行指令；§24～26保留為V1／V2歷史。上游唯一架構authority為[Platform DEV-012 §26](../../../Jenfu-Platform/ai-doc/specs/DEV-012-three-system-continuous-release-and-boundary-closure.md)，V3 contract SHA-256=`d88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05`。
+
+### 27.1 真正問題、根因與最小架構
+
+- 真正問題不是替`org.jenfu.com.tw`換另一個自訂網域，而是解除production entry對第三方代管DNS、shared external Load Balancer與Firebase Hosting的控制依賴，同時不犧牲既有app-level identity、session、CSRF、permission、資料、rollback與稽核邊界。
+- 最短因果鏈為：canonical入口依賴非app owner控制的edge → 三app release必須等待共同DNS／edge authority → 無法各自freeze、部署與回復 → 與「三個release可獨立、首次可連續上線」的目標衝突。移除current serving path的edge依賴即可解除根因；另建新網域、gateway或中央endpoint service只會重建相同耦合，因此不採用。
+- 最小架構固定使用provider readback所得`https://orgmaster-prod-9536592944.asia-east1.run.app`作production canonical origin。OrgMaster owner profile是endpoint與entry-policy唯一deploy authority；Platform coordinator只驗profile hash並join owner receipts，不得擁有OrgMaster endpoint write權或重新定義canonical欄位。
+- Cloud Run current entry policy固定`ingress=INGRESS_TRAFFIC_ALL`、`defaultUriDisabled=false`、`invokerIamDisabled=true`。這只解除Cloud Run基礎設施層登入攔截；產品層仍由OrgMaster既有Firebase／session／CSRF／permission gate保護，未授權API不得因公開`run.app`而可用。
+
+### 27.2 Owner flow、資料與控制邊界
+
+- V3 profile固定為`config/release/dev040-orgmaster-independent-production-v3.json`，profile SHA-256=`d374fc29dc456c03bc9b73cdc25c132d888cbf1a065b40456e7489fd2b261f69`；V2 profile `config/release/dev040-orgmaster-independent-production.json`維持byte-immutable歷史，不得原地改寫。
+- 唯一輸入仍為immutable `releaseCapsuleRef`；十階段固定`prepare → build → migrate → candidate → entrypoint → verify → decision → activate → canonical → finalize`。每一階段只接受上一階段的hash-bound receipt，禁止run中真人GO、觀察等待、stage／target override、sibling checkout或中央代寫owner結果。
+- Candidate只建立inactive exact revision與單一temporary tag，並在該revision注入唯一完整origin `ORGMASTER_RELEASE_CANDIDATE_ORIGIN`。不得接受wildcard、legacy hash-host、任意subdomain、port、userinfo、path或由request header猜測的origin。
+- `entrypoint`只能用fresh etag PATCH exact mask `ingress,defaultUriDisabled,invokerIamDisabled`，body只含三個對應欄位；前後template與traffic必須byte-equivalent。readback無法證明exact state、HTTP 412、provider timeout或operation unknown均fail closed，不得blind retry。
+- 正式migration維持001～011 forward-only、exact checksum／ledger／schema／ACL readback與`orgmaster_core／orgmaster_contract` ownership；entrypoint變更不增加migration權限，也不允許runtime取得owner、DDL或migrator能力。
+
+### 27.3 Identity、失敗恢復與保留技術債
+
+- Platform在S2只可保留Identity provider既有必要authorized domains並加入三個exact canonical hosts；不得加入candidate host、wildcard或`jenfu.com.tw`，不得修改provider-owned Firebase `authDomain`。TOTP不在DEV-012／040-R2 scope，沒有TOTP欄位、secret、MFA enrollment或release prerequisite。
+- 任何candidate後失敗固定依`own traffic rollback → candidate tag cleanup → entrypoint baseline restore`恢復；每一步都用fresh readback／etag、只碰`orgmaster-prod`。若candidate已意外承接traffic，先還原previous exact revision；若entrypoint原本已是direct state，restore為verified no-op，不反向關閉canonical URL。
+- Firebase Hosting、shared Load Balancer、certificate與既有DNS均標示`RETAINED_UNUSED_EDGE`：不在serving、rollback或ordinary release依賴內，本次也不刪除、不改DNS、不解除Billing。這是刻意保留且隔離的短期技術債；移除觸發條件是三app各自完成production canonical smoke、rollback dependency解除並通過另一個exact-resource retirement gate，驗證方式是provider inventory、zero traffic／reference與Billing impact readback。
+- `DEV-047`、帳號生命週期、TOTP、product UI、existing migrations及staging profile均no-touch；V3只收斂release entry與owner責任，沒有新增service、gateway、資料表或第二套identity authority。
+
+### 27.4 架構 Gate、證據與下一關
+
+RD技術主管結論：`PASS / Architecture Finalized / P0=0 / P1=0`。真正問題、owner邊界、十階段控制流、candidate origin、entrypoint exact mutation、失敗恢復、安全責任與retained-edge債務均有current implementation及可執行oracle；不需要新增OrgMaster ADR，因跨repo架構決策已由Platform DEV-012 §26及既有Platform ADR統一治理，本節只固定app-owner executable amendment。
+
+本機證據為Platform `output/dev-012/s1c/2026-09-09T070233-600Z/qc-report.json`，SHA-256=`30dc6014c516a024a26556712881f219d1cdac84d4e7acce595eecced181a4ae`；固定結果S1A=`32／32`、S1B=`24／24`、S1C=`8／8`，三repo DB boundary／typecheck或build／`git diff --check`全PASS，provider／database／traffic／credential mutation皆0、runtime residue=0、`releaseAuthority=false`。此證據完成架構與source implementation Gate，不是正式上線證據。
+
+下一關唯一為DEV-012 `012-S2`：在同一fresh authorized operator session中取得Billing link count／limit、budget與B01～B10 numeric quota、Identity authorized-domain baseline、APP_INFRA_A/B complete-set plans、immutable controller／migration-runner digests、numeric Secret versions及provider-readback receipts。任一UNKNOWN、wrong target、missing address、update／delete／replace、budget headroom不足或quota不符即停止，不得dispatch S3；S2完成後才可依cohort order進入production release。
+
+## 28. R60正式結果與R78 retained-live closure（2026-09-15）
+
+OrgMaster已在R60由owner workflow正式完成，source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`。Provider final readback為Ready generation 72，ingress=`all`、default URL enabled、`invokerIamDisabled=true`；root與`/api/auth/mode`均HTTP 200。
+
+`DEV012-REL-20260915-R78`沒有重建OrgMaster intent或dispatch owner。Coordinator只以R60 immutable terminal加入cohort，OrgMaster disposition=`RETAINED_LIVE`，並驗其source、artifact、revision、traffic、entry policy與canonical仍相容；AI-PDM／Platform後續成功或失敗均不得回滾OrgMaster。
+
+自本結果起，ordinary OrgMaster release只凍結本repo並操作own source、artifact、migration、service、Secret、entrypoint、traffic與rollback；不讀取或重部署AI-PDM／Platform。Shared foundation只以verified receipt hash作依賴。DEV-047、TOTP與產品身分生命週期仍是各自獨立scope；`RETAINED_UNUSED_EDGE`與legacy／Billing retirement若日後執行，須另立exact-resource gate，不構成040-R2或DEV-012殘留。本文為post-release治理文件，不改R60 deployed provenance或要求重新部署。

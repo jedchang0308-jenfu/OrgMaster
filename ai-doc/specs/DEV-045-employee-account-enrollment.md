@@ -494,19 +494,21 @@ Provider raw error不得直出。可重試性、使用者文案與audit reason�
 
 ## 14. Deferred Scope Audit
 
-### Future Phase Capsule：Production provisioning
+### Future Phase Capsule：Production identity linking
 
-- 目的：以Jenfu Platform共同IAM／provider真正建立或找到managed account、寄送邀請並回傳verified principal。
-- 邊界：OrgMaster維持orchestrator與mapping authority；provider維持credential authority。
-- 依賴：共同IAM provisioning owner、Firebase／Workspace account policy、Email delivery、production persistence、callback／polling與data retention。
-- 驗收方向：真實邀請送達、接受後登入、唯一mapping、MFA／session、reconciliation、rollback與audit。
-- Re-entry trigger：共同IAM owner與正式provider／mail能力確認，並明確進入production release gate。
+- 目的：Google Admin先建立Cloud Identity managed user並交付credential；OrgMaster從Employee上下文搜尋唯一候選、人工確認並回傳verified principal mapping。
+- 邊界：Google Admin／identity provider維持initial provisioning與credential authority；OrgMaster只維持Employee↔principal mapping authority、link audit及唯讀狀態投影，不執行production invite／create或password流程。
+- 依賴：DEV-047維持`RD Implementation Ready / RD Not Started / Correction Review 2026-09-14`；直接spec第11、16～23節統一管理雙鍵bridge、JFS→Google登入、current Employee producer、append-only reservation、singleton fence、legacy／managed invalidation及sync工程規則。Production另需Google／Firebase tenant與provider設定、DWD唯讀credential、owner／live sandbox、各app的失效support receipt及012／release授權。Workspace licensing write-capable scope與任何provider write均不在依賴內。
+- 驗收方向：Google Admin既有使用者只有在primary Email精確等於current`lower(employeeNumber)@jenfu.com.tw`時，才可由正常Employee入口搜尋並人工確認Directory customer＋user ID；首次live Google／Firebase登入經Directory readback後再原子綁定Firebase issuer＋UID。alias mismatch期間只有OrgMaster resolver接受新current`JFS####`並沿同一bridge與last verified primary Email登入，且current OrgMaster role有效；provider舊Email或其他app role行為不屬OrgMaster登入保證。只有last-trusted-present的stale observation可在live IdP、current active Employee與effective role皆有效時維持既有存取；known-negative在前一mapping可見時立即移除legacy／managed admission並enqueue verified app central-epoch invalidation，receipt完成前不readmit。Refresh另驗證sliding dedup、expired-lease reclaim、old-sequence rejection與retention安全；所有provider write call為0。
+- Re-entry trigger：RD依DEV-047 direct spec完成I0～I6 source與local／mock／isolated PostgreSQL／browser evidence後，才判定`RD Implementation Complete`；production release gate另行處理。
+- 2026-09-14 successor review update：Round 1～13產品決策不變；DEV-047新增A17～A22覆蓋登入、永久pair保留、legacy current authority、失效／併發與sync／recovery，全部NOT_RUN。DEV-045 local invite/create不升格production，local完成狀態與證據不回開；直接契約為[DEV-047](DEV-047-permanent-managed-identity-link-and-login-alias.md)，架構由ADR-007治理。
 
-### Future Phase Capsule：Joiner／Mover／Leaver
+### Future Phase Capsule：Joiner／Mover／Leaver（外部生命週期由DEV-047 Round 12取代）
 
-- 目的：Employee inactive後協調帳號停用、session／auth epoch撤銷及跨app entitlement失效。
-- 邊界：OrgMaster發出生命週期意圖；共同IAM與各app執行各自停用與enforcement。
-- Re-entry trigger：production account provisioning與跨app revoke receipt契約完成。
+- 目的：Employee active／inactive與職務異動後，確保OrgMaster及Jenfu應用角色／存取依current事實生效，並讓Google外部帳號差異可見且可交由Google Admin處理。
+- 邊界：OrgMaster只執行自身Employee與跨app entitlement治理，外部Cloud Identity／Workspace rename、suspend、reactivate、session及資料操作全部由Google Admin；雙方不以provider intent串接，只以唯讀狀態、mismatch與操作導引協作。
+- Re-entry trigger：跨app revoke receipt、唯讀external lifecycle projection與mismatch告警契約準備進入實作。
+- 2026-09-08 Round 12 replacement：DEV-047 `4A`有意取代2026-09-07 partial re-entry。current Employee active→inactive後不得建立IAM suspension／session revocation intent；OrgMaster立即撤銷自己與Jenfu應用可控制的有效角色／存取，外部仍active時顯示`identity_lifecycle_mismatch`。復職只恢復原Employee並重算current-position角色，Google帳號由Google Admin另行啟用。DEV-045 local完成狀態不回開。
 
 ### Future Phase Capsule：Global account governance
 

@@ -1,11 +1,12 @@
 # OrgMaster 開發任務
 
-> **2026-09-08 DEV-040 `040-R2` continuous production release（current release authority）**：已依Platform
-> DEV-012 §25完成owner direct-doc-first；contract SHA-256=`47eb972c48549da73ca135509e99bdc8ae4463e87b81785abe8d6cfd8f54b95f`、
-> §25～EOF SHA-256=`92fd6c7dfdfafee4b438c0ee9ce731d7463da46a7691f05061c54d58cb127507`。狀態=
-> `Implementation Complete / S1B-21 LOCAL_CONTRACT PASS / DEV-012 S2 Gated`。Production profile、001～011
-> manifest、exact-target guard、nine-stage workflow、IaC與abort controller已完成；下一步只做fresh S2 provider
-> 前置，不得修改／完成DEV-047、把staging profile改作production或把本機PASS冒充DB／traffic證據。
+> **2026-09-15 DEV-040／DEV-012 R78 closure（current release authority）**：OrgMaster維持R60已驗證正式版本，不因R78重部署：frozen source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`。R78 cohort以immutable R60 terminal將OrgMaster標記`RETAINED_LIVE`，root與auth-mode provider smoke PASS，未建立新intent、未dispatch、未修改traffic或rollback。DEV-040 R2 production release slice=`Production Level 4 Complete`；後續ordinary release只由本repo管理own source／artifact／migration／service／Secret／traffic／rollback，不需AI-PDM或Platform checkout。DEV-047仍是合法獨立未來產品範圍，不屬DEV-040／012殘留；edge／legacy retirement與Billing unlink另案處理。本段為post-release治理文件，不改R60 deployed source。
+
+> **2026-09-09 DEV-040 `040-R2` continuous V3 production release（current release authority）**：已依Platform
+> DEV-012 §26完成owner direct implementation；contract SHA-256=`d88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05`。
+> 狀態=`Architecture Finalized / RD Tech Lead PASS / P0=0 / P1=0 / V3 Implementation Complete / S1B-21 Owner PASS / DEV-012 S1C 8／8 PASS / S2 Unlocked, Not Started`。
+> V3 profile、001～011 manifest、exact-target guard、ten-stage workflow、entrypoint／rollback、IaC與abort controller已完成；
+> 下一步只做fresh S2 provider前置，不得修改／完成DEV-047、把staging profile改作production或把本機PASS冒充DB／traffic證據。
 
 > **2026-09-05 Platform DEV-010 physical-topology successor（現行）**：OrgMaster local product與DEV-040證據保留；三系統共用資料庫的neutral target、`orgmaster_core/orgmaster_contract` placement、roles與producer／consumer migration dependency contract由Platform [DEV-010 direct spec](../../Jenfu-Management-system/ai-doc/specs/DEV-010-three-system-database-consolidation-contract.md) 接管。N1A=`11 unit＋30 QC PASS`、N1B=`10／10 provider PASS`、三repo N2=`48／48 PASS`；R1E verifier role／owner views／IAM login binding／read-only executor source、R1-04唯讀candidate verifier及R1-04A guarded provider artifact producer source亦已完成。Current target=`db-custom-1-3840 / ZONAL_DEDICATED / USD 100`，不宣稱HA。OrgMaster已以exact commit `e9bf5658712b507c0f366c7206c4f9f21265b832`／tree `7b3f82c828d3123d3d5616ee116bbe18db908a50`建立local OCI `sha256:f80a8b82b8aa40418a20bb6db4e41952f167581c15938f81e341f92b9bfb8d18`；包含`dist-server/server.mjs`、`dist/`、production dependencies與`contracts/`，明確不含local `data/`，nonroot／SBOM／bounded secret scan PASS。第一次pinned npm build攔下lockfile drift後，已用同一builder版本修正lock metadata，沒有放寬成`npm install`。Provider producer unit `6／6`與focused QC PASS，但current 8項foundation blocker使它在provider auth前停止；因此`R1-04A Local Packaging＋Producer Source PASS / Provider Artifact、R1-04F-B NOT_RUN`。Container local writable fallback仍須在provider revision驗證。9項human／target／capacity blockers及R1 15案未完成前，DEV-040 production switch、Cloud build／push／deploy、authorized domain與traffic均不得執行。
 
@@ -56,9 +57,18 @@
 - 平板與全系統手機／桌面能力判定已由 DEV-033 收斂為 deterministic default-deny gate：只有至少 1024px、hover＋fine pointer 同時成立才開放 mutation，其餘先唯讀。這不取代正式 Auth、role、permission 或 server validation。
 - 本原則優先於 DEV-028、DEV-029、DEV-031 及其他既有文件中允許手機／窄 viewport 編輯的舊契約；既有測試與截圖仍是當時完成狀態的歷史證據。DEV-033 現已將同一 boundary 落實到全系統 mutation entry、command guard 與版本／工作台 UI，不得將局部舊證據反向解讀為手機可編輯。
 
-- 文件成熟度：DEV-046已達`RD Implementation Complete / Automated Gate Passed / Browser QA-QC Passed / Local Release Gate Pending`；八module共用frame、Employee-derived presentation primitives／visual tokens、selection/detail state machine、account-scoped list width、011 migration、relation typed extension、S0～S6及A1～E9均已落地，P0／P1 readiness gap=0。DEV-045已達`RD Implementation Complete / Targeted Gates Passed / Browser QC Passed / Full Regression Follow-up Open / Production Provisioning Gated`；one-to-many projection、append-only command receipts、shared identity-link policy、single-writer fence、production default-disabled activation與runtime failure isolation均已落地，P0／P1 readiness gap=0。DEV-043已達`RD Implementation Complete / RD Technical Lead Passed / Targeted Gates Passed / Browser QA-QC Passed / Full Regression Follow-up Open`，是現行local product implementation；DEV-034／038／039／041／042已整併為目前`master@c8cc16f`的完成基線，DEV-046只接管DEV-042被明確取代的list-detail行為，不回開歷史證據。DEV-033、DEV-040與Platform slices狀態以各自權威段落為準。
+- 文件成熟度：DEV-047維持`RD Implementation Ready / RD Not Started`；2026-09-14 review修正登入串接、永久pair保留、current Employee投影、legacy失效、交易fence與sync競態，新增A17～A22（NOT_RUN）。工程規則只以direct spec為權威，不把文件Ready計為產品交付完成；Google Admin仍擁有外部帳號生命週期，OrgMaster零provider write。
 
 ## 總任務清單
+
+- ○ DEV-047 [交付點] [待排／RD可實作] [P1] [RD Implementation Ready／Correction Review 2026-09-14／RD Not Started／I0～I6 Fixed／Production Gated] 員工編號公司身分連結與登入別名
+  - 摘要：Google Admin管理完整外部生命週期；OrgMaster精確連結唯一principal並自動唯讀同步。Legacy／managed admission共用current Employee與invalidation barrier；OrgMaster resolver只接受新JFS、current OrgMaster role與原principal last verified username。Refresh由sliding dedup、lease version與request sequence保護；known-negative在前一mapping可見時同commit逐verified app失效。
+  - 來源 ID：`USER-2026-09-07-EMPLOYEE-NUMBER-MANAGED-ACCOUNT-DESIGN`、`USER-2026-09-07-DEV047-DEVELOPMENT-BRIEF`、`USER-2026-09-07-DEV047-GUIDED-ROUND1-1B-2B-3C`、`USER-2026-09-07-DEV047-GUIDED-ROUND2-1A-2B-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND3-1C-2A-3C`、`USER-2026-09-07-DEV047-CREDENTIAL-ROTATE-1A`、`USER-2026-09-07-DEV047-GUIDED-ROUND4-1B-2A-3B`、`USER-2026-09-07-DEV047-GUIDED-ROUND5-1A-2A-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND6-JFS4-SINGLE-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND7-1B-2A-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND8-1B-2A-3A`、`USER-2026-09-08-DEV047-GUIDED-ROUND9-1A-2C-3A`、`USER-2026-09-08-DEV047-CLOUD-IDENTITY-BASELINE-WORKSPACE-ENTITLEMENT`、`USER-2026-09-08-DEV047-WORKSPACE-BOUNDARY-1A`、`USER-2026-09-08-DEV047-BOUNDARY-ROUND11-2A-3A`、`USER-2026-09-08-DEV047-GUIDED-ROUND12-4A-5A-6A`、`USER-2026-09-08-DEV047-GUIDED-ROUND13-7A-8A-9A`、`USER-2026-09-08-DEV047-RD-CONTRACT-READY`、`USER-2026-09-08-DEV047-RD-IMPLEMENTATION-READY`、`USER-2026-09-08-DEV047-RD-TECH-LEAD-DOCUMENT-OPTIMIZATION`、`USER-2026-09-08-DEV047-RD-TECH-LEAD-ARCHITECTURE-PASS2`
+  - 父任務：DEV-045 production provisioning capsule、DEV-040 identity authority；架構權威ADR-007
+  - 下一步：RD依直接spec第15～21節由I0到I6實作`012`、current-workspace projection、legacy／managed barrier、DB admission／shared lock／multi-app outbox、registry、Directory port、API／UI、auth／OrgMaster-role gate、alias、lease-fenced sync與完整evidence；不得擴張第18節file boundary。
+  - 阻塞 / 恢復條件：source implementation無P0／P1契約阻塞。Production仍須DNS／Admin readback、primary／backup owner、credential custody、exact read-only DWD scope、quota、live sandbox、每個application support attestation／central-epoch receipt、post-gate mapping／consumer readback、DB admission enable與release gate；Workspace Licensing API的write-capable scope不是依賴。
+  - 證據：`ai-doc/specs/DEV-047-permanent-managed-identity-link-and-login-alias.md`；本文件`DEV-047`決策歷史；`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`
+  - 計入交付：是
 
 - ✓ DEV-046 [交付點] [local完成／回歸通過／release gated] [P1] [RD Implementation Complete／Automated Gate Passed／Browser QA-QC Passed／Local Release Gate Pending] 統一清單明細工作台與可擴充關係拖曳框架
   - 摘要：將員工、職位、部門、層級、工作職掌、流程、管理辦法與兼任風險統一為左清單＋永遠存在的右detail frame；細部風格／排版以Employee為基準，共用presentation primitives／visual tokens、選取、鍵盤、調寬、帳號偏好與relation binding。
@@ -111,7 +121,7 @@
   - 下一步：已併入 DEV-039／042 現行基線，無獨立candidate freeze、commit或merge尾項；未來若新增關係方向或改動resolver，再以新DEV重新進入。
   - 計入交付：否（統一 DEV-039 既有關係配置能力，不重複計算產品交付）
 
-- ◐ DEV-040 [開發點] [部分完成] [P0] [040-ID1A／ID1B local implementation＋targeted QA/QC complete；JMS-PLATFORM-005 S0～S4B Local-Isolated PASS／S5 Local Targeted PASS；JMS-PLATFORM-009 S0～S4 Local-Isolated Complete／Targeted QA-QC PASS／009-R1 Release Gate Required；Production Switch Gated] 鉦富平台角色生效與 AI-PDM 既有使用者整合
+- ✓ DEV-040 [開發點] [040-R2 production release完成] [P0] [R60 LIVE_VERIFIED／R78 RETAINED_LIVE／ordinary release boundary independent] 鉦富平台角色生效與 AI-PDM 既有使用者整合
   - 摘要：保留可歸責的AI-PDM個人身分但重設既有role；3筆human identity連Employee，1筆legacy shared account非破壞退場；一般管理用日常身分＋step-up，高權限用同人專用privileged identity，待生效assignment經pilot後分批切換。
   - 來源 ID：`USER-2026-08-30-JENFU-PLATFORM-HCS-4A-5A-6B`、`USER-2026-08-30-JENFU-PLATFORM-HCS-ROLE-RESET-CUTOVER-ADMIN-SCOPE`、`USER-2026-08-30-JENFU-PLATFORM-HCS-PRESTAGE-PILOT-LEGACY-OBSERVATION`、`USER-2026-08-30-JENFU-PLATFORM-HCS-SUPERADMIN-ZERO-TOLERANCE-OBSERVATION-WINDOW`、`USER-2026-09-01-JENFU-ACCOUNT-TAXONOMY-1B-2A-3D`
   - 父任務：DEV-037；跨 repository 交付為 `Jenfu-Management-system` DEV-001／DEV-004～006
@@ -526,6 +536,282 @@
   - 父任務：DEV-020、DEV-022、DEV-023
   - 證據：`npm test -- --run`（19 files／126 tests）、`npm run build`、localhost:5000 真實瀏覽器 1440×900／1024×768／390×844 UI QC；`output/playwright/orgmaster-mode-status-1440x900.png`、`output/playwright/orgmaster-mode-status-1024x768.png`、`output/playwright/orgmaster-mode-status-390x844.png`；右上角狀態 pill 可見、無重疊／水平溢出，並提供 `role=status`、ARIA label 與 title 說明。
   - 計入交付：否
+
+## DEV-047：員工編號公司身分連結與登入別名
+
+狀態：待排；`RD Implementation Ready / Correction Review 2026-09-14 / RD Not Started`；production activation仍gated
+文件成熟度：`RD Implementation Ready / Round 1～13 Human Confirmed / I0～I6 Fixed / Documents Only / Production Gated`
+節點類型：交付點
+優先級：P1
+父交付點：DEV-045 production identity-link capsule、DEV-040 identity authority；架構權威ADR-007
+是否計入產品交付完成：是
+權威文件：`ai-doc/specs/DEV-047-permanent-managed-identity-link-and-login-alias.md`；本節保留Human Decision歷史與摘要
+本輪來源 ID：`USER-2026-09-14-DEV047-DOCUMENT-REVIEW-OPTIMIZATION`
+執行邊界：本輪只修正同一DEV的RD execution contract；尚未修改產品程式、資料、schema、migration、provider、正式帳號、Email、credential、部署或release
+風險等級：High（正式身分關聯、外部目錄最小權限、狀態同步與跨UI／API／provider資料路徑）
+
+### 問題與使用者價值
+
+- 現行DEV-045已交付地端模擬的「邀請新帳號／連結既有帳號」，但production provider仍關閉；既有brief先把Google Workspace與Cloud Identity呈現為建立時必選的兩種帳號，之後又讓OrgMaster承擔建立／暫時密碼交付，造成Google Admin與OrgMaster責任重疊。
+- 目標是讓公司身分從Employee唯一真相出發，但外部帳號保持單一管理入口：每位Employee只有一個Cloud Identity基礎的`human_daily_managed` principal；Google Admin先建立managed user，OrgMaster依Employee搜尋、人工確認並連結；Workspace只在同一principal上增減服務授權。
+- 成功後，OrgMaster可回答「這位員工連結哪個永久公司身分」、「目前Employee與外部帳號是否一致」及「最近一次同步顯示哪些外部服務狀態」；所有Cloud Identity／Workspace生命週期寫入由Google Admin持有，OrgMaster只治理Employee、應用角色、Employee↔principal關係、link audit及可追溯唯讀投影。
+
+### Human Decision Brief
+
+- `Human Confirmed / Superseded in part by Round 11 2A / 2026-09-07`：原決策由授權管理者在OrgMaster的Employee上下文建立並分配帳號；Round 11 `2A`已改為Google Admin先建立Cloud Identity managed user，OrgMaster只在Employee上下文搜尋、人工確認與連結。員工登入時使用員工編號作帳號名稱的要求仍有效。
+- `Guarded interpretation`：員工編號只作可輸入的login alias，不得成為Employee canonical ID、IAM principal ID、密碼或passwordless credential。Employee仍使用既有opaque canonical ID；外部身分分為Google Directory customer＋user ID與Firebase verified issuer＋UID兩個穩定鍵，由受治理bridge綁定，不以Email或假設兩種ID相等取代。
+- `1B / Superseded by Round 10 / 2026-09-07`：原決策把Google Workspace與Cloud Identity作為依工作需要選擇的managed account型態；Round 10已改為所有日常公司身分固定使用Cloud Identity基礎，Workspace只作同一principal的選配授權。個人`@gmail.com`仍不得成為預設公司帳號，`@gamil.com`亦不是有效Gmail網域；個人帳號只可走具owner、到期日與定期複核的例外流程。
+- `Login alias baseline`：登入頁接受短格式員工編號，server依唯一Employee與已驗證公司網域解析managed account；UI不得把可變的帳號字串當作canonical identity。
+- `2B / Human Confirmed / 2026-09-07`：員工編號允許行政更正，但舊編號永久保留且不得分配給另一自然人；更正不得自動改綁principal，舊login alias需保留tombstone，帳號改名走顯式流程並留下audit。
+- `3C / Superseded by Round 11 2A / 2026-09-07`：原決策要求OrgMaster管理者人工交付由provider產生的一次性暫時密碼；Round 11 `2A`將初次Cloud Identity使用者建立與credential交付全部移回Google Admin，因此OrgMaster不得取得、顯示、重發、持久化或傳遞temporary credential。
+- `Security baseline / Refined by Round 11 2A`：員工編號、姓名、生日、電話或固定規則不得作為暫時／永久密碼；OrgMaster任何角色均不得查看、設定、重設或傳遞員工密碼。初次credential、後續復原、MFA與session由Google Admin／identity provider處理。
+- `Round 2 / 1A / Superseded in part by Round 11 2A / 2026-09-07`：原決策限OrgMaster超級管理者建立公司帳號、取得或重發temporary credential；該建立與secret-delivery能力已從OrgMaster移除。超級管理者仍可依既有權限逐筆設定Employee編號、搜尋候選並確認Employee↔principal link；一般治理管理者、部門主管及其他Employee不得取得此relation mutation能力。
+- `Round 2 / 2B / Superseded by Round 10 / 2026-09-07`：原決策要求每次建立時選擇Google Workspace或Cloud Identity；Round 10取消account-type selector，建立公司身分固定為Cloud Identity基礎，Workspace另走同principal的服務授權流程。
+- `Round 2 / 3A / Superseded by Round 12 4A / Tech Lead session refinement / 2026-09-07`：原本要求Employee active→inactive後由OrgMaster建立Google IAM suspension／session revocation intent；Round 12 `4A`已移除全部provider write。現行在Employee commit後立即移除OrgMaster managed admission，並以同transaction durable outbox使Jenfu應用central epoch失效；這是OrgMaster可控制的應用session invalidation，不是Google provider session write。外部帳號停用與provider session處置仍由Google Admin執行。
+- `Round 3 / 1C / Superseded by Round 10＋Round 11 / 2026-09-07`：原決策要求managed account型態不設預設值；Round 10取消該選擇，Cloud Identity是固定基礎身分；Round 11再固定Workspace服務授權的預覽、理由、核准、資料處置與audit全部屬Google Admin／Workspace，不在OrgMaster建立流程。
+- `Round 3 / 2A / Human Confirmed＋Refined by Round 12 4A / 2026-09-07`：current／published Employee由active改為inactive時，確認前仍須顯示managed account、OrgMaster／Jenfu應用角色與外部待辦影響；Employee commit成功後只執行OrgMaster可控制的角色／存取撤銷並提示至Google Admin停用帳號，不發出provider lifecycle intent。
+- `Round 3 / 3C / Superseded by follow-up 1A / 2026-09-07`：原意圖是首次登入前重新查看「原本那組」temporary password；因其需要保存可還原credential，已由後續安全選項`1A`取代，不再是產品契約。
+- `Credential follow-up / 1A / Superseded by Round 11 2A / 2026-09-07`：原決策允許首次登入前由OrgMaster超級管理者發起temporary credential rotate；Round 11 `2A`後，初次credential重發也只在Google Admin／identity provider進行，OrgMaster不建立rotate intent、不接收secret。首次登入後的recovery／password reset同樣不進OrgMaster。
+- `Round 4 / 1B / Superseded by Round 11＋Round 12 4A / 2026-09-07`：初次create／credential與Workspace操作已由Round 11移回Google Admin；Round 12 `4A`再把更名、停用、重新啟用、session撤銷與password recovery全部固定在Google Admin／identity provider。OrgMaster與共用IAM adapter都不得保留Google管理write credential、scope、intent或mutation路徑。
+- `Round 4 / 2A / Human Confirmed / 2026-09-07`：正式provider帳號名稱固定為`<employeeNumber>@<verified-company-domain>`；登入頁可只輸入employeeNumber。employeeNumber與provider username皆可更正／改名，仍不得當作canonical identity；真正identity持續以immutable `issuer + subject`關聯，舊員工編號及舊provider alias永久保留tombstone且不得配置給另一自然人。
+- `Round 4 / 3B / Human Confirmed＋Refined by Round 11 2A / 2026-09-07`：Google Admin建立帳號成功只代表外部使用者已存在；只有唯讀provider observation證實員工已首次登入並完成必要的首次驗證後，OrgMaster才投影為「已啟用」。管理者手動聲明或成功連結不得代替此證據；若provider無法提供可信狀態，OrgMaster顯示待確認／unknown，不宣稱啟用。
+- `Round 5 / 1A / Human Confirmed＋Verification Guard / 2026-09-07`：正式managed account網域選定`jenfu.com.tw`，帳號預覽為`<employeeNumber>@jenfu.com.tw`。此決策不是網域所有權或Google Workspace驗證證據；production provider在DNS／Google Admin authority readback證實網域受公司控制前必須fail closed，local／isolated只可使用synthetic domain。
+- `Round 5 / 2A / Superseded by Round 6 / 2026-09-07`：原本允許逐筆或批次匯入；最新決策已取消批次路徑，只保留逐一建立與設定。
+- `Round 5 / 3A / Superseded by Round 12 5A / 2026-09-07`：原本要求employeeNumber更正後建立provider rename intent；Round 12 `5A`已改為Employee新編號先commit並顯示`identity_alias_mismatch`，Google Admin人工改名，OrgMaster只在唯讀同步證實精確相符後清除不一致。不得回滾Employee、發出rename write或靜默宣稱同步完成。
+- `Round 6 / 1 Custom / Human Confirmed / 2026-09-07`：employeeNumber統一為大寫前綴`JFS`加4位十進位數字，canonical display格式為`^JFS[0-9]{4}$`，有效範圍`JFS0001`～`JFS9999`；`JFS0000`無效。此值仍只是可變更的受治理login alias，不是Employee或IAM canonical ID。
+- `Round 6 / 2 Custom / Human Confirmed — Intentional Replacement / 2026-09-07`：不提供employeeNumber批次匯入、批次產生或批次設定；超級管理者必須在單一Employee上下文逐一建立與設定，每次各自完成格式、唯一性、tombstone、provider collision預覽與確認。不得保留隱藏bulk API、CSV入口或一次對多Employee mutation。
+- `Round 6 / 3A / Refined by Round 12 5A / 2026-09-07`：已commit的新employeeNumber維持Employee current master data，不自動回滾；現行不再有provider rename intent、retry或outcome unknown。外部username未改時顯示`identity_alias_mismatch`與Google Admin處理導引；不得因此停用帳號、建立新principal或宣稱已同步。
+- `Round 7 / 1B / Human Confirmed / 2026-09-07`：`JFS####`由OrgMaster超級管理者在單一Employee明細手動輸入完整編號；系統不得自動分配、預先占用或允許一般治理角色指定。預覽不保留號碼，只有通過server validation且Employee commit成功才形成正式配置；同時提交相同編號時最多一筆成功，其餘回明確collision且zero partial mutation。
+- `Round 7 / 2A / Human Confirmed / 2026-09-07`：流水號允許跳號，不要求gapless；任何曾成功配置給Employee的`JFS####`，不論其後更正、離職、帳號停用或刪除投影，均永久保留tombstone且不得配置給另一Employee。只有從未commit成功的預覽值不算已使用。
+- `Round 7 / 3A / Human Confirmed / 2026-09-07`：Employee主資料、畫面與audit以大寫`JFS0001`作canonical display；Provider username／Email以確定性函式`lower(employeeNumber) + '@jenfu.com.tw'`正規化，例如`jfs0001@jenfu.com.tw`。登入接受employeeNumber大小寫不敏感輸入，server先正規化為大寫Employee alias再解析；唯一性與tombstone比對亦不分大小寫。
+- `Round 8 / 1B / Human Confirmed＋Refined by Round 11 2A / 2026-09-07`：Employee可在沒有employeeNumber時先建立與保存；employeeNumber之後由超級管理者在該Employee明細逐筆設定。缺號不是Employee建檔錯誤，但必須阻擋OrgMaster把外部managed user連結為該Employee的公司日常身分；帳號區段應顯示原因與可發現的「設定員工編號」入口，不得要求管理者先建立假號碼。無employeeNumber能否轉為active已由Round 9 `1A`收斂。
+- `Round 8 / 2A / Human Confirmed / 2026-09-07`：同一自然人復職時必須重新啟用原Employee記錄，保留原opaque Employee ID、current `JFS####`、歷史tombstones、既有Employee↔principal mapping與audit chain；不得為復職者建立第二個Employee、配置新JFS或以姓名／Email相似度自動合併。若無法證明是同一人，流程停止人工確認。
+- `Round 8 / 3A / Human Confirmed＋Refined by Round 10 / 2026-09-07`：每位Employee最多一個DEV-047管理的`human_daily_managed`主要登入身分。Round 10進一步固定Cloud Identity為所有人的基礎身分、Google Workspace為同一principal的可選授權；任何授權異動都必須沿用同一`issuer + subject`及`jfs####@jenfu.com.tw`，不得建立第二個daily principal。DEV-045一般`accounts[]`與Employee↔principal one-to-many關係保留，用於獨立person-specific privileged identity、legacy或其他明確類型，不得被實作成全域one-to-one。
+- `Round 9 / 1A / Human Confirmed＋Migration Guard＋Refined by Round 11 2A / 2026-09-08`：Employee可在`employeeNumber=unassigned`時建立與保存草稿／未啟用資料，但current Employee從inactive／未啟用轉為active前必須已配置且通過server驗證的current `JFS####`。缺號時active commit fail closed且zero state change。導入前已存在的active無號Employee不得被migration自動改為inactive；保留active、標示`employee_number_required`並逐筆補正，但OrgMaster仍不得把外部帳號連結為公司日常身分。
+- `Round 9 / 2C / Human Confirmed＋Least-privilege Refinement / 2026-09-08`：復職後只依Employee目前有效Position assignment、目前published position-role policy與application adoption重新計算`basis=position_adoption`角色，不複製或復活離職前快照。Manual、delegated、external specialist與person-specific privileged／system-admin角色維持revoked／inactive，必須依各自現行治理流程重新核准與發布。
+- `Round 9 / 3A / Superseded in part by Round 12 4A / 2026-09-08`：復職前的Employee、原managed account與角色影響預覽仍有效；Round 12 `4A`移除OrgMaster account reactivation intent。Employee可先恢復active並只依current Position重算角色；若Google帳號仍停用，登入維持不可用並顯示Google Admin待辦，不回滾Employee、不新建principal、不恢復舊session或temporary credential。
+- `Round 10 / Human Confirmed＋Intentional Replacement＋Refined by Round 11／12 / 2026-09-08`：每位Employee的`human_daily_managed`固定為一個永久、公司管理的Cloud Identity基礎身分；Google Workspace是同一principal上的可選服務授權。所有外部身分與Workspace寫入流程已由Round 11／12統一歸Google Admin；Employee與應用角色生命週期由OrgMaster獨立治理，兩者以唯讀狀態與可見不一致串接。
+- `Round 11 / 1A / Human Confirmed＋Intentional Replacement / 2026-09-08`：Google Workspace授權新增／移除、Gmail／Calendar／Drive資料影響判斷、交接／匯出／留存、核准、執行與其操作稽核全部在Google Admin／Workspace完成。OrgMaster不得建立Workspace授權intent、資料交接案件、資料承接責任欄位、核准或阻擋規則，也不得持有相關write credential／scope或提供mutation CTA／API；只可顯示外部來源的唯讀授權狀態、來源／觀察時間及`stale／unknown`。
+- `Round 11 / 2A / Human Confirmed＋Intentional Replacement / 2026-09-08`：初次Cloud Identity managed user由具名管理者在Google Admin先建立，包含帳號建立、初始credential及交付。OrgMaster只依Employee與預期`jfs####@jenfu.com.tw`搜尋外部目錄、顯示唯一候選、由具權限者人工確認後建立Employee↔`issuer + subject` link；不得建立Cloud Identity user、邀請、temporary credential、rotate或初次password workflow。
+- `Round 11 / 3A / Human Confirmed / 2026-09-08`：Workspace授權狀態採server-side自動唯讀同步，不以管理者手動標記作權威。同步只使用最小read-only credential／scope，瀏覽器不得接觸credential；投影至少保留來源、principal key、`observedAt`、狀態與`fresh／stale／unknown`，同步失敗時保留最後可信值並明確標示過期，不推測為未啟用。
+- `Round 12 / 4A / Human Confirmed＋Intentional Replacement / 2026-09-08`：Cloud Identity建立、credential、改名、停用、重新啟用、session撤銷／復原及Workspace生命週期全部由Google Admin／identity provider操作。OrgMaster不得建立任何provider lifecycle intent、write credential、scope、API或CTA；只可變更Employee與Jenfu應用角色／存取、保存link／audit並自動同步外部唯讀狀態。
+- `Round 12 / 5A / Human Confirmed / 2026-09-08`：employeeNumber可在OrgMaster先更正且不回滾；若current `lower(employeeNumber)@jenfu.com.tw`與已連結provider username不一致，顯示`identity_alias_mismatch`／「帳號名稱待同步」，由Google Admin人工改名。只有自動唯讀同步觀察到精確一致才清除，不建立rename intent或把手動聲明當成功。
+- `Round 12 / 6A / Human Confirmed / 2026-09-08`：初次Employee↔principal連結只接受provider username精確等於`lower(employeeNumber)@jenfu.com.tw`的唯一候選；不相符、找不到、多候選或已綁他人全部拒絕並導向Google Admin修正。本階段不提供permanent、legacy或migration例外；後續員編更正造成的不一致只走`identity_alias_mismatch`，不得用初次連結例外繞過。
+- `Round 13 / 7A / Human Confirmed＋Continuity Guard＋Tech Lead scope correction / 2026-09-08`：employeeNumber更正造成`identity_alias_mismatch`時，OrgMaster正常登入UI／resolver只有新current `JFS####`可作短碼；resolver先定位唯一active Employee與既有immutable principal，再暫時使用該link的last verified Google username完成provider sign-in。舊JFS在OrgMaster resolver永久拒絕／不可重配；OrgMaster不能保證Google／Firebase provider本身不接受使用者直接輸入舊Email或provider保留alias。fresh readback觀察新username後更新projection，principal與link不變。缺少唯一link、last verified username或current access資格時fail closed。
+- `Round 13 / 8A / Human Confirmed＋Stale Safety Boundary＋Tech Lead admission refinement / 2026-09-08`：最後可信Directory state為`present`時，projection逾期或最近attempt失敗不因read adapter故障自動中斷既有Employee／current有效角色的正常功能；實際登入仍須同時通過live IdP authentication、current active Employee與current effective role。從未取得可信observation的`unknown`不admit；可信`suspended／archived／missing`為known-negative並立即移除mapping、enqueue central-epoch invalidation。stale資料不得建立新link、清除alias／lifecycle mismatch或宣稱Google操作成功。
+- `Round 13 / 9A / Human Confirmed / 2026-09-08`：唯讀同步採三種觸發：定期背景同步、Employee link／employeeNumber／active狀態commit後排入即時read-only refresh，以及具權限管理者在Employee明細手動「重新整理狀態」。三者共用同一server-side adapter、去重、限流、backoff、新鮮度與audit／telemetry；事件觸發失敗不得回滾Employee transaction，人工重新整理不得繞過權限或把請求成功當成Google狀態成功。
+- `Human Decision Status`：Round 1～13產品語意保持不變；2026-09-14 technical correction不重問既有產品選擇。Direct spec第23節列出本輪5組P1工程缺口與修正，第20.5節A17～A22全部NOT_RUN；RD、QA、QC尚未完成。
+
+### Round 13 Alias Login, Stale Read and Sync Trigger Contract
+
+- `identity_alias_mismatch`期間只有current Employee的new `JFS####`是OrgMaster正常登入UI／resolver的合法短碼。Resolver不得把新員編直接拼成尚未存在的Google username；它先以current JFS定位唯一Employee，再讀取既有`human_daily_managed` link的immutable principal與last verified provider username完成sign-in handoff。舊JFS不因過渡期在OrgMaster resolver復活，仍維持永久tombstone與generic拒絕；Google／Firebase provider是否保留或接受舊Email不在OrgMaster控制面。
+- 短碼連續性不代表接受兩個帳號：provider rename前後必須是同一`issuer + subject`，fresh readback精確符合新username時只更新外部username projection。若link不唯一、principal不一致、last verified username缺失、Employee非active或無current有效role，resolver fail closed且不得依姓名／Email猜測。
+- 外部projection的freshness `stale`或最近attempt error只表示觀察證據逾期，不是登入或授權事實；只有最後可信Directory state為`present`者可在其他條件成立時繼續admit，從未有可信observation的`unknown`不admit。既有使用者需以live IdP authentication＋current active Employee＋current effective role共同決定Jenfu應用存取；可信`suspended／archived／missing`與Employee inactive則立即移除mapping並enqueuecentral-epoch invalidation。
+- 任何需要新外部事實的關係決策在`stale／unknown`下fail closed：禁止建立新Employee↔principal link、禁止清除`identity_alias_mismatch`／`identity_lifecycle_mismatch`，也不得宣稱rename、suspend、reactivate或Workspace異動完成。既有link與最後可信值可讀，但必須同時顯示`observedAt`、freshness與警告。
+- 同步觸發固定為三路：背景定期同步；Employee link、employeeNumber與active狀態commit成功後提交即時read-only refresh；具權限管理者從Employee明細執行「重新整理狀態」。三路共用一個server-side adapter與結果projector，不建立第二資料來源、第二狀態規則或Browser直連Google。
+- 工程參數由direct spec第11、16.2節維護：15分鐘／24小時排程、30分鐘／25小時freshness、manual60秒dedup與domain rerun、跨instances共用60 grants／60s、每worker2 concurrent／10秒HTTP timeout、最多5次lease attempts（4段1／2／4／8s＋jitter）。Refresh完成不觸發自身再refresh，錯誤保留最後可信值；實際規則不在摘要另開版本。
+
+### Round 12 Google Admin Full Lifecycle and Exact-link Contract（登入與同步由Round 13補齊）
+
+- 責任邊界固定為`Google Admin owns every external identity write; OrgMaster owns Employee, app entitlement, identity link and read-only projection`。OrgMaster與共用IAM整合不得建立Cloud Identity／Workspace create、invite、credential、rename、suspend、reactivate、session revoke、license或資料操作write path。
+- Employee active→inactive可先在OrgMaster完成；database routine在同一transaction移除managed admission、bump mapping revision並為所有active application enqueue central-epoch invalidation，commit後顯示「請至Google Admin停用帳號」。唯讀同步若仍觀察到外部帳號active，顯示高可見度`identity_lifecycle_mismatch`與來源時間，但不回滾Employee、不阻擋內部撤權，也不代為操作Google。
+- inactive→active同樣只變更Employee及依current Position／published adoption可重新產生的角色；OrgMaster不得重新啟用provider。只要先前lifecycle invalidation仍未completed，或最後可信Directory state仍suspended／archived／missing，active-principal view都不readmit；receipt完成使central epoch更新後才可建立新session，舊session不能復活。
+- employeeNumber更正後立即以新`JFS####`成為Employee current master data，舊號永久tombstone。若外部username仍是舊值，保存`identity_alias_mismatch`投影並顯示「帳號名稱待同步」；Google Admin人工完成rename後，只有精確fresh readback成功才清除。Round 13固定過渡期間只接受新JFS短碼，並以既有link的last verified provider username維持同一principal登入；OrgMaster不建立rename intent、不回滾Employee、不改綁principal，也不宣稱Google已完成。
+- 初次link固定以current `lower(employeeNumber)@jenfu.com.tw`作唯一可接受username，且candidate必須唯一、managed、未綁他人。任何username差異都拒絕link並導向Google Admin修正；不提供別名輸入、模糊搜尋、legacy或migration override。已連結後因合法employeeNumber更正產生的差異只走上一項mismatch，不重跑或繞過初次link gate。
+- `identity_lifecycle_mismatch`與`identity_alias_mismatch`只是外部事實差異與待辦，不是角色授予或provider操作結果；投影必須帶`source`、`trustedObservedAt／lastAttemptAt`與`fresh／stale／unknown`，不得用管理者手動勾選清除。Round 13經Tech Lead refinement後固定只有last-trusted-present的stale observation可維持其他條件皆合法的既有功能；never-observed unknown與known-negative不admit。新link與mismatch清除仍fail closed，並以三路read-only sync恢復。
+
+### Round 11 External Identity and Workspace Boundary Contract（外部生命週期由Round 12補齊）
+
+- Workspace管理邊界固定為`Google Admin／Workspace owns write; OrgMaster consumes read-only status`。授權分配、移除、資料移轉、保留、核准、政策與稽核由Google端管理流程負責，OrgMaster不複製其工作流或決策資料。
+- Employee明細可顯示同一principal的Workspace狀態，但每筆投影至少帶`source`、`observedAt`與`fresh／stale／unknown`語意；讀取失敗不得把舊值或缺值推論為「未啟用」，也不得宣稱Google端作業成功。
+- OrgMaster畫面只提供唯讀狀態與必要時的Google Admin操作導引；不得出現「新增授權」「移除授權」「指定資料承接人」「完成交接」等產品內mutation控制。Google Admin異動只有在外部readback更新後才反映於OrgMaster。
+- 初次Cloud Identity provisioning固定採Google Admin-first：管理者先在Google Admin建立預期`jfs####@jenfu.com.tw`使用者並完成credential交付，回到OrgMaster後只搜尋、確認並連結immutable `issuer + subject`；OrgMaster沒有create／invite／temporary credential／initial rotate能力。
+- Workspace status固定由server-side read-only adapter自動同步。Browser只讀OrgMaster投影；同步服務以最小read scope讀取Google／共同IAM來源，不得共用或取得write scope。最後可信值可保留，但過期或錯誤必須明示，不得把sync failure轉成業務狀態。
+- Round 12 `4A／5A／6A`已補齊本輪保留項：已連結帳號的rename、deactivate、reactivate與session全部外移Google Admin；OrgMaster只呈現唯讀狀態與不一致，不保留任何provider lifecycle intent。
+
+### Round 10 Permanent Identity and Workspace Entitlement Contract（Workspace操作責任由Round 11取代）
+
+- `Identity`與`service entitlement`是兩個正交狀態。`human_daily_managed`記錄唯一的Employee↔`issuer + subject`關係與登入生命週期；Workspace只記錄同一principal是否具有付費服務授權，不得再使用`workspace_account`／`cloud_identity_account`作互斥帳號型態。
+- Google Admin建立公司身分固定使用Cloud Identity基礎；OrgMaster不得顯示帳號類型選擇器或建立帳號。需要Gmail／Calendar等服務時，由Google Admin在既有principal上管理Workspace授權；OrgMaster不得發起授權意圖，授權變動亦不得改變Employee mapping或另建帳號。
+- 職務、部門或Position改變可以在OrgMaster顯示「請至Google Admin複核Workspace授權」提醒，但不得直接新增、移除、核准或阻擋授權。資料影響檢視與承接責任完全由Google Admin／Workspace流程治理。
+- Employee active→inactive的外部principal suspension與session revocation已由Round 12移至Google Admin。OrgMaster只撤銷自己與Jenfu應用角色／存取並顯示外部待辦；是否及何時停用帳號或移除Workspace授權均由Google Admin流程獨立決定，OrgMaster只在readback後更新唯讀投影。
+- 現有Workspace使用者導入此模型時保留原`issuer + subject`、username與Employee mapping，只補齊Cloud Identity基礎／Workspace entitlement投影；禁止刪除後重建、先解除Employee關係或把資料搬到新daily principal。
+- 「永久公司身分」代表同一自然人的principal跨職務與復職持續、永不轉讓給其他人；不代表登入alias字串不可作行政更正，也不代表provider user永不被治理性停用。canonical identity仍是immutable `issuer + subject`。
+- 外部事實基線：Google文件說明Cloud Identity Free採site-based licensing、新使用者自動取得免費Cloud Identity；同時使用Workspace時可對個別使用者加上Workspace授權，移除Workspace授權後仍保留免費Cloud Identity。另因移除使用者授權可能造成資料損失，實際edition、Admin設定與資料保護前置須由Google Admin／Workspace政策固定；OrgMaster RD契約只固定唯讀狀態來源與不得推測成功／未啟用的語意。
+- 官方依據：[Cloud Identity licensing](https://docs.cloud.google.com/identity/docs/how-to/how-licensing-works-for-cloud-identity)、[Cloud Identity editions](https://docs.cloud.google.com/identity/docs/editions)、[Google Workspace license assignment](https://support.google.com/a/answer/1727173)。
+
+### Round 9 Active Gate and Role Recalculation Contract（Provider reactivation由Round 12取代）
+
+- 新Employee可先以未配置employeeNumber狀態保存，但active transition的server command必須重新讀取current Employee並驗證current `JFS####`；前端disabled提示不能取代server gate。既有active無號Employee只作非回溯相容資料，需可查詢、可逐筆補正且不允許連結公司日常身分。
+- 復職角色來源固定為「現在」而不是「離職前」：只有current Position assignment與current published adoption可重新產生position-derived effective role；expired、revoked或歷史Position不得恢復。人工、delegated、external與privileged角色皆須新的人工作業，不得因Employee active自動擴權。
+- Round 9原訂account reactivation intent已由Round 12 `4A`取消。Employee active commit只觸發OrgMaster內部狀態與current-position角色重算；draft、preview、取消、validation failure、stale revision及成功commit皆為zero provider mutation。
+- Employee可先成為active，但外部principal在Google Admin重新啟用且唯讀同步確認前仍不可登入；原session不因Employee復職而恢復。OrgMaster只顯示外部狀態與Google Admin待辦，帳號recovery完全留在identity provider。
+
+### Round 8 Deferred Number, Rehire and Singleton Account Contract
+
+- `employeeNumber`是Employee可延後配置的受治理attribute，不是建立／保存Employee的必要欄位；未配置時必須以明確`unassigned`狀態呈現，不得用空字串、暫編、姓名或資料庫ID代填。Round 9已固定新active transition必須先具有有效current `JFS####`。
+- 帳號區段在employeeNumber未配置時不顯示可送出的「連結公司帳號」；超級管理者看到「尚未設定員工編號」及「設定員工編號」，其他可檢視角色只看到唯讀原因。設定成功並read back current Employee後才開放外部目錄搜尋與帳號連結。
+- 復職是原Employee的生命週期轉換，不是新人建立。只恢復current employeeNumber；任何過去更正留下的舊編號仍不可重配。既有principal若已停用，只能由Google Admin重新啟用；OrgMaster沿用同一link並顯示唯讀待辦，不建立intent或第二個帳號。
+- `human_daily_managed`為每位Employee的singleton分類並固定以Cloud Identity作基礎；Google Workspace新增／移除只改同一principal的外部服務授權，OrgMaster以read-only adapter自動同步投影。若來源無法證明授權屬於已連結`issuer + subject`，投影顯示`unknown／identity_mismatch`，不得自動改綁或以新建帳號補洞。
+
+### Round 7 Manual Allocation, Tombstone and Case Contract
+
+- 超級管理者手動輸入的值先由server執行`trim → uppercase → ^JFS[0-9]{4}$`驗證；前端提示或預覽不能替代server唯一索引、tombstone與provider collision檢查。
+- 流水號是「格式化序號」，不是保證連續的會計憑證號；跳號可接受且不需補洞。永久不重用優先於畫面整齊或節省號碼。
+- Employee alias與Provider username採雙表示：人事／UI為大寫`JFS####`，外部Email為小寫`jfs####@jenfu.com.tw`；二者由純函式衍生，不得讓管理者分別輸入造成漂移。
+- 手動配置只在單筆Employee commit成功時占用號碼；併發、stale revision或collision失敗不得留下Employee部分更新。外部目錄若已有同名或多個候選，只能顯示衝突並進人工檢視，不得接管、建立或自動連結。
+
+### Round 6 JFS Numbering and Single-record Contract
+
+- employeeNumber只有一種合法外形：`JFS`＋4位數字；UI以大寫`JFS0001`顯示，server以`trim → uppercase`後的canonical value檢查唯一性；Provider username確定衍生為小寫`jfs0001@jenfu.com.tw`，登入、唯一性與tombstone比對不分大小寫。
+- 編號設定只能從「員工 → 單一員工明細」進入；一次command只可影響一位Employee。清單多選、CSV／試算表匯入、貼上多列、自動批次補號及bulk endpoint均不屬Current Phase。
+- 單筆設定仍必須在commit前顯示候選編號、預計Provider username及格式／唯一性／tombstone／provider collision結果；驗證失敗或取消為zero mutation。
+- employeeNumber更正後Employee與Provider允許暫時不一致，但必須以`identity_alias_mismatch`、原principal、外部觀察時間與Google Admin導引持續可見；OrgMaster不建立rename intent，唯讀readback精確相符前不得誤標成「已同步」。
+
+### Round 5 Domain, Backfill and Rename Contract
+
+- `jenfu.com.tw`是Human Selected production target，尚不是Verified External Fact；設定、UI或local fixture不得因使用者選定就宣稱網域已通過DNS、Google Admin或授權驗證。
+- employeeNumber backfill沿用Employee唯一真相：候選值只有在server validation與管理者確認後才成為current master data；帳號連結入口只接受已驗證且唯一的current employeeNumber。匯入檔案、錯誤報告與audit不得含credential或provider管理secret。
+- employeeNumber更正與Google Admin人工rename是兩個明確分離的控制面：Employee commit成功後保留新值並顯示`identity_alias_mismatch`，不建立provider intent；Google端完成後以唯讀readback清除差異，舊employeeNumber仍永久tombstone。
+- mismatch reconciliation始終使用既有immutable `issuer + subject`定位同一帳號，並要求readback username精確等於current衍生值；不得以新舊Email相似、姓名相同或employeeNumber相近自動接管另一principal。
+
+### Round 4 Identity Execution and Activation Contract（Provider writes由Round 11／12取代）
+
+- `OrgMaster`是Employee、Employee↔principal mapping、link audit、Jenfu應用角色與唯讀狀態投影的owner；`Google Admin／Cloud Identity`是帳號、credential、immutable principal及完整外部生命週期authority。Shared IAM／Provider Adapter僅可read-only，不執行任何create／invite／credential／rename／deactivate／reactivate／session write。
+- Account display name／username使用`<employeeNumber>@<verified-company-domain>`，但所有reconciliation、link uniqueness與角色關係仍以immutable `issuer + subject`執行；不得用Email字串或employeeNumber推定同一自然人或自動改綁。
+- 狀態機已在直接spec拆為正交axes：Employee number、Directory/Firebase link、Directory lifecycle、alias、Employee lifecycle、freshness與Workspace observation；全部provider狀態皆來自唯讀observation，不得保留write-intent pending／failed作為現行狀態或用單一`accountStatus`混合。
+- `active`只由provider權威觀察建立；如果只能觀察首次登入、不能證明強制改密碼已完成，OrgMaster不得自行推定active，應保留`awaiting_first_login`或明確的verification pending狀態。
+
+### Round 3 Credential Resolution（Superseded by Round 11 2A）
+
+- 原本的rotate intent與單次temporary credential delivery已由Round 11 `2A`取代；OrgMaster不保存相關intent、結果或secret，也不顯示「重新產生暫時密碼」。
+- Credential建立、交付、重發與recovery只在Google Admin／identity provider進行；OrgMaster最多以唯讀狀態顯示帳號待首次登入、已啟用或unknown。
+- credential escrow、原密碼回顯、管理者查看永久密碼及任何OrgMaster password route均為rejected direction；若未來要重新提出，必須走Intentional replacement、ADR與security review，不得視為本brief的延伸。
+
+### 主要流程與UI意圖
+
+1. 授權管理者從正常入口進入「員工 → 選擇員工 → 登入帳號」。
+2. Employee可先在沒有employeeNumber時建立與保存；此時登入帳號區段顯示「尚未設定員工編號」。超級管理者看見唯一主動作「設定員工編號」，其他角色與手機／窄版只讀使用者只看見原因。設定成功並read back、且其他既有資格條件均通過後，若尚無`human_daily_managed`主要登入身分，主動作才切換為「連結公司帳號」。
+3. 連結畫面以唯讀方式顯示員工姓名、大寫`JFS####`員工編號、小寫`jfs####@jenfu.com.tw`預期Provider username及固定「Cloud Identity公司身分」；不顯示Google Workspace／Cloud Identity帳號類型選擇器，也不要求輸入個人Email或密碼。若網域authority尚未驗證，production搜尋／連結fail closed。
+4. OrgMaster以server-side read-only directory adapter搜尋預期`jfs####@jenfu.com.tw`。找不到時顯示「請先至Google Admin建立帳號」與安全的外部導引，不建立provider user、invite或credential；Google Admin完成建立後，管理者返回同一Employee重新搜尋。
+5. 搜尋只回傳primary username精確等於current `jfs####@jenfu.com.tw`的唯一managed candidate與非敏感狀態；具relation mutation權限者明確確認後，OrgMaster以Directory customer＋user ID建立`directory_linked_pending_auth`並read back。首次live Google／Firebase登入再經Directory readback原子綁定Firebase issuer＋UID。任一步成功都不代表Workspace已啟用，不顯示temporary credential，也不自動授予Application Role。
+6. 若username不精確相符、員工編號／provider帳號／principal已被其他Employee使用、找不到或出現多候選，流程停止並顯示「請至Google Admin修正帳號」或衝突入口；不得模糊比對、例外連結、靜默接管、覆寫或改綁。
+7. current Employee由active改為inactive時，commit前先顯示影響預覽，列出managed identity、OrgMaster／Jenfu應用角色、Workspace唯讀現況與Google Admin待辦。Employee commit與managed admission removal、Jenfu application central-epoch invalidation outbox須同transaction；若唯讀同步仍顯示Google帳號active，呈現`identity_lifecycle_mismatch`直到Google Admin完成停用。全程不建立Google IAM停用、provider session撤銷或Workspace mutation intent。
+8. 超級管理者只能從單一Employee明細手動輸入完整`JFS`＋4位數字employeeNumber；系統將輸入trim並正規化為大寫，顯示候選編號、小寫Provider username，以及格式、重複、tombstone與provider collision預覽。只有通過server validation並確認commit的值才占用號碼；跳號合法，任何曾正式配置的號碼永久不重用。
+9. employeeNumber更正前顯示登入帳號影響；確認commit後Employee採新編號、舊號永久tombstone。若已連結provider username仍是舊值，顯示`identity_alias_mismatch`／「帳號名稱待同步」與Google Admin改名導引；只有新JFS可作短碼，server先定位current Employee與immutable principal，再以last verified Google username完成登入。fresh同步觀察到精確一致後更新projection並清除mismatch，不建立rename intent或改綁principal。
+10. 同一自然人復職時，管理者由既有inactive Employee啟動恢復；系統沿用原Employee ID、current employeeNumber與既有principal。若主要帳號仍停用，只顯示Google Admin重新啟用待辦；OrgMaster不建立reactivation intent，不得建立第二Employee、第二JFS帳號或以姓名／Email自動判斷同一人。
+11. 已有Cloud Identity基礎身分時，不再顯示「新增公司身分」；身分與Workspace區塊由同一server-side read-only adapter依定期、關鍵commit事件與管理者人工重新整理三路觸發同步，並標示來源、觀察時間及fresh／stale／unknown。最後可信Directory state為present但freshness stale時既有合法功能維持；從未可信的unknown或可信known-negative不admit。新link與mismatch清除disabled；區塊不提供任何Google mutation，只有fresh readback可更新狀態。
+12. 新Employee缺少employeeNumber時可保存但不能轉active；畫面在active action附近顯示「請先設定員工編號」並導向同一Employee明細的設定入口。既有active無號Employee顯示待補正狀態，維持active但不得連結公司日常帳號，不以migration自動停職。
+13. 復職確認畫面同時預覽原managed account、目前外部唯讀狀態、目前Position所產生的角色，以及需重新申請的manual／delegated／privileged角色；active commit只更新Employee與current-position角色。外部帳號在Google Admin重新啟用並同步確認前保持不可登入，畫面顯示`identity_lifecycle_mismatch`或unknown，不建立provider intent。
+
+### 初步Scope
+
+- Employee主資料新增可治理的員工編號概念、唯一性與狀態前置檢查；direct spec已固定server-owned registry、tombstone、legacy exemption、CAS、雙鍵identity bridge、`012` physical schema／routines與local repository。它以Employee ID作extension key且不複製姓名／部門／職位／status，不形成第二份員工清單。
+- Employee允許`employeeNumber=unassigned`；員工建立／保存與公司登入帳號資格分離，登入帳號區段提供具權限的單筆設定入口；新active transition固定要求有效current `JFS####`。
+- 既有Employee在單一明細逐筆設定employeeNumber、驗證預覽、確認與未通過時的帳號連結阻擋；不提供任何批次匯入或bulk mutation。
+- Employee明細「登入帳號」空白狀態提供可發現的「連結公司帳號」主入口；找不到候選時提供「前往Google Admin建立」導引，返回後仍由同一連結流程搜尋與確認，不在OrgMaster建立帳號。
+- 公司登入名稱預覽、固定Cloud Identity基礎、read-only目錄精確搜尋、唯一候選核對、人工確認Directory link、首次登入Firebase bridge與外部狀態；初次primary username不符一律拒絕。OrgMaster不接收或顯示temporary credential；Workspace授權因無符合zero-write邊界的read-only licensing scope，Current Phase只呈現`unavailable_by_policy／unknown`。
+- Employee↔principal link mutation限具person-specific privileged identity與既有relation管理權限者；Google Admin使用者建立權限由Google端管理，不因OrgMaster角色自動取得。
+- OrgMaster持有Employee↔principal mapping、連結audit、Employee與Jenfu應用角色／存取及身分／Workspace唯讀狀態投影；Google Admin／identity provider持有帳號建立、credential、rename、activation／suspension、MFA、session與canonical principal。Google端操作audit不複製進OrgMaster workflow。
+- OrgMaster登入頁接受大小寫不敏感的current員工編號，server正規化為大寫`JFS####`查找唯一active Employee，再以既有Directory/Firebase雙鍵link與last verified primary Email完成sign-in handoff；不得在alias mismatch時直接拼接尚未存在的新Google username。舊JFS由OrgMaster resolver永久generic拒絕，解析失敗不得洩漏某員工或帳號是否存在；provider直接輸入舊Email的接受行為不在此保證。
+- 帳號生命週期明確區分外部使用者不存在／已存在、未連結／已連結、待首次登入、已啟用／已停用、alias mismatch、lifecycle mismatch與unknown；不以管理者手工勾選取代provider事實。
+- current Employee active→inactive後只產生OrgMaster／Jenfu應用內部撤權與外部待辦提示；外部帳號仍active時顯示`identity_lifecycle_mismatch`，不得由任何Employee流程直接操作provider。
+- employeeNumber更正後保留新Employee值與舊alias tombstone，外部username不符時顯示`identity_alias_mismatch`並等待Google Admin人工改名及唯讀同步；不得建立provider rename intent、回滾或改綁Employee identity。
+- alias mismatch期間僅current新JFS可由OrgMaster resolver解析至原immutable principal與last verified provider username；舊JFS與舊Employee alias在OrgMaster resolver不可登入。缺唯一link、provider username或current資格時fail closed，不以相似Email／姓名推測。
+- 同一自然人復職沿用原Employee、current employeeNumber與principal；`human_daily_managed`每位Employee最多一筆且固定以Cloud Identity為基礎，Workspace只作同一principal的選配授權。
+- Workspace授權新增／移除、資料影響判斷、責任歸屬與必要交接全部在Google Admin／Workspace完成；OrgMaster不建立intent或提交mutation，只保存／顯示具有來源時間與`stale／unknown`語意的唯讀狀態投影。
+- 身分／Workspace唯讀同步採定期背景、link／employeeNumber／active狀態commit事件及具權限管理者人工refresh；共用single adapter／projector與去重、限流、backoff、新鮮度規則。stale／unknown不得建立新link或清除mismatch；只有最後可信Directory state為present的stale observation可在live IdP、Employee active與effective role皆有效時維持既有存取，never-observed unknown與known-negative皆不admit。
+- active transition以有效current employeeNumber為server前置條件；復職只重算current position-derived roles，不建立provider reactivation、不恢復manual／delegated／privileged角色或舊session。Google帳號由Google Admin另行啟用後才可登入。
+- 沿用DEV-045 identity-link policy／冪等方向；DEV-047用singleton短交易fence涵蓋Employee、governance、managed bind、DB gate與app support，append-only table永久保留pair。Owned producer直接取active V3 links＋current Employee，不依賴舊snapshot-filtered view。Employee失效涵蓋legacy及managed，old＋new affected apps逐一失效，不以managed gate=false略過legacy。
+
+### Out of Scope
+
+- 本輪不建立真實帳號、不變更Firebase／Google Workspace／Cloud Identity設定、不購買授權、不寄送正式通知。
+- OrgMaster不得建立Cloud Identity user、寄送初次邀請、取得／保存／顯示／傳遞／重發temporary credential或提供password reset；不得以員工編號作密碼、PIN或passwordless credential。相關作業只在Google Admin／identity provider進行。
+- 不讓Google Admin帳號建立或OrgMaster帳號連結自動取得OrgMaster、AI-PDM或Jenfu Management的角色／權限；授權仍走既有角色治理。
+- 不允許共用帳號、群組信箱、`info@`／`sales@`或service account綁定Employee。
+- 不在本階段展開批次開通、Mover及除active→inactive停用與同一人復職切片外的完整Joiner／Leaver流程、特權管理帳號建立或個人Gmail migration例外工作台。
+- 不提供employeeNumber的CSV／試算表匯入、清單多選、批次產生、批次設定或隱藏bulk API；未來若要新增，必須以新的Human Decision與獨立驗收重新進入。
+- 不因復職自動恢復人工、delegated、external specialist、privileged或system-admin角色；不把離職前角色快照當作current policy，也不以帳號重新啟用取代角色重新核准。
+- 不取消整個Google Workspace subscription、不把Workspace授權移除等同刪除Google使用者，也不因Position／部門／Employee狀態自動新增或移除Workspace license。
+- 不在OrgMaster提供Workspace license manager、Data Transfer、資料留存／承接案件、核准／阻擋流程、write credential／scope或任何Workspace mutation API／CTA；相關作業只在Google Admin／Workspace進行。
+- 不在OrgMaster或共用IAM adapter提供Cloud Identity create、invite、credential、rename、suspend、reactivate、session revoke／restore或其他provider lifecycle write API／CTA／intent；外部狀態差異只能以唯讀projection、告警與Google Admin導引呈現。
+- 不允許初次Employee↔principal連結使用非current `lower(employeeNumber)@jenfu.com.tw`的username，也不提供legacy／migration例外；若未來確有例外需求，須以新的Human Decision與獨立風險驗收重新進入。
+
+### 驗收方向
+
+- A1：使用person-specific privileged identity且具relation管理權限的OrgMaster管理者，可從Employee正常入口看見並啟動唯一「連結公司帳號」CTA；其他角色、shared identity與窄版只讀不呈現relation mutation control，server亦拒絕mutation。Google Admin使用者建立權限不由OrgMaster授予。
+- A2：缺少、格式錯誤或重複的員工編號在外部目錄搜尋／link mutation前被阻擋，畫面顯示領域錯誤且不產生部分關係；OrgMaster provider write call count固定為0。
+- A3：連結畫面可辨識員工、員工編號、登入名稱預覽與固定Cloud Identity基礎；畫面不存在Workspace／Cloud Identity帳號類型選擇器，也不存在建立Cloud Identity user、invite、temporary credential、rotate或password控制。找不到候選時只顯示Google Admin建立導引。
+- A4：read-only搜尋與link重送、逾時或outcome unknown可安全reconcile；同一link request不得建立重複Employee關係，且任何路徑都不得建立provider帳號。
+- A5：確認成功後先以Directory customer＋user ID建立唯一pending-auth關係，首次live Google／Firebase登入再原子綁定Firebase issuer＋UID；Employee ID、員工編號、Directory ID、Firebase UID與Email不得混用。任何一步不得自動授予Application Role或Workspace付費授權。
+- A6：員工編號更正後舊編號維持tombstone且不得重用；帳號撞名、username不精確相符或principal已綁他人時link fail closed。Employee轉inactive不因Google狀態阻擋，但立即撤銷OrgMaster可控制的應用存取並顯示外部待辦，不靜默改名、接管或移轉。
+- A7：正常連結不接受個人Gmail；若未來啟用例外，必須可見其owner、原因、到期日與複核狀態。
+- A8：後續QA／QC需由正常UI入口完成「Google Admin既有managed user → OrgMaster搜尋唯一候選 → 人工確認連結 → read back」成功路徑，及找不到、重複、已綁他人或多候選至少一個fail-seeking案例；以API／provider sandbox readback補足持久化事實，並證明OrgMaster UI、API、URL、log、audit與persistence均未接收credential。local synthetic evidence不得冒充production pass。
+- A9：current Employee active→inactive commit前必須顯示影響預覽並取得明確確認；commit成功後OrgMaster立即撤銷自身及Jenfu應用可控制的有效角色／存取，並在外部仍active時顯示`identity_lifecycle_mismatch`與Google Admin導引。draft、預覽、取消、成功commit與後續同步全部為zero provider write；Employee狀態不因Google尚未停用而回滾。
+- A10：初次Cloud Identity user create、invite、temporary credential、initial rotate與password reset在OrgMaster UI／API均不存在；嘗試呼叫預期外route時404或403且provider write call count為0。Credential delivery與recovery結果不回寫OrgMaster，僅以provider唯讀狀態顯示待登入／已啟用／unknown。
+- A11：Cloud Identity目錄搜尋與身分／Workspace狀態同步只經server-side read-only adapter；Browser、UI state與workflow domain不得取得provider credential，adapter identity不得具有user create、password、rename、suspend、reactivate、session或Workspace write scope。產品不存在任何provider lifecycle intent／worker／mutation route；直接呼叫預期外route須404或403且provider write call count為0。
+- A12：帳號預覽與唯讀搜尋使用`lower(employeeNumber) + '@jenfu.com.tw'`；初次link只有唯一candidate primary Email精確相符才可確認，任何差異、零候選、alias命中或已綁他人皆拒絕且zero link mutation。後續reconciliation使用Directory stable key，登入使用已綁Firebase principal；employeeNumber更正不得自動改綁任一鍵，舊employeeNumber／provider alias不得重新配置給另一Employee。
+- A13：Google Admin使用者存在時，OrgMaster仍依唯讀provider observation區分「待首次登入」與「已啟用」；連結成功或管理者手動聲明不得代替provider證據。缺少、延遲或互相矛盾的observation必須保留可見pending／attention／unknown與來源時間。
+- A14：production連結預覽固定使用`<employeeNumber>@jenfu.com.tw`，但DNS／Google Admin authority無法證明網域受公司控制時server必須拒絕外部搜尋與link mutation；local／isolated測試不得使用真實網域或被列為production驗證證據。
+- A15：單一Employee輸入經`trim → uppercase`後，只有符合`^JFS[0-9]{4}$`、`JFS0001`～`JFS9999`、唯一性與永久tombstone檢查並經超級管理者確認，才可保存employeeNumber及啟用「連結公司帳號」；缺號、`JFS0000`、格式錯誤、未驗證、衝突、預覽或取消皆為zero external read與zero provider mutation。
+- A16：employeeNumber更正commit後Employee維持新編號且舊號永久tombstone；若已連結provider username不等於current衍生值，畫面顯示`identity_alias_mismatch`／「帳號名稱待同步」、來源時間與Google Admin導引。OrgMaster resolver只有新JFS可作短碼並解析到原immutable principal的last verified provider username；舊JFS在resolver generic拒絕。OrgMaster不得建立rename write／intent、回滾Employee、改綁principal或以手動聲明清除；只有fresh唯讀readback精確相符才清除。
+- A17：產品UI與server只接受一次影響一位Employee的employeeNumber command；不存在CSV／試算表匯入、清單多選、貼上多列、批次補號或bulk endpoint。以直接呼叫非預期bulk route或一次提交多個Employee IDs測試時，server fail closed且zero mutation。
+- A18：超級管理者可手動指定任一尚未使用的`JFS0001`～`JFS9999`，中間跳號合法；曾commit的號碼在更正、離職或停用後仍拒絕配置給其他Employee。兩個併發request指定同一號碼時最多一筆成功，失敗方不得留下Employee partial update、identity link或provider write。
+- A19：Employee UI／audit只顯示大寫`JFS####`，唯讀搜尋只使用小寫`jfs####@jenfu.com.tw`；`jfs0001`、`JFS0001`等登入輸入解析至同一Employee alias。大小寫變體不得繞過唯一性／tombstone，亦不得連結第二個daily principal。
+- A20：Employee缺少employeeNumber仍可建立與保存；帳號區段清楚顯示「尚未設定員工編號」，不得搜尋或連結managed account。超級管理者可從該處逐筆設定，其他角色與窄版維持唯讀；設定成功read back且其他資格條件通過後才出現「連結公司帳號」。
+- A21：同一自然人復職必須從原inactive Employee恢復，Employee ID、current `JFS####`、既有mapping與audit chain不變；已停用帳號只能由Google Admin重新啟用，OrgMaster保留原link並顯示待辦，provider write call count為0。建立第二Employee、新JFS或第二daily account的嘗試應fail closed；姓名／Email相似不得自動合併。
+- A22：每位Employee任一時間最多一個Cloud Identity基礎的`human_daily_managed`主要身分。Directory key與Firebase principal只能經受治理bridge關聯且不得形成第二daily principal；來源無法證明同一identity時顯示`unknown／identity_mismatch`且不得推測。Workspace在Current Phase不取得Licensing scope。DEV-045其他account類型仍可由`accounts[]`呈現。
+- A23：新建／inactive Employee缺少current有效`JFS####`時，active commit由server拒絕且Employee狀態、provider與audit effect均不變；設定有效員編後可從相同正常入口重試。既有active無號fixture維持active並顯示`employee_number_required`、公司帳號連結disabled，逐筆補號後解除提示。
+- A24：復職後只投影符合current Position assignment、published position-role policy與application adoption的position-derived角色；離職前但目前已失效的Position角色、manual、delegated、external specialist及privileged角色均不生效。重新核准其中任一角色必須留下新的治理command／audit，不可重用舊核准。
+- A25：inactive→active預覽與確認commit只更新Employee與current-position角色；preview、取消、validation failure及成功commit全部為zero provider write。DB gate已開且前一principal mapping可見時，active→inactive的legacy／managed admission removal與每個verified active application central-epoch outbox須同transaction；gate原已關閉時不虛造event。inactive→active後在既有invalidation receipts全部completed且可信Directory state回present前不readmit，因此舊session不復活。OrgMaster顯示`identity_lifecycle_mismatch／unknown`與來源時間，不回滾Employee、不建立provider reactivation intent或第二帳號。
+- A26：OrgMaster公司身分UI與API只搜尋／連結既有Cloud Identity基礎principal，且初次candidate username必須精確等於current `lower(employeeNumber)@jenfu.com.tw`；不接受account-type、create-user、別名、模糊候選或exception override。舊client或不符username提交時server明確拒絕且provider write／link mutation count為0；員工明細只顯示外部唯讀狀態與Google Admin導引。
+- A27：身分／Workspace投影由同一server-side adapter依定期、link／employeeNumber／active狀態commit事件及具權限管理者人工refresh同步，必須顯示來源、`observedAt`及`fresh／stale／unknown`；三路觸發共用去重、限流、backoff與projector，Browser不得直連Google。refresh request成功不等於外部狀態成功，只有fresh readback可更新projection；任何預期外Workspace mutation route須404或403且provider write call count為0。
+- A28：alias mismatch fixture中，OrgMaster resolver輸入新JFS可導向同一Directory/Firebase bridge與last verified primary Email並完成既有登入流程；resolver輸入舊JFS、link缺失／重複、Employee inactive、只有其他application role或current OrgMaster role無效皆generic拒絕，且不得以新username直拼、第二principal或雙alias取得存取。Google完成rename並fresh readback後Directory key與Firebase principal均不變，mismatch消失；provider直接輸入舊Email的行為另由Google production evidence驗證，不冒充OrgMaster acceptance。
+- A29：最後可信Directory state為present但projection逾期／最近attempt失敗時，既有active Employee只有在live IdP authentication與current effective role同時有效才可使用Jenfu應用；never-observed unknown與可信suspended／archived／missing不得admit。新link、alias／lifecycle mismatch清除與任何宣稱Google作業完成的動作皆fail closed。read adapter outage不得自動撤銷仍合法的Employee／role，也不得使inactive或revoked角色恢復。
+- A30：同步驗收以direct spec A10a、A21為準：manual dedup不吞domain event、leased期間需求生成唯一successor、5次attempt及expired-final-lease終結、跨instance budget、sequence與current JFS mismatch guard；API queued不代表Google成功。
+
+### Architecture Memory Capsule與限制
+
+- 現行`Employee` JSON domain仍不新增`employeeNumber`欄位；direct spec固定由OrgMaster server-owned employee identity registry作master-data extension，避免可回復組織版本復活舊號。Physical table、sequence、routine、legacy exemption、database admission default-off、shared cross-writer lock、跨legacy current／published history與managed所有record的pair reservation、lifecycle invalidation及forward-only`012` migration均已固定，只能落於`orgmaster_core`／`orgmaster_contract`邊界；Employee lifecycle唯一authority為current workspace manifest所指document，legacy／managed兩支active-principal都必須join該projection並受未完成invalidation barrier約束。Registry不得複製姓名、部門、職位或Employee status。
+- `employeeNumber`可未配置但active transition必須有有效current值；`human_daily_managed` singleton、Google Admin完整外部生命週期、OrgMaster零provider write、exact primary-email candidate、alias login continuity、stale read guard、hybrid read-only sync、復職與current-position角色重算已固定。Directory customer＋user ID與Firebase issuer＋UID不得混用；人工確認先建立pending-auth Directory link，首次live Google／Firebase登入經Directory readback後才原子綁定Firebase principal。
+- `jenfu.com.tw`目前只來自Human Decision；repo文件與本輪工作沒有DNS、Google Admin console、網域驗證狀態或授權購買readback，因此不得視為外部事實已成立。
+- 現行AuthGate仍為Email／密碼，auth middleware有/api/auth提前404分支；direct spec已將AuthGate、firebaseClient、authApiClient列入allowlist，補JFS pre-session→Google popup→雙鍵bridge→共用role／epoch final gate。Pending無auth pair可resolve，legacy入口保留；不能把local一鍵profile當Google登入證據。
+- DEV-045已完成local deterministic `@orgmaster.test` invite／link provider、one-to-many projection、single-writer、冪等與reconciliation基線；DEV-047只把其中identity-link、投影與衝突基線帶入production方向，不採用local invite/create作正式Cloud Identity provisioning，也不回開或覆寫DEV-045 local證據。
+- Spec Impact：`Intentional replacement / Cross-spec convergence required`。Round 10～13及第一次Tech Lead correction的產品／安全決策維持；第二次架構審查再固定current-workspace Employee authority、legacy／managed共同barrier、cross-authority historical pair reservation、owned core multi-app invalidation＋contract V1 wrapper、可在policy啟用前完成的support attestation、runtime舊unfenced writer revoke、conditional quarantine outbox、OrgMaster role gate與refresh lease／ordering／retention。現行權威是「Google Admin完整外部生命週期＋OrgMaster零provider write／精確永久link／唯一新短碼resolver／唯讀mismatch與可恢復single sync」。若未來要求OrgMaster持有provider write、讓resolver接受舊JFS或其他app role、用stale資料建立／清除關係、繞過current-workspace authority／database gate／shared lock／historical reservation、恢復unfenced writer、一般UI unlink／rebind、建立第二sync authority、用員工編號作身分主鍵或放寬初次username精確gate，須重新進ADR Gate。
+
+### Future Phase Capsule：Production identity activation與release
+
+- 目的：在Google Admin既有managed user中搜尋唯一候選，由OrgMaster人工確認並以verified principal回寫Employee關係，同步顯示身分與Workspace唯讀狀態。
+- 邊界：本DEV已達`RD Implementation Ready`，但只有I0～I6 source、isolated PostgreSQL與local/browser QA-QC完成，且另進production release gate後，才可評估連線正式唯讀目錄與寫入production Employee↔principal mapping；不包含任何Cloud Identity／Workspace帳號、credential、rename、suspend、reactivate、session、授權或資料write。
+- 依賴：Production另需Google Admin primary／backup operational owner、`jenfu.com.tw` DNS／Admin authority、live read-only sandbox、production mapping／consumer readback、read-only credential custody、quota與可達SLO。任何provider write能力或Workspace Licensing scope都不是OrgMaster依賴或交付。
+- 驗收方向：Google Admin建立的真實Cloud Identity使用者依employeeNumber命名；OrgMaster只接受username精確相符的唯一候選並連結immutable principal。改號期間只有新JFS可經last verified username登入同一principal；stale read不影響已通過live IdP＋active Employee＋effective role的既有功能，但新link／mismatch清除fail closed。定期、事件及人工refresh共用single adapter；所有provider write call為0。
+- Re-entry trigger：RD依direct spec完成I0～I6並取得可追溯evidence後，回PM／Tech Lead判定`RD Implementation Complete`；production facts與release gate維持獨立，不另問已收斂的產品選項。
+
+### 變更紀錄
+
+- 2026-09-14：本輪只優化文件，修正auth client／route、current workspace producer、永久reservation、gate-off legacy與old＋new apps失效、singleton writer fence／local讀取隔離及sync rerun／bounded attempts／global budget。新增direct spec A17～A22，均NOT_RUN；DEV-040 R2仍只允許既定001～011，012不得加入現行release runner。舊紀錄保留為歷史，不當作本輪實作／QC證據。
+
+- 2026-09-08：依RD Tech Lead第二輪審查繼續補齊DEV-047架構。從現行repo確認舊principal view取governance snapshot、outbox enqueue限`ai-pdm`、runtime曾取得core全function EXECUTE及Firebase claims不足；direct spec因此新增current-workspace authority、legacy／managed共同Employee與invalidation barrier、跨legacy history／managed record的永久pair reservation、owned multi-app outbox V1相容wrapper、可在policy啟用前完成的application support attestation、舊writer revoke＋42883限定rolling fallback、random candidate、refresh lease／ordering／retention、OrgMaster role gate及gate-aware permanent-link quarantine。另關閉support認證／policy發布循環依賴與gate-off quarantine被outbox阻塞兩項實作死角。文件維持`RD Implementation Ready`且P0／P1 gap=0；本輪仍未建立012、改source、啟動runtime或操作production。
+- 2026-09-08：依RD Tech Lead review優化DEV-047文件。關閉五項blocking gap：DB admission enable／backout與active-principal known-negative predicate、managed／legacy共享transaction lock、logical／physical principal ID與mapping version、Employee／Directory失效＋central epoch outbox atomicity及no-old-session-resurrection、old-JFS resolver與provider alias責任範圍。同步擴充I0～I6、exact file impact、PostgreSQL fail-seeking cases與acceptance traceability；文件維持`RD Implementation Ready`，source與production均未變更。
+- 2026-09-08：依使用者要求把DEV-047由`RD Contract Ready`升級為`RD Implementation Ready`。Direct spec固定server-owned identity registry、legacy active exemption、`012` migration與routine-only runtime、active-principal additive union、first-login/auth/permission composition、normal UI replacement、I0～I6 exact file plan、crash/backout及test/evidence矩陣。P0 Human與P1 execution gap均為0；production owner／tenant／credential／live sandbox／apply／activation／release仍gated。本輪只改文件，尚未實作。
+- 2026-09-08：依使用者要求把DEV-047升級為`RD Contract Ready`並新增直接spec。固定Directory customer＋user ID與Firebase issuer＋UID雙鍵bridge、pending-auth→首次登入原子綁定、logical data／state／API／permission／error、sync SLO、QA／QC、stop conditions及Workspace Licensing read-scope限制。P0 Human Decision gap與P1 RD estimation contract gap均為0；physical schema／migration、exact implementation plan、sandbox bridge與production facts仍gated。本輪只改文件，不代表已實作。
+- 2026-09-08：使用者於`#引導模式`回答`7A／8A／9A`。當時固定employeeNumber更正期間只有新JFS短碼、resolver沿既有link導向同一immutable principal的last verified Google username，並讓stale／unknown不自動中斷既有合法Employee／role功能；其old-JFS與unknown語意已由上方Tech Lead correction限縮為OrgMaster resolver及last-trusted-present。唯讀同步的定期、關鍵Employee commit事件及具權限者人工refresh三路single-adapter模式不變。新增A28～A30並同步修訂ADR-007、DEV-040、DEV-045與documentation map；本輪只改文件。
+- 2026-09-08：使用者於`#引導模式`回答`4A／5A／6A`。固定Cloud Identity建立、credential、rename、suspend、reactivate、session與Workspace完整生命週期皆由Google Admin／identity provider操作，OrgMaster為zero provider write；employeeNumber可先更正並顯示`identity_alias_mismatch`，只由Google Admin人工改名及唯讀精確readback清除；初次link只接受精確`lower(employeeNumber)@jenfu.com.tw`唯一候選，不設例外。此為對Round 2／3停用／session、Round 5／6 rename、Round 9 reactivation intents的Intentional Replacement；同步修訂ADR-007、DEV-040、DEV-045與documentation map，文件仍為`Brief Ready`，本輪只改文件。
+- 2026-09-08：使用者於同一`#引導模式`邊界輪回答`2A／3A`。初次Cloud Identity managed user與credential固定由Google Admin建立／交付，OrgMaster只在Employee上下文搜尋、人工確認並連結既有immutable principal；Workspace狀態固定由server-side最小權限read-only adapter自動同步，不接受手動狀態為權威。此為對OrgMaster initial create／invite／temporary credential契約的Intentional Replacement；當時保留的rename／deactivate／reactivate／session責任已由上方Round 12 `4A／5A`收斂。同步修訂ADR-007與受影響索引，文件仍為`Brief Ready`，本輪只改文件。
+- 2026-09-08：使用者於`#引導模式`選擇Workspace責任邊界`1A`。固定Workspace授權新增／移除、Gmail／Calendar／Drive資料處置、交接、留存、核准與執行全部在Google Admin／Workspace完成；OrgMaster只顯示含來源時間與`stale／unknown`語意的唯讀授權狀態，不建立license intent、資料案件、阻擋規則、write credential／scope或mutation入口。此為對Round 10 OrgMaster授權編排條款的Intentional Replacement；同步修訂ADR-007與受影響索引，文件仍為`Brief Ready`，本輪只改文件。
+- 2026-09-08：使用者接受`#批判`後的單一身分模型，固定全員使用Cloud Identity基礎公司身分，Workspace只作同一principal的選配服務授權；取消建立時的帳號類型選擇與換帳號語意。當時曾把Workspace移除readback與具責任人的交接／匯出／保留處置納入OrgMaster編排；此操作設計已由上方Round 11 `1A`取代，僅保留身分與授權分離。此為Round 1／2／3舊帳號類型契約的Intentional Replacement；同步修訂ADR-007與受影響索引，文件仍為`Brief Ready`，本輪只改文件。
+- 2026-09-08：使用者於`#引導模式`Round 9回答`1A／2C／3A`。固定Employee可無號建立／保存，但新active transition前必須有有效`JFS####`；既有active無號資料非回溯停用而改為逐筆補正。復職只依current Position／published adoption重算position-derived角色，其他角色重新核准；當時的provider reactivation intent已由上方Round 12 `4A`取消，現行由Google Admin重新啟用。補上A23～A25；文件仍為`Brief Ready`，本輪只改文件。
+- 2026-09-07：使用者於`#引導模式`Round 8回答`1B／2A／3A`。固定Employee可先建立／保存再於明細補設employeeNumber，缺號阻擋managed account；當時留下的active gate已於Round 9收斂。同一自然人復職沿用原Employee、current JFS與既有principal；每位Employee最多一個`human_daily_managed`帳號，Cloud Identity／Workspace只作同一principal的服務／授權轉換。同步保留DEV-045一般one-to-many account projection並補上UI入口、fail-closed與A20～A22。文件仍為`Brief Ready`；本輪只改文件。
+- 2026-09-07：使用者於`#引導模式`Round 7回答`1B／2A／3A`。固定超級管理者手動指定完整`JFS####`、允許跳號但任何曾正式配置的號碼永久不重用，以及Employee／UI顯示大寫而Provider username正規化為小寫`jfs####@jenfu.com.tw`、登入比對不分大小寫；補上commit時占號、併發唯一性與大小寫tombstone防繞過。文件仍為`Brief Ready`；本輪只改文件。
+- 2026-09-07：使用者於`#引導模式`Round 6指定employeeNumber統一為`JFS`＋4位流水號（例`JFS0001`、`JFS0002`），取消前一輪批次匯入並固定只能逐一建立／設定，另確認rename失敗採`3A`：Employee新編號不回滾、舊Provider帳號維持登入、顯示同步失敗並以原intent對帳／重試。此為對Round 5 backfill方式的Intentional Replacement；本輪只改文件。
+- 2026-09-07：使用者於`#引導模式`Round 5回答`1A／2A／3A`。選定`jenfu.com.tw`作正式managed account網域，但明確標記為尚待DNS／Google Admin證實的Human Selected target；既有Employee逐筆回填並驗證employeeNumber。當時的provider rename intent已由上方Round 12 `5A`取消，現行採Google Admin人工改名與`identity_alias_mismatch`唯讀收斂。文件仍為`Brief Ready`；本輪只改文件。
+- 2026-09-07：使用者於`#引導模式`Round 4回答`1B／2A／3B`。當時固定共用IAM／Provider Adapter為provider mutation唯一executor、provider帳號採`<employeeNumber>@<verified-company-domain>`且canonical identity仍為immutable `issuer + subject`，以及只有provider證實首次登入並完成強制改密碼後才標示「已啟用」。其中initial create／credential executor已由Round 11 `2A`取代；immutable principal與唯讀啟用證據仍保留。Spec impact判定為ADR-007與DEV-045的compatible future successor，現階段不新增ADR；本輪只改文件。
+- 2026-09-07：使用者回答credential follow-up `1A`。當時以「首次登入前rotate新temporary credential並撤銷舊credential」取代原Round 3 `3C`的原密碼回顯意圖；此整個OrgMaster credential流程已由Round 11 `2A`取代，現行不建立rotate intent或接收secret。文件仍為`Brief Ready`，本輪只改文件。
+- 2026-09-07：使用者於`#引導模式`Round 3回答`1C／2A／3C`。`1C`固定managed account型態不設預設值、每次由超級管理者主動選擇；`2A`固定current Employee active→inactive commit前顯示影響預覽並明確確認。`3C`要求首次登入前可重新查看原temporary password，因必須保存可還原credential而與既有零持久化／不可再次顯示安全基線衝突，已記錄為`Credential Storage Conflict / Human Re-entry Required`，未納入可實作契約；本輪只改文件。
+- 2026-09-07：使用者於`#引導模式`Round 2明確回答`1A／2B／3A`。當時固定只有OrgMaster超級管理者以person-specific privileged identity開通帳號、每次建立由管理者選擇managed account型態，以及Employee inactive後建立provider lifecycle intent；initial create與帳號型態已由Round 10／11取代，停用／session intent已由Round 12 `4A`取消並外移Google Admin。同步更新DEV-045 JML capsule，local完成狀態不回開。
+- 2026-09-07：使用者於`#引導模式`明確回答`1B／2B／3C`。當時固定Workspace／Cloud Identity分流、員工編號可行政更正但永久不重用，以及管理者人工交付一次性暫時密碼；帳號分流與OrgMaster temporary credential已由Round 10／11取代，員工編號更正／不重用仍有效。文件仍為`Brief Ready`，本輪只改文件。
+- 2026-09-07：依使用者要求建立`Brief Ready`開發文件；初版由OrgMaster承擔開通編排與Employee關係治理，員工編號只作登入別名；其中initial provisioning已由Round 11 `2A`改為Google Admin-first，OrgMaster只保留搜尋、人工確認與連結。Canonical principal仍由identity provider管理；本輪只改文件。
 
 ## DEV-046：統一清單明細工作台與可擴充關係拖曳框架
 
@@ -1008,7 +1294,7 @@ Readiness：`P0 gap=0 / P1 gap=0`
 - `13B / Human Confirmed`：OrgMaster super administrator 永久具跨 app role-management override；這是 `9A` 的唯一例外，每次使用需理由、不可變 audit 與即時告警。
 - `14A / Human Confirmed＋Safety Refinement`：P0／P1 mismatch或非預期擴權／失權零容忍；session refresh pending停止下一批並由durable outbox重試，只有錯誤授權才rollback。
 - `15A / Human Confirmed`：legacy role 自最後一批通過起唯讀保留 30 日或兩個 production release cycle，取較晚者；雙方 owner 簽核對帳且 rollback dependency 解除後才移除。
-- `1B / Human Confirmed`：互動使用者一人一個公司managed identity；需郵件者用Workspace，只需內部系統者可用Cloud Identity Free，個人Gmail只作有期限例外，員工編號只作login alias。
+- `1B / Superseded by ADR-007 2026-09-08 Amendment`：互動使用者仍是一人一個公司managed identity；所有`human_daily_managed`固定使用Cloud Identity基礎，Workspace只作同一principal的選配服務授權，不形成第二帳號。個人Gmail只作有期限例外，員工編號只作login alias。
 - `2A / Human Confirmed`：移除泛用／共用管理員帳號；一般管理角色直接指派employee。`info@`／`sales@`等共用信箱退出平台登入、principal與role模型。
 - `3D / Human Confirmed`：一般app-scoped管理用日常個人identity＋step-up；基礎設施、production switch、OrgMaster super-admin／cross-app override與授予管理能力用同employee下person-specific privileged identity。
 - `Position-to-Role / Human Confirmed`：採`User → Position → Application Role → Permission`，不採`Position = Role`；新任職只產生建議，經app-scoped role administrator發布後才授權。`#效用理論`
@@ -1118,7 +1404,7 @@ OrgMaster 已能在本機治理外部角色指派，但 AI-PDM 仍有自己的�
 13. [x] `13B`：OrgMaster super administrator 永久具跨 app override；不採 time-limited activation 或雙人取用。
 14. [x] `14A＋Safety Refinement`：P0／P1授權mismatch零容忍；session refresh pending停止下一批並由outbox重試，只有錯誤授權才rollback。
 15. [x] `15A`：legacy role 唯讀保留 30 日或兩個 production release cycle（取較晚者），由雙方 owner 簽核 reconciliation 且解除 rollback dependency 後移除。
-16. [x] `1B`：互動使用者採公司managed identity；Workspace／Cloud Identity依mail需求分級，個人Gmail只作有期限例外。
+16. [x] `1B`經ADR-007 2026-09-08 amendment取代：互動使用者採Cloud Identity基礎公司managed identity；Workspace依服務需要對同一principal配置授權，個人Gmail只作有期限例外。
 17. [x] `2A`：共用／泛用管理帳號退出平台identity與role model；`info@`採非破壞退場。
 18. [x] `3D`：一般管理用日常identity＋step-up，高權限用同employee下獨立person-specific privileged identity。
 19. [x] `040-ID1 One-time Exception`：目前非UUIDv7 Employee直接改鍵，既有有效UUIDv7保留，受影響current reference完整重寫；舊ID、舊organization version與舊ID audit不保留，不建立legacy mapping。
