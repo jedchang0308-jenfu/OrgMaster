@@ -1,14 +1,36 @@
 import { spawnSync } from 'node:child_process'
-import { assertProtectedGitHubContext, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
+import { gzipSync } from 'node:zlib'
+import { assertImmutableRef, assertProtectedGitHubContext, assertRuntimeConfig, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
 const STAGES = new Set(['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize', 'rollback'])
+const CONTROL_STATES = new Set(['CANDIDATE_CREATED', 'ENTRYPOINT_CONFIGURED', 'CANDIDATE_VERIFIED', 'GO', 'ACTIVE', 'CANONICAL_VERIFIED', 'ABORT_REQUESTED', 'FINALIZED'])
 
 function fail(code, detail = '') {
   const error = new Error(detail ? `${code}:${detail}` : code)
   error.code = code
   throw error
+}
+
+export function candidateTagUriMatches(service, candidate, observedUri) {
+  if (!/^candidate-[a-f0-9]{12}$/u.test(candidate?.tag ?? '') || typeof candidate?.tagUri !== 'string' || typeof observedUri !== 'string') return false
+  const allowed = new Set([candidate.tagUri])
+  for (const value of [service?.uri, ...(Array.isArray(service?.urls) ? service.urls : [])]) {
+    try {
+      const base = new URL(value)
+      if (base.protocol !== 'https:' || base.port || base.username || base.password || base.pathname !== '/' || base.search || base.hash || base.origin !== value) continue
+      allowed.add(`https://${candidate.tag}---${base.hostname}`)
+    } catch {}
+  }
+  return allowed.has(observedUri)
+}
+
+export function readGitBlob(root, repositoryPath, revision = 'HEAD') {
+  if ((!H40.test(revision) && revision !== 'HEAD') || !/^[A-Za-z0-9._/-]+$/u.test(repositoryPath ?? '') || repositoryPath.startsWith('/') || repositoryPath.includes('../')) fail('GIT_BLOB_REF_INVALID')
+  const result = spawnSync('git', ['show', `${revision}:${repositoryPath}`], { cwd: root, encoding: null, maxBuffer: 32 * 1024 * 1024, windowsHide: true })
+  if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) fail('GIT_SOURCE_INSPECTION_FAILED', repositoryPath)
+  return result.stdout
 }
 
 export function parseOwnerStageArgs(argv, expectedBucket) {
@@ -30,8 +52,21 @@ export function createGitArchive(root, sourceRevision) {
     return result.stdout
   }
   if (String(run(['rev-parse', 'HEAD'])).trim() !== sourceRevision || String(run(['status', '--porcelain=v1', '--untracked-files=all'])).trim() !== '') fail('SOURCE_CHECKOUT_NOT_FROZEN')
-  const bytes = run(['archive', '--format=tar.gz', '--prefix=source/', sourceRevision], null)
+  const bytes = run(['archive', '--format=tar', '--prefix=source/', sourceRevision], null)
   if (!Buffer.isBuffer(bytes) || bytes.length === 0) fail('SOURCE_ARCHIVE_FAILED')
+  return bytes
+}
+
+export function createGitSourceIdentity(root, sourceRevision) {
+  if (!H40.test(sourceRevision ?? '')) fail('SOURCE_REVISION_INVALID')
+  const run = (args, encoding = 'utf8') => {
+    const result = spawnSync('git', args, { cwd: root, encoding, maxBuffer: 256 * 1024 * 1024, windowsHide: true })
+    if (result.error || result.status !== 0) fail('GIT_SOURCE_INSPECTION_FAILED', args.join(' '))
+    return result.stdout
+  }
+  if (String(run(['rev-parse', 'HEAD'])).trim() !== sourceRevision || String(run(['status', '--porcelain=v1', '--untracked-files=all'])).trim() !== '') fail('SOURCE_CHECKOUT_NOT_FROZEN')
+  const bytes = run(['ls-tree', '-r', '-z', '--full-tree', sourceRevision], null)
+  if (!Buffer.isBuffer(bytes) || bytes.length === 0) fail('SOURCE_IDENTITY_FAILED')
   return bytes
 }
 
@@ -62,10 +97,17 @@ export function assertPreparePrerequisites({ intent, profile, values }) {
   const project = (value) => value.projectId ?? value.targetProjectId
   if ([values.readiness, values.foundation, values.infra, values.runtimeConfig].some((value) => project(value) !== profile.target.projectId)) fail('PREPARE_TARGET_MISMATCH')
   const runtime = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
-  if (runtime.runtimeServiceAccount !== profile.target.runtimeServiceAccount || !H64.test(runtime.serviceTemplateSha256 ?? '')) fail('RUNTIME_CONFIG_READBACK_MISMATCH')
+  assertRuntimeConfig(profile, runtime)
   const migrationRunnerDigest = values.infra.migrationRunnerDigest ?? values.infra.artifacts?.migrationRunnerDigest
   if (!migrationRunnerDigest?.startsWith(`${profile.artifact.migrationRunnerUri}@sha256:`)) fail('MIGRATION_RUNNER_PROVENANCE_MISSING')
-  return { runtimeConfig: runtime, migrationRunnerDigest }
+  let productionData = null
+  if (profile.productionData?.required === true) {
+    productionData = {
+      productionDataRef: assertImmutableRef(values.readiness.productionDataRef, profile.artifact.releaseBucket, [profile.productionData.dataObjectPrefix]),
+      firstPrincipalBootstrapRef: assertImmutableRef(values.readiness.firstPrincipalBootstrapRef, profile.artifact.releaseBucket, [profile.productionData.bootstrapObjectPrefix]),
+    }
+  }
+  return { runtimeConfig: runtime, migrationRunnerDigest, productionData }
 }
 
 function assertStage(value, profile, intent, stage) {
@@ -105,6 +147,10 @@ function assertDeployment(value, profile, intent, intentRef, intentSha256) {
   if (!value.artifactDigest?.startsWith(`${profile.artifact.uri}@sha256:`) || !value.migrationRunnerDigest?.startsWith(`${profile.artifact.migrationRunnerUri}@sha256:`)) fail('DEPLOYMENT_ARTIFACT_INVALID')
   if (!H64.test(value.sourceObject?.sha256 ?? '') || !/^[1-9][0-9]*$/u.test(String(value.sourceObject?.generation ?? '')) || typeof value.sourceObject?.crc32c !== 'string') fail('DEPLOYMENT_SOURCE_INVALID')
   for (const name of ['migrationBundleRef', 'buildReceiptRef', 'provenanceReceiptRef', 'sbomReceiptRef', 'scanReceiptRef']) if (!value[name]?.uri || !H64.test(value[name]?.sha256 ?? '')) fail('DEPLOYMENT_EVIDENCE_REF_INVALID', name)
+  if (profile.productionData?.required === true) {
+    assertImmutableRef(value.productionDataRef, profile.artifact.releaseBucket, [profile.productionData.dataObjectPrefix])
+    assertImmutableRef(value.firstPrincipalBootstrapRef, profile.artifact.releaseBucket, [profile.productionData.bootstrapObjectPrefix])
+  }
   return value
 }
 
@@ -122,9 +168,42 @@ async function readIntentAndPaths({ transport, profile, capsuleRef, capsuleSha25
   return { intent, intentRef, intentReadback: result, paths: releasePaths(profile, intent, capsuleSha256) }
 }
 
+export function assertStaleControlSafeToSupersede({ current, profile, intent, ownerRun, service, activeRevision, now, candidate = null, nextState = null }) {
+  const expected = ['schemaVersion', 'inputFingerprint', 'ownerApplicationId', 'service', 'controlBucket', 'releaseId', 'sourceRevision', 'sourceLockSha256', 'candidateRevision', 'previousRevision', 'ownerRunRef', 'leaseExpiresAt', 'deadlineAt', 'state', 'result', 'controlSha256'].sort()
+  if (!current || JSON.stringify(Object.keys(current).sort()) !== JSON.stringify(expected)) fail('CONTROL_HEAD_INVALID')
+  const { controlSha256, ...core } = current
+  const runPrefix = `https://api.github.com/repos/${profile.application.repository}/actions/runs/`
+  const runId = current.ownerRunRef?.startsWith(runPrefix) ? current.ownerRunRef.slice(runPrefix.length) : ''
+  if (controlSha256 !== sha256(canonicalize(core)) || current.schemaVersion !== 'jenfu.dev012.owner-control-head.v1'
+    || current.ownerApplicationId !== profile.application.id || current.service !== profile.target.serviceName
+    || current.controlBucket !== profile.artifact.releaseBucket || !H64.test(current.inputFingerprint ?? '')
+    || !H40.test(current.sourceRevision ?? '') || !H64.test(current.sourceLockSha256 ?? '')
+    || !CONTROL_STATES.has(current.state) || !/^[1-9][0-9]*$/u.test(runId)
+    || !Number.isFinite(Date.parse(current.leaseExpiresAt)) || !Number.isFinite(Date.parse(now))) fail('CONTROL_HEAD_INVALID')
+  if (Date.parse(current.leaseExpiresAt) >= Date.parse(now)
+    || ownerRun?.id !== runId || ownerRun.status !== 'completed' || !ownerRun.conclusion
+    || ownerRun.event !== 'workflow_dispatch' || ownerRun.headSha !== current.sourceRevision
+    || current.previousRevision !== intent.previousRevision || activeRevision !== intent.previousRevision) fail('CONTROL_HEAD_TAKEOVER_UNSAFE')
+  const configuredTags = (service?.traffic ?? []).filter((row) => row?.tag)
+  const observedTags = (service?.trafficStatuses ?? []).filter((row) => row?.tag)
+  if (nextState === 'CANDIDATE_CREATED') {
+    const matches = (row) => row.tag === candidate?.tag && row.revision === candidate?.candidateRevision && Number(row.percent ?? 0) === 0
+    if (!candidate?.tag || !candidate?.candidateRevision || configuredTags.length !== 1 || observedTags.length !== 1
+      || !configuredTags.every(matches) || !observedTags.every(matches)) fail('CONTROL_HEAD_TAKEOVER_UNSAFE')
+  } else if (configuredTags.length !== 0 || observedTags.length !== 0) fail('CONTROL_HEAD_TAKEOVER_UNSAFE')
+  return true
+}
+
 async function writeControl({ transport, paths, profile, intent, fingerprint, candidate, state, result = null, environment }) {
   const current = await optionalNamedJson(transport, paths.control, profile, ['control'])
-  if (current && current.value.inputFingerprint !== fingerprint && current.value.state !== 'FINALIZED') fail('CONTROL_HEAD_FINGERPRINT_MISMATCH')
+  if (current && current.value.inputFingerprint !== fingerprint && current.value.state !== 'FINALIZED') {
+    const [ownerRun, service] = await Promise.all([
+      transport.readOwnerRun(profile, current.value.ownerRunRef),
+      transport.getService(profile),
+    ])
+    transport.assertServiceSettled(service, 'CONTROL_HEAD_TAKEOVER_UNSAFE')
+    assertStaleControlSafeToSupersede({ current: current.value, profile, intent, ownerRun, service, activeRevision: transport.effectiveRevision(service), now: transport.now(), candidate, nextState: state })
+  }
   if (current?.value.inputFingerprint === fingerprint) {
     const transitions = {
       CANDIDATE_CREATED: ['ENTRYPOINT_CONFIGURED', 'FINALIZED'],
@@ -155,7 +234,7 @@ function publicBuildReceipt(build) {
   return { name: build.name, id: build.id, projectId: build.projectId, status: build.status, serviceAccount: build.serviceAccount, createTime: build.createTime, startTime: build.startTime, finishTime: build.finishTime, sourceProvenance: build.sourceProvenance, results: build.results, options: build.options }
 }
 
-export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, profile, profileSha256 = profile?.contractSha256, transport, environment = process.env, validateIntent, createSourceArchive, buildMigrationBundle }) {
+export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, profile, profileSha256 = profile?.contractSha256, transport, environment = process.env, validateIntent, createSourceIdentity, createSourceArchive, buildMigrationBundle }) {
   if (!STAGES.has(stage)) fail('STAGE_DENIED')
   const { intent, intentRef, paths } = await readIntentAndPaths({ transport, profile, capsuleRef, capsuleSha256, validateIntent })
   const fingerprint = sha256(canonicalize({ ownerApplicationId: profile.application.id, releaseId: intent.releaseId, sourceRevision: intent.sourceRevision, releaseIntentSha256: capsuleSha256 }))
@@ -165,6 +244,11 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
   }
 
   if (stage === 'prepare') {
+    const existing = await optionalNamedJson(transport, paths.prepare, profile)
+    if (existing) {
+      assertStage(existing.value, profile, intent, 'prepare')
+      return existing
+    }
     const names = { sourceLock: 'sourceLockRef', authorization: 'authorizationPolicyRef', readiness: 'readinessReceiptRef', foundation: 'foundationReceiptRef', infra: 'infraReceiptRef', runtimeConfig: 'runtimeConfigRef' }
     const entries = await Promise.all(Object.entries(names).map(async ([name, field]) => [name, (await transport.readJson(intent[field], profile.artifact.releaseBucket, ['receipts'])).value]))
     const values = Object.fromEntries(entries)
@@ -172,15 +256,24 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const service = await transport.getService(profile)
     transport.assertServiceSettled(service, 'PREPARE_BASELINE_MISMATCH')
     if (transport.effectiveRevision(service) !== intent.previousRevision) fail('PREPARE_BASELINE_MISMATCH')
-    return writeStage(transport, paths, profile, intent, 'prepare', null, { prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])), previousRevision: intent.previousRevision, runtimeServiceAccount: derived.runtimeConfig.runtimeServiceAccount, migrationRunnerDigest: derived.migrationRunnerDigest, entrypointBaseline: transport.entrypointSnapshot(service), remainingHumanAction: 0 })
+    return writeStage(transport, paths, profile, intent, 'prepare', null, { prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])), previousRevision: intent.previousRevision, runtimeServiceAccount: derived.runtimeConfig.runtimeServiceAccount, migrationRunnerDigest: derived.migrationRunnerDigest, ...(derived.productionData ?? {}), entrypointBaseline: transport.entrypointSnapshot(service), remainingHumanAction: 0 })
   }
 
   if (stage === 'build') {
     const prepare = await readStage(transport, paths, profile, intent, 'prepare')
+    const existing = await optionalNamedJson(transport, paths.deployment, profile)
+    if (existing) {
+      assertDeployment(existing.value, profile, intent, intentRef, capsuleSha256)
+      await readStage(transport, paths, profile, intent, 'build')
+      return existing
+    }
+    const sourceIdentityBytes = await createSourceIdentity(intent.sourceRevision)
+    if (!Buffer.isBuffer(sourceIdentityBytes) || sha256(sourceIdentityBytes) !== intent.sourceSha256) fail('SOURCE_IDENTITY_HASH_MISMATCH')
     const sourceBytes = await createSourceArchive(intent.sourceRevision)
-    if (!Buffer.isBuffer(sourceBytes) || sha256(sourceBytes) !== intent.sourceSha256) fail('SOURCE_ARCHIVE_HASH_MISMATCH')
+    if (!Buffer.isBuffer(sourceBytes) || sourceBytes.length === 0) fail('SOURCE_ARCHIVE_FAILED')
     const sourceUri = `gs://${profile.artifact.releaseBucket}/source/releases/${intent.releaseId}/${capsuleSha256}/source.tar.gz`
-    const source = await transport.putBytes(sourceUri, sourceBytes, { bucket: profile.artifact.releaseBucket, prefix: 'source', contentType: 'application/gzip' })
+    const sourceArchive = gzipSync(sourceBytes, { level: 9 })
+    const source = await transport.putBytes(sourceUri, sourceArchive, { bucket: profile.artifact.releaseBucket, prefix: 'source', contentType: 'application/gzip' })
     const migration = await buildMigrationBundle(intent.sourceRevision)
     if (migration.bundle?.manifestSha256 !== intent.migrationManifestSha256 || sha256(migration.bytes) !== migration.bundleSha256) fail('MIGRATION_MANIFEST_MISMATCH')
     const bundleUri = `gs://${profile.artifact.releaseBucket}/${profile.artifact.migrationBundlePrefix}/${intent.sourceRevision}/${migration.bundle.manifestSha256}.json`
@@ -192,7 +285,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const sbom = await transport.putJson(paths.sbom, { schemaVersion: 'jenfu.dev012.sbom-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, ...analysis.sbomExport, occurrenceNames: analysis.sbomOccurrenceNames, status: 'PASS' }, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
     const scan = await transport.putJson(paths.scan, { schemaVersion: 'jenfu.dev012.scan-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, buildOccurrenceNames: analysis.buildOccurrenceNames, discoveryOccurrenceNames: analysis.discoveryOccurrenceNames, vulnerabilityCount: analysis.vulnerabilityCount, blockingVulnerabilityCount: analysis.blockingVulnerabilityCount, maximumAllowedSeverity: profile.build.maximumAllowedSeverity, observedAt: analysis.observedAt, status: 'PASS' }, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
     const buildStage = await writeStage(transport, paths, profile, intent, 'build', prepare.ref, { artifactDigest: build.artifactDigest, sourceObject: { ...source.ref, generation: String(source.metadata.generation), crc32c: source.metadata.crc32c }, migrationBundleRef: bundle.ref, provenanceReceiptRef: provenance.ref, sbomReceiptRef: sbom.ref, scanReceiptRef: scan.ref })
-    const deployment = { schemaVersion: profile.schemas.deploymentCapsule, ownerApplicationId: profile.application.id, releaseIntentRef: intentRef, releaseIntentSha256: capsuleSha256, sourceRevision: intent.sourceRevision, sourceObject: { ...source.ref, generation: String(source.metadata.generation), crc32c: source.metadata.crc32c }, artifactDigest: build.artifactDigest, migrationBundleRef: bundle.ref, migrationRunnerDigest: prepare.value.facts.migrationRunnerDigest, buildReceiptRef: buildStage.ref, provenanceReceiptRef: provenance.ref, sbomReceiptRef: sbom.ref, scanReceiptRef: scan.ref, deadlineAt: intent.deadlineAt }
+    const deployment = { schemaVersion: profile.schemas.deploymentCapsule, ownerApplicationId: profile.application.id, releaseIntentRef: intentRef, releaseIntentSha256: capsuleSha256, sourceRevision: intent.sourceRevision, sourceObject: { ...source.ref, generation: String(source.metadata.generation), crc32c: source.metadata.crc32c }, artifactDigest: build.artifactDigest, migrationBundleRef: bundle.ref, migrationRunnerDigest: prepare.value.facts.migrationRunnerDigest, ...(profile.productionData?.required === true ? { productionDataRef: prepare.value.facts.productionDataRef, firstPrincipalBootstrapRef: prepare.value.facts.firstPrincipalBootstrapRef } : {}), buildReceiptRef: buildStage.ref, provenanceReceiptRef: provenance.ref, sbomReceiptRef: sbom.ref, scanReceiptRef: scan.ref, deadlineAt: intent.deadlineAt }
     assertDeployment(deployment, profile, intent, intentRef, capsuleSha256)
     return transport.putJson(paths.deployment, deployment, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
   }
@@ -202,7 +295,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const existing = await optionalNamedJson(transport, paths.migrate, profile)
     if (!existing) await transport.runMigrationJob({ profile, deployment: deployment.value, outputUri: paths.migrate, deadlineAt: intent.deadlineAt })
     const receipt = existing ?? await readNamedJson(transport, paths.migrate, profile)
-    if (receipt.value?.schemaVersion !== 'jenfu.dev012.migration-receipt.v1' || receipt.value.ownerApplicationId !== profile.application.id || receipt.value.sourceRevision !== intent.sourceRevision || receipt.value.manifestSha256 !== intent.migrationManifestSha256 || receipt.value.status !== 'PASS' || receipt.value.boundaryStatus !== 'PASS') fail('MIGRATION_RECEIPT_INVALID')
+    if (receipt.value?.schemaVersion !== 'jenfu.dev012.migration-receipt.v1' || receipt.value.ownerApplicationId !== profile.application.id || receipt.value.sourceRevision !== intent.sourceRevision || receipt.value.manifestSha256 !== intent.migrationManifestSha256 || receipt.value.status !== 'PASS' || receipt.value.boundaryStatus !== 'PASS' || (profile.productionData?.required === true && receipt.value.productionData?.status !== 'PASS')) fail('MIGRATION_RECEIPT_INVALID')
     return receipt
   }
 
@@ -235,11 +328,11 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const service = await transport.getService(profile)
     transport.assertCanonicalEntrypoint(profile, service)
     const tag = service.trafficStatuses?.find((row) => row.tag === candidate.value.facts.tag)
-    if (tag?.revision !== candidate.value.facts.candidateRevision || Number(tag.percent) !== 0 || tag.uri !== candidate.value.facts.tagUri || transport.effectiveRevision(service) !== intent.previousRevision) fail('CANDIDATE_TAG_READBACK_MISMATCH')
+    if (tag?.revision !== candidate.value.facts.candidateRevision || Number(tag.percent ?? 0) !== 0 || !candidateTagUriMatches(service, candidate.value.facts, tag.uri) || transport.effectiveRevision(service) !== intent.previousRevision) fail('CANDIDATE_TAG_READBACK_MISMATCH')
     const revision = await transport.getRevision(profile, candidate.value.facts.candidateRevision)
-    transport.assertRevisionReady(revision, candidate.value.facts.artifactDigest)
-    const smoke = await transport.runAuthenticatedSmoke({ profile, origin: candidate.value.facts.tagUri, environment })
-    const result = await writeStage(transport, paths, profile, intent, 'verify', entrypoint.ref, { candidateReceiptRef: candidate.ref, entrypointReceiptRef: entrypoint.ref, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, tagUri: candidate.value.facts.tagUri, smoke, sideEffects: profile.sideEffects })
+    transport.assertRevisionReady(profile, revision, candidate.value.facts.artifactDigest, candidate.value.facts.cloudSqlProxyResolvedImage)
+    const smoke = await transport.runInternalCandidateSmoke({ profile, origin: candidate.value.facts.tagUri, candidateTag: candidate.value.facts.tag, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, deadlineAt: intent.deadlineAt, environment })
+    const result = await writeStage(transport, paths, profile, intent, 'verify', entrypoint.ref, { candidateReceiptRef: candidate.ref, entrypointReceiptRef: entrypoint.ref, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, tagUri: candidate.value.facts.tagUri, providerTagUri: tag.uri, smoke, sideEffects: profile.sideEffects })
     await writeControl({ transport, paths, profile, intent, fingerprint, candidate: candidate.value.facts, state: 'CANDIDATE_VERIFIED', environment })
     return result
   }
@@ -257,7 +350,8 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (decision.value.facts.decision !== 'GO') fail('MACHINE_DECISION_NO_GO')
     const candidate = await readStage(transport, paths, profile, intent, 'candidate')
     const service = await transport.setTraffic({ profile, revision: candidate.value.facts.candidateRevision, candidateTag: candidate.value.facts.tag, deadlineAt: intent.deadlineAt })
-    const result = await writeStage(transport, paths, profile, intent, 'activate', decision.ref, { decisionReceiptRef: decision.ref, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, effectiveRevision: transport.effectiveRevision(service), serviceEtag: service.etag })
+    transport.assertCanonicalEntrypoint(profile, service)
+    const result = await writeStage(transport, paths, profile, intent, 'activate', decision.ref, { decisionReceiptRef: decision.ref, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, effectiveRevision: transport.effectiveRevision(service), serviceEtag: service.etag, canonicalOrigin: profile.target.canonicalOrigin, ingress: service.ingress, defaultUriDisabled: service.defaultUriDisabled === true, invokerIamDisabled: service.invokerIamDisabled === true })
     await writeControl({ transport, paths, profile, intent, fingerprint, candidate: candidate.value.facts, state: 'ACTIVE', environment })
     return result
   }
@@ -267,8 +361,9 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const candidate = await readStage(transport, paths, profile, intent, 'candidate')
     const service = await transport.getService(profile)
     if (transport.effectiveRevision(service) !== candidate.value.facts.candidateRevision) fail('CANONICAL_REVISION_MISMATCH')
+    transport.assertCanonicalEntrypoint(profile, service)
     const revision = await transport.getRevision(profile, candidate.value.facts.candidateRevision)
-    try { transport.assertRevisionReady(revision, candidate.value.facts.artifactDigest) } catch { fail('CANONICAL_ARTIFACT_MISMATCH') }
+    try { transport.assertRevisionReady(profile, revision, candidate.value.facts.artifactDigest, candidate.value.facts.cloudSqlProxyResolvedImage) } catch { fail('CANONICAL_ARTIFACT_MISMATCH') }
     const smoke = await transport.runAuthenticatedSmoke({ profile, origin: profile.target.canonicalOrigin, environment })
     const result = await writeStage(transport, paths, profile, intent, 'canonical', activate.ref, { activationReceiptRef: activate.ref, origin: profile.target.canonicalOrigin, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, smoke })
     await writeControl({ transport, paths, profile, intent, fingerprint, candidate: candidate.value.facts, state: 'CANONICAL_VERIFIED', environment })
@@ -289,6 +384,9 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
   const candidate = await optionalNamedJson(transport, paths.candidate, profile)
   const entrypoint = await optionalNamedJson(transport, paths.entrypoint, profile)
   const prepare = await optionalNamedJson(transport, paths.prepare, profile)
+  const migration = await optionalNamedJson(transport, paths.migrate, profile)
+  if (migration && (migration.value?.schemaVersion !== 'jenfu.dev012.migration-receipt.v1' || migration.value.ownerApplicationId !== profile.application.id || migration.value.sourceRevision !== intent.sourceRevision || migration.value.manifestSha256 !== intent.migrationManifestSha256 || migration.value.status !== 'PASS' || migration.value.boundaryStatus !== 'PASS' || (profile.productionData?.required === true && migration.value.productionData?.status !== 'PASS'))) fail('MIGRATION_RECEIPT_INVALID')
+  const databaseDisposition = migration ? 'FORWARD_APPLIED' : 'NOT_APPLIED'
   let disposition = 'PRE_ACTIVATION_ABORTED'
   let entrypointRecovery = { changed: false, result: 'NOT_REQUIRED' }
   if (candidate) {
@@ -296,7 +394,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const facts = candidate.value.facts
     let service = await transport.getService(profile)
     if (transport.effectiveRevision(service) === facts.candidateRevision) {
-      service = await transport.setTraffic({ profile, revision: intent.previousRevision, candidateTag: facts.tag, deadlineAt: intent.deadlineAt })
+      service = await transport.setTraffic({ profile, revision: intent.previousRevision, deadlineAt: intent.deadlineAt })
       disposition = 'ROLLED_BACK'
     }
     await transport.removeCandidateTag({ profile, tag: facts.tag, candidateRevision: facts.candidateRevision, expectedActiveRevision: intent.previousRevision, deadlineAt: intent.deadlineAt })
@@ -305,9 +403,15 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (entrypoint) assertStage(entrypoint.value, profile, intent, 'entrypoint')
     const restored = await transport.restoreEntrypoint({ profile, baseline: prepare.value.facts.entrypointBaseline, deadlineAt: intent.deadlineAt })
     entrypointRecovery = { changed: restored.changed, result: restored.changed ? 'BASELINE_RESTORED' : 'BASELINE_ALREADY_ACTIVE', providerOperationRef: restored.providerOperationRef }
+  } else {
+    const deterministicRevision = `${profile.target.serviceName}-${fingerprint.slice(0, 12)}`
+    const deterministicTag = `candidate-${fingerprint.slice(0, 12)}`
+    const service = await transport.getService(profile)
+    const tagged = service.trafficStatuses?.find((row) => row.tag === deterministicTag)
+    if (tagged) await transport.removeCandidateTag({ profile, tag: deterministicTag, candidateRevision: deterministicRevision, expectedActiveRevision: intent.previousRevision, deadlineAt: intent.deadlineAt })
   }
-  const rollback = await writeStage(transport, paths, profile, intent, 'rollback', entrypoint?.ref ?? candidate?.ref ?? null, { result: disposition, previousRevision: intent.previousRevision, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'], entrypointRecovery, databaseDisposition: 'DATABASE_FORWARD_APPLIED' })
-  const terminal = stageReceipt({ profile, intent, stage: 'terminal', previousReceiptRef: rollback.ref, facts: { result: disposition, previousRevision: intent.previousRevision, entrypointRecovery, databaseDisposition: 'DATABASE_FORWARD_APPLIED' }, observedAt: transport.now() })
+  const rollback = await writeStage(transport, paths, profile, intent, 'rollback', entrypoint?.ref ?? candidate?.ref ?? migration?.ref ?? null, { result: disposition, previousRevision: intent.previousRevision, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'], entrypointRecovery, databaseDisposition })
+  const terminal = stageReceipt({ profile, intent, stage: 'terminal', previousReceiptRef: rollback.ref, facts: { result: disposition, previousRevision: intent.previousRevision, entrypointRecovery, databaseDisposition }, observedAt: transport.now() })
   const terminalResult = await transport.putJson(paths.terminal, terminal, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
   await transport.publishIncident(profile, { correlationId: `${intent.releaseId}-${environment.GITHUB_RUN_ATTEMPT ?? '1'}`, ownerApplicationId: profile.application.id, sourceLockSha256: intent.sourceLockRef.sha256, eventRef: terminalResult.ref, occurredAt: transport.now() })
   await writeControl({ transport, paths, profile, intent, fingerprint, candidate: candidate?.value?.facts ?? null, state: 'FINALIZED', result: disposition, environment })

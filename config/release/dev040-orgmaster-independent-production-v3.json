@@ -1,7 +1,7 @@
 {
   "schemaVersion": "jenfu.dev040.orgmaster-continuous-release.v3",
   "profileVersion": "CONTINUOUS_NO_DWELL_V3_DIRECT_RUN_APP",
-  "contractSha256": "d88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05",
+  "contractSha256": "857f8a94ab13f63071156f85e76e5c675b348588b1126c147e0e54b431b6e8c5",
   "application": {
     "id": "orgmaster",
     "repository": "jedchang0308-jenfu/OrgMaster",
@@ -23,12 +23,22 @@
     }
   },
   "runtime": {
+    "containerName": "orgmaster",
     "cpu": "1",
     "memory": "512Mi",
+    "port": 8080,
     "concurrency": 20,
     "timeoutSeconds": 60,
     "maxInstances": 1,
-    "poolMax": 6
+    "poolMax": 6,
+    "startupProbePath": "/api/auth/mode",
+    "cloudSqlConnectionName": "jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg",
+    "cloudSqlProxyContainer": "cloud-sql-proxy",
+    "cloudSqlProxyImage": "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0@sha256:fa4c7308245407157c5e9c4e16f1c0f1113899d6f29dc8f8be3e30efae86467f",
+    "cloudSqlProxyPort": 5432,
+    "cloudSqlProxyMaximumConnections": 24,
+    "network": "jenfu-platform-prod-vpc",
+    "subnet": "jenfu-platform-prod-runtime"
   },
   "artifact": {
     "repository": "orgmaster-release",
@@ -54,6 +64,7 @@
     "verifier": "orgmaster-prod-verifier@jenfu-platform-prod.iam.gserviceaccount.com",
     "controller": "orgmaster-prod-controller@jenfu-platform-prod.iam.gserviceaccount.com",
     "invoker": "orgmaster-prod-release-invoker@jenfu-platform-prod.iam.gserviceaccount.com",
+    "smoke": "orgmaster-prod-smoke@jenfu-platform-prod.iam.gserviceaccount.com",
     "runtimeDbLogin": "orgmaster-prod-runtime@jenfu-platform-prod.iam",
     "migratorDbLogin": "orgmaster-prod-migrator@jenfu-platform-prod.iam"
   },
@@ -73,6 +84,9 @@
     "sessionPath": "/api/auth/firebase/session",
     "mePath": "/api/auth/me",
     "logoutPath": "/api/auth/logout",
+    "candidateSmokeMode": "WORKFLOWS_INTERNAL_OIDC_V1",
+    "candidateWorkflowName": "orgmaster-prod-candidate-smoke",
+    "candidateRefreshTokenSecretId": "orgmaster-prod-smoke-firebase-refresh-token",
     "authenticatedProbes": [
       {
         "id": "preference-db-read",
@@ -119,16 +133,14 @@
     ]
   },
   "environment": {
-    "requiredNames": [
+    "requiredPlainEnvironmentNames": [
       "ORGMASTER_PERSISTENCE_MODE",
       "ORGMASTER_PUBLIC_BASE_URL",
-      "ORGMASTER_POSTGRES_URL",
       "ORGMASTER_POSTGRES_POOL_MAX",
       "ORGMASTER_POSTGRES_CONNECTION_TIMEOUT_MS",
       "ORGMASTER_POSTGRES_IDLE_TIMEOUT_MS",
       "ORGMASTER_POSTGRES_STATEMENT_TIMEOUT_MS",
       "ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS",
-      "ORGMASTER_SESSION_HASH_PEPPER",
       "JENFU_FIREBASE_PROJECT_ID",
       "JENFU_IDENTITY_ISSUER",
       "JENFU_IDENTITY_AUDIENCE",
@@ -137,7 +149,11 @@
       "VITE_JENFU_FIREBASE_PROJECT_ID",
       "VITE_JENFU_FIREBASE_APP_ID"
     ],
-    "secretIds": {
+    "requiredSecretNames": [
+      "ORGMASTER_POSTGRES_URL",
+      "ORGMASTER_SESSION_HASH_PEPPER"
+    ],
+    "allowedSecretIds": {
       "ORGMASTER_POSTGRES_URL": "orgmaster-prod-postgres-url",
       "ORGMASTER_SESSION_HASH_PEPPER": "orgmaster-prod-session-pepper"
     },
@@ -150,8 +166,22 @@
       "ORGMASTER_POSTGRES_IDLE_TIMEOUT_MS": "30000",
       "ORGMASTER_POSTGRES_STATEMENT_TIMEOUT_MS": "30000",
       "ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS": "35000",
-      "ORGMASTER_PUBLIC_BASE_URL": "https://orgmaster-prod-9536592944.asia-east1.run.app"
+      "ORGMASTER_PUBLIC_BASE_URL": "https://orgmaster-prod-9536592944.asia-east1.run.app",
+      "JENFU_FIREBASE_PROJECT_ID": "jenfu-platform-prod",
+      "JENFU_IDENTITY_ISSUER": "https://securetoken.google.com/jenfu-platform-prod",
+      "JENFU_IDENTITY_AUDIENCE": "jenfu-platform-prod",
+      "VITE_JENFU_FIREBASE_AUTH_DOMAIN": "jenfu-platform-prod.firebaseapp.com",
+      "VITE_JENFU_FIREBASE_PROJECT_ID": "jenfu-platform-prod"
     }
+  },
+  "productionData": {
+    "required": true,
+    "packageSchema": "jenfu.dev012.orgmaster-production-data-package.v1",
+    "bootstrapSchema": "jenfu.dev012.orgmaster-first-principal-bootstrap.v1",
+    "dataObjectPrefix": "source/production-data",
+    "bootstrapObjectPrefix": "receipts/releases",
+    "sourceRepository": "jedchang0308-jenfu/OrgMaster",
+    "preferenceDisposition": "EXCLUDED_UNATTRIBUTABLE_PRINCIPAL"
   },
   "migrations": {
     "jobName": "orgmaster-prod-migration-runner",

@@ -10,7 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const run = spawnSync(process.execPath, ['--test', 'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.test.mjs', 'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs'], { cwd: root, encoding: 'utf8' })
 process.stdout.write(run.stdout)
 process.stderr.write(run.stderr)
-if (run.status !== 0 || (run.stdout.match(/S1B-21/g) || []).length !== 6) process.exit(run.status || 1)
+if (run.status !== 0 || (run.stdout.match(/S1B-21/g) || []).length !== 8) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 
@@ -126,7 +126,7 @@ const files = [
   ...fs.readdirSync(path.join(root, 'db/migrations')).filter((name) => name.endsWith('.sql')).map((name) => `db/migrations/${name}`),
 ].sort()
 const sourceSnapshotSha256 = createHash('sha256').update(files.map((file) => `${file}\0${createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex')}`).join('\n')).digest('hex')
-const report = { schemaVersion: 'jenfu.dev040.r2.s1b-owner-report.v2', runId, ownerApplicationId: 'orgmaster', caseId: 'S1B-21', result: 'PASS', sourceFiles: files, sourceSnapshotAlgorithm: 'sha256(file-null-sha256-bytes)', sourceSnapshotSha256, contractSha256: '47eb972c48549da73ca135509e99bdc8ae4463e87b81785abe8d6cfd8f54b95f', contractVersion: 'CONTINUOUS_NO_DWELL_V2', evidenceScope: 'LOCAL_CONTRACT', releaseAuthority: false, ownerExitCommands: [{ command: 'npm run test:dev-040:r2', result: 'PASS' }, { command: 'npm run qc:dev-040:r2', result: 'SELF' }, ...ownerExitCommands], providerMutationSummary: { cloud: 0, database: 0, traffic: 0, credentials: 0, sibling: 0 }, cleanup: { runtime: 0, ports: 0, containers: 0, temporaryFiles: 0 }, createdAt: new Date().toISOString() }
+const report = { schemaVersion: 'jenfu.dev040.r2.s1b-owner-report.v2', runId, ownerApplicationId: 'orgmaster', caseId: 'S1B-21', result: 'PASS', sourceFiles: files, sourceSnapshotAlgorithm: 'sha256(file-null-sha256-bytes)', sourceSnapshotSha256, contractSha256: 'c395f6cead7d311a28402fb0f8d065305e594363d7be51659e9b41a343c0c615', contractVersion: 'CONTINUOUS_NO_DWELL_V2', evidenceScope: 'LOCAL_CONTRACT', releaseAuthority: false, ownerExitCommands: [{ command: 'npm run test:dev-040:r2', result: 'PASS' }, { command: 'npm run qc:dev-040:r2', result: 'SELF' }, ...ownerExitCommands], providerMutationSummary: { cloud: 0, database: 0, traffic: 0, credentials: 0, sibling: 0 }, cleanup: { runtime: 0, ports: 0, containers: 0, temporaryFiles: 0 }, createdAt: new Date().toISOString() }
 report.evidenceSha256 = createHash('sha256').update(JSON.stringify(report)).digest('hex')
 fs.writeFileSync(path.join(dir, 'owner-report.json'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' })
 process.stdout.write(`DEV-040 R2 continuous QC PASS ${path.relative(root, dir)}\n`)

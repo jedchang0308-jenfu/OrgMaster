@@ -42,7 +42,10 @@ test('S1B-21 OrgMaster runner accepts only exact production target and refs', ()
   assert.throws(() => assertRunnerTarget({ ...environment, POSTGRES_DATABASE: 'jenfu_stg' }, TARGET), /TARGET_MISMATCH/)
   assert.equal(parseGsUri(`gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, TARGET.releaseBucket, 'source/migration-bundles').object, 'source/migration-bundles/a.json')
   assert.throws(() => parseGsUri('gs://jenfu-platform-prod-aipdm-release/source/migration-bundles/a.json', TARGET.releaseBucket, 'source/migration-bundles'), /GCS_REF_INVALID/)
-  assert.equal(parseRunnerArgs(['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', 'b'.repeat(64), '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/r/migrate.json`]).sourceRevision, H40)
+  const args = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', 'b'.repeat(64), '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/r/migrate.json`, '--data-ref', `gs://${TARGET.releaseBucket}/source/production-data/REL-001/data.json`, '--data-sha256', 'c'.repeat(64), '--bootstrap-ref', `gs://${TARGET.releaseBucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, '--bootstrap-sha256', 'd'.repeat(64)]
+  assert.equal(parseRunnerArgs(args, { productionDataRequired: true }).sourceRevision, H40)
+  assert.throws(() => parseRunnerArgs(args.slice(0, 8), { productionDataRequired: true }), /MIGRATION_ARGUMENT_INVALID/)
+  assert.throws(() => parseRunnerArgs(args), /MIGRATION_ARGUMENT_INVALID/)
   assert.equal(crc32cBase64(Buffer.from('123456789')), '4waSgw==')
 })
 
@@ -57,6 +60,7 @@ test('S1B-21 OrgMaster runner validates ten-row baseline and appends only 011', 
       statements.push(sql)
       if (sql.startsWith('SELECT current_database')) return { rows: [{ database: 'jenfu_prod', user: TARGET.login, postgresMajor: 17, migratorMember: true, runtimeCanCreateCore: false }] }
       if (sql.includes('unnest(')) return { rows: TARGET.siblingCoreSchemas.map((schema_name) => ({ schema_name, can_use: false })) }
+      if (sql.includes('FROM pg_catalog.pg_class')) return { rows: [{ exists: true }] }
       if (sql.includes('ORDER BY applied_at')) return { rows: ledger.map((row) => ({ ...row })) }
       if (sql.startsWith('INSERT INTO')) ledger.push({ version: values[0], name: values[1], checksum_sha256: values[2], source_revision: values[3] })
       return { rows: [] }
@@ -71,4 +75,31 @@ test('S1B-21 OrgMaster runner validates ten-row baseline and appends only 011', 
   assert.equal(second.applied, 0)
   const missing = ledger.slice(1)
   assert.throws(() => planMigration(input.bundle, missing), /LEDGER_PREFIX_MISMATCH|BASELINE_INCOMPLETE/)
+})
+
+test('S1B-21 OrgMaster runner bootstraps only its private ledger and applies a fresh database from zero', async () => {
+  const input = fixture()
+  let ledger = []
+  let tableExists = false
+  const statements = []
+  const database = {
+    async query(sql, values) {
+      statements.push(sql)
+      if (sql.startsWith('SELECT current_database')) return { rows: [{ database: 'jenfu_prod', user: TARGET.login, postgresMajor: 17, migratorMember: true, runtimeCanCreateCore: false }] }
+      if (sql.includes('unnest(')) return { rows: TARGET.siblingCoreSchemas.map((schema_name) => ({ schema_name, can_use: false })) }
+      if (sql.includes('FROM pg_catalog.pg_class')) return { rows: [{ exists: tableExists }] }
+      if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) tableExists = true
+      if (sql.includes('ORDER BY applied_at')) return { rows: ledger.map((row) => ({ ...row })) }
+      if (sql.startsWith('INSERT INTO')) ledger.push({ version: values[0], name: values[1], checksum_sha256: values[2], source_revision: values[3] })
+      return { rows: [] }
+    },
+  }
+  const receipt = await executeProductionMigration({ bundle: input.bundle, database, target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true, now: () => '2026-09-11T00:00:00.000Z' })
+  assert.equal(receipt.status, 'PASS')
+  assert.equal(receipt.minimumLedgerCount, 0)
+  assert.deepEqual(receipt.ledgerBootstrap, { enabled: true, created: true })
+  assert.equal(receipt.applied, input.bundle.entries.length)
+  assert.equal(ledger.length, input.bundle.entries.length)
+  assert.ok(statements.some((sql) => sql === `SET LOCAL ROLE ${TARGET.migratorRole}`))
+  assert.ok(statements.some((sql) => sql === `REVOKE ALL ON TABLE ${TARGET.ledger} FROM PUBLIC`))
 })

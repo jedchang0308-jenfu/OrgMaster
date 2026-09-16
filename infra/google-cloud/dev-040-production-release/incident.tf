@@ -90,7 +90,10 @@ resource "google_cloud_run_v2_service" "abort_controller" {
           }
         }
       }
-      resources { limits = { cpu = "1", memory = "256Mi" } }
+      resources {
+        limits   = { cpu = "1", memory = "256Mi" }
+        cpu_idle = true
+      }
     }
   }
 
@@ -179,7 +182,8 @@ resource "google_cloud_scheduler_job" "watchdog" {
     }
   }
 
-  retry_config { retry_count = 0 }
+  # Omit an empty retry_config: Cloud Scheduler normalizes retry_count=0 away,
+  # so declaring it creates a perpetual in-place diff after the first apply.
 
   depends_on = [
     google_cloud_run_v2_service_iam_member.abort_invoker,

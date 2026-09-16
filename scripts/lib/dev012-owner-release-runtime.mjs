@@ -2,12 +2,14 @@ import { canonicalize, crc32cBase64, parseGsUri, sha256 } from './dev012-product
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
+const APPLICATION_IMAGE_PLACEHOLDER = 'APPLICATION_IMAGE_DIGEST'
 const ENTRYPOINT_UPDATE_MASK = 'ingress,defaultUriDisabled,invokerIamDisabled'
 
 export class OwnerReleaseError extends Error {
   constructor(code, detail = '') {
     super(detail ? `${code}:${detail}` : code)
     this.code = code
+    this.detail = detail
   }
 }
 
@@ -47,6 +49,92 @@ export function assertProtectedGitHubContext(profile, intent, environment) {
   if (environment.GITHUB_REPOSITORY !== profile.application.repository || environment.GITHUB_SHA !== intent.sourceRevision || environment.GITHUB_WORKFLOW_SHA !== intent.sourceRevision || environment.GITHUB_WORKFLOW_REF !== expectedWorkflowRef || environment.GITHUB_REF !== expectedRef || environment.GITHUB_EVENT_NAME !== 'workflow_dispatch') fail('GITHUB_SOURCE_AUTHORITY_MISMATCH')
   if (!H40.test(environment.GITHUB_SHA ?? '') || !/^[0-9]+$/u.test(environment.GITHUB_REPOSITORY_ID ?? '') || !/^[0-9]+$/u.test(environment.GITHUB_REPOSITORY_OWNER_ID ?? '') || !/^[0-9]+$/u.test(environment.GITHUB_RUN_ID ?? '') || !/^[0-9]+$/u.test(environment.GITHUB_RUN_ATTEMPT ?? '')) fail('GITHUB_PUBLISHER_IDENTITY_MISSING')
   return true
+}
+
+function runtimeTemplate(profile, plainEnvironment, secretVersions) {
+  const code = 'RUNTIME_CONFIG_READBACK_MISMATCH'
+  const requiredPlain = profile.environment?.requiredPlainEnvironmentNames ?? profile.environment?.requiredNames ?? []
+  const fixedValues = profile.environment?.fixedValues ?? {}
+  const allowedSecrets = profile.environment?.allowedSecretIds ?? profile.environment?.secretIds ?? {}
+  const requiredSecrets = profile.environment?.requiredSecretNames ?? Object.keys(allowedSecrets)
+  if (!plainEnvironment || !secretVersions
+    || canonicalize(Object.keys(plainEnvironment).sort()) !== canonicalize([...requiredPlain].sort())
+    || canonicalize(Object.keys(secretVersions).sort()) !== canonicalize([...requiredSecrets].sort())
+    || Object.values(plainEnvironment).some((value) => typeof value !== 'string')
+    || Object.values(secretVersions).some((value) => !/^[1-9][0-9]*$/u.test(String(value)))) fail(code)
+  if (!fixedValues || typeof fixedValues !== 'object' || Array.isArray(fixedValues)
+    || Object.entries(fixedValues).some(([name, value]) => !requiredPlain.includes(name) || typeof value !== 'string' || plainEnvironment[name] !== value)) fail(code)
+  const port = profile.runtime.port
+  const proxyPort = profile.runtime.cloudSqlProxyPort
+  const project = profile.target.projectId
+  return {
+    serviceAccount: profile.target.runtimeServiceAccount,
+    executionEnvironment: 'EXECUTION_ENVIRONMENT_GEN2',
+    maxInstanceRequestConcurrency: profile.runtime.concurrency,
+    timeout: `${profile.runtime.timeoutSeconds}s`,
+    scaling: { minInstanceCount: 0, maxInstanceCount: profile.runtime.maxInstances },
+    vpcAccess: {
+      egress: 'ALL_TRAFFIC',
+      networkInterfaces: [{
+        network: `projects/${project}/global/networks/${profile.runtime.network}`,
+        subnetwork: `projects/${project}/regions/${profile.target.region}/subnetworks/${profile.runtime.subnet}`,
+      }],
+    },
+    containers: [
+      {
+        name: profile.runtime.containerName,
+        image: APPLICATION_IMAGE_PLACEHOLDER,
+        dependsOn: [profile.runtime.cloudSqlProxyContainer],
+        ports: [{ name: 'http1', containerPort: port }],
+        env: [
+          ...requiredPlain.map((name) => ({ name, value: plainEnvironment[name] })),
+          ...requiredSecrets.map((name) => ({ name, valueSource: { secretKeyRef: { secret: allowedSecrets[name], version: String(secretVersions[name]) } } })),
+        ],
+        resources: { limits: { cpu: profile.runtime.cpu, memory: profile.runtime.memory }, cpuIdle: true, startupCpuBoost: true },
+        startupProbe: { initialDelaySeconds: 0, timeoutSeconds: 2, periodSeconds: 5, failureThreshold: 24, httpGet: { path: profile.runtime.startupProbePath, port } },
+      },
+      {
+        name: profile.runtime.cloudSqlProxyContainer,
+        image: profile.runtime.cloudSqlProxyImage,
+        args: ['--address=0.0.0.0', `--port=${proxyPort}`, '--private-ip', '--auto-iam-authn', '--lazy-refresh', '--structured-logs', `--max-connections=${profile.runtime.cloudSqlProxyMaximumConnections}`, profile.runtime.cloudSqlConnectionName],
+        resources: { limits: { cpu: '1', memory: '256Mi' }, cpuIdle: true, startupCpuBoost: true },
+        startupProbe: { initialDelaySeconds: 1, timeoutSeconds: 2, periodSeconds: 3, failureThreshold: 20, tcpSocket: { port: proxyPort } },
+      },
+    ],
+  }
+}
+
+export function buildRuntimeConfig(profile, { plainEnvironment, secretVersions }) {
+  const template = runtimeTemplate(profile, plainEnvironment, secretVersions)
+  return {
+    runtimeServiceAccount: profile.target.runtimeServiceAccount,
+    applicationContainerName: profile.runtime.containerName,
+    cloudSqlProxyContainerName: profile.runtime.cloudSqlProxyContainer,
+    cloudSqlProxyImage: profile.runtime.cloudSqlProxyImage,
+    plainEnvironment: structuredClone(plainEnvironment),
+    secretVersions: structuredClone(secretVersions),
+    serviceTemplateSha256: sha256(canonicalize(template)),
+    template,
+  }
+}
+
+export function assertRuntimeConfig(profile, runtimeConfig) {
+  const code = 'RUNTIME_CONFIG_READBACK_MISMATCH'
+  const template = runtimeConfig?.template
+  const appName = profile?.runtime?.containerName
+  const proxyName = profile?.runtime?.cloudSqlProxyContainer
+  const proxyImage = profile?.runtime?.cloudSqlProxyImage
+  if (!runtimeConfig || runtimeConfig.runtimeServiceAccount !== profile?.target?.runtimeServiceAccount
+    || runtimeConfig.applicationContainerName !== appName
+    || runtimeConfig.cloudSqlProxyContainerName !== proxyName
+    || runtimeConfig.cloudSqlProxyImage !== proxyImage
+    || !H64.test(runtimeConfig.serviceTemplateSha256 ?? '')
+    || runtimeConfig.serviceTemplateSha256 !== sha256(canonicalize(template))
+    || template?.revision != null) fail(code)
+  let expected
+  try { expected = runtimeTemplate(profile, runtimeConfig.plainEnvironment, runtimeConfig.secretVersions) } catch { fail(code) }
+  if (canonicalize(template) !== canonicalize(expected)) fail(code)
+  return structuredClone(template)
 }
 
 export function releasePaths(profile, intent, intentSha256) {
@@ -90,6 +178,25 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     if (response.status === 204) return null
     const text = await response.text()
     return text ? JSON.parse(text) : null
+  }
+
+  async function readOwnerRun(profile, ownerRunRef) {
+    const prefix = `https://api.github.com/repos/${profile.application.repository}/actions/runs/`
+    const runId = ownerRunRef?.startsWith(prefix) ? ownerRunRef.slice(prefix.length) : ''
+    if (!/^[1-9][0-9]*$/u.test(runId)) fail('CONTROL_OWNER_RUN_REF_INVALID')
+    let response
+    try {
+      response = await fetchImpl(ownerRunRef, {
+        headers: { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'jenfu-dev012-owner-control' },
+        signal: AbortSignal.timeout(30_000),
+      })
+    } catch (error) {
+      fail('CONTROL_OWNER_RUN_READBACK_FAILED', error?.name ?? 'network')
+    }
+    if (!response.ok) fail('CONTROL_OWNER_RUN_READBACK_FAILED', String(response.status))
+    const value = await response.json()
+    if (String(value?.id ?? '') !== runId) fail('CONTROL_OWNER_RUN_READBACK_FAILED', 'id')
+    return { id: String(value.id), status: value.status, conclusion: value.conclusion, event: value.event, headSha: value.head_sha }
   }
 
   async function readBytes(uri, { prefixes = ['receipts'], expectedSha256 = null } = {}) {
@@ -154,26 +261,72 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     return putBytes(uri, Buffer.from(`${canonicalize(value)}\n`, 'utf8'), { ...options, contentType: 'application/json' })
   }
 
-  async function waitOperation(operation, deadlineAt, apiRoot = 'https://run.googleapis.com/v2') {
-    if (!operation?.name || !Number.isFinite(Date.parse(deadlineAt))) fail('OPERATION_OR_DEADLINE_INVALID')
-    if (!['https://run.googleapis.com/v2', 'https://cloudbuild.googleapis.com/v1'].includes(apiRoot)) fail('OPERATION_API_ROOT_INVALID')
-    let current = operation
-    while (current.done !== true) {
+  async function waitBuild(operation, deadlineAt, projectId, region) {
+    if (!operation?.name || !Number.isFinite(Date.parse(deadlineAt)) || !/^[a-z][a-z0-9-]{4,62}$/u.test(projectId ?? '') || !/^[a-z]+-[a-z]+[0-9]$/u.test(region ?? '')) fail('BUILD_OPERATION_OR_DEADLINE_INVALID')
+    const encoded = operation.name.split('/').at(-1) ?? ''
+    let decoded = ''
+    try { decoded = Buffer.from(encoded, 'base64url').toString('utf8') } catch {}
+    const candidates = [operation.metadata?.build?.id, operation.metadata?.build?.name?.split('/').at(-1), encoded, decoded]
+    const buildId = candidates.find((value) => /^[a-f0-9]{8}-[a-f0-9-]{27}$/u.test(value ?? ''))
+    if (!buildId) fail('BUILD_ID_MISSING')
+    let build
+    do {
       if (Date.now() >= Date.parse(deadlineAt)) fail('OPERATION_TIMEOUT')
+      build = await request(`https://cloudbuild.googleapis.com/v1/projects/${projectId}/locations/${region}/builds/${buildId}`)
+      if (!['QUEUED', 'WORKING', 'PENDING'].includes(build.status)) return build
       await sleep(1000)
-      current = await request(`${apiRoot}/${operation.name}`)
-    }
-    if (current.error) fail('PROVIDER_OPERATION_FAILED', String(current.error.code ?? 'unknown'))
-    return current.response ?? current
+    } while (true)
   }
 
   async function getService(profile) {
     return request(`https://run.googleapis.com/v2/projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`)
   }
 
+  function serviceSettled(service) {
+    return service?.reconciling !== true
+      && service?.terminalCondition?.state === 'CONDITION_SUCCEEDED'
+      && service?.generation != null
+      && service?.observedGeneration != null
+      && String(service.observedGeneration) === String(service.generation)
+  }
+
+  function serviceMutationVisible(service, requested, updateMask) {
+    if (updateMask === ENTRYPOINT_UPDATE_MASK) {
+      return service?.ingress === requested.ingress
+        && (service?.defaultUriDisabled === true) === requested.defaultUriDisabled
+        && (service?.invokerIamDisabled === true) === requested.invokerIamDisabled
+    }
+    if (updateMask === 'template') {
+      const revision = requested?.template?.revision
+      return typeof revision === 'string'
+        && (service?.latestCreatedRevision === revision || String(service?.latestCreatedRevision ?? '').endsWith(`/revisions/${revision}`))
+    }
+    if (updateMask === 'traffic') {
+      const expected = requested?.traffic
+      const actual = service?.traffic
+      if (!Array.isArray(expected) || !Array.isArray(actual) || expected.length !== actual.length) return false
+      return expected.every((row, index) => ['type', 'revision', 'percent', 'tag', 'latestRevision']
+        .every((key) => row[key] === undefined || (key === 'percent'
+          ? Number(actual[index]?.percent ?? 0) === Number(row.percent)
+          : actual[index]?.[key] === row[key])))
+    }
+    return false
+  }
+
+  async function waitServiceMutation(profile, requested, updateMask, deadlineAt) {
+    if (!Number.isFinite(Date.parse(deadlineAt))) fail('OPERATION_OR_DEADLINE_INVALID')
+    while (true) {
+      if (Date.now() >= Date.parse(deadlineAt)) fail('OPERATION_TIMEOUT')
+      const current = await getService(profile)
+      if (serviceSettled(current) && serviceMutationVisible(current, requested, updateMask)) return current
+      if (current?.reconciling !== true && current?.terminalCondition?.state === 'CONDITION_FAILED') fail('PROVIDER_OPERATION_FAILED', 'run-service')
+      await sleep(1000)
+    }
+  }
+
   function assertServiceSettled(service, code = 'RUN_SERVICE_NOT_SETTLED') {
     if (
-      service?.reconciling !== false ||
+      service?.reconciling === true ||
       service?.terminalCondition?.state !== 'CONDITION_SUCCEEDED' ||
       service?.generation == null ||
       service?.observedGeneration == null ||
@@ -185,13 +338,27 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
   async function getRevision(profile, revision) {
     if (!revision?.startsWith(`${profile.target.serviceName}-`) || revision === 'latest') fail('REVISION_TARGET_INVALID')
     const value = await request(`https://run.googleapis.com/v2/projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}/revisions/${revision}`)
-    if (!String(value?.name ?? '').endsWith(`/revisions/${revision}`) || value.service !== `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`) fail('REVISION_READBACK_MISMATCH')
+    const fullServiceName = `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`
+    if (!String(value?.name ?? '').endsWith(`/revisions/${revision}`) || ![profile.target.serviceName, fullServiceName].includes(value.service)) fail('REVISION_READBACK_MISMATCH')
     return value
   }
 
-  function assertRevisionReady(revision, artifactDigest) {
+  function immutableImageRepository(image) {
+    return /^(.+?)(?::[^/@]+)?@sha256:[a-f0-9]{64}$/u.exec(image ?? '')?.[1] ?? null
+  }
+
+  function assertRevisionReady(profile, revision, artifactDigest, expectedResolvedProxyImage = null) {
     const ready = revision?.conditions?.find((row) => row.type === 'Ready')
-    if (revision?.containers?.length !== 1 || revision.containers[0].image !== artifactDigest || ready?.state !== 'CONDITION_SUCCEEDED') fail('CANDIDATE_REVISION_READBACK_MISMATCH')
+    const containers = revision?.containers
+    const app = containers?.find((container) => container.name === profile.runtime.containerName)
+    const proxy = containers?.find((container) => container.name === profile.runtime.cloudSqlProxyContainer)
+    const pinnedProxyRepository = immutableImageRepository(profile.runtime.cloudSqlProxyImage)
+    const resolvedProxyRepository = immutableImageRepository(proxy?.image)
+    const proxyMatches = expectedResolvedProxyImage == null
+      ? resolvedProxyRepository != null && resolvedProxyRepository === pinnedProxyRepository
+      : proxy?.image === expectedResolvedProxyImage && resolvedProxyRepository === pinnedProxyRepository
+    if (containers?.length !== 2 || app?.image !== artifactDigest || !proxyMatches
+      || ready?.state !== 'CONDITION_SUCCEEDED') fail('CANDIDATE_REVISION_READBACK_MISMATCH')
     return revision
   }
 
@@ -203,7 +370,8 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     }[updateMask]
     if (!expectedKeys || Object.keys(service ?? {}).sort().join(',') !== expectedKeys.join(',') || service?.name !== `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}` || !service.etag) fail('RUN_MUTATION_INVALID')
     const operation = await request(`https://run.googleapis.com/v2/${service.name}?updateMask=${encodeURIComponent(updateMask)}&allowMissing=false`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(service) })
-    const response = await waitOperation(operation, deadlineAt)
+    if (!operation?.name) fail('PROVIDER_OPERATION_REF_MISSING')
+    const response = await waitServiceMutation(profile, service, updateMask, deadlineAt)
     return { operationRef: { name: operation.name }, response }
   }
 
@@ -231,16 +399,16 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     if (!artifactDigest.startsWith(`${profile.artifact.uri}@sha256:`) || !H64.test(fingerprint)) fail('CANDIDATE_INPUT_INVALID')
     const before = await getService(profile)
     assertServiceSettled(before, 'CANDIDATE_BASELINE_INVALID')
-    if (before.reconciling !== false || !before.etag || !Array.isArray(before.traffic) || before.traffic.some((row) => row.latestRevision === true || row.tag)) fail('CANDIDATE_BASELINE_INVALID')
-    if (runtimeConfig?.serviceTemplateSha256 !== sha256(canonicalize(before.template)) || runtimeConfig?.runtimeServiceAccount !== profile.target.runtimeServiceAccount) fail('RUNTIME_CONFIG_READBACK_MISMATCH')
+    if (before.reconciling === true || !before.etag || !Array.isArray(before.traffic) || before.traffic.some((row) => row.latestRevision === true || row.tag)) fail('CANDIDATE_BASELINE_INVALID')
     const candidateRevision = `${profile.target.serviceName}-${fingerprint.slice(0, 12)}`
     const tag = `candidate-${fingerprint.slice(0, 12)}`
     const exactCandidateOrigin = candidateOrigin(profile, tag)
-    const template = structuredClone(before.template)
+    const template = assertRuntimeConfig(profile, runtimeConfig)
     template.revision = candidateRevision
-    if (!Array.isArray(template.containers) || template.containers.length !== 1) fail('CANDIDATE_TEMPLATE_INVALID')
-    template.containers[0].image = artifactDigest
-    upsertPlainEnvironment(template.containers[0], profile.environment.candidateOriginEnvironmentName, exactCandidateOrigin)
+    const app = template.containers.find((container) => container.name === profile.runtime.containerName)
+    if (!app) fail('CANDIDATE_TEMPLATE_INVALID')
+    app.image = artifactDigest
+    upsertPlainEnvironment(app, profile.environment.candidateOriginEnvironmentName, exactCandidateOrigin)
     await patchService(profile, { name: before.name, etag: before.etag, template }, 'template', deadlineAt)
     const created = await getService(profile)
     assertServiceSettled(created, 'CANDIDATE_REVISION_READBACK_MISMATCH')
@@ -252,19 +420,23 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     const tagStatus = tagged.trafficStatuses?.find((row) => row.tag === tag)
     const generalBefore = before.traffic.map(({ tag: _tag, ...row }) => row)
     const generalAfter = tagged.traffic?.filter((row) => !row.tag).map(({ tag: _tag, ...row }) => row)
-    if (tagStatus?.uri !== exactCandidateOrigin || tagStatus.revision !== candidateRevision || Number(tagStatus.percent) !== 0 || canonicalize(generalAfter) !== canonicalize(generalBefore)) fail('CANDIDATE_TAG_READBACK_MISMATCH')
+    const tagUriMissing = tagStatus?.uri === undefined || tagStatus?.uri === null
+    const tagUriMatches = tagStatus?.uri === exactCandidateOrigin || (tagUriMissing && tagged.defaultUriDisabled === true)
+    if (!tagUriMatches || tagStatus?.revision !== candidateRevision || Number(tagStatus.percent ?? 0) !== 0 || canonicalize(generalAfter) !== canonicalize(generalBefore)) fail('CANDIDATE_TAG_READBACK_MISMATCH')
     const revision = await getRevision(profile, candidateRevision)
-    assertRevisionReady(revision, artifactDigest)
-    const revisionOrigin = revision.containers[0].env?.find((row) => row.name === profile.environment.candidateOriginEnvironmentName)
+    assertRevisionReady(profile, revision, artifactDigest)
+    const revisionApp = revision.containers.find((container) => container.name === profile.runtime.containerName)
+    const revisionProxy = revision.containers.find((container) => container.name === profile.runtime.cloudSqlProxyContainer)
+    const revisionOrigin = revisionApp?.env?.find((row) => row.name === profile.environment.candidateOriginEnvironmentName)
     if (revisionOrigin?.value !== exactCandidateOrigin || revisionOrigin.valueSource) fail('CANDIDATE_ORIGIN_READBACK_MISMATCH')
-    return { candidateRevision, tag, tagUri: tagStatus.uri, artifactDigest, previousRevision: effectiveRevision(before), beforeTraffic: before.traffic, etag: tagged.etag, revisionName: revision.name }
+    return { candidateRevision, tag, tagUri: exactCandidateOrigin, artifactDigest, cloudSqlProxyResolvedImage: revisionProxy.image, previousRevision: effectiveRevision(before), beforeTraffic: before.traffic, etag: tagged.etag, revisionName: revision.name }
   }
 
   function entrypointSnapshot(service) {
     return {
       ingress: service?.ingress ?? null,
-      defaultUriDisabled: service?.defaultUriDisabled ?? false,
-      invokerIamDisabled: service?.invokerIamDisabled ?? false,
+      defaultUriDisabled: service?.defaultUriDisabled === true,
+      invokerIamDisabled: service?.invokerIamDisabled === true,
       uri: service?.uri ?? null,
       urls: Array.isArray(service?.urls) ? [...service.urls].sort() : [],
       serviceEtag: service?.etag ?? null,
@@ -282,12 +454,13 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
   function assertCanonicalEntrypoint(profile, service, code = 'ENTRYPOINT_READBACK_MISMATCH') {
     const policy = assertEntrypointPolicy(profile)
     const expectedName = `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`
-    if (service?.name !== expectedName || service.ingress !== policy.ingress || service.defaultUriDisabled !== policy.defaultUriDisabled || service.invokerIamDisabled !== policy.invokerIamDisabled || service.uri !== profile.target.canonicalOrigin || !Array.isArray(service.urls) || !service.urls.includes(profile.target.canonicalOrigin)) fail(code)
+    const providerUri = exactOrigin(service?.uri, code).origin
+    if (service?.name !== expectedName || service.ingress !== policy.ingress || (service.defaultUriDisabled === true) !== policy.defaultUriDisabled || (service.invokerIamDisabled === true) !== policy.invokerIamDisabled || !Array.isArray(service.urls) || !service.urls.includes(providerUri) || !service.urls.includes(profile.target.canonicalOrigin)) fail(code)
     return service
   }
 
   function sameEntrypointFields(service, expected) {
-    return service?.ingress === expected.ingress && service?.defaultUriDisabled === expected.defaultUriDisabled && service?.invokerIamDisabled === expected.invokerIamDisabled
+    return service?.ingress === expected.ingress && (service?.defaultUriDisabled === true) === expected.defaultUriDisabled && (service?.invokerIamDisabled === true) === expected.invokerIamDisabled
   }
 
   async function configureEntrypoint({ profile, candidate, previousRevision, deadlineAt }) {
@@ -295,7 +468,9 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     const before = await getService(profile)
     assertServiceSettled(before, 'ENTRYPOINT_BASELINE_INVALID')
     const tagged = before.trafficStatuses?.find((row) => row.tag === candidate.tag)
-    if (tagged?.revision !== candidate.candidateRevision || Number(tagged.percent) !== 0 || tagged.uri !== candidate.tagUri || effectiveRevision(before) !== previousRevision) fail('ENTRYPOINT_CANDIDATE_JOIN_INVALID')
+    const tagUriMissing = tagged?.uri === undefined || tagged?.uri === null
+    const tagUriMatches = tagged?.uri === candidate.tagUri || (tagUriMissing && before.defaultUriDisabled === true)
+    if (tagged?.revision !== candidate.candidateRevision || Number(tagged.percent ?? 0) !== 0 || !tagUriMatches || effectiveRevision(before) !== previousRevision) fail('ENTRYPOINT_CANDIDATE_JOIN_INVALID')
     const templateSha256Before = sha256(canonicalize(before.template))
     const trafficSha256Before = sha256(canonicalize(before.traffic))
     let changed = false
@@ -349,9 +524,13 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
   }
 
   function effectiveRevision(service) {
-    const row = service.trafficStatuses?.find((item) => !item.tag && Number(item.percent) === 100)
-    if (!row?.revision || row.latestRevision === true) fail('EFFECTIVE_REVISION_AMBIGUOUS')
-    return row.revision
+    const configured = service.traffic?.filter((item) => Number(item.percent) === 100) ?? []
+    const observed = service.trafficStatuses?.filter((item) => Number(item.percent) === 100) ?? []
+    if (configured.length !== 1 || observed.length !== 1) fail('EFFECTIVE_REVISION_AMBIGUOUS')
+    const target = configured[0]
+    const status = observed[0]
+    if (target.tag || !target.revision || target.latestRevision === true || !status.revision || status.latestRevision === true || status.revision !== target.revision) fail('EFFECTIVE_REVISION_AMBIGUOUS')
+    return status.revision
   }
 
   async function setTraffic({ profile, revision, candidateTag = null, deadlineAt }) {
@@ -403,12 +582,66 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     const mount = container?.volumeMounts?.find((item) => item.name === 'cloudsql')
     if (job.name !== jobName || job.template?.template?.serviceAccount !== profile.migrations.serviceAccount || container?.image !== deployment.migrationRunnerDigest || canonicalize(environment) !== canonicalize(expectedEnvironment) || canonicalize(volume?.cloudSqlInstance?.instances) !== canonicalize([connectionName]) || mount?.mountPath !== '/cloudsql' || job.template?.taskCount !== 1 || job.template?.parallelism !== 1 || job.template?.template?.maxRetries !== 0 || job.template?.template?.timeout !== '1800s') fail('MIGRATION_JOB_READBACK_MISMATCH')
     const args = ['--bundle-ref', deployment.migrationBundleRef.uri, '--bundle-sha256', deployment.migrationBundleRef.sha256, '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
-    const operation = await request(`https://run.googleapis.com/v2/${jobName}:run`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ overrides: { containerOverrides: [{ name: 'migration', args }] } }) })
-    const execution = await waitOperation(operation, deadlineAt)
-    const executionName = execution.name
-    const readback = await request(`https://run.googleapis.com/v2/${executionName}`)
-    if (Number(readback.failedCount ?? 0) !== 0 || Number(readback.succeededCount ?? 0) !== 1 || readback.completionTime == null || readback.terminalCondition?.state !== 'CONDITION_SUCCEEDED') fail('MIGRATION_EXECUTION_FAILED')
-    return readback
+    if (profile.productionData?.required === true) {
+      assertImmutableRef(deployment.productionDataRef, profile.artifact.releaseBucket, [profile.productionData.dataObjectPrefix])
+      assertImmutableRef(deployment.firstPrincipalBootstrapRef, profile.artifact.releaseBucket, [profile.productionData.bootstrapObjectPrefix])
+      args.push('--data-ref', deployment.productionDataRef.uri, '--data-sha256', deployment.productionDataRef.sha256, '--bootstrap-ref', deployment.firstPrincipalBootstrapRef.uri, '--bootstrap-sha256', deployment.firstPrincipalBootstrapRef.sha256)
+    }
+    const listExecutions = async () => {
+      const executions = []
+      let pageToken = ''
+      for (let page = 0; page < 10; page += 1) {
+        const query = new URLSearchParams({ pageSize: '100' })
+        if (pageToken) query.set('pageToken', pageToken)
+        const value = await request(`https://run.googleapis.com/v2/${jobName}/executions?${query.toString()}`)
+        if (!Array.isArray(value?.executions ?? [])) fail('MIGRATION_EXECUTION_LIST_INVALID')
+        executions.push(...(value.executions ?? []))
+        pageToken = value?.nextPageToken ?? ''
+        if (!pageToken) break
+        if (page === 9) fail('MIGRATION_EXECUTION_LIST_INCOMPLETE')
+      }
+      const names = executions.map((execution) => execution?.name)
+      if (names.some((name) => typeof name !== 'string' || !name.startsWith(`${jobName}/executions/`)) || new Set(names).size !== names.length) fail('MIGRATION_EXECUTION_LIST_INVALID')
+      return executions
+    }
+    const executionArgsMatch = (execution) => {
+      const executionContainer = execution?.template?.containers?.find((item) => item.name === 'migration')
+      return canonicalize(executionContainer?.args) === canonicalize(args)
+    }
+    const beforeNames = new Set((await listExecutions()).map((execution) => execution.name))
+    let operationRef = null
+    try {
+      const operation = await request(`https://run.googleapis.com/v2/${jobName}:run`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ overrides: { containerOverrides: [{ name: 'migration', args }] } }) })
+      if (!operation?.name) fail('PROVIDER_OPERATION_REF_MISSING')
+      operationRef = operation.name
+    } catch (error) {
+      if (error?.code !== 'OUTCOME_UNKNOWN') throw error
+      operationRef = 'OUTCOME_UNKNOWN_EXECUTION_READBACK'
+    }
+    let executionName = null
+    while (!executionName) {
+      if (Date.now() >= Date.parse(deadlineAt)) fail('OPERATION_TIMEOUT')
+      const matches = (await listExecutions()).filter((execution) => !beforeNames.has(execution.name) && executionArgsMatch(execution))
+      if (matches.length > 1) fail('MIGRATION_EXECUTION_CARDINALITY_INVALID')
+      executionName = matches[0]?.name ?? null
+      if (!executionName) await sleep(1000)
+    }
+    while (true) {
+      if (Date.now() >= Date.parse(deadlineAt)) fail('OPERATION_TIMEOUT')
+      const readback = await request(`https://run.googleapis.com/v2/${executionName}`)
+      if (readback?.name !== executionName || !executionArgsMatch(readback)) fail('MIGRATION_EXECUTION_READBACK_MISMATCH')
+      const completedConditions = Array.isArray(readback.conditions)
+        ? readback.conditions.filter((condition) => condition?.type === 'Completed')
+        : []
+      if (completedConditions.length > 1) fail('MIGRATION_EXECUTION_READBACK_MISMATCH')
+      const completedState = completedConditions[0]?.state ?? null
+      if (readback.completionTime == null && completedState !== 'CONDITION_FAILED') {
+        await sleep(1000)
+        continue
+      }
+      if (Number(readback.failedCount ?? 0) !== 0 || Number(readback.succeededCount ?? 0) !== 1 || readback.completionTime == null || completedState !== 'CONDITION_SUCCEEDED') fail('MIGRATION_EXECUTION_FAILED')
+      return { ...readback, providerOperationRef: operationRef }
+    }
   }
 
   async function createBuild({ profile, intent, sourceObject, deadlineAt }) {
@@ -419,7 +652,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     const args = ['build', '--pull=false', '--no-cache', '--file', profile.build.dockerfile, '--target', profile.build.dockerTarget, '--build-arg', `SOURCE_REVISION=${intent.sourceRevision}`, '--build-arg', `SOURCE_TREE=${intent.sourceSha256}`, '--build-arg', 'SOURCE_CREATED_AT=1970-01-01T00:00:00Z', '--build-arg', `SOURCE_VERSION=${intent.releaseId}`, '--build-arg', 'SOURCE_STATE=frozen', '--tag', tag, '.']
     const body = {
       source: { storageSource: { bucket: parsed.bucket, object: parsed.object, generation: String(sourceObject.metadata.generation) } },
-      steps: [{ name: profile.build.dockerBuilderImage, args }],
+      steps: [{ name: profile.build.dockerBuilderImage, dir: 'source', args }],
       images: [tag],
       timeout: '1800s',
       queueTtl: '300s',
@@ -429,7 +662,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       tags: ['dev-012', profile.application.id, intent.releaseId.toLowerCase()],
     }
     const operation = await request(`https://cloudbuild.googleapis.com/v1/projects/${profile.target.projectId}/locations/${profile.target.region}/builds`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-    const build = await waitOperation(operation, deadlineAt, 'https://cloudbuild.googleapis.com/v1')
+    const build = await waitBuild(operation, deadlineAt, profile.target.projectId, profile.target.region)
     const result = build.results?.images?.find((row) => row.name === tag)
     if (build.status !== 'SUCCESS' || build.projectId !== profile.target.projectId || build.serviceAccount !== body.serviceAccount || build.options?.requestedVerifyOption !== 'VERIFIED' || build.sourceProvenance?.resolvedStorageSource?.bucket !== parsed.bucket || build.sourceProvenance?.resolvedStorageSource?.object !== parsed.object || String(build.sourceProvenance?.resolvedStorageSource?.generation) !== String(sourceObject.metadata.generation) || !/^sha256:[a-f0-9]{64}$/u.test(result?.digest ?? '')) fail('BUILD_READBACK_MISMATCH')
     return { build, request: body, tag, artifactDigest: `${profile.artifact.uri}@${result.digest}` }
@@ -454,29 +687,35 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
   async function listOccurrences(profile, artifactDigest) {
     const resourceUrl = `https://${artifactDigest}`
     const occurrences = []
-    let pageToken = ''
-    for (let page = 0; page < 20; page += 1) {
-      const query = new URLSearchParams({ filter: `resourceUrl=\"${resourceUrl}\"`, pageSize: '100' })
-      if (pageToken) query.set('pageToken', pageToken)
-      const response = await request(`https://containeranalysis.googleapis.com/v1/projects/${profile.target.projectId}/occurrences?${query}`)
-      occurrences.push(...(response.occurrences ?? []))
-      pageToken = response.nextPageToken ?? ''
-      if (!pageToken) break
+    for (const kind of ['BUILD', 'DISCOVERY', 'SBOM_REFERENCE', 'VULNERABILITY']) {
+      let pageToken = ''
+      for (let page = 0; page < 20; page += 1) {
+        const query = new URLSearchParams({ filter: `kind=\"${kind}\" AND resourceUrl=\"${resourceUrl}\"`, pageSize: '100' })
+        if (pageToken) query.set('pageToken', pageToken)
+        const response = await request(`https://containeranalysis.googleapis.com/v1/projects/${profile.target.projectId}/occurrences?${query}`)
+        const rows = response.occurrences ?? []
+        if (rows.some((row) => row.kind !== kind || row.resourceUri !== resourceUrl)) fail('ARTIFACT_OCCURRENCE_SCOPE_MISMATCH')
+        occurrences.push(...rows)
+        pageToken = response.nextPageToken ?? ''
+        if (!pageToken) break
+        if (page === 19) fail('ARTIFACT_OCCURRENCE_PAGE_LIMIT')
+      }
     }
     return { resourceUrl, occurrences }
   }
 
   async function exportSbom(profile, artifactDigest) {
     const resourceUrl = `https://${artifactDigest}`
-    const resourceName = `projects/${profile.target.projectId}/resources/${resourceUrl}`
+    const resourceName = `projects/${profile.target.projectId}/locations/${profile.target.region}/resources/${resourceUrl}`
     const response = await request(`https://containeranalysis.googleapis.com/v1beta1/${resourceName}:exportSBOM`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
-    if (!new RegExp(`^projects/${profile.target.projectId}/occurrences/[^/]+$`, 'u').test(response?.discoveryOccurrenceId ?? '')) fail('SBOM_EXPORT_READBACK_MISMATCH')
+    if (!new RegExp(`^projects/${profile.target.projectId}/locations/${profile.target.region}/occurrences/[^/]+$`, 'u').test(response?.discoveryOccurrenceId ?? '')) fail('SBOM_EXPORT_READBACK_MISMATCH')
     return { resourceUrl, discoveryOccurrenceId: response.discoveryOccurrenceId }
   }
 
   async function waitArtifactEvidence({ profile, artifactDigest, deadlineAt }) {
     if (!Number.isFinite(Date.parse(deadlineAt))) fail('OPERATION_OR_DEADLINE_INVALID')
-    const sbomExport = await exportSbom(profile, artifactDigest)
+    let sbomExport = null
+    let exportAttempts = 0
     let last = null
     while (Date.now() < Date.parse(deadlineAt)) {
       last = await listOccurrences(profile, artifactDigest)
@@ -484,11 +723,21 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       const discoveries = last.occurrences.filter((row) => row.kind === 'DISCOVERY')
       const sbom = last.occurrences.filter((row) => row.kind === 'SBOM_REFERENCE')
       const vulnerabilities = last.occurrences.filter((row) => row.kind === 'VULNERABILITY')
-      const failed = discoveries.filter((row) => ['FINISHED_FAILED', 'FINISHED_UNSUPPORTED', 'ANALYSIS_ERROR'].includes(row.discovery?.discovered?.analysisStatus))
-      const complete = discoveries.filter((row) => row.discovery?.discovered?.analysisStatus === 'FINISHED_SUCCESS')
+      const failed = discoveries.filter((row) => ['FINISHED_FAILED', 'FINISHED_UNSUPPORTED', 'ANALYSIS_ERROR'].includes(row.discovery?.analysisStatus))
+      const complete = discoveries.filter((row) => row.discovery?.analysisStatus === 'FINISHED_SUCCESS')
       const blocking = vulnerabilities.filter((row) => ['HIGH', 'CRITICAL'].includes(row.vulnerability?.effectiveSeverity ?? row.vulnerability?.severity))
       if (failed.length || blocking.length) fail('ARTIFACT_POLICY_FAILED')
-      if (build.length && complete.length && (sbom.length || complete.some((row) => row.name === sbomExport.discoveryOccurrenceId))) return { resourceUrl: last.resourceUrl, buildOccurrenceNames: build.map((row) => row.name).sort(), discoveryOccurrenceNames: complete.map((row) => row.name).sort(), sbomOccurrenceNames: sbom.map((row) => row.name).sort(), vulnerabilityCount: vulnerabilities.length, blockingVulnerabilityCount: 0, sbomExport, observedAt: now(), status: 'PASS' }
+      if (complete.length && !sbomExport) {
+        try {
+          sbomExport = await exportSbom(profile, artifactDigest)
+        } catch (error) {
+          if (!(error instanceof OwnerReleaseError) || error.code !== 'PROVIDER_REQUEST_FAILED' || error.detail !== '400' || exportAttempts >= 23) throw error
+          exportAttempts += 1
+          await sleep(5000)
+          continue
+        }
+      }
+      if (build.length && complete.length && sbomExport && sbom.length) return { resourceUrl: last.resourceUrl, buildOccurrenceNames: build.map((row) => row.name).sort(), discoveryOccurrenceNames: complete.map((row) => row.name).sort(), sbomOccurrenceNames: sbom.map((row) => row.name).sort(), vulnerabilityCount: vulnerabilities.length, blockingVulnerabilityCount: 0, sbomExport, observedAt: now(), status: 'PASS' }
       await sleep(5000)
     }
     fail('ARTIFACT_ANALYSIS_TIMEOUT', String(last?.occurrences?.length ?? 0))
@@ -520,6 +769,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
   async function runAuthenticatedSmoke({ profile, origin, environment = process.env }) {
     const definition = profile.verification
     const base = new URL(origin)
+    const sessionOrigin = new URL(profile.target?.canonicalOrigin ?? base.origin).origin
     if (base.protocol !== 'https:' || !definition?.refreshTokenEnvironmentName || !definition?.firebaseApiKeyEnvironmentName || !Array.isArray(definition.authenticatedProbes) || !Array.isArray(definition.negativeProbes)) fail('AUTH_SMOKE_PROFILE_INVALID')
     const refreshToken = environment[definition.refreshTokenEnvironmentName]
     const firebaseApiKey = environment[definition.firebaseApiKeyEnvironmentName]
@@ -553,7 +803,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     let response = await call(definition.authModePath)
     if (response.status !== 200) fail('AUTH_SMOKE_MODE_FAILED')
     observations.push({ id: 'auth-mode', status: response.status })
-    response = await call(definition.sessionPath, { method: 'POST', headers: { origin: base.origin, 'content-type': 'application/json' }, body: JSON.stringify({ idToken }) })
+    response = await call(definition.sessionPath, { method: 'POST', headers: { origin: sessionOrigin, 'content-type': 'application/json' }, body: JSON.stringify({ idToken }) })
     const setCookie = response.headers.get('set-cookie')
     if (response.status !== 200 || !setCookie) fail('AUTH_SMOKE_SESSION_FAILED')
     const cookie = setCookie.split(';', 1)[0]
@@ -571,7 +821,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       if (response.status !== probe.expectedStatus) fail('HTTP_SUITE_PROBE_FAILED', probe.id)
       observations.push({ id: probe.id, status: response.status })
     }
-    response = await call(definition.logoutPath, { method: 'POST', headers: { origin: base.origin, cookie, 'content-type': 'application/json' }, body: '{}' })
+    response = await call(definition.logoutPath, { method: 'POST', headers: { origin: sessionOrigin, cookie, 'content-type': 'application/json' }, body: '{}' })
     if (response.status !== 200) fail('AUTH_SMOKE_LOGOUT_FAILED')
     response = await call(definition.mePath, { headers: { cookie } })
     if (response.status !== 401) fail('AUTH_SMOKE_REVOCATION_FAILED')
@@ -579,12 +829,69 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     return { origin: base.origin, tokenSource: 'FIREBASE_REFRESH_TOKEN', tokenExpiresInSeconds: expiresIn, observations, status: 'PASS', observedAt: now() }
   }
 
+  async function runInternalCandidateSmoke({ profile, origin, candidateTag, candidateRevision, artifactDigest, deadlineAt, environment = process.env }) {
+    const definition = profile.verification
+    const base = new URL(origin)
+    const firebaseApiKey = environment[definition?.firebaseApiKeyEnvironmentName]
+    if (
+      definition?.candidateSmokeMode !== 'WORKFLOWS_INTERNAL_OIDC_V1' ||
+      !/^[a-z][a-z0-9-]{2,62}$/u.test(definition?.candidateWorkflowName ?? '') ||
+      !/^[a-z][a-z0-9-]{2,254}$/u.test(definition?.candidateRefreshTokenSecretId ?? '') ||
+      base.protocol !== 'https:' || base.pathname !== '/' || base.search || base.hash ||
+      !/^candidate-[a-f0-9]{12}$/u.test(candidateTag ?? '') ||
+      candidateRevision !== `${profile.target.serviceName}-${candidateTag.slice('candidate-'.length)}` ||
+      !artifactDigest?.startsWith(`${profile.artifact.uri}@sha256:`) ||
+      typeof firebaseApiKey !== 'string' || !/^[A-Za-z0-9_-]{20,256}$/u.test(firebaseApiKey) ||
+      !Number.isFinite(Date.parse(deadlineAt))
+    ) fail('INTERNAL_CANDIDATE_SMOKE_PROFILE_INVALID')
+    const service = await getService(profile)
+    const legacyServiceOrigin = exactOrigin(service?.uri, 'INTERNAL_CANDIDATE_SMOKE_SERVICE_URI_INVALID')
+    if (!legacyServiceOrigin.hostname.startsWith(`${profile.target.serviceName}-`) || !legacyServiceOrigin.hostname.endsWith('.a.run.app')) fail('INTERNAL_CANDIDATE_SMOKE_SERVICE_URI_INVALID')
+    const workflowCandidateOrigin = `https://${candidateTag}---${legacyServiceOrigin.hostname}`
+    const workflow = `projects/${profile.target.projectId}/locations/${profile.target.region}/workflows/${definition.candidateWorkflowName}`
+    let execution = await request(`https://workflowexecutions.googleapis.com/v1/${workflow}/executions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ argument: JSON.stringify({
+        ownerApplicationId: profile.application.id,
+        candidateOrigin: workflowCandidateOrigin,
+        candidateTag,
+        candidateRevision,
+        artifactDigest,
+        canonicalOrigin: profile.target.canonicalOrigin,
+        firebaseApiKey,
+      }) }),
+    })
+    const executionName = /^projects\/([^/]+)\/locations\/([^/]+)\/workflows\/([^/]+)\/executions\/([a-z0-9-]+)$/u.exec(execution?.name ?? '')
+    if (!executionName || ![profile.target.projectId, String(profile.target.projectNumber)].includes(executionName[1]) || executionName[2] !== profile.target.region || executionName[3] !== definition.candidateWorkflowName) fail('INTERNAL_CANDIDATE_SMOKE_EXECUTION_INVALID')
+    while (execution.state === 'ACTIVE') {
+      if (Date.now() >= Date.parse(deadlineAt)) fail('INTERNAL_CANDIDATE_SMOKE_TIMEOUT')
+      await sleep(1000)
+      execution = await request(`https://workflowexecutions.googleapis.com/v1/${execution.name}`)
+    }
+    if (execution.state !== 'SUCCEEDED' || typeof execution.result !== 'string') fail('INTERNAL_CANDIDATE_SMOKE_FAILED', execution.state ?? 'unknown')
+    let result
+    try { result = JSON.parse(execution.result) } catch { fail('INTERNAL_CANDIDATE_SMOKE_RESULT_INVALID') }
+    if (
+      result?.schemaVersion !== 'jenfu.dev012.internal-candidate-smoke.v1' ||
+      result.ownerApplicationId !== profile.application.id ||
+      result.candidateRevision !== candidateRevision ||
+      result.artifactDigest !== artifactDigest ||
+      result.tokenSource !== 'SECRET_MANAGER_EXACT_VERSION' ||
+      result.status !== 'PASS' ||
+      !Array.isArray(result.observations) || result.observations.length !== 6 ||
+      result.observations.some((row) => !row?.id || !Number.isInteger(Number(row.status))) ||
+      /refreshToken|idToken|sessionCookie|firebaseApiKey/iu.test(JSON.stringify(result))
+    ) fail('INTERNAL_CANDIDATE_SMOKE_RESULT_INVALID')
+    return { ...result, origin: base.origin, executionName: execution.name, observedAt: now() }
+  }
+
   async function publishIncident(profile, event) {
     const topic = `${profile.application.id === 'ai-pdm' ? 'aipdm' : profile.application.id}-prod-release-incident`
     return request(`https://pubsub.googleapis.com/v1/projects/${profile.target.projectId}/topics/${topic}:publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [{ data: Buffer.from(canonicalize(event)).toString('base64'), attributes: { ownerApplicationId: profile.application.id } }] }) })
   }
 
-  return { request, readBytes, readJson, putBytes, putJson, waitOperation, getService, assertServiceSettled, getRevision, assertRevisionReady, patchService, createCandidate, candidateOrigin, entrypointSnapshot, assertCanonicalEntrypoint, configureEntrypoint, restoreEntrypoint, effectiveRevision, setTraffic, removeCandidateTag, runMigrationJob, createBuild, readArtifactImage, listOccurrences, exportSbom, waitArtifactEvidence, runHttpSuite, runAuthenticatedSmoke, publishIncident, now }
+  return { request, readOwnerRun, readBytes, readJson, putBytes, putJson, waitBuild, getService, assertServiceSettled, getRevision, assertRevisionReady, patchService, createCandidate, candidateOrigin, entrypointSnapshot, assertCanonicalEntrypoint, configureEntrypoint, restoreEntrypoint, effectiveRevision, setTraffic, removeCandidateTag, runMigrationJob, createBuild, readArtifactImage, listOccurrences, exportSbom, waitArtifactEvidence, runHttpSuite, runAuthenticatedSmoke, runInternalCandidateSmoke, publishIncident, now }
 }
 
 export function stageReceipt({ profile, intent, stage, previousReceiptRef = null, facts, observedAt }) {

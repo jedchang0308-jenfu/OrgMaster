@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
-import { executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
+import { gunzipSync } from 'node:zlib'
+import { buildRuntimeConfig, canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
+import { assertStaleControlSafeToSupersede, candidateTagUriMatches, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
 
 const H40 = 'a'.repeat(40)
 const bucket = 'jenfu-platform-prod-platform-release'
@@ -50,8 +51,8 @@ function recordedHarness() {
     now: () => '2026-09-08T00:00:00.000Z', readBytes, putBytes, putJson, readJson, effectiveRevision,
     assertServiceSettled(value, code = 'RUN_SERVICE_NOT_SETTLED') { if (value.reconciling !== false || value.terminalCondition?.state !== 'CONDITION_SUCCEEDED' || String(value.generation) !== String(value.observedGeneration)) throw new Error(code); return value },
     entrypointSnapshot,
-    assertCanonicalEntrypoint(_profile, value) { if (value.uri !== canonicalOrigin || !value.urls.includes(canonicalOrigin) || value.ingress !== 'INGRESS_TRAFFIC_ALL' || value.defaultUriDisabled !== false || value.invokerIamDisabled !== true) throw new Error('ENTRYPOINT_READBACK_MISMATCH'); return value },
-    assertRevisionReady(value, artifactDigest) { if (value.conditions?.find((row) => row.type === 'Ready')?.state !== 'CONDITION_SUCCEEDED' || value.containers?.[0]?.image !== artifactDigest) throw new Error('CANDIDATE_REVISION_READBACK_MISMATCH'); return value },
+    assertCanonicalEntrypoint(_profile, value) { if (value.uri !== canonicalOrigin || !value.urls.includes(canonicalOrigin) || value.ingress !== 'INGRESS_TRAFFIC_ALL' || value.defaultUriDisabled === true || value.invokerIamDisabled !== true) throw new Error('ENTRYPOINT_READBACK_MISMATCH'); return value },
+    assertRevisionReady(_profile, value, artifactDigest) { if (value.conditions?.find((row) => row.type === 'Ready')?.state !== 'CONDITION_SUCCEEDED' || value.containers?.[0]?.image !== artifactDigest) throw new Error('CANDIDATE_REVISION_READBACK_MISMATCH'); return value },
     async getService() { return structuredClone(service) },
     async createBuild({ profile, intent, sourceObject }) {
       const artifactDigest = `${profile.artifact.uri}@sha256:${'d'.repeat(64)}`
@@ -61,11 +62,12 @@ function recordedHarness() {
     async waitArtifactEvidence({ artifactDigest }) { return { resourceUrl: `https://${artifactDigest}`, buildOccurrenceNames: ['build'], discoveryOccurrenceNames: ['discovery'], sbomOccurrenceNames: ['sbom'], vulnerabilityCount: 0, blockingVulnerabilityCount: 0, sbomExport: { resourceUrl: `https://${artifactDigest}`, discoveryOccurrence: 'discovery' }, observedAt: this.now(), status: 'PASS' } },
     async runMigrationJob({ profile, deployment, outputUri }) { return putJson(outputUri, { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: deployment.sourceRevision, manifestSha256: migrationManifestSha256, boundaryStatus: 'PASS', status: 'PASS' }, { bucket, prefix: 'receipts' }) },
     async createCandidate({ artifactDigest }) {
-      service = { ...service, etag: 'e2', generation: '2', observedGeneration: '2', latestCreatedRevision: candidateRevision, traffic: [...service.traffic, { revision: candidateRevision, percent: 0, tag: candidateTag }], trafficStatuses: [...service.trafficStatuses, { revision: candidateRevision, percent: 0, tag: candidateTag, uri: candidateOrigin }] }
+      service = { ...service, etag: 'e2', generation: '2', observedGeneration: '2', latestCreatedRevision: candidateRevision, traffic: [...service.traffic, { revision: candidateRevision, tag: candidateTag }], trafficStatuses: [...service.trafficStatuses, { revision: candidateRevision, tag: candidateTag, uri: candidateOrigin }] }
       return { candidateRevision, tag: candidateTag, tagUri: candidateOrigin, artifactDigest, previousRevision, beforeTraffic: service.traffic.slice(0, 1), etag: 'e2', revisionName: `projects/p/revisions/${candidateRevision}` }
     },
     async getRevision(_profile, revision) { return { name: `projects/p/services/s/revisions/${revision}`, service: 'projects/p/services/s', containers: [{ image: `${profile.artifact.uri}@sha256:${'d'.repeat(64)}` }], conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] } },
     async runAuthenticatedSmoke({ origin }) { return { origin, observations: [{ id: 'session-reload', status: 200 }], status: 'PASS', observedAt: this.now() } },
+    async runInternalCandidateSmoke({ origin }) { return { origin, observations: [{ id: 'internal-candidate', status: 200 }], status: 'PASS', observedAt: this.now() } },
     async configureEntrypoint({ candidate }) {
       const before = entrypointSnapshot(service)
       assert.equal(candidate.tagUri, candidateOrigin)
@@ -79,24 +81,47 @@ function recordedHarness() {
       if (changed) service = { ...service, etag: 'e-restore', generation: '6', observedGeneration: '6', ingress: baseline.ingress, defaultUriDisabled: baseline.defaultUriDisabled, invokerIamDisabled: baseline.invokerIamDisabled, uri: baseline.uri, urls: baseline.urls }
       return { changed, before, after: entrypointSnapshot(service), providerOperationRef: changed ? { name: 'operations/restore' } : null }
     },
-    async setTraffic({ revision, candidateTag: releaseTag }) { service = { ...service, etag: 'e3', generation: '4', observedGeneration: '4', traffic: [{ revision, percent: 100 }, { revision, percent: 0, tag: releaseTag }], trafficStatuses: [{ revision, percent: 100 }, { revision, percent: 0, tag: releaseTag, uri: candidateOrigin }] }; return structuredClone(service) },
-    async removeCandidateTag({ candidateRevision: exact, expectedActiveRevision }) { assert.equal(exact, candidateRevision); assert.equal(effectiveRevision(service), expectedActiveRevision); service = { ...service, etag: 'e4', generation: '5', observedGeneration: '5', traffic: service.traffic.filter((row) => !row.tag), trafficStatuses: service.trafficStatuses.filter((row) => !row.tag) }; return structuredClone(service) },
+    async setTraffic({ revision, candidateTag: releaseTag }) {
+      service = { ...service, etag: 'e3', generation: '4', observedGeneration: '4', traffic: [{ revision, percent: 100 }, ...(releaseTag ? [{ revision, tag: releaseTag }] : [])], trafficStatuses: [{ revision, percent: 100 }, ...(releaseTag ? [{ revision, tag: releaseTag, uri: candidateOrigin }] : [])] }
+      if (service.defaultUriDisabled === false) delete service.defaultUriDisabled
+      return structuredClone(service)
+    },
+    async removeCandidateTag({ candidateRevision: exact, expectedActiveRevision }) { assert.equal(exact, candidateRevision); const tagged = service.traffic.find((row) => row.tag); if (tagged && tagged.revision !== exact) throw new Error('CANDIDATE_TAG_OWNER_MISMATCH'); assert.equal(effectiveRevision(service), expectedActiveRevision); service = { ...service, etag: 'e4', generation: '5', observedGeneration: '5', traffic: service.traffic.filter((row) => !row.tag), trafficStatuses: service.trafficStatuses.filter((row) => !row.tag) }; return structuredClone(service) },
     async publishIncident() { return { messageIds: ['1'] } },
   }
   const profile = {
     application: { id: 'platform', repository: 'owner/repo', branch: 'main' },
     profileVersion: 'CONTINUOUS_NO_DWELL_V3_DIRECT_RUN_APP', contractSha256: 'f'.repeat(64),
     target: { projectId: 'jenfu-platform-prod', projectNumber: '9536592944', region: 'asia-east1', serviceName: 'jenfu-platform-prod', runtimeServiceAccount: 'platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com', canonicalOrigin, entryPolicy: { ingress: 'INGRESS_TRAFFIC_ALL', defaultUriDisabled: false, invokerIamDisabled: true } },
-    runtime: { poolMax: 4 }, schemas: { releaseIntent: 'owner.intent.v2', deploymentCapsule: 'owner.deployment.v2' },
+    runtime: { containerName: 'platform', cloudSqlProxyContainer: 'cloud-sql-proxy', cloudSqlProxyImage: `proxy@sha256:${'f'.repeat(64)}`, cloudSqlProxyPort: 5432, cloudSqlProxyMaximumConnections: 24, cloudSqlConnectionName: 'p:r:i', network: 'runtime-vpc', subnet: 'runtime-subnet', port: 8080, startupProbePath: '/ready', cpu: '1', memory: '512Mi', concurrency: 20, timeoutSeconds: 60, maxInstances: 1, poolMax: 4 },
+    schemas: { releaseIntent: 'owner.intent.v2', deploymentCapsule: 'owner.deployment.v2' },
     artifact: { releaseBucket: bucket, repository: 'platform-release', uri: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/platform-release/platform', migrationRunnerUri: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/platform-release/platform-migration-runner', migrationBundlePrefix: 'source/migration-bundles' },
-    identities: { builder: 'platform-prod-builder@jenfu-platform-prod.iam.gserviceaccount.com' }, build: { maximumAllowedSeverity: 'MEDIUM' }, workflow: { path: '.github/workflows/deploy.yml' }, environment: { candidateOriginEnvironmentName: 'PORTAL_RELEASE_CANDIDATE_ORIGIN' }, sideEffects: { notification: 'DISABLED' },
+    identities: { builder: 'platform-prod-builder@jenfu-platform-prod.iam.gserviceaccount.com' }, build: { maximumAllowedSeverity: 'MEDIUM' }, workflow: { path: '.github/workflows/deploy.yml' }, environment: { requiredPlainEnvironmentNames: ['NODE_ENV'], requiredSecretNames: ['SESSION_SECRET'], allowedSecretIds: { SESSION_SECRET: 'platform-prod-session-pepper' }, candidateOriginEnvironmentName: 'PORTAL_RELEASE_CANDIDATE_ORIGIN' }, sideEffects: { notification: 'DISABLED' },
   }
-  const sourceBytes = Buffer.from('recorded-source-archive')
+  const sourceIdentityBytes = Buffer.from('recorded-source-tree-manifest')
+  const sourceArchiveBytes = Buffer.from('recorded-source-archive')
   const migrationBytes = Buffer.from('{"recorded":"migration"}\n')
   const migrationManifestSha256 = sha256('migration-manifest')
   const environment = { GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: profile.application.repository, GITHUB_REPOSITORY_ID: '1234', GITHUB_REPOSITORY_OWNER_ID: '5678', GITHUB_SHA: H40, GITHUB_WORKFLOW_SHA: H40, GITHUB_WORKFLOW_REF: 'owner/repo/.github/workflows/deploy.yml@refs/heads/main', GITHUB_REF: 'refs/heads/main', GITHUB_EVENT_NAME: 'workflow_dispatch', ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.actions.example', GOOGLE_OAUTH_ACCESS_TOKEN: 'x'.repeat(32), GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1' }
-  return { objects, transport, profile, sourceBytes, migrationBytes, migrationManifestSha256, environment, service: () => service }
+  return { objects, transport, profile, sourceIdentityBytes, sourceArchiveBytes, migrationBytes, migrationManifestSha256, environment, service: () => service }
 }
+async function authorizedRecordedInput(h, releaseId) {
+  const refFor = async (name, value) => (await h.transport.putJson(`gs://${bucket}/receipts/prerequisites/${releaseId}-${name}.json`, value, { bucket, prefix: 'receipts' })).ref
+  const common = { releaseAuthority: true, evidenceScope: 'PROVIDER' }
+  const sourceLockRef = await refFor('source-lock', { ...common, status: 'SOURCE_FROZEN', sourceRevision: H40, clean: true })
+  const authorizationPolicyRef = await refFor('authorization', { ...common, status: 'PASS', environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z' })
+  const readinessReceiptRef = await refFor('readiness', { ...common, status: 'PASS', environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z', projectId: 'jenfu-platform-prod' })
+  const foundationReceiptRef = await refFor('foundation', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod' })
+  const infraReceiptRef = await refFor('infra', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod', migrationRunnerDigest })
+  const runtimeConfigRef = await refFor('runtime', { ...common, status: 'VERIFIED', projectId: 'jenfu-platform-prod', ...buildRuntimeConfig(h.profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } }) })
+  const intent = { schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId, sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
+  const intentResult = await h.transport.putJson(`gs://${bucket}/receipts/intents/${releaseId}.json`, intent, { bucket, prefix: 'receipts' })
+  return {
+    intentResult,
+    input: { capsuleRef: intentResult.ref.uri, capsuleSha256: intentResult.ref.sha256, profile: h.profile, transport: h.transport, environment: h.environment, validateIntent: (value) => value, createSourceIdentity: async () => h.sourceIdentityBytes, createSourceArchive: async () => h.sourceArchiveBytes, buildMigrationBundle: async () => ({ bundle: { manifestSha256: h.migrationManifestSha256 }, bytes: h.migrationBytes, bundleSha256: sha256(h.migrationBytes) }) },
+  }
+}
+
 
 test('recorded provider transport executes the ten immutable owner stages without sibling state', async () => {
   const h = recordedHarness()
@@ -107,14 +132,89 @@ test('recorded provider transport executes the ten immutable owner stages withou
   const readinessReceiptRef = await refFor('readiness', { ...common, status: 'PASS', environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z', projectId: 'jenfu-platform-prod' })
   const foundationReceiptRef = await refFor('foundation', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod' })
   const infraReceiptRef = await refFor('infra', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod', migrationRunnerDigest })
-  const runtimeConfigRef = await refFor('runtime', { ...common, status: 'VERIFIED', projectId: 'jenfu-platform-prod', runtimeServiceAccount: h.profile.target.runtimeServiceAccount, serviceTemplateSha256: sha256(canonicalize({ serviceAccount: h.profile.target.runtimeServiceAccount })) })
-  const intent = { schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId: 'REL-RECORDED-001', sourceRevision: H40, sourceSha256: sha256(h.sourceBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
+  const runtimeConfigRef = await refFor('runtime', { ...common, status: 'VERIFIED', projectId: 'jenfu-platform-prod', ...buildRuntimeConfig(h.profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } }) })
+  const intent = { schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId: 'REL-RECORDED-001', sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
   const intentResult = await h.transport.putJson(`gs://${bucket}/receipts/intents/release.json`, intent, { bucket, prefix: 'receipts' })
-  const input = { capsuleRef: intentResult.ref.uri, capsuleSha256: intentResult.ref.sha256, profile: h.profile, transport: h.transport, environment: h.environment, validateIntent: (value) => value, createSourceArchive: async () => h.sourceBytes, buildMigrationBundle: async () => ({ bundle: { manifestSha256: h.migrationManifestSha256 }, bytes: h.migrationBytes, bundleSha256: sha256(h.migrationBytes) }) }
+  const input = { capsuleRef: intentResult.ref.uri, capsuleSha256: intentResult.ref.sha256, profile: h.profile, transport: h.transport, environment: h.environment, validateIntent: (value) => value, createSourceIdentity: async () => h.sourceIdentityBytes, createSourceArchive: async () => h.sourceArchiveBytes, buildMigrationBundle: async () => ({ bundle: { manifestSha256: h.migrationManifestSha256 }, bytes: h.migrationBytes, bundleSha256: sha256(h.migrationBytes) }) }
   for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']) await executeOwnerStage({ ...input, stage })
+  const activation = [...h.objects.entries()].find(([uri]) => uri.endsWith('/activate.json'))
+  assert.ok(activation)
+  assert.equal(JSON.parse(activation[1].bytes.toString()).facts.defaultUriDisabled, false)
+  const archivedSource = [...h.objects.entries()].find(([uri]) => uri.endsWith('/source.tar.gz'))
+  assert.ok(archivedSource)
+  assert.deepEqual(gunzipSync(archivedSource[1].bytes), h.sourceArchiveBytes)
   const terminal = [...h.objects.entries()].find(([uri]) => uri.endsWith('/terminal.json'))
   assert.ok(terminal)
   assert.equal(JSON.parse(terminal[1].bytes.toString()).facts.result, 'RELEASED')
   assert.equal(h.service().trafficStatuses.some((row) => row.tag), false)
   assert.equal(h.transport.effectiveRevision(h.service()), candidateRevision)
+})
+test('candidate tag readback accepts deterministic and provider-derived run.app URLs only', () => {
+  const candidate = { tag: candidateTag, tagUri: candidateOrigin }
+  const service = { uri: 'https://jenfu-platform-prod-56gnizku7q-de.a.run.app', urls: [canonicalOrigin, 'https://jenfu-platform-prod-56gnizku7q-de.a.run.app'] }
+  assert.equal(candidateTagUriMatches(service, candidate, candidateOrigin), true)
+  assert.equal(candidateTagUriMatches(service, candidate, `https://${candidateTag}---jenfu-platform-prod-56gnizku7q-de.a.run.app`), true)
+  assert.equal(candidateTagUriMatches(service, candidate, `https://${candidateTag}---sibling-56gnizku7q-de.a.run.app`), false)
+})
+
+test('expired control is superseded only after terminal owner-run and settled baseline readback', () => {
+  const profile = { application: { id: 'platform', repository: 'owner/repo' }, target: { serviceName: 'jenfu-platform-prod' }, artifact: { releaseBucket: bucket } }
+  const core = {
+    schemaVersion: 'jenfu.dev012.owner-control-head.v1', inputFingerprint: '1'.repeat(64), ownerApplicationId: 'platform',
+    service: 'jenfu-platform-prod', controlBucket: bucket, releaseId: 'REL-OLD-001', sourceRevision: H40,
+    sourceLockSha256: '2'.repeat(64), candidateRevision, previousRevision, ownerRunRef: 'https://api.github.com/repos/owner/repo/actions/runs/99',
+    leaseExpiresAt: '2026-09-08T00:00:00.000Z', deadlineAt: '2026-09-08T02:00:00.000Z', state: 'GO', result: null,
+  }
+  const current = { ...core, controlSha256: sha256(canonicalize(core)) }
+  const ownerRun = { id: '99', status: 'completed', conclusion: 'failure', event: 'workflow_dispatch', headSha: H40 }
+  const service = { traffic: [{ revision: previousRevision, percent: 100 }], trafficStatuses: [{ revision: previousRevision, percent: 100 }] }
+  const input = { current, profile, intent: { previousRevision }, ownerRun, service, activeRevision: previousRevision, now: '2026-09-08T01:00:00.000Z' }
+  assert.equal(assertStaleControlSafeToSupersede(input), true)
+  const newCandidate = { tag: 'candidate-newcontrol', candidateRevision: 'jenfu-platform-prod-newcontrol' }
+  const taggedService = {
+    traffic: [...service.traffic, { revision: newCandidate.candidateRevision, percent: 0, tag: newCandidate.tag }],
+    trafficStatuses: [...service.trafficStatuses, { revision: newCandidate.candidateRevision, percent: 0, tag: newCandidate.tag }],
+  }
+  assert.equal(assertStaleControlSafeToSupersede({ ...input, service: taggedService, candidate: newCandidate, nextState: 'CANDIDATE_CREATED' }), true)
+  assert.throws(() => assertStaleControlSafeToSupersede({ ...input, service: taggedService, candidate: { ...newCandidate, tag: 'candidate-wrong' }, nextState: 'CANDIDATE_CREATED' }), /CONTROL_HEAD_TAKEOVER_UNSAFE/u)
+  assert.throws(() => assertStaleControlSafeToSupersede({ ...input, ownerRun: { ...ownerRun, status: 'in_progress', conclusion: null } }), /CONTROL_HEAD_TAKEOVER_UNSAFE/u)
+  assert.throws(() => assertStaleControlSafeToSupersede({ ...input, service: { ...service, trafficStatuses: [...service.trafficStatuses, { revision: candidateRevision, tag: candidateTag }] } }), /CONTROL_HEAD_TAKEOVER_UNSAFE/u)
+  assert.throws(() => assertStaleControlSafeToSupersede({ ...input, activeRevision: candidateRevision }), /CONTROL_HEAD_TAKEOVER_UNSAFE/u)
+})
+
+test('rollback reports no database mutation when migrate receipt was never produced', async () => {
+  const h = recordedHarness()
+  const refFor = async (name, value) => (await h.transport.putJson(`gs://${bucket}/receipts/prerequisites/rollback-${name}.json`, value, { bucket, prefix: 'receipts' })).ref
+  const common = { releaseAuthority: true, evidenceScope: 'PROVIDER' }
+  const sourceLockRef = await refFor('source-lock', { ...common, status: 'SOURCE_FROZEN', sourceRevision: H40, clean: true })
+  const authorizationPolicyRef = await refFor('authorization', { ...common, status: 'PASS', environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z' })
+  const readinessReceiptRef = await refFor('readiness', { ...common, status: 'PASS', environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z', projectId: 'jenfu-platform-prod' })
+  const foundationReceiptRef = await refFor('foundation', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod' })
+  const infraReceiptRef = await refFor('infra', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod', migrationRunnerDigest })
+  const runtimeConfigRef = await refFor('runtime', { ...common, status: 'VERIFIED', projectId: 'jenfu-platform-prod', ...buildRuntimeConfig(h.profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } }) })
+  const intent = { schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId: 'REL-RECORDED-ROLLBACK', sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
+  const intentResult = await h.transport.putJson(`gs://${bucket}/receipts/intents/rollback.json`, intent, { bucket, prefix: 'receipts' })
+  const input = { capsuleRef: intentResult.ref.uri, capsuleSha256: intentResult.ref.sha256, profile: h.profile, transport: h.transport, environment: h.environment, validateIntent: (value) => value, createSourceIdentity: async () => h.sourceIdentityBytes, createSourceArchive: async () => h.sourceArchiveBytes, buildMigrationBundle: async () => ({ bundle: { manifestSha256: h.migrationManifestSha256 }, bytes: h.migrationBytes, bundleSha256: sha256(h.migrationBytes) }) }
+  await executeOwnerStage({ ...input, stage: 'prepare' })
+  await executeOwnerStage({ ...input, stage: 'rollback' })
+  const terminal = [...h.objects.entries()].find(([uri]) => uri.includes(intentResult.ref.sha256) && uri.endsWith('/terminal.json'))
+  assert.ok(terminal)
+  const value = JSON.parse(terminal[1].bytes.toString())
+  assert.equal(value.facts.result, 'PRE_ACTIVATION_ABORTED')
+  assert.equal(value.facts.databaseDisposition, 'NOT_APPLIED')
+})
+test('post-activation rollback switches to the previous revision without rebinding the candidate tag', async () => {
+  const h = recordedHarness()
+  const { input, intentResult } = await authorizedRecordedInput(h, 'REL-RECORDED-ACTIVE-ROLLBACK')
+  for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate']) await executeOwnerStage({ ...input, stage })
+  await executeOwnerStage({ ...input, stage: 'rollback' })
+  const terminal = [...h.objects.entries()].find(([uri]) => uri.includes(intentResult.ref.sha256) && uri.endsWith('/terminal.json'))
+  assert.ok(terminal)
+  const value = JSON.parse(terminal[1].bytes.toString())
+  assert.equal(value.facts.result, 'ROLLED_BACK')
+  assert.equal(value.facts.databaseDisposition, 'FORWARD_APPLIED')
+  assert.equal(h.transport.effectiveRevision(h.service()), previousRevision)
+  assert.equal(h.service().trafficStatuses.some((row) => row.tag), false)
+  assert.equal(h.service().ingress, 'INGRESS_TRAFFIC_INTERNAL_ONLY')
+  assert.equal(h.service().defaultUriDisabled, true)
 })

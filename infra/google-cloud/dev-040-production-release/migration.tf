@@ -9,7 +9,7 @@ resource "google_storage_bucket_iam_member" "migrator_bundle_viewer" {
   member = "serviceAccount:${data.google_service_account.migrator.email}"
   condition {
     title      = "orgmaster-migrator-bundle-viewer"
-    expression = "resource.name.startsWith('projects/_/buckets/${var.release_bucket_name}/objects/source/migration-bundles/')"
+    expression = "resource.name.startsWith('projects/_/buckets/${var.release_bucket_name}/objects/source/migration-bundles/') || resource.name.startsWith('projects/_/buckets/${var.release_bucket_name}/objects/source/production-data/') || (resource.name.startsWith('projects/_/buckets/${var.release_bucket_name}/objects/receipts/releases/') && resource.name.endsWith('/first-principal-bootstrap.json'))"
   }
 }
 
@@ -20,6 +20,17 @@ resource "google_storage_bucket_iam_member" "migrator_receipts_creator" {
   member = "serviceAccount:${data.google_service_account.migrator.email}"
   condition {
     title      = "orgmaster-migrator-receipts-creator"
+    expression = "resource.name.startsWith('${local.receipt_prefix}')"
+  }
+}
+
+resource "google_storage_bucket_iam_member" "migrator_receipts_viewer" {
+  count  = var.incident_runtime_enabled ? 1 : 0
+  bucket = google_storage_bucket.release.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${data.google_service_account.migrator.email}"
+  condition {
+    title      = "orgmaster-migrator-receipts-viewer"
     expression = "resource.name.startsWith('${local.receipt_prefix}')"
   }
 }
@@ -93,6 +104,14 @@ resource "google_cloud_run_v2_job" "migration" {
           instances = [var.cloud_sql_connection_name]
         }
       }
+
+      vpc_access {
+        egress = "ALL_TRAFFIC"
+        network_interfaces {
+          network    = "jenfu-platform-prod-vpc"
+          subnetwork = "jenfu-platform-prod-runtime"
+        }
+      }
     }
   }
 }
@@ -103,5 +122,28 @@ resource "google_cloud_run_v2_job_iam_member" "migration_runner" {
   location = var.region
   name     = google_cloud_run_v2_job.migration[0].name
   role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.deployer.email}"
+}
+
+# run.invoker cannot execute the job with the reviewed bundle/receipt
+# overrides. This additive exact-job binding preserves the no-replace plan gate.
+resource "google_cloud_run_v2_job_iam_member" "migration_runner_with_overrides" {
+  count    = var.incident_runtime_enabled ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_job.migration[0].name
+  role     = "roles/run.jobsExecutorWithOverrides"
+  member   = "serviceAccount:${google_service_account.deployer.email}"
+}
+
+# The owner release executor fail-closes on provider readback before and after
+# execution. Scope Cloud Run Viewer to this exact migration job so the deployer
+# can verify the job, operation, and execution without gaining sibling access.
+resource "google_cloud_run_v2_job_iam_member" "migration_runner_viewer" {
+  count    = var.incident_runtime_enabled ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_job.migration[0].name
+  role     = "roles/run.viewer"
   member   = "serviceAccount:${google_service_account.deployer.email}"
 }

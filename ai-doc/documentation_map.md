@@ -1,14 +1,32 @@
 # 文件地圖
 
-> **2026-09-15 DEV-040／DEV-012 R78完成（現行）**：OrgMaster沿用R60 immutable terminal，未重部署；source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`，R78 disposition=`RETAINED_LIVE`。Root／auth-mode provider smoke與entry policy readback PASS。Current authority為[DEV-040最終節](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)及[040-R2 QA最終節](qa/DEV-040-R2-independent-production-release-validation-plan.md)。後續ordinary release由本repo獨立執行；DEV-047仍依自己的task，不是DEV-040／012尾項。下方`S2 Unlocked／NOT_RUN`只屬歷史里程碑。
+> **2026-09-15 DEV-040／DEV-012 R78完成（現行）**：OrgMaster沿用R60 immutable terminal，未重部署；source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e5`、revision=`orgmaster-prod-3f9aa8c7818d`、100% traffic、canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`，R78 disposition=`RETAINED_LIVE`。Root／auth-mode與entry policy provider readback PASS。後續ordinary release由本repo獨立執行；DEV-047另依自己的task。下方S2／NOT_RUN只屬歷史。
 
-> **2026-09-09 DEV-040 `040-R2` V3 current release entry**：權威為
-> [DEV-040 §27](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與
-> [040-R2 QA §6](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游Platform DEV-012 §26 contract
-> SHA-256=`d88b9aaa8a5e27082746221fc5b473abd8a78da712409279baf5ecdb0e176f05`。狀態=`Architecture Finalized / RD Tech Lead PASS / P0=0 / P1=0 / V3 Implementation Complete /
-> S1B-21 Owner PASS / DEV-012 S1C 8／8 PASS / S2 Unlocked, Not Started`；canonical為provider-verified
-> `https://orgmaster-prod-9536592944.asia-east1.run.app`，owner workflow為十stage。正式provider、migration、candidate、
-> entrypoint與traffic仍NOT_RUN；DEV-047、既有staging profile、applied migration及產品UI不在此slice。
+> **2026-09-11 R38 current handoff**：R34 OrgMaster production migration已完成`7 applied／4 replayed／ledgerCount=11`且production-data PASS；candidate／entrypoint／traffic未執行。Current owner已修正Cloud Run v2 completion readback與exact Job viewer，離線owner／abort／DB／529案product regression／build均PASS。AI-PDM後續source drift使R37整體作廢，且R37無OrgMaster app apply；operator重新授權後由fresh R38接續，既有DDL只做idempotent replay，不做人工rollback。
+
+> **2026-09-11 R27 current handoff**：OrgMaster run 34506045085 在artifact gates全PASS後，於migration execution建立前因exact Job readback缺roles/run.viewer安全停止；provider execution=0且無DB／candidate／entrypoint／traffic mutation。Current §31／QA§8增補own exact-job resource-scoped viewer、APP_INFRA_B complete-set與真實database disposition；fresh source／APP_INFRA／cohort後才可重跑。
+
+> **2026-09-10 R26 current handoff**：OrgMaster APP_INFRA_A/B錯誤分層已在任何apply前由gate攔下。Current §31／QA§8固定三個SBOM bindings為`incident_runtime_enabled` APP_INFRA_B additional `[0]`，fresh only-create provider readback後才可重新dispatch。
+
+> **2026-09-10 R25 current handoff**：DEV-040 R2 current additive authority為[主契約§31](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與[QA§8](qa/DEV-040-R2-independent-production-release-validation-plan.md)。R25在migration execution前安全停止；own-prefix SBOM與exact-job override IAM完成fresh source／provider重證後才可重跑。
+
+> **2026-09-10 R20 provider correction**：OrgMaster source identity與兩個source objects已PASS，Cloud Build create因custom builder缺own `iam.serviceAccounts.actAs`而403安全停止；current source新增self-only IAM resource、APP_INFRA_B additional complete-set及negative regression，stage A不含此build-runtime權限。無migration／candidate／entrypoint／traffic，R21舊分類作廢，fresh source/app-infra/readiness前Production仍NOT_RUN。
+
+> **2026-09-10 DEV-040 R2 V3 authority（current）**：official source固定為[OrgMaster](https://github.com/jedchang0308-jenfu/OrgMaster) `master`。Current owner docs為[DEV-040 §30](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與[040-R2 QA §7](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游為Platform DEV-012 §29，contract SHA-256=`857f8a94ab13f63071156f85e76e5c675b348588b1126c147e0e54b431b6e8c5`，owner profile SHA-256=`5233c5f7d425f0ec48413f9d105649429a7b7d292441b51a8634ee9058f2767c`。Canonical為provider-verified `https://orgmaster-prod-9536592944.asia-east1.run.app`；runtime fixed-value gate已納入current source。狀態=`Architecture Finalized / RD Tech Lead PASS / P0=0 / P1=0 / S2 Paused for Operator Re-auth / Production Migration and Data PASS / Candidate、Entrypoint、Traffic NOT_RUN`。Custom domain／Hosting／shared edge只保留歷史／`RETAINED_UNUSED_EDGE`；TOTP與DEV-047不在scope。
+
+> **2026-09-10 DEV-040 R2 dependency gate refresh（current）**：全部直接Tiptap套件固定3.31.3，fresh production audit為`0 HIGH／0 CRITICAL`；owner／abort、529案full regression、DB boundary與雙build皆PASS。更舊master或R13 pre-fix receipt不得作本輪release authority。
+
+> **2026-09-10 shared-foundation handoff correction（current）**：Platform只apply一次shared foundation，native readiness把相同canonical receipt鏡像到OrgMaster own bucket；foundation保留shared owner與Platform source provenance且是唯一owner／source equality例外，OrgMaster infra/runtime/data仍綁own owner／source。R15／R16安全停止，fresh cohort才可dispatch。
+
+> **2026-09-10 cross-OS／cross-Git source identity correction（current）**：三owner source identity改綁`git ls-tree -r -z --full-tree <revision>` canonical tree manifest SHA，owner build驗章後才獨立產tar.gz並另記GCS bytes SHA；R18 gzip與R19 raw-tar identity均在OrgMaster build前安全停止，fresh cohort才可重試。
+
+> **2026-09-08 DEV-040 `040-R2` V2 historical release entry**：權威為
+> [DEV-040 §24](specs/DEV-040-jenfu-platform-entitlement-user-integration.md)與
+> [040-R2 QA](qa/DEV-040-R2-independent-production-release-validation-plan.md)，上游Platform DEV-012契約
+> SHA-256=`73bfd85abf017f858796004f69b740d45838a1bfcd25cafcf845b4fb530f9efa`、§25～EOF=
+> `29f5af2e7d3e699cbec9f1bdc2e3d9f94ca55658e192cbcdf7ff18d9723a369e`。狀態=`S1C owner RD Implementation Complete / LOCAL_CONTRACT PASS /
+> S1B-21 LOCAL_CONTRACT PASS / DEV-012 S2 Upfront Prerequisites In Progress`；owner production path已實作，下一步是fresh S2 provider前置。
+> DEV-047、既有staging profile、applied migration及產品UI不在此slice。
 
 > **2026-09-05 Platform DEV-010 physical-topology successor（現行）**：OrgMaster既有domain、workspace、DEV-040 entitlement／identity與local／isolated證據不變；三系統共用資料庫的physical target與schema end state改由Platform [DEV-010 direct spec](../../Jenfu-Management-system/ai-doc/specs/DEV-010-three-system-database-consolidation-contract.md) 接管。現有`orgmaster`與`access_governance`私有物件映射至`orgmaster_core`，跨app publication映射至`orgmaster_contract`，並在consumer歸零前保留compatibility adapters。`010-N1A=11＋30 PASS`、`010-N1B=10／10 PASS`、三repo`010-N2=48／48 PASS`、R1E verifier source、R1-04唯讀candidate verifier與R1-04A guarded provider artifact producer source已完成；current production target為`db-custom-1-3840 / ZONAL_DEDICATED / USD 100`，不宣稱HA。OrgMaster R1-04A production package與exact-commit local OCI／SBOM／runtime probe已完成；artifact含`dist-server`／`dist`、production dependencies與hash-bound `contracts` assets，明確排除local operational `data`。Producer unit `6／6`及focused QC PASS，但current 8項foundation blocker使provider build未執行。Production Cloud SQL模式不fallback到container local writable state仍須R1-04B provider negative test。Neutral service不存在時先用無DB／無business route的holding revision，release candidate再以exact digest保持0% canonical traffic。Provider-attested artifact、R1-04F／B、9項preflight blockers、R1 15案、production migration／switch／release均未完成，驗收依[DEV-010 QA／QC plan](../../Jenfu-Management-system/ai-doc/qa/DEV-010-three-system-database-consolidation-validation-plan.md)。
 

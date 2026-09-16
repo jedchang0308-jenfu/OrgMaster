@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import test from 'node:test'
 import { crc32cBase64 } from './lib/dev012-production-migration-runner.mjs'
-import { canonicalize, createOwnerTransport, sha256 } from './lib/dev012-owner-release-runtime.mjs'
+import { assertRuntimeConfig, buildRuntimeConfig, createOwnerTransport } from './lib/dev012-owner-release-runtime.mjs'
 
 const H40 = 'a'.repeat(40)
 const H64 = 'b'.repeat(64)
@@ -9,14 +10,33 @@ const bucket = 'jenfu-platform-prod-platform-release'
 const profile = {
   application: { id: 'platform', repository: 'owner/repo', branch: 'main' },
   target: { projectId: 'jenfu-platform-prod', projectNumber: '9536592944', region: 'asia-east1', serviceName: 'jenfu-platform-prod', runtimeServiceAccount: 'platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com', canonicalOrigin: 'https://jenfu-platform-prod-9536592944.asia-east1.run.app', entryPolicy: { ingress: 'INGRESS_TRAFFIC_ALL', defaultUriDisabled: false, invokerIamDisabled: true } },
+  runtime: { containerName: 'platform', cloudSqlProxyContainer: 'cloud-sql-proxy', cloudSqlProxyImage: `proxy@sha256:${'c'.repeat(64)}`, cloudSqlProxyPort: 5432, cloudSqlProxyMaximumConnections: 24, cloudSqlConnectionName: 'p:r:i', network: 'runtime-vpc', subnet: 'runtime-subnet', port: 8080, startupProbePath: '/ready', cpu: '1', memory: '512Mi', concurrency: 20, timeoutSeconds: 60, maxInstances: 1 },
   artifact: { releaseBucket: bucket, repository: 'platform-release', uri: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/platform-release/platform' },
   identities: { builder: 'platform-prod-builder@jenfu-platform-prod.iam.gserviceaccount.com' },
   build: { dockerBuilderImage: 'gcr.io/cloud-builders/docker@sha256:3d00b6c1a9b862621c30fc74d4f2abfc62bcbdee631ed3febd31e7edbdf6252c', dockerfile: 'Dockerfile', dockerTarget: 'runner' },
   migrations: { jobName: 'platform-prod-migration-runner', serviceAccount: 'platform-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com' },
-  environment: { candidateOriginEnvironmentName: 'PORTAL_RELEASE_CANDIDATE_ORIGIN' },
+  environment: { requiredPlainEnvironmentNames: ['NODE_ENV'], requiredSecretNames: ['SESSION_SECRET'], allowedSecretIds: { SESSION_SECRET: 'platform-prod-session-pepper' }, candidateOriginEnvironmentName: 'PORTAL_RELEASE_CANDIDATE_ORIGIN', fixedValues: { NODE_ENV: 'production' } },
 }
 
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } })
+
+test('production runner is pinned, non-root, and removes the unused vulnerable OS zlib', () => {
+  const dockerfile = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8')
+  const runtimeImage = 'gcr.io/distroless/nodejs24-debian13:nonroot@sha256:7781e8b4fccf59240bd539af6738cccf8dad4be303165c3a1fa065c48699b937'
+  const sanitizerImage = 'alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce'
+  assert.ok(dockerfile.includes(`ARG RUNTIME_NODE_IMAGE=${runtimeImage}`))
+  assert.ok(dockerfile.includes(`ARG RUNTIME_SANITIZER_IMAGE=${sanitizerImage}`))
+  assert.match(dockerfile, /FROM \$\{RUNTIME_NODE_IMAGE\} AS runtime-base/u)
+  assert.match(dockerfile, /FROM \$\{RUNTIME_SANITIZER_IMAGE\} AS runtime-sanitizer/u)
+  assert.match(dockerfile, /\/rootfs\/usr\/lib\/x86_64-linux-gnu\/libz\.so\.1\.3\.1/u)
+  assert.match(dockerfile, /\/rootfs\/var\/lib\/dpkg\/status\.d\/zlib1g\.md5sums/u)
+  assert.match(dockerfile, /COPY --from=runtime-sanitizer \/rootfs \//u)
+  assert.match(dockerfile, /^FROM scratch AS runner$/mu)
+  assert.doesNotMatch(dockerfile, /FROM \$\{NODE_IMAGE\} AS runner/u)
+  assert.match(dockerfile, /USER 65532:65532/u)
+  assert.match(dockerfile, /ENTRYPOINT \["\/nodejs\/bin\/node"\]/u)
+  assert.doesNotMatch(dockerfile.split('AS runner')[1] ?? '', /groupadd|useradd|\/usr\/local\/lib\/node_modules\/npm/u)
+})
 
 test('owner transport reads a generation-bound object from any explicitly allowed prefix', async () => {
   const bytes = Buffer.from('{"ok":true}\n')
@@ -29,7 +49,7 @@ test('owner transport reads a generation-bound object from any explicitly allowe
   assert.equal(result.bytes.equals(bytes), true)
 })
 
-test('Cloud Build uses the regional operation API, pinned builder, exact source generation and verified provenance', async () => {
+test('Cloud Build gets the exact regional build resource, pinned builder, source generation and verified provenance', async () => {
   const sourceUri = `gs://${bucket}/source/releases/R/source.tgz`
   const buildTag = `${profile.artifact.uri}:release-${H40}`
   const seen = []
@@ -42,33 +62,47 @@ test('Cloud Build uses the regional operation API, pinned builder, exact source 
   }
   const fetchImpl = async (url, options = {}) => {
     seen.push({ url: String(url), method: options.method ?? 'GET', body: options.body ? JSON.parse(options.body) : null })
-    if (options.method === 'POST') return json({ name: 'projects/jenfu-platform-prod/locations/asia-east1/operations/build-1', done: false })
-    return json({ done: true, response: build })
+    if (options.method === 'POST') return json({ name: 'operations/build/NTU1NGU2YTktMWMwZi00OGJkLTg3N2EtN2YwNGQ2NTE5MTVl', metadata: { build: { id: '5554e6a9-1c0f-48bd-877a-7f04d651915e' } } })
+    return json(build)
   }
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl, sleep: async () => undefined })
   const result = await transport.createBuild({ profile, intent: { sourceRevision: H40, sourceSha256: H64, releaseId: 'REL-001' }, sourceObject: { ref: { uri: sourceUri, sha256: H64 }, metadata: { generation: '9' } }, deadlineAt: '2999-01-01T00:00:00.000Z' })
   assert.equal(result.artifactDigest, `${profile.artifact.uri}@sha256:${H64}`)
-  assert.match(seen[1].url, /^https:\/\/cloudbuild\.googleapis\.com\/v1\/projects\//u)
+  assert.equal(seen[1].url, 'https://cloudbuild.googleapis.com/v1/projects/jenfu-platform-prod/locations/asia-east1/builds/5554e6a9-1c0f-48bd-877a-7f04d651915e')
   assert.equal(seen[0].body.steps[0].name, profile.build.dockerBuilderImage)
+  assert.equal(seen[0].body.steps[0].dir, 'source')
   assert.equal(seen[0].body.source.storageSource.generation, '9')
 })
 
 test('Artifact Registry, provenance, SBOM and vulnerability evidence fail closed', async () => {
   const digest = `${profile.artifact.uri}@sha256:${H64}`
+  const resourceUri = `https://${digest}`
+  const rowsByKind = {
+    BUILD: [{ name: 'projects/jenfu-platform-prod/occurrences/build', resourceUri, kind: 'BUILD' }],
+    DISCOVERY: [{ name: 'projects/jenfu-platform-prod/locations/asia-east1/occurrences/sbom-discovery', resourceUri, kind: 'DISCOVERY', discovery: { analysisStatus: 'FINISHED_SUCCESS' } }],
+    SBOM_REFERENCE: [{ name: 'projects/jenfu-platform-prod/occurrences/sbom', resourceUri, kind: 'SBOM_REFERENCE' }],
+    VULNERABILITY: [{ name: 'projects/jenfu-platform-prod/occurrences/low', resourceUri, kind: 'VULNERABILITY', vulnerability: { effectiveSeverity: 'LOW' } }],
+  }
+  const requestedKinds = []
+  let exportCalls = 0
   const fetchImpl = async (url, options = {}) => {
     const value = String(url)
     if (value.includes('/dockerImages?')) return json({ dockerImages: [{ name: 'projects/p/locations/r/repositories/x/dockerImages/platform@sha256:abc', uri: digest }] })
     if (value.endsWith(':exportSBOM') && options.method === 'POST') {
-      assert.match(value, /containeranalysis\.googleapis\.com\/v1beta1\/projects\/jenfu-platform-prod\/resources\//)
+      assert.match(value, /containeranalysis\.googleapis\.com\/v1beta1\/projects\/jenfu-platform-prod\/locations\/asia-east1\/resources\//)
       assert.equal(options.body, '{}')
-      return json({ discoveryOccurrenceId: 'projects/jenfu-platform-prod/occurrences/sbom-discovery' })
+      exportCalls += 1
+      if (exportCalls === 1) return json({ error: { status: 'INVALID_ARGUMENT' } }, 400)
+      return json({ discoveryOccurrenceId: 'projects/jenfu-platform-prod/locations/asia-east1/occurrences/sbom-discovery' })
     }
-    if (value.includes('/occurrences?')) return json({ occurrences: [
-      { name: 'projects/jenfu-platform-prod/occurrences/build', kind: 'BUILD' },
-      { name: 'projects/jenfu-platform-prod/occurrences/sbom-discovery', kind: 'DISCOVERY', discovery: { discovered: { analysisStatus: 'FINISHED_SUCCESS' } } },
-      { name: 'projects/jenfu-platform-prod/occurrences/sbom', kind: 'SBOM_REFERENCE' },
-      { name: 'projects/jenfu-platform-prod/occurrences/low', kind: 'VULNERABILITY', vulnerability: { effectiveSeverity: 'LOW' } },
-    ] })
+    if (value.includes('/occurrences?')) {
+      assert.match(value, /\/v1\/projects\/jenfu-platform-prod\/occurrences\?/u)
+      const filter = new URL(value).searchParams.get('filter') ?? ''
+      const match = /^kind="(BUILD|DISCOVERY|SBOM_REFERENCE|VULNERABILITY)" AND resourceUrl="([^"]+)"$/u.exec(filter)
+      assert.equal(match?.[2], resourceUri)
+      requestedKinds.push(match[1])
+      return json({ occurrences: rowsByKind[match[1]] })
+    }
     throw new Error(`unexpected ${value}`)
   }
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl, sleep: async () => undefined })
@@ -76,14 +110,28 @@ test('Artifact Registry, provenance, SBOM and vulnerability evidence fail closed
   const evidence = await transport.waitArtifactEvidence({ profile, artifactDigest: digest, deadlineAt: '2999-01-01T00:00:00.000Z' })
   assert.equal(evidence.status, 'PASS')
   assert.equal(evidence.blockingVulnerabilityCount, 0)
+  assert.equal(exportCalls, 2)
+  assert.deepEqual(requestedKinds, ['BUILD', 'DISCOVERY', 'SBOM_REFERENCE', 'VULNERABILITY', 'BUILD', 'DISCOVERY', 'SBOM_REFERENCE', 'VULNERABILITY'])
+
+  let invalidExportCalls = 0
+  const invalidTransport = createOwnerTransport({ token: 'x'.repeat(32), sleep: async () => undefined, fetchImpl: async (url, options = {}) => {
+    if (String(url).endsWith(':exportSBOM') && options.method === 'POST') {
+      invalidExportCalls += 1
+      return json({ error: { status: 'UNPROCESSABLE_ENTITY' } }, 422)
+    }
+    const kind = /^kind="([A-Z_]+)"/u.exec(new URL(String(url)).searchParams.get('filter') ?? '')?.[1]
+    return json({ occurrences: rowsByKind[kind] ?? [] })
+  } })
+  await assert.rejects(() => invalidTransport.waitArtifactEvidence({ profile, artifactDigest: digest, deadlineAt: '2999-01-01T00:00:00.000Z' }), /PROVIDER_REQUEST_FAILED:422/u)
+  assert.equal(invalidExportCalls, 1)
 
   const blockedTransport = createOwnerTransport({ token: 'x'.repeat(32), sleep: async () => undefined, fetchImpl: async (url, options = {}) => {
-    if (String(url).endsWith(':exportSBOM') && options.method === 'POST') return json({ discoveryOccurrenceId: 'projects/jenfu-platform-prod/occurrences/sbom-discovery' })
-    return json({ occurrences: [
-      { name: 'projects/jenfu-platform-prod/occurrences/build', kind: 'BUILD' },
-      { name: 'projects/jenfu-platform-prod/occurrences/sbom-discovery', kind: 'DISCOVERY', discovery: { discovered: { analysisStatus: 'FINISHED_SUCCESS' } } },
-      { name: 'projects/jenfu-platform-prod/occurrences/critical', kind: 'VULNERABILITY', vulnerability: { effectiveSeverity: 'CRITICAL' } },
-    ] })
+    if (String(url).endsWith(':exportSBOM') && options.method === 'POST') return json({ discoveryOccurrenceId: 'projects/jenfu-platform-prod/locations/asia-east1/occurrences/sbom-discovery' })
+    const kind = /^kind="([A-Z_]+)"/u.exec(new URL(String(url)).searchParams.get('filter') ?? '')?.[1]
+    const occurrences = kind === 'VULNERABILITY'
+      ? [{ name: 'projects/jenfu-platform-prod/occurrences/critical', resourceUri, kind, vulnerability: { effectiveSeverity: 'CRITICAL' } }]
+      : rowsByKind[kind] ?? []
+    return json({ occurrences })
   } })
   await assert.rejects(() => blockedTransport.waitArtifactEvidence({ profile, artifactDigest: digest, deadlineAt: '2999-01-01T00:00:00.000Z' }), /ARTIFACT_POLICY_FAILED/u)
 })
@@ -97,18 +145,59 @@ test('migration job readback rejects mutable target fields before jobs.run', asy
   }
   const job = { name: jobName, template: { taskCount: 1, parallelism: 1, template: { serviceAccount: profile.migrations.serviceAccount, maxRetries: 0, timeout: '1800s', containers: [{ name: 'migration', image: `runner@sha256:${H64}`, env: Object.entries(environment).map(([name, value]) => ({ name, value })), volumeMounts: [{ name: 'cloudsql', mountPath: '/cloudsql' }] }], volumes: [{ name: 'cloudsql', cloudSqlInstance: { instances: ['jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg'] } }] } } }
   let runCalls = 0
+  let listCalls = 0
+  const requestedArgs = ['--bundle-ref', `gs://${bucket}/source/migration-bundles/b.json`, '--bundle-sha256', H64, '--source-revision', H40, '--output-ref', `gs://${bucket}/receipts/migrate.json`]
+  const executionName = `${jobName}/executions/e1`
+  const execution = { name: executionName, template: { containers: [{ name: 'migration', args: requestedArgs }] }, succeededCount: 1, failedCount: 0, completionTime: '2026-09-08T00:00:00Z', conditions: [{ type: 'Completed', state: 'CONDITION_SUCCEEDED' }] }
+  const requestedUrls = []
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
+    requestedUrls.push(String(url))
     if (options.method === 'POST') { runCalls += 1; return json({ name: 'projects/p/locations/r/operations/run-1', done: true, response: { name: 'projects/p/locations/r/executions/e1' } }) }
-    if (String(url).endsWith('/executions/e1')) return json({ name: 'projects/p/locations/r/executions/e1', succeededCount: 1, failedCount: 0, completionTime: '2026-09-08T00:00:00Z', terminalCondition: { state: 'CONDITION_SUCCEEDED' } })
+    if (String(url).endsWith('/executions?pageSize=100')) return json({ executions: listCalls++ === 0 ? [] : [execution] })
+    if (String(url).endsWith('/executions/e1')) return json(execution)
     return json(job)
   } })
   const deployment = { migrationRunnerDigest: `runner@sha256:${H64}`, migrationBundleRef: { uri: `gs://${bucket}/source/migration-bundles/b.json`, sha256: H64 }, sourceRevision: H40 }
   await transport.runMigrationJob({ profile, deployment, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z' })
   assert.equal(runCalls, 1)
+  assert.equal(requestedUrls.some((url) => url.includes('/operations/')), false)
   const drifted = structuredClone(job)
   drifted.template.template.containers[0].env.find((row) => row.name === 'POSTGRES_DATABASE').value = 'jenfu_stg'
   const denied = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async () => json(drifted) })
   await assert.rejects(() => denied.runMigrationJob({ profile, deployment, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z' }), /MIGRATION_JOB_READBACK_MISMATCH/u)
+})
+
+test('OrgMaster migration job receives exact production-data refs only when required', async () => {
+  const jobName = 'projects/jenfu-platform-prod/locations/asia-east1/jobs/platform-prod-migration-runner'
+  const environment = {
+    OWNER_APPLICATION_ID: 'platform', RELEASE_BUCKET: bucket, GOOGLE_CLOUD_PROJECT: 'jenfu-platform-prod', GOOGLE_CLOUD_REGION: 'asia-east1',
+    CLOUD_SQL_INSTANCE_CONNECTION_NAME: 'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg', POSTGRES_DATABASE: 'jenfu_prod',
+    POSTGRES_IAM_LOGIN: 'platform-prod-migrator@jenfu-platform-prod.iam', POSTGRES_SOCKET: '/cloudsql/jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',
+  }
+  const job = { name: jobName, template: { taskCount: 1, parallelism: 1, template: { serviceAccount: profile.migrations.serviceAccount, maxRetries: 0, timeout: '1800s', containers: [{ name: 'migration', image: `runner@sha256:${H64}`, env: Object.entries(environment).map(([name, value]) => ({ name, value })), volumeMounts: [{ name: 'cloudsql', mountPath: '/cloudsql' }] }], volumes: [{ name: 'cloudsql', cloudSqlInstance: { instances: ['jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg'] } }] } } }
+  let runBody
+  let listCalls = 0
+  const requestedArgs = ['--bundle-ref', `gs://${bucket}/source/migration-bundles/b.json`, '--bundle-sha256', H64, '--source-revision', H40, '--output-ref', `gs://${bucket}/receipts/migrate.json`, '--data-ref', `gs://${bucket}/source/production-data/REL-001/data.json`, '--data-sha256', H64, '--bootstrap-ref', `gs://${bucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, '--bootstrap-sha256', H64]
+  const executionName = `${jobName}/executions/e1`
+  const execution = { name: executionName, template: { containers: [{ name: 'migration', args: requestedArgs }] }, succeededCount: 1, failedCount: 0, completionTime: '2026-09-08T00:00:00Z', conditions: [{ type: 'Completed', state: 'CONDITION_SUCCEEDED' }] }
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
+    if (options.method === 'POST') { runBody = JSON.parse(options.body); return json({ name: 'projects/p/locations/r/operations/run-1', done: true, response: { name: 'projects/p/locations/r/executions/e1' } }) }
+    if (String(url).endsWith('/executions?pageSize=100')) return json({ executions: listCalls++ === 0 ? [] : [execution] })
+    if (String(url).endsWith('/executions/e1')) return json(execution)
+    return json(job)
+  } })
+  const productionProfile = { ...profile, productionData: { required: true, dataObjectPrefix: 'source/production-data', bootstrapObjectPrefix: 'receipts/releases' } }
+  const deployment = {
+    migrationRunnerDigest: `runner@sha256:${H64}`,
+    migrationBundleRef: { uri: `gs://${bucket}/source/migration-bundles/b.json`, sha256: H64 },
+    productionDataRef: { uri: `gs://${bucket}/source/production-data/REL-001/data.json`, sha256: H64 },
+    firstPrincipalBootstrapRef: { uri: `gs://${bucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, sha256: H64 },
+    sourceRevision: H40,
+  }
+  await transport.runMigrationJob({ profile: productionProfile, deployment, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z' })
+  const args = runBody.overrides.containerOverrides[0].args
+  assert.deepEqual(args.slice(-8), ['--data-ref', deployment.productionDataRef.uri, '--data-sha256', H64, '--bootstrap-ref', deployment.firstPrincipalBootstrapRef.uri, '--bootstrap-sha256', H64])
+  await assert.rejects(() => transport.runMigrationJob({ profile: productionProfile, deployment: { ...deployment, productionDataRef: { ...deployment.productionDataRef, uri: 'gs://sibling/source/production-data/data.json' } }, outputUri: `gs://${bucket}/receipts/migrate2.json`, deadlineAt: '2999-01-01T00:00:00.000Z' }), /IMMUTABLE_REF_INVALID/u)
 })
 
 test('candidate-tag cleanup distinguishes the candidate from the active rollback target', async () => {
@@ -124,10 +213,27 @@ test('candidate-tag cleanup distinguishes the candidate from the active rollback
   assert.equal(transport.effectiveRevision(readback), 'previous-1')
 })
 
+test('effective revision accepts a provider-coalesced tagged status only when the explicit 100% target agrees', () => {
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async () => json({}) })
+  const coalesced = {
+    traffic: [
+      { type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: 'candidate-1', percent: 100 },
+      { type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: 'candidate-1', percent: 0, tag: 'candidate-abc' },
+    ],
+    trafficStatuses: [{ type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: 'candidate-1', percent: 100, tag: 'candidate-abc', uri: 'https://candidate.example.invalid' }],
+  }
+  assert.equal(transport.effectiveRevision(coalesced), 'candidate-1')
+  assert.throws(() => transport.effectiveRevision({ ...coalesced, trafficStatuses: [{ revision: 'other-1', percent: 100, tag: 'candidate-abc' }] }), /EFFECTIVE_REVISION_AMBIGUOUS/u)
+  assert.throws(() => transport.effectiveRevision({ ...coalesced, traffic: [{ revision: 'candidate-1', percent: 100, tag: 'candidate-abc' }] }), /EFFECTIVE_REVISION_AMBIGUOUS/u)
+  assert.throws(() => transport.effectiveRevision({ ...coalesced, trafficStatuses: [{ latestRevision: true, percent: 100 }] }), /EFFECTIVE_REVISION_AMBIGUOUS/u)
+})
+
 test('Cloud Run service readback requires a reconciled successful observed generation', () => {
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async () => json({}) })
   const settled = { reconciling: false, generation: '8', observedGeneration: '8', terminalCondition: { state: 'CONDITION_SUCCEEDED' } }
   assert.equal(transport.assertServiceSettled(settled), settled)
+  const omittedFalse = { ...settled }; delete omittedFalse.reconciling
+  assert.equal(transport.assertServiceSettled(omittedFalse), omittedFalse)
   assert.throws(() => transport.assertServiceSettled({ ...settled, observedGeneration: '7' }), /RUN_SERVICE_NOT_SETTLED/u)
   assert.throws(() => transport.assertServiceSettled({ ...settled, terminalCondition: { state: 'CONDITION_FAILED' } }), /RUN_SERVICE_NOT_SETTLED/u)
 })
@@ -137,30 +243,72 @@ test('Cloud Run revision readback stays bound to the exact service path', async 
   const endpoint = `/services/${profile.target.serviceName}/revisions/${revision}`
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url) => {
     assert.equal(String(url).endsWith(endpoint), true)
-    return json({ name: `projects/${profile.target.projectId}/locations/${profile.target.region}${endpoint}`, service: `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}` })
+    return json({ name: `projects/${profile.target.projectId}/locations/${profile.target.region}${endpoint}`, service: profile.target.serviceName })
   } })
   assert.equal((await transport.getRevision(profile, revision)).name.endsWith(`/revisions/${revision}`), true)
   await assert.rejects(() => transport.getRevision(profile, 'latest'), /REVISION_TARGET_INVALID/u)
   const artifact = `${profile.artifact.uri}@sha256:${H64}`
-  const ready = { containers: [{ image: artifact }], conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] }
-  assert.equal(transport.assertRevisionReady(ready, artifact), ready)
-  assert.throws(() => transport.assertRevisionReady({ containers: [{ image: artifact }], conditions: [] }, artifact), /CANDIDATE_REVISION_READBACK_MISMATCH/u)
+  const resolvedProxyImage = `proxy@sha256:${'d'.repeat(64)}`
+  const ready = { containers: [{ name: 'platform', image: artifact }, { name: 'cloud-sql-proxy', image: resolvedProxyImage }], conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] }
+  assert.equal(transport.assertRevisionReady(profile, ready, artifact), ready)
+  assert.equal(transport.assertRevisionReady(profile, ready, artifact, resolvedProxyImage), ready)
+  assert.throws(() => transport.assertRevisionReady(profile, ready, artifact, `proxy@sha256:${'e'.repeat(64)}`), /CANDIDATE_REVISION_READBACK_MISMATCH/u)
+  const wrongRepository = structuredClone(ready)
+  wrongRepository.containers[1].image = `other-proxy@sha256:${'d'.repeat(64)}`
+  assert.throws(() => transport.assertRevisionReady(profile, wrongRepository, artifact), /CANDIDATE_REVISION_READBACK_MISMATCH/u)
+  assert.throws(() => transport.assertRevisionReady(profile, { containers: ready.containers, conditions: [] }, artifact), /CANDIDATE_REVISION_READBACK_MISMATCH/u)
 })
 
-test('candidate revision receives one exact full-origin overlay and provider URI must match', async () => {
+test('runtime config carries a complete secret-safe two-container template', () => {
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } })
+  assert.deepEqual(assertRuntimeConfig(profile, runtimeConfig), runtimeConfig.template)
+  assert.throws(() => buildRuntimeConfig(profile, { plainEnvironment: { NODE_ENV: 'development' }, secretVersions: { SESSION_SECRET: '1' } }), /RUNTIME_CONFIG_READBACK_MISMATCH/u)
+  const mutable = structuredClone(runtimeConfig)
+  mutable.template.containers[1].image = 'proxy:latest'
+  assert.throws(() => assertRuntimeConfig(profile, mutable), /RUNTIME_CONFIG_READBACK_MISMATCH/u)
+})
+
+test('candidate replaces a one-container holding template with the reviewed runtime template at zero traffic', async () => {
+  const artifact = `${profile.artifact.uri}@sha256:${H64}`
+  const candidateRevision = `${profile.target.serviceName}-${H64.slice(0, 12)}`
+  const candidateTag = `candidate-${H64.slice(0, 12)}`
+  const candidateUri = `https://${candidateTag}---jenfu-platform-prod-9536592944.asia-east1.run.app`
+  const serviceName = `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`
+  const settled = { name: serviceName, reconciling: false, generation: '1', observedGeneration: '1', terminalCondition: { state: 'CONDITION_SUCCEEDED' } }
+  const before = { ...settled, etag: 'e1', template: { serviceAccount: 'holding@example.invalid', containers: [{ name: 'holding', image: 'holding@sha256:' + '0'.repeat(64) }] }, traffic: [{ revision: 'holding-1', percent: 100 }], trafficStatuses: [{ revision: 'holding-1', percent: 100 }] }
+  const created = { ...before, etag: 'e2', latestCreatedRevision: candidateRevision }
+  const tagged = { ...created, etag: 'e3', traffic: [...before.traffic, { type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: candidateRevision, percent: 0, tag: candidateTag }], trafficStatuses: [...before.trafficStatuses, { revision: candidateRevision, percent: 0, tag: candidateTag, uri: candidateUri }] }
+  const reads = [before, created, created, tagged, tagged]
+  const patches = []
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
+    if (options.method === 'PATCH') { patches.push(JSON.parse(options.body)); return json({ name: `projects/${profile.target.projectId}/locations/${profile.target.region}/operations/patch-${patches.length}`, done: true, response: {} }) }
+    if (String(url).includes('/revisions/')) return json({ name: `${serviceName}/revisions/${candidateRevision}`, service: serviceName, containers: [{ name: 'platform', image: artifact, env: [{ name: profile.environment.candidateOriginEnvironmentName, value: candidateUri }] }, { name: 'cloud-sql-proxy', image: profile.runtime.cloudSqlProxyImage }], conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] })
+    return json(reads.shift())
+  } })
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } })
+  const result = await transport.createCandidate({ profile, artifactDigest: artifact, runtimeConfig, fingerprint: H64, deadlineAt: '2999-01-01T00:00:00.000Z' })
+  assert.equal(result.previousRevision, 'holding-1')
+  assert.equal(patches[0].template.containers.find((row) => row.name === 'platform').image, artifact)
+  assert.equal(patches[0].template.containers.length, 2)
+  assert.deepEqual(patches[1].traffic.filter((row) => !row.tag), before.traffic)
+})
+
+test('candidate accepts an omitted provider tag URI only while the default URI is disabled', async () => {
   const fingerprint = H64
   const candidateRevision = `jenfu-platform-prod-${fingerprint.slice(0, 12)}`
   const tag = `candidate-${fingerprint.slice(0, 12)}`
   const tagUri = `https://${tag}---jenfu-platform-prod-9536592944.asia-east1.run.app`
   const artifactDigest = `${profile.artifact.uri}@sha256:${H64}`
   const settled = { reconciling: false, generation: '1', observedGeneration: '1', terminalCondition: { state: 'CONDITION_SUCCEEDED' } }
-  const before = { ...settled, name: `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`, etag: 'e1', template: { serviceAccount: profile.target.runtimeServiceAccount, containers: [{ image: 'old@sha256:' + H64, env: [{ name: 'KEEP', value: 'yes' }] }] }, traffic: [{ revision: 'previous-1', percent: 100 }], trafficStatuses: [{ revision: 'previous-1', percent: 100 }] }
-  const expectedTemplate = structuredClone(before.template)
+  const before = { ...settled, name: `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`, etag: 'e1', defaultUriDisabled: true, template: { serviceAccount: profile.target.runtimeServiceAccount, containers: [{ image: 'old@sha256:' + H64, env: [{ name: 'KEEP', value: 'yes' }] }] }, traffic: [{ revision: 'previous-1', percent: 100 }], trafficStatuses: [{ revision: 'previous-1', percent: 100 }] }
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } })
+  const expectedTemplate = structuredClone(runtimeConfig.template)
   expectedTemplate.revision = candidateRevision
-  expectedTemplate.containers[0].image = artifactDigest
-  expectedTemplate.containers[0].env.push({ name: profile.environment.candidateOriginEnvironmentName, value: tagUri })
+  const expectedApp = expectedTemplate.containers.find((container) => container.name === profile.runtime.containerName)
+  expectedApp.image = artifactDigest
+  expectedApp.env.push({ name: profile.environment.candidateOriginEnvironmentName, value: tagUri })
   const created = { ...before, generation: '2', observedGeneration: '2', etag: 'e2', template: expectedTemplate, latestCreatedRevision: candidateRevision }
-  const tagged = { ...created, generation: '3', observedGeneration: '3', etag: 'e3', traffic: [...before.traffic, { type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: candidateRevision, percent: 0, tag }], trafficStatuses: [...before.trafficStatuses, { revision: candidateRevision, percent: 0, tag, uri: tagUri }] }
+  const tagged = { ...created, generation: '3', observedGeneration: '3', etag: 'e3', traffic: [...before.traffic, { type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: candidateRevision, tag }], trafficStatuses: [...before.trafficStatuses, { revision: candidateRevision, tag }] }
   let serviceGets = 0
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
     const value = String(url)
@@ -169,10 +317,10 @@ test('candidate revision receives one exact full-origin overlay and provider URI
       if (value.includes('updateMask=template')) assert.deepEqual(body.template, expectedTemplate)
       return json({ name: 'projects/p/locations/r/operations/patch', done: true, response: {} })
     }
-    if (value.includes('/revisions/')) return json({ name: `${before.name}/revisions/${candidateRevision}`, service: before.name, containers: [{ image: artifactDigest, env: expectedTemplate.containers[0].env }], conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] })
-    return json([before, created, tagged][serviceGets++])
+    if (value.includes('/revisions/')) return json({ name: `${before.name}/revisions/${candidateRevision}`, service: before.name, containers: [{ name: profile.runtime.containerName, image: artifactDigest, env: expectedApp.env }, { name: profile.runtime.cloudSqlProxyContainer, image: profile.runtime.cloudSqlProxyImage }], conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] })
+    return json([before, created, created, tagged, tagged][serviceGets++])
   } })
-  const result = await transport.createCandidate({ profile, artifactDigest, runtimeConfig: { serviceTemplateSha256: sha256(canonicalize(before.template)), runtimeServiceAccount: profile.target.runtimeServiceAccount }, fingerprint, deadlineAt: '2999-01-01T00:00:00.000Z' })
+  const result = await transport.createCandidate({ profile, artifactDigest, runtimeConfig, fingerprint, deadlineAt: '2999-01-01T00:00:00.000Z' })
   assert.equal(result.tagUri, tagUri)
   assert.equal(result.previousRevision, 'previous-1')
 })
@@ -180,8 +328,9 @@ test('candidate revision receives one exact full-origin overlay and provider URI
 test('entrypoint patch uses the exact mask, preserves template/traffic, and unknown outcome is read back once', async () => {
   const tag = 'candidate-bbbbbbbbbbbb'
   const tagUri = `https://${tag}---jenfu-platform-prod-9536592944.asia-east1.run.app`
-  const base = { name: `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`, etag: 'e1', reconciling: false, generation: '1', observedGeneration: '1', terminalCondition: { state: 'CONDITION_SUCCEEDED' }, ingress: 'INGRESS_TRAFFIC_INTERNAL_ONLY', defaultUriDisabled: true, invokerIamDisabled: false, uri: null, urls: [], template: { containers: [{ image: 'old' }] }, traffic: [{ revision: 'previous-1', percent: 100 }, { revision: 'candidate-1', percent: 0, tag }], trafficStatuses: [{ revision: 'previous-1', percent: 100 }, { revision: 'candidate-1', percent: 0, tag, uri: tagUri }] }
-  const direct = { ...base, etag: 'e2', generation: '2', observedGeneration: '2', ingress: 'INGRESS_TRAFFIC_ALL', defaultUriDisabled: false, invokerIamDisabled: true, uri: profile.target.canonicalOrigin, urls: [profile.target.canonicalOrigin] }
+  const base = { name: `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`, etag: 'e1', reconciling: false, generation: '1', observedGeneration: '1', terminalCondition: { state: 'CONDITION_SUCCEEDED' }, ingress: 'INGRESS_TRAFFIC_INTERNAL_ONLY', defaultUriDisabled: true, invokerIamDisabled: false, uri: null, urls: [], template: { containers: [{ image: 'old' }] }, traffic: [{ revision: 'previous-1', percent: 100 }, { revision: 'candidate-1', percent: 0, tag }], trafficStatuses: [{ revision: 'previous-1', percent: 100 }, { revision: 'candidate-1', percent: 0, tag }] }
+  const providerUri = 'https://jenfu-platform-prod-provider-de.a.run.app'
+  const direct = { ...base, etag: 'e2', generation: '2', observedGeneration: '2', ingress: 'INGRESS_TRAFFIC_ALL', defaultUriDisabled: undefined, invokerIamDisabled: true, uri: providerUri, urls: [profile.target.canonicalOrigin, providerUri], trafficStatuses: base.trafficStatuses.map((row) => row.tag === tag ? { ...row, uri: tagUri } : row) }
   let gets = 0
   let patchCalls = 0
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
@@ -216,7 +365,8 @@ test('entrypoint recovery covers pre-patch, 412, candidate-live and already-dire
     traffic: [{ revision: 'previous-1', percent: 100 }, { revision: 'candidate-1', percent: 0, tag }],
     trafficStatuses: [{ revision: 'previous-1', percent: 100 }, { revision: 'candidate-1', percent: 0, tag, uri: tagUri }],
   }
-  const direct = { ...baseline, etag: 'e2', generation: '2', observedGeneration: '2', ingress: 'INGRESS_TRAFFIC_ALL', defaultUriDisabled: false, invokerIamDisabled: true, uri: profile.target.canonicalOrigin, urls: [profile.target.canonicalOrigin] }
+  const providerUri = 'https://jenfu-platform-prod-provider-de.a.run.app'
+  const direct = { ...baseline, etag: 'e2', generation: '2', observedGeneration: '2', ingress: 'INGRESS_TRAFFIC_ALL', defaultUriDisabled: undefined, invokerIamDisabled: true, uri: providerUri, urls: [profile.target.canonicalOrigin, providerUri] }
 
   let prePatchCalls = 0
   const prePatch = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (_url, options = {}) => {
@@ -294,4 +444,76 @@ test('authenticated smoke refreshes a short-lived Firebase ID token without expo
   assert.equal(result.tokenSource, 'FIREBASE_REFRESH_TOKEN')
   assert.equal(refreshAuthorization, undefined)
   assert.doesNotMatch(JSON.stringify(result), /header\.payload/u)
+})
+
+
+test('internal candidate smoke executes only the app-owned Workflow and returns redacted proof', async () => {
+  const tag = 'candidate-' + 'a'.repeat(12)
+  const revision = 'jenfu-platform-prod-' + 'a'.repeat(12)
+  const digest = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/platform-release/platform@sha256:' + H64
+  const workflow = 'projects/jenfu-platform-prod/locations/asia-east1/workflows/platform-prod-candidate-smoke'
+  const canonicalWorkflow = 'projects/9536592944/locations/asia-east1/workflows/platform-prod-candidate-smoke'
+  const executionName = canonicalWorkflow + '/executions/execution-1'
+  let createBody
+  const result = {
+    schemaVersion: 'jenfu.dev012.internal-candidate-smoke.v1',
+    ownerApplicationId: 'platform',
+    candidateRevision: revision,
+    artifactDigest: digest,
+    tokenSource: 'SECRET_MANAGER_EXACT_VERSION',
+    tokenExpiresInSeconds: '3600',
+    observations: [
+      { id: 'auth-mode', status: 200 },
+      { id: 'session-create', status: 200 },
+      { id: 'session-reload', status: 200 },
+      { id: 'authenticated-probe', status: 200 },
+      { id: 'unauthenticated-probe', status: 401 },
+      { id: 'session-revoked', status: 401 },
+    ],
+    status: 'PASS',
+  }
+  const fetchImpl = async (url, options = {}) => {
+    if (String(url).startsWith('https://run.googleapis.com/v2/projects/jenfu-platform-prod/locations/asia-east1/services/jenfu-platform-prod')) {
+      return json({ uri: 'https://jenfu-platform-prod-abc-de.a.run.app' })
+    }
+    if (options.method === 'POST') {
+      createBody = JSON.parse(options.body)
+      return json({ name: executionName, state: 'ACTIVE' })
+    }
+    assert.equal(String(url), 'https://workflowexecutions.googleapis.com/v1/' + executionName)
+    return json({ name: executionName, state: 'SUCCEEDED', result: JSON.stringify(result) })
+  }
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl, sleep: async () => undefined })
+  const smokeProfile = {
+    application: { id: 'platform' },
+    target: { projectId: 'jenfu-platform-prod', projectNumber: '9536592944', region: 'asia-east1', serviceName: 'jenfu-platform-prod', canonicalOrigin: 'https://jenfu-platform-prod-9536592944.asia-east1.run.app' },
+    artifact: { uri: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/platform-release/platform' },
+    verification: {
+      firebaseApiKeyEnvironmentName: 'FIREBASE_API_KEY',
+      candidateSmokeMode: 'WORKFLOWS_INTERNAL_OIDC_V1',
+      candidateWorkflowName: 'platform-prod-candidate-smoke',
+      candidateRefreshTokenSecretId: 'platform-prod-smoke-firebase-refresh-token',
+    },
+  }
+  const smoke = await transport.runInternalCandidateSmoke({
+    profile: smokeProfile,
+    origin: 'https://' + tag + '---jenfu-platform-prod-9536592944.asia-east1.run.app',
+    candidateTag: tag,
+    candidateRevision: revision,
+    artifactDigest: digest,
+    deadlineAt: '2999-01-01T00:00:00.000Z',
+    environment: { FIREBASE_API_KEY: 'A'.repeat(39) },
+  })
+  assert.equal(smoke.status, 'PASS')
+  assert.equal(smoke.executionName, executionName)
+  assert.equal(JSON.parse(createBody.argument).candidateRevision, revision)
+  assert.equal(JSON.parse(createBody.argument).candidateOrigin, 'https://' + tag + '---jenfu-platform-prod-abc-de.a.run.app')
+  assert.doesNotMatch(JSON.stringify(smoke), /firebaseApiKey|refreshToken|idToken|sessionCookie/u)
+})
+
+
+test('legacy one-field endpoint mutations are not exposed by the V3 transport', () => {
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async () => json({}) })
+  assert.equal(transport.prepareCandidateEndpoint, undefined)
+  assert.equal(transport.enableCanonicalIngress, undefined)
 })

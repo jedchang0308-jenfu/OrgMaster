@@ -2,9 +2,13 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import test, { after } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
+import { assertRuntimeConfig, buildRuntimeConfig } from './lib/dev012-owner-release-runtime.mjs'
+import { readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 
+const root = fileURLToPath(new URL('..', import.meta.url))
 const read = (file) => JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
 const profile = read('config/release/dev040-orgmaster-independent-production-v3.json')
 const n1c = read('config/dev-010/n1c-orgmaster.json')
@@ -24,9 +28,9 @@ after(() => {
     'server/orgmasterAuthApi.ts',
     '.github/workflows/deploy-orgmaster-independent-production.yml',
     'package.json',
-  ].map((file) => ({ file, sha256: sha256(fs.readFileSync(new URL(`../${file}`, import.meta.url))) }))
-  const profileBytes = fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url))
-  const historicalProfileBytes = fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production.json', import.meta.url))
+  ].map((file) => ({ file, sha256: sha256(readGitBlob(root, file)) }))
+  const profileBytes = readGitBlob(root, 'config/release/dev040-orgmaster-independent-production-v3.json')
+  const historicalProfileBytes = readGitBlob(root, 'config/release/dev040-orgmaster-independent-production.json')
   const endpoint = {
     projectId: profile.target.projectId,
     projectNumber: profile.target.projectNumber,
@@ -64,6 +68,24 @@ test('S1B-21 OrgMaster v3 direct-run profile preserves staging boundary', () => 
   assert.equal(profile.sideEffects.accountEnrollment, 'DISABLED')
 })
 
+test('S1B-21 OrgMaster runtime keeps credentials out of plain environment', () => {
+  const plainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames.map((name) => [name, profile.environment.fixedValues[name] ?? `plain-${name}`]))
+  const secretVersions = Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1']))
+  const runtime = buildRuntimeConfig(profile, { plainEnvironment, secretVersions })
+  assert.deepEqual(Object.keys(runtime.plainEnvironment).sort(), [...profile.environment.requiredPlainEnvironmentNames].sort())
+  assert.deepEqual(Object.keys(runtime.secretVersions).sort(), [...profile.environment.requiredSecretNames].sort())
+  assert.equal(runtime.template.containers[0].env.filter((row) => row.name === 'ORGMASTER_POSTGRES_URL').length, 1)
+  assert.equal(runtime.template.containers[0].env.find((row) => row.name === 'ORGMASTER_POSTGRES_URL').valueSource.secretKeyRef.secret, 'orgmaster-prod-postgres-url')
+  assert.equal(assertRuntimeConfig(profile, runtime).containers.length, 2)
+})
+
+test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
+  const source = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/workload-identity.tf', import.meta.url), 'utf8')
+  const displayName = source.match(/display_name\s*=\s*"([^"]+)"/u)?.[1]
+  assert.ok(displayName)
+  assert.ok(displayName.length <= 32)
+})
+
 test('S1B-21 OrgMaster exact 001-011 source bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
@@ -84,4 +106,45 @@ test('S1B-21 OrgMaster single-capsule workflow and owner masks', () => {
   assert.equal(buildDev040Mutation({ operation: 'CONFIGURE_ENTRYPOINT', service: 'orgmaster-prod', updateMask: 'ingress,defaultUriDisabled,invokerIamDisabled', revision: null, trafficPercent: null, etag: 'e' }).updateMask, 'ingress,defaultUriDisabled,invokerIamDisabled')
   assert.equal(buildDev040CandidateTag({ service: 'orgmaster-prod', revision: 'orgmaster-prod-candidate-1', tag: `candidate-${'a'.repeat(12)}`, beforeTraffic: [{ revision: 'orgmaster-prod-prev', percent: 100 }], etag: 'e' }).traffic.at(-1).percent, 0)
   assert.throws(() => buildDev040Mutation({ operation: 'ACTIVATE', service: 'orgmaster-prod', updateMask: 'template,traffic', revision: 'candidate-1', trafficPercent: 100, etag: 'e' }), /MIXED_MUTATION_MASK/)
+})
+
+test('OrgMaster custom Cloud Build service account can act only as itself', () => {
+  const identity = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/identity.tf', import.meta.url), 'utf8')
+  const storage = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/storage.tf', import.meta.url), 'utf8')
+  const migration = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/migration.tf', import.meta.url), 'utf8')
+  const candidateSmoke = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/candidate-smoke.tf', import.meta.url), 'utf8')
+  const infraPlan = read('config/release/dev040-production-release-infra-plan.json')
+  const runtimeFirebaseViewer = identity.match(/resource "google_project_iam_member" "runtime_firebase_auth_viewer"[\s\S]*?\n\}/u)?.[0] ?? ''
+  assert.match(runtimeFirebaseViewer, /count\s+= var\.incident_runtime_enabled \? 1 : 0[\s\S]*role\s+= "roles\/firebaseauth\.viewer"[\s\S]*serviceAccount:\$\{data\.google_service_account\.runtime\.email\}/u)
+  assert.doesNotMatch(runtimeFirebaseViewer, /builder\.email|deployer\.email|verifier\.email|controller\.email|smoke\.email/u)
+  assert.ok(infraPlan.stageBAdditional.includes('google_project_iam_member.runtime_firebase_auth_viewer[0]'))
+  assert.ok(!infraPlan.stageA.includes('google_project_iam_member.runtime_firebase_auth_viewer[0]'))
+  assert.match(identity, /resource "google_service_account_iam_member" "builder_act_as_self"[\s\S]*service_account_id = google_service_account\.builder\.name[\s\S]*role\s+= "roles\/iam\.serviceAccountUser"[\s\S]*member\s+= "serviceAccount:\$\{google_service_account\.builder\.email\}"/u)
+  assert.ok(infraPlan.stageBAdditional.includes('google_service_account_iam_member.builder_act_as_self'))
+  assert.ok(!infraPlan.stageA.includes('google_service_account_iam_member.builder_act_as_self'))
+  assert.doesNotMatch(identity.match(/resource "google_service_account_iam_member" "builder_act_as_self"[\s\S]*?\n\}/u)?.[0] ?? '', /runtime|deployer|verifier|aipdm|platform/u)
+  assert.match(identity, /resource "google_project_iam_member" "builder_sbom_bucket_viewer"[\s\S]*role\s+= "roles\/storage\.bucketViewer"[\s\S]*google_service_account\.builder\.email/u)
+  assert.match(identity, /resource "google_project_iam_member" "builder_sbom_note_attacher"[\s\S]*role\s+= "roles\/containeranalysis\.notes\.attacher"[\s\S]*google_service_account\.builder\.email/u)
+  assert.match(storage, /resource "google_storage_bucket_iam_member" "builder_sbom_object_admin"[\s\S]*role\s+= "roles\/storage\.objectAdmin"[\s\S]*artifact_analysis_object_prefix/u)
+  const verifierStorage = storage.match(/resource "google_storage_bucket_iam_member" "verifier"[\s\S]*?\n\}/u)?.[0] ?? ''
+  assert.match(verifierStorage, /control_user\s+= \{ role = "roles\/storage\.objectUser", prefix = local\.control_prefix \}/u)
+  assert.match(verifierStorage, /var\.incident_runtime_enabled \? \{/u)
+  assert.ok(infraPlan.stageBAdditional.includes('google_storage_bucket_iam_member.verifier["control_user"]'))
+  assert.ok(!infraPlan.stageA.includes('google_storage_bucket_iam_member.verifier["control_user"]'))
+  for (const source of [identity.match(/resource "google_project_iam_member" "builder_sbom_bucket_viewer"[\s\S]*?\n\}/u)?.[0] ?? '', identity.match(/resource "google_project_iam_member" "builder_sbom_note_attacher"[\s\S]*?\n\}/u)?.[0] ?? '', storage.match(/resource "google_storage_bucket_iam_member" "builder_sbom_object_admin"[\s\S]*?\n\}/u)?.[0] ?? '']) assert.match(source, /count\s+= var\.incident_runtime_enabled \? 1 : 0/u)
+  assert.doesNotMatch(storage.match(/resource "google_storage_bucket_iam_member" "builder_sbom_object_admin"[\s\S]*?\n\}/u)?.[0] ?? '', /aipdm-release|platform-release/u)
+  assert.match(migration, /resource "google_cloud_run_v2_job_iam_member" "migration_runner_with_overrides"[\s\S]*name\s+= google_cloud_run_v2_job\.migration\[0\]\.name[\s\S]*role\s+= "roles\/run\.jobsExecutorWithOverrides"[\s\S]*google_service_account\.deployer\.email/u)
+  assert.match(migration, /resource "google_cloud_run_v2_job_iam_member" "migration_runner_viewer"[\s\S]*name\s+= google_cloud_run_v2_job\.migration\[0\]\.name[\s\S]*role\s+= "roles\/run\.viewer"[\s\S]*google_service_account\.deployer\.email/u)
+  for (const address of ['google_project_iam_member.builder_sbom_bucket_viewer[0]', 'google_project_iam_member.builder_sbom_note_attacher[0]', 'google_storage_bucket_iam_member.builder_sbom_object_admin[0]']) {
+    assert.ok(infraPlan.stageBAdditional.includes(address))
+    assert.ok(!infraPlan.stageA.includes(address))
+  }
+  assert.ok(infraPlan.stageBAdditional.includes('google_cloud_run_v2_job_iam_member.migration_runner_with_overrides[0]'))
+  assert.ok(infraPlan.stageBAdditional.includes('google_cloud_run_v2_job_iam_member.migration_runner_viewer[0]'))
+  assert.match(candidateSmoke, /resource "google_project_iam_member" "verifier_candidate_smoke_execution_invoker"[\s\S]*role\s+= "roles\/workflows\.invoker"[\s\S]*google_service_account\.verifier\.email[\s\S]*resource\.name\.startsWith\('projects\/\$\{var\.project_id\}\/locations\/\$\{var\.region\}\/workflows\/\$\{local\.candidate_smoke_workflow\}\/executions\/'\)/u)
+  assert.ok(infraPlan.stageBAdditional.includes('google_project_iam_member.verifier_candidate_smoke_execution_invoker[0]'))
+  const invokerV2 = candidateSmoke.match(/resource "google_project_iam_member" "verifier_candidate_smoke_invoker_v2"[\s\S]*?\n\}/u)?.[0] ?? ''
+  assert.match(invokerV2, /role\s+= "roles\/workflows\.invoker"[\s\S]*google_service_account\.verifier\.email/u)
+  assert.doesNotMatch(invokerV2, /condition|builder|deployer|controller|smoke\.email/u)
+  assert.ok(infraPlan.stageBAdditional.includes('google_project_iam_member.verifier_candidate_smoke_invoker_v2[0]'))
 })
