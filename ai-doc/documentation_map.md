@@ -227,6 +227,7 @@
 
 ## Active
 
+- `DEV-049`（`Brief Ready / Spec-only / P1`）：既有公司 Workspace 主帳號連結與員工編號登入。已確認不為已有 `jedchang0308@jenfu.com.tw` 等公司帳號的員工重建 `jfs####@jenfu.com.tw`；OrgMaster 只管理 JFS→既有 Google principal mapping、唯讀 Directory 驗證與 login hint，Google Admin 仍管理帳號、密碼、MFA 與授權。現階段只完成 Brief，下一步若交 RD 評估須先升級 `RD Contract Ready` 並修訂 DEV-047 candidate lookup／API／UI／QA 契約。權威入口：`ai-doc/dev_task.md#dev-049既有-google-主帳號連結與員工編號登入`；受影響基線：`ai-doc/specs/DEV-047-permanent-managed-identity-link-and-login-alias.md`。
 - `DEV-048`／Platform `DEV-013 013-S4-L3-ORGMASTER-ENV`（owner package complete／`READY_FOR_NONPROD_APPLY`／P0）：managed non-production IaC、Secret bootstrap、source freeze、immutable image／foundation／target exact gate與owner-native candidate／activate／rollback package已完成；尚未建立Secret version、apply、deploy、migration、revision或traffic變更。權威入口：`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`、`config/dev-013/l3-orgmaster-staging.json`。
 - `DEV-046`（local implementation complete／P1／Automated Gate Passed／Browser QA-QC Passed／Local Release Gate Pending）：八個指定功能統一list-detail frame，以Employee為細部風格／排版基準並共用presentation primitives／scoped tokens，另含guarded selection／detail transition、account-scoped resizable list width及DEV-041 typed relation extension。權威契約：`ai-doc/specs/DEV-046-unified-list-detail-workbench-framework.md`；僅剩local release gate。
 - `DEV-045`（local implementation complete／P1）：Employee-scoped account invite／link foundation；targeted與browser gates通過，full regression保留兩個既有test-discovery follow-up，不納入DEV-046；權威契約：`ai-doc/specs/DEV-045-employee-account-enrollment.md`。
