@@ -336,8 +336,10 @@ export function assertTerraformPlan(plan, freeze, profile = loadProfile()) {
 
 function normalizedTraffic(serviceReadback) {
   const traffic = (serviceReadback?.traffic ?? []).map((item) => ({ revision: item.revision ?? item.revisionName ?? null, percent: Number(item.percent ?? 0), tag: item.tag ?? null, latestRevision: item.latestRevision === true || item.type === 'TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST' }))
-  if (traffic.length !== 1 || !traffic[0].revision || traffic[0].percent !== 100 || traffic[0].tag !== null || traffic[0].latestRevision) fail('DEV013_ORGMASTER_TRAFFIC_NOT_REVISION_PINNED')
-  return traffic[0]
+  const active = traffic.filter((item) => item.tag === null && item.percent > 0)
+  const tagged = traffic.filter((item) => item.tag !== null)
+  if (active.length !== 1 || !active[0].revision || active[0].percent !== 100 || active[0].latestRevision || tagged.some((item) => !item.revision || item.percent !== 0 || item.latestRevision)) fail('DEV013_ORGMASTER_TRAFFIC_NOT_REVISION_PINNED')
+  return active[0]
 }
 
 function normalizeServiceReadback(serviceReadback, identityReadback, profile) {

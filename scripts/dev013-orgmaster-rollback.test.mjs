@@ -40,7 +40,10 @@ function service({ revision, activeRevision, etag, mode = 'on' }) {
     etag,
     latestCreatedRevision: revision,
     latestReadyRevision: revision,
-    traffic: [{ revision: activeRevision, percent: 100, tag: null }],
+    traffic: [
+      { revision: activeRevision, percent: 100, tag: null },
+      ...(revision === activeRevision ? [] : [{ revision, percent: 0, tag: `candidate-${sourceRevision.slice(0, 12)}` }]),
+    ],
     containers: [{ name: 'orgmaster', env: [
       { name: 'ORGMASTER_PUBLIC_BASE_URL', value: origin },
       { name: 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN', value: broker },
