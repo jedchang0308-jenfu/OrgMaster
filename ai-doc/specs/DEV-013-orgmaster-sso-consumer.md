@@ -37,7 +37,7 @@ OrgMaster consumes Platform `jenfu.sso-handoff.v1` for the fixed `orgmaster` aud
 
 Local tracking ID: `DEV-048`（the repository-native `DEV-013` is an older UI task; this alias prevents identifier collision without changing the Platform task ID）.
 
-Status: `READY_FOR_NONPROD_APPLY / releaseAuthority=false`. No Terraform apply, Cloud Run deploy, migration, candidate creation, activation, rollback, or traffic mutation has been run by this slice. This status does not mean L3, production, or DEV-013 is complete.
+Status: `READY_FOR_NONPROD_APPLY / releaseAuthority=false / exact provider preflight confirms service missing`. Platform current source-bound read-only preflight confirms the runtime identity exists and is enabled, while exact `jenfu-platform-nonprod / asia-east1 / orgmaster-stg` is absent. No Terraform apply, Cloud Run deploy, migration, candidate creation, activation, rollback, or traffic mutation has been run by this slice. This status does not mean L3, production, or DEV-013 is complete.
 
 The applyable profile is `config/dev-013/l3-orgmaster-staging.json`; the Terraform root is `infra/google-cloud/dev-013-l3-orgmaster`. Both lock the Platform machine-readable manifest SHA-256 `7538ab12e02566eb9de107c592d6cbb43045f4a00bc94a969a84eae8a424d96c` and canonical contract aggregate SHA-256 `e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483`. Any drift is a hard stop.
 

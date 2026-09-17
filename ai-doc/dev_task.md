@@ -579,7 +579,7 @@
 
 ## DEV-048：DEV-013 013-S4-L3-ORGMASTER-ENV managed staging owner package
 
-狀態：`READY_FOR_NONPROD_APPLY / releaseAuthority=false`；本機RD與自動化QA完成，provider apply／readback未執行
+狀態：`READY_FOR_NONPROD_APPLY / releaseAuthority=false / exact provider preflight confirms service missing`；本機RD與自動化QA完成，provider apply未執行
 文件成熟度：`RD Implementation Complete / Non-production Apply Gated`
 節點類型：開發點
 優先級：P0
@@ -598,7 +598,7 @@
 - `OWNER_INFRA_A`與`OWNER_RUNTIME_B`各自使用完整、無多無少的address set；plan只接受`create`／`read`／`no-op`，任何update／delete／replace、非OrgMaster target或source／tree／image／foundation關鍵值漂移均fail closed。
 - Runtime預設`ORGMASTER_JENFU_SSO_HANDOFF_MODE=off`；broker與public base origins只能由provider readback衍生。Runtime不具owner／DDL／migrator權限，且package不含migration runner。
 - Owner release controller預設只產生candidate／activate／rollback計畫；future external mutation需要獨立授權及`--execute`，且仍只能處理`orgmaster-stg`自己的revision、env與traffic。
-- 下一步只在nonprod operator授權下執行A階段、immutable image build／digest readback、B階段與provider URI hard-join receipt；本輪不得推論managed runtime已存在或L3已完成。
+- Platform current source-bound exact read-only preflight=`Jenfu-Platform/output/dev-013/l3/DEV013-L3-PREFLIGHT-20260917T044050260Z-17270621/report.json`，已確認runtime service account存在且enabled，但`jenfu-platform-nonprod / asia-east1 / orgmaster-stg`尚不存在；cloud mutation=0。下一步只在nonprod operator授權下執行A階段、immutable image build／digest readback、B階段與provider URI hard-join receipt；不得推論managed runtime已存在或L3已完成。
 
 ## DEV-047：員工編號公司身分連結與登入別名
 
