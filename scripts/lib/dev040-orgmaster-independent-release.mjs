@@ -61,9 +61,9 @@ export function assertDev040V3Profile(profile, n1c) {
   if (fixed.ORGMASTER_PERSISTENCE_MODE !== 'cloud-sql' || fixed.ORGMASTER_PUBLIC_BASE_URL !== target.canonicalOrigin || fixed.ORGMASTER_POSTGRES_POOL_MAX !== '6' || fixed.ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS !== '35000'
     || fixed.JENFU_FIREBASE_PROJECT_ID !== target.projectId || fixed.JENFU_IDENTITY_ISSUER !== `https://securetoken.google.com/${target.projectId}` || fixed.JENFU_IDENTITY_AUDIENCE !== target.projectId
     || fixed.VITE_JENFU_FIREBASE_PROJECT_ID !== target.projectId
-    || fixed.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'off'
     || fixed.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== 'https://jenfu-platform-prod-9536592944.asia-east1.run.app'
     || profile.environment.candidateOriginEnvironmentName !== 'ORGMASTER_RELEASE_CANDIDATE_ORIGIN') fail('ENVIRONMENT_VALUE_DRIFT')
+  if (JSON.stringify(profile.environment.controlledValues) !== JSON.stringify({ ORGMASTER_JENFU_SSO_HANDOFF_MODE: { defaultValue: 'off', allowedValues: ['off', 'on'] } })) fail('ENVIRONMENT_VALUE_DRIFT')
   if (profile.environment.allowedSecretIds?.ORGMASTER_POSTGRES_URL !== 'orgmaster-prod-postgres-url' || profile.environment.allowedSecretIds?.ORGMASTER_SESSION_HASH_PEPPER !== 'orgmaster-prod-session-pepper' || profile.environment.numericVersionsRequired !== true) fail('SECRET_BOUNDARY_DRIFT')
   const order = profile.migrations?.entries?.map((entry) => entry.path)
   if (profile.migrations?.ledger !== 'orgmaster_core.schema_migrations' || profile.migrations?.baselineCount !== 10 || order?.length !== 11 || JSON.stringify(order.slice(0, 10)) !== JSON.stringify(n1c.migration.order) || order[10] !== 'db/migrations/011_dev046_workbench_list_width_preferences.sql') fail('MIGRATION_MANIFEST_DRIFT')

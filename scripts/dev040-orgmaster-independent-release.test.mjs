@@ -5,8 +5,8 @@ import test, { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
-import { assertRuntimeConfig, buildRuntimeConfig } from './lib/dev012-owner-release-runtime.mjs'
-import { readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
+import { assertRuntimeConfig, buildRuntimeConfig, resolvePlainEnvironment } from './lib/dev012-owner-release-runtime.mjs'
+import { assertPreparePrerequisites, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const read = (file) => JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
@@ -16,6 +16,20 @@ const H = 'a'.repeat(64)
 const ref = (name) => ({ uri: `gs://${profile.artifact.releaseBucket}/receipts/${name}.json`, sha256: H })
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex')
+
+function controlledPrerequisites(ownerProfile, runtimeConfig) {
+  const intent = { releaseId: 'DEV013-L4-ORGMASTER-001', sourceRevision: 'b'.repeat(40) }
+  const common = { ownerApplicationId: ownerProfile.application.id, projectId: ownerProfile.target.projectId, releaseId: intent.releaseId, sourceRevision: intent.sourceRevision, environment: 'production', expiresAt: '2999-01-01T00:00:00.000Z', remainingHumanAction: 0, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND' }
+  const predecessorReceiptRef = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/platform-accept.json', sha256: '9'.repeat(64) }
+  return { intent, values: {
+    sourceLock: { ...common, clean: true, status: 'SOURCE_FROZEN' },
+    authorization: { ...common, schemaVersion: 'jenfu.dev013.l4-owner-transition-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEV013_L4' },
+    readiness: { ...common, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1', devId: 'DEV-013', slice: '013-R1', controlledEnvironment: { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' }, transition: { field: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', from: 'off', to: 'on', action: 'activate', predecessorReceiptRef } },
+    foundation: { ...common, ownerApplicationId: 'shared-foundation' },
+    infra: { ...common, migrationRunnerDigest: `${ownerProfile.artifact.migrationRunnerUri}@sha256:${'c'.repeat(64)}` },
+    runtimeConfig: { ...common, status: 'VERIFIED', runtimeConfig },
+  } }
+}
 
 after(() => {
   if (process.env.DEV012_EMIT_OWNER_REPORT !== '1') return
@@ -66,19 +80,35 @@ test('S1B-21 OrgMaster v3 direct-run profile preserves staging boundary', () => 
   assert.equal(n1c.target.environment, 'staging')
   assert.equal(profile.target.database, 'jenfu_prod')
   assert.equal(profile.sideEffects.accountEnrollment, 'DISABLED')
-  assert.equal(profile.environment.fixedValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE, 'off')
+  assert.equal(profile.environment.controlledValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE.defaultValue, 'off')
+  assert.deepEqual(profile.environment.controlledValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE.allowedValues, ['off', 'on'])
   assert.equal(profile.environment.fixedValues.ORGMASTER_JENFU_SSO_BROKER_ORIGIN, 'https://jenfu-platform-prod-9536592944.asia-east1.run.app')
 })
 
 test('S1B-21 OrgMaster runtime keeps credentials out of plain environment', () => {
-  const plainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames.map((name) => [name, profile.environment.fixedValues[name] ?? `plain-${name}`]))
+  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames.filter((name) => !['ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN'].includes(name)).map((name) => [name, profile.environment.fixedValues[name] ?? `plain-${name}`]))
+  const plainEnvironment = resolvePlainEnvironment(profile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
   const secretVersions = Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1']))
   const runtime = buildRuntimeConfig(profile, { plainEnvironment, secretVersions })
   assert.deepEqual(Object.keys(runtime.plainEnvironment).sort(), [...profile.environment.requiredPlainEnvironmentNames].sort())
   assert.deepEqual(Object.keys(runtime.secretVersions).sort(), [...profile.environment.requiredSecretNames].sort())
   assert.equal(runtime.template.containers[0].env.filter((row) => row.name === 'ORGMASTER_POSTGRES_URL').length, 1)
   assert.equal(runtime.template.containers[0].env.find((row) => row.name === 'ORGMASTER_POSTGRES_URL').valueSource.secretKeyRef.secret, 'orgmaster-prod-postgres-url')
+  assert.equal(runtime.plainEnvironment.ORGMASTER_JENFU_SSO_HANDOFF_MODE, 'on')
+  assert.throws(() => resolvePlainEnvironment(profile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'launch' }), /RUNTIME_CONFIG_READBACK_MISMATCH/u)
   assert.equal(assertRuntimeConfig(profile, runtime).containers.length, 2)
+})
+
+test('OrgMaster owner prepare requires sealed DEV-013 authority before handoff on', () => {
+  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+    .map((name) => [name, 'fixture-public-value']))
+  const plainEnvironment = resolvePlainEnvironment(profile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment, secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).runtimeConfig, runtimeConfig)
+  delete fixture.values.readiness.transition.predecessorReceiptRef
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })
 
 test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
