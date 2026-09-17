@@ -24,7 +24,7 @@ import { createOrgmasterSessionRepository, type OrgmasterSession, type Orgmaster
 import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
 import { createManagedIdentityRepository } from './orgmasterManagedIdentityRepository'
 import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort } from './orgmasterManagedDirectoryPort'
-import { handleOrgmasterSsoRequest } from './orgmasterSsoHandoff'
+import { handleOrgmasterSsoRequest, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
 
 export const ORGMASTER_AUTH_API_PATH = '/api/auth'
 const MAX_BODY_BYTES = 32 * 1024
@@ -286,7 +286,7 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
   }
 }
 
-export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = () => createOrgmasterAuthRuntime(), devEnabled = false): Connect.NextHandleFunction {
+export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = () => createOrgmasterAuthRuntime(), devEnabled = false, ssoDependencies: OrgmasterSsoHandoffDependencies = {}): Connect.NextHandleFunction {
   const runtime = runtimeFactory()
   const rateLimit = createRateLimiter()
   return (request, response, next) => {
@@ -324,7 +324,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         return
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/jenfu-sso/start` || pathname === `${ORGMASTER_AUTH_API_PATH}/jenfu-sso/callback`) {
-        await handleOrgmasterSsoRequest(request, response, runtime, id)
+        await handleOrgmasterSsoRequest(request, response, runtime, id, ssoDependencies)
         return
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/mode` && request.method === 'GET') {

@@ -91,6 +91,15 @@
 
 ## 總任務清單
 
+- ◐ DEV-048 [開發點] [owner package完成／nonprod apply ready] [P0] [READY_FOR_NONPROD_APPLY／releaseAuthority=false] DEV-013 `013-S4-L3-ORGMASTER-ENV` OrgMaster managed staging runtime與owner release package
+  - 摘要：建立app-owned staging IaC、source freeze、immutable digest／foundation／target exact plan gate，以及owner-native candidate／activate／rollback規劃；保留auth-state v2、original-auth-time guard與不可退回pre-DEV-013 image的security floor。
+  - 來源 ID：`DEV-013`／`013-S4-L3-ORGMASTER-ENV`；因本repo既有DEV-013為樹節點寬度任務，本地以DEV-048消歧，不改Platform canonical ID。
+  - 父任務：Platform DEV-013 L3 machine-readable manifest、OrgMaster consumer capsule；canonical contract aggregate SHA-256=`e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483`。
+  - 結果：profile、Terraform、exact A／B complete-set gate、provider hard-join owner receipt、release／rollback controller及startup／health／direct start／callback／Firebase regression均已完成本機驗證。未執行apply、deploy、migration、revision、traffic或production變更。
+  - 下一步：另行授權的nonprod operator依`OWNER_INFRA_A → immutable build/readback → OWNER_RUNTIME_B → provider URI hard-join receipt`執行；任何manifest／contract／source／tree／digest／target／address drift必須停止。
+  - 證據：`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`、`config/dev-013/l3-orgmaster-staging.json`、`infra/google-cloud/dev-013-l3-orgmaster/`、`scripts/dev013-orgmaster-staging-profile.test.mjs`、`scripts/dev013-orgmaster-rollback.test.mjs`、`server/orgmasterSsoHandoff.test.ts`
+  - 計入交付：否；只代表owner package可進入nonprod apply gate，不代表L3、production或DEV-013完成。
+
 - ✓ DEV-047 [交付點] [local完成／QA-QC通過／production release gated] [P1] [RD Implementation Complete／CAPA Closed 2026-09-16／Production Gated] 員工編號公司身分連結與登入別名
   - 摘要：Google Admin管理完整外部生命週期；OrgMaster精確連結唯一principal並自動唯讀同步。Legacy／managed admission共用current Employee與invalidation barrier；OrgMaster resolver只接受新JFS、current OrgMaster role與原principal last verified username。Refresh由sliding dedup、lease version與request sequence保護；known-negative在前一mapping可見時同commit逐verified app失效。
   - 來源 ID：`USER-2026-09-07-EMPLOYEE-NUMBER-MANAGED-ACCOUNT-DESIGN`、`USER-2026-09-07-DEV047-DEVELOPMENT-BRIEF`、`USER-2026-09-07-DEV047-GUIDED-ROUND1-1B-2B-3C`、`USER-2026-09-07-DEV047-GUIDED-ROUND2-1A-2B-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND3-1C-2A-3C`、`USER-2026-09-07-DEV047-CREDENTIAL-ROTATE-1A`、`USER-2026-09-07-DEV047-GUIDED-ROUND4-1B-2A-3B`、`USER-2026-09-07-DEV047-GUIDED-ROUND5-1A-2A-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND6-JFS4-SINGLE-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND7-1B-2A-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND8-1B-2A-3A`、`USER-2026-09-08-DEV047-GUIDED-ROUND9-1A-2C-3A`、`USER-2026-09-08-DEV047-CLOUD-IDENTITY-BASELINE-WORKSPACE-ENTITLEMENT`、`USER-2026-09-08-DEV047-WORKSPACE-BOUNDARY-1A`、`USER-2026-09-08-DEV047-BOUNDARY-ROUND11-2A-3A`、`USER-2026-09-08-DEV047-GUIDED-ROUND12-4A-5A-6A`、`USER-2026-09-08-DEV047-GUIDED-ROUND13-7A-8A-9A`、`USER-2026-09-08-DEV047-RD-CONTRACT-READY`、`USER-2026-09-08-DEV047-RD-IMPLEMENTATION-READY`、`USER-2026-09-08-DEV047-RD-TECH-LEAD-DOCUMENT-OPTIMIZATION`、`USER-2026-09-08-DEV047-RD-TECH-LEAD-ARCHITECTURE-PASS2`
@@ -566,6 +575,27 @@
   - 父任務：DEV-020、DEV-022、DEV-023
   - 證據：`npm test -- --run`（19 files／126 tests）、`npm run build`、localhost:5000 真實瀏覽器 1440×900／1024×768／390×844 UI QC；`output/playwright/orgmaster-mode-status-1440x900.png`、`output/playwright/orgmaster-mode-status-1024x768.png`、`output/playwright/orgmaster-mode-status-390x844.png`；右上角狀態 pill 可見、無重疊／水平溢出，並提供 `role=status`、ARIA label 與 title 說明。
   - 計入交付：否
+
+## DEV-048：DEV-013 013-S4-L3-ORGMASTER-ENV managed staging owner package
+
+狀態：`READY_FOR_NONPROD_APPLY / releaseAuthority=false`；本機RD與自動化QA完成，provider apply／readback未執行
+文件成熟度：`RD Implementation Complete / Non-production Apply Gated`
+節點類型：開發點
+優先級：P0
+父交付點：Platform DEV-013 L3 machine-readable manifest、OrgMaster DEV-013 consumer capsule
+是否計入產品交付完成：否
+權威文件：`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`、`config/dev-013/l3-orgmaster-staging.json`
+本輪來源 ID：`USER-2026-09-17-013-S4-L3-ORGMASTER-ENV`
+執行邊界：只修改OrgMaster source、app-owned Terraform／state profile、tests與文件；未操作Platform canonical、shared foundation、production、sibling app、custom domain、migration或traffic
+風險等級：High（managed runtime、IAM、Cloud SQL private connection、immutable release與跨owner contract hard join）
+
+### 驗收與下一步
+
+- Canonical contract aggregate及兩個成員檔SHA-256已與OrgMaster lock及Platform manifest逐值相符；Platform L3 manifest SHA-256=`7538ab12e02566eb9de107c592d6cbb43045f4a00bc94a969a84eae8a424d96c`。
+- `OWNER_INFRA_A`與`OWNER_RUNTIME_B`各自使用完整、無多無少的address set；plan只接受`create`／`read`／`no-op`，任何update／delete／replace、非OrgMaster target或source／tree／image／foundation關鍵值漂移均fail closed。
+- Runtime預設`ORGMASTER_JENFU_SSO_HANDOFF_MODE=off`；broker與public base origins只能由provider readback衍生。Runtime不具owner／DDL／migrator權限，且package不含migration runner。
+- Owner release controller預設只產生candidate／activate／rollback計畫；future external mutation需要獨立授權及`--execute`，且仍只能處理`orgmaster-stg`自己的revision、env與traffic。
+- 下一步只在nonprod operator授權下執行A階段、immutable image build／digest readback、B階段與provider URI hard-join receipt；本輪不得推論managed runtime已存在或L3已完成。
 
 ## DEV-047：員工編號公司身分連結與登入別名
 
