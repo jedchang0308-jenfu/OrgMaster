@@ -6,6 +6,15 @@ import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-releas
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 
+export function assertDev013PredecessorReceipt(value, ref, profile, observedAt, expectedSourceRevision = null) {
+  if (!ref || Object.keys(ref).sort().join(',') !== 'sha256,uri' || !/^[a-f0-9]{64}$/u.test(ref.sha256 ?? '') || !/^gs:\/\/[^/]+\/receipts\/.+\.json$/u.test(ref.uri ?? '')) fail('DEV013_PREDECESSOR_REF_INVALID')
+  const terminal = value?.schemaVersion === 'jenfu.dev012.stage-receipt.v1' && value.stage === 'terminal' && value.status === 'PASS' && value.facts?.result === 'RELEASED' && value.facts?.remainingHumanAction === 0 && /^[a-f0-9]{40}$/u.test(value.sourceRevision ?? '')
+  const rootSources = value?.sourceRevisionByApplication
+  const root = value?.schemaVersion === 'jenfu.dev013.l4-execution-authorization.v1' && value.status === 'PASS' && value.releaseAuthority === true && value.remainingHumanAction === 0 && value.projectId === profile.target.projectId && value.region === profile.target.region && Number.isFinite(Date.parse(value.expiresAt)) && Date.parse(value.expiresAt) > Date.parse(observedAt) && canonicalize(Object.keys(rootSources ?? {}).sort()) === canonicalize(['ai-pdm', 'orgmaster', 'platform']) && Object.values(rootSources).every((revision) => /^[a-f0-9]{40}$/u.test(revision)) && (expectedSourceRevision === null || rootSources.orgmaster === expectedSourceRevision)
+  if (!terminal && !root) fail('DEV013_PREDECESSOR_RECEIPT_INVALID')
+  return { schemaVersion: value.schemaVersion, ownerApplicationId: value.ownerApplicationId ?? null, releaseId: value.releaseId ?? null, sourceRevision: value.sourceRevision ?? null, sourceRevisionByApplication: root ? rootSources : null, status: value.status }
+}
+
 // Only infrastructure/configuration inputs are reusable, not the application build or smoke results.
 export function routineInfrastructureFingerprint(root, revision) {
   if (!/^[a-f0-9]{40}$/u.test(revision)) fail('ROUTINE_SOURCE_INVALID')

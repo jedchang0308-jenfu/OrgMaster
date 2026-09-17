@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013PredecessorReceipt, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
 const n1c = JSON.parse(fs.readFileSync('config/dev-010/n1c-orgmaster.json'))
@@ -94,6 +94,14 @@ test('DEV-013 controlled release can add the default-off guard to the historical
   transitionReadiness(h, { from: null, to: 'off', action: 'guard' })
   const result = await verifyRoutineRelease(h.input)
   assert.equal(result.controlledTransition.action, 'guard')
+})
+
+test('DEV-013 predecessor receipt accepts only an exact live root or released owner terminal', () => {
+  const ref = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/root.json', sha256: '9'.repeat(64) }
+  const root = { schemaVersion: 'jenfu.dev013.l4-execution-authorization.v1', projectId: profile.target.projectId, region: profile.target.region, sourceRevisionByApplication: { platform: 'a'.repeat(40), orgmaster: 'b'.repeat(40), 'ai-pdm': 'c'.repeat(40) }, status: 'PASS', releaseAuthority: true, remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z' }
+  assert.equal(assertDev013PredecessorReceipt(root, ref, profile, '2026-09-18T00:00:00.000Z', 'b'.repeat(40)).schemaVersion, root.schemaVersion)
+  assert.throws(() => assertDev013PredecessorReceipt(root, ref, profile, '2026-09-18T00:00:00.000Z', 'd'.repeat(40)), /DEV013_PREDECESSOR_RECEIPT_INVALID/u)
+  assert.throws(() => assertDev013PredecessorReceipt({ ...root, projectId: 'wrong-project' }, ref, profile, '2026-09-18T00:00:00.000Z'), /DEV013_PREDECESSOR_RECEIPT_INVALID/u)
 })
 
 test('DEV-013 controlled release rejects an unbound readiness receipt or unrelated runtime drift', async () => {

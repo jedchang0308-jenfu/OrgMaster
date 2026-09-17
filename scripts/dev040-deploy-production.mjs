@@ -7,13 +7,20 @@ import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationB
 import { buildReleaseIntent, buildRuntimeConfigReceipt, buildSourceFreeze, readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
 import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 import { canonicalize, createOwnerTransport, resolvePlainEnvironment, sha256 } from './lib/dev012-owner-release-runtime.mjs'
-import { readRoutineBaseline, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
+import { assertDev013PredecessorReceipt, readRoutineBaseline, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 function command(name, args) {
   const result = spawnSync(name, args, { cwd: root, encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
   if (result.error || result.status !== 0) throw new Error(`COMMAND_FAILED:${name}`)
   return result.stdout.trim()
+}
+
+async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile, observedAt, expectedSourceRevision) {
+  const result = await transport.readBytes(predecessorReceiptRef.uri, { prefixes: ['receipts'], expectedSha256: predecessorReceiptRef.sha256 })
+  let value
+  try { value = JSON.parse(result.bytes.toString('utf8')) } catch { throw new Error('DEV013_PREDECESSOR_RECEIPT_INVALID') }
+  return assertDev013PredecessorReceipt(value, predecessorReceiptRef, profile, observedAt, expectedSourceRevision)
 }
 
 function parseArgs(argv) {
@@ -74,8 +81,9 @@ async function main() {
     plainEnvironment = resolvePlainEnvironment(profile, previousRuntime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: options.handoffMode })
     transition = { field: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', from: previousMode, to: options.handoffMode, action: options.action, predecessorReceiptRef: options.predecessorReceiptRef }
   }
+  const predecessorEvidence = transition ? await verifyDev013Predecessor(transport, transition.predecessorReceiptRef, profile, observedAt, git.sourceRevision) : null
   const runtimeConfig = buildRuntimeConfigReceipt({ profile, releaseId, sourceLock, plainEnvironment, secretVersions: previousRuntime.secretVersions, observedAt })
-  const authority = { ownerApplicationId: 'orgmaster', projectId: profile.target.projectId, sourceRevision: git.sourceRevision, releaseId, environment: 'production', baselineIntentRef, expiresAt: deadlineAt, observedAt, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', remainingHumanAction: 0 }
+  const authority = { ownerApplicationId: 'orgmaster', projectId: profile.target.projectId, sourceRevision: git.sourceRevision, releaseId, environment: 'production', baselineIntentRef, expiresAt: deadlineAt, observedAt, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', remainingHumanAction: 0, ...(predecessorEvidence ? { predecessorEvidence } : {}) }
   const authorization = { ...authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
   const readiness = transition
     ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1', devId: 'DEV-013', slice: '013-R1', controlledEnvironment: { ORGMASTER_JENFU_SSO_HANDOFF_MODE: options.handoffMode }, transition }
