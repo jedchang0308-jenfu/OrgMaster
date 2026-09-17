@@ -46,7 +46,12 @@ export function runSourceFreeze(argv = process.argv.slice(2)) {
     clean: true,
     foundationReceipt: readJson(input['foundation-ref']),
     runtimeImage: runtime ? input['runtime-image'] : null,
-    runtimeConfigSecretVersion: runtime ? input['runtime-secret-version'] : null,
+    runtimeSecretVersions: runtime ? {
+      ORGMASTER_SESSION_HASH_PEPPER: {
+        secretId: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER,
+        version: input['runtime-secret-version'],
+      },
+    } : null,
     firebasePublicConfigSha256: runtime ? firebasePublicConfigSha256(readJson(input['firebase-public-config']), profile) : null,
   }, profile)
   const output = path.resolve(root, input.output)

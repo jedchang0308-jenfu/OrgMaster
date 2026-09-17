@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "jenfu.dev013.orgmaster-staging-release.v1",
+  "schemaVersion": "jenfu.dev013.orgmaster-staging-release.v2",
   "devId": "DEV-013",
   "slice": "013-S4-L3-ORGMASTER-ENV",
   "status": "READY_FOR_NONPROD_APPLY",
@@ -7,8 +7,8 @@
   "platformManifest": {
     "sourceRepository": "Jenfu-Platform",
     "sourcePath": "config/dev-013/l3-managed-staging.json",
-    "sha256": "7538ab12e02566eb9de107c592d6cbb43045f4a00bc94a969a84eae8a424d96c",
-    "schemaVersion": "jenfu.dev013.l3-managed-staging.v1",
+    "sha256": "8d913f22b5ab15de62969ddbbd3951c9a819bbe0019688bcf8f99faa1ffc5df4",
+    "schemaVersion": "jenfu.dev013.l3-managed-staging.v2",
     "contractStatus": "CONTRACT_FROZEN_READY_FOR_OWNER_WORK"
   },
   "canonicalContract": {
@@ -78,12 +78,15 @@
     ]
   },
   "secret": {
-    "id": "dev010-stg-orgmaster-runtime-config",
+    "references": {
+      "ORGMASTER_SESSION_HASH_PEPPER": "dev010-stg-orgmaster-runtime-config"
+    },
+    "versionBootstrap": {
+      "mode": "OWNER_GENERATED_IF_EMPTY",
+      "minimumEntropyBytes": 64
+    },
     "numericVersionRequired": true,
-    "payloadMayAppearInEvidence": false,
-    "environmentNames": [
-      "ORGMASTER_SESSION_HASH_PEPPER"
-    ]
+    "payloadMayAppearInEvidence": false
   },
   "evidence": {
     "bucket": "jenfu-platform-nonprod-dev013-orgmaster-evidence",

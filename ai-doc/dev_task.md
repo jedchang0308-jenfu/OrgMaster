@@ -96,9 +96,9 @@
   - 來源 ID：`Jenfu-Platform / DEV-013 / 013-S4-L3-ORGMASTER-ENV`；前置consumer實作來源為`Jenfu-Platform / DEV-013 / 013-S2`。因本repo既有DEV-013為樹節點寬度任務，本地以DEV-048消歧，不改Platform canonical ID。
   - 名稱對照：「DEV-013 OrgMaster consumer」是本repo的`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`，不是本地DEV-013或另一個Codex任務；初始consumer commit=`2c1a8dc50a21882e7fda9fab149f6a311ee7ef5b`，來源執行緒與歷史補正見capsule「來源、任務索引與歷史補正」。
   - 父任務：Platform DEV-013 L3 machine-readable manifest、OrgMaster consumer capsule；canonical contract aggregate SHA-256=`e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483`。
-  - 結果：profile、Terraform、exact A／B complete-set gate、off-mode target bootstrap receipt、same-source／same-digest on candidate hard join、traffic-only activation、post-activation final owner receipt、rollback controller及auth regression均已完成本機驗證。`off`狀態不再能簽成`OWNER_READY_FOR_L3_BROWSER`。未執行apply、deploy、migration、revision、traffic或production變更。
-  - 下一步：另行授權的nonprod operator依`OWNER_INFRA_A → immutable build/readback → OWNER_RUNTIME_B → TARGET_BOOTSTRAP_READY → Platform create/off floor → on candidate hard join → traffic activation → OWNER_READY_FOR_L3_BROWSER`執行；任何manifest／contract／source／tree／digest／target／address drift必須停止。
-  - 證據：`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`、`config/dev-013/l3-orgmaster-staging.json`、`infra/google-cloud/dev-013-l3-orgmaster/`、`scripts/dev013-orgmaster-staging-profile.test.mjs`、`scripts/dev013-orgmaster-rollback.test.mjs`、`server/orgmasterSsoHandoff.test.ts`
+  - 結果：profile、Terraform、exact A／B complete-set gate、manifest v2 `secret.references`、owner-generated-if-empty Secret bootstrap、v2 off-mode target bootstrap receipt、same-source／same-digest on candidate hard join、traffic-only activation、v2 post-activation final owner receipt、rollback controller及auth regression均已完成本機驗證。`off`狀態不再能簽成`OWNER_READY_FOR_L3_BROWSER`。未執行Secret version建立、apply、deploy、migration、revision、traffic或production變更。
+  - 下一步：另行授權的nonprod operator依`OWNER_INFRA_A → Secret empty preflight/bootstrap → immutable build/readback → OWNER_RUNTIME_B → TARGET_BOOTSTRAP_READY → Platform create/off floor → on candidate hard join → traffic activation → OWNER_READY_FOR_L3_BROWSER`執行；任何manifest／contract／source／tree／digest／Secret reference／target／address drift必須停止。
+  - 證據：`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`、`config/dev-013/l3-orgmaster-staging.json`、`infra/google-cloud/dev-013-l3-orgmaster/`、`scripts/dev013-orgmaster-staging-profile.test.mjs`、`scripts/dev013-orgmaster-secret-bootstrap.test.mjs`、`scripts/dev013-orgmaster-rollback.test.mjs`、`server/orgmasterSsoHandoff.test.ts`
   - 計入交付：否；只代表owner package可進入nonprod apply gate，不代表L3、production或DEV-013完成。
 
 - ✓ DEV-047 [交付點] [local完成／QA-QC通過／production release gated] [P1] [RD Implementation Complete／CAPA Closed 2026-09-16／Production Gated] 員工編號公司身分連結與登入別名
@@ -594,11 +594,12 @@
 
 ### 驗收與下一步
 
-- Canonical contract aggregate及兩個成員檔SHA-256已與OrgMaster lock及Platform manifest逐值相符；Platform L3 manifest SHA-256=`7538ab12e02566eb9de107c592d6cbb43045f4a00bc94a969a84eae8a424d96c`。
+- Canonical contract aggregate及兩個成員檔SHA-256已與OrgMaster lock及Platform manifest逐值相符；Platform L3 manifest schema=`jenfu.dev013.l3-managed-staging.v2`、SHA-256=`8d913f22b5ab15de62969ddbbd3951c9a819bbe0019688bcf8f99faa1ffc5df4`。
 - `OWNER_INFRA_A`與`OWNER_RUNTIME_B`各自使用完整、無多無少的address set；plan只接受`create`／`read`／`no-op`，任何update／delete／replace、非OrgMaster target或source／tree／image／foundation關鍵值漂移均fail closed。
 - Runtime預設`ORGMASTER_JENFU_SSO_HANDOFF_MODE=off`；broker與public base origins只能由provider readback衍生。Runtime不具owner／DDL／migrator權限，且package不含migration runner。
 - Owner release controller預設只產生candidate／activate／rollback計畫；future external mutation需要獨立授權及`--execute`，且仍只能處理`orgmaster-stg`自己的revision、env與traffic。
-- Platform current source-bound exact read-only preflight=`Jenfu-Platform/output/dev-013/l3/DEV013-L3-PREFLIGHT-20260917T044050260Z-17270621/report.json`，已確認runtime service account存在且enabled，但`jenfu-platform-nonprod / asia-east1 / orgmaster-stg`尚不存在；cloud mutation=0。下一步只在nonprod operator授權下執行A階段、immutable image build／digest readback、B階段與provider URI hard-join receipt；不得推論managed runtime已存在或L3已完成。
+- Secret bootstrap固定`jenfu-platform-nonprod / dev010-stg-orgmaster-runtime-config`，預設只執行版本清冊readback；容器已有任一版本即fail closed。只有另行授權的`--execute`可生成64 bytes entropy、轉成UTF-8安全的base64url payload，再透過`gcloud ... --data-file=-`的stdin建立第一版；receipt只保存exact Secret ID、numeric version、state及self-hash，payload永不落盤或進log／evidence。
+- Platform current source-bound exact read-only preflight=`Jenfu-Platform/output/dev-013/l3/DEV013-L3-PREFLIGHT-20260917T044050260Z-17270621/report.json`，已確認runtime service account存在且enabled，但`jenfu-platform-nonprod / asia-east1 / orgmaster-stg`尚不存在；Secret容器存在但版本數為0；cloud mutation=0。下一步只在nonprod operator授權下執行A階段、Secret bootstrap、immutable image build／digest readback、B階段與provider URI hard-join receipt；不得推論managed runtime已存在或L3已完成。
 
 ## DEV-047：員工編號公司身分連結與登入別名
 

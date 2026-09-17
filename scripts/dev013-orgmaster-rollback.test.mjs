@@ -16,7 +16,8 @@ const identity = { email: profile.target.runtimeServiceAccount, uniqueId: '10000
 
 function hashReceipt(core) { return { ...core, receiptSha256: sha256(canonicalize(core)) } }
 
-const floor = hashReceipt({ schemaVersion: 'jenfu.dev013.orgmaster-rollback-floor.v1', serviceName: profile.target.serviceName, revision: 'orgmaster-stg-00001-guard', providerEtag: 'etag-floor', artifactDigest: image, sourceRevision, sourceTree, authStateVersion: 'v2', originalAuthTimeGuard: true, protectedRequestEpochGuard: true, securityFloor: profile.release.securityFloor.id, preDev013Image: false, status: 'SECURITY_FLOOR_READY', releaseAuthority: false })
+const secretReferences = { ORGMASTER_SESSION_HASH_PEPPER: { secretId: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER, version: '7' } }
+const floor = hashReceipt({ schemaVersion: 'jenfu.dev013.orgmaster-rollback-floor.v2', serviceName: profile.target.serviceName, revision: 'orgmaster-stg-00001-guard', providerEtag: 'etag-floor', artifactDigest: image, sourceRevision, sourceTree, secretReferences, authStateVersion: 'v2', originalAuthTimeGuard: true, protectedRequestEpochGuard: true, securityFloor: profile.release.securityFloor.id, preDev013Image: false, status: 'SECURITY_FLOOR_READY', releaseAuthority: false })
 const base = { schemaVersion: 'jenfu.dev013.orgmaster-staging-release-request.v2', projectId: profile.target.projectId, region: profile.target.region, serviceName: profile.target.serviceName, rollbackFloor: floor, productionMutations: 0, siblingMutations: 0, databaseMutations: 0, migrationExecutions: 0 }
 
 function candidateRequest() {
@@ -46,6 +47,7 @@ function service({ revision, activeRevision, etag, mode = 'on' }) {
       { name: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', value: mode },
       { name: 'DEV013_L3_SOURCE_REVISION', value: sourceRevision },
       { name: 'DEV013_L3_SOURCE_TREE', value: sourceTree },
+      { name: 'ORGMASTER_SESSION_HASH_PEPPER', valueSource: { secretKeyRef: { secret: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER, version: '7' } } },
     ] }],
   }
 }
@@ -75,6 +77,7 @@ test('candidate hard join precedes traffic activation and final browser-ready re
   assert.equal(owner.status, 'OWNER_READY_FOR_L3_BROWSER')
   assert.equal(owner.runtime.ssoHandoffMode, 'on')
   assert.equal(owner.hardJoin.trafficPercent, 100)
+  assert.deepEqual(owner.boundaries.secretReferences, secretReferences)
   const validator = await import(pathToFileURL(path.resolve(root, '..', 'Jenfu-Platform', 'scripts', 'lib', 'dev013-l3-contract.mjs')))
   const manifest = JSON.parse(fs.readFileSync(path.resolve(root, '..', 'Jenfu-Platform', 'config', 'dev-013', 'l3-managed-staging.json'), 'utf8'))
   assert.equal(validator.assertOwnerReceipt(owner, 'orgmaster', manifest), owner)

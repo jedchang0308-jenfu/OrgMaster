@@ -39,7 +39,7 @@ Local tracking ID: `DEV-048`（the repository-native `DEV-013` is an older UI ta
 
 Status: `READY_FOR_NONPROD_APPLY / releaseAuthority=false / exact provider preflight confirms service missing`. Platform current source-bound read-only preflight confirms the runtime identity exists and is enabled, while exact `jenfu-platform-nonprod / asia-east1 / orgmaster-stg` is absent. No Terraform apply, Cloud Run deploy, migration, candidate creation, activation, rollback, or traffic mutation has been run by this slice. This status does not mean L3, production, or DEV-013 is complete.
 
-The applyable profile is `config/dev-013/l3-orgmaster-staging.json`; the Terraform root is `infra/google-cloud/dev-013-l3-orgmaster`. Both lock the Platform machine-readable manifest SHA-256 `7538ab12e02566eb9de107c592d6cbb43045f4a00bc94a969a84eae8a424d96c` and canonical contract aggregate SHA-256 `e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483`. Any drift is a hard stop.
+The applyable profile is `config/dev-013/l3-orgmaster-staging.json`; the Terraform root is `infra/google-cloud/dev-013-l3-orgmaster`. Both lock the Platform machine-readable manifest `jenfu.dev013.l3-managed-staging.v2` SHA-256 `8d913f22b5ab15de62969ddbbd3951c9a819bbe0019688bcf8f99faa1ffc5df4` and canonical contract aggregate SHA-256 `e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483`. Any drift is a hard stop.
 
 The package uses one app-owned state prefix, `dev-013/orgmaster-staging`, and two exact same-state stages:
 
@@ -50,10 +50,10 @@ The runtime target is exactly `jenfu-platform-nonprod / asia-east1 / orgmaster-s
 
 Receipt與release順序固定如下：
 
-1. `OWNER_RUNTIME_B` provider hard join只能產生`jenfu.dev013.l3-target-bootstrap-receipt.v1 / TARGET_BOOTSTRAP_READY`；此時`ORGMASTER_JENFU_SSO_HANDOFF_MODE=off`，receipt同時保存exact active revision作rollback security floor。它只供Platform source freeze使用，不能進L3 browser gate。
+1. `OWNER_RUNTIME_B` provider hard join只能產生`jenfu.dev013.l3-target-bootstrap-receipt.v2 / TARGET_BOOTSTRAP_READY`；此時`ORGMASTER_JENFU_SSO_HANDOFF_MODE=off`，receipt同時保存exact active revision作rollback security floor，並以`boundaries.secretReferences`綁定`ORGMASTER_SESSION_HASH_PEPPER → dev010-stg-orgmaster-runtime-config:<numeric version>`。它只供Platform source freeze v3使用，不能進L3 browser gate。
 2. Platform broker建立後，candidate plan只接受與security floor相同source revision／tree及相同immutable digest，並把handoff mode設為`on`；candidate建立時保持原off revision承擔100% traffic。
 3. `candidate-receipt`以provider readback證明新revision、etag、origin、broker、callback、identity與mode，但狀態只有`ENABLED_REVISION_READY`。
-4. activate plan只接受該candidate receipt並只修改OrgMaster traffic。Post-activation readback必須證明`mode=on`、exact candidate revision承擔100% traffic且etag已更新，才可產生`jenfu.dev013.l3-owner-receipt.v1 / OWNER_READY_FOR_L3_BROWSER`。
+4. activate plan只接受該candidate receipt並只修改OrgMaster traffic。Post-activation readback必須證明`mode=on`、exact candidate revision承擔100% traffic、numeric Secret reference不漂移且etag已更新，才可產生`jenfu.dev013.l3-owner-receipt.v2 / OWNER_READY_FOR_L3_BROWSER`。
 
 Candidate／activate／rollback planning is owner-native and read-only by default. Every plan is constrained to the OrgMaster service, revision, runtime environment, and traffic. Activation retains auth-state v2 and the original-auth-time guard；rollback只回同source／同digest的off security floor，不得回pre-DEV-013 artifact。
 
@@ -65,6 +65,7 @@ Owner commands:
 - `npm run receipt:dev-013:l3:owner -- candidate-receipt ...`
 - `npm run receipt:dev-013:l3:owner -- owner-receipt ...`
 - `npm run release:dev-013:l3 -- --operation candidate|activate|rollback ...`（read-only plan unless a future separately authorized run passes `--execute`）
+- `npm run bootstrap:dev-013:l3:secret`（固定target的read-only empty-version preflight）；只有另行nonprod授權後才可加`--execute --output <new-path>`
 - `npm run test:dev-013:l3`
 
-Required Secret Manager object: `dev010-stg-orgmaster-runtime-config`, consumed only through a numeric version as `ORGMASTER_SESSION_HASH_PEPPER`; no secret value belongs in source, Terraform variables, plans, receipts, or logs.
+Required Secret Manager object: `dev010-stg-orgmaster-runtime-config`, consumed only through a numeric version as `ORGMASTER_SESSION_HASH_PEPPER`. Manifest v2 defines `versionBootstrap.mode=OWNER_GENERATED_IF_EMPTY` and `minimumEntropyBytes=64`; the executor refuses any existing version, generates only during explicit execution, encodes 64 bytes of entropy as UTF-8-safe base64url, streams the payload through stdin, zeroes the in-memory buffers after the provider call, and records only numeric version/state metadata plus a self-hash. No secret value belongs in source, Terraform variables, plans, receipts, or logs.

@@ -12,6 +12,7 @@ const H64 = /^[0-9a-f]{64}$/u
 const IMAGE = /^asia-east1-docker[.]pkg[.]dev\/jenfu-platform-nonprod\/dev013-orgmaster-staging\/orgmaster@sha256:[0-9a-f]{64}$/u
 const UNIQUE_ID = /^[0-9]{8,32}$/u
 const STAGES = new Set(['OWNER_INFRA_A', 'OWNER_RUNTIME_B'])
+const SESSION_SECRET_ENV = 'ORGMASTER_SESSION_HASH_PEPPER'
 
 export class Dev013OrgmasterError extends Error {
   constructor(code, detail = '') {
@@ -65,11 +66,11 @@ function exactRunAppOrigin(value, serviceName, region = 'asia-east1', numericPro
 
 export function assertProfile(profile) {
   object(profile, 'DEV013_ORGMASTER_PROFILE_INVALID', 'root')
-  if (profile.schemaVersion !== 'jenfu.dev013.orgmaster-staging-release.v1' || profile.devId !== 'DEV-013' || profile.slice !== '013-S4-L3-ORGMASTER-ENV' || profile.status !== 'READY_FOR_NONPROD_APPLY' || profile.releaseAuthority !== false) fail('DEV013_ORGMASTER_PROFILE_IDENTITY_INVALID')
-  if (profile.platformManifest?.sha256 !== '7538ab12e02566eb9de107c592d6cbb43045f4a00bc94a969a84eae8a424d96c' || profile.canonicalContract?.sha256 !== 'e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483') fail('DEV013_ORGMASTER_CONTRACT_HASH_INVALID')
+  if (profile.schemaVersion !== 'jenfu.dev013.orgmaster-staging-release.v2' || profile.devId !== 'DEV-013' || profile.slice !== '013-S4-L3-ORGMASTER-ENV' || profile.status !== 'READY_FOR_NONPROD_APPLY' || profile.releaseAuthority !== false) fail('DEV013_ORGMASTER_PROFILE_IDENTITY_INVALID')
+  if (profile.platformManifest?.sha256 !== '8d913f22b5ab15de62969ddbbd3951c9a819bbe0019688bcf8f99faa1ffc5df4' || profile.platformManifest.schemaVersion !== 'jenfu.dev013.l3-managed-staging.v2' || profile.canonicalContract?.sha256 !== 'e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483') fail('DEV013_ORGMASTER_CONTRACT_HASH_INVALID')
   const target = profile.target
   if (target?.projectId !== 'jenfu-platform-nonprod' || target.region !== 'asia-east1' || target.serviceName !== 'orgmaster-stg' || target.cloudSqlInstance !== 'jenfu-platform-nonprod-pg' || target.database !== 'jenfu_stg' || target.connectionName !== 'jenfu-platform-nonprod:asia-east1:jenfu-platform-nonprod-pg' || target.runtimeServiceAccount !== 'dev010-stg-orgmaster-runtime@jenfu-platform-nonprod.iam.gserviceaccount.com') fail('DEV013_ORGMASTER_TARGET_INVALID')
-  if (profile.state?.bucket !== 'tfstate-jenfu-platform-nonprod' || profile.state?.prefix !== 'dev-013/orgmaster-staging' || profile.artifact?.uri !== 'asia-east1-docker.pkg.dev/jenfu-platform-nonprod/dev013-orgmaster-staging/orgmaster' || profile.artifact?.dockerfile !== 'Dockerfile' || profile.artifact?.sourceFreeze?.contextAuthority !== 'EXACT_GIT_TREE_AT_SOURCE_REVISION' || profile.artifact.sourceFreeze.dockerfileSha256Required !== true || profile.artifact.sourceFreeze.sourceCreatedAtAuthority !== 'GIT_COMMITTER_DATE_ISO_8601' || profile.artifact.sourceFreeze.sourceVersionRule !== 'dev013-l3 plus first 12 hexadecimal characters of source revision' || profile.artifact.sourceFreeze.sourceState !== 'clean' || profile.secret?.id !== 'dev010-stg-orgmaster-runtime-config' || canonicalize(profile.secret?.environmentNames) !== canonicalize(['ORGMASTER_SESSION_HASH_PEPPER'])) fail('DEV013_ORGMASTER_BOUNDARY_INVALID')
+  if (profile.state?.bucket !== 'tfstate-jenfu-platform-nonprod' || profile.state?.prefix !== 'dev-013/orgmaster-staging' || profile.artifact?.uri !== 'asia-east1-docker.pkg.dev/jenfu-platform-nonprod/dev013-orgmaster-staging/orgmaster' || profile.artifact?.dockerfile !== 'Dockerfile' || profile.artifact?.sourceFreeze?.contextAuthority !== 'EXACT_GIT_TREE_AT_SOURCE_REVISION' || profile.artifact.sourceFreeze.dockerfileSha256Required !== true || profile.artifact.sourceFreeze.sourceCreatedAtAuthority !== 'GIT_COMMITTER_DATE_ISO_8601' || profile.artifact.sourceFreeze.sourceVersionRule !== 'dev013-l3 plus first 12 hexadecimal characters of source revision' || profile.artifact.sourceFreeze.sourceState !== 'clean' || canonicalize(profile.secret?.references) !== canonicalize({ [SESSION_SECRET_ENV]: 'dev010-stg-orgmaster-runtime-config' }) || canonicalize(profile.secret?.versionBootstrap) !== canonicalize({ mode: 'OWNER_GENERATED_IF_EMPTY', minimumEntropyBytes: 64 }) || profile.secret?.numericVersionRequired !== true || profile.secret?.payloadMayAppearInEvidence !== false) fail('DEV013_ORGMASTER_BOUNDARY_INVALID')
   const runtime = profile.runtime
   if (runtime?.minInstances !== 0 || runtime.maxInstances !== 1 || runtime.databasePoolMax !== 2 || runtime.deletionProtection !== true || runtime.initialSsoMode !== 'off' || runtime.network !== 'jenfu-platform-nonprod-vpc' || runtime.subnetwork !== 'jenfu-platform-nonprod-qc' || runtime.cloudSqlProxyMaximumConnections !== 2 || !String(runtime.cloudSqlProxyImage).includes('@sha256:')) fail('DEV013_ORGMASTER_RUNTIME_INVALID')
   for (const stage of STAGES) {
@@ -90,9 +91,21 @@ export function verifyPlatformManifest(manifestBytes, profile = loadProfile()) {
   if (sha256(bytes) !== profile.platformManifest.sha256) fail('DEV013_ORGMASTER_PLATFORM_MANIFEST_HASH_MISMATCH')
   const manifest = JSON.parse(bytes.toString('utf8'))
   const owner = manifest.applications?.orgmaster
-  if (manifest.schemaVersion !== profile.platformManifest.schemaVersion || manifest.contractStatus !== profile.platformManifest.contractStatus || manifest.target?.projectId !== profile.target.projectId || manifest.target?.region !== profile.target.region || manifest.target?.database !== profile.target.database || owner?.serviceName !== profile.target.serviceName || owner?.runtimeServiceAccount !== profile.target.runtimeServiceAccount || owner?.state?.bucket !== profile.state.bucket || owner?.state?.prefix !== profile.state.prefix || owner?.artifact?.repository !== profile.artifact.repository || owner?.secret?.id !== profile.secret.id || owner?.evidence?.bucket !== profile.evidence.bucket || owner?.evidence?.prefix !== profile.evidence.prefix) fail('DEV013_ORGMASTER_PLATFORM_MANIFEST_BOUNDARY_MISMATCH')
+  if (manifest.schemaVersion !== profile.platformManifest.schemaVersion || manifest.contractStatus !== profile.platformManifest.contractStatus || manifest.target?.projectId !== profile.target.projectId || manifest.target?.region !== profile.target.region || manifest.target?.database !== profile.target.database || owner?.serviceName !== profile.target.serviceName || owner?.runtimeServiceAccount !== profile.target.runtimeServiceAccount || owner?.state?.bucket !== profile.state.bucket || owner?.state?.prefix !== profile.state.prefix || owner?.artifact?.repository !== profile.artifact.repository || canonicalize(owner?.secret) !== canonicalize(profile.secret) || owner?.evidence?.bucket !== profile.evidence.bucket || owner?.evidence?.prefix !== profile.evidence.prefix) fail('DEV013_ORGMASTER_PLATFORM_MANIFEST_BOUNDARY_MISMATCH')
   if (manifest.platformRelease?.urlAuthority?.bootstrapTemplate !== 'https://jenfu-platform-stg-${PROJECT_NUMBER}.asia-east1.run.app' || manifest.platformRelease?.urlAuthority?.postCreateHardJoinRequired !== true || manifest.platformRelease?.urlAuthority?.wildcardsAllowed !== false) fail('DEV013_ORGMASTER_PLATFORM_ORIGIN_AUTHORITY_MISMATCH')
   return manifest
+}
+
+function secretReferences(version, profile) {
+  if (!/^[1-9][0-9]*$/u.test(String(version ?? ''))) fail('DEV013_ORGMASTER_SECRET_VERSION_INVALID')
+  return { [SESSION_SECRET_ENV]: { secretId: profile.secret.references[SESSION_SECRET_ENV], version: String(version) } }
+}
+
+function assertSecretReferences(value, profile) {
+  object(value, 'DEV013_ORGMASTER_SECRET_REFERENCES_INVALID', 'secretReferences')
+  const reference = value[SESSION_SECRET_ENV]
+  if (canonicalize(Object.keys(value)) !== canonicalize([SESSION_SECRET_ENV]) || reference?.secretId !== profile.secret.references[SESSION_SECRET_ENV] || !/^[1-9][0-9]*$/u.test(String(reference?.version ?? ''))) fail('DEV013_ORGMASTER_SECRET_REFERENCES_INVALID')
+  return value
 }
 
 export function verifyCanonicalContract(root = projectRoot, profile = loadProfile()) {
@@ -126,11 +139,11 @@ export function createSourceFreezeReceipt(input, profile = loadProfile()) {
   if (typeof input.sourceCreatedAt !== 'string' || !Number.isFinite(Date.parse(input.sourceCreatedAt))) fail('DEV013_ORGMASTER_SOURCE_CREATED_AT_INVALID')
   assertRef(input.foundationReceipt, 'DEV013_ORGMASTER_FOUNDATION_REF_INVALID')
   const runtime = input.stage === 'OWNER_RUNTIME_B'
-  if (runtime && (!IMAGE.test(input.runtimeImage ?? '') || !/^[1-9][0-9]*$/u.test(String(input.runtimeConfigSecretVersion ?? '')) || !H64.test(input.firebasePublicConfigSha256 ?? ''))) fail('DEV013_ORGMASTER_RUNTIME_FREEZE_INPUT_INVALID')
-  if (!runtime && (input.runtimeImage != null || input.runtimeConfigSecretVersion != null || input.firebasePublicConfigSha256 != null)) fail('DEV013_ORGMASTER_INFRA_FREEZE_WIDENED')
+  if (runtime && (!IMAGE.test(input.runtimeImage ?? '') || canonicalize(assertSecretReferences(input.runtimeSecretVersions, profile)) !== canonicalize(secretReferences(input.runtimeSecretVersions?.[SESSION_SECRET_ENV]?.version, profile)) || !H64.test(input.firebasePublicConfigSha256 ?? ''))) fail('DEV013_ORGMASTER_RUNTIME_FREEZE_INPUT_INVALID')
+  if (!runtime && (input.runtimeImage != null || input.runtimeSecretVersions != null || input.firebasePublicConfigSha256 != null)) fail('DEV013_ORGMASTER_INFRA_FREEZE_WIDENED')
   const gate = profile.terraform.stages[input.stage]
   const core = {
-    schemaVersion: 'jenfu.dev013.orgmaster-source-freeze.v1',
+    schemaVersion: 'jenfu.dev013.orgmaster-source-freeze.v2',
     slice: profile.slice,
     stage: input.stage,
     sourceRevision: input.sourceRevision,
@@ -154,7 +167,7 @@ export function createSourceFreezeReceipt(input, profile = loadProfile()) {
     terraformRoot: profile.terraform.root,
     terraformAddressSetSha256: sha256(canonicalize([...gate.dataAddresses, ...gate.resourceAddresses].sort())),
     runtimeImage: runtime ? input.runtimeImage : null,
-    runtimeConfigSecretVersion: runtime ? String(input.runtimeConfigSecretVersion) : null,
+    runtimeSecretVersions: runtime ? input.runtimeSecretVersions : null,
     firebasePublicConfigSha256: runtime ? input.firebasePublicConfigSha256 : null,
     securityFloor: profile.release.securityFloor,
     status: runtime ? 'READY_FOR_OWNER_RUNTIME_B_PLAN' : 'READY_FOR_OWNER_INFRA_A_PLAN',
@@ -166,7 +179,7 @@ export function createSourceFreezeReceipt(input, profile = loadProfile()) {
 
 export function assertSourceFreezeReceipt(receipt, profile = loadProfile()) {
   object(receipt, 'DEV013_ORGMASTER_SOURCE_FREEZE_INVALID', 'receipt')
-  if (receipt.schemaVersion !== 'jenfu.dev013.orgmaster-source-freeze.v1' || !STAGES.has(receipt.stage) || !H40.test(receipt.sourceRevision ?? '') || !H40.test(receipt.sourceTree ?? '') || receipt.clean !== true || receipt.platformManifestSha256 !== profile.platformManifest.sha256 || receipt.canonicalContractSha256 !== profile.canonicalContract.sha256 || receipt.terraformRoot !== profile.terraform.root || receipt.releaseAuthority !== false || receipt.receiptSha256 !== receiptHash(receipt)) fail('DEV013_ORGMASTER_SOURCE_FREEZE_INVALID')
+  if (receipt.schemaVersion !== 'jenfu.dev013.orgmaster-source-freeze.v2' || !STAGES.has(receipt.stage) || !H40.test(receipt.sourceRevision ?? '') || !H40.test(receipt.sourceTree ?? '') || receipt.clean !== true || receipt.platformManifestSha256 !== profile.platformManifest.sha256 || receipt.canonicalContractSha256 !== profile.canonicalContract.sha256 || receipt.terraformRoot !== profile.terraform.root || receipt.releaseAuthority !== false || receipt.receiptSha256 !== receiptHash(receipt)) fail('DEV013_ORGMASTER_SOURCE_FREEZE_INVALID')
   assertRef(receipt.foundationReceipt, 'DEV013_ORGMASTER_FOUNDATION_REF_INVALID')
   const expectedBuildInput = {
     contextAuthority: 'EXACT_GIT_TREE_AT_SOURCE_REVISION',
@@ -185,8 +198,8 @@ export function assertSourceFreezeReceipt(receipt, profile = loadProfile()) {
   if (receipt.terraformAddressSetSha256 !== sha256(canonicalize([...gate.dataAddresses, ...gate.resourceAddresses].sort())) || canonicalize(receipt.securityFloor) !== canonicalize(profile.release.securityFloor)) fail('DEV013_ORGMASTER_SOURCE_FREEZE_CONTRACT_MISMATCH')
   const runtime = receipt.stage === 'OWNER_RUNTIME_B'
   if (runtime) {
-    if (!IMAGE.test(receipt.runtimeImage ?? '') || !/^[1-9][0-9]*$/u.test(String(receipt.runtimeConfigSecretVersion ?? '')) || !H64.test(receipt.firebasePublicConfigSha256 ?? '') || receipt.status !== 'READY_FOR_OWNER_RUNTIME_B_PLAN') fail('DEV013_ORGMASTER_RUNTIME_FREEZE_INVALID')
-  } else if (receipt.runtimeImage !== null || receipt.runtimeConfigSecretVersion !== null || receipt.firebasePublicConfigSha256 !== null || receipt.status !== 'READY_FOR_OWNER_INFRA_A_PLAN') fail('DEV013_ORGMASTER_INFRA_FREEZE_INVALID')
+    if (!IMAGE.test(receipt.runtimeImage ?? '') || canonicalize(assertSecretReferences(receipt.runtimeSecretVersions, profile)) !== canonicalize(secretReferences(receipt.runtimeSecretVersions?.[SESSION_SECRET_ENV]?.version, profile)) || !H64.test(receipt.firebasePublicConfigSha256 ?? '') || receipt.status !== 'READY_FOR_OWNER_RUNTIME_B_PLAN') fail('DEV013_ORGMASTER_RUNTIME_FREEZE_INVALID')
+  } else if (receipt.runtimeImage !== null || receipt.runtimeSecretVersions !== null || receipt.firebasePublicConfigSha256 !== null || receipt.status !== 'READY_FOR_OWNER_INFRA_A_PLAN') fail('DEV013_ORGMASTER_INFRA_FREEZE_INVALID')
   return receipt
 }
 
@@ -232,7 +245,7 @@ export function assertTerraformPlan(plan, freeze, profile = loadProfile()) {
     foundation_manifest_sha256: freeze.foundationReceipt.sha256,
     runtime_enabled: gate.runtimeEnabled,
     orgmaster_image: freeze.runtimeImage,
-    runtime_config_secret_version: freeze.runtimeConfigSecretVersion,
+    runtime_config_secret_version: freeze.runtimeSecretVersions?.[SESSION_SECRET_ENV]?.version ?? null,
     firebase_public_config_sha256: freeze.firebasePublicConfigSha256,
   }
   for (const [name, expected] of Object.entries(expectedVariables)) if (planVariable(plan, name) !== expected) fail('DEV013_ORGMASTER_PLAN_VARIABLE_MISMATCH', name)
@@ -252,7 +265,7 @@ export function assertTerraformPlan(plan, freeze, profile = loadProfile()) {
   const secret = (app?.env ?? []).find((entry) => entry.name === 'ORGMASTER_SESSION_HASH_PEPPER')
   const secretRef = first(secret?.value_source)?.secret_key_ref
   const proxyArgs = new Set(proxy?.args ?? [])
-  if (publicProjectNumber !== brokerProjectNumber || service?.project !== profile.target.projectId || service?.location !== profile.target.region || service?.name !== profile.target.serviceName || service?.deletion_protection !== true || service?.ingress !== profile.target.entryPolicy.ingress || service?.default_uri_disabled !== false || service?.invoker_iam_disabled !== true || template?.service_account !== profile.target.runtimeServiceAccount || first(template?.scaling)?.min_instance_count !== 0 || first(template?.scaling)?.max_instance_count !== 1 || template?.max_instance_request_concurrency !== 20 || app?.image !== freeze.runtimeImage || env.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'off' || env.ORGMASTER_PERSISTENCE_MODE !== 'cloud-sql' || env.ORGMASTER_POSTGRES_POOL_MAX !== '2' || env.DEV013_L3_SOURCE_REVISION !== freeze.sourceRevision || env.DEV013_L3_SOURCE_TREE !== freeze.sourceTree || env.DEV013_L3_PLATFORM_MANIFEST_SHA256 !== freeze.platformManifestSha256 || env.DEV013_L3_CANONICAL_CONTRACT_SHA256 !== freeze.canonicalContractSha256 || env.DEV013_L3_FOUNDATION_MANIFEST_SHA256 !== freeze.foundationReceipt.sha256 || env.DEV013_L3_FIREBASE_PUBLIC_CONFIG_SHA256 !== freeze.firebasePublicConfigSha256 || probePath(app, 'startup_probe') !== profile.runtime.startupProbePath || probePath(app, 'liveness_probe') !== profile.runtime.livenessProbePath || secretRef?.secret !== profile.secret.id || String(secretRef?.version ?? '') !== freeze.runtimeConfigSecretVersion || proxy?.image !== profile.runtime.cloudSqlProxyImage || !proxyArgs.has('--private-ip') || !proxyArgs.has('--auto-iam-authn') || !proxyArgs.has('--max-connections=2') || !proxyArgs.has(profile.target.connectionName)) fail('DEV013_ORGMASTER_PLAN_RUNTIME_INVALID')
+  if (publicProjectNumber !== brokerProjectNumber || service?.project !== profile.target.projectId || service?.location !== profile.target.region || service?.name !== profile.target.serviceName || service?.deletion_protection !== true || service?.ingress !== profile.target.entryPolicy.ingress || service?.default_uri_disabled !== false || service?.invoker_iam_disabled !== true || template?.service_account !== profile.target.runtimeServiceAccount || first(template?.scaling)?.min_instance_count !== 0 || first(template?.scaling)?.max_instance_count !== 1 || template?.max_instance_request_concurrency !== 20 || app?.image !== freeze.runtimeImage || env.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'off' || env.ORGMASTER_PERSISTENCE_MODE !== 'cloud-sql' || env.ORGMASTER_POSTGRES_POOL_MAX !== '2' || env.DEV013_L3_SOURCE_REVISION !== freeze.sourceRevision || env.DEV013_L3_SOURCE_TREE !== freeze.sourceTree || env.DEV013_L3_PLATFORM_MANIFEST_SHA256 !== freeze.platformManifestSha256 || env.DEV013_L3_CANONICAL_CONTRACT_SHA256 !== freeze.canonicalContractSha256 || env.DEV013_L3_FOUNDATION_MANIFEST_SHA256 !== freeze.foundationReceipt.sha256 || env.DEV013_L3_FIREBASE_PUBLIC_CONFIG_SHA256 !== freeze.firebasePublicConfigSha256 || probePath(app, 'startup_probe') !== profile.runtime.startupProbePath || probePath(app, 'liveness_probe') !== profile.runtime.livenessProbePath || secretRef?.secret !== profile.secret.references[SESSION_SECRET_ENV] || String(secretRef?.version ?? '') !== freeze.runtimeSecretVersions[SESSION_SECRET_ENV].version || proxy?.image !== profile.runtime.cloudSqlProxyImage || !proxyArgs.has('--private-ip') || !proxyArgs.has('--auto-iam-authn') || !proxyArgs.has('--max-connections=2') || !proxyArgs.has(profile.target.connectionName)) fail('DEV013_ORGMASTER_PLAN_RUNTIME_INVALID')
   return { status: 'PASS', stage: freeze.stage, sourceRevision: freeze.sourceRevision, sourceTree: freeze.sourceTree, runtimeImage: freeze.runtimeImage, orgmasterOrigin: publicOrigin, platformBrokerOrigin: brokerOrigin, addressCount: actualAddresses.length, releaseAuthority: false }
 }
 
@@ -268,24 +281,31 @@ function normalizeServiceReadback(serviceReadback, identityReadback, profile) {
     email: identityReadback?.email,
     uniqueId: String(identityReadback?.uniqueId ?? ''),
   }
-  const env = Object.fromEntries((serviceReadback?.containers?.find((row) => row.name === profile.runtime.containerName)?.env ?? []).filter((row) => Object.hasOwn(row, 'value')).map((row) => [row.name, String(row.value)]))
+  const containerEnv = serviceReadback?.containers?.find((row) => row.name === profile.runtime.containerName)?.env ?? []
+  const env = Object.fromEntries(containerEnv.filter((row) => Object.hasOwn(row, 'value')).map((row) => [row.name, String(row.value)]))
+  const secretEntry = containerEnv.find((row) => row.name === SESSION_SECRET_ENV)
+  const providerSecretRef = secretEntry?.valueSource?.secretKeyRef ?? first(secretEntry?.value_source)?.secret_key_ref
+  const observedSecretReferences = providerSecretRef
+    ? { [SESSION_SECRET_ENV]: { secretId: providerSecretRef.secret ?? providerSecretRef.secretId, version: String(providerSecretRef.version ?? '') } }
+    : null
   const traffic = normalizedTraffic(serviceReadback)
   const latestCreatedRevision = serviceReadback?.latestCreatedRevision ?? null
   const latestReadyRevision = serviceReadback?.latestReadyRevision ?? null
   const etag = serviceReadback?.etag ?? null
   if (serviceReadback?.projectId !== profile.target.projectId || serviceReadback?.region !== profile.target.region || serviceReadback?.serviceName !== profile.target.serviceName || serviceReadback?.runtimeServiceAccount !== profile.target.runtimeServiceAccount || serviceReadback?.deletionProtection !== true || serviceReadback?.minInstances !== 0 || serviceReadback?.maxInstances !== 1 || canonicalize(serviceReadback?.entryPolicy) !== canonicalize(profile.target.entryPolicy) || canonicalize(serviceReadback?.labels) !== canonicalize(profile.target.requiredLabels) || identity.email !== profile.target.runtimeServiceAccount || identityReadback?.disabled === true || !UNIQUE_ID.test(identity.uniqueId) || typeof etag !== 'string' || etag.trim().length < 4 || !latestCreatedRevision || latestReadyRevision !== latestCreatedRevision) fail('DEV013_ORGMASTER_SERVICE_READBACK_INVALID')
-  return { canonicalOrigin, identity, env, traffic, latestCreatedRevision, latestReadyRevision, etag, image: serviceReadback?.image }
+  return { canonicalOrigin, identity, env, secretReferences: observedSecretReferences, traffic, latestCreatedRevision, latestReadyRevision, etag, image: serviceReadback?.image }
 }
 
 function buildRollbackFloor({ freeze, service }) {
   const core = {
-    schemaVersion: 'jenfu.dev013.orgmaster-rollback-floor.v1',
+    schemaVersion: 'jenfu.dev013.orgmaster-rollback-floor.v2',
     serviceName: 'orgmaster-stg',
     revision: service.latestReadyRevision,
     providerEtag: service.etag,
     artifactDigest: freeze.runtimeImage,
     sourceRevision: freeze.sourceRevision,
     sourceTree: freeze.sourceTree,
+    secretReferences: freeze.runtimeSecretVersions,
     authStateVersion: 'v2',
     originalAuthTimeGuard: true,
     protectedRequestEpochGuard: true,
@@ -306,10 +326,10 @@ export function buildTargetBootstrapReceipt({ freeze, terraformOutput, serviceRe
   const platformOrigin = exactRunAppOrigin(output?.expected_platform_origin, 'jenfu-platform-stg', profile.target.region, true)
   if (output?.provider_uri !== canonicalOrigin || output?.expected_orgmaster_origin !== canonicalOrigin || output?.project_id !== profile.target.projectId || output?.region !== profile.target.region || output?.service_name !== profile.target.serviceName || output?.application_image !== freeze.runtimeImage || output?.runtime_service_account !== profile.target.runtimeServiceAccount || String(output?.runtime_service_subject) !== String(identityReadback?.uniqueId) || identityReadback?.email !== profile.target.runtimeServiceAccount || identityReadback?.disabled === true || !UNIQUE_ID.test(String(identityReadback?.uniqueId ?? ''))) fail('DEV013_ORGMASTER_PROVIDER_HARD_JOIN_INVALID')
   const env = service.env
-  if (service.image !== freeze.runtimeImage || env.ORGMASTER_PUBLIC_BASE_URL !== canonicalOrigin || env.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== platformOrigin || env.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'off' || env.DEV013_L3_SOURCE_REVISION !== freeze.sourceRevision || env.DEV013_L3_SOURCE_TREE !== freeze.sourceTree) fail('DEV013_ORGMASTER_TARGET_BOOTSTRAP_RUNTIME_INVALID')
+  if (service.image !== freeze.runtimeImage || canonicalize(service.secretReferences) !== canonicalize(freeze.runtimeSecretVersions) || env.ORGMASTER_PUBLIC_BASE_URL !== canonicalOrigin || env.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== platformOrigin || env.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'off' || env.DEV013_L3_SOURCE_REVISION !== freeze.sourceRevision || env.DEV013_L3_SOURCE_TREE !== freeze.sourceTree) fail('DEV013_ORGMASTER_TARGET_BOOTSTRAP_RUNTIME_INVALID')
   const rollbackFloor = buildRollbackFloor({ freeze, service })
   const core = {
-    schemaVersion: 'jenfu.dev013.l3-target-bootstrap-receipt.v1',
+    schemaVersion: 'jenfu.dev013.l3-target-bootstrap-receipt.v2',
     ownerApplicationId: 'orgmaster',
     platformManifestSha256: freeze.platformManifestSha256,
     target: {
@@ -325,7 +345,7 @@ export function buildTargetBootstrapReceipt({ freeze, terraformOutput, serviceRe
     },
     runtime: { ssoHandoffMode: 'off', platformBrokerOrigin: platformOrigin, authStateVersion: 'v2', originalAuthTimeGuard: true, protectedRequestEpochGuard: true },
     bootstrap: { providerReadback: true, providerEtag: service.etag, activeRevision: service.traffic.revision, trafficPercent: service.traffic.percent },
-    boundaries: { stateBucket: profile.state.bucket, statePrefix: profile.state.prefix, artifactRepository: profile.artifact.repository, secretId: profile.secret.id, evidenceBucket: profile.evidence.bucket, evidencePrefix: profile.evidence.prefix, secretValueRead: false },
+    boundaries: { stateBucket: profile.state.bucket, statePrefix: profile.state.prefix, artifactRepository: profile.artifact.repository, secretReferences: freeze.runtimeSecretVersions, evidenceBucket: profile.evidence.bucket, evidencePrefix: profile.evidence.prefix, secretValueRead: false },
     rollbackFloor,
     status: 'TARGET_BOOTSTRAP_READY',
     releaseAuthority: false,
@@ -337,13 +357,14 @@ export function buildTargetBootstrapReceipt({ freeze, terraformOutput, serviceRe
 }
 
 function assertFloor(floor, profile) {
-  if (floor?.schemaVersion !== 'jenfu.dev013.orgmaster-rollback-floor.v1' || floor.serviceName !== profile.target.serviceName || !/^orgmaster-stg-[a-z0-9-]+$/u.test(floor.revision ?? '') || typeof floor.providerEtag !== 'string' || floor.providerEtag.trim().length < 4 || !IMAGE.test(floor.artifactDigest ?? '') || !H40.test(floor.sourceRevision ?? '') || !H40.test(floor.sourceTree ?? '') || floor.authStateVersion !== 'v2' || floor.originalAuthTimeGuard !== true || floor.protectedRequestEpochGuard !== true || floor.securityFloor !== profile.release.securityFloor.id || floor.preDev013Image !== false || floor.status !== 'SECURITY_FLOOR_READY' || floor.releaseAuthority !== false || floor.receiptSha256 !== receiptHash(floor)) fail('DEV013_ORGMASTER_RELEASE_FLOOR_INVALID')
+  if (floor?.schemaVersion !== 'jenfu.dev013.orgmaster-rollback-floor.v2' || floor.serviceName !== profile.target.serviceName || !/^orgmaster-stg-[a-z0-9-]+$/u.test(floor.revision ?? '') || typeof floor.providerEtag !== 'string' || floor.providerEtag.trim().length < 4 || !IMAGE.test(floor.artifactDigest ?? '') || !H40.test(floor.sourceRevision ?? '') || !H40.test(floor.sourceTree ?? '') || floor.authStateVersion !== 'v2' || floor.originalAuthTimeGuard !== true || floor.protectedRequestEpochGuard !== true || floor.securityFloor !== profile.release.securityFloor.id || floor.preDev013Image !== false || floor.status !== 'SECURITY_FLOOR_READY' || floor.releaseAuthority !== false || floor.receiptSha256 !== receiptHash(floor)) fail('DEV013_ORGMASTER_RELEASE_FLOOR_INVALID')
+  assertSecretReferences(floor.secretReferences, profile)
   return floor
 }
 
 export function assertCandidateReceipt(receipt, floor, profile = loadProfile()) {
   assertFloor(floor, profile)
-  if (receipt?.schemaVersion !== 'jenfu.dev013.orgmaster-candidate-hard-join.v1' || receipt.ownerApplicationId !== 'orgmaster' || receipt.status !== 'ENABLED_REVISION_READY' || receipt.handoffMode !== 'on' || receipt.sourceRevision !== floor.sourceRevision || receipt.sourceTree !== floor.sourceTree || receipt.artifactDigest !== floor.artifactDigest || receipt.rollbackFloorReceiptSha256 !== floor.receiptSha256 || !String(receipt.revision ?? '').startsWith(`${profile.target.serviceName}-`) || typeof receipt.providerEtag !== 'string' || !UNIQUE_ID.test(String(receipt.runtimeServiceAccount?.uniqueId ?? '')) || receipt.releaseAuthority !== false || receipt.receiptSha256 !== receiptHash(receipt)) fail('DEV013_ORGMASTER_CANDIDATE_RECEIPT_INVALID')
+  if (receipt?.schemaVersion !== 'jenfu.dev013.orgmaster-candidate-hard-join.v1' || receipt.ownerApplicationId !== 'orgmaster' || receipt.status !== 'ENABLED_REVISION_READY' || receipt.handoffMode !== 'on' || receipt.sourceRevision !== floor.sourceRevision || receipt.sourceTree !== floor.sourceTree || receipt.artifactDigest !== floor.artifactDigest || canonicalize(receipt.secretReferences) !== canonicalize(floor.secretReferences) || receipt.rollbackFloorReceiptSha256 !== floor.receiptSha256 || !String(receipt.revision ?? '').startsWith(`${profile.target.serviceName}-`) || typeof receipt.providerEtag !== 'string' || !UNIQUE_ID.test(String(receipt.runtimeServiceAccount?.uniqueId ?? '')) || receipt.releaseAuthority !== false || receipt.receiptSha256 !== receiptHash(receipt)) fail('DEV013_ORGMASTER_CANDIDATE_RECEIPT_INVALID')
   if (receipt.canonicalOrigin !== exactRunAppOrigin(receipt.canonicalOrigin, profile.target.serviceName, profile.target.region, true) || receipt.brokerOrigin !== exactRunAppOrigin(receipt.brokerOrigin, 'jenfu-platform-stg', profile.target.region, true) || receipt.callback !== `${receipt.canonicalOrigin}/api/auth/jenfu-sso/callback` || receipt.runtimeServiceAccount.email !== profile.target.runtimeServiceAccount) fail('DEV013_ORGMASTER_CANDIDATE_TARGET_INVALID')
   return receipt
 }
@@ -371,7 +392,7 @@ export function createReleasePlan(request, profile = loadProfile()) {
     ].join(',')
     args = [...common, 'update', profile.target.serviceName, '--project', profile.target.projectId, '--region', profile.target.region, '--image', request.artifactDigest, '--no-traffic', '--tag', tag, '--update-env-vars', vars, '--quiet']
     mutationTypes = ['revision', 'runtime-env']
-    candidate = { sourceRevision: request.sourceRevision, sourceTree: request.sourceTree, artifactDigest: request.artifactDigest, handoffMode: 'on', publicBaseUrl: request.publicBaseUrl, brokerOrigin: request.brokerOrigin, callback: `${request.publicBaseUrl}/api/auth/jenfu-sso/callback`, previousRevision: floor.revision, beforeEtag: floor.providerEtag }
+    candidate = { sourceRevision: request.sourceRevision, sourceTree: request.sourceTree, artifactDigest: request.artifactDigest, secretReferences: floor.secretReferences, handoffMode: 'on', publicBaseUrl: request.publicBaseUrl, brokerOrigin: request.brokerOrigin, callback: `${request.publicBaseUrl}/api/auth/jenfu-sso/callback`, previousRevision: floor.revision, beforeEtag: floor.providerEtag }
   } else {
     if (request.operation === 'activate') candidate = assertCandidateReceipt(request.candidateReceipt, floor, profile)
     const revision = request.operation === 'rollback' ? floor.revision : candidate?.revision
@@ -380,7 +401,7 @@ export function createReleasePlan(request, profile = loadProfile()) {
     mutationTypes = ['traffic']
   }
   if (canonicalize(mutationTypes) !== canonicalize(profile.release.allowedMutationTypes[request.operation])) fail('DEV013_ORGMASTER_RELEASE_MUTATION_TYPE_INVALID')
-  const candidateBinding = request.operation === 'candidate' ? candidate : request.operation === 'activate' ? { sourceRevision: candidate.sourceRevision, sourceTree: candidate.sourceTree, artifactDigest: candidate.artifactDigest, revision: candidate.revision, providerEtag: candidate.providerEtag, canonicalOrigin: candidate.canonicalOrigin, brokerOrigin: candidate.brokerOrigin, callback: candidate.callback, runtimeServiceAccount: candidate.runtimeServiceAccount, candidateReceiptSha256: candidate.receiptSha256 } : null
+  const candidateBinding = request.operation === 'candidate' ? candidate : request.operation === 'activate' ? { sourceRevision: candidate.sourceRevision, sourceTree: candidate.sourceTree, artifactDigest: candidate.artifactDigest, secretReferences: candidate.secretReferences, revision: candidate.revision, providerEtag: candidate.providerEtag, canonicalOrigin: candidate.canonicalOrigin, brokerOrigin: candidate.brokerOrigin, callback: candidate.callback, runtimeServiceAccount: candidate.runtimeServiceAccount, candidateReceiptSha256: candidate.receiptSha256 } : null
   const core = { schemaVersion: 'jenfu.dev013.orgmaster-release-plan.v2', operation: request.operation, projectId: profile.target.projectId, region: profile.target.region, serviceName: profile.target.serviceName, mutationTypes, candidate: candidateBinding, gcloud: { command: 'gcloud', args }, rollbackSecurityFloor: floor, status: 'READY_FOR_EXPLICIT_OWNER_EXECUTION', releaseAuthority: false }
   return { ...core, planSha256: sha256(canonicalize(core)) }
 }
@@ -390,13 +411,14 @@ export function hardJoinCandidate({ plan, serviceReadback, identityReadback, obs
   const floor = assertFloor(plan.rollbackSecurityFloor, profile)
   const service = normalizeServiceReadback(serviceReadback, identityReadback, profile)
   const expected = plan.candidate
-  if (service.etag === expected.beforeEtag || service.image !== expected.artifactDigest || service.latestCreatedRevision === floor.revision || service.traffic.revision !== floor.revision || service.canonicalOrigin !== expected.publicBaseUrl || service.env.ORGMASTER_PUBLIC_BASE_URL !== expected.publicBaseUrl || service.env.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== expected.brokerOrigin || service.env.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'on' || service.env.DEV013_L3_SOURCE_REVISION !== expected.sourceRevision || service.env.DEV013_L3_SOURCE_TREE !== expected.sourceTree) fail('DEV013_ORGMASTER_CANDIDATE_HARD_JOIN_INVALID')
+  if (service.etag === expected.beforeEtag || service.image !== expected.artifactDigest || canonicalize(service.secretReferences) !== canonicalize(expected.secretReferences) || service.latestCreatedRevision === floor.revision || service.traffic.revision !== floor.revision || service.canonicalOrigin !== expected.publicBaseUrl || service.env.ORGMASTER_PUBLIC_BASE_URL !== expected.publicBaseUrl || service.env.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== expected.brokerOrigin || service.env.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'on' || service.env.DEV013_L3_SOURCE_REVISION !== expected.sourceRevision || service.env.DEV013_L3_SOURCE_TREE !== expected.sourceTree) fail('DEV013_ORGMASTER_CANDIDATE_HARD_JOIN_INVALID')
   const core = {
     schemaVersion: 'jenfu.dev013.orgmaster-candidate-hard-join.v1',
     ownerApplicationId: 'orgmaster',
     sourceRevision: expected.sourceRevision,
     sourceTree: expected.sourceTree,
     artifactDigest: expected.artifactDigest,
+    secretReferences: expected.secretReferences,
     revision: service.latestCreatedRevision,
     providerEtag: service.etag,
     canonicalOrigin: service.canonicalOrigin,
@@ -418,9 +440,9 @@ export function buildOwnerReceipt({ activationPlan, candidateReceipt, serviceRea
   const candidate = assertCandidateReceipt(candidateReceipt, floor, profile)
   if (activationPlan.candidate?.candidateReceiptSha256 !== candidate.receiptSha256 || activationPlan.candidate?.revision !== candidate.revision) fail('DEV013_ORGMASTER_ACTIVATION_CANDIDATE_MISMATCH')
   const service = normalizeServiceReadback(serviceReadback, identityReadback, profile)
-  if (service.etag === candidate.providerEtag || service.latestCreatedRevision !== candidate.revision || service.latestReadyRevision !== candidate.revision || service.traffic.revision !== candidate.revision || service.traffic.percent !== 100 || service.image !== candidate.artifactDigest || service.canonicalOrigin !== candidate.canonicalOrigin || service.env.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'on' || service.env.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== candidate.brokerOrigin || service.env.ORGMASTER_PUBLIC_BASE_URL !== candidate.canonicalOrigin || service.env.DEV013_L3_SOURCE_REVISION !== candidate.sourceRevision || service.env.DEV013_L3_SOURCE_TREE !== candidate.sourceTree) fail('DEV013_ORGMASTER_ACTIVE_HARD_JOIN_INVALID')
+  if (service.etag === candidate.providerEtag || service.latestCreatedRevision !== candidate.revision || service.latestReadyRevision !== candidate.revision || service.traffic.revision !== candidate.revision || service.traffic.percent !== 100 || service.image !== candidate.artifactDigest || canonicalize(service.secretReferences) !== canonicalize(candidate.secretReferences) || service.canonicalOrigin !== candidate.canonicalOrigin || service.env.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'on' || service.env.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== candidate.brokerOrigin || service.env.ORGMASTER_PUBLIC_BASE_URL !== candidate.canonicalOrigin || service.env.DEV013_L3_SOURCE_REVISION !== candidate.sourceRevision || service.env.DEV013_L3_SOURCE_TREE !== candidate.sourceTree) fail('DEV013_ORGMASTER_ACTIVE_HARD_JOIN_INVALID')
   const core = {
-    schemaVersion: 'jenfu.dev013.l3-owner-receipt.v1',
+    schemaVersion: 'jenfu.dev013.l3-owner-receipt.v2',
     ownerApplicationId: 'orgmaster',
     sourceRevision: candidate.sourceRevision,
     sourceTree: candidate.sourceTree,
@@ -428,7 +450,7 @@ export function buildOwnerReceipt({ activationPlan, candidateReceipt, serviceRea
     target: { projectId: profile.target.projectId, region: profile.target.region, serviceName: profile.target.serviceName, canonicalOrigin: service.canonicalOrigin, labels: profile.target.requiredLabels, runtimeServiceAccount: service.identity, entryPolicy: profile.target.entryPolicy, deletionProtection: true, minInstances: 0 },
     runtime: { ssoHandoffMode: 'on', platformBrokerOrigin: candidate.brokerOrigin, authStateVersion: 'v2', originalAuthTimeGuard: true, protectedRequestEpochGuard: true },
     hardJoin: { providerReadback: true, providerEtag: service.etag, activeRevision: candidate.revision, trafficPercent: 100, handoffMode: 'on', brokerOrigin: candidate.brokerOrigin, callback: candidate.callback },
-    boundaries: { stateBucket: profile.state.bucket, statePrefix: profile.state.prefix, artifactRepository: profile.artifact.repository, secretId: profile.secret.id, evidenceBucket: profile.evidence.bucket, evidencePrefix: profile.evidence.prefix, secretValueRead: false },
+    boundaries: { stateBucket: profile.state.bucket, statePrefix: profile.state.prefix, artifactRepository: profile.artifact.repository, secretReferences: candidate.secretReferences, evidenceBucket: profile.evidence.bucket, evidencePrefix: profile.evidence.prefix, secretValueRead: false },
     rollback: { status: 'READY', securityFloorReceiptSha256: floor.receiptSha256, siblingMutations: 0 },
     capacity: { databasePoolMax: profile.runtime.databasePoolMax, maxInstancesPerRevision: profile.runtime.maxInstances },
     status: 'OWNER_READY_FOR_L3_BROWSER',

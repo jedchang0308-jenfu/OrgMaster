@@ -22,7 +22,12 @@ function freeze(stage) {
     clean: true,
     foundationReceipt: foundation,
     runtimeImage: stage === 'OWNER_RUNTIME_B' ? image : null,
-    runtimeConfigSecretVersion: stage === 'OWNER_RUNTIME_B' ? '7' : null,
+    runtimeSecretVersions: stage === 'OWNER_RUNTIME_B' ? {
+      ORGMASTER_SESSION_HASH_PEPPER: {
+        secretId: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER,
+        version: '7',
+      },
+    } : null,
     firebasePublicConfigSha256: stage === 'OWNER_RUNTIME_B' ? firebasePublicConfigSha256(firebase, profile) : null,
     createdAt: '2026-09-17T00:00:00.000Z',
   }, profile)
@@ -39,7 +44,7 @@ function variables(receipt) {
     foundation_manifest_sha256: receipt.foundationReceipt.sha256,
     runtime_enabled: receipt.stage === 'OWNER_RUNTIME_B',
     orgmaster_image: receipt.runtimeImage,
-    runtime_config_secret_version: receipt.runtimeConfigSecretVersion,
+    runtime_config_secret_version: receipt.runtimeSecretVersions?.ORGMASTER_SESSION_HASH_PEPPER?.version ?? null,
     firebase_public_config_sha256: receipt.firebasePublicConfigSha256,
     firebase_public_api_key: receipt.stage === 'OWNER_RUNTIME_B' ? firebase.apiKey : null,
     firebase_public_app_id: receipt.stage === 'OWNER_RUNTIME_B' ? firebase.appId : null,
@@ -61,7 +66,7 @@ function runtimeAfter(receipt) {
     project: profile.target.projectId, location: profile.target.region, name: profile.target.serviceName, deletion_protection: true,
     ingress: profile.target.entryPolicy.ingress, default_uri_disabled: false, invoker_iam_disabled: true,
     template: [{ service_account: profile.target.runtimeServiceAccount, max_instance_request_concurrency: 20, scaling: [{ min_instance_count: 0, max_instance_count: 1 }], containers: [
-      { name: 'orgmaster', image: receipt.runtimeImage, env: [...Object.entries(plain).map(([name, value]) => ({ name, value })), { name: 'ORGMASTER_SESSION_HASH_PEPPER', value_source: [{ secret_key_ref: { secret: profile.secret.id, version: receipt.runtimeConfigSecretVersion } }] }], startup_probe: [{ http_get: [{ path: profile.runtime.startupProbePath }] }], liveness_probe: [{ http_get: [{ path: profile.runtime.livenessProbePath }] }] },
+      { name: 'orgmaster', image: receipt.runtimeImage, env: [...Object.entries(plain).map(([name, value]) => ({ name, value })), { name: 'ORGMASTER_SESSION_HASH_PEPPER', value_source: [{ secret_key_ref: { secret: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER, version: receipt.runtimeSecretVersions.ORGMASTER_SESSION_HASH_PEPPER.version } }] }], startup_probe: [{ http_get: [{ path: profile.runtime.startupProbePath }] }], liveness_probe: [{ http_get: [{ path: profile.runtime.livenessProbePath }] }] },
       { name: 'cloud-sql-proxy', image: profile.runtime.cloudSqlProxyImage, args: ['--private-ip', '--auto-iam-authn', '--max-connections=2', profile.target.connectionName] },
     ] }],
   }
@@ -118,12 +123,13 @@ test('provider hard join produces the Platform-compatible target bootstrap recei
   const origin = 'https://orgmaster-stg-123456789.asia-east1.run.app'
   const broker = 'https://jenfu-platform-stg-123456789.asia-east1.run.app'
   const output = { orgmaster_staging_manifest: { value: { project_id: profile.target.projectId, region: profile.target.region, service_name: profile.target.serviceName, provider_uri: origin, expected_orgmaster_origin: origin, expected_platform_origin: broker, runtime_service_account: profile.target.runtimeServiceAccount, runtime_service_subject: '100000000000000000001', application_image: image } } }
-  const service = { uri: origin, projectId: profile.target.projectId, region: profile.target.region, serviceName: profile.target.serviceName, runtimeServiceAccount: profile.target.runtimeServiceAccount, image, deletionProtection: true, minInstances: 0, maxInstances: 1, entryPolicy: profile.target.entryPolicy, labels: profile.target.requiredLabels, etag: 'etag-orgmaster-off', latestCreatedRevision: 'orgmaster-stg-dev013-off', latestReadyRevision: 'orgmaster-stg-dev013-off', traffic: [{ revision: 'orgmaster-stg-dev013-off', percent: 100, tag: null }], containers: [{ name: 'orgmaster', env: [{ name: 'ORGMASTER_PUBLIC_BASE_URL', value: origin }, { name: 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN', value: broker }, { name: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', value: 'off' }, { name: 'DEV013_L3_SOURCE_REVISION', value: sourceRevision }, { name: 'DEV013_L3_SOURCE_TREE', value: sourceTree }] }] }
+  const service = { uri: origin, projectId: profile.target.projectId, region: profile.target.region, serviceName: profile.target.serviceName, runtimeServiceAccount: profile.target.runtimeServiceAccount, image, deletionProtection: true, minInstances: 0, maxInstances: 1, entryPolicy: profile.target.entryPolicy, labels: profile.target.requiredLabels, etag: 'etag-orgmaster-off', latestCreatedRevision: 'orgmaster-stg-dev013-off', latestReadyRevision: 'orgmaster-stg-dev013-off', traffic: [{ revision: 'orgmaster-stg-dev013-off', percent: 100, tag: null }], containers: [{ name: 'orgmaster', env: [{ name: 'ORGMASTER_PUBLIC_BASE_URL', value: origin }, { name: 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN', value: broker }, { name: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', value: 'off' }, { name: 'DEV013_L3_SOURCE_REVISION', value: sourceRevision }, { name: 'DEV013_L3_SOURCE_TREE', value: sourceTree }, { name: 'ORGMASTER_SESSION_HASH_PEPPER', valueSource: { secretKeyRef: { secret: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER, version: '7' } } }] }] }
   const bootstrap = buildTargetBootstrapReceipt({ freeze: receipt, terraformOutput: output, serviceReadback: service, identityReadback: { email: profile.target.runtimeServiceAccount, uniqueId: '100000000000000000001', disabled: false }, observedAt: '2026-09-17T01:00:00.000Z' }, profile)
   assert.equal(bootstrap.status, 'TARGET_BOOTSTRAP_READY')
   assert.equal(bootstrap.runtime.ssoHandoffMode, 'off')
   assert.equal(bootstrap.target.canonicalOrigin, origin)
   assert.equal(bootstrap.boundaries.secretValueRead, false)
+  assert.deepEqual(bootstrap.boundaries.secretReferences, receipt.runtimeSecretVersions)
   assert.equal(bootstrap.receiptSha256, sha256(canonicalize(Object.fromEntries(Object.entries(bootstrap).filter(([key]) => key !== 'receiptSha256')))))
   const platformValidator = await import(pathToFileURL(path.resolve(root, '..', 'Jenfu-Platform', 'scripts', 'lib', 'dev013-l3-contract.mjs')))
   const platformManifest = JSON.parse(fs.readFileSync(path.resolve(root, '..', 'Jenfu-Platform', 'config', 'dev-013', 'l3-managed-staging.json'), 'utf8'))

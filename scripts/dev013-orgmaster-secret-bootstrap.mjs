@@ -1,0 +1,62 @@
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { loadProfile } from './lib/dev013-orgmaster-staging-release.mjs'
+import { runSecretVersionBootstrap } from './lib/dev013-orgmaster-secret-bootstrap.mjs'
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+function parse(argv) {
+  const result = { execute: false }
+  for (let index = 0; index < argv.length; index += 1) {
+    const key = argv[index]
+    if (key === '--execute') { result.execute = true; continue }
+    if (!key.startsWith('--') || !argv[index + 1]) throw new Error(`Invalid argument: ${key}`)
+    result[key.slice(2)] = argv[index + 1]
+    index += 1
+  }
+  return result
+}
+
+function invoke(command, args, input) {
+  return spawnSync(command, args, {
+    cwd: root,
+    encoding: 'utf8',
+    input,
+    windowsHide: true,
+    maxBuffer: 1024 * 1024,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+}
+
+export function runCli(argv = process.argv.slice(2)) {
+  const input = parse(argv)
+  if (input.execute && !input.output) throw new Error('DEV013_ORGMASTER_SECRET_BOOTSTRAP_OUTPUT_REQUIRED')
+  const output = input.execute ? path.resolve(root, input.output) : null
+  if (output && fs.existsSync(output)) throw new Error('DEV013_ORGMASTER_SECRET_BOOTSTRAP_OUTPUT_EXISTS')
+  const result = runSecretVersionBootstrap({
+    execute: input.execute,
+    requestedProjectId: input.project,
+    requestedSecretId: input.secret,
+    invoke,
+  }, loadProfile())
+  if (result.executed) {
+    fs.mkdirSync(path.dirname(output), { recursive: true })
+    fs.writeFileSync(output, `${JSON.stringify(result.receipt, null, 2)}\n`, { flag: 'wx' })
+    return { ...result, output: path.relative(root, output).replaceAll('\\', '/') }
+  }
+  return result
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const result = runCli()
+    process.stdout.write(`${JSON.stringify(result.executed
+      ? { status: result.receipt.status, executed: true, output: result.output, receiptSha256: result.receipt.receiptSha256, releaseAuthority: false }
+      : { status: result.plan.status, executed: false, target: result.plan.target, existingVersionCount: result.preflight.existingVersionCount, planSha256: result.plan.planSha256, releaseAuthority: false })}\n`)
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    process.exitCode = 1
+  }
+}
