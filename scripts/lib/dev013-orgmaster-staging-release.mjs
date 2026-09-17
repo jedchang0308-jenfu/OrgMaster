@@ -64,6 +64,13 @@ function exactRunAppOrigin(value, serviceName, region = 'asia-east1', numericPro
   return parsed.origin
 }
 
+function providerRunAppOrigin(value, serviceName) {
+  let parsed
+  try { parsed = new URL(value) } catch { fail('DEV013_ORGMASTER_PROVIDER_RUN_APP_ORIGIN_INVALID', `${serviceName}:parse`) }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash || !parsed.hostname.startsWith(`${serviceName}-`) || !parsed.hostname.endsWith('.run.app')) fail('DEV013_ORGMASTER_PROVIDER_RUN_APP_ORIGIN_INVALID', `${serviceName}:${value}`)
+  return parsed.origin
+}
+
 export function assertProfile(profile) {
   object(profile, 'DEV013_ORGMASTER_PROFILE_INVALID', 'root')
   if (profile.schemaVersion !== 'jenfu.dev013.orgmaster-staging-release.v2' || profile.devId !== 'DEV-013' || profile.slice !== '013-S4-L3-ORGMASTER-ENV' || profile.status !== 'READY_FOR_NONPROD_APPLY' || profile.releaseAuthority !== false) fail('DEV013_ORGMASTER_PROFILE_IDENTITY_INVALID')
@@ -335,6 +342,8 @@ function normalizedTraffic(serviceReadback) {
 
 function normalizeServiceReadback(serviceReadback, identityReadback, profile) {
   const canonicalOrigin = exactRunAppOrigin(serviceReadback?.uri, profile.target.serviceName, profile.target.region, true)
+  const providerOrigin = providerRunAppOrigin(serviceReadback?.providerUri ?? canonicalOrigin, profile.target.serviceName)
+  const providerUrls = (serviceReadback?.urls ?? [canonicalOrigin]).map((value) => providerRunAppOrigin(value, profile.target.serviceName))
   const identity = {
     email: identityReadback?.email,
     uniqueId: String(identityReadback?.uniqueId ?? ''),
@@ -350,8 +359,8 @@ function normalizeServiceReadback(serviceReadback, identityReadback, profile) {
   const latestCreatedRevision = serviceReadback?.latestCreatedRevision ?? null
   const latestReadyRevision = serviceReadback?.latestReadyRevision ?? null
   const etag = serviceReadback?.etag ?? null
-  if (serviceReadback?.projectId !== profile.target.projectId || serviceReadback?.region !== profile.target.region || serviceReadback?.serviceName !== profile.target.serviceName || serviceReadback?.runtimeServiceAccount !== profile.target.runtimeServiceAccount || serviceReadback?.deletionProtection !== true || serviceReadback?.minInstances !== 0 || serviceReadback?.maxInstances !== 1 || canonicalize(serviceReadback?.entryPolicy) !== canonicalize(profile.target.entryPolicy) || canonicalize(serviceReadback?.labels) !== canonicalize(profile.target.requiredLabels) || identity.email !== profile.target.runtimeServiceAccount || identityReadback?.disabled === true || !UNIQUE_ID.test(identity.uniqueId) || typeof etag !== 'string' || etag.trim().length < 4 || !latestCreatedRevision || latestReadyRevision !== latestCreatedRevision) fail('DEV013_ORGMASTER_SERVICE_READBACK_INVALID')
-  return { canonicalOrigin, identity, env, secretReferences: observedSecretReferences, traffic, latestCreatedRevision, latestReadyRevision, etag, image: serviceReadback?.image }
+  if (serviceReadback?.projectId !== profile.target.projectId || serviceReadback?.region !== profile.target.region || serviceReadback?.serviceName !== profile.target.serviceName || serviceReadback?.runtimeServiceAccount !== profile.target.runtimeServiceAccount || serviceReadback?.deletionProtection !== true || serviceReadback?.minInstances !== 0 || serviceReadback?.maxInstances !== 1 || canonicalize(serviceReadback?.entryPolicy) !== canonicalize(profile.target.entryPolicy) || canonicalize(serviceReadback?.labels) !== canonicalize(profile.target.requiredLabels) || !providerUrls.includes(canonicalOrigin) || !providerUrls.includes(providerOrigin) || identity.email !== profile.target.runtimeServiceAccount || identityReadback?.disabled === true || !UNIQUE_ID.test(identity.uniqueId) || typeof etag !== 'string' || etag.trim().length < 4 || !latestCreatedRevision || latestReadyRevision !== latestCreatedRevision) fail('DEV013_ORGMASTER_SERVICE_READBACK_INVALID')
+  return { canonicalOrigin, providerOrigin, identity, env, secretReferences: observedSecretReferences, traffic, latestCreatedRevision, latestReadyRevision, etag, image: serviceReadback?.image }
 }
 
 function buildRollbackFloor({ freeze, service }) {
@@ -382,7 +391,7 @@ export function buildTargetBootstrapReceipt({ freeze, terraformOutput, serviceRe
   const service = normalizeServiceReadback(serviceReadback, identityReadback, profile)
   const canonicalOrigin = service.canonicalOrigin
   const platformOrigin = exactRunAppOrigin(output?.expected_platform_origin, 'jenfu-platform-stg', profile.target.region, true)
-  if (output?.provider_uri !== canonicalOrigin || output?.expected_orgmaster_origin !== canonicalOrigin || output?.project_id !== profile.target.projectId || output?.region !== profile.target.region || output?.service_name !== profile.target.serviceName || output?.application_image !== freeze.runtimeImage || output?.runtime_service_account !== profile.target.runtimeServiceAccount || String(output?.runtime_service_subject) !== String(identityReadback?.uniqueId) || identityReadback?.email !== profile.target.runtimeServiceAccount || identityReadback?.disabled === true || !UNIQUE_ID.test(String(identityReadback?.uniqueId ?? ''))) fail('DEV013_ORGMASTER_PROVIDER_HARD_JOIN_INVALID')
+  if (output?.provider_uri !== service.providerOrigin || output?.expected_orgmaster_origin !== canonicalOrigin || output?.project_id !== profile.target.projectId || output?.region !== profile.target.region || output?.service_name !== profile.target.serviceName || output?.application_image !== freeze.runtimeImage || output?.runtime_service_account !== profile.target.runtimeServiceAccount || String(output?.runtime_service_subject) !== String(identityReadback?.uniqueId) || identityReadback?.email !== profile.target.runtimeServiceAccount || identityReadback?.disabled === true || !UNIQUE_ID.test(String(identityReadback?.uniqueId ?? ''))) fail('DEV013_ORGMASTER_PROVIDER_HARD_JOIN_INVALID')
   const env = service.env
   if (service.image !== freeze.runtimeImage || canonicalize(service.secretReferences) !== canonicalize(freeze.runtimeSecretVersions) || env.ORGMASTER_PUBLIC_BASE_URL !== canonicalOrigin || env.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== platformOrigin || env.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'off' || env.DEV013_L3_SOURCE_REVISION !== freeze.sourceRevision || env.DEV013_L3_SOURCE_TREE !== freeze.sourceTree) fail('DEV013_ORGMASTER_TARGET_BOOTSTRAP_RUNTIME_INVALID')
   const rollbackFloor = buildRollbackFloor({ freeze, service })
