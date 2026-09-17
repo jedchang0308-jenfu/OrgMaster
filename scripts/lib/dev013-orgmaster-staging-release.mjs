@@ -321,7 +321,7 @@ export function assertTerraformPlan(plan, freeze, profile = loadProfile()) {
   const publicProjectNumber = new URL(publicOrigin).hostname.split('.')[0].slice('orgmaster-stg-'.length)
   const brokerProjectNumber = new URL(brokerOrigin).hostname.split('.')[0].slice('jenfu-platform-stg-'.length)
   const secret = (app?.env ?? []).find((entry) => entry.name === 'ORGMASTER_SESSION_HASH_PEPPER')
-  const secretRef = first(secret?.value_source)?.secret_key_ref
+  const secretRef = first(first(secret?.value_source)?.secret_key_ref)
   const proxyArgs = new Set(proxy?.args ?? [])
   if (publicProjectNumber !== brokerProjectNumber || service?.project !== profile.target.projectId || service?.location !== profile.target.region || service?.name !== profile.target.serviceName || service?.deletion_protection !== true || service?.ingress !== profile.target.entryPolicy.ingress || service?.default_uri_disabled !== false || service?.invoker_iam_disabled !== true || template?.service_account !== profile.target.runtimeServiceAccount || first(template?.scaling)?.min_instance_count !== 0 || first(template?.scaling)?.max_instance_count !== 1 || template?.max_instance_request_concurrency !== 20 || app?.image !== freeze.runtimeImage || env.ORGMASTER_JENFU_SSO_HANDOFF_MODE !== 'off' || env.ORGMASTER_PERSISTENCE_MODE !== 'cloud-sql' || env.ORGMASTER_POSTGRES_POOL_MAX !== '2' || env.DEV013_L3_SOURCE_REVISION !== freeze.sourceRevision || env.DEV013_L3_SOURCE_TREE !== freeze.sourceTree || env.DEV013_L3_PLATFORM_MANIFEST_SHA256 !== freeze.platformManifestSha256 || env.DEV013_L3_CANONICAL_CONTRACT_SHA256 !== freeze.canonicalContractSha256 || env.DEV013_L3_FOUNDATION_MANIFEST_SHA256 !== freeze.foundationReceipt.sha256 || env.DEV013_L3_FIREBASE_PUBLIC_CONFIG_SHA256 !== freeze.firebasePublicConfigSha256 || probePath(app, 'startup_probe') !== profile.runtime.startupProbePath || probePath(app, 'liveness_probe') !== profile.runtime.livenessProbePath || secretRef?.secret !== profile.secret.references[SESSION_SECRET_ENV] || String(secretRef?.version ?? '') !== freeze.runtimeSecretVersions[SESSION_SECRET_ENV].version || proxy?.image !== profile.runtime.cloudSqlProxyImage || !proxyArgs.has('--private-ip') || !proxyArgs.has('--auto-iam-authn') || !proxyArgs.has('--max-connections=2') || !proxyArgs.has(profile.target.connectionName)) fail('DEV013_ORGMASTER_PLAN_RUNTIME_INVALID')
   return { status: 'PASS', stage: freeze.stage, sourceRevision: freeze.sourceRevision, sourceTree: freeze.sourceTree, runtimeImage: freeze.runtimeImage, orgmasterOrigin: publicOrigin, platformBrokerOrigin: brokerOrigin, addressCount: actualAddresses.length, releaseAuthority: false }
@@ -342,7 +342,7 @@ function normalizeServiceReadback(serviceReadback, identityReadback, profile) {
   const containerEnv = serviceReadback?.containers?.find((row) => row.name === profile.runtime.containerName)?.env ?? []
   const env = Object.fromEntries(containerEnv.filter((row) => Object.hasOwn(row, 'value')).map((row) => [row.name, String(row.value)]))
   const secretEntry = containerEnv.find((row) => row.name === SESSION_SECRET_ENV)
-  const providerSecretRef = secretEntry?.valueSource?.secretKeyRef ?? first(secretEntry?.value_source)?.secret_key_ref
+  const providerSecretRef = first(secretEntry?.valueSource?.secretKeyRef ?? first(secretEntry?.value_source)?.secret_key_ref)
   const observedSecretReferences = providerSecretRef
     ? { [SESSION_SECRET_ENV]: { secretId: providerSecretRef.secret ?? providerSecretRef.secretId, version: String(providerSecretRef.version ?? '') } }
     : null

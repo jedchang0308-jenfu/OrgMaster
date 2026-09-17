@@ -82,7 +82,7 @@ function runtimeAfter(receipt) {
     project: profile.target.projectId, location: profile.target.region, name: profile.target.serviceName, deletion_protection: true,
     ingress: profile.target.entryPolicy.ingress, default_uri_disabled: false, invoker_iam_disabled: true,
     template: [{ service_account: profile.target.runtimeServiceAccount, max_instance_request_concurrency: 20, scaling: [{ min_instance_count: 0, max_instance_count: 1 }], containers: [
-      { name: 'orgmaster', image: receipt.runtimeImage, env: [...Object.entries(plain).map(([name, value]) => ({ name, value })), { name: 'ORGMASTER_SESSION_HASH_PEPPER', value_source: [{ secret_key_ref: { secret: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER, version: receipt.runtimeSecretVersions.ORGMASTER_SESSION_HASH_PEPPER.version } }] }], startup_probe: [{ http_get: [{ path: profile.runtime.startupProbePath }] }], liveness_probe: [{ http_get: [{ path: profile.runtime.livenessProbePath }] }] },
+      { name: 'orgmaster', image: receipt.runtimeImage, env: [...Object.entries(plain).map(([name, value]) => ({ name, value })), { name: 'ORGMASTER_SESSION_HASH_PEPPER', value_source: [{ secret_key_ref: [{ secret: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER, version: receipt.runtimeSecretVersions.ORGMASTER_SESSION_HASH_PEPPER.version }] }] }], startup_probe: [{ http_get: [{ path: profile.runtime.startupProbePath }] }], liveness_probe: [{ http_get: [{ path: profile.runtime.livenessProbePath }] }] },
       { name: 'cloud-sql-proxy', image: profile.runtime.cloudSqlProxyImage, args: ['--private-ip', '--auto-iam-authn', '--max-connections=2', profile.target.connectionName] },
     ] }],
   }
