@@ -39,7 +39,7 @@ Local tracking ID: `DEV-048`（the repository-native `DEV-013` is an older UI ta
 
 Status: `READY_FOR_NONPROD_APPLY / releaseAuthority=false / exact provider preflight confirms service missing`. Platform current source-bound read-only preflight confirms the runtime identity exists and is enabled, while exact `jenfu-platform-nonprod / asia-east1 / orgmaster-stg` is absent. No Terraform apply, Cloud Run deploy, migration, candidate creation, activation, rollback, or traffic mutation has been run by this slice. This status does not mean L3, production, or DEV-013 is complete.
 
-The applyable profile is `config/dev-013/l3-orgmaster-staging.json`; the Terraform root is `infra/google-cloud/dev-013-l3-orgmaster`. Both lock the Platform machine-readable manifest `jenfu.dev013.l3-managed-staging.v2` SHA-256 `eefcfbd8b5297a37f813401c3bbaf128ad0486ed59e5b53c11730125d6a5292d` and canonical contract aggregate SHA-256 `e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483`. Any drift is a hard stop.
+The applyable profile is `config/dev-013/l3-orgmaster-staging.json`; the Terraform root is `infra/google-cloud/dev-013-l3-orgmaster`. Both lock the Platform machine-readable manifest `jenfu.dev013.l3-managed-staging.v2` SHA-256 `bc51a29b28a34a6316f41e3a2cfb0bc399c07befc8fc61334014f24627bae30d` and canonical contract aggregate SHA-256 `e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483`. Any drift is a hard stop.
 
 The package uses one app-owned state prefix, `dev-013/orgmaster-staging`, and two exact same-state stages:
 

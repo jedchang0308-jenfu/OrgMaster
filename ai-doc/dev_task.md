@@ -594,7 +594,7 @@
 
 ### 驗收與下一步
 
-- Canonical contract aggregate及兩個成員檔SHA-256已與OrgMaster lock及Platform manifest逐值相符；Platform L3 manifest schema=`jenfu.dev013.l3-managed-staging.v2`、SHA-256=`eefcfbd8b5297a37f813401c3bbaf128ad0486ed59e5b53c11730125d6a5292d`。
+- Canonical contract aggregate及兩個成員檔SHA-256已與OrgMaster lock及Platform manifest逐值相符；Platform L3 manifest schema=`jenfu.dev013.l3-managed-staging.v2`、SHA-256=`bc51a29b28a34a6316f41e3a2cfb0bc399c07befc8fc61334014f24627bae30d`。
 - `OWNER_INFRA_A`與`OWNER_RUNTIME_B`各自使用完整、無多無少的address set；plan只接受`create`／`read`／`no-op`，任何update／delete／replace、非OrgMaster target或source／tree／image／foundation關鍵值漂移均fail closed。
 - Runtime預設`ORGMASTER_JENFU_SSO_HANDOFF_MODE=off`；broker與public base origins只能由provider readback衍生。Runtime不具owner／DDL／migrator權限，且package不含migration runner。
 - Owner release controller預設只產生candidate／activate／rollback計畫；future external mutation需要獨立授權及`--execute`，且仍只能處理`orgmaster-stg`自己的revision、env與traffic。

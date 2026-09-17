@@ -7,7 +7,7 @@
   "platformManifest": {
     "sourceRepository": "Jenfu-Platform",
     "sourcePath": "config/dev-013/l3-managed-staging.json",
-    "sha256": "eefcfbd8b5297a37f813401c3bbaf128ad0486ed59e5b53c11730125d6a5292d",
+    "sha256": "bc51a29b28a34a6316f41e3a2cfb0bc399c07befc8fc61334014f24627bae30d",
     "schemaVersion": "jenfu.dev013.l3-managed-staging.v2",
     "contractStatus": "CONTRACT_FROZEN_READY_FOR_OWNER_WORK"
   },
