@@ -94,7 +94,12 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(accepted.headers.get('location')).toBe(`${publicOrigin}/`)
     expect(accepted.headers.get('set-cookie')).toContain('orgmaster_session=')
     expect(value.epochs!.readState).toHaveBeenCalledWith('https://securetoken.google.com/jenfu-platform-nonprod', 'uid-1')
-    expect(value.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({ authEpoch: 7, authenticatedAt: '2026-09-17T02:55:00.000Z' }))
+    expect(value.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({
+      authEpoch: 7,
+      authenticatedAt: '2026-09-17T02:55:00.000Z',
+      expiresAt: '2026-09-17T04:00:00.000Z',
+    }))
+    expect(accepted.headers.get('set-cookie')).toContain('Max-Age=3600')
   })
 
   it('rejects callback when original authentication time is at or before revokedBefore', async () => {

@@ -170,7 +170,7 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
       if (existing && !existing.revokedAt && existing.identitySubject !== handoff.identity.identitySubject) { error(response, 409, 'sso_account_conflict', id, [clearCookie(setup.config.secureCookie)]); return true }
     }
     const nowMs = now()
-    const maxExpiry = Math.min(nowMs + ORGMASTER_SESSION_MAX_AGE_SECONDS * 1000, Date.parse(handoff.sourceSessionExpiresAt), Date.parse(handoff.expiresAt))
+    const maxExpiry = Math.min(nowMs + ORGMASTER_SESSION_MAX_AGE_SECONDS * 1000, Date.parse(handoff.sourceSessionExpiresAt))
     if (!Number.isFinite(maxExpiry) || maxExpiry <= nowMs) throw new Error('handoff expired')
     const localToken = createOpaqueSessionToken()
     await setup.sessions.create({ sessionIdHash: hashSessionToken(setup.config.sessionHashPepper, localToken), identityIssuer: handoff.identity.identityIssuer, identitySubject: handoff.identity.identitySubject, principalId: handoff.identity.principalId, employeeId: handoff.identity.employeeId, authEpoch: handoff.authState.authEpoch, issuedAt: new Date(nowMs).toISOString(), authenticatedAt: handoff.authentication.authenticatedAt, expiresAt: new Date(maxExpiry).toISOString(), assuranceLevel: handoff.authentication.secondFactor === 'totp' ? 'aal2' : 'aal1' })
