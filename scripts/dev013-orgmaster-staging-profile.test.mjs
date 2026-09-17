@@ -118,6 +118,12 @@ test('OWNER_RUNTIME_B binds source, tree, digest, foundation, exact origins and 
   assert.equal(result.addressCount, 14)
   assert.equal(result.runtimeImage, image)
   assert.equal(result.orgmasterOrigin, 'https://orgmaster-stg-123456789.asia-east1.run.app')
+  const terraformNative = plan(receipt)
+  const dataChanges = terraformNative.resource_changes.filter((change) => change.address.startsWith('data.'))
+  terraformNative.resource_changes = terraformNative.resource_changes.filter((change) => !change.address.startsWith('data.'))
+  terraformNative.configuration = { root_module: { resources: dataChanges.map((change) => ({ address: change.address.replace(/\[[^\]]+\]$/u, ''), mode: 'data' })) } }
+  terraformNative.prior_state = { values: { root_module: { resources: dataChanges.map((change) => ({ address: change.address, mode: 'data', values: change.change.after })) } } }
+  assert.equal(assertTerraformPlan(terraformNative, receipt, profile).addressCount, 14)
   const update = plan(receipt)
   update.resource_changes[0].change.actions = ['update']
   assert.throws(() => assertTerraformPlan(update, receipt, profile), /PLAN_ACTION_DENIED/u)

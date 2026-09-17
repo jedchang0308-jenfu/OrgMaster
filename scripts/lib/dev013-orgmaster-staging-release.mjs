@@ -228,6 +228,31 @@ function first(value) {
   return Array.isArray(value) ? value[0] : value
 }
 
+function terraformResources(module, rows = []) {
+  if (!module || typeof module !== 'object') return rows
+  for (const resource of module.resources ?? []) rows.push(resource)
+  for (const child of module.child_modules ?? []) terraformResources(child, rows)
+  return rows
+}
+
+function unindexedAddress(address) {
+  return String(address).replace(/\[[^\]]+\]$/u, '')
+}
+
+function completePlanChanges(plan) {
+  const changes = Array.isArray(plan.resource_changes) ? [...plan.resource_changes] : []
+  const seen = new Set(changes.map((change) => change.address))
+  const configuredData = new Set(terraformResources(plan?.configuration?.root_module).filter((row) => row.mode === 'data').map((row) => row.address))
+  const stateData = terraformResources(plan?.prior_state?.values?.root_module).filter((row) => row.mode === 'data')
+  for (const resource of stateData) {
+    if (!seen.has(resource.address) && configuredData.has(unindexedAddress(resource.address))) {
+      changes.push({ address: resource.address, change: { actions: ['read'], after: resource.values } })
+      seen.add(resource.address)
+    }
+  }
+  return changes
+}
+
 function envMap(container) {
   return Object.fromEntries((container?.env ?? []).filter((entry) => Object.hasOwn(entry, 'value')).map((entry) => [entry.name, entry.value]))
 }
@@ -241,7 +266,7 @@ export function assertTerraformPlan(plan, freeze, profile = loadProfile()) {
   object(plan, 'DEV013_ORGMASTER_PLAN_INVALID', 'plan')
   const gate = profile.terraform.stages[freeze.stage]
   const expectedAddresses = [...gate.dataAddresses, ...gate.resourceAddresses].sort()
-  const changes = Array.isArray(plan.resource_changes) ? plan.resource_changes : []
+  const changes = completePlanChanges(plan)
   const actualAddresses = changes.map((change) => change.address).sort()
   if (canonicalize(actualAddresses) !== canonicalize(expectedAddresses)) fail('DEV013_ORGMASTER_PLAN_ADDRESS_SET_MISMATCH')
   const allowed = new Set(profile.terraform.allowedActions)
@@ -259,7 +284,11 @@ export function assertTerraformPlan(plan, freeze, profile = loadProfile()) {
     runtime_config_secret_version: freeze.runtimeSecretVersions?.[SESSION_SECRET_ENV]?.version ?? null,
     firebase_public_config_sha256: freeze.firebasePublicConfigSha256,
   }
-  for (const [name, expected] of Object.entries(expectedVariables)) if (planVariable(plan, name) !== expected) fail('DEV013_ORGMASTER_PLAN_VARIABLE_MISMATCH', name)
+  for (const [name, expected] of Object.entries(expectedVariables)) {
+    const observed = planVariable(plan, name)
+    const matches = name === 'runtime_enabled' ? String(observed) === String(expected) : observed === expected
+    if (!matches) fail('DEV013_ORGMASTER_PLAN_VARIABLE_MISMATCH', name)
+  }
   if (freeze.stage === 'OWNER_INFRA_A') return { status: 'PASS', stage: freeze.stage, sourceRevision: freeze.sourceRevision, addressCount: actualAddresses.length, releaseAuthority: false }
   const plannedFirebaseConfig = { apiKey: planVariable(plan, 'firebase_public_api_key'), appId: planVariable(plan, 'firebase_public_app_id'), projectId: profile.target.projectId }
   if (firebasePublicConfigSha256(plannedFirebaseConfig, profile) !== freeze.firebasePublicConfigSha256) fail('DEV013_ORGMASTER_PLAN_FIREBASE_PUBLIC_CONFIG_MISMATCH')
