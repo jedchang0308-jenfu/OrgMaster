@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { canonicalize, loadProfile, sha256 } from './lib/dev013-orgmaster-staging-release.mjs'
-import { assertSecretVersionBootstrapReceipt, createSecretVersionBootstrapPlan, runSecretVersionBootstrap } from './lib/dev013-orgmaster-secret-bootstrap.mjs'
+import { assertSecretVersionBootstrapReceipt, constants, createSecretVersionBootstrapPlan, runSecretVersionBootstrap } from './lib/dev013-orgmaster-secret-bootstrap.mjs'
+import { resolveCleanSource } from './dev013-orgmaster-secret-bootstrap.mjs'
 
 const profile = loadProfile()
 const exactName = `projects/123456789/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/1`
+const source = { sourceRevision: 'a'.repeat(40), sourceTree: 'b'.repeat(40), clean: true }
 
 test('secret bootstrap defaults to read-only preflight and exact target', () => {
   let entropyCalls = 0
@@ -29,6 +31,8 @@ test('secret bootstrap refuses any existing version before entropy generation', 
   let entropyCalls = 0
   assert.throws(() => runSecretVersionBootstrap({
     execute: true,
+    authorization: constants.EXECUTE_CAPABILITY,
+    source,
     invoke: () => ({ status: 0, stdout: JSON.stringify([{ name: exactName, state: 'DESTROYED' }]), stderr: '' }),
     entropySource() { entropyCalls += 1; return Buffer.alloc(64, 2) },
   }, profile), /SECRET_ALREADY_VERSIONED: count=1/u)
@@ -41,6 +45,8 @@ test('execute streams base64url from 64 random bytes to stdin, zeroes buffers, a
   let call = 0
   const result = runSecretVersionBootstrap({
     execute: true,
+    authorization: constants.EXECUTE_CAPABILITY,
+    source,
     requestedProjectId: profile.target.projectId,
     requestedSecretId: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER,
     observedAt: '2026-09-17T05:00:00.000Z',
@@ -65,7 +71,12 @@ test('execute streams base64url from 64 random bytes to stdin, zeroes buffers, a
   assert.equal(streamed.length, 86)
   assert.match(streamed.toString('utf8'), /^[A-Za-z0-9_-]{86}$/u)
   assert.ok(entropy.every((byte) => byte === 0))
-  assert.deepEqual(result.receipt.secretReferences, { ORGMASTER_SESSION_HASH_PEPPER: { secretId: 'dev010-stg-orgmaster-runtime-config', version: '1', state: 'ENABLED' } })
+  assert.deepEqual(result.receipt.result, { numericVersion: '1', state: 'ENABLED' })
+  assert.deepEqual(result.receipt.target, { projectId: 'jenfu-platform-nonprod', secretId: 'dev010-stg-orgmaster-runtime-config', environmentName: 'ORGMASTER_SESSION_HASH_PEPPER' })
+  assert.equal(result.receipt.status, 'FIRST_VERSION_CREATED')
+  assert.equal(result.receipt.sourceRevision, source.sourceRevision)
+  assert.equal(result.receipt.sourceTree, source.sourceTree)
+  assert.equal(result.receipt.secretPayloadCaptured, false)
   assert.equal(result.receipt.receiptSha256, sha256(canonicalize(Object.fromEntries(Object.entries(result.receipt).filter(([key]) => key !== 'receiptSha256')))))
   assert.equal(JSON.stringify(result.receipt).includes('ZZZZ'), false)
   assert.equal(assertSecretVersionBootstrapReceipt(result.receipt, profile), result.receipt)
@@ -80,9 +91,22 @@ test('secret bootstrap rejects target drift, short entropy, and nonnumeric provi
     }
   }
   assert.throws(() => runSecretVersionBootstrap({ requestedProjectId: 'another-project', invoke: () => ({ status: 0, stdout: '[]', stderr: '' }) }, profile), /TARGET_INVALID: project/u)
-  assert.throws(() => runSecretVersionBootstrap({ execute: true, invoke: emptyThen({ name: exactName, state: 'ENABLED' }), entropySource: () => Buffer.alloc(63) }, profile), /ENTROPY_INVALID/u)
-  assert.throws(() => runSecretVersionBootstrap({ execute: true, invoke: emptyThen({ name: `projects/123/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/latest`, state: 'ENABLED' }), entropySource: () => Buffer.alloc(64) }, profile), /VERSION_ADD_INVALID: metadata/u)
-  assert.throws(() => runSecretVersionBootstrap({ execute: true, invoke: emptyThen({ name: `projects/123/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/2`, state: 'ENABLED' }), entropySource: () => Buffer.alloc(64) }, profile), /VERSION_ADD_INVALID: metadata/u)
+  const authorized = { execute: true, authorization: constants.EXECUTE_CAPABILITY, source }
+  assert.throws(() => runSecretVersionBootstrap({ ...authorized, invoke: emptyThen({ name: exactName, state: 'ENABLED' }), entropySource: () => Buffer.alloc(63) }, profile), /ENTROPY_INVALID/u)
+  assert.throws(() => runSecretVersionBootstrap({ ...authorized, invoke: emptyThen({ name: `projects/123/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/latest`, state: 'ENABLED' }), entropySource: () => Buffer.alloc(64) }, profile), /VERSION_ADD_INVALID: metadata/u)
+  assert.throws(() => runSecretVersionBootstrap({ ...authorized, invoke: emptyThen({ name: `projects/123/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/2`, state: 'ENABLED' }), entropySource: () => Buffer.alloc(64) }, profile), /VERSION_ADD_INVALID: metadata/u)
+})
+
+test('execute requires exact capability and clean committed source before provider access', () => {
+  let providerCalls = 0
+  const invoke = () => { providerCalls += 1; return { status: 0, stdout: '[]', stderr: '' } }
+  assert.throws(() => runSecretVersionBootstrap({ execute: true, source, invoke }, profile), /CAPABILITY_REQUIRED/u)
+  assert.throws(() => runSecretVersionBootstrap({ execute: true, authorization: 'DEV013-L3-ORGMASTER-FIRST-SECRET-VERSION-TYPO', source, invoke }, profile), /CAPABILITY_REQUIRED/u)
+  assert.throws(() => runSecretVersionBootstrap({ execute: true, authorization: constants.EXECUTE_CAPABILITY, source: { ...source, clean: false }, invoke }, profile), /SOURCE_INVALID/u)
+  assert.equal(providerCalls, 0)
+  assert.throws(() => resolveCleanSource((...args) => args[0] === 'status' ? ' M package.json' : ''), /SOURCE_NOT_CLEAN/u)
+  const resolved = resolveCleanSource((...args) => args[0] === 'status' ? '' : args[1] === 'HEAD' ? source.sourceRevision : source.sourceTree)
+  assert.deepEqual(resolved, source)
 })
 
 test('provider failure still zeroes raw entropy and stdin payload buffers', () => {
@@ -91,6 +115,8 @@ test('provider failure still zeroes raw entropy and stdin payload buffers', () =
   let call = 0
   assert.throws(() => runSecretVersionBootstrap({
     execute: true,
+    authorization: constants.EXECUTE_CAPABILITY,
+    source,
     entropySource: () => entropy,
     invoke(_command, _args, input) {
       call += 1

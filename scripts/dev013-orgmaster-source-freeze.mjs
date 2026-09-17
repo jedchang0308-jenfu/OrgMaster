@@ -6,12 +6,14 @@ import { createSourceFreezeReceipt, firebasePublicConfigSha256, loadProfile, ver
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-function args(argv) {
+export function parseSourceFreezeArgs(argv) {
   const result = {}
+  const allowed = new Set(['firebase-public-config', 'foundation-ref', 'output', 'platform-manifest', 'runtime-image', 'runtime-secret-receipt', 'stage'])
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index]
-    if (!key.startsWith('--') || !argv[index + 1]) throw new Error(`Invalid argument: ${key}`)
-    result[key.slice(2)] = argv[index + 1]
+    const name = key.startsWith('--') ? key.slice(2) : ''
+    if (!allowed.has(name) || !argv[index + 1]) throw new Error(`Invalid argument: ${key}`)
+    result[name] = argv[index + 1]
     index += 1
   }
   return result
@@ -26,7 +28,7 @@ function git(...values) {
 }
 
 export function runSourceFreeze(argv = process.argv.slice(2)) {
-  const input = args(argv)
+  const input = parseSourceFreezeArgs(argv)
   if (!input.stage || !input['platform-manifest'] || !input['foundation-ref'] || !input.output) throw new Error('Required: --stage --platform-manifest --foundation-ref --output')
   const profile = loadProfile()
   verifyPlatformManifest(fs.readFileSync(path.resolve(root, input['platform-manifest'])), profile)
@@ -37,7 +39,7 @@ export function runSourceFreeze(argv = process.argv.slice(2)) {
   const sourceTree = git('rev-parse', 'HEAD^{tree}')
   const stage = input.stage
   const runtime = stage === 'OWNER_RUNTIME_B'
-  if (runtime && (!input['runtime-image'] || !input['runtime-secret-version'] || !input['firebase-public-config'])) throw new Error('OWNER_RUNTIME_B requires --runtime-image --runtime-secret-version --firebase-public-config')
+  if (runtime && (!input['runtime-image'] || !input['runtime-secret-receipt'] || !input['firebase-public-config'])) throw new Error('OWNER_RUNTIME_B requires --runtime-image --runtime-secret-receipt --firebase-public-config')
   const receipt = createSourceFreezeReceipt({
     stage,
     sourceRevision,
@@ -46,12 +48,7 @@ export function runSourceFreeze(argv = process.argv.slice(2)) {
     clean: true,
     foundationReceipt: readJson(input['foundation-ref']),
     runtimeImage: runtime ? input['runtime-image'] : null,
-    runtimeSecretVersions: runtime ? {
-      ORGMASTER_SESSION_HASH_PEPPER: {
-        secretId: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER,
-        version: input['runtime-secret-version'],
-      },
-    } : null,
+    runtimeSecretVersionReceipt: runtime ? readJson(input['runtime-secret-receipt']) : null,
     firebasePublicConfigSha256: runtime ? firebasePublicConfigSha256(readJson(input['firebase-public-config']), profile) : null,
   }, profile)
   const output = path.resolve(root, input.output)

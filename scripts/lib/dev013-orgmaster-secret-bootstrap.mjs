@@ -1,10 +1,12 @@
 import crypto from 'node:crypto'
-import { canonicalize, loadProfile, sha256 } from './dev013-orgmaster-staging-release.mjs'
+import { assertFirstSecretVersionReceipt, canonicalize, loadProfile, sha256 } from './dev013-orgmaster-staging-release.mjs'
 
 const ENVIRONMENT_NAME = 'ORGMASTER_SESSION_HASH_PEPPER'
 const PLAN_SCHEMA = 'jenfu.dev013.orgmaster-secret-version-bootstrap-plan.v1'
-const RECEIPT_SCHEMA = 'jenfu.dev013.orgmaster-secret-version-bootstrap-receipt.v1'
+const RECEIPT_SCHEMA = 'jenfu.dev013.secret-version-bootstrap-receipt.v1'
 const VERSION_NAME = /^projects\/[^/]+\/secrets\/([^/]+)\/versions\/([1-9][0-9]*)$/u
+const EXECUTE_CAPABILITY = 'DEV013-L3-ORGMASTER-FIRST-SECRET-VERSION'
+const H40 = /^[0-9a-f]{40}$/u
 
 export class Dev013OrgmasterSecretBootstrapError extends Error {
   constructor(code, detail = '') {
@@ -15,12 +17,6 @@ export class Dev013OrgmasterSecretBootstrapError extends Error {
 
 function fail(code, detail = '') {
   throw new Dev013OrgmasterSecretBootstrapError(code, detail)
-}
-
-function receiptHash(value) {
-  const core = { ...value }
-  delete core.receiptSha256
-  return sha256(canonicalize(core))
 }
 
 function planHash(value) {
@@ -64,6 +60,7 @@ export function createSecretVersionBootstrapPlan(profile = loadProfile()) {
     },
     guards: {
       requiresExplicitExecute: true,
+      executeCapability: EXECUTE_CAPABILITY,
       requiresEmptyVersionHistory: true,
       generatedEntropyBytes: 64,
       payloadEncoding: 'base64url',
@@ -107,42 +104,41 @@ function providerVersion(value, profile) {
   return { secretId: match[1], version: match[2], state: row.state }
 }
 
-export function buildSecretVersionBootstrapReceipt({ plan, providerReadback, observedAt = new Date().toISOString() }, profile = loadProfile()) {
+export function buildSecretVersionBootstrapReceipt({ plan, providerReadback, source, observedAt = new Date().toISOString() }, profile = loadProfile()) {
   assertSecretVersionBootstrapPlan(plan, profile)
   const reference = providerVersion(providerReadback, profile)
+  if (!H40.test(source?.sourceRevision ?? '') || !H40.test(source?.sourceTree ?? '') || source?.clean !== true) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_SOURCE_INVALID')
   if (!Number.isFinite(Date.parse(observedAt))) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_TIME_INVALID')
   const core = {
     schemaVersion: RECEIPT_SCHEMA,
-    ownerApplicationId: 'orgmaster',
+    applicationId: 'orgmaster',
     platformManifestSha256: profile.platformManifest.sha256,
-    target: plan.target,
-    secretReferences: { [ENVIRONMENT_NAME]: reference },
-    evidence: {
-      providerMetadataReadback: true,
-      payloadRead: false,
-      payloadPersisted: false,
-      payloadInEvidence: false,
-    },
-    status: 'SECRET_VERSION_READY',
+    sourceRevision: source.sourceRevision,
+    sourceTree: source.sourceTree,
+    clean: true,
+    target: { projectId: plan.target.projectId, secretId: plan.target.secretId, environmentName: ENVIRONMENT_NAME },
+    result: { numericVersion: reference.version, state: reference.state },
+    status: 'FIRST_VERSION_CREATED',
+    mutationExecuted: true,
+    cloudMutations: 1,
+    secretPayloadCaptured: false,
     releaseAuthority: false,
     observedAt,
   }
-  return { ...core, receiptSha256: sha256(canonicalize(core)) }
+  return assertFirstSecretVersionReceipt({ ...core, receiptSha256: sha256(canonicalize(core)) }, source, profile)
 }
 
 export function assertSecretVersionBootstrapReceipt(receipt, profile = loadProfile()) {
-  if (receipt?.schemaVersion !== RECEIPT_SCHEMA || receipt.ownerApplicationId !== 'orgmaster' || receipt.platformManifestSha256 !== profile.platformManifest.sha256 || receipt.target?.projectId !== profile.target.projectId || receipt.target?.environment !== profile.target.environment || receipt.target?.secretId !== profile.secret.references[ENVIRONMENT_NAME] || receipt.status !== 'SECRET_VERSION_READY' || receipt.releaseAuthority !== false || receipt.receiptSha256 !== receiptHash(receipt)) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_RECEIPT_INVALID')
-  const reference = receipt.secretReferences?.[ENVIRONMENT_NAME]
-  if (canonicalize(Object.keys(receipt.secretReferences ?? {})) !== canonicalize([ENVIRONMENT_NAME]) || reference?.secretId !== profile.secret.references[ENVIRONMENT_NAME] || reference?.version !== '1' || reference?.state !== 'ENABLED') fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_RECEIPT_INVALID', 'secret-reference')
-  if (canonicalize(receipt.evidence) !== canonicalize({ providerMetadataReadback: true, payloadRead: false, payloadPersisted: false, payloadInEvidence: false })) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_RECEIPT_INVALID', 'evidence')
-  return receipt
+  return assertFirstSecretVersionReceipt(receipt, { sourceRevision: receipt?.sourceRevision, sourceTree: receipt?.sourceTree }, profile)
 }
 
-export function runSecretVersionBootstrap({ execute = false, requestedProjectId, requestedSecretId, invoke, entropySource = crypto.randomBytes, observedAt }, profile = loadProfile()) {
+export function runSecretVersionBootstrap({ execute = false, authorization, requestedProjectId, requestedSecretId, source, invoke, entropySource = crypto.randomBytes, observedAt }, profile = loadProfile()) {
   const plan = createSecretVersionBootstrapPlan(profile)
   if (requestedProjectId != null && requestedProjectId !== plan.target.projectId) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_TARGET_INVALID', 'project')
   if (requestedSecretId != null && requestedSecretId !== plan.target.secretId) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_TARGET_INVALID', 'secret')
   if (typeof invoke !== 'function') fail('DEV013_ORGMASTER_SECRET_PROVIDER_INVALID')
+  if (execute && authorization !== EXECUTE_CAPABILITY) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_CAPABILITY_REQUIRED')
+  if (execute && (!H40.test(source?.sourceRevision ?? '') || !H40.test(source?.sourceTree ?? '') || source?.clean !== true)) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_SOURCE_INVALID')
   const preflight = plan.providerCommands.preflight
   assertEmptyVersionHistory(invokeProvider(invoke, preflight.command, preflight.args))
   if (!execute) return { executed: false, plan, preflight: { existingVersionCount: 0, status: 'EMPTY' } }
@@ -165,8 +161,8 @@ export function runSecretVersionBootstrap({ execute = false, requestedProjectId,
   const readback = plan.providerCommands.readback
   const readbackArgs = readback.args.map((value) => value === '<NUMERIC_VERSION>' ? created.version : value)
   const providerReadback = parseProviderJson(invokeProvider(invoke, readback.command, readbackArgs), 'DEV013_ORGMASTER_SECRET_VERSION_ADD_INVALID')
-  const receipt = buildSecretVersionBootstrapReceipt({ plan, providerReadback, observedAt }, profile)
+  const receipt = buildSecretVersionBootstrapReceipt({ plan, providerReadback, source, observedAt }, profile)
   return { executed: true, plan, receipt }
 }
 
-export const constants = Object.freeze({ ENVIRONMENT_NAME, PLAN_SCHEMA, RECEIPT_SCHEMA })
+export const constants = Object.freeze({ ENVIRONMENT_NAME, EXECUTE_CAPABILITY, PLAN_SCHEMA, RECEIPT_SCHEMA })

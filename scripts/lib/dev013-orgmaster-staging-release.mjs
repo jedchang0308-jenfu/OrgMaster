@@ -108,6 +108,13 @@ function assertSecretReferences(value, profile) {
   return value
 }
 
+export function assertFirstSecretVersionReceipt(receipt, expectedSource, profile = loadProfile()) {
+  object(receipt, 'DEV013_ORGMASTER_SECRET_BOOTSTRAP_RECEIPT_INVALID', 'receipt')
+  const allowedKeys = ['applicationId', 'clean', 'cloudMutations', 'mutationExecuted', 'observedAt', 'platformManifestSha256', 'receiptSha256', 'releaseAuthority', 'result', 'schemaVersion', 'secretPayloadCaptured', 'sourceRevision', 'sourceTree', 'status', 'target']
+  if (canonicalize(Object.keys(receipt).sort()) !== canonicalize(allowedKeys) || receipt.schemaVersion !== 'jenfu.dev013.secret-version-bootstrap-receipt.v1' || receipt.applicationId !== 'orgmaster' || receipt.platformManifestSha256 !== profile.platformManifest.sha256 || receipt.sourceRevision !== expectedSource?.sourceRevision || receipt.sourceTree !== expectedSource?.sourceTree || !H40.test(receipt.sourceRevision ?? '') || !H40.test(receipt.sourceTree ?? '') || receipt.clean !== true || canonicalize(receipt.target) !== canonicalize({ projectId: profile.target.projectId, secretId: profile.secret.references[SESSION_SECRET_ENV], environmentName: SESSION_SECRET_ENV }) || canonicalize(receipt.result) !== canonicalize({ numericVersion: '1', state: 'ENABLED' }) || receipt.status !== 'FIRST_VERSION_CREATED' || receipt.mutationExecuted !== true || receipt.cloudMutations !== 1 || receipt.secretPayloadCaptured !== false || receipt.releaseAuthority !== false || !Number.isFinite(Date.parse(receipt.observedAt ?? '')) || receipt.receiptSha256 !== receiptHash(receipt)) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_RECEIPT_INVALID')
+  return receipt
+}
+
 export function verifyCanonicalContract(root = projectRoot, profile = loadProfile()) {
   const contractRoot = path.join(root, profile.canonicalContract.sourcePath)
   const manifest = JSON.parse(fs.readFileSync(path.join(contractRoot, 'contract-manifest.json'), 'utf8'))
@@ -139,8 +146,11 @@ export function createSourceFreezeReceipt(input, profile = loadProfile()) {
   if (typeof input.sourceCreatedAt !== 'string' || !Number.isFinite(Date.parse(input.sourceCreatedAt))) fail('DEV013_ORGMASTER_SOURCE_CREATED_AT_INVALID')
   assertRef(input.foundationReceipt, 'DEV013_ORGMASTER_FOUNDATION_REF_INVALID')
   const runtime = input.stage === 'OWNER_RUNTIME_B'
-  if (runtime && (!IMAGE.test(input.runtimeImage ?? '') || canonicalize(assertSecretReferences(input.runtimeSecretVersions, profile)) !== canonicalize(secretReferences(input.runtimeSecretVersions?.[SESSION_SECRET_ENV]?.version, profile)) || !H64.test(input.firebasePublicConfigSha256 ?? ''))) fail('DEV013_ORGMASTER_RUNTIME_FREEZE_INPUT_INVALID')
-  if (!runtime && (input.runtimeImage != null || input.runtimeSecretVersions != null || input.firebasePublicConfigSha256 != null)) fail('DEV013_ORGMASTER_INFRA_FREEZE_WIDENED')
+  if (input.runtimeConfigSecretVersion != null || input.runtimeSecretVersions != null) fail('DEV013_ORGMASTER_CALLER_SECRET_VERSION_DENIED')
+  const secretVersionReceipt = runtime ? assertFirstSecretVersionReceipt(input.runtimeSecretVersionReceipt, { sourceRevision: input.sourceRevision, sourceTree: input.sourceTree }, profile) : null
+  const runtimeSecretVersions = runtime ? secretReferences(secretVersionReceipt.result.numericVersion, profile) : null
+  if (runtime && (!IMAGE.test(input.runtimeImage ?? '') || !H64.test(input.firebasePublicConfigSha256 ?? ''))) fail('DEV013_ORGMASTER_RUNTIME_FREEZE_INPUT_INVALID')
+  if (!runtime && (input.runtimeImage != null || input.runtimeSecretVersionReceipt != null || input.firebasePublicConfigSha256 != null)) fail('DEV013_ORGMASTER_INFRA_FREEZE_WIDENED')
   const gate = profile.terraform.stages[input.stage]
   const core = {
     schemaVersion: 'jenfu.dev013.orgmaster-source-freeze.v2',
@@ -167,7 +177,8 @@ export function createSourceFreezeReceipt(input, profile = loadProfile()) {
     terraformRoot: profile.terraform.root,
     terraformAddressSetSha256: sha256(canonicalize([...gate.dataAddresses, ...gate.resourceAddresses].sort())),
     runtimeImage: runtime ? input.runtimeImage : null,
-    runtimeSecretVersions: runtime ? input.runtimeSecretVersions : null,
+    runtimeSecretVersions,
+    runtimeSecretVersionReceiptSha256: runtime ? secretVersionReceipt.receiptSha256 : null,
     firebasePublicConfigSha256: runtime ? input.firebasePublicConfigSha256 : null,
     securityFloor: profile.release.securityFloor,
     status: runtime ? 'READY_FOR_OWNER_RUNTIME_B_PLAN' : 'READY_FOR_OWNER_INFRA_A_PLAN',
@@ -198,8 +209,8 @@ export function assertSourceFreezeReceipt(receipt, profile = loadProfile()) {
   if (receipt.terraformAddressSetSha256 !== sha256(canonicalize([...gate.dataAddresses, ...gate.resourceAddresses].sort())) || canonicalize(receipt.securityFloor) !== canonicalize(profile.release.securityFloor)) fail('DEV013_ORGMASTER_SOURCE_FREEZE_CONTRACT_MISMATCH')
   const runtime = receipt.stage === 'OWNER_RUNTIME_B'
   if (runtime) {
-    if (!IMAGE.test(receipt.runtimeImage ?? '') || canonicalize(assertSecretReferences(receipt.runtimeSecretVersions, profile)) !== canonicalize(secretReferences(receipt.runtimeSecretVersions?.[SESSION_SECRET_ENV]?.version, profile)) || !H64.test(receipt.firebasePublicConfigSha256 ?? '') || receipt.status !== 'READY_FOR_OWNER_RUNTIME_B_PLAN') fail('DEV013_ORGMASTER_RUNTIME_FREEZE_INVALID')
-  } else if (receipt.runtimeImage !== null || receipt.runtimeSecretVersions !== null || receipt.firebasePublicConfigSha256 !== null || receipt.status !== 'READY_FOR_OWNER_INFRA_A_PLAN') fail('DEV013_ORGMASTER_INFRA_FREEZE_INVALID')
+    if (!IMAGE.test(receipt.runtimeImage ?? '') || canonicalize(assertSecretReferences(receipt.runtimeSecretVersions, profile)) !== canonicalize(secretReferences(receipt.runtimeSecretVersions?.[SESSION_SECRET_ENV]?.version, profile)) || !H64.test(receipt.runtimeSecretVersionReceiptSha256 ?? '') || !H64.test(receipt.firebasePublicConfigSha256 ?? '') || receipt.status !== 'READY_FOR_OWNER_RUNTIME_B_PLAN') fail('DEV013_ORGMASTER_RUNTIME_FREEZE_INVALID')
+  } else if (receipt.runtimeImage !== null || receipt.runtimeSecretVersions !== null || receipt.runtimeSecretVersionReceiptSha256 !== null || receipt.firebasePublicConfigSha256 !== null || receipt.status !== 'READY_FOR_OWNER_INFRA_A_PLAN') fail('DEV013_ORGMASTER_INFRA_FREEZE_INVALID')
   return receipt
 }
 

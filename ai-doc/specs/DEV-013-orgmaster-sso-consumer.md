@@ -59,13 +59,13 @@ Candidate／activate／rollback planning is owner-native and read-only by defaul
 
 Owner commands:
 
-- `npm run freeze:dev-013:l3 -- --stage OWNER_INFRA_A|OWNER_RUNTIME_B ...`
+- `npm run freeze:dev-013:l3 -- --stage OWNER_INFRA_A|OWNER_RUNTIME_B ...`（`OWNER_RUNTIME_B`必須提供`--runtime-secret-receipt`；`--runtime-secret-version`一律拒絕）
 - `npm run verify:dev-013:l3:plan -- --stage OWNER_INFRA_A|OWNER_RUNTIME_B ...`
 - `npm run receipt:dev-013:l3:owner -- bootstrap-receipt ...`
 - `npm run receipt:dev-013:l3:owner -- candidate-receipt ...`
 - `npm run receipt:dev-013:l3:owner -- owner-receipt ...`
 - `npm run release:dev-013:l3 -- --operation candidate|activate|rollback ...`（read-only plan unless a future separately authorized run passes `--execute`）
-- `npm run bootstrap:dev-013:l3:secret`（固定target的read-only empty-version preflight）；只有另行nonprod授權後才可加`--execute --output <new-path>`
+- `npm run bootstrap:dev-013:l3:secret`（固定target的read-only empty-version preflight）；只有另行nonprod授權後才可加`--execute --authorization=DEV013-L3-ORGMASTER-FIRST-SECRET-VERSION --output <new-path>`
 - `npm run test:dev-013:l3`
 
-Required Secret Manager object: `dev010-stg-orgmaster-runtime-config`, consumed only through a numeric version as `ORGMASTER_SESSION_HASH_PEPPER`. Manifest v2 defines `versionBootstrap.mode=OWNER_GENERATED_IF_EMPTY` and `minimumEntropyBytes=64`; the executor refuses any existing version, generates only during explicit execution, encodes 64 bytes of entropy as UTF-8-safe base64url, streams the payload through stdin, zeroes the in-memory buffers after the provider call, and records only numeric version/state metadata plus a self-hash. No secret value belongs in source, Terraform variables, plans, receipts, or logs.
+Required Secret Manager object: `dev010-stg-orgmaster-runtime-config`, consumed only through a numeric version as `ORGMASTER_SESSION_HASH_PEPPER`. Manifest v2 defines `versionBootstrap.mode=OWNER_GENERATED_IF_EMPTY` and `minimumEntropyBytes=64`; the executor refuses any existing version and requires the exact execute capability plus a clean committed OrgMaster source. It encodes 64 bytes of entropy as UTF-8-safe base64url, streams the payload through stdin, zeroes the in-memory buffers after the provider call, and emits a self-hashed `jenfu.dev013.secret-version-bootstrap-receipt.v1 / FIRST_VERSION_CREATED` receipt bound to source revision/tree, exact target, version `1`, provider state and `secretPayloadCaptured=false`. `OWNER_RUNTIME_B` source freeze verifies this receipt, requires the same revision/tree, derives the numeric version from it and stores its SHA-256; caller-provided version input is forbidden. No secret value belongs in source, Terraform variables, plans, receipts, or logs.

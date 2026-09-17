@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,14 +9,31 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 function parse(argv) {
   const result = { execute: false }
+  const allowed = new Set(['authorization', 'output', 'project', 'secret'])
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index]
     if (key === '--execute') { result.execute = true; continue }
-    if (!key.startsWith('--') || !argv[index + 1]) throw new Error(`Invalid argument: ${key}`)
-    result[key.slice(2)] = argv[index + 1]
+    if (key.startsWith('--') && key.includes('=')) {
+      const [name, ...rest] = key.slice(2).split('=')
+      if (!allowed.has(name) || rest.length === 0 || rest.join('=').length === 0) throw new Error(`Invalid argument: ${key}`)
+      result[name] = rest.join('=')
+      continue
+    }
+    const name = key.startsWith('--') ? key.slice(2) : ''
+    if (!allowed.has(name) || !argv[index + 1]) throw new Error(`Invalid argument: ${key}`)
+    result[name] = argv[index + 1]
     index += 1
   }
   return result
+}
+
+function git(...args) {
+  return execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim()
+}
+
+export function resolveCleanSource(readGit = (...args) => git(...args)) {
+  if (readGit('status', '--porcelain=v1', '--untracked-files=all')) throw new Error('DEV013_ORGMASTER_SECRET_BOOTSTRAP_SOURCE_NOT_CLEAN')
+  return { sourceRevision: readGit('rev-parse', 'HEAD'), sourceTree: readGit('rev-parse', 'HEAD^{tree}'), clean: true }
 }
 
 function invoke(command, args, input) {
@@ -35,10 +52,14 @@ export function runCli(argv = process.argv.slice(2)) {
   if (input.execute && !input.output) throw new Error('DEV013_ORGMASTER_SECRET_BOOTSTRAP_OUTPUT_REQUIRED')
   const output = input.execute ? path.resolve(root, input.output) : null
   if (output && fs.existsSync(output)) throw new Error('DEV013_ORGMASTER_SECRET_BOOTSTRAP_OUTPUT_EXISTS')
+  let source
+  if (input.execute) source = resolveCleanSource()
   const result = runSecretVersionBootstrap({
     execute: input.execute,
+    authorization: input.authorization,
     requestedProjectId: input.project,
     requestedSecretId: input.secret,
+    source,
     invoke,
   }, loadProfile())
   if (result.executed) {
