@@ -9,6 +9,7 @@ export type VerifiedFirebaseIdentity = {
   signInProvider?: string
   email?: string | null
   emailVerified?: boolean
+  googleUserId?: string
 }
 
 export type FirebaseIdentityProvider = {
@@ -25,6 +26,8 @@ export function createFirebaseIdentityProvider(expectedIssuer: string, expectedA
       }
       const firebaseClaims = decoded.firebase as (typeof decoded.firebase & { sign_in_second_factor?: string }) | undefined
       const authenticationMethods = Array.isArray(decoded.amr) ? decoded.amr : []
+      const googleIdentities = firebaseClaims?.identities?.['google.com']
+      const googleUserId = Array.isArray(googleIdentities) && googleIdentities.length === 1 && typeof googleIdentities[0] === 'string' && googleIdentities[0].trim() ? googleIdentities[0].trim() : undefined
       return {
         issuer: decoded.iss,
         subject: decoded.sub,
@@ -35,6 +38,7 @@ export function createFirebaseIdentityProvider(expectedIssuer: string, expectedA
         signInProvider: typeof firebaseClaims?.sign_in_provider === 'string' ? firebaseClaims.sign_in_provider : undefined,
         email: typeof decoded.email === 'string' ? decoded.email.trim().toLowerCase() : null,
         emailVerified: decoded.email_verified === true,
+        googleUserId,
       }
     },
   }

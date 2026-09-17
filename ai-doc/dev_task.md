@@ -91,12 +91,21 @@
 
 ## 總任務清單
 
-- ☐ DEV-049 [交付點] [待排／spec-only] [P1] [Brief Ready] 既有 Google 主帳號連結與員工編號登入
-  - 摘要：員工已有公司 Workspace 帳號時，不再建立重複的 `jfs####@jenfu.com.tw`；OrgMaster 讓管理者把 JFS 員工編號連結至既有 Google 主帳號，員工仍以 JFS 編號進入登入流程。
-  - 來源 ID：`USER-2026-09-17-EXISTING-WORKSPACE-ACCOUNT-MAPPING-BRIEF`
-  - 父任務：DEV-047；相容基線為 ADR-007 的 Google Admin 外部生命週期與 OrgMaster zero-provider-write 邊界。
-  - 下一步：產品方向已確認；若要交 RD 評估，將本節升級為 `RD Contract Ready`，同步修訂 DEV-047 權威契約的 candidate lookup、API、UI 與 QA/QC 邊界。
-  - 證據：本文件 `DEV-049` 詳細段落；受影響基線為 `ai-doc/specs/DEV-047-permanent-managed-identity-link-and-login-alias.md`。
+- ○ DEV-050 [交付點] [待排] [P1] [RD Implementation Ready／Architecture Finalized／P0=0／P1=0] 員工編號或公司 Email 單一 Google 身分登入
+  - 摘要：先完成 Google 驗證，以 stable key 找本人，再核對 current JFS 或 exact linked primary Email；共用同一 principal／Employee，不新增帳號、attempt 或 Email／員編搜尋 resolver。forward migration 014只補canonical view的published application／role parity。
+  - 來源 ID：`USER-2026-09-17-CLOUD-IDENTITY-FREE-DUAL-IDENTIFIER-LOGIN-BRIEF`、`USER-2026-09-17-DEV050-DEVELOPMENT-DOCUMENT`、`USER-2026-09-17-DEV050-ARCHITECTURE-CONFIRMATION`、`USER-2026-09-17-DEV050-RD-TECH-LEAD-OPTIMIZATION`
+  - 父任務：DEV-049；僅替換 app-local 登入設計，stable identity、admission、zero-provider-write 與 SSO owner 公開契約不變。
+  - 下一步：取得產品實作指令後依權威spec §8 S0～S4執行；先建failing tests，再做shared core、Auth API、UI、migration 014及fresh QA／QC。
+  - 阻塞 / 恢復條件：架構無P0／P1未決；實作若發現repository contract無法滿足invariant，停止slice並回spec作drift decision。production仍受001～014 ledger與release authority gate阻擋。
+  - 證據：文件closure已核對父receipt 16＋3 hashes，並重跑DEV-049 targeted 50/50、owner-receipt 2/2；DEV-050產品測試尚未建立，非Implementation Complete或獨立QC。
+  - 計入交付：是（目前未完成）
+
+- ✓ DEV-049 [交付點] [本機開發完成／production gated] [P1] [RD Implementation Complete／Local QA-QC Passed] 既有 Google 主帳號連結與員工編號登入
+  - 摘要：員工已有公司 Workspace 帳號時，不再建立重複的 `jfs####@jenfu.com.tw`；JFS 固定為 OrgMaster login alias，管理者以 exact primary Email 將 Employee 連結至既有 Directory stable principal。
+  - 來源 ID：`USER-2026-09-17-EXISTING-WORKSPACE-ACCOUNT-MAPPING-BRIEF`、`USER-2026-09-17-DEV049-ARCHITECTURE-FINALIZATION`
+  - 父任務：DEV-047；ADR-007 已新增 2026-09-17 intentional replacement，Google Admin 外部生命週期與 OrgMaster zero-provider-write 邊界不變。
+  - 下一步：本機 S0→S5 已完成；provider／AI-PDM target／shared DB migration apply／activation／deploy／release仍須各自授權與 gate。
+  - 證據：`test:dev-049` 50／50、PostgreSQL D49-01～06、三 viewport browser、full regression 853 PASS／1 skipped、build與DB boundary PASS；owner receipt=`qa/dev-049/producer/owner-receipt.json`。
   - 計入交付：是
 
 - ◐ DEV-048 [開發點] [owner package完成／nonprod apply ready] [P0] [READY_FOR_NONPROD_APPLY／releaseAuthority=false] DEV-013 `013-S4-L3-ORGMASTER-ENV` OrgMaster managed staging runtime與owner release package
@@ -585,85 +594,87 @@
   - 證據：`npm test -- --run`（19 files／126 tests）、`npm run build`、localhost:5000 真實瀏覽器 1440×900／1024×768／390×844 UI QC；`output/playwright/orgmaster-mode-status-1440x900.png`、`output/playwright/orgmaster-mode-status-1024x768.png`、`output/playwright/orgmaster-mode-status-390x844.png`；右上角狀態 pill 可見、無重疊／水平溢出，並提供 `role=status`、ARIA label 與 title 說明。
   - 計入交付：否
 
+## DEV-050：員工編號或公司 Email 單一 Google 身分登入
+
+狀態：`待排 / Documents Only / Product Not Implemented / Production Gated`
+文件成熟度：`RD Implementation Ready / RD Not Started`
+架構審查：`Architecture Finalized / Tech-lead PASS 2026-09-17 / P0=0 / P1=0`
+節點類型：交付點；優先級：P1；風險：High（首次身分綁定及登入授權）
+父交付點：DEV-049；相容基線：DEV-047／ADR-007
+計入產品交付完成：是，但只能在實作及 QA／QC 通過後計入，目前未完成。
+來源：`USER-2026-09-17-CLOUD-IDENTITY-FREE-DUAL-IDENTIFIER-LOGIN-BRIEF`、`USER-2026-09-17-DEV050-DEVELOPMENT-DOCUMENT`、`USER-2026-09-17-DEV050-ARCHITECTURE-CONFIRMATION`、`USER-2026-09-17-DEV050-RD-TECH-LEAD-OPTIMIZATION`。
+
+### 產品與架構摘要
+
+單一權威契約：[DEV-050-dual-identifier-managed-login.md](specs/DEV-050-dual-identifier-managed-login.md)。本段只作任務索引，不複製 API／驗收全文。
+
+- 使用者輸入 current JFS 或已連結公司 primary Email，最後驗證同一 Google principal；員編不另設密碼、OrgMaster 不建立帳號或購買 license。
+- 採 token-first：Browser 直接開 Google，既有 session exchange 攜帶輸入；server 以已驗證的 stable key 找本人後核對，不能以輸入搜尋他人。
+- 刪除先前規劃的 HMAC attempt、60 秒 app TTL與Email／員編resolver；沿用父任務read／verify／transaction。唯一新DDL是forward migration 014，只替換canonical contract view以補published application／role parity；無新表、secret或endpoint。
+- 有 identifier 的 request 即使 principal 已 active，也必須核對；不符不能退回 legacy。無 identifier 僅維持既有 canonical 登入，不得首次 bind。
+- managed UI 一個輸入欄／Google CTA，legacy password 收合但不刪；SSO handoff 仍優先，不改平台 owner contract。
+- Google Admin／licensing／provider write、跨專案、正式 migration／activation／deploy 均不在本輪範圍。
+
+### 接手條件與驗收
+
+- [x] G1：父owner receipt 16個controlled source＋3個evidence hash相符；DEV-049 targeted 50/50與receipt tests 2/2 fresh PASS。
+- [x] G2：shared core signature、identifier／role／epoch順序、local／PG競態、receipt／failure recovery及canonical parity已固定。
+- [x] G3：DEV-050 contract／PostgreSQL／browser fixture path、runner、external mock boundary、manifest、cleanup與命令已固定。
+- [x] G4：migration 014只replace同名view，legacy／managed共用published application＋active global role eligibility；001～013、signature與grant不變。
+- [ ] RD依spec §8 S0～S4實作；spec V1～V10、targeted／contract／PG／browser、full regression、build及DB boundary fresh PASS後才可計入完成。
+
+文件工作已完成架構定案；剩餘是已定義的產品實作與QA／QC，不是新的使用者產品決策。DEV-050 tests、browser、migration 014、正式Google與production均未在本輪執行或變更。
+
+### Spec Impact、後續與紀錄
+
+`Intentional replacement / Documents Only`：DEV-050 後續替換 DEV-047 A9／DEV-049 §9 的 app-local public alias lookup，不修改owner公開契約。實作前 app-local UI仍是現有JFS輸入，不以本文件宣稱雙identifier已上線。
+
+Future capsule：Google Admin 免費授權營運設定及 legacy password 移除均 `Future Phase Captured / Not Requested`；前者需外部操作範圍，後者需零依賴 inventory 與 break-glass 決策，詳見 spec §10。
+
+- 2026-09-17 技術主管優化：撤回前版過早的 Architecture Closure PASS／P0-P1=0，校正為 RD Contract Ready；以 stable-key 本人核對取代 attempt／新 resolver，補足安全分支、相容與驗收。
+- 2026-09-17 架構定案：source／schema closure查出migration013 managed principal缺published application／role guard；以forward migration014最小補強，並固定shared core、API順序、UI port、V1～V10、runner／fixture／commands與stop conditions，升級為RD Implementation Ready／P0=0／P1=0。
+- 2026-09-17 先前版本：由 Brief 補成架構文件；其成熟度與 attempt／014 決策已被本次修訂取代，歷史文字不再作直接實作依據。
+- 下一步：取得產品實作指令後在同一DEV依spec §8推進；不新建重複DEV，本輪未修改產品或release狀態。
+
+使用思考習慣：#第一性原理、#多層次分析、#驗收閉環
+
 ## DEV-049：既有 Google 主帳號連結與員工編號登入
 
-狀態：`待排 / Spec-only`
-文件成熟度：`Brief Ready`
-節點類型：交付點
-優先級：P1
-父交付點：DEV-047 員工編號公司身分連結與登入別名；架構邊界沿用 ADR-007
-是否計入產品交付完成：是
-本輪來源 ID：`USER-2026-09-17-EXISTING-WORKSPACE-ACCOUNT-MAPPING-BRIEF`
-執行邊界：本輪只建立產品與技術方向 Brief；未授權修改程式、schema、Google 帳號、授權、雲端設定、部署或 release
-風險等級：High（錯誤連結會影響登入身分；流程跨 UI／API／Directory／登入 resolver，外部 provider 雖維持唯讀仍需 fail closed）
+狀態：`Local Development Complete / Local QA-QC Passed / Production Gated`
+文件成熟度：`RD Implementation Complete / Architecture Contract Implemented 2026-09-17`
+節點類型：交付點；優先級：P1；風險：High
+父交付點：DEV-047；責任邊界：ADR-007
+是否計入產品交付完成：是（本機開發完成；production activation 不計入）
+權威文件：[DEV-049 spec](specs/DEV-049-existing-google-primary-account-link.md)
+來源：`USER-2026-09-17-EXISTING-WORKSPACE-ACCOUNT-MAPPING-BRIEF`、`USER-2026-09-17-DEV049-ARCHITECTURE-FINALIZATION`、`USER-2026-09-17-DEV049-RD-TECH-LEAD-DOC-OPTIMIZATION`
+查證基準：`codex/dev-049-existing-google-account@b839003c4f0bcebb282d02d927a0fb5e5c5f065b`＋controlled tree `3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`
 
-### 問題與使用者價值
+### Human Decision 與驗收成果
 
-- 部分員工已擁有公司管理的付費 Workspace 主帳號，例如張仕杰的 `jedchang0308@jenfu.com.tw`。若因員工編號 `JFS0005` 再建立 `jfs0005@jenfu.com.tw`，會形成重複身分、額外管理成本與使用者不知道該用哪個帳號的風險。
-- JFS 員工編號的用途是 OrgMaster 的穩定登入別名，不應被強制當成 Google 主帳號名稱。目標對應為 `JFS0005 → jedchang0308@jenfu.com.tw`，員工在 OrgMaster 輸入 `JFS0005`，系統再把既有 Google 主帳號作為 Google 登入提示。
-- 已有 Workspace 帳號者直接重用既有帳號；沒有公司 Google 帳號者，仍由 Google Admin 依公司政策建立 Cloud Identity Free 或付費 Workspace 帳號，再回 OrgMaster 完成連結。
+- 員工已有公司 managed account 時重用既有 principal；例：`JFS0005 → jedchang0308@jenfu.com.tw`，不另建 JFS 衍生 Google 帳號。
+- JFS 是 OrgMaster login alias；Google primary Email 是可變名稱；Directory customer＋user ID 與 Firebase issuer＋subject 各自為 stable key。
+- Google Admin 負責帳號、密碼、MFA 與 license。OrgMaster 僅 exact read、關聯與稽核，provider write=0；只接受同 configured customer 的公司 daily managed user。
+- 一般 Employee UI 可完成 lookup／preview／confirm；首次 JFS 登入能經 verified Google token／canonical admission 建 session。錯 actor、衝突、provider facts 改變、版本變動與失效帳號均 fail closed。
 
-### Human Decision Brief
+### 實作成果與下一步
 
-- `Human Confirmed / 2026-09-17`：員工已有公司管理的 Workspace 帳號時，不建立重複的 JFS 衍生 Google 帳號；OrgMaster 必須支援將員工編號連結至既有主帳號。
-- `Human Confirmed / 2026-09-17`：員工仍以 JFS 員工編號進入 OrgMaster 登入流程；Google 主帳號可採既有命名，不要求與 JFS 衍生 Email 相同。
-- Google Admin 繼續負責帳號建立、停用、改名、密碼、MFA 與 Cloud Identity／Workspace 授權；OrgMaster 只管理 Employee、員工編號、Employee↔Google identity mapping、唯讀驗證與稽核。
-- Current Phase 只接受同一受治理 Google Workspace customer 內的公司帳號；個人 Gmail、shared mailbox、group、service account 與跨 customer 帳號不在範圍內。
+- 前版 Architecture Closure PASS 漏列的 local revision 自衝突、PG row／DTO 不相容、receipt replay 次序、pending 首次登入循環及 migration release 邊界，已依 spec §2 A1–A6 完成修復。
+- 架構定案：assignment revision 與 file CAS 分離；typed repository DTO；receipt-first／actor-bound／stable-key readback；交易 current-state fence；pending hint→live bind→canonical principal 重查。
+- 不增 provider service、generic repository framework 或新 table；共用 DEV-047 QC runtime lifecycle。正式 012／013 migration／activation 不可混入 DEV-040 現行 001–011 一般 app release。
+- spec §11 S0→S5 已完成；新增 owner-only `jenfu.managed-login.v1` route、migration 013 routines、CAS receipt與lifecycle barrier，確切契約仍只在權威 spec 維護。
+- P0／P1 設計待決項=0；RD本機實作完成。下一步不自動延伸至 migration apply、Google／cloud mutation、AI-PDM target、deploy或release。
 
-### Spec Impact Preflight
+### Spec Impact 與本輪證據
 
-- 分類：`Intentional replacement proposed / Brief only`。DEV-047 的 stable Directory user ID、Firebase bridge、login alias resolver、one-Employee／one-managed-identity、zero provider write 與 lifecycle guard 保持不變。
-- DEV-049 只取代 DEV-047 的首次 candidate lookup 限制：不再要求 candidate 的 primary Email 必須等於 `lower(JFS####)@jenfu.com.tw`；改由授權管理者輸入或選擇既有 Google 主帳號，再由 server 作 exact primary-Email read-only lookup。
-- DEV-047 目前的實作與 production gate 在 DEV-049 尚未升級契約、實作並完成 QA/QC 前仍是現行基線；不得只改 UI 文案就宣稱本需求完成。
-- ADR-007 不需新增 ADR：本方向未改變 Google Admin／OrgMaster 的責任邊界，也未改變 Directory stable key 作為外部身分鍵的原則。
+`Intentional replacement / Local Implementation Complete`：ADR-007 2026-09-17 amendment 與 DEV-047 replacement note 同步；取代 JFS-derived Email／lexical mismatch，補齊 candidate、confirm、首次登入與 Platform owner producer契約。DEV-047 stable-key、cardinality、tombstone、lifecycle、sync、role admission 與 production gate 維持。
 
-### 主要流程
-
-1. 具 `orgmaster.identity.link` 權限的管理者從「員工」清單進入指定 Employee 的「員工編號與登入身分」。
-2. 管理者先確認或設定唯一 JFS 員工編號，再選擇「連結既有 Google 帳號」。
-3. 管理者輸入公司 Google 主帳號，例如 `jedchang0308@jenfu.com.tw`；OrgMaster server 以 Google Directory 唯讀、精確 lookup 驗證候選。
-4. 系統只接受 configured customer 內、primary Email 精確相符、未 archived、未綁定其他 Employee 的 managed user；alias 命中、不同 customer 或重複綁定皆拒絕。
-5. 管理者核對員工姓名與 redacted Directory facts 後確認；OrgMaster 保存 Employee、Directory customer／stable user ID 與 last verified primary Email 的 mapping，不修改 Google 帳號。
-6. 員工在 OrgMaster 登入畫面輸入 JFS 編號；resolver 依 mapping 取得 `lastVerifiedPrimaryEmail` 作 `login_hint`，完成既有 Google／Firebase 驗證後才建立 session。
-
-### Current Phase Scope
-
-- Employee detail UI 清楚分開顯示「OrgMaster 員工編號／登入別名」與「已連結 Google 主帳號」，不再把 JFS 衍生 Email 標成唯一預期帳號。
-- 連結對話框提供既有主帳號輸入或受控搜尋，顯示 loading、找不到、不符合資格、已被其他 Employee 使用、權限拒絕與成功待首次登入等狀態。
-- Candidate API 接受受控的主帳號輸入；server 正規化後作 exact primary-Email lookup，Browser 不接觸 Directory credential，也不得直接指定 customer 或 Directory user ID。
-- 保留短效、actor-bound、single-use candidate token 與確認前 readback；Directory user ID 仍是穩定外部鍵，Email 只作 lookup、顯示與 login hint。
-- 登入 resolver 維持只接受 current JFS；成功解析到已連結的實際主帳號。JFS 衍生帳號若確實存在，仍只是可被連結的其中一種主帳號，不再是唯一選項。
-- Google Admin 改名後，既有 read-only refresh 依 stable Directory user ID 更新 primary Email；不得自動改綁到另一個 Directory user。
-- 連結、衝突、重新整理與後續解除／改綁均須可稽核；改綁不可覆蓋既有 mapping，必須先經明確的受權限控制狀態轉換。
-
-### Out of Scope
-
-- 在 OrgMaster 建立、邀請、刪除、停用、改名 Google 帳號，或設定密碼、MFA、session、Email alias 與 Workspace license。
-- 自動替所有員工建立 `jfs####@jenfu.com.tw`，或把既有付費 Workspace 帳號轉成另一個免費帳號。
-- 從 OrgMaster 判斷或變更 Business Starter／Standard 等付費方案；Current Phase 不取得 write-capable Licensing API scope。
-- 個人 Gmail、跨 Workspace customer、shared mailbox、group、service account 或一位 Employee 同時連結多個日常 managed identity。
-- production credential、Directory DWD 啟用、shared／production migration、部署、release 與正式帳號操作。
-
-### 驗收方向
-
-- 張仕杰已有 `jedchang0308@jenfu.com.tw` 時，管理者可將 `JFS0005` 連結至該帳號，不需要建立 `jfs0005@jenfu.com.tw`，且 Google Directory write operation 維持 0。
-- 員工以 `JFS0005` 進入 OrgMaster 登入流程時，server 回傳的 Google `login_hint` 為已連結且最近驗證的 `jedchang0308@jenfu.com.tw`；Browser 不取得 Directory user ID 或 credential。
-- 不存在、alias-only 命中、不同 customer、archived／ineligible、已綁其他 Employee 或確認期間 candidate 改變時，mapping 為 zero mutation，畫面顯示可理解且不洩漏其他員工敏感資料的錯誤。
-- 已使用 `jfs####@jenfu.com.tw` 的既有員工仍可依同一流程正常連結與登入；DEV-047 的員編唯一、tombstone、Directory lifecycle、Firebase bridge、role admission 與 generic login failure 不得回歸。
-- UI targeted QC 需從正常「員工」入口驗證 1440×900、1024×768 與 390×844；桌面有權角色可連結，無權角色與窄版維持既有唯讀邊界，並包含至少一個 duplicate-link fail-seeking case。
-
-### 依賴、風險與升級條件
-
-- 依賴 DEV-047 的 managed identity read model、candidate lease、Directory adapter、login alias resolver 與 Firebase bridge；現行 resolver 已使用 `lastVerifiedPrimaryEmail`，主要缺口位於首次候選輸入、API／lease 語意、UI 文案與驗證案例。
-- 若 candidate lease 或 PostgreSQL routine 的 `expected_primary_email` 語意需要改名或擴充，只能新增 forward-only migration；不得修改已套用的 migration `012`，且完成資料庫變更前必須通過 `npm run check:db-boundary`。
-- Email 是可變屬性，不可成為 canonical principal key；任何方案若改以 Email 取代 Directory user ID，或要求 OrgMaster 取得 Google write scope，立即停止並回到產品／架構審查。
-- 升級為 `RD Contract Ready` 時，須同步更新 DEV-047 權威 spec 的 scope、Directory adapter、candidate API、UI contract、錯誤碼、資料相容性與 QA/QC；在此之前不得開始產品實作。
+本輪 evidence：targeted 50／50、contract 6／6、task-owned PostgreSQL 18.4 D49-01～06、real Chromium local fixture三viewport、full regression 853 PASS／1 skipped、build及DB boundary皆PASS；fresh PG重驗修正QC fixture同timestamp約束後重發owner receipt，SHA-256=`79a489833141d7773f845ba1e8cb608d1be9faf4276be9e344e1e102ee5b23b7`、controlled tree=`3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`。沒有deployment／provider／production write，全部臨時runtime已清理。
 
 ### Future Phase Capsule
 
-`Future Phase Captured / Not Requested`：若未來希望 OrgMaster 自動建立 Cloud Identity Free 帳號或配置 Workspace 授權，必須另立 DEV，重新決定外部成本、credential custody、provider write scope、Google Admin 核准、失敗補償與 production release gate；本 DEV 不授權該方向。
+`Future Phase Captured / Not Requested`：自動建立 Cloud Identity 帳號、Workspace license 配置、一般 unlink／rebind 皆需另立 DEV 與人類決策；此處不展開或授權。
 
-使用思考習慣：#責任歸屬、#系統描繪、#驗收閉環
+使用思考習慣：#第一性原理、#證據基礎、#驗收閉環
 
 ## DEV-048：DEV-013 013-S4-L3-ORGMASTER-ENV managed staging owner package
 

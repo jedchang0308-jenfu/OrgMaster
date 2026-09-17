@@ -1,0 +1,169 @@
+{
+  "contract": "DEV-049",
+  "runner": "DEV-049-postgres-qc-v1",
+  "evidenceScope": "TASK_OWNED_LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-09-17T15:04:01.229Z",
+  "productionWrites": false,
+  "executedCaseCount": 6,
+  "serverVersion": "18.4",
+  "acceptedServerMajors": [
+    17,
+    18
+  ],
+  "migrations": [
+    {
+      "name": "001_dev004_orgmaster_app_sessions.sql",
+      "bytes": 2215,
+      "sha256": "536ac1e1cedcf67a1bb92dd8f19113a45790797dd07123d6a04baa876a14c79e"
+    },
+    {
+      "name": "002_dev006_orgmaster_persistence.sql",
+      "bytes": 5992,
+      "sha256": "10d71fbf556035b307c2b3997ad4e7499e9b3586dc60b351651af4b6973094da"
+    },
+    {
+      "name": "003_dev006_orgmaster_runtime_repository.sql",
+      "bytes": 11823,
+      "sha256": "2680c19df8f4bacddf53d5bfae55fb35658ff63f1e54de3f97727bd4bdd689ba"
+    },
+    {
+      "name": "004_dev040_active_principal_view.sql",
+      "bytes": 4594,
+      "sha256": "09591bddd33680bf584711884fb600ec996b356cff48ccfd1b6343c74a16f5b7"
+    },
+    {
+      "name": "005_dev005_entitlement_governance.sql",
+      "bytes": 41642,
+      "sha256": "cf5efbbe6ce29c9d6d8100961709d19ab90c1af79e31731608ae9a9dbf73a80d"
+    },
+    {
+      "name": "006_dev040_identity_admission_projection.sql",
+      "bytes": 5809,
+      "sha256": "0163c107446b0aeac4ef39b365fc57961133360cac1d9d3152be8e8c89eda3dd"
+    },
+    {
+      "name": "007_dev009_privileged_governance.sql",
+      "bytes": 11026,
+      "sha256": "4d77b8e62981bd67d97cb4c567e787873f43c187a3f23e50b9f670bde50e5c93"
+    },
+    {
+      "name": "008_dev002_portal_app_visibility.sql",
+      "bytes": 4913,
+      "sha256": "9fb17097e01994aa974766d30b60abfe800f5967c9bbcbeb7751231d62a69703"
+    },
+    {
+      "name": "009_dev039_application_entitlement_v2.sql",
+      "bytes": 6509,
+      "sha256": "d306d3242da919ff1fb52554785def319d06ca3f542a3b2b6cbf832164aea81c"
+    },
+    {
+      "name": "010_dev010_neutral_schema_boundary.sql",
+      "bytes": 14752,
+      "sha256": "081c6bc81e4565fae79302ac7be29f1999324d63f169bda7c6af1b581be49ff4"
+    },
+    {
+      "name": "011_dev046_workbench_list_width_preferences.sql",
+      "bytes": 1085,
+      "sha256": "a4370d5ae2d36efdfa8b6590d2241b2edaa696ad01c5ea7d8f6ab7d715eb0aaf"
+    },
+    {
+      "name": "012_dev047_managed_identity_bridge.sql",
+      "bytes": 63281,
+      "sha256": "ab18137f7cc8e3abc270bc67b5c93d765cddb8f48584f017eca52c24336c1680"
+    },
+    {
+      "name": "013_dev049_existing_google_primary_account_link.sql",
+      "bytes": 42753,
+      "sha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319"
+    }
+  ],
+  "checks": [
+    {
+      "id": "D49-01",
+      "label": "assignment-scoped revision and old-lease invalidation",
+      "status": "PASS",
+      "detail": {
+        "employeeOneRevision": "1",
+        "unrelatedEmployeeDidNotInvalidate": true,
+        "oldLeaseInvalidated": true
+      }
+    },
+    {
+      "id": "D49-02",
+      "label": "explicit primary email, redacted candidate DTO and receipt-first replay",
+      "status": "PASS",
+      "detail": {
+        "identityRecordId": "8f86ab14-a6bb-4f9a-9865-57ccc147873d",
+        "receiptFirstReplay": true,
+        "fingerprint": "ac712ae618534f313b9ce860ff24cd6daed86cf052cce209786036bfea07cda1"
+      }
+    },
+    {
+      "id": "D49-03",
+      "label": "pending alias, first bind, active no-op and canonical contract row",
+      "status": "PASS",
+      "detail": {
+        "pendingAlias": true,
+        "admissionRevision": 2,
+        "bindAuditCount": 1
+      }
+    },
+    {
+      "id": "D49-04",
+      "label": "confirm transaction rollback leaves no partial identity or receipt",
+      "status": "PASS",
+      "detail": {
+        "rollbackAtomic": true,
+        "leasePreserved": true
+      }
+    },
+    {
+      "id": "D49-05",
+      "label": "runtime remains routine-only and PUBLIC has no affected EXECUTE",
+      "status": "PASS",
+      "detail": {
+        "directTableReadDenied": true,
+        "runtimeExecute": true,
+        "publicExecute": false
+      }
+    },
+    {
+      "id": "D49-06",
+      "label": "managed-login owner CAS, receipts, lifecycle barriers and ACL",
+      "status": "PASS",
+      "detail": {
+        "identityRecordId": "5e38b1ef-4cbf-485b-a104-0d30488712e9",
+        "exactOneRevisionAdvance": true,
+        "registryRevisionStable": true,
+        "receiptReplay": true,
+        "lifecycleBarrierBranches": [
+          "managed",
+          "legacy"
+        ],
+        "ownerOnlyAcl": true
+      }
+    }
+  ],
+  "firstFailure": null,
+  "source": {
+    "runnerSha256": "dc466cd1dfd6600701ab57f6c5911bfb62cb3162b76762f500aa7d05c6eb8ad2",
+    "contractRunnerSha256": "8300a23f35b3e95e97cfe5fba370d6402b6e5b982e3c7e6c3251e39c8fdb9edb",
+    "fixtureSha256": "20c59d2a6153eddaf109ae915ba61a0cead1885abbc4e4c69493baa018a8e1d4"
+  },
+  "runtime": {
+    "project": "C:\\VIBE CODING\\OrgMaster",
+    "purpose": "DEV-049 isolated PostgreSQL validation",
+    "port": 57071,
+    "postgresPid": 24688,
+    "owningProcessTree": "node:35584 -> postgres:24688",
+    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev049-qc-k9S5Ze",
+    "interruptedBy": null,
+    "cleanup": {
+      "clientClosed": true,
+      "clusterStopped": true,
+      "portReleased": true,
+      "tempRemoved": true
+    }
+  }
+}

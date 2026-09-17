@@ -4,6 +4,7 @@ import { createOrgmasterAuthMiddleware, isAllowedOrgmasterRequestOrigin, type Or
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
 import { hashSessionToken } from './orgmasterAuthCookies'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
+import { PrincipalAdmissionError } from './orgmasterPrincipalAdmissionRepository'
 
 const openServers: Array<ReturnType<typeof createServer>> = []
 afterEach(async () => { await Promise.all(openServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
@@ -94,6 +95,26 @@ describe('OrgMaster auth middleware', () => {
       assuranceLevel: 'aal2',
       authenticatedAt,
     }))
+  })
+
+  it('validates auth time and epoch before managed bind, then re-queries the canonical principal', async () => {
+    const { runtime, config } = configuredRuntime()
+    const managed = { resolveFirebaseIdentity: vi.fn(async () => ({ principalId: 'ignored', employeeId: 'employee-1' })) }
+    runtime.managedLoginEnabled = true
+    runtime.managedIdentity = managed as never
+    vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({ issuer: config.identityIssuer, subject: 'uid-managed', assuranceLevel: 'aal1', authenticatedAt: '2026-09-17T01:00:00.000Z', signInProvider: 'google.com', email: 'person@jenfu.com.tw', emailVerified: true })
+    vi.mocked(runtime.principals!.resolveActivePrincipal)
+      .mockRejectedValueOnce(new PrincipalAdmissionError('principal_not_active'))
+      .mockResolvedValueOnce({ principalId: 'canonical-principal', employeeId: 'employee-1', mappingVersion: 42, publishedAt: '2026-09-17T01:00:01.000Z' })
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-17T01:00:10.000Z'))
+    const base = await listen(runtime)
+    config.publicBaseUrl = new URL(base)
+    const response = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'managed-token' }) })
+    now.mockRestore()
+    expect(response.status).toBe(200)
+    expect(runtime.epochs!.readState).toHaveBeenCalledBefore(managed.resolveFirebaseIdentity)
+    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(2)
+    expect(runtime.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({ principalId: 'canonical-principal', employeeId: 'employee-1' }))
   })
 
   it('rechecks active principal and epoch on every protected request and rejects a stale epoch', async () => {

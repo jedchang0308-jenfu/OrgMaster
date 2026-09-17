@@ -26,6 +26,10 @@
 - [DEV-040](DEV-040-jenfu-platform-entitlement-user-integration.md)：保留登入 principal、Jenfu 應用角色／權限與跨系統 authority；本 DEV 不授予角色、不部署 production。
 - DEV-047 本文件是 Employee number、`human_daily_managed`、Google Directory 唯讀連結、登入 alias 與外部狀態投影的直接契約。若摘要文件與本文件衝突，以本文件為準。
 
+> **DEV-049 intentional replacement（2026-09-17）**：[DEV-049](DEV-049-existing-google-primary-account-link.md) 是初次 primary Email 輸入、redacted response、assignment revision／file CAS 分離、typed repository DTO、receipt-first／actor-bound confirm 及 pending 首次登入接線的後續 RD 權威。本文件的 JFS-derived Email、lexical `identity_alias_mismatch`、員編變更需 Google 改名，以及與上述新契約衝突的 route／版本／首次登入細節不再沿用。Directory stable key、獨立 Firebase key、one-Employee／one-managed-identity、zero-provider-write、tombstone、lifecycle、sync 與 admission 不放寬。DEV-049 §2 已列出本基線的實作缺口，歷史 local QA/QC 不證明新需求完成；其 RD、驗證及另行 release 前不得宣稱產品已切換。正式 migration 012／013 與 activation 仍需獨立授權，不能併入現行 DEV-040 固定 001–011 app release。
+
+> **DEV-050 intentional replacement（2026-09-17 架構定案）**：[DEV-050](DEV-050-dual-identifier-managed-login.md) 採token-first：Google驗證後以stable key找本人，再核對current JFS或exact linked primary Email；不先回傳resolved login hint。HMAC attempt／60秒app TTL／Email或員編resolver已撤回。source closure另確認migration 013的managed canonical分支缺published application／role guard，DEV-050以forward migration 014只replace contract view補齊legacy／managed parity，不改012／013 bytes、owner public contract或provider邊界。DEV-050現為RD Implementation Ready／Architecture Finalized，但產品與QA／QC未完成；本註記不修改DEV-047完成狀態。
+
 Spec Impact Preflight：`Intentional replacement / Cross-spec convergence`。本契約取代「OrgMaster 建立或邀請 Google 帳號」、「Workspace／Cloud Identity 是兩種互斥帳號」、「員工編號或 Email 是 canonical identity」及任何 provider lifecycle intent；不回開 DEV-045 已完成的 local slice。
 
 ## 1. Current Phase 成果與執行邊界

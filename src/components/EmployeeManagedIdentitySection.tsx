@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Hash, ShieldCheck } from 'lucide-react'
 import type { Employee } from '../types'
 import { assignManagedEmployeeNumber, enqueueManagedIdentityRefresh, loadManagedEmployeeNumbers, loadManagedIdentity, ManagedIdentityApiError } from '../managedIdentity/apiClient'
-import { deriveManagedUsername, parseEmployeeNumber } from '../managedIdentity/employeeNumber'
+import { parseEmployeeNumber } from '../managedIdentity/employeeNumber'
 import type { ManagedEmployeeNumberListItemV1, ManagedIdentityReadModelV1 } from '../managedIdentity/types'
 import { WorkspacePortal } from './workspace/WorkspaceOverlayHosts'
 import { ManagedIdentityLinkDialog } from './ManagedIdentityLinkDialog'
@@ -62,8 +62,6 @@ function NumberDialog({ employee, view, open, onClose, onSuccess }: {
   }, [confirmation])
   if (!open) return null
   const parsed = parseEmployeeNumber(value)
-  const managedDomain = view.managedDomain ?? 'jenfu.com.tw'
-  const preview = parsed.ok ? deriveManagedUsername(parsed.value, managedDomain) : null
   const currentNumber = view.employeeNumber.value
   const changingNumber = Boolean(currentNumber && parsed.ok && parsed.value !== currentNumber)
   const unchanged = Boolean(currentNumber && parsed.ok && parsed.value === currentNumber)
@@ -132,13 +130,12 @@ function NumberDialog({ employee, view, open, onClose, onSuccess }: {
         {confirmation ? <>
           <div className="employee-account-dialog__candidate" role="status" aria-describedby="employee-number-change-impact">
             <strong>{currentNumber} → {confirmation}</strong>
-            <small>預計登入名稱：{deriveManagedUsername(confirmation, managedDomain)}</small>
           </div>
           <p id="employee-number-change-impact" className="dialog-field__help is-warning">儲存後舊編號將永久保留且不得重用；已連結的 Google 帳號可能需由 Google Admin 同步改名。</p>
           <footer><button type="button" className="button button--quiet" disabled={busy} onClick={() => { setConfirmation(null); window.requestAnimationFrame(() => inputRef.current?.focus()) }}>返回修改</button><button ref={confirmRef} type="submit" className="button button--primary" disabled={busy}>{busy ? '儲存中…' : '確認變更'}</button></footer>
         </> : <>
           <label className="dialog-field"><span>JFS 員工編號</span><input ref={inputRef} value={value} className={inputValidationState} onChange={(event) => { setValue(event.target.value); setError(''); setConfirmation(null) }} placeholder="JFS0001" autoComplete="off" inputMode="text" aria-describedby="employee-number-help" aria-invalid={inputValidationState === 'is-invalid'} /></label>
-          <p id="employee-number-help" className={error ? 'dialog-field__help is-error' : 'dialog-field__help'} role={error ? 'alert' : undefined}>{error || (preview ? '預計登入名稱：' + preview : '格式為 JFS 加 4 位數字；舊編號永久保留，不能重複使用。')}</p>
+          <p id="employee-number-help" className={error ? 'dialog-field__help is-error' : 'dialog-field__help'} role={error ? 'alert' : undefined}>{error || '格式為 JFS 加 4 位數字；舊編號永久保留，不能重複使用。'}</p>
           <div className="employee-number-dialog__existing-label">已存在編號</div>
           <div id="employee-number-existing-list" className="employee-number-dialog__existing-popover" role="region" aria-label="已存在編號清單">
             {existingNumbersLoading && <div role="status">讀取中…</div>}
@@ -161,6 +158,7 @@ export function EmployeeManagedIdentitySection({ employee, mutationAllowed = fal
   const [dialogOpen, setDialogOpen] = useState(false)
   const [linkDialogOpen, setLinkDialogOpen] = useState(false)
   const [refreshBusy, setRefreshBusy] = useState(false)
+  const [desktopMutationSurface, setDesktopMutationSurface] = useState(() => typeof window.matchMedia !== 'function' || window.matchMedia('(min-width: 1024px) and (pointer: fine)').matches)
   const sequence = useRef(0)
   const reload = useCallback(async () => {
     const current = ++sequence.current
@@ -176,14 +174,22 @@ export function EmployeeManagedIdentitySection({ employee, mutationAllowed = fal
     }
   }, [employee.id])
   useEffect(() => { void reload() }, [reload, refreshToken])
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia('(min-width: 1024px) and (pointer: fine)')
+    const update = () => setDesktopMutationSurface(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
   if (error?.code === 'IDENTITY_VIEW_REQUIRED') return null
   if (!view && !error) return <section className="inspector__section employee-identity-section" aria-label="員工編號與登入身分"><div className="section-heading"><span>員工編號與登入身分</span></div><div className="directory-detail__identity-state">載入員工身分…</div></section>
   if (!view) return <section className="inspector__section employee-identity-section" aria-label="員工編號與登入身分"><div className="section-heading"><span>員工編號與登入身分</span></div><div className="directory-detail__identity-error" role="alert"><span>{error ? errorMessage(error) : '目前無法讀取公司身分設定。'}</span><button type="button" className="button button--quiet" onClick={() => void reload()}>重新載入</button></div></section>
-  const canManage = mutationAllowed && view.capabilities.manageNumber
+  const canManage = mutationAllowed && desktopMutationSurface && view.capabilities.manageNumber
   const assigned = view.employeeNumber.status === 'assigned'
   const linked = view.identity.state === 'active'
-  const canLink = mutationAllowed && Boolean(view.capabilities.manageLink) && assigned && view.identity.state !== 'active'
-  const canRefresh = mutationAllowed && Boolean(view.capabilities.refresh) && assigned
+  const canLink = mutationAllowed && desktopMutationSurface && Boolean(view.capabilities.manageLink) && assigned && view.identity.state !== 'active'
+  const canRefresh = mutationAllowed && desktopMutationSurface && Boolean(view.capabilities.refresh) && assigned
   const refresh = async () => {
     if (refreshBusy) return
     setRefreshBusy(true)
@@ -195,12 +201,16 @@ export function EmployeeManagedIdentitySection({ employee, mutationAllowed = fal
     <div className="section-heading"><span id={'managed-identity-heading-' + employee.id}>員工編號與登入身分</span>{assigned && <span className={'directory-detail__identity-status ' + (linked ? 'is-active' : 'is-pending_acceptance')}>{linked ? '已啟用' : '待連結'}</span>}</div>
     <div className="directory-detail__identity-row managed-identity-row">
       <Hash size={15} aria-hidden="true" />
-      <div className="directory-detail__identity-copy"><strong>{view.employeeNumber.value ?? '尚未設定員工編號'}</strong><small>{assigned ? '預期登入名稱：' + view.employeeNumber.derivedUsername : 'Google Admin 建立帳號後，由 OrgMaster 設定唯一員工編號'}</small></div>
+      <div className="directory-detail__identity-copy"><small>OrgMaster 登入編號</small><strong>{view.employeeNumber.value ?? '尚未設定'}</strong></div>
       {canManage && <button type="button" className="button button--quiet" onClick={() => setDialogOpen(true)}>{assigned ? '變更編號' : '設定員工編號'}</button>}
-      {canLink && <button type="button" className="button button--quiet" onClick={() => setLinkDialogOpen(true)}>連結 Cloud Identity</button>}
+    </div>
+    <div className="directory-detail__identity-row managed-identity-row">
+      <ShieldCheck size={15} aria-hidden="true" />
+      <div className="directory-detail__identity-copy"><small>Google 主帳號</small><strong>{view.identity.primaryEmail ?? '尚未連結'}</strong></div>
+      {canLink && <button type="button" className="button button--quiet" onClick={() => setLinkDialogOpen(true)}>連結 Google 主帳號</button>}
       {canRefresh && <button type="button" className="button button--quiet" disabled={refreshBusy} onClick={() => { void refresh() }}>{refreshBusy ? '排程中…' : '重新整理狀態'}</button>}
     </div>
-    {assigned && <div className="directory-detail__identity-note"><ShieldCheck size={14} aria-hidden="true" />{linked ? '已連結 Google Cloud Identity；登入帳號由公司員工編號永久對應。' : '目前尚未連結 Google 帳號；請先由 Google Admin 建立 Cloud Identity，再由管理者完成公司帳號連結。'}</div>}
+    {assigned && <div className="directory-detail__identity-note">{linked ? 'Google 主帳號已啟用。' : view.identity.state === 'directory_linked_pending_auth' ? '等待員工首次使用 Google 登入。' : '尚未連結 Google 主帳號。'}</div>}
     {!assigned && !canManage && <div className="directory-detail__identity-note">尚未設定員工編號，請聯絡具員工身分管理權限的管理者。</div>}
   </section><NumberDialog employee={employee} view={view} open={dialogOpen} onClose={() => setDialogOpen(false)} onSuccess={() => { void reload(); onChanged?.() }} /><ManagedIdentityLinkDialog employee={employee} view={view} open={linkDialogOpen} onClose={() => setLinkDialogOpen(false)} onSuccess={() => { void reload(); onChanged?.() }} /></>
 }

@@ -1,0 +1,33 @@
+{
+  "contract": "DEV-049",
+  "evidenceScope": "LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-09-17T15:03:50.662Z",
+  "migrationSha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319",
+  "checks": [
+    {
+      "name": "forward-only migration and exact ownership boundary",
+      "status": "PASS"
+    },
+    {
+      "name": "browser contract accepts explicit primary email and redacts provider identifiers",
+      "status": "PASS"
+    },
+    {
+      "name": "Directory adapter is read-only and validates stable provider facts",
+      "status": "PASS"
+    },
+    {
+      "name": "receipt-first local store and canonical Firebase requery",
+      "status": "PASS"
+    },
+    {
+      "name": "managed-login owner API binds caller, Firebase, Directory stable key and CAS receipt",
+      "status": "PASS"
+    },
+    {
+      "name": "DEV-047 runner exposes isolated DEV-049 suite without changing production release paths",
+      "status": "PASS"
+    }
+  ]
+}

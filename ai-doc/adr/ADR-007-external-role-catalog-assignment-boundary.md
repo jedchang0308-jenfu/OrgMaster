@@ -47,6 +47,33 @@
 
 本amendment不改變`13B`「cross-app override capability永久存在」的決策；它新增的是誰可行使該capability及如何隔離personas。本輪不建立／停用帳號、不改Employee資料、不發布角色、不部署。
 
+## 2026-09-17 Existing Google Primary Account Mapping Amendment
+
+分類：`Human Confirmed / RD Implementation Ready / Intentional Replacement / Documents Only / OrgMaster Zero Provider Writes / Production Gated`
+
+### Context
+
+部分 Employee 已有公司管理的 Google Workspace 主帳號，例如張仕杰的 `jedchang0308@jenfu.com.tw`。強制另建 JFS 衍生帳號會產生重複 managed principal 與管理負擔，誤配付費 license 時還會增加成本。真正需要穩定的是 OrgMaster JFS 登入別名與 Employee↔Directory stable principal 關係，不是兩個可變登入名稱的字串相等。
+
+### Decision
+
+1. `JFS####`固定為OrgMaster current login alias；Google primary Email是既有公司managed principal的可變登入名稱。兩者分軸治理，不要求字串相同，也不得互相取代Employee ID、Directory key或Firebase key。
+2. 初次連結改由具`orgmaster.identity.link`且為human privileged的管理者輸入完整公司Google primary Email。OrgMaster server正規化後以read-only Directory exact lookup驗證configured customer、primary Email、state與stable user ID；alias命中、不同customer、suspended、archived或已綁他人一律拒絕。
+3. Browser不得指定或取得Directory customer ID、user ID、etag或credential。候選仍採opaque 256-bit、actor-bound、5分鐘、single-use lease；confirm前必須按stable Directory key live readback並比對candidate facts，通過後才可transaction link。
+4. Employee number變更不要求Google Admin改名，也不因JFS／primary Email字串不同產生`identity_alias_mismatch`。Resolver始終沿既有managed relation，以最近成功驗證的primary Email作`login_hint`；舊JFS仍永久tombstone且generic拒絕。
+5. Google Admin繼續擁有managed user、credential、MFA、rename、suspend、session與Workspace license；OrgMaster仍只有Directory read scope，provider write operation固定為0。Directory customer＋user ID、Firebase issuer＋subject、one-Employee／one-managed-identity、lifecycle、sync、admission與production gate均不變。
+6. 本amendment有意取代同一ADR 2026-09-08 amendment第8、10、14點中「primary Email必須等於current衍生username」、「字串不一致即alias mismatch」及其衍生流程；其他條文保持有效。直接API、migration、UI、transaction與驗證契約由[DEV-049](../specs/DEV-049-existing-google-primary-account-link.md)維護。
+7. 首次連結後的 pending identity 可在既有 admission／角色／lifecycle guard 下取得 login hint，但不是 active principal；經 verified token 與 live Directory read 完成 bind 後，必須重查 canonical admission 才能建 session。不以「必須先 active」阻斷首次登入，也不補造 mapping version。
+8. 2026-09-17 技術主管修訂將 assignment revision 與 file CAS 分離，確定 receipt-first replay、typed repository DTO 與鎖內 authority 檢查；只補既有流程，不新增 provider service 或一般 rebind。具體工程契約僅在 DEV-049 維護。
+
+### Consequences
+
+- 已有`jedchang0308@jenfu.com.tw`的Employee可直接連結該principal，不需另建`jfs0005@jenfu.com.tw`。
+- Email仍不是canonical key；未來Google Admin改名由stable-key readback更新last verified primary Email，不改Employee、JFS或principal relation。
+- 現行DEV-047實作在DEV-049完成RD、QA/QC與另行release前仍是歷史／部署基線；本文件定案不代表產品或production已切換。
+- 前版 DEV-049 closure 漏列的 source 缺口由該 spec §2 明列，仍待 RD／驗證；文件定案不是獨立 QC。Migration 012／013 與外部 activation 必須另依人類授權與 release 契約處理，不改 DEV-040 固定 001–011 的一般 app release。
+- 本輪只修改受控文件，未修改程式、schema、Google帳號、授權、雲端設定、部署或traffic。
+
 ## 2026-09-08 Cloud Identity Baseline and Workspace Entitlement Amendment
 
 分類：`Human Confirmed / RD Implementation Ready / Correction Review 2026-09-14 / RD Not Started / Intentional Replacement / Documents Only / Google Admin Full Identity Lifecycle / OrgMaster Zero Provider Writes / Production Gated`
@@ -161,6 +188,20 @@ Google的授權模型允許同一managed user同時具有Cloud Identity Free與G
 8. AI-PDM `system_admin`頁不顯示「尚未採用職位」或Position控制，只顯示「由 OrgMaster 管理」、redacted特權身分、資料時間與前往既有「角色指派」的導引。principal role計數單位是「特權身分 N 個」，不是自然人數。
 
 跨系統權威契約見[Jenfu Platform DEV-009](../../../Jenfu-Management-system/ai-doc/specs/DEV-009-system-admin-privileged-principal-governance.md)；OrgMaster direct implementation contract見DEV-040 §23。`009-S0～S4`已完成local／isolated implementation與targeted QA-QC；S1 PostgreSQL、S2 OrgMaster normal-path browser、S3 AI-PDM aggregate與S4 cross-repo均有frozen report／candidate SHA，S4另逐檔驗章S1～S3 receipt。此狀態不代表production schema已apply、真實principal／grant已建立、bootstrap、deploy或release已完成；下一步固定為`009-R1 Release Gate Required`。
+
+## 2026-09-17 DEV-050 App-local Managed Login Amendment
+
+分類：`Compatible Security Refinement / RD Implementation Ready / Product Not Implemented / Production Gated`
+
+DEV-050 將 OrgMaster app-local managed login 收斂為 token-first，不改本 ADR 的角色目錄與角色指派 authority：
+
+1. JFS員工編號與公司primary Email只是在Google認證完成後核對「token所證明的本人」，不是credential、principal key、角色或admission authority；不得用它們pre-auth搜尋他人mapping。canonical identity仍是Firebase issuer＋subject與Google Directory customer＋stable user ID。
+2. Browser直接把Firebase ID token與本次identifier送既有session endpoint；OrgMaster以stable Directory key讀本人mapping。HMAC login attempt、60秒app TTL、Email／員編resolver與公開存在性查詢均不採用。
+3. Canonical principal admission必須同時符合active Employee、published active OrgMaster application、active global OrgMaster application role、managed admission／observation／lifecycle。migration 013的managed分支缺少前兩項role parity，因此DEV-050以forward migration 014只replace `orgmaster_contract.v_active_principal_mappings_v1`；legacy／managed共用同一eligible-employee集合，001～013 bytes、contract columns、owner與grant不變。
+4. App-local session request有identifier時必須先完成本人核對，再重查canonical principal與auth epoch；任何失敗不得降級成legacy登入。無identifier只保留既有canonical登入，不完成pending first-bind。
+5. Platform `jenfu.managed-login.v1` owner request／response、caller verification、Google Admin外部生命週期、zero-provider-write及SSO handoff boundary不變。這是OrgMaster內部session authorization hardening，不新增跨應用write或第二權限權威。
+
+權威實作契約見[DEV-050](../specs/DEV-050-dual-identifier-managed-login.md)。本 amendment 只完成架構定案；migration 014、產品、provider、正式DB、deploy與release尚未執行。
 
 ## Context
 

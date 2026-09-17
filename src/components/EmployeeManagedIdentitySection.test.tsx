@@ -6,7 +6,7 @@ import { EmployeeManagedIdentitySection } from './EmployeeManagedIdentitySection
 
 vi.mock('./workspace/WorkspaceOverlayHosts', () => ({ WorkspacePortal: ({ children }: { children: React.ReactNode }) => children }))
 
-const api = vi.hoisted(() => ({ loadManagedIdentity: vi.fn(), loadManagedEmployeeNumbers: vi.fn(), assignManagedEmployeeNumber: vi.fn() }))
+const api = vi.hoisted(() => ({ loadManagedIdentity: vi.fn(), loadManagedEmployeeNumbers: vi.fn(), assignManagedEmployeeNumber: vi.fn(), findManagedIdentityCandidate: vi.fn(), confirmManagedIdentityLink: vi.fn(), enqueueManagedIdentityRefresh: vi.fn() }))
 vi.mock('../managedIdentity/apiClient', () => ({
   ...api,
   ManagedIdentityApiError: class ManagedIdentityApiError extends Error {
@@ -19,7 +19,7 @@ const base = {
   contractVersion: 'orgmaster.managed-identity.v1' as const,
   managedDomain: 'jenfu.com.tw',
   employee: { id: employee.id, status: 'active' as const },
-  employeeNumber: { status: 'unassigned' as const, value: null, derivedUsername: null, revision: null },
+  employeeNumber: { status: 'unassigned' as const, value: null, revision: null },
   identity: { state: 'not_linked' as const, provider: 'google.com' as const, note: 'Google Admin 建立後由 OrgMaster 連結' as const },
   capabilities: { view: true as const, manageNumber: true },
   registryRevision: null,
@@ -44,7 +44,9 @@ describe('EmployeeManagedIdentitySection', () => {
       { employeeId: 'employee-2', employeeName: '張祐豪', employeeNumber: 'JFS0002', status: 'active' },
       { employeeId: 'employee-3', employeeName: '陳怡君', employeeNumber: 'JFS0003', status: 'retired' },
     ] })
-    api.assignManagedEmployeeNumber.mockResolvedValue({ ...base, employeeNumber: { status: 'assigned', value: 'JFS0001', derivedUsername: 'jfs0001@jenfu.com.tw', revision: 1 }, registryRevision: 'revision-1' })
+    api.assignManagedEmployeeNumber.mockResolvedValue({ ...base, employeeNumber: { status: 'assigned', value: 'JFS0001', revision: 1 }, registryRevision: '1' })
+    api.findManagedIdentityCandidate.mockResolvedValue({ candidateToken: 'opaque-token', expiresAt: '2026-09-17T01:05:00.000Z', employee: { id: 'employee-1', employeeNumber: 'JFS0001' }, directory: { primaryEmail: 'person@jenfu.com.tw' }, workspaceRevision: 'workspace-1', registryRevision: '1' })
+    api.confirmManagedIdentityLink.mockResolvedValue({ ...base })
   })
   afterEach(() => document.body.replaceChildren())
 
@@ -52,7 +54,7 @@ describe('EmployeeManagedIdentitySection', () => {
     const { host, root } = render()
     await flush()
     expect(host.textContent).toContain('員工編號與登入身分')
-    expect(host.textContent).toContain('尚未設定員工編號')
+    expect(host.textContent).toContain('尚未設定')
     expect(host.textContent).toContain('設定員工編號')
     expect(host.textContent).not.toContain('邀請')
     act(() => root.unmount())
@@ -131,8 +133,8 @@ describe('EmployeeManagedIdentitySection', () => {
   it('requires an impact confirmation before changing an assigned employee number', async () => {
     api.loadManagedIdentity.mockResolvedValue({
       ...base,
-      employeeNumber: { status: 'assigned', value: 'JFS0001', derivedUsername: 'jfs0001@jenfu.com.tw', revision: 1 },
-      registryRevision: 'revision-1',
+      employeeNumber: { status: 'assigned', value: 'JFS0001', revision: 1 },
+      registryRevision: '1',
     })
     const { host, root } = render()
     await flush()
@@ -155,7 +157,30 @@ describe('EmployeeManagedIdentitySection', () => {
     const confirmButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '確認變更')
     act(() => confirmButton?.click())
     await flush()
-    expect(api.assignManagedEmployeeNumber).toHaveBeenCalledWith('employee-1', expect.objectContaining({ employeeNumber: 'JFS0004', expectedRegistryRevision: 'revision-1' }))
+    expect(api.assignManagedEmployeeNumber).toHaveBeenCalledWith('employee-1', expect.objectContaining({ employeeNumber: 'JFS0004', expectedRegistryRevision: '1' }))
+    act(() => root.unmount())
+  })
+
+  it('links an explicit Google primary email without exposing provider identifiers', async () => {
+    api.loadManagedIdentity.mockResolvedValue({ ...base, workspaceRevision: 'workspace-1', employeeNumber: { status: 'assigned', value: 'JFS0001', revision: 1 }, registryRevision: '1', capabilities: { ...base.capabilities, manageLink: true } })
+    const { host, root } = render()
+    await flush()
+    const link = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '連結 Google 主帳號')
+    act(() => link?.click())
+    const input = host.querySelector<HTMLInputElement>('input[inputmode="email"]')
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(input, 'person@jenfu.com.tw')
+      input?.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    const lookup = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '查詢帳號')
+    act(() => lookup?.click())
+    await flush()
+    expect(api.findManagedIdentityCandidate).toHaveBeenCalledWith('employee-1', { expectedWorkspaceRevision: 'workspace-1', expectedRegistryRevision: '1', primaryEmail: 'person@jenfu.com.tw' })
+    expect(host.textContent).toContain('person@jenfu.com.tw')
+    expect(host.textContent).not.toContain('user-1')
+    expect(host.textContent).not.toContain('customer-1')
     act(() => root.unmount())
   })
 })

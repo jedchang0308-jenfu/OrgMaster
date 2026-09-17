@@ -2,7 +2,6 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, unlink } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type {
-  ConfirmManagedIdentityLinkRequestV1,
   EmployeeNumberAssignmentV1,
   ManagedDailyIdentityV1,
   ManagedIdentityAuditEventV1,
@@ -17,6 +16,7 @@ import type {
 } from '../src/managedIdentity/types'
 import { assignEmployeeNumber, createEmptyManagedIdentityRegistry, parseEmployeeNumber } from '../src/managedIdentity/employeeNumber'
 import { fileExists, hashFileContent, withOrgMasterRootLock, writeVerifiedAtomicFile } from './orgmasterFileStore'
+import { canonicalManagedLoginIdentity, incrementRevision, type ManagedLoginIdentity } from './orgmasterManagedLoginContract'
 
 export type ManagedIdentityStoreErrorCode =
   | 'MANAGED_IDENTITY_STORE_INVALID'
@@ -188,6 +188,46 @@ function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
 function actorHash(value: string) { return sha256(value) }
 function tokenHash(value: string) { return sha256(value) }
 
+function hexUtf8(value: string | null) { return value === null ? '-' : Buffer.from(value, 'utf8').toString('hex').toLowerCase() }
+
+export type ManagedIdentityConfirmContext = {
+  commandId: string
+  employeeId: string
+  candidateToken: string
+  expectedWorkspaceRevision: string | null
+  expectedRegistryRevision: string
+  actor: string
+}
+
+export type ManagedIdentityCandidateSnapshot = {
+  employeeId: string
+  employeeNumber: string
+  workspaceRevision: string | null
+  registryRevision: string
+  directoryCustomerId: string
+  directoryUserId: string
+  primaryEmail: string
+  sourceEtag: string | null
+  expiresAt: string
+}
+
+export type ManagedIdentityConfirmationRead =
+  | { kind: 'candidate'; snapshot: ManagedIdentityCandidateSnapshot }
+  | { kind: 'replayed'; identityRecordId: string }
+
+export type ManagedIdentityAliasResolution = {
+  employeeId: string
+  employeeNumber: string
+  identityRecordId: string
+  loginHint: string
+  linkState: 'directory_linked_pending_auth' | 'active'
+}
+
+export function managedIdentityConfirmFingerprint(input: ManagedIdentityConfirmContext) {
+  const values = ['dev049.confirm.v1', input.actor, input.employeeId, tokenHash(input.candidateToken), input.expectedWorkspaceRevision, input.expectedRegistryRevision]
+  return sha256(values.map((value) => hexUtf8(value)).join('|'))
+}
+
 export type CandidateInput = {
   employeeId: string
   employeeNumber: string
@@ -197,7 +237,7 @@ export type CandidateInput = {
   primaryEmail: string
   sourceEtag: string | null
   workspaceRevision: string | null
-  registryRevision: string | null
+  registryRevision: string
   actor: string
   now?: string
 }
@@ -205,16 +245,18 @@ export type CandidateInput = {
 export interface ManagedIdentityStoreV1 {
   readExisting(): Promise<{ exists: boolean; raw: string | null; document: ManagedIdentityDocumentV1; revision: string | null }>
   commit(expectedRevision: string | null, mutate: (current: ManagedIdentityDocumentV1) => ManagedIdentityDocumentV1, operationId?: string): Promise<{ exists: true; raw: string; document: ManagedIdentityDocumentV1; revision: string }>
-  appendAssignment(employeeId: string, employeeNumber: string, actor: string, expectedRevision: string | null, now?: string, expectedWorkspaceRevision?: string | null): Promise<{ disposition: 'applied' | 'noop'; assignment: EmployeeNumberAssignmentV1; document: ManagedIdentityDocumentV1; revision: string }>
-  createCandidate(input: CandidateInput): Promise<{ token: string; lease: ManagedIdentityCandidateLeaseV1; document: ManagedIdentityDocumentV1; revision: string }>
-  confirmCandidate(input: ConfirmManagedIdentityLinkRequestV1 & { employeeId: string; actor: string; now?: string }): Promise<{ identity: ManagedDailyIdentityV1; document: ManagedIdentityDocumentV1; revision: string }>
-  bindAuth(input: { employeeId: string; issuer: string; subject: string; email: string; now?: string; commandId?: string }): Promise<{ identity: ManagedDailyIdentityV1; document: ManagedIdentityDocumentV1; revision: string }>
-  enqueueRefresh(input: { employeeId: string; trigger: 'manual' | 'periodic' | 'domain'; commandId: string; actor: string; now?: string }): Promise<{ disposition: 'queued' | 'deduplicated'; requestId: string; document: ManagedIdentityDocumentV1; revision: string }>
+  appendAssignment(employeeId: string, employeeNumber: string, actor: string, expectedRevision: string | null, now?: string, expectedWorkspaceRevision?: string | null): Promise<{ disposition: 'applied' | 'noop'; assignment: EmployeeNumberAssignmentV1; revision: string }>
+  createCandidate(input: CandidateInput): Promise<{ token: string; expiresAt: string; workspaceRevision: string | null; registryRevision: string }>
+  readCandidateForConfirmation(input: ManagedIdentityConfirmContext): Promise<ManagedIdentityConfirmationRead>
+  confirmCandidate(input: ManagedIdentityConfirmContext): Promise<{ identityRecordId: string; employeeId: string }>
+  bindAuth(input: { employeeId: string; issuer: string; subject: string; email: string; commandId?: string }): Promise<{ identityRecordId: string; employeeId: string }>
+  enqueueRefresh(input: { employeeId: string; trigger: 'manual' | 'periodic' | 'domain'; commandId: string; actor: string; now?: string }): Promise<{ disposition: 'queued' | 'deduplicated'; requestId: string }>
   claimRefresh(workerId: string, limit?: number, leaseSeconds?: number, now?: string): Promise<{ claims: ManagedIdentityRefreshClaimV1[]; document: ManagedIdentityDocumentV1; revision: string }>
   completeRefresh(input: { requestId: string; workerId: string; leaseVersion: number; directoryCustomerId: string; directoryUserId: string; directoryState: 'missing' | 'present' | 'suspended' | 'archived'; primaryEmail: string | null; sourceEtag: string | null; adapterOutcome: 'success' | 'not_found'; now?: string }): Promise<ManagedIdentityRefreshResultV1>
   retryRefresh(input: { requestId: string; workerId: string; leaseVersion: number; errorCode: string; now?: string }): Promise<ManagedIdentityRefreshResultV1>
-  resolveAlias(employeeNumber: string): Promise<{ identity: ManagedDailyIdentityV1; assignment: EmployeeNumberAssignmentV1; document: ManagedIdentityDocumentV1; revision: string }>
+  resolveAlias(employeeNumber: string): Promise<ManagedIdentityAliasResolution>
   setAdmission(enabled: boolean, expectedRevision: number, actor: string, reasonCode: string, now?: string): Promise<{ enabled: boolean; revision: number; document: ManagedIdentityDocumentV1; fileRevision: string }>
+  verifyManagedLoginIdentity(input: { requestId: string; requestHash: string; current: ManagedLoginIdentity; issuer: string; subject: string; actor: string }): Promise<{ identity: ManagedLoginIdentity & { linkState: 'active'; pair: { issuer: string; subject: string } }; mappingVersion: string }>
 }
 
 export function createManagedIdentityStore(input: { root: string; devEnabled: boolean; now?: () => Date }): ManagedIdentityStoreV1 {
@@ -257,7 +299,11 @@ export function createManagedIdentityStore(input: { root: string; devEnabled: bo
   const appendAssignment = async (employeeId: string, employeeNumber: string, actor: string, expectedRevision: string | null, timestamp = nowIso(now()), _expectedWorkspaceRevision: string | null = null) => {
     let disposition: 'applied' | 'noop' = 'applied'
     let assignment!: EmployeeNumberAssignmentV1
-    const committed = await commit(expectedRevision, (current) => {
+    const before = await readExisting()
+    const revisionFor = (document: ManagedIdentityDocumentV1) => String(document.registry.assignments.find((entry) => entry.employeeId === employeeId)?.revision ?? 0)
+    if (expectedRevision !== revisionFor(before.document)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
+    await commit(before.revision, (current) => {
+      if (expectedRevision !== revisionFor(current)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
       const result = assignEmployeeNumber(current.registry, employeeId, employeeNumber, actor, timestamp)
       disposition = result.status; assignment = result.assignment
       if (result.status === 'noop') return current
@@ -269,7 +315,7 @@ export function createManagedIdentityStore(input: { root: string; devEnabled: bo
       }
       return { ...current, registry: result.registry, auditEvents: [...current.auditEvents, event] }
     }, `assign-employee-number:${employeeId}:${timestamp}`)
-    return { disposition, assignment, document: committed.document, revision: committed.revision }
+    return { disposition, assignment, revision: String(assignment.revision) }
   }
 
   const createCandidate = async (candidate: CandidateInput) => {
@@ -284,53 +330,96 @@ export function createManagedIdentityStore(input: { root: string; devEnabled: bo
       expiresAt: new Date(Date.parse(createdAt) + 5 * 60_000).toISOString(), invalidatedAt: null, consumedAt: null,
     }
     const current = await readExisting()
+    const assignment = current.document.registry.assignments.find((entry) => entry.employeeId === candidate.employeeId)
+    if (!assignment || assignment.employeeNumber !== candidate.employeeNumber || String(assignment.revision) !== candidate.registryRevision) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
+    if ((current.document.managedDailyIdentities ?? []).some((entry) => entry.employeeId === candidate.employeeId || entry.directoryCustomerId === candidate.directoryCustomerId && entry.directoryUserId === candidate.directoryUserId)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
     const committed = await commit(current.revision, (document) => {
+      const liveAssignment = document.registry.assignments.find((entry) => entry.employeeId === candidate.employeeId)
+      if (!liveAssignment || liveAssignment.employeeNumber !== candidate.employeeNumber || String(liveAssignment.revision) !== candidate.registryRevision) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
+      if ((document.managedDailyIdentities ?? []).some((entry) => entry.employeeId === candidate.employeeId || entry.directoryCustomerId === candidate.directoryCustomerId && entry.directoryUserId === candidate.directoryUserId)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
       const leases = (document.candidateLeases ?? []).map((entry) => entry.employeeId === candidate.employeeId && entry.actorBindingSha256 === actorHash(candidate.actor) && !entry.consumedAt && !entry.invalidatedAt ? { ...entry, invalidatedAt: createdAt } : entry)
       return { ...document, candidateLeases: [...leases, lease] }
     }, `candidate:${leaseId}`)
-    return { token, lease, document: committed.document, revision: committed.revision }
+    void committed
+    return { token, expiresAt: lease.expiresAt, workspaceRevision: lease.workspaceRevision, registryRevision: candidate.registryRevision }
   }
 
-  const confirmCandidate = async (request: ConfirmManagedIdentityLinkRequestV1 & { employeeId: string; actor: string; now?: string }) => {
-    const current = await readExisting()
-    let identity!: ManagedDailyIdentityV1
-    const timestamp = request.now ?? nowIso(now())
-    const committed = await commit(current.revision, (document) => {
-      const lease = (document.candidateLeases ?? []).find((entry) => entry.employeeId === request.employeeId && entry.tokenHashSha256 === tokenHash(request.candidateToken))
-      if (!lease) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_CANDIDATE_INVALID')
-      if (lease.consumedAt) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_CANDIDATE_CONSUMED')
-      if (lease.invalidatedAt || Date.parse(lease.expiresAt) <= Date.parse(timestamp)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_CANDIDATE_EXPIRED')
-      if (lease.workspaceRevision !== request.expectedWorkspaceRevision || lease.registryRevision !== request.expectedRegistryRevision) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
-      const existing = (document.managedDailyIdentities ?? []).find((entry) => entry.employeeId === request.employeeId)
-      if (existing) { identity = clone(existing); return document }
-      const directoryKey = `${lease.directoryCustomerId}\u0000${lease.directoryUserId}`
-      if ((document.managedDailyIdentities ?? []).some((entry) => `${entry.directoryCustomerId}\u0000${entry.directoryUserId}` === directoryKey)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
-      identity = {
-        identityRecordId: randomUUID(), identityKind: 'human_daily_managed', employeeId: request.employeeId, principalId: '',
-        directoryCustomerId: lease.directoryCustomerId, directoryUserId: lease.directoryUserId, lastVerifiedPrimaryEmail: lease.primaryEmail,
-        authIssuer: null, authSubject: null, boundAt: null, linkState: 'directory_linked_pending_auth', revision: 1, admissionRevision: null, admissionChangedAt: null,
-        createdAt: timestamp, createdBy: request.actor, updatedAt: timestamp, updatedBy: request.actor,
-      }
-      identity.principalId = `principal-managed:${identity.identityRecordId}`
-      const observation = { identityRecordId: identity.identityRecordId, primaryEmail: lease.primaryEmail, directoryState: 'present' as const, sourceEtag: lease.sourceEtag, lastAppliedRequestSequence: 0, adapterOutcome: 'success' as const, errorCode: null, trustedObservedAt: timestamp, lastAttemptAt: timestamp, freshness: 'fresh' as const }
-      const receipt: ManagedIdentityCommandReceiptV1 = { commandId: request.commandId, requestHashSha256: sha256(JSON.stringify({ employeeId: request.employeeId, tokenHash: lease.tokenHashSha256 })), action: 'confirm_managed_identity_link_v1', employeeId: request.employeeId, identityRecordId: identity.identityRecordId, responsePayload: { status: 'directory_linked_pending_auth' }, createdAt: timestamp }
-      const event: ManagedIdentityAuditEventV1 = { id: 'managed-identity-audit-' + randomUUID(), commandId: request.commandId, action: 'managed_identity_link_confirmed', employeeId: request.employeeId, identityRecordId: identity.identityRecordId, employeeNumber: lease.employeeNumber, previousEmployeeNumber: null, actor: request.actor, occurredAt: timestamp, result: 'applied', reasonCode: 'directory_candidate_confirmed', details: { directoryKeySha256: sha256(directoryKey) } }
-      return { ...document, managedDailyIdentities: [...(document.managedDailyIdentities ?? []), identity], observations: [...(document.observations ?? []), observation], candidateLeases: (document.candidateLeases ?? []).map((entry) => entry.leaseId === lease.leaseId ? { ...entry, consumedAt: timestamp } : entry), commandReceipts: [...(document.commandReceipts ?? []), receipt], auditEvents: [...document.auditEvents, event] }
-    }, `confirm:${request.commandId}`)
-    return { identity, document: committed.document, revision: committed.revision }
+  const confirmationRead = (document: ManagedIdentityDocumentV1, request: ManagedIdentityConfirmContext, timestamp: string): ManagedIdentityConfirmationRead => {
+    const fingerprint = managedIdentityConfirmFingerprint(request)
+    const receipt = (document.commandReceipts ?? []).find((entry) => entry.commandId === request.commandId)
+    if (receipt) {
+      const identityRecordId = typeof receipt.responsePayload.identityRecordId === 'string' ? receipt.responsePayload.identityRecordId : ''
+      if (receipt.action !== 'confirm_managed_identity_link_v1' || receipt.requestHashSha256 !== fingerprint || receipt.responsePayload.contractVersion !== 'dev049.confirm.v1' || !identityRecordId || receipt.employeeId !== request.employeeId || receipt.identityRecordId !== identityRecordId) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDEMPOTENCY_CONFLICT')
+      return { kind: 'replayed', identityRecordId }
+    }
+    const lease = (document.candidateLeases ?? []).find((entry) => entry.employeeId === request.employeeId && entry.tokenHashSha256 === tokenHash(request.candidateToken))
+    if (!lease || lease.actorBindingSha256 !== actorHash(request.actor) || lease.consumedAt || lease.invalidatedAt || Date.parse(lease.expiresAt) <= Date.parse(timestamp)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_CANDIDATE_INVALID')
+    if (lease.workspaceRevision !== request.expectedWorkspaceRevision || lease.registryRevision !== request.expectedRegistryRevision) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
+    const assignment = document.registry.assignments.find((entry) => entry.employeeId === request.employeeId)
+    if (!assignment || assignment.employeeNumber !== lease.employeeNumber || String(assignment.revision) !== request.expectedRegistryRevision) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
+    const authority = document.currentWorkspaceAuthority
+    if (authority && (authority.workspaceRevision !== request.expectedWorkspaceRevision || !authority.employeeIds.includes(request.employeeId))) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
+    if ((document.managedDailyIdentities ?? []).some((entry) => entry.employeeId === request.employeeId)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+    return { kind: 'candidate', snapshot: { employeeId: request.employeeId, employeeNumber: lease.employeeNumber, workspaceRevision: lease.workspaceRevision, registryRevision: request.expectedRegistryRevision, directoryCustomerId: lease.directoryCustomerId, directoryUserId: lease.directoryUserId, primaryEmail: lease.primaryEmail, sourceEtag: lease.sourceEtag, expiresAt: lease.expiresAt } }
   }
 
-  const bindAuth = async (request: { employeeId: string; issuer: string; subject: string; email: string; now?: string; commandId?: string }) => {
+  const readCandidateForConfirmation = async (request: ManagedIdentityConfirmContext) => confirmationRead((await readExisting()).document, request, nowIso(now()))
+
+  const confirmCandidate = async (request: ManagedIdentityConfirmContext) => {
     const current = await readExisting()
-    const timestamp = request.now ?? nowIso(now())
+    const timestamp = nowIso(now())
+    const initial = confirmationRead(current.document, request, timestamp)
+    if (initial.kind === 'replayed') return { identityRecordId: initial.identityRecordId, employeeId: request.employeeId }
+    let result!: { identityRecordId: string; employeeId: string }
+    try {
+      const committed = await commit(current.revision, (document) => {
+        const read = confirmationRead(document, request, timestamp)
+        if (read.kind === 'replayed') { result = { identityRecordId: read.identityRecordId, employeeId: request.employeeId }; return document }
+        const lease = (document.candidateLeases ?? []).find((entry) => entry.employeeId === request.employeeId && entry.tokenHashSha256 === tokenHash(request.candidateToken))!
+        const directoryKey = `${read.snapshot.directoryCustomerId}\u0000${read.snapshot.directoryUserId}`
+        if ((document.managedDailyIdentities ?? []).some((entry) => `${entry.directoryCustomerId}\u0000${entry.directoryUserId}` === directoryKey)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+        const identity: ManagedDailyIdentityV1 = {
+          identityRecordId: randomUUID(), identityKind: 'human_daily_managed', employeeId: request.employeeId, principalId: '',
+          directoryCustomerId: read.snapshot.directoryCustomerId, directoryUserId: read.snapshot.directoryUserId, lastVerifiedPrimaryEmail: read.snapshot.primaryEmail,
+          authIssuer: null, authSubject: null, boundAt: null, linkState: 'directory_linked_pending_auth', revision: 1, admissionRevision: null, admissionChangedAt: null,
+          createdAt: timestamp, createdBy: request.actor, updatedAt: timestamp, updatedBy: request.actor,
+        }
+        identity.principalId = `principal-managed:${identity.identityRecordId}`
+        result = { identityRecordId: identity.identityRecordId, employeeId: request.employeeId }
+        const observation = { identityRecordId: identity.identityRecordId, primaryEmail: read.snapshot.primaryEmail, directoryState: 'present' as const, sourceEtag: read.snapshot.sourceEtag, lastAppliedRequestSequence: 0, adapterOutcome: 'success' as const, errorCode: null, trustedObservedAt: timestamp, lastAttemptAt: timestamp, freshness: 'fresh' as const }
+        const receipt: ManagedIdentityCommandReceiptV1 = { commandId: request.commandId, requestHashSha256: managedIdentityConfirmFingerprint(request), action: 'confirm_managed_identity_link_v1', employeeId: request.employeeId, identityRecordId: identity.identityRecordId, responsePayload: { contractVersion: 'dev049.confirm.v1', identityRecordId: identity.identityRecordId, employeeId: request.employeeId }, createdAt: timestamp }
+        const event: ManagedIdentityAuditEventV1 = { id: 'managed-identity-audit-' + randomUUID(), commandId: request.commandId, action: 'managed_identity_link_confirmed', employeeId: request.employeeId, identityRecordId: identity.identityRecordId, employeeNumber: lease.employeeNumber, previousEmployeeNumber: null, actor: request.actor, occurredAt: timestamp, result: 'applied', reasonCode: 'directory_candidate_confirmed', details: { directoryKeySha256: sha256(directoryKey) } }
+        return { ...document, managedDailyIdentities: [...(document.managedDailyIdentities ?? []), identity], observations: [...(document.observations ?? []), observation], candidateLeases: (document.candidateLeases ?? []).map((entry) => entry.leaseId === lease.leaseId ? { ...entry, consumedAt: timestamp } : entry), commandReceipts: [...(document.commandReceipts ?? []), receipt], auditEvents: [...document.auditEvents, event] }
+      }, `confirm:${request.commandId}`)
+      void committed
+      return result
+    } catch (error) {
+      if (!(error instanceof ManagedIdentityStoreError) || error.code !== 'MANAGED_IDENTITY_REVISION_CONFLICT') throw error
+      const replay = confirmationRead((await readExisting()).document, request, timestamp)
+      if (replay.kind !== 'replayed') throw error
+      return { identityRecordId: replay.identityRecordId, employeeId: request.employeeId }
+    }
+  }
+
+  const bindAuth = async (request: { employeeId: string; issuer: string; subject: string; email: string; commandId?: string }) => {
+    const current = await readExisting()
+    const timestamp = nowIso(now())
     let identity!: ManagedDailyIdentityV1
+    const prior = (current.document.managedDailyIdentities ?? []).find((entry) => entry.employeeId === request.employeeId)
+    if (prior?.linkState === 'active' && prior.authIssuer === request.issuer && prior.authSubject === request.subject && prior.lastVerifiedPrimaryEmail === request.email.trim().toLowerCase()) return { identityRecordId: prior.identityRecordId, employeeId: prior.employeeId }
     const committed = await commit(current.revision, (document) => {
       const found = (document.managedDailyIdentities ?? []).find((entry) => entry.employeeId === request.employeeId)
       if (!found) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_CANDIDATE_INVALID')
       const normalizedEmail = request.email.trim().toLowerCase()
+      if (!document.admissionAuthority?.admissionEnabled) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_ADMISSION_DISABLED')
+      const observation = (document.observations ?? []).find((entry) => entry.identityRecordId === found.identityRecordId)
+      if (!observation || observation.directoryState !== 'present' || observation.primaryEmail?.toLowerCase() !== normalizedEmail || found.lastVerifiedPrimaryEmail.toLowerCase() !== normalizedEmail || found.linkState === 'conflict') throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+      if ((document.lifecycleEvents ?? []).some((entry) => entry.employeeId === request.employeeId && entry.state !== 'completed')) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+      if (found.linkState === 'active' && found.authIssuer === request.issuer && found.authSubject === request.subject) { identity = clone(found); return document }
       const conflictReservation = (document.principalIdentityReservations ?? []).find((entry) => entry.principalIssuer === request.issuer && entry.principalSubject === request.subject && entry.employeeId !== request.employeeId)
       const conflictIdentity = (document.managedDailyIdentities ?? []).find((entry) => entry.authIssuer === request.issuer && entry.authSubject === request.subject && entry.employeeId !== request.employeeId)
-      if (conflictReservation || conflictIdentity) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+      const anyReservation = (document.principalIdentityReservations ?? []).find((entry) => entry.principalIssuer === request.issuer && entry.principalSubject === request.subject)
+      if (conflictReservation || conflictIdentity || anyReservation) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
       if (found.authIssuer && (found.authIssuer !== request.issuer || found.authSubject !== request.subject)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
       identity = { ...found, authIssuer: request.issuer, authSubject: request.subject, boundAt: found.boundAt ?? timestamp, linkState: 'active', revision: found.revision + 1, admissionRevision: document.admissionAuthority?.admissionEnabled ? (document.nextAdmissionRevision ?? 1) : null, admissionChangedAt: document.admissionAuthority?.admissionEnabled ? timestamp : null, lastVerifiedPrimaryEmail: normalizedEmail || found.lastVerifiedPrimaryEmail, updatedAt: timestamp, updatedBy: request.issuer + ':' + request.subject }
       const reservation: PrincipalIdentityReservationV1 = { principalIssuer: request.issuer, principalSubject: request.subject, employeeId: request.employeeId, firstSeenAt: timestamp, sourceKind: 'managed', sourceRevision: current.revision ?? 'local' }
@@ -339,7 +428,89 @@ export function createManagedIdentityStore(input: { root: string; devEnabled: bo
       const nextAdmissionRevision = identity.admissionRevision ? identity.admissionRevision + 1 : document.nextAdmissionRevision
       return { ...document, managedDailyIdentities: (document.managedDailyIdentities ?? []).map((entry) => entry.identityRecordId === identity.identityRecordId ? identity : entry), principalIdentityReservations: reservations, nextAdmissionRevision, auditEvents: [...document.auditEvents, event] }
     }, `bind:${request.commandId ?? randomUUID()}`)
-    return { identity, document: committed.document, revision: committed.revision }
+    void committed
+    return { identityRecordId: identity.identityRecordId, employeeId: identity.employeeId }
+  }
+
+  const managedLoginSnapshot = (document: ManagedIdentityDocumentV1, identityRecordId: string): ManagedLoginIdentity => {
+    if (!document.admissionAuthority?.admissionEnabled) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_ADMISSION_DISABLED')
+    const identity = (document.managedDailyIdentities ?? []).find((entry) => entry.identityRecordId === identityRecordId)
+    if (!identity || !['directory_linked_pending_auth', 'active'].includes(identity.linkState)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+    const assignment = document.registry.assignments.find((entry) => entry.employeeId === identity.employeeId)
+    const observation = (document.observations ?? []).find((entry) => entry.identityRecordId === identity.identityRecordId)
+    if (!assignment || !observation || observation.directoryState !== 'present' || observation.primaryEmail?.toLowerCase() !== identity.lastVerifiedPrimaryEmail.toLowerCase()) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+    if (document.currentWorkspaceAuthority && !document.currentWorkspaceAuthority.employeeIds.includes(identity.employeeId)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+    if ((document.lifecycleEvents ?? []).some((entry) => entry.employeeId === identity.employeeId && entry.state !== 'completed')) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+    const pair = identity.authIssuer && identity.authSubject ? { issuer: identity.authIssuer, subject: identity.authSubject } : null
+    if (identity.linkState === 'active' && (!pair || identity.admissionRevision === null) || identity.linkState === 'directory_linked_pending_auth' && pair) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+    return { employeeId: identity.employeeId, principalId: identity.principalId, employeeNumber: assignment.employeeNumber, directoryCustomerId: identity.directoryCustomerId, directoryUserId: identity.directoryUserId, identityRecordId: identity.identityRecordId, identityRevision: String(identity.revision), registryRevision: String(assignment.revision), linkState: identity.linkState as ManagedLoginIdentity['linkState'], pair }
+  }
+
+  const verifyManagedLoginIdentity = async (request: { requestId: string; requestHash: string; current: ManagedLoginIdentity; issuer: string; subject: string; actor: string }) => {
+    let expectedCurrent = request.current
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const before = await readExisting()
+      const observed = managedLoginSnapshot(before.document, expectedCurrent.identityRecordId)
+      if (canonicalManagedLoginIdentity(observed) !== canonicalManagedLoginIdentity(expectedCurrent)) {
+        const concurrentBind = expectedCurrent.linkState === 'directory_linked_pending_auth'
+          && observed.linkState === 'active'
+          && observed.pair?.issuer === request.issuer
+          && observed.pair.subject === request.subject
+          && observed.identityRevision === incrementRevision(expectedCurrent.identityRevision)
+          && observed.registryRevision === expectedCurrent.registryRevision
+          && observed.employeeId === expectedCurrent.employeeId
+          && observed.principalId === expectedCurrent.principalId
+          && observed.employeeNumber === expectedCurrent.employeeNumber
+          && observed.directoryCustomerId === expectedCurrent.directoryCustomerId
+          && observed.directoryUserId === expectedCurrent.directoryUserId
+        if (!concurrentBind) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
+        expectedCurrent = observed
+      }
+      let result!: { identity: ManagedLoginIdentity & { linkState: 'active'; pair: { issuer: string; subject: string } }; mappingVersion: string }
+      try {
+        await commit(before.revision, (document) => {
+          const current = managedLoginSnapshot(document, expectedCurrent.identityRecordId)
+          if (canonicalManagedLoginIdentity(current) !== canonicalManagedLoginIdentity(expectedCurrent)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
+          const existingReceipt = (document.commandReceipts ?? []).find((entry) => entry.commandId === request.requestId)
+          if (existingReceipt) {
+            if (existingReceipt.action !== 'verify_managed_login_identity_v1' || existingReceipt.requestHashSha256 !== request.requestHash || existingReceipt.identityRecordId !== current.identityRecordId) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDEMPOTENCY_CONFLICT')
+            if (current.linkState !== 'active' || current.pair?.issuer !== request.issuer || current.pair.subject !== request.subject) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDEMPOTENCY_CONFLICT')
+            const row = (document.managedDailyIdentities ?? []).find((entry) => entry.identityRecordId === current.identityRecordId)!
+            result = { identity: { ...current, linkState: 'active', pair: current.pair }, mappingVersion: String(row.admissionRevision) }
+            return document
+          }
+          const row = (document.managedDailyIdentities ?? []).find((entry) => entry.identityRecordId === current.identityRecordId)!
+          let active = current
+          let mappingVersion = row.admissionRevision
+          let nextDocument = document
+          let disposition: 'applied' | 'noop' = 'noop'
+          if (current.linkState === 'active') {
+            if (current.pair?.issuer !== request.issuer || current.pair.subject !== request.subject || mappingVersion === null) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+          } else {
+            const reservation = (document.principalIdentityReservations ?? []).find((entry) => entry.principalIssuer === request.issuer && entry.principalSubject === request.subject)
+            const pairInUse = (document.managedDailyIdentities ?? []).some((entry) => entry.identityRecordId !== row.identityRecordId && entry.authIssuer === request.issuer && entry.authSubject === request.subject)
+            if (reservation || pairInUse) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDENTITY_CONFLICT')
+            mappingVersion = document.nextAdmissionRevision ?? 1
+            const timestamp = nowIso(now())
+            const updated: ManagedDailyIdentityV1 = { ...row, authIssuer: request.issuer, authSubject: request.subject, boundAt: timestamp, linkState: 'active', revision: row.revision + 1, admissionRevision: mappingVersion, admissionChangedAt: timestamp, updatedAt: timestamp, updatedBy: request.actor }
+            const newReservation: PrincipalIdentityReservationV1 = { principalIssuer: request.issuer, principalSubject: request.subject, employeeId: row.employeeId, firstSeenAt: timestamp, sourceKind: 'managed', sourceRevision: `managed-login:${request.requestId}` }
+            active = { ...current, identityRevision: String(updated.revision), linkState: 'active', pair: { issuer: request.issuer, subject: request.subject } }
+            nextDocument = { ...document, managedDailyIdentities: (document.managedDailyIdentities ?? []).map((entry) => entry.identityRecordId === row.identityRecordId ? updated : entry), principalIdentityReservations: [...(document.principalIdentityReservations ?? []), newReservation], nextAdmissionRevision: mappingVersion + 1 }
+            disposition = 'applied'
+          }
+          const timestamp = nowIso(now())
+          const receipt: ManagedIdentityCommandReceiptV1 = { commandId: request.requestId, requestHashSha256: request.requestHash, action: 'verify_managed_login_identity_v1', employeeId: active.employeeId, identityRecordId: active.identityRecordId, responsePayload: { contractVersion: 'jenfu.managed-login.v1', identityRecordId: active.identityRecordId, mappingVersion: String(mappingVersion) }, createdAt: timestamp }
+          const event: ManagedIdentityAuditEventV1 = { id: `managed-identity-audit-${randomUUID()}`, commandId: request.requestId, action: 'managed_login_identity_verified', employeeId: active.employeeId, identityRecordId: active.identityRecordId, employeeNumber: active.employeeNumber, previousEmployeeNumber: null, actor: request.actor, occurredAt: timestamp, result: disposition, reasonCode: disposition === 'applied' ? 'first_login_bridge' : 'active_pair_verified' }
+          nextDocument = { ...nextDocument, commandReceipts: [...(nextDocument.commandReceipts ?? []), receipt], auditEvents: [...nextDocument.auditEvents, event] }
+          result = { identity: { ...active, linkState: 'active', pair: { issuer: request.issuer, subject: request.subject } }, mappingVersion: String(mappingVersion) }
+          return nextDocument
+        }, `managed-login:${request.requestId}`)
+        return result
+      } catch (error) {
+        if (!(error instanceof ManagedIdentityStoreError) || error.code !== 'MANAGED_IDENTITY_REVISION_CONFLICT' || attempt > 0) throw error
+      }
+    }
+    throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
   }
 
   const enqueueRefresh = async (request: { employeeId: string; trigger: 'manual' | 'periodic' | 'domain'; commandId: string; actor: string; now?: string }) => {
@@ -360,7 +531,8 @@ export function createManagedIdentityStore(input: { root: string; devEnabled: bo
       const receipt: ManagedIdentityCommandReceiptV1 = { commandId: request.commandId, requestHashSha256: sha256(JSON.stringify({ employeeId: request.employeeId, trigger: request.trigger })), action: 'enqueue_managed_identity_refresh_v1', employeeId: request.employeeId, identityRecordId: identity.identityRecordId, responsePayload: { requestId }, createdAt: timestamp }
       return { ...document, nextRefreshRequestSequence: outbox.requestSequence + 1, refreshOutbox: [...(document.refreshOutbox ?? []), outbox], commandReceipts: [...(document.commandReceipts ?? []), receipt] }
     }, `refresh-enqueue:${request.commandId}`)
-    return { disposition: result, requestId, document: committed.document, revision: committed.revision }
+    void committed
+    return { disposition: result, requestId }
   }
 
   const claimRefresh = async (workerId: string, limit = 2, leaseSeconds = 30, timestamp = nowIso(now())) => {
@@ -443,9 +615,10 @@ export function createManagedIdentityStore(input: { root: string; devEnabled: bo
     if (!current.document.admissionAuthority?.admissionEnabled) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_ADMISSION_DISABLED')
     const assignment = current.document.registry.assignments.find((entry) => entry.employeeNumber === parsed.value)
     const identity = assignment ? (current.document.managedDailyIdentities ?? []).find((entry) => entry.employeeId === assignment.employeeId) : null
-    if (!assignment || !identity || !identity.authIssuer || !identity.authSubject || identity.linkState !== 'active') throw new ManagedIdentityStoreError('MANAGED_IDENTITY_CANDIDATE_INVALID')
-    if (!current.revision) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_STORE_INVALID')
-    return { identity, assignment, document: current.document, revision: current.revision }
+    const observation = identity ? (current.document.observations ?? []).find((entry) => entry.identityRecordId === identity.identityRecordId) : null
+    const lifecycleBlocked = (current.document.lifecycleEvents ?? []).some((entry) => entry.employeeId === assignment?.employeeId && entry.state !== 'completed')
+    if (!assignment || !identity || !['directory_linked_pending_auth', 'active'].includes(identity.linkState) || observation?.directoryState !== 'present' || lifecycleBlocked) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_CANDIDATE_INVALID')
+    return { employeeId: assignment.employeeId, employeeNumber: assignment.employeeNumber, identityRecordId: identity.identityRecordId, loginHint: identity.lastVerifiedPrimaryEmail, linkState: identity.linkState as 'directory_linked_pending_auth' | 'active' }
   }
 
   const setAdmission = async (enabled: boolean, expectedRevision: number, actor: string, reasonCode: string, timestamp = nowIso(now())) => {
@@ -461,5 +634,5 @@ export function createManagedIdentityStore(input: { root: string; devEnabled: bo
     return { enabled: committed.document.admissionAuthority?.admissionEnabled ?? false, revision, document: committed.document, fileRevision: committed.revision }
   }
 
-  return { readExisting, commit, appendAssignment, createCandidate, confirmCandidate, bindAuth, enqueueRefresh, claimRefresh, completeRefresh, retryRefresh, resolveAlias, setAdmission }
+  return { readExisting, commit, appendAssignment, createCandidate, readCandidateForConfirmation, confirmCandidate, bindAuth, enqueueRefresh, claimRefresh, completeRefresh, retryRefresh, resolveAlias, setAdmission, verifyManagedLoginIdentity }
 }

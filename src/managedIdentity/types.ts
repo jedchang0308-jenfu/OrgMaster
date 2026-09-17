@@ -13,6 +13,7 @@ export type EmployeeNumberErrorCode =
   | 'CANDIDATE_CONSUMED'
   | 'DIRECTORY_CANDIDATE_NOT_FOUND'
   | 'DIRECTORY_CANDIDATE_MISMATCH'
+  | 'DIRECTORY_USER_INELIGIBLE'
   | 'DIRECTORY_IDENTITY_CONFLICT'
   | 'DIRECTORY_READ_UNAVAILABLE'
   | 'DIRECTORY_SCOPE_INVALID'
@@ -26,6 +27,9 @@ export type EmployeeNumberErrorCode =
   | 'INVALIDATION_APPLICATION_UNREADY'
   | 'IDEMPOTENCY_CONFLICT'
   | 'RATE_LIMITED'
+  | 'MANAGED_PRIMARY_EMAIL_INVALID'
+  | 'MANAGED_PRIMARY_EMAIL_DOMAIN_NOT_ALLOWED'
+  | 'HUMAN_PRIVILEGED_REQUIRED'
 
 export type EmployeeNumberParseResult =
   | { ok: true; value: string }
@@ -59,6 +63,7 @@ export interface ManagedIdentityAuditEventV1 {
     | 'employee_number_changed'
     | 'managed_identity_link_confirmed'
     | 'managed_identity_auth_bound'
+    | 'managed_login_identity_verified'
     | 'managed_identity_refresh_enqueued'
     | 'managed_identity_refresh_completed'
     | 'managed_identity_refresh_failed'
@@ -240,7 +245,6 @@ export interface ManagedIdentityReadModelV1 {
   employeeNumber: {
     status: 'unassigned' | 'assigned'
     value: string | null
-    derivedUsername: string | null
     revision: number | null
   }
   identity: {
@@ -285,22 +289,23 @@ export interface AssignEmployeeNumberRequestV1 {
 export interface ManagedIdentityCandidateResponseV1 {
   candidateToken: string
   expiresAt: string
-  employee: { id: string; employeeNumber: string; expectedUsername: string }
-  directory: { customerId: string; userId: string; primaryEmail: string; sourceEtag: string | null }
+  employee: { id: string; employeeNumber: string }
+  directory: { primaryEmail: string }
   workspaceRevision: string | null
-  registryRevision: string | null
+  registryRevision: string
 }
 
 export interface FindManagedIdentityCandidateRequestV1 {
   expectedWorkspaceRevision: string | null
-  expectedRegistryRevision: string | null
+  expectedRegistryRevision: string
+  primaryEmail: string
 }
 
 export interface ConfirmManagedIdentityLinkRequestV1 {
   commandId: string
   candidateToken: string
   expectedWorkspaceRevision: string | null
-  expectedRegistryRevision: string | null
+  expectedRegistryRevision: string
 }
 
 export interface BindManagedIdentityAuthRequestV1 {

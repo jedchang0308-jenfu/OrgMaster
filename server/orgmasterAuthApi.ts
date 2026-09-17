@@ -25,6 +25,8 @@ import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './o
 import { createManagedIdentityRepository } from './orgmasterManagedIdentityRepository'
 import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort } from './orgmasterManagedDirectoryPort'
 import { handleOrgmasterSsoRequest, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
+import { createGoogleManagedLoginCallerVerifier, type ManagedLoginCallerVerifier } from './orgmasterManagedLoginApi'
+import { createManagedLoginOwnerService, type ManagedLoginOwnerServiceV1 } from './orgmasterManagedLoginService'
 
 export const ORGMASTER_AUTH_API_PATH = '/api/auth'
 const MAX_BODY_BYTES = 32 * 1024
@@ -62,6 +64,8 @@ export type OrgmasterAuthRuntime = {
   epochs?: AuthEpochRepository
   sessions?: OrgmasterSessionRepository
   managedIdentity?: ManagedIdentityServiceV1
+  managedLoginOwner?: ManagedLoginOwnerServiceV1
+  managedLoginCallerVerifier?: ManagedLoginCallerVerifier
   managedLoginEnabled?: boolean
   ssoHandoffEnabled?: boolean
 }
@@ -274,13 +278,22 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     ? createGoogleDirectoryReadOnlyPort({ customerId: environment.ORGMASTER_DIRECTORY_CUSTOMER_ID, domain: environment.ORGMASTER_MANAGED_DOMAIN ?? 'jenfu.com.tw', auth: createGoogleDirectoryAuthPort({ delegatedSubject: environment.ORGMASTER_DIRECTORY_DWD_SUBJECT }) })
     : undefined
   const managedRepository = createManagedIdentityRepository({ root: environment.ORGMASTER_ROOT?.trim() || process.cwd(), devEnabled: false, database })
+  const firebase = createFirebaseIdentityProvider(configResult.config.identityIssuer, configResult.config.identityAudience)
+  const managedLoginOwner = managedDirectory && environment.ORGMASTER_DIRECTORY_CUSTOMER_ID
+    ? createManagedLoginOwnerService({ repository: managedRepository, directory: managedDirectory, firebase, directoryCustomerId: environment.ORGMASTER_DIRECTORY_CUSTOMER_ID })
+    : undefined
+  const managedLoginCallerVerifier = environment.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL?.trim() && environment.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT?.trim()
+    ? createGoogleManagedLoginCallerVerifier({ audience: configResult.config.publicBaseUrl.origin, expectedEmail: environment.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL, expectedSubject: environment.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT })
+    : undefined
   return {
     configResult,
-    firebase: createFirebaseIdentityProvider(configResult.config.identityIssuer, configResult.config.identityAudience),
+    firebase,
     principals: createPrincipalAdmissionRepository(database),
     epochs: createAuthEpochRepository(database),
     sessions: createOrgmasterSessionRepository(database),
     managedIdentity: createManagedIdentityService({ root: environment.ORGMASTER_ROOT?.trim() || process.cwd(), devEnabled: false, repository: managedRepository, directory: managedDirectory, managedDomain: environment.ORGMASTER_MANAGED_DOMAIN ?? 'jenfu.com.tw', directoryCustomerId: environment.ORGMASTER_DIRECTORY_CUSTOMER_ID }),
+    managedLoginOwner,
+    managedLoginCallerVerifier,
     managedLoginEnabled: environment.ORGMASTER_MANAGED_IDENTITY_ENABLED === 'true',
     ssoHandoffEnabled: environment.ORGMASTER_JENFU_SSO_HANDOFF_MODE === 'on' && Boolean(environment.ORGMASTER_JENFU_SSO_BROKER_ORIGIN?.trim()),
   }
@@ -356,20 +369,20 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         }
         let identity
         try { identity = await firebase.verifyIdToken(body.idToken) } catch { throw new OrgmasterAuthError(401, 'auth_token_invalid') }
+        const authenticatedAtMs = Date.parse(identity.authenticatedAt ?? '')
+        if (!Number.isFinite(authenticatedAtMs) || authenticatedAtMs > Date.now() + 60_000) throw new OrgmasterAuthError(401, 'auth_token_invalid')
+        const state = await epochs.readState(identity.issuer, identity.subject)
+        if (state.revokedBefore && authenticatedAtMs <= Date.parse(state.revokedBefore)) throw new OrgmasterAuthError(401, 'auth_token_invalid')
         let principal
         try {
           principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)
         } catch (error) {
           if (!(error instanceof PrincipalAdmissionError) || error.code !== 'principal_not_active' || runtime.managedLoginEnabled !== true || !runtime.managedIdentity) throw error
           try {
-            const managed = await runtime.managedIdentity.resolveFirebaseIdentity({ issuer: identity.issuer, subject: identity.subject, email: identity.email ?? '', signInProvider: identity.signInProvider ?? '', emailVerified: identity.emailVerified === true })
-            principal = { ...managed, mappingVersion: 1, publishedAt: new Date().toISOString() }
+            await runtime.managedIdentity.resolveFirebaseIdentity({ issuer: identity.issuer, subject: identity.subject, email: identity.email ?? '', signInProvider: identity.signInProvider ?? '', emailVerified: identity.emailVerified === true })
+            principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)
           } catch { throw new PrincipalAdmissionError('principal_not_active') }
         }
-        const authenticatedAtMs = Date.parse(identity.authenticatedAt ?? '')
-        if (!Number.isFinite(authenticatedAtMs) || authenticatedAtMs > Date.now() + 60_000) throw new OrgmasterAuthError(401, 'auth_token_invalid')
-        const state = await epochs.readState(identity.issuer, identity.subject)
-        if (state.revokedBefore && authenticatedAtMs <= Date.parse(state.revokedBefore)) throw new OrgmasterAuthError(401, 'auth_token_invalid')
         const token = createOpaqueSessionToken()
         const issuedAt = new Date()
         const expiresAt = new Date(issuedAt.getTime() + 8 * 60 * 60 * 1000)
