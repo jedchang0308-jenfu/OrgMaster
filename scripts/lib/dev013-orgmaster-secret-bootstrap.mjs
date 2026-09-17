@@ -4,7 +4,7 @@ import { assertFirstSecretVersionReceipt, canonicalize, loadProfile, sha256 } fr
 const ENVIRONMENT_NAME = 'ORGMASTER_SESSION_HASH_PEPPER'
 const PLAN_SCHEMA = 'jenfu.dev013.orgmaster-secret-version-bootstrap-plan.v1'
 const RECEIPT_SCHEMA = 'jenfu.dev013.secret-version-bootstrap-receipt.v1'
-const VERSION_NAME = /^projects\/[^/]+\/secrets\/([^/]+)\/versions\/([1-9][0-9]*)$/u
+const VERSION_NAME = /^projects\/([^/]+)\/secrets\/([^/]+)\/versions\/([1-9][0-9]*)$/u
 const EXECUTE_CAPABILITY = 'DEV013-L3-ORGMASTER-FIRST-SECRET-VERSION'
 const H40 = /^[0-9a-f]{40}$/u
 
@@ -100,8 +100,8 @@ function providerVersion(value, profile) {
   const row = Array.isArray(value) ? value[0] : value
   if (!row || (Array.isArray(value) && value.length !== 1)) fail('DEV013_ORGMASTER_SECRET_VERSION_ADD_INVALID', 'row-count')
   const match = VERSION_NAME.exec(String(row.name ?? ''))
-  if (!match || match[1] !== profile.secret.references[ENVIRONMENT_NAME] || match[2] !== '1' || row.state !== 'ENABLED') fail('DEV013_ORGMASTER_SECRET_VERSION_ADD_INVALID', 'metadata')
-  return { secretId: match[1], version: match[2], state: row.state }
+  if (!match || match[1] !== profile.target.projectNumber || match[2] !== profile.secret.references[ENVIRONMENT_NAME] || match[3] !== '1' || row.state !== 'ENABLED') fail('DEV013_ORGMASTER_SECRET_VERSION_ADD_INVALID', 'metadata')
+  return { secretId: match[2], version: match[3], state: row.state }
 }
 
 export function buildSecretVersionBootstrapReceipt({ plan, providerReadback, source, observedAt = new Date().toISOString() }, profile = loadProfile()) {

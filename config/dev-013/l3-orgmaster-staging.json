@@ -7,7 +7,7 @@
   "platformManifest": {
     "sourceRepository": "Jenfu-Platform",
     "sourcePath": "config/dev-013/l3-managed-staging.json",
-    "sha256": "8d913f22b5ab15de62969ddbbd3951c9a819bbe0019688bcf8f99faa1ffc5df4",
+    "sha256": "eefcfbd8b5297a37f813401c3bbaf128ad0486ed59e5b53c11730125d6a5292d",
     "schemaVersion": "jenfu.dev013.l3-managed-staging.v2",
     "contractStatus": "CONTRACT_FROZEN_READY_FOR_OWNER_WORK"
   },
@@ -19,6 +19,7 @@
   "target": {
     "environment": "staging",
     "projectId": "jenfu-platform-nonprod",
+    "projectNumber": "1055054506544",
     "region": "asia-east1",
     "serviceName": "orgmaster-stg",
     "cloudSqlInstance": "jenfu-platform-nonprod-pg",

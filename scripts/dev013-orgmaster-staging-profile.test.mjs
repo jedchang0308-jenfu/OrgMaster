@@ -19,7 +19,7 @@ const secretPlan = createSecretVersionBootstrapPlan(profile)
 function firstSecretVersionReceipt() {
   return buildSecretVersionBootstrapReceipt({
     plan: secretPlan,
-    providerReadback: { name: `projects/123456789/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/1`, state: 'ENABLED' },
+    providerReadback: { name: `projects/${profile.target.projectNumber}/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/1`, state: 'ENABLED' },
     source: { sourceRevision, sourceTree, clean: true },
     observedAt: '2026-09-17T00:00:00.000Z',
   }, profile)

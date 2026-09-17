@@ -6,7 +6,7 @@ import { resolvePortableInvocation } from './lib/dev013-portable-command.mjs'
 import { resolveCleanSource } from './dev013-orgmaster-secret-bootstrap.mjs'
 
 const profile = loadProfile()
-const exactName = `projects/123456789/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/1`
+const exactName = `projects/${profile.target.projectNumber}/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/1`
 const source = { sourceRevision: 'a'.repeat(40), sourceTree: 'b'.repeat(40), clean: true }
 
 test('Windows resolves the PowerShell gcloud shim without enabling a command shell', () => {
@@ -108,8 +108,9 @@ test('secret bootstrap rejects target drift, short entropy, and nonnumeric provi
   assert.throws(() => runSecretVersionBootstrap({ requestedProjectId: 'another-project', invoke: () => ({ status: 0, stdout: '[]', stderr: '' }) }, profile), /TARGET_INVALID: project/u)
   const authorized = { execute: true, authorization: constants.EXECUTE_CAPABILITY, source }
   assert.throws(() => runSecretVersionBootstrap({ ...authorized, invoke: emptyThen({ name: exactName, state: 'ENABLED' }), entropySource: () => Buffer.alloc(63) }, profile), /ENTROPY_INVALID/u)
-  assert.throws(() => runSecretVersionBootstrap({ ...authorized, invoke: emptyThen({ name: `projects/123/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/latest`, state: 'ENABLED' }), entropySource: () => Buffer.alloc(64) }, profile), /VERSION_ADD_INVALID: metadata/u)
-  assert.throws(() => runSecretVersionBootstrap({ ...authorized, invoke: emptyThen({ name: `projects/123/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/2`, state: 'ENABLED' }), entropySource: () => Buffer.alloc(64) }, profile), /VERSION_ADD_INVALID: metadata/u)
+  assert.throws(() => runSecretVersionBootstrap({ ...authorized, invoke: emptyThen({ name: `projects/${profile.target.projectNumber}/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/latest`, state: 'ENABLED' }), entropySource: () => Buffer.alloc(64) }, profile), /VERSION_ADD_INVALID: metadata/u)
+  assert.throws(() => runSecretVersionBootstrap({ ...authorized, invoke: emptyThen({ name: `projects/${profile.target.projectNumber}/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/2`, state: 'ENABLED' }), entropySource: () => Buffer.alloc(64) }, profile), /VERSION_ADD_INVALID: metadata/u)
+  assert.throws(() => runSecretVersionBootstrap({ ...authorized, invoke: emptyThen({ name: `projects/9999999999999/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/1`, state: 'ENABLED' }), entropySource: () => Buffer.alloc(64) }, profile), /VERSION_ADD_INVALID: metadata/u)
 })
 
 test('execute requires exact capability and clean committed source before provider access', () => {
