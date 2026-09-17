@@ -8,6 +8,7 @@ import { buildReleaseIntent, buildRuntimeConfigReceipt, buildSourceFreeze, readG
 import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 import { canonicalize, createOwnerTransport, resolvePlainEnvironment, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013PredecessorReceipt, readRoutineBaseline, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
+import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 function command(name, args) {
@@ -16,11 +17,11 @@ function command(name, args) {
   return result.stdout.trim()
 }
 
-async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile, observedAt, expectedSourceRevision) {
+async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile, observedAt, expectedSourceRevision, currentStep) {
   const result = await transport.readBytes(predecessorReceiptRef.uri, { prefixes: ['receipts'], expectedSha256: predecessorReceiptRef.sha256 })
   let value
   try { value = JSON.parse(result.bytes.toString('utf8')) } catch { throw new Error('DEV013_PREDECESSOR_RECEIPT_INVALID') }
-  return assertDev013PredecessorReceipt(value, predecessorReceiptRef, profile, observedAt, expectedSourceRevision)
+  return assertDev013PredecessorReceipt(value, predecessorReceiptRef, profile, observedAt, expectedSourceRevision, currentStep)
 }
 
 function parseArgs(argv) {
@@ -81,12 +82,16 @@ async function main() {
     plainEnvironment = resolvePlainEnvironment(profile, previousRuntime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: options.handoffMode })
     transition = { field: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', from: previousMode, to: options.handoffMode, action: options.action, predecessorReceiptRef: options.predecessorReceiptRef }
   }
-  const predecessorEvidence = transition ? await verifyDev013Predecessor(transport, transition.predecessorReceiptRef, profile, observedAt, git.sourceRevision) : null
+  const previousControlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: previousMode }
+  const controlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: options.handoffMode }
+  const sequenceStep = transition ? dev013L4SequenceStep(profile.application.id, transition, previousControlledEnvironment, controlledEnvironment) : null
+  const predecessorEvidence = transition ? await verifyDev013Predecessor(transport, transition.predecessorReceiptRef, profile, observedAt, git.sourceRevision, sequenceStep) : null
+  if (transition && Date.parse(deadlineAt) > Date.parse(predecessorEvidence.sequenceRoot.expiresAt)) throw new Error('DEV013_TRANSITION_AUTHORIZATION_WINDOW_INVALID')
   const runtimeConfig = buildRuntimeConfigReceipt({ profile, releaseId, sourceLock, plainEnvironment, secretVersions: previousRuntime.secretVersions, observedAt })
   const authority = { ownerApplicationId: 'orgmaster', projectId: profile.target.projectId, sourceRevision: git.sourceRevision, releaseId, environment: 'production', baselineIntentRef, expiresAt: deadlineAt, observedAt, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', remainingHumanAction: 0, ...(predecessorEvidence ? { predecessorEvidence } : {}) }
   const authorization = { ...authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
   const readiness = transition
-    ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1', devId: 'DEV-013', slice: '013-R1', controlledEnvironment: { ORGMASTER_JENFU_SSO_HANDOFF_MODE: options.handoffMode }, transition }
+    ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
     : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
   const values = { sourceLock, runtimeConfig, authorization, readiness,
     foundation: (await transport.readJson(baseline.intent.foundationReceiptRef, profile.artifact.releaseBucket)).value,

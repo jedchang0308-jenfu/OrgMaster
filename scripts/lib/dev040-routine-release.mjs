@@ -2,17 +2,13 @@ import { spawnSync } from 'node:child_process'
 import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256 } from './dev012-owner-release-runtime.mjs'
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
+import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
 
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 
-export function assertDev013PredecessorReceipt(value, ref, profile, observedAt, expectedSourceRevision = null) {
-  if (!ref || Object.keys(ref).sort().join(',') !== 'sha256,uri' || !/^[a-f0-9]{64}$/u.test(ref.sha256 ?? '') || !/^gs:\/\/[^/]+\/receipts\/.+\.json$/u.test(ref.uri ?? '')) fail('DEV013_PREDECESSOR_REF_INVALID')
-  const terminal = value?.schemaVersion === 'jenfu.dev012.stage-receipt.v1' && value.stage === 'terminal' && value.status === 'PASS' && value.facts?.result === 'RELEASED' && value.facts?.remainingHumanAction === 0 && /^[a-f0-9]{40}$/u.test(value.sourceRevision ?? '')
-  const rootSources = value?.sourceRevisionByApplication
-  const root = value?.schemaVersion === 'jenfu.dev013.l4-execution-authorization.v1' && value.status === 'PASS' && value.releaseAuthority === true && value.remainingHumanAction === 0 && value.projectId === profile.target.projectId && value.region === profile.target.region && Number.isFinite(Date.parse(value.expiresAt)) && Date.parse(value.expiresAt) > Date.parse(observedAt) && canonicalize(Object.keys(rootSources ?? {}).sort()) === canonicalize(['ai-pdm', 'orgmaster', 'platform']) && Object.values(rootSources).every((revision) => /^[a-f0-9]{40}$/u.test(revision)) && (expectedSourceRevision === null || rootSources.orgmaster === expectedSourceRevision)
-  if (!terminal && !root) fail('DEV013_PREDECESSOR_RECEIPT_INVALID')
-  return { schemaVersion: value.schemaVersion, ownerApplicationId: value.ownerApplicationId ?? null, releaseId: value.releaseId ?? null, sourceRevision: value.sourceRevision ?? null, sourceRevisionByApplication: root ? rootSources : null, status: value.status }
+export function assertDev013PredecessorReceipt(value, ref, profile, observedAt, expectedSourceRevision, currentStep) {
+  return assertDev013L4Predecessor({ value, ref, profile, observedAt, expectedSourceRevision, currentStep })
 }
 
 // Only infrastructure/configuration inputs are reusable, not the application build or smoke results.
@@ -93,11 +89,17 @@ function assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runti
   const to = nextPlain?.[field]
   const action = from === null && to === 'off' ? 'guard' : from === 'off' && to === 'on' ? 'activate' : from === 'on' && to === 'off' ? 'rollback' : null
   const expectedPlain = resolvePlainEnvironment(profile, previousPlain, { [field]: to })
+  const previousControlledEnvironment = { [field]: from }
+  const controlledEnvironment = { [field]: to }
+  let expectedSequenceStep = null
+  try { expectedSequenceStep = dev013L4SequenceStep(profile.application.id, readiness?.transition, previousControlledEnvironment, controlledEnvironment) } catch {}
   if (!action || !same(nextPlain, expectedPlain) || !same(runtimeConfig.secretVersions, baselineRuntime.secretVersions)) fail('ROUTINE_RUNTIME_CHANGED')
   assertRuntimeConfig(profile, runtimeConfig)
   const predecessor = readiness?.transition?.predecessorReceiptRef
   if (authorization?.schemaVersion !== 'jenfu.dev013.l4-owner-transition-authorization.v1' || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEV013_L4'
     || readiness?.schemaVersion !== 'jenfu.dev013.l4-owner-transition-readiness.v1' || readiness.devId !== 'DEV-013' || readiness.slice !== '013-R1' || readiness.ownerApplicationId !== profile.application.id
+    || !same(readiness.sequenceStep, expectedSequenceStep) || readiness.sequenceRoot?.schemaVersion !== 'jenfu.dev013.l4-sequence-root.v1'
+    || !Number.isFinite(Date.parse(readiness.observedAt)) || !Number.isFinite(Date.parse(readiness.expiresAt)) || !Number.isFinite(Date.parse(readiness.sequenceRoot.expiresAt)) || Date.parse(readiness.sequenceRoot.expiresAt) <= Date.parse(readiness.observedAt) || Date.parse(readiness.expiresAt) > Date.parse(readiness.sequenceRoot.expiresAt)
     || readiness.transition?.field !== field || readiness.transition.from !== from || readiness.transition.to !== to || readiness.transition.action !== action
     || !predecessor || canonicalize(Object.keys(predecessor).sort()) !== canonicalize(['sha256', 'uri']) || typeof predecessor.uri !== 'string' || predecessor.uri.length < 8 || !/^[a-f0-9]{64}$/u.test(predecessor.sha256 ?? '')) fail('DEV013_CONTROLLED_TRANSITION_AUTHORITY_INVALID')
   return { releaseMode: 'DEV013_CONTROLLED_ENVIRONMENT', field, from, to, action, predecessorReceiptRef: predecessor }

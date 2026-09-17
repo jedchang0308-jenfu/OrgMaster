@@ -7,6 +7,7 @@ import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
 import { assertRuntimeConfig, buildRuntimeConfig, resolvePlainEnvironment } from './lib/dev012-owner-release-runtime.mjs'
 import { assertPreparePrerequisites, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
+import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const read = (file) => JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
@@ -19,12 +20,17 @@ const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex'
 
 function controlledPrerequisites(ownerProfile, runtimeConfig) {
   const intent = { releaseId: 'DEV013-L4-ORGMASTER-001', sourceRevision: 'b'.repeat(40) }
-  const common = { ownerApplicationId: ownerProfile.application.id, projectId: ownerProfile.target.projectId, releaseId: intent.releaseId, sourceRevision: intent.sourceRevision, environment: 'production', expiresAt: '2999-01-01T00:00:00.000Z', remainingHumanAction: 0, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND' }
+  const common = { ownerApplicationId: ownerProfile.application.id, projectId: ownerProfile.target.projectId, releaseId: intent.releaseId, sourceRevision: intent.sourceRevision, environment: 'production', observedAt: '2999-01-01T00:00:00.000Z', expiresAt: '2999-01-01T08:00:00.000Z', remainingHumanAction: 0, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND' }
   const predecessorReceiptRef = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/platform-accept.json', sha256: '9'.repeat(64) }
+  const previousControlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'off' }
+  const controlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' }
+  const transition = { field: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', from: 'off', to: 'on', action: 'activate', predecessorReceiptRef }
+  const sequenceStep = dev013L4SequenceStep(ownerProfile.application.id, transition, previousControlledEnvironment, controlledEnvironment)
+  const sequenceRoot = { schemaVersion: 'jenfu.dev013.l4-sequence-root.v1', authorizationId: 'DEV013-L4-AUTH-TEST0001', authorizationStatementSha256: '7'.repeat(64), manifestSha256: '8'.repeat(64), authorizedAt: common.observedAt, expiresAt: common.expiresAt, receiptRef: { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/root.json', sha256: '8'.repeat(64) }, sourceRevisionByApplication: { platform: 'a'.repeat(40), orgmaster: intent.sourceRevision, 'ai-pdm': 'c'.repeat(40) } }
   return { intent, values: {
     sourceLock: { ...common, clean: true, status: 'SOURCE_FROZEN' },
     authorization: { ...common, schemaVersion: 'jenfu.dev013.l4-owner-transition-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEV013_L4' },
-    readiness: { ...common, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1', devId: 'DEV-013', slice: '013-R1', controlledEnvironment: { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' }, transition: { field: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', from: 'off', to: 'on', action: 'activate', predecessorReceiptRef } },
+    readiness: { ...common, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1', devId: 'DEV-013', slice: '013-R1', sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition },
     foundation: { ...common, ownerApplicationId: 'shared-foundation' },
     infra: { ...common, migrationRunnerDigest: `${ownerProfile.artifact.migrationRunnerUri}@sha256:${'c'.repeat(64)}` },
     runtimeConfig: { ...common, status: 'VERIFIED', runtimeConfig },
