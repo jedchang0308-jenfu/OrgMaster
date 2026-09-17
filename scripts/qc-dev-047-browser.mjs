@@ -63,12 +63,12 @@ try {
     await page.getByRole('button', { name: '設定員工編號', exact: true }).click(); await page.getByLabel('JFS 員工編號').fill('jfs9876'); await page.getByRole('button', { name: '儲存編號', exact: true }).click()
     await page.locator('.employee-identity-section').getByText('JFS9876', { exact: true }).waitFor()
     await page.getByRole('button', { name: '變更編號', exact: true }).click(); await page.getByLabel('JFS 員工編號').fill('jfs9877'); await page.getByRole('button', { name: '繼續', exact: true }).click()
-    const confirmation = page.getByRole('dialog', { name: '確認變更員工編號' }); await confirmation.getByText('JFS9876 → JFS9877', { exact: true }).waitFor(); await confirmation.getByText('舊編號將永久保留且不得重用', { exact: false }).waitFor()
+    const confirmation = page.getByRole('dialog', { name: '確認變更員工編號' }); await confirmation.getByText('JFS9876 → JFS9877', { exact: true }).waitFor(); await confirmation.getByText('jfs9877@orgmaster.test', { exact: false }).waitFor(); await confirmation.getByText('舊編號將永久保留且不得重用', { exact: false }).waitFor()
     await page.screenshot({ path: join(evidenceDir, 'administrator-change-confirmation-1024x768.png'), fullPage: true }); await confirmation.getByRole('button', { name: '確認變更', exact: true }).click(); await page.locator('.employee-identity-section').getByText('JFS9877', { exact: true }).waitFor()
     const visibleErrors = await page.locator('[role="alert"]:visible, .inline-error:visible').count(); if (visibleErrors > 0) throw new Error(`visible error sweep failed after employee-number flow: ${visibleErrors}`)
-    flow = { initialAssigned: 'JFS9876', confirmation: 'JFS9876 -> JFS9877', finalReadback: 'JFS9877', visibleErrors }
+    flow = { initialAssigned: 'JFS9876', confirmation: 'JFS9876 -> JFS9877', previewUsername: 'jfs9877@orgmaster.test', finalReadback: 'JFS9877', visibleErrors }
   }
-  const evidence = { contract: dev049 ? 'DEV-049' : 'DEV-047', evidenceScope: 'LOCAL_ISOLATED', status: 'PASS', baseUrl, port, ownerPid: process.pid, temporaryRoot: tempRoot, cleanup: 'browser/server closed and temporary root removed', gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(), results, flow, providerReadCount: dev049 ? 2 : 0, providerWriteCount: 0, generatedAt: new Date().toISOString() }
+  const evidence = { contract: dev049 ? 'DEV-049' : 'DEV-047', evidenceScope: 'LOCAL_ISOLATED', status: 'PASS', baseUrl, port, ownerPid: process.pid, temporaryRoot: tempRoot, cleanup: 'browser/server closed and temporary root removed', gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(), results, ...(dev049 ? { flow } : { numberFlow: flow }), providerReadCount: dev049 ? 2 : 0, providerWriteCount: 0, generatedAt: new Date().toISOString() }
   await writeFile(join(evidenceDir, 'manifest.json'), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8'); console.log(JSON.stringify(evidence, null, 2))
 } finally {
   if (browser) await browser.close(); if (server?.listening) await new Promise((resolve) => server.close(() => resolve())); await rm(tempRoot, { recursive: true, force: true })

@@ -245,6 +245,7 @@ export interface ManagedIdentityReadModelV1 {
   employeeNumber: {
     status: 'unassigned' | 'assigned'
     value: string | null
+    derivedUsername?: string | null
     revision: number | null
   }
   identity: {

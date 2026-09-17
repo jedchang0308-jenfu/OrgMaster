@@ -19,7 +19,7 @@ const base = {
   contractVersion: 'orgmaster.managed-identity.v1' as const,
   managedDomain: 'jenfu.com.tw',
   employee: { id: employee.id, status: 'active' as const },
-  employeeNumber: { status: 'unassigned' as const, value: null, revision: null },
+  employeeNumber: { status: 'unassigned' as const, value: null, derivedUsername: null, revision: null },
   identity: { state: 'not_linked' as const, provider: 'google.com' as const, note: 'Google Admin 建立後由 OrgMaster 連結' as const },
   capabilities: { view: true as const, manageNumber: true },
   registryRevision: null,
@@ -44,7 +44,7 @@ describe('EmployeeManagedIdentitySection', () => {
       { employeeId: 'employee-2', employeeName: '張祐豪', employeeNumber: 'JFS0002', status: 'active' },
       { employeeId: 'employee-3', employeeName: '陳怡君', employeeNumber: 'JFS0003', status: 'retired' },
     ] })
-    api.assignManagedEmployeeNumber.mockResolvedValue({ ...base, employeeNumber: { status: 'assigned', value: 'JFS0001', revision: 1 }, registryRevision: '1' })
+    api.assignManagedEmployeeNumber.mockResolvedValue({ ...base, employeeNumber: { status: 'assigned', value: 'JFS0001', derivedUsername: 'jfs0001@jenfu.com.tw', revision: 1 }, registryRevision: '1' })
     api.findManagedIdentityCandidate.mockResolvedValue({ candidateToken: 'opaque-token', expiresAt: '2026-09-17T01:05:00.000Z', employee: { id: 'employee-1', employeeNumber: 'JFS0001' }, directory: { primaryEmail: 'person@jenfu.com.tw' }, workspaceRevision: 'workspace-1', registryRevision: '1' })
     api.confirmManagedIdentityLink.mockResolvedValue({ ...base })
   })
@@ -133,7 +133,7 @@ describe('EmployeeManagedIdentitySection', () => {
   it('requires an impact confirmation before changing an assigned employee number', async () => {
     api.loadManagedIdentity.mockResolvedValue({
       ...base,
-      employeeNumber: { status: 'assigned', value: 'JFS0001', revision: 1 },
+      employeeNumber: { status: 'assigned', value: 'JFS0001', derivedUsername: 'jfs0001@jenfu.com.tw', revision: 1 },
       registryRevision: '1',
     })
     const { host, root } = render()
@@ -153,6 +153,7 @@ describe('EmployeeManagedIdentitySection', () => {
     await flush()
     expect(api.assignManagedEmployeeNumber).not.toHaveBeenCalled()
     expect(host.textContent).toContain('JFS0001 → JFS0004')
+    expect(host.textContent).toContain('jfs0004@jenfu.com.tw')
     expect(host.textContent).toContain('舊編號將永久保留且不得重用')
     const confirmButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '確認變更')
     act(() => confirmButton?.click())

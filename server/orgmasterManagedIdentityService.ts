@@ -11,6 +11,7 @@ import type {
   ManagedIdentityRefreshResultV1,
   ResolveLoginAliasResponseV1,
 } from '../src/managedIdentity/types'
+import { deriveManagedUsername } from '../src/managedIdentity/employeeNumber'
 import { parseManagedPrimaryEmail } from '../src/managedIdentity/primaryEmail'
 import { evaluatePermission } from '../src/governance/evaluatePermission'
 import { isActiveAt } from '../src/governance/validation'
@@ -141,7 +142,7 @@ export function createManagedIdentityService(input: {
     const observation = identity ? (state.document.observations ?? []).find((entry) => entry.identityRecordId === identity.identityRecordId) ?? null : null
     return {
       contractVersion: 'orgmaster.managed-identity.v1', managedDomain: domain, employee: { id: employee.id, status: employee.status === 'inactive' ? 'inactive' : 'active' },
-      employeeNumber: { status: assignment ? 'assigned' : 'unassigned', value: assignment?.employeeNumber ?? null, revision: assignment?.revision ?? null },
+      employeeNumber: { status: assignment ? 'assigned' : 'unassigned', value: assignment?.employeeNumber ?? null, derivedUsername: assignment ? deriveManagedUsername(assignment.employeeNumber, domain) : null, revision: assignment?.revision ?? null },
       identity: { state: identity?.linkState === 'directory_linked_pending_auth' ? 'directory_linked_pending_auth' : identity?.linkState === 'active' ? 'active' : identity?.linkState === 'conflict' ? 'conflict' : 'not_linked', provider: 'google.com', note: identity?.linkState === 'active' ? '已連結公司 Cloud Identity' : identity ? '已確認 Directory 身分，等待首次 Google 登入' : 'Google Admin 建立後由 OrgMaster 連結', directoryState: observation?.directoryState ?? 'unknown', primaryEmail: identity?.lastVerifiedPrimaryEmail ?? null, freshness: observation?.freshness ?? 'unknown' },
       capabilities: { view: true, manageNumber: internal ? false : hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: internal ? false : hasPermission(governance.document, actor, LINK) && (input.devEnabled || isHumanPrivilegedActor(governance.document, actor)), refresh: internal ? false : hasPermission(governance.document, actor, REFRESH) }, registryRevision: String(assignment?.revision ?? 0), workspaceRevision,
       admissionEnabled: state.document.admissionAuthority?.admissionEnabled ?? false,

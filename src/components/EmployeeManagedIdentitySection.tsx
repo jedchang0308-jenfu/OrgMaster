@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Hash, ShieldCheck } from 'lucide-react'
 import type { Employee } from '../types'
 import { assignManagedEmployeeNumber, enqueueManagedIdentityRefresh, loadManagedEmployeeNumbers, loadManagedIdentity, ManagedIdentityApiError } from '../managedIdentity/apiClient'
-import { parseEmployeeNumber } from '../managedIdentity/employeeNumber'
+import { deriveManagedUsername, parseEmployeeNumber } from '../managedIdentity/employeeNumber'
 import type { ManagedEmployeeNumberListItemV1, ManagedIdentityReadModelV1 } from '../managedIdentity/types'
 import { WorkspacePortal } from './workspace/WorkspaceOverlayHosts'
 import { ManagedIdentityLinkDialog } from './ManagedIdentityLinkDialog'
@@ -62,6 +62,8 @@ function NumberDialog({ employee, view, open, onClose, onSuccess }: {
   }, [confirmation])
   if (!open) return null
   const parsed = parseEmployeeNumber(value)
+  const managedDomain = view.managedDomain ?? 'jenfu.com.tw'
+  const preview = parsed.ok ? deriveManagedUsername(parsed.value, managedDomain) : null
   const currentNumber = view.employeeNumber.value
   const changingNumber = Boolean(currentNumber && parsed.ok && parsed.value !== currentNumber)
   const unchanged = Boolean(currentNumber && parsed.ok && parsed.value === currentNumber)
@@ -130,12 +132,13 @@ function NumberDialog({ employee, view, open, onClose, onSuccess }: {
         {confirmation ? <>
           <div className="employee-account-dialog__candidate" role="status" aria-describedby="employee-number-change-impact">
             <strong>{currentNumber} → {confirmation}</strong>
+            <small>預計登入名稱：{deriveManagedUsername(confirmation, managedDomain)}</small>
           </div>
           <p id="employee-number-change-impact" className="dialog-field__help is-warning">儲存後舊編號將永久保留且不得重用；已連結的 Google 帳號可能需由 Google Admin 同步改名。</p>
           <footer><button type="button" className="button button--quiet" disabled={busy} onClick={() => { setConfirmation(null); window.requestAnimationFrame(() => inputRef.current?.focus()) }}>返回修改</button><button ref={confirmRef} type="submit" className="button button--primary" disabled={busy}>{busy ? '儲存中…' : '確認變更'}</button></footer>
         </> : <>
           <label className="dialog-field"><span>JFS 員工編號</span><input ref={inputRef} value={value} className={inputValidationState} onChange={(event) => { setValue(event.target.value); setError(''); setConfirmation(null) }} placeholder="JFS0001" autoComplete="off" inputMode="text" aria-describedby="employee-number-help" aria-invalid={inputValidationState === 'is-invalid'} /></label>
-          <p id="employee-number-help" className={error ? 'dialog-field__help is-error' : 'dialog-field__help'} role={error ? 'alert' : undefined}>{error || '格式為 JFS 加 4 位數字；舊編號永久保留，不能重複使用。'}</p>
+          <p id="employee-number-help" className={error ? 'dialog-field__help is-error' : 'dialog-field__help'} role={error ? 'alert' : undefined}>{error || (preview ? '預計登入名稱：' + preview : '格式為 JFS 加 4 位數字；舊編號永久保留，不能重複使用。')}</p>
           <div className="employee-number-dialog__existing-label">已存在編號</div>
           <div id="employee-number-existing-list" className="employee-number-dialog__existing-popover" role="region" aria-label="已存在編號清單">
             {existingNumbersLoading && <div role="status">讀取中…</div>}
@@ -201,7 +204,7 @@ export function EmployeeManagedIdentitySection({ employee, mutationAllowed = fal
     <div className="section-heading"><span id={'managed-identity-heading-' + employee.id}>員工編號與登入身分</span>{assigned && <span className={'directory-detail__identity-status ' + (linked ? 'is-active' : 'is-pending_acceptance')}>{linked ? '已啟用' : '待連結'}</span>}</div>
     <div className="directory-detail__identity-row managed-identity-row">
       <Hash size={15} aria-hidden="true" />
-      <div className="directory-detail__identity-copy"><small>OrgMaster 登入編號</small><strong>{view.employeeNumber.value ?? '尚未設定'}</strong></div>
+      <div className="directory-detail__identity-copy"><small>OrgMaster 登入編號</small><strong>{view.employeeNumber.value ?? '尚未設定'}</strong>{assigned && <small>預期登入名稱：{view.employeeNumber.derivedUsername ?? deriveManagedUsername(view.employeeNumber.value ?? '', view.managedDomain ?? 'jenfu.com.tw')}</small>}</div>
       {canManage && <button type="button" className="button button--quiet" onClick={() => setDialogOpen(true)}>{assigned ? '變更編號' : '設定員工編號'}</button>}
     </div>
     <div className="directory-detail__identity-row managed-identity-row">
