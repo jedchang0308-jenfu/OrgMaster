@@ -1,8 +1,8 @@
-import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createReleasePlan, loadProfile } from './lib/dev013-orgmaster-staging-release.mjs'
+import { spawnPortableSync } from './lib/dev013-portable-command.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -24,7 +24,7 @@ export function runRelease(argv = process.argv.slice(2)) {
   const request = JSON.parse(fs.readFileSync(path.resolve(root, input.request), 'utf8'))
   const plan = createReleasePlan(request, loadProfile())
   if (!input.execute) return { executed: false, plan }
-  const result = spawnSync(plan.gcloud.command, plan.gcloud.args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const result = spawnPortableSync(plan.gcloud.command, plan.gcloud.args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
   if (result.status !== 0) throw new Error(`DEV013_ORGMASTER_RELEASE_EXECUTION_FAILED: ${String(result.stderr).trim()}`)
   return { executed: true, plan, providerOutput: String(result.stdout).trim() }
 }

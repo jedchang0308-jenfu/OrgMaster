@@ -1,9 +1,10 @@
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadProfile } from './lib/dev013-orgmaster-staging-release.mjs'
 import { runSecretVersionBootstrap } from './lib/dev013-orgmaster-secret-bootstrap.mjs'
+import { spawnPortableSync } from './lib/dev013-portable-command.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -37,7 +38,7 @@ export function resolveCleanSource(readGit = (...args) => git(...args)) {
 }
 
 function invoke(command, args, input) {
-  return spawnSync(command, args, {
+  return spawnPortableSync(command, args, {
     cwd: root,
     encoding: 'utf8',
     input,

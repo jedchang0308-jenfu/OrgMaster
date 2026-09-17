@@ -2,11 +2,26 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { canonicalize, loadProfile, sha256 } from './lib/dev013-orgmaster-staging-release.mjs'
 import { assertSecretVersionBootstrapReceipt, constants, createSecretVersionBootstrapPlan, runSecretVersionBootstrap } from './lib/dev013-orgmaster-secret-bootstrap.mjs'
+import { resolvePortableInvocation } from './lib/dev013-portable-command.mjs'
 import { resolveCleanSource } from './dev013-orgmaster-secret-bootstrap.mjs'
 
 const profile = loadProfile()
 const exactName = `projects/123456789/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/1`
 const source = { sourceRevision: 'a'.repeat(40), sourceTree: 'b'.repeat(40), clean: true }
+
+test('Windows resolves the PowerShell gcloud shim without enabling a command shell', () => {
+  const shim = String.raw`C:\Tools\Google Cloud SDK\bin\gcloud.ps1`
+  const invocation = resolvePortableInvocation('gcloud', ['--version'], {
+    platform: 'win32',
+    searchPath: String.raw`C:\Windows\System32;C:\Tools\Google Cloud SDK\bin`,
+    fileExists: (candidate) => candidate === shim,
+  })
+  assert.deepEqual(invocation, {
+    command: 'powershell.exe',
+    args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', shim, '--version'],
+  })
+  assert.deepEqual(resolvePortableInvocation('gcloud', ['--version'], { platform: 'linux' }), { command: 'gcloud', args: ['--version'] })
+})
 
 test('secret bootstrap defaults to read-only preflight and exact target', () => {
   let entropyCalls = 0
