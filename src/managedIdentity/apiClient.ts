@@ -1,6 +1,7 @@
-import type { AssignEmployeeNumberRequestV1, ConfirmManagedIdentityLinkRequestV1, FindManagedIdentityCandidateRequestV1, ManagedIdentityCandidateResponseV1, ManagedIdentityReadModelV1, ManagedIdentityRefreshRequestV1, ManagedIdentityRefreshResultV1 } from './types'
+import type { AssignEmployeeNumberRequestV1, ConfirmManagedIdentityLinkRequestV1, FindManagedIdentityCandidateRequestV1, ManagedEmployeeNumberListReadModelV1, ManagedIdentityCandidateResponseV1, ManagedIdentityReadModelV1, ManagedIdentityRefreshRequestV1, ManagedIdentityRefreshResultV1 } from './types'
 
 export const MANAGED_IDENTITY_API_PATH = '/api/orgmaster/employees'
+export const MANAGED_IDENTITY_NUMBERS_API_PATH = '/api/orgmaster/employee-numbers'
 
 export class ManagedIdentityApiError extends Error {
   constructor(public readonly code: string, public readonly status: number) {
@@ -26,6 +27,10 @@ function employeePath(employeeId: string) {
 
 export function loadManagedIdentity(employeeId: string) {
   return request<ManagedIdentityReadModelV1>(employeePath(employeeId))
+}
+
+export function loadManagedEmployeeNumbers() {
+  return request<ManagedEmployeeNumberListReadModelV1>(MANAGED_IDENTITY_NUMBERS_API_PATH)
 }
 
 export function assignManagedEmployeeNumber(employeeId: string, body: AssignEmployeeNumberRequestV1) {

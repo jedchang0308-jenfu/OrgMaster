@@ -6,6 +6,7 @@ import { createManagedIdentityService, ManagedIdentityServiceError, type Managed
 import { createLocalDeterministicDirectoryPort, createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort } from './orgmasterManagedDirectoryPort'
 
 export const MANAGED_IDENTITY_API_PATH = '/api/orgmaster/employees'
+export const MANAGED_IDENTITY_NUMBERS_API_PATH = '/api/orgmaster/employee-numbers'
 const MAX_BODY_BYTES = 8 * 1024
 
 function sendJson(response: ServerResponse, status: number, payload: unknown) {
@@ -66,7 +67,22 @@ function assertSameOrigin(request: IncomingMessage) {
 async function handle(request: IncomingMessage, response: ServerResponse, service: ManagedIdentityServiceV1) {
   const identity = verifiedGovernanceActor(request)
   if (!identity) { sendJson(response, 401, { error: 'IDENTITY_CONTEXT_REQUIRED' }); return true }
-  const target = employeeIdFromPath(new URL(request.url ?? '/', 'http://orgmaster.local').pathname)
+  const pathname = new URL(request.url ?? '/', 'http://orgmaster.local').pathname
+  if (pathname === MANAGED_IDENTITY_NUMBERS_API_PATH) {
+    try {
+      if (request.method === 'GET') {
+        sendJson(response, 200, await service.readNumbers(identity))
+        return true
+      }
+      sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' })
+      return true
+    } catch (error) {
+      const code = error instanceof ManagedIdentityServiceError ? error.code : 'MANAGED_IDENTITY_READ_FAILED'
+      sendJson(response, statusFor(code), { error: code })
+      return true
+    }
+  }
+  const target = employeeIdFromPath(pathname)
   if (!target || !['managed-identity', 'employee-number', 'managed-identity/candidate', 'managed-identity/confirm', 'managed-identity/refresh', 'activation-check'].includes(target.action)) return false
   try {
     if (target.action === 'managed-identity' && request.method === 'GET') {
@@ -137,7 +153,7 @@ export function createOrgmasterManagedIdentityMiddleware(root = process.cwd(), d
       : undefined
   const runtime = service ?? createManagedIdentityService({ root, devEnabled, directory })
   return (request, response, next) => {
-    if (!request.url?.startsWith(MANAGED_IDENTITY_API_PATH)) return next()
+    if (!request.url?.startsWith(MANAGED_IDENTITY_API_PATH) && !request.url?.startsWith(MANAGED_IDENTITY_NUMBERS_API_PATH)) return next()
     void handle(request, response, runtime).then((handled) => { if (!handled) next() }).catch(() => { if (!response.writableEnded) sendJson(response, 503, { error: 'MANAGED_IDENTITY_READ_FAILED' }) })
   }
 }

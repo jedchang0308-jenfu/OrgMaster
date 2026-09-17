@@ -27,7 +27,15 @@ try {
     if (!hasSection || !hasNumber || hasLegacy) throw new Error(`managed identity surface mismatch at ${viewport.label}: section=${hasSection} number=${hasNumber} legacy=${hasLegacy} sectionText=${sectionText}`)
     results.push({ viewport: viewport.label, hasSection, hasNumber, hasLegacy, overflow }); await page.screenshot({ path: join(evidenceDir, `administrator-${viewport.label}.png`), fullPage: true })
   }
-  const evidence = { contract: 'DEV-047', evidenceScope: 'LOCAL_ISOLATED', status: 'PASS', baseUrl, port, ownerPid: process.pid, temporaryRoot: tempRoot, cleanup: 'browser/server closed and temporary root removed', gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(), results, providerReadCount: 0, providerWriteCount: 0, generatedAt: new Date().toISOString() }
+  await page.setViewportSize({ width: 1024, height: 768 }); await page.goto(`${baseUrl}/?panels=employees&focus=employees&select=employee%3A${employeeId}&details=employees&employee=${employeeId}`, { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: '設定員工編號', exact: true }).click(); await page.getByLabel('JFS 員工編號').fill('jfs9876'); await page.getByRole('button', { name: '儲存編號', exact: true }).click()
+  await page.locator('.employee-identity-section').getByText('JFS9876', { exact: true }).waitFor()
+  await page.getByRole('button', { name: '變更編號', exact: true }).click(); await page.getByLabel('JFS 員工編號').fill('jfs9877'); await page.getByRole('button', { name: '繼續', exact: true }).click()
+  const confirmation = page.getByRole('dialog', { name: '確認變更員工編號' }); await confirmation.getByText('JFS9876 → JFS9877', { exact: true }).waitFor(); await confirmation.getByText('jfs9877@orgmaster.test', { exact: false }).waitFor(); await confirmation.getByText('舊編號將永久保留且不得重用', { exact: false }).waitFor()
+  await page.screenshot({ path: join(evidenceDir, 'administrator-change-confirmation-1024x768.png'), fullPage: true }); await confirmation.getByRole('button', { name: '確認變更', exact: true }).click(); await page.locator('.employee-identity-section').getByText('JFS9877', { exact: true }).waitFor()
+  const visibleErrors = await page.locator('[role="alert"]:visible, .inline-error:visible').count(); if (visibleErrors > 0) throw new Error(`visible error sweep failed after employee-number flow: ${visibleErrors}`)
+  const numberFlow = { initialAssigned: 'JFS9876', confirmation: 'JFS9876 -> JFS9877', previewUsername: 'jfs9877@orgmaster.test', finalReadback: 'JFS9877', visibleErrors }
+  const evidence = { contract: 'DEV-047', evidenceScope: 'LOCAL_ISOLATED', status: 'PASS', baseUrl, port, ownerPid: process.pid, temporaryRoot: tempRoot, cleanup: 'browser/server closed and temporary root removed', gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(), results, numberFlow, providerReadCount: 0, providerWriteCount: 0, generatedAt: new Date().toISOString() }
   await writeFile(join(evidenceDir, 'manifest.json'), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8'); console.log(JSON.stringify(evidence, null, 2))
 } finally {
   if (browser) await browser.close(); if (server?.listening) await new Promise((resolve) => server.close(() => resolve())); await rm(tempRoot, { recursive: true, force: true })

@@ -1,4 +1,4 @@
-import type { ManagedDailyIdentityV1, ManagedIdentityReadModelV1, ManagedIdentityRefreshClaimV1, ManagedIdentityRefreshResultV1 } from '../src/managedIdentity/types'
+import type { ManagedDailyIdentityV1, ManagedEmployeeNumberListReadModelV1, ManagedIdentityReadModelV1, ManagedIdentityRefreshClaimV1, ManagedIdentityRefreshResultV1 } from '../src/managedIdentity/types'
 import { deriveManagedUsername } from '../src/managedIdentity/employeeNumber'
 import type { OrgmasterDatabase } from './orgmasterDatabase'
 import { createManagedIdentityStore, type ManagedIdentityStoreV1 } from './orgmasterManagedIdentityStore'
@@ -8,6 +8,7 @@ export type ManagedIdentityRepositoryMode = 'local-json' | 'postgresql'
 export interface ManagedIdentityRepositoryV1 extends ManagedIdentityStoreV1 {
   readonly mode: ManagedIdentityRepositoryMode
   readEmployeeManagedIdentity(employeeId: string): Promise<ManagedIdentityReadModelV1 | null>
+  readEmployeeNumbers(employees: Array<{ id: string; name: string }>): Promise<ManagedEmployeeNumberListReadModelV1>
   resolveAuthIdentity(email: string): Promise<{ identity: ManagedDailyIdentityV1; employeeId: string } | null>
   assertEmployeeActivation(employeeId: string, workspaceRevision: string): Promise<{ allowed: boolean; correctionRequired: boolean }>
 }
@@ -88,6 +89,22 @@ export function createPostgresManagedIdentityRepository(database: OrgmasterDatab
       const rows = await run<Record<string, unknown>>('SELECT * FROM orgmaster_core.read_employee_managed_identity_v1($1)', [employeeId])
       return rows.length === 1 ? rowToReadModel(rows[0]) : null
     },
+    async readEmployeeNumbers(employees: Array<{ id: string; name: string }>) {
+      const names = new Map(employees.map((employee) => [employee.id, employee.name]))
+      const rows = (await Promise.all(employees.map(({ id }) => run<Record<string, unknown>>('SELECT employee_id, employee_number, registry_revision FROM orgmaster_core.read_employee_managed_identity_v1($1)', [id])))).flat()
+      const items = rows
+        .filter((row) => typeof row.employee_number === 'string' && row.employee_number.trim())
+        .map((row) => {
+          const employeeId = String(row.employee_id)
+          return { employeeId, employeeName: names.get(employeeId) ?? employeeId, employeeNumber: String(row.employee_number), status: 'active' as const }
+        })
+        .sort((first, second) => second.employeeNumber.localeCompare(first.employeeNumber))
+      return {
+        contractVersion: 'orgmaster.managed-identity-numbers.v1' as const,
+        items,
+        registryRevision: rows.reduce<string | null>((latest, row) => row.registry_revision == null ? latest : String(row.registry_revision), null),
+      }
+    },
     async resolveAuthIdentity(email) {
       const rows = await run<Record<string, unknown>>('SELECT * FROM orgmaster_core.resolve_managed_identity_auth_v1($1)', [email])
       if (rows.length !== 1) return null
@@ -107,6 +124,15 @@ export function createManagedIdentityRepository(input: { root: string; devEnable
   return Object.assign(store, {
     mode: 'local-json' as const,
     async readEmployeeManagedIdentity() { return null },
+    async readEmployeeNumbers(employees: Array<{ id: string; name: string }>) {
+      const current = await store.readExisting()
+      const names = new Map(employees.map((employee) => [employee.id, employee.name]))
+      const active = current.document.registry.assignments.map((entry) => ({ employeeId: entry.employeeId, employeeName: names.get(entry.employeeId) ?? entry.employeeId, employeeNumber: entry.employeeNumber, status: 'active' as const }))
+      const retired = current.document.registry.tombstones
+        .filter((entry) => entry.retiredAt !== null)
+        .map((entry) => ({ employeeId: entry.firstEmployeeId, employeeName: names.get(entry.firstEmployeeId) ?? entry.firstEmployeeId, employeeNumber: entry.employeeNumber, status: 'retired' as const }))
+      return { contractVersion: 'orgmaster.managed-identity-numbers.v1' as const, items: [...active, ...retired].sort((first, second) => second.employeeNumber.localeCompare(first.employeeNumber)), registryRevision: current.revision }
+    },
     async resolveAuthIdentity(email: string) {
       const current = await store.readExisting()
       const identity = (current.document.managedDailyIdentities ?? []).find((entry) => entry.lastVerifiedPrimaryEmail.toLowerCase() === email.trim().toLowerCase())

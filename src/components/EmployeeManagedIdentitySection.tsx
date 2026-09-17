@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Hash, ShieldCheck } from 'lucide-react'
 import type { Employee } from '../types'
-import { assignManagedEmployeeNumber, enqueueManagedIdentityRefresh, loadManagedIdentity, ManagedIdentityApiError } from '../managedIdentity/apiClient'
+import { assignManagedEmployeeNumber, enqueueManagedIdentityRefresh, loadManagedEmployeeNumbers, loadManagedIdentity, ManagedIdentityApiError } from '../managedIdentity/apiClient'
 import { deriveManagedUsername, parseEmployeeNumber } from '../managedIdentity/employeeNumber'
-import type { ManagedIdentityReadModelV1 } from '../managedIdentity/types'
+import type { ManagedEmployeeNumberListItemV1, ManagedIdentityReadModelV1 } from '../managedIdentity/types'
 import { WorkspacePortal } from './workspace/WorkspaceOverlayHosts'
 import { ManagedIdentityLinkDialog } from './ManagedIdentityLinkDialog'
 
@@ -33,10 +33,17 @@ function NumberDialog({ employee, view, open, onClose, onSuccess }: {
   const [value, setValue] = useState(view.employeeNumber.value ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [confirmation, setConfirmation] = useState<string | null>(null)
+  const [existingNumbers, setExistingNumbers] = useState<ManagedEmployeeNumberListItemV1[] | null>(null)
+  const [existingNumbersLoading, setExistingNumbersLoading] = useState(false)
+  const [existingNumbersError, setExistingNumbersError] = useState(false)
+  const existingNumbersRequest = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const confirmRef = useRef<HTMLButtonElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   useEffect(() => {
     if (!open) {
+      existingNumbersRequest.current += 1
       previousFocusRef.current?.focus()
       previousFocusRef.current = null
       return
@@ -44,14 +51,37 @@ function NumberDialog({ employee, view, open, onClose, onSuccess }: {
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setValue(view.employeeNumber.value ?? '')
     setError('')
+    setConfirmation(null)
+    setExistingNumbers(null)
+    setExistingNumbersError(false)
     window.requestAnimationFrame(() => inputRef.current?.focus())
+    void loadExistingNumbers()
   }, [open, view.employeeNumber.value])
+  useEffect(() => {
+    if (confirmation) window.requestAnimationFrame(() => confirmRef.current?.focus())
+  }, [confirmation])
   if (!open) return null
   const parsed = parseEmployeeNumber(value)
-  const preview = parsed.ok ? deriveManagedUsername(parsed.value) : null
+  const managedDomain = view.managedDomain ?? 'jenfu.com.tw'
+  const preview = parsed.ok ? deriveManagedUsername(parsed.value, managedDomain) : null
+  const currentNumber = view.employeeNumber.value
+  const changingNumber = Boolean(currentNumber && parsed.ok && parsed.value !== currentNumber)
+  const unchanged = Boolean(currentNumber && parsed.ok && parsed.value === currentNumber)
+  const sortedExistingNumbers = existingNumbers ? [...existingNumbers].sort((first, second) => second.employeeNumber.localeCompare(first.employeeNumber)) : null
+  const numberConflict = parsed.ok && Boolean(existingNumbers?.some((item) => item.employeeNumber === parsed.value && item.employeeId !== employee.id))
+  const inputValidationState = parsed.ok && !numberConflict ? 'is-valid' : 'is-invalid'
   const submit = async () => {
     if (!parsed.ok || busy || !view.capabilities.manageNumber) {
       setError('請輸入有效的 JFS 員工編號。')
+      return
+    }
+    if (numberConflict) {
+      setError('此員工編號已存在，請改用其他編號。')
+      return
+    }
+    if (changingNumber && confirmation !== parsed.value) {
+      setConfirmation(parsed.value)
+      setError('')
       return
     }
     setBusy(true)
@@ -72,6 +102,20 @@ function NumberDialog({ employee, view, open, onClose, onSuccess }: {
       setBusy(false)
     }
   }
+  const loadExistingNumbers = async () => {
+    if (existingNumbersLoading) return
+    const requestId = ++existingNumbersRequest.current
+    setExistingNumbersLoading(true)
+    setExistingNumbersError(false)
+    try {
+      const result = await loadManagedEmployeeNumbers()
+      if (requestId === existingNumbersRequest.current) setExistingNumbers(result.items)
+    } catch {
+      if (requestId === existingNumbersRequest.current) setExistingNumbersError(true)
+    } finally {
+      if (requestId === existingNumbersRequest.current) setExistingNumbersLoading(false)
+    }
+  }
   return <WorkspacePortal scope="global">
     <div className="employee-account-dialog__backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose() }}>
       <form className="employee-account-dialog" role="dialog" aria-modal="true" aria-labelledby="employee-number-dialog-title" onSubmit={(event) => { event.preventDefault(); void submit() }} onKeyDown={(event) => {
@@ -84,10 +128,28 @@ function NumberDialog({ employee, view, open, onClose, onSuccess }: {
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
       }}>
-        <header><h2 id="employee-number-dialog-title">設定員工編號</h2><p>{employee.name}</p></header>
-        <label className="dialog-field"><span>JFS 員工編號</span><input ref={inputRef} value={value} onChange={(event) => { setValue(event.target.value); setError('') }} placeholder="JFS0001" autoComplete="off" inputMode="text" aria-describedby="employee-number-help" /></label>
-        <p id="employee-number-help" className={error ? 'dialog-field__help is-error' : 'dialog-field__help'} role={error ? 'alert' : undefined}>{error || (preview ? '預計登入名稱：' + preview : '格式為 JFS 加 4 位數字；舊編號永久保留，不能重複使用。')}</p>
-        <footer><button type="button" className="button button--quiet" disabled={busy} onClick={onClose}>取消</button><button type="submit" className="button button--primary" disabled={busy || !parsed.ok}>{busy ? '儲存中…' : '儲存編號'}</button></footer>
+        <header><h2 id="employee-number-dialog-title">{confirmation ? '確認變更員工編號' : currentNumber ? '變更員工編號' : '設定員工編號'}</h2><p>{employee.name}</p></header>
+        {confirmation ? <>
+          <div className="employee-account-dialog__candidate" role="status" aria-describedby="employee-number-change-impact">
+            <strong>{currentNumber} → {confirmation}</strong>
+            <small>預計登入名稱：{deriveManagedUsername(confirmation, managedDomain)}</small>
+          </div>
+          <p id="employee-number-change-impact" className="dialog-field__help is-warning">儲存後舊編號將永久保留且不得重用；已連結的 Google 帳號可能需由 Google Admin 同步改名。</p>
+          <footer><button type="button" className="button button--quiet" disabled={busy} onClick={() => { setConfirmation(null); window.requestAnimationFrame(() => inputRef.current?.focus()) }}>返回修改</button><button ref={confirmRef} type="submit" className="button button--primary" disabled={busy}>{busy ? '儲存中…' : '確認變更'}</button></footer>
+        </> : <>
+          <label className="dialog-field"><span>JFS 員工編號</span><input ref={inputRef} value={value} className={inputValidationState} onChange={(event) => { setValue(event.target.value); setError(''); setConfirmation(null) }} placeholder="JFS0001" autoComplete="off" inputMode="text" aria-describedby="employee-number-help" aria-invalid={inputValidationState === 'is-invalid'} /></label>
+          <p id="employee-number-help" className={error ? 'dialog-field__help is-error' : 'dialog-field__help'} role={error ? 'alert' : undefined}>{error || (preview ? '預計登入名稱：' + preview : '格式為 JFS 加 4 位數字；舊編號永久保留，不能重複使用。')}</p>
+          <div className="employee-number-dialog__existing-label">已存在編號</div>
+          <div id="employee-number-existing-list" className="employee-number-dialog__existing-popover" role="region" aria-label="已存在編號清單">
+            {existingNumbersLoading && <div role="status">讀取中…</div>}
+            {!existingNumbersLoading && existingNumbersError && <div className="employee-number-dialog__existing-error" role="alert"><span>目前無法讀取已存在編號。</span><button type="button" className="button button--quiet" onClick={() => void loadExistingNumbers()}>重試</button></div>}
+            {!existingNumbersLoading && !existingNumbersError && existingNumbers?.length === 0 && <div className="employee-number-dialog__existing-empty">目前沒有已存在的員工編號。</div>}
+            {!existingNumbersLoading && !existingNumbersError && sortedExistingNumbers && sortedExistingNumbers.length > 0 && <ul>
+              {sortedExistingNumbers.map((item) => <li key={`${item.employeeId}-${item.employeeNumber}`}><div className="employee-number-dialog__existing-main"><strong>{item.employeeNumber}</strong><span>{item.employeeName}</span></div><small>{item.status === 'retired' ? '歷史保留' : item.employeeId === employee.id ? '目前編號' : '使用中'}</small></li>)}
+            </ul>}
+          </div>
+          <footer><button type="button" className="button button--quiet" disabled={busy} onClick={onClose}>取消</button><button type="submit" className="button button--primary" disabled={busy || !parsed.ok || unchanged}>{busy ? '儲存中…' : changingNumber ? '繼續' : '儲存編號'}</button></footer>
+        </>}
       </form>
     </div>
   </WorkspacePortal>
@@ -115,8 +177,8 @@ export function EmployeeManagedIdentitySection({ employee, mutationAllowed = fal
   }, [employee.id])
   useEffect(() => { void reload() }, [reload, refreshToken])
   if (error?.code === 'IDENTITY_VIEW_REQUIRED') return null
-  if (!view && !error) return <section className="inspector__section employee-identity-section" aria-label="公司登入身分"><div className="section-heading"><span>公司登入身分</span></div><div className="directory-detail__identity-state">載入公司身分…</div></section>
-  if (!view) return <section className="inspector__section employee-identity-section" aria-label="公司登入身分"><div className="section-heading"><span>公司登入身分</span></div><div className="directory-detail__identity-error" role="alert"><span>{error ? errorMessage(error) : '目前無法讀取公司身分設定。'}</span><button type="button" className="button button--quiet" onClick={() => void reload()}>重新載入</button></div></section>
+  if (!view && !error) return <section className="inspector__section employee-identity-section" aria-label="員工編號與登入身分"><div className="section-heading"><span>員工編號與登入身分</span></div><div className="directory-detail__identity-state">載入員工身分…</div></section>
+  if (!view) return <section className="inspector__section employee-identity-section" aria-label="員工編號與登入身分"><div className="section-heading"><span>員工編號與登入身分</span></div><div className="directory-detail__identity-error" role="alert"><span>{error ? errorMessage(error) : '目前無法讀取公司身分設定。'}</span><button type="button" className="button button--quiet" onClick={() => void reload()}>重新載入</button></div></section>
   const canManage = mutationAllowed && view.capabilities.manageNumber
   const assigned = view.employeeNumber.status === 'assigned'
   const linked = view.identity.state === 'active'
@@ -130,11 +192,11 @@ export function EmployeeManagedIdentitySection({ employee, mutationAllowed = fal
     finally { setRefreshBusy(false) }
   }
   return <><section className="inspector__section employee-identity-section" aria-labelledby={'managed-identity-heading-' + employee.id}>
-    <div className="section-heading"><span id={'managed-identity-heading-' + employee.id}>公司登入身分</span>{assigned && <span className={'directory-detail__identity-status ' + (linked ? 'is-active' : 'is-pending_acceptance')}>{linked ? '已啟用' : '待連結'}</span>}</div>
+    <div className="section-heading"><span id={'managed-identity-heading-' + employee.id}>員工編號與登入身分</span>{assigned && <span className={'directory-detail__identity-status ' + (linked ? 'is-active' : 'is-pending_acceptance')}>{linked ? '已啟用' : '待連結'}</span>}</div>
     <div className="directory-detail__identity-row managed-identity-row">
       <Hash size={15} aria-hidden="true" />
       <div className="directory-detail__identity-copy"><strong>{view.employeeNumber.value ?? '尚未設定員工編號'}</strong><small>{assigned ? '預期登入名稱：' + view.employeeNumber.derivedUsername : 'Google Admin 建立帳號後，由 OrgMaster 設定唯一員工編號'}</small></div>
-      {canManage && <button type="button" className="button button--quiet" onClick={() => setDialogOpen(true)}>{assigned ? '變更編號' : '設定編號'}</button>}
+      {canManage && <button type="button" className="button button--quiet" onClick={() => setDialogOpen(true)}>{assigned ? '變更編號' : '設定員工編號'}</button>}
       {canLink && <button type="button" className="button button--quiet" onClick={() => setLinkDialogOpen(true)}>連結 Cloud Identity</button>}
       {canRefresh && <button type="button" className="button button--quiet" disabled={refreshBusy} onClick={() => { void refresh() }}>{refreshBusy ? '排程中…' : '重新整理狀態'}</button>}
     </div>

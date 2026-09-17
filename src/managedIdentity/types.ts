@@ -235,6 +235,7 @@ export interface ManagedIdentityDocumentV1 {
 
 export interface ManagedIdentityReadModelV1 {
   contractVersion: 'orgmaster.managed-identity.v1'
+  managedDomain?: string
   employee: { id: string; status: 'active' | 'inactive' }
   employeeNumber: {
     status: 'unassigned' | 'assigned'
@@ -259,6 +260,19 @@ export interface ManagedIdentityReadModelV1 {
   registryRevision: string | null
   workspaceRevision?: string | null
   admissionEnabled?: boolean
+}
+
+export interface ManagedEmployeeNumberListItemV1 {
+  employeeId: string
+  employeeName: string
+  employeeNumber: string
+  status: 'active' | 'retired'
+}
+
+export interface ManagedEmployeeNumberListReadModelV1 {
+  contractVersion: 'orgmaster.managed-identity-numbers.v1'
+  items: ManagedEmployeeNumberListItemV1[]
+  registryRevision: string | null
 }
 
 export interface AssignEmployeeNumberRequestV1 {

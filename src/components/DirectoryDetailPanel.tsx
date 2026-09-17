@@ -6,7 +6,6 @@ import type { Assignment, Department, Employee, OrganizationLevel, PositionView 
 import type { DirectorySelection } from './DirectoryDock'
 import { PanelDismissButton } from './PanelDismissButton'
 import { EmployeeManagedIdentitySection } from './EmployeeManagedIdentitySection'
-import { EmployeeIdentitySection } from './EmployeeIdentitySection'
 import { useAuthSession } from '../auth/AuthGate'
 
 interface DirectoryDetailPanelProps {
@@ -165,7 +164,10 @@ export function DirectoryDetailPanel({
           mutationAllowed={accountMutationEnvironmentAllowed ?? identityMutationAllowed}
           refreshToken={governanceRefreshToken}
           onChanged={onGovernanceChanged}
-        /> : <EmployeeIdentitySection employee={employee} accountMutationEnvironmentAllowed={false} refreshToken={governanceRefreshToken} />}
+        /> : <section className="inspector__section employee-identity-section" aria-label="員工編號與登入身分">
+          <div className="section-heading"><span>員工編號與登入身分</span></div>
+          <div className="directory-detail__identity-state">員工編號管理尚未啟用。</div>
+        </section>}
 
       </aside>
     )
