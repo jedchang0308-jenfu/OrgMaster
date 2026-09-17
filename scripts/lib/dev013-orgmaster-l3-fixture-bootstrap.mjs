@@ -141,7 +141,7 @@ export function buildDev013OrgmasterFixture(identitySubject, root = path.resolve
   const workspaceArtifact = artifact(`orgmaster-versions/${WORKSPACE_VERSION_ID}.json`, 'workspace-version', workspace)
   const manifest = {
     app: 'OrgMaster', workspaceVersion: 1, currentVersionId: WORKSPACE_VERSION_ID,
-    entries: [{ id: WORKSPACE_VERSION_ID, name: 'DEV-013 合成驗收現行版', kind: 'current', status: 'active', basedOnVersionId: null, createdAt: AT, archivedAt: null }],
+    entries: [{ id: WORKSPACE_VERSION_ID, name: '現行版', kind: 'current', status: 'active', basedOnVersionId: null, createdAt: AT, archivedAt: null }],
   }
   const identityLinkId = 'identity-dev013-p-both'
   const permissions = ORGMASTER_PERMISSIONS.map(([id, code, risk]) => ({ id, applicationId: 'orgmaster', kind: code.includes('.read_') || code.endsWith('.view') ? 'page' : 'action', code, name: code, risk, status: 'active' }))
