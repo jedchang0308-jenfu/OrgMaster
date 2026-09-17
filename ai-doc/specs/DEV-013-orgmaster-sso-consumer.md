@@ -51,11 +51,11 @@ The runtime target is exactly `jenfu-platform-nonprod / asia-east1 / orgmaster-s
 Receipt與release順序固定如下：
 
 1. `OWNER_RUNTIME_B` provider hard join只能產生`jenfu.dev013.l3-target-bootstrap-receipt.v2 / TARGET_BOOTSTRAP_READY`；此時`ORGMASTER_JENFU_SSO_HANDOFF_MODE=off`，receipt同時保存exact active revision作rollback security floor，並以`boundaries.secretReferences`綁定`ORGMASTER_SESSION_HASH_PEPPER → dev010-stg-orgmaster-runtime-config:<numeric version>`。它只供Platform source freeze v3使用，不能進L3 browser gate。
-2. Platform broker建立後，candidate plan只接受與security floor相同source revision／tree及相同immutable digest，並把handoff mode設為`on`；candidate建立時保持原off revision承擔100% traffic。
+2. Platform broker建立後，candidate plan接受同一OrgMaster artifact repository內的新source revision／tree及immutable digest，並以fresh provider etag與目前100% active revision鎖住零流量發布；guard-capable security floor保留為獨立rollback target，candidate把handoff mode設為`on`且不得改動既有traffic。
 3. `candidate-receipt`以provider readback證明新revision、etag、origin、broker、callback、identity與mode，但狀態只有`ENABLED_REVISION_READY`。
 4. activate plan只接受該candidate receipt並只修改OrgMaster traffic。Post-activation readback必須證明`mode=on`、exact candidate revision承擔100% traffic、numeric Secret reference不漂移且etag已更新，才可產生`jenfu.dev013.l3-owner-receipt.v2 / OWNER_READY_FOR_L3_BROWSER`。
 
-Candidate／activate／rollback planning is owner-native and read-only by default. Every plan is constrained to the OrgMaster service, revision, runtime environment, and traffic. Activation retains auth-state v2 and the original-auth-time guard；rollback只回同source／同digest的off security floor，不得回pre-DEV-013 artifact。
+Candidate／activate／rollback planning is owner-native and read-only by default. Every plan is constrained to the OrgMaster service, revision, runtime environment, and traffic. Candidate source更新時必須先證明原active revision仍維持100% traffic；activation retains auth-state v2 and the original-auth-time guard；rollback只回已provider hard-join且guard-capable的off security floor，不得回pre-DEV-013 artifact。
 
 Owner commands:
 

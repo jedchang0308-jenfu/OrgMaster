@@ -10,6 +10,11 @@ const profile = loadProfile()
 const sourceRevision = 'a'.repeat(40)
 const sourceTree = 'e'.repeat(40)
 const image = `${profile.artifact.uri}@sha256:${'b'.repeat(64)}`
+const floorSourceRevision = 'f'.repeat(40)
+const floorSourceTree = 'd'.repeat(40)
+const floorImage = `${profile.artifact.uri}@sha256:${'c'.repeat(64)}`
+const previousRevision = 'orgmaster-stg-00002-active'
+const beforeProviderEtag = 'etag-before-candidate'
 const origin = 'https://orgmaster-stg-123456789.asia-east1.run.app'
 const broker = 'https://jenfu-platform-stg-123456789.asia-east1.run.app'
 const identity = { email: profile.target.runtimeServiceAccount, uniqueId: '100000000000000000001', disabled: false }
@@ -17,11 +22,11 @@ const identity = { email: profile.target.runtimeServiceAccount, uniqueId: '10000
 function hashReceipt(core) { return { ...core, receiptSha256: sha256(canonicalize(core)) } }
 
 const secretReferences = { ORGMASTER_SESSION_HASH_PEPPER: { secretId: profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER, version: '7' } }
-const floor = hashReceipt({ schemaVersion: 'jenfu.dev013.orgmaster-rollback-floor.v2', serviceName: profile.target.serviceName, revision: 'orgmaster-stg-00001-guard', providerEtag: 'etag-floor', artifactDigest: image, sourceRevision, sourceTree, secretReferences, authStateVersion: 'v2', originalAuthTimeGuard: true, protectedRequestEpochGuard: true, securityFloor: profile.release.securityFloor.id, preDev013Image: false, status: 'SECURITY_FLOOR_READY', releaseAuthority: false })
+const floor = hashReceipt({ schemaVersion: 'jenfu.dev013.orgmaster-rollback-floor.v2', serviceName: profile.target.serviceName, revision: 'orgmaster-stg-00001-guard', providerEtag: 'etag-floor', artifactDigest: floorImage, sourceRevision: floorSourceRevision, sourceTree: floorSourceTree, secretReferences, authStateVersion: 'v2', originalAuthTimeGuard: true, protectedRequestEpochGuard: true, securityFloor: profile.release.securityFloor.id, preDev013Image: false, status: 'SECURITY_FLOOR_READY', releaseAuthority: false })
 const base = { schemaVersion: 'jenfu.dev013.orgmaster-staging-release-request.v2', projectId: profile.target.projectId, region: profile.target.region, serviceName: profile.target.serviceName, rollbackFloor: floor, productionMutations: 0, siblingMutations: 0, databaseMutations: 0, migrationExecutions: 0 }
 
 function candidateRequest() {
-  return { ...base, operation: 'candidate', sourceRevision, sourceTree, artifactDigest: image, ssoHandoffMode: 'on', publicBaseUrl: origin, brokerOrigin: broker, previousRevision: floor.revision, platformManifestSha256: profile.platformManifest.sha256, canonicalContractSha256: profile.canonicalContract.sha256 }
+  return { ...base, operation: 'candidate', sourceRevision, sourceTree, artifactDigest: image, ssoHandoffMode: 'on', publicBaseUrl: origin, brokerOrigin: broker, previousRevision, beforeProviderEtag, platformManifestSha256: profile.platformManifest.sha256, canonicalContractSha256: profile.canonicalContract.sha256 }
 }
 
 function service({ revision, activeRevision, etag, mode = 'on' }) {
@@ -55,7 +60,7 @@ function service({ revision, activeRevision, etag, mode = 'on' }) {
   }
 }
 
-test('candidate may create only a same-source same-digest on revision without traffic', () => {
+test('candidate may advance source while preserving the active revision and guard-capable rollback floor', () => {
   const plan = createReleasePlan(candidateRequest(), profile)
   assert.deepEqual(plan.mutationTypes, ['revision', 'runtime-env'])
   assert.equal(plan.schemaVersion, 'jenfu.dev013.orgmaster-release-plan.v2')
@@ -65,13 +70,16 @@ test('candidate may create only a same-source same-digest on revision without tr
   assert.ok(plan.gcloud.args.includes(profile.target.serviceName))
   assert.ok(!plan.gcloud.args.join(' ').includes('ai-pdm-stg'))
   assert.ok(!plan.gcloud.args.join(' ').includes('jenfu-platform-stg --'))
-  assert.throws(() => createReleasePlan({ ...candidateRequest(), artifactDigest: `${profile.artifact.uri}@sha256:${'c'.repeat(64)}` }, profile), /CANDIDATE_INVALID/u)
+  assert.equal(plan.candidate.previousRevision, previousRevision)
+  assert.equal(plan.candidate.beforeEtag, beforeProviderEtag)
+  assert.throws(() => createReleasePlan({ ...candidateRequest(), artifactDigest: `asia-east1-docker.pkg.dev/${profile.target.projectId}/wrong-repository/orgmaster@sha256:${'c'.repeat(64)}` }, profile), /CANDIDATE_INVALID/u)
+  assert.throws(() => createReleasePlan({ ...candidateRequest(), beforeProviderEtag: '' }, profile), /CANDIDATE_INVALID/u)
 })
 
 test('candidate hard join precedes traffic activation and final browser-ready receipt', async () => {
   const candidatePlan = createReleasePlan(candidateRequest(), profile)
   const candidateRevision = 'orgmaster-stg-00002-candidate'
-  const candidate = hardJoinCandidate({ plan: candidatePlan, serviceReadback: service({ revision: candidateRevision, activeRevision: floor.revision, etag: 'etag-candidate' }), identityReadback: identity, observedAt: '2026-09-17T01:00:00.000Z' }, profile)
+  const candidate = hardJoinCandidate({ plan: candidatePlan, serviceReadback: service({ revision: candidateRevision, activeRevision: previousRevision, etag: 'etag-candidate' }), identityReadback: identity, observedAt: '2026-09-17T01:00:00.000Z' }, profile)
   assert.equal(candidate.status, 'ENABLED_REVISION_READY')
   const activation = createReleasePlan({ ...base, operation: 'activate', candidateReceipt: candidate }, profile)
   assert.deepEqual(activation.mutationTypes, ['traffic'])
@@ -84,7 +92,7 @@ test('candidate hard join precedes traffic activation and final browser-ready re
   const validator = await import(pathToFileURL(path.resolve(root, '..', 'Jenfu-Platform', 'scripts', 'lib', 'dev013-l3-contract.mjs')))
   const manifest = JSON.parse(fs.readFileSync(path.resolve(root, '..', 'Jenfu-Platform', 'config', 'dev-013', 'l3-managed-staging.json'), 'utf8'))
   assert.equal(validator.assertOwnerReceipt(owner, 'orgmaster', manifest), owner)
-  const offState = service({ revision: candidateRevision, activeRevision: floor.revision, etag: 'etag-not-active' })
+  const offState = service({ revision: candidateRevision, activeRevision: previousRevision, etag: 'etag-not-active' })
   assert.throws(() => buildOwnerReceipt({ activationPlan: activation, candidateReceipt: candidate, serviceReadback: offState, identityReadback: identity }, profile), /ACTIVE_HARD_JOIN_INVALID/u)
 })
 
