@@ -238,7 +238,7 @@ export async function applyDev013OrgmasterFixture(client, fixture) {
         updated_at=clock_timestamp(),updated_by='dev013-l3-owner-bootstrap',reason_code=$2
         WHERE singleton=true`, [batchId, controlledFixtureReplacement ? 'controlled_p_both_fixture_correction' : 'controlled_p_both_fixture'])
     }
-    await client.query(`SELECT * FROM access_governance.switch_employee_entitlement_authority_v1(
+    if (!replayed && !controlledFixtureReplacement) await client.query(`SELECT * FROM access_governance.switch_employee_entitlement_authority_v1(
       'ai-pdm',$1,'orgmaster_authority',1,$2,$3,$4,'dev013-l3-owner-bootstrap','controlled P_BOTH fixture')`,
     [fixture.identity.employeeId, `dev013-l3-p-both-${fixture.sourceRevision.slice(0, 16)}`, fixture.sourceRevision, fixture.policyVersionId])
     const stored = (await client.query(`SELECT artifact_key,trim(source_sha256) AS source_sha256,trim(canonical_sha256) AS canonical_sha256,source_bytes
