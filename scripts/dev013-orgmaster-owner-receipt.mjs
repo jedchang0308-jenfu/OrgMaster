@@ -1,13 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildOwnerReceipt, loadProfile } from './lib/dev013-orgmaster-staging-release.mjs'
+import { buildOwnerReceipt, buildTargetBootstrapReceipt, hardJoinCandidate, loadProfile } from './lib/dev013-orgmaster-staging-release.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 function parse(argv) {
-  const result = {}
-  for (let index = 0; index < argv.length; index += 1) {
+  const result = { command: argv[0] }
+  for (let index = 1; index < argv.length; index += 1) {
     const key = argv[index]
     if (!key.startsWith('--') || !argv[index + 1]) throw new Error(`Invalid argument: ${key}`)
     result[key.slice(2)] = argv[index + 1]
@@ -22,8 +22,19 @@ function read(value) {
 
 export function runOwnerReceipt(argv = process.argv.slice(2)) {
   const input = parse(argv)
-  for (const name of ['source-freeze', 'terraform-output', 'service-readback', 'identity-readback', 'output']) if (!input[name]) throw new Error(`Missing --${name}`)
-  const receipt = buildOwnerReceipt({ freeze: read(input['source-freeze']), terraformOutput: read(input['terraform-output']), serviceReadback: read(input['service-readback']), identityReadback: read(input['identity-readback']) }, loadProfile())
+  let receipt
+  if (input.command === 'bootstrap-receipt') {
+    for (const name of ['source-freeze', 'terraform-output', 'service-readback', 'identity-readback', 'output']) if (!input[name]) throw new Error(`Missing --${name}`)
+    receipt = buildTargetBootstrapReceipt({ freeze: read(input['source-freeze']), terraformOutput: read(input['terraform-output']), serviceReadback: read(input['service-readback']), identityReadback: read(input['identity-readback']) }, loadProfile())
+  } else if (input.command === 'candidate-receipt') {
+    for (const name of ['plan', 'service-readback', 'identity-readback', 'output']) if (!input[name]) throw new Error(`Missing --${name}`)
+    receipt = hardJoinCandidate({ plan: read(input.plan), serviceReadback: read(input['service-readback']), identityReadback: read(input['identity-readback']) }, loadProfile())
+  } else if (input.command === 'owner-receipt') {
+    for (const name of ['activation-plan', 'candidate-receipt', 'service-readback', 'identity-readback', 'output']) if (!input[name]) throw new Error(`Missing --${name}`)
+    receipt = buildOwnerReceipt({ activationPlan: read(input['activation-plan']), candidateReceipt: read(input['candidate-receipt']), serviceReadback: read(input['service-readback']), identityReadback: read(input['identity-readback']) }, loadProfile())
+  } else {
+    throw new Error(`Unknown command: ${input.command ?? ''}`)
+  }
   const output = path.resolve(root, input.output)
   fs.mkdirSync(path.dirname(output), { recursive: true })
   fs.writeFileSync(output, `${JSON.stringify(receipt, null, 2)}\n`)

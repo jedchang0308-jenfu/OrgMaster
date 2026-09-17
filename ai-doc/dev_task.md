@@ -93,10 +93,11 @@
 
 - ◐ DEV-048 [開發點] [owner package完成／nonprod apply ready] [P0] [READY_FOR_NONPROD_APPLY／releaseAuthority=false] DEV-013 `013-S4-L3-ORGMASTER-ENV` OrgMaster managed staging runtime與owner release package
   - 摘要：建立app-owned staging IaC、source freeze、immutable digest／foundation／target exact plan gate，以及owner-native candidate／activate／rollback規劃；保留auth-state v2、original-auth-time guard與不可退回pre-DEV-013 image的security floor。
-  - 來源 ID：`DEV-013`／`013-S4-L3-ORGMASTER-ENV`；因本repo既有DEV-013為樹節點寬度任務，本地以DEV-048消歧，不改Platform canonical ID。
+  - 來源 ID：`Jenfu-Platform / DEV-013 / 013-S4-L3-ORGMASTER-ENV`；前置consumer實作來源為`Jenfu-Platform / DEV-013 / 013-S2`。因本repo既有DEV-013為樹節點寬度任務，本地以DEV-048消歧，不改Platform canonical ID。
+  - 名稱對照：「DEV-013 OrgMaster consumer」是本repo的`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`，不是本地DEV-013或另一個Codex任務；初始consumer commit=`2c1a8dc50a21882e7fda9fab149f6a311ee7ef5b`，來源執行緒與歷史補正見capsule「來源、任務索引與歷史補正」。
   - 父任務：Platform DEV-013 L3 machine-readable manifest、OrgMaster consumer capsule；canonical contract aggregate SHA-256=`e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483`。
-  - 結果：profile、Terraform、exact A／B complete-set gate、provider hard-join owner receipt、release／rollback controller及startup／health／direct start／callback／Firebase regression均已完成本機驗證。未執行apply、deploy、migration、revision、traffic或production變更。
-  - 下一步：另行授權的nonprod operator依`OWNER_INFRA_A → immutable build/readback → OWNER_RUNTIME_B → provider URI hard-join receipt`執行；任何manifest／contract／source／tree／digest／target／address drift必須停止。
+  - 結果：profile、Terraform、exact A／B complete-set gate、off-mode target bootstrap receipt、same-source／same-digest on candidate hard join、traffic-only activation、post-activation final owner receipt、rollback controller及auth regression均已完成本機驗證。`off`狀態不再能簽成`OWNER_READY_FOR_L3_BROWSER`。未執行apply、deploy、migration、revision、traffic或production變更。
+  - 下一步：另行授權的nonprod operator依`OWNER_INFRA_A → immutable build/readback → OWNER_RUNTIME_B → TARGET_BOOTSTRAP_READY → Platform create/off floor → on candidate hard join → traffic activation → OWNER_READY_FOR_L3_BROWSER`執行；任何manifest／contract／source／tree／digest／target／address drift必須停止。
   - 證據：`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`、`config/dev-013/l3-orgmaster-staging.json`、`infra/google-cloud/dev-013-l3-orgmaster/`、`scripts/dev013-orgmaster-staging-profile.test.mjs`、`scripts/dev013-orgmaster-rollback.test.mjs`、`server/orgmasterSsoHandoff.test.ts`
   - 計入交付：否；只代表owner package可進入nonprod apply gate，不代表L3、production或DEV-013完成。
 
@@ -582,10 +583,12 @@
 文件成熟度：`RD Implementation Complete / Non-production Apply Gated`
 節點類型：開發點
 優先級：P0
-父交付點：Platform DEV-013 L3 machine-readable manifest、OrgMaster DEV-013 consumer capsule
+父交付點：Jenfu-Platform DEV-013 L3 machine-readable manifest、Platform DEV-013 的 OrgMaster consumer capsule（非 OrgMaster 本地 DEV-013）
 是否計入產品交付完成：否
 權威文件：`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`、`config/dev-013/l3-orgmaster-staging.json`
 本輪來源 ID：`USER-2026-09-17-013-S4-L3-ORGMASTER-ENV`
+跨專案來源：`Jenfu-Platform / DEV-013 / 013-S4-L3-ORGMASTER-ENV`；既有consumer前置實作=`Jenfu-Platform / DEV-013 / 013-S2`
+追溯入口：「DEV-013 OrgMaster consumer」見權威capsule的「來源、任務索引與歷史補正」；branch=`codex/dev-013-orgmaster`，初始consumer commit=`2c1a8dc50a21882e7fda9fab149f6a311ee7ef5b`，owner package commit=`20bb0b95c61759e82caaa46fd9ece866e37b2b0f`。本次只補正索引／來源，不新增產品完成數、不回溯認定授權，也不改release狀態。
 執行邊界：只修改OrgMaster source、app-owned Terraform／state profile、tests與文件；未操作Platform canonical、shared foundation、production、sibling app、custom domain、migration或traffic
 風險等級：High（managed runtime、IAM、Cloud SQL private connection、immutable release與跨owner contract hard join）
 

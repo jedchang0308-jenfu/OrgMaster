@@ -1,9 +1,19 @@
 # DEV-013 OrgMaster consumer capsule
 
 - Owner: OrgMaster
-- Native task: DEV-013-S2
+- Source task: `Jenfu-Platform / DEV-013 / 013-S2`（SSO consumer）；managed staging successor: `013-S4-L3-ORGMASTER-ENV`
+- Native tracking: `OrgMaster / DEV-048`（managed staging owner package；一併索引既有 consumer 前置實作，不追溯改寫原任務編號）
 - Contract lock: `contracts/jenfu-sso-handoff/v1/contract-lock.json`
 - Status: `Local implementation complete / mode off / release gated`
+
+## 來源、任務索引與歷史補正（2026-09-17）
+
+- 本文件位於 **OrgMaster repository** 的 `ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`；「DEV-013 OrgMaster consumer」是跨專案 consumer capsule 名稱，不是 OrgMaster 本地 DEV-013，也不是另外建立的 Codex 執行緒。保留檔名以維持既有引用。
+- 初始實作由 Jenfu-Platform 的 Codex 執行緒「修復跨系統單一登入」（thread ID: `01a0a8b2-1d1d-7243-baee-0567f90cbcdc`）執行；工具事件 `exec-ebbebecf-9707-4c20-b0d2-1d6bc5337711` 在 OrgMaster 執行 `git switch -c codex/dev-013-orgmaster` 及提交。初始 commit: `2c1a8dc50a21882e7fda9fab149f6a311ee7ef5b`（`feat(dev-013): add OrgMaster SSO consumer`）。Git author／committer 署名不能用來判定是人類操作。
+- Branch reflog 的建立事件時間為 **2026-09-16 23:28:46 +08:00**；先前回覆的 22:13:54 是起點 commit 的時間，不是 branch 建立時間。原始 branch 與 commit 均保留，不以補正文件改寫歷史。
+- 原 capsule 的 `Native task: DEV-013-S2` 為錯誤標示。OrgMaster 本地 DEV-013 是既有「樹狀圖節點寬度縮至 60%」UI 任務，維持原狀；目前 managed staging owner package 由 [dev_task 的 DEV-048](../dev_task.md#dev-048dev-013-013-s4-l3-orgmaster-env-managed-staging-owner-package) 追蹤，本段只補齊它的 consumer 前置實作來源，不新增或回填另一個歷史 DEV。
+- 授權紀錄與技術必要性分開判斷：不能以「跨應用整合需要」或後續 owner 工作授權，直接認定先前跨專案操作已獲授權；本段也不把未核對到的原始授權補寫為已核准。本次人類「執行修改」授權限於已討論的文件補正與全域防再發設定，不授權新的 consumer 開發、branch 操作或 release。
+- 本次文件補正依全域跨專案授權規則執行；後續跨專案開發須先取得人類明確指定目標與動作範圍的授權，讀取目標 AGENTS 並重新確認 Git 狀態。任務來源／本地 ID／文件地圖須同步，不能只留在來源專案的對話內。
 
 ## Boundary
 
@@ -38,13 +48,22 @@ The package uses one app-owned state prefix, `dev-013/orgmaster-staging`, and tw
 
 The runtime target is exactly `jenfu-platform-nonprod / asia-east1 / orgmaster-stg / jenfu_stg`, attached to `dev010-stg-orgmaster-runtime@jenfu-platform-nonprod.iam.gserviceaccount.com`. It has `min_instance_count=0`, deletion protection, a pinned Cloud SQL Auth Proxy sidecar on the exact private connection, IAM database authentication, and no owner／DDL／migrator identity or migration job. `ORGMASTER_JENFU_SSO_HANDOFF_MODE=off`; the broker origin and public base URL are derived from provider readback inputs and are rejected if they are placeholders, custom domains, legacy origins, or not the exact `run.app` authorities allowed by the Platform manifest.
 
-Candidate／activate／rollback planning is owner-native and read-only by default. Every plan is constrained to the OrgMaster service, revision, runtime environment, and traffic. Activation retains auth-state v2 and the original-auth-time guard; rollback cannot target an image below the first DEV-013 security-floor digest.
+Receipt與release順序固定如下：
+
+1. `OWNER_RUNTIME_B` provider hard join只能產生`jenfu.dev013.l3-target-bootstrap-receipt.v1 / TARGET_BOOTSTRAP_READY`；此時`ORGMASTER_JENFU_SSO_HANDOFF_MODE=off`，receipt同時保存exact active revision作rollback security floor。它只供Platform source freeze使用，不能進L3 browser gate。
+2. Platform broker建立後，candidate plan只接受與security floor相同source revision／tree及相同immutable digest，並把handoff mode設為`on`；candidate建立時保持原off revision承擔100% traffic。
+3. `candidate-receipt`以provider readback證明新revision、etag、origin、broker、callback、identity與mode，但狀態只有`ENABLED_REVISION_READY`。
+4. activate plan只接受該candidate receipt並只修改OrgMaster traffic。Post-activation readback必須證明`mode=on`、exact candidate revision承擔100% traffic且etag已更新，才可產生`jenfu.dev013.l3-owner-receipt.v1 / OWNER_READY_FOR_L3_BROWSER`。
+
+Candidate／activate／rollback planning is owner-native and read-only by default. Every plan is constrained to the OrgMaster service, revision, runtime environment, and traffic. Activation retains auth-state v2 and the original-auth-time guard；rollback只回同source／同digest的off security floor，不得回pre-DEV-013 artifact。
 
 Owner commands:
 
 - `npm run freeze:dev-013:l3 -- --stage OWNER_INFRA_A|OWNER_RUNTIME_B ...`
 - `npm run verify:dev-013:l3:plan -- --stage OWNER_INFRA_A|OWNER_RUNTIME_B ...`
-- `npm run receipt:dev-013:l3:owner -- ...`
+- `npm run receipt:dev-013:l3:owner -- bootstrap-receipt ...`
+- `npm run receipt:dev-013:l3:owner -- candidate-receipt ...`
+- `npm run receipt:dev-013:l3:owner -- owner-receipt ...`
 - `npm run release:dev-013:l3 -- --operation candidate|activate|rollback ...`（read-only plan unless a future separately authorized run passes `--execute`）
 - `npm run test:dev-013:l3`
 

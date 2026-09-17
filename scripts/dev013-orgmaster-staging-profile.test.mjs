@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
-import { assertTerraformPlan, buildOwnerReceipt, canonicalize, createSourceFreezeReceipt, firebasePublicConfigSha256, loadProfile, sha256, verifyCanonicalContract, verifyPlatformManifest } from './lib/dev013-orgmaster-staging-release.mjs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { assertTerraformPlan, buildTargetBootstrapReceipt, canonicalize, createSourceFreezeReceipt, firebasePublicConfigSha256, loadProfile, sha256, verifyCanonicalContract, verifyPlatformManifest } from './lib/dev013-orgmaster-staging-release.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const profile = loadProfile()
@@ -113,17 +113,21 @@ test('OWNER_RUNTIME_B binds source, tree, digest, foundation, exact origins and 
   assert.throws(() => assertTerraformPlan(custom, receipt, profile), /RUN_APP_ORIGIN_INVALID/u)
 })
 
-test('provider hard join produces the Platform-compatible owner receipt without Secret material', () => {
+test('provider hard join produces the Platform-compatible target bootstrap receipt without Secret material', async () => {
   const receipt = freeze('OWNER_RUNTIME_B')
   const origin = 'https://orgmaster-stg-123456789.asia-east1.run.app'
   const broker = 'https://jenfu-platform-stg-123456789.asia-east1.run.app'
   const output = { orgmaster_staging_manifest: { value: { project_id: profile.target.projectId, region: profile.target.region, service_name: profile.target.serviceName, provider_uri: origin, expected_orgmaster_origin: origin, expected_platform_origin: broker, runtime_service_account: profile.target.runtimeServiceAccount, runtime_service_subject: '100000000000000000001', application_image: image } } }
-  const service = { uri: origin, projectId: profile.target.projectId, region: profile.target.region, serviceName: profile.target.serviceName, runtimeServiceAccount: profile.target.runtimeServiceAccount, image, deletionProtection: true, minInstances: 0, maxInstances: 1, entryPolicy: profile.target.entryPolicy, labels: profile.target.requiredLabels, containers: [{ name: 'orgmaster', env: [{ name: 'ORGMASTER_PUBLIC_BASE_URL', value: origin }, { name: 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN', value: broker }, { name: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', value: 'off' }] }] }
-  const owner = buildOwnerReceipt({ freeze: receipt, terraformOutput: output, serviceReadback: service, identityReadback: { email: profile.target.runtimeServiceAccount, uniqueId: '100000000000000000001', disabled: false }, observedAt: '2026-09-17T01:00:00.000Z' }, profile)
-  assert.equal(owner.status, 'OWNER_READY_FOR_L3_BROWSER')
-  assert.equal(owner.target.canonicalOrigin, origin)
-  assert.equal(owner.boundaries.secretValueRead, false)
-  assert.equal(owner.receiptSha256, sha256(canonicalize(Object.fromEntries(Object.entries(owner).filter(([key]) => key !== 'receiptSha256')))))
+  const service = { uri: origin, projectId: profile.target.projectId, region: profile.target.region, serviceName: profile.target.serviceName, runtimeServiceAccount: profile.target.runtimeServiceAccount, image, deletionProtection: true, minInstances: 0, maxInstances: 1, entryPolicy: profile.target.entryPolicy, labels: profile.target.requiredLabels, etag: 'etag-orgmaster-off', latestCreatedRevision: 'orgmaster-stg-dev013-off', latestReadyRevision: 'orgmaster-stg-dev013-off', traffic: [{ revision: 'orgmaster-stg-dev013-off', percent: 100, tag: null }], containers: [{ name: 'orgmaster', env: [{ name: 'ORGMASTER_PUBLIC_BASE_URL', value: origin }, { name: 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN', value: broker }, { name: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', value: 'off' }, { name: 'DEV013_L3_SOURCE_REVISION', value: sourceRevision }, { name: 'DEV013_L3_SOURCE_TREE', value: sourceTree }] }] }
+  const bootstrap = buildTargetBootstrapReceipt({ freeze: receipt, terraformOutput: output, serviceReadback: service, identityReadback: { email: profile.target.runtimeServiceAccount, uniqueId: '100000000000000000001', disabled: false }, observedAt: '2026-09-17T01:00:00.000Z' }, profile)
+  assert.equal(bootstrap.status, 'TARGET_BOOTSTRAP_READY')
+  assert.equal(bootstrap.runtime.ssoHandoffMode, 'off')
+  assert.equal(bootstrap.target.canonicalOrigin, origin)
+  assert.equal(bootstrap.boundaries.secretValueRead, false)
+  assert.equal(bootstrap.receiptSha256, sha256(canonicalize(Object.fromEntries(Object.entries(bootstrap).filter(([key]) => key !== 'receiptSha256')))))
+  const platformValidator = await import(pathToFileURL(path.resolve(root, '..', 'Jenfu-Platform', 'scripts', 'lib', 'dev013-l3-contract.mjs')))
+  const platformManifest = JSON.parse(fs.readFileSync(path.resolve(root, '..', 'Jenfu-Platform', 'config', 'dev-013', 'l3-managed-staging.json'), 'utf8'))
+  assert.equal(platformValidator.assertTargetBootstrapReceipt(bootstrap, 'orgmaster', platformManifest), bootstrap)
 })
 
 test('IaC contains the exact private proxy and no migration, production, sibling or custom-domain resource', () => {
