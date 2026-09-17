@@ -66,6 +66,8 @@ test('S1B-21 OrgMaster v3 direct-run profile preserves staging boundary', () => 
   assert.equal(n1c.target.environment, 'staging')
   assert.equal(profile.target.database, 'jenfu_prod')
   assert.equal(profile.sideEffects.accountEnrollment, 'DISABLED')
+  assert.equal(profile.environment.fixedValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE, 'off')
+  assert.equal(profile.environment.fixedValues.ORGMASTER_JENFU_SSO_BROKER_ORIGIN, 'https://jenfu-platform-prod-9536592944.asia-east1.run.app')
 })
 
 test('S1B-21 OrgMaster runtime keeps credentials out of plain environment', () => {

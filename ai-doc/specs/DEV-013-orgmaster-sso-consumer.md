@@ -4,7 +4,7 @@
 - Source task: `Jenfu-Platform / DEV-013 / 013-S2`（SSO consumer）；managed staging successor: `013-S4-L3-ORGMASTER-ENV`
 - Native tracking: `OrgMaster / DEV-048`（managed staging owner package；一併索引既有 consumer 前置實作，不追溯改寫原任務編號）
 - Contract lock: `contracts/jenfu-sso-handoff/v1/contract-lock.json`
-- Status: `Local implementation complete / mode off / release gated`
+- Status: `L3 managed staging complete / production owner profile guard off / L4 exact authorization gated`
 
 ## 來源、任務索引與歷史補正（2026-09-17）
 
@@ -32,6 +32,12 @@ OrgMaster consumes Platform `jenfu.sso-handoff.v1` for the fixed `orgmaster` aud
 ## Verification entrypoints
 
 `npm run test:dev-013`, `npm run check:db-boundary`, and `npm run build` are the owner-local checks. Local PASS does not close QA-013 or authorize managed non-production／production release.
+
+## Production L4 owner readiness（2026-09-18）
+
+The ordinary production owner profile `config/release/dev040-orgmaster-independent-production-v3.json` now requires `ORGMASTER_JENFU_SSO_HANDOFF_MODE=off` and the exact Platform broker origin `https://jenfu-platform-prod-9536592944.asia-east1.run.app`. The profile validator rejects a missing, enabled, or alternate-origin value before a release capsule can proceed. Fresh DEV-040 owner tests, abort-controller tests, database-boundary check, full 863-test suite, and client／server build pass on the current worktree.
+
+This is a guard-capable production input, not a release receipt. Production Cloud Run template／traffic, IAM, database, Secret, retained edge, Billing, custom-domain, Hosting, and shared-load-balancer mutations remain zero. Activation remains owner-native and must follow Platform `accept` → OrgMaster `on` → Platform `launch`; rollback is the reverse drain to the retained guard-capable `off` revision. The exact production target still requires separate human authorization before L4 execution.
 
 ## 013-S4-L3-ORGMASTER-ENV owner package
 
