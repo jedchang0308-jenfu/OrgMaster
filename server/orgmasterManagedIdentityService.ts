@@ -119,6 +119,7 @@ export function createManagedIdentityService(input: {
       if (!model) throw new ManagedIdentityServiceError('EMPLOYEE_NOT_FOUND')
       return {
         ...model,
+        managedDomain: domain,
         employee: { id: employee.id, status: employee.status === 'inactive' ? 'inactive' : 'active' },
         capabilities: { view: true, manageNumber: hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: hasPermission(governance.document, actor, LINK), refresh: hasPermission(governance.document, actor, REFRESH) },
         workspaceRevision,
@@ -129,7 +130,7 @@ export function createManagedIdentityService(input: {
     const identity = (state.document.managedDailyIdentities ?? []).find((entry) => entry.employeeId === employeeId) ?? null
     const observation = identity ? (state.document.observations ?? []).find((entry) => entry.identityRecordId === identity.identityRecordId) ?? null : null
     return {
-      contractVersion: 'orgmaster.managed-identity.v1', employee: { id: employee.id, status: employee.status === 'inactive' ? 'inactive' : 'active' },
+      contractVersion: 'orgmaster.managed-identity.v1', managedDomain: domain, employee: { id: employee.id, status: employee.status === 'inactive' ? 'inactive' : 'active' },
       employeeNumber: { status: assignment ? 'assigned' : 'unassigned', value: assignment?.employeeNumber ?? null, derivedUsername: assignment ? deriveManagedUsername(assignment.employeeNumber, domain) : null, revision: assignment?.revision ?? null },
       identity: { state: identity?.linkState === 'directory_linked_pending_auth' ? 'directory_linked_pending_auth' : identity?.linkState === 'active' ? 'active' : identity?.linkState === 'conflict' ? 'conflict' : 'not_linked', provider: 'google.com', note: identity?.linkState === 'active' ? '已連結公司 Cloud Identity' : identity ? '已確認 Directory 身分，等待首次 Google 登入' : 'Google Admin 建立後由 OrgMaster 連結', directoryState: observation?.directoryState ?? 'unknown', primaryEmail: identity?.lastVerifiedPrimaryEmail ?? null, freshness: observation?.freshness ?? 'unknown' },
       capabilities: { view: true, manageNumber: internal ? false : hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: internal ? false : hasPermission(governance.document, actor, LINK), refresh: internal ? false : hasPermission(governance.document, actor, REFRESH) }, registryRevision: state.revision, workspaceRevision,

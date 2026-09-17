@@ -235,6 +235,7 @@ export interface ManagedIdentityDocumentV1 {
 
 export interface ManagedIdentityReadModelV1 {
   contractVersion: 'orgmaster.managed-identity.v1'
+  managedDomain?: string
   employee: { id: string; status: 'active' | 'inactive' }
   employeeNumber: {
     status: 'unassigned' | 'assigned'

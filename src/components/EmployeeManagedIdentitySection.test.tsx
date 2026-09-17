@@ -17,6 +17,7 @@ vi.mock('../managedIdentity/apiClient', () => ({
 const employee = { id: 'employee-1', name: '王小明', status: 'active' as const, departmentIds: [], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null }
 const base = {
   contractVersion: 'orgmaster.managed-identity.v1' as const,
+  managedDomain: 'jenfu.com.tw',
   employee: { id: employee.id, status: 'active' as const },
   employeeNumber: { status: 'unassigned' as const, value: null, derivedUsername: null, revision: null },
   identity: { state: 'not_linked' as const, provider: 'google.com' as const, note: 'Google Admin 建立後由 OrgMaster 連結' as const },
@@ -45,8 +46,9 @@ describe('EmployeeManagedIdentitySection', () => {
   it('shows a single employee-number setup action for an unassigned employee', async () => {
     const { host, root } = render()
     await flush()
+    expect(host.textContent).toContain('員工編號與登入身分')
     expect(host.textContent).toContain('尚未設定員工編號')
-    expect(host.textContent).toContain('設定編號')
+    expect(host.textContent).toContain('設定員工編號')
     expect(host.textContent).not.toContain('邀請')
     act(() => root.unmount())
   })
@@ -78,6 +80,37 @@ describe('EmployeeManagedIdentitySection', () => {
     await flush()
     expect(host.querySelectorAll('button')).toHaveLength(0)
     expect(host.textContent).toContain('請聯絡具員工身分管理權限的管理者')
+    act(() => root.unmount())
+  })
+
+  it('requires an impact confirmation before changing an assigned employee number', async () => {
+    api.loadManagedIdentity.mockResolvedValue({
+      ...base,
+      employeeNumber: { status: 'assigned', value: 'JFS0001', derivedUsername: 'jfs0001@jenfu.com.tw', revision: 1 },
+      registryRevision: 'revision-1',
+    })
+    const { host, root } = render()
+    await flush()
+    const changeButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '變更編號')
+    act(() => changeButton?.click())
+    const input = host.querySelector<HTMLInputElement>('input')
+    act(() => {
+      if (!input) return
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(input, 'jfs0002')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    const continueButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '繼續')
+    act(() => continueButton?.click())
+    await flush()
+    expect(api.assignManagedEmployeeNumber).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('JFS0001 → JFS0002')
+    expect(host.textContent).toContain('舊編號將永久保留且不得重用')
+    const confirmButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '確認變更')
+    act(() => confirmButton?.click())
+    await flush()
+    expect(api.assignManagedEmployeeNumber).toHaveBeenCalledWith('employee-1', expect.objectContaining({ employeeNumber: 'JFS0002', expectedRegistryRevision: 'revision-1' }))
     act(() => root.unmount())
   })
 })
