@@ -206,13 +206,22 @@ export async function applyDev013OrgmasterFixture(client, fixture) {
       to_regclass('orgmaster_contract.v_portal_app_visibility_v1') IS NOT NULL AS visibility_contract,
       to_regclass('orgmaster_contract.v_ai_pdm_effective_role_assignments_v1') IS NOT NULL AS role_contract`)).rows[0]
     if (!boundary || Object.values(boundary).some((value) => value !== true)) throw new Error('DEV013_ORGMASTER_SCHEMA_INCOMPLETE')
-    const authority = (await client.query(`SELECT a.active_batch_id, a.authority_version, trim(b.source_revision) AS source_revision
+    const authority = (await client.query(`SELECT a.active_batch_id, a.authority_version, a.updated_by, a.reason_code,
+        trim(b.source_revision) AS source_revision, b.status, b.source_manifest, b.artifact_count, b.media_count
       FROM orgmaster_core.persistence_authority a LEFT JOIN orgmaster_core.persistence_batches b ON b.id=a.active_batch_id
       WHERE a.singleton=true FOR UPDATE OF a`)).rows
     if (authority.length !== 1) throw new Error('DEV013_PERSISTENCE_AUTHORITY_INVALID')
     const currentSourceRevision = authority[0].source_revision ?? null
     const replayed = currentSourceRevision === fixture.sourceRevision
-    if (authority[0].active_batch_id !== null && !replayed) throw new Error('DEV013_NONEMPTY_PERSISTENCE_AUTHORITY_REFUSED')
+    const controlledFixtureReplacement = authority[0].active_batch_id !== null
+      && authority[0].status === 'active'
+      && authority[0].source_manifest?.contractVersion === 'jenfu.orgmaster-persistence.v1'
+      && authority[0].source_manifest?.fixtureVersion === DEV013_ORGMASTER_FIXTURE_VERSION
+      && ['controlled_p_both_fixture', 'controlled_p_both_fixture_correction'].includes(authority[0].reason_code)
+      && authority[0].updated_by === 'dev013-l3-owner-bootstrap'
+      && Number(authority[0].artifact_count) === 3
+      && Number(authority[0].media_count) === 0
+    if (authority[0].active_batch_id !== null && !replayed && !controlledFixtureReplacement) throw new Error('DEV013_NONEMPTY_PERSISTENCE_AUTHORITY_REFUSED')
     let batchId = authority[0].active_batch_id
     if (!replayed) {
       batchId = crypto.randomUUID()
@@ -223,9 +232,11 @@ export async function applyDev013OrgmasterFixture(client, fixture) {
       for (const item of fixture.artifacts) await client.query(`INSERT INTO orgmaster_core.persistence_artifacts
         (batch_id,artifact_key,artifact_kind,payload,source_sha256,canonical_sha256,source_bytes,imported_at)
         VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,clock_timestamp())`, [batchId, item.artifactKey, item.artifactKind, JSON.stringify(item.payload), item.sourceSha256, item.canonicalSha256, item.sourceBytes])
+      if (authority[0].active_batch_id !== null) await client.query(`UPDATE orgmaster_core.persistence_batches
+        SET status='retired', retired_at=clock_timestamp() WHERE id=$1 AND status='active'`, [authority[0].active_batch_id])
       await client.query(`UPDATE orgmaster_core.persistence_authority SET active_batch_id=$1,authority_version=authority_version+1,
-        updated_at=clock_timestamp(),updated_by='dev013-l3-owner-bootstrap',reason_code='controlled_p_both_fixture'
-        WHERE singleton=true`, [batchId])
+        updated_at=clock_timestamp(),updated_by='dev013-l3-owner-bootstrap',reason_code=$2
+        WHERE singleton=true`, [batchId, controlledFixtureReplacement ? 'controlled_p_both_fixture_correction' : 'controlled_p_both_fixture'])
     }
     await client.query(`SELECT * FROM access_governance.switch_employee_entitlement_authority_v1(
       'ai-pdm',$1,'orgmaster_authority',1,$2,$3,$4,'dev013-l3-owner-bootstrap','controlled P_BOTH fixture')`,
