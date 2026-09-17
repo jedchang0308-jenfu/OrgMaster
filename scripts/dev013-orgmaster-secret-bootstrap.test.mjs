@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { canonicalize, loadProfile, sha256 } from './lib/dev013-orgmaster-staging-release.mjs'
-import { assertSecretVersionBootstrapReceipt, constants, createSecretVersionBootstrapPlan, runSecretVersionBootstrap } from './lib/dev013-orgmaster-secret-bootstrap.mjs'
+import { assertSecretVersionBootstrapReceipt, buildSecretVersionBootstrapReceipt, buildSecretVersionContinuityReceipt, constants, createSecretVersionBootstrapPlan, runSecretVersionBootstrap } from './lib/dev013-orgmaster-secret-bootstrap.mjs'
 import { resolvePortableInvocation } from './lib/dev013-portable-command.mjs'
 import { resolveCleanSource } from './dev013-orgmaster-secret-bootstrap.mjs'
 
@@ -154,4 +154,19 @@ test('bootstrap plan hash covers exact commands and fail-closed guards', () => {
   assert.equal(plan.guards.payloadEncoding, 'base64url')
   assert.equal(plan.guards.requiresEmptyVersionHistory, true)
   assert.equal(plan.guards.secretPayloadMayAppearInEvidence, false)
+})
+
+test('continuity receipt reattests enabled version 1 only for the fixed governance descendant source', () => {
+  const plan = createSecretVersionBootstrapPlan(profile)
+  const original = buildSecretVersionBootstrapReceipt({ plan, providerReadback: { name: exactName, state: 'ENABLED' }, source, observedAt: '2026-09-17T05:00:00.000Z' }, profile)
+  const current = { sourceRevision: 'c'.repeat(40), sourceTree: 'd'.repeat(40), clean: true }
+  const input = { originalReceipt: original, providerReadback: { name: exactName, state: 'ENABLED' }, source: current, changedPaths: [...constants.CONTINUITY_CHANGED_PATHS], ancestorVerified: true, authorization: constants.CONTINUITY_CAPABILITY, observedAt: '2026-09-17T08:30:00.000Z' }
+  const receipt = buildSecretVersionContinuityReceipt(input, profile)
+  assert.equal(receipt.status, 'EXISTING_FIRST_VERSION_REATTESTED')
+  assert.equal(receipt.mutationExecuted, false)
+  assert.equal(receipt.cloudMutations, 0)
+  assert.equal(receipt.originalReceiptSha256, original.receiptSha256)
+  assert.throws(() => buildSecretVersionContinuityReceipt({ ...input, changedPaths: [...constants.CONTINUITY_CHANGED_PATHS, 'server/runtime.ts'] }, profile), /CONTINUITY_PATH_INVALID/u)
+  assert.throws(() => buildSecretVersionContinuityReceipt({ ...input, ancestorVerified: false }, profile), /CONTINUITY_SOURCE_INVALID/u)
+  assert.throws(() => buildSecretVersionContinuityReceipt({ ...input, providerReadback: { name: exactName, state: 'DISABLED' } }, profile), /VERSION_ADD_INVALID/u)
 })

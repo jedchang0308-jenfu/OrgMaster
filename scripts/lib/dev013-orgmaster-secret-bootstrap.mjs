@@ -1,11 +1,12 @@
 import crypto from 'node:crypto'
-import { assertFirstSecretVersionReceipt, canonicalize, loadProfile, sha256 } from './dev013-orgmaster-staging-release.mjs'
+import { ORGMASTER_SECRET_CONTINUITY_CHANGED_PATHS, assertFirstSecretVersionReceipt, assertSecretVersionAuthorityReceipt, canonicalize, loadProfile, sha256 } from './dev013-orgmaster-staging-release.mjs'
 
 const ENVIRONMENT_NAME = 'ORGMASTER_SESSION_HASH_PEPPER'
 const PLAN_SCHEMA = 'jenfu.dev013.orgmaster-secret-version-bootstrap-plan.v1'
 const RECEIPT_SCHEMA = 'jenfu.dev013.secret-version-bootstrap-receipt.v1'
 const VERSION_NAME = /^projects\/([^/]+)\/secrets\/([^/]+)\/versions\/([1-9][0-9]*)$/u
 const EXECUTE_CAPABILITY = 'DEV013-L3-ORGMASTER-FIRST-SECRET-VERSION'
+const CONTINUITY_CAPABILITY = 'DEV013-L3-ORGMASTER-SECRET-CONTINUITY'
 const H40 = /^[0-9a-f]{40}$/u
 
 export class Dev013OrgmasterSecretBootstrapError extends Error {
@@ -132,6 +133,37 @@ export function assertSecretVersionBootstrapReceipt(receipt, profile = loadProfi
   return assertFirstSecretVersionReceipt(receipt, { sourceRevision: receipt?.sourceRevision, sourceTree: receipt?.sourceTree }, profile)
 }
 
+export function buildSecretVersionContinuityReceipt({ originalReceipt, providerReadback, source, changedPaths, ancestorVerified, authorization, observedAt = new Date().toISOString() }, profile = loadProfile()) {
+  if (authorization !== CONTINUITY_CAPABILITY) fail('DEV013_ORGMASTER_SECRET_CONTINUITY_CAPABILITY_REQUIRED')
+  const original = assertSecretVersionBootstrapReceipt(originalReceipt, profile)
+  const reference = providerVersion(providerReadback, profile)
+  if (!H40.test(source?.sourceRevision ?? '') || !H40.test(source?.sourceTree ?? '') || source?.clean !== true || ancestorVerified !== true || source.sourceRevision === original.sourceRevision) fail('DEV013_ORGMASTER_SECRET_CONTINUITY_SOURCE_INVALID')
+  if (canonicalize(changedPaths) !== canonicalize(ORGMASTER_SECRET_CONTINUITY_CHANGED_PATHS)) fail('DEV013_ORGMASTER_SECRET_CONTINUITY_PATH_INVALID')
+  if (!Number.isFinite(Date.parse(observedAt))) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_TIME_INVALID')
+  const core = {
+    schemaVersion: 'jenfu.dev013.secret-version-continuity-receipt.v1',
+    applicationId: 'orgmaster',
+    platformManifestSha256: profile.platformManifest.sha256,
+    sourceRevision: source.sourceRevision,
+    sourceTree: source.sourceTree,
+    clean: true,
+    originalReceiptSha256: original.receiptSha256,
+    originalSourceRevision: original.sourceRevision,
+    originalSourceTree: original.sourceTree,
+    changedPaths,
+    target: original.target,
+    result: { numericVersion: reference.version, state: reference.state },
+    status: 'EXISTING_FIRST_VERSION_REATTESTED',
+    mutationExecuted: false,
+    cloudMutations: 0,
+    providerReadback: true,
+    secretPayloadCaptured: false,
+    releaseAuthority: false,
+    observedAt,
+  }
+  return assertSecretVersionAuthorityReceipt({ ...core, receiptSha256: sha256(canonicalize(core)) }, source, profile)
+}
+
 export function runSecretVersionBootstrap({ execute = false, authorization, requestedProjectId, requestedSecretId, source, invoke, entropySource = crypto.randomBytes, observedAt }, profile = loadProfile()) {
   const plan = createSecretVersionBootstrapPlan(profile)
   if (requestedProjectId != null && requestedProjectId !== plan.target.projectId) fail('DEV013_ORGMASTER_SECRET_BOOTSTRAP_TARGET_INVALID', 'project')
@@ -165,4 +197,4 @@ export function runSecretVersionBootstrap({ execute = false, authorization, requ
   return { executed: true, plan, receipt }
 }
 
-export const constants = Object.freeze({ ENVIRONMENT_NAME, EXECUTE_CAPABILITY, PLAN_SCHEMA, RECEIPT_SCHEMA })
+export const constants = Object.freeze({ ENVIRONMENT_NAME, EXECUTE_CAPABILITY, CONTINUITY_CAPABILITY, CONTINUITY_CHANGED_PATHS: ORGMASTER_SECRET_CONTINUITY_CHANGED_PATHS, PLAN_SCHEMA, RECEIPT_SCHEMA })

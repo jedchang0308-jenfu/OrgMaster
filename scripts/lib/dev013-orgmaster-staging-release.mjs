@@ -115,6 +115,24 @@ export function assertFirstSecretVersionReceipt(receipt, expectedSource, profile
   return receipt
 }
 
+export const ORGMASTER_SECRET_CONTINUITY_CHANGED_PATHS = Object.freeze([
+  'AGENTS.md',
+  'ai-doc/specs/DEV-013-orgmaster-sso-consumer.md',
+  'scripts/dev013-orgmaster-secret-bootstrap.mjs',
+  'scripts/dev013-orgmaster-secret-bootstrap.test.mjs',
+  'scripts/dev013-orgmaster-staging-profile.test.mjs',
+  'scripts/lib/dev013-orgmaster-secret-bootstrap.mjs',
+  'scripts/lib/dev013-orgmaster-staging-release.mjs',
+])
+
+export function assertSecretVersionAuthorityReceipt(receipt, expectedSource, profile = loadProfile()) {
+  if (receipt?.schemaVersion === 'jenfu.dev013.secret-version-bootstrap-receipt.v1') return assertFirstSecretVersionReceipt(receipt, expectedSource, profile)
+  object(receipt, 'DEV013_ORGMASTER_SECRET_CONTINUITY_RECEIPT_INVALID', 'receipt')
+  const allowedKeys = ['applicationId', 'changedPaths', 'clean', 'cloudMutations', 'mutationExecuted', 'observedAt', 'originalReceiptSha256', 'originalSourceRevision', 'originalSourceTree', 'platformManifestSha256', 'providerReadback', 'receiptSha256', 'releaseAuthority', 'result', 'schemaVersion', 'secretPayloadCaptured', 'sourceRevision', 'sourceTree', 'status', 'target']
+  if (canonicalize(Object.keys(receipt).sort()) !== canonicalize(allowedKeys) || receipt.schemaVersion !== 'jenfu.dev013.secret-version-continuity-receipt.v1' || receipt.applicationId !== 'orgmaster' || receipt.platformManifestSha256 !== profile.platformManifest.sha256 || receipt.sourceRevision !== expectedSource?.sourceRevision || receipt.sourceTree !== expectedSource?.sourceTree || !H40.test(receipt.sourceRevision ?? '') || !H40.test(receipt.sourceTree ?? '') || !H40.test(receipt.originalSourceRevision ?? '') || !H40.test(receipt.originalSourceTree ?? '') || receipt.clean !== true || !H64.test(receipt.originalReceiptSha256 ?? '') || canonicalize(receipt.changedPaths) !== canonicalize(ORGMASTER_SECRET_CONTINUITY_CHANGED_PATHS) || canonicalize(receipt.target) !== canonicalize({ projectId: profile.target.projectId, secretId: profile.secret.references[SESSION_SECRET_ENV], environmentName: SESSION_SECRET_ENV }) || canonicalize(receipt.result) !== canonicalize({ numericVersion: '1', state: 'ENABLED' }) || receipt.status !== 'EXISTING_FIRST_VERSION_REATTESTED' || receipt.mutationExecuted !== false || receipt.cloudMutations !== 0 || receipt.providerReadback !== true || receipt.secretPayloadCaptured !== false || receipt.releaseAuthority !== false || !Number.isFinite(Date.parse(receipt.observedAt ?? '')) || receipt.receiptSha256 !== receiptHash(receipt)) fail('DEV013_ORGMASTER_SECRET_CONTINUITY_RECEIPT_INVALID')
+  return receipt
+}
+
 export function verifyCanonicalContract(root = projectRoot, profile = loadProfile()) {
   const contractRoot = path.join(root, profile.canonicalContract.sourcePath)
   const manifest = JSON.parse(fs.readFileSync(path.join(contractRoot, 'contract-manifest.json'), 'utf8'))
@@ -147,7 +165,7 @@ export function createSourceFreezeReceipt(input, profile = loadProfile()) {
   assertRef(input.foundationReceipt, 'DEV013_ORGMASTER_FOUNDATION_REF_INVALID')
   const runtime = input.stage === 'OWNER_RUNTIME_B'
   if (input.runtimeConfigSecretVersion != null || input.runtimeSecretVersions != null) fail('DEV013_ORGMASTER_CALLER_SECRET_VERSION_DENIED')
-  const secretVersionReceipt = runtime ? assertFirstSecretVersionReceipt(input.runtimeSecretVersionReceipt, { sourceRevision: input.sourceRevision, sourceTree: input.sourceTree }, profile) : null
+  const secretVersionReceipt = runtime ? assertSecretVersionAuthorityReceipt(input.runtimeSecretVersionReceipt, { sourceRevision: input.sourceRevision, sourceTree: input.sourceTree }, profile) : null
   const runtimeSecretVersions = runtime ? secretReferences(secretVersionReceipt.result.numericVersion, profile) : null
   if (runtime && (!IMAGE.test(input.runtimeImage ?? '') || !H64.test(input.firebasePublicConfigSha256 ?? ''))) fail('DEV013_ORGMASTER_RUNTIME_FREEZE_INPUT_INVALID')
   if (!runtime && (input.runtimeImage != null || input.runtimeSecretVersionReceipt != null || input.firebasePublicConfigSha256 != null)) fail('DEV013_ORGMASTER_INFRA_FREEZE_WIDENED')

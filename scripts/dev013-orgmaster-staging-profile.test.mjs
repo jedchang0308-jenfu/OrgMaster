@@ -4,7 +4,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { assertTerraformPlan, buildTargetBootstrapReceipt, canonicalize, createSourceFreezeReceipt, firebasePublicConfigSha256, loadProfile, sha256, verifyCanonicalContract, verifyPlatformManifest } from './lib/dev013-orgmaster-staging-release.mjs'
-import { buildSecretVersionBootstrapReceipt, createSecretVersionBootstrapPlan } from './lib/dev013-orgmaster-secret-bootstrap.mjs'
+import { buildSecretVersionBootstrapReceipt, buildSecretVersionContinuityReceipt, constants as secretConstants, createSecretVersionBootstrapPlan } from './lib/dev013-orgmaster-secret-bootstrap.mjs'
 import { parseSourceFreezeArgs } from './dev013-orgmaster-source-freeze.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -37,6 +37,15 @@ function freeze(stage) {
     runtimeSecretVersionReceipt: stage === 'OWNER_RUNTIME_B' ? firstSecretVersionReceipt() : null,
     firebasePublicConfigSha256: stage === 'OWNER_RUNTIME_B' ? firebasePublicConfigSha256(firebase, profile) : null,
     createdAt: '2026-09-17T00:00:00.000Z',
+  }, profile)
+}
+
+function continuitySecretVersionReceipt() {
+  return buildSecretVersionContinuityReceipt({
+    originalReceipt: firstSecretVersionReceipt(),
+    providerReadback: { name: `projects/${profile.target.projectNumber}/secrets/${profile.secret.references.ORGMASTER_SESSION_HASH_PEPPER}/versions/1`, state: 'ENABLED' },
+    source: { sourceRevision: 'e'.repeat(40), sourceTree: 'f'.repeat(40), clean: true },
+    changedPaths: [...secretConstants.CONTINUITY_CHANGED_PATHS], ancestorVerified: true, authorization: secretConstants.CONTINUITY_CAPABILITY, observedAt: '2026-09-17T01:00:00.000Z',
   }, profile)
 }
 
@@ -142,6 +151,9 @@ test('source freeze accepts only the self-hashed first-version receipt and rejec
   const tampered = { ...firstSecretVersionReceipt(), sourceTree: 'f'.repeat(40) }
   assert.throws(() => createSourceFreezeReceipt({ ...base, runtimeSecretVersionReceipt: tampered }, profile), /SECRET_BOOTSTRAP_RECEIPT_INVALID/u)
   assert.throws(() => parseSourceFreezeArgs(['--runtime-secret-version', '1']), /Invalid argument: --runtime-secret-version/u)
+  const continuity = continuitySecretVersionReceipt()
+  const continued = createSourceFreezeReceipt({ ...base, sourceRevision: continuity.sourceRevision, sourceTree: continuity.sourceTree, runtimeSecretVersionReceipt: continuity }, profile)
+  assert.equal(continued.runtimeSecretVersionReceiptSha256, continuity.receiptSha256)
 })
 
 test('provider hard join produces the Platform-compatible target bootstrap receipt without Secret material', async () => {
