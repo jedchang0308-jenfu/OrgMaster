@@ -29,6 +29,7 @@ export function releaseInfrastructureInputs({ productionData, ...profile }) { re
 
 function dev013NeutralInfrastructureInputs(profile) {
   const value = structuredClone(releaseInfrastructureInputs(profile))
+  delete value.migrations
   const required = value.environment?.requiredPlainEnvironmentNames ?? []
   value.environment.requiredPlainEnvironmentNames = required.filter((name) => !['ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN'].includes(name))
   delete value.environment?.fixedValues?.ORGMASTER_JENFU_SSO_BROKER_ORIGIN
@@ -57,6 +58,29 @@ export function assertRoutineMigrationUnchanged(before, after) {
   const stable = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
   if (!same(stable(before), stable(after))) fail('ROUTINE_MIGRATION_CHANGED')
   return sha256(canonicalize(stable(after)))
+}
+
+export function assertDev013ControlledMigrationAppend(before, after) {
+  const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+  const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
+  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 11 || after.entries?.length !== 14) fail('DEV013_MIGRATION_APPEND_INVALID')
+  if (!same(before.entries, after.entries.slice(0, before.entries.length))) fail('DEV013_MIGRATION_APPEND_INVALID')
+  const expected = [
+    ['dev047-orgmaster-012', 'db/migrations/012_dev047_managed_identity_bridge.sql', '87d49746d4c34fafadb877225f43f568256023f6572095696399b927c2af6dff', '892b7429dec215f859ef5eecb34d515d05559077a1a49324c3af1e9f4e5865d6'],
+    ['dev049-orgmaster-013', 'db/migrations/013_dev049_existing_google_primary_account_link.sql', '0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319', 'a13198ec053e928e82ebe3450d07bd46b351b5e6c950eb6deeb4d653d24fbf21'],
+    ['dev050-orgmaster-014', 'db/migrations/014_dev050_orgmaster_session_admission.sql', '11d6f93916f7668890dc6e17fab27244ed87f35353bb9957374702725fd52bfd', '29bcd05fae8f9ac97e1927359c3aec2f3b4dcda574cdc25baa68662fc2241a84'],
+  ]
+  const appended = after.entries.slice(before.entries.length)
+  if (!same(appended.map((entry) => [entry.version, entry.path, entry.sourceSha256, entry.appliedSha256]), expected)) fail('DEV013_MIGRATION_APPEND_INVALID')
+  return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: appended.length, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
+}
+
+export function assertDev013MigrationInfraReceipt(value, profile, sourceRevision) {
+  const { receiptSha256, ...core } = value ?? {}
+  if (value?.schemaVersion !== 'jenfu.dev012.app-infra-receipt.v1' || value.ownerApplicationId !== profile.application.id || value.sourceRevision !== sourceRevision
+    || value.projectId !== profile.target.projectId || value.region !== profile.target.region || value.status !== 'APPLIED' || value.releaseAuthority !== true
+    || !value.migrationRunnerDigest?.startsWith(`${profile.artifact.migrationRunnerUri}@sha256:`) || receiptSha256 !== sha256(canonicalize(core))) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
+  return value
 }
 
 export function assertRoutineRuntimeReadback(profile, runtimeConfig, revision) {
@@ -119,7 +143,7 @@ export async function readRoutineBaseline({ profile, transport, baselineIntentRe
   assertSealedStage(terminal.value, profile, intent, 'terminal')
   assertSealedStage(candidate.value, profile, intent, 'candidate')
   if (terminal.value.facts.result !== 'RELEASED' || terminal.value.facts.remainingHumanAction !== 0 || !same(candidate.value.facts.deploymentCapsuleRef, deployment.ref) || !same(candidate.value.facts.migrationReceiptRef, migration.ref) || !same(deployment.value.releaseIntentRef, baselineIntentRef) || deployment.value.sourceRevision !== intent.sourceRevision || terminal.value.facts.artifactDigest !== deployment.value.artifactDigest || terminal.value.facts.candidateRevision !== candidate.value.facts.candidateRevision) fail('ROUTINE_BASELINE_NOT_RELEASED')
-  if (intent.baselineIntentRef) {
+  if (migration.value.schemaVersion === 'jenfu.dev012.stage-receipt.v1') {
     assertSealedStage(migration.value, profile, intent, 'migrate')
     if (migration.value.facts.disposition !== 'UNCHANGED_VERIFIED' || migration.value.facts.manifestSha256 !== intent.migrationManifestSha256) fail('ROUTINE_BASELINE_MIGRATION_INVALID')
   } else if (migration.value.schemaVersion !== 'jenfu.dev012.migration-receipt.v1' || migration.value.ownerApplicationId !== profile.application.id || migration.value.sourceRevision !== intent.sourceRevision || migration.value.manifestSha256 !== intent.migrationManifestSha256 || migration.value.status !== 'PASS' || migration.value.boundaryStatus !== 'PASS') fail('ROUTINE_BASELINE_MIGRATION_INVALID')
@@ -153,7 +177,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   transport.assertServiceSettled(service)
   transport.assertCanonicalEntrypoint(profile, service)
   if ([...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some((row) => row.tag)) fail('ROUTINE_BASELINE_TAGGED')
-  if (!same(intent.foundationReceiptRef, baseline.intent.foundationReceiptRef) || !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)) fail('ROUTINE_INFRA_REF_CHANGED')
+  if (!same(intent.foundationReceiptRef, baseline.intent.foundationReceiptRef)) fail('ROUTINE_INFRA_REF_CHANGED')
   const runtimeConfig = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
   const baselineRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
   const controlledTransition = same(runtimeConfig, baselineRuntime) ? null : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
@@ -166,10 +190,21 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   else assertRoutineRuntimeReadback(profile, runtimeConfig, revision)
   const current = await buildMigrationBundle(intent.sourceRevision)
   if (current.bundle.manifestSha256 !== intent.migrationManifestSha256) fail('MIGRATION_MANIFEST_MISMATCH')
-  const migrationInputsSha256 = assertRoutineMigrationUnchanged(baseline.bundle.value, current.bundle)
+  let migration
+  try {
+    migration = { migrationDisposition: 'UNCHANGED_VERIFIED', pendingMigrationCount: 0, migrationInputsSha256: assertRoutineMigrationUnchanged(baseline.bundle.value, current.bundle) }
+  } catch (error) {
+    if (!controlledTransition || error?.code !== 'ROUTINE_MIGRATION_CHANGED') throw error
+    migration = assertDev013ControlledMigrationAppend(baseline.bundle.value, current.bundle)
+  }
+  const infraChanged = !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
+  if (migration.migrationDisposition === 'FORWARD_APPLY') {
+    if (!infraChanged) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
+    assertDev013MigrationInfraReceipt(values.infra, profile, intent.sourceRevision)
+  } else if (infraChanged) fail('ROUTINE_INFRA_REF_CHANGED')
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]
     if (value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.releaseId !== intent.releaseId || !same(value.baselineIntentRef, intent.baselineIntentRef)) fail('ROUTINE_AUTHORITY_MISMATCH')
   }
-  return { baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, infrastructureSha256, migrationInputsSha256, previousRevision: intent.previousRevision, databaseVerification: 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
+  return { baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
 }

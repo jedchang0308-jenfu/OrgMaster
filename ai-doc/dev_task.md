@@ -1,6 +1,8 @@
 # OrgMaster 開發任務
 
-> **2026-09-16 DEV-040 ordinary release：LIVE_VERIFIED（現行）**
+> **2026-09-18 DEV-050／DEV-013 Production L4 correction（現行）**：OrgMaster G2 run `35299453716` 在切流前因 production profile漏列012–014而安全停止；原正式版維持100% traffic。DEV-040 §36已定案受控001–014 append：一般發布仍零DDL，只有fresh human-authorized DEV-013 transition可保留001–011 prefix並由owner migration Job追加012–014。程式與文件修正進行中；舊 `e15121a` authorization／capsule不可重用，尚未宣稱production完成。
+
+> **2026-09-16 DEV-040 ordinary release：LIVE_VERIFIED（歷史正式基線）**
 > `ORGMASTER-REL-20260916075344615-5E35167` 已完成；source `5e35167`，revision `orgmaster-prod-293bc6b9e677` 100% traffic。
 > 證據：[DEV-040 QA §13](qa/DEV-040-R2-independent-production-release-validation-plan.md)。
 > DEV-047 僅相容程式已發布；012／Directory／admission 功能啟用不混算。下列較早 release authority 為歷史。
@@ -91,12 +93,12 @@
 
 ## 總任務清單
 
-- ✓ DEV-050 [交付點] [本機開發完成／QA-QC通過／production gated] [RD Implementation Complete／Architecture Finalized R2／Local QA-QC Passed／Production Gated] 員工編號或公司 Email 單一 Google 身分登入
+- ◐ DEV-050 [交付點] [本機產品完成／Production L4 correction in progress] [RD Implementation Complete／Architecture Finalized R2＋Release Amendment／Local QA-QC Passed] 員工編號或公司 Email 單一 Google 身分登入
   - 摘要：Google 驗證後以 stable key 核對本人 current JFS／exact primary Email；新增 private 同快照讀取與 OrgMaster 專用 session view，不改共用 identity view 或 owner 公開契約，不新增帳號、attempt、搜尋 resolver。
   - 來源 ID：`USER-2026-09-17-CLOUD-IDENTITY-FREE-DUAL-IDENTIFIER-LOGIN-BRIEF`、`USER-2026-09-17-DEV050-DEVELOPMENT-DOCUMENT`、`USER-2026-09-17-DEV050-ARCHITECTURE-CONFIRMATION`、`USER-2026-09-17-DEV050-RD-TECH-LEAD-OPTIMIZATION`
   - 父任務：DEV-049；僅替換 app-local 登入設計，stable identity、admission、zero-provider-write 與 SSO owner 公開契約不變。
-  - 下一步：另行取得 production migration／activation／deploy 授權後，依 DEV-040／014 release gate 執行；本機 S0～S4 已完成，不抽 shared owner core 或新增 production test port。
-  - 阻塞 / 恢復條件：未預期的 source／schema drift 或無法滿足 invariant 時停止該 slice 並回 spec；production 仍受新的 exact ledger 與 release authority gate 限制，不能套用現行 001～011 路徑。
+  - 下一步：完成 DEV-040 §36 gates、commit／push後取得修正後 exact source set授權，再執行fresh migration-runner rotation、G2 migration／candidate／traffic與L4驗證。
+  - 阻塞 / 恢復條件：舊 `e15121a` 授權不涵蓋修正後source；fresh root與Platform off/off provider re-attestation未建立前不得重新dispatch。未預期source／schema drift仍停止並回 spec。
   - 證據：`npm run test:dev-050` 39／39、`qc:dev-050:contract` 6／6、隔離 PostgreSQL 18.4 D50-01～04、正常建置入口瀏覽器 1440／390 viewport、`qc:dev-047:contract`、`qc:dev-049:contract`、`test:dev-013`、`test:dev-047`、`npm test` 209 files／863 passed／1 skipped、build與DB boundary PASS；fresh manifest 分別見 `qa/dev-050/contract/manifest.json`、`dev-050/postgres/manifest.json`、`qa/dev-050/browser/manifest.json`。無 provider／production write，臨時 runtime 均清理。
   - 計入交付：是（本機完成；production 仍 gated）
 
@@ -596,7 +598,7 @@
 
 ## DEV-050：員工編號或公司 Email 單一 Google 身分登入
 
-狀態：`Local Development Complete / Local QA-QC Passed / Production Gated`
+狀態：`Local Product Complete / Production L4 Correction In Progress`
 文件成熟度：`RD Implementation Complete / Architecture Contract Implemented 2026-09-18`
 架構審查：`Architecture Finalized — R2 / Implemented and Verified / 2026-09-18`
 節點類型：交付點；優先級：P1；風險：High（首次身分綁定及登入授權）
@@ -614,7 +616,7 @@
 - forward migration 014 新增 OrgMaster 專用 session view 與最小 SELECT grant；不 replace 共用 view、不改 001～013 或 owner 公開契約。principal repository 接線涵蓋新／既有 session 及本 app SSO callback。
 - 有 identifier 的 request 即使 principal 已 active，也必須核對；不符不能退回 legacy。無 identifier 僅維持既有 canonical 登入，不得首次 bind。
 - managed UI 一個輸入欄／Google CTA，legacy password 收合但不刪；SSO handoff 仍優先，不改平台 owner contract。
-- Google Admin／licensing／provider write、跨專案、正式 migration／activation／deploy 均不在本輪範圍。
+- Google Admin／licensing／provider write仍不在本輪範圍；正式migration／activation／deploy依DEV-040 §36與fresh exact Production L4 authorization執行。
 
 ### 接手條件與驗收
 
@@ -623,7 +625,8 @@
 - [x] 文件 G3：正常 App 入口 browser、test-build-only Firebase 替身、真 HTTP／PG 證據分層及舊 gate 更新範圍已固定。
 - [x] 文件 G4：新 app-only view 八欄／version／ACL 與 principal repository 接線已固定，保留 shared rows／ACL；撤回前版 replace-view 方案。
 - [x] RD 依 spec §8 S0～S4 實作；targeted／相容 contract、PG、正常入口 browser、full regression、build及 boundary fresh PASS。
-- [x] 本機 QA／QC evidence 已產生並核對 cleanup；provider、production migration／activation／deploy 仍由 release gate 管制。
+- [x] 本機產品 QA／QC evidence 已產生並核對 cleanup。
+- [ ] DEV-040 §36 release correction完成fresh gates、review與exact revision authorization後，執行owner migration／candidate／canonical／global logout／observation。
 
 文件已完成 R2 架構修訂與產品落地；上述勾選代表本機產品與自動化 QA／QC gate PASS，不代表正式 Google provider、production migration、activation、deploy 或 release 已執行。
 
@@ -637,6 +640,8 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 - 2026-09-17 前版定案（已取代）：曾規劃 replace shared view／shared core／UI port，並宣告 P0-P1=0；R2 查出 Email 相等鏈、SQL 重試順序與 shared consumer 邊界有實質缺口，不再沿用其 PASS 結論。
 - 2026-09-17 R2：改 private 同快照 read、mandatory app-local verifier／有限 retry、新 app-only view；補 repository／舊 gate allowlist 與正常入口 evidence。狀態為 Architecture Finalized R2／Design Review Only，產品未實作。
 - 2026-09-18 RD implementation：完成 private 同快照 read、mandatory verifier／一次 revision retry、014 app-only view、Auth API double-epoch、dual-identifier UI 與 legacy disclosure；targeted／contract／PG／browser／full regression／build／DB boundary 均 PASS，production 仍 gated。
+- 2026-09-18 Production L4 correction：G2 run `35299453716` 因014 view未套用而在切流前安全停止。新增DEV-040 §36 exact 012–014 append、migration-before-candidate與forward receipt baseline契約；舊source授權不可重用。
+- 2026-09-18 release correction local gate：DEV-040 owner 62／62、abort 6／6、DEV-050 39／39＋contract 6／6、full regression 863 passed／1 skipped、DB boundary、雙build與diff check PASS；owner report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260918T030624987Z-13CD50E6/owner-report.json`。正式provider evidence仍待fresh authorization。
 - 2026-09-17 先前版本：由 Brief 補成架構文件；其成熟度與 attempt／014 決策已被本次修訂取代，歷史文字不再作直接實作依據。
 - 下一步：不新建重複 DEV；若要上正式環境，另依 001～014 exact ledger、相容窗口與 release authority 執行 migration／activation／deploy。
 

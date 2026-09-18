@@ -176,3 +176,26 @@ UI：resume session 同樣載入 server capability；flag=false 或 capability d
 - 首次 run `35062309077` 因 provider tag hostname 誤判，在 activation 前停止；failure cleanup PASS，原版仍 100% traffic。修正後重跑成功，失敗證據保留，非人工取消或放寬 hostname wildcard。
 - 成功後再跑 `npm run deploy:production -- --check`=`READY`，已自動採用新正式版為下次 baseline，沒有 dispatch 第二次。原 `scripts/tmp-button-drag.mjs`、`test-results/` 保留且不納入 archive。
 - 範圍：相容程式已部署；DEV-047 的 012／正式 Directory 憑證／admission 啟用未執行，不混算成本次已交付功能。這些不再阻擋一般程式更新。本文為事後 evidence-only 更新，不產生另一輪程式部署。
+
+## 14. DEV-013 Production L4 012–014 controlled append validation（2026-09-18，current）
+
+G2 failed-attempt oracle：GitHub run `35299453716` 的 verify 以 `principal_directory_unavailable` 終止；Workflow execution `f6d56dae-2b1b-415a-a748-dc1f621285a4` 在 session create 取得 503，Cloud Run DB proxy連線成功，production traffic保持 `orgmaster-prod-bd2c2ccb8291` 100%。這證明缺的是 owner migration admission view，不得以重試 smoke、人工改 DB或直接切流處理。
+
+驗證分母：
+
+| ID | Oracle | PASS |
+|---|---|---|
+| M14-01 | Profile exact set | 001–014 path/order/source/applied hash精確；baselineCount=10 |
+| M14-02 | Prefix preservation | production baseline bundle前 11 entries與新 bundle逐欄相同 |
+| M14-03 | Controlled append | 只有 DEV-013 sealed transition接受 012／013／014；ordinary release對相同差異拒絕 |
+| M14-04 | Runner target | fresh source-matched APP_INFRA_IMAGE_ROTATION digest；exact project／region／job／DB／IAM login，bundle entryCount=14；bootstrap/data args在任何 credential/network前拒絕 |
+| M14-05 | Ledger | 001–010缺失或任一 checksum不符時零寫入；既有011 replay，依序套用012–014，readback=14；第二次為0 applied |
+| M14-06 | Stage order | raw migration receipt PASS前不得建立 candidate；成功 terminal=`FORWARD_APPLIED` |
+| M14-07 | Failure recovery | migration後 candidate／smoke失敗時traffic維持或回復前版、tag清除、無 down migration |
+| M14-08 | Subsequent release | forward receipt可作immutable baseline；完整001–014 unchanged回到零DDL ordinary path |
+| M14-09 | Boundaries | sibling schema、DB、service、retained edge、Billing、Hosting、LB與service deletion mutation=0 |
+| M14-10 | Product | candidate與canonical session create／reload、DB read、logout後401及DEV-013 global logout PASS |
+
+本地必跑命令與正式 provider證據依 DEV-040 §36。Fresh source、migration-runner digest、root authorization與 predecessor re-attestation必須互相 hash-bound；舊 `e15121a` authorization及 failed release capsule不可重用。
+
+2026-09-18 local result：M14 source gates PASS；`test:dev-040:r2` 62／62、abort 6／6、DEV-050 targeted 39／39、contract 6／6、full regression 209 files／863 passed／1 skipped、DB boundary、client/server build與diff check PASS。Owner report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260918T030624987Z-13CD50E6/owner-report.json`，evidenceScope=`LOCAL_CONTRACT`、releaseAuthority=false。M14-09～10的production provider結果仍待fresh exact authorization後執行。

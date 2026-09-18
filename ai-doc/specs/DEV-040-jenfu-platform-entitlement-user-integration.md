@@ -1378,3 +1378,20 @@ OrgMaster已在R60正式完成，source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e
 `npm run deploy:production -- --check` 只讀正式環境且 `releaseAuthority=false`；不寫收據、不 dispatch。`--prepare-only` 只準備 immutable capsule。無旗標才 dispatch 既有正式 workflow。遷移資料或首次建立不屬此命令的 fallback；已核准 schema runner 亦不具有業務資料/管理員初始化路徑。
 
 首次 routine run `35062309077` 實測找到另一項首次部署假設：`createCandidate`／`entrypoint` 只接受 deterministic tag URI，但已公開的 Cloud Run service 會回傳 exact provider-hash hostname，與 `verify` 已有的判定不一致。三者統一使用同一 exact service-readback origin projection；不接受 wildcard／陌生 host，不改候選版注入的單一 origin。該 run 在切流量前停止，failure cleanup 成功、原正式版 100% 流量、DB=UNCHANGED_VERIFIED。失敗後的 control head 不算新正式 baseline；僅當 immutable terminal 證明 PRE_ACTIVATION_ABORTED／ROLLED_BACK 且目前服務仍吻合原 baseline，才自動從該 intent 的 baseline ref 重試，無額外核准。
+
+## 36. DEV-013 Production L4 migration activation amendment（2026-09-18，current）
+
+2026-09-18 的 DEV-013 G2 首次執行在 candidate verify 前安全停止：run `35299453716` 已完成 prepare／build／migrate=UNCHANGED_VERIFIED／candidate／entrypoint，但 `/api/auth/firebase/session` 因 `orgmaster_contract.v_orgmaster_session_principals_v1` 尚未存在而回 `503 principal_directory_unavailable`。流量仍為前版 `orgmaster-prod-bd2c2ccb8291` 100%，未啟用失敗 candidate。此事實撤回「含 DEV-050 runtime 的 source 可沿用 001–011 unchanged migration」假設。
+
+定案如下：
+
+1. Production migration bundle 固定為 001–014；001–010 仍是 immutable N1C baseline，baselineCount 保持 10。既有 011 與新增 012／013／014 都使用 repository-owned forward SQL、source hash、去除單一 transaction envelope 後的 applied hash與穩定 ledger version。
+2. 一般 app release 仍只能接受完整 001–014 bundle unchanged，`migrate=UNCHANGED_VERIFIED`、DDL=0。只有 sealed `DEV013_CONTROLLED_ENVIRONMENT` transition 可從已驗證的 001–011 prefix 追加精確 012／013／014；prefix 任一 version／path／SQL hash／applied hash漂移、少列、多列、重排或非三筆 append均 fail closed。
+3. Controlled transition 的 infrastructure comparison 排除 migration manifest本身，migration 差異改由專用 append validator完整驗證；其他 Terraform、identity、runtime、Secret、target、entrypoint與 retained-edge 邊界仍不得漂移。
+4. 十階段順序不變。Controlled append必須提供修正後source-bound `APP_INFRA_IMAGE_ROTATION` receipt，且其 migration-runner digest為本次 deployment capsule唯一可用的runner；不得沿用baseline舊digest。`migrate` stage 呼叫 exact `orgmaster-prod-migration-runner`，取得 `jenfu.dev012.migration-receipt.v1`、applied=3、replayed=11、ledgerCount=14、跨DB denial與boundaryStatus=PASS 後才可建立 candidate。若 migration 後 smoke失敗，原流量保持或回復，但 schema不 down migrate；012–014 必須與前版 runtime相容，後續以 fix-forward恢復。
+5. 成功 terminal 必須記錄 `databaseDisposition=FORWARD_APPLIED`；後續 release 可把該 raw migration receipt 當 immutable baseline，並回到 ordinary unchanged path。不得把 local test、手工 SQL、外部 bundle或中央協調器 receipt冒充 owner migration receipt。
+6. 先前授權綁定 source `e15121af6b579a339a109c1125214bf4d29624e8`，不能涵蓋本修正後 revision。修正必須先完成本地 gates、commit／push與 review，再由人類以新 exact source set建立 fresh Production L4 authorization。新的 OrgMaster G2 predecessor 必須同時綁定 fresh sequence root與 Platform 已生效 off/off guard 的 provider re-attestation；不得修改 live guard只為重播 G1。
+
+Required local exit：`npm run test:dev-040:r2`、`npm run qc:dev-040:r2`、`npm run test:dev-040:abort`、`npm run test:dev-050`、`npm run qc:dev-050:contract`、`npm run check:db-boundary`、`npm test -- --testTimeout=30000`、`npm run build`、`git diff --check`。正式證據另要求 migration Job exact execution／receipt、candidate與canonical smoke、traffic readback、global logout與 observation；local PASS不等於 production PASS。
+
+本輪 local evidence：`test:dev-040:r2` 62／62、abort 6／6、DEV-050 targeted 39／39、DEV-050 contract 6／6、full regression 209 files／863 passed／1 skipped、DB boundary、client/server build與`git diff --check` PASS。QC report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260918T030624987Z-13CD50E6/owner-report.json`，`releaseAuthority=false`、provider/database/traffic mutation=0。既有 Vite native-loader與chunk-size提示不影響gate結果。

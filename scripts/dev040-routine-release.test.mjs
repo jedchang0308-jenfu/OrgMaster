@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013PredecessorReceipt, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
@@ -18,24 +18,30 @@ const buildBundle = (revision) => buildDev040MigrationBundle(profile, buildOrgma
 const oldSource = 'a'.repeat(40), newSource = 'b'.repeat(40)
 const bucket = profile.artifact.releaseBucket
 const oldBundle = buildBundle(oldSource), newBundle = buildBundle(newSource)
+function prefixBundle(bundle, count) {
+  const { manifestSha256: _manifestSha256, ...core } = bundle
+  const value = { ...core, entries: bundle.entries.slice(0, count) }
+  return { ...value, manifestSha256: sha256(canonicalize(value)) }
+}
+const legacyOldBundle = prefixBundle(oldBundle.bundle, 11)
 const plain = resolvePlainEnvironment(profile, Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
   .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
   .map((name) => [name, 'fixture-public-value'])))
 const runtime = buildRuntimeConfig(profile, { plainEnvironment: plain, secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
 
-function harness({ baselineRuntime = runtime, nextRuntime = runtime } = {}) {
+function harness({ baselineRuntime = runtime, nextRuntime = runtime, baselineBundle = oldBundle.bundle, currentBundle = newBundle } = {}) {
   const objects = new Map()
   function put(uri, value) { const bytes = Buffer.from(`${canonicalize(value)}\n`); const result = { bytes, ref: { uri, sha256: sha256(bytes) }, value }; objects.set(uri, result); return result.ref }
   const receipt = (name, value) => put(`gs://${bucket}/receipts/fixture/${name}.json`, value)
   const previousRevision = 'orgmaster-prod-aaaaaaaaaaaa'
   const artifactDigest = `${profile.artifact.uri}@sha256:${'d'.repeat(64)}`
-  const oldIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster', releaseId: 'ROUTINE-BASELINE', sourceRevision: oldSource, sourceSha256: 'e'.repeat(64), sourceLockRef: receipt('source', {}), authorizationPolicyRef: receipt('auth', {}), readinessReceiptRef: receipt('ready', {}), foundationReceiptRef: receipt('foundation', {}), infraReceiptRef: receipt('infra', {}), runtimeConfigRef: receipt('runtime', { runtimeConfig: baselineRuntime }), migrationManifestSha256: oldBundle.bundle.manifestSha256, previousRevision: 'old-revision', deadlineAt: '2020-01-01T00:00:00Z' }
+  const oldIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster', releaseId: 'ROUTINE-BASELINE', sourceRevision: oldSource, sourceSha256: 'e'.repeat(64), sourceLockRef: receipt('source', {}), authorizationPolicyRef: receipt('auth', {}), readinessReceiptRef: receipt('ready', {}), foundationReceiptRef: receipt('foundation', {}), infraReceiptRef: receipt('infra', {}), runtimeConfigRef: receipt('runtime', { runtimeConfig: baselineRuntime }), migrationManifestSha256: baselineBundle.manifestSha256, previousRevision: 'old-revision', deadlineAt: '2020-01-01T00:00:00Z' }
   // A prior release's expiry must not invalidate its historical evidence.
   const baselineIntentRef = receipt('intent', oldIntent)
   const paths = releasePaths(profile, oldIntent, baselineIntentRef.sha256)
-  const bundleRef = put(`gs://${bucket}/source/migration-bundles/fixture.json`, oldBundle.bundle)
+  const bundleRef = put(`gs://${bucket}/source/migration-bundles/fixture.json`, baselineBundle)
   const deploymentRef = put(paths.deployment, { sourceRevision: oldSource, releaseIntentRef: baselineIntentRef, migrationBundleRef: bundleRef, artifactDigest })
-  const migrationRef = put(paths.migrate, { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: oldSource, manifestSha256: oldBundle.bundle.manifestSha256, status: 'PASS', boundaryStatus: 'PASS' })
+  const migrationRef = put(paths.migrate, { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: oldSource, manifestSha256: baselineBundle.manifestSha256, status: 'PASS', boundaryStatus: 'PASS' })
   const seal = (stage, facts) => stageReceipt({ profile, intent: oldIntent, stage, facts, observedAt: '2020-01-01T00:00:00Z' })
   put(paths.candidate, seal('candidate', { deploymentCapsuleRef: deploymentRef, migrationReceiptRef: migrationRef, candidateRevision: previousRevision }))
   put(paths.terminal, seal('terminal', { result: 'RELEASED', remainingHumanAction: 0, candidateRevision: previousRevision, artifactDigest }))
@@ -43,10 +49,10 @@ function harness({ baselineRuntime = runtime, nextRuntime = runtime } = {}) {
   revision.containers[0].image = artifactDigest
   const service = { traffic: [{ revision: previousRevision, percent: 100 }], trafficStatuses: [{ revision: previousRevision, percent: 100 }] }
   const transport = { async readBytes(uri) { if (!objects.has(uri)) throw new Error('MISSING'); return objects.get(uri) }, async readJson(ref) { const result = await this.readBytes(ref.uri); assert.equal(ref.sha256, result.ref.sha256); return result }, effectiveRevision: () => previousRevision, assertServiceSettled() {}, assertCanonicalEntrypoint() {}, assertRevisionReady(_profile, value, digest) { assert.equal(value.containers[0].image, digest) }, async getRevision() { return revision } }
-  const intent = { ...oldIntent, releaseId: 'ROUTINE-NEXT', sourceRevision: newSource, previousRevision, baselineIntentRef, migrationManifestSha256: newBundle.bundle.manifestSha256 }
+  const intent = { ...oldIntent, releaseId: 'ROUTINE-NEXT', sourceRevision: newSource, previousRevision, baselineIntentRef, migrationManifestSha256: currentBundle.bundle.manifestSha256 }
   const authority = { ownerApplicationId: 'orgmaster', sourceRevision: newSource, releaseId: intent.releaseId, baselineIntentRef }
   const values = { runtimeConfig: { runtimeConfig: structuredClone(nextRuntime) }, authorization: { ...authority }, readiness: { ...authority } }
-  const input = { root: '.', profile, transport, intent, values, service, buildMigrationBundle: async () => newBundle, fingerprint: () => 'f'.repeat(64), transitionFingerprint: () => 't'.repeat(64) }
+  const input = { root: '.', profile, transport, intent, values, service, buildMigrationBundle: async () => currentBundle, fingerprint: () => 'f'.repeat(64), transitionFingerprint: () => 't'.repeat(64) }
   return { input, objects, paths, put, revision }
 }
 
@@ -77,6 +83,15 @@ function transitionReadiness(h, { from, to, action }) {
   }
 }
 
+function attachForwardInfra(h) {
+  const core = { schemaVersion: 'jenfu.dev012.app-infra-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: newSource, projectId: profile.target.projectId, region: profile.target.region, migrationRunnerDigest: `${profile.artifact.migrationRunnerUri}@sha256:${'4'.repeat(64)}`, status: 'APPLIED', releaseAuthority: true }
+  const value = { ...core, receiptSha256: sha256(canonicalize(core)) }
+  const ref = h.put(`gs://${bucket}/receipts/fixture/forward-infra.json`, value)
+  h.input.intent.infraReceiptRef = ref
+  h.input.values.infra = value
+  return value
+}
+
 test('routine release reuses unchanged SQL and infrastructure with no bootstrap or live DDL', async () => {
   const h = harness()
   const result = await verifyRoutineRelease(h.input)
@@ -94,6 +109,26 @@ test('DEV-013 controlled release permits only the sealed off-to-on handoff trans
   const result = await verifyRoutineRelease(h.input)
   assert.equal(result.releaseMode, 'DEV013_CONTROLLED_ENVIRONMENT')
   assert.deepEqual(result.controlledTransition, { releaseMode: 'DEV013_CONTROLLED_ENVIRONMENT', field: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', from: 'off', to: 'on', action: 'activate', predecessorReceiptRef: h.input.values.readiness.transition.predecessorReceiptRef })
+})
+
+test('DEV-013 controlled release permits only the sealed 012-014 append before candidate', async () => {
+  const enabledPlain = resolvePlainEnvironment(profile, runtime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
+  const enabledRuntime = buildRuntimeConfig(profile, { plainEnvironment: enabledPlain, secretVersions: runtime.secretVersions })
+  const h = harness({ baselineRuntime: runtime, nextRuntime: enabledRuntime, baselineBundle: legacyOldBundle })
+  transitionReadiness(h, { from: 'off', to: 'on', action: 'activate' })
+  const infra = attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(result.pendingMigrationCount, 3)
+  assert.deepEqual(assertDev013ControlledMigrationAppend(legacyOldBundle, newBundle.bundle).pendingMigrationCount, 3)
+  const changed = structuredClone(newBundle.bundle)
+  changed.entries[10].appliedSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev013ControlledMigrationAppend(legacyOldBundle, changed), /DEV013_MIGRATION_APPEND_INVALID/u)
+  const changedAppend = structuredClone(newBundle.bundle)
+  changedAppend.entries[13].sourceSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev013ControlledMigrationAppend(legacyOldBundle, changedAppend), /DEV013_MIGRATION_APPEND_INVALID/u)
+  assert.equal(assertDev013MigrationInfraReceipt(infra, profile, newSource), infra)
+  assert.throws(() => assertDev013MigrationInfraReceipt({ ...infra, sourceRevision: oldSource }, profile, newSource), /DEV013_MIGRATION_INFRA_RECEIPT_INVALID/u)
 })
 
 test('DEV-013 controlled release can add the default-off guard to the historical production runtime', async () => {

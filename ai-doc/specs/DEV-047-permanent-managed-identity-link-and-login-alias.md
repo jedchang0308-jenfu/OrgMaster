@@ -30,6 +30,8 @@
 
 > **DEV-050 intentional replacement（2026-09-18 implementation）**：[DEV-050](DEV-050-dual-identifier-managed-login.md) 已採 token-first stable-key 本人核對；private 同快照 read 要求 token／live／stored primary Email 一致。forward migration 014 新增 OrgMaster session view，不 replace 共用 identity view 或改其 rows／ACL；012／013 bytes、owner 公開契約及 provider 邊界不變。前版 replace-view／optional shared core 與 closure PASS 已撤回，重試依 SQL 真實順序定義；不新增 HMAC attempt、60 秒 app TTL、Email／員編 resolver 或 production test port。DEV-050 本機產品與自動化 QA／QC 已 PASS；正式 provider／migration／deploy／release 仍 gated，不改本 DEV 的歷史完成狀態。
 
+> **Production activation amendment（2026-09-18）**：先前「012不得進入現行 DEV-040 release」限制由 [DEV-040 §36](DEV-040-jenfu-platform-entitlement-user-integration.md) 的受控例外取代。只有 fresh human-authorized DEV-013 transition可保留001–011 prefix並一次追加精確012／013／014；一般發布仍為001–014 unchanged、零DDL。本文件不提供該授權，亦不允許人工SQL或down migration。
+
 Spec Impact Preflight：`Intentional replacement / Cross-spec convergence`。本契約取代「OrgMaster 建立或邀請 Google 帳號」、「Workspace／Cloud Identity 是兩種互斥帳號」、「員工編號或 Email 是 canonical identity」及任何 provider lifecycle intent；不回開 DEV-045 已完成的 local slice。
 
 ## 1. Current Phase 成果與執行邊界

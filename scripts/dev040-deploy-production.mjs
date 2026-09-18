@@ -25,7 +25,7 @@ async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile
 }
 
 function parseArgs(argv) {
-  const options = { check: false, prepareOnly: false, handoffMode: null, action: null, predecessorReceiptRef: null }
+  const options = { check: false, prepareOnly: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null }
   for (const arg of argv) {
     if (arg === '--check' && !options.check) options.check = true
     else if (arg === '--prepare-only' && !options.prepareOnly) options.prepareOnly = true
@@ -36,12 +36,18 @@ function parseArgs(argv) {
       const match = /^(?<uri>\S+)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(value)
       if (!match) throw new Error('DEV013_PREDECESSOR_REF_INVALID')
       options.predecessorReceiptRef = match.groups
-    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH]')
+    } else if (arg.startsWith('--dev013-infra-ref=') && options.infraReceiptRef === null) {
+      const value = arg.slice('--dev013-infra-ref='.length)
+      const match = /^(?<uri>\S+)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(value)
+      if (!match) throw new Error('DEV013_INFRA_REF_INVALID')
+      options.infraReceiptRef = match.groups
+    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
   }
   const controlled = [options.handoffMode, options.action, options.predecessorReceiptRef].filter((value) => value !== null).length
   if (options.check && options.prepareOnly) throw new Error('INVALID_ARGUMENTS')
   if (controlled !== 0 && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && (!['off', 'on'].includes(options.handoffMode) || !['guard', 'activate', 'rollback'].includes(options.action))) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INVALID')
+  if (options.infraReceiptRef && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   return options
 }
 
@@ -93,12 +99,13 @@ async function main() {
   const readiness = transition
     ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
     : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
+  const infraReceiptRef = options.infraReceiptRef ?? baseline.intent.infraReceiptRef
   const values = { sourceLock, runtimeConfig, authorization, readiness,
     foundation: (await transport.readJson(baseline.intent.foundationReceiptRef, profile.artifact.releaseBucket)).value,
-    infra: (await transport.readJson(baseline.intent.infraReceiptRef, profile.artifact.releaseBucket)).value }
+    infra: (await transport.readJson(infraReceiptRef, profile.artifact.releaseBucket)).value }
   const uri = (name) => `gs://${profile.artifact.releaseBucket}/receipts/releases/${releaseId}/${name}.json`
   const ref = (name, value) => ({ uri: uri(name), sha256: sha256(Buffer.from(`${canonicalize(value)}\n`)) })
-  const input = { baselineIntentRef, previousRevision, deadlineAt, sourceLockRef: ref('source-lock', sourceLock), runtimeConfigRef: ref('runtime-config', runtimeConfig), authorizationPolicyRef: ref('owner-authorization', authorization), readinessReceiptRef: ref('owner-readiness', readiness), foundationReceiptRef: baseline.intent.foundationReceiptRef, infraReceiptRef: baseline.intent.infraReceiptRef }
+  const input = { baselineIntentRef, previousRevision, deadlineAt, sourceLockRef: ref('source-lock', sourceLock), runtimeConfigRef: ref('runtime-config', runtimeConfig), authorizationPolicyRef: ref('owner-authorization', authorization), readinessReceiptRef: ref('owner-readiness', readiness), foundationReceiptRef: baseline.intent.foundationReceiptRef, infraReceiptRef }
   const intent = buildReleaseIntent({ profile, releaseId, input, sourceLock, prerequisiteValues: values, validateIntent: assertDev040ReleaseIntent })
   const verification = await verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle })
   if (options.check) {
@@ -110,6 +117,6 @@ async function main() {
   const releaseCapsuleRef = `${result.ref.uri}#sha256=${result.ref.sha256}`
   // This is the existing protected ten-stage workflow, not a local deployment bypass.
   if (!options.prepareOnly) command('gh', ['workflow', 'run', profile.workflow.path, '--repo', profile.application.repository, '--ref', profile.application.branch, '-f', `releaseCapsuleRef=${releaseCapsuleRef}`])
-  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: 'VERIFY_UNCHANGED_NO_DDL_NO_IMPORT', controlledTransition: transition })}\n`)
+  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: verification.migrationDisposition, controlledTransition: transition })}\n`)
 }
 main().catch((error) => { process.stderr.write(`${error.code ?? error.message}\n`); process.exitCode = 1 })
