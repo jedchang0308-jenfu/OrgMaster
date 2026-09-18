@@ -117,6 +117,28 @@ test('OrgMaster owner prepare requires sealed DEV-013 authority before handoff o
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })
 
+test('OrgMaster owner prepare carries an active handoff value only through an exact routine baseline', () => {
+  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+    .map((name) => [name, 'fixture-public-value']))
+  const plainEnvironment = resolvePlainEnvironment(profile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment, secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  fixture.intent.baselineIntentRef = ref('baseline-release-intent')
+  fixture.values.authorization = { ...fixture.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', baselineIntentRef: fixture.intent.baselineIntentRef }
+  fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', baselineIntentRef: fixture.intent.baselineIntentRef }
+  delete fixture.values.readiness.devId
+  delete fixture.values.readiness.slice
+  delete fixture.values.readiness.sequenceRoot
+  delete fixture.values.readiness.sequenceStep
+  delete fixture.values.readiness.previousControlledEnvironment
+  delete fixture.values.readiness.controlledEnvironment
+  delete fixture.values.readiness.transition
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD')
+  fixture.values.readiness.baselineIntentRef = ref('different-baseline')
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+})
+
 test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   const source = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/workload-identity.tf', import.meta.url), 'utf8')
   const displayName = source.match(/display_name\s*=\s*"([^"]+)"/u)?.[1]

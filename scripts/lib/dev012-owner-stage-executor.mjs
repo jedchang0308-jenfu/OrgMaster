@@ -79,7 +79,20 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
   const rules = profile.environment?.controlledValues ?? {}
   const controlledEnvironment = Object.fromEntries(Object.keys(rules).sort().map((name) => [name, runtime.plainEnvironment?.[name]]))
   const isDev013 = values.readiness?.schemaVersion === 'jenfu.dev013.l4-owner-transition-readiness.v2'
-  if (!isDev013 && !Object.entries(rules).some(([name, rule]) => controlledEnvironment[name] !== rule.defaultValue)) return
+  const usesNonDefaultValue = Object.entries(rules).some(([name, rule]) => controlledEnvironment[name] !== rule.defaultValue)
+  if (!isDev013) {
+    if (!usesNonDefaultValue) return { releaseMode: 'DEFAULT_CONTROLLED_ENVIRONMENT' }
+    if (!intent.baselineIntentRef
+      || values.authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+      || values.authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+      || values.readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+      || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
+      || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision
+      || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
+      || canonicalize(values.authorization.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+      || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
+    return { releaseMode: 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD' }
+  }
   const transition = values.readiness?.transition
   const predecessor = transition?.predecessorReceiptRef
   const previousControlledEnvironment = values.readiness?.previousControlledEnvironment
@@ -97,6 +110,7 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
     || transition.from !== previousControlledEnvironment?.[transition.field]
     || (transition.action === 'guard' && (transition.from !== null || transition.to !== rules[transition.field].defaultValue))
     || !predecessor || canonicalize(Object.keys(predecessor).sort()) !== canonicalize(['sha256', 'uri']) || typeof predecessor.uri !== 'string' || predecessor.uri.length < 8 || !H64.test(predecessor.sha256 ?? '')) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
+  return { releaseMode: 'DEV013_CONTROLLED_ENVIRONMENT' }
 }
 
 export function assertPreparePrerequisites({ intent, profile, values }) {
@@ -112,10 +126,10 @@ export function assertPreparePrerequisites({ intent, profile, values }) {
   if ([values.readiness, values.foundation, values.infra, values.runtimeConfig].some((value) => project(value) !== profile.target.projectId)) fail('PREPARE_TARGET_MISMATCH')
   const runtime = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
   assertRuntimeConfig(profile, runtime)
-  assertControlledEnvironmentAuthority({ intent, profile, values, runtime })
+  const controlledEnvironmentAuthority = assertControlledEnvironmentAuthority({ intent, profile, values, runtime })
   const migrationRunnerDigest = values.infra.migrationRunnerDigest ?? values.infra.artifacts?.migrationRunnerDigest
   if (!migrationRunnerDigest?.startsWith(`${profile.artifact.migrationRunnerUri}@sha256:`)) fail('MIGRATION_RUNNER_PROVENANCE_MISSING')
-  return { runtimeConfig: runtime, migrationRunnerDigest }
+  return { runtimeConfig: runtime, migrationRunnerDigest, controlledEnvironmentAuthority }
 }
 
 function assertStage(value, profile, intent, stage) {
@@ -278,6 +292,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (transport.effectiveRevision(service) !== intent.previousRevision) fail('PREPARE_BASELINE_MISMATCH')
     if (!verifyRoutineRelease) fail('ROUTINE_VERIFIER_REQUIRED')
     const routine = await verifyRoutineRelease({ intent, values, service })
+    if (derived.controlledEnvironmentAuthority.releaseMode === 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD' && routine.releaseMode !== 'ROUTINE_UNCHANGED_RUNTIME') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     return writeStage(transport, paths, profile, intent, 'prepare', null, { prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])), previousRevision: intent.previousRevision, runtimeServiceAccount: derived.runtimeConfig.runtimeServiceAccount, migrationRunnerDigest: derived.migrationRunnerDigest, routine, entrypointBaseline: transport.entrypointSnapshot(service), remainingHumanAction: 0 })
   }
 
