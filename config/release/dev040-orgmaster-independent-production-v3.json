@@ -287,6 +287,13 @@
         "path": "db/migrations/014_dev050_orgmaster_session_admission.sql",
         "sourceSha256": "11d6f93916f7668890dc6e17fab27244ed87f35353bb9957374702725fd52bfd",
         "appliedSha256": "29bcd05fae8f9ac97e1927359c3aec2f3b4dcda574cdc25baa68662fc2241a84"
+      },
+      {
+        "order": 15,
+        "version": "dev013-orgmaster-015",
+        "path": "db/migrations/015_dev013_restore_runtime_session_dml.sql",
+        "sourceSha256": "d3a17f752b89138f4d636d1b21ae5a69a5ae29dc64960c61307398d7a234cc08",
+        "appliedSha256": "a5860ee157e87c87b9654e0151c156d9ddd0b06f3f46cf4380f5ddb8a6126b7f"
       }
     ]
   },

@@ -159,7 +159,8 @@ function assertMigrationReceipt(value, profile, intent, { historical = false, al
     if ((!historical && !allowForward) || value?.schemaVersion !== 'jenfu.dev012.migration-receipt.v1' || value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.manifestSha256 !== intent.migrationManifestSha256 || value.status !== 'PASS' || value.boundaryStatus !== 'PASS') fail('MIGRATION_RECEIPT_INVALID')
     if (allowForward) {
       const { receiptSha256, ...core } = value
-      if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== 14 || value.applied !== 3 || value.replayed !== 11 || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
+      const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= 4 && value.replayed === 15 - value.applied
+      if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== 15 || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
     }
   }
 }

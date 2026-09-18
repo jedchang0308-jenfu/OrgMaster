@@ -1,6 +1,6 @@
 # OrgMaster 開發任務
 
-> **2026-09-18 DEV-050／DEV-013 Production L4 correction（現行）**：OrgMaster G2 run `35299453716` 在切流前因 production profile漏列012–014而安全停止；原正式版維持100% traffic。DEV-040 §36已定案受控001–014 append：一般發布仍零DDL，只有fresh human-authorized DEV-013 transition可保留001–011 prefix並由owner migration Job追加012–014。程式與文件修正進行中；舊 `e15121a` authorization／capsule不可重用，尚未宣稱production完成。
+> **2026-09-18 DEV-013 Production L4 G2 recovery（現行）**：fresh exact-source run `35307497175` 已由owner Job成功追加012–014（`applied=3／replayed=11／ledgerCount=14`），但candidate smoke建立app-local session時，PostgreSQL以`permission denied for table app_sessions`拒絕；verify在activate前安全停止，terminal=`PRE_ACTIVATION_ABORTED`，正式traffic仍為`orgmaster-prod-bd2c2ccb8291 = 100%`，DB維持forward-applied。根因是migration 012的全表ACL收斂撤銷了migration 010授予的`orgmaster_core.app_sessions` runtime DML，013／014未恢復。DEV-040 §37現固定forward-only migration 015，只恢復OrgMaster runtime的`SELECT／INSERT／UPDATE／DELETE`並持續拒絕sibling／PUBLIC；profile與runner改為001–015，controlled append只接受精確012–015。不得人工GRANT、改已套migration或down migration。修正完成本地gates、commit／push與review後，須以新的exact OrgMaster revision取得fresh Production L4 authorization；本輪綁`8c89b442…`的root與failed capsule不可重用，尚未宣稱production完成。
 
 > **2026-09-16 DEV-040 ordinary release：LIVE_VERIFIED（歷史正式基線）**
 > `ORGMASTER-REL-20260916075344615-5E35167` 已完成；source `5e35167`，revision `orgmaster-prod-293bc6b9e677` 100% traffic。
@@ -640,10 +640,10 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 - 2026-09-17 前版定案（已取代）：曾規劃 replace shared view／shared core／UI port，並宣告 P0-P1=0；R2 查出 Email 相等鏈、SQL 重試順序與 shared consumer 邊界有實質缺口，不再沿用其 PASS 結論。
 - 2026-09-17 R2：改 private 同快照 read、mandatory app-local verifier／有限 retry、新 app-only view；補 repository／舊 gate allowlist 與正常入口 evidence。狀態為 Architecture Finalized R2／Design Review Only，產品未實作。
 - 2026-09-18 RD implementation：完成 private 同快照 read、mandatory verifier／一次 revision retry、014 app-only view、Auth API double-epoch、dual-identifier UI 與 legacy disclosure；targeted／contract／PG／browser／full regression／build／DB boundary 均 PASS，production 仍 gated。
-- 2026-09-18 Production L4 correction：G2 run `35299453716` 因014 view未套用而在切流前安全停止。新增DEV-040 §36 exact 012–014 append、migration-before-candidate與forward receipt baseline契約；舊source授權不可重用。
+- 2026-09-18 Production L4 G2 recovery：run `35307497175` 已套012–014；candidate session因`app_sessions` runtime ACL缺失安全停止。DEV-040 §37新增forward-only 015與exact 012–015 recovery；舊root／capsule不可重用，新revision須fresh exact-source authorization。
 - 2026-09-18 release correction local gate：DEV-040 owner 62／62、abort 6／6、DEV-050 39／39＋contract 6／6、full regression 863 passed／1 skipped、DB boundary、雙build與diff check PASS；owner report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260918T030624987Z-13CD50E6/owner-report.json`。正式provider evidence仍待fresh authorization。
 - 2026-09-17 先前版本：由 Brief 補成架構文件；其成熟度與 attempt／014 決策已被本次修訂取代，歷史文字不再作直接實作依據。
-- 下一步：不新建重複 DEV；若要上正式環境，另依 001～014 exact ledger、相容窗口與 release authority 執行 migration／activation／deploy。
+- 下一步：不新建重複DEV；完成migration 015 review／merge後，取得綁定新OrgMaster revision的fresh Production L4 authorization，再依001～015 exact ledger執行owner-native migration／candidate／activation／驗證。
 
 使用思考習慣：#第一性原理、#多層次分析、#驗收閉環
 
