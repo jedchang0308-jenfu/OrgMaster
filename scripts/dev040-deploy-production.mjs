@@ -17,11 +17,11 @@ function command(name, args) {
   return result.stdout.trim()
 }
 
-async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile, observedAt, expectedSourceRevision, currentStep) {
+async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile, observedAt, currentStep) {
   const result = await transport.readBytes(predecessorReceiptRef.uri, { prefixes: ['receipts'], expectedSha256: predecessorReceiptRef.sha256 })
   let value
   try { value = JSON.parse(result.bytes.toString('utf8')) } catch { throw new Error('DEV013_PREDECESSOR_RECEIPT_INVALID') }
-  return assertDev013PredecessorReceipt(value, predecessorReceiptRef, profile, observedAt, expectedSourceRevision, currentStep)
+  return assertDev013PredecessorReceipt(value, predecessorReceiptRef, profile, observedAt, currentStep)
 }
 
 function parseArgs(argv) {
@@ -91,13 +91,13 @@ async function main() {
   const previousControlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: previousMode }
   const controlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: options.handoffMode }
   const sequenceStep = transition ? dev013L4SequenceStep(profile.application.id, transition, previousControlledEnvironment, controlledEnvironment) : null
-  const predecessorEvidence = transition ? await verifyDev013Predecessor(transport, transition.predecessorReceiptRef, profile, observedAt, git.sourceRevision, sequenceStep) : null
+  const predecessorEvidence = transition ? await verifyDev013Predecessor(transport, transition.predecessorReceiptRef, profile, observedAt, sequenceStep) : null
   if (transition && Date.parse(deadlineAt) > Date.parse(predecessorEvidence.sequenceRoot.expiresAt)) throw new Error('DEV013_TRANSITION_AUTHORIZATION_WINDOW_INVALID')
   const runtimeConfig = buildRuntimeConfigReceipt({ profile, releaseId, sourceLock, plainEnvironment, secretVersions: previousRuntime.secretVersions, observedAt })
   const authority = { ownerApplicationId: 'orgmaster', projectId: profile.target.projectId, sourceRevision: git.sourceRevision, releaseId, environment: 'production', baselineIntentRef, expiresAt: deadlineAt, observedAt, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', remainingHumanAction: 0, ...(predecessorEvidence ? { predecessorEvidence } : {}) }
   const authorization = { ...authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
   const readiness = transition
-    ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
+    ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v2', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
     : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
   const infraReceiptRef = options.infraReceiptRef ?? baseline.intent.infraReceiptRef
   const values = { sourceLock, runtimeConfig, authorization, readiness,

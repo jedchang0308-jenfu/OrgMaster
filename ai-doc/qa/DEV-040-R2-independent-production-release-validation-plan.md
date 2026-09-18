@@ -196,9 +196,9 @@ G2 failed-attempt oracle：GitHub run `35299453716` 的 verify 以 `principal_di
 | M14-09 | Boundaries | sibling schema、DB、service、retained edge、Billing、Hosting、LB與service deletion mutation=0 |
 | M14-10 | Product | candidate與canonical session create／reload、DB read、logout後401及DEV-013 global logout PASS |
 
-本地必跑命令與正式 provider證據依 DEV-040 §36。Fresh source、migration-runner digest、root authorization與 predecessor re-attestation必須互相 hash-bound；舊 `e15121a` authorization及 failed release capsule不可重用。
+本地必跑命令與正式provider證據依DEV-040 §36。Fresh source、migration-runner digest、migration manifest、artifact、candidate／deployed revision與predecessor re-attestation必須由machine-verifiable capsule／receipt互相hash-bound；human root v2只綁production scope與期限，不能含source set。舊`e15121a` v1 authorization及failed release capsule不可重用，但未來source變更本身不得成為重新取得human authorization的理由。
 
-2026-09-18 local result：M14 source gates PASS；`test:dev-040:r2` 62／62、abort 6／6、DEV-050 targeted 39／39、contract 6／6、full regression 209 files／863 passed／1 skipped、DB boundary、client/server build與diff check PASS。Owner report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260918T030624987Z-13CD50E6/owner-report.json`，evidenceScope=`LOCAL_CONTRACT`、releaseAuthority=false。M14-09～10的production provider結果仍待fresh exact authorization後執行。
+2026-09-18 local result：M14 source gates PASS；`test:dev-040:r2` 62／62、abort 6／6、DEV-050 targeted 39／39、contract 6／6、full regression 209 files／863 passed／1 skipped、DB boundary、client/server build與diff check PASS。Owner report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260918T030624987Z-13CD50E6/owner-report.json`，evidenceScope=`LOCAL_CONTRACT`、releaseAuthority=false。M14-09～10的production provider結果仍待有效production-scope authorization與fresh machine evidence後執行。
 
 ## 15. DEV-013 app-session ACL fix-forward validation（2026-09-18，current）
 
@@ -215,6 +215,6 @@ G2 recovery oracle：run `35307497175` 的owner migration receipt已證明012–
 | M15-07 | Runner provenance | fresh exact-source runner digest與APP_INFRA_IMAGE_ROTATION receipt相符，只允許exact migration Job image更新 |
 | M15-08 | Pre-activation gate | raw receipt PASS前candidate=0；candidate session create／reload與DB probe PASS前traffic不得切換 |
 | M15-09 | Failure safety | 任一失敗維持／回復前版traffic、清除own candidate tag、保留forward ledger、無down migration或service deletion |
-| M15-10 | Completion join | fresh exact-source root、G1 re-attestation、G2 terminal與後續DEV-013 sequence hash-chain完整；browser/global logout/observation另依DEV-013 L4分母 |
+| M15-10 | Completion join | fresh production-scope root、exact-source owner evidence、G1 re-attestation、G2 terminal與後續DEV-013 sequence hash-chain完整；browser/global logout/observation另依DEV-013 L4分母 |
 
-Local PASS只可增加M15-01～06的source／isolated證據；M15-07～10必須在fresh human authorization後以provider receipts與browser evidence判定。舊root `DEV013-L4-AUTH-20260918-003`、source `8c89b442…`、runner digest `806dce6e…f783`與failed capsule不得重用。
+Local PASS只可增加M15-01～06的source／isolated證據；M15-07～10必須在有效的human production-scope authorization下，以fresh provider receipts與browser evidence判定。舊v1 root `DEV013-L4-AUTH-20260918-003`不得作v2 sequence root；source `8c89b442…`、runner digest `806dce6e…f783`與failed capsule不得重用。若target／resource／allowed／forbidden action／risk／expiry均未改變，source SHA改變本身不要求新的人類授權，但必須重建受影響的machine evidence。

@@ -70,12 +70,12 @@ function transitionReadiness(h, { from, to, action }) {
   }
   h.input.values.readiness = {
     ...h.input.values.readiness,
-    schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1',
+    schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v2',
     devId: 'DEV-013',
     slice: '013-R1',
     observedAt: '2026-09-18T00:00:00.000Z',
     expiresAt: '2026-09-18T08:00:00.000Z',
-    sequenceRoot: { schemaVersion: 'jenfu.dev013.l4-sequence-root.v1', authorizationId: 'DEV013-L4-AUTH-TEST0001', authorizationStatementSha256: '7'.repeat(64), manifestSha256: '8'.repeat(64), authorizedAt: '2026-09-18T00:00:00.000Z', expiresAt: '2026-09-18T08:00:00.000Z', receiptRef: { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/root.json', sha256: '8'.repeat(64) }, sourceRevisionByApplication: { platform: 'a'.repeat(40), orgmaster: newSource, 'ai-pdm': 'c'.repeat(40) } },
+    sequenceRoot: { schemaVersion: 'jenfu.dev013.l4-sequence-root.v2', authorizationId: 'DEV013-L4-AUTH-TEST0001', authorizationStatementSha256: '7'.repeat(64), manifestSha256: '8'.repeat(64), authorizedAt: '2026-09-18T00:00:00.000Z', expiresAt: '2026-09-18T08:00:00.000Z', receiptRef: { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/root.json', sha256: '8'.repeat(64) } },
     sequenceStep,
     previousControlledEnvironment,
     controlledEnvironment,
@@ -146,16 +146,18 @@ test('DEV-013 controlled release can add the default-off guard to the historical
 
 test('DEV-013 predecessor receipt accepts only an exact live root or released owner terminal', () => {
   const ref = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/root.json', sha256: '9'.repeat(64) }
-  const rootCore = { schemaVersion: 'jenfu.dev013.l4-execution-authorization.v1', devId: 'DEV-013', slice: '013-R1', authorizationId: 'DEV013-L4-AUTH-TEST0001', authorizationBasis: 'HUMAN_EXACT_PRODUCTION_SCOPE', authorizationStatementSha256: '7'.repeat(64), manifestSha256: '8'.repeat(64), projectId: profile.target.projectId, projectNumber: '9536592944', region: profile.target.region, cloudSqlInstance: 'jenfu-platform-prod-pg', database: 'jenfu_prod', sourceRevisionByApplication: { platform: 'a'.repeat(40), orgmaster: 'b'.repeat(40), 'ai-pdm': 'c'.repeat(40) }, authorizedActions: ['owner-native release', 'Platform migration 005', 'runtime config', 'candidate', 'traffic', 'L4 browser', 'global logout', 'rollback', 'observation'], status: 'PASS', releaseAuthority: true, remainingHumanAction: 0, evidenceScope: 'PRODUCTION_BOUND', authorizedAt: '2026-09-18T00:00:00.000Z', expiresAt: '2026-09-18T08:00:00.000Z' }
+  const rootCore = { schemaVersion: 'jenfu.dev013.l4-execution-authorization.v2', devId: 'DEV-013', slice: '013-R1', authorizationId: 'DEV013-L4-AUTH-TEST0001', authorizationBasis: 'HUMAN_PRODUCTION_SCOPE', authorizationStatementSha256: '7'.repeat(64), manifestSha256: '8'.repeat(64), projectId: profile.target.projectId, projectNumber: '9536592944', region: profile.target.region, cloudSqlInstance: 'jenfu-platform-prod-pg', database: 'jenfu_prod', authorizedActions: ['owner-native release', 'Platform migration 005', 'runtime config', 'candidate', 'traffic', 'L4 browser', 'global logout', 'rollback', 'observation'], forbiddenMutations: ['retained edge', 'Billing', 'custom domain', 'Firebase Hosting', 'shared load balancer', 'sibling owner state', 'database down migration', 'service deletion'], status: 'PASS', releaseAuthority: true, remainingHumanAction: 0, evidenceScope: 'PRODUCTION_BOUND', authorizedAt: '2026-09-18T00:00:00.000Z', expiresAt: '2026-09-18T08:00:00.000Z' }
   const root = { ...rootCore, receiptSha256: sha256(canonicalize(rootCore)) }
   const platformProfile = { ...profile, application: { ...profile.application, id: 'platform' } }
   const transition = { action: 'guard', changes: [{ field: 'PORTAL_SSO_AI_PDM_PHASE', from: null, to: 'off' }, { field: 'PORTAL_SSO_ORGMASTER_PHASE', from: null, to: 'off' }], predecessorReceiptRef: ref }
   const currentStep = dev013L4SequenceStep('platform', transition, { PORTAL_SSO_AI_PDM_PHASE: null, PORTAL_SSO_ORGMASTER_PHASE: null }, { PORTAL_SSO_AI_PDM_PHASE: 'off', PORTAL_SSO_ORGMASTER_PHASE: 'off' })
-  assert.equal(assertDev013PredecessorReceipt(root, ref, platformProfile, '2026-09-18T00:00:00.000Z', 'a'.repeat(40), currentStep).schemaVersion, root.schemaVersion)
-  assert.throws(() => assertDev013PredecessorReceipt(root, ref, platformProfile, '2026-09-18T00:00:00.000Z', 'd'.repeat(40), currentStep), /DEV013_PREDECESSOR_RECEIPT_INVALID/u)
+  assert.equal(assertDev013PredecessorReceipt(root, ref, platformProfile, '2026-09-18T00:00:00.000Z', currentStep).schemaVersion, root.schemaVersion)
+  const sourceBoundRootCore = { ...rootCore, sourceRevisionByApplication: { platform: 'a'.repeat(40), orgmaster: 'b'.repeat(40), 'ai-pdm': 'c'.repeat(40) } }
+  const sourceBoundRoot = { ...sourceBoundRootCore, receiptSha256: sha256(canonicalize(sourceBoundRootCore)) }
+  assert.throws(() => assertDev013PredecessorReceipt(sourceBoundRoot, ref, platformProfile, '2026-09-18T00:00:00.000Z', currentStep), /DEV013_PREDECESSOR_RECEIPT_INVALID/u)
   const wrongProjectCore = { ...rootCore, projectId: 'wrong-project' }
   const wrongProject = { ...wrongProjectCore, receiptSha256: sha256(canonicalize(wrongProjectCore)) }
-  assert.throws(() => assertDev013PredecessorReceipt(wrongProject, ref, platformProfile, '2026-09-18T00:00:00.000Z', 'a'.repeat(40), currentStep), /DEV013_PREDECESSOR_RECEIPT_INVALID/u)
+  assert.throws(() => assertDev013PredecessorReceipt(wrongProject, ref, platformProfile, '2026-09-18T00:00:00.000Z', currentStep), /DEV013_PREDECESSOR_RECEIPT_INVALID/u)
 })
 
 test('DEV-013 controlled release rejects an unbound readiness receipt or unrelated runtime drift', async () => {
