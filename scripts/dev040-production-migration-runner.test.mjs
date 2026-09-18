@@ -27,7 +27,7 @@ const environment = {
 }
 
 function fixture() {
-  const entries = Array.from({ length: 11 }, (_, index) => {
+  const entries = Array.from({ length: TARGET.entryCount }, (_, index) => {
     const sql = Buffer.from(`SELECT ${index + 1};\n`)
     return { order: index + 1, version: `dev040-orgmaster-${String(index + 1).padStart(3, '0')}`, name: `migration_${index + 1}`, path: `db/migrations/${String(index + 1).padStart(3, '0')}.sql`, sourceSha256: sha256(sql), appliedSha256: sha256(sql), sqlBase64: sql.toString('base64') }
   })
@@ -49,11 +49,11 @@ test('S1B-21 OrgMaster runner accepts only exact production target and refs', ()
   assert.equal(crc32cBase64(Buffer.from('123456789')), '4waSgw==')
 })
 
-test('S1B-21 OrgMaster runner validates ten-row baseline and appends only 011', async () => {
+test('OrgMaster runner validates the ten-row baseline and appends only 011-014', async () => {
   const input = fixture()
   assertMigrationBundle(input.bundle, { target: TARGET, sourceRevision: H40, bundleSha256: input.bundleSha256, bytes: input.bytes })
   let ledger = input.bundle.entries.slice(0, TARGET.baselineCount).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256, source_revision: 'prior' }))
-  assert.equal(planMigration(input.bundle, ledger).length, 1)
+  assert.equal(planMigration(input.bundle, ledger).length, 4)
   const statements = []
   const database = {
     async query(sql, values) {
@@ -68,9 +68,9 @@ test('S1B-21 OrgMaster runner validates ten-row baseline and appends only 011', 
   }
   const receipt = await executeProductionMigration({ bundle: input.bundle, database, target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true, now: () => '2026-09-08T00:00:00.000Z' })
   assert.equal(receipt.status, 'PASS')
-  assert.equal(receipt.applied, 1)
-  assert.equal(ledger.length, 11)
-  assert.equal(statements.filter((value) => value === 'BEGIN').length, 1)
+  assert.equal(receipt.applied, 4)
+  assert.equal(ledger.length, 14)
+  assert.equal(statements.filter((value) => value === 'BEGIN').length, 4)
   const second = await executeProductionMigration({ bundle: input.bundle, database, target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true, now: () => '2026-09-08T00:00:01.000Z' })
   assert.equal(second.applied, 0)
   const missing = ledger.slice(1)
@@ -138,10 +138,10 @@ test('schema runner entrypoint migrates and publishes without reading or importi
   }
   const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`]
   const result = await runMain({ argv, environment, Client, fetchImpl })
-  assert.equal(result.applied, 1)
+  assert.equal(result.applied, 4)
   assert.equal(result.productionData, undefined)
   assert.equal(result.ledgerBootstrap, undefined)
   assert.equal(requests.some((url) => /production-data|bootstrap/u.test(url)), false)
-  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, 1)
+  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, 4)
   assert.equal(statements.some((sql) => /principal|governance|active_authority/u.test(sql)), false)
 })

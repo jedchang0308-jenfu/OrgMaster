@@ -266,6 +266,27 @@
         "path": "db/migrations/011_dev046_workbench_list_width_preferences.sql",
         "sourceSha256": "a4370d5ae2d36efdfa8b6590d2241b2edaa696ad01c5ea7d8f6ab7d715eb0aaf",
         "appliedSha256": "837df9b0a3377ed50fc233225aef3925ccd66a3adb56bbd0c1b59f73d7ceed8b"
+      },
+      {
+        "order": 12,
+        "version": "dev047-orgmaster-012",
+        "path": "db/migrations/012_dev047_managed_identity_bridge.sql",
+        "sourceSha256": "87d49746d4c34fafadb877225f43f568256023f6572095696399b927c2af6dff",
+        "appliedSha256": "892b7429dec215f859ef5eecb34d515d05559077a1a49324c3af1e9f4e5865d6"
+      },
+      {
+        "order": 13,
+        "version": "dev049-orgmaster-013",
+        "path": "db/migrations/013_dev049_existing_google_primary_account_link.sql",
+        "sourceSha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319",
+        "appliedSha256": "a13198ec053e928e82ebe3450d07bd46b351b5e6c950eb6deeb4d653d24fbf21"
+      },
+      {
+        "order": 14,
+        "version": "dev050-orgmaster-014",
+        "path": "db/migrations/014_dev050_orgmaster_session_admission.sql",
+        "sourceSha256": "11d6f93916f7668890dc6e17fab27244ed87f35353bb9957374702725fd52bfd",
+        "appliedSha256": "29bcd05fae8f9ac97e1927359c3aec2f3b4dcda574cdc25baa68662fc2241a84"
       }
     ]
   },

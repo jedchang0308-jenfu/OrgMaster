@@ -150,12 +150,18 @@ async function writeStage(transport, paths, profile, intent, stage, previousRece
   return { ...result, value }
 }
 
-function assertMigrationReceipt(value, profile, intent, { historical = false } = {}) {
+function assertMigrationReceipt(value, profile, intent, { historical = false, allowForward = false } = {}) {
   if (value?.schemaVersion === 'jenfu.dev012.stage-receipt.v1') {
     assertStage(value, profile, intent, 'migrate')
     if (value.facts?.disposition !== 'UNCHANGED_VERIFIED' || value.facts?.manifestSha256 !== intent.migrationManifestSha256 || canonicalize(value.facts?.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)) fail('MIGRATION_RECEIPT_INVALID')
     // Legacy migration receipts remain readable for rollback, never executable.
-  } else if (!historical || value?.schemaVersion !== 'jenfu.dev012.migration-receipt.v1' || value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.manifestSha256 !== intent.migrationManifestSha256 || value.status !== 'PASS' || value.boundaryStatus !== 'PASS') fail('MIGRATION_RECEIPT_INVALID')
+  } else {
+    if ((!historical && !allowForward) || value?.schemaVersion !== 'jenfu.dev012.migration-receipt.v1' || value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.manifestSha256 !== intent.migrationManifestSha256 || value.status !== 'PASS' || value.boundaryStatus !== 'PASS') fail('MIGRATION_RECEIPT_INVALID')
+    if (allowForward) {
+      const { receiptSha256, ...core } = value
+      if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== 14 || value.applied !== 3 || value.replayed !== 11 || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
+    }
+  }
 }
 
 function assertDeployment(value, profile, intent, intentRef, intentSha256) {
@@ -306,19 +312,28 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
   }
 
   if (stage === 'migrate') {
-    await readDeployment(transport, paths, profile, intent, intentRef, capsuleSha256)
+    const deployment = await readDeployment(transport, paths, profile, intent, intentRef, capsuleSha256)
     const existing = await optionalNamedJson(transport, paths.migrate, profile)
     const prepare = await readStage(transport, paths, profile, intent, 'prepare')
     if (!prepare.value.facts.routine?.baselineMigrationRef || canonicalize(prepare.value.facts.routine.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)) fail('ROUTINE_VERIFICATION_MISSING')
-    const receipt = existing ?? await writeStage(transport, paths, profile, intent, 'migrate', prepare.ref, { ...prepare.value.facts.routine, disposition: 'UNCHANGED_VERIFIED', manifestSha256: intent.migrationManifestSha256, migrationsExecuted: 0, dataImportsExecuted: 0 })
-    assertMigrationReceipt(receipt.value, profile, intent)
+    const allowForward = prepare.value.facts.routine.migrationDisposition === 'FORWARD_APPLY'
+    if (!allowForward && prepare.value.facts.routine.migrationDisposition !== 'UNCHANGED_VERIFIED') fail('ROUTINE_MIGRATION_DISPOSITION_INVALID')
+    let receipt = existing
+    if (allowForward) {
+      if (!receipt) {
+        await transport.runMigrationJob({ profile, deployment: deployment.value, outputUri: paths.migrate, deadlineAt: intent.deadlineAt })
+        receipt = await readNamedJson(transport, paths.migrate, profile)
+      }
+    } else receipt ??= await writeStage(transport, paths, profile, intent, 'migrate', prepare.ref, { ...prepare.value.facts.routine, disposition: 'UNCHANGED_VERIFIED', manifestSha256: intent.migrationManifestSha256, migrationsExecuted: 0, dataImportsExecuted: 0 })
+    assertMigrationReceipt(receipt.value, profile, intent, { allowForward })
     return receipt
   }
 
   if (stage === 'candidate') {
     const deployment = await readDeployment(transport, paths, profile, intent, intentRef, capsuleSha256)
     const migration = await readNamedJson(transport, paths.migrate, profile)
-    assertMigrationReceipt(migration.value, profile, intent)
+    const prepare = await readStage(transport, paths, profile, intent, 'prepare')
+    assertMigrationReceipt(migration.value, profile, intent, { allowForward: prepare.value.facts.routine?.migrationDisposition === 'FORWARD_APPLY' })
     const runtimeReceipt = await transport.readJson(intent.runtimeConfigRef, profile.artifact.releaseBucket, ['receipts'])
     const runtimeConfig = runtimeReceipt.value.runtimeConfig ?? runtimeReceipt.value
     const candidate = await transport.createCandidate({ profile, artifactDigest: deployment.value.artifactDigest, runtimeConfig, fingerprint, deadlineAt: intent.deadlineAt })
@@ -389,11 +404,13 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
   if (stage === 'finalize') {
     const canonical = await readStage(transport, paths, profile, intent, 'canonical')
     const candidate = await readStage(transport, paths, profile, intent, 'candidate')
+    const migration = await readNamedJson(transport, paths.migrate, profile)
+    const databaseDisposition = migration.value.schemaVersion === 'jenfu.dev012.migration-receipt.v1' ? 'FORWARD_APPLIED' : 'UNCHANGED_VERIFIED'
     await transport.removeCandidateTag({ profile, tag: candidate.value.facts.tag, candidateRevision: candidate.value.facts.candidateRevision, expectedActiveRevision: candidate.value.facts.candidateRevision, deadlineAt: intent.deadlineAt })
     const finalized = await writeStage(transport, paths, profile, intent, 'finalize', canonical.ref, { canonicalReceiptRef: canonical.ref, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, temporaryCandidateTags: 0, result: 'RELEASED' })
     const readiness = await readNamedJson(transport, intent.readinessReceiptRef.uri, profile, intent.readinessReceiptRef.sha256, ['receipts'])
     const dev013Transition = dev013TerminalTransitionFact(readiness.value, intent)
-    const terminal = stageReceipt({ profile, intent, stage: 'terminal', previousReceiptRef: finalized.ref, facts: { result: 'RELEASED', candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, databaseDisposition: 'UNCHANGED_VERIFIED', remainingHumanAction: 0, ...(dev013Transition ? { dev013Transition } : {}) }, observedAt: transport.now() })
+    const terminal = stageReceipt({ profile, intent, stage: 'terminal', previousReceiptRef: finalized.ref, facts: { result: 'RELEASED', candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, databaseDisposition, remainingHumanAction: 0, ...(dev013Transition ? { dev013Transition } : {}) }, observedAt: transport.now() })
     const terminalResult = await transport.putJson(paths.terminal, terminal, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
     await writeControl({ transport, paths, profile, intent, fingerprint, candidate: candidate.value.facts, state: 'FINALIZED', result: 'RELEASED', environment })
     return terminalResult

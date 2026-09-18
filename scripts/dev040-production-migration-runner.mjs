@@ -21,6 +21,7 @@ export const TARGET = Object.freeze({
   login: 'orgmaster-prod-migrator@jenfu-platform-prod.iam',
   ledger: 'orgmaster_core.schema_migrations',
   baselineCount: 10,
+  entryCount: 14,
   migratorRole: 'jenfu_orgmaster_migrator',
   runtimeRole: 'jenfu_orgmaster_runtime',
   coreSchema: 'orgmaster_core',
@@ -53,7 +54,7 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
     value = JSON.parse(object.bytes.toString('utf8'))
   } catch { throw new Error('MIGRATION_INPUT_JSON_INVALID') }
   const bundle = assertMigrationBundle(value, { target: TARGET, sourceRevision: args.sourceRevision, bundleSha256: args.bundleSha256, bytes: object.bytes })
-  if (bundle.entries.length !== TARGET.baselineCount + 1) throw new Error('MIGRATION_SET_DRIFT')
+  if (bundle.entries.length !== TARGET.entryCount) throw new Error('MIGRATION_SET_DRIFT')
   const database = new Client(databaseOptions(environment, token))
   await database.connect()
   try {

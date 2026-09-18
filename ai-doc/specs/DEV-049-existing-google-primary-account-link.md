@@ -9,6 +9,8 @@
 
 > **DEV-050 app-local login replacement（2026-09-18 implementation）**：[DEV-050](DEV-050-dual-identifier-managed-login.md) 已採 token-first stable-key 本人核對；private 同快照 read 要求 token／live／stored primary Email 一致。forward migration 014 新增 OrgMaster session view，不 replace 共用 identity view 或改其 rows／ACL；本 DEV migration bytes、owner 公開契約及 provider 邊界不變。前版 replace-view／optional shared core 與 closure PASS 已撤回，重試依 SQL revision-before-receipt 順序定義；不新增 HMAC attempt、60 秒 app TTL、Email／員編 resolver 或 production test port。DEV-050 本機產品與自動化 QA／QC 已 PASS；正式 provider／migration／deploy／release 仍 gated，父 receipt 保持歷史證據，不冒充 DEV-050 驗證。
 
+> **Production activation amendment（2026-09-18）**：先前「012／013不能進入現行 DEV-040 release」限制由 [DEV-040 §36](DEV-040-jenfu-platform-entitlement-user-integration.md) 的受控例外取代。只有 fresh human-authorized DEV-013 transition可保留001–011 prefix並一次追加精確012／013／014；一般發布仍為001–014 unchanged、零DDL。本文件不提供該授權，亦不允許人工SQL或down migration。
+
 決策來源：
 
 - `USER-2026-09-17-EXISTING-WORKSPACE-ACCOUNT-MAPPING-BRIEF`

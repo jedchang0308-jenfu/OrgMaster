@@ -6,7 +6,7 @@ import { assertStaleControlSafeToSupersede, candidateTagUriMatches, executeOwner
 
 const H40 = 'a'.repeat(40)
 const baselineRef = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/baseline.json', sha256: 'e'.repeat(64) }
-const verifiedBaseline = async ({ intent }) => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: baselineRef.uri, sha256: baselineRef.sha256 } })
+const verifiedBaseline = async ({ intent }) => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: baselineRef.uri, sha256: baselineRef.sha256 }, migrationDisposition: 'UNCHANGED_VERIFIED' })
 const bucket = 'jenfu-platform-prod-platform-release'
 const previousRevision = 'jenfu-platform-prod-previous'
 const candidateRevision = 'jenfu-platform-prod-candidate'
@@ -132,7 +132,7 @@ test('application-only release preserves all ten stages without importing data o
   const next = await h.transport.putJson(`gs://${bucket}/receipts/routine-intent.json`, intent)
   input.capsuleRef = next.ref.uri; input.capsuleSha256 = next.ref.sha256
   // The baseline verifier is independently covered with hash/source/provider negatives.
-  input.verifyRoutineRelease = async () => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) } })
+  input.verifyRoutineRelease = async () => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) }, migrationDisposition: 'UNCHANGED_VERIFIED' })
   h.transport.runMigrationJob = async () => assert.fail('routine releases must not run migration/import/bootstrap jobs')
   let terminal
   for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']) terminal = await executeOwnerStage({ ...input, stage })
@@ -140,6 +140,23 @@ test('application-only release preserves all ten stages without importing data o
   assert.equal(result.facts.databaseDisposition, 'UNCHANGED_VERIFIED')
   assert.equal(result.facts.result, 'RELEASED')
   assert.equal(h.service().traffic.length, 1)
+})
+
+test('controlled forward migration completes before candidate and is preserved in terminal disposition', async () => {
+  const h = recordedHarness()
+  const { input } = await authorizedRecordedInput(h, 'CONTROLLED-FORWARD-MIGRATION')
+  input.verifyRoutineRelease = async ({ intent }) => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: baselineRef.uri, sha256: baselineRef.sha256 }, migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 3 })
+  let executions = 0
+  h.transport.runMigrationJob = async ({ deployment, outputUri }) => {
+    executions += 1
+    const core = { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: h.profile.application.id, sourceRevision: deployment.sourceRevision, database: 'jenfu_prod', ledger: 'platform_core.schema_migrations', manifestSha256: h.migrationManifestSha256, baselineCount: 10, minimumLedgerCount: 10, ledgerCount: 14, applied: 3, replayed: 11, crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }], boundaryStatus: 'PASS', executionName: 'projects/p/locations/r/jobs/j/executions/e', startedAt: '2026-09-18T00:00:00.000Z', completedAt: '2026-09-18T00:00:01.000Z', status: 'PASS' }
+    await h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) }, { bucket, prefix: 'receipts' })
+  }
+  let terminal
+  for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']) terminal = await executeOwnerStage({ ...input, stage })
+  const result = JSON.parse((await h.transport.readBytes(terminal.ref.uri)).bytes)
+  assert.equal(executions, 1)
+  assert.equal(result.facts.databaseDisposition, 'FORWARD_APPLIED')
 })
 
 test('application-only intent cannot skip baseline verification by omitting the verifier', async () => {

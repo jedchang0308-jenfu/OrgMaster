@@ -14,6 +14,22 @@ const REQUIRED_PLAIN_ENV = [
   'ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN',
 ]
 const REQUIRED_SECRET_ENV = ['ORGMASTER_POSTGRES_URL', 'ORGMASTER_SESSION_HASH_PEPPER']
+const PRODUCTION_MIGRATION_PATHS = [
+  'db/migrations/001_dev004_orgmaster_app_sessions.sql',
+  'db/migrations/002_dev006_orgmaster_persistence.sql',
+  'db/migrations/003_dev006_orgmaster_runtime_repository.sql',
+  'db/migrations/004_dev040_active_principal_view.sql',
+  'db/migrations/005_dev005_entitlement_governance.sql',
+  'db/migrations/006_dev040_identity_admission_projection.sql',
+  'db/migrations/007_dev009_privileged_governance.sql',
+  'db/migrations/008_dev002_portal_app_visibility.sql',
+  'db/migrations/009_dev039_application_entitlement_v2.sql',
+  'db/migrations/010_dev010_neutral_schema_boundary.sql',
+  'db/migrations/011_dev046_workbench_list_width_preferences.sql',
+  'db/migrations/012_dev047_managed_identity_bridge.sql',
+  'db/migrations/013_dev049_existing_google_primary_account_link.sql',
+  'db/migrations/014_dev050_orgmaster_session_admission.sql',
+]
 
 function fail(code, detail = '') {
   const error = new Error(detail ? `${code}:${detail}` : code)
@@ -66,7 +82,7 @@ export function assertDev040V3Profile(profile, n1c) {
   if (JSON.stringify(profile.environment.controlledValues) !== JSON.stringify({ ORGMASTER_JENFU_SSO_HANDOFF_MODE: { defaultValue: 'off', allowedValues: ['off', 'on'] } })) fail('ENVIRONMENT_VALUE_DRIFT')
   if (profile.environment.allowedSecretIds?.ORGMASTER_POSTGRES_URL !== 'orgmaster-prod-postgres-url' || profile.environment.allowedSecretIds?.ORGMASTER_SESSION_HASH_PEPPER !== 'orgmaster-prod-session-pepper' || profile.environment.numericVersionsRequired !== true) fail('SECRET_BOUNDARY_DRIFT')
   const order = profile.migrations?.entries?.map((entry) => entry.path)
-  if (profile.migrations?.ledger !== 'orgmaster_core.schema_migrations' || profile.migrations?.baselineCount !== 10 || order?.length !== 11 || JSON.stringify(order.slice(0, 10)) !== JSON.stringify(n1c.migration.order) || order[10] !== 'db/migrations/011_dev046_workbench_list_width_preferences.sql') fail('MIGRATION_MANIFEST_DRIFT')
+  if (profile.migrations?.ledger !== 'orgmaster_core.schema_migrations' || profile.migrations?.baselineCount !== 10 || JSON.stringify(order) !== JSON.stringify(PRODUCTION_MIGRATION_PATHS) || JSON.stringify(order.slice(0, 10)) !== JSON.stringify(n1c.migration.order)) fail('MIGRATION_MANIFEST_DRIFT')
   if (profile.migrations.entries.some((entry, index) => entry.order !== index + 1 || !H64.test(entry.sourceSha256) || !H64.test(entry.appliedSha256))) fail('MIGRATION_MANIFEST_DRIFT')
   if (Object.values(profile.sideEffects || {}).some((value) => value !== 'DISABLED')) fail('SIDE_EFFECT_ENABLED')
   if (profile.operations?.CONFIGURE_ENTRYPOINT !== 'run.projects.locations.services.patch?updateMask=ingress,defaultUriDisabled,invokerIamDisabled') fail('ENTRYPOINT_OPERATION_MISSING')
@@ -75,7 +91,7 @@ export function assertDev040V3Profile(profile, n1c) {
 }
 
 export function verifyDev040MigrationBytes(profile, files) {
-  if (!(files instanceof Map) || files.size !== 11) fail('MIGRATION_SET_DRIFT')
+  if (!(files instanceof Map) || files.size !== PRODUCTION_MIGRATION_PATHS.length) fail('MIGRATION_SET_DRIFT')
   for (const entry of profile.migrations.entries) {
     if (!files.has(entry.path) || sourceSha256(files.get(entry.path)) !== entry.sourceSha256) fail('MIGRATION_CHECKSUM_MISMATCH', entry.path)
   }
@@ -122,11 +138,17 @@ export function assertN1cLedgerBaseline(profile, rows) {
 export function buildDev040MigrationPlan(profile, files, ledgerRows) {
   verifyDev040MigrationBytes(profile, files)
   assertN1cLedgerBaseline(profile, ledgerRows)
-  const entry = profile.migrations.entries[10]
-  const row = ledgerRows.find((item) => item.version === entry.version)
-  if (!row) return { status: 'PENDING', entry }
-  if ((row.checksum_sha256 ?? row.checksumSha256) !== entry.appliedSha256) fail('MIGRATION_CHECKSUM_MISMATCH', entry.version)
-  return { status: 'REPLAY', entry }
+  const pending = []
+  const replayed = []
+  for (const entry of profile.migrations.entries.slice(profile.migrations.baselineCount)) {
+    const row = ledgerRows.find((item) => item.version === entry.version)
+    if (!row) pending.push(entry)
+    else {
+      if ((row.checksum_sha256 ?? row.checksumSha256) !== entry.appliedSha256) fail('MIGRATION_CHECKSUM_MISMATCH', entry.version)
+      replayed.push(entry)
+    }
+  }
+  return { status: pending.length > 0 ? 'PENDING' : 'REPLAY', pending, replayed }
 }
 
 export function unwrapMigrationTransaction(bytes) {
