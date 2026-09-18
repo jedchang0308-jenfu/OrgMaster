@@ -37,13 +37,16 @@ await check('Directory adapter is read-only and validates stable provider facts'
   assert.doesNotMatch(port, /users\.(?:insert|update|delete)|method:\s*['"](?:POST|PUT|PATCH|DELETE)/iu)
 })
 
-await check('receipt-first local store and canonical Firebase requery', async () => {
+await check('managed identifier verifier precedes canonical admission', async () => {
   const [store, auth] = await Promise.all([source('server/orgmasterManagedIdentityStore.ts'), source('server/orgmasterAuthApi.ts')])
   includesAll(store, ['managedIdentityConfirmFingerprint', "receipt.responsePayload.contractVersion !== 'dev049.confirm.v1'", "kind: 'replayed'", 'actorBindingSha256'])
+  includesAll(auth, ['managedIdentifierProvided', 'verifyManagedLoginIdentifier', 'resolveActivePrincipal', 'stateAfter = await epochs.readState'])
+  assert.doesNotMatch(auth, /resolveFirebaseIdentity/u)
   const epoch = auth.indexOf('const state = await epochs.readState')
-  const fallback = auth.indexOf('await runtime.managedIdentity.resolveFirebaseIdentity')
-  const canonical = auth.indexOf('principal = await principals.resolveActivePrincipal', fallback)
-  assert.ok(epoch >= 0 && fallback > epoch && canonical > fallback, 'auth-time/epoch must precede managed bind and canonical requery')
+  const verifier = auth.indexOf('verifyManagedLoginIdentifier')
+  const canonical = auth.indexOf('const principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)')
+  const secondEpoch = auth.indexOf('const stateAfter = await epochs.readState')
+  assert.ok(epoch >= 0 && verifier > epoch && canonical > verifier && secondEpoch > canonical, 'epoch/verifier/canonical/second-epoch order changed')
   assert.doesNotMatch(auth, /mappingVersion:\s*1/u)
 })
 
@@ -58,7 +61,7 @@ await check('managed-login owner API binds caller, Firebase, Directory stable ke
   includesAll(contract, ['jenfu.managed-login.v1', "action: 'resolveAlias'", "action: 'verifyIdentity'", 'googleUserId', 'authenticatedAt', 'expected'])
   includesAll(api, ['/api/internal/managed-login/v1', 'verifyIdToken', 'expectedEmail', 'expectedSubject', 'MAX_BODY_BYTES'])
   includesAll(service, ['token.googleUserId', 'readByDirectoryKey', 'readManagedLoginIdentity', 'managedLoginRequestDigest', 'incrementRevision(expected.identityRevision)', 'current.registryRevision === expected.registryRevision'])
-  includesAll(repository, ['resolve_managed_login_alias_v1', 'read_managed_login_identity_v1', 'verify_managed_login_identity_v1'])
+  includesAll(repository, ['resolve_managed_login_alias_v1', 'read_managed_login_identity_v1', 'readManagedLoginSnapshot', 'verify_managed_login_identity_v1'])
   includesAll(migrationSource, ['managed_login_identity_verified', 'verify_managed_login_identity_v1', 'jenfu.managed-login.v1', "l.status <> 'completed'"])
   assert.doesNotMatch(service, /readManagedLoginIdentity\([^,]+token\.email/u)
   const ownerRoutine = migrationSource.slice(migrationSource.indexOf('CREATE OR REPLACE FUNCTION orgmaster_core.verify_managed_login_identity_v1'), migrationSource.indexOf('CREATE OR REPLACE VIEW orgmaster_contract.v_active_principal_mappings_v1'))

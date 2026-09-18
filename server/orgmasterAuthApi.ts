@@ -27,6 +27,7 @@ import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort } from
 import { handleOrgmasterSsoRequest, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
 import { createGoogleManagedLoginCallerVerifier, type ManagedLoginCallerVerifier } from './orgmasterManagedLoginApi'
 import { createManagedLoginOwnerService, type ManagedLoginOwnerServiceV1 } from './orgmasterManagedLoginService'
+import { ManagedIdentityServiceError } from './orgmasterManagedIdentityService'
 
 export const ORGMASTER_AUTH_API_PATH = '/api/auth'
 const MAX_BODY_BYTES = 32 * 1024
@@ -346,17 +347,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         return
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/managed/alias` && request.method === 'POST') {
-        if (runtime.managedLoginEnabled !== true || !runtime.managedIdentity) throw new OrgmasterAuthError(403, 'login_not_available')
-        const { config } = dependencies(runtime)
-        requireOrigin(request, config)
-        rateLimit(request)
-        const body = await readJsonBody(request)
-        const employeeNumber = typeof body.employeeNumber === 'string' ? body.employeeNumber.trim() : ''
-        if (!employeeNumber || employeeNumber.length > 255) throw new OrgmasterAuthError(400, 'auth_request_invalid')
-        try {
-          const resolved = await runtime.managedIdentity.resolveLoginAlias(employeeNumber)
-          sendJson(response, 200, { provider: resolved.provider, loginHint: resolved.loginHint, expiresAt: resolved.expiresAt, correlationId: id }, id)
-        } catch { throw new OrgmasterAuthError(403, 'login_not_available') }
+        sendJson(response, 404, { code: 'auth_request_invalid', correlationId: id }, id)
         return
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/firebase/session` && request.method === 'POST') {
@@ -367,22 +358,33 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         if (typeof body.idToken !== 'string' || Buffer.byteLength(body.idToken) > MAX_ID_TOKEN_BYTES || !body.idToken.trim()) {
           throw new OrgmasterAuthError(400, 'auth_request_invalid')
         }
+        const managedIdentifierProvided = Object.prototype.hasOwnProperty.call(body, 'managedIdentifier')
+        if (managedIdentifierProvided && (typeof body.managedIdentifier !== 'string' || !body.managedIdentifier.trim() || Buffer.byteLength(body.managedIdentifier, 'utf8') > 254)) {
+          throw new OrgmasterAuthError(400, 'auth_request_invalid')
+        }
+        const managedIdentifier = managedIdentifierProvided ? String(body.managedIdentifier).trim() : undefined
         let identity
         try { identity = await firebase.verifyIdToken(body.idToken) } catch { throw new OrgmasterAuthError(401, 'auth_token_invalid') }
         const authenticatedAtMs = Date.parse(identity.authenticatedAt ?? '')
         if (!Number.isFinite(authenticatedAtMs) || authenticatedAtMs > Date.now() + 60_000) throw new OrgmasterAuthError(401, 'auth_token_invalid')
         const state = await epochs.readState(identity.issuer, identity.subject)
         if (state.revokedBefore && authenticatedAtMs <= Date.parse(state.revokedBefore)) throw new OrgmasterAuthError(401, 'auth_token_invalid')
-        let principal
-        try {
-          principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)
-        } catch (error) {
-          if (!(error instanceof PrincipalAdmissionError) || error.code !== 'principal_not_active' || runtime.managedLoginEnabled !== true || !runtime.managedIdentity) throw error
+        let managedVerification: { principalId: string; employeeId: string; mappingVersion: string } | null = null
+        if (managedIdentifierProvided) {
+          if (runtime.managedLoginEnabled !== true || !runtime.managedIdentity || !managedIdentifier) throw new OrgmasterAuthError(403, 'login_not_available')
           try {
-            await runtime.managedIdentity.resolveFirebaseIdentity({ issuer: identity.issuer, subject: identity.subject, email: identity.email ?? '', signInProvider: identity.signInProvider ?? '', emailVerified: identity.emailVerified === true })
-            principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)
-          } catch { throw new PrincipalAdmissionError('principal_not_active') }
+            managedVerification = await runtime.managedIdentity.verifyManagedLoginIdentifier({ requestId: randomUUID(), managedIdentifier, identity })
+          } catch (error) {
+            if (error instanceof ManagedIdentityServiceError && error.details?.retryable) throw new OrgmasterAuthError(503, 'principal_directory_unavailable')
+            const code = error instanceof Error ? error.message : ''
+            if (['DIRECTORY_READ_UNAVAILABLE', 'GOVERNANCE_READ_FAILED', 'MANAGED_IDENTITY_WRITE_FAILED', 'REVISION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'MANAGED_LOGIN_READ_FAILED'].includes(code)) throw new OrgmasterAuthError(503, 'principal_directory_unavailable')
+            throw new OrgmasterAuthError(403, 'login_not_available')
+          }
         }
+        const principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)
+        if (managedVerification && (principal.principalId !== managedVerification.principalId || principal.employeeId !== managedVerification.employeeId || String(principal.mappingVersion) !== managedVerification.mappingVersion)) throw new OrgmasterAuthError(403, 'login_not_available')
+        const stateAfter = await epochs.readState(identity.issuer, identity.subject)
+        if (stateAfter.authEpoch !== state.authEpoch || stateAfter.revokedBefore && authenticatedAtMs <= Date.parse(stateAfter.revokedBefore)) throw new OrgmasterAuthError(401, 'auth_epoch_stale')
         const token = createOpaqueSessionToken()
         const issuedAt = new Date()
         const expiresAt = new Date(issuedAt.getTime() + 8 * 60 * 60 * 1000)
@@ -392,7 +394,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
             sessionIdHash: hashSessionToken(config.sessionHashPepper, token),
             identityIssuer: identity.issuer, identitySubject: identity.subject,
             principalId: principal.principalId, employeeId: principal.employeeId,
-            authEpoch: state.authEpoch, issuedAt: issuedAt.toISOString(), authenticatedAt: identity.authenticatedAt, expiresAt: expiresAt.toISOString(), assuranceLevel: identity.assuranceLevel,
+            authEpoch: stateAfter.authEpoch, issuedAt: issuedAt.toISOString(), authenticatedAt: identity.authenticatedAt, expiresAt: expiresAt.toISOString(), assuranceLevel: identity.assuranceLevel,
           })
         } catch {
           throw new OrgmasterAuthError(503, 'auth_server_not_configured')

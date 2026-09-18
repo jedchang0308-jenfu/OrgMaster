@@ -91,14 +91,14 @@
 
 ## 總任務清單
 
-- ○ DEV-050 [交付點] [待排] [P1] [RD Implementation Ready／Architecture Finalized／P0=0／P1=0] 員工編號或公司 Email 單一 Google 身分登入
-  - 摘要：先完成 Google 驗證，以 stable key 找本人，再核對 current JFS 或 exact linked primary Email；共用同一 principal／Employee，不新增帳號、attempt 或 Email／員編搜尋 resolver。forward migration 014只補canonical view的published application／role parity。
+- ✓ DEV-050 [交付點] [本機開發完成／QA-QC通過／production gated] [RD Implementation Complete／Architecture Finalized R2／Local QA-QC Passed／Production Gated] 員工編號或公司 Email 單一 Google 身分登入
+  - 摘要：Google 驗證後以 stable key 核對本人 current JFS／exact primary Email；新增 private 同快照讀取與 OrgMaster 專用 session view，不改共用 identity view 或 owner 公開契約，不新增帳號、attempt、搜尋 resolver。
   - 來源 ID：`USER-2026-09-17-CLOUD-IDENTITY-FREE-DUAL-IDENTIFIER-LOGIN-BRIEF`、`USER-2026-09-17-DEV050-DEVELOPMENT-DOCUMENT`、`USER-2026-09-17-DEV050-ARCHITECTURE-CONFIRMATION`、`USER-2026-09-17-DEV050-RD-TECH-LEAD-OPTIMIZATION`
   - 父任務：DEV-049；僅替換 app-local 登入設計，stable identity、admission、zero-provider-write 與 SSO owner 公開契約不變。
-  - 下一步：取得產品實作指令後依權威spec §8 S0～S4執行；先建failing tests，再做shared core、Auth API、UI、migration 014及fresh QA／QC。
-  - 阻塞 / 恢復條件：架構無P0／P1未決；實作若發現repository contract無法滿足invariant，停止slice並回spec作drift decision。production仍受001～014 ledger與release authority gate阻擋。
-  - 證據：文件closure已核對父receipt 16＋3 hashes，並重跑DEV-049 targeted 50/50、owner-receipt 2/2；DEV-050產品測試尚未建立，非Implementation Complete或獨立QC。
-  - 計入交付：是（目前未完成）
+  - 下一步：另行取得 production migration／activation／deploy 授權後，依 DEV-040／014 release gate 執行；本機 S0～S4 已完成，不抽 shared owner core 或新增 production test port。
+  - 阻塞 / 恢復條件：未預期的 source／schema drift 或無法滿足 invariant 時停止該 slice 並回 spec；production 仍受新的 exact ledger 與 release authority gate 限制，不能套用現行 001～011 路徑。
+  - 證據：`npm run test:dev-050` 39／39、`qc:dev-050:contract` 6／6、隔離 PostgreSQL 18.4 D50-01～04、正常建置入口瀏覽器 1440／390 viewport、`qc:dev-047:contract`、`qc:dev-049:contract`、`test:dev-013`、`test:dev-047`、`npm test` 209 files／863 passed／1 skipped、build與DB boundary PASS；fresh manifest 分別見 `qa/dev-050/contract/manifest.json`、`dev-050/postgres/manifest.json`、`qa/dev-050/browser/manifest.json`。無 provider／production write，臨時 runtime 均清理。
+  - 計入交付：是（本機完成；production 仍 gated）
 
 - ✓ DEV-049 [交付點] [本機開發完成／production gated] [P1] [RD Implementation Complete／Local QA-QC Passed] 既有 Google 主帳號連結與員工編號登入
   - 摘要：員工已有公司 Workspace 帳號時，不再建立重複的 `jfs####@jenfu.com.tw`；JFS 固定為 OrgMaster login alias，管理者以 exact primary Email 將 Employee 連結至既有 Directory stable principal。
@@ -596,12 +596,12 @@
 
 ## DEV-050：員工編號或公司 Email 單一 Google 身分登入
 
-狀態：`待排 / Documents Only / Product Not Implemented / Production Gated`
-文件成熟度：`RD Implementation Ready / RD Not Started`
-架構審查：`Architecture Finalized / Tech-lead PASS 2026-09-17 / P0=0 / P1=0`
+狀態：`Local Development Complete / Local QA-QC Passed / Production Gated`
+文件成熟度：`RD Implementation Complete / Architecture Contract Implemented 2026-09-18`
+架構審查：`Architecture Finalized — R2 / Implemented and Verified / 2026-09-18`
 節點類型：交付點；優先級：P1；風險：High（首次身分綁定及登入授權）
 父交付點：DEV-049；相容基線：DEV-047／ADR-007
-計入產品交付完成：是，但只能在實作及 QA／QC 通過後計入，目前未完成。
+計入產品交付完成：是（本機實作及 QA／QC 已通過；正式環境 activation 仍不計入）。
 來源：`USER-2026-09-17-CLOUD-IDENTITY-FREE-DUAL-IDENTIFIER-LOGIN-BRIEF`、`USER-2026-09-17-DEV050-DEVELOPMENT-DOCUMENT`、`USER-2026-09-17-DEV050-ARCHITECTURE-CONFIRMATION`、`USER-2026-09-17-DEV050-RD-TECH-LEAD-OPTIMIZATION`。
 
 ### 產品與架構摘要
@@ -610,31 +610,35 @@
 
 - 使用者輸入 current JFS 或已連結公司 primary Email，最後驗證同一 Google principal；員編不另設密碼、OrgMaster 不建立帳號或購買 license。
 - 採 token-first：Browser 直接開 Google，既有 session exchange 攜帶輸入；server 以已驗證的 stable key 找本人後核對，不能以輸入搜尋他人。
-- 刪除先前規劃的 HMAC attempt、60 秒 app TTL與Email／員編resolver；沿用父任務read／verify／transaction。唯一新DDL是forward migration 014，只替換canonical contract view以補published application／role parity；無新表、secret或endpoint。
+- 不採 HMAC attempt、60 秒 app TTL、Email／員編 resolver、optional shared core 或 production test port。補 private snapshot 核對 token＝live＝stored Email，沿用既有鎖／receipt，以最多一次受控重讀重試處理 revision conflict。
+- forward migration 014 新增 OrgMaster 專用 session view 與最小 SELECT grant；不 replace 共用 view、不改 001～013 或 owner 公開契約。principal repository 接線涵蓋新／既有 session 及本 app SSO callback。
 - 有 identifier 的 request 即使 principal 已 active，也必須核對；不符不能退回 legacy。無 identifier 僅維持既有 canonical 登入，不得首次 bind。
 - managed UI 一個輸入欄／Google CTA，legacy password 收合但不刪；SSO handoff 仍優先，不改平台 owner contract。
 - Google Admin／licensing／provider write、跨專案、正式 migration／activation／deploy 均不在本輪範圍。
 
 ### 接手條件與驗收
 
-- [x] G1：父owner receipt 16個controlled source＋3個evidence hash相符；DEV-049 targeted 50/50與receipt tests 2/2 fresh PASS。
-- [x] G2：shared core signature、identifier／role／epoch順序、local／PG競態、receipt／failure recovery及canonical parity已固定。
-- [x] G3：DEV-050 contract／PostgreSQL／browser fixture path、runner、external mock boundary、manifest、cleanup與命令已固定。
-- [x] G4：migration 014只replace同名view，legacy／managed共用published application＋active global role eligibility；001～013、signature與grant不變。
-- [ ] RD依spec §8 S0～S4實作；spec V1～V10、targeted／contract／PG／browser、full regression、build及DB boundary fresh PASS後才可計入完成。
+- [x] 文件 G1：父 receipt 16 個 controlled source＋3 個 evidence hashes 相符；保留 receipt 原 source，不冒充目前 HEAD 或 DEV-050 測試。
+- [x] 文件 G2：private 同快照 read、mandatory app-local guards、SQL revision-before-receipt 的有限 retry／post-read 契約已固定。
+- [x] 文件 G3：正常 App 入口 browser、test-build-only Firebase 替身、真 HTTP／PG 證據分層及舊 gate 更新範圍已固定。
+- [x] 文件 G4：新 app-only view 八欄／version／ACL 與 principal repository 接線已固定，保留 shared rows／ACL；撤回前版 replace-view 方案。
+- [x] RD 依 spec §8 S0～S4 實作；targeted／相容 contract、PG、正常入口 browser、full regression、build及 boundary fresh PASS。
+- [x] 本機 QA／QC evidence 已產生並核對 cleanup；provider、production migration／activation／deploy 仍由 release gate 管制。
 
-文件工作已完成架構定案；剩餘是已定義的產品實作與QA／QC，不是新的使用者產品決策。DEV-050 tests、browser、migration 014、正式Google與production均未在本輪執行或變更。
+文件已完成 R2 架構修訂與產品落地；上述勾選代表本機產品與自動化 QA／QC gate PASS，不代表正式 Google provider、production migration、activation、deploy 或 release 已執行。
 
 ### Spec Impact、後續與紀錄
 
-`Intentional replacement / Documents Only`：DEV-050 後續替換 DEV-047 A9／DEV-049 §9 的 app-local public alias lookup，不修改owner公開契約。實作前 app-local UI仍是現有JFS輸入，不以本文件宣稱雙identifier已上線。
+`Intentional replacement / Local Implementation Complete`：DEV-050 已替換 DEV-047 A9／DEV-049 §9 的 app-local public alias lookup，不修改 owner 公開契約；production 上線仍受 release gate 約束。
 
-Future capsule：Google Admin 免費授權營運設定及 legacy password 移除均 `Future Phase Captured / Not Requested`；前者需外部操作範圍，後者需零依賴 inventory 與 break-glass 決策，詳見 spec §10。
+Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復、legacy password 移除均 `Future Phase Captured / Not Requested`。既有 refresh 不等於更名修復；另需設計與操作範圍，詳見 spec §10。
 
 - 2026-09-17 技術主管優化：撤回前版過早的 Architecture Closure PASS／P0-P1=0，校正為 RD Contract Ready；以 stable-key 本人核對取代 attempt／新 resolver，補足安全分支、相容與驗收。
-- 2026-09-17 架構定案：source／schema closure查出migration013 managed principal缺published application／role guard；以forward migration014最小補強，並固定shared core、API順序、UI port、V1～V10、runner／fixture／commands與stop conditions，升級為RD Implementation Ready／P0=0／P1=0。
+- 2026-09-17 前版定案（已取代）：曾規劃 replace shared view／shared core／UI port，並宣告 P0-P1=0；R2 查出 Email 相等鏈、SQL 重試順序與 shared consumer 邊界有實質缺口，不再沿用其 PASS 結論。
+- 2026-09-17 R2：改 private 同快照 read、mandatory app-local verifier／有限 retry、新 app-only view；補 repository／舊 gate allowlist 與正常入口 evidence。狀態為 Architecture Finalized R2／Design Review Only，產品未實作。
+- 2026-09-18 RD implementation：完成 private 同快照 read、mandatory verifier／一次 revision retry、014 app-only view、Auth API double-epoch、dual-identifier UI 與 legacy disclosure；targeted／contract／PG／browser／full regression／build／DB boundary 均 PASS，production 仍 gated。
 - 2026-09-17 先前版本：由 Brief 補成架構文件；其成熟度與 attempt／014 決策已被本次修訂取代，歷史文字不再作直接實作依據。
-- 下一步：取得產品實作指令後在同一DEV依spec §8推進；不新建重複DEV，本輪未修改產品或release狀態。
+- 下一步：不新建重複 DEV；若要上正式環境，另依 001～014 exact ledger、相容窗口與 release authority 執行 migration／activation／deploy。
 
 使用思考習慣：#第一性原理、#多層次分析、#驗收閉環
 

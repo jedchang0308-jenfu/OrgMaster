@@ -191,17 +191,18 @@ Google的授權模型允許同一managed user同時具有Cloud Identity Free與G
 
 ## 2026-09-17 DEV-050 App-local Managed Login Amendment
 
-分類：`Compatible Security Refinement / RD Implementation Ready / Product Not Implemented / Production Gated`
+分類：`App-scoped Additive Contract / Architecture Finalized R2 / Local Implementation Complete / QA-QC Passed / Production Gated`
 
 DEV-050 將 OrgMaster app-local managed login 收斂為 token-first，不改本 ADR 的角色目錄與角色指派 authority：
 
 1. JFS員工編號與公司primary Email只是在Google認證完成後核對「token所證明的本人」，不是credential、principal key、角色或admission authority；不得用它們pre-auth搜尋他人mapping。canonical identity仍是Firebase issuer＋subject與Google Directory customer＋stable user ID。
 2. Browser直接把Firebase ID token與本次identifier送既有session endpoint；OrgMaster以stable Directory key讀本人mapping。HMAC login attempt、60秒app TTL、Email／員編resolver與公開存在性查詢均不採用。
-3. Canonical principal admission必須同時符合active Employee、published active OrgMaster application、active global OrgMaster application role、managed admission／observation／lifecycle。migration 013的managed分支缺少前兩項role parity，因此DEV-050以forward migration 014只replace `orgmaster_contract.v_active_principal_mappings_v1`；legacy／managed共用同一eligible-employee集合，001～013 bytes、contract columns、owner與grant不變。
+3. OrgMaster session admission 必須符合 active Employee、published active OrgMaster application、active global role，以及來源 identity 的 admission／observation／lifecycle。共用 `v_active_principal_mappings_v1` 也提供其他 app 使用，**不得**把 OrgMaster role gate 加到該 shared view。forward migration 014 改為新增 `orgmaster_contract.v_orgmaster_session_principals_v1`（`orgmaster.session-principal.v1`、八欄），從 shared identity 與同一 published governance 投影，只授權 OrgMaster runtime SELECT；OrgMaster principal repository 改讀它。001～013、shared rows／ACL 及 owner 公開契約不變。
 4. App-local session request有identifier時必須先完成本人核對，再重查canonical principal與auth epoch；任何失敗不得降級成legacy登入。無identifier只保留既有canonical登入，不完成pending first-bind。
 5. Platform `jenfu.managed-login.v1` owner request／response、caller verification、Google Admin外部生命週期、zero-provider-write及SSO handoff boundary不變。這是OrgMaster內部session authorization hardening，不新增跨應用write或第二權限權威。
+6. Email 必須由 private 同快照 repository read 建立 token＝live＝stored 的相等關係；兩組各自相等不足以證明一致。沿用既有 write／receipt，但依 SQL revision-before-receipt 順序作最多一次受控重讀重試；不抽帶 optional role callback 的 shared core。
 
-權威實作契約見[DEV-050](../specs/DEV-050-dual-identifier-managed-login.md)。本 amendment 只完成架構定案；migration 014、產品、provider、正式DB、deploy與release尚未執行。
+權威實作契約見[DEV-050](../specs/DEV-050-dual-identifier-managed-login.md)。R2 取代本段先前的「replace shared view／compatible restriction」方案及過度的 closure PASS；新 view 是 additive，public alias 退場則是明示 app-local 相容性變更。migration 014、產品、contract／PG／browser／full regression 與 build 已完成本機驗證；provider、正式 DB、deploy 與 release 仍須另行授權與 gate。
 
 ## Context
 

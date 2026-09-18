@@ -6,8 +6,6 @@ export type AuthMode = {
   correlationId: string
 }
 
-export type ManagedAliasResponse = { provider: 'google.com'; loginHint: string; expiresAt: string; correlationId: string }
-
 export type DevelopmentAuthProfileView = {
   id: 'administrator' | 'governance-manager' | 'method-manager' | 'employee'
   roleCode: string
@@ -57,16 +55,12 @@ export function getCurrentSession() {
   return json<AuthSessionView>('/api/auth/me')
 }
 
-export function exchangeFirebaseToken(idToken: string) {
+export function exchangeFirebaseToken(idToken: string, managedIdentifier?: string) {
   return json<AuthSessionView>('/api/auth/firebase/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken }),
+    body: JSON.stringify({ idToken, ...(managedIdentifier === undefined ? {} : { managedIdentifier }) }),
   })
-}
-
-export function resolveManagedLoginAlias(employeeNumber: string) {
-  return json<ManagedAliasResponse>('/api/auth/managed/alias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employeeNumber }) })
 }
 
 export function loginDevelopmentProfile(profileId: DevelopmentAuthProfileView['id']) {

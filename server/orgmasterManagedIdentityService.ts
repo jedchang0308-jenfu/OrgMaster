@@ -9,10 +9,14 @@ import type {
   ManagedIdentityReadModelV1,
   ManagedIdentityRefreshClaimV1,
   ManagedIdentityRefreshResultV1,
-  ResolveLoginAliasResponseV1,
 } from '../src/managedIdentity/types'
 import { deriveManagedUsername } from '../src/managedIdentity/employeeNumber'
 import { parseManagedPrimaryEmail } from '../src/managedIdentity/primaryEmail'
+import { parseEmployeeNumber } from '../src/managedIdentity/employeeNumber'
+import type { VerifiedFirebaseIdentity } from './orgmasterFirebaseIdentityProvider'
+import { expectedManagedLoginIdentityMatches } from './orgmasterManagedLoginService'
+import { managedLoginRequestDigest } from './orgmasterManagedLoginContract'
+import type { ManagedLoginIdentity } from './orgmasterManagedLoginContract'
 import { evaluatePermission } from '../src/governance/evaluatePermission'
 import { isActiveAt } from '../src/governance/validation'
 import { developmentPermissionForActor } from './orgmasterGovernanceIdentity'
@@ -34,8 +38,7 @@ export interface ManagedIdentityServiceV1 {
   findCandidate(employeeId: string, actor: GovernanceActorContext, request: FindManagedIdentityCandidateRequestV1): Promise<ManagedIdentityCandidateResponseV1>
   confirmLink(employeeId: string, actor: GovernanceActorContext, request: ConfirmManagedIdentityLinkRequestV1): Promise<ManagedIdentityReadModelV1>
   bindAuth(employeeId: string, input: { issuer: string; subject: string; email: string; signInProvider: string; emailVerified: boolean; commandId?: string }): Promise<ManagedIdentityReadModelV1>
-  resolveFirebaseIdentity(input: { issuer: string; subject: string; email: string; signInProvider: string; emailVerified: boolean }): Promise<{ principalId: string; employeeId: string }>
-  resolveLoginAlias(employeeNumber: string): Promise<ResolveLoginAliasResponseV1>
+  verifyManagedLoginIdentifier(input: { requestId: string; managedIdentifier: string; identity: VerifiedFirebaseIdentity }): Promise<{ principalId: string; employeeId: string; mappingVersion: string }>
   activationCheck(employeeId: string, workspaceRevision: string): Promise<{ allowed: boolean; correctionRequired: boolean }>
   enqueueRefresh(employeeId: string, actor: GovernanceActorContext, trigger: 'manual' | 'periodic' | 'domain', commandId: string): Promise<{ disposition: 'queued' | 'deduplicated'; requestId: string }>
   claimRefresh(workerId: string, limit?: number, leaseSeconds?: number): Promise<ManagedIdentityRefreshClaimV1[]>
@@ -232,41 +235,81 @@ export function createManagedIdentityService(input: {
     const fakeActor: GovernanceActorContext = { principalId: identity.principalId, issuer: auth.issuer, subject: auth.subject, employeeId, bootstrap: false, assuranceLevel: 'aal1', authenticatedAt: input.now?.()?.toISOString() ?? null, sessionId: `bind-${identity.identityRecordId}` }
     return viewFor(employeeId, fakeActor, true)
   }
-  const resolveLoginAlias = async (employeeNumber: string) => {
-    try {
-      const resolved = await repository.resolveAlias(employeeNumber)
-      const { employee } = await readEmployee(resolved.employeeId)
-      const governance = await readGovernance()
-      if (employee.status !== 'active' || !hasPublishedOrgmasterAccess(governance.document, employee.id)) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
-      return { provider: 'google.com' as const, loginHint: resolved.loginHint, expiresAt: new Date(Date.now() + 60_000).toISOString() }
-    } catch (error) { if (error instanceof ManagedIdentityServiceError && error.code === 'LOGIN_NOT_AVAILABLE') throw error; throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE') }
-  }
-  const resolveFirebaseIdentity = async (auth: { issuer: string; subject: string; email: string; signInProvider: string; emailVerified: boolean }) => {
-    if (auth.signInProvider !== 'google.com') throw new ManagedIdentityServiceError('AUTH_PROVIDER_REQUIRED')
-    if (!auth.emailVerified || !auth.email.trim()) throw new ManagedIdentityServiceError('AUTH_EMAIL_UNVERIFIED')
-    const parsed = parseManagedPrimaryEmail(auth.email, domain)
-    if (!parsed.ok) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
-    const normalized = parsed.value
-    const resolved = repository.mode === 'postgresql' ? await repository.resolveAuthIdentity(normalized) : null
-    const state = resolved ? null : await repository.readExisting()
-    const identity = resolved?.identity ?? (state?.document.managedDailyIdentities ?? []).find((entry) => entry.lastVerifiedPrimaryEmail.toLowerCase() === normalized)
-    if (!identity) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
-    const governance = await readGovernance()
-    const { employee } = await readEmployee(identity.employeeId)
-    if (employee.status !== 'active' || !hasPublishedOrgmasterAccess(governance.document, employee.id) || !directory) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
-    const live = await directory.readByDirectoryKey(identity.directoryCustomerId, identity.directoryUserId)
-    if (!live.ok || live.user.customerId !== identity.directoryCustomerId || live.user.userId !== identity.directoryUserId || live.user.primaryEmail !== normalized || live.user.directoryState !== 'present') throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
-    if (identity.linkState === 'directory_linked_pending_auth') {
-      const bound = await bindAuth(identity.employeeId, auth)
-      const latestIdentity = repository.mode === 'postgresql'
-        ? (await repository.resolveAuthIdentity(normalized))?.identity
-        : (await repository.readExisting()).document.managedDailyIdentities?.find((entry) => entry.identityRecordId === identity.identityRecordId)
-      const row = latestIdentity
-      if (!row || bound.employee.id !== identity.employeeId) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
-      return { principalId: row.principalId, employeeId: row.employeeId }
+  const verifyManagedLoginIdentifier = async (request: { requestId: string; managedIdentifier: string; identity: VerifiedFirebaseIdentity }) => {
+    const identity = request.identity
+    if (identity.signInProvider !== 'google.com' || identity.emailVerified !== true || !identity.email?.trim() || !identity.googleUserId?.trim() || !identity.issuer || !identity.subject) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+    const tokenEmail = identity.email.trim().toLowerCase()
+    const number = parseEmployeeNumber(request.managedIdentifier)
+    const email = number.ok ? null : parseManagedPrimaryEmail(request.managedIdentifier, domain)
+    if (!number.ok && (!email || !email.ok)) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+    if (!directory || !customerId) throw new ManagedIdentityServiceError('DIRECTORY_READ_UNAVAILABLE', { retryable: true })
+    const pair = { issuer: identity.issuer, subject: identity.subject }
+
+    const readAndCheck = async () => {
+      await repository.reserveDirectoryRead()
+      const live = await directory.readByDirectoryKey(customerId, identity.googleUserId!)
+      if (!live.ok) {
+        if (live.kind === 'retryable_error') throw new ManagedIdentityServiceError('DIRECTORY_READ_UNAVAILABLE', { retryable: true })
+        throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+      }
+      if (live.user.customerId !== customerId || live.user.userId !== identity.googleUserId || live.user.directoryState !== 'present' || live.user.primaryEmail.trim().toLowerCase() !== tokenEmail) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+      return live.user
     }
-    if (identity.linkState !== 'active' || identity.authIssuer !== auth.issuer || identity.authSubject !== auth.subject) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
-    return { principalId: identity.principalId, employeeId: identity.employeeId }
+    const readSnapshot = async () => {
+      try {
+        const snapshot = await repository.readManagedLoginSnapshot(customerId, identity.googleUserId!)
+        if (!snapshot) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+        if (snapshot.identity.directoryCustomerId !== customerId || snapshot.identity.directoryUserId !== identity.googleUserId || snapshot.primaryEmail !== tokenEmail) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+        return snapshot
+      } catch (error) {
+        if (error instanceof ManagedIdentityServiceError) throw error
+        return mapStoreError(error)
+      }
+    }
+    const assertEmployeeAccess = async (employeeId: string) => {
+      const governance = await readGovernance()
+      const { employee } = await readEmployee(employeeId)
+      if (employee.status !== 'active' || !hasPublishedOrgmasterAccess(governance.document, employeeId)) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+    }
+    const assertIdentifier = (current: ManagedLoginIdentity, storedPrimaryEmail: string, livePrimaryEmail: string) => {
+      if (storedPrimaryEmail !== tokenEmail || livePrimaryEmail !== tokenEmail) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+      if (number.ok) {
+        if (current.employeeNumber !== number.value) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+      } else if (email?.ok && email.value !== tokenEmail) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+    }
+    let snapshot = await readSnapshot()
+    let live = await readAndCheck()
+    assertIdentifier(snapshot.identity, snapshot.primaryEmail, live.primaryEmail.trim().toLowerCase())
+    if (snapshot.identity.linkState === 'active' && (snapshot.identity.pair === null || snapshot.identity.pair.issuer !== pair.issuer || snapshot.identity.pair.subject !== pair.subject)) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+    if (snapshot.identity.linkState !== 'directory_linked_pending_auth' && snapshot.identity.linkState !== 'active') throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+    await assertEmployeeAccess(snapshot.identity.employeeId)
+    const expected = snapshot.identity
+    const requestHash = managedLoginRequestDigest({ directoryCustomerId: customerId, issuer: pair.issuer, subject: pair.subject, googleUserId: identity.googleUserId, authenticatedAt: identity.authenticatedAt ?? '', expected })
+    let verified: Awaited<ReturnType<ManagedIdentityRepositoryV1['verifyManagedLoginIdentity']>> | null = null
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        verified = await repository.verifyManagedLoginIdentity({ requestId: request.requestId, requestHash, current: snapshot.identity, issuer: pair.issuer, subject: pair.subject, actor: `${pair.issuer}:${pair.subject}` })
+        break
+      } catch (error) {
+        const code = error instanceof Error ? error.message : ''
+        if (attempt === 0 && code === 'MANAGED_IDENTITY_REVISION_CONFLICT') {
+          snapshot = await readSnapshot()
+          live = await readAndCheck()
+          assertIdentifier(snapshot.identity, snapshot.primaryEmail, live.primaryEmail.trim().toLowerCase())
+          if (!expectedManagedLoginIdentityMatches(expected, snapshot.identity, pair)) throw new ManagedIdentityServiceError('REVISION_CONFLICT', { retryable: true })
+          await assertEmployeeAccess(snapshot.identity.employeeId)
+          continue
+        }
+        return mapStoreError(error)
+      }
+    }
+    if (!verified) throw new ManagedIdentityServiceError('REVISION_CONFLICT', { retryable: true })
+    const post = await readSnapshot()
+    const postLive = await readAndCheck()
+    assertIdentifier(post.identity, post.primaryEmail, postLive.primaryEmail.trim().toLowerCase())
+    await assertEmployeeAccess(post.identity.employeeId)
+    if (post.identity.linkState !== 'active' || post.identity.pair === null || !expectedManagedLoginIdentityMatches(snapshot.identity, post.identity, pair) || post.identity.principalId !== verified.identity.principalId || post.identity.employeeId !== verified.identity.employeeId) throw new ManagedIdentityServiceError('REVISION_CONFLICT', { retryable: true })
+    return { principalId: post.identity.principalId, employeeId: post.identity.employeeId, mappingVersion: verified.mappingVersion }
   }
   const activationCheck = async (employeeId: string, workspaceRevision: string) => {
     try {
@@ -288,8 +331,7 @@ export function createManagedIdentityService(input: {
     findCandidate,
     confirmLink,
     bindAuth,
-    resolveFirebaseIdentity,
-    resolveLoginAlias,
+    verifyManagedLoginIdentifier,
     activationCheck,
     async enqueueRefresh(employeeId, actor, trigger, commandId) {
       const governance = await readGovernance()

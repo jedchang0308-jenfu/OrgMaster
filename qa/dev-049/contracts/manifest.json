@@ -2,7 +2,7 @@
   "contract": "DEV-049",
   "evidenceScope": "LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-17T15:03:50.662Z",
+  "generatedAt": "2026-09-17T16:01:38.271Z",
   "migrationSha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319",
   "checks": [
     {
@@ -18,7 +18,7 @@
       "status": "PASS"
     },
     {
-      "name": "receipt-first local store and canonical Firebase requery",
+      "name": "managed identifier verifier precedes canonical admission",
       "status": "PASS"
     },
     {
