@@ -640,10 +640,10 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 - 2026-09-17 前版定案（已取代）：曾規劃 replace shared view／shared core／UI port，並宣告 P0-P1=0；R2 查出 Email 相等鏈、SQL 重試順序與 shared consumer 邊界有實質缺口，不再沿用其 PASS 結論。
 - 2026-09-17 R2：改 private 同快照 read、mandatory app-local verifier／有限 retry、新 app-only view；補 repository／舊 gate allowlist 與正常入口 evidence。狀態為 Architecture Finalized R2／Design Review Only，產品未實作。
 - 2026-09-18 RD implementation：完成 private 同快照 read、mandatory verifier／一次 revision retry、014 app-only view、Auth API double-epoch、dual-identifier UI 與 legacy disclosure；targeted／contract／PG／browser／full regression／build／DB boundary 均 PASS，production 仍 gated。
-- 2026-09-18 Production L4 G2 recovery：run `35307497175` 已套012–014；candidate session因`app_sessions` runtime ACL缺失安全停止。DEV-040 §37新增forward-only 015與exact 012–015 recovery；舊root／capsule不可重用，新revision須fresh exact-source authorization。
-- 2026-09-18 release correction local gate：DEV-040 owner 62／62、abort 6／6、DEV-050 39／39＋contract 6／6、full regression 863 passed／1 skipped、DB boundary、雙build與diff check PASS；owner report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260918T030624987Z-13CD50E6/owner-report.json`。正式provider evidence仍待fresh authorization。
+- 2026-09-18 Production L4 G2 recovery：run `35307497175`已套012–014；candidate session因`app_sessions` runtime ACL缺失安全停止。DEV-040 §37新增forward-only 015與exact 012–015 recovery。舊v1 source-bound root／failed capsule只保留歷史且不可重用；現行human authorization v2只綁production target、resources、allowed／forbidden actions、risk與expiry，fresh source與release provenance由machine receipts精確綁定。
+- 2026-09-18 release correction local gate：DEV-040 owner 62／62、abort 6／6、DEV-050 39／39＋contract 6／6、full regression 863 passed／1 skipped、DB boundary、雙build與diff check PASS；owner report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260918T030624987Z-13CD50E6/owner-report.json`。正式provider evidence仍待有效production-scope authorization與fresh machine evidence；source SHA改變本身不要求新人類授權。
 - 2026-09-17 先前版本：由 Brief 補成架構文件；其成熟度與 attempt／014 決策已被本次修訂取代，歷史文字不再作直接實作依據。
-- 下一步：不新建重複DEV；完成migration 015 review／merge後，取得綁定新OrgMaster revision的fresh Production L4 authorization，再依001～015 exact ledger執行owner-native migration／candidate／activation／驗證。
+- 下一步：不新建重複DEV；完成migration 015 review／push後，在有效production-scope authorization下重建新OrgMaster revision的source／runner／migration／artifact／candidate provenance，再依001～015 exact ledger執行owner-native migration／candidate／activation／驗證。
 
 使用思考習慣：#第一性原理、#多層次分析、#驗收閉環
 

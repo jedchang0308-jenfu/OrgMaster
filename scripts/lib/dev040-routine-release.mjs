@@ -7,8 +7,8 @@ import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-tra
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 
-export function assertDev013PredecessorReceipt(value, ref, profile, observedAt, expectedSourceRevision, currentStep) {
-  return assertDev013L4Predecessor({ value, ref, profile, observedAt, expectedSourceRevision, currentStep })
+export function assertDev013PredecessorReceipt(value, ref, profile, observedAt, currentStep) {
+  return assertDev013L4Predecessor({ value, ref, profile, observedAt, currentStep })
 }
 
 // Only infrastructure/configuration inputs are reusable, not the application build or smoke results.
@@ -122,8 +122,8 @@ function assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runti
   assertRuntimeConfig(profile, runtimeConfig)
   const predecessor = readiness?.transition?.predecessorReceiptRef
   if (authorization?.schemaVersion !== 'jenfu.dev013.l4-owner-transition-authorization.v1' || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEV013_L4'
-    || readiness?.schemaVersion !== 'jenfu.dev013.l4-owner-transition-readiness.v1' || readiness.devId !== 'DEV-013' || readiness.slice !== '013-R1' || readiness.ownerApplicationId !== profile.application.id
-    || !same(readiness.sequenceStep, expectedSequenceStep) || readiness.sequenceRoot?.schemaVersion !== 'jenfu.dev013.l4-sequence-root.v1'
+    || readiness?.schemaVersion !== 'jenfu.dev013.l4-owner-transition-readiness.v2' || readiness.devId !== 'DEV-013' || readiness.slice !== '013-R1' || readiness.ownerApplicationId !== profile.application.id
+    || !same(readiness.sequenceStep, expectedSequenceStep) || readiness.sequenceRoot?.schemaVersion !== 'jenfu.dev013.l4-sequence-root.v2'
     || !Number.isFinite(Date.parse(readiness.observedAt)) || !Number.isFinite(Date.parse(readiness.expiresAt)) || !Number.isFinite(Date.parse(readiness.sequenceRoot.expiresAt)) || Date.parse(readiness.sequenceRoot.expiresAt) <= Date.parse(readiness.observedAt) || Date.parse(readiness.expiresAt) > Date.parse(readiness.sequenceRoot.expiresAt)
     || readiness.transition?.field !== field || readiness.transition.from !== from || readiness.transition.to !== to || readiness.transition.action !== action
     || !predecessor || canonicalize(Object.keys(predecessor).sort()) !== canonicalize(['sha256', 'uri']) || typeof predecessor.uri !== 'string' || predecessor.uri.length < 8 || !/^[a-f0-9]{64}$/u.test(predecessor.sha256 ?? '')) fail('DEV013_CONTROLLED_TRANSITION_AUTHORITY_INVALID')

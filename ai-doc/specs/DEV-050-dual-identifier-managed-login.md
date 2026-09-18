@@ -258,7 +258,7 @@ npm test -- --testTimeout=30000
 
 本輪驗收記錄：`npm run test:dev-050` 39／39；DEV-050 contract 6／6；isolated PostgreSQL 18.4 D50-01～04；正常建置入口 browser 1440×900／390×844；DEV-047／049 contract、DEV-013／047 tests、full regression 209 files／863 passed／1 skipped、build、DB boundary 均 PASS。`git diff --check` 通過；各 runner 的 temporary root／port／browser 均已清理。這些是本機產品與自動化 QA／QC 證據，不是正式 provider 或 release authorization。
 
-Release impact：app-local alias 行為與 OrgMaster session admission 改變，新增 app-only view／SELECT grant；沒有新 secret。DEV-013 production recovery另以migration 015恢復既有app-session repository的最小DML ACL，不改本產品契約。正式 gate依 DEV-040 §37處理 exact 001～015 ledger、相容窗口、existing-session拒絕影響與安全 rollback／fix-forward；仍須以修正後 exact revision取得 fresh human authorization，本文件本身不產生 release authority。
+Release impact：app-local alias 行為與 OrgMaster session admission 改變，新增 app-only view／SELECT grant；沒有新 secret。DEV-013 production recovery另以migration 015恢復既有app-session repository的最小DML ACL，不改本產品契約。正式 gate依 DEV-040 §37處理 exact 001～015 ledger、相容窗口、existing-session拒絕影響與安全 rollback／fix-forward；human authorization只綁定production target、resources、allowed／forbidden actions、risk與expiry，修正後exact revision及其migration／artifact／candidate provenance由machine-verifiable receipts重新綁定。本文件本身不產生 release authority。
 
 RD 開始前重新核對 branch／HEAD／dirty state、父 receipt 與 migration bytes。未預期的受控來源 drift 先做 impact review；本 DEV allowlist 內的預期變更記入新 evidence，不要求實作後仍匹配父 source hash，不重寫歷史 receipt。fixture 掩蓋真 repo、用 unsafe cast 繞過 contract、修改 applied migration、放寬 role gate 均是停止條件。
 

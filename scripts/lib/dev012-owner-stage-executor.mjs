@@ -78,7 +78,7 @@ function acceptedStatus(value, statuses) {
 function assertControlledEnvironmentAuthority({ intent, profile, values, runtime }) {
   const rules = profile.environment?.controlledValues ?? {}
   const controlledEnvironment = Object.fromEntries(Object.keys(rules).sort().map((name) => [name, runtime.plainEnvironment?.[name]]))
-  const isDev013 = values.readiness?.schemaVersion === 'jenfu.dev013.l4-owner-transition-readiness.v1'
+  const isDev013 = values.readiness?.schemaVersion === 'jenfu.dev013.l4-owner-transition-readiness.v2'
   if (!isDev013 && !Object.entries(rules).some(([name, rule]) => controlledEnvironment[name] !== rule.defaultValue)) return
   const transition = values.readiness?.transition
   const predecessor = transition?.predecessorReceiptRef
@@ -86,12 +86,12 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
   let expectedSequenceStep = null
   try { expectedSequenceStep = dev013L4SequenceStep(profile.application.id, transition, previousControlledEnvironment, controlledEnvironment) } catch {}
   if (values.authorization?.schemaVersion !== 'jenfu.dev013.l4-owner-transition-authorization.v1' || values.authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEV013_L4'
-    || values.readiness?.schemaVersion !== 'jenfu.dev013.l4-owner-transition-readiness.v1' || values.readiness.devId !== 'DEV-013' || values.readiness.slice !== '013-R1'
+    || values.readiness?.schemaVersion !== 'jenfu.dev013.l4-owner-transition-readiness.v2' || values.readiness.devId !== 'DEV-013' || values.readiness.slice !== '013-R1'
     || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
     || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
     || canonicalize(values.readiness.controlledEnvironment) !== canonicalize(controlledEnvironment)
     || canonicalize(values.readiness.sequenceStep) !== canonicalize(expectedSequenceStep)
-    || values.readiness.sequenceRoot?.schemaVersion !== 'jenfu.dev013.l4-sequence-root.v1'
+    || values.readiness.sequenceRoot?.schemaVersion !== 'jenfu.dev013.l4-sequence-root.v2'
     || !Object.hasOwn(rules, transition?.field) || transition.to !== controlledEnvironment[transition.field] || (transition.from !== null && !rules[transition.field].allowedValues.includes(transition.from)) || !rules[transition.field].allowedValues.includes(transition.to) || transition.from === transition.to
     || !['guard', 'activate', 'rollback'].includes(transition.action)
     || transition.from !== previousControlledEnvironment?.[transition.field]
