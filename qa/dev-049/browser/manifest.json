@@ -1,0 +1,57 @@
+{
+  "contract": "DEV-049",
+  "evidenceScope": "LOCAL_ISOLATED",
+  "status": "PASS",
+  "baseUrl": "http://127.0.0.1:56735",
+  "port": 56735,
+  "ownerPid": 24352,
+  "temporaryRoot": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev-049-browser-rqI3IU",
+  "cleanup": "browser/server closed and temporary root removed",
+  "gitHead": "b839003c4f0bcebb282d02d927a0fb5e5c5f065b",
+  "results": [
+    {
+      "viewport": "1440x900",
+      "hasSection": true,
+      "hasNumber": true,
+      "hasLegacy": false,
+      "mutationButtons": 3,
+      "overflow": {
+        "width": 1440,
+        "viewportWidth": 1440
+      }
+    },
+    {
+      "viewport": "1024x768",
+      "hasSection": true,
+      "hasNumber": true,
+      "hasLegacy": false,
+      "mutationButtons": 3,
+      "overflow": {
+        "width": 1024,
+        "viewportWidth": 1024
+      }
+    },
+    {
+      "viewport": "390x844",
+      "hasSection": true,
+      "hasNumber": true,
+      "hasLegacy": false,
+      "mutationButtons": 0,
+      "overflow": {
+        "width": 390,
+        "viewportWidth": 390
+      }
+    }
+  ],
+  "flow": {
+    "employee": "張仕杰",
+    "employeeNumber": "JFS0005",
+    "primaryEmail": "jedchang0308@jenfu.com.tw",
+    "redactedPreview": true,
+    "finalState": "directory_linked_pending_auth",
+    "visibleErrors": 0
+  },
+  "providerReadCount": 2,
+  "providerWriteCount": 0,
+  "generatedAt": "2026-09-17T14:15:41.707Z"
+}

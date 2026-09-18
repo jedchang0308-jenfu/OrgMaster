@@ -6,6 +6,7 @@ import { createManagedIdentityService, ManagedIdentityServiceError, type Managed
 import { createLocalDeterministicDirectoryPort, createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort } from './orgmasterManagedDirectoryPort'
 
 export const MANAGED_IDENTITY_API_PATH = '/api/orgmaster/employees'
+export const MANAGED_IDENTITY_NUMBERS_API_PATH = '/api/orgmaster/employee-numbers'
 const MAX_BODY_BYTES = 8 * 1024
 
 function sendJson(response: ServerResponse, status: number, payload: unknown) {
@@ -19,8 +20,8 @@ function statusFor(code: string) {
   if (code === 'IDENTITY_CONTEXT_REQUIRED') return 401
   if (['IDENTITY_VIEW_REQUIRED', 'IDENTITY_NUMBER_MANAGE_REQUIRED', 'IDENTITY_LINK_REQUIRED', 'IDENTITY_REFRESH_REQUIRED', 'DB_ADMISSION_DISABLED', 'HUMAN_PRIVILEGED_REQUIRED'].includes(code)) return 403
   if (code === 'EMPLOYEE_NOT_FOUND') return 404
-  if (['EMPLOYEE_NUMBER_INVALID', 'EMPLOYEE_NUMBER_REQUIRED', 'INVALID_REQUEST', 'EMPLOYEE_NUMBER_REQUIRED'].includes(code)) return 422
-  if (['EMPLOYEE_NUMBER_CONFLICT', 'EMPLOYEE_NUMBER_RETIRED', 'REVISION_CONFLICT', 'CANDIDATE_INVALID', 'DIRECTORY_CANDIDATE_MISMATCH', 'DIRECTORY_CANDIDATE_NOT_FOUND', 'DIRECTORY_IDENTITY_CONFLICT'].includes(code)) return 409
+  if (['EMPLOYEE_NUMBER_INVALID', 'EMPLOYEE_NUMBER_REQUIRED', 'INVALID_REQUEST', 'MANAGED_PRIMARY_EMAIL_INVALID', 'MANAGED_PRIMARY_EMAIL_DOMAIN_NOT_ALLOWED', 'DIRECTORY_USER_INELIGIBLE'].includes(code)) return 422
+  if (['EMPLOYEE_NUMBER_CONFLICT', 'EMPLOYEE_NUMBER_RETIRED', 'REVISION_CONFLICT', 'CANDIDATE_INVALID', 'IDEMPOTENCY_CONFLICT', 'DIRECTORY_CANDIDATE_MISMATCH', 'DIRECTORY_CANDIDATE_NOT_FOUND', 'DIRECTORY_IDENTITY_CONFLICT'].includes(code)) return 409
   if (code === 'IDENTITY_ORIGIN_INVALID') return 403
   return 503
 }
@@ -66,7 +67,22 @@ function assertSameOrigin(request: IncomingMessage) {
 async function handle(request: IncomingMessage, response: ServerResponse, service: ManagedIdentityServiceV1) {
   const identity = verifiedGovernanceActor(request)
   if (!identity) { sendJson(response, 401, { error: 'IDENTITY_CONTEXT_REQUIRED' }); return true }
-  const target = employeeIdFromPath(new URL(request.url ?? '/', 'http://orgmaster.local').pathname)
+  const pathname = new URL(request.url ?? '/', 'http://orgmaster.local').pathname
+  if (pathname === MANAGED_IDENTITY_NUMBERS_API_PATH) {
+    try {
+      if (request.method === 'GET') {
+        sendJson(response, 200, await service.readNumbers(identity))
+        return true
+      }
+      sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' })
+      return true
+    } catch (error) {
+      const code = error instanceof ManagedIdentityServiceError ? error.code : 'MANAGED_IDENTITY_READ_FAILED'
+      sendJson(response, statusFor(code), { error: code })
+      return true
+    }
+  }
+  const target = employeeIdFromPath(pathname)
   if (!target || !['managed-identity', 'employee-number', 'managed-identity/candidate', 'managed-identity/confirm', 'managed-identity/refresh', 'activation-check'].includes(target.action)) return false
   try {
     if (target.action === 'managed-identity' && request.method === 'GET') {
@@ -88,9 +104,11 @@ async function handle(request: IncomingMessage, response: ServerResponse, servic
     if (target.action === 'managed-identity/candidate' && request.method === 'POST') {
       assertSameOrigin(request)
       const body = await readBody(request)
+      if (body.expectedWorkspaceRevision !== null && typeof body.expectedWorkspaceRevision !== 'string' || typeof body.expectedRegistryRevision !== 'string' || typeof body.primaryEmail !== 'string') throw new ManagedIdentityServiceError('INVALID_REQUEST')
       const input: FindManagedIdentityCandidateRequestV1 = {
-        expectedWorkspaceRevision: body.expectedWorkspaceRevision === null || body.expectedWorkspaceRevision === undefined ? null : String(body.expectedWorkspaceRevision),
-        expectedRegistryRevision: body.expectedRegistryRevision === null || body.expectedRegistryRevision === undefined ? null : String(body.expectedRegistryRevision),
+        expectedWorkspaceRevision: body.expectedWorkspaceRevision,
+        expectedRegistryRevision: body.expectedRegistryRevision,
+        primaryEmail: body.primaryEmail,
       }
       sendJson(response, 200, await service.findCandidate(target.employeeId, identity, input))
       return true
@@ -98,10 +116,11 @@ async function handle(request: IncomingMessage, response: ServerResponse, servic
     if (target.action === 'managed-identity/confirm' && request.method === 'POST') {
       assertSameOrigin(request)
       const body = await readBody(request)
+      if (typeof body.commandId !== 'string' || typeof body.candidateToken !== 'string' || body.expectedWorkspaceRevision !== null && typeof body.expectedWorkspaceRevision !== 'string' || typeof body.expectedRegistryRevision !== 'string') throw new ManagedIdentityServiceError('INVALID_REQUEST')
       const input: ConfirmManagedIdentityLinkRequestV1 = {
-        commandId: String(body.commandId ?? ''), candidateToken: String(body.candidateToken ?? ''),
-        expectedWorkspaceRevision: body.expectedWorkspaceRevision === null || body.expectedWorkspaceRevision === undefined ? null : String(body.expectedWorkspaceRevision),
-        expectedRegistryRevision: body.expectedRegistryRevision === null || body.expectedRegistryRevision === undefined ? null : String(body.expectedRegistryRevision),
+        commandId: body.commandId, candidateToken: body.candidateToken,
+        expectedWorkspaceRevision: body.expectedWorkspaceRevision,
+        expectedRegistryRevision: body.expectedRegistryRevision,
       }
       sendJson(response, 200, await service.confirmLink(target.employeeId, identity, input))
       return true
@@ -135,9 +154,9 @@ export function createOrgmasterManagedIdentityMiddleware(root = process.cwd(), d
     : process.env.ORGMASTER_MANAGED_IDENTITY_ENABLED === 'true' && process.env.ORGMASTER_DIRECTORY_CUSTOMER_ID && process.env.ORGMASTER_DIRECTORY_DWD_SUBJECT
       ? createGoogleDirectoryReadOnlyPort({ customerId: process.env.ORGMASTER_DIRECTORY_CUSTOMER_ID, domain: process.env.ORGMASTER_MANAGED_DOMAIN ?? 'jenfu.com.tw', auth: createGoogleDirectoryAuthPort({ delegatedSubject: process.env.ORGMASTER_DIRECTORY_DWD_SUBJECT }) })
       : undefined
-  const runtime = service ?? createManagedIdentityService({ root, devEnabled, directory })
+  const runtime = service ?? createManagedIdentityService({ root, devEnabled, directory, directoryCustomerId: devEnabled ? undefined : process.env.ORGMASTER_DIRECTORY_CUSTOMER_ID })
   return (request, response, next) => {
-    if (!request.url?.startsWith(MANAGED_IDENTITY_API_PATH)) return next()
+    if (!request.url?.startsWith(MANAGED_IDENTITY_API_PATH) && !request.url?.startsWith(MANAGED_IDENTITY_NUMBERS_API_PATH)) return next()
     void handle(request, response, runtime).then((handled) => { if (!handled) next() }).catch(() => { if (!response.writableEnded) sendJson(response, 503, { error: 'MANAGED_IDENTITY_READ_FAILED' }) })
   }
 }

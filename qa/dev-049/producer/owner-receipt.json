@@ -1,0 +1,135 @@
+{
+  "contractVersion": "jenfu.managed-login.owner-receipt.v1",
+  "devId": "DEV-049",
+  "ownerApplicationId": "orgmaster",
+  "evidenceScope": "LOCAL_ISOLATED",
+  "status": "LOCAL_OWNER_IMPLEMENTATION_PASS",
+  "producedAt": "2026-09-17T15:04:15.226Z",
+  "source": {
+    "branch": "codex/dev-049-existing-google-account",
+    "revision": "b839003c4f0bcebb282d02d927a0fb5e5c5f065b",
+    "controlledTreeSha256": "3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a",
+    "controlledFiles": [
+      {
+        "path": "db/migrations/013_dev049_existing_google_primary_account_link.sql",
+        "sha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319"
+      },
+      {
+        "path": "package.json",
+        "sha256": "def2d4fb8ca0336e817a2848ec7145b2ccd47fe9864e7bef1943241fe8a0f830"
+      },
+      {
+        "path": "scripts/dev049-managed-login-owner-receipt.mjs",
+        "sha256": "a01f340eaa2c635eb57c6799be1e0ab90e0b1d89ccda07bbee0b4626511143a7"
+      },
+      {
+        "path": "scripts/lib/dev049-managed-login-owner-receipt.mjs",
+        "sha256": "317923cb5888dc1a184b61815d365752f809b7ec1b0cf006f0545d45f8abd66b"
+      },
+      {
+        "path": "scripts/qc-dev-047-postgres.mjs",
+        "sha256": "dc466cd1dfd6600701ab57f6c5911bfb62cb3162b76762f500aa7d05c6eb8ad2"
+      },
+      {
+        "path": "scripts/qc-dev-049-contract.mjs",
+        "sha256": "8300a23f35b3e95e97cfe5fba370d6402b6e5b982e3c7e6c3251e39c8fdb9edb"
+      },
+      {
+        "path": "server/orgmasterAuthApi.ts",
+        "sha256": "c97874c950c075baf3ba637936b0ba2b05c240a4a248034df7d5d04cab2cecd5"
+      },
+      {
+        "path": "server/orgmasterFirebaseIdentityProvider.ts",
+        "sha256": "bb04ce5b24705aded3e202722eb52418704dbb09a3d248532e58d5ac70961713"
+      },
+      {
+        "path": "server/orgmasterManagedDirectoryPort.ts",
+        "sha256": "31073e322c31a55b8ffce33cf13d10b1eba51352b2a221a76065b10b4a44822a"
+      },
+      {
+        "path": "server/orgmasterManagedIdentityRepository.ts",
+        "sha256": "ddf852704526853edc9d49a85ff32fa2c1ce5d3f76dc7583fe9319169780d46f"
+      },
+      {
+        "path": "server/orgmasterManagedIdentityStore.ts",
+        "sha256": "6ce13989e79a57f2d50edd3292220f84c4bc5df62c81fedcf915061acf03e6b3"
+      },
+      {
+        "path": "server/orgmasterManagedLoginApi.ts",
+        "sha256": "7b2a0d22ffb99d647e7b3a4bce4481c4aa34ce46d6840c861df4089e9fcda210"
+      },
+      {
+        "path": "server/orgmasterManagedLoginContract.ts",
+        "sha256": "cb946525ae71d63d8fcb17903ea0b95a482dadd11449274e4a7036405d8242fa"
+      },
+      {
+        "path": "server/orgmasterManagedLoginService.ts",
+        "sha256": "a0c89ea909ce8c2801e16a67ef78df379edf32fd04200758db6ea90a80ca65bf"
+      },
+      {
+        "path": "server/orgmasterServer.ts",
+        "sha256": "144d9652a7c1cf550c69f2d65de5270306c040a1bbc6929fc52b35a7f10f0fdf"
+      },
+      {
+        "path": "vite.config.ts",
+        "sha256": "d92e6a50b15586ee079cdb5eaad1a8fa5fbee84fd71e3f704851667af5332810"
+      }
+    ]
+  },
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/internal/managed-login/v1",
+    "contractVersion": "jenfu.managed-login.v1",
+    "callerAuthentication": "google-service-identity-email-and-subject",
+    "actions": [
+      "resolveAlias",
+      "verifyIdentity"
+    ]
+  },
+  "database": {
+    "migration": "db/migrations/013_dev049_existing_google_primary_account_link.sql",
+    "migrationSha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319",
+    "ownerSchemas": [
+      "orgmaster_core",
+      "orgmaster_contract"
+    ],
+    "directPlatformCoreAccess": false
+  },
+  "evidence": [
+    {
+      "kind": "browser",
+      "path": "qa/dev-049/browser/manifest.json",
+      "sha256": "f18f765ff9150ef6c09faac2720f798c30d366bad0cfa0751afd0883ea3f01b8",
+      "status": "PASS"
+    },
+    {
+      "kind": "contract",
+      "path": "qa/dev-049/contracts/manifest.json",
+      "sha256": "7d7226ec2a7cd205959feaf75f339db9ea0cc055df402257d9b01b9ebfa2d411",
+      "status": "PASS"
+    },
+    {
+      "kind": "postgres",
+      "path": "qa/dev-049/postgres/manifest.json",
+      "sha256": "3c62a91ff92705fe63e6dad742de727adab863a72439d6be5aa61ea199d9743e",
+      "status": "PASS"
+    }
+  ],
+  "guarantees": {
+    "firebaseRevocationCheck": true,
+    "uniqueGoogleProviderId": true,
+    "directoryStableKeyRead": true,
+    "ownerCas": true,
+    "idempotentReceipt": true,
+    "lifecycleBarrier": true,
+    "providerWrites": 0,
+    "productionWrites": 0
+  },
+  "dataSafety": {
+    "containsCredentials": false,
+    "containsTokens": false,
+    "containsDirectIdentifiers": false
+  },
+  "limitation": "Local isolated owner implementation evidence only. It is not a provider, target, staging, production, traffic, or activation receipt.",
+  "receiptSha256": "79a489833141d7773f845ba1e8cb608d1be9faf4276be9e344e1e102ee5b23b7"
+}

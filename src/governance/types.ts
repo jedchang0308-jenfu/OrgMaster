@@ -546,7 +546,7 @@ export interface GovernanceOrgSource {
   workspaceRevision: string
   sourceDataAt?: string
   state: {
-    employees: Array<{ id: string; primaryAssignmentId: string | null; status?: 'active' | 'inactive' }>
+    employees: Array<{ id: string; name?: string; primaryAssignmentId: string | null; status?: 'active' | 'inactive' }>
     departments: Array<{ id: string; parentId: string | null }>
     roles: Array<{ id: string }>
     positions: GovernanceOrganizationSnapshotV1['positions']

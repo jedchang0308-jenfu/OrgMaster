@@ -1,10 +1,15 @@
 import { spawnSync } from 'node:child_process'
-import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, sha256 } from './dev012-owner-release-runtime.mjs'
+import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256 } from './dev012-owner-release-runtime.mjs'
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
+import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
 
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
+
+export function assertDev013PredecessorReceipt(value, ref, profile, observedAt, expectedSourceRevision, currentStep) {
+  return assertDev013L4Predecessor({ value, ref, profile, observedAt, expectedSourceRevision, currentStep })
+}
 
 // Only infrastructure/configuration inputs are reusable, not the application build or smoke results.
 export function routineInfrastructureFingerprint(root, revision) {
@@ -21,6 +26,27 @@ export function routineInfrastructureFingerprint(root, revision) {
 // Historical initialization metadata is not a provisioned infrastructure input.
 // Every other profile field remains covered, including unknown future fields.
 export function releaseInfrastructureInputs({ productionData, ...profile }) { return profile }
+
+function dev013NeutralInfrastructureInputs(profile) {
+  const value = structuredClone(releaseInfrastructureInputs(profile))
+  const required = value.environment?.requiredPlainEnvironmentNames ?? []
+  value.environment.requiredPlainEnvironmentNames = required.filter((name) => !['ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN'].includes(name))
+  delete value.environment?.fixedValues?.ORGMASTER_JENFU_SSO_BROKER_ORIGIN
+  delete value.environment?.controlledValues?.ORGMASTER_JENFU_SSO_HANDOFF_MODE
+  if (value.environment?.controlledValues && Object.keys(value.environment.controlledValues).length === 0) delete value.environment.controlledValues
+  return value
+}
+
+export function controlledInfrastructureFingerprint(root, revision) {
+  if (!/^[a-f0-9]{40}$/u.test(revision)) fail('ROUTINE_SOURCE_INVALID')
+  const result = spawnSync('git', ['ls-tree', '-r', '-z', revision, '--',
+    'infra/google-cloud/dev-040-production-release', 'config/dev-010/n1c-orgmaster.json',
+  ], { cwd: root, encoding: null, windowsHide: true })
+  if (result.status !== 0 || !result.stdout?.length) fail('ROUTINE_BASELINE_SOURCE_MISSING')
+  const config = spawnSync('git', ['show', `${revision}:config/release/dev040-orgmaster-independent-production-v3.json`], { cwd: root, encoding: 'utf8', windowsHide: true })
+  if (config.status !== 0) fail('ROUTINE_BASELINE_SOURCE_MISSING')
+  return sha256(Buffer.concat([result.stdout, Buffer.from(canonicalize(dev013NeutralInfrastructureInputs(JSON.parse(config.stdout))))]))
+}
 
 function assertSealedStage(value, profile, intent, stage) {
   const { receiptSha256, ...core } = value ?? {}
@@ -43,6 +69,40 @@ export function assertRoutineRuntimeReadback(profile, runtimeConfig, revision) {
   // The same immutable revision supplies the rest of the provider configuration; a
   // changed service template cannot silently become this routine release's baseline.
   return true
+}
+
+function assertHistoricalRuntimeReadback(profile, runtimeConfig, revision) {
+  const expected = runtimeConfig?.template
+  const observed = revision.containers?.find((row) => row.name === profile.runtime.containerName)
+  const expectedApp = expected?.containers?.find((row) => row.name === profile.runtime.containerName)
+  const env = (observed?.env ?? []).filter((row) => row.name !== profile.environment.candidateOriginEnvironmentName)
+  const sort = (rows) => [...rows].sort((a, b) => a.name.localeCompare(b.name))
+  if (!expected || expected.runtimeServiceAccount !== undefined || expected.serviceAccount !== profile.target.runtimeServiceAccount || !expectedApp || revision.serviceAccount !== expected.serviceAccount || !same(sort(env), sort(expectedApp.env))) fail('ROUTINE_RUNTIME_DRIFT')
+  return true
+}
+
+function assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, readiness, authorization) {
+  const field = 'ORGMASTER_JENFU_SSO_HANDOFF_MODE'
+  const previousPlain = baselineRuntime?.plainEnvironment
+  const nextPlain = runtimeConfig?.plainEnvironment
+  const from = previousPlain?.[field] ?? null
+  const to = nextPlain?.[field]
+  const action = from === null && to === 'off' ? 'guard' : from === 'off' && to === 'on' ? 'activate' : from === 'on' && to === 'off' ? 'rollback' : null
+  const expectedPlain = resolvePlainEnvironment(profile, previousPlain, { [field]: to })
+  const previousControlledEnvironment = { [field]: from }
+  const controlledEnvironment = { [field]: to }
+  let expectedSequenceStep = null
+  try { expectedSequenceStep = dev013L4SequenceStep(profile.application.id, readiness?.transition, previousControlledEnvironment, controlledEnvironment) } catch {}
+  if (!action || !same(nextPlain, expectedPlain) || !same(runtimeConfig.secretVersions, baselineRuntime.secretVersions)) fail('ROUTINE_RUNTIME_CHANGED')
+  assertRuntimeConfig(profile, runtimeConfig)
+  const predecessor = readiness?.transition?.predecessorReceiptRef
+  if (authorization?.schemaVersion !== 'jenfu.dev013.l4-owner-transition-authorization.v1' || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEV013_L4'
+    || readiness?.schemaVersion !== 'jenfu.dev013.l4-owner-transition-readiness.v1' || readiness.devId !== 'DEV-013' || readiness.slice !== '013-R1' || readiness.ownerApplicationId !== profile.application.id
+    || !same(readiness.sequenceStep, expectedSequenceStep) || readiness.sequenceRoot?.schemaVersion !== 'jenfu.dev013.l4-sequence-root.v1'
+    || !Number.isFinite(Date.parse(readiness.observedAt)) || !Number.isFinite(Date.parse(readiness.expiresAt)) || !Number.isFinite(Date.parse(readiness.sequenceRoot.expiresAt)) || Date.parse(readiness.sequenceRoot.expiresAt) <= Date.parse(readiness.observedAt) || Date.parse(readiness.expiresAt) > Date.parse(readiness.sequenceRoot.expiresAt)
+    || readiness.transition?.field !== field || readiness.transition.from !== from || readiness.transition.to !== to || readiness.transition.action !== action
+    || !predecessor || canonicalize(Object.keys(predecessor).sort()) !== canonicalize(['sha256', 'uri']) || typeof predecessor.uri !== 'string' || predecessor.uri.length < 8 || !/^[a-f0-9]{64}$/u.test(predecessor.sha256 ?? '')) fail('DEV013_CONTROLLED_TRANSITION_AUTHORITY_INVALID')
+  return { releaseMode: 'DEV013_CONTROLLED_ENVIRONMENT', field, from, to, action, predecessorReceiptRef: predecessor }
 }
 
 export async function readRoutineBaseline({ profile, transport, baselineIntentRef }) {
@@ -87,20 +147,23 @@ export async function resolveRoutineControlBaseline({ profile, transport, contro
   return intent.baselineIntentRef
 }
 
-export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint }) {
+export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.terminal.value.facts.candidateRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
   transport.assertServiceSettled(service)
   transport.assertCanonicalEntrypoint(profile, service)
   if ([...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some((row) => row.tag)) fail('ROUTINE_BASELINE_TAGGED')
   if (!same(intent.foundationReceiptRef, baseline.intent.foundationReceiptRef) || !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)) fail('ROUTINE_INFRA_REF_CHANGED')
-  const infrastructureSha256 = fingerprint(root, intent.sourceRevision)
-  if (infrastructureSha256 !== fingerprint(root, baseline.intent.sourceRevision)) fail('ROUTINE_INFRA_CHANGED')
   const runtimeConfig = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
-  if (!same(runtimeConfig, baseline.runtime.value.runtimeConfig ?? baseline.runtime.value)) fail('ROUTINE_RUNTIME_CHANGED')
+  const baselineRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
+  const controlledTransition = same(runtimeConfig, baselineRuntime) ? null : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
+  const infrastructureHash = controlledTransition ? transitionFingerprint : fingerprint
+  const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
+  if (infrastructureSha256 !== infrastructureHash(root, baseline.intent.sourceRevision)) fail('ROUTINE_INFRA_CHANGED')
   const revision = await transport.getRevision(profile, intent.previousRevision)
   transport.assertRevisionReady(profile, revision, baseline.deployment.value.artifactDigest, baseline.candidate.value.facts.cloudSqlProxyResolvedImage)
-  assertRoutineRuntimeReadback(profile, runtimeConfig, revision)
+  if (controlledTransition) assertHistoricalRuntimeReadback(profile, baselineRuntime, revision)
+  else assertRoutineRuntimeReadback(profile, runtimeConfig, revision)
   const current = await buildMigrationBundle(intent.sourceRevision)
   if (current.bundle.manifestSha256 !== intent.migrationManifestSha256) fail('MIGRATION_MANIFEST_MISMATCH')
   const migrationInputsSha256 = assertRoutineMigrationUnchanged(baseline.bundle.value, current.bundle)
@@ -108,5 +171,5 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     const value = values[name]
     if (value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.releaseId !== intent.releaseId || !same(value.baselineIntentRef, intent.baselineIntentRef)) fail('ROUTINE_AUTHORITY_MISMATCH')
   }
-  return { baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, infrastructureSha256, migrationInputsSha256, previousRevision: intent.previousRevision, databaseVerification: 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false }
+  return { baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, infrastructureSha256, migrationInputsSha256, previousRevision: intent.previousRevision, databaseVerification: 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
 }

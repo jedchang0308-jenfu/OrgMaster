@@ -182,6 +182,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </div>
     </section>
   </main>
+  if (state.mode.ssoHandoffEnabled) return <main className="auth-gate">
+    <section className="auth-login auth-login--managed" aria-labelledby="sso-login-title">
+      <div><p className="auth-login__eyebrow">鉦富管理平台</p><h1 id="sso-login-title">使用平台登入</h1><p>登入一次即可進入你有權限的 Jenfu 系統。</p></div>
+      {state.message && <p className="auth-login__error" role="alert">{state.message}</p>}
+      <button type="button" disabled={busy} onClick={() => { window.location.assign(`/api/auth/jenfu-sso/start?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`) }}>{busy ? '準備登入…' : '使用鉦富平台登入'}</button>
+    </section>
+  </main>
   return <main className="auth-gate">
     {state.mode.managedLoginEnabled && <form className="auth-login auth-login--managed" onSubmit={(event) => { void submitManagedLogin(event) }}>
       <div><p className="auth-login__eyebrow">公司統一身分</p><h1>以 JFS 員工編號登入</h1><p>輸入永久員工編號後，使用 Google Cloud Identity 完成驗證。</p></div>

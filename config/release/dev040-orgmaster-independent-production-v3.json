@@ -147,7 +147,9 @@
       "VITE_JENFU_FIREBASE_API_KEY",
       "VITE_JENFU_FIREBASE_AUTH_DOMAIN",
       "VITE_JENFU_FIREBASE_PROJECT_ID",
-      "VITE_JENFU_FIREBASE_APP_ID"
+      "VITE_JENFU_FIREBASE_APP_ID",
+      "ORGMASTER_JENFU_SSO_HANDOFF_MODE",
+      "ORGMASTER_JENFU_SSO_BROKER_ORIGIN"
     ],
     "requiredSecretNames": [
       "ORGMASTER_POSTGRES_URL",
@@ -171,7 +173,14 @@
       "JENFU_IDENTITY_ISSUER": "https://securetoken.google.com/jenfu-platform-prod",
       "JENFU_IDENTITY_AUDIENCE": "jenfu-platform-prod",
       "VITE_JENFU_FIREBASE_AUTH_DOMAIN": "jenfu-platform-prod.firebaseapp.com",
-      "VITE_JENFU_FIREBASE_PROJECT_ID": "jenfu-platform-prod"
+      "VITE_JENFU_FIREBASE_PROJECT_ID": "jenfu-platform-prod",
+      "ORGMASTER_JENFU_SSO_BROKER_ORIGIN": "https://jenfu-platform-prod-9536592944.asia-east1.run.app"
+    },
+    "controlledValues": {
+      "ORGMASTER_JENFU_SSO_HANDOFF_MODE": {
+        "defaultValue": "off",
+        "allowedValues": ["off", "on"]
+      }
     }
   },
   "migrations": {

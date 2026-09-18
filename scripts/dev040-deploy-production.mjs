@@ -6,8 +6,9 @@ import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildReleaseIntent, buildRuntimeConfigReceipt, buildSourceFreeze, readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
 import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
-import { canonicalize, createOwnerTransport, sha256 } from './lib/dev012-owner-release-runtime.mjs'
-import { readRoutineBaseline, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
+import { canonicalize, createOwnerTransport, resolvePlainEnvironment, sha256 } from './lib/dev012-owner-release-runtime.mjs'
+import { assertDev013PredecessorReceipt, readRoutineBaseline, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
+import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 function command(name, args) {
@@ -16,9 +17,36 @@ function command(name, args) {
   return result.stdout.trim()
 }
 
+async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile, observedAt, expectedSourceRevision, currentStep) {
+  const result = await transport.readBytes(predecessorReceiptRef.uri, { prefixes: ['receipts'], expectedSha256: predecessorReceiptRef.sha256 })
+  let value
+  try { value = JSON.parse(result.bytes.toString('utf8')) } catch { throw new Error('DEV013_PREDECESSOR_RECEIPT_INVALID') }
+  return assertDev013PredecessorReceipt(value, predecessorReceiptRef, profile, observedAt, expectedSourceRevision, currentStep)
+}
+
+function parseArgs(argv) {
+  const options = { check: false, prepareOnly: false, handoffMode: null, action: null, predecessorReceiptRef: null }
+  for (const arg of argv) {
+    if (arg === '--check' && !options.check) options.check = true
+    else if (arg === '--prepare-only' && !options.prepareOnly) options.prepareOnly = true
+    else if (arg.startsWith('--dev013-handoff-mode=') && options.handoffMode === null) options.handoffMode = arg.slice('--dev013-handoff-mode='.length)
+    else if (arg.startsWith('--dev013-action=') && options.action === null) options.action = arg.slice('--dev013-action='.length)
+    else if (arg.startsWith('--dev013-predecessor-ref=') && options.predecessorReceiptRef === null) {
+      const value = arg.slice('--dev013-predecessor-ref='.length)
+      const match = /^(?<uri>\S+)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(value)
+      if (!match) throw new Error('DEV013_PREDECESSOR_REF_INVALID')
+      options.predecessorReceiptRef = match.groups
+    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH]')
+  }
+  const controlled = [options.handoffMode, options.action, options.predecessorReceiptRef].filter((value) => value !== null).length
+  if (options.check && options.prepareOnly) throw new Error('INVALID_ARGUMENTS')
+  if (controlled !== 0 && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
+  if (controlled === 3 && (!['off', 'on'].includes(options.handoffMode) || !['guard', 'activate', 'rollback'].includes(options.action))) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INVALID')
+  return options
+}
+
 async function main() {
-  const args = process.argv.slice(2)
-  if (args.some((arg) => !['--check', '--prepare-only'].includes(arg)) || args.length > 1) throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only]')
+  const options = parseArgs(process.argv.slice(2))
   const profile = JSON.parse(readGitBlob(root, 'config/release/dev040-orgmaster-independent-production-v3.json'))
   const n1c = JSON.parse(readGitBlob(root, 'config/dev-010/n1c-orgmaster.json'))
   assertDev040V3Profile(profile, n1c)
@@ -45,10 +73,26 @@ async function main() {
   const deadlineAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
   const sourceLock = buildSourceFreeze({ profile, releaseId, observedAt, git, sourceIdentityBytes: createGitSourceIdentity(root, git.sourceRevision), migrationBundle: await buildMigrationBundle(git.sourceRevision) })
   const previousRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
-  const runtimeConfig = buildRuntimeConfigReceipt({ profile, releaseId, sourceLock, plainEnvironment: previousRuntime.plainEnvironment, secretVersions: previousRuntime.secretVersions, observedAt })
-  const authority = { ownerApplicationId: 'orgmaster', projectId: profile.target.projectId, sourceRevision: git.sourceRevision, releaseId, environment: 'production', baselineIntentRef, expiresAt: deadlineAt, observedAt, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', remainingHumanAction: 0 }
-  const authorization = { ...authority, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
-  const readiness = { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
+  const previousMode = previousRuntime.plainEnvironment?.ORGMASTER_JENFU_SSO_HANDOFF_MODE ?? null
+  let plainEnvironment = previousRuntime.plainEnvironment
+  let transition = null
+  if (options.handoffMode !== null) {
+    const expectedAction = previousMode === null && options.handoffMode === 'off' ? 'guard' : previousMode === 'off' && options.handoffMode === 'on' ? 'activate' : previousMode === 'on' && options.handoffMode === 'off' ? 'rollback' : null
+    if (!expectedAction || options.action !== expectedAction) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INVALID')
+    plainEnvironment = resolvePlainEnvironment(profile, previousRuntime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: options.handoffMode })
+    transition = { field: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', from: previousMode, to: options.handoffMode, action: options.action, predecessorReceiptRef: options.predecessorReceiptRef }
+  }
+  const previousControlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: previousMode }
+  const controlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: options.handoffMode }
+  const sequenceStep = transition ? dev013L4SequenceStep(profile.application.id, transition, previousControlledEnvironment, controlledEnvironment) : null
+  const predecessorEvidence = transition ? await verifyDev013Predecessor(transport, transition.predecessorReceiptRef, profile, observedAt, git.sourceRevision, sequenceStep) : null
+  if (transition && Date.parse(deadlineAt) > Date.parse(predecessorEvidence.sequenceRoot.expiresAt)) throw new Error('DEV013_TRANSITION_AUTHORIZATION_WINDOW_INVALID')
+  const runtimeConfig = buildRuntimeConfigReceipt({ profile, releaseId, sourceLock, plainEnvironment, secretVersions: previousRuntime.secretVersions, observedAt })
+  const authority = { ownerApplicationId: 'orgmaster', projectId: profile.target.projectId, sourceRevision: git.sourceRevision, releaseId, environment: 'production', baselineIntentRef, expiresAt: deadlineAt, observedAt, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', remainingHumanAction: 0, ...(predecessorEvidence ? { predecessorEvidence } : {}) }
+  const authorization = { ...authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
+  const readiness = transition
+    ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
+    : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
   const values = { sourceLock, runtimeConfig, authorization, readiness,
     foundation: (await transport.readJson(baseline.intent.foundationReceiptRef, profile.artifact.releaseBucket)).value,
     infra: (await transport.readJson(baseline.intent.infraReceiptRef, profile.artifact.releaseBucket)).value }
@@ -57,7 +101,7 @@ async function main() {
   const input = { baselineIntentRef, previousRevision, deadlineAt, sourceLockRef: ref('source-lock', sourceLock), runtimeConfigRef: ref('runtime-config', runtimeConfig), authorizationPolicyRef: ref('owner-authorization', authorization), readinessReceiptRef: ref('owner-readiness', readiness), foundationReceiptRef: baseline.intent.foundationReceiptRef, infraReceiptRef: baseline.intent.infraReceiptRef }
   const intent = buildReleaseIntent({ profile, releaseId, input, sourceLock, prerequisiteValues: values, validateIntent: assertDev040ReleaseIntent })
   const verification = await verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle })
-  if (args.includes('--check')) {
+  if (options.check) {
     process.stdout.write(`${JSON.stringify({ status: 'READY', releaseAuthority: false, sourceRevision: git.sourceRevision, previousRevision: intent.previousRevision, verification })}\n`)
     return
   }
@@ -65,7 +109,7 @@ async function main() {
   const result = await transport.putJson(uri('release-intent'), intent, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
   const releaseCapsuleRef = `${result.ref.uri}#sha256=${result.ref.sha256}`
   // This is the existing protected ten-stage workflow, not a local deployment bypass.
-  if (!args.includes('--prepare-only')) command('gh', ['workflow', 'run', profile.workflow.path, '--repo', profile.application.repository, '--ref', profile.application.branch, '-f', `releaseCapsuleRef=${releaseCapsuleRef}`])
-  process.stdout.write(`${JSON.stringify({ status: args.includes('--prepare-only') ? 'PREPARED' : 'DISPATCHED', releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: 'VERIFY_UNCHANGED_NO_DDL_NO_IMPORT' })}\n`)
+  if (!options.prepareOnly) command('gh', ['workflow', 'run', profile.workflow.path, '--repo', profile.application.repository, '--ref', profile.application.branch, '-f', `releaseCapsuleRef=${releaseCapsuleRef}`])
+  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: 'VERIFY_UNCHANGED_NO_DDL_NO_IMPORT', controlledTransition: transition })}\n`)
 }
 main().catch((error) => { process.stderr.write(`${error.code ?? error.message}\n`); process.exitCode = 1 })

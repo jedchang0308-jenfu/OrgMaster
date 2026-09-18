@@ -67,14 +67,15 @@ export function createLocalDeterministicDirectoryPort(fixture: LocalDirectoryFix
       if (selected === '500' || selected === 'timeout') return { ok: false, kind: 'retryable_error', code: 'DIRECTORY_READ_UNAVAILABLE', observedAt: observedAt() }
       const user = make(email)
       const resolved = selected === 'alias-hit' ? { ...user, primaryEmail: 'alias+' + email } : selected === 'archived' ? { ...user, directoryState: 'archived' as const } : selected === 'customer-mismatch' ? { ...user, customerId: 'other-customer' } : user
-      if (resolved.customerId !== customerId || resolved.primaryEmail !== email || resolved.directoryState === 'archived') return { ok: false, kind: 'candidate_miss', code: 'DIRECTORY_CANDIDATE_MISMATCH', observedAt: observedAt() }
+      if (resolved.directoryState !== 'present') return { ok: false, kind: 'candidate_miss', code: 'DIRECTORY_USER_INELIGIBLE', observedAt: observedAt() }
+      if (resolved.customerId !== customerId || resolved.primaryEmail !== email) return { ok: false, kind: 'candidate_miss', code: 'DIRECTORY_CANDIDATE_MISMATCH', observedAt: observedAt() }
       return { ok: true, user: resolved, observedAt: observedAt() }
     },
     async readByDirectoryKey(requestedCustomerId, requestedUserId) {
       const selected = outcome('readByKey')
       if (selected === 'not-found') return { ok: false, kind: 'not_found', code: 'DIRECTORY_NOT_FOUND', observedAt: observedAt() }
       if (selected === '429' || selected === '500' || selected === 'timeout') return { ok: false, kind: 'retryable_error', code: selected === '429' ? 'DIRECTORY_RATE_LIMITED' : 'DIRECTORY_READ_UNAVAILABLE', observedAt: observedAt() }
-      const user = Object.values(users).map((entry) => ({ customerId: entry.customerId ?? customerId, userId: entry.userId, primaryEmail: normalizedEmail(entry.primaryEmail ?? ''), directoryState: entry.directoryState, sourceEtag: entry.sourceEtag })).find((entry) => entry.customerId === requestedCustomerId && entry.userId === requestedUserId)
+      const user = Object.entries(users).map(([email, entry]) => ({ customerId: entry.customerId ?? customerId, userId: entry.userId, primaryEmail: normalizedEmail(entry.primaryEmail ?? email), directoryState: entry.directoryState, sourceEtag: entry.sourceEtag })).find((entry) => entry.customerId === requestedCustomerId && entry.userId === requestedUserId)
       if (!user) return { ok: false, kind: 'not_found', code: 'DIRECTORY_NOT_FOUND', observedAt: observedAt() }
       return { ok: true, user, observedAt: observedAt() }
     },
@@ -103,7 +104,7 @@ function parseGoogleUser(body: unknown, customerId: string): ManagedDirectoryUse
   const value = body as Record<string, unknown>
   const id = typeof value.id === 'string' ? value.id.trim() : ''
   const primaryEmail = typeof value.primaryEmail === 'string' ? normalizedEmail(value.primaryEmail) : ''
-  const bodyCustomer = typeof value.customerId === 'string' ? value.customerId.trim() : customerId
+  const bodyCustomer = typeof value.customerId === 'string' ? value.customerId.trim() : ''
   if (!id || !primaryEmail || bodyCustomer !== customerId) return null
   const state: ManagedDirectoryUserV1['directoryState'] = value.archived === true ? 'archived' : value.suspended === true ? 'suspended' : 'present'
   return { customerId: bodyCustomer, userId: id, primaryEmail, directoryState: state, sourceEtag: typeof value.etag === 'string' ? value.etag : null }
@@ -122,7 +123,7 @@ export function createGoogleDirectoryReadOnlyPort(input: { customerId: string; d
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 5_000)
     try {
-      const url = `https://admin.googleapis.com/admin/directory/v1/users/${encodeURIComponent(userKey)}?projection=full&customer=${encodeURIComponent(customerId)}`
+      const url = `https://admin.googleapis.com/admin/directory/v1/users/${encodeURIComponent(userKey)}?projection=full`
       const headers = await input.auth.getRequestHeaders(url)
       const response = await transport(url, { headers, signal: controller.signal })
       if (response.status === 404) return { ok: false, kind: 'not_found', code: 'DIRECTORY_NOT_FOUND', observedAt: observed }
@@ -142,12 +143,17 @@ export function createGoogleDirectoryReadOnlyPort(input: { customerId: string; d
       if (!email.endsWith('@' + domain)) return { ok: false, kind: 'candidate_miss', code: 'DIRECTORY_DOMAIN_MISMATCH', observedAt: observedAt() }
       const result = await request(email)
       if (!result.ok) return result
-      if (result.user.primaryEmail !== email || result.user.directoryState === 'archived') return { ok: false, kind: 'candidate_miss', code: 'DIRECTORY_CANDIDATE_MISMATCH', observedAt: result.observedAt }
+      if (result.user.directoryState !== 'present') return { ok: false, kind: 'candidate_miss', code: 'DIRECTORY_USER_INELIGIBLE', observedAt: result.observedAt }
+      if (result.user.primaryEmail !== email) return { ok: false, kind: 'candidate_miss', code: 'DIRECTORY_CANDIDATE_MISMATCH', observedAt: result.observedAt }
       return result
     },
-    readByDirectoryKey(customer, user) {
+    async readByDirectoryKey(customer, user) {
       if (customer !== customerId || !user.trim()) return Promise.resolve({ ok: false, kind: 'permanent_error', code: 'DIRECTORY_KEY_MISMATCH', observedAt: observedAt() })
-      return request(user)
+      const result = await request(user)
+      if (!result.ok) return result
+      if (result.user.userId !== user || result.user.customerId !== customer) return { ok: false, kind: 'candidate_miss', code: 'DIRECTORY_CANDIDATE_MISMATCH', observedAt: result.observedAt }
+      if (result.user.directoryState !== 'present') return { ok: false, kind: 'candidate_miss', code: 'DIRECTORY_USER_INELIGIBLE', observedAt: result.observedAt }
+      return result
     },
   }
 }

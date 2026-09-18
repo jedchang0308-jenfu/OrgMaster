@@ -4,6 +4,7 @@ import { createOrgmasterAuthMiddleware, isAllowedOrgmasterRequestOrigin, type Or
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
 import { hashSessionToken } from './orgmasterAuthCookies'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
+import { PrincipalAdmissionError } from './orgmasterPrincipalAdmissionRepository'
 
 const openServers: Array<ReturnType<typeof createServer>> = []
 afterEach(async () => { await Promise.all(openServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
@@ -19,7 +20,7 @@ function configuredRuntime(overrides: Partial<OrgmasterAuthRuntime> = {}) {
     configResult: { configured: true, config },
     firebase: { verifyIdToken: vi.fn(async () => ({ issuer: config.identityIssuer, subject: 'uid-1', assuranceLevel: 'aal1' as const, authenticatedAt: new Date().toISOString() })) },
     principals: { resolveActivePrincipal: vi.fn(async () => ({ principalId: 'principal-1', employeeId: 'employee-1', mappingVersion: 1, publishedAt: new Date().toISOString() })) },
-    epochs: { read: vi.fn(async () => 0) },
+    epochs: { read: vi.fn(async () => 0), readState: vi.fn(async () => ({ authEpoch: 0, revokedBefore: null })) },
     sessions: {
       create: vi.fn(async (input) => {
         const session: OrgmasterSession = { id: 'session-row-1', identityIssuer: input.identityIssuer, identitySubject: input.identitySubject, principalId: input.principalId, employeeId: input.employeeId, authEpoch: input.authEpoch, issuedAt: input.issuedAt, authenticatedAt: input.authenticatedAt, expiresAt: input.expiresAt, revokedAt: null, assuranceLevel: input.assuranceLevel }
@@ -96,6 +97,26 @@ describe('OrgMaster auth middleware', () => {
     }))
   })
 
+  it('validates auth time and epoch before managed bind, then re-queries the canonical principal', async () => {
+    const { runtime, config } = configuredRuntime()
+    const managed = { resolveFirebaseIdentity: vi.fn(async () => ({ principalId: 'ignored', employeeId: 'employee-1' })) }
+    runtime.managedLoginEnabled = true
+    runtime.managedIdentity = managed as never
+    vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({ issuer: config.identityIssuer, subject: 'uid-managed', assuranceLevel: 'aal1', authenticatedAt: '2026-09-17T01:00:00.000Z', signInProvider: 'google.com', email: 'person@jenfu.com.tw', emailVerified: true })
+    vi.mocked(runtime.principals!.resolveActivePrincipal)
+      .mockRejectedValueOnce(new PrincipalAdmissionError('principal_not_active'))
+      .mockResolvedValueOnce({ principalId: 'canonical-principal', employeeId: 'employee-1', mappingVersion: 42, publishedAt: '2026-09-17T01:00:01.000Z' })
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-17T01:00:10.000Z'))
+    const base = await listen(runtime)
+    config.publicBaseUrl = new URL(base)
+    const response = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'managed-token' }) })
+    now.mockRestore()
+    expect(response.status).toBe(200)
+    expect(runtime.epochs!.readState).toHaveBeenCalledBefore(managed.resolveFirebaseIdentity)
+    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(2)
+    expect(runtime.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({ principalId: 'canonical-principal', employeeId: 'employee-1' }))
+  })
+
   it('rechecks active principal and epoch on every protected request and rejects a stale epoch', async () => {
     const { runtime, config, sessions } = configuredRuntime()
     const token = 'opaque-test-token-with-at-least-32-random-looking-bytes'
@@ -107,13 +128,13 @@ describe('OrgMaster auth middleware', () => {
     const first = await fetch(`${base}/api/protected`, { headers: { cookie: `orgmaster_session=${token}` } })
     expect(first.status).toBe(200)
     expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(1)
-    expect(runtime.epochs!.read).toHaveBeenCalledTimes(1)
-    vi.mocked(runtime.epochs!.read).mockResolvedValueOnce(1)
+    expect(runtime.epochs!.readState).toHaveBeenCalledTimes(1)
+    vi.mocked(runtime.epochs!.readState).mockResolvedValueOnce({ authEpoch: 1, revokedBefore: null })
     const second = await fetch(`${base}/api/protected`, { headers: { cookie: `orgmaster_session=${token}` } })
     expect(second.status).toBe(401)
     expect(await second.json()).toMatchObject({ code: 'auth_epoch_stale' })
     expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(2)
-    expect(runtime.epochs!.read).toHaveBeenCalledTimes(2)
+    expect(runtime.epochs!.readState).toHaveBeenCalledTimes(2)
   })
 
   it('allows the development identity only for exact headers on loopback', async () => {

@@ -91,6 +91,33 @@
 
 ## 總任務清單
 
+- ○ DEV-050 [交付點] [待排] [P1] [RD Implementation Ready／Architecture Finalized／P0=0／P1=0] 員工編號或公司 Email 單一 Google 身分登入
+  - 摘要：先完成 Google 驗證，以 stable key 找本人，再核對 current JFS 或 exact linked primary Email；共用同一 principal／Employee，不新增帳號、attempt 或 Email／員編搜尋 resolver。forward migration 014只補canonical view的published application／role parity。
+  - 來源 ID：`USER-2026-09-17-CLOUD-IDENTITY-FREE-DUAL-IDENTIFIER-LOGIN-BRIEF`、`USER-2026-09-17-DEV050-DEVELOPMENT-DOCUMENT`、`USER-2026-09-17-DEV050-ARCHITECTURE-CONFIRMATION`、`USER-2026-09-17-DEV050-RD-TECH-LEAD-OPTIMIZATION`
+  - 父任務：DEV-049；僅替換 app-local 登入設計，stable identity、admission、zero-provider-write 與 SSO owner 公開契約不變。
+  - 下一步：取得產品實作指令後依權威spec §8 S0～S4執行；先建failing tests，再做shared core、Auth API、UI、migration 014及fresh QA／QC。
+  - 阻塞 / 恢復條件：架構無P0／P1未決；實作若發現repository contract無法滿足invariant，停止slice並回spec作drift decision。production仍受001～014 ledger與release authority gate阻擋。
+  - 證據：文件closure已核對父receipt 16＋3 hashes，並重跑DEV-049 targeted 50/50、owner-receipt 2/2；DEV-050產品測試尚未建立，非Implementation Complete或獨立QC。
+  - 計入交付：是（目前未完成）
+
+- ✓ DEV-049 [交付點] [本機開發完成／production gated] [P1] [RD Implementation Complete／Local QA-QC Passed] 既有 Google 主帳號連結與員工編號登入
+  - 摘要：員工已有公司 Workspace 帳號時，不再建立重複的 `jfs####@jenfu.com.tw`；JFS 固定為 OrgMaster login alias，管理者以 exact primary Email 將 Employee 連結至既有 Directory stable principal。
+  - 來源 ID：`USER-2026-09-17-EXISTING-WORKSPACE-ACCOUNT-MAPPING-BRIEF`、`USER-2026-09-17-DEV049-ARCHITECTURE-FINALIZATION`
+  - 父任務：DEV-047；ADR-007 已新增 2026-09-17 intentional replacement，Google Admin 外部生命週期與 OrgMaster zero-provider-write 邊界不變。
+  - 下一步：本機 S0→S5 已完成；provider／AI-PDM target／shared DB migration apply／activation／deploy／release仍須各自授權與 gate。
+  - 證據：`test:dev-049` 50／50、PostgreSQL D49-01～06、三 viewport browser、full regression 853 PASS／1 skipped、build與DB boundary PASS；owner receipt=`qa/dev-049/producer/owner-receipt.json`。
+  - 計入交付：是
+
+- ◐ DEV-048 [開發點] [owner package完成／nonprod apply ready] [P0] [READY_FOR_NONPROD_APPLY／releaseAuthority=false] DEV-013 `013-S4-L3-ORGMASTER-ENV` OrgMaster managed staging runtime與owner release package
+  - 摘要：建立app-owned staging IaC、source freeze、immutable digest／foundation／target exact plan gate，以及owner-native candidate／activate／rollback規劃；保留auth-state v2、original-auth-time guard與不可退回pre-DEV-013 image的security floor。
+  - 來源 ID：`Jenfu-Platform / DEV-013 / 013-S4-L3-ORGMASTER-ENV`；前置consumer實作來源為`Jenfu-Platform / DEV-013 / 013-S2`。因本repo既有DEV-013為樹節點寬度任務，本地以DEV-048消歧，不改Platform canonical ID。
+  - 名稱對照：「DEV-013 OrgMaster consumer」是本repo的`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`，不是本地DEV-013或另一個Codex任務；初始consumer commit=`2c1a8dc50a21882e7fda9fab149f6a311ee7ef5b`，來源執行緒與歷史補正見capsule「來源、任務索引與歷史補正」。
+  - 父任務：Platform DEV-013 L3 machine-readable manifest、OrgMaster consumer capsule；canonical contract aggregate SHA-256=`e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483`。
+  - 結果：profile、Terraform、exact A／B complete-set gate、manifest v2 `secret.references`、source-bound owner-generated-if-empty Secret bootstrap與capability gate、v2 off-mode target bootstrap receipt、same-source／same-digest on candidate hard join、traffic-only activation、v2 post-activation final owner receipt、rollback controller及auth regression均已完成本機驗證。`off`狀態不再能簽成`OWNER_READY_FOR_L3_BROWSER`，source freeze也不再接受caller提供Secret version。未執行Secret version建立、apply、deploy、migration、revision、traffic或production變更。
+  - 下一步：另行授權的nonprod operator依`OWNER_INFRA_A → Secret empty preflight/bootstrap → immutable build/readback → OWNER_RUNTIME_B → TARGET_BOOTSTRAP_READY → Platform create/off floor → on candidate hard join → traffic activation → OWNER_READY_FOR_L3_BROWSER`執行；任何manifest／contract／source／tree／digest／Secret reference／target／address drift必須停止。
+  - 證據：`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`、`config/dev-013/l3-orgmaster-staging.json`、`infra/google-cloud/dev-013-l3-orgmaster/`、`scripts/dev013-orgmaster-staging-profile.test.mjs`、`scripts/dev013-orgmaster-secret-bootstrap.test.mjs`、`scripts/dev013-orgmaster-rollback.test.mjs`、`server/orgmasterSsoHandoff.test.ts`
+  - 計入交付：否；只代表owner package可進入nonprod apply gate，不代表L3、production或DEV-013完成。
+
 - ✓ DEV-047 [交付點] [local完成／QA-QC通過／production release gated] [P1] [RD Implementation Complete／CAPA Closed 2026-09-16／Production Gated] 員工編號公司身分連結與登入別名
   - 摘要：Google Admin管理完整外部生命週期；OrgMaster精確連結唯一principal並自動唯讀同步。Legacy／managed admission共用current Employee與invalidation barrier；OrgMaster resolver只接受新JFS、current OrgMaster role與原principal last verified username。Refresh由sliding dedup、lease version與request sequence保護；known-negative在前一mapping可見時同commit逐verified app失效。
   - 來源 ID：`USER-2026-09-07-EMPLOYEE-NUMBER-MANAGED-ACCOUNT-DESIGN`、`USER-2026-09-07-DEV047-DEVELOPMENT-BRIEF`、`USER-2026-09-07-DEV047-GUIDED-ROUND1-1B-2B-3C`、`USER-2026-09-07-DEV047-GUIDED-ROUND2-1A-2B-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND3-1C-2A-3C`、`USER-2026-09-07-DEV047-CREDENTIAL-ROTATE-1A`、`USER-2026-09-07-DEV047-GUIDED-ROUND4-1B-2A-3B`、`USER-2026-09-07-DEV047-GUIDED-ROUND5-1A-2A-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND6-JFS4-SINGLE-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND7-1B-2A-3A`、`USER-2026-09-07-DEV047-GUIDED-ROUND8-1B-2A-3A`、`USER-2026-09-08-DEV047-GUIDED-ROUND9-1A-2C-3A`、`USER-2026-09-08-DEV047-CLOUD-IDENTITY-BASELINE-WORKSPACE-ENTITLEMENT`、`USER-2026-09-08-DEV047-WORKSPACE-BOUNDARY-1A`、`USER-2026-09-08-DEV047-BOUNDARY-ROUND11-2A-3A`、`USER-2026-09-08-DEV047-GUIDED-ROUND12-4A-5A-6A`、`USER-2026-09-08-DEV047-GUIDED-ROUND13-7A-8A-9A`、`USER-2026-09-08-DEV047-RD-CONTRACT-READY`、`USER-2026-09-08-DEV047-RD-IMPLEMENTATION-READY`、`USER-2026-09-08-DEV047-RD-TECH-LEAD-DOCUMENT-OPTIMIZATION`、`USER-2026-09-08-DEV047-RD-TECH-LEAD-ARCHITECTURE-PASS2`
@@ -566,6 +593,112 @@
   - 父任務：DEV-020、DEV-022、DEV-023
   - 證據：`npm test -- --run`（19 files／126 tests）、`npm run build`、localhost:5000 真實瀏覽器 1440×900／1024×768／390×844 UI QC；`output/playwright/orgmaster-mode-status-1440x900.png`、`output/playwright/orgmaster-mode-status-1024x768.png`、`output/playwright/orgmaster-mode-status-390x844.png`；右上角狀態 pill 可見、無重疊／水平溢出，並提供 `role=status`、ARIA label 與 title 說明。
   - 計入交付：否
+
+## DEV-050：員工編號或公司 Email 單一 Google 身分登入
+
+狀態：`待排 / Documents Only / Product Not Implemented / Production Gated`
+文件成熟度：`RD Implementation Ready / RD Not Started`
+架構審查：`Architecture Finalized / Tech-lead PASS 2026-09-17 / P0=0 / P1=0`
+節點類型：交付點；優先級：P1；風險：High（首次身分綁定及登入授權）
+父交付點：DEV-049；相容基線：DEV-047／ADR-007
+計入產品交付完成：是，但只能在實作及 QA／QC 通過後計入，目前未完成。
+來源：`USER-2026-09-17-CLOUD-IDENTITY-FREE-DUAL-IDENTIFIER-LOGIN-BRIEF`、`USER-2026-09-17-DEV050-DEVELOPMENT-DOCUMENT`、`USER-2026-09-17-DEV050-ARCHITECTURE-CONFIRMATION`、`USER-2026-09-17-DEV050-RD-TECH-LEAD-OPTIMIZATION`。
+
+### 產品與架構摘要
+
+單一權威契約：[DEV-050-dual-identifier-managed-login.md](specs/DEV-050-dual-identifier-managed-login.md)。本段只作任務索引，不複製 API／驗收全文。
+
+- 使用者輸入 current JFS 或已連結公司 primary Email，最後驗證同一 Google principal；員編不另設密碼、OrgMaster 不建立帳號或購買 license。
+- 採 token-first：Browser 直接開 Google，既有 session exchange 攜帶輸入；server 以已驗證的 stable key 找本人後核對，不能以輸入搜尋他人。
+- 刪除先前規劃的 HMAC attempt、60 秒 app TTL與Email／員編resolver；沿用父任務read／verify／transaction。唯一新DDL是forward migration 014，只替換canonical contract view以補published application／role parity；無新表、secret或endpoint。
+- 有 identifier 的 request 即使 principal 已 active，也必須核對；不符不能退回 legacy。無 identifier 僅維持既有 canonical 登入，不得首次 bind。
+- managed UI 一個輸入欄／Google CTA，legacy password 收合但不刪；SSO handoff 仍優先，不改平台 owner contract。
+- Google Admin／licensing／provider write、跨專案、正式 migration／activation／deploy 均不在本輪範圍。
+
+### 接手條件與驗收
+
+- [x] G1：父owner receipt 16個controlled source＋3個evidence hash相符；DEV-049 targeted 50/50與receipt tests 2/2 fresh PASS。
+- [x] G2：shared core signature、identifier／role／epoch順序、local／PG競態、receipt／failure recovery及canonical parity已固定。
+- [x] G3：DEV-050 contract／PostgreSQL／browser fixture path、runner、external mock boundary、manifest、cleanup與命令已固定。
+- [x] G4：migration 014只replace同名view，legacy／managed共用published application＋active global role eligibility；001～013、signature與grant不變。
+- [ ] RD依spec §8 S0～S4實作；spec V1～V10、targeted／contract／PG／browser、full regression、build及DB boundary fresh PASS後才可計入完成。
+
+文件工作已完成架構定案；剩餘是已定義的產品實作與QA／QC，不是新的使用者產品決策。DEV-050 tests、browser、migration 014、正式Google與production均未在本輪執行或變更。
+
+### Spec Impact、後續與紀錄
+
+`Intentional replacement / Documents Only`：DEV-050 後續替換 DEV-047 A9／DEV-049 §9 的 app-local public alias lookup，不修改owner公開契約。實作前 app-local UI仍是現有JFS輸入，不以本文件宣稱雙identifier已上線。
+
+Future capsule：Google Admin 免費授權營運設定及 legacy password 移除均 `Future Phase Captured / Not Requested`；前者需外部操作範圍，後者需零依賴 inventory 與 break-glass 決策，詳見 spec §10。
+
+- 2026-09-17 技術主管優化：撤回前版過早的 Architecture Closure PASS／P0-P1=0，校正為 RD Contract Ready；以 stable-key 本人核對取代 attempt／新 resolver，補足安全分支、相容與驗收。
+- 2026-09-17 架構定案：source／schema closure查出migration013 managed principal缺published application／role guard；以forward migration014最小補強，並固定shared core、API順序、UI port、V1～V10、runner／fixture／commands與stop conditions，升級為RD Implementation Ready／P0=0／P1=0。
+- 2026-09-17 先前版本：由 Brief 補成架構文件；其成熟度與 attempt／014 決策已被本次修訂取代，歷史文字不再作直接實作依據。
+- 下一步：取得產品實作指令後在同一DEV依spec §8推進；不新建重複DEV，本輪未修改產品或release狀態。
+
+使用思考習慣：#第一性原理、#多層次分析、#驗收閉環
+
+## DEV-049：既有 Google 主帳號連結與員工編號登入
+
+狀態：`Local Development Complete / Local QA-QC Passed / Production Gated`
+文件成熟度：`RD Implementation Complete / Architecture Contract Implemented 2026-09-17`
+節點類型：交付點；優先級：P1；風險：High
+父交付點：DEV-047；責任邊界：ADR-007
+是否計入產品交付完成：是（本機開發完成；production activation 不計入）
+權威文件：[DEV-049 spec](specs/DEV-049-existing-google-primary-account-link.md)
+來源：`USER-2026-09-17-EXISTING-WORKSPACE-ACCOUNT-MAPPING-BRIEF`、`USER-2026-09-17-DEV049-ARCHITECTURE-FINALIZATION`、`USER-2026-09-17-DEV049-RD-TECH-LEAD-DOC-OPTIMIZATION`
+查證基準：`codex/dev-049-existing-google-account@b839003c4f0bcebb282d02d927a0fb5e5c5f065b`＋controlled tree `3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`
+
+### Human Decision 與驗收成果
+
+- 員工已有公司 managed account 時重用既有 principal；例：`JFS0005 → jedchang0308@jenfu.com.tw`，不另建 JFS 衍生 Google 帳號。
+- JFS 是 OrgMaster login alias；Google primary Email 是可變名稱；Directory customer＋user ID 與 Firebase issuer＋subject 各自為 stable key。
+- Google Admin 負責帳號、密碼、MFA 與 license。OrgMaster 僅 exact read、關聯與稽核，provider write=0；只接受同 configured customer 的公司 daily managed user。
+- 一般 Employee UI 可完成 lookup／preview／confirm；首次 JFS 登入能經 verified Google token／canonical admission 建 session。錯 actor、衝突、provider facts 改變、版本變動與失效帳號均 fail closed。
+
+### 實作成果與下一步
+
+- 前版 Architecture Closure PASS 漏列的 local revision 自衝突、PG row／DTO 不相容、receipt replay 次序、pending 首次登入循環及 migration release 邊界，已依 spec §2 A1–A6 完成修復。
+- 架構定案：assignment revision 與 file CAS 分離；typed repository DTO；receipt-first／actor-bound／stable-key readback；交易 current-state fence；pending hint→live bind→canonical principal 重查。
+- 不增 provider service、generic repository framework 或新 table；共用 DEV-047 QC runtime lifecycle。正式 012／013 migration／activation 不可混入 DEV-040 現行 001–011 一般 app release。
+- spec §11 S0→S5 已完成；新增 owner-only `jenfu.managed-login.v1` route、migration 013 routines、CAS receipt與lifecycle barrier，確切契約仍只在權威 spec 維護。
+- P0／P1 設計待決項=0；RD本機實作完成。下一步不自動延伸至 migration apply、Google／cloud mutation、AI-PDM target、deploy或release。
+
+### Spec Impact 與本輪證據
+
+`Intentional replacement / Local Implementation Complete`：ADR-007 2026-09-17 amendment 與 DEV-047 replacement note 同步；取代 JFS-derived Email／lexical mismatch，補齊 candidate、confirm、首次登入與 Platform owner producer契約。DEV-047 stable-key、cardinality、tombstone、lifecycle、sync、role admission 與 production gate 維持。
+
+本輪 evidence：targeted 50／50、contract 6／6、task-owned PostgreSQL 18.4 D49-01～06、real Chromium local fixture三viewport、full regression 853 PASS／1 skipped、build及DB boundary皆PASS；fresh PG重驗修正QC fixture同timestamp約束後重發owner receipt，SHA-256=`79a489833141d7773f845ba1e8cb608d1be9faf4276be9e344e1e102ee5b23b7`、controlled tree=`3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`。沒有deployment／provider／production write，全部臨時runtime已清理。
+
+### Future Phase Capsule
+
+`Future Phase Captured / Not Requested`：自動建立 Cloud Identity 帳號、Workspace license 配置、一般 unlink／rebind 皆需另立 DEV 與人類決策；此處不展開或授權。
+
+使用思考習慣：#第一性原理、#證據基礎、#驗收閉環
+
+## DEV-048：DEV-013 013-S4-L3-ORGMASTER-ENV managed staging owner package
+
+狀態：`READY_FOR_NONPROD_APPLY / releaseAuthority=false / exact provider preflight confirms service missing`；本機RD與自動化QA完成，provider apply未執行
+文件成熟度：`RD Implementation Complete / Non-production Apply Gated`
+節點類型：開發點
+優先級：P0
+父交付點：Jenfu-Platform DEV-013 L3 machine-readable manifest、Platform DEV-013 的 OrgMaster consumer capsule（非 OrgMaster 本地 DEV-013）
+是否計入產品交付完成：否
+權威文件：`ai-doc/specs/DEV-013-orgmaster-sso-consumer.md`、`config/dev-013/l3-orgmaster-staging.json`
+本輪來源 ID：`USER-2026-09-17-013-S4-L3-ORGMASTER-ENV`
+跨專案來源：`Jenfu-Platform / DEV-013 / 013-S4-L3-ORGMASTER-ENV`；既有consumer前置實作=`Jenfu-Platform / DEV-013 / 013-S2`
+追溯入口：「DEV-013 OrgMaster consumer」見權威capsule的「來源、任務索引與歷史補正」；branch=`codex/dev-013-orgmaster`，初始consumer commit=`2c1a8dc50a21882e7fda9fab149f6a311ee7ef5b`，owner package commit=`20bb0b95c61759e82caaa46fd9ece866e37b2b0f`。本次只補正索引／來源，不新增產品完成數、不回溯認定授權，也不改release狀態。
+執行邊界：只修改OrgMaster source、app-owned Terraform／state profile、tests與文件；未操作Platform canonical、shared foundation、production、sibling app、custom domain、migration或traffic
+風險等級：High（managed runtime、IAM、Cloud SQL private connection、immutable release與跨owner contract hard join）
+
+### 驗收與下一步
+
+- Canonical contract aggregate及兩個成員檔SHA-256已與OrgMaster lock及Platform manifest逐值相符；Platform L3 manifest schema=`jenfu.dev013.l3-managed-staging.v2`、SHA-256=`bc51a29b28a34a6316f41e3a2cfb0bc399c07befc8fc61334014f24627bae30d`。
+- `OWNER_INFRA_A`與`OWNER_RUNTIME_B`各自使用完整、無多無少的address set；plan只接受`create`／`read`／`no-op`，任何update／delete／replace、非OrgMaster target或source／tree／image／foundation關鍵值漂移均fail closed。
+- Runtime預設`ORGMASTER_JENFU_SSO_HANDOFF_MODE=off`；broker與public base origins只能由provider readback衍生。Runtime不具owner／DDL／migrator權限，且package不含migration runner。
+- Owner release controller預設只產生candidate／activate／rollback計畫；future external mutation需要獨立授權及`--execute`，且仍只能處理`orgmaster-stg`自己的revision、env與traffic。
+- Secret bootstrap固定`jenfu-platform-nonprod / dev010-stg-orgmaster-runtime-config`，預設只執行版本清冊readback；容器已有任一版本即fail closed。Execute除`--execute`外還要求exact capability `DEV013-L3-ORGMASTER-FIRST-SECRET-VERSION`及乾淨的OrgMaster HEAD/tree；它生成64 bytes entropy、轉成UTF-8安全的base64url payload，再透過`gcloud ... --data-file=-`的stdin建立第一版。`jenfu.dev013.secret-version-bootstrap-receipt.v1 / FIRST_VERSION_CREATED`只保存clean source、exact Secret ID/env、numeric version=`1`、state、`secretPayloadCaptured=false`及self-hash，payload永不落盤或進log／evidence；`OWNER_RUNTIME_B` source freeze只從此receipt取得version並保存receipt SHA-256，拒絕caller直接傳版本。
+- Platform current source-bound exact read-only preflight=`Jenfu-Platform/output/dev-013/l3/DEV013-L3-PREFLIGHT-20260917T044050260Z-17270621/report.json`，已確認runtime service account存在且enabled，但`jenfu-platform-nonprod / asia-east1 / orgmaster-stg`尚不存在；Secret容器存在但版本數為0；cloud mutation=0。下一步只在nonprod operator授權下執行A階段、Secret bootstrap、immutable image build／digest readback、B階段與provider URI hard-join receipt；不得推論managed runtime已存在或L3已完成。
 
 ## DEV-047：員工編號公司身分連結與登入別名
 

@@ -7,8 +7,9 @@ import { spawnSync } from 'node:child_process'
 import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-stage-executor.mjs'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
-import { buildRuntimeConfig, canonicalize, releasePaths, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
+import { assertDev013PredecessorReceipt, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
 const n1c = JSON.parse(fs.readFileSync('config/dev-010/n1c-orgmaster.json'))
@@ -17,17 +18,18 @@ const buildBundle = (revision) => buildDev040MigrationBundle(profile, buildOrgma
 const oldSource = 'a'.repeat(40), newSource = 'b'.repeat(40)
 const bucket = profile.artifact.releaseBucket
 const oldBundle = buildBundle(oldSource), newBundle = buildBundle(newSource)
-const plain = { ...profile.environment.fixedValues }
-for (const name of profile.environment.requiredPlainEnvironmentNames) plain[name] ??= 'fixture-public-value'
+const plain = resolvePlainEnvironment(profile, Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+  .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+  .map((name) => [name, 'fixture-public-value'])))
 const runtime = buildRuntimeConfig(profile, { plainEnvironment: plain, secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
 
-function harness() {
+function harness({ baselineRuntime = runtime, nextRuntime = runtime } = {}) {
   const objects = new Map()
   function put(uri, value) { const bytes = Buffer.from(`${canonicalize(value)}\n`); const result = { bytes, ref: { uri, sha256: sha256(bytes) }, value }; objects.set(uri, result); return result.ref }
   const receipt = (name, value) => put(`gs://${bucket}/receipts/fixture/${name}.json`, value)
   const previousRevision = 'orgmaster-prod-aaaaaaaaaaaa'
   const artifactDigest = `${profile.artifact.uri}@sha256:${'d'.repeat(64)}`
-  const oldIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster', releaseId: 'ROUTINE-BASELINE', sourceRevision: oldSource, sourceSha256: 'e'.repeat(64), sourceLockRef: receipt('source', {}), authorizationPolicyRef: receipt('auth', {}), readinessReceiptRef: receipt('ready', {}), foundationReceiptRef: receipt('foundation', {}), infraReceiptRef: receipt('infra', {}), runtimeConfigRef: receipt('runtime', { runtimeConfig: runtime }), migrationManifestSha256: oldBundle.bundle.manifestSha256, previousRevision: 'old-revision', deadlineAt: '2020-01-01T00:00:00Z' }
+  const oldIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster', releaseId: 'ROUTINE-BASELINE', sourceRevision: oldSource, sourceSha256: 'e'.repeat(64), sourceLockRef: receipt('source', {}), authorizationPolicyRef: receipt('auth', {}), readinessReceiptRef: receipt('ready', {}), foundationReceiptRef: receipt('foundation', {}), infraReceiptRef: receipt('infra', {}), runtimeConfigRef: receipt('runtime', { runtimeConfig: baselineRuntime }), migrationManifestSha256: oldBundle.bundle.manifestSha256, previousRevision: 'old-revision', deadlineAt: '2020-01-01T00:00:00Z' }
   // A prior release's expiry must not invalidate its historical evidence.
   const baselineIntentRef = receipt('intent', oldIntent)
   const paths = releasePaths(profile, oldIntent, baselineIntentRef.sha256)
@@ -37,15 +39,42 @@ function harness() {
   const seal = (stage, facts) => stageReceipt({ profile, intent: oldIntent, stage, facts, observedAt: '2020-01-01T00:00:00Z' })
   put(paths.candidate, seal('candidate', { deploymentCapsuleRef: deploymentRef, migrationReceiptRef: migrationRef, candidateRevision: previousRevision }))
   put(paths.terminal, seal('terminal', { result: 'RELEASED', remainingHumanAction: 0, candidateRevision: previousRevision, artifactDigest }))
-  const revision = { ...structuredClone(runtime.template), containers: structuredClone(runtime.template.containers) }
+  const revision = { ...structuredClone(baselineRuntime.template), containers: structuredClone(baselineRuntime.template.containers) }
   revision.containers[0].image = artifactDigest
   const service = { traffic: [{ revision: previousRevision, percent: 100 }], trafficStatuses: [{ revision: previousRevision, percent: 100 }] }
   const transport = { async readBytes(uri) { if (!objects.has(uri)) throw new Error('MISSING'); return objects.get(uri) }, async readJson(ref) { const result = await this.readBytes(ref.uri); assert.equal(ref.sha256, result.ref.sha256); return result }, effectiveRevision: () => previousRevision, assertServiceSettled() {}, assertCanonicalEntrypoint() {}, assertRevisionReady(_profile, value, digest) { assert.equal(value.containers[0].image, digest) }, async getRevision() { return revision } }
   const intent = { ...oldIntent, releaseId: 'ROUTINE-NEXT', sourceRevision: newSource, previousRevision, baselineIntentRef, migrationManifestSha256: newBundle.bundle.manifestSha256 }
   const authority = { ownerApplicationId: 'orgmaster', sourceRevision: newSource, releaseId: intent.releaseId, baselineIntentRef }
-  const values = { runtimeConfig: { runtimeConfig: structuredClone(runtime) }, authorization: { ...authority }, readiness: { ...authority } }
-  const input = { root: '.', profile, transport, intent, values, service, buildMigrationBundle: async () => newBundle, fingerprint: () => 'f'.repeat(64) }
+  const values = { runtimeConfig: { runtimeConfig: structuredClone(nextRuntime) }, authorization: { ...authority }, readiness: { ...authority } }
+  const input = { root: '.', profile, transport, intent, values, service, buildMigrationBundle: async () => newBundle, fingerprint: () => 'f'.repeat(64), transitionFingerprint: () => 't'.repeat(64) }
   return { input, objects, paths, put, revision }
+}
+
+function transitionReadiness(h, { from, to, action }) {
+  const previousControlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: from }
+  const controlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: to }
+  const transition = { field: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', from, to, action, predecessorReceiptRef: { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/predecessor.json', sha256: '9'.repeat(64) } }
+  const sequenceStep = dev013L4SequenceStep('orgmaster', transition, previousControlledEnvironment, controlledEnvironment)
+  h.input.values.authorization = {
+    ...h.input.values.authorization,
+    schemaVersion: 'jenfu.dev013.l4-owner-transition-authorization.v1',
+    authorizationBasis: 'OPERATOR_INVOKED_DEV013_L4',
+    observedAt: '2026-09-18T00:00:00.000Z',
+    expiresAt: '2026-09-18T08:00:00.000Z',
+  }
+  h.input.values.readiness = {
+    ...h.input.values.readiness,
+    schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v1',
+    devId: 'DEV-013',
+    slice: '013-R1',
+    observedAt: '2026-09-18T00:00:00.000Z',
+    expiresAt: '2026-09-18T08:00:00.000Z',
+    sequenceRoot: { schemaVersion: 'jenfu.dev013.l4-sequence-root.v1', authorizationId: 'DEV013-L4-AUTH-TEST0001', authorizationStatementSha256: '7'.repeat(64), manifestSha256: '8'.repeat(64), authorizedAt: '2026-09-18T00:00:00.000Z', expiresAt: '2026-09-18T08:00:00.000Z', receiptRef: { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/root.json', sha256: '8'.repeat(64) }, sourceRevisionByApplication: { platform: 'a'.repeat(40), orgmaster: newSource, 'ai-pdm': 'c'.repeat(40) } },
+    sequenceStep,
+    previousControlledEnvironment,
+    controlledEnvironment,
+    transition,
+  }
 }
 
 test('routine release reuses unchanged SQL and infrastructure with no bootstrap or live DDL', async () => {
@@ -54,6 +83,55 @@ test('routine release reuses unchanged SQL and infrastructure with no bootstrap 
   assert.equal(result.liveLedgerRead, false)
   assert.equal(result.baselineMigrationRef.uri, h.paths.migrate)
   assert.equal(result.migrationInputsSha256, assertRoutineMigrationUnchanged(oldBundle.bundle, newBundle.bundle))
+  assert.equal(result.releaseMode, 'ROUTINE_UNCHANGED_RUNTIME')
+})
+
+test('DEV-013 controlled release permits only the sealed off-to-on handoff transition', async () => {
+  const enabledPlain = resolvePlainEnvironment(profile, runtime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
+  const enabledRuntime = buildRuntimeConfig(profile, { plainEnvironment: enabledPlain, secretVersions: runtime.secretVersions })
+  const h = harness({ nextRuntime: enabledRuntime })
+  transitionReadiness(h, { from: 'off', to: 'on', action: 'activate' })
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV013_CONTROLLED_ENVIRONMENT')
+  assert.deepEqual(result.controlledTransition, { releaseMode: 'DEV013_CONTROLLED_ENVIRONMENT', field: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', from: 'off', to: 'on', action: 'activate', predecessorReceiptRef: h.input.values.readiness.transition.predecessorReceiptRef })
+})
+
+test('DEV-013 controlled release can add the default-off guard to the historical production runtime', async () => {
+  const legacyProfile = structuredClone(profile)
+  legacyProfile.environment.requiredPlainEnvironmentNames = legacyProfile.environment.requiredPlainEnvironmentNames.filter((name) => !['ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN'].includes(name))
+  delete legacyProfile.environment.fixedValues.ORGMASTER_JENFU_SSO_BROKER_ORIGIN
+  delete legacyProfile.environment.controlledValues
+  const legacyPlain = Object.fromEntries(Object.entries(runtime.plainEnvironment).filter(([name]) => legacyProfile.environment.requiredPlainEnvironmentNames.includes(name)))
+  const legacyRuntime = buildRuntimeConfig(legacyProfile, { plainEnvironment: legacyPlain, secretVersions: runtime.secretVersions })
+  const h = harness({ baselineRuntime: legacyRuntime })
+  transitionReadiness(h, { from: null, to: 'off', action: 'guard' })
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.controlledTransition.action, 'guard')
+})
+
+test('DEV-013 predecessor receipt accepts only an exact live root or released owner terminal', () => {
+  const ref = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/root.json', sha256: '9'.repeat(64) }
+  const rootCore = { schemaVersion: 'jenfu.dev013.l4-execution-authorization.v1', devId: 'DEV-013', slice: '013-R1', authorizationId: 'DEV013-L4-AUTH-TEST0001', authorizationBasis: 'HUMAN_EXACT_PRODUCTION_SCOPE', authorizationStatementSha256: '7'.repeat(64), manifestSha256: '8'.repeat(64), projectId: profile.target.projectId, projectNumber: '9536592944', region: profile.target.region, cloudSqlInstance: 'jenfu-platform-prod-pg', database: 'jenfu_prod', sourceRevisionByApplication: { platform: 'a'.repeat(40), orgmaster: 'b'.repeat(40), 'ai-pdm': 'c'.repeat(40) }, authorizedActions: ['owner-native release', 'Platform migration 005', 'runtime config', 'candidate', 'traffic', 'L4 browser', 'global logout', 'rollback', 'observation'], status: 'PASS', releaseAuthority: true, remainingHumanAction: 0, evidenceScope: 'PRODUCTION_BOUND', authorizedAt: '2026-09-18T00:00:00.000Z', expiresAt: '2026-09-18T08:00:00.000Z' }
+  const root = { ...rootCore, receiptSha256: sha256(canonicalize(rootCore)) }
+  const platformProfile = { ...profile, application: { ...profile.application, id: 'platform' } }
+  const transition = { action: 'guard', changes: [{ field: 'PORTAL_SSO_AI_PDM_PHASE', from: null, to: 'off' }, { field: 'PORTAL_SSO_ORGMASTER_PHASE', from: null, to: 'off' }], predecessorReceiptRef: ref }
+  const currentStep = dev013L4SequenceStep('platform', transition, { PORTAL_SSO_AI_PDM_PHASE: null, PORTAL_SSO_ORGMASTER_PHASE: null }, { PORTAL_SSO_AI_PDM_PHASE: 'off', PORTAL_SSO_ORGMASTER_PHASE: 'off' })
+  assert.equal(assertDev013PredecessorReceipt(root, ref, platformProfile, '2026-09-18T00:00:00.000Z', 'a'.repeat(40), currentStep).schemaVersion, root.schemaVersion)
+  assert.throws(() => assertDev013PredecessorReceipt(root, ref, platformProfile, '2026-09-18T00:00:00.000Z', 'd'.repeat(40), currentStep), /DEV013_PREDECESSOR_RECEIPT_INVALID/u)
+  const wrongProjectCore = { ...rootCore, projectId: 'wrong-project' }
+  const wrongProject = { ...wrongProjectCore, receiptSha256: sha256(canonicalize(wrongProjectCore)) }
+  assert.throws(() => assertDev013PredecessorReceipt(wrongProject, ref, platformProfile, '2026-09-18T00:00:00.000Z', 'a'.repeat(40), currentStep), /DEV013_PREDECESSOR_RECEIPT_INVALID/u)
+})
+
+test('DEV-013 controlled release rejects an unbound readiness receipt or unrelated runtime drift', async () => {
+  const enabledPlain = resolvePlainEnvironment(profile, runtime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
+  const enabledRuntime = buildRuntimeConfig(profile, { plainEnvironment: enabledPlain, secretVersions: runtime.secretVersions })
+  const missing = harness({ nextRuntime: enabledRuntime })
+  await assert.rejects(() => verifyRoutineRelease(missing.input), /DEV013_CONTROLLED_TRANSITION_AUTHORITY_INVALID/u)
+  const secretDrift = harness({ nextRuntime: structuredClone(enabledRuntime) })
+  secretDrift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_POSTGRES_URL = '2'
+  transitionReadiness(secretDrift, { from: 'off', to: 'on', action: 'activate' })
+  await assert.rejects(() => verifyRoutineRelease(secretDrift.input), /ROUTINE_RUNTIME_CHANGED/u)
 })
 
 test('infrastructure identity ignores retired bootstrap metadata but covers every remaining input', () => {

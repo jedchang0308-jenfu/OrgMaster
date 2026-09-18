@@ -1,0 +1,227 @@
+{
+  "schemaVersion": "jenfu.dev013.orgmaster-staging-release.v2",
+  "devId": "DEV-013",
+  "slice": "013-S4-L3-ORGMASTER-ENV",
+  "status": "READY_FOR_NONPROD_APPLY",
+  "releaseAuthority": false,
+  "platformManifest": {
+    "sourceRepository": "Jenfu-Platform",
+    "sourcePath": "config/dev-013/l3-managed-staging.json",
+    "sha256": "bc51a29b28a34a6316f41e3a2cfb0bc399c07befc8fc61334014f24627bae30d",
+    "schemaVersion": "jenfu.dev013.l3-managed-staging.v2",
+    "contractStatus": "CONTRACT_FROZEN_READY_FOR_OWNER_WORK"
+  },
+  "canonicalContract": {
+    "sourcePath": "contracts/jenfu-sso-handoff/v1",
+    "version": "jenfu.sso-handoff.v1",
+    "sha256": "e6307a6a1ab9ddfc15f918992d640b625fcd70a688c52e8ce712489d9ff86483"
+  },
+  "target": {
+    "environment": "staging",
+    "projectId": "jenfu-platform-nonprod",
+    "projectNumber": "1055054506544",
+    "region": "asia-east1",
+    "serviceName": "orgmaster-stg",
+    "cloudSqlInstance": "jenfu-platform-nonprod-pg",
+    "database": "jenfu_stg",
+    "connectionName": "jenfu-platform-nonprod:asia-east1:jenfu-platform-nonprod-pg",
+    "runtimeServiceAccount": "dev010-stg-orgmaster-runtime@jenfu-platform-nonprod.iam.gserviceaccount.com",
+    "runtimeSubjectAuthority": "GOOGLE_IAM_SERVICE_ACCOUNT_UNIQUE_ID_READBACK",
+    "entryPolicy": {
+      "ingress": "INGRESS_TRAFFIC_ALL",
+      "defaultUriDisabled": false,
+      "invokerIamDisabled": true
+    },
+    "requiredLabels": {
+      "application": "orgmaster",
+      "dev_id": "dev-013",
+      "environment": "staging",
+      "managed_by": "terraform",
+      "owner": "orgmaster",
+      "slice": "013-s4-l3"
+    },
+    "originAuthority": {
+      "bootstrap": "CLOUD_RUN_V2_PROVIDER_PROJECT_NUMBER_TEMPLATE",
+      "template": "https://orgmaster-stg-${PROJECT_NUMBER}.asia-east1.run.app",
+      "postApplyHardJoin": "CLOUD_RUN_V2_SERVICE_URI_READBACK",
+      "wildcardsAllowed": false
+    },
+    "brokerOriginAuthority": {
+      "bootstrap": "PLATFORM_MANIFEST_PROVIDER_PROJECT_NUMBER_TEMPLATE",
+      "template": "https://jenfu-platform-stg-${PROJECT_NUMBER}.asia-east1.run.app",
+      "postApplyHardJoin": "PLATFORM_OWNER_RECEIPT_PROVIDER_URI",
+      "wildcardsAllowed": false
+    }
+  },
+  "state": {
+    "bucket": "tfstate-jenfu-platform-nonprod",
+    "prefix": "dev-013/orgmaster-staging"
+  },
+  "artifact": {
+    "repository": "dev013-orgmaster-staging",
+    "image": "orgmaster",
+    "uri": "asia-east1-docker.pkg.dev/jenfu-platform-nonprod/dev013-orgmaster-staging/orgmaster",
+    "dockerfile": "Dockerfile",
+    "immutableDigestRequired": true,
+    "sourceFreeze": {
+      "contextAuthority": "EXACT_GIT_TREE_AT_SOURCE_REVISION",
+      "dockerfileSha256Required": true,
+      "sourceCreatedAtAuthority": "GIT_COMMITTER_DATE_ISO_8601",
+      "sourceVersionRule": "dev013-l3 plus first 12 hexadecimal characters of source revision",
+      "sourceState": "clean"
+    },
+    "buildArgs": [
+      "SOURCE_REVISION",
+      "SOURCE_TREE",
+      "SOURCE_CREATED_AT",
+      "SOURCE_VERSION",
+      "SOURCE_STATE"
+    ]
+  },
+  "secret": {
+    "references": {
+      "ORGMASTER_SESSION_HASH_PEPPER": "dev010-stg-orgmaster-runtime-config"
+    },
+    "versionBootstrap": {
+      "mode": "OWNER_GENERATED_IF_EMPTY",
+      "minimumEntropyBytes": 64
+    },
+    "numericVersionRequired": true,
+    "payloadMayAppearInEvidence": false
+  },
+  "evidence": {
+    "bucket": "jenfu-platform-nonprod-dev013-orgmaster-evidence",
+    "prefix": "receipts/dev-013/l3/orgmaster"
+  },
+  "runtime": {
+    "containerName": "orgmaster",
+    "minInstances": 0,
+    "maxInstances": 1,
+    "maxInstanceRequestConcurrency": 20,
+    "databasePoolMax": 2,
+    "cpu": "1",
+    "memory": "512Mi",
+    "cpuIdle": true,
+    "timeoutSeconds": 60,
+    "deletionProtection": true,
+    "startupProbePath": "/api/auth/mode",
+    "livenessProbePath": "/api/auth/mode",
+    "cloudSqlProxyImage": "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0@sha256:fa4c7308245407157c5e9c4e16f1c0f1113899d6f29dc8f8be3e30efae86467f",
+    "cloudSqlProxyMaximumConnections": 2,
+    "network": "jenfu-platform-nonprod-vpc",
+    "subnetwork": "jenfu-platform-nonprod-qc",
+    "initialSsoMode": "off",
+    "runtimeDbLogin": "dev010-stg-orgmaster-runtime@jenfu-platform-nonprod.iam",
+    "forbiddenDatabasePrivileges": [
+      "owner",
+      "DDL",
+      "migrator",
+      "ledger-write"
+    ]
+  },
+  "terraform": {
+    "root": "infra/google-cloud/dev-013-l3-orgmaster",
+    "providerVersion": "7.45.0",
+    "iacServiceAccount": "dev010-n1b-iac@jenfu-platform-nonprod.iam.gserviceaccount.com",
+    "qcServiceAccount": "dev010-n1c-qc@jenfu-platform-nonprod.iam.gserviceaccount.com",
+    "allowedActions": [
+      "create",
+      "no-op",
+      "read"
+    ],
+    "forbiddenActions": [
+      "update",
+      "delete",
+      "replace"
+    ],
+    "stages": {
+      "OWNER_INFRA_A": {
+        "runtimeEnabled": false,
+        "dataAddresses": [
+          "data.google_project.target",
+          "data.google_service_account.iac",
+          "data.google_service_account.qc"
+        ],
+        "resourceAddresses": [
+          "google_artifact_registry_repository.orgmaster",
+          "google_artifact_registry_repository_iam_member.iac_writer",
+          "google_storage_bucket.evidence",
+          "google_storage_bucket_iam_member.iac_writer",
+          "google_storage_bucket_iam_member.qc_reader"
+        ]
+      },
+      "OWNER_RUNTIME_B": {
+        "runtimeEnabled": true,
+        "dataAddresses": [
+          "data.google_compute_network.runtime[0]",
+          "data.google_compute_subnetwork.runtime[0]",
+          "data.google_project.target",
+          "data.google_secret_manager_secret.runtime_config[0]",
+          "data.google_service_account.iac",
+          "data.google_service_account.qc",
+          "data.google_service_account.runtime[0]"
+        ],
+        "resourceAddresses": [
+          "google_artifact_registry_repository.orgmaster",
+          "google_artifact_registry_repository_iam_member.iac_writer",
+          "google_cloud_run_v2_service.orgmaster[0]",
+          "google_project_iam_member.runtime_firebase_auth_viewer[0]",
+          "google_storage_bucket.evidence",
+          "google_storage_bucket_iam_member.iac_writer",
+          "google_storage_bucket_iam_member.qc_reader"
+        ]
+      }
+    }
+  },
+  "release": {
+    "stages": [
+      "candidate",
+      "verify",
+      "activate",
+      "rollback"
+    ],
+    "candidateTagPrefix": "candidate-",
+    "ownerServiceOnly": true,
+    "allowedMutationTypes": {
+      "candidate": [
+        "revision",
+        "runtime-env"
+      ],
+      "activate": [
+        "traffic"
+      ],
+      "rollback": [
+        "traffic"
+      ]
+    },
+    "securityFloor": {
+      "id": "DEV013_AUTH_STATE_V2_ORIGINAL_AUTH_TIME",
+      "authStateVersion": "v2",
+      "originalAuthTimeGuardRequired": true,
+      "protectedRequestEpochGuardRequired": true,
+      "preDev013ImageAllowed": false
+    },
+    "forbiddenMutations": [
+      "jenfu-platform-stg",
+      "ai-pdm-stg",
+      "production",
+      "database",
+      "migration",
+      "custom-domain",
+      "edge",
+      "shared-foundation"
+    ]
+  },
+  "verification": {
+    "healthPath": "/api/auth/mode",
+    "directStartPath": "/api/auth/jenfu-sso/start",
+    "callbackPath": "/api/auth/jenfu-sso/callback",
+    "firebaseSessionPath": "/api/auth/firebase/session",
+    "requiredCommands": [
+      "npm run test:dev-013",
+      "npm run test:dev-013:l3",
+      "npm run check:db-boundary",
+      "npm run build"
+    ]
+  }
+}
