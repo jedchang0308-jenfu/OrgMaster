@@ -97,24 +97,52 @@ describe('OrgMaster auth middleware', () => {
     }))
   })
 
-  it('validates auth time and epoch before managed bind, then re-queries the canonical principal', async () => {
+  it('validates auth time and both epochs before managed bind, then re-queries the canonical principal', async () => {
     const { runtime, config } = configuredRuntime()
-    const managed = { resolveFirebaseIdentity: vi.fn(async () => ({ principalId: 'ignored', employeeId: 'employee-1' })) }
+    const managed = { verifyManagedLoginIdentifier: vi.fn(async () => ({ principalId: 'canonical-principal', employeeId: 'employee-1', mappingVersion: '1' })) }
     runtime.managedLoginEnabled = true
     runtime.managedIdentity = managed as never
-    vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({ issuer: config.identityIssuer, subject: 'uid-managed', assuranceLevel: 'aal1', authenticatedAt: '2026-09-17T01:00:00.000Z', signInProvider: 'google.com', email: 'person@jenfu.com.tw', emailVerified: true })
-    vi.mocked(runtime.principals!.resolveActivePrincipal)
-      .mockRejectedValueOnce(new PrincipalAdmissionError('principal_not_active'))
-      .mockResolvedValueOnce({ principalId: 'canonical-principal', employeeId: 'employee-1', mappingVersion: 42, publishedAt: '2026-09-17T01:00:01.000Z' })
+    vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({ issuer: config.identityIssuer, subject: 'uid-managed', assuranceLevel: 'aal1', authenticatedAt: '2026-09-17T01:00:00.000Z', signInProvider: 'google.com', email: 'person@jenfu.com.tw', emailVerified: true, googleUserId: 'google-managed-1' })
+    vi.mocked(runtime.principals!.resolveActivePrincipal).mockResolvedValueOnce({ principalId: 'canonical-principal', employeeId: 'employee-1', mappingVersion: 1, publishedAt: '2026-09-17T01:00:01.000Z' })
     const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-17T01:00:10.000Z'))
     const base = await listen(runtime)
     config.publicBaseUrl = new URL(base)
-    const response = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'managed-token' }) })
+    const response = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'managed-token', managedIdentifier: 'JFS0001' }) })
     now.mockRestore()
     expect(response.status).toBe(200)
-    expect(runtime.epochs!.readState).toHaveBeenCalledBefore(managed.resolveFirebaseIdentity)
-    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(2)
+    expect(runtime.epochs!.readState).toHaveBeenCalledTimes(2)
+    expect(runtime.epochs!.readState).toHaveBeenCalledBefore(managed.verifyManagedLoginIdentifier)
+    expect(managed.verifyManagedLoginIdentifier).toHaveBeenCalledWith(expect.objectContaining({ managedIdentifier: 'JFS0001', identity: expect.objectContaining({ googleUserId: 'google-managed-1' }) }))
+    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(1)
     expect(runtime.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({ principalId: 'canonical-principal', employeeId: 'employee-1' }))
+  })
+
+  it('never falls back to managed lookup when the identifier is omitted and retires the public alias resolver', async () => {
+    const { runtime, config } = configuredRuntime()
+    const managed = { verifyManagedLoginIdentifier: vi.fn() }
+    runtime.managedLoginEnabled = true
+    runtime.managedIdentity = managed as never
+    vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({ issuer: config.identityIssuer, subject: 'uid-unlinked', assuranceLevel: 'aal1', authenticatedAt: '2026-09-17T01:00:00.000Z', signInProvider: 'google.com', email: 'person@jenfu.com.tw', emailVerified: true, googleUserId: 'google-1' })
+    vi.mocked(runtime.principals!.resolveActivePrincipal).mockRejectedValueOnce(new PrincipalAdmissionError('principal_not_active'))
+    const base = await listen(runtime)
+    config.publicBaseUrl = new URL(base)
+    const session = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'token-without-identifier' }) })
+    expect(session.status).toBe(403)
+    expect(managed.verifyManagedLoginIdentifier).not.toHaveBeenCalled()
+    const alias = await fetch(`${base}/api/auth/managed/alias`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ employeeNumber: 'JFS0001' }) })
+    expect(alias.status).toBe(404)
+    expect(managed.verifyManagedLoginIdentifier).not.toHaveBeenCalled()
+  })
+
+  it('rejects a present null or blank managed identifier before token verification', async () => {
+    const { runtime, config } = configuredRuntime()
+    const base = await listen(runtime)
+    config.publicBaseUrl = new URL(base)
+    for (const managedIdentifier of [null, '   ']) {
+      const response = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'token', managedIdentifier }) })
+      expect(response.status).toBe(400)
+    }
+    expect(runtime.firebase!.verifyIdToken).not.toHaveBeenCalled()
   })
 
   it('rechecks active principal and epoch on every protected request and rejects a stale epoch', async () => {

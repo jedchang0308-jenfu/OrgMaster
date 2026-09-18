@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { AuthApiError, exchangeFirebaseToken, getAuthMode, getCurrentSession, getDevelopmentAuthMode, loginDevelopmentProfile, logoutCurrentSession, resolveManagedLoginAlias, type AuthMode, type AuthSessionView, type DevelopmentAuthMode, type DevelopmentAuthProfileView } from './authApiClient'
+import { AuthApiError, exchangeFirebaseToken, getAuthMode, getCurrentSession, getDevelopmentAuthMode, loginDevelopmentProfile, logoutCurrentSession, type AuthMode, type AuthSessionView, type DevelopmentAuthMode, type DevelopmentAuthProfileView } from './authApiClient'
 import { clearFirebaseClientSession, getFirebaseGoogleIdToken, getFirebaseIdToken } from './firebaseClient'
 
 export interface AuthSessionContextValue {
@@ -38,6 +38,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [employeeNumber, setEmployeeNumber] = useState('')
+  const [managedMessage, setManagedMessage] = useState<string | undefined>()
+  const [legacyMessage, setLegacyMessage] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
   const [busyProfileId, setBusyProfileId] = useState<DevelopmentAuthProfileView['id'] | null>(null)
 
@@ -85,6 +87,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     event.preventDefault()
     if (state.kind !== 'login' || busy) return
     setBusy(true)
+    setLegacyMessage(undefined)
     try {
       const idToken = await getFirebaseIdToken(state.mode.firebase, email.trim(), password)
       const session = await exchangeFirebaseToken(idToken)
@@ -92,7 +95,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setState({ kind: 'authenticated', session, mode: state.mode })
     } catch (error) {
       if (error instanceof AuthApiError && (error.code === 'principal_not_active' || error.code === 'principal_ambiguous')) setState(blockedState(error))
-      else setState({ kind: 'login', mode: state.mode, message: '登入失敗，請確認帳號密碼後再試一次。' })
+      else { setLegacyMessage('登入失敗，請確認帳號密碼後再試一次。'); setState({ kind: 'login', mode: state.mode }) }
     } finally {
       setBusy(false)
     }
@@ -102,15 +105,17 @@ export function AuthGate({ children }: { children: ReactNode }) {
     event.preventDefault()
     if (state.kind !== 'login' || busy || !state.mode.managedLoginEnabled) return
     setBusy(true)
+    setManagedMessage(undefined)
+    const managedIdentifier = employeeNumber.trim()
     try {
-      const alias = await resolveManagedLoginAlias(employeeNumber.trim())
-      const idToken = await getFirebaseGoogleIdToken(state.mode.firebase, alias.loginHint)
-      const session = await exchangeFirebaseToken(idToken)
+      const loginHint = managedIdentifier.includes('@') ? managedIdentifier : undefined
+      const idToken = await getFirebaseGoogleIdToken(state.mode.firebase, loginHint)
+      const session = await exchangeFirebaseToken(idToken, managedIdentifier)
       setEmployeeNumber('')
       setState({ kind: 'authenticated', session, mode: state.mode })
     } catch (error) {
       if (error instanceof AuthApiError && (error.code === 'principal_not_active' || error.code === 'principal_ambiguous')) setState(blockedState(error))
-      else setState({ kind: 'login', mode: state.mode, message: '登入失敗，請確認員工編號或聯絡管理員。' })
+      else { setManagedMessage('無法登入，請確認帳號或聯絡管理員。'); setState({ kind: 'login', mode: state.mode }) }
     } finally { setBusy(false) }
   }
 
@@ -191,17 +196,20 @@ export function AuthGate({ children }: { children: ReactNode }) {
   </main>
   return <main className="auth-gate">
     {state.mode.managedLoginEnabled && <form className="auth-login auth-login--managed" onSubmit={(event) => { void submitManagedLogin(event) }}>
-      <div><p className="auth-login__eyebrow">公司統一身分</p><h1>以 JFS 員工編號登入</h1><p>輸入永久員工編號後，使用 Google Cloud Identity 完成驗證。</p></div>
-      {state.message && <p className="auth-login__error" role="alert">{state.message}</p>}
-      <label>JFS 員工編號<input value={employeeNumber} onChange={(event) => setEmployeeNumber(event.target.value)} placeholder="JFS0001" autoComplete="username" required /></label>
+      <div><p className="auth-login__eyebrow">公司統一身分</p><h1>以 JFS 員工編號或公司 Email 登入</h1><p>完成 Google Cloud Identity 驗證後進入 OrgMaster。</p></div>
+      {(managedMessage ?? state.message) && <p className="auth-login__error" role="alert">{managedMessage ?? state.message}</p>}
+      <label>員工編號或公司 Email<input value={employeeNumber} onChange={(event) => setEmployeeNumber(event.target.value)} placeholder="JFS0001 或 jfs0001@jenfu.com.tw" autoComplete="username" required /></label>
       <button type="submit" disabled={busy}>{busy ? '準備登入…' : '使用 Google 登入'}</button>
     </form>}
-    <form className="auth-login auth-login--legacy" onSubmit={(event) => { void submitLogin(event) }}>
-      <div><p className="auth-login__eyebrow">鉦富管理平台</p><h1>登入 OrgMaster</h1><p>使用公司統一帳號繼續。</p></div>
-      {state.message && <p className="auth-login__error" role="alert">{state.message}</p>}
-      <label>電子郵件<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-      <label>密碼<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-      <button type="submit" disabled={busy}>{busy ? '登入中…' : '登入'}</button>
-    </form>
+    <details className="auth-login auth-login--legacy">
+      <summary>既有帳號登入</summary>
+      <form onSubmit={(event) => { void submitLogin(event) }}>
+        <div><p className="auth-login__eyebrow">鉦富管理平台</p><h1>登入 OrgMaster</h1><p>使用既有帳號繼續。</p></div>
+        {(legacyMessage ?? state.message) && <p className="auth-login__error" role="alert">{legacyMessage ?? state.message}</p>}
+        <label>電子郵件<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+        <label>密碼<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        <button type="submit" disabled={busy}>{busy ? '登入中…' : '登入'}</button>
+      </form>
+    </details>
   </main>
 }

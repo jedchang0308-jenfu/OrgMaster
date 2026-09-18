@@ -25,7 +25,7 @@ await check('required managed tables, sequences and routines', () => includesAll
   'employee_number_assignments', 'employee_number_tombstones', 'employee_number_legacy_exemptions', 'managed_identity_directory_read_budget', 'managed_identity_admission_authority', 'managed_identity_invalidation_applications', 'managed_daily_identities', 'managed_identity_observations', 'managed_identity_candidate_leases', 'managed_identity_command_receipts', 'managed_identity_refresh_outbox', 'managed_identity_lifecycle_outbox', 'principal_identity_reservations', 'managed_identity_audit_events', 'managed_identity_mapping_version_seq', 'managed_identity_refresh_request_seq', 'v_current_workspace_employees_v1', 'read_employee_managed_identity_v1', 'resolve_managed_identity_auth_v1', 'assign_employee_number_v1', 'lease_managed_identity_candidate_v1', 'confirm_managed_identity_link_v1', 'bind_managed_identity_auth_v1', 'reserve_managed_directory_read_v1', 'enqueue_managed_identity_refresh_v1', 'claim_managed_identity_refresh_v1', 'complete_managed_identity_refresh_v1', 'retry_managed_identity_refresh_v1', 'prune_managed_identity_ephemera_v1', 'enqueue_managed_identity_lifecycle_invalidations_v1', 'claim_managed_identity_lifecycle_invalidations_v1', 'complete_managed_identity_lifecycle_invalidation_v1', 'retry_managed_identity_lifecycle_invalidation_v1', 'write_active_persistence_artifacts_with_identity_fence_v1', 'set_managed_identity_admission_v1',
 ]))
 await check('zero provider-write and fixed Directory scope', async () => {
-  const [port, api, auth] = await Promise.all([source('server/orgmasterManagedDirectoryPort.ts'), source('src/managedIdentity/apiClient.ts'), source('server/orgmasterManagedIdentityAuthBridge.ts')])
+  const [port, api, auth] = await Promise.all([source('server/orgmasterManagedDirectoryPort.ts'), source('src/managedIdentity/apiClient.ts'), source('server/orgmasterManagedIdentityService.ts')])
   assert.match(port, /admin\.directory\.user\.readonly/u); assert.doesNotMatch(port, /users\.insert|users\.update|users\.delete|method:\s*['"](?:POST|PUT|PATCH|DELETE)/iu)
   assert.match(api, /credentials:\s*['"]same-origin['"]/u); assert.match(auth, /google\.com/u)
 })
@@ -54,7 +54,7 @@ const [authApi, localStore, postgresRunner] = await Promise.all([
 ])
 const correctionEvidence = {
   A17: () => {
-    includesAll(authApi, ['managedLoginEnabled', 'resolveFirebaseIdentity', 'resolveActivePrincipal', 'epochs.read'])
+    includesAll(authApi, ['managedLoginEnabled', 'verifyManagedLoginIdentifier', 'resolveActivePrincipal', 'epochs.readState'])
     includesAll(migration, ['confirm_managed_identity_link_v1', 'bind_managed_identity_auth_v1', 'v_active_principal_mappings_v1'])
     includesAll(postgresRunner, ["check('A17'", 'issuer-managed', 'subject-one'])
   },

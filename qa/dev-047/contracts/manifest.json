@@ -2,8 +2,8 @@
   "contract": "DEV-047",
   "evidenceScope": "LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-17T07:17:32.084Z",
-  "migrationSha256": "5e5b62cd8786d0b285dab19a5f0ca1f47471484851f3b736afea4b944c86ac08",
+  "generatedAt": "2026-09-17T16:01:29.298Z",
+  "migrationSha256": "ab18137f7cc8e3abc270bc67b5c93d765cddb8f48584f017eca52c24336c1680",
   "checks": [
     {
       "name": "migration header and forward-only boundary",

@@ -14,6 +14,7 @@ export interface ManagedIdentityRepositoryV1 extends ManagedIdentityStoreV1 {
   reserveDirectoryRead(): Promise<void>
   resolveManagedLoginAlias(employeeNumber: string): Promise<ManagedLoginIdentity | null>
   readManagedLoginIdentity(directoryCustomerId: string, directoryUserId: string): Promise<ManagedLoginIdentity | null>
+  readManagedLoginSnapshot(directoryCustomerId: string, directoryUserId: string): Promise<{ identity: ManagedLoginIdentity; primaryEmail: string } | null>
   verifyManagedLoginIdentity(input: { requestId: string; requestHash: string; current: ManagedLoginIdentity; issuer: string; subject: string; actor: string }): Promise<{ identity: ManagedLoginIdentity & { linkState: 'active'; pair: { issuer: string; subject: string } }; mappingVersion: string }>
 }
 
@@ -202,6 +203,29 @@ export function createPostgresManagedIdentityRepository(database: OrgmasterDatab
       if (rows.length > 1) throw new Error('MANAGED_LOGIN_READ_FAILED')
       return rows.length === 1 ? managedLoginIdentityFromRow(rows[0]) : null
     },
+    async readManagedLoginSnapshot(directoryCustomerId, directoryUserId) {
+      const rows = await run<Record<string, unknown>>(`
+        WITH login AS MATERIALIZED (
+          SELECT * FROM orgmaster_core.read_managed_login_identity_v1($1, $2)
+        )
+        SELECT login.*, detail.primary_email AS snapshot_primary_email
+          FROM login
+          JOIN LATERAL orgmaster_core.read_employee_managed_identity_v1(login.employee_id) detail ON true
+         WHERE detail.employee_id = login.employee_id
+           AND detail.employee_status = 'active'
+           AND detail.identity_record_id = login.identity_record_id
+           AND detail.employee_number = login.employee_number
+           AND detail.registry_revision::text = login.registry_revision
+           AND detail.admission_enabled = true
+           AND detail.primary_email IS NOT NULL
+      `, [directoryCustomerId, directoryUserId])
+      if (rows.length > 1) throw new Error('MANAGED_LOGIN_READ_FAILED')
+      if (rows.length === 0) return null
+      const identity = managedLoginIdentityFromRow(rows[0])
+      const primaryEmail = rows[0].snapshot_primary_email
+      if (typeof primaryEmail !== 'string' || !primaryEmail.trim()) throw new Error('MANAGED_LOGIN_READ_FAILED')
+      return { identity, primaryEmail: primaryEmail.trim().toLowerCase() }
+    },
     async verifyManagedLoginIdentity(input) {
       const current = input.current
       const rows = await run<Record<string, unknown>>('SELECT * FROM orgmaster_core.verify_managed_login_identity_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)', [
@@ -273,6 +297,14 @@ export function createManagedIdentityRepository(input: { root: string; devEnable
     async readManagedLoginIdentity(directoryCustomerId: string, directoryUserId: string) {
       const current = await store.readExisting()
       return localIdentity(current.document, (entry) => entry.directoryCustomerId === directoryCustomerId && entry.directoryUserId === directoryUserId)
+    },
+    async readManagedLoginSnapshot(directoryCustomerId: string, directoryUserId: string) {
+      const current = await store.readExisting()
+      const identity = localIdentity(current.document, (entry) => entry.directoryCustomerId === directoryCustomerId && entry.directoryUserId === directoryUserId)
+      if (!identity) return null
+      const stored = (current.document.managedDailyIdentities ?? []).find((entry) => entry.identityRecordId === identity.identityRecordId)
+      if (!stored?.lastVerifiedPrimaryEmail?.trim()) throw new Error('MANAGED_LOGIN_READ_FAILED')
+      return { identity, primaryEmail: stored.lastVerifiedPrimaryEmail.trim().toLowerCase() }
     },
     async verifyManagedLoginIdentity(request: { requestId: string; requestHash: string; current: ManagedLoginIdentity; issuer: string; subject: string; actor: string }) {
       return store.verifyManagedLoginIdentity(request)

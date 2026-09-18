@@ -8,8 +8,9 @@ import { AuthApiError } from './authApiClient'
 const api = vi.hoisted(() => ({
   getCurrentSession: vi.fn(), getAuthMode: vi.fn(), getDevelopmentAuthMode: vi.fn(), loginDevelopmentProfile: vi.fn(), exchangeFirebaseToken: vi.fn(), logoutCurrentSession: vi.fn(),
 }))
+const firebase = vi.hoisted(() => ({ getFirebaseIdToken: vi.fn(), getFirebaseGoogleIdToken: vi.fn(), clearFirebaseClientSession: vi.fn() }))
 vi.mock('./authApiClient', async (importOriginal) => ({ ...(await importOriginal<typeof import('./authApiClient')>()), ...api }))
-vi.mock('./firebaseClient', () => ({ getFirebaseIdToken: vi.fn(), clearFirebaseClientSession: vi.fn() }))
+vi.mock('./firebaseClient', () => firebase)
 
 function SessionProbe() {
   const authSession = useAuthSession()
@@ -77,6 +78,32 @@ describe('AuthGate', () => {
     await act(async () => root.render(<AuthGate><SessionProbe /></AuthGate>))
     expect(container.textContent).toContain('員工 e1')
     expect(container.textContent).toContain('managed:false')
+  })
+
+  it('submits the frozen JFS or company Email identifier only after Google popup', async () => {
+    api.getCurrentSession.mockRejectedValue(new AuthApiError(401, 'auth_session_invalid'))
+    api.getAuthMode.mockResolvedValue({ managedLoginEnabled: true, ssoHandoffEnabled: false, firebase: { apiKey: 'k', authDomain: 'a', projectId: 'p', appId: 'i' } })
+    firebase.getFirebaseGoogleIdToken.mockResolvedValue('google-token')
+    api.exchangeFirebaseToken.mockResolvedValue({ user: { principalId: 'p1', employeeId: 'e1' }, session: { expiresAt: new Date(Date.now() + 60_000).toISOString() }, assuranceLevel: 'aal1', correlationId: 'c' })
+    await act(async () => {
+      root.render(<AuthGate><div>protected organization data</div></AuthGate>)
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    })
+    const input = container.querySelector('.auth-login--managed input') as HTMLInputElement
+    expect(input.type).toBe('text')
+    expect(input.placeholder).toContain('jfs0001@jenfu.com.tw')
+    const legacy = container.querySelector('details') as HTMLDetailsElement
+    expect(legacy.open).toBe(false)
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      setValue.call(input, ' jfs0003@jenfu.com.tw ')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await Promise.resolve()
+      input.form?.requestSubmit()
+      await Promise.resolve(); await Promise.resolve()
+    })
+    expect(firebase.getFirebaseGoogleIdToken).toHaveBeenCalledWith(expect.anything(), 'jfs0003@jenfu.com.tw')
+    expect(api.exchangeFirebaseToken).toHaveBeenCalledWith('google-token', 'jfs0003@jenfu.com.tw')
   })
 
   it('offers server-defined development profiles and enters with one click', async () => {

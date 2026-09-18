@@ -7,7 +7,7 @@
 
 本文件是 DEV-049 的唯一直接實作契約；task index 只保留摘要。2026-09-17 已依人類明確跨專案授權完成本機產品、migration 013、`jenfu.managed-login.v1` owner producer 與隔離 QA/QC；這些證據不等於 provider、target、shared DB、staging、production、traffic 或 release 授權。
 
-> **DEV-050 app-local login replacement（2026-09-17 架構定案）**：[DEV-050](DEV-050-dual-identifier-managed-login.md) 採token-first：Google驗證後以stable key找本人，再核對current JFS或exact linked primary Email；不先回傳resolved login hint。HMAC attempt／60秒app TTL／Email或員編resolver已撤回。source closure另確認migration 013的managed canonical分支缺published application／role guard，DEV-050以forward migration 014只replace contract view補齊legacy／managed parity，不改本DEV migration bytes、owner public contract或provider邊界。DEV-050現為RD Implementation Ready／Architecture Finalized，但產品與QA／QC未完成；本註記不修改DEV-049完成狀態。
+> **DEV-050 app-local login replacement（2026-09-18 implementation）**：[DEV-050](DEV-050-dual-identifier-managed-login.md) 已採 token-first stable-key 本人核對；private 同快照 read 要求 token／live／stored primary Email 一致。forward migration 014 新增 OrgMaster session view，不 replace 共用 identity view 或改其 rows／ACL；本 DEV migration bytes、owner 公開契約及 provider 邊界不變。前版 replace-view／optional shared core 與 closure PASS 已撤回，重試依 SQL revision-before-receipt 順序定義；不新增 HMAC attempt、60 秒 app TTL、Email／員編 resolver 或 production test port。DEV-050 本機產品與自動化 QA／QC 已 PASS；正式 provider／migration／deploy／release 仍 gated，父 receipt 保持歷史證據，不冒充 DEV-050 驗證。
 
 決策來源：
 

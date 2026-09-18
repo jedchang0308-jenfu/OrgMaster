@@ -30,7 +30,7 @@ describe('DEV-010 N2 OrgMaster database boundary', () => {
   it('routes identity, auth epoch and invalidation through producer contracts', async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes('read_principal_auth_epoch')) return { rows: [{ auth_epoch: 2 }], rowCount: 1 }
-      if (sql.includes('v_active_principal')) return { rows: [{ contract_version: 'organization.active-principal.v1', principal_issuer: 'issuer', principal_subject: 'subject', principal_id: 'principal', employee_id: 'employee', employee_status: 'active', mapping_version: 1, published_at: '2026-09-03T00:00:00.000Z' }], rowCount: 1 }
+      if (sql.includes('v_orgmaster_session_principals_v1')) return { rows: [{ contract_version: 'orgmaster.session-principal.v1', principal_issuer: 'issuer', principal_subject: 'subject', principal_id: 'principal', employee_id: 'employee', employee_status: 'active', mapping_version: 1, published_at: '2026-09-03T00:00:00.000Z' }], rowCount: 1 }
       if (sql.includes('claim_entitlement')) return { rows: [], rowCount: 0 }
       return { rows: [], rowCount: 0 }
     })
@@ -40,7 +40,7 @@ describe('DEV-010 N2 OrgMaster database boundary', () => {
     await dispatchEntitlementInvalidations(database, { workerId: 'worker-1' })
     const sql = query.mock.calls.map(([text]) => text).join('\n')
     expect(sql).toContain('platform_contract.read_principal_auth_epoch_v1')
-    expect(sql).toContain('orgmaster_contract.v_active_principal_mappings_v1')
+    expect(sql).toContain('orgmaster_contract.v_orgmaster_session_principals_v1')
     expect(sql).toContain('orgmaster_contract.claim_entitlement_change_outbox_v1')
   })
 })
