@@ -145,11 +145,11 @@ test('application-only release preserves all ten stages without importing data o
 test('controlled forward migration completes before candidate and is preserved in terminal disposition', async () => {
   const h = recordedHarness()
   const { input } = await authorizedRecordedInput(h, 'CONTROLLED-FORWARD-MIGRATION')
-  input.verifyRoutineRelease = async ({ intent }) => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: baselineRef.uri, sha256: baselineRef.sha256 }, migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 3 })
+  input.verifyRoutineRelease = async ({ intent }) => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: baselineRef.uri, sha256: baselineRef.sha256 }, migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 4 })
   let executions = 0
   h.transport.runMigrationJob = async ({ deployment, outputUri }) => {
     executions += 1
-    const core = { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: h.profile.application.id, sourceRevision: deployment.sourceRevision, database: 'jenfu_prod', ledger: 'platform_core.schema_migrations', manifestSha256: h.migrationManifestSha256, baselineCount: 10, minimumLedgerCount: 10, ledgerCount: 14, applied: 3, replayed: 11, crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }], boundaryStatus: 'PASS', executionName: 'projects/p/locations/r/jobs/j/executions/e', startedAt: '2026-09-18T00:00:00.000Z', completedAt: '2026-09-18T00:00:01.000Z', status: 'PASS' }
+    const core = { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: h.profile.application.id, sourceRevision: deployment.sourceRevision, database: 'jenfu_prod', ledger: 'platform_core.schema_migrations', manifestSha256: h.migrationManifestSha256, baselineCount: 10, minimumLedgerCount: 10, ledgerCount: 15, applied: 4, replayed: 11, crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }], boundaryStatus: 'PASS', executionName: 'projects/p/locations/r/jobs/j/executions/e', startedAt: '2026-09-18T00:00:00.000Z', completedAt: '2026-09-18T00:00:01.000Z', status: 'PASS' }
     await h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) }, { bucket, prefix: 'receipts' })
   }
   let terminal

@@ -29,6 +29,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   'db/migrations/012_dev047_managed_identity_bridge.sql',
   'db/migrations/013_dev049_existing_google_primary_account_link.sql',
   'db/migrations/014_dev050_orgmaster_session_admission.sql',
+  'db/migrations/015_dev013_restore_runtime_session_dml.sql',
 ]
 
 function fail(code, detail = '') {

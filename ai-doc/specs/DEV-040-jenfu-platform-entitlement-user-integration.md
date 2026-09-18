@@ -1395,3 +1395,20 @@ OrgMaster已在R60正式完成，source=`dba1d4d3aa9f9bb947d56745b14c50ebd26674e
 Required local exit：`npm run test:dev-040:r2`、`npm run qc:dev-040:r2`、`npm run test:dev-040:abort`、`npm run test:dev-050`、`npm run qc:dev-050:contract`、`npm run check:db-boundary`、`npm test -- --testTimeout=30000`、`npm run build`、`git diff --check`。正式證據另要求 migration Job exact execution／receipt、candidate與canonical smoke、traffic readback、global logout與 observation；local PASS不等於 production PASS。
 
 本輪 local evidence：`test:dev-040:r2` 62／62、abort 6／6、DEV-050 targeted 39／39、DEV-050 contract 6／6、full regression 209 files／863 passed／1 skipped、DB boundary、client/server build與`git diff --check` PASS。QC report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260918T030624987Z-13CD50E6/owner-report.json`，`releaseAuthority=false`、provider/database/traffic mutation=0。既有 Vite native-loader與chunk-size提示不影響gate結果。
+
+## 37. DEV-013 Production L4 app-session ACL fix-forward amendment（2026-09-18，current）
+
+Fresh G2 run `35307497175` 以source `8c89b44204dbd0d9500ea936f02093b2b3ba36ec`完成prepare、build、owner migration Job、candidate與entrypoint；migration receipt為`applied=3／replayed=11／ledgerCount=14`，boundary與`jenfu_dev／jenfu_stg`跨DB拒絕均PASS。candidate Workflow execution `099792a7-ebe5-4ef2-bfab-b9b2ec315948`在`POST /api/auth/firebase/session`取得503；Cloud SQL同一時間的權威錯誤為runtime login對`orgmaster_core.app_sessions`的`permission denied`。verify因此失敗，activate／decision／canonical／finalize未執行；failure recovery清除candidate tag並輸出`PRE_ACTIVATION_ABORTED` terminal，正式traffic維持`orgmaster-prod-bd2c2ccb8291 = 100%`。資料庫012–014是forward-applied事實，不得撤回。
+
+根因是migration 010曾授予`jenfu_orgmaster_runtime`對`orgmaster_core.app_sessions`的`SELECT／INSERT／UPDATE／DELETE`，migration 012後續以全schema `REVOKE ALL ON ALL TABLES`收斂權限，但只重新授予managed-identity functions與contract view，未恢復app-local session repository必需的table DML。013／014沒有修正此ACL。runtime設定、Firebase token、Cloud SQL連線與candidate origin均已通過前置觀察，不得把503誤判為credential或網路問題。
+
+定案如下：
+
+1. 新增forward-only `015_dev013_restore_runtime_session_dml.sql`。它先驗`orgmaster_core.app_sessions`存在且owner為`jenfu_orgmaster_migrator`，原子地撤銷PUBLIC與三個runtime group的既有table ACL，再只授予`jenfu_orgmaster_runtime`的`SELECT／INSERT／UPDATE／DELETE`。不授予`TRUNCATE／REFERENCES／TRIGGER／CREATE／OWNER／migrator membership`，不碰sibling core、contract、資料列或表結構。
+2. Production bundle固定為001–015。001–014的path、version、source hash與applied hash不可更動；015的固定version為`dev013-orgmaster-015`。一般release在成功形成001–015 baseline後仍只能`UNCHANGED_VERIFIED`、零DDL。
+3. 受控恢復仍以已發布的001–011 RELEASED baseline為證據，只接受精確012／013／014／015四筆append。現場ledger可能因前一個安全停止而為11至15；owner Job必須逐筆prefix／checksum驗證並完成ledgerCount=15。raw receipt只接受`applied`為0至4整數、`replayed=15-applied`、boundary PASS與兩個跨DB denial PASS；其他組合fail closed。
+4. 015改變migration executable input，須以fresh source建置migration-runner，走source-matched `APP_INFRA_IMAGE_ROTATION` only-image update。不得重用digest `806dce6e…f783`、舊infra receipt或failed release capsule。
+5. 新candidate建立前必須驗raw migration receipt；candidate session create／reload、DB read、local logout與canonical smoke全部PASS後才能activate。後續DEV-013 normal entry、global logout、rollback readiness與observation仍是獨立L4分母。
+6. 本輪人類授權文字明定OrgMaster source固定為`8c89b442…`，不涵蓋含015的新revision。local gates、commit／push與review完成後，必須以新的exact三repo source set建立fresh Production L4 authorization；任何source-independent草案都不能擴張這份人類授權。
+
+Required local exit：`npm run test:dev-040:r2`、`npm run qc:dev-040:r2`、`npm run test:dev-040:abort`、`npm run test:dev-050`、`npm run qc:dev-050:contract`、`npm run qc:dev-050:postgres`、`npm run check:db-boundary`、`npm test -- --testTimeout=30000`、`npm run build`及`git diff --check`。PostgreSQL QC必須以task-owned cluster驗runtime四項DML成功、TRUNCATE=false、sibling SELECT=false、owner不變並完成process／port／temp root清理。

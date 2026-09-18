@@ -111,7 +111,7 @@ test('DEV-013 controlled release permits only the sealed off-to-on handoff trans
   assert.deepEqual(result.controlledTransition, { releaseMode: 'DEV013_CONTROLLED_ENVIRONMENT', field: 'ORGMASTER_JENFU_SSO_HANDOFF_MODE', from: 'off', to: 'on', action: 'activate', predecessorReceiptRef: h.input.values.readiness.transition.predecessorReceiptRef })
 })
 
-test('DEV-013 controlled release permits only the sealed 012-014 append before candidate', async () => {
+test('DEV-013 controlled release permits only the sealed 012-015 append before candidate', async () => {
   const enabledPlain = resolvePlainEnvironment(profile, runtime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
   const enabledRuntime = buildRuntimeConfig(profile, { plainEnvironment: enabledPlain, secretVersions: runtime.secretVersions })
   const h = harness({ baselineRuntime: runtime, nextRuntime: enabledRuntime, baselineBundle: legacyOldBundle })
@@ -119,13 +119,13 @@ test('DEV-013 controlled release permits only the sealed 012-014 append before c
   const infra = attachForwardInfra(h)
   const result = await verifyRoutineRelease(h.input)
   assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
-  assert.equal(result.pendingMigrationCount, 3)
-  assert.deepEqual(assertDev013ControlledMigrationAppend(legacyOldBundle, newBundle.bundle).pendingMigrationCount, 3)
+  assert.equal(result.pendingMigrationCount, 4)
+  assert.deepEqual(assertDev013ControlledMigrationAppend(legacyOldBundle, newBundle.bundle).pendingMigrationCount, 4)
   const changed = structuredClone(newBundle.bundle)
   changed.entries[10].appliedSha256 = '0'.repeat(64)
   assert.throws(() => assertDev013ControlledMigrationAppend(legacyOldBundle, changed), /DEV013_MIGRATION_APPEND_INVALID/u)
   const changedAppend = structuredClone(newBundle.bundle)
-  changedAppend.entries[13].sourceSha256 = '0'.repeat(64)
+  changedAppend.entries[14].sourceSha256 = '0'.repeat(64)
   assert.throws(() => assertDev013ControlledMigrationAppend(legacyOldBundle, changedAppend), /DEV013_MIGRATION_APPEND_INVALID/u)
   assert.equal(assertDev013MigrationInfraReceipt(infra, profile, newSource), infra)
   assert.throws(() => assertDev013MigrationInfraReceipt({ ...infra, sourceRevision: oldSource }, profile, newSource), /DEV013_MIGRATION_INFRA_RECEIPT_INVALID/u)

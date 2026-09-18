@@ -63,12 +63,13 @@ export function assertRoutineMigrationUnchanged(before, after) {
 export function assertDev013ControlledMigrationAppend(before, after) {
   const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
   const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
-  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 11 || after.entries?.length !== 14) fail('DEV013_MIGRATION_APPEND_INVALID')
+  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 11 || after.entries?.length !== 15) fail('DEV013_MIGRATION_APPEND_INVALID')
   if (!same(before.entries, after.entries.slice(0, before.entries.length))) fail('DEV013_MIGRATION_APPEND_INVALID')
   const expected = [
     ['dev047-orgmaster-012', 'db/migrations/012_dev047_managed_identity_bridge.sql', '87d49746d4c34fafadb877225f43f568256023f6572095696399b927c2af6dff', '892b7429dec215f859ef5eecb34d515d05559077a1a49324c3af1e9f4e5865d6'],
     ['dev049-orgmaster-013', 'db/migrations/013_dev049_existing_google_primary_account_link.sql', '0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319', 'a13198ec053e928e82ebe3450d07bd46b351b5e6c950eb6deeb4d653d24fbf21'],
     ['dev050-orgmaster-014', 'db/migrations/014_dev050_orgmaster_session_admission.sql', '11d6f93916f7668890dc6e17fab27244ed87f35353bb9957374702725fd52bfd', '29bcd05fae8f9ac97e1927359c3aec2f3b4dcda574cdc25baa68662fc2241a84'],
+    ['dev013-orgmaster-015', 'db/migrations/015_dev013_restore_runtime_session_dml.sql', 'd3a17f752b89138f4d636d1b21ae5a69a5ae29dc64960c61307398d7a234cc08', 'a5860ee157e87c87b9654e0151c156d9ddd0b06f3f46cf4380f5ddb8a6126b7f'],
   ]
   const appended = after.entries.slice(before.entries.length)
   if (!same(appended.map((entry) => [entry.version, entry.path, entry.sourceSha256, entry.appliedSha256]), expected)) fail('DEV013_MIGRATION_APPEND_INVALID')

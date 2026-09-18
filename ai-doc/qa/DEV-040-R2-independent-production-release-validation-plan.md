@@ -199,3 +199,22 @@ G2 failed-attempt oracle：GitHub run `35299453716` 的 verify 以 `principal_di
 本地必跑命令與正式 provider證據依 DEV-040 §36。Fresh source、migration-runner digest、root authorization與 predecessor re-attestation必須互相 hash-bound；舊 `e15121a` authorization及 failed release capsule不可重用。
 
 2026-09-18 local result：M14 source gates PASS；`test:dev-040:r2` 62／62、abort 6／6、DEV-050 targeted 39／39、contract 6／6、full regression 209 files／863 passed／1 skipped、DB boundary、client/server build與diff check PASS。Owner report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260918T030624987Z-13CD50E6/owner-report.json`，evidenceScope=`LOCAL_CONTRACT`、releaseAuthority=false。M14-09～10的production provider結果仍待fresh exact authorization後執行。
+
+## 15. DEV-013 app-session ACL fix-forward validation（2026-09-18，current）
+
+G2 recovery oracle：run `35307497175` 的owner migration receipt已證明012–014正確套用；Workflow execution `099792a7-ebe5-4ef2-bfab-b9b2ec315948`在session create取得503，Cloud SQL log以同一時間與runtime login證明`permission denied for table app_sessions`。terminal=`PRE_ACTIVATION_ABORTED`、正式traffic仍為前版100%、candidate tag已清理、DB=`FORWARD_APPLIED`。這是ACL fix-forward，不能重跑舊source、人工GRANT或down migrate。
+
+| ID | Oracle | PASS |
+|---|---|---|
+| M15-01 | Immutable prefix | 001–014的path／version／source／applied hash逐欄不變 |
+| M15-02 | Migration 015 scope | 只引用`orgmaster_core.app_sessions`；先驗relation與owner；不改資料、欄位、contract或sibling schema |
+| M15-03 | Minimum privilege | OrgMaster runtime只有SELECT／INSERT／UPDATE／DELETE；TRUNCATE=false；PUBLIC、Platform與AI-PDM runtime無table privilege；owner仍為migrator |
+| M15-04 | Real repository DML | task-owned PostgreSQL以runtime role完成insert／select／update／delete，sibling SELECT均SQLSTATE 42501 |
+| M15-05 | Controlled append | 只有sealed DEV-013 transition可由001–011 baseline追加精確012–015；ordinary或任一hash／順序漂移拒絕 |
+| M15-06 | Recovery receipt | ledgerCount=15；applied為0～4、replayed=15-applied；boundary與jenfu_dev／jenfu_stg denial PASS；其他組合拒絕 |
+| M15-07 | Runner provenance | fresh exact-source runner digest與APP_INFRA_IMAGE_ROTATION receipt相符，只允許exact migration Job image更新 |
+| M15-08 | Pre-activation gate | raw receipt PASS前candidate=0；candidate session create／reload與DB probe PASS前traffic不得切換 |
+| M15-09 | Failure safety | 任一失敗維持／回復前版traffic、清除own candidate tag、保留forward ledger、無down migration或service deletion |
+| M15-10 | Completion join | fresh exact-source root、G1 re-attestation、G2 terminal與後續DEV-013 sequence hash-chain完整；browser/global logout/observation另依DEV-013 L4分母 |
+
+Local PASS只可增加M15-01～06的source／isolated證據；M15-07～10必須在fresh human authorization後以provider receipts與browser evidence判定。舊root `DEV013-L4-AUTH-20260918-003`、source `8c89b442…`、runner digest `806dce6e…f783`與failed capsule不得重用。

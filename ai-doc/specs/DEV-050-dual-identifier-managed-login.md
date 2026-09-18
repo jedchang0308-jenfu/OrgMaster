@@ -254,11 +254,11 @@ npm test -- --testTimeout=30000
 | 父基線 | 本輪核對 [owner receipt](../../qa/dev-049/producer/owner-receipt.json) 的 16 個 controlled source 與 3 個 evidence hashes；controlled tree＝`3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a` | 父 receipt 等同 DEV-050 或目前 HEAD 全量驗證 |
 | 歷史測試 | 父 receipt 的 DEV-049 targeted／owner evidence 仍保留其原始來源 | 不把父 receipt 改寫成 DEV-050 evidence |
 | 產品／QC | DEV-050 targeted 39／39、contract 6／6、PG D50-01～04、browser 2 viewport、full regression 209 files／863 passed／1 skipped、build／DB boundary 均 PASS | 將 fake provider 或本機自動化證據標成正式 Google／production PASS |
-| 正式環境 | 2026-09-18 首次 G2 在舊 profile 以 migration unchanged執行，candidate smoke因014 view缺失安全停止、traffic未切；現由 DEV-040 §36 定義精確001～014 controlled append | 重用舊 `e15121a` 授權／capsule、人工改DB或把本機PASS當正式完成 |
+| 正式環境 | 2026-09-18 首次 G2 在舊 profile 以 migration unchanged執行，candidate smoke因014 view缺失安全停止；fresh G2 run `35307497175` 已追加012–014，隨後由`app_sessions` runtime ACL缺失再次於切流前安全停止。現由 DEV-040 §37 定義repository-owned 015 fix-forward與精確001～015 recovery | 重用舊授權／capsule、人工GRANT、down migration或把本機PASS當正式完成 |
 
 本輪驗收記錄：`npm run test:dev-050` 39／39；DEV-050 contract 6／6；isolated PostgreSQL 18.4 D50-01～04；正常建置入口 browser 1440×900／390×844；DEV-047／049 contract、DEV-013／047 tests、full regression 209 files／863 passed／1 skipped、build、DB boundary 均 PASS。`git diff --check` 通過；各 runner 的 temporary root／port／browser 均已清理。這些是本機產品與自動化 QA／QC 證據，不是正式 provider 或 release authorization。
 
-Release impact：app-local alias 行為與 OrgMaster session admission 改變，新增 app-only view／SELECT grant；沒有新 secret 或 provider write。正式 gate依 DEV-040 §36處理 exact 001～014 ledger、相容窗口、existing-session拒絕影響與安全 rollback／fix-forward；仍須以修正後 exact revision取得 fresh human authorization，本文件本身不產生 release authority。
+Release impact：app-local alias 行為與 OrgMaster session admission 改變，新增 app-only view／SELECT grant；沒有新 secret。DEV-013 production recovery另以migration 015恢復既有app-session repository的最小DML ACL，不改本產品契約。正式 gate依 DEV-040 §37處理 exact 001～015 ledger、相容窗口、existing-session拒絕影響與安全 rollback／fix-forward；仍須以修正後 exact revision取得 fresh human authorization，本文件本身不產生 release authority。
 
 RD 開始前重新核對 branch／HEAD／dirty state、父 receipt 與 migration bytes。未預期的受控來源 drift 先做 impact review；本 DEV allowlist 內的預期變更記入新 evidence，不要求實作後仍匹配父 source hash，不重寫歷史 receipt。fixture 掩蓋真 repo、用 unsafe cast 繞過 contract、修改 applied migration、放寬 role gate 均是停止條件。
 

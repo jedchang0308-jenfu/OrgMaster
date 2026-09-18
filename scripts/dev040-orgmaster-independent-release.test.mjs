@@ -124,15 +124,16 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-014 production migration bytes', () => {
+test('OrgMaster exact 001-015 production migration bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
-  assert.equal(bundle.bundle.entries.length, 14)
+  assert.equal(bundle.bundle.entries.length, 15)
   assert.equal(bundle.bundle.entries[10].version, 'dev040-r2-orgmaster-011')
   assert.equal(bundle.bundle.entries[11].version, 'dev047-orgmaster-012')
   assert.equal(bundle.bundle.entries[12].version, 'dev049-orgmaster-013')
   assert.equal(bundle.bundle.entries[13].version, 'dev050-orgmaster-014')
+  assert.equal(bundle.bundle.entries[14].version, 'dev013-orgmaster-015')
 })
 
 test('S1B-21 OrgMaster release intent is exact, owner-bound and immutable', () => {

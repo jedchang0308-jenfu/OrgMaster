@@ -19,7 +19,7 @@ const dev050 = suite === 'dev050'
 const dev049Or050 = dev049 || dev050
 const outputDir = path.join(root, dev049 ? 'dev-049' : dev050 ? 'dev-050' : 'dev-047', 'postgres')
 const outputPath = path.join(outputDir, 'manifest.json')
-const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((name) => /^\d{3}_.*\.sql$/u.test(name) && Number(name.slice(0, 3)) <= (dev049Or050 ? (dev050 ? 14 : 13) : 12)).sort()
+const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((name) => /^\d{3}_.*\.sql$/u.test(name) && Number(name.slice(0, 3)) <= (dev049Or050 ? (dev050 ? 15 : 13) : 12)).sort()
 const checks = []
 const cleanup = { clientClosed: false, clusterStopped: false, portReleased: false, tempRemoved: false }
 let client
@@ -174,6 +174,34 @@ async function runDev050Checks() {
     assert.ok(shared.rows.every((row) => row.contract_version === 'organization.active-principal.v1'))
     assert.ok(shared.rows.some((row) => row.employee_id === 'employee-legacy'))
     return { sharedRowCount: shared.rowCount, sharedContractVersion: 'organization.active-principal.v1' }
+  })
+
+  await check('D50-05', 'runtime session DML is restored without sibling or owner privileges', async () => {
+    const privileges = await client.query(`SELECT
+      has_table_privilege('jenfu_orgmaster_runtime','orgmaster_core.app_sessions','SELECT') AS orgmaster_select,
+      has_table_privilege('jenfu_orgmaster_runtime','orgmaster_core.app_sessions','INSERT') AS orgmaster_insert,
+      has_table_privilege('jenfu_orgmaster_runtime','orgmaster_core.app_sessions','UPDATE') AS orgmaster_update,
+      has_table_privilege('jenfu_orgmaster_runtime','orgmaster_core.app_sessions','DELETE') AS orgmaster_delete,
+      has_table_privilege('jenfu_orgmaster_runtime','orgmaster_core.app_sessions','TRUNCATE') AS orgmaster_truncate,
+      has_table_privilege('jenfu_platform_runtime','orgmaster_core.app_sessions','SELECT') AS platform_select,
+      has_table_privilege('jenfu_ai_pdm_runtime','orgmaster_core.app_sessions','SELECT') AS ai_select,
+      (SELECT pg_get_userbyid(c.relowner) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='orgmaster_core' AND c.relname='app_sessions') AS owner`)
+    assert.deepEqual(privileges.rows[0], {
+      orgmaster_select: true, orgmaster_insert: true, orgmaster_update: true, orgmaster_delete: true,
+      orgmaster_truncate: false, platform_select: false, ai_select: false, owner: 'jenfu_orgmaster_migrator',
+    })
+
+    const id = '50000000-0000-4000-8000-000000000015'
+    await queryAs('jenfu_orgmaster_runtime', `INSERT INTO orgmaster_core.app_sessions
+      (id,session_id_hash,identity_issuer,identity_subject,principal_id,employee_id,app_id,auth_epoch,issued_at,expires_at,last_seen_at,revoked_at,revoke_reason,assurance_level,created_at,updated_at)
+      VALUES ($1,$2,'https://securetoken.google.com/jenfu-test','runtime-session-subject','runtime-session-principal','employee-legacy','orgmaster',0,clock_timestamp(),clock_timestamp()+interval '1 hour',clock_timestamp(),NULL,NULL,'aal1',clock_timestamp(),clock_timestamp())`, [id, '5'.repeat(64)])
+    const selected = await queryAs('jenfu_orgmaster_runtime', `SELECT id::text,revoked_at FROM orgmaster_core.app_sessions WHERE id=$1`, [id])
+    assert.deepEqual(selected.rows, [{ id, revoked_at: null }])
+    await queryAs('jenfu_orgmaster_runtime', `UPDATE orgmaster_core.app_sessions SET revoked_at=clock_timestamp(),revoke_reason='qc' WHERE id=$1`, [id])
+    await queryAs('jenfu_orgmaster_runtime', `DELETE FROM orgmaster_core.app_sessions WHERE id=$1`, [id])
+    await expectDatabaseError(() => queryAs('jenfu_platform_runtime', `SELECT id FROM orgmaster_core.app_sessions LIMIT 1`), { code: '42501' })
+    await expectDatabaseError(() => queryAs('jenfu_ai_pdm_runtime', `SELECT id FROM orgmaster_core.app_sessions LIMIT 1`), { code: '42501' })
+    return { owner: privileges.rows[0].owner, dml: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'], siblingRead: false, truncate: false }
   })
 }
 
@@ -350,7 +378,7 @@ async function main() {
   postgresBin = runtime.bin
   taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), dev049 ? 'orgmaster-dev049-qc-' : dev050 ? 'orgmaster-dev050-qc-' : 'orgmaster-dev047-qc-'))
   clusterDir = path.join(taskRoot, 'cluster'); postgresLog = path.join(taskRoot, 'postgres.log'); port = await freePort()
-  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 isolated PostgreSQL 001-014 QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'client closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
+  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'client closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
   run(path.join(postgresBin, 'initdb.exe'), ['-D', clusterDir, '--auth-local=trust', '--auth-host=trust', '--username=postgres', '--encoding=UTF8', '--no-locale'])
   run(path.join(postgresBin, 'pg_ctl.exe'), ['-D', clusterDir, '-l', postgresLog, '-o', `-p ${port} -h 127.0.0.1`, '-w', 'start'], { stdio: 'ignore' })
   started = true
@@ -461,7 +489,7 @@ finally {
   if (taskRoot) { try { fs.rmSync(taskRoot, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 }); cleanup.tempRemoved = !fs.existsSync(taskRoot) } catch { cleanup.tempRemoved = false } } else cleanup.tempRemoved = true
 }
 
-const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04'] : requiredCorrectionCases
+const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : requiredCorrectionCases
 const allRequiredPassed = requiredCases.every((id) => checks.some((entry) => entry.id === id && entry.status === 'PASS'))
 const status = !firstFailure && allRequiredPassed && Object.values(cleanup).every(Boolean) ? 'PASS' : firstFailure?.reasonCode === 'POSTGRES_RUNTIME_MISSING' ? 'BLOCKED' : 'FAIL'
 const manifest = {
