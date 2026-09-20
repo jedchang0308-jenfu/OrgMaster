@@ -68,6 +68,19 @@ export type PrivilegedAssignmentOperationResponse = {
     securityAlertRequired: true
   }
 }
+export type EmployeeAuthoritySwitchReceipt = {
+  contractVersion: 'orgmaster.employee-authority-switch-receipt.v1'
+  operationId: string
+  receiptId: string
+  applicationId: 'ai-pdm'
+  employeeId: string
+  toAuthoritySource: 'legacy_authority' | 'orgmaster_authority'
+  authorityVersion: number
+  assignmentVersionId: string
+  outboxEventId: string
+  sessionRefreshState: string
+  replayed: boolean
+}
 export class GovernanceApiError extends Error { constructor(public readonly code: string, public readonly status: number, public readonly issues?: unknown) { super(code) } }
 const headers = { 'Content-Type': 'application/json', 'X-OrgMaster-Dev-Issuer': 'urn:orgmaster:dev', 'X-OrgMaster-Dev-Subject': 'local-admin' }
 async function request<T>(path: string, init: RequestInit = {}) { const response = await fetch(`${GOVERNANCE_API_PATH}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new GovernanceApiError(payload.error ?? 'GOVERNANCE_REQUEST_FAILED', response.status, payload.issues); return { payload: payload as T, revision: response.headers.get('X-OrgMaster-Governance-Revision') ?? '' } }
@@ -98,3 +111,9 @@ export async function loadPrivilegedAssignmentWorkspace() { return request<Privi
 export async function previewPrivilegedAssignment(requestValue: PrivilegedAssignmentRequest) { return request<PrivilegedAssignmentOperationResponse>('/privileged-assignments/preview', { method: 'POST', body: JSON.stringify(privilegedOperationBody(requestValue, 'preview')) }) }
 export async function publishPrivilegedAssignment(requestValue: PrivilegedAssignmentRequest, commandId: string, requestHash: string, previewHash: string) { return request<GovernanceCommandReceiptV2>('/privileged-assignments/publish', { method: 'POST', body: JSON.stringify({ ...privilegedOperationBody(requestValue, 'publish'), commandId, requestHash, preview: { previewHash } }) }) }
 export async function loadPrivilegedAssignmentReceipt(commandId: string) { return request<GovernanceCommandReceiptV2>(`/privileged-assignments/commands/${encodeURIComponent(commandId)}`) }
+export async function switchEmployeeEntitlementAuthority(input: { employeeId: string; toAuthoritySource: 'legacy_authority' | 'orgmaster_authority'; expectedAuthorityVersion: number; operationId: string; reason: string }) {
+  return request<EmployeeAuthoritySwitchReceipt>('/employee-authority-switch', {
+    method: 'POST',
+    body: JSON.stringify({ applicationId: 'ai-pdm', batchId: 'single-employee-authority-switch', ...input }),
+  })
+}

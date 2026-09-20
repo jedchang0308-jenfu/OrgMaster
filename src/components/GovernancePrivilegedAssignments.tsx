@@ -3,6 +3,7 @@ import {
   loadPrivilegedAssignmentWorkspace,
   previewPrivilegedAssignment,
   publishPrivilegedAssignment,
+  switchEmployeeEntitlementAuthority,
   type PrivilegedAssignmentOperationResponse,
   type PrivilegedAssignmentWorkspace,
 } from '../governance/apiClient'
@@ -13,6 +14,7 @@ import type { Employee } from '../types'
 type Props = {
   employees: Employee[]
   workspaceMutationAllowed: boolean
+  operatorEmployeeId: string | null
   onChanged?: () => void | Promise<void>
 }
 
@@ -57,7 +59,7 @@ function statusLabel(status: string) {
   return status
 }
 
-export function GovernancePrivilegedAssignments({ employees, workspaceMutationAllowed, onChanged }: Props) {
+export function GovernancePrivilegedAssignments({ employees, workspaceMutationAllowed, operatorEmployeeId, onChanged }: Props) {
   const [workspace, setWorkspace] = useState<PrivilegedAssignmentWorkspace | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -68,6 +70,10 @@ export function GovernancePrivilegedAssignments({ employees, workspaceMutationAl
   const [pending, setPending] = useState<PendingOperation | null>(null)
   const [previewResponse, setPreviewResponse] = useState<PrivilegedAssignmentOperationResponse | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
+  const [authorityReason, setAuthorityReason] = useState('')
+  const [authorityVersion, setAuthorityVersion] = useState('1')
+  const [authorityTarget, setAuthorityTarget] = useState<'orgmaster_authority' | 'legacy_authority'>('orgmaster_authority')
+  const [authorityPreview, setAuthorityPreview] = useState<{ employeeId: string; operationId: string } | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -180,6 +186,35 @@ export function GovernancePrivilegedAssignments({ employees, workspaceMutationAl
     }
   }
 
+  async function publishAuthoritySwitch() {
+    if (!mutationAllowed || !authorityPreview || !authorityReason.trim()) return
+    const expectedAuthorityVersion = Number(authorityVersion)
+    if (!Number.isSafeInteger(expectedAuthorityVersion) || expectedAuthorityVersion < 1) {
+      setLocalFailure('INVALID_COMMAND', '權限來源版本必須是大於零的整數。')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setNotice('')
+    try {
+      const result = await switchEmployeeEntitlementAuthority({
+        employeeId: authorityPreview.employeeId,
+        toAuthoritySource: authorityTarget,
+        expectedAuthorityVersion,
+        operationId: authorityPreview.operationId,
+        reason: authorityReason.trim(),
+      })
+      const receipt = result.payload
+      setNotice(`AI-PDM 權限來源已切換為 ${receipt.toAuthoritySource}（版本 ${receipt.authorityVersion}）；session refresh：${receipt.sessionRefreshState}。`)
+      setAuthorityPreview(null)
+      setAuthorityReason('')
+    } catch (failure) {
+      setError(describeGovernanceFailure(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return <section className="governance-privileged" aria-labelledby="governance-privileged-title">
     <header className="governance-privileged__header">
       <div><small>AI-PDM · cross-app override</small><h3 id="governance-privileged-title">特權設定</h3></div>
@@ -206,6 +241,16 @@ export function GovernancePrivilegedAssignments({ employees, workspaceMutationAl
         <div className="governance-privileged__subheading"><h4 id="governance-privileged-assignments-title">目前持有者</h4><span>{workspace.assignments.length} 筆</span></div>
         {workspace.assignments.length === 0 ? <p className="governance-privileged__empty">尚無 system_admin 持有者。</p> : <div className="governance-table-wrap"><table className="governance-table governance-privileged__table"><thead><tr><th>員工</th><th>特權身分</th><th>期間</th><th>狀態</th><th>操作</th></tr></thead><tbody>{workspace.assignments.map((assignment) => <tr key={assignment.assignmentId}><td>{employeeName(employees, assignment.employeeId)}</td><td>{assignment.principalHint}<small>admission 已核准</small></td><td>{assignment.validFrom.slice(0, 10)} ～ {assignment.validTo?.slice(0, 10) ?? '未設定'}</td><td>{assignment.status === 'active' ? '有效' : '已撤銷'}</td><td><button type="button" className="button button--quiet" disabled={!mutationAllowed || busy || assignment.status !== 'active'} onClick={() => previewRevoke(assignment)}>{assignment.status === 'active' ? '預覽撤銷' : '已撤銷'}</button></td></tr>)}</tbody></table></div>}
       </section>
+      {mutationAllowed && operatorEmployeeId && workspace.assignments.some((assignment) => assignment.status === 'active' && assignment.employeeId === operatorEmployeeId) && <fieldset className="governance-privileged__grant" disabled={busy}>
+        <legend>切換本人 AI-PDM 權限來源</legend>
+        <p className="governance-muted">只允許目前登入的 system_admin 員工；伺服器會以版本比對拒絕過期或跨員工操作。</p>
+        <label>目標來源<select aria-label="目標權限來源" value={authorityTarget} onChange={(event) => { setAuthorityTarget(event.target.value as typeof authorityTarget); setAuthorityPreview(null) }}><option value="orgmaster_authority">OrgMaster</option><option value="legacy_authority">Legacy（回切）</option></select></label>
+        <label>目前來源版本<input aria-label="目前權限來源版本" inputMode="numeric" value={authorityVersion} onChange={(event) => { setAuthorityVersion(event.target.value); setAuthorityPreview(null) }} /></label>
+        <label>切換原因<textarea aria-label="權限來源切換原因" value={authorityReason} maxLength={240} onChange={(event) => { setAuthorityReason(event.target.value); setAuthorityPreview(null) }} placeholder="說明本次單一員工切換用途" /></label>
+        {!authorityPreview
+          ? <button type="button" className="button button--primary" disabled={busy || !authorityReason.trim()} onClick={() => { if (operatorEmployeeId) setAuthorityPreview({ employeeId: operatorEmployeeId, operationId: `authority-switch-${crypto.randomUUID()}` }) }}>預覽權限來源切換</button>
+          : <section className="governance-privileged__preview" aria-live="polite"><div className="governance-privileged__subheading"><h4>操作預覽：權限來源切換</h4><span>尚未寫入</span></div><dl><div><dt>應用</dt><dd>AI-PDM</dd></div><div><dt>員工</dt><dd>{employeeName(employees, authorityPreview.employeeId)}</dd></div><div><dt>來源</dt><dd>{authorityTarget}</dd></div><div><dt>版本</dt><dd>{authorityVersion} → {Number(authorityVersion) + 1}</dd></div></dl><div className="governance-privileged__actions"><button type="button" className="button button--primary" disabled={busy} onClick={() => void publishAuthoritySwitch()}>確認切換</button><button type="button" className="button button--quiet" disabled={busy} onClick={() => setAuthorityPreview(null)}>取消</button></div></section>}
+      </fieldset>}
       {pending && previewResponse && <section className="governance-privileged__preview" aria-live="polite" aria-labelledby="governance-privileged-preview-title"><div className="governance-privileged__subheading"><h4 id="governance-privileged-preview-title">操作預覽：{pending.label}</h4><span>尚未寫入</span></div><dl><div><dt>目標提示</dt><dd>{previewResponse.preview.targetHint}</dd></div><div><dt>持有者</dt><dd>{previewResponse.preview.beforeHolderCount} → {previewResponse.preview.afterHolderCount}</dd></div><div><dt>受影響 session</dt><dd>{previewResponse.preview.affectedSessionCount}</dd></div><div><dt>安全告警</dt><dd>{previewResponse.preview.securityAlertRequired ? '需要' : '不需要'}</dd></div></dl><div className="governance-privileged__actions"><button type="button" className="button button--primary" disabled={busy || !mutationAllowed} onClick={() => void publish()}>確認{pending.label}</button><button type="button" className="button button--quiet" disabled={busy} onClick={() => { setPending(null); setPreviewResponse(null) }}>取消</button></div></section>}
     </>}
   </section>

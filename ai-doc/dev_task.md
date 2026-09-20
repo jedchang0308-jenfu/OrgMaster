@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+> **2026-09-20 DEV-051／Platform DEV-013 P_BOTH（現行）**：已完成 self-only AI-PDM entitlement authority switch control surface，本機 targeted `28／28`、client＋SSR build、DB boundary及diff check PASS。Server固定 verified actor Employee、fresh AAL2、active published human-privileged＋cross-app override＋principal-scoped global `system_admin`，以既有 PostgreSQL CAS函式產生可重播 receipt與outbox；不新增schema／migration或直接改表。人類已授權的Production data operation只限`employee-shijie / ai-pdm`，但明文禁止service／traffic變更；現有production revision沒有此control surface，故owner-native OrgMaster service release仍需另行精確授權。權威文件：[DEV-051](specs/DEV-051-single-employee-entitlement-authority-switch.md)。
+
 > **2026-09-18 DEV-013 Production L4 G2 recovery（現行）**：fresh exact-source run `35307497175` 已由owner Job成功追加012–014（`applied=3／replayed=11／ledgerCount=14`），但candidate smoke建立app-local session時，PostgreSQL以`permission denied for table app_sessions`拒絕；verify在activate前安全停止，terminal=`PRE_ACTIVATION_ABORTED`，正式traffic仍為`orgmaster-prod-bd2c2ccb8291 = 100%`，DB維持forward-applied。根因是migration 012的全表ACL收斂撤銷了migration 010授予的`orgmaster_core.app_sessions` runtime DML，013／014未恢復。DEV-040 §37現固定forward-only migration 015，只恢復OrgMaster runtime的`SELECT／INSERT／UPDATE／DELETE`並持續拒絕sibling／PUBLIC；profile與runner改為001–015，controlled append只接受精確012–015。不得人工GRANT、改已套migration或down migration。修正完成本地gates、commit／push與review後，須以新的exact OrgMaster revision取得fresh Production L4 authorization；本輪綁`8c89b442…`的root與failed capsule不可重用，尚未宣稱production完成。
 
 > **2026-09-16 DEV-040 ordinary release：LIVE_VERIFIED（歷史正式基線）**
@@ -92,6 +94,13 @@
 - 文件成熟度：DEV-047為`RD Implementation Complete / Local QA-QC Passed / CAPA Closed / Production Release Gated`。2026-09-16 已完成 task-owned PostgreSQL 001～012 與 A17～A22、target／cleanup 安全及結果可信修復；Google Admin仍擁有外部帳號生命週期，OrgMaster零provider write。
 
 ## 總任務清單
+
+- ◐ DEV-051 [開發點] [本機產品完成／production service release gated] [P0] [RD Implementation Complete／Architecture Finalized／Local QA-QC Passed] AI-PDM 單一員工權限來源切換控制面
+  - 來源 ID：`Jenfu-Platform / DEV-013 / P_BOTH`；本地任務只承接 OrgMaster owner control surface，不把 Platform DEV ID 宣稱為本地 ID。
+  - 結果：same-origin、verified self actor、fresh AAL2、active published human-privileged＋cross-app override＋global principal-scoped `system_admin` 限制；既有DB函式完成CAS、idempotent receipt與outbox，UI採預覽／確認兩步。
+  - Production gate：已授權`employee-shijie / ai-pdm`資料切換與回切，但現有production revision尚無入口，且該授權明文禁止service／traffic；需另行精確 owner-native OrgMaster ordinary release授權後才可執行。
+  - 證據：[DEV-051 spec](specs/DEV-051-single-employee-entitlement-authority-switch.md)；targeted 28／28、DEV-040 owner 63／63、abort 6／6、full regression 872 PASS／1 skipped、build、DB boundary、diff check PASS；owner report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260920T155300846Z-FADD04E7/owner-report.json`。
+  - 計入交付：否；待Production release、authority receipt與Platform／AI-PDM L4完成。
 
 - ◐ DEV-050 [交付點] [本機產品完成／Production L4 correction in progress] [RD Implementation Complete／Architecture Finalized R2＋Release Amendment／Local QA-QC Passed] 員工編號或公司 Email 單一 Google 身分登入
   - 摘要：Google 驗證後以 stable key 核對本人 current JFS／exact primary Email；新增 private 同快照讀取與 OrgMaster 專用 session view，不改共用 identity view 或 owner 公開契約，不新增帳號、attempt、搜尋 resolver。
@@ -595,6 +604,22 @@
   - 父任務：DEV-020、DEV-022、DEV-023
   - 證據：`npm test -- --run`（19 files／126 tests）、`npm run build`、localhost:5000 真實瀏覽器 1440×900／1024×768／390×844 UI QC；`output/playwright/orgmaster-mode-status-1440x900.png`、`output/playwright/orgmaster-mode-status-1024x768.png`、`output/playwright/orgmaster-mode-status-390x844.png`；右上角狀態 pill 可見、無重疊／水平溢出，並提供 `role=status`、ARIA label 與 title 說明。
   - 計入交付：否
+
+## DEV-051：AI-PDM 單一員工權限來源切換控制面
+
+來源任務：`Jenfu-Platform / DEV-013 / P_BOTH`
+
+單一權威契約：[DEV-051 spec](specs/DEV-051-single-employee-entitlement-authority-switch.md)。本段只作任務索引；架構、API、CAS、回切、release與L4驗收以spec為準。
+
+- [x] self-only verified actor與exact `ai-pdm` request boundary。
+- [x] fresh AAL2及active published human-privileged／cross-app override／principal-scoped global `system_admin` server gate。
+- [x] 既有受控 PostgreSQL function、CAS、idempotent receipt、outbox與錯誤映射接線。
+- [x] 兩步UI與replayable operation ID；保留未發布 `pdm_admin`、`rd_manager` 草稿。
+- [x] targeted 28／28、DEV-040 owner 63／63、abort 6／6、full regression 872 PASS／1 skipped、production build、DB boundary、diff check PASS。
+- [ ] exact source owner-native Production ordinary release；須另有service／candidate／traffic／rollback授權。
+- [ ] `employee-shijie / ai-pdm` authority receipt、L4 browser、global logout與300秒觀察。
+
+`Local Development Complete / Production Service Release Gated`：目前資料切換授權不能擴張為service／traffic授權，故不得用人工SQL、migration Job override或其他旁路執行。
 
 ## DEV-050：員工編號或公司 Email 單一 Google 身分登入
 
