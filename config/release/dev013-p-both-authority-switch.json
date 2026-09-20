@@ -17,7 +17,9 @@
   "actor": "jedchang0308@jenfu.com.tw",
   "allowedTransitions": [
     "legacy_authority:1->orgmaster_authority:2",
-    "orgmaster_authority:2->legacy_authority:3"
+    "orgmaster_authority:2->legacy_authority:3",
+    "legacy_authority:3->orgmaster_authority:4",
+    "orgmaster_authority:4->legacy_authority:5"
   ],
   "operationPrefix": "source/production-data/dev013/p-both/employee-shijie/",
   "receiptPrefix": "receipts/releases/DEV013-P-BOTH-EMPLOYEE-SHIJIE/",
