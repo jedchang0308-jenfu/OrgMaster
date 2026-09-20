@@ -95,14 +95,13 @@ export function assertAuthorityOperation(value, { bytes, operationSha256, source
   if (!Array.isArray(value.expectedRoleCodes) || new Set(value.expectedRoleCodes).size !== value.expectedRoleCodes.length
     || value.expectedRoleCodes.some((role) => typeof role !== 'string' || !/^[a-z][a-z0-9_]{1,63}$/u.test(role))
     || canonicalize(value.expectedRoleCodes) !== canonicalize([...value.expectedRoleCodes].sort())) fail('DEV013_AUTHORITY_ROLE_SET_INVALID')
-  const expected = value.operationKind === 'preflight'
-    ? { from: 'legacy_authority', to: 'legacy_authority', current: 1, next: 1, versionId: null, roles: [] }
+  const transition = `${value.fromAuthoritySource}:${value.expectedAuthorityVersion}->${value.toAuthoritySource}:${value.expectedNextAuthorityVersion}`
+  const allowed = value.operationKind === 'preflight'
+    ? new Set(['legacy_authority:1->legacy_authority:1', 'legacy_authority:3->legacy_authority:3'])
     : value.operationKind === 'switch'
-      ? { from: 'legacy_authority', to: 'orgmaster_authority', current: 1, next: 2 }
-      : { from: 'orgmaster_authority', to: 'legacy_authority', current: 2, next: 3 }
-  if (!SOURCES.has(value.fromAuthoritySource) || !SOURCES.has(value.toAuthoritySource)
-    || value.fromAuthoritySource !== expected.from || value.toAuthoritySource !== expected.to
-    || value.expectedAuthorityVersion !== expected.current || value.expectedNextAuthorityVersion !== expected.next) fail('DEV013_AUTHORITY_TRANSITION_INVALID')
+      ? new Set(['legacy_authority:1->orgmaster_authority:2', 'legacy_authority:3->orgmaster_authority:4'])
+      : new Set(['orgmaster_authority:2->legacy_authority:3', 'orgmaster_authority:4->legacy_authority:5'])
+  if (!SOURCES.has(value.fromAuthoritySource) || !SOURCES.has(value.toAuthoritySource) || !allowed.has(transition)) fail('DEV013_AUTHORITY_TRANSITION_INVALID')
   if (value.operationKind === 'preflight') {
     if (value.expectedAssignmentVersionId !== null || value.expectedRoleCodes.length !== 0) fail('DEV013_AUTHORITY_PREFLIGHT_INVALID')
   } else if (typeof value.expectedAssignmentVersionId !== 'string' || !SAFE_ID.test(value.expectedAssignmentVersionId)
@@ -122,26 +121,30 @@ function baseOperation({ operationKind, sourceRevision, deadlineAt }) {
   }
 }
 
-export function buildAuthorityOperation({ operationKind, sourceRevision, deadlineAt, evidence = null }) {
+export function buildAuthorityOperation({ operationKind, sourceRevision, deadlineAt, evidence = null, expectedAuthorityVersion = 1 }) {
   const base = baseOperation({ operationKind, sourceRevision, deadlineAt })
-  if (operationKind === 'preflight') return { ...base, fromAuthoritySource: 'legacy_authority', toAuthoritySource: 'legacy_authority', expectedAuthorityVersion: 1, expectedNextAuthorityVersion: 1, expectedAssignmentVersionId: null, expectedRoleCodes: [], reason: 'DEV-013 P_BOTH read-only Production authority preflight' }
+  if (operationKind === 'preflight') {
+    if (![1, 3].includes(expectedAuthorityVersion)) fail('DEV013_AUTHORITY_OPERATION_BUILD_INPUT_INVALID')
+    return { ...base, fromAuthoritySource: 'legacy_authority', toAuthoritySource: 'legacy_authority', expectedAuthorityVersion, expectedNextAuthorityVersion: expectedAuthorityVersion, expectedAssignmentVersionId: null, expectedRoleCodes: [], reason: 'DEV-013 P_BOTH read-only Production authority preflight' }
+  }
   if (operationKind === 'switch') {
     if (evidence?.schemaVersion !== 'jenfu.dev013.production-authority-preflight.v1' || evidence.sourceRevision !== sourceRevision
       || evidence.target?.projectId !== DEV013_AUTHORITY_TARGET.projectId || evidence.target?.database !== DEV013_AUTHORITY_TARGET.database
       || evidence.target?.applicationId !== DEV013_AUTHORITY_TARGET.applicationId || evidence.target?.employeeId !== DEV013_AUTHORITY_TARGET.employeeId
-      || evidence.state?.authoritySource !== 'legacy_authority' || evidence.state?.authorityVersion !== 1
+      || evidence.state?.authoritySource !== 'legacy_authority' || ![1, 3].includes(evidence.state?.authorityVersion)
       || typeof evidence.state?.assignmentVersionId !== 'string' || !Array.isArray(evidence.state?.roles) || !evidence.state.roles.includes('system_admin')
+      || evidence.state?.projectionReady !== true || !Array.isArray(evidence.state?.projectedRoleCodes) || !evidence.state.projectedRoleCodes.includes('system_admin')
       || evidence.mutationCount !== 0 || evidence.status !== 'PASS') fail('DEV013_AUTHORITY_PREFLIGHT_EVIDENCE_INVALID')
-    return { ...base, fromAuthoritySource: 'legacy_authority', toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: 1, expectedNextAuthorityVersion: 2, expectedAssignmentVersionId: evidence.state.assignmentVersionId, expectedRoleCodes: [...evidence.state.roles].sort(), reason: 'DEV-013 P_BOTH switch employee-shijie to OrgMaster authority' }
+    return { ...base, fromAuthoritySource: 'legacy_authority', toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: evidence.state.authorityVersion, expectedNextAuthorityVersion: evidence.state.authorityVersion + 1, expectedAssignmentVersionId: evidence.state.assignmentVersionId, expectedRoleCodes: [...evidence.state.roles].sort(), reason: 'DEV-013 P_BOTH switch employee-shijie to OrgMaster authority' }
   }
   if (operationKind === 'rollback') {
     if (evidence?.schemaVersion !== 'jenfu.dev013.production-authority-switch-receipt.v1' || evidence.sourceRevision !== sourceRevision
       || evidence.operationKind !== 'switch' || evidence.target?.projectId !== DEV013_AUTHORITY_TARGET.projectId || evidence.target?.database !== DEV013_AUTHORITY_TARGET.database
       || evidence.target?.applicationId !== DEV013_AUTHORITY_TARGET.applicationId || evidence.target?.employeeId !== DEV013_AUTHORITY_TARGET.employeeId
-      || evidence.transition?.toAuthoritySource !== 'orgmaster_authority' || evidence.transition?.toAuthorityVersion !== 2
+      || evidence.transition?.toAuthoritySource !== 'orgmaster_authority' || ![2, 4].includes(evidence.transition?.toAuthorityVersion)
       || typeof evidence.governance?.assignmentVersionId !== 'string' || !Array.isArray(evidence.governance?.roles) || !evidence.governance.roles.includes('system_admin')
       || evidence.databaseEffect !== 'APPLIED_ONCE' || evidence.replaySafe !== true || evidence.status !== 'PASS') fail('DEV013_AUTHORITY_SWITCH_EVIDENCE_INVALID')
-    return { ...base, fromAuthoritySource: 'orgmaster_authority', toAuthoritySource: 'legacy_authority', expectedAuthorityVersion: 2, expectedNextAuthorityVersion: 3, expectedAssignmentVersionId: evidence.governance.assignmentVersionId, expectedRoleCodes: [...evidence.governance.roles].sort(), reason: 'DEV-013 P_BOTH rollback employee-shijie to legacy authority' }
+    return { ...base, fromAuthoritySource: 'orgmaster_authority', toAuthoritySource: 'legacy_authority', expectedAuthorityVersion: evidence.transition.toAuthorityVersion, expectedNextAuthorityVersion: evidence.transition.toAuthorityVersion + 1, expectedAssignmentVersionId: evidence.governance.assignmentVersionId, expectedRoleCodes: [...evidence.governance.roles].sort(), reason: 'DEV-013 P_BOTH rollback employee-shijie to legacy authority' }
   }
   fail('DEV013_AUTHORITY_OPERATION_KIND_INVALID')
 }
@@ -172,6 +175,43 @@ function roleSummary(version, employeeId, now) {
   const grants = policy.managementGrants.filter((entry) => entry.employeeId === employeeId && entry.principalId === systemAdmin.targetPrincipalId && entry.applicationId === 'ai-pdm' && entry.capability === 'orgmaster.cross_app_override' && activeAt(entry, now))
   if (grants.length !== 1) fail('DEV013_AUTHORITY_OVERRIDE_GRANT_INVALID')
   return { roles, assignmentCount: assignments.length, privilegedPrincipalSha256: sha256(systemAdmin.targetPrincipalId) }
+}
+
+async function readProjectionReadiness(database, version, employeeId, now) {
+  const assignments = version.policy.roleAssignments.filter((entry) => entry.applicationId === 'ai-pdm' && entry.employeeId === employeeId && activeAt(entry, now))
+  const catalog = (await database.query(`SELECT catalog_version,stable_role_id,role_code,assignable,subject_kind,allowed_scope_kinds
+    FROM ai_pdm_contract.v_application_role_catalog_v1
+    WHERE application_id='ai-pdm'`)).rows
+  const principals = (await database.query(`SELECT principal_id,account_type
+    FROM access_governance.v_active_principal_links_v1
+    WHERE employee_id=$1`, [employeeId])).rows
+  const eligible = assignments.filter((assignment) => {
+    const role = catalog.find((candidate) => candidate.catalog_version === assignment.catalogVersion
+      && candidate.stable_role_id === assignment.roleId && candidate.role_code === assignment.roleCodeSnapshot
+      && candidate.assignable === true && Array.isArray(candidate.allowed_scope_kinds)
+      && candidate.allowed_scope_kinds.includes(assignment.scope?.kind))
+    if (!role || assignment.basis !== 'manual' || !Array.isArray(assignment.sources) || assignment.sources.length !== 0) return false
+    if (assignment.scope?.kind === 'global' ? assignment.scope?.value != null : typeof assignment.scope?.value !== 'string' || assignment.scope.value.length === 0) return false
+    if (assignment.subjectKind === 'employee') return assignment.targetPrincipalId == null && role.subject_kind === 'employee' && principals.some((principal) => principal.account_type === 'human_personal')
+    return assignment.subjectKind === 'principal' && role.subject_kind === 'principal'
+      && principals.some((principal) => principal.account_type === 'human_privileged' && principal.principal_id === assignment.targetPrincipalId)
+  })
+  const catalogVersions = [...new Set(catalog.map((entry) => entry.catalog_version))].sort()
+  return {
+    catalogVersions,
+    catalogRoleCount: catalog.length,
+    activePrincipalCount: principals.length,
+    projectedRoleCodes: [...new Set(eligible.map((entry) => entry.roleCodeSnapshot))].sort(),
+    projectionReady: eligible.some((entry) => entry.roleCodeSnapshot === 'system_admin'),
+  }
+}
+
+async function readEffectiveRoles(database, employeeId) {
+  const rows = (await database.query(`SELECT role_code
+    FROM access_governance.v_effective_role_assignments_v1
+    WHERE application_id='ai-pdm' AND employee_id=$1
+    ORDER BY role_code`, [employeeId])).rows
+  return [...new Set(rows.map((row) => row.role_code))].sort()
 }
 
 async function readBoundary(database, target) {
@@ -208,6 +248,8 @@ async function readState(database, operation, now) {
     WHERE version.value->>'id' = governance.payload->>'activePolicyVersionId'`, [])).rows
   if (governance.length !== 1 || governance[0].active_version?.kind !== 'assignment-governance-v3' || governance[0].active_version_id !== governance[0].active_version.id) fail('DEV013_AUTHORITY_ACTIVE_VERSION_INVALID')
   const summary = roleSummary(governance[0].active_version, operation.employeeId, now)
+  const projection = await readProjectionReadiness(database, governance[0].active_version, operation.employeeId, now)
+  const effectiveRoleCodes = await readEffectiveRoles(database, operation.employeeId)
   return {
     authoritySource: authority[0].authority_source,
     authorityVersion: Number(authority[0].authority_version),
@@ -218,6 +260,8 @@ async function readState(database, operation, now) {
     assignmentVersion: Number(governance[0].active_version.versionNumber),
     publishedAt: governance[0].active_version.publishedAt,
     ...summary,
+    ...projection,
+    effectiveRoleCodes,
   }
 }
 
@@ -255,6 +299,9 @@ function assertBoundState(state, operation, { replayed = false } = {}) {
   if (state.authoritySource !== expectedSource || state.authorityVersion !== expectedVersion
     || (operation.operationKind !== 'preflight' && state.assignmentVersionId !== operation.expectedAssignmentVersionId)
     || (operation.operationKind !== 'preflight' && canonicalize(state.roles) !== canonicalize(operation.expectedRoleCodes))) fail('DEV013_AUTHORITY_PRECONDITION_DRIFT')
+  if (state.projectionReady !== true || !state.projectedRoleCodes.includes('system_admin')) fail('DEV013_AUTHORITY_PROJECTION_NOT_READY')
+  const expectedEffective = state.authoritySource === 'orgmaster_authority' ? state.projectedRoleCodes : []
+  if (canonicalize(state.effectiveRoleCodes) !== canonicalize(expectedEffective)) fail('DEV013_AUTHORITY_EFFECTIVE_PROJECTION_DRIFT')
 }
 
 export async function executeAuthorityOperation({ database, operation, target = DEV013_AUTHORITY_TARGET, now = () => new Date().toISOString() }) {
@@ -291,6 +338,8 @@ export async function executeAuthorityOperation({ database, operation, target = 
     if (after.authoritySource !== operation.toAuthoritySource || after.authorityVersion !== operation.expectedNextAuthorityVersion
       || after.assignmentVersionId !== before.assignmentVersionId || after.governanceHash !== before.governanceHash
       || canonicalize(after.roles) !== canonicalize(before.roles)
+      || (operation.toAuthoritySource === 'orgmaster_authority' && canonicalize(after.effectiveRoleCodes) !== canonicalize(after.projectedRoleCodes))
+      || (operation.toAuthoritySource === 'legacy_authority' && after.effectiveRoleCodes.length !== 0)
       || String(result.receipt_id) !== String(operationRows.receipt.receipt_id)
       || String(result.outbox_event_id) !== String(operationRows.outbox.event_id)
       || Number(result.authority_version) !== operation.expectedNextAuthorityVersion
@@ -312,7 +361,7 @@ export async function executeAuthorityOperation({ database, operation, target = 
     target: { projectId: target.projectId, region: target.region, instance: target.instance, database: target.database, applicationId: target.applicationId, employeeId: target.employeeId },
     boundary,
     transition: { fromAuthoritySource: operation.fromAuthoritySource, fromAuthorityVersion: operation.expectedAuthorityVersion, toAuthoritySource: operation.toAuthoritySource, toAuthorityVersion: operation.expectedNextAuthorityVersion },
-    governance: { persistenceBatchId: committed.persistenceBatchId, governanceHash: committed.governanceHash, assignmentVersionId: committed.assignmentVersionId, assignmentVersion: committed.assignmentVersion, publishedAt: committed.publishedAt, roles: committed.roles, assignmentCount: committed.assignmentCount, privilegedPrincipalSha256: committed.privilegedPrincipalSha256 },
+    governance: { persistenceBatchId: committed.persistenceBatchId, governanceHash: committed.governanceHash, assignmentVersionId: committed.assignmentVersionId, assignmentVersion: committed.assignmentVersion, publishedAt: committed.publishedAt, roles: committed.roles, assignmentCount: committed.assignmentCount, privilegedPrincipalSha256: committed.privilegedPrincipalSha256, catalogVersions: committed.catalogVersions, catalogRoleCount: committed.catalogRoleCount, activePrincipalCount: committed.activePrincipalCount, projectedRoleCodes: committed.projectedRoleCodes, effectiveRoleCodes: committed.effectiveRoleCodes },
     databaseReceipt: { receiptId: String(committedRows.receipt.receipt_id), authorityVersion: Number(committedRows.receipt.authority_version), sessionRefreshState: committedRows.receipt.session_refresh_state, switchedAt: new Date(committedRows.receipt.switched_at).toISOString() },
     outbox: { eventId: String(committedRows.outbox.event_id), status: committedRows.outbox.status, attemptCount: Number(committedRows.outbox.attempt_count), platformReceiptId: committedRows.outbox.platform_receipt_id == null ? null : String(committedRows.outbox.platform_receipt_id) },
     databaseEffect: 'APPLIED_ONCE', replaySafe: true, mutationCount: 3,

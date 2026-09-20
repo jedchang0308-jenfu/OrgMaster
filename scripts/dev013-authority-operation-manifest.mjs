@@ -9,17 +9,19 @@ function parse(argv) {
   const result = {}
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index]
-    if (!['--kind', '--source-revision', '--deadline-at', '--evidence', '--output'].includes(key) || !argv[index + 1]) throw new Error('DEV013_AUTHORITY_MANIFEST_ARGUMENT_INVALID')
+    if (!['--kind', '--source-revision', '--deadline-at', '--expected-authority-version', '--evidence', '--output'].includes(key) || !argv[index + 1]) throw new Error('DEV013_AUTHORITY_MANIFEST_ARGUMENT_INVALID')
     result[key.slice(2).replace(/-([a-z])/gu, (_, letter) => letter.toUpperCase())] = argv[index + 1]
   }
   if (!['preflight', 'switch', 'rollback'].includes(result.kind) || !result.sourceRevision || !result.deadlineAt || !result.output || (result.kind !== 'preflight' && !result.evidence)) throw new Error('DEV013_AUTHORITY_MANIFEST_ARGUMENT_INVALID')
+  result.expectedAuthorityVersion = result.expectedAuthorityVersion == null ? 1 : Number(result.expectedAuthorityVersion)
+  if (!Number.isSafeInteger(result.expectedAuthorityVersion) || (result.kind !== 'preflight' && result.expectedAuthorityVersion !== 1)) throw new Error('DEV013_AUTHORITY_MANIFEST_ARGUMENT_INVALID')
   return result
 }
 
 export function run({ argv = process.argv.slice(2), cwd = process.cwd() } = {}) {
   const args = parse(argv)
   const evidence = args.evidence ? JSON.parse(fs.readFileSync(path.resolve(cwd, args.evidence), 'utf8')) : null
-  const operation = buildAuthorityOperation({ operationKind: args.kind, sourceRevision: args.sourceRevision, deadlineAt: args.deadlineAt, evidence })
+  const operation = buildAuthorityOperation({ operationKind: args.kind, sourceRevision: args.sourceRevision, deadlineAt: args.deadlineAt, evidence, expectedAuthorityVersion: args.expectedAuthorityVersion })
   const encoded = encodeAuthorityOperation(operation)
   const output = path.resolve(cwd, args.output)
   fs.mkdirSync(path.dirname(output), { recursive: true })
