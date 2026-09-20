@@ -16,6 +16,9 @@ describe('governance API failure mapping', () => {
     ['IDENTITY_LINK_CONFLICT', 409],
     ['EMPLOYEE_NOT_ACTIVE', 422],
     ['SELF_IDENTITY_LINK_DEACTIVATION_FORBIDDEN', 422],
+    ['STEP_UP_REQUIRED', 403],
+    ['ENTITLEMENT_AUTHORITY_VERSION_CONFLICT', 409],
+    ['ENTITLEMENT_AUTHORITY_SWITCH_FAILED', 503],
   ])('maps %s to a recoverable HTTP status', (code, status) => expect(governanceErrorStatus(code)).toBe(status))
 })
 

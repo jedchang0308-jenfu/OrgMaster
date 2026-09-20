@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "jenfu.dev013.production-authority-job-profile.v1",
+  "sourceTask": "Jenfu-Platform / DEV-013 / P_BOTH",
+  "projectId": "jenfu-platform-prod",
+  "projectNumber": "9536592944",
+  "region": "asia-east1",
+  "instance": "jenfu-platform-prod-pg",
+  "database": "jenfu_prod",
+  "applicationId": "ai-pdm",
+  "employeeId": "employee-shijie",
+  "jobName": "orgmaster-prod-dev013-p-both-employee-shijie",
+  "serviceAccount": "orgmaster-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com",
+  "builderServiceAccount": "orgmaster-prod-builder@jenfu-platform-prod.iam.gserviceaccount.com",
+  "imageUri": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-authority-operator",
+  "dockerfile": "infra/google-cloud/dev-040-production-release/authority-switch-runner.Dockerfile",
+  "cloudBuildConfig": "infra/google-cloud/dev-040-production-release/authority-switch-cloudbuild.yaml",
+  "actor": "jedchang0308@jenfu.com.tw",
+  "allowedTransitions": [
+    "legacy_authority:1->orgmaster_authority:2",
+    "orgmaster_authority:2->legacy_authority:3"
+  ],
+  "operationPrefix": "source/production-data/dev013/p-both/employee-shijie/",
+  "receiptPrefix": "receipts/releases/DEV013-P-BOTH-EMPLOYEE-SHIJIE/",
+  "cleanup": "delete exact task-owned Cloud Run job after observation; retain immutable image digest and receipts for rollback evidence",
+  "forbidden": [
+    "schema",
+    "migration",
+    "traffic",
+    "IAM",
+    "Secret",
+    "Cloud Run service",
+    "other employee",
+    "other application"
+  ]
+}

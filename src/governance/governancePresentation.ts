@@ -101,6 +101,13 @@ const FAILURE_MESSAGES: Record<string, string> = {
   NO_ELIGIBLE_PRINCIPAL: '目前沒有可授予的 human_privileged 身分。',
   SYSTEM_ADMIN_PRINCIPAL_REQUIRED: '特權指派缺少有效身分資料，請重新載入。',
   COMMAND_NOT_OBSERVED: '操作收據尚未建立，請重新查詢。',
+  ENTITLEMENT_AUTHORITY_SWITCH_FORBIDDEN: '目前特權身分沒有執行權限來源切換的權限。',
+  ENTITLEMENT_AUTHORITY_SYSTEM_ADMIN_REQUIRED: '目前登入身分不是現行 AI-PDM system_admin。',
+  ENTITLEMENT_AUTHORITY_ACTIVE_VERSION_REQUIRED: '找不到可綁定的現行治理版本，請先發布並啟用版本。',
+  ENTITLEMENT_AUTHORITY_VERSION_CONFLICT: '權限來源版本已變更，請重新核對後再操作。',
+  ENTITLEMENT_AUTHORITY_OPERATION_REUSED: '此切換識別碼已被不同內容使用，請重新產生預覽。',
+  ENTITLEMENT_AUTHORITY_EMPLOYEE_INACTIVE: '目前員工或登入身分已失效，不能切換權限來源。',
+  ENTITLEMENT_AUTHORITY_SWITCH_FAILED: '權限來源切換暫時無法完成，資料庫未回傳有效收據。',
 }
 
 const ISSUE_MESSAGES: Record<string, string> = {
@@ -140,7 +147,7 @@ export function describeGovernanceFailure(error: unknown): GovernanceFailureView
   return {
     code,
     message: uniqueMessages.length ? uniqueMessages.join('；') : FAILURE_MESSAGES[code] ?? '治理操作未完成，請重新操作。',
-    canReload: ['REVISION_CONFLICT', 'ORGANIZATION_VERSION_INVALID', 'GOVERNANCE_READ_FAILED', 'ORGMASTER_UNAVAILABLE', 'EXTERNAL_CATALOG_VERSION_CONFLICT', 'EXTERNAL_CATALOG_STALE', 'EXTERNAL_CATALOG_UNAVAILABLE'].includes(code),
+    canReload: ['REVISION_CONFLICT', 'ORGANIZATION_VERSION_INVALID', 'GOVERNANCE_READ_FAILED', 'ORGMASTER_UNAVAILABLE', 'EXTERNAL_CATALOG_VERSION_CONFLICT', 'EXTERNAL_CATALOG_STALE', 'EXTERNAL_CATALOG_UNAVAILABLE', 'ENTITLEMENT_AUTHORITY_VERSION_CONFLICT'].includes(code),
   }
 }
 

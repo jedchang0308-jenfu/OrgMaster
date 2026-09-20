@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   loadPrivilegedAssignmentWorkspace: vi.fn(),
   previewPrivilegedAssignment: vi.fn(),
   publishPrivilegedAssignment: vi.fn(),
+  switchEmployeeEntitlementAuthority: vi.fn(),
 }))
 
 vi.mock('../governance/apiClient', () => mocks)
@@ -77,7 +78,7 @@ function renderCenter(workspace: PrivilegedAssignmentWorkspace, workspaceMutatio
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
-  act(() => root.render(<GovernancePrivilegedAssignments employees={employees} workspaceMutationAllowed={workspaceMutationAllowed} />))
+  act(() => root.render(<GovernancePrivilegedAssignments employees={employees} operatorEmployeeId="employee-2" workspaceMutationAllowed={workspaceMutationAllowed} />))
   return { host, root }
 }
 
@@ -163,6 +164,29 @@ describe('GovernancePrivilegedAssignments', () => {
     await settle()
     expect(host.textContent).toContain('治理資料已在其他操作中更新')
     expect([...host.querySelectorAll('button')].some((button) => button.textContent === '重新載入')).toBe(true)
+    act(() => root.unmount())
+    host.remove()
+  })
+
+  it('previews and submits a same-employee authority switch with a replayable operation id', async () => {
+    mocks.loadPrivilegedAssignmentWorkspace.mockReset()
+    mocks.switchEmployeeEntitlementAuthority.mockReset().mockResolvedValue({ payload: {
+      contractVersion: 'orgmaster.employee-authority-switch-receipt.v1', operationId: 'operation-1', receiptId: 'receipt-1',
+      applicationId: 'ai-pdm', employeeId: 'employee-2', toAuthoritySource: 'orgmaster_authority', authorityVersion: 2,
+      assignmentVersionId: 'policy-version-2', outboxEventId: 'event-1', sessionRefreshState: 'pending', replayed: false,
+    } })
+    const { host, root } = renderCenter(baseWorkspace)
+    await settle()
+    const reason = host.querySelector('textarea[aria-label="權限來源切換原因"]') as HTMLTextAreaElement
+    act(() => setFieldValue(reason, 'DEV-013 Production L4 P_BOTH'))
+    const previewButton = [...host.querySelectorAll('button')].find((button) => button.textContent === '預覽權限來源切換')
+    act(() => previewButton?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    expect(host.textContent).toContain('操作預覽：權限來源切換')
+    const publishButton = [...host.querySelectorAll('button')].find((button) => button.textContent === '確認切換')
+    act(() => publishButton?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    await settle()
+    expect(mocks.switchEmployeeEntitlementAuthority).toHaveBeenCalledWith(expect.objectContaining({ employeeId: 'employee-2', toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: 1, operationId: expect.stringMatching(/^authority-switch-/u), reason: 'DEV-013 Production L4 P_BOTH' }))
+    expect(host.textContent).toContain('權限來源已切換為 orgmaster_authority（版本 2）')
     act(() => root.unmount())
     host.remove()
   })
