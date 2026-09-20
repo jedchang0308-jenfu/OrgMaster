@@ -52,6 +52,8 @@
     "bootstrap:dev-013:l3:fixture": "node scripts/dev013-orgmaster-l3-fixture-bootstrap.mjs",
     "test:dev-013:l3": "node --test scripts/dev013-orgmaster-staging-profile.test.mjs scripts/dev013-orgmaster-rollback.test.mjs scripts/dev013-orgmaster-secret-bootstrap.test.mjs scripts/dev013-orgmaster-l3-fixture-bootstrap.test.mjs",
     "test:dev-013": "vitest run server/orgmasterAuthConfig.test.ts server/orgmasterAuthApi.test.ts server/orgmasterSsoHandoff.test.ts src/auth/AuthGate.test.tsx",
+    "test:dev-013:authority": "node --test scripts/dev013-production-authority-switch-runner.test.mjs",
+    "manifest:dev-013:authority": "node scripts/dev013-authority-operation-manifest.mjs",
     "test:dev-004": "npm run contracts:check && npm run test:dev-004:auth",
     "qc:dev-004": "npm run test:dev-004 && npm run build",
     "test:dev-045": "vitest run src/accountEnrollment/apiClient.test.ts src/components/EmployeeIdentitySection.test.tsx src/components/EmployeeAccountSetupDialog.test.tsx src/components/DirectoryDetailPanel.test.tsx src/governance/aiPdmCatalog.test.ts src/components/workspace/WorkspaceArchitecturePolicy.test.ts server/orgmasterAccountProvisioningPort.test.ts server/orgmasterIdentityLinkPolicy.test.ts server/orgmasterAccountEnrollmentStore.test.ts server/orgmasterAccountEnrollmentService.test.ts server/orgmasterAccountEnrollmentApi.test.ts server/orgmasterGovernanceApi.test.ts server/orgmasterGovernanceStore.test.ts server/orgmasterServer.test.ts",
