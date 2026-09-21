@@ -1,6 +1,6 @@
 # OrgMaster 開發任務
 
-> **2026-09-22 DEV-048～053／DEV-014 Production current checkpoint（現行）**：DEV-048 nonprod與DEV-049～053 Production migration、DWD、release、admission及單一員工managed link均已完成；DEV-051 authority switch、AI-PDM權限面、global logout與DEV-013亦已完成。Firebase Google callback後的session exchange 403已由read-only Production evidence定位：`employee-shijie / JFS0005`已有pending managed link，同一verified issuer＋subject亦有相同Employee的active legacy principal；OrgMaster與Platform卻在canonical lookup前先做managed bind。OrgMaster已修正為canonical-first，只有exact `principal_not_active`才進managed bind；DEV-049 56 tests、full 876 tests、DEV-049／050 contract、DB boundary與production build PASS。下一步owner-native發布OrgMaster與Platform修正，再完成DEV-014 LOGIN六案／AI-PDM C01／C02、reload、拒絕路徑與global logout。
+> **2026-09-22 DEV-048～053／DEV-014 Production current checkpoint（現行）**：DEV-048 nonprod與DEV-049～053 Production migration、DWD、base release、admission及單一員工managed link均已完成；DEV-051 authority switch、AI-PDM權限面、global logout與DEV-013亦已完成。Canonical-first修正中，Platform source `63395409f8ac1abc7b7fd2a3149c7944e0265d73`已發布至`jenfu-platform-prod-a5ca329fffe2`並承接100% traffic；受控Workspace帳號已由Platform normal entry建立session，免二次登入進入AI-PDM，reload與`accounts.lifecycle.manage`均PASS。OrgMaster source `9c660e210adfec82865167397e97e28a16b8b356`、source-bound runner與preflight已READY，仍待owner-native dispatch。下一步完成OrgMaster修正版，再補DEV-014 LOGIN六案／AI-PDM C01／C02、Free、OrgMaster target、拒絕路徑與global logout；目前Workspace→AI-PDM只算partial evidence。
 
 > **2026-09-21 DEV-053／DEV-014 application registration remediation（historical pre-recovery）**：Production admission operation在transaction內、attestation前以`DEV049_ACTIVE_CONSUMER_SET_MISMATCH`安全停止並回滾；正式治理資料使用`id`，migration 012 seed只讀`applicationId`。DEV-053以forward-only migration 017正規化雙欄、補齊`ai-pdm／orgmaster／platform`、保留既有support evidence，並在admission開啟時阻擋consumer-set drift。權威文件：[DEV-053](specs/DEV-053-invalidation-application-registration.md)。
 
@@ -126,8 +126,8 @@
   - 摘要：Google 驗證後以 stable key 核對本人 current JFS／exact primary Email；新增 private 同快照讀取與 OrgMaster 專用 session view，不改共用 identity view 或 owner 公開契約，不新增帳號、attempt、搜尋 resolver。
   - 來源 ID：`USER-2026-09-17-CLOUD-IDENTITY-FREE-DUAL-IDENTIFIER-LOGIN-BRIEF`、`USER-2026-09-17-DEV050-DEVELOPMENT-DOCUMENT`、`USER-2026-09-17-DEV050-ARCHITECTURE-CONFIRMATION`、`USER-2026-09-17-DEV050-RD-TECH-LEAD-OPTIMIZATION`
   - 父任務：DEV-049；僅替換 app-local 登入設計，stable identity、admission、zero-provider-write 與 SSO owner 公開契約不變。
-  - 下一步：provider、service source、migration、DWD與admission已完成；先完成`employee-shijie / JFS0005` source-controlled managed-link correction，再重跑Google／工號Production L4。
-  - 阻塞 / 恢復條件：provider readback已PASS；目前阻塞是Production managed identity零狀態。merge並owner-native release operator、完成精確apply＋replay後從normal entry重跑，不重做未漂移migration或admission。
+  - 下一步：provider、service base source、migration、DWD、admission及`employee-shijie / JFS0005` managed-link apply＋replay皆已完成；完成OrgMaster canonical-first correction owner release後，重跑Google／工號Production L4。
+  - 阻塞 / 恢復條件：Platform correction與Workspace→AI-PDM partial evidence已完成；OrgMaster correction source `9c660e210adfec82865167397e97e28a16b8b356`仍待owner dispatch。完成後補Free、OrgMaster target、deny-path與global logout，不重做未漂移migration、link或admission。
   - 證據：`npm run test:dev-050` 39／39、`qc:dev-050:contract` 6／6、隔離 PostgreSQL 18.4 D50-01～04、正常建置入口瀏覽器 1440／390 viewport、`qc:dev-047:contract`、`qc:dev-049:contract`、`test:dev-013`、`test:dev-047`、`npm test` 209 files／863 passed／1 skipped、build與DB boundary PASS；fresh manifest 分別見 `qa/dev-050/contract/manifest.json`、`dev-050/postgres/manifest.json`、`qa/dev-050/browser/manifest.json`。無 provider／production write，臨時 runtime 均清理。
   - 計入交付：是（Production source已發布；provider L4 pending）
 
@@ -135,7 +135,7 @@
   - 摘要：員工已有公司 Workspace 帳號時，不再建立重複的 `jfs####@jenfu.com.tw`；JFS 固定為 OrgMaster login alias，管理者以 exact primary Email 將 Employee 連結至既有 Directory stable principal。
   - 來源 ID：`USER-2026-09-17-EXISTING-WORKSPACE-ACCOUNT-MAPPING-BRIEF`、`USER-2026-09-17-DEV049-ARCHITECTURE-FINALIZATION`
   - 父任務：DEV-047；ADR-007 已新增 2026-09-17 intentional replacement，Google Admin 外部生命週期與 OrgMaster zero-provider-write 邊界不變。
-  - 下一步：DWD、provider、shared DB migrations、activation、deploy與release已完成；先以owner-native operator建立`employee-shijie / JFS0005`精確link並replay，再完成LOGIN六案／AI-PDM C01／C02。
+  - 下一步：DWD、provider、shared DB migrations、activation、base release及`employee-shijie / JFS0005`精確link apply＋replay皆已完成；發布canonical-first correction後完成LOGIN六案／AI-PDM C01／C02。
   - 證據：`test:dev-049` 50／50、PostgreSQL D49-01～06、三 viewport browser、full regression 853 PASS／1 skipped、build與DB boundary PASS；owner receipt=`qa/dev-049/producer/owner-receipt.json`。
   - 計入交付：是
 
@@ -640,14 +640,14 @@
 - [x] 既有受控 PostgreSQL function、CAS、idempotent receipt、outbox與錯誤映射接線。
 - [x] 兩步UI與replayable operation ID；保留未發布 `pdm_admin`、`rd_manager` 草稿。
 - [x] targeted 28／28、DEV-040 owner 63／63、abort 6／6、full regression 872 PASS／1 skipped、production build、DB boundary、diff check PASS。
-- [ ] exact source owner-native Production ordinary release；須另有service／candidate／traffic／rollback授權。
-- [ ] `employee-shijie / ai-pdm` authority receipt、L4 browser、global logout與300秒觀察。
+- [x] exact source owner-native Production release與target-session correction已完成。
+- [x] `employee-shijie / ai-pdm` authority receipt、L4 browser、global logout與觀察完成；final authority=`orgmaster_authority:6`。
 
-`Local Development Complete / Production Service Release Gated`：目前資料切換授權不能擴張為service／traffic授權，故不得用人工SQL、migration Job override或其他旁路執行。
+`Production Complete / Authority Switch + AI-PDM L4 + Global Logout PASS`：一次性operator、replay、outbox、權限API及logout後401均已驗證；不得重跑或以人工SQL、migration Job override等旁路改寫終態。
 
 ## DEV-050：員工編號或公司 Email 單一 Google 身分登入
 
-狀態：`Local Product Complete / Production L4 Correction In Progress`
+狀態：`Production Released / Canonical-first Correction Pending / Workspace Target Partial Evidence`
 文件成熟度：`RD Implementation Complete / Architecture Contract Implemented 2026-09-18`
 架構審查：`Architecture Finalized — R2 / Implemented and Verified / 2026-09-18`
 節點類型：交付點；優先級：P1；風險：High（首次身分綁定及登入授權）
@@ -675,7 +675,7 @@
 - [x] 文件 G4：新 app-only view 八欄／version／ACL 與 principal repository 接線已固定，保留 shared rows／ACL；撤回前版 replace-view 方案。
 - [x] RD 依 spec §8 S0～S4 實作；targeted／相容 contract、PG、正常入口 browser、full regression、build及 boundary fresh PASS。
 - [x] 本機產品 QA／QC evidence 已產生並核對 cleanup。
-- [ ] DEV-040 §36 release correction完成fresh gates、review與exact revision authorization後，執行owner migration／candidate／canonical／global logout／observation。
+- [ ] 發布OrgMaster canonical-first correction，確認new revision／100% canonical traffic，再完成Google／工號、Free、deny-path、OrgMaster target及global logout的full Production browser matrix。
 
 文件已完成 R2 架構修訂與產品落地；上述勾選代表本機產品與自動化 QA／QC gate PASS，不代表正式 Google provider、production migration、activation、deploy 或 release 已執行。
 
@@ -698,7 +698,7 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 
 ## DEV-049：既有 Google 主帳號連結與員工編號登入
 
-狀態：`Production Released / Provider Enabled / Managed-link Zero-state Correction Locally Verified / Production Apply Pending`
+狀態：`Production Released / DWD + Admission + Single-employee Link Complete / Canonical-first Correction Ready`
 文件成熟度：`RD Implementation Complete / Architecture Contract Implemented 2026-09-17`
 節點類型：交付點；優先級：P1；風險：High
 父交付點：DEV-047；責任邊界：ADR-007
@@ -720,16 +720,16 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 - 架構定案：assignment revision 與 file CAS 分離；typed repository DTO；receipt-first／actor-bound／stable-key readback；交易 current-state fence；pending hint→live bind→canonical principal 重查。
 - 不增 provider service、generic repository framework 或新 table；共用 DEV-047 QC runtime lifecycle。正式 migration／activation 只可依 DEV-040 §36～37 的受控012～015 transition；一般 app release維持001～015 unchanged、零DDL。
 - spec §11 S0→S5 已完成；新增 owner-only `jenfu.managed-login.v1` route、migration 013 routines、CAS receipt與lifecycle barrier，確切契約仍只在權威 spec 維護。
-- 2026-09-21 DEV-014 re-entry 已修正正式 Directory credential：canonical five-key config、runtime ADC→專用 signer IAM Credentials `signJwt`→read-only OAuth token，並加入只擁有 signer 與 signer-level Token Creator 的 app-owned Terraform；不建立或保存 service-account key。Google Admin read-only核對固定customer ID=`C015t4buc`及有效超級管理員delegated subject=`jedchang0308@jenfu.com.tw`；owner-native production profile固定五個Directory keys、兩個Platform caller keys與上述兩值。Production signer／Admin Console DWD／runtime config／deploy仍受 DEV-014 protected release gate。
+- 2026-09-21 DEV-014 re-entry 已修正正式 Directory credential：canonical five-key config、runtime ADC→專用 signer IAM Credentials `signJwt`→read-only OAuth token，並加入只擁有 signer 與 signer-level Token Creator 的 app-owned Terraform；不建立或保存 service-account key。Google Admin read-only核對固定customer ID=`C015t4buc`及有效超級管理員delegated subject=`jedchang0308@jenfu.com.tw`；signer、唯一read-only DWD grant、runtime config與base deploy均已完成provider readback。
 - 2026-09-21 DEV-049 production admission operator已完成own-bucket evidence amendment：Production fail-seeking execution `orgmaster-prod-migration-runner-ct65x`在DB mutation前以`MIGRATION_GCS_METADATA_FAILED`停止，證明migrator不可跨owner bucket讀receipt，Job已回復baseline。現改由受控operator先驗origin raw SHA，再以create-only建立OrgMaster own-bucket byte-identical mirror；operation固定origin＋mirror＋source／artifact／SHA，runner只讀own bucket並重驗完整conformance，DB evidence仍保存origin ref＋SHA。禁止新增跨bucket IAM、人工SQL、新Job、runtime DDL與sibling core access；targeted admission tests 5／5 PASS，待fresh immutable runner image及Production apply／replay。
 - 2026-09-21 DEV-014 protected release補強：DWD Terraform加入source／foundation／operator provenance；machine plan gate固定四地址configuration、runtime `prior_state` exact enabled readback與三個managed change地址，避免把plan-time已完成的data read誤當`resource_changes`。owner finalize發布`jenfu.dev014.consumer-conformance.v1`，admission runner在DB前驗三份raw-object SHA、schema、source、artifact及content hash。focused gate目前17／17 PASS；production apply須使用merged clean source及provider-readback saved plan。
-- P0／P1 設計待決項=0；一般產品與release實作已完成。2026-09-22零狀態修正新增固定單一員工的source-controlled operator；Production執行仍必須遵守spec §15精確target、apply／replay、Job restore與L4 evidence。
+- P0／P1 設計待決項=0；一般產品、managed-link operator apply＋replay與base release已完成。2026-09-22 canonical-first correction已通過local gate；Platform correction已發布並取得Workspace→AI-PDM partial evidence，OrgMaster correction仍待owner dispatch。
 
 ### Spec Impact 與本輪證據
 
 `Intentional replacement / Local Implementation Complete`：ADR-007 2026-09-17 amendment 與 DEV-047 replacement note 同步；取代 JFS-derived Email／lexical mismatch，補齊 candidate、confirm、首次登入與 Platform owner producer契約。DEV-047 stable-key、cardinality、tombstone、lifecycle、sync、role admission 與 production gate 維持。
 
-本輪歷史 evidence：targeted 50／50、contract 6／6、task-owned PostgreSQL 18.4 D49-01～06、real Chromium local fixture三viewport、full regression 853 PASS／1 skipped、build及DB boundary皆PASS；fresh PG重驗修正QC fixture同timestamp約束後重發owner receipt，SHA-256=`79a489833141d7773f845ba1e8cb608d1be9faf4276be9e344e1e102ee5b23b7`、controlled tree=`3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`。2026-09-21 keyless DWD correction重驗：targeted 55／55、contract 7／7、full regression 875 PASS／1 skipped、TypeScript／build／DB boundary／Terraform validate皆PASS；release profile及admission operator補正後DEV-040 owner tests 68／68、abort 6／6與雙build再通過。2026-09-22 managed-link correction另通過operator 5／5、DEV-040 release tests 82／82、abort 6／6、full regression 875 PASS／1 skipped、DB boundary及production build；Production apply尚未執行。
+本輪歷史 evidence：targeted 50／50、contract 6／6、task-owned PostgreSQL 18.4 D49-01～06、real Chromium local fixture三viewport、full regression 853 PASS／1 skipped、build及DB boundary皆PASS；fresh PG重驗修正QC fixture同timestamp約束後重發owner receipt，SHA-256=`79a489833141d7773f845ba1e8cb608d1be9faf4276be9e344e1e102ee5b23b7`、controlled tree=`3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`。2026-09-21 keyless DWD correction重驗：targeted 55／55、contract 7／7、full regression 875 PASS／1 skipped、TypeScript／build／DB boundary／Terraform validate皆PASS；release profile及admission operator補正後DEV-040 owner tests 68／68、abort 6／6與雙build再通過。2026-09-22 managed-link correction另通過operator 5／5、DEV-040 release tests 82／82、abort 6／6、full regression 875 PASS／1 skipped、DB boundary及production build；Production apply＋replay及baseline restore均已完成。Canonical-first correction另通過DEV-049 56 tests、full 876 tests、DEV-049／050 contract、DB boundary與production build。
 
 ### Future Phase Capsule
 
