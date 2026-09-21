@@ -7,6 +7,16 @@ import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-tra
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 
+const DEV014_MANAGED_DIRECTORY_FIELDS = Object.freeze([
+  'ORGMASTER_MANAGED_IDENTITY_ENABLED',
+  'ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID',
+  'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN',
+  'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
+  'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
+  'ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL',
+  'ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT',
+])
+
 export function assertDev013PredecessorReceipt(value, ref, profile, observedAt, currentStep) {
   return assertDev013L4Predecessor({ value, ref, profile, observedAt, currentStep })
 }
@@ -130,6 +140,27 @@ function assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runti
   return { releaseMode: 'DEV013_CONTROLLED_ENVIRONMENT', field, from, to, action, predecessorReceiptRef: predecessor }
 }
 
+export function assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, readiness, authorization) {
+  const previousPlain = baselineRuntime?.plainEnvironment
+  const nextPlain = runtimeConfig?.plainEnvironment
+  let expectedPlain
+  try { expectedPlain = resolvePlainEnvironment(profile, previousPlain, {}) } catch { fail('DEV014_RUNTIME_ACTIVATION_INVALID') }
+  const activation = readiness?.activation
+  const expectedActivation = {
+    kind: 'MANAGED_DIRECTORY_RUNTIME_ACTIVATION',
+    addedPlainEnvironmentNames: DEV014_MANAGED_DIRECTORY_FIELDS,
+    directoryScope: 'https://www.googleapis.com/auth/admin.directory.user.readonly',
+  }
+  if (DEV014_MANAGED_DIRECTORY_FIELDS.some((name) => previousPlain?.[name] !== undefined || nextPlain?.[name] !== profile.environment?.fixedValues?.[name])
+    || !same(nextPlain, expectedPlain) || !same(runtimeConfig.secretVersions, baselineRuntime.secretVersions)
+    || authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1' || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+    || authorization.devId !== 'DEV-014' || authorization.slice !== '014-LOGIN'
+    || readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1' || readiness.devId !== 'DEV-014' || readiness.slice !== '014-LOGIN'
+    || !same(authorization.activation, expectedActivation) || !same(activation, expectedActivation)) fail('DEV014_RUNTIME_ACTIVATION_INVALID')
+  assertRuntimeConfig(profile, runtimeConfig)
+  return { releaseMode: 'DEV014_MANAGED_DIRECTORY_ACTIVATION', activation }
+}
+
 export async function readRoutineBaseline({ profile, transport, baselineIntentRef }) {
   const bucket = profile.artifact.releaseBucket
   assertImmutableRef(baselineIntentRef, bucket)
@@ -181,10 +212,14 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (!same(intent.foundationReceiptRef, baseline.intent.foundationReceiptRef)) fail('ROUTINE_INFRA_REF_CHANGED')
   const runtimeConfig = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
   const baselineRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
-  const controlledTransition = same(runtimeConfig, baselineRuntime) ? null : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
-  const infrastructureHash = controlledTransition ? transitionFingerprint : fingerprint
+  const controlledTransition = same(runtimeConfig, baselineRuntime)
+    ? null
+    : values.readiness?.devId === 'DEV-014'
+      ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
+      : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
+  const infrastructureHash = controlledTransition?.releaseMode === 'DEV013_CONTROLLED_ENVIRONMENT' ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
-  if (infrastructureSha256 !== infrastructureHash(root, baseline.intent.sourceRevision)) fail('ROUTINE_INFRA_CHANGED')
+  if (controlledTransition?.releaseMode !== 'DEV014_MANAGED_DIRECTORY_ACTIVATION' && infrastructureSha256 !== infrastructureHash(root, baseline.intent.sourceRevision)) fail('ROUTINE_INFRA_CHANGED')
   const revision = await transport.getRevision(profile, intent.previousRevision)
   transport.assertRevisionReady(profile, revision, baseline.deployment.value.artifactDigest, baseline.candidate.value.facts.cloudSqlProxyResolvedImage)
   if (controlledTransition) assertHistoricalRuntimeReadback(profile, baselineRuntime, revision)
@@ -202,6 +237,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (migration.migrationDisposition === 'FORWARD_APPLY') {
     if (!infraChanged) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
     assertDev013MigrationInfraReceipt(values.infra, profile, intent.sourceRevision)
+  } else if (controlledTransition?.releaseMode === 'DEV014_MANAGED_DIRECTORY_ACTIVATION') {
+    if (!infraChanged) fail('DEV014_RUNTIME_INFRA_RECEIPT_INVALID')
+    try { assertDev013MigrationInfraReceipt(values.infra, profile, intent.sourceRevision) } catch { fail('DEV014_RUNTIME_INFRA_RECEIPT_INVALID') }
   } else if (infraChanged) fail('ROUTINE_INFRA_REF_CHANGED')
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]

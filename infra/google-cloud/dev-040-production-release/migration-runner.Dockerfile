@@ -1,5 +1,7 @@
 FROM node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf
 
+LABEL io.jenfu.dev014.admission-contract="source-bound-v1"
+
 RUN apk upgrade --no-cache
 WORKDIR /app
 COPY infra/google-cloud/dev-040-production-release/migration-runner/package.json infra/google-cloud/dev-040-production-release/migration-runner/package-lock.json ./

@@ -25,10 +25,11 @@ async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile
 }
 
 function parseArgs(argv) {
-  const options = { check: false, prepareOnly: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null }
+  const options = { check: false, prepareOnly: false, dev014Activate: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null }
   for (const arg of argv) {
     if (arg === '--check' && !options.check) options.check = true
     else if (arg === '--prepare-only' && !options.prepareOnly) options.prepareOnly = true
+    else if (arg === '--dev014-activate' && !options.dev014Activate) options.dev014Activate = true
     else if (arg.startsWith('--dev013-handoff-mode=') && options.handoffMode === null) options.handoffMode = arg.slice('--dev013-handoff-mode='.length)
     else if (arg.startsWith('--dev013-action=') && options.action === null) options.action = arg.slice('--dev013-action='.length)
     else if (arg.startsWith('--dev013-predecessor-ref=') && options.predecessorReceiptRef === null) {
@@ -41,13 +42,23 @@ function parseArgs(argv) {
       const match = /^(?<uri>\S+)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(value)
       if (!match) throw new Error('DEV013_INFRA_REF_INVALID')
       options.infraReceiptRef = match.groups
-    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
+      options.infraOption = 'dev013'
+    } else if (arg.startsWith('--dev014-infra-ref=') && options.infraReceiptRef === null) {
+      const value = arg.slice('--dev014-infra-ref='.length)
+      const match = /^(?<uri>\S+)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(value)
+      if (!match) throw new Error('DEV014_INFRA_REF_INVALID')
+      options.infraReceiptRef = match.groups
+      options.infraOption = 'dev014'
+    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--dev014-activate --dev014-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
   }
   const controlled = [options.handoffMode, options.action, options.predecessorReceiptRef].filter((value) => value !== null).length
   if (options.check && options.prepareOnly) throw new Error('INVALID_ARGUMENTS')
   if (controlled !== 0 && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && (!['off', 'on'].includes(options.handoffMode) || !['guard', 'activate', 'rollback'].includes(options.action))) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INVALID')
-  if (options.infraReceiptRef && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
+  if (options.dev014Activate && controlled !== 0) throw new Error('DEV014_CONTROLLED_TRANSITION_INPUT_INVALID')
+  if (options.dev014Activate !== (options.infraOption === 'dev014') && controlled === 0) throw new Error('DEV014_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
+  if (controlled === 3 && options.infraReceiptRef && options.infraOption !== 'dev013') throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
+  if (options.infraReceiptRef && controlled !== 3 && !options.dev014Activate) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   return options
 }
 
@@ -80,7 +91,7 @@ async function main() {
   const sourceLock = buildSourceFreeze({ profile, releaseId, observedAt, git, sourceIdentityBytes: createGitSourceIdentity(root, git.sourceRevision), migrationBundle: await buildMigrationBundle(git.sourceRevision) })
   const previousRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
   const previousMode = previousRuntime.plainEnvironment?.ORGMASTER_JENFU_SSO_HANDOFF_MODE ?? null
-  let plainEnvironment = previousRuntime.plainEnvironment
+  let plainEnvironment = options.dev014Activate ? resolvePlainEnvironment(profile, previousRuntime.plainEnvironment, {}) : previousRuntime.plainEnvironment
   let transition = null
   if (options.handoffMode !== null) {
     const expectedAction = previousMode === null && options.handoffMode === 'off' ? 'guard' : previousMode === 'off' && options.handoffMode === 'on' ? 'activate' : previousMode === 'on' && options.handoffMode === 'off' ? 'rollback' : null
@@ -95,10 +106,23 @@ async function main() {
   if (transition && Date.parse(deadlineAt) > Date.parse(predecessorEvidence.sequenceRoot.expiresAt)) throw new Error('DEV013_TRANSITION_AUTHORIZATION_WINDOW_INVALID')
   const runtimeConfig = buildRuntimeConfigReceipt({ profile, releaseId, sourceLock, plainEnvironment, secretVersions: previousRuntime.secretVersions, observedAt })
   const authority = { ownerApplicationId: 'orgmaster', projectId: profile.target.projectId, sourceRevision: git.sourceRevision, releaseId, environment: 'production', baselineIntentRef, expiresAt: deadlineAt, observedAt, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', remainingHumanAction: 0, ...(predecessorEvidence ? { predecessorEvidence } : {}) }
-  const authorization = { ...authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
+  const dev014Activation = options.dev014Activate ? {
+    kind: 'MANAGED_DIRECTORY_RUNTIME_ACTIVATION',
+    addedPlainEnvironmentNames: [
+      'ORGMASTER_MANAGED_IDENTITY_ENABLED',
+      'ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID',
+      'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN',
+      'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
+      'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
+      'ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL',
+      'ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT',
+    ],
+    directoryScope: 'https://www.googleapis.com/auth/admin.directory.user.readonly',
+  } : null
+  const authorization = { ...authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}) }
   const readiness = transition
     ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v2', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
-    : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
+    : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}) }
   const infraReceiptRef = options.infraReceiptRef ?? baseline.intent.infraReceiptRef
   const values = { sourceLock, runtimeConfig, authorization, readiness,
     foundation: (await transport.readJson(baseline.intent.foundationReceiptRef, profile.artifact.releaseBucket)).value,
@@ -117,6 +141,6 @@ async function main() {
   const releaseCapsuleRef = `${result.ref.uri}#sha256=${result.ref.sha256}`
   // This is the existing protected ten-stage workflow, not a local deployment bypass.
   if (!options.prepareOnly) command('gh', ['workflow', 'run', profile.workflow.path, '--repo', profile.application.repository, '--ref', profile.application.branch, '-f', `releaseCapsuleRef=${releaseCapsuleRef}`])
-  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: verification.migrationDisposition, controlledTransition: transition })}\n`)
+  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: verification.migrationDisposition, controlledTransition: transition ?? dev014Activation })}\n`)
 }
 main().catch((error) => { process.stderr.write(`${error.code ?? error.message}\n`); process.exitCode = 1 })

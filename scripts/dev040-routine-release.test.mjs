@@ -144,6 +144,37 @@ test('DEV-013 controlled release can add the default-off guard to the historical
   assert.equal(result.controlledTransition.action, 'guard')
 })
 
+test('DEV-014 protected release permits only the exact managed Directory runtime activation with fresh runner provenance', async () => {
+  const fields = [
+    'ORGMASTER_MANAGED_IDENTITY_ENABLED',
+    'ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID',
+    'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN',
+    'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
+    'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
+    'ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL',
+    'ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT',
+  ]
+  const legacyProfile = structuredClone(profile)
+  legacyProfile.environment.requiredPlainEnvironmentNames = legacyProfile.environment.requiredPlainEnvironmentNames.filter((name) => !fields.includes(name))
+  for (const name of fields) delete legacyProfile.environment.fixedValues[name]
+  const legacyPlain = Object.fromEntries(Object.entries(runtime.plainEnvironment).filter(([name]) => legacyProfile.environment.requiredPlainEnvironmentNames.includes(name)))
+  const legacyRuntime = buildRuntimeConfig(legacyProfile, { plainEnvironment: legacyPlain, secretVersions: runtime.secretVersions })
+  const h = harness({ baselineRuntime: legacyRuntime })
+  const activation = { kind: 'MANAGED_DIRECTORY_RUNTIME_ACTIVATION', addedPlainEnvironmentNames: fields, directoryScope: 'https://www.googleapis.com/auth/admin.directory.user.readonly' }
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-LOGIN', activation }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-LOGIN', activation }
+  attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV014_MANAGED_DIRECTORY_ACTIVATION')
+  assert.equal(result.migrationDisposition, 'UNCHANGED_VERIFIED')
+  const drift = harness({ baselineRuntime: legacyRuntime, nextRuntime: structuredClone(runtime) })
+  drift.input.values.runtimeConfig.runtimeConfig.plainEnvironment.ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID = 'wrong'
+  drift.input.values.authorization = h.input.values.authorization
+  drift.input.values.readiness = h.input.values.readiness
+  attachForwardInfra(drift)
+  await assert.rejects(() => verifyRoutineRelease(drift.input), /DEV014_RUNTIME_ACTIVATION_INVALID/u)
+})
+
 test('DEV-013 predecessor receipt accepts only an exact live root or released owner terminal', () => {
   const ref = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/dev013/root.json', sha256: '9'.repeat(64) }
   const rootCore = { schemaVersion: 'jenfu.dev013.l4-execution-authorization.v2', devId: 'DEV-013', slice: '013-R1', authorizationId: 'DEV013-L4-AUTH-TEST0001', authorizationBasis: 'HUMAN_PRODUCTION_SCOPE', authorizationStatementSha256: '7'.repeat(64), manifestSha256: '8'.repeat(64), projectId: profile.target.projectId, projectNumber: '9536592944', region: profile.target.region, cloudSqlInstance: 'jenfu-platform-prod-pg', database: 'jenfu_prod', authorizedActions: ['owner-native release', 'Platform migration 005', 'runtime config', 'candidate', 'traffic', 'L4 browser', 'global logout', 'rollback', 'observation'], forbiddenMutations: ['retained edge', 'Billing', 'custom domain', 'Firebase Hosting', 'shared load balancer', 'sibling owner state', 'database down migration', 'service deletion'], status: 'PASS', releaseAuthority: true, remainingHumanAction: 0, evidenceScope: 'PRODUCTION_BOUND', authorizedAt: '2026-09-18T00:00:00.000Z', expiresAt: '2026-09-18T08:00:00.000Z' }
