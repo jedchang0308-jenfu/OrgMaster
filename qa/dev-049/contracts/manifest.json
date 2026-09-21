@@ -2,7 +2,7 @@
   "contract": "DEV-049",
   "evidenceScope": "LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-21T18:38:12.480Z",
+  "generatedAt": "2026-09-21T19:41:25.611Z",
   "migrationSha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319",
   "checks": [
     {
@@ -22,7 +22,7 @@
       "status": "PASS"
     },
     {
-      "name": "managed identifier verifier precedes canonical admission",
+      "name": "canonical admission precedes the managed verifier and only exact not-active falls back",
       "status": "PASS"
     },
     {
