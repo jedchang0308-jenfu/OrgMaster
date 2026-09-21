@@ -3,7 +3,7 @@ import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite'
 import type { AssignEmployeeNumberRequestV1, ConfirmManagedIdentityLinkRequestV1, FindManagedIdentityCandidateRequestV1, ManagedIdentityRefreshRequestV1 } from '../src/managedIdentity/types'
 import { verifiedGovernanceActor } from './orgmasterRequestIdentity'
 import { createManagedIdentityService, ManagedIdentityServiceError, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
-import { createLocalDeterministicDirectoryPort, createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort } from './orgmasterManagedDirectoryPort'
+import { createLocalDeterministicDirectoryPort, createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort, readGoogleDirectoryRuntimeConfig } from './orgmasterManagedDirectoryPort'
 
 export const MANAGED_IDENTITY_API_PATH = '/api/orgmaster/employees'
 export const MANAGED_IDENTITY_NUMBERS_API_PATH = '/api/orgmaster/employee-numbers'
@@ -149,12 +149,23 @@ async function handle(request: IncomingMessage, response: ServerResponse, servic
 }
 
 export function createOrgmasterManagedIdentityMiddleware(root = process.cwd(), devEnabled = false, service?: ManagedIdentityServiceV1): Connect.NextHandleFunction {
+  const directoryConfig = readGoogleDirectoryRuntimeConfig(process.env)
   const directory = devEnabled
     ? createLocalDeterministicDirectoryPort()
-    : process.env.ORGMASTER_MANAGED_IDENTITY_ENABLED === 'true' && process.env.ORGMASTER_DIRECTORY_CUSTOMER_ID && process.env.ORGMASTER_DIRECTORY_DWD_SUBJECT
-      ? createGoogleDirectoryReadOnlyPort({ customerId: process.env.ORGMASTER_DIRECTORY_CUSTOMER_ID, domain: process.env.ORGMASTER_MANAGED_DOMAIN ?? 'jenfu.com.tw', auth: createGoogleDirectoryAuthPort({ delegatedSubject: process.env.ORGMASTER_DIRECTORY_DWD_SUBJECT }) })
+    : directoryConfig.enabled
+      ? createGoogleDirectoryReadOnlyPort({
+          customerId: directoryConfig.customerId,
+          domain: directoryConfig.domain,
+          auth: createGoogleDirectoryAuthPort({ delegatedSubject: directoryConfig.delegatedSubject, serviceAccountEmail: directoryConfig.serviceAccountEmail }),
+        })
       : undefined
-  const runtime = service ?? createManagedIdentityService({ root, devEnabled, directory, directoryCustomerId: devEnabled ? undefined : process.env.ORGMASTER_DIRECTORY_CUSTOMER_ID })
+  const runtime = service ?? createManagedIdentityService({
+    root,
+    devEnabled,
+    directory,
+    managedDomain: !devEnabled && directoryConfig.enabled ? directoryConfig.domain : undefined,
+    directoryCustomerId: !devEnabled && directoryConfig.enabled ? directoryConfig.customerId : undefined,
+  })
   return (request, response, next) => {
     if (!request.url?.startsWith(MANAGED_IDENTITY_API_PATH) && !request.url?.startsWith(MANAGED_IDENTITY_NUMBERS_API_PATH)) return next()
     void handle(request, response, runtime).then((handled) => { if (!handled) next() }).catch(() => { if (!response.writableEnded) sendJson(response, 503, { error: 'MANAGED_IDENTITY_READ_FAILED' }) })

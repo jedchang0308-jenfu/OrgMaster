@@ -2,7 +2,7 @@
   "contract": "DEV-049",
   "evidenceScope": "LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-17T16:01:38.271Z",
+  "generatedAt": "2026-09-21T03:50:41.050Z",
   "migrationSha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319",
   "checks": [
     {
@@ -18,6 +18,10 @@
       "status": "PASS"
     },
     {
+      "name": "keyless DWD infrastructure owns only the exact signer-level boundary",
+      "status": "PASS"
+    },
+    {
       "name": "managed identifier verifier precedes canonical admission",
       "status": "PASS"
     },
@@ -26,7 +30,7 @@
       "status": "PASS"
     },
     {
-      "name": "DEV-047 runner exposes isolated DEV-049 suite without changing production release paths",
+      "name": "DEV-047 runner exposes isolated DEV-049 suite and current protected release boundary",
       "status": "PASS"
     }
   ]

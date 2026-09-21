@@ -26,12 +26,13 @@ await check('required managed tables, sequences and routines', () => includesAll
 ]))
 await check('zero provider-write and fixed Directory scope', async () => {
   const [port, api, auth] = await Promise.all([source('server/orgmasterManagedDirectoryPort.ts'), source('src/managedIdentity/apiClient.ts'), source('server/orgmasterManagedIdentityService.ts')])
-  assert.match(port, /admin\.directory\.user\.readonly/u); assert.doesNotMatch(port, /users\.insert|users\.update|users\.delete|method:\s*['"](?:POST|PUT|PATCH|DELETE)/iu)
+  assert.match(port, /admin\.directory\.user\.readonly/u); assert.doesNotMatch(port, /users\.(?:insert|update|delete)|admin\.googleapis\.com[^\n]+method:\s*['"](?:POST|PUT|PATCH|DELETE)/iu)
+  includesAll(port, ['iamcredentials.googleapis.com', ':signJwt', 'oauth2.googleapis.com/token'])
   assert.match(api, /credentials:\s*['"]same-origin['"]/u); assert.match(auth, /google\.com/u)
 })
 await check('Node and DB authorities default off', async () => {
-  const [authApi, server] = await Promise.all([source('server/orgmasterAuthApi.ts'), source('server/orgmasterServer.ts')])
-  assert.match(authApi, /ORGMASTER_MANAGED_IDENTITY_ENABLED\s*===\s*['"]true['"]/u); assert.match(server, /managedIdentityEnabled\s*\?\?\s*\(devIdentityEnabled\s*\|\|\s*runtime\.managedLoginEnabled\s*===\s*true\)/u); assert.match(migration, /admission_enabled boolean NOT NULL DEFAULT false/u)
+  const [authApi, directoryPort, server] = await Promise.all([source('server/orgmasterAuthApi.ts'), source('server/orgmasterManagedDirectoryPort.ts'), source('server/orgmasterServer.ts')])
+  assert.match(directoryPort, /ORGMASTER_MANAGED_IDENTITY_ENABLED\s*!==\s*['"]true['"]/u); assert.match(authApi, /managedLoginEnabled:\s*directoryConfig\.enabled/u); assert.match(server, /managedIdentityEnabled\s*\?\?\s*\(devIdentityEnabled\s*\|\|\s*runtime\.managedLoginEnabled\s*===\s*true\)/u); assert.match(migration, /admission_enabled boolean NOT NULL DEFAULT false/u)
 })
 await check('Employee entry follows server capability; feature-off state never calls the local-only identity flow', async () => {
   const [panel, managed, gate, app, regression] = await Promise.all([source('src/components/DirectoryDetailPanel.tsx'), source('src/components/EmployeeManagedIdentitySection.tsx'), source('src/auth/AuthGate.tsx'), source('src/App.tsx'), source('src/components/DirectoryDetailPanel.test.tsx')])
