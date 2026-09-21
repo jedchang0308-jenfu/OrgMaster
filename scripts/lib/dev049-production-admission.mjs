@@ -3,8 +3,14 @@ import { canonicalize, sha256 } from './dev012-production-migration-runner.mjs'
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
 const OPERATION_ID = /^[A-Z0-9][A-Z0-9-]{7,127}$/u
-const EVIDENCE_REF = /^gs:\/\/jenfu-platform-prod-(?:platform|orgmaster|aipdm)-release\/receipts\/[A-Za-z0-9._/-]+\.json$/u
+const LOCAL_EVIDENCE_REF = /^gs:\/\/jenfu-platform-prod-orgmaster-release\/source\/production-data\/dev014\/admission\/evidence\/[A-Za-z0-9._/-]+\.json$/u
+const ORIGIN_EVIDENCE_REF = /^gs:\/\/jenfu-platform-prod-(?:platform|orgmaster|aipdm)-release\/receipts\/[A-Za-z0-9._/-]+\.json$/u
 const REQUIRED_CONSUMERS = Object.freeze(['ai-pdm', 'orgmaster', 'platform'])
+const ORIGIN_BUCKETS = Object.freeze({
+  'ai-pdm': 'jenfu-platform-prod-aipdm-release',
+  orgmaster: 'jenfu-platform-prod-orgmaster-release',
+  platform: 'jenfu-platform-prod-platform-release',
+})
 
 export const ORGMASTER_ADMISSION_TARGET = Object.freeze({
   ownerApplicationId: 'orgmaster',
@@ -51,7 +57,7 @@ function applicationRow(row) {
 }
 
 export function evidenceValue(consumer) {
-  return `${consumer.evidenceRef}#sha256=${consumer.evidenceSha256}`
+  return `${consumer.originEvidenceRef}#sha256=${consumer.evidenceSha256}`
 }
 
 export function assertOrgMasterAdmissionOperation(value, { bytes, operationSha256, sourceRevision, now = new Date() }) {
@@ -74,12 +80,14 @@ export function assertOrgMasterAdmissionOperation(value, { bytes, operationSha25
   if (!Array.isArray(value.consumers) || value.consumers.length !== REQUIRED_CONSUMERS.length) fail('DEV049_OPERATION_CONSUMERS_INVALID')
   const ids = []
   for (const consumer of value.consumers) {
-    exactKeys(consumer, ['applicationId', 'expectedSupportRevision', 'sourceRevision', 'artifactDigest', 'evidenceRef', 'evidenceSha256'], 'DEV049_OPERATION_CONSUMERS_INVALID')
+    exactKeys(consumer, ['applicationId', 'expectedSupportRevision', 'sourceRevision', 'artifactDigest', 'originEvidenceRef', 'evidenceRef', 'evidenceSha256'], 'DEV049_OPERATION_CONSUMERS_INVALID')
     if (!/^[a-z][a-z0-9-]{1,63}$/u.test(consumer.applicationId ?? '')
       || !integerString(consumer.expectedSupportRevision, { allowZero: true })
       || !H40.test(consumer.sourceRevision ?? '')
       || !/^sha256:[a-f0-9]{64}$/u.test(consumer.artifactDigest ?? '')
-      || !EVIDENCE_REF.test(consumer.evidenceRef ?? '')
+      || !ORIGIN_EVIDENCE_REF.test(consumer.originEvidenceRef ?? '')
+      || !consumer.originEvidenceRef.startsWith(`gs://${ORIGIN_BUCKETS[consumer.applicationId]}/receipts/`)
+      || !LOCAL_EVIDENCE_REF.test(consumer.evidenceRef ?? '')
       || !H64.test(consumer.evidenceSha256 ?? '')) fail('DEV049_OPERATION_CONSUMERS_INVALID')
     ids.push(consumer.applicationId)
   }

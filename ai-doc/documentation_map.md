@@ -311,5 +311,5 @@
 
 ## DEV-049 Production protected release amendment（2026-09-21）
 
-- [DEV-049權威spec §14.1](specs/DEV-049-existing-google-primary-account-link.md)：DWD signer使用source／foundation-bound Terraform provenance；plan gate驗完整四地址configuration、runtime `prior_state` readback與三個managed change地址。owner finalize產生source／artifact-bound conformance receipt，admission在DB前驗三owner raw-object evidence。
+- [DEV-049權威spec §14.1](specs/DEV-049-existing-google-primary-account-link.md)：DWD signer使用source／foundation-bound Terraform provenance；plan gate驗完整四地址configuration、runtime `prior_state` readback與三個managed change地址。owner finalize產生source／artifact-bound conformance receipt；受控operator驗三owner origin raw-object後建立OrgMaster own-bucket create-only mirror，admission在DB前只用既有migrator own-bucket權限重驗完整evidence，不新增跨bucket IAM。
 - [跨專案DEV-014 Production runbook](../../Jenfu-Platform/ai-doc/runbooks/DEV-014-production-protected-release.md)：固定DWD、三owner release、OrgMaster→Platform admission、rollback與L4順序。

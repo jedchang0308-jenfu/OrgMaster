@@ -10,7 +10,7 @@ import {
   publishGcsJson,
   readGcsObject,
 } from './lib/dev012-production-migration-runner.mjs'
-import { assertDev014ConsumerEvidenceBytes, DEV014_CONSUMER_BUCKETS } from './lib/dev014-consumer-conformance.mjs'
+import { assertDev014ConsumerEvidenceBytes } from './lib/dev014-consumer-conformance.mjs'
 import {
   assertOrgMasterAdmissionOperation,
   executeOrgMasterAdmission,
@@ -54,7 +54,7 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
   try { value = JSON.parse(object.bytes.toString('utf8')) } catch { throw new Error('DEV049_OPERATION_JSON_INVALID') }
   const operation = assertOrgMasterAdmissionOperation(value, { bytes: object.bytes, operationSha256: args.operationSha256, sourceRevision: args.sourceRevision, now: new Date() })
   for (const consumer of operation.consumers) {
-    const evidenceObject = await readGcsObject({ uri: consumer.evidenceRef, expectedBucket: DEV014_CONSUMER_BUCKETS[consumer.applicationId], expectedPrefix: 'receipts', token, fetchImpl })
+    const evidenceObject = await readGcsObject({ uri: consumer.evidenceRef, expectedBucket: ORGMASTER_ADMISSION_TARGET.releaseBucket, expectedPrefix: 'source/production-data/dev014/admission/evidence', token, fetchImpl })
     assertDev014ConsumerEvidenceBytes(consumer, evidenceObject.bytes)
   }
   const database = new Client(databaseOptions(environment, token))

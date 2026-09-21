@@ -31,7 +31,8 @@ function operation(overrides = {}) {
       expectedSupportRevision: applicationId === 'platform' ? '0' : '1',
       sourceRevision: String.fromCharCode(100 + index).repeat(40),
       artifactDigest: `sha256:${String(index + 7).repeat(64)}`,
-      evidenceRef: `gs://jenfu-platform-prod-${applicationId === 'ai-pdm' ? 'aipdm' : applicationId}-release/receipts/dev014/${applicationId}.json`,
+      originEvidenceRef: `gs://jenfu-platform-prod-${applicationId === 'ai-pdm' ? 'aipdm' : applicationId}-release/receipts/dev014/${applicationId}.json`,
+      evidenceRef: `gs://jenfu-platform-prod-orgmaster-release/source/production-data/dev014/admission/evidence/${applicationId}.json`,
       evidenceSha256: String(index + 4).repeat(64),
     })),
     deadlineAt: '2999-01-01T00:00:00.000Z',
@@ -91,6 +92,11 @@ test('DEV-049 admission operation is exact-target, exact-consumer and self-hashe
   const drift = operation({ consumers: value.consumers.slice(1) })
   const driftBytes = bytesFor(drift)
   assert.throws(() => assertOrgMasterAdmissionOperation(drift, { bytes: driftBytes, operationSha256: sha256(driftBytes), sourceRevision: drift.sourceRevision, now: new Date('2026-09-21T00:00:00Z') }), /DEV049_OPERATION_CONSUMERS_INVALID/u)
+  const swappedOrigin = operation({ consumers: value.consumers.map((consumer) => consumer.applicationId === 'ai-pdm'
+    ? { ...consumer, originEvidenceRef: value.consumers[1].originEvidenceRef }
+    : consumer) })
+  const swappedOriginBytes = bytesFor(swappedOrigin)
+  assert.throws(() => assertOrgMasterAdmissionOperation(swappedOrigin, { bytes: swappedOriginBytes, operationSha256: sha256(swappedOriginBytes), sourceRevision: swappedOrigin.sourceRevision, now: new Date('2026-09-21T00:00:00Z') }), /DEV049_OPERATION_CONSUMERS_INVALID/u)
 })
 
 test('DEV-049 admission runner is present in the immutable migration image', () => {
