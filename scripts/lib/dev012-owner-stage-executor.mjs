@@ -217,7 +217,7 @@ async function writeStage(transport, paths, profile, intent, stage, previousRece
   return { ...result, value }
 }
 
-function assertMigrationReceipt(value, profile, intent, { historical = false, allowForward = false } = {}) {
+function assertMigrationReceipt(value, profile, intent, { historical = false, allowForward = false, forwardPlan = null } = {}) {
   if (value?.schemaVersion === 'jenfu.dev012.stage-receipt.v1') {
     assertStage(value, profile, intent, 'migrate')
     if (value.facts?.disposition !== 'UNCHANGED_VERIFIED' || value.facts?.manifestSha256 !== intent.migrationManifestSha256 || canonicalize(value.facts?.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)) fail('MIGRATION_RECEIPT_INVALID')
@@ -226,8 +226,11 @@ function assertMigrationReceipt(value, profile, intent, { historical = false, al
     if ((!historical && !allowForward) || value?.schemaVersion !== 'jenfu.dev012.migration-receipt.v1' || value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.manifestSha256 !== intent.migrationManifestSha256 || value.status !== 'PASS' || value.boundaryStatus !== 'PASS') fail('MIGRATION_RECEIPT_INVALID')
     if (allowForward) {
       const { receiptSha256, ...core } = value
-      const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= 4 && value.replayed === 15 - value.applied
-      if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== 15 || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
+      const producerContractRemediation = forwardPlan?.releaseMode === 'DEV014_PRODUCER_CONTRACT_REMEDIATION'
+      const expectedLedgerCount = producerContractRemediation ? 16 : 15
+      const maximumAppliedCount = producerContractRemediation ? 1 : 4
+      const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
+      if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
     }
   }
 }
@@ -394,7 +397,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
         receipt = await readNamedJson(transport, paths.migrate, profile)
       }
     } else receipt ??= await writeStage(transport, paths, profile, intent, 'migrate', prepare.ref, { ...prepare.value.facts.routine, disposition: 'UNCHANGED_VERIFIED', manifestSha256: intent.migrationManifestSha256, migrationsExecuted: 0, dataImportsExecuted: 0 })
-    assertMigrationReceipt(receipt.value, profile, intent, { allowForward })
+    assertMigrationReceipt(receipt.value, profile, intent, { allowForward, forwardPlan: prepare.value.facts.routine })
     return receipt
   }
 
@@ -402,7 +405,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const deployment = await readDeployment(transport, paths, profile, intent, intentRef, capsuleSha256)
     const migration = await readNamedJson(transport, paths.migrate, profile)
     const prepare = await readStage(transport, paths, profile, intent, 'prepare')
-    assertMigrationReceipt(migration.value, profile, intent, { allowForward: prepare.value.facts.routine?.migrationDisposition === 'FORWARD_APPLY' })
+    assertMigrationReceipt(migration.value, profile, intent, { allowForward: prepare.value.facts.routine?.migrationDisposition === 'FORWARD_APPLY', forwardPlan: prepare.value.facts.routine })
     const runtimeReceipt = await transport.readJson(intent.runtimeConfigRef, profile.artifact.releaseBucket, ['receipts'])
     const runtimeConfig = runtimeReceipt.value.runtimeConfig ?? runtimeReceipt.value
     const candidate = await transport.createCandidate({ profile, artifactDigest: deployment.value.artifactDigest, runtimeConfig, fingerprint, deadlineAt: intent.deadlineAt })

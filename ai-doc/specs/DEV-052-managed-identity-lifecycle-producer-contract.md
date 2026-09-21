@@ -70,10 +70,12 @@ Readiness與authorization均須綁定`DEV-014 / 014-PRODUCER-CONTRACT`及下列e
 | R52-03 | failure safety | migrate失敗時candidate／traffic mutation=0；無down migration |
 | R52-04 | consumer join | OrgMaster conformance PASS後，Platform 006／007與Production L4才可續行 |
 
-本機結果：`qc:dev-052:contract=PASS`、隔離PostgreSQL 18.4 `D52-01～03 PASS`、`test:dev-040:r2=72／72 PASS`、abort `6／6 PASS`、完整產品回歸`875 PASS／1 skipped`、client／server build與`check:db-boundary=PASS`。PostgreSQL runner已確認client closed、cluster stopped、port released、temp removed；所有本機證據`productionWrites=false`。
+本機結果：`qc:dev-052:contract=PASS`、隔離PostgreSQL 18.4 `D52-01～03 PASS`、`test:dev-040:r2=74／74 PASS`、abort `6／6 PASS`、完整產品回歸`875 PASS／1 skipped`、client／server build與`check:db-boundary=PASS`。PostgreSQL runner已確認client closed、cluster stopped、port released、temp removed；所有本機證據`productionWrites=false`。
 
-## 6. Production gate
+## 6. Production gate 與第一次執行
 
-目前DEV-014 Production授權只允許Platform migrations 006／007，並明文禁止其他schema／migration；因此本文件與本機PASS不授權套用OrgMaster 016。完成review、merge、fresh source freeze與immutable runner image後，須取得明確涵蓋`jenfu-platform-prod / jenfu_prod / OrgMaster migration 016 / exact owner release`的Production授權，才可執行migration Job與後續release。禁止人工SQL、改已套migration、down migration、擴張IAM、service deletion或sibling資料變更。
+人類已於2026-09-21明確授權`jenfu-platform-prod / asia-east1 / jenfu-platform-prod-pg / jenfu_prod / OrgMaster migration 016 / owner release`。Source `0d5b7a937c7ef397fb35bd1035d2dae6e654221d`、runner `sha256:e2954a98834c6f2d95704e0ee90e225bd40f63c60223ce017a837dc479cf1be7`及APP_INFRA image rotation R5通過後，run `35583624698`完成prepare與build，但migration execution `orgmaster-prod-migration-runner-g276r`在取得bundle後、連線資料庫前以`MIGRATION_SET_DRIFT`停止。Failure path完成；candidate、revision與traffic mutation均為0，Production ledger仍為001–015。
+
+根因是migration profile已擴成001–016，但`dev040-production-migration-runner.mjs`的`TARGET.entryCount`仍為15；此外owner-stage forward receipt validator仍只接受DEV-013的15-row receipt。修正固定runner為16，並依prepare所證明的release mode區分receipt：DEV-013維持`ledgerCount=15／applied=0..4`，DEV-014 remediation只接受`ledgerCount=16／applied=0..1／replayed=16-applied`。新增測試直接比較runner entry count與正式profile entries，避免日後再次只更新profile。Fresh source、immutable runner及APP_INFRA rotation完成後才可重試；失敗capsule不得重用。禁止人工SQL、改已套migration、down migration、擴張IAM、service deletion或sibling資料變更。
 
 使用思考習慣：#第一性原理、#證據基礎、#驗收閉環

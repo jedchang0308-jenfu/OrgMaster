@@ -236,4 +236,4 @@ Failure oracle：Platform run `35579062204`／execution `platform-prod-migration
 | M16-09 | Consumer join | fresh OrgMaster conformance綁source／artifact／contract；Platform 006／007其後PASS |
 | M16-10 | L4 completion | Platform／OrgMaster／AI-PDM browser、global logout與observation依DEV-014完整分母PASS |
 
-2026-09-21 local：`qc:dev-052:contract=PASS`、PostgreSQL 18.4 D52-01～03 PASS且runtime清理完整、`test:dev-040:r2=72／72`、abort 6／6、完整產品回歸875 PASS／1 skipped、client／server build及DB boundary PASS。M16-06～10仍須fresh Production授權與provider evidence；local PASS不宣稱migration已套用。
+2026-09-21 local：`qc:dev-052:contract=PASS`、PostgreSQL 18.4 D52-01～03 PASS且runtime清理完整、`test:dev-040:r2=74／74`、abort 6／6、完整產品回歸875 PASS／1 skipped、client／server build及DB boundary PASS。Production授權已取得。第一次run `35583624698`中prepare／build PASS，migration execution `orgmaster-prod-migration-runner-g276r`在DB連線前因runner entryCount=15與16-entry bundle不符而以`MIGRATION_SET_DRIFT`安全停止；candidate／traffic mutation=0、ledger仍為001–015。修正後本機owner 74／74、abort 6／6、完整產品回歸875 PASS／1 skipped、client／server build與DB boundary PASS；M16-06須以fresh source／runner rotation重建，M16-07～10待重試後provider evidence，不把第一次失敗計為migration已套用。
