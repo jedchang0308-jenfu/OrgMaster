@@ -7,6 +7,20 @@ import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-tra
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 
+const CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS = new Set([
+  'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
+])
+
+export function filterControlledInfrastructureTree(bytes) {
+  const entries = Buffer.from(bytes).toString('utf8').split('\0').filter(Boolean)
+  if (!entries.length) fail('ROUTINE_BASELINE_SOURCE_MISSING')
+  const filtered = entries.filter((entry) => {
+    const path = entry.split('\t').at(-1)
+    return !CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS.has(path)
+  })
+  return Buffer.from(`${filtered.join('\0')}\0`)
+}
+
 const DEV014_MANAGED_DIRECTORY_FIELDS = Object.freeze([
   'ORGMASTER_MANAGED_IDENTITY_ENABLED',
   'ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID',
@@ -56,7 +70,8 @@ export function controlledInfrastructureFingerprint(root, revision) {
   if (result.status !== 0 || !result.stdout?.length) fail('ROUTINE_BASELINE_SOURCE_MISSING')
   const config = spawnSync('git', ['show', `${revision}:config/release/dev040-orgmaster-independent-production-v3.json`], { cwd: root, encoding: 'utf8', windowsHide: true })
   if (config.status !== 0) fail('ROUTINE_BASELINE_SOURCE_MISSING')
-  return sha256(Buffer.concat([result.stdout, Buffer.from(canonicalize(dev013NeutralInfrastructureInputs(JSON.parse(config.stdout))))]))
+  const stableInfrastructureTree = filterControlledInfrastructureTree(result.stdout)
+  return sha256(Buffer.concat([stableInfrastructureTree, Buffer.from(canonicalize(dev013NeutralInfrastructureInputs(JSON.parse(config.stdout))))]))
 }
 
 function assertSealedStage(value, profile, intent, stage) {
