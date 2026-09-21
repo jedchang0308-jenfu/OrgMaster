@@ -84,7 +84,9 @@ export function assertDev040V3Profile(profile, n1c) {
     || fixed.VITE_JENFU_FIREBASE_PROJECT_ID !== target.projectId
     || fixed.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== 'https://jenfu-platform-prod-9536592944.asia-east1.run.app'
     || fixed.ORGMASTER_MANAGED_IDENTITY_ENABLED !== 'true'
+    || fixed.ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID !== 'C015t4buc'
     || fixed.ORGMASTER_GOOGLE_DIRECTORY_DOMAIN !== 'jenfu.com.tw'
+    || fixed.ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT !== 'jedchang0308@jenfu.com.tw'
     || fixed.ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL !== 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com'
     || fixed.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL !== 'platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com'
     || fixed.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT !== '101029748006912113815'
