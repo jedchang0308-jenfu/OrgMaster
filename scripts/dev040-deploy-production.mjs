@@ -25,12 +25,13 @@ async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile
 }
 
 function parseArgs(argv) {
-  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014ContractRemediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null }
+  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null }
   for (const arg of argv) {
     if (arg === '--check' && !options.check) options.check = true
     else if (arg === '--prepare-only' && !options.prepareOnly) options.prepareOnly = true
     else if (arg === '--dev014-activate' && !options.dev014Activate) options.dev014Activate = true
     else if (arg === '--dev014-contract-remediation' && !options.dev014ContractRemediation) options.dev014ContractRemediation = true
+    else if (arg === '--dev014-application-registration-remediation' && !options.dev014ApplicationRegistrationRemediation) options.dev014ApplicationRegistrationRemediation = true
     else if (arg.startsWith('--dev013-handoff-mode=') && options.handoffMode === null) options.handoffMode = arg.slice('--dev013-handoff-mode='.length)
     else if (arg.startsWith('--dev013-action=') && options.action === null) options.action = arg.slice('--dev013-action='.length)
     else if (arg.startsWith('--dev013-predecessor-ref=') && options.predecessorReceiptRef === null) {
@@ -50,10 +51,10 @@ function parseArgs(argv) {
       if (!match) throw new Error('DEV014_INFRA_REF_INVALID')
       options.infraReceiptRef = match.groups
       options.infraOption = 'dev014'
-    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--dev014-activate|--dev014-contract-remediation --dev014-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
+    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--dev014-activate|--dev014-contract-remediation|--dev014-application-registration-remediation --dev014-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
   }
   const controlled = [options.handoffMode, options.action, options.predecessorReceiptRef].filter((value) => value !== null).length
-  const dev014Mode = Number(options.dev014Activate) + Number(options.dev014ContractRemediation)
+  const dev014Mode = Number(options.dev014Activate) + Number(options.dev014ContractRemediation) + Number(options.dev014ApplicationRegistrationRemediation)
   if (options.check && options.prepareOnly) throw new Error('INVALID_ARGUMENTS')
   if (controlled !== 0 && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && (!['off', 'on'].includes(options.handoffMode) || !['guard', 'activate', 'rollback'].includes(options.action))) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INVALID')
@@ -127,10 +128,16 @@ async function main() {
     contractVersion: 'jenfu.orgmaster-contract.managed-identity-lifecycle.v1',
     consumerApplicationId: 'platform',
   } : null
-  const authorization = { ...authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}) }
+  const dev014ApplicationRegistrationRemediation = options.dev014ApplicationRegistrationRemediation ? {
+    kind: 'MANAGED_IDENTITY_INVALIDATION_APPLICATION_REGISTRATION',
+    migrationVersion: 'dev014-orgmaster-017',
+    requiredApplications: ['ai-pdm', 'orgmaster', 'platform'],
+    sourceIdFields: ['applicationId', 'id'],
+  } : null
+  const authorization = { ...authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}) }
   const readiness = transition
     ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v2', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
-    : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}) }
+    : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}) }
   const infraReceiptRef = options.infraReceiptRef ?? baseline.intent.infraReceiptRef
   const values = { sourceLock, runtimeConfig, authorization, readiness,
     foundation: (await transport.readJson(baseline.intent.foundationReceiptRef, profile.artifact.releaseBucket)).value,

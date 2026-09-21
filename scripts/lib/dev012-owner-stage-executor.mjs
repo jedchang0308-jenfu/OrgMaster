@@ -114,6 +114,27 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
           || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
         return { releaseMode: 'DEV014_PRODUCER_CONTRACT_REMEDIATION', remediation: expectedRemediation }
       }
+      if (values.readiness?.slice === '014-APPLICATION-REGISTRATION') {
+        const expectedRemediation = {
+          kind: 'MANAGED_IDENTITY_INVALIDATION_APPLICATION_REGISTRATION',
+          migrationVersion: 'dev014-orgmaster-017',
+          requiredApplications: ['ai-pdm', 'orgmaster', 'platform'],
+          sourceIdFields: ['applicationId', 'id'],
+        }
+        if (!intent.baselineIntentRef
+          || values.authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+          || values.authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+          || values.authorization.devId !== 'DEV-014' || values.authorization.slice !== '014-APPLICATION-REGISTRATION'
+          || values.readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+          || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
+          || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision
+          || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
+          || canonicalize(values.authorization.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.authorization.remediation) !== canonicalize(expectedRemediation)
+          || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
+        return { releaseMode: 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', remediation: expectedRemediation }
+      }
       const expectedActivation = {
         kind: 'MANAGED_DIRECTORY_RUNTIME_ACTIVATION',
         addedPlainEnvironmentNames: DEV014_MANAGED_DIRECTORY_FIELDS,
@@ -227,8 +248,9 @@ function assertMigrationReceipt(value, profile, intent, { historical = false, al
     if (allowForward) {
       const { receiptSha256, ...core } = value
       const producerContractRemediation = forwardPlan?.releaseMode === 'DEV014_PRODUCER_CONTRACT_REMEDIATION'
-      const expectedLedgerCount = producerContractRemediation ? 16 : 15
-      const maximumAppliedCount = producerContractRemediation ? 1 : 4
+      const applicationRegistrationRemediation = forwardPlan?.releaseMode === 'DEV014_APPLICATION_REGISTRATION_REMEDIATION'
+      const expectedLedgerCount = applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const maximumAppliedCount = producerContractRemediation || applicationRegistrationRemediation ? 1 : 4
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
       if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
     }

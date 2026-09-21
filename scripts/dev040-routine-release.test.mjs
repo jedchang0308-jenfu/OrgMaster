@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ContractMigrationAppend, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
@@ -26,6 +26,7 @@ function prefixBundle(bundle, count) {
 const legacyOldBundle = prefixBundle(oldBundle.bundle, 11)
 const dev013OldBundle = prefixBundle(oldBundle.bundle, 15)
 const dev013NewBundle = prefixBundle(newBundle.bundle, 15)
+const dev014ContractBundle = prefixBundle(newBundle.bundle, 16)
 const plain = resolvePlainEnvironment(profile, Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
   .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
   .map((name) => [name, 'fixture-public-value'])))
@@ -134,7 +135,7 @@ test('DEV-013 controlled release permits only the sealed 012-015 append before c
 })
 
 test('DEV-014 producer contract remediation permits only migration 016 with unchanged runtime', async () => {
-  const h = harness({ baselineBundle: dev013OldBundle })
+  const h = harness({ baselineBundle: dev013OldBundle, currentBundle: { bundle: dev014ContractBundle } })
   const remediation = {
     kind: 'MANAGED_IDENTITY_LIFECYCLE_CONTRACT_COMPLETION',
     migrationVersion: 'dev014-orgmaster-016',
@@ -148,10 +149,31 @@ test('DEV-014 producer contract remediation permits only migration 016 with unch
   assert.equal(result.releaseMode, 'DEV014_PRODUCER_CONTRACT_REMEDIATION')
   assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
   assert.equal(result.pendingMigrationCount, 1)
-  assert.equal(assertDev014ContractMigrationAppend(dev013OldBundle, newBundle.bundle).pendingMigrationCount, 1)
-  const drift = structuredClone(newBundle.bundle)
+  assert.equal(assertDev014ContractMigrationAppend(dev013OldBundle, dev014ContractBundle).pendingMigrationCount, 1)
+  const drift = structuredClone(dev014ContractBundle)
   drift.entries[15].sourceSha256 = '0'.repeat(64)
   assert.throws(() => assertDev014ContractMigrationAppend(dev013OldBundle, drift), /DEV014_CONTRACT_MIGRATION_APPEND_INVALID/u)
+})
+
+test('DEV-014 application registration remediation permits only migration 017 with unchanged runtime', async () => {
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 16) })
+  const remediation = {
+    kind: 'MANAGED_IDENTITY_INVALIDATION_APPLICATION_REGISTRATION',
+    migrationVersion: 'dev014-orgmaster-017',
+    requiredApplications: ['ai-pdm', 'orgmaster', 'platform'],
+    sourceIdFields: ['applicationId', 'id'],
+  }
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation }
+  attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV014_APPLICATION_REGISTRATION_REMEDIATION')
+  assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(result.pendingMigrationCount, 1)
+  assert.equal(assertDev014ApplicationRegistrationAppend(prefixBundle(oldBundle.bundle, 16), newBundle.bundle).pendingMigrationCount, 1)
+  const drift = structuredClone(newBundle.bundle)
+  drift.entries[16].appliedSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev014ApplicationRegistrationAppend(prefixBundle(oldBundle.bundle, 16), drift), /DEV014_APPLICATION_REGISTRATION_APPEND_INVALID/u)
 })
 
 test('DEV-013 controlled release can add the default-off guard to the historical production runtime', async () => {

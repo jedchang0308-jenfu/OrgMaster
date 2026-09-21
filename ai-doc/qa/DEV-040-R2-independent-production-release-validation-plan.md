@@ -237,3 +237,16 @@ Failure oracle：Platform run `35579062204`／execution `platform-prod-migration
 | M16-10 | L4 completion | Platform／OrgMaster／AI-PDM browser、global logout與observation依DEV-014完整分母PASS |
 
 2026-09-21 local：`qc:dev-052:contract=PASS`、PostgreSQL 18.4 D52-01～03 PASS且runtime清理完整、`test:dev-040:r2=74／74`、abort 6／6、完整產品回歸875 PASS／1 skipped、client／server build及DB boundary PASS。Production授權已取得。第一次run `35583624698`中prepare／build PASS，migration execution `orgmaster-prod-migration-runner-g276r`在DB連線前因runner entryCount=15與16-entry bundle不符而以`MIGRATION_SET_DRIFT`安全停止；candidate／traffic mutation=0、ledger仍為001–015。修正後本機owner 74／74、abort 6／6、完整產品回歸875 PASS／1 skipped、client／server build與DB boundary PASS；M16-06須以fresh source／runner rotation重建，M16-07～10待重試後provider evidence，不把第一次失敗計為migration已套用。
+
+## 17. DEV-053 application registration remediation
+
+| ID | Gate | PASS |
+|---|---|---|
+| M17-01 | Production-shaped policy | active applications只提供`id`時，001–017後registry精確為`ai-pdm／orgmaster／platform`，active、pending、revision 1 |
+| M17-02 | Controlled append | 只有`014-APPLICATION-REGISTRATION` exact payload接受16→17；ordinary、DEV-013、016 mode、hash或runtime drift拒絕 |
+| M17-03 | Receipt | migration Job receipt為`ledgerCount=17／applied=0..1／replayed=17-applied`，boundary與跨DB denial PASS |
+| M17-04 | Live fence | admission on時consumer set改變使governance write整筆回滾；set不變可繼續 |
+| M17-05 | Least privilege | sync routine只有OrgMaster migrator owner可直接執行；runtime與Platform migrator不可直接執行 |
+| M17-06 | Production sequence | migration 017 APPLIED＋REPLAY後，重建fresh admission operation，依序OrgMaster APPLIED＋REPLAY、Platform APPLIED＋REPLAY，再進L4 |
+
+Migration 017的Production apply需要fresh merged source、immutable runner digest、saved plan SHA與exact migration授權；本節與local PASS不構成Production DDL授權。

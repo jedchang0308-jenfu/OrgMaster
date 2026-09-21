@@ -102,6 +102,22 @@ export function assertDev014ContractMigrationAppend(before, after) {
   return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
 }
 
+export function assertDev014ApplicationRegistrationAppend(before, after) {
+  const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+  const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
+  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 16 || after.entries?.length !== 17) fail('DEV014_APPLICATION_REGISTRATION_APPEND_INVALID')
+  if (!same(before.entries, after.entries.slice(0, before.entries.length))) fail('DEV014_APPLICATION_REGISTRATION_APPEND_INVALID')
+  const appended = after.entries[16]
+  const expected = [
+    'dev014-orgmaster-017',
+    'db/migrations/017_dev014_invalidation_application_registration.sql',
+    '9d34f7047b536251a3125ddf77a1fd6d9c47b24868e13f4cbebed6b89d676643',
+    '26a9c6a272e23390b65580a63d92d23fe4d005b88539c06cb4a650bb15a17efe',
+  ]
+  if (!same([appended.version, appended.path, appended.sourceSha256, appended.appliedSha256], expected)) fail('DEV014_APPLICATION_REGISTRATION_APPEND_INVALID')
+  return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
+}
+
 export function assertDev013MigrationInfraReceipt(value, profile, sourceRevision) {
   const { receiptSha256, ...core } = value ?? {}
   if (value?.schemaVersion !== 'jenfu.dev012.app-infra-receipt.v1' || value.ownerApplicationId !== profile.application.id || value.sourceRevision !== sourceRevision
@@ -191,6 +207,20 @@ export function assertDev014ProducerContractRemediation(readiness, authorization
   return { releaseMode: 'DEV014_PRODUCER_CONTRACT_REMEDIATION', remediation }
 }
 
+export function assertDev014ApplicationRegistrationRemediation(readiness, authorization) {
+  const remediation = {
+    kind: 'MANAGED_IDENTITY_INVALIDATION_APPLICATION_REGISTRATION',
+    migrationVersion: 'dev014-orgmaster-017',
+    requiredApplications: ['ai-pdm', 'orgmaster', 'platform'],
+    sourceIdFields: ['applicationId', 'id'],
+  }
+  if (authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1' || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+    || authorization.devId !== 'DEV-014' || authorization.slice !== '014-APPLICATION-REGISTRATION'
+    || readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1' || readiness.devId !== 'DEV-014' || readiness.slice !== '014-APPLICATION-REGISTRATION'
+    || !same(authorization.remediation, remediation) || !same(readiness.remediation, remediation)) fail('DEV014_APPLICATION_REGISTRATION_REMEDIATION_AUTHORITY_INVALID')
+  return { releaseMode: 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', remediation }
+}
+
 export async function readRoutineBaseline({ profile, transport, baselineIntentRef }) {
   const bucket = profile.artifact.releaseBucket
   assertImmutableRef(baselineIntentRef, bucket)
@@ -243,13 +273,17 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const runtimeConfig = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
   const baselineRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
   const controlledTransition = same(runtimeConfig, baselineRuntime)
-    ? values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRODUCER-CONTRACT'
-      ? assertDev014ProducerContractRemediation(values.readiness, values.authorization)
+    ? values.readiness?.devId === 'DEV-014'
+      ? values.readiness?.slice === '014-PRODUCER-CONTRACT'
+        ? assertDev014ProducerContractRemediation(values.readiness, values.authorization)
+        : values.readiness?.slice === '014-APPLICATION-REGISTRATION'
+          ? assertDev014ApplicationRegistrationRemediation(values.readiness, values.authorization)
+          : null
       : null
     : values.readiness?.devId === 'DEV-014'
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
-  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   if (controlledTransition?.releaseMode !== 'DEV014_MANAGED_DIRECTORY_ACTIVATION' && infrastructureSha256 !== infrastructureHash(root, baseline.intent.sourceRevision)) fail('ROUTINE_INFRA_CHANGED')
   const revision = await transport.getRevision(profile, intent.previousRevision)
@@ -265,7 +299,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (!controlledTransition || error?.code !== 'ROUTINE_MIGRATION_CHANGED') throw error
     migration = controlledTransition.releaseMode === 'DEV014_PRODUCER_CONTRACT_REMEDIATION'
       ? assertDev014ContractMigrationAppend(baseline.bundle.value, current.bundle)
-      : assertDev013ControlledMigrationAppend(baseline.bundle.value, current.bundle)
+      : controlledTransition.releaseMode === 'DEV014_APPLICATION_REGISTRATION_REMEDIATION'
+        ? assertDev014ApplicationRegistrationAppend(baseline.bundle.value, current.bundle)
+        : assertDev013ControlledMigrationAppend(baseline.bundle.value, current.bundle)
   }
   const infraChanged = !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
   if (migration.migrationDisposition === 'FORWARD_APPLY') {
