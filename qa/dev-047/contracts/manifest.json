@@ -2,7 +2,7 @@
   "contract": "DEV-047",
   "evidenceScope": "LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-17T16:01:29.298Z",
+  "generatedAt": "2026-09-21T03:47:11.662Z",
   "migrationSha256": "ab18137f7cc8e3abc270bc67b5c93d765cddb8f48584f017eca52c24336c1680",
   "checks": [
     {

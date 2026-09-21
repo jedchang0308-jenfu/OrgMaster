@@ -694,15 +694,16 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 
 - 前版 Architecture Closure PASS 漏列的 local revision 自衝突、PG row／DTO 不相容、receipt replay 次序、pending 首次登入循環及 migration release 邊界，已依 spec §2 A1–A6 完成修復。
 - 架構定案：assignment revision 與 file CAS 分離；typed repository DTO；receipt-first／actor-bound／stable-key readback；交易 current-state fence；pending hint→live bind→canonical principal 重查。
-- 不增 provider service、generic repository framework 或新 table；共用 DEV-047 QC runtime lifecycle。正式 012／013 migration／activation 不可混入 DEV-040 現行 001–011 一般 app release。
+- 不增 provider service、generic repository framework 或新 table；共用 DEV-047 QC runtime lifecycle。正式 migration／activation 只可依 DEV-040 §36～37 的受控012～015 transition；一般 app release維持001～015 unchanged、零DDL。
 - spec §11 S0→S5 已完成；新增 owner-only `jenfu.managed-login.v1` route、migration 013 routines、CAS receipt與lifecycle barrier，確切契約仍只在權威 spec 維護。
+- 2026-09-21 DEV-014 re-entry 已修正正式 Directory credential：canonical five-key config、runtime ADC→專用 signer IAM Credentials `signJwt`→read-only OAuth token，並加入只擁有 signer 與 signer-level Token Creator 的 app-owned Terraform；不建立或保存 service-account key。Production signer／Admin Console DWD／runtime config／deploy仍受 DEV-014 protected release gate。
 - P0／P1 設計待決項=0；RD本機實作完成。下一步不自動延伸至 migration apply、Google／cloud mutation、AI-PDM target、deploy或release。
 
 ### Spec Impact 與本輪證據
 
 `Intentional replacement / Local Implementation Complete`：ADR-007 2026-09-17 amendment 與 DEV-047 replacement note 同步；取代 JFS-derived Email／lexical mismatch，補齊 candidate、confirm、首次登入與 Platform owner producer契約。DEV-047 stable-key、cardinality、tombstone、lifecycle、sync、role admission 與 production gate 維持。
 
-本輪 evidence：targeted 50／50、contract 6／6、task-owned PostgreSQL 18.4 D49-01～06、real Chromium local fixture三viewport、full regression 853 PASS／1 skipped、build及DB boundary皆PASS；fresh PG重驗修正QC fixture同timestamp約束後重發owner receipt，SHA-256=`79a489833141d7773f845ba1e8cb608d1be9faf4276be9e344e1e102ee5b23b7`、controlled tree=`3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`。沒有deployment／provider／production write，全部臨時runtime已清理。
+本輪歷史 evidence：targeted 50／50、contract 6／6、task-owned PostgreSQL 18.4 D49-01～06、real Chromium local fixture三viewport、full regression 853 PASS／1 skipped、build及DB boundary皆PASS；fresh PG重驗修正QC fixture同timestamp約束後重發owner receipt，SHA-256=`79a489833141d7773f845ba1e8cb608d1be9faf4276be9e344e1e102ee5b23b7`、controlled tree=`3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`。2026-09-21 keyless DWD correction重驗：targeted 55／55、contract 7／7、full regression 875 PASS／1 skipped、TypeScript／build／DB boundary／Terraform validate皆PASS；未重跑既有PostgreSQL與Browser產品流程，因本次只改credential transport、runtime config與未套用infra definition。沒有deployment／provider／production write，全部臨時runtime已清理。
 
 ### Future Phase Capsule
 

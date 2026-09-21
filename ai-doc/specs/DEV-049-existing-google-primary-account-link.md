@@ -9,7 +9,9 @@
 
 > **DEV-050 app-local login replacement（2026-09-18 implementation）**：[DEV-050](DEV-050-dual-identifier-managed-login.md) 已採 token-first stable-key 本人核對；private 同快照 read 要求 token／live／stored primary Email 一致。forward migration 014 新增 OrgMaster session view，不 replace 共用 identity view 或改其 rows／ACL；本 DEV migration bytes、owner 公開契約及 provider 邊界不變。前版 replace-view／optional shared core 與 closure PASS 已撤回，重試依 SQL revision-before-receipt 順序定義；不新增 HMAC attempt、60 秒 app TTL、Email／員編 resolver 或 production test port。DEV-050 本機產品與自動化 QA／QC 已 PASS；正式 provider／migration／deploy／release 仍 gated，父 receipt 保持歷史證據，不冒充 DEV-050 驗證。
 
-> **Production activation amendment（2026-09-18）**：先前「012／013不能進入現行 DEV-040 release」限制由 [DEV-040 §36](DEV-040-jenfu-platform-entitlement-user-integration.md) 的受控例外取代。只有 fresh human-authorized DEV-013 transition可保留001–011 prefix並一次追加精確012／013／014；一般發布仍為001–014 unchanged、零DDL。本文件不提供該授權，亦不允許人工SQL或down migration。
+> **Production activation amendment（2026-09-18，2026-09-21 同步現行 ledger）**：先前「012／013不能進入現行 DEV-040 release」限制由 [DEV-040 §36～37](DEV-040-jenfu-platform-entitlement-user-integration.md) 的受控例外取代。只有 fresh human-authorized DEV-013 transition可保留001–011 prefix並一次追加精確012／013／014／015；一般發布要求001–015 unchanged、零DDL。本文件不提供該授權，亦不允許人工SQL或down migration。
+
+> **DEV-014 keyless DWD correction（2026-09-21）**：人類已明確授權為完成 DEV-014 繼續開發 OrgMaster DEV-049。正式 Directory adapter 的 credential path 改為 runtime ADC → IAM Credentials `signJwt` → OAuth JWT bearer exchange；assertion 固定 issuer signer、具名 delegated subject、唯一 `admin.directory.user.readonly` scope 與最長 3600 秒有效期。新增專用 signer 的 app-owned Terraform 定義與 signer-level Token Creator binding，禁止 service-account key、Secret 或 project-wide Token Creator。五個 canonical keys 是唯一啟用入口，舊 alias 不再接受。這項 source／infra contract 修正不等於 production 建立 signer、Admin Console DWD、runtime config、deploy、traffic、DB admission 或 provider 驗收授權。
 
 決策來源：
 
@@ -48,7 +50,7 @@ DEV-049 有意取代 DEV-047 的 JFS 衍生 Email 限制、lexical `identity_ali
 | A3 | confirm 先拒絕 consumed lease；缺 actor 比對、完整 receipt hash、transaction current-state 檢查，且既有不同 mapping 可能被當成功 | §7：receipt-first replay、live read、鎖內再驗證、單一成功 audit |
 | A4 | alias resolver 要求 active＋Firebase key，但首次 Google 登入才會綁該 key；auth API 又以假 mappingVersion 回傳 session principal | §9：pending 可取 hint，live bind 後重查 canonical admission |
 | A5 | Directory parser 可用 configured customer 補缺值，stable-key read 未核對回傳 user ID，candidate 未拒絕 suspended | §5：缺值與不一致 fail closed；雙次 exact read |
-| A6 | 前版把 migration 013 納入現行一般 production release，與 DEV-040 固定 001–011 基線衝突 | §13：012／013 與外部啟用另走授權及 release 設計，不擴張現行流程 |
+| A6 | 前版把 migration 013 當成未受保護的一般 release 內容，與當時 DEV-040 ledger gate 衝突 | §13：只有 DEV-040 §36～37 的受控012～015 recovery可套用；一般發布維持001～015 unchanged |
 
 保留現有 API path、Directory adapter、journal、DB admission fence 與 QC runtime lifecycle；不引入第二個身分服務、generic repository framework、provider write、分散式鎖或新資料表。Local base64url／PostgreSQL hex token 都保留 32 random bytes；Browser 只把它當 opaque capability，沒有為了編碼一致而重寫的必要。
 
@@ -106,6 +108,22 @@ PostgreSQL 用現有 `managed_identity_admission_authority` singleton `FOR UPDAT
 5. Lookup／confirm 只接受 `directoryState=present`。Confirm 比對 lease 的 customer、user ID、normalized primaryEmail；lease 有 etag 時也須一致。保留既有 5 秒 request timeout 與 retryable failure 分類。
 6. 唯一 provider scope 為 `admin.directory.user.readonly`。users.get 不加未定義的 customer query；tenant boundary 靠設定與 response 驗證，不能靠 URL 參數宣稱隔離。
 7. 不傳輸 Google 密碼、不呼叫 Licensing API、不推論 license 類別。無公司帳號者仍去 Google Admin 建立；本 UI 僅連結既有帳號。
+
+### 5.1 正式 keyless DWD credential path
+
+唯一 runtime keys：
+
+- `ORGMASTER_MANAGED_IDENTITY_ENABLED`
+- `ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID`
+- `ORGMASTER_GOOGLE_DIRECTORY_DOMAIN`
+- `ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT`
+- `ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL`
+
+只有第一鍵為 exact `true` 且其餘四鍵語法完整時才建構正式 Directory／managed-login bridge；缺值或無效值 fail closed。舊 `ORGMASTER_DIRECTORY_CUSTOMER_ID`、`ORGMASTER_MANAGED_DOMAIN`、`ORGMASTER_DIRECTORY_DWD_SUBJECT` 不得 fallback。
+
+Production signer 固定為 `orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com`。OrgMaster runtime ADC 只用於呼叫該 signer 的 IAM Credentials `signJwt`；signed payload 固定 `iss`、`sub`、`scope`、`aud=https://oauth2.googleapis.com/token`、`iat` 與 `exp<=iat+3600`，再以 JWT bearer exchange 取得短效 delegated access token。token 只保存在 process memory 並於到期前刷新，不寫 response、log、receipt、檔案或 Secret。
+
+`infra/google-cloud/dev-049-managed-directory` 只定義該 signer、`prevent_destroy` 與 runtime 在該 signer resource 上的 `roles/iam.serviceAccountTokenCreator`。Google Workspace 管理者仍須將 output `oauth2_client_id` 只授予上述 read-only scope；Terraform 不管理 Admin Console delegation。不得加入 `google_service_account_key`、downloaded JSON、project-level Token Creator 或 Directory write scope。
 
 官方查證：[users.get](https://developers.google.com/workspace/admin/directory/reference/rest/v1/users/get)、[User resource](https://developers.google.com/workspace/admin/directory/reference/rest/v1/users)。這些規則只授權唯讀驗證，不授權正式 Directory credential／DWD 設定。
 
@@ -297,6 +315,7 @@ DEV-013 SSO handoff mode、broker、redirect contract 與原有已 admission 的
 - `src/components/ManagedIdentityLinkDialog.tsx` 與新增同名 test；`EmployeeManagedIdentitySection.tsx`／test、`EmployeeNumberDialog.tsx`、`src/index.css`。
 - `server/orgmasterManagedIdentity{Api,Service,Repository,Store}.ts` 及各自 tests（Api／Service／Repository test 新增）。
 - `server/orgmasterManagedDirectoryPort.ts` 與新增同名 test。
+- `.env.example`、`infra/google-cloud/dev-049-managed-directory/**`：canonical runtime schema、專用 signer 與 exact signer-level impersonation boundary；不建立 key、Secret 或 project IAM。
 - `server/orgmasterAuthApi.ts`／test；`server/orgmasterServer.test.ts` 驗證 runtime 接線，不改 SSO consumer。
 - 計畫 migration 013。
 - `scripts/qc-dev-047-{contract,postgres,browser}.mjs`、`scripts/lib/dev047-postgres-qc-contract.mjs`、`scripts/dev047-postgres-qc-contract.test.mjs`、`package.json`：新增明確 `--suite=dev049` 分支，共用 runtime lifecycle，不複製 DB／browser process manager。DEV-047 預設入口與未被取代的 guard 保留；與本 spec 衝突的 derived-Email／版本／route 舊 assertion 明確更新並註明新權威，不要求新版產品通過已作廢的行為，也不改歷史 evidence。
@@ -349,7 +368,7 @@ DEV-049 QC script 呼叫 §11 共用 runner 的 dev049 suite，必含新 reposit
 
 ## 13. Release 可行性與停止條件
 
-本輪完成本機工程實作與可驗證 owner receipt，但不建立 release artifact、不修改 production pipeline。DEV-040 現行一般 app release 僅接受既定未變更的 001–011 bundle；不能把 012／013 塞入該正常路徑，不能以本文件或 local receipt 當 migration／activation 授權。
+本輪完成本機工程實作與可驗證 owner receipt，但不建立 release artifact、不修改 production pipeline。DEV-040 現行一般 app release 要求既定001–015 bundle unchanged、零DDL；只有 §36～37 的 fresh human-authorized受控transition可在保留001–011 prefix後追加精確012～015。不能以本文件或 local receipt 當 migration／activation 授權。
 
 未來 re-entry：
 
@@ -366,6 +385,7 @@ DEV-049 QC script 呼叫 §11 共用 runner 的 dev049 suite，必含新 reposit
 - 前版 PASS 更正：漏列 revision、DTO、replay、首次登入及 release 邊界；本版契約取代，不回寫歷史 QA/QC 成功。
 - RD／產品 tests／browser QC：`PASS`。`test:dev-049`=`50／50`、contract=`6／6`、task-owned PostgreSQL 18.4=`D49-01～06 PASS`、real Chromium local fixture=`3 viewports PASS / provider write 0`、full regression=`853 PASS / 1 skipped`、build／DB boundary PASS。
 - `jenfu.managed-login.v1` owner route、Firebase revoked-token verification、unique Google provider ID、Directory stable-key read、owner CAS／receipt與legacy＋managed lifecycle barrier已實作；Platform runtime無 core routine權限。
+- 2026-09-21 keyless DWD source correction：runtime ADC→exact signer `signJwt`→JWT bearer exchange、canonical five-key fail-closed config、delegated token cache、permanent／retryable auth failure classification與 signer-only Terraform boundary均已加入；targeted=`55／55`、contract=`7／7`、full regression=`875 PASS／1 skipped`、TypeScript／build／DB boundary／Terraform validate=`PASS`。正式 provider 與 Production proof 仍為 `NOT_RUN`。
 - Owner receipt：`qa/dev-049/producer/owner-receipt.json`，schema=`jenfu.managed-login.owner-receipt.v1`；fresh PG重驗後receipt SHA-256=`79a489833141d7773f845ba1e8cb608d1be9faf4276be9e344e1e102ee5b23b7`、controlled tree=`3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`。
 - Evidence：`qa/dev-049/contracts/manifest.json`、`qa/dev-049/postgres/manifest.json`、`qa/dev-049/browser/manifest.json`；所有 task-owned PostgreSQL、server、Chromium、port 與 temp root 已清理。
 - Production authority：`false`。下一步是另行授權的 provider／target／migration apply／activation／release，不得以 local PASS 自動繼續。

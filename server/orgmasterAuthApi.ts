@@ -23,7 +23,7 @@ import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 import { createOrgmasterSessionRepository, type OrgmasterSession, type OrgmasterSessionRepository } from './orgmasterSessionRepository'
 import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
 import { createManagedIdentityRepository } from './orgmasterManagedIdentityRepository'
-import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort } from './orgmasterManagedDirectoryPort'
+import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort, readGoogleDirectoryRuntimeConfig } from './orgmasterManagedDirectoryPort'
 import { handleOrgmasterSsoRequest, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
 import { createGoogleManagedLoginCallerVerifier, type ManagedLoginCallerVerifier } from './orgmasterManagedLoginApi'
 import { createManagedLoginOwnerService, type ManagedLoginOwnerServiceV1 } from './orgmasterManagedLoginService'
@@ -275,13 +275,18 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
   const configResult = readOrgmasterAuthConfig(environment)
   if (!configResult.configured) return { configResult }
   const database = createOrgmasterDatabase(configResult.config.postgresUrl)
-  const managedDirectory = environment.ORGMASTER_MANAGED_IDENTITY_ENABLED === 'true' && environment.ORGMASTER_DIRECTORY_CUSTOMER_ID && environment.ORGMASTER_DIRECTORY_DWD_SUBJECT
-    ? createGoogleDirectoryReadOnlyPort({ customerId: environment.ORGMASTER_DIRECTORY_CUSTOMER_ID, domain: environment.ORGMASTER_MANAGED_DOMAIN ?? 'jenfu.com.tw', auth: createGoogleDirectoryAuthPort({ delegatedSubject: environment.ORGMASTER_DIRECTORY_DWD_SUBJECT }) })
+  const directoryConfig = readGoogleDirectoryRuntimeConfig(environment)
+  const managedDirectory = directoryConfig.enabled
+    ? createGoogleDirectoryReadOnlyPort({
+        customerId: directoryConfig.customerId,
+        domain: directoryConfig.domain,
+        auth: createGoogleDirectoryAuthPort({ delegatedSubject: directoryConfig.delegatedSubject, serviceAccountEmail: directoryConfig.serviceAccountEmail }),
+      })
     : undefined
   const managedRepository = createManagedIdentityRepository({ root: environment.ORGMASTER_ROOT?.trim() || process.cwd(), devEnabled: false, database })
   const firebase = createFirebaseIdentityProvider(configResult.config.identityIssuer, configResult.config.identityAudience)
-  const managedLoginOwner = managedDirectory && environment.ORGMASTER_DIRECTORY_CUSTOMER_ID
-    ? createManagedLoginOwnerService({ repository: managedRepository, directory: managedDirectory, firebase, directoryCustomerId: environment.ORGMASTER_DIRECTORY_CUSTOMER_ID })
+  const managedLoginOwner = managedDirectory && directoryConfig.enabled
+    ? createManagedLoginOwnerService({ repository: managedRepository, directory: managedDirectory, firebase, directoryCustomerId: directoryConfig.customerId })
     : undefined
   const managedLoginCallerVerifier = environment.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL?.trim() && environment.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT?.trim()
     ? createGoogleManagedLoginCallerVerifier({ audience: configResult.config.publicBaseUrl.origin, expectedEmail: environment.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL, expectedSubject: environment.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT })
@@ -292,10 +297,17 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     principals: createPrincipalAdmissionRepository(database),
     epochs: createAuthEpochRepository(database),
     sessions: createOrgmasterSessionRepository(database),
-    managedIdentity: createManagedIdentityService({ root: environment.ORGMASTER_ROOT?.trim() || process.cwd(), devEnabled: false, repository: managedRepository, directory: managedDirectory, managedDomain: environment.ORGMASTER_MANAGED_DOMAIN ?? 'jenfu.com.tw', directoryCustomerId: environment.ORGMASTER_DIRECTORY_CUSTOMER_ID }),
+    managedIdentity: createManagedIdentityService({
+      root: environment.ORGMASTER_ROOT?.trim() || process.cwd(),
+      devEnabled: false,
+      repository: managedRepository,
+      directory: managedDirectory,
+      managedDomain: directoryConfig.enabled ? directoryConfig.domain : undefined,
+      directoryCustomerId: directoryConfig.enabled ? directoryConfig.customerId : undefined,
+    }),
     managedLoginOwner,
     managedLoginCallerVerifier,
-    managedLoginEnabled: environment.ORGMASTER_MANAGED_IDENTITY_ENABLED === 'true',
+    managedLoginEnabled: directoryConfig.enabled,
     ssoHandoffEnabled: environment.ORGMASTER_JENFU_SSO_HANDOFF_MODE === 'on' && Boolean(environment.ORGMASTER_JENFU_SSO_BROKER_ORIGIN?.trim()),
   }
 }

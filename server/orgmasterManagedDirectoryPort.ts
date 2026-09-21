@@ -2,6 +2,11 @@ import { GoogleAuth } from 'google-auth-library'
 import type { DirectoryState } from '../src/managedIdentity/types'
 
 export const GOOGLE_DIRECTORY_READ_SCOPE = 'https://www.googleapis.com/auth/admin.directory.user.readonly' as const
+export const GOOGLE_IAM_CREDENTIALS_SCOPE = 'https://www.googleapis.com/auth/cloud-platform' as const
+export const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token' as const
+
+const DWD_ASSERTION_LIFETIME_SECONDS = 3_600
+const ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 60
 
 export type ManagedDirectoryUserV1 = {
   customerId: string
@@ -17,6 +22,17 @@ export type ManagedDirectoryReadResult =
 
 export type GoogleDirectoryAuthPort = { getRequestHeaders(url: string): Promise<Record<string, string>> }
 export type GoogleDirectoryTransport = (url: string, init: { headers: Record<string, string>; signal: AbortSignal }) => Promise<{ status: number; headers: Headers; json(): Promise<unknown> }>
+export type GoogleDirectoryCredentialTransport = (url: string, init: { method: 'POST'; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>
+
+export type GoogleDirectoryRuntimeConfig =
+  | { enabled: false; state: 'disabled' | 'invalid' }
+  | { enabled: true; state: 'enabled'; customerId: string; domain: string; delegatedSubject: string; serviceAccountEmail: string }
+
+export class GoogleDirectoryAuthError extends Error {
+  constructor(public readonly code: 'DIRECTORY_AUTH_UNAVAILABLE' | 'DIRECTORY_DELEGATION_INVALID', public readonly retryable: boolean) {
+    super(code)
+  }
+}
 
 export interface ManagedDirectoryPortV1 {
   readonly mode: 'disabled' | 'local-deterministic' | 'mocked-google' | 'google-admin-readonly'
@@ -82,19 +98,121 @@ export function createLocalDeterministicDirectoryPort(fixture: LocalDirectoryFix
   }
 }
 
-export function createGoogleDirectoryAuthPort(input: { delegatedSubject: string; getClient?: () => Promise<{ getRequestHeaders(url?: string): Promise<Headers | Record<string, string>> }> }): GoogleDirectoryAuthPort {
-  if (!input.delegatedSubject.trim()) throw new Error('DIRECTORY_DELEGATED_SUBJECT_REQUIRED')
-  const clientPromise = input.getClient ? input.getClient() : (async () => {
-    const auth = new GoogleAuth({ scopes: [GOOGLE_DIRECTORY_READ_SCOPE], clientOptions: { subject: input.delegatedSubject } })
-    return auth.getClient()
-  })()
+function normalizedDomain(value: string) { return value.trim().toLowerCase() }
+function normalizedServiceAccountEmail(value: string) { return value.trim().toLowerCase() }
+
+function validEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+$/.test(value)
+}
+
+function validDomain(value: string) {
+  return value.includes('.') && !value.includes('@') && !/[\s/:]/.test(value)
+}
+
+export function readGoogleDirectoryRuntimeConfig(environment: NodeJS.ProcessEnv): GoogleDirectoryRuntimeConfig {
+  if (environment.ORGMASTER_MANAGED_IDENTITY_ENABLED !== 'true') return { enabled: false, state: 'disabled' }
+  const customerId = environment.ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID?.trim() ?? ''
+  const domain = normalizedDomain(environment.ORGMASTER_GOOGLE_DIRECTORY_DOMAIN ?? '')
+  const delegatedSubject = normalizedEmail(environment.ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT ?? '')
+  const serviceAccountEmail = normalizedServiceAccountEmail(environment.ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL ?? '')
+  const valid = Boolean(customerId)
+    && !/[\s/]/.test(customerId)
+    && validDomain(domain)
+    && validEmail(delegatedSubject)
+    && delegatedSubject.endsWith(`@${domain}`)
+    && /^[a-z0-9][a-z0-9-]*@[a-z0-9][a-z0-9-]*\.iam\.gserviceaccount\.com$/.test(serviceAccountEmail)
+  return valid
+    ? { enabled: true, state: 'enabled', customerId, domain, delegatedSubject, serviceAccountEmail }
+    : { enabled: false, state: 'invalid' }
+}
+
+function defaultCredentialTransport(): GoogleDirectoryCredentialTransport {
+  return async (url, init) => {
+    const response = await fetch(url, { method: init.method, headers: init.headers, body: init.body, signal: init.signal })
+    return { status: response.status, json: async () => response.json().catch(() => null) }
+  }
+}
+
+export function createGoogleDirectoryAuthPort(input: {
+  delegatedSubject: string
+  serviceAccountEmail: string
+  getSourceAccessToken?: () => Promise<string | null | undefined>
+  transport?: GoogleDirectoryCredentialTransport
+  now?: () => number
+  timeoutMs?: number
+}): GoogleDirectoryAuthPort {
+  const delegatedSubject = normalizedEmail(input.delegatedSubject)
+  const serviceAccountEmail = normalizedServiceAccountEmail(input.serviceAccountEmail)
+  if (!validEmail(delegatedSubject)) throw new Error('DIRECTORY_DELEGATED_SUBJECT_REQUIRED')
+  if (!/^[a-z0-9][a-z0-9-]*@[a-z0-9][a-z0-9-]*\.iam\.gserviceaccount\.com$/.test(serviceAccountEmail)) throw new Error('DIRECTORY_DWD_SERVICE_ACCOUNT_REQUIRED')
+
+  const transport = input.transport ?? defaultCredentialTransport()
+  const now = input.now ?? Date.now
+  const sourceAuth = input.getSourceAccessToken ? undefined : new GoogleAuth({ scopes: [GOOGLE_IAM_CREDENTIALS_SCOPE] })
+  const getSourceAccessToken = input.getSourceAccessToken ?? (() => sourceAuth!.getAccessToken())
+  let cachedToken: { value: string; expiresAt: number } | undefined
+  let tokenRefresh: Promise<string> | undefined
+
+  const post = async (url: string, headers: Record<string, string>, body: string) => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 5_000)
+    try {
+      return await transport(url, { method: 'POST', headers, body, signal: controller.signal })
+    } catch {
+      throw new GoogleDirectoryAuthError('DIRECTORY_AUTH_UNAVAILABLE', true)
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  const obtainDelegatedToken = async () => {
+    const sourceToken = (await getSourceAccessToken())?.trim().replace(/^Bearer\s+/i, '')
+    if (!sourceToken) throw new GoogleDirectoryAuthError('DIRECTORY_AUTH_UNAVAILABLE', true)
+    const issuedAt = Math.floor(now() / 1_000)
+    const claims = {
+      iss: serviceAccountEmail,
+      sub: delegatedSubject,
+      scope: GOOGLE_DIRECTORY_READ_SCOPE,
+      aud: GOOGLE_OAUTH_TOKEN_URL,
+      iat: issuedAt,
+      exp: issuedAt + DWD_ASSERTION_LIFETIME_SECONDS,
+    }
+    const signUrl = `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${encodeURIComponent(serviceAccountEmail)}:signJwt`
+    const signedResponse = await post(signUrl, { Authorization: `Bearer ${sourceToken}`, 'Content-Type': 'application/json', Accept: 'application/json' }, JSON.stringify({ payload: JSON.stringify(claims) }))
+    const signedBody = await signedResponse.json()
+    const signedJwt = signedBody && typeof signedBody === 'object' && !Array.isArray(signedBody) && typeof (signedBody as Record<string, unknown>).signedJwt === 'string'
+      ? String((signedBody as Record<string, unknown>).signedJwt)
+      : ''
+    if (signedResponse.status < 200 || signedResponse.status >= 300 || !signedJwt) {
+      throw new GoogleDirectoryAuthError(signedResponse.status >= 500 || signedResponse.status === 429 ? 'DIRECTORY_AUTH_UNAVAILABLE' : 'DIRECTORY_DELEGATION_INVALID', signedResponse.status >= 500 || signedResponse.status === 429)
+    }
+
+    const tokenBody = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: signedJwt }).toString()
+    const tokenResponse = await post(GOOGLE_OAUTH_TOKEN_URL, { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, tokenBody)
+    const tokenJson = await tokenResponse.json()
+    const value = tokenJson && typeof tokenJson === 'object' && !Array.isArray(tokenJson) && typeof (tokenJson as Record<string, unknown>).access_token === 'string'
+      ? String((tokenJson as Record<string, unknown>).access_token).trim()
+      : ''
+    const expiresIn = tokenJson && typeof tokenJson === 'object' && !Array.isArray(tokenJson) && typeof (tokenJson as Record<string, unknown>).expires_in === 'number'
+      ? Number((tokenJson as Record<string, unknown>).expires_in)
+      : 0
+    if (tokenResponse.status < 200 || tokenResponse.status >= 300 || !value || !Number.isFinite(expiresIn) || expiresIn <= ACCESS_TOKEN_REFRESH_SKEW_SECONDS) {
+      throw new GoogleDirectoryAuthError(tokenResponse.status >= 500 || tokenResponse.status === 429 ? 'DIRECTORY_AUTH_UNAVAILABLE' : 'DIRECTORY_DELEGATION_INVALID', tokenResponse.status >= 500 || tokenResponse.status === 429)
+    }
+    cachedToken = { value, expiresAt: now() + expiresIn * 1_000 }
+    return value
+  }
+
+  const delegatedToken = () => {
+    if (cachedToken && now() < cachedToken.expiresAt - ACCESS_TOKEN_REFRESH_SKEW_SECONDS * 1_000) return Promise.resolve(cachedToken.value)
+    if (!tokenRefresh) tokenRefresh = obtainDelegatedToken().finally(() => { tokenRefresh = undefined })
+    return tokenRefresh
+  }
+
   return {
-    async getRequestHeaders(url) {
-      const headers = await (await clientPromise).getRequestHeaders(url)
-      const result: Record<string, string> = {}
-      for (const [key, value] of Object.entries(headers)) if (typeof value === 'string') result[key] = value
-      result.Accept = 'application/json'
-      return result
+    async getRequestHeaders(_url) {
+      const token = await delegatedToken()
+      return { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     },
   }
 }
@@ -133,6 +251,7 @@ export function createGoogleDirectoryReadOnlyPort(input: { customerId: string; d
       if (!user) return { ok: false, kind: 'permanent_error', code: 'DIRECTORY_RESPONSE_INVALID', observedAt: observed }
       return { ok: true, user, observedAt: observed }
     } catch (error) {
+      if (error instanceof GoogleDirectoryAuthError) return { ok: false, kind: error.retryable ? 'retryable_error' : 'permanent_error', code: error.code, observedAt: observed }
       return { ok: false, kind: 'retryable_error', code: error instanceof DOMException && error.name === 'AbortError' ? 'DIRECTORY_TIMEOUT' : 'DIRECTORY_READ_UNAVAILABLE', observedAt: observed }
     } finally { clearTimeout(timer) }
   }

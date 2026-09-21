@@ -24,7 +24,9 @@ await check('forward-only migration and exact ownership boundary', () => {
 await check('browser contract accepts explicit primary email and redacts provider identifiers', async () => {
   const [types, service, dialog] = await Promise.all([source('src/managedIdentity/types.ts'), source('server/orgmasterManagedIdentityService.ts'), source('src/components/ManagedIdentityLinkDialog.tsx')])
   includesAll(types, ['primaryEmail: string', 'directory: { primaryEmail: string }'])
-  assert.doesNotMatch(types, /derivedUsername|expectedUsername|directory:\s*\{[^}]*customerId/su)
+  const candidateResponse = types.slice(types.indexOf('export interface ManagedIdentityCandidateResponseV1'), types.indexOf('export interface FindManagedIdentityCandidateRequestV1'))
+  assert.doesNotMatch(types, /expectedUsername/u)
+  assert.doesNotMatch(candidateResponse, /derivedUsername|customerId|userId|sourceEtag/u)
   includesAll(service, ['parseManagedPrimaryEmail', 'readCandidateForConfirmation', 'directory.readByDirectoryKey'])
   includesAll(dialog, ['Google 主帳號', '查詢帳號', '確認連結', '返回修改', 'sr-only'])
   assert.doesNotMatch(dialog, /directory\.userId|directory\.customerId|sourceEtag/u)
@@ -32,9 +34,46 @@ await check('browser contract accepts explicit primary email and redacts provide
 
 await check('Directory adapter is read-only and validates stable provider facts', async () => {
   const port = await source('server/orgmasterManagedDirectoryPort.ts')
-  includesAll(port, ['admin.directory.user.readonly', "bodyCustomer = typeof value.customerId === 'string' ? value.customerId.trim() : ''", 'result.user.userId !== user', "result.user.directoryState !== 'present'"])
+  includesAll(port, [
+    'admin.directory.user.readonly',
+    'iamcredentials.googleapis.com',
+    ':signJwt',
+    'oauth2.googleapis.com/token',
+    'ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID',
+    'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN',
+    'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
+    'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
+    "bodyCustomer = typeof value.customerId === 'string' ? value.customerId.trim() : ''",
+    'result.user.userId !== user',
+    "result.user.directoryState !== 'present'",
+  ])
   assert.doesNotMatch(port, /[?&]customer=/u)
-  assert.doesNotMatch(port, /users\.(?:insert|update|delete)|method:\s*['"](?:POST|PUT|PATCH|DELETE)/iu)
+  assert.doesNotMatch(port, /users\.(?:insert|update|delete)|admin\.googleapis\.com[^\n]+method:\s*['"](?:POST|PUT|PATCH|DELETE)/iu)
+  assert.doesNotMatch(port, /ORGMASTER_(?:DIRECTORY_CUSTOMER_ID|DIRECTORY_DWD_SUBJECT|MANAGED_DOMAIN)/u)
+})
+
+await check('keyless DWD infrastructure owns only the exact signer-level boundary', async () => {
+  const [main, variables, outputs, example] = await Promise.all([
+    source('infra/google-cloud/dev-049-managed-directory/main.tf'),
+    source('infra/google-cloud/dev-049-managed-directory/variables.tf'),
+    source('infra/google-cloud/dev-049-managed-directory/outputs.tf'),
+    source('.env.example'),
+  ])
+  includesAll(main, [
+    'google_service_account" "directory_dwd',
+    'roles/iam.serviceAccountTokenCreator',
+    'prevent_destroy = true',
+  ])
+  includesAll(variables, ['jenfu-platform-prod', 'orgmaster-prod-runtime', 'orgmaster-prod-directory-dwd'])
+  includesAll(outputs, ['oauth2_client_id', 'admin.directory.user.readonly'])
+  includesAll(example, [
+    'ORGMASTER_MANAGED_IDENTITY_ENABLED=false',
+    'ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID=',
+    'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN=',
+    'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT=',
+    'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL=',
+  ])
+  assert.doesNotMatch(main + variables + outputs, /google_service_account_key|private_key|roles\/iam\.serviceAccountTokenCreator[\s\S]*google_project_iam/u)
 })
 
 await check('managed identifier verifier precedes canonical admission', async () => {
@@ -69,7 +108,7 @@ await check('managed-login owner API binds caller, Firebase, Directory stable ke
   assert.doesNotMatch(ownerReceipt, /(?:primaryEmail|idToken|last_verified_primary_email)/iu)
 })
 
-await check('DEV-047 runner exposes isolated DEV-049 suite without changing production release paths', async () => {
+await check('DEV-047 runner exposes isolated DEV-049 suite and current protected release boundary', async () => {
   const [runner, packageJson, agents, spec] = await Promise.all([
     source('scripts/qc-dev-047-postgres.mjs'),
     source('package.json'),
@@ -78,11 +117,11 @@ await check('DEV-047 runner exposes isolated DEV-049 suite without changing prod
   ])
   includesAll(runner, ["--suite=", "suite === 'dev049'", "'D49-01'", "'D49-06'", 'task-owned PostgreSQL cluster'])
   includesAll(packageJson, ['qc:dev-049:postgres', 'qc:dev-049:browser', 'test:dev-049'])
-  assert.match(agents, /001–011 bundle/u)
-  assert.match(agents, /DEV-047 migration 012[^\n]*remain separate from compatible application deployment/u)
+  assert.match(agents, /001–015 bundle/u)
+  assert.match(agents, /DEV-013 production activation recovery slice[^\n]*012／013／014／015/u)
   includesAll(spec, [
     'db/migrations/013_dev049_existing_google_primary_account_link.sql',
-    '不能把 012／013 塞入該正常路徑',
+    'Production activation amendment',
   ])
 })
 
