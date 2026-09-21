@@ -1412,3 +1412,15 @@ Fresh G2 run `35307497175` 以source `8c89b44204dbd0d9500ea936f02093b2b3ba36ec`�
 6. 本輪人類授權文字明定OrgMaster source固定為`8c89b442…`，不涵蓋含015的新revision。local gates、commit／push與review完成後，必須以新的exact三repo source set建立fresh Production L4 authorization；任何source-independent草案都不能擴張這份人類授權。
 
 Required local exit：`npm run test:dev-040:r2`、`npm run qc:dev-040:r2`、`npm run test:dev-040:abort`、`npm run test:dev-050`、`npm run qc:dev-050:contract`、`npm run qc:dev-050:postgres`、`npm run check:db-boundary`、`npm test -- --testTimeout=30000`、`npm run build`及`git diff --check`。PostgreSQL QC必須以task-owned cluster驗runtime四項DML成功、TRUNCATE=false、sibling SELECT=false、owner不變並完成process／port／temp root清理。
+
+## 38. DEV-014 managed identity lifecycle producer contract remediation（2026-09-21，current）
+
+Platform protected release run `35579062204`已在migration 006 prerequisite以SQLSTATE `55000`安全停止；execution=`platform-prod-migration-runner-8ztzn`，candidate／revision／traffic mutation=0。Migration 006正確要求`orgmaster.identity-lifecycle` v1，但OrgMaster production 001–015 ledger沒有發布兩個必要contract views與manifest。這是producer contract缺口，不能以Platform重試、人工SQL或放寬consumer prerequisite處理。
+
+1. 唯一fix-forward是`db/migrations/016_dev014_managed_identity_lifecycle_contract.sql`。001–015 bytes／version／hash不可變；016只建立`v_managed_identity_lifecycle_events_v1`、`v_managed_identity_lifecycle_event_principals_v1`、manifest row及Platform migrator-only SELECT。
+2. Events固定`application_id='platform'`；principals由append-only reservation registry取得，確保active mapping消失後仍能失效既有Platform session。不得改以active-only view。
+3. 新受控模式`DEV014_PRODUCER_CONTRACT_REMEDIATION`只接受exact 15→16、runtime template unchanged與exact remediation payload；須使用source-matched migration runner及`APP_INFRA_IMAGE_ROTATION` receipt。
+4. Migration receipt PASS前candidate=0。失敗保留forward ledger、正式traffic與既有runtime，不down migrate。成功後完整001–016成為ordinary release唯一bundle，後續一律`UNCHANGED_VERIFIED`、零DDL。
+5. Human authorization必須明確涵蓋OrgMaster migration 016與exact Production owner release；既有只允許Platform migrations 006／007且禁止其他migration的DEV-014授權不能推定擴張。
+
+直接契約：[DEV-052](DEV-052-managed-identity-lifecycle-producer-contract.md)。QA分母：[DEV-040 R2 QA §16](../qa/DEV-040-R2-independent-production-release-validation-plan.md)。

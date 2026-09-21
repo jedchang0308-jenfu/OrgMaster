@@ -308,6 +308,13 @@
         "path": "db/migrations/015_dev013_restore_runtime_session_dml.sql",
         "sourceSha256": "d3a17f752b89138f4d636d1b21ae5a69a5ae29dc64960c61307398d7a234cc08",
         "appliedSha256": "a5860ee157e87c87b9654e0151c156d9ddd0b06f3f46cf4380f5ddb8a6126b7f"
+      },
+      {
+        "order": 16,
+        "version": "dev014-orgmaster-016",
+        "path": "db/migrations/016_dev014_managed_identity_lifecycle_contract.sql",
+        "sourceSha256": "447acb8ce030495cae20ac1d22be005ea265be75893676d165502c409c3db185",
+        "appliedSha256": "a25aae3dd8c86af2ec5cfb5f943d97dd47d4d4934a230bc8838ebe1365065790"
       }
     ]
   },

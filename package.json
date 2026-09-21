@@ -72,6 +72,8 @@
     "qc:dev-050:contract": "node scripts/qc-dev-050-contract.mjs",
     "qc:dev-050:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev050",
     "qc:dev-050:browser": "node scripts/qc-dev-050-browser.mjs",
+    "qc:dev-052:contract": "node scripts/qc-dev-052-contract.mjs",
+    "qc:dev-052:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev052",
     "receipt:dev-049:managed-login-owner": "node scripts/dev049-managed-login-owner-receipt.mjs",
     "test:dev-049:owner-receipt": "node --test scripts/dev049-managed-login-owner-receipt.test.mjs",
     "qc:dev-045:browser": "node scripts/qc-dev-045-browser.mjs",

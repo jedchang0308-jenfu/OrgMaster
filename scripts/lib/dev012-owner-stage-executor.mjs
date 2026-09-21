@@ -93,6 +93,27 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
   const usesNonDefaultValue = Object.entries(rules).some(([name, rule]) => controlledEnvironment[name] !== rule.defaultValue)
   if (!isDev013) {
     if (isDev014) {
+      if (values.readiness?.slice === '014-PRODUCER-CONTRACT') {
+        const expectedRemediation = {
+          kind: 'MANAGED_IDENTITY_LIFECYCLE_CONTRACT_COMPLETION',
+          migrationVersion: 'dev014-orgmaster-016',
+          contractVersion: 'jenfu.orgmaster-contract.managed-identity-lifecycle.v1',
+          consumerApplicationId: 'platform',
+        }
+        if (!intent.baselineIntentRef
+          || values.authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+          || values.authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+          || values.authorization.devId !== 'DEV-014' || values.authorization.slice !== '014-PRODUCER-CONTRACT'
+          || values.readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+          || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
+          || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision
+          || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
+          || canonicalize(values.authorization.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.authorization.remediation) !== canonicalize(expectedRemediation)
+          || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
+        return { releaseMode: 'DEV014_PRODUCER_CONTRACT_REMEDIATION', remediation: expectedRemediation }
+      }
       const expectedActivation = {
         kind: 'MANAGED_DIRECTORY_RUNTIME_ACTIVATION',
         addedPlainEnvironmentNames: DEV014_MANAGED_DIRECTORY_FIELDS,
