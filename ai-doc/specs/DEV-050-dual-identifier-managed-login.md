@@ -2,11 +2,11 @@
 
 文件成熟度：`RD Implementation Complete / Architecture Contract Implemented 2026-09-18`
 架構審查：`Architecture Finalized — R2 / Implemented and Verified / 2026-09-18`
-交付狀態：`Production Released / Local QA-QC Passed / Google Provider L4 Pending`
+交付狀態：`Production Released / Canonical-first Correction Pending / Workspace Target Partial Evidence / Full Browser Pending`
 風險：`High`（首次身分綁定、登入授權與共用資料庫相容性）
 父交付點：DEV-049；相容基線：DEV-047／ADR-007
 
-本文件是 DEV-050 的單一設計權威。R2 修正前版 Email 一致性、並行重試及共用 view 邊界的錯誤，取代前版「closure PASS／P0=0／P1=0」宣告。本輪已依定案完成 OrgMaster 產品實作與本機自動化 QA／QC；正式 provider、migration、activation、deploy 仍受 release gate 管制。
+本文件是 DEV-050 的單一設計權威。R2 修正前版 Email 一致性、並行重試及共用 view 邊界的錯誤，取代前版「closure PASS／P0=0／P1=0」宣告。OrgMaster產品實作、本機QA／QC、provider、migration、DWD、admission與base release均已完成；目前只剩canonical-first correction owner release及完整Google／工號Production browser matrix。
 
 查證基準：`codex/dev-049-existing-google-account@0ff634f2373b388703d9124b3c09d48a1dd3d978`。父 owner receipt 的來源仍記錄 `b839003` 的受控工作樹；不能把該歷史 receipt 改寫成目前 commit 的驗證報告，詳見 §9。
 
@@ -277,4 +277,4 @@ RD 開始前重新核對 branch／HEAD／dirty state、父 receipt 與 migration
 
 ## 2026-09-22 Production execution readback
 
-DEV-050 release commit `e15121af6b579a339a109c1125214bf4d29624e8`是Production service source `4b512a4d48e306cef8d1371d7a354e50a3e8f05c`的ancestor，owner run `35587433590`已發布該source lineage。DWD、migration與雙admission均完成；Google／工號normal-entry仍須在Firebase Google provider啟用後依Platform LOGIN六案完成Production L4。
+DEV-050 release commit `e15121af6b579a339a109c1125214bf4d29624e8`是Production service source `4b512a4d48e306cef8d1371d7a354e50a3e8f05c`的ancestor，owner run `35587433590`已發布該source lineage。DWD、migration、雙admission及Firebase Google provider均完成。Platform canonical-first correction發布後，受控Workspace帳號已由Platform normal entry建立session並免二次登入進入AI-PDM，reload與管理權限PASS；這只算target partial evidence。OrgMaster correction source `9c660e210adfec82865167397e97e28a16b8b356`仍待owner dispatch；完成後依Platform LOGIN六案補Google／工號、Free、OrgMaster target、deny-path與global logout。
