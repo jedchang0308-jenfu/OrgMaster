@@ -9,7 +9,7 @@
 
 > **DEV-050 app-local login replacement（2026-09-18 implementation）**：[DEV-050](DEV-050-dual-identifier-managed-login.md) 已採 token-first stable-key 本人核對；private 同快照 read 要求 token／live／stored primary Email 一致。forward migration 014 新增 OrgMaster session view，不 replace 共用 identity view 或改其 rows／ACL；本 DEV migration bytes、owner 公開契約及 provider 邊界不變。前版 replace-view／optional shared core 與 closure PASS 已撤回，重試依 SQL revision-before-receipt 順序定義；不新增 HMAC attempt、60 秒 app TTL、Email／員編 resolver 或 production test port。DEV-050 本機產品與自動化 QA／QC 已 PASS；正式 provider／migration／deploy／release 仍 gated，父 receipt 保持歷史證據，不冒充 DEV-050 驗證。
 
-> **Production activation amendment（2026-09-18，2026-09-21 同步現行 ledger）**：先前「012／013不能進入現行 DEV-040 release」限制由 [DEV-040 §36～38](DEV-040-jenfu-platform-entitlement-user-integration.md) 的受控例外取代。歷史DEV-013 transition只可保留001–011 prefix並追加精確012～015；DEV-014 producer remediation只可由exact 001–015追加016。形成新baseline後一般發布要求完整001–016 unchanged、零DDL。本文件不提供migration授權，亦不允許人工SQL或down migration。
+> **Production activation amendment（2026-09-18，2026-09-21 同步現行 ledger）**：先前「012／013不能進入現行 DEV-040 release」限制由 [DEV-040 §36～38](DEV-040-jenfu-platform-entitlement-user-integration.md) 的受控例外取代。歷史DEV-013 transition只可保留001–011 prefix並追加精確012～015；DEV-014 producer remediation只可由exact 001–015追加016。DEV-053的application-registration remediation再以exact 001–016→017修正正式`id`欄位與mandatory consumers；形成新baseline後一般發布要求完整001–017 unchanged、零DDL。本文件不提供migration授權，亦不允許人工SQL或down migration。
 
 > **DEV-014 keyless DWD correction（2026-09-21）**：人類已明確授權為完成 DEV-014 繼續開發 OrgMaster DEV-049。正式 Directory adapter 的 credential path 改為 runtime ADC → IAM Credentials `signJwt` → OAuth JWT bearer exchange；assertion 固定 issuer signer、具名 delegated subject、唯一 `admin.directory.user.readonly` scope 與最長 3600 秒有效期。新增專用 signer 的 app-owned Terraform 定義與 signer-level Token Creator binding，禁止 service-account key、Secret 或 project-wide Token Creator。五個 canonical keys 是唯一啟用入口，舊 alias 不再接受。Google Admin read-only核對已固定customer ID=`C015t4buc`與delegated subject=`jedchang0308@jenfu.com.tw`，後者為有效超級管理員；owner-native production profile固定這兩值、`enabled=true`、domain、signer與caller identity。這項 source／infra contract 修正不等於 production 建立 signer、Admin Console DWD、runtime config、deploy、traffic、DB admission 或 provider 驗收授權。
 
@@ -368,7 +368,7 @@ DEV-049 QC script 呼叫 §11 共用 runner 的 dev049 suite，必含新 reposit
 
 ## 13. Release 可行性與停止條件
 
-本輪完成本機工程實作與可驗證 owner receipt。DEV-040現行一般app release在DEV-052完成後要求既定001–016 bundle unchanged、零DDL；DEV-013歷史transition與DEV-014 migration 016 remediation分別由§36～38的exact受控模式處理。不能以本文件或local receipt當migration／activation授權。
+本輪完成本機工程實作與可驗證 owner receipt。DEV-040現行一般app release在DEV-053完成後要求既定001–017 bundle unchanged、零DDL；DEV-013歷史transition與DEV-014 migration 016 remediation分別由§36～38的exact受控模式處理。不能以本文件或local receipt當migration／activation授權。
 
 未來 re-entry：
 
@@ -397,8 +397,8 @@ DEV-049 QC script 呼叫 §11 共用 runner 的 dev049 suite，必含新 reposit
 
 專用 signer state固定為`tfstate-jenfu-platform-prod / dev-049/managed-directory/default.tfstate`。Terraform state新增`terraform_data.provenance`，綁定exact project／number／region、merged source revision、provider-readback foundation manifest SHA-256、具名operator、signer email與唯一read-only scope。`dev049-managed-directory-plan-gate`要求configuration完整包含四地址；因Terraform會在plan階段完成runtime data read，gate從`prior_state`驗exact enabled runtime identity，`resource_changes`則必須恰為provenance、signer與signer-level Token Creator三個managed地址，且只允許`create`／`no-op`。update／delete／replace、缺址或readback漂移均fail closed。Google Admin DWD grant仍由外部管理介面執行並readback，Terraform不建立key、Secret或project IAM。
 
-Owner release finalize會發布source／artifact-bound `jenfu.dev014.consumer-conformance.v1`。DEV-049 admission operation固定每個consumer的source revision、artifact digest、owner origin ref、OrgMaster own-bucket mirror ref與raw SHA；受控operator先逐byte讀回origin並用generation-create-only建立相同bytes的mirror。Runner在任何transaction前只讀own bucket mirror，驗raw-object SHA-256、schema、app、source、artifact、guard及content hash，DB內保存的support evidence仍指向origin ref＋SHA。只有全部PASS才進入dynamic active-set、support revision、attestation與CAS；origin app/bucket錯置、mirror prefix錯誤或內容漂移均不得寫DB，也不得以跨bucket IAM繞過。跨專案完整順序見Platform [DEV-014 Production runbook](../../Jenfu-Platform/ai-doc/runbooks/DEV-014-production-protected-release.md)。
+Owner release finalize會發布source／artifact-bound `jenfu.dev014.consumer-conformance.v1`。DEV-049 admission operation固定每個consumer的source revision、artifact digest、owner origin ref、OrgMaster own-bucket mirror ref與raw SHA；受控operator先逐byte讀回origin並用generation-create-only建立相同bytes的mirror。Runner在任何transaction前只讀own bucket mirror，驗raw-object SHA-256、schema、app、source、artifact、guard及content hash，DB內保存的support evidence仍指向origin ref＋SHA。只有全部PASS才進入dynamic active-set、support revision、attestation與CAS；origin app/bucket錯置、mirror prefix錯誤或內容漂移均不得寫DB，也不得以跨bucket IAM繞過。跨專案完整順序見Platform [DEV-014 Production runbook](../../Jenfu-Platform/ai-doc/runbooks/DEV-014-production-protected-release.md)。Production第一次admission於attestation前以`DEV049_ACTIVE_CONSUMER_SET_MISMATCH`回滾；根因與fix-forward以[DEV-053](DEV-053-invalidation-application-registration.md)為準。
 
-Production fail-seeking evidence `orgmaster-prod-migration-runner-ct65x`在DB mutation前以`MIGRATION_GCS_METADATA_FAILED`停止，證明原跨bucket read設計與migrator最小權限衝突；Job已由finally回復baseline command／args。此own-bucket mirror amendment取代該未套用operation，不修改migration 001–016、IAM、service或runtime權限。
+Production fail-seeking evidence `orgmaster-prod-migration-runner-ct65x`在DB mutation前以`MIGRATION_GCS_METADATA_FAILED`停止，證明原跨bucket read設計與migrator最小權限衝突；Job已由finally回復baseline command／args。此own-bucket mirror amendment取代該未套用operation；後續registry缺口只由DEV-053 migration 017 fix-forward，不修改migration 001–016、IAM、service或runtime權限。
 
 使用思考習慣：#第一性原理、#證據基礎、#驗收閉環

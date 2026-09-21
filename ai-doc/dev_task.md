@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+> **2026-09-21 DEV-053／DEV-014 application registration remediation（現行）**：Production admission operation在transaction內、attestation前以`DEV049_ACTIVE_CONSUMER_SET_MISMATCH`安全停止並回滾；正式治理資料使用`id`，migration 012 seed只讀`applicationId`。DEV-053以forward-only migration 017正規化雙欄、補齊`ai-pdm／orgmaster／platform`、保留既有support evidence，並在admission開啟時阻擋consumer-set drift。權威文件：[DEV-053](specs/DEV-053-invalidation-application-registration.md)。
+
 > **2026-09-21 DEV-052／DEV-014 producer contract remediation（現行）**：Platform run `35579062204`因缺少OrgMaster lifecycle producer contract安全停止；forward-only migration 016與受控15→16 release已完成。取得Production授權後，OrgMaster run `35583624698`的prepare／build PASS，但migration runner在連線DB前以`MIGRATION_SET_DRIFT`停止；根因是runner `entryCount`仍為15，candidate／traffic mutation=0且ledger仍為001–015。現已把runner固定為16、receipt gate按release mode只接受DEV-014 `ledgerCount=16／applied=0..1／replayed=16-applied`，並新增profile-vs-runner防漂移測試；owner 74／74、abort 6／6、完整回歸875 PASS／1 skipped、build與DB boundary PASS，待clean-source QC、review、fresh immutable runner rotation與owner release重試。權威文件：[DEV-052](specs/DEV-052-managed-identity-lifecycle-producer-contract.md)。
 
 > **2026-09-21 DEV-051／Platform DEV-013 P_BOTH（現行）**：Production password-only identity固定AAL1，不能降低產品入口的fresh AAL2條件；首次cutover因此改採具名Google Cloud release operator＋一次性exact Cloud Run Job，仍只呼叫既有CAS function。已新增source／SHA／deadline綁定的operation runner、evidence-derived manifest、one-time job／image boundary、zero-mutation preflight、`legacy:1→orgmaster:2`與`orgmaster:2→legacy:3`固定轉換、governance hash／active version／role-set readback、immutable receipt／outbox及byte-stable exact replay；targeted operator tests `6／6 PASS`。既有self-only UI targeted `28／28`、owner `63／63`、abort `6／6`、full `872 PASS／1 skipped`、build及DB boundary維持PASS。Production data scope已授權，但task-owned job create／execute／delete與operator image build是新增cloud resource範圍，需另行精確授權；不部署或切換OrgMaster service traffic。權威文件：[DEV-051](specs/DEV-051-single-employee-entitlement-authority-switch.md)。
@@ -96,6 +98,13 @@
 - 文件成熟度：DEV-047為`RD Implementation Complete / Local QA-QC Passed / CAPA Closed / Production Release Gated`。2026-09-16 已完成 task-owned PostgreSQL 001～012 與 A17～A22、target／cleanup 安全及結果可信修復；Google Admin仍擁有外部帳號生命週期，OrgMaster零provider write。
 
 ## 總任務清單
+
+- ◐ DEV-053 [修復點] [P0] [RD Implementation Complete／Architecture Finalized／Local QA-QC Passed／Production Migration Gated] Managed identity invalidation application registration補正
+  - 來源 ID：`Jenfu-Platform / DEV-014 / 014-APPLICATION-REGISTRATION`；本地以DEV-053承接OrgMaster registry契約缺口。
+  - 結果：migration 017接受active governance的`applicationId／id`雙欄並強制`platform／orgmaster` mandatory consumers；新row pending revision 1，existing evidence不重置。
+  - 發布：只接受exact 001–016→017、runtime unchanged及source-matched runner rotation；receipt固定17 rows，Production apply需fresh exact授權。
+  - 驗證：[DEV-053 spec](specs/DEV-053-invalidation-application-registration.md)；D53-01～03 PASS、release gates 77／77、abort 6／6、full regression 875 PASS／1 skipped、client／server build及DB boundary PASS。
+  - 計入交付：否；待review／merge、Production migration 017、admission apply＋replay與L4完成。
 
 - ◐ DEV-052 [修復點] [P0] [RD Implementation Complete／Architecture Finalized／Local QA-QC Passed／Production Migration Gated] Managed identity lifecycle producer contract補正
   - 來源 ID：`Jenfu-Platform / DEV-014 / 014-PRODUCER-CONTRACT`；本地以DEV-052承接OrgMaster producer缺口。

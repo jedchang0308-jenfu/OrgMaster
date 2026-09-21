@@ -1,0 +1,184 @@
+{
+  "contract": "DEV-053",
+  "runner": "DEV-053-postgres-qc-v1",
+  "evidenceScope": "TASK_OWNED_LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-09-21T13:11:57.632Z",
+  "productionWrites": false,
+  "executedCaseCount": 3,
+  "sourceRevision": "63ef472f4873ea1ad1c18bcc591c12887070a277",
+  "dirty": [
+    "M AGENTS.md",
+    " M ai-doc/dev_task.md",
+    " M ai-doc/documentation_map.md",
+    " M ai-doc/qa/DEV-040-R2-independent-production-release-validation-plan.md",
+    " M ai-doc/specs/DEV-049-existing-google-primary-account-link.md",
+    " M config/release/dev040-orgmaster-independent-production-v3.json",
+    " M package.json",
+    " M scripts/dev012-owner-stage-executor.test.mjs",
+    " M scripts/dev040-deploy-production.mjs",
+    " M scripts/dev040-orgmaster-independent-release.test.mjs",
+    " M scripts/dev040-production-migration-runner.mjs",
+    " M scripts/dev040-production-migration-runner.test.mjs",
+    " M scripts/dev040-routine-release.test.mjs",
+    " M scripts/lib/dev012-owner-stage-executor.mjs",
+    " M scripts/lib/dev040-orgmaster-independent-release.mjs",
+    " M scripts/lib/dev040-routine-release.mjs",
+    " M scripts/qc-dev-047-postgres.mjs",
+    "?? ai-doc/specs/DEV-053-invalidation-application-registration.md",
+    "?? db/migrations/017_dev014_invalidation_application_registration.sql",
+    "?? dev-053/",
+    "?? scripts/qc-dev-053-contract.mjs"
+  ],
+  "serverVersion": "18.4",
+  "acceptedServerMajors": [
+    17,
+    18
+  ],
+  "migrations": [
+    {
+      "name": "001_dev004_orgmaster_app_sessions.sql",
+      "bytes": 2215,
+      "sha256": "536ac1e1cedcf67a1bb92dd8f19113a45790797dd07123d6a04baa876a14c79e"
+    },
+    {
+      "name": "002_dev006_orgmaster_persistence.sql",
+      "bytes": 5992,
+      "sha256": "10d71fbf556035b307c2b3997ad4e7499e9b3586dc60b351651af4b6973094da"
+    },
+    {
+      "name": "003_dev006_orgmaster_runtime_repository.sql",
+      "bytes": 11823,
+      "sha256": "2680c19df8f4bacddf53d5bfae55fb35658ff63f1e54de3f97727bd4bdd689ba"
+    },
+    {
+      "name": "004_dev040_active_principal_view.sql",
+      "bytes": 4594,
+      "sha256": "09591bddd33680bf584711884fb600ec996b356cff48ccfd1b6343c74a16f5b7"
+    },
+    {
+      "name": "005_dev005_entitlement_governance.sql",
+      "bytes": 41642,
+      "sha256": "cf5efbbe6ce29c9d6d8100961709d19ab90c1af79e31731608ae9a9dbf73a80d"
+    },
+    {
+      "name": "006_dev040_identity_admission_projection.sql",
+      "bytes": 5809,
+      "sha256": "0163c107446b0aeac4ef39b365fc57961133360cac1d9d3152be8e8c89eda3dd"
+    },
+    {
+      "name": "007_dev009_privileged_governance.sql",
+      "bytes": 11026,
+      "sha256": "4d77b8e62981bd67d97cb4c567e787873f43c187a3f23e50b9f670bde50e5c93"
+    },
+    {
+      "name": "008_dev002_portal_app_visibility.sql",
+      "bytes": 4913,
+      "sha256": "9fb17097e01994aa974766d30b60abfe800f5967c9bbcbeb7751231d62a69703"
+    },
+    {
+      "name": "009_dev039_application_entitlement_v2.sql",
+      "bytes": 6509,
+      "sha256": "d306d3242da919ff1fb52554785def319d06ca3f542a3b2b6cbf832164aea81c"
+    },
+    {
+      "name": "010_dev010_neutral_schema_boundary.sql",
+      "bytes": 14752,
+      "sha256": "081c6bc81e4565fae79302ac7be29f1999324d63f169bda7c6af1b581be49ff4"
+    },
+    {
+      "name": "011_dev046_workbench_list_width_preferences.sql",
+      "bytes": 1085,
+      "sha256": "a4370d5ae2d36efdfa8b6590d2241b2edaa696ad01c5ea7d8f6ab7d715eb0aaf"
+    },
+    {
+      "name": "012_dev047_managed_identity_bridge.sql",
+      "bytes": 63281,
+      "sha256": "ab18137f7cc8e3abc270bc67b5c93d765cddb8f48584f017eca52c24336c1680"
+    },
+    {
+      "name": "013_dev049_existing_google_primary_account_link.sql",
+      "bytes": 42753,
+      "sha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319"
+    },
+    {
+      "name": "014_dev050_orgmaster_session_admission.sql",
+      "bytes": 3699,
+      "sha256": "f39ea5eb7e9f4accbe66961fa73345b788aa609b8a7de658c416335311463867"
+    },
+    {
+      "name": "015_dev013_restore_runtime_session_dml.sql",
+      "bytes": 1330,
+      "sha256": "d3a17f752b89138f4d636d1b21ae5a69a5ae29dc64960c61307398d7a234cc08"
+    },
+    {
+      "name": "016_dev014_managed_identity_lifecycle_contract.sql",
+      "bytes": 3151,
+      "sha256": "9d88d2dca9d72d5b7f9950509452c3483ea34a27d1f6091f3b6f1f9eec77ab4b"
+    },
+    {
+      "name": "017_dev014_invalidation_application_registration.sql",
+      "bytes": 13165,
+      "sha256": "9d34f7047b536251a3125ddf77a1fd6d9c47b24868e13f4cbebed6b89d676643"
+    }
+  ],
+  "checks": [
+    {
+      "id": "D53-01",
+      "label": "id-form applications backfill all required invalidation consumers at revision one",
+      "status": "PASS",
+      "detail": {
+        "applications": [
+          "ai-pdm",
+          "orgmaster",
+          "platform"
+        ],
+        "revision": 1,
+        "directRuntimeExecute": false
+      }
+    },
+    {
+      "id": "D53-02",
+      "label": "unchanged application set remains writable while admission is enabled",
+      "status": "PASS",
+      "detail": {
+        "authorityVersionAdvanced": true,
+        "admissionEnabled": true
+      }
+    },
+    {
+      "id": "D53-03",
+      "label": "application-set changes fail atomically while admission is enabled and succeed after disable",
+      "status": "PASS",
+      "detail": {
+        "admissionOnRollback": true,
+        "admissionOffSetChange": true,
+        "mandatoryConsumersPreserved": [
+          "orgmaster",
+          "platform"
+        ]
+      }
+    }
+  ],
+  "firstFailure": null,
+  "source": {
+    "runnerSha256": "a32e962986bde6d96d039f862a40edb4bd350cbbe6b632e078979c28169bcb6c",
+    "contractRunnerSha256": "4fd451bf218da2ce7d593880bc5559062ab054ea190d72deaa32ae85933b7bd1",
+    "fixtureSha256": "41d9e89391a77a421780546c10208efe03356f770ca7dbc252099936de9eb41f"
+  },
+  "runtime": {
+    "project": "C:\\VIBE CODING\\OrgMaster",
+    "purpose": "DEV-053 isolated PostgreSQL validation",
+    "port": 52174,
+    "postgresPid": 10784,
+    "owningProcessTree": "node:33112 -> postgres:10784",
+    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev053-qc-lDAyyA",
+    "interruptedBy": null,
+    "cleanup": {
+      "clientClosed": true,
+      "clusterStopped": true,
+      "portReleased": true,
+      "tempRemoved": true
+    }
+  }
+}

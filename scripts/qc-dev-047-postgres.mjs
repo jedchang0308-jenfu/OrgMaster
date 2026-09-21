@@ -13,14 +13,15 @@ import { classifyTarget, requiredCorrectionCases, resolvePostgresBin, resultExit
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const suite = process.argv.find((value) => value.startsWith('--suite='))?.slice('--suite='.length) ?? 'dev047'
-if (!['dev047', 'dev049', 'dev050', 'dev052'].includes(suite)) throw new Error(`Unsupported suite: ${suite}`)
+if (!['dev047', 'dev049', 'dev050', 'dev052', 'dev053'].includes(suite)) throw new Error(`Unsupported suite: ${suite}`)
 const dev049 = suite === 'dev049'
 const dev050 = suite === 'dev050'
 const dev052 = suite === 'dev052'
-const dev049OrLater = dev049 || dev050 || dev052
-const outputDir = path.join(root, dev049 ? 'dev-049' : dev050 ? 'dev-050' : dev052 ? 'dev-052' : 'dev-047', 'postgres')
+const dev053 = suite === 'dev053'
+const dev049OrLater = dev049 || dev050 || dev052 || dev053
+const outputDir = path.join(root, dev049 ? 'dev-049' : dev050 ? 'dev-050' : dev052 ? 'dev-052' : dev053 ? 'dev-053' : 'dev-047', 'postgres')
 const outputPath = path.join(outputDir, 'manifest.json')
-const migrationCeiling = dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
+const migrationCeiling = dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
 const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((name) => /^\d{3}_.*\.sql$/u.test(name) && Number(name.slice(0, 3)) <= migrationCeiling).sort()
 const checks = []
 const cleanup = { clientClosed: false, clusterStopped: false, portReleased: false, tempRemoved: false }
@@ -100,7 +101,7 @@ function governanceFixture() {
     app: 'OrgMaster', schemaVersion: 3, activePolicyVersionId: 'gov-active', draft: {}, auditEvents: [], commandReceipts: [], securityAlertIntents: [], sessionInvalidationOutbox: [],
     publishedVersions: [
       { id: 'gov-old', kind: 'assignment-governance-v3', versionNumber: 1, publishedAt: '2026-01-01T00:00:00.000Z', policy: { applications: [], identityLinks: [{ employeeId: 'employee-one', issuer: 'issuer-historical', subject: 'subject-historical', principalId: 'principal-old', status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }], applicationRoles: [], roleAssignments: [] } },
-      { id: 'gov-active', kind: 'assignment-governance-v3', versionNumber: 2, publishedAt: '2026-02-01T00:00:00.000Z', policy: { applications: [{ id: 'orgmaster', applicationId: 'orgmaster', status: 'active' }, { id: 'ai-pdm', applicationId: 'ai-pdm', status: 'active' }], identityLinks: [{ employeeId: 'employee-legacy', issuer: 'issuer-legacy', subject: 'subject-legacy', principalId: 'principal-legacy', status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }], applicationRoles: [role], roleAssignments: [assignment] } },
+      { id: 'gov-active', kind: 'assignment-governance-v3', versionNumber: 2, publishedAt: '2026-02-01T00:00:00.000Z', policy: { applications: dev053 ? [{ id: 'orgmaster', status: 'active' }, { id: 'ai-pdm', status: 'active' }] : [{ id: 'orgmaster', applicationId: 'orgmaster', status: 'active' }, { id: 'ai-pdm', applicationId: 'ai-pdm', status: 'active' }], identityLinks: [{ employeeId: 'employee-legacy', issuer: 'issuer-legacy', subject: 'subject-legacy', principalId: 'principal-legacy', status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }], applicationRoles: [role], roleAssignments: [assignment] } },
     ],
   }
 }
@@ -251,6 +252,61 @@ async function runDev052Checks() {
     await expectDatabaseError(() => queryAs('jenfu_platform_runtime', `SELECT * FROM orgmaster_contract.v_managed_identity_lifecycle_events_v1`), { code: '42501' })
     await expectDatabaseError(() => queryAs('jenfu_platform_migrator', `SELECT * FROM orgmaster_core.managed_identity_lifecycle_outbox`), { code: '42501' })
     return { leastPrivilege: true, directCoreReadDenied: true }
+  })
+}
+
+async function runDev053Checks() {
+  const applicationRows = async () => (await client.query(`SELECT application_id,status,support_state,support_revision::text,source_governance_version_id FROM orgmaster_core.managed_identity_invalidation_applications ORDER BY application_id`)).rows
+  const governanceChange = async (payload) => {
+    const observed = (await client.query(`SELECT artifact.canonical_sha256 FROM orgmaster_core.persistence_authority authority JOIN orgmaster_core.persistence_artifacts artifact ON artifact.batch_id=authority.active_batch_id AND artifact.artifact_key='orgmaster-governance.v3.json' WHERE authority.singleton=true`)).rows[0]
+    return [{ artifactKey: 'orgmaster-governance.v3.json', artifactKind: 'governance', expectedCanonicalSha256: observed.canonical_sha256, nextCanonicalSha256: sha256(JSON.stringify(payload)), sourceSha256: sha256(JSON.stringify(payload)), sourceBytes: Buffer.byteLength(JSON.stringify(payload)), payload }]
+  }
+
+  await check('D53-01', 'id-form applications backfill all required invalidation consumers at revision one', async () => {
+    assert.deepEqual(await applicationRows(), [
+      { application_id: 'ai-pdm', status: 'active', support_state: 'pending', support_revision: '1', source_governance_version_id: 'gov-active' },
+      { application_id: 'orgmaster', status: 'active', support_state: 'pending', support_revision: '1', source_governance_version_id: 'gov-active' },
+      { application_id: 'platform', status: 'active', support_state: 'pending', support_revision: '1', source_governance_version_id: 'gov-active' },
+    ])
+    const privileges = await client.query(`SELECT
+      has_function_privilege('jenfu_orgmaster_migrator','orgmaster_core.synchronize_managed_identity_invalidation_applications_v1(text)','EXECUTE') AS migrator_execute,
+      has_function_privilege('jenfu_orgmaster_runtime','orgmaster_core.synchronize_managed_identity_invalidation_applications_v1(text)','EXECUTE') AS runtime_execute,
+      has_function_privilege('jenfu_platform_migrator','orgmaster_core.synchronize_managed_identity_invalidation_applications_v1(text)','EXECUTE') AS platform_execute`)
+    assert.deepEqual(privileges.rows[0], { migrator_execute: true, runtime_execute: false, platform_execute: false })
+    return { applications: ['ai-pdm', 'orgmaster', 'platform'], revision: 1, directRuntimeExecute: false }
+  })
+
+  await check('D53-02', 'unchanged application set remains writable while admission is enabled', async () => {
+    for (const applicationId of ['ai-pdm', 'orgmaster', 'platform']) {
+      await queryAs('jenfu_orgmaster_migrator', `SELECT * FROM orgmaster_core.attest_managed_identity_invalidation_support_v1($1,1,$2,'dev-053-qc')`, [applicationId, `qa://dev-053/${applicationId}`])
+    }
+    const enabled = await queryAs('jenfu_orgmaster_migrator', `SELECT * FROM orgmaster_core.set_managed_identity_admission_v1(1,true,'dev-053-qc','enable')`)
+    const payload = governanceFixture()
+    payload.auditEvents = [{ id: 'dev053-same-set' }]
+    const changes = await governanceChange(payload)
+    const before = (await client.query(`SELECT authority_version::text FROM orgmaster_core.persistence_authority WHERE singleton=true`)).rows[0]
+    const written = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,'dev-053-qc','same-set','dev053-same-set','[]'::jsonb)`, [JSON.stringify(changes), '5'.repeat(64)])
+    assert.equal(written.rows[0].authority_version, (BigInt(before.authority_version) + 1n).toString())
+    assert.equal(enabled.rows[0].admission_enabled, true)
+    return { authorityVersionAdvanced: true, admissionEnabled: true }
+  })
+
+  await check('D53-03', 'application-set changes fail atomically while admission is enabled and succeed after disable', async () => {
+    const payload = governanceFixture()
+    payload.publishedVersions.find((version) => version.id === payload.activePolicyVersionId).policy.applications = [{ id: 'orgmaster', status: 'active' }]
+    const changes = await governanceChange(payload)
+    const before = (await client.query(`SELECT authority_version::text,active_batch_id::text FROM orgmaster_core.persistence_authority WHERE singleton=true`)).rows[0]
+    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,'dev-053-qc','remove-app','dev053-remove','[]'::jsonb)`, [JSON.stringify(changes), '6'.repeat(64)]), 'INVALIDATION_APPLICATION_SET_CHANGE_REQUIRES_ADMISSION_OFF')
+    const rolledBack = (await client.query(`SELECT authority_version::text,active_batch_id::text FROM orgmaster_core.persistence_authority WHERE singleton=true`)).rows[0]
+    assert.deepEqual(rolledBack, before)
+    const authority = (await client.query(`SELECT revision::text FROM orgmaster_core.managed_identity_admission_authority WHERE singleton=true`)).rows[0]
+    await queryAs('jenfu_orgmaster_migrator', `SELECT * FROM orgmaster_core.set_managed_identity_admission_v1($1,false,'dev-053-qc','disable-for-set-change')`, [authority.revision])
+    await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,'dev-053-qc','remove-app','dev053-remove','[]'::jsonb)`, [JSON.stringify(changes), '6'.repeat(64)])
+    const rows = await applicationRows()
+    assert.equal(rows.find((row) => row.application_id === 'ai-pdm').status, 'inactive')
+    assert.equal(rows.find((row) => row.application_id === 'orgmaster').status, 'active')
+    assert.equal(rows.find((row) => row.application_id === 'platform').status, 'active')
+    return { admissionOnRollback: true, admissionOffSetChange: true, mandatoryConsumersPreserved: ['orgmaster', 'platform'] }
   })
 }
 
@@ -425,17 +481,17 @@ async function main() {
   const runtime = resolvePostgresBin(process.env)
   if (!runtime.ok) throw Object.assign(new Error(runtime.detail), { reasonCode: runtime.reasonCode })
   postgresBin = runtime.bin
-  taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), dev049 ? 'orgmaster-dev049-qc-' : dev050 ? 'orgmaster-dev050-qc-' : dev052 ? 'orgmaster-dev052-qc-' : 'orgmaster-dev047-qc-'))
+  taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), dev049 ? 'orgmaster-dev049-qc-' : dev050 ? 'orgmaster-dev050-qc-' : dev052 ? 'orgmaster-dev052-qc-' : dev053 ? 'orgmaster-dev053-qc-' : 'orgmaster-dev047-qc-'))
   clusterDir = path.join(taskRoot, 'cluster'); postgresLog = path.join(taskRoot, 'postgres.log'); port = await freePort()
-  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'client closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
+  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'client closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
   run(path.join(postgresBin, 'initdb.exe'), ['-D', clusterDir, '--auth-local=trust', '--auth-host=trust', '--username=postgres', '--encoding=UTF8', '--no-locale'])
   run(path.join(postgresBin, 'pg_ctl.exe'), ['-D', clusterDir, '-l', postgresLog, '-o', `-p ${port} -h 127.0.0.1`, '-w', 'start'], { stdio: 'ignore' })
   started = true
   postgresPid = Number.parseInt(fs.readFileSync(path.join(clusterDir, 'postmaster.pid'), 'utf8').split(/\r?\n/u)[0], 10)
-  const dbName = `${dev049 ? 'dev049' : dev050 ? 'dev050' : dev052 ? 'dev052' : 'dev047'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
+  const dbName = `${dev049 ? 'dev049' : dev050 ? 'dev050' : dev052 ? 'dev052' : dev053 ? 'dev053' : 'dev047'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
   run(path.join(postgresBin, 'createdb.exe'), ['-h', '127.0.0.1', '-p', String(port), '-U', 'postgres', dbName])
   const connectionString = `postgresql://postgres@127.0.0.1:${port}/${dbName}`
-  client = new pg.Client({ connectionString, application_name: dev049 ? 'orgmaster-dev049-qc' : dev050 ? 'orgmaster-dev050-qc' : dev052 ? 'orgmaster-dev052-qc' : 'orgmaster-dev047-qc' })
+  client = new pg.Client({ connectionString, application_name: dev049 ? 'orgmaster-dev049-qc' : dev050 ? 'orgmaster-dev050-qc' : dev052 ? 'orgmaster-dev052-qc' : dev053 ? 'orgmaster-dev053-qc' : 'orgmaster-dev047-qc' })
   await client.connect()
   serverVersion = (await client.query('SHOW server_version')).rows[0].server_version
   if (!supportsServerVersion(serverVersion)) throw Object.assign(new Error(`PostgreSQL 17/18 required; got ${serverVersion}`), { reasonCode: 'POSTGRES_VERSION_UNSUPPORTED' })
@@ -444,6 +500,7 @@ async function main() {
   if (dev049) { await runDev049Checks(); return }
   if (dev050) { await runDev050Checks(); return }
   if (dev052) { await runDev052Checks(); return }
+  if (dev053) { await runDev053Checks(); return }
 
   let identityOne
   await check('A17', 'managed link, admission, first-login bind and active-principal mapping', async () => {
@@ -539,21 +596,21 @@ finally {
   if (taskRoot) { try { fs.rmSync(taskRoot, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 }); cleanup.tempRemoved = !fs.existsSync(taskRoot) } catch { cleanup.tempRemoved = false } } else cleanup.tempRemoved = true
 }
 
-const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : requiredCorrectionCases
+const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : requiredCorrectionCases
 const allRequiredPassed = requiredCases.every((id) => checks.some((entry) => entry.id === id && entry.status === 'PASS'))
 const status = !firstFailure && allRequiredPassed && Object.values(cleanup).every(Boolean) ? 'PASS' : firstFailure?.reasonCode === 'POSTGRES_RUNTIME_MISSING' ? 'BLOCKED' : 'FAIL'
 const manifest = {
-  contract: dev049 ? 'DEV-049' : dev050 ? 'DEV-050' : dev052 ? 'DEV-052' : 'DEV-047', runner: dev049 ? 'DEV-049-postgres-qc-v1' : dev050 ? 'DEV-050-postgres-qc-v1' : dev052 ? 'DEV-052-postgres-qc-v1' : 'DEV-047-postgres-qc-v1', evidenceScope: 'TASK_OWNED_LOCAL_ISOLATED', status,
+  contract: dev049 ? 'DEV-049' : dev050 ? 'DEV-050' : dev052 ? 'DEV-052' : dev053 ? 'DEV-053' : 'DEV-047', runner: dev049 ? 'DEV-049-postgres-qc-v1' : dev050 ? 'DEV-050-postgres-qc-v1' : dev052 ? 'DEV-052-postgres-qc-v1' : dev053 ? 'DEV-053-postgres-qc-v1' : 'DEV-047-postgres-qc-v1', evidenceScope: 'TASK_OWNED_LOCAL_ISOLATED', status,
   generatedAt: new Date().toISOString(), productionWrites: false, executedCaseCount: checks.length,
   sourceRevision: run('git', ['rev-parse', 'HEAD']).stdout.trim(), dirty: run('git', ['status', '--short']).stdout.trim().split(/\r?\n/u).filter(Boolean),
   serverVersion, acceptedServerMajors: [17, 18], migrations: migrationEvidence, checks, firstFailure,
   source: {
     runnerSha256: sha256(fs.readFileSync(path.join(root, 'scripts', 'qc-dev-047-postgres.mjs'))),
-    contractRunnerSha256: sha256(fs.readFileSync(path.join(root, 'scripts', dev049 ? 'qc-dev-049-contract.mjs' : dev050 ? 'qc-dev-050-contract.mjs' : dev052 ? 'qc-dev-052-contract.mjs' : 'qc-dev-047-contract.mjs'))),
+    contractRunnerSha256: sha256(fs.readFileSync(path.join(root, 'scripts', dev049 ? 'qc-dev-049-contract.mjs' : dev050 ? 'qc-dev-050-contract.mjs' : dev052 ? 'qc-dev-052-contract.mjs' : dev053 ? 'qc-dev-053-contract.mjs' : 'qc-dev-047-contract.mjs'))),
     fixtureSha256: sha256(JSON.stringify(persistenceFixture())),
   },
-  runtime: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL validation' : dev050 ? 'DEV-050 isolated PostgreSQL validation' : dev052 ? 'DEV-052 isolated PostgreSQL validation' : 'DEV-047 isolated PostgreSQL validation', port, postgresPid, owningProcessTree: `node:${process.pid} -> postgres:${postgresPid ?? 'not-started'}`, mutationScope: taskRoot ?? null, interruptedBy, cleanup },
+  runtime: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL validation' : dev050 ? 'DEV-050 isolated PostgreSQL validation' : dev052 ? 'DEV-052 isolated PostgreSQL validation' : dev053 ? 'DEV-053 isolated PostgreSQL validation' : 'DEV-047 isolated PostgreSQL validation', port, postgresPid, owningProcessTree: `node:${process.pid} -> postgres:${postgresPid ?? 'not-started'}`, mutationScope: taskRoot ?? null, interruptedBy, cleanup },
 }
 fs.mkdirSync(outputDir, { recursive: true }); fs.writeFileSync(outputPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 process.stdout.write(`${JSON.stringify({ status, evidence: outputPath, serverVersion, executedCaseCount: checks.length, cleanup, firstFailure }, null, 2)}\n`)
-process.exitCode = (dev049 || dev050) ? (status === 'PASS' && checks.length === requiredCases.length && Object.values(cleanup).every(Boolean) ? 0 : 2) : resultExitCode(manifest)
+process.exitCode = (dev049 || dev050 || dev052 || dev053) ? (status === 'PASS' && checks.length === requiredCases.length && Object.values(cleanup).every(Boolean) ? 0 : 2) : resultExitCode(manifest)

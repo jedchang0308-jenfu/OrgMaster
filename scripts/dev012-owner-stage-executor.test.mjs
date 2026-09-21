@@ -176,6 +176,23 @@ test('DEV-014 producer remediation accepts only the exact sixteen-row migration 
   assert.equal(result.facts.databaseDisposition, 'FORWARD_APPLIED')
 })
 
+test('DEV-014 application registration remediation accepts only the exact seventeen-row migration receipt', async () => {
+  const h = recordedHarness()
+  const { input } = await authorizedRecordedInput(h, 'DEV014-APPLICATION-REGISTRATION-REMEDIATION')
+  input.verifyRoutineRelease = async ({ intent }) => ({ baselineIntentRef: intent.baselineIntentRef, baselineMigrationRef: { uri: baselineRef.uri, sha256: baselineRef.sha256 }, migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, releaseMode: 'DEV014_APPLICATION_REGISTRATION_REMEDIATION' })
+  let executions = 0
+  h.transport.runMigrationJob = async ({ deployment, outputUri }) => {
+    executions += 1
+    const core = { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: h.profile.application.id, sourceRevision: deployment.sourceRevision, database: 'jenfu_prod', ledger: 'orgmaster_core.schema_migrations', manifestSha256: h.migrationManifestSha256, baselineCount: 10, minimumLedgerCount: 10, ledgerCount: 17, applied: 1, replayed: 16, crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }], boundaryStatus: 'PASS', executionName: 'projects/p/locations/r/jobs/j/executions/e', startedAt: '2026-09-21T00:00:00.000Z', completedAt: '2026-09-21T00:00:01.000Z', status: 'PASS' }
+    await h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) }, { bucket, prefix: 'receipts' })
+  }
+  let terminal
+  for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']) terminal = await executeOwnerStage({ ...input, stage })
+  const result = JSON.parse((await h.transport.readBytes(terminal.ref.uri)).bytes)
+  assert.equal(executions, 1)
+  assert.equal(result.facts.databaseDisposition, 'FORWARD_APPLIED')
+})
+
 test('application-only intent cannot skip baseline verification by omitting the verifier', async () => {
   const h = recordedHarness()
   const { input, intentResult } = await authorizedRecordedInput(h, 'ROUTINE-NO-VERIFIER')
