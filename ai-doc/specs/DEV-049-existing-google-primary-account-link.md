@@ -414,17 +414,19 @@ Exact DWD signer／client／readonly scope已由Google Admin readback確認；�
 
 Production provider、DWD、service、migration與admission皆已通過，但`employee-shijie / JFS0005`尚未建立managed identity。正常管理UI需要已成立的managed登入session，未連結員工則無法登入，形成一次性bootstrap循環。此缺口不能以人工SQL、provider write、放寬IAM或繞過登入解決。
 
-現行修正採`source-controlled owner-native operator`：`scripts/dev014-production-managed-link-runner.mjs`固定唯一target `employee-shijie / JFS0005 / jedchang0308@jenfu.com.tw`，先以runtime ADC及既有resource-level signer取得read-only Directory token，再呼叫migration 013既有security-definer candidate／read／confirm routines。它不新增DDL、不直接DML table、不改其他Employee或application。
+現行修正採`source-controlled owner-native operator`：`scripts/dev014-production-managed-link-runner.mjs`固定唯一target `employee-shijie / JFS0005 / jedchang0308@jenfu.com.tw`，先以runtime ADC及既有resource-level signer取得read-only Directory token，再呼叫migration 013既有security-definer employee-number／candidate／read／confirm routines。它不新增DDL、不直接DML table、不改其他Employee或application。
+
+2026-09-22 exact read-only execution `orgmaster-prod-migration-runner-2pbf2`進一步證明真實zero-state為active employee、admission enabled、`employee_number=NULL`、registry revision `0`、identity=`not_linked`、alias 0筆，workspace revision=`7662edbd7be56b4d4c6c7c66337ec8e29308b97c273e8360067ffe86aeea4b0a`。因此「JFS0005已預先存在」不是可成立的Production前置條件；同一個單一員工operator須先經既有CAS routine指派JFS0005，再建立managed link。
 
 ### 15.2 Fail-closed 與重播契約
 
 - 執行環境必須精確符合`jenfu-platform-prod / 9536592944 / asia-east1 / jenfu-platform-prod-pg / jenfu_prod / orgmaster-prod-runtime`，且`OWNER_SOURCE_REVISION`等於命令source revision。
-- 前置必須為active employee、employee number=`JFS0005`、registry revision非0、admission enabled及identity=`not_linked`；任何既有衝突或多筆alias均停止。
+- 前置必須為active employee、admission enabled及identity=`not_linked`。employee number只接受未指派且registry revision=`0`，或已精確為`JFS0005`且revision非0；其他既有號碼、revision矛盾、號碼／tombstone衝突或多筆alias均停止。
 - Directory先依primary Email讀取，再於candidate lease後依stable user ID重讀；customer、stable ID、primary Email或etag漂移均不confirm。
-- apply只經`lease_managed_identity_candidate_v1 → read_managed_identity_candidate_v1 → confirm_managed_identity_link_v1`；成功readback必須為`directory_linked_pending_auth`。若精確mapping已存在則只回傳`REPLAY`，不再寫入。
+- zero-state apply先以exact workspace／registry CAS呼叫`assign_employee_number_v1`，readback精確`JFS0005`後才經`lease_managed_identity_candidate_v1 → read_managed_identity_candidate_v1 → confirm_managed_identity_link_v1`；成功readback必須為`directory_linked_pending_auth`。若精確mapping已存在則只回傳`REPLAY`，不再寫入。
 - receipt只輸出employee target、revision、disposition與敏感識別值的SHA-256；不輸出Email、Directory stable ID、token或candidate capability。
 - 執行只暫時覆寫既有`orgmaster-prod-migration-runner`的immutable image、command、runtime service identity、runtime DB login與source binding；完成或失敗後都必須回復並readback既有migrator baseline，不建立新Job。
 
 ### 15.3 Local gate與Production下一步
 
-新增5項operator tests；DEV-040 R2 release套件共82項PASS，abort 6／6、DB boundary PASS、full regression 875 PASS／1 skipped、production build PASS。Production apply尚未執行；須先把本分支merge到`master`並由owner-native release建立source-bound immutable migration-runner image，再以exact workspace revision執行apply＋replay。成功後才從normal entry重跑Google首次bind、JFS alias、session persistence、AI-PDM SSO及global logout。
+operator 5項targeted tests與routine-release 22項組合測試PASS；前一版DEV-040 R2 release套件另有82項PASS、abort 6／6、DB boundary PASS、full regression 875 PASS／1 skipped、production build PASS。第一版immutable runner與APP_INFRA_IMAGE_ROTATION已完成，但read-only preflight揭露employee-number zero-state後即停止mutation；須先合併本修正、重建source-bound immutable runner並再做exact image rotation，才以已讀得的workspace revision執行apply＋replay。成功後才從normal entry重跑Google首次bind、JFS alias、session persistence、AI-PDM SSO及global logout。

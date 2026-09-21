@@ -140,9 +140,11 @@ function readModel(row) {
 export async function executeManagedLink({ database, readDirectoryUser, operation, now = new Date() }) {
   if (Date.parse(operation.deadlineAt) <= now.getTime() || Date.parse(operation.deadlineAt) > now.getTime() + 8 * 60 * 60 * 1_000) fail('DEV014_MANAGED_LINK_DEADLINE_INVALID')
   const directoryUser = await readDirectoryUser(TARGET.primaryEmail)
-  const detail = readModel(one((await database.query('SELECT * FROM orgmaster_core.read_employee_managed_identity_v1($1)', [TARGET.employeeId])).rows, 'DEV014_MANAGED_LINK_EMPLOYEE_MISSING'))
-  if (detail.employeeId !== TARGET.employeeId || detail.employeeStatus !== 'active' || detail.employeeNumber !== TARGET.employeeNumber
-    || detail.registryRevision === '0' || !detail.admissionEnabled) fail('DEV014_MANAGED_LINK_PREFLIGHT_INVALID')
+  let detail = readModel(one((await database.query('SELECT * FROM orgmaster_core.read_employee_managed_identity_v1($1)', [TARGET.employeeId])).rows, 'DEV014_MANAGED_LINK_EMPLOYEE_MISSING'))
+  if (detail.employeeId !== TARGET.employeeId || detail.employeeStatus !== 'active' || !detail.admissionEnabled
+    || (detail.employeeNumber && detail.employeeNumber !== TARGET.employeeNumber)
+    || (!detail.employeeNumber && detail.registryRevision !== '0')
+    || (detail.employeeNumber && detail.registryRevision === '0')) fail('DEV014_MANAGED_LINK_PREFLIGHT_INVALID')
 
   const existingRows = (await database.query('SELECT * FROM orgmaster_core.resolve_managed_login_alias_v1($1)', [TARGET.employeeNumber])).rows
   if (existingRows.length > 1) fail('DEV014_MANAGED_LINK_READBACK_INVALID')
@@ -153,6 +155,7 @@ export async function executeManagedLink({ database, readDirectoryUser, operatio
       || !['directory_linked_pending_auth', 'active'].includes(String(existing.link_state))) fail('DEV014_MANAGED_LINK_REPLAY_MISMATCH')
     return {
       disposition: 'REPLAY',
+      employeeNumberDisposition: 'EXISTING',
       linkState: String(existing.link_state),
       registryRevision: String(existing.registry_revision),
       principalIdSha256: sha256(existing.principal_id),
@@ -161,6 +164,23 @@ export async function executeManagedLink({ database, readDirectoryUser, operatio
     }
   }
   if (detail.identityState !== 'not_linked') fail('DEV014_MANAGED_LINK_ZERO_STATE_REQUIRED')
+
+  let employeeNumberDisposition = 'EXISTING'
+  if (!detail.employeeNumber) {
+    const assigned = one((await database.query(
+      'SELECT * FROM orgmaster_core.assign_employee_number_v1($1,$2,$3,$4,$5,$6)',
+      [TARGET.employeeId, TARGET.employeeNumber, ACTOR, operation.workspaceRevision, detail.registryRevision, now],
+    )).rows, 'DEV014_MANAGED_LINK_EMPLOYEE_NUMBER_ASSIGNMENT_FAILED')
+    if (String(assigned.disposition) !== 'applied' || String(assigned.assignment?.employee_id) !== TARGET.employeeId
+      || String(assigned.assignment?.employee_number) !== TARGET.employeeNumber || String(assigned.revision) === '0') {
+      fail('DEV014_MANAGED_LINK_EMPLOYEE_NUMBER_ASSIGNMENT_INVALID')
+    }
+    employeeNumberDisposition = 'APPLIED'
+    detail = readModel(one((await database.query('SELECT * FROM orgmaster_core.read_employee_managed_identity_v1($1)', [TARGET.employeeId])).rows, 'DEV014_MANAGED_LINK_EMPLOYEE_MISSING'))
+  }
+  if (detail.employeeNumber !== TARGET.employeeNumber || detail.registryRevision === '0' || detail.identityState !== 'not_linked') {
+    fail('DEV014_MANAGED_LINK_EMPLOYEE_NUMBER_READBACK_INVALID')
+  }
 
   const leased = one((await database.query(
     'SELECT * FROM orgmaster_core.lease_managed_identity_candidate_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
@@ -188,6 +208,7 @@ export async function executeManagedLink({ database, readDirectoryUser, operatio
     || String(readback.link_state) !== 'directory_linked_pending_auth') fail('DEV014_MANAGED_LINK_READBACK_INVALID')
   return {
     disposition: 'APPLIED',
+    employeeNumberDisposition,
     linkState: String(readback.link_state),
     registryRevision: String(readback.registry_revision),
     principalIdSha256: sha256(readback.principal_id),
