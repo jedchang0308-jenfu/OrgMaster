@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { test } from 'node:test'
 import { canonicalize, sha256 } from './lib/dev012-production-migration-runner.mjs'
+import { assertDev014ConsumerEvidenceBytes, buildDev014ConsumerConformance } from './lib/dev014-consumer-conformance.mjs'
 import {
   assertOrgMasterAdmissionOperation,
   evidenceValue,
@@ -28,6 +29,8 @@ function operation(overrides = {}) {
     consumers: ['ai-pdm', 'orgmaster', 'platform'].map((applicationId, index) => ({
       applicationId,
       expectedSupportRevision: applicationId === 'platform' ? '0' : '1',
+      sourceRevision: String.fromCharCode(100 + index).repeat(40),
+      artifactDigest: `sha256:${String(index + 7).repeat(64)}`,
       evidenceRef: `gs://jenfu-platform-prod-${applicationId === 'ai-pdm' ? 'aipdm' : applicationId}-release/receipts/dev014/${applicationId}.json`,
       evidenceSha256: String(index + 4).repeat(64),
     })),
@@ -95,7 +98,17 @@ test('DEV-049 admission runner is present in the immutable migration image', () 
   const operator = fs.readFileSync(new URL('./lib/dev049-production-admission.mjs', import.meta.url), 'utf8')
   assert.match(dockerfile, /COPY scripts\/lib\/dev049-production-admission\.mjs/u)
   assert.match(dockerfile, /COPY scripts\/dev049-production-admission-runner\.mjs/u)
+  assert.match(dockerfile, /COPY scripts\/lib\/dev014-consumer-conformance\.mjs/u)
   assert.doesNotMatch(operator, /(?:platform|ai_pdm)_core/u)
+})
+
+test('DEV-049 admission accepts only exact raw consumer evidence', () => {
+  const consumer = operation().consumers[0]
+  const receipt = buildDev014ConsumerConformance({ appId: consumer.applicationId, sourceRevision: consumer.sourceRevision, artifactDigest: consumer.artifactDigest, failSeekingEvidenceRef: 'gs://jenfu-platform-prod-aipdm-release/receipts/releases/r/canonical.json', verifiedAt: '2026-09-21T00:00:00.000Z' })
+  const bytes = Buffer.from(`${canonicalize(receipt)}\n`)
+  const bound = { ...consumer, evidenceSha256: sha256(bytes) }
+  assert.deepEqual(assertDev014ConsumerEvidenceBytes(bound, bytes), receipt)
+  assert.throws(() => assertDev014ConsumerEvidenceBytes({ ...bound, artifactDigest: `sha256:${'f'.repeat(64)}` }, bytes), /DEV014_CONSUMER_CONFORMANCE_INVALID/u)
 })
 
 test('DEV-049 admission attests dynamic consumers, enables once and replays', async () => {

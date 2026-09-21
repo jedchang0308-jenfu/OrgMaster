@@ -53,11 +53,13 @@ await check('Directory adapter is read-only and validates stable provider facts'
 })
 
 await check('keyless DWD infrastructure owns only the exact signer-level boundary', async () => {
-  const [main, variables, outputs, example] = await Promise.all([
+  const [main, variables, outputs, example, planProfile, planGate] = await Promise.all([
     source('infra/google-cloud/dev-049-managed-directory/main.tf'),
     source('infra/google-cloud/dev-049-managed-directory/variables.tf'),
     source('infra/google-cloud/dev-049-managed-directory/outputs.tf'),
     source('.env.example'),
+    source('config/release/dev049-managed-directory-production-plan.json'),
+    source('scripts/dev049-managed-directory-plan-gate.mjs'),
   ])
   includesAll(main, [
     'google_service_account" "directory_dwd',
@@ -65,7 +67,10 @@ await check('keyless DWD infrastructure owns only the exact signer-level boundar
     'prevent_destroy = true',
   ])
   includesAll(variables, ['jenfu-platform-prod', 'orgmaster-prod-runtime', 'orgmaster-prod-directory-dwd'])
+  includesAll(main, ['terraform_data" "provenance', 'foundation_manifest_sha256', 'source_revision'])
   includesAll(outputs, ['oauth2_client_id', 'admin.directory.user.readonly'])
+  includesAll(planProfile, ['tfstate-jenfu-platform-prod', 'dev-049/managed-directory/default.tfstate', 'data.google_service_account.runtime', 'google_service_account_iam_member.runtime_token_creator'])
+  includesAll(planGate, ['DEV049_PLAN_ADDRESS_SET_INVALID', 'DEV049_PLAN_ACTION_INVALID', 'DEV049_SOURCE_NOT_FROZEN'])
   includesAll(example, [
     'ORGMASTER_MANAGED_IDENTITY_ENABLED=false',
     'ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID=',

@@ -698,13 +698,14 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 - spec §11 S0→S5 已完成；新增 owner-only `jenfu.managed-login.v1` route、migration 013 routines、CAS receipt與lifecycle barrier，確切契約仍只在權威 spec 維護。
 - 2026-09-21 DEV-014 re-entry 已修正正式 Directory credential：canonical five-key config、runtime ADC→專用 signer IAM Credentials `signJwt`→read-only OAuth token，並加入只擁有 signer 與 signer-level Token Creator 的 app-owned Terraform；不建立或保存 service-account key。Google Admin read-only核對固定customer ID=`C015t4buc`及有效超級管理員delegated subject=`jedchang0308@jenfu.com.tw`；owner-native production profile固定五個Directory keys、兩個Platform caller keys與上述兩值。Production signer／Admin Console DWD／runtime config／deploy仍受 DEV-014 protected release gate。
 - 2026-09-21 DEV-049 production admission operator已完成：重用既有`orgmaster-prod-migration-runner` image／Job，source-bound operation固定target、source／bytes hash、deadline、expected revision、consumer evidence與GCS prefixes；先重算dynamic required set，再呼叫既有attestation＋CAS routine。Apply可exact replay、drift fail closed、rollback使用post revision反向CAS；禁止人工SQL、新Job、runtime DDL與sibling core access。Operator 4 tests已納入DEV-040 owner `67／67`。
+- 2026-09-21 DEV-014 protected release補強：DWD Terraform加入source／foundation／operator provenance與完整四地址machine plan gate；owner finalize發布`jenfu.dev014.consumer-conformance.v1`，admission runner在DB前驗三份raw-object SHA、schema、source、artifact及content hash。focused gate目前17／17 PASS；production apply須使用merged clean source及provider-readback saved plan。
 - P0／P1 設計待決項=0；RD本機實作完成。下一步不自動延伸至 migration apply、Google／cloud mutation、AI-PDM target、deploy或release。
 
 ### Spec Impact 與本輪證據
 
 `Intentional replacement / Local Implementation Complete`：ADR-007 2026-09-17 amendment 與 DEV-047 replacement note 同步；取代 JFS-derived Email／lexical mismatch，補齊 candidate、confirm、首次登入與 Platform owner producer契約。DEV-047 stable-key、cardinality、tombstone、lifecycle、sync、role admission 與 production gate 維持。
 
-本輪歷史 evidence：targeted 50／50、contract 6／6、task-owned PostgreSQL 18.4 D49-01～06、real Chromium local fixture三viewport、full regression 853 PASS／1 skipped、build及DB boundary皆PASS；fresh PG重驗修正QC fixture同timestamp約束後重發owner receipt，SHA-256=`79a489833141d7773f845ba1e8cb608d1be9faf4276be9e344e1e102ee5b23b7`、controlled tree=`3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`。2026-09-21 keyless DWD correction重驗：targeted 55／55、contract 7／7、full regression 875 PASS／1 skipped、TypeScript／build／DB boundary／Terraform validate皆PASS；release profile及admission operator補正後DEV-040 owner tests 67／67、abort 6／6與雙build再通過。未重跑既有PostgreSQL與Browser產品流程，因本次只改credential transport、runtime／release config與未套用infra definition。沒有deployment／provider／production write，全部臨時runtime已清理。
+本輪歷史 evidence：targeted 50／50、contract 6／6、task-owned PostgreSQL 18.4 D49-01～06、real Chromium local fixture三viewport、full regression 853 PASS／1 skipped、build及DB boundary皆PASS；fresh PG重驗修正QC fixture同timestamp約束後重發owner receipt，SHA-256=`79a489833141d7773f845ba1e8cb608d1be9faf4276be9e344e1e102ee5b23b7`、controlled tree=`3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`。2026-09-21 keyless DWD correction重驗：targeted 55／55、contract 7／7、full regression 875 PASS／1 skipped、TypeScript／build／DB boundary／Terraform validate皆PASS；release profile及admission operator補正後DEV-040 owner tests 68／68、abort 6／6與雙build再通過。未重跑既有PostgreSQL與Browser產品流程，因本次只改credential transport、runtime／release config與未套用infra definition。沒有deployment／provider／production write，全部臨時runtime已清理。
 
 ### Future Phase Capsule
 
@@ -1358,7 +1359,7 @@ Readiness：`P0 gap=0 / P1 gap=0`
 - `6A / Human Confirmed`：即時定位只在游標接近目前 owner canvas 四邊時平移該畫布；保留使用者當下 zoom 與 viewport，不自動置中、fit view 或重設縮放。組織圖與流程圖必須各自使用所屬 React Flow instance。
 - `7A / Human Confirmed`：所有 registered target 沿用一致三態回饋：藍色表示可放置、黃色表示已存在／不需變更、紅色表示拒絕；每一態同時提供圖示、文字或等價非色彩提示，不得只靠顏色判讀。
 - `8A / Human Confirmed`：成功放置後保留目前 canvas viewport 與 zoom，只短暫強調實際落點並顯示非阻斷式成功狀態；不自動開啟明細、不重新置中，也不把使用者帶離目前規劃脈絡。
-- `9C / Human Confirmed / Intentional Replacement`：第一版只標準化與驗收滑鼠 Relation Placement，不在本輪新增或重設 Space／Tab／Enter／Escape 鍵盤抓取與落點循環。DEV-039 已存在的鍵盤 placement 保留為相容基線，不得因整卡 source migration 被刪除或降級；新的完整鍵盤 UX 保留為 future capsule。
+- `9C / Human Confirmed / Intentional Replacement`：第一版只標準化與驗收滑鼠 Relation Placement，不在本輪新增或重設 Space／Tab／Enter／Escape 鍵盤抓取與落點循環。DEV-039 已存在的鍵盤 placement 保留為相容基線，不得因整卡 source migration 被刪除或降級；完整鍵盤 UX 不列入後續需求。
 - `10A / Human Confirmed`：在 noop 或 rejected target 放開時零 mutation、零 modal，來源留在原工作脈絡；系統短暫顯示「關係已存在」或 resolver 提供的具體拒絕原因，不得靜默失敗。
 - `11A / Human Confirmed`：拖曳開始後，只有目前 payload 可接受的 registered targets 顯示低強度候選提示；游標實際指向的 target 才升級為明確藍／黃／紅三態及原因。不得把整張畫布預先染成完整警示狀態。
 - `12A / Human Confirmed`：成功配置後保留來源選取與清單捲動位置；只要 domain resolver 仍允許，使用者可立即把同一來源拖向其他目標。系統不自動跳到下一來源，也不清除來源選取。
@@ -1431,7 +1432,7 @@ Readiness：`P0 gap=0 / P1 gap=0`
 - 組織圖及流程圖在四邊都能即時平移，且不跳動、不跨 canvas 操作、不因高頻 `dragover` 造成明顯重繪抖動；全程保留原 zoom，不自動置中、fit view 或重設 viewport。
 - 成功放置後 viewport／zoom 與工作台焦點保持不變；實際落點短暫強調並出現非阻斷式成功狀態，且不自動開啟明細。
 - 成功放置後來源仍維持選取，來源清單 scroll offset 不跳動；resolver 允許多重關係時可立即重複拖曳同一來源，否則下一次候選正確顯示 noop／rejected。
-- 第一版不新增或宣稱 DEV-041 的 Space／Tab／Enter／Escape 鍵盤 UX；DEV-039 既有可達鍵盤 placement 不得回歸，滑鼠流程仍須維持來源焦點可恢復，新的完整鍵盤等價配置依 future capsule 重新進入。
+- 第一版不新增或宣稱 DEV-041 的 Space／Tab／Enter／Escape 鍵盤 UX；DEV-039 既有可達鍵盤 placement 不得回歸，滑鼠流程仍須維持來源焦點可恢復；完整鍵盤 UX 不列入後續需求。
 - 唯讀、手機、來源／目標 surface 關閉、capability loss 及 stale payload 均 fail closed；既有 Undo／Redo、autosave、版本 CAS 與跨面板關係結果不回歸。
 - RD 實作後至少以 targeted unit／component tests、architecture source policy、typecheck、build，以及正常產品入口的桌面原生滑鼠拖曳 targeted QC 支持結論；direct URL 或 synthetic event 不得單獨宣稱 UI 交付通過。
 
@@ -1441,22 +1442,13 @@ Readiness：`P0 gap=0 / P1 gap=0`
 - 若遷移必須新增第二 MIME、第二 resolver／mutation owner、global event bus、第三方 DnD dependency、跨畫布單一 React Flow instance，無法避免與職位階層／流程節點 gesture 衝突，或必須刪除DEV-039既有鍵盤能力，停止並回 PM 做架構決策。
 - 本輪已完成S0～S7 shared-boundary automated implementation並通過automated gate；`Duty lane→ProcessNode` native effect capability P1 blocker已由shared policy correction關閉，且正常入口的真實 HTML5 `DataTransfer` 四向、zero-mutation revision guard、auto-pan、API／revision、cleanup／console aggregate已取得。唯一開放項為 noop／rejected `dropEffect=none` 的 Chromium terminal drop effect policy；candidate commit、merge、deploy及release仍未授權。
 
-### Future Phase Capsule：鍵盤等價配置
-
-狀態：`Future Phase Captured / Not Requested`
-
-- 目的：在保留DEV-039現有鍵盤相容基線的前提下，讓無法使用滑鼠或偏好鍵盤的使用者，以可發現且可完整完成的方式建立同一 registered relation；不得新增第二 resolver、mutation owner 或商業規則。
-- 邊界：未來再統一抓取、目標循環、提交、取消、焦點復原與狀態宣告；Current Phase不新增半套快捷鍵、隱藏入口或只供自動化使用的鍵盤捷徑，也不刪除既有可用能力。
-- 依賴：共用 Relation Drag Source／Drop Target 狀態與 registered target matrix 先穩定，且需完成可及性與 React Flow gesture 衝突評估。
-- 驗收方向：鍵盤與滑鼠產生相同 resolver／Command 結果、拒絕相同非法關係，並可在正常產品入口完成整段操作。
-- 重新進入條件：使用者要求鍵盤／輔助科技支援、產品需達成對應 accessibility conformance，或第一版滑鼠核心完成後進入下一輪互動能力規劃。
-
 ### 變更紀錄
 
+- 2026-09-21：依使用者要求移除「完整鍵盤等價配置」Future Phase 需求；保留 DEV-039 既有 keyboard placement 相容基線，未修改產品程式。
 - 2026-09-01：依使用者確認的員工拖曳觸發與即時定位範本建立 `DEV-041 Brief Ready`；採共用 headless 互動核心，不擴張 DEV-039 frozen scope。
 - 2026-09-01：引導決策 `1A／2B／3A` 寫回；固定已登錄 Relation Placement 範圍、所有來源整物件／整卡拖曳，以及同一 DEV 內分步遷移但全部 parity 後才交付。
 - 2026-09-01：引導決策 `4A／5A／6A` 寫回；固定整卡拖曳但排除互動控制、採瀏覽器原生移動門檻區分 click／drag，以及只做 owner canvas 四邊平移且保留 viewport／zoom。
-- 2026-09-01：引導決策 `7A／8A／9C` 寫回；固定三態且非僅色彩的落點回饋、成功後保留工作脈絡，以及第一版只交付滑鼠拖曳並將鍵盤等價配置移至 future capsule。
+- 2026-09-01：引導決策 `7A／8A／9C` 寫回；固定三態且非僅色彩的落點回饋、成功後保留工作脈絡，以及第一版只交付滑鼠拖曳；鍵盤擴充不列入交付。
 - 2026-09-01：引導決策 `10A／11A／12A` 寫回；固定 noop／rejected 零 mutation 且顯示原因、低強度候選加 hovered 強回饋，以及成功後保留來源選取／清單位置供合法連續配置。主要產品決策完成至 `12A`。
 - 2026-09-01：依 `13A` 升級為 `RD Contract Ready`；盤點既有 single MIME／resolver／session／mutation owner，建立intentional replacement、三個共用薄層、狀態事件、來源目標矩陣、資料／API／權限／相容、normal-entry UI、QA／QC evidence與停止條件。未進入產品實作。
 - 2026-09-01：依使用者要求升級為`RD Implementation Ready`；補齊exact新增／修改／維持不變檔案、共用adapter API、keyboard相容策略、S0～S7遷移、failure recovery、targeted commands、fresh evidence、FMEA、dirty-worktree provenance及Git allowlist。P0／P1 spec gap=0；未進入產品實作。

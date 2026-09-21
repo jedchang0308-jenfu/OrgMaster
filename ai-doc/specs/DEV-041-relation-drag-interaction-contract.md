@@ -84,7 +84,7 @@ DEV-041 是 DEV-039 candidate freeze 後的 follow-on。它只對「關係拖曳
 - 修改 schema、API、permission、OrganizationDocument、version、autosave、CAS、Undo／Redo 或 domain Command。
 - 職位階層重排、工作台 panel 排列、舊職掌矩陣／異常修復拖曳、檔案拖曳或任意物件關聯。
 - 新增手機／觸控 mutation；手機維持專案最高原則唯讀。
-- 新建鍵盤 placement UX、快捷鍵提示、ARIA drag pattern 或落點循環；這些保留 future capsule。既有 DEV-039 keyboard path 只作相容保留。
+- 新建鍵盤 placement UX、快捷鍵提示、ARIA drag pattern 或落點循環不屬於本 DEV；既有 DEV-039 keyboard path 只作相容保留。
 - 引入第三方 DnD 套件、global event bus、跨畫布共用 React Flow instance或第二個 drag coordinator。
 
 ## 5. 共用元件責任
@@ -279,14 +279,6 @@ fixture可由既有API建立初始資料，但不得透過API直接製造預期�
 - 為達成9C而必須刪除DEV-039既有keyboard能力，或現有keyboard相容與整卡source無法同時保留。
 - 無法在正常入口取得真實native DataTransfer evidence，或只能靠synthetic／API直寫證明。
 - 需要長期並存新舊binding、domain-specific例外持續增加，或共用層開始承擔商業規則。
-
-## 13. Future Phase Capsule：鍵盤等價配置
-
-狀態：`Future Phase Captured / Not Requested`
-
-目的：在共用滑鼠核心穩定後，重新定義可發現、完整且符合輔助科技需要的keyboard placement UX；沿用同一session、resolver與mutation owner。此future phase不是恢復已刪能力的藉口，因此Current Phase必須保留DEV-039現有鍵盤相容基線。
-
-未來範圍才包含抓取入口、target循環、狀態宣告、commit、cancel、focus restoration、normal-entry提示與獨立無滑鼠QC。未收到使用者要求前，不在Current Phase新增快捷鍵或宣稱完整鍵盤等價。
 
 ## 14. Exact implementation contract
 
@@ -506,7 +498,7 @@ DEV-041候選allowlist僅限第15.1、15.2列出的產品／測試檔，加上�
 - Data／API／permission／dependency／migration：`None`；不需要schema或資料migration。
 - Repo impact／slice／recovery／test／fixture／evidence／Git boundary：`Specified`。
 - Dirty overlap：`Known implementation hazard`，以hunk provenance處理，不阻擋RD開工；不得據此覆寫使用者變更。
-- Technical debt：`No hidden debt accepted`；完整keyboard UX明確留在第13節future capsule，不以暫時mouse handle、第二pair table或雙binding墊檔。若Current Phase無法保留既有keyboard baseline，依停止條件退回PM。
+- Technical debt：`No hidden debt accepted`；本 DEV 不擴張 keyboard UX，亦不得以暫時mouse handle、第二pair table或雙binding墊檔。若Current Phase無法保留既有keyboard baseline，依停止條件退回PM。
 - P0／P1 specification gap：`0`；implementation blocker：`0`（原 Duty lane→ProcessNode source effect capability mismatch 已由 shared policy correction 關閉）。
 - Verdict：`RD Implementation Complete / Automated Gate Passed / Browser Native QA-QC Passed / Merged to master`。shared S0～S7 implementation、自動化gate、四向fresh native、兩個owner canvas四邊auto-pan、zero-mutation revision guard、console sweep與fixture archive均已取得；使用者接受noop／rejected在`dropEffect=none`時不要求Chromium派送terminal `drop`。產品程式與effect policy不變；repository integration已完成，deploy／release未要求。
 
@@ -516,6 +508,7 @@ DEV-041候選allowlist僅限第15.1、15.2列出的產品／測試檔，加上�
 
 ## 22. 變更紀錄
 
+- 2026-09-21：依使用者要求移除「完整鍵盤等價配置」Future Phase 需求；保留 DEV-039 既有 keyboard placement 相容基線，未修改產品程式。
 - 2026-09-01：依引導決策 `1A～12A` 建立產品Brief。
 - 2026-09-01：依 `13A` 升級為 `RD Contract Ready`；完成現行架構盤點、intentional replacement、共用元件責任、狀態／事件、相容、資料／API／權限、正常入口、驗收、QA／QC及停止條件。未進入實作。
 - 2026-09-01：依使用者要求升級為`RD Implementation Ready`；以當下repo盤點exact module／file impact、共用adapter API、owner-canvas rAF、來源遷移與keyboard相容策略、S0～S7順序、failure recovery、targeted commands、fresh fixture／evidence、FMEA及dirty-worktree allowlist。P0／P1 spec gap=0；未進入產品實作。

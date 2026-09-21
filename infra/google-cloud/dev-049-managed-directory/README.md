@@ -14,3 +14,10 @@ downloaded credentials; the runtime calls IAM Credentials `signJwt`.
 Production plan/apply is a protected DEV-014 release action and requires its
 exact project, state, source revision, operator, and rollback evidence. This
 module's presence is implementation evidence only and is not release authority.
+
+Initialize only with backend bucket `tfstate-jenfu-platform-prod` and prefix
+`dev-049/managed-directory/default.tfstate`. Supply the exact merged source
+revision and provider-readback foundation receipt SHA-256, export the saved plan
+to JSON, then pass it through `npm run gate:dev-049:managed-directory`. The gate
+requires the complete four-address set and permits only `read`, `create`, or
+`no-op`; update, delete, and replacement actions fail closed.
