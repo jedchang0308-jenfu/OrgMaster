@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "jenfu.dev049.managed-directory-plan-profile.v1",
+  "profileId": "DEV049_MANAGED_DIRECTORY_PRODUCTION",
+  "terraformRoot": "infra/google-cloud/dev-049-managed-directory",
+  "state": {
+    "bucket": "tfstate-jenfu-platform-prod",
+    "prefix": "dev-049/managed-directory/default.tfstate"
+  },
+  "target": {
+    "projectId": "jenfu-platform-prod",
+    "projectNumber": "9536592944",
+    "region": "asia-east1",
+    "operatorEmail": "jedchang0308@jenfu.com.tw",
+    "runtimeServiceAccountId": "orgmaster-prod-runtime",
+    "dwdServiceAccountId": "orgmaster-prod-directory-dwd",
+    "delegatedScope": "https://www.googleapis.com/auth/admin.directory.user.readonly"
+  },
+  "sourceRevisionMode": "git-head",
+  "requiredAddresses": {
+    "data.google_service_account.runtime": ["read"],
+    "terraform_data.provenance": ["create", "no-op"],
+    "google_service_account.directory_dwd": ["create", "no-op"],
+    "google_service_account_iam_member.runtime_token_creator": ["create", "no-op"]
+  },
+  "forbiddenActions": ["update", "delete", "replace"]
+}

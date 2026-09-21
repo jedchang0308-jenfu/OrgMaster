@@ -6,3 +6,7 @@ output "directory_dwd" {
     admin_directory_scope = "https://www.googleapis.com/auth/admin.directory.user.readonly"
   }
 }
+
+output "release_provenance" {
+  value = terraform_data.provenance.output
+}

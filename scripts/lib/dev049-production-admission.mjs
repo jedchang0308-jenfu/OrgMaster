@@ -74,9 +74,11 @@ export function assertOrgMasterAdmissionOperation(value, { bytes, operationSha25
   if (!Array.isArray(value.consumers) || value.consumers.length !== REQUIRED_CONSUMERS.length) fail('DEV049_OPERATION_CONSUMERS_INVALID')
   const ids = []
   for (const consumer of value.consumers) {
-    exactKeys(consumer, ['applicationId', 'expectedSupportRevision', 'evidenceRef', 'evidenceSha256'], 'DEV049_OPERATION_CONSUMERS_INVALID')
+    exactKeys(consumer, ['applicationId', 'expectedSupportRevision', 'sourceRevision', 'artifactDigest', 'evidenceRef', 'evidenceSha256'], 'DEV049_OPERATION_CONSUMERS_INVALID')
     if (!/^[a-z][a-z0-9-]{1,63}$/u.test(consumer.applicationId ?? '')
       || !integerString(consumer.expectedSupportRevision, { allowZero: true })
+      || !H40.test(consumer.sourceRevision ?? '')
+      || !/^sha256:[a-f0-9]{64}$/u.test(consumer.artifactDigest ?? '')
       || !EVIDENCE_REF.test(consumer.evidenceRef ?? '')
       || !H64.test(consumer.evidenceSha256 ?? '')) fail('DEV049_OPERATION_CONSUMERS_INVALID')
     ids.push(consumer.applicationId)
