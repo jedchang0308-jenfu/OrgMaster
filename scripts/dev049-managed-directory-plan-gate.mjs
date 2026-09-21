@@ -13,10 +13,14 @@ const H64 = /^[a-f0-9]{64}$/u
 
 function fail(code, detail = '') { throw new Error(detail ? `${code}:${detail}` : code) }
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b) }
+function sameRecord(observed, expected) {
+  return observed && same(Object.keys(observed).sort(), Object.keys(expected).sort())
+    && Object.entries(expected).every(([key, value]) => observed[key] === value)
+}
 
 export function evaluateDev049ManagedDirectoryPlan({ plan, profile, sourceRevision, foundationManifestSha256 }) {
   if (!H40.test(sourceRevision ?? '') || !H64.test(foundationManifestSha256 ?? '')) fail('DEV049_PLAN_BINDING_INVALID')
-  if (profile?.schemaVersion !== 'jenfu.dev049.managed-directory-plan-profile.v1'
+  if (profile?.schemaVersion !== 'jenfu.dev049.managed-directory-plan-profile.v2'
     || profile.profileId !== 'DEV049_MANAGED_DIRECTORY_PRODUCTION'
     || profile.terraformRoot !== 'infra/google-cloud/dev-049-managed-directory'
     || profile.state?.bucket !== 'tfstate-jenfu-platform-prod'
@@ -34,12 +38,28 @@ export function evaluateDev049ManagedDirectoryPlan({ plan, profile, sourceRevisi
   for (const [name, expected] of Object.entries(expectedVariables)) {
     if (plan?.variables?.[name]?.value !== expected) fail('DEV049_PLAN_VARIABLE_INVALID', name)
   }
+  const configured = new Map((plan?.configuration?.root_module?.resources ?? []).map((row) => [row.address, row]))
+  const requiredConfiguration = Object.keys(profile.requiredConfigurationAddresses).sort()
+  if (!same([...configured.keys()].sort(), requiredConfiguration)) fail('DEV049_PLAN_CONFIGURATION_SET_INVALID')
+  for (const address of requiredConfiguration) {
+    const expected = profile.requiredConfigurationAddresses[address]
+    const observed = configured.get(address)
+    if (observed?.mode !== expected.mode || observed?.type !== expected.type) fail('DEV049_PLAN_CONFIGURATION_INVALID', address)
+  }
+  const runtime = (plan?.prior_state?.values?.root_module?.resources ?? []).find((row) => row.address === profile.runtimeReadbackAddress)
+  const runtimeEmail = `${profile.target.runtimeServiceAccountId}@${profile.target.projectId}.iam.gserviceaccount.com`
+  if (runtime?.mode !== 'data' || runtime?.type !== 'google_service_account'
+    || runtime.values?.account_id !== profile.target.runtimeServiceAccountId
+    || runtime.values?.project !== profile.target.projectId
+    || runtime.values?.email !== runtimeEmail
+    || runtime.values?.name !== `projects/${profile.target.projectId}/serviceAccounts/${runtimeEmail}`
+    || runtime.values?.disabled !== false) fail('DEV049_PLAN_RUNTIME_READBACK_INVALID')
   const changes = new Map((plan?.resource_changes ?? []).map((row) => [row.address, row]))
-  const required = Object.keys(profile.requiredAddresses).sort()
+  const required = Object.keys(profile.requiredChangeAddresses).sort()
   if (!same([...changes.keys()].sort(), required)) fail('DEV049_PLAN_ADDRESS_SET_INVALID')
   for (const address of required) {
     const actions = changes.get(address)?.change?.actions
-    const allowed = profile.requiredAddresses[address]
+    const allowed = profile.requiredChangeAddresses[address]
     if (!Array.isArray(actions) || actions.length !== 1 || !allowed.includes(actions[0])) fail('DEV049_PLAN_ACTION_INVALID', address)
   }
   const provenance = changes.get('terraform_data.provenance')?.change?.after?.input
@@ -53,14 +73,16 @@ export function evaluateDev049ManagedDirectoryPlan({ plan, profile, sourceRevisi
     signer_email: `${profile.target.dwdServiceAccountId}@${profile.target.projectId}.iam.gserviceaccount.com`,
     delegated_scope: profile.target.delegatedScope,
   }
-  if (!same(provenance, expectedProvenance)) fail('DEV049_PLAN_PROVENANCE_INVALID')
+  if (!sameRecord(provenance, expectedProvenance)) fail('DEV049_PLAN_PROVENANCE_INVALID')
   return {
     schemaVersion: 'jenfu.dev049.managed-directory-plan-gate.v1',
     status: 'PASS',
     profileId: profile.profileId,
     sourceRevision,
     foundationManifestSha256,
-    resourceAddresses: required,
+    configuredAddresses: requiredConfiguration,
+    changeAddresses: required,
+    runtimeReadbackAddress: profile.runtimeReadbackAddress,
   }
 }
 

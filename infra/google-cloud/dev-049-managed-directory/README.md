@@ -19,5 +19,7 @@ Initialize only with backend bucket `tfstate-jenfu-platform-prod` and prefix
 `dev-049/managed-directory/default.tfstate`. Supply the exact merged source
 revision and provider-readback foundation receipt SHA-256, export the saved plan
 to JSON, then pass it through `npm run gate:dev-049:managed-directory`. The gate
-requires the complete four-address set and permits only `read`, `create`, or
-`no-op`; update, delete, and replacement actions fail closed.
+requires the complete four-address configuration, exact enabled runtime data
+readback from `prior_state`, and the three managed change addresses. Managed
+actions may only be `create` or `no-op`; update, delete, replacement, missing
+configuration, and readback drift fail closed.
