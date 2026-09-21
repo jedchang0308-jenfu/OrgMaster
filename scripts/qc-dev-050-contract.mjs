@@ -43,14 +43,15 @@ await check('mandatory verifier has no email-search fallback and preserves one r
   assert.ok(retry >= 0, 'retry fence missing')
 })
 
-await check('auth API freezes identifier, verifies before canonical admission and rereads epoch', () => {
-  includesAll(auth, ['managedIdentifierProvided', 'verifyManagedLoginIdentifier', 'resolveActivePrincipal', 'const stateAfter = await epochs.readState', 'randomUUID()'])
+await check('auth API freezes identifier, uses canonical-first admission and rereads epoch', () => {
+  includesAll(auth, ['managedIdentifierProvided', 'verifyManagedLoginIdentifier', 'resolveActivePrincipal', "error.code !== 'principal_not_active'", 'const stateAfter = await epochs.readState', 'randomUUID()'])
   assert.doesNotMatch(auth, /resolveFirebaseIdentity|resolveLoginAlias/iu)
   const firstEpoch = auth.indexOf('const state = await epochs.readState')
+  const canonical = auth.indexOf('principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)')
   const verifier = auth.indexOf('runtime.managedIdentity.verifyManagedLoginIdentifier')
-  const canonical = auth.indexOf('const principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)')
+  const canonicalAfterBind = auth.indexOf('principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)', canonical + 1)
   const secondEpoch = auth.indexOf('const stateAfter = await epochs.readState')
-  assert.ok(firstEpoch >= 0 && verifier > firstEpoch && canonical > verifier && secondEpoch > canonical, 'auth ordering changed')
+  assert.ok(firstEpoch >= 0 && canonical > firstEpoch && verifier > canonical && canonicalAfterBind > verifier && secondEpoch > canonicalAfterBind, 'auth ordering changed')
   assert.match(auth, /Buffer\.byteLength\(body\.managedIdentifier, 'utf8'\) > 254/u)
 })
 

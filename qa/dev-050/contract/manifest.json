@@ -1,0 +1,48 @@
+{
+  "contract": "DEV-050",
+  "evidenceScope": "LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-09-21T19:41:25.627Z",
+  "migrationSha256": "f39ea5eb7e9f4accbe66961fa73345b788aa609b8a7de658c416335311463867",
+  "checks": [
+    {
+      "name": "forward-only app-local admission view and least privilege",
+      "status": "PASS"
+    },
+    {
+      "name": "mandatory verifier has no email-search fallback and preserves one retry fence",
+      "status": "PASS"
+    },
+    {
+      "name": "auth API freezes identifier, uses canonical-first admission and rereads epoch",
+      "status": "PASS"
+    },
+    {
+      "name": "private same-snapshot repository and app-scoped admission repository",
+      "status": "PASS"
+    },
+    {
+      "name": "client and UI expose dual identifier without production Firebase port",
+      "status": "PASS"
+    },
+    {
+      "name": "legacy public alias route is deny-by-default",
+      "status": "PASS"
+    }
+  ],
+  "source": {
+    "gitHead": "88bdcef884bb54075f7d0e40c9a1e2e39d2aba87",
+    "dirty": [
+      "M ai-doc/dev_task.md",
+      " M ai-doc/documentation_map.md",
+      " M ai-doc/specs/DEV-049-existing-google-primary-account-link.md",
+      " M ai-doc/specs/DEV-050-dual-identifier-managed-login.md",
+      " M qa/dev-049/contracts/manifest.json",
+      " M scripts/qc-dev-049-contract.mjs",
+      " M scripts/qc-dev-050-contract.mjs",
+      " M server/orgmasterAuthApi.test.ts",
+      " M server/orgmasterAuthApi.ts",
+      "?? qa/dev-050/"
+    ]
+  }
+}

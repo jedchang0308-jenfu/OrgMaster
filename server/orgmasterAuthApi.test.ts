@@ -103,7 +103,9 @@ describe('OrgMaster auth middleware', () => {
     runtime.managedLoginEnabled = true
     runtime.managedIdentity = managed as never
     vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({ issuer: config.identityIssuer, subject: 'uid-managed', assuranceLevel: 'aal1', authenticatedAt: '2026-09-17T01:00:00.000Z', signInProvider: 'google.com', email: 'person@jenfu.com.tw', emailVerified: true, googleUserId: 'google-managed-1' })
-    vi.mocked(runtime.principals!.resolveActivePrincipal).mockResolvedValueOnce({ principalId: 'canonical-principal', employeeId: 'employee-1', mappingVersion: 1, publishedAt: '2026-09-17T01:00:01.000Z' })
+    vi.mocked(runtime.principals!.resolveActivePrincipal)
+      .mockRejectedValueOnce(new PrincipalAdmissionError('principal_not_active'))
+      .mockResolvedValueOnce({ principalId: 'canonical-principal', employeeId: 'employee-1', mappingVersion: 1, publishedAt: '2026-09-17T01:00:01.000Z' })
     const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-17T01:00:10.000Z'))
     const base = await listen(runtime)
     config.publicBaseUrl = new URL(base)
@@ -113,8 +115,26 @@ describe('OrgMaster auth middleware', () => {
     expect(runtime.epochs!.readState).toHaveBeenCalledTimes(2)
     expect(runtime.epochs!.readState).toHaveBeenCalledBefore(managed.verifyManagedLoginIdentifier)
     expect(managed.verifyManagedLoginIdentifier).toHaveBeenCalledWith(expect.objectContaining({ managedIdentifier: 'JFS0001', identity: expect.objectContaining({ googleUserId: 'google-managed-1' }) }))
-    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(1)
+    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(2)
     expect(runtime.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({ principalId: 'canonical-principal', employeeId: 'employee-1' }))
+  })
+
+  it('uses an existing canonical principal before managed bind when the account is already admitted', async () => {
+    const { runtime, config } = configuredRuntime()
+    const managed = { verifyManagedLoginIdentifier: vi.fn() }
+    runtime.managedLoginEnabled = true
+    runtime.managedIdentity = managed as never
+    vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({ issuer: config.identityIssuer, subject: 'uid-managed', assuranceLevel: 'aal1', authenticatedAt: '2026-09-17T01:00:00.000Z', signInProvider: 'google.com', email: 'person@jenfu.com.tw', emailVerified: true, googleUserId: 'google-managed-1' })
+    vi.mocked(runtime.principals!.resolveActivePrincipal).mockResolvedValueOnce({ principalId: 'principal-legacy', employeeId: 'employee-1', mappingVersion: 7, publishedAt: '2026-09-17T01:00:01.000Z' })
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-17T01:00:10.000Z'))
+    const base = await listen(runtime)
+    config.publicBaseUrl = new URL(base)
+    const response = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'managed-token', managedIdentifier: 'JFS0001' }) })
+    now.mockRestore()
+    expect(response.status).toBe(200)
+    expect(managed.verifyManagedLoginIdentifier).not.toHaveBeenCalled()
+    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(1)
+    expect(runtime.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({ principalId: 'principal-legacy', employeeId: 'employee-1' }))
   })
 
   it('never falls back to managed lookup when the identifier is omitted and retires the public alias resolver', async () => {

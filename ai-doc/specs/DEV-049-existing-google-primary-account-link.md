@@ -1,7 +1,7 @@
 # DEV-049：既有 Google 主帳號連結與員工編號登入
 
 文件成熟度：`RD Implementation Complete / Local QA-QC Passed / Architecture Contract Implemented 2026-09-17`
-交付狀態：`Production Released / DWD + Admission Complete / Single-employee Link Correction Pending`
+交付狀態：`Production Released / DWD + Admission + Single-employee Link Complete / Canonical-first Correction Ready`
 風險：`High`（錯綁會影響自然人登入身分）
 查證基準：`codex/dev-049-existing-google-account@b839003c4f0bcebb282d02d927a0fb5e5c5f065b`＋owner receipt controlled tree `3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`
 
@@ -406,7 +406,7 @@ Production fail-seeking evidence `orgmaster-prod-migration-runner-ct65x`在DB mu
 
 ## 2026-09-22 Production execution readback
 
-Exact DWD signer／client／readonly scope已由Google Admin readback確認；包含本DEV與DEV-050／051的service source `4b512a4d48e306cef8d1371d7a354e50a3e8f05c`已由OrgMaster owner run `35587433590`發布到`orgmaster-prod-6e65121a2875`並承接100% traffic。OrgMaster admission R3與Platform admission R4均為`APPLIED`後`REPLAY`。Firebase `google.com` provider已啟用且Platform Google popup可回到`POST /api/auth/firebase/session`；現行403由Production managed-identity零狀態造成，而非provider、DWD或admission失敗。read-only execution `orgmaster-prod-migration-runner-bp5z9`以`BEGIN READ ONLY`證明`employee-shijie / JFS0005`的managed identity與alias均為0筆，Job隨後已回復baseline。剩餘整合證據先完成下方單一員工source-controlled correction，再執行DEV-014 LOGIN六案與AI-PDM C01／C02；部署或DB readback不代替browser acceptance。
+Exact DWD signer／client／readonly scope已由Google Admin readback確認；包含本DEV與DEV-050／051的service source `4b512a4d48e306cef8d1371d7a354e50a3e8f05c`已由OrgMaster owner run `35587433590`發布到`orgmaster-prod-6e65121a2875`並承接100% traffic。OrgMaster admission R3與Platform admission R4均為`APPLIED`後`REPLAY`。Firebase `google.com` provider已啟用且Platform Google popup可回到`POST /api/auth/firebase/session`。較早read-only execution `orgmaster-prod-migration-runner-bp5z9`曾證明link前零狀態；其後§15 operator已完成單一員工managed link。最新callback 403另由§15.4證明是兩app未遵守canonical-first登入順序，並非provider、DWD、admission或link缺失。部署或DB readback仍不代替browser acceptance。
 
 ## 15. Production zero-state correction（2026-09-22）
 
@@ -430,3 +430,11 @@ Production provider、DWD、service、migration與admission皆已通過，但`em
 ### 15.3 Local gate與Production下一步
 
 operator 5項targeted tests與routine-release 22項組合測試PASS；前一版DEV-040 R2 release套件另有82項PASS、abort 6／6、DB boundary PASS、full regression 875 PASS／1 skipped、production build PASS。第一版immutable runner與APP_INFRA_IMAGE_ROTATION已完成，但read-only preflight揭露employee-number zero-state後即停止mutation；須先合併本修正、重建source-bound immutable runner並再做exact image rotation，才以已讀得的workspace revision執行apply＋replay。成功後才從normal entry重跑Google首次bind、JFS alias、session persistence、AI-PDM SSO及global logout。
+
+### 15.4 Canonical-first continuity correction（2026-09-22）
+
+單一員工operator後續已完成apply＋replay；最新read-only execution `orgmaster-prod-migration-runner-k8zvm`讀回`employee-shijie / JFS0005`為`directory_linked_pending_auth`、admission enabled、registry revision 1，且verified Firebase issuer＋subject另有一筆指向同一Employee的active legacy principal（mapping version 2）。同一Production callback logs為`resolveAlias=200 → verifyIdentity=403`。這項證據更正§15.1的歷史零狀態判斷：link已存在，403來自app auth在canonical lookup前呼叫managed bind，碰到既有principal collision guard。
+
+§9.2既定順序現明確落到產品source：verified token完成epoch檢查後，先呼叫`resolveActivePrincipal(issuer, subject)`；只有精確`PrincipalAdmissionError('principal_not_active')`且有managed identifier時才呼叫`verifyManagedLoginIdentifier`，成功後再查canonical principal。其他admission error不得fallback。Existing canonical principal直接建立既有session且managed bind呼叫為0；managed path仍保留bind後canonical一致性檢查。
+
+新增回歸覆蓋existing principal直通與`principal_not_active`後bind；`test:dev-049`為9 files／56 tests、full regression為210 files／876 tests（另1 file／1 test skipped），DEV-049／050 contract、DB boundary及production build均PASS。此修正不改schema、migration、managed link、Employee、application authority、IAM或Directory；下一步是owner-native發布修正後artifact，確認新revision承接100% canonical traffic，再由Platform normal entry重跑DEV-014 browser cells。

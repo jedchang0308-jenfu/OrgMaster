@@ -81,16 +81,17 @@ await check('keyless DWD infrastructure owns only the exact signer-level boundar
   assert.doesNotMatch(main + variables + outputs, /google_service_account_key|private_key|roles\/iam\.serviceAccountTokenCreator[\s\S]*google_project_iam/u)
 })
 
-await check('managed identifier verifier precedes canonical admission', async () => {
+await check('canonical admission precedes the managed verifier and only exact not-active falls back', async () => {
   const [store, auth] = await Promise.all([source('server/orgmasterManagedIdentityStore.ts'), source('server/orgmasterAuthApi.ts')])
   includesAll(store, ['managedIdentityConfirmFingerprint', "receipt.responsePayload.contractVersion !== 'dev049.confirm.v1'", "kind: 'replayed'", 'actorBindingSha256'])
-  includesAll(auth, ['managedIdentifierProvided', 'verifyManagedLoginIdentifier', 'resolveActivePrincipal', 'stateAfter = await epochs.readState'])
+  includesAll(auth, ['managedIdentifierProvided', 'verifyManagedLoginIdentifier', 'resolveActivePrincipal', "error.code !== 'principal_not_active'", 'stateAfter = await epochs.readState'])
   assert.doesNotMatch(auth, /resolveFirebaseIdentity/u)
   const epoch = auth.indexOf('const state = await epochs.readState')
-  const verifier = auth.indexOf('verifyManagedLoginIdentifier')
-  const canonical = auth.indexOf('const principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)')
+  const canonical = auth.indexOf('principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)')
+  const verifier = auth.indexOf('runtime.managedIdentity.verifyManagedLoginIdentifier')
+  const canonicalAfterBind = auth.indexOf('principal = await principals.resolveActivePrincipal(identity.issuer, identity.subject)', canonical + 1)
   const secondEpoch = auth.indexOf('const stateAfter = await epochs.readState')
-  assert.ok(epoch >= 0 && verifier > epoch && canonical > verifier && secondEpoch > canonical, 'epoch/verifier/canonical/second-epoch order changed')
+  assert.ok(epoch >= 0 && canonical > epoch && verifier > canonical && canonicalAfterBind > verifier && secondEpoch > canonicalAfterBind, 'epoch/canonical/verifier/canonical/second-epoch order changed')
   assert.doesNotMatch(auth, /mappingVersion:\s*1/u)
 })
 

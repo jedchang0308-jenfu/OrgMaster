@@ -74,7 +74,7 @@ type FirebaseSessionRequest = {
 
 - 沿用 JSON body 32 KiB、ID token 16 KiB、same-origin、rate limit、no-store 與 cookie 防護。
 - 欄位存在時必須為 trim 後非空、UTF-8 ≤254 bytes 的 string；null、非字串、空白、過長回 400，不能當成 omitted。
-- provided：managed mode 必須啟用，所有 active／pending principal 都先做 managed 驗證；失敗不得退回 canonical-only 或 Email-search bind。
+- provided：先查 verified issuer＋subject 的 canonical active principal；存在時直接沿用，identifier不得迫使既有principal重綁。只有exact `principal_not_active`才要求managed mode啟用並進managed verifier；其他canonical錯誤不得fallback，也不得用Email搜尋bind。
 - omitted：僅保留既有 canonical principal 登入，包括既存 password／Google principal；不得 managed fallback、首次 bind 或以 token Email 搜尋 mapping。
 - 相容分支不承諾每次登入都 live-check Directory；identifier 不是第二認證因子。任何日後「全入口必須 live-check」政策另行規劃，不能暗中改本分支。
 - 成功 response／session cookie shape 不變。public `/api/auth/managed/alias` 統一 404、zero lookup，前端移除呼叫；這是明示的 app-local 相容性變更，舊頁需重新載入。
@@ -83,8 +83,8 @@ type FirebaseSessionRequest = {
 固定順序：
 
 1. 解析 body、凍結 identifier；驗 Firebase token／auth_time；讀第一次 auth epoch。server 另產生 `randomUUID()` 作 write request ID，不沿用 client 可提供的 correlation ID。
-2. provided branch 檢查 Google provider、verified company Email、唯一 Google user ID，呼叫 managed verifier；omitted branch 直接進 canonical，zero managed write。
-3. verifier 後由 `resolveActivePrincipal` 重查 app-scoped view，逐一比對 principalId、employeeId 與 mappingVersion。保留 repository 的 safe-integer 檢查，再以 `String(principal.mappingVersion)` 對 verifier decimal string；不可先對不安全值取 Number。
+2. 先呼叫 `resolveActivePrincipal`。Existing principal直接沿用且zero managed write；`principal_ambiguous`、contract mismatch與directory unavailable等錯誤原樣fail closed。
+3. 只有provided且canonical精確回`principal_not_active`時，檢查Google provider、verified company Email、唯一Google user ID並呼叫managed verifier；verifier後重查app-scoped view，逐一比對principalId、employeeId與mappingVersion。保留repository的safe-integer檢查，再以`String(principal.mappingVersion)`對verifier decimal string；不可先對不安全值取Number。Omitted＋not-active維持zero fallback。
 4. 讀第二次 epoch；authEpoch／revokedBefore 有變化或 token 已失效即 zero session。session 使用第二次 state。
 5. 建 session／cookie。合法 bind 已完成而後續 role、epoch、canonical 或 session store 失敗時，不自動 unbind；該 request 不發 cookie，下一次登入重新驗證。
 
@@ -202,7 +202,7 @@ Directory、governance、mapping、epoch 與 session 不是單一分散式 trans
 - `scripts/qc-dev-047-postgres.mjs --suite=dev050`：沿用 disposable PostgreSQL 能力，實際套用 001～014；D50-01～04 驗證八欄 view、OrgMaster role 篩選、runtime-only ACL 與 shared view 相容性。輸出 `dev-050/postgres/manifest.json`。
 - `scripts/qc-dev-050-browser.mjs`：以正常 production build 的 `src/main.tsx`→App→AuthGate 入口，development auth bypass 關閉；只對 `/api/auth/me`／`/api/auth/mode` 做 Playwright route isolation 以固定未登入 capability response，不攔截產品資料路徑、不呼叫 provider。桌面 1440×900 與手機 390×844 均驗單一 managed 欄位、legacy disclosure 收合、無水平 overflow；輸出 `qa/dev-050/browser/manifest.json` 與截圖。
 - production bundle smoke：另驗正常 build 的入口／SSO／managed flag rendering及無 fixture route／synthetic token；不拿替身 bundle 證明真 Google popup。real provider驗證與正式帳號操作需另行範圍，不在本文件工作。
-- 舊 gate 相容：047 contract 的 bridge／fallback 字串斷言與049 contract 的 epoch→fallback 順序斷言，改為「epoch→provided verifier→canonical，omitted zero fallback」。只替換已被 DEV-050 明示取代的 checks，其他 owner／caller／provider-write／schema checks 保留。歷史 `qa/dev-047/**`、`qa/dev-049/**` receipt／manifest 不覆寫；相容重跑輸出到 `qa/dev-050/compatibility/**`，需要時為 runner 增 output-dir 支援。
+- 舊 gate 相容：047 contract 的 bridge／fallback 字串斷言與049／050的auth ordering gate均固定為「epoch→canonical→僅exact not-active時provided verifier→canonical readback→second epoch；omitted zero fallback」。只替換被本DEV及2026-09-22 Production continuity correction明示取代的checks，其他owner／caller／provider-write／schema checks保留。歷史`qa/dev-047/**` receipt不覆寫；本次current contract manifest更新於`qa/dev-049/contracts/manifest.json`與`qa/dev-050/contract/manifest.json`。
 
 package 新增 `test:dev-050`、`qc:dev-050:contract`、`qc:dev-050:postgres`、`qc:dev-050:browser`。本輪最終 gate 全部通過：
 
