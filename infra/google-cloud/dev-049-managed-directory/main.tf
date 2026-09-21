@@ -7,6 +7,7 @@ resource "google_project_service" "admin_directory" {
   project            = var.project_id
   service            = "admin.googleapis.com"
   disable_on_destroy = false
+  deletion_policy    = "ABANDON"
 
   lifecycle {
     prevent_destroy = true
