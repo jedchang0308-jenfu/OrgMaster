@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
@@ -94,6 +94,18 @@ function attachForwardInfra(h) {
   h.input.values.infra = value
   return value
 }
+
+test('controlled infrastructure fingerprint excludes only the source-bound migration runner Dockerfile', () => {
+  const runner = `100644 blob ${'a'.repeat(40)}\tinfra/google-cloud/dev-040-production-release/migration-runner.Dockerfile`
+  const terraform = `100644 blob ${'b'.repeat(40)}\tinfra/google-cloud/dev-040-production-release/migration.tf`
+  const filtered = filterControlledInfrastructureTree(Buffer.from(`${runner}\0${terraform}\0`)).toString('utf8')
+  assert.equal(filtered, `${terraform}\0`)
+  const changedTerraform = `100644 blob ${'c'.repeat(40)}\tinfra/google-cloud/dev-040-production-release/migration.tf`
+  assert.notEqual(
+    filterControlledInfrastructureTree(Buffer.from(`${runner}\0${terraform}\0`)).toString('utf8'),
+    filterControlledInfrastructureTree(Buffer.from(`${runner}\0${changedTerraform}\0`)).toString('utf8'),
+  )
+})
 
 test('routine release reuses unchanged SQL and infrastructure with no bootstrap or live DDL', async () => {
   const h = harness()
