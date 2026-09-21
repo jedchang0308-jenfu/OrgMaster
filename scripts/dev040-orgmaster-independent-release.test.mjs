@@ -89,6 +89,11 @@ test('S1B-21 OrgMaster v3 direct-run profile preserves staging boundary', () => 
   assert.equal(profile.environment.controlledValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE.defaultValue, 'off')
   assert.deepEqual(profile.environment.controlledValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE.allowedValues, ['off', 'on'])
   assert.equal(profile.environment.fixedValues.ORGMASTER_JENFU_SSO_BROKER_ORIGIN, 'https://jenfu-platform-prod-9536592944.asia-east1.run.app')
+  assert.equal(profile.environment.fixedValues.ORGMASTER_MANAGED_IDENTITY_ENABLED, 'true')
+  assert.equal(profile.environment.fixedValues.ORGMASTER_GOOGLE_DIRECTORY_DOMAIN, 'jenfu.com.tw')
+  assert.equal(profile.environment.fixedValues.ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL, 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com')
+  assert.equal(profile.environment.fixedValues.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL, 'platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com')
+  assert.equal(profile.environment.fixedValues.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT, '101029748006912113815')
 })
 
 test('S1B-21 OrgMaster runtime keeps credentials out of plain environment', () => {
