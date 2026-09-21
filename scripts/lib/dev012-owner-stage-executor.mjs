@@ -9,6 +9,15 @@ const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
 const STAGES = new Set(['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize', 'rollback'])
 const CONTROL_STATES = new Set(['CANDIDATE_CREATED', 'ENTRYPOINT_CONFIGURED', 'CANDIDATE_VERIFIED', 'GO', 'ACTIVE', 'CANONICAL_VERIFIED', 'ABORT_REQUESTED', 'FINALIZED'])
+const DEV014_MANAGED_DIRECTORY_FIELDS = Object.freeze([
+  'ORGMASTER_MANAGED_IDENTITY_ENABLED',
+  'ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID',
+  'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN',
+  'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
+  'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
+  'ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL',
+  'ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT',
+])
 
 function fail(code, detail = '') {
   const error = new Error(detail ? `${code}:${detail}` : code)
@@ -80,8 +89,30 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
   const rules = profile.environment?.controlledValues ?? {}
   const controlledEnvironment = Object.fromEntries(Object.keys(rules).sort().map((name) => [name, runtime.plainEnvironment?.[name]]))
   const isDev013 = values.readiness?.schemaVersion === 'jenfu.dev013.l4-owner-transition-readiness.v2'
+  const isDev014 = values.readiness?.devId === 'DEV-014'
   const usesNonDefaultValue = Object.entries(rules).some(([name, rule]) => controlledEnvironment[name] !== rule.defaultValue)
   if (!isDev013) {
+    if (isDev014) {
+      const expectedActivation = {
+        kind: 'MANAGED_DIRECTORY_RUNTIME_ACTIVATION',
+        addedPlainEnvironmentNames: DEV014_MANAGED_DIRECTORY_FIELDS,
+        directoryScope: 'https://www.googleapis.com/auth/admin.directory.user.readonly',
+      }
+      if (!intent.baselineIntentRef
+        || values.authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+        || values.authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+        || values.authorization.devId !== 'DEV-014' || values.authorization.slice !== '014-LOGIN'
+        || values.readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+        || values.readiness.slice !== '014-LOGIN'
+        || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
+        || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision
+        || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
+        || canonicalize(values.authorization.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+        || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+        || canonicalize(values.authorization.activation) !== canonicalize(expectedActivation)
+        || canonicalize(values.readiness.activation) !== canonicalize(expectedActivation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
+      return { releaseMode: 'DEV014_MANAGED_DIRECTORY_ACTIVATION', activation: expectedActivation }
+    }
     if (!usesNonDefaultValue) return { releaseMode: 'DEFAULT_CONTROLLED_ENVIRONMENT' }
     if (!intent.baselineIntentRef
       || values.authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
