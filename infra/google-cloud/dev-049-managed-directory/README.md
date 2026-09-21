@@ -21,7 +21,8 @@ revision and provider-readback foundation receipt SHA-256, export the saved plan
 to JSON, then pass it through `npm run gate:dev-049:managed-directory`. The gate
 requires the complete five-address configuration, exact enabled runtime data
 readback from `prior_state`, and the four managed change addresses. The API may
-only be enabled and has both `disable_on_destroy=false` and `prevent_destroy`;
+only be enabled and has `disable_on_destroy=false`, `deletion_policy=ABANDON`,
+and `prevent_destroy`;
 the provenance resource alone may update from the exact legacy shape to bind
 the corrective source. Delete, replacement, missing configuration, target drift,
 and readback drift fail closed.

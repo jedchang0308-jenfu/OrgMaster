@@ -22,7 +22,10 @@ function plan() {
     operator_email: 'jedchang0308@jenfu.com.tw',
     required_service: 'admin.googleapis.com',
   }
-  const legacyInput = { ...input }; delete legacyInput.required_service; legacyInput.source_revision = 'c'.repeat(40)
+  const legacyInput = { ...input }
+  delete legacyInput.required_service
+  legacyInput.source_revision = 'c'.repeat(40)
+  legacyInput.foundation_manifest_sha256 = 'd'.repeat(64)
   const configuration = { root_module: { resources: [
     { address: 'data.google_service_account.runtime', mode: 'data', type: 'google_service_account' },
     { address: 'google_project_service.admin_directory', mode: 'managed', type: 'google_project_service' },
@@ -39,7 +42,7 @@ function plan() {
   }] } } }
   return { variables, configuration, prior_state, resource_changes: [
     { address: 'terraform_data.provenance', change: { actions: ['update'], before: { input: legacyInput }, after: { input } } },
-    { address: 'google_project_service.admin_directory', change: { actions: ['create'], after: { project: 'jenfu-platform-prod', service: 'admin.googleapis.com', disable_on_destroy: false } } },
+    { address: 'google_project_service.admin_directory', change: { actions: ['create'], after: { project: 'jenfu-platform-prod', service: 'admin.googleapis.com', disable_on_destroy: false, deletion_policy: 'ABANDON' } } },
     { address: 'google_service_account.directory_dwd', change: { actions: ['create'] } },
     { address: 'google_service_account_iam_member.runtime_token_creator', change: { actions: ['create'] } },
   ] }
@@ -63,4 +66,6 @@ test('DEV-049 signer plan gate rejects target and provenance drift', () => {
   assert.throws(() => evaluateDev049ManagedDirectoryPlan({ plan: disabledRuntime, profile, sourceRevision, foundationManifestSha256 }), /DEV049_PLAN_RUNTIME_READBACK_INVALID/u)
   const wrongService = plan(); wrongService.resource_changes[1].change.after.service = 'admin.googleapis.example'
   assert.throws(() => evaluateDev049ManagedDirectoryPlan({ plan: wrongService, profile, sourceRevision, foundationManifestSha256 }), /DEV049_PLAN_ADMIN_SERVICE_INVALID/u)
+  const unsafeDeletion = plan(); unsafeDeletion.resource_changes[1].change.after.deletion_policy = 'DELETE'
+  assert.throws(() => evaluateDev049ManagedDirectoryPlan({ plan: unsafeDeletion, profile, sourceRevision, foundationManifestSha256 }), /DEV049_PLAN_ADMIN_SERVICE_INVALID/u)
 })

@@ -79,14 +79,26 @@ export function evaluateDev049ManagedDirectoryPlan({ plan, profile, sourceRevisi
   const provenanceChange = changes.get('terraform_data.provenance')?.change
   if (provenanceChange?.actions?.[0] === 'update') {
     const legacy = provenanceChange.before?.input
-    const { required_service: _requiredService, source_revision: _sourceRevision, ...stable } = expectedProvenance
-    if (!H40.test(legacy?.source_revision ?? '') || !sameRecord(legacy, { ...stable, source_revision: legacy.source_revision })) {
+    const {
+      required_service: _requiredService,
+      source_revision: _sourceRevision,
+      foundation_manifest_sha256: _foundationManifestSha256,
+      ...stable
+    } = expectedProvenance
+    if (!H40.test(legacy?.source_revision ?? '') || !H64.test(legacy?.foundation_manifest_sha256 ?? '')
+      || !sameRecord(legacy, {
+        ...stable,
+        source_revision: legacy.source_revision,
+        foundation_manifest_sha256: legacy.foundation_manifest_sha256,
+      })) {
       fail('DEV049_PLAN_PROVENANCE_UPDATE_INVALID')
     }
   }
   const adminService = changes.get('google_project_service.admin_directory')?.change?.after
   if (adminService?.project !== profile.target.projectId || adminService?.service !== profile.target.requiredService
-    || adminService?.disable_on_destroy !== false) fail('DEV049_PLAN_ADMIN_SERVICE_INVALID')
+    || adminService?.disable_on_destroy !== false || adminService?.deletion_policy !== 'ABANDON') {
+    fail('DEV049_PLAN_ADMIN_SERVICE_INVALID')
+  }
   return {
     schemaVersion: 'jenfu.dev049.managed-directory-plan-gate.v1',
     status: 'PASS',
