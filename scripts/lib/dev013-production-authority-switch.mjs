@@ -5,6 +5,18 @@ const H64 = /^[a-f0-9]{64}$/u
 const SAFE_ID = /^[A-Za-z0-9._:@/-]+$/u
 const SOURCES = new Set(['legacy_authority', 'orgmaster_authority'])
 
+function isPositiveSafeInteger(value) {
+  return Number.isSafeInteger(value) && value > 0
+}
+
+function isLegacyAuthorityVersion(value) {
+  return isPositiveSafeInteger(value) && value % 2 === 1
+}
+
+function isOrgMasterAuthorityVersion(value) {
+  return isPositiveSafeInteger(value) && value % 2 === 0
+}
+
 export const DEV013_AUTHORITY_TARGET = Object.freeze({
   projectId: 'jenfu-platform-prod',
   region: 'asia-east1',
@@ -95,13 +107,21 @@ export function assertAuthorityOperation(value, { bytes, operationSha256, source
   if (!Array.isArray(value.expectedRoleCodes) || new Set(value.expectedRoleCodes).size !== value.expectedRoleCodes.length
     || value.expectedRoleCodes.some((role) => typeof role !== 'string' || !/^[a-z][a-z0-9_]{1,63}$/u.test(role))
     || canonicalize(value.expectedRoleCodes) !== canonicalize([...value.expectedRoleCodes].sort())) fail('DEV013_AUTHORITY_ROLE_SET_INVALID')
-  const transition = `${value.fromAuthoritySource}:${value.expectedAuthorityVersion}->${value.toAuthoritySource}:${value.expectedNextAuthorityVersion}`
   const allowed = value.operationKind === 'preflight'
-    ? new Set(['legacy_authority:1->legacy_authority:1', 'legacy_authority:3->legacy_authority:3'])
+    ? value.fromAuthoritySource === 'legacy_authority'
+      && value.toAuthoritySource === 'legacy_authority'
+      && isLegacyAuthorityVersion(value.expectedAuthorityVersion)
+      && value.expectedNextAuthorityVersion === value.expectedAuthorityVersion
     : value.operationKind === 'switch'
-      ? new Set(['legacy_authority:1->orgmaster_authority:2', 'legacy_authority:3->orgmaster_authority:4'])
-      : new Set(['orgmaster_authority:2->legacy_authority:3', 'orgmaster_authority:4->legacy_authority:5'])
-  if (!SOURCES.has(value.fromAuthoritySource) || !SOURCES.has(value.toAuthoritySource) || !allowed.has(transition)) fail('DEV013_AUTHORITY_TRANSITION_INVALID')
+      ? value.fromAuthoritySource === 'legacy_authority'
+        && value.toAuthoritySource === 'orgmaster_authority'
+        && isLegacyAuthorityVersion(value.expectedAuthorityVersion)
+        && value.expectedNextAuthorityVersion === value.expectedAuthorityVersion + 1
+      : value.fromAuthoritySource === 'orgmaster_authority'
+        && value.toAuthoritySource === 'legacy_authority'
+        && isOrgMasterAuthorityVersion(value.expectedAuthorityVersion)
+        && value.expectedNextAuthorityVersion === value.expectedAuthorityVersion + 1
+  if (!SOURCES.has(value.fromAuthoritySource) || !SOURCES.has(value.toAuthoritySource) || !allowed) fail('DEV013_AUTHORITY_TRANSITION_INVALID')
   if (value.operationKind === 'preflight') {
     if (value.expectedAssignmentVersionId !== null || value.expectedRoleCodes.length !== 0) fail('DEV013_AUTHORITY_PREFLIGHT_INVALID')
   } else if (typeof value.expectedAssignmentVersionId !== 'string' || !SAFE_ID.test(value.expectedAssignmentVersionId)
@@ -121,30 +141,34 @@ function baseOperation({ operationKind, sourceRevision, deadlineAt }) {
   }
 }
 
+function versionBoundOperationId(base, expectedAuthorityVersion, expectedNextAuthorityVersion) {
+  return `${base.operationId}-v${expectedAuthorityVersion}-v${expectedNextAuthorityVersion}`
+}
+
 export function buildAuthorityOperation({ operationKind, sourceRevision, deadlineAt, evidence = null, expectedAuthorityVersion = 1 }) {
   const base = baseOperation({ operationKind, sourceRevision, deadlineAt })
   if (operationKind === 'preflight') {
-    if (![1, 3].includes(expectedAuthorityVersion)) fail('DEV013_AUTHORITY_OPERATION_BUILD_INPUT_INVALID')
-    return { ...base, fromAuthoritySource: 'legacy_authority', toAuthoritySource: 'legacy_authority', expectedAuthorityVersion, expectedNextAuthorityVersion: expectedAuthorityVersion, expectedAssignmentVersionId: null, expectedRoleCodes: [], reason: 'DEV-013 P_BOTH read-only Production authority preflight' }
+    if (!isLegacyAuthorityVersion(expectedAuthorityVersion)) fail('DEV013_AUTHORITY_OPERATION_BUILD_INPUT_INVALID')
+    return { ...base, operationId: versionBoundOperationId(base, expectedAuthorityVersion, expectedAuthorityVersion), fromAuthoritySource: 'legacy_authority', toAuthoritySource: 'legacy_authority', expectedAuthorityVersion, expectedNextAuthorityVersion: expectedAuthorityVersion, expectedAssignmentVersionId: null, expectedRoleCodes: [], reason: 'DEV-013 P_BOTH read-only Production authority preflight' }
   }
   if (operationKind === 'switch') {
     if (evidence?.schemaVersion !== 'jenfu.dev013.production-authority-preflight.v1' || evidence.sourceRevision !== sourceRevision
       || evidence.target?.projectId !== DEV013_AUTHORITY_TARGET.projectId || evidence.target?.database !== DEV013_AUTHORITY_TARGET.database
       || evidence.target?.applicationId !== DEV013_AUTHORITY_TARGET.applicationId || evidence.target?.employeeId !== DEV013_AUTHORITY_TARGET.employeeId
-      || evidence.state?.authoritySource !== 'legacy_authority' || ![1, 3].includes(evidence.state?.authorityVersion)
+      || evidence.state?.authoritySource !== 'legacy_authority' || !isLegacyAuthorityVersion(evidence.state?.authorityVersion)
       || typeof evidence.state?.assignmentVersionId !== 'string' || !Array.isArray(evidence.state?.roles) || !evidence.state.roles.includes('system_admin')
       || evidence.state?.projectionReady !== true || !Array.isArray(evidence.state?.projectedRoleCodes) || !evidence.state.projectedRoleCodes.includes('system_admin')
       || evidence.mutationCount !== 0 || evidence.status !== 'PASS') fail('DEV013_AUTHORITY_PREFLIGHT_EVIDENCE_INVALID')
-    return { ...base, fromAuthoritySource: 'legacy_authority', toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: evidence.state.authorityVersion, expectedNextAuthorityVersion: evidence.state.authorityVersion + 1, expectedAssignmentVersionId: evidence.state.assignmentVersionId, expectedRoleCodes: [...evidence.state.roles].sort(), reason: 'DEV-013 P_BOTH switch employee-shijie to OrgMaster authority' }
+    return { ...base, operationId: versionBoundOperationId(base, evidence.state.authorityVersion, evidence.state.authorityVersion + 1), fromAuthoritySource: 'legacy_authority', toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: evidence.state.authorityVersion, expectedNextAuthorityVersion: evidence.state.authorityVersion + 1, expectedAssignmentVersionId: evidence.state.assignmentVersionId, expectedRoleCodes: [...evidence.state.roles].sort(), reason: 'DEV-013 P_BOTH switch employee-shijie to OrgMaster authority' }
   }
   if (operationKind === 'rollback') {
     if (evidence?.schemaVersion !== 'jenfu.dev013.production-authority-switch-receipt.v1' || evidence.sourceRevision !== sourceRevision
       || evidence.operationKind !== 'switch' || evidence.target?.projectId !== DEV013_AUTHORITY_TARGET.projectId || evidence.target?.database !== DEV013_AUTHORITY_TARGET.database
       || evidence.target?.applicationId !== DEV013_AUTHORITY_TARGET.applicationId || evidence.target?.employeeId !== DEV013_AUTHORITY_TARGET.employeeId
-      || evidence.transition?.toAuthoritySource !== 'orgmaster_authority' || ![2, 4].includes(evidence.transition?.toAuthorityVersion)
+      || evidence.transition?.toAuthoritySource !== 'orgmaster_authority' || !isOrgMasterAuthorityVersion(evidence.transition?.toAuthorityVersion)
       || typeof evidence.governance?.assignmentVersionId !== 'string' || !Array.isArray(evidence.governance?.roles) || !evidence.governance.roles.includes('system_admin')
       || evidence.databaseEffect !== 'APPLIED_ONCE' || evidence.replaySafe !== true || evidence.status !== 'PASS') fail('DEV013_AUTHORITY_SWITCH_EVIDENCE_INVALID')
-    return { ...base, fromAuthoritySource: 'orgmaster_authority', toAuthoritySource: 'legacy_authority', expectedAuthorityVersion: evidence.transition.toAuthorityVersion, expectedNextAuthorityVersion: evidence.transition.toAuthorityVersion + 1, expectedAssignmentVersionId: evidence.governance.assignmentVersionId, expectedRoleCodes: [...evidence.governance.roles].sort(), reason: 'DEV-013 P_BOTH rollback employee-shijie to legacy authority' }
+    return { ...base, operationId: versionBoundOperationId(base, evidence.transition.toAuthorityVersion, evidence.transition.toAuthorityVersion + 1), fromAuthoritySource: 'orgmaster_authority', toAuthoritySource: 'legacy_authority', expectedAuthorityVersion: evidence.transition.toAuthorityVersion, expectedNextAuthorityVersion: evidence.transition.toAuthorityVersion + 1, expectedAssignmentVersionId: evidence.governance.assignmentVersionId, expectedRoleCodes: [...evidence.governance.roles].sort(), reason: 'DEV-013 P_BOTH rollback employee-shijie to legacy authority' }
   }
   fail('DEV013_AUTHORITY_OPERATION_KIND_INVALID')
 }

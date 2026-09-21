@@ -91,6 +91,9 @@ test('operation manifest is source, target, employee, role-set and deadline boun
   const noSystemAdmin = { ...raw, expectedRoleCodes: ['rd'] }
   const encodedNoSystemAdmin = encode(noSystemAdmin)
   assert.throws(() => assertAuthorityOperation(noSystemAdmin, { bytes: encodedNoSystemAdmin.bytes, operationSha256: encodedNoSystemAdmin.hash, sourceRevision, now: baseNow }), /DEV013_AUTHORITY_BINDING_INVALID/u)
+  const skippedVersion = { ...raw, expectedNextAuthorityVersion: 4 }
+  const encodedSkippedVersion = encode(skippedVersion)
+  assert.throws(() => assertAuthorityOperation(skippedVersion, { bytes: encodedSkippedVersion.bytes, operationSha256: encodedSkippedVersion.hash, sourceRevision, now: baseNow }), /DEV013_AUTHORITY_TRANSITION_INVALID/u)
 })
 
 test('manifest builder derives switch and rollback bindings only from matching immutable evidence', () => {
@@ -110,6 +113,14 @@ test('manifest builder derives switch and rollback bindings only from matching i
   const retryRollback = buildAuthorityOperation({ operationKind: 'rollback', sourceRevision, deadlineAt: '2026-09-21T03:00:00.000Z', evidence: { ...switchReceipt, transition: { toAuthoritySource: 'orgmaster_authority', toAuthorityVersion: 4 } } })
   assert.equal(retryRollback.expectedAuthorityVersion, 4)
   assert.equal(retryRollback.expectedNextAuthorityVersion, 5)
+  const secondRetryPreflight = { ...preflight, state: { ...preflight.state, authorityVersion: 5 } }
+  const secondRetrySwitch = buildAuthorityOperation({ operationKind: 'switch', sourceRevision, deadlineAt: '2026-09-21T03:00:00.000Z', evidence: secondRetryPreflight })
+  assert.equal(secondRetrySwitch.expectedAuthorityVersion, 5)
+  assert.equal(secondRetrySwitch.expectedNextAuthorityVersion, 6)
+  assert.match(secondRetrySwitch.operationId, /-v5-v6$/u)
+  const secondRetryRollback = buildAuthorityOperation({ operationKind: 'rollback', sourceRevision, deadlineAt: '2026-09-21T03:00:00.000Z', evidence: { ...switchReceipt, transition: { toAuthoritySource: 'orgmaster_authority', toAuthorityVersion: 6 } } })
+  assert.equal(secondRetryRollback.expectedAuthorityVersion, 6)
+  assert.equal(secondRetryRollback.expectedNextAuthorityVersion, 7)
 })
 
 test('operator profile and image build stay inside the exact one-time job boundary', () => {
@@ -118,7 +129,7 @@ test('operator profile and image build stay inside the exact one-time job bounda
   assert.equal(profile.jobName, 'orgmaster-prod-dev013-p-both-employee-shijie')
   assert.equal(profile.serviceAccount, DEV013_AUTHORITY_TARGET.serviceAccount)
   assert.equal(profile.employeeId, 'employee-shijie')
-  assert.deepEqual(profile.allowedTransitions, ['legacy_authority:1->orgmaster_authority:2', 'orgmaster_authority:2->legacy_authority:3', 'legacy_authority:3->orgmaster_authority:4', 'orgmaster_authority:4->legacy_authority:5'])
+  assert.deepEqual(profile.allowedTransitions, ['legacy_authority:odd->legacy_authority:same_odd', 'legacy_authority:odd->orgmaster_authority:next_even', 'orgmaster_authority:even->legacy_authority:next_odd'])
   const dockerfile = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/authority-switch-runner.Dockerfile', import.meta.url), 'utf8')
   const cloudBuild = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/authority-switch-cloudbuild.yaml', import.meta.url), 'utf8')
   assert.match(dockerfile, /ENTRYPOINT \["node", "scripts\/dev013-production-authority-switch-runner\.mjs"\]/u)
@@ -171,5 +182,14 @@ test('post-rollback authority version can retry through the exact 3 to 4 transit
   const receipt = await executeAuthorityOperation({ database, operation, now: (() => { let tick = 0; return () => `2026-09-21T01:00:0${tick++}.000Z` })() })
   assert.equal(receipt.transition.fromAuthorityVersion, 3)
   assert.equal(receipt.transition.toAuthorityVersion, 4)
+  assert.deepEqual(receipt.governance.effectiveRoleCodes, ['rd', 'system_admin'])
+})
+
+test('repeated rollback versions remain monotonic and retryable', async () => {
+  const database = fakeDatabase({ initialVersion: 5 })
+  const operation = rawOperation('switch', 5)
+  const receipt = await executeAuthorityOperation({ database, operation, now: (() => { let tick = 0; return () => `2026-09-21T01:00:0${tick++}.000Z` })() })
+  assert.equal(receipt.transition.fromAuthorityVersion, 5)
+  assert.equal(receipt.transition.toAuthorityVersion, 6)
   assert.deepEqual(receipt.governance.effectiveRoleCodes, ['rd', 'system_admin'])
 })
