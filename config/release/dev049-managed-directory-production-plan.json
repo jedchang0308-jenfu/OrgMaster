@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "jenfu.dev049.managed-directory-plan-profile.v2",
+  "schemaVersion": "jenfu.dev049.managed-directory-plan-profile.v3",
   "profileId": "DEV049_MANAGED_DIRECTORY_PRODUCTION",
   "terraformRoot": "infra/google-cloud/dev-049-managed-directory",
   "state": {
@@ -13,17 +13,20 @@
     "operatorEmail": "jedchang0308@jenfu.com.tw",
     "runtimeServiceAccountId": "orgmaster-prod-runtime",
     "dwdServiceAccountId": "orgmaster-prod-directory-dwd",
-    "delegatedScope": "https://www.googleapis.com/auth/admin.directory.user.readonly"
+    "delegatedScope": "https://www.googleapis.com/auth/admin.directory.user.readonly",
+    "requiredService": "admin.googleapis.com"
   },
   "sourceRevisionMode": "git-head",
   "requiredConfigurationAddresses": {
     "data.google_service_account.runtime": { "mode": "data", "type": "google_service_account" },
+    "google_project_service.admin_directory": { "mode": "managed", "type": "google_project_service" },
     "terraform_data.provenance": { "mode": "managed", "type": "terraform_data" },
     "google_service_account.directory_dwd": { "mode": "managed", "type": "google_service_account" },
     "google_service_account_iam_member.runtime_token_creator": { "mode": "managed", "type": "google_service_account_iam_member" }
   },
   "requiredChangeAddresses": {
-    "terraform_data.provenance": ["create", "no-op"],
+    "terraform_data.provenance": ["create", "no-op", "update"],
+    "google_project_service.admin_directory": ["create", "no-op"],
     "google_service_account.directory_dwd": ["create", "no-op"],
     "google_service_account_iam_member.runtime_token_creator": ["create", "no-op"]
   },

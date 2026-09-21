@@ -20,11 +20,12 @@ function sameRecord(observed, expected) {
 
 export function evaluateDev049ManagedDirectoryPlan({ plan, profile, sourceRevision, foundationManifestSha256 }) {
   if (!H40.test(sourceRevision ?? '') || !H64.test(foundationManifestSha256 ?? '')) fail('DEV049_PLAN_BINDING_INVALID')
-  if (profile?.schemaVersion !== 'jenfu.dev049.managed-directory-plan-profile.v2'
+  if (profile?.schemaVersion !== 'jenfu.dev049.managed-directory-plan-profile.v3'
     || profile.profileId !== 'DEV049_MANAGED_DIRECTORY_PRODUCTION'
     || profile.terraformRoot !== 'infra/google-cloud/dev-049-managed-directory'
     || profile.state?.bucket !== 'tfstate-jenfu-platform-prod'
-    || profile.state?.prefix !== 'dev-049/managed-directory/default.tfstate') fail('DEV049_PLAN_PROFILE_INVALID')
+    || profile.state?.prefix !== 'dev-049/managed-directory/default.tfstate'
+    || profile.target?.requiredService !== 'admin.googleapis.com') fail('DEV049_PLAN_PROFILE_INVALID')
   const expectedVariables = {
     project_id: profile.target.projectId,
     project_number: profile.target.projectNumber,
@@ -72,8 +73,20 @@ export function evaluateDev049ManagedDirectoryPlan({ plan, profile, sourceRevisi
     operator_email: profile.target.operatorEmail,
     signer_email: `${profile.target.dwdServiceAccountId}@${profile.target.projectId}.iam.gserviceaccount.com`,
     delegated_scope: profile.target.delegatedScope,
+    required_service: profile.target.requiredService,
   }
   if (!sameRecord(provenance, expectedProvenance)) fail('DEV049_PLAN_PROVENANCE_INVALID')
+  const provenanceChange = changes.get('terraform_data.provenance')?.change
+  if (provenanceChange?.actions?.[0] === 'update') {
+    const legacy = provenanceChange.before?.input
+    const { required_service: _requiredService, source_revision: _sourceRevision, ...stable } = expectedProvenance
+    if (!H40.test(legacy?.source_revision ?? '') || !sameRecord(legacy, { ...stable, source_revision: legacy.source_revision })) {
+      fail('DEV049_PLAN_PROVENANCE_UPDATE_INVALID')
+    }
+  }
+  const adminService = changes.get('google_project_service.admin_directory')?.change?.after
+  if (adminService?.project !== profile.target.projectId || adminService?.service !== profile.target.requiredService
+    || adminService?.disable_on_destroy !== false) fail('DEV049_PLAN_ADMIN_SERVICE_INVALID')
   return {
     schemaVersion: 'jenfu.dev049.managed-directory-plan-gate.v1',
     status: 'PASS',

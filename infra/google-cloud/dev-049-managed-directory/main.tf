@@ -3,6 +3,16 @@ data "google_service_account" "runtime" {
   account_id = var.runtime_service_account_id
 }
 
+resource "google_project_service" "admin_directory" {
+  project            = var.project_id
+  service            = "admin.googleapis.com"
+  disable_on_destroy = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "terraform_data" "provenance" {
   input = {
     project_id                 = var.project_id
@@ -13,6 +23,7 @@ resource "terraform_data" "provenance" {
     operator_email             = var.operator_email
     signer_email               = "${var.dwd_service_account_id}@${var.project_id}.iam.gserviceaccount.com"
     delegated_scope            = "https://www.googleapis.com/auth/admin.directory.user.readonly"
+    required_service           = google_project_service.admin_directory.service
   }
 
   lifecycle {
