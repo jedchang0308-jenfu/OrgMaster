@@ -1,0 +1,175 @@
+{
+  "contract": "DEV-052",
+  "runner": "DEV-052-postgres-qc-v1",
+  "evidenceScope": "TASK_OWNED_LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-09-21T09:02:46.079Z",
+  "productionWrites": false,
+  "executedCaseCount": 3,
+  "sourceRevision": "699ffbede0a18979ed84c1038a4a8ee38caf5314",
+  "dirty": [
+    "M AGENTS.md",
+    " M config/release/dev040-orgmaster-independent-production-v3.json",
+    " M package.json",
+    " M scripts/dev040-deploy-production.mjs",
+    " M scripts/dev040-orgmaster-independent-release.test.mjs",
+    " M scripts/dev040-routine-release.test.mjs",
+    " M scripts/lib/dev012-owner-stage-executor.mjs",
+    " M scripts/lib/dev040-orgmaster-independent-release.mjs",
+    " M scripts/lib/dev040-routine-release.mjs",
+    " M scripts/qc-dev-047-postgres.mjs",
+    " M scripts/qc-dev-049-contract.mjs",
+    "?? db/migrations/016_dev014_managed_identity_lifecycle_contract.sql",
+    "?? dev-052/",
+    "?? infra/google-cloud/dev-040-production-release/.terraform/",
+    "?? scripts/qc-dev-052-contract.mjs"
+  ],
+  "serverVersion": "18.4",
+  "acceptedServerMajors": [
+    17,
+    18
+  ],
+  "migrations": [
+    {
+      "name": "001_dev004_orgmaster_app_sessions.sql",
+      "bytes": 2215,
+      "sha256": "536ac1e1cedcf67a1bb92dd8f19113a45790797dd07123d6a04baa876a14c79e"
+    },
+    {
+      "name": "002_dev006_orgmaster_persistence.sql",
+      "bytes": 5992,
+      "sha256": "10d71fbf556035b307c2b3997ad4e7499e9b3586dc60b351651af4b6973094da"
+    },
+    {
+      "name": "003_dev006_orgmaster_runtime_repository.sql",
+      "bytes": 11823,
+      "sha256": "2680c19df8f4bacddf53d5bfae55fb35658ff63f1e54de3f97727bd4bdd689ba"
+    },
+    {
+      "name": "004_dev040_active_principal_view.sql",
+      "bytes": 4594,
+      "sha256": "09591bddd33680bf584711884fb600ec996b356cff48ccfd1b6343c74a16f5b7"
+    },
+    {
+      "name": "005_dev005_entitlement_governance.sql",
+      "bytes": 41642,
+      "sha256": "cf5efbbe6ce29c9d6d8100961709d19ab90c1af79e31731608ae9a9dbf73a80d"
+    },
+    {
+      "name": "006_dev040_identity_admission_projection.sql",
+      "bytes": 5809,
+      "sha256": "0163c107446b0aeac4ef39b365fc57961133360cac1d9d3152be8e8c89eda3dd"
+    },
+    {
+      "name": "007_dev009_privileged_governance.sql",
+      "bytes": 11026,
+      "sha256": "4d77b8e62981bd67d97cb4c567e787873f43c187a3f23e50b9f670bde50e5c93"
+    },
+    {
+      "name": "008_dev002_portal_app_visibility.sql",
+      "bytes": 4913,
+      "sha256": "9fb17097e01994aa974766d30b60abfe800f5967c9bbcbeb7751231d62a69703"
+    },
+    {
+      "name": "009_dev039_application_entitlement_v2.sql",
+      "bytes": 6509,
+      "sha256": "d306d3242da919ff1fb52554785def319d06ca3f542a3b2b6cbf832164aea81c"
+    },
+    {
+      "name": "010_dev010_neutral_schema_boundary.sql",
+      "bytes": 14752,
+      "sha256": "081c6bc81e4565fae79302ac7be29f1999324d63f169bda7c6af1b581be49ff4"
+    },
+    {
+      "name": "011_dev046_workbench_list_width_preferences.sql",
+      "bytes": 1085,
+      "sha256": "a4370d5ae2d36efdfa8b6590d2241b2edaa696ad01c5ea7d8f6ab7d715eb0aaf"
+    },
+    {
+      "name": "012_dev047_managed_identity_bridge.sql",
+      "bytes": 63281,
+      "sha256": "ab18137f7cc8e3abc270bc67b5c93d765cddb8f48584f017eca52c24336c1680"
+    },
+    {
+      "name": "013_dev049_existing_google_primary_account_link.sql",
+      "bytes": 42753,
+      "sha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319"
+    },
+    {
+      "name": "014_dev050_orgmaster_session_admission.sql",
+      "bytes": 3699,
+      "sha256": "f39ea5eb7e9f4accbe66961fa73345b788aa609b8a7de658c416335311463867"
+    },
+    {
+      "name": "015_dev013_restore_runtime_session_dml.sql",
+      "bytes": 1330,
+      "sha256": "d3a17f752b89138f4d636d1b21ae5a69a5ae29dc64960c61307398d7a234cc08"
+    },
+    {
+      "name": "016_dev014_managed_identity_lifecycle_contract.sql",
+      "bytes": 3071,
+      "sha256": "447acb8ce030495cae20ac1d22be005ea265be75893676d165502c409c3db185"
+    }
+  ],
+  "checks": [
+    {
+      "id": "D52-01",
+      "label": "lifecycle producer publishes the exact v1 contract and manifest",
+      "status": "PASS",
+      "detail": {
+        "eventColumns": [
+          "event_id",
+          "employee_id",
+          "event_kind"
+        ],
+        "principalColumns": [
+          "event_id",
+          "principal_issuer",
+          "principal_subject"
+        ],
+        "contractVersion": "jenfu.orgmaster-contract.managed-identity-lifecycle.v1"
+      }
+    },
+    {
+      "id": "D52-02",
+      "label": "producer exposes only Platform events and preserves reserved principals behind the lifecycle barrier",
+      "status": "PASS",
+      "detail": {
+        "platformEvent": "b2c5414e-645a-44ad-8beb-2a0dd5d216ea",
+        "siblingEventCount": 0,
+        "reservedPrincipalCount": 1,
+        "activeProjectionCount": 0
+      }
+    },
+    {
+      "id": "D52-03",
+      "label": "only the Platform migrator can read lifecycle producer views",
+      "status": "PASS",
+      "detail": {
+        "leastPrivilege": true,
+        "directCoreReadDenied": true
+      }
+    }
+  ],
+  "firstFailure": null,
+  "source": {
+    "runnerSha256": "0b7fd3283d773c7fcbf863641f108c5596838b80fe200200f975bd9db1d6bb51",
+    "contractRunnerSha256": "c23757065cb83ef9fb40b7cd98bc2a86a1ca906356e6f808aa4179956dd0ecb7",
+    "fixtureSha256": "3c2c61e738635173199761c7dddf7549185de8f24ff0d0c53d613b01cdecad0d"
+  },
+  "runtime": {
+    "project": "C:\\VIBE CODING\\OrgMaster",
+    "purpose": "DEV-052 isolated PostgreSQL validation",
+    "port": 62285,
+    "postgresPid": 2540,
+    "owningProcessTree": "node:22436 -> postgres:2540",
+    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev052-qc-ARdZLE",
+    "interruptedBy": null,
+    "cleanup": {
+      "clientClosed": true,
+      "clusterStopped": true,
+      "portReleased": true,
+      "tempRemoved": true
+    }
+  }
+}

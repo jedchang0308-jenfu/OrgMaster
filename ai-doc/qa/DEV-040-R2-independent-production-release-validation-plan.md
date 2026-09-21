@@ -218,3 +218,22 @@ G2 recovery oracle：run `35307497175` 的owner migration receipt已證明012–
 | M15-10 | Completion join | fresh production-scope root、exact-source owner evidence、G1 re-attestation、G2 terminal與後續DEV-013 sequence hash-chain完整；browser/global logout/observation另依DEV-013 L4分母 |
 
 Local PASS只可增加M15-01～06的source／isolated證據；M15-07～10必須在有效的human production-scope authorization下，以fresh provider receipts與browser evidence判定。舊v1 root `DEV013-L4-AUTH-20260918-003`不得作v2 sequence root；source `8c89b442…`、runner digest `806dce6e…f783`與failed capsule不得重用。若target／resource／allowed／forbidden action／risk／expiry均未改變，source SHA改變本身不要求新的人類授權，但必須重建受影響的machine evidence。
+
+## 16. DEV-014 lifecycle producer contract remediation validation（2026-09-21，current）
+
+Failure oracle：Platform run `35579062204`／execution `platform-prod-migration-runner-8ztzn`在migration 006 prerequisite以SQLSTATE `55000`終止；未建立candidate、未切traffic。修復只能由OrgMaster owner migration 016先發布缺少的producer contract。
+
+| ID | Oracle | PASS |
+|---|---|---|
+| M16-01 | Immutable prefix | 001–015 path／version／source／applied hash逐欄不變 |
+| M16-02 | Contract shape | 兩view欄位、security barrier、Platform event filter與manifest version／signature exact |
+| M16-03 | Principal continuity | lifecycle barrier後仍由append-only reservation取得舊principal；不依賴active-only mapping |
+| M16-04 | Minimum ACL | 只有Platform migrator可讀contract；PUBLIC與三runtime拒絕；Platform migrator不能讀OrgMaster core |
+| M16-05 | Controlled append | 只有`014-PRODUCER-CONTRACT` exact payload接受15→16；ordinary、DEV-013、hash／runtime drift均拒絕 |
+| M16-06 | Runner provenance | fresh exact-source runner digest與APP_INFRA_IMAGE_ROTATION receipt相符；exact migration Job／DB／IAM login |
+| M16-07 | Stage order | raw migration receipt PASS前candidate=0；成功後readback ledgerCount=16，replay=0 applied |
+| M16-08 | Failure safety | 失敗維持前版traffic、清理own candidate、無down migration／人工SQL／service deletion |
+| M16-09 | Consumer join | fresh OrgMaster conformance綁source／artifact／contract；Platform 006／007其後PASS |
+| M16-10 | L4 completion | Platform／OrgMaster／AI-PDM browser、global logout與observation依DEV-014完整分母PASS |
+
+2026-09-21 local：`qc:dev-052:contract=PASS`、PostgreSQL 18.4 D52-01～03 PASS且runtime清理完整、`test:dev-040:r2=72／72`、abort 6／6、完整產品回歸875 PASS／1 skipped、client／server build及DB boundary PASS。M16-06～10仍須fresh Production授權與provider evidence；local PASS不宣稱migration已套用。

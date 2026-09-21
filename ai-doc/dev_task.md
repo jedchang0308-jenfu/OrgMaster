@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+> **2026-09-21 DEV-052／DEV-014 producer contract remediation（現行）**：Platform protected release run `35579062204` 在migration 006 prerequisite以SQLSTATE `55000`安全停止，candidate／traffic mutation=0。根因是OrgMaster 001–015未發布managed identity lifecycle兩個contract views與manifest。已新增forward-only migration 016、exact 15→16受控owner release、contract／PostgreSQL QC；不改data、runtime template或sibling core。Production套用仍需明確涵蓋OrgMaster 016的授權。權威文件：[DEV-052](specs/DEV-052-managed-identity-lifecycle-producer-contract.md)。
+
 > **2026-09-21 DEV-051／Platform DEV-013 P_BOTH（現行）**：Production password-only identity固定AAL1，不能降低產品入口的fresh AAL2條件；首次cutover因此改採具名Google Cloud release operator＋一次性exact Cloud Run Job，仍只呼叫既有CAS function。已新增source／SHA／deadline綁定的operation runner、evidence-derived manifest、one-time job／image boundary、zero-mutation preflight、`legacy:1→orgmaster:2`與`orgmaster:2→legacy:3`固定轉換、governance hash／active version／role-set readback、immutable receipt／outbox及byte-stable exact replay；targeted operator tests `6／6 PASS`。既有self-only UI targeted `28／28`、owner `63／63`、abort `6／6`、full `872 PASS／1 skipped`、build及DB boundary維持PASS。Production data scope已授權，但task-owned job create／execute／delete與operator image build是新增cloud resource範圍，需另行精確授權；不部署或切換OrgMaster service traffic。權威文件：[DEV-051](specs/DEV-051-single-employee-entitlement-authority-switch.md)。
 
 > **2026-09-18 DEV-013 Production L4 G2 recovery（現行）**：fresh exact-source run `35307497175` 已由owner Job成功追加012–014（`applied=3／replayed=11／ledgerCount=14`），但candidate smoke建立app-local session時，PostgreSQL以`permission denied for table app_sessions`拒絕；verify在activate前安全停止，terminal=`PRE_ACTIVATION_ABORTED`，正式traffic仍為`orgmaster-prod-bd2c2ccb8291 = 100%`，DB維持forward-applied。根因是migration 012的全表ACL收斂撤銷了migration 010授予的`orgmaster_core.app_sessions` runtime DML，013／014未恢復。DEV-040 §37現固定forward-only migration 015，只恢復OrgMaster runtime的`SELECT／INSERT／UPDATE／DELETE`並持續拒絕sibling／PUBLIC；profile與runner改為001–015，controlled append只接受精確012–015。不得人工GRANT、改已套migration或down migration。修正完成本地gates、commit／push與review後，須以新的exact OrgMaster revision取得fresh Production L4 authorization；本輪綁`8c89b442…`的root與failed capsule不可重用，尚未宣稱production完成。
@@ -94,6 +96,13 @@
 - 文件成熟度：DEV-047為`RD Implementation Complete / Local QA-QC Passed / CAPA Closed / Production Release Gated`。2026-09-16 已完成 task-owned PostgreSQL 001～012 與 A17～A22、target／cleanup 安全及結果可信修復；Google Admin仍擁有外部帳號生命週期，OrgMaster零provider write。
 
 ## 總任務清單
+
+- ◐ DEV-052 [修復點] [P0] [RD Implementation Complete／Architecture Finalized／Local QA-QC Passed／Production Migration Gated] Managed identity lifecycle producer contract補正
+  - 來源 ID：`Jenfu-Platform / DEV-014 / 014-PRODUCER-CONTRACT`；本地以DEV-052承接OrgMaster producer缺口。
+  - 結果：migration 016發布Platform-only lifecycle events/principals views與manifest；只有Platform migrator可直接讀contract，所有runtime與PUBLIC拒絕。
+  - 發布：受控模式只接受exact 001–015→016、runtime unchanged及source-matched runner rotation；成功後ordinary release固定001–016、零DDL。
+  - 證據：contract PASS、PostgreSQL 18.4 D52-01～03 PASS、owner release 72／72、abort 6／6、完整回歸875 PASS／1 skipped、雙build與DB boundary PASS；[DEV-052 spec](specs/DEV-052-managed-identity-lifecycle-producer-contract.md)。
+  - 計入交付：否；待review／merge、Production migration 016授權、owner release與Platform consumer L4完成。
 
 - ◐ DEV-051 [開發點] [本機產品完成／production service release gated] [P0] [RD Implementation Complete／Architecture Finalized／Local QA-QC Passed] AI-PDM 單一員工權限來源切換控制面
   - 來源 ID：`Jenfu-Platform / DEV-013 / P_BOTH`；本地任務只承接 OrgMaster owner control surface，不把 Platform DEV ID 宣稱為本地 ID。
@@ -604,6 +613,10 @@
   - 父任務：DEV-020、DEV-022、DEV-023
   - 證據：`npm test -- --run`（19 files／126 tests）、`npm run build`、localhost:5000 真實瀏覽器 1440×900／1024×768／390×844 UI QC；`output/playwright/orgmaster-mode-status-1440x900.png`、`output/playwright/orgmaster-mode-status-1024x768.png`、`output/playwright/orgmaster-mode-status-390x844.png`；右上角狀態 pill 可見、無重疊／水平溢出，並提供 `role=status`、ARIA label 與 title 說明。
   - 計入交付：否
+
+## DEV-052：Managed identity lifecycle producer contract補正
+
+來源：`Jenfu-Platform / DEV-014 / 014-PRODUCER-CONTRACT`。Platform migration 006要求OrgMaster lifecycle producer contract，但production 001–015 ledger沒有對應view與manifest。DEV-052以migration 016補上兩個security-barrier views、固定manifest與Platform migrator-only ACL，並新增exact 15→16受控owner release。架構、migration、驗證與Production gate以[DEV-052 spec](specs/DEV-052-managed-identity-lifecycle-producer-contract.md)為唯一直接契約。
 
 ## DEV-051：AI-PDM 單一員工權限來源切換控制面
 

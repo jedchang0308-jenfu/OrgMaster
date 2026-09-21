@@ -10,7 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const run = spawnSync(process.execPath, ['--test', 'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.test.mjs', 'scripts/dev049-production-admission.test.mjs', 'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev012-owner-prerequisite-producer.test.mjs'], { cwd: root, encoding: 'utf8' })
 process.stdout.write(run.stdout)
 process.stderr.write(run.stderr)
-if (run.status !== 0 || !/\bpass 70\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 72\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 
@@ -112,12 +112,14 @@ const dir = path.join(root, 'output', 'dev-040-r2', 's1b', runId)
 fs.mkdirSync(dir, { recursive: true })
 const files = [
   'ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md',
+  'ai-doc/specs/DEV-052-managed-identity-lifecycle-producer-contract.md',
   'ai-doc/qa/DEV-040-R2-independent-production-release-validation-plan.md',
   'ai-doc/dev_task.md', 'ai-doc/documentation_map.md',
   'config/release/dev040-orgmaster-independent-production-v3.json', 'config/release/dev040-production-release-infra-plan.json',
   'scripts/lib/dev040-orgmaster-independent-release.mjs', 'scripts/dev040-orgmaster-independent-release.mjs',
   'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.mjs',
   'scripts/dev040-production-migration-runner.test.mjs', 'scripts/qc-dev-040-r2-independent-release.mjs',
+  'scripts/qc-dev-047-postgres.mjs', 'scripts/qc-dev-052-contract.mjs',
   'scripts/lib/dev049-production-admission.mjs', 'scripts/dev049-production-admission-runner.mjs', 'scripts/dev049-production-admission.test.mjs',
   'scripts/lib/dev012-owner-release-runtime.mjs', 'scripts/lib/dev012-owner-stage-executor.mjs', 'scripts/lib/dev012-production-migration-runner.mjs',
   'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs',
