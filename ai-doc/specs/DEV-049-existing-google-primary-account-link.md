@@ -1,7 +1,7 @@
 # DEV-049：既有 Google 主帳號連結與員工編號登入
 
 文件成熟度：`RD Implementation Complete / Local QA-QC Passed / Architecture Contract Implemented 2026-09-17`
-交付狀態：`Local Development Complete / Production Gated`
+交付狀態：`Production Released / DWD + Admission Complete / Single-employee Link Correction Pending`
 風險：`High`（錯綁會影響自然人登入身分）
 查證基準：`codex/dev-049-existing-google-account@b839003c4f0bcebb282d02d927a0fb5e5c5f065b`＋owner receipt controlled tree `3d04c52fc648e2b061a13286b606e0f74a22e0c13fc07b15e3659aab18e8ba1a`
 
@@ -402,3 +402,29 @@ Owner release finalize會發布source／artifact-bound `jenfu.dev014.consumer-co
 Production fail-seeking evidence `orgmaster-prod-migration-runner-ct65x`在DB mutation前以`MIGRATION_GCS_METADATA_FAILED`停止，證明原跨bucket read設計與migrator最小權限衝突；Job已由finally回復baseline command／args。此own-bucket mirror amendment取代該未套用operation；後續registry缺口只由DEV-053 migration 017 fix-forward，不修改migration 001–016、IAM、service或runtime權限。
 
 使用思考習慣：#第一性原理、#證據基礎、#驗收閉環
+
+
+## 2026-09-22 Production execution readback
+
+Exact DWD signer／client／readonly scope已由Google Admin readback確認；包含本DEV與DEV-050／051的service source `4b512a4d48e306cef8d1371d7a354e50a3e8f05c`已由OrgMaster owner run `35587433590`發布到`orgmaster-prod-6e65121a2875`並承接100% traffic。OrgMaster admission R3與Platform admission R4均為`APPLIED`後`REPLAY`。Firebase `google.com` provider已啟用且Platform Google popup可回到`POST /api/auth/firebase/session`；現行403由Production managed-identity零狀態造成，而非provider、DWD或admission失敗。read-only execution `orgmaster-prod-migration-runner-bp5z9`以`BEGIN READ ONLY`證明`employee-shijie / JFS0005`的managed identity與alias均為0筆，Job隨後已回復baseline。剩餘整合證據先完成下方單一員工source-controlled correction，再執行DEV-014 LOGIN六案與AI-PDM C01／C02；部署或DB readback不代替browser acceptance。
+
+## 15. Production zero-state correction（2026-09-22）
+
+### 15.1 問題與決策
+
+Production provider、DWD、service、migration與admission皆已通過，但`employee-shijie / JFS0005`尚未建立managed identity。正常管理UI需要已成立的managed登入session，未連結員工則無法登入，形成一次性bootstrap循環。此缺口不能以人工SQL、provider write、放寬IAM或繞過登入解決。
+
+現行修正採`source-controlled owner-native operator`：`scripts/dev014-production-managed-link-runner.mjs`固定唯一target `employee-shijie / JFS0005 / jedchang0308@jenfu.com.tw`，先以runtime ADC及既有resource-level signer取得read-only Directory token，再呼叫migration 013既有security-definer candidate／read／confirm routines。它不新增DDL、不直接DML table、不改其他Employee或application。
+
+### 15.2 Fail-closed 與重播契約
+
+- 執行環境必須精確符合`jenfu-platform-prod / 9536592944 / asia-east1 / jenfu-platform-prod-pg / jenfu_prod / orgmaster-prod-runtime`，且`OWNER_SOURCE_REVISION`等於命令source revision。
+- 前置必須為active employee、employee number=`JFS0005`、registry revision非0、admission enabled及identity=`not_linked`；任何既有衝突或多筆alias均停止。
+- Directory先依primary Email讀取，再於candidate lease後依stable user ID重讀；customer、stable ID、primary Email或etag漂移均不confirm。
+- apply只經`lease_managed_identity_candidate_v1 → read_managed_identity_candidate_v1 → confirm_managed_identity_link_v1`；成功readback必須為`directory_linked_pending_auth`。若精確mapping已存在則只回傳`REPLAY`，不再寫入。
+- receipt只輸出employee target、revision、disposition與敏感識別值的SHA-256；不輸出Email、Directory stable ID、token或candidate capability。
+- 執行只暫時覆寫既有`orgmaster-prod-migration-runner`的immutable image、command、runtime service identity、runtime DB login與source binding；完成或失敗後都必須回復並readback既有migrator baseline，不建立新Job。
+
+### 15.3 Local gate與Production下一步
+
+新增5項operator tests；DEV-040 R2 release套件共82項PASS，abort 6／6、DB boundary PASS、full regression 875 PASS／1 skipped、production build PASS。Production apply尚未執行；須先把本分支merge到`master`並由owner-native release建立source-bound immutable migration-runner image，再以exact workspace revision執行apply＋replay。成功後才從normal entry重跑Google首次bind、JFS alias、session persistence、AI-PDM SSO及global logout。

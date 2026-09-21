@@ -7,10 +7,10 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const run = spawnSync(process.execPath, ['--test', 'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.test.mjs', 'scripts/dev049-production-admission.test.mjs', 'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev012-owner-prerequisite-producer.test.mjs'], { cwd: root, encoding: 'utf8' })
+const run = spawnSync(process.execPath, ['--test', 'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.test.mjs', 'scripts/dev049-production-admission.test.mjs', 'scripts/dev014-production-managed-link-runner.test.mjs', 'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev012-owner-prerequisite-producer.test.mjs'], { cwd: root, encoding: 'utf8' })
 process.stdout.write(run.stdout)
 process.stderr.write(run.stderr)
-if (run.status !== 0 || !/\bpass 74\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 82\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 
@@ -121,6 +121,7 @@ const files = [
   'scripts/dev040-production-migration-runner.test.mjs', 'scripts/qc-dev-040-r2-independent-release.mjs',
   'scripts/qc-dev-047-postgres.mjs', 'scripts/qc-dev-052-contract.mjs',
   'scripts/lib/dev049-production-admission.mjs', 'scripts/dev049-production-admission-runner.mjs', 'scripts/dev049-production-admission.test.mjs',
+  'scripts/dev014-production-managed-link-runner.mjs', 'scripts/dev014-production-managed-link-runner.test.mjs',
   'scripts/lib/dev012-owner-release-runtime.mjs', 'scripts/lib/dev012-owner-stage-executor.mjs', 'scripts/lib/dev012-production-migration-runner.mjs',
   'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs',
   'scripts/lib/dev040-routine-release.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev040-deploy-production.mjs',
