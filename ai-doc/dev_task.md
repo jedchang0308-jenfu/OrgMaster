@@ -696,7 +696,7 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 - 架構定案：assignment revision 與 file CAS 分離；typed repository DTO；receipt-first／actor-bound／stable-key readback；交易 current-state fence；pending hint→live bind→canonical principal 重查。
 - 不增 provider service、generic repository framework 或新 table；共用 DEV-047 QC runtime lifecycle。正式 migration／activation 只可依 DEV-040 §36～37 的受控012～015 transition；一般 app release維持001～015 unchanged、零DDL。
 - spec §11 S0→S5 已完成；新增 owner-only `jenfu.managed-login.v1` route、migration 013 routines、CAS receipt與lifecycle barrier，確切契約仍只在權威 spec 維護。
-- 2026-09-21 DEV-014 re-entry 已修正正式 Directory credential：canonical five-key config、runtime ADC→專用 signer IAM Credentials `signJwt`→read-only OAuth token，並加入只擁有 signer 與 signer-level Token Creator 的 app-owned Terraform；不建立或保存 service-account key。Owner-native production profile已納入五個Directory keys及兩個Platform caller keys，固定`enabled=true`、domain、signer與caller identity，只保留Workspace customer ID／delegated subject為外部輸入。Production signer／Admin Console DWD／runtime config／deploy仍受 DEV-014 protected release gate。
+- 2026-09-21 DEV-014 re-entry 已修正正式 Directory credential：canonical five-key config、runtime ADC→專用 signer IAM Credentials `signJwt`→read-only OAuth token，並加入只擁有 signer 與 signer-level Token Creator 的 app-owned Terraform；不建立或保存 service-account key。Google Admin read-only核對固定customer ID=`C015t4buc`及有效超級管理員delegated subject=`jedchang0308@jenfu.com.tw`；owner-native production profile固定五個Directory keys、兩個Platform caller keys與上述兩值。Production signer／Admin Console DWD／runtime config／deploy仍受 DEV-014 protected release gate。
 - P0／P1 設計待決項=0；RD本機實作完成。下一步不自動延伸至 migration apply、Google／cloud mutation、AI-PDM target、deploy或release。
 
 ### Spec Impact 與本輪證據
