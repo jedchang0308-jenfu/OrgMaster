@@ -146,6 +146,40 @@ test('OrgMaster owner prepare carries an active handoff value only through an ex
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })
 
+test('OrgMaster owner prepare accepts the exact DEV-014 managed-directory activation authority', () => {
+  const previousPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name))
+    .map((name) => [name, 'fixture-public-value']))
+  previousPlainEnvironment.ORGMASTER_JENFU_SSO_HANDOFF_MODE = 'on'
+  const plainEnvironment = resolvePlainEnvironment(profile, previousPlainEnvironment, {})
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment, secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  const activation = {
+    kind: 'MANAGED_DIRECTORY_RUNTIME_ACTIVATION',
+    addedPlainEnvironmentNames: [
+      'ORGMASTER_MANAGED_IDENTITY_ENABLED',
+      'ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID',
+      'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN',
+      'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
+      'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
+      'ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL',
+      'ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT',
+    ],
+    directoryScope: 'https://www.googleapis.com/auth/admin.directory.user.readonly',
+  }
+  fixture.intent.baselineIntentRef = ref('baseline-release-intent')
+  fixture.values.authorization = { ...fixture.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-LOGIN', activation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-LOGIN', activation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  delete fixture.values.readiness.sequenceRoot
+  delete fixture.values.readiness.sequenceStep
+  delete fixture.values.readiness.previousControlledEnvironment
+  delete fixture.values.readiness.controlledEnvironment
+  delete fixture.values.readiness.transition
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'DEV014_MANAGED_DIRECTORY_ACTIVATION')
+  fixture.values.readiness.activation = { ...activation, directoryScope: 'https://www.googleapis.com/auth/admin.directory.user' }
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+})
+
 test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   const source = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/workload-identity.tf', import.meta.url), 'utf8')
   const displayName = source.match(/display_name\s*=\s*"([^"]+)"/u)?.[1]
