@@ -1,6 +1,6 @@
 # DEV-053：Managed identity invalidation application registration 補正
 
-狀態：`RD Implementation Complete / Architecture Finalized / Local QA-QC Passed / Production Migration Gated`
+狀態：`Production Migration + Admission Complete / DEV-014 Provider L4 Pending`
 
 來源：`Jenfu-Platform / DEV-014 / 014-APPLICATION-REGISTRATION`。本地 DEV-053 只承接 OrgMaster owner 的 invalidation consumer registry，不把 Platform 的 DEV ID 宣稱為 OrgMaster native task。
 
@@ -35,3 +35,8 @@
 Production 完成條件：migration 017 APPLIED＋REPLAY、三份 owner conformance attestation、OrgMaster admission APPLIED＋REPLAY、Platform admission APPLIED＋REPLAY、Production L4、global logout／session refresh、觀察及 task-owned surface／runtime cleanup。
 
 Local validation（2026-09-21）：contract PASS；PostgreSQL 18.4 D53-01～03 PASS且task-owned runtime完整清理；release 77／77、abort 6／6、full regression 875 PASS／1 skipped、client／server build與DB boundary PASS。所有local evidence均為productionWrites=false。
+
+
+## 2026-09-22 Production execution readback
+
+Migration 017 receipt綁source `eacf44dc2341e18a1a3e8c25b65810e090f8d1f7`，首次`applied=1／replayed=16／ledgerCount=17`，重播`applied=0／replayed=17`；兩次boundary與`jenfu_dev／jenfu_stg`cross-database denial均PASS。OrgMaster admission R3 required set精確為`ai-pdm／orgmaster／platform`並完成`APPLIED`＋`REPLAY`；Platform R4亦完成`APPLIED`＋`REPLAY`。只剩DEV-014 provider browser L4，不再重跑017或admission。

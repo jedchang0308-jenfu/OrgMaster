@@ -1,6 +1,6 @@
 # DEV-052：Managed identity lifecycle producer contract 補正
 
-狀態：`RD Implementation Complete / Architecture Finalized / Local QA-QC Passed / Production Migration Gated`
+狀態：`Production Migration + Owner Release Complete / DEV-014 Provider L4 Pending`
 
 來源：`Jenfu-Platform / DEV-014 / 014-PRODUCER-CONTRACT`
 
@@ -79,3 +79,8 @@ Readiness與authorization均須綁定`DEV-014 / 014-PRODUCER-CONTRACT`及下列e
 根因是migration profile已擴成001–016，但`dev040-production-migration-runner.mjs`的`TARGET.entryCount`仍為15；此外owner-stage forward receipt validator仍只接受DEV-013的15-row receipt。修正固定runner為16，並依prepare所證明的release mode區分receipt：DEV-013維持`ledgerCount=15／applied=0..4`，DEV-014 remediation只接受`ledgerCount=16／applied=0..1／replayed=16-applied`。新增測試直接比較runner entry count與正式profile entries，避免日後再次只更新profile。Fresh source、immutable runner及APP_INFRA rotation完成後才可重試；失敗capsule不得重用。禁止人工SQL、改已套migration、down migration、擴張IAM、service deletion或sibling資料變更。
 
 使用思考習慣：#第一性原理、#證據基礎、#驗收閉環
+
+
+## 2026-09-22 Production execution readback
+
+Migration 016已由source-bound owner release套用；run `35587433590`以source `4b512a4d48e306cef8d1371d7a354e50a3e8f05c`完成十階段並啟用`orgmaster-prod-6e65121a2875`。Platform 006／007、consumer conformance與雙admission其後均完成。DEV-052 producer contract已交付；DEV-014整體仍待provider browser L4。

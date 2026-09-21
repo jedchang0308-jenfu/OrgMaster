@@ -1,7 +1,7 @@
 # DEV-051：AI-PDM 單一員工權限來源切換控制面
 
 文件成熟度：`RD Implementation Complete / Architecture Finalized 2026-09-20`
-交付狀態：`Local QA-QC Passed / Production One-Time Operator Job Gated`
+交付狀態：`Production Complete / Authority Switch + AI-PDM L4 + Global Logout PASS`
 風險：`High`（Production 授權來源、特權 principal、session refresh）
 來源任務：`Jenfu-Platform / DEV-013 / P_BOTH`
 
@@ -121,3 +121,8 @@ Targeted tests證明 self-only、fresh AAL2、active published system_admin＋cr
 - Platform／AI-PDM Production L4 browser固定 cases、global logout與觀察窗通過。
 - Platform DEV-013 completion receipt hard-join exact OrgMaster source、authority receipt與browser evidence。
 - 任一失敗都留下可重播或回切的明確狀態；未確認事項不得標完成。
+
+
+## 2026-09-22 Production execution readback
+
+一次性operator已完成`employee-shijie / ai-pdm`切換並保留replayable receipt／outbox；final authority readback為`orgmaster_authority:6`。Platform→AI-PDM normal entry、assertion TTL後持續登入、`accounts.lifecycle.manage`、`settings.admin_matrix`、權限API及global logout後401均PASS，DEV-013 completion為22／22；task-owned Jobs與browser surfaces已清理。
