@@ -149,7 +149,14 @@
       "VITE_JENFU_FIREBASE_PROJECT_ID",
       "VITE_JENFU_FIREBASE_APP_ID",
       "ORGMASTER_JENFU_SSO_HANDOFF_MODE",
-      "ORGMASTER_JENFU_SSO_BROKER_ORIGIN"
+      "ORGMASTER_JENFU_SSO_BROKER_ORIGIN",
+      "ORGMASTER_MANAGED_IDENTITY_ENABLED",
+      "ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID",
+      "ORGMASTER_GOOGLE_DIRECTORY_DOMAIN",
+      "ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT",
+      "ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL",
+      "ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL",
+      "ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT"
     ],
     "requiredSecretNames": [
       "ORGMASTER_POSTGRES_URL",
@@ -174,7 +181,12 @@
       "JENFU_IDENTITY_AUDIENCE": "jenfu-platform-prod",
       "VITE_JENFU_FIREBASE_AUTH_DOMAIN": "jenfu-platform-prod.firebaseapp.com",
       "VITE_JENFU_FIREBASE_PROJECT_ID": "jenfu-platform-prod",
-      "ORGMASTER_JENFU_SSO_BROKER_ORIGIN": "https://jenfu-platform-prod-9536592944.asia-east1.run.app"
+      "ORGMASTER_JENFU_SSO_BROKER_ORIGIN": "https://jenfu-platform-prod-9536592944.asia-east1.run.app",
+      "ORGMASTER_MANAGED_IDENTITY_ENABLED": "true",
+      "ORGMASTER_GOOGLE_DIRECTORY_DOMAIN": "jenfu.com.tw",
+      "ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL": "orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com",
+      "ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL": "platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com",
+      "ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT": "101029748006912113815"
     },
     "controlledValues": {
       "ORGMASTER_JENFU_SSO_HANDOFF_MODE": {

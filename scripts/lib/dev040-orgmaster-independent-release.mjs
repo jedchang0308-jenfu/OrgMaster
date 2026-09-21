@@ -12,6 +12,10 @@ const REQUIRED_PLAIN_ENV = [
   'VITE_JENFU_FIREBASE_API_KEY', 'VITE_JENFU_FIREBASE_AUTH_DOMAIN',
   'VITE_JENFU_FIREBASE_PROJECT_ID', 'VITE_JENFU_FIREBASE_APP_ID',
   'ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN',
+  'ORGMASTER_MANAGED_IDENTITY_ENABLED', 'ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID',
+  'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN', 'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
+  'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
+  'ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL', 'ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT',
 ]
 const REQUIRED_SECRET_ENV = ['ORGMASTER_POSTGRES_URL', 'ORGMASTER_SESSION_HASH_PEPPER']
 const PRODUCTION_MIGRATION_PATHS = [
@@ -79,6 +83,11 @@ export function assertDev040V3Profile(profile, n1c) {
     || fixed.JENFU_FIREBASE_PROJECT_ID !== target.projectId || fixed.JENFU_IDENTITY_ISSUER !== `https://securetoken.google.com/${target.projectId}` || fixed.JENFU_IDENTITY_AUDIENCE !== target.projectId
     || fixed.VITE_JENFU_FIREBASE_PROJECT_ID !== target.projectId
     || fixed.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== 'https://jenfu-platform-prod-9536592944.asia-east1.run.app'
+    || fixed.ORGMASTER_MANAGED_IDENTITY_ENABLED !== 'true'
+    || fixed.ORGMASTER_GOOGLE_DIRECTORY_DOMAIN !== 'jenfu.com.tw'
+    || fixed.ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL !== 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com'
+    || fixed.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL !== 'platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com'
+    || fixed.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT !== '101029748006912113815'
     || profile.environment.candidateOriginEnvironmentName !== 'ORGMASTER_RELEASE_CANDIDATE_ORIGIN') fail('ENVIRONMENT_VALUE_DRIFT')
   if (JSON.stringify(profile.environment.controlledValues) !== JSON.stringify({ ORGMASTER_JENFU_SSO_HANDOFF_MODE: { defaultValue: 'off', allowedValues: ['off', 'on'] } })) fail('ENVIRONMENT_VALUE_DRIFT')
   if (profile.environment.allowedSecretIds?.ORGMASTER_POSTGRES_URL !== 'orgmaster-prod-postgres-url' || profile.environment.allowedSecretIds?.ORGMASTER_SESSION_HASH_PEPPER !== 'orgmaster-prod-session-pepper' || profile.environment.numericVersionsRequired !== true) fail('SECRET_BOUNDARY_DRIFT')
