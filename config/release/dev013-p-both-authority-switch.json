@@ -16,10 +16,9 @@
   "cloudBuildConfig": "infra/google-cloud/dev-040-production-release/authority-switch-cloudbuild.yaml",
   "actor": "jedchang0308@jenfu.com.tw",
   "allowedTransitions": [
-    "legacy_authority:1->orgmaster_authority:2",
-    "orgmaster_authority:2->legacy_authority:3",
-    "legacy_authority:3->orgmaster_authority:4",
-    "orgmaster_authority:4->legacy_authority:5"
+    "legacy_authority:odd->legacy_authority:same_odd",
+    "legacy_authority:odd->orgmaster_authority:next_even",
+    "orgmaster_authority:even->legacy_authority:next_odd"
   ],
   "operationPrefix": "source/production-data/dev013/p-both/employee-shijie/",
   "receiptPrefix": "receipts/releases/DEV013-P-BOTH-EMPLOYEE-SHIJIE/",
