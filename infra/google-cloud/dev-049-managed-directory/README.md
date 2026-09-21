@@ -1,6 +1,6 @@
 # DEV-049 managed Directory production identity
 
-This state owns exactly one OrgMaster production DWD signer and the signer-level
+This state owns the required `admin.googleapis.com` project API, exactly one OrgMaster production DWD signer, and the signer-level
 `roles/iam.serviceAccountTokenCreator` binding for the existing
 `orgmaster-prod-runtime` identity. It does not own the Cloud Run service, project
 IAM, Secrets, service-account keys, Workspace users, or any sibling resource.
@@ -19,7 +19,9 @@ Initialize only with backend bucket `tfstate-jenfu-platform-prod` and prefix
 `dev-049/managed-directory/default.tfstate`. Supply the exact merged source
 revision and provider-readback foundation receipt SHA-256, export the saved plan
 to JSON, then pass it through `npm run gate:dev-049:managed-directory`. The gate
-requires the complete four-address configuration, exact enabled runtime data
-readback from `prior_state`, and the three managed change addresses. Managed
-actions may only be `create` or `no-op`; update, delete, replacement, missing
-configuration, and readback drift fail closed.
+requires the complete five-address configuration, exact enabled runtime data
+readback from `prior_state`, and the four managed change addresses. The API may
+only be enabled and has both `disable_on_destroy=false` and `prevent_destroy`;
+the provenance resource alone may update from the exact legacy shape to bind
+the corrective source. Delete, replacement, missing configuration, target drift,
+and readback drift fail closed.
