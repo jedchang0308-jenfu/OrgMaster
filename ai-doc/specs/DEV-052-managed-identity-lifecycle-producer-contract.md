@@ -83,4 +83,4 @@ Readiness與authorization均須綁定`DEV-014 / 014-PRODUCER-CONTRACT`及下列e
 
 ## 2026-09-22 Production execution readback
 
-Migration 016已由source-bound owner release套用；run `35587433590`以source `4b512a4d48e306cef8d1371d7a354e50a3e8f05c`完成十階段並啟用`orgmaster-prod-6e65121a2875`。Platform 006／007、consumer conformance與雙admission其後均完成。DEV-052 producer contract已交付；DEV-014整體仍待provider browser L4。
+Migration 016已由source-bound owner release套用；run `35587433590`以source `4b512a4d48e306cef8d1371d7a354e50a3e8f05c`完成十階段並啟用`orgmaster-prod-6e65121a2875`，後續canonical-first correction再由run `35666554078`發布current `orgmaster-prod-fda3dbbe8347`。Platform 006／007、current consumer conformance與雙admission均已完成；第二次bounded refresh的OrgMaster admission revision 5與Platform revision 6均enabled、apply＋replay PASS，affected identity／outbox=0。DEV-052 producer contract與Production owner交付已完成；DEV-014完整驗收仍待Free-only／無Gmail及negative／rate／race browser cells。

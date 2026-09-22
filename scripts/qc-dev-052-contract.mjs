@@ -9,7 +9,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const migrationPath = 'db/migrations/016_dev014_managed_identity_lifecycle_contract.sql'
 const migration = fs.readFileSync(path.join(root, migrationPath), 'utf8')
 const profile = JSON.parse(fs.readFileSync(path.join(root, 'config/release/dev040-orgmaster-independent-production-v3.json'), 'utf8'))
-const entry = profile.migrations.entries.at(-1)
+const entry = profile.migrations.entries.find(({ version }) => version === 'dev014-orgmaster-016')
+
+assert.ok(entry, 'production release profile must retain the DEV-052 migration entry')
 
 assert.match(migration, /CREATE VIEW orgmaster_contract\.v_managed_identity_lifecycle_events_v1/u)
 assert.match(migration, /CREATE VIEW orgmaster_contract\.v_managed_identity_lifecycle_event_principals_v1/u)

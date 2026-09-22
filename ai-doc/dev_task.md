@@ -1,6 +1,6 @@
 # OrgMaster 開發任務
 
-> **2026-09-22 DEV-048～053／DEV-014 Production current checkpoint（現行）**：DEV-048 nonprod與DEV-049～053 Production migration、DWD、managed link、authority switch及雙admission均完成。OrgMaster master `3588eb69ed0b47a588d120801d18adaa68dc27d2`已由owner run `35666554078`發布至`orgmaster-prod-fda3dbbe8347`（image `sha256:4fd3ae63692cdbda2b20ce0dfa865cea48de194440035e42217e32144f638618`、100% traffic）；Platform及AI-PDM current revisions亦已發布。Latest三份conformance已由OrgMaster admission revision 3與Platform revision 4 apply＋replay綁定。Workspace Google-first及`JFS0005`工號起手皆已完成Platform session、AI-PDM handoff／reload與管理權限，`PDM-W-G`及`PDM-W-E`具current evidence；global logout POST=200，OrgMaster及AI-PDM舊session protected requests均401。Google Admin現有7個有效使用者均同時具有Workspace Business Standard與Cloud Identity Free，沒有Free-only／無Gmail fixture；negative／rate／race required cells亦未齊，故DEV-014固定LOGIN分母仍為0／6 full cases；詳細證據見Platform `ai-doc/qc/qc-dev-014-production-l4-2026-09-22.md`。
+> **2026-09-22 DEV-048～053／DEV-014 Production current checkpoint（現行）**：DEV-048 nonprod與DEV-049～053 Production migration、DWD、managed link、authority switch及雙admission均完成。OrgMaster master `3588eb69ed0b47a588d120801d18adaa68dc27d2`已由owner run `35666554078`發布至`orgmaster-prod-fda3dbbe8347`（image `sha256:4fd3ae63692cdbda2b20ce0dfa865cea48de194440035e42217e32144f638618`、100% traffic）；Platform及AI-PDM current revisions亦已發布。Platform R3 fresh conformance已完成第二次bounded refresh：OrgMaster admission revision 5、Platform revision 6均enabled且apply＋replay PASS，affected identity／outbox=0，migration Jobs已還原。Workspace Google-first及`JFS0005`工號起手皆已完成Platform session、AI-PDM handoff／reload與管理權限；refresh後重驗仍不需第二次Google登入，`PDM-W-G`及`PDM-W-E`具current evidence。Global logout POST=200，OrgMaster及AI-PDM舊session protected requests均401。Google Admin現有7個有效使用者均同時具有Workspace Business Standard與Cloud Identity Free，沒有Free-only／無Gmail fixture；negative／rate／race required cells亦未齊，故DEV-014固定LOGIN分母仍為0／6 full cases；詳細證據見Platform `ai-doc/qc/qc-dev-014-production-l4-2026-09-22.md`。
 
 > **2026-09-21 DEV-053／DEV-014 application registration remediation（historical pre-recovery）**：Production admission operation在transaction內、attestation前以`DEV049_ACTIVE_CONSUMER_SET_MISMATCH`安全停止並回滾；正式治理資料使用`id`，migration 012 seed只讀`applicationId`。DEV-053以forward-only migration 017正規化雙欄、補齊`ai-pdm／orgmaster／platform`、保留既有support evidence，並在admission開啟時阻擋consumer-set drift。權威文件：[DEV-053](specs/DEV-053-invalidation-application-registration.md)。
 
@@ -108,12 +108,13 @@
   - 驗證：[DEV-053 spec](specs/DEV-053-invalidation-application-registration.md)；D53-01～03 PASS、release gates 77／77、abort 6／6、full regression 875 PASS／1 skipped、client／server build及DB boundary PASS。
   - 計入交付：是（migration 017與雙admission交付完成；DEV-014整體仍待provider L4）。
 
-- ◐ DEV-052 [修復點] [P0] [Production Migration + Owner Release Complete／Production L4 Pending] Managed identity lifecycle producer contract補正
+- ✓ DEV-052 [修復點] [P0] [RD／QA-QC／Production Complete] Managed identity lifecycle producer contract補正
   - 來源 ID：`Jenfu-Platform / DEV-014 / 014-PRODUCER-CONTRACT`；本地以DEV-052承接OrgMaster producer缺口。
   - 結果：migration 016發布Platform-only lifecycle events/principals views與manifest；只有Platform migrator可直接讀contract，所有runtime與PUBLIC拒絕。
   - 發布：exact 001–015→016、source-matched runner與owner release已完成；ordinary release基線現為完整001–017、零DDL。
   - 證據：contract PASS、PostgreSQL 18.4 D52-01～03 PASS、owner release 72／72、abort 6／6、完整回歸875 PASS／1 skipped、雙build與DB boundary PASS；[DEV-052 spec](specs/DEV-052-managed-identity-lifecycle-producer-contract.md)。
-  - 計入交付：是（migration 016、owner release與Platform consumer/admission交付完成；DEV-014整體仍待provider L4）。
+  - Production closure：Platform 006／007、fresh consumer conformance、OrgMaster admission revision 5／Platform revision 6 apply＋replay及refresh後normal-entry readback均PASS；本DEV不以父任務尚缺的Free-only／negative browser cells維持未完成。
+  - 計入交付：是；migration 016、owner release、Platform consumer/admission join與Production readback均完成。
 
 - ✓ DEV-051 [開發點] [Production authority switch + AI-PDM L4 Complete] [P0] [RD／QA-QC／Production Complete] AI-PDM 單一員工權限來源切換控制面
   - 來源 ID：`Jenfu-Platform / DEV-013 / P_BOTH`；本地任務只承接 OrgMaster owner control surface，不把 Platform DEV ID 宣稱為本地 ID。
