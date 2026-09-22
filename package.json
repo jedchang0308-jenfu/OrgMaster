@@ -87,7 +87,9 @@
     "test": "vitest run --exclude scripts/**/*.test.mjs --exclude tools/**/*.test.mjs",
     "preview": "vite preview",
     "qc:dev-053:contract": "node scripts/qc-dev-053-contract.mjs",
-    "qc:dev-053:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev053"
+    "qc:dev-053:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev053",
+    "qc:dev-054:contract": "node scripts/qc-dev-054-contract.mjs",
+    "qc:dev-054:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev054"
   },
   "dependencies": {
     "@dagrejs/dagre": "3.1.1",

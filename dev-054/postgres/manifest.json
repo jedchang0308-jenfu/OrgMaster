@@ -1,0 +1,200 @@
+{
+  "contract": "DEV-054",
+  "runner": "DEV-054-postgres-qc-v1",
+  "evidenceScope": "TASK_OWNED_LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-09-22T11:42:41.279Z",
+  "productionWrites": false,
+  "executedCaseCount": 5,
+  "sourceRevision": "7eff6cb188b422f120e4ca51aa2348b475609223",
+  "dirty": [
+    "M ai-doc/dev_task.md",
+    " M ai-doc/documentation_map.md",
+    " M config/release/dev040-orgmaster-independent-production-v3.json",
+    " M package.json",
+    " M scripts/dev040-orgmaster-independent-release.test.mjs",
+    " M scripts/dev040-production-migration-runner.mjs",
+    " M scripts/dev040-production-migration-runner.test.mjs",
+    " M scripts/dev040-routine-release.test.mjs",
+    " M scripts/lib/dev012-owner-stage-executor.mjs",
+    " M scripts/lib/dev040-orgmaster-independent-release.mjs",
+    " M scripts/lib/dev040-routine-release.mjs",
+    " M scripts/qc-dev-047-postgres.mjs",
+    "?? ai-doc/specs/DEV-054-employee-activation-contract.md",
+    "?? db/migrations/018_dev014_employee_activation_contract.sql",
+    "?? dev-054/",
+    "?? infra/google-cloud/dev-040-production-release/.terraform/",
+    "?? scripts/qc-dev-054-contract.mjs"
+  ],
+  "serverVersion": "18.4",
+  "acceptedServerMajors": [
+    17,
+    18
+  ],
+  "migrations": [
+    {
+      "name": "001_dev004_orgmaster_app_sessions.sql",
+      "bytes": 2218,
+      "sha256": "4537d51bd42a452b04f8641beb11588810ce9326075f8933b16e5ae37706d3bd"
+    },
+    {
+      "name": "002_dev006_orgmaster_persistence.sql",
+      "bytes": 5992,
+      "sha256": "10d71fbf556035b307c2b3997ad4e7499e9b3586dc60b351651af4b6973094da"
+    },
+    {
+      "name": "003_dev006_orgmaster_runtime_repository.sql",
+      "bytes": 11823,
+      "sha256": "2680c19df8f4bacddf53d5bfae55fb35658ff63f1e54de3f97727bd4bdd689ba"
+    },
+    {
+      "name": "004_dev040_active_principal_view.sql",
+      "bytes": 4594,
+      "sha256": "09591bddd33680bf584711884fb600ec996b356cff48ccfd1b6343c74a16f5b7"
+    },
+    {
+      "name": "005_dev005_entitlement_governance.sql",
+      "bytes": 41642,
+      "sha256": "cf5efbbe6ce29c9d6d8100961709d19ab90c1af79e31731608ae9a9dbf73a80d"
+    },
+    {
+      "name": "006_dev040_identity_admission_projection.sql",
+      "bytes": 5809,
+      "sha256": "0163c107446b0aeac4ef39b365fc57961133360cac1d9d3152be8e8c89eda3dd"
+    },
+    {
+      "name": "007_dev009_privileged_governance.sql",
+      "bytes": 11257,
+      "sha256": "f83db791135586a5213b5de0e63e8088a76e0ab37dcee77f6c7601fbe15a4fd9"
+    },
+    {
+      "name": "008_dev002_portal_app_visibility.sql",
+      "bytes": 5033,
+      "sha256": "d9651deeeb652fcc60526a8c8a073d2322b18f3031a8303f9bc842fe0c8d50b4"
+    },
+    {
+      "name": "009_dev039_application_entitlement_v2.sql",
+      "bytes": 6640,
+      "sha256": "1f729d12800701106a216da3b698ddaf4d0faa00a626c24ab0bbd2142ba3f573"
+    },
+    {
+      "name": "010_dev010_neutral_schema_boundary.sql",
+      "bytes": 15073,
+      "sha256": "9abe3008ac0cd9370079faf09de6d6b6d8204e6ee6d10716070541e4d2216af4"
+    },
+    {
+      "name": "011_dev046_workbench_list_width_preferences.sql",
+      "bytes": 1110,
+      "sha256": "40796e45e9c80bb9163091f101245e17531a3c94bbf7296368b2b387456c0e1c"
+    },
+    {
+      "name": "012_dev047_managed_identity_bridge.sql",
+      "bytes": 63328,
+      "sha256": "5e5b62cd8786d0b285dab19a5f0ca1f47471484851f3b736afea4b944c86ac08"
+    },
+    {
+      "name": "013_dev049_existing_google_primary_account_link.sql",
+      "bytes": 43185,
+      "sha256": "ee77ccb7cea50d64c754bfdfb96f59b7b26ac3ff25c7cc28e26fd65763f1ad00"
+    },
+    {
+      "name": "014_dev050_orgmaster_session_admission.sql",
+      "bytes": 3699,
+      "sha256": "f39ea5eb7e9f4accbe66961fa73345b788aa609b8a7de658c416335311463867"
+    },
+    {
+      "name": "015_dev013_restore_runtime_session_dml.sql",
+      "bytes": 1373,
+      "sha256": "70f6f9442ba653fcaf8988961aaad123244fe87ba09e35755e812c35a44ef8e8"
+    },
+    {
+      "name": "016_dev014_managed_identity_lifecycle_contract.sql",
+      "bytes": 3151,
+      "sha256": "9d88d2dca9d72d5b7f9950509452c3483ea34a27d1f6091f3b6f1f9eec77ab4b"
+    },
+    {
+      "name": "017_dev014_invalidation_application_registration.sql",
+      "bytes": 13488,
+      "sha256": "170ce6415959862f2f601c1f0e6ce72b6e43d30931e95ae6cb0f9cbc8d70c3fd"
+    },
+    {
+      "name": "018_dev014_employee_activation_contract.sql",
+      "bytes": 2046,
+      "sha256": "ce5ab0204fe39eca3bd3e123ecfe8e84ea6dc8f008c6429e7c8bdc77d13c2229"
+    }
+  ],
+  "checks": [
+    {
+      "id": "D54-01",
+      "label": "exact employee, revision and assignment permit activation without correction",
+      "status": "PASS",
+      "detail": {
+        "employeeId": "employee-inactive",
+        "assignment": "JFS0098",
+        "allowed": true,
+        "correctionRequired": false
+      }
+    },
+    {
+      "id": "D54-02",
+      "label": "unresolved one-time legacy employee exemption permits activation with correction",
+      "status": "PASS",
+      "detail": {
+        "employeeId": "employee-one",
+        "source": "employee_number_legacy_exemptions",
+        "allowed": true,
+        "correctionRequired": true
+      }
+    },
+    {
+      "id": "D54-03",
+      "label": "employee without assignment or unresolved exemption is rejected with correction",
+      "status": "PASS",
+      "detail": {
+        "employeeId": "employee-two",
+        "allowed": false,
+        "correctionRequired": true
+      }
+    },
+    {
+      "id": "D54-04",
+      "label": "workspace revision and employee drift fail closed without correction claim",
+      "status": "PASS",
+      "detail": {
+        "revisionDriftDenied": true,
+        "missingEmployeeDenied": true
+      }
+    },
+    {
+      "id": "D54-05",
+      "label": "activation routine is owned by migrator and executable only by OrgMaster runtime",
+      "status": "PASS",
+      "detail": {
+        "owner": "jenfu_orgmaster_migrator",
+        "orgmasterRuntimeExecute": true,
+        "siblingExecute": false
+      }
+    }
+  ],
+  "firstFailure": null,
+  "source": {
+    "runnerSha256": "6709b3b99ef2f7a99be32852b84cafae9df8468f2dfff055c21f42f1e1e5184c",
+    "contractRunnerSha256": "43a9c28a8e39afc33b7335828494249773b05de7eeaa0d0deb13290b9b492179",
+    "fixtureSha256": "3c2c61e738635173199761c7dddf7549185de8f24ff0d0c53d613b01cdecad0d"
+  },
+  "runtime": {
+    "project": "C:\\Users\\user\\.codex\\worktrees\\dev014-platform-release\\OrgMaster",
+    "purpose": "DEV-054 isolated PostgreSQL validation",
+    "port": 58388,
+    "postgresPid": 40728,
+    "owningProcessTree": "node:45360 -> postgres:40728",
+    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev054-qc-WnlKXV",
+    "interruptedBy": null,
+    "cleanup": {
+      "clientClosed": true,
+      "clusterStopped": true,
+      "portReleased": true,
+      "tempRemoved": true
+    }
+  }
+}

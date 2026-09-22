@@ -322,6 +322,13 @@
         "path": "db/migrations/017_dev014_invalidation_application_registration.sql",
         "sourceSha256": "9d34f7047b536251a3125ddf77a1fd6d9c47b24868e13f4cbebed6b89d676643",
         "appliedSha256": "26a9c6a272e23390b65580a63d92d23fe4d005b88539c06cb4a650bb15a17efe"
+      },
+      {
+        "order": 18,
+        "version": "dev014-orgmaster-018",
+        "path": "db/migrations/018_dev014_employee_activation_contract.sql",
+        "sourceSha256": "ce5ab0204fe39eca3bd3e123ecfe8e84ea6dc8f008c6429e7c8bdc77d13c2229",
+        "appliedSha256": "c90d1a36af1cfa454276eb2d194bf981173467552377e3b83a1bf87fc9f391e6"
       }
     ]
   },
