@@ -138,8 +138,9 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
       if (values.readiness?.slice === '014-LOGIN-FIXTURE-CONTRACT') {
         const expectedRemediation = {
           kind: 'LOGIN_FIXTURE_EMPLOYEE_ACTIVATION_CONTRACT',
-          migrationVersion: 'dev014-orgmaster-018',
+          migrationVersion: 'dev014-orgmaster-019',
           functionSignature: 'orgmaster_core.assert_employee_activation_v1(text,text)',
+          viewSignature: 'orgmaster_core.v_current_workspace_employees_v1',
           employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
         }
         if (!intent.baselineIntentRef
@@ -292,7 +293,7 @@ function assertMigrationReceipt(value, profile, intent, { historical = false, al
       const producerContractRemediation = forwardPlan?.releaseMode === 'DEV014_PRODUCER_CONTRACT_REMEDIATION'
       const applicationRegistrationRemediation = forwardPlan?.releaseMode === 'DEV014_APPLICATION_REGISTRATION_REMEDIATION'
       const activationContractRemediation = forwardPlan?.releaseMode === 'DEV014_ACTIVATION_CONTRACT_REMEDIATION'
-      const expectedLedgerCount = activationContractRemediation ? 18 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const expectedLedgerCount = activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
       const maximumAppliedCount = producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation ? 1 : 4
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
       if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
