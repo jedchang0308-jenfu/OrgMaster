@@ -16,6 +16,7 @@ COPY scripts/lib/dev014-consumer-conformance.mjs scripts/lib/dev014-consumer-con
 COPY scripts/dev040-production-migration-runner.mjs scripts/dev040-production-migration-runner.mjs
 COPY scripts/dev049-production-admission-runner.mjs scripts/dev049-production-admission-runner.mjs
 COPY scripts/dev014-production-managed-link-runner.mjs scripts/dev014-production-managed-link-runner.mjs
+COPY scripts/dev014-production-login-fixture-runner.mjs scripts/dev014-production-login-fixture-runner.mjs
 
 USER node
 ENV NODE_ENV=production
