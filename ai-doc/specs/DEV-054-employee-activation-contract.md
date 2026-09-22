@@ -1,5 +1,7 @@
 # DEV-054：DEV-014 Employee activation database contract correction
 
+> 2026-09-23 Production follow-up：governance v4 發布後的 activation 重播因 active workspace canonical revision 已前進而在寫入前以 `DEV014_LOGIN_FIXTURE_WORKSPACE_REVISION_CONFLICT` 停止。既有 fixture operator 的 `readback` phase 補回 `workspaceVersionId／workspaceRevision`，讓下一次 operation 使用 provider／database readback 的 fresh machine binding；此修正只有受控 readback，未新增 mutation phase、schema、IAM、Secret、service 或人工 SQL。
+
 狀態：`RD Implementation Verified / Production 018 Applied / 019 Fix-forward Gated`
 
 來源：`Jenfu-Platform / DEV-014 / zero-paid-seat fixture activation`。Production execution `orgmaster-prod-migration-runner-xqp5k` 在 transaction write 前以 PostgreSQL `42883` 停止，證明 service repository 已呼叫 `orgmaster_core.assert_employee_activation_v1(text,text)`，但正式 001～017 ledger 未建立該 routine。

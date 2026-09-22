@@ -128,6 +128,16 @@ test('links both fixed Directory users and redacts raw account identifiers', asy
   for (const fixture of FIXTURES) assert.ok(!JSON.stringify(result).includes(fixture.primaryEmail))
 })
 
+test('readback reports the exact active workspace revision without writing', async () => {
+  const db = database({ assigned: true })
+  const result = await executeFixturePhase({ database: db, operation: operation('readback'), now: new Date('2026-09-22T08:00:00.000Z') })
+  assert.deepEqual(result.map((entry) => ({ version: entry.workspaceVersionId, revision: entry.workspaceRevision })), [
+    { version: 'current-dev014', revision: base.workspaceRevision },
+    { version: 'current-dev014', revision: base.workspaceRevision },
+  ])
+  assert.ok(!db.calls.some((entry) => entry.sql.includes('write_active_persistence_artifacts_with_identity_fence_v1')))
+})
+
 test('fails closed on Directory drift before confirmation', async () => {
   const db = database({ active: true, assigned: true })
   let reads = 0
