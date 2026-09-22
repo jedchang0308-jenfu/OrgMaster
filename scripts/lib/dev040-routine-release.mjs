@@ -133,6 +133,38 @@ export function assertDev014ApplicationRegistrationAppend(before, after) {
   return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
 }
 
+export function assertDev014ActivationContractAppend(before, after) {
+  const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+  const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
+  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 17 || after.entries?.length !== 18) fail('DEV014_ACTIVATION_CONTRACT_APPEND_INVALID')
+  if (!same(before.entries, after.entries.slice(0, before.entries.length))) fail('DEV014_ACTIVATION_CONTRACT_APPEND_INVALID')
+  const appended = after.entries[17]
+  const expected = [
+    'dev014-orgmaster-018',
+    'db/migrations/018_dev014_employee_activation_contract.sql',
+    'ce5ab0204fe39eca3bd3e123ecfe8e84ea6dc8f008c6429e7c8bdc77d13c2229',
+    'c90d1a36af1cfa454276eb2d194bf981173467552377e3b83a1bf87fc9f391e6',
+  ]
+  if (!same([appended.version, appended.path, appended.sourceSha256, appended.appliedSha256], expected)) fail('DEV014_ACTIVATION_CONTRACT_APPEND_INVALID')
+  return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
+}
+
+export function assertDev014ActivationContractRemediation(readiness, authorization) {
+  const remediation = {
+    kind: 'LOGIN_FIXTURE_EMPLOYEE_ACTIVATION_CONTRACT',
+    migrationVersion: 'dev014-orgmaster-018',
+    functionSignature: 'orgmaster_core.assert_employee_activation_v1(text,text)',
+    employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
+  }
+  if (authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+    || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+    || authorization.devId !== 'DEV-014' || authorization.slice !== '014-LOGIN-FIXTURE-CONTRACT'
+    || readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+    || readiness.devId !== 'DEV-014' || readiness.slice !== '014-LOGIN-FIXTURE-CONTRACT'
+    || !same(authorization.remediation, remediation) || !same(readiness.remediation, remediation)) fail('DEV014_ACTIVATION_CONTRACT_AUTHORITY_INVALID')
+  return { releaseMode: 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', remediation }
+}
+
 export function assertDev014LoginFixtureCorrection(readiness, authorization) {
   const correction = {
     kind: 'LOGIN_FIXTURE_ACTIVATION_CONTRACT_CORRECTION',
@@ -309,6 +341,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
         ? assertDev014ProducerContractRemediation(values.readiness, values.authorization)
         : values.readiness?.slice === '014-APPLICATION-REGISTRATION'
           ? assertDev014ApplicationRegistrationRemediation(values.readiness, values.authorization)
+          : values.readiness?.slice === '014-LOGIN-FIXTURE-CONTRACT'
+            ? assertDev014ActivationContractRemediation(values.readiness, values.authorization)
           : values.readiness?.slice === '014-LOGIN-FIXTURE-CORRECTION'
             ? assertDev014LoginFixtureCorrection(values.readiness, values.authorization)
             : null
@@ -316,7 +350,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     : values.readiness?.devId === 'DEV-014'
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
-  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
@@ -337,6 +371,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
       ? assertDev014ContractMigrationAppend(baseline.bundle.value, current.bundle)
       : controlledTransition.releaseMode === 'DEV014_APPLICATION_REGISTRATION_REMEDIATION'
         ? assertDev014ApplicationRegistrationAppend(baseline.bundle.value, current.bundle)
+        : controlledTransition.releaseMode === 'DEV014_ACTIVATION_CONTRACT_REMEDIATION'
+          ? assertDev014ActivationContractAppend(baseline.bundle.value, current.bundle)
         : assertDev013ControlledMigrationAppend(baseline.bundle.value, current.bundle)
   }
   const infraChanged = !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)

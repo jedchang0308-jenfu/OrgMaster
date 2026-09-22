@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
@@ -168,7 +168,8 @@ test('DEV-014 producer contract remediation permits only migration 016 with unch
 })
 
 test('DEV-014 application registration remediation permits only migration 017 with unchanged runtime', async () => {
-  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 16) })
+  const migration017Bundle = prefixBundle(newBundle.bundle, 17)
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 16), currentBundle: { bundle: migration017Bundle } })
   const remediation = {
     kind: 'MANAGED_IDENTITY_INVALIDATION_APPLICATION_REGISTRATION',
     migrationVersion: 'dev014-orgmaster-017',
@@ -182,10 +183,33 @@ test('DEV-014 application registration remediation permits only migration 017 wi
   assert.equal(result.releaseMode, 'DEV014_APPLICATION_REGISTRATION_REMEDIATION')
   assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
   assert.equal(result.pendingMigrationCount, 1)
-  assert.equal(assertDev014ApplicationRegistrationAppend(prefixBundle(oldBundle.bundle, 16), newBundle.bundle).pendingMigrationCount, 1)
-  const drift = structuredClone(newBundle.bundle)
+  assert.equal(assertDev014ApplicationRegistrationAppend(prefixBundle(oldBundle.bundle, 16), migration017Bundle).pendingMigrationCount, 1)
+  const drift = structuredClone(migration017Bundle)
   drift.entries[16].appliedSha256 = '0'.repeat(64)
   assert.throws(() => assertDev014ApplicationRegistrationAppend(prefixBundle(oldBundle.bundle, 16), drift), /DEV014_APPLICATION_REGISTRATION_APPEND_INVALID/u)
+})
+
+test('DEV-014 activation contract remediation permits only migration 018 with unchanged runtime', async () => {
+  const baselineBundle = prefixBundle(oldBundle.bundle, 17)
+  const remediation = {
+    kind: 'LOGIN_FIXTURE_EMPLOYEE_ACTIVATION_CONTRACT',
+    migrationVersion: 'dev014-orgmaster-018',
+    functionSignature: 'orgmaster_core.assert_employee_activation_v1(text,text)',
+    employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
+  }
+  const h = harness({ baselineBundle })
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation }
+  attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV014_ACTIVATION_CONTRACT_REMEDIATION')
+  assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(result.pendingMigrationCount, 1)
+  assert.equal(assertDev014ActivationContractAppend(baselineBundle, newBundle.bundle).pendingMigrationCount, 1)
+  assert.equal(assertDev014ActivationContractRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
+  const drift = structuredClone(newBundle.bundle)
+  drift.entries[17].appliedSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev014ActivationContractAppend(baselineBundle, drift), /DEV014_ACTIVATION_CONTRACT_APPEND_INVALID/u)
 })
 
 test('DEV-014 login-fixture correction reuses only an exact prior-source infrastructure fingerprint', async () => {
