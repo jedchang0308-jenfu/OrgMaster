@@ -212,6 +212,15 @@ test('DEV-014 activation contract remediation permits only migration 018 with un
   assert.throws(() => assertDev014ActivationContractAppend(baselineBundle, drift), /DEV014_ACTIVATION_CONTRACT_APPEND_INVALID/u)
 })
 
+test('DEV-014 activation contract owner producer exposes the bounded release mode', () => {
+  const producer = fs.readFileSync('scripts/dev040-deploy-production.mjs', 'utf8')
+  assert.match(producer, /--dev014-activation-contract-remediation/u)
+  assert.match(producer, /slice: '014-LOGIN-FIXTURE-CONTRACT'/u)
+  assert.match(producer, /kind: 'LOGIN_FIXTURE_EMPLOYEE_ACTIVATION_CONTRACT'/u)
+  assert.match(producer, /migrationVersion: 'dev014-orgmaster-018'/u)
+  assert.match(producer, /functionSignature: 'orgmaster_core\.assert_employee_activation_v1\(text,text\)'/u)
+})
+
 test('DEV-014 login-fixture correction reuses only an exact prior-source infrastructure fingerprint', async () => {
   const correction = {
     kind: 'LOGIN_FIXTURE_ACTIVATION_CONTRACT_CORRECTION',
