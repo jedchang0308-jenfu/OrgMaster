@@ -38,6 +38,15 @@ resource "google_storage_bucket_iam_member" "migrator_receipts_viewer" {
 resource "google_cloud_run_v2_job" "migration" {
   count = var.incident_runtime_enabled ? 1 : 0
 
+  # The provider reports the client that last touched the Job. It is bookkeeping only;
+  # owner release commands must not turn that metadata into an infrastructure mutation.
+  lifecycle {
+    ignore_changes = [
+      client,
+      client_version,
+    ]
+  }
+
   project             = var.project_id
   location            = var.region
   name                = "orgmaster-prod-migration-runner"
