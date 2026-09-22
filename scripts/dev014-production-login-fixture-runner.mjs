@@ -303,15 +303,21 @@ async function readActiveArtifact(database, artifactKey, artifactKind, code) {
   }
 }
 
-async function activateFixtures(database, operation, now) {
+async function readCurrentWorkspace(database) {
   const manifest = await readActiveArtifact(database, 'orgmaster-workspace.v1.json', 'workspace-manifest', 'DEV014_LOGIN_FIXTURE_WORKSPACE_INVALID')
   const currentVersionId = String(manifest.payload.currentVersionId ?? '')
   if (!/^[A-Za-z0-9-]{1,80}$/u.test(currentVersionId)) fail('DEV014_LOGIN_FIXTURE_WORKSPACE_INVALID')
   const artifactKey = `orgmaster-versions/${currentVersionId}.json`
   const current = await readActiveArtifact(database, artifactKey, 'workspace-version', 'DEV014_LOGIN_FIXTURE_WORKSPACE_INVALID')
-  if (current.revision !== operation.workspaceRevision || current.payload.app !== 'OrgMaster' || current.payload.kind !== 'document'
+  if (current.payload.app !== 'OrgMaster' || current.payload.kind !== 'document'
     || !current.payload.state || typeof current.payload.state !== 'object'
-    || !Array.isArray(current.payload.state.employees)) fail('DEV014_LOGIN_FIXTURE_WORKSPACE_REVISION_CONFLICT')
+    || !Array.isArray(current.payload.state.employees)) fail('DEV014_LOGIN_FIXTURE_WORKSPACE_INVALID')
+  return { artifactKey, currentVersionId, current }
+}
+
+async function activateFixtures(database, operation, now) {
+  const { artifactKey, current } = await readCurrentWorkspace(database)
+  if (current.revision !== operation.workspaceRevision) fail('DEV014_LOGIN_FIXTURE_WORKSPACE_REVISION_CONFLICT')
 
   const employees = current.payload.state.employees
   const targets = FIXTURES.map((fixture) => {
@@ -370,12 +376,17 @@ export async function executeFixturePhase({ database, readDirectoryUser, operati
   if (Date.parse(operation.deadlineAt) <= now.getTime() || Date.parse(operation.deadlineAt) > now.getTime() + 8 * 60 * 60 * 1_000) fail('DEV014_LOGIN_FIXTURE_DEADLINE_INVALID')
   if (operation.phase === 'activate') return activateFixtures(database, operation, now)
   const results = []
+  const workspace = operation.phase === 'readback' ? await readCurrentWorkspace(database) : null
   for (const fixture of FIXTURES) {
     if (operation.phase === 'assign') results.push(await assignFixture(database, fixture, operation, now))
     else if (operation.phase === 'link') {
       if (!readDirectoryUser) fail('DEV014_LOGIN_FIXTURE_DIRECTORY_READER_REQUIRED')
       results.push(await linkFixture(database, readDirectoryUser, fixture, operation))
-    } else results.push(await readbackFixture(database, fixture))
+    } else results.push({
+      ...await readbackFixture(database, fixture),
+      workspaceVersionId: workspace.currentVersionId,
+      workspaceRevision: workspace.current.revision,
+    })
   }
   return results
 }
