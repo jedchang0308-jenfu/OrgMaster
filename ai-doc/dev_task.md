@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+> **2026-09-23 DEV-056 system permission catalog compatible sync（現行）**：DEV-014 Production fixture 指派已發布，但 Production governance 草稿缺少後續 managed identity／employee-number system permissions及 `orgmaster_admin` grants，使 managed identity GET 以 `IDENTITY_VIEW_REQUIRED` 回403。DEV-056在讀取V3 store時只對草稿補齊穩定catalog，內容衝突fail closed，有變更才走既有CAS並留下audit，重播不再寫入；active published snapshots、Employee／identity／application assignments均不改寫。另修正UI的V3版本標示與可重新啟用條件。Targeted 8、owner release 89、release QC 89、abort 6及產品回歸609項、DB boundary與正式client／server build均PASS（1項既有skipped）；沿用既有owner release，未新增schema、migration、IAM、Secret、service或人工SQL。來源：`Jenfu-Platform / DEV-014 / zero-paid-seat Production login fixtures`；權威文件：[DEV-056](specs/DEV-056-orgmaster-system-permission-catalog-sync.md)。
+
 > **2026-09-22 DEV-055 current projection contract correction（現行）**：DEV-014 fixture activation更新同一workspace version artifact的canonical SHA後，active governance、`employee-shijie` assignments、current principal mapping與OrgMaster session principal都仍存在，但歷史projection以治理凍結SHA join current workspace，使AI-PDM authority／effective roles及Portal visibility輸出空集合。Migration 020只替換三個`orgmaster_contract` read-only views，改以current principal mapping與current workspace manifest投影；歷史`access_governance`、欄位／型別／ACL、authority rows、assignments與Employee資料均不變。Local contract、DB boundary、owner-release 89 tests、production build及PostgreSQL 18.4 D55-01～05均PASS，隔離runtime已完整清理；現直接進入既有owner release。來源：`Jenfu-Platform / DEV-014 / zero-paid-seat fixture projection correction`；權威文件：[DEV-055](specs/DEV-055-current-projection-contract.md)。
 
 > **2026-09-22 DEV-054 activation／workspace revision contract correction（現行）**：forward-only migration 018 已由owner run `35724507823`套用，revision `orgmaster-prod-08e8673c3ef9`承接100% traffic。其後exact fixture activation `orgmaster-prod-migration-runner-sbjsk`在write前安全rollback；readback確認兩筆fixture仍為`inactive / not_linked`，員編`JFS9014／JFS9015`、registry revision `1`、admission均正確。根因是migration 012 view把`workspace_revision`取自batch source，而service／runner契約使用workspace artifact canonical SHA。現以forward-only migration 019只修正同batch current workspace view的revision語義，欄位／型別／ACL不變；本地contract、owner `87／87`及PostgreSQL 18.4 `D54-01～06`均PASS且runtime完整清理。待merge、source-bound runner rotation與owner 18→19 apply＋replay後重跑兩筆activation。
@@ -108,6 +110,11 @@
 - 文件成熟度：DEV-047為`RD Implementation Complete / Local QA-QC Passed / CAPA Closed / Production Release Gated`。2026-09-16 已完成 task-owned PostgreSQL 001～012 與 A17～A22、target／cleanup 安全及結果可信修復；Google Admin仍擁有外部帳號生命週期，OrgMaster零provider write。
 
 ## 總任務清單
+
+- ◐ DEV-056 [修復點] [P0] [Architecture Finalized／RD Implementation Complete／Local QA-QC Passed／Release In Progress] System permission catalog compatible sync
+  - 來源 ID：`Jenfu-Platform / DEV-014 / zero-paid-seat Production login fixtures`；本地以DEV-056承接OrgMaster治理目錄缺口。
+  - 只對V3草稿補齊穩定permissions與`orgmaster_admin` allow grants；衝突fail closed，重播no-op，既有發布快照與所有Employee assignments不改寫。
+  - 驗證與release：[DEV-056 spec](specs/DEV-056-orgmaster-system-permission-catalog-sync.md)。
 
 - ◐ DEV-055 [修復點] [P0] [Architecture Finalized／RD Implementation Complete／Local QA-QC Passed／Production Release In Progress] Current projection contract補正
   - 來源 ID：`Jenfu-Platform / DEV-014 / zero-paid-seat fixture projection correction`；本地以DEV-055承接OrgMaster current projection缺口。
