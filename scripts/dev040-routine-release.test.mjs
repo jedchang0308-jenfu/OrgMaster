@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
@@ -86,8 +86,8 @@ function transitionReadiness(h, { from, to, action }) {
   }
 }
 
-function attachForwardInfra(h) {
-  const core = { schemaVersion: 'jenfu.dev012.app-infra-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: newSource, projectId: profile.target.projectId, region: profile.target.region, migrationRunnerDigest: `${profile.artifact.migrationRunnerUri}@sha256:${'4'.repeat(64)}`, status: 'APPLIED', releaseAuthority: true }
+function attachForwardInfra(h, sourceRevision = newSource) {
+  const core = { schemaVersion: 'jenfu.dev012.app-infra-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision, projectId: profile.target.projectId, region: profile.target.region, migrationRunnerDigest: `${profile.artifact.migrationRunnerUri}@sha256:${'4'.repeat(64)}`, status: 'APPLIED', releaseAuthority: true }
   const value = { ...core, receiptSha256: sha256(canonicalize(core)) }
   const ref = h.put(`gs://${bucket}/receipts/fixture/forward-infra.json`, value)
   h.input.intent.infraReceiptRef = ref
@@ -186,6 +186,30 @@ test('DEV-014 application registration remediation permits only migration 017 wi
   const drift = structuredClone(newBundle.bundle)
   drift.entries[16].appliedSha256 = '0'.repeat(64)
   assert.throws(() => assertDev014ApplicationRegistrationAppend(prefixBundle(oldBundle.bundle, 16), drift), /DEV014_APPLICATION_REGISTRATION_APPEND_INVALID/u)
+})
+
+test('DEV-014 login-fixture correction reuses only an exact prior-source infrastructure fingerprint', async () => {
+  const correction = {
+    kind: 'LOGIN_FIXTURE_ACTIVATION_CONTRACT_CORRECTION',
+    applicationId: 'ai-pdm',
+    employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
+    infrastructureBinding: 'EXACT_RECEIPT_SOURCE_FINGERPRINT',
+  }
+  const h = harness()
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction }
+  attachForwardInfra(h, oldSource)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV014_LOGIN_FIXTURE_CORRECTION')
+  assert.equal(result.migrationDisposition, 'UNCHANGED_VERIFIED')
+  assert.equal(assertDev014LoginFixtureCorrection(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
+
+  const drift = harness()
+  drift.input.values.authorization = h.input.values.authorization
+  drift.input.values.readiness = h.input.values.readiness
+  attachForwardInfra(drift, oldSource)
+  drift.input.fingerprint = (_root, revision) => revision
+  await assert.rejects(() => verifyRoutineRelease(drift.input), /ROUTINE_INFRA_CHANGED/u)
 })
 
 test('DEV-013 controlled release can add the default-off guard to the historical production runtime', async () => {

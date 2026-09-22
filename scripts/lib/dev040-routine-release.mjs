@@ -133,6 +133,22 @@ export function assertDev014ApplicationRegistrationAppend(before, after) {
   return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
 }
 
+export function assertDev014LoginFixtureCorrection(readiness, authorization) {
+  const correction = {
+    kind: 'LOGIN_FIXTURE_ACTIVATION_CONTRACT_CORRECTION',
+    applicationId: 'ai-pdm',
+    employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
+    infrastructureBinding: 'EXACT_RECEIPT_SOURCE_FINGERPRINT',
+  }
+  if (authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+    || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+    || authorization.devId !== 'DEV-014' || authorization.slice !== '014-LOGIN-FIXTURE-CORRECTION'
+    || readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+    || readiness.devId !== 'DEV-014' || readiness.slice !== '014-LOGIN-FIXTURE-CORRECTION'
+    || !same(authorization.correction, correction) || !same(readiness.correction, correction)) fail('DEV014_LOGIN_FIXTURE_CORRECTION_AUTHORITY_INVALID')
+  return { releaseMode: 'DEV014_LOGIN_FIXTURE_CORRECTION', correction }
+}
+
 export function assertDev013MigrationInfraReceipt(value, profile, sourceRevision) {
   const { receiptSha256, ...core } = value ?? {}
   if (value?.schemaVersion !== 'jenfu.dev012.app-infra-receipt.v1' || value.ownerApplicationId !== profile.application.id || value.sourceRevision !== sourceRevision
@@ -293,14 +309,19 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
         ? assertDev014ProducerContractRemediation(values.readiness, values.authorization)
         : values.readiness?.slice === '014-APPLICATION-REGISTRATION'
           ? assertDev014ApplicationRegistrationRemediation(values.readiness, values.authorization)
-          : null
+          : values.readiness?.slice === '014-LOGIN-FIXTURE-CORRECTION'
+            ? assertDev014LoginFixtureCorrection(values.readiness, values.authorization)
+            : null
       : null
     : values.readiness?.devId === 'DEV-014'
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
   const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
-  if (controlledTransition?.releaseMode !== 'DEV014_MANAGED_DIRECTORY_ACTIVATION' && infrastructureSha256 !== infrastructureHash(root, baseline.intent.sourceRevision)) fail('ROUTINE_INFRA_CHANGED')
+  const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
+    ? values.infra?.sourceRevision
+    : baseline.intent.sourceRevision
+  if (controlledTransition?.releaseMode !== 'DEV014_MANAGED_DIRECTORY_ACTIVATION' && infrastructureSha256 !== infrastructureHash(root, infrastructureBaselineRevision)) fail('ROUTINE_INFRA_CHANGED')
   const revision = await transport.getRevision(profile, intent.previousRevision)
   transport.assertRevisionReady(profile, revision, baseline.deployment.value.artifactDigest, baseline.candidate.value.facts.cloudSqlProxyResolvedImage)
   if (controlledTransition) assertHistoricalRuntimeReadback(profile, baselineRuntime, revision)
@@ -325,6 +346,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   } else if (controlledTransition?.releaseMode === 'DEV014_MANAGED_DIRECTORY_ACTIVATION') {
     if (!infraChanged) fail('DEV014_RUNTIME_INFRA_RECEIPT_INVALID')
     try { assertDev013MigrationInfraReceipt(values.infra, profile, intent.sourceRevision) } catch { fail('DEV014_RUNTIME_INFRA_RECEIPT_INVALID') }
+  } else if (controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION') {
+    if (!infraChanged) fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID')
+    try { assertDev013MigrationInfraReceipt(values.infra, profile, values.infra?.sourceRevision) } catch { fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID') }
   } else if (infraChanged) fail('ROUTINE_INFRA_REF_CHANGED')
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]

@@ -135,6 +135,27 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
           || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
         return { releaseMode: 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', remediation: expectedRemediation }
       }
+      if (values.readiness?.slice === '014-LOGIN-FIXTURE-CORRECTION') {
+        const expectedCorrection = {
+          kind: 'LOGIN_FIXTURE_ACTIVATION_CONTRACT_CORRECTION',
+          applicationId: 'ai-pdm',
+          employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
+          infrastructureBinding: 'EXACT_RECEIPT_SOURCE_FINGERPRINT',
+        }
+        if (!intent.baselineIntentRef
+          || values.authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+          || values.authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+          || values.authorization.devId !== 'DEV-014' || values.authorization.slice !== '014-LOGIN-FIXTURE-CORRECTION'
+          || values.readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+          || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
+          || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision
+          || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
+          || canonicalize(values.authorization.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.authorization.correction) !== canonicalize(expectedCorrection)
+          || canonicalize(values.readiness.correction) !== canonicalize(expectedCorrection)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
+        return { releaseMode: 'DEV014_LOGIN_FIXTURE_CORRECTION', correction: expectedCorrection }
+      }
       const expectedActivation = {
         kind: 'MANAGED_DIRECTORY_RUNTIME_ACTIVATION',
         addedPlainEnvironmentNames: DEV014_MANAGED_DIRECTORY_FIELDS,
@@ -371,6 +392,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (!verifyRoutineRelease) fail('ROUTINE_VERIFIER_REQUIRED')
     const routine = await verifyRoutineRelease({ intent, values, service })
     if (derived.controlledEnvironmentAuthority.releaseMode === 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD' && routine.releaseMode !== 'ROUTINE_UNCHANGED_RUNTIME') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION' && routine.releaseMode !== 'DEV014_LOGIN_FIXTURE_CORRECTION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     return writeStage(transport, paths, profile, intent, 'prepare', null, { prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])), previousRevision: intent.previousRevision, runtimeServiceAccount: derived.runtimeConfig.runtimeServiceAccount, migrationRunnerDigest: derived.migrationRunnerDigest, routine, entrypointBaseline: transport.entrypointSnapshot(service), remainingHumanAction: 0 })
   }
 
