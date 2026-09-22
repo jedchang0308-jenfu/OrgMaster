@@ -16,6 +16,11 @@ function database({ active = false, assigned = false, linked = false, invalidSec
   }]))
   const calls = []
   let transactionSnapshot = null
+  let workspaceRevision = base.workspaceRevision
+  let workspacePayload = {
+    app: 'OrgMaster', version: 8, kind: 'document', savedAt: '2026-09-22T07:00:00.000Z',
+    state: { employees: FIXTURES.map((fixture) => ({ id: fixture.employeeId, name: `DEV014 Free ${fixture.alias === 'dev014-fp-google' ? 'Google' : 'Number'}`, status: active ? 'active' : 'inactive' })) },
+  }
   const byNumber = (number) => [...state.values()].find((entry) => entry.employeeNumber === number)
   const query = async (sql, params) => {
     calls.push({ sql, params })
@@ -33,6 +38,20 @@ function database({ active = false, assigned = false, linked = false, invalidSec
       const entry = state.get(params[0])
       return { rows: entry ? [{ employee_id: entry.fixture.employeeId, employee_status: entry.employeeStatus, employee_number: entry.employeeNumber || null, identity_state: entry.identityState, registry_revision: entry.registryRevision, admission_enabled: !(invalidSecond && entry.fixture === FIXTURES[1]) }] : [] }
     }
+    if (sql.includes('read_active_persistence_artifact_v1')) {
+      if (params[0] === 'orgmaster-workspace.v1.json') return { rows: [{ artifact_key: params[0], artifact_kind: 'workspace-manifest', payload: { currentVersionId: 'current-dev014' }, canonical_sha256: 'manifest-revision', source_revision: 'c'.repeat(64) }] }
+      if (params[0] === 'orgmaster-versions/current-dev014.json') return { rows: [{ artifact_key: params[0], artifact_kind: 'workspace-version', payload: structuredClone(workspacePayload), canonical_sha256: workspaceRevision, source_revision: 'c'.repeat(64) }] }
+      return { rows: [] }
+    }
+    if (sql.includes('assert_employee_activation_v1')) return { rows: [{ allowed: !(invalidSecond && params[0] === FIXTURES[1].employeeId), correction_required: invalidSecond && params[0] === FIXTURES[1].employeeId }] }
+    if (sql.includes('read_active_persistence_authority_v1')) return { rows: [{ authority_version: 1, source_revision: 'c'.repeat(64) }] }
+    if (sql.includes('write_active_persistence_artifacts_with_identity_fence_v1')) {
+      const [change] = JSON.parse(params[0])
+      workspacePayload = structuredClone(change.payload)
+      workspaceRevision = change.nextCanonicalSha256
+      for (const employee of workspacePayload.state.employees) state.get(employee.id).employeeStatus = employee.status
+      return { rows: [{ authority_version: 2, source_revision: params[1], outbox_count: 0 }] }
+    }
     if (sql.includes('resolve_managed_login_alias_v1')) {
       const entry = byNumber(params[0])
       return { rows: entry?.identityState === 'directory_linked_pending_auth' ? [{ employee_id: entry.fixture.employeeId, employee_number: entry.fixture.employeeNumber, directory_customer_id: TARGET.directoryCustomerId, directory_user_id: entry.directoryUserId, link_state: entry.identityState, registry_revision: entry.registryRevision }] : [] }
@@ -46,7 +65,7 @@ function database({ active = false, assigned = false, linked = false, invalidSec
     if (sql.includes('confirm_managed_identity_link_v1')) { state.get(params[1]).identityState = 'directory_linked_pending_auth'; return { rows: [{ employee_id: params[1] }] } }
     throw new Error(`UNEXPECTED_SQL:${sql}`)
   }
-  return { calls, query, state }
+  return { calls, query, state, workspace: () => ({ payload: workspacePayload, revision: workspaceRevision }) }
 }
 
 function operation(phase) { return { ...base, phase } }
@@ -71,6 +90,24 @@ test('assigns only the two fixed employee numbers and replays exact assignments'
   assert.deepEqual(db.calls.filter((entry) => entry.sql.includes('assign_employee_number_v1')).map((entry) => entry.params.slice(0, 2)), FIXTURES.map((fixture) => [fixture.employeeId, fixture.employeeNumber]))
   const replay = await executeFixturePhase({ database: db, operation: operation('assign'), now: new Date('2026-09-22T08:01:00.000Z') })
   assert.deepEqual(replay.map((entry) => entry.disposition), ['EXISTING', 'EXISTING'])
+})
+
+test('activates both fixed employees in one CAS write and replays the exact result', async () => {
+  const db = database({ assigned: true })
+  const first = await executeFixturePhase({ database: db, operation: operation('activate'), now: new Date('2026-09-22T08:00:00.000Z') })
+  assert.deepEqual(first.map((entry) => entry.disposition), ['APPLIED', 'APPLIED'])
+  assert.deepEqual(db.workspace().payload.state.employees.map((employee) => employee.status), ['active', 'active'])
+  assert.equal(db.calls.filter((entry) => entry.sql.includes('write_active_persistence_artifacts_with_identity_fence_v1')).length, 1)
+  const replay = await executeFixturePhase({ database: db, operation: { ...operation('activate'), workspaceRevision: db.workspace().revision }, now: new Date('2026-09-22T08:01:00.000Z') })
+  assert.deepEqual(replay.map((entry) => entry.disposition), ['REPLAY', 'REPLAY'])
+  assert.equal(db.calls.filter((entry) => entry.sql.includes('write_active_persistence_artifacts_with_identity_fence_v1')).length, 1)
+})
+
+test('rejects activation before any workspace write when either fixed employee fails the database fence', async () => {
+  const db = database({ assigned: true, invalidSecond: true })
+  await assert.rejects(executeFixtureTransaction({ database: db, operation: operation('activate'), now: new Date('2026-09-22T08:00:00.000Z') }), /DEV014_LOGIN_FIXTURE_ACTIVATION_FENCE_REJECTED/u)
+  assert.deepEqual(db.workspace().payload.state.employees.map((employee) => employee.status), ['inactive', 'inactive'])
+  assert.ok(!db.calls.some((entry) => entry.sql.includes('write_active_persistence_artifacts_with_identity_fence_v1')))
 })
 
 test('links both fixed Directory users and redacts raw account identifiers', async () => {

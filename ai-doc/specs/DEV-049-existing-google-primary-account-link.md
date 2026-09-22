@@ -452,3 +452,7 @@ Production assign已產生兩筆`APPLIED`及精確`EXISTING`重播receipt，但U
 ### 2026-09-22 login-fixture correction release gate
 
 前一輪已以source `87f5a55793d4622466367923e121dcc7fe97e812`完成login-fixture runner的`APP_INFRA_IMAGE_ROTATION`；其後activation service修正不改operator、Terraform、profile、runtime或migration。Owner release因此新增受控`014-LOGIN-FIXTURE-CORRECTION`模式：只接受上列`ai-pdm`與兩個固定Employee ID，migration必須`UNCHANGED_VERIFIED`、runtime逐值不變，且current source的完整ordinary infrastructure fingerprint必須等於APP_INFRA receipt的Git source revision。Receipt source、owner、project、region、digest、seal或任一infrastructure byte不符都fail closed。此模式只允許十階段owner release重用既有immutable runner，不擴張任何資料、IAM、Secret、schema、application、Employee或traffic權限。
+
+### 2026-09-22 exact-target activation operator correction
+
+修正版 service 已以 owner release `ORGMASTER-REL-20260922100535502-E427BB1` 上線，但 browser 重新驗證後 Platform 以 `application-not-available / orgmaster` 拒絕既有 `employee-shijie`；零新增付費席次方案禁止為該既有 Employee 補 OrgMaster admission。fixture runner 因此新增 `activate` 相，唯一可變更資料仍是 `DEV014 Free Google` 與 `DEV014 Free Number` 的 current workspace `status: inactive → active`。Operator 必須綁定 active workspace canonical revision，確認兩筆精確 ID／名稱皆存在且同為inactive，逐筆呼叫既有 `assert_employee_activation_v1`，再以單一 `write_active_persistence_artifacts_with_identity_fence_v1` CAS 寫入；兩筆均已active時只回傳REPLAY，partial state、未指派員編、target／revision／authority漂移或write readback不一致皆整筆rollback。不得修改其他Employee、governance、schema、IAM、Secret、service或traffic；因 migration-runner executable byte 已改變，執行前仍須取得同source fresh immutable runner rotation receipt。
