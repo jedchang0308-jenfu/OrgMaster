@@ -16,7 +16,7 @@ const governance = {
 }
 
 vi.mock('./orgmasterGovernanceStore', () => ({
-  loadOrganizationSource: vi.fn(async () => ({ workspaceVersionId: 'workspace-1', workspaceRevision: 'workspace-revision', sourceDataAt: '2026-09-17T00:00:00.000Z', state: { employees: [{ id: 'employee-1', status: 'active', name: '測試員工' }], departments: [], roles: [], positions: [], assignments: [] } })),
+  loadOrganizationSource: vi.fn(async () => ({ workspaceVersionId: 'workspace-1', workspaceRevision: 'workspace-revision', sourceDataAt: '2026-09-17T00:00:00.000Z', state: { employees: [{ id: 'employee-1', status: 'active', name: '測試員工' }, { id: 'employee-inactive', status: 'inactive', name: '待啟用員工' }], departments: [], roles: [], positions: [], assignments: [] } })),
   readExistingGovernanceStore: vi.fn(async () => governance),
 }))
 
@@ -68,5 +68,22 @@ describe('managed identifier verifier', () => {
     expect(result.mappingVersion).toBe('8')
     expect(verify).toHaveBeenCalledTimes(2)
     expect(verify.mock.calls[0][0].requestHash).toBe(verify.mock.calls[1][0].requestHash)
+  })
+})
+
+describe('managed employee activation gate', () => {
+  it('delegates an inactive employee transition to the PostgreSQL assignment fence', async () => {
+    const assertEmployeeActivation = vi.fn(async () => ({ allowed: true, correctionRequired: false }))
+    const result = await service({ mode: 'postgresql', assertEmployeeActivation }).activationCheck('employee-inactive', 'workspace-revision')
+
+    expect(result).toEqual({ allowed: true, correctionRequired: false })
+    expect(assertEmployeeActivation).toHaveBeenCalledWith('employee-inactive', 'workspace-revision')
+  })
+
+  it('keeps an inactive employee blocked when the PostgreSQL assignment fence rejects it', async () => {
+    const assertEmployeeActivation = vi.fn(async () => ({ allowed: false, correctionRequired: true }))
+    const result = await service({ mode: 'postgresql', assertEmployeeActivation }).activationCheck('employee-inactive', 'workspace-revision')
+
+    expect(result).toEqual({ allowed: false, correctionRequired: true })
   })
 })
