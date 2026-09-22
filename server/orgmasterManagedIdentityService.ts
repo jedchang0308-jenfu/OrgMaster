@@ -313,10 +313,9 @@ export function createManagedIdentityService(input: {
   }
   const activationCheck = async (employeeId: string, workspaceRevision: string) => {
     try {
-      const { employee } = await readEmployee(employeeId)
+      await readEmployee(employeeId)
       const source = await loadOrganizationSource(input.root)
       if (workspaceRevision !== source.workspaceRevision) return { allowed: false, correctionRequired: true }
-      if (employee.status === 'inactive') return { allowed: false, correctionRequired: false }
       if (repository.mode === 'postgresql') return repository.assertEmployeeActivation(employeeId, workspaceRevision)
       const state = await repository.readExisting()
       const assignment = state.document.registry.assignments.find((entry) => entry.employeeId === employeeId)
