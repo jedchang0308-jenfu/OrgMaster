@@ -1,0 +1,220 @@
+{
+  "contract": "DEV-055",
+  "runner": "DEV-055-postgres-qc-v1",
+  "evidenceScope": "TASK_OWNED_LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-09-22T14:36:01.652Z",
+  "productionWrites": false,
+  "executedCaseCount": 5,
+  "sourceRevision": "715efcb9f1e8755018448a7cc1ff76c63bafb734",
+  "dirty": [
+    "M AGENTS.md",
+    " M ai-doc/dev_task.md",
+    " M ai-doc/documentation_map.md",
+    " M config/release/dev040-orgmaster-independent-production-v3.json",
+    " M db/migrations/README.md",
+    " M package.json",
+    " M scripts/dev040-deploy-production.mjs",
+    " M scripts/dev040-orgmaster-independent-release.test.mjs",
+    " M scripts/dev040-production-migration-runner.mjs",
+    " M scripts/dev040-production-migration-runner.test.mjs",
+    " M scripts/dev040-routine-release.test.mjs",
+    " M scripts/lib/dev012-owner-stage-executor.mjs",
+    " M scripts/lib/dev040-orgmaster-independent-release.mjs",
+    " M scripts/lib/dev040-routine-release.mjs",
+    " M scripts/qc-dev-047-postgres.mjs",
+    "?? ai-doc/specs/DEV-055-current-projection-contract.md",
+    "?? db/migrations/020_dev014_current_projection_contract.sql",
+    "?? dev-055/",
+    "?? infra/google-cloud/dev-040-production-release/.terraform/",
+    "?? scripts/qc-dev-055-contract.mjs"
+  ],
+  "serverVersion": "18.4",
+  "acceptedServerMajors": [
+    17,
+    18
+  ],
+  "migrations": [
+    {
+      "name": "001_dev004_orgmaster_app_sessions.sql",
+      "bytes": 2218,
+      "sha256": "4537d51bd42a452b04f8641beb11588810ce9326075f8933b16e5ae37706d3bd"
+    },
+    {
+      "name": "002_dev006_orgmaster_persistence.sql",
+      "bytes": 5992,
+      "sha256": "10d71fbf556035b307c2b3997ad4e7499e9b3586dc60b351651af4b6973094da"
+    },
+    {
+      "name": "003_dev006_orgmaster_runtime_repository.sql",
+      "bytes": 11823,
+      "sha256": "2680c19df8f4bacddf53d5bfae55fb35658ff63f1e54de3f97727bd4bdd689ba"
+    },
+    {
+      "name": "004_dev040_active_principal_view.sql",
+      "bytes": 4594,
+      "sha256": "09591bddd33680bf584711884fb600ec996b356cff48ccfd1b6343c74a16f5b7"
+    },
+    {
+      "name": "005_dev005_entitlement_governance.sql",
+      "bytes": 41642,
+      "sha256": "cf5efbbe6ce29c9d6d8100961709d19ab90c1af79e31731608ae9a9dbf73a80d"
+    },
+    {
+      "name": "006_dev040_identity_admission_projection.sql",
+      "bytes": 5809,
+      "sha256": "0163c107446b0aeac4ef39b365fc57961133360cac1d9d3152be8e8c89eda3dd"
+    },
+    {
+      "name": "007_dev009_privileged_governance.sql",
+      "bytes": 11257,
+      "sha256": "f83db791135586a5213b5de0e63e8088a76e0ab37dcee77f6c7601fbe15a4fd9"
+    },
+    {
+      "name": "008_dev002_portal_app_visibility.sql",
+      "bytes": 5033,
+      "sha256": "d9651deeeb652fcc60526a8c8a073d2322b18f3031a8303f9bc842fe0c8d50b4"
+    },
+    {
+      "name": "009_dev039_application_entitlement_v2.sql",
+      "bytes": 6640,
+      "sha256": "1f729d12800701106a216da3b698ddaf4d0faa00a626c24ab0bbd2142ba3f573"
+    },
+    {
+      "name": "010_dev010_neutral_schema_boundary.sql",
+      "bytes": 15073,
+      "sha256": "9abe3008ac0cd9370079faf09de6d6b6d8204e6ee6d10716070541e4d2216af4"
+    },
+    {
+      "name": "011_dev046_workbench_list_width_preferences.sql",
+      "bytes": 1110,
+      "sha256": "40796e45e9c80bb9163091f101245e17531a3c94bbf7296368b2b387456c0e1c"
+    },
+    {
+      "name": "012_dev047_managed_identity_bridge.sql",
+      "bytes": 63328,
+      "sha256": "5e5b62cd8786d0b285dab19a5f0ca1f47471484851f3b736afea4b944c86ac08"
+    },
+    {
+      "name": "013_dev049_existing_google_primary_account_link.sql",
+      "bytes": 43185,
+      "sha256": "ee77ccb7cea50d64c754bfdfb96f59b7b26ac3ff25c7cc28e26fd65763f1ad00"
+    },
+    {
+      "name": "014_dev050_orgmaster_session_admission.sql",
+      "bytes": 3699,
+      "sha256": "f39ea5eb7e9f4accbe66961fa73345b788aa609b8a7de658c416335311463867"
+    },
+    {
+      "name": "015_dev013_restore_runtime_session_dml.sql",
+      "bytes": 1373,
+      "sha256": "70f6f9442ba653fcaf8988961aaad123244fe87ba09e35755e812c35a44ef8e8"
+    },
+    {
+      "name": "016_dev014_managed_identity_lifecycle_contract.sql",
+      "bytes": 3151,
+      "sha256": "9d88d2dca9d72d5b7f9950509452c3483ea34a27d1f6091f3b6f1f9eec77ab4b"
+    },
+    {
+      "name": "017_dev014_invalidation_application_registration.sql",
+      "bytes": 13488,
+      "sha256": "170ce6415959862f2f601c1f0e6ce72b6e43d30931e95ae6cb0f9cbc8d70c3fd"
+    },
+    {
+      "name": "018_dev014_employee_activation_contract.sql",
+      "bytes": 2046,
+      "sha256": "ce5ab0204fe39eca3bd3e123ecfe8e84ea6dc8f008c6429e7c8bdc77d13c2229"
+    },
+    {
+      "name": "019_dev014_workspace_revision_contract.sql",
+      "bytes": 2398,
+      "sha256": "ac8c9e04edf208613e2291ab227a5e13b5ecdcc386820b75a31afdef1e3a8ede"
+    },
+    {
+      "name": "020_dev014_current_projection_contract.sql",
+      "bytes": 19719,
+      "sha256": "8bcf7f1528e581e281436efe509c26f845657be2d1767c500460f56ccd538d82"
+    }
+  ],
+  "checks": [
+    {
+      "id": "D55-01",
+      "label": "contract projections keep their frozen columns and owners",
+      "status": "PASS",
+      "detail": {
+        "views": [
+          "v_ai_pdm_effective_role_assignments_v1",
+          "v_ai_pdm_entitlement_authority_v1",
+          "v_portal_app_visibility_v1"
+        ],
+        "owner": "jenfu_orgmaster_migrator"
+      }
+    },
+    {
+      "id": "D55-02",
+      "label": "current principal mapping preserves existing AI-PDM authority, roles and portal visibility",
+      "status": "PASS",
+      "detail": {
+        "preservedEmployee": "employee-legacy",
+        "applications": [
+          "ai-pdm",
+          "orgmaster"
+        ],
+        "role": "rd"
+      }
+    },
+    {
+      "id": "D55-03",
+      "label": "workspace canonical revision drift does not require governance republish",
+      "status": "PASS",
+      "detail": {
+        "frozenGovernanceRevision": "9999999999999999999999999999999999999999999999999999999999999999",
+        "currentWorkspaceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effectiveAssignmentsStable": true
+      }
+    },
+    {
+      "id": "D55-04",
+      "label": "pending managed identity remains absent from authority, roles and portal visibility",
+      "status": "PASS",
+      "detail": {
+        "employeeId": "employee-two",
+        "linkState": "directory_linked_pending_auth",
+        "projectedRows": 0
+      }
+    },
+    {
+      "id": "D55-05",
+      "label": "consumer ACL is preserved and historical compatibility views remain untouched",
+      "status": "PASS",
+      "detail": {
+        "platformVisibility": true,
+        "aiAuthority": true,
+        "aiEffective": true,
+        "existingOrgMasterReadPreserved": true,
+        "compatibilityViewUnchanged": true
+      }
+    }
+  ],
+  "firstFailure": null,
+  "source": {
+    "runnerSha256": "3caf5049b4e569a637be46ab2dbfa5bff3d811e4d68c446b4416d8589a869474",
+    "contractRunnerSha256": "9a20e8ecee8470f1316100b1fab1282230b82467d9f657c4ec099e3e70e9a8cd",
+    "fixtureSha256": "1f3e2cf3904c02be1cac237c6369b25886b6daed0635fac84e45e30ea9a1795f"
+  },
+  "runtime": {
+    "project": "C:\\Users\\user\\.codex\\worktrees\\dev014-platform-release\\OrgMaster",
+    "purpose": "DEV-055 isolated PostgreSQL validation",
+    "port": 59861,
+    "postgresPid": 13056,
+    "owningProcessTree": "node:5020 -> postgres:13056",
+    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev055-qc-MjNAyQ",
+    "interruptedBy": null,
+    "cleanup": {
+      "clientClosed": true,
+      "clusterStopped": true,
+      "portReleased": true,
+      "tempRemoved": true
+    }
+  }
+}

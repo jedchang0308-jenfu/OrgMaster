@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+> **2026-09-22 DEV-055 current projection contract correction（現行）**：DEV-014 fixture activation更新同一workspace version artifact的canonical SHA後，active governance、`employee-shijie` assignments、current principal mapping與OrgMaster session principal都仍存在，但歷史projection以治理凍結SHA join current workspace，使AI-PDM authority／effective roles及Portal visibility輸出空集合。Migration 020只替換三個`orgmaster_contract` read-only views，改以current principal mapping與current workspace manifest投影；歷史`access_governance`、欄位／型別／ACL、authority rows、assignments與Employee資料均不變。Local contract、DB boundary、owner-release 89 tests、production build及PostgreSQL 18.4 D55-01～05均PASS，隔離runtime已完整清理；現直接進入既有owner release。來源：`Jenfu-Platform / DEV-014 / zero-paid-seat fixture projection correction`；權威文件：[DEV-055](specs/DEV-055-current-projection-contract.md)。
+
 > **2026-09-22 DEV-054 activation／workspace revision contract correction（現行）**：forward-only migration 018 已由owner run `35724507823`套用，revision `orgmaster-prod-08e8673c3ef9`承接100% traffic。其後exact fixture activation `orgmaster-prod-migration-runner-sbjsk`在write前安全rollback；readback確認兩筆fixture仍為`inactive / not_linked`，員編`JFS9014／JFS9015`、registry revision `1`、admission均正確。根因是migration 012 view把`workspace_revision`取自batch source，而service／runner契約使用workspace artifact canonical SHA。現以forward-only migration 019只修正同batch current workspace view的revision語義，欄位／型別／ACL不變；本地contract、owner `87／87`及PostgreSQL 18.4 `D54-01～06`均PASS且runtime完整清理。待merge、source-bound runner rotation與owner 18→19 apply＋replay後重跑兩筆activation。
 
 > **2026-09-22 DEV-014 Free-only fixtures prepared（現行）**：Google Admin 已建立 `dev014-fp-google@jenfu.com.tw` 與 `dev014-fp-number@jenfu.com.tw`，兩者均在 `/OrgMaster`、只有 Cloud Identity Free、未指派 Workspace Business Standard。OrgMaster 現行版已建立並儲存兩筆標記 Employee：`01a0c82b-11c6-77ab-887f-58df9d243e63 / DEV014 Free Google / JFS9014` 與 `01a0c82b-372c-7d20-ba3b-6e3b892d2f63 / DEV014 Free Number / JFS9015`；Production assignment已完成兩筆`APPLIED`及精確`EXISTING`重播，兩人目前仍為inactive且尚未Directory link。`scripts/dev014-production-login-fixture-runner.mjs` 只接受這兩筆 target，分 `assign／activate／link／readback` 四相，使用既有 runtime、DWD readonly 與既有 migration Job，對來源、workspace revision、期限、Directory stable key及alias collision fail closed；兩筆 mutation同一transaction，任一target失敗即全部rollback，receipt不含密碼、token、Email或Directory ID。UI啟用所揭露的inactive→active循環拒絕已由service source修正並以 owner release `ORGMASTER-REL-20260922100535502-E427BB1` 發布；重新驗證後既有 `employee-shijie` 已無 OrgMaster application admission，因此不得藉由替既有帳號加權限完成 fixture。`activate` 相改由既有 persistence CAS 與 `assert_employee_activation_v1` 同transaction處理：兩筆必須同為inactive或同為active，partial state、target、assignment、revision或authority drift一律停止。此 operator byte 變更需 fresh immutable runner rotation；Production activate／link、AI-PDM assignment、browser matrix與cleanup仍依 Platform v2 plan續行。
@@ -106,6 +108,11 @@
 - 文件成熟度：DEV-047為`RD Implementation Complete / Local QA-QC Passed / CAPA Closed / Production Release Gated`。2026-09-16 已完成 task-owned PostgreSQL 001～012 與 A17～A22、target／cleanup 安全及結果可信修復；Google Admin仍擁有外部帳號生命週期，OrgMaster零provider write。
 
 ## 總任務清單
+
+- ◐ DEV-055 [修復點] [P0] [Architecture Finalized／RD Implementation Complete／Local QA-QC Passed／Production Release In Progress] Current projection contract補正
+  - 來源 ID：`Jenfu-Platform / DEV-014 / zero-paid-seat fixture projection correction`；本地以DEV-055承接OrgMaster current projection缺口。
+  - 只追加migration 020並替換三個`orgmaster_contract` read-only views；不修改歷史compatibility schema、資料、ACL、IAM、Secret或其他Employee。
+  - 驗證與release gate：[DEV-055 spec](specs/DEV-055-current-projection-contract.md)。
 
 - ◐ DEV-053 [修復點] [P0] [Production Migration + Admission Complete／Production L4 Pending] Managed identity invalidation application registration補正
   - 來源 ID：`Jenfu-Platform / DEV-014 / 014-APPLICATION-REGISTRATION`；本地以DEV-053承接OrgMaster registry契約缺口。

@@ -336,6 +336,13 @@
         "path": "db/migrations/019_dev014_workspace_revision_contract.sql",
         "sourceSha256": "ac8c9e04edf208613e2291ab227a5e13b5ecdcc386820b75a31afdef1e3a8ede",
         "appliedSha256": "ff5d792916d0b1576e0c8ed9db35d4943c1352b57897d57c38853f2e41d8af36"
+      },
+      {
+        "order": 20,
+        "version": "dev014-orgmaster-020",
+        "path": "db/migrations/020_dev014_current_projection_contract.sql",
+        "sourceSha256": "8bcf7f1528e581e281436efe509c26f845657be2d1767c500460f56ccd538d82",
+        "appliedSha256": "b42426e7da0589012e6d4496a029524842dbd92e0e8314e67ecb8e655d191aa5"
       }
     ]
   },

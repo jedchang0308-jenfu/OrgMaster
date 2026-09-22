@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
@@ -191,6 +191,7 @@ test('DEV-014 application registration remediation permits only migration 017 wi
 
 test('DEV-014 activation contract remediation permits only migration 019 with unchanged runtime', async () => {
   const baselineBundle = prefixBundle(oldBundle.bundle, 18)
+  const migration019Bundle = prefixBundle(newBundle.bundle, 19)
   const remediation = {
     kind: 'LOGIN_FIXTURE_EMPLOYEE_ACTIVATION_CONTRACT',
     migrationVersion: 'dev014-orgmaster-019',
@@ -198,7 +199,7 @@ test('DEV-014 activation contract remediation permits only migration 019 with un
     viewSignature: 'orgmaster_core.v_current_workspace_employees_v1',
     employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
   }
-  const h = harness({ baselineBundle })
+  const h = harness({ baselineBundle, currentBundle: { bundle: migration019Bundle } })
   h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation }
   h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation }
   attachForwardInfra(h)
@@ -206,11 +207,38 @@ test('DEV-014 activation contract remediation permits only migration 019 with un
   assert.equal(result.releaseMode, 'DEV014_ACTIVATION_CONTRACT_REMEDIATION')
   assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
   assert.equal(result.pendingMigrationCount, 1)
-  assert.equal(assertDev014ActivationContractAppend(baselineBundle, newBundle.bundle).pendingMigrationCount, 1)
+  assert.equal(assertDev014ActivationContractAppend(baselineBundle, migration019Bundle).pendingMigrationCount, 1)
   assert.equal(assertDev014ActivationContractRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
-  const drift = structuredClone(newBundle.bundle)
+  const drift = structuredClone(migration019Bundle)
   drift.entries[18].appliedSha256 = '0'.repeat(64)
   assert.throws(() => assertDev014ActivationContractAppend(baselineBundle, drift), /DEV014_ACTIVATION_CONTRACT_APPEND_INVALID/u)
+})
+
+test('DEV-014 projection contract remediation permits only migration 020 with unchanged runtime', async () => {
+  const baselineBundle = prefixBundle(oldBundle.bundle, 19)
+  const remediation = {
+    kind: 'CURRENT_PROJECTION_CONTRACT_CORRECTION',
+    migrationVersion: 'dev014-orgmaster-020',
+    contractViews: [
+      'orgmaster_contract.v_ai_pdm_entitlement_authority_v1',
+      'orgmaster_contract.v_ai_pdm_effective_role_assignments_v1',
+      'orgmaster_contract.v_portal_app_visibility_v1',
+    ],
+    applicationId: 'ai-pdm',
+  }
+  const h = harness({ baselineBundle })
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation }
+  attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV014_PROJECTION_CONTRACT_REMEDIATION')
+  assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(result.pendingMigrationCount, 1)
+  assert.equal(assertDev014ProjectionContractAppend(baselineBundle, newBundle.bundle).pendingMigrationCount, 1)
+  assert.equal(assertDev014ProjectionContractRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
+  const drift = structuredClone(newBundle.bundle)
+  drift.entries[19].sourceSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev014ProjectionContractAppend(baselineBundle, drift), /DEV014_PROJECTION_CONTRACT_APPEND_INVALID/u)
 })
 
 test('DEV-014 activation contract owner producer exposes the bounded release mode', () => {
@@ -221,6 +249,15 @@ test('DEV-014 activation contract owner producer exposes the bounded release mod
   assert.match(producer, /migrationVersion: 'dev014-orgmaster-019'/u)
   assert.match(producer, /functionSignature: 'orgmaster_core\.assert_employee_activation_v1\(text,text\)'/u)
   assert.match(producer, /viewSignature: 'orgmaster_core\.v_current_workspace_employees_v1'/u)
+})
+
+test('DEV-014 projection contract owner producer exposes the bounded release mode', () => {
+  const producer = fs.readFileSync('scripts/dev040-deploy-production.mjs', 'utf8')
+  assert.match(producer, /--dev014-projection-contract-remediation/u)
+  assert.match(producer, /slice: '014-PROJECTION-CONTRACT'/u)
+  assert.match(producer, /kind: 'CURRENT_PROJECTION_CONTRACT_CORRECTION'/u)
+  assert.match(producer, /migrationVersion: 'dev014-orgmaster-020'/u)
+  assert.match(producer, /orgmaster_contract\.v_ai_pdm_effective_role_assignments_v1/u)
 })
 
 test('DEV-014 login-fixture correction reuses only an exact prior-source infrastructure fingerprint', async () => {

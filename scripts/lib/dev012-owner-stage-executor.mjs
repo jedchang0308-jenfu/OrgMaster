@@ -157,6 +157,31 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
           || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
         return { releaseMode: 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', remediation: expectedRemediation }
       }
+      if (values.readiness?.slice === '014-PROJECTION-CONTRACT') {
+        const expectedRemediation = {
+          kind: 'CURRENT_PROJECTION_CONTRACT_CORRECTION',
+          migrationVersion: 'dev014-orgmaster-020',
+          contractViews: [
+            'orgmaster_contract.v_ai_pdm_entitlement_authority_v1',
+            'orgmaster_contract.v_ai_pdm_effective_role_assignments_v1',
+            'orgmaster_contract.v_portal_app_visibility_v1',
+          ],
+          applicationId: 'ai-pdm',
+        }
+        if (!intent.baselineIntentRef
+          || values.authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+          || values.authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+          || values.authorization.devId !== 'DEV-014' || values.authorization.slice !== '014-PROJECTION-CONTRACT'
+          || values.readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+          || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
+          || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision
+          || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
+          || canonicalize(values.authorization.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.authorization.remediation) !== canonicalize(expectedRemediation)
+          || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
+        return { releaseMode: 'DEV014_PROJECTION_CONTRACT_REMEDIATION', remediation: expectedRemediation }
+      }
       if (values.readiness?.slice === '014-LOGIN-FIXTURE-CORRECTION') {
         const expectedCorrection = {
           kind: 'LOGIN_FIXTURE_ACTIVATION_CONTRACT_CORRECTION',
@@ -293,8 +318,9 @@ function assertMigrationReceipt(value, profile, intent, { historical = false, al
       const producerContractRemediation = forwardPlan?.releaseMode === 'DEV014_PRODUCER_CONTRACT_REMEDIATION'
       const applicationRegistrationRemediation = forwardPlan?.releaseMode === 'DEV014_APPLICATION_REGISTRATION_REMEDIATION'
       const activationContractRemediation = forwardPlan?.releaseMode === 'DEV014_ACTIVATION_CONTRACT_REMEDIATION'
-      const expectedLedgerCount = activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
-      const maximumAppliedCount = producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation ? 1 : 4
+      const projectionContractRemediation = forwardPlan?.releaseMode === 'DEV014_PROJECTION_CONTRACT_REMEDIATION'
+      const expectedLedgerCount = projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const maximumAppliedCount = producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation ? 1 : 4
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
       if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
     }

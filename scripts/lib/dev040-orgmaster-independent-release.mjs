@@ -38,6 +38,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   'db/migrations/017_dev014_invalidation_application_registration.sql',
   'db/migrations/018_dev014_employee_activation_contract.sql',
   'db/migrations/019_dev014_workspace_revision_contract.sql',
+  'db/migrations/020_dev014_current_projection_contract.sql',
 ]
 
 function fail(code, detail = '') {
