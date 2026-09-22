@@ -3,7 +3,7 @@ import type { PrivilegedAssignmentExpected, PrivilegedAssignmentRequest } from '
 import type { GovernanceDocumentViewV2 } from './governancePresentation'
 
 export const GOVERNANCE_API_PATH = '/api/orgmaster/governance'
-export type GovernanceVersionSummary = { id: string; kind: 'legacy-policy-v1' | 'assignment-governance-v2'; versionNumber: number; publishedAt: string; publishedByPrincipalId: string; publishReason: string; snapshotHash: string; organizationVersionId: string; effectState: string }
+export type GovernanceVersionSummary = { id: string; kind: 'legacy-policy-v1' | 'assignment-governance-v2' | 'assignment-governance-v3'; versionNumber: number; publishedAt: string; publishedByPrincipalId: string; publishReason: string; snapshotHash: string; organizationVersionId: string; effectState: string }
 export type GovernanceApiSnapshot = { document: GovernanceDocumentViewV2; catalogs: ExternalRoleCatalogSnapshotV1[]; revision: string; activeVersionId: string | null; versions: GovernanceVersionSummary[] }
 export type GovernanceSession = { runtimeMode: string; actor: { principalId: string; subjectHint: string }; capabilities: { manage: boolean; publish: boolean; simulate: boolean } }
 export type PrivilegedAssignmentWorkspace = {

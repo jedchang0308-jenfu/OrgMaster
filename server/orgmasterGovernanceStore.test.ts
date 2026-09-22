@@ -2,12 +2,36 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { actorHasPolicyPermission, applyDraftCommand, createSeedDocument, ensureGovernanceStore, getGovernancePaths, readGovernanceStore, validateAssignmentCandidate, GovernanceStoreError } from './orgmasterGovernanceStore'
+import { actorHasPolicyPermission, applyDraftCommand, createSeedDocument, ensureGovernanceStore, getGovernancePaths, readGovernanceStore, syncOrgMasterSystemCatalog, validateAssignmentCandidate, GovernanceStoreError } from './orgmasterGovernanceStore'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 describe('governance store', () => {
   it('seeds once and preserves revision on repeat read', async () => { const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev027-')); const first = await ensureGovernanceStore(root); const second = await readGovernanceStore(root); expect(first.revision).toBe(second.revision); expect(second.document.auditEvents[0].action).toBe('GOVERNANCE_INITIALIZED') })
   it('accepts the stable audit hash after jsonb-style key reordering', async () => { const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev027-jsonb-')); await ensureGovernanceStore(root); const path = getGovernancePaths(root).current; const value = JSON.parse(await readFile(path, 'utf8')); value.auditEvents = value.auditEvents.map((event: Record<string, unknown>) => Object.fromEntries(Object.entries(event).sort(([left], [right]) => left.localeCompare(right)))); await writeFile(path, JSON.stringify(value)); const reread = await readGovernanceStore(root); expect(reread.document.auditEvents[0].action).toBe('GOVERNANCE_INITIALIZED') })
   it('fails closed when audit chain is tampered', async () => { const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev027-')); await ensureGovernanceStore(root); const path = getGovernancePaths(root).current; const value = JSON.parse(await readFile(path, 'utf8')); value.auditEvents[0].reason = 'tampered'; await writeFile(path, JSON.stringify(value)); await expect(readGovernanceStore(root)).rejects.toMatchObject<GovernanceStoreError>({ code: 'AUDIT_CHAIN_INVALID' }) })
+  it('compatibly syncs missing OrgMaster system permissions into draft only and replays without another write', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev056-sync-'))
+    const initial = await ensureGovernanceStore(root)
+    const path = getGovernancePaths(root).current
+    const value = JSON.parse(await readFile(path, 'utf8'))
+    value.draft.permissions = value.draft.permissions.filter((permission: { id: string }) => permission.id !== 'permission-orgmaster-identity-view')
+    value.draft.rolePermissionGrants = value.draft.rolePermissionGrants.filter((grant: { permissionId: string }) => grant.permissionId !== 'permission-orgmaster-identity-view')
+    await writeFile(path, `${JSON.stringify(value)}\n`)
+    const synced = await ensureGovernanceStore(root)
+    expect(synced.document.draft.permissions).toContainEqual(expect.objectContaining({ id: 'permission-orgmaster-identity-view', code: 'orgmaster.identity.view' }))
+    expect(synced.document.draft.rolePermissionGrants).toContainEqual({ id: 'grant-orgmaster-admin-permission-orgmaster-identity-view', roleId: 'role-orgmaster-admin', permissionId: 'permission-orgmaster-identity-view', effect: 'allow' })
+    expect(synced.document.publishedVersions).toEqual(initial.document.publishedVersions)
+    expect(synced.document.auditEvents.at(-1)?.action).toBe('ORGMASTER_SYSTEM_CATALOG_SYNCED')
+    const replay = await ensureGovernanceStore(root)
+    expect(replay.revision).toBe(synced.revision)
+  })
+  it('fails closed when an existing OrgMaster system permission conflicts with the stable catalog', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev056-conflict-'))
+    const current = await ensureGovernanceStore(root)
+    const conflicting = structuredClone(current.document)
+    const permission = conflicting.draft.permissions.find((entry) => entry.id === 'permission-orgmaster-identity-view')!
+    permission.code = 'orgmaster.identity.view.changed'
+    expect(() => syncOrgMasterSystemCatalog(conflicting)).toThrowError(expect.objectContaining({ code: 'ORGMASTER_SYSTEM_CATALOG_CONFLICT' }))
+  })
   it('requires an active global role and applies deny precedence for publish continuity', () => {
     const policy = createSeedDocument('2026-08-26T00:00:00.000Z').draft
     const actor = { principalId: 'principal-1', issuer: 'issuer-1', subject: 'subject-1', employeeId: 'employee-1', bootstrap: false }
