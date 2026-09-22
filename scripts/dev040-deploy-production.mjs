@@ -138,8 +138,9 @@ async function main() {
   } : null
   const dev014ActivationContractRemediation = options.dev014ActivationContractRemediation ? {
     kind: 'LOGIN_FIXTURE_EMPLOYEE_ACTIVATION_CONTRACT',
-    migrationVersion: 'dev014-orgmaster-018',
+    migrationVersion: 'dev014-orgmaster-019',
     functionSignature: 'orgmaster_core.assert_employee_activation_v1(text,text)',
+    viewSignature: 'orgmaster_core.v_current_workspace_employees_v1',
     employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
   } : null
   const dev014LoginFixtureCorrection = options.dev014LoginFixtureCorrection ? {

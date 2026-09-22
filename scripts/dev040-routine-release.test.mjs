@@ -189,12 +189,13 @@ test('DEV-014 application registration remediation permits only migration 017 wi
   assert.throws(() => assertDev014ApplicationRegistrationAppend(prefixBundle(oldBundle.bundle, 16), drift), /DEV014_APPLICATION_REGISTRATION_APPEND_INVALID/u)
 })
 
-test('DEV-014 activation contract remediation permits only migration 018 with unchanged runtime', async () => {
-  const baselineBundle = prefixBundle(oldBundle.bundle, 17)
+test('DEV-014 activation contract remediation permits only migration 019 with unchanged runtime', async () => {
+  const baselineBundle = prefixBundle(oldBundle.bundle, 18)
   const remediation = {
     kind: 'LOGIN_FIXTURE_EMPLOYEE_ACTIVATION_CONTRACT',
-    migrationVersion: 'dev014-orgmaster-018',
+    migrationVersion: 'dev014-orgmaster-019',
     functionSignature: 'orgmaster_core.assert_employee_activation_v1(text,text)',
+    viewSignature: 'orgmaster_core.v_current_workspace_employees_v1',
     employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
   }
   const h = harness({ baselineBundle })
@@ -208,7 +209,7 @@ test('DEV-014 activation contract remediation permits only migration 018 with un
   assert.equal(assertDev014ActivationContractAppend(baselineBundle, newBundle.bundle).pendingMigrationCount, 1)
   assert.equal(assertDev014ActivationContractRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
   const drift = structuredClone(newBundle.bundle)
-  drift.entries[17].appliedSha256 = '0'.repeat(64)
+  drift.entries[18].appliedSha256 = '0'.repeat(64)
   assert.throws(() => assertDev014ActivationContractAppend(baselineBundle, drift), /DEV014_ACTIVATION_CONTRACT_APPEND_INVALID/u)
 })
 
@@ -217,8 +218,9 @@ test('DEV-014 activation contract owner producer exposes the bounded release mod
   assert.match(producer, /--dev014-activation-contract-remediation/u)
   assert.match(producer, /slice: '014-LOGIN-FIXTURE-CONTRACT'/u)
   assert.match(producer, /kind: 'LOGIN_FIXTURE_EMPLOYEE_ACTIVATION_CONTRACT'/u)
-  assert.match(producer, /migrationVersion: 'dev014-orgmaster-018'/u)
+  assert.match(producer, /migrationVersion: 'dev014-orgmaster-019'/u)
   assert.match(producer, /functionSignature: 'orgmaster_core\.assert_employee_activation_v1\(text,text\)'/u)
+  assert.match(producer, /viewSignature: 'orgmaster_core\.v_current_workspace_employees_v1'/u)
 })
 
 test('DEV-014 login-fixture correction reuses only an exact prior-source infrastructure fingerprint', async () => {

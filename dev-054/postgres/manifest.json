@@ -3,15 +3,17 @@
   "runner": "DEV-054-postgres-qc-v1",
   "evidenceScope": "TASK_OWNED_LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-22T11:42:41.279Z",
+  "generatedAt": "2026-09-22T12:46:55.120Z",
   "productionWrites": false,
-  "executedCaseCount": 5,
-  "sourceRevision": "7eff6cb188b422f120e4ca51aa2348b475609223",
+  "executedCaseCount": 6,
+  "sourceRevision": "940951a18b3c4751a2d69e6350c97fd0ea3848c9",
   "dirty": [
     "M ai-doc/dev_task.md",
     " M ai-doc/documentation_map.md",
+    " M ai-doc/specs/DEV-054-employee-activation-contract.md",
     " M config/release/dev040-orgmaster-independent-production-v3.json",
-    " M package.json",
+    " M dev-054/postgres/manifest.json",
+    " M scripts/dev040-deploy-production.mjs",
     " M scripts/dev040-orgmaster-independent-release.test.mjs",
     " M scripts/dev040-production-migration-runner.mjs",
     " M scripts/dev040-production-migration-runner.test.mjs",
@@ -20,11 +22,9 @@
     " M scripts/lib/dev040-orgmaster-independent-release.mjs",
     " M scripts/lib/dev040-routine-release.mjs",
     " M scripts/qc-dev-047-postgres.mjs",
-    "?? ai-doc/specs/DEV-054-employee-activation-contract.md",
-    "?? db/migrations/018_dev014_employee_activation_contract.sql",
-    "?? dev-054/",
-    "?? infra/google-cloud/dev-040-production-release/.terraform/",
-    "?? scripts/qc-dev-054-contract.mjs"
+    " M scripts/qc-dev-054-contract.mjs",
+    "?? db/migrations/019_dev014_workspace_revision_contract.sql",
+    "?? infra/google-cloud/dev-040-production-release/.terraform/"
   ],
   "serverVersion": "18.4",
   "acceptedServerMajors": [
@@ -121,6 +121,11 @@
       "name": "018_dev014_employee_activation_contract.sql",
       "bytes": 2046,
       "sha256": "ce5ab0204fe39eca3bd3e123ecfe8e84ea6dc8f008c6429e7c8bdc77d13c2229"
+    },
+    {
+      "name": "019_dev014_workspace_revision_contract.sql",
+      "bytes": 2398,
+      "sha256": "ac8c9e04edf208613e2291ab227a5e13b5ecdcc386820b75a31afdef1e3a8ede"
     }
   ],
   "checks": [
@@ -174,21 +179,31 @@
         "orgmasterRuntimeExecute": true,
         "siblingExecute": false
       }
+    },
+    {
+      "id": "D54-06",
+      "label": "workspace fence uses the current artifact canonical SHA instead of the persistence batch source revision",
+      "status": "PASS",
+      "detail": {
+        "canonicalRevisionAccepted": true,
+        "batchSourceRevisionRejected": true,
+        "revisionsAreDistinct": true
+      }
     }
   ],
   "firstFailure": null,
   "source": {
-    "runnerSha256": "6709b3b99ef2f7a99be32852b84cafae9df8468f2dfff055c21f42f1e1e5184c",
-    "contractRunnerSha256": "43a9c28a8e39afc33b7335828494249773b05de7eeaa0d0deb13290b9b492179",
+    "runnerSha256": "cbaaaecc0d4dfbf1900b5bca8ed62453b0aef94851857a6137e7660816c54813",
+    "contractRunnerSha256": "1b9c9afc736587231b8bd614686d8738b15f70146752c0f2d17602b0c0b9cd82",
     "fixtureSha256": "3c2c61e738635173199761c7dddf7549185de8f24ff0d0c53d613b01cdecad0d"
   },
   "runtime": {
     "project": "C:\\Users\\user\\.codex\\worktrees\\dev014-platform-release\\OrgMaster",
     "purpose": "DEV-054 isolated PostgreSQL validation",
-    "port": 58388,
-    "postgresPid": 40728,
-    "owningProcessTree": "node:45360 -> postgres:40728",
-    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev054-qc-WnlKXV",
+    "port": 58116,
+    "postgresPid": 6260,
+    "owningProcessTree": "node:25208 -> postgres:6260",
+    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev054-qc-S9o8Uh",
     "interruptedBy": null,
     "cleanup": {
       "clientClosed": true,

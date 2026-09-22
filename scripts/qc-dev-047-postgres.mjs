@@ -22,7 +22,7 @@ const dev054 = suite === 'dev054'
 const dev049OrLater = dev049 || dev050 || dev052 || dev053 || dev054
 const outputDir = path.join(root, dev049 ? 'dev-049' : dev050 ? 'dev-050' : dev052 ? 'dev-052' : dev053 ? 'dev-053' : dev054 ? 'dev-054' : 'dev-047', 'postgres')
 const outputPath = path.join(outputDir, 'manifest.json')
-const migrationCeiling = dev054 ? 18 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
+const migrationCeiling = dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
 const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((name) => /^\d{3}_.*\.sql$/u.test(name) && Number(name.slice(0, 3)) <= migrationCeiling).sort()
 const checks = []
 const cleanup = { clientClosed: false, clusterStopped: false, portReleased: false, tempRemoved: false }
@@ -131,7 +131,7 @@ async function applyMigrations() {
   for (const name of migrations) {
     if (name === '012_dev047_managed_identity_bridge.sql') await seedPersistence()
     if (dev049OrLater && name === '013_dev049_existing_google_primary_account_link.sql') {
-      await client.query(`WITH fixture_clock AS (SELECT clock_timestamp() AS now) INSERT INTO orgmaster_core.managed_identity_candidate_leases(lease_id,token_hash_sha256,actor_binding_sha256,employee_id,employee_number,expected_primary_email,directory_customer_id,directory_user_id,primary_email,source_etag,workspace_revision,registry_revision,created_at,expires_at) SELECT '49000000-0000-4000-8000-000000000001',$1,$2,'employee-one','JFS0001','legacy@jenfu.example','customer-1','legacy-user','legacy@jenfu.example','legacy-etag',$3,'legacy-file-hash',now,now+interval '5 minutes' FROM fixture_clock`, ['a'.repeat(64), 'b'.repeat(64), '4'.repeat(64)])
+      await client.query(`WITH fixture_clock AS (SELECT clock_timestamp() AS now) INSERT INTO orgmaster_core.managed_identity_candidate_leases(lease_id,token_hash_sha256,actor_binding_sha256,employee_id,employee_number,expected_primary_email,directory_customer_id,directory_user_id,primary_email,source_etag,workspace_revision,registry_revision,created_at,expires_at) SELECT '49000000-0000-4000-8000-000000000001',$1,$2,'employee-one','JFS0001','legacy@jenfu.example','customer-1','legacy-user','legacy@jenfu.example','legacy-etag',$3,'legacy-file-hash',now,now+interval '5 minutes' FROM fixture_clock`, ['a'.repeat(64), 'b'.repeat(64), currentWorkspaceRevision()])
     }
     const bytes = fs.readFileSync(path.join(root, 'db', 'migrations', name))
     await client.query(bytes.toString('utf8'))
@@ -362,6 +362,24 @@ async function runDev054Checks() {
     await expectDatabaseError(() => queryAs('jenfu_ai_pdm_runtime', `SELECT * FROM orgmaster_core.assert_employee_activation_v1('employee-one',$1)`, ['0'.repeat(64)]), { code: '42501' })
     return { owner: 'jenfu_orgmaster_migrator', orgmasterRuntimeExecute: true, siblingExecute: false }
   })
+
+  await check('D54-06', 'workspace fence uses the current artifact canonical SHA instead of the persistence batch source revision', async () => {
+    const observed = await client.query(`SELECT
+      b.source_revision AS batch_source_revision,
+      v.workspace_revision
+      FROM orgmaster_core.persistence_authority a
+      JOIN orgmaster_core.persistence_batches b ON b.id=a.active_batch_id
+      JOIN orgmaster_core.v_current_workspace_employees_v1 v ON v.employee_id='employee-inactive'
+      WHERE a.singleton=true`)
+    assert.equal(observed.rowCount, 1)
+    assert.equal(observed.rows[0].workspace_revision, currentWorkspaceRevision())
+    assert.notEqual(observed.rows[0].batch_source_revision, observed.rows[0].workspace_revision)
+    const canonical = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assert_employee_activation_v1('employee-inactive',$1)`, [observed.rows[0].workspace_revision])
+    const batchSource = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assert_employee_activation_v1('employee-inactive',$1)`, [observed.rows[0].batch_source_revision])
+    assert.deepEqual(canonical.rows, [{ allowed: true, correction_required: false }])
+    assert.deepEqual(batchSource.rows, [{ allowed: false, correction_required: false }])
+    return { canonicalRevisionAccepted: true, batchSourceRevisionRejected: true, revisionsAreDistinct: true }
+  })
 }
 
 function persistenceFixture() {
@@ -380,6 +398,10 @@ function persistenceFixture() {
   return { currentDocument, oldDocument, artifacts }
 }
 
+function currentWorkspaceRevision() {
+  return sha256(JSON.stringify(persistenceFixture().currentDocument))
+}
+
 async function seedPersistence() {
   const batchId = '47000000-0000-4000-8000-000000000001'
   const { artifacts } = persistenceFixture()
@@ -393,11 +415,11 @@ async function seedPersistence() {
 }
 
 async function createIdentity(employeeId, employeeNumber, directoryUserId) {
-  const assignment = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1($1,$2,'dev-047-qc',$3,$4,clock_timestamp())`, [employeeId, employeeNumber, '4'.repeat(64), dev049 ? '0' : null])
+  const assignment = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1($1,$2,'dev-047-qc',$3,$4,clock_timestamp())`, [employeeId, employeeNumber, currentWorkspaceRevision(), dev049 ? '0' : null])
   const registryRevision = assignment.rows[0].revision
   const email = `${employeeNumber.toLowerCase()}@jenfu.example`
-  const lease = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.lease_managed_identity_candidate_v1($1,$2,$3,'customer-1',$4,$3,'etag-1',$5,$6,'actor-1')`, [employeeId, employeeNumber, email, directoryUserId, '4'.repeat(64), registryRevision])
-  const confirmed = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1($1,$2,$3,$4,$5,'actor-1')`, [`confirm-${employeeId}`, employeeId, lease.rows[0].candidate_token, '4'.repeat(64), registryRevision])
+  const lease = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.lease_managed_identity_candidate_v1($1,$2,$3,'customer-1',$4,$3,'etag-1',$5,$6,'actor-1')`, [employeeId, employeeNumber, email, directoryUserId, currentWorkspaceRevision(), registryRevision])
+  const confirmed = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1($1,$2,$3,$4,$5,'actor-1')`, [`confirm-${employeeId}`, employeeId, lease.rows[0].candidate_token, currentWorkspaceRevision(), registryRevision])
   assert.equal(confirmed.rows[0].principal_id, `principal-managed:${confirmed.rows[0].identity_record_id}`)
   return { ...confirmed.rows[0], email, registryRevision }
 }
@@ -421,32 +443,32 @@ async function runDev049Checks() {
   await check('D49-01', 'assignment-scoped revision and old-lease invalidation', async () => {
     const invalidated = await client.query(`SELECT invalidated_at IS NOT NULL AS invalidated FROM orgmaster_core.managed_identity_candidate_leases WHERE lease_id='49000000-0000-4000-8000-000000000001'`)
     assert.equal(invalidated.rows[0].invalidated, true)
-    const first = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-one','JFS0001','dev-049-qc',$1,'0',clock_timestamp())`, ['4'.repeat(64)])
+    const first = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-one','JFS0001','dev-049-qc',$1,'0',clock_timestamp())`, [currentWorkspaceRevision()])
     assert.equal(first.rows[0].revision, '1')
-    await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-two','JFS0002','dev-049-qc',$1,'0',clock_timestamp())`, ['4'.repeat(64)])
+    await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-two','JFS0002','dev-049-qc',$1,'0',clock_timestamp())`, [currentWorkspaceRevision()])
     const detail = await queryAs('jenfu_orgmaster_runtime', `SELECT employee_number,registry_revision FROM orgmaster_core.read_employee_managed_identity_v1('employee-one')`)
     assert.deepEqual(detail.rows, [{ employee_number: 'JFS0001', registry_revision: '1' }])
-    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-one','JFS0003','dev-049-qc',$1,'0',clock_timestamp())`, ['4'.repeat(64)]), 'MANAGED_IDENTITY_REVISION_CONFLICT')
+    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-one','JFS0003','dev-049-qc',$1,'0',clock_timestamp())`, [currentWorkspaceRevision()]), 'MANAGED_IDENTITY_REVISION_CONFLICT')
     return { employeeOneRevision: detail.rows[0].registry_revision, unrelatedEmployeeDidNotInvalidate: true, oldLeaseInvalidated: true }
   })
 
   await check('D49-02', 'explicit primary email, redacted candidate DTO and receipt-first replay', async () => {
     const email = 'jedchang0308@jenfu.example'
-    const lease = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.lease_managed_identity_candidate_v1('employee-one','JFS0001',$1,'customer-1','directory-one',$1,'etag-1',$2,'1','actor-1')`, [email, '4'.repeat(64)])
+    const lease = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.lease_managed_identity_candidate_v1('employee-one','JFS0001',$1,'customer-1','directory-one',$1,'etag-1',$2,'1','actor-1')`, [email, currentWorkspaceRevision()])
     candidate = { token: lease.rows[0].candidate_token, email }
-    const preflight = await queryAs('jenfu_orgmaster_runtime', `SELECT orgmaster_core.read_managed_identity_candidate_v1('confirm-employee-one','employee-one',$1,$2,'1','actor-1') AS result`, [candidate.token, '4'.repeat(64)])
+    const preflight = await queryAs('jenfu_orgmaster_runtime', `SELECT orgmaster_core.read_managed_identity_candidate_v1('confirm-employee-one','employee-one',$1,$2,'1','actor-1') AS result`, [candidate.token, currentWorkspaceRevision()])
     assert.equal(preflight.rows[0].result.kind, 'candidate')
     assert.equal(preflight.rows[0].result.snapshot.primaryEmail, email)
-    const first = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1('confirm-employee-one','employee-one',$1,$2,'1','actor-1')`, [candidate.token, '4'.repeat(64)])
-    const replayRead = await queryAs('jenfu_orgmaster_runtime', `SELECT orgmaster_core.read_managed_identity_candidate_v1('confirm-employee-one','employee-one',$1,$2,'1','actor-1') AS result`, [candidate.token, '4'.repeat(64)])
-    const replay = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1('confirm-employee-one','employee-one',$1,$2,'1','actor-1')`, [candidate.token, '4'.repeat(64)])
+    const first = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1('confirm-employee-one','employee-one',$1,$2,'1','actor-1')`, [candidate.token, currentWorkspaceRevision()])
+    const replayRead = await queryAs('jenfu_orgmaster_runtime', `SELECT orgmaster_core.read_managed_identity_candidate_v1('confirm-employee-one','employee-one',$1,$2,'1','actor-1') AS result`, [candidate.token, currentWorkspaceRevision()])
+    const replay = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1('confirm-employee-one','employee-one',$1,$2,'1','actor-1')`, [candidate.token, currentWorkspaceRevision()])
     assert.equal(replayRead.rows[0].result.kind, 'replayed')
     assert.equal(replay.rows[0].identity_record_id, first.rows[0].identity_record_id)
-    const fingerprint = confirmFingerprint({ actor: 'actor-1', employeeId: 'employee-one', candidateToken: candidate.token, workspaceRevision: '4'.repeat(64), registryRevision: '1' })
+    const fingerprint = confirmFingerprint({ actor: 'actor-1', employeeId: 'employee-one', candidateToken: candidate.token, workspaceRevision: currentWorkspaceRevision(), registryRevision: '1' })
     const counts = await client.query(`SELECT (SELECT count(*)::int FROM orgmaster_core.managed_daily_identities WHERE employee_id='employee-one') AS identities,(SELECT count(*)::int FROM orgmaster_core.managed_identity_command_receipts WHERE command_id='confirm-employee-one') AS receipts,(SELECT count(*)::int FROM orgmaster_core.managed_identity_audit_events WHERE command_id='confirm-employee-one' AND action='managed_identity_link_confirmed') AS audits,(SELECT request_hash_sha256 FROM orgmaster_core.managed_identity_command_receipts WHERE command_id='confirm-employee-one') AS fingerprint`)
     assert.deepEqual(counts.rows[0], { identities: 1, receipts: 1, audits: 1, fingerprint })
-    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1('confirm-employee-one','employee-one',$1,$2,'1','actor-2')`, [candidate.token, '4'.repeat(64)]), 'MANAGED_IDENTITY_IDEMPOTENCY_CONFLICT')
-    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1('new-command','employee-one',$1,$2,'1','actor-1')`, [candidate.token, '4'.repeat(64)]), 'MANAGED_IDENTITY_CANDIDATE_INVALID')
+    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1('confirm-employee-one','employee-one',$1,$2,'1','actor-2')`, [candidate.token, currentWorkspaceRevision()]), 'MANAGED_IDENTITY_IDEMPOTENCY_CONFLICT')
+    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1('new-command','employee-one',$1,$2,'1','actor-1')`, [candidate.token, currentWorkspaceRevision()]), 'MANAGED_IDENTITY_CANDIDATE_INVALID')
     return { identityRecordId: first.rows[0].identity_record_id, receiptFirstReplay: true, fingerprint }
   })
 
@@ -467,12 +489,12 @@ async function runDev049Checks() {
   })
 
   await check('D49-04', 'confirm transaction rollback leaves no partial identity or receipt', async () => {
-    await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-three','JFS0003','dev-049-qc',$1,'0',clock_timestamp())`, ['4'.repeat(64)])
+    await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-three','JFS0003','dev-049-qc',$1,'0',clock_timestamp())`, [currentWorkspaceRevision()])
     const email = 'rollback@jenfu.example'
-    const lease = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.lease_managed_identity_candidate_v1('employee-three','JFS0003',$1,'customer-1','directory-three',$1,'etag-3',$2,'1','actor-3')`, [email, '4'.repeat(64)])
+    const lease = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.lease_managed_identity_candidate_v1('employee-three','JFS0003',$1,'customer-1','directory-three',$1,'etag-3',$2,'1','actor-3')`, [email, currentWorkspaceRevision()])
     await client.query(`CREATE FUNCTION orgmaster_core.dev049_qc_reject_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='managed_identity_link_confirmed' THEN RAISE EXCEPTION 'QC_CONFIRM_ROLLBACK'; END IF; RETURN NEW; END $$`)
     await client.query(`CREATE TRIGGER dev049_qc_reject_audit BEFORE INSERT ON orgmaster_core.managed_identity_audit_events FOR EACH ROW EXECUTE FUNCTION orgmaster_core.dev049_qc_reject_audit()`)
-    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1('rollback-command','employee-three',$1,$2,'1','actor-3')`, [lease.rows[0].candidate_token, '4'.repeat(64)]), 'QC_CONFIRM_ROLLBACK')
+    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.confirm_managed_identity_link_v1('rollback-command','employee-three',$1,$2,'1','actor-3')`, [lease.rows[0].candidate_token, currentWorkspaceRevision()]), 'QC_CONFIRM_ROLLBACK')
     const state = await client.query(`SELECT (SELECT count(*)::int FROM orgmaster_core.managed_daily_identities WHERE employee_id='employee-three') AS identities,(SELECT count(*)::int FROM orgmaster_core.managed_identity_command_receipts WHERE command_id='rollback-command') AS receipts,(SELECT consumed_at IS NULL FROM orgmaster_core.managed_identity_candidate_leases WHERE token_hash_sha256=encode(public.digest(convert_to($1,'UTF8'),'sha256'),'hex')) AS reusable`, [lease.rows[0].candidate_token])
     assert.deepEqual(state.rows[0], { identities: 0, receipts: 0, reusable: true })
     await client.query(`DROP TRIGGER dev049_qc_reject_audit ON orgmaster_core.managed_identity_audit_events; DROP FUNCTION orgmaster_core.dev049_qc_reject_audit()`)
@@ -537,7 +559,7 @@ async function main() {
   postgresBin = runtime.bin
   taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), dev049 ? 'orgmaster-dev049-qc-' : dev050 ? 'orgmaster-dev050-qc-' : dev052 ? 'orgmaster-dev052-qc-' : dev053 ? 'orgmaster-dev053-qc-' : dev054 ? 'orgmaster-dev054-qc-' : 'orgmaster-dev047-qc-'))
   clusterDir = path.join(taskRoot, 'cluster'); postgresLog = path.join(taskRoot, 'postgres.log'); port = await freePort()
-  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-018 activation contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'client closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
+  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'client closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
   run(path.join(postgresBin, 'initdb.exe'), ['-D', clusterDir, '--auth-local=trust', '--auth-host=trust', '--username=postgres', '--encoding=UTF8', '--no-locale'])
   run(path.join(postgresBin, 'pg_ctl.exe'), ['-D', clusterDir, '-l', postgresLog, '-o', `-p ${port} -h 127.0.0.1`, '-w', 'start'], { stdio: 'ignore' })
   started = true
@@ -599,8 +621,8 @@ async function main() {
     const peers = [new pg.Client({ connectionString }), new pg.Client({ connectionString })]
     await Promise.all(peers.map((peer) => peer.connect()))
     const results = await Promise.allSettled([
-      queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-three','JFS0099','writer-a',$1,NULL,clock_timestamp())`, ['4'.repeat(64)], peers[0]),
-      queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-four','JFS0099','writer-b',$1,NULL,clock_timestamp())`, ['4'.repeat(64)], peers[1]),
+      queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-three','JFS0099','writer-a',$1,NULL,clock_timestamp())`, [currentWorkspaceRevision()], peers[0]),
+      queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1('employee-four','JFS0099','writer-b',$1,NULL,clock_timestamp())`, [currentWorkspaceRevision()], peers[1]),
     ])
     await Promise.all(peers.map((peer) => peer.end()))
     assert.equal(results.filter((entry) => entry.status === 'fulfilled').length, 1)
@@ -651,7 +673,7 @@ finally {
   if (taskRoot) { try { fs.rmSync(taskRoot, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 }); cleanup.tempRemoved = !fs.existsSync(taskRoot) } catch { cleanup.tempRemoved = false } } else cleanup.tempRemoved = true
 }
 
-const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05'] : requiredCorrectionCases
+const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : requiredCorrectionCases
 const allRequiredPassed = requiredCases.every((id) => checks.some((entry) => entry.id === id && entry.status === 'PASS'))
 const status = !firstFailure && allRequiredPassed && Object.values(cleanup).every(Boolean) ? 'PASS' : firstFailure?.reasonCode === 'POSTGRES_RUNTIME_MISSING' ? 'BLOCKED' : 'FAIL'
 const manifest = {

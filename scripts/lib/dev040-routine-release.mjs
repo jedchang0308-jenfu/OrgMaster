@@ -136,14 +136,14 @@ export function assertDev014ApplicationRegistrationAppend(before, after) {
 export function assertDev014ActivationContractAppend(before, after) {
   const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
   const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
-  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 17 || after.entries?.length !== 18) fail('DEV014_ACTIVATION_CONTRACT_APPEND_INVALID')
+  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 18 || after.entries?.length !== 19) fail('DEV014_ACTIVATION_CONTRACT_APPEND_INVALID')
   if (!same(before.entries, after.entries.slice(0, before.entries.length))) fail('DEV014_ACTIVATION_CONTRACT_APPEND_INVALID')
-  const appended = after.entries[17]
+  const appended = after.entries[18]
   const expected = [
-    'dev014-orgmaster-018',
-    'db/migrations/018_dev014_employee_activation_contract.sql',
-    'ce5ab0204fe39eca3bd3e123ecfe8e84ea6dc8f008c6429e7c8bdc77d13c2229',
-    'c90d1a36af1cfa454276eb2d194bf981173467552377e3b83a1bf87fc9f391e6',
+    'dev014-orgmaster-019',
+    'db/migrations/019_dev014_workspace_revision_contract.sql',
+    'ac8c9e04edf208613e2291ab227a5e13b5ecdcc386820b75a31afdef1e3a8ede',
+    'ff5d792916d0b1576e0c8ed9db35d4943c1352b57897d57c38853f2e41d8af36',
   ]
   if (!same([appended.version, appended.path, appended.sourceSha256, appended.appliedSha256], expected)) fail('DEV014_ACTIVATION_CONTRACT_APPEND_INVALID')
   return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
@@ -152,8 +152,9 @@ export function assertDev014ActivationContractAppend(before, after) {
 export function assertDev014ActivationContractRemediation(readiness, authorization) {
   const remediation = {
     kind: 'LOGIN_FIXTURE_EMPLOYEE_ACTIVATION_CONTRACT',
-    migrationVersion: 'dev014-orgmaster-018',
+    migrationVersion: 'dev014-orgmaster-019',
     functionSignature: 'orgmaster_core.assert_employee_activation_v1(text,text)',
+    viewSignature: 'orgmaster_core.v_current_workspace_employees_v1',
     employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
   }
   if (authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
