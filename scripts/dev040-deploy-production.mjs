@@ -25,7 +25,7 @@ async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile
 }
 
 function parseArgs(argv) {
-  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014LoginFixtureCorrection: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null }
+  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014LoginFixtureCorrection: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null }
   for (const arg of argv) {
     if (arg === '--check' && !options.check) options.check = true
     else if (arg === '--prepare-only' && !options.prepareOnly) options.prepareOnly = true
@@ -33,6 +33,7 @@ function parseArgs(argv) {
     else if (arg === '--dev014-contract-remediation' && !options.dev014ContractRemediation) options.dev014ContractRemediation = true
     else if (arg === '--dev014-application-registration-remediation' && !options.dev014ApplicationRegistrationRemediation) options.dev014ApplicationRegistrationRemediation = true
     else if (arg === '--dev014-activation-contract-remediation' && !options.dev014ActivationContractRemediation) options.dev014ActivationContractRemediation = true
+    else if (arg === '--dev014-projection-contract-remediation' && !options.dev014ProjectionContractRemediation) options.dev014ProjectionContractRemediation = true
     else if (arg === '--dev014-login-fixture-correction' && !options.dev014LoginFixtureCorrection) options.dev014LoginFixtureCorrection = true
     else if (arg.startsWith('--dev013-handoff-mode=') && options.handoffMode === null) options.handoffMode = arg.slice('--dev013-handoff-mode='.length)
     else if (arg.startsWith('--dev013-action=') && options.action === null) options.action = arg.slice('--dev013-action='.length)
@@ -53,10 +54,10 @@ function parseArgs(argv) {
       if (!match) throw new Error('DEV014_INFRA_REF_INVALID')
       options.infraReceiptRef = match.groups
       options.infraOption = 'dev014'
-    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--dev014-activate|--dev014-contract-remediation|--dev014-application-registration-remediation|--dev014-activation-contract-remediation|--dev014-login-fixture-correction --dev014-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
+    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--dev014-activate|--dev014-contract-remediation|--dev014-application-registration-remediation|--dev014-activation-contract-remediation|--dev014-projection-contract-remediation|--dev014-login-fixture-correction --dev014-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
   }
   const controlled = [options.handoffMode, options.action, options.predecessorReceiptRef].filter((value) => value !== null).length
-  const dev014Mode = Number(options.dev014Activate) + Number(options.dev014ContractRemediation) + Number(options.dev014ApplicationRegistrationRemediation) + Number(options.dev014ActivationContractRemediation) + Number(options.dev014LoginFixtureCorrection)
+  const dev014Mode = Number(options.dev014Activate) + Number(options.dev014ContractRemediation) + Number(options.dev014ApplicationRegistrationRemediation) + Number(options.dev014ActivationContractRemediation) + Number(options.dev014ProjectionContractRemediation) + Number(options.dev014LoginFixtureCorrection)
   if (options.check && options.prepareOnly) throw new Error('INVALID_ARGUMENTS')
   if (controlled !== 0 && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && (!['off', 'on'].includes(options.handoffMode) || !['guard', 'activate', 'rollback'].includes(options.action))) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INVALID')
@@ -143,16 +144,26 @@ async function main() {
     viewSignature: 'orgmaster_core.v_current_workspace_employees_v1',
     employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
   } : null
+  const dev014ProjectionContractRemediation = options.dev014ProjectionContractRemediation ? {
+    kind: 'CURRENT_PROJECTION_CONTRACT_CORRECTION',
+    migrationVersion: 'dev014-orgmaster-020',
+    contractViews: [
+      'orgmaster_contract.v_ai_pdm_entitlement_authority_v1',
+      'orgmaster_contract.v_ai_pdm_effective_role_assignments_v1',
+      'orgmaster_contract.v_portal_app_visibility_v1',
+    ],
+    applicationId: 'ai-pdm',
+  } : null
   const dev014LoginFixtureCorrection = options.dev014LoginFixtureCorrection ? {
     kind: 'LOGIN_FIXTURE_ACTIVATION_CONTRACT_CORRECTION',
     applicationId: 'ai-pdm',
     employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
     infrastructureBinding: 'EXACT_RECEIPT_SOURCE_FINGERPRINT',
   } : null
-  const authorization = { ...authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}) }
+  const authorization = { ...authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}) }
   const readiness = transition
     ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v2', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
-    : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}) }
+    : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}) }
   const infraReceiptRef = options.infraReceiptRef ?? baseline.intent.infraReceiptRef
   const values = { sourceLock, runtimeConfig, authorization, readiness,
     foundation: (await transport.readJson(baseline.intent.foundationReceiptRef, profile.artifact.releaseBucket)).value,
@@ -171,6 +182,6 @@ async function main() {
   const releaseCapsuleRef = `${result.ref.uri}#sha256=${result.ref.sha256}`
   // This is the existing protected ten-stage workflow, not a local deployment bypass.
   if (!options.prepareOnly) command('gh', ['workflow', 'run', profile.workflow.path, '--repo', profile.application.repository, '--ref', profile.application.branch, '-f', `releaseCapsuleRef=${releaseCapsuleRef}`])
-  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: verification.migrationDisposition, controlledTransition: transition ?? dev014Activation ?? dev014Remediation ?? dev014ApplicationRegistrationRemediation ?? dev014ActivationContractRemediation ?? dev014LoginFixtureCorrection })}\n`)
+  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: verification.migrationDisposition, controlledTransition: transition ?? dev014Activation ?? dev014Remediation ?? dev014ApplicationRegistrationRemediation ?? dev014ActivationContractRemediation ?? dev014ProjectionContractRemediation ?? dev014LoginFixtureCorrection })}\n`)
 }
 main().catch((error) => { process.stderr.write(`${error.code ?? error.message}\n`); process.exitCode = 1 })

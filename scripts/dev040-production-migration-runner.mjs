@@ -21,7 +21,7 @@ export const TARGET = Object.freeze({
   login: 'orgmaster-prod-migrator@jenfu-platform-prod.iam',
   ledger: 'orgmaster_core.schema_migrations',
   baselineCount: 10,
-  entryCount: 19,
+  entryCount: 20,
   migratorRole: 'jenfu_orgmaster_migrator',
   runtimeRole: 'jenfu_orgmaster_runtime',
   coreSchema: 'orgmaster_core',

@@ -32,3 +32,5 @@ npm run check:db-boundary
 ```
 
 The default check validates future migration files and staged migration changes. CI can compare committed changes with `npm run check:db-boundary -- --base=<base-ref>`.
+
+Migration 020 is the DEV-055 bounded correction for current projections. It may replace only the three existing `orgmaster_contract` read-only views named in the DEV-055 spec; the historical `access_governance` compatibility layer remains immutable.
