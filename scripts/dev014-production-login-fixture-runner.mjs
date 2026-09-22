@@ -7,6 +7,7 @@ import pg from 'pg'
 import { metadataAccessToken } from './lib/dev012-production-migration-runner.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
+const H64 = /^[a-f0-9]{64}$/u
 const OPERATION_ID = /^DEV014-LOGIN-FIXTURE-[A-Z0-9-]{4,120}$/u
 const ACTOR = 'dev014-production-login-fixture'
 const GOOGLE_DIRECTORY_SCOPE = 'https://www.googleapis.com/auth/admin.directory.user.readonly'
@@ -47,6 +48,12 @@ function fail(code) { throw new Error(code) }
 function sha256(value) { return createHash('sha256').update(String(value), 'utf8').digest('hex') }
 function one(rows, code) { if (!Array.isArray(rows) || rows.length !== 1) fail(code); return rows[0] }
 function normalizedEmail(value) { return String(value ?? '').trim().toLowerCase() }
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]))
+}
+function canonicalJson(value) { return JSON.stringify(canonicalize(value)) }
 
 export function parseArgs(argv) {
   const names = new Set(['--operation-id', '--source-revision', '--workspace-revision', '--deadline-at', '--phase'])
@@ -61,7 +68,7 @@ export function parseArgs(argv) {
   }
   if (Object.keys(value).length !== names.size || !OPERATION_ID.test(value.operationId ?? '')
     || !H40.test(value.sourceRevision ?? '') || typeof value.workspaceRevision !== 'string' || !value.workspaceRevision.trim()
-    || !Number.isFinite(Date.parse(value.deadlineAt ?? '')) || !['assign', 'link', 'readback'].includes(value.phase ?? '')) {
+    || !Number.isFinite(Date.parse(value.deadlineAt ?? '')) || !['assign', 'activate', 'link', 'readback'].includes(value.phase ?? '')) {
     fail('DEV014_LOGIN_FIXTURE_ARGUMENT_INVALID')
   }
   return value
@@ -282,8 +289,86 @@ async function readbackFixture(database, fixture) {
   }
 }
 
+async function readActiveArtifact(database, artifactKey, artifactKind, code) {
+  const row = one((await database.query(
+    'SELECT artifact_key, artifact_kind, payload, canonical_sha256, source_revision FROM orgmaster_core.read_active_persistence_artifact_v1($1)',
+    [artifactKey],
+  )).rows, code)
+  if (String(row.artifact_key) !== artifactKey || String(row.artifact_kind) !== artifactKind
+    || !row.payload || typeof row.payload !== 'object' || Array.isArray(row.payload)) fail(code)
+  return {
+    payload: row.payload,
+    revision: String(row.canonical_sha256 ?? '').trim(),
+    sourceRevision: String(row.source_revision ?? '').trim(),
+  }
+}
+
+async function activateFixtures(database, operation, now) {
+  const manifest = await readActiveArtifact(database, 'orgmaster-workspace.v1.json', 'workspace-manifest', 'DEV014_LOGIN_FIXTURE_WORKSPACE_INVALID')
+  const currentVersionId = String(manifest.payload.currentVersionId ?? '')
+  if (!/^[A-Za-z0-9-]{1,80}$/u.test(currentVersionId)) fail('DEV014_LOGIN_FIXTURE_WORKSPACE_INVALID')
+  const artifactKey = `orgmaster-versions/${currentVersionId}.json`
+  const current = await readActiveArtifact(database, artifactKey, 'workspace-version', 'DEV014_LOGIN_FIXTURE_WORKSPACE_INVALID')
+  if (current.revision !== operation.workspaceRevision || current.payload.app !== 'OrgMaster' || current.payload.kind !== 'document'
+    || !current.payload.state || typeof current.payload.state !== 'object'
+    || !Array.isArray(current.payload.state.employees)) fail('DEV014_LOGIN_FIXTURE_WORKSPACE_REVISION_CONFLICT')
+
+  const employees = current.payload.state.employees
+  const targets = FIXTURES.map((fixture) => {
+    const matches = employees.filter((employee) => employee && employee.id === fixture.employeeId)
+    if (matches.length !== 1 || matches[0].name !== `DEV014 Free ${fixture.alias === 'dev014-fp-google' ? 'Google' : 'Number'}`
+      || !['active', 'inactive'].includes(matches[0].status)) fail('DEV014_LOGIN_FIXTURE_ACTIVATE_TARGET_INVALID')
+    return { fixture, employee: matches[0] }
+  })
+  if (targets.every(({ employee }) => employee.status === 'active')) {
+    return targets.map(({ fixture }) => ({ alias: fixture.alias, disposition: 'REPLAY', employeeId: fixture.employeeId, employeeNumber: fixture.employeeNumber, employeeStatus: 'active', workspaceRevision: current.revision }))
+  }
+  if (!targets.every(({ employee }) => employee.status === 'inactive')) fail('DEV014_LOGIN_FIXTURE_ACTIVATE_PARTIAL_STATE')
+
+  for (const { fixture } of targets) {
+    const check = one((await database.query(
+      'SELECT allowed, correction_required FROM orgmaster_core.assert_employee_activation_v1($1,$2)',
+      [fixture.employeeId, operation.workspaceRevision],
+    )).rows, 'DEV014_LOGIN_FIXTURE_ACTIVATION_FENCE_FAILED')
+    if (check.allowed !== true || check.correction_required === true) fail('DEV014_LOGIN_FIXTURE_ACTIVATION_FENCE_REJECTED')
+  }
+
+  const nextPayload = structuredClone(current.payload)
+  nextPayload.savedAt = now.toISOString()
+  for (const fixture of FIXTURES) nextPayload.state.employees.find((employee) => employee.id === fixture.employeeId).status = 'active'
+  const raw = `${JSON.stringify(nextPayload, null, 2)}\n`
+  const change = {
+    artifactKey,
+    artifactKind: 'workspace-version',
+    payload: nextPayload,
+    expectedCanonicalSha256: current.revision,
+    nextCanonicalSha256: sha256(canonicalJson(nextPayload)),
+    sourceSha256: sha256(raw),
+    sourceBytes: Buffer.byteLength(raw),
+  }
+  const authority = one((await database.query('SELECT authority_version, source_revision FROM orgmaster_core.read_active_persistence_authority_v1()')).rows, 'DEV014_LOGIN_FIXTURE_AUTHORITY_INVALID')
+  const previousSourceRevision = String(authority.source_revision ?? '').trim()
+  if (!H64.test(previousSourceRevision)) fail('DEV014_LOGIN_FIXTURE_AUTHORITY_INVALID')
+  const { payload: _payload, ...metadata } = change
+  const nextSourceRevision = sha256(canonicalJson({ previousSourceRevision, changes: [metadata] }))
+  const written = one((await database.query(
+    'SELECT authority_version, source_revision, outbox_count FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,$3,$4,$5,$6::jsonb)',
+    [JSON.stringify([change]), nextSourceRevision, ACTOR, 'dev014_login_fixture_activate', operation.operationId, '[]'],
+  )).rows, 'DEV014_LOGIN_FIXTURE_ACTIVATE_WRITE_FAILED')
+  if (String(written.source_revision ?? '').trim() !== nextSourceRevision || Number(written.outbox_count) !== 0) fail('DEV014_LOGIN_FIXTURE_ACTIVATE_WRITE_INVALID')
+
+  const readback = []
+  for (const fixture of FIXTURES) {
+    const detail = await readEmployee(database, fixture)
+    if (detail.employeeStatus !== 'active' || detail.employeeNumber !== fixture.employeeNumber || !detail.admissionEnabled) fail('DEV014_LOGIN_FIXTURE_ACTIVATE_READBACK_INVALID')
+    readback.push({ alias: fixture.alias, disposition: 'APPLIED', employeeId: fixture.employeeId, employeeNumber: fixture.employeeNumber, employeeStatus: 'active', workspaceRevision: change.nextCanonicalSha256 })
+  }
+  return readback
+}
+
 export async function executeFixturePhase({ database, readDirectoryUser, operation, now = new Date() }) {
   if (Date.parse(operation.deadlineAt) <= now.getTime() || Date.parse(operation.deadlineAt) > now.getTime() + 8 * 60 * 60 * 1_000) fail('DEV014_LOGIN_FIXTURE_DEADLINE_INVALID')
+  if (operation.phase === 'activate') return activateFixtures(database, operation, now)
   const results = []
   for (const fixture of FIXTURES) {
     if (operation.phase === 'assign') results.push(await assignFixture(database, fixture, operation, now))
