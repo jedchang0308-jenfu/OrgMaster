@@ -2,11 +2,11 @@
 
 文件成熟度：`RD Implementation Complete / Architecture Contract Implemented 2026-09-18`
 架構審查：`Architecture Finalized — R2 / Implemented and Verified / 2026-09-18`
-交付狀態：`Production Released / Canonical-first Correction Pending / Workspace Target Partial Evidence / Full Browser Pending`
+交付狀態：`Production Released / Canonical-first Correction Complete / Workspace Google + Employee Number Current Evidence / Free + Full Browser Pending`
 風險：`High`（首次身分綁定、登入授權與共用資料庫相容性）
 父交付點：DEV-049；相容基線：DEV-047／ADR-007
 
-本文件是 DEV-050 的單一設計權威。R2 修正前版 Email 一致性、並行重試及共用 view 邊界的錯誤，取代前版「closure PASS／P0=0／P1=0」宣告。OrgMaster產品實作、本機QA／QC、provider、migration、DWD、admission與base release均已完成；目前只剩canonical-first correction owner release及完整Google／工號Production browser matrix。
+本文件是 DEV-050 的單一設計權威。R2 修正前版 Email 一致性、並行重試及共用 view 邊界的錯誤，取代前版「closure PASS／P0=0／P1=0」宣告。OrgMaster產品實作、本機QA／QC、provider、migration、DWD、admission、base release及canonical-first correction owner release均已完成；Workspace Google／工號current evidence已取得，目前只剩Free-only／無Gmail、negative／rate／race與完整Production browser matrix。
 
 查證基準：`codex/dev-049-existing-google-account@0ff634f2373b388703d9124b3c09d48a1dd3d978`。父 owner receipt 的來源仍記錄 `b839003` 的受控工作樹；不能把該歷史 receipt 改寫成目前 commit 的驗證報告，詳見 §9。
 
@@ -282,3 +282,5 @@ DEV-050 release commit `e15121af6b579a339a109c1125214bf4d29624e8`是Production s
 ### 2026-09-22 current Production owner/L4 checkpoint
 
 OrgMaster master `3588eb69ed0b47a588d120801d18adaa68dc27d2`已由owner run `35666554078`發布至`orgmaster-prod-fda3dbbe8347`，image=`sha256:4fd3ae63692cdbda2b20ce0dfa865cea48de194440035e42217e32144f638618`且100% traffic。Platform R3 fresh conformance已完成第二次bounded refresh：OrgMaster admission revision 5、Platform revision 6均enabled且apply＋replay PASS，Platform support revision升為4，其餘未漂移support維持3，affected identity／outbox=0。Workspace Google-first及`JFS0005`工號起手皆已完成Platform session、AI-PDM handoff／reload與管理權限；refresh後重驗仍不需第二次Google登入，global logout POST=200且兩target舊session protected requests均401。`PDM-W-G`及`PDM-W-E`具current evidence；Free-only／無Gmail fixture及negative／rate／race required cells仍未齊，因此本DEV的Production owner交付已完成，但DEV-014 LOGIN六案仍為0／6 full cases。權威browser證據見Platform `ai-doc/qc/qc-dev-014-production-l4-2026-09-22.md`。
+
+剩餘跨app驗收已由Platform `config/dev-014/login-production-fixture-plan.json`固定四個disposable identities及全部cells，並由`jenfu.dev014.login-production-completion.v1` finalizer fail closed。只有self-hashed final receipt通過，才同步關閉DEV-014、DEV-049／050與AI-PDM DEV-118；此文件的owner release完成本身不冒充full browser PASS。
