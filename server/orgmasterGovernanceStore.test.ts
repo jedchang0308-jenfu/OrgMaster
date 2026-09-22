@@ -32,6 +32,16 @@ describe('governance store', () => {
     permission.code = 'orgmaster.identity.view.changed'
     expect(() => syncOrgMasterSystemCatalog(conflicting)).toThrowError(expect.objectContaining({ code: 'ORGMASTER_SYSTEM_CATALOG_CONFLICT' }))
   })
+  it('reuses a unique compatible legacy permission id and only adds its missing admin grant', () => {
+    const current = createSeedDocument('2026-09-23T00:00:00.000Z')
+    const permission = current.draft.permissions.find((entry) => entry.id === 'permission-orgmaster-identity-view')!
+    permission.id = 'legacy-permission-identity-view'
+    permission.name = '既有登入帳號檢視權限'
+    current.draft.rolePermissionGrants = current.draft.rolePermissionGrants.filter((grant) => grant.permissionId !== 'permission-orgmaster-identity-view')
+    const synced = syncOrgMasterSystemCatalog(current, '2026-09-23T00:01:00.000Z')
+    expect(synced.draft.permissions.filter((entry) => entry.code === 'orgmaster.identity.view')).toEqual([permission])
+    expect(synced.draft.rolePermissionGrants).toContainEqual({ id: 'grant-orgmaster-admin-legacy-permission-identity-view', roleId: 'role-orgmaster-admin', permissionId: 'legacy-permission-identity-view', effect: 'allow' })
+  })
   it('requires an active global role and applies deny precedence for publish continuity', () => {
     const policy = createSeedDocument('2026-08-26T00:00:00.000Z').draft
     const actor = { principalId: 'principal-1', issuer: 'issuer-1', subject: 'subject-1', employeeId: 'employee-1', bootstrap: false }

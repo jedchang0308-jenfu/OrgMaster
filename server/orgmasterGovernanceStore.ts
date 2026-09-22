@@ -63,13 +63,25 @@ export function syncOrgMasterSystemCatalog(document: GovernanceDocumentV3, now =
   const addedPermissions: string[] = []
   const addedGrants: string[] = []
   for (const expected of ORGMASTER_PERMISSIONS) {
-    const matchingPermissions = permissions.filter((permission) => permission.id === expected.id || permission.applicationId === expected.applicationId && permission.code === expected.code)
-    if (matchingPermissions.length > 1 || matchingPermissions.length === 1 && canonicalJson(matchingPermissions[0]) !== canonicalJson(expected)) throw new GovernanceStoreError('ORGMASTER_SYSTEM_CATALOG_CONFLICT', { permissionId: expected.id, permissionCode: expected.code })
-    if (matchingPermissions.length === 0) { permissions.push({ ...expected }); addedPermissions.push(expected.id) }
-    const expectedGrant = { id: `grant-orgmaster-admin-${expected.id}`, roleId: 'role-orgmaster-admin', permissionId: expected.id, effect: 'allow' as const }
-    const matchingGrants = rolePermissionGrants.filter((grant) => grant.id === expectedGrant.id || grant.roleId === expectedGrant.roleId && grant.permissionId === expectedGrant.permissionId)
-    if (matchingGrants.length > 1 || matchingGrants.length === 1 && canonicalJson(matchingGrants[0]) !== canonicalJson(expectedGrant)) throw new GovernanceStoreError('ORGMASTER_SYSTEM_CATALOG_CONFLICT', { grantId: expectedGrant.id, permissionId: expected.id })
-    if (matchingGrants.length === 0) { rolePermissionGrants.push(expectedGrant); addedGrants.push(expectedGrant.id) }
+    const idMatches = permissions.filter((permission) => permission.id === expected.id)
+    const codeMatches = permissions.filter((permission) => permission.applicationId === expected.applicationId && permission.code === expected.code)
+    if (idMatches.length > 1 || codeMatches.length > 1 || idMatches.length === 1 && (idMatches[0].applicationId !== expected.applicationId || idMatches[0].code !== expected.code)) {
+      throw new GovernanceStoreError('ORGMASTER_SYSTEM_CATALOG_CONFLICT', { permissionId: expected.id, permissionCode: expected.code })
+    }
+    const existing = idMatches[0] ?? codeMatches[0]
+    if (existing && (existing.applicationId !== expected.applicationId || existing.code !== expected.code || existing.status !== 'active' || existing.kind !== expected.kind || existing.risk !== expected.risk)) {
+      throw new GovernanceStoreError('ORGMASTER_SYSTEM_CATALOG_CONFLICT', { permissionId: expected.id, permissionCode: expected.code })
+    }
+    const permissionId = existing?.id ?? expected.id
+    if (!existing) { permissions.push({ ...expected }); addedPermissions.push(expected.id) }
+    const expectedGrant = { id: `grant-orgmaster-admin-${permissionId}`, roleId: 'role-orgmaster-admin', permissionId, effect: 'allow' as const }
+    const idGrant = rolePermissionGrants.find((grant) => grant.id === expectedGrant.id)
+    if (idGrant && (idGrant.roleId !== expectedGrant.roleId || idGrant.permissionId !== expectedGrant.permissionId || idGrant.effect !== 'allow')) {
+      throw new GovernanceStoreError('ORGMASTER_SYSTEM_CATALOG_CONFLICT', { grantId: expectedGrant.id, permissionId })
+    }
+    const matchingGrants = rolePermissionGrants.filter((grant) => grant.roleId === expectedGrant.roleId && grant.permissionId === permissionId)
+    if (matchingGrants.some((grant) => grant.effect !== 'allow')) throw new GovernanceStoreError('ORGMASTER_SYSTEM_CATALOG_CONFLICT', { grantId: expectedGrant.id, permissionId })
+    if (!idGrant && matchingGrants.length === 0) { rolePermissionGrants.push(expectedGrant); addedGrants.push(expectedGrant.id) }
   }
   if (!addedPermissions.length && !addedGrants.length) return document
   const draft = { ...document.draft, permissions, rolePermissionGrants, updatedAt: now }
