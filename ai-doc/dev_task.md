@@ -113,7 +113,7 @@
 
 - ◐ DEV-056 [修復點] [P0] [Architecture Finalized／RD Implementation Complete／Local QA-QC Passed／Release In Progress] System permission catalog compatible sync
   - 來源 ID：`Jenfu-Platform / DEV-014 / zero-paid-seat Production login fixtures`；本地以DEV-056承接OrgMaster治理目錄缺口。
-  - 只對V3草稿補齊穩定permissions與`orgmaster_admin` allow grants；衝突fail closed，重播no-op，既有發布快照與所有Employee assignments不改寫。
+    - 只對V3草稿補齊穩定permissions與`orgmaster_admin` allow grants；唯一且語意相容的歷史permission code沿用既有ID，真正ID/code、status、kind/risk或deny衝突才fail closed；重播no-op，既有發布快照與所有Employee assignments不改寫。
   - 驗證與release：[DEV-056 spec](specs/DEV-056-orgmaster-system-permission-catalog-sync.md)。
 
 - ◐ DEV-055 [修復點] [P0] [Architecture Finalized／RD Implementation Complete／Local QA-QC Passed／Production Release In Progress] Current projection contract補正

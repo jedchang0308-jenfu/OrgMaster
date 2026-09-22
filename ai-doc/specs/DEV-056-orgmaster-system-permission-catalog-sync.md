@@ -12,11 +12,12 @@ Production 治理文件早於 managed identity 功能建立。既有草稿保有
 
 - 讀取現行 V3 governance store 時，對 `ORGMASTER_PERMISSIONS` 執行相容、可重播的 draft-only catalog sync。
 - 只補上缺少的穩定 permission 與 `role-orgmaster-admin` allow grant；既有 active published snapshots、Employee assignments、identity links 及 application role assignments 均不改寫。
-- 若相同 ID 或 application/code 已存在但內容不同，回傳 `ORGMASTER_SYSTEM_CATALOG_CONFLICT` 並停止，不猜測或覆寫。
+- 若歷史資料以不同 ID 保存唯一且 active、kind／risk 相同的 application/code，沿用既有 ID 並只補缺少的管理者 allow grant；名稱等顯示 metadata 保持原值。
+- ID 對應到不同 code、相同 code 不唯一、inactive、kind／risk 不相容或既有 deny grant 時，回傳 `ORGMASTER_SYSTEM_CATALOG_CONFLICT` 並停止，不猜測或覆寫。
 - 有新增時透過既有 CAS／persistence path 寫入並追加 `ORGMASTER_SYSTEM_CATALOG_SYNCED` audit event；第二次重播保留原 revision，不再寫入。
 - UI 正確標示 `assignment-governance-v3`，且只允許伺服器目前接受的 V3 版本重新啟用。
 
-此修正不新增 schema、migration、IAM、Secret、service、資料重寫或人工 SQL。Production 生效仍沿用 DEV-040 owner-native release；服務發布後由一般 governance read 完成 draft sync，再以既有管理者流程發布新的 immutable governance version。
+此修正不新增 schema、migration、IAM、Secret、service、資料重寫或人工 SQL。Production 生效仍沿用 DEV-040 owner-native release；服務發布後由一般 governance read 完成 draft sync，再以既有管理者流程發布新的 immutable governance version。第一輪 Production readback 發現舊資料可能保留 UI 產生的等價 permission ID，因此相容規則依上述方式收斂；5xx 另留下只含 code／結構化 details 的 Cloud Run 診斷事件，不記錄 subject、token、email 或文件內容。
 
 ## 驗收
 
