@@ -275,6 +275,10 @@ RD 開始前重新核對 branch／HEAD／dirty state、父 receipt 與 migration
 使用思考習慣：#第一性原理、#多層次分析、#驗收閉環
 
 
-## 2026-09-22 Production execution readback
+## 2026-09-22 Production execution readback（historical pre-release checkpoint；current由下段取代）
 
 DEV-050 release commit `e15121af6b579a339a109c1125214bf4d29624e8`是Production service source `4b512a4d48e306cef8d1371d7a354e50a3e8f05c`的ancestor，owner run `35587433590`已發布該source lineage。DWD、migration、雙admission及Firebase Google provider均完成。Platform canonical-first correction發布後，受控Workspace帳號已由Platform normal entry建立session並免二次登入進入AI-PDM，reload與管理權限PASS；這只算target partial evidence。OrgMaster correction source `9c660e210adfec82865167397e97e28a16b8b356`仍待owner dispatch；完成後依Platform LOGIN六案補Google／工號、Free、OrgMaster target、deny-path與global logout。
+
+### 2026-09-22 current Production owner/L4 checkpoint
+
+OrgMaster master `3588eb69ed0b47a588d120801d18adaa68dc27d2`已由owner run `35666554078`發布至`orgmaster-prod-fda3dbbe8347`，image=`sha256:4fd3ae63692cdbda2b20ce0dfa865cea48de194440035e42217e32144f638618`且100% traffic。Latest conformance已納入OrgMaster admission revision 3與Platform revision 4的apply＋replay。Workspace normal entry已證明Platform→OrgMaster／AI-PDM免二次登入、target reload與AI-PDM管理權限；global logout POST=200，兩target舊session protected requests均401。Workspace工號callback、Cloud Identity Free及negative／race required cells仍未齊，因此本DEV的Production owner交付已完成，但DEV-014 LOGIN六案仍為0／6 full cases。權威browser證據見Platform `ai-doc/qc/qc-dev-014-production-l4-2026-09-22.md`。

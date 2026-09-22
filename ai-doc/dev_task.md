@@ -1,6 +1,6 @@
 # OrgMaster 開發任務
 
-> **2026-09-22 DEV-048～053／DEV-014 Production current checkpoint（現行）**：DEV-048 nonprod與DEV-049～053 Production migration、DWD、base release、admission及單一員工managed link均已完成；DEV-051 authority switch、AI-PDM權限面、global logout與DEV-013亦已完成。Canonical-first修正中，Platform source `63395409f8ac1abc7b7fd2a3149c7944e0265d73`已發布至`jenfu-platform-prod-a5ca329fffe2`並承接100% traffic；受控Workspace帳號已由Platform normal entry建立session，免二次登入進入AI-PDM，reload與`accounts.lifecycle.manage`均PASS。OrgMaster source `9c660e210adfec82865167397e97e28a16b8b356`、source-bound runner與preflight已READY，仍待owner-native dispatch。下一步完成OrgMaster修正版，再補DEV-014 LOGIN六案／AI-PDM C01／C02、Free、OrgMaster target、拒絕路徑與global logout；目前Workspace→AI-PDM只算partial evidence。
+> **2026-09-22 DEV-048～053／DEV-014 Production current checkpoint（現行）**：DEV-048 nonprod與DEV-049～053 Production migration、DWD、managed link、authority switch及雙admission均完成。OrgMaster master `3588eb69ed0b47a588d120801d18adaa68dc27d2`已由owner run `35666554078`發布至`orgmaster-prod-fda3dbbe8347`（image `sha256:4fd3ae63692cdbda2b20ce0dfa865cea48de194440035e42217e32144f638618`、100% traffic）；Platform及AI-PDM current revisions亦已發布。Latest三份conformance已由OrgMaster admission revision 3與Platform revision 4 apply＋replay綁定。Workspace normal entry已證明Platform→OrgMaster／AI-PDM免二次登入、reload與AI-PDM管理權限；global logout POST=200，OrgMaster及AI-PDM舊session protected requests均401。Workspace工號callback、Cloud Identity Free及negative／race required cells仍未齊，故DEV-014固定LOGIN分母仍為0／6 full cases；詳細證據見Platform `ai-doc/qc/qc-dev-014-production-l4-2026-09-22.md`。
 
 > **2026-09-21 DEV-053／DEV-014 application registration remediation（historical pre-recovery）**：Production admission operation在transaction內、attestation前以`DEV049_ACTIVE_CONSUMER_SET_MISMATCH`安全停止並回滾；正式治理資料使用`id`，migration 012 seed只讀`applicationId`。DEV-053以forward-only migration 017正規化雙欄、補齊`ai-pdm／orgmaster／platform`、保留既有support evidence，並在admission開啟時阻擋consumer-set drift。權威文件：[DEV-053](specs/DEV-053-invalidation-application-registration.md)。
 
@@ -122,20 +122,20 @@
   - 證據：[DEV-051 spec](specs/DEV-051-single-employee-entitlement-authority-switch.md)；targeted 28／28、DEV-040 owner 63／63、abort 6／6、full regression 872 PASS／1 skipped、build、DB boundary、diff check PASS；owner report=`output/dev-040-r2/s1b/DEV040-R2-S1B-20260920T155300846Z-FADD04E7/owner-report.json`。
   - 計入交付：是。
 
-- ◐ DEV-050 [交付點] [Production Released／Provider Enabled／Managed-link Correction Pending] [RD Implementation Complete／Architecture Finalized R2＋Release Amendment／Local QA-QC Passed] 員工編號或公司 Email 單一 Google 身分登入
+- ◐ DEV-050 [交付點] [Production Released／Canonical-first Correction Released／Workspace L4 Partial] [RD Implementation Complete／Architecture Finalized R2＋Release Amendment／Local QA-QC Passed] 員工編號或公司 Email 單一 Google 身分登入
   - 摘要：Google 驗證後以 stable key 核對本人 current JFS／exact primary Email；新增 private 同快照讀取與 OrgMaster 專用 session view，不改共用 identity view 或 owner 公開契約，不新增帳號、attempt、搜尋 resolver。
   - 來源 ID：`USER-2026-09-17-CLOUD-IDENTITY-FREE-DUAL-IDENTIFIER-LOGIN-BRIEF`、`USER-2026-09-17-DEV050-DEVELOPMENT-DOCUMENT`、`USER-2026-09-17-DEV050-ARCHITECTURE-CONFIRMATION`、`USER-2026-09-17-DEV050-RD-TECH-LEAD-OPTIMIZATION`
   - 父任務：DEV-049；僅替換 app-local 登入設計，stable identity、admission、zero-provider-write 與 SSO owner 公開契約不變。
-  - 下一步：provider、service base source、migration、DWD、admission及`employee-shijie / JFS0005` managed-link apply＋replay皆已完成；完成OrgMaster canonical-first correction owner release後，重跑Google／工號Production L4。
-  - 阻塞 / 恢復條件：Platform correction與Workspace→AI-PDM partial evidence已完成；OrgMaster correction source `9c660e210adfec82865167397e97e28a16b8b356`仍待owner dispatch。完成後補Free、OrgMaster target、deny-path與global logout，不重做未漂移migration、link或admission。
+  - 下一步：owner release、migration、DWD、admission、managed link與canonical-first correction皆已完成；只補Workspace工號callback、Cloud Identity Free、negative／race及AI-PDM其餘target cells。
+  - 阻塞 / 恢復條件：OrgMaster current revision=`orgmaster-prod-fda3dbbe8347`且Workspace→OrgMaster／AI-PDM、reload、權限與global logout均有current evidence；仍缺既有核准的Cloud Identity Free fixture、Workspace工號callback與完整negative／race矩陣，不重做未漂移migration、link或admission。
   - 證據：`npm run test:dev-050` 39／39、`qc:dev-050:contract` 6／6、隔離 PostgreSQL 18.4 D50-01～04、正常建置入口瀏覽器 1440／390 viewport、`qc:dev-047:contract`、`qc:dev-049:contract`、`test:dev-013`、`test:dev-047`、`npm test` 209 files／863 passed／1 skipped、build與DB boundary PASS；fresh manifest 分別見 `qa/dev-050/contract/manifest.json`、`dev-050/postgres/manifest.json`、`qa/dev-050/browser/manifest.json`。無 provider／production write，臨時 runtime 均清理。
   - 計入交付：是（Production source已發布；provider L4 pending）
 
-- ◐ DEV-049 [交付點] [Production Released／DWD + Admission + Single-employee Link Complete／Canonical-first Correction Ready] [P1] [RD Implementation Complete／Local QA-QC Passed] 既有 Google 主帳號連結與員工編號登入
+- ◐ DEV-049 [交付點] [Production Released／DWD + Admission + Single-employee Link + Canonical-first Correction Complete] [P1] [RD Implementation Complete／Local QA-QC Passed] 既有 Google 主帳號連結與員工編號登入
   - 摘要：員工已有公司 Workspace 帳號時，不再建立重複的 `jfs####@jenfu.com.tw`；JFS 固定為 OrgMaster login alias，管理者以 exact primary Email 將 Employee 連結至既有 Directory stable principal。
   - 來源 ID：`USER-2026-09-17-EXISTING-WORKSPACE-ACCOUNT-MAPPING-BRIEF`、`USER-2026-09-17-DEV049-ARCHITECTURE-FINALIZATION`
   - 父任務：DEV-047；ADR-007 已新增 2026-09-17 intentional replacement，Google Admin 外部生命週期與 OrgMaster zero-provider-write 邊界不變。
-  - 下一步：DWD、provider、shared DB migrations、activation、base release及`employee-shijie / JFS0005`精確link apply＋replay皆已完成；發布canonical-first correction後完成LOGIN六案／AI-PDM C01／C02。
+  - 下一步：DWD、provider、migrations、activation、managed link與canonical-first correction owner release皆已完成；只補LOGIN六案及AI-PDM C01／C02尚缺的Free、工號與negative／race cells。
   - 證據：`test:dev-049` 50／50、PostgreSQL D49-01～06、三 viewport browser、full regression 853 PASS／1 skipped、build與DB boundary PASS；owner receipt=`qa/dev-049/producer/owner-receipt.json`。
   - 計入交付：是
 
