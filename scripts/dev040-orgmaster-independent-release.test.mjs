@@ -220,6 +220,26 @@ test('OrgMaster owner prepare accepts only the exact DEV-014 application-registr
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })
 
+test('OrgMaster owner prepare accepts only the bounded DEV-014 login-fixture correction authority', () => {
+  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+    .map((name) => [name, 'fixture-public-value']))
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: resolvePlainEnvironment(profile, priorPlainEnvironment), secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  const correction = {
+    kind: 'LOGIN_FIXTURE_ACTIVATION_CONTRACT_CORRECTION',
+    applicationId: 'ai-pdm',
+    employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
+    infrastructureBinding: 'EXACT_RECEIPT_SOURCE_FINGERPRINT',
+  }
+  fixture.intent.baselineIntentRef = ref('baseline-release-intent')
+  fixture.values.authorization = { ...fixture.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction, baselineIntentRef: fixture.intent.baselineIntentRef }
+  fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction, baselineIntentRef: fixture.intent.baselineIntentRef }
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'DEV014_LOGIN_FIXTURE_CORRECTION')
+  fixture.values.readiness.correction = { ...correction, applicationId: 'platform' }
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+})
+
 test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   const source = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/workload-identity.tf', import.meta.url), 'utf8')
   const displayName = source.match(/display_name\s*=\s*"([^"]+)"/u)?.[1]
