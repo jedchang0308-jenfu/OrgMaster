@@ -431,10 +431,14 @@ Production provider、DWD、service、migration與admission皆已通過，但`em
 
 operator 5項targeted tests與routine-release 22項組合測試PASS；前一版DEV-040 R2 release套件另有82項PASS、abort 6／6、DB boundary PASS、full regression 875 PASS／1 skipped、production build PASS。第一版immutable runner與APP_INFRA_IMAGE_ROTATION已完成，但read-only preflight揭露employee-number zero-state後即停止mutation；須先合併本修正、重建source-bound immutable runner並再做exact image rotation，才以已讀得的workspace revision執行apply＋replay。成功後才從normal entry重跑Google首次bind、JFS alias、session persistence、AI-PDM SSO及global logout。
 
-### 15.4 Canonical-first continuity correction（2026-09-22）
+### 15.4 Canonical-first continuity correction（2026-09-22 historical pre-release checkpoint；current由下段取代）
 
 單一員工operator後續已完成apply＋replay；最新read-only execution `orgmaster-prod-migration-runner-k8zvm`讀回`employee-shijie / JFS0005`為`directory_linked_pending_auth`、admission enabled、registry revision 1，且verified Firebase issuer＋subject另有一筆指向同一Employee的active legacy principal（mapping version 2）。同一Production callback logs為`resolveAlias=200 → verifyIdentity=403`。這項證據更正§15.1的歷史零狀態判斷：link已存在，403來自app auth在canonical lookup前呼叫managed bind，碰到既有principal collision guard。
 
 §9.2既定順序現明確落到產品source：verified token完成epoch檢查後，先呼叫`resolveActivePrincipal(issuer, subject)`；只有精確`PrincipalAdmissionError('principal_not_active')`且有managed identifier時才呼叫`verifyManagedLoginIdentifier`，成功後再查canonical principal。其他admission error不得fallback。Existing canonical principal直接建立既有session且managed bind呼叫為0；managed path仍保留bind後canonical一致性檢查。
 
 新增回歸覆蓋existing principal直通與`principal_not_active`後bind；`test:dev-049`為9 files／56 tests、full regression為210 files／876 tests（另1 file／1 test skipped），DEV-049／050 contract、DB boundary及production build均PASS。此修正不改schema、migration、managed link、Employee、application authority、IAM或Directory。Platform canonical-first source `63395409f8ac1abc7b7fd2a3149c7944e0265d73`已發布至`jenfu-platform-prod-a5ca329fffe2`並取得Workspace→AI-PDM免二次登入、reload與管理權限partial evidence；OrgMaster source `9c660e210adfec82865167397e97e28a16b8b356`、immutable runner與preflight已READY，仍待owner-native dispatch。兩app修正均在canonical後，再完成LOGIN六案、C01／C02、Free、OrgMaster target、deny-path與global logout。
+
+### 2026-09-22 current Production owner/L4 checkpoint
+
+OrgMaster master `3588eb69ed0b47a588d120801d18adaa68dc27d2`已由owner run `35666554078`發布至`orgmaster-prod-fda3dbbe8347`，image=`sha256:4fd3ae63692cdbda2b20ce0dfa865cea48de194440035e42217e32144f638618`且100% traffic。Latest conformance已納入OrgMaster admission revision 3與Platform revision 4的apply＋replay。Workspace Google-first及`JFS0005`工號起手皆已完成Platform session、AI-PDM handoff／reload與管理權限；global logout POST=200，兩target舊session protected requests均401。`PDM-W-G`及`PDM-W-E`具current evidence；Free-only／無Gmail fixture及negative／rate／race required cells仍未齊，因此本DEV的Production owner交付已完成，但DEV-014 LOGIN六案仍為0／6 full cases。權威browser證據見Platform `ai-doc/qc/qc-dev-014-production-l4-2026-09-22.md`。
