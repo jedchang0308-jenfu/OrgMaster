@@ -80,6 +80,7 @@ export function assertEnvironment(environment, operation) {
     || environment.OWNER_APPLICATION_ID !== 'orgmaster'
     || environment.POSTGRES_DATABASE !== TARGET.database
     || environment.POSTGRES_IAM_LOGIN !== TARGET.runtimeDbLogin
+    || environment.CLOUD_RUN_JOB !== TARGET.jobName
     || environment.OWNER_SOURCE_REVISION !== operation.sourceRevision
     || environment.POSTGRES_SOCKET !== `/cloudsql/${TARGET.projectId}:${TARGET.region}:${TARGET.instance}`) {
     fail('DEV014_LOGIN_FIXTURE_TARGET_INVALID')
