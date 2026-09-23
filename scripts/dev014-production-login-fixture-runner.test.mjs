@@ -77,9 +77,10 @@ test('parses one exact phase and source-bound operation', () => {
   assert.throws(() => parseArgs(argv.slice(0, -2)), /DEV014_LOGIN_FIXTURE_ARGUMENT_INVALID/u)
 })
 
-test('binds execution to the OrgMaster runtime and exact source', () => {
-  const environment = { GOOGLE_CLOUD_PROJECT: TARGET.projectId, GOOGLE_CLOUD_REGION: TARGET.region, OWNER_APPLICATION_ID: 'orgmaster', POSTGRES_DATABASE: TARGET.database, POSTGRES_IAM_LOGIN: TARGET.runtimeDbLogin, OWNER_SOURCE_REVISION: base.sourceRevision, POSTGRES_SOCKET: `/cloudsql/${TARGET.projectId}:${TARGET.region}:${TARGET.instance}` }
+test('binds execution to the OrgMaster migrator and exact source', () => {
+  const environment = { GOOGLE_CLOUD_PROJECT: TARGET.projectId, GOOGLE_CLOUD_REGION: TARGET.region, OWNER_APPLICATION_ID: 'orgmaster', POSTGRES_DATABASE: TARGET.database, POSTGRES_IAM_LOGIN: TARGET.operatorDbLogin, CLOUD_RUN_JOB: TARGET.jobName, OWNER_SOURCE_REVISION: base.sourceRevision, POSTGRES_SOCKET: `/cloudsql/${TARGET.projectId}:${TARGET.region}:${TARGET.instance}` }
   assert.doesNotThrow(() => assertEnvironment(environment, operation('assign')))
+  assert.throws(() => assertEnvironment({ ...environment, POSTGRES_IAM_LOGIN: 'orgmaster-prod-runtime@jenfu-platform-prod.iam' }, operation('assign')), /DEV014_LOGIN_FIXTURE_TARGET_INVALID/u)
   assert.throws(() => assertEnvironment({ ...environment, OWNER_SOURCE_REVISION: 'b'.repeat(40) }, operation('assign')), /DEV014_LOGIN_FIXTURE_TARGET_INVALID/u)
 })
 

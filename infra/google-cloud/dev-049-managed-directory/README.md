@@ -1,8 +1,8 @@
 # DEV-049 managed Directory production identity
 
 This state owns the required `admin.googleapis.com` project API, exactly one OrgMaster production DWD signer, and the signer-level
-`roles/iam.serviceAccountTokenCreator` binding for the existing
-`orgmaster-prod-runtime` identity. It does not own the Cloud Run service, project
+`roles/iam.serviceAccountTokenCreator` bindings for the existing
+`orgmaster-prod-runtime` and bounded `orgmaster-prod-migrator` identities. It does not own the Cloud Run service, project
 IAM, Secrets, service-account keys, Workspace users, or any sibling resource.
 
 The Google Workspace administrator must separately authorize the output

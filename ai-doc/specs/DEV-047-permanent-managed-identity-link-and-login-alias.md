@@ -649,7 +649,7 @@ Production activation順序固定為：先部署所有instance皆具`42883`限�
 - A7：人工確認只建立 pending-auth Directory link；首次 live Google/Firebase authentication 經 Directory readback 相符後才原子綁定 Firebase principal。
 - A8：Firebase UID、Directory user ID、Employee ID、JFS 與 Email 在 persistence、API、audit 與測試中不可混用。
 - A9：OrgMaster正常登入UI／resolver只接受current JFS；matched與alias mismatch皆導向同一principal。舊JFS、inactive Employee、無唯一link或無current effective OrgMaster role均回generic拒絕；不把其他application或provider直接輸入舊Email的行為誤列為OrgMaster保證。
-- A9a：legacy governance publish與managed bind併發時，共享database lock保證最多一方commit；不可能在active-principal contract留下同pair或同principal兩列。
+- A9a（持續有效的實作不變量）：legacy governance publish與managed bind併發時，共享database lock保證最多一方commit；不可能在active-principal contract留下同pair或同principal兩列。2026-09-23 對目前 migration 013／017 組合的 source audit 發現：managed bind／verify 鎖 `managed_identity_admission_authority`，而現行 governance writer 僅鎖 `persistence_authority`，故這項歷史設計要求目前未獲程式證明；以 `ORGMASTER/DEV-057` migration 021 修正及雙向 PostgreSQL concurrency QC 關閉，不將 DEV-047 舊文件／測試摘要當成現行 source evidence。
 - A9b：migration／activation preflight會掃描legacy current draft＋published history及managed所有record；歷史pair跨Employee重複即fail closed，同Employee legacy→managed continuity也必須先撤掉舊active mapping。
 
 ### 20.3 Projection and boundary
@@ -819,6 +819,8 @@ Browser evidence固定輸出 `qa/dev-047/browser/manifest.json`及 1440x900、10
 - 23.1～23.2 保留為2026-09-14文件審查歷史，不得用其中的`NOT_RUN`／`RD Not Started`覆蓋本節現行狀態。
 
 ## 24. Change Log
+
+- 2026-09-23：current-source reconciliation 發現 migration 013 bind／verify 與 migration 017 fenced governance writer 取得不同 singleton row lock，故 DEV-047 原有 A9a 實作不變量未在現行 composition 中成立。此為新發現的 source defect，非重寫 2026-09-16 的測試事實；由 `ORGMASTER/DEV-057` 以 migration 021 加入共同 `managed_identity_admission_authority` lock、published-pair reservation／collision guard及雙向隔離 PostgreSQL 競態驗證。
 
 - 2026-09-16：依 DEV-047 CAPA 完成 runner、contract checker、負向判定測試與 012 source repair；task-owned PostgreSQL 001～012、A17～A22、cleanup、targeted regression、build及DB boundary通過。CAPA三出口結案；production migration／activation／release仍gated。
 

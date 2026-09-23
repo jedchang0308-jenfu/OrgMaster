@@ -13,20 +13,24 @@ import { classifyTarget, requiredCorrectionCases, resolvePostgresBin, resultExit
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const suite = process.argv.find((value) => value.startsWith('--suite='))?.slice('--suite='.length) ?? 'dev047'
-if (!['dev047', 'dev049', 'dev050', 'dev052', 'dev053', 'dev054', 'dev055'].includes(suite)) throw new Error(`Unsupported suite: ${suite}`)
+if (!['dev047', 'dev049', 'dev050', 'dev052', 'dev053', 'dev054', 'dev055', 'dev057'].includes(suite)) throw new Error(`Unsupported suite: ${suite}`)
 const dev049 = suite === 'dev049'
 const dev050 = suite === 'dev050'
 const dev052 = suite === 'dev052'
 const dev053 = suite === 'dev053'
 const dev054 = suite === 'dev054'
 const dev055 = suite === 'dev055'
-const dev049OrLater = dev049 || dev050 || dev052 || dev053 || dev054 || dev055
-const outputDir = path.join(root, dev049 ? 'dev-049' : dev050 ? 'dev-050' : dev052 ? 'dev-052' : dev053 ? 'dev-053' : dev054 ? 'dev-054' : dev055 ? 'dev-055' : 'dev-047', 'postgres')
-const outputPath = path.join(outputDir, 'manifest.json')
-const migrationCeiling = dev055 ? 20 : dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
+const dev057 = suite === 'dev057'
+const dev055OrLater = dev055 || dev057
+const dev049OrLater = dev049 || dev050 || dev052 || dev053 || dev054 || dev055 || dev057
+const outputDir = path.join(root, dev057 ? 'dev-057' : dev049 ? 'dev-049' : dev050 ? 'dev-050' : dev052 ? 'dev-052' : dev053 ? 'dev-053' : dev054 ? 'dev-054' : dev055 ? 'dev-055' : 'dev-047', 'postgres')
+const configuredDev057Output = process.env.DEV057_QC_OUTPUT_PATH?.trim()
+const outputPath = dev057 ? path.resolve(configuredDev057Output || path.join(os.tmpdir(), `orgmaster-dev057-postgres-${process.pid}.json`)) : path.join(outputDir, 'manifest.json')
+if (dev057 && configuredDev057Output && fs.existsSync(outputPath)) throw new Error('DEV057_QC_OUTPUT_ALREADY_EXISTS')
+const migrationCeiling = dev057 ? 21 : dev055 ? 20 : dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
 const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((name) => /^\d{3}_.*\.sql$/u.test(name) && Number(name.slice(0, 3)) <= migrationCeiling).sort()
 const checks = []
-const cleanup = { clientClosed: false, clusterStopped: false, portReleased: false, tempRemoved: false }
+const cleanup = { clientClosed: false, auxiliaryClientsClosed: false, clusterStopped: false, portReleased: false, tempRemoved: false }
 let client
 let port
 let taskRoot
@@ -37,8 +41,30 @@ let postgresPid = null
 let started = false
 let firstFailure = null
 let serverVersion = null
+let connectionString = null
+let binderClient = null
+let publisherClient = null
+const auxiliaryClients = new Set()
 let interruptedBy = null
 const migrationEvidence = []
+let dev057ContractSurfaceBefore = null
+let dev057ContractSurfaceAfter = null
+
+async function readDev057ContractSurface() {
+  return (await client.query(`SELECT c.relname, pg_get_userbyid(c.relowner) AS owner,
+      coalesce(c.relacl::text, '<default>') AS acl,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('name', column_name, 'type', data_type) ORDER BY ordinal_position)
+        FROM information_schema.columns i
+        WHERE i.table_schema=n.nspname AND i.table_name=c.relname), '[]'::jsonb) AS columns
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='orgmaster_contract' AND c.relkind='v'
+      AND c.relname = ANY($1::text[])
+    ORDER BY c.relname`, [[
+    'v_active_principal_mappings_v1',
+    'v_orgmaster_session_principals_v1',
+    'v_portal_app_visibility_v1',
+  ]])).rows
+}
 
 function sha256(bytes) { return crypto.createHash('sha256').update(bytes).digest('hex') }
 function run(command, args, options = {}) {
@@ -98,15 +124,15 @@ async function expectDatabaseError(task, matcher) {
 
 function governanceFixture() {
   const role = { id: 'role-orgmaster-admin', applicationId: 'orgmaster', status: 'active' }
-  const assignment = { employeeId: 'employee-legacy', applicationId: 'orgmaster', roleId: role.id, status: 'active', ...(dev055 ? { subjectKind: 'employee', targetPrincipalId: null } : {}), scope: { kind: 'global' }, validFrom: '2026-01-01T00:00:00.000Z' }
-  const identityLink = { ...(dev055 ? { id: 'identity-link-legacy' } : {}), employeeId: 'employee-legacy', issuer: 'issuer-legacy', subject: 'subject-legacy', principalId: 'principal-legacy', status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }
+  const assignment = { employeeId: 'employee-legacy', applicationId: 'orgmaster', roleId: role.id, status: 'active', ...(dev055OrLater ? { subjectKind: 'employee', targetPrincipalId: null } : {}), scope: { kind: 'global' }, validFrom: '2026-01-01T00:00:00.000Z' }
+  const identityLink = { ...(dev055OrLater ? { id: 'identity-link-legacy' } : {}), employeeId: 'employee-legacy', issuer: 'issuer-legacy', subject: 'subject-legacy', principalId: 'principal-legacy', status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }
   const aiRole = { id: 'role-rd', applicationId: 'ai-pdm', status: 'active' }
   const aiAssignment = { id: 'assignment-ai-rd', employeeId: 'employee-legacy', applicationId: 'ai-pdm', roleId: aiRole.id, roleCodeSnapshot: 'rd', catalogVersion: 'ai-pdm.role-catalog.qc', status: 'active', subjectKind: 'employee', targetPrincipalId: null, basis: 'manual', sources: [], scope: { kind: 'workspace', value: 'company-jenfu' }, validFrom: '2026-01-01T00:00:00.000Z' }
   return {
     app: 'OrgMaster', schemaVersion: 3, activePolicyVersionId: 'gov-active', draft: {}, auditEvents: [], commandReceipts: [], securityAlertIntents: [], sessionInvalidationOutbox: [],
     publishedVersions: [
       { id: 'gov-old', kind: 'assignment-governance-v3', versionNumber: 1, publishedAt: '2026-01-01T00:00:00.000Z', policy: { applications: [], identityLinks: [{ employeeId: 'employee-one', issuer: 'issuer-historical', subject: 'subject-historical', principalId: 'principal-old', status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }], applicationRoles: [], roleAssignments: [] } },
-      { id: 'gov-active', kind: 'assignment-governance-v3', versionNumber: 2, publishedAt: '2026-02-01T00:00:00.000Z', ...(dev055 ? { organizationSnapshot: { workspaceVersionId: 'current', workspaceRevision: '9'.repeat(64) } } : {}), policy: { applications: dev053 ? [{ id: 'orgmaster', status: 'active' }, { id: 'ai-pdm', status: 'active' }] : [{ id: 'orgmaster', applicationId: 'orgmaster', status: 'active' }, { id: 'ai-pdm', applicationId: 'ai-pdm', status: 'active' }], identityLinks: [identityLink], ...(dev055 ? { principalAdmissions: [{ identityLinkId: identityLink.id, status: 'active', accountType: 'human_personal' }] } : {}), applicationRoles: dev055 ? [role, aiRole] : [role], roleAssignments: dev055 ? [assignment, aiAssignment] : [assignment] } },
+      { id: 'gov-active', kind: 'assignment-governance-v3', versionNumber: 2, publishedAt: '2026-02-01T00:00:00.000Z', ...(dev055OrLater ? { organizationSnapshot: { workspaceVersionId: 'current', workspaceRevision: '9'.repeat(64) } } : {}), policy: { applications: dev053 ? [{ id: 'orgmaster', status: 'active' }, { id: 'ai-pdm', status: 'active' }] : [{ id: 'orgmaster', applicationId: 'orgmaster', status: 'active' }, { id: 'ai-pdm', applicationId: 'ai-pdm', status: 'active' }], identityLinks: [identityLink], ...(dev055OrLater ? { principalAdmissions: [{ identityLinkId: identityLink.id, status: 'active', accountType: 'human_personal' }] } : {}), applicationRoles: dev055OrLater ? [role, aiRole] : [role], roleAssignments: dev055OrLater ? [assignment, aiAssignment] : [assignment] } },
     ],
   }
 }
@@ -126,11 +152,58 @@ async function bootstrap(dbName) {
     CREATE VIEW ai_pdm_contract.v_application_role_catalog_v1 AS
       SELECT 'ai-pdm'::text AS application_id, 'role-rd'::text AS stable_role_id, 'rd'::text AS role_code,
              'employee'::text AS subject_kind, true::boolean AS assignable, '{"workspace":true}'::jsonb AS allowed_scope_kinds,
-             false::boolean AS delegation_allowed;
+             ${dev057 ? 'true' : 'false'}::boolean AS delegation_allowed;
     ALTER VIEW ai_pdm_contract.v_application_role_catalog_v1 OWNER TO jenfu_platform_migrator;
     GRANT USAGE ON SCHEMA ai_pdm_contract TO jenfu_orgmaster_migrator;
     GRANT SELECT ON ai_pdm_contract.v_application_role_catalog_v1 TO jenfu_orgmaster_migrator;
   `)
+}
+
+async function activeGovernanceArtifact() {
+  const result = await client.query(`SELECT artifact.batch_id::text AS batch_id, artifact.payload, trim(artifact.canonical_sha256) AS canonical_sha256
+    FROM orgmaster_core.persistence_authority authority
+    JOIN orgmaster_core.persistence_artifacts artifact ON artifact.batch_id=authority.active_batch_id
+    WHERE authority.singleton=true AND artifact.artifact_key='orgmaster-governance.v3.json' AND artifact.artifact_kind='governance'`)
+  assert.equal(result.rowCount, 1)
+  return result.rows[0]
+}
+
+async function saveFixtureGovernance(payload) {
+  const batch = await activeGovernanceArtifact()
+  const bytes = Buffer.from(JSON.stringify(payload))
+  const digest = sha256(bytes)
+  await client.query(`UPDATE orgmaster_core.persistence_artifacts SET payload=$1::jsonb,source_sha256=$2,canonical_sha256=$2,source_bytes=$3
+    WHERE batch_id=$4::uuid AND artifact_key='orgmaster-governance.v3.json'`, [JSON.stringify(payload), digest, bytes.length, batch.batch_id])
+}
+
+function appendGovernanceVersion(payload, activeVersion, id) {
+  const next = structuredClone(payload)
+  const versionNumber = Math.max(...next.publishedVersions.map((version) => Number(version.versionNumber) || 0)) + 1
+  const version = { ...structuredClone(activeVersion), id, versionNumber, publishedAt: new Date().toISOString() }
+  next.publishedVersions.push(version)
+  next.activePolicyVersionId = id
+  return { payload: next, version }
+}
+
+function governanceChange(payload, expectedCanonicalSha256) {
+  const bytes = Buffer.from(JSON.stringify(payload))
+  return [{
+    artifactKey: 'orgmaster-governance.v3.json', artifactKind: 'governance',
+    expectedCanonicalSha256, nextCanonicalSha256: sha256(bytes), sourceSha256: sha256(bytes),
+    sourceBytes: bytes.length, payload,
+  }]
+}
+
+async function openAuxClient(applicationName) {
+  const peer = new pg.Client({ connectionString, application_name: applicationName })
+  auxiliaryClients.add(peer)
+  await peer.connect()
+  return peer
+}
+
+async function closeAuxClient(peer) {
+  await peer.end().catch(() => undefined)
+  auxiliaryClients.delete(peer)
 }
 
 async function applyMigrations() {
@@ -140,7 +213,31 @@ async function applyMigrations() {
       await client.query(`WITH fixture_clock AS (SELECT clock_timestamp() AS now) INSERT INTO orgmaster_core.managed_identity_candidate_leases(lease_id,token_hash_sha256,actor_binding_sha256,employee_id,employee_number,expected_primary_email,directory_customer_id,directory_user_id,primary_email,source_etag,workspace_revision,registry_revision,created_at,expires_at) SELECT '49000000-0000-4000-8000-000000000001',$1,$2,'employee-one','JFS0001','legacy@jenfu.example','customer-1','legacy-user','legacy@jenfu.example','legacy-etag',$3,'legacy-file-hash',now,now+interval '5 minutes' FROM fixture_clock`, ['a'.repeat(64), 'b'.repeat(64), currentWorkspaceRevision()])
     }
     const bytes = fs.readFileSync(path.join(root, 'db', 'migrations', name))
+    if (dev057 && name === '021_dev057_identity_grant_writer_fence.sql') {
+      dev057ContractSurfaceBefore = await readDev057ContractSurface()
+      const identityId = '57000000-0000-4000-8000-000000000001'
+      await client.query(`INSERT INTO orgmaster_core.managed_daily_identities(
+          identity_record_id,employee_id,principal_id,directory_customer_id,directory_user_id,last_verified_primary_email,
+          auth_issuer,auth_subject,link_state,admission_revision,admission_changed_at,created_by,updated_by
+        ) VALUES ($1::uuid,'employee-four','principal-managed:' || $1::uuid::text,'dev057-preflight','collision','collision@jenfu.example',
+          'issuer-legacy','subject-legacy','active',1,clock_timestamp(),'dev057-qc','dev057-qc')`, [identityId])
+      await client.query(`INSERT INTO orgmaster_core.managed_identity_observations(identity_record_id,primary_email,directory_state,adapter_outcome,trusted_observed_at,last_attempt_at,freshness)
+        VALUES ($1::uuid,'collision@jenfu.example','present','success',clock_timestamp(),clock_timestamp(),'fresh')`, [identityId])
+      let preflightError = null
+      try { await client.query(bytes.toString('utf8')) } catch (error) {
+        preflightError = error
+        await client.query('ROLLBACK').catch(() => undefined)
+      }
+      assert.match(String(preflightError?.message ?? ''), /ACTIVE_PRINCIPAL_MAPPING_AMBIGUOUS/u)
+      await client.query('DELETE FROM orgmaster_core.managed_identity_observations WHERE identity_record_id=$1::uuid', [identityId])
+      await client.query('DELETE FROM orgmaster_core.managed_daily_identities WHERE identity_record_id=$1::uuid', [identityId])
+      checks.push({ id: 'D57-01', label: 'migration preflight rejects an existing legacy/managed active-principal collision before replacing views', status: 'PASS', detail: { expected: 'ACTIVE_PRINCIPAL_MAPPING_AMBIGUOUS', transactionRolledBack: true } })
+      process.stdout.write('PASS D57-01 migration preflight rejects an existing active-principal collision\n')
+    }
     await client.query(bytes.toString('utf8'))
+    if (dev057 && name === '021_dev057_identity_grant_writer_fence.sql') {
+      dev057ContractSurfaceAfter = await readDev057ContractSurface()
+    }
     migrationEvidence.push({ name, bytes: bytes.length, sha256: sha256(bytes) })
   }
 }
@@ -456,6 +553,173 @@ async function runDev055Checks() {
   })
 }
 
+async function runDev057Checks() {
+  let recipientLink
+
+  await check('D57-02', 'principal mapping and AI-PDM portal visibility do not depend on an OrgMaster role or the AI-PDM authority selector', async () => {
+    const columns = async (schema, view) => (await client.query(`SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position`, [schema, view])).rows.map((row) => row.column_name)
+    assert.deepEqual(await columns('orgmaster_contract', 'v_active_principal_mappings_v1'), ['contract_version','principal_issuer','principal_subject','principal_id','employee_id','employee_status','mapping_version','published_at'])
+    assert.deepEqual(await columns('orgmaster_contract', 'v_portal_app_visibility_v1'), ['application_id','principal_issuer','principal_subject','assignment_version','visibility_state'])
+    assert.deepEqual(dev057ContractSurfaceAfter, dev057ContractSurfaceBefore, 'migration 021 must preserve all three v1 contract column, owner and ACL signatures')
+    const activeDefinition = (await client.query(`SELECT pg_get_viewdef('orgmaster_contract.v_active_principal_mappings_v1'::regclass,true) AS definition`)).rows[0].definition
+    const portalDefinition = (await client.query(`SELECT pg_get_viewdef('orgmaster_contract.v_portal_app_visibility_v1'::regclass,true) AS definition`)).rows[0].definition
+    assert.doesNotMatch(activeDefinition, /assignment\.value->>'applicationId'\s*=\s*'orgmaster'/u)
+    assert.doesNotMatch(portalDefinition, /v_ai_pdm_entitlement_authority_v1/u)
+    assert.match(portalDefinition, /v_application_role_catalog_v1/u)
+    assert.match(portalDefinition, /roleDelegations/u)
+
+    const artifact = await activeGovernanceArtifact()
+    const payload = structuredClone(artifact.payload)
+    const version = payload.publishedVersions.find((item) => item.id === payload.activePolicyVersionId)
+    version.policy.roleAssignments = version.policy.roleAssignments.filter((assignment) => assignment.applicationId !== 'orgmaster')
+    recipientLink = { id: 'identity-link-recipient', employeeId: 'employee-two', issuer: 'issuer-recipient', subject: 'subject-recipient', principalId: 'principal-recipient', status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }
+    version.policy.identityLinks.push(recipientLink)
+    version.policy.principalAdmissions.push({ identityLinkId: recipientLink.id, status: 'active', accountType: 'human_personal' })
+    version.policy.roleDelegations = [{
+      id: 'delegation-recipient', sourceAssignmentId: 'assignment-ai-rd', fromEmployeeId: 'employee-legacy', toEmployeeId: 'employee-two',
+      roleId: 'role-rd', catalogVersion: 'ai-pdm.role-catalog.qc', scope: { kind: 'workspace', value: 'company-jenfu' }, status: 'active',
+      validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z',
+    }]
+    await saveFixtureGovernance(payload)
+
+    const mapping = await queryAs('jenfu_platform_runtime', `SELECT employee_id FROM orgmaster_contract.v_active_principal_mappings_v1 WHERE principal_issuer='issuer-legacy' AND principal_subject='subject-legacy'`)
+    const portal = await queryAs('jenfu_platform_runtime', `SELECT application_id,assignment_version::text,visibility_state FROM orgmaster_contract.v_portal_app_visibility_v1 WHERE principal_issuer='issuer-legacy' AND principal_subject='subject-legacy' ORDER BY application_id`)
+    const orgmasterSession = await queryAs('jenfu_orgmaster_runtime', `SELECT employee_id FROM orgmaster_contract.v_orgmaster_session_principals_v1 WHERE principal_issuer='issuer-legacy' AND principal_subject='subject-legacy'`)
+    assert.deepEqual(mapping.rows, [{ employee_id: 'employee-legacy' }])
+    assert.deepEqual(portal.rows, [{ application_id: 'ai-pdm', assignment_version: '2', visibility_state: 'visible' }])
+    assert.equal(orgmasterSession.rowCount, 0, 'AI-PDM-only admission must not create an OrgMaster session principal')
+    return { orgmasterRoleAssignments: 0, legacyIdentityMappingPreserved: true, portalApplications: portal.rows.map((row) => row.application_id), authoritySelectorInPortalView: false, orgmasterSessionRows: orgmasterSession.rowCount, v1ColumnsOwnersAndAclsPreserved: true }
+  })
+
+  await check('D57-03', 'effective AI-PDM role assignments remain authority-gated while portal visibility is stable', async () => {
+    const initial = await queryAs('jenfu_ai_pdm_runtime', `SELECT employee_id FROM orgmaster_contract.v_ai_pdm_effective_role_assignments_v1 WHERE employee_id='employee-legacy'`)
+    assert.equal(initial.rowCount, 0)
+    await client.query(`INSERT INTO orgmaster_core.employee_authority_overrides(application_id,employee_id,authority_source,authority_version,updated_at,operation_id,actor,reason)
+      VALUES ('ai-pdm','employee-legacy','orgmaster_authority',4,clock_timestamp(),'dev057-authority','dev-057-qc','authority-projection-check')
+      ON CONFLICT (application_id,employee_id) DO UPDATE SET authority_source=EXCLUDED.authority_source,authority_version=EXCLUDED.authority_version,updated_at=EXCLUDED.updated_at,operation_id=EXCLUDED.operation_id,actor=EXCLUDED.actor,reason=EXCLUDED.reason`)
+    const effective = await queryAs('jenfu_ai_pdm_runtime', `SELECT employee_id,stable_role_id,role_code,scope_kind,scope_key,authority_version::text FROM orgmaster_contract.v_ai_pdm_effective_role_assignments_v1 WHERE employee_id='employee-legacy'`)
+    const portal = await queryAs('jenfu_platform_runtime', `SELECT application_id,assignment_version::text FROM orgmaster_contract.v_portal_app_visibility_v1 WHERE principal_issuer='issuer-legacy' AND principal_subject='subject-legacy' ORDER BY application_id`)
+    assert.deepEqual(effective.rows, [{ employee_id: 'employee-legacy', stable_role_id: 'role-rd', role_code: 'rd', scope_kind: 'workspace', scope_key: 'company-jenfu', authority_version: '4' }])
+    assert.deepEqual(portal.rows, [{ application_id: 'ai-pdm', assignment_version: '2' }])
+    return { effectiveRoleCount: effective.rowCount, authorityVersion: effective.rows[0].authority_version, portalVisibilityUnaffected: true }
+  })
+
+  await check('D57-04', 'delegated AI-PDM permission grants portal visibility to the recipient principal', async () => {
+    const portal = await queryAs('jenfu_platform_runtime', `SELECT application_id,principal_issuer,principal_subject,assignment_version::text,visibility_state FROM orgmaster_contract.v_portal_app_visibility_v1 WHERE principal_issuer='issuer-recipient' AND principal_subject='subject-recipient'`)
+    const effective = await queryAs('jenfu_ai_pdm_runtime', `SELECT employee_id,grant_kind,delegation_id,role_code FROM orgmaster_contract.v_ai_pdm_effective_role_assignments_v1 WHERE employee_id='employee-two'`)
+    assert.deepEqual(portal.rows, [{ application_id: 'ai-pdm', principal_issuer: 'issuer-recipient', principal_subject: 'subject-recipient', assignment_version: '2', visibility_state: 'visible' }])
+    assert.equal(effective.rowCount, 0)
+    return { recipient: 'employee-two', portalVisible: true, effectiveRoleAuthorityStillRequired: true, assignmentVersion: portal.rows[0].assignment_version }
+  })
+
+  await check('D57-05', 'governance publisher rejects historical-principal reassignment and duplicate active pairs', async () => {
+    const artifact = await activeGovernanceArtifact()
+    const conflicting = structuredClone(artifact.payload)
+    const active = conflicting.publishedVersions.find((item) => item.id === conflicting.activePolicyVersionId)
+    const legacy = active.policy.identityLinks.find((item) => item.issuer === 'issuer-legacy' && item.subject === 'subject-legacy')
+    legacy.employeeId = 'employee-two'
+    const conflictChanges = governanceChange(conflicting, artifact.canonical_sha256)
+    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,'dev057-qc','owner-conflict','dev057-owner-conflict','[]'::jsonb)`, [JSON.stringify(conflictChanges), 'c'.repeat(64)]), 'PRINCIPAL_IDENTITY_RESERVATION_CONFLICT')
+
+    const duplicate = structuredClone(artifact.payload)
+    const duplicateActive = duplicate.publishedVersions.find((item) => item.id === duplicate.activePolicyVersionId)
+    duplicateActive.policy.identityLinks.push({ ...structuredClone(duplicateActive.policy.identityLinks.find((item) => item.issuer === 'issuer-legacy' && item.subject === 'subject-legacy')), id: 'identity-link-duplicate', employeeId: 'employee-two' })
+    const duplicateChanges = governanceChange(duplicate, artifact.canonical_sha256)
+    await expectDatabaseError(() => queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,'dev057-qc','duplicate-pair','dev057-duplicate-pair','[]'::jsonb)`, [JSON.stringify(duplicateChanges), 'd'.repeat(64)]), 'ACTIVE_PRINCIPAL_MAPPING_AMBIGUOUS')
+    return { reassignmentRejected: 'PRINCIPAL_IDENTITY_RESERVATION_CONFLICT', duplicateRejected: 'ACTIVE_PRINCIPAL_MAPPING_AMBIGUOUS' }
+  })
+
+  await check('D57-06', 'bind and governance publication serialize in both writer orders', async () => {
+    const activeApplications = await client.query(`SELECT application_id,support_revision FROM orgmaster_core.managed_identity_invalidation_applications WHERE status='active' ORDER BY application_id`)
+    for (const row of activeApplications.rows) {
+      const applicationId = row.application_id
+      await queryAs('jenfu_orgmaster_migrator', `SELECT * FROM orgmaster_core.attest_managed_identity_invalidation_support_v1($1,$2,'qa://dev-057/writer-fence','dev-057-qc')`, [applicationId, Number(row.support_revision)])
+    }
+    const admission = (await client.query(`SELECT revision,admission_enabled FROM orgmaster_core.managed_identity_admission_authority WHERE singleton=true`)).rows[0]
+    if (!admission.admission_enabled) await queryAs('jenfu_orgmaster_migrator', `SELECT * FROM orgmaster_core.set_managed_identity_admission_v1($1,true,'dev-057-qc','writer-fence-check')`, [Number(admission.revision)])
+    const employeeFour = await createIdentity('employee-four', 'JFS0004', 'directory-four')
+    const employeeThree = await createIdentity('employee-three', 'JFS0003', 'directory-three')
+
+    const waitForLock = async (applicationName) => {
+      const deadline = Date.now() + 5000
+      while (Date.now() < deadline) {
+        const result = await client.query(`SELECT wait_event_type FROM pg_stat_activity WHERE application_name=$1 AND state='active'`, [applicationName])
+        if (result.rows.some((row) => row.wait_event_type === 'Lock')) return true
+        await new Promise((resolve) => setTimeout(resolve, 25))
+      }
+      throw new Error(`QC_WRITER_DID_NOT_WAIT_FOR_ADMISSION_LOCK:${applicationName}`)
+    }
+    const bindSql = `SELECT * FROM orgmaster_core.bind_managed_identity_auth_v1($1,$2,$3,$4,$5)`
+    const publishAndHold = async (peer, employeeId, pairSuffix, operationId) => {
+      const artifact = await activeGovernanceArtifact()
+      const next = structuredClone(artifact.payload)
+      const current = next.publishedVersions.find((item) => item.id === next.activePolicyVersionId)
+      const admission = { id: `identity-link-${pairSuffix}`, employeeId, issuer: `issuer-${pairSuffix}`, subject: `subject-${pairSuffix}`, principalId: `principal-${pairSuffix}`, status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }
+      const appended = appendGovernanceVersion(next, current, `gov-${pairSuffix}`)
+      appended.version.policy.identityLinks.push(admission)
+      appended.version.policy.principalAdmissions.push({ identityLinkId: admission.id, status: 'active', accountType: 'human_personal' })
+      const changes = governanceChange(appended.payload, artifact.canonical_sha256)
+      await peer.query('BEGIN')
+      await peer.query('SET LOCAL ROLE jenfu_orgmaster_runtime')
+      await peer.query(`SELECT * FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,'dev057-qc','concurrent-publish',$3,'[]'::jsonb)`, [JSON.stringify(changes), 'e'.repeat(64), operationId])
+      return admission
+    }
+
+    const publisherFirst = await openAuxClient('orgmaster-dev057-publisher-first')
+    const bindAfterPublisher = await openAuxClient('orgmaster-dev057-bind-after-publisher')
+    let publisherFirstOpen = false
+    let bindAfterPublisherOpen = false
+    try {
+      const pair = await publishAndHold(publisherFirst, 'employee-four', 'race-publisher-first', 'dev057-publisher-first')
+      publisherFirstOpen = true
+      await bindAfterPublisher.query('BEGIN'); bindAfterPublisherOpen = true
+      await bindAfterPublisher.query('SET LOCAL ROLE jenfu_orgmaster_runtime')
+      const bindAttempt = bindAfterPublisher.query(bindSql, ['employee-four', pair.issuer, pair.subject, employeeFour.email, 'dev057-bind-after-publisher']).then(() => null, (error) => error)
+      await waitForLock('orgmaster-dev057-bind-after-publisher')
+      await publisherFirst.query('COMMIT'); publisherFirstOpen = false
+      const bindError = await bindAttempt
+      assert.match(String(bindError?.message ?? ''), /MANAGED_IDENTITY_IDENTITY_CONFLICT/u)
+      await bindAfterPublisher.query('ROLLBACK').catch(() => undefined); bindAfterPublisherOpen = false
+    } finally {
+      if (publisherFirstOpen) await publisherFirst.query('ROLLBACK').catch(() => undefined)
+      if (bindAfterPublisherOpen) await bindAfterPublisher.query('ROLLBACK').catch(() => undefined)
+      await closeAuxClient(publisherFirst); await closeAuxClient(bindAfterPublisher)
+    }
+
+    const binderFirst = await openAuxClient('orgmaster-dev057-binder-first')
+    const publishAfterBinder = await openAuxClient('orgmaster-dev057-publish-after-binder')
+    let binderFirstOpen = false
+    let publishAfterBinderOpen = false
+    try {
+      await binderFirst.query('BEGIN'); binderFirstOpen = true
+      await binderFirst.query('SET LOCAL ROLE jenfu_orgmaster_runtime')
+      const bound = await binderFirst.query(bindSql, ['employee-three', 'issuer-race-binder-first', 'subject-race-binder-first', employeeThree.email, 'dev057-binder-first'])
+      assert.equal(bound.rows[0].link_state, 'active')
+      const artifact = await activeGovernanceArtifact()
+      const next = structuredClone(artifact.payload)
+      const current = next.publishedVersions.find((item) => item.id === next.activePolicyVersionId)
+      const identity = { id: 'identity-link-race-binder-first', employeeId: 'employee-three', issuer: 'issuer-race-binder-first', subject: 'subject-race-binder-first', principalId: 'principal-race-binder-first', status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }
+      const appended = appendGovernanceVersion(next, current, 'gov-race-binder-first')
+      appended.version.policy.identityLinks.push(identity)
+      appended.version.policy.principalAdmissions.push({ identityLinkId: identity.id, status: 'active', accountType: 'human_personal' })
+      const changes = governanceChange(appended.payload, artifact.canonical_sha256)
+      await publishAfterBinder.query('BEGIN'); publishAfterBinderOpen = true
+      await publishAfterBinder.query('SET LOCAL ROLE jenfu_orgmaster_runtime')
+      const publishAttempt = publishAfterBinder.query(`SELECT * FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,'dev057-qc','concurrent-publish','dev057-publish-after-binder','[]'::jsonb)`, [JSON.stringify(changes), 'f'.repeat(64)]).then(() => null, (error) => error)
+      await waitForLock('orgmaster-dev057-publish-after-binder')
+      await binderFirst.query('COMMIT'); binderFirstOpen = false
+      const publishError = await publishAttempt
+      assert.match(String(publishError?.message ?? ''), /PRINCIPAL_IDENTITY_RESERVATION_CONFLICT/u)
+      await publishAfterBinder.query('ROLLBACK').catch(() => undefined); publishAfterBinderOpen = false
+    } finally {
+      if (binderFirstOpen) await binderFirst.query('ROLLBACK').catch(() => undefined)
+      if (publishAfterBinderOpen) await publishAfterBinder.query('ROLLBACK').catch(() => undefined)
+      await closeAuxClient(binderFirst); await closeAuxClient(publishAfterBinder)
+    }
+    return { publisherFirst: 'bind waited, then rejected the published pair', binderFirst: 'publisher waited, then rejected the reserved pair', lock: 'managed_identity_admission_authority.singleton' }
+  })
+}
+
 function persistenceFixture() {
   const currentDocument = { kind: 'document', state: { employees: [
     { id: 'employee-one', status: 'active' }, { id: 'employee-two', status: 'active' },
@@ -489,7 +753,7 @@ async function seedPersistence() {
 }
 
 async function createIdentity(employeeId, employeeNumber, directoryUserId) {
-  const assignment = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1($1,$2,'dev-047-qc',$3,$4,clock_timestamp())`, [employeeId, employeeNumber, currentWorkspaceRevision(), dev049 ? '0' : null])
+  const assignment = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.assign_employee_number_v1($1,$2,'dev-047-qc',$3,$4,clock_timestamp())`, [employeeId, employeeNumber, currentWorkspaceRevision(), dev049OrLater ? '0' : null])
   const registryRevision = assignment.rows[0].revision
   const email = `${employeeNumber.toLowerCase()}@jenfu.example`
   const lease = await queryAs('jenfu_orgmaster_runtime', `SELECT * FROM orgmaster_core.lease_managed_identity_candidate_v1($1,$2,$3,'customer-1',$4,$3,'etag-1',$5,$6,'actor-1')`, [employeeId, employeeNumber, email, directoryUserId, currentWorkspaceRevision(), registryRevision])
@@ -631,17 +895,17 @@ async function main() {
   const runtime = resolvePostgresBin(process.env)
   if (!runtime.ok) throw Object.assign(new Error(runtime.detail), { reasonCode: runtime.reasonCode })
   postgresBin = runtime.bin
-  taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), dev049 ? 'orgmaster-dev049-qc-' : dev050 ? 'orgmaster-dev050-qc-' : dev052 ? 'orgmaster-dev052-qc-' : dev053 ? 'orgmaster-dev053-qc-' : dev054 ? 'orgmaster-dev054-qc-' : dev055 ? 'orgmaster-dev055-qc-' : 'orgmaster-dev047-qc-'))
+  taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), dev057 ? 'orgmaster-dev057-qc-' : dev049 ? 'orgmaster-dev049-qc-' : dev050 ? 'orgmaster-dev050-qc-' : dev052 ? 'orgmaster-dev052-qc-' : dev053 ? 'orgmaster-dev053-qc-' : dev054 ? 'orgmaster-dev054-qc-' : dev055 ? 'orgmaster-dev055-qc-' : 'orgmaster-dev047-qc-'))
   clusterDir = path.join(taskRoot, 'cluster'); postgresLog = path.join(taskRoot, 'postgres.log'); port = await freePort()
-  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : dev055 ? 'DEV-055 isolated PostgreSQL 001-020 current projection contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'client closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
+  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev057 ? 'DEV-057 isolated PostgreSQL 001-021 producer fence and projection QC' : dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : dev055 ? 'DEV-055 isolated PostgreSQL 001-020 current projection contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'all clients closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
   run(path.join(postgresBin, 'initdb.exe'), ['-D', clusterDir, '--auth-local=trust', '--auth-host=trust', '--username=postgres', '--encoding=UTF8', '--no-locale'])
   run(path.join(postgresBin, 'pg_ctl.exe'), ['-D', clusterDir, '-l', postgresLog, '-o', `-p ${port} -h 127.0.0.1`, '-w', 'start'], { stdio: 'ignore' })
   started = true
   postgresPid = Number.parseInt(fs.readFileSync(path.join(clusterDir, 'postmaster.pid'), 'utf8').split(/\r?\n/u)[0], 10)
-  const dbName = `${dev049 ? 'dev049' : dev050 ? 'dev050' : dev052 ? 'dev052' : dev053 ? 'dev053' : dev054 ? 'dev054' : dev055 ? 'dev055' : 'dev047'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
+  const dbName = `${dev057 ? 'dev057' : dev049 ? 'dev049' : dev050 ? 'dev050' : dev052 ? 'dev052' : dev053 ? 'dev053' : dev054 ? 'dev054' : dev055 ? 'dev055' : 'dev047'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
   run(path.join(postgresBin, 'createdb.exe'), ['-h', '127.0.0.1', '-p', String(port), '-U', 'postgres', dbName])
-  const connectionString = `postgresql://postgres@127.0.0.1:${port}/${dbName}`
-  client = new pg.Client({ connectionString, application_name: dev049 ? 'orgmaster-dev049-qc' : dev050 ? 'orgmaster-dev050-qc' : dev052 ? 'orgmaster-dev052-qc' : dev053 ? 'orgmaster-dev053-qc' : dev054 ? 'orgmaster-dev054-qc' : dev055 ? 'orgmaster-dev055-qc' : 'orgmaster-dev047-qc' })
+  connectionString = `postgresql://postgres@127.0.0.1:${port}/${dbName}`
+  client = new pg.Client({ connectionString, application_name: dev057 ? 'orgmaster-dev057-qc' : dev049 ? 'orgmaster-dev049-qc' : dev050 ? 'orgmaster-dev050-qc' : dev052 ? 'orgmaster-dev052-qc' : dev053 ? 'orgmaster-dev053-qc' : dev054 ? 'orgmaster-dev054-qc' : dev055 ? 'orgmaster-dev055-qc' : 'orgmaster-dev047-qc' })
   await client.connect()
   serverVersion = (await client.query('SHOW server_version')).rows[0].server_version
   if (!supportsServerVersion(serverVersion)) throw Object.assign(new Error(`PostgreSQL 17/18 required; got ${serverVersion}`), { reasonCode: 'POSTGRES_VERSION_UNSUPPORTED' })
@@ -653,6 +917,7 @@ async function main() {
   if (dev053) { await runDev053Checks(); return }
   if (dev054) { await runDev054Checks(); return }
   if (dev055) { await runDev055Checks(); return }
+  if (dev057) { await runDev057Checks(); return }
 
   let identityOne
   await check('A17', 'managed link, admission, first-login bind and active-principal mapping', async () => {
@@ -741,6 +1006,8 @@ process.once('SIGINT', () => { interruptedBy = 'SIGINT' })
 process.once('SIGTERM', () => { interruptedBy = 'SIGTERM' })
 try { await main() } catch (error) { firstFailure = { reasonCode: error?.reasonCode ?? 'QC_EXECUTION_FAILED', code: error?.code ?? null, routine: error?.routine ?? null, where: error?.where ?? null, detail: error?.detail ?? null, message: error instanceof Error ? error.stack ?? error.message : String(error) } }
 finally {
+  await Promise.all([...auxiliaryClients].map(async (peer) => { await peer.end().catch(() => undefined); auxiliaryClients.delete(peer) }))
+  cleanup.auxiliaryClientsClosed = auxiliaryClients.size === 0
   if (client) { await client.end().catch(() => undefined); cleanup.clientClosed = true } else cleanup.clientClosed = true
   if (started) cleanup.clusterStopped = spawnSync(path.join(postgresBin, 'pg_ctl.exe'), ['-D', clusterDir, '-m', 'fast', '-w', 'stop'], { cwd: root, encoding: 'utf8', windowsHide: true, stdio: 'ignore' }).status === 0
   else cleanup.clusterStopped = true
@@ -748,21 +1015,21 @@ finally {
   if (taskRoot) { try { fs.rmSync(taskRoot, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 }); cleanup.tempRemoved = !fs.existsSync(taskRoot) } catch { cleanup.tempRemoved = false } } else cleanup.tempRemoved = true
 }
 
-const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : requiredCorrectionCases
+const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06'] : requiredCorrectionCases
 const allRequiredPassed = requiredCases.every((id) => checks.some((entry) => entry.id === id && entry.status === 'PASS'))
 const status = !firstFailure && allRequiredPassed && Object.values(cleanup).every(Boolean) ? 'PASS' : firstFailure?.reasonCode === 'POSTGRES_RUNTIME_MISSING' ? 'BLOCKED' : 'FAIL'
 const manifest = {
-  contract: dev049 ? 'DEV-049' : dev050 ? 'DEV-050' : dev052 ? 'DEV-052' : dev053 ? 'DEV-053' : dev054 ? 'DEV-054' : dev055 ? 'DEV-055' : 'DEV-047', runner: dev049 ? 'DEV-049-postgres-qc-v1' : dev050 ? 'DEV-050-postgres-qc-v1' : dev052 ? 'DEV-052-postgres-qc-v1' : dev053 ? 'DEV-053-postgres-qc-v1' : dev054 ? 'DEV-054-postgres-qc-v1' : dev055 ? 'DEV-055-postgres-qc-v1' : 'DEV-047-postgres-qc-v1', evidenceScope: 'TASK_OWNED_LOCAL_ISOLATED', status,
+  contract: dev049 ? 'DEV-049' : dev050 ? 'DEV-050' : dev052 ? 'DEV-052' : dev053 ? 'DEV-053' : dev054 ? 'DEV-054' : dev055 ? 'DEV-055' : dev057 ? 'DEV-057' : 'DEV-047', runner: dev049 ? 'DEV-049-postgres-qc-v1' : dev050 ? 'DEV-050-postgres-qc-v1' : dev052 ? 'DEV-052-postgres-qc-v1' : dev053 ? 'DEV-053-postgres-qc-v1' : dev054 ? 'DEV-054-postgres-qc-v1' : dev055 ? 'DEV-055-postgres-qc-v1' : dev057 ? 'DEV-057-postgres-qc-v1' : 'DEV-047-postgres-qc-v1', evidenceScope: 'TASK_OWNED_LOCAL_ISOLATED', status,
   generatedAt: new Date().toISOString(), productionWrites: false, executedCaseCount: checks.length,
   sourceRevision: run('git', ['rev-parse', 'HEAD']).stdout.trim(), dirty: run('git', ['status', '--short']).stdout.trim().split(/\r?\n/u).filter(Boolean),
   serverVersion, acceptedServerMajors: [17, 18], migrations: migrationEvidence, checks, firstFailure,
   source: {
     runnerSha256: sha256(fs.readFileSync(path.join(root, 'scripts', 'qc-dev-047-postgres.mjs'))),
-    contractRunnerSha256: sha256(fs.readFileSync(path.join(root, 'scripts', dev049 ? 'qc-dev-049-contract.mjs' : dev050 ? 'qc-dev-050-contract.mjs' : dev052 ? 'qc-dev-052-contract.mjs' : dev053 ? 'qc-dev-053-contract.mjs' : dev054 ? 'qc-dev-054-contract.mjs' : dev055 ? 'qc-dev-055-contract.mjs' : 'qc-dev-047-contract.mjs'))),
+    contractRunnerSha256: sha256(fs.readFileSync(path.join(root, 'scripts', dev049 ? 'qc-dev-049-contract.mjs' : dev050 ? 'qc-dev-050-contract.mjs' : dev052 ? 'qc-dev-052-contract.mjs' : dev053 ? 'qc-dev-053-contract.mjs' : dev054 ? 'qc-dev-054-contract.mjs' : dev055 ? 'qc-dev-055-contract.mjs' : dev057 ? 'qc-dev-057-contract.mjs' : 'qc-dev-047-contract.mjs'))),
     fixtureSha256: sha256(JSON.stringify(persistenceFixture())),
   },
-  runtime: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL validation' : dev050 ? 'DEV-050 isolated PostgreSQL validation' : dev052 ? 'DEV-052 isolated PostgreSQL validation' : dev053 ? 'DEV-053 isolated PostgreSQL validation' : dev054 ? 'DEV-054 isolated PostgreSQL validation' : dev055 ? 'DEV-055 isolated PostgreSQL validation' : 'DEV-047 isolated PostgreSQL validation', port, postgresPid, owningProcessTree: `node:${process.pid} -> postgres:${postgresPid ?? 'not-started'}`, mutationScope: taskRoot ?? null, interruptedBy, cleanup },
+  runtime: { project: root, purpose: dev049 ? 'DEV-049 isolated PostgreSQL validation' : dev050 ? 'DEV-050 isolated PostgreSQL validation' : dev052 ? 'DEV-052 isolated PostgreSQL validation' : dev053 ? 'DEV-053 isolated PostgreSQL validation' : dev054 ? 'DEV-054 isolated PostgreSQL validation' : dev055 ? 'DEV-055 isolated PostgreSQL validation' : dev057 ? 'DEV-057 isolated PostgreSQL validation' : 'DEV-047 isolated PostgreSQL validation', port, postgresPid, owningProcessTree: `node:${process.pid} -> postgres:${postgresPid ?? 'not-started'}`, mutationScope: taskRoot ?? null, interruptedBy, cleanup },
 }
-fs.mkdirSync(outputDir, { recursive: true }); fs.writeFileSync(outputPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+fs.mkdirSync(path.dirname(outputPath), { recursive: true }); fs.writeFileSync(outputPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 process.stdout.write(`${JSON.stringify({ status, evidence: outputPath, serverVersion, executedCaseCount: checks.length, cleanup, firstFailure }, null, 2)}\n`)
-process.exitCode = (dev049 || dev050 || dev052 || dev053 || dev054 || dev055) ? (status === 'PASS' && checks.length === requiredCases.length && Object.values(cleanup).every(Boolean) ? 0 : 2) : resultExitCode(manifest)
+process.exitCode = (dev049 || dev050 || dev052 || dev053 || dev054 || dev055 || dev057) ? (status === 'PASS' && checks.length === requiredCases.length && Object.values(cleanup).every(Boolean) ? 0 : 2) : resultExitCode(manifest)

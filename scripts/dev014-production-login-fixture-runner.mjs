@@ -21,8 +21,8 @@ export const TARGET = Object.freeze({
   instance: 'jenfu-platform-prod-pg',
   database: 'jenfu_prod',
   jobName: 'orgmaster-prod-migration-runner',
-  runtimeServiceAccount: 'orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com',
-  runtimeDbLogin: 'orgmaster-prod-runtime@jenfu-platform-prod.iam',
+  operatorServiceAccount: 'orgmaster-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com',
+  operatorDbLogin: 'orgmaster-prod-migrator@jenfu-platform-prod.iam',
   signerServiceAccount: 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com',
   directoryCustomerId: 'C015t4buc',
   delegatedSubject: 'jedchang0308@jenfu.com.tw',
@@ -79,7 +79,8 @@ export function assertEnvironment(environment, operation) {
     || environment.GOOGLE_CLOUD_REGION !== TARGET.region
     || environment.OWNER_APPLICATION_ID !== 'orgmaster'
     || environment.POSTGRES_DATABASE !== TARGET.database
-    || environment.POSTGRES_IAM_LOGIN !== TARGET.runtimeDbLogin
+    || environment.POSTGRES_IAM_LOGIN !== TARGET.operatorDbLogin
+    || environment.CLOUD_RUN_JOB !== TARGET.jobName
     || environment.OWNER_SOURCE_REVISION !== operation.sourceRevision
     || environment.POSTGRES_SOCKET !== `/cloudsql/${TARGET.projectId}:${TARGET.region}:${TARGET.instance}`) {
     fail('DEV014_LOGIN_FIXTURE_TARGET_INVALID')
@@ -93,7 +94,7 @@ async function metadataServiceAccountEmail(fetchImpl) {
   })
   if (!response.ok) fail('DEV014_LOGIN_FIXTURE_RUNTIME_IDENTITY_UNAVAILABLE')
   const email = (await response.text()).trim().toLowerCase()
-  if (email !== TARGET.runtimeServiceAccount) fail('DEV014_LOGIN_FIXTURE_RUNTIME_IDENTITY_INVALID')
+  if (email !== TARGET.operatorServiceAccount) fail('DEV014_LOGIN_FIXTURE_RUNTIME_IDENTITY_INVALID')
   return email
 }
 

@@ -8,7 +8,7 @@ const migrationPath = 'db/migrations/020_dev014_current_projection_contract.sql'
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json', 'utf8'))
 const source = fs.readFileSync(migrationPath)
 const sql = source.toString('utf8')
-const entry = profile.migrations.entries.at(-1)
+const entry = profile.migrations.entries.find(({ version }) => version === 'dev014-orgmaster-020')
 
 assert.deepEqual(entry, {
   order: 20,

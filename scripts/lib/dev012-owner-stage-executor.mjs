@@ -90,8 +90,33 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
   const controlledEnvironment = Object.fromEntries(Object.keys(rules).sort().map((name) => [name, runtime.plainEnvironment?.[name]]))
   const isDev013 = values.readiness?.schemaVersion === 'jenfu.dev013.l4-owner-transition-readiness.v2'
   const isDev014 = values.readiness?.devId === 'DEV-014'
+  const isDev057 = values.readiness?.devId === 'DEV-057'
   const usesNonDefaultValue = Object.entries(rules).some(([name, rule]) => controlledEnvironment[name] !== rule.defaultValue)
   if (!isDev013) {
+    if (isDev057) {
+      const expectedRemediation = {
+        kind: 'IDENTITY_GRANT_WRITER_FENCE',
+        migrationVersion: 'dev057-orgmaster-021',
+        contractViews: ['orgmaster_contract.v_active_principal_mappings_v1', 'orgmaster_contract.v_portal_app_visibility_v1'],
+        serializationRow: 'orgmaster_core.managed_identity_admission_authority.singleton',
+        concurrencyCases: ['governance-publication-before-bind', 'bind-before-governance-publication'],
+        applicationId: 'ai-pdm',
+      }
+      if (!intent.baselineIntentRef
+        || values.authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+        || values.authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+        || values.authorization.devId !== 'DEV-057' || values.authorization.slice !== '057-WRITER-FENCE'
+        || values.readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+        || values.readiness.slice !== '057-WRITER-FENCE'
+        || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
+        || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision
+        || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
+        || canonicalize(values.authorization.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+        || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+        || canonicalize(values.authorization.remediation) !== canonicalize(expectedRemediation)
+        || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
+      return { releaseMode: 'DEV057_WRITER_FENCE_REMEDIATION', remediation: expectedRemediation }
+    }
     if (isDev014) {
       if (values.readiness?.slice === '014-PRODUCER-CONTRACT') {
         const expectedRemediation = {
@@ -319,8 +344,9 @@ function assertMigrationReceipt(value, profile, intent, { historical = false, al
       const applicationRegistrationRemediation = forwardPlan?.releaseMode === 'DEV014_APPLICATION_REGISTRATION_REMEDIATION'
       const activationContractRemediation = forwardPlan?.releaseMode === 'DEV014_ACTIVATION_CONTRACT_REMEDIATION'
       const projectionContractRemediation = forwardPlan?.releaseMode === 'DEV014_PROJECTION_CONTRACT_REMEDIATION'
-      const expectedLedgerCount = projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
-      const maximumAppliedCount = producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation ? 1 : 4
+      const writerFenceRemediation = forwardPlan?.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION'
+      const expectedLedgerCount = writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const maximumAppliedCount = producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
       if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
     }
@@ -442,6 +468,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const routine = await verifyRoutineRelease({ intent, values, service })
     if (derived.controlledEnvironmentAuthority.releaseMode === 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD' && routine.releaseMode !== 'ROUTINE_UNCHANGED_RUNTIME') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION' && routine.releaseMode !== 'DEV014_LOGIN_FIXTURE_CORRECTION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION' && routine.releaseMode !== 'DEV057_WRITER_FENCE_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     return writeStage(transport, paths, profile, intent, 'prepare', null, { prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])), previousRevision: intent.previousRevision, runtimeServiceAccount: derived.runtimeConfig.runtimeServiceAccount, migrationRunnerDigest: derived.migrationRunnerDigest, routine, entrypointBaseline: transport.entrypointSnapshot(service), remainingHumanAction: 0 })
   }
 

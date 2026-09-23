@@ -240,6 +240,28 @@ test('OrgMaster owner prepare accepts only the bounded DEV-014 login-fixture cor
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })
 
+test('OrgMaster owner prepare accepts only the exact DEV-057 writer-fence remediation authority', () => {
+  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+    .map((name) => [name, 'fixture-public-value']))
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: resolvePlainEnvironment(profile, priorPlainEnvironment), secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  const remediation = {
+    kind: 'IDENTITY_GRANT_WRITER_FENCE',
+    migrationVersion: 'dev057-orgmaster-021',
+    contractViews: ['orgmaster_contract.v_active_principal_mappings_v1', 'orgmaster_contract.v_portal_app_visibility_v1'],
+    serializationRow: 'orgmaster_core.managed_identity_admission_authority.singleton',
+    concurrencyCases: ['governance-publication-before-bind', 'bind-before-governance-publication'],
+    applicationId: 'ai-pdm',
+  }
+  fixture.intent.baselineIntentRef = ref('baseline-release-intent')
+  fixture.values.authorization = { ...fixture.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'DEV057_WRITER_FENCE_REMEDIATION')
+  fixture.values.authorization.remediation = { ...remediation, applicationId: 'platform' }
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+})
+
 test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   const source = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/workload-identity.tf', import.meta.url), 'utf8')
   const displayName = source.match(/display_name\s*=\s*"([^"]+)"/u)?.[1]
@@ -247,11 +269,11 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-020 production migration bytes', () => {
+test('OrgMaster exact 001-021 production migration bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
-  assert.equal(bundle.bundle.entries.length, 20)
+  assert.equal(bundle.bundle.entries.length, 21)
   assert.equal(bundle.bundle.entries[10].version, 'dev040-r2-orgmaster-011')
   assert.equal(bundle.bundle.entries[11].version, 'dev047-orgmaster-012')
   assert.equal(bundle.bundle.entries[12].version, 'dev049-orgmaster-013')
@@ -262,6 +284,7 @@ test('OrgMaster exact 001-020 production migration bytes', () => {
   assert.equal(bundle.bundle.entries[17].version, 'dev014-orgmaster-018')
   assert.equal(bundle.bundle.entries[18].version, 'dev014-orgmaster-019')
   assert.equal(bundle.bundle.entries[19].version, 'dev014-orgmaster-020')
+  assert.equal(bundle.bundle.entries[20].version, 'dev057-orgmaster-021')
 })
 
 test('S1B-21 OrgMaster release intent is exact, owner-bound and immutable', () => {

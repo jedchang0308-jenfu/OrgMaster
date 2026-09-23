@@ -27,6 +27,7 @@
     "qc:dev-040:principal": "node scripts/qc-dev-040-active-principal.mjs",
     "test:dev-040:r2": "node --test scripts/dev040-orgmaster-independent-release.test.mjs scripts/dev040-production-migration-runner.test.mjs scripts/dev049-production-admission.test.mjs scripts/dev014-production-managed-link-runner.test.mjs scripts/dev012-owner-release-runtime.test.mjs scripts/dev012-owner-stage-executor.test.mjs scripts/dev040-routine-release.test.mjs scripts/dev012-owner-prerequisite-producer.test.mjs",
     "test:dev-014:fixtures": "node --test scripts/dev014-production-login-fixture-runner.test.mjs",
+    "test:dev-014:authority": "node --test scripts/dev014-production-login-authority-switch-runner.test.mjs",
     "test:dev-012:prerequisites": "node --test scripts/dev012-owner-prerequisite-producer.test.mjs",
     "produce:dev-040:prerequisite": "node scripts/dev040-orgmaster-prerequisite-producer.mjs",
     "deploy:production": "node scripts/dev040-deploy-production.mjs",
@@ -91,7 +92,9 @@
     "qc:dev-054:contract": "node scripts/qc-dev-054-contract.mjs",
     "qc:dev-054:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev054",
     "qc:dev-055:contract": "node scripts/qc-dev-055-contract.mjs",
-    "qc:dev-055:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev055"
+    "qc:dev-055:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev055",
+    "qc:dev-057:contract": "node scripts/qc-dev-057-contract.mjs",
+    "qc:dev-057:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev057"
   },
   "dependencies": {
     "@dagrejs/dagre": "3.1.1",

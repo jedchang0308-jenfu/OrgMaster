@@ -17,6 +17,7 @@ COPY scripts/dev040-production-migration-runner.mjs scripts/dev040-production-mi
 COPY scripts/dev049-production-admission-runner.mjs scripts/dev049-production-admission-runner.mjs
 COPY scripts/dev014-production-managed-link-runner.mjs scripts/dev014-production-managed-link-runner.mjs
 COPY scripts/dev014-production-login-fixture-runner.mjs scripts/dev014-production-login-fixture-runner.mjs
+COPY scripts/dev014-production-login-authority-switch-runner.mjs scripts/dev014-production-login-authority-switch-runner.mjs
 
 USER node
 ENV NODE_ENV=production

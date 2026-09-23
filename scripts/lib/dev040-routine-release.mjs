@@ -165,6 +165,22 @@ export function assertDev014ProjectionContractAppend(before, after) {
   return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
 }
 
+export function assertDev057WriterFenceAppend(before, after) {
+  const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+  const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
+  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 20 || after.entries?.length !== 21) fail('DEV057_WRITER_FENCE_APPEND_INVALID')
+  if (!same(before.entries, after.entries.slice(0, before.entries.length))) fail('DEV057_WRITER_FENCE_APPEND_INVALID')
+  const appended = after.entries[20]
+  const expected = [
+    'dev057-orgmaster-021',
+    'db/migrations/021_dev057_identity_grant_writer_fence.sql',
+    '9c925bd36b357ef2d3997eb362cbbef566fbd4308acd22e647b72d1f2adb3d5e',
+    'c8d9b2aa02988a6b0094795b392532548f3bb7e7b51112e752355fd616334a22',
+  ]
+  if (!same([appended.version, appended.path, appended.sourceSha256, appended.appliedSha256], expected)) fail('DEV057_WRITER_FENCE_APPEND_INVALID')
+  return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
+}
+
 export function assertDev014ActivationContractRemediation(readiness, authorization) {
   const remediation = {
     kind: 'LOGIN_FIXTURE_EMPLOYEE_ACTIVATION_CONTRACT',
@@ -200,6 +216,24 @@ export function assertDev014ProjectionContractRemediation(readiness, authorizati
     || readiness.devId !== 'DEV-014' || readiness.slice !== '014-PROJECTION-CONTRACT'
     || !same(authorization.remediation, remediation) || !same(readiness.remediation, remediation)) fail('DEV014_PROJECTION_CONTRACT_AUTHORITY_INVALID')
   return { releaseMode: 'DEV014_PROJECTION_CONTRACT_REMEDIATION', remediation }
+}
+
+export function assertDev057WriterFenceRemediation(readiness, authorization) {
+  const remediation = {
+    kind: 'IDENTITY_GRANT_WRITER_FENCE',
+    migrationVersion: 'dev057-orgmaster-021',
+    contractViews: ['orgmaster_contract.v_active_principal_mappings_v1', 'orgmaster_contract.v_portal_app_visibility_v1'],
+    serializationRow: 'orgmaster_core.managed_identity_admission_authority.singleton',
+    concurrencyCases: ['governance-publication-before-bind', 'bind-before-governance-publication'],
+    applicationId: 'ai-pdm',
+  }
+  if (authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+    || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+    || authorization.devId !== 'DEV-057' || authorization.slice !== '057-WRITER-FENCE'
+    || readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+    || readiness.devId !== 'DEV-057' || readiness.slice !== '057-WRITER-FENCE'
+    || !same(authorization.remediation, remediation) || !same(readiness.remediation, remediation)) fail('DEV057_WRITER_FENCE_AUTHORITY_INVALID')
+  return { releaseMode: 'DEV057_WRITER_FENCE_REMEDIATION', remediation }
 }
 
 export function assertDev014LoginFixtureCorrection(readiness, authorization) {
@@ -373,7 +407,11 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const runtimeConfig = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
   const baselineRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
   const controlledTransition = same(runtimeConfig, baselineRuntime)
-    ? values.readiness?.devId === 'DEV-014'
+    ? values.readiness?.devId === 'DEV-057'
+      ? values.readiness?.slice === '057-WRITER-FENCE'
+        ? assertDev057WriterFenceRemediation(values.readiness, values.authorization)
+        : null
+      : values.readiness?.devId === 'DEV-014'
       ? values.readiness?.slice === '014-PRODUCER-CONTRACT'
         ? assertDev014ProducerContractRemediation(values.readiness, values.authorization)
         : values.readiness?.slice === '014-APPLICATION-REGISTRATION'
@@ -389,7 +427,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     : values.readiness?.devId === 'DEV-014'
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
-  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
@@ -414,6 +452,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
           ? assertDev014ActivationContractAppend(baseline.bundle.value, current.bundle)
         : controlledTransition.releaseMode === 'DEV014_PROJECTION_CONTRACT_REMEDIATION'
           ? assertDev014ProjectionContractAppend(baseline.bundle.value, current.bundle)
+          : controlledTransition.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION'
+            ? assertDev057WriterFenceAppend(baseline.bundle.value, current.bundle)
         : assertDev013ControlledMigrationAppend(baseline.bundle.value, current.bundle)
   }
   const infraChanged = !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)

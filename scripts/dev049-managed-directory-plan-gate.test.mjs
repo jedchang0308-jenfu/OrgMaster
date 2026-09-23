@@ -10,7 +10,7 @@ const profile = JSON.parse(fs.readFileSync(new URL('../config/release/dev049-man
 function plan() {
   const variables = Object.fromEntries(Object.entries({
     project_id: 'jenfu-platform-prod', project_number: '9536592944', region: 'asia-east1',
-    runtime_service_account_id: 'orgmaster-prod-runtime', dwd_service_account_id: 'orgmaster-prod-directory-dwd',
+    runtime_service_account_id: 'orgmaster-prod-runtime', migration_service_account_id: 'orgmaster-prod-migrator', dwd_service_account_id: 'orgmaster-prod-directory-dwd',
     source_revision: sourceRevision, foundation_manifest_sha256: foundationManifestSha256,
     operator_email: 'jedchang0308@jenfu.com.tw',
   }).map(([key, value]) => [key, { value }]))
@@ -28,10 +28,12 @@ function plan() {
   legacyInput.foundation_manifest_sha256 = 'd'.repeat(64)
   const configuration = { root_module: { resources: [
     { address: 'data.google_service_account.runtime', mode: 'data', type: 'google_service_account' },
+    { address: 'data.google_service_account.migrator', mode: 'data', type: 'google_service_account' },
     { address: 'google_project_service.admin_directory', mode: 'managed', type: 'google_project_service' },
     { address: 'terraform_data.provenance', mode: 'managed', type: 'terraform_data' },
     { address: 'google_service_account.directory_dwd', mode: 'managed', type: 'google_service_account' },
     { address: 'google_service_account_iam_member.runtime_token_creator', mode: 'managed', type: 'google_service_account_iam_member' },
+    { address: 'google_service_account_iam_member.migrator_token_creator', mode: 'managed', type: 'google_service_account_iam_member' },
   ] } }
   const prior_state = { values: { root_module: { resources: [{
     address: 'data.google_service_account.runtime', mode: 'data', type: 'google_service_account', values: {
@@ -39,12 +41,19 @@ function plan() {
       email: 'orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com',
       name: 'projects/jenfu-platform-prod/serviceAccounts/orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com',
     },
+  }, {
+    address: 'data.google_service_account.migrator', mode: 'data', type: 'google_service_account', values: {
+      account_id: 'orgmaster-prod-migrator', project: 'jenfu-platform-prod', disabled: false,
+      email: 'orgmaster-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com',
+      name: 'projects/jenfu-platform-prod/serviceAccounts/orgmaster-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com',
+    },
   }] } } }
   return { variables, configuration, prior_state, resource_changes: [
     { address: 'terraform_data.provenance', change: { actions: ['update'], before: { input: legacyInput }, after: { input } } },
     { address: 'google_project_service.admin_directory', change: { actions: ['create'], after: { project: 'jenfu-platform-prod', service: 'admin.googleapis.com', disable_on_destroy: false, deletion_policy: 'ABANDON' } } },
     { address: 'google_service_account.directory_dwd', change: { actions: ['create'] } },
     { address: 'google_service_account_iam_member.runtime_token_creator', change: { actions: ['create'] } },
+    { address: 'google_service_account_iam_member.migrator_token_creator', change: { actions: ['create'] } },
   ] }
 }
 
