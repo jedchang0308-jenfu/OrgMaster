@@ -56,7 +56,7 @@ export function parseArgs(argv) {
   if (!OPERATION_ID.test(parsed.operationId ?? '') || !H40.test(parsed.sourceRevision ?? '')
     || !isIso(parsed.deadlineAt) || Date.parse(parsed.deadlineAt) <= Date.now()
     || Date.parse(parsed.deadlineAt) - Date.now() > DEADLINE_MAX_MS
-    || !parsed.outputRef) fail('DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID')
+    || !parsed.outputRef || !parsed.outputRef.endsWith('/batch.json')) fail('DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID')
   parseGsUri(parsed.outputRef, TARGET.releaseBucket, TARGET.receiptPrefix)
   return parsed
 }
@@ -96,7 +96,7 @@ async function metadataServiceAccountEmail(fetchImpl) {
   return email
 }
 
-async function readGovernance(database) {
+async function readGovernance(database, expectedSourceRevision) {
   const result = await database.query("SELECT payload, canonical_sha256, source_revision FROM orgmaster_core.read_active_persistence_artifact_v1('orgmaster-governance.v3.json')")
   const row = one(result.rows, 'DEV014_LOGIN_AUTHORITY_GOVERNANCE_INVALID')
   const payload = row.payload
@@ -104,15 +104,16 @@ async function readGovernance(database) {
   const versions = Array.isArray(payload?.publishedVersions) ? payload.publishedVersions : []
   const version = versions.find((entry) => entry?.id === activePolicyVersionId)
   if (!version || version.kind !== 'assignment-governance-v3' || !SAFE_ID.test(activePolicyVersionId)) fail('DEV014_LOGIN_AUTHORITY_GOVERNANCE_INVALID')
-  if (!/^[a-f0-9]{64}$/u.test(String(row.canonical_sha256 ?? '')) || !H40.test(String(row.source_revision ?? ''))) fail('DEV014_LOGIN_AUTHORITY_GOVERNANCE_INVALID')
+  if (!/^[a-f0-9]{64}$/u.test(String(row.canonical_sha256 ?? '')) || !H40.test(String(row.source_revision ?? ''))
+    || String(row.source_revision) !== expectedSourceRevision) fail('DEV014_LOGIN_AUTHORITY_GOVERNANCE_SOURCE_INVALID')
   return { activePolicyVersionId, version, canonicalSha256: String(row.canonical_sha256), sourceRevision: String(row.source_revision) }
 }
 
-async function readState(database, fixture) {
+async function readState(database, fixture, expectedSourceRevision) {
   const authority = one((await database.query(`SELECT application_id, authority_source, authority_version, employee_id, operation_id
     FROM orgmaster_contract.v_ai_pdm_entitlement_authority_v1
     WHERE application_id='ai-pdm' AND employee_id=$1`, [fixture.employeeId])).rows, 'DEV014_LOGIN_AUTHORITY_STATE_INVALID')
-  const governance = await readGovernance(database)
+  const governance = await readGovernance(database, expectedSourceRevision)
   const assignments = (Array.isArray(governance.version.policy?.roleAssignments) ? governance.version.policy.roleAssignments : [])
     .filter((entry) => entry?.applicationId === TARGET.applicationId && entry?.employeeId === fixture.employeeId && entry?.status === 'active')
   if (assignments.length !== 1 || assignments[0].roleCodeSnapshot !== 'rd'
@@ -181,7 +182,7 @@ export async function executeAuthorityBatch({ database, operation, now = new Dat
   const base = { operationId: operation.operationId, sourceRevision: operation.sourceRevision, deadlineAt: operation.deadlineAt }
   const preflight = []
   for (const fixture of FIXTURES) {
-    const before = await readState(database, fixture)
+    const before = await readState(database, fixture, operation.sourceRevision)
     const op = buildOperation(base, fixture, before)
     preflight.push({ fixture, before, operation: op, rows: await readOperationRows(database, op) })
   }
@@ -201,7 +202,7 @@ export async function executeAuthorityBatch({ database, operation, now = new Dat
     await database.query("SELECT pg_advisory_xact_lock(hashtext('dev014-login-fixture-authority'), hashtext(current_database()))")
     const locked = []
     for (const item of preflight) {
-      const current = await readState(database, item.fixture)
+      const current = await readState(database, item.fixture, operation.sourceRevision)
       if (current.authoritySource !== item.before.authoritySource || current.authorityVersion !== item.before.authorityVersion
         || current.assignmentVersionId !== item.before.assignmentVersionId) fail('DEV014_LOGIN_AUTHORITY_CONDITION_DRIFT')
       locked.push({ ...item, before: current })
@@ -214,7 +215,7 @@ export async function executeAuthorityBatch({ database, operation, now = new Dat
         item.operation.batchId, item.before.assignmentVersionId, TARGET.actor, item.operation.reason,
       ])).rows, 'DEV014_LOGIN_AUTHORITY_FUNCTION_RESULT_INVALID')
       if (Number(result.authority_version) !== 2 || result.replayed !== false) fail('DEV014_LOGIN_AUTHORITY_FUNCTION_RESULT_INVALID')
-      const after = await readState(database, item.fixture)
+      const after = await readState(database, item.fixture, operation.sourceRevision)
       assertCommittedState(after)
       const rows = await readOperationRows(database, item.operation)
       if (!rows.receipt || !rows.outbox || rows.receipt.from_authority_source !== 'legacy_authority'

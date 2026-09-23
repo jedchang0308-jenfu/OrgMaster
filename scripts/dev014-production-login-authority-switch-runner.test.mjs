@@ -56,9 +56,10 @@ function fakeDatabase({ mode = 'legacy', failSecond = false, partial = false } =
 
 test('parses exact source-bound operation and output prefix', () => {
   const future = new Date(Date.now() + 60 * 60 * 1_000).toISOString()
-  const parsed = parseArgs(['--operation-id', operation.operationId, '--source-revision', sourceRevision, '--deadline-at', future, '--output-ref', `gs://${TARGET.releaseBucket}/${TARGET.receiptPrefix}/r1.json`])
+  const parsed = parseArgs(['--operation-id', operation.operationId, '--source-revision', sourceRevision, '--deadline-at', future, '--output-ref', `gs://${TARGET.releaseBucket}/${TARGET.receiptPrefix}/batch.json`])
   assert.deepEqual(parsed.operationId, operation.operationId)
-  assert.throws(() => parseArgs(['--operation-id', 'WRONG', '--source-revision', sourceRevision, '--deadline-at', future, '--output-ref', `gs://${TARGET.releaseBucket}/${TARGET.receiptPrefix}/r1.json`]), /DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID/u)
+  assert.throws(() => parseArgs(['--operation-id', 'WRONG', '--source-revision', sourceRevision, '--deadline-at', future, '--output-ref', `gs://${TARGET.releaseBucket}/${TARGET.receiptPrefix}/batch.json`]), /DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID/u)
+  assert.throws(() => parseArgs(['--operation-id', operation.operationId, '--source-revision', sourceRevision, '--deadline-at', future, '--output-ref', `gs://${TARGET.releaseBucket}/${TARGET.receiptPrefix}/r1.json`]), /DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID/u)
 })
 
 test('binds the operator to the exact migrator identity and production job target', () => {
@@ -118,5 +119,17 @@ test('rejects a fixture role drift before the CAS function', async () => {
     return original(sql, params)
   }
   await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_ASSIGNMENT_INVALID/u)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v1')), false)
+})
+
+test('rejects governance artifact source drift before the CAS function', async () => {
+  const db = fakeDatabase()
+  const original = db.query
+  db.query = async (sql, params = []) => {
+    const value = await original(sql, params)
+    if (sql.startsWith('SELECT payload')) value.rows[0].source_revision = 'c'.repeat(40)
+    return value
+  }
+  await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_GOVERNANCE_SOURCE_INVALID/u)
   assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v1')), false)
 })
