@@ -69,11 +69,27 @@ function requireHumanPrivileged(document: GovernanceDocumentV3, actor: Governanc
   if (!devEnabled && !isHumanPrivilegedActor(document, actor)) throw new ManagedIdentityServiceError('HUMAN_PRIVILEGED_REQUIRED')
 }
 
-function hasPublishedOrgmasterAccess(document: GovernanceDocumentV3, employeeId: string, at = new Date().toISOString()) {
+function hasPublishedApplicationAccess(document: GovernanceDocumentV3, employeeId: string, applicationId: 'orgmaster' | 'ai-pdm', at = new Date().toISOString()) {
   const version = document.publishedVersions.find((candidate) => candidate.id === document.activePolicyVersionId)
-  if (!version || version.policy.applications.find((application) => application.id === 'orgmaster')?.status !== 'active') return false
-  const roleIds = new Set(version.policy.applicationRoles.filter((role) => role.applicationId === 'orgmaster' && role.status === 'active').map((role) => role.id))
-  return version.policy.roleAssignments.some((assignment) => assignment.employeeId === employeeId && roleIds.has(assignment.roleId) && assignment.scope.kind === 'global' && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, at))
+  if (!version || version.policy.applications.find((application) => application.id === applicationId)?.status !== 'active') return false
+  const roleIds = new Set(version.policy.applicationRoles.filter((role) => role.applicationId === applicationId && role.status === 'active').map((role) => role.id))
+  return version.policy.roleAssignments.some((assignment) => {
+    const assignmentApplicationId = 'applicationId' in assignment ? assignment.applicationId : 'orgmaster'
+    return assignmentApplicationId === applicationId && assignment.employeeId === employeeId && roleIds.has(assignment.roleId) && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, at)
+  })
+}
+
+/**
+ * The managed-login bridge is a bootstrap identity operation. It must not
+ * grant OrgMaster application access; that remains enforced by the normal
+ * application permission gate after the identity is linked. An employee with
+ * a published AI-PDM assignment still needs this bridge so Platform can hand
+ * off to AI-PDM without requiring a second credential or an artificial
+ * OrgMaster role assignment.
+ */
+function hasPublishedManagedLoginAccess(document: GovernanceDocumentV3, employeeId: string, at = new Date().toISOString()) {
+  return hasPublishedApplicationAccess(document, employeeId, 'orgmaster', at)
+    || hasPublishedApplicationAccess(document, employeeId, 'ai-pdm', at)
 }
 
 function requireEmployeeId(employeeId: string) {
@@ -269,7 +285,7 @@ export function createManagedIdentityService(input: {
     const assertEmployeeAccess = async (employeeId: string) => {
       const governance = await readGovernance()
       const { employee } = await readEmployee(employeeId)
-      if (employee.status !== 'active' || !hasPublishedOrgmasterAccess(governance.document, employeeId)) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+      if (employee.status !== 'active' || !hasPublishedManagedLoginAccess(governance.document, employeeId)) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
     }
     const assertIdentifier = (current: ManagedLoginIdentity, storedPrimaryEmail: string, livePrimaryEmail: string) => {
       if (storedPrimaryEmail !== tokenEmail || livePrimaryEmail !== tokenEmail) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
