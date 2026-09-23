@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-23 DEV-014 fixture authority projection correction（現行）**：兩筆新 Free-only fixture 的 `ai-pdm / rd / workspace:current` assignment 已發布，但 `legacy_authority:1` 仍使 effective projection為空。新增 exact-target、source-bound authority operator，固定既有 CAS function、`legacy_authority:1 → orgmaster_authority:2`、`rd` role、migrator identity與單一transaction；receipt／outbox、replay、partial-state fail-closed及effective scope readback均有本地證據。Platform fixture plan同步升為v3；Production authority switch與browser L4仍待執行。
+
 > **2026-09-23 DEV-056 system permission catalog compatible sync（現行）**：Production V3 governance草稿缺少managed identity／employee-number system permissions，使管理者能發布角色版本卻無法讀取Employee managed identity。現以draft-only、CAS-backed、audited及idempotent sync補齊穩定catalog；衝突fail closed，active published versions與既有assignments不改寫，並修正V3版本標示。Targeted、owner release、release QC、abort、609項產品回歸、DB boundary與production build均PASS，直接沿用既有owner release。權威文件：[`DEV-056-orgmaster-system-permission-catalog-sync.md`](specs/DEV-056-orgmaster-system-permission-catalog-sync.md)。
 
 > **2026-09-22 DEV-055 current projection contract correction（現行）**：workspace canonical refresh不再要求重發治理版本。Migration 020只重建`orgmaster_contract`的AI-PDM authority、effective roles與Portal visibility三個既有read-only views，並保留歷史compatibility layer、欄位、型別、ACL與所有資料。Local contract、DB boundary、owner-release 89 tests、production build及PostgreSQL 18.4 D55-01～05均PASS，現直接進入既有owner release。權威文件：[`DEV-055-current-projection-contract.md`](specs/DEV-055-current-projection-contract.md)。
