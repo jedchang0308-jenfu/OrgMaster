@@ -12,6 +12,7 @@ import {
 } from './lib/dev012-production-migration-runner.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
+const H64 = /^[a-f0-9]{64}$/u
 const SAFE_ID = /^[A-Za-z0-9._:@/-]{1,180}$/u
 const OPERATION_ID = /^DEV014-LOGIN-AUTHORITY-[A-Z0-9-]{4,120}$/u
 const DEADLINE_MAX_MS = 8 * 60 * 60 * 1_000
@@ -42,9 +43,12 @@ function one(rows, code) { if (!Array.isArray(rows) || rows.length !== 1) fail(c
 function isIso(value) { return Number.isFinite(Date.parse(value ?? '')) }
 
 export function parseArgs(argv) {
-  const allowed = new Set(['--operation-id', '--source-revision', '--deadline-at', '--output-ref'])
+  const allowed = new Set([
+    '--operation-id', '--source-revision', '--deadline-at', '--output-ref',
+    '--governance-version-id', '--governance-version', '--governance-sha256', '--governance-source-revision',
+  ])
   const parsed = {}
-  if (argv.length !== 8 || argv.length % 2 !== 0) fail('DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID')
+  if (argv.length !== 16 || argv.length % 2 !== 0) fail('DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID')
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index]
     const value = argv[index + 1]
@@ -56,7 +60,9 @@ export function parseArgs(argv) {
   if (!OPERATION_ID.test(parsed.operationId ?? '') || !H40.test(parsed.sourceRevision ?? '')
     || !isIso(parsed.deadlineAt) || Date.parse(parsed.deadlineAt) <= Date.now()
     || Date.parse(parsed.deadlineAt) - Date.now() > DEADLINE_MAX_MS
-    || !parsed.outputRef || !parsed.outputRef.endsWith('/batch.json')) fail('DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID')
+    || !parsed.outputRef || !parsed.outputRef.endsWith('/batch.json')
+    || !SAFE_ID.test(parsed.governanceVersionId ?? '') || parsed.governanceVersion !== '4'
+    || !H64.test(parsed.governanceSha256 ?? '') || !H64.test(parsed.governanceSourceRevision ?? '')) fail('DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID')
   parseGsUri(parsed.outputRef, TARGET.releaseBucket, TARGET.receiptPrefix)
   return parsed
 }
@@ -96,24 +102,26 @@ async function metadataServiceAccountEmail(fetchImpl) {
   return email
 }
 
-async function readGovernance(database, expectedSourceRevision) {
+async function readGovernance(database, expected) {
   const result = await database.query("SELECT payload, canonical_sha256, source_revision FROM orgmaster_core.read_active_persistence_artifact_v1('orgmaster-governance.v3.json')")
   const row = one(result.rows, 'DEV014_LOGIN_AUTHORITY_GOVERNANCE_INVALID')
   const payload = row.payload
   const activePolicyVersionId = String(payload?.activePolicyVersionId ?? '')
   const versions = Array.isArray(payload?.publishedVersions) ? payload.publishedVersions : []
   const version = versions.find((entry) => entry?.id === activePolicyVersionId)
-  if (!version || version.kind !== 'assignment-governance-v3' || !SAFE_ID.test(activePolicyVersionId)) fail('DEV014_LOGIN_AUTHORITY_GOVERNANCE_INVALID')
-  if (!/^[a-f0-9]{64}$/u.test(String(row.canonical_sha256 ?? '')) || !H40.test(String(row.source_revision ?? ''))
-    || String(row.source_revision) !== expectedSourceRevision) fail('DEV014_LOGIN_AUTHORITY_GOVERNANCE_SOURCE_INVALID')
+  if (!version || version.kind !== 'assignment-governance-v3' || !SAFE_ID.test(activePolicyVersionId)
+    || activePolicyVersionId !== expected.versionId || Number(version.versionNumber) !== expected.version) fail('DEV014_LOGIN_AUTHORITY_GOVERNANCE_INVALID')
+  if (String(row.canonical_sha256 ?? '') !== expected.sha256
+    || String(row.source_revision ?? '') !== expected.sourceRevision) fail('DEV014_LOGIN_AUTHORITY_GOVERNANCE_SOURCE_INVALID')
   return { activePolicyVersionId, version, canonicalSha256: String(row.canonical_sha256), sourceRevision: String(row.source_revision) }
 }
 
-async function readState(database, fixture, expectedSourceRevision) {
+async function readState(database, fixture, expectedGovernance) {
   const authority = one((await database.query(`SELECT application_id, authority_source, authority_version, employee_id, operation_id
     FROM orgmaster_contract.v_ai_pdm_entitlement_authority_v1
     WHERE application_id='ai-pdm' AND employee_id=$1`, [fixture.employeeId])).rows, 'DEV014_LOGIN_AUTHORITY_STATE_INVALID')
-  const governance = await readGovernance(database, expectedSourceRevision)
+  if (authority.application_id !== TARGET.applicationId || authority.employee_id !== fixture.employeeId) fail('DEV014_LOGIN_AUTHORITY_STATE_INVALID')
+  const governance = await readGovernance(database, expectedGovernance)
   const assignments = (Array.isArray(governance.version.policy?.roleAssignments) ? governance.version.policy.roleAssignments : [])
     .filter((entry) => entry?.applicationId === TARGET.applicationId && entry?.employeeId === fixture.employeeId && entry?.status === 'active')
   if (assignments.length !== 1 || assignments[0].roleCodeSnapshot !== 'rd'
@@ -162,7 +170,8 @@ function buildOperation(base, fixture, before) {
     employeeId: fixture.employeeId, alias: fixture.alias, employeeNumber: fixture.employeeNumber,
     fromAuthoritySource: 'legacy_authority', toAuthoritySource: 'orgmaster_authority',
     expectedAuthorityVersion: 1, expectedNextAuthorityVersion: 2,
-    expectedAssignmentVersionId: before.assignmentVersionId, expectedRoleCodes: ['rd'], deadlineAt: base.deadlineAt,
+    expectedAssignmentVersionId: before.assignmentVersionId, expectedRoleCodes: ['rd'],
+    governance: base.governance, deadlineAt: base.deadlineAt,
   }
 }
 
@@ -176,13 +185,32 @@ function assertCommittedState(state) {
     || state.effectiveRows.length !== 1 || canonicalize(state.effectiveRows[0]) !== canonicalize({ roleCode: 'rd', scopeKind: 'workspace', scopeKey: 'current', authorityVersion: 2 })) fail('DEV014_LOGIN_AUTHORITY_POSTCONDITION_FAILED')
 }
 
+function assertPersistedRows(state, operation, rows) {
+  if (state.overrideOperationId !== operation.operationId || !rows.receipt || !rows.outbox
+    || rows.receipt.operation_id !== operation.operationId || rows.receipt.batch_id !== operation.batchId
+    || rows.receipt.application_id !== TARGET.applicationId || rows.receipt.employee_id !== operation.employeeId
+    || rows.receipt.from_authority_source !== 'legacy_authority' || rows.receipt.to_authority_source !== 'orgmaster_authority'
+    || Number(rows.receipt.authority_version) !== 2 || rows.receipt.assignment_version_id !== state.assignmentVersionId
+    || rows.receipt.actor !== TARGET.actor || rows.receipt.reason !== operation.reason
+    || rows.outbox.operation_id !== operation.operationId || rows.outbox.application_id !== TARGET.applicationId
+    || rows.outbox.employee_id !== operation.employeeId || rows.outbox.event_kind !== 'authority_switch'
+    || rows.outbox.actor !== TARGET.actor || rows.outbox.reason_code !== 'entitlement_authority_switch'
+    || !['pending', 'processing', 'completed'].includes(String(rows.outbox.status))) fail('DEV014_LOGIN_AUTHORITY_POSTCONDITION_FAILED')
+}
+
 export async function executeAuthorityBatch({ database, operation, now = new Date() }) {
   const nowDate = now instanceof Date ? now : new Date(now)
   if (!Number.isFinite(nowDate.getTime()) || Date.parse(operation.deadlineAt) <= nowDate.getTime()) fail('DEV014_LOGIN_AUTHORITY_DEADLINE_INVALID')
-  const base = { operationId: operation.operationId, sourceRevision: operation.sourceRevision, deadlineAt: operation.deadlineAt }
+  const governance = {
+    versionId: operation.governanceVersionId,
+    version: Number(operation.governanceVersion),
+    sha256: operation.governanceSha256,
+    sourceRevision: operation.governanceSourceRevision,
+  }
+  const base = { operationId: operation.operationId, sourceRevision: operation.sourceRevision, deadlineAt: operation.deadlineAt, governance }
   const preflight = []
   for (const fixture of FIXTURES) {
-    const before = await readState(database, fixture, operation.sourceRevision)
+    const before = await readState(database, fixture, governance)
     const op = buildOperation(base, fixture, before)
     preflight.push({ fixture, before, operation: op, rows: await readOperationRows(database, op) })
   }
@@ -191,6 +219,10 @@ export async function executeAuthorityBatch({ database, operation, now = new Dat
     || (replayCount === 0 && preflight.some(({ rows }) => rows.receipt || rows.outbox))) fail('DEV014_LOGIN_AUTHORITY_PARTIAL_STATE')
   if (replayCount > 0 && replayCount !== FIXTURES.length) fail('DEV014_LOGIN_AUTHORITY_PARTIAL_STATE')
   if (replayCount === FIXTURES.length) {
+    for (const item of preflight) {
+      assertCommittedState(item.before)
+      assertPersistedRows(item.before, item.operation, item.rows)
+    }
     return {
       status: 'PASS', disposition: 'REPLAY', mutationCount: 0, atomicity: 'single_transaction_all_fixtures',
       fixtures: preflight.map(({ fixture, before, operation: op, rows }) => ({ fixture, disposition: 'REPLAY', operation: op, before, after: before, databaseReceipt: rows.receipt, outbox: rows.outbox })),
@@ -202,7 +234,7 @@ export async function executeAuthorityBatch({ database, operation, now = new Dat
     await database.query("SELECT pg_advisory_xact_lock(hashtext('dev014-login-fixture-authority'), hashtext(current_database()))")
     const locked = []
     for (const item of preflight) {
-      const current = await readState(database, item.fixture, operation.sourceRevision)
+      const current = await readState(database, item.fixture, governance)
       if (current.authoritySource !== item.before.authoritySource || current.authorityVersion !== item.before.authorityVersion
         || current.assignmentVersionId !== item.before.assignmentVersionId) fail('DEV014_LOGIN_AUTHORITY_CONDITION_DRIFT')
       locked.push({ ...item, before: current })
@@ -215,13 +247,10 @@ export async function executeAuthorityBatch({ database, operation, now = new Dat
         item.operation.batchId, item.before.assignmentVersionId, TARGET.actor, item.operation.reason,
       ])).rows, 'DEV014_LOGIN_AUTHORITY_FUNCTION_RESULT_INVALID')
       if (Number(result.authority_version) !== 2 || result.replayed !== false) fail('DEV014_LOGIN_AUTHORITY_FUNCTION_RESULT_INVALID')
-      const after = await readState(database, item.fixture, operation.sourceRevision)
+      const after = await readState(database, item.fixture, governance)
       assertCommittedState(after)
       const rows = await readOperationRows(database, item.operation)
-      if (!rows.receipt || !rows.outbox || rows.receipt.from_authority_source !== 'legacy_authority'
-        || rows.receipt.to_authority_source !== 'orgmaster_authority' || Number(rows.receipt.authority_version) !== 2
-        || rows.receipt.assignment_version_id !== item.before.assignmentVersionId || rows.outbox.event_kind !== 'authority_switch'
-        || !['pending', 'processing', 'completed'].includes(String(rows.outbox.status))) fail('DEV014_LOGIN_AUTHORITY_POSTCONDITION_FAILED')
+      assertPersistedRows(after, item.operation, rows)
       applied.push({ fixture: item.fixture, disposition: 'APPLIED', operation: item.operation, before: item.before, after, databaseReceipt: rows.receipt, outbox: rows.outbox })
     }
     await database.query('COMMIT')
@@ -230,6 +259,71 @@ export async function executeAuthorityBatch({ database, operation, now = new Dat
     await database.query('ROLLBACK').catch(() => undefined)
     throw error
   }
+}
+
+function isoTimestamp(value, code) {
+  const parsed = value instanceof Date ? value : new Date(value)
+  if (!Number.isFinite(parsed.getTime())) fail(code)
+  return parsed.toISOString()
+}
+
+function durableFixture(item) {
+  const receipt = item.databaseReceipt
+  const outbox = item.outbox
+  return {
+    fixture: item.fixture,
+    operation: item.operation,
+    authority: {
+      fromAuthoritySource: String(receipt.from_authority_source),
+      toAuthoritySource: String(receipt.to_authority_source),
+      authorityVersion: Number(receipt.authority_version),
+    },
+    assignment: {
+      versionId: item.after.assignmentVersionId,
+      version: item.after.assignmentVersion,
+      governanceSha256: item.after.governanceSha256,
+      governanceSourceRevision: item.after.governanceSourceRevision,
+      roleCodes: item.after.roleCodes,
+    },
+    effectiveRows: item.after.effectiveRows,
+    databaseReceipt: {
+      receiptId: String(receipt.receipt_id),
+      operationId: String(receipt.operation_id),
+      batchId: String(receipt.batch_id),
+      employeeId: String(receipt.employee_id),
+      applicationId: String(receipt.application_id),
+      actor: String(receipt.actor),
+      reason: String(receipt.reason),
+      switchedAt: isoTimestamp(receipt.switched_at, 'DEV014_LOGIN_AUTHORITY_RECEIPT_TIMESTAMP_INVALID'),
+    },
+    outbox: {
+      eventId: String(outbox.event_id),
+      operationId: String(outbox.operation_id),
+      employeeId: String(outbox.employee_id),
+      applicationId: String(outbox.application_id),
+      eventKind: String(outbox.event_kind),
+      actor: String(outbox.actor),
+      reasonCode: String(outbox.reason_code),
+      createdAt: isoTimestamp(outbox.created_at, 'DEV014_LOGIN_AUTHORITY_OUTBOX_TIMESTAMP_INVALID'),
+    },
+  }
+}
+
+export function buildDurableReceipt(batch, operation) {
+  const fixtures = batch.fixtures.map(durableFixture)
+  const committedAt = fixtures.map(({ databaseReceipt }) => databaseReceipt.switchedAt).sort().at(-1)
+  const core = {
+    schemaVersion: 'jenfu.dev014.production-login-authority-batch-receipt.v2',
+    status: 'PASS', sourceRevision: operation.sourceRevision, operationId: operation.operationId,
+    deadlineAt: operation.deadlineAt, atomicity: batch.atomicity, committedMutationCount: FIXTURES.length * 3,
+    governance: {
+      versionId: operation.governanceVersionId, version: Number(operation.governanceVersion),
+      sha256: operation.governanceSha256, sourceRevision: operation.governanceSourceRevision,
+    },
+    target: { projectId: TARGET.projectId, projectNumber: TARGET.projectNumber, region: TARGET.region, instance: TARGET.instance, database: TARGET.database, applicationId: TARGET.applicationId },
+    outputRef: operation.outputRef, fixtures, committedAt,
+  }
+  return { ...core, receiptSha256: sha256(canonicalize(core)) }
 }
 
 function databaseOptions(environment, token) {
@@ -247,13 +341,16 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
   await database.connect()
   try {
     const batch = await executeAuthorityBatch({ database, operation, now: new Date(now()) })
-    const core = { schemaVersion: 'jenfu.dev014.production-login-authority-batch-receipt.v1', ...batch,
-      sourceRevision: operation.sourceRevision, operationId: operation.operationId, deadlineAt: operation.deadlineAt,
-      target: { projectId: TARGET.projectId, projectNumber: TARGET.projectNumber, region: TARGET.region, instance: TARGET.instance, database: TARGET.database, applicationId: TARGET.applicationId },
-      outputRef: operation.outputRef, committedAt: new Date().toISOString() }
-    const receipt = { ...core, receiptSha256: sha256(canonicalize(core)) }
+    const receipt = buildDurableReceipt(batch, operation)
     const published = await publishGcsJson({ uri: operation.outputRef, expectedBucket: TARGET.releaseBucket, expectedPrefix: TARGET.receiptPrefix, value: receipt, token, fetchImpl })
-    return { ...receipt, outputGeneration: published.generation, outputSha256: published.sha256, outputReused: published.reused }
+    return {
+      ...receipt,
+      attemptDisposition: batch.disposition,
+      attemptMutationCount: batch.mutationCount,
+      outputGeneration: published.generation,
+      outputSha256: published.sha256,
+      outputReused: published.reused,
+    }
   } finally { await database.end() }
 }
 

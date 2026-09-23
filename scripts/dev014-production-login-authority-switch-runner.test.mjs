@@ -1,16 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assertEnvironment, executeAuthorityBatch, FIXTURES, TARGET, parseArgs } from './dev014-production-login-authority-switch-runner.mjs'
+import { assertEnvironment, buildDurableReceipt, executeAuthorityBatch, FIXTURES, TARGET, parseArgs } from './dev014-production-login-authority-switch-runner.mjs'
 
 const sourceRevision = 'a'.repeat(40)
 const governanceSha = 'b'.repeat(64)
-const operation = { operationId: 'DEV014-LOGIN-AUTHORITY-20260923-R1', sourceRevision, deadlineAt: '2099-09-23T00:00:00.000Z' }
+const governanceSourceRevision = 'c'.repeat(64)
+const operation = {
+  operationId: 'DEV014-LOGIN-AUTHORITY-20260923-R1', sourceRevision, deadlineAt: '2099-09-23T00:00:00.000Z',
+  outputRef: `gs://${TARGET.releaseBucket}/${TARGET.receiptPrefix}/batch.json`,
+  governanceVersionId: 'assignment-policy-fixture', governanceVersion: '4',
+  governanceSha256: governanceSha, governanceSourceRevision,
+}
 
 function fakeDatabase({ mode = 'legacy', failSecond = false, partial = false } = {}) {
   const state = new Map(FIXTURES.map((fixture) => [fixture.employeeId, {
     source: mode === 'replay' ? 'orgmaster_authority' : 'legacy_authority', version: mode === 'replay' ? 2 : 1,
-    receipt: mode === 'replay' ? { receipt_id: `receipt-${fixture.alias}`, operation_id: `${operation.operationId}-${fixture.alias.toUpperCase()}`, batch_id: operation.operationId, application_id: 'ai-pdm', employee_id: fixture.employeeId, from_authority_source: 'legacy_authority', to_authority_source: 'orgmaster_authority', authority_version: 2, assignment_version_id: 'assignment-policy-fixture', session_refresh_state: 'pending', actor: TARGET.actor, reason: `DEV-014 login fixture ${fixture.alias} switch to OrgMaster authority`, switched_at: '2026-09-23T00:00:01.000Z' } : null,
-    outbox: mode === 'replay' ? { event_id: `event-${fixture.alias}`, operation_id: `${operation.operationId}-${fixture.alias.toUpperCase()}`, employee_id: fixture.employeeId, application_id: 'ai-pdm', event_kind: 'authority_switch', actor: TARGET.actor, reason_code: 'entitlement_authority_switch', status: 'pending', attempt_count: 0, platform_receipt_id: null, created_at: '2026-09-23T00:00:01.000Z', completed_at: null } : null,
+    receipt: mode === 'replay' ? { receipt_id: `receipt-${fixture.employeeId}`, operation_id: `${operation.operationId}-${fixture.alias.toUpperCase()}`, batch_id: operation.operationId, application_id: 'ai-pdm', employee_id: fixture.employeeId, from_authority_source: 'legacy_authority', to_authority_source: 'orgmaster_authority', authority_version: 2, assignment_version_id: 'assignment-policy-fixture', session_refresh_state: 'pending', actor: TARGET.actor, reason: `DEV-014 login fixture ${fixture.alias} switch to OrgMaster authority`, switched_at: '2026-09-23T00:00:01.000Z' } : null,
+    outbox: mode === 'replay' ? { event_id: `event-${fixture.employeeId}`, operation_id: `${operation.operationId}-${fixture.alias.toUpperCase()}`, employee_id: fixture.employeeId, application_id: 'ai-pdm', event_kind: 'authority_switch', actor: TARGET.actor, reason_code: 'entitlement_authority_switch', status: 'completed', attempt_count: 1, platform_receipt_id: 'platform-receipt', created_at: '2026-09-23T00:00:01.000Z', completed_at: '2026-09-23T00:01:00.000Z' } : null,
   }]))
   if (partial) state.get(FIXTURES[0].employeeId).receipt = { receipt_id: 'partial', operation_id: `${operation.operationId}-${FIXTURES[0].alias.toUpperCase()}` }
   const calls = []
@@ -21,7 +27,7 @@ function fakeDatabase({ mode = 'legacy', failSecond = false, partial = false } =
   }
   const query = async (sql, params = []) => {
     calls.push({ sql, params })
-    if (sql.startsWith('SELECT payload')) return { rows: [{ payload: governance, canonical_sha256: governanceSha, source_revision: sourceRevision }] }
+    if (sql.startsWith('SELECT payload')) return { rows: [{ payload: governance, canonical_sha256: governanceSha, source_revision: governanceSourceRevision }] }
     if (sql.includes('v_ai_pdm_entitlement_authority_v1')) {
       const entry = state.get(params[0]); return { rows: [{ application_id: 'ai-pdm', authority_source: entry.source, authority_version: entry.version, employee_id: params[0], operation_id: entry.receipt?.operation_id ?? null }] }
     }
@@ -56,10 +62,14 @@ function fakeDatabase({ mode = 'legacy', failSecond = false, partial = false } =
 
 test('parses exact source-bound operation and output prefix', () => {
   const future = new Date(Date.now() + 60 * 60 * 1_000).toISOString()
-  const parsed = parseArgs(['--operation-id', operation.operationId, '--source-revision', sourceRevision, '--deadline-at', future, '--output-ref', `gs://${TARGET.releaseBucket}/${TARGET.receiptPrefix}/batch.json`])
+  const args = ['--operation-id', operation.operationId, '--source-revision', sourceRevision, '--deadline-at', future, '--output-ref', operation.outputRef,
+    '--governance-version-id', operation.governanceVersionId, '--governance-version', operation.governanceVersion,
+    '--governance-sha256', governanceSha, '--governance-source-revision', governanceSourceRevision]
+  const parsed = parseArgs(args)
   assert.deepEqual(parsed.operationId, operation.operationId)
-  assert.throws(() => parseArgs(['--operation-id', 'WRONG', '--source-revision', sourceRevision, '--deadline-at', future, '--output-ref', `gs://${TARGET.releaseBucket}/${TARGET.receiptPrefix}/batch.json`]), /DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID/u)
-  assert.throws(() => parseArgs(['--operation-id', operation.operationId, '--source-revision', sourceRevision, '--deadline-at', future, '--output-ref', `gs://${TARGET.releaseBucket}/${TARGET.receiptPrefix}/r1.json`]), /DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID/u)
+  assert.throws(() => parseArgs(args.with(1, 'WRONG')), /DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID/u)
+  assert.throws(() => parseArgs(args.with(7, `gs://${TARGET.releaseBucket}/${TARGET.receiptPrefix}/r1.json`)), /DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID/u)
+  assert.throws(() => parseArgs(args.with(13, 'z'.repeat(64))), /DEV014_LOGIN_AUTHORITY_ARGUMENT_INVALID/u)
 })
 
 test('binds the operator to the exact migrator identity and production job target', () => {
@@ -92,6 +102,19 @@ test('replays the exact two committed receipts without a second mutation', async
   assert.equal(result.disposition, 'REPLAY')
   assert.equal(result.mutationCount, 0)
   assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v1')), false)
+})
+
+test('rejects replay when the durable outbox does not belong to the exact authority operation', async () => {
+  const db = fakeDatabase({ mode: 'replay' })
+  db.state.get(FIXTURES[0].employeeId).outbox.reason_code = 'different_reason'
+  await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_POSTCONDITION_FAILED/u)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v1')), false)
+})
+
+test('builds byte-identical durable evidence for apply and replay attempts', async () => {
+  const applied = await executeAuthorityBatch({ database: fakeDatabase(), operation, now: new Date('2026-09-23T00:00:00.000Z') })
+  const replay = await executeAuthorityBatch({ database: fakeDatabase({ mode: 'replay' }), operation, now: new Date('2026-09-23T00:00:00.000Z') })
+  assert.deepEqual(buildDurableReceipt(replay, operation), buildDurableReceipt(applied, operation))
 })
 
 test('fails closed on partial receipt state before any transaction or mutation', async () => {
@@ -127,7 +150,7 @@ test('rejects governance artifact source drift before the CAS function', async (
   const original = db.query
   db.query = async (sql, params = []) => {
     const value = await original(sql, params)
-    if (sql.startsWith('SELECT payload')) value.rows[0].source_revision = 'c'.repeat(40)
+    if (sql.startsWith('SELECT payload')) value.rows[0].source_revision = 'd'.repeat(64)
     return value
   }
   await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_GOVERNANCE_SOURCE_INVALID/u)
