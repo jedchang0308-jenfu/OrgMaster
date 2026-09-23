@@ -3,6 +3,7 @@ import type { ManagedIdentityRepositoryV1 } from './orgmasterManagedIdentityRepo
 import type { ManagedDirectoryPortV1 } from './orgmasterManagedDirectoryPort'
 import type { ManagedLoginIdentity } from './orgmasterManagedLoginContract'
 import { createManagedIdentityService } from './orgmasterManagedIdentityService'
+import { readExistingGovernanceStore } from './orgmasterGovernanceStore'
 
 const governance = {
   document: {
@@ -68,6 +69,26 @@ describe('managed identifier verifier', () => {
     expect(result.mappingVersion).toBe('8')
     expect(verify).toHaveBeenCalledTimes(2)
     expect(verify.mock.calls[0][0].requestHash).toBe(verify.mock.calls[1][0].requestHash)
+  })
+
+  it('allows an AI-PDM-assigned employee to establish the bootstrap bridge without an OrgMaster role', async () => {
+    const aiPdmGovernance = {
+      document: {
+        activePolicyVersionId: 'policy-ai-pdm',
+        publishedVersions: [{ id: 'policy-ai-pdm', policy: {
+          applications: [{ id: 'ai-pdm', status: 'active' }],
+          applicationRoles: [{ id: 'role-rd', applicationId: 'ai-pdm', status: 'active' }],
+          roleAssignments: [{ employeeId: 'employee-1', applicationId: 'ai-pdm', roleId: 'role-rd', scope: { kind: 'workspace', value: 'current' }, status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null }],
+        } }],
+      },
+    }
+    vi.mocked(readExistingGovernanceStore).mockResolvedValueOnce(aiPdmGovernance as never)
+    const verify = vi.fn(async () => ({ identity: { ...active }, mappingVersion: '9' }))
+    const repository = { mode: 'local-json', reserveDirectoryRead: vi.fn(), readManagedLoginSnapshot: vi.fn()
+      .mockResolvedValueOnce({ identity: pending, primaryEmail: 'person@jenfu.com.tw' })
+      .mockResolvedValueOnce({ identity: active, primaryEmail: 'person@jenfu.com.tw' }), verifyManagedLoginIdentity: verify }
+    const result = await service(repository).verifyManagedLoginIdentifier({ requestId: 'request-ai-pdm', managedIdentifier: 'JFS0001', identity: token() })
+    expect(result).toEqual({ principalId: 'principal-1', employeeId: 'employee-1', mappingVersion: '9' })
   })
 })
 
