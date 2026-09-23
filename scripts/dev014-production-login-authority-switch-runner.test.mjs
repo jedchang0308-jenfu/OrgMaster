@@ -145,6 +145,17 @@ test('rejects a fixture role drift before the CAS function', async () => {
   assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v1')), false)
 })
 
+test('reports the required first-login bridge when no active authority row exists', async () => {
+  const db = fakeDatabase()
+  const original = db.query
+  db.query = async (sql, params = []) => {
+    if (sql.includes('v_ai_pdm_entitlement_authority_v1') && params[0] === FIXTURES[1].employeeId) return { rows: [] }
+    return original(sql, params)
+  }
+  await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED/u)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v1')), false)
+})
+
 test('rejects governance artifact source drift before the CAS function', async () => {
   const db = fakeDatabase()
   const original = db.query
