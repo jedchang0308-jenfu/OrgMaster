@@ -16,6 +16,15 @@ variable "runtime_service_account_id" {
   }
 }
 
+variable "migration_service_account_id" {
+  type    = string
+  default = "orgmaster-prod-migrator"
+  validation {
+    condition     = var.migration_service_account_id == "orgmaster-prod-migrator"
+    error_message = "Wrong OrgMaster migration identity."
+  }
+}
+
 variable "dwd_service_account_id" {
   type    = string
   default = "orgmaster-prod-directory-dwd"

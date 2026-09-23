@@ -92,7 +92,9 @@
     "qc:dev-054:contract": "node scripts/qc-dev-054-contract.mjs",
     "qc:dev-054:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev054",
     "qc:dev-055:contract": "node scripts/qc-dev-055-contract.mjs",
-    "qc:dev-055:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev055"
+    "qc:dev-055:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev055",
+    "qc:dev-057:contract": "node scripts/qc-dev-057-contract.mjs",
+    "qc:dev-057:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev057"
   },
   "dependencies": {
     "@dagrejs/dagre": "3.1.1",

@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
@@ -216,6 +216,7 @@ test('DEV-014 activation contract remediation permits only migration 019 with un
 
 test('DEV-014 projection contract remediation permits only migration 020 with unchanged runtime', async () => {
   const baselineBundle = prefixBundle(oldBundle.bundle, 19)
+  const currentBundle = { bundle: prefixBundle(newBundle.bundle, 20) }
   const remediation = {
     kind: 'CURRENT_PROJECTION_CONTRACT_CORRECTION',
     migrationVersion: 'dev014-orgmaster-020',
@@ -226,7 +227,7 @@ test('DEV-014 projection contract remediation permits only migration 020 with un
     ],
     applicationId: 'ai-pdm',
   }
-  const h = harness({ baselineBundle })
+  const h = harness({ baselineBundle, currentBundle })
   h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation }
   h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation }
   attachForwardInfra(h)
@@ -234,9 +235,9 @@ test('DEV-014 projection contract remediation permits only migration 020 with un
   assert.equal(result.releaseMode, 'DEV014_PROJECTION_CONTRACT_REMEDIATION')
   assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
   assert.equal(result.pendingMigrationCount, 1)
-  assert.equal(assertDev014ProjectionContractAppend(baselineBundle, newBundle.bundle).pendingMigrationCount, 1)
+  assert.equal(assertDev014ProjectionContractAppend(baselineBundle, currentBundle.bundle).pendingMigrationCount, 1)
   assert.equal(assertDev014ProjectionContractRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
-  const drift = structuredClone(newBundle.bundle)
+  const drift = structuredClone(currentBundle.bundle)
   drift.entries[19].sourceSha256 = '0'.repeat(64)
   assert.throws(() => assertDev014ProjectionContractAppend(baselineBundle, drift), /DEV014_PROJECTION_CONTRACT_APPEND_INVALID/u)
 })
@@ -258,6 +259,40 @@ test('DEV-014 projection contract owner producer exposes the bounded release mod
   assert.match(producer, /kind: 'CURRENT_PROJECTION_CONTRACT_CORRECTION'/u)
   assert.match(producer, /migrationVersion: 'dev014-orgmaster-020'/u)
   assert.match(producer, /orgmaster_contract\.v_ai_pdm_effective_role_assignments_v1/u)
+})
+
+test('DEV-057 writer fence remediation permits only migration 021 with unchanged runtime', async () => {
+  const baselineBundle = prefixBundle(oldBundle.bundle, 20)
+  const remediation = {
+    kind: 'IDENTITY_GRANT_WRITER_FENCE',
+    migrationVersion: 'dev057-orgmaster-021',
+    contractViews: ['orgmaster_contract.v_active_principal_mappings_v1', 'orgmaster_contract.v_portal_app_visibility_v1'],
+    serializationRow: 'orgmaster_core.managed_identity_admission_authority.singleton',
+    concurrencyCases: ['governance-publication-before-bind', 'bind-before-governance-publication'],
+    applicationId: 'ai-pdm',
+  }
+  const h = harness({ baselineBundle })
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation }
+  attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV057_WRITER_FENCE_REMEDIATION')
+  assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(result.pendingMigrationCount, 1)
+  assert.equal(assertDev057WriterFenceAppend(baselineBundle, newBundle.bundle).pendingMigrationCount, 1)
+  assert.equal(assertDev057WriterFenceRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
+  const drift = structuredClone(newBundle.bundle)
+  drift.entries[20].appliedSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev057WriterFenceAppend(baselineBundle, drift), /DEV057_WRITER_FENCE_APPEND_INVALID/u)
+})
+
+test('DEV-057 owner producer exposes the exact writer-fence release mode', () => {
+  const producer = fs.readFileSync('scripts/dev040-deploy-production.mjs', 'utf8')
+  assert.match(producer, /--dev057-writer-fence-remediation/u)
+  assert.match(producer, /--dev057-infra-ref=/u)
+  assert.match(producer, /slice: '057-WRITER-FENCE'/u)
+  assert.match(producer, /migrationVersion: 'dev057-orgmaster-021'/u)
+  assert.match(producer, /serializationRow: 'orgmaster_core\.managed_identity_admission_authority\.singleton'/u)
 })
 
 test('DEV-014 login-fixture correction reuses only an exact prior-source infrastructure fingerprint', async () => {

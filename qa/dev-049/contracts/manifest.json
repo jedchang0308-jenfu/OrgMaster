@@ -2,8 +2,8 @@
   "contract": "DEV-049",
   "evidenceScope": "LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-21T19:41:25.611Z",
-  "migrationSha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319",
+  "generatedAt": "2026-09-23T10:31:02.777Z",
+  "migrationSha256": "ee77ccb7cea50d64c754bfdfb96f59b7b26ac3ff25c7cc28e26fd65763f1ad00",
   "checks": [
     {
       "name": "forward-only migration and exact ownership boundary",

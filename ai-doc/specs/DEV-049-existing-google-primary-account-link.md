@@ -123,7 +123,7 @@ PostgreSQL 用現有 `managed_identity_admission_authority` singleton `FOR UPDAT
 
 Production signer 固定為 `orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com`。OrgMaster runtime ADC 只用於呼叫該 signer 的 IAM Credentials `signJwt`；signed payload 固定 `iss`、`sub`、`scope`、`aud=https://oauth2.googleapis.com/token`、`iat` 與 `exp<=iat+3600`，再以 JWT bearer exchange 取得短效 delegated access token。token 只保存在 process memory 並於到期前刷新，不寫 response、log、receipt、檔案或 Secret。
 
-`infra/google-cloud/dev-049-managed-directory` 只定義該 signer、`prevent_destroy` 與 runtime 在該 signer resource 上的 `roles/iam.serviceAccountTokenCreator`。Google Workspace 管理者仍須將 output `oauth2_client_id` 只授予上述 read-only scope；Terraform 不管理 Admin Console delegation。不得加入 `google_service_account_key`、downloaded JSON、project-level Token Creator 或 Directory write scope。
+`infra/google-cloud/dev-049-managed-directory` 只定義該 signer、`prevent_destroy` 與 runtime 及受控 migration runner 在該 signer resource 上的 `roles/iam.serviceAccountTokenCreator`。Google Workspace 管理者仍須將 output `oauth2_client_id` 只授予上述 read-only scope；Terraform 不管理 Admin Console delegation。不得加入 `google_service_account_key`、downloaded JSON、project-level Token Creator 或 Directory write scope。
 
 官方查證：[users.get](https://developers.google.com/workspace/admin/directory/reference/rest/v1/users/get)、[User resource](https://developers.google.com/workspace/admin/directory/reference/rest/v1/users)。這些規則只授權唯讀驗證，不授權正式 Directory credential／DWD 設定。
 
@@ -395,7 +395,7 @@ DEV-049 QC script 呼叫 §11 共用 runner 的 dev049 suite，必含新 reposit
 
 ### 14.1 DEV-014 Production plan／evidence amendment（2026-09-21）
 
-專用 signer state固定為`tfstate-jenfu-platform-prod / dev-049/managed-directory/default.tfstate`。Terraform state新增`terraform_data.provenance`，綁定exact project／number／region、merged source revision、provider-readback foundation manifest SHA-256、具名operator、signer email、唯一read-only scope與必要`admin.googleapis.com`。`dev049-managed-directory-plan-gate`要求configuration完整包含五地址；因Terraform會在plan階段完成runtime data read，gate從`prior_state`驗exact enabled runtime identity，`resource_changes`則必須恰為Admin SDK API、provenance、signer與signer-level Token Creator四個managed地址。API只允許`create`／`no-op`且`disable_on_destroy=false`＋`deletion_policy=ABANDON`＋`prevent_destroy`；provenance僅允許由exact legacy shape in-place更新corrective source與已驗證foundation receipt，其餘update／delete／replace、缺址或readback漂移均fail closed。Google Admin DWD grant仍由外部管理介面執行並readback，Terraform不建立key、Secret或project IAM。
+專用 signer state固定為`tfstate-jenfu-platform-prod / dev-049/managed-directory/default.tfstate`。Terraform state新增`terraform_data.provenance`，綁定exact project／number／region、merged source revision、provider-readback foundation manifest SHA-256、具名operator、signer email、唯一read-only scope與必要`admin.googleapis.com`。`dev049-managed-directory-plan-gate`要求configuration完整包含 runtime／migrator data、Admin SDK API、provenance、signer及兩個 signer-level Token Creator address；gate從`prior_state`驗 exact enabled runtime／migrator identities，`resource_changes`只允許這些既有 signer-bound addresses 的`create`／`no-op`及 provenance corrective update。API只允許`create`／`no-op`且`disable_on_destroy=false`＋`deletion_policy=ABANDON`＋`prevent_destroy`；其餘update／delete／replace、缺址或readback漂移均fail closed。Google Admin DWD grant仍由外部管理介面執行並readback，Terraform不建立key、Secret或project IAM。
 
 Owner release finalize會發布source／artifact-bound `jenfu.dev014.consumer-conformance.v1`。DEV-049 admission operation固定每個consumer的source revision、artifact digest、owner origin ref、OrgMaster own-bucket mirror ref與raw SHA；受控operator先逐byte讀回origin並用generation-create-only建立相同bytes的mirror。Runner在任何transaction前只讀own bucket mirror，驗raw-object SHA-256、schema、app、source、artifact、guard及content hash，DB內保存的support evidence仍指向origin ref＋SHA。只有全部PASS才進入dynamic active-set、support revision、attestation與CAS；origin app/bucket錯置、mirror prefix錯誤或內容漂移均不得寫DB，也不得以跨bucket IAM繞過。跨專案完整順序見Platform [DEV-014 Production runbook](../../Jenfu-Platform/ai-doc/runbooks/DEV-014-production-protected-release.md)。Production第一次admission於attestation前以`DEV049_ACTIVE_CONSUMER_SET_MISMATCH`回滾；根因與fix-forward以[DEV-053](DEV-053-invalidation-application-registration.md)為準。
 
@@ -420,7 +420,7 @@ Production provider、DWD、service、migration與admission皆已通過，但`em
 
 ### 15.2 Fail-closed 與重播契約
 
-- 執行環境必須精確符合`jenfu-platform-prod / 9536592944 / asia-east1 / jenfu-platform-prod-pg / jenfu_prod / orgmaster-prod-runtime`，且`OWNER_SOURCE_REVISION`等於命令source revision。
+- 執行環境必須精確符合`jenfu-platform-prod / 9536592944 / asia-east1 / jenfu-platform-prod-pg / jenfu_prod / orgmaster-prod-migrator`，且`OWNER_SOURCE_REVISION`等於命令source revision；DWD signer 僅使用同一 signer resource 上的 read-only Token Creator binding。
 - 前置必須為active employee、admission enabled及identity=`not_linked`。employee number只接受未指派且registry revision=`0`，或已精確為`JFS0005`且revision非0；其他既有號碼、revision矛盾、號碼／tombstone衝突或多筆alias均停止。
 - Directory先依primary Email讀取，再於candidate lease後依stable user ID重讀；customer、stable ID、primary Email或etag漂移均不confirm。
 - zero-state apply先以exact workspace／registry CAS呼叫`assign_employee_number_v1`，readback精確`JFS0005`後才經`lease_managed_identity_candidate_v1 → read_managed_identity_candidate_v1 → confirm_managed_identity_link_v1`；成功readback必須為`directory_linked_pending_auth`。若精確mapping已存在則只回傳`REPLAY`，不再寫入。

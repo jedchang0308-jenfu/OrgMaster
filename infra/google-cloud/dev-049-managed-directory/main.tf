@@ -3,6 +3,11 @@ data "google_service_account" "runtime" {
   account_id = var.runtime_service_account_id
 }
 
+data "google_service_account" "migrator" {
+  project    = var.project_id
+  account_id = var.migration_service_account_id
+}
+
 resource "google_project_service" "admin_directory" {
   project            = var.project_id
   service            = "admin.googleapis.com"
@@ -47,4 +52,10 @@ resource "google_service_account_iam_member" "runtime_token_creator" {
   service_account_id = google_service_account.directory_dwd.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = "serviceAccount:${data.google_service_account.runtime.email}"
+}
+
+resource "google_service_account_iam_member" "migrator_token_creator" {
+  service_account_id = google_service_account.directory_dwd.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${data.google_service_account.migrator.email}"
 }

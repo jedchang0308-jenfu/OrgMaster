@@ -20,7 +20,7 @@ function sameRecord(observed, expected) {
 
 export function evaluateDev049ManagedDirectoryPlan({ plan, profile, sourceRevision, foundationManifestSha256 }) {
   if (!H40.test(sourceRevision ?? '') || !H64.test(foundationManifestSha256 ?? '')) fail('DEV049_PLAN_BINDING_INVALID')
-  if (profile?.schemaVersion !== 'jenfu.dev049.managed-directory-plan-profile.v3'
+  if (profile?.schemaVersion !== 'jenfu.dev049.managed-directory-plan-profile.v4'
     || profile.profileId !== 'DEV049_MANAGED_DIRECTORY_PRODUCTION'
     || profile.terraformRoot !== 'infra/google-cloud/dev-049-managed-directory'
     || profile.state?.bucket !== 'tfstate-jenfu-platform-prod'
@@ -31,6 +31,7 @@ export function evaluateDev049ManagedDirectoryPlan({ plan, profile, sourceRevisi
     project_number: profile.target.projectNumber,
     region: profile.target.region,
     runtime_service_account_id: profile.target.runtimeServiceAccountId,
+    migration_service_account_id: profile.target.migrationServiceAccountId,
     dwd_service_account_id: profile.target.dwdServiceAccountId,
     source_revision: sourceRevision,
     foundation_manifest_sha256: foundationManifestSha256,
@@ -55,6 +56,14 @@ export function evaluateDev049ManagedDirectoryPlan({ plan, profile, sourceRevisi
     || runtime.values?.email !== runtimeEmail
     || runtime.values?.name !== `projects/${profile.target.projectId}/serviceAccounts/${runtimeEmail}`
     || runtime.values?.disabled !== false) fail('DEV049_PLAN_RUNTIME_READBACK_INVALID')
+  const migrator = (plan?.prior_state?.values?.root_module?.resources ?? []).find((row) => row.address === profile.migrationReadbackAddress)
+  const migratorEmail = `${profile.target.migrationServiceAccountId}@${profile.target.projectId}.iam.gserviceaccount.com`
+  if (migrator?.mode !== 'data' || migrator?.type !== 'google_service_account'
+    || migrator.values?.account_id !== profile.target.migrationServiceAccountId
+    || migrator.values?.project !== profile.target.projectId
+    || migrator.values?.email !== migratorEmail
+    || migrator.values?.name !== `projects/${profile.target.projectId}/serviceAccounts/${migratorEmail}`
+    || migrator.values?.disabled !== false) fail('DEV049_PLAN_MIGRATOR_READBACK_INVALID')
   const changes = new Map((plan?.resource_changes ?? []).map((row) => [row.address, row]))
   const required = Object.keys(profile.requiredChangeAddresses).sort()
   if (!same([...changes.keys()].sort(), required)) fail('DEV049_PLAN_ADDRESS_SET_INVALID')
