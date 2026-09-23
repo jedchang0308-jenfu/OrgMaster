@@ -1,0 +1,24 @@
+# DEV-014／015／057／118／121 consumer completion audit
+
+日期：2026-09-24  
+專案：ORGMASTER；跨專案引用 JENFU／AIPDM。  
+用途：記錄 OrgMaster owner 的本地契約證據、Production readback 邊界與仍待真人互動的條件；不新增 gate、不改變資料或權限範圍。
+
+## 已證實
+
+- DEV-057 contract QC PASS，source hash `9c925bd36b357ef2d3997eb362cbbef566fbd4308acd22e647b72d1f2adb3d5`。
+- DEV-057 task-owned PostgreSQL D57-01～D57-06 PASS；無 primary-data writes，隔離 runtime 與暫存資源已清理。
+- OrgMaster managed-login owner suite `44/44`、DEV-014 fixture `10/10`、authority `12/12` PASS；managed bridge targeted tests `37/37` 與 client/server build PASS。
+- Production owner release run `35902145983` 的十階段均成功，`orgmaster-prod` 維持 100% canonical traffic；未修改 schema、data、IAM、Secret 或其他 service。
+- 既有 `employee-shijie` session 可讀取 OrgMaster normal entry 與角色治理；此證據只代表既有帳號，不代表 Free-only fixture 已完成。
+
+## 尚未完成
+
+- `dev014-fp-google@jenfu.com.tw` 與 `dev014-fp-number@jenfu.com.tw` 尚未各自完成首次 Google／Firebase 驗證，因此 managed-identity bridge 尚無 active link。
+- 在 bridge readback 前，authority switch、receipt／outbox、完整 LOGIN 分母、Production L4、negative／rate／race 與 cleanup 均維持 fail-closed，不能以 local PASS 代替。
+- 最近 authority Job 在 CAS 前以 `DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED` 停止，已恢復 `--bundle-ref-required` baseline，沒有 authority、receipt、outbox 或資料 mutation。
+
+## 邊界與後續序列
+
+只使用兩個核准的 Free-only disposable fixture；不修改其他 Employee、七個付費帳號、既有 binding 或 permission，不購買席次。完成真人 Google 互動後，依序重新讀回 source／image／Job binding、bridge → authority switch／replay → Platform／AI-PDM L4 → negative／rate／race／logout → observation／cleanup。跨專案彙總見 Platform [completion audit](../../../../Jenfu-Platform/ai-doc/reports/pm/DEV-014-015-057-118-121-completion-audit-2026-09-24.md)。
+
