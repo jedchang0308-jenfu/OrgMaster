@@ -10,7 +10,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const run = spawnSync(process.execPath, ['--test', 'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.test.mjs', 'scripts/dev049-production-admission.test.mjs', 'scripts/dev014-production-managed-link-runner.test.mjs', 'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev012-owner-prerequisite-producer.test.mjs'], { cwd: root, encoding: 'utf8' })
 process.stdout.write(run.stdout)
 process.stderr.write(run.stderr)
-if (run.status !== 0 || !/\bpass 89\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+// Keep the QC denominator aligned with the current owner-test set. A stale
+// literal here previously made a green 92-test run exit 1 before it could
+// produce the owner report.
+if (run.status !== 0 || !/\bpass 92\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 
