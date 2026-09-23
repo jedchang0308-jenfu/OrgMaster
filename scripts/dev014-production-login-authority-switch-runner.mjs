@@ -117,9 +117,11 @@ async function readGovernance(database, expected) {
 }
 
 async function readState(database, fixture, expectedGovernance) {
-  const authority = one((await database.query(`SELECT application_id, authority_source, authority_version, employee_id, operation_id
+  const authorityRows = (await database.query(`SELECT application_id, authority_source, authority_version, employee_id, operation_id
     FROM orgmaster_contract.v_ai_pdm_entitlement_authority_v1
-    WHERE application_id='ai-pdm' AND employee_id=$1`, [fixture.employeeId])).rows, 'DEV014_LOGIN_AUTHORITY_STATE_INVALID')
+    WHERE application_id='ai-pdm' AND employee_id=$1`, [fixture.employeeId])).rows
+  if (authorityRows.length === 0) fail('DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED')
+  const authority = one(authorityRows, 'DEV014_LOGIN_AUTHORITY_STATE_INVALID')
   if (authority.application_id !== TARGET.applicationId || authority.employee_id !== fixture.employeeId) fail('DEV014_LOGIN_AUTHORITY_STATE_INVALID')
   const governance = await readGovernance(database, expectedGovernance)
   const assignments = (Array.isArray(governance.version.policy?.roleAssignments) ? governance.version.policy.roleAssignments : [])
