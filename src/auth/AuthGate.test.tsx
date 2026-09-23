@@ -21,6 +21,7 @@ let root: Root
 let container: HTMLDivElement
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  window.history.replaceState({}, '', '/')
   api.getDevelopmentAuthMode.mockRejectedValue(new AuthApiError(404, 'auth_request_invalid'))
   api.getAuthMode.mockResolvedValue({ managedLoginEnabled: false })
   container = document.createElement('div')
@@ -104,6 +105,20 @@ describe('AuthGate', () => {
     })
     expect(firebase.getFirebaseGoogleIdToken).toHaveBeenCalledWith(expect.anything(), 'jfs0003@jenfu.com.tw')
     expect(api.exchangeFirebaseToken).toHaveBeenCalledWith('google-token', 'jfs0003@jenfu.com.tw')
+  })
+
+  it('exposes only the explicit bridge route when SSO is enabled', async () => {
+    window.history.replaceState({}, '', '/login?bridge=1')
+    api.getCurrentSession.mockRejectedValue(new AuthApiError(401, 'auth_session_invalid'))
+    api.getAuthMode.mockResolvedValue({ managedLoginEnabled: true, ssoHandoffEnabled: true, firebase: { apiKey: 'k', authDomain: 'a', projectId: 'p', appId: 'i' } })
+    await act(async () => {
+      root.render(<AuthGate><div>protected organization data</div></AuthGate>)
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    })
+    expect(container.textContent).toContain('首次連結公司身分')
+    expect(container.textContent).toContain('返回 Platform 單一登入')
+    expect(container.querySelector('.auth-login--managed')).toBeTruthy()
+    expect(container.textContent).not.toContain('使用鉦富平台登入')
   })
 
   it('offers server-defined development profiles and enters with one click', async () => {

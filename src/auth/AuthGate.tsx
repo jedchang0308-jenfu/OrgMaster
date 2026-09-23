@@ -34,6 +34,7 @@ function blockedState(error: unknown): GateState {
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
+  const [bridgeRequested] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bridge') === '1')
   const [state, setState] = useState<GateState>({ kind: 'loading' })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -187,7 +188,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </div>
     </section>
   </main>
-  if (state.mode.ssoHandoffEnabled) return <main className="auth-gate">
+  if (state.mode.ssoHandoffEnabled && !bridgeRequested) return <main className="auth-gate">
     <section className="auth-login auth-login--managed" aria-labelledby="sso-login-title">
       <div><p className="auth-login__eyebrow">鉦富管理平台</p><h1 id="sso-login-title">使用平台登入</h1><p>登入一次即可進入你有權限的 Jenfu 系統。</p></div>
       {state.message && <p className="auth-login__error" role="alert">{state.message}</p>}
@@ -196,11 +197,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
   </main>
   return <main className="auth-gate">
     {state.mode.managedLoginEnabled && <form className="auth-login auth-login--managed" onSubmit={(event) => { void submitManagedLogin(event) }}>
-      <div><p className="auth-login__eyebrow">公司統一身分</p><h1>以 JFS 員工編號或公司 Email 登入</h1><p>完成 Google Cloud Identity 驗證後進入 OrgMaster。</p></div>
+      <div><p className="auth-login__eyebrow">{bridgeRequested ? '首次連結公司身分' : '公司統一身分'}</p><h1>以 JFS 員工編號或公司 Email 登入</h1><p>{bridgeRequested ? '僅用於首次建立受控身分連結；完成後回到 Platform 使用單一登入。' : '完成 Google Cloud Identity 驗證後進入 OrgMaster。'}</p></div>
       {(managedMessage ?? state.message) && <p className="auth-login__error" role="alert">{managedMessage ?? state.message}</p>}
       <label>員工編號或公司 Email<input value={employeeNumber} onChange={(event) => setEmployeeNumber(event.target.value)} placeholder="JFS0001 或 jfs0001@jenfu.com.tw" autoComplete="username" required /></label>
       <button type="submit" disabled={busy}>{busy ? '準備登入…' : '使用 Google 登入'}</button>
     </form>}
+    {bridgeRequested && state.mode.ssoHandoffEnabled && <p className="auth-login__bridge-back"><a href="/login">返回 Platform 單一登入</a></p>}
     <details className="auth-login auth-login--legacy">
       <summary>既有帳號登入</summary>
       <form onSubmit={(event) => { void submitLogin(event) }}>
