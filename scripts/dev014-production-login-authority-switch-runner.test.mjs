@@ -12,7 +12,7 @@ const operation = {
   governanceSha256: governanceSha, governanceSourceRevision,
 }
 
-function fakeDatabase({ mode = 'legacy', failSecond = false, partial = false } = {}) {
+function fakeDatabase({ mode = 'legacy', failSecond = false, partial = false, missingBridge = false } = {}) {
   const state = new Map(FIXTURES.map((fixture) => [fixture.employeeId, {
     source: mode === 'replay' ? 'orgmaster_authority' : 'legacy_authority', version: mode === 'replay' ? 2 : 1,
     receipt: mode === 'replay' ? { receipt_id: `receipt-${fixture.employeeId}`, operation_id: `${operation.operationId}-${fixture.alias.toUpperCase()}`, batch_id: operation.operationId, application_id: 'ai-pdm', employee_id: fixture.employeeId, from_authority_source: 'legacy_authority', to_authority_source: 'orgmaster_authority', authority_version: 2, assignment_version_id: 'assignment-policy-fixture', session_refresh_state: 'pending', actor: TARGET.actor, reason: `DEV-014 login fixture ${fixture.alias} switch to OrgMaster authority`, switched_at: '2026-09-23T00:00:01.000Z' } : null,
@@ -27,6 +27,9 @@ function fakeDatabase({ mode = 'legacy', failSecond = false, partial = false } =
   }
   const query = async (sql, params = []) => {
     calls.push({ sql, params })
+    if (sql.includes('v_active_principal_links_v1')) {
+      return { rows: missingBridge ? [] : [{ employee_id: params[0], principal_id: `principal-${params[0]}`, account_type: 'human_personal' }] }
+    }
     if (sql.startsWith('SELECT payload')) return { rows: [{ payload: governance, canonical_sha256: governanceSha, source_revision: governanceSourceRevision }] }
     if (sql.includes('v_ai_pdm_entitlement_authority_v1')) {
       const entry = state.get(params[0]); return { rows: [{ application_id: 'ai-pdm', authority_source: entry.source, authority_version: entry.version, employee_id: params[0], operation_id: entry.receipt?.operation_id ?? null }] }
@@ -154,6 +157,13 @@ test('reports the required first-login bridge when no active authority row exist
   }
   await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED/u)
   assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v1')), false)
+})
+
+test('fails closed before CAS when the managed-identity bridge is missing', async () => {
+  const db = fakeDatabase({ missingBridge: true })
+  await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED/u)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v1')), false)
+  assert.equal(db.calls.some(({ sql }) => sql.startsWith('BEGIN')), false)
 })
 
 test('rejects governance artifact source drift before the CAS function', async () => {

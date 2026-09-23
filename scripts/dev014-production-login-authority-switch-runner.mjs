@@ -117,6 +117,17 @@ async function readGovernance(database, expected) {
 }
 
 async function readState(database, fixture, expectedGovernance) {
+  // The CAS function intentionally rejects an employee without an active
+  // managed-identity bridge (SQLSTATE 23503). Check the same provider view
+  // before opening the batch transaction so a missing first-login bridge is a
+  // deterministic, non-mutating operator outcome rather than a raw database
+  // error after the preflight has passed.
+  const principalRows = (await database.query(`SELECT employee_id, principal_id, account_type
+    FROM access_governance.v_active_principal_links_v1
+    WHERE employee_id=$1`, [fixture.employeeId])).rows
+  if (principalRows.length !== 1 || principalRows[0].employee_id !== fixture.employeeId) {
+    fail('DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED')
+  }
   const authorityRows = (await database.query(`SELECT application_id, authority_source, authority_version, employee_id, operation_id
     FROM orgmaster_contract.v_ai_pdm_entitlement_authority_v1
     WHERE application_id='ai-pdm' AND employee_id=$1`, [fixture.employeeId])).rows
