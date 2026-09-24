@@ -165,6 +165,14 @@ Directory、governance、mapping、epoch 與 session 不是單一分散式 trans
 - fixture 必須證明「managed identity 只有其他 app role」仍存在 shared view，但不存在 OrgMaster view；撤銷 OrgMaster role 只改此 app admission，不使其共用 identity 消失。
 - 新 view 不存在時 repository fail closed，不 fallback 舊 view。部署前由 release gate處理 schema 先於新 app、既有 session 影響與 rollback；回舊 app 會失去此 hardening，不能標為安全等價 rollback。
 
+### 2026-09-24 projection contract correction
+
+Production preflight 發現 managed identity 的 active row 已在 `orgmaster_contract.v_active_principal_mappings_v1`，但舊 `access_governance.v_active_principal_links_v1` 仍只讀 published governance `identityLinks`。因此 authority runner 看到 0 principal 並在 CAS 前安全停止；這不是把 managed identity 重綁一次即可修復的資料問題。
+
+Migration `022_dev014_managed_login_session_admission.sql` 以 additive `orgmaster_contract.v_orgmaster_session_principals_v2` 修正 session bootstrap：eligible set 接受已發布且有效的 `orgmaster` 或 `ai-pdm` assignment，OrgMaster permission enforcement 仍由原有 app-scoped permission gate 決定。Migration `023_dev014_authority_principal_projection_contract.sql` 再建立帶 `account_type` 的 `orgmaster_contract.v_active_principal_links_v1` adapter，將 `access_governance.v_active_principal_links_v1` 留作 compatibility wrapper，來源統一回到 published mapping producer；authority runner 直接讀 `orgmaster_contract.v_active_principal_mappings_v1`。
+
+這兩個 migration 都是 forward-only；不改既有 migration bytes，不寫人工 production data，不新增 Employee／principal／assignment／permission，也不改 IAM、Secret、service 或 traffic。新的 owner release 與 Production readback 必須先證明 producer／adapter 對每個 Free fixture 各回傳唯一且 issuer、subject、principal、Employee 一致的列，之後才可重啟 authority switch。讀回未通過時維持 fail-closed，不重跑同一切換。
+
 本機隔離測試可套 exact 001～014；正式 migration／activation 必須另有 release authority。DEV-040 現行 normal release 只接受 001～011，不能因本文件宣稱 Ready 就套 012～014、修改 runner ledger 或部署。
 
 ## 7. UI 與驗收

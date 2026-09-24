@@ -122,8 +122,8 @@ async function readState(database, fixture, expectedGovernance) {
   // before opening the batch transaction so a missing first-login bridge is a
   // deterministic, non-mutating operator outcome rather than a raw database
   // error after the preflight has passed.
-  const principalRows = (await database.query(`SELECT employee_id, principal_id, account_type
-    FROM access_governance.v_active_principal_links_v1
+  const principalRows = (await database.query(`SELECT employee_id, principal_id, principal_issuer, principal_subject
+    FROM orgmaster_contract.v_active_principal_mappings_v1
     WHERE employee_id=$1`, [fixture.employeeId])).rows
   if (principalRows.length !== 1 || principalRows[0].employee_id !== fixture.employeeId) {
     fail('DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED')
