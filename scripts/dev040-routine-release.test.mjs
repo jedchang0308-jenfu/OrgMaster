@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
@@ -242,6 +242,32 @@ test('DEV-014 projection contract remediation permits only migration 020 with un
   assert.throws(() => assertDev014ProjectionContractAppend(baselineBundle, drift), /DEV014_PROJECTION_CONTRACT_APPEND_INVALID/u)
 })
 
+test('DEV-014 managed principal projection remediation permits only migrations 022-023 with unchanged runtime', async () => {
+  const baselineBundle = prefixBundle(oldBundle.bundle, 21)
+  const currentBundle = { bundle: prefixBundle(newBundle.bundle, 23) }
+  const remediation = {
+    kind: 'MANAGED_PRINCIPAL_PROJECTION_CONTRACT_CORRECTION',
+    migrationVersions: ['dev014-orgmaster-022', 'dev014-orgmaster-023'],
+    producerView: 'orgmaster_contract.v_active_principal_mappings_v1',
+    adapterViews: ['orgmaster_contract.v_orgmaster_session_principals_v2', 'orgmaster_contract.v_active_principal_links_v1', 'access_governance.v_active_principal_links_v1'],
+    applicationId: 'ai-pdm',
+    employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
+  }
+  const h = harness({ baselineBundle, currentBundle })
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation }
+  attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION')
+  assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(result.pendingMigrationCount, 2)
+  assert.equal(assertDev014ManagedPrincipalProjectionAppend(baselineBundle, currentBundle.bundle).pendingMigrationCount, 2)
+  assert.equal(assertDev014ManagedPrincipalProjectionRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
+  const drift = structuredClone(currentBundle.bundle)
+  drift.entries[21].appliedSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev014ManagedPrincipalProjectionAppend(baselineBundle, drift), /DEV014_MANAGED_PRINCIPAL_PROJECTION_APPEND_INVALID/u)
+})
+
 test('DEV-014 activation contract owner producer exposes the bounded release mode', () => {
   const producer = fs.readFileSync('scripts/dev040-deploy-production.mjs', 'utf8')
   assert.match(producer, /--dev014-activation-contract-remediation/u)
@@ -261,6 +287,14 @@ test('DEV-014 projection contract owner producer exposes the bounded release mod
   assert.match(producer, /orgmaster_contract\.v_ai_pdm_effective_role_assignments_v1/u)
 })
 
+test('DEV-014 managed principal projection owner producer exposes both migrations and the canonical producer', () => {
+  const producer = fs.readFileSync('scripts/dev040-deploy-production.mjs', 'utf8')
+  assert.match(producer, /--dev014-managed-principal-projection-remediation/u)
+  assert.match(producer, /slice: '014-MANAGED-PRINCIPAL-PROJECTION'/u)
+  assert.match(producer, /migrationVersions: \['dev014-orgmaster-022', 'dev014-orgmaster-023'\]/u)
+  assert.match(producer, /orgmaster_contract\.v_active_principal_mappings_v1/u)
+})
+
 test('DEV-057 writer fence remediation permits only migration 021 with unchanged runtime', async () => {
   const baselineBundle = prefixBundle(oldBundle.bundle, 20)
   const remediation = {
@@ -271,7 +305,8 @@ test('DEV-057 writer fence remediation permits only migration 021 with unchanged
     concurrencyCases: ['governance-publication-before-bind', 'bind-before-governance-publication'],
     applicationId: 'ai-pdm',
   }
-  const h = harness({ baselineBundle })
+  const currentBundle = { bundle: prefixBundle(newBundle.bundle, 21) }
+  const h = harness({ baselineBundle, currentBundle })
   h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation }
   h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation }
   attachForwardInfra(h)
@@ -279,9 +314,9 @@ test('DEV-057 writer fence remediation permits only migration 021 with unchanged
   assert.equal(result.releaseMode, 'DEV057_WRITER_FENCE_REMEDIATION')
   assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
   assert.equal(result.pendingMigrationCount, 1)
-  assert.equal(assertDev057WriterFenceAppend(baselineBundle, newBundle.bundle).pendingMigrationCount, 1)
+  assert.equal(assertDev057WriterFenceAppend(baselineBundle, currentBundle.bundle).pendingMigrationCount, 1)
   assert.equal(assertDev057WriterFenceRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
-  const drift = structuredClone(newBundle.bundle)
+  const drift = structuredClone(currentBundle.bundle)
   drift.entries[20].appliedSha256 = '0'.repeat(64)
   assert.throws(() => assertDev057WriterFenceAppend(baselineBundle, drift), /DEV057_WRITER_FENCE_APPEND_INVALID/u)
 })

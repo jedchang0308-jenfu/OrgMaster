@@ -40,6 +40,8 @@ const PRODUCTION_MIGRATION_PATHS = [
   'db/migrations/019_dev014_workspace_revision_contract.sql',
   'db/migrations/020_dev014_current_projection_contract.sql',
   'db/migrations/021_dev057_identity_grant_writer_fence.sql',
+  'db/migrations/022_dev014_managed_login_session_admission.sql',
+  'db/migrations/023_dev014_authority_principal_projection_contract.sql',
 ]
 
 function fail(code, detail = '') {
