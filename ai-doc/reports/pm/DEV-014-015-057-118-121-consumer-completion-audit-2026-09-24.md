@@ -20,15 +20,16 @@
 
 ## Projection contract finding and fix-forward
 
-這次停止的根因已與「managed identity 是否已連結」分開確認：managed bridge 的 active row 已存在於發布者契約 `orgmaster_contract.v_active_principal_mappings_v1`，但 authority runner 仍讀舊的 `access_governance.v_active_principal_links_v1`。舊 view 只投影治理 `identityLinks`，因此對只有 AI-PDM assignment 的 Free fixture 回傳 0 列；runner 在 CAS 前拒絕是正確的 fail-closed 行為，之前反覆重跑沒有解決這個投影斷點。
+這次停止的根因已與「managed identity 是否已連結」分開確認：managed bridge 的 active row 已存在於發布者契約 `orgmaster_contract.v_active_principal_mappings_v1`，但 authority runner 依賴 Platform-owned 舊 `access_governance.v_active_principal_links_v1`，它仍只投影治理 `identityLinks`。因此只有 managed identity mapping 的 Free fixture在舊 view 回傳 0 列；runner 在 CAS 前拒絕是正確的 fail-closed 行為，之前反覆重跑沒有解決 producer／consumer 投影斷點。
 
 修正採 forward-only、契約分層方式：
 
 - migration `022_dev014_managed_login_session_admission.sql` 新增 `orgmaster_contract.v_orgmaster_session_principals_v2`，以已發布的 `v_active_principal_mappings_v1` 加上 `orgmaster`／`ai-pdm` active assignment 作 OrgMaster session bootstrap eligibility；不放大 OrgMaster permission。
-- migration `023_dev014_authority_principal_projection_contract.sql` 新增帶 `account_type` 的 `orgmaster_contract.v_active_principal_links_v1`，並把既有 `access_governance.v_active_principal_links_v1` 保留為相容 wrapper，來源改為同一個 published mapping producer。authority runner 改讀 `orgmaster_contract.v_active_principal_mappings_v1`，不再把舊 compatibility view 當成 mapping producer。
+- migration `023_dev014_authority_principal_projection_contract.sql` 新增帶 `account_type` 的 OrgMaster-owned `orgmaster_contract.v_active_principal_accounts_v1`。Managed row 必須 exact match canonical employee／principal／issuer／subject／revision／published time，且 admission enabled、Directory observation present、無未完成 lifecycle event；legacy row 必須有明確 active governance admission。OrgMaster 不改寫 Platform-owned `access_governance` schema。
+- Platform migration `008_dev014_platform_authority_switch_contract.sql` 在 `platform_contract` 提供 Platform-owned CAS v2，transaction 內重新檢查 OrgMaster accounts adapter，僅允許 `human_personal`，再原子寫入 Platform authority／receipt／outbox。OrgMaster runner 先比對 canonical mapping 與 accounts adapter，再呼叫此 function；它不再依賴舊 Platform view作為新流程的身份來源。
 - 舊 v1 migration bytes、既有資料、assignment、authority、receipt、outbox、IAM、Secret 與 service 均未修改；本輪只做 local contract／build／targeted test 與文件修正。
 
-在新的 OrgMaster owner release 及 Production readback 證明兩個 Free fixture 的 issuer／subject／principal／Employee 在 producer 與 compatibility adapter 中各恰一列以前，禁止再次執行相同 authority switch。readback 未通過時維持 `DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED`，不以手工 SQL、operator bypass 或猜測映射繞過。
+在 OrgMaster 與 Platform owner release 及 Production readback 證明兩個 Free fixture 的 issuer／subject／principal／Employee 在 canonical producer 與 accounts adapter 中各恰一列、欄位完全一致且帳戶類型正確以前，禁止再次執行 authority switch。舊 `access_governance` view 是否包含 managed fixture不作為新流程通過條件。readback 未通過時維持 fail-closed，不以手工 SQL、operator bypass 或猜測映射繞過。
 
 ## 邊界與後續序列
 

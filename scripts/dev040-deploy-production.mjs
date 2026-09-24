@@ -169,7 +169,7 @@ async function main() {
     kind: 'MANAGED_PRINCIPAL_PROJECTION_CONTRACT_CORRECTION',
     migrationVersions: ['dev014-orgmaster-022', 'dev014-orgmaster-023'],
     producerView: 'orgmaster_contract.v_active_principal_mappings_v1',
-    adapterViews: ['orgmaster_contract.v_orgmaster_session_principals_v2', 'orgmaster_contract.v_active_principal_links_v1', 'access_governance.v_active_principal_links_v1'],
+    adapterViews: ['orgmaster_contract.v_active_principal_accounts_v1'],
     applicationId: 'ai-pdm',
     employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
   } : null

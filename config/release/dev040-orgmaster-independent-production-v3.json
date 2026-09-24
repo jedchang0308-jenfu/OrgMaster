@@ -362,8 +362,8 @@
         "order": 23,
         "version": "dev014-orgmaster-023",
         "path": "db/migrations/023_dev014_authority_principal_projection_contract.sql",
-        "sourceSha256": "3bb3131d9021aba05f252b13d5f97f5dea81fa3bb1b8ae8e3700e670f8a36e13",
-        "appliedSha256": "0388e8169aaf2b4e6e1e393237764ac99663add669eba3c3c9c470b7be106e87"
+        "sourceSha256": "0a4ade661d396d93fda7a37e4020bda5454199d505d674d3e1e49cccd5aa5b83",
+        "appliedSha256": "930732039941c6633382cbf5703d28f8cceef0d1c004a0f8a26ab7df4dbbd5c3"
       }
     ]
   },

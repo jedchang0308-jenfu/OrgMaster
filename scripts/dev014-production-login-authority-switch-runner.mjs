@@ -128,6 +128,16 @@ async function readState(database, fixture, expectedGovernance) {
   if (principalRows.length !== 1 || principalRows[0].employee_id !== fixture.employeeId) {
     fail('DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED')
   }
+  const typedPrincipalRows = (await database.query(`SELECT employee_id, principal_id, principal_issuer, principal_subject, account_type
+    FROM orgmaster_contract.v_active_principal_accounts_v1
+    WHERE employee_id=$1 AND account_type='human_personal'`, [fixture.employeeId])).rows
+  const typedPrincipal = typedPrincipalRows[0]
+  if (typedPrincipalRows.length !== 1 || typedPrincipal.employee_id !== principalRows[0].employee_id
+    || typedPrincipal.principal_id !== principalRows[0].principal_id
+    || typedPrincipal.principal_issuer !== principalRows[0].principal_issuer
+    || typedPrincipal.principal_subject !== principalRows[0].principal_subject) {
+    fail('DEV014_LOGIN_AUTHORITY_PRINCIPAL_PROJECTION_REQUIRED')
+  }
   const authorityRows = (await database.query(`SELECT application_id, authority_source, authority_version, employee_id, operation_id
     FROM orgmaster_contract.v_ai_pdm_entitlement_authority_v1
     WHERE application_id='ai-pdm' AND employee_id=$1`, [fixture.employeeId])).rows
@@ -255,7 +265,7 @@ export async function executeAuthorityBatch({ database, operation, now = new Dat
     const applied = []
     for (const item of locked) {
       const result = one((await database.query(`SELECT receipt_id, authority_version, outbox_event_id, session_refresh_state, replayed
-        FROM access_governance.switch_employee_entitlement_authority_v1($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [
+        FROM platform_contract.switch_ai_pdm_employee_authority_v2($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [
         TARGET.applicationId, item.fixture.employeeId, 'orgmaster_authority', 1, item.operation.operationId,
         item.operation.batchId, item.before.assignmentVersionId, TARGET.actor, item.operation.reason,
       ])).rows, 'DEV014_LOGIN_AUTHORITY_FUNCTION_RESULT_INVALID')

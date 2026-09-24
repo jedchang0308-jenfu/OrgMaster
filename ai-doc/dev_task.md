@@ -2,6 +2,8 @@
 
 > 跨專案引用代碼：`ORGMASTER`（2026-09-23 使用者確認；既有歷史 ID 不改名）。
 
+> **2026-09-24 DEV-014 principal-projection correction（現行）**：已釐清 managed identity bridge 的 active principal 只保證出現在 OrgMaster role-neutral `orgmaster_contract.v_active_principal_mappings_v1`；它不提供 account type。Platform `access_governance.v_active_principal_links_v1` 是另一個 owner 的舊治理 projection，不是 managed account adapter。新增的 OrgMaster 023 view 以精確 employee／principal／issuer／subject／mapping revision／published timestamp、admission、Directory observation 與 lifecycle 條件發布 account type；未知 legacy 分類不進 adapter。Authority runner 比對 canonical producer 與 typed adapter 後呼叫 Platform CAS v2；Platform CAS 在同一 transaction 再驗 `human_personal`，避免 preflight-to-write race。Local contract／PostgreSQL、DB boundary 及 60 個 OrgMaster runner／release tests均PASS。尚未套用 Production migration 023／008，亦未重試 authority switch；後續先按 OrgMaster→Platform 次序發布並 read back 兩個 OrgMaster view 的 exact row，再決定是否執行 switch。
+
 > **2026-09-24 DEV-014／DEV-057 local verification refresh（現行證據）**：在保留既有工作樹變更的前提下重驗 `qc:dev-057:contract`（PASS，source hash=`9c925bd36b357ef2d3997eb362cbbef566fbd4308acd22e647b72d1f2adb3d5`）、DEV-014 fixture runner `10/10` 與 authority runner `12/12`。本輪為本地／task-owned evidence，`productionWrites=false`；不改寫 migration、schema、資料、IAM、Secret、service 或 traffic。既有 Free-only first-login bridge 仍因 Google 密碼／裝置核准尚未完成，故 authority switch、L4 與完整 LOGIN 分母維持原狀。
 
 > **2026-09-24 DEV-015 managed-login consumer refresh（現行證據）**：OrgMaster managed-login owner suite `44/44 PASS`，並重驗 DEV-014 fixture `10/10` 與 authority `12/12`；本輪只使用本地／task-owned fixtures，未連接 Production、未寫入資料，既有 Free-only bridge 阻塞與 Production L4 狀態不變。
