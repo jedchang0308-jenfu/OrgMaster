@@ -188,7 +188,7 @@ export function assertDev014ManagedPrincipalProjectionAppend(before, after) {
   if (!same(before.entries, after.entries.slice(0, before.entries.length))) fail('DEV014_MANAGED_PRINCIPAL_PROJECTION_APPEND_INVALID')
   const expected = [
     ['dev014-orgmaster-022', 'db/migrations/022_dev014_managed_login_session_admission.sql', 'af32dce7cac09c5319823b727b131ea23e84d6c0cd52250d93d7b93d9996b5c2', '0aa3e42451e362ee3ceab2dd0dfadb34769484c1cc7b4f58a312721e0392d1f1'],
-    ['dev014-orgmaster-023', 'db/migrations/023_dev014_authority_principal_projection_contract.sql', '3bb3131d9021aba05f252b13d5f97f5dea81fa3bb1b8ae8e3700e670f8a36e13', '0388e8169aaf2b4e6e1e393237764ac99663add669eba3c3c9c470b7be106e87'],
+    ['dev014-orgmaster-023', 'db/migrations/023_dev014_authority_principal_projection_contract.sql', '0a4ade661d396d93fda7a37e4020bda5454199d505d674d3e1e49cccd5aa5b83', '930732039941c6633382cbf5703d28f8cceef0d1c004a0f8a26ab7df4dbbd5c3'],
   ]
   const appended = after.entries.slice(before.entries.length)
   if (!same(appended.map((entry) => [entry.version, entry.path, entry.sourceSha256, entry.appliedSha256]), expected)) fail('DEV014_MANAGED_PRINCIPAL_PROJECTION_APPEND_INVALID')
@@ -255,7 +255,7 @@ export function assertDev014ManagedPrincipalProjectionRemediation(readiness, aut
     kind: 'MANAGED_PRINCIPAL_PROJECTION_CONTRACT_CORRECTION',
     migrationVersions: ['dev014-orgmaster-022', 'dev014-orgmaster-023'],
     producerView: 'orgmaster_contract.v_active_principal_mappings_v1',
-    adapterViews: ['orgmaster_contract.v_orgmaster_session_principals_v2', 'orgmaster_contract.v_active_principal_links_v1', 'access_governance.v_active_principal_links_v1'],
+    adapterViews: ['orgmaster_contract.v_active_principal_accounts_v1'],
     applicationId: 'ai-pdm',
     employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
   }

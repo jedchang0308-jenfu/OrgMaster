@@ -48,15 +48,30 @@ await check('managed-login bridge admits published AI-PDM employees without gran
 
 await check('authority switch consumes the published managed-principal mapping contract', () => {
   assert.match(principalProjectionMigration, /^-- DB-CHANGE\n-- owner: orgmaster[\s\S]*-- governance-review: DEV-014/mu)
+  const typedProjection = principalProjectionMigration.slice(
+    principalProjectionMigration.indexOf('SELECT\n  mapping.contract_version'),
+    principalProjectionMigration.indexOf('ALTER VIEW orgmaster_contract.v_active_principal_accounts_v1 OWNER'),
+  )
   includesAll(principalProjectionMigration, [
-    'orgmaster_contract.v_active_principal_links_v1',
+    'orgmaster_contract.v_active_principal_accounts_v1',
     'orgmaster_contract.v_active_principal_mappings_v1',
-    'access_governance.v_active_principal_links_v1',
     'CREATE OR REPLACE VIEW',
     'account_type',
+    'managed.admission_revision = mapping.mapping_version',
+    'managed.admission_changed_at = mapping.published_at',
+    "observation.directory_state = 'present'",
+    'authority.admission_enabled',
   ])
+  includesAll(typedProjection, [
+    "CASE WHEN managed.identity_record_id IS NOT NULL THEN 'human_personal'::text END",
+    'governed.account_type',
+    'WHERE managed.identity_record_id IS NOT NULL',
+    'OR governed.account_type IS NOT NULL',
+  ])
+  assert.doesNotMatch(typedProjection, /governed\.account_type,\s*'human_personal'::text/u)
   assert.doesNotMatch(principalProjectionMigration, /DROP\s+(?:TABLE|COLUMN|SCHEMA|VIEW)/iu)
   assert.doesNotMatch(principalProjectionMigration, /INSERT\s+INTO\s+(?:orgmaster_core|access_governance)\./iu)
+  assert.doesNotMatch(principalProjectionMigration, /(?:CREATE(?:\s+OR\s+REPLACE)?\s+VIEW|ALTER\s+VIEW)\s+access_governance\./iu)
 })
 
 await check('mandatory verifier has no email-search fallback and preserves one retry fence', () => {

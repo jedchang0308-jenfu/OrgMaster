@@ -2,7 +2,7 @@
   "contract": "DEV-050",
   "evidenceScope": "LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-24T03:30:39.425Z",
+  "generatedAt": "2026-09-24T05:06:38.938Z",
   "migrationSha256": "f39ea5eb7e9f4accbe66961fa73345b788aa609b8a7de658c416335311463867",
   "checks": [
     {
@@ -39,21 +39,22 @@
     }
   ],
   "source": {
-    "gitHead": "9675c3fc452f9c54249799dd8093dd9a5e7c00a0",
+    "gitHead": "167ebacfcd68e3ef69da1d6850abdebceba41ec8",
     "dirty": [
       "M ai-doc/documentation_map.md",
       " M ai-doc/reports/pm/DEV-014-015-057-118-121-consumer-completion-audit-2026-09-24.md",
       " M ai-doc/specs/DEV-050-dual-identifier-managed-login.md",
       " M ai-doc/specs/DEV-057-identity-and-grant-contract-boundary.md",
+      " M config/release/dev040-orgmaster-independent-production-v3.json",
+      " M db/migrations/023_dev014_authority_principal_projection_contract.sql",
       " M qa/dev-050/contract/manifest.json",
       " M scripts/dev014-production-login-authority-switch-runner.mjs",
       " M scripts/dev014-production-login-authority-switch-runner.test.mjs",
-      " M scripts/qc-dev-050-contract.mjs",
-      " M server/dev010DatabaseBoundary.test.ts",
-      " M server/orgmasterPrincipalAdmissionRepository.test.ts",
-      " M server/orgmasterPrincipalAdmissionRepository.ts",
-      "?? db/migrations/022_dev014_managed_login_session_admission.sql",
-      "?? db/migrations/023_dev014_authority_principal_projection_contract.sql"
+      " M scripts/dev040-deploy-production.mjs",
+      " M scripts/dev040-routine-release.test.mjs",
+      " M scripts/lib/dev040-routine-release.mjs",
+      " M scripts/qc-dev-047-postgres.mjs",
+      " M scripts/qc-dev-050-contract.mjs"
     ]
   }
 }

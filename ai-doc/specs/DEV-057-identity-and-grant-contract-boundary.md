@@ -11,14 +11,18 @@
 
 OrgMaster 是 active employee／principal、AI-PDM 授權來源與 published grants 的 producer。此 DEV 只定義 producer 可對外保證的唯一性、一致性與版本語意；不把 AI-PDM role catalog、route policy 或 Platform SSO broker 移入 OrgMaster，也不讓 consumer 讀 `orgmaster_core`。
 
-現有 `orgmaster_contract.v_active_principal_mappings_v1`、`v_orgmaster_session_principals_v1`、`v_ai_pdm_entitlement_authority_v1`、`v_ai_pdm_effective_role_assignments_v1`、`v_portal_app_visibility_v1` 為起點。DEV-055／056 及 migrations 001–020 的既有實作／驗證保持原狀；修正只能追加 forward-only migration，不修改已套用 migration 或重寫歷史 evidence。`orgmaster_contract.v_active_principal_mappings_v1` 是唯一 principal producer；舊 `access_governance` 名稱若仍供 authority／outbox consumer 使用，只能是同一 producer 的相容 read／execute wrapper，不能再形成第二套 identity projection。
+現有 `orgmaster_contract.v_active_principal_mappings_v1`、`v_orgmaster_session_principals_v1`、`v_ai_pdm_entitlement_authority_v1`、`v_ai_pdm_effective_role_assignments_v1`、`v_portal_app_visibility_v1` 為起點。DEV-055／056 及 migrations 001–020 的既有實作／驗證保持原狀；修正只能追加 forward-only migration，不修改已套用 migration 或重寫歷史 evidence。`orgmaster_contract.v_active_principal_mappings_v1` 是唯一 identity producer；`orgmaster_contract.v_active_principal_accounts_v1` 是由 OrgMaster 擁有的 account-typed adapter；Platform 的 `access_governance.v_active_principal_links_v1` 是既有 Platform-owned legacy projection，OrgMaster 不得改寫它，也不得把它當成 managed principal 的帳戶分類契約。
 
 | Producer projection | 它回答的問題 | 不可代替 |
 | --- | --- | --- |
-| `v_active_principal_mappings_v1` | issuer＋subject 是否唯一連到 active employee；**不要求任何 app role**。Platform 與 AI-PDM 的身分 admission 使用它。OrgMaster 的 managed-login session、authority preflight 也必須從此 producer 讀取；`access_governance.v_active_principal_links_v1` 只能保留為帶 `account_type` 的相容 adapter。 | OrgMaster permission、Portal visibility、AI-PDM permission。 |
-| `v_orgmaster_session_principals_v1` | active mapping 之上是否另有有效 OrgMaster app／global role；OrgMaster callback 使用它。 | 其他目標的身分或權限。 |
+| `orgmaster_contract.v_active_principal_mappings_v1` | issuer＋subject 是否唯一連到 active employee；**不要求任何 app role，也不回答 account type**。Platform／AI-PDM 身分 admission 與 managed-login adapter 以它為唯一 producer。 | Account classification、OrgMaster permission、Portal visibility、AI-PDM permission。 |
+| `orgmaster_contract.v_active_principal_accounts_v1` | canonical mapping 是否另有可信 account classification。Managed row 須與 active managed identity 的 employee／principal／issuer／subject／admission revision／發布時間完全相符，且 admission 開啟、Directory observation 為 present、無未完成 lifecycle event；legacy row 須有 active governance `principalAdmission`。未知分類不輸出。 | Identity-only admission、app role、Portal visibility、AI-PDM permission。 |
+| `access_governance.v_active_principal_links_v1` | Platform-owned historical projection，既有 v1 consumer 相容使用。它不會因 OrgMaster migration 自動成為 managed-principal adapter，且 OrgMaster 無權改寫其 definition／owner／ACL。 | 新的 managed principal classification 與 authority-switch preflight。 |
+| `orgmaster_contract.v_orgmaster_session_principals_v1` | active mapping 之上是否另有有效 OrgMaster app／global role；OrgMaster callback 使用它。v2 bootstrap view 可另外允許 AI-PDM assignment，但不會授予 OrgMaster app permission。 | 其他目標的身分或權限。 |
 | `v_portal_app_visibility_v1` | 已發布、有效且匹配 active principal 的某 app **入口指派**是否讓 Portal 啟動；對 AI-PDM 不以 `authority_source` 分流。 | 目標業務 route allow；local ACL 不能自行產生入口。 |
 | AI-PDM authority／effective-grant views | 目標的來源與 OrgMaster published grants。 | AI-PDM local resource／role／route policy。 |
+
+authority-switch caller 必須先讀 `v_active_principal_mappings_v1`，再讀 `v_active_principal_accounts_v1`，確認兩者對同一 employee 回傳唯一且 issuer、subject、principal 完全一致的列，且 `account_type=human_personal`。Platform-owned CAS function 再於 transaction 內重驗 OrgMaster account contract，並只寫 Platform-owned authority／receipt／outbox。這個分層避免把 identity-only row 當作可切換帳戶，也避免跨 schema 修改舊 view。Role-neutral mapping 若缺 account classification，仍留在 identity-only producer，但從 typed adapter 排除；禁止以預設值分類。這不增加 app role，也不把 mapping 當作應用權限。
 
 ## 契約不變條件
 
@@ -64,4 +68,4 @@ Portal visibility 的 AI-PDM 分支須從 active governance 的直接／有效�
 
 ## 2026-09-24 local recheck
 
-在同一 task-owned PostgreSQL 18.4 runner 重新執行 `npm run qc:dev-057:postgres`：D57-01～D57-06 全部 PASS，`executedCaseCount=6`，client／auxiliary clients 已關閉、cluster 已停止、port 已釋放、temporary root 已移除，`productionWrites=false`。同步執行 `npm run qc:dev-057:contract`，migration 021 source／applied hashes、schema owner、forward-only 與無人工 GRANT／REVOKE 檢查 PASS。這是 producer local recheck，不升格為 consumer browser、Production release 或 L4 evidence；O04～O07 仍由跨 owner 驗收承接。
+在 task-owned PostgreSQL 18.4 再執行 `npm run qc:dev-057:postgres`：D57-01～D57-08 全部 PASS，`executedCaseCount=8`，包括未分類 legacy mapping 不進 accounts adapter、managed mapping 僅經 exact identity/admission match 進入 accounts adapter，以及 Platform legacy projection 保持不變。client／auxiliary clients 已關閉、cluster 已停止、port 已釋放、temporary root 已移除，`productionWrites=false`。Authority runner unit tests另驗證 canonical mapping 存在但 typed accounts view 缺列時，CAS 前即 fail closed。Platform 隔離 PostgreSQL 驗證其 owner-owned CAS 僅接受 `human_personal`，相同 operation 可重播且不重複 receipt/outbox，runtime 無 execute 權限。這些是本地契約證據，不升格為 Production readback、authority switch、browser 或 L4 evidence；Production 必須先讀回兩個 OrgMaster views 一致後才可考慮切換。

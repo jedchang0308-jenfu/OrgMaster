@@ -27,7 +27,7 @@ const outputDir = path.join(root, dev057 ? 'dev-057' : dev049 ? 'dev-049' : dev0
 const configuredDev057Output = process.env.DEV057_QC_OUTPUT_PATH?.trim()
 const outputPath = dev057 ? path.resolve(configuredDev057Output || path.join(os.tmpdir(), `orgmaster-dev057-postgres-${process.pid}.json`)) : path.join(outputDir, 'manifest.json')
 if (dev057 && configuredDev057Output && fs.existsSync(outputPath)) throw new Error('DEV057_QC_OUTPUT_ALREADY_EXISTS')
-const migrationCeiling = dev057 ? 21 : dev055 ? 20 : dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
+const migrationCeiling = dev057 ? 23 : dev055 ? 20 : dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
 const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((name) => /^\d{3}_.*\.sql$/u.test(name) && Number(name.slice(0, 3)) <= migrationCeiling).sort()
 const checks = []
 const cleanup = { clientClosed: false, auxiliaryClientsClosed: false, clusterStopped: false, portReleased: false, tempRemoved: false }
@@ -718,6 +718,54 @@ async function runDev057Checks() {
     }
     return { publisherFirst: 'bind waited, then rejected the published pair', binderFirst: 'publisher waited, then rejected the reserved pair', lock: 'managed_identity_admission_authority.singleton' }
   })
+
+  await check('D57-07', 'identity-only producer keeps unclassified legacy mapping out of the account-typed adapter', async () => {
+    const artifact = await activeGovernanceArtifact()
+    const payload = structuredClone(artifact.payload)
+    const version = payload.publishedVersions.find((item) => item.id === payload.activePolicyVersionId)
+    version.policy.identityLinks.push({
+      id: 'identity-link-unclassified', employeeId: 'employee-two', issuer: 'issuer-unclassified',
+      subject: 'subject-unclassified', principalId: 'principal-unclassified', status: 'active',
+      validFrom: '2026-01-01T00:00:00.000Z',
+    })
+    await saveFixtureGovernance(payload)
+
+    const canonical = await queryAs('jenfu_platform_runtime', `SELECT principal_id,employee_id
+      FROM orgmaster_contract.v_active_principal_mappings_v1
+      WHERE principal_issuer='issuer-unclassified' AND principal_subject='subject-unclassified'`)
+    const typed = await queryAs('jenfu_platform_runtime', `SELECT account_type
+      FROM orgmaster_contract.v_active_principal_accounts_v1
+      WHERE principal_issuer='issuer-unclassified' AND principal_subject='subject-unclassified'`)
+    const explicitLegacy = await queryAs('jenfu_platform_runtime', `SELECT account_type
+      FROM orgmaster_contract.v_active_principal_accounts_v1
+      WHERE principal_issuer='issuer-legacy' AND principal_subject='subject-legacy'`)
+    assert.deepEqual(canonical.rows, [{ principal_id: 'principal-unclassified', employee_id: 'employee-two' }])
+    assert.equal(typed.rowCount, 0, 'unclassified legacy mapping must not receive an implicit account type')
+    assert.deepEqual(explicitLegacy.rows, [{ account_type: 'human_personal' }])
+    return { canonicalContainsUnclassifiedLegacy: true, typedAdapterRowsForIt: 0, explicitLegacyAdmissionPreserved: true }
+  })
+
+  await check('D57-08', 'active managed mapping reaches typed adapter only through an exact managed identity match', async () => {
+    const canonical = await queryAs('jenfu_platform_runtime', `SELECT principal_id,employee_id,mapping_version::text
+      FROM orgmaster_contract.v_active_principal_mappings_v1
+      WHERE principal_issuer='issuer-race-binder-first' AND principal_subject='subject-race-binder-first'`)
+    const typed = await queryAs('jenfu_platform_runtime', `SELECT principal_id,employee_id,account_type,mapping_version::text
+      FROM orgmaster_contract.v_active_principal_accounts_v1
+      WHERE principal_issuer='issuer-race-binder-first' AND principal_subject='subject-race-binder-first'`)
+    const legacyProjection = await client.query(`SELECT principal_id,employee_id
+      FROM access_governance.v_active_principal_links_v1
+      WHERE principal_issuer='issuer-race-binder-first' AND principal_subject='subject-race-binder-first'`)
+    assert.equal(canonical.rowCount, 1, 'managed identity must be present in the published identity producer')
+    assert.equal(typed.rowCount, 1, 'exact active managed identity must be present in the typed adapter')
+    assert.deepEqual(typed.rows[0], {
+      principal_id: canonical.rows[0].principal_id,
+      employee_id: canonical.rows[0].employee_id,
+      account_type: 'human_personal',
+      mapping_version: canonical.rows[0].mapping_version,
+    })
+    assert.equal(legacyProjection.rowCount, 0, 'Platform-owned legacy projection remains unchanged and is not the managed-principal contract')
+    return { canonicalProducerRows: canonical.rowCount, typedAdapterRows: typed.rowCount, accountType: typed.rows[0].account_type, platformLegacyProjectionUnchanged: true }
+  })
 }
 
 function persistenceFixture() {
@@ -897,7 +945,7 @@ async function main() {
   postgresBin = runtime.bin
   taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), dev057 ? 'orgmaster-dev057-qc-' : dev049 ? 'orgmaster-dev049-qc-' : dev050 ? 'orgmaster-dev050-qc-' : dev052 ? 'orgmaster-dev052-qc-' : dev053 ? 'orgmaster-dev053-qc-' : dev054 ? 'orgmaster-dev054-qc-' : dev055 ? 'orgmaster-dev055-qc-' : 'orgmaster-dev047-qc-'))
   clusterDir = path.join(taskRoot, 'cluster'); postgresLog = path.join(taskRoot, 'postgres.log'); port = await freePort()
-  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev057 ? 'DEV-057 isolated PostgreSQL 001-021 producer fence and projection QC' : dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : dev055 ? 'DEV-055 isolated PostgreSQL 001-020 current projection contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'all clients closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
+  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev057 ? 'DEV-057 isolated PostgreSQL 001-023 identity producer and typed projection QC' : dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : dev055 ? 'DEV-055 isolated PostgreSQL 001-020 current projection contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'all clients closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
   run(path.join(postgresBin, 'initdb.exe'), ['-D', clusterDir, '--auth-local=trust', '--auth-host=trust', '--username=postgres', '--encoding=UTF8', '--no-locale'])
   run(path.join(postgresBin, 'pg_ctl.exe'), ['-D', clusterDir, '-l', postgresLog, '-o', `-p ${port} -h 127.0.0.1`, '-w', 'start'], { stdio: 'ignore' })
   started = true
@@ -1015,11 +1063,11 @@ finally {
   if (taskRoot) { try { fs.rmSync(taskRoot, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 }); cleanup.tempRemoved = !fs.existsSync(taskRoot) } catch { cleanup.tempRemoved = false } } else cleanup.tempRemoved = true
 }
 
-const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06'] : requiredCorrectionCases
+const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06','D57-07','D57-08'] : requiredCorrectionCases
 const allRequiredPassed = requiredCases.every((id) => checks.some((entry) => entry.id === id && entry.status === 'PASS'))
 const status = !firstFailure && allRequiredPassed && Object.values(cleanup).every(Boolean) ? 'PASS' : firstFailure?.reasonCode === 'POSTGRES_RUNTIME_MISSING' ? 'BLOCKED' : 'FAIL'
 const manifest = {
-  contract: dev049 ? 'DEV-049' : dev050 ? 'DEV-050' : dev052 ? 'DEV-052' : dev053 ? 'DEV-053' : dev054 ? 'DEV-054' : dev055 ? 'DEV-055' : dev057 ? 'DEV-057' : 'DEV-047', runner: dev049 ? 'DEV-049-postgres-qc-v1' : dev050 ? 'DEV-050-postgres-qc-v1' : dev052 ? 'DEV-052-postgres-qc-v1' : dev053 ? 'DEV-053-postgres-qc-v1' : dev054 ? 'DEV-054-postgres-qc-v1' : dev055 ? 'DEV-055-postgres-qc-v1' : dev057 ? 'DEV-057-postgres-qc-v1' : 'DEV-047-postgres-qc-v1', evidenceScope: 'TASK_OWNED_LOCAL_ISOLATED', status,
+  contract: dev049 ? 'DEV-049' : dev050 ? 'DEV-050' : dev052 ? 'DEV-052' : dev053 ? 'DEV-053' : dev054 ? 'DEV-054' : dev055 ? 'DEV-055' : dev057 ? 'DEV-057' : 'DEV-047', runner: dev049 ? 'DEV-049-postgres-qc-v1' : dev050 ? 'DEV-050-postgres-qc-v1' : dev052 ? 'DEV-052-postgres-qc-v1' : dev053 ? 'DEV-053-postgres-qc-v1' : dev054 ? 'DEV-054-postgres-qc-v1' : dev055 ? 'DEV-055-postgres-qc-v1' : dev057 ? 'DEV-057-postgres-qc-v2' : 'DEV-047-postgres-qc-v1', evidenceScope: 'TASK_OWNED_LOCAL_ISOLATED', status,
   generatedAt: new Date().toISOString(), productionWrites: false, executedCaseCount: checks.length,
   sourceRevision: run('git', ['rev-parse', 'HEAD']).stdout.trim(), dirty: run('git', ['status', '--short']).stdout.trim().split(/\r?\n/u).filter(Boolean),
   serverVersion, acceptedServerMajors: [17, 18], migrations: migrationEvidence, checks, firstFailure,
