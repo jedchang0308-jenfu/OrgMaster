@@ -15,8 +15,10 @@ async function check(name, task) {
 }
 function includesAll(text, values) { for (const value of values) assert.ok(text.includes(value), `missing ${value}`) }
 
-const [migrationBytes, auth, service, repository, admission, client, gate, bridgeExists] = await Promise.all([
+const [migrationBytes, managedSessionMigrationBytes, principalProjectionMigrationBytes, auth, service, repository, admission, client, gate, bridgeExists] = await Promise.all([
   readFile(join(root, 'db', 'migrations', '014_dev050_orgmaster_session_admission.sql')),
+  readFile(join(root, 'db', 'migrations', '022_dev014_managed_login_session_admission.sql')),
+  readFile(join(root, 'db', 'migrations', '023_dev014_authority_principal_projection_contract.sql')),
   source('server/orgmasterAuthApi.ts'),
   source('server/orgmasterManagedIdentityService.ts'),
   source('server/orgmasterManagedIdentityRepository.ts'),
@@ -26,6 +28,8 @@ const [migrationBytes, auth, service, repository, admission, client, gate, bridg
   readFile(join(root, 'server', 'orgmasterManagedIdentityAuthBridge.ts')).then(() => true).catch(() => false),
 ])
 const migration = migrationBytes.toString('utf8').replaceAll('\r\n', '\n')
+const managedSessionMigration = managedSessionMigrationBytes.toString('utf8').replaceAll('\r\n', '\n')
+const principalProjectionMigration = principalProjectionMigrationBytes.toString('utf8').replaceAll('\r\n', '\n')
 
 await check('forward-only app-local admission view and least privilege', () => {
   assert.match(migration, /^-- DB-CHANGE\n-- owner: orgmaster\n-- schemas: orgmaster_core, orgmaster_contract[\s\S]*-- governance-review: DEV-050/mu)
@@ -33,6 +37,26 @@ await check('forward-only app-local admission view and least privilege', () => {
   assert.doesNotMatch(migration, /\bDROP\s+(?:TABLE|COLUMN|SCHEMA|VIEW)\b/iu)
   assert.doesNotMatch(migration, /CREATE\s+OR\s+REPLACE\s+VIEW\s+orgmaster_contract\.v_active_principal_mappings_v1/iu)
   assert.doesNotMatch(migration, /GRANT\s+SELECT\s+ON\s+orgmaster_contract\.v_orgmaster_session_principals_v1\s+TO\s+(?:jenfu_platform_runtime|jenfu_ai_pdm_runtime)/iu)
+})
+
+await check('managed-login bridge admits published AI-PDM employees without granting OrgMaster roles', () => {
+  assert.match(managedSessionMigration, /^-- DB-CHANGE\n-- owner: orgmaster\n-- schemas: orgmaster_core, orgmaster_contract[\s\S]*-- governance-review: DEV-014/mu)
+  includesAll(managedSessionMigration, ['v_orgmaster_session_principals_v2', "'orgmaster.session-principal.v2'", "IN ('orgmaster', 'ai-pdm')", 'v_active_principal_mappings_v1', 'REVOKE ALL', 'jenfu_orgmaster_runtime'])
+  assert.doesNotMatch(managedSessionMigration, /\bDROP\s+(?:TABLE|COLUMN|SCHEMA|VIEW)\b/iu)
+  assert.doesNotMatch(managedSessionMigration, /CREATE\s+OR\s+REPLACE\s+VIEW\s+orgmaster_contract\.v_orgmaster_session_principals_v1/iu)
+})
+
+await check('authority switch consumes the published managed-principal mapping contract', () => {
+  assert.match(principalProjectionMigration, /^-- DB-CHANGE\n-- owner: orgmaster[\s\S]*-- governance-review: DEV-014/mu)
+  includesAll(principalProjectionMigration, [
+    'orgmaster_contract.v_active_principal_links_v1',
+    'orgmaster_contract.v_active_principal_mappings_v1',
+    'access_governance.v_active_principal_links_v1',
+    'CREATE OR REPLACE VIEW',
+    'account_type',
+  ])
+  assert.doesNotMatch(principalProjectionMigration, /DROP\s+(?:TABLE|COLUMN|SCHEMA|VIEW)/iu)
+  assert.doesNotMatch(principalProjectionMigration, /INSERT\s+INTO\s+(?:orgmaster_core|access_governance)\./iu)
 })
 
 await check('mandatory verifier has no email-search fallback and preserves one retry fence', () => {
@@ -57,7 +81,7 @@ await check('auth API freezes identifier, uses canonical-first admission and rer
 
 await check('private same-snapshot repository and app-scoped admission repository', () => {
   includesAll(repository, ['readManagedLoginSnapshot', 'WITH login AS MATERIALIZED', 'read_managed_login_identity_v1', 'read_employee_managed_identity_v1', 'MANAGED_LOGIN_READ_FAILED'])
-  includesAll(admission, ['v_orgmaster_session_principals_v1', 'orgmaster.session-principal.v1'])
+  includesAll(admission, ['v_orgmaster_session_principals_v2', 'orgmaster.session-principal.v2'])
   assert.doesNotMatch(admission, /v_active_principal_mappings_v1/u)
 })
 

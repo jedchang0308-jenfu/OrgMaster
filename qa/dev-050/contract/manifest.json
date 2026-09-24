@@ -2,11 +2,19 @@
   "contract": "DEV-050",
   "evidenceScope": "LOCAL_ISOLATED",
   "status": "PASS",
-  "generatedAt": "2026-09-21T19:41:25.627Z",
+  "generatedAt": "2026-09-24T03:30:39.425Z",
   "migrationSha256": "f39ea5eb7e9f4accbe66961fa73345b788aa609b8a7de658c416335311463867",
   "checks": [
     {
       "name": "forward-only app-local admission view and least privilege",
+      "status": "PASS"
+    },
+    {
+      "name": "managed-login bridge admits published AI-PDM employees without granting OrgMaster roles",
+      "status": "PASS"
+    },
+    {
+      "name": "authority switch consumes the published managed-principal mapping contract",
       "status": "PASS"
     },
     {
@@ -31,18 +39,21 @@
     }
   ],
   "source": {
-    "gitHead": "88bdcef884bb54075f7d0e40c9a1e2e39d2aba87",
+    "gitHead": "9675c3fc452f9c54249799dd8093dd9a5e7c00a0",
     "dirty": [
-      "M ai-doc/dev_task.md",
-      " M ai-doc/documentation_map.md",
-      " M ai-doc/specs/DEV-049-existing-google-primary-account-link.md",
+      "M ai-doc/documentation_map.md",
+      " M ai-doc/reports/pm/DEV-014-015-057-118-121-consumer-completion-audit-2026-09-24.md",
       " M ai-doc/specs/DEV-050-dual-identifier-managed-login.md",
-      " M qa/dev-049/contracts/manifest.json",
-      " M scripts/qc-dev-049-contract.mjs",
+      " M ai-doc/specs/DEV-057-identity-and-grant-contract-boundary.md",
+      " M qa/dev-050/contract/manifest.json",
+      " M scripts/dev014-production-login-authority-switch-runner.mjs",
+      " M scripts/dev014-production-login-authority-switch-runner.test.mjs",
       " M scripts/qc-dev-050-contract.mjs",
-      " M server/orgmasterAuthApi.test.ts",
-      " M server/orgmasterAuthApi.ts",
-      "?? qa/dev-050/"
+      " M server/dev010DatabaseBoundary.test.ts",
+      " M server/orgmasterPrincipalAdmissionRepository.test.ts",
+      " M server/orgmasterPrincipalAdmissionRepository.ts",
+      "?? db/migrations/022_dev014_managed_login_session_admission.sql",
+      "?? db/migrations/023_dev014_authority_principal_projection_contract.sql"
     ]
   }
 }

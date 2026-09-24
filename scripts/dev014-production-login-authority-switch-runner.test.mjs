@@ -27,8 +27,8 @@ function fakeDatabase({ mode = 'legacy', failSecond = false, partial = false, mi
   }
   const query = async (sql, params = []) => {
     calls.push({ sql, params })
-    if (sql.includes('v_active_principal_links_v1')) {
-      return { rows: missingBridge ? [] : [{ employee_id: params[0], principal_id: `principal-${params[0]}`, account_type: 'human_personal' }] }
+    if (sql.includes('v_active_principal_mappings_v1')) {
+      return { rows: missingBridge ? [] : [{ employee_id: params[0], principal_id: `principal-${params[0]}`, principal_issuer: 'issuer', principal_subject: `subject-${params[0]}` }] }
     }
     if (sql.startsWith('SELECT payload')) return { rows: [{ payload: governance, canonical_sha256: governanceSha, source_revision: governanceSourceRevision }] }
     if (sql.includes('v_ai_pdm_entitlement_authority_v1')) {

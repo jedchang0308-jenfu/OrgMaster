@@ -11,11 +11,11 @@
 
 OrgMaster 是 active employee／principal、AI-PDM 授權來源與 published grants 的 producer。此 DEV 只定義 producer 可對外保證的唯一性、一致性與版本語意；不把 AI-PDM role catalog、route policy 或 Platform SSO broker 移入 OrgMaster，也不讓 consumer 讀 `orgmaster_core`。
 
-現有 `orgmaster_contract.v_active_principal_mappings_v1`、`v_orgmaster_session_principals_v1`、`v_ai_pdm_entitlement_authority_v1`、`v_ai_pdm_effective_role_assignments_v1`、`v_portal_app_visibility_v1` 為起點。DEV-055／056 及 migrations 001–020 的既有實作／驗證保持原狀；修正只能追加 migration 021，不修改已套用 migration 或重寫歷史 evidence。
+現有 `orgmaster_contract.v_active_principal_mappings_v1`、`v_orgmaster_session_principals_v1`、`v_ai_pdm_entitlement_authority_v1`、`v_ai_pdm_effective_role_assignments_v1`、`v_portal_app_visibility_v1` 為起點。DEV-055／056 及 migrations 001–020 的既有實作／驗證保持原狀；修正只能追加 forward-only migration，不修改已套用 migration 或重寫歷史 evidence。`orgmaster_contract.v_active_principal_mappings_v1` 是唯一 principal producer；舊 `access_governance` 名稱若仍供 authority／outbox consumer 使用，只能是同一 producer 的相容 read／execute wrapper，不能再形成第二套 identity projection。
 
 | Producer projection | 它回答的問題 | 不可代替 |
 | --- | --- | --- |
-| `v_active_principal_mappings_v1` | issuer＋subject 是否唯一連到 active employee；**不要求任何 app role**。Platform 與 AI-PDM 的身分 admission 使用它。 | OrgMaster session、Portal visibility、AI-PDM permission。 |
+| `v_active_principal_mappings_v1` | issuer＋subject 是否唯一連到 active employee；**不要求任何 app role**。Platform 與 AI-PDM 的身分 admission 使用它。OrgMaster 的 managed-login session、authority preflight 也必須從此 producer 讀取；`access_governance.v_active_principal_links_v1` 只能保留為帶 `account_type` 的相容 adapter。 | OrgMaster permission、Portal visibility、AI-PDM permission。 |
 | `v_orgmaster_session_principals_v1` | active mapping 之上是否另有有效 OrgMaster app／global role；OrgMaster callback 使用它。 | 其他目標的身分或權限。 |
 | `v_portal_app_visibility_v1` | 已發布、有效且匹配 active principal 的某 app **入口指派**是否讓 Portal 啟動；對 AI-PDM 不以 `authority_source` 分流。 | 目標業務 route allow；local ACL 不能自行產生入口。 |
 | AI-PDM authority／effective-grant views | 目標的來源與 OrgMaster published grants。 | AI-PDM local resource／role／route policy。 |

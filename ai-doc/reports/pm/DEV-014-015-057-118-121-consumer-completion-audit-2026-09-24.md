@@ -18,6 +18,18 @@
 - 在 bridge readback 前，authority switch、receipt／outbox、完整 LOGIN 分母、Production L4、negative／rate／race 與 cleanup 均維持 fail-closed，不能以 local PASS 代替。
 - 最近 authority Job 在 CAS 前以 `DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED` 停止，已恢復 `--bundle-ref-required` baseline，沒有 authority、receipt、outbox 或資料 mutation。
 
+## Projection contract finding and fix-forward
+
+這次停止的根因已與「managed identity 是否已連結」分開確認：managed bridge 的 active row 已存在於發布者契約 `orgmaster_contract.v_active_principal_mappings_v1`，但 authority runner 仍讀舊的 `access_governance.v_active_principal_links_v1`。舊 view 只投影治理 `identityLinks`，因此對只有 AI-PDM assignment 的 Free fixture 回傳 0 列；runner 在 CAS 前拒絕是正確的 fail-closed 行為，之前反覆重跑沒有解決這個投影斷點。
+
+修正採 forward-only、契約分層方式：
+
+- migration `022_dev014_managed_login_session_admission.sql` 新增 `orgmaster_contract.v_orgmaster_session_principals_v2`，以已發布的 `v_active_principal_mappings_v1` 加上 `orgmaster`／`ai-pdm` active assignment 作 OrgMaster session bootstrap eligibility；不放大 OrgMaster permission。
+- migration `023_dev014_authority_principal_projection_contract.sql` 新增帶 `account_type` 的 `orgmaster_contract.v_active_principal_links_v1`，並把既有 `access_governance.v_active_principal_links_v1` 保留為相容 wrapper，來源改為同一個 published mapping producer。authority runner 改讀 `orgmaster_contract.v_active_principal_mappings_v1`，不再把舊 compatibility view 當成 mapping producer。
+- 舊 v1 migration bytes、既有資料、assignment、authority、receipt、outbox、IAM、Secret 與 service 均未修改；本輪只做 local contract／build／targeted test 與文件修正。
+
+在新的 OrgMaster owner release 及 Production readback 證明兩個 Free fixture 的 issuer／subject／principal／Employee 在 producer 與 compatibility adapter 中各恰一列以前，禁止再次執行相同 authority switch。readback 未通過時維持 `DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED`，不以手工 SQL、operator bypass 或猜測映射繞過。
+
 ## 邊界與後續序列
 
 只使用兩個核准的 Free-only disposable fixture；不修改其他 Employee、七個付費帳號、既有 binding 或 permission，不購買席次。完成真人 Google 互動後，依序重新讀回 source／image／Job binding、bridge → authority switch／replay → Platform／AI-PDM L4 → negative／rate／race／logout → observation／cleanup。跨專案彙總見 Platform [completion audit](../../../../Jenfu-Platform/ai-doc/reports/pm/DEV-014-015-057-118-121-completion-audit-2026-09-24.md)。
