@@ -240,6 +240,28 @@ test('OrgMaster owner prepare accepts only the bounded DEV-014 login-fixture cor
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })
 
+test('OrgMaster owner prepare accepts only the exact DEV-014 managed-principal projection remediation authority', () => {
+  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+    .map((name) => [name, 'fixture-public-value']))
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: resolvePlainEnvironment(profile, priorPlainEnvironment), secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  const remediation = {
+    kind: 'MANAGED_PRINCIPAL_PROJECTION_CONTRACT_CORRECTION',
+    migrationVersions: ['dev014-orgmaster-022', 'dev014-orgmaster-023'],
+    producerView: 'orgmaster_contract.v_active_principal_mappings_v1',
+    adapterViews: ['orgmaster_contract.v_active_principal_accounts_v1'],
+    applicationId: 'ai-pdm',
+    employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
+  }
+  fixture.intent.baselineIntentRef = ref('baseline-release-intent')
+  fixture.values.authorization = { ...fixture.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION')
+  fixture.values.readiness.remediation = { ...remediation, adapterViews: ['orgmaster_contract.v_active_principal_accounts_v1', 'access_governance.v_active_principal_links_v1'] }
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+})
+
 test('OrgMaster owner prepare accepts only the exact DEV-057 writer-fence remediation authority', () => {
   const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
     .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))

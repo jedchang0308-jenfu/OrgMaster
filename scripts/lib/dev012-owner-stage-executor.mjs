@@ -207,6 +207,29 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
           || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
         return { releaseMode: 'DEV014_PROJECTION_CONTRACT_REMEDIATION', remediation: expectedRemediation }
       }
+      if (values.readiness?.slice === '014-MANAGED-PRINCIPAL-PROJECTION') {
+        const expectedRemediation = {
+          kind: 'MANAGED_PRINCIPAL_PROJECTION_CONTRACT_CORRECTION',
+          migrationVersions: ['dev014-orgmaster-022', 'dev014-orgmaster-023'],
+          producerView: 'orgmaster_contract.v_active_principal_mappings_v1',
+          adapterViews: ['orgmaster_contract.v_active_principal_accounts_v1'],
+          applicationId: 'ai-pdm',
+          employeeIds: ['01a0c82b-11c6-77ab-887f-58df9d243e63', '01a0c82b-372c-7d20-ba3b-6e3b892d2f63'],
+        }
+        if (!intent.baselineIntentRef
+          || values.authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+          || values.authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+          || values.authorization.devId !== 'DEV-014' || values.authorization.slice !== '014-MANAGED-PRINCIPAL-PROJECTION'
+          || values.readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+          || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
+          || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision
+          || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
+          || canonicalize(values.authorization.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.authorization.remediation) !== canonicalize(expectedRemediation)
+          || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
+        return { releaseMode: 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', remediation: expectedRemediation }
+      }
       if (values.readiness?.slice === '014-LOGIN-FIXTURE-CORRECTION') {
         const expectedCorrection = {
           kind: 'LOGIN_FIXTURE_ACTIVATION_CONTRACT_CORRECTION',
