@@ -10,7 +10,7 @@ function rawOperation(operationKind = 'switch', authorityVersion = operationKind
   const switchOperation = operationKind === 'switch'
   const preflight = operationKind === 'preflight'
   return {
-    schemaVersion: 'jenfu.dev013.production-authority-operation.v1', operationKind, sourceRevision,
+    schemaVersion: 'jenfu.dev013.production-authority-operation.v2', operationKind, sourceRevision,
     projectId: 'jenfu-platform-prod', region: 'asia-east1', instance: 'jenfu-platform-prod-pg', database: 'jenfu_prod',
     applicationId: 'ai-pdm', employeeId: 'employee-shijie',
     fromAuthoritySource: switchOperation || preflight ? 'legacy_authority' : 'orgmaster_authority',
@@ -19,6 +19,7 @@ function rawOperation(operationKind = 'switch', authorityVersion = operationKind
     expectedNextAuthorityVersion: preflight ? authorityVersion : authorityVersion + 1,
     expectedAssignmentVersionId: preflight ? null : 'assignment-policy-prod',
     expectedRoleCodes: preflight ? [] : ['rd', 'system_admin'],
+    targetIdentity: preflight ? null : { principalId: 'principal-personal', issuer: 'issuer-personal', subject: 'subject-personal' },
     operationId: `dev013-p-both-employee-shijie-${operationKind}-v1`, batchId: 'DEV-013-P_BOTH-20260921',
     actor: 'jedchang0308@jenfu.com.tw', reason: `DEV-013 P_BOTH ${operationKind} single employee authority`,
     deadlineAt: '2026-09-21T03:00:00.000Z',
@@ -50,27 +51,45 @@ function fakeDatabase({ systemAdmin = true, catalog = true, initialSource = 'leg
     state,
     async query(sql, params = []) {
       if (sql.startsWith('SELECT current_database()')) return { rows: [{ database: 'jenfu_prod', user: DEV013_AUTHORITY_TARGET.login, postgresMajor: 17, migratorMember: true }] }
-      if (sql.includes('FROM access_governance.application_authority_state')) return { rows: [{ authority_source: state.source, authority_version: state.version, override_operation_id: state.receipt?.operation_id ?? null }] }
+      if (sql.includes('FROM orgmaster_contract.v_ai_pdm_entitlement_authority_v1')) return { rows: [{ authority_source: state.source, authority_version: state.version, override_operation_id: state.receipt?.operation_id ?? null }] }
       if (sql.includes('WITH active_batch AS')) return { rows: [{ batch_id: 'batch-prod', governance_hash: 'governance-hash', active_version_id: 'assignment-policy-prod', active_version: governanceVersion({ systemAdmin }) }] }
       if (sql.includes('FROM ai_pdm_contract.v_application_role_catalog_v1')) return { rows: catalog ? [
         { catalog_version: 'ai-pdm.role-catalog.2026-09-03.v3', stable_role_id: 'role-rd', role_code: 'rd', assignable: true, subject_kind: 'employee', allowed_scope_kinds: ['workspace'] },
         { catalog_version: 'ai-pdm.role-catalog.2026-09-03.v3', stable_role_id: 'role-system-admin', role_code: 'system_admin', assignable: true, subject_kind: 'principal', allowed_scope_kinds: ['global'] },
       ] : [] }
-      if (sql.includes('FROM access_governance.v_active_principal_links_v1')) return { rows: [
-        { principal_id: 'principal-personal', account_type: 'human_personal' },
-        { principal_id: 'principal-privileged', account_type: 'human_privileged' },
+      if (sql.includes('FROM orgmaster_contract.v_active_principal_accounts_v1')) return { rows: [
+        { employee_id: 'employee-shijie', principal_id: 'principal-personal', principal_issuer: 'issuer-personal', principal_subject: 'subject-personal', account_type: 'human_personal' },
+        { employee_id: 'employee-shijie', principal_id: 'principal-privileged', principal_issuer: 'issuer-privileged', principal_subject: 'subject-privileged', account_type: 'human_privileged' },
       ] }
-      if (sql.includes('FROM access_governance.v_effective_role_assignments_v1')) return { rows: state.source === 'orgmaster_authority' ? [{ role_code: 'rd' }, { role_code: 'system_admin' }] : [] }
-      if (sql.includes('FROM access_governance.authority_switch_receipts')) return { rows: state.receipt ? [state.receipt] : [] }
-      if (sql.includes('FROM access_governance.entitlement_change_outbox')) return { rows: state.outbox ? [state.outbox] : [] }
-      if (sql.includes('switch_employee_entitlement_authority_v1')) {
+      if (sql.includes('FROM orgmaster_contract.v_ai_pdm_effective_role_assignments_v1')) return { rows: state.source === 'orgmaster_authority' ? [{ role_code: 'rd' }, { role_code: 'system_admin' }] : [] }
+      if (sql.includes('read_employee_authority_operation_v1')) {
+        if (!state.receipt || state.receipt.operation_id !== params[2]) return { rows: [] }
+        const receipt = state.receipt
+        const outbox = state.outbox
+        return { rows: [{
+          receipt: { receiptId: receipt.receipt_id, operationId: receipt.operation_id, batchId: receipt.batch_id,
+            applicationId: receipt.application_id, employeeId: receipt.employee_id,
+            fromAuthoritySource: receipt.from_authority_source, toAuthoritySource: receipt.to_authority_source,
+            authorityVersion: receipt.authority_version, assignmentVersionId: receipt.assignment_version_id,
+            sessionRefreshState: receipt.session_refresh_state, actor: receipt.actor, reason: receipt.reason,
+            switchedAt: receipt.switched_at, requestContractVersion: receipt.request_contract_version,
+            requestHash: receipt.request_hash, targetPrincipalId: receipt.target_principal_id,
+            targetIdentityIssuer: receipt.target_identity_issuer, targetIdentitySubject: receipt.target_identity_subject },
+          outbox: outbox ? { eventId: outbox.event_id, operationId: outbox.operation_id,
+            employeeId: outbox.employee_id, applicationId: outbox.application_id, eventKind: outbox.event_kind,
+            actor: outbox.actor, reasonCode: outbox.reason_code, status: outbox.status,
+            attemptCount: outbox.attempt_count, platformReceiptId: outbox.platform_receipt_id,
+            createdAt: outbox.created_at, completedAt: outbox.completed_at } : null,
+        }] }
+      }
+      if (sql.includes('switch_employee_entitlement_authority_v2')) {
         assert.deepEqual(params.slice(0, 2), ['ai-pdm', 'employee-shijie'])
         assert.equal(params[3], state.receipt ? state.receipt.authority_version - 1 : state.version)
         const replayed = state.receipt !== null
         if (!replayed) {
           const from = state.source
           state.source = params[2]; state.version = params[3] + 1
-          state.receipt = { receipt_id: '00000000-0000-4000-8000-000000000001', operation_id: params[4], batch_id: params[5], application_id: params[0], employee_id: params[1], from_authority_source: from, to_authority_source: params[2], authority_version: state.version, assignment_version_id: params[6], session_refresh_state: 'pending', actor: params[7], reason: params[8], switched_at: '2026-09-21T01:00:01.000Z' }
+          state.receipt = { receipt_id: '00000000-0000-4000-8000-000000000001', operation_id: params[4], batch_id: params[5], application_id: params[0], employee_id: params[1], from_authority_source: from, to_authority_source: params[2], authority_version: state.version, assignment_version_id: params[6], session_refresh_state: 'pending', actor: params[7], reason: params[8], switched_at: '2026-09-21T01:00:01.000Z', request_contract_version: 'orgmaster.employee-authority-switch.v2', request_hash: 'a'.repeat(64), target_principal_id: params[9], target_identity_issuer: params[10], target_identity_subject: params[11] }
           state.outbox = { event_id: '00000000-0000-4000-8000-000000000002', operation_id: params[4], employee_id: params[1], application_id: params[0], event_kind: 'authority_switch', actor: params[7], reason_code: 'entitlement_authority_switch', status: 'pending', attempt_count: 0, platform_receipt_id: null, created_at: '2026-09-21T01:00:01.000Z', completed_at: null }
         }
         return { rows: [{ receipt_id: state.receipt.receipt_id, authority_version: state.version, outbox_event_id: state.outbox.event_id, session_refresh_state: state.receipt.session_refresh_state, replayed }] }
@@ -97,11 +116,11 @@ test('operation manifest is source, target, employee, role-set and deadline boun
 })
 
 test('manifest builder derives switch and rollback bindings only from matching immutable evidence', () => {
-  const preflight = { schemaVersion: 'jenfu.dev013.production-authority-preflight.v1', sourceRevision, target: { projectId: 'jenfu-platform-prod', database: 'jenfu_prod', applicationId: 'ai-pdm', employeeId: 'employee-shijie' }, state: { authoritySource: 'legacy_authority', authorityVersion: 1, assignmentVersionId: 'assignment-policy-prod', roles: ['rd', 'system_admin'], projectionReady: true, projectedRoleCodes: ['rd', 'system_admin'] }, mutationCount: 0, status: 'PASS' }
+  const preflight = { schemaVersion: 'jenfu.dev013.production-authority-preflight.v1', sourceRevision, target: { projectId: 'jenfu-platform-prod', database: 'jenfu_prod', applicationId: 'ai-pdm', employeeId: 'employee-shijie' }, state: { authoritySource: 'legacy_authority', authorityVersion: 1, assignmentVersionId: 'assignment-policy-prod', roles: ['rd', 'system_admin'], projectionReady: true, projectedRoleCodes: ['rd', 'system_admin'], targetIdentity: { principalId: 'principal-personal', issuer: 'issuer-personal', subject: 'subject-personal' } }, mutationCount: 0, status: 'PASS' }
   const switchOperation = buildAuthorityOperation({ operationKind: 'switch', sourceRevision, deadlineAt: '2026-09-21T03:00:00.000Z', evidence: preflight })
   assert.deepEqual(switchOperation.expectedRoleCodes, ['rd', 'system_admin'])
   assert.equal(switchOperation.expectedAssignmentVersionId, 'assignment-policy-prod')
-  const switchReceipt = { schemaVersion: 'jenfu.dev013.production-authority-switch-receipt.v1', sourceRevision, operationKind: 'switch', target: preflight.target, transition: { toAuthoritySource: 'orgmaster_authority', toAuthorityVersion: 2 }, governance: { assignmentVersionId: 'assignment-policy-prod', roles: ['rd', 'system_admin'] }, databaseEffect: 'APPLIED_ONCE', replaySafe: true, status: 'PASS' }
+  const switchReceipt = { schemaVersion: 'jenfu.dev013.production-authority-switch-receipt.v1', sourceRevision, operationKind: 'switch', target: preflight.target, transition: { toAuthoritySource: 'orgmaster_authority', toAuthorityVersion: 2 }, governance: { assignmentVersionId: 'assignment-policy-prod', roles: ['rd', 'system_admin'], targetIdentity: preflight.state.targetIdentity }, databaseEffect: 'APPLIED_ONCE', replaySafe: true, status: 'PASS' }
   const rollback = buildAuthorityOperation({ operationKind: 'rollback', sourceRevision, deadlineAt: '2026-09-21T03:00:00.000Z', evidence: switchReceipt })
   assert.equal(rollback.fromAuthoritySource, 'orgmaster_authority')
   assert.equal(rollback.toAuthoritySource, 'legacy_authority')
@@ -147,7 +166,7 @@ test('preflight proves exact legacy state and current privileged policy without 
   assert.equal(database.state.receipt, null)
 })
 
-test('switch calls the existing CAS function, verifies receipt/outbox and is replayable', async () => {
+test('switch calls the owner v2 command, verifies receipt/outbox and is replayable', async () => {
   const database = fakeDatabase()
   const operation = rawOperation('switch')
   const first = await executeAuthorityOperation({ database, operation, now: (() => { let tick = 0; return () => `2026-09-21T01:00:0${tick++}.000Z` })() })

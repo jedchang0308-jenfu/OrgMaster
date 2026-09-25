@@ -106,6 +106,11 @@ export function assertEmployeeAuthoritySwitchAccess(document: GovernanceDocument
 function mappedDatabaseError(error: unknown) {
   const message = error instanceof Error ? error.message : ''
   for (const code of [
+    'authority_transaction_mode_invalid',
+    'legacy_receipt_unbound',
+    'ENTITLEMENT_AUTHORITY_TARGET_IDENTITY_INVALID',
+    'ENTITLEMENT_AUTHORITY_ASSIGNMENT_INVALID',
+    'ENTITLEMENT_AUTHORITY_SOURCE_UNCHANGED',
     'ENTITLEMENT_AUTHORITY_VERSION_CONFLICT',
     'ENTITLEMENT_AUTHORITY_OPERATION_REUSED',
     'ENTITLEMENT_AUTHORITY_EMPLOYEE_INACTIVE',
@@ -117,12 +122,64 @@ function mappedDatabaseError(error: unknown) {
   return new EmployeeAuthoritySwitchError('ENTITLEMENT_AUTHORITY_SWITCH_FAILED')
 }
 
+type AuthorityTarget = { principalId: string; issuer: string; subject: string; assignmentVersionId: string }
+
+async function resolveAuthorityTarget(database: OrgmasterDatabase, request: EmployeeAuthoritySwitchRequest, activeVersionId: string): Promise<AuthorityTarget> {
+  const prior = await database.query<{ receipt: Record<string, unknown> | null }>(
+    'SELECT receipt FROM orgmaster_contract.read_employee_authority_operation_v1($1,$2,$3)',
+    [request.applicationId, request.employeeId, request.operationId],
+  )
+  if (prior.rows.length > 1) throw new EmployeeAuthoritySwitchError('ENTITLEMENT_AUTHORITY_OPERATION_REUSED')
+  if (prior.rows.length === 1) {
+    const receipt = prior.rows[0].receipt
+    if (receipt?.requestContractVersion !== 'orgmaster.employee-authority-switch.v2') {
+      throw new EmployeeAuthoritySwitchError('legacy_receipt_unbound')
+    }
+    const target = {
+      principalId: String(receipt.targetPrincipalId ?? ''),
+      issuer: String(receipt.targetIdentityIssuer ?? ''),
+      subject: String(receipt.targetIdentitySubject ?? ''),
+      assignmentVersionId: String(receipt.assignmentVersionId ?? ''),
+    }
+    if (!target.principalId || !target.issuer || !target.subject || !target.assignmentVersionId) {
+      throw new EmployeeAuthoritySwitchError('ENTITLEMENT_AUTHORITY_OPERATION_REUSED')
+    }
+    return target
+  }
+
+  const result = await database.query<{
+    employee_id: string
+    principal_id: string
+    principal_issuer: string
+    principal_subject: string
+    account_type: string
+  }>(`SELECT employee_id, principal_id, principal_issuer, principal_subject, account_type
+      FROM orgmaster_contract.v_active_principal_accounts_v1
+      WHERE employee_id = $1 AND account_type = 'human_personal'
+      ORDER BY principal_id, principal_issuer, principal_subject`, [request.employeeId])
+  const rows = result.rows
+  const pairs = new Set(rows.map((row) => JSON.stringify([row.principal_issuer, row.principal_subject])))
+  const principals = new Set(rows.map((row) => row.principal_id))
+  if (rows.length === 0 || pairs.size !== rows.length || principals.size !== 1
+    || rows.some((row) => row.employee_id !== request.employeeId || row.account_type !== 'human_personal'
+      || !row.principal_id || !row.principal_issuer || !row.principal_subject)) {
+    throw new EmployeeAuthoritySwitchError('ENTITLEMENT_AUTHORITY_TARGET_IDENTITY_INVALID')
+  }
+  return {
+    principalId: rows[0].principal_id,
+    issuer: rows[0].principal_issuer,
+    subject: rows[0].principal_subject,
+    assignmentVersionId: activeVersionId,
+  }
+}
+
 export async function switchEmployeeEntitlementAuthority(root: string, actor: GovernanceActorContext, request: EmployeeAuthoritySwitchRequest, dependencies: Dependencies = {}): Promise<EmployeeAuthoritySwitchReceipt> {
   assertRequest(request, actor)
   const current = await (dependencies.readStore ?? readGovernanceStore)(root)
   const assignmentVersionId = assertEmployeeAuthoritySwitchAccess(current.document, actor, dependencies.now)
   const database = dependencies.database ?? createOrgmasterDatabase(process.env.ORGMASTER_POSTGRES_URL ?? '')
   try {
+    const target = await resolveAuthorityTarget(database, request, assignmentVersionId)
     const result = await database.query<{
       receipt_id: string
       authority_version: string | number
@@ -130,8 +187,8 @@ export async function switchEmployeeEntitlementAuthority(root: string, actor: Go
       session_refresh_state: string
       replayed: boolean
     }>(`SELECT receipt_id, authority_version, outbox_event_id, session_refresh_state, replayed
-          FROM access_governance.switch_employee_entitlement_authority_v1(
-            $1, $2, $3, $4, $5, $6, $7, $8, $9
+          FROM orgmaster_contract.switch_employee_entitlement_authority_v2(
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
           )`, [
       request.applicationId,
       request.employeeId,
@@ -139,9 +196,12 @@ export async function switchEmployeeEntitlementAuthority(root: string, actor: Go
       request.expectedAuthorityVersion,
       request.operationId,
       request.batchId,
-      assignmentVersionId,
+      target.assignmentVersionId,
       actor.principalId,
       request.reason.trim(),
+      target.principalId,
+      target.issuer,
+      target.subject,
     ])
     if (result.rowCount !== 1) throw new EmployeeAuthoritySwitchError('ENTITLEMENT_AUTHORITY_SWITCH_FAILED')
     const row = result.rows[0]
@@ -153,7 +213,7 @@ export async function switchEmployeeEntitlementAuthority(root: string, actor: Go
       employeeId: request.employeeId,
       toAuthoritySource: request.toAuthoritySource,
       authorityVersion: Number(row.authority_version),
-      assignmentVersionId,
+      assignmentVersionId: target.assignmentVersionId,
       outboxEventId: row.outbox_event_id,
       sessionRefreshState: row.session_refresh_state,
       replayed: Boolean(row.replayed),

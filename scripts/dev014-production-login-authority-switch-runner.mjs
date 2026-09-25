@@ -155,6 +155,11 @@ async function readState(database, fixture, expectedGovernance) {
     FROM orgmaster_contract.v_ai_pdm_effective_role_assignments_v1
     WHERE application_id='ai-pdm' AND employee_id=$1 ORDER BY role_code`, [fixture.employeeId])
   return {
+    targetIdentity: {
+      principalId: String(typedPrincipal.principal_id),
+      issuer: String(typedPrincipal.principal_issuer),
+      subject: String(typedPrincipal.principal_subject),
+    },
     authoritySource: String(authority.authority_source),
     authorityVersion: Number(authority.authority_version),
     overrideOperationId: authority.operation_id == null ? null : String(authority.operation_id),
@@ -169,17 +174,37 @@ async function readState(database, fixture, expectedGovernance) {
 }
 
 async function readOperationRows(database, operation) {
-  const receipt = await database.query(`SELECT receipt_id, operation_id, batch_id, application_id, employee_id,
-      from_authority_source, to_authority_source, authority_version, assignment_version_id,
-      session_refresh_state, actor, reason, switched_at
-    FROM access_governance.authority_switch_receipts
-    WHERE operation_id=$1 AND application_id=$2 AND employee_id=$3`, [operation.operationId, TARGET.applicationId, operation.employeeId])
-  const outbox = await database.query(`SELECT event_id, operation_id, employee_id, application_id, event_kind,
-      actor, reason_code, status, attempt_count, platform_receipt_id, created_at, completed_at
-    FROM access_governance.entitlement_change_outbox
-    WHERE operation_id=$1 AND application_id=$2 AND employee_id=$3`, [operation.operationId, TARGET.applicationId, operation.employeeId])
-  if (receipt.rows.length > 1 || outbox.rows.length > 1) fail('DEV014_LOGIN_AUTHORITY_RECEIPT_CARDINALITY_INVALID')
-  return { receipt: receipt.rows[0] ?? null, outbox: outbox.rows[0] ?? null }
+  const rows = (await database.query(`SELECT receipt, outbox
+    FROM orgmaster_contract.read_employee_authority_operation_v1($1,$2,$3)`, [
+    TARGET.applicationId, operation.employeeId, operation.operationId,
+  ])).rows
+  if (rows.length > 1) fail('DEV014_LOGIN_AUTHORITY_RECEIPT_CARDINALITY_INVALID')
+  const receipt = rows[0]?.receipt
+  const outbox = rows[0]?.outbox
+  return {
+    receipt: receipt ? {
+      receipt_id: receipt.receiptId, operation_id: receipt.operationId,
+      batch_id: receipt.batchId, application_id: receipt.applicationId,
+      employee_id: receipt.employeeId, from_authority_source: receipt.fromAuthoritySource,
+      to_authority_source: receipt.toAuthoritySource, authority_version: receipt.authorityVersion,
+      assignment_version_id: receipt.assignmentVersionId,
+      session_refresh_state: receipt.sessionRefreshState, actor: receipt.actor,
+      reason: receipt.reason, switched_at: receipt.switchedAt,
+      request_contract_version: receipt.requestContractVersion,
+      request_hash: receipt.requestHash,
+      target_principal_id: receipt.targetPrincipalId,
+      target_identity_issuer: receipt.targetIdentityIssuer,
+      target_identity_subject: receipt.targetIdentitySubject,
+    } : null,
+    outbox: outbox ? {
+      event_id: outbox.eventId, operation_id: outbox.operationId,
+      employee_id: outbox.employeeId, application_id: outbox.applicationId,
+      event_kind: outbox.eventKind, actor: outbox.actor,
+      reason_code: outbox.reasonCode, status: outbox.status,
+      attempt_count: outbox.attemptCount, platform_receipt_id: outbox.platformReceiptId,
+      created_at: outbox.createdAt, completed_at: outbox.completedAt,
+    } : null,
+  }
 }
 
 function buildOperation(base, fixture, before) {
@@ -215,6 +240,11 @@ function assertPersistedRows(state, operation, rows) {
     || rows.receipt.from_authority_source !== 'legacy_authority' || rows.receipt.to_authority_source !== 'orgmaster_authority'
     || Number(rows.receipt.authority_version) !== 2 || rows.receipt.assignment_version_id !== state.assignmentVersionId
     || rows.receipt.actor !== TARGET.actor || rows.receipt.reason !== operation.reason
+    || rows.receipt.request_contract_version !== 'orgmaster.employee-authority-switch.v2'
+    || !H64.test(String(rows.receipt.request_hash ?? ''))
+    || rows.receipt.target_principal_id !== state.targetIdentity.principalId
+    || rows.receipt.target_identity_issuer !== state.targetIdentity.issuer
+    || rows.receipt.target_identity_subject !== state.targetIdentity.subject
     || rows.outbox.operation_id !== operation.operationId || rows.outbox.application_id !== TARGET.applicationId
     || rows.outbox.employee_id !== operation.employeeId || rows.outbox.event_kind !== 'authority_switch'
     || rows.outbox.actor !== TARGET.actor || rows.outbox.reason_code !== 'entitlement_authority_switch'
@@ -252,22 +282,32 @@ export async function executeAuthorityBatch({ database, operation, now = new Dat
     }
   }
   for (const item of preflight) assertPreflightState(item.before)
-  await database.query('BEGIN ISOLATION LEVEL SERIALIZABLE')
+  await database.query('BEGIN ISOLATION LEVEL READ COMMITTED')
   try {
-    await database.query("SELECT pg_advisory_xact_lock(hashtext('dev014-login-fixture-authority'), hashtext(current_database()))")
+    // Acquire every operation key before the owner singleton to avoid a
+    // batch/individual-switch lock cycle. The v2 function reacquires these
+    // transaction locks and performs its own fresh post-lock target read.
+    for (const item of [...preflight].sort((left, right) => left.operation.operationId.localeCompare(right.operation.operationId))) {
+      await database.query(`SELECT pg_advisory_xact_lock(
+        hashtext('orgmaster-authority-switch-v2'),
+        hashtext(jsonb_build_array($1,$2,$3)::text)
+      )`, [TARGET.applicationId, item.fixture.employeeId, item.operation.operationId])
+    }
     const locked = []
     for (const item of preflight) {
       const current = await readState(database, item.fixture, governance)
       if (current.authoritySource !== item.before.authoritySource || current.authorityVersion !== item.before.authorityVersion
-        || current.assignmentVersionId !== item.before.assignmentVersionId) fail('DEV014_LOGIN_AUTHORITY_CONDITION_DRIFT')
+        || current.assignmentVersionId !== item.before.assignmentVersionId
+        || canonicalize(current.targetIdentity) !== canonicalize(item.before.targetIdentity)) fail('DEV014_LOGIN_AUTHORITY_CONDITION_DRIFT')
       locked.push({ ...item, before: current })
     }
     const applied = []
     for (const item of locked) {
       const result = one((await database.query(`SELECT receipt_id, authority_version, outbox_event_id, session_refresh_state, replayed
-        FROM platform_contract.switch_ai_pdm_employee_authority_v2($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [
+        FROM orgmaster_contract.switch_employee_entitlement_authority_v2($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [
         TARGET.applicationId, item.fixture.employeeId, 'orgmaster_authority', 1, item.operation.operationId,
         item.operation.batchId, item.before.assignmentVersionId, TARGET.actor, item.operation.reason,
+        item.before.targetIdentity.principalId, item.before.targetIdentity.issuer, item.before.targetIdentity.subject,
       ])).rows, 'DEV014_LOGIN_AUTHORITY_FUNCTION_RESULT_INVALID')
       if (Number(result.authority_version) !== 2 || result.replayed !== false) fail('DEV014_LOGIN_AUTHORITY_FUNCTION_RESULT_INVALID')
       const after = await readState(database, item.fixture, governance)

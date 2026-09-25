@@ -1,5 +1,21 @@
 # OrgMaster 開發任務
 
+> **2026-09-25 DEV-057 principal-keyed grant producer（本機，未發布）**：新增 forward-only migration 025，在 OrgMaster 自有契約 schema 建立 `v_ai_pdm_principal_effective_grants_v2` 與版本化 manifest。view 從已發布治理／typed admission 計算 grant，只輸出 `principal_id`，不暴露 issuer／subject；同 principal 多 alias 必須唯一對應 Employee／account type 並覆蓋 active mapping，未解析的同員工歷史 pair 會拒絕授權。v2 view 僅授予 AI-PDM runtime／migrator 精確 SELECT；本機隔離 PostgreSQL D57-17 已驗兩 alias 的 v1 兩列收斂為 v2 一列；完整 001–025 套用與既有 DEV-057 案例 17／17、owner release／runner 聚焦21／21、DB boundary PASS。AI-PDM consumer 已改用 v2 並通過本機聚焦測試，但正式 migration／release、L4 與 v1 owner view 退役尚未完成。
+
+> **2026-09-25 DEV-057 principal grant 終態修訂（文件，未實作）**：切換期 v1 grant view 按 provider alias 展開、AI-PDM 再逐 alias 比對，不保留為長期授權架構。既有 DEV-057 子任務將以新增 forward-only migration 發布 principal-keyed `v_ai_pdm_principal_effective_grants_v2`，先核對唯一 typed principal／employee 與來源歧義，再按 principal 產生一次 grant；AI-PDM 切 consumer 並完成同 snapshot allow／deny 對照後，owner 退役 v1 reader。未建立 migration、未修改 Production，實作與驗證仍待完成。
+
+> **2026-09-25 DEV-057 v4 catalog 消費者增量（尚未發布）**：OrgMaster 以獨立 hash-pinned v4 artifact 作為 AI-PDM 新指派目錄，既有 v3 assignment 只按凍結 artifact 驗歷史角色／scope provenance；V3 新 UPSERT 若帶 v3 版拒絕，既有 v3 不被批次改寫。catalog／validation／command 聚焦測試、typecheck 及 DB boundary PASS。AI-PDM 066、OrgMaster release、正式目錄與指派 readback 均未執行，不能宣稱 Production 權限已切流。
+
+> **2026-09-24 DEV-057 B 本機實作進度（尚不可發布）**：未套用的 forward-only migration 024 已加入principal永久所有權、provider alias history、schema2 session欄位與不可變綁定、legacy publisher／managed bind／verify共用的owner reservation fence，以及authority v2命令、operation readback與receipt綁定。本人UI切換改由typed view選定唯一日常principal／exact pair、重播使用receipt綁定；DEV-013單員工與DEV-014雙fixture operator改呼叫本owner v2命令與versioned readback，後者在READ COMMITTED交易先取得排序operation locks。targeted UI store 6/6、治理回歸97/97、DEV-013 operator 9/9、DEV-014 operator 13/13、v1/v2 SSO與session聚焦20/20、build、DB boundary與task-owned PostgreSQL 18.4 D57-01～16共16/16 PASS；cluster／port／temp清理完成。024已令有效角色與Portal入口共用typed principal投影，D57-07證明未分類及同pair多筆分類均拒絕、唯一已分類pair維持授權；owner release profile／runner已納入024，owner release回歸95/95 PASS。v2契約副本manifest為`816cf07a…6e`，但Platform emitter仍保持v1；operator的真實PG端到端、受控環境／Production驗證與舊路徑退役仍待完成；此為dirty worktree本機證據，沒有Production寫入。
+
+> **架構定案：已定案／RD Implementation Ready（Documents Only）**：[ORGMASTER/DEV-057 單一交接入口](specs/DEV-057-identity-and-grant-contract-boundary.md#architecture-final)固定目前 owner 契約、來源／雜湊與失敗／恢復；與 JENFU/DEV-015 同名節對齊。沿用原子任務，先依相依順序實作；consumer conformance／recovery／Production L4 尚未完成。下方歷史紀錄不覆蓋此入口。 本輪再審核固定 authority writer 的 RC 鎖後讀點、成功 receipt 優先與 target session 同快照；相關案例未執行。
+
+> **2026-09-24 ownership／command 現行修訂（Documents Only）**：authority資料、唯一CAS命令及receipt／outbox由本owner擁有，typed身分事實供其他投影重用；Platform只做invalidation，取消Platform v3，舊入口ACL cleanup後置。 [目前交接契約](specs/DEV-057-identity-and-grant-contract-boundary.md#principal-owner-command-amendment)承接原子任務；歷史證據保留，文件RD Implementation Ready不等於產品PASS。SQLite／release工具整併留後續，不新增主任務或分母。
+
+> **2026-09-24 RD 執行一致性複審**：[同一DEV的複審修正](specs/DEV-057-identity-and-grant-contract-boundary.md#principal-review-20260924)已對齊缺列epoch鎖、cohort/receipt基數、相容inventory、token信任欄位及最低assurance；遷移等價性與明列安全修正分開驗。B／RD Implementation Ready維持，未新增主任務或產品PASS；本輪Documents Only。
+
+> **2026-09-24 B 文件收斂完成**：本次三專案 principal-first 既有子任務為 `Architecture Finalized / RD Implementation Ready / Documents Only`；以 [實作定案](specs/DEV-057-identity-and-grant-contract-boundary.md#principal-implementation-contract)為目前交接入口。DDL／versioned contract、所有登入與helper、原子切換／writer fence、相容／rollback及原驗收案例均已固定。下方登入等待、bridge或local PASS是各次歷史狀態，不是本輪重跑舊流程的指令；B產品與Production驗證未完成。不新增主任務、不改算歷史分母。
+
 > 跨專案引用代碼：`ORGMASTER`（2026-09-23 使用者確認；既有歷史 ID 不改名）。
 
 > **2026-09-24 DEV-014 principal-projection correction（現行）**：已釐清 managed identity bridge 的 active principal 只保證出現在 OrgMaster role-neutral `orgmaster_contract.v_active_principal_mappings_v1`；它不提供 account type。Platform `access_governance.v_active_principal_links_v1` 是另一個 owner 的舊治理 projection，不是 managed account adapter。新增的 OrgMaster 023 view 以精確 employee／principal／issuer／subject／mapping revision／published timestamp、admission、Directory observation 與 lifecycle 條件發布 account type；未知 legacy 分類不進 adapter。Authority runner 比對 canonical producer 與 typed adapter 後呼叫 Platform CAS v2；Platform CAS 在同一 transaction 再驗 `human_personal`，避免 preflight-to-write race。Local contract／PostgreSQL、DB boundary、61 個 OrgMaster runner／release tests及 owner-prepare gate 15/15均PASS。首次唯讀 preflight 發現 owner-prepare gate 尚未列入新 remediation mode，故在任何 release artifact upload／workflow dispatch前安全停止；同任務修正後已加入 exact descriptor validation。尚未套用 Production migration 023／008，亦未重試 authority switch；後續先按 OrgMaster→Platform 次序重新 preflight，發布並 read back 兩個 OrgMaster view 的 exact row，再決定是否執行 switch。
@@ -132,11 +148,11 @@
 
 ## 總任務清單
 
-- ◐ DEV-057 [跨 owner 開發中] [P0] [Producer RD Complete／Local QA-QC Passed／Consumer Integration Pending／Production NOT_RUN] 身分與權限發布契約邊界
+- ◐ DEV-057 [跨 owner 開發中] [P0] [B 架構定案／RD Implementation Ready；既有 v1 本機 PASS 保留] [Production NOT_RUN] 身分與權限發布契約邊界
   - 摘要：以 forward-only migration 修正 v1 role-neutral active principal、AI-PDM Portal 入口投影及 shared singleton writer fence；保留 OrgMaster 專用 session admission、principal 歧義可見性、同版 authority／grants；有效指派的 workspace `scope.value` 原樣發布，Portal version 仍取 governance version。consumer 依 owner 端明列 mapping 解析 `current` 與 `company-jenfu`，未知值拒絕。
   - 來源 ID：`JENFU/DEV-015#identity-grants`；本地 owner `ORGMASTER/DEV-057`。
   - 進度：forward-only migration 021、source-bound owner release profile 與 DEV-057 contract/PostgreSQL runners 已完成。Contract、DB boundary、owner-release 57 tests及 task-owned PostgreSQL 18.4 D57-01～06全PASS；view欄位／owner／ACL前後一致，OrgMaster session admission仍獨立。
-  - 下一步：AI-PDM 完成隔離 PostgreSQL authority snapshot/race 與 direct-auth route classification；三個 owner 再收斂 normal-entry browser 和相容回復證據。Production release／L4 不在本機 QC 內。
+  - 下一步：使用者已選 B；`#principal-producer-impact` 已定案 OrgMaster canonical principal／provider alias／account class 契約。024 的永久principal reservation、alias history、typed readback、writer／session、OrgMaster唯一authority命令與typed投影重用已在B實作契約固定；依契約實作後才取得normal-entry、recovery與Production L4證據。既有本機 PASS 仍按原驗證層級保留。
   - 證據：[DEV-057 contract](specs/DEV-057-identity-and-grant-contract-boundary.md)、`C:\VIBE CODING\Jenfu-Platform\.task-dev014\orgmaster\dev057-postgres-qc-r2.json`。
   - 計入交付：否；不回寫 DEV-055／056 的完成狀態或歷史驗證。
 
@@ -677,13 +693,15 @@
 
 ## DEV-057：身分與權限發布契約邊界
 
-- 狀態：`RD Implementation In Progress / 架構定案：已定案`；節點類型：開發點；風險：High；隔離 PostgreSQL QC=`NOT_RUN`；Production=`NOT_RUN`。
+- 狀態：B 目標 `Architecture Finalized / RD Implementation Ready`；節點類型：開發點；風險：High；既有 v1 producer 本機 QA-QC PASS 依原證據保留，B 的實作／consumer conformance 與 Production=`NOT_RUN`。
 - 跨專案角色：參與 `JENFU/DEV-015#identity-grants`；本地 native `ORGMASTER/DEV-057`。同群 consumer 為 `AIPDM/DEV-121#target-authorization`。
 - 任務目標：版本化 producer contract 可證明唯一 principal 及同 snapshot、同權威版本的有效 grants；consumer 不查 `orgmaster_core`。
-- 範圍：保留 v1 欄位／ACL，migration 021 同時修正 role-neutral legacy active mapping、AI-PDM Portal visibility 及 managed bind／legacy governance publish 共用的 singleton writer fence；publisher 在同 transaction 驗證並寫入 append-only pair reservation。後者沿用有效直接／委派 app 指派並保留 governance version，移除 authority join。既有 001–020 不動。不新增 v2 view 或 Production mutation。
+- 範圍：既有 migration 021 的 role-neutral mapping／Portal visibility／writer fence 證據保留；B 增量為 pair＋principal typed admission、不可重派 principal 所屬、跨 alias invariant 及 principal-aware target session。沿用現有 contract 形狀，必要 writer 補正只追加 owner migration，不改已套用 SQL；本輪只修改文件。
 - 驗收：OrgMaster 自有 principal／authority／grant invariant、版本化契約與相容性測試通過即可關閉本地 DEV；跨專案正常入口與整合證據由 `JENFU/DEV-015` 彙整，不覆寫本地狀態。文件本身不計產品 PASS。
-- 架構定案交接：v1 views 為基線；consumer 對零筆／多筆 fail closed。既有 bind／verify 鎖 `managed_identity_admission_authority`，目前 governance writer 僅鎖 `persistence_authority`，不符合 DEV-047 A9a 預期；migration 021 統一鎖順序並為 published identity pair 寫入 reservation，再以雙向 PostgreSQL concurrency cases 證明最多一方 commit。authority mutation／outbox 仍須同 transaction。若 writer 修正仍須新 contract 物件，回送 ADR-005。
+- 架構定案交接：v1 views 為基線；consumer 對零筆／多筆 fail closed。既有 bind／verify 鎖 `managed_identity_admission_authority`，目前 governance writer 僅鎖 `persistence_authority`，不符合 DEV-047 A9a 預期；migration 021 統一鎖順序並為 published identity pair 寫入 reservation，再以雙向 PostgreSQL concurrency cases 證明最多一方 commit。authority mutation／outbox 仍須同 transaction。B的alias-history／reservation及session欄位已在ADR-005與本DEV固定；只有契約外的新責任才修訂架構。
 - 相關文件：[DEV-057 contract](specs/DEV-057-identity-and-grant-contract-boundary.md)。
+- 2026-09-24 B 文件複審：pair＋principal 精確查核取代 employee 單列假設；authority employee key 僅選來源，保留 human_personal／exact privileged grant 隔離。session／wire 版本與 principal state 分開，v1 相容採雙 state／原始登入時間驗證；未執行程式、migration 或 Production。詳細契約沿用 `#principal-producer-impact`，不新增 DEV。
+- 子任務 `ORGMASTER/DEV-057#principal-producer-impact`（來源 `JENFU/DEV-015#principal-identity-reassessment`；B 已定案，`Architecture Finalized / RD Implementation Ready`；不新增 native DEV）：OrgMaster 是 canonical `principal_id` 唯一發布者，保留 legacy／managed IDs，以唯一 pair binding 和跨 aliases 同 employee／account class 的不變條件供 Platform／AI-PDM 消費；日常／特權 principal 分離，缺失／重複／衝突 fail closed。原 v1 admission views保留；024固定新增alias-history contract及永久principal reservation，禁止讀 sibling core 或把舊名compatibility projection當managed account adapter。下一步是 source-bound producer／writer／ACL readback、負向 fixture 與明確相容／回復；文件完成不改寫 migration 021 的本機 PASS，也不代表 Production L4。
 - 2026-09-23：三 repo Architecture Closure Review 已補 native writer／view／parser file surface、隔離競態案例與回送條件；source audit 證實 DEV-047 A9a shared singleton fence 未由目前 bind／publisher 組合維持，遂將 migration 021 writer fence 修正納入本 DEV。文件原先暫停限制已由使用者後續「准許繼續開發」取代；開始本機 implementation，Production 仍 `NOT_RUN`。
 
 ## DEV-052：Managed identity lifecycle producer contract補正

@@ -364,6 +364,20 @@
         "path": "db/migrations/023_dev014_authority_principal_projection_contract.sql",
         "sourceSha256": "0a4ade661d396d93fda7a37e4020bda5454199d505d674d3e1e49cccd5aa5b83",
         "appliedSha256": "930732039941c6633382cbf5703d28f8cceef0d1c004a0f8a26ab7df4dbbd5c3"
+      },
+      {
+        "order": 24,
+        "version": "dev057-orgmaster-024",
+        "path": "db/migrations/024_dev057_principal_identity_invariants.sql",
+        "sourceSha256": "4fdd1dea344ecbe593c8cd009445e0bd2f43d21b08764929424fb9b81e2f7879",
+        "appliedSha256": "449760cf1e633d823a8245d238deaea3f24371ec2e3e4f1fe3075984ecb87102"
+      },
+      {
+        "order": 25,
+        "version": "dev057-orgmaster-025",
+        "path": "db/migrations/025_dev057_ai_pdm_principal_effective_grants_v2.sql",
+        "sourceSha256": "0a7e3c317398fb73f1388b8d863ef2ed994a9e92839ef94e88ff256292b60061",
+        "appliedSha256": "36176113c000bea1d0a44d2b4330786d18bbed853b41a5070992272a21c5f1f7"
       }
     ]
   },

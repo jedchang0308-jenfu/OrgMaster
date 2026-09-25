@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, unlink, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { getWorkspaceIndex, getWorkspaceVersion, getWorkspacePaths } from './orgmasterWorkspaceStore'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
-import aiPdmCatalogFixture from '../contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
+import aiPdmCatalogFixture from '../config/catalogs/ai-pdm-role-catalog.v4.json'
 import {
   buildAiPdmRoleCapabilityProjection,
   roleCapabilitySourceKey,

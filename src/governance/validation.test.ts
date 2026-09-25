@@ -14,6 +14,22 @@ describe('governance V2 validation diagnostics', () => {
     expect(validateDocumentV2(next, undefined, [catalog])).toEqual([])
     expect(validatePolicyDataV2({ ...next.draft, roleAssignments: [{ ...assignment, scope: { kind: 'global' } }] }, undefined, [catalog]).some((issue) => issue.code === 'EXTERNAL_SCOPE_UNSUPPORTED')).toBe(true)
   })
+  it('retains a pinned v3 assignment as history while validating its unchanged role identity', () => {
+    const catalog = readAiPdmRoleCatalog('valid')
+    const document = createSeedDocumentV2('2026-09-25T00:00:00.000Z', catalog)
+    const role = catalog.roles.find((entry) => entry.stableRoleId === 'role-rd')!
+    const historical = { id: 'historical-rd', employeeId: 'employee-1', applicationId: 'ai-pdm' as const,
+      roleId: role.stableRoleId, roleCodeSnapshot: role.code, roleNameSnapshot: role.displayName,
+      catalogVersion: 'ai-pdm.role-catalog.2026-09-03.v3',
+      scope: { kind: 'workspace' as const, value: 'company-jenfu' }, status: 'active' as const,
+      validFrom: '2026-09-01T00:00:00.000Z', validTo: null,
+      effectState: 'not-synchronized' as const }
+    expect(validatePolicyDataV2({ ...document.draft, roleAssignments: [historical] },
+      undefined, [catalog])).toEqual([])
+    expect(validatePolicyDataV2({ ...document.draft, roleAssignments: [
+      { ...historical, roleNameSnapshot: 'unverified-role-name' }
+    ] }, undefined, [catalog]).some((issue) => issue.code === 'EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID')).toBe(true)
+  })
   it('rejects system admin from every generic V2 assignment validation path', () => {
     const document = createSeedDocumentV2()
     const catalog = readAiPdmRoleCatalog('valid')

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { applyGovernanceCommand, applyGovernanceCommandV2, commandHash } from './commands'
+import { applyGovernanceCommand, applyGovernanceCommandV2, applyGovernanceCommandV3, commandHash } from './commands'
 import { createSeedDocument } from '../../server/orgmasterGovernanceStore'
 import { createSeedDocumentV2 } from './migrateGovernanceV1ToV2'
+import { migrateGovernanceV2ToV3 } from './migrateGovernanceV2ToV3'
 import { readAiPdmRoleCatalog } from './aiPdmCatalog'
 import { GovernanceValidationError } from './validation'
 describe('governance draft commands', () => {
@@ -28,6 +29,25 @@ describe('governance draft commands', () => {
     const result = applyGovernanceCommandV2(document, { type: 'UPSERT_ROLE_ASSIGNMENT', commandId: 'assignment-1', reason: 'test', value: { id: 'assignment-1', employeeId: 'employee-1', applicationId: 'ai-pdm', roleId: role.stableRoleId, roleCodeSnapshot: role.code, roleNameSnapshot: role.displayName, catalogVersion: catalog.catalogVersion, scope: { kind: 'workspace', value: 'workspace-1' }, status: 'active', validFrom: '2026-08-27T00:00:00.000Z', validTo: null, effectState: 'not-synchronized' } }, undefined, [catalog])
     expect(result.document.draft.roleAssignments[0].applicationId).toBe('ai-pdm')
     expect(result.document.draft.permissions.every((permission) => permission.applicationId === 'orgmaster')).toBe(true)
+  })
+  it('rejects a newly submitted v3 assignment when the active catalog is v4', () => {
+    const catalog = readAiPdmRoleCatalog('valid')
+    const document = migrateGovernanceV2ToV3(createSeedDocumentV2(), 'v2-fixture', catalog,
+      '2026-09-25T00:00:00.000Z')
+    const role = catalog.roles.find((entry) => entry.stableRoleId === 'role-rd')!
+    const command = { type: 'UPSERT_ROLE_ASSIGNMENT' as const, commandId: 'stale-new-assignment',
+      reason: 'test', value: { id: 'new-rd', employeeId: 'employee-1',
+        applicationId: 'ai-pdm' as const, roleId: role.stableRoleId,
+        roleCodeSnapshot: role.code, roleNameSnapshot: role.displayName,
+        catalogVersion: 'ai-pdm.role-catalog.2026-09-03.v3',
+        scope: { kind: 'workspace' as const, value: 'company-jenfu' },
+        status: 'active' as const, validFrom: '2026-09-25T00:00:00.000Z',
+        validTo: null, effectState: 'not-synchronized' as const } }
+    expect(() => applyGovernanceCommandV3(document, command, undefined, [catalog]))
+      .toThrowError(expect.objectContaining({ issues: expect.arrayContaining([
+        expect.objectContaining({ code: 'EXTERNAL_CATALOG_STALE' })
+      ]) }))
+    expect(document.draft.roleAssignments).toEqual([])
   })
   it('fails before mutation when generic V2 command targets system admin', () => {
     const document = createSeedDocumentV2()

@@ -227,8 +227,14 @@ async function verifySession(request: IncomingMessage, runtime: OrgmasterAuthRun
   if (principal.principalId !== session.principalId || principal.employeeId !== session.employeeId) {
     throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
   }
-  const state = await epochs.readState(session.identityIssuer, session.identitySubject)
-  if (state.authEpoch !== session.authEpoch) throw new OrgmasterAuthError(401, 'auth_epoch_stale', true)
+  const principalSession = session.sessionSchemaVersion === 2 && session.epochKind === 'principal' &&
+    typeof session.principalAuthEpoch === 'number' && Number.isSafeInteger(session.principalAuthEpoch) && session.principalAuthEpoch >= 0
+  const pairSession = session.sessionSchemaVersion === 1 && session.epochKind === 'provider_pair' && session.principalAuthEpoch === null
+  if (!principalSession && !pairSession) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
+  const state = principalSession
+    ? await epochs.readPrincipalState(session.principalId)
+    : await epochs.readState(session.identityIssuer, session.identitySubject)
+  if (state.authEpoch !== (principalSession ? session.principalAuthEpoch : session.authEpoch)) throw new OrgmasterAuthError(401, 'auth_epoch_stale', true)
   if (state.revokedBefore && session.authenticatedAt && Date.parse(session.authenticatedAt) <= Date.parse(state.revokedBefore)) {
     throw new OrgmasterAuthError(401, 'auth_epoch_stale', true)
   }
@@ -241,6 +247,7 @@ function developmentSessionForProfile(profile: DevelopmentAuthProfile): Orgmaste
   return {
     id: `development-${profile.id}`, identityIssuer: DEV_ISSUER, identitySubject: profile.subject,
     principalId: profile.principalId, employeeId: profile.employeeId, authEpoch: 0,
+    sessionSchemaVersion: 1, epochKind: 'provider_pair', principalAuthEpoch: null,
     issuedAt: now.toISOString(), authenticatedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
   }
 }
@@ -254,6 +261,7 @@ function developmentSession(request: IncomingMessage, enabled: boolean): { sessi
   const session: OrgmasterSession = {
     id: 'development-loopback', identityIssuer: actor.issuer, identitySubject: actor.subject,
     principalId: actor.principalId, employeeId: actor.employeeId ?? 'development-loopback', authEpoch: 0,
+    sessionSchemaVersion: 1, epochKind: 'provider_pair', principalAuthEpoch: null,
     issuedAt: now.toISOString(), authenticatedAt: null, expiresAt: new Date(now.getTime() + 60_000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
   }
   return { session, profile: null }

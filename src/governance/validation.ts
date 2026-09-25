@@ -1,4 +1,4 @@
-import { validateExternalRoleCatalog } from './aiPdmCatalog'
+import { historicalAiPdmRoleSnapshotMatches, validateExternalRoleCatalog } from './aiPdmCatalog'
 import { validateFinancialExternalRoleCatalog } from './financialCatalog'
 import { classifyAssignmentSurface, genericV2AssignmentSurfaceIssue, isSystemAdminRoleIdentity } from './assignmentSurface'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV1, GovernancePolicyDataV2, GovernancePolicyDataV3, GovernancePolicyVersionV1, GovernanceRoleAssignmentV2, GovernanceRoleDelegationV2, GovernanceScopeV1 } from './types'
@@ -134,7 +134,11 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
         if (catalogRole.status !== 'active') add('EXTERNAL_ROLE_INACTIVE', `roleAssignments[${index}].roleId`, '外部 role 已停用')
         if (!catalogRole.assignable) add('EXTERNAL_ROLE_UNASSIGNABLE', `roleAssignments[${index}].roleId`, '外部 role 不可指派')
         if (!catalogRole.allowedScopeKinds.includes(assignment.scope.kind)) add('EXTERNAL_SCOPE_UNSUPPORTED', `roleAssignments[${index}].scope`, '外部 role 不允許此 scope')
-        if (assignment.catalogVersion !== catalog?.catalogVersion || assignment.effectState !== 'not-synchronized' || assignment.roleCodeSnapshot !== catalogRole.code || assignment.roleNameSnapshot !== catalogRole.displayName) add('EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID', `roleAssignments[${index}]`, '外部 role snapshot 與 catalog 不一致')
+        const currentSnapshot = assignment.catalogVersion === catalog?.catalogVersion &&
+          assignment.roleCodeSnapshot === catalogRole.code && assignment.roleNameSnapshot === catalogRole.displayName
+        const historicalSnapshot = assignment.applicationId === 'ai-pdm' &&
+          historicalAiPdmRoleSnapshotMatches(assignment, catalogRole)
+        if ((!currentSnapshot && !historicalSnapshot) || assignment.effectState !== 'not-synchronized') add('EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID', `roleAssignments[${index}]`, '外部 role snapshot 與 catalog 不一致')
       }
     }
     if (assignment.status === 'active') { const key = `${assignment.employeeId}|${assignment.applicationId}|${assignment.roleId}|${scopeKey(assignment.scope)}`; if (activeAssignments.has(key)) add('DUPLICATE_ACTIVE_ASSIGNMENT', `roleAssignments[${index}]`, '同一員工／角色／scope 只能有一筆 active assignment'); activeAssignments.set(key, assignment) }
@@ -144,7 +148,11 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
     if (!sourceAssignment || !delegateSource || sourceAssignment.status !== 'active') add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}].sourceAssignmentId`, '代理來源 assignment 無效')
     if (delegation.fromEmployeeId === delegation.toEmployeeId) add('DELEGATION_SELF', `roleDelegations[${index}]`, '代理人不可與來源相同')
     if (source && (!employeeIds.has(delegation.fromEmployeeId) || !employeeIds.has(delegation.toEmployeeId))) add('EMPLOYEE_NOT_FOUND', `roleDelegations[${index}]`, 'employee 不存在')
-    if (!catalog || !catalogRole || delegation.catalogVersion !== catalog.catalogVersion) add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}]`, '代理 catalog role 無效')
+    const historicalDelegation = delegateSource?.catalogVersion === delegation.catalogVersion &&
+      historicalAiPdmRoleSnapshotMatches({ catalogVersion: delegation.catalogVersion,
+        roleId: delegation.roleId, roleCodeSnapshot: delegateSource.roleCodeSnapshot,
+        roleNameSnapshot: delegateSource.roleNameSnapshot, scope: delegation.scope }, catalogRole)
+    if (!catalog || !catalogRole || (delegation.catalogVersion !== catalog.catalogVersion && !historicalDelegation)) add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}]`, '代理 catalog role 無效')
     if (catalogRole) {
       const surfaceIssue = genericV2AssignmentSurfaceIssue('ai-pdm', { stableRoleId: delegation.roleId, code: catalogRole.code }, catalogRole)
       if (surfaceIssue) add(surfaceIssue, `roleDelegations[${index}]`, surfaceIssue === 'PRIVILEGED_ASSIGNMENT_SURFACE_REQUIRED' ? '特權角色不得使用一般代理路徑' : 'catalog role policy 不完整或矛盾')
@@ -188,7 +196,8 @@ export function validatePolicyDataV3(data: GovernancePolicyDataV3, source?: Gove
     if (assignment.applicationId !== 'ai-pdm' || assignment.roleId !== 'role-system-admin' || assignment.roleCodeSnapshot !== 'system_admin'
       || assignment.basis !== 'manual' || assignment.subjectKind !== 'principal' || !assignment.targetPrincipalId
       || assignment.scope.kind !== 'global' || assignment.sources.length || assignment.validTo !== null
-      || assignment.catalogVersion !== catalog?.catalogVersion || assignment.effectState !== 'not-synchronized') {
+      || (assignment.catalogVersion !== catalog?.catalogVersion &&
+        !historicalAiPdmRoleSnapshotMatches(assignment, role)) || assignment.effectState !== 'not-synchronized') {
       add('PRIVILEGED_ASSIGNMENT_INVALID', path, 'system_admin只允許server-derived principal-scoped V3 assignment')
     }
     const matchingAdmissions = admissions.filter((admission) => {

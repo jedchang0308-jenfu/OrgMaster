@@ -49,7 +49,13 @@ describe('employee authority switch store', () => {
 
   it('uses the reviewed database function with CAS, stable operation id and active assignment version', async () => {
     const document = fixture()
-    const query = vi.fn().mockResolvedValue({ rowCount: 1, rows: [{ receipt_id: 'receipt-1', authority_version: '2', outbox_event_id: 'event-1', session_refresh_state: 'pending', replayed: false }] })
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+      .mockResolvedValueOnce({ rowCount: 2, rows: [
+        { employee_id: 'employee-shijie', principal_id: 'principal-personal', principal_issuer: 'issuer-a', principal_subject: 'subject-a', account_type: 'human_personal' },
+        { employee_id: 'employee-shijie', principal_id: 'principal-personal', principal_issuer: 'issuer-b', principal_subject: 'subject-b', account_type: 'human_personal' },
+      ] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ receipt_id: 'receipt-1', authority_version: '2', outbox_event_id: 'event-1', session_refresh_state: 'pending', replayed: false }] })
     const receipt = await switchEmployeeEntitlementAuthority('/fixture', actor, {
       applicationId: 'ai-pdm', employeeId: 'employee-shijie', toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: 1,
       operationId: 'dev013-p-both-employee-shijie-v1', batchId: 'DEV-013-P_BOTH-20260920', reason: 'DEV-013 Production L4 P_BOTH',
@@ -58,8 +64,12 @@ describe('employee authority switch store', () => {
       database: { query, end: vi.fn() } as never,
       readStore: async () => ({ document, revision: 'governance-revision', raw: '{}' }) as never,
     })
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('switch_employee_entitlement_authority_v1'), [
+    expect(query).toHaveBeenNthCalledWith(1, expect.stringContaining('read_employee_authority_operation_v1'), [
+      'ai-pdm', 'employee-shijie', 'dev013-p-both-employee-shijie-v1',
+    ])
+    expect(query).toHaveBeenNthCalledWith(3, expect.stringContaining('switch_employee_entitlement_authority_v2'), [
       'ai-pdm', 'employee-shijie', 'orgmaster_authority', 1, 'dev013-p-both-employee-shijie-v1', 'DEV-013-P_BOTH-20260920', 'policy-version-2', actor.principalId, 'DEV-013 Production L4 P_BOTH',
+      'principal-personal', 'issuer-a', 'subject-a',
     ])
     expect(receipt).toMatchObject({ contractVersion: 'orgmaster.employee-authority-switch-receipt.v1', authorityVersion: 2, assignmentVersionId: 'policy-version-2', sessionRefreshState: 'pending', replayed: false })
   })
@@ -70,7 +80,9 @@ describe('employee authority switch store', () => {
     const dependencies = { now, database: { query, end: vi.fn() } as never, readStore: async () => ({ document, revision: 'revision', raw: '{}' }) as never }
     await expect(switchEmployeeEntitlementAuthority('/fixture', actor, { applicationId: 'ai-pdm', employeeId: 'employee-other', toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: 1, operationId: 'operation-1', batchId: 'batch-1', reason: 'reason' }, dependencies)).rejects.toBeInstanceOf(EmployeeAuthoritySwitchError)
     expect(query).not.toHaveBeenCalled()
-    query.mockRejectedValueOnce(new Error('ENTITLEMENT_AUTHORITY_VERSION_CONFLICT'))
+    query.mockResolvedValueOnce({ rowCount: 0, rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ employee_id: actor.employeeId, principal_id: 'principal-personal', principal_issuer: 'issuer', principal_subject: 'subject', account_type: 'human_personal' }] })
+      .mockRejectedValueOnce(new Error('ENTITLEMENT_AUTHORITY_VERSION_CONFLICT'))
     await expect(switchEmployeeEntitlementAuthority('/fixture', actor, { applicationId: 'ai-pdm', employeeId: 'employee-shijie', toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: 1, operationId: 'operation-1', batchId: 'batch-1', reason: 'reason' }, dependencies)).rejects.toMatchObject({ code: 'ENTITLEMENT_AUTHORITY_VERSION_CONFLICT' })
   })
 
@@ -83,5 +95,40 @@ describe('employee authority switch store', () => {
       operationId: 'operation-aal1', batchId: 'batch-1', reason: 'reason',
     }, dependencies)).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' })
     expect(query).not.toHaveBeenCalled()
+  })
+
+  it('replays using the receipt-bound target when the current typed view no longer admits that alias', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ receipt: {
+        requestContractVersion: 'orgmaster.employee-authority-switch.v2',
+        targetPrincipalId: 'principal-personal', targetIdentityIssuer: 'old-issuer', targetIdentitySubject: 'old-subject',
+        assignmentVersionId: 'policy-version-1',
+      } }] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ receipt_id: 'receipt-1', authority_version: 2, outbox_event_id: 'event-1', session_refresh_state: 'completed', replayed: true }] })
+    const receipt = await switchEmployeeEntitlementAuthority('/fixture', actor, {
+      applicationId: 'ai-pdm', employeeId: actor.employeeId!, toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: 1,
+      operationId: 'operation-replay', batchId: 'batch-1', reason: 'reason',
+    }, { now, database: { query, end: vi.fn() } as never, readStore: async () => ({ document: fixture(), revision: 'revision', raw: '{}' }) as never })
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(query).toHaveBeenNthCalledWith(2, expect.stringContaining('switch_employee_entitlement_authority_v2'), [
+      'ai-pdm', actor.employeeId, 'orgmaster_authority', 1, 'operation-replay', 'batch-1', 'policy-version-1', actor.principalId,
+      'reason', 'principal-personal', 'old-issuer', 'old-subject',
+    ])
+    expect(receipt).toMatchObject({ replayed: true, assignmentVersionId: 'policy-version-1' })
+  })
+
+  it('fails closed when one employee has multiple personal principals or a historical unbound receipt', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+      .mockResolvedValueOnce({ rowCount: 2, rows: [
+        { employee_id: actor.employeeId, principal_id: 'principal-one', principal_issuer: 'issuer', principal_subject: 'subject-one', account_type: 'human_personal' },
+        { employee_id: actor.employeeId, principal_id: 'principal-two', principal_issuer: 'issuer', principal_subject: 'subject-two', account_type: 'human_personal' },
+      ] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ receipt: { requestContractVersion: null } }] })
+    const dependencies = { now, database: { query, end: vi.fn() } as never, readStore: async () => ({ document: fixture(), revision: 'revision', raw: '{}' }) as never }
+    const request = { applicationId: 'ai-pdm' as const, employeeId: actor.employeeId!, toAuthoritySource: 'orgmaster_authority' as const, expectedAuthorityVersion: 1, operationId: 'operation-1', batchId: 'batch-1', reason: 'reason' }
+    await expect(switchEmployeeEntitlementAuthority('/fixture', actor, request, dependencies)).rejects.toMatchObject({ code: 'ENTITLEMENT_AUTHORITY_TARGET_IDENTITY_INVALID' })
+    await expect(switchEmployeeEntitlementAuthority('/fixture', actor, request, dependencies)).rejects.toMatchObject({ code: 'legacy_receipt_unbound' })
+    expect(query).toHaveBeenCalledTimes(3)
   })
 })

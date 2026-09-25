@@ -8,6 +8,9 @@ export type OrgmasterSession = {
   principalId: string
   employeeId: string
   authEpoch: number
+  sessionSchemaVersion: 1 | 2
+  epochKind: 'provider_pair' | 'principal'
+  principalAuthEpoch: number | null
   issuedAt: string
   authenticatedAt: string | null
   expiresAt: string
@@ -22,6 +25,9 @@ type SessionRow = {
   principal_id: string
   employee_id: string
   auth_epoch: string | number
+  session_schema_version: number
+  epoch_kind: string
+  principal_auth_epoch: string | number | null
   issued_at: Date | string
   authenticated_at: Date | string | null
   expires_at: Date | string
@@ -30,19 +36,29 @@ type SessionRow = {
 }
 
 export type OrgmasterSessionRepository = {
-  create(input: Omit<OrgmasterSession, 'id' | 'revokedAt'> & { sessionIdHash: string }): Promise<OrgmasterSession>
+  create(input: Omit<OrgmasterSession, 'id' | 'revokedAt' | 'sessionSchemaVersion' | 'epochKind' | 'principalAuthEpoch'> &
+    Partial<Pick<OrgmasterSession, 'sessionSchemaVersion' | 'epochKind' | 'principalAuthEpoch'>> &
+    { sessionIdHash: string }): Promise<OrgmasterSession>
   findByHash(sessionIdHash: string): Promise<OrgmasterSession | null>
   revokeByHash(sessionIdHash: string, reason: string): Promise<void>
 }
 
 function mapSession(row: SessionRow): OrgmasterSession {
+  const authEpoch = Number(row.auth_epoch)
+  const principalAuthEpoch = row.principal_auth_epoch == null ? null : Number(row.principal_auth_epoch)
+  const v1 = row.session_schema_version === 1 && row.epoch_kind === 'provider_pair' && principalAuthEpoch === null
+  const v2 = row.session_schema_version === 2 && row.epoch_kind === 'principal' && typeof principalAuthEpoch === 'number' && Number.isSafeInteger(principalAuthEpoch) && principalAuthEpoch >= 0
+  if ((!v1 && !v2) || !Number.isSafeInteger(authEpoch) || authEpoch < 0) throw new Error('invalid session epoch binding')
   return {
     id: row.id,
     identityIssuer: row.identity_issuer,
     identitySubject: row.identity_subject,
     principalId: row.principal_id,
     employeeId: row.employee_id,
-    authEpoch: Number(row.auth_epoch),
+    authEpoch,
+    sessionSchemaVersion: row.session_schema_version === 2 ? 2 : 1,
+    epochKind: row.epoch_kind === 'principal' ? 'principal' : 'provider_pair',
+    principalAuthEpoch,
     issuedAt: new Date(row.issued_at).toISOString(),
     authenticatedAt: row.authenticated_at ? new Date(row.authenticated_at).toISOString() : null,
     expiresAt: new Date(row.expires_at).toISOString(),
@@ -52,18 +68,27 @@ function mapSession(row: SessionRow): OrgmasterSession {
 }
 
 export function createOrgmasterSessionRepository(database: OrgmasterDatabase): OrgmasterSessionRepository {
-  const selection = 'id, identity_issuer, identity_subject, principal_id, employee_id, auth_epoch, issued_at, authenticated_at, expires_at, revoked_at, assurance_level'
+  const selection = 'id, identity_issuer, identity_subject, principal_id, employee_id, auth_epoch, session_schema_version, epoch_kind, principal_auth_epoch, issued_at, authenticated_at, expires_at, revoked_at, assurance_level'
   return {
     async create(input) {
+      const sessionSchemaVersion = input.sessionSchemaVersion ?? 1
+      const epochKind = input.epochKind ?? 'provider_pair'
+      const principalAuthEpoch = input.principalAuthEpoch ?? null
+      if (!((sessionSchemaVersion === 1 && epochKind === 'provider_pair' && principalAuthEpoch === null) ||
+        (sessionSchemaVersion === 2 && epochKind === 'principal' && typeof principalAuthEpoch === 'number' && Number.isSafeInteger(principalAuthEpoch) && principalAuthEpoch >= 0))) {
+        throw new Error('invalid session epoch binding')
+      }
       const now = new Date().toISOString()
       const result = await database.query<SessionRow>(`
         INSERT INTO orgmaster_core.app_sessions (
           id, session_id_hash, identity_issuer, identity_subject, principal_id, employee_id,
           app_id, auth_epoch, issued_at, authenticated_at, expires_at, last_seen_at, revoked_at, revoke_reason,
-          assurance_level, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, 'orgmaster', $7, $8, $9, $10, $8, NULL, NULL, $11, $12, $12)
+          assurance_level, created_at, updated_at,
+          session_schema_version, epoch_kind, principal_auth_epoch
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'orgmaster', $7, $8, $9, $10, $8, NULL, NULL, $11, $12, $12,
+          $13, $14, $15)
         RETURNING ${selection}
-      `, [randomUUID(), input.sessionIdHash, input.identityIssuer, input.identitySubject, input.principalId, input.employeeId, input.authEpoch, input.issuedAt, input.authenticatedAt, input.expiresAt, input.assuranceLevel, now])
+      `, [randomUUID(), input.sessionIdHash, input.identityIssuer, input.identitySubject, input.principalId, input.employeeId, input.authEpoch, input.issuedAt, input.authenticatedAt, input.expiresAt, input.assuranceLevel, now, sessionSchemaVersion, epochKind, principalAuthEpoch])
       return mapSession(result.rows[0])
     },
     async findByHash(sessionIdHash) {

@@ -157,6 +157,11 @@ export function applyGovernanceCommandV3(
   }
 
   const catalog = catalogs.find((value) => value.applicationId === 'ai-pdm')
+  if ((command.type === 'UPSERT_ROLE_ASSIGNMENT' || command.type === 'UPSERT_ROLE_DELEGATION') &&
+    command.value.applicationId === 'ai-pdm' && command.value.catalogVersion !== catalog?.catalogVersion) {
+    throw new GovernanceValidationError([{ code: 'EXTERNAL_CATALOG_STALE', path: 'catalogVersion',
+      message: '新指派或代理必須使用目前發布的 catalog version' }])
+  }
   const assignment = command.type === 'UPSERT_ROLE_ASSIGNMENT' ? command.value : command.type === 'REVOKE_ROLE_ASSIGNMENT' ? document.draft.roleAssignments.find((value) => value.id === command.id) : undefined
   const delegation = command.type === 'UPSERT_ROLE_DELEGATION' ? command.value : command.type === 'REVOKE_ROLE_DELEGATION' ? document.draft.roleDelegations.find((value) => value.id === command.id) : undefined
   const roleId = assignment?.roleId ?? delegation?.roleId

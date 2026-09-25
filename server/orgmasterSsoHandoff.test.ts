@@ -2,7 +2,8 @@ import { createServer } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createOrgmasterAuthMiddleware, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
-import type { OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
+import { parseHandoff, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
+import v2Vectors from '../contracts/jenfu-sso-handoff/v2/conformance-vectors.json'
 
 const openServers: Array<ReturnType<typeof createServer>> = []
 afterEach(async () => { await Promise.all(openServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
@@ -20,7 +21,7 @@ function runtime() {
   const value: OrgmasterAuthRuntime = {
     configResult: { configured: true, config }, ssoHandoffEnabled: true,
     principals: { resolveActivePrincipal: vi.fn(async () => ({ principalId: 'principal-1', employeeId: 'employee-1', mappingVersion: 1, publishedAt: new Date(now).toISOString() })) },
-    epochs: { read: vi.fn(async () => 7), readState: vi.fn(async () => ({ authEpoch: 7, revokedBefore: null })) },
+    epochs: { read: vi.fn(async () => 7), readState: vi.fn(async () => ({ authEpoch: 7, revokedBefore: null })), readPrincipalState: vi.fn(async () => ({ authEpoch: 7, revokedBefore: null })) },
     sessions: { create: vi.fn(async (input) => ({ id: 'session-1', ...input, revokedAt: null })), findByHash: vi.fn(async () => null), revokeByHash: vi.fn(async () => undefined) },
   }
   return value
@@ -61,6 +62,16 @@ function dependencies(mode: 'off' | 'on', exchange = handoff()): OrgmasterSsoHan
 }
 
 describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
+  it('checks the locked v2 wire vector and rejects extra authority or expired proof', () => {
+    const vector = { ...v2Vectors.valid, audience: 'orgmaster' }
+    const clock = Date.parse(v2Vectors.clock)
+    expect(parseHandoff(vector, vector.issuer, clock)).toMatchObject({
+      contractVersion: 'jenfu.sso-handoff.v2', identity: { principalId: 'principal-one' },
+    })
+    expect(() => parseHandoff({ ...vector, authorization: { applicationId: 'orgmaster', assignmentVersion: 1 } }, vector.issuer, clock)).toThrow('handoff invalid')
+    expect(() => parseHandoff({ ...vector, expiresAt: '2026-09-24T11:59:59.000Z' }, vector.issuer, clock)).toThrow('handoff expired')
+    expect(() => parseHandoff({ ...vector, authState: { authEpoch: -1, revokedBefore: null } }, vector.issuer, clock)).toThrow('handoff invalid')
+  })
   it('keeps health available and direct start fail-closed while mode is off', async () => {
     const value = runtime()
     value.ssoHandoffEnabled = false
@@ -116,5 +127,39 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(denied.status).toBe(403)
     expect(await denied.json()).toMatchObject({ code: 'sso_principal_stale' })
     expect(value.sessions!.create).not.toHaveBeenCalled()
+  })
+
+  it('issues a principal-bound v2 session and rejects a v1 authorization field on v2', async () => {
+    const v2 = { ...handoff(), contractVersion: 'jenfu.sso-handoff.v2' }
+    delete (v2 as Partial<typeof v2>).authorization
+    const value = runtime()
+    const base = await listen(value, dependencies('on', v2 as ReturnType<typeof handoff>))
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.searchParams.set('code', 'opaque-code')
+    callback.searchParams.set('state', location.searchParams.get('state')!)
+    callback.searchParams.set('iss', `${brokerOrigin}/api/sso`)
+    const accepted = await fetch(callback, { redirect: 'manual', headers: { cookie: start.headers.get('set-cookie')!.split(';')[0] } })
+    expect(accepted.status).toBe(303)
+    expect(value.epochs!.readPrincipalState).toHaveBeenCalledWith('principal-1')
+    expect(value.epochs!.readState).not.toHaveBeenCalled()
+    expect(value.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({
+      principalId: 'principal-1', authEpoch: 0, sessionSchemaVersion: 2,
+      epochKind: 'principal', principalAuthEpoch: 7,
+    }))
+
+    const malformed = { ...v2, authorization: { applicationId: 'orgmaster', assignmentVersion: 1 } }
+    const deniedValue = runtime()
+    const deniedBase = await listen(deniedValue, dependencies('on', malformed as ReturnType<typeof handoff>))
+    const deniedStart = await fetch(`${deniedBase}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const deniedLocation = new URL(deniedStart.headers.get('location')!)
+    const deniedCallback = new URL('/api/auth/jenfu-sso/callback', deniedBase)
+    deniedCallback.searchParams.set('code', 'opaque-code')
+    deniedCallback.searchParams.set('state', deniedLocation.searchParams.get('state')!)
+    deniedCallback.searchParams.set('iss', `${brokerOrigin}/api/sso`)
+    const denied = await fetch(deniedCallback, { redirect: 'manual', headers: { cookie: deniedStart.headers.get('set-cookie')!.split(';')[0] } })
+    expect(denied.status).toBe(400)
+    expect(deniedValue.sessions!.create).not.toHaveBeenCalled()
   })
 })
