@@ -46,6 +46,7 @@ test('operator package uses locked runtime and includes every imported source', 
     'scripts/dev040-production-migration-runner.mjs',
     'scripts/dev057-production-v4-catalog-readback-runner.mjs',
     'server/aiPdmRoleCatalogRepository.ts',
+    'config/catalogs/ai-pdm-role-catalog.v4.json',
     'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json']) {
     assert.match(dockerfile, new RegExp(`COPY ${source.replaceAll('.', '\\.')} `))
   }

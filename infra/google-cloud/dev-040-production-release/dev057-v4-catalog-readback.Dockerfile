@@ -12,6 +12,7 @@ COPY scripts/lib/dev012-production-migration-runner.mjs scripts/lib/dev012-produ
 COPY scripts/dev040-production-migration-runner.mjs scripts/dev040-production-migration-runner.mjs
 COPY scripts/dev057-production-v4-catalog-readback-runner.mjs scripts/dev057-production-v4-catalog-readback-runner.mjs
 COPY server/aiPdmRoleCatalogRepository.ts server/aiPdmRoleCatalogRepository.ts
+COPY config/catalogs/ai-pdm-role-catalog.v4.json config/catalogs/ai-pdm-role-catalog.v4.json
 COPY contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json
 
 ARG SOURCE_REVISION

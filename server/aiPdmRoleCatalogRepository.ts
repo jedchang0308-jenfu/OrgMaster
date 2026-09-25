@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { access, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 
 export const JENFU_ENTITLEMENT_CONTRACT_VERSION = 'jenfu.platform-entitlement.v1' as const
 export const AI_PDM_APPLICATION_ID = 'ai-pdm' as const
@@ -157,10 +158,20 @@ export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmR
       allowedScopeKinds: row.allowed_scope_kinds,
       assignmentTier: row.assignment_tier,
       permissions: row.permissions,
-      metadata: row.metadata ?? undefined,
+      ...(row.metadata == null ? {} : { metadata: row.metadata }),
       roleDefinitionHash: row.role_definition_hash,
     })),
     sourcePath: 'postgres:ai_pdm_contract.v_application_role_catalog_v1',
   } as PublishedAiPdmRoleCatalog
-  return validateCatalog(catalog)
+  // jsonb preserves values, but not nested object key insertion order. The
+  // producer's frozen digest was computed from its source JSON serialization,
+  // so hashing decoded jsonb would reject an identical published catalog.
+  // Compare exact values against the independently validated source snapshot.
+  const approved = await readPublishedAiPdmRoleCatalog()
+  const { sourcePath: _publishedPath, ...publishedValues } = approved
+  const { sourcePath: _databasePath, ...databaseValues } = catalog
+  if (!isDeepStrictEqual(databaseValues, publishedValues)) {
+    throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
+  }
+  return catalog
 }
