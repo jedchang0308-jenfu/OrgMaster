@@ -185,15 +185,17 @@ export function assertDev057WriterFenceAppend(before, after) {
 export function assertDev057PrincipalContractAppend(before, after) {
   const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
   const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
-  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 23 || after.entries?.length !== 25) fail('DEV057_PRINCIPAL_CONTRACT_APPEND_INVALID')
+  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 21 || after.entries?.length !== 25) fail('DEV057_PRINCIPAL_CONTRACT_APPEND_INVALID')
   if (!same(before.entries, after.entries.slice(0, before.entries.length))) fail('DEV057_PRINCIPAL_CONTRACT_APPEND_INVALID')
   const expected = [
+    ['dev014-orgmaster-022', 'db/migrations/022_dev014_managed_login_session_admission.sql', 'af32dce7cac09c5319823b727b131ea23e84d6c0cd52250d93d7b93d9996b5c2', '0aa3e42451e362ee3ceab2dd0dfadb34769484c1cc7b4f58a312721e0392d1f1'],
+    ['dev014-orgmaster-023', 'db/migrations/023_dev014_authority_principal_projection_contract.sql', '0a4ade661d396d93fda7a37e4020bda5454199d505d674d3e1e49cccd5aa5b83', '930732039941c6633382cbf5703d28f8cceef0d1c004a0f8a26ab7df4dbbd5c3'],
     ['dev057-orgmaster-024', 'db/migrations/024_dev057_principal_identity_invariants.sql', '4fdd1dea344ecbe593c8cd009445e0bd2f43d21b08764929424fb9b81e2f7879', '449760cf1e633d823a8245d238deaea3f24371ec2e3e4f1fe3075984ecb87102'],
     ['dev057-orgmaster-025', 'db/migrations/025_dev057_ai_pdm_principal_effective_grants_v2.sql', '0a7e3c317398fb73f1388b8d863ef2ed994a9e92839ef94e88ff256292b60061', '36176113c000bea1d0a44d2b4330786d18bbed853b41a5070992272a21c5f1f7'],
   ]
   const appended = after.entries.slice(before.entries.length)
   if (!same(appended.map((entry) => [entry.version, entry.path, entry.sourceSha256, entry.appliedSha256]), expected)) fail('DEV057_PRINCIPAL_CONTRACT_APPEND_INVALID')
-  return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 2, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
+  return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 4, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
 }
 
 export function assertDev014ManagedPrincipalProjectionAppend(before, after) {
