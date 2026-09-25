@@ -1,6 +1,8 @@
 # 文件地圖
 
-> **2026-09-25 DEV-057 Production R2／026 現行狀態**：正式 owner run 36139874430 在 migration ledger 25 後因 candidate smoke 回 principal_not_active 於 activate 前中止，正式 traffic 維持前版。已定位 session-principal v2 的 published policy JSON 路徑錯誤；forward-only 026 與隔離 PostgreSQL D57-01～18 18／18 證據見 [DEV-057 Production R2 段](specs/DEV-057-identity-and-grant-contract-boundary.md#production-r2-correction)，尚待 source-frozen 重新發布與跨 owner readback。既有 022／025、R2 receipt 保留，不把本地 PASS 算正式切流。
+> **2026-09-26 DEV-057 Production R3 現行狀態**：[DEV-057 R3 發布證據](qa/DEV-057-production-r3-release-evidence-2026-09-26.md)核對官方 `master` `48120534cbde4a06d0f3cd6d5de76171ca7e0699`、owner run 36146949383／terminal `RELEASED`、migration ledger 26（1 applied／25 replayed）與 `orgmaster-prod-c2a14a18803b` 100% traffic。producer 已切流；AI-PDM v2 consumer conformance、完整 managed identity readback、recovery 與 Production L4 仍待驗收。下一段 R2 的「026 尚待發布」僅為該次中止時的歷史狀態。
+
+> **2026-09-25 DEV-057 Production R2／026 歷史狀態**：正式 owner run 36139874430 在 migration ledger 25 後因 candidate smoke 回 principal_not_active 於 activate 前中止，正式 traffic 維持前版。已定位 session-principal v2 的 published policy JSON 路徑錯誤；forward-only 026 與隔離 PostgreSQL D57-01～18 18／18 證據見 [DEV-057 Production R2 段](specs/DEV-057-identity-and-grant-contract-boundary.md#production-r2-correction)，尚待 source-frozen 重新發布與跨 owner readback。既有 022／025、R2 receipt 保留，不把本地 PASS 算正式切流。
 
 > **2026-09-24 DEV-057 B 本機實作進度（尚不可發布）**：[producer實作契約](specs/DEV-057-identity-and-grant-contract-boundary.md#principal-implementation-contract)對應未套用migration 024；principal owner／alias history、writer fence、schema2 session欄位及authority v2命令／operation readback已落地，本人UI與DEV-013／014受控operator已接v2並通過目標測試；task-owned PostgreSQL 18.4 D57-01～15共15/15及DB boundary PASS，暫時資源已清理。024已使有效角色與Portal入口共用typed principal投影；未分類或同pair多筆分類的兩種入口拒絕、唯一已分類pair維持授權通過D57-07，owner release profile／runner納入024並通過48/48相關測試。operator真實PG端到端、target session及受控／Production驗證仍待完成；下列Documents Only與v1 PASS為歷史狀態，不能宣稱B產品已發布。
 

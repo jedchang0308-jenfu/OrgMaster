@@ -1,6 +1,6 @@
 # DEV-057：身分與權限發布契約邊界
 
-- 狀態：既有 v1 producer `RD Complete / Local QA-QC Passed`；B 的 `#principal-producer-impact` 已有 022–025 Production ledger 與本機 026 corrective migration，仍為 `RD Implementation In Progress`；AI-PDM v2 consumer 已有本機實作，跨 owner readback 與 Production L4 `NOT_RUN`
+- 狀態：B 的 `#principal-producer-impact` 已由 R3 正式發布至 migration ledger 26 與 `orgmaster-prod-c2a14a18803b` 100% traffic；AI-PDM v2 consumer conformance、完整跨 owner readback、recovery 與 Production L4 尚未完成，主責 JENFU/DEV-015 不得據此關閉
 - 日期：2026-09-23；2026-09-24 principal-first amendment
 - Native owner：`ORGMASTER/DEV-057#identity-grants`
 - 來源：`JENFU/DEV-015#identity-grants`；同群目標任務 `AIPDM/DEV-121#target-authorization`
@@ -20,6 +20,10 @@
 **2026-09-25 本機 producer 進度。** 025 已建立來源受控的 `v_ai_pdm_principal_effective_grants_v2` 定義及 manifest，grant 從原治理、catalog、authority 與 typed admission 直接計算，不以 v1 alias grant view 作資料來源；同 principal 多個有效 alias 僅產生一組 grant。D57-17 已在 disposable PostgreSQL 以兩 alias／一 grant 驗證欄位、來源與 AI-PDM runtime／migrator 精確讀取；001–025 的 DEV-057 案例 17／17、owner migration bundle／runner 聚焦 21／21 PASS。AI-PDM consumer 已於本機改讀 v2，正式套用／跨 owner readback／切流與 v1 退役尚未執行。本段更新先前「僅文件／未實作」狀態，不改寫歷史證據。
 
 **2026-09-25 R1 Production baseline 修正（歷史）。** 唯讀查核 sealed `RELEASED` receipt `ORGMASTER-REL-20260923182317791-BDD382A` 的 migration bundle 確認目前正式基線只有 001–021；022／023 雖在來源中，尚未正式套用。第一次 024／025 發布預檢因此以 `DEV057_PRINCIPAL_CONTRACT_APPEND_INVALID` 停止，沒有執行 migration 或切流。該次受控發布必須驗證 001–021 前綴逐筆不變，僅追加 022／023／024／025 的固定版本、路徑、source 與 applied hash，預期 `ledgerCount=25`、`applied=0..4`、`replayed=25-applied`；source-bound infra receipt、Job image、runtime 與完整 release gate 維持原要求。不能把來源已包含 022／023 視為 Production ledger 已套用。
+
+<a id="production-r3-release"></a>
+
+**2026-09-26 Production R3 owner producer 發布。** 官方受保護 `master` merge revision `48120534cbde4a06d0f3cd6d5de76171ca7e0699` 的 [workflow 36146949383](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/36146949383) 已完成 `prepare → build → migrate → candidate → entrypoint → verify → decision → activate → canonical → finalize`，terminal receipt 為 `RELEASED`。正式 migration receipt 顯示 `orgmaster_core.schema_migrations` ledger 26，026 applied=1／其餘 25 replayed、DB boundary PASS、`jenfu_dev`／`jenfu_stg` 連線拒絕。Cloud Run provider readback：`orgmaster-prod-c2a14a18803b` 100% traffic，image digest `sha256:95819b6b3cb90bf6ddc1f508df7c8b812f84e7e0c1c37497d147dec15f59ba96`。完整 source／receipt／readback 索引見 [R3 發布證據](../qa/DEV-057-production-r3-release-evidence-2026-09-26.md)。這證明 OrgMaster producer correction 已發布，**不**證明 AI-PDM v2 consumer 授權、真實瀏覽器登入／權限／登出、跨 TTL 或 v1／v2 recovery；這些維持同一跨專案任務的未完成驗收。下段 R2 所述「026 尚未發布」是當時安全中止的歷史快照。
 
 <a id="production-r2-correction"></a>
 
