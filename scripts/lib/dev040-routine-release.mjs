@@ -3,6 +3,7 @@ import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, re
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
+import { DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './dev057-principal-contract-release.mjs'
 
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
@@ -181,6 +182,20 @@ export function assertDev057WriterFenceAppend(before, after) {
   return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
 }
 
+export function assertDev057PrincipalContractAppend(before, after) {
+  const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+  const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
+  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 23 || after.entries?.length !== 25) fail('DEV057_PRINCIPAL_CONTRACT_APPEND_INVALID')
+  if (!same(before.entries, after.entries.slice(0, before.entries.length))) fail('DEV057_PRINCIPAL_CONTRACT_APPEND_INVALID')
+  const expected = [
+    ['dev057-orgmaster-024', 'db/migrations/024_dev057_principal_identity_invariants.sql', '4fdd1dea344ecbe593c8cd009445e0bd2f43d21b08764929424fb9b81e2f7879', '449760cf1e633d823a8245d238deaea3f24371ec2e3e4f1fe3075984ecb87102'],
+    ['dev057-orgmaster-025', 'db/migrations/025_dev057_ai_pdm_principal_effective_grants_v2.sql', '0a7e3c317398fb73f1388b8d863ef2ed994a9e92839ef94e88ff256292b60061', '36176113c000bea1d0a44d2b4330786d18bbed853b41a5070992272a21c5f1f7'],
+  ]
+  const appended = after.entries.slice(before.entries.length)
+  if (!same(appended.map((entry) => [entry.version, entry.path, entry.sourceSha256, entry.appliedSha256]), expected)) fail('DEV057_PRINCIPAL_CONTRACT_APPEND_INVALID')
+  return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 2, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
+}
+
 export function assertDev014ManagedPrincipalProjectionAppend(before, after) {
   const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
   const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
@@ -248,6 +263,17 @@ export function assertDev057WriterFenceRemediation(readiness, authorization) {
     || readiness.devId !== 'DEV-057' || readiness.slice !== '057-WRITER-FENCE'
     || !same(authorization.remediation, remediation) || !same(readiness.remediation, remediation)) fail('DEV057_WRITER_FENCE_AUTHORITY_INVALID')
   return { releaseMode: 'DEV057_WRITER_FENCE_REMEDIATION', remediation }
+}
+
+export function assertDev057PrincipalContractRemediation(readiness, authorization) {
+  const remediation = DEV057_PRINCIPAL_CONTRACT_REMEDIATION
+  if (authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+    || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+    || authorization.devId !== 'DEV-057' || authorization.slice !== '057-PRINCIPAL-CONTRACT'
+    || readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+    || readiness.devId !== 'DEV-057' || readiness.slice !== '057-PRINCIPAL-CONTRACT'
+    || !same(authorization.remediation, remediation) || !same(readiness.remediation, remediation)) fail('DEV057_PRINCIPAL_CONTRACT_AUTHORITY_INVALID')
+  return { releaseMode: 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', remediation }
 }
 
 export function assertDev014ManagedPrincipalProjectionRemediation(readiness, authorization) {
@@ -442,7 +468,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     ? values.readiness?.devId === 'DEV-057'
       ? values.readiness?.slice === '057-WRITER-FENCE'
         ? assertDev057WriterFenceRemediation(values.readiness, values.authorization)
-        : null
+        : values.readiness?.slice === '057-PRINCIPAL-CONTRACT'
+          ? assertDev057PrincipalContractRemediation(values.readiness, values.authorization)
+          : null
       : values.readiness?.devId === 'DEV-014'
       ? values.readiness?.slice === '014-PRODUCER-CONTRACT'
         ? assertDev014ProducerContractRemediation(values.readiness, values.authorization)
@@ -461,7 +489,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     : values.readiness?.devId === 'DEV-014'
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
-  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
@@ -490,6 +518,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
           ? assertDev014ManagedPrincipalProjectionAppend(baseline.bundle.value, current.bundle)
           : controlledTransition.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION'
             ? assertDev057WriterFenceAppend(baseline.bundle.value, current.bundle)
+          : controlledTransition.releaseMode === 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION'
+            ? assertDev057PrincipalContractAppend(baseline.bundle.value, current.bundle)
         : assertDev013ControlledMigrationAppend(baseline.bundle.value, current.bundle)
   }
   const infraChanged = !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)

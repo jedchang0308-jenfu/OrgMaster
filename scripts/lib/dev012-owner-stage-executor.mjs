@@ -3,6 +3,7 @@ import { gzipSync } from 'node:zlib'
 import { assertImmutableRef, assertProtectedGitHubContext, assertRuntimeConfig, candidateTagUriMatches, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
 import { dev013L4SequenceStep, dev013TerminalTransitionFact } from './dev013-l4-transition-sequence.mjs'
 import { buildDev014ConsumerConformance } from './dev014-consumer-conformance.mjs'
+import { DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './dev057-principal-contract-release.mjs'
 export { candidateTagUriMatches } from './dev012-owner-release-runtime.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
@@ -94,7 +95,9 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
   const usesNonDefaultValue = Object.entries(rules).some(([name, rule]) => controlledEnvironment[name] !== rule.defaultValue)
   if (!isDev013) {
     if (isDev057) {
-      const expectedRemediation = {
+      const principalContract = values.readiness?.slice === '057-PRINCIPAL-CONTRACT'
+      const expectedSlice = principalContract ? '057-PRINCIPAL-CONTRACT' : '057-WRITER-FENCE'
+      const expectedRemediation = principalContract ? DEV057_PRINCIPAL_CONTRACT_REMEDIATION : {
         kind: 'IDENTITY_GRANT_WRITER_FENCE',
         migrationVersion: 'dev057-orgmaster-021',
         contractViews: ['orgmaster_contract.v_active_principal_mappings_v1', 'orgmaster_contract.v_portal_app_visibility_v1'],
@@ -105,9 +108,9 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
       if (!intent.baselineIntentRef
         || values.authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
         || values.authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
-        || values.authorization.devId !== 'DEV-057' || values.authorization.slice !== '057-WRITER-FENCE'
+        || values.authorization.devId !== 'DEV-057' || values.authorization.slice !== expectedSlice
         || values.readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
-        || values.readiness.slice !== '057-WRITER-FENCE'
+        || values.readiness.slice !== expectedSlice
         || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
         || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision
         || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
@@ -115,7 +118,7 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
         || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
         || canonicalize(values.authorization.remediation) !== canonicalize(expectedRemediation)
         || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
-      return { releaseMode: 'DEV057_WRITER_FENCE_REMEDIATION', remediation: expectedRemediation }
+      return { releaseMode: principalContract ? 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' : 'DEV057_WRITER_FENCE_REMEDIATION', remediation: expectedRemediation }
     }
     if (isDev014) {
       if (values.readiness?.slice === '014-PRODUCER-CONTRACT') {
