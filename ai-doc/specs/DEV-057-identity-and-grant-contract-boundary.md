@@ -1,5 +1,7 @@
 # DEV-057：身分與權限發布契約邊界
 
+> **2026-09-26 Production provider-pair readback。** Protected master `9ffa1f25f951560b8d0105b653c472cc7c260e73` 的 source-frozen owner image `sha256:a6567a11480801b547ecd9fb6fae6e7a8496f854d57f5e11dfb8527fd256a8e1` 以既有 `orgmaster-prod-migrator` 唯讀執行，同一 snapshot receipt `gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV057-PRINCIPAL-PAIR-DIAGNOSTIC/20260926-r1.json#1790372778753938`（SHA-256 `cba192ba941b4d8e3849a39457fa7f8256c9309a49a8246529a92331674ec1db`）對齊 AI-PDM R4 六個 exact pair hash：一組既有管理者 Firebase pair 具有 canonical／typed／published governance／permanent reservation；另五組在這四者及 managed auth-pair registry 均為零。另有一筆未綁 provider pair 的 managed identity，無證據指向任何缺列 pair。R5 consumer 私有 profile label 只供人工核對，不作 identity join。兩個 Google OAuth alias 的舊入口在現行 `firebase_bff` 正式模式已關閉；三個 Firebase pair 仍缺 producer 來源。停止相同 authority switch 重跑；先確認每個個人帳號、Employee、provider pair 和預期權限，共用信箱依既有非破壞退場決策處理。operator Job 已在 readback 後刪除；此診斷無 Production 身分、schema、service、traffic 或權限 mutation，不認列 L4。
+
 - 狀態：B 的 `#principal-producer-impact` 已由 R3 正式發布至 migration ledger 26 與 `orgmaster-prod-c2a14a18803b` 100% traffic；AI-PDM v2 consumer conformance、完整跨 owner readback、recovery 與 Production L4 尚未完成，主責 JENFU/DEV-015 不得據此關閉
 - 日期：2026-09-23；2026-09-24 principal-first amendment
 - Native owner：`ORGMASTER/DEV-057#identity-grants`
