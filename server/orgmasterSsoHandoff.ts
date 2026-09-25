@@ -10,11 +10,11 @@ const MAX_RETURN_TO = 1024
 
 type Tx = { state: string; verifier: string; returnTo: string; issuer: string; clientId: 'orgmaster'; expiresAt: number }
 type Handoff = {
-  contractVersion: 'jenfu.sso-handoff.v1'
+  contractVersion: 'jenfu.sso-handoff.v1' | 'jenfu.sso-handoff.v2'
   issuer: string
   audience: string
   identity: { identityIssuer: string; identitySubject: string; principalId: string; employeeId: string }
-  authorization: { applicationId: string; assignmentVersion: number }
+  authorization?: { applicationId: string; assignmentVersion: number }
   authentication: { authenticatedAt: string; email: string; emailVerified: boolean; signInProvider: string; secondFactor: 'totp' | null; assuranceLevel: 'aal1' | 'aal2' }
   authState: { authEpoch: number; revokedBefore: string | null }
   sourceSessionExpiresAt: string
@@ -107,13 +107,35 @@ async function defaultServiceToken(audience: string) {
   return client.idTokenProvider.fetchIdToken(audience)
 }
 
-function parseHandoff(value: unknown, expectedIssuer: string, now: number): Handoff {
+export function parseHandoff(value: unknown, expectedIssuer: string, now: number): Handoff {
   const handoff = value as Handoff
-  if (!exactObject(handoff, ['contractVersion', 'issuer', 'audience', 'identity', 'authorization', 'authentication', 'authState', 'sourceSessionExpiresAt', 'issuedAt', 'expiresAt']) || !exactObject(handoff.identity, ['identityIssuer', 'identitySubject', 'principalId', 'employeeId']) || !exactObject(handoff.authorization, ['applicationId', 'assignmentVersion']) || !exactObject(handoff.authentication, ['authenticatedAt', 'email', 'emailVerified', 'signInProvider', 'secondFactor', 'assuranceLevel']) || !exactObject(handoff.authState, ['authEpoch', 'revokedBefore']) || handoff.contractVersion !== 'jenfu.sso-handoff.v1' || handoff.issuer !== expectedIssuer || handoff.audience !== 'orgmaster' || !handoff.identity?.identityIssuer || !handoff.identity.identitySubject || !handoff.identity.principalId || !handoff.identity.employeeId || handoff.authorization?.applicationId !== 'orgmaster' || !Number.isSafeInteger(handoff.authorization.assignmentVersion) || !handoff.authentication?.authenticatedAt || !handoff.authentication.email || handoff.authentication.emailVerified !== true || !handoff.authentication.signInProvider || !['aal1', 'aal2'].includes(handoff.authentication.assuranceLevel) || !Number.isSafeInteger(handoff.authState?.authEpoch) || !handoff.sourceSessionExpiresAt || !handoff.expiresAt || (handoff.authentication.secondFactor !== null && handoff.authentication.secondFactor !== 'totp')) throw new Error('handoff invalid')
+  const v1 = handoff?.contractVersion === 'jenfu.sso-handoff.v1'
+  const v2 = handoff?.contractVersion === 'jenfu.sso-handoff.v2'
+  const sharedKeys = ['contractVersion', 'issuer', 'audience', 'identity', 'authentication', 'authState', 'sourceSessionExpiresAt', 'issuedAt', 'expiresAt']
+  if ((!v1 && !v2) || !exactObject(handoff, v1 ? [...sharedKeys, 'authorization'] : sharedKeys) ||
+    !exactObject(handoff.identity, ['identityIssuer', 'identitySubject', 'principalId', 'employeeId']) ||
+    (v1 && (!exactObject(handoff.authorization, ['applicationId', 'assignmentVersion']) || handoff.authorization?.applicationId !== 'orgmaster' || !Number.isSafeInteger(handoff.authorization.assignmentVersion) || handoff.authorization.assignmentVersion < 0)) ||
+    !exactObject(handoff.authentication, ['authenticatedAt', 'email', 'emailVerified', 'signInProvider', 'secondFactor', 'assuranceLevel']) ||
+    !exactObject(handoff.authState, ['authEpoch', 'revokedBefore']) ||
+    handoff.issuer !== expectedIssuer || handoff.audience !== 'orgmaster' ||
+    !handoff.identity.identityIssuer || !handoff.identity.identitySubject || !handoff.identity.principalId || !handoff.identity.employeeId ||
+    !handoff.authentication.authenticatedAt || !handoff.authentication.email || handoff.authentication.emailVerified !== true ||
+    !handoff.authentication.signInProvider || !['aal1', 'aal2'].includes(handoff.authentication.assuranceLevel) ||
+    !Number.isSafeInteger(handoff.authState.authEpoch) || handoff.authState.authEpoch < 0 ||
+    (handoff.authState.revokedBefore !== null && typeof handoff.authState.revokedBefore !== 'string') ||
+    !handoff.sourceSessionExpiresAt || !handoff.expiresAt ||
+    (handoff.authentication.secondFactor !== null && handoff.authentication.secondFactor !== 'totp') ||
+    (handoff.authentication.assuranceLevel === 'aal2' && handoff.authentication.secondFactor === null)) throw new Error('handoff invalid')
   const authenticatedAt = Date.parse(handoff.authentication.authenticatedAt)
+  const issuedAt = Date.parse(handoff.issuedAt)
   const sourceExpiresAt = Date.parse(handoff.sourceSessionExpiresAt)
   const expiresAt = Date.parse(handoff.expiresAt)
-  if (![authenticatedAt, sourceExpiresAt, expiresAt].every(Number.isFinite) || authenticatedAt > now + 60_000 || expiresAt <= now || sourceExpiresAt <= now) throw new Error('handoff expired')
+  const revokedBefore = handoff.authState.revokedBefore === null ? null : Date.parse(handoff.authState.revokedBefore)
+  if (![authenticatedAt, issuedAt, sourceExpiresAt, expiresAt].every(Number.isFinite) ||
+    (revokedBefore !== null && !Number.isFinite(revokedBefore)) ||
+    authenticatedAt > now + 60_000 || issuedAt > now + 60_000 ||
+    expiresAt <= now || sourceExpiresAt <= now ||
+    expiresAt <= issuedAt || expiresAt > sourceExpiresAt || expiresAt - issuedAt > 60_000) throw new Error('handoff expired')
   if (handoff.authentication.secondFactor !== null && handoff.authentication.secondFactor !== 'totp') throw new Error('handoff factor invalid')
   return handoff
 }
@@ -162,18 +184,21 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     if (!brokerResponse.ok) throw new Error('exchange failed')
     const handoff = parseHandoff(await brokerResponse.json(), setup.issuer, now())
     const principal = await setup.principals.resolveActivePrincipal(handoff.identity.identityIssuer, handoff.identity.identitySubject)
-    const authState = await setup.epochs.readState(handoff.identity.identityIssuer, handoff.identity.identitySubject)
+    const v2 = handoff.contractVersion === 'jenfu.sso-handoff.v2'
+    const authState = v2
+      ? await setup.epochs.readPrincipalState(handoff.identity.principalId)
+      : await setup.epochs.readState(handoff.identity.identityIssuer, handoff.identity.identitySubject)
     if (principal.principalId !== handoff.identity.principalId || principal.employeeId !== handoff.identity.employeeId || authState.authEpoch !== handoff.authState.authEpoch || (authState.revokedBefore && Date.parse(handoff.authentication.authenticatedAt) <= Date.parse(authState.revokedBefore))) throw new Error('stale handoff')
     const existingToken = readSessionToken(request.headers.cookie)
     if (existingToken) {
       const existing = await setup.sessions.findByHash(hashSessionToken(setup.config.sessionHashPepper, existingToken))
-      if (existing && !existing.revokedAt && existing.identitySubject !== handoff.identity.identitySubject) { error(response, 409, 'sso_account_conflict', id, [clearCookie(setup.config.secureCookie)]); return true }
+      if (existing && !existing.revokedAt && existing.principalId !== handoff.identity.principalId) { error(response, 409, 'sso_account_conflict', id, [clearCookie(setup.config.secureCookie)]); return true }
     }
     const nowMs = now()
     const maxExpiry = Math.min(nowMs + ORGMASTER_SESSION_MAX_AGE_SECONDS * 1000, Date.parse(handoff.sourceSessionExpiresAt))
     if (!Number.isFinite(maxExpiry) || maxExpiry <= nowMs) throw new Error('handoff expired')
     const localToken = createOpaqueSessionToken()
-    await setup.sessions.create({ sessionIdHash: hashSessionToken(setup.config.sessionHashPepper, localToken), identityIssuer: handoff.identity.identityIssuer, identitySubject: handoff.identity.identitySubject, principalId: handoff.identity.principalId, employeeId: handoff.identity.employeeId, authEpoch: handoff.authState.authEpoch, issuedAt: new Date(nowMs).toISOString(), authenticatedAt: handoff.authentication.authenticatedAt, expiresAt: new Date(maxExpiry).toISOString(), assuranceLevel: handoff.authentication.secondFactor === 'totp' ? 'aal2' : 'aal1' })
+    await setup.sessions.create({ sessionIdHash: hashSessionToken(setup.config.sessionHashPepper, localToken), identityIssuer: handoff.identity.identityIssuer, identitySubject: handoff.identity.identitySubject, principalId: handoff.identity.principalId, employeeId: handoff.identity.employeeId, authEpoch: v2 ? 0 : handoff.authState.authEpoch, sessionSchemaVersion: v2 ? 2 : 1, epochKind: v2 ? 'principal' : 'provider_pair', principalAuthEpoch: v2 ? handoff.authState.authEpoch : null, issuedAt: new Date(nowMs).toISOString(), authenticatedAt: handoff.authentication.authenticatedAt, expiresAt: new Date(maxExpiry).toISOString(), assuranceLevel: handoff.authentication.secondFactor === 'totp' ? 'aal2' : 'aal1' })
     const location = new URL(tx.returnTo, setup.config.publicBaseUrl.origin).toString()
     response.statusCode = 303
     response.setHeader('Location', location)

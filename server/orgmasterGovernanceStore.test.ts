@@ -77,6 +77,11 @@ describe('governance store', () => {
     const candidate = await validateAssignmentCandidate(root, { ...command.value, id: undefined, catalogVersion: null })
     expect(candidate.status).toBe('invalid')
     expect(candidate.issues.some((issue) => issue.code === 'EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID')).toBe(true)
+    const staleCandidate = await validateAssignmentCandidate(root, {
+      ...command.value, id: undefined, catalogVersion: 'ai-pdm.role-catalog.2026-09-03.v3',
+    })
+    expect(staleCandidate.status).toBe('invalid')
+    expect(staleCandidate.issues.some((issue) => issue.code === 'EXTERNAL_CATALOG_STALE')).toBe(true)
     const persisted = await readGovernanceStore(root)
     expect(persisted.document.schemaVersion).toBe(3)
     expect(persisted.document.draft.roleAssignments[0]).toMatchObject({ basis: 'manual', subjectKind: 'employee', targetPrincipalId: null })

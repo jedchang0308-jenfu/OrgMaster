@@ -15,7 +15,7 @@ const operation = {
 function fakeDatabase({ mode = 'legacy', failSecond = false, partial = false, missingBridge = false, missingTypedProjection = false } = {}) {
   const state = new Map(FIXTURES.map((fixture) => [fixture.employeeId, {
     source: mode === 'replay' ? 'orgmaster_authority' : 'legacy_authority', version: mode === 'replay' ? 2 : 1,
-    receipt: mode === 'replay' ? { receipt_id: `receipt-${fixture.employeeId}`, operation_id: `${operation.operationId}-${fixture.alias.toUpperCase()}`, batch_id: operation.operationId, application_id: 'ai-pdm', employee_id: fixture.employeeId, from_authority_source: 'legacy_authority', to_authority_source: 'orgmaster_authority', authority_version: 2, assignment_version_id: 'assignment-policy-fixture', session_refresh_state: 'pending', actor: TARGET.actor, reason: `DEV-014 login fixture ${fixture.alias} switch to OrgMaster authority`, switched_at: '2026-09-23T00:00:01.000Z' } : null,
+    receipt: mode === 'replay' ? { receipt_id: `receipt-${fixture.employeeId}`, operation_id: `${operation.operationId}-${fixture.alias.toUpperCase()}`, batch_id: operation.operationId, application_id: 'ai-pdm', employee_id: fixture.employeeId, from_authority_source: 'legacy_authority', to_authority_source: 'orgmaster_authority', authority_version: 2, assignment_version_id: 'assignment-policy-fixture', session_refresh_state: 'pending', actor: TARGET.actor, reason: `DEV-014 login fixture ${fixture.alias} switch to OrgMaster authority`, switched_at: '2026-09-23T00:00:01.000Z', request_contract_version: 'orgmaster.employee-authority-switch.v2', request_hash: 'a'.repeat(64), target_principal_id: `principal-${fixture.employeeId}`, target_identity_issuer: 'issuer', target_identity_subject: `subject-${fixture.employeeId}` } : null,
     outbox: mode === 'replay' ? { event_id: `event-${fixture.employeeId}`, operation_id: `${operation.operationId}-${fixture.alias.toUpperCase()}`, employee_id: fixture.employeeId, application_id: 'ai-pdm', event_kind: 'authority_switch', actor: TARGET.actor, reason_code: 'entitlement_authority_switch', status: 'completed', attempt_count: 1, platform_receipt_id: 'platform-receipt', created_at: '2026-09-23T00:00:01.000Z', completed_at: '2026-09-23T00:01:00.000Z' } : null,
   }]))
   if (partial) state.get(FIXTURES[0].employeeId).receipt = { receipt_id: 'partial', operation_id: `${operation.operationId}-${FIXTURES[0].alias.toUpperCase()}` }
@@ -40,24 +40,45 @@ function fakeDatabase({ mode = 'legacy', failSecond = false, partial = false, mi
     if (sql.includes('v_ai_pdm_effective_role_assignments_v1')) {
       const entry = state.get(params[0]); return { rows: entry.source === 'orgmaster_authority' ? [{ role_code: 'rd', scope_kind: 'workspace', scope_key: 'current', authority_version: 2 }] : [] }
     }
-    if (sql.includes('authority_switch_receipts')) {
-      const entry = state.get(params[2]);
-      return { rows: entry.receipt && entry.receipt.operation_id === params[0] ? [entry.receipt] : [] }
-    }
-    if (sql.includes('entitlement_change_outbox')) {
-      const entry = state.get(params[2]);
-      return { rows: entry.outbox && entry.outbox.operation_id === params[0] ? [entry.outbox] : [] }
+    if (sql.includes('read_employee_authority_operation_v1')) {
+      const entry = state.get(params[1])
+      if (!entry.receipt || entry.receipt.operation_id !== params[2]) return { rows: [] }
+      const receipt = entry.receipt
+      const outbox = entry.outbox
+      return { rows: [{
+        receipt: {
+          receiptId: receipt.receipt_id, operationId: receipt.operation_id,
+          batchId: receipt.batch_id, applicationId: receipt.application_id,
+          employeeId: receipt.employee_id, fromAuthoritySource: receipt.from_authority_source,
+          toAuthoritySource: receipt.to_authority_source, authorityVersion: receipt.authority_version,
+          assignmentVersionId: receipt.assignment_version_id,
+          sessionRefreshState: receipt.session_refresh_state, actor: receipt.actor,
+          reason: receipt.reason, switchedAt: receipt.switched_at,
+          requestContractVersion: receipt.request_contract_version,
+          requestHash: receipt.request_hash, targetPrincipalId: receipt.target_principal_id,
+          targetIdentityIssuer: receipt.target_identity_issuer,
+          targetIdentitySubject: receipt.target_identity_subject,
+        },
+        outbox: outbox ? {
+          eventId: outbox.event_id, operationId: outbox.operation_id,
+          employeeId: outbox.employee_id, applicationId: outbox.application_id,
+          eventKind: outbox.event_kind, actor: outbox.actor,
+          reasonCode: outbox.reason_code, status: outbox.status,
+          attemptCount: outbox.attempt_count, platformReceiptId: outbox.platform_receipt_id,
+          createdAt: outbox.created_at, completedAt: outbox.completed_at,
+        } : null,
+      }] }
     }
     if (sql.startsWith('BEGIN')) { snapshot = structuredClone([...state.entries()]); return { rows: [] } }
     if (sql.startsWith('ROLLBACK')) { state.clear(); for (const [key, value] of snapshot ?? []) state.set(key, value); snapshot = null; return { rows: [] } }
     if (sql.startsWith('COMMIT')) { snapshot = null; return { rows: [] } }
     if (sql.includes('pg_advisory_xact_lock')) return { rows: [] }
-    if (sql.includes('switch_ai_pdm_employee_authority_v2')) {
+    if (sql.includes('switch_employee_entitlement_authority_v2')) {
       const employeeId = params[1]
       if (failSecond && employeeId === FIXTURES[1].employeeId) throw new Error('FIXTURE_SECOND_FAIL')
       const entry = state.get(employeeId)
       entry.source = 'orgmaster_authority'; entry.version = 2
-      entry.receipt = { receipt_id: `receipt-${employeeId}`, operation_id: params[4], batch_id: params[5], application_id: params[0], employee_id: employeeId, from_authority_source: 'legacy_authority', to_authority_source: params[2], authority_version: 2, assignment_version_id: params[6], session_refresh_state: 'pending', actor: params[7], reason: params[8], switched_at: '2026-09-23T00:00:01.000Z' }
+      entry.receipt = { receipt_id: `receipt-${employeeId}`, operation_id: params[4], batch_id: params[5], application_id: params[0], employee_id: employeeId, from_authority_source: 'legacy_authority', to_authority_source: params[2], authority_version: 2, assignment_version_id: params[6], session_refresh_state: 'pending', actor: params[7], reason: params[8], switched_at: '2026-09-23T00:00:01.000Z', request_contract_version: 'orgmaster.employee-authority-switch.v2', request_hash: 'a'.repeat(64), target_principal_id: params[9], target_identity_issuer: params[10], target_identity_subject: params[11] }
       entry.outbox = { event_id: `event-${employeeId}`, operation_id: params[4], employee_id: employeeId, application_id: params[0], event_kind: 'authority_switch', actor: params[7], reason_code: 'entitlement_authority_switch', status: 'pending', attempt_count: 0, platform_receipt_id: null, created_at: '2026-09-23T00:00:01.000Z', completed_at: null }
       return { rows: [{ receipt_id: entry.receipt.receipt_id, authority_version: 2, outbox_event_id: entry.outbox.event_id, session_refresh_state: 'pending', replayed: false }] }
     }
@@ -91,7 +112,7 @@ test('binds the operator to the exact migrator identity and production job targe
   }, operation), /DEV014_LOGIN_AUTHORITY_TARGET_INVALID/u)
 })
 
-test('switches both fixtures in one serializable transaction and proves effective rd projection', async () => {
+test('switches both fixtures in one read-committed transaction and proves effective rd projection', async () => {
   const db = fakeDatabase()
   const result = await executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') })
   assert.equal(result.status, 'PASS')
@@ -99,7 +120,9 @@ test('switches both fixtures in one serializable transaction and proves effectiv
   assert.equal(result.mutationCount, 6)
   assert.equal(result.atomicity, 'single_transaction_all_fixtures')
   assert.deepEqual(result.fixtures.map(({ disposition, after }) => [disposition, after.effectiveRoleCodes]), [['APPLIED', ['rd']], ['APPLIED', ['rd']]])
-  assert.deepEqual(db.calls.filter(({ sql }) => sql.startsWith('BEGIN') || sql.startsWith('COMMIT')).map(({ sql }) => sql), ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'COMMIT'])
+  assert.deepEqual(db.calls.filter(({ sql }) => sql.startsWith('BEGIN') || sql.startsWith('COMMIT')).map(({ sql }) => sql), ['BEGIN ISOLATION LEVEL READ COMMITTED', 'COMMIT'])
+  assert.equal(db.calls.filter(({ sql }) => sql.includes('pg_advisory_xact_lock')).length, FIXTURES.length)
+  assert.equal(db.calls.filter(({ sql }) => sql.includes('switch_employee_entitlement_authority_v2')).length, FIXTURES.length)
 })
 
 test('replays the exact two committed receipts without a second mutation', async () => {
@@ -107,14 +130,14 @@ test('replays the exact two committed receipts without a second mutation', async
   const result = await executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') })
   assert.equal(result.disposition, 'REPLAY')
   assert.equal(result.mutationCount, 0)
-  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_ai_pdm_employee_authority_v2')), false)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v2')), false)
 })
 
 test('rejects replay when the durable outbox does not belong to the exact authority operation', async () => {
   const db = fakeDatabase({ mode: 'replay' })
   db.state.get(FIXTURES[0].employeeId).outbox.reason_code = 'different_reason'
   await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_POSTCONDITION_FAILED/u)
-  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_ai_pdm_employee_authority_v2')), false)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v2')), false)
 })
 
 test('builds byte-identical durable evidence for apply and replay attempts', async () => {
@@ -126,7 +149,7 @@ test('builds byte-identical durable evidence for apply and replay attempts', asy
 test('fails closed on partial receipt state before any transaction or mutation', async () => {
   const db = fakeDatabase({ partial: true })
   await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_PARTIAL_STATE/u)
-  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_ai_pdm_employee_authority_v2')), false)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v2')), false)
 })
 
 test('rolls back the first fixture when the second CAS call fails', async () => {
@@ -148,7 +171,7 @@ test('rejects a fixture role drift before the CAS function', async () => {
     return original(sql, params)
   }
   await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_ASSIGNMENT_INVALID/u)
-  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_ai_pdm_employee_authority_v2')), false)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v2')), false)
 })
 
 test('reports the required first-login bridge when no active authority row exists', async () => {
@@ -159,20 +182,20 @@ test('reports the required first-login bridge when no active authority row exist
     return original(sql, params)
   }
   await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED/u)
-  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_ai_pdm_employee_authority_v2')), false)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v2')), false)
 })
 
 test('fails closed before CAS when the managed-identity bridge is missing', async () => {
   const db = fakeDatabase({ missingBridge: true })
   await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_AUTH_BRIDGE_REQUIRED/u)
-  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_ai_pdm_employee_authority_v2')), false)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v2')), false)
   assert.equal(db.calls.some(({ sql }) => sql.startsWith('BEGIN')), false)
 })
 
 test('fails closed when canonical mapping exists but its account-typed adapter is missing', async () => {
   const db = fakeDatabase({ missingTypedProjection: true })
   await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_PRINCIPAL_PROJECTION_REQUIRED/u)
-  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_ai_pdm_employee_authority_v2')), false)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v2')), false)
   assert.equal(db.calls.some(({ sql }) => sql.startsWith('BEGIN')), false)
 })
 
@@ -185,5 +208,5 @@ test('rejects governance artifact source drift before the CAS function', async (
     return value
   }
   await assert.rejects(executeAuthorityBatch({ database: db, operation, now: new Date('2026-09-23T00:00:00.000Z') }), /DEV014_LOGIN_AUTHORITY_GOVERNANCE_SOURCE_INVALID/u)
-  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_ai_pdm_employee_authority_v2')), false)
+  assert.equal(db.calls.some(({ sql }) => sql.includes('switch_employee_entitlement_authority_v2')), false)
 })

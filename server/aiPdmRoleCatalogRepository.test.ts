@@ -5,12 +5,12 @@ import { join } from 'node:path'
 import { readPublishedAiPdmRoleCatalog, readPublishedAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
 
 describe('AI-PDM published role catalog adapter', () => {
-  it('reads the vendored DEV-005 contract catalog as a read-only catalog', async () => {
+  it('reads the pinned v4 consumer catalog while preserving the old contract fixture', async () => {
     const catalog = await readPublishedAiPdmRoleCatalog()
     expect(catalog.contractVersion).toBe('jenfu.platform-entitlement.v1')
     expect(catalog.applicationId).toBe('ai-pdm')
-    expect(catalog.catalogVersion).toBe('ai-pdm.role-catalog.2026-09-03.v3')
-    expect(catalog.catalogSha256).toBe('46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8')
+    expect(catalog.catalogVersion).toBe('ai-pdm.role-catalog.2026-09-25.v4')
+    expect(catalog.catalogSha256).toBe('32f3593d7a0d2a5cad4875181a62b8f5c49a06c9cbba8835cd1b82e9b44ca08a')
     expect(catalog.roles).toHaveLength(9)
     expect(catalog.roles.find((role) => role.roleCode === 'system_admin')).toMatchObject({
       stableRoleId: 'role-system-admin',
@@ -33,10 +33,10 @@ describe('AI-PDM published role catalog adapter', () => {
   it('fails closed when the vendored catalog hash is tampered', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev005-'))
     try {
-      const fixtureDir = join(root, 'contracts', 'jenfu-platform-entitlement', 'v1', 'fixtures')
+      const fixtureDir = join(root, 'config', 'catalogs')
       await mkdir(fixtureDir, { recursive: true })
-      const source = join(process.cwd(), 'contracts', 'jenfu-platform-entitlement', 'v1', 'fixtures', 'application-role-catalog.sample.json')
-      const target = join(fixtureDir, 'application-role-catalog.sample.json')
+      const source = join(process.cwd(), 'config', 'catalogs', 'ai-pdm-role-catalog.v4.json')
+      const target = join(fixtureDir, 'ai-pdm-role-catalog.v4.json')
       const catalog = JSON.parse(await readFile(source, 'utf8')) as { catalogSha256: string }
       catalog.catalogSha256 = '0'.repeat(64)
       await writeFile(target, JSON.stringify(catalog), 'utf8')

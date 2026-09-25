@@ -45,7 +45,11 @@ function readJson(path) {
 }
 
 function readPayload() {
-  return new Map(PAYLOAD_PATHS.map((path) => [path, readFileSync(join(contractRoot, ...path.split('/')))]))
+  // The frozen manifest hashes Git's LF blobs. Windows checkout may materialize
+  // CRLF, so compare canonical bytes without weakening the payload hash.
+  return new Map(PAYLOAD_PATHS.map((path) => [path, Buffer.from(
+    readFileSync(join(contractRoot, ...path.split('/')), 'utf8').replace(/\r\n/gu, '\n'), 'utf8'
+  )]))
 }
 
 function assertNonBlank(value, field) {

@@ -1,5 +1,9 @@
 # DEV-050：員工編號或公司 Email 單一 Google 身分登入
 
+> **2026-09-24 ownership／command 修訂引用**：authority資料、唯一CAS命令及receipt／outbox由本owner擁有，typed身分事實供其他投影重用；Platform只做invalidation，取消Platform v3，舊入口ACL cleanup後置。 以 [現行native契約](DEV-057-identity-and-grant-contract-boundary.md#principal-owner-command-amendment)為B目標；本文件下方保留歷史行為、驗收分母與evidence，不代表B已上線。
+
+> **2026-09-24 B 實作定案對齊（Documents Only）**：雙識別入口不改產品流程；解析後必須經已發布pair→principal與typed account，不能以email或employee列數授權。新session／epoch與writer invariant由DEV-057承接。目前架構與精確實作依 [principal-first契約](DEV-057-identity-and-grant-contract-boundary.md#principal-implementation-contract)，成熟度 `Architecture Finalized / RD Implementation Ready`；下方evidence原樣保留，不表示已發布B。
+
 文件成熟度：`RD Implementation Complete / Architecture Contract Implemented 2026-09-18`
 架構審查：`Architecture Finalized — R2 / Implemented and Verified / 2026-09-18`
 交付狀態：`Production Released / Canonical-first Correction Complete / Workspace Google + Employee Number Current Evidence / Free + Full Browser Pending`

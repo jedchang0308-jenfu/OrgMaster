@@ -1,5 +1,6 @@
 import type { ExternalRoleCatalogRoleV1, ExternalRoleCatalogSnapshotV1, GovernanceApplicationRoleV1, GovernanceApplicationV1, GovernancePermissionV1 } from './types'
-import aiPdmCatalogFixture from '../../contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
+import aiPdmCatalogFixture from '../../config/catalogs/ai-pdm-role-catalog.v4.json'
+import historicalAiPdmCatalogFixture from '../../contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
 
 export const AI_PDM_CATALOG_SOURCE_HASHES = {
   permissionCodes: '0560A929FDA8D9123B65CDB51577F89C65E2EBA7CCD327454F403D9E1E647362',
@@ -65,8 +66,10 @@ export const AI_PDM_PERMISSIONS: GovernancePermissionV1[] = [
 ]
 export const ALL_SEED_PERMISSIONS = [...ORGMASTER_PERMISSIONS, ...AI_PDM_PERMISSIONS]
 
-export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-03.v3' as const
-export const AI_PDM_ROLE_CATALOG_SHA256 = '46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8' as const
+export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-25.v4' as const
+export const AI_PDM_ROLE_CATALOG_SHA256 = '32f3593d7a0d2a5cad4875181a62b8f5c49a06c9cbba8835cd1b82e9b44ca08a' as const
+export const AI_PDM_HISTORICAL_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-03.v3' as const
+const AI_PDM_HISTORICAL_CATALOG_SHA256 = '46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8' as const
 const AI_PDM_ROLE_CATALOG_IDS = [
   'role-rd', 'role-rd-manager', 'role-qa', 'role-manufacturing', 'role-production-planning',
   'role-procurement', 'role-external-specialist', 'role-pdm-admin', 'role-system-admin',
@@ -74,10 +77,33 @@ const AI_PDM_ROLE_CATALOG_IDS = [
 if (aiPdmCatalogFixture.contractVersion !== 'jenfu.platform-entitlement.v1' || aiPdmCatalogFixture.applicationId !== 'ai-pdm' || aiPdmCatalogFixture.catalogVersion !== AI_PDM_ROLE_CATALOG_VERSION || aiPdmCatalogFixture.catalogSha256.toLowerCase() !== AI_PDM_ROLE_CATALOG_SHA256 || JSON.stringify(aiPdmCatalogFixture.roles.map((role) => role.stableRoleId)) !== JSON.stringify(AI_PDM_ROLE_CATALOG_IDS)) {
   throw new Error('EXTERNAL_CATALOG_INVALID')
 }
+if (historicalAiPdmCatalogFixture.catalogVersion !== AI_PDM_HISTORICAL_CATALOG_VERSION ||
+  historicalAiPdmCatalogFixture.catalogSha256.toLowerCase() !== AI_PDM_HISTORICAL_CATALOG_SHA256 ||
+  JSON.stringify(historicalAiPdmCatalogFixture.roles.map((role) => role.stableRoleId)) !== JSON.stringify(AI_PDM_ROLE_CATALOG_IDS)) {
+  throw new Error('HISTORICAL_CATALOG_INVALID')
+}
+
+/** A pinned old catalog proves only an existing assignment's recorded role identity. */
+export function historicalAiPdmRoleSnapshotMatches(value: {
+  catalogVersion: string | null; roleId: string; roleCodeSnapshot: string;
+  roleNameSnapshot: string; scope: { kind: string }
+}, currentRole: ExternalRoleCatalogRoleV1 | undefined) {
+  if (value.catalogVersion !== AI_PDM_HISTORICAL_CATALOG_VERSION || !currentRole) return false
+  const historical = historicalAiPdmCatalogFixture.roles.find((role) => role.stableRoleId === value.roleId)
+  return !!historical && historical.roleCode === value.roleCodeSnapshot &&
+    historical.displayName === value.roleNameSnapshot &&
+    historical.roleCode === currentRole.code &&
+    historical.displayName === currentRole.displayName &&
+    historical.subjectKind === currentRole.subjectKind &&
+    historical.assignable === currentRole.assignable &&
+    historical.assignmentTier === currentRole.assignmentTier &&
+    historical.allowedScopeKinds.includes(value.scope.kind as 'workspace' | 'project' | 'global') &&
+    currentRole.allowedScopeKinds.includes(value.scope.kind as 'workspace' | 'project' | 'global')
+}
 export const AI_PDM_ROLE_CATALOG_SOURCE_REFS = [
-  { path: 'AI_PDM/db/schema.sql', range: '2222-2232', sha256: 'B89925107C6ADC10D085E581EBB9E5FBAC42505155CB0774F1AB46B7F261FCD8' },
-  { path: 'AI_PDM/src/lib/repositories/numbering-repository.ts', range: '4744-4759', sha256: '69E21966C1DA2A8146144CC83251FA606572A5042437342FBEF475C7D771289A' },
-  { path: 'AI_PDM/src/lib/repositories/numbering-repository.ts', range: '4785-4791', sha256: '388291CD51446AA88D5A1B935D109FEB9FC6663FDEE8B1545A2F5B67C448005C' },
+  { path: 'AI_PDM/config/access-control/jenfu-role-catalog.v4.json', range: 'canonical artifact', sha256: 'D613C0D65E0A5292E814A0587C46AB37E10A581EA43E579E0CB5AA2B06F857AB' },
+  { path: 'AI_PDM/db/postgres/012_number_state_flow_phase1a.sql', range: 'applied migration', sha256: 'E9E5645FA73AD0E930E13858A9E284D5ECB5E7E8BBC3ECF09A6325709F4DFCD2' },
+  { path: 'AI_PDM/db/postgres/016_number_state_flow_phase1c.sql', range: 'applied migration', sha256: '6BBEB3A283171C1E99C0F2AE50661F6F1ABC0EBC23C6281DD8F6128063E0E6F5' },
 ] as const
 
 export const AI_PDM_ROLE_CATALOG_ROLES: readonly ExternalRoleCatalogRoleV1[] = aiPdmCatalogFixture.roles.map((role) => ({

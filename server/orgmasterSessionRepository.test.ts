@@ -9,7 +9,8 @@ describe('OrgMaster session authenticatedAt persistence', () => {
       rowCount: 1,
       rows: [{
         id: 'session-1', identity_issuer: 'issuer', identity_subject: 'subject', principal_id: 'principal-1', employee_id: 'employee-1',
-        auth_epoch: 0, authenticated_at: authenticatedAt, issued_at: issuedAt, expires_at: '2026-09-02T20:00:00.000Z',
+        auth_epoch: 0, session_schema_version: 1, epoch_kind: 'provider_pair', principal_auth_epoch: null,
+        authenticated_at: authenticatedAt, issued_at: issuedAt, expires_at: '2026-09-02T20:00:00.000Z',
         revoked_at: null, assurance_level: 'aal2',
       }],
       sql,

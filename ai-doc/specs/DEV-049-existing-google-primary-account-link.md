@@ -1,5 +1,9 @@
 # DEV-049：既有 Google 主帳號連結與員工編號登入
 
+> **2026-09-24 ownership／command 修訂引用**：authority資料、唯一CAS命令及receipt／outbox由本owner擁有，typed身分事實供其他投影重用；Platform只做invalidation，取消Platform v3，舊入口ACL cleanup後置。 以 [現行native契約](DEV-057-identity-and-grant-contract-boundary.md#principal-owner-command-amendment)為B目標；本文件下方保留歷史行為、驗收分母與evidence，不代表B已上線。
+
+> **2026-09-24 B 實作定案對齊（Documents Only）**：Google／工號仍解析同一provider身分；principal ownership／alias reservation及target principal session由DEV-057承接。原實作與驗收歷史不改算。目前架構與精確實作依 [principal-first契約](DEV-057-identity-and-grant-contract-boundary.md#principal-implementation-contract)，成熟度 `Architecture Finalized / RD Implementation Ready`；下方evidence原樣保留，不表示已發布B。
+
 文件成熟度：`RD Implementation Complete / Local QA-QC Passed / Architecture Contract Implemented 2026-09-17`
 交付狀態：`Production Released / DWD + Admission + Single-employee Link Complete / Canonical-first Correction Ready`
 風險：`High`（錯綁會影響自然人登入身分）

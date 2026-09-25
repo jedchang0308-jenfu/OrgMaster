@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import { sourceSha256, unwrapMigrationTransaction } from './lib/dev040-orgmaster-independent-release.mjs'
 
 const path = 'db/migrations/021_dev057_identity_grant_writer_fence.sql'
 const sql = fs.readFileSync(path, 'utf8')
@@ -25,4 +26,21 @@ assert.doesNotMatch(statements, /\b(?:CREATE|ALTER|DROP)\s+(?:TABLE|SCHEMA|SEQUE
 assert.doesNotMatch(statements, /\bDROP\s+(?:FUNCTION|VIEW)\b/iu)
 assert.doesNotMatch(statements, /^\s*(?:GRANT|REVOKE)\b/imu)
 
-process.stdout.write(`${JSON.stringify({ status: 'PASS', contract: 'DEV-057', migration: path, sourceSha256: hash, appliedSha256: entry.appliedSha256, productionWrites: false })}\n`)
+const grantPath = 'db/migrations/025_dev057_ai_pdm_principal_effective_grants_v2.sql'
+const grantBytes = fs.readFileSync(grantPath)
+const grantSql = grantBytes.toString('utf8').replace(/\r\n/gu, '\n')
+const grantManifestBytes = fs.readFileSync('contracts/orgmaster-ai-pdm-principal-effective-grants/v2/contract-manifest.json')
+const grantManifest = JSON.parse(grantManifestBytes.toString('utf8'))
+const grantEntry = profile.migrations.entries.find(({ version }) => version === 'dev057-orgmaster-025')
+assert.match(grantSql, /CREATE VIEW orgmaster_contract\.v_ai_pdm_principal_effective_grants_v2\s+WITH \(security_barrier = true\)/u)
+assert.doesNotMatch(grantSql, /FROM orgmaster_contract\.v_ai_pdm_effective_role_assignments_v1/u)
+assert.match(grantSql, /GRANT SELECT ON orgmaster_contract\.v_ai_pdm_principal_effective_grants_v2\s+TO jenfu_ai_pdm_runtime/u)
+assert.equal(grantManifest.subject, 'principal_id')
+assert.ok(!grantManifest.columns.some((column) => /issuer|subject$/u.test(column) && column !== 'subject_kind'))
+assert.ok(grantSql.includes(sourceSha256(grantManifestBytes)))
+assert.deepEqual(grantEntry, { order: 25, version: 'dev057-orgmaster-025', path: grantPath,
+  sourceSha256: sourceSha256(grantBytes),
+  appliedSha256: sourceSha256(unwrapMigrationTransaction(grantBytes)) })
+
+process.stdout.write(`${JSON.stringify({ status: 'PASS', contract: 'DEV-057', migrations: [path, grantPath],
+  principalGrantManifestSha256: sourceSha256(grantManifestBytes), productionWrites: false })}\n`)

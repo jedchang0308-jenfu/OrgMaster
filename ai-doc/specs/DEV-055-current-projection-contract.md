@@ -1,5 +1,9 @@
 # DEV-055：DEV-014 current projection contract correction
 
+> **2026-09-24 ownership／command 修訂引用**：authority資料、唯一CAS命令及receipt／outbox由本owner擁有，typed身分事實供其他投影重用；Platform只做invalidation，取消Platform v3，舊入口ACL cleanup後置。 以 [現行native契約](DEV-057-identity-and-grant-contract-boundary.md#principal-owner-command-amendment)為B目標；本文件下方保留歷史行為、驗收分母與evidence，不代表B已上線。
+
+> **2026-09-24 B 實作定案對齊（Documents Only）**：workspace／governance版本分離的修正保留；managed principal readback使用OrgMaster兩個active contract，historical compatibility projection不作typed identity權威；owner依本輪更正為OrgMaster。目前架構與精確實作依 [principal-first契約](DEV-057-identity-and-grant-contract-boundary.md#principal-implementation-contract)，成熟度 `Architecture Finalized / RD Implementation Ready`；下方evidence原樣保留，不表示已發布B。
+
 狀態：`Architecture Finalized / RD Implementation Complete / Local QA-QC Passed / Production Release In Progress`
 
 來源：`Jenfu-Platform / DEV-014 / zero-paid-seat fixture projection correction`。
