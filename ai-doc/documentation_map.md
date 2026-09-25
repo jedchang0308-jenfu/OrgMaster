@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-26 DEV-057 provider-pair 診斷**：[同一 DEV-057 producer 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#production-r3-release)補上 AI-PDM inventory 缺列的 OrgMaster owner 唯讀查核；input pair 雜湊、source-frozen operator、私有收據與後續停止條件均在原子任務追溯，未建立新主任務或變更 Production 權限。
+
 > **2026-09-26 DEV-057 Production R3 現行狀態**：[DEV-057 R3 發布證據](qa/DEV-057-production-r3-release-evidence-2026-09-26.md)核對官方 `master` `48120534cbde4a06d0f3cd6d5de76171ca7e0699`、owner run 36146949383／terminal `RELEASED`、migration ledger 26（1 applied／25 replayed）與 `orgmaster-prod-c2a14a18803b` 100% traffic。producer 已切流；AI-PDM v2 consumer conformance、完整 managed identity readback、recovery 與 Production L4 仍待驗收。下一段 R2 的「026 尚待發布」僅為該次中止時的歷史狀態。
 
 > **2026-09-25 DEV-057 Production R2／026 歷史狀態**：正式 owner run 36139874430 在 migration ledger 25 後因 candidate smoke 回 principal_not_active 於 activate 前中止，正式 traffic 維持前版。已定位 session-principal v2 的 published policy JSON 路徑錯誤；forward-only 026 與隔離 PostgreSQL D57-01～18 18／18 證據見 [DEV-057 Production R2 段](specs/DEV-057-identity-and-grant-contract-boundary.md#production-r2-correction)，尚待 source-frozen 重新發布與跨 owner readback。既有 022／025、R2 receipt 保留，不把本地 PASS 算正式切流。
