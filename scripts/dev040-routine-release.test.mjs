@@ -332,8 +332,8 @@ test('DEV-057 owner producer exposes the exact writer-fence release mode', () =>
   assert.match(producer, /serializationRow: 'orgmaster_core\.managed_identity_admission_authority\.singleton'/u)
 })
 
-test('DEV-057 principal contract accepts only exact 024/025 append and unchanged runtime', async () => {
-  const baselineBundle = prefixBundle(oldBundle.bundle, 23)
+test('DEV-057 principal contract accepts only exact 022-025 append from released 021 baseline', async () => {
+  const baselineBundle = prefixBundle(oldBundle.bundle, 21)
   const currentBundle = { bundle: prefixBundle(newBundle.bundle, 25) }
   const h = harness({ baselineBundle, currentBundle })
   const remediation = DEV057_PRINCIPAL_CONTRACT_REMEDIATION
@@ -343,10 +343,10 @@ test('DEV-057 principal contract accepts only exact 024/025 append and unchanged
   const result = await verifyRoutineRelease(h.input)
   assert.equal(result.releaseMode, 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION')
   assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
-  assert.equal(result.pendingMigrationCount, 2)
-  assert.equal(assertDev057PrincipalContractAppend(baselineBundle, currentBundle.bundle).pendingMigrationCount, 2)
+  assert.equal(result.pendingMigrationCount, 4)
+  assert.equal(assertDev057PrincipalContractAppend(baselineBundle, currentBundle.bundle).pendingMigrationCount, 4)
   assert.equal(assertDev057PrincipalContractRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
-  for (const index of [23, 24]) {
+  for (const index of [21, 22, 23, 24]) {
     const drift = structuredClone(currentBundle.bundle)
     drift.entries[index].appliedSha256 = '0'.repeat(64)
     assert.throws(() => assertDev057PrincipalContractAppend(baselineBundle, drift), /DEV057_PRINCIPAL_CONTRACT_APPEND_INVALID/u)
@@ -363,7 +363,7 @@ test('DEV-057 owner producer exposes exact principal-contract release mode', () 
   assert.match(producer, /--dev057-principal-contract-remediation/u)
   assert.match(producer, /--dev057-infra-ref=/u)
   assert.match(producer, /slice: '057-PRINCIPAL-CONTRACT'/u)
-  assert.deepEqual(DEV057_PRINCIPAL_CONTRACT_REMEDIATION.migrationVersions, ['dev057-orgmaster-024', 'dev057-orgmaster-025'])
+  assert.deepEqual(DEV057_PRINCIPAL_CONTRACT_REMEDIATION.migrationVersions, ['dev014-orgmaster-022', 'dev014-orgmaster-023', 'dev057-orgmaster-024', 'dev057-orgmaster-025'])
 })
 
 test('DEV-014 login-fixture correction reuses only an exact prior-source infrastructure fingerprint', async () => {

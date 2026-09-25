@@ -357,7 +357,7 @@ async function writeStage(transport, paths, profile, intent, stage, previousRece
   return { ...result, value }
 }
 
-function assertMigrationReceipt(value, profile, intent, { historical = false, allowForward = false, forwardPlan = null } = {}) {
+export function assertMigrationReceipt(value, profile, intent, { historical = false, allowForward = false, forwardPlan = null } = {}) {
   if (value?.schemaVersion === 'jenfu.dev012.stage-receipt.v1') {
     assertStage(value, profile, intent, 'migrate')
     if (value.facts?.disposition !== 'UNCHANGED_VERIFIED' || value.facts?.manifestSha256 !== intent.migrationManifestSha256 || canonicalize(value.facts?.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)) fail('MIGRATION_RECEIPT_INVALID')
@@ -371,7 +371,8 @@ function assertMigrationReceipt(value, profile, intent, { historical = false, al
       const activationContractRemediation = forwardPlan?.releaseMode === 'DEV014_ACTIVATION_CONTRACT_REMEDIATION'
       const projectionContractRemediation = forwardPlan?.releaseMode === 'DEV014_PROJECTION_CONTRACT_REMEDIATION'
       const writerFenceRemediation = forwardPlan?.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION'
-      const expectedLedgerCount = writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const principalContractRemediation = forwardPlan?.releaseMode === 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION'
+      const expectedLedgerCount = principalContractRemediation ? 25 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
       const maximumAppliedCount = producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
       if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
@@ -495,6 +496,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (derived.controlledEnvironmentAuthority.releaseMode === 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD' && routine.releaseMode !== 'ROUTINE_UNCHANGED_RUNTIME') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION' && routine.releaseMode !== 'DEV014_LOGIN_FIXTURE_CORRECTION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION' && routine.releaseMode !== 'DEV057_WRITER_FENCE_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     return writeStage(transport, paths, profile, intent, 'prepare', null, { prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])), previousRevision: intent.previousRevision, runtimeServiceAccount: derived.runtimeConfig.runtimeServiceAccount, migrationRunnerDigest: derived.migrationRunnerDigest, routine, entrypointBaseline: transport.entrypointSnapshot(service), remainingHumanAction: 0 })
   }
 

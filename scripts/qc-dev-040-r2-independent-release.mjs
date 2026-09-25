@@ -11,8 +11,8 @@ const run = spawnSync(process.execPath, ['--test', 'scripts/dev040-orgmaster-ind
 process.stdout.write(run.stdout)
 process.stderr.write(run.stderr)
 // Keep the fixed QC denominator aligned with the current owner-test set.
-// The DEV-057 024/025 release and prepare contracts add three owner cases.
-if (run.status !== 0 || !/\bpass 98\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+// DEV-057 principal contract release, prepare, and migration receipt coverage.
+if (run.status !== 0 || !/\bpass 99\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 
