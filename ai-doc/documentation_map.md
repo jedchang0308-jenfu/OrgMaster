@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-25 DEV-057 Production R2／026 現行狀態**：正式 owner run 36139874430 在 migration ledger 25 後因 candidate smoke 回 principal_not_active 於 activate 前中止，正式 traffic 維持前版。已定位 session-principal v2 的 published policy JSON 路徑錯誤；forward-only 026 與隔離 PostgreSQL D57-01～18 18／18 證據見 [DEV-057 Production R2 段](specs/DEV-057-identity-and-grant-contract-boundary.md#production-r2-correction)，尚待 source-frozen 重新發布與跨 owner readback。既有 022／025、R2 receipt 保留，不把本地 PASS 算正式切流。
+
 > **2026-09-24 DEV-057 B 本機實作進度（尚不可發布）**：[producer實作契約](specs/DEV-057-identity-and-grant-contract-boundary.md#principal-implementation-contract)對應未套用migration 024；principal owner／alias history、writer fence、schema2 session欄位及authority v2命令／operation readback已落地，本人UI與DEV-013／014受控operator已接v2並通過目標測試；task-owned PostgreSQL 18.4 D57-01～15共15/15及DB boundary PASS，暫時資源已清理。024已使有效角色與Portal入口共用typed principal投影；未分類或同pair多筆分類的兩種入口拒絕、唯一已分類pair維持授權通過D57-07，owner release profile／runner納入024並通過48/48相關測試。operator真實PG端到端、target session及受控／Production驗證仍待完成；下列Documents Only與v1 PASS為歷史狀態，不能宣稱B產品已發布。
 
 > **架構定案：已定案／RD Implementation Ready（Documents Only）**：[ORGMASTER/DEV-057 單一交接入口](specs/DEV-057-identity-and-grant-contract-boundary.md#architecture-final)固定目前 owner 契約、來源／雜湊與失敗／恢復；與 JENFU/DEV-015 同名節對齊。沿用原子任務，先依相依順序實作；consumer conformance／recovery／Production L4 尚未完成。下方歷史紀錄不覆蓋此入口。 本輪再審核固定 authority writer 的 RC 鎖後讀點、成功 receipt 優先與 target session 同快照；相關案例未執行。
