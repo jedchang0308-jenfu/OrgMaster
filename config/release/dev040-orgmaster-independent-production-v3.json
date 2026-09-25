@@ -378,6 +378,13 @@
         "path": "db/migrations/025_dev057_ai_pdm_principal_effective_grants_v2.sql",
         "sourceSha256": "0a7e3c317398fb73f1388b8d863ef2ed994a9e92839ef94e88ff256292b60061",
         "appliedSha256": "36176113c000bea1d0a44d2b4330786d18bbed853b41a5070992272a21c5f1f7"
+      },
+      {
+        "order": 26,
+        "version": "dev057-orgmaster-026",
+        "path": "db/migrations/026_dev057_session_principal_policy_path.sql",
+        "sourceSha256": "8c212f32da3350f0e81b6fd0b9c19c19abbea793bda789ff1d4fa3dc60538322",
+        "appliedSha256": "e618dda50720dff23a4bd1aeb9a463cf323ff924637407f89ad75a8f26ff9fde"
       }
     ]
   },

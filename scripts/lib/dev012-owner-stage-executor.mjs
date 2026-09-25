@@ -372,8 +372,8 @@ export function assertMigrationReceipt(value, profile, intent, { historical = fa
       const projectionContractRemediation = forwardPlan?.releaseMode === 'DEV014_PROJECTION_CONTRACT_REMEDIATION'
       const writerFenceRemediation = forwardPlan?.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION'
       const principalContractRemediation = forwardPlan?.releaseMode === 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION'
-      const expectedLedgerCount = principalContractRemediation ? 25 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
-      const maximumAppliedCount = producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
+      const expectedLedgerCount = principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const maximumAppliedCount = principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
       if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
     }

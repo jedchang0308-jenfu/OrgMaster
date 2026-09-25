@@ -15,19 +15,19 @@ const canonicalOrigin = 'https://jenfu-platform-prod-9536592944.asia-east1.run.a
 const candidateOrigin = `https://${candidateTag}---jenfu-platform-prod-9536592944.asia-east1.run.app`
 const migrationRunnerDigest = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/platform-release/platform-migration-runner@sha256:' + 'c'.repeat(64)
 
-test('DEV-057 principal contract requires exact 25-row forward migration receipt', () => {
+test('DEV-057 principal contract requires exact 26-row forward migration receipt', () => {
   const profile = { application: { id: 'orgmaster' } }
   const intent = { sourceRevision: H40, migrationManifestSha256: 'b'.repeat(64) }
   const plan = { releaseMode: 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' }
   const core = {
     schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: H40,
     manifestSha256: intent.migrationManifestSha256, status: 'PASS', boundaryStatus: 'PASS',
-    baselineCount: 10, minimumLedgerCount: 10, ledgerCount: 25, applied: 4, replayed: 21,
+    baselineCount: 10, minimumLedgerCount: 10, ledgerCount: 26, applied: 5, replayed: 21,
     crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
   }
   const receipt = (value) => ({ ...value, receiptSha256: sha256(canonicalize(value)) })
   assert.doesNotThrow(() => assertMigrationReceipt(receipt(core), profile, intent, { allowForward: true, forwardPlan: plan }))
-  for (const changed of [{ ledgerCount: 23 }, { applied: 5, replayed: 20 }, { replayed: 20 }, { sourceRevision: 'c'.repeat(40) }]) {
+  for (const changed of [{ ledgerCount: 25 }, { applied: 6, replayed: 20 }, { replayed: 20 }, { sourceRevision: 'c'.repeat(40) }]) {
     assert.throws(() => assertMigrationReceipt(receipt({ ...core, ...changed }), profile, intent, { allowForward: true, forwardPlan: plan }), /MIGRATION_RECEIPT_INVALID/u)
   }
 })
