@@ -10,6 +10,8 @@ import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-r
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
+import { DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
+import { assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation } from './lib/dev040-routine-release.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
 const n1c = JSON.parse(fs.readFileSync('config/dev-010/n1c-orgmaster.json'))
@@ -328,6 +330,40 @@ test('DEV-057 owner producer exposes the exact writer-fence release mode', () =>
   assert.match(producer, /slice: '057-WRITER-FENCE'/u)
   assert.match(producer, /migrationVersion: 'dev057-orgmaster-021'/u)
   assert.match(producer, /serializationRow: 'orgmaster_core\.managed_identity_admission_authority\.singleton'/u)
+})
+
+test('DEV-057 principal contract accepts only exact 024/025 append and unchanged runtime', async () => {
+  const baselineBundle = prefixBundle(oldBundle.bundle, 23)
+  const currentBundle = { bundle: prefixBundle(newBundle.bundle, 25) }
+  const h = harness({ baselineBundle, currentBundle })
+  const remediation = DEV057_PRINCIPAL_CONTRACT_REMEDIATION
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation }
+  attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION')
+  assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(result.pendingMigrationCount, 2)
+  assert.equal(assertDev057PrincipalContractAppend(baselineBundle, currentBundle.bundle).pendingMigrationCount, 2)
+  assert.equal(assertDev057PrincipalContractRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
+  for (const index of [23, 24]) {
+    const drift = structuredClone(currentBundle.bundle)
+    drift.entries[index].appliedSha256 = '0'.repeat(64)
+    assert.throws(() => assertDev057PrincipalContractAppend(baselineBundle, drift), /DEV057_PRINCIPAL_CONTRACT_APPEND_INVALID/u)
+  }
+  const changedRuntime = harness({ baselineBundle, currentBundle, nextRuntime: { ...runtime, secretVersions: { ...runtime.secretVersions, [profile.environment.requiredSecretNames[0]]: '2' } } })
+  changedRuntime.input.values.authorization = h.input.values.authorization
+  changedRuntime.input.values.readiness = h.input.values.readiness
+  attachForwardInfra(changedRuntime)
+  await assert.rejects(() => verifyRoutineRelease(changedRuntime.input), /DEV013_CONTROLLED_TRANSITION_AUTHORITY_INVALID|ROUTINE_RUNTIME_CHANGED/u)
+})
+
+test('DEV-057 owner producer exposes exact principal-contract release mode', () => {
+  const producer = fs.readFileSync('scripts/dev040-deploy-production.mjs', 'utf8')
+  assert.match(producer, /--dev057-principal-contract-remediation/u)
+  assert.match(producer, /--dev057-infra-ref=/u)
+  assert.match(producer, /slice: '057-PRINCIPAL-CONTRACT'/u)
+  assert.deepEqual(DEV057_PRINCIPAL_CONTRACT_REMEDIATION.migrationVersions, ['dev057-orgmaster-024', 'dev057-orgmaster-025'])
 })
 
 test('DEV-014 login-fixture correction reuses only an exact prior-source infrastructure fingerprint', async () => {

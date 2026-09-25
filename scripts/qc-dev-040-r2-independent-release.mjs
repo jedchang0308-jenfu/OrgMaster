@@ -11,8 +11,8 @@ const run = spawnSync(process.execPath, ['--test', 'scripts/dev040-orgmaster-ind
 process.stdout.write(run.stdout)
 process.stderr.write(run.stderr)
 // Keep the fixed QC denominator aligned with the current owner-test set.
-// New principal-first migration tests raise the owner count from 92 to 95.
-if (run.status !== 0 || !/\bpass 95\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+// The DEV-057 024/025 release and prepare contracts add three owner cases.
+if (run.status !== 0 || !/\bpass 98\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 
@@ -127,6 +127,7 @@ const files = [
   'scripts/lib/dev012-owner-release-runtime.mjs', 'scripts/lib/dev012-owner-stage-executor.mjs', 'scripts/lib/dev012-production-migration-runner.mjs',
   'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs',
   'scripts/lib/dev040-routine-release.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev040-deploy-production.mjs',
+  'scripts/lib/dev057-principal-contract-release.mjs',
   'scripts/lib/dev012-owner-prerequisite-producer.mjs', 'scripts/dev012-owner-prerequisite-producer.test.mjs',
   'src/auth/AuthGate.tsx', 'src/auth/AuthGate.test.tsx', 'src/App.tsx', 'src/components/DirectoryDetailPanel.tsx', 'src/components/DirectoryDetailPanel.test.tsx',
   '.github/workflows/deploy-orgmaster-independent-production.yml',
