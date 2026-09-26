@@ -10,8 +10,8 @@ import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-r
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
-import { DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
-import { assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation } from './lib/dev040-routine-release.mjs'
+import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
+import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation } from './lib/dev040-routine-release.mjs'
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
 const n1c = JSON.parse(fs.readFileSync('config/dev-010/n1c-orgmaster.json'))
@@ -364,6 +364,26 @@ test('DEV-057 owner producer exposes exact principal-contract release mode', () 
   assert.match(producer, /--dev057-infra-ref=/u)
   assert.match(producer, /slice: '057-PRINCIPAL-CONTRACT'/u)
   assert.deepEqual(DEV057_PRINCIPAL_CONTRACT_REMEDIATION.migrationVersions, ['dev014-orgmaster-022', 'dev014-orgmaster-023', 'dev057-orgmaster-024', 'dev057-orgmaster-025', 'dev057-orgmaster-026'])
+})
+
+test('DEV-057 cutover source accepts only exact 027 append from released 026 baseline', async () => {
+  const baselineBundle = prefixBundle(oldBundle.bundle, 26)
+  const currentBundle = { bundle: newBundle.bundle }
+  const h = harness({ baselineBundle, currentBundle })
+  const remediation = DEV057_CUTOVER_SOURCE_REMEDIATION
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation }
+  attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV057_CUTOVER_SOURCE_REMEDIATION')
+  assert.equal(result.pendingMigrationCount, 1)
+  assert.equal(assertDev057CutoverSourceAppend(baselineBundle, currentBundle.bundle).pendingMigrationCount, 1)
+  assert.equal(assertDev057CutoverSourceRemediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
+  const drift = structuredClone(currentBundle.bundle)
+  drift.entries[26].appliedSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev057CutoverSourceAppend(baselineBundle, drift), /DEV057_CUTOVER_SOURCE_APPEND_INVALID/u)
+  const producer = fs.readFileSync('scripts/dev040-deploy-production.mjs', 'utf8')
+  assert.match(producer, /--dev057-cutover-source-remediation/u)
 })
 
 test('DEV-014 login-fixture correction reuses only an exact prior-source infrastructure fingerprint', async () => {

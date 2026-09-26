@@ -3,7 +3,7 @@ import { gzipSync } from 'node:zlib'
 import { assertImmutableRef, assertProtectedGitHubContext, assertRuntimeConfig, candidateTagUriMatches, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
 import { dev013L4SequenceStep, dev013TerminalTransitionFact } from './dev013-l4-transition-sequence.mjs'
 import { buildDev014ConsumerConformance } from './dev014-consumer-conformance.mjs'
-import { DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './dev057-principal-contract-release.mjs'
+import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './dev057-principal-contract-release.mjs'
 export { candidateTagUriMatches } from './dev012-owner-release-runtime.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
@@ -96,8 +96,9 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
   if (!isDev013) {
     if (isDev057) {
       const principalContract = values.readiness?.slice === '057-PRINCIPAL-CONTRACT'
-      const expectedSlice = principalContract ? '057-PRINCIPAL-CONTRACT' : '057-WRITER-FENCE'
-      const expectedRemediation = principalContract ? DEV057_PRINCIPAL_CONTRACT_REMEDIATION : {
+      const cutoverSource = values.readiness?.slice === '057-CUTOVER-SOURCE'
+      const expectedSlice = cutoverSource ? '057-CUTOVER-SOURCE' : principalContract ? '057-PRINCIPAL-CONTRACT' : '057-WRITER-FENCE'
+      const expectedRemediation = cutoverSource ? DEV057_CUTOVER_SOURCE_REMEDIATION : principalContract ? DEV057_PRINCIPAL_CONTRACT_REMEDIATION : {
         kind: 'IDENTITY_GRANT_WRITER_FENCE',
         migrationVersion: 'dev057-orgmaster-021',
         contractViews: ['orgmaster_contract.v_active_principal_mappings_v1', 'orgmaster_contract.v_portal_app_visibility_v1'],
@@ -118,7 +119,7 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
         || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
         || canonicalize(values.authorization.remediation) !== canonicalize(expectedRemediation)
         || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
-      return { releaseMode: principalContract ? 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' : 'DEV057_WRITER_FENCE_REMEDIATION', remediation: expectedRemediation }
+      return { releaseMode: cutoverSource ? 'DEV057_CUTOVER_SOURCE_REMEDIATION' : principalContract ? 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' : 'DEV057_WRITER_FENCE_REMEDIATION', remediation: expectedRemediation }
     }
     if (isDev014) {
       if (values.readiness?.slice === '014-PRODUCER-CONTRACT') {
@@ -372,8 +373,9 @@ export function assertMigrationReceipt(value, profile, intent, { historical = fa
       const projectionContractRemediation = forwardPlan?.releaseMode === 'DEV014_PROJECTION_CONTRACT_REMEDIATION'
       const writerFenceRemediation = forwardPlan?.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION'
       const principalContractRemediation = forwardPlan?.releaseMode === 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION'
-      const expectedLedgerCount = principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
-      const maximumAppliedCount = principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
+      const cutoverSourceRemediation = forwardPlan?.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION'
+      const expectedLedgerCount = cutoverSourceRemediation ? 27 : principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const maximumAppliedCount = cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
       if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
     }
@@ -497,6 +499,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION' && routine.releaseMode !== 'DEV014_LOGIN_FIXTURE_CORRECTION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION' && routine.releaseMode !== 'DEV057_WRITER_FENCE_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION' && routine.releaseMode !== 'DEV057_CUTOVER_SOURCE_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     return writeStage(transport, paths, profile, intent, 'prepare', null, { prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])), previousRevision: intent.previousRevision, runtimeServiceAccount: derived.runtimeConfig.runtimeServiceAccount, migrationRunnerDigest: derived.migrationRunnerDigest, routine, entrypointBaseline: transport.entrypointSnapshot(service), remainingHumanAction: 0 })
   }
 

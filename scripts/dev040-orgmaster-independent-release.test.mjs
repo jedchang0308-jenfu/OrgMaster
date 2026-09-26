@@ -304,6 +304,26 @@ test('OrgMaster owner prepare accepts only the exact DEV-057 principal contract 
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })
 
+test('OrgMaster owner prepare binds DEV-057 cutover source manifest and consumer role', () => {
+  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+    .map((name) => [name, 'fixture-public-value']))
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: resolvePlainEnvironment(profile, priorPlainEnvironment), secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  const remediation = {
+    kind: 'PRINCIPAL_CUTOVER_SOURCE_MANIFEST',
+    migrationVersion: 'dev057-orgmaster-027',
+    contractIds: ['orgmaster.principal-cutover-source', 'orgmaster.ai-pdm-principal-effective-grants'],
+    consumerRole: 'jenfu_ai_pdm_migrator', applicationId: 'ai-pdm',
+  }
+  fixture.intent.baselineIntentRef = ref('baseline-release-intent')
+  fixture.values.authorization = { ...fixture.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'DEV057_CUTOVER_SOURCE_REMEDIATION')
+  fixture.values.authorization.remediation = { ...remediation, consumerRole: 'jenfu_ai_pdm_runtime' }
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+})
+
 test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   const source = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/workload-identity.tf', import.meta.url), 'utf8')
   const displayName = source.match(/display_name\s*=\s*"([^"]+)"/u)?.[1]
@@ -311,11 +331,11 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-026 production migration bytes', () => {
+test('OrgMaster exact 001-027 production migration bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
-  assert.equal(bundle.bundle.entries.length, 26)
+  assert.equal(bundle.bundle.entries.length, 27)
   assert.equal(bundle.bundle.entries[10].version, 'dev040-r2-orgmaster-011')
   assert.equal(bundle.bundle.entries[11].version, 'dev047-orgmaster-012')
   assert.equal(bundle.bundle.entries[12].version, 'dev049-orgmaster-013')
@@ -332,6 +352,7 @@ test('OrgMaster exact 001-026 production migration bytes', () => {
   assert.equal(bundle.bundle.entries[23].version, 'dev057-orgmaster-024')
   assert.equal(bundle.bundle.entries[24].version, 'dev057-orgmaster-025')
   assert.equal(bundle.bundle.entries[25].version, 'dev057-orgmaster-026')
+  assert.equal(bundle.bundle.entries[26].version, 'dev057-orgmaster-027')
 })
 
 test('S1B-21 OrgMaster release intent is exact, owner-bound and immutable', () => {
