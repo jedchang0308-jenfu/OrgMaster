@@ -385,6 +385,13 @@
         "path": "db/migrations/026_dev057_session_principal_policy_path.sql",
         "sourceSha256": "8c212f32da3350f0e81b6fd0b9c19c19abbea793bda789ff1d4fa3dc60538322",
         "appliedSha256": "e618dda50720dff23a4bd1aeb9a463cf323ff924637407f89ad75a8f26ff9fde"
+      },
+      {
+        "order": 27,
+        "version": "dev057-orgmaster-027",
+        "path": "db/migrations/027_dev057_principal_cutover_source_manifest.sql",
+        "sourceSha256": "7f42789257264e3a1587e9648e04319f3963fe0c02f6c914555175c53373728a",
+        "appliedSha256": "ed0923f1dabc808f3f6c48354a2a4677481e80a7e3df085d5ee70168573f052b"
       }
     ]
   },

@@ -3,7 +3,7 @@ import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, re
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
-import { DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './dev057-principal-contract-release.mjs'
+import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './dev057-principal-contract-release.mjs'
 
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
@@ -199,6 +199,17 @@ export function assertDev057PrincipalContractAppend(before, after) {
   return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 5, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
 }
 
+export function assertDev057CutoverSourceAppend(before, after) {
+  const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+  const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
+  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 26 || after.entries?.length !== 27) fail('DEV057_CUTOVER_SOURCE_APPEND_INVALID')
+  if (!same(before.entries, after.entries.slice(0, 26))) fail('DEV057_CUTOVER_SOURCE_APPEND_INVALID')
+  const expected = ['dev057-orgmaster-027', 'db/migrations/027_dev057_principal_cutover_source_manifest.sql', '7f42789257264e3a1587e9648e04319f3963fe0c02f6c914555175c53373728a', 'ed0923f1dabc808f3f6c48354a2a4677481e80a7e3df085d5ee70168573f052b']
+  const entry = after.entries[26]
+  if (!same([entry.version, entry.path, entry.sourceSha256, entry.appliedSha256], expected)) fail('DEV057_CUTOVER_SOURCE_APPEND_INVALID')
+  return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
+}
+
 export function assertDev014ManagedPrincipalProjectionAppend(before, after) {
   const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
   const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
@@ -277,6 +288,17 @@ export function assertDev057PrincipalContractRemediation(readiness, authorizatio
     || readiness.devId !== 'DEV-057' || readiness.slice !== '057-PRINCIPAL-CONTRACT'
     || !same(authorization.remediation, remediation) || !same(readiness.remediation, remediation)) fail('DEV057_PRINCIPAL_CONTRACT_AUTHORITY_INVALID')
   return { releaseMode: 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', remediation }
+}
+
+export function assertDev057CutoverSourceRemediation(readiness, authorization) {
+  const remediation = DEV057_CUTOVER_SOURCE_REMEDIATION
+  if (authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+    || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+    || authorization.devId !== 'DEV-057' || authorization.slice !== '057-CUTOVER-SOURCE'
+    || readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+    || readiness.devId !== 'DEV-057' || readiness.slice !== '057-CUTOVER-SOURCE'
+    || !same(authorization.remediation, remediation) || !same(readiness.remediation, remediation)) fail('DEV057_CUTOVER_SOURCE_AUTHORITY_INVALID')
+  return { releaseMode: 'DEV057_CUTOVER_SOURCE_REMEDIATION', remediation }
 }
 
 export function assertDev014ManagedPrincipalProjectionRemediation(readiness, authorization) {
@@ -473,6 +495,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
         ? assertDev057WriterFenceRemediation(values.readiness, values.authorization)
         : values.readiness?.slice === '057-PRINCIPAL-CONTRACT'
           ? assertDev057PrincipalContractRemediation(values.readiness, values.authorization)
+          : values.readiness?.slice === '057-CUTOVER-SOURCE'
+            ? assertDev057CutoverSourceRemediation(values.readiness, values.authorization)
           : null
       : values.readiness?.devId === 'DEV-014'
       ? values.readiness?.slice === '014-PRODUCER-CONTRACT'
@@ -492,7 +516,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     : values.readiness?.devId === 'DEV-014'
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
-  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
@@ -523,6 +547,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
             ? assertDev057WriterFenceAppend(baseline.bundle.value, current.bundle)
           : controlledTransition.releaseMode === 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION'
             ? assertDev057PrincipalContractAppend(baseline.bundle.value, current.bundle)
+          : controlledTransition.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION'
+            ? assertDev057CutoverSourceAppend(baseline.bundle.value, current.bundle)
         : assertDev013ControlledMigrationAppend(baseline.bundle.value, current.bundle)
   }
   const infraChanged = !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)

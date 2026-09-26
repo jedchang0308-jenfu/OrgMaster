@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-26 DEV-057 cutover-source 本機切片**：[同一 producer 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)新增 forward-only 027 manifest 與 AI-PDM migrator 精確 read ACL；owner release 路徑／隔離 PostgreSQL D57-19 為本次驗證範圍，Production 尚未套用。
+
 > **2026-09-26 DEV-057 pair 診斷結果**：[同一 producer 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)現有 protected master／唯讀 Production receipt 證明六組僅一組已發布，另外五組無 canonical 來源；未綁 managed identity 不作猜測，後續歸屬仍需核實。臨時 Job 已清理，原子任務未關閉。
 
 > **2026-09-26 DEV-057 provider-pair 診斷**：[同一 DEV-057 producer 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#production-r3-release)補上 AI-PDM inventory 缺列的 OrgMaster owner 唯讀查核；input pair 雜湊、source-frozen operator、私有收據與後續停止條件均在原子任務追溯，未建立新主任務或變更 Production 權限。

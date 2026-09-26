@@ -701,6 +701,8 @@
 
 ## DEV-057：身分與權限發布契約邊界
 
+> 2026-09-26 `#principal-producer-impact` cutover-source 切片：本機新增 forward-only 027 與受控 owner release 模式，發布 AI-PDM migrator 可讀的精確版本化 manifest；隔離 PostgreSQL 19／19、owner release 101／101、全量 Vitest 893、build 與 DEV-040 整合 QC PASS。沿用原 DEV-057，不新增主任務。正式 migration、provider readback、AI-PDM consumer 與 Production L4 尚未完成；既有 R3／pair 診斷證據原樣保留。
+
 - 狀態：B 目標 `Architecture Finalized / RD Implementation Ready`；節點類型：開發點；風險：High；既有 v1 producer 本機 QA-QC PASS 依原證據保留，B 的實作／consumer conformance 與 Production=`NOT_RUN`。
 - 跨專案角色：參與 `JENFU/DEV-015#identity-grants`；本地 native `ORGMASTER/DEV-057`。同群 consumer 為 `AIPDM/DEV-121#target-authorization`。
 - 任務目標：版本化 producer contract 可證明唯一 principal 及同 snapshot、同權威版本的有效 grants；consumer 不查 `orgmaster_core`。

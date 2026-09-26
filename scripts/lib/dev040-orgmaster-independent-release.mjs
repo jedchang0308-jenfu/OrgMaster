@@ -45,6 +45,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   'db/migrations/024_dev057_principal_identity_invariants.sql',
   'db/migrations/025_dev057_ai_pdm_principal_effective_grants_v2.sql',
   'db/migrations/026_dev057_session_principal_policy_path.sql',
+  'db/migrations/027_dev057_principal_cutover_source_manifest.sql',
 ]
 
 function fail(code, detail = '') {
