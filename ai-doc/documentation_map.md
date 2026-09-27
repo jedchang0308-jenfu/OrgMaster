@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-28 DEV-057 正式來源決策**：[ADR-001 單人維護 Production 來源證據](ADR-001-small-team-production-source-authority.md)固定 PR／Codex QC／required CI／provider branch protection 的真實證據，不要求第二位人工審查者；GitHub 設定尚待讀回，不能把文件當成 release PASS。
+
 > **2026-09-26 DEV-057 cutover-source 本機切片**：[同一 producer 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)新增 forward-only 027 manifest 與 AI-PDM migrator 精確 read ACL；owner release 路徑／隔離 PostgreSQL D57-19 為本次驗證範圍，Production 尚未套用。
 
 > **2026-09-26 DEV-057 pair 診斷結果**：[同一 producer 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)現有 protected master／唯讀 Production receipt 證明六組僅一組已發布，另外五組無 canonical 來源；未綁 managed identity 不作猜測，後續歸屬仍需核實。臨時 Job 已清理，原子任務未關閉。
