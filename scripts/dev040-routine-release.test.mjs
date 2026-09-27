@@ -13,6 +13,12 @@ import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation } from './lib/dev040-routine-release.mjs'
 
+test('production runtime image includes the source-frozen v4 catalog read by governance', () => {
+  const dockerfile = fs.readFileSync('Dockerfile', 'utf8')
+  assert.match(dockerfile, /^COPY --from=builder --chown=65532:65532 \/app\/config\/catalogs\/ai-pdm-role-catalog\.v4\.json \.\/config\/catalogs\/ai-pdm-role-catalog\.v4\.json$/mu)
+  assert.match(dockerfile, /^COPY --from=builder --chown=65532:65532 \/app\/contracts \.\/contracts$/mu)
+})
+
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
 const n1c = JSON.parse(fs.readFileSync('config/dev-010/n1c-orgmaster.json'))
 const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(entry.path)]))
