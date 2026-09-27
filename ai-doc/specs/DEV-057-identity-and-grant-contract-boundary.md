@@ -1,5 +1,11 @@
 # DEV-057：身分與權限發布契約邊界
 
+## 2026-09-27 `#catalog-read-recovery` 正式故障處置
+
+OrgMaster Production provider 讀回仍為 `orgmaster-prod-c2a14a18803b` 100% traffic。Cloud Run HTTP logs 在 2026-09-27 15:09Z 記錄 `/api/orgmaster/governance/session` 與 `/api/orgmaster/governance/` 500，15:35Z 仍有 `employee-youhao/managed-identity` 503；相同 revision 的 application log 只記錄包裝後的 `GOVERNANCE_READ_FAILED`，未暴露底層原因。R3 source `48120534cbde4a06d0f3cd6d5de76171ca7e0699` 早於已合併的 `f8f201d` JSONB 逐值比對修正；修正版 operator 成功讀回 v4 catalog 是修復機制的證據，**不是正式 service 已修復**。將 catalog mismatch 列為優先假說，保留其他治理文件讀取失敗的可能性，待候選版驗證區分。
+
+沿用 `ORGMASTER/DEV-057` owner-native 發布；來源、migration、image、rollback baseline 先經既有保護核對。候選版在零流量下至少要以正式授權 session 驗證 `GET /api/orgmaster/governance/session` 200 與一個已核實 Employee 的 `GET /api/orgmaster/employees/{employeeId}/managed-identity` 200，並以未授權 session 驗證管理讀取拒絕；記錄精確 revision、HTTP status 與已遮罩的 correlation ID。若任一項失敗，停在切流前查明錯誤並回復候選入口，不靠重設員工身分、不改指派或資料庫。切流後從 canonical URL 重驗同三項並觀察錯誤率。未來角色目錄升版需將治理／managed-identity 讀取加入候選版驗收，而不能只用一般 workbench probe 宣稱 catalog consumer PASS；Workflow probe 變更須經既有 owner IaC 完整位址及精確差異審查。
+
 > **2026-09-27 owner source authority 更正。** GitHub branch API 對 OrgMaster `master` 回 `protected:false`，rules `[]`；過去文件的 protected master 字樣不能回溯視為 provider protection 證據。新的本機 owner prepare 檢查 exact official HEAD／tree／merged PR，再進既有 WIF 與 source lock；不宣稱有 GitHub review object 或未回報的 PR checks。聚焦 3／3、DEV-040 owner suite 104／104 PASS；正式 workflow 尚未執行，不構成 DEV-121 cutover 放行。
 
 > **2026-09-26 owner release 證據讀取邊界（本機）。** AI-PDM DEV-121 唯讀 cutover preview 直接核對 OrgMaster 自有 bucket 的 protected source lock／migration receipt。OrgMaster IaC 僅為現有 `aipdm-prod-migrator` 增加自身 bucket `receipts/releases/` 的條件式 objectViewer，並列入 APP_INFRA_B complete-set plan；不授予 sibling source、control、寫入或 OrgMaster core 權利。source-frozen plan 與 provider IAM readback 完成前，不能以本機設定宣稱可在 Production 讀取；此證據也不構成完整 provider source／image attestation、profile 歸屬、recovery 或切流放行。

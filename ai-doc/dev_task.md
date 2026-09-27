@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+> **2026-09-27 DEV-057#catalog-read-recovery（正式故障，待候選版驗證）**：唯讀 provider 顯示 `orgmaster-prod-c2a14a18803b` 仍承接 100% traffic；2026-09-27 15:09Z 的 governance session／root 500 與 15:35Z 的 `employee-youhao/managed-identity` 503 均來自該 revision。已合併的 JSONB v4 角色目錄逐值比對修正 `f8f201d` 與 operator 成功 readback 尚未進入正式 service。`GOVERNANCE_READ_FAILED` 日誌未記錄底層例外，故 catalog mismatch 是最有證據的根因假說，尚非定案。先完成受保護來源與 owner release 準備；在零流量候選版驗 governance session、managed-identity 讀取及無權限拒絕，三者都通過才可 activate，切流後從正式入口重驗並觀察。不得為此修改張祐豪或其他員工綁定、人工改資料庫或把既有 operator readback 當作 service PASS；詳見 [DEV-057 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)。
+
 > **2026-09-27 DEV-057 protected-source 執行修正（本機，未發布）**：GitHub provider 重新讀回本 repo 為 public、唯一 collaborator 為 `jedchang0308-jenfu`，官方 `master` 仍 `protected:false`。先前已合併 PR／WIF 限定僅證明部分來源鏈，不能取代受保護 ref 與適用的 review 證據。owner verifier 現將未受保護 branch 明確拒絕，同時保留 exact HEAD／tree／唯一 merged PR 查核；聚焦測試 4／4 PASS。此修正不改寫歷史 release 收據，未設定 provider protection，新的 principal-first Production source gate 仍未通過，未操作 Production。
 
 > **2026-09-27 DEV-057 正式來源核實修正（本機，未發布）**：GitHub provider 明確回傳 `master` 未受 branch protection 保護；clean HEAD 與 WIF 正式 workflow 條件不能冒稱 protected／review PASS。OrgMaster owner prepare 現先核對官方 `master` HEAD、精確 Git tree 與該 commit 唯一已合併至本 repo／branch 的 PR，拒絕直接 push、來源漂移與 provider 失敗；不增付費席次或中央部署權。聚焦 3／3、owner suite 104／104 PASS。PR／review／check 的實際證據須如實封存；此修正尚未合併與正式執行，不能認列新的 Production 來源 gate PASS，既有發布證據保留原樣。
