@@ -12,11 +12,13 @@ const CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS = new Set([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
 ])
 
-// The DEV-057 cutover added two one-off, read-only operator images and one
-// receipt-prefix IAM member. Bind this exception to the exact reviewed blobs;
+// The DEV-057 cutover added two one-off, read-only operator images, one
+// receipt-prefix IAM member, and the affected candidate smoke probe. Bind
+// this exception to the exact reviewed blobs;
 // omitting storage.tf from the fingerprint without checking its bytes would
 // also admit an unrelated IAM change.
 const DEV057_CUTOVER_INFRA_BLOBS = Object.freeze({
+  'infra/google-cloud/dev-040-production-release/candidate-smoke.tf': { before: '93582ccdfea8cd5859adf59c57c1b17b13d1b586', after: '1add0e6508568d591faa190cabf64e2470fb620c' },
   'infra/google-cloud/dev-040-production-release/dev057-principal-pair-diagnostic.Dockerfile': { before: null, after: '8f97afa62dfb83c3ceac7a4869cd2c36feccb795' },
   'infra/google-cloud/dev-040-production-release/dev057-v4-catalog-readback.Dockerfile': { before: null, after: '66cebdc6bbd1e44fa611acfcc004ace459c1f37e' },
   'infra/google-cloud/dev-040-production-release/storage.tf': { before: '72b1eb0638c8bec9fc4229c7ad6553f41c4c0bc5', after: '6ba14e13e89780db2ae2f172e78f1f0a352b901f' },

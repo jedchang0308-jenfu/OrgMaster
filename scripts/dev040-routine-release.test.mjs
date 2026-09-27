@@ -389,7 +389,7 @@ test('DEV-057 cutover source accepts only exact 027 append from released 026 bas
 test('DEV-057 cutover admits only the exact source-frozen operator and receipt IAM delta', async () => {
   const root = path.resolve('.')
   const baselineRevision = '48120534cbde4a06d0f3cd6d5de76171ca7e0699'
-  const cutoverRevision = 'a85e546214059ecc59dfd5b91b30ff25e423ddd4'
+  const cutoverRevision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim()
   assert.match(assertDev057CutoverInfraTransition(root, baselineRevision, cutoverRevision), /^[a-f0-9]{64}$/u)
   assert.throws(() => assertDev057CutoverInfraTransition(root, cutoverRevision, baselineRevision), /DEV057_CUTOVER_INFRA_DELTA_INVALID/u)
   assert.throws(() => assertDev057CutoverInfraTransition(root, baselineRevision, baselineRevision), /DEV057_CUTOVER_INFRA_DELTA_INVALID/u)
