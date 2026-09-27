@@ -1,5 +1,11 @@
 # DEV-057：身分與權限發布契約邊界
 
+## 2026-09-28 `#cutover-infra-receipt` 正式預檢更正
+
+Protected `master` source `a85e546214059ecc59dfd5b91b30ff25e423ddd4` 的 owner `APP_INFRA_B` 完整 75 位址 plan gate PASS；provider 只新增 `aipdm_cutover_receipts_viewer[0]` 對既有 OrgMaster bucket `receipts/releases/` 的條件式讀取，其他位址 read／no-op。provider readback receipt 為 `gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV057-INFRA-ORGMASTER-20260928-R1/app-infra.json#sha256=756a0353b49f9172444e3f7dd925579f53ac83dd86a87c02c392a01701153f39`。服務、traffic、schema、Employee 資料皆未改。
+
+原 owner `--check --dev057-cutover-source-remediation` 仍以 `ROUTINE_INFRA_CHANGED` 安全停止，因 R3 基線與此來源多了兩個唯讀 operator Dockerfile 及一筆精確 IAM source。現有 Production smoke 身分在 R3 對治理 session 回 500、對 `JFS9014` managed-identity 回 503，未登入兩條皆為 401；登入與登出均為 200，證實舊 workbench smoke 無法攔截本故障。因此既有零流量 Workflow 增加這兩條已登入 200 與未登入 401 的 read-only probe，無新憑證或資料寫入。Workflow `source_contents` 更新須通過精確差異的 owner IaC gate 才可套用。release 修正只在 `057-CUTOVER-SOURCE` 且 fresh source-bound infra receipt 存在時，比對兩個 Dockerfile、IAM source 與 Workflow source 在 R3／新來源的精確 Git blob，並要求其餘 IaC 與 migration 以外 profile 的正規化指紋相同；其他 release mode 仍 fail closed。修正合併後須重新生成新 source 的 owner infra receipt、重跑 `--check`，且候選 probe PASS 後才能切流。
+
 ## 2026-09-27 `#catalog-read-recovery` 正式故障處置
 
 OrgMaster Production provider 讀回仍為 `orgmaster-prod-c2a14a18803b` 100% traffic。Cloud Run HTTP logs 在 2026-09-27 15:09Z 記錄 `/api/orgmaster/governance/session` 與 `/api/orgmaster/governance/` 500，15:35Z 仍有 `employee-youhao/managed-identity` 503；相同 revision 的 application log 只記錄包裝後的 `GOVERNANCE_READ_FAILED`，未暴露底層原因。R3 source `48120534cbde4a06d0f3cd6d5de76171ca7e0699` 早於已合併的 `f8f201d` JSONB 逐值比對修正；修正版 operator 成功讀回 v4 catalog 是修復機制的證據，**不是正式 service 已修復**。將 catalog mismatch 列為優先假說，保留其他治理文件讀取失敗的可能性，待候選版驗證區分。
