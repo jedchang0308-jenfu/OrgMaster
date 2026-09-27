@@ -12,12 +12,23 @@ const CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS = new Set([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
 ])
 
-export function filterControlledInfrastructureTree(bytes) {
+// The DEV-057 cutover added two one-off, read-only operator images and one
+// receipt-prefix IAM member. Bind this exception to the exact reviewed blobs;
+// omitting storage.tf from the fingerprint without checking its bytes would
+// also admit an unrelated IAM change.
+const DEV057_CUTOVER_INFRA_BLOBS = Object.freeze({
+  'infra/google-cloud/dev-040-production-release/dev057-principal-pair-diagnostic.Dockerfile': { before: null, after: '8f97afa62dfb83c3ceac7a4869cd2c36feccb795' },
+  'infra/google-cloud/dev-040-production-release/dev057-v4-catalog-readback.Dockerfile': { before: null, after: '66cebdc6bbd1e44fa611acfcc004ace459c1f37e' },
+  'infra/google-cloud/dev-040-production-release/storage.tf': { before: '72b1eb0638c8bec9fc4229c7ad6553f41c4c0bc5', after: '6ba14e13e89780db2ae2f172e78f1f0a352b901f' },
+})
+
+export function filterControlledInfrastructureTree(bytes, additionalExcludedPaths = []) {
   const entries = Buffer.from(bytes).toString('utf8').split('\0').filter(Boolean)
   if (!entries.length) fail('ROUTINE_BASELINE_SOURCE_MISSING')
+  const excludedPaths = new Set([...CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS, ...additionalExcludedPaths])
   const filtered = entries.filter((entry) => {
     const path = entry.split('\t').at(-1)
-    return !CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS.has(path)
+    return !excludedPaths.has(path)
   })
   return Buffer.from(`${filtered.join('\0')}\0`)
 }
@@ -63,7 +74,7 @@ function dev013NeutralInfrastructureInputs(profile) {
   return value
 }
 
-export function controlledInfrastructureFingerprint(root, revision) {
+export function controlledInfrastructureFingerprint(root, revision, additionalExcludedPaths = []) {
   if (!/^[a-f0-9]{40}$/u.test(revision)) fail('ROUTINE_SOURCE_INVALID')
   const result = spawnSync('git', ['ls-tree', '-r', '-z', revision, '--',
     'infra/google-cloud/dev-040-production-release', 'config/dev-010/n1c-orgmaster.json',
@@ -71,8 +82,25 @@ export function controlledInfrastructureFingerprint(root, revision) {
   if (result.status !== 0 || !result.stdout?.length) fail('ROUTINE_BASELINE_SOURCE_MISSING')
   const config = spawnSync('git', ['show', `${revision}:config/release/dev040-orgmaster-independent-production-v3.json`], { cwd: root, encoding: 'utf8', windowsHide: true })
   if (config.status !== 0) fail('ROUTINE_BASELINE_SOURCE_MISSING')
-  const stableInfrastructureTree = filterControlledInfrastructureTree(result.stdout)
+  const stableInfrastructureTree = filterControlledInfrastructureTree(result.stdout, additionalExcludedPaths)
   return sha256(Buffer.concat([stableInfrastructureTree, Buffer.from(canonicalize(dev013NeutralInfrastructureInputs(JSON.parse(config.stdout))))]))
+}
+
+function revisionBlob(root, revision, file) {
+  if (!/^[a-f0-9]{40}$/u.test(revision)) fail('ROUTINE_SOURCE_INVALID')
+  const result = spawnSync('git', ['rev-parse', '--verify', `${revision}:${file}`], { cwd: root, encoding: 'utf8', windowsHide: true })
+  return result.status === 0 ? result.stdout.trim() : null
+}
+
+export function assertDev057CutoverInfraTransition(root, baselineRevision, sourceRevision) {
+  const excludedPaths = Object.keys(DEV057_CUTOVER_INFRA_BLOBS)
+  for (const [file, expected] of Object.entries(DEV057_CUTOVER_INFRA_BLOBS)) {
+    if (revisionBlob(root, baselineRevision, file) !== expected.before || revisionBlob(root, sourceRevision, file) !== expected.after) fail('DEV057_CUTOVER_INFRA_DELTA_INVALID')
+  }
+  const before = controlledInfrastructureFingerprint(root, baselineRevision, excludedPaths)
+  const after = controlledInfrastructureFingerprint(root, sourceRevision, excludedPaths)
+  if (before !== after) fail('DEV057_CUTOVER_INFRA_DELTA_INVALID')
+  return after
 }
 
 function assertSealedStage(value, profile, intent, stage) {
@@ -480,7 +508,7 @@ export async function resolveRoutineControlBaseline({ profile, transport, contro
   return intent.baselineIntentRef
 }
 
-export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint }) {
+export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.terminal.value.facts.candidateRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
   transport.assertServiceSettled(service)
@@ -521,7 +549,10 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
     : baseline.intent.sourceRevision
-  if (controlledTransition?.releaseMode !== 'DEV014_MANAGED_DIRECTORY_ACTIVATION' && infrastructureSha256 !== infrastructureHash(root, infrastructureBaselineRevision)) fail('ROUTINE_INFRA_CHANGED')
+  if (controlledTransition?.releaseMode !== 'DEV014_MANAGED_DIRECTORY_ACTIVATION' && infrastructureSha256 !== infrastructureHash(root, infrastructureBaselineRevision)) {
+    if (controlledTransition?.releaseMode !== 'DEV057_CUTOVER_SOURCE_REMEDIATION' || !values.infra || same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)) fail('ROUTINE_INFRA_CHANGED')
+    cutoverInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
+  }
   const revision = await transport.getRevision(profile, intent.previousRevision)
   transport.assertRevisionReady(profile, revision, baseline.deployment.value.artifactDigest, baseline.candidate.value.facts.cloudSqlProxyResolvedImage)
   if (controlledTransition) assertHistoricalRuntimeReadback(profile, baselineRuntime, revision)
