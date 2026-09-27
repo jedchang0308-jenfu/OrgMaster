@@ -97,3 +97,15 @@ resource "google_storage_bucket_iam_member" "release_coordinator_receipts_viewer
     expression = "resource.name.startsWith('${local.receipt_prefix}')"
   }
 }
+
+# DEV-057: the AI-PDM read-only cutover preview verifies owner receipts in place.
+resource "google_storage_bucket_iam_member" "aipdm_cutover_receipts_viewer" {
+  count  = var.incident_runtime_enabled ? 1 : 0
+  bucket = google_storage_bucket.release.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:aipdm-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com"
+  condition {
+    title      = "dev057-aipdm-cutover-release-readback"
+    expression = "resource.name.startsWith('projects/_/buckets/${var.release_bucket_name}/objects/receipts/releases/')"
+  }
+}
