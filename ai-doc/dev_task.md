@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+> **2026-09-27 DEV-057 protected-source 執行修正（本機，未發布）**：GitHub provider 重新讀回本 repo 為 public、唯一 collaborator 為 `jedchang0308-jenfu`，官方 `master` 仍 `protected:false`。先前已合併 PR／WIF 限定僅證明部分來源鏈，不能取代受保護 ref 與適用的 review 證據。owner verifier 現將未受保護 branch 明確拒絕，同時保留 exact HEAD／tree／唯一 merged PR 查核；聚焦測試 4／4 PASS。此修正不改寫歷史 release 收據，未設定 provider protection，新的 principal-first Production source gate 仍未通過，未操作 Production。
+
 > **2026-09-27 DEV-057 正式來源核實修正（本機，未發布）**：GitHub provider 明確回傳 `master` 未受 branch protection 保護；clean HEAD 與 WIF 正式 workflow 條件不能冒稱 protected／review PASS。OrgMaster owner prepare 現先核對官方 `master` HEAD、精確 Git tree 與該 commit 唯一已合併至本 repo／branch 的 PR，拒絕直接 push、來源漂移與 provider 失敗；不增付費席次或中央部署權。聚焦 3／3、owner suite 104／104 PASS。PR／review／check 的實際證據須如實封存；此修正尚未合併與正式執行，不能認列新的 Production 來源 gate PASS，既有發布證據保留原樣。
 
 > **2026-09-26 DEV-057 owner receipt 跨系統唯讀授權（本機，未套用）**：AI-PDM DEV-121 read-only cutover preview 需直接核對 OrgMaster protected source lock／migration receipt。OrgMaster owner IaC 在自身 release bucket 新增一筆 `incident_runtime_enabled` 條件式 `roles/storage.objectViewer`，只給既有 `aipdm-prod-migrator`、物件限 `receipts/releases/`；加入 APP_INFRA_B 完整位址集，不授予 source、control、寫入、core 或 project-wide 權限。owner profile 17／17 與 Terraform fmt PASS。正式 provider IAM readback／plan apply 尚未執行，AI-PDM cutover 仍不可套用。
