@@ -918,6 +918,13 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     if (execution.state !== 'SUCCEEDED' || typeof execution.result !== 'string') fail('INTERNAL_CANDIDATE_SMOKE_FAILED', execution.state ?? 'unknown')
     let result
     try { result = JSON.parse(execution.result) } catch { fail('INTERNAL_CANDIDATE_SMOKE_RESULT_INVALID') }
+    const orgmasterObservations = profile.application.id === 'orgmaster' ? [
+      ['auth-mode', 200], ['session-create', 200], ['session-reload', 200],
+      ['authenticated-probe', 200], ['governance-session', 200],
+      ['managed-identity-read', 200], ['governance-unauthenticated', 401],
+      ['managed-identity-unauthenticated', 401], ['unauthenticated-probe', 401],
+      ['session-revoked', 401],
+    ] : null
     if (
       result?.schemaVersion !== 'jenfu.dev012.internal-candidate-smoke.v1' ||
       result.ownerApplicationId !== profile.application.id ||
@@ -925,8 +932,12 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       result.artifactDigest !== artifactDigest ||
       result.tokenSource !== 'SECRET_MANAGER_EXACT_VERSION' ||
       result.status !== 'PASS' ||
-      !Array.isArray(result.observations) || result.observations.length !== 6 ||
-      result.observations.some((row) => !row?.id || !Number.isInteger(Number(row.status))) ||
+      !Array.isArray(result.observations) ||
+      (orgmasterObservations
+        ? (result.observations.length !== orgmasterObservations.length ||
+          result.observations.some((row, index) => row?.id !== orgmasterObservations[index][0] || row.status !== orgmasterObservations[index][1]))
+        : (result.observations.length !== 6 ||
+          result.observations.some((row) => !row?.id || !Number.isInteger(Number(row.status))))) ||
       /refreshToken|idToken|sessionCookie|firebaseApiKey/iu.test(JSON.stringify(result))
     ) fail('INTERNAL_CANDIDATE_SMOKE_RESULT_INVALID')
     return { ...result, origin: base.origin, executionName: execution.name, observedAt: now() }

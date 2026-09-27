@@ -499,6 +499,47 @@ test('internal candidate smoke executes only the app-owned Workflow and returns 
   assert.doesNotMatch(JSON.stringify(smoke), /firebaseApiKey|refreshToken|idToken|sessionCookie/u)
 })
 
+test('OrgMaster candidate smoke requires the governance allow and deny observations', async () => {
+  const tag = 'candidate-' + 'a'.repeat(12)
+  const revision = 'orgmaster-prod-' + 'a'.repeat(12)
+  const digest = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:' + H64
+  const executionName = 'projects/9536592944/locations/asia-east1/workflows/orgmaster-prod-candidate-smoke/executions/execution-1'
+  const observations = [
+    ['auth-mode', 200], ['session-create', 200], ['session-reload', 200],
+    ['authenticated-probe', 200], ['governance-session', 200],
+    ['managed-identity-read', 200], ['governance-unauthenticated', 401],
+    ['managed-identity-unauthenticated', 401], ['unauthenticated-probe', 401],
+    ['session-revoked', 401],
+  ].map(([id, status]) => ({ id, status }))
+  const result = {
+    schemaVersion: 'jenfu.dev012.internal-candidate-smoke.v1',
+    ownerApplicationId: 'orgmaster', candidateRevision: revision,
+    artifactDigest: digest, tokenSource: 'SECRET_MANAGER_EXACT_VERSION',
+    observations, status: 'PASS',
+  }
+  const fetchImpl = async (url, options = {}) => {
+    if (String(url).startsWith('https://run.googleapis.com/v2/projects/jenfu-platform-prod/locations/asia-east1/services/orgmaster-prod')) {
+      return json({ uri: 'https://orgmaster-prod-abc-de.a.run.app' })
+    }
+    if (options.method === 'POST') return json({ name: executionName, state: 'ACTIVE' })
+    assert.equal(String(url), 'https://workflowexecutions.googleapis.com/v1/' + executionName)
+    return json({ name: executionName, state: 'SUCCEEDED', result: JSON.stringify(result) })
+  }
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl, sleep: async () => undefined })
+  const profile = {
+    application: { id: 'orgmaster' },
+    target: { projectId: 'jenfu-platform-prod', projectNumber: '9536592944', region: 'asia-east1', serviceName: 'orgmaster-prod', canonicalOrigin: 'https://orgmaster-prod-9536592944.asia-east1.run.app' },
+    artifact: { uri: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster' },
+    verification: { firebaseApiKeyEnvironmentName: 'FIREBASE_API_KEY', candidateSmokeMode: 'WORKFLOWS_INTERNAL_OIDC_V1', candidateWorkflowName: 'orgmaster-prod-candidate-smoke', candidateRefreshTokenSecretId: 'orgmaster-prod-smoke-firebase-refresh-token' },
+  }
+  const input = { profile, origin: 'https://' + tag + '---orgmaster-prod-9536592944.asia-east1.run.app', candidateTag: tag, candidateRevision: revision, artifactDigest: digest, deadlineAt: '2999-01-01T00:00:00.000Z', environment: { FIREBASE_API_KEY: 'A'.repeat(39) } }
+  assert.equal((await transport.runInternalCandidateSmoke(input)).observations.length, 10)
+  result.observations = observations.filter((row) => row.id !== 'managed-identity-unauthenticated')
+  await assert.rejects(() => transport.runInternalCandidateSmoke(input), /INTERNAL_CANDIDATE_SMOKE_RESULT_INVALID/u)
+  result.observations = observations.map((row) => row.id === 'managed-identity-unauthenticated' ? { ...row, status: 200 } : row)
+  await assert.rejects(() => transport.runInternalCandidateSmoke(input), /INTERNAL_CANDIDATE_SMOKE_RESULT_INVALID/u)
+})
+
 
 test('legacy one-field endpoint mutations are not exposed by the V3 transport', () => {
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async () => json({}) })
