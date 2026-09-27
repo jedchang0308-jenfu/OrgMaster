@@ -169,6 +169,86 @@ resource "google_workflows_workflow" "candidate_smoke" {
                 Cookie: $${session_cookie}
               timeout: 20
             result: authenticated_response
+        - governance_session:
+            call: http.get
+            args:
+              url: $${candidate_origin + "/api/orgmaster/governance/session"}
+              auth:
+                type: OIDC
+              headers:
+                Cookie: $${session_cookie}
+              timeout: 20
+            result: governance_session_response
+        - managed_identity_read:
+            call: http.get
+            args:
+              url: $${candidate_origin + "/api/orgmaster/employees/01a0c82b-11c6-77ab-887f-58df9d243e63/managed-identity"}
+              auth:
+                type: OIDC
+              headers:
+                Cookie: $${session_cookie}
+              timeout: 20
+            result: managed_identity_response
+        - validate_governance_reads:
+            switch:
+              - condition: $${governance_session_response.code != 200 or managed_identity_response.code != 200}
+                next: reject_governance
+        - init_governance_negative:
+            assign:
+              - governance_unauthenticated_status: 0
+              - managed_identity_unauthenticated_status: 0
+        - governance_unauthenticated_probe:
+            try:
+              steps:
+                - call_governance_unauthenticated:
+                    call: http.get
+                    args:
+                      url: $${candidate_origin + "/api/orgmaster/governance/session"}
+                      auth:
+                        type: OIDC
+                      timeout: 20
+                    result: governance_unauthenticated_response
+                - capture_unexpected_governance:
+                    assign:
+                      - governance_unauthenticated_status: $${governance_unauthenticated_response.code}
+            except:
+              as: governance_unauthenticated_error
+              steps:
+                - reject_unexpected_governance_error:
+                    switch:
+                      - condition: $${not("HttpError" in governance_unauthenticated_error.tags and governance_unauthenticated_error.code == 401)}
+                        raise: $${governance_unauthenticated_error}
+                - capture_expected_governance:
+                    assign:
+                      - governance_unauthenticated_status: $${governance_unauthenticated_error.code}
+        - managed_identity_unauthenticated_probe:
+            try:
+              steps:
+                - call_managed_identity_unauthenticated:
+                    call: http.get
+                    args:
+                      url: $${candidate_origin + "/api/orgmaster/employees/01a0c82b-11c6-77ab-887f-58df9d243e63/managed-identity"}
+                      auth:
+                        type: OIDC
+                      timeout: 20
+                    result: managed_identity_unauthenticated_response
+                - capture_unexpected_managed_identity:
+                    assign:
+                      - managed_identity_unauthenticated_status: $${managed_identity_unauthenticated_response.code}
+            except:
+              as: managed_identity_unauthenticated_error
+              steps:
+                - reject_unexpected_managed_identity_error:
+                    switch:
+                      - condition: $${not("HttpError" in managed_identity_unauthenticated_error.tags and managed_identity_unauthenticated_error.code == 401)}
+                        raise: $${managed_identity_unauthenticated_error}
+                - capture_expected_managed_identity:
+                    assign:
+                      - managed_identity_unauthenticated_status: $${managed_identity_unauthenticated_error.code}
+        - validate_governance_denials:
+            switch:
+              - condition: $${governance_unauthenticated_status != 401 or managed_identity_unauthenticated_status != 401}
+                next: reject_governance
         - init_negative:
             assign:
               - unauthenticated_status: 0
@@ -263,6 +343,14 @@ resource "google_workflows_workflow" "candidate_smoke" {
                   status: $${reload_response.code}
                 - id: "authenticated-probe"
                   status: $${authenticated_response.code}
+                - id: "governance-session"
+                  status: $${governance_session_response.code}
+                - id: "managed-identity-read"
+                  status: $${managed_identity_response.code}
+                - id: "governance-unauthenticated"
+                  status: $${governance_unauthenticated_status}
+                - id: "managed-identity-unauthenticated"
+                  status: $${managed_identity_unauthenticated_status}
                 - id: "unauthenticated-probe"
                   status: $${unauthenticated_status}
                 - id: "session-revoked"
@@ -278,6 +366,8 @@ resource "google_workflows_workflow" "candidate_smoke" {
             raise: "DEV012_SMOKE_UNAUTHENTICATED_EXPECTATION_FAILED"
         - reject_revoked:
             raise: "DEV012_SMOKE_REVOCATION_FAILED"
+        - reject_governance:
+            raise: "DEV057_CANDIDATE_GOVERNANCE_READ_FAILED"
   YAML
 
   depends_on = [
