@@ -1,2 +1,3 @@
 contracts/jenfu-platform-entitlement/v2/fixtures/financial-role-catalog.v1.json text eol=lf
 config/catalogs/ai-pdm-role-catalog.v4.json text eol=lf
+infra/google-cloud/dev-040-production-release/candidate-smoke.tf text eol=lf
