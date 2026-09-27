@@ -1,5 +1,7 @@
 # DEV-057：身分與權限發布契約邊界
 
+> **2026-09-27 owner source authority 更正。** GitHub branch API 對 OrgMaster `master` 回 `protected:false`，rules `[]`；過去文件的 protected master 字樣不能回溯視為 provider protection 證據。新的本機 owner prepare 檢查 exact official HEAD／tree／merged PR，再進既有 WIF 與 source lock；不宣稱有 GitHub review object 或未回報的 PR checks。聚焦 3／3、DEV-040 owner suite 104／104 PASS；正式 workflow 尚未執行，不構成 DEV-121 cutover 放行。
+
 > **2026-09-26 owner release 證據讀取邊界（本機）。** AI-PDM DEV-121 唯讀 cutover preview 直接核對 OrgMaster 自有 bucket 的 protected source lock／migration receipt。OrgMaster IaC 僅為現有 `aipdm-prod-migrator` 增加自身 bucket `receipts/releases/` 的條件式 objectViewer，並列入 APP_INFRA_B complete-set plan；不授予 sibling source、control、寫入或 OrgMaster core 權利。source-frozen plan 與 provider IAM readback 完成前，不能以本機設定宣稱可在 Production 讀取；此證據也不構成完整 provider source／image attestation、profile 歸屬、recovery 或切流放行。
 
 > **2026-09-26 cutover-source producer（本機驗證完成，待發布）。** 新增 forward-only 027，要求既有 mapping、typed account、authority、principal grants v2 與 manifest views 皆存在後，才發布 `orgmaster.principal-cutover-source` v1 manifest；AI-PDM migrator 僅取得 `orgmaster_contract.v_contract_manifest_v1` 的 SELECT，不取得 OrgMaster core 權利。來源簽章固定於 migration；owner release 只接受正式 001–026 前綴與精確 027 append，正式 readback 應核對此 row 與原 `orgmaster.ai-pdm-principal-effective-grants` v2 row。隔離 PostgreSQL D57-01～19 19／19 PASS，D57-19 驗 exact rows、core denial 與重播不變；owner release 101／101、全量 Vitest 893 PASS、build 與 DEV-040 整合 QC PASS。這是 code／contract 版本證據，不代替每次 cutover 的 live mapping／typed／authority／grant snapshot，也不宣稱 027 已套用 Production。
