@@ -5,12 +5,12 @@ import { join } from 'node:path'
 import { readPublishedAiPdmRoleCatalog, readPublishedAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
 
 describe('AI-PDM published role catalog adapter', () => {
-  it('reads the pinned v4 consumer catalog while preserving the old contract fixture', async () => {
+  it('reads the pinned v5 consumer catalog while preserving the old contract fixture', async () => {
     const catalog = await readPublishedAiPdmRoleCatalog()
     expect(catalog.contractVersion).toBe('jenfu.platform-entitlement.v1')
     expect(catalog.applicationId).toBe('ai-pdm')
-    expect(catalog.catalogVersion).toBe('ai-pdm.role-catalog.2026-09-25.v4')
-    expect(catalog.catalogSha256).toBe('32f3593d7a0d2a5cad4875181a62b8f5c49a06c9cbba8835cd1b82e9b44ca08a')
+    expect(catalog.catalogVersion).toBe('ai-pdm.role-catalog.2026-09-28.v5')
+    expect(catalog.catalogSha256).toBe('4f05dd4228b51e5086f30886330f48f1f137e37d383a26114bb34f5874d39197')
     expect(catalog.roles).toHaveLength(9)
     expect(catalog.roles.find((role) => role.roleCode === 'system_admin')).toMatchObject({
       stableRoleId: 'role-system-admin',
@@ -35,8 +35,8 @@ describe('AI-PDM published role catalog adapter', () => {
     try {
       const fixtureDir = join(root, 'config', 'catalogs')
       await mkdir(fixtureDir, { recursive: true })
-      const source = join(process.cwd(), 'config', 'catalogs', 'ai-pdm-role-catalog.v4.json')
-      const target = join(fixtureDir, 'ai-pdm-role-catalog.v4.json')
+      const source = join(process.cwd(), 'config', 'catalogs', 'ai-pdm-role-catalog.v5.json')
+      const target = join(fixtureDir, 'ai-pdm-role-catalog.v5.json')
       const catalog = JSON.parse(await readFile(source, 'utf8')) as { catalogSha256: string }
       catalog.catalogSha256 = '0'.repeat(64)
       await writeFile(target, JSON.stringify(catalog), 'utf8')
