@@ -1,5 +1,7 @@
 # DEV-057：身分與權限發布契約邊界
 
+> **2026-09-28 Principal-only 單次啟用修訂（保留後文歷史證據）。** 本 owner 的終態是發布 `principal_id` 對應的 typed identity、Employee 狀態、唯一權威角色／scope／deny 指派及版本化 contract，供 Platform session 與 AI-PDM capability／resource 決策使用。`legacy_authority` 及逐人雙軌只作歷史來源盤點，不再是新版本正常流量的授權分支；不把舊 UID、email 或 AI-PDM profile ID 當安全主體。對全體已核實且需啟用者，一次性核對 provider pair、Employee、principal、指派與原有效權限，未知或歧義保持停用；原停用者不得自動啟用。OrgMaster 只用自己的 forward-only migration 與唯一 owner command 實施必要轉換，保留歷史 row／receipt 供稽核，不改已套用 migration 或 sibling core。三 owner 候選與受控停用視窗、舊 session/code 排空、背景寫入阻斷、全體等價 readback、Principal-only 回復及 Production L4 完成前不得把正式流量切到新版本；下文過渡步驟保留沿革但不再作執行授權。
+
 > **2026-09-28 R6 Production owner readback（現行）。** 受保護 `master` source `5bc170eee061e4de8b5a85b3421121145c206edb` 的 [owner run 36341134277](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/36341134277) 十階段完成；固定 `migrate.json` 回 `PASS / applied=0 / replayed=27 / ledgerCount=27 / boundaryStatus=PASS`，證明 forward-only 027 已在正式 ledger 並可重播。零流量 `verify.json` 對 `governance-session`、`managed-identity-read` 為 200，兩個未登入讀取為 401；`terminal.json` 回 `PASS / RELEASED / FORWARD_APPLIED / remainingHumanAction=0`，Cloud Run `orgmaster-prod-deb1ed892ca6` 目前承接 100% traffic。完整精確 GCS receipt 與檢查界限見 [R6 Production evidence](../qa/DEV-057-production-r6-release-evidence-2026-09-28.md)。下文「027 待發布」及 R3 故障記錄是當時的歷史讀點；R6 仍不等於 AI-PDM 全 cohort principal cutover、resource／delegation shadow 或三系統 Production L4 完成。
 
 ## 2026-09-28 `#cutover-infra-receipt` 正式預檢更正
