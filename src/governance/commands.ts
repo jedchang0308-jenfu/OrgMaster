@@ -123,8 +123,7 @@ export function applyGovernanceCommandV2(document: GovernanceDocumentV2, command
 
 export type CommandApplyResultV3 = { status: 'applied' | 'noop'; document: GovernanceDocumentV3; entityType: string; entityId: string | null; beforeHash: string | null; afterHash: string | null }
 
-function normalizeV3Assignment(value: GovernanceRoleAssignmentV2 | GovernanceRoleAssignmentV3, reason: string): GovernanceRoleAssignmentV3 {
-  if ('basis' in value) return value
+function normalizeV3Assignment(value: GovernanceRoleAssignmentV2, reason: string, actorPrincipalId: string): GovernanceRoleAssignmentV3 {
   return {
     ...value,
     basis: 'manual',
@@ -132,7 +131,7 @@ function normalizeV3Assignment(value: GovernanceRoleAssignmentV2 | GovernanceRol
     targetPrincipalId: null,
     sources: [],
     metadata: { sponsorEmployeeId: null, reviewDueAt: null },
-    createdByPrincipalId: 'system:generic-v2-adapter',
+    createdByPrincipalId: actorPrincipalId,
     createdReason: reason,
   }
 }
@@ -144,9 +143,14 @@ function v3EntityInfo(command: GovernanceCommandV2 | GovernanceCommandV3) {
 export function applyGovernanceCommandV3(
   document: GovernanceDocumentV3,
   command: GovernanceCommandV2 | GovernanceCommandV3,
+  actorPrincipalId: string,
   source?: Parameters<typeof validatePolicyDataV3>[1],
   catalogs: Parameters<typeof validatePolicyDataV3>[2] = [],
 ): CommandApplyResultV3 {
+  if (!actorPrincipalId.trim()) throw new GovernanceValidationError([{ code: 'IDENTITY_CONTEXT_REQUIRED', path: 'actorPrincipalId', message: '治理命令需要已驗 Principal' }])
+  if (command.type === 'UPSERT_ROLE_ASSIGNMENT' && 'basis' in command.value) {
+    throw new GovernanceValidationError([{ code: 'ASSIGNMENT_OWNER_COMMAND_REQUIRED', path: 'roleAssignments', message: 'V3 指派只能使用專用 owner 命令' }])
+  }
   if (['UPSERT_APPLICATION_ROLE', 'SET_APPLICATION_ROLE_STATUS', 'UPSERT_PERMISSION', 'SET_PERMISSION_STATUS', 'SET_ROLE_PERMISSION_GRANT', 'REMOVE_ROLE_PERMISSION_GRANT'].includes(command.type)) {
     const value = (command as any).value
     const targetRole = value?.applicationId ? value : document.draft.applicationRoles.find((role) => role.id === (command as any).id)
@@ -183,7 +187,7 @@ export function applyGovernanceCommandV3(
     case 'SET_PERMISSION_STATUS': data = { ...data, permissions: data.permissions.map((value) => value.id === command.id ? { ...value, status: command.status } : value) }; break
     case 'SET_ROLE_PERMISSION_GRANT': data = { ...data, rolePermissionGrants: replaceByIdV2(data.rolePermissionGrants, command.value) }; break
     case 'REMOVE_ROLE_PERMISSION_GRANT': data = { ...data, rolePermissionGrants: removeGrantV2(data, command.roleId, command.permissionId) }; break
-    case 'UPSERT_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: replaceByIdV2(data.roleAssignments, normalizeV3Assignment(command.value, command.reason)) }; break
+    case 'UPSERT_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: replaceByIdV2(data.roleAssignments, normalizeV3Assignment(command.value, command.reason, actorPrincipalId)) }; break
     case 'REVOKE_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: data.roleAssignments.map((value) => value.id === command.id ? { ...value, status: 'revoked' as const } : value) }; break
     case 'UPSERT_ROLE_DELEGATION': data = { ...data, roleDelegations: replaceByIdV2(data.roleDelegations, command.value) }; break
     case 'REVOKE_ROLE_DELEGATION': data = { ...data, roleDelegations: data.roleDelegations.map((value) => value.id === command.id ? { ...value, status: 'revoked' as const } : value) }; break

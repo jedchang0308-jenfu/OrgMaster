@@ -5,8 +5,8 @@ import { isDeepStrictEqual } from 'node:util'
 
 export const JENFU_ENTITLEMENT_CONTRACT_VERSION = 'jenfu.platform-entitlement.v1' as const
 export const AI_PDM_APPLICATION_ID = 'ai-pdm' as const
-export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-25.v4' as const
-export const AI_PDM_ROLE_CATALOG_SHA256 = '32f3593d7a0d2a5cad4875181a62b8f5c49a06c9cbba8835cd1b82e9b44ca08a' as const
+export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-28.v5' as const
+export const AI_PDM_ROLE_CATALOG_SHA256 = '4f05dd4228b51e5086f30886330f48f1f137e37d383a26114bb34f5874d39197' as const
 
 export type PublishedAiPdmRole = {
   stableRoleId: string
@@ -97,7 +97,7 @@ function validateCatalog(catalog: PublishedAiPdmRoleCatalog) {
 }
 
 export async function readPublishedAiPdmRoleCatalog(root = process.cwd()): Promise<PublishedAiPdmRoleCatalog> {
-  const sourcePath = resolve(root, 'config', 'catalogs', 'ai-pdm-role-catalog.v4.json')
+  const sourcePath = resolve(root, 'config', 'catalogs', 'ai-pdm-role-catalog.v5.json')
   let raw: string
   try {
     await access(sourcePath)

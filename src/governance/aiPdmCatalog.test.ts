@@ -8,7 +8,7 @@ describe('AI-PDM external role catalog', () => {
     expect(catalog.roles).toHaveLength(9)
     expect(catalog.sourceRefs).toHaveLength(3)
     expect(catalog.payloadHash).toBe(AI_PDM_ROLE_CATALOG_SHA256)
-    expect(catalog.payloadHash).toBe('32f3593d7a0d2a5cad4875181a62b8f5c49a06c9cbba8835cd1b82e9b44ca08a')
+    expect(catalog.payloadHash).toBe('4f05dd4228b51e5086f30886330f48f1f137e37d383a26114bb34f5874d39197')
     expect(catalog.roles.map((role) => role.stableRoleId)).toEqual([
       'role-rd', 'role-rd-manager', 'role-qa', 'role-manufacturing', 'role-production-planning',
       'role-procurement', 'role-external-specialist', 'role-pdm-admin', 'role-system-admin'

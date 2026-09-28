@@ -25,7 +25,7 @@ describe('application role catalog registry', () => {
     const catalogs = await readApplicationRoleCatalogs()
     expect(mocks.readback).toHaveBeenCalledOnce()
     expect(catalogs.find((catalog) => catalog.applicationId === 'ai-pdm')?.catalogVersion)
-      .toBe('ai-pdm.role-catalog.2026-09-25.v4')
+      .toBe('ai-pdm.role-catalog.2026-09-28.v5')
   })
 
   it('fails closed when the published producer catalog is stale or unavailable', async () => {

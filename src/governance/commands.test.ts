@@ -43,7 +43,7 @@ describe('governance draft commands', () => {
         scope: { kind: 'workspace' as const, value: 'company-jenfu' },
         status: 'active' as const, validFrom: '2026-09-25T00:00:00.000Z',
         validTo: null, effectState: 'not-synchronized' as const } }
-    expect(() => applyGovernanceCommandV3(document, command, undefined, [catalog]))
+    expect(() => applyGovernanceCommandV3(document, command, 'principal-test-actor', undefined, [catalog]))
       .toThrowError(expect.objectContaining({ issues: expect.arrayContaining([
         expect.objectContaining({ code: 'EXTERNAL_CATALOG_STALE' })
       ]) }))

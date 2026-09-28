@@ -1,5 +1,5 @@
 import type { ExternalRoleCatalogRoleV1, ExternalRoleCatalogSnapshotV1, GovernanceApplicationRoleV1, GovernanceApplicationV1, GovernancePermissionV1 } from './types'
-import aiPdmCatalogFixture from '../../config/catalogs/ai-pdm-role-catalog.v4.json'
+import aiPdmCatalogFixture from '../../config/catalogs/ai-pdm-role-catalog.v5.json'
 import historicalAiPdmCatalogFixture from '../../contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
 
 export const AI_PDM_CATALOG_SOURCE_HASHES = {
@@ -66,8 +66,8 @@ export const AI_PDM_PERMISSIONS: GovernancePermissionV1[] = [
 ]
 export const ALL_SEED_PERMISSIONS = [...ORGMASTER_PERMISSIONS, ...AI_PDM_PERMISSIONS]
 
-export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-25.v4' as const
-export const AI_PDM_ROLE_CATALOG_SHA256 = '32f3593d7a0d2a5cad4875181a62b8f5c49a06c9cbba8835cd1b82e9b44ca08a' as const
+export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-28.v5' as const
+export const AI_PDM_ROLE_CATALOG_SHA256 = '4f05dd4228b51e5086f30886330f48f1f137e37d383a26114bb34f5874d39197' as const
 export const AI_PDM_HISTORICAL_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-03.v3' as const
 const AI_PDM_HISTORICAL_CATALOG_SHA256 = '46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8' as const
 const AI_PDM_ROLE_CATALOG_IDS = [
@@ -101,7 +101,7 @@ export function historicalAiPdmRoleSnapshotMatches(value: {
     currentRole.allowedScopeKinds.includes(value.scope.kind as 'workspace' | 'project' | 'global')
 }
 export const AI_PDM_ROLE_CATALOG_SOURCE_REFS = [
-  { path: 'AI_PDM/config/access-control/jenfu-role-catalog.v4.json', range: 'canonical artifact', sha256: 'D613C0D65E0A5292E814A0587C46AB37E10A581EA43E579E0CB5AA2B06F857AB' },
+  { path: 'AI_PDM/config/access-control/jenfu-role-catalog.v5.json', range: 'canonical artifact', sha256: 'F4B00CA994EE53236CD33C484397C2CA97CB3EA2B63326E3943D268ED8B25981' },
   { path: 'AI_PDM/db/postgres/012_number_state_flow_phase1a.sql', range: 'applied migration', sha256: 'E9E5645FA73AD0E930E13858A9E284D5ECB5E7E8BBC3ECF09A6325709F4DFCD2' },
   { path: 'AI_PDM/db/postgres/016_number_state_flow_phase1c.sql', range: 'applied migration', sha256: '6BBEB3A283171C1E99C0F2AE50661F6F1ABC0EBC23C6281DD8F6128063E0E6F5' },
 ] as const
