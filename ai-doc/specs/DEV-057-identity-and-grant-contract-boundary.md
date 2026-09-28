@@ -6,6 +6,8 @@
 
 > **2026-09-28 AI-PDM 治理資料權威（source audit；非 Production PASS）。** AI-PDM 舊 role-capability proxy 在正式模式沒有本 owner session／可驗人類代理證明，且寫入獨立 JSON role-capability 工作區；它不是 `orgmaster_contract` 有效 grant 的來源。不要為它建立另一套 owner UI 或長期代使用者 token bridge。Principal-only 終態以本 owner 已發布治理文件、canonical 指派命令及 principal 稽核為唯一權威，AI-PDM 只定義能力目錄並消費版本化 grant contract。一般指派命令不得接受呼叫端自填 V3 安全欄位，建立者取已驗 `principal_id`；專用特權／position-adoption 命令各守其 owner 契約。切流前盤點已發布 position-adoption 指派並驗證其 canonical 維護方式；舊 JSON 不得推導新 grant、撤銷或啟用任何人。舊 proxy 的本機 PASS 不能算正式跨服務操作可用。
 
+> **2026-09-28 consumer 候選接線（非 Production PASS）。** AI-PDM 既有 PR #113 的 `b410ad12c` 將三個舊跨 owner role-capability POST 入口退役為 410，角色檢視保持唯讀並導向本 owner 的 canonical 指派介面；其候選 projection／change-feed consumer 已使用 v5 目錄。本 owner 分支 `8eb4c8f` 已固定相同 v5 bytes，但正式 R6 仍在 v4，不能把兩個本機 hash 相等當成已發布 grant。位置採用與實際有效指派仍須在同一停用視窗讀回，未核實者不因此啟用。
+
 > **2026-09-28 R6 Production owner readback（現行）。** 受保護 `master` source `5bc170eee061e4de8b5a85b3421121145c206edb` 的 [owner run 36341134277](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/36341134277) 十階段完成；固定 `migrate.json` 回 `PASS / applied=0 / replayed=27 / ledgerCount=27 / boundaryStatus=PASS`，證明 forward-only 027 已在正式 ledger 並可重播。零流量 `verify.json` 對 `governance-session`、`managed-identity-read` 為 200，兩個未登入讀取為 401；`terminal.json` 回 `PASS / RELEASED / FORWARD_APPLIED / remainingHumanAction=0`，Cloud Run `orgmaster-prod-deb1ed892ca6` 目前承接 100% traffic。完整精確 GCS receipt 與檢查界限見 [R6 Production evidence](../qa/DEV-057-production-r6-release-evidence-2026-09-28.md)。下文「027 待發布」及 R3 故障記錄是當時的歷史讀點；R6 仍不等於 AI-PDM 全 cohort principal cutover、resource／delegation shadow 或三系統 Production L4 完成。
 
 ## 2026-09-28 `#cutover-infra-receipt` 正式預檢更正
