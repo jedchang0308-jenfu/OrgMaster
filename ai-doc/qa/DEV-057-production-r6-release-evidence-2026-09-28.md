@@ -1,0 +1,8 @@
+# DEV-057 R6 Production owner release readback（2026-09-28）
+
+- 範圍：`jenfu-platform-prod / asia-east1 / jenfu_prod / orgmaster-prod`。此記錄只認列 OrgMaster producer 契約及服務；AI-PDM cutover 與三系統 L4 另驗。
+- 來源：受保護 `master` revision `5bc170eee061e4de8b5a85b3421121145c206edb`，包含既有 forward-only `027_dev057_principal_cutover_source_manifest.sql`。[owner run 36341134277](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/36341134277) 的 prepare、build、migrate、candidate、entrypoint、verify、decision、activate、canonical、finalize 全為 success。
+- 固定 release root：`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20260927183403615-5BC170E/2431dce94f5cafc90629c88a7f6e37bc01927e99ff88597b22aa9bddd8dc7c07/`。`migrate.json` SHA-256 `88ac00bbb576aac2366b5d7f3c12f239452399608fe19d72d438a3e429ead4e5`，provider readback `PASS / applied=0 / replayed=27 / ledgerCount=27 / boundaryStatus=PASS`；這是 027 已套用且本次重播的證據，不將 replay 冒稱本次新 DDL。
+- `verify.json` 的零流量候選 smoke 為 `PASS`：`governance-session` 200、`managed-identity-read` 200、`governance-unauthenticated` 401、`managed-identity-unauthenticated` 401。`canonical.json` 另有正常 session 建立／重載 200、未登入及撤銷後 401。
+- `terminal.json` SHA-256 `88de63db67d90b067baad9e40175b17ecfc22487a2b1c53501158857bd5c5bce`，provider readback 為 `PASS / RELEASED / FORWARD_APPLIED / remainingHumanAction=0`，候選 revision `orgmaster-prod-deb1ed892ca6`。Cloud Run readback 確認此 revision 承接 100% traffic。
+- 限制：治理與 managed identity 候選 smoke 消除了先前 R3 500／503 的發布阻塞，但不證明所有員工的 provider pair 綁定正確，也不證明 AI-PDM principal-active cohort、resource／delegation 行為等價、global logout／recovery 或完整 Production L4。既有 R3 故障與歷史 receipt 原樣保留。
