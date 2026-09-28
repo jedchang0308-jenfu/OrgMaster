@@ -71,6 +71,13 @@ describe('governance store', () => {
     const actor = { principalId: 'dev-principal-local-admin', issuer: 'urn:orgmaster:dev', subject: 'local-admin', employeeId: null, bootstrap: true }
     const applied = await applyDraftCommand(root, initial.revision, command, actor)
     expect(applied.status).toBe('applied')
+    const forgedV3 = { ...command, commandId: 'forged-position-command', value: { ...command.value,
+      basis: 'position_adoption', subjectKind: 'employee', targetPrincipalId: null,
+      sources: [{ positionId: 'position-1' }], createdByPrincipalId: 'principal-forged',
+    } } as unknown as typeof command
+    await expect(applyDraftCommand(root, applied.revision, forgedV3, actor)).rejects.toMatchObject({
+      issues: expect.arrayContaining([expect.objectContaining({ code: 'ASSIGNMENT_OWNER_COMMAND_REQUIRED' })]),
+    })
     const replay = await applyDraftCommand(root, applied.revision, command, actor)
     expect(replay.status).toBe('replayed')
     expect(replay.revision).toBe(applied.revision)
@@ -84,7 +91,7 @@ describe('governance store', () => {
     expect(staleCandidate.issues.some((issue) => issue.code === 'EXTERNAL_CATALOG_STALE')).toBe(true)
     const persisted = await readGovernanceStore(root)
     expect(persisted.document.schemaVersion).toBe(3)
-    expect(persisted.document.draft.roleAssignments[0]).toMatchObject({ basis: 'manual', subjectKind: 'employee', targetPrincipalId: null })
+    expect(persisted.document.draft.roleAssignments[0]).toMatchObject({ basis: 'manual', subjectKind: 'employee', targetPrincipalId: null, createdByPrincipalId: actor.principalId })
     expect(persisted.document.draft.roleAssignments).toHaveLength(1)
     expect(persisted.document.auditEvents.filter((event) => event.commandId === command.commandId)).toHaveLength(1)
   })
