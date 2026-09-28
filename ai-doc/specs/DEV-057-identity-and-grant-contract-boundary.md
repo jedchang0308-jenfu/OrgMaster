@@ -1,5 +1,7 @@
 # DEV-057：身分與權限發布契約邊界
 
+> **2026-09-28 R6 Production owner readback（現行）。** 受保護 `master` source `5bc170eee061e4de8b5a85b3421121145c206edb` 的 [owner run 36341134277](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/36341134277) 十階段完成；固定 `migrate.json` 回 `PASS / applied=0 / replayed=27 / ledgerCount=27 / boundaryStatus=PASS`，證明 forward-only 027 已在正式 ledger 並可重播。零流量 `verify.json` 對 `governance-session`、`managed-identity-read` 為 200，兩個未登入讀取為 401；`terminal.json` 回 `PASS / RELEASED / FORWARD_APPLIED / remainingHumanAction=0`，Cloud Run `orgmaster-prod-deb1ed892ca6` 目前承接 100% traffic。完整精確 GCS receipt 與檢查界限見 [R6 Production evidence](../qa/DEV-057-production-r6-release-evidence-2026-09-28.md)。下文「027 待發布」及 R3 故障記錄是當時的歷史讀點；R6 仍不等於 AI-PDM 全 cohort principal cutover、resource／delegation shadow 或三系統 Production L4 完成。
+
 ## 2026-09-28 `#cutover-infra-receipt` 正式預檢更正
 
 Protected `master` source `a85e546214059ecc59dfd5b91b30ff25e423ddd4` 的 owner `APP_INFRA_B` 完整 75 位址 plan gate PASS；provider 只新增 `aipdm_cutover_receipts_viewer[0]` 對既有 OrgMaster bucket `receipts/releases/` 的條件式讀取，其他位址 read／no-op。provider readback receipt 為 `gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV057-INFRA-ORGMASTER-20260928-R1/app-infra.json#sha256=756a0353b49f9172444e3f7dd925579f53ac83dd86a87c02c392a01701153f39`。服務、traffic、schema、Employee 資料皆未改。

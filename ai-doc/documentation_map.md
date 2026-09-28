@@ -1,5 +1,7 @@
 # 文件地圖
 
+> **2026-09-28 DEV-057 R6 Production 現況**：[R6 Production evidence](qa/DEV-057-production-r6-release-evidence-2026-09-28.md)與 [DEV-057 producer 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)確認 027 已在正式 ledger，R6 owner 十階段及治理／managed-identity 候選讀取驗證通過；下文 2026-09-26 的「未發布」為歷史狀態。
+
 > **2026-09-28 DEV-057 正式來源決策**：[ADR-001 單人維護 Production 來源證據](ADR-001-small-team-production-source-authority.md)固定 PR／Codex QC／required CI／provider branch protection 的真實證據，不要求第二位人工審查者；GitHub 設定尚待讀回，不能把文件當成 release PASS。
 
 > **2026-09-26 DEV-057 cutover-source 本機切片**：[同一 producer 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)新增 forward-only 027 manifest 與 AI-PDM migrator 精確 read ACL；owner release 路徑／隔離 PostgreSQL D57-19 為本次驗證範圍，Production 尚未套用。
