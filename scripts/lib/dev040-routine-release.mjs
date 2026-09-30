@@ -76,7 +76,7 @@ function dev013NeutralInfrastructureInputs(profile) {
   return value
 }
 
-export function controlledInfrastructureFingerprint(root, revision, additionalExcludedPaths = []) {
+export function controlledInfrastructureFingerprint(root, revision, additionalExcludedPaths = [], normalizeProfile = dev013NeutralInfrastructureInputs) {
   if (!/^[a-f0-9]{40}$/u.test(revision)) fail('ROUTINE_SOURCE_INVALID')
   const result = spawnSync('git', ['ls-tree', '-r', '-z', revision, '--',
     'infra/google-cloud/dev-040-production-release', 'config/dev-010/n1c-orgmaster.json',
@@ -85,7 +85,7 @@ export function controlledInfrastructureFingerprint(root, revision, additionalEx
   const config = spawnSync('git', ['show', `${revision}:config/release/dev040-orgmaster-independent-production-v3.json`], { cwd: root, encoding: 'utf8', windowsHide: true })
   if (config.status !== 0) fail('ROUTINE_BASELINE_SOURCE_MISSING')
   const stableInfrastructureTree = filterControlledInfrastructureTree(result.stdout, additionalExcludedPaths)
-  return sha256(Buffer.concat([stableInfrastructureTree, Buffer.from(canonicalize(dev013NeutralInfrastructureInputs(JSON.parse(config.stdout))))]))
+  return sha256(Buffer.concat([stableInfrastructureTree, Buffer.from(canonicalize(normalizeProfile(JSON.parse(config.stdout))))]))
 }
 
 function revisionBlob(root, revision, file) {
@@ -102,6 +102,37 @@ export function assertDev057CutoverInfraTransition(root, baselineRevision, sourc
   const before = controlledInfrastructureFingerprint(root, baselineRevision, excludedPaths)
   const after = controlledInfrastructureFingerprint(root, sourceRevision, excludedPaths)
   if (before !== after) fail('DEV057_CUTOVER_INFRA_DELTA_INVALID')
+  return after
+}
+
+// Exact Principal SSO smoke/profile transition. Remaining infrastructure stays immutable.
+export function assertDev057PrincipalSmokeProfileTransition(before, after) {
+  const keys = ['sessionPath', 'candidateSmokeMode', 'sessionMode', 'brokerOrigin']
+  const select = (profile) => Object.fromEntries(keys.filter((key) => Object.hasOwn(profile.verification, key)).map((key) => [key, profile.verification[key]]))
+  if (!same(select(before), { sessionPath: '/api/auth/firebase/session', candidateSmokeMode: 'WORKFLOWS_INTERNAL_OIDC_V1' })
+    || !same(select(after), { candidateSmokeMode: 'WORKFLOWS_INTERNAL_OIDC_V2_PRINCIPAL_SSO', sessionMode: 'PLATFORM_SSO_V2', brokerOrigin: 'https://jenfu-platform-prod-9536592944.asia-east1.run.app' })) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
+  if (!same(principalSmokeInfrastructureInputs(before), principalSmokeInfrastructureInputs(after))) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
+}
+
+function principalSmokeInfrastructureInputs(profile) {
+  const value = dev013NeutralInfrastructureInputs(profile)
+  for (const key of ['sessionPath', 'candidateSmokeMode', 'sessionMode', 'brokerOrigin']) delete value.verification[key]
+  return value
+}
+
+export function assertDev057PrincipalSmokeInfraTransition(root, baselineRevision, sourceRevision) {
+  const file = 'infra/google-cloud/dev-040-production-release/candidate-smoke.tf'
+  if (revisionBlob(root, baselineRevision, file) !== '1add0e6508568d591faa190cabf64e2470fb620c'
+    || revisionBlob(root, sourceRevision, file) !== 'b8d6b8a92a044bcd59e11efd8a6c0f7f2e319b55') fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
+  const readProfile = (revision) => {
+    const result = spawnSync('git', ['show', revision + ':config/release/dev040-orgmaster-independent-production-v3.json'], { cwd: root, encoding: 'utf8', windowsHide: true })
+    if (result.status !== 0) fail('ROUTINE_BASELINE_SOURCE_MISSING')
+    return JSON.parse(result.stdout)
+  }
+  assertDev057PrincipalSmokeProfileTransition(readProfile(baselineRevision), readProfile(sourceRevision))
+  const before = controlledInfrastructureFingerprint(root, baselineRevision, [file], principalSmokeInfrastructureInputs)
+  const after = controlledInfrastructureFingerprint(root, sourceRevision, [file], principalSmokeInfrastructureInputs)
+  if (before !== after) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
   return after
 }
 
@@ -532,7 +563,7 @@ export async function resolveRoutineControlBaseline({ profile, transport, contro
   return intent.baselineIntentRef
 }
 
-export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition }) {
+export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.terminal.value.facts.candidateRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
   transport.assertServiceSettled(service)
@@ -576,8 +607,10 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     ? values.infra?.sourceRevision
     : baseline.intent.sourceRevision
   if (controlledTransition?.releaseMode !== 'DEV014_MANAGED_DIRECTORY_ACTIVATION' && infrastructureSha256 !== infrastructureHash(root, infrastructureBaselineRevision)) {
-    if (controlledTransition?.releaseMode !== 'DEV057_CUTOVER_SOURCE_REMEDIATION' || !values.infra || same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)) fail('ROUTINE_INFRA_CHANGED')
-    cutoverInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
+    if (!values.infra || same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)) fail('ROUTINE_INFRA_CHANGED')
+    if (controlledTransition?.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION') cutoverInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
+    else if (controlledTransition?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION') principalSmokeInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
+    else fail('ROUTINE_INFRA_CHANGED')
   }
   const revision = await transport.getRevision(profile, intent.previousRevision)
   transport.assertRevisionReady(profile, revision, baseline.deployment.value.artifactDigest, baseline.candidate.value.facts.cloudSqlProxyResolvedImage)

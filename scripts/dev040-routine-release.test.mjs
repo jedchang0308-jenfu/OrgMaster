@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation, assertDev057PrincipalGrantsV3Append, assertDev057PrincipalGrantsV3Remediation } from './lib/dev040-routine-release.mjs'
@@ -417,8 +417,39 @@ test('DEV-057 principal-only grants accepts only exact 028 append from released 
   const drift = structuredClone(currentBundle.bundle)
   drift.entries[27].sourceSha256 = '0'.repeat(64)
   assert.throws(() => assertDev057PrincipalGrantsV3Append(baselineBundle, drift), /DEV057_PRINCIPAL_GRANTS_V3_APPEND_INVALID/u)
+  h.input.transitionFingerprint = (_root, revision) => revision
+  let checked = false
+  h.input.principalSmokeInfraTransition = (_root, before, after) => {
+    assert.equal(before, oldSource); assert.equal(after, newSource); checked = true
+  }
+  assert.equal((await verifyRoutineRelease(h.input)).releaseMode, 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION')
+  assert.equal(checked, true)
+  const missingReceipt = harness({ baselineBundle, currentBundle })
+  missingReceipt.input.values.authorization = h.input.values.authorization
+  missingReceipt.input.values.readiness = h.input.values.readiness
+  missingReceipt.input.transitionFingerprint = h.input.transitionFingerprint
+  missingReceipt.input.principalSmokeInfraTransition = () => assert.fail('must not admit unbound smoke delta')
+  await assert.rejects(() => verifyRoutineRelease(missingReceipt.input), /ROUTINE_INFRA_CHANGED/u)
   const producer = fs.readFileSync('scripts/dev040-deploy-production.mjs', 'utf8')
   assert.match(producer, /--dev057-principal-grants-v3-remediation/u)
+
+  const root = path.resolve('.')
+  const baseline = '5bc170eee061e4de8b5a85b3421121145c206edb'
+  const source = '65795fa62ba04518be68eccd34a56c29570b1f68'
+  assert.match(assertDev057PrincipalSmokeInfraTransition(root, baseline, source), /^[a-f0-9]{64}$/u)
+  assert.throws(() => assertDev057PrincipalSmokeInfraTransition(root, source, baseline), /PRINCIPAL_SMOKE_INFRA_DELTA_INVALID/u)
+  const before = JSON.parse(spawnSync('git', ['show', baseline + ':config/release/dev040-orgmaster-independent-production-v3.json'], { encoding: 'utf8' }).stdout)
+  const after = JSON.parse(spawnSync('git', ['show', source + ':config/release/dev040-orgmaster-independent-production-v3.json'], { encoding: 'utf8' }).stdout)
+  assertDev057PrincipalSmokeProfileTransition(before, after)
+  for (const mutate of [
+    (p) => { p.verification.brokerOrigin = 'https://sibling.example' },
+    (p) => { p.verification.sessionPath = '/api/auth/firebase/session' },
+    (p) => { p.verification.authenticatedProbes[0].expectedStatus = 403 },
+    (p) => { p.incidentRuntime.controllerAudience = 'https://sibling.example' },
+  ]) {
+    const drift = structuredClone(after); mutate(drift)
+    assert.throws(() => assertDev057PrincipalSmokeProfileTransition(before, drift), /PRINCIPAL_SMOKE_INFRA_DELTA_INVALID/u)
+  }
 })
 
 test('DEV-057 cutover admits only the exact source-frozen operator and receipt IAM delta', async () => {
