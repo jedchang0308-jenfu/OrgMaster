@@ -1,5 +1,7 @@
 # DEV-057：身分與權限發布契約邊界
 
+> **2026-09-30 Principal SSO smoke 發布契約修正（施工中）。** grant-v3 028 的 owner release 接受唯一候選 smoke Git blob `1add0e65…620c` → `b8d6b8a9…9b55` 及四個精確 verification 欄位變更；其餘 profile／IaC 輸入仍須相同。既有完整位址 Terraform gate 分別套用 source-only Workflow 更新（rendered SHA `d4a7d0f…dbf88` → `59908895…e4b98`）及 source-bound runner image-only rotation；同一 Secret numeric version、不新增權限、不改 sibling。沿既有 DEV-057#identity-grants 與 JENFU/DEV-015 發布；仍只追加 migration 028，候選與 Production L4 尚未執行。
+
 > **2026-09-30 F03 現行施工準據（下方同日段落為歷史快照）。** [D57-22 task-owned PostgreSQL 證據](../qa/DEV-057-management-http-grant-v3-postgres-r3-2026-09-30.json)已把產品管理 HTTP、已驗 Principal session、runtime workspace／governance writer、typed principal admission 及 AI-PDM 受限 grant v3 consumer 串成指派→發布→scope 讀回→撤權→再發布→零 grant；D57-21／22 合計 22／22 PASS，清理完整。先前兩次 D57-22 FAIL 分別是測例傳入產品 command 不接受的 v3 owner 欄位，以及替換 identity link 卻漏掉 exact typed admission；失敗收據保留，共同邊界累計 **10** 次失敗，已按超過 8 次門檻通知並重估。此結果只關閉本機資料庫／HTTP 管理契約缺口；瀏覽器 UI、real-provider、候選 Cloud Run、Production L4 與三系統切流仍開放，不得以局部 PASS 升級正式流程。
 
 > **2026-09-30 F03 最新界線。** [task-owned PostgreSQL 收據](../qa/DEV-057-grant-v3-product-catalog-postgres-2026-09-30.json)證明 OrgMaster runtime 以產品 repository 讀回與 v5 source 逐值相等的完整 catalog，且 D57-21 的 grant v3→AI-PDM consumer 指派／撤權／scope／技轉仍 21／21 PASS；SQL 叢集與 port 已清理。最初 fixture 更動觸發 PostgreSQL `42P16`（既有 view 欄位順序不可重排），已保留前七欄再追加，歷史 FAIL 收據保留；共同邊界累計 **8** 次失敗，超過 8 次依使用者指示通知並重估。**尚缺**管理 HTTP API 以已驗 Principal 修改草稿／發布，透過真實 PostgreSQL current workspace 與 owner writer 令 AI-PDM 下一請求看見新 grant；不得以此 catalog 讀回或直接 SQL fixture 冒稱 F03 完成。
