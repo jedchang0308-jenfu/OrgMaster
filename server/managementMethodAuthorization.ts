@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http'
-import { evaluatePermission } from '../src/governance/evaluatePermission'
+import { evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import type { GovernanceActorContext } from '../src/governance/types'
 import { DEV_ISSUER, DEV_PRINCIPAL_ID, DEV_SUBJECT, developmentPermissionForActor, resolveDevelopmentIdentity } from './orgmasterGovernanceIdentity'
 import { readGovernanceStore } from './orgmasterGovernanceStore'
@@ -29,7 +29,7 @@ export async function capabilityFor(root: string, actor: GovernanceActorContext,
   if (development !== null) return development
   const governance = await readGovernanceStore(root)
   if (actor.bootstrap && !governance.document.activePolicyVersionId) return true
-  return evaluatePermission(governance.document, { applicationId: 'orgmaster', issuer: actor.issuer, subject: actor.subject, permissionCode: managementMethodPermissionCodes[capability], scope: { kind: 'global' } }).status === 'allowed'
+  return evaluateVerifiedPrincipalPermission(governance.document, actor, managementMethodPermissionCodes[capability]).status === 'allowed'
 }
 
 export async function capabilitiesFor(root: string, actor: GovernanceActorContext) {

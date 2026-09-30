@@ -72,118 +72,38 @@ describe('OrgMaster auth middleware', () => {
     expect(reads).toBe(0)
   })
 
-  it('exchanges a verified Firebase token for an opaque host cookie without returning a token', async () => {
+  it('retires direct Firebase session creation before token verification', async () => {
     const { runtime, config } = configuredRuntime()
-    const authenticatedAt = '2026-09-02T01:02:03.000Z'
-    vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({
-      issuer: config.identityIssuer,
-      subject: 'uid-1',
-      assuranceLevel: 'aal2',
-      authenticatedAt,
+    const base = await listen(runtime)
+    config.publicBaseUrl = new URL(base)
+    const response = await fetch(base + '/api/auth/firebase/session', {
+      method: 'POST', headers: { 'content-type': 'application/json', origin: base },
+      body: JSON.stringify({ idToken: 'firebase-id-token', managedIdentifier: 'JFS0001' }),
     })
-    const base = await listen(runtime)
-    config.publicBaseUrl = new URL(base)
-    const response = await fetch(`${base}/api/auth/firebase/session`, {
-      method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'firebase-id-token' }),
-    })
-    const body = await response.json() as Record<string, unknown>
-    expect(response.status).toBe(200)
-    expect(response.headers.get('set-cookie')).toMatch(/^orgmaster_session=[^;]+; Max-Age=28800; Path=\/; HttpOnly; SameSite=Lax$/)
-    expect(JSON.stringify(body)).not.toContain('firebase-id-token')
-    expect(body).not.toHaveProperty('token')
-    expect(runtime.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({
-      assuranceLevel: 'aal2',
-      authenticatedAt,
-    }))
-  })
-
-  it('validates auth time and both epochs before managed bind, then re-queries the canonical principal', async () => {
-    const { runtime, config } = configuredRuntime()
-    const managed = { verifyManagedLoginIdentifier: vi.fn(async () => ({ principalId: 'canonical-principal', employeeId: 'employee-1', mappingVersion: '1' })) }
-    runtime.managedLoginEnabled = true
-    runtime.managedIdentity = managed as never
-    vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({ issuer: config.identityIssuer, subject: 'uid-managed', assuranceLevel: 'aal1', authenticatedAt: '2026-09-17T01:00:00.000Z', signInProvider: 'google.com', email: 'person@jenfu.com.tw', emailVerified: true, googleUserId: 'google-managed-1' })
-    vi.mocked(runtime.principals!.resolveActivePrincipal)
-      .mockRejectedValueOnce(new PrincipalAdmissionError('principal_not_active'))
-      .mockResolvedValueOnce({ principalId: 'canonical-principal', employeeId: 'employee-1', mappingVersion: 1, publishedAt: '2026-09-17T01:00:01.000Z' })
-    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-17T01:00:10.000Z'))
-    const base = await listen(runtime)
-    config.publicBaseUrl = new URL(base)
-    const response = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'managed-token', managedIdentifier: 'JFS0001' }) })
-    now.mockRestore()
-    expect(response.status).toBe(200)
-    expect(runtime.epochs!.readState).toHaveBeenCalledTimes(2)
-    expect(runtime.epochs!.readState).toHaveBeenCalledBefore(managed.verifyManagedLoginIdentifier)
-    expect(managed.verifyManagedLoginIdentifier).toHaveBeenCalledWith(expect.objectContaining({ managedIdentifier: 'JFS0001', identity: expect.objectContaining({ googleUserId: 'google-managed-1' }) }))
-    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(2)
-    expect(runtime.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({ principalId: 'canonical-principal', employeeId: 'employee-1' }))
-  })
-
-  it('uses an existing canonical principal before managed bind when the account is already admitted', async () => {
-    const { runtime, config } = configuredRuntime()
-    const managed = { verifyManagedLoginIdentifier: vi.fn() }
-    runtime.managedLoginEnabled = true
-    runtime.managedIdentity = managed as never
-    vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({ issuer: config.identityIssuer, subject: 'uid-managed', assuranceLevel: 'aal1', authenticatedAt: '2026-09-17T01:00:00.000Z', signInProvider: 'google.com', email: 'person@jenfu.com.tw', emailVerified: true, googleUserId: 'google-managed-1' })
-    vi.mocked(runtime.principals!.resolveActivePrincipal).mockResolvedValueOnce({ principalId: 'principal-legacy', employeeId: 'employee-1', mappingVersion: 7, publishedAt: '2026-09-17T01:00:01.000Z' })
-    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-17T01:00:10.000Z'))
-    const base = await listen(runtime)
-    config.publicBaseUrl = new URL(base)
-    const response = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'managed-token', managedIdentifier: 'JFS0001' }) })
-    now.mockRestore()
-    expect(response.status).toBe(200)
-    expect(managed.verifyManagedLoginIdentifier).not.toHaveBeenCalled()
-    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(1)
-    expect(runtime.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({ principalId: 'principal-legacy', employeeId: 'employee-1' }))
-  })
-
-  it('never falls back to managed lookup when the identifier is omitted and retires the public alias resolver', async () => {
-    const { runtime, config } = configuredRuntime()
-    const managed = { verifyManagedLoginIdentifier: vi.fn() }
-    runtime.managedLoginEnabled = true
-    runtime.managedIdentity = managed as never
-    vi.mocked(runtime.firebase!.verifyIdToken).mockResolvedValueOnce({ issuer: config.identityIssuer, subject: 'uid-unlinked', assuranceLevel: 'aal1', authenticatedAt: '2026-09-17T01:00:00.000Z', signInProvider: 'google.com', email: 'person@jenfu.com.tw', emailVerified: true, googleUserId: 'google-1' })
-    vi.mocked(runtime.principals!.resolveActivePrincipal).mockRejectedValueOnce(new PrincipalAdmissionError('principal_not_active'))
-    const base = await listen(runtime)
-    config.publicBaseUrl = new URL(base)
-    const session = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'token-without-identifier' }) })
-    expect(session.status).toBe(403)
-    expect(managed.verifyManagedLoginIdentifier).not.toHaveBeenCalled()
-    const alias = await fetch(`${base}/api/auth/managed/alias`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ employeeNumber: 'JFS0001' }) })
-    expect(alias.status).toBe(404)
-    expect(managed.verifyManagedLoginIdentifier).not.toHaveBeenCalled()
-  })
-
-  it('rejects a present null or blank managed identifier before token verification', async () => {
-    const { runtime, config } = configuredRuntime()
-    const base = await listen(runtime)
-    config.publicBaseUrl = new URL(base)
-    for (const managedIdentifier of [null, '   ']) {
-      const response = await fetch(`${base}/api/auth/firebase/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'token', managedIdentifier }) })
-      expect(response.status).toBe(400)
-    }
+    expect(response.status).toBe(410)
+    expect(await response.json()).toMatchObject({ code: 'auth_route_retired' })
     expect(runtime.firebase!.verifyIdToken).not.toHaveBeenCalled()
+    expect(runtime.sessions!.create).not.toHaveBeenCalled()
   })
 
-  it('rechecks active principal and epoch on every protected request and rejects a stale epoch', async () => {
+  it('rejects retained provider-pair sessions before protected reads', async () => {
     const { runtime, config, sessions } = configuredRuntime()
     const token = 'opaque-test-token-with-at-least-32-random-looking-bytes'
     sessions.set(hashSessionToken(config.sessionHashPepper, token), {
-      id: 'session-row-1', identityIssuer: config.identityIssuer, identitySubject: 'uid-1', principalId: 'principal-1', employeeId: 'employee-1',
+      id: 'session-row-1', identityIssuer: config.identityIssuer, identitySubject: 'uid-1',
+      principalId: 'principal-1', employeeId: 'employee-1',
       authEpoch: 0, sessionSchemaVersion: 1, epochKind: 'provider_pair', principalAuthEpoch: null,
-      issuedAt: new Date().toISOString(), authenticatedAt: null, expiresAt: new Date(Date.now() + 60_000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
+      issuedAt: new Date().toISOString(), authenticatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
     })
-    const base = await listen(runtime)
-    const first = await fetch(`${base}/api/protected`, { headers: { cookie: `orgmaster_session=${token}` } })
-    expect(first.status).toBe(200)
-    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(1)
-    expect(runtime.epochs!.readState).toHaveBeenCalledTimes(1)
-    vi.mocked(runtime.epochs!.readState).mockResolvedValueOnce({ authEpoch: 1, revokedBefore: null })
-    const second = await fetch(`${base}/api/protected`, { headers: { cookie: `orgmaster_session=${token}` } })
-    expect(second.status).toBe(401)
-    expect(await second.json()).toMatchObject({ code: 'auth_epoch_stale' })
-    expect(runtime.principals!.resolveActivePrincipal).toHaveBeenCalledTimes(2)
-    expect(runtime.epochs!.readState).toHaveBeenCalledTimes(2)
+    let reads = 0
+    const base = await listen(runtime, () => { reads += 1 })
+    const response = await fetch(base + '/api/protected', { headers: { cookie: 'orgmaster_session=' + token } })
+    expect(response.status).toBe(401)
+    expect(await response.json()).toMatchObject({ code: 'auth_session_invalid' })
+    expect(runtime.principals!.resolveActivePrincipal).not.toHaveBeenCalled()
+    expect(runtime.epochs!.readState).not.toHaveBeenCalled()
+    expect(reads).toBe(0)
   })
 
   it('checks v2 principal epoch without consulting the retained pair epoch', async () => {
@@ -280,14 +200,16 @@ describe('OrgMaster auth middleware', () => {
     expect(await response.json()).toMatchObject({ code: 'auth_session_invalid' })
   })
 
-  it('returns a stable 413 response for an oversized authentication body', async () => {
+  it('does not parse oversized legacy login payloads on the retired route', async () => {
     const { runtime, config } = configuredRuntime()
     const base = await listen(runtime)
     config.publicBaseUrl = new URL(base)
-    const response = await fetch(`${base}/api/auth/firebase/session`, {
-      method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ idToken: 'x'.repeat(33 * 1024) }),
+    const response = await fetch(base + '/api/auth/firebase/session', {
+      method: 'POST', headers: { 'content-type': 'application/json', origin: base },
+      body: JSON.stringify({ idToken: 'x'.repeat(33 * 1024) }),
     })
-    expect(response.status).toBe(413)
-    expect(await response.json()).toMatchObject({ code: 'auth_request_too_large' })
+    expect(response.status).toBe(410)
+    expect(runtime.firebase!.verifyIdToken).not.toHaveBeenCalled()
   })
+
 })

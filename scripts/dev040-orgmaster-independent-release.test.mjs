@@ -86,8 +86,8 @@ test('S1B-21 OrgMaster v3 direct-run profile preserves staging boundary', () => 
   assert.equal(n1c.target.environment, 'staging')
   assert.equal(profile.target.database, 'jenfu_prod')
   assert.equal(profile.sideEffects.accountEnrollment, 'DISABLED')
-  assert.equal(profile.environment.controlledValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE.defaultValue, 'off')
-  assert.deepEqual(profile.environment.controlledValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE.allowedValues, ['off', 'on'])
+  assert.equal(profile.environment.controlledValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE.defaultValue, 'on')
+  assert.deepEqual(profile.environment.controlledValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE.allowedValues, ['on'])
   assert.equal(profile.environment.fixedValues.ORGMASTER_JENFU_SSO_BROKER_ORIGIN, 'https://jenfu-platform-prod-9536592944.asia-east1.run.app')
   assert.equal(profile.environment.fixedValues.ORGMASTER_MANAGED_IDENTITY_ENABLED, 'true')
   assert.equal(profile.environment.fixedValues.ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID, 'C015t4buc')
@@ -113,24 +113,36 @@ test('S1B-21 OrgMaster runtime keeps credentials out of plain environment', () =
 })
 
 test('OrgMaster owner prepare requires sealed DEV-013 authority before handoff on', () => {
-  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
-    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+  const historicalProfile = {
+    ...profile,
+    environment: { ...profile.environment, controlledValues: {
+      ORGMASTER_JENFU_SSO_HANDOFF_MODE: { defaultValue: 'off', allowedValues: ['off', 'on'] },
+    } },
+  }
+  const priorPlainEnvironment = Object.fromEntries(historicalProfile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(historicalProfile.environment.fixedValues, name) && !Object.hasOwn(historicalProfile.environment.controlledValues, name))
     .map((name) => [name, 'fixture-public-value']))
-  const plainEnvironment = resolvePlainEnvironment(profile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
-  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment, secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
-  const fixture = controlledPrerequisites(profile, runtimeConfig)
-  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).runtimeConfig, runtimeConfig)
+  const plainEnvironment = resolvePlainEnvironment(historicalProfile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
+  const runtimeConfig = buildRuntimeConfig(historicalProfile, { plainEnvironment, secretVersions: Object.fromEntries(historicalProfile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(historicalProfile, runtimeConfig)
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile: historicalProfile }).runtimeConfig, runtimeConfig)
   delete fixture.values.readiness.transition.predecessorReceiptRef
-  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile: historicalProfile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })
 
 test('OrgMaster owner prepare carries an active handoff value only through an exact routine baseline', () => {
-  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
-    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+  const historicalProfile = {
+    ...profile,
+    environment: { ...profile.environment, controlledValues: {
+      ORGMASTER_JENFU_SSO_HANDOFF_MODE: { defaultValue: 'off', allowedValues: ['off', 'on'] },
+    } },
+  }
+  const priorPlainEnvironment = Object.fromEntries(historicalProfile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(historicalProfile.environment.fixedValues, name) && !Object.hasOwn(historicalProfile.environment.controlledValues, name))
     .map((name) => [name, 'fixture-public-value']))
-  const plainEnvironment = resolvePlainEnvironment(profile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
-  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment, secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
-  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  const plainEnvironment = resolvePlainEnvironment(historicalProfile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
+  const runtimeConfig = buildRuntimeConfig(historicalProfile, { plainEnvironment, secretVersions: Object.fromEntries(historicalProfile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(historicalProfile, runtimeConfig)
   fixture.intent.baselineIntentRef = ref('baseline-release-intent')
   fixture.values.authorization = { ...fixture.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', baselineIntentRef: fixture.intent.baselineIntentRef }
   fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', baselineIntentRef: fixture.intent.baselineIntentRef }
@@ -141,9 +153,9 @@ test('OrgMaster owner prepare carries an active handoff value only through an ex
   delete fixture.values.readiness.previousControlledEnvironment
   delete fixture.values.readiness.controlledEnvironment
   delete fixture.values.readiness.transition
-  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD')
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile: historicalProfile }).controlledEnvironmentAuthority.releaseMode, 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD')
   fixture.values.readiness.baselineIntentRef = ref('different-baseline')
-  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile: historicalProfile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })
 
 test('OrgMaster owner prepare accepts the exact DEV-014 managed-directory activation authority', () => {
@@ -324,6 +336,26 @@ test('OrgMaster owner prepare binds DEV-057 cutover source manifest and consumer
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })
 
+test('OrgMaster owner prepare binds DEV-057 principal-only grant v3 source', () => {
+  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+    .map((name) => [name, 'fixture-public-value']))
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: resolvePlainEnvironment(profile, priorPlainEnvironment), secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  const remediation = {
+    kind: 'PRINCIPAL_ONLY_GRANTS_AND_CUTOVER_SOURCE',
+    migrationVersion: 'dev057-orgmaster-028',
+    contractIds: ['orgmaster.ai-pdm-principal-effective-grants-v3', 'orgmaster.principal-cutover-source-v2'],
+    contractView: 'orgmaster_contract.v_ai_pdm_principal_effective_grants_v3', applicationId: 'ai-pdm',
+  }
+  fixture.intent.baselineIntentRef = ref('baseline-release-intent')
+  fixture.values.authorization = { ...fixture.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION')
+  fixture.values.authorization.remediation = { ...remediation, contractView: 'orgmaster_contract.v_ai_pdm_principal_effective_grants_v2' }
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+})
+
 test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   const source = fs.readFileSync(new URL('../infra/google-cloud/dev-040-production-release/workload-identity.tf', import.meta.url), 'utf8')
   const displayName = source.match(/display_name\s*=\s*"([^"]+)"/u)?.[1]
@@ -331,11 +363,11 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-027 production migration bytes', () => {
+test('OrgMaster exact 001-028 production migration bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
-  assert.equal(bundle.bundle.entries.length, 27)
+  assert.equal(bundle.bundle.entries.length, 28)
   assert.equal(bundle.bundle.entries[10].version, 'dev040-r2-orgmaster-011')
   assert.equal(bundle.bundle.entries[11].version, 'dev047-orgmaster-012')
   assert.equal(bundle.bundle.entries[12].version, 'dev049-orgmaster-013')
@@ -353,6 +385,7 @@ test('OrgMaster exact 001-027 production migration bytes', () => {
   assert.equal(bundle.bundle.entries[24].version, 'dev057-orgmaster-025')
   assert.equal(bundle.bundle.entries[25].version, 'dev057-orgmaster-026')
   assert.equal(bundle.bundle.entries[26].version, 'dev057-orgmaster-027')
+  assert.equal(bundle.bundle.entries[27].version, 'dev057-orgmaster-028')
 })
 
 test('S1B-21 OrgMaster release intent is exact, owner-bound and immutable', () => {

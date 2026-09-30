@@ -1,0 +1,31 @@
+{
+  "contract": "ORGMASTER/DEV-057#F03 governance publication authority",
+  "date": "2026-09-29",
+  "stage": "local-candidate-only",
+  "source": {
+    "governanceStore": "server/orgmasterGovernanceStore.ts",
+    "governanceStoreSha256": "5e30933f7009ef13e3f9f38ece5c2ad4760b99df60cd54d38c3c03dfd359b5d1",
+    "governanceApi": "server/orgmasterGovernanceApi.ts",
+    "governanceApiSha256": "ef03f054f8d26a4da53116da531997357bd78ed6c2026be42158edc14a5fd669",
+    "negativeTest": "server/orgmasterGovernancePublishAuthority.test.ts",
+    "negativeTestSha256": "b9e864a06bbad7a3ba63637696ee1acb12dc5d35d6b51b8abd44c4569b6ee828"
+  },
+  "verification": {
+    "focusedTests": "4 files, 34 tests passed",
+    "typescript": "npm exec -- tsc --noEmit PASS",
+    "diffCheck": "git diff --check PASS",
+    "cases": [
+      "A published manager cannot gain publish authority by editing the draft; the owner publish command leaves the artifact unchanged, while an authorized publish commits.",
+      "A revoked published identity link cannot publish or activate a version.",
+      "A publisher without current management authority is denied.",
+      "Only an explicit bootstrap actor may publish when no version is active.",
+      "Activation rejects an empty version or one that would remove the publisher/manager."
+    ]
+  },
+  "limits": [
+    "Focused tests exercise the current publication authority and continuity helpers plus existing governance store/API tests; they do not prove a full management browser request, producer database commit, AI-PDM consumer or Production behavior.",
+    "No source merge, Production release, database mutation or traffic change occurred."
+  ],
+  "orgmasterGrantV3ConsumerBoundaryFailures": 5,
+  "notifyAndReestimateWhenFailuresExceed": 8
+}

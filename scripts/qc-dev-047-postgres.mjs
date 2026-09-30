@@ -25,9 +25,11 @@ const dev055OrLater = dev055 || dev057
 const dev049OrLater = dev049 || dev050 || dev052 || dev053 || dev054 || dev055 || dev057
 const outputDir = path.join(root, dev057 ? 'dev-057' : dev049 ? 'dev-049' : dev050 ? 'dev-050' : dev052 ? 'dev-052' : dev053 ? 'dev-053' : dev054 ? 'dev-054' : dev055 ? 'dev-055' : 'dev-047', 'postgres')
 const configuredDev057Output = process.env.DEV057_QC_OUTPUT_PATH?.trim()
+const dev057ConsumerRoot = process.env.DEV057_CROSS_OWNER_AI_PDM_ROOT?.trim() || null
+if (dev057ConsumerRoot && !dev057) throw new Error('DEV057_CONSUMER_PROBE_REQUIRES_DEV057_SUITE')
 const outputPath = dev057 ? path.resolve(configuredDev057Output || path.join(os.tmpdir(), `orgmaster-dev057-postgres-${process.pid}.json`)) : path.join(outputDir, 'manifest.json')
 if (dev057 && configuredDev057Output && fs.existsSync(outputPath)) throw new Error('DEV057_QC_OUTPUT_ALREADY_EXISTS')
-const migrationCeiling = dev057 ? 27 : dev055 ? 20 : dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
+const migrationCeiling = dev057 ? 28 : dev055 ? 20 : dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
 const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((name) => /^\d{3}_.*\.sql$/u.test(name) && Number(name.slice(0, 3)) <= migrationCeiling).sort()
 const checks = []
 const cleanup = { clientClosed: false, auxiliaryClientsClosed: false, clusterStopped: false, portReleased: false, tempRemoved: false }
@@ -872,10 +874,66 @@ async function runDev057Checks() {
       WHERE contract_id='orgmaster.ai-pdm-principal-effective-grants'`)
     assert.equal(published.rowCount, 1)
     assert.equal(published.rows[0].contract_version, manifest.contractVersion)
-    assert.equal(published.rows[0].signature_sha256, sha256(manifestBytes))
+    assert.equal(published.rows[0].signature_sha256,
+      sha256(Buffer.from(manifestBytes.toString('utf8').replace(/\r\n/gu, '\n'), 'utf8')))
     assert.equal(published.rows[0].payload_sha256, null)
     return { aliasRows: legacy.rowCount, principalRows: canonical.rowCount,
-      columns: manifest.columns, manifestSha256: sha256(manifestBytes) }
+      columns: manifest.columns, manifestSha256: published.rows[0].signature_sha256 }
+  })
+
+  await check('D57-20', 'principal grant v3 follows published assignments without the per-employee authority switch', async () => {
+    const manifestBytes = fs.readFileSync(path.join(root, 'contracts',
+      'orgmaster-ai-pdm-principal-effective-grants', 'v3', 'contract-manifest.json'))
+    const manifest = JSON.parse(manifestBytes.toString('utf8'))
+    const columns = (await client.query(`SELECT column_name FROM information_schema.columns
+      WHERE table_schema='orgmaster_contract' AND table_name='v_ai_pdm_principal_effective_grants_v3'
+      ORDER BY ordinal_position`)).rows.map((row) => row.column_name)
+    assert.deepEqual(columns, manifest.columns)
+    assert.ok(!columns.includes('authority_version'))
+    const readV3 = () => queryAs('jenfu_ai_pdm_runtime', `SELECT principal_id,employee_id,assignment_id,assignment_version
+      FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v3
+      WHERE principal_id='principal-legacy'`)
+    const baseline = await readV3()
+    assert.equal(baseline.rowCount, 1)
+    assert.deepEqual((await queryAs('jenfu_ai_pdm_migrator', `SELECT principal_id,employee_id,assignment_id,assignment_version
+      FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v3
+      WHERE principal_id='principal-legacy'`)).rows, baseline.rows)
+    await expectDatabaseError(() => queryAs('jenfu_platform_runtime',
+      'SELECT * FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v3'), { code: '42501' })
+    await client.query('BEGIN')
+    try {
+      await client.query(`UPDATE orgmaster_core.employee_authority_overrides
+        SET authority_source='legacy_authority',authority_version=authority_version+1
+        WHERE application_id='ai-pdm' AND employee_id='employee-legacy'`)
+      await client.query('SET LOCAL ROLE jenfu_ai_pdm_runtime')
+      const legacy = await client.query(`SELECT assignment_id
+        FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v2
+        WHERE principal_id='principal-legacy'`)
+      assert.equal(legacy.rowCount, 0, 'v2 remains gated by the old authority switch')
+      const independent = await client.query(`SELECT principal_id,employee_id,assignment_id,assignment_version
+        FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v3
+        WHERE principal_id='principal-legacy'`)
+      assert.deepEqual(independent.rows, baseline.rows,
+        'the published Principal grant must not change when the old switch changes')
+    } finally {
+      await client.query('ROLLBACK')
+    }
+    const published = await queryAs('jenfu_ai_pdm_runtime', `SELECT contract_version,signature_sha256,payload_sha256
+      FROM orgmaster_contract.v_contract_manifest_v1
+      WHERE contract_id='orgmaster.ai-pdm-principal-effective-grants-v3'`)
+    const manifestSha256 = sha256(Buffer.from(manifestBytes.toString('utf8').replace(/\r\n/gu, '\n'), 'utf8'))
+    assert.deepEqual(published.rows, [{ contract_version: manifest.contractVersion,
+      signature_sha256: manifestSha256, payload_sha256: null }])
+    const cutover = await queryAs('jenfu_ai_pdm_migrator', `SELECT contract_version,signature_sha256,payload_sha256
+      FROM orgmaster_contract.v_contract_manifest_v1
+      WHERE contract_id='orgmaster.principal-cutover-source-v2'`)
+    assert.deepEqual(cutover.rows, [{
+      contract_version: 'jenfu.orgmaster.principal-cutover-source.v2',
+      signature_sha256: '6e3da9bf2ce73df35ba00c31c2cb0173e8637f178499c6839d5ac4798d647175',
+      payload_sha256: null
+    }])
+    return { principalRows: baseline.rowCount, columns, manifestSha256,
+      oldAuthoritySwitchIndependent: true, platformReadDenied: true }
   })
 
   await check('D57-12', 'owner reservations cannot be rewritten and runtime cannot call the private writer', async () => {
@@ -1130,6 +1188,369 @@ async function runDev057Checks() {
     assert.equal(legacyProjection.rowCount, 0, 'Platform-owned legacy projection remains unchanged and is not the managed-principal contract')
     return { canonicalProducerRows: canonical.rowCount, typedAdapterRows: typed.rowCount, accountType: typed.rows[0].account_type, platformLegacyProjectionUnchanged: true }
   })
+
+  if (dev057ConsumerRoot) await check('D57-21', 'published Principal grant v3 drives AI-PDM assignment, revocation, scope and transfer decision on one PostgreSQL', async () => {
+    const consumerRoot = fs.realpathSync(dev057ConsumerRoot)
+    const packageName = JSON.parse(fs.readFileSync(path.join(consumerRoot, 'package.json'), 'utf8')).name
+    assert.equal(packageName, 'ai-pdm')
+    const consumerTest = path.join(consumerRoot, 'src', 'lib', 'repositories', 'jenfu-principal-grants-v3.postgres-contract.test.ts')
+    const vitest = path.join(consumerRoot, 'node_modules', 'vitest', 'vitest.mjs')
+    assert.ok(fs.existsSync(consumerTest) && fs.existsSync(vitest), 'AI-PDM source and installed test runner are required')
+    await client.query('CREATE ROLE dev057_ai_pdm_consumer_probe LOGIN IN ROLE jenfu_ai_pdm_runtime')
+    const principalCatalog = JSON.parse(fs.readFileSync(path.join(consumerRoot,
+      'config', 'access-control', 'jenfu-role-catalog.v5.json'), 'utf8'))
+    assert.equal(principalCatalog.applicationId, 'ai-pdm')
+    const catalogRows = principalCatalog.roles.map((role, displayOrder) => ({
+      stable_role_id: role.stableRoleId, role_code: role.roleCode,
+      display_name: role.displayName, risk: role.risk,
+      subject_kind: role.subjectKind, assignable: role.assignable,
+      recommendation_allowed: role.recommendationAllowed,
+      allowed_scope_kinds: role.allowedScopeKinds,
+      delegation_allowed: role.delegationAllowed, display_order: displayOrder,
+      assignment_tier: role.assignmentTier, permissions: role.permissions,
+      metadata: role.metadata ?? null,
+      role_definition_hash: role.roleDefinitionHash,
+    }))
+    const catalogLiteral = JSON.stringify(catalogRows).replace(/'/gu, "''")
+    await client.query(`CREATE OR REPLACE VIEW ai_pdm_contract.v_application_role_catalog_v1 AS
+      SELECT 'ai-pdm'::text AS application_id, role.stable_role_id,
+        role.role_code, role.subject_kind, role.assignable,
+        role.allowed_scope_kinds, role.delegation_allowed,
+        role.display_name, role.risk, role.recommendation_allowed,
+        '${principalCatalog.contractVersion}'::text AS contract_version,
+        '${principalCatalog.catalogVersion}'::text AS catalog_version,
+        '${principalCatalog.publishedAt}'::timestamptz AS published_at,
+        '${principalCatalog.catalogSha256}'::text AS catalog_sha256,
+        role.display_order, role.assignment_tier, role.permissions,
+        role.metadata, role.role_definition_hash
+      FROM jsonb_to_recordset('${catalogLiteral}'::jsonb) AS role(
+        stable_role_id text, role_code text, display_name text, risk text,
+        subject_kind text, assignable boolean, recommendation_allowed boolean,
+        allowed_scope_kinds jsonb, delegation_allowed boolean, display_order integer,
+        assignment_tier text, permissions jsonb, metadata jsonb,
+        role_definition_hash text)`)
+    await client.query(`CREATE ROLE dev057_orgmaster_catalog_probe LOGIN IN ROLE jenfu_orgmaster_runtime;
+      GRANT USAGE ON SCHEMA ai_pdm_contract TO jenfu_orgmaster_runtime;
+      GRANT SELECT ON ai_pdm_contract.v_application_role_catalog_v1 TO jenfu_orgmaster_runtime`)
+    const catalogProbe = spawnSync(process.execPath, [path.join(root, 'node_modules', 'vitest', 'vitest.mjs'),
+      'run', 'server/aiPdmRoleCatalogRepository.postgres.test.ts'], {
+      cwd: root, encoding: 'utf8', windowsHide: true, timeout: 90_000,
+      env: { ...process.env, CI: '1', DEV057_PRODUCT_CATALOG_POSTGRES_URL:
+        connectionString.replace('postgres@', 'dev057_orgmaster_catalog_probe@') },
+    })
+    assert.equal(catalogProbe.status, 0,
+      `OrgMaster published catalog product read failed: ${catalogProbe.error?.message ?? ''}\n${catalogProbe.stdout ?? ''}\n${catalogProbe.stderr ?? ''}`)
+    assert.match(catalogProbe.stdout, /Tests\s+1 passed/u,
+      'OrgMaster product catalog probe must execute, not skip')
+    await client.query(`CREATE SCHEMA ai_pdm_core;
+      CREATE TABLE ai_pdm_core.role_priority_versions (
+        status text NOT NULL, priority_json text NOT NULL);
+      CREATE TABLE ai_pdm_core.principal_accounts (
+        principal_id text PRIMARY KEY, pdm_user_id text NOT NULL,
+        employee_id text NOT NULL, account_type text NOT NULL,
+        company_id text NOT NULL, account_status text NOT NULL,
+        system_role_enabled boolean NOT NULL);
+      INSERT INTO ai_pdm_core.principal_accounts VALUES
+        ('principal-legacy','qc-profile-legacy','employee-legacy',
+         'human_personal','company-jenfu','active',true);
+      GRANT USAGE ON SCHEMA ai_pdm_contract TO dev057_ai_pdm_consumer_probe;
+      GRANT SELECT ON ai_pdm_contract.v_application_role_catalog_v1 TO dev057_ai_pdm_consumer_probe;
+      GRANT USAGE ON SCHEMA ai_pdm_core TO dev057_ai_pdm_consumer_probe;
+      GRANT SELECT ON ai_pdm_core.role_priority_versions,
+        ai_pdm_core.principal_accounts TO dev057_ai_pdm_consumer_probe;`)
+    await client.query('INSERT INTO ai_pdm_core.role_priority_versions VALUES ($1,$2)',
+      ['active', JSON.stringify(principalCatalog.roles.map((role) => role.roleCode))])
+    // Exercise the normal transfer command against this same owner-published
+    // grant. The fixture tables are task-owned; no application migration or
+    // production database is modified by this contract probe.
+    await client.query(`
+      CREATE TABLE ai_pdm_core.users (
+        id text PRIMARY KEY, company_id text NOT NULL, display_name text NOT NULL);
+      INSERT INTO ai_pdm_core.users VALUES ('qc-profile-legacy','company-jenfu','QC reviewer');
+      INSERT INTO ai_pdm_core.users VALUES ('qc-profile-owner','company-jenfu','QC owner');
+      ALTER TABLE ai_pdm_core.principal_accounts
+        ADD COLUMN lifecycle_version integer NOT NULL DEFAULT 1,
+        ADD COLUMN profile_version integer NOT NULL DEFAULT 1,
+        ADD COLUMN minimum_assurance text NOT NULL DEFAULT 'aal2',
+        ADD COLUMN session_invalid_before timestamptz;
+      ALTER TABLE ai_pdm_core.principal_accounts
+        ADD CONSTRAINT dev057_principal_profile_triplet
+        UNIQUE(company_id,pdm_user_id,principal_id);
+      CREATE TABLE ai_pdm_core.approval_platform_requests (
+        id text PRIMARY KEY,company_id text NOT NULL,action_code text NOT NULL,
+        request_status text NOT NULL,title text NOT NULL,reason text NOT NULL,
+        requested_by text NOT NULL,requested_at timestamptz NOT NULL DEFAULT now(),
+        payload_json jsonb NOT NULL,package_id text,
+        domain_code text NOT NULL DEFAULT 'transfer',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        apply_status text NOT NULL DEFAULT 'not_ready',
+        apply_attempts integer NOT NULL DEFAULT 0,resolved_by text,
+        resolved_at timestamptz,applied_by text,applied_at timestamptz,
+        updated_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE ai_pdm_core.approval_platform_actions (
+        action_code text PRIMARY KEY,title text NOT NULL);
+      INSERT INTO ai_pdm_core.approval_platform_actions VALUES
+        ('transfer.package_review','技轉審核');
+      CREATE TABLE ai_pdm_core.approval_platform_packages (
+        id text PRIMARY KEY,package_code text,package_status text);
+      CREATE TABLE ai_pdm_core.approval_platform_events (
+        id text PRIMARY KEY,request_id text,package_id text,
+        event_type text NOT NULL,actor_id text,detail_json jsonb NOT NULL,
+        created_at timestamptz NOT NULL);
+      CREATE TABLE ai_pdm_core.transfer_packages (
+        id text PRIMARY KEY,company_id text NOT NULL,package_status text NOT NULL,
+        review_request_id text,review_snapshot_hash text,
+        approved_by text,approved_at timestamptz,
+        row_version integer NOT NULL DEFAULT 1,
+        updated_at timestamptz NOT NULL DEFAULT now());
+      ALTER TABLE ai_pdm_core.transfer_packages
+        ADD COLUMN package_code text NOT NULL DEFAULT 'TRF-QC',
+        ADD COLUMN title text NOT NULL DEFAULT '技轉包',
+        ADD COLUMN case_type text NOT NULL DEFAULT 'new_part',
+        ADD COLUMN case_reason text NOT NULL DEFAULT 'QC',
+        ADD COLUMN source_reference_status text NOT NULL DEFAULT 'not_required',
+        ADD COLUMN source_reference text,
+        ADD COLUMN source_reference_reason text,
+        ADD COLUMN owner_id text NOT NULL DEFAULT 'qc-profile-owner',
+        ADD COLUMN created_by text NOT NULL DEFAULT 'qc-profile-owner',
+        ADD COLUMN review_snapshot_version integer NOT NULL DEFAULT 0,
+        ADD COLUMN submitted_by text,
+        ADD COLUMN submitted_at timestamptz,
+        ADD COLUMN published_by text,
+        ADD COLUMN published_at timestamptz,
+        ADD COLUMN release_failure_correlation_id text,
+        ADD COLUMN cancel_reason text,
+        ADD COLUMN cancelled_by text,
+        ADD COLUMN cancelled_at timestamptz,
+        ADD COLUMN created_at timestamptz NOT NULL DEFAULT now();
+      CREATE TABLE ai_pdm_core.transfer_package_items (
+        id text PRIMARY KEY, company_id text NOT NULL, package_id text NOT NULL,
+        entity_type text NOT NULL, entity_id text NOT NULL, entity_code text NOT NULL,
+        display_label text NOT NULL, root_code text, record_status text NOT NULL,
+        added_by text NOT NULL, created_at timestamptz NOT NULL);
+      CREATE TABLE ai_pdm_core.numbering_draft_workspaces (
+        id text PRIMARY KEY, company_id text NOT NULL, row_version integer NOT NULL,
+        lifecycle_status text NOT NULL, owner_id text NOT NULL);
+      CREATE TABLE ai_pdm_core.transfer_package_draft_items (
+        id text PRIMARY KEY, company_id text NOT NULL, package_id text NOT NULL,
+        workspace_id text NOT NULL, requiredness text NOT NULL,
+        inclusion_reason text NOT NULL, captured_workspace_version integer NOT NULL,
+        added_by text NOT NULL, created_at timestamptz NOT NULL);
+      CREATE TABLE ai_pdm_core.part_numbers (
+        id text PRIMARY KEY, company_id text NOT NULL, record_status text NOT NULL,
+        updated_at timestamptz NOT NULL, part_name text NOT NULL, item_kind text NOT NULL,
+        custom_specification text, series_code text);
+      CREATE TABLE ai_pdm_core.part_variant_attributes (
+        part_number_id text PRIMARY KEY, updated_at timestamptz,
+        material_code text, material_label text, color_code text, color_label text,
+        surface_treatment text, variant_note text);
+      CREATE TABLE ai_pdm_core.approval_platform_targets (
+        id text PRIMARY KEY, request_id text NOT NULL, target_role text NOT NULL,
+        target_type text NOT NULL, target_id text NOT NULL, target_code text,
+        target_label text NOT NULL, target_status text NOT NULL,
+        snapshot_json jsonb NOT NULL, sort_order integer NOT NULL,
+        created_at timestamptz NOT NULL);
+      CREATE TABLE ai_pdm_core.approval_platform_impact_snapshots (
+        id text PRIMARY KEY, request_id text NOT NULL, package_id text,
+        snapshot_hash text NOT NULL, snapshot_json jsonb NOT NULL,
+        captured_by text NOT NULL, captured_at timestamptz NOT NULL);
+      CREATE TABLE ai_pdm_core.approval_platform_decisions (
+        id text PRIMARY KEY,request_id text NOT NULL,approver_role text NOT NULL,
+        approver_id text NOT NULL,decision text NOT NULL,comment text,
+        decided_at timestamptz NOT NULL);
+      CREATE TABLE ai_pdm_core.number_candidate_reservations (
+        id text PRIMARY KEY,company_id text NOT NULL,approval_request_id text,
+        reservation_state text NOT NULL,row_version integer NOT NULL DEFAULT 1,
+        updated_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE ai_pdm_core.transfer_package_events (
+        id text PRIMARY KEY,company_id text NOT NULL,package_id text NOT NULL,
+        event_type text NOT NULL,actor_id text NOT NULL,
+        detail_json jsonb NOT NULL,created_at timestamptz NOT NULL);
+      CREATE TABLE ai_pdm_core.platform_command_receipts (
+        id text PRIMARY KEY,company_id text NOT NULL,command_name text NOT NULL,
+        schema_version integer NOT NULL,idempotency_key text NOT NULL,
+        actor_id text,principal_id text,platform_principal_id text,
+        platform_organization_id text,correlation_id text NOT NULL,
+        command_status text NOT NULL,response_json jsonb NOT NULL,
+        created_at timestamptz NOT NULL,completed_at timestamptz,
+        UNIQUE(company_id,command_name,idempotency_key),
+        FOREIGN KEY(company_id,actor_id,principal_id)
+          REFERENCES ai_pdm_core.principal_accounts(company_id,pdm_user_id,principal_id));
+      CREATE TABLE ai_pdm_core.platform_outbox_events (
+        id text PRIMARY KEY,company_id text NOT NULL,aggregate_type text NOT NULL,
+        aggregate_id text NOT NULL,event_type text NOT NULL,
+        schema_version integer NOT NULL,payload_json jsonb NOT NULL,
+        actor_id text,principal_id text,platform_principal_id text,
+        platform_organization_id text,correlation_id text NOT NULL,
+        idempotency_key text NOT NULL,delivery_status text NOT NULL,
+        attempt_count integer NOT NULL,next_attempt_at timestamptz,
+        last_error text,occurred_at timestamptz NOT NULL,published_at timestamptz,
+        updated_at timestamptz NOT NULL,
+        UNIQUE(company_id,event_type,idempotency_key),
+        FOREIGN KEY(company_id,actor_id,principal_id)
+          REFERENCES ai_pdm_core.principal_accounts(company_id,pdm_user_id,principal_id));
+      INSERT INTO ai_pdm_core.approval_platform_requests
+        (id,company_id,action_code,request_status,title,reason,requested_by,payload_json)
+      SELECT 'APR-TRF-00000000-0000-4000-8000-0000000000' || suffix,
+        'company-jenfu','transfer.package_review','pending',
+        'Review transfer ' || label,'ready for review','qc-profile-legacy',
+        jsonb_build_object('transferPackageId','package-org-' || label,
+          'snapshotHash',repeat('b',64),'reviewer',
+          jsonb_build_object('version',1,'principalId','principal-legacy',
+            'profileId','qc-profile-legacy'))
+      FROM (VALUES ('09','assigned'),('10','revoked'),('11','scoped'),
+        ('12','restored')) AS fixture(suffix,label);
+      INSERT INTO ai_pdm_core.transfer_packages
+        (id,company_id,package_status,review_request_id,review_snapshot_hash)
+      SELECT 'package-org-' || label,'company-jenfu','InReview',
+        'APR-TRF-00000000-0000-4000-8000-0000000000' || suffix,repeat('b',64)
+      FROM (VALUES ('09','assigned'),('10','revoked'),('11','scoped'),
+        ('12','restored')) AS fixture(suffix,label);
+      INSERT INTO ai_pdm_core.transfer_packages
+        (id,company_id,package_status,review_request_id,review_snapshot_hash)
+      VALUES ('package-org-flow','company-jenfu','Draft',NULL,NULL);
+      INSERT INTO ai_pdm_core.part_numbers
+        (id,company_id,record_status,updated_at,part_name,item_kind)
+      VALUES ('part-org-flow','company-jenfu','Active',now(),'Grant flow part','part');
+      INSERT INTO ai_pdm_core.transfer_package_items
+        (id,company_id,package_id,entity_type,entity_id,entity_code,
+         display_label,root_code,record_status,added_by,created_at)
+      VALUES ('item-org-flow','company-jenfu','package-org-flow','part_number',
+        'part-org-flow','P-ORG-FLOW','Grant flow part','P-ORG-FLOW',
+        'Active','qc-profile-owner',now());
+      GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA ai_pdm_core
+        TO dev057_ai_pdm_consumer_probe;
+    `)
+    const readable = await client.query("SELECT has_table_privilege('dev057_ai_pdm_consumer_probe','orgmaster_contract.v_ai_pdm_principal_effective_grants_v3','SELECT') AS granted")
+    assert.equal(readable.rows[0].granted, true)
+    const typed = await client.query(`SELECT principal_id,employee_id,account_type
+      FROM orgmaster_contract.v_active_principal_accounts_v1
+      WHERE principal_id='principal-legacy'`)
+    assert.ok(typed.rowCount >= 1, 'published Principal must have an active typed account')
+    assert.ok(typed.rows.every((row) => row.principal_id === 'principal-legacy' &&
+      row.employee_id === 'employee-legacy' && row.account_type === 'human_personal'),
+    'provider aliases must resolve to the same canonical Principal and Employee')
+    const flowOwner = await queryAs('jenfu_ai_pdm_runtime', `
+      SELECT principal_issuer,principal_subject,principal_id,employee_id,account_type
+      FROM orgmaster_contract.v_active_principal_accounts_v1
+      WHERE principal_issuer='issuer-race-binder-first'
+        AND principal_subject='subject-race-binder-first'`)
+    assert.equal(flowOwner.rowCount, 1, 'flow owner must be an exact published typed Principal')
+    assert.equal(flowOwner.rows[0].employee_id, 'employee-three')
+    assert.equal(flowOwner.rows[0].account_type, 'human_personal')
+    await client.query(`INSERT INTO ai_pdm_core.principal_accounts
+      (principal_id,pdm_user_id,employee_id,account_type,company_id,account_status,system_role_enabled)
+      VALUES ($1,'qc-profile-owner','employee-three','human_personal','company-jenfu','active',true)`,
+      [flowOwner.rows[0].principal_id])
+
+    const consumerUrl = connectionString.replace('postgres@', 'dev057_ai_pdm_consumer_probe@')
+    const transferTest = path.join(consumerRoot, 'src', 'lib',
+      'transfer-package-orgmaster-grant.postgres-contract.test.ts')
+    assert.ok(fs.existsSync(transferTest), 'AI-PDM transfer command test is required')
+    const probe = (phase, version) => {
+      const result = spawnSync(process.execPath, [vitest, 'run', '--config', 'vitest.config.ts',
+        'src/lib/repositories/jenfu-principal-grants-v3.postgres-contract.test.ts'], {
+        cwd: consumerRoot, encoding: 'utf8', windowsHide: true, timeout: 90_000,
+        env: { ...process.env, CI: '1', DEV057_CONTRACT_POSTGRES_URL: consumerUrl,
+          DEV057_CONTRACT_PHASE: phase, DEV057_CONTRACT_VERSION: version },
+      })
+      assert.equal(result.status, 0, `AI-PDM ${phase} consumer failed: ${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`)
+    }
+    const transferProbe = (phase) => {
+      const result = spawnSync(process.execPath, [vitest, 'run', '--config', 'vitest.config.ts',
+        'src/lib/transfer-package-orgmaster-grant.postgres-contract.test.ts'], {
+        cwd: consumerRoot, encoding: 'utf8', windowsHide: true, timeout: 90_000,
+        env: { ...process.env, CI: '1', DEV057_CONTRACT_POSTGRES_URL: consumerUrl,
+          DEV057_CONTRACT_PHASE: phase, PDM_DB_PROVIDER: 'postgres',
+          PDM_POSTGRES_URL: consumerUrl, DEV010_N2_DATABASE_BOUNDARY: 'required',
+          DEV057_FLOW_OWNER_PRINCIPAL_ID: flowOwner.rows[0].principal_id },
+      })
+      assert.equal(result.status, 0, `AI-PDM ${phase} transfer failed: ${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`)
+    }
+    const publish = async (suffix, changeAssignment) => {
+      const artifact = await activeGovernanceArtifact()
+      const active = artifact.payload.publishedVersions.find((version) => version.id === artifact.payload.activePolicyVersionId)
+      const versionId = `gov-dev057-contract-${suffix}`
+      const appended = appendGovernanceVersion(artifact.payload, active, versionId)
+      const assignment = appended.version.policy.roleAssignments.find((item) => item.id === 'assignment-ai-rd')
+      assert.ok(assignment, 'the published AI-PDM assignment must exist before an owner change')
+      changeAssignment(assignment, appended.version.policy)
+      const changes = governanceChange(appended.payload, artifact.canonical_sha256)
+      await queryAs('jenfu_orgmaster_runtime',
+        "SELECT * FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,'dev057-qc',$3,$4,'[]'::jsonb)",
+        [JSON.stringify(changes), sha256(`dev057-contract-${suffix}`), `contract-${suffix}`, `dev057-contract-${suffix}`])
+      return versionId
+    }
+
+    const assigned = await publish('reviewer-assigned', (assignment) => {
+      assignment.roleId = 'role-rd-manager'
+      assignment.roleCodeSnapshot = 'rd_manager'
+      assignment.catalogVersion = principalCatalog.catalogVersion
+    })
+    probe('assigned', assigned)
+    transferProbe('assigned')
+    const revoked = await publish('revoked', (assignment) => { assignment.status = 'revoked' })
+    probe('revoked', revoked)
+    transferProbe('revoked')
+    const scoped = await publish('scoped', (assignment) => {
+      assignment.status = 'active'
+      assignment.scope = { kind: 'workspace', value: 'company-other' }
+    })
+    probe('out-of-scope', scoped)
+    transferProbe('out-of-scope')
+    const restored = await publish('restored', (assignment) => {
+      assignment.scope = { kind: 'workspace', value: 'company-jenfu' }
+    })
+    probe('restored', restored)
+    transferProbe('restored')
+    const flow = await publish('flow', (assignment, policy) => {
+      assignment.roleId = 'role-pdm-admin'
+      assignment.roleCodeSnapshot = 'pdm_admin'
+      policy.roleAssignments.push({
+        id: 'assignment-ai-owner-flow', employeeId: 'employee-three',
+        applicationId: 'ai-pdm', roleId: 'role-rd-manager',
+        roleCodeSnapshot: 'rd_manager', catalogVersion: principalCatalog.catalogVersion,
+        status: 'active', subjectKind: 'employee', targetPrincipalId: null,
+        basis: 'manual', sources: [],
+        scope: { kind: 'workspace', value: 'company-jenfu' },
+        validFrom: '2026-01-01T00:00:00.000Z'
+      })
+    })
+    const flowGrants = await queryAs('jenfu_ai_pdm_runtime', `
+      SELECT principal_id,employee_id,role_code,scope_kind,scope_key
+      FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v3
+      WHERE principal_id=$1`, [flowOwner.rows[0].principal_id])
+    assert.ok(flowGrants.rows.some((grant) => grant.employee_id === 'employee-three' &&
+      grant.role_code === 'rd_manager' && grant.scope_kind === 'workspace' &&
+      grant.scope_key === 'company-jenfu'),
+    'the published v3 owner grant must be readable before AI-PDM submits a review')
+    transferProbe('flow')
+    return { consumerPackage: packageName, consumerTestSha256: sha256(fs.readFileSync(consumerTest)),
+      transferTestSha256: sha256(fs.readFileSync(transferTest)),
+      runtimeRole: 'dev057_ai_pdm_consumer_probe', publishedVersions: [assigned, revoked, scoped, restored, flow],
+      decisions: ['allowed', 'entitlement_assignment_not_found', 'entitlement_scope_mismatch', 'allowed', 'allowed'],
+      transfer: ['committed', 'no-write', 'no-write', 'committed', 'submitted-and-committed'] }
+  })
+  if (dev057ConsumerRoot) await check('D57-22', 'management HTTP publishes and revokes a Principal grant through the product PostgreSQL writer', async () => {
+    const testPath = path.join(root, 'server', 'orgmasterGovernanceProduct.postgres.test.ts')
+    assert.ok(fs.existsSync(testPath), 'product governance integration test is required')
+    const result = spawnSync(process.execPath, [path.join(root, 'node_modules', 'vitest', 'vitest.mjs'),
+      'run', 'server/orgmasterGovernanceProduct.postgres.test.ts'], {
+      cwd: root, encoding: 'utf8', windowsHide: true, timeout: 120_000,
+      env: { ...process.env, CI: '1',
+        DEV057_PRODUCT_GOVERNANCE_ADMIN_URL: connectionString,
+        DEV057_PRODUCT_GOVERNANCE_RUNTIME_URL: connectionString.replace('postgres@', 'dev057_orgmaster_catalog_probe@'),
+        DEV057_PRODUCT_GOVERNANCE_CONSUMER_URL: connectionString.replace('postgres@', 'dev057_ai_pdm_consumer_probe@'),
+      },
+    })
+    assert.equal(result.status, 0,
+      `OrgMaster product governance failed: ${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`)
+    assert.match(result.stdout, /Tests\s+3 passed/u,
+      'product governance PostgreSQL probe must execute, not skip')
+    return { testSha256: sha256(fs.readFileSync(testPath)), verifiedSession: 'synthetic-v2-principal',
+      phases: ['published-assignment', 'published-revocation'], ownerApi: 'actual-http',
+      consumer: 'ai-pdm-runtime-grant-v3' }
+  })
 }
 
 function persistenceFixture() {
@@ -1309,7 +1730,7 @@ async function main() {
   postgresBin = runtime.bin
   taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), dev057 ? 'orgmaster-dev057-qc-' : dev049 ? 'orgmaster-dev049-qc-' : dev050 ? 'orgmaster-dev050-qc-' : dev052 ? 'orgmaster-dev052-qc-' : dev053 ? 'orgmaster-dev053-qc-' : dev054 ? 'orgmaster-dev054-qc-' : dev055 ? 'orgmaster-dev055-qc-' : 'orgmaster-dev047-qc-'))
   clusterDir = path.join(taskRoot, 'cluster'); postgresLog = path.join(taskRoot, 'postgres.log'); port = await freePort()
-  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev057 ? 'DEV-057 isolated PostgreSQL 001-027 principal ownership and producer QC' : dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : dev055 ? 'DEV-055 isolated PostgreSQL 001-020 current projection contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'all clients closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
+  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev057 ? 'DEV-057 isolated PostgreSQL 001-028 principal ownership and producer QC' : dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : dev055 ? 'DEV-055 isolated PostgreSQL 001-020 current projection contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'all clients closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
   run(path.join(postgresBin, 'initdb.exe'), ['-D', clusterDir, '--auth-local=trust', '--auth-host=trust', '--username=postgres', '--encoding=UTF8', '--no-locale'])
   run(path.join(postgresBin, 'pg_ctl.exe'), ['-D', clusterDir, '-l', postgresLog, '-o', `-p ${port} -h 127.0.0.1`, '-w', 'start'], { stdio: 'ignore' })
   started = true
@@ -1427,7 +1848,7 @@ finally {
   if (taskRoot) { try { fs.rmSync(taskRoot, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 }); cleanup.tempRemoved = !fs.existsSync(taskRoot) } catch { cleanup.tempRemoved = false } } else cleanup.tempRemoved = true
 }
 
-const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06','D57-07','D57-08','D57-09','D57-10','D57-11','D57-12','D57-13','D57-14','D57-15','D57-16','D57-17','D57-18','D57-19'] : requiredCorrectionCases
+const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06','D57-07','D57-08','D57-09','D57-10','D57-11','D57-12','D57-13','D57-14','D57-15','D57-16','D57-17','D57-18','D57-19','D57-20', ...(dev057ConsumerRoot ? ['D57-21','D57-22'] : [])] : requiredCorrectionCases
 const allRequiredPassed = requiredCases.every((id) => checks.some((entry) => entry.id === id && entry.status === 'PASS'))
 const status = !firstFailure && allRequiredPassed && Object.values(cleanup).every(Boolean) ? 'PASS' : firstFailure?.reasonCode === 'POSTGRES_RUNTIME_MISSING' ? 'BLOCKED' : 'FAIL'
 const manifest = {

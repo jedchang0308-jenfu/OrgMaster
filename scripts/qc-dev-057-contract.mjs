@@ -42,5 +42,22 @@ assert.deepEqual(grantEntry, { order: 25, version: 'dev057-orgmaster-025', path:
   sourceSha256: sourceSha256(grantBytes),
   appliedSha256: sourceSha256(unwrapMigrationTransaction(grantBytes)) })
 
-process.stdout.write(`${JSON.stringify({ status: 'PASS', contract: 'DEV-057', migrations: [path, grantPath],
-  principalGrantManifestSha256: sourceSha256(grantManifestBytes), productionWrites: false })}\n`)
+const grantV3Path = 'db/migrations/028_dev057_ai_pdm_principal_effective_grants_v3.sql'
+const grantV3Bytes = fs.readFileSync(grantV3Path)
+const grantV3Sql = grantV3Bytes.toString('utf8').replace(/\r\n/gu, '\n')
+const grantV3ManifestBytes = fs.readFileSync('contracts/orgmaster-ai-pdm-principal-effective-grants/v3/contract-manifest.json')
+const grantV3Manifest = JSON.parse(grantV3ManifestBytes.toString('utf8'))
+const grantV3Entry = profile.migrations.entries.find(({ version }) => version === 'dev057-orgmaster-028')
+assert.match(grantV3Sql, /CREATE VIEW orgmaster_contract\.v_ai_pdm_principal_effective_grants_v3\s+WITH \(security_barrier = true\)/u)
+assert.doesNotMatch(grantV3Sql, /FROM orgmaster_contract\.v_ai_pdm_principal_effective_grants_v2/u)
+assert.match(grantV3Sql, /GRANT SELECT ON orgmaster_contract\.v_ai_pdm_principal_effective_grants_v3\s+TO jenfu_ai_pdm_runtime/u)
+assert.equal(grantV3Manifest.subject, 'principal_id')
+assert.equal(grantV3Manifest.view, 'orgmaster_contract.v_ai_pdm_principal_effective_grants_v3')
+assert.ok(!grantV3Manifest.columns.some((column) => /issuer|subject$/u.test(column) && column !== 'subject_kind'))
+assert.ok(grantV3Sql.includes(sourceSha256(grantV3ManifestBytes)))
+assert.deepEqual(grantV3Entry, { order: 28, version: 'dev057-orgmaster-028', path: grantV3Path,
+  sourceSha256: sourceSha256(grantV3Bytes),
+  appliedSha256: sourceSha256(unwrapMigrationTransaction(grantV3Bytes)) })
+
+process.stdout.write(`${JSON.stringify({ status: 'PASS', contract: 'DEV-057', migrations: [path, grantPath, grantV3Path],
+  principalGrantManifestSha256: sourceSha256(grantV3ManifestBytes), productionWrites: false })}\n`)

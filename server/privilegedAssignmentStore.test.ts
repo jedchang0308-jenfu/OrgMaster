@@ -1,12 +1,13 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { issuerFingerprintSha256, principalFingerprintSha256 } from '../src/governance/identityAdmission'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { privilegedRequestHash } from '../src/governance/privilegedAssignments'
 import { ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
 import { previewPrivilegedAssignment, publishPrivilegedAssignment } from './privilegedAssignmentStore'
+import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
 
 const roots: string[] = []
 
@@ -15,14 +16,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev009-store-'))
   roots.push(root)
-  const sourceManifest = JSON.parse(await readFile(resolve('data/orgmaster-workspace.v1.json'), 'utf8'))
-  const currentId = sourceManifest.currentVersionId as string
-  const currentEntry = sourceManifest.entries.find((entry: { id: string }) => entry.id === currentId)
-  const sourceVersionPath = resolve('data/orgmaster-versions', `${currentId}.json`)
-  const versionRaw = await readFile(sourceVersionPath, 'utf8')
-  await mkdir(join(root, 'data', 'orgmaster-versions'), { recursive: true })
-  await writeFile(join(root, 'data', 'orgmaster-workspace.v1.json'), `${JSON.stringify({ ...sourceManifest, entries: [currentEntry] }, null, 2)}\n`)
-  await writeFile(join(root, 'data', 'orgmaster-versions', `${currentId}.json`), versionRaw)
+  await writeSyntheticWorkspaceFixture(root)
   return root
 }
 

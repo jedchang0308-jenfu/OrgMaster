@@ -32,6 +32,23 @@ test('DEV-057 principal contract requires exact 26-row forward migration receipt
   }
 })
 
+test('DEV-057 principal-only grant v3 requires exact 28-row forward migration receipt', () => {
+  const profile = { application: { id: 'orgmaster' } }
+  const intent = { sourceRevision: H40, migrationManifestSha256: 'b'.repeat(64) }
+  const plan = { releaseMode: 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION' }
+  const core = {
+    schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: H40,
+    manifestSha256: intent.migrationManifestSha256, status: 'PASS', boundaryStatus: 'PASS',
+    baselineCount: 10, minimumLedgerCount: 10, ledgerCount: 28, applied: 1, replayed: 27,
+    crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
+  }
+  const receipt = (value) => ({ ...value, receiptSha256: sha256(canonicalize(value)) })
+  assert.doesNotThrow(() => assertMigrationReceipt(receipt(core), profile, intent, { allowForward: true, forwardPlan: plan }))
+  for (const changed of [{ ledgerCount: 27 }, { applied: 2, replayed: 26 }, { replayed: 26 }]) {
+    assert.throws(() => assertMigrationReceipt(receipt({ ...core, ...changed }), profile, intent, { allowForward: true, forwardPlan: plan }), /MIGRATION_RECEIPT_INVALID/u)
+  }
+})
+
 function recordedHarness() {
   const objects = new Map()
   let generation = 0

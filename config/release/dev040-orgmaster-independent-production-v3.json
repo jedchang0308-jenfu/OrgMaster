@@ -81,10 +81,9 @@
     "refreshTokenEnvironmentName": "DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN",
     "firebaseApiKeyEnvironmentName": "DEV012_ORGMASTER_FIREBASE_API_KEY",
     "authModePath": "/api/auth/mode",
-    "sessionPath": "/api/auth/firebase/session",
     "mePath": "/api/auth/me",
     "logoutPath": "/api/auth/logout",
-    "candidateSmokeMode": "WORKFLOWS_INTERNAL_OIDC_V1",
+    "candidateSmokeMode": "WORKFLOWS_INTERNAL_OIDC_V2_PRINCIPAL_SSO",
     "candidateWorkflowName": "orgmaster-prod-candidate-smoke",
     "candidateRefreshTokenSecretId": "orgmaster-prod-smoke-firebase-refresh-token",
     "authenticatedProbes": [
@@ -102,7 +101,9 @@
         "method": "GET",
         "expectedStatus": 401
       }
-    ]
+    ],
+    "sessionMode": "PLATFORM_SSO_V2",
+    "brokerOrigin": "https://jenfu-platform-prod-9536592944.asia-east1.run.app"
   },
   "incidentRuntime": {
     "controllerAudience": "https://release-controller.jenfu.internal/orgmaster",
@@ -192,8 +193,10 @@
     },
     "controlledValues": {
       "ORGMASTER_JENFU_SSO_HANDOFF_MODE": {
-        "defaultValue": "off",
-        "allowedValues": ["off", "on"]
+        "defaultValue": "on",
+        "allowedValues": [
+          "on"
+        ]
       }
     }
   },
@@ -392,6 +395,13 @@
         "path": "db/migrations/027_dev057_principal_cutover_source_manifest.sql",
         "sourceSha256": "7f42789257264e3a1587e9648e04319f3963fe0c02f6c914555175c53373728a",
         "appliedSha256": "ed0923f1dabc808f3f6c48354a2a4677481e80a7e3df085d5ee70168573f052b"
+      },
+      {
+        "order": 28,
+        "version": "dev057-orgmaster-028",
+        "path": "db/migrations/028_dev057_ai_pdm_principal_effective_grants_v3.sql",
+        "sourceSha256": "31ad125e71f3a749f5fc4bf17e87dec93eb8be2aab221e83b78e5830f88c7178",
+        "appliedSha256": "cae899c3e9c498e4dd0c2d21686e42eb5f0eb2b47de8f80766c7e4891a6a5a68"
       }
     ]
   },

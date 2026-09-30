@@ -126,17 +126,77 @@ resource "google_workflows_workflow" "candidate_smoke" {
                 type: OIDC
               timeout: 20
             result: auth_mode_response
-        - create_session:
+        - platform_session:
             call: http.post
             args:
-              url: $${candidate_origin + "/api/auth/firebase/session"}
-              auth:
-                type: OIDC
+              url: "https://jenfu-platform-prod-9536592944.asia-east1.run.app/api/auth/firebase/session"
               headers:
-                Origin: $${canonical_origin}
+                Origin: "https://jenfu-platform-prod-9536592944.asia-east1.run.app"
                 Content-Type: "application/json"
               body:
                 idToken: $${id_token}
+              timeout: 20
+            result: platform_session_response
+        - bind_platform_cookie:
+            assign:
+              - platform_cookie_header: $${default(map.get(platform_session_response.headers, "set-cookie"), map.get(platform_session_response.headers, "Set-Cookie"))}
+        - validate_platform_cookie:
+            switch:
+              - condition: $${platform_session_response.code != 200 or platform_cookie_header == null or not(text.match_regex(platform_cookie_header, "^jenfu_session=[^;]+"))}
+                next: reject_session
+        - extract_platform_cookie:
+            assign:
+              - platform_cookie: $${text.split(platform_cookie_header, ";")[0]}
+        - sso_start:
+            call: http.get
+            args:
+              url: $${candidate_origin + "/api/auth/jenfu-sso/start"}
+              auth:
+                type: OIDC
+              timeout: 20
+            result: sso_start_response
+        - bind_sso_start:
+            assign:
+              - authorize_url: $${default(map.get(sso_start_response.headers, "location"), map.get(sso_start_response.headers, "Location"))}
+              - transaction_cookie_header: $${default(map.get(sso_start_response.headers, "set-cookie"), map.get(sso_start_response.headers, "Set-Cookie"))}
+        - validate_sso_start:
+            switch:
+              - condition: $${sso_start_response.code != 303 or authorize_url == null or transaction_cookie_header == null}
+                next: reject_session
+        - validate_sso_start_target:
+            switch:
+              - condition: $${not(text.match_regex(authorize_url, "^https://jenfu-platform-prod-9536592944[.]asia-east1[.]run[.]app/api/sso/authorize[?]")) or not(text.match_regex(transaction_cookie_header, "^__Host-jenfu_sso_tx=[^;]+"))}
+                next: reject_session
+        - extract_transaction_cookie:
+            assign:
+              - transaction_cookie: $${text.split(transaction_cookie_header, ";")[0]}
+        - sso_authorize:
+            call: http.get
+            args:
+              url: $${authorize_url}
+              headers:
+                Cookie: $${platform_cookie}
+              timeout: 20
+            result: sso_authorize_response
+        - bind_sso_callback:
+            assign:
+              - callback_location: $${default(map.get(sso_authorize_response.headers, "location"), map.get(sso_authorize_response.headers, "Location"))}
+        - validate_sso_callback:
+            switch:
+              - condition: $${sso_authorize_response.code != 303 or callback_location == null}
+                next: reject_session
+        - validate_sso_callback_target:
+            switch:
+              - condition: $${text.substring(callback_location, 0, len(canonical_origin + "/api/auth/jenfu-sso/callback?")) != canonical_origin + "/api/auth/jenfu-sso/callback?"}
+                next: reject_session
+        - candidate_sso_callback:
+            call: http.get
+            args:
+              url: $${candidate_origin + text.substring(callback_location, len(canonical_origin), len(callback_location))}
+              auth:
+                type: OIDC
+              headers:
+                Cookie: $${transaction_cookie}
               timeout: 20
             result: session_response
         - bind_cookie:
@@ -144,7 +204,7 @@ resource "google_workflows_workflow" "candidate_smoke" {
               - cookie_header: $${default(map.get(session_response.headers, "set-cookie"), map.get(session_response.headers, "Set-Cookie"))}
         - validate_cookie:
             switch:
-              - condition: $${cookie_header == null or len(cookie_header) < 10}
+              - condition: $${session_response.code != 303 or cookie_header == null or not(text.match_regex(cookie_header, "^orgmaster_session=[^;]+"))}
                 next: reject_session
         - extract_cookie:
             assign:
@@ -159,6 +219,10 @@ resource "google_workflows_workflow" "candidate_smoke" {
                 Cookie: $${session_cookie}
               timeout: 20
             result: reload_response
+        - validate_principal_continuity:
+            switch:
+              - condition: $${reload_response.code != 200 or map.get(map.get(platform_session_response.body, "user"), "principalId") == null or map.get(map.get(platform_session_response.body, "user"), "principalId") != map.get(map.get(reload_response.body, "user"), "principalId")}
+                next: reject_session
         - authenticated_probe:
             call: http.get
             args:
@@ -328,7 +392,7 @@ resource "google_workflows_workflow" "candidate_smoke" {
                 next: reject_revoked
         - return_pass:
             return:
-              schemaVersion: "jenfu.dev012.internal-candidate-smoke.v1"
+              schemaVersion: "jenfu.dev015.internal-candidate-principal-smoke.v2"
               ownerApplicationId: $${owner_app}
               candidateRevision: $${candidate_revision}
               artifactDigest: $${artifact_digest}
@@ -337,7 +401,13 @@ resource "google_workflows_workflow" "candidate_smoke" {
               observations:
                 - id: "auth-mode"
                   status: $${auth_mode_response.code}
-                - id: "session-create"
+                - id: "platform-principal-session"
+                  status: $${platform_session_response.code}
+                - id: "orgmaster-sso-start"
+                  status: $${sso_start_response.code}
+                - id: "orgmaster-sso-authorize"
+                  status: $${sso_authorize_response.code}
+                - id: "orgmaster-sso-callback"
                   status: $${session_response.code}
                 - id: "session-reload"
                   status: $${reload_response.code}

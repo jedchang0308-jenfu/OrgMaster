@@ -3,12 +3,13 @@ import type { ManagedIdentityRepositoryV1 } from './orgmasterManagedIdentityRepo
 import type { ManagedDirectoryPortV1 } from './orgmasterManagedDirectoryPort'
 import type { ManagedLoginIdentity } from './orgmasterManagedLoginContract'
 import { createManagedIdentityService } from './orgmasterManagedIdentityService'
+import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { readExistingGovernanceStore } from './orgmasterGovernanceStore'
 
 const governance = {
   document: {
     activePolicyVersionId: 'policy-1',
-    publishedVersions: [{ id: 'policy-1', policy: {
+    publishedVersions: [{ id: 'policy-1', kind: 'assignment-governance-v3', externalRoleCatalogs: [], policy: {
       applications: [{ id: 'orgmaster', status: 'active' }],
       applicationRoles: [{ id: 'role-1', applicationId: 'orgmaster', status: 'active' }],
       roleAssignments: [{ employeeId: 'employee-1', applicationId: 'orgmaster', roleId: 'role-1', scope: { kind: 'global' }, status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null }],
@@ -75,10 +76,16 @@ describe('managed identifier verifier', () => {
     const aiPdmGovernance = {
       document: {
         activePolicyVersionId: 'policy-ai-pdm',
-        publishedVersions: [{ id: 'policy-ai-pdm', policy: {
+        publishedVersions: [{ id: 'policy-ai-pdm', kind: 'assignment-governance-v3',
+          externalRoleCatalogs: [readAiPdmRoleCatalog()], policy: {
           applications: [{ id: 'ai-pdm', status: 'active' }],
-          applicationRoles: [{ id: 'role-rd', applicationId: 'ai-pdm', status: 'active' }],
-          roleAssignments: [{ employeeId: 'employee-1', applicationId: 'ai-pdm', roleId: 'role-rd', scope: { kind: 'workspace', value: 'current' }, status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null }],
+          applicationRoles: [],
+          roleAssignments: [{
+            employeeId: 'employee-1', applicationId: 'ai-pdm', roleId: 'role-rd',
+            catalogVersion: readAiPdmRoleCatalog().catalogVersion, subjectKind: 'employee', targetPrincipalId: null,
+            scope: { kind: 'workspace', value: 'current' }, status: 'active',
+            validFrom: '2026-01-01T00:00:00.000Z', validTo: null,
+          }],
         } }],
       },
     }
@@ -90,6 +97,33 @@ describe('managed identifier verifier', () => {
     const result = await service(repository).verifyManagedLoginIdentifier({ requestId: 'request-ai-pdm', managedIdentifier: 'JFS0001', identity: token() })
     expect(result).toEqual({ principalId: 'principal-1', employeeId: 'employee-1', mappingVersion: '9' })
   })
+  it('does not use an AI-PDM role targeted at another principal to admit managed login', async () => {
+    const catalog = readAiPdmRoleCatalog()
+    const document = {
+      activePolicyVersionId: 'policy-ai-pdm',
+      publishedVersions: [{ id: 'policy-ai-pdm', kind: 'assignment-governance-v3',
+        externalRoleCatalogs: [catalog], policy: {
+          applications: [{ id: 'ai-pdm', status: 'active' }],
+          applicationRoles: [],
+          roleAssignments: [{
+            employeeId: 'employee-1', applicationId: 'ai-pdm', roleId: 'role-rd',
+            catalogVersion: catalog.catalogVersion, subjectKind: 'principal', targetPrincipalId: 'principal-other',
+            scope: { kind: 'workspace', value: 'current' }, status: 'active',
+            validFrom: '2026-01-01T00:00:00.000Z', validTo: null,
+          }],
+        } }],
+    }
+    vi.mocked(readExistingGovernanceStore).mockResolvedValueOnce({ document } as never)
+    const verify = vi.fn()
+    const repository = { mode: 'local-json', reserveDirectoryRead: vi.fn(),
+      readManagedLoginSnapshot: vi.fn(async () => ({ identity: pending, primaryEmail: 'person@jenfu.com.tw' })),
+      verifyManagedLoginIdentity: verify }
+    await expect(service(repository).verifyManagedLoginIdentifier({
+      requestId: 'request-other-principal', managedIdentifier: 'JFS0001', identity: token()
+    })).rejects.toMatchObject({ code: 'LOGIN_NOT_AVAILABLE' })
+    expect(verify).not.toHaveBeenCalled()
+  })
+
 })
 
 describe('managed employee activation gate', () => {
@@ -106,5 +140,60 @@ describe('managed employee activation gate', () => {
     const result = await service({ mode: 'postgresql', assertEmployeeActivation }).activationCheck('employee-inactive', 'workspace-revision')
 
     expect(result).toEqual({ allowed: false, correctionRequired: true })
+  })
+})
+
+
+describe('published privileged managed-identity gate', () => {
+  const actor = {
+    principalId: 'principal-1', employeeId: 'employee-1',
+    issuer: 'issuer', subject: 'subject', bootstrap: false,
+  }
+  const link = {
+    id: 'link-1', principalId: 'principal-1', employeeId: 'employee-1',
+    issuer: 'issuer', subject: 'subject', status: 'active',
+    validFrom: '2026-01-01T00:00:00.000Z', validTo: null,
+  }
+  const admission = { identityLinkId: 'link-1', accountType: 'human_privileged', status: 'active' }
+  function document(publishedPrivileged: boolean, draftPrivileged: boolean) {
+    const policy = {
+      applications: [{ id: 'orgmaster', status: 'active' }],
+      identityLinks: [link],
+      principalAdmissions: publishedPrivileged ? [admission] : [],
+      applicationRoles: [{ id: 'role-1', applicationId: 'orgmaster', status: 'active' }],
+      permissions: [{ id: 'permission-link', applicationId: 'orgmaster', code: 'orgmaster.identity.link', status: 'active' }],
+      roleAssignments: [{
+        employeeId: 'employee-1', applicationId: 'orgmaster', roleId: 'role-1',
+        scope: { kind: 'global' }, status: 'active',
+        validFrom: '2026-01-01T00:00:00.000Z', validTo: null,
+      }],
+      rolePermissionGrants: [{ roleId: 'role-1', permissionId: 'permission-link', effect: 'allow' }],
+    }
+    return {
+      schemaVersion: 3, activePolicyVersionId: 'policy-privileged',
+      publishedVersions: [{ id: 'policy-privileged', kind: 'assignment-governance-v3', policy, organizationSnapshot: { workspaceVersionId: 'workspace-1', workspaceRevision: 'workspace-revision' } }],
+      draft: { ...policy, principalAdmissions: draftPrivileged ? [admission] : [] },
+    }
+  }
+  const request = { primaryEmail: 'person@jenfu.com.tw' } as never
+  function repository() {
+    return {
+      mode: 'local-json',
+      readExisting: vi.fn(async () => ({ document: { registry: { assignments: [] }, managedDailyIdentities: [] } })),
+    }
+  }
+  it('does not let an unpublished draft admission authorize a managed link', async () => {
+    vi.mocked(readExistingGovernanceStore).mockResolvedValueOnce({ document: document(false, true) } as never)
+    const store = repository()
+    await expect(service(store).findCandidate('employee-1', actor, request))
+      .rejects.toMatchObject({ code: 'HUMAN_PRIVILEGED_REQUIRED' })
+    expect(store.readExisting).not.toHaveBeenCalled()
+  })
+  it('keeps the published admission effective when only the draft removes it', async () => {
+    vi.mocked(readExistingGovernanceStore).mockResolvedValueOnce({ document: document(true, false) } as never)
+    const store = repository()
+    await expect(service(store).findCandidate('employee-1', actor, request))
+      .rejects.toMatchObject({ code: 'EMPLOYEE_NUMBER_REQUIRED' })
+    expect(store.readExisting).toHaveBeenCalledOnce()
   })
 })

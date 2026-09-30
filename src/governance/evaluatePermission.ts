@@ -4,6 +4,18 @@ import { isActiveAt, scopeMatches } from './validation'
 
 type Options = { now?: string; receiptId?: string; timeSource?: PermissionEvaluationResultV1['timeSource'] }
 type AnyVersion = GovernancePolicyVersionV1 | GovernanceAssignmentVersionV2 | GovernanceAssignmentVersionV3
+
+/** An employee assignment applies to linked principals; a principal assignment applies only to its target. */
+export function assignmentMatchesSecuritySubject(
+  assignment: { employeeId: string; subjectKind?: 'employee' | 'principal'; targetPrincipalId?: string | null },
+  principalId: string,
+  employeeId: string,
+): boolean {
+  return assignment.employeeId === employeeId
+    && (assignment.subjectKind === undefined
+      || assignment.subjectKind === 'employee'
+      || (assignment.subjectKind === 'principal' && assignment.targetPrincipalId === principalId))
+}
 function base(version: AnyVersion | null, request: PermissionEvaluationRequestV1, now: string, options: Options): PermissionEvaluationResultV1 { return { status: 'denied', reason: 'POLICY_DATA_INVALID', receiptId: options.receiptId ?? `receipt-${randomUUID()}`, policyVersionId: version?.id ?? null, policySnapshotHash: version?.snapshotHash ?? null, organizationVersionId: version?.organizationSnapshot.workspaceVersionId ?? null, organizationRevision: version?.organizationSnapshot.workspaceRevision ?? null, principalId: null, matchedRoleIds: [], delegationId: null, evaluatedAt: now, timeSource: options.timeSource ?? (request.asOf ? 'local-simulator' : 'server') } }
 function evaluateV1(document: GovernanceDocumentV1, request: PermissionEvaluationRequestV1, options: Options, now: string, version: GovernancePolicyVersionV1 | null): PermissionEvaluationResultV1 {
   const result = base(version, request, now, options); if (!version) return { ...result, reason: 'NO_ACTIVE_POLICY' }
@@ -16,10 +28,92 @@ function evaluateV1(document: GovernanceDocumentV1, request: PermissionEvaluatio
   const delegations = policy.delegations.filter((delegation) => delegation.applicationId === request.applicationId && delegation.toEmployeeId === link.employeeId && delegation.permissionIds.includes(permission.id) && delegation.status === 'active' && isActiveAt(delegation.status, delegation.validFrom, delegation.validTo, now) && scopeMatches(delegation.scope, request.scope)); for (const delegation of delegations) { const sourceRoleIds = new Set(policy.roleAssignments.filter((assignment) => activeRoleIds.has(assignment.roleId) && assignment.employeeId === delegation.fromEmployeeId && assignment.status === 'active' && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, now) && scopeMatches(assignment.scope, request.scope)).map((assignment) => assignment.roleId)); const sourceGrants = policy.rolePermissionGrants.filter((grant) => sourceRoleIds.has(grant.roleId) && grant.permissionId === permission.id); if (sourceGrants.some((grant) => grant.effect === 'allow')) return { ...result, status: 'allowed', reason: 'ALLOWED_DELEGATION', principalId: link.principalId, delegationId: delegation.id, matchedRoleIds: [...sourceRoleIds] } }
   return { ...result, reason: delegations.length ? 'DELEGATION_INVALID' : 'NO_MATCHING_ROLE', principalId: link.principalId }
 }
+function evaluateCurrentPolicyForPrincipal(
+  version: GovernanceAssignmentVersionV2 | GovernanceAssignmentVersionV3 | null,
+  request: PermissionEvaluationRequestV1,
+  options: Options,
+  now: string,
+  principalId: string,
+  employeeId: string,
+): PermissionEvaluationResultV1 {
+  const result = base(version, request, now, options)
+  if (!version) return { ...result, reason: 'NO_ACTIVE_POLICY' }
+  const policy = version.policy
+  const permission = policy.permissions.find((value) =>
+    value.applicationId === 'orgmaster' && value.code === request.permissionCode && value.status === 'active')
+  if (!permission) return { ...result, reason: 'PERMISSION_UNKNOWN' }
+  const activeRoleIds = new Set(policy.applicationRoles.filter((role) =>
+    role.applicationId === 'orgmaster' && role.status === 'active').map((role) => role.id))
+  const roleIds = new Set(policy.roleAssignments.filter((assignment) =>
+    activeRoleIds.has(assignment.roleId)
+    && assignment.applicationId === 'orgmaster'
+    && assignmentMatchesSecuritySubject(assignment, principalId, employeeId)
+    && assignment.status === 'active'
+    && assignment.scope.kind === 'global'
+    && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, now))
+    .map((assignment) => assignment.roleId))
+  const grants = policy.rolePermissionGrants.filter((grant) =>
+    roleIds.has(grant.roleId) && grant.permissionId === permission.id)
+  if (grants.some((grant) => grant.effect === 'deny')) {
+    return { ...result, reason: 'EXPLICIT_DENY', principalId, matchedRoleIds: [...roleIds] }
+  }
+  if (grants.some((grant) => grant.effect === 'allow')) {
+    return { ...result, status: 'allowed', reason: 'ALLOWED_ROLE', principalId, matchedRoleIds: [...roleIds] }
+  }
+  return { ...result, reason: 'NO_MATCHING_ROLE', principalId, matchedRoleIds: [...roleIds] }
+}
+
 function evaluateV2(document: GovernanceDocumentV2 | GovernanceDocumentV3, request: PermissionEvaluationRequestV1, options: Options, now: string, version: GovernanceAssignmentVersionV2 | GovernanceAssignmentVersionV3 | null): PermissionEvaluationResultV1 {
-  const result = base(version, request, now, options); if (request.applicationId !== 'orgmaster') return { ...result, reason: 'EXTERNAL_PERMISSION_EVALUATION_UNSUPPORTED' }; if (!version) return { ...result, reason: 'NO_ACTIVE_POLICY' }; const policy = version.policy; const permission = policy.permissions.find((value) => value.applicationId === 'orgmaster' && value.code === request.permissionCode && value.status === 'active'); if (!permission) return { ...result, reason: 'PERMISSION_UNKNOWN' }
-  const links = policy.identityLinks.filter((value) => value.issuer === request.issuer && value.subject === request.subject); if (links.length > 1) return { ...result, reason: 'PRINCIPAL_CONFLICT' }; const link = links[0]; if (!link) return { ...result, reason: 'IDENTITY_NOT_LINKED' }; if (!isActiveAt(link.status, link.validFrom, link.validTo, now)) return { ...result, reason: 'IDENTITY_INACTIVE', principalId: link.principalId }
-  const roleIds = new Set(policy.roleAssignments.filter((assignment) => assignment.applicationId === 'orgmaster' && assignment.employeeId === link.employeeId && assignment.status === 'active' && assignment.scope.kind === 'global' && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, now)).map((assignment) => assignment.roleId)); const grants = policy.rolePermissionGrants.filter((grant) => roleIds.has(grant.roleId) && grant.permissionId === permission.id); if (grants.some((grant) => grant.effect === 'deny')) return { ...result, reason: 'EXPLICIT_DENY', principalId: link.principalId, matchedRoleIds: [...roleIds] }; if (grants.some((grant) => grant.effect === 'allow')) return { ...result, status: 'allowed', reason: 'ALLOWED_ROLE', principalId: link.principalId, matchedRoleIds: [...roleIds] }; return { ...result, reason: 'NO_MATCHING_ROLE', principalId: link.principalId }
+  const result = base(version, request, now, options)
+  if (request.applicationId !== 'orgmaster') return { ...result, reason: 'EXTERNAL_PERMISSION_EVALUATION_UNSUPPORTED' }
+  if (!version) return { ...result, reason: 'NO_ACTIVE_POLICY' }
+  const links = version.policy.identityLinks.filter((value) =>
+    value.issuer === request.issuer && value.subject === request.subject)
+  if (links.length > 1) return { ...result, reason: 'PRINCIPAL_CONFLICT' }
+  const link = links[0]
+  if (!link) return { ...result, reason: 'IDENTITY_NOT_LINKED' }
+  if (!isActiveAt(link.status, link.validFrom, link.validTo, now)) {
+    return { ...result, reason: 'IDENTITY_INACTIVE', principalId: link.principalId }
+  }
+  return evaluateCurrentPolicyForPrincipal(version, request, options, now, link.principalId, link.employeeId)
+}
+
+/** Runtime management authorization starts with the verified session principal.
+ * Provider pair is used to bind login, never to re-select the authorization subject. */
+export function evaluateVerifiedPrincipalPermission(
+  document: GovernanceDocumentV1 | GovernanceDocumentV2 | GovernanceDocumentV3,
+  actor: { principalId: string; employeeId: string | null },
+  permissionCode: string,
+  options: Options = {},
+): PermissionEvaluationResultV1 {
+  const now = options.now ?? new Date().toISOString()
+  const request: PermissionEvaluationRequestV1 = {
+    applicationId: 'orgmaster', issuer: 'verified-principal', subject: actor.principalId,
+    permissionCode, scope: { kind: 'global' },
+  }
+  const active = document.activePolicyVersionId
+    ? document.publishedVersions.find((candidate) => candidate.id === document.activePolicyVersionId) ?? null
+    : null
+  const kind = active && 'kind' in active ? active.kind : null
+  const version: GovernanceAssignmentVersionV2 | GovernanceAssignmentVersionV3 | null =
+    document.schemaVersion === 3 && kind === 'assignment-governance-v3'
+      ? active as GovernanceAssignmentVersionV3
+      : document.schemaVersion === 2 && kind === 'assignment-governance-v2'
+        ? active as GovernanceAssignmentVersionV2
+        : null
+  const result = base(version, request, now, options)
+  if (!version) return { ...result, reason: active ? 'POLICY_DATA_INVALID' : 'NO_ACTIVE_POLICY' }
+  if (!actor.principalId || !actor.employeeId || !permissionCode.trim()) {
+    return { ...result, reason: 'IDENTITY_NOT_LINKED' }
+  }
+  const links = version.policy.identityLinks.filter((link) =>
+    link.principalId === actor.principalId
+    && isActiveAt(link.status, link.validFrom, link.validTo, now))
+  if (links.length === 0) return { ...result, reason: 'IDENTITY_NOT_LINKED' }
+  if (links.some((link) => link.employeeId !== actor.employeeId)) {
+    return { ...result, reason: 'PRINCIPAL_CONFLICT' }
+  }
+  return evaluateCurrentPolicyForPrincipal(version, request, options, now, actor.principalId, actor.employeeId)
 }
 export function evaluatePermission(document: GovernanceDocumentV1 | GovernanceDocumentV2 | GovernanceDocumentV3, request: PermissionEvaluationRequestV1, options: Options = {}): PermissionEvaluationResultV1 {
   const now = options.now ?? request.asOf ?? new Date().toISOString(); const active = document.activePolicyVersionId ? document.publishedVersions.find((version) => version.id === document.activePolicyVersionId) ?? null : null
