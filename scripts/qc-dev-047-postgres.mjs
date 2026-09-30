@@ -1366,6 +1366,36 @@ async function runDev057Checks() {
         id text PRIMARY KEY,company_id text NOT NULL,package_id text NOT NULL,
         event_type text NOT NULL,actor_id text NOT NULL,
         detail_json jsonb NOT NULL,created_at timestamptz NOT NULL);
+      CREATE TABLE ai_pdm_core.submissions (
+        id text PRIMARY KEY,company_id text NOT NULL,item_id text NOT NULL,
+        status text NOT NULL,released_at timestamptz,updated_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now());
+      INSERT INTO ai_pdm_core.submissions
+        (id,company_id,item_id,status,released_at) VALUES
+        ('f07-current','company-jenfu','f07-item','Released','2026-09-29T12:00:00Z'),
+        ('f07-old','company-jenfu','f07-item','Released','2026-09-28T12:00:00Z'),
+        ('f07-other-company','company-other','f07-other','Released','2026-09-29T12:00:00Z'),
+        ('f07-draft','company-jenfu','f07-draft-item','Draft',NULL),
+        ('f07-no-package','company-jenfu','f07-no-package-item','Released','2026-09-29T12:00:00Z');
+      ALTER TABLE ai_pdm_core.submissions ADD COLUMN submitted_by text NOT NULL DEFAULT 'qc-profile-legacy';
+      CREATE TABLE ai_pdm_core.submission_files (
+        id text PRIMARY KEY,submission_id text NOT NULL,original_filename text NOT NULL,
+        file_role text NOT NULL,local_path text NOT NULL,storage_provider text,
+        storage_bucket text,storage_key text,sha256 text NOT NULL,file_size bigint NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        FOREIGN KEY(submission_id) REFERENCES ai_pdm_core.submissions(id));
+      CREATE TABLE ai_pdm_core.release_packages (
+        id text PRIMARY KEY,submission_id text NOT NULL UNIQUE,
+        package_filename text NOT NULL,local_path text NOT NULL,
+        storage_provider text,storage_bucket text,storage_key text,
+        sha256 text NOT NULL,file_size bigint NOT NULL,manifest_json text NOT NULL,
+        created_by text,created_at timestamptz NOT NULL,
+        FOREIGN KEY(submission_id) REFERENCES ai_pdm_core.submissions(id));
+      CREATE TABLE ai_pdm_core.audit_logs (
+        id text PRIMARY KEY,submission_id text,actor_id text,action text NOT NULL,
+        detail_json text NOT NULL,company_id text,scope_kind text NOT NULL,
+        created_at timestamptz NOT NULL,
+        FOREIGN KEY(submission_id) REFERENCES ai_pdm_core.submissions(id));
       CREATE TABLE ai_pdm_core.platform_command_receipts (
         id text PRIMARY KEY,company_id text NOT NULL,command_name text NOT NULL,
         schema_version integer NOT NULL,idempotency_key text NOT NULL,
@@ -1467,6 +1497,41 @@ async function runDev057Checks() {
       })
       assert.equal(result.status, 0, `AI-PDM ${phase} transfer failed: ${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`)
     }
+    const downloadTest = path.join(consumerRoot, 'src/lib/principal-published-release-package.postgres-contract.test.ts')
+    assert.ok(fs.existsSync(downloadTest), 'actual Principal package HTTP test is required')
+    const downloadProbe = (phase) => {
+      const dataDir = path.join(taskRoot, 'aipdm-download-data')
+      const repositoryDir = path.join(taskRoot, 'aipdm-download-repository')
+      const result = spawnSync(process.execPath, [vitest, 'run', '--config', 'vitest.config.ts',
+        'src/lib/principal-published-release-package.postgres-contract.test.ts'], {
+        cwd: consumerRoot, encoding: 'utf8', windowsHide: true, timeout: 90_000,
+        env: { ...process.env, CI: '1', DEV057_CONTRACT_POSTGRES_URL: consumerUrl,
+          DEV057_CONTRACT_PHASE: phase, PDM_DB_PROVIDER: 'postgres',
+          PDM_POSTGRES_URL: consumerUrl, DEV010_N2_DATABASE_BOUNDARY: 'required',
+          PDM_DATA_DIR: dataDir, PDM_REPOSITORY_DIR: repositoryDir,
+          DEV057_FILE_QC_ROOT: taskRoot,
+          PDM_STORAGE_PROVIDER: 'local_repository', PDM_AUTH_MODE: 'firebase_bff',
+          PDM_JENFU_PLATFORM_AUTH_MODE: 'on', PDM_JENFU_ENTITLEMENT_MODE: 'enforce',
+          JENFU_FIREBASE_PROJECT_ID: 'dev057-synthetic', PDM_FIREBASE_PROJECT_ID: 'dev057-synthetic',
+          JENFU_IDENTITY_AUDIENCE: 'dev057-synthetic',
+          JENFU_IDENTITY_ISSUER: 'https://securetoken.google.com/dev057-synthetic',
+          PDM_SESSION_ISSUER: 'https://ai-pdm.test', PDM_SESSION_AUDIENCE: 'dev057-file-qc',
+          PDM_SESSION_CURRENT_KEY_ID: 'dev057-qc-key',
+          PDM_SESSION_CURRENT_SECRET: 'task-owned-synthetic-session-secret-for-local-qc-only' },
+      })
+      assert.equal(result.status, 0, `AI-PDM ${phase} file consumer failed: ${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`)
+      assert.match(result.stdout, /Tests\s+9 passed/u, 'all actual package HTTP checks must execute, not skip')
+    }
+    const numberingProbe = (phase, extra = {}) => {
+      const runner = path.join(consumerRoot, 'scripts/qc-dev-121-numbering-owner-grant-postgres.mjs')
+      const result = spawnSync(process.execPath, [runner], {
+        cwd: consumerRoot, encoding: 'utf8', windowsHide: true, timeout: 180_000,
+        env: { ...process.env, DEV057_FILE_QC_ROOT: taskRoot,
+          DEV057_NUMBERING_ADMIN_URL: connectionString, DEV057_CONTRACT_PHASE: phase, ...extra }
+      })
+      assert.equal(result.status, 0, 'AI-PDM numbering ' + phase + ' failed: ' + (result.stdout || '') + '\n' + (result.stderr || ''))
+      assert.match(result.stdout, /"status":"PASS"/u)
+    }
     const publish = async (suffix, changeAssignment) => {
       const artifact = await activeGovernanceArtifact()
       const active = artifact.payload.publishedVersions.find((version) => version.id === artifact.payload.activePolicyVersionId)
@@ -1489,20 +1554,28 @@ async function runDev057Checks() {
     })
     probe('assigned', assigned)
     transferProbe('assigned')
+    downloadProbe('assigned')
+    numberingProbe('assigned')
     const revoked = await publish('revoked', (assignment) => { assignment.status = 'revoked' })
     probe('revoked', revoked)
     transferProbe('revoked')
+    downloadProbe('revoked')
+    numberingProbe('revoked')
     const scoped = await publish('scoped', (assignment) => {
       assignment.status = 'active'
       assignment.scope = { kind: 'workspace', value: 'company-other' }
     })
     probe('out-of-scope', scoped)
     transferProbe('out-of-scope')
+    downloadProbe('out-of-scope')
+    numberingProbe('out-of-scope')
     const restored = await publish('restored', (assignment) => {
       assignment.scope = { kind: 'workspace', value: 'company-jenfu' }
     })
     probe('restored', restored)
     transferProbe('restored')
+    downloadProbe('restored')
+    numberingProbe('restored')
     const flow = await publish('flow', (assignment, policy) => {
       assignment.roleId = 'role-pdm-admin'
       assignment.roleCodeSnapshot = 'pdm_admin'
@@ -1525,8 +1598,78 @@ async function runDev057Checks() {
       grant.scope_key === 'company-jenfu'),
     'the published v3 owner grant must be readable before AI-PDM submits a review')
     transferProbe('flow')
+    downloadProbe('flow')
+    const reviewProbe = spawnSync(process.execPath,
+      [path.join(consumerRoot,'scripts/qc-dev-121-numbering-owner-grant-postgres.mjs')], {
+      cwd:consumerRoot,encoding:'utf8',windowsHide:true,timeout:180_000,
+      env:{...process.env,DEV057_FILE_QC_ROOT:taskRoot,DEV057_NUMBERING_ADMIN_URL:connectionString,
+        DEV057_CONTRACT_PHASE:'flow',DEV057_NATIVE_REVIEW_PROBE:'1',
+        DEV057_FLOW_OWNER_PRINCIPAL_ID:flowOwner.rows[0].principal_id}
+    })
+    assert.equal(reviewProbe.status,0,'AI-PDM part/drawing review chain failed: '+(reviewProbe.stdout||'')+'\n'+(reviewProbe.stderr||''))
+    assert.match(reviewProbe.stdout,/"status":"PASS"/u)
+    const delegationRecipient = await queryAs('jenfu_ai_pdm_runtime',
+      "SELECT principal_id,employee_id,account_type,principal_issuer,principal_subject FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_issuer='issuer-managed-verify' AND principal_subject='subject-managed-verify'")
+    assert.equal(delegationRecipient.rowCount,1,'the delegation recipient must have an exact verified account')
+    assert.equal(delegationRecipient.rows[0].employee_id,'employee-four')
+    assert.equal(delegationRecipient.rows[0].account_type,'human_personal')
+    const delegationId = 'delegation-dev057-principal-numbering'
+    await publish('delegation-active', (assignment,policy) => {
+      policy.roleDelegations = [{id:delegationId,sourceAssignmentId:assignment.id,
+        fromEmployeeId:'employee-legacy',toEmployeeId:'employee-two',roleId:assignment.roleId,
+        catalogVersion:assignment.catalogVersion,scope:structuredClone(assignment.scope),status:'active',
+        validFrom:'2026-01-01T00:00:00.000Z',validTo:'2099-01-01T00:00:00.000Z'}]
+    })
+    const unresolvedDelegated = await queryAs('jenfu_ai_pdm_runtime',
+      "SELECT principal_id FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v3 WHERE principal_id='principal-recipient'")
+    assert.equal(unresolvedDelegated.rowCount,0,'an employee with unresolved ownership must remain excluded')
+    await publish('delegation-verified-recipient',(assignment,policy) => {
+      policy.roleDelegations[0].toEmployeeId=delegationRecipient.rows[0].employee_id
+    })
+    const delegated = await queryAs('jenfu_ai_pdm_runtime',
+      "SELECT principal_id,grant_kind,delegation_id,scope_key FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v3 WHERE principal_id=$1",[delegationRecipient.rows[0].principal_id])
+    assert.deepEqual(delegated.rows,[{principal_id:delegationRecipient.rows[0].principal_id,grant_kind:'delegated',delegation_id:delegationId,scope_key:'company-jenfu'}])
+    const delegatedActor = {DEV057_NUMBERING_ACTOR:'delegated',
+      DEV057_NUMBERING_DELEGATE_PRINCIPAL_ID:delegationRecipient.rows[0].principal_id,
+      DEV057_NUMBERING_DELEGATE_EMPLOYEE_ID:delegationRecipient.rows[0].employee_id,
+      DEV057_NUMBERING_DELEGATE_ISSUER:delegationRecipient.rows[0].principal_issuer,
+      DEV057_NUMBERING_DELEGATE_SUBJECT:delegationRecipient.rows[0].principal_subject}
+    numberingProbe('assigned',delegatedActor)
+    await publish('delegation-source-revoked',assignment => {assignment.status='revoked'})
+    numberingProbe('revoked',delegatedActor)
+    await publish('delegation-wrong-scope',(assignment,policy) => {
+      assignment.status='active';assignment.scope={kind:'workspace',value:'company-other'}
+      policy.roleDelegations[0].scope=structuredClone(assignment.scope)
+    })
+    numberingProbe('out-of-scope',delegatedActor)
+    await publish('delegation-expired',(assignment,policy) => {
+      assignment.scope={kind:'workspace',value:'company-jenfu'}
+      policy.roleDelegations[0].scope=structuredClone(assignment.scope)
+      policy.roleDelegations[0].validTo='2026-01-02T00:00:00.000Z'
+    })
+    numberingProbe('revoked',delegatedActor)
+    await publish('delegation-retired',(assignment,policy) => {policy.roleDelegations=[]})
+    const fileHandoff = await publish('file-handoff', (assignment) => {
+      assignment.roleId = 'role-manufacturing'
+      assignment.roleCodeSnapshot = 'manufacturing'
+    })
+    downloadProbe('file-handoff')
+    const fileRevoked = await publish('file-revoked', (assignment) => { assignment.status = 'revoked' })
+    downloadProbe('file-revoked')
+    const fileScoped = await publish('file-scoped', (assignment) => {
+      assignment.status = 'active'
+      assignment.scope = { kind: 'workspace', value: 'company-other' }
+    })
+    downloadProbe('file-scoped')
+    await publish('file-restore', (assignment) => {
+      assignment.roleId = 'role-pdm-admin'
+      assignment.roleCodeSnapshot = 'pdm_admin'
+      assignment.scope = { kind: 'workspace', value: 'company-jenfu' }
+    })
     return { consumerPackage: packageName, consumerTestSha256: sha256(fs.readFileSync(consumerTest)),
       transferTestSha256: sha256(fs.readFileSync(transferTest)),
+      downloadTestSha256: sha256(fs.readFileSync(downloadTest)), downloadVersions: [fileHandoff, fileRevoked, fileScoped],
+      download: 'actual-http, owner grant-v3, restricted PostgreSQL, actual local bytes, Principal audit, no Firebase session proof',
       runtimeRole: 'dev057_ai_pdm_consumer_probe', publishedVersions: [assigned, revoked, scoped, restored, flow],
       decisions: ['allowed', 'entitlement_assignment_not_found', 'entitlement_scope_mismatch', 'allowed', 'allowed'],
       transfer: ['committed', 'no-write', 'no-write', 'committed', 'submitted-and-committed'] }
