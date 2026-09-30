@@ -1,3 +1,4 @@
+import { assertDev040ReleaseIntent } from './lib/dev040-orgmaster-independent-release.mjs'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import test from 'node:test'
@@ -61,4 +62,33 @@ test('CLI has an exact three-stage input surface', () => {
   assert.throws(() => parsePrerequisiteProducerArgs(['--stage', 'release-intent', '--release-id', 'REL-001']), /INVALID_ARGUMENTS/)
   assert.equal(resolveOwnerInputPath('/owner', 'output/dev-012/inputs/runtime.json').endsWith(['owner', 'output', 'dev-012', 'inputs', 'runtime.json'].join(path.sep)), true)
   assert.throws(() => resolveOwnerInputPath('/owner', '../sibling/secret.json'), /INPUT_PATH_OUT_OF_SCOPE/)
+})
+
+test('orgmaster intent producer preserves maintenance recovery for its real consumer', () => {
+  const p = { ...profile, application: { ...profile.application, id: 'orgmaster' },
+    schemas: { releaseIntent: 'jenfu.dev040.orgmaster-release-intent.v2' } }
+  const lock = { ...sourceLock, ownerApplicationId: 'orgmaster' }
+  const input = { baselineIntentRef: ref('baseline'), sourceLockRef: ref('source-lock'), authorizationPolicyRef: ref('authorization'),
+    readinessReceiptRef: ref('readiness'), foundationReceiptRef: ref('foundation'), infraReceiptRef: ref('infra'),
+    runtimeConfigRef: ref('runtime'), previousRevision: 'orgmaster-prod-old', deadlineAt: '2999-01-01T00:00:00.000Z',
+    principalOnlyRecovery: { revision: 'orgmaster-prod-recovery', serviceUid: 'd65f379b-a342-4eb3-ba22-109aa5f368c5',
+      imageDigest: `asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-recovery@sha256:${H64}`,
+      receiptRef: { uri: 'gs://owner-bucket/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/proof.json', sha256: H64 } },
+  }
+  const common = { releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', status: 'PASS', projectId: 'project' }
+  const authority = { ...common, environment: 'production', remainingHumanAction: 0, expiresAt: input.deadlineAt }
+  const values = { sourceLock: lock, authorization: authority, readiness: authority,
+    foundation: { ...common, ownerApplicationId: 'shared-foundation', sourceRevision: 'f'.repeat(40) },
+    infra: { ...common, migrationRunnerDigest: p.artifact.migrationRunnerUri + '@sha256:' + 'd'.repeat(64) },
+    runtimeConfig: buildRuntimeConfigReceipt({ profile: p, releaseId: 'REL-001', sourceLock: lock,
+      plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '7' }, observedAt: NOW }) }
+  const produce = (changed = {}) => buildReleaseIntent({ profile: p, releaseId: 'REL-001',
+    input: { ...input, ...changed }, sourceLock: lock, prerequisiteValues: values, validateIntent: assertDev040ReleaseIntent })
+  const intent = produce()
+  assert.deepEqual(intent.principalOnlyRecovery, input.principalOnlyRecovery)
+  assert.notEqual(intent.principalOnlyRecovery, input.principalOnlyRecovery)
+  for (const changed of [
+    { principalOnlyRecovery: { ...input.principalOnlyRecovery, revision: input.previousRevision } },
+    { principalOnlyRecovery: { ...input.principalOnlyRecovery, receiptRef: { ...input.principalOnlyRecovery.receiptRef, uri: 'gs://sibling/receipts/proof.json' } } },
+  ]) assert.throws(() => produce(changed))
 })

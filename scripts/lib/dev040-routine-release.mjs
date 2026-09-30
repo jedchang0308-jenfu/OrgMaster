@@ -1,3 +1,5 @@
+import { readPrincipalOnlyRepairBaseline } from './dev057-principal-forward-repair.mjs'
+import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
 import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256 } from './dev012-owner-release-runtime.mjs'
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
@@ -130,8 +132,16 @@ export function assertDev057PrincipalSmokeInfraTransition(root, baselineRevision
     return JSON.parse(result.stdout)
   }
   assertDev057PrincipalSmokeProfileTransition(readProfile(baselineRevision), readProfile(sourceRevision))
-  const before = controlledInfrastructureFingerprint(root, baselineRevision, [file], principalSmokeInfrastructureInputs)
-  const after = controlledInfrastructureFingerprint(root, sourceRevision, [file], principalSmokeInfrastructureInputs)
+  const recoveryFile = 'infra/google-cloud/dev-040-production-release/principal-only-recovery.Dockerfile'
+  const excludedPaths = [file]
+  const beforeRecovery = revisionBlob(root, baselineRevision, recoveryFile)
+  const afterRecovery = revisionBlob(root, sourceRevision, recoveryFile)
+  if (beforeRecovery !== afterRecovery) {
+    if (beforeRecovery !== null || afterRecovery !== '89230d38d497ddd10057bb916273897a7b8324d2') fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
+    excludedPaths.push(recoveryFile)
+  }
+  const before = controlledInfrastructureFingerprint(root, baselineRevision, excludedPaths, principalSmokeInfrastructureInputs)
+  const after = controlledInfrastructureFingerprint(root, sourceRevision, excludedPaths, principalSmokeInfrastructureInputs)
   if (before !== after) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
   return after
 }
@@ -534,7 +544,9 @@ export async function readRoutineBaseline({ profile, transport, baselineIntentRe
   const [terminal, deployment, migration, candidate] = await Promise.all([read(paths.terminal), read(paths.deployment), read(paths.migrate), read(paths.candidate)])
   assertSealedStage(terminal.value, profile, intent, 'terminal')
   assertSealedStage(candidate.value, profile, intent, 'candidate')
-  if (terminal.value.facts.result !== 'RELEASED' || terminal.value.facts.remainingHumanAction !== 0 || !same(candidate.value.facts.deploymentCapsuleRef, deployment.ref) || !same(candidate.value.facts.migrationReceiptRef, migration.ref) || !same(deployment.value.releaseIntentRef, baselineIntentRef) || deployment.value.sourceRevision !== intent.sourceRevision || terminal.value.facts.artifactDigest !== deployment.value.artifactDigest || terminal.value.facts.candidateRevision !== candidate.value.facts.candidateRevision) fail('ROUTINE_BASELINE_NOT_RELEASED')
+  const repair = terminal.value.facts.result === 'ROLLED_BACK'
+    ? await readPrincipalOnlyRepairBaseline({ profile, transport, baselineIntentRef }) : null
+  if ((!repair && (terminal.value.facts.result !== 'RELEASED' || terminal.value.facts.remainingHumanAction !== 0)) || !same(candidate.value.facts.deploymentCapsuleRef, deployment.ref) || !same(candidate.value.facts.migrationReceiptRef, migration.ref) || !same(deployment.value.releaseIntentRef, baselineIntentRef) || deployment.value.sourceRevision !== intent.sourceRevision || (!repair && (terminal.value.facts.artifactDigest !== deployment.value.artifactDigest || terminal.value.facts.candidateRevision !== candidate.value.facts.candidateRevision))) fail('ROUTINE_BASELINE_NOT_RELEASED')
   if (migration.value.schemaVersion === 'jenfu.dev012.stage-receipt.v1') {
     assertSealedStage(migration.value, profile, intent, 'migrate')
     if (migration.value.facts.disposition !== 'UNCHANGED_VERIFIED' || migration.value.facts.manifestSha256 !== intent.migrationManifestSha256) fail('ROUTINE_BASELINE_MIGRATION_INVALID')
@@ -543,7 +555,7 @@ export async function readRoutineBaseline({ profile, transport, baselineIntentRe
   assertMigrationBundle(bundle.value, { target: { ownerApplicationId: profile.application.id, ledger: profile.migrations.ledger, baselineCount: profile.migrations.baselineCount }, sourceRevision: intent.sourceRevision, bytes: bundle.bytes, bundleSha256: bundle.ref.sha256 })
   if (bundle.value.manifestSha256 !== intent.migrationManifestSha256) fail('ROUTINE_BASELINE_MIGRATION_INVALID')
   const runtime = await transport.readJson(intent.runtimeConfigRef, bucket, ['receipts'])
-  return { intent, terminal, deployment, migration, candidate, bundle, runtime }
+  return { intent, terminal, deployment, migration, candidate, bundle, runtime, repair, activeRevision: repair?.activeRevision ?? candidate.value.facts.candidateRevision }
 }
 
 // A safely finalized failed attempt is an audit record, not the new production
@@ -554,18 +566,23 @@ export async function resolveRoutineControlBaseline({ profile, transport, contro
   const intent = assertDev040ReleaseIntent(attempt.value, profile)
   if (intent.releaseId !== control.releaseId || intent.sourceRevision !== control.sourceRevision) fail('ROUTINE_CONTROL_JOIN_INVALID')
   if (control.result === 'RELEASED') return attempt.ref
+  if (control.result === 'ROLLED_BACK' && intent.principalOnlyRecovery) {
+    const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: attempt.ref })
+    if (!baseline.repair || baseline.activeRevision !== control.previousRevision) fail('ROUTINE_RECOVERY_NOT_VERIFIED')
+    return attempt.ref
+  }
   if (!['PRE_ACTIVATION_ABORTED', 'ROLLED_BACK'].includes(control.result) || !intent.baselineIntentRef) fail('ROUTINE_CONTROL_NOT_RELEASED')
   const paths = releasePaths(profile, intent, attempt.ref.sha256)
   const result = await transport.readBytes(paths.terminal, { prefixes: ['receipts'] })
   const terminal = JSON.parse(result.bytes.toString('utf8'))
   assertSealedStage(terminal, profile, intent, 'terminal')
-  if (terminal.facts.result !== control.result || terminal.facts.previousRevision !== intent.previousRevision) fail('ROUTINE_RECOVERY_NOT_VERIFIED')
+  if (terminal.facts.result !== control.result || terminal.facts.previousRevision !== principalOnlyRollbackRevision(intent)) fail('ROUTINE_RECOVERY_NOT_VERIFIED')
   return intent.baselineIntentRef
 }
 
 export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
-  if (baseline.terminal.value.facts.candidateRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
+  if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
   transport.assertServiceSettled(service)
   transport.assertCanonicalEntrypoint(profile, service)
   if ([...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some((row) => row.tag)) fail('ROUTINE_BASELINE_TAGGED')
@@ -612,10 +629,14 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     else if (controlledTransition?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION') principalSmokeInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
     else fail('ROUTINE_INFRA_CHANGED')
   }
-  const revision = await transport.getRevision(profile, intent.previousRevision)
-  transport.assertRevisionReady(profile, revision, baseline.deployment.value.artifactDigest, baseline.candidate.value.facts.cloudSqlProxyResolvedImage)
-  if (controlledTransition) assertHistoricalRuntimeReadback(profile, baselineRuntime, revision)
-  else assertRoutineRuntimeReadback(profile, runtimeConfig, revision)
+  if (baseline.repair) {
+    if (!intent.principalOnlyRecovery || !same(runtimeConfig, baselineRuntime)) fail('ROUTINE_REPAIR_RUNTIME_CHANGED')
+  } else {
+    const revision = await transport.getRevision(profile, intent.previousRevision)
+    transport.assertRevisionReady(profile, revision, baseline.deployment.value.artifactDigest, baseline.candidate.value.facts.cloudSqlProxyResolvedImage)
+    if (controlledTransition) assertHistoricalRuntimeReadback(profile, baselineRuntime, revision)
+    else assertRoutineRuntimeReadback(profile, runtimeConfig, revision)
+  }
   const current = await buildMigrationBundle(intent.sourceRevision)
   if (current.bundle.manifestSha256 !== intent.migrationManifestSha256) fail('MIGRATION_MANIFEST_MISMATCH')
   let migration
@@ -658,5 +679,5 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     const value = values[name]
     if (value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.releaseId !== intent.releaseId || !same(value.baselineIntentRef, intent.baselineIntentRef)) fail('ROUTINE_AUTHORITY_MISMATCH')
   }
-  return { baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
+  return { baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, ...(baseline.repair ? { principalOnlyForwardRepair: { rollbackRef: baseline.repair.rollbackRef, recoveryRef: baseline.repair.recoveryRef } } : {}), infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
 }

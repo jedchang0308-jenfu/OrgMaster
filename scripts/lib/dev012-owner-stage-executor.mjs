@@ -1,3 +1,4 @@
+import { assertPrincipalOnlyRecoveryBinding, assertPrincipalOnlyRecoveryReadback, principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
 import { gzipSync } from 'node:zlib'
 import { assertImmutableRef, assertProtectedGitHubContext, assertRuntimeConfig, candidateTagUriMatches, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
@@ -73,6 +74,7 @@ export function createGitSourceIdentity(root, sourceRevision) {
 function assertIntentBase(intent, profile, intentRef, intentSha256) {
   const exact = ['schemaVersion', 'ownerApplicationId', 'releaseId', 'sourceRevision', 'sourceSha256', 'sourceLockRef', 'authorizationPolicyRef', 'readinessReceiptRef', 'foundationReceiptRef', 'infraReceiptRef', 'runtimeConfigRef', 'migrationManifestSha256', 'previousRevision', 'deadlineAt'].sort()
   if (intent?.baselineIntentRef) { exact.push('baselineIntentRef'); exact.sort(); assertImmutableRef(intent.baselineIntentRef, profile.artifact.releaseBucket, ['receipts']) }
+  if (Object.hasOwn(intent ?? {}, 'principalOnlyRecovery')) { exact.push('principalOnlyRecovery'); exact.sort(); assertPrincipalOnlyRecoveryBinding(intent, profile.artifact.releaseBucket) }
   if (!intent || JSON.stringify(Object.keys(intent).sort()) !== JSON.stringify(exact) || intent.schemaVersion !== profile.schemas.releaseIntent || intent.ownerApplicationId !== profile.application.id || !/^[A-Z0-9][A-Z0-9-]{5,63}$/u.test(intent.releaseId ?? '') || !H40.test(intent.sourceRevision ?? '') || !H64.test(intent.sourceSha256 ?? '') || !H64.test(intent.migrationManifestSha256 ?? '') || !intent.previousRevision || intent.previousRevision === 'latest' || !Number.isFinite(Date.parse(intent.deadlineAt)) || Date.parse(intent.deadlineAt) <= Date.now()) fail('RELEASE_INTENT_INVALID')
   if (intentRef.uri.split('/')[2] !== profile.artifact.releaseBucket || intentRef.sha256 !== intentSha256) fail('RELEASE_INTENT_REF_INVALID')
   for (const name of ['sourceLockRef', 'authorizationPolicyRef', 'readinessReceiptRef', 'foundationReceiptRef', 'infraReceiptRef', 'runtimeConfigRef']) {
@@ -421,7 +423,7 @@ export function assertStaleControlSafeToSupersede({ current, profile, intent, ow
   if (Date.parse(current.leaseExpiresAt) >= Date.parse(now)
     || ownerRun?.id !== runId || ownerRun.status !== 'completed' || !ownerRun.conclusion
     || ownerRun.event !== 'workflow_dispatch' || ownerRun.headSha !== current.sourceRevision
-    || current.previousRevision !== intent.previousRevision || activeRevision !== intent.previousRevision) fail('CONTROL_HEAD_TAKEOVER_UNSAFE')
+    || current.previousRevision !== principalOnlyRollbackRevision(intent) || activeRevision !== intent.previousRevision) fail('CONTROL_HEAD_TAKEOVER_UNSAFE')
   const configuredTags = (service?.traffic ?? []).filter((row) => row?.tag)
   const observedTags = (service?.trafficStatuses ?? []).filter((row) => row?.tag)
   if (nextState === 'CANDIDATE_CREATED') {
@@ -461,7 +463,7 @@ async function writeControl({ transport, paths, profile, intent, fingerprint, ca
     schemaVersion: 'jenfu.dev012.owner-control-head.v1', inputFingerprint: fingerprint, ownerApplicationId: profile.application.id,
     service: profile.target.serviceName, controlBucket: profile.artifact.releaseBucket, releaseId: intent.releaseId,
     sourceRevision: intent.sourceRevision, sourceLockSha256: intent.sourceLockRef.sha256, candidateRevision: candidate?.candidateRevision ?? null,
-    previousRevision: intent.previousRevision, ownerRunRef: `https://api.github.com/repos/${profile.application.repository}/actions/runs/${environment.GITHUB_RUN_ID}`,
+    previousRevision: principalOnlyRollbackRevision(intent), ownerRunRef: `https://api.github.com/repos/${profile.application.repository}/actions/runs/${environment.GITHUB_RUN_ID}`,
     leaseExpiresAt: expires, deadlineAt: intent.deadlineAt, state, result,
   }
   const value = { ...core, controlSha256: sha256(canonicalize(core)) }
@@ -495,6 +497,15 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const service = await transport.getService(profile)
     transport.assertServiceSettled(service, 'PREPARE_BASELINE_MISMATCH')
     if (transport.effectiveRevision(service) !== intent.previousRevision) fail('PREPARE_BASELINE_MISMATCH')
+    const recovery = assertPrincipalOnlyRecoveryBinding(intent, profile.artifact.releaseBucket)
+    if (recovery) {
+      const [proof, revision] = await Promise.all([
+        transport.readJson(recovery.receiptRef, profile.artifact.releaseBucket, ['receipts']),
+        transport.getRevision(profile, recovery.revision),
+      ])
+      assertPrincipalOnlyRecoveryReadback({ intent, profile, proof: proof.value, service, revision })
+      if (service.scaling?.scalingMode !== 'MANUAL' || ![0, '0'].includes(service.scaling?.manualInstanceCount)) fail('PRINCIPAL_ONLY_QUIESCENCE_LOST')
+    }
     if (!verifyRoutineRelease) fail('ROUTINE_VERIFIER_REQUIRED')
     const routine = await verifyRoutineRelease({ intent, values, service })
     if (derived.controlledEnvironmentAuthority.releaseMode === 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD' && routine.releaseMode !== 'ROUTINE_UNCHANGED_RUNTIME') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
@@ -503,7 +514,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION' && routine.releaseMode !== 'DEV057_CUTOVER_SOURCE_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
-    return writeStage(transport, paths, profile, intent, 'prepare', null, { prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])), previousRevision: intent.previousRevision, runtimeServiceAccount: derived.runtimeConfig.runtimeServiceAccount, migrationRunnerDigest: derived.migrationRunnerDigest, routine, entrypointBaseline: transport.entrypointSnapshot(service), remainingHumanAction: 0 })
+    return writeStage(transport, paths, profile, intent, 'prepare', null, { prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])), previousRevision: intent.previousRevision, ...(recovery ? { principalOnlyRecovery: recovery } : {}), runtimeServiceAccount: derived.runtimeConfig.runtimeServiceAccount, migrationRunnerDigest: derived.migrationRunnerDigest, routine, entrypointBaseline: transport.entrypointSnapshot(service), remainingHumanAction: 0 })
   }
 
   if (stage === 'build') {
@@ -562,7 +573,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     assertMigrationReceipt(migration.value, profile, intent, { allowForward: prepare.value.facts.routine?.migrationDisposition === 'FORWARD_APPLY', forwardPlan: prepare.value.facts.routine })
     const runtimeReceipt = await transport.readJson(intent.runtimeConfigRef, profile.artifact.releaseBucket, ['receipts'])
     const runtimeConfig = runtimeReceipt.value.runtimeConfig ?? runtimeReceipt.value
-    const candidate = await transport.createCandidate({ profile, artifactDigest: deployment.value.artifactDigest, runtimeConfig, fingerprint, deadlineAt: intent.deadlineAt })
+    const candidate = await transport.createCandidate({ profile, artifactDigest: deployment.value.artifactDigest, runtimeConfig, fingerprint, deadlineAt: intent.deadlineAt, principalOnly: Boolean(intent.principalOnlyRecovery) })
     if (candidate.previousRevision !== intent.previousRevision) fail('CANDIDATE_BASELINE_MISMATCH')
     const result = await writeStage(transport, paths, profile, intent, 'candidate', migration.ref, { deploymentCapsuleRef: deployment.ref, migrationReceiptRef: migration.ref, ...candidate })
     await writeControl({ transport, paths, profile, intent, fingerprint, candidate, state: 'CANDIDATE_CREATED', environment })
@@ -584,6 +595,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (entrypoint.value.previousReceiptRef?.uri !== candidate.ref.uri || entrypoint.value.previousReceiptRef?.sha256 !== candidate.ref.sha256 || entrypoint.value.facts.profileSha256 !== profileSha256) fail('ENTRYPOINT_RECEIPT_JOIN_INVALID')
     const service = await transport.getService(profile)
     transport.assertCanonicalEntrypoint(profile, service)
+    if (intent.principalOnlyRecovery && (service.scaling?.scalingMode !== 'MANUAL' || ![0, '0'].includes(service.scaling?.manualInstanceCount))) fail('PRINCIPAL_ONLY_QUIESCENCE_LOST')
     const tag = service.trafficStatuses?.find((row) => row.tag === candidate.value.facts.tag)
     if (tag?.revision !== candidate.value.facts.candidateRevision || Number(tag.percent ?? 0) !== 0 || !candidateTagUriMatches(service, candidate.value.facts, tag.uri) || transport.effectiveRevision(service) !== intent.previousRevision) fail('CANDIDATE_TAG_READBACK_MISMATCH')
     const revision = await transport.getRevision(profile, candidate.value.facts.candidateRevision)
@@ -606,7 +618,11 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const decision = await readStage(transport, paths, profile, intent, 'decision')
     if (decision.value.facts.decision !== 'GO') fail('MACHINE_DECISION_NO_GO')
     const candidate = await readStage(transport, paths, profile, intent, 'candidate')
-    const service = await transport.setTraffic({ profile, revision: candidate.value.facts.candidateRevision, candidateTag: candidate.value.facts.tag, deadlineAt: intent.deadlineAt })
+    const service = intent.principalOnlyRecovery
+      ? await transport.activatePrincipalOnly({ profile, oldRevision: intent.previousRevision,
+        recovery: intent.principalOnlyRecovery, candidateRevision: candidate.value.facts.candidateRevision,
+        candidateTag: candidate.value.facts.tag, deadlineAt: intent.deadlineAt })
+      : await transport.setTraffic({ profile, revision: candidate.value.facts.candidateRevision, candidateTag: candidate.value.facts.tag, deadlineAt: intent.deadlineAt })
     transport.assertCanonicalEntrypoint(profile, service)
     const result = await writeStage(transport, paths, profile, intent, 'activate', decision.ref, { decisionReceiptRef: decision.ref, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, effectiveRevision: transport.effectiveRevision(service), serviceEtag: service.etag, canonicalOrigin: profile.target.canonicalOrigin, ingress: service.ingress, defaultUriDisabled: service.defaultUriDisabled === true, invokerIamDisabled: service.invokerIamDisabled === true })
     await writeControl({ transport, paths, profile, intent, fingerprint, candidate: candidate.value.facts, state: 'ACTIVE', environment })
@@ -650,6 +666,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
   const migration = await optionalNamedJson(transport, paths.migrate, profile)
   if (migration) assertMigrationReceipt(migration.value, profile, intent, { historical: true })
   const databaseDisposition = migration ? (migration.value.facts?.disposition ?? 'FORWARD_APPLIED') : 'NOT_APPLIED'
+  const rollbackRevision = principalOnlyRollbackRevision(intent)
   let disposition = 'PRE_ACTIVATION_ABORTED'
   let entrypointRecovery = { changed: false, result: 'NOT_REQUIRED' }
   if (candidate) {
@@ -657,10 +674,14 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const facts = candidate.value.facts
     let service = await transport.getService(profile)
     if (transport.effectiveRevision(service) === facts.candidateRevision) {
-      service = await transport.setTraffic({ profile, revision: intent.previousRevision, deadlineAt: intent.deadlineAt })
+      service = await transport.setTraffic({ profile, revision: rollbackRevision, deadlineAt: intent.deadlineAt })
       disposition = 'ROLLED_BACK'
     }
-    await transport.removeCandidateTag({ profile, tag: facts.tag, candidateRevision: facts.candidateRevision, expectedActiveRevision: intent.previousRevision, deadlineAt: intent.deadlineAt })
+    const activeRevision = transport.effectiveRevision(service)
+    // The abort controller may have restored maintenance before this workflow.
+    if (intent.principalOnlyRecovery && activeRevision === rollbackRevision) disposition = 'ROLLED_BACK'
+    if (![intent.previousRevision, rollbackRevision].includes(activeRevision)) fail('PRINCIPAL_ONLY_ROLLBACK_BASELINE_INVALID')
+    await transport.removeCandidateTag({ profile, tag: facts.tag, candidateRevision: facts.candidateRevision, expectedActiveRevision: activeRevision, deadlineAt: intent.deadlineAt })
     if (!prepare) fail('PREPARE_RECEIPT_MISSING')
     assertStage(prepare.value, profile, intent, 'prepare')
     if (entrypoint) assertStage(entrypoint.value, profile, intent, 'entrypoint')
@@ -671,10 +692,14 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const deterministicTag = `candidate-${fingerprint.slice(0, 12)}`
     const service = await transport.getService(profile)
     const tagged = service.trafficStatuses?.find((row) => row.tag === deterministicTag)
-    if (tagged) await transport.removeCandidateTag({ profile, tag: deterministicTag, candidateRevision: deterministicRevision, expectedActiveRevision: intent.previousRevision, deadlineAt: intent.deadlineAt })
+    if (tagged) {
+      const activeRevision = transport.effectiveRevision(service)
+      if (![intent.previousRevision, rollbackRevision].includes(activeRevision)) fail('PRINCIPAL_ONLY_ROLLBACK_BASELINE_INVALID')
+      await transport.removeCandidateTag({ profile, tag: deterministicTag, candidateRevision: deterministicRevision, expectedActiveRevision: activeRevision, deadlineAt: intent.deadlineAt })
+    }
   }
-  const rollback = await writeStage(transport, paths, profile, intent, 'rollback', entrypoint?.ref ?? candidate?.ref ?? migration?.ref ?? null, { result: disposition, previousRevision: intent.previousRevision, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'], entrypointRecovery, databaseDisposition })
-  const terminal = stageReceipt({ profile, intent, stage: 'terminal', previousReceiptRef: rollback.ref, facts: { result: disposition, previousRevision: intent.previousRevision, entrypointRecovery, databaseDisposition }, observedAt: transport.now() })
+  const rollback = await writeStage(transport, paths, profile, intent, 'rollback', entrypoint?.ref ?? candidate?.ref ?? migration?.ref ?? null, { result: disposition, previousRevision: rollbackRevision, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'], entrypointRecovery, databaseDisposition })
+  const terminal = stageReceipt({ profile, intent, stage: 'terminal', previousReceiptRef: rollback.ref, facts: { result: disposition, previousRevision: rollbackRevision, entrypointRecovery, databaseDisposition }, observedAt: transport.now() })
   const terminalResult = await transport.putJson(paths.terminal, terminal, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
   await transport.publishIncident(profile, { correlationId: `${intent.releaseId}-${environment.GITHUB_RUN_ATTEMPT ?? '1'}`, ownerApplicationId: profile.application.id, sourceLockSha256: intent.sourceLockRef.sha256, eventRef: terminalResult.ref, occurredAt: transport.now() })
   await writeControl({ transport, paths, profile, intent, fingerprint, candidate: candidate?.value?.facts ?? null, state: 'FINALIZED', result: disposition, environment })
