@@ -1,0 +1,526 @@
+{
+  "contract": "DEV-057",
+  "runner": "DEV-057-postgres-qc-v2",
+  "evidenceScope": "TASK_OWNED_LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-09-30T01:45:07.591Z",
+  "productionWrites": false,
+  "executedCaseCount": 21,
+  "sourceRevision": "51ce0d0e003dbb5ea06688ea74f541066e70946d",
+  "dirty": [
+    "M AGENTS.md",
+    " M ai-doc/dev_task.md",
+    " M ai-doc/documentation_map.md",
+    " M ai-doc/specs/DEV-057-identity-and-grant-contract-boundary.md",
+    " M config/release/dev040-orgmaster-independent-production-v3.json",
+    " M db/migrations/README.md",
+    " M infra/google-cloud/dev-040-production-release/candidate-smoke.tf",
+    " M scripts/dev012-owner-release-runtime.test.mjs",
+    " M scripts/dev012-owner-stage-executor.test.mjs",
+    " M scripts/dev040-deploy-production.mjs",
+    " M scripts/dev040-orgmaster-independent-release.test.mjs",
+    " M scripts/dev040-production-migration-runner.mjs",
+    " M scripts/dev040-production-migration-runner.test.mjs",
+    " M scripts/dev040-routine-release.test.mjs",
+    " M scripts/lib/dev012-owner-release-runtime.mjs",
+    " M scripts/lib/dev012-owner-stage-executor.mjs",
+    " M scripts/lib/dev040-orgmaster-independent-release.mjs",
+    " M scripts/lib/dev040-routine-release.mjs",
+    " M scripts/lib/dev057-principal-contract-release.mjs",
+    " M scripts/qc-dev-040-r2-independent-release.mjs",
+    " M scripts/qc-dev-047-postgres.mjs",
+    " M scripts/qc-dev-057-contract.mjs",
+    " M server/aiPdmRoleCapabilityStore.test.ts",
+    " M server/applicationEntitlement.test.ts",
+    " M server/managementMethodAuthorization.ts",
+    " M server/orgmasterAccountEnrollmentService.test.ts",
+    " M server/orgmasterAccountEnrollmentService.ts",
+    " M server/orgmasterAuthApi.test.ts",
+    " M server/orgmasterAuthApi.ts",
+    " M server/orgmasterGovernanceApi.ts",
+    " M server/orgmasterGovernanceStore.ts",
+    " M server/orgmasterManagedIdentityService.test.ts",
+    " M server/orgmasterManagedIdentityService.ts",
+    " M server/orgmasterSessionRepository.test.ts",
+    " M server/orgmasterSessionRepository.ts",
+    " M server/orgmasterSsoHandoff.test.ts",
+    " M server/orgmasterSsoHandoff.ts",
+    " M server/privilegedAssignmentStore.test.ts",
+    " M src/auth/AuthGate.test.tsx",
+    " M src/auth/AuthGate.tsx",
+    " M src/governance/evaluatePermission.ts",
+    "?? ai-doc/qa/DEV-057-grant-v3-full-catalog-postgres-2026-09-30.json",
+    "?? ai-doc/qa/DEV-057-principal-governance-publication-authority-local-2026-09-29.json",
+    "?? contracts/orgmaster-ai-pdm-principal-effective-grants/v3/",
+    "?? db/migrations/028_dev057_ai_pdm_principal_effective_grants_v3.sql",
+    "?? scripts/dev015-orgmaster-principal-sso-smoke.test.mjs",
+    "?? scripts/lib/dev015-orgmaster-principal-sso-smoke.mjs",
+    "?? server/orgmasterGovernancePublishAuthority.test.ts",
+    "?? server/syntheticWorkspaceFixture.ts",
+    "?? src/governance/evaluateVerifiedPrincipalPermission.test.ts"
+  ],
+  "serverVersion": "18.4",
+  "acceptedServerMajors": [
+    17,
+    18
+  ],
+  "migrations": [
+    {
+      "name": "001_dev004_orgmaster_app_sessions.sql",
+      "bytes": 2218,
+      "sha256": "4537d51bd42a452b04f8641beb11588810ce9326075f8933b16e5ae37706d3bd"
+    },
+    {
+      "name": "002_dev006_orgmaster_persistence.sql",
+      "bytes": 5992,
+      "sha256": "10d71fbf556035b307c2b3997ad4e7499e9b3586dc60b351651af4b6973094da"
+    },
+    {
+      "name": "003_dev006_orgmaster_runtime_repository.sql",
+      "bytes": 11823,
+      "sha256": "2680c19df8f4bacddf53d5bfae55fb35658ff63f1e54de3f97727bd4bdd689ba"
+    },
+    {
+      "name": "004_dev040_active_principal_view.sql",
+      "bytes": 4594,
+      "sha256": "09591bddd33680bf584711884fb600ec996b356cff48ccfd1b6343c74a16f5b7"
+    },
+    {
+      "name": "005_dev005_entitlement_governance.sql",
+      "bytes": 41642,
+      "sha256": "cf5efbbe6ce29c9d6d8100961709d19ab90c1af79e31731608ae9a9dbf73a80d"
+    },
+    {
+      "name": "006_dev040_identity_admission_projection.sql",
+      "bytes": 5809,
+      "sha256": "0163c107446b0aeac4ef39b365fc57961133360cac1d9d3152be8e8c89eda3dd"
+    },
+    {
+      "name": "007_dev009_privileged_governance.sql",
+      "bytes": 11257,
+      "sha256": "f83db791135586a5213b5de0e63e8088a76e0ab37dcee77f6c7601fbe15a4fd9"
+    },
+    {
+      "name": "008_dev002_portal_app_visibility.sql",
+      "bytes": 5033,
+      "sha256": "d9651deeeb652fcc60526a8c8a073d2322b18f3031a8303f9bc842fe0c8d50b4"
+    },
+    {
+      "name": "009_dev039_application_entitlement_v2.sql",
+      "bytes": 6640,
+      "sha256": "1f729d12800701106a216da3b698ddaf4d0faa00a626c24ab0bbd2142ba3f573"
+    },
+    {
+      "name": "010_dev010_neutral_schema_boundary.sql",
+      "bytes": 15073,
+      "sha256": "9abe3008ac0cd9370079faf09de6d6b6d8204e6ee6d10716070541e4d2216af4"
+    },
+    {
+      "name": "011_dev046_workbench_list_width_preferences.sql",
+      "bytes": 1110,
+      "sha256": "40796e45e9c80bb9163091f101245e17531a3c94bbf7296368b2b387456c0e1c"
+    },
+    {
+      "name": "012_dev047_managed_identity_bridge.sql",
+      "bytes": 63328,
+      "sha256": "5e5b62cd8786d0b285dab19a5f0ca1f47471484851f3b736afea4b944c86ac08"
+    },
+    {
+      "name": "013_dev049_existing_google_primary_account_link.sql",
+      "bytes": 43185,
+      "sha256": "ee77ccb7cea50d64c754bfdfb96f59b7b26ac3ff25c7cc28e26fd65763f1ad00"
+    },
+    {
+      "name": "014_dev050_orgmaster_session_admission.sql",
+      "bytes": 3699,
+      "sha256": "f39ea5eb7e9f4accbe66961fa73345b788aa609b8a7de658c416335311463867"
+    },
+    {
+      "name": "015_dev013_restore_runtime_session_dml.sql",
+      "bytes": 1373,
+      "sha256": "70f6f9442ba653fcaf8988961aaad123244fe87ba09e35755e812c35a44ef8e8"
+    },
+    {
+      "name": "016_dev014_managed_identity_lifecycle_contract.sql",
+      "bytes": 3151,
+      "sha256": "9d88d2dca9d72d5b7f9950509452c3483ea34a27d1f6091f3b6f1f9eec77ab4b"
+    },
+    {
+      "name": "017_dev014_invalidation_application_registration.sql",
+      "bytes": 13488,
+      "sha256": "170ce6415959862f2f601c1f0e6ce72b6e43d30931e95ae6cb0f9cbc8d70c3fd"
+    },
+    {
+      "name": "018_dev014_employee_activation_contract.sql",
+      "bytes": 2046,
+      "sha256": "ce5ab0204fe39eca3bd3e123ecfe8e84ea6dc8f008c6429e7c8bdc77d13c2229"
+    },
+    {
+      "name": "019_dev014_workspace_revision_contract.sql",
+      "bytes": 2398,
+      "sha256": "ac8c9e04edf208613e2291ab227a5e13b5ecdcc386820b75a31afdef1e3a8ede"
+    },
+    {
+      "name": "020_dev014_current_projection_contract.sql",
+      "bytes": 19719,
+      "sha256": "8bcf7f1528e581e281436efe509c26f845657be2d1767c500460f56ccd538d82"
+    },
+    {
+      "name": "021_dev057_identity_grant_writer_fence.sql",
+      "bytes": 33820,
+      "sha256": "9c925bd36b357ef2d3997eb362cbbef566fbd4308acd22e647b72d1f2adb3d5e"
+    },
+    {
+      "name": "022_dev014_managed_login_session_admission.sql",
+      "bytes": 4210,
+      "sha256": "1e2c016cb4c5f1107f6c2531688f9e21bfcc2b1c1071565f63364cfa3f5574f8"
+    },
+    {
+      "name": "023_dev014_authority_principal_projection_contract.sql",
+      "bytes": 5844,
+      "sha256": "ec0d317ba7ad389c065c7e4262275e149b23941ec052dfc1a007b01a4682ef84"
+    },
+    {
+      "name": "024_dev057_principal_identity_invariants.sql",
+      "bytes": 66721,
+      "sha256": "af5897b810393faee2db421abd0f9527530c29b2c0fcb07acd6b8df4db6365c5"
+    },
+    {
+      "name": "025_dev057_ai_pdm_principal_effective_grants_v2.sql",
+      "bytes": 14734,
+      "sha256": "95b02a753a5b5883a13a91e94709bd07734df01c569036dd0211c112a523c53b"
+    },
+    {
+      "name": "026_dev057_session_principal_policy_path.sql",
+      "bytes": 4507,
+      "sha256": "9f38433e30d5974562b6bef7025fdaca625e9ad180a44aff8f59eda9fe803aef"
+    },
+    {
+      "name": "027_dev057_principal_cutover_source_manifest.sql",
+      "bytes": 2616,
+      "sha256": "8dfd9fa0e99553aea12800c99b49da8b1671f935c57e47373bc1cc1cb0d8a43e"
+    },
+    {
+      "name": "028_dev057_ai_pdm_principal_effective_grants_v3.sql",
+      "bytes": 14841,
+      "sha256": "97aeeae74b9d65a684bd35000a8552bfdb6790121d2e27a3db14f481707daf13"
+    }
+  ],
+  "checks": [
+    {
+      "id": "D57-01",
+      "label": "migration preflight rejects an existing legacy/managed active-principal collision before replacing views",
+      "status": "PASS",
+      "detail": {
+        "expected": "ACTIVE_PRINCIPAL_MAPPING_AMBIGUOUS",
+        "transactionRolledBack": true
+      }
+    },
+    {
+      "id": "D57-10",
+      "label": "migration rejects one principal assigned to two Employees without partial DDL",
+      "status": "PASS",
+      "detail": {
+        "expected": "PRINCIPAL_HISTORY_OWNER_CONFLICT",
+        "transactionRolledBack": true
+      }
+    },
+    {
+      "id": "D57-09",
+      "label": "principal reservations preserve resolved and unresolved provider-pair history",
+      "status": "PASS",
+      "detail": {
+        "resolved": 1,
+        "unresolved": 1,
+        "aiMigratorTypedOnly": true,
+        "directRuntimeTableReadDenied": true
+      }
+    },
+    {
+      "id": "D57-18",
+      "label": "v2 session admission reads published policy roles and applications",
+      "status": "PASS",
+      "detail": {
+        "activePrincipalCount": 1,
+        "platformAccessDenied": true
+      }
+    },
+    {
+      "id": "D57-19",
+      "label": "cutover producer manifest is exact and AI-PDM migrator can read only the contract view",
+      "status": "PASS",
+      "detail": {
+        "manifestRows": 2,
+        "idempotentReplay": true,
+        "coreReadDenied": true
+      }
+    },
+    {
+      "id": "D57-02",
+      "label": "principal mapping and AI-PDM portal visibility do not depend on an OrgMaster role or the AI-PDM authority selector",
+      "status": "PASS",
+      "detail": {
+        "orgmasterRoleAssignments": 0,
+        "legacyIdentityMappingPreserved": true,
+        "portalApplications": [
+          "ai-pdm"
+        ],
+        "authoritySelectorInPortalView": false,
+        "orgmasterSessionRows": 0,
+        "aiOnlySessionRows": 1,
+        "v1ColumnsOwnersAndAclsPreserved": true
+      }
+    },
+    {
+      "id": "D57-03",
+      "label": "effective AI-PDM role assignments remain authority-gated while portal visibility is stable",
+      "status": "PASS",
+      "detail": {
+        "effectiveRoleCount": 1,
+        "authorityVersion": "4",
+        "portalVisibilityUnaffected": true
+      }
+    },
+    {
+      "id": "D57-04",
+      "label": "delegated AI-PDM permission grants portal visibility to the recipient principal",
+      "status": "PASS",
+      "detail": {
+        "recipient": "employee-two",
+        "portalVisible": true,
+        "effectiveRoleAuthorityStillRequired": true,
+        "assignmentVersion": "2"
+      }
+    },
+    {
+      "id": "D57-05",
+      "label": "governance publisher rejects historical-principal reassignment and duplicate active pairs",
+      "status": "PASS",
+      "detail": {
+        "reassignmentRejected": "PRINCIPAL_IDENTITY_RESERVATION_CONFLICT",
+        "duplicateRejected": "ACTIVE_PRINCIPAL_MAPPING_AMBIGUOUS"
+      }
+    },
+    {
+      "id": "D57-06",
+      "label": "bind and governance publication serialize in both writer orders",
+      "status": "PASS",
+      "detail": {
+        "publisherFirst": "bind waited, then rejected the published pair",
+        "binderFirst": "publisher waited, then rejected the reserved pair",
+        "lock": "managed_identity_admission_authority.singleton"
+      }
+    },
+    {
+      "id": "D57-11",
+      "label": "both writers enforce immutable principal ownership while allowing distinct principals and aliases",
+      "status": "PASS",
+      "detail": {
+        "crossEmployeeRejected": true,
+        "accountTypeChangeRejected": true,
+        "unresolvedReuseRejected": true,
+        "samePrincipalAliases": 2,
+        "employeeTwoPrincipals": 2,
+        "managedPairBound": true
+      }
+    },
+    {
+      "id": "D57-17",
+      "label": "principal grant v2 has one alias-independent row per effective grant",
+      "status": "PASS",
+      "detail": {
+        "aliasRows": 2,
+        "principalRows": 1,
+        "columns": [
+          "contract_version",
+          "assignment_version_id",
+          "assignment_version",
+          "assignment_id",
+          "grant_kind",
+          "delegation_id",
+          "application_id",
+          "principal_id",
+          "employee_id",
+          "subject_kind",
+          "target_principal_id",
+          "stable_role_id",
+          "role_code",
+          "catalog_version",
+          "scope_kind",
+          "scope_key",
+          "valid_from",
+          "valid_until",
+          "published_at",
+          "authority_version"
+        ],
+        "manifestSha256": "74a9890b416b547cd013673487a78322a49da44b415b903015d55768504bbe71"
+      }
+    },
+    {
+      "id": "D57-20",
+      "label": "principal grant v3 follows published assignments without the per-employee authority switch",
+      "status": "PASS",
+      "detail": {
+        "principalRows": 1,
+        "columns": [
+          "contract_version",
+          "assignment_version_id",
+          "assignment_version",
+          "assignment_id",
+          "grant_kind",
+          "delegation_id",
+          "application_id",
+          "principal_id",
+          "employee_id",
+          "subject_kind",
+          "target_principal_id",
+          "stable_role_id",
+          "role_code",
+          "catalog_version",
+          "scope_kind",
+          "scope_key",
+          "valid_from",
+          "valid_until",
+          "published_at"
+        ],
+        "manifestSha256": "87780eba5c737d88c6cfe1e0a5c019f7ff46c46cab6b0f0c4c6a14a3683d8b59",
+        "oldAuthoritySwitchIndependent": true,
+        "platformReadDenied": true
+      }
+    },
+    {
+      "id": "D57-12",
+      "label": "owner reservations cannot be rewritten and runtime cannot call the private writer",
+      "status": "PASS",
+      "detail": {
+        "ownerMutationRejected": true,
+        "aliasDeletionRejected": true,
+        "privateWriterRuntimeDenied": true
+      }
+    },
+    {
+      "id": "D57-13",
+      "label": "managed-login verification binds the exact principal and bind replay preserves one reservation",
+      "status": "PASS",
+      "detail": {
+        "verifiedManagedPrincipal": "principal-managed:5a16da4b-8301-4e9b-8c1c-5267fe1ad987",
+        "replayReservationCount": 1
+      }
+    },
+    {
+      "id": "D57-14",
+      "label": "authority v2 atomically switches, replays and reverses with exact target and readback",
+      "status": "PASS",
+      "detail": {
+        "firstAuthorityVersion": 5,
+        "reverseAuthorityVersion": 6,
+        "replayedReceiptId": "154d64db-d40c-4225-a84a-00c4dade0cb5",
+        "outboxCount": 2,
+        "deniedMutationCount": 0
+      }
+    },
+    {
+      "id": "D57-15",
+      "label": "authority v2 rereads target admission after waiting for the producer lock",
+      "status": "PASS",
+      "detail": {
+        "waitedForProducerLock": true,
+        "postLockTargetRejected": true,
+        "receiptCount": 0,
+        "authorityVersion": 6
+      }
+    },
+    {
+      "id": "D57-16",
+      "label": "issued principal session binding is immutable while last-seen and revocation remain writable",
+      "status": "PASS",
+      "detail": {
+        "immutablePrincipal": true,
+        "immutableEpoch": true,
+        "revocationAllowed": true
+      }
+    },
+    {
+      "id": "D57-07",
+      "label": "identity-only producer keeps unclassified legacy mapping out of the account-typed adapter",
+      "status": "PASS",
+      "detail": {
+        "canonicalContainsUnclassifiedLegacy": true,
+        "typedAdapterRowsForIt": 0,
+        "unclassifiedPortalRows": 0,
+        "unclassifiedEffectiveRows": 0,
+        "classifiedPortalRows": 1,
+        "classifiedEffectiveRows": 1,
+        "ambiguousTypedRows": 2,
+        "ambiguousPortalRows": 0,
+        "ambiguousEffectiveRows": 0,
+        "explicitLegacyAdmissionPreserved": true
+      }
+    },
+    {
+      "id": "D57-08",
+      "label": "active managed mapping reaches typed adapter only through an exact managed identity match",
+      "status": "PASS",
+      "detail": {
+        "canonicalProducerRows": 1,
+        "typedAdapterRows": 1,
+        "accountType": "human_personal",
+        "platformLegacyProjectionUnchanged": true
+      }
+    },
+    {
+      "id": "D57-21",
+      "label": "published Principal grant v3 drives AI-PDM assignment, revocation, scope and transfer decision on one PostgreSQL",
+      "status": "PASS",
+      "detail": {
+        "consumerPackage": "ai-pdm",
+        "consumerTestSha256": "468656073c5cbcf5f3b95571b6cd70700e5d716f3c4c17e49f0abeaacd118987",
+        "transferTestSha256": "c7fa56d7dd5092e52919acdf141f01ced14acc48ec0ece650f5dcdb63a5b0010",
+        "runtimeRole": "dev057_ai_pdm_consumer_probe",
+        "publishedVersions": [
+          "gov-dev057-contract-reviewer-assigned",
+          "gov-dev057-contract-revoked",
+          "gov-dev057-contract-scoped",
+          "gov-dev057-contract-restored",
+          "gov-dev057-contract-flow"
+        ],
+        "decisions": [
+          "allowed",
+          "entitlement_assignment_not_found",
+          "entitlement_scope_mismatch",
+          "allowed",
+          "allowed"
+        ],
+        "transfer": [
+          "committed",
+          "no-write",
+          "no-write",
+          "committed",
+          "submitted-and-committed"
+        ]
+      }
+    }
+  ],
+  "firstFailure": null,
+  "source": {
+    "runnerSha256": "a01a3136f6c4f24949d9ca5cc2378f67aabc926e386e41d17d17ac5c0aa3bf7e",
+    "contractRunnerSha256": "f137346384206fedec82725f93541187ea5e7b3193fa078e0f7c98e706b785c9",
+    "fixtureSha256": "1f3e2cf3904c02be1cac237c6369b25886b6daed0635fac84e45e30ea9a1795f"
+  },
+  "runtime": {
+    "project": "C:\\Users\\user\\.codex\\worktrees\\dev014-platform-release\\OrgMaster",
+    "purpose": "DEV-057 isolated PostgreSQL validation",
+    "port": 54180,
+    "postgresPid": 35032,
+    "owningProcessTree": "node:37896 -> postgres:35032",
+    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev057-qc-ScSGm2",
+    "interruptedBy": null,
+    "cleanup": {
+      "clientClosed": true,
+      "auxiliaryClientsClosed": true,
+      "clusterStopped": true,
+      "portReleased": true,
+      "tempRemoved": true
+    }
+  }
+}

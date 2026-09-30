@@ -1,6 +1,5 @@
-import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { AuthApiError, exchangeFirebaseToken, getAuthMode, getCurrentSession, getDevelopmentAuthMode, loginDevelopmentProfile, logoutCurrentSession, type AuthMode, type AuthSessionView, type DevelopmentAuthMode, type DevelopmentAuthProfileView } from './authApiClient'
-import { clearFirebaseClientSession, getFirebaseGoogleIdToken, getFirebaseIdToken } from './firebaseClient'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { AuthApiError, getAuthMode, getCurrentSession, getDevelopmentAuthMode, loginDevelopmentProfile, logoutCurrentSession, type AuthMode, type AuthSessionView, type DevelopmentAuthMode, type DevelopmentAuthProfileView } from './authApiClient'
 
 export interface AuthSessionContextValue {
   session: AuthSessionView
@@ -34,13 +33,7 @@ function blockedState(error: unknown): GateState {
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const [bridgeRequested] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bridge') === '1')
   const [state, setState] = useState<GateState>({ kind: 'loading' })
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [employeeNumber, setEmployeeNumber] = useState('')
-  const [managedMessage, setManagedMessage] = useState<string | undefined>()
-  const [legacyMessage, setLegacyMessage] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
   const [busyProfileId, setBusyProfileId] = useState<DevelopmentAuthProfileView['id'] | null>(null)
 
@@ -84,42 +77,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => { active = false }
   }, [])
 
-  async function submitLogin(event: FormEvent) {
-    event.preventDefault()
-    if (state.kind !== 'login' || busy) return
-    setBusy(true)
-    setLegacyMessage(undefined)
-    try {
-      const idToken = await getFirebaseIdToken(state.mode.firebase, email.trim(), password)
-      const session = await exchangeFirebaseToken(idToken)
-      setPassword('')
-      setState({ kind: 'authenticated', session, mode: state.mode })
-    } catch (error) {
-      if (error instanceof AuthApiError && (error.code === 'principal_not_active' || error.code === 'principal_ambiguous')) setState(blockedState(error))
-      else { setLegacyMessage('登入失敗，請確認帳號密碼後再試一次。'); setState({ kind: 'login', mode: state.mode }) }
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function submitManagedLogin(event: FormEvent) {
-    event.preventDefault()
-    if (state.kind !== 'login' || busy || !state.mode.managedLoginEnabled) return
-    setBusy(true)
-    setManagedMessage(undefined)
-    const managedIdentifier = employeeNumber.trim()
-    try {
-      const loginHint = managedIdentifier.includes('@') ? managedIdentifier : undefined
-      const idToken = await getFirebaseGoogleIdToken(state.mode.firebase, loginHint)
-      const session = await exchangeFirebaseToken(idToken, managedIdentifier)
-      setEmployeeNumber('')
-      setState({ kind: 'authenticated', session, mode: state.mode })
-    } catch (error) {
-      if (error instanceof AuthApiError && (error.code === 'principal_not_active' || error.code === 'principal_ambiguous')) setState(blockedState(error))
-      else { setManagedMessage('無法登入，請確認帳號或聯絡管理員。'); setState({ kind: 'login', mode: state.mode }) }
-    } finally { setBusy(false) }
-  }
-
   async function submitDevelopmentLogin(profileId: DevelopmentAuthProfileView['id']) {
     if (state.kind !== 'development-login' || busy) return
     setBusy(true)
@@ -141,7 +98,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setState({ kind: 'logout-processing', session: previous.session, mode: previous.mode })
     try {
       await logoutCurrentSession()
-      if (previous.mode) await clearFirebaseClientSession(previous.mode.firebase).catch(() => undefined)
       if (previous.session.developmentProfile) {
         try {
           setState({ kind: 'development-login', mode: await getDevelopmentAuthMode() })
@@ -188,30 +144,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </div>
     </section>
   </main>
-  if (state.mode.ssoHandoffEnabled && !bridgeRequested) return <main className="auth-gate">
+  if (state.mode.ssoHandoffEnabled) return <main className="auth-gate">
     <section className="auth-login auth-login--managed" aria-labelledby="sso-login-title">
       <div><p className="auth-login__eyebrow">鉦富管理平台</p><h1 id="sso-login-title">使用平台登入</h1><p>登入一次即可進入你有權限的 Jenfu 系統。</p></div>
       {state.message && <p className="auth-login__error" role="alert">{state.message}</p>}
       <button type="button" disabled={busy} onClick={() => { window.location.assign(`/api/auth/jenfu-sso/start?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`) }}>{busy ? '準備登入…' : '使用鉦富平台登入'}</button>
     </section>
   </main>
-  return <main className="auth-gate">
-    {state.mode.managedLoginEnabled && <form className="auth-login auth-login--managed" onSubmit={(event) => { void submitManagedLogin(event) }}>
-      <div><p className="auth-login__eyebrow">{bridgeRequested ? '首次連結公司身分' : '公司統一身分'}</p><h1>以 JFS 員工編號或公司 Email 登入</h1><p>{bridgeRequested ? '僅用於首次建立受控身分連結；完成後回到 Platform 使用單一登入。' : '完成 Google Cloud Identity 驗證後進入 OrgMaster。'}</p></div>
-      {(managedMessage ?? state.message) && <p className="auth-login__error" role="alert">{managedMessage ?? state.message}</p>}
-      <label>員工編號或公司 Email<input value={employeeNumber} onChange={(event) => setEmployeeNumber(event.target.value)} placeholder="JFS0001 或 jfs0001@jenfu.com.tw" autoComplete="username" required /></label>
-      <button type="submit" disabled={busy}>{busy ? '準備登入…' : '使用 Google 登入'}</button>
-    </form>}
-    {bridgeRequested && state.mode.ssoHandoffEnabled && <p className="auth-login__bridge-back"><a href="/login">返回 Platform 單一登入</a></p>}
-    <details className="auth-login auth-login--legacy">
-      <summary>既有帳號登入</summary>
-      <form onSubmit={(event) => { void submitLogin(event) }}>
-        <div><p className="auth-login__eyebrow">鉦富管理平台</p><h1>登入 OrgMaster</h1><p>使用既有帳號繼續。</p></div>
-        {(legacyMessage ?? state.message) && <p className="auth-login__error" role="alert">{legacyMessage ?? state.message}</p>}
-        <label>電子郵件<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-        <label>密碼<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-        <button type="submit" disabled={busy}>{busy ? '登入中…' : '登入'}</button>
-      </form>
-    </details>
-  </main>
+  return <main className="auth-gate"><h1>登入服務暫時無法使用</h1><p>Platform 單一登入尚未啟用，請稍後再試。</p></main>
 }

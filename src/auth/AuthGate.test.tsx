@@ -73,7 +73,7 @@ describe('AuthGate', () => {
     expect(container.textContent).toContain('managed:true')
   })
 
-  it('keeps a verified legacy session usable with new capabilities off when discovery fails', async () => {
+  it('keeps a verified Principal session usable with new capabilities off when discovery fails', async () => {
     api.getCurrentSession.mockResolvedValue({ user: { principalId: 'p1', employeeId: 'e1' } })
     api.getAuthMode.mockRejectedValue(new AuthApiError(503, 'auth_server_not_configured'))
     await act(async () => root.render(<AuthGate><SessionProbe /></AuthGate>))
@@ -81,33 +81,20 @@ describe('AuthGate', () => {
     expect(container.textContent).toContain('managed:false')
   })
 
-  it('submits the frozen JFS or company Email identifier only after Google popup', async () => {
+  it('fails closed when Platform SSO is not enabled instead of offering retired login forms', async () => {
     api.getCurrentSession.mockRejectedValue(new AuthApiError(401, 'auth_session_invalid'))
     api.getAuthMode.mockResolvedValue({ managedLoginEnabled: true, ssoHandoffEnabled: false, firebase: { apiKey: 'k', authDomain: 'a', projectId: 'p', appId: 'i' } })
-    firebase.getFirebaseGoogleIdToken.mockResolvedValue('google-token')
-    api.exchangeFirebaseToken.mockResolvedValue({ user: { principalId: 'p1', employeeId: 'e1' }, session: { expiresAt: new Date(Date.now() + 60_000).toISOString() }, assuranceLevel: 'aal1', correlationId: 'c' })
     await act(async () => {
       root.render(<AuthGate><div>protected organization data</div></AuthGate>)
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
     })
-    const input = container.querySelector('.auth-login--managed input') as HTMLInputElement
-    expect(input.type).toBe('text')
-    expect(input.placeholder).toContain('jfs0001@jenfu.com.tw')
-    const legacy = container.querySelector('details') as HTMLDetailsElement
-    expect(legacy.open).toBe(false)
-    await act(async () => {
-      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
-      setValue.call(input, ' jfs0003@jenfu.com.tw ')
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      await Promise.resolve()
-      input.form?.requestSubmit()
-      await Promise.resolve(); await Promise.resolve()
-    })
-    expect(firebase.getFirebaseGoogleIdToken).toHaveBeenCalledWith(expect.anything(), 'jfs0003@jenfu.com.tw')
-    expect(api.exchangeFirebaseToken).toHaveBeenCalledWith('google-token', 'jfs0003@jenfu.com.tw')
+    expect(container.textContent).toContain('Platform 單一登入尚未啟用')
+    expect(container.querySelector('form')).toBeNull()
+    expect(container.textContent).not.toContain('protected organization data')
+    expect(api.exchangeFirebaseToken).not.toHaveBeenCalled()
   })
 
-  it('exposes only the explicit bridge route when SSO is enabled', async () => {
+  it('ignores the retired bridge parameter and offers only Platform SSO', async () => {
     window.history.replaceState({}, '', '/login?bridge=1')
     api.getCurrentSession.mockRejectedValue(new AuthApiError(401, 'auth_session_invalid'))
     api.getAuthMode.mockResolvedValue({ managedLoginEnabled: true, ssoHandoffEnabled: true, firebase: { apiKey: 'k', authDomain: 'a', projectId: 'p', appId: 'i' } })
@@ -115,10 +102,9 @@ describe('AuthGate', () => {
       root.render(<AuthGate><div>protected organization data</div></AuthGate>)
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
     })
-    expect(container.textContent).toContain('首次連結公司身分')
-    expect(container.textContent).toContain('返回 Platform 單一登入')
-    expect(container.querySelector('.auth-login--managed')).toBeTruthy()
-    expect(container.textContent).not.toContain('使用鉦富平台登入')
+    expect(container.textContent).toContain('使用鉦富平台登入')
+    expect(container.textContent).not.toContain('首次連結公司身分')
+    expect(container.querySelector('form')).toBeNull()
   })
 
   it('offers server-defined development profiles and enters with one click', async () => {

@@ -505,14 +505,15 @@ test('OrgMaster candidate smoke requires the governance allow and deny observati
   const digest = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:' + H64
   const executionName = 'projects/9536592944/locations/asia-east1/workflows/orgmaster-prod-candidate-smoke/executions/execution-1'
   const observations = [
-    ['auth-mode', 200], ['session-create', 200], ['session-reload', 200],
-    ['authenticated-probe', 200], ['governance-session', 200],
+    ['auth-mode', 200], ['platform-principal-session', 200],
+    ['orgmaster-sso-start', 303], ['orgmaster-sso-authorize', 303], ['orgmaster-sso-callback', 303],
+    ['session-reload', 200], ['authenticated-probe', 200], ['governance-session', 200],
     ['managed-identity-read', 200], ['governance-unauthenticated', 401],
     ['managed-identity-unauthenticated', 401], ['unauthenticated-probe', 401],
     ['session-revoked', 401],
   ].map(([id, status]) => ({ id, status }))
   const result = {
-    schemaVersion: 'jenfu.dev012.internal-candidate-smoke.v1',
+    schemaVersion: 'jenfu.dev015.internal-candidate-principal-smoke.v2',
     ownerApplicationId: 'orgmaster', candidateRevision: revision,
     artifactDigest: digest, tokenSource: 'SECRET_MANAGER_EXACT_VERSION',
     observations, status: 'PASS',
@@ -530,10 +531,10 @@ test('OrgMaster candidate smoke requires the governance allow and deny observati
     application: { id: 'orgmaster' },
     target: { projectId: 'jenfu-platform-prod', projectNumber: '9536592944', region: 'asia-east1', serviceName: 'orgmaster-prod', canonicalOrigin: 'https://orgmaster-prod-9536592944.asia-east1.run.app' },
     artifact: { uri: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster' },
-    verification: { firebaseApiKeyEnvironmentName: 'FIREBASE_API_KEY', candidateSmokeMode: 'WORKFLOWS_INTERNAL_OIDC_V1', candidateWorkflowName: 'orgmaster-prod-candidate-smoke', candidateRefreshTokenSecretId: 'orgmaster-prod-smoke-firebase-refresh-token' },
+    verification: { firebaseApiKeyEnvironmentName: 'FIREBASE_API_KEY', candidateSmokeMode: 'WORKFLOWS_INTERNAL_OIDC_V2_PRINCIPAL_SSO', candidateWorkflowName: 'orgmaster-prod-candidate-smoke', candidateRefreshTokenSecretId: 'orgmaster-prod-smoke-firebase-refresh-token' },
   }
   const input = { profile, origin: 'https://' + tag + '---orgmaster-prod-9536592944.asia-east1.run.app', candidateTag: tag, candidateRevision: revision, artifactDigest: digest, deadlineAt: '2999-01-01T00:00:00.000Z', environment: { FIREBASE_API_KEY: 'A'.repeat(39) } }
-  assert.equal((await transport.runInternalCandidateSmoke(input)).observations.length, 10)
+  assert.equal((await transport.runInternalCandidateSmoke(input)).observations.length, 13)
   result.observations = observations.filter((row) => row.id !== 'managed-identity-unauthenticated')
   await assert.rejects(() => transport.runInternalCandidateSmoke(input), /INTERNAL_CANDIDATE_SMOKE_RESULT_INVALID/u)
   result.observations = observations.map((row) => row.id === 'managed-identity-unauthenticated' ? { ...row, status: 200 } : row)

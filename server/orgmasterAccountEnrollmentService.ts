@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { GovernanceActorContext, GovernanceDocumentV3 } from '../src/governance/types'
-import { evaluatePermission } from '../src/governance/evaluatePermission'
+import { evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { applyDraftCommand, readExistingGovernanceStore, loadOrganizationSource, GovernanceStoreError } from './orgmasterGovernanceStore'
 import { developmentPermissionForActor } from './orgmasterGovernanceIdentity'
 import { AccountProvisioningError, assertEmail, normalizeEmail, type AccountProvisioningPort, type ProviderAccount } from './orgmasterAccountProvisioningPort'
@@ -44,7 +44,7 @@ function utf8EmployeeId(value: string) { return typeof value === 'string' && val
 function permission(document: GovernanceDocumentV3, actor: GovernanceActorContext, code: string) {
   const dev = developmentPermissionForActor(actor, code)
   if (dev !== null) return dev
-  return evaluatePermission(document, { applicationId: 'orgmaster', issuer: actor.issuer, subject: actor.subject, permissionCode: code, scope: { kind: 'global' } }).status === 'allowed'
+  return evaluateVerifiedPrincipalPermission(document, actor, code).status === 'allowed'
 }
 function emailHint(email: string) { const [local, domain] = email.split('@'); const masked = local.length <= 1 ? '*' : `${local[0]}${'*'.repeat(Math.min(6, Math.max(1, local.length - 1)))}${local.length > 2 ? local.slice(-1) : ''}`; return `${masked}@${domain}` }
 function emailHash(email: string) { return createHash('sha256').update(email).digest('hex') }

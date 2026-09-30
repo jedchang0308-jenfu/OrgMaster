@@ -1,5 +1,15 @@
 # 文件地圖
 
+> **2026-09-30 DEV-057 現行管理 HTTP／grant v3 整鏈**：[owner 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)、[D57-22 PASS 收據](qa/DEV-057-management-http-grant-v3-postgres-r3-2026-09-30.json)與[首次](qa/DEV-057-management-http-grant-v3-postgres-2026-09-30.json)／[第二次](qa/DEV-057-management-http-grant-v3-postgres-r2-2026-09-30.json)失敗收據記錄產品管理 HTTP 指派、發布、撤權及 AI-PDM 受限 consumer 的同庫整鏈。D57-21／22 22／22 PASS；共同邊界累計 10 次失敗，已通知重估。下方 8 次及「管理 API 尚未合成」為當時快照；目前仍是本機候選，瀏覽器 UI、real-provider 與 Production L4 未完成。
+
+> **2026-09-30 DEV-057 產品 catalog／grant v3 同庫證據**：[owner 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)、[task-owned PostgreSQL 18.4 收據](qa/DEV-057-grant-v3-product-catalog-postgres-2026-09-30.json)及 `ai-doc/dev_task.md` 記錄完整 v5 catalog 由 OrgMaster runtime 產品 repository 逐值讀回，接續 AI-PDM 指派／撤權／scope／技轉 consumer 21／21 PASS。首次 fixture view 欄位重排的 `42P16` FAIL 收據保留追溯，修正後資料庫與 port 均清理；共同邊界累計 8 次失敗。管理 HTTP API 發布與 Production L4 仍未驗，不以本機證據升級整體流程。
+
+> **2026-09-30 DEV-057／DEV-121 跨 owner 送審整鏈**：[現行 owner 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)與 `JENFU/ai-doc/qa/DEV-015-orgmaster-aipdm-grant-v3-submit-review-postgres-2026-09-30.json` 記錄本 owner 發布五版 grant v3、AI-PDM 受限 consumer 實際送審→reviewer 待辦→核准及撤權／異 scope 零寫入。全套 21／21，仍屬本機同庫證據；管理 UI、真實 provider、Production L4 未完成。
+
+> **2026-09-29 DEV-057 發布權限邊界**：[現行 owner 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)及[本機證據](qa/DEV-057-principal-governance-publication-authority-local-2026-09-29.json)記錄已發布 Principal 權限與可編輯草稿的授權區分、自我擴權負例及空版本防自鎖；本機候選未合併／發布，完整 F03 狀態仍以 `JENFU/DEV-015` 盤點為準。
+
+> **2026-09-29 ORGMASTER/DEV-057 授權盤點（進行中）**：[本 owner 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)對齊 `JENFU/DEV-015` 的全鏈清單；直接登入 v1 session、SSO v1 accept、逐人 authority 與 owner smoke 是目前需核實／重構的同一施工批次。來源盤點不是 Production readback；完整候選前不新增正式變更。
+
 > **2026-09-28 DEV-057 R6 Production 現況**：[R6 Production evidence](qa/DEV-057-production-r6-release-evidence-2026-09-28.md)與 [DEV-057 producer 契約](specs/DEV-057-identity-and-grant-contract-boundary.md)確認 027 已在正式 ledger，R6 owner 十階段及治理／managed-identity 候選讀取驗證通過；下文 2026-09-26 的「未發布」為歷史狀態。
 
 > **2026-09-28 DEV-057 正式來源決策**：[ADR-001 單人維護 Production 來源證據](ADR-001-small-team-production-source-authority.md)固定 PR／Codex QC／required CI／provider branch protection 的真實證據，不要求第二位人工審查者；GitHub 設定尚待讀回，不能把文件當成 release PASS。

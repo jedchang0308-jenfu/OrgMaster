@@ -1,6 +1,6 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { issuerFingerprintSha256, principalFingerprintSha256 } from '../src/governance/identityAdmission'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
@@ -10,6 +10,7 @@ import { previewFinancialManagementGrant, publishFinancialManagementGrant } from
 import { previewFinancialRoleAssignment, publishFinancialRoleAssignment } from './applicationRoleAssignmentStore'
 import { FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH } from './applicationEntitlementCommon'
 import { FINANCIAL_CATALOG_VERSION } from '../src/governance/financialCatalog'
+import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
 
 const roots: string[] = []
 
@@ -18,12 +19,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev039-entitlement-'))
   roots.push(root)
-  const sourceManifest = JSON.parse(await readFile(resolve('data/orgmaster-workspace.v1.json'), 'utf8'))
-  const currentId = sourceManifest.currentVersionId as string
-  const currentEntry = sourceManifest.entries.find((entry: { id: string }) => entry.id === currentId)
-  await mkdir(join(root, 'data', 'orgmaster-versions'), { recursive: true })
-  await writeFile(join(root, 'data', 'orgmaster-workspace.v1.json'), `${JSON.stringify({ ...sourceManifest, entries: [currentEntry] }, null, 2)}\n`)
-  await writeFile(join(root, 'data', 'orgmaster-versions', `${currentId}.json`), await readFile(resolve('data/orgmaster-versions', `${currentId}.json`), 'utf8'))
+  await writeSyntheticWorkspaceFixture(root)
   await ensureGovernanceStore(root)
   return root
 }

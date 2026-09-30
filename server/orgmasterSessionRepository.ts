@@ -37,8 +37,7 @@ type SessionRow = {
 
 export type OrgmasterSessionRepository = {
   create(input: Omit<OrgmasterSession, 'id' | 'revokedAt' | 'sessionSchemaVersion' | 'epochKind' | 'principalAuthEpoch'> &
-    Partial<Pick<OrgmasterSession, 'sessionSchemaVersion' | 'epochKind' | 'principalAuthEpoch'>> &
-    { sessionIdHash: string }): Promise<OrgmasterSession>
+    { sessionIdHash: string; sessionSchemaVersion: 2; epochKind: 'principal'; principalAuthEpoch: number }): Promise<OrgmasterSession>
   findByHash(sessionIdHash: string): Promise<OrgmasterSession | null>
   revokeByHash(sessionIdHash: string, reason: string): Promise<void>
 }
@@ -71,12 +70,9 @@ export function createOrgmasterSessionRepository(database: OrgmasterDatabase): O
   const selection = 'id, identity_issuer, identity_subject, principal_id, employee_id, auth_epoch, session_schema_version, epoch_kind, principal_auth_epoch, issued_at, authenticated_at, expires_at, revoked_at, assurance_level'
   return {
     async create(input) {
-      const sessionSchemaVersion = input.sessionSchemaVersion ?? 1
-      const epochKind = input.epochKind ?? 'provider_pair'
-      const principalAuthEpoch = input.principalAuthEpoch ?? null
-      if (!((sessionSchemaVersion === 1 && epochKind === 'provider_pair' && principalAuthEpoch === null) ||
-        (sessionSchemaVersion === 2 && epochKind === 'principal' && typeof principalAuthEpoch === 'number' && Number.isSafeInteger(principalAuthEpoch) && principalAuthEpoch >= 0))) {
-        throw new Error('invalid session epoch binding')
+      if (input.sessionSchemaVersion !== 2 || input.epochKind !== 'principal' ||
+        !Number.isSafeInteger(input.principalAuthEpoch) || input.principalAuthEpoch < 0) {
+        throw new Error('invalid principal session epoch binding')
       }
       const now = new Date().toISOString()
       const result = await database.query<SessionRow>(`
@@ -88,7 +84,7 @@ export function createOrgmasterSessionRepository(database: OrgmasterDatabase): O
         ) VALUES ($1, $2, $3, $4, $5, $6, 'orgmaster', $7, $8, $9, $10, $8, NULL, NULL, $11, $12, $12,
           $13, $14, $15)
         RETURNING ${selection}
-      `, [randomUUID(), input.sessionIdHash, input.identityIssuer, input.identitySubject, input.principalId, input.employeeId, input.authEpoch, input.issuedAt, input.authenticatedAt, input.expiresAt, input.assuranceLevel, now, sessionSchemaVersion, epochKind, principalAuthEpoch])
+      `, [randomUUID(), input.sessionIdHash, input.identityIssuer, input.identitySubject, input.principalId, input.employeeId, input.authEpoch, input.issuedAt, input.authenticatedAt, input.expiresAt, input.assuranceLevel, now, input.sessionSchemaVersion, input.epochKind, input.principalAuthEpoch])
       return mapSession(result.rows[0])
     },
     async findByHash(sessionIdHash) {

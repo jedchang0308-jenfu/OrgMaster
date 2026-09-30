@@ -17,7 +17,7 @@ import type { VerifiedFirebaseIdentity } from './orgmasterFirebaseIdentityProvid
 import { expectedManagedLoginIdentityMatches } from './orgmasterManagedLoginService'
 import { managedLoginRequestDigest } from './orgmasterManagedLoginContract'
 import type { ManagedLoginIdentity } from './orgmasterManagedLoginContract'
-import { evaluatePermission } from '../src/governance/evaluatePermission'
+import { assignmentMatchesSecuritySubject, evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { isActiveAt } from '../src/governance/validation'
 import { developmentPermissionForActor } from './orgmasterGovernanceIdentity'
 import { loadOrganizationSource, readExistingGovernanceStore } from './orgmasterGovernanceStore'
@@ -54,31 +54,51 @@ const REFRESH = 'orgmaster.identity.refresh'
 function hasPermission(document: GovernanceDocumentV3, actor: GovernanceActorContext, permissionCode: string) {
   const development = developmentPermissionForActor(actor, permissionCode)
   if (development !== null) return development
-  return evaluatePermission(document, {
-    applicationId: 'orgmaster', issuer: actor.issuer, subject: actor.subject, permissionCode, scope: { kind: 'global' },
-  }).status === 'allowed'
+  return evaluateVerifiedPrincipalPermission(document, actor, permissionCode).status === 'allowed'
 }
 
 function isHumanPrivilegedActor(document: GovernanceDocumentV3, actor: GovernanceActorContext, at = new Date().toISOString()) {
-  const link = document.draft.identityLinks.find((value) => value.principalId === actor.principalId && value.issuer === actor.issuer && value.subject === actor.subject && isActiveAt(value.status, value.validFrom, value.validTo, at))
-  if (!link) return false
-  return (document.draft.principalAdmissions ?? []).some((admission) => admission.identityLinkId === link.id && admission.accountType === 'human_privileged' && admission.status === 'active')
+  const version = document.publishedVersions.find((candidate) => candidate.id === document.activePolicyVersionId)
+  if (version?.kind !== 'assignment-governance-v3' || !actor.employeeId) return false
+  const links = version.policy.identityLinks.filter((value) =>
+    value.principalId === actor.principalId && value.employeeId === actor.employeeId
+    && value.issuer === actor.issuer && value.subject === actor.subject
+    && isActiveAt(value.status, value.validFrom, value.validTo, at))
+  if (links.length !== 1) return false
+  return (version.policy.principalAdmissions ?? []).some((admission) =>
+    admission.identityLinkId === links[0].id
+    && admission.accountType === 'human_privileged' && admission.status === 'active')
 }
 
 function requireHumanPrivileged(document: GovernanceDocumentV3, actor: GovernanceActorContext, devEnabled: boolean) {
   if (!devEnabled && !isHumanPrivilegedActor(document, actor)) throw new ManagedIdentityServiceError('HUMAN_PRIVILEGED_REQUIRED')
 }
 
-function hasPublishedApplicationAccess(document: GovernanceDocumentV3, employeeId: string, applicationId: 'orgmaster' | 'ai-pdm', at = new Date().toISOString()) {
+function hasPublishedApplicationAccess(
+  document: GovernanceDocumentV3,
+  principalId: string,
+  employeeId: string,
+  applicationId: 'orgmaster' | 'ai-pdm',
+  at = new Date().toISOString(),
+) {
   const version = document.publishedVersions.find((candidate) => candidate.id === document.activePolicyVersionId)
-  if (!version || version.policy.applications.find((application) => application.id === applicationId)?.status !== 'active') return false
-  const roleIds = new Set(version.policy.applicationRoles.filter((role) => role.applicationId === applicationId && role.status === 'active').map((role) => role.id))
-  return version.policy.roleAssignments.some((assignment) => {
-    const assignmentApplicationId = 'applicationId' in assignment ? assignment.applicationId : 'orgmaster'
-    return assignmentApplicationId === applicationId && assignment.employeeId === employeeId && roleIds.has(assignment.roleId) && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, at)
-  })
+  if (version?.kind !== 'assignment-governance-v3'
+    || version.policy.applications.find((application) => application.id === applicationId)?.status !== 'active') return false
+  const catalog = applicationId === 'ai-pdm'
+    ? version.externalRoleCatalogs.find((entry) => entry.applicationId === applicationId && entry.validationState === 'valid')
+    : null
+  if (applicationId === 'ai-pdm' && !catalog) return false
+  const roleIds = applicationId === 'orgmaster'
+    ? new Set(version.policy.applicationRoles.filter((role) =>
+      role.applicationId === applicationId && role.status === 'active').map((role) => role.id))
+    : new Set(catalog!.roles.filter((role) => role.status === 'active').map((role) => role.stableRoleId))
+  return version.policy.roleAssignments.some((assignment) =>
+    assignment.applicationId === applicationId
+    && assignmentMatchesSecuritySubject(assignment, principalId, employeeId)
+    && roleIds.has(assignment.roleId)
+    && (applicationId === 'orgmaster' || assignment.catalogVersion === catalog!.catalogVersion)
+    && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, at))
 }
-
 /**
  * The managed-login bridge is a bootstrap identity operation. It must not
  * grant OrgMaster application access; that remains enforced by the normal
@@ -87,9 +107,9 @@ function hasPublishedApplicationAccess(document: GovernanceDocumentV3, employeeI
  * off to AI-PDM without requiring a second credential or an artificial
  * OrgMaster role assignment.
  */
-function hasPublishedManagedLoginAccess(document: GovernanceDocumentV3, employeeId: string, at = new Date().toISOString()) {
-  return hasPublishedApplicationAccess(document, employeeId, 'orgmaster', at)
-    || hasPublishedApplicationAccess(document, employeeId, 'ai-pdm', at)
+function hasPublishedManagedLoginAccess(document: GovernanceDocumentV3, principalId: string, employeeId: string, at = new Date().toISOString()) {
+  return hasPublishedApplicationAccess(document, principalId, employeeId, 'orgmaster', at)
+    || hasPublishedApplicationAccess(document, principalId, employeeId, 'ai-pdm', at)
 }
 
 function requireEmployeeId(employeeId: string) {
@@ -282,10 +302,10 @@ export function createManagedIdentityService(input: {
         return mapStoreError(error)
       }
     }
-    const assertEmployeeAccess = async (employeeId: string) => {
+    const assertEmployeeAccess = async (principalId: string, employeeId: string) => {
       const governance = await readGovernance()
       const { employee } = await readEmployee(employeeId)
-      if (employee.status !== 'active' || !hasPublishedManagedLoginAccess(governance.document, employeeId)) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
+      if (employee.status !== 'active' || !hasPublishedManagedLoginAccess(governance.document, principalId, employeeId)) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
     }
     const assertIdentifier = (current: ManagedLoginIdentity, storedPrimaryEmail: string, livePrimaryEmail: string) => {
       if (storedPrimaryEmail !== tokenEmail || livePrimaryEmail !== tokenEmail) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
@@ -298,7 +318,7 @@ export function createManagedIdentityService(input: {
     assertIdentifier(snapshot.identity, snapshot.primaryEmail, live.primaryEmail.trim().toLowerCase())
     if (snapshot.identity.linkState === 'active' && (snapshot.identity.pair === null || snapshot.identity.pair.issuer !== pair.issuer || snapshot.identity.pair.subject !== pair.subject)) throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
     if (snapshot.identity.linkState !== 'directory_linked_pending_auth' && snapshot.identity.linkState !== 'active') throw new ManagedIdentityServiceError('LOGIN_NOT_AVAILABLE')
-    await assertEmployeeAccess(snapshot.identity.employeeId)
+    await assertEmployeeAccess(snapshot.identity.principalId, snapshot.identity.employeeId)
     const expected = snapshot.identity
     const requestHash = managedLoginRequestDigest({ directoryCustomerId: customerId, issuer: pair.issuer, subject: pair.subject, googleUserId: identity.googleUserId, authenticatedAt: identity.authenticatedAt ?? '', expected })
     let verified: Awaited<ReturnType<ManagedIdentityRepositoryV1['verifyManagedLoginIdentity']>> | null = null
@@ -313,7 +333,7 @@ export function createManagedIdentityService(input: {
           live = await readAndCheck()
           assertIdentifier(snapshot.identity, snapshot.primaryEmail, live.primaryEmail.trim().toLowerCase())
           if (!expectedManagedLoginIdentityMatches(expected, snapshot.identity, pair)) throw new ManagedIdentityServiceError('REVISION_CONFLICT', { retryable: true })
-          await assertEmployeeAccess(snapshot.identity.employeeId)
+          await assertEmployeeAccess(snapshot.identity.principalId, snapshot.identity.employeeId)
           continue
         }
         return mapStoreError(error)
@@ -323,7 +343,7 @@ export function createManagedIdentityService(input: {
     const post = await readSnapshot()
     const postLive = await readAndCheck()
     assertIdentifier(post.identity, post.primaryEmail, postLive.primaryEmail.trim().toLowerCase())
-    await assertEmployeeAccess(post.identity.employeeId)
+    await assertEmployeeAccess(post.identity.principalId, post.identity.employeeId)
     if (post.identity.linkState !== 'active' || post.identity.pair === null || !expectedManagedLoginIdentityMatches(snapshot.identity, post.identity, pair) || post.identity.principalId !== verified.identity.principalId || post.identity.employeeId !== verified.identity.employeeId) throw new ManagedIdentityServiceError('REVISION_CONFLICT', { retryable: true })
     return { principalId: post.identity.principalId, employeeId: post.identity.employeeId, mappingVersion: verified.mappingVersion }
   }

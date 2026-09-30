@@ -1,4 +1,5 @@
 import { canonicalize, crc32cBase64, parseGsUri, sha256 } from './dev012-production-migration-runner.mjs'
+import { runOrgmasterPrincipalSsoSmoke } from './dev015-orgmaster-principal-sso-smoke.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
@@ -838,6 +839,13 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     const idToken = tokenValue?.id_token
     const expiresIn = Number(tokenValue?.expires_in)
     if (typeof idToken !== 'string' || idToken.length < 100 || idToken.length > 16384 || !Number.isFinite(expiresIn) || expiresIn < 300) fail('AUTH_SMOKE_TOKEN_REFRESH_INVALID')
+    if (definition.sessionMode === 'PLATFORM_SSO_V2') {
+      return runOrgmasterPrincipalSsoSmoke({
+        fetchImpl, brokerOrigin: definition.brokerOrigin, appOrigin: base.origin, canonicalOrigin: sessionOrigin, idToken,
+        tokenExpiresInSeconds: expiresIn, mePath: definition.mePath, logoutPath: definition.logoutPath,
+        authenticatedProbes: definition.authenticatedProbes, negativeProbes: definition.negativeProbes, now,
+      })
+    }
     const call = async (path, options = {}) => {
       const url = new URL(path, base)
       if (url.origin !== base.origin) fail('HTTP_SUITE_REDIRECT_SCOPE_INVALID')
@@ -880,7 +888,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     const base = new URL(origin)
     const firebaseApiKey = environment[definition?.firebaseApiKeyEnvironmentName]
     if (
-      definition?.candidateSmokeMode !== 'WORKFLOWS_INTERNAL_OIDC_V1' ||
+      !['WORKFLOWS_INTERNAL_OIDC_V1', 'WORKFLOWS_INTERNAL_OIDC_V2_PRINCIPAL_SSO'].includes(definition?.candidateSmokeMode) ||
       !/^[a-z][a-z0-9-]{2,62}$/u.test(definition?.candidateWorkflowName ?? '') ||
       !/^[a-z][a-z0-9-]{2,254}$/u.test(definition?.candidateRefreshTokenSecretId ?? '') ||
       base.protocol !== 'https:' || base.pathname !== '/' || base.search || base.hash ||
@@ -919,14 +927,15 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     let result
     try { result = JSON.parse(execution.result) } catch { fail('INTERNAL_CANDIDATE_SMOKE_RESULT_INVALID') }
     const orgmasterObservations = profile.application.id === 'orgmaster' ? [
-      ['auth-mode', 200], ['session-create', 200], ['session-reload', 200],
-      ['authenticated-probe', 200], ['governance-session', 200],
+      ['auth-mode', 200], ['platform-principal-session', 200],
+      ['orgmaster-sso-start', 303], ['orgmaster-sso-authorize', 303], ['orgmaster-sso-callback', 303],
+      ['session-reload', 200], ['authenticated-probe', 200], ['governance-session', 200],
       ['managed-identity-read', 200], ['governance-unauthenticated', 401],
       ['managed-identity-unauthenticated', 401], ['unauthenticated-probe', 401],
       ['session-revoked', 401],
     ] : null
     if (
-      result?.schemaVersion !== 'jenfu.dev012.internal-candidate-smoke.v1' ||
+      result?.schemaVersion !== (profile.application.id === 'orgmaster' ? 'jenfu.dev015.internal-candidate-principal-smoke.v2' : 'jenfu.dev012.internal-candidate-smoke.v1') ||
       result.ownerApplicationId !== profile.application.id ||
       result.candidateRevision !== candidateRevision ||
       result.artifactDigest !== artifactDigest ||

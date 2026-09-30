@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createOrgmasterAuthMiddleware, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
@@ -29,9 +30,8 @@ function runtime() {
 
 function handoff() {
   return {
-    contractVersion: 'jenfu.sso-handoff.v1', issuer: `${brokerOrigin}/api/sso`, audience: 'orgmaster',
+    contractVersion: 'jenfu.sso-handoff.v2', issuer: `${brokerOrigin}/api/sso`, audience: 'orgmaster',
     identity: { identityIssuer: 'https://securetoken.google.com/jenfu-platform-nonprod', identitySubject: 'uid-1', principalId: 'principal-1', employeeId: 'employee-1' },
-    authorization: { applicationId: 'orgmaster', assignmentVersion: 1 },
     authentication: { authenticatedAt: '2026-09-17T02:55:00.000Z', email: 'fixture@example.invalid', emailVerified: true, signInProvider: 'password', secondFactor: null, assuranceLevel: 'aal1' },
     authState: { authEpoch: 7, revokedBefore: null }, sourceSessionExpiresAt: '2026-09-17T04:00:00.000Z', issuedAt: '2026-09-17T02:59:30.000Z', expiresAt: '2026-09-17T03:00:30.000Z',
   }
@@ -69,6 +69,7 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
       contractVersion: 'jenfu.sso-handoff.v2', identity: { principalId: 'principal-one' },
     })
     expect(() => parseHandoff({ ...vector, authorization: { applicationId: 'orgmaster', assignmentVersion: 1 } }, vector.issuer, clock)).toThrow('handoff invalid')
+    expect(() => parseHandoff({ ...vector, contractVersion: 'jenfu.sso-handoff.v1', authorization: { applicationId: 'orgmaster', assignmentVersion: 1 } }, vector.issuer, clock)).toThrow('handoff invalid')
     expect(() => parseHandoff({ ...vector, expiresAt: '2026-09-24T11:59:59.000Z' }, vector.issuer, clock)).toThrow('handoff expired')
     expect(() => parseHandoff({ ...vector, authState: { authEpoch: -1, revokedBefore: null } }, vector.issuer, clock)).toThrow('handoff invalid')
   })
@@ -104,9 +105,9 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(accepted.status).toBe(303)
     expect(accepted.headers.get('location')).toBe(`${publicOrigin}/`)
     expect(accepted.headers.get('set-cookie')).toContain('orgmaster_session=')
-    expect(value.epochs!.readState).toHaveBeenCalledWith('https://securetoken.google.com/jenfu-platform-nonprod', 'uid-1')
+    expect(value.epochs!.readPrincipalState).toHaveBeenCalledWith('principal-1')
     expect(value.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({
-      authEpoch: 7,
+      authEpoch: 0, sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 7,
       authenticatedAt: '2026-09-17T02:55:00.000Z',
       expiresAt: '2026-09-17T04:00:00.000Z',
     }))
@@ -115,7 +116,7 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
 
   it('rejects callback when original authentication time is at or before revokedBefore', async () => {
     const value = runtime()
-    vi.mocked(value.epochs!.readState).mockResolvedValue({ authEpoch: 7, revokedBefore: '2026-09-17T02:56:00.000Z' })
+    vi.mocked(value.epochs!.readPrincipalState).mockResolvedValue({ authEpoch: 7, revokedBefore: '2026-09-17T02:56:00.000Z' })
     const base = await listen(value, dependencies('on'))
     const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
     const location = new URL(start.headers.get('location')!)
@@ -163,3 +164,42 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(deniedValue.sessions!.create).not.toHaveBeenCalled()
   })
 })
+
+const producerProofPath = process.env.DEV015_HANDOFF_PROOF_INPUT
+if (producerProofPath) {
+  it('accepts the Platform producer proof through the OrgMaster HTTP callback', async () => {
+    const proof = (JSON.parse(readFileSync(producerProofPath, 'utf8')) as { orgmaster: ReturnType<typeof handoff> }).orgmaster
+    const issuedAt = Date.parse(proof.issuedAt)
+    expect(parseHandoff(proof, proof.issuer, issuedAt + 1_000)).toMatchObject({
+      audience: 'orgmaster', identity: { principalId: proof.identity.principalId },
+    })
+    const value = runtime()
+    if (!value.configResult.configured) throw new Error('missing test config')
+    value.configResult.config.publicBaseUrl = new URL('https://orgmaster.example.test')
+    vi.mocked(value.epochs!.readPrincipalState).mockResolvedValue({ authEpoch: proof.authState.authEpoch, revokedBefore: null })
+    const deps = dependencies('on', proof)
+    deps.now = () => issuedAt + 1_000
+    deps.environment = { NODE_ENV: 'test', ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on',
+      ORGMASTER_JENFU_SSO_BROKER_ORIGIN: new URL(proof.issuer).origin }
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    expect(start.status).toBe(303)
+    const authorize = new URL(start.headers.get('location')!)
+    expect(authorize.searchParams.get('redirect_uri')).toBe('https://orgmaster.example.test/api/auth/jenfu-sso/callback')
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.searchParams.set('code', 'producer-issued-code')
+    callback.searchParams.set('state', authorize.searchParams.get('state')!)
+    callback.searchParams.set('iss', proof.issuer)
+    const accepted = await fetch(callback, { redirect: 'manual', headers: {
+      cookie: start.headers.get('set-cookie')!.split(';')[0],
+    } })
+    expect(accepted.status).toBe(303)
+    expect(accepted.headers.get('set-cookie')).toContain('orgmaster_session=')
+    expect(value.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({
+      principalId: proof.identity.principalId, employeeId: proof.identity.employeeId,
+      principalAuthEpoch: proof.authState.authEpoch, epochKind: 'principal', sessionSchemaVersion: 2,
+    }))
+    const exchangeBody = new URLSearchParams(vi.mocked(deps.fetch!).mock.calls[0][1]?.body as string)
+    expect(exchangeBody.get('redirect_uri')).toBe('https://orgmaster.example.test/api/auth/jenfu-sso/callback')
+  })
+}

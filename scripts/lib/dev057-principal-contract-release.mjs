@@ -19,3 +19,14 @@ export const DEV057_CUTOVER_SOURCE_REMEDIATION = Object.freeze({
   consumerRole: 'jenfu_ai_pdm_migrator',
   applicationId: 'ai-pdm',
 })
+
+export const DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION = Object.freeze({
+  kind: 'PRINCIPAL_ONLY_GRANTS_AND_CUTOVER_SOURCE',
+  migrationVersion: 'dev057-orgmaster-028',
+  contractIds: [
+    'orgmaster.ai-pdm-principal-effective-grants-v3',
+    'orgmaster.principal-cutover-source-v2',
+  ],
+  contractView: 'orgmaster_contract.v_ai_pdm_principal_effective_grants_v3',
+  applicationId: 'ai-pdm',
+})

@@ -46,6 +46,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   'db/migrations/025_dev057_ai_pdm_principal_effective_grants_v2.sql',
   'db/migrations/026_dev057_session_principal_policy_path.sql',
   'db/migrations/027_dev057_principal_cutover_source_manifest.sql',
+  'db/migrations/028_dev057_ai_pdm_principal_effective_grants_v3.sql',
 ]
 
 function fail(code, detail = '') {
@@ -83,8 +84,8 @@ export function assertDev040V3Profile(profile, n1c) {
   if (JSON.stringify(profile.workflow.jobs) !== JSON.stringify(['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize'])) fail('WORKFLOW_CONTRACT_MISMATCH')
   if (profile.artifact?.migrationRunnerUri !== 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-migration-runner' || profile.artifact?.migrationBundlePrefix !== 'source/migration-bundles') fail('MIGRATION_ARTIFACT_MISMATCH')
   if (profile.build?.dockerBuilderImage !== 'gcr.io/cloud-builders/docker@sha256:3d00b6c1a9b862621c30fc74d4f2abfc62bcbdee631ed3febd31e7edbdf6252c' || profile.build?.dockerfile !== 'Dockerfile' || profile.build?.dockerTarget !== 'runner' || profile.build?.sourceArchiveFormat !== 'tar.gz' || profile.build?.requestedVerifyOption !== 'VERIFIED' || profile.build?.maximumAllowedSeverity !== 'MEDIUM' || !Number.isFinite(Date.parse(profile.build?.builderDigestObservedAt))) fail('BUILD_PROFILE_MISMATCH')
-  if (profile.verification?.refreshTokenEnvironmentName !== 'DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN' || profile.verification?.firebaseApiKeyEnvironmentName !== 'DEV012_ORGMASTER_FIREBASE_API_KEY' || profile.verification?.authModePath !== '/api/auth/mode' || profile.verification?.sessionPath !== '/api/auth/firebase/session' || profile.verification?.mePath !== '/api/auth/me' || profile.verification?.logoutPath !== '/api/auth/logout' || profile.verification?.authenticatedProbes?.length !== 1 || profile.verification?.negativeProbes?.length !== 1) fail('VERIFICATION_PROFILE_MISMATCH')
-  if (profile.verification?.candidateSmokeMode !== 'WORKFLOWS_INTERNAL_OIDC_V1' || profile.verification?.candidateWorkflowName !== 'orgmaster-prod-candidate-smoke' || profile.verification?.candidateRefreshTokenSecretId !== 'orgmaster-prod-smoke-firebase-refresh-token') fail('VERIFICATION_PROFILE_MISMATCH')
+  if (profile.verification?.refreshTokenEnvironmentName !== 'DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN' || profile.verification?.firebaseApiKeyEnvironmentName !== 'DEV012_ORGMASTER_FIREBASE_API_KEY' || profile.verification?.authModePath !== '/api/auth/mode' || profile.verification?.sessionMode !== 'PLATFORM_SSO_V2' || profile.verification?.brokerOrigin !== 'https://jenfu-platform-prod-9536592944.asia-east1.run.app' || 'sessionPath' in profile.verification || profile.verification?.mePath !== '/api/auth/me' || profile.verification?.logoutPath !== '/api/auth/logout' || profile.verification?.authenticatedProbes?.length !== 1 || profile.verification?.negativeProbes?.length !== 1) fail('VERIFICATION_PROFILE_MISMATCH')
+  if (profile.verification?.candidateSmokeMode !== 'WORKFLOWS_INTERNAL_OIDC_V2_PRINCIPAL_SSO' || profile.verification?.candidateWorkflowName !== 'orgmaster-prod-candidate-smoke' || profile.verification?.candidateRefreshTokenSecretId !== 'orgmaster-prod-smoke-firebase-refresh-token') fail('VERIFICATION_PROFILE_MISMATCH')
   if (profile.incidentRuntime?.controllerAudience !== 'https://release-controller.jenfu.internal/orgmaster' || profile.incidentRuntime?.githubReadTokenSecretId !== 'orgmaster-prod-controller-github-read-token' || profile.incidentRuntime?.numericSecretVersionRequired !== true || profile.incidentRuntime?.activeControlObject !== 'control/active.json') fail('INCIDENT_RUNTIME_PROFILE_MISMATCH')
   if (profile.migrations?.jobName !== 'orgmaster-prod-migration-runner' || profile.migrations?.serviceAccount !== 'orgmaster-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com') fail('MIGRATION_JOB_MISMATCH')
   if ('productionData' in profile) fail('RELEASE_BOOTSTRAP_CONFIG_DENIED')
@@ -103,7 +104,7 @@ export function assertDev040V3Profile(profile, n1c) {
     || fixed.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL !== 'platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com'
     || fixed.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT !== '101029748006912113815'
     || profile.environment.candidateOriginEnvironmentName !== 'ORGMASTER_RELEASE_CANDIDATE_ORIGIN') fail('ENVIRONMENT_VALUE_DRIFT')
-  if (JSON.stringify(profile.environment.controlledValues) !== JSON.stringify({ ORGMASTER_JENFU_SSO_HANDOFF_MODE: { defaultValue: 'off', allowedValues: ['off', 'on'] } })) fail('ENVIRONMENT_VALUE_DRIFT')
+  if (JSON.stringify(profile.environment.controlledValues) !== JSON.stringify({ ORGMASTER_JENFU_SSO_HANDOFF_MODE: { defaultValue: 'on', allowedValues: ['on'] } })) fail('ENVIRONMENT_VALUE_DRIFT')
   if (profile.environment.allowedSecretIds?.ORGMASTER_POSTGRES_URL !== 'orgmaster-prod-postgres-url' || profile.environment.allowedSecretIds?.ORGMASTER_SESSION_HASH_PEPPER !== 'orgmaster-prod-session-pepper' || profile.environment.numericVersionsRequired !== true) fail('SECRET_BOUNDARY_DRIFT')
   const order = profile.migrations?.entries?.map((entry) => entry.path)
   if (profile.migrations?.ledger !== 'orgmaster_core.schema_migrations' || profile.migrations?.baselineCount !== 10 || JSON.stringify(order) !== JSON.stringify(PRODUCTION_MIGRATION_PATHS) || JSON.stringify(order.slice(0, 10)) !== JSON.stringify(n1c.migration.order)) fail('MIGRATION_MANIFEST_DRIFT')

@@ -10,8 +10,8 @@ import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-r
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
-import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
-import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation } from './lib/dev040-routine-release.mjs'
+import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
+import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation, assertDev057PrincipalGrantsV3Append, assertDev057PrincipalGrantsV3Remediation } from './lib/dev040-routine-release.mjs'
 
 test('production runtime image includes the source-frozen v4 catalog read by governance', () => {
   const dockerfile = fs.readFileSync('Dockerfile', 'utf8')
@@ -21,6 +21,13 @@ test('production runtime image includes the source-frozen v4 catalog read by gov
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
 const n1c = JSON.parse(fs.readFileSync('config/dev-010/n1c-orgmaster.json'))
+const historicalProfile = structuredClone(profile)
+historicalProfile.environment.controlledValues.ORGMASTER_JENFU_SSO_HANDOFF_MODE = { defaultValue: 'off', allowedValues: ['off', 'on'] }
+const historicalPlain = resolvePlainEnvironment(historicalProfile, Object.fromEntries(historicalProfile.environment.requiredPlainEnvironmentNames
+  .filter((name) => !Object.hasOwn(historicalProfile.environment.fixedValues, name) && !Object.hasOwn(historicalProfile.environment.controlledValues, name))
+  .map((name) => [name, 'fixture-public-value'])))
+const historicalRuntime = buildRuntimeConfig(historicalProfile, { plainEnvironment: historicalPlain, secretVersions: Object.fromEntries(historicalProfile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+
 const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(entry.path)]))
 const buildBundle = (revision) => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, revision)
 const oldSource = 'a'.repeat(40), newSource = 'b'.repeat(40)
@@ -125,9 +132,10 @@ test('routine release reuses unchanged SQL and infrastructure with no bootstrap 
 })
 
 test('DEV-013 controlled release permits only the sealed off-to-on handoff transition', async () => {
-  const enabledPlain = resolvePlainEnvironment(profile, runtime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
-  const enabledRuntime = buildRuntimeConfig(profile, { plainEnvironment: enabledPlain, secretVersions: runtime.secretVersions })
-  const h = harness({ nextRuntime: enabledRuntime })
+  const enabledPlain = resolvePlainEnvironment(historicalProfile, historicalRuntime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
+  const enabledRuntime = buildRuntimeConfig(historicalProfile, { plainEnvironment: enabledPlain, secretVersions: historicalRuntime.secretVersions })
+  const h = harness({ baselineRuntime: historicalRuntime, nextRuntime: enabledRuntime })
+  h.input.profile = historicalProfile
   transitionReadiness(h, { from: 'off', to: 'on', action: 'activate' })
   const result = await verifyRoutineRelease(h.input)
   assert.equal(result.releaseMode, 'DEV013_CONTROLLED_ENVIRONMENT')
@@ -135,9 +143,10 @@ test('DEV-013 controlled release permits only the sealed off-to-on handoff trans
 })
 
 test('DEV-013 controlled release permits only the sealed 012-015 append before candidate', async () => {
-  const enabledPlain = resolvePlainEnvironment(profile, runtime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
-  const enabledRuntime = buildRuntimeConfig(profile, { plainEnvironment: enabledPlain, secretVersions: runtime.secretVersions })
-  const h = harness({ baselineRuntime: runtime, nextRuntime: enabledRuntime, baselineBundle: legacyOldBundle, currentBundle: { bundle: dev013NewBundle } })
+  const enabledPlain = resolvePlainEnvironment(historicalProfile, historicalRuntime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
+  const enabledRuntime = buildRuntimeConfig(historicalProfile, { plainEnvironment: enabledPlain, secretVersions: historicalRuntime.secretVersions })
+  const h = harness({ baselineRuntime: historicalRuntime, nextRuntime: enabledRuntime, baselineBundle: legacyOldBundle, currentBundle: { bundle: dev013NewBundle } })
+  h.input.profile = historicalProfile
   transitionReadiness(h, { from: 'off', to: 'on', action: 'activate' })
   const infra = attachForwardInfra(h)
   const result = await verifyRoutineRelease(h.input)
@@ -374,7 +383,7 @@ test('DEV-057 owner producer exposes exact principal-contract release mode', () 
 
 test('DEV-057 cutover source accepts only exact 027 append from released 026 baseline', async () => {
   const baselineBundle = prefixBundle(oldBundle.bundle, 26)
-  const currentBundle = { bundle: newBundle.bundle }
+  const currentBundle = { bundle: prefixBundle(newBundle.bundle, 27) }
   const h = harness({ baselineBundle, currentBundle })
   const remediation = DEV057_CUTOVER_SOURCE_REMEDIATION
   h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation }
@@ -392,15 +401,37 @@ test('DEV-057 cutover source accepts only exact 027 append from released 026 bas
   assert.match(producer, /--dev057-cutover-source-remediation/u)
 })
 
+test('DEV-057 principal-only grants accepts only exact 028 append from released 027 baseline', async () => {
+  const baselineBundle = prefixBundle(oldBundle.bundle, 27)
+  const currentBundle = { bundle: newBundle.bundle }
+  const h = harness({ baselineBundle, currentBundle })
+  const remediation = DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation }
+  attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION')
+  assert.equal(result.pendingMigrationCount, 1)
+  assert.equal(assertDev057PrincipalGrantsV3Append(baselineBundle, currentBundle.bundle).pendingMigrationCount, 1)
+  assert.equal(assertDev057PrincipalGrantsV3Remediation(h.input.values.readiness, h.input.values.authorization).releaseMode, result.releaseMode)
+  const drift = structuredClone(currentBundle.bundle)
+  drift.entries[27].sourceSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev057PrincipalGrantsV3Append(baselineBundle, drift), /DEV057_PRINCIPAL_GRANTS_V3_APPEND_INVALID/u)
+  const producer = fs.readFileSync('scripts/dev040-deploy-production.mjs', 'utf8')
+  assert.match(producer, /--dev057-principal-grants-v3-remediation/u)
+})
+
 test('DEV-057 cutover admits only the exact source-frozen operator and receipt IAM delta', async () => {
   const root = path.resolve('.')
   const baselineRevision = '48120534cbde4a06d0f3cd6d5de76171ca7e0699'
-  const cutoverRevision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim()
+  // This is a historical infrastructure transition. A later application or
+  // grant-v3 commit must not become its expected "after" source by being HEAD.
+  const cutoverRevision = '51ce0d0e003dbb5ea06688ea74f541066e70946d'
   assert.match(assertDev057CutoverInfraTransition(root, baselineRevision, cutoverRevision), /^[a-f0-9]{64}$/u)
   assert.throws(() => assertDev057CutoverInfraTransition(root, cutoverRevision, baselineRevision), /DEV057_CUTOVER_INFRA_DELTA_INVALID/u)
   assert.throws(() => assertDev057CutoverInfraTransition(root, baselineRevision, baselineRevision), /DEV057_CUTOVER_INFRA_DELTA_INVALID/u)
 
-  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 26), currentBundle: { bundle: newBundle.bundle } })
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 26), currentBundle: { bundle: prefixBundle(newBundle.bundle, 27) } })
   const remediation = DEV057_CUTOVER_SOURCE_REMEDIATION
   h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation }
   h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation }
@@ -415,7 +446,7 @@ test('DEV-057 cutover admits only the exact source-frozen operator and receipt I
   assert.equal((await verifyRoutineRelease(h.input)).releaseMode, 'DEV057_CUTOVER_SOURCE_REMEDIATION')
   assert.equal(checked, true)
 
-  const missingReceipt = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 26), currentBundle: { bundle: newBundle.bundle } })
+  const missingReceipt = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 26), currentBundle: { bundle: prefixBundle(newBundle.bundle, 27) } })
   missingReceipt.input.values.authorization = h.input.values.authorization
   missingReceipt.input.values.readiness = h.input.values.readiness
   missingReceipt.input.transitionFingerprint = h.input.transitionFingerprint
@@ -454,7 +485,8 @@ test('DEV-013 controlled release can add the default-off guard to the historical
   delete legacyProfile.environment.controlledValues
   const legacyPlain = Object.fromEntries(Object.entries(runtime.plainEnvironment).filter(([name]) => legacyProfile.environment.requiredPlainEnvironmentNames.includes(name)))
   const legacyRuntime = buildRuntimeConfig(legacyProfile, { plainEnvironment: legacyPlain, secretVersions: runtime.secretVersions })
-  const h = harness({ baselineRuntime: legacyRuntime })
+  const h = harness({ baselineRuntime: legacyRuntime, nextRuntime: historicalRuntime })
+  h.input.profile = historicalProfile
   transitionReadiness(h, { from: null, to: 'off', action: 'guard' })
   const result = await verifyRoutineRelease(h.input)
   assert.equal(result.controlledTransition.action, 'guard')
@@ -508,11 +540,13 @@ test('DEV-013 predecessor receipt accepts only an exact live root or released ow
 })
 
 test('DEV-013 controlled release rejects an unbound readiness receipt or unrelated runtime drift', async () => {
-  const enabledPlain = resolvePlainEnvironment(profile, runtime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
-  const enabledRuntime = buildRuntimeConfig(profile, { plainEnvironment: enabledPlain, secretVersions: runtime.secretVersions })
-  const missing = harness({ nextRuntime: enabledRuntime })
+  const enabledPlain = resolvePlainEnvironment(historicalProfile, historicalRuntime.plainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
+  const enabledRuntime = buildRuntimeConfig(historicalProfile, { plainEnvironment: enabledPlain, secretVersions: historicalRuntime.secretVersions })
+  const missing = harness({ baselineRuntime: historicalRuntime, nextRuntime: enabledRuntime })
+  missing.input.profile = historicalProfile
   await assert.rejects(() => verifyRoutineRelease(missing.input), /DEV013_CONTROLLED_TRANSITION_AUTHORITY_INVALID/u)
-  const secretDrift = harness({ nextRuntime: structuredClone(enabledRuntime) })
+  const secretDrift = harness({ baselineRuntime: historicalRuntime, nextRuntime: structuredClone(enabledRuntime) })
+  secretDrift.input.profile = historicalProfile
   secretDrift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_POSTGRES_URL = '2'
   transitionReadiness(secretDrift, { from: 'off', to: 'on', action: 'activate' })
   await assert.rejects(() => verifyRoutineRelease(secretDrift.input), /ROUTINE_RUNTIME_CHANGED/u)

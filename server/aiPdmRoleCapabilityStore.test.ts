@@ -1,21 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, cp, rm, mkdir, writeFile, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { AiPdmRoleCapabilityStoreError, readAiPdmRoleCapabilityReceipt, readAiPdmRoleCapabilityWorkspace, publishAiPdmRoleCapabilityChange, resolveAiPdmRoleCapabilityUnknown, validateAiPdmRoleCapabilityReason } from './aiPdmRoleCapabilityStore'
-
-async function copyCurrentWorkspaceFixture(sourceRoot: string, root: string) {
-  await mkdir(resolve(root, 'data', 'orgmaster-versions'), { recursive: true })
-  const sourceManifest = resolve(sourceRoot, 'data', 'orgmaster-workspace.v1.json')
-  const targetManifest = resolve(root, 'data', 'orgmaster-workspace.v1.json')
-  await cp(sourceManifest, targetManifest)
-  const manifest = JSON.parse(await readFile(targetManifest, 'utf8')) as { currentVersionId: string }
-  await cp(
-    resolve(sourceRoot, 'data', 'orgmaster-versions', `${manifest.currentVersionId}.json`),
-    resolve(root, 'data', 'orgmaster-versions', `${manifest.currentVersionId}.json`),
-  )
-  return manifest
-}
+import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
 
 describe('AI-PDM role capability save reason', () => {
   it('allows an optional blank reason', () => {
@@ -39,8 +27,7 @@ describe('DEV-008 fail-closed source and terminal command receipt', () => {
 
   it('fails closed when the current workspace version is corrupted', async () => {
     const root = await mkdtemp(resolve(tmpdir(), 'orgmaster-dev008-'))
-    const sourceRoot = process.cwd()
-    const manifest = await copyCurrentWorkspaceFixture(sourceRoot, root)
+    const manifest = await writeSyntheticWorkspaceFixture(root)
     await writeFile(resolve(root, 'data', 'orgmaster-versions', `${manifest.currentVersionId}.json`), '{"kind":"broken"}\n', 'utf8')
     const previous = process.env.ORGMASTER_GOVERNANCE_DATA_DIR
     process.env.ORGMASTER_GOVERNANCE_DATA_DIR = resolve(root, 'state')
@@ -50,8 +37,7 @@ describe('DEV-008 fail-closed source and terminal command receipt', () => {
 
   it('persists a no-op as a terminal applied receipt and resolves an absent command', async () => {
     const root = await mkdtemp(resolve(tmpdir(), 'orgmaster-dev008-'))
-    const sourceRoot = process.cwd()
-    await copyCurrentWorkspaceFixture(sourceRoot, root)
+    await writeSyntheticWorkspaceFixture(root)
     const previous = process.env.ORGMASTER_GOVERNANCE_DATA_DIR
     process.env.ORGMASTER_GOVERNANCE_DATA_DIR = resolve(root, 'state')
     try {
