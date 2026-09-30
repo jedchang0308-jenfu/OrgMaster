@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+import { assertPrincipalOnlyRecoveryReadback } from './lib/dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildReleaseIntent, buildRuntimeConfigReceipt, buildSourceFreeze, readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
@@ -25,10 +26,14 @@ async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile
   return assertDev013PredecessorReceipt(value, predecessorReceiptRef, profile, observedAt, currentStep)
 }
 
-function parseArgs(argv) {
-  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014ManagedPrincipalProjectionRemediation: false, dev014LoginFixtureCorrection: false, dev057WriterFenceRemediation: false, dev057PrincipalContractRemediation: false, dev057CutoverSourceRemediation: false, dev057PrincipalGrantsV3Remediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null }
+export function parseArgs(argv) {
+  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014ManagedPrincipalProjectionRemediation: false, dev014LoginFixtureCorrection: false, dev057WriterFenceRemediation: false, dev057PrincipalContractRemediation: false, dev057CutoverSourceRemediation: false, dev057PrincipalGrantsV3Remediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null, principalOnlyRecoveryRef: null }
   for (const arg of argv) {
-    if (arg === '--check' && !options.check) options.check = true
+    if (arg.startsWith('--principal-only-recovery-ref=') && options.principalOnlyRecoveryRef === null) {
+      const match = /^(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/DEV057-PRINCIPAL-ONLY-RECOVERY\/[a-f0-9]{40}\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--principal-only-recovery-ref='.length))
+      if (!match) throw new Error('DEV057_RECOVERY_REF_INVALID')
+      options.principalOnlyRecoveryRef = { ...match.groups }
+    } else if (arg === '--check' && !options.check) options.check = true
     else if (arg === '--prepare-only' && !options.prepareOnly) options.prepareOnly = true
     else if (arg === '--dev014-activate' && !options.dev014Activate) options.dev014Activate = true
     else if (arg === '--dev014-contract-remediation' && !options.dev014ContractRemediation) options.dev014ContractRemediation = true
@@ -101,9 +106,13 @@ async function main() {
   const previousIntent = await transport.readBytes(`gs://${profile.artifact.releaseBucket}/receipts/releases/${control.releaseId}/release-intent.json`, { prefixes: ['receipts'] })
   const baselineIntentRef = await resolveRoutineControlBaseline({ profile, transport, control, attempt: { ...previousIntent, value: JSON.parse(previousIntent.bytes) } })
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef })
-  const previousRevision = baseline.terminal.value.facts.candidateRevision
+  const previousRevision = baseline.activeRevision
   if (control.result === 'RELEASED' && (baseline.intent.sourceRevision !== control.sourceRevision || previousRevision !== control.candidateRevision)) throw new Error('ROUTINE_CONTROL_JOIN_INVALID')
-  if (control.result !== 'RELEASED' && previousRevision !== control.previousRevision) throw new Error('ROUTINE_CONTROL_JOIN_INVALID')
+  const principalPreActivation = control.result === 'PRE_ACTIVATION_ABORTED'
+    && previousIntent && JSON.parse(previousIntent.bytes).principalOnlyRecovery
+  if (control.result !== 'RELEASED' && previousRevision !== (principalPreActivation
+    ? JSON.parse(previousIntent.bytes).previousRevision : control.previousRevision)) throw new Error('ROUTINE_CONTROL_JOIN_INVALID')
+  if ((baseline.repair || principalPreActivation) && !options.principalOnlyRecoveryRef) throw new Error('PRINCIPAL_ONLY_RECOVERY_REQUIRED')
   const service = await transport.getService(profile)
   const buildMigrationBundle = async (revision) => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), new Map(profile.migrations.entries.map((entry) => [entry.path, readGitBlob(root, entry.path, revision)])), revision)
   const observedAt = new Date().toISOString()
@@ -204,7 +213,16 @@ async function main() {
     infra: (await transport.readJson(infraReceiptRef, profile.artifact.releaseBucket)).value }
   const uri = (name) => `gs://${profile.artifact.releaseBucket}/receipts/releases/${releaseId}/${name}.json`
   const ref = (name, value) => ({ uri: uri(name), sha256: sha256(Buffer.from(`${canonicalize(value)}\n`)) })
-  const input = { baselineIntentRef, previousRevision, deadlineAt, sourceLockRef: ref('source-lock', sourceLock), runtimeConfigRef: ref('runtime-config', runtimeConfig), authorizationPolicyRef: ref('owner-authorization', authorization), readinessReceiptRef: ref('owner-readiness', readiness), foundationReceiptRef: baseline.intent.foundationReceiptRef, infraReceiptRef }
+  let principalOnlyRecovery = null
+  if (options.principalOnlyRecoveryRef) {
+    const proof = await transport.readJson(options.principalOnlyRecoveryRef, profile.artifact.releaseBucket, ['receipts'])
+    principalOnlyRecovery = { revision: proof.value.recoveryRevision, imageDigest: proof.value.imageDigest,
+      serviceUid: proof.value.serviceUid, receiptRef: options.principalOnlyRecoveryRef }
+    const recoveryRevision = await transport.getRevision(profile, principalOnlyRecovery.revision)
+    assertPrincipalOnlyRecoveryReadback({ intent: { sourceRevision: git.sourceRevision, previousRevision, principalOnlyRecovery },
+      profile, proof: proof.value, service, revision: recoveryRevision })
+  }
+  const input = { ...(principalOnlyRecovery ? { principalOnlyRecovery } : {}), baselineIntentRef, previousRevision, deadlineAt, sourceLockRef: ref('source-lock', sourceLock), runtimeConfigRef: ref('runtime-config', runtimeConfig), authorizationPolicyRef: ref('owner-authorization', authorization), readinessReceiptRef: ref('owner-readiness', readiness), foundationReceiptRef: baseline.intent.foundationReceiptRef, infraReceiptRef }
   const intent = buildReleaseIntent({ profile, releaseId, input, sourceLock, prerequisiteValues: values, validateIntent: assertDev040ReleaseIntent })
   const verification = await verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle })
   if (options.check) {
@@ -218,4 +236,4 @@ async function main() {
   if (!options.prepareOnly) command('gh', ['workflow', 'run', profile.workflow.path, '--repo', profile.application.repository, '--ref', profile.application.branch, '-f', `releaseCapsuleRef=${releaseCapsuleRef}`])
   process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: verification.migrationDisposition, controlledTransition: transition ?? dev014Activation ?? dev014Remediation ?? dev014ApplicationRegistrationRemediation ?? dev014ActivationContractRemediation ?? dev014ProjectionContractRemediation ?? dev014ManagedPrincipalProjectionRemediation ?? dev014LoginFixtureCorrection ?? dev057WriterFenceRemediation ?? dev057PrincipalContractRemediation ?? dev057CutoverSourceRemediation ?? dev057PrincipalGrantsV3Remediation })}\n`)
 }
-main().catch((error) => { process.stderr.write(`${error.code ?? error.message}\n`); process.exitCode = 1 })
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main().catch((error) => { process.stderr.write(`${error.code ?? error.message}\n`); process.exitCode = 1 })

@@ -1,3 +1,4 @@
+import { assertPrincipalOnlyRecoveryBinding } from './dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 
@@ -104,6 +105,10 @@ export function buildReleaseIntent({ profile, releaseId, input, sourceLock, prer
     previousRevision: input.previousRevision,
     deadlineAt: input.deadlineAt,
     baselineIntentRef: exactRef(input.baselineIntentRef, profile),
+  }
+  if (Object.hasOwn(input, 'principalOnlyRecovery')) {
+    intent.principalOnlyRecovery = structuredClone(input.principalOnlyRecovery)
+    assertPrincipalOnlyRecoveryBinding(intent, profile.artifact.releaseBucket)
   }
   if (!intent.previousRevision || intent.previousRevision === 'latest' || !Number.isFinite(Date.parse(intent.deadlineAt)) || Date.parse(intent.deadlineAt) <= Date.now()) fail('RELEASE_INTENT_INPUT_INVALID')
   for (const [name, value] of Object.entries(prerequisiteValues)) {

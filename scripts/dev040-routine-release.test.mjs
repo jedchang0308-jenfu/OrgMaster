@@ -689,3 +689,64 @@ test('a finalized failed attempt resolves only its sealed original production ba
   await assert.rejects(() => resolveRoutineControlBaseline({ profile, transport: h.input.transport, control, attempt }), /MISSING/)
   await assert.rejects(() => resolveRoutineControlBaseline({ profile, transport: h.input.transport, control: { ...control, state: 'ACTIVE' }, attempt }), /ROUTINE_CONTROL_NOT_FINALIZED/)
 })
+
+
+test('real routine verifier and baseline resolver repair a sealed Principal-only maintenance rollback', async () => {
+  const h = harness()
+  const uid = 'd65f379b-a342-4eb3-ba22-109aa5f368c5'
+  const recoveryRevision = 'orgmaster-prod-recovery-aaaaaaaaaaaa'
+  const image = `asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-recovery@sha256:${'9'.repeat(64)}`
+  const baselineIntent = structuredClone(h.objects.get(h.input.intent.baselineIntentRef.uri).value)
+  baselineIntent.previousRevision = 'orgmaster-prod-prior'
+  const proofRef = h.put(`gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/${oldSource}.json`, {
+    schemaVersion: 'orgmaster.principal-only-recovery.v1', sourceRevision: oldSource,
+    projectId: profile.target.projectId, region: profile.target.region, service: profile.target.serviceName,
+    serviceUid: uid, oldRevision: baselineIntent.previousRevision, recoveryRevision, imageDigest: image, status: 'PASS',
+  })
+  baselineIntent.principalOnlyRecovery = { revision: recoveryRevision, imageDigest: image, serviceUid: uid, receiptRef: proofRef }
+  const baselineRef = h.put(`gs://${bucket}/receipts/releases/${baselineIntent.releaseId}/release-intent.json`, baselineIntent)
+  const paths = releasePaths(profile, baselineIntent, baselineRef.sha256)
+  const deployment = structuredClone(h.objects.get(h.paths.deployment).value)
+  deployment.releaseIntentRef = baselineRef
+  const deploymentRef = h.put(paths.deployment, deployment)
+  const migrationRef = h.put(paths.migrate, h.objects.get(h.paths.migrate).value)
+  const seal = (stage, facts, previousReceiptRef = null) => h.put(paths[stage], stageReceipt({ profile,
+    intent: baselineIntent, stage, facts, previousReceiptRef, observedAt: '2026-09-30T00:00:00Z' }))
+  const candidateRevision = 'orgmaster-prod-failedcandidate'
+  seal('candidate', { deploymentCapsuleRef: deploymentRef, migrationReceiptRef: migrationRef,
+    candidateRevision, artifactDigest: deployment.artifactDigest })
+  const rollbackRef = seal('rollback', { result: 'ROLLED_BACK', previousRevision: recoveryRevision, databaseDisposition: 'FORWARD_APPLIED' })
+  seal('terminal', { result: 'ROLLED_BACK', previousRevision: recoveryRevision, databaseDisposition: 'FORWARD_APPLIED' }, rollbackRef)
+  const core = { inputFingerprint: '3'.repeat(64), leaseExpiresAt: '2026-09-30T00:02:00Z', deadlineAt: '2026-09-30T04:00:00Z', schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result: 'ROLLED_BACK',
+    ownerApplicationId: profile.application.id, service: profile.target.serviceName, controlBucket: bucket,
+    releaseId: baselineIntent.releaseId, sourceRevision: oldSource, sourceLockSha256: baselineIntent.sourceLockRef.sha256,
+    previousRevision: recoveryRevision, candidateRevision,
+    ownerRunRef: `https://api.github.com/repos/${profile.application.repository}/actions/runs/42` }
+  const control = { ...core, controlSha256: sha256(canonicalize(core)) }
+  h.put(paths.control, control)
+  const service = { name: `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}`,
+    uid, generation: '2', observedGeneration: '2', reconciling: false, terminalCondition: { state: 'CONDITION_SUCCEEDED' },
+    scaling: { scalingMode: 'MANUAL', manualInstanceCount: 0 },
+    traffic: [{ revision: recoveryRevision, percent: 100 }], trafficStatuses: [{ revision: recoveryRevision, percent: 100 }] }
+  h.input.service = service
+  h.input.transport.getService = async () => service
+  h.input.transport.effectiveRevision = () => recoveryRevision
+  h.input.transport.readOwnerRun = async () => ({ id: '42', status: 'completed', conclusion: 'failure', event: 'workflow_dispatch', headSha: oldSource })
+  h.input.transport.getRevision = async (_profile, name) => {
+    assert.equal(name, recoveryRevision, 'old authorization revision must not be inspected as an active baseline')
+    return { name: `${service.name}/revisions/${name}`, containers: [{ name: profile.runtime.containerName, image }],
+      conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] }
+  }
+  h.input.intent.previousRevision = recoveryRevision
+  h.input.intent.baselineIntentRef = baselineRef
+  h.input.intent.principalOnlyRecovery = { ...baselineIntent.principalOnlyRecovery, revision: 'orgmaster-prod-recovery-bbbbbbbbbbbb' }
+  for (const kind of ['authorization', 'readiness']) h.input.values[kind].baselineIntentRef = baselineRef
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.previousRevision, recoveryRevision)
+  assert.equal(result.migrationDisposition, 'UNCHANGED_VERIFIED')
+  assert.deepEqual(result.principalOnlyForwardRepair, { rollbackRef, recoveryRef: proofRef })
+  assert.deepEqual(await resolveRoutineControlBaseline({ profile, transport: h.input.transport, control,
+    attempt: h.objects.get(baselineRef.uri) }), baselineRef)
+  delete h.input.intent.principalOnlyRecovery
+  await assert.rejects(() => verifyRoutineRelease(h.input), /ROUTINE_REPAIR_RUNTIME_CHANGED/)
+})

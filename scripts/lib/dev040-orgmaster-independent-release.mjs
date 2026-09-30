@@ -1,3 +1,4 @@
+import { assertPrincipalOnlyRecoveryBinding } from './dev057-principal-only-release.mjs'
 import { createHash } from 'node:crypto'
 import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
 
@@ -66,6 +67,7 @@ export function assertDev040ReleaseIntent(value, profile) {
     const ref = value.baselineIntentRef
     if (!ref.uri?.startsWith(`gs://${profile.artifact.releaseBucket}/receipts/`) || ref.uri.includes('..') || !H64.test(ref.sha256 ?? '') || Object.keys(ref).sort().join(',') !== 'sha256,uri') fail('RELEASE_INTENT_REF_INVALID', 'baselineIntentRef')
   }
+  if (Object.hasOwn(value ?? {}, 'principalOnlyRecovery')) { expected.push('principalOnlyRecovery'); expected.sort(); assertPrincipalOnlyRecoveryBinding(value, profile.artifact.releaseBucket) }
   if (!value || JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(expected) || value.schemaVersion !== profile.schemas.releaseIntent || value.ownerApplicationId !== 'orgmaster' || !/^[A-Z0-9][A-Z0-9-]{5,63}$/.test(value.releaseId ?? '') || !H40.test(value.sourceRevision ?? '') || !H64.test(value.sourceSha256 ?? '') || !H64.test(value.migrationManifestSha256 ?? '') || !value.previousRevision || value.previousRevision === 'latest' || !Number.isFinite(Date.parse(value.deadlineAt))) fail('RELEASE_INTENT_INVALID')
   for (const name of ['sourceLockRef', 'authorizationPolicyRef', 'readinessReceiptRef', 'foundationReceiptRef', 'infraReceiptRef', 'runtimeConfigRef']) if (!new RegExp(`^gs://${profile.artifact.releaseBucket}/receipts/[A-Za-z0-9._/-]+\\.json$`).test(value[name]?.uri ?? '') || !H64.test(value[name]?.sha256 ?? '') || JSON.stringify(Object.keys(value[name] ?? {}).sort()) !== JSON.stringify(['sha256', 'uri'])) fail('RELEASE_INTENT_REF_INVALID', name)
   return value
