@@ -22,6 +22,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Build and verify the patched runtime
+        run: docker build --target runtime-smoke --progress=plain .
       - run: npm ci
       - run: npm run test:dev-040:r2
       - run: npm exec vitest run server/aiPdmRoleCatalogRepository.test.ts
