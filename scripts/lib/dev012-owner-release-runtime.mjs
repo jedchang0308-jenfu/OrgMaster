@@ -353,14 +353,17 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       return typeof revision === 'string'
         && (service?.latestCreatedRevision === revision || String(service?.latestCreatedRevision ?? '').endsWith(`/revisions/${revision}`))
     }
-    if (updateMask === 'traffic') {
+    if (updateMask === 'traffic' || updateMask === 'scaling,traffic') {
       const expected = requested?.traffic
       const actual = service?.traffic
       if (!Array.isArray(expected) || !Array.isArray(actual) || expected.length !== actual.length) return false
-      return expected.every((row, index) => ['type', 'revision', 'percent', 'tag', 'latestRevision']
+      const trafficMatches = expected.every((row, index) => ['type', 'revision', 'percent', 'tag', 'latestRevision']
         .every((key) => row[key] === undefined || (key === 'percent'
           ? Number(actual[index]?.percent ?? 0) === Number(row.percent)
           : actual[index]?.[key] === row[key])))
+      return trafficMatches && (updateMask === 'traffic' ||
+        (service?.scaling?.scalingMode === 'AUTOMATIC' &&
+          (service.scaling.manualInstanceCount == null || [0, '0'].includes(service.scaling.manualInstanceCount))))
     }
     return false
   }
@@ -418,6 +421,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     const expectedKeys = {
       template: ['etag', 'name', 'template'],
       traffic: ['etag', 'name', 'traffic'],
+      'scaling,traffic': ['etag', 'name', 'scaling', 'traffic'],
       [ENTRYPOINT_UPDATE_MASK]: ['defaultUriDisabled', 'etag', 'ingress', 'invokerIamDisabled', 'name'],
     }[updateMask]
     if (!expectedKeys || Object.keys(service ?? {}).sort().join(',') !== expectedKeys.join(',') || service?.name !== `projects/${profile.target.projectId}/locations/${profile.target.region}/services/${profile.target.serviceName}` || !service.etag) fail('RUN_MUTATION_INVALID')

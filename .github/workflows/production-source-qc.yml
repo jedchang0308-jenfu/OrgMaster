@@ -26,4 +26,4 @@ jobs:
       - run: npm run test:dev-040:r2
       - run: npm exec vitest run server/aiPdmRoleCatalogRepository.test.ts
       - run: npm run check:db-boundary
-      - run: npm run build
+      - run: npm run qc:dev-040:r2
