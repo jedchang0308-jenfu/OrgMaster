@@ -424,7 +424,9 @@ test('DEV-057 principal-only grants accepts only exact 028 append from released 
 test('DEV-057 cutover admits only the exact source-frozen operator and receipt IAM delta', async () => {
   const root = path.resolve('.')
   const baselineRevision = '48120534cbde4a06d0f3cd6d5de76171ca7e0699'
-  const cutoverRevision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim()
+  // This is a historical infrastructure transition. A later application or
+  // grant-v3 commit must not become its expected "after" source by being HEAD.
+  const cutoverRevision = '51ce0d0e003dbb5ea06688ea74f541066e70946d'
   assert.match(assertDev057CutoverInfraTransition(root, baselineRevision, cutoverRevision), /^[a-f0-9]{64}$/u)
   assert.throws(() => assertDev057CutoverInfraTransition(root, cutoverRevision, baselineRevision), /DEV057_CUTOVER_INFRA_DELTA_INVALID/u)
   assert.throws(() => assertDev057CutoverInfraTransition(root, baselineRevision, baselineRevision), /DEV057_CUTOVER_INFRA_DELTA_INVALID/u)
