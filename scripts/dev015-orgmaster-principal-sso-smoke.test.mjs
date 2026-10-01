@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import fs from 'node:fs'
 import { runOrgmasterPrincipalSsoSmoke } from './lib/dev015-orgmaster-principal-sso-smoke.mjs'
 
 const broker = 'https://platform.example.test'
@@ -8,7 +9,7 @@ const candidate = 'https://candidate-0123456789ab---orgmaster.example.test'
 const state = 's'.repeat(22)
 const code = 'c'.repeat(43)
 
-function redirects(input, principal = 'principal-one') {
+function redirects(input, principal = 'principal-one', platformCookie = 'jenfu_portal_session=platform-cookie; HttpOnly') {
   const calls = []
   const authorize = new URL('/api/sso/authorize', broker)
   authorize.searchParams.set('client_id', 'orgmaster')
@@ -21,7 +22,7 @@ function redirects(input, principal = 'principal-one') {
   const fetchImpl = async (url, options) => {
     calls.push({ url: String(url), options })
     const path = new URL(url).pathname
-    if (path === '/api/auth/firebase/session') return new Response(JSON.stringify({ user: { principalId: 'principal-one' } }), { status: 200, headers: { 'set-cookie': 'jenfu_session=platform-cookie; HttpOnly' } })
+    if (path === '/api/auth/firebase/session') return new Response(JSON.stringify({ user: { principalId: 'principal-one' } }), { status: 200, headers: { 'set-cookie': platformCookie } })
     if (path === '/api/auth/jenfu-sso/start') return new Response(null, { status: 303, headers: { location: authorize.toString(), 'set-cookie': '__Host-jenfu_sso_tx=transaction-cookie; HttpOnly' } })
     if (path === '/api/sso/authorize') return new Response(null, { status: 303, headers: { location: callback.toString() } })
     if (path === '/api/auth/jenfu-sso/callback') return new Response(null, { status: 303, headers: { location: canonical + '/', 'set-cookie': 'orgmaster_session=org-cookie; HttpOnly' } })
@@ -50,7 +51,7 @@ test('Principal-only candidate smoke follows the real Platform SSO exchange and 
   assert.equal(result.observations.length, 8)
   assert.equal(fixture.calls[0].url, broker + '/api/auth/firebase/session')
   assert.equal(fixture.calls[0].options.headers.Origin, broker)
-  assert.equal(fixture.calls[2].options.headers.Cookie, 'jenfu_session=platform-cookie')
+  assert.equal(fixture.calls[2].options.headers.Cookie, 'jenfu_portal_session=platform-cookie')
   assert.equal(fixture.calls[3].url, candidate + fixture.callback.pathname + fixture.callback.search)
   assert.equal(fixture.calls[3].options.headers.Cookie, '__Host-jenfu_sso_tx=transaction-cookie')
   assert.equal(fixture.calls.at(-2).options.headers.Origin, canonical)
@@ -69,4 +70,21 @@ test('Principal-only smoke rejects callback redirection to an unrelated origin',
     return fixture.fetchImpl(url, options)
   }
   await assert.rejects(() => runOrgmasterPrincipalSsoSmoke(input(fetchImpl)), /SSO_SMOKE_REDIRECT_INVALID/u)
+})
+
+// The cross-owner harness supplies this from Platform's real sessionCookie producer.
+// No sibling checkout or invented cookie constant is read by this owner test.
+test('Principal smoke consumes the real Platform cookie producer', { skip: !process.env.DEV015_HANDOFF_PROOF_INPUT }, async () => {
+  const proof = JSON.parse(fs.readFileSync(process.env.DEV015_HANDOFF_PROOF_INPUT, 'utf8'))
+  assert.equal(typeof proof.platformSessionCookie, 'string')
+  const fixture = redirects(null, 'principal-one', proof.platformSessionCookie)
+  const result = await runOrgmasterPrincipalSsoSmoke(input(fixture.fetchImpl))
+  assert.equal(result.status, 'PASS')
+  assert.equal(fixture.calls[2].options.headers.Cookie, proof.platformSessionCookie.split(';')[0])
+})
+
+test('Principal smoke rejects the incorrect historical broker cookie before SSO starts', async () => {
+  const fixture = redirects(null, 'principal-one', 'jenfu_session=opaque; HttpOnly')
+  await assert.rejects(() => runOrgmasterPrincipalSsoSmoke(input(fixture.fetchImpl)), /SSO_SMOKE_COOKIE_INVALID/u)
+  assert.equal(fixture.calls.length, 1)
 })

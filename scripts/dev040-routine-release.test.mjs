@@ -8,7 +8,7 @@ import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-st
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeBlobTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation, assertDev057PrincipalGrantsV3Append, assertDev057PrincipalGrantsV3Remediation } from './lib/dev040-routine-release.mjs'
@@ -749,4 +749,14 @@ test('real routine verifier and baseline resolver repair a sealed Principal-only
     attempt: h.objects.get(baselineRef.uri) }), baselineRef)
   delete h.input.intent.principalOnlyRecovery
   await assert.rejects(() => verifyRoutineRelease(h.input), /ROUTINE_REPAIR_RUNTIME_CHANGED/)
+})
+
+test('DEV-057 cookie correction seals historical and Principal-only source transitions', () => {
+  const historical = '1add0e6508568d591faa190cabf64e2470fb620c'
+  const principal = 'b8d6b8a92a044bcd59e11efd8a6c0f7f2e319b55'
+  const corrected = 'b9c6bfeca843c6ef551d95834b59f5471c097abc'
+  for (const before of [historical, principal]) assertDev057PrincipalSmokeBlobTransition(before, corrected)
+  for (const [before, after] of [[corrected, principal], [corrected, historical], [principal, historical], [principal, 'a'.repeat(40)], [null, corrected]]) {
+    assert.throws(() => assertDev057PrincipalSmokeBlobTransition(before, after), /PRINCIPAL_SMOKE_INFRA_DELTA_INVALID/u)
+  }
 })
