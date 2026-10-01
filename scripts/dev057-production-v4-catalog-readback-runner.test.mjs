@@ -7,7 +7,7 @@ import { parseArgs, summarizeGovernance } from './dev057-production-v4-catalog-r
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const current = JSON.parse(fs.readFileSync(path.join(root,
-  'config/catalogs/ai-pdm-role-catalog.v4.json'), 'utf8'))
+  'config/catalogs/ai-pdm-role-catalog.v5.json'), 'utf8'))
 const historical = JSON.parse(fs.readFileSync(path.join(root,
   'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'), 'utf8'))
 const row = (version) => ({ applicationId: 'ai-pdm', roleId: 'role-rd',
@@ -27,7 +27,7 @@ test('readback accepts only exact target and source-bound output', () => {
   assert.throws(() => parseArgs([...args, '--extra', '1']))
 })
 
-test('historical v3 assignments remain valid against the active v4 role semantics', () => {
+test('historical v3 assignments remain valid against the active v5 role semantics', () => {
   const result = summarizeGovernance(document([row(historical.catalogVersion)]), current, historical)
   assert.deepEqual(result, { active: { historicalV3: 1, currentV4: 0 },
     draft: { historicalV3: 1, currentV4: 0 } })
@@ -46,10 +46,24 @@ test('operator package uses locked runtime and includes every imported source', 
     'scripts/dev040-production-migration-runner.mjs',
     'scripts/dev057-production-v4-catalog-readback-runner.mjs',
     'server/aiPdmRoleCatalogRepository.ts',
-    'config/catalogs/ai-pdm-role-catalog.v4.json',
+    'config/catalogs/ai-pdm-role-catalog.v5.json',
     'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json']) {
     assert.match(dockerfile, new RegExp(`COPY ${source.replaceAll('.', '\\.')} `))
   }
   assert.match(dockerfile, /USER node/u)
   assert.match(dockerfile, /SOURCE_REVISION=\$\{SOURCE_REVISION\}/u)
+})
+
+test('application and readback images package the catalog required by the consumer', () => {
+  const repository = fs.readFileSync(path.join(root, 'server/aiPdmRoleCatalogRepository.ts'), 'utf8')
+  const catalogName = repository.match(/resolve\(root, 'config', 'catalogs', '([^']+)'\)/)?.[1]
+  assert.ok(catalogName, 'consumer catalog dependency must be identifiable')
+  const catalogPath = `config/catalogs/${catalogName}`
+  assert.ok(fs.existsSync(path.join(root, catalogPath)))
+  for (const recipe of ['Dockerfile', 'infra/google-cloud/dev-040-production-release/dev057-v4-catalog-readback.Dockerfile']) {
+    const dockerfile = fs.readFileSync(path.join(root, recipe), 'utf8')
+    const copies = dockerfile.split(/\r?\n/u).filter((line) => line.startsWith('COPY '))
+    assert.ok(copies.some((line) => line.split(/\s+/u).slice(-2).every((item) => item.endsWith(catalogPath))),
+      `${recipe} must package ${catalogPath} at the consumer's runtime path`)
+  }
 })

@@ -83,7 +83,7 @@ COPY --from=production-dependencies --chown=65532:65532 /app/package.json ./
 COPY --from=builder --chown=65532:65532 /app/dist ./dist
 COPY --from=builder --chown=65532:65532 /app/dist-server ./dist-server
 COPY --from=builder --chown=65532:65532 /app/contracts ./contracts
-COPY --from=builder --chown=65532:65532 /app/config/catalogs/ai-pdm-role-catalog.v4.json ./config/catalogs/ai-pdm-role-catalog.v4.json
+COPY --from=builder --chown=65532:65532 /app/config/catalogs/ai-pdm-role-catalog.v5.json ./config/catalogs/ai-pdm-role-catalog.v5.json
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/nodejs/bin/node"]
