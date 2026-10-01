@@ -1,0 +1,121 @@
+{
+  "schemaVersion": "jenfu.dev015.owner-gcc-applicability-evidence.v1",
+  "sourceTask": "JENFU/DEV-015#artifact-applicability",
+  "ownerApplicationId": "orgmaster",
+  "nativeTask": "DEV-057",
+  "sourceRevision": "c3804d7a959117d56d10c3cc0df135dcd289f672",
+  "artifactDigest": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:5af202ca8811aaf0c98351ee7f5a986cbdb37d459e1332413d94da0d8621263a",
+  "buildId": "a50255a7-a6b5-4f0d-b9bb-56d597f426e0",
+  "sourceProof": {
+    "schemaVersion": "jenfu.dev012.official-merged-source.v1",
+    "repository": "jedchang0308-jenfu/OrgMaster",
+    "branch": "master",
+    "sourceRevision": "c3804d7a959117d56d10c3cc0df135dcd289f672",
+    "sourceTree": "ec7e061b25d15a49354dd010d38acb1dcbb34451",
+    "branchProtected": true,
+    "reviewMode": "SOLO_MAINTAINER_NO_HUMAN_APPROVAL_REQUIRED",
+    "rulesetId": 24077876,
+    "requiredChecks": [
+      "Production Source QC"
+    ],
+    "pullRequestNumber": 82,
+    "pullRequestUrl": "https://github.com/jedchang0308-jenfu/OrgMaster/pull/82",
+    "mergedAt": "2026-09-30T21:22:56Z",
+    "status": "OFFICIAL_MERGED_PR_VERIFIED"
+  },
+  "assessmentRef": {
+    "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV015-GCC-APPLICABILITY-20261001-R10/orgmaster/assessment-77d9d2a633ee779ba4edb233317ec6c919464fe3c276315fe67f7acae2921925.json",
+    "sha256": "77d9d2a633ee779ba4edb233317ec6c919464fe3c276315fe67f7acae2921925"
+  },
+  "assessmentState": "NOT_AFFECTED",
+  "justification": "VULNERABLE_CODE_NOT_PRESENT",
+  "rawHighPreserved": 1,
+  "otherHighOrCritical": 0,
+  "artifactVerifier": {
+    "resourceUrl": "https://asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:5af202ca8811aaf0c98351ee7f5a986cbdb37d459e1332413d94da0d8621263a",
+    "buildOccurrenceNames": [
+      "projects/jenfu-platform-prod/occurrences/1b8961ae-6d1d-40e5-899a-6f3b3bbf6153",
+      "projects/jenfu-platform-prod/occurrences/863b5849-61ad-492f-b02c-bc9ff7e72d03",
+      "projects/jenfu-platform-prod/occurrences/a8223f91-1df2-4c8e-b3ff-5bcf85617873"
+    ],
+    "discoveryOccurrenceNames": [
+      "projects/jenfu-platform-prod/locations/asia-east1/occurrences/e00a4919-0de8-4b28-9463-376fbc8be838"
+    ],
+    "sbomOccurrenceNames": [
+      "projects/jenfu-platform-prod/locations/asia-east1/occurrences/bca34b25-68e5-4355-8ecc-d944ba6a978d"
+    ],
+    "vulnerabilityCount": 23,
+    "rawHighOrCriticalVulnerabilityCount": 1,
+    "blockingVulnerabilityCount": 0,
+    "notAffectedAssessments": [
+      {
+        "cve": "CVE-2026-102010",
+        "state": "NOT_AFFECTED",
+        "justification": "VULNERABLE_CODE_NOT_PRESENT",
+        "artifactDigest": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:5af202ca8811aaf0c98351ee7f5a986cbdb37d459e1332413d94da0d8621263a",
+        "nativeCodeFingerprint": "366239a967ce264ac77ce50ad502f65869863f355e3bc8f4d3eb95a40df1eb08",
+        "assessmentRef": {
+          "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV015-GCC-APPLICABILITY-20261001-R10/orgmaster/assessment-77d9d2a633ee779ba4edb233317ec6c919464fe3c276315fe67f7acae2921925.json",
+          "sha256": "77d9d2a633ee779ba4edb233317ec6c919464fe3c276315fe67f7acae2921925"
+        },
+        "inspectionBuildId": "f525f512-e34c-4a20-97a9-4e5244b70a69",
+        "inspectionLogRef": {
+          "uri": "gs://jenfu-platform-prod-orgmaster-release/logs/cloud-build/log-f525f512-e34c-4a20-97a9-4e5244b70a69.txt",
+          "sha256": "6ec95ef1224ec1086b24815d53eba3bb1c6b07769959d49b5c3192d613f838c6"
+        },
+        "inspectionProgramSha256": "2e37fbcf91c7b28124b04a94130479ab6fc5a86e0a179d119bb0606c609f63a8",
+        "applicationUser": "65532:65532",
+        "inspectorUser": "0:0",
+        "observedAt": "2026-10-01T01:08:00.993Z"
+      }
+    ],
+    "sbomExport": {
+      "resourceUrl": "https://asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:5af202ca8811aaf0c98351ee7f5a986cbdb37d459e1332413d94da0d8621263a",
+      "discoveryOccurrenceId": "projects/jenfu-platform-prod/locations/asia-east1/occurrences/e00a4919-0de8-4b28-9463-376fbc8be838"
+    },
+    "observedAt": "2026-10-01T01:08:15.338Z",
+    "status": "PASS"
+  },
+  "localOwnerTestCount": 148,
+  "localOwnerTests": "PASS",
+  "officialSourceForAdapter": "NOT_YET_MERGED",
+  "production": {
+    "service": "orgmaster-prod",
+    "generation": "188",
+    "observedGeneration": "188",
+    "scaling": {
+      "scalingMode": "MANUAL",
+      "manualInstanceCount": 0
+    },
+    "traffic": [
+      {
+        "type": "TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION",
+        "revision": "orgmaster-prod-deb1ed892ca6",
+        "percent": 100
+      }
+    ],
+    "latestReadyRevision": "projects/jenfu-platform-prod/locations/asia-east1/services/orgmaster-prod/revisions/orgmaster-prod-deb1ed892ca6",
+    "serviceChanged": false,
+    "trafficChanged": false
+  },
+  "failuresRetained": {
+    "firstInspection": {
+      "path": "dev015-gcc-orgmaster-native-gate-20261001-r10.json",
+      "buildId": "8911905a-602f-41d1-88f3-7f25e861ed30",
+      "status": "FAILURE",
+      "logRef": {
+        "uri": "gs://jenfu-platform-prod-orgmaster-release/logs/cloud-build/log-8911905a-602f-41d1-88f3-7f25e861ed30.txt",
+        "sha256": "f965426815e55cc21100475cb4015e63502cd728bee381b696794c8216a04aaf"
+      },
+      "cause": "Cloud Build runtime mount was mistaken for image content",
+      "correction": "Run filesystem inspector in network-disabled mount-free Docker; verify non-root application image Config.User independently"
+    }
+  },
+  "limitations": [
+    "Not a GCC package fix or a general HIGH-severity exception.",
+    "Supplier prebuilt binaries are matched to HTTPS official archives and lockfile integrity; this assessment is not a reproducible-build attestation.",
+    "The supplier source closure includes the exact recorded patch bytes; upstream mutable patch URLs require renewed assessment when compiled content changes.",
+    "Any changed or additional native binary, WASM, PBDS header, architecture or Node version requires a new assessment."
+  ],
+  "observedAt": "2026-10-01T01:15:41.546Z"
+}
