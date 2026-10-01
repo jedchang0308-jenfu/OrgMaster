@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "jenfu.dev015.gcc-pbds-applicability-policy.v1",
+  "cve": "CVE-2026-102010",
+  "state": "NOT_AFFECTED",
+  "justification": "VULNERABLE_CODE_NOT_PRESENT",
+  "ownerApplicationId": "orgmaster",
+  "repository": "jedchang0308-jenfu/OrgMaster",
+  "projectId": "jenfu-platform-prod",
+  "region": "asia-east1",
+  "artifactUri": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster",
+  "releaseBucket": "jenfu-platform-prod-orgmaster-release",
+  "nativeCodeFingerprint": "366239a967ce264ac77ce50ad502f65869863f355e3bc8f4d3eb95a40df1eb08",
+  "investigatedArtifactDigest": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:5af202ca8811aaf0c98351ee7f5a986cbdb37d459e1332413d94da0d8621263a",
+  "investigatedSourceRevision": "c3804d7a959117d56d10c3cc0df135dcd289f672",
+  "assessmentRef": {
+    "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV015-GCC-APPLICABILITY-20261001-R10/orgmaster/assessment-77d9d2a633ee779ba4edb233317ec6c919464fe3c276315fe67f7acae2921925.json",
+    "sha256": "77d9d2a633ee779ba4edb233317ec6c919464fe3c276315fe67f7acae2921925"
+  }
+}
