@@ -142,7 +142,7 @@ resource "google_workflows_workflow" "candidate_smoke" {
               - platform_cookie_header: $${default(map.get(platform_session_response.headers, "set-cookie"), map.get(platform_session_response.headers, "Set-Cookie"))}
         - validate_platform_cookie:
             switch:
-              - condition: $${platform_session_response.code != 200 or platform_cookie_header == null or not(text.match_regex(platform_cookie_header, "^jenfu_session=[^;]+"))}
+              - condition: $${platform_session_response.code != 200 or platform_cookie_header == null or not(text.match_regex(platform_cookie_header, "^jenfu_portal_session=[^;]+"))}
                 next: reject_session
         - extract_platform_cookie:
             assign:

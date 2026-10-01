@@ -36,7 +36,7 @@ export async function runOrgmasterPrincipalSsoSmoke({
     method: 'POST', headers: { Origin: broker, 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }),
   })
   if (source.status !== 200) fail('SSO_SMOKE_PLATFORM_SESSION_FAILED')
-  const platformCookie = cookie(source, 'jenfu_session')
+  const platformCookie = cookie(source, 'jenfu_portal_session')
   const sourceView = await source.json()
   const expectedPrincipal = sourceView?.user?.principalId
   if (typeof expectedPrincipal !== 'string' || !expectedPrincipal) fail('SSO_SMOKE_PLATFORM_PRINCIPAL_MISSING')

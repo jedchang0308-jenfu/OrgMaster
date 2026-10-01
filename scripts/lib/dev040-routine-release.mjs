@@ -122,16 +122,30 @@ function principalSmokeInfrastructureInputs(profile) {
   return value
 }
 
+// Sealed historical transition and its cookie-only corrective cycle.
+export function assertDev057PrincipalSmokeBlobTransition(before, after) {
+  const historical = '1add0e6508568d591faa190cabf64e2470fb620c'
+  const principal = 'b8d6b8a92a044bcd59e11efd8a6c0f7f2e319b55'
+  const corrected = 'b9c6bfeca843c6ef551d95834b59f5471c097abc'
+  if (!((before === historical && [principal, corrected].includes(after))
+    || (before === principal && after === corrected))) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
+}
+
 export function assertDev057PrincipalSmokeInfraTransition(root, baselineRevision, sourceRevision) {
   const file = 'infra/google-cloud/dev-040-production-release/candidate-smoke.tf'
-  if (revisionBlob(root, baselineRevision, file) !== '1add0e6508568d591faa190cabf64e2470fb620c'
-    || revisionBlob(root, sourceRevision, file) !== 'b8d6b8a92a044bcd59e11efd8a6c0f7f2e319b55') fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
+  const beforeBlob = revisionBlob(root, baselineRevision, file)
+  const afterBlob = revisionBlob(root, sourceRevision, file)
+  assertDev057PrincipalSmokeBlobTransition(beforeBlob, afterBlob)
   const readProfile = (revision) => {
     const result = spawnSync('git', ['show', revision + ':config/release/dev040-orgmaster-independent-production-v3.json'], { cwd: root, encoding: 'utf8', windowsHide: true })
     if (result.status !== 0) fail('ROUTINE_BASELINE_SOURCE_MISSING')
     return JSON.parse(result.stdout)
   }
-  assertDev057PrincipalSmokeProfileTransition(readProfile(baselineRevision), readProfile(sourceRevision))
+  if (beforeBlob === 'b8d6b8a92a044bcd59e11efd8a6c0f7f2e319b55') {
+    if (!same(readProfile(baselineRevision), readProfile(sourceRevision))) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
+  } else {
+    assertDev057PrincipalSmokeProfileTransition(readProfile(baselineRevision), readProfile(sourceRevision))
+  }
   const recoveryFile = 'infra/google-cloud/dev-040-production-release/principal-only-recovery.Dockerfile'
   const excludedPaths = [file]
   const beforeRecovery = revisionBlob(root, baselineRevision, recoveryFile)
