@@ -89,7 +89,7 @@ const FAILURE_MESSAGES: Record<string, string> = {
   EXTERNAL_PERMISSION_EVALUATION_UNSUPPORTED: '外部權限由目標系統自行執行，OrgMaster 不模擬。',
   PRIVILEGED_VIEW_REQUIRED: '目前身分沒有檢視特權設定的權限。',
   PRIVILEGED_MUTATION_REQUIRED: '特權設定需要既有的 cross-app override 授權。',
-  STEP_UP_REQUIRED: '特權設定需要五分鐘內完成的二次驗證，請重新驗證後再試。',
+  STEP_UP_REQUIRED: '特權設定需要五分鐘內完成的登入驗證，請重新登入後再試。',
   PRIVILEGED_SELF_ASSIGNMENT_DENIED: '不可將特權身分授予目前登入身分。',
   PRINCIPAL_ADMISSION_INELIGIBLE: '選取的特權身分已失效，請重新載入。',
   PRIVILEGED_ASSIGNMENT_NOT_FOUND: '找不到這筆特權指派，請重新載入。',

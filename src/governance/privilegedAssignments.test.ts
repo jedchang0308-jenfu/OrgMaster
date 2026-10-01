@@ -49,12 +49,14 @@ function request(employeeId = 'employee-b', principalAdmissionId = 'admission-ta
 }
 
 describe('DEV-009 privileged assignment policy', () => {
-  it('uses provider authenticatedAt and enforces the inclusive five-minute AAL2 window', () => {
+  it('accepts AAL1 and AAL2 while enforcing the inclusive five-minute authentication window', () => {
     const session = { sessionId: 'session-1', principalId: actor.principalId, assuranceLevel: 'aal2' as const, authenticatedAt: '2026-09-02T11:55:00.000Z' }
     expect(() => assertFreshPrivilegedSession(actor, session, new Date(now))).not.toThrow()
     expect(() => assertFreshPrivilegedSession(actor, { ...session, authenticatedAt: '2026-09-02T11:54:59.999Z' }, new Date(now))).toThrowError(expect.objectContaining({ code: 'STEP_UP_REQUIRED' }))
     expect(() => assertFreshPrivilegedSession(actor, { ...session, authenticatedAt: '2026-09-02T12:00:00.001Z' }, new Date(now))).toThrowError(expect.objectContaining({ code: 'STEP_UP_REQUIRED' }))
-    expect(() => assertFreshPrivilegedSession(actor, { ...session, assuranceLevel: 'aal1' }, new Date(now))).toThrowError(expect.objectContaining({ code: 'STEP_UP_REQUIRED' }))
+    expect(() => assertFreshPrivilegedSession(actor, { ...session, assuranceLevel: 'aal1' }, new Date(now))).not.toThrow()
+    expect(() => assertFreshPrivilegedSession(actor, { ...session, sessionId: '' }, new Date(now))).toThrowError(expect.objectContaining({ code: 'STEP_UP_REQUIRED' }))
+    expect(() => assertFreshPrivilegedSession(actor, { ...session, authenticatedAt: null }, new Date(now))).toThrowError(expect.objectContaining({ code: 'STEP_UP_REQUIRED' }))
     expect(() => assertFreshPrivilegedSession(actor, { ...session, principalId: 'principal-other' }, new Date(now))).toThrowError(expect.objectContaining({ code: 'STEP_UP_REQUIRED' }))
   })
 

@@ -384,7 +384,7 @@ export interface GovernanceAuditEventV3 extends GovernanceAuditEventV1 {
     catalogPayloadHash: string
     organizationRevision: string
     governanceRevisionBefore: string
-    assuranceLevel: 'aal2'
+    assuranceLevel: 'aal1' | 'aal2'
     authenticatedAt: string
     sessionReference: string
   }

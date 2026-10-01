@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { assertIdentityLinkStatusMutationAllowed, currentIdentityLinkValue, governanceErrorStatus, orgmasterGovernanceApiPlugin } from './orgmasterGovernanceApi'
+import { describe, expect, it, vi } from 'vitest'
+import { assertIdentityLinkStatusMutationAllowed, createOrgmasterGovernanceMiddleware, currentIdentityLinkValue, governanceErrorStatus, orgmasterGovernanceApiPlugin } from './orgmasterGovernanceApi'
 import { DEV_ISSUER, DEV_SUBJECT, resolveDevelopmentIdentity } from './orgmasterGovernanceIdentity'
 import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2ToV3'
 import { createSeedDocumentV2 } from '../src/governance/migrateGovernanceV1ToV2'
@@ -55,5 +55,19 @@ describe('current verified identity link resolution', () => {
     expect(() => assertIdentityLinkStatusMutationAllowed(document, actor, own.id, 'inactive')).toThrowError('SELF_IDENTITY_LINK_DEACTIVATION_FORBIDDEN')
     expect(() => assertIdentityLinkStatusMutationAllowed(document, actor, own.id, 'active')).not.toThrow()
     expect(() => assertIdentityLinkStatusMutationAllowed(document, actor, 'identity-other', 'inactive')).not.toThrow()
+  })
+})
+
+
+describe('Principal-only retired authority API', () => {
+  it.each(['POST', 'GET', 'PATCH'])('returns 410 for %s without identity, body or database access', async (method) => {
+    let body = ''
+    const response = { statusCode: 0, setHeader: vi.fn(), end: (value: string) => { body = value } }
+    const next = vi.fn()
+    createOrgmasterGovernanceMiddleware('nonexistent-retirement-fixture', false)({ url: '/api/orgmaster/governance/employee-authority-switch', method } as never, response as never, next)
+    await Promise.resolve()
+    expect(response.statusCode).toBe(410)
+    expect(JSON.parse(body)).toEqual({ error: 'LEGACY_AUTHORITY_SWITCH_RETIRED' })
+    expect(next).not.toHaveBeenCalled()
   })
 })

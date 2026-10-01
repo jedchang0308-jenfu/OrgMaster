@@ -166,7 +166,7 @@ export async function publishPrivilegedAssignment(
         scope: { kind: 'global' }, requestHash: preview.requestHash, previewHash: preview.previewHash,
         catalogVersion: catalog.catalogVersion, catalogPayloadHash: catalog.payloadHash,
         organizationRevision: source.workspaceRevision, governanceRevisionBefore: current.revision,
-        assuranceLevel: 'aal2', authenticatedAt: session.authenticatedAt!, sessionReference: session.sessionId,
+        assuranceLevel: session.assuranceLevel, authenticatedAt: session.authenticatedAt!, sessionReference: session.sessionId,
       },
     }, committedAt)
     const auditReference = document.auditEvents.at(-1)!.id

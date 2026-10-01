@@ -55,7 +55,7 @@ describe('privileged assignment store transaction', () => {
     const preview = await previewPrivilegedAssignment(root, actor, request)
     expect(preview.requestHash).toBe(privilegedRequestHash(actorPrincipalId, request, preview.previewHash))
     const publishRequest = { ...request, commandId: 'command-dev009-grant-1', requestHash: preview.requestHash, previewHash: preview.previewHash }
-    const freshSession = { sessionId: 'session-fixture', principalId: actorPrincipalId, assuranceLevel: 'aal2' as const, authenticatedAt: new Date(Date.now() - 60_000).toISOString() }
+    const freshSession = { sessionId: 'session-fixture', principalId: actorPrincipalId, assuranceLevel: 'aal1' as const, authenticatedAt: new Date(Date.now() - 60_000).toISOString() }
     const receipt = await publishPrivilegedAssignment(root, actor, freshSession, publishRequest)
     expect(receipt).toMatchObject({ receiptStatus: 'applied', decisionCode: 'COMMAND_APPLIED', replayed: false, sessionRefresh: 'pending' })
     expect(receipt.securityAlertReference).toBeTruthy()
@@ -64,6 +64,7 @@ describe('privileged assignment store transaction', () => {
     expect(persisted.document.publishedVersions.at(-1)?.kind).toBe('assignment-governance-v3')
     expect(persisted.document.draft.roleAssignments.at(-1)).toMatchObject({ employeeId: targetEmployeeId, targetPrincipalId, subjectKind: 'principal', basis: 'manual', validTo: null })
     expect(persisted.document.auditEvents.filter((event) => event.commandId === publishRequest.commandId)).toHaveLength(1)
+    expect(persisted.document.auditEvents.find((event) => event.commandId === publishRequest.commandId)?.detail?.assuranceLevel).toBe('aal1')
     expect(persisted.document.securityAlertIntents).toHaveLength(1)
     expect(persisted.document.sessionInvalidationOutbox).toHaveLength(1)
 

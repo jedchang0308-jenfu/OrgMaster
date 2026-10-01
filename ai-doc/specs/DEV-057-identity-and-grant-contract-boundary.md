@@ -1,16 +1,52 @@
+## 現行施工政策：Principal-only／人類 AAL1（2026-10-01）
+
+使用者已取消 Jenfu-Platform、OrgMaster、AI-PDM 對人類及管理員操作的強制第二因子／AAL2，並接受單因子帳號盜用風險。本節優先於下方歷史 TOTP、特權 AAL2、逐人 pilot 記錄；沿用 DEV-057 子任務，不新增主任務。單因子登入如實記錄 AAL1，真實第二因子證據仍可記錄 AAL2，不得以角色或設定偽造 assurance。
+
+OrgMaster 的特權指派仍要求已驗證的精確 principal、active admission、明確管理 grant、禁止自授權、正確目錄與治理版本及五分鐘內的登入驗證；重新登入可以使用單因子。交易、receipt、撤權、session invalidation outbox 與稽核均保留，稽核 assurance 取自實際 session。沒有強制 AAL2 的資料庫命令，不為此新增 OrgMaster migration。已套用 migration 保持不變；AI-PDM 由其 owner 以 forward-only 修正資料庫 assurance 政策。
+
+已確認正常 UI／API 仍可呼叫歷史 employee-authority-switch；本輪移除 GovernancePrivilegedAssignments 的逐人切換、legacy 回切與 browser API caller，原 endpoint 全 method 回 410／LEGACY_AUTHORITY_SWITCH_RETIRED，且在讀 body／identity／DB 前拒絕。歷史 operator、migration 與receipt保留供追溯，不用於正常流量。
+
+不新增舊身分 fallback、逐人 pilot 或雙軌授權；未核實與原停用帳號維持停用。Google／GitHub／Cloud 管理帳號的 MFA 原設定不變。本機 AAL1 指派、精確 Principal／freshness 拒絕、真實 assurance audit 與 idempotent receipt 已通過；退役 API 三種 method 回 410（最初測試 route prefix 誤用已修正），UI 移除逐人／legacy controls 的測試通過；DEV-057 contract、owner release regression 與型別／DB boundary 通過。這是本機證據，不代表正式發布或 L4。先驗證 AAL1 指派與拒絕、scope、撤權、session／稽核，再沿既有 owner-native 發布與 Production L4；下方歷史 PASS 不能替代本次證據。
+
 # DEV-057：身分與權限發布契約邊界
 
-## 現行執行狀態（2026-10-01 R10）
+## R17 執行狀態（歷史快照，非現行政策）
 
-Principal-only 與 F01–F10 固定驗收契約維持，已核實者／withheld／停用者邊界不變。GCC CVE-2026-102010 的三個 official-source 應用映像已完成真實 Linux、來源／預編譯檔比對、libvips 28 份來源與 4 補丁、GCC runtime 來源及 SBOM／provider 告警讀回。受影響 PBDS erase_if 模板不在已查證 compiled code 中；本 owner 精確 digest、證據與失敗修正見 [受控查證](../qa/DEV-057-gcc-pbds-applicability-2026-10-01.json)。
+### 已取消的 Firebase TOTP 決策（歷史，非施工指令）
 
-發布政策保持 MEDIUM。只有 CVE-2026-102010／Debian 13 gcc-14 14.2.0-19 的 HIGH，且新精確 digest 經既有 pinned builder 的隔離、無網路檔案核對，證明 compiled-input fingerprint 與此 owner 受控來源內的完整來源查證及不可變收據一致，才分類 NOT_AFFECTED；原始 HIGH、SBOM、inspection build／log hash 仍寫入 scan receipt。其他 HIGH／CRITICAL、未知／新增 native binary、WASM、PBDS header、版本／owner／hash 漂移與不完整查證均拒絕。這不是套件修補、限時風險接受或泛用 VEX／CLI bypass。
+共用 Firebase TOTP 當時決策（2026-10-01）：Platform 是共用 Firebase 帳號 TOTP enrollment、challenge 與 lost-device recovery 的唯一 owner；OrgMaster／AI-PDM consumers 僅驗證 canonical Principal 與同次 provider second-factor facts 達 AAL2，不新增 consumer-local MFA、不依賴或新增 Workspace 2-Step Verification policy，也不以 email 作第二因素或 fallback。首次未帶 quota-project header 的 Identity Toolkit config GET 回 HTTP 403／PERMISSION_DENIED，reason=SERVICE_DISABLED，consumer `projects/32555940559`；該 credential quota consumer 與 target project number `9536592944` 不同，應分類為 quota-project mismatch，不是 target API 未啟用。target enabled-service 清單確認 `identitytoolkit.googleapis.com` 已啟用。帶 `x-goog-user-project: jenfu-platform-prod` 的窄化 GET 回 HTTP 200，request path 與 quota project 均指向 target；response 未提供 `projectId`，resource-name echo 未保留於白名單 readback，因此 response echo target match 未核實。實際讀回 subtype=`IDENTITY_PLATFORM`、`mfa.state=DISABLED`、TOTP provider state=`DISABLED`、`adjacentIntervals=1`，TOTP 尚未啟用。未變更 API、IAM、Billing 或 provider；若後續確認有新增費用，須先告知人類再決定。
 
-目前階段：本機 owner 程式修正與已建真實映像核對 PASS；三 owner 的 adapter 尚待 PR／required CI／official merge。本 owner Node suite 148 項 PASS，新增四案已接入既有 CI／QC；OrgMaster QC 子集原139案保留並增為143，不改 F01–F10 業務分母。曾發生的檢查工具 mount／權限／loader alias 差異均已取得新證據後處理，未變更原生程式碼、正式員工綁定或資料。
+OrgMaster R17 owner run `36823937856` 為 `SUCCESS`／`RELEASED`，source revision `30cac631e7971b7f9dcdb40a6c96cb6047867072`。正式 revision 為 `orgmaster-prod-eb6cc270f2b7`、generation `204` 承接 100% traffic、無 candidate tag。正式 browser 部分流程：初始 SSO 為 `07:08:38.938Z`；於 `07:16:01Z`（elapsed 442 秒，超過 wire 60 秒）Org `GET /api/auth/me` 仍回 HTTP 200、`principalPresent=true`。真實 UI local logout 後 Org `/api/auth/me` 回 401，而 Platform `/api/auth/me` 仍為 200、Principal 仍存在；未執行 global 或 AI-PDM logout。這只證明 Org local logout 的部分 Production 行為，不代表完整 F01／F09 或 L4。Migration readback 為 `0 applied／28 replayed`。
 
-2026-10-01T01:15:41.546Z provider 再核對三服務仍 MANUAL zero／原 revision 固定100%／無 tag（generation 90／188／71）。本次只建置與檢查 Artifact、發布 own receipts；沒有 migration、IAM、Secret、service 或 traffic 變更。應用映像查證不代表已部署或業務 L4 通過，F01–F10 正式結果維持未完成。
+AI-PDM R17 one-shot cohort apply 與 idempotent replay 均成功：1 個 profile activated、3 個 withheld；replay 為同一 receipt SHA-256 `977da4d3bc1a1ea898d059152b3abc17ee667160ab79f404e99f1ccbb3b6f28a`。cohort 不回退、不重新 apply；Job 刪除後 provider readback 為 404。
 
-唯一下一步：完成此 bounded adapter PR／CI／合併後，刷新 official source 的 application／recovery／runner／fence 與必要 image-only rotation；再沿正式帳號／session-code／writer 讀回→Platform→OrgMaster→AI-PDM migration-only→同 fence cohort apply／replay→full owner→F01–F10 Production L4。禁止舊 capsule／fence、逐人雙軌或 UID 授權回復。JENFU/DEV-015 baseline currentCheckpoint=deliveryCheckpoint20261001R10，下方舊施工指令仅留歷史追溯。
+AI-PDM full owner run `36825643088`（source `3ade17707f166985c34cf70743705464b11e7323`，重用 R15 capsule）在 candidate verify 失敗，terminal state 為 `PRE_ACTIVATION_ABORTED`／control `FINALIZED`；callback evidence 是 stage `session_issue`、code `auth_token_invalid`。activate／canonical 未執行。Provider readback 為 generation `75`、`MANUAL 0`、無 candidate tag。
+
+現有 smoke refresh token 的 provider claims 為 `sign_in_provider=password`、`second_factor=null`、`amr` 不含 MFA、`email_verified=true`，不足以滿足 privileged Principal 的 AAL2。Candidate env 為 `PDM_TRUST_GOOGLE_WORKSPACE_MFA=false`、legacy pilot `PDM_ALLOW_GOOGLE_WORKSPACE_AAL1_PRIVILEGED=true`、domains `jenfu.com.tw`。已保存的 Google Admin screenshot 顯示 root OU 的 2-Step Verification enforcement 為 OFF；child OU 設定未知，政策未修改。故目前 callback 拒絕符合 fail-closed 契約，沒有證據指向 grant-v3 defect，也沒有 Workspace MFA 已驗證的結論；不得降低 AAL2 或藉 pilot 放行，Workspace policy 後續處置待人類決策。
+
+Candidate smoke 使用 refresh-token credential，沒有互動 MFA challenge；現行 receipt 未攜帶同次 source-bound provider facts。Platform dca165 producer 將 Firebase `amr=mfa` 映為 AAL2、僅將 `sign_in_second_factor=totp` 傳為 `secondFactor`；AI Principal resolver 重新計算 assurance，不採 handoff 的 `assuranceLevel`。須以經核實的 Google／TOTP MFA 身分取得同一 candidate 的 redacted provider-facts evidence，且不得猜測 email 綁定。
+
+AI-PDM 本機驗證：`npm run test:dev-117:continuous` PASS 97/97、`npm run test:dev-117:abort` PASS 6/6、`npm run check:db-boundary` PASS（11 governed files）。continuous suite 的 task-owned recovery test 使用 loopback 動態 port，並在 `finally` 關閉 server；未啟動 app runtime 或雲端動作。`npm run qc:dev-117:continuous` 未執行，因其命令鏈含 `typecheck:app`、`build:isolated` 並寫入 owner report。
+
+F01–F10 Production L4 尚未完成；Org browser 證據只覆蓋上述部分流程，cohort receipt 與 AI-PDM candidate failure 也不代表完整端到端業務驗收或 L4。JENFU/DEV-015 currentCheckpoint=`deliveryCheckpoint20261001R17`。
+
+精確 readbacks（Jenfu-Platform root）：`output/dev-012/inputs/dev057-stage-readback-20261001-r17.json`、`dev121-one-shot-apply-20261001-r17-state.json`、`dev121-full-owner-workflow-20261001-r17-state.json`、`dev121-ai-pdm-full-stage-readback-20261001-r17.json`、`dev121-assurance-cause-20261001-r17.json`、`dev015-orgmaster-browser-assertion-ttl-20261001-r17.json`、`dev015-orgmaster-local-logout-20261001-r17.json`。
+
+### R11／R12 前置查證紀錄（僅供追溯，不再是施工指令）
+
+Principal-only 與 F01–F10 固定必要業務分母不變。三個 GCC applicability adapter 已通過既有 required CI 並合併：Platform #78（dca1658）、OrgMaster #83（8e6c123）、AI-PDM #170（3ade177）。精確 merged-source、recovery 與 scan 證據見 [本 owner 受控紀錄](../qa/DEV-057-gcc-pbds-applicability-2026-10-01.json) 的 postMergeDelivery20261001R11；原 R10 查證完整保留為歷史，不再是待合併施工指令。
+
+GCC 仍只對 CVE-2026-102010／Debian 13 gcc-14 14.2.0-19 與本 owner 完整 compiled-input 查證作 NOT_AFFECTED。原始 HIGH 保留，其他 HIGH／CRITICAL 或未知／漂移 native code 照常拒絕。Platform R11 真實 owner workflow 已對新 application digest a530fe97… 完成 build／SBOM／精確容器隔離檢查並產生 scan PASS；不是以來源名稱、符號搜尋或套件版本推論不受影響。OrgMaster／AI-PDM application full-owner scan 尚未執行，不用先前 artifact PASS 代替它。
+
+三 owner 新合併來源的 Principal-only recovery 已建立且 provider 核對（generation 91／189／72），沒有切流或 candidate tag；原 UID 授權版本不能作切換後回復。全部 runner／controller Docker COPY 輸入與實際已套用 executable 逐檔一致，故未重建或旋轉。OrgMaster 使用自己的 native preparation 與 fresh-source provider infra receipt，不套用 Platform producer 的不存在 stage；R8 未套用的 image/receipt 不再當基線。準備工具失敗及 plan-bytes 未保留的限制留存。
+
+Platform 正式 session/code census 於 01:50:23Z 為 active v1/v2=0、recent v1=0。R11 workflow #36803272241 在 migration 出現 fetch failed，candidate／切流未執行，已由 owner failure workflow 封存 PRE_ACTIVATION_ABORTED；02:10Z 再讀仍 MANUAL zero、原 revision100%、無 tag、Job 範本已還原。不能由 terminal 的 NOT_APPLIED 宣稱獨立證明完整 ledger 無變動；既有 forward-only runner 在新嘗試時須仍核對 ledger 前綴及原 checksum。
+
+已取得新證據：同 immutable runner／identity／bundle 的只讀 token、GCS metadata、media、CRC／bundle hash／target 十個 entries 均成功，未連接或寫入 DB；診斷 Job 已精確还原。原失敗 fetch 步驟仍未知，Direct VPC startup 延遲僅是可能原因，不當成已證根因。Platform R12 #36805052755 的 prepare／build／scan 已通過，新 application digest a0c99cef… 有獨立精確容器檢查；截至 02:53:12Z migration 等待 hosted runner，無人工核准等待，02:51:56Z provider 仍 generation91／MANUAL0／原 revision100%／無 active migration。保留 R11 失敗；若再失敗，先取得步驟與 cause 證據，不原樣重跑。這批是發布工具／artifact 進度，沒有新增已完成業務流程；grant-v3 共同邊界最新 9/30 受控盤點已記11次，並記載已通知重估；這輪不增加該累計。較早6次只是當時快照。後續同根因再次失敗須先取得新證據，超過8次的重估規則仍有效。
+
+唯一施工順序：完成 Platform full v2→OrgMaster grant-v3/full→AI-PDM migration-only→同 R11 fresh fence cohort apply／replay→AI-PDM full owner→F01–F10 Production L4→入口重開。AI 在 cohort 前不得建立 candidate/tag 或改 generation72；未核實及原停用者保持停用。禁止逐人雙軌、舊 capsule／fence 與 UID 授權回復。正式業務、同窗切流與 L4 未完成。JENFU/DEV-015 baseline currentCheckpoint=deliveryCheckpoint20261001R11；下方全部日期快照僅供歷史追溯。
+
+L4 執行準備：沿用 JFS9014／JFS9015，先讀回 OrgMaster 已發布 typed Principal，再走既有 AI-PDM Principal 新帳號 UI／provision 契約建立應用 profile；callback 不自動建立，不用 UID／email 猜測綁定，不取代歷史 cohort 核對。目前尚未啟用、指派或建立這兩個測試 profile。既有 Playwright CLI 0.1.22 可啟動且沒有既有 CLI browser session；Codex CUA kernel 的 Windows error5 另列工具限制，沒有修改安全設定。一次性 apply／replay 腳本已更新最新 R11 operator／census／fence 並通過語法檢查，尚未執行。
 
 ## 歷史施工快照與原契約（保留追溯）
 
@@ -204,7 +240,7 @@ OrgMaster Production provider 讀回仍為 `orgmaster-prod-c2a14a18803b` 100% tr
 
 024先在相同lock下用existing published治理歷史、managed identity紀錄與reservation做結構一致性preflight；owner readback operation完成已知歷史歸屬回填。不能從current email或同employee推測過去principal。已知同pair存在互斥principal的active來源→整筆transaction abort；僅歷史unresolved列保留quarantine，不阻斷完全不相關principal，也不可宣告該principal完成。第一版不另建principal註冊UI，既有managed發行器及legacy publisher便是寫入入口；新alias綁至已有principal的功能在v1相容期停用，原alias停用不受阻。
 
-**Target session 定案。** `orgmasterSsoHandoff.ts`先依wire精確parser，於同一 REPEATABLE READ READ ONLY snapshot 核對 exact pair/principal/employee/type與OrgMaster專用app admission；v1驗pair epoch＋原auth time／principal barrier、v2驗source principal stamp。均成功後新增schema2 row，記 `epoch_kind=principal` 與新principal epoch；新token不沿用舊session ID。所有protected request及既有direct/managed-login入口都由`orgmasterAuthApi.ts`同一verified context取得principal，按schema選reader；v2 state缺失／讀取失敗不走pair fallback。特權仍要求OrgMaster既有AAL2與app role，typed personal principal不因Platform登入成功變admin。protected request 可先驗 cookie/token 的固定證明；session row／revoke、Platform v3 state、active pair／typed 與本 app role/admission 必須在同一 REPEATABLE READ READ ONLY snapshot 驗證，不能先在另一連線驗 epoch 後只在 snapshot 讀角色。角色異動依該讀點判斷；employee ID 只作 domain 關聯。O06 補驗簽後、首個資料 read 前的 local/global logout，既有已開始請求可完成的限制不變。
+**Target session 定案。** `orgmasterSsoHandoff.ts`先依wire精確parser，於同一 REPEATABLE READ READ ONLY snapshot 核對 exact pair/principal/employee/type與OrgMaster專用app admission；v1驗pair epoch＋原auth time／principal barrier、v2驗source principal stamp。均成功後新增schema2 row，記 `epoch_kind=principal` 與新principal epoch；新token不沿用舊session ID。所有protected request及既有direct/managed-login入口都由`orgmasterAuthApi.ts`同一verified context取得principal，按schema選reader；v2 state缺失／讀取失敗不走pair fallback。特權要求OrgMaster已驗證AAL1或AAL2、保留session freshness與app role，typed personal principal不因Platform登入成功變admin。protected request 可先驗 cookie/token 的固定證明；session row／revoke、Platform v3 state、active pair／typed 與本 app role/admission 必須在同一 REPEATABLE READ READ ONLY snapshot 驗證，不能先在另一連線驗 epoch 後只在 snapshot 讀角色。角色異動依該讀點判斷；employee ID 只作 domain 關聯。O06 補驗簽後、首個資料 read 前的 local/global logout，既有已開始請求可完成的限制不變。
 
 相容期v1 row僅依原pair規則讀取；轉schema2須以原authenticatedAt重新admit，不更新原auth time。global logout依Platform新版principal/pair同步撤銷；OrgMaster只讀其v3 state，不取得Platform auth writer鎖，不在OrgMaster transaction持有writer lock時同步呼叫Platform撤銷；lifecycle沿既有outbox／receipt順序避免跨owner鎖循環；本地logout只撤OrgMaster row。回復baseline必須能讀schema2、用principal epoch且維持app admission；清空v2 sessions或改v1 emitter不允許回到忽略principal state的binary。history／reservation不刪、DDL不down。
 
@@ -319,7 +355,7 @@ Portal visibility 的 AI-PDM 分支須從 active governance 的直接／有效�
 
 ## 2026-09-25 AI-PDM v4 catalog consumer cutover
 
-AI-PDM 為 principal-first DEV-087 明列四項先前缺漏的 workspace／review-submit 能力，已產生 `ai-pdm.role-catalog.2026-09-25.v4`。OrgMaster 以 hash-pinned `config/catalogs/ai-pdm-role-catalog.v4.json` 作為**新指派**的目前 catalog；原 `contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json` 與 manifest 保持凍結，只驗證已存在 v3 assignment 的角色身份、名稱及 scope provenance。有效權限仍依 AI-PDM active catalog 及本 owner 已發布 authority／assignment 決定，歷史 v3 fixture 不成為第二個 runtime 權限來源。一般 V3 UPSERT 指派／代理若帶 v3 版本直接拒絕，REVOKE 與未改的歷史指派可維持；system_admin 的專用操作、subject 與 AAL2 規則不因升版放寬。
+AI-PDM 為 principal-first DEV-087 明列四項先前缺漏的 workspace／review-submit 能力，已產生 `ai-pdm.role-catalog.2026-09-25.v4`。OrgMaster 以 hash-pinned `config/catalogs/ai-pdm-role-catalog.v4.json` 作為**新指派**的目前 catalog；原 `contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json` 與 manifest 保持凍結，只驗證已存在 v3 assignment 的角色身份、名稱及 scope provenance。有效權限仍依 AI-PDM active catalog 及本 owner 已發布 authority／assignment 決定，歷史 v3 fixture 不成為第二個 runtime 權限來源。一般 V3 UPSERT 指派／代理若帶 v3 版本直接拒絕，REVOKE 與未改的歷史指派可維持；system_admin 的專用操作與subject規則不因升版放寬；assurance依本文件頂部2026-10-01人類AAL1政策。
 
 本機 catalog／assignment 聚焦測試與 typecheck PASS，`check:db-boundary` PASS。其後 AI-PDM migration 066 已在 migration-only owner workflow 發布 v4；OrgMaster 由正式 producer contract 唯讀讀回九角色、version／hash 與現行有效版及草稿各六筆 v3 指派的角色／scope 相容性，固定證據見 `ai-doc/qa/DEV-057-production-r3-release-evidence-2026-09-26.md` 的獨立後續段落。沒有發布或改動現有指派。此證據不涵蓋新 v4 寫入的 Production 實際操作、principal 帳戶／authority、AI-PDM service traffic 或 L4；失敗不得以重寫既有 assignment 或回退 Firebase UID bridge 補救。
 

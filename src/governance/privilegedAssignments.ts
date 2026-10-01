@@ -88,7 +88,7 @@ export function assertPrivilegedRequestContract(request: PrivilegedAssignmentReq
 export function assertFreshPrivilegedSession(actor: GovernanceActorContext, session: PrivilegedSessionEvidence, now = new Date()) {
   const authenticatedAt = session.authenticatedAt ? Date.parse(session.authenticatedAt) : Number.NaN
   const commitAt = now.getTime()
-  if (session.assuranceLevel !== 'aal2' || session.principalId !== actor.principalId || !session.sessionId.trim()
+  if (!['aal1', 'aal2'].includes(session.assuranceLevel) || session.principalId !== actor.principalId || !session.sessionId.trim()
     || !Number.isFinite(authenticatedAt) || authenticatedAt > commitAt || commitAt - authenticatedAt > PRIVILEGED_REAUTH_WINDOW_MS) {
     throw new PrivilegedAssignmentError('STEP_UP_REQUIRED')
   }

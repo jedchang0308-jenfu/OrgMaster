@@ -86,11 +86,11 @@ describe('employee authority switch store', () => {
     await expect(switchEmployeeEntitlementAuthority('/fixture', actor, { applicationId: 'ai-pdm', employeeId: 'employee-shijie', toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: 1, operationId: 'operation-1', batchId: 'batch-1', reason: 'reason' }, dependencies)).rejects.toMatchObject({ code: 'ENTITLEMENT_AUTHORITY_VERSION_CONFLICT' })
   })
 
-  it('requires a fresh AAL2 session before invoking the database function', async () => {
+  it('rejects stale authentication before invoking the historical database function', async () => {
     const document = fixture()
     const query = vi.fn()
     const dependencies = { now, database: { query, end: vi.fn() } as never, readStore: async () => ({ document, revision: 'revision', raw: '{}' }) as never }
-    await expect(switchEmployeeEntitlementAuthority('/fixture', { ...actor, assuranceLevel: 'aal1' }, {
+    await expect(switchEmployeeEntitlementAuthority('/fixture', { ...actor, assuranceLevel: 'aal1', authenticatedAt: '2026-09-02T00:00:00.000Z' }, {
       applicationId: 'ai-pdm', employeeId: actor.employeeId!, toAuthoritySource: 'orgmaster_authority', expectedAuthorityVersion: 1,
       operationId: 'operation-aal1', batchId: 'batch-1', reason: 'reason',
     }, dependencies)).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' })
