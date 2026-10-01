@@ -30,3 +30,11 @@ export const DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION = Object.freeze({
   contractView: 'orgmaster_contract.v_ai_pdm_principal_effective_grants_v3',
   applicationId: 'ai-pdm',
 })
+
+export const DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION = Object.freeze({
+  kind: 'PRINCIPAL_HUMAN_BUSINESS_GRANTS_V4',
+  migrationVersion: 'dev057-orgmaster-029',
+  contractIds: ['orgmaster.ai-pdm-principal-effective-grants-v4'],
+  contractView: 'orgmaster_contract.v_ai_pdm_principal_effective_grants_v4',
+  applicationId: 'ai-pdm',
+})

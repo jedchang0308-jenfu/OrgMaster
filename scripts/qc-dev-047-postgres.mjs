@@ -29,7 +29,7 @@ const dev057ConsumerRoot = process.env.DEV057_CROSS_OWNER_AI_PDM_ROOT?.trim() ||
 if (dev057ConsumerRoot && !dev057) throw new Error('DEV057_CONSUMER_PROBE_REQUIRES_DEV057_SUITE')
 const outputPath = dev057 ? path.resolve(configuredDev057Output || path.join(os.tmpdir(), `orgmaster-dev057-postgres-${process.pid}.json`)) : path.join(outputDir, 'manifest.json')
 if (dev057 && configuredDev057Output && fs.existsSync(outputPath)) throw new Error('DEV057_QC_OUTPUT_ALREADY_EXISTS')
-const migrationCeiling = dev057 ? 28 : dev055 ? 20 : dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
+const migrationCeiling = dev057 ? 29 : dev055 ? 20 : dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
 const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((name) => /^\d{3}_.*\.sql$/u.test(name) && Number(name.slice(0, 3)) <= migrationCeiling).sort()
 const checks = []
 const cleanup = { clientClosed: false, auxiliaryClientsClosed: false, clusterStopped: false, portReleased: false, tempRemoved: false }
@@ -934,6 +934,48 @@ async function runDev057Checks() {
     }])
     return { principalRows: baseline.rowCount, columns, manifestSha256,
       oldAuthoritySwitchIndependent: true, platformReadDenied: true }
+  })
+
+  await check('D57-23', 'human management Principal receives published business roles with unchanged scope and immediate revocation', async () => {
+    const before = await activeGovernanceArtifact()
+    const current = before.payload.publishedVersions.find((version) => version.id === before.payload.activePolicyVersionId)
+    const appended = appendGovernanceVersion(before.payload, current, 'gov-human-business-v4')
+    for (const [id, principalId, accountType] of [
+      ['business-manager', 'principal-business-manager', 'human_privileged'],
+      ['business-manager-alias', 'principal-business-manager', 'human_privileged'],
+      ['business-service', 'principal-business-service', 'service'],
+    ]) {
+      const link = { id: 'identity-link-' + id, employeeId: accountType === 'service' ? 'employee-two' : 'employee-legacy', principalId,
+        issuer: 'issuer-' + id, subject: 'subject-' + id, status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }
+      appended.version.policy.identityLinks.push(link)
+      appended.version.policy.principalAdmissions.push({ identityLinkId: link.id, status: 'active', accountType })
+    }
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL ROLE jenfu_orgmaster_runtime')
+      await client.query("SELECT * FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,'dev057-qc','human-business-v4','dev057-human-business-v4','[]'::jsonb)",
+        [JSON.stringify(governanceChange(appended.payload, before.canonical_sha256)), sha256(Buffer.from('D57-23-human-business-publish'))])
+      await client.query('SET LOCAL ROLE jenfu_ai_pdm_runtime')
+      const rows = (await client.query("SELECT principal_id,role_code,scope_kind,scope_key FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4 WHERE principal_id='principal-business-manager'")).rows
+      assert.deepEqual(rows, [{ principal_id: 'principal-business-manager', role_code: 'rd', scope_kind: 'workspace', scope_key: 'company-jenfu' }])
+      assert.equal((await client.query("SELECT * FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v3 WHERE principal_id='principal-business-manager'")).rowCount, 0)
+      assert.equal((await client.query("SELECT * FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4 WHERE principal_id='principal-business-service'")).rowCount, 0)
+      const personal = (await client.query("SELECT role_code,scope_kind,scope_key FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4 WHERE principal_id='principal-legacy'")).rows
+      assert.deepEqual(personal, rows.map(({ principal_id: _principal, ...grant }) => grant))
+      await client.query('SET LOCAL ROLE NONE')
+      const latest = await activeGovernanceArtifact()
+      const active = latest.payload.publishedVersions.find((version) => version.id === latest.payload.activePolicyVersionId)
+      const revoked = appendGovernanceVersion(latest.payload, active, 'gov-human-business-v4-revoked')
+      for (const assignment of revoked.version.policy.roleAssignments) {
+        if (assignment.employeeId === 'employee-legacy' && assignment.applicationId === 'ai-pdm') assignment.status = 'revoked'
+      }
+      await client.query('SET LOCAL ROLE jenfu_orgmaster_runtime')
+      await client.query("SELECT * FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb,$2,'dev057-qc','human-business-v4-revoke','dev057-human-business-v4-revoke','[]'::jsonb)",
+        [JSON.stringify(governanceChange(revoked.payload, latest.canonical_sha256)), sha256(Buffer.from('D57-23-human-business-revoke'))])
+      await client.query('SET LOCAL ROLE jenfu_ai_pdm_runtime')
+      assert.equal((await client.query("SELECT * FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4 WHERE principal_id IN ('principal-business-manager','principal-legacy')")).rowCount, 0)
+      return { privilegedDailyRole: true, aliasesDoNotDuplicateGrant: true, personalEquivalent: true, serviceDenied: true, scopePreserved: true, revokedImmediately: true, historicalV3Unchanged: true }
+    } finally { await client.query('ROLLBACK') }
   })
 
   await check('D57-12', 'owner reservations cannot be rewritten and runtime cannot call the private writer', async () => {
@@ -1873,7 +1915,7 @@ async function main() {
   postgresBin = runtime.bin
   taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), dev057 ? 'orgmaster-dev057-qc-' : dev049 ? 'orgmaster-dev049-qc-' : dev050 ? 'orgmaster-dev050-qc-' : dev052 ? 'orgmaster-dev052-qc-' : dev053 ? 'orgmaster-dev053-qc-' : dev054 ? 'orgmaster-dev054-qc-' : dev055 ? 'orgmaster-dev055-qc-' : 'orgmaster-dev047-qc-'))
   clusterDir = path.join(taskRoot, 'cluster'); postgresLog = path.join(taskRoot, 'postgres.log'); port = await freePort()
-  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev057 ? 'DEV-057 isolated PostgreSQL 001-028 principal ownership and producer QC' : dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : dev055 ? 'DEV-055 isolated PostgreSQL 001-020 current projection contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'all clients closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
+  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev057 ? 'DEV-057 isolated PostgreSQL 001-029 principal ownership and producer QC' : dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : dev055 ? 'DEV-055 isolated PostgreSQL 001-020 current projection contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'all clients closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
   run(path.join(postgresBin, 'initdb.exe'), ['-D', clusterDir, '--auth-local=trust', '--auth-host=trust', '--username=postgres', '--encoding=UTF8', '--no-locale'])
   run(path.join(postgresBin, 'pg_ctl.exe'), ['-D', clusterDir, '-l', postgresLog, '-o', `-p ${port} -h 127.0.0.1`, '-w', 'start'], { stdio: 'ignore' })
   started = true
@@ -1991,7 +2033,7 @@ finally {
   if (taskRoot) { try { fs.rmSync(taskRoot, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 }); cleanup.tempRemoved = !fs.existsSync(taskRoot) } catch { cleanup.tempRemoved = false } } else cleanup.tempRemoved = true
 }
 
-const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06','D57-07','D57-08','D57-09','D57-10','D57-11','D57-12','D57-13','D57-14','D57-15','D57-16','D57-17','D57-18','D57-19','D57-20', ...(dev057ConsumerRoot ? ['D57-21','D57-22'] : [])] : requiredCorrectionCases
+const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06','D57-07','D57-08','D57-09','D57-10','D57-11','D57-12','D57-13','D57-14','D57-15','D57-16','D57-17','D57-18','D57-19','D57-20','D57-23', ...(dev057ConsumerRoot ? ['D57-21','D57-22'] : [])] : requiredCorrectionCases
 const allRequiredPassed = requiredCases.every((id) => checks.some((entry) => entry.id === id && entry.status === 'PASS'))
 const status = !firstFailure && allRequiredPassed && Object.values(cleanup).every(Boolean) ? 'PASS' : firstFailure?.reasonCode === 'POSTGRES_RUNTIME_MISSING' ? 'BLOCKED' : 'FAIL'
 const manifest = {

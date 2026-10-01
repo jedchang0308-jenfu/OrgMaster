@@ -5,7 +5,7 @@ import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, re
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
-import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION } from './dev057-principal-contract-release.mjs'
+import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
@@ -321,6 +321,17 @@ export function assertDev057PrincipalGrantsV3Append(before, after) {
   return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
 }
 
+export function assertDev057PrincipalGrantsV4Append(before, after) {
+  const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+  const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
+  if (!same(staticInputs(before), staticInputs(after)) || before.baselineCount !== 10 || before.entries?.length !== 28 || after.entries?.length !== 29) fail('DEV057_PRINCIPAL_GRANTS_V4_APPEND_INVALID')
+  if (!same(before.entries, after.entries.slice(0, 28))) fail('DEV057_PRINCIPAL_GRANTS_V4_APPEND_INVALID')
+  const expected = ["dev057-orgmaster-029","db/migrations/029_dev057_human_business_principal_grants_v4.sql","b3baacbe899a7676986bbd3e52622041801d8e8d693c4bd5e6d5e2e291567b0e","eaddde67a24255bf9849f3f6c4bc388cebf21732a0252a5d2313f9502ddf8d83"]
+  const entry = after.entries[28]
+  if (!same([entry.version, entry.path, entry.sourceSha256, entry.appliedSha256], expected)) fail('DEV057_PRINCIPAL_GRANTS_V4_APPEND_INVALID')
+  return { migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(migrationInputs(after))) }
+}
+
 export function assertDev014ManagedPrincipalProjectionAppend(before, after) {
   const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
   const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
@@ -421,6 +432,17 @@ export function assertDev057PrincipalGrantsV3Remediation(readiness, authorizatio
     || readiness.devId !== 'DEV-057' || readiness.slice !== '057-PRINCIPAL-GRANTS-V3'
     || !same(authorization.remediation, remediation) || !same(readiness.remediation, remediation)) fail('DEV057_PRINCIPAL_GRANTS_V3_AUTHORITY_INVALID')
   return { releaseMode: 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', remediation }
+}
+
+export function assertDev057PrincipalGrantsV4Remediation(readiness, authorization) {
+  const remediation = DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION
+  if (authorization?.schemaVersion !== 'orgmaster.routine-release-authorization.v1'
+    || authorization.authorizationBasis !== 'OPERATOR_INVOKED_DEPLOY_PRODUCTION'
+    || authorization.devId !== 'DEV-057' || authorization.slice !== '057-PRINCIPAL-GRANTS-V4'
+    || readiness?.schemaVersion !== 'orgmaster.routine-release-readiness.v1'
+    || readiness.devId !== 'DEV-057' || readiness.slice !== '057-PRINCIPAL-GRANTS-V4'
+    || !same(authorization.remediation, remediation) || !same(readiness.remediation, remediation)) fail('DEV057_PRINCIPAL_GRANTS_V4_AUTHORITY_INVALID')
+  return { releaseMode: 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', remediation }
 }
 
 export function assertDev014ManagedPrincipalProjectionRemediation(readiness, authorization) {
@@ -626,6 +648,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
           ? assertDev057PrincipalContractRemediation(values.readiness, values.authorization)
           : values.readiness?.slice === '057-CUTOVER-SOURCE'
             ? assertDev057CutoverSourceRemediation(values.readiness, values.authorization)
+          : values.readiness?.slice === '057-PRINCIPAL-GRANTS-V4'
+            ? assertDev057PrincipalGrantsV4Remediation(values.readiness, values.authorization)
           : values.readiness?.slice === '057-PRINCIPAL-GRANTS-V3'
             ? assertDev057PrincipalGrantsV3Remediation(values.readiness, values.authorization)
           : null
@@ -647,7 +671,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     : values.readiness?.devId === 'DEV-014'
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
-  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
@@ -689,6 +713,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
             ? assertDev057PrincipalContractAppend(baseline.bundle.value, current.bundle)
           : controlledTransition.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION'
             ? assertDev057CutoverSourceAppend(baseline.bundle.value, current.bundle)
+          : controlledTransition.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION'
+            ? assertDev057PrincipalGrantsV4Append(baseline.bundle.value, current.bundle)
           : controlledTransition.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION'
             ? assertDev057PrincipalGrantsV3Append(baseline.bundle.value, current.bundle)
         : assertDev013ControlledMigrationAppend(baseline.bundle.value, current.bundle)

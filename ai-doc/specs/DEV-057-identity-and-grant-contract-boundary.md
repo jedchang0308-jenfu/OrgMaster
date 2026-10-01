@@ -1,3 +1,9 @@
+## 2026-10-01 人類決議：管理 Principal 可執行日常 PDM 工作
+
+Jed 管理帳號須能依已發布 employee 業務角色與 scope 工作。新的 grant v4 對有效且核實的人類 human_personal／human_privileged 投影 employee 業務角色；不自動授予角色，不加入 Jed 特例、pilot、UID/email fallback 或管理員 bypass。system_admin 仍僅 exact targetPrincipalId／human_privileged／global／direct，禁止委派與 employee-wide 管理權傳播。scope、撤權、到期、員工與 provider admission、alias 唯一性、catalog 身分仍全部驗證。此決議取代下方 employee grant 限 human_personal 的歷史施工限制。
+
+029 只新增 versioned v4 view／manifest，028 與 v3 不改；consumer 遷移至唯一 v4 正常路徑後再按既有 gate 退役 v3。既有資料與指派保持，無 schema ownership 改變。必須真實 PostgreSQL 驗證 personal 等價、privileged employee 業務 scope／撤權、非人類拒絕、system_admin exact target 與跨公司拒絕，再準備 owner release；本段不是 Production PASS。
+
 ## 現行施工政策：Principal-only／人類 AAL1（2026-10-01）
 
 使用者已取消 Jenfu-Platform、OrgMaster、AI-PDM 對人類及管理員操作的強制第二因子／AAL2，並接受單因子帳號盜用風險。本節優先於下方歷史 TOTP、特權 AAL2、逐人 pilot 記錄；沿用 DEV-057 子任務，不新增主任務。單因子登入如實記錄 AAL1，真實第二因子證據仍可記錄 AAL2，不得以角色或設定偽造 assurance。
