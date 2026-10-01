@@ -361,3 +361,11 @@ test('post-activation rollback switches to the previous revision without rebindi
   assert.equal(h.service().ingress, 'INGRESS_TRAFFIC_INTERNAL_ONLY')
   assert.equal(h.service().defaultUriDisabled, true)
 })
+
+test('DEV-057 grant v4 verifies exact 29-row receipt, replay and isolation',()=>{
+ const profile={application:{id:'orgmaster'}},intent={sourceRevision:H40,migrationManifestSha256:'b'.repeat(64)},forwardPlan={releaseMode:'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION'};
+ const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:H40,manifestSha256:intent.migrationManifestSha256,status:'PASS',boundaryStatus:'PASS',baselineCount:10,minimumLedgerCount:10,ledgerCount:29,applied:1,replayed:28,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]};
+ const check=value=>assertMigrationReceipt({...value,receiptSha256:sha256(canonicalize(value))},profile,intent,{allowForward:true,forwardPlan});
+ assert.doesNotThrow(()=>check(core));assert.doesNotThrow(()=>check({...core,applied:0,replayed:29}));
+ for(const changed of [{ledgerCount:28},{applied:2,replayed:27},{replayed:27},{crossDatabaseDenials:[{database:'jenfu_dev',denied:false},{database:'jenfu_stg',denied:true}]}])assert.throws(()=>check({...core,...changed}),/MIGRATION_RECEIPT_INVALID/);
+});

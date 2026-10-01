@@ -10,8 +10,8 @@ import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-r
 import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeBlobTransition, assertDev057CatalogReadbackPackagingTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
-import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
-import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation, assertDev057PrincipalGrantsV3Append, assertDev057PrincipalGrantsV3Remediation } from './lib/dev040-routine-release.mjs'
+import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
+import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation, assertDev057PrincipalGrantsV3Append, assertDev057PrincipalGrantsV3Remediation, assertDev057PrincipalGrantsV4Append, assertDev057PrincipalGrantsV4Remediation } from './lib/dev040-routine-release.mjs'
 
 test('production runtime image includes the source-frozen v5 catalog read by governance', () => {
   const dockerfile = fs.readFileSync('Dockerfile', 'utf8')
@@ -403,7 +403,7 @@ test('DEV-057 cutover source accepts only exact 027 append from released 026 bas
 
 test('DEV-057 principal-only grants accepts only exact 028 append from released 027 baseline', async () => {
   const baselineBundle = prefixBundle(oldBundle.bundle, 27)
-  const currentBundle = { bundle: newBundle.bundle }
+  const currentBundle = { bundle: prefixBundle(newBundle.bundle, 28) }
   const h = harness({ baselineBundle, currentBundle })
   const remediation = DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION
   h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation }
@@ -774,3 +774,30 @@ test('DEV-057 catalog packaging accepts only the reviewed read-only v4-to-v5 rec
       '802fd5864ce28abf93774bc98b782e1036317014'), /^[a-f0-9]{64}$/u)
   }
 })
+
+test('DEV-057 grant v4 admits only sealed 028-to-029 append with fresh runner evidence', async () => {
+ const baselineBundle=prefixBundle(oldBundle.bundle,28);
+ const currentBundle={bundle:newBundle.bundle};
+ const h=harness({baselineBundle,currentBundle});
+ const remediation=DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION;
+ h.input.values.authorization={...h.input.values.authorization,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION',devId:'DEV-057',slice:'057-PRINCIPAL-GRANTS-V4',remediation};
+ h.input.values.readiness={...h.input.values.readiness,schemaVersion:'orgmaster.routine-release-readiness.v1',devId:'DEV-057',slice:'057-PRINCIPAL-GRANTS-V4',remediation};
+ attachForwardInfra(h);
+ const result=await verifyRoutineRelease(h.input);
+ assert.equal(result.releaseMode,'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION');
+ assert.equal(result.pendingMigrationCount,1);
+ assert.equal(assertDev057PrincipalGrantsV4Remediation(h.input.values.readiness,h.input.values.authorization).releaseMode,result.releaseMode);
+ for(const field of ['version','path','sourceSha256','appliedSha256']) {
+  const drift=structuredClone(currentBundle.bundle);drift.entries[28][field]='wrong';
+  assert.throws(()=>assertDev057PrincipalGrantsV4Append(baselineBundle,drift),/DEV057_PRINCIPAL_GRANTS_V4_APPEND_INVALID/);
+ }
+ const prefixDrift=structuredClone(currentBundle.bundle);prefixDrift.entries[27].sourceSha256='0'.repeat(64);
+ assert.throws(()=>assertDev057PrincipalGrantsV4Append(baselineBundle,prefixDrift),/DEV057_PRINCIPAL_GRANTS_V4_APPEND_INVALID/);
+ assert.throws(()=>assertDev057PrincipalGrantsV4Append(prefixBundle(baselineBundle,27),currentBundle.bundle),/DEV057_PRINCIPAL_GRANTS_V4_APPEND_INVALID/);
+ const missing=harness({baselineBundle,currentBundle});missing.input.values.authorization=h.input.values.authorization;missing.input.values.readiness=h.input.values.readiness;
+ await assert.rejects(()=>verifyRoutineRelease(missing.input),/DEV013_MIGRATION_INFRA_RECEIPT_INVALID/);
+ const invalid=structuredClone(h.input.values.readiness);invalid.remediation={...remediation,contractView:'orgmaster_contract.wrong'};
+ assert.throws(()=>assertDev057PrincipalGrantsV4Remediation(invalid,h.input.values.authorization),/DEV057_PRINCIPAL_GRANTS_V4_AUTHORITY_INVALID/);
+ h.input.transitionFingerprint=(_root,revision)=>revision;
+ await assert.rejects(()=>verifyRoutineRelease(h.input),/ROUTINE_INFRA_CHANGED/);
+});

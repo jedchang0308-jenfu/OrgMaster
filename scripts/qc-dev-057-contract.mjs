@@ -59,5 +59,21 @@ assert.deepEqual(grantV3Entry, { order: 28, version: 'dev057-orgmaster-028', pat
   sourceSha256: sourceSha256(grantV3Bytes),
   appliedSha256: sourceSha256(unwrapMigrationTransaction(grantV3Bytes)) })
 
-process.stdout.write(`${JSON.stringify({ status: 'PASS', contract: 'DEV-057', migrations: [path, grantPath, grantV3Path],
-  principalGrantManifestSha256: sourceSha256(grantV3ManifestBytes), productionWrites: false })}\n`)
+const grantV4Path='db/migrations/029_dev057_human_business_principal_grants_v4.sql';
+const grantV4Bytes=fs.readFileSync(grantV4Path);
+const grantV4Sql=grantV4Bytes.toString('utf8');
+const grantV4ManifestBytes=fs.readFileSync('contracts/orgmaster-ai-pdm-principal-effective-grants/v4/contract-manifest.json');
+const grantV4Manifest=JSON.parse(grantV4ManifestBytes);
+assert.equal(grantV4Manifest.subject,'principal_id');
+assert.equal(grantV4Manifest.view,'orgmaster_contract.v_ai_pdm_principal_effective_grants_v4');
+assert.deepEqual(grantV4Manifest.humanEmployeeRoleAccountTypes,['human_personal','human_privileged']);
+assert.equal(grantV4Manifest.privilegedRolePolicy,'exact_principal_direct_global_only');
+assert.ok(grantV4Sql.includes(sourceSha256(grantV4ManifestBytes)));
+assert.match(grantV4Sql,/CREATE VIEW orgmaster_contract\.v_ai_pdm_principal_effective_grants_v4\s+WITH \(security_barrier = true\)/u);
+assert.match(grantV4Sql,/GRANT SELECT ON orgmaster_contract\.v_ai_pdm_principal_effective_grants_v4\s+TO jenfu_ai_pdm_runtime/u);
+assert.equal((grantV4Sql.match(/principal\.account_type IN \('human_personal', 'human_privileged'\)/gu)||[]).length,2);
+assert.ok(grantV4Sql.includes("catalog_valid.assignment_payload->>'targetPrincipalId' = principal.principal_id"));
+assert.ok(grantV4Sql.includes("principal.account_type = 'human_privileged'"));
+assert.deepEqual(profile.migrations.entries.at(-1),{order:29,version:'dev057-orgmaster-029',path:grantV4Path,sourceSha256:sourceSha256(grantV4Bytes),appliedSha256:sourceSha256(unwrapMigrationTransaction(grantV4Bytes))});
+process.stdout.write(`${JSON.stringify({ status: 'PASS', contract: 'DEV-057', migrations: [path, grantPath, grantV3Path, grantV4Path],
+  principalGrantManifestSha256: sourceSha256(grantV4ManifestBytes), productionWrites: false })}\n`)
