@@ -131,6 +131,14 @@ export function assertDev057PrincipalSmokeBlobTransition(before, after) {
     || (before === principal && after === corrected))) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
 }
 
+// This read-only operator recipe correction changes only the packaged pinned
+// consumer catalog; it does not change any provisioned resource or runner.
+export function assertDev057CatalogReadbackPackagingTransition(before, after) {
+  if (before !== '66cebdc6bbd1e44fa611acfcc004ace459c1f37e'
+    || after !== '464590365d2e0607f46eeadee8b819b01116748a') {
+    fail('DEV057_CATALOG_PACKAGING_DELTA_INVALID')
+  }
+}
 export function assertDev057PrincipalSmokeInfraTransition(root, baselineRevision, sourceRevision) {
   const file = 'infra/google-cloud/dev-040-production-release/candidate-smoke.tf'
   const beforeBlob = revisionBlob(root, baselineRevision, file)
@@ -153,6 +161,13 @@ export function assertDev057PrincipalSmokeInfraTransition(root, baselineRevision
   if (beforeRecovery !== afterRecovery) {
     if (beforeRecovery !== null || afterRecovery !== '89230d38d497ddd10057bb916273897a7b8324d2') fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
     excludedPaths.push(recoveryFile)
+  }
+  const catalogRecipe = 'infra/google-cloud/dev-040-production-release/dev057-v4-catalog-readback.Dockerfile'
+  const beforeCatalogRecipe = revisionBlob(root, baselineRevision, catalogRecipe)
+  const afterCatalogRecipe = revisionBlob(root, sourceRevision, catalogRecipe)
+  if (beforeCatalogRecipe !== afterCatalogRecipe) {
+    assertDev057CatalogReadbackPackagingTransition(beforeCatalogRecipe, afterCatalogRecipe)
+    excludedPaths.push(catalogRecipe)
   }
   const before = controlledInfrastructureFingerprint(root, baselineRevision, excludedPaths, principalSmokeInfrastructureInputs)
   const after = controlledInfrastructureFingerprint(root, sourceRevision, excludedPaths, principalSmokeInfrastructureInputs)
