@@ -1271,7 +1271,7 @@ async function runDev057Checks() {
       ALTER TABLE ai_pdm_core.principal_accounts
         ADD COLUMN lifecycle_version integer NOT NULL DEFAULT 1,
         ADD COLUMN profile_version integer NOT NULL DEFAULT 1,
-        ADD COLUMN minimum_assurance text NOT NULL DEFAULT 'aal2',
+        ADD COLUMN minimum_assurance text NOT NULL DEFAULT 'aal1',
         ADD COLUMN session_invalid_before timestamptz;
       ALTER TABLE ai_pdm_core.principal_accounts
         ADD CONSTRAINT dev057_principal_profile_triplet
