@@ -1,5 +1,8 @@
 # OrgMaster 開發任務
 
+
+**DEV-057 現行發布可靠性子項：R20 provider traffic 行序修正（2026-10-01）。** 沿用 JENFU/DEV-015、ORGMASTER/DEV-057、AIPDM/DEV-121，不新增主任務。三 owner Principal-only activate 改依精確 revision／tag 配對，不依 provider 陣列順序；維持列數／比例／UID／recovery 拒絕條件。三 owner 18 項聚焦測試及獨立唯讀審查通過，protected PR／required CI／新 capsule 與正式業務 L4 待完成。共同根因及真實唯讀因果證據由 JENFU/DEV-015 inventory R20、`dev121-r19-traffic-order-diagnostic.json` 追溯；歷史 R19 capsule 不重跑，人類 AAL1／Principal-only 政策不變。
+
 ## 現行方向（2026-10-01：Principal-only／人類單因子 AAL1）
 
 依人類最新決策，取消 Jenfu-Platform、OrgMaster、AI-PDM 對人類使用者及管理員操作強制第二因子／AAL2 的要求，接受單因子登入的帳號盜用風險，優先完成 Principal-only 上線。單因子登入如實標示 AAL1；不使用舊身分 fallback 或逐人 pilot。保留 Principal 身分核實、角色與資源權限、撤權、session 及稽核檢查。Google／GitHub／Cloud 管理帳號本身的 MFA 政策維持原設定。
