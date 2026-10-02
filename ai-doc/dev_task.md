@@ -1,5 +1,10 @@
 # OrgMaster 開發任務
 
+## DEV-057 R33 現行整鏈驗證入口（本機通過，未發布）
+
+來源 `JENFU/DEV-015#native-v4-transfer`；沿既有 DEV-057，不新增任務。`DEV057_CROSS_OWNER_AI_PDM_ROOT` 指向已授權 consumer 時，D57-21 以實際 OrgMaster writer 发布 v4 grants，讀回 reviewer/owner typed tuple，再呼叫 AI-PDM restricted PostgreSQL consumer。personal/privileged 均驗證 assigned、revoked、out-of-scope、restored、送審至核准/重播；structured evidence 必須與 actual actor/owner/phase 相符。沒有新 Production caller、schema、grant、逐人狀態或應用發布。
+
+R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static action migration/replay，不再以fixture seed補送審FK前提。Verified session輸入仍為合成，不代替Jed正式審批；cluster/ports/temp及lease已清理。證據由 JENFU/DEV-015 `output/dev-012/inputs/dev015-r33-transfer-action-postgres-result.json` 及 R32 global logout/recovery checkpoint追溯。正式 OrgMaster維持efbf7d7db1e0，剩餘fixture mapping、正常業務審批與背景/下載L4未結案。原spec/QA工作樹修改保留，不混入本批。
 
 **DEV-057 現行發布可靠性子項：R20 provider traffic 行序修正（2026-10-01）。** 沿用 JENFU/DEV-015、ORGMASTER/DEV-057、AIPDM/DEV-121，不新增主任務。三 owner Principal-only activate 改依精確 revision／tag 配對，不依 provider 陣列順序；維持列數／比例／UID／recovery 拒絕條件。三 owner 18 項聚焦測試及獨立唯讀審查通過，protected PR／required CI／新 capsule 與正式業務 L4 待完成。共同根因及真實唯讀因果證據由 JENFU/DEV-015 inventory R20、`dev121-r19-traffic-order-diagnostic.json` 追溯；歷史 R19 capsule 不重跑，人類 AAL1／Principal-only 政策不變。
 

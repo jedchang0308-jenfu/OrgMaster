@@ -1231,7 +1231,7 @@ async function runDev057Checks() {
     return { canonicalProducerRows: canonical.rowCount, typedAdapterRows: typed.rowCount, accountType: typed.rows[0].account_type, platformLegacyProjectionUnchanged: true }
   })
 
-  if (dev057ConsumerRoot) await check('D57-21', 'published Principal grant v3 drives AI-PDM assignment, revocation, scope and transfer decision on one PostgreSQL', async () => {
+  if (dev057ConsumerRoot) await check('D57-21', 'published Principal grants drive AI-PDM assignment, revocation, scope and native v4 transfer decision on one PostgreSQL', async () => {
     const consumerRoot = fs.realpathSync(dev057ConsumerRoot)
     const packageName = JSON.parse(fs.readFileSync(path.join(consumerRoot, 'package.json'), 'utf8')).name
     assert.equal(packageName, 'ai-pdm')
@@ -1495,7 +1495,7 @@ async function runDev057Checks() {
     `)
     const readable = await client.query("SELECT has_table_privilege('dev057_ai_pdm_consumer_probe','orgmaster_contract.v_ai_pdm_principal_effective_grants_v3','SELECT') AS granted")
     assert.equal(readable.rows[0].granted, true)
-    const typed = await client.query(`SELECT principal_id,employee_id,account_type
+    const typed = await client.query(`SELECT principal_id,employee_id,account_type,principal_issuer,principal_subject
       FROM orgmaster_contract.v_active_principal_accounts_v1
       WHERE principal_id='principal-legacy'`)
     assert.ok(typed.rowCount >= 1, 'published Principal must have an active typed account')
@@ -1564,6 +1564,7 @@ async function runDev057Checks() {
       assert.equal(result.status, 0, `AI-PDM ${phase} file consumer failed: ${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`)
       assert.match(result.stdout, /Tests\s+9 passed/u, 'all actual package HTTP checks must execute, not skip')
     }
+    const nativeTransferEvidence = []
     const numberingProbe = (phase, extra = {}) => {
       const runner = path.join(consumerRoot, 'scripts/qc-dev-121-numbering-owner-grant-postgres.mjs')
       const result = spawnSync(process.execPath, [runner], {
@@ -1573,6 +1574,21 @@ async function runDev057Checks() {
       })
       assert.equal(result.status, 0, 'AI-PDM numbering ' + phase + ' failed: ' + (result.stdout || '') + '\n' + (result.stderr || ''))
       assert.match(result.stdout, /"status":"PASS"/u)
+      if (extra.DEV057_NATIVE_TRANSFER_PROBE === '1') {
+        const lines = result.stdout.trim().split(/\r?\n/u)
+        const receipt = JSON.parse(lines.findLast((line) => line.startsWith('{"status":"PASS"')))
+        assert.equal(receipt.consumerProbe, 'orgmaster-v4-transfer-approval')
+        assert.equal(receipt.phase, phase)
+        assert.equal(receipt.actorPrincipalId, extra.DEV057_NUMBERING_PRINCIPAL_ID)
+        assert.equal(receipt.actorAccountType, extra.DEV057_NUMBERING_ACCOUNT_TYPE)
+        assert.equal(receipt.ownerPrincipalId, extra.DEV057_FLOW_OWNER_PRINCIPAL_ID)
+        assert.equal(receipt.ownerAccountType, extra.DEV057_FLOW_OWNER_ACCOUNT_TYPE)
+        assert.equal(receipt.productionWrites, false)
+        nativeTransferEvidence.push({ phase, actorPrincipalId: receipt.actorPrincipalId,
+          actorAccountType: receipt.actorAccountType, ownerPrincipalId: receipt.ownerPrincipalId,
+          ownerAccountType: receipt.ownerAccountType, status: receipt.status,
+          session: receipt.session, productionWrites: receipt.productionWrites })
+      }
     }
     const publish = async (suffix, changeAssignment) => {
       const artifact = await activeGovernanceArtifact()
@@ -1589,7 +1605,46 @@ async function runDev057Checks() {
       return versionId
     }
 
-    const assigned = await publish('reviewer-assigned', (assignment) => {
+    // Verified human management accounts consume the same explicitly published
+    // business roles; no administrator bypass or synthetic local grants.
+    const personalRows = typed.rows.filter((row) => row.principal_issuer === 'issuer-legacy' &&
+      row.principal_subject === 'subject-legacy')
+    assert.equal(personalRows.length, 1, 'personal reviewer requires one exact published provider pair')
+    const personalReviewer = {
+      DEV057_NUMBERING_PRINCIPAL_ID: personalRows[0].principal_id,
+      DEV057_NUMBERING_EMPLOYEE_ID: personalRows[0].employee_id,
+      DEV057_NUMBERING_ACCOUNT_TYPE: personalRows[0].account_type,
+      DEV057_NUMBERING_ISSUER: personalRows[0].principal_issuer,
+      DEV057_NUMBERING_SUBJECT: personalRows[0].principal_subject,
+    }
+    const businessReviewer = {
+      DEV057_NUMBERING_PRINCIPAL_ID: 'principal-business-manager',
+      DEV057_NUMBERING_EMPLOYEE_ID: 'employee-legacy',
+      DEV057_NUMBERING_ACCOUNT_TYPE: 'human_privileged',
+      DEV057_NUMBERING_ISSUER: 'issuer-business-manager',
+      DEV057_NUMBERING_SUBJECT: 'subject-business-manager',
+    }
+    const nativeOwner = {
+      DEV057_FLOW_OWNER_PRINCIPAL_ID: flowOwner.rows[0].principal_id,
+      DEV057_FLOW_OWNER_EMPLOYEE_ID: flowOwner.rows[0].employee_id,
+      DEV057_FLOW_OWNER_ACCOUNT_TYPE: flowOwner.rows[0].account_type,
+      DEV057_FLOW_OWNER_ISSUER: flowOwner.rows[0].principal_issuer,
+      DEV057_FLOW_OWNER_SUBJECT: flowOwner.rows[0].principal_subject,
+    }
+    const nativeTransferProbe = (phase) => {
+      numberingProbe(phase, { DEV057_NATIVE_TRANSFER_PROBE: '1', ...nativeOwner, ...personalReviewer })
+      numberingProbe(phase, { DEV057_NATIVE_TRANSFER_PROBE: '1',
+        ...nativeOwner, ...businessReviewer })
+    }
+    const assigned = await publish('reviewer-assigned', (assignment, policy) => {
+      const link = { id: 'identity-link-business-manager',
+        employeeId: 'employee-legacy', principalId: businessReviewer.DEV057_NUMBERING_PRINCIPAL_ID,
+        issuer: businessReviewer.DEV057_NUMBERING_ISSUER,
+        subject: businessReviewer.DEV057_NUMBERING_SUBJECT,
+        status: 'active', validFrom: '2026-01-01T00:00:00.000Z' }
+      policy.identityLinks.push(link)
+      policy.principalAdmissions.push({ identityLinkId: link.id,
+        status: 'active', accountType: businessReviewer.DEV057_NUMBERING_ACCOUNT_TYPE })
       assignment.roleId = 'role-rd-manager'
       assignment.roleCodeSnapshot = 'rd_manager'
       assignment.catalogVersion = principalCatalog.catalogVersion
@@ -1598,11 +1653,13 @@ async function runDev057Checks() {
     transferProbe('assigned')
     downloadProbe('assigned')
     numberingProbe('assigned')
+    nativeTransferProbe('assigned')
     const revoked = await publish('revoked', (assignment) => { assignment.status = 'revoked' })
     probe('revoked', revoked)
     transferProbe('revoked')
     downloadProbe('revoked')
     numberingProbe('revoked')
+    nativeTransferProbe('revoked')
     const scoped = await publish('scoped', (assignment) => {
       assignment.status = 'active'
       assignment.scope = { kind: 'workspace', value: 'company-other' }
@@ -1611,6 +1668,7 @@ async function runDev057Checks() {
     transferProbe('out-of-scope')
     downloadProbe('out-of-scope')
     numberingProbe('out-of-scope')
+    nativeTransferProbe('out-of-scope')
     const restored = await publish('restored', (assignment) => {
       assignment.scope = { kind: 'workspace', value: 'company-jenfu' }
     })
@@ -1618,6 +1676,7 @@ async function runDev057Checks() {
     transferProbe('restored')
     downloadProbe('restored')
     numberingProbe('restored')
+    nativeTransferProbe('restored')
     const flow = await publish('flow', (assignment, policy) => {
       assignment.roleId = 'role-pdm-admin'
       assignment.roleCodeSnapshot = 'pdm_admin'
@@ -1638,9 +1697,17 @@ async function runDev057Checks() {
     assert.ok(flowGrants.rows.some((grant) => grant.employee_id === 'employee-three' &&
       grant.role_code === 'rd_manager' && grant.scope_kind === 'workspace' &&
       grant.scope_key === 'company-jenfu'),
-    'the published v3 owner grant must be readable before AI-PDM submits a review')
+    'the historical published v3 owner grant remains readable before AI-PDM submits a review')
+    const nativeFlowGrants = await queryAs('jenfu_ai_pdm_runtime', `
+      SELECT principal_id,employee_id,role_code,scope_kind,scope_key
+      FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4
+      WHERE principal_id=$1`, [flowOwner.rows[0].principal_id])
+    assert.ok(nativeFlowGrants.rows.some((grant) => grant.employee_id === 'employee-three' &&
+      grant.role_code === 'rd_manager' && grant.scope_kind === 'workspace' &&
+      grant.scope_key === 'company-jenfu'), 'native transfer owner must have the actual v4 published grant')
     transferProbe('flow')
     downloadProbe('flow')
+    nativeTransferProbe('flow')
     const reviewProbe = spawnSync(process.execPath,
       [path.join(consumerRoot,'scripts/qc-dev-121-numbering-owner-grant-postgres.mjs')], {
       cwd:consumerRoot,encoding:'utf8',windowsHide:true,timeout:180_000,
@@ -1708,7 +1775,9 @@ async function runDev057Checks() {
       assignment.roleCodeSnapshot = 'pdm_admin'
       assignment.scope = { kind: 'workspace', value: 'company-jenfu' }
     })
-    return { consumerPackage: packageName, consumerTestSha256: sha256(fs.readFileSync(consumerTest)),
+    return { nativeTransferEvidence, nativeTransferTestSha256: sha256(fs.readFileSync(path.join(consumerRoot,
+      'src/lib/transfer-package-principal-grants-v4.postgres-contract.test.ts'))),
+      consumerPackage: packageName, consumerTestSha256: sha256(fs.readFileSync(consumerTest)),
       transferTestSha256: sha256(fs.readFileSync(transferTest)),
       downloadTestSha256: sha256(fs.readFileSync(downloadTest)), downloadVersions: [fileHandoff, fileRevoked, fileScoped],
       download: 'actual-http, owner grant-v3, restricted PostgreSQL, actual local bytes, Principal audit, no Firebase session proof',
