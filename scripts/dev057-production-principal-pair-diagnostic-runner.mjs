@@ -136,6 +136,14 @@ export function summarizePairs(operation, { mappings, accounts, managed, governa
   }
 }
 
+function observedTimestamp(value) {
+  if (value == null) return null
+  if (!(value instanceof Date) && typeof value !== 'string') fail('TIMESTAMP_INVALID')
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) fail('TIMESTAMP_INVALID')
+  return date.toISOString()
+}
+
 /** Domain-keyed observation only. This report neither admits a login nor creates a grant. */
 export function summarizeEmployees(operation, sources) {
   const ids = operation.employeeIds
@@ -187,7 +195,8 @@ export function summarizeEmployees(operation, sources) {
           grantKind: row.grant_kind, delegationId: row.delegation_id, stableRoleId: row.stable_role_id,
           roleCode: row.role_code, subjectKind: row.subject_kind, targetPrincipalId: row.target_principal_id,
           catalogVersion: row.catalog_version, scopeKind: row.scope_kind, scopeKey: row.scope_key,
-          validFrom: row.valid_from, validUntil: row.valid_until, publishedAt: row.published_at })),
+          validFrom: observedTimestamp(row.valid_from), validUntil: observedTimestamp(row.valid_until),
+          publishedAt: observedTimestamp(row.published_at) })),
     })),
     pairs: paired.pairs,
   }
