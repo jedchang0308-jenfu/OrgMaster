@@ -238,3 +238,20 @@ test('v2 dependency failure rolls back, closes client and publishes no observati
   assert.equal(result.queries.at(-1).sql, 'ROLLBACK')
   assert.equal(result.published, null)
 })
+
+
+test('v2 serializes PostgreSQL Date grant timestamps as ISO strings and rejects invalid facts', () => {
+  const sources = emptySources()
+  const publishedAt = new Date('2026-10-02T01:02:03.456Z')
+  const validFrom = new Date('2026-10-01T00:00:00.000Z')
+  sources.grants = [{ employee_id: employeeId, principal_id: 'p1',
+    assignment_version: '4', published_at: publishedAt, valid_from: validFrom, valid_until: null }]
+  const grant = summarizeEmployees(employeeOperation, sources).employees[0].effectiveGrants[0]
+  assert.equal(grant.publishedAt, publishedAt.toISOString())
+  assert.equal(grant.validFrom, validFrom.toISOString())
+  assert.equal(grant.validUntil, null)
+  for (const value of [{}, new Date('invalid'), 'invalid-timestamp']) {
+    sources.grants[0].published_at = value
+    assert.throws(() => summarizeEmployees(employeeOperation, sources), /TIMESTAMP_INVALID/u)
+  }
+})
