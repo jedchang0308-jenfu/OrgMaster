@@ -574,6 +574,29 @@ async function runDev055Checks() {
 }
 
 async function runDev057Checks() {
+  await check('D57-24', 'fixture diagnostic executes native owner SELECTs in a read-only snapshot', async () => {
+    const { readDiagnosticSnapshot } = await import('./dev057-production-principal-pair-diagnostic-runner.mjs')
+    const employeeIds = ['01a0c82b-11c6-77ab-887f-58df9d243e63',
+      '01a0c82b-372c-7d20-ba3b-6e3b892d2f63']
+    let readOnlyChecks = 0
+    const database = { async query(sql, values) {
+      if (/SELECT/u.test(sql)) {
+        assert.equal((await client.query('SHOW transaction_read_only')).rows[0].transaction_read_only, 'on')
+        readOnlyChecks += 1
+      }
+      return client.query(sql, values)
+    } }
+    const observed = await readDiagnosticSnapshot(database, { employeeIds })
+    assert.equal(observed.observationOnly, true)
+    assert.equal(observed.releaseAuthority, false)
+    assert.deepEqual(observed.employees.map((item) => item.employeeId), employeeIds)
+    assert.equal(observed.employees[0].typedAccountCount, 0)
+    assert.deepEqual(observed.employees[0].effectiveGrants, [])
+    assert.deepEqual(observed.pairs, [])
+    assert.equal(readOnlyChecks, 8)
+    return { nativeOwnerMigrations: 29, readOnlyChecks, selectedEmployeeCount: 2,
+      fixturePresent: false, scope: 'SQL_AND_READONLY_CONTRACT_NOT_PRODUCTION_LOGIN' }
+  })
   let recipientLink
 
   await check('D57-09', 'principal reservations preserve resolved and unresolved provider-pair history', async () => {
@@ -2102,7 +2125,7 @@ finally {
   if (taskRoot) { try { fs.rmSync(taskRoot, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 }); cleanup.tempRemoved = !fs.existsSync(taskRoot) } catch { cleanup.tempRemoved = false } } else cleanup.tempRemoved = true
 }
 
-const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06','D57-07','D57-08','D57-09','D57-10','D57-11','D57-12','D57-13','D57-14','D57-15','D57-16','D57-17','D57-18','D57-19','D57-20','D57-23', ...(dev057ConsumerRoot ? ['D57-21','D57-22'] : [])] : requiredCorrectionCases
+const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06','D57-07','D57-08','D57-09','D57-10','D57-11','D57-12','D57-13','D57-14','D57-15','D57-16','D57-17','D57-18','D57-19','D57-20','D57-23','D57-24', ...(dev057ConsumerRoot ? ['D57-21','D57-22'] : [])] : requiredCorrectionCases
 const allRequiredPassed = requiredCases.every((id) => checks.some((entry) => entry.id === id && entry.status === 'PASS'))
 const status = !firstFailure && allRequiredPassed && Object.values(cleanup).every(Boolean) ? 'PASS' : firstFailure?.reasonCode === 'POSTGRES_RUNTIME_MISSING' ? 'BLOCKED' : 'FAIL'
 const manifest = {
