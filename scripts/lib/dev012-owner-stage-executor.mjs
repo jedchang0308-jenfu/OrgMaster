@@ -541,7 +541,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const bundle = await transport.putBytes(bundleUri, migration.bytes, { bucket: profile.artifact.releaseBucket, prefix: profile.artifact.migrationBundlePrefix, contentType: 'application/json' })
     const build = await transport.createBuild({ profile, intent, sourceObject: source, deadlineAt: intent.deadlineAt })
     const artifact = await transport.readArtifactImage(profile, build.artifactDigest)
-    const analysis = await transport.waitArtifactEvidence({ profile, artifactDigest: build.artifactDigest, deadlineAt: intent.deadlineAt })
+    const analysis = await transport.waitArtifactEvidence({ profile, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, deadlineAt: intent.deadlineAt })
     const provenance = await transport.putJson(paths.provenance, { schemaVersion: 'jenfu.dev012.build-provenance-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, sourceObject: { ...source.ref, generation: String(source.metadata.generation), crc32c: source.metadata.crc32c }, artifactDigest: build.artifactDigest, cloudBuild: publicBuildReceipt(build.build), artifactRegistry: artifact, status: 'PASS' }, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
     const sbom = await transport.putJson(paths.sbom, { schemaVersion: 'jenfu.dev012.sbom-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, ...analysis.sbomExport, occurrenceNames: analysis.sbomOccurrenceNames, status: 'PASS' }, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
     const scan = await transport.putJson(paths.scan, { schemaVersion: 'jenfu.dev012.scan-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, buildOccurrenceNames: analysis.buildOccurrenceNames, discoveryOccurrenceNames: analysis.discoveryOccurrenceNames, vulnerabilityCount: analysis.vulnerabilityCount, blockingVulnerabilityCount: analysis.blockingVulnerabilityCount, ...(analysis.rawHighOrCriticalVulnerabilityCount !== undefined ? { rawHighOrCriticalVulnerabilityCount: analysis.rawHighOrCriticalVulnerabilityCount, notAffectedAssessments: analysis.notAffectedAssessments } : {}), maximumAllowedSeverity: profile.build.maximumAllowedSeverity, observedAt: analysis.observedAt, status: 'PASS' }, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
@@ -602,7 +602,9 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const tag = service.trafficStatuses?.find((row) => row.tag === candidate.value.facts.tag)
     if (tag?.revision !== candidate.value.facts.candidateRevision || Number(tag.percent ?? 0) !== 0 || !candidateTagUriMatches(service, candidate.value.facts, tag.uri) || transport.effectiveRevision(service) !== intent.previousRevision) fail('CANDIDATE_TAG_READBACK_MISMATCH')
     const revision = await transport.getRevision(profile, candidate.value.facts.candidateRevision)
-    transport.assertRevisionReady(profile, revision, candidate.value.facts.artifactDigest, candidate.value.facts.cloudSqlProxyResolvedImage)
+    const runtimeReceipt = await transport.readJson(intent.runtimeConfigRef, profile.artifact.releaseBucket, ['receipts'])
+    const runtimeConfig = runtimeReceipt.value.runtimeConfig ?? runtimeReceipt.value
+    transport.assertRevisionReady(profile, revision, candidate.value.facts.artifactDigest, candidate.value.facts.cloudSqlProxyResolvedImage, { runtimeConfig, origin: candidate.value.facts.tagUri })
     const smoke = await transport.runInternalCandidateSmoke({ profile, origin: candidate.value.facts.tagUri, candidateTag: candidate.value.facts.tag, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, deadlineAt: intent.deadlineAt, environment })
     const result = await writeStage(transport, paths, profile, intent, 'verify', entrypoint.ref, { candidateReceiptRef: candidate.ref, entrypointReceiptRef: entrypoint.ref, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, tagUri: candidate.value.facts.tagUri, providerTagUri: tag.uri, smoke, sideEffects: profile.sideEffects })
     await writeControl({ transport, paths, profile, intent, fingerprint, candidate: candidate.value.facts, state: 'CANDIDATE_VERIFIED', environment })
@@ -639,7 +641,9 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (transport.effectiveRevision(service) !== candidate.value.facts.candidateRevision) fail('CANONICAL_REVISION_MISMATCH')
     transport.assertCanonicalEntrypoint(profile, service)
     const revision = await transport.getRevision(profile, candidate.value.facts.candidateRevision)
-    try { transport.assertRevisionReady(profile, revision, candidate.value.facts.artifactDigest, candidate.value.facts.cloudSqlProxyResolvedImage) } catch { fail('CANONICAL_ARTIFACT_MISMATCH') }
+    const runtimeReceipt = await transport.readJson(intent.runtimeConfigRef, profile.artifact.releaseBucket, ['receipts'])
+    const runtimeConfig = runtimeReceipt.value.runtimeConfig ?? runtimeReceipt.value
+    try { transport.assertRevisionReady(profile, revision, candidate.value.facts.artifactDigest, candidate.value.facts.cloudSqlProxyResolvedImage, { runtimeConfig, origin: candidate.value.facts.tagUri }) } catch { fail('CANONICAL_ARTIFACT_MISMATCH') }
     const smoke = await transport.runAuthenticatedSmoke({ profile, origin: profile.target.canonicalOrigin, environment })
     const result = await writeStage(transport, paths, profile, intent, 'canonical', activate.ref, { activationReceiptRef: activate.ref, origin: profile.target.canonicalOrigin, candidateRevision: candidate.value.facts.candidateRevision, artifactDigest: candidate.value.facts.artifactDigest, smoke })
     await writeControl({ transport, paths, profile, intent, fingerprint, candidate: candidate.value.facts, state: 'CANONICAL_VERIFIED', environment })

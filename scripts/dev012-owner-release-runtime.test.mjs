@@ -260,7 +260,7 @@ for (const tagFormat of ['canonical', 'provider', 'untrusted']) test(`candidate 
   const patches = []
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
     if (options.method === 'PATCH') { patches.push(JSON.parse(options.body)); return json({ name: `projects/${profile.target.projectId}/locations/${profile.target.region}/operations/patch-${patches.length}`, done: true, response: {} }) }
-    if (String(url).includes('/revisions/')) return json({ name: `${serviceName}/revisions/${candidateRevision}`, service: serviceName, containers: [{ name: 'platform', image: artifact, env: [{ name: profile.environment.candidateOriginEnvironmentName, value: candidateUri }] }, { name: 'cloud-sql-proxy', image: profile.runtime.cloudSqlProxyImage }], conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] })
+    if (String(url).includes('/revisions/')) return json({ ...structuredClone(patches[0].template), name: `${serviceName}/revisions/${candidateRevision}`, service: serviceName, conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] })
     return json(reads.shift())
   } })
   const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } })
@@ -300,7 +300,7 @@ test('candidate accepts an omitted provider tag URI only while the default URI i
       if (value.includes('updateMask=template')) assert.deepEqual(body.template, expectedTemplate)
       return json({ name: 'projects/p/locations/r/operations/patch', done: true, response: {} })
     }
-    if (value.includes('/revisions/')) return json({ name: `${before.name}/revisions/${candidateRevision}`, service: before.name, containers: [{ name: profile.runtime.containerName, image: artifactDigest, env: expectedApp.env }, { name: profile.runtime.cloudSqlProxyContainer, image: profile.runtime.cloudSqlProxyImage }], conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] })
+    if (value.includes('/revisions/')) return json({ ...structuredClone(expectedTemplate), name: `${before.name}/revisions/${candidateRevision}`, service: before.name, conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] })
     return json([before, created, created, tagged, tagged][serviceGets++])
   } })
   const result = await transport.createCandidate({ profile, artifactDigest, runtimeConfig, fingerprint, deadlineAt: '2999-01-01T00:00:00.000Z' })
@@ -546,4 +546,84 @@ test('legacy one-field endpoint mutations are not exposed by the V3 transport', 
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async () => json({}) })
   assert.equal(transport.prepareCandidateEndpoint, undefined)
   assert.equal(transport.enableCanonicalIngress, undefined)
+})
+
+test('candidate readback verifies exact workload environment, Secret versions and absence of loader overrides', () => {
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } })
+  const artifact = profile.artifact.uri + '@sha256:' + H64
+  const origin = 'https://candidate-bbbbbbbbbbbb---jenfu-platform-prod-9536592944.asia-east1.run.app'
+  const expected = structuredClone(runtimeConfig.template)
+  expected.containers[0].image = artifact
+  expected.containers[0].env.push({ name: profile.environment.candidateOriginEnvironmentName, value: origin })
+  const ready = { ...expected, conditions: [{ type:'Ready',state:'CONDITION_SUCCEEDED' }] }
+  const transport = createOwnerTransport({ token:'x'.repeat(32) })
+  const binding = { runtimeConfig, origin }
+  assert.equal(transport.assertRevisionReady(profile, ready, artifact, null, binding), ready)
+  const reordered = structuredClone(ready)
+  reordered.containers.reverse()
+  reordered.containers.find(row => row.name === profile.runtime.containerName).env.reverse()
+  assert.equal(transport.assertRevisionReady(profile, reordered, artifact, null, binding), reordered)
+  const qualified = structuredClone(ready)
+  qualified.containers[0].env.find(row => row.valueSource).valueSource.secretKeyRef.secret = 'projects/' + profile.target.projectNumber + '/secrets/' + profile.environment.allowedSecretIds.SESSION_SECRET
+  assert.equal(transport.assertRevisionReady(profile, qualified, artifact, null, binding), qualified)
+  const changes = [
+    row => row.containers[0].env.push({name:'LD_PRELOAD',value:'/tmp/untrusted.so'}),
+    row => row.containers[0].env.push({name:'NODE_OPTIONS',value:'--require=/tmp/untrusted.cjs'}),
+    row => row.containers[0].env.pop(),
+    row => row.containers[0].env.push(row.containers[0].env[0]),
+    row => { row.containers[0].env.find(value => value.valueSource).valueSource.secretKeyRef.version = 'latest' },
+    row => { row.containers[0].env.find(value => value.valueSource).valueSource.secretKeyRef.secret = 'orgmaster-prod-session-current' },
+    row => { row.containers[0].command = ['/untrusted'] },
+    row => { row.containers[0].args = ['--require=/tmp/untrusted.cjs'] },
+    row => { row.containers[1].args = ['--unsafe'] },
+    row => { row.containers[0].volumeMounts = [{name:'extra',mountPath:'/app'}] },
+    row => { row.volumes = [{name:'extra',emptyDir:{}}] },
+    row => { row.serviceAccount = 'orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com' },
+  ]
+  for (const change of changes) {
+    const drifted = structuredClone(ready)
+    change(drifted)
+    assert.throws(() => transport.assertRevisionReady(profile, drifted, artifact, null, binding), { code:'CANDIDATE_RUNTIME_READBACK_MISMATCH' })
+  }
+})
+
+test('runtime config cannot inject alternate native loaders through plain or Secret bindings', () => {
+  for (const name of ['LD_PRELOAD', 'LD_LIBRARY_PATH', 'LD_AUDIT', 'NODE_OPTIONS', 'NODE_PATH', 'GLIBC_TUNABLES', 'GCONV_PATH', 'VIPS_PATH', 'SHARP_FORCE_GLOBAL_LIBVIPS']) {
+    for (const kind of ['plain', 'secret']) {
+      const changed = structuredClone(profile)
+      const plainEnvironment = { NODE_ENV: 'production' }
+      const secretVersions = { SESSION_SECRET: '1' }
+      if (kind === 'plain') {
+        changed.environment.requiredPlainEnvironmentNames.push(name)
+        plainEnvironment[name] = '/unreviewed/loader.so'
+      } else {
+        changed.environment.requiredSecretNames.push(name)
+        changed.environment.allowedSecretIds[name] = 'platform-prod-injected-loader'
+        secretVersions[name] = '1'
+      }
+      assert.throws(() => buildRuntimeConfig(changed, { plainEnvironment, secretVersions }), /RUNTIME_CONFIG_READBACK_MISMATCH/u)
+    }
+  }
+})
+
+test('aligned-new assessment requires source identity; unrelated or escalated scanner findings still reject before inspection', async () => {
+  const digest = `${profile.artifact.uri}@sha256:${H64}`
+  const occurrence = { name: 'projects/jenfu-platform-prod/occurrences/aligned-new', resourceUri: `https://${digest}`, kind: 'VULNERABILITY', noteName: 'projects/goog-vulnz/notes/CVE-2026-95619', vulnerability: { effectiveSeverity: 'HIGH', shortDescription: 'CVE-2026-95619', packageIssue: [{ affectedPackage: 'gcc-14', packageType: 'OS', affectedCpeUri: 'cpe:/o:debian:debian_linux:13', affectedVersion: { fullName: '14.2.0-19' } }] } }
+  let writes = 0
+  const make = (finding) => createOwnerTransport({ token: 'x'.repeat(32), sleep: async () => undefined, fetchImpl: async (url, options = {}) => {
+    if (options.method === 'POST') { writes += 1; throw new Error('UNEXPECTED_WRITE') }
+    const kind = /^kind="([A-Z_]+)"/u.exec(new URL(String(url)).searchParams.get('filter') ?? '')?.[1]
+    return json({ occurrences: kind === 'VULNERABILITY' ? [finding] : kind === 'DISCOVERY' ? [{ kind, resourceUri: `https://${digest}`, discovery: { analysisStatus: 'FINISHED_SUCCESS' } }] : [] })
+  } })
+  await assert.rejects(() => make(occurrence).waitArtifactEvidence({ profile, artifactDigest: digest, deadlineAt: '2999-01-01T00:00:00.000Z' }), /ARTIFACT_POLICY_FAILED/u)
+  for (const mutate of [
+    row => row.vulnerability.effectiveSeverity = 'CRITICAL',
+    row => row.noteName = 'projects/goog-vulnz/notes/CVE-OTHER',
+    row => row.vulnerability.packageIssue[0].affectedPackage = 'unrelated-package',
+    row => row.vulnerability.packageIssue[0].affectedVersion.fullName = '14.2.0-20',
+  ]) {
+    const changed = structuredClone(occurrence); mutate(changed)
+    await assert.rejects(() => make(changed).waitArtifactEvidence({ profile, sourceRevision: H40, artifactDigest: digest, deadlineAt: '2999-01-01T00:00:00.000Z' }), /ARTIFACT_POLICY_FAILED/u)
+  }
+  assert.equal(writes, 0)
 })

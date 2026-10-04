@@ -78,6 +78,14 @@ prepare只重新讀同 own bucket immutable native APPLIED receipt與其 credent
 
 operator CLI precheck另以現有權限唯讀當下 own Workflow 的name／serviceAccount／ACTIVE／revision及完整 source bytes，精確重建 source-frozen Terraform recipe與numeric版本；exact version及latest的Secret metadata都必須同new numeric且ENABLED，不access payload。結果標為 `OPERATOR_PROVIDER_CURRENT_METADATA`。prepare層標為 `OWNER_SEALED_APPLIED_ROTATION`，不要求verifier新增Workflow／Secret／tfstate讀權，不將operator snapshot當永久live proof。既有 ten-stage smoke與失敗回復仍必要，receipt續接不授予Production L4。
 
+## Owner GCC aligned-new applicability 續接
+
+沿 `ORGMASTER/DEV-057` 與既有 owner build／scan 責任點處理 `CVE-2026-95619`。只接受 provider 原始 `HIGH`、Debian 13 OS `gcc-14 / 14.2.0-19` 的 exact occurrence；其他 HIGH／CRITICAL 仍阻斷。PBDS 與 aligned-new 使用同一批完整 native inventory，aligned-new 另取 nonroot Node TLS／crypto loader、全部實際 `.node`、file-backed bytes、vDSO、loader controls／aliases及 image config，固定 `dist-server/server.mjs`，不啟動 app、DB或網路。
+
+reviewed own policy／immutable assessment須固定Org repository、target、artifact、bucket、調查source／image、完整native及loader fingerprints。R65A／R66b／R66c只引用已實證同 `libstdc++.so.6.0.33` SHA-256 `972bb2a18b71140dab0240f8a1f68ab3fb1d56bcd4c4f824a91b70888faf5a00` 的POSIX source／disassembly及aligned operator probe方法，不是Org判定；另外必須有own SUCCESS inspection、own log ref／readback及本owner exact inspection program hash。`fullElfCount`須等於實際完整inventory，沒有固定AI集合數。不能只用版本或缺少symbol判定 `NOT_AFFECTED`；任何缺失／額外／未載入native module、loader byte／control漂移或錯owner／source／artifact／ref均fail closed。
+
+每次current source／immutable candidate image重跑該隔離inspection。正常candidate、verify及canonical將revision的完整environment／Secret numeric versions、service account、command／args／volume對sealed runtime config核對；禁止loader environment注入。缺少own policy／provider evidence時不得發布。只沿既有owner required checks及十階段發布，不新增DEV、CI job、severity豁免或Production L4判定；本機合成測試只證明拒絕契約。
+
 ## 固定驗收及交接
 
 O01–O07沿原編號；失效雙軌斷言改驗終態與Principal-only恢復，過去結果不改寫：

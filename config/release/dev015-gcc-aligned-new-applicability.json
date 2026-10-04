@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "jenfu.dev015.gcc-aligned-new-applicability-policy.v1",
+  "cve": "CVE-2026-95619",
+  "state": "NOT_AFFECTED",
+  "justification": "VULNERABLE_CODE_NOT_PRESENT",
+  "ownerApplicationId": "orgmaster",
+  "repository": "jedchang0308-jenfu/OrgMaster",
+  "projectId": "jenfu-platform-prod",
+  "region": "asia-east1",
+  "artifactUri": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster",
+  "releaseBucket": "jenfu-platform-prod-orgmaster-release",
+  "nativeCodeFingerprint": "366239a967ce264ac77ce50ad502f65869863f355e3bc8f4d3eb95a40df1eb08",
+  "loaderClosureFingerprint": "8c9855457db3c602970aed33073abc1b73670743c76e0355e39761813250bf4b",
+  "investigatedSourceRevision": "a6ed901c04ed1f03f41e64d132e516b602b0c515",
+  "investigatedArtifactDigest": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:edbeec18a3b296ebc5ae3c16d585129a9f6e0c41cb71f23b38d62b74fe47340e",
+  "assessmentRef": {
+    "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV015-GCC-ALIGNED-NEW-APPLICABILITY-20261004-R33/orgmaster/assessment-7bf9bbd659467ec289aecbef6155d5528287534b743126a7078d62fe7ee163bf.json",
+    "sha256": "7bf9bbd659467ec289aecbef6155d5528287534b743126a7078d62fe7ee163bf"
+  }
+}

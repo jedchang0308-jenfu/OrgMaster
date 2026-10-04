@@ -14,6 +14,8 @@
 
 普通release續接的同根因矯正使用 `scripts/dev040-deploy-production.mjs`、`scripts/lib/dev040-routine-release.mjs`、`scripts/lib/dev057-smoke-rotation-continuation.mjs`，並沿既有 `scripts/dev040-routine-release.test.mjs`／QC固定分母；[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md#ordinary-release-的-own-smoke-rotation-續接)定義own ref、75項完整集合、原apply freshness與operator／prepare證據分層。不新增IAM、DDL、Secretpayload讀取或發布authority；Production驗證由原owner流程執行。
 
+本輪own aligned-new scan續接沿 DEV-057與[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md#owner-gcc-aligned-new-applicability-續接)：`scripts/lib/dev015-gcc-aligned-new-applicability.mjs`、`scripts/dev015-aligned-new-loader-inspection.cjs`及兩份同名聚焦tests由既有owner runtime／stage executor與`test:dev-040:r2`消費。policy／assessment只能使用Org own exact evidence；上游方法證據不代替own verdict，完整owner QC及正式驗證由原生流程收斂。
+
 ## 專案最高產品原則
 
 - `Human Confirmed / 2026-08-23`：OrgMaster 手機版只提供完整唯讀閱讀、搜尋、篩選與關聯導覽，不提供或觸發建立、修改、刪除、排序、拖放、配置、移轉、核准、發布或其他 mutation。桌面／筆電仍依 workspace mode、version status、治理權限與 validation 決定能否編輯；手機唯讀不取代 server／domain 安全驗證。
