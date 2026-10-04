@@ -12,6 +12,8 @@
 
 原分支 `codex/dev014-free-fixture-operator`、base `967fb654e8d920e4137bbba8f51dcad99702928f`；聚焦 `serverSynchronization`／`serverWorkspaceStorage`／`hydration`／`versionWorkspace` 共 18 案及 `tsc --noEmit` 通過。完整 diff 與實際本機檢查交接在 JENFU/DEV-015 `output/dev-012/inputs/dev015-orgmaster-workspace-poll-fix.patch`、`dev015-orgmaster-workspace-poll-fix-local-evidence.json`；正式 owner required checks／發布後正常 SSO 與 workspace 前景／背景讀回待後續執行，本機 PASS 不等於 Production L4，不改原驗收分母。
 
+**DEV-057 own smoke fresh-password reauth（2026-10-04，未發布）：** 來源 `JENFU/DEV-015#principal-only-production-reliability`。既有 Org own v7 的 signed auth_time 早於本輪 global logout；新原生 `scripts/dev057-smoke-credential-reauth.mjs` 固定 owner／prior provider pair，經 fresh password、normal Platform Principal AAL1 session reload/logout，再提供 own Secret adjacent-version／GitHub同步及 redacted receipt，取代通用 bootstrap 作此矯正入口。受控 [owner 邊界](specs/DEV-057-identity-and-grant-contract-boundary.md#smoke-憑證-freshness-的-owner-邊界) 定義預設7→8、PARTIAL／未知 outcome、TTL及source fence；沿既有DEV，不新增Principal／Employee／role／DB／Cloud scope。聚焦全合成測試 27/27、三檔 Node syntax 與 diff-check 通過；exact product hashes 已取得獨立唯讀 QC no blocking。正式 required owner CI 待主線執行，本機結果不等於正式 reauth／發布；未啟動頁面、provider authentication、Secret／GitHub寫入或發布，Production L4=false。
+
 ## DEV-057 R33 歷史整鏈驗證（本機通過，未發布；非本輪施工入口）
 
 來源 `JENFU/DEV-015#native-v4-transfer`；沿既有 DEV-057，不新增任務。`DEV057_CROSS_OWNER_AI_PDM_ROOT` 指向已授權 consumer 時，D57-21 以實際 OrgMaster writer 发布 v4 grants，讀回 reviewer/owner typed tuple，再呼叫 AI-PDM restricted PostgreSQL consumer。personal/privileged 均驗證 assigned、revoked、out-of-scope、restored、送審至核准/重播；structured evidence 必須與 actual actor/owner/phase 相符。沒有新 Production caller、schema、grant、逐人狀態或應用發布。

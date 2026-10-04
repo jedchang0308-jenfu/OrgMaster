@@ -56,6 +56,18 @@ Jed同一已驗Principal可承接已發布的rd／rd_manager／pdm_admin及scope
 
 OrgMaster擁有治理資料、receipt、outbox及命令交易；Platform只擁有session invalidation。Platform以contract命名舊函式不代表可寫OrgMaster core或compatibility view。新runtime不再建立／使用legacy_authority切換狀態；歷史operation的readback與已授權恢復沿原receipt input處理，不能新增平行授權來源。未知commit outcome先讀原receipt／同input replay，同ID異hash或actor拒絕。
 
+## Smoke 憑證 freshness 的 owner 邊界
+
+原生入口為 `npm run reauth:dev-057:smoke -- --previous-version 7 --new-version 8 --commit`，只在本 owner 已審查、乾淨且與遠端 `master` 完全一致的 source 執行；預設無 `--commit` 只驗證，不寫 Secret／GitHub／receipt。固定 Org profile、production GitHub repository/environment、`orgmaster-prod-smoke-firebase-refresh-token` 與 `jenfu-platform-prod-orgmaster-release/receipts/credential-reauth/`，不接受另一 owner、Secret、bucket、環境或 API origin。程式重用 AI 原生 reauth 演算法的固定 owner 副本（來源 `18cebab1870f00e76d206a4748cfdb41c49f2c03`），執行時不 import sibling checkout。
+
+先從 exact ENABLED prior numeric Secret 在 RAM refresh，驗固定 project／issuer／audience 的 RS256、password provider 與 same-subject self lookup，鎖定既有 own provider pair。人類輸入既有 email／密碼後只做 signInWithPassword；fresh auth_time 最大 300 秒、same pair、enabled/email-verified self account，經固定 Platform 正常 session 建立、兩次 Principal＋Employee＋AAL1 me、local logout 及舊 cookie 401。這不是 bootstrap，不建立帳號、不重設密碼、不發 verification email、不改 provider config、Employee、pair、角色或 first Principal。
+
+commit 只允許 canonical safe numeric 相鄰版本（預設 7→8）；等待人類輸入後再驗 source，寫入前核 latest=prior、寫入後及 GitHub 同步前後核 latest=new/ENABLED，並用 constant-time exact bytes readback及 signed refresh/self lookup核對。Secret Manager addVersion 不提供此流程的跨服務 atomic CAS；這些 optimistic pre/post 檢查偵測競態，未知或部分寫入只能輸出 PARTIAL，不自動補寫、刪除或停用版本。GitHub 同步僅 own production Secret，檢查 command success與 own secret updatedAt metadata，不宣稱能讀回 GitHub secret payload。
+
+PASS receipt 固定 `jenfu.dev057.smoke-credential-reauth.v1`、`APP_SMOKE_CREDENTIAL_REAUTH`、`releaseAuthority=false`、AAL1、exact source／pair hash／Principal／Employee／版本／GitHub及 self hash；不含 password、token、cookie、API key、email 或 raw provider response。consumer 必須驗 current source、exact adjacent versions、300 秒 auth_time與 authenticatedAt→observedAt 120 秒內，再在既有 source-only smoke Workflow rotation preplan／apply時重驗；receipt 不授予 release 或 Production L4。
+
+頁面只 bind 127.0.0.1 隨機埠、random capability path、exact Host/Origin、CSRF、8 KiB、單次單筆提交、CSP/no-store，15 分鐘 TTL；到期前後禁止開始新 mutation，若已有部分寫入保留 PARTIAL。結束或到期關閉 task-owned listener，暫存 Buffer 清零並縮短 token／password引用；不宣稱 JavaScript 字串的嚴格 RAM zeroization。沒有自動 retry 或通用設定 wizard。
+
 ## 固定驗收及交接
 
 O01–O07沿原編號；失效雙軌斷言改驗終態與Principal-only恢復，過去結果不改寫：
