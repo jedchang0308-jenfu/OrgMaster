@@ -13,7 +13,7 @@ process.stderr.write(run.stderr)
 // Keep the fixed QC denominator aligned with the current owner-test set.
 // Existing 192 cases plus 5 controller manifest-resolution/offline proof cases.
 // The complete owner QC run must verify this denominator before release.
-if (run.status !== 0 || !/\bpass 197\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 207\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 

@@ -1,6 +1,6 @@
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
-import { buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -832,6 +832,11 @@ function smokeContinuationHarness({ controllerImageDigest = 'asia-east1-docker.p
   const priorRef = h.put(priorUri, sealed(priorCore))
   const baselineRead = h.objects.get(h.input.intent.baselineIntentRef.uri)
   baselineRead.value.infraReceiptRef = priorRef
+  const originalLock = buildSourceFreeze({ profile, releaseId: baselineRead.value.releaseId, observedAt: '2020-01-01T00:00:00Z',
+    git: { sourceRevision: oldSource, sourceTree: oldSource, branch: 'master', remoteRevision: oldSource, clean: true },
+    sourceIdentityBytes: Buffer.from('own original released source identity'), migrationBundle: oldBundle })
+  baselineRead.value.sourceLockRef = h.put('gs://' + bucket + '/receipts/fixture/original-source-lock.json', originalLock)
+  baselineRead.value.sourceSha256 = originalLock.sourceSha256
   h.input.intent.baselineIntentRef = h.put(baselineRead.ref.uri, baselineRead.value)
   h.input.values.authorization.baselineIntentRef = h.input.intent.baselineIntentRef
   h.input.values.readiness.baselineIntentRef = h.input.intent.baselineIntentRef
@@ -967,7 +972,7 @@ async function smokeReuseHarness({ oci = false } = {}) {
   const sourceIdentityBytes = Buffer.from('own synthetic frozen source identity')
   const git = { sourceRevision, sourceTree: 'd'.repeat(40), branch: 'master', remoteRevision: sourceRevision, clean: true }
   const sourceLock = buildSourceFreeze({ profile, releaseId, observedAt: '2026-10-05T00:00:00Z', git,
-    sourceIdentityBytes, migrationBundle: newBundle })
+    sourceIdentityBytes, migrationBundle: buildBundle(sourceRevision) })
   const sourceLockRef = h.put('gs://' + bucket + '/receipts/releases/' + releaseId + '/source-lock.json', sourceLock)
   const baselineRead = h.objects.get(h.input.intent.baselineIntentRef.uri)
   const baseline = { intent: baselineRead.value, activeRevision: h.input.intent.previousRevision }
@@ -1004,6 +1009,8 @@ async function smokeReuseHarness({ oci = false } = {}) {
   const readInfrastructureTree = () => Buffer.from('own complete source-frozen infra tree')
   h.input.intent.sourceRevision = sourceRevision
   h.input.intent.sourceSha256 = sourceLock.sourceSha256
+  h.input.intent.migrationManifestSha256 = sourceLock.migrationManifestSha256
+  h.input.buildMigrationBundle = async () => buildBundle(sourceRevision)
   h.input.values.sourceLock = { ...sourceLock, releaseId: h.input.intent.releaseId }
   h.input.values.authorization.sourceRevision = sourceRevision
   h.input.values.readiness.sourceRevision = sourceRevision
@@ -1103,6 +1110,256 @@ test('real owner prepare consumes source-bound reuse through the existing routin
   await assert.rejects(() => executeOwnerStage({ stage: 'prepare', capsuleRef: intentRef.uri, capsuleSha256: intentRef.sha256,
     profile, transport: h.input.transport, environment, validateIntent: () => {},
     verifyRoutineRelease: async ({ intent, values, service }) => verifyRoutineRelease({ ...h.input, intent, values, service }) }), /SMOKE_REUSE_RECEIPT_INVALID/u)
+})
+
+async function advanceSmokeReuseHarness(h, sourceRevision, ordinal) {
+  const priorReuseRef = h.input.intent.infraReceiptRef
+  const releasedIntent = { ...h.input.intent, releaseId: 'SMOKE-REUSE-RELEASE-' + ordinal,
+    sourceLockRef: h.put('gs://' + bucket + '/receipts/releases/SMOKE-REUSE-RELEASE-' + ordinal + '/source-lock.json',
+      { ...h.sourceLock, releaseId: 'SMOKE-REUSE-RELEASE-' + ordinal }), sourceSha256: h.sourceLock.sourceSha256,
+    deadlineAt: '2026-10-04T00:00:00Z' }
+  const releasedBundle = buildBundle(releasedIntent.sourceRevision)
+  releasedIntent.migrationManifestSha256 = releasedBundle.bundle.manifestSha256
+  const baselineIntentRef = h.put('gs://' + bucket + '/receipts/releases/' + releasedIntent.releaseId + '/release-intent.json', releasedIntent)
+  const paths = releasePaths(profile, releasedIntent, baselineIntentRef.sha256)
+  const artifactDigest = profile.artifact.uri + '@sha256:' + (ordinal % 16).toString(16).repeat(64)
+  const activeRevision = 'orgmaster-prod-reuse-' + ordinal
+  const bundleRef = h.put('gs://' + bucket + '/source/migration-bundles/reuse-' + ordinal + '.json', releasedBundle.bundle)
+  const deploymentRef = h.put(paths.deployment, { sourceRevision: releasedIntent.sourceRevision,
+    releaseIntentRef: baselineIntentRef, migrationBundleRef: bundleRef, artifactDigest })
+  const migrationRef = h.put(paths.migrate, stageReceipt({ profile, intent: releasedIntent, stage: 'migrate',
+    facts: { disposition: 'UNCHANGED_VERIFIED', manifestSha256: releasedBundle.bundle.manifestSha256 }, observedAt: '2026-10-04T00:00:00Z' }))
+  h.put(paths.candidate, stageReceipt({ profile, intent: releasedIntent, stage: 'candidate',
+    facts: { deploymentCapsuleRef: deploymentRef, migrationReceiptRef: migrationRef, candidateRevision: activeRevision }, observedAt: '2026-10-04T00:00:00Z' }))
+  h.put(paths.terminal, stageReceipt({ profile, intent: releasedIntent, stage: 'terminal',
+    facts: { result: 'RELEASED', remainingHumanAction: 0, candidateRevision: activeRevision, artifactDigest }, observedAt: '2026-10-04T00:00:00Z' }))
+  h.revision.containers[0].image = artifactDigest
+  h.input.service = { traffic: [{ revision: activeRevision, percent: 100 }], trafficStatuses: [{ revision: activeRevision, percent: 100 }] }
+  h.input.transport.effectiveRevision = () => activeRevision
+  const controlCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1',
+    inputFingerprint: sha256(canonicalize({ ownerApplicationId: 'orgmaster', releaseId: releasedIntent.releaseId,
+      sourceRevision: releasedIntent.sourceRevision, releaseIntentSha256: baselineIntentRef.sha256 })),
+    ownerApplicationId: 'orgmaster', service: profile.target.serviceName, controlBucket: bucket,
+    releaseId: releasedIntent.releaseId, sourceRevision: releasedIntent.sourceRevision,
+    sourceLockSha256: releasedIntent.sourceLockRef.sha256, candidateRevision: activeRevision,
+    previousRevision: releasedIntent.previousRevision, ownerRunRef: 'https://api.github.com/repos/' + profile.application.repository + '/actions/runs/12345',
+    leaseExpiresAt: '2026-10-04T00:00:00Z', deadlineAt: releasedIntent.deadlineAt, state: 'FINALIZED', result: 'RELEASED' }
+  h.setControl = (changes = {}) => { const core = { ...controlCore, ...changes }
+    h.put(h.controlUri, { ...core, controlSha256: sha256(canonicalize(core)) })
+    h.objects.get(h.controlUri).metadata = { generation: String(17 + ordinal) } }
+  h.setControl()
+  const releaseId = 'SMOKE-REUSE-CHAIN-' + ordinal
+  h.git = { ...h.git, sourceRevision, remoteRevision: sourceRevision }
+  h.sourceIdentityBytes = Buffer.from('own synthetic source identity ' + sourceRevision)
+  const currentBundle = buildBundle(sourceRevision)
+  h.sourceLock = buildSourceFreeze({ profile, releaseId, observedAt: '2026-10-05T00:00:00Z', git: h.git,
+    sourceIdentityBytes: h.sourceIdentityBytes, migrationBundle: currentBundle })
+  h.sourceLockRef = h.put('gs://' + bucket + '/receipts/releases/' + releaseId + '/source-lock.json', h.sourceLock)
+  const baseline = { intent: releasedIntent, activeRevision }
+  h.constructorInput = { ...h.constructorInput, releaseId, sourceLock: h.sourceLock, sourceLockRef: h.sourceLockRef, baselineIntentRef, baseline }
+  h.reuse = await buildSmokeInfraReuseReceipt(h.constructorInput)
+  const uri = 'gs://' + bucket + '/receipts/releases/' + releaseId + '/app-infra-reuse.json'
+  h.select = (value = h.reuse, reseal = false) => {
+    if (reseal) { const { receiptSha256: _seal, ...core } = value; value = { ...core, receiptSha256: sha256(canonicalize(core)) } }
+    const ref = h.put(uri, value)
+    h.options = parseDeployProductionArgs(['--check', '--infra-reuse-ref=' + ref.uri + '#sha256=' + ref.sha256])
+    h.input.intent.infraReceiptRef = ref; h.input.values.infra = value
+  }
+  h.input.intent = { ...h.input.intent, releaseId: 'SMOKE-REUSE-NEXT-' + ordinal,
+    sourceRevision, sourceSha256: h.sourceLock.sourceSha256, sourceLockRef: h.sourceLockRef,
+    baselineIntentRef, previousRevision: activeRevision, migrationManifestSha256: currentBundle.bundle.manifestSha256 }
+  for (const name of ['authorization', 'readiness']) Object.assign(h.input.values[name], {
+    sourceRevision, releaseId: h.input.intent.releaseId, baselineIntentRef })
+  h.input.values.sourceLock = { ...h.sourceLock, releaseId: h.input.intent.releaseId }
+  h.input.buildMigrationBundle = async () => currentBundle
+  h.select()
+  h.requests.length = 0
+  return { priorReuseRef, baselineIntentRef, releasedIntent, paths }
+}
+
+async function executeReusePrepareHarness(h) {
+  const common = { projectId: profile.target.projectId, ownerApplicationId: 'orgmaster', status: 'PASS',
+    releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND' }
+  for (const name of ['authorization', 'readiness']) Object.assign(h.input.values[name], common,
+    { environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00Z' })
+  h.input.values.foundation = h.objects.get(h.input.intent.foundationReceiptRef.uri).value
+  h.input.values.runtimeConfig = { ...common, runtimeConfig: h.input.values.runtimeConfig.runtimeConfig }
+  for (const [name, field] of Object.entries({ sourceLock: 'sourceLockRef', authorization: 'authorizationPolicyRef', readiness: 'readinessReceiptRef', runtimeConfig: 'runtimeConfigRef' }))
+    h.input.intent[field] = h.put('gs://' + bucket + '/receipts/releases/' + h.input.intent.releaseId + '/' + name + '.json', h.input.values[name])
+  h.input.intent.deadlineAt = '2999-01-01T00:00:00Z'
+  const intentRef = h.put('gs://' + bucket + '/receipts/releases/' + h.input.intent.releaseId + '/release-intent.json', h.input.intent)
+  const readBytes = h.input.transport.readBytes.bind(h.input.transport)
+  h.input.transport.readBytes = async (uri) => { try { return await readBytes(uri) } catch (error) { error.code = 'MISSING'; throw error } }
+  h.input.transport.putJson = async (uri, value) => ({ ref: h.put(uri, value), value })
+  h.input.transport.getService = async () => h.input.service
+  h.input.transport.now = () => '2026-10-05T00:00:00Z'
+  h.input.transport.entrypointSnapshot = () => ({ serviceEtag: 'synthetic', generation: '1' })
+  h.input.transport.request = () => assert.fail('prepare must not add provider metadata GET')
+  h.input.transport.readControllerImageResolution = () => assert.fail('prepare must not add registry GET')
+  const environment = { GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: profile.application.repository,
+    GITHUB_REPOSITORY_ID: '1234', GITHUB_REPOSITORY_OWNER_ID: '5678', GITHUB_SHA: h.git.sourceRevision,
+    GITHUB_WORKFLOW_SHA: h.git.sourceRevision, GITHUB_WORKFLOW_REF: profile.application.repository + '/' + profile.workflow.path + '@refs/heads/master',
+    GITHUB_REF: 'refs/heads/master', GITHUB_EVENT_NAME: 'workflow_dispatch', ACTIONS_ID_TOKEN_REQUEST_URL: 'https://synthetic.invalid',
+    GOOGLE_OAUTH_ACCESS_TOKEN: 'synthetic-in-memory-token', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1' }
+  return executeOwnerStage({ stage: 'prepare', capsuleRef: intentRef.uri, capsuleSha256: intentRef.sha256,
+    profile, transport: h.input.transport, environment, validateIntent: () => {},
+    verifyRoutineRelease: async ({ intent, values, service }) => verifyRoutineRelease({ ...h.input, intent, values, service }) })
+}
+
+test('consecutive source-only reuse passes the second real owner prepare without replacing its released baseline', async () => {
+  const h = await smokeReuseHarness()
+  const next = await advanceSmokeReuseHarness(h, 'd'.repeat(40), 1)
+  assert.deepEqual(h.reuse.priorInfraReceiptRef, next.priorReuseRef)
+  const result = await executeReusePrepareHarness(h)
+  assert.deepEqual(result.value.facts.routine.baselineIntentRef, next.baselineIntentRef)
+  assert.equal(result.value.facts.routine.previousRevision, 'orgmaster-prod-reuse-1')
+  assert.deepEqual(result.value.facts.prerequisiteRefs.infra, h.input.intent.infraReceiptRef)
+  assert.deepEqual(h.objects.get(h.rotationRef.uri).bytes, h.original)
+})
+
+test('consecutive source-only reuse passes the third real owner prepare and preserves every original sealed receipt', async () => {
+  const h = await smokeReuseHarness()
+  await advanceSmokeReuseHarness(h, 'd'.repeat(40), 1)
+  const snapshots = new Map([...h.objects].filter(([uri]) => uri !== h.controlUri).map(([uri,row]) => [uri, Buffer.from(row.bytes)]))
+  const next = await advanceSmokeReuseHarness(h, 'e'.repeat(40), 2)
+  const result = await executeReusePrepareHarness(h)
+  assert.deepEqual(h.reuse.priorInfraReceiptRef, next.priorReuseRef)
+  assert.deepEqual(result.value.facts.routine.baselineIntentRef, next.baselineIntentRef)
+  assert.equal(result.value.facts.routine.previousRevision, 'orgmaster-prod-reuse-2')
+  for (const [uri,bytes] of snapshots) assert.deepEqual(h.objects.get(uri).bytes, bytes, uri)
+  assert.equal(result.value.facts.routine.smokeRotationContinuation.newVersion, '8')
+})
+
+test('consecutive reuse rejects resealed historical owner, source, rotation, state, credential and input drift', async () => {
+  const cases = [
+    { ownerApplicationId: 'ai-pdm' }, { status: 'PLANNED' }, { sourceRevision: 'f'.repeat(40) },
+    { sourceSha256: '0'.repeat(64) }, { sourceTree: 'f'.repeat(40) }, { reusedSourceRevision: 'f'.repeat(40) },
+    { candidateSmokeRefreshTokenSecretVersion: '9' }, { stateSerial: 7 }, { stateLineage: 'wrong-lineage' },
+    { stateJsonSha256: '0'.repeat(64) }, { outputManifestSha256: '0'.repeat(64) },
+    { foundationManifestSha256: '0'.repeat(64) }, { terraformAddressCount: 69 }, { terraformAddressesSha256: '0'.repeat(64) },
+    { migrationRunnerDigest: profile.artifact.migrationRunnerUri + '@sha256:' + 'f'.repeat(64) },
+    { controllerImageDigest: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller@sha256:' + 'f'.repeat(64) },
+    { executableInputCount: 1 }, { executableInputsSha256: '0'.repeat(64) }, { infrastructureInputsSha256: '0'.repeat(64) },
+    { appliedObservedAt: '2026-10-05T00:00:00Z' },
+    { credentialEvidenceRef: { uri: 'gs://' + bucket + '/receipts/credential-reauth/other.json', sha256: '0'.repeat(64) } },
+    { reusedInfraReceiptRef: { uri: 'gs://' + bucket + '/receipts/releases/OTHER-ROTATION/app-infra.json', sha256: '0'.repeat(64) } },
+  ]
+  for (const change of cases) {
+    const h = await smokeReuseHarness(); h.select({ ...h.reuse, ...change }, true)
+    await assert.rejects(() => advanceSmokeReuseHarness(h, 'd'.repeat(40), 1), undefined, Object.keys(change).join(','))
+    assert.equal(h.requests.length, 0)
+  }
+  const h = await smokeReuseHarness(); h.select({ ...h.reuse, receiptSha256: '0'.repeat(64) })
+  await assert.rejects(() => advanceSmokeReuseHarness(h, 'd'.repeat(40), 1), /SMOKE_REUSE_RECEIPT_INVALID/u)
+})
+
+test('consecutive reuse joins both package and published source locks to their own immutable source and release', async () => {
+  for (const change of [{ ownerApplicationId: 'ai-pdm' }, { clean: false }, { branch: 'feature' },
+    { remoteRevision: 'f'.repeat(40) }, { releaseId: 'OTHER-RELEASE' }, { sourceSha256: '0'.repeat(64) },
+    { migrationManifestSha256: '0'.repeat(64) }]) {
+    const h = await smokeReuseHarness(), put = h.put
+    h.put = (uri, value) => put(uri, uri.endsWith('/SMOKE-REUSE-RELEASE-1/source-lock.json') ? { ...value, ...change } : value)
+    await assert.rejects(() => advanceSmokeReuseHarness(h, 'd'.repeat(40), 1), /SMOKE_REUSE_SOURCE_INVALID|SMOKE_REUSE_CHAIN_SOURCE_INVALID/u)
+    assert.equal(h.requests.length, 0)
+  }
+  const h = await smokeReuseHarness()
+  h.sourceLockRef = h.put(h.sourceLockRef.uri, { ...h.sourceLock, releaseId: 'OTHER-PACKAGE' })
+  h.select({ ...h.reuse, sourceLockRef: h.sourceLockRef }, true)
+  await assert.rejects(() => advanceSmokeReuseHarness(h, 'd'.repeat(40), 1), /SMOKE_REUSE_CHAIN_SOURCE_INVALID/u)
+})
+
+test('consecutive reuse requires each source-bound sealed terminal to be the corresponding released revision', async () => {
+  for (const change of [{ ownerApplicationId: 'ai-pdm' }, { sourceRevision: 'f'.repeat(40) }, { releaseId: 'OTHER-RELEASE' },
+    { status: 'FAIL' }, { stage: 'decision' }, { receiptSha256: '0'.repeat(64) },
+    { facts: { result: 'PRE_ACTIVATION_ABORTED', remainingHumanAction: 0, candidateRevision: 'orgmaster-prod-reuse-1' } },
+    { facts: { result: 'RELEASED', remainingHumanAction: 1, candidateRevision: 'orgmaster-prod-reuse-1' } },
+    { facts: { result: 'RELEASED', remainingHumanAction: 0, candidateRevision: 'orgmaster-prod-stale' } }]) {
+    const h = await smokeReuseHarness(), put = h.put
+    h.put = (uri, value) => {
+      if (uri.includes('/SMOKE-REUSE-RELEASE-1/') && value.stage === 'terminal') {
+        const { receiptSha256: _seal, ...core } = { ...value, ...change }
+        value = { ...core, receiptSha256: change.receiptSha256 ?? sha256(canonicalize(core)) }
+      }
+      return put(uri, value)
+    }
+    await assert.rejects(() => advanceSmokeReuseHarness(h, 'd'.repeat(40), 1), /SMOKE_REUSE_CHAIN_RELEASE_INVALID/u)
+    assert.equal(h.requests.length, 0)
+  }
+  const h = await smokeReuseHarness(); await advanceSmokeReuseHarness(h, 'd'.repeat(40), 1)
+  const parent = h.objects.get(h.reuse.baselineIntentRef.uri).value
+  const old = h.objects.get(parent.infraReceiptRef.uri).value
+  const anchor = h.objects.get(old.baselineIntentRef.uri)
+  const terminalUri = releasePaths(profile, anchor.value, anchor.ref.sha256).terminal
+  const row = h.objects.get(terminalUri), { receiptSha256: _seal, ...core } = row.value
+  h.put(terminalUri, { ...core, facts: { ...core.facts, result: 'PRE_ACTIVATION_ABORTED' },
+    receiptSha256: sha256(canonicalize({ ...core, facts: { ...core.facts, result: 'PRE_ACTIVATION_ABORTED' } })) })
+  await assert.rejects(() => advanceSmokeReuseHarness(h, 'e'.repeat(40), 2))
+})
+
+test('consecutive reuse verifies raw bytes, same own refs and the exact terminal URI', async () => {
+  for (const defect of ['bytes', 'ref', 'terminal-uri', 'prior-ref']) {
+    const h = await smokeReuseHarness()
+    if (defect === 'prior-ref') h.select({ ...h.reuse,
+      priorInfraReceiptRef: { ...h.reuse.priorInfraReceiptRef, sha256: '0'.repeat(64) } }, true)
+    else {
+      const readJson = h.input.transport.readJson.bind(h.input.transport), readBytes = h.input.transport.readBytes.bind(h.input.transport)
+      h.input.transport.readJson = async (ref) => {
+        const row = await readJson(ref)
+        if (ref.uri.endsWith('/SMOKE-REUSE-FIXTURE/app-infra-reuse.json')) return defect === 'bytes'
+          ? { ...row, bytes: Buffer.from('forged') }
+          : defect === 'ref' ? { ...row, ref: { ...row.ref, uri: row.ref.uri.replace('orgmaster-release', 'aipdm-release') } } : row
+        return row
+      }
+      h.input.transport.readBytes = async (uri) => { const row = await readBytes(uri)
+        return defect === 'terminal-uri' && uri.includes('/SMOKE-REUSE-RELEASE-1/') && row.value.stage === 'terminal'
+          ? { ...row, ref: { ...row.ref, uri: uri.replace('SMOKE-REUSE-RELEASE-1', 'OTHER-RELEASE') } } : row }
+    }
+    await assert.rejects(() => advanceSmokeReuseHarness(h, 'd'.repeat(40), 1))
+    assert.equal(h.requests.length, 0)
+  }
+})
+
+test('third reuse reads ancestor executable, profile and full infrastructure bytes instead of trusting their stored hashes', async () => {
+  for (const defect of ['executable', 'profile', 'tree', 'original-tree']) {
+    const h = await smokeReuseHarness(); await advanceSmokeReuseHarness(h, 'd'.repeat(40), 1)
+    if (defect === 'executable') h.sourceEdits.set('c'.repeat(40) + ':scripts/lib/dev012-production-migration-runner.mjs', Buffer.from('changed ancestor'))
+    if (defect === 'profile') {
+      const file = 'config/release/dev040-production-release-infra-plan.json'
+      const plan = JSON.parse(fs.readFileSync(file)); plan.stageA.pop()
+      h.sourceEdits.set('c'.repeat(40) + ':' + file, Buffer.from(JSON.stringify(plan)))
+    }
+    if (defect === 'tree' || defect === 'original-tree') h.constructorInput.readInfrastructureTree = (_root, revision) =>
+      Buffer.from(revision === (defect === 'tree' ? 'c'.repeat(40) : oldSource) ? 'changed ancestor tree' : 'own complete source-frozen infra tree')
+    await assert.rejects(() => advanceSmokeReuseHarness(h, 'e'.repeat(40), 2), /SMOKE_REUSE_CHAIN_INPUT_DRIFT/u)
+    assert.equal(h.requests.length, 0)
+  }
+})
+
+test('second real prepare rejects current control generation, source and own baseline tampering without new provider GET', async () => {
+  for (const defect of ['generation', 'control-source', 'baseline', 'source']) {
+    const h = await smokeReuseHarness(); await advanceSmokeReuseHarness(h, 'd'.repeat(40), 1)
+    if (defect === 'generation') h.objects.get(h.controlUri).metadata.generation = '999'
+    if (defect === 'control-source') h.setControl({ sourceRevision: 'f'.repeat(40) })
+    if (defect === 'baseline') h.input.intent.baselineIntentRef = h.reuse.baselineIntentRef = { uri: 'gs://' + bucket + '/receipts/fixture/intent.json', sha256: '0'.repeat(64) }
+    if (defect === 'source') h.input.values.sourceLock.sourceRevision = 'f'.repeat(40)
+    await assert.rejects(() => executeReusePrepareHarness(h))
+  }
+})
+
+test('consecutive reuse rejects a sealed cyclic prior pointer before following it', async () => {
+  const h = await smokeReuseHarness()
+  h.select({ ...h.reuse, priorInfraReceiptRef: structuredClone(h.input.intent.infraReceiptRef) }, true)
+  await assert.rejects(() => advanceSmokeReuseHarness(h, 'd'.repeat(40), 1), /SMOKE_REUSE_CHAIN_CYCLE/u)
+  assert.equal(h.requests.length, 0)
+})
+
+test('consecutive reuse accepts exactly 32 sealed reuse ancestors and fails closed at the next layer', async () => {
+  assert.equal(MAX_SMOKE_REUSE_CHAIN_DEPTH, 32)
+  const h = await smokeReuseHarness()
+  for (let ordinal = 1; ordinal <= MAX_SMOKE_REUSE_CHAIN_DEPTH; ordinal++)
+    await advanceSmokeReuseHarness(h, (ordinal + 16).toString(16).padStart(40, '0'), ordinal)
+  await executeReusePrepareHarness(h)
+  await assert.rejects(() => advanceSmokeReuseHarness(h, 'f'.repeat(40), MAX_SMOKE_REUSE_CHAIN_DEPTH + 1), /SMOKE_REUSE_CHAIN_DEPTH_EXCEEDED/u)
 })
 
 test('reuse CLI takes only exact own refs, permits bounded Principal recovery and excludes mutation modes', async () => {
