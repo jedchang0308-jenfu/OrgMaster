@@ -26,6 +26,8 @@ const dev049OrLater = dev049 || dev050 || dev052 || dev053 || dev054 || dev055 |
 const outputDir = path.join(root, dev057 ? 'dev-057' : dev049 ? 'dev-049' : dev050 ? 'dev-050' : dev052 ? 'dev-052' : dev053 ? 'dev-053' : dev054 ? 'dev-054' : dev055 ? 'dev-055' : 'dev-047', 'postgres')
 const configuredDev057Output = process.env.DEV057_QC_OUTPUT_PATH?.trim()
 const dev057ConsumerRoot = process.env.DEV057_CROSS_OWNER_AI_PDM_ROOT?.trim() || null
+const packageReadOnly = process.env.DEV057_PACKAGE_READ_ONLY === '1'
+if (packageReadOnly && (!dev057 || !dev057ConsumerRoot)) throw new Error('DEV057_PACKAGE_READ_REQUIRES_CROSS_OWNER_SUITE')
 if (dev057ConsumerRoot && !dev057) throw new Error('DEV057_CONSUMER_PROBE_REQUIRES_DEV057_SUITE')
 const outputPath = dev057 ? path.resolve(configuredDev057Output || path.join(os.tmpdir(), `orgmaster-dev057-postgres-${process.pid}.json`)) : path.join(outputDir, 'manifest.json')
 if (dev057 && configuredDev057Output && fs.existsSync(outputPath)) throw new Error('DEV057_QC_OUTPUT_ALREADY_EXISTS')
@@ -1254,7 +1256,7 @@ async function runDev057Checks() {
     return { canonicalProducerRows: canonical.rowCount, typedAdapterRows: typed.rowCount, accountType: typed.rows[0].account_type, platformLegacyProjectionUnchanged: true }
   })
 
-  if (dev057ConsumerRoot) await check('D57-21', 'published Principal grants drive AI-PDM assignment, revocation, scope and native v4 transfer decision on one PostgreSQL', async () => {
+  if (dev057ConsumerRoot) await check('D57-21', packageReadOnly ? 'published Principal grants drive actual share metadata and package access, revocation, scope and restore on one PostgreSQL' : 'published Principal grants drive AI-PDM assignment, revocation, scope and native v4 transfer decision on one PostgreSQL', async () => {
     const consumerRoot = fs.realpathSync(dev057ConsumerRoot)
     const packageName = JSON.parse(fs.readFileSync(path.join(consumerRoot, 'package.json'), 'utf8')).name
     assert.equal(packageName, 'ai-pdm')
@@ -1456,6 +1458,34 @@ async function runDev057Checks() {
         sha256 text NOT NULL,file_size bigint NOT NULL,manifest_json text NOT NULL,
         created_by text,created_at timestamptz NOT NULL,
         FOREIGN KEY(submission_id) REFERENCES ai_pdm_core.submissions(id));
+      -- Minimal synthetic detail tables are query fixtures, not AI-PDM schema conformance.
+      -- Actual resolvers, parameter binding, read/update transactions and audit writer execute unchanged.
+      CREATE TABLE ai_pdm_core.items (id text PRIMARY KEY,part_number text,part_name text);
+      INSERT INTO ai_pdm_core.items SELECT DISTINCT item_id,item_id,'Task-owned part' FROM ai_pdm_core.submissions;
+      CREATE TABLE ai_pdm_core.readonly_shares (
+        id text PRIMARY KEY,submission_id text NOT NULL REFERENCES ai_pdm_core.submissions(id),
+        token_hash text NOT NULL UNIQUE,label text NOT NULL,expires_at timestamptz,
+        revoked_at timestamptz,revoked_by text REFERENCES ai_pdm_core.users(id),
+        created_by text NOT NULL REFERENCES ai_pdm_core.users(id),access_count integer NOT NULL DEFAULT 0,
+        last_accessed_at timestamptz,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);
+      CREATE TABLE ai_pdm_core.supplier_portal_responses (
+        id text PRIMARY KEY,submission_id text,share_id text,status text,closed_by text,created_at timestamptz);
+      CREATE TABLE ai_pdm_core.submission_part_scopes (submission_id text,part_number text,part_number_id text);
+      CREATE TABLE ai_pdm_core.file_references (submission_id text,source_filename text,referenced_filename text);
+      CREATE TABLE ai_pdm_core.approval_steps (submission_id text,reviewer_id text,sequence_no integer,decided_at timestamptz);
+      CREATE TABLE ai_pdm_core.submission_lifecycle_requests (
+        id text,submission_id text,requested_by text,decided_by text,request_status text,created_at timestamptz);
+      CREATE TABLE ai_pdm_core.item_locks (
+        id text,item_id text,locked_by text,released_at timestamptz,expires_at timestamptz,created_at timestamptz);
+      CREATE TABLE ai_pdm_core.submission_snapshots (submission_id text,snapshot_json text);
+      CREATE TABLE ai_pdm_core.drawing_revision_packages (
+        id text,company_id text,source_submission_id text,status text,revision text);
+      CREATE TABLE ai_pdm_core.drawing_revision_package_review_approvals (
+        package_id text,candidate_revision_id text,snapshot_hash text);
+      CREATE TABLE ai_pdm_core.numbering_candidate_revision_drafts (
+        id text,formal_revision_package_id text,review_snapshot_hash text);
+      CREATE TABLE ai_pdm_core.drawing_revision_fff_assessments (id text,company_id text,submission_id text);
+      CREATE TABLE ai_pdm_core.review_confirmation_events (review_id text,company_id text,action text);
       CREATE TABLE ai_pdm_core.audit_logs (
         id text PRIMARY KEY,submission_id text,actor_id text,action text NOT NULL,
         detail_json text NOT NULL,company_id text,scope_kind text NOT NULL,
@@ -1552,6 +1582,7 @@ async function runDev057Checks() {
       assert.equal(result.status, 0, `AI-PDM ${phase} consumer failed: ${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`)
     }
     const transferProbe = (phase) => {
+      if (packageReadOnly) return
       const result = spawnSync(process.execPath, [vitest, 'run', '--config', 'vitest.config.ts',
         'src/lib/transfer-package-orgmaster-grant.postgres-contract.test.ts'], {
         cwd: consumerRoot, encoding: 'utf8', windowsHide: true, timeout: 90_000,
@@ -1564,6 +1595,7 @@ async function runDev057Checks() {
     }
     const downloadTest = path.join(consumerRoot, 'src/lib/principal-published-release-package.postgres-contract.test.ts')
     assert.ok(fs.existsSync(downloadTest), 'actual Principal package HTTP test is required')
+    const shareReadEvidence = []
     const downloadProbe = (phase) => {
       const dataDir = path.join(taskRoot, 'aipdm-download-data')
       const repositoryDir = path.join(taskRoot, 'aipdm-download-repository')
@@ -1585,10 +1617,28 @@ async function runDev057Checks() {
           PDM_SESSION_CURRENT_SECRET: 'task-owned-synthetic-session-secret-for-local-qc-only' },
       })
       assert.equal(result.status, 0, `AI-PDM ${phase} file consumer failed: ${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`)
-      assert.match(result.stdout, /Tests\s+9 passed/u, 'all actual package HTTP checks must execute, not skip')
+      assert.match(result.stdout, /Tests\s+15 passed/u, 'all actual package and share HTTP checks must execute, not skip')
+      const reportLine = result.stdout.split(/\r?\n/u).find(line => line.startsWith('{"dev057ShareReadConformance":'))
+      assert.ok(reportLine, 'share result must distinguish authorization from known business serialization failure')
+      const report = JSON.parse(reportLine).dev057ShareReadConformance
+      assert.equal(report.phase, phase)
+      assert.equal(report.status, 'PASS_AUTHORIZATION_ONLY')
+      assert.equal(report.cases.length, 6)
+      assert.equal(new Set(report.cases.map(item => item.id)).size, 6)
+      assert.ok(report.cases.every(item => item.authorization === 'PASS'))
+      assert.equal(report.publicMetadataPositivePass, false)
+      assert.equal(report.businessKnownBlocked.status, 'DEFERRED_NOT_PASS')
+      assert.equal(report.businessKnownBlocked.code, '42P08')
+      assert.equal(report.actualOrg029Producer, true)
+      assert.equal(report.actualShareResolverAndDelivery, true)
+      assert.equal(report.providerConformance, false)
+      assert.equal(report.productionL4, false)
+      shareReadEvidence.push(report)
+      process.stdout.write(JSON.stringify({ dev057ShareReadConformance: report }) + '\n')
     }
     const nativeTransferEvidence = []
     const numberingProbe = (phase, extra = {}) => {
+      if (packageReadOnly) return
       const runner = path.join(consumerRoot, 'scripts/qc-dev-121-numbering-owner-grant-postgres.mjs')
       const result = spawnSync(process.execPath, [runner], {
         cwd: consumerRoot, encoding: 'utf8', windowsHide: true, timeout: 180_000,
@@ -1731,6 +1781,7 @@ async function runDev057Checks() {
     transferProbe('flow')
     downloadProbe('flow')
     nativeTransferProbe('flow')
+    if (!packageReadOnly) {
     const reviewProbe = spawnSync(process.execPath,
       [path.join(consumerRoot,'scripts/qc-dev-121-numbering-owner-grant-postgres.mjs')], {
       cwd:consumerRoot,encoding:'utf8',windowsHide:true,timeout:180_000,
@@ -1740,6 +1791,7 @@ async function runDev057Checks() {
     })
     assert.equal(reviewProbe.status,0,'AI-PDM part/drawing review chain failed: '+(reviewProbe.stdout||'')+'\n'+(reviewProbe.stderr||''))
     assert.match(reviewProbe.stdout,/"status":"PASS"/u)
+    }
     const delegationRecipient = await queryAs('jenfu_ai_pdm_runtime',
       "SELECT principal_id,employee_id,account_type,principal_issuer,principal_subject FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_issuer='issuer-managed-verify' AND principal_subject='subject-managed-verify'")
     assert.equal(delegationRecipient.rowCount,1,'the delegation recipient must have an exact verified account')
@@ -1798,7 +1850,20 @@ async function runDev057Checks() {
       assignment.roleCodeSnapshot = 'pdm_admin'
       assignment.scope = { kind: 'workspace', value: 'company-jenfu' }
     })
-    return { nativeTransferEvidence, nativeTransferTestSha256: sha256(fs.readFileSync(path.join(consumerRoot,
+    if (packageReadOnly) return {
+      evidenceScope: 'TARGETED_ACTUAL_ORG029_PRODUCER_AND_AI_SHARE_READ_CONSUMER_AUTH_ONLY',
+      consumerPackage: packageName, runtimeRole: 'dev057_ai_pdm_consumer_probe',
+      downloadTestSha256: sha256(fs.readFileSync(downloadTest)),
+      producer029Sha256: sha256(fs.readFileSync(path.join(root,'db/migrations/029_dev057_human_business_principal_grants_v4.sql'))),
+      publishedVersions: [assigned,revoked,scoped,restored,flow,fileHandoff,fileRevoked,fileScoped],
+      shareReadEvidence, actualShareReadCasesPerPhase: 6, totalHttpCasesPerPhase: 15,
+      verifiedSession: 'synthetic-v2-principal', providerConformance: false, productionL4: false,
+      businessDetailSchema: 'minimal-synthetic-query-fixture', storageBytes: 'task-owned-synthetic',
+      transferNumberingAndReviewProbes: 'NOT_RUN_SELECTED_READ_SCOPE',
+      publicMetadataPositivePass: false, businessKnownBlocked: 'D122-08/42P08/DEFERRED_NOT_PASS',
+      download: 'actual HTTP, owner-published v4 grants, restricted PostgreSQL, token/resource resolver, actual local bytes and persisted Principal audit' }
+    return { shareReadEvidence, publicMetadataPositivePass: false,
+      businessKnownBlocked: 'D122-08/42P08/DEFERRED_NOT_PASS', nativeTransferEvidence, nativeTransferTestSha256: sha256(fs.readFileSync(path.join(consumerRoot,
       'src/lib/transfer-package-principal-grants-v4.postgres-contract.test.ts'))),
       consumerPackage: packageName, consumerTestSha256: sha256(fs.readFileSync(consumerTest)),
       transferTestSha256: sha256(fs.readFileSync(transferTest)),
