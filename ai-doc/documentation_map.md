@@ -10,6 +10,8 @@
 
 整理前文件原文在 [HISTORY_ONLY文件地圖](documentation_map-history-2026-10-03.md)，包含舊進度及取代關係；不預設載入、不執行舊雙軌／bridge／逐人／TOTP步骤。以下保留其他任務原索引，未因本次CA重新判定其完成度。
 
+本輪 own smoke freshness 矯正沿 DEV-057，原生 CLI／lib／聚焦測試為 `scripts/dev057-smoke-credential-reauth.mjs`、`scripts/lib/dev057-smoke-credential-reauth.mjs`、`scripts/dev057-smoke-credential-reauth.test.mjs`；[契約](specs/DEV-057-identity-and-grant-contract-boundary.md#smoke-憑證-freshness-的-owner-邊界)定義 fixed owner、prior pair、fresh password、Principal AAL1、版本／GitHub／receipt及TTL邊界。既有 `test:dev-040:r2` 納入聚焦測試，無新 CI job或 release gate；本機證據不算正式 reauth／發布。
+
 ## 專案最高產品原則
 
 - `Human Confirmed / 2026-08-23`：OrgMaster 手機版只提供完整唯讀閱讀、搜尋、篩選與關聯導覽，不提供或觸發建立、修改、刪除、排序、拖放、配置、移轉、核准、發布或其他 mutation。桌面／筆電仍依 workspace mode、version status、治理權限與 validation 決定能否編輯；手機唯讀不取代 server／domain 安全驗證。
