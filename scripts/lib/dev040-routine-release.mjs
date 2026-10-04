@@ -1,4 +1,4 @@
-import { assertSmokeRotationContinuation, readReleaseSourceFile } from './dev057-smoke-rotation-continuation.mjs'
+import { assertSmokeRotationContinuation, assertSmokeInfraReuseContinuation, readReleaseSourceFile, readSmokeReuseInfrastructureTree } from './dev057-smoke-rotation-continuation.mjs'
 import { readPrincipalOnlyRepairBaseline } from './dev057-principal-forward-repair.mjs'
 import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
@@ -632,7 +632,7 @@ export async function resolveRoutineControlBaseline({ profile, transport, contro
   return intent.baselineIntentRef
 }
 
-export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile }) {
+export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
   transport.assertServiceSettled(service)
@@ -732,8 +732,13 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (!infraChanged) fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID')
     try { assertDev013MigrationInfraReceipt(values.infra, profile, values.infra?.sourceRevision) } catch { fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID') }
   } else if (infraChanged) {
-    if (controlledTransition || baseline.repair || values.infra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') fail('ROUTINE_INFRA_REF_CHANGED')
-    smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline, readSourceFile })
+    if (controlledTransition || baseline.repair) fail('ROUTINE_INFRA_REF_CHANGED')
+    if (values.infra?.mutationProfile === 'APP_INFRA_REUSE') {
+      smokeRotationContinuation = await assertSmokeInfraReuseContinuation({ root, profile, transport, intent, values, baseline, readSourceFile, readInfrastructureTree })
+    } else {
+      if (values.infra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') fail('ROUTINE_INFRA_REF_CHANGED')
+      smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline, readSourceFile })
+    }
   }
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]

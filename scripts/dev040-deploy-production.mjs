@@ -7,7 +7,7 @@ import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildReleaseIntent, buildRuntimeConfigReceipt, buildSourceFreeze, readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
 import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
-import { readSmokeRotationProvider } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { readSmokeRotationProvider, readSmokeReuseProviderState } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { canonicalize, createOwnerTransport, resolvePlainEnvironment, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013PredecessorReceipt, readRoutineBaseline, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
@@ -28,7 +28,7 @@ async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile
 }
 
 export function parseDeployProductionArgs(argv) {
-  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014ManagedPrincipalProjectionRemediation: false, dev014LoginFixtureCorrection: false, dev057WriterFenceRemediation: false, dev057PrincipalContractRemediation: false, dev057CutoverSourceRemediation: false, dev057PrincipalGrantsV3Remediation: false, dev057PrincipalGrantsV4Remediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null, smokeRotationRef: null, principalOnlyRecoveryRef: null }
+  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014ManagedPrincipalProjectionRemediation: false, dev014LoginFixtureCorrection: false, dev057WriterFenceRemediation: false, dev057PrincipalContractRemediation: false, dev057CutoverSourceRemediation: false, dev057PrincipalGrantsV3Remediation: false, dev057PrincipalGrantsV4Remediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null, smokeRotationRef: null, infraReuseRef: null, principalOnlyRecoveryRef: null }
   for (const arg of argv) {
     if (arg.startsWith('--principal-only-recovery-ref=') && options.principalOnlyRecoveryRef === null) {
       const match = /^(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/DEV057-PRINCIPAL-ONLY-RECOVERY\/[a-f0-9]{40}\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--principal-only-recovery-ref='.length))
@@ -55,6 +55,10 @@ export function parseDeployProductionArgs(argv) {
       const match = /^(?<uri>\S+)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(value)
       if (!match) throw new Error('DEV013_PREDECESSOR_REF_INVALID')
       options.predecessorReceiptRef = match.groups
+    } else if (arg.startsWith('--infra-reuse-ref=') && options.infraReuseRef === null) {
+      const match = /^--infra-reuse-ref=(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/[A-Z0-9][A-Z0-9-]{5,63}\/app-infra-reuse\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg)
+      if (!match) throw new Error('SMOKE_REUSE_REF_INVALID')
+      options.infraReuseRef = match.groups
     } else if (arg.startsWith('--smoke-rotation-ref=') && options.smokeRotationRef === null) {
       const match = /^--smoke-rotation-ref=(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/[A-Z0-9][A-Z0-9-]{5,63}\/app-infra\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg)
       if (!match) throw new Error('SMOKE_ROTATION_REF_INVALID')
@@ -92,21 +96,35 @@ export function parseDeployProductionArgs(argv) {
   if (controlled === 3 && options.infraReceiptRef && options.infraOption !== 'dev013') throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (options.infraReceiptRef && controlled !== 3 && dev014Mode !== 1 && dev057Mode !== 1) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (options.smokeRotationRef && (controlled || dev014Mode || dev057Mode || options.infraReceiptRef || options.principalOnlyRecoveryRef)) throw new Error('SMOKE_ROTATION_ORDINARY_ONLY')
+  if (options.infraReuseRef && (controlled || dev014Mode || dev057Mode || options.infraReceiptRef || options.smokeRotationRef)) throw new Error('SMOKE_REUSE_ORDINARY_ONLY')
   return options
 }
 
 export const parseArgs = parseDeployProductionArgs
 
 export function selectDeployInfrastructureRef(options, baseline) {
-  return options.smokeRotationRef ?? options.infraReceiptRef ?? baseline.intent.infraReceiptRef
+  return options.infraReuseRef ?? options.smokeRotationRef ?? options.infraReceiptRef ?? baseline.intent.infraReceiptRef
 }
 
 export async function verifyDeployProductionRelease({ options, ...input }) {
   if (options.smokeRotationRef && canonicalize(options.smokeRotationRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_ROTATION_REF_MISMATCH')
+  if (options.infraReuseRef && canonicalize(options.infraReuseRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_REUSE_REF_MISMATCH')
+  if (input.values.infra?.mutationProfile === 'APP_INFRA_REUSE' && !options.infraReuseRef) throw new Error('SMOKE_REUSE_REF_REQUIRED')
   const verification = await verifyRoutineRelease(input)
-  if (options.smokeRotationRef) {
+  if (options.smokeRotationRef || options.infraReuseRef) {
     if (!verification.smokeRotationContinuation) throw new Error('SMOKE_ROTATION_CONTINUATION_MISSING')
     verification.operatorSmokeRotationReadback = await readSmokeRotationProvider({ ...input, continuation: verification.smokeRotationContinuation })
+  }
+  if (options.infraReuseRef) {
+    if (verification.smokeRotationContinuation.evidenceScope !== 'OWNER_SEALED_APPLIED_ROTATION_REUSE') throw new Error('SMOKE_REUSE_RECEIPT_INVALID')
+    const receipt = input.values.infra
+    const rotation = (await input.transport.readJson(receipt.reusedInfraReceiptRef, input.profile.artifact.releaseBucket)).value
+    verification.operatorInfraReuseStateReadback = await readSmokeReuseProviderState({ ...input, rotation, sourceRevision: input.intent.sourceRevision })
+    if (canonicalize(verification.operatorInfraReuseStateReadback.liveTemplates) !== canonicalize(receipt.liveTemplates)) throw new Error('SMOKE_REUSE_PROVIDER_CAS_CHANGED')
+    const current = verification.operatorSmokeRotationReadback
+    const recorded = receipt.providerReadback
+    if (['workflowName', 'workflowRevisionId', 'workflowSourceSha256', 'secretId', 'exactNumericVersion', 'secretState']
+      .some((field) => canonicalize(current[field]) !== canonicalize(recorded[field]))) throw new Error('SMOKE_REUSE_PROVIDER_CAS_CHANGED')
   }
   return verification
 }

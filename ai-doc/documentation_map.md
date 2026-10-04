@@ -16,6 +16,8 @@
 
 本輪own aligned-new scan續接沿 DEV-057與[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md#owner-gcc-aligned-new-applicability-續接)：`scripts/lib/dev015-gcc-aligned-new-applicability.mjs`、`scripts/dev015-aligned-new-loader-inspection.cjs`及兩份同名聚焦tests由既有owner runtime／stage executor與`test:dev-040:r2`消費。policy／assessment只能使用Org own exact evidence；上游方法證據不代替own verdict，完整owner QC及正式驗證由原生流程收斂。
 
+原APPLIED smoke rotation跨source續接沿DEV-057 [source-only infra reuse契約](specs/DEV-057-identity-and-grant-contract-boundary.md#已完成-smoke-rotation-的-source-only-infra-reuse)：現有 `scripts/lib/dev012-owner-prerequisite-producer.mjs`、`scripts/dev040-deploy-production.mjs`、routine／stage executor及 `dev057-smoke-rotation-continuation.mjs` 分別產生、選取與重驗own新source-bound receipt；runtime、routine及prerequisite既有Node tests由原owner required checks消費。`dev012-owner-release-runtime.mjs` own controller manifest reader封存raw parent index→唯一amd64 child bytes/header proof；operator live模板／UID／serving proof及prepare sealed-source／control CAS依實際IAM分層，prepare離線重驗manifest而不新增GET。原rotation／credential不重寫，不新增Cloud／IAM／grant counter操作。
+
 ## 專案最高產品原則
 
 - `Human Confirmed / 2026-08-23`：OrgMaster 手機版只提供完整唯讀閱讀、搜尋、篩選與關聯導覽，不提供或觸發建立、修改、刪除、排序、拖放、配置、移轉、核准、發布或其他 mutation。桌面／筆電仍依 workspace mode、version status、治理權限與 validation 決定能否編輯；手機唯讀不取代 server／domain 安全驗證。

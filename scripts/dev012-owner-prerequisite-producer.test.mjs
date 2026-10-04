@@ -57,9 +57,10 @@ test('release intent requires a prior baseline, not initialization data or princ
   assert.throws(() => buildReleaseIntent({ profile: orgProfile, releaseId: 'REL-001', input: { ...input, baselineIntentRef: undefined }, sourceLock, prerequisiteValues: values, validateIntent: () => true }), /RELEASE_BASELINE_REQUIRED/)
 })
 
-test('CLI has an exact three-stage input surface', () => {
+test('CLI has an exact four-stage input surface including source-bound infra reuse', () => {
   assert.deepEqual(parsePrerequisiteProducerArgs(['--stage', 'source-freeze', '--release-id', 'REL-001']), { stage: 'source-freeze', releaseId: 'REL-001', inputPath: null })
   assert.throws(() => parsePrerequisiteProducerArgs(['--stage', 'release-intent', '--release-id', 'REL-001']), /INVALID_ARGUMENTS/)
+  assert.equal(parsePrerequisiteProducerArgs(['--stage', 'infra-reuse', '--release-id', 'REL-001', '--input', 'output/dev-012/inputs/reuse.json']).stage, 'infra-reuse')
   assert.equal(resolveOwnerInputPath('/owner', 'output/dev-012/inputs/runtime.json').endsWith(['owner', 'output', 'dev-012', 'inputs', 'runtime.json'].join(path.sep)), true)
   assert.throws(() => resolveOwnerInputPath('/owner', '../sibling/secret.json'), /INPUT_PATH_OUT_OF_SCOPE/)
 })
