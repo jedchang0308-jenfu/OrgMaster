@@ -94,6 +94,7 @@ import {
   type OrgDocumentKind,
 } from './documentStorage'
 import { loadWorkspaceIndex, loadWorkspaceVersion, saveWorkspaceDocument, createWorkspaceDraft as createWorkspaceDraftRequest, updateWorkspaceEntryClient } from './serverWorkspaceStorage'
+import { startWorkspaceSynchronization } from './workspace/serverSynchronization'
 import { type DutyPlanningStatusFilter, type DutyPlanningView } from './dutyPlanningRoute'
 import { readDutyConfigurationLocation, type DutyConfigurationExactLane, type DutyConfigurationLocation } from './dutyConfigurationRoute'
 import { canMutateDutyConfiguration } from './dutyConfigurationCapability'
@@ -1319,39 +1320,26 @@ function ProtectedApp() {
 
   useEffect(() => {
     if (!serverReady) return
-    let active = true
-    const syncFromComputer = async () => {
-      const indexResult = await loadWorkspaceIndex()
-      if (!active || indexResult.status !== 'loaded') return
-      setWorkspaceIndex(indexResult.value)
-      const version = indexResult.value.versions.find((candidate) => candidate.id === activeVersionIdRef.current)
-      if (!version || version.revision === serverRevisionRef.current) return
-      const incoming = await loadWorkspaceVersion(version.id)
-      if (!active || incoming.status !== 'loaded') return
-      const incomingSignature = orgStateSignature(incoming.value.document.state)
-      if (incomingSignature === currentSignatureRef.current) {
-        setSavedSignature(incomingSignature)
-        setSavedAt(incoming.value.document.savedAt)
-        setPersistenceKind(incoming.value.document.kind)
-        setServerRevision(incoming.value.version.revision)
-        return
-      }
-      if (currentSignatureRef.current !== savedSignatureRef.current) {
+    return startWorkspaceSynchronization({
+      current: () => ({
+        versionId: activeVersionIdRef.current,
+        revision: serverRevisionRef.current,
+        signature: currentSignatureRef.current,
+        savedSignature: savedSignatureRef.current,
+      }),
+      onIndex: setWorkspaceIndex,
+      onIncoming: (incoming, signature, shouldReplace) => {
+        if (shouldReplace) replaceState(incoming.document.state)
+        setSavedSignature(signature)
+        setSavedAt(incoming.document.savedAt)
+        setPersistenceKind(incoming.document.kind)
+        setServerRevision(incoming.version.revision)
+        if (shouldReplace) setAssignmentNotice('已同步另一個版本工作區視窗的更新')
+      },
+      onConflict: () => {
         setAssignmentNotice('另一個視窗已有較新版本；目前視窗有未儲存變更，未覆蓋目前編輯。')
-        return
-      }
-      replaceState(incoming.value.document.state)
-      setSavedSignature(incomingSignature)
-      setSavedAt(incoming.value.document.savedAt)
-      setPersistenceKind(incoming.value.document.kind)
-      setServerRevision(incoming.value.version.revision)
-      setAssignmentNotice('已同步另一個版本工作區視窗的更新')
-    }
-    const timer = window.setInterval(() => { void syncFromComputer() }, 1500)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
+      },
+    })
   }, [replaceState, serverReady])
 
   const saveDocument = useCallback(async () => {

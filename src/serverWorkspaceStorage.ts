@@ -26,9 +26,9 @@ function failure(response: Response, payload: Record<string, unknown>, fallback:
   return { status: 'failed', message: `版本工作區無法完成操作：${reason}`, statusCode: response.status, code }
 }
 
-export async function loadWorkspaceIndex(): Promise<WorkspaceClientResult<OrgWorkspaceIndex>> {
+export async function loadWorkspaceIndex(signal?: AbortSignal): Promise<WorkspaceClientResult<OrgWorkspaceIndex>> {
   try {
-    const response = await fetch(SERVER_WORKSPACE_API, { cache: 'no-store' })
+    const response = await fetch(SERVER_WORKSPACE_API, { cache: 'no-store', signal })
     const payload = await readJson(response)
     if (!response.ok) return failure(response, payload, 'WORKSPACE_READ_FAILED')
     const parsed = validateWorkspaceIndex(payload)
@@ -40,9 +40,9 @@ export async function loadWorkspaceIndex(): Promise<WorkspaceClientResult<OrgWor
   }
 }
 
-export async function loadWorkspaceVersion(versionId: string): Promise<WorkspaceClientResult<WorkspaceDocumentResult>> {
+export async function loadWorkspaceVersion(versionId: string, signal?: AbortSignal): Promise<WorkspaceClientResult<WorkspaceDocumentResult>> {
   try {
-    const response = await fetch(`${SERVER_WORKSPACE_API}/versions/${encodeURIComponent(versionId)}`, { cache: 'no-store' })
+    const response = await fetch(`${SERVER_WORKSPACE_API}/versions/${encodeURIComponent(versionId)}`, { cache: 'no-store', signal })
     const payload = await readJson(response)
     if (!response.ok) return failure(response, payload, 'VERSION_READ_FAILED')
     const documentResult = parseOrgDocument(payload.document)

@@ -8,6 +8,10 @@
 
 共同根因、F01–F10狀態及下一可驗交付依 [JENFU既有盤點](../../Jenfu-Platform/ai-doc/qa/DEV-015-principal-only-authorization-inventory-2026-09-29.md)；下方舊DEV-012／013與其他native任務保留原追溯，不重開其發布队列。
 
+**DEV-057 workspace 讀取可靠性修正（2026-10-04，未發布）：** 來源 `JENFU/DEV-015#principal-only-production-reliability`。正式 `03c5ed58d54462e676e05a8e4be7dc03bacc8ba8` 的 `/api/auth/jenfu-sso/start` 曾有 provider 429／0 秒拒絕；同源前端 workspace 每 1.5 秒啟動非等待式讀取，缺少單輪互斥及背景取消，屬已確認的請求放大缺陷，未認定任何既有分頁數量為事件因果。本批只在既有 App／storage 責任點加入 `src/workspace/serverSynchronization.ts`：完整 index／version 週期最多一筆、完成後再排程，hidden／unmount 取消 GET，resume 不爆量，失敗延遲 3／6／12／24／30 秒封頂；保留 autosave、未儲存草稿及版本／revision 晚到保護。沒有 Cloud 容量、身分、權限、DB 或 writer 契約變更。
+
+原分支 `codex/dev014-free-fixture-operator`、base `967fb654e8d920e4137bbba8f51dcad99702928f`；聚焦 `serverSynchronization`／`serverWorkspaceStorage`／`hydration`／`versionWorkspace` 共 18 案及 `tsc --noEmit` 通過。完整 diff 與實際本機檢查交接在 JENFU/DEV-015 `output/dev-012/inputs/dev015-orgmaster-workspace-poll-fix.patch`、`dev015-orgmaster-workspace-poll-fix-local-evidence.json`；正式 owner required checks／發布後正常 SSO 與 workspace 前景／背景讀回待後續執行，本機 PASS 不等於 Production L4，不改原驗收分母。
+
 ## DEV-057 R33 歷史整鏈驗證（本機通過，未發布；非本輪施工入口）
 
 來源 `JENFU/DEV-015#native-v4-transfer`；沿既有 DEV-057，不新增任務。`DEV057_CROSS_OWNER_AI_PDM_ROOT` 指向已授權 consumer 時，D57-21 以實際 OrgMaster writer 发布 v4 grants，讀回 reviewer/owner typed tuple，再呼叫 AI-PDM restricted PostgreSQL consumer。personal/privileged 均驗證 assigned、revoked、out-of-scope、restored、送審至核准/重播；structured evidence 必須與 actual actor/owner/phase 相符。沒有新 Production caller、schema、grant、逐人狀態或應用發布。
