@@ -902,7 +902,7 @@ async function smokeReuseHarness({ oci = false } = {}) {
     candidate_smoke_secret: EXPECTED.secretId, incident_runtime: true,
     migration_runner_digest: profile.artifact.migrationRunnerUri + '@sha256:' + '2'.repeat(64),
     controller_image_digest: h.input.values.infra.controllerImageDigest }
-  const state = { values: { root_module: { resources: h.addresses.map((address) => ({ address, mode: 'managed',
+  const state = { values: { root_module: { resources: h.addresses.map((address) => ({ address, mode: address.startsWith('data.') ? 'data' : 'managed',
     values: address === 'google_workflows_workflow.candidate_smoke[0]' ? {
       name: profile.verification.candidateWorkflowName, project: profile.target.projectId, region: profile.target.region,
       source_contents: h.workflow.sourceContents } : {} })) }, outputs: { app_release_infra_manifest: { value: manifest } } } }
@@ -1028,6 +1028,13 @@ async function smokeReuseHarness({ oci = false } = {}) {
 
 test('source-only infra reuse keeps the original rotation and expired-now credential immutable, then passes CLI and native prepare', async () => {
   const h = await smokeReuseHarness()
+  const rows = h.state.values.root_module.resources
+  assert.equal(rows.filter((row) => row.mode === 'managed').length, 69)
+  assert.deepEqual(rows.filter((row) => row.mode === 'data').map((row) => row.address), [
+    'data.google_cloud_run_v2_service.application', 'data.google_project.current',
+    'data.google_secret_manager_secret.controller_github_token', 'data.google_service_account.migrator',
+    'data.google_service_account.runtime', 'data.google_storage_project_service_account.gcs',
+  ])
   const result = await verifyDeployProductionRelease({ options: h.options, ...h.input })
   assert.equal(result.smokeRotationContinuation.evidenceScope, 'OWNER_SEALED_APPLIED_ROTATION_REUSE')
   assert.equal(result.smokeRotationContinuation.reusedSourceRevision, newSource)
@@ -1136,11 +1143,14 @@ test('reuse fails closed for wrong source, owner, seal, original receipt, numeri
 })
 
 test('reuse construction rejects full-address/state/output drift and changed copied executable or infrastructure', async () => {
-  for (const defect of ['missing', 'duplicate', 'extra', 'serial', 'lineage', 'manifest', 'workflow', 'executable', 'tree']) {
+  for (const defect of ['missing', 'duplicate', 'extra', 'missingData', 'duplicateData', 'extraData', 'serial', 'lineage', 'manifest', 'workflow', 'executable', 'tree']) {
     const h = await smokeReuseHarness()
     if (defect === 'missing') h.state.values.root_module.resources.pop()
     if (defect === 'duplicate') h.state.values.root_module.resources.push(h.state.values.root_module.resources[0])
     if (defect === 'extra') h.state.values.root_module.resources.push({ mode: 'managed', address: 'google_secret_manager_secret.sibling' })
+    if (defect === 'missingData') h.state.values.root_module.resources = h.state.values.root_module.resources.filter((row) => row.address !== 'data.google_project.current')
+    if (defect === 'duplicateData') h.state.values.root_module.resources.push(h.state.values.root_module.resources.find((row) => row.address === 'data.google_project.current'))
+    if (defect === 'extraData') h.state.values.root_module.resources.push({ mode: 'data', address: 'data.google_project.sibling', values: {} })
     if (defect === 'serial') h.stateMeta.serial++
     if (defect === 'lineage') h.stateMeta.lineage = 'other'
     if (defect === 'manifest') h.manifest.controller_image_digest = 'sibling'

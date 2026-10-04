@@ -342,7 +342,8 @@ export async function readSmokeReuseProviderState({ root, profile, transport, ro
   const stateMeta = terraformReader(root, ['state', 'pull'])
   const manifest = terraformReader(root, ['output', '-json', 'app_release_infra_manifest'])
   const resources = (module) => [...(module?.resources ?? []), ...(module?.child_modules ?? []).flatMap(resources)]
-  const rows = resources(state?.values?.root_module).filter((row) => row.mode !== 'data')
+  // The frozen profile and applied receipt bind all 75 addresses, including data resources.
+  const rows = resources(state?.values?.root_module)
   const addresses = rows.map((row) => row.address).sort()
   const infraProfile = JSON.parse(readSourceFile(root, sourceRevision, INFRA_PROFILE))
   const expectedAddresses = [...infraProfile.stageA, ...infraProfile.stageBAdditional].sort()
