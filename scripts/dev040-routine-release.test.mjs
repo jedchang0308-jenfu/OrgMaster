@@ -1,16 +1,17 @@
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
-import { expectedSmokeWorkflowSource } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-stage-executor.mjs'
+import { createGitArchive, createGitSourceIdentity, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
-import { buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
+import { buildRuntimeConfig, canonicalize, createOwnerTransport, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeBlobTransition, assertDev057CatalogReadbackPackagingTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
@@ -56,7 +57,7 @@ function harness({ baselineRuntime = runtime, nextRuntime = runtime, baselineBun
   const receipt = (name, value) => put(`gs://${bucket}/receipts/fixture/${name}.json`, value)
   const previousRevision = 'orgmaster-prod-aaaaaaaaaaaa'
   const artifactDigest = `${profile.artifact.uri}@sha256:${'d'.repeat(64)}`
-  const oldIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster', releaseId: 'ROUTINE-BASELINE', sourceRevision: oldSource, sourceSha256: 'e'.repeat(64), sourceLockRef: receipt('source', {}), authorizationPolicyRef: receipt('auth', {}), readinessReceiptRef: receipt('ready', {}), foundationReceiptRef: receipt('foundation', {}), infraReceiptRef: receipt('infra', {}), runtimeConfigRef: receipt('runtime', { runtimeConfig: baselineRuntime }), migrationManifestSha256: baselineBundle.manifestSha256, previousRevision: 'old-revision', deadlineAt: '2020-01-01T00:00:00Z' }
+  const oldIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster', releaseId: 'ROUTINE-BASELINE', sourceRevision: oldSource, sourceSha256: 'e'.repeat(64), sourceLockRef: receipt('source', {}), authorizationPolicyRef: receipt('auth', {}), readinessReceiptRef: receipt('ready', {}), foundationReceiptRef: receipt('foundation', { ownerApplicationId: 'shared-foundation', projectId: profile.target.projectId, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_PROVIDER' }), infraReceiptRef: receipt('infra', {}), runtimeConfigRef: receipt('runtime', { runtimeConfig: baselineRuntime }), migrationManifestSha256: baselineBundle.manifestSha256, previousRevision: 'old-revision', deadlineAt: '2020-01-01T00:00:00Z' }
   // A prior release's expiry must not invalidate its historical evidence.
   const baselineIntentRef = receipt('intent', oldIntent)
   const paths = releasePaths(profile, oldIntent, baselineIntentRef.sha256)
@@ -806,7 +807,7 @@ test('DEV-057 grant v4 admits only sealed 028-to-029 append with fresh runner ev
 });
 
 
-function smokeContinuationHarness() {
+function smokeContinuationHarness({ controllerImageDigest = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller@sha256:' + '3'.repeat(64) } = {}) {
   const h = harness()
   const infraProfile = JSON.parse(fs.readFileSync('config/release/dev040-production-release-infra-plan.json'))
   const addresses = [...infraProfile.stageA, ...infraProfile.stageBAdditional].sort()
@@ -822,7 +823,7 @@ function smokeContinuationHarness() {
     projectId: profile.target.projectId, region: profile.target.region, sourceRevision: oldSource,
     foundationManifestSha256: '1'.repeat(64),
     migrationRunnerDigest: profile.artifact.migrationRunnerUri + '@sha256:' + '2'.repeat(64),
-    controllerImageDigest: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller@sha256:' + '3'.repeat(64),
+    controllerImageDigest,
     terraformAddressCount: addresses.length, terraformAddressesSha256: sha256(canonicalize(addresses)),
     stateLineage: 'a1234567-0123-4567-89ab-0123456789ab', stateSerial: 5,
     binaryPlanSha256: '4'.repeat(64), planJsonSha256: '5'.repeat(64), stateJsonSha256: '6'.repeat(64), outputManifestSha256: '7'.repeat(64),
@@ -882,6 +883,358 @@ function smokeContinuationHarness() {
   update()
   return Object.assign(h, { update, requests, workflow, secret, sourceEdits, addresses, rotationUri })
 }
+
+async function smokeReuseHarness({ oci = false } = {}) {
+  const childDocument = { schemaVersion: 2, mediaType: 'application/vnd.oci.image.manifest.v1+json',
+    config: { digest: 'sha256:' + 'e'.repeat(64) }, layers: [{ digest: 'sha256:' + 'f'.repeat(64) }] }
+  const childBytes = Buffer.from(JSON.stringify(childDocument) + '\n')
+  const indexDocument = { schemaVersion: 2, mediaType: 'application/vnd.oci.image.index.v1+json', manifests: [{
+    digest: 'sha256:' + sha256(childBytes), size: childBytes.length, mediaType: childDocument.mediaType,
+    platform: { os: 'linux', architecture: 'amd64' } }] }
+  const parentBytes = Buffer.from(JSON.stringify(indexDocument) + '\n')
+  const controllerUri = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller'
+  const parentImage = controllerUri + '@sha256:' + sha256(parentBytes), childImage = controllerUri + '@sha256:' + sha256(childBytes)
+  const h = smokeContinuationHarness(oci ? { controllerImageDigest: parentImage } : {})
+  const sourceRevision = 'c'.repeat(40), releaseId = 'SMOKE-REUSE-FIXTURE'
+  const manifest = { project_id: profile.target.projectId, region: profile.target.region, source_revision: newSource,
+    foundation_manifest_sha256: '1'.repeat(64), application_service: profile.target.serviceName,
+    runtime_identity: profile.target.runtimeServiceAccount, release_bucket: bucket,
+    candidate_smoke_secret: EXPECTED.secretId, incident_runtime: true,
+    migration_runner_digest: profile.artifact.migrationRunnerUri + '@sha256:' + '2'.repeat(64),
+    controller_image_digest: h.input.values.infra.controllerImageDigest }
+  const state = { values: { root_module: { resources: h.addresses.map((address) => ({ address, mode: 'managed',
+    values: address === 'google_workflows_workflow.candidate_smoke[0]' ? {
+      name: profile.verification.candidateWorkflowName, project: profile.target.projectId, region: profile.target.region,
+      source_contents: h.workflow.sourceContents } : {} })) }, outputs: { app_release_infra_manifest: { value: manifest } } } }
+  const jobName = 'projects/jenfu-platform-prod/locations/asia-east1/jobs/orgmaster-prod-migration-runner'
+  const controllerName = 'projects/jenfu-platform-prod/locations/asia-east1/services/orgmaster-prod-abort-controller'
+  const sql = 'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg'
+  const job = { name: jobName, uid: 'job-synthetic-immutable-uid', etag: 'job-e1', generation: '2', observedGeneration: '2', template: { parallelism: 1, taskCount: 1,
+    template: { serviceAccount: 'orgmaster-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com', executionEnvironment: 'EXECUTION_ENVIRONMENT_GEN2',
+      timeout: '1800s', maxRetries: 0, containers: [{ name: 'migration', image: manifest.migration_runner_digest, args: ['--bundle-ref-required'],
+        env: [{ name: 'POSTGRES_DATABASE', value: 'jenfu_prod' }, { name: 'CLOUD_SQL_INSTANCE_CONNECTION_NAME', value: sql }],
+        resources: { limits: { cpu: '1', memory: '512Mi' } }, volumeMounts: [{ name: 'cloudsql', mountPath: '/cloudsql' }] }],
+      volumes: [{ name: 'cloudsql', cloudSqlInstance: { instances: [sql] } }],
+      vpcAccess: { egress: 'ALL_TRAFFIC', networkInterfaces: [{ network: 'projects/jenfu-platform-prod/global/networks/jenfu-platform-prod-vpc',
+        subnetwork: 'projects/jenfu-platform-prod/regions/asia-east1/subnetworks/jenfu-platform-prod-runtime' }] } } } }
+  const controller = { name: controllerName, uid: 'controller-synthetic-immutable-uid', etag: 'controller-e1', generation: '3', observedGeneration: '3',
+    latestReadyRevision: controllerName + '/revisions/orgmaster-prod-abort-controller-00003-fixture',
+    latestCreatedRevision: controllerName + '/revisions/orgmaster-prod-abort-controller-00003-fixture',
+    traffic: [{ type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST', percent: 100 }],
+    trafficStatuses: [{ type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST', percent: 100, revision: 'orgmaster-prod-abort-controller-00003-fixture' }],
+    ingress: 'INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER', template: { serviceAccount: profile.identities.controller, timeout: '60s',
+      maxInstanceRequestConcurrency: 1, scaling: { minInstanceCount: 0, maxInstanceCount: 1 }, containers: [{ name: 'controller',
+        image: manifest.controller_image_digest, ports: [{ containerPort: 8080 }],
+        env: [{ name: 'GITHUB_READ_TOKEN', valueSource: { secretKeyRef: { secret: 'orgmaster-prod-release-controller-github-token', version: '1' } } }],
+        resources: { limits: { cpu: '1', memory: '256Mi' }, cpuIdle: true } }] } }
+  state.values.root_module.resources.find((row) => row.address === 'google_cloud_run_v2_job.migration[0]').values = {
+    name: 'orgmaster-prod-migration-runner', uid: job.uid, project: profile.target.projectId, location: profile.target.region,
+    template: [{ parallelism: 1, task_count: 1, template: [{ service_account: job.template.template.serviceAccount,
+      execution_environment: 'EXECUTION_ENVIRONMENT_GEN2', timeout: '1800s', max_retries: 0,
+      containers: [{ name: 'migration', image: manifest.migration_runner_digest, args: ['--bundle-ref-required'], command: [],
+        env: [{ name: 'CLOUD_SQL_INSTANCE_CONNECTION_NAME', value: sql }, { name: 'POSTGRES_DATABASE', value: 'jenfu_prod' }],
+        resources: [{ limits: { cpu: '1', memory: '512Mi' } }], volume_mounts: [{ name: 'cloudsql', mount_path: '/cloudsql' }] }],
+      volumes: [{ name: 'cloudsql', cloud_sql_instance: [{ instances: [sql] }] }], vpc_access: [{ egress: 'ALL_TRAFFIC',
+        network_interfaces: [{ network: 'jenfu-platform-prod-vpc', subnetwork: 'jenfu-platform-prod-runtime' }] }] }] }] }
+  state.values.root_module.resources.find((row) => row.address === 'google_cloud_run_v2_service.abort_controller[0]').values = {
+    name: 'orgmaster-prod-abort-controller', uid: controller.uid, project: profile.target.projectId, location: profile.target.region,
+    ingress: controller.ingress, template: [{ service_account: profile.identities.controller, timeout: '60s',
+      max_instance_request_concurrency: 1, scaling: [{ min_instance_count: 0, max_instance_count: 1 }], containers: [{
+        name: 'controller', image: manifest.controller_image_digest, ports: [{ container_port: 8080 }], env: [{ name: 'GITHUB_READ_TOKEN',
+          value_source: [{ secret_key_ref: [{ secret: 'orgmaster-prod-release-controller-github-token', version: '1' }] }] }],
+        resources: [{ limits: { cpu: '1', memory: '256Mi' }, cpu_idle: true }] }] }] }
+  const request = h.input.transport.request
+  const controllerRevision = { name: controller.latestReadyRevision, containers: structuredClone(controller.template.containers),
+    serviceAccount: profile.identities.controller, conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] }
+  if (oci) controllerRevision.containers[0].image = childImage
+  h.input.transport.readControllerImageResolution = createOwnerTransport({ token: 'synthetic-registry-token', fetchImpl: async (url) => {
+    const digest = url.split('/manifests/')[1]
+    const bytes = digest === 'sha256:' + sha256(parentBytes) ? parentBytes : digest === 'sha256:' + sha256(childBytes) ? childBytes : null
+    assert.ok(bytes, 'Registry read must use exact own immutable parent/child')
+    return new Response(bytes, { headers: { 'content-type': bytes === parentBytes ? indexDocument.mediaType : childDocument.mediaType,
+      'docker-content-digest': digest } })
+  } }).readControllerImageResolution
+  h.input.transport.request = async (url) => {
+    if (url === 'https://run.googleapis.com/v2/' + jobName) { h.requests.push(url); return job }
+    if (url === 'https://run.googleapis.com/v2/' + controllerName) { h.requests.push(url); return controller }
+    if (url === 'https://run.googleapis.com/v2/' + controllerRevision.name) { h.requests.push(url); return controllerRevision }
+    return request(url)
+  }
+  const stateMeta = { lineage: 'a1234567-0123-4567-89ab-0123456789ab', serial: 6 }
+  h.update({ rotation: { stateJsonSha256: sha256(canonicalize(state)), outputManifestSha256: sha256(canonicalize(manifest)) } })
+  const rotationRef = structuredClone(h.input.intent.infraReceiptRef)
+  const original = Buffer.from(h.objects.get(rotationRef.uri).bytes)
+  const sourceIdentityBytes = Buffer.from('own synthetic frozen source identity')
+  const git = { sourceRevision, sourceTree: 'd'.repeat(40), branch: 'master', remoteRevision: sourceRevision, clean: true }
+  const sourceLock = buildSourceFreeze({ profile, releaseId, observedAt: '2026-10-05T00:00:00Z', git,
+    sourceIdentityBytes, migrationBundle: newBundle })
+  const sourceLockRef = h.put('gs://' + bucket + '/receipts/releases/' + releaseId + '/source-lock.json', sourceLock)
+  const baselineRead = h.objects.get(h.input.intent.baselineIntentRef.uri)
+  const baseline = { intent: baselineRead.value, activeRevision: h.input.intent.previousRevision }
+  const failedIntent = { ...h.input.intent, releaseId: 'SMOKE-ABORT-FIXTURE', sourceLockRef: h.input.intent.sourceLockRef,
+    sourceRevision: newSource, infraReceiptRef: rotationRef }
+  const attemptRef = h.put('gs://' + bucket + '/receipts/releases/' + failedIntent.releaseId + '/release-intent.json', failedIntent)
+  const failedPaths = releasePaths(profile, failedIntent, attemptRef.sha256)
+  const facts = { result: 'PRE_ACTIVATION_ABORTED', previousRevision: failedIntent.previousRevision,
+    databaseDisposition: 'NOT_APPLIED', entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' } }
+  const rollbackRef = h.put(failedPaths.rollback, stageReceipt({ profile, intent: failedIntent, stage: 'rollback',
+    facts: { ...facts, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'] }, observedAt: '2026-10-04T00:00:00Z' }))
+  h.put(failedPaths.terminal, stageReceipt({ profile, intent: failedIntent, stage: 'terminal', previousReceiptRef: rollbackRef,
+    facts, observedAt: '2026-10-04T00:00:00Z' }))
+  const controlCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1',
+    inputFingerprint: sha256(canonicalize({ ownerApplicationId: 'orgmaster', releaseId: failedIntent.releaseId,
+      sourceRevision: newSource, releaseIntentSha256: attemptRef.sha256 })), ownerApplicationId: 'orgmaster',
+    service: profile.target.serviceName, controlBucket: bucket, releaseId: failedIntent.releaseId, sourceRevision: newSource,
+    sourceLockSha256: failedIntent.sourceLockRef.sha256, candidateRevision: null, previousRevision: failedIntent.previousRevision,
+    ownerRunRef: 'https://api.github.com/repos/' + profile.application.repository + '/actions/runs/12345',
+    leaseExpiresAt: '2026-10-04T00:00:00Z', deadlineAt: failedIntent.deadlineAt, state: 'FINALIZED', result: 'PRE_ACTIVATION_ABORTED' }
+  const controlUri = 'gs://' + bucket + '/control/active.json'
+  const setControl = (changes = {}) => {
+    const core = { ...controlCore, ...changes }
+    h.put(controlUri, { ...core, controlSha256: sha256(canonicalize(core)) })
+    h.objects.get(controlUri).metadata = { generation: '17' }
+  }
+  setControl()
+  const terraformReader = (_root, args) => {
+    if (args.join(' ') === 'show -json') return state
+    if (args.join(' ') === 'state pull') return stateMeta
+    if (args.join(' ') === 'output -json app_release_infra_manifest') return manifest
+    assert.fail('Unapproved terraform command')
+  }
+  const readInfrastructureTree = () => Buffer.from('own complete source-frozen infra tree')
+  h.input.intent.sourceRevision = sourceRevision
+  h.input.intent.sourceSha256 = sourceLock.sourceSha256
+  h.input.values.sourceLock = { ...sourceLock, releaseId: h.input.intent.releaseId }
+  h.input.values.authorization.sourceRevision = sourceRevision
+  h.input.values.readiness.sourceRevision = sourceRevision
+  h.input.readInfrastructureTree = readInfrastructureTree
+  h.input.terraformReader = terraformReader
+  const constructorInput = { ...h.input, releaseId, sourceLock, sourceLockRef, baselineIntentRef: h.input.intent.baselineIntentRef,
+    baseline, rotationRef, observedAt: '2026-10-05T00:00:00Z', terraformReader, readInfrastructureTree }
+  const reuse = await buildSmokeInfraReuseReceipt(constructorInput)
+  const reuseUri = 'gs://' + bucket + '/receipts/releases/' + releaseId + '/app-infra-reuse.json'
+  const select = (value = reuse, reseal = false) => {
+    if (reseal) { const { receiptSha256: _seal, ...core } = value; value = { ...core, receiptSha256: sha256(canonicalize(core)) } }
+    const ref = h.put(reuseUri, value)
+    h.options = parseDeployProductionArgs(['--check', '--infra-reuse-ref=' + ref.uri + '#sha256=' + ref.sha256])
+    h.input.intent.infraReceiptRef = selectDeployInfrastructureRef(h.options, baseline)
+    h.input.values.infra = value
+  }
+  select()
+  h.requests.length = 0
+  return Object.assign(h, { reuse, select, state, stateMeta, manifest, constructorInput, rotationRef, job, controller, controllerRevision,
+    original, sourceIdentityBytes, git, sourceLock, sourceLockRef, setControl, controlUri, failedPaths })
+}
+
+test('source-only infra reuse keeps the original rotation and expired-now credential immutable, then passes CLI and native prepare', async () => {
+  const h = await smokeReuseHarness()
+  const result = await verifyDeployProductionRelease({ options: h.options, ...h.input })
+  assert.equal(result.smokeRotationContinuation.evidenceScope, 'OWNER_SEALED_APPLIED_ROTATION_REUSE')
+  assert.equal(result.smokeRotationContinuation.reusedSourceRevision, newSource)
+  assert.equal(result.smokeRotationContinuation.sourceRevision, 'c'.repeat(40))
+  assert.equal(result.smokeRotationContinuation.newVersion, '8')
+  assert.equal(result.operatorInfraReuseStateReadback.terraformAddressCount, 75)
+  assert.deepEqual(h.objects.get(h.rotationRef.uri).bytes, h.original)
+  h.input.transport.request = () => assert.fail('native prepare must not read Job/controller/Workflow/Secret metadata')
+  h.input.terraformReader = () => assert.fail('native prepare must not execute Terraform')
+  assert.equal((await verifyRoutineRelease(h.input)).pendingMigrationCount, 0)
+})
+
+test('native infra-reuse producer verifies exact clean remote source twice and writes only a new own receipt', async () => {
+  const h = await smokeReuseHarness()
+  const writes = []
+  h.input.transport.putJson = async (uri, value, options) => { writes.push({ uri, options }); return { ref: h.put(uri, value), value } }
+  let gitReads = 0
+  const run = (gitReader = () => { gitReads++; return h.git }) => executePrerequisiteProducer({ ...h.constructorInput,
+    stage: 'infra-reuse', input: { schemaVersion: 'jenfu.dev012.app-infra-reuse-input.v1', sourceLockRef: h.sourceLockRef,
+      baselineIntentRef: h.input.intent.baselineIntentRef, existingInfraReceiptRef: h.rotationRef },
+    createSourceIdentity: async () => h.sourceIdentityBytes, gitReader })
+  const result = await run()
+  assert.equal(gitReads, 2)
+  assert.equal(result.value.sourceRevision, h.git.sourceRevision)
+  assert.equal(writes.length, 1)
+  assert.match(writes[0].uri, /\/SMOKE-REUSE-FIXTURE\/app-infra-reuse\.json$/u)
+  assert.deepEqual(h.objects.get(h.rotationRef.uri).bytes, h.original)
+  await assert.rejects(() => run(() => ({ ...h.git, sourceRevision: oldSource })), /SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE/u)
+  for (const changed of [{ clean: false }, { branch: 'feature' }, { remoteRevision: oldSource }])
+    await assert.rejects(() => run(() => ({ ...h.git, ...changed })), /SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE/u)
+  let count = 0
+  await assert.rejects(() => run(() => ({ ...h.git, sourceTree: count++ ? oldSource : h.git.sourceTree })), /SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE/u)
+  assert.equal(writes.length, 1)
+})
+
+test('real owner prepare consumes source-bound reuse through the existing routine verifier and seals only current prerequisites', async () => {
+  const h = await smokeReuseHarness()
+  const common = { projectId: profile.target.projectId, ownerApplicationId: 'orgmaster', status: 'PASS',
+    releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND' }
+  Object.assign(h.input.values.authorization, common, { environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00Z' })
+  Object.assign(h.input.values.readiness, common, { environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00Z' })
+  h.input.values.foundation = h.objects.get(h.input.intent.foundationReceiptRef.uri).value
+  h.input.values.runtimeConfig = { ...common, runtimeConfig: h.input.values.runtimeConfig.runtimeConfig }
+  for (const [name, field] of Object.entries({ sourceLock: 'sourceLockRef', authorization: 'authorizationPolicyRef', readiness: 'readinessReceiptRef', runtimeConfig: 'runtimeConfigRef' }))
+    h.input.intent[field] = h.put('gs://' + bucket + '/receipts/releases/ROUTINE-NEXT/' + name + '.json', h.input.values[name])
+  h.input.intent.deadlineAt = '2999-01-01T00:00:00Z'
+  const intentRef = h.put('gs://' + bucket + '/receipts/releases/ROUTINE-NEXT/release-intent.json', h.input.intent)
+  const readBytes = h.input.transport.readBytes.bind(h.input.transport)
+  h.input.transport.readBytes = async (uri) => { try { return await readBytes(uri) } catch (error) { error.code = 'MISSING'; throw error } }
+  h.input.transport.putJson = async (uri, value) => ({ ref: h.put(uri, value), value })
+  h.input.transport.getService = async () => h.input.service
+  h.input.transport.now = () => '2026-10-05T00:00:00Z'
+  h.input.transport.entrypointSnapshot = () => ({ serviceEtag: 'synthetic', generation: '1' })
+  h.input.transport.request = () => assert.fail('prepare must not read Job/controller/Workflow/Secret metadata')
+  const environment = { GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: profile.application.repository,
+    GITHUB_REPOSITORY_ID: '1234', GITHUB_REPOSITORY_OWNER_ID: '5678', GITHUB_SHA: h.git.sourceRevision,
+    GITHUB_WORKFLOW_SHA: h.git.sourceRevision, GITHUB_WORKFLOW_REF: profile.application.repository + '/' + profile.workflow.path + '@refs/heads/master',
+    GITHUB_REF: 'refs/heads/master', GITHUB_EVENT_NAME: 'workflow_dispatch', ACTIONS_ID_TOKEN_REQUEST_URL: 'https://synthetic.invalid',
+    GOOGLE_OAUTH_ACCESS_TOKEN: 'synthetic-in-memory-token', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1' }
+  const result = await executeOwnerStage({ stage: 'prepare', capsuleRef: intentRef.uri, capsuleSha256: intentRef.sha256,
+    profile, transport: h.input.transport, environment, validateIntent: () => {},
+    verifyRoutineRelease: async ({ intent, values, service }) => verifyRoutineRelease({ ...h.input, intent, values, service }) })
+  assert.equal(result.value.facts.routine.smokeRotationContinuation.evidenceScope, 'OWNER_SEALED_APPLIED_ROTATION_REUSE')
+  assert.deepEqual(result.value.facts.prerequisiteRefs.infra, h.input.intent.infraReceiptRef)
+  h.objects.get(h.controlUri).metadata.generation = '18'
+  await assert.rejects(() => executeOwnerStage({ stage: 'prepare', capsuleRef: intentRef.uri, capsuleSha256: intentRef.sha256,
+    profile, transport: h.input.transport, environment, validateIntent: () => {},
+    verifyRoutineRelease: async ({ intent, values, service }) => verifyRoutineRelease({ ...h.input, intent, values, service }) }), /SMOKE_REUSE_RECEIPT_INVALID/u)
+})
+
+test('reuse CLI takes only exact own refs, permits bounded Principal recovery and excludes mutation modes', async () => {
+  const h = await smokeReuseHarness()
+  const arg = '--infra-reuse-ref=' + h.input.intent.infraReceiptRef.uri + '#sha256=' + h.input.intent.infraReceiptRef.sha256
+  const proof = '--principal-only-recovery-ref=gs://' + bucket + '/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/' + newSource + '.json#sha256=' + '1'.repeat(64)
+  assert.ok(parseDeployProductionArgs([arg, proof]).principalOnlyRecoveryRef)
+  assert.equal(parsePrerequisiteProducerArgs(['--stage', 'infra-reuse', '--release-id', 'REUSE-001', '--input', 'output/dev-012/inputs/reuse.json']).stage, 'infra-reuse')
+  for (const args of [[arg, arg], [arg, '--dev014-activate'], [arg, '--smoke-rotation-ref=' + h.rotationRef.uri + '#sha256=' + h.rotationRef.sha256],
+    [arg.replace('orgmaster-release', 'aipdm-release')], [arg.replace('app-infra-reuse.json', 'app-infra.json')]]) assert.throws(() => parseDeployProductionArgs(args))
+  await assert.rejects(() => verifyDeployProductionRelease({ options: parseDeployProductionArgs(['--check']), ...h.input }), /SMOKE_REUSE_REF_REQUIRED/u)
+})
+
+test('reuse fails closed for wrong source, owner, seal, original receipt, numeric, baseline and protected source lock', async () => {
+  for (const change of [{ ownerApplicationId: 'ai-pdm' }, { sourceRevision: newSource }, { sourceSha256: '0'.repeat(64) },
+    { reusedSourceRevision: 'f'.repeat(40) }, { mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' },
+    { candidateSmokeRefreshTokenSecretVersion: '9' }, { stateSerial: 7 }, { appliedObservedAt: '2026-10-05T00:00:00Z' },
+    { migrationRunnerDigest: profile.artifact.migrationRunnerUri + '@sha256:' + 'f'.repeat(64) },
+    { baselineIntentRef: { uri: 'gs://' + bucket + '/receipts/wrong.json', sha256: '1'.repeat(64) } }]) {
+    const h = await smokeReuseHarness(); h.select({ ...h.reuse, ...change }, true)
+    await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }))
+    assert.equal(h.requests.length, 0)
+  }
+  const forged = await smokeReuseHarness(); forged.select({ ...forged.reuse, receiptSha256: '0'.repeat(64) })
+  await assert.rejects(() => verifyRoutineRelease(forged.input), /SMOKE_REUSE_RECEIPT_INVALID/u)
+  const dirty = await smokeReuseHarness(); dirty.input.values.sourceLock.clean = false
+  await assert.rejects(() => verifyRoutineRelease(dirty.input), /SMOKE_REUSE_SOURCE_INVALID/u)
+  for (const defect of ['missing', 'uid', 'templateHash', 'servingImage']) {
+    const h = await smokeReuseHarness(); const value = structuredClone(h.reuse)
+    if (defect === 'missing') delete value.liveTemplates
+    if (defect === 'uid') delete value.liveTemplates.migrationJob.expectedUid
+    if (defect === 'templateHash') value.liveTemplates.abortController.expectedTemplateSha256 = '0'.repeat(64)
+    if (defect === 'servingImage') value.liveTemplates.abortController.servingImageDigest = value.migrationRunnerDigest
+    h.select(value, true)
+    h.input.transport.request = () => assert.fail('prepare proof validation must not use ungranted provider metadata')
+    await assert.rejects(() => verifyRoutineRelease(h.input), /SMOKE_REUSE_RECEIPT_INVALID|CONTROLLER_IMAGE_RESOLUTION_INVALID/u)
+  }
+})
+
+test('reuse construction rejects full-address/state/output drift and changed copied executable or infrastructure', async () => {
+  for (const defect of ['missing', 'duplicate', 'extra', 'serial', 'lineage', 'manifest', 'workflow', 'executable', 'tree']) {
+    const h = await smokeReuseHarness()
+    if (defect === 'missing') h.state.values.root_module.resources.pop()
+    if (defect === 'duplicate') h.state.values.root_module.resources.push(h.state.values.root_module.resources[0])
+    if (defect === 'extra') h.state.values.root_module.resources.push({ mode: 'managed', address: 'google_secret_manager_secret.sibling' })
+    if (defect === 'serial') h.stateMeta.serial++
+    if (defect === 'lineage') h.stateMeta.lineage = 'other'
+    if (defect === 'manifest') h.manifest.controller_image_digest = 'sibling'
+    if (defect === 'workflow') h.state.values.root_module.resources.find((row) => row.address === 'google_workflows_workflow.candidate_smoke[0]').values.source_contents += '\n'
+    if (defect === 'executable') h.sourceEdits.set(h.git.sourceRevision + ':scripts/lib/dev012-production-migration-runner.mjs', Buffer.from('changed'))
+    if (defect === 'tree') h.constructorInput.readInfrastructureTree = (_root, revision) => Buffer.from(revision)
+    await assert.rejects(() => buildSmokeInfraReuseReceipt(h.constructorInput))
+  }
+})
+
+test('reuse refuses aborted control/terminal/rollback joins and control or provider CAS drift', async () => {
+  for (const defect of ['control', 'terminal', 'rollback', 'generation', 'workflowRevision', 'secret']) {
+    const h = await smokeReuseHarness()
+    if (defect === 'control') h.setControl({ previousRevision: 'wrong-revision' })
+    if (defect === 'terminal' || defect === 'rollback') {
+      const uri = h.failedPaths[defect], value = structuredClone(h.objects.get(uri).value)
+      value.facts.previousRevision = 'wrong-revision'
+      const { receiptSha256: _seal, ...core } = value
+      h.put(uri, { ...core, receiptSha256: sha256(canonicalize(core)) })
+    }
+    if (defect === 'generation') {
+      const read = h.input.transport.readBytes.bind(h.input.transport); let count = 0
+      h.input.transport.readBytes = async (uri) => { const row = await read(uri); return uri === h.controlUri ? { ...row, metadata: { generation: String(17 + count++) } } : row }
+    }
+    if (defect === 'workflowRevision') {
+      const request = h.input.transport.request; let count = 0
+      h.input.transport.request = async (url) => { const value = await request(url); return url.includes('workflows.googleapis.com') ? { ...value, revisionId: String(count++) } : value }
+    }
+    if (defect === 'secret') h.secret.state = 'DISABLED'
+    await assert.rejects(() => buildSmokeInfraReuseReceipt({ ...h.constructorInput, transport: h.input.transport }))
+  }
+  const h = await smokeReuseHarness(); h.objects.get(h.controlUri).metadata.generation = '18'
+  await assert.rejects(() => verifyRoutineRelease(h.input), /SMOKE_REUSE_RECEIPT_INVALID/u)
+})
+
+test('reuse operator rechecks provider state and exact Workflow revision after immutable-chain validation', async () => {
+  const state = await smokeReuseHarness(); state.stateMeta.serial++
+  await assert.rejects(() => verifyDeployProductionRelease({ options: state.options, ...state.input }), /SMOKE_REUSE_STATE_DRIFT/u)
+  const workflow = await smokeReuseHarness(); workflow.workflow.revisionId = 'new-provider-revision'
+  await assert.rejects(() => verifyDeployProductionRelease({ options: workflow.options, ...workflow.input }), /SMOKE_REUSE_PROVIDER_CAS_CHANGED/u)
+  assert.ok(workflow.requests.every((url) => !url.includes(':access')))
+})
+
+test('operator native reuse verifies every live Job/controller template field, including command, SQL, environment, Secret and unexpected fields', async () => {
+  for (const defect of ['image', 'identity', 'command', 'args', 'sql', 'env', 'secret', 'timeout', 'scaling', 'unknown', 'etag', 'uid', 'generation']) {
+    const h = await smokeReuseHarness()
+    if (defect === 'image') h.job.template.template.containers[0].image = manifestDigest('f')
+    if (defect === 'identity') h.job.template.template.serviceAccount = profile.target.runtimeServiceAccount
+    if (defect === 'command') h.job.template.template.containers[0].command = ['sh']
+    if (defect === 'args') h.job.template.template.containers[0].args = ['--dangerous']
+    if (defect === 'sql') h.job.template.template.volumes[0].cloudSqlInstance.instances = ['sibling:region:instance']
+    if (defect === 'env') h.job.template.template.containers[0].env.push({ name: 'NODE_OPTIONS', value: '--require=malicious' })
+    if (defect === 'secret') h.controller.template.containers[0].env[0].valueSource.secretKeyRef.version = '2'
+    if (defect === 'timeout') h.controller.template.timeout = '61s'
+    if (defect === 'scaling') h.controller.template.scaling.maxInstanceCount = 2
+    if (defect === 'unknown') h.controller.template.injectedSecurityConfiguration = 'unexpected'
+    if (defect === 'etag') h.job.etag = 'job-e2'
+    if (defect === 'uid') h.controller.uid = 'replacement-uid'
+    if (defect === 'generation') { h.job.generation = '3'; h.job.observedGeneration = '3' }
+    await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }), /SMOKE_REUSE_(LIVE_TEMPLATE_DRIFT|PROVIDER_CAS_CHANGED)/u)
+  }
+  function manifestDigest(char) { return profile.artifact.migrationRunnerUri + '@sha256:' + char.repeat(64) }
+  const h = await smokeReuseHarness()
+  assert.throws(() => smokeInfraTemplateProjection({ secret: 'projects/other/secrets/own' }, profile), /SMOKE_REUSE_TEMPLATE_INVALID/u)
+  assert.throws(() => smokeInfraTemplateProjection({ env: [{ name: 'DUP' }, { name: 'DUP' }] }, profile), /SMOKE_REUSE_TEMPLATE_INVALID/u)
+})
+
+test('reuse refuses an old or unready controller serving revision/image and incomplete traffic despite a matching latest template', async () => {
+  for (const defect of ['traffic', 'status', 'tag', 'created', 'image', 'ready']) {
+    const h = await smokeReuseHarness()
+    if (defect === 'traffic') h.controller.traffic = [{ type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', percent: 100, revision: 'old-controller' }]
+    if (defect === 'status') h.controller.trafficStatuses = []
+    if (defect === 'tag') h.controller.trafficStatuses[0].tag = 'unreviewed'
+    if (defect === 'created') h.controller.latestCreatedRevision = h.controller.name + '/revisions/new-unready-controller'
+    if (defect === 'image') h.controllerRevision.containers[0].image = h.job.template.template.containers[0].image
+    if (defect === 'ready') h.controllerRevision.conditions[0].state = 'CONDITION_FAILED'
+    await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }), /SMOKE_REUSE_CONTROLLER_SERVING_INVALID|CONTROLLER_IMAGE_RESOLUTION_INVALID|CONTROLLER_MANIFEST_READ_FAILED/u)
+  }
+})
+
+test('OCI controller index resolves only its proven amd64 child and native prepare revalidates raw manifests offline', async () => {
+  const h = await smokeReuseHarness({ oci: true })
+  const controller = h.reuse.liveTemplates.abortController
+  assert.notEqual(controller.servingImageDigest, h.reuse.controllerImageDigest)
+  assert.equal(controller.servingImageResolution.mode, 'OCI_INDEX_LINUX_AMD64')
+  assert.equal((await verifyDeployProductionRelease({ options: h.options, ...h.input })).migrationDisposition, 'UNCHANGED_VERIFIED')
+  h.input.transport.request = () => assert.fail('prepare cannot add provider GET')
+  h.input.transport.readControllerImageResolution = () => assert.fail('prepare cannot add registry GET')
+  assert.equal((await verifyRoutineRelease(h.input)).smokeRotationContinuation.evidenceScope, 'OWNER_SEALED_APPLIED_ROTATION_REUSE')
+  const corrupted = structuredClone(h.reuse)
+  corrupted.liveTemplates.abortController.servingImageResolution.childManifest.rawBytesBase64 = Buffer.from('wrong child').toString('base64')
+  h.select(corrupted, true)
+  await assert.rejects(() => verifyRoutineRelease(h.input), /CONTROLLER_IMAGE_RESOLUTION_INVALID/u)
+})
 
 test('ordinary CLI without an option preserves the original baseline and does not read smoke metadata', async () => {
   const h = harness()

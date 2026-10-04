@@ -4,11 +4,13 @@ import path from 'node:path'
 
 import { assertRuntimeConfig, buildRuntimeConfig, canonicalize, sha256 } from './dev012-owner-release-runtime.mjs'
 import { assertPreparePrerequisites } from './dev012-owner-stage-executor.mjs'
+import { buildSmokeInfraReuseReceipt } from './dev057-smoke-rotation-continuation.mjs'
+import { readRoutineBaseline } from './dev040-routine-release.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
 const RELEASE_ID = /^[A-Z0-9][A-Z0-9-]{5,63}$/u
-const STAGES = new Set(['source-freeze', 'runtime-config', 'release-intent'])
+const STAGES = new Set(['source-freeze', 'runtime-config', 'infra-reuse', 'release-intent'])
 
 function fail(code, detail = '') {
   const error = new Error(detail ? `${code}:${detail}` : code)
@@ -147,7 +149,7 @@ async function readRef(transport, ref, profile) {
   return (await transport.readJson(ref, profile.artifact.releaseBucket, ['receipts'])).value
 }
 
-export async function executePrerequisiteProducer({ stage, releaseId, input, profile, root, transport, createSourceIdentity, buildMigrationBundle, validateIntent, observedAt = new Date().toISOString(), gitReader = readGitAuthority }) {
+export async function executePrerequisiteProducer({ stage, releaseId, input, profile, root, transport, createSourceIdentity, buildMigrationBundle, validateIntent, observedAt = new Date().toISOString(), gitReader = readGitAuthority, readSourceFile, readInfrastructureTree, terraformReader }) {
   const uri = (name) => `gs://${profile.artifact.releaseBucket}/receipts/releases/${releaseId}/${name}.json`
   if (stage === 'source-freeze') {
     const git = gitReader(root, profile)
@@ -159,6 +161,24 @@ export async function executePrerequisiteProducer({ stage, releaseId, input, pro
     const sourceLock = await readRef(transport, input.sourceLockRef, profile)
     const value = buildRuntimeConfigReceipt({ profile, releaseId, sourceLock, plainEnvironment: input.plainEnvironment, secretVersions: input.secretVersions, observedAt })
     return transport.putJson(uri('runtime-config'), value, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
+  }
+  if (stage === 'infra-reuse') {
+    if (input?.schemaVersion !== 'jenfu.dev012.app-infra-reuse-input.v1' ||
+        Object.keys(input).sort().join(',') !== 'baselineIntentRef,existingInfraReceiptRef,schemaVersion,sourceLockRef') fail('INFRA_REUSE_INPUT_INVALID')
+    const sourceLock = await readRef(transport, input.sourceLockRef, profile)
+    const git = gitReader(root, profile)
+    if (git.clean !== true || git.branch !== profile.application.branch || git.remoteRevision !== git.sourceRevision ||
+        git.sourceRevision !== sourceLock.sourceRevision || git.sourceTree !== sourceLock.sourceTree ||
+        sha256(await createSourceIdentity(git.sourceRevision)) !== sourceLock.sourceSha256) fail('SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE')
+    exactRef(input.existingInfraReceiptRef, profile)
+    exactRef(input.baselineIntentRef, profile)
+    const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: input.baselineIntentRef })
+    const value = await buildSmokeInfraReuseReceipt({ root, profile, transport, releaseId, sourceLock, sourceLockRef: input.sourceLockRef,
+      baselineIntentRef: input.baselineIntentRef, baseline, rotationRef: input.existingInfraReceiptRef, observedAt,
+      readSourceFile, readInfrastructureTree, terraformReader })
+    const currentGit = gitReader(root, profile)
+    if (canonicalize(git) !== canonicalize(currentGit) || sha256(await createSourceIdentity(currentGit.sourceRevision)) !== sourceLock.sourceSha256) fail('SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE')
+    return transport.putJson(uri('app-infra-reuse'), value, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
   }
   if (stage === 'release-intent') {
     const fields = { sourceLock: 'sourceLockRef', authorization: 'authorizationPolicyRef', readiness: 'readinessReceiptRef', foundation: 'foundationReceiptRef', infra: 'infraReceiptRef', runtimeConfig: 'runtimeConfigRef' }

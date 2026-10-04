@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 import { crc32cBase64 } from './lib/dev012-production-migration-runner.mjs'
-import { assertRuntimeConfig, buildRuntimeConfig, createOwnerTransport } from './lib/dev012-owner-release-runtime.mjs'
+import { assertControllerImageResolutionProof, assertRuntimeConfig, buildRuntimeConfig, createOwnerTransport, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 
 const H40 = 'a'.repeat(40)
 const H64 = 'b'.repeat(64)
@@ -19,6 +19,90 @@ const profile = {
 }
 
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } })
+
+function controllerResolutionHarness({ changeIndex = () => {}, childMediaType = 'application/vnd.oci.image.manifest.v1+json' } = {}) {
+  const owner = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
+  const imageUri = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller'
+  const child = { schemaVersion: 2, mediaType: childMediaType, config: { digest: 'sha256:' + 'e'.repeat(64) },
+    layers: [{ digest: 'sha256:' + 'f'.repeat(64) }] }
+  const childBytes = Buffer.from(JSON.stringify(child) + '\n')
+  const index = { schemaVersion: 2, mediaType: 'application/vnd.oci.image.index.v1+json', manifests: [{
+    digest: 'sha256:' + sha256(childBytes), mediaType: childMediaType, size: childBytes.length, platform: { os: 'linux', architecture: 'amd64' } }] }
+  changeIndex(index)
+  const parentBytes = Buffer.from(JSON.stringify(index) + '\n')
+  const parentImage = imageUri + '@sha256:' + sha256(parentBytes), servingImage = imageUri + '@sha256:' + sha256(childBytes)
+  const url = (image) => 'https://asia-east1-docker.pkg.dev/v2/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller/manifests/' + image.split('@')[1]
+  const replies = new Map([[url(parentImage), { bytes: parentBytes, mediaType: index.mediaType, contentDigest: parentImage.split('@')[1] }],
+    [url(servingImage), { bytes: childBytes, mediaType: child.mediaType, contentDigest: servingImage.split('@')[1] }]])
+  const requests = []
+  const transport = createOwnerTransport({ token: 'controller-synthetic-secret-token', fetchImpl: async (uri, options) => {
+    requests.push({ uri, method: options.method, redirect: options.redirect })
+    assert.equal(options.method, 'GET')
+    assert.equal(options.redirect, 'error')
+    const value = replies.get(uri)
+    assert.ok(value, 'Only exact own parent/child manifest URLs may be requested')
+    if (value.error) throw new Error('controller-synthetic-secret-token')
+    return new Response(value.bytes, { status: value.status ?? 200, headers: { 'content-type': value.mediaType,
+      'docker-content-digest': value.contentDigest, ...(value.status === 302 ? { location: 'https://sibling.invalid' } : {}) } })
+  } })
+  return { owner, parentImage, servingImage, transport, requests, replies, url }
+}
+
+test('controller immutable direct image proof needs no registry GET and rejects wrong owner/repository/tag before credentials are used', async () => {
+  const h = controllerResolutionHarness()
+  const proof = await h.transport.readControllerImageResolution(h.owner, h.parentImage, h.parentImage)
+  assert.equal(proof.mode, 'DIRECT_DIGEST_MATCH')
+  assert.equal(proof.parentManifest, null)
+  assert.equal(h.requests.length, 0)
+  for (const image of [h.parentImage.replace('orgmaster-release', 'platform-release'), h.parentImage.replace('orgmaster-abort-controller@', 'orgmaster@'),
+    h.parentImage.replace('@sha256:', ':latest@sha256:'), h.parentImage.replace('jenfu-platform-prod/', 'jenfu-platform-nonprod/')])
+    await assert.rejects(() => h.transport.readControllerImageResolution(h.owner, image, h.servingImage), /CONTROLLER_IMAGE_RESOLUTION_INVALID/u)
+  await assert.rejects(() => h.transport.readControllerImageResolution({ ...h.owner, application: { ...h.owner.application, id: 'platform' } }, h.parentImage, h.servingImage), /CONTROLLER_IMAGE_RESOLUTION_INVALID/u)
+  assert.equal(h.requests.length, 0)
+})
+
+test('controller OCI index proves raw parent and unique amd64 child bytes with matching registry headers and offline membership', async () => {
+  const h = controllerResolutionHarness()
+  const proof = await h.transport.readControllerImageResolution(h.owner, h.parentImage, h.servingImage)
+  assert.equal(proof.mode, 'OCI_INDEX_LINUX_AMD64')
+  assert.equal(proof.parentManifest.sha256, h.parentImage.split('@sha256:')[1])
+  assert.equal(proof.childManifest.sha256, h.servingImage.split('@sha256:')[1])
+  assert.equal(h.requests.length, 2)
+  assert.ok(!JSON.stringify(proof).includes('controller-synthetic-secret-token'))
+  assert.equal(assertControllerImageResolutionProof({ profile: h.owner, parentImage: h.parentImage, servingImage: h.servingImage, proof }), proof)
+  const changed = structuredClone(proof); changed.childManifest.rawBytesBase64 = Buffer.from('different bytes').toString('base64')
+  assert.throws(() => assertControllerImageResolutionProof({ profile: h.owner, parentImage: h.parentImage, servingImage: h.servingImage, proof: changed }), /CONTROLLER_IMAGE_RESOLUTION_INVALID/u)
+})
+
+test('controller registry GET rejects raw hash/header/media/redirect/transport faults without exposing credentials', async () => {
+  for (const defect of ['parentHash', 'childHash', 'header', 'media', 'redirect', 'transport', 'bodySize']) {
+    const h = controllerResolutionHarness()
+    const parent = h.replies.get(h.url(h.parentImage)), child = h.replies.get(h.url(h.servingImage))
+    if (defect === 'parentHash') parent.bytes = Buffer.from('wrong parent')
+    if (defect === 'childHash') child.bytes = Buffer.from('wrong child')
+    if (defect === 'header') child.contentDigest = 'sha256:' + '0'.repeat(64)
+    if (defect === 'media') parent.mediaType = 'text/html'
+    if (defect === 'redirect') parent.status = 302
+    if (defect === 'transport') parent.error = true
+    if (defect === 'bodySize') parent.bytes = Buffer.alloc(4 * 1024 * 1024 + 1)
+    await assert.rejects(() => h.transport.readControllerImageResolution(h.owner, h.parentImage, h.servingImage), (error) => {
+      assert.match(error.code, /^CONTROLLER_(IMAGE_RESOLUTION_INVALID|MANIFEST_READ_FAILED)$/u)
+      assert.ok(!error.message.includes('controller-synthetic-secret-token'))
+      return true
+    })
+  }
+})
+
+test('controller OCI resolution rejects wrong size, ambiguous or foreign platform descriptors, wrong child and nested index', async () => {
+  for (const changeIndex of [(index) => { index.manifests[0].size++ }, (index) => { index.manifests.push({ ...index.manifests[0] }) },
+    (index) => { index.manifests[0].platform.architecture = 'arm64' }, (index) => { index.manifests[0].platform.os = 'windows' },
+    (index) => { index.manifests[0].platform.variant = 'unknown' }, (index) => { index.manifests[0].digest = 'sha256:' + '0'.repeat(64) }]) {
+    const h = controllerResolutionHarness({ changeIndex })
+    await assert.rejects(() => h.transport.readControllerImageResolution(h.owner, h.parentImage, h.servingImage), /CONTROLLER_IMAGE_RESOLUTION_INVALID/u)
+  }
+  const nested = controllerResolutionHarness({ childMediaType: 'application/vnd.oci.image.index.v1+json' })
+  await assert.rejects(() => nested.transport.readControllerImageResolution(nested.owner, nested.parentImage, nested.servingImage), /CONTROLLER_IMAGE_RESOLUTION_INVALID/u)
+})
 
 test('production runner is pinned, non-root, and removes the unused vulnerable OS zlib', () => {
   const dockerfile = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8')

@@ -63,6 +63,61 @@ export function assertImmutableRef(value, bucket, prefixes = ['receipts']) {
   return value
 }
 
+const CONTROLLER_RESOLUTION_SCHEMA = 'jenfu.dev057.controller-image-resolution.v1'
+const INDEX_MEDIA = new Set(['application/vnd.oci.image.index.v1+json', 'application/vnd.docker.distribution.manifest.list.v2+json'])
+const MANIFEST_MEDIA = new Set(['application/vnd.oci.image.manifest.v1+json', 'application/vnd.docker.distribution.manifest.v2+json'])
+const MANIFEST_LIMIT = 4 * 1024 * 1024
+
+function controllerManifestBinding(profile, image) {
+  if (profile.application?.id !== 'orgmaster' || profile.application.repository !== 'jedchang0308-jenfu/OrgMaster' ||
+      profile.target?.projectId !== 'jenfu-platform-prod' || profile.target.region !== 'asia-east1' ||
+      profile.artifact?.repository !== 'orgmaster-release' || profile.artifact.releaseBucket !== 'jenfu-platform-prod-orgmaster-release') fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+  const host = profile.target.region + '-docker.pkg.dev'
+  const imagePath = profile.target.projectId + '/' + profile.artifact.repository + '/orgmaster-abort-controller'
+  const prefix = host + '/' + imagePath + '@sha256:'
+  if (typeof image !== 'string' || !image.startsWith(prefix) || !H64.test(image.slice(prefix.length))) fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+  return { digest: 'sha256:' + image.slice(prefix.length), uri: 'https://' + host + '/v2/' + imagePath + '/manifests/sha256:' + image.slice(prefix.length) }
+}
+
+function assertControllerManifest(value, binding, mediaTypes) {
+  if (!value || Object.keys(value).sort().join(',') !== 'byteLength,contentDigest,mediaType,rawBytesBase64,sha256,uri' ||
+      value.uri !== binding.uri || value.contentDigest !== binding.digest || value.sha256 !== binding.digest.slice(7) ||
+      !mediaTypes.has(value.mediaType) || !Number.isSafeInteger(value.byteLength) || value.byteLength < 1 || value.byteLength > MANIFEST_LIMIT ||
+      typeof value.rawBytesBase64 !== 'string' || value.rawBytesBase64.length > Math.ceil(MANIFEST_LIMIT / 3) * 4) fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+  const bytes = Buffer.from(value.rawBytesBase64, 'base64')
+  if (bytes.toString('base64') !== value.rawBytesBase64 || bytes.length !== value.byteLength || sha256(bytes) !== value.sha256) fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+  let document
+  try { document = JSON.parse(bytes.toString('utf8')) } catch { fail('CONTROLLER_IMAGE_RESOLUTION_INVALID') }
+  if (document?.schemaVersion !== 2 || document.mediaType !== value.mediaType) fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+  return document
+}
+
+// Content-addressed raw manifests let prepare verify membership offline; no
+// provider credentials or a caller-supplied resolved-image exemption are used.
+export function assertControllerImageResolutionProof({ profile, parentImage, servingImage, proof }) {
+  const parent = controllerManifestBinding(profile, parentImage), child = controllerManifestBinding(profile, servingImage)
+  const fields = ['schemaVersion', 'ownerApplicationId', 'projectId', 'region', 'repository', 'parentImage', 'servingImage',
+    'mode', 'parentManifest', 'childManifest', 'credentialMaterialPresent']
+  if (!proof || Object.keys(proof).sort().join(',') !== fields.sort().join(',') || proof.schemaVersion !== CONTROLLER_RESOLUTION_SCHEMA ||
+      proof.ownerApplicationId !== profile.application.id || proof.projectId !== profile.target.projectId || proof.region !== profile.target.region ||
+      proof.repository !== profile.artifact.repository || proof.parentImage !== parentImage || proof.servingImage !== servingImage ||
+      proof.credentialMaterialPresent !== false) fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+  if (parentImage === servingImage) {
+    if (proof.mode !== 'DIRECT_DIGEST_MATCH' || proof.parentManifest !== null || proof.childManifest !== null) fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+    return proof
+  }
+  if (proof.mode !== 'OCI_INDEX_LINUX_AMD64') fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+  const index = assertControllerManifest(proof.parentManifest, parent, INDEX_MEDIA)
+  const manifest = assertControllerManifest(proof.childManifest, child, MANIFEST_MEDIA)
+  if (!Array.isArray(index.manifests)) fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+  const descriptors = index.manifests.filter((row) => row?.platform?.os === 'linux' && row.platform.architecture === 'amd64')
+  if (descriptors.length !== 1 || descriptors[0].digest !== child.digest || descriptors[0].size !== proof.childManifest.byteLength ||
+      descriptors[0].mediaType !== proof.childManifest.mediaType || Object.keys(descriptors[0].platform).sort().join(',') !== 'architecture,os' ||
+      !/^sha256:[a-f0-9]{64}$/u.test(manifest.config?.digest ?? '') || !Array.isArray(manifest.layers) ||
+      manifest.layers.some((row) => !/^sha256:[a-f0-9]{64}$/u.test(row?.digest ?? ''))) fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+  return proof
+}
+
 export function assertProtectedGitHubContext(profile, intent, environment) {
   const expectedRef = `refs/heads/${profile.application.branch}`
   const expectedWorkflowRef = `${profile.application.repository}/${profile.workflow.path}@${expectedRef}`
@@ -236,6 +291,56 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     if (response.status === 204) return null
     const text = await response.text()
     return text ? JSON.parse(text) : null
+  }
+
+  async function readControllerImageResolution(profile, parentImage, servingImage) {
+    const parent = controllerManifestBinding(profile, parentImage), child = controllerManifestBinding(profile, servingImage)
+    const read = async (binding, mediaTypes) => {
+      let response
+      try {
+        response = await fetchImpl(binding.uri, { method: 'GET', redirect: 'error', headers: { ...authHeaders,
+          accept: [...mediaTypes].join(',') }, signal: AbortSignal.timeout(30_000) })
+      } catch { fail('CONTROLLER_MANIFEST_READ_FAILED') }
+      if (!response.ok || response.redirected || (response.url && response.url !== binding.uri)) fail('CONTROLLER_MANIFEST_READ_FAILED')
+      const mediaType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
+      const contentDigest = response.headers.get('docker-content-digest')
+      if (!mediaTypes.has(mediaType) || contentDigest !== binding.digest) fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+      const declaredLength = response.headers.get('content-length')
+      if (declaredLength !== null && (!/^[1-9][0-9]*$/u.test(declaredLength) || Number(declaredLength) > MANIFEST_LIMIT)) fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+      let reader, byteLength = 0
+      const chunks = []
+      try {
+        reader = response.body?.getReader()
+        if (!reader) fail('CONTROLLER_MANIFEST_READ_FAILED')
+        while (true) {
+          const next = await reader.read()
+          if (next.done) break
+          byteLength += next.value.byteLength
+          if (byteLength > MANIFEST_LIMIT) {
+            await reader.cancel()
+            fail('CONTROLLER_IMAGE_RESOLUTION_INVALID')
+          }
+          chunks.push(Buffer.from(next.value))
+        }
+      } catch (error) {
+        if (error instanceof OwnerReleaseError) throw error
+        fail('CONTROLLER_MANIFEST_READ_FAILED')
+      } finally { reader?.releaseLock() }
+      const bytes = Buffer.concat(chunks, byteLength)
+      const value = { uri: binding.uri, mediaType, contentDigest, byteLength: bytes.length,
+        sha256: sha256(bytes), rawBytesBase64: bytes.toString('base64') }
+      assertControllerManifest(value, binding, mediaTypes)
+      return value
+    }
+    const proof = { schemaVersion: CONTROLLER_RESOLUTION_SCHEMA, ownerApplicationId: profile.application.id,
+      projectId: profile.target.projectId, region: profile.target.region, repository: profile.artifact.repository,
+      parentImage, servingImage, mode: parentImage === servingImage ? 'DIRECT_DIGEST_MATCH' : 'OCI_INDEX_LINUX_AMD64',
+      parentManifest: null, childManifest: null, credentialMaterialPresent: false }
+    if (parentImage !== servingImage) {
+      proof.parentManifest = await read(parent, INDEX_MEDIA)
+      proof.childManifest = await read(child, MANIFEST_MEDIA)
+    }
+    return assertControllerImageResolutionProof({ profile, parentImage, servingImage, proof })
   }
 
   async function readOwnerRun(profile, ownerRunRef) {
@@ -1075,7 +1180,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     return request(`https://pubsub.googleapis.com/v1/projects/${profile.target.projectId}/topics/${topic}:publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [{ data: Buffer.from(canonicalize(event)).toString('base64'), attributes: { ownerApplicationId: profile.application.id } }] }) })
   }
 
-  return { request, readOwnerRun, readBytes, readJson, putBytes, putJson, waitBuild, getService, assertServiceSettled, getRevision, assertRevisionReady, patchService, createCandidate, candidateOrigin, entrypointSnapshot, assertCanonicalEntrypoint, configureEntrypoint, restoreEntrypoint, effectiveRevision, setTraffic, activatePrincipalOnly, removeCandidateTag, runMigrationJob, createBuild, readArtifactImage, listOccurrences, exportSbom, waitArtifactEvidence, runHttpSuite, runAuthenticatedSmoke, runInternalCandidateSmoke, publishIncident, now }
+  return { request, readControllerImageResolution, readOwnerRun, readBytes, readJson, putBytes, putJson, waitBuild, getService, assertServiceSettled, getRevision, assertRevisionReady, patchService, createCandidate, candidateOrigin, entrypointSnapshot, assertCanonicalEntrypoint, configureEntrypoint, restoreEntrypoint, effectiveRevision, setTraffic, activatePrincipalOnly, removeCandidateTag, runMigrationJob, createBuild, readArtifactImage, listOccurrences, exportSbom, waitArtifactEvidence, runHttpSuite, runAuthenticatedSmoke, runInternalCandidateSmoke, publishIncident, now }
 }
 
 export function stageReceipt({ profile, intent, stage, previousReceiptRef = null, facts, observedAt }) {

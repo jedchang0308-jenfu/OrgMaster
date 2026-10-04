@@ -1,4 +1,5 @@
 import { assertPrincipalOnlyRecoveryBinding, assertPrincipalOnlyRecoveryReadback, principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
+import { assertSmokeInfraReuseReceipt } from './dev057-smoke-rotation-continuation.mjs'
 import { spawnSync } from 'node:child_process'
 import { gzipSync } from 'node:zlib'
 import { assertImmutableRef, assertProtectedGitHubContext, assertRuntimeConfig, candidateTagUriMatches, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
@@ -323,6 +324,8 @@ export function assertPreparePrerequisites({ intent, profile, values }) {
   const project = (value) => value.projectId ?? value.targetProjectId
   if ([values.readiness, values.foundation, values.infra, values.runtimeConfig].some((value) => project(value) !== profile.target.projectId)) fail('PREPARE_TARGET_MISMATCH')
   const runtime = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
+  if (values.infra.schemaVersion === 'jenfu.dev012.app-infra-reuse-receipt.v1' || values.infra.mutationProfile === 'APP_INFRA_REUSE')
+    assertSmokeInfraReuseReceipt({ receipt: values.infra, profile, sourceLock: values.sourceLock, intent })
   assertRuntimeConfig(profile, runtime)
   const controlledEnvironmentAuthority = assertControlledEnvironmentAuthority({ intent, profile, values, runtime })
   const migrationRunnerDigest = values.infra.migrationRunnerDigest ?? values.infra.artifacts?.migrationRunnerDigest
@@ -490,7 +493,8 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const existing = await optionalNamedJson(transport, paths.prepare, profile)
     if (existing) {
       assertStage(existing.value, profile, intent, 'prepare')
-      return existing
+      const infra = (await transport.readJson(intent.infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])).value
+      if (infra.schemaVersion !== 'jenfu.dev012.app-infra-reuse-receipt.v1' && infra.mutationProfile !== 'APP_INFRA_REUSE') return existing
     }
     const names = { sourceLock: 'sourceLockRef', authorization: 'authorizationPolicyRef', readiness: 'readinessReceiptRef', foundation: 'foundationReceiptRef', infra: 'infraReceiptRef', runtimeConfig: 'runtimeConfigRef' }
     const entries = await Promise.all(Object.entries(names).map(async ([name, field]) => [name, (await transport.readJson(intent[field], profile.artifact.releaseBucket, ['receipts'])).value]))
@@ -517,6 +521,10 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION' && routine.releaseMode !== 'DEV057_CUTOVER_SOURCE_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if (existing) {
+      if (canonicalize(existing.value.facts.prerequisiteRefs) !== canonicalize(Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])))) fail('PREPARE_PREREQUISITE_INVALID')
+      return existing
+    }
     return writeStage(transport, paths, profile, intent, 'prepare', null, { prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])), previousRevision: intent.previousRevision, ...(recovery ? { principalOnlyRecovery: recovery } : {}), runtimeServiceAccount: derived.runtimeConfig.runtimeServiceAccount, migrationRunnerDigest: derived.migrationRunnerDigest, routine, entrypointBaseline: transport.entrypointSnapshot(service), remainingHumanAction: 0 })
   }
 
