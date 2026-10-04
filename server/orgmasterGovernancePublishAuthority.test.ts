@@ -110,12 +110,15 @@ describe('governance publication authority', () => {
       grant.permissionId === 'permission-orgmaster-governance-publish')).toBe(true)
   })
 
-  it('accepts the currently published publisher and rejects a revoked link', () => {
+  it('accepts a verified publisher without a JSON alias and rejects a withdrawn current grant', () => {
     const document = publishedDocument()
     expect(() => assertCurrentPublicationAuthority(document, actor, now)).not.toThrow()
     const active = document.publishedVersions[0]
     if (active.kind !== 'assignment-governance-v3') throw new Error('fixture version')
-    active.policy.identityLinks[0].status = 'inactive'
+    active.policy.identityLinks = []
+    document.draft.identityLinks = []
+    expect(() => assertCurrentPublicationAuthority(document, actor, now)).not.toThrow()
+    active.policy.roleAssignments[0].status = 'revoked'
     expect(() => assertCurrentPublicationAuthority(document, actor, now))
       .toThrowError(expect.objectContaining<Partial<GovernanceStoreError>>({ code: 'GOVERNANCE_ADMIN_REQUIRED' }))
   })

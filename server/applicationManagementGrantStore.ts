@@ -143,7 +143,7 @@ export async function publishFinancialManagementGrant(root: string, actor: Gover
     }
     document = { ...document, commandReceipts: [...document.commandReceipts, receipt] }
     return { document, reasonCode: 'financial_management_grant_publish', updatedBy: actor.principalId }
-  })
+  }, actor, (document) => assertPrivilegedAdmin(document, actor))
   const receipt = committed.document.commandReceipts.find((entry) => entry.commandId === request.commandId)
   if (!receipt) throw new ApplicationEntitlementError('COMMAND_NOT_OBSERVED')
   return { ...receipt, governanceRevision: committed.revision }

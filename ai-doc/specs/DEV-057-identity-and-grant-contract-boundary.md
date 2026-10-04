@@ -48,6 +48,20 @@ Jed同一已驗Principal可承接已發布的rd／rd_manager／pdm_admin及scope
 
 人類及管理員允許真實AAL1，不使用逐人pilot，不偽造AAL2。Google／GitHub／Cloud／Workspace MFA不變。即使Platform驗證登入成功，OrgMaster仍要自己的app role及治理權限；所有人類protected requests重驗session、epoch、active typed identity、當前role及業務範圍。
 
+### 已驗 Principal 的 own governance decision 與交易責任
+
+正常治理 evaluator、publish／activation 及 UI readiness 以 server verified canonical Principal／Employee 加目前 active published V3 OrgMaster role／permission 判定，不再要求 managed Principal 重複存在於治理 JSON `identityLinks`。session DTO 明列可信 `employeeId`，UI 使用該欄位；空／錯 actor 不能從 URL、body、草稿或 aliases 補成可信身分。JSON identity 與歷史模擬資料保留原用途；Employee-based assignment 可適用於各自已驗 exact pair、且 native eligibility 為同一 Employee 的 Principals，不接受任意 body P／E 作 verified input。other Employee、空 actor及 Principal-target assignment 的不相符 exact P／E仍拒絕；特權 target／admission 與候選 payload 驗證不因此放寬。
+
+generic Financial role／management-grant 與 privileged assignment 的 actor authority 同樣只查 exact active published V3 policy；未發布 draft 的 owner role／management grant／privileged admission 不授權 actor。正常 activation 只切 active policy 時，殘留 draft 也不能恢復已撤回的 actor authority。候選 draft、deny、scope、effective-time、Employee status、organization version、續任與禁止自授權仍依原規則核對。
+
+Cloud SQL mutation 使用同一 runtime client 的 `READ COMMITTED` write transaction，包含目前政策／workspace read、原 published actor decision、既有 024 writer 的 admission→persistence locks 與 governance CAS。writer 取得鎖後重新核對 workspace revision／version；COMMIT 前以 own schema2 session row `FOR SHARE` 核對 exact pair／P／E／epoch／authentication time／AAL、expiry／revocation，再經 native session-principal v2 及 Platform `read_principal_auth_state_v3` 重驗 eligibility、epoch／revoked-before，最後重驗原 published authority 的有效時間。拒絕須 rollback 候選、audit／receipt／outbox，不給 runtime raw singleton、migrator 或跨 owner core ACL。
+
+managed bind／verify、quarantine／admission、workspace withdrawal 與 publication 依既有 common locks 序列化；session revoke 的 own row UPDATE 與 `FOR SHARE` 序列化。Platform epoch 僅經既有版本契約，在該讀取 snapshot 線性化 authentication；不宣稱鎖住 Platform core，亦不宣稱 epoch 在最後授權讀取之後更新能取消已授權的 in-flight commit。
+
+驗證沿既有 unit／API 及 D57-22 真 PostgreSQL 入口：`scripts/qc-dev-047-postgres.mjs --suite=dev057` 的 cross-owner 組合須顯式給 `DEV057_CROSS_OWNER_AI_PDM_ROOT`、`DEV057_PLATFORM_PRODUCER_ROOT` 及 task-owned target。Platform epoch 使用其官方 migrations／既有 008→009 atomic supersession producer 及 010 manifest，記錄來源與 bytes，不能自建仿官方函式。產品測例使用 native managed Principal、無 JSON alias、實際 persisted schema2 UUID session；verified SSO 輸入仍為合成，不冒充 provider SSO 或 Production L4。published CAS／workspace／managed quarantine／admission／session／epoch 撤回的真交錯與寫入先取得 session lock 的反序由原 case 覆蓋，不新增 gate 或 DEV。測例以獨立 autocommit observer 觀察 exact writer／session lock，保留每鎖5秒及原拒絕／零副作用斷言；固定50筆scalar checkpoint由直接stdout傳送，runner只投影 stage／elapsedMs／withdrawal／forStage／status，不保存成功child的完整warnings或identity／DSN。
+
+各 forced race 的 disposable fixture 從當時 current active batch讀回／還原baseline artifacts，不改retired batch或倒退epoch／mapping revision。quarantine及admission所新增lifecycle事件須在common lock內核對exact operation、當時完整 Employee×active application集合、pending及原事件IDs；winner commit／候選拒絕與零副作用證明後，才刪本case新增且整row仍相等的synthetic事件，所有baseline事件保持不變。還原後以consumer typed accounts、own session-principal v2 resolver及actual write actor guard重驗positive再進下一case。這是測試隔離，不冒充真正lifecycle consumer完成或Platform invalidation receipt；正式恢復仍依既有lifecycle契約。
+
 ## Session、錯誤與所有權
 
 只接受正常SSO v2，由 [Platform精確wire及vectors](../../../Jenfu-Platform/ai-doc/specs/DEV-015-authentication-authorization-boundary-refactor.md#principal-implementation-contract)取得verified Principal／pair／Employee／原authentication time／facts／epoch與source expiry。cookie opaque；target expiry取既有app maxAge及source expiry最小值，不能用assertion TTL、不能刷新原authTime。

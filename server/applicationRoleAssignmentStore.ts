@@ -201,7 +201,7 @@ export async function publishFinancialRoleAssignment(root: string, actor: Govern
     }
     document = { ...document, commandReceipts: [...document.commandReceipts, receipt] }
     return { document, reasonCode: 'financial_role_assignment_publish', updatedBy: actor.principalId }
-  })
+  }, actor, (document) => assertFinancialAuthority(document, actor, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH))
   const receipt = committed.document.commandReceipts.find((entry) => entry.commandId === request.commandId)
   if (!receipt) throw new ApplicationEntitlementError('COMMAND_NOT_OBSERVED')
   return { ...receipt, governanceRevision: committed.revision }

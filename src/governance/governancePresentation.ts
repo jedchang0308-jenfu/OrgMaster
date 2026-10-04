@@ -202,12 +202,34 @@ export function sameGlobalRoleAssignment(assignment: GovernanceDraftViewV1['role
   return assignment.employeeId === employeeId && assignment.roleId === roleId && assignment.scope.kind === 'global'
 }
 
-export function governancePublishBlockersV2(draft: GovernanceDocumentViewV2['draft'], principalId: string, organizationVersionId: string | null, at = new Date().toISOString()): GovernancePublishBlocker[] {
+export function governancePublishBlockersV2(
+  draft: GovernanceDocumentViewV2['draft'],
+  actor: { principalId: string; employeeId: string | null },
+  organizationVersionId: string | null,
+  at = new Date().toISOString(),
+): GovernancePublishBlocker[] {
   const blockers: GovernancePublishBlocker[] = []
   if (!organizationVersionId) blockers.push({ code: 'ORGANIZATION_VERSION_REQUIRED', message: '找不到現行組織版本，請重新載入工作區。', section: 'versions' })
-  const links = draft.identityLinks.filter((link) => link.principalId === principalId && activeAt(link.status, link.validFrom, link.validTo, at))
-  if (links.length !== 1) { blockers.push({ code: links.length ? 'IDENTITY_LINK_CONFLICT' : 'IDENTITY_LINK_REQUIRED', message: links.length ? '目前登入身分有多筆有效連結，請先停用重複紀錄。' : '請先把目前登入身分連結到員工。', section: 'identity' }); return blockers }
-  const employeeId = links[0].employeeId; const activeInternalRoles = new Set(draft.applicationRoles.filter((role) => role.applicationId === 'orgmaster' && role.status === 'active').map((role) => role.id)); const assigned = draft.roleAssignments.filter((assignment) => assignment.applicationId === 'orgmaster' && assignment.employeeId === employeeId && assignment.scope.kind === 'global' && activeInternalRoles.has(assignment.roleId) && activeAt(assignment.status, assignment.validFrom, assignment.validTo, at)); const has = (code: string) => { const permission = draft.permissions.find((item) => item.applicationId === 'orgmaster' && item.code === code && item.status === 'active'); if (!permission) return false; const roleIds = new Set(assigned.map((entry) => entry.roleId)); const grants = draft.rolePermissionGrants.filter((grant) => roleIds.has(grant.roleId) && grant.permissionId === permission.id); return !grants.some((grant) => grant.effect === 'deny') && grants.some((grant) => grant.effect === 'allow') }
+  if (!actor.principalId || !actor.employeeId) {
+    blockers.push({ code: 'VERIFIED_EMPLOYEE_REQUIRED', message: '無法確認目前登入員工，請重新登入。', section: 'versions' })
+    return blockers
+  }
+  const activeInternalRoles = new Set(draft.applicationRoles.filter((role) => role.applicationId === 'orgmaster' && role.status === 'active').map((role) => role.id))
+  const assigned = draft.roleAssignments.filter((assignment) => {
+    const subject = assignment as typeof assignment & { subjectKind?: 'employee' | 'principal'; targetPrincipalId?: string | null }
+    return assignment.applicationId === 'orgmaster' && assignment.employeeId === actor.employeeId
+      && (subject.subjectKind === undefined || subject.subjectKind === 'employee'
+        || subject.subjectKind === 'principal' && subject.targetPrincipalId === actor.principalId)
+      && assignment.scope.kind === 'global' && activeInternalRoles.has(assignment.roleId)
+      && activeAt(assignment.status, assignment.validFrom, assignment.validTo, at)
+  })
+  const has = (code: string) => {
+    const permission = draft.permissions.find((item) => item.applicationId === 'orgmaster' && item.code === code && item.status === 'active')
+    if (!permission) return false
+    const roleIds = new Set(assigned.map((entry) => entry.roleId))
+    const grants = draft.rolePermissionGrants.filter((grant) => roleIds.has(grant.roleId) && grant.permissionId === permission.id)
+    return !grants.some((grant) => grant.effect === 'deny') && grants.some((grant) => grant.effect === 'allow')
+  }
   if (!has('orgmaster.governance.manage')) blockers.push({ code: 'GOVERNANCE_MANAGE_REQUIRED', message: '請先指派具備治理管理權限的全域 OrgMaster 角色。', section: 'assignments' })
   if (!has('orgmaster.governance.publish')) blockers.push({ code: 'GOVERNANCE_PUBLISH_REQUIRED', message: '請先指派具備發布權限的全域 OrgMaster 角色。', section: 'assignments' })
   if (draft.roleAssignments.some((assignment) => assignment.applicationId === 'ai-pdm' && assignment.status === 'active' && assignment.effectState !== 'not-synchronized')) blockers.push({ code: 'EXTERNAL_EFFECT_INVALID', message: '外部指派 effect state 無效。', section: 'assignments' })

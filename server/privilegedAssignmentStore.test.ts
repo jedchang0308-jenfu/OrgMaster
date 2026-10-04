@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { issuerFingerprintSha256, principalFingerprintSha256 } from '../src/governance/identityAdmission'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
+import { buildOrganizationSnapshot } from '../src/governance/validation'
 import { privilegedRequestHash } from '../src/governance/privilegedAssignments'
 import { ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
 import { previewPrivilegedAssignment, publishPrivilegedAssignment } from './privilegedAssignmentStore'
@@ -42,6 +43,12 @@ describe('privileged assignment store transaction', () => {
       { id: 'admission-target', identityLinkId: targetLink.id, accountType: 'human_privileged', status: 'active', sharedRetirementState: 'not_applicable', principalFingerprintSha256: principalFingerprintSha256(issuer, targetSubject), issuerFingerprintSha256: issuerFingerprintSha256(issuer), evidenceRefSha256: 'b'.repeat(64), recordedAt },
     ]
     seeded.document.draft.managementGrants = [{ id: 'grant-override', principalId: actorPrincipalId, employeeId: actorEmployeeId, applicationId: 'ai-pdm', capability: 'orgmaster.cross_app_override', status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null, grantedByPrincipalId: 'bootstrap-fixture', reason: 'fixture' }]
+    const { basePolicyVersionId: _base, updatedAt: _updated, ...policy } = structuredClone(seeded.document.draft)
+    seeded.document.publishedVersions.push({ kind: 'assignment-governance-v3', id: 'published-override-fixture',
+      versionNumber: 1, publishedAt: recordedAt, publishedByPrincipalId: actorPrincipalId,
+      publishReason: 'fixture', snapshotHash: 'fixture', effectState: 'not-synchronized',
+      policy, externalRoleCatalogs: [readAiPdmRoleCatalog()], organizationSnapshot: buildOrganizationSnapshot(source) })
+    seeded.document.activePolicyVersionId = 'published-override-fixture'
     await writeFile(getGovernancePaths(root).current, `${JSON.stringify(seeded.document, null, 2)}\n`)
 
     const current = await readGovernanceStore(root)

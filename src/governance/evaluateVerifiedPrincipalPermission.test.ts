@@ -54,14 +54,14 @@ describe('verified principal runtime permission', () => {
     expect(result).toMatchObject({ status: 'allowed', reason: 'ALLOWED_ROLE', principalId: actor.principalId })
   })
 
-  it('does not borrow another principal or employee authorization', () => {
+  it('applies Employee assignments to each verified Principal of that Employee and denies another Employee', () => {
     const document = publishedFixture()
-    expect(evaluateVerifiedPrincipalPermission(document, { principalId: 'principal-other', employeeId: actor.employeeId }, 'orgmaster.governance.manage', options).status).toBe('denied')
-    expect(evaluateVerifiedPrincipalPermission(document, { principalId: actor.principalId, employeeId: 'employee-other' }, 'orgmaster.governance.manage', options).reason).toBe('PRINCIPAL_CONFLICT')
-    const version = document.publishedVersions.find((candidate) => candidate.id === document.activePolicyVersionId)!
-    if (version.kind !== 'assignment-governance-v3') throw new Error('fixture version')
-    version.policy.identityLinks.push(link('conflicting-alias', actor.principalId, 'employee-other'))
-    expect(evaluateVerifiedPrincipalPermission(document, actor, 'orgmaster.governance.manage', options).reason).toBe('PRINCIPAL_CONFLICT')
+    // Both inputs stand for independently verified canonical pairs. Forged P/E are
+    // rejected by native auth/write-actor admission before this pure evaluator.
+    expect(evaluateVerifiedPrincipalPermission(document, { principalId: 'principal-other', employeeId: actor.employeeId }, 'orgmaster.governance.manage', options).status).toBe('allowed')
+    expect(evaluateVerifiedPrincipalPermission(document, { principalId: actor.principalId, employeeId: 'employee-other' }, 'orgmaster.governance.manage', options).status).toBe('denied')
+    expect(evaluateVerifiedPrincipalPermission(document, { principalId: '', employeeId: actor.employeeId }, 'orgmaster.governance.manage', options).status).toBe('denied')
+    expect(evaluateVerifiedPrincipalPermission(document, { principalId: actor.principalId, employeeId: null }, 'orgmaster.governance.manage', options).status).toBe('denied')
   })
 
   it('applies a principal-targeted role only to its target in runtime and publish checks', () => {
@@ -76,12 +76,13 @@ describe('verified principal runtime permission', () => {
     const second = evaluateVerifiedPrincipalPermission(document, { principalId: 'principal-2', employeeId: actor.employeeId }, 'orgmaster.governance.manage', options)
     expect(first.status).toBe('denied')
     expect(second.status).toBe('allowed')
+    expect(evaluateVerifiedPrincipalPermission(document, { principalId: 'principal-2', employeeId: 'employee-other' }, 'orgmaster.governance.manage', options).status).toBe('denied')
     expect(actorHasPolicyPermission(document.draft, {
       ...actor, issuer: 'issuer', subject: 'alias-1', bootstrap: false,
     }, 'orgmaster.governance.manage', now)).toBe(false)
   })
 
-  it('denies revoked assignment, inactive role and inactive identity link', () => {
+  it('denies revoked assignments and inactive roles without treating JSON aliases as native admission', () => {
     const document = publishedFixture()
     const version = document.publishedVersions.find((candidate) => candidate.id === document.activePolicyVersionId)!
     if (version.kind !== 'assignment-governance-v3') throw new Error('fixture version')
@@ -92,7 +93,9 @@ describe('verified principal runtime permission', () => {
     expect(evaluateVerifiedPrincipalPermission(document, actor, 'orgmaster.governance.manage', options).status).toBe('denied')
     version.policy.applicationRoles[0].status = 'active'
     version.policy.identityLinks.forEach((value) => { value.status = 'inactive' })
-    expect(evaluateVerifiedPrincipalPermission(document, actor, 'orgmaster.governance.manage', options).reason).toBe('IDENTITY_NOT_LINKED')
+    expect(evaluateVerifiedPrincipalPermission(document, actor, 'orgmaster.governance.manage', options).reason).toBe('ALLOWED_ROLE')
+    version.policy.identityLinks = []
+    expect(evaluateVerifiedPrincipalPermission(document, actor, 'orgmaster.governance.manage', options).status).toBe('allowed')
   })
 
   it('fails closed on legacy policy documents', () => {

@@ -23,5 +23,6 @@ export function verifiedGovernanceActor(request: IncomingMessage): GovernanceAct
     assuranceLevel: session.assuranceLevel,
     authenticatedAt: session.authenticatedAt,
     sessionId: session.id,
+    principalAuthEpoch: session.principalAuthEpoch,
   } : null
 }

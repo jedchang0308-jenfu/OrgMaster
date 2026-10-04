@@ -5,11 +5,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { issuerFingerprintSha256, principalFingerprintSha256 } from '../src/governance/identityAdmission'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { readFinancialRoleCatalog } from './financialRoleCatalogRepository'
-import { ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
+import { ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, readGovernanceStore, setActivePolicy } from './orgmasterGovernanceStore'
 import { previewFinancialManagementGrant, publishFinancialManagementGrant } from './applicationManagementGrantStore'
 import { previewFinancialRoleAssignment, publishFinancialRoleAssignment } from './applicationRoleAssignmentStore'
-import { FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH } from './applicationEntitlementCommon'
+import { assertFinancialAuthority, FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH } from './applicationEntitlementCommon'
 import { FINANCIAL_CATALOG_VERSION } from '../src/governance/financialCatalog'
+import { readApplicationRoleCatalogs } from './applicationRoleCatalogRegistry'
+import { buildOrganizationSnapshot, validateDocumentV3 } from '../src/governance/validation'
 import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
 
 const roots: string[] = []
@@ -33,6 +35,18 @@ function admission(id: string, link: ReturnType<typeof personalLink>, accountTyp
 }
 
 async function writeDocument(root: string, document: Awaited<ReturnType<typeof readGovernanceStore>>['document']) {
+  if (!document.activePolicyVersionId) {
+    const source = await loadOrganizationSource(root)
+    const { basePolicyVersionId: _base, updatedAt: _updated, ...policy } = structuredClone(document.draft)
+    const id = 'published-fixture'
+    document.publishedVersions.push({ kind: 'assignment-governance-v3', id, versionNumber: 1,
+      publishedAt: new Date().toISOString(), publishedByPrincipalId: 'fixture', publishReason: 'fixture',
+      snapshotHash: 'fixture', effectState: 'not-synchronized', policy,
+      externalRoleCatalogs: [readAiPdmRoleCatalog(), await readFinancialRoleCatalog('valid')],
+      organizationSnapshot: buildOrganizationSnapshot(source) })
+    document.activePolicyVersionId = id
+    document.draft.basePolicyVersionId = id
+  }
   await writeFile(getGovernancePaths(root).current, `${JSON.stringify(document, null, 2)}\n`)
 }
 
@@ -136,4 +150,56 @@ describe('DEV-039 generic Financial entitlement v2', () => {
     expect(assignmentReceipt).toMatchObject({ receiptStatus: 'applied', replayed: false })
     expect((await publishFinancialRoleAssignment(root, ownerActor, { ...assignmentInput, commandId: 'dev039-sequence-assignment', requestHash: assignmentPreview.requestHash, previewHash: assignmentPreview.previewHash })).replayed).toBe(true)
   })
+  it('rejects a stale draft Financial owner and grant after activating a published withdrawal', async () => {
+    const root = await fixtureRoot()
+    const seeded = await readGovernanceStore(root)
+    const source = await loadOrganizationSource(root)
+    const [employeeId, targetEmployeeId] = source.state.employees.slice(0, 2).map(employee => employee.id)
+    const actor = { principalId: 'managed-owner', employeeId, issuer: 'issuer', subject: 'uid', bootstrap: false }
+    const actorLink = personalLink('existing-financial-actor', actor.principalId, actor.issuer, actor.subject, employeeId)
+    seeded.document.draft.identityLinks = [actorLink]
+    seeded.document.draft.principalAdmissions = [admission('existing-financial-admission', actorLink, 'human_personal')]
+    const makeAssignment = (applicationId: 'orgmaster' | 'financial-management-system', roleId: string) => ({
+      id: applicationId, employeeId, applicationId, roleId, roleCodeSnapshot: roleId === 'role-owner' ? 'owner' : 'orgmaster_admin',
+      roleNameSnapshot: applicationId === 'orgmaster' ? 'OrgMaster 管理者' : '負責人', catalogVersion: applicationId === 'orgmaster' ? null : FINANCIAL_CATALOG_VERSION,
+      scope: applicationId === 'orgmaster' ? { kind: 'global' as const } : { kind: 'workspace' as const, value: 'company-jenfu' },
+      status: 'active' as const, validFrom: '2026-01-01T00:00:00.000Z', validTo: null,
+      effectState: applicationId === 'orgmaster' ? 'orgmaster-enforced' as const : 'not-synchronized' as const,
+      basis: 'manual' as const, subjectKind: 'employee' as const, targetPrincipalId: null, sources: [],
+      metadata: { sponsorEmployeeId: null, reviewDueAt: null }, createdByPrincipalId: actor.principalId, createdReason: 'fixture',
+    })
+    seeded.document.draft.roleAssignments = [makeAssignment('orgmaster', 'role-orgmaster-admin'), makeAssignment('financial-management-system', 'role-owner')]
+    seeded.document.draft.managementGrants = [FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH].map(capability => ({
+      id: capability, principalId: actor.principalId, employeeId, applicationId: 'financial-management-system' as const,
+      capability, status: 'active' as const, validFrom: '2026-01-01T00:00:00.000Z', validTo: null,
+      grantedByPrincipalId: 'fixture', reason: 'fixture',
+    }))
+    await writeDocument(root, seeded.document)
+    const current = await readGovernanceStore(root)
+    expect(() => assertFinancialAuthority(current.document, actor, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH)).not.toThrow()
+    const prior = current.document.publishedVersions[0]
+    if (prior.kind !== 'assignment-governance-v3') throw Error('fixture')
+    const withdrawn = { ...structuredClone(prior), id: 'published-withdrawal', versionNumber: 2 }
+    withdrawn.policy.roleAssignments = withdrawn.policy.roleAssignments.filter(assignment => assignment.applicationId === 'orgmaster')
+    withdrawn.policy.managementGrants = []
+    current.document.publishedVersions.push(withdrawn)
+    await writeDocument(root, current.document)
+    const beforeActivation = await readGovernanceStore(root)
+    await setActivePolicy(root, beforeActivation.revision, 'activate-withdrawal', 'withdraw Financial', withdrawn.id, actor)
+    const active = await readGovernanceStore(root)
+    expect(active.document.draft.roleAssignments.some(assignment => assignment.applicationId === 'financial-management-system')).toBe(true)
+    expect(active.document.draft.managementGrants).toHaveLength(2)
+    expect(() => assertFinancialAuthority(active.document, actor, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH)).toThrow('APP_MANAGEMENT_GRANT_REQUIRED')
+    const catalog = await readFinancialRoleCatalog('valid')
+    const request = { operation: 'upsert' as const, employeeId: targetEmployeeId, stableRoleId: 'role-finance-staff',
+      scope: { kind: 'workspace' as const, value: 'company-jenfu' }, validFrom: '2026-01-01T00:00:00.000Z',
+      validUntil: null, reason: 'stale draft cannot authorize', expectedCatalogVersion: catalog.catalogVersion,
+      expectedCatalogPayloadHash: catalog.payloadHash, expectedGovernanceRevision: active.revision,
+      expectedOrganizationRevision: source.workspaceRevision }
+    await expect(previewFinancialRoleAssignment(root, actor, request)).rejects.toMatchObject({ code: 'APP_MANAGEMENT_GRANT_REQUIRED' })
+    await expect(publishFinancialRoleAssignment(root, actor, { ...request, commandId: 'stale-draft-self-authorize',
+      requestHash: 'a'.repeat(64), previewHash: 'b'.repeat(64) })).rejects.toMatchObject({ code: 'APP_MANAGEMENT_GRANT_REQUIRED' })
+    expect((await readGovernanceStore(root)).revision).toBe(active.revision)
+  })
+
 })

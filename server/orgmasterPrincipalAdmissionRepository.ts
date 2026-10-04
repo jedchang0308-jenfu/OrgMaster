@@ -28,7 +28,7 @@ export type PrincipalAdmissionRepository = {
   resolveActivePrincipal(issuer: string, subject: string): Promise<ActivePrincipal>
 }
 
-export function createPrincipalAdmissionRepository(database: OrgmasterDatabase): PrincipalAdmissionRepository {
+export function createPrincipalAdmissionRepository(database: Pick<OrgmasterDatabase, 'query'>): PrincipalAdmissionRepository {
   return {
     async resolveActivePrincipal(issuer, subject) {
       let rows: ActivePrincipalRow[]

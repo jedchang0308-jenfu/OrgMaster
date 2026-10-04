@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { buildOrganizationSnapshot } from '../src/governance/validation'
 import { canonicalJson, sha256 } from '../src/governance/commands'
@@ -18,7 +19,6 @@ import {
 } from '../src/governance/privilegedAssignments'
 import type { GovernanceActorContext, GovernanceCommandReceiptV2, GovernanceDocumentV3 } from '../src/governance/types'
 import {
-  actorHasPolicyPermission,
   appendGovernanceAudit,
   commitGovernanceMutation,
   loadOrganizationSource,
@@ -57,7 +57,7 @@ function requestTarget(document: GovernanceDocumentV3, request: PrivilegedAssign
 export async function readPrivilegedAssignmentWorkspace(root: string, actor: GovernanceActorContext) {
   const current = await readGovernanceStore(root)
   const source = await loadOrganizationSource(root)
-  const canView = actor.bootstrap || actorHasPolicyPermission(current.document.draft, actor, 'orgmaster.governance.manage') || hasCrossAppOverride(current.document, actor)
+  const canView = actor.bootstrap || evaluateVerifiedPrincipalPermission(current.document, actor, 'orgmaster.governance.manage').status === 'allowed' || hasCrossAppOverride(current.document, actor)
   if (!canView) throw new PrivilegedAssignmentError('PRIVILEGED_VIEW_REQUIRED')
   return privilegedAssignmentWorkspace(current.document, source, readAiPdmRoleCatalog(), current.revision, actor)
 }
@@ -198,7 +198,7 @@ export async function publishPrivilegedAssignment(
       updatedBy: actor.principalId,
       entitlementChanges: [{ operationId: request.commandId, employeeId: target.employeeId, applicationId: 'ai-pdm' as const, eventKind: 'role_assignment_changed' as const, actor: actor.principalId, reasonCode: 'privileged_assignment_changed' }],
     }
-  })
+  }, actor, (document) => { assertFreshPrivilegedSession(actor, session); assertOverride(document, actor, new Date().toISOString()) })
   const receipt = committed.document.commandReceipts.find((value) => value.commandId === request.commandId)
   if (!receipt) throw new PrivilegedAssignmentError('COMMAND_NOT_OBSERVED')
   return receipt
