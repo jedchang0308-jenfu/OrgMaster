@@ -1,3 +1,4 @@
+import { assertSmokeRotationContinuation, readReleaseSourceFile } from './dev057-smoke-rotation-continuation.mjs'
 import { readPrincipalOnlyRepairBaseline } from './dev057-principal-forward-repair.mjs'
 import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
@@ -631,7 +632,7 @@ export async function resolveRoutineControlBaseline({ profile, transport, contro
   return intent.baselineIntentRef
 }
 
-export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition }) {
+export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
   transport.assertServiceSettled(service)
@@ -720,6 +721,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
         : assertDev013ControlledMigrationAppend(baseline.bundle.value, current.bundle)
   }
   const infraChanged = !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
+  let smokeRotationContinuation = null
   if (migration.migrationDisposition === 'FORWARD_APPLY') {
     if (!infraChanged) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
     assertDev013MigrationInfraReceipt(values.infra, profile, intent.sourceRevision)
@@ -729,10 +731,13 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   } else if (controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION') {
     if (!infraChanged) fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID')
     try { assertDev013MigrationInfraReceipt(values.infra, profile, values.infra?.sourceRevision) } catch { fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID') }
-  } else if (infraChanged) fail('ROUTINE_INFRA_REF_CHANGED')
+  } else if (infraChanged) {
+    if (controlledTransition || baseline.repair || values.infra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') fail('ROUTINE_INFRA_REF_CHANGED')
+    smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline, readSourceFile })
+  }
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]
     if (value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.releaseId !== intent.releaseId || !same(value.baselineIntentRef, intent.baselineIntentRef)) fail('ROUTINE_AUTHORITY_MISMATCH')
   }
-  return { baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, ...(baseline.repair ? { principalOnlyForwardRepair: { rollbackRef: baseline.repair.rollbackRef, recoveryRef: baseline.repair.recoveryRef } } : {}), infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
+  return { ...(smokeRotationContinuation ? { smokeRotationContinuation } : {}), baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, ...(baseline.repair ? { principalOnlyForwardRepair: { rollbackRef: baseline.repair.rollbackRef, recoveryRef: baseline.repair.recoveryRef } } : {}), infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
 }
