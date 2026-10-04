@@ -68,6 +68,16 @@ PASS receipt 固定 `jenfu.dev057.smoke-credential-reauth.v1`、`APP_SMOKE_CREDE
 
 頁面只 bind 127.0.0.1 隨機埠、random capability path、exact Host/Origin、CSRF、8 KiB、單次單筆提交、CSP/no-store，15 分鐘 TTL；到期前後禁止開始新 mutation，若已有部分寫入保留 PARTIAL。結束或到期關閉 task-owned listener，暫存 Buffer 清零並縮短 token／password引用；不宣稱 JavaScript 字串的嚴格 RAM zeroization。沒有自動 retry 或通用設定 wizard。
 
+## Ordinary release 的 own smoke rotation 續接
+
+source-only smoke Workflow rotation 完成後，正常入口可使用 `npm run deploy:production -- --check --smoke-rotation-ref=gs://jenfu-platform-prod-orgmaster-release/receipts/releases/<rotation-release-id>/app-infra.json#sha256=<actual-byte-sha256>`；正式執行使用相同參數並移除 `--check`。只有本 owner 的 exact immutable ref可替換 current RELEASED baseline 的舊 infra ref，不使用歷史 remediation mode或新增 authority。無此選項的普通路徑及原 controlled remediation 保持原行為。
+
+CLI 與既有 workflow prepare 共用 native routine decision，要求 migration、runtime及完整 infrastructure fingerprint不變；新 receipt必須是同 source／project／region的原生 `APP_INFRA_SMOKE_CREDENTIAL_ROTATION` APPLIED及self seal，原 infra 的 foundation、runner/controller digest、state lineage與完整地址集合不得漂移、serial必須增加。完整集合由本 owner 的 `dev040-production-release-infra-plan.json` stageA＋stageBAdditional導出（現行75項），並比對原 receipt；兩份 profile及原 infra source、active baseline source、新 source的實際 Docker COPY executable bytes必須一致。錯誤來源、缺失／額外地址、不同 executable、forward migration或歷史 mode都拒絕。
+
+prepare只重新讀同 own bucket immutable native APPLIED receipt與其 credential ref，驗 exact hash、verified Principal／Employee／AAL1、相鄰 numeric及原 apply completed observedAt時的300秒auth_time／120秒reauth結果時窗。這是驗歷史已完成 mutation的證據，沒有放寬未來 reauth／rotation mutation的即時TTL。原 apply觀測早於 credential receipt、未來時間、PARTIAL／偽造seal或到apply時已過期皆拒絕。
+
+operator CLI precheck另以現有權限唯讀當下 own Workflow 的name／serviceAccount／ACTIVE／revision及完整 source bytes，精確重建 source-frozen Terraform recipe與numeric版本；exact version及latest的Secret metadata都必須同new numeric且ENABLED，不access payload。結果標為 `OPERATOR_PROVIDER_CURRENT_METADATA`。prepare層標為 `OWNER_SEALED_APPLIED_ROTATION`，不要求verifier新增Workflow／Secret／tfstate讀權，不將operator snapshot當永久live proof。既有 ten-stage smoke與失敗回復仍必要，receipt續接不授予Production L4。
+
 ## 固定驗收及交接
 
 O01–O07沿原編號；失效雙軌斷言改驗終態與Principal-only恢復，過去結果不改寫：

@@ -1,3 +1,6 @@
+import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
+import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
+import { expectedSmokeWorkflowSource } from './lib/dev057-smoke-rotation-continuation.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
@@ -801,3 +804,197 @@ test('DEV-057 grant v4 admits only sealed 028-to-029 append with fresh runner ev
  h.input.transitionFingerprint=(_root,revision)=>revision;
  await assert.rejects(()=>verifyRoutineRelease(h.input),/ROUTINE_INFRA_CHANGED/);
 });
+
+
+function smokeContinuationHarness() {
+  const h = harness()
+  const infraProfile = JSON.parse(fs.readFileSync('config/release/dev040-production-release-infra-plan.json'))
+  const addresses = [...infraProfile.stageA, ...infraProfile.stageBAdditional].sort()
+  const appliedAt = '2026-09-23T08:01:00.000Z'
+  const credential = buildReauthReceipt({ sourceRevision: newSource,
+    expected: { issuer: EXPECTED.issuer, subject: 'synthetic-provider-subject-001' },
+    authTime: Math.floor(Date.parse('2026-09-23T08:00:00.000Z') / 1000),
+    authenticatedAt: '2026-09-23T08:00:10.000Z', observedAt: '2026-09-23T08:00:30.000Z',
+    principal: { principalId: 'principal-synthetic-001', employeeId: 'employee-synthetic-001' },
+    previousVersion: '7', newVersion: '8' })
+  const sealed = (core) => ({ ...core, receiptSha256: sha256(canonicalize(core)) })
+  const priorCore = { schemaVersion: 'jenfu.dev012.app-infra-receipt.v1', ownerApplicationId: 'orgmaster',
+    projectId: profile.target.projectId, region: profile.target.region, sourceRevision: oldSource,
+    foundationManifestSha256: '1'.repeat(64),
+    migrationRunnerDigest: profile.artifact.migrationRunnerUri + '@sha256:' + '2'.repeat(64),
+    controllerImageDigest: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller@sha256:' + '3'.repeat(64),
+    terraformAddressCount: addresses.length, terraformAddressesSha256: sha256(canonicalize(addresses)),
+    stateLineage: 'a1234567-0123-4567-89ab-0123456789ab', stateSerial: 5,
+    binaryPlanSha256: '4'.repeat(64), planJsonSha256: '5'.repeat(64), stateJsonSha256: '6'.repeat(64), outputManifestSha256: '7'.repeat(64),
+    observedAt: '2026-09-22T08:00:00.000Z', status: 'APPLIED', releaseAuthority: true, evidenceScope: 'PRODUCTION_PROVIDER' }
+  const priorUri = h.input.intent.infraReceiptRef.uri
+  const priorRef = h.put(priorUri, sealed(priorCore))
+  const baselineRead = h.objects.get(h.input.intent.baselineIntentRef.uri)
+  baselineRead.value.infraReceiptRef = priorRef
+  h.input.intent.baselineIntentRef = h.put(baselineRead.ref.uri, baselineRead.value)
+  h.input.values.authorization.baselineIntentRef = h.input.intent.baselineIntentRef
+  h.input.values.readiness.baselineIntentRef = h.input.intent.baselineIntentRef
+  // Refresh source-bound baseline receipt paths after changing the baseline intent hash.
+  const oldPaths = h.paths
+  const newPaths = releasePaths(profile, baselineRead.value, h.input.intent.baselineIntentRef.sha256)
+  for (const name of ['candidate', 'terminal', 'migrate', 'deployment']) {
+    const value = structuredClone(h.objects.get(oldPaths[name]).value)
+    if (name === 'deployment') value.releaseIntentRef = h.input.intent.baselineIntentRef
+    h.put(newPaths[name], value)
+  }
+  const migrationRef = h.objects.get(newPaths.migrate).ref
+  const deploymentRef = h.objects.get(newPaths.deployment).ref
+  const candidate = structuredClone(h.objects.get(newPaths.candidate).value)
+  const { receiptSha256: _seal, ...candidateCore } = candidate
+  candidateCore.facts.deploymentCapsuleRef = deploymentRef
+  candidateCore.facts.migrationReceiptRef = migrationRef
+  h.put(newPaths.candidate, sealed(candidateCore))
+  const credentialUri = 'gs://' + bucket + '/receipts/credential-reauth/synthetic.json'
+  let rotationCore = { ...priorCore, sourceRevision: newSource, stateSerial: 6, observedAt: appliedAt,
+    mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION', candidateSmokeRefreshTokenSecretVersion: '8',
+    credentialEvidenceRef: h.put(credentialUri, credential) }
+  const rotationUri = 'gs://' + bucket + '/receipts/releases/SMOKE-ROTATION-FIXTURE/app-infra.json'
+  const sourceEdits = new Map()
+  h.input.readSourceFile = (_root, revision, file) => sourceEdits.get(revision + ':' + file) ?? fs.readFileSync(file)
+  const requests = []
+  const workflowName = 'projects/jenfu-platform-prod/locations/asia-east1/workflows/orgmaster-prod-candidate-smoke'
+  const workflow = { name: workflowName, state: 'ACTIVE', revisionId: '000008-synthetic',
+    serviceAccount: 'projects/jenfu-platform-prod/serviceAccounts/' + profile.identities.smoke,
+    sourceContents: expectedSmokeWorkflowSource({ ...h.input, sourceRevision: newSource, version: '8' }) }
+  const secret = { name: 'projects/9536592944/secrets/orgmaster-prod-smoke-firebase-refresh-token/versions/8', state: 'ENABLED' }
+  h.input.transport.request = async (url) => {
+    requests.push(url)
+    if (url === 'https://workflows.googleapis.com/v1/' + workflowName) return workflow
+    if (['8', 'latest'].some((version) => url === 'https://secretmanager.googleapis.com/v1/projects/9536592944/secrets/orgmaster-prod-smoke-firebase-refresh-token/versions/' + version)) return secret
+    assert.fail('Unexpected provider request ' + url)
+  }
+  const update = ({ rotation = {}, proof = {}, reseal = true } = {}) => {
+    const nextCredential = structuredClone({ ...credential, ...proof })
+    if (reseal) { const { receiptSha256: _hash, ...core } = nextCredential; nextCredential.receiptSha256 = sha256(canonicalize(core)) }
+    rotationCore = { ...rotationCore, credentialEvidenceRef: h.put(credentialUri, nextCredential), ...rotation }
+    const next = sealed(rotationCore)
+    if (!reseal) next.receiptSha256 = '0'.repeat(64)
+    const ref = h.put(rotationUri, next)
+    h.input.values.infra = next
+    h.options = parseDeployProductionArgs(['--check', '--smoke-rotation-ref=' + ref.uri + '#sha256=' + ref.sha256])
+    h.input.intent.infraReceiptRef = selectDeployInfrastructureRef(h.options, { intent: baselineRead.value })
+  }
+  update()
+  return Object.assign(h, { update, requests, workflow, secret, sourceEdits, addresses, rotationUri })
+}
+
+test('ordinary CLI without an option preserves the original baseline and does not read smoke metadata', async () => {
+  const h = harness()
+  const options = parseDeployProductionArgs(['--check'])
+  assert.equal(selectDeployInfrastructureRef(options, { intent: h.input.intent }), h.input.intent.infraReceiptRef)
+  h.input.transport.request = () => assert.fail('ordinary no-option must not add provider metadata requests')
+  const result = await verifyDeployProductionRelease({ options, ...h.input })
+  assert.equal(result.releaseMode, 'ROUTINE_UNCHANGED_RUNTIME')
+  assert.equal(result.smokeRotationContinuation, undefined)
+})
+
+test('actual ordinary CLI selection through routine decision accepts an own completed rotation and live exact numeric metadata', async () => {
+  const h = smokeContinuationHarness()
+  const result = await verifyDeployProductionRelease({ options: h.options, ...h.input })
+  assert.equal(result.releaseMode, 'ROUTINE_UNCHANGED_RUNTIME')
+  assert.equal(result.migrationDisposition, 'UNCHANGED_VERIFIED')
+  assert.equal(result.pendingMigrationCount, 0)
+  assert.equal(result.liveLedgerRead, false)
+  assert.equal(result.smokeRotationContinuation.newVersion, '8')
+  assert.equal(result.smokeRotationContinuation.executableInputCount, 16)
+  assert.equal(result.smokeRotationContinuation.terraformAddressCount, h.addresses.length)
+  assert.equal(result.smokeRotationContinuation.providerCurrentReadback, false)
+  assert.equal(result.operatorSmokeRotationReadback.evidenceScope, 'OPERATOR_PROVIDER_CURRENT_METADATA')
+  assert.equal(result.operatorSmokeRotationReadback.exactNumericVersion, '8')
+  assert.equal(h.requests.length, 3)
+  assert.ok(h.requests.every((url) => !url.includes(':access')))
+})
+
+test('native prepare routine rechecks immutable rotation and Principal proof without operator metadata IAM', async () => {
+  const h = smokeContinuationHarness()
+  h.input.transport.request = () => assert.fail('prepare must not read Secret/Workflow provider metadata')
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.smokeRotationContinuation.assuranceLevel, 'aal1')
+  assert.equal(result.smokeRotationContinuation.principalId, 'principal-synthetic-001')
+  assert.equal(result.operatorSmokeRotationReadback, undefined)
+})
+
+test('ordinary rotation CLI rejects absolute/sibling/mutable/noncanonical refs and mixing historical modes', () => {
+  const h = smokeContinuationHarness()
+  const own = '--smoke-rotation-ref=' + h.input.intent.infraReceiptRef.uri + '#sha256=' + h.input.intent.infraReceiptRef.sha256
+  for (const ref of ['C:/tmp/input.json', own.slice(21).replace('orgmaster-release', 'aipdm-release'),
+    own.slice(21).replace('/SMOKE-ROTATION-FIXTURE/', '/../'), own.slice(21).replace('app-infra.json', 'other.json'),
+    own.slice(21).replace('#sha256=', '#sha256=FF')]) assert.throws(() => parseDeployProductionArgs(['--smoke-rotation-ref=' + ref]))
+  assert.throws(() => parseDeployProductionArgs([own, '--dev014-activate']))
+  assert.throws(() => parseDeployProductionArgs([own, '--check', own]))
+  const historical = parseDeployProductionArgs(['--check', '--dev057-principal-grants-v4-remediation',
+    '--dev057-infra-ref=' + h.input.intent.infraReceiptRef.uri + '#sha256=' + h.input.intent.infraReceiptRef.sha256])
+  assert.equal(historical.dev057PrincipalGrantsV4Remediation, true)
+  assert.equal(historical.smokeRotationRef, null)
+})
+
+test('rotation continuation rejects wrong owner/source/mutation, forged seal and infrastructure drift before provider reads', async () => {
+  for (const rotation of [{ ownerApplicationId: 'ai-pdm' }, { sourceRevision: oldSource }, { mutationProfile: 'APP_INFRA_IMAGE_ROTATION' },
+    { projectId: 'other-project' }, { region: 'asia-northeast1' }, { foundationManifestSha256: 'f'.repeat(64) },
+    { migrationRunnerDigest: profile.artifact.migrationRunnerUri + '@sha256:' + 'f'.repeat(64) },
+    { controllerImageDigest: 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller@sha256:' + 'f'.repeat(64) },
+    { terraformAddressCount: 1 }, { terraformAddressesSha256: 'f'.repeat(64) }, { stateLineage: 'b1234567-0123-4567-89ab-0123456789ab' },
+    { stateSerial: 5 }, { candidateSmokeRefreshTokenSecretVersion: '9' }]) {
+    const h = smokeContinuationHarness(); h.update({ rotation })
+    await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }))
+    assert.equal(h.requests.length, 0)
+  }
+  const forged = smokeContinuationHarness(); forged.update({ reseal: false })
+  await assert.rejects(() => verifyDeployProductionRelease({ options: forged.options, ...forged.input }), /SMOKE_ROTATION_INFRA_INVALID/u)
+})
+
+test('rotation continuation rejects wrong Principal/AAL, partial outcome, sibling credential and stale-at-apply proof', async () => {
+  for (const proof of [{ assuranceLevel: 'aal2' }, { principalId: '' }, { status: 'PARTIAL' }, { sourceRevision: oldSource },
+    { passwordAuthenticated: false }, { credentialMaterialPresent: true }, { authTime: Math.floor(Date.parse('2026-09-23T07:50:00Z') / 1000) }]) {
+    const h = smokeContinuationHarness(); h.update({ proof })
+    await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }))
+    assert.equal(h.requests.length, 0)
+  }
+  const expired = smokeContinuationHarness(); expired.update({ rotation: { observedAt: '2026-09-23T08:06:00Z' } })
+  await assert.rejects(() => verifyDeployProductionRelease({ options: expired.options, ...expired.input }), /REAUTH_RECEIPT_FRESHNESS_INVALID/u)
+  const sibling = smokeContinuationHarness(); sibling.update({ rotation: { credentialEvidenceRef: { uri: 'gs://jenfu-platform-prod-aipdm-release/receipts/credential-reauth/x.json', sha256: '1'.repeat(64) } } })
+  await assert.rejects(() => verifyDeployProductionRelease({ options: sibling.options, ...sibling.input }))
+})
+
+test('rotation continuation rejects changed copied executable, complete profile, runtime, migration and traffic', async () => {
+  for (const defect of ['executable', 'profile', 'runtime', 'migration', 'traffic']) {
+    const h = smokeContinuationHarness()
+    if (defect === 'executable') h.sourceEdits.set(newSource + ':scripts/lib/dev012-production-migration-runner.mjs', Buffer.from('changed executable'))
+    if (defect === 'profile') { const file = 'config/release/dev040-production-release-infra-plan.json'; const value = JSON.parse(fs.readFileSync(file)); value.stageA.pop(); h.sourceEdits.set(newSource + ':' + file, Buffer.from(JSON.stringify(value))) }
+    if (defect === 'runtime') h.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_POSTGRES_URL = '2'
+    if (defect === 'migration') h.input.buildMigrationBundle = async () => ({ bundle: { ...newBundle.bundle, manifestSha256: '9'.repeat(64) } })
+    if (defect === 'traffic') h.input.intent.previousRevision = 'orgmaster-prod-other'
+    await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }))
+    assert.equal(h.requests.length, 0)
+  }
+})
+
+test('operator live metadata rejects wrong Workflow source/account/state and noncurrent or disabled own Secret', async () => {
+  for (const defect of ['source', 'account', 'state', 'version', 'disabled']) {
+    const h = smokeContinuationHarness()
+    if (defect === 'source') h.workflow.sourceContents = h.workflow.sourceContents.replace('version: "8"', 'version: "7"')
+    if (defect === 'account') h.workflow.serviceAccount = 'projects/jenfu-platform-prod/serviceAccounts/other'
+    if (defect === 'state') h.workflow.state = 'UNAVAILABLE'
+    if (defect === 'version') h.secret.name = h.secret.name.replace('/8', '/9')
+    if (defect === 'disabled') h.secret.state = 'DISABLED'
+    await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }), /SMOKE_ROTATION_(WORKFLOW_DRIFT|PROVIDER_VERSION_INVALID)/u)
+  }
+})
+
+test('immutable-ref corruption or provider transport fault fails closed and never grants continuation', async () => {
+  const corrupt = smokeContinuationHarness()
+  corrupt.input.intent.infraReceiptRef = { ...corrupt.input.intent.infraReceiptRef, sha256: '0'.repeat(64) }
+  await assert.rejects(() => verifyDeployProductionRelease({ options: corrupt.options, ...corrupt.input }))
+  const offline = smokeContinuationHarness(); offline.input.transport.request = async () => { throw Error('provider unavailable') }
+  await assert.rejects(() => verifyDeployProductionRelease({ options: offline.options, ...offline.input }))
+})
+
+test('Workflow source renderer reproduces the sealed existing Org numeric-7 source bytes', () => {
+  const value = expectedSmokeWorkflowSource({ root: '.', sourceRevision: newSource, profile, version: '7', readSourceFile: (_root, _revision, file) => fs.readFileSync(file) })
+  assert.equal(sha256(value), '9ba919ee180f6b5d7a7cc068dc1b402271c9dfeff61a7a3e5d9b9f048e15a559')
+})

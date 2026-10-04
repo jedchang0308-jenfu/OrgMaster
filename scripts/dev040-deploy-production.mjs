@@ -7,6 +7,7 @@ import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildReleaseIntent, buildRuntimeConfigReceipt, buildSourceFreeze, readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
 import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
+import { readSmokeRotationProvider } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { canonicalize, createOwnerTransport, resolvePlainEnvironment, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013PredecessorReceipt, readRoutineBaseline, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
@@ -26,8 +27,8 @@ async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile
   return assertDev013PredecessorReceipt(value, predecessorReceiptRef, profile, observedAt, currentStep)
 }
 
-export function parseArgs(argv) {
-  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014ManagedPrincipalProjectionRemediation: false, dev014LoginFixtureCorrection: false, dev057WriterFenceRemediation: false, dev057PrincipalContractRemediation: false, dev057CutoverSourceRemediation: false, dev057PrincipalGrantsV3Remediation: false, dev057PrincipalGrantsV4Remediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null, principalOnlyRecoveryRef: null }
+export function parseDeployProductionArgs(argv) {
+  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014ManagedPrincipalProjectionRemediation: false, dev014LoginFixtureCorrection: false, dev057WriterFenceRemediation: false, dev057PrincipalContractRemediation: false, dev057CutoverSourceRemediation: false, dev057PrincipalGrantsV3Remediation: false, dev057PrincipalGrantsV4Remediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null, smokeRotationRef: null, principalOnlyRecoveryRef: null }
   for (const arg of argv) {
     if (arg.startsWith('--principal-only-recovery-ref=') && options.principalOnlyRecoveryRef === null) {
       const match = /^(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/DEV057-PRINCIPAL-ONLY-RECOVERY\/[a-f0-9]{40}\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--principal-only-recovery-ref='.length))
@@ -54,6 +55,10 @@ export function parseArgs(argv) {
       const match = /^(?<uri>\S+)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(value)
       if (!match) throw new Error('DEV013_PREDECESSOR_REF_INVALID')
       options.predecessorReceiptRef = match.groups
+    } else if (arg.startsWith('--smoke-rotation-ref=') && options.smokeRotationRef === null) {
+      const match = /^--smoke-rotation-ref=(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/[A-Z0-9][A-Z0-9-]{5,63}\/app-infra\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg)
+      if (!match) throw new Error('SMOKE_ROTATION_REF_INVALID')
+      options.smokeRotationRef = match.groups
     } else if (arg.startsWith('--dev013-infra-ref=') && options.infraReceiptRef === null) {
       const value = arg.slice('--dev013-infra-ref='.length)
       const match = /^(?<uri>\S+)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(value)
@@ -86,11 +91,28 @@ export function parseArgs(argv) {
   if ((dev057Mode === 1) !== (options.infraOption === 'dev057') && controlled === 0) throw new Error('DEV057_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && options.infraReceiptRef && options.infraOption !== 'dev013') throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (options.infraReceiptRef && controlled !== 3 && dev014Mode !== 1 && dev057Mode !== 1) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
+  if (options.smokeRotationRef && (controlled || dev014Mode || dev057Mode || options.infraReceiptRef || options.principalOnlyRecoveryRef)) throw new Error('SMOKE_ROTATION_ORDINARY_ONLY')
   return options
 }
 
+export const parseArgs = parseDeployProductionArgs
+
+export function selectDeployInfrastructureRef(options, baseline) {
+  return options.smokeRotationRef ?? options.infraReceiptRef ?? baseline.intent.infraReceiptRef
+}
+
+export async function verifyDeployProductionRelease({ options, ...input }) {
+  if (options.smokeRotationRef && canonicalize(options.smokeRotationRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_ROTATION_REF_MISMATCH')
+  const verification = await verifyRoutineRelease(input)
+  if (options.smokeRotationRef) {
+    if (!verification.smokeRotationContinuation) throw new Error('SMOKE_ROTATION_CONTINUATION_MISSING')
+    verification.operatorSmokeRotationReadback = await readSmokeRotationProvider({ ...input, continuation: verification.smokeRotationContinuation })
+  }
+  return verification
+}
+
 async function main() {
-  const options = parseArgs(process.argv.slice(2))
+  const options = parseDeployProductionArgs(process.argv.slice(2))
   const profile = JSON.parse(readGitBlob(root, 'config/release/dev040-orgmaster-independent-production-v3.json'))
   const n1c = JSON.parse(readGitBlob(root, 'config/dev-010/n1c-orgmaster.json'))
   assertDev040V3Profile(profile, n1c)
@@ -209,7 +231,7 @@ async function main() {
   const readiness = transition
     ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v2', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
     : { ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014ManagedPrincipalProjectionRemediation ? { devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation: dev014ManagedPrincipalProjectionRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}), ...(dev057WriterFenceRemediation ? { devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation: dev057WriterFenceRemediation } : {}), ...(dev057PrincipalContractRemediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation: dev057PrincipalContractRemediation } : {}), ...(dev057CutoverSourceRemediation ? { devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation: dev057CutoverSourceRemediation } : {}), ...(dev057PrincipalGrantsV3Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation: dev057PrincipalGrantsV3Remediation } : {}), ...(dev057PrincipalGrantsV4Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation: dev057PrincipalGrantsV4Remediation } : {}) }
-  const infraReceiptRef = options.infraReceiptRef ?? baseline.intent.infraReceiptRef
+  const infraReceiptRef = selectDeployInfrastructureRef(options, baseline)
   const values = { sourceLock, runtimeConfig, authorization, readiness,
     foundation: (await transport.readJson(baseline.intent.foundationReceiptRef, profile.artifact.releaseBucket)).value,
     infra: (await transport.readJson(infraReceiptRef, profile.artifact.releaseBucket)).value }
@@ -226,7 +248,7 @@ async function main() {
   }
   const input = { ...(principalOnlyRecovery ? { principalOnlyRecovery } : {}), baselineIntentRef, previousRevision, deadlineAt, sourceLockRef: ref('source-lock', sourceLock), runtimeConfigRef: ref('runtime-config', runtimeConfig), authorizationPolicyRef: ref('owner-authorization', authorization), readinessReceiptRef: ref('owner-readiness', readiness), foundationReceiptRef: baseline.intent.foundationReceiptRef, infraReceiptRef }
   const intent = buildReleaseIntent({ profile, releaseId, input, sourceLock, prerequisiteValues: values, validateIntent: assertDev040ReleaseIntent })
-  const verification = await verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle })
+  const verification = await verifyDeployProductionRelease({ options, root, profile, transport, intent, values, service, buildMigrationBundle })
   if (options.check) {
     process.stdout.write(`${JSON.stringify({ status: 'READY', releaseAuthority: false, sourceRevision: git.sourceRevision, previousRevision: intent.previousRevision, verification })}\n`)
     return
