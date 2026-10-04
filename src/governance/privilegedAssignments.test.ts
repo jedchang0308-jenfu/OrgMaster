@@ -37,6 +37,16 @@ function fixture(): GovernanceDocumentV3 {
     id: 'grant-override', principalId: actor.principalId, employeeId: actor.employeeId!, applicationId: 'ai-pdm', capability: 'orgmaster.cross_app_override',
     status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null, grantedByPrincipalId: 'principal-bootstrap', reason: 'fixture',
   }]
+  const { basePolicyVersionId: _base, updatedAt: _updated, ...policy } = structuredClone(document.draft)
+  document.publishedVersions.push({ kind: 'assignment-governance-v3', id: 'published-fixture',
+    versionNumber: 1, publishedAt: now, publishedByPrincipalId: actor.principalId,
+    publishReason: 'fixture', snapshotHash: 'fixture', effectState: 'not-synchronized', policy,
+    externalRoleCatalogs: [readAiPdmRoleCatalog()], organizationSnapshot: {
+      workspaceVersionId: 'fixture', workspaceRevision: 'fixture', capturedAt: now,
+      employees: [{ id: 'employee-a', primaryAssignmentId: null }, { id: 'employee-b', primaryAssignmentId: null }],
+      departments: [], organizationRoles: [], positions: [], assignments: [],
+    } })
+  document.activePolicyVersionId = 'published-fixture'
   return document
 }
 
@@ -64,6 +74,18 @@ describe('DEV-009 privileged assignment policy', () => {
     const document = fixture()
     expect(hasCrossAppOverride(document, actor, now)).toBe(true)
     expect(hasCrossAppOverride(document, { ...actor, principalId: 'principal-daily', subject: 'subject-daily' }, now)).toBe(false)
+  })
+
+  it('does not let an unpublished draft admission or override grant supply actor authority', () => {
+    const document = fixture()
+    const version = document.publishedVersions[0]
+    if (version.kind !== 'assignment-governance-v3') throw Error('fixture')
+    version.policy.managementGrants = []
+    expect(document.draft.managementGrants).toHaveLength(1)
+    expect(hasCrossAppOverride(document, actor, now)).toBe(false)
+    version.policy.managementGrants = structuredClone(document.draft.managementGrants)
+    version.policy.principalAdmissions = []
+    expect(hasCrossAppOverride(document, actor, now)).toBe(false)
   })
 
   it('denies self grant and allows a different eligible privileged principal preview', () => {

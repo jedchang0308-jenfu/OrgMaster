@@ -10,7 +10,7 @@ export type AuthEpochRepository = {
   readPrincipalState(principalId: string): Promise<{ authEpoch: number; revokedBefore: string | null }>
 }
 
-export function createAuthEpochRepository(database: OrgmasterDatabase): AuthEpochRepository {
+export function createAuthEpochRepository(database: Pick<OrgmasterDatabase, 'query'>): AuthEpochRepository {
   return {
     async read(issuer, subject) {
       try {

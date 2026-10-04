@@ -1,3 +1,4 @@
+import { currentPublishedPolicyV3 } from './evaluatePermission'
 import { randomUUID } from 'node:crypto'
 import { canonicalJson, sha256 } from './commands'
 import { classifyAssignmentSurface } from './assignmentSurface'
@@ -95,12 +96,15 @@ export function assertFreshPrivilegedSession(actor: GovernanceActorContext, sess
 }
 
 export function hasCrossAppOverride(document: GovernanceDocumentV3, actor: GovernanceActorContext, at = new Date().toISOString()) {
-  const activeLink = document.draft.identityLinks.find((link) => link.principalId === actor.principalId && link.employeeId === actor.employeeId
+  const policy = currentPublishedPolicyV3(document)
+  if (!policy || !actor.principalId || !actor.employeeId) return false
+  const links = policy.identityLinks.filter((link) => link.principalId === actor.principalId && link.employeeId === actor.employeeId
     && link.issuer === actor.issuer && link.subject === actor.subject && isActiveAt(link.status, link.validFrom, link.validTo, at))
-  if (!activeLink) return false
-  const privilegedAdmission = (document.draft.principalAdmissions ?? []).find((admission) => admission.identityLinkId === activeLink.id && admission.accountType === 'human_privileged' && admission.status === 'active')
+  if (links.length !== 1) return false
+  const activeLink = links[0]
+  const privilegedAdmission = (policy.principalAdmissions ?? []).find((admission) => admission.identityLinkId === activeLink.id && admission.accountType === 'human_privileged' && admission.status === 'active')
   if (!privilegedAdmission) return false
-  return document.draft.managementGrants.some((grant) => grant.principalId === actor.principalId && grant.employeeId === actor.employeeId
+  return policy.managementGrants.some((grant) => grant.principalId === actor.principalId && grant.employeeId === actor.employeeId
     && grant.applicationId === 'ai-pdm' && grant.capability === 'orgmaster.cross_app_override'
     && isActiveAt(grant.status, grant.validFrom, grant.validTo, at))
 }

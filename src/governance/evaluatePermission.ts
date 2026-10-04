@@ -78,6 +78,11 @@ function evaluateV2(document: GovernanceDocumentV2 | GovernanceDocumentV3, reque
   return evaluateCurrentPolicyForPrincipal(version, request, options, now, link.principalId, link.employeeId)
 }
 
+export function currentPublishedPolicyV3(document: GovernanceDocumentV3) {
+  const version = document.publishedVersions.find(candidate => candidate.id === document.activePolicyVersionId)
+  return version?.kind === 'assignment-governance-v3' ? version.policy : null
+}
+
 /** Runtime management authorization starts with the verified session principal.
  * Provider pair is used to bind login, never to re-select the authorization subject. */
 export function evaluateVerifiedPrincipalPermission(
@@ -106,13 +111,8 @@ export function evaluateVerifiedPrincipalPermission(
   if (!actor.principalId || !actor.employeeId || !permissionCode.trim()) {
     return { ...result, reason: 'IDENTITY_NOT_LINKED' }
   }
-  const links = version.policy.identityLinks.filter((link) =>
-    link.principalId === actor.principalId
-    && isActiveAt(link.status, link.validFrom, link.validTo, now))
-  if (links.length === 0) return { ...result, reason: 'IDENTITY_NOT_LINKED' }
-  if (links.some((link) => link.employeeId !== actor.employeeId)) {
-    return { ...result, reason: 'PRINCIPAL_CONFLICT' }
-  }
+  // The server verified canonical Principal/Employee eligibility before this decision.
+  // Historical JSON aliases cannot be a second admission source for managed Principals.
   return evaluateCurrentPolicyForPrincipal(version, request, options, now, actor.principalId, actor.employeeId)
 }
 export function evaluatePermission(document: GovernanceDocumentV1 | GovernanceDocumentV2 | GovernanceDocumentV3, request: PermissionEvaluationRequestV1, options: Options = {}): PermissionEvaluationResultV1 {

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { readFile, stat } from 'node:fs/promises'
 import pg from 'pg'
 import { writeVerifiedAtomicFile } from './orgmasterFileStore'
@@ -34,7 +35,8 @@ export type PersistenceEntitlementChange = {
   reasonCode?: string
 }
 
-type Queryable = Pick<pg.Pool, 'query' | 'end'>
+type Queryable = Pick<pg.Pool, 'query'>
+const transactionDatabase = new AsyncLocalStorage<Queryable>()
 
 export class OrgmasterPersistenceError extends Error {
   constructor(public readonly code: 'PERSISTENCE_NOT_CONFIGURED' | 'PERSISTENCE_ARTIFACT_NOT_FOUND' | 'PERSISTENCE_REVISION_CONFLICT' | 'PERSISTENCE_READ_FAILED' | 'PERSISTENCE_WRITE_FAILED' | 'PERSISTENCE_MEDIA_NOT_FOUND') {
@@ -79,7 +81,32 @@ function poolForRuntime(environment: NodeJS.ProcessEnv = process.env) {
 }
 
 function database(input?: Queryable) {
-  return input ?? poolForRuntime()
+  return input ?? transactionDatabase.getStore() ?? poolForRuntime()
+}
+
+/** Governance owns this transaction. Every nested artifact read/write uses its one runtime client. */
+export async function withPersistenceTransaction<T>(run: () => Promise<T>): Promise<T> {
+  if (!usesCloudSqlPersistence() || transactionDatabase.getStore()) return run()
+  const client = await (poolForRuntime() as pg.Pool).connect()
+  try {
+    // The writer acquires the established admission/persistence locks. A fresh post-lock
+    // read must observe a withdrawal that committed while it waited, so use READ COMMITTED.
+    await client.query('BEGIN ISOLATION LEVEL READ COMMITTED')
+    const result = await transactionDatabase.run(client, run)
+    await client.query('COMMIT')
+    return result
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+export function currentPersistenceTransactionDatabase(): Queryable {
+  const current = transactionDatabase.getStore()
+  if (!current) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
+  return current
 }
 
 function mappedError(error: unknown, fallback: OrgmasterPersistenceError['code']) {

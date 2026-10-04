@@ -7,7 +7,7 @@ import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import pg from 'pg'
 import { classifyTarget, requiredCorrectionCases, resolvePostgresBin, resultExitCode, supportsServerVersion } from './lib/dev047-postgres-qc-contract.mjs'
 
@@ -1874,6 +1874,41 @@ async function runDev057Checks() {
       transfer: ['committed', 'no-write', 'no-write', 'committed', 'submitted-and-committed'] }
   })
   if (dev057ConsumerRoot) await check('D57-22', 'management HTTP publishes and revokes a Principal grant through the product PostgreSQL writer', async () => {
+    const configuredPlatformRoot = process.env.DEV057_PLATFORM_PRODUCER_ROOT?.trim()
+    assert.ok(configuredPlatformRoot, 'DEV057_PLATFORM_PRODUCER_ROOT is required for official epoch composition')
+    const platformRoot = fs.realpathSync(configuredPlatformRoot)
+    const { buildPlatformMigrationBundle } = await import(pathToFileURL(path.join(platformRoot, 'scripts/lib/dev011-platform-provider.mjs')).href)
+    const platformProfile = JSON.parse(fs.readFileSync(path.join(platformRoot, 'config/dev-011/platform-independent-release-v3.json'), 'utf8'))
+    const platformFiles = new Map(platformProfile.migrations.entries.map(entry =>
+      [entry.path, fs.readFileSync(path.join(platformRoot, entry.path))]))
+    const platformSource = run('git', ['-C', platformRoot, 'rev-parse', 'HEAD']).stdout.trim()
+    const { bundle } = buildPlatformMigrationBundle(platformProfile, platformFiles, platformSource)
+    await client.query('CREATE SCHEMA platform_contract AUTHORIZATION jenfu_platform_migrator')
+    const baseFiles = [
+      '001_platform_auth_epoch_and_portal_sessions.sql',
+      '002_dev005_employee_auth_epoch_invalidation.sql',
+      '003_dev010_platform_contract_producer.sql',
+      '005_dev013_sso_handoff_and_auth_state.sql',
+      '006_dev014_global_invalidation_consumer.sql',
+    ]
+    for (const name of baseFiles) await client.query(platformFiles.get('db/migrations/' + name).toString('utf8'))
+    // Use the Platform owner's existing atomic 008 -> 009 supersession producer.
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL ROLE jenfu_platform_migrator')
+      await client.query('SET LOCAL check_function_bodies = off')
+      await client.query(Buffer.from(bundle.entries[7].sqlBase64, 'base64').toString('utf8'))
+      await client.query('SET LOCAL check_function_bodies = on')
+      await client.query(Buffer.from(bundle.entries[8].sqlBase64, 'base64').toString('utf8'))
+      await client.query('COMMIT')
+    } catch (error) { await client.query('ROLLBACK'); throw error }
+    await client.query(platformFiles.get('db/migrations/010_dev015_principal_auth_contract_manifest.sql').toString('utf8'))
+    const manifest = (await queryAs('jenfu_orgmaster_runtime',
+      "SELECT contract_version, signature_sha256::text FROM platform_contract.v_contract_manifest_v1 WHERE contract_id='platform.principal-auth-state'")).rows
+    assert.deepEqual(manifest, [{ contract_version: 'jenfu.platform-contract.principal-auth-state.v3',
+      signature_sha256: '2e56c51ca3d2ad4889d818013cc503fc2727c6817d1d9d71663538901d3de385' }])
+    const managedActor = (await client.query("SELECT principal_id, employee_id, principal_issuer, principal_subject FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_issuer='issuer-managed-verify' AND principal_subject='subject-managed-verify'")).rows
+    assert.equal(managedActor.length, 1, 'native verified managed actor is required')
     const testPath = path.join(root, 'server', 'orgmasterGovernanceProduct.postgres.test.ts')
     assert.ok(fs.existsSync(testPath), 'product governance integration test is required')
     const result = spawnSync(process.execPath, [path.join(root, 'node_modules', 'vitest', 'vitest.mjs'),
@@ -1881,6 +1916,10 @@ async function runDev057Checks() {
       cwd: root, encoding: 'utf8', windowsHide: true, timeout: 120_000,
       env: { ...process.env, CI: '1',
         DEV057_PRODUCT_GOVERNANCE_ADMIN_URL: connectionString,
+        DEV057_PRODUCT_GOVERNANCE_PRINCIPAL: managedActor[0].principal_id,
+        DEV057_PRODUCT_GOVERNANCE_EMPLOYEE: managedActor[0].employee_id,
+        DEV057_PRODUCT_GOVERNANCE_ISSUER: managedActor[0].principal_issuer,
+        DEV057_PRODUCT_GOVERNANCE_SUBJECT: managedActor[0].principal_subject,
         DEV057_PRODUCT_GOVERNANCE_RUNTIME_URL: connectionString.replace('postgres@', 'dev057_orgmaster_catalog_probe@'),
         DEV057_PRODUCT_GOVERNANCE_CONSUMER_URL: connectionString.replace('postgres@', 'dev057_ai_pdm_consumer_probe@'),
       },
@@ -1889,8 +1928,42 @@ async function runDev057Checks() {
       `OrgMaster product governance failed: ${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`)
     assert.match(result.stdout, /Tests\s+3 passed/u,
       'product governance PostgreSQL probe must execute, not skip')
-    return { testSha256: sha256(fs.readFileSync(testPath)), verifiedSession: 'synthetic-v2-principal',
-      phases: ['published-assignment', 'published-revocation'], ownerApi: 'actual-http',
+    // Seal only this exact test's scalar checkpoint protocol, never the full child output.
+    const withdrawals = ['session', 'epoch', 'governance-cas', 'workspace', 'managed-quarantine', 'admission']
+    const checkpoints = result.stdout.split(/\r?\n/u).map(line => line.trim())
+      .filter(line => line.startsWith('{"dev057GovernanceCheckpoint":'))
+      .map(line => {
+        const row = JSON.parse(line).dev057GovernanceCheckpoint
+        assert.ok(row && typeof row.stage === 'string' && Number.isSafeInteger(row.elapsedMs) && row.elapsedMs >= 0,
+          'product checkpoint must have a fixed stage and elapsed time')
+        const projected = { stage: row.stage, elapsedMs: row.elapsedMs }
+        if (row.withdrawal !== undefined) { assert.ok(withdrawals.includes(row.withdrawal)); projected.withdrawal = row.withdrawal }
+        if (row.forStage !== undefined) { assert.ok([...withdrawals, 'write-first-revoker'].includes(row.forStage)); projected.forStage = row.forStage }
+        if (row.status !== undefined) { assert.ok([200, 201, 401, 409].includes(row.status)); projected.status = row.status }
+        return projected
+      })
+    const expectedCheckpoints = [
+      ...['read-before', 'read-after', 'publish-before', 'publish-after', 'revoke-before', 'revoke-after'].map(stage => [stage, null, null]),
+      ...withdrawals.flatMap(withdrawal => [
+        ['race-before', withdrawal, null], ['lock-wait-before', null, withdrawal],
+        ['lock-wait-observed', null, withdrawal], ['race-withdrawal-committed', withdrawal, null],
+        ['race-assertions-after', withdrawal, null], ['race-after', withdrawal, null],
+      ]),
+      ['write-first-before', null, null], ['write-first-ready', null, null],
+      ['lock-wait-before', null, 'write-first-revoker'], ['lock-wait-observed', null, 'write-first-revoker'],
+      ['write-first-commit-before', null, null], ['write-first-commit-after', null, null],
+      ['write-first-after', null, null], ['cleanup-after', null, null],
+    ]
+    assert.equal(checkpoints.length, 50, 'all native product stages must be observed')
+    assert.deepEqual(checkpoints.map(row => [row.stage, row.withdrawal ?? null, row.forStage ?? null]), expectedCheckpoints)
+    return { testSha256: sha256(fs.readFileSync(testPath)), checkpoints, verifiedSession: 'persisted-v2-principal-with-official-epoch-contract',
+      platformEpochComposition: { source: platformSource, manifest, migrations: [...baseFiles,
+        '008_dev014_platform_authority_switch_contract.sql','009_dev015_principal_auth_state.sql',
+        '010_dev015_principal_auth_contract_manifest.sql'].map(name => ({ owner: 'platform',
+          path: 'db/migrations/' + name, sha256: sha256(platformFiles.get('db/migrations/' + name)) })) },
+      phases: ['managed-no-json-alias', 'published-assignment', 'published-revocation',
+        'same-snapshot-cas', 'workspace-withdrawal', 'managed-quarantine',
+        'session-revocation', 'principal-epoch-withdrawal', 'write-first-revoke-waits'], ownerApi: 'actual-http',
       consumer: 'ai-pdm-runtime-grant-v3' }
   })
 }

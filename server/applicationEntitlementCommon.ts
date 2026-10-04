@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { buildOrganizationSnapshot, isActiveAt } from '../src/governance/validation'
 import { canonicalJson, sha256 } from '../src/governance/commands'
+import { currentPublishedPolicyV3 } from '../src/governance/evaluatePermission'
 import { hasCrossAppOverride } from '../src/governance/privilegedAssignments'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceAssignmentVersionV3, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV3, GovernanceRoleAssignmentV3, ManagementGrantV1 } from '../src/governance/types'
 
@@ -92,13 +93,15 @@ export function activeIdentityLink(document: GovernanceDocumentV3, actor: Govern
 }
 
 export function hasFinancialOwnerRole(document: GovernanceDocumentV3, actor: GovernanceActorContext, at = new Date().toISOString()) {
-  if (!actor.employeeId || !activeIdentityLink(document, actor, at)) return false
-  return document.draft.roleAssignments.some((assignment) => assignment.applicationId === FINANCIAL_APPLICATION_ID && assignment.employeeId === actor.employeeId && assignment.roleId === 'role-owner' && assignment.status === 'active' && assignment.subjectKind === 'employee' && assignment.scope.kind === 'workspace' && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, at))
+  const policy = currentPublishedPolicyV3(document)
+  if (!actor.principalId || !actor.employeeId || !policy) return false
+  return policy.roleAssignments.some((assignment) => assignment.applicationId === FINANCIAL_APPLICATION_ID && assignment.employeeId === actor.employeeId && assignment.roleId === 'role-owner' && assignment.status === 'active' && assignment.subjectKind === 'employee' && assignment.scope.kind === 'workspace' && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, at))
 }
 
 export function hasFinancialManagementGrant(document: GovernanceDocumentV3, actor: GovernanceActorContext, capability: typeof FINANCIAL_ROLE_ASSIGNMENT_MANAGE | typeof FINANCIAL_ROLE_ASSIGNMENT_PUBLISH, at = new Date().toISOString()) {
-  if (!actor.employeeId) return false
-  return document.draft.managementGrants.some((grant) => grant.applicationId === FINANCIAL_APPLICATION_ID && grant.principalId === actor.principalId && grant.employeeId === actor.employeeId && grant.capability === capability && isActiveAt(grant.status, grant.validFrom, grant.validTo, at))
+  const policy = currentPublishedPolicyV3(document)
+  if (!actor.principalId || !actor.employeeId || !policy) return false
+  return policy.managementGrants.some((grant) => grant.applicationId === FINANCIAL_APPLICATION_ID && grant.principalId === actor.principalId && grant.employeeId === actor.employeeId && grant.capability === capability && isActiveAt(grant.status, grant.validFrom, grant.validTo, at))
 }
 
 export function assertFinancialAuthority(document: GovernanceDocumentV3, actor: GovernanceActorContext, capability: typeof FINANCIAL_ROLE_ASSIGNMENT_MANAGE | typeof FINANCIAL_ROLE_ASSIGNMENT_PUBLISH, at = new Date().toISOString()) {

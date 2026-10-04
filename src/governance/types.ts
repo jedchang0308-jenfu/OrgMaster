@@ -476,6 +476,7 @@ export interface GovernanceActorContext {
   assuranceLevel?: 'aal1' | 'aal2'
   authenticatedAt?: string | null
   sessionId?: string
+  principalAuthEpoch?: number | null
 }
 export interface GovernanceRevisionResult { revision: string; document: GovernanceDocumentV1 }
 
