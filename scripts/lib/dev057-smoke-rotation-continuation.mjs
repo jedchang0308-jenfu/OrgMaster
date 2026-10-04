@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { canonicalize, sha256, assertImmutableRef, assertControllerImageResolutionProof, releasePaths } from './dev012-owner-release-runtime.mjs'
 import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
+import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { validateReauthReceipt, EXPECTED } from './dev057-smoke-credential-reauth.mjs'
 
 const H64 = /^[a-f0-9]{64}$/u
@@ -12,6 +13,7 @@ const CONTROLLER_ROOT = 'tools/dev-040/abort-controller'
 const RECIPE = 'infra/google-cloud/dev-040-production-release/candidate-smoke.tf'
 const INFRA_ROOT = 'infra/google-cloud/dev-040-production-release'
 const REUSE_SCHEMA = 'jenfu.dev012.app-infra-reuse-receipt.v1'
+export const MAX_SMOKE_REUSE_CHAIN_DEPTH = 32
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 export function readReleaseSourceFile(root, revision, file) {
@@ -45,15 +47,110 @@ function executablePaths(read) {
   if (paths.some((file) => !/^[A-Za-z0-9._/-]+$/u.test(file) || file.includes('..'))) fail('SMOKE_ROTATION_EXECUTABLE_CHANGED')
   return paths
 }
+// Resolve only the historical apply-time predecessor. The caller keeps its latest
+// released baseline and current control CAS; historical snapshots never select it.
+async function smokeRotationAppliedPredecessor({ root, profile, transport, intent, baseline,
+  rotation, readSourceFile, readInfrastructureTree, sourceReuse }) {
+  const readRef = async (ref) => {
+    assertImmutableRef(ref, EXPECTED.releaseBucket, ['receipts'])
+    const result = await transport.readJson(ref, EXPECTED.releaseBucket, ['receipts'])
+    if (!same(result.ref, ref) || !Buffer.isBuffer(result.bytes) || sha256(result.bytes) !== ref.sha256 ||
+        !same(JSON.parse(result.bytes.toString('utf8')), result.value)) fail('SMOKE_REUSE_CHAIN_REF_INVALID')
+    return result.value
+  }
+  const assertReleased = async (releaseIntent, intentRef, revision) => {
+    const uri = releasePaths(profile, releaseIntent, intentRef.sha256).terminal
+    const result = await transport.readBytes(uri, { prefixes: ['receipts'] })
+    assertImmutableRef(result.ref, EXPECTED.releaseBucket, ['receipts'])
+    if (result.ref.uri !== uri || !Buffer.isBuffer(result.bytes) || sha256(result.bytes) !== result.ref.sha256) fail('SMOKE_REUSE_CHAIN_REF_INVALID')
+    const terminal = JSON.parse(result.bytes.toString('utf8'))
+    const { receiptSha256, ...core } = terminal
+    if (receiptSha256 !== sha256(canonicalize(core)) || terminal.schemaVersion !== 'jenfu.dev012.stage-receipt.v1' ||
+        terminal.ownerApplicationId !== profile.application.id || terminal.releaseId !== releaseIntent.releaseId ||
+        terminal.sourceRevision !== releaseIntent.sourceRevision || terminal.stage !== 'terminal' || terminal.status !== 'PASS' ||
+        terminal.facts?.result !== 'RELEASED' || terminal.facts.remainingHumanAction !== 0 ||
+        terminal.facts.candidateRevision !== revision) fail('SMOKE_REUSE_CHAIN_RELEASE_INVALID')
+  }
+  let currentIntent = baseline.intent, currentIntentRef = intent.baselineIntentRef
+  let expectedActiveRevision = baseline.activeRevision
+  let ref = currentIntent.infraReceiptRef
+  const visited = new Set()
+  let depth = 0
+  let tree, executable, addresses
+  while (true) {
+    assertImmutableRef(ref, EXPECTED.releaseBucket, ['receipts'])
+    if (visited.has(ref.uri)) fail('SMOKE_REUSE_CHAIN_CYCLE')
+    visited.add(ref.uri)
+    const value = await readRef(ref)
+    if (value.schemaVersion !== REUSE_SCHEMA) {
+      sealedInfra(value, profile)
+      if (value.sourceRevision !== currentIntent.sourceRevision) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+      if (depth) {
+        if (!tree.equals(readInfrastructureTree(root, value.sourceRevision))) fail('SMOKE_REUSE_CHAIN_INPUT_DRIFT')
+        if (!same(await readRef(currentIntentRef), currentIntent)) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+        assertDev040ReleaseIntent(currentIntent, profile)
+        const originalLock = await readRef(currentIntent.sourceLockRef)
+        assertReuseSourceLock(originalLock, profile)
+        if (originalLock.releaseId !== currentIntent.releaseId || originalLock.sourceRevision !== currentIntent.sourceRevision ||
+            originalLock.sourceSha256 !== currentIntent.sourceSha256 ||
+            originalLock.migrationManifestSha256 !== currentIntent.migrationManifestSha256) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+        await assertReleased(currentIntent, currentIntentRef, expectedActiveRevision)
+      }
+      return value
+    }
+    if (!sourceReuse) fail('SMOKE_ROTATION_INFRA_INVALID')
+    if (++depth > MAX_SMOKE_REUSE_CHAIN_DEPTH) fail('SMOKE_REUSE_CHAIN_DEPTH_EXCEEDED')
+    if (!tree) {
+      tree = readInfrastructureTree(root, intent.sourceRevision)
+      executable = executablePaths((file) => readSourceFile(root, intent.sourceRevision, file))
+        .map((file) => ({ path: file, sha256: sha256(readSourceFile(root, intent.sourceRevision, file)) }))
+      const plan = JSON.parse(readSourceFile(root, intent.sourceRevision, INFRA_PROFILE))
+      addresses = [...plan.stageA, ...plan.stageBAdditional].sort()
+    }
+    if (!same(await readRef(currentIntentRef), currentIntent)) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+    assertDev040ReleaseIntent(currentIntent, profile)
+    const lock = await readRef(value.sourceLockRef)
+    assertSmokeInfraReuseReceipt({ receipt: value, profile, sourceLock: lock, intent: currentIntent })
+    const publishedLock = await readRef(currentIntent.sourceLockRef)
+    assertReuseSourceLock(publishedLock, profile)
+    if (lock.releaseId !== value.releaseId || publishedLock.releaseId !== currentIntent.releaseId ||
+        publishedLock.migrationManifestSha256 !== currentIntent.migrationManifestSha256 || !same(currentIntent.infraReceiptRef, ref) ||
+        !['sourceRevision', 'sourceSha256', 'sourceTree'].every(field => same(publishedLock[field], value[field]))) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+    await assertReleased(currentIntent, currentIntentRef, expectedActiveRevision)
+    if (!same(value.reusedInfraReceiptRef, intent.infraReceiptRef) || value.reusedSourceRevision !== rotation.sourceRevision ||
+        value.candidateSmokeRefreshTokenSecretVersion !== rotation.candidateSmokeRefreshTokenSecretVersion ||
+        value.appliedObservedAt !== rotation.observedAt ||
+        ['foundationManifestSha256', 'migrationRunnerDigest', 'controllerImageDigest', 'terraformAddressCount', 'terraformAddressesSha256',
+          'stateLineage', 'stateSerial', 'stateJsonSha256', 'outputManifestSha256', 'credentialEvidenceRef']
+          .some(field => !same(value[field], rotation[field])) || value.backendBucket !== 'tfstate-jenfu-platform-prod' ||
+        value.backendKey !== profile.state.backendKey || value.terraformAddressCount !== addresses.length ||
+        value.terraformAddressesSha256 !== sha256(canonicalize(addresses))) fail('SMOKE_REUSE_CHAIN_ROTATION_DRIFT')
+    const layerExecutable = executablePaths((file) => readSourceFile(root, value.sourceRevision, file))
+      .map((file) => ({ path: file, sha256: sha256(readSourceFile(root, value.sourceRevision, file)) }))
+    if (!same(layerExecutable, executable) || value.executableInputCount !== executable.length ||
+        value.executableInputsSha256 !== sha256(canonicalize(executable)) || value.infrastructureInputsSha256 !== sha256(tree) ||
+        !tree.equals(readInfrastructureTree(root, value.sourceRevision)) ||
+        !same(JSON.parse(readSourceFile(root, value.sourceRevision, INFRA_PROFILE)), JSON.parse(readSourceFile(root, intent.sourceRevision, INFRA_PROFILE))) ||
+        value.providerReadback.workflowSourceSha256 !== sha256(expectedSmokeWorkflowSource({ root, profile,
+          sourceRevision: value.sourceRevision, version: value.candidateSmokeRefreshTokenSecretVersion, readSourceFile }))) fail('SMOKE_REUSE_CHAIN_INPUT_DRIFT')
+    if (visited.has(value.priorInfraReceiptRef.uri)) fail('SMOKE_REUSE_CHAIN_CYCLE')
+    const parentIntent = await readRef(value.baselineIntentRef)
+    assertDev040ReleaseIntent(parentIntent, profile)
+    if (!same(value.priorInfraReceiptRef, parentIntent.infraReceiptRef)) fail('SMOKE_REUSE_CHAIN_REF_INVALID')
+    expectedActiveRevision = currentIntent.previousRevision
+    currentIntent = parentIntent; currentIntentRef = value.baselineIntentRef; ref = value.priorInfraReceiptRef
+  }
+}
+
 async function assertAppliedSmokeRotation({ root, profile, transport, intent, values, baseline,
-  readSourceFile = readReleaseSourceFile, nowMs = Date.now(), sourceReuse = false }) {
+  readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, nowMs = Date.now(), sourceReuse = false }) {
   assertOwner(profile)
   assertImmutableRef(intent.infraReceiptRef, EXPECTED.releaseBucket, ['receipts/releases'])
   if (!/^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/[A-Z0-9][A-Z0-9-]{5,63}\/app-infra\.json$/u.test(intent.infraReceiptRef.uri)) fail('SMOKE_ROTATION_REF_INVALID')
   const rotation = (await transport.readJson(intent.infraReceiptRef, EXPECTED.releaseBucket)).value
-  const prior = (await transport.readJson(baseline.intent.infraReceiptRef, EXPECTED.releaseBucket)).value
   sealedInfra(rotation, profile)
-  sealedInfra(prior, profile)
+  const prior = await smokeRotationAppliedPredecessor({ root, profile, transport, intent, baseline, rotation,
+    readSourceFile, readInfrastructureTree, sourceReuse })
   const rotationKeys = ['schemaVersion', 'ownerApplicationId', 'projectId', 'region', 'sourceRevision', 'foundationManifestSha256',
     'migrationRunnerDigest', 'controllerImageDigest', 'terraformAddressCount', 'terraformAddressesSha256', 'binaryPlanSha256',
     'planJsonSha256', 'stateLineage', 'stateSerial', 'stateJsonSha256', 'outputManifestSha256', 'mutationProfile',
@@ -438,9 +535,9 @@ export async function buildSmokeInfraReuseReceipt({ root, profile, transport, re
   if (sourceLock.releaseId !== releaseId || !Number.isFinite(Date.parse(observedAt))) fail('SMOKE_REUSE_SOURCE_INVALID')
   const rotation = (await transport.readJson(rotationRef, EXPECTED.releaseBucket, ['receipts'])).value
   if (rotation.sourceRevision === sourceLock.sourceRevision) fail('SMOKE_REUSE_SOURCE_INVALID')
-  const intent = { sourceRevision: sourceLock.sourceRevision, infraReceiptRef: rotationRef }
+  const intent = { sourceRevision: sourceLock.sourceRevision, infraReceiptRef: rotationRef, baselineIntentRef }
   const continuation = await assertAppliedSmokeRotation({ root, profile, transport, intent, values: { infra: rotation }, baseline,
-    readSourceFile, sourceReuse: true })
+    readSourceFile, readInfrastructureTree, sourceReuse: true })
   const prior = (await transport.readJson(baseline.intent.infraReceiptRef, EXPECTED.releaseBucket)).value
   const tree = readInfrastructureTree(root, sourceLock.sourceRevision)
   if (![baseline.intent.sourceRevision, prior.sourceRevision, rotation.sourceRevision]
@@ -484,7 +581,7 @@ export async function assertSmokeInfraReuseContinuation({ root, profile, transpo
       lock.releaseId !== receipt.releaseId || !same(receipt.priorInfraReceiptRef, baseline.intent.infraReceiptRef)) fail('SMOKE_REUSE_RECEIPT_INVALID')
   const rotation = (await transport.readJson(receipt.reusedInfraReceiptRef, EXPECTED.releaseBucket)).value
   const continuation = await assertAppliedSmokeRotation({ root, profile, transport,
-    intent: { ...intent, infraReceiptRef: receipt.reusedInfraReceiptRef }, values: { infra: rotation }, baseline, readSourceFile, sourceReuse: true })
+    intent: { ...intent, infraReceiptRef: receipt.reusedInfraReceiptRef }, values: { infra: rotation }, baseline, readSourceFile, readInfrastructureTree, sourceReuse: true })
   for (const field of ['foundationManifestSha256', 'migrationRunnerDigest', 'controllerImageDigest', 'terraformAddressCount',
     'terraformAddressesSha256', 'stateLineage', 'stateSerial', 'stateJsonSha256', 'outputManifestSha256', 'credentialEvidenceRef']) {
     if (!same(receipt[field], rotation[field])) fail('SMOKE_REUSE_RECEIPT_INVALID')
