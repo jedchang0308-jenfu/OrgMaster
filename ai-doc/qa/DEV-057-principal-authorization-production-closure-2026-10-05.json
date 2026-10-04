@@ -1,0 +1,196 @@
+{
+  "schemaVersion": "orgmaster.dev057.authorization-closure-safe-projection.v1",
+  "id": "ORGMASTER-DEV057-PRINCIPAL-ONLY",
+  "sourceRevision": "5840bbc5b7195d33f7c0e3a998bbed3725a1626c",
+  "image": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:d2e9f777d096952f75a867115927e889d9c35e052272d0bd6dc35b5e485acdb0",
+  "revision": "orgmaster-prod-2e665c16ba0b",
+  "run": {
+    "id": 37240015601,
+    "url": "https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37240015601",
+    "allTenStagesSucceeded": true
+  },
+  "released": true,
+  "allTrafficToReleasedRevision": true,
+  "zeroTags": true,
+  "productionAuthorizationAccepted": true,
+  "documentQcPending": true,
+  "rootGoalComplete": false,
+  "rootClosureRef": {
+    "path": "Jenfu-Platform/ai-doc/qa/DEV-015-principal-authorization-production-closure-2026-10-05.json",
+    "rawSha256": "c0121bde7b1fabfad4aa1b27158d9890a7dbd32f50ab7202ec1061ba291e882d"
+  },
+  "cases": [
+    {
+      "id": "F01",
+      "authorizationBoundaryAccepted": true,
+      "taskOwnedPgSupportsAuthorization": false,
+      "allBusinessFlowsProductionPassed": false
+    },
+    {
+      "id": "F02",
+      "authorizationBoundaryAccepted": true,
+      "taskOwnedPgSupportsAuthorization": false,
+      "allBusinessFlowsProductionPassed": false
+    },
+    {
+      "id": "F03",
+      "authorizationBoundaryAccepted": true,
+      "taskOwnedPgSupportsAuthorization": true,
+      "allBusinessFlowsProductionPassed": false
+    },
+    {
+      "id": "F04",
+      "authorizationBoundaryAccepted": true,
+      "taskOwnedPgSupportsAuthorization": false,
+      "allBusinessFlowsProductionPassed": false
+    },
+    {
+      "id": "F05",
+      "authorizationBoundaryAccepted": true,
+      "taskOwnedPgSupportsAuthorization": false,
+      "allBusinessFlowsProductionPassed": false
+    },
+    {
+      "id": "F06",
+      "authorizationBoundaryAccepted": true,
+      "taskOwnedPgSupportsAuthorization": true,
+      "allBusinessFlowsProductionPassed": false
+    },
+    {
+      "id": "F07",
+      "authorizationBoundaryAccepted": true,
+      "taskOwnedPgSupportsAuthorization": true,
+      "allBusinessFlowsProductionPassed": false
+    },
+    {
+      "id": "F08",
+      "authorizationBoundaryAccepted": true,
+      "taskOwnedPgSupportsAuthorization": true,
+      "allBusinessFlowsProductionPassed": false
+    },
+    {
+      "id": "F09",
+      "authorizationBoundaryAccepted": true,
+      "taskOwnedPgSupportsAuthorization": false,
+      "allBusinessFlowsProductionPassed": false
+    },
+    {
+      "id": "F10",
+      "authorizationBoundaryAccepted": true,
+      "taskOwnedPgSupportsAuthorization": false,
+      "allBusinessFlowsProductionPassed": false
+    }
+  ],
+  "normalGovernance": {
+    "id": "DEV057-NORMAL-GOVERNANCE",
+    "normalAssignAndPublishPassed": true,
+    "managementWrite200": true,
+    "cachedSameSessionPostRevoke403": true,
+    "persistedTrustedPrincipalAudit": true,
+    "deniedCommandAbsent": true,
+    "deniedPublishNoDocumentEffect": true,
+    "otherPolicyPreserved": true,
+    "temporaryEffectiveRoleReturnedToZero": true,
+    "revokedHistoryRetained": true,
+    "exactOriginalDocumentRestored": false,
+    "writePolicyContentUnchanged": false
+  },
+  "logout": {
+    "id": "F09",
+    "localEffectPassed": true,
+    "globalThreeOldSessions401": true,
+    "normalGooglePortalThreeSessions200Aal1": true,
+    "rawClickTransportUnknownPreserved": true,
+    "rawProviderPostCaptured": false,
+    "noSecondLogoutAttempt": true
+  },
+  "recovery": {
+    "id": "F10",
+    "principalOnlyCompatibilityPassed": true,
+    "retainedOrgSourceRevision": "70d3bf336bb92cb17a62d2687c2427d7eb43a3fb",
+    "retainedSourceContainsNewGovernanceRaceGuard": false,
+    "newThreeOwnerTrafficExercise": false,
+    "priorAiMaintenanceRestoreReused": true
+  },
+  "cleanup": {
+    "id": "DEV057-CLEANUP",
+    "threeTaskContextsClosed": true,
+    "pgCleanupComplete": true,
+    "userOwnedBrowserTouched": false,
+    "fixtureEffectiveRightsRestored": true,
+    "historyAndBusinessDataPreserved": true
+  },
+  "deferred": {
+    "id": "AIPDM-DEV122",
+    "businessDeferredNotPassed": true,
+    "untestedNeverPassed": true,
+    "notRetired": true,
+    "shareMetadata42P08NotPassed": true,
+    "perResourceProductionPositiveBytesPassed": false,
+    "productionHeldWorkerWorkloadPassed": false
+  },
+  "historicalQaConclusionsPreserved": true,
+  "sharedGrantFailureCounterUnchanged": true,
+  "evidenceRefs": [
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev057-r35-governance-native-pg-1791148538445-delivery.json",
+      "rawSha256": "6952efcc79dca1116be03d71a68dec7ff1c978165a54c977c1aa79119e59507a"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-three-owner-released-2026-10-04T22-49-52-616Z.json",
+      "rawSha256": "c734fcc338c8e42d678fe43f5eec2c50a2c340f89c93df6fea9a3fcb79ae1150"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-grant-submit-2026-10-04T22-55-48-233Z.json",
+      "rawSha256": "e6ed91a01f4895624b5f68eccb2a3fc231dc5540e269dd959a24d56c6eed8dca"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-publish-grant-2026-10-04T22-56-47-353Z.json",
+      "rawSha256": "05a980b761c28c851f36ca197d0f700518c528367c5088215db12847b832a70e"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-fixture-management-read-2026-10-04T22-59-04-755Z.json",
+      "rawSha256": "6531b155a57e17e81bc49eb731d519f7c3cf0fc5ab4ac211d9f9addb196346f2"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-fixture-self-upsert-2026-10-04T23-00-39-507Z.json",
+      "rawSha256": "dfd660ee49f5057c32ade0991adf60013c18d602ddf6fb9178a6000eaf876a02"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-fixture-cached-publish-2026-10-04T23-07-35-853Z.json",
+      "rawSha256": "092d903026587bd8bbd4cfc333bdef3d97e0fb9e94286c07df3659f04218bfdd"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-revoke-submit-b-2026-10-04T23-05-51-853Z.json",
+      "rawSha256": "fc08927116eddcf81f8e870937092ecfc4c2f897bddcdea693f5bfec943c1477"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-publish-revoke-2026-10-04T23-06-33-215Z.json",
+      "rawSha256": "387fe9ea01fbc1c91628233e4011e8f500eb79f0b18e59520b3cfd8b70276d6a"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-fixture-restored-readback-2026-10-04T23-08-51-760Z.json",
+      "rawSha256": "2be4a88b5664fa603e107207c38391d02768f15628d809599ff33b95af6693cc"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r33-DEV015-R35-GLOBAL-20261005-global-logout-after.json",
+      "rawSha256": "6af819c07729a189a8721fd437b2a87949ca8c1d0e57310caca7e4741223ea07"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r33-DEV015-R35-GLOBAL-20261005-global-logout-restored.json",
+      "rawSha256": "9b9330a8ccee282c13d6fcaa15ae6760d772fc9e14e0acb4e97553615d8e08d6"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-final-auth-scope-readback-2026-10-04T23-27-11-410Z.json",
+      "rawSha256": "5cd9c72dfa367aaab21c8a3f10b9c74b26c9e53d3a806909ff1a972cb63e63db"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-final-recovery-readonly-2026-10-04T23-20-31-044Z.json",
+      "rawSha256": "cdc619c30ae0c8a8503037c43e7a44241f0636ea95808122f02afa8519bd41fd"
+    },
+    {
+      "path": "Jenfu-Platform/output/dev-012/inputs/dev015-r35-task-ui-cleanup.json",
+      "rawSha256": "8c6556faf0b2b5569dd0a332a6d97f81b17c3b7ebd2b26dde06650380d8ef327"
+    }
+  ]
+}

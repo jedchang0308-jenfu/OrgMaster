@@ -8,6 +8,18 @@
 
 共同根因、F01–F10狀態及下一可驗交付依 [JENFU既有盤點](../../Jenfu-Platform/ai-doc/qa/DEV-015-principal-only-authorization-inventory-2026-09-29.md)；下方舊DEV-012／013與其他native任務保留原追溯，不重開其發布队列。
 
+**DEV-057 current checkpoint（2026-10-05，Principal-only正式授權出口完成／文件收尾）：** 本輪範圍依 `JENFU/DEV-015#identity-grants`，原生owner為 `ORGMASTER/DEV-057`；[owner安全結案投影](qa/DEV-057-principal-authorization-production-closure-2026-10-05.json)固定[共同安全結案](../../Jenfu-Platform/ai-doc/qa/DEV-015-principal-authorization-production-closure-2026-10-05.json) raw SHA `c0121bde7b1fabfad4aa1b27158d9890a7dbd32f50ab7202ec1061ba291e882d`。共同production authorization accepted=true，當時root goalComplete=false僅待文件QC／protected documentation PR；不由文件自行增加驗收分母或重做Production操作。
+
+正式Org source `5840bbc5b7195d33f7c0e3a998bbed3725a1626c`、owner run `37240015601` 十階段SUCCESS／RELEASED；revision `orgmaster-prod-2e665c16ba0b`、image `d2e9f777d096952f75a867115927e889d9c35e052272d0bd6dc35b5e485acdb0`、generation226、100% traffic／零tag。R35B新source-bound reuse實際通過連續鏈及正式prepare，沿原rotation／numeric8、75完整地址及零DDL／import；先前R35的prepare誤拒保留歷史，未繞current baseline。
+
+正常管理UI assign→publish後，既有fixture走正常Portal SSO，以可信P／E／AAL1且無JSON identity link取得management read／write200；normal validate／PATCH及persisted audit使用可信Principal。正常管理者revoke→publish後，同原cached enabled UI再提交publish得到POST403 `principal_not_active`；沒有新version、denied command audit或document額外效果，其他policy原hash保留。temporary有效Org角色回到原0，revoked history與新的可信Principal audit保留；整份原document未exact還原，正常PATCH的write policy content也不是原hash。
+
+global logout三份old me均401，正常Google／Portal回復後三owner me200／AAL1；raw click CLI transport UNKNOWN與POST未capture原結論保留，未盲目第二次logout。retained Org source `70d3bf336bb92cb17a62d2687c2427d7eb43a3fb` 只證Principal-compatible recovery，不聲稱含新R35治理race guard；未重做三owner rollback traffic。native PG24／D57-21／D57-22及五項cleanup沿原delivery，原task-owned三UI已關閉、user-owned UI未碰。
+
+本輪Principal-only授權整合與owner正式出口已完成，剩餘是文件QC／protected doc PR。F01–F10／O01–O07原出口、真PG與Production不同層級、DEV014／DEV118歷史原結論保留；不把每個route／resource未實跑的Production positive算PASS。AI-PDM/DEV-122一般業務lifecycle／附件、42P08與held workload仍DEFERRED_NOT_PASS，不阻擋此授權scope，不因結案退休資產。shared grant counter不增；dirty PBDS raw SHA `b4c43cbc9c2a5c0fed27b59c8d43d5c7bd10fccbe4d28b3376200a27f7a319c3`保留。
+
+**HISTORY_ONLY 分界：下方歷史checkpoint保留當時結論，已由頂部正式結案checkpoint取代，不是施工佇列。**
+
 **DEV-057 current checkpoint（2026-10-05，R35B連續source-only reuse修正）：** 來源 `JENFU/DEV-015#principal-only-production-reliability`。R35治理批次PR #101已合併official `4403dafcbaf94deb81c41d6dd200c20e700d5700`，required PR QC `37236439390`／main QC `37236587425`均SUCCESS；[正式prepare readback](../../Jenfu-Platform/output/dev-012/inputs/dev057-r35-release-preparation.json) 在native infra-reuse以 `SMOKE_ROTATION_INFRA_INVALID` 停止，candidate／traffic／database前無application mutation。正式current RELEASED仍為R34 source `70d3bf336bb92cb17a62d2687c2427d7eb43a3fb`、revision `orgmaster-prod-cf25a7b71930`、control generation222；不退選R21 baseline或重做Secret／IAM／Terraform。
 
 [原始chain readback](../../Jenfu-Platform/output/dev-012/inputs/dev057-r35-reuse-chain-readback.json) 證明current infra為d34 reuse→原a80 smoke rotation／numeric8／serial116，歷史prior為ac50 APPLIED／serial115；舊helper直接把current prior當original schema，且後續不能要求116大於116。本批只在原continuation解析最多32層sealed prior reuse chain，逐層驗own refs／source locks／published intent與RELEASED terminal、同rotation／credential／state／75地址及實際executable／IaC閉包；最終仍以原ac50驗原rotation嚴格遞增與apply-time freshness。current baseline／current control及provider雙讀CAS不變，prepare不新增provider／registry GET；第33層可診斷拒絕，無新schema／gate。
@@ -77,13 +89,13 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## 總任務清單
 
-- ◐ DEV-057 [跨 owner 開發中] [P0] [B 架構定案／RD Implementation Ready；既有 v1 本機 PASS 保留] [Production NOT_RUN] 身分與權限發布契約邊界
+- ✅ DEV-057 [本輪Principal-only授權出口完成] [P0] [原native scope／歷史證據保留] [Production Authorization PASS／文件收尾] 身分與權限發布契約邊界
   - 摘要：三專案一次啟用Principal-only；OrgMaster發布身分與角色、Platform管登入session、AI-PDM管能力與資源。未核實／原停用者不啟用；歷史業務資料保留。
   - 來源 ID：`JENFU/DEV-015#identity-grants`；本地 owner `ORGMASTER/DEV-057`。
   - 進度：已套用 migration、contract／PostgreSQL及原發布證據保留，依原始receipt／歷史快照判讀，不由摘要重算。OrgMaster 本輪出口限於已發布 Principal／Employee狀態／角色／scope、實際 producer→consumer PostgreSQL一致性、本owner治理session／allow-deny／撤權／事件稽核及Principal-only發布／回復。Platform登入／SSO／Portal session由Platform取證；AI-PDM capability／resource／command／workload由consumer取證；共同DEV-015彙整，不把這些實作责任轉給OrgMaster。具備自己的正式出口證據即可獨立結案；本機／整合或其他owner PASS不等於聯合Production L4。
-  - 下一步：沿現行契約補齊OrgMaster自己的正式producer／治理session／allow-deny／撤權及Principal-only回復證據，向JENFU/DEV-015交接；共同跨owner續點依JENFU現行盤點，不重做已有效的PostgreSQL整鏈。AI-PDM一般業務lifecycle／附件在AIPDM/DEV-122延期，不阻擋OrgMaster結案；真實共享依賴仍需consumer conformance。
+  - 下一步：本輪owner正式授權出口已依頂部checkpoint交接JENFU/DEV-015；完成本批文件QC／protected doc PR，不重做app／build／PG／traffic。AI-PDM一般業務lifecycle／附件仍AIPDM/DEV-122延期NOT_PASS，不成為新的OrgMaster security施工佇列。
   - 證據：[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md)、[現行續接](#dev-057-current-contract)、[歷史決策與原驗證](dev_task-history-2026-10-03.md)；狀態依每項實際層級認列。
-  - 計入交付：否；不回寫 DEV-055／056 的完成狀態或歷史驗證。
+  - 計入交付：是（僅本輪DEV-057 Principal-only授權scope與正式owner出口）；不回寫 DEV-055／056或歷史DEV014／DEV118的驗證結論。
 
 - ◐ DEV-056 [修復點] [P0] [Architecture Finalized／RD Implementation Complete／Local QA-QC Passed／Release In Progress] System permission catalog compatible sync
   - 來源 ID：`Jenfu-Platform / DEV-014 / zero-paid-seat Production login fixtures`；本地以DEV-056承接OrgMaster治理目錄缺口。
@@ -623,9 +635,9 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 ## DEV-057：身分與權限發布契約邊界
 
 - 主責／來源：ORGMASTER/DEV-057；來源JENFU/DEV-015；consumer AIPDM/DEV-121。
-- 節點：既有開發點；風險High；目標Principal-only一次啟用；架構成熟度沿既有定案，產品仍未完整結案。
+- 節點：既有DEV-057本輪Principal-only授權出口已完成；架構／高風險交易責任維持原契約，業務延期由AIPDM/DEV-122獨立追溯。
 - 施工及驗收：[唯一現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md)；正常授權不保留bridge、雙軌、legacy authority、本機ACL或逐人marker。人類與管理員依真實AAL1及有效grant/scope工作。
-- 階段／下一步／證據：以上方 Principal-only 現行續接及 JENFU/DEV-015 盤點為準；舊本機、已發布、失敗與未完成證據保持當輪結論，不以文件更新改寫。AI-PDM 一般業務 lifecycle／附件延至 AI-PDM/DEV-122，不阻擋 OrgMaster 身分／授權工作；Production L4 仍待實際 owner 證據。
+- 階段／下一步／證據：以上方 Principal-only 現行續接及 JENFU/DEV-015 盤點為準；舊本機、已發布、失敗與未完成證據保持當輪結論，不以文件更新改寫。AI-PDM 一般業務 lifecycle／附件延至 AI-PDM/DEV-122且NOT_PASS，不阻擋已依頂部結案投影完成的本輪OrgMaster正式授權出口；剩餘文件收尾不新增Production驗證。
 - 原詳細段落及決策：[HISTORY_ONLY任務快照](dev_task-history-2026-10-03.md)；不使用其中舊七步、雙版或AAL2強制作新指令。
 - CA／PA：2026-10-03已將current契約與歷史分離，同步map及dev-pm文件治理；只算文件／skill措施實作，不計Principal-only產品PASS。
 
