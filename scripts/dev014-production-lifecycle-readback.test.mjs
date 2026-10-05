@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { readLifecycleSnapshot, runMain } from './dev014-production-lifecycle-readback.mjs'
+import { readLifecycleSnapshot, runMain, safeReadbackErrorCode } from './dev014-production-lifecycle-readback.mjs'
+import { crc32cBase64 } from './lib/dev012-production-migration-runner.mjs'
 
 function database(mode = 'migrator', identityOverrides = {}, fixtures = {}) {
   const calls = []
@@ -103,4 +104,51 @@ test('output object must remain under the fixed release bucket and prefix before
   const environment={SOURCE_REVISION:'a'.repeat(40),OWNER_APPLICATION_ID:'orgmaster',RELEASE_BUCKET:'jenfu-platform-prod-orgmaster-release',GOOGLE_CLOUD_PROJECT:'jenfu-platform-prod',GOOGLE_CLOUD_REGION:'asia-east1',CLOUD_SQL_INSTANCE_CONNECTION_NAME:'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',POSTGRES_DATABASE:'jenfu_prod',POSTGRES_IAM_LOGIN:'orgmaster-prod-migrator@jenfu-platform-prod.iam',POSTGRES_SOCKET:'/cloudsql/jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',CLOUD_RUN_JOB:'orgmaster-prod-migration-runner'}
   await assert.rejects(runMain({argv:['--mode=migrator','--source-revision='+ 'a'.repeat(40),'--output-ref=gs://jenfu-platform-prod-orgmaster-release/receipts/releases/OTHER/report.json'],environment,fetchImpl:async()=>{fetches++;throw new Error('must not fetch')}}))
   assert.equal(fetches,0)
+})
+
+test('native migrator CLI accepts the documented output path and publishes an exact read-only receipt',async()=>{
+  const source='a'.repeat(40)
+  const environment={SOURCE_REVISION:source,OWNER_APPLICATION_ID:'orgmaster',RELEASE_BUCKET:'jenfu-platform-prod-orgmaster-release',GOOGLE_CLOUD_PROJECT:'jenfu-platform-prod',GOOGLE_CLOUD_REGION:'asia-east1',CLOUD_SQL_INSTANCE_CONNECTION_NAME:'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',POSTGRES_DATABASE:'jenfu_prod',POSTGRES_IAM_LOGIN:'orgmaster-prod-migrator@jenfu-platform-prod.iam',POSTGRES_SOCKET:'/cloudsql/jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',CLOUD_RUN_JOB:'orgmaster-prod-migration-runner'}
+  const db=database(),token='synthetic-readback-token-no-credential',requests=[]
+  let bytes,connected=0,ended=0,options
+  class Client {
+    constructor(value){options=value;this.query=db.query.bind(db)}
+    async connect(){connected++}
+    async end(){ended++}
+  }
+  const fetchImpl=async(url,init={})=>{
+    requests.push({url,method:init.method??'GET'})
+    if(url.startsWith('http://metadata.google.internal/')) return Response.json({access_token:token,expires_in:3600})
+    assert.equal(init.headers.authorization,'Bearer '+token)
+    if(init.method==='POST'){
+      assert.match(url,/uploadType=media&name=receipts%2Freleases%2FDEV014-LIFECYCLE-READBACK%2Ftest.json&ifGenerationMatch=0$/u)
+      bytes=Buffer.from(init.body)
+      return Response.json({generation:'1'})
+    }
+    if(url.includes('alt=media'))return new Response(bytes)
+    return Response.json({generation:'1',crc32c:crc32cBase64(bytes)})
+  }
+  const result=await runMain({argv:['--mode=migrator','--source-revision='+source,'--output-ref=gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV014-LIFECYCLE-READBACK/test.json'],environment,Client,fetchImpl})
+  assert.equal(connected,1);assert.equal(ended,1)
+  assert.equal(options.user,environment.POSTGRES_IAM_LOGIN)
+  assert.equal(options.database,'jenfu_prod')
+  assert.equal(db.calls[0],'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+  assert.equal(db.calls.at(-1),'COMMIT')
+  assert.equal(result.sourceRevision,source);assert.equal(result.databaseWrites,0)
+  assert.equal(result.ledgerRead,true);assert.equal(result.queueRead,true)
+  assert.equal(result.fullDev014Complete,false)
+  assert.deepEqual(JSON.parse(bytes),result)
+  assert.equal(requests.filter(row=>row.method==='POST').length,1)
+  assert.ok(!bytes.includes(token))
+})
+
+test('diagnostics retain fixed guard/SQLSTATE codes and suppress arbitrary error messages',()=>{
+  assert.equal(safeReadbackErrorCode({code:'MIGRATION_GCS_REF_INVALID',message:'private material'}),'MIGRATION_GCS_REF_INVALID')
+  assert.equal(safeReadbackErrorCode({code:'42501',message:'private query'}),'42501')
+  assert.equal(safeReadbackErrorCode(new Error('DEV014_LIFECYCLE_READBACK_DATABASE_IDENTITY_INVALID')),'DEV014_LIFECYCLE_READBACK_DATABASE_IDENTITY_INVALID')
+  assert.equal(safeReadbackErrorCode(new Error('person@example.test secret')),'UNCLASSIFIED_READBACK_FAILURE')
+  assert.equal(safeReadbackErrorCode({code:'contains private text'}),'UNCLASSIFIED_READBACK_FAILURE')
+  assert.equal(safeReadbackErrorCode({code:'SECRET123'}),'UNCLASSIFIED_READBACK_FAILURE')
+  assert.equal(safeReadbackErrorCode({code:'SECRE'}),'UNCLASSIFIED_READBACK_FAILURE')
+  assert.equal(safeReadbackErrorCode(new Error('DEV014_LIFECYCLE_READBACK_SECRET123')),'UNCLASSIFIED_READBACK_FAILURE')
 })
