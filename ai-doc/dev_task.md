@@ -2,6 +2,10 @@
 
 <a id="dev-057-current-contract"></a>
 
+## DEV-057 員工 Google 連結矯正（2026-10-05）
+
+沿 `ORGMASTER/DEV-057#identity-grants`，本批僅 OrgMaster source／UI／錯誤分類修正；既有共同 Principal-only 正式結案紀錄保持原層級。正式 user SSO 已成功，但 Directory registration pending 被顯示為待連結且可重複 candidate；已保存的連結不得因 UI 操作重綁。現行同根因修復及 stage 見 [矯正證據](qa/DEV-057-managed-identity-link-correction-2026-10-05.md)。本批本機聚焦已通過，完整回歸／protected PR／owner release／正式 UI 驗證依各自證據推進，不由本機 PASS 宣稱 Production 修復。
+
 ## DEV-057 現行續接
 
 本輪只有 [Principal-only current契約](specs/DEV-057-identity-and-grant-contract-boundary.md) 一套有效施工指令；維持原native DEV／子任務及驗收分母。歷史原文／階段在 [HISTORY_ONLY任務快照](dev_task-history-2026-10-03.md)，不讀為當前命令。各層證據只證明本機／整合／正式實測的流程，不以文件成熟度或總PASS數改算完成率。
@@ -89,11 +93,11 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## 總任務清單
 
-- ✅ DEV-057 [本輪Principal-only授權出口完成] [P0] [原native scope／歷史證據保留] [Production Authorization PASS／文件收尾] 身分與權限發布契約邊界
+- ✅ DEV-057 [本輪Principal-only授權出口完成] [P0] [原native scope／歷史證據保留] [既有Production Authorization PASS／員工連結矯正中] 身分與權限發布契約邊界
   - 摘要：三專案一次啟用Principal-only；OrgMaster發布身分與角色、Platform管登入session、AI-PDM管能力與資源。未核實／原停用者不啟用；歷史業務資料保留。
   - 來源 ID：`JENFU/DEV-015#identity-grants`；本地 owner `ORGMASTER/DEV-057`。
   - 進度：已套用 migration、contract／PostgreSQL及原發布證據保留，依原始receipt／歷史快照判讀，不由摘要重算。OrgMaster 本輪出口限於已發布 Principal／Employee狀態／角色／scope、實際 producer→consumer PostgreSQL一致性、本owner治理session／allow-deny／撤權／事件稽核及Principal-only發布／回復。Platform登入／SSO／Portal session由Platform取證；AI-PDM capability／resource／command／workload由consumer取證；共同DEV-015彙整，不把這些實作责任轉給OrgMaster。具備自己的正式出口證據即可獨立結案；本機／整合或其他owner PASS不等於聯合Production L4。
-  - 下一步：本輪owner正式授權出口已依頂部checkpoint交接JENFU/DEV-015；完成本批文件QC／protected doc PR，不重做app／build／PG／traffic。AI-PDM一般業務lifecycle／附件仍AIPDM/DEV-122延期NOT_PASS，不成為新的OrgMaster security施工佇列。
+  - 下一步：完成頂部員工 Google 連結矯正的 protected PR／required CI／OrgMaster owner release及正式呈現驗證；原共同授權出口與歷史證據保留。AI-PDM一般業務lifecycle／附件仍AIPDM/DEV-122延期NOT_PASS，不成為新的OrgMaster security施工佇列。
   - 證據：[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md)、[現行續接](#dev-057-current-contract)、[歷史決策與原驗證](dev_task-history-2026-10-03.md)；狀態依每項實際層級認列。
   - 計入交付：是（僅本輪DEV-057 Principal-only授權scope與正式owner出口）；不回寫 DEV-055／056或歷史DEV014／DEV118的驗證結論。
 

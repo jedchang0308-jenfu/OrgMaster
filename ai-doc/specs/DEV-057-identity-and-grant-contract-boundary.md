@@ -36,6 +36,16 @@ OrgMaster是Principal、provider pair、Employee狀態、account type、已發�
 5. alias history保留inactive及unresolved，無email/token/角色；manifest與exact consumer ACL明列。Platform需完整歷史以初始化／撤銷，AI-PDM正常consumer不因此擴大到全alias history ACL。consumer無權建立OrgMaster或Platform狀態。
 6. published typed eligibility是一套權威投影，Portal visibility、session admission、effective roles／grants從其衍生。JSON草稿與歷史版本保留；草稿不授權，position、effective-time、role/catalog狀態與委派來源須在發布及讀回皆可核對。
 
+### 員工 Google 連結的現行呈現及重複操作
+
+`managed-identity.v1.identity.state` 描述 Directory registration 的既有紀錄，不是 Principal 登入／授權裁定。`directory_linked_pending_auth` 已保存 Directory 連結；即使該 Employee 已經由另一筆核實、已發布的 Principal 正常登入，也不得從 email、登入者或頁面選取自動補寫該紀錄的 provider pair，不能把它重標為 `active`。
+
+員工明細分別顯示 `not_linked → 待連結`、`directory_linked_pending_auth → 已連結`、`active → 已啟用`、`conflict → 連結衝突`。pending 提示改為連結已保存、登入與權限依已發布的 Principal 判定，不要求重做首次 Google 登入。初次連結入口只對 `not_linked` 且符合原 actor／權限／Employee／registry 規則者提供；前端亦拒絕 stale capability 的重複連結。已存／衝突的紀錄不可透過此入口覆寫。
+
+candidate 查詢取得既有連結時，在外部 Directory RPC 與 lease 前回 `409 / DIRECTORY_IDENTITY_CONFLICT`。並行操作仍由既有 PostgreSQL lease fence 裁定；原生 identity／revision／admission errors 必須映射為相應服務錯誤，不包成 generic read 503。真正的 5xx 在 API 記錄固定 event、action、code，禁止 raw exception、SQL、email、provider ID 或 credential。原同源／session／published permission／privileged admission／CAS／confirm fence 均維持；無新 schema、migration、身分 bridge 或綁定寫入。
+
+聚焦重現、production 原始訊號與驗證層級見 [DEV-057 連結狀態矯正](../qa/DEV-057-managed-identity-link-correction-2026-10-05.md)。這是既有 owner 的同根因修復，不回寫既有整合 L4 或重開 AI-PDM 業務分母。
+
 ## 角色、範圍及治理入口
 
 沿現有治理session、managed-identity、帳號管理、角色指派／委派、發布與查核入口。OrgMaster發布stable角色ID及scope，AI-PDM擁有角色定義／能力catalog；不把每個HTTP method或Document Manager用途推給OrgMaster，不新增中央決策服務。
