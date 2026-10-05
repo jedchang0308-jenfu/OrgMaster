@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import pg from 'pg'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createOrgDocumentFile } from '../src/documentStorage'
-import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
+import { createAiPdmRoleCatalog, readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { applyGovernanceCommandV3 } from '../src/governance/commands'
 import { createSeedDocumentV2 } from '../src/governance/migrateGovernanceV1ToV2'
 import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2ToV3'
@@ -14,6 +14,7 @@ import { createWorkspaceManifest } from '../src/versionWorkspace'
 import { createOrgmasterGovernanceMiddleware } from './orgmasterGovernanceApi'
 import { closeOrgmasterPersistencePool, withPersistenceTransaction, writePersistenceArtifacts } from './orgmasterPersistenceRepository'
 import { readFinancialRoleCatalog } from './financialRoleCatalogRepository'
+import { readPublishedAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 import { createOrgmasterSessionRepository, type OrgmasterSession } from './orgmasterSessionRepository'
 import { applyDraftCommand, readGovernanceStore } from './orgmasterGovernanceStore'
@@ -29,7 +30,7 @@ const actor = {
 }
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex')
 
-function productFixture() {
+function productFixture(catalog = readAiPdmRoleCatalog()) {
   const state = {
     ...screenshotOrganizationState,
     employees: [...screenshotOrganizationState.employees.filter(employee => employee.id !== actor.employeeId), {
@@ -39,7 +40,7 @@ function productFixture() {
   }
   const workspace = createOrgDocumentFile(state, 'document', now)
   const manifest = createWorkspaceManifest('current', now)
-  const document = migrateGovernanceV2ToV3(createSeedDocumentV2(now), 'fixture-v2', readAiPdmRoleCatalog(), now)
+  const document = migrateGovernanceV2ToV3(createSeedDocumentV2(now), 'fixture-v2', catalog, now)
   document.draft.identityLinks = []
   document.draft.principalAdmissions = []
   document.draft.roleAssignments = [{ id: 'manager-assignment', employeeId: actor.employeeId,
@@ -64,8 +65,7 @@ function productFixture() {
   return { workspace, manifest, document, state }
 }
 
-function productRoleAssignment(): GovernanceRoleAssignmentV2 {
-  const catalog = readAiPdmRoleCatalog()
+function productRoleAssignment(catalog = readAiPdmRoleCatalog()): GovernanceRoleAssignmentV2 {
   const role = catalog.roles.find((candidate) => candidate.code === 'rd_manager')
   if (!role) throw new Error('RD_MANAGER_CATALOG_ROLE_MISSING')
   return {
@@ -110,7 +110,6 @@ describe.skipIf(!adminUrl || !runtimeUrl || !consumerUrl)('DEV-057 management HT
 
   it('publishes and revokes a Principal grant through the product command', async () => {
     if (!adminUrl || !runtimeUrl || !consumerUrl) throw new Error('DEV057_PRODUCT_GOVERNANCE_URLS_REQUIRED')
-    const fixture = productFixture()
     const startedAt = Date.now()
     // Fixed stages and scalar outcomes only: never emit identity, session, URL or SQL payload.
     const checkpoint = (stage: string, detail: Record<string, string | number | boolean> = {}) => {
@@ -129,6 +128,10 @@ describe.skipIf(!adminUrl || !runtimeUrl || !consumerUrl)('DEV-057 management HT
       await admin.connect()
       await consumer.connect()
       await observer.connect()
+      // The management route must consume the producer's active publication, not the bundled v5 default.
+      const publication = await readPublishedAiPdmRoleCatalogFromDatabase(admin)
+      const catalog = createAiPdmRoleCatalog('valid', publication.publishedAt, publication)
+      const fixture = productFixture(catalog)
       const authority = await admin.query<{ active_batch_id: string }>('SELECT active_batch_id FROM orgmaster_core.persistence_authority WHERE singleton=true')
       expect(authority.rowCount).toBe(1)
       for (const [key, payload] of [
@@ -188,11 +191,11 @@ describe.skipIf(!adminUrl || !runtimeUrl || !consumerUrl)('DEV-057 management HT
       expect(sessionRead).toMatchObject({ status: 200, body: { actor: { principalId: actor.principalId, employeeId: actor.employeeId }, capabilities: { manage: true, publish: true } } })
       let revision = (await call('GET', '/')).body.revision as string
       checkpoint('read-after', { status: sessionRead.status })
-      const assignment = productRoleAssignment()
+      const assignment = productRoleAssignment(catalog)
       const draft = await call('PATCH', '/draft', { expectedRevision: revision, command: {
         type: 'UPSERT_ROLE_ASSIGNMENT', commandId: 'product-assign', reason: 'task-owned Principal grant', value: assignment,
       } })
-      expect(draft.status).toBe(200)
+      expect(draft.status, JSON.stringify(draft.body)).toBe(200)
       revision = draft.body.revision
       checkpoint('publish-before')
       const published = await call('POST', '/versions', { expectedRevision: revision,

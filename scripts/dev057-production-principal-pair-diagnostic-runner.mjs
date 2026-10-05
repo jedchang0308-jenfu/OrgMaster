@@ -51,6 +51,10 @@ export function parseArgs(argv) {
 }
 
 export function assertOperation(value, bytes, args) {
+  if (value?.schemaVersion === 'orgmaster.dev057-principal-pair-diagnostic-operation.v3') {
+    if (!Buffer.isBuffer(bytes) || sha256(bytes) !== args.operationSha256 || value.sourceRevision !== args.sourceRevision) fail('OPERATION_INVALID')
+    return assertPrincipalObservationOperation(value)
+  }
   const employeeMode = value?.schemaVersion ===
     'orgmaster.dev057-principal-pair-diagnostic-operation.v2'
   const selector = employeeMode ? 'employeeIds' : 'pairHashes'
@@ -202,6 +206,86 @@ export function summarizeEmployees(operation, sources) {
   }
 }
 
+
+const FORMAL_PRINCIPAL = 'principal-firebase-b71682bf0d7cc5596b48dfad991e4096'
+const FORMAL_EMPLOYEE = 'employee-shijie'
+function assertPrincipalObservationOperation(value) {
+  const keys = ['applicationId','database','employeeId','operationId','principalId',
+    'projectId','region','schemaVersion','sourceRevision']
+  if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(keys.sort()) ||
+    value.principalId !== FORMAL_PRINCIPAL || value.employeeId !== FORMAL_EMPLOYEE ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]{7,95}$/u.test(value.operationId ?? '') ||
+    !H40.test(value.sourceRevision ?? '') || value.projectId !== 'jenfu-platform-prod' ||
+    value.region !== 'asia-east1' || value.database !== 'jenfu_prod' ||
+    value.applicationId !== 'ai-pdm') fail('OPERATION_INVALID')
+  return value
+}
+
+/** Exact Principal observation only; it cannot bind identity, assign a role or activate traffic. */
+export function summarizePrincipalObservation(operation, { accounts, grants, catalogs, observedAt }) {
+  assertPrincipalObservationOperation(operation)
+  if (!Array.isArray(accounts) || !Array.isArray(grants) || !Array.isArray(catalogs) ||
+    (accounts.length < 1 || accounts.length > 2) || grants.length !== 1 || catalogs.length !== 1) fail('SOURCE_AMBIGUOUS')
+  const account = accounts[0], grant = grants[0], catalog = catalogs[0]
+  if (accounts.some(row => row.principal_id !== FORMAL_PRINCIPAL || row.employee_id !== FORMAL_EMPLOYEE ||
+    row.employee_status !== 'active' || row.account_type !== 'human_privileged' ||
+    !Number.isSafeInteger(Number(row.mapping_version)) || Number(row.mapping_version) < 1 || !observedTimestamp(row.published_at))) fail('SOURCE_INVALID')
+  const at = observedTimestamp(observedAt), from = observedTimestamp(grant.valid_from),
+    until = observedTimestamp(grant.valid_until), publishedAt = observedTimestamp(grant.published_at)
+  if (account.principal_id !== FORMAL_PRINCIPAL || account.employee_id !== FORMAL_EMPLOYEE ||
+    account.employee_status !== 'active' || account.account_type !== 'human_privileged' ||
+    !Number.isSafeInteger(Number(account.mapping_version)) || Number(account.mapping_version) < 1 ||
+    grant.contract_version !== 'jenfu.orgmaster.ai-pdm-principal-grants.v4' ||
+    grant.principal_id !== FORMAL_PRINCIPAL || grant.employee_id !== FORMAL_EMPLOYEE ||
+    grant.subject_kind !== 'principal' || grant.target_principal_id !== FORMAL_PRINCIPAL ||
+    grant.stable_role_id !== 'role-system-admin' || grant.role_code !== 'system_admin' ||
+    grant.grant_kind !== 'direct' || grant.delegation_id !== null ||
+    grant.scope_kind !== 'global' || grant.scope_key !== null ||
+    !at || !from || Date.parse(from) > Date.parse(at) ||
+    (until !== null && Date.parse(until) <= Date.parse(at)) || !publishedAt ||
+    !grant.assignment_id || !grant.assignment_version_id ||
+    !/^[1-9][0-9]*$/u.test(String(grant.assignment_version)) ||
+    !H64.test(catalog.catalog_sha256 ?? '') ||
+    catalog.catalog_sha256 !== ({ 'ai-pdm.role-catalog.2026-09-28.v5': '4f05dd4228b51e5086f30886330f48f1f137e37d383a26114bb34f5874d39197',
+      'ai-pdm.role-catalog.2026-10-05.v6': 'bdc8d2b8f717e4af9d48cf882d1a564a5caaabaaaacdcf20bc5db36a5b6960af' })[catalog.catalog_version] ||
+    !['ai-pdm.role-catalog.2026-09-28.v5','ai-pdm.role-catalog.2026-10-05.v6'].includes(catalog.catalog_version)) fail('SOURCE_INVALID')
+  return {
+    schemaVersion: 'orgmaster.dev057-principal-grant-diagnostic.v3',
+    observationOnly: true, releaseAuthority: false, observedAt: at,
+    principalId: FORMAL_PRINCIPAL, employeeId: FORMAL_EMPLOYEE,
+    accountType: account.account_type, employeeStatus: account.employee_status,
+    typedAccountRowCount: accounts.length, mappingVersions: [...new Set(accounts.map(row => Number(row.mapping_version)))].sort((a,b) => a-b),
+    accountPublishedAt: [...new Set(accounts.map(row => observedTimestamp(row.published_at)))].sort(),
+    activeCatalogVersion: catalog.catalog_version, activeCatalogSha256: catalog.catalog_sha256,
+    grant: { contractVersion: grant.contract_version, assignmentId: grant.assignment_id,
+      assignmentVersionId: grant.assignment_version_id, assignmentVersion: String(grant.assignment_version),
+      stableRoleId: grant.stable_role_id, roleCode: grant.role_code, grantKind: grant.grant_kind,
+      subjectKind: grant.subject_kind, targetPrincipalId: grant.target_principal_id,
+      catalogVersion: grant.catalog_version, scopeKind: grant.scope_kind, scopeKey: grant.scope_key,
+      delegationId: null, validFrom: from, validUntil: until, publishedAt },
+  }
+}
+
+async function readPrincipalObservation(database, operation) {
+  assertPrincipalObservationOperation(operation)
+  const values = [operation.principalId, operation.employeeId]
+  const accounts = await database.query(
+    'SELECT principal_id,employee_id,employee_status,account_type,mapping_version,published_at '+
+    'FROM orgmaster_contract.v_active_principal_accounts_v1 '+
+    'WHERE principal_id=$1 AND employee_id=$2 FETCH FIRST 3 ROWS ONLY', values)
+  const grants = await database.query(
+    'SELECT contract_version,assignment_version_id,assignment_version,principal_id,employee_id,'+
+    'assignment_id,grant_kind,delegation_id,stable_role_id,role_code,catalog_version,'+
+    'subject_kind,target_principal_id,scope_kind,scope_key,valid_from,valid_until,published_at '+
+    'FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4 '+
+    "WHERE principal_id=$1 AND employee_id=$2 AND stable_role_id='role-system-admin' FETCH FIRST 3 ROWS ONLY", values)
+  const catalogs = await database.query(
+    'SELECT DISTINCT catalog_version,catalog_sha256 FROM ai_pdm_contract.v_application_role_catalog_v1 FETCH FIRST 3 ROWS ONLY')
+  const clock = await database.query('SELECT transaction_timestamp() AS observed_at')
+  return summarizePrincipalObservation(operation, { accounts: accounts.rows, grants: grants.rows,
+    catalogs: catalogs.rows, observedAt: clock.rows?.[0]?.observed_at })
+}
+
 function governanceLinks(document) {
   const version = document.publishedVersions?.find(
     (item) => item.id === document.activePolicyVersionId)
@@ -225,6 +309,11 @@ export async function readDiagnosticSnapshot(database, operation) {
     await database.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
     await database.query('SET LOCAL ROLE jenfu_orgmaster_migrator')
     await database.query("SET LOCAL statement_timeout = '10s'")
+    if (operation.schemaVersion === 'orgmaster.dev057-principal-pair-diagnostic-operation.v3') {
+      const result = await readPrincipalObservation(database, operation)
+      await database.query('COMMIT')
+      return result
+    }
     const rowLimit = (operation.employeeIds ? FIXTURE_ROW_LIMIT : MAX_ROWS) + 1
     const employeeWhere = operation.employeeIds ? 'WHERE employee_id = ANY($1::text[])' : ''
     const queryValues = operation.employeeIds ? [operation.employeeIds] : []
@@ -318,7 +407,7 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
   try {
     const outcome = await readDiagnosticSnapshot(database, operation)
     const receipt = {
-      schemaVersion: operation.employeeIds ? 'orgmaster.dev057-principal-employee-diagnostic-receipt.v2' :
+      schemaVersion: operation.schemaVersion === 'orgmaster.dev057-principal-pair-diagnostic-operation.v3' ? 'orgmaster.dev057-principal-grant-diagnostic-receipt.v3' : operation.employeeIds ? 'orgmaster.dev057-principal-employee-diagnostic-receipt.v2' :
         'orgmaster.dev057-principal-pair-diagnostic-receipt.v1',
       operationId: operation.operationId, sourceRevision: args.sourceRevision,
       operationRef: args.operationRef, operationSha256: args.operationSha256,
@@ -328,8 +417,9 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
       expectedBucket: TARGET.releaseBucket, expectedPrefix: OUTPUT_PREFIX,
       value: receipt, token, fetchImpl })
     return { outputRef: args.outputRef, outputGeneration: published.generation,
-      outputSha256: published.sha256, pairCount: outcome.pairs.length,
+      outputSha256: published.sha256, pairCount: outcome.pairs?.length ?? 0,
       ...(operation.employeeIds ? { employeeCount: outcome.employees.length, observationOnly: true } : {}),
+      ...(operation.principalId ? { principalCount: 1, observationOnly: true } : {}),
       sourceRevision: args.sourceRevision }
   } catch (error) {
     await database.query('ROLLBACK').catch(() => undefined)

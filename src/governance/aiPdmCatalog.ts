@@ -1,5 +1,6 @@
 import type { ExternalRoleCatalogRoleV1, ExternalRoleCatalogSnapshotV1, GovernanceApplicationRoleV1, GovernanceApplicationV1, GovernancePermissionV1 } from './types'
 import aiPdmCatalogFixture from '../../config/catalogs/ai-pdm-role-catalog.v5.json'
+import aiPdmCatalogV6Fixture from '../../config/catalogs/ai-pdm-role-catalog.v6.json'
 import historicalAiPdmCatalogFixture from '../../contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
 
 export const AI_PDM_CATALOG_SOURCE_HASHES = {
@@ -88,8 +89,11 @@ export function historicalAiPdmRoleSnapshotMatches(value: {
   catalogVersion: string | null; roleId: string; roleCodeSnapshot: string;
   roleNameSnapshot: string; scope: { kind: string }
 }, currentRole: ExternalRoleCatalogRoleV1 | undefined) {
-  if (value.catalogVersion !== AI_PDM_HISTORICAL_CATALOG_VERSION || !currentRole) return false
-  const historical = historicalAiPdmCatalogFixture.roles.find((role) => role.stableRoleId === value.roleId)
+  if (!currentRole) return false
+  const provenance = value.catalogVersion === AI_PDM_HISTORICAL_CATALOG_VERSION ? historicalAiPdmCatalogFixture
+    : value.catalogVersion === AI_PDM_ROLE_CATALOG_VERSION ? aiPdmCatalogFixture : null
+  if (!provenance) return false
+  const historical = provenance.roles.find((role) => role.stableRoleId === value.roleId)
   return !!historical && historical.roleCode === value.roleCodeSnapshot &&
     historical.displayName === value.roleNameSnapshot &&
     historical.roleCode === currentRole.code &&
@@ -106,7 +110,9 @@ export const AI_PDM_ROLE_CATALOG_SOURCE_REFS = [
   { path: 'AI_PDM/db/postgres/016_number_state_flow_phase1c.sql', range: 'applied migration', sha256: '6BBEB3A283171C1E99C0F2AE50661F6F1ABC0EBC23C6281DD8F6128063E0E6F5' },
 ] as const
 
-export const AI_PDM_ROLE_CATALOG_ROLES: readonly ExternalRoleCatalogRoleV1[] = aiPdmCatalogFixture.roles.map((role) => ({
+type CatalogRoleMetadata = { stableRoleId: string; roleCode: string; displayName: string; assignable: boolean; risk: string; allowedScopeKinds: string[]; subjectKind: string; recommendationAllowed: boolean; delegationAllowed: boolean; assignmentTier: string }
+type CatalogMetadataArtifact = { catalogVersion: string; catalogSha256: string; publishedAt: string; roles: CatalogRoleMetadata[] }
+function metadataRoles(artifact: CatalogMetadataArtifact): ExternalRoleCatalogRoleV1[] { return artifact.roles.map((role) => ({
   stableRoleId: role.stableRoleId,
   code: role.roleCode,
   displayName: role.displayName,
@@ -118,29 +124,34 @@ export const AI_PDM_ROLE_CATALOG_ROLES: readonly ExternalRoleCatalogRoleV1[] = a
   recommendationAllowed: role.recommendationAllowed,
   delegationAllowed: role.delegationAllowed,
   assignmentTier: role.assignmentTier as ExternalRoleCatalogRoleV1['assignmentTier'],
-}))
+})) }
+export const AI_PDM_ROLE_CATALOG_ROLES: readonly ExternalRoleCatalogRoleV1[] = metadataRoles(aiPdmCatalogFixture)
 
-export function createAiPdmRoleCatalog(validationState: ExternalRoleCatalogSnapshotV1['validationState'] = 'valid', capturedAt = aiPdmCatalogFixture.publishedAt): ExternalRoleCatalogSnapshotV1 {
+export function createAiPdmRoleCatalog(validationState: ExternalRoleCatalogSnapshotV1['validationState'] = 'valid', capturedAt = aiPdmCatalogFixture.publishedAt, artifact: CatalogMetadataArtifact = aiPdmCatalogFixture): ExternalRoleCatalogSnapshotV1 {
   const base = {
     applicationId: 'ai-pdm' as const,
-    catalogVersion: AI_PDM_ROLE_CATALOG_VERSION,
+    catalogVersion: artifact.catalogVersion,
     sourceKind: 'bundled-fixture' as const,
-    sourceRefs: AI_PDM_ROLE_CATALOG_SOURCE_REFS.map((ref) => ({ ...ref })),
+    sourceRefs: artifact.catalogVersion === aiPdmCatalogV6Fixture.catalogVersion
+      ? [{ path: 'AI_PDM/config/access-control/jenfu-role-catalog.v6.json', range: 'canonical artifact', sha256: '237e1a92814aa8fec87e878a8ffaac7f74bc9c5ce4fb6766c266970c9d509b8a' }, ...AI_PDM_ROLE_CATALOG_SOURCE_REFS.slice(1)]
+      : [...AI_PDM_ROLE_CATALOG_SOURCE_REFS],
     capturedAt,
-    roles: AI_PDM_ROLE_CATALOG_ROLES.map((role) => ({ ...role, allowedScopeKinds: [...role.allowedScopeKinds] })),
+    roles: metadataRoles(artifact),
   }
-  return { ...base, payloadHash: AI_PDM_ROLE_CATALOG_SHA256, validationState, effectState: 'not-synchronized' }
+  return { ...base, payloadHash: artifact.catalogSha256, validationState, effectState: 'not-synchronized' }
 }
 
 export type ExternalRoleCatalogValidationIssue = { code: string; path: string; message: string }
 export function validateExternalRoleCatalog(snapshot: ExternalRoleCatalogSnapshotV1): ExternalRoleCatalogValidationIssue[] {
+  const artifact = snapshot.catalogVersion === aiPdmCatalogFixture.catalogVersion ? aiPdmCatalogFixture
+    : snapshot.catalogVersion === aiPdmCatalogV6Fixture.catalogVersion ? aiPdmCatalogV6Fixture : null
   const issues: ExternalRoleCatalogValidationIssue[] = []
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
   if (snapshot.applicationId !== 'ai-pdm') add('EXTERNAL_CATALOG_OWNER_INVALID', 'applicationId', 'catalog owner 必須為 ai-pdm')
   if (snapshot.sourceKind !== 'bundled-fixture') add('EXTERNAL_CATALOG_SOURCE_INVALID', 'sourceKind', 'Current Phase 僅允許 bundled fixture')
-  if (snapshot.catalogVersion !== AI_PDM_ROLE_CATALOG_VERSION) add('EXTERNAL_CATALOG_VERSION_CONFLICT', 'catalogVersion', 'catalog version 不符合目前契約')
+  if (!artifact) add('EXTERNAL_CATALOG_VERSION_CONFLICT', 'catalogVersion', 'catalog version 不符合目前契約')
   if (snapshot.effectState !== 'not-synchronized') add('EXTERNAL_CATALOG_EFFECT_INVALID', 'effectState', 'Current Phase 不得宣稱已同步')
-  if (!/^[a-f0-9]{64}$/u.test(snapshot.payloadHash) || snapshot.payloadHash.toLowerCase() !== AI_PDM_ROLE_CATALOG_SHA256) add('EXTERNAL_CATALOG_INVALID', 'payloadHash', 'catalog payload hash 不一致')
+  if (!/^[a-f0-9]{64}$/u.test(snapshot.payloadHash) || snapshot.payloadHash.toLowerCase() !== artifact?.catalogSha256) add('EXTERNAL_CATALOG_INVALID', 'payloadHash', 'catalog payload hash 不一致')
   if (!Array.isArray(snapshot.roles)) { add('EXTERNAL_CATALOG_INVALID', 'roles', 'roles 必須為陣列'); return issues }
   const stableIds = new Set<string>(); const codes = new Set<string>()
   snapshot.roles.forEach((role, index) => {
@@ -150,7 +161,7 @@ export function validateExternalRoleCatalog(snapshot: ExternalRoleCatalogSnapsho
     if (!role.displayName.trim() || !role.code.trim()) add('EXTERNAL_CATALOG_ROLE_INVALID', `roles[${index}]`, 'role code／名稱不可為空')
     if (!role.assignable && !role.unassignableReason) add('EXTERNAL_CATALOG_ROLE_INVALID', `roles[${index}]`, '不可指派角色必須提供原因')
   })
-  if (JSON.stringify(snapshot.roles) !== JSON.stringify(AI_PDM_ROLE_CATALOG_ROLES)) add('EXTERNAL_CATALOG_INVALID', 'roles', 'catalog role semantics 不符合 AI-PDM publication')
+  if (JSON.stringify(snapshot.roles) !== JSON.stringify(artifact ? metadataRoles(artifact) : [])) add('EXTERNAL_CATALOG_INVALID', 'roles', 'catalog role semantics 不符合 AI-PDM publication')
   return issues
 }
 

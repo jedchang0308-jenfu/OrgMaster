@@ -10,6 +10,20 @@
 
 本地進度只在 [DEV-057任務](../dev_task.md#dev-057-current-contract)維護；共同根因、授權出口與延期業務判定、跨專案階段及下一交付在 [JENFU既有盤點](../../../Jenfu-Platform/ai-doc/qa/DEV-015-principal-only-authorization-inventory-2026-09-29.md)，不在規格複製Rxx狀態。
 
+<a id="system-admin-catalog-v6-reader"></a>
+
+## 本批 v5／v6 目錄讀取契約（2026-10-05，RD Implementation Ready）
+
+參與 `AIPDM/DEV-121#system-admin-capabilities` 的新修正批次；source 實作、整合與正式發布證據尚未完成。人類允許 Jed 全部有效應用能力；AI-PDM 產生 immutable `ai-pdm.role-catalog.2026-10-05.v6`，其他八角色不擴權。OrgMaster 只維持 stable 角色／scope／Principal 指派，不解釋各 API 業務能力。
+
+正常 server 讀寫先從 active producer version/hash 選取一份 source-controlled exact v5/v6 artifact，完整驗證九角色及其 metadata／permission/hash。registry、governance validation／publish 與 role-capability workspace 必須引用同次 active artifact；不能只放寬 registry，仍使用 bundled v4/v5 workspace，也不使用 process-global mutable catalog。未知版本、mixed rows 或 tamper 仍 fail closed。前端顯示當前 server readback，不自行決定 active 版本。
+
+AI-PDM 的角色能力顯示改為只讀 v4：consumer 在自己的 verified Principal/company PostgreSQL snapshot 讀已發布 catalog 及唯一 grant v4；持有人統計限目前公司 active profile 的 global/workspace 有效 Principal。不呼叫沒有 OrgMaster session 的 HTTP workspace、不轉傳 cookie、不合成治理草稿或 publication revision。OrgMaster 繼續提供身分／指派／scope 與正常治理 UI；此顯示讀取不寫 owner 資料，也不增加授權來源。
+
+歷史 v3/v5 assignment snapshot 只核對 stableRoleId／roleCode／subject／scope 等未變角色語義；原 catalogVersion 保持 provenance，不重新寫入 published policy 或提供旧版 permissions。新的指派仍須綁 exact active catalog。實際有效授權仍使用唯一 `v_ai_pdm_principal_effective_grants_v4`，保留 direct/global exact target、委派、有效期、Employee eligibility 與撤權。
+
+發布順序為 OrgMaster ordinary owner release（既有 30 筆 migration unchanged／zero DDL）先支援 v5/v6，讀回 v5 治理及拒絕成功後，再由 AI-PDM 在既有受控停用窗口發布081與v6候選。v6後OrgMaster需證明current workspace／activecatalog一致及相同exactPrincipal grant；不把短窗failclosed當正常可用。失敗沿既有Principal-only maintenance回復，不能重設AI-PDM activepointer或回UID版本。完整共同驗收以 [AI-PDM本批契約](../../../AI_PDM/.ai-doc/specs/DEV-121-target-authorization-boundary.md#system-admin-capability-batch)為準；原DEV-057結案與其他修正保留，這一批另驗。
+
 ## Owner 與現行資料契約
 
 OrgMaster是Principal、provider pair、Employee狀態、account type、已發布角色與scope／委派的權威；不實作AI-PDM細部能力、resource predicate、worker用途或Platform登入。consumer只經版本化 `orgmaster_contract`，不得讀寫 `orgmaster_core`。

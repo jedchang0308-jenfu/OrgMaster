@@ -5,7 +5,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
-  assertOperation, pairHash, parseArgs, summarizePairs, summarizeEmployees, runMain,
+  assertOperation, pairHash, parseArgs, summarizePairs, summarizeEmployees, summarizePrincipalObservation, readDiagnosticSnapshot, runMain,
 } from './dev057-production-principal-pair-diagnostic-runner.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -254,4 +254,66 @@ test('v2 serializes PostgreSQL Date grant timestamps as ISO strings and rejects 
     sources.grants[0].published_at = value
     assert.throws(() => summarizeEmployees(employeeOperation, sources), /TIMESTAMP_INVALID/u)
   }
+})
+
+const principalOperation = {
+ schemaVersion:'orgmaster.dev057-principal-pair-diagnostic-operation.v3',
+ operationId:'dev057-jed-principal-observation',sourceRevision,
+ projectId:'jenfu-platform-prod',region:'asia-east1',database:'jenfu_prod',applicationId:'ai-pdm',
+ principalId:'principal-firebase-b71682bf0d7cc5596b48dfad991e4096',employeeId:'employee-shijie',
+}
+function principalSources(){
+ return { observedAt:new Date('2026-10-05T03:00:00Z'),
+ accounts:[{principal_id:principalOperation.principalId,employee_id:principalOperation.employeeId,
+ employee_status:'active',account_type:'human_privileged',mapping_version:'2',published_at:new Date('2026-09-26T00:00:00Z')}],
+ grants:[{contract_version:'jenfu.orgmaster.ai-pdm-principal-grants.v4',
+ assignment_version_id:'published-policy',assignment_version:'4',principal_id:principalOperation.principalId,
+ employee_id:principalOperation.employeeId,assignment_id:'system-admin-exact',
+ grant_kind:'direct',delegation_id:null,stable_role_id:'role-system-admin',role_code:'system_admin',
+ catalog_version:'ai-pdm.role-catalog.2026-09-03.v3',subject_kind:'principal',
+ target_principal_id:principalOperation.principalId,scope_kind:'global',scope_key:null,
+ valid_from:new Date('2026-01-01T00:00:00Z'),valid_until:null,published_at:new Date('2026-09-26T00:00:00Z')}],
+ catalogs:[{catalog_version:'ai-pdm.role-catalog.2026-10-05.v6',catalog_sha256:'bdc8d2b8f717e4af9d48cf882d1a564a5caaabaaaacdcf20bc5db36a5b6960af'}] }
+}
+test('v3 is exact Principal/Employee read-only observation and does not widen fixture v2',()=>{
+ const bytes=Buffer.from(JSON.stringify(principalOperation));const args={sourceRevision,operationSha256:crypto.createHash('sha256').update(bytes).digest('hex')}
+ assert.deepEqual(assertOperation(principalOperation,bytes,args),principalOperation)
+ for(const change of [{principalId:'other'},{employeeId:employeeId},{employeeIds:[employeeId,secondEmployeeId]}]){
+ const op={...principalOperation,...change};const b=Buffer.from(JSON.stringify(op))
+ assert.throws(()=>assertOperation(op,b,{...args,operationSha256:crypto.createHash('sha256').update(b).digest('hex')}),/OPERATION_INVALID/)
+ }
+ const result=summarizePrincipalObservation(principalOperation,principalSources())
+ assert.equal(result.observationOnly,true);assert.equal(result.releaseAuthority,false)
+ assert.equal(result.grant.catalogVersion,'ai-pdm.role-catalog.2026-09-03.v3')
+ assert.equal(result.activeCatalogVersion,'ai-pdm.role-catalog.2026-10-05.v6')
+ const aliases=principalSources();aliases.accounts.push({...aliases.accounts[0],mapping_version:'3'})
+ assert.equal(summarizePrincipalObservation(principalOperation,aliases).typedAccountRowCount,2)
+ assert.doesNotMatch(JSON.stringify(result),/issuer|subject"|email|token|cookie/)
+})
+test('v3 rejects duplicate, delegated, expired, wrong-owner and nonprivileged published grants',()=>{
+ for(const change of [x=>x.accounts.push(x.accounts[0],x.accounts[0]),x=>x.grants.push(x.grants[0]),
+ x=>x.accounts[0].account_type='human_personal',x=>x.accounts[0].employee_status='inactive',
+ x=>x.grants[0].target_principal_id='same-employee-other-principal',
+ x=>x.grants[0].scope_kind='workspace',x=>x.grants[0].delegation_id='delegation',
+ x=>x.grants[0].valid_until='2026-10-05T02:00:00Z',x=>x.catalogs[0].catalog_sha256='0'.repeat(64)]){
+ const source=principalSources();change(source);assert.throws(()=>summarizePrincipalObservation(principalOperation,source))
+ }
+})
+test('v3 executes bounded parameterized typed account and exact grant contracts on one readonly snapshot',async()=>{
+ const source=principalSources(), queries=[]
+ const database={async query(sql,values){queries.push({sql,values})
+ if(sql.includes('v_active_principal_accounts_v1'))return {rows:source.accounts}
+ if(sql.includes('v_ai_pdm_principal_effective_grants_v4'))return {rows:source.grants}
+ if(sql.includes('v_application_role_catalog_v1'))return {rows:source.catalogs}
+ if(sql.includes('transaction_timestamp()'))return {rows:[{observed_at:source.observedAt}]}
+ return {rows:[]}
+ }}
+ const result=await readDiagnosticSnapshot(database,principalOperation)
+ assert.equal(result.principalId,principalOperation.principalId)
+ assert.equal(queries[0].sql,'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+ assert.equal(queries.at(-1).sql,'COMMIT')
+ for(const query of queries.filter(q=>q.sql.includes('WHERE principal_id='))){
+ assert.match(query.sql,/FETCH FIRST 3 ROWS ONLY/);assert.deepEqual(query.values,[principalOperation.principalId,principalOperation.employeeId])
+ }
+ assert.ok(!queries.some(q=>/principal_issuer|principal_subject|managed_daily/.test(q.sql)))
 })

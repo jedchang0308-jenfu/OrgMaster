@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
-import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
+import { readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import { buildOrganizationSnapshot } from '../src/governance/validation'
 import { canonicalJson, sha256 } from '../src/governance/commands'
 import {
@@ -59,13 +59,13 @@ export async function readPrivilegedAssignmentWorkspace(root: string, actor: Gov
   const source = await loadOrganizationSource(root)
   const canView = actor.bootstrap || evaluateVerifiedPrincipalPermission(current.document, actor, 'orgmaster.governance.manage').status === 'allowed' || hasCrossAppOverride(current.document, actor)
   if (!canView) throw new PrivilegedAssignmentError('PRIVILEGED_VIEW_REQUIRED')
-  return privilegedAssignmentWorkspace(current.document, source, readAiPdmRoleCatalog(), current.revision, actor)
+  return privilegedAssignmentWorkspace(current.document, source, await readActiveAiPdmRoleCatalog(root), current.revision, actor)
 }
 
 export async function previewPrivilegedAssignment(root: string, actor: GovernanceActorContext, request: PrivilegedAssignmentRequest) {
   const current = await readGovernanceStore(root)
   const source = await loadOrganizationSource(root)
-  const catalog = readAiPdmRoleCatalog()
+  const catalog = await readActiveAiPdmRoleCatalog(root)
   const now = new Date().toISOString()
   assertOverride(current.document, actor, now)
   assertPrivilegedPreconditions(current.document, source, catalog, current.revision, request)
@@ -99,10 +99,10 @@ export async function publishPrivilegedAssignment(
   if (replay) return replay
   assertFreshPrivilegedSession(actor, session)
 
-  const committed = await commitGovernanceMutation(root, request.expected.governanceRevision, (current, source) => {
+  const committed = await commitGovernanceMutation(root, request.expected.governanceRevision, async (current, source) => {
     const now = new Date()
     const committedAt = now.toISOString()
-    const catalog = readAiPdmRoleCatalog()
+    const catalog = await readActiveAiPdmRoleCatalog(root)
     assertFreshPrivilegedSession(actor, session, now)
     assertOverride(current.document, actor, committedAt)
     assertPrivilegedPreconditions(current.document, source, catalog, current.revision, request)
