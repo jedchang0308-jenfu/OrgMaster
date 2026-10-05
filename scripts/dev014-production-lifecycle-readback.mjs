@@ -4,7 +4,8 @@ import { pathToFileURL } from 'node:url'
 import { metadataAccessToken, assertRunnerTarget, publishGcsJson, parseGsUri } from './lib/dev012-production-migration-runner.mjs'
 import { TARGET, databaseOptions } from './dev040-production-migration-runner.mjs'
 
-const OUTPUT_PREFIX = 'receipts/releases/DEV014-LIFECYCLE-READBACK/'
+// parseGsUri adds '/' to the expected prefix in its guard comparison.
+const OUTPUT_PREFIX = 'receipts/releases/DEV014-LIFECYCLE-READBACK'
 const RUNTIME_LOGIN = 'orgmaster-prod-runtime@jenfu-platform-prod.iam'
 const MODES = Object.freeze({ migrator: TARGET.login, runtime: RUNTIME_LOGIN })
 const safeErrors = new Set(['TIMEOUT', 'RATE_LIMITED', 'DIRECTORY_READ_UNAVAILABLE', 'LEASE_EXHAUSTED', 'DIRECTORY_PERMANENT_ERROR'])
@@ -116,4 +117,23 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
   } finally { await database.end() }
 }
 
-if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) runMain().catch(()=>{ process.stderr.write('DEV014_LIFECYCLE_READBACK_FAILED\n');process.exitCode=1 })
+export function safeReadbackErrorCode(error) {
+  const upstream = new Set(['MIGRATION_GCS_REF_INVALID', 'MIGRATION_GCS_METADATA_FAILED',
+    'MIGRATION_GCS_METADATA_INVALID', 'MIGRATION_GCS_MEDIA_FAILED', 'MIGRATION_GCS_CRC32C_MISMATCH',
+    'MIGRATION_GCS_IMMUTABILITY_CONFLICT', 'MIGRATION_GCS_PUBLISH_FAILED', 'MIGRATION_GCS_READBACK_MISMATCH',
+    'MIGRATION_METADATA_TOKEN_FAILED', 'MIGRATION_METADATA_TOKEN_INVALID', 'MIGRATION_PRODUCTION_TARGET_MISMATCH',
+    '42501', '42703', '42P01', '57014', '08000', '08001', '08003', '08004', '08006', '08007', '08P01',
+    '28P01', '28000', '53300', '53400', '55P03', '57P01', '57P02', '57P03', 'XX000', 'P0001',
+    'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ABORT_ERR'])
+  const guards = new Set(['COUNT_INVALID', 'DURATION_INVALID', 'ROW_COUNT_INVALID', 'MODE_INVALID',
+    'DATABASE_IDENTITY_INVALID', 'LEDGER_INVALID', 'AGGREGATE_LIMIT', 'ERROR_CLASS_LIMIT',
+    'ARG_INVALID', 'IMAGE_SOURCE_MISMATCH'].map(code=>'DEV014_LIFECYCLE_READBACK_'+code))
+  if (upstream.has(error?.code)) return error.code
+  if (guards.has(error?.message)) return error.message
+  return 'UNCLASSIFIED_READBACK_FAILURE'
+}
+
+if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) runMain().catch(error=>{
+  process.stderr.write(JSON.stringify({status:'DEV014_LIFECYCLE_READBACK_FAILED',code:safeReadbackErrorCode(error)})+'\n')
+  process.exitCode=1
+})
