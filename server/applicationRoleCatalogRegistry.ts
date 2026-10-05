@@ -1,9 +1,8 @@
-import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
+import { createAiPdmRoleCatalog, readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import type { ExternalRoleCatalogSnapshotV1 } from '../src/governance/types'
-import { readPublishedAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
+import { readPublishedAiPdmRoleCatalog, readPublishedAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
 import { readFinancialRoleCatalog } from './financialRoleCatalogRepository'
-import { createOrgmasterDatabase } from './orgmasterDatabase'
-import { usesCloudSqlPersistence } from './orgmasterPersistenceRepository'
+import { currentPersistenceTransactionDatabase, usesCloudSqlPersistence, withPersistenceTransaction } from './orgmasterPersistenceRepository'
 
 export class ApplicationRoleCatalogRegistryError extends Error {
   constructor(readonly code: 'CATALOG_REGISTRY_UNAVAILABLE' | 'CATALOG_APPLICATION_DUPLICATE') {
@@ -12,15 +11,22 @@ export class ApplicationRoleCatalogRegistryError extends Error {
   }
 }
 
+/** Exactly one active producer artifact per operation; no version fallback or grant union. */
+export async function readActivePublishedAiPdmRoleCatalog() {
+  if (!usesCloudSqlPersistence()) return readPublishedAiPdmRoleCatalog()
+  return withPersistenceTransaction(async () =>
+    readPublishedAiPdmRoleCatalogFromDatabase(currentPersistenceTransactionDatabase()))
+}
+
+export async function readActiveAiPdmRoleCatalog(_root = process.cwd()) {
+  if (!usesCloudSqlPersistence()) return readAiPdmRoleCatalog()
+  const publication = await readActivePublishedAiPdmRoleCatalog()
+  return createAiPdmRoleCatalog('valid', publication.publishedAt, publication)
+}
+
 export async function readApplicationRoleCatalogs(root = process.cwd()): Promise<ExternalRoleCatalogSnapshotV1[]> {
   try {
-    // The bundled snapshot is a reviewed consumer contract, not proof that the
-    // producer has published it. Cloud SQL operations require provider readback.
-    if (usesCloudSqlPersistence()) {
-      const pool = createOrgmasterDatabase(process.env.ORGMASTER_POSTGRES_URL ?? '')
-      await readPublishedAiPdmRoleCatalogFromDatabase({ query: (sql) => pool.query(sql) })
-    }
-    const catalogs = [readAiPdmRoleCatalog(), await readFinancialRoleCatalog('valid', root)]
+    const catalogs = [await readActiveAiPdmRoleCatalog(root), await readFinancialRoleCatalog('valid', root)]
     const applications = new Set<string>()
     for (const catalog of catalogs) {
       if (applications.has(catalog.applicationId)) throw new ApplicationRoleCatalogRegistryError('CATALOG_APPLICATION_DUPLICATE')

@@ -7,6 +7,12 @@ export const JENFU_ENTITLEMENT_CONTRACT_VERSION = 'jenfu.platform-entitlement.v1
 export const AI_PDM_APPLICATION_ID = 'ai-pdm' as const
 export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-28.v5' as const
 export const AI_PDM_ROLE_CATALOG_SHA256 = '4f05dd4228b51e5086f30886330f48f1f137e37d383a26114bb34f5874d39197' as const
+export const AI_PDM_ROLE_CATALOG_V6_VERSION = 'ai-pdm.role-catalog.2026-10-05.v6' as const
+export const AI_PDM_ROLE_CATALOG_V6_SHA256 = 'bdc8d2b8f717e4af9d48cf882d1a564a5caaabaaaacdcf20bc5db36a5b6960af' as const
+const APPROVED_CATALOGS = {
+  [AI_PDM_ROLE_CATALOG_VERSION]: { file: 'ai-pdm-role-catalog.v5.json', hash: AI_PDM_ROLE_CATALOG_SHA256 },
+  [AI_PDM_ROLE_CATALOG_V6_VERSION]: { file: 'ai-pdm-role-catalog.v6.json', hash: AI_PDM_ROLE_CATALOG_V6_SHA256 },
+} as const
 
 export type PublishedAiPdmRole = {
   stableRoleId: string
@@ -27,7 +33,7 @@ export type PublishedAiPdmRole = {
 export type PublishedAiPdmRoleCatalog = {
   contractVersion: typeof JENFU_ENTITLEMENT_CONTRACT_VERSION
   applicationId: typeof AI_PDM_APPLICATION_ID
-  catalogVersion: typeof AI_PDM_ROLE_CATALOG_VERSION
+  catalogVersion: typeof AI_PDM_ROLE_CATALOG_VERSION | typeof AI_PDM_ROLE_CATALOG_V6_VERSION
   publishedAt: string
   roles: PublishedAiPdmRole[]
   catalogSha256: string
@@ -80,10 +86,11 @@ function canonicalCatalog(catalog: PublishedAiPdmRoleCatalog) {
 }
 
 function validateCatalog(catalog: PublishedAiPdmRoleCatalog) {
-  if (catalog.contractVersion !== JENFU_ENTITLEMENT_CONTRACT_VERSION || catalog.applicationId !== AI_PDM_APPLICATION_ID || catalog.catalogVersion !== AI_PDM_ROLE_CATALOG_VERSION || !nonBlank(catalog.publishedAt) || !Array.isArray(catalog.roles) || catalog.roles.length !== 9 || !isSha256(catalog.catalogSha256)) {
+  const approved = APPROVED_CATALOGS[catalog.catalogVersion];
+  if (catalog.contractVersion !== JENFU_ENTITLEMENT_CONTRACT_VERSION || catalog.applicationId !== AI_PDM_APPLICATION_ID || !approved || !nonBlank(catalog.publishedAt) || !Array.isArray(catalog.roles) || catalog.roles.length !== 9 || !isSha256(catalog.catalogSha256)) {
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
   }
-  if (catalog.catalogSha256 !== AI_PDM_ROLE_CATALOG_SHA256 || catalog.catalogSha256 !== sha256(canonicalCatalog(catalog))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
+  if (catalog.catalogSha256 !== approved.hash || catalog.catalogSha256 !== sha256(canonicalCatalog(catalog))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
   const stableIds = new Set<string>()
   const roleCodes = new Set<string>()
   for (const role of catalog.roles) {
@@ -96,8 +103,10 @@ function validateCatalog(catalog: PublishedAiPdmRoleCatalog) {
   return catalog
 }
 
-export async function readPublishedAiPdmRoleCatalog(root = process.cwd()): Promise<PublishedAiPdmRoleCatalog> {
-  const sourcePath = resolve(root, 'config', 'catalogs', 'ai-pdm-role-catalog.v5.json')
+export async function readPublishedAiPdmRoleCatalog(root = process.cwd(), catalogVersion: PublishedAiPdmRoleCatalog['catalogVersion'] = AI_PDM_ROLE_CATALOG_VERSION): Promise<PublishedAiPdmRoleCatalog> {
+  const approved = APPROVED_CATALOGS[catalogVersion]
+  if (!approved) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
+  const sourcePath = resolve(root, 'config', 'catalogs', approved.file)
   let raw: string
   try {
     await access(sourcePath)
@@ -134,7 +143,7 @@ export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmR
   }
   if (!rows.length) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
   const first = rows[0]
-  if (first.catalog_version !== AI_PDM_ROLE_CATALOG_VERSION) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
+  if (!Object.hasOwn(APPROVED_CATALOGS, String(first.catalog_version))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
   if (expectedCatalogSha256 && String(first.catalog_sha256).toLowerCase() !== expectedCatalogSha256.toLowerCase()) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
   if (rows.some((row, index) => row.contract_version !== first.contract_version || row.application_id !== first.application_id || row.catalog_version !== first.catalog_version || row.catalog_sha256 !== first.catalog_sha256 || Number(row.display_order) !== index)) {
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
@@ -167,7 +176,7 @@ export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmR
   // producer's frozen digest was computed from its source JSON serialization,
   // so hashing decoded jsonb would reject an identical published catalog.
   // Compare exact values against the independently validated source snapshot.
-  const approved = await readPublishedAiPdmRoleCatalog()
+  const approved = await readPublishedAiPdmRoleCatalog(process.cwd(), first.catalog_version as PublishedAiPdmRoleCatalog['catalogVersion'])
   const { sourcePath: _publishedPath, ...publishedValues } = approved
   const { sourcePath: _databasePath, ...databaseValues } = catalog
   if (!isDeepStrictEqual(databaseValues, publishedValues)) {
