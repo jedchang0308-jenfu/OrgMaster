@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Compute, GoogleAuth, JWT, UserRefreshClient } from 'google-auth-library'
 import {
   GOOGLE_DIRECTORY_READ_SCOPE,
   GOOGLE_OAUTH_TOKEN_URL,
@@ -8,6 +9,8 @@ import {
   readGoogleDirectoryRuntimeConfig,
   type GoogleDirectoryCredentialTransport,
 } from './orgmasterManagedDirectoryPort'
+
+afterEach(() => vi.restoreAllMocks())
 
 const auth = { getRequestHeaders: vi.fn(async () => ({ Authorization: 'Bearer test' })) }
 
@@ -60,6 +63,19 @@ describe('keyless Google Directory domain-wide delegation', () => {
     expect(readGoogleDirectoryRuntimeConfig({ ORGMASTER_MANAGED_IDENTITY_ENABLED: 'TRUE' })).toEqual({ enabled: false, state: 'disabled' })
   })
 
+  it('rejects explicit key-file ADC only when Directory delegation is enabled', () => {
+    const enabled = {
+      ORGMASTER_MANAGED_IDENTITY_ENABLED: 'true',
+      ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID: 'C012345',
+      ORGMASTER_GOOGLE_DIRECTORY_DOMAIN: 'jenfu.com.tw',
+      ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT: 'admin@jenfu.com.tw',
+      ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL: 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com',
+    }
+    expect(readGoogleDirectoryRuntimeConfig({ ...enabled, GOOGLE_APPLICATION_CREDENTIALS: 'credential-path-present' })).toEqual({ enabled: false, state: 'invalid' })
+    expect(readGoogleDirectoryRuntimeConfig({ ...enabled, google_application_credentials: 'credential-path-present' })).toEqual({ enabled: false, state: 'invalid' })
+    expect(readGoogleDirectoryRuntimeConfig({ ORGMASTER_MANAGED_IDENTITY_ENABLED: 'false', GOOGLE_APPLICATION_CREDENTIALS: 'credential-path-present' })).toEqual({ enabled: false, state: 'disabled' })
+  })
+
   it('uses runtime ADC only to sign an exact short-lived read-only DWD assertion and caches the delegated token', async () => {
     let currentTime = Date.parse('2026-09-21T04:00:00.000Z')
     const requests: Array<{ url: string; headers: Record<string, string>; body: string }> = []
@@ -68,11 +84,12 @@ describe('keyless Google Directory domain-wide delegation', () => {
       if (url.includes(':signJwt')) return { status: 200, json: async () => ({ signedJwt: 'header.payload.signature' }) }
       return { status: 200, json: async () => ({ access_token: 'delegated-access-token', expires_in: 3600, token_type: 'Bearer' }) }
     })
-    const getSourceAccessToken = vi.fn(async () => 'runtime-adc-token')
+    const getAccessToken = vi.fn(async () => ({ token: 'runtime-adc-token' }))
+    const sourceClient = Object.assign(Object.create(Compute.prototype), { getAccessToken }) as Compute
+    const getClient = vi.spyOn(GoogleAuth.prototype, 'getClient').mockResolvedValue(sourceClient)
     const auth = createGoogleDirectoryAuthPort({
       delegatedSubject: 'admin@jenfu.com.tw',
       serviceAccountEmail: 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com',
-      getSourceAccessToken,
       transport,
       now: () => currentTime,
     })
@@ -87,7 +104,8 @@ describe('keyless Google Directory domain-wide delegation', () => {
     currentTime += 1_000
     await expect(auth.getRequestHeaders('https://admin.googleapis.com/second')).resolves.toEqual({ Authorization: 'Bearer delegated-access-token', Accept: 'application/json' })
 
-    expect(getSourceAccessToken).toHaveBeenCalledTimes(1)
+    expect(getClient).toHaveBeenCalledTimes(1)
+    expect(getAccessToken).toHaveBeenCalledTimes(1)
     expect(transport).toHaveBeenCalledTimes(2)
     expect(requests[0]?.url).toBe('https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/orgmaster-prod-directory-dwd%40jenfu-platform-prod.iam.gserviceaccount.com:signJwt')
     expect(requests[0]?.headers).toEqual({ Authorization: 'Bearer runtime-adc-token', 'Content-Type': 'application/json', Accept: 'application/json' })
@@ -110,14 +128,42 @@ describe('keyless Google Directory domain-wide delegation', () => {
 
   it('classifies an IAM delegation rejection as permanent and does not call Directory', async () => {
     const directoryTransport = vi.fn()
+    const getAccessToken = vi.fn(async () => ({ token: 'runtime-adc-token' }))
+    const sourceClient = Object.assign(Object.create(UserRefreshClient.prototype), { getAccessToken }) as UserRefreshClient
+    const getClient = vi.spyOn(GoogleAuth.prototype, 'getClient').mockResolvedValue(sourceClient)
+    const credentialTransport = vi.fn(async () => ({ status: 403, json: async () => ({ error: { status: 'PERMISSION_DENIED' } }) }))
     const authPort = createGoogleDirectoryAuthPort({
       delegatedSubject: 'admin@jenfu.com.tw',
       serviceAccountEmail: 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com',
-      getSourceAccessToken: async () => 'runtime-adc-token',
-      transport: async () => ({ status: 403, json: async () => ({ error: { status: 'PERMISSION_DENIED' } }) }),
+      transport: credentialTransport,
     })
     const port = createGoogleDirectoryReadOnlyPort({ customerId: 'C012345', domain: 'jenfu.com.tw', auth: authPort, transport: directoryTransport })
     await expect(port.findExactCandidate('person@jenfu.com.tw')).resolves.toMatchObject({ ok: false, kind: 'permanent_error', code: 'DIRECTORY_DELEGATION_INVALID' })
+    expect(getClient).toHaveBeenCalledTimes(1)
+    expect(getAccessToken).toHaveBeenCalledTimes(1)
+    expect(credentialTransport).toHaveBeenCalledTimes(1)
+    expect(directoryTransport).not.toHaveBeenCalled()
+  })
+
+  it('rejects key-backed JWT ADC before requesting a source token or calling IAM/Directory', async () => {
+    const directoryTransport = vi.fn()
+    const credentialTransport = vi.fn()
+    const getAccessToken = vi.fn(async () => ({ token: 'must-not-be-used' }))
+    const keyClient = Object.assign(Object.create(JWT.prototype), {
+      credentials: { type: 'service_account' },
+      getAccessToken,
+    }) as JWT
+    const getClient = vi.spyOn(GoogleAuth.prototype, 'getClient').mockResolvedValue(keyClient)
+    const authPort = createGoogleDirectoryAuthPort({
+      delegatedSubject: 'admin@jenfu.com.tw',
+      serviceAccountEmail: 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com',
+      transport: credentialTransport,
+    })
+    const port = createGoogleDirectoryReadOnlyPort({ customerId: 'C012345', domain: 'jenfu.com.tw', auth: authPort, transport: directoryTransport })
+    await expect(port.findExactCandidate('person@jenfu.com.tw')).resolves.toMatchObject({ ok: false, kind: 'permanent_error', code: 'DIRECTORY_DELEGATION_INVALID' })
+    expect(getClient).toHaveBeenCalledTimes(1)
+    expect(getAccessToken).not.toHaveBeenCalled()
+    expect(credentialTransport).not.toHaveBeenCalled()
     expect(directoryTransport).not.toHaveBeenCalled()
   })
 })

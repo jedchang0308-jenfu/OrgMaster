@@ -13,6 +13,7 @@ import {
   sha256,
 } from './lib/dev012-production-migration-runner.mjs'
 import { TARGET, runMain } from './dev040-production-migration-runner.mjs'
+import { sourceSha256, unwrapMigrationTransaction } from './lib/dev040-orgmaster-independent-release.mjs'
 
 const H40 = 'a'.repeat(40)
 const environment = {
@@ -29,8 +30,17 @@ const environment = {
 
 function fixture() {
   const entries = Array.from({ length: TARGET.entryCount }, (_, index) => {
-    const sql = Buffer.from(`SELECT ${index + 1};\n`)
-    return { order: index + 1, version: `dev040-orgmaster-${String(index + 1).padStart(3, '0')}`, name: `migration_${index + 1}`, path: `db/migrations/${String(index + 1).padStart(3, '0')}.sql`, sourceSha256: sha256(sql), appliedSha256: sha256(sql), sqlBase64: sql.toString('base64') }
+    const finalEntry = index === TARGET.entryCount - 1
+    const source = finalEntry ? readFileSync(new URL('../db/migrations/030_dev057_employee_number_command_receipt.sql', import.meta.url)) : null
+    const sql = finalEntry ? Buffer.from(unwrapMigrationTransaction(source), 'utf8') : Buffer.from(`SELECT ${index + 1};\n`)
+    const identity = finalEntry ? TARGET.exactAppendEntry : {
+      order: index + 1,
+      version: `dev040-orgmaster-${String(index + 1).padStart(3, '0')}`,
+      path: `db/migrations/${String(index + 1).padStart(3, '0')}.sql`,
+      sourceSha256: sha256(sql),
+      appliedSha256: sha256(sql),
+    }
+    return { order: identity.order, version: identity.version, name: identity.path.split('/').at(-1).replace(/^\d{3}_/u, '').replace(/\.sql$/u, ''), path: identity.path, sourceSha256: finalEntry ? sourceSha256(source) : identity.sourceSha256, appliedSha256: finalEntry ? sha256(sql) : identity.appliedSha256, sqlBase64: sql.toString('base64') }
   })
   const core = { schemaVersion: 'jenfu.dev012.migration-bundle.v1', ownerApplicationId: TARGET.ownerApplicationId, sourceRevision: H40, projectId: 'jenfu-platform-prod', region: 'asia-east1', database: 'jenfu_prod', ledger: TARGET.ledger, baselineCount: TARGET.baselineCount, entries }
   const bundle = { ...core, manifestSha256: sha256(canonicalize(core)) }
@@ -38,10 +48,30 @@ function fixture() {
   return { bundle, bytes, bundleSha256: sha256(bytes) }
 }
 
-test('DEV-014 runner entry count matches the controlled production profile', () => {
+function fakeDatabase(ledger, statements, { missingLedger = false } = {}) {
+  return {
+    async query(sql, values) {
+      statements.push(sql)
+      if (sql.startsWith('SELECT current_database')) return { rows: [{ database: 'jenfu_prod', user: TARGET.login, postgresMajor: 17, migratorMember: true, runtimeCanCreateCore: false }] }
+      if (sql.includes('unnest(')) return { rows: TARGET.siblingCoreSchemas.map((schema_name) => ({ schema_name, can_use: false })) }
+      if (sql.includes('ORDER BY applied_at')) {
+        if (missingLedger) throw Object.assign(new Error('missing relation'), { code: '42P01' })
+        return { rows: ledger.map((row) => ({ ...row })) }
+      }
+      if (sql.startsWith('INSERT INTO')) ledger.push({ version: values[0], name: values[1], checksum_sha256: values[2], source_revision: values[3] })
+      return { rows: [] }
+    },
+  }
+}
+
+const writesStarted = (statements) => statements.some((sql) => /^\s*(?:BEGIN\b|CREATE\b|ALTER\b|DROP\b|INSERT\b|UPDATE\b|DELETE\b|GRANT\b|REVOKE\b)/imu.test(sql))
+
+test('DEV-057 runner entry count matches the controlled production profile', () => {
   const profile = JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url), 'utf8'))
   assert.equal(TARGET.entryCount, profile.migrations.entries.length)
-  assert.equal(profile.migrations.entries.at(-1).version, 'dev057-orgmaster-029')
+  assert.equal(profile.migrations.entries.at(-1).version, 'dev057-orgmaster-030')
+  assert.deepEqual(TARGET.allowedExistingLedgerCounts, [29, 30])
+  assert.deepEqual(TARGET.exactAppendEntry, profile.migrations.entries.at(-1))
 })
 
 test('S1B-21 OrgMaster runner accepts only exact production target and refs', () => {
@@ -56,32 +86,80 @@ test('S1B-21 OrgMaster runner accepts only exact production target and refs', ()
   assert.equal(crc32cBase64(Buffer.from('123456789')), '4waSgw==')
 })
 
-test('OrgMaster runner validates the ten-row baseline and appends only 011-029', async () => {
+test('OrgMaster runner accepts only the exact 029 baseline or verified 030 replay', async () => {
   const input = fixture()
   assertMigrationBundle(input.bundle, { target: TARGET, sourceRevision: H40, bundleSha256: input.bundleSha256, bytes: input.bytes })
-  let ledger = input.bundle.entries.slice(0, TARGET.baselineCount).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256, source_revision: 'prior' }))
-  assert.equal(planMigration(input.bundle, ledger).length, 19)
+  let ledger = input.bundle.entries.slice(0, 29).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256, source_revision: 'prior' }))
+  assert.deepEqual(planMigration(input.bundle, ledger).map((entry) => entry.version), ['dev057-orgmaster-030'])
   const statements = []
-  const database = {
-    async query(sql, values) {
-      statements.push(sql)
-      if (sql.startsWith('SELECT current_database')) return { rows: [{ database: 'jenfu_prod', user: TARGET.login, postgresMajor: 17, migratorMember: true, runtimeCanCreateCore: false }] }
-      if (sql.includes('unnest(')) return { rows: TARGET.siblingCoreSchemas.map((schema_name) => ({ schema_name, can_use: false })) }
-      if (sql.includes('FROM pg_catalog.pg_class')) return { rows: [{ exists: true }] }
-      if (sql.includes('ORDER BY applied_at')) return { rows: ledger.map((row) => ({ ...row })) }
-      if (sql.startsWith('INSERT INTO')) ledger.push({ version: values[0], name: values[1], checksum_sha256: values[2], source_revision: values[3] })
-      return { rows: [] }
-    },
-  }
+  const database = fakeDatabase(ledger, statements)
   const receipt = await executeProductionMigration({ bundle: input.bundle, database, target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true, now: () => '2026-09-08T00:00:00.000Z' })
   assert.equal(receipt.status, 'PASS')
-  assert.equal(receipt.applied, 19)
-  assert.equal(ledger.length, 29)
-  assert.equal(statements.filter((value) => value === 'BEGIN').length, 19)
+  assert.equal(receipt.applied, 1)
+  assert.equal(receipt.replayed, 29)
+  assert.equal(receipt.ledgerCount, 30)
+  assert.equal(ledger.length, 30)
+  assert.equal(statements.filter((value) => value === 'BEGIN').length, 1)
+  assert.equal(statements.filter((value) => value.includes('CREATE FUNCTION orgmaster_core.assign_employee_number_v2')).length, 1)
   const second = await executeProductionMigration({ bundle: input.bundle, database, target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true, now: () => '2026-09-08T00:00:01.000Z' })
   assert.equal(second.applied, 0)
+  assert.equal(second.replayed, 30)
+  assert.equal(statements.filter((value) => value === 'BEGIN').length, 1)
+  assert.equal(statements.filter((value) => value.startsWith('INSERT INTO')).length, 1)
   const missing = ledger.slice(1)
   assert.throws(() => planMigration(input.bundle, missing), /LEDGER_PREFIX_MISMATCH|BASELINE_INCOMPLETE/)
+})
+
+test('OrgMaster pre-write ledger guard rejects missing, lagging, wrong-count and corrupt-prefix states', async () => {
+  const input = fixture()
+  for (const count of [10, 28, 31]) {
+    const ledger = input.bundle.entries.slice(0, count).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256, source_revision: 'prior' }))
+    if (count === 31) ledger.push({ version: 'unexpected-extra', name: 'unexpected', checksum_sha256: 'f'.repeat(64) })
+    const statements = []
+    await assert.rejects(() => executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(ledger, statements), target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true }), /MIGRATION_EXISTING_LEDGER_COUNT_INVALID/)
+    assert.equal(writesStarted(statements), false, `count ${count} must be rejected before any write`)
+  }
+  const missingStatements = []
+  await assert.rejects(() => executeProductionMigration({ bundle: input.bundle, database: fakeDatabase([], missingStatements, { missingLedger: true }), target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true }), /MIGRATION_BASELINE_MISSING/)
+  assert.equal(writesStarted(missingStatements), false)
+  const corrupt = input.bundle.entries.slice(0, 29).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256, source_revision: 'prior' }))
+  corrupt[28].checksum_sha256 = 'f'.repeat(64)
+  const corruptStatements = []
+  await assert.rejects(() => executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(corrupt, corruptStatements), target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true }), /MIGRATION_LEDGER_PREFIX_MISMATCH/)
+  assert.equal(writesStarted(corruptStatements), false, 'same-count checksum drift must fail before 030 SQL or ledger insert')
+})
+
+test('generic migration callers without the optional exact-count policy keep baseline behavior', async () => {
+  const input = fixture()
+  const target = { ...TARGET, allowedExistingLedgerCounts: undefined }
+  const ledger = input.bundle.entries.slice(0, target.baselineCount).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256, source_revision: 'prior' }))
+  const statements = []
+  const receipt = await executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(ledger, statements), target, sourceRevision: H40, denyDatabaseConnect: async () => true })
+  assert.equal(receipt.applied, 20)
+  assert.equal(receipt.ledgerCount, 30)
+})
+
+test('OrgMaster Job entrypoint forwards the exact-count policy and blocks a ten-row catch-up before publication', async () => {
+  const input = fixture()
+  const ledger = input.bundle.entries.slice(0, 10).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256, source_revision: 'prior' }))
+  const statements = []
+  const database = fakeDatabase(ledger, statements)
+  class Client {
+    async connect() {}
+    async end() {}
+    async query(sql, values) { return database.query(sql, values) }
+  }
+  let published = false
+  const fetchImpl = async (url, options = {}) => {
+    if (String(url).startsWith('http://metadata.google.internal/')) return Response.json({ access_token: 'x'.repeat(30), expires_in: 3600 })
+    if (options.method === 'POST') { published = true; return Response.json({ generation: '2' }) }
+    const bytes = input.bytes
+    return String(url).includes('alt=media') ? new Response(bytes) : Response.json({ generation: '1', crc32c: crc32cBase64(bytes) })
+  }
+  const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`]
+  await assert.rejects(() => runMain({ argv, environment, Client, fetchImpl }), /MIGRATION_EXISTING_LEDGER_COUNT_INVALID/)
+  assert.equal(writesStarted(statements), false)
+  assert.equal(published, false)
 })
 
 test('S1B-21 OrgMaster schema runner rejects an empty or changed baseline without writes', async () => {
@@ -98,7 +176,8 @@ test('S1B-21 OrgMaster schema runner rejects an empty or changed baseline withou
       return { rows: [] }
     },
   }
-  const execute = () => executeProductionMigration({ bundle: input.bundle, database, target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true })
+  const genericTarget = { ...TARGET, allowedExistingLedgerCounts: undefined }
+  const execute = () => executeProductionMigration({ bundle: input.bundle, database, target: genericTarget, sourceRevision: H40, denyDatabaseConnect: async () => true })
   await assert.rejects(execute, /MIGRATION_BASELINE_INCOMPLETE/)
   ledger = input.bundle.entries.slice(0, 10).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256 }))
   ledger[0].checksum_sha256 = 'f'.repeat(64)
@@ -120,7 +199,7 @@ test('schema runner rejects bootstrap arguments before credential, network or da
 test('schema runner entrypoint migrates and publishes without reading or importing business data', async () => {
   const input = fixture()
   const requests = [], statements = []
-  const ledger = input.bundle.entries.slice(0, 10).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256 }))
+  const ledger = input.bundle.entries.slice(0, 29).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256 }))
   let published
   class Client {
     constructor(options) { this.options = options }
@@ -145,10 +224,18 @@ test('schema runner entrypoint migrates and publishes without reading or importi
   }
   const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`]
   const result = await runMain({ argv, environment, Client, fetchImpl })
-  assert.equal(result.applied, 19)
+  assert.equal(result.applied, 1)
   assert.equal(result.productionData, undefined)
   assert.equal(result.ledgerBootstrap, undefined)
   assert.equal(requests.some((url) => /production-data|bootstrap/u.test(url)), false)
-  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, 19)
-  assert.equal(statements.some((sql) => /principal|governance|active_authority/u.test(sql)), false)
+  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, 1)
+  const businessReads = statements.filter((sql) => {
+    const statement = sql.trimStart()
+    return /^SELECT\b/iu.test(statement) &&
+      !/^SELECT current_database\b/u.test(statement) &&
+      !/^SELECT pg_advisory_(?:un)?lock\b/u.test(statement) &&
+      !statement.includes('unnest(') &&
+      !statement.includes('ORDER BY applied_at')
+  })
+  assert.deepEqual(businessReads, [])
 })

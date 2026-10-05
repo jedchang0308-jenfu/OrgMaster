@@ -152,6 +152,19 @@ O01–O07沿原編號；失效雙軌斷言改驗終態與Principal-only恢復，
 
 [AIPDM現行consumer契約](../../../AI_PDM/.ai-doc/specs/DEV-121-target-authorization-boundary.md#architecture-final)。SQLite／release工具共用留後續，不擴大本DEV。
 
+<a id="employee-number-command-v2-current"></a>
+
+## DEV-057 current correction：DEV-014 員工編號 command v2
+
+來源為 JENFU/DEV-014 QA014-05／06／18／19；沿 ORGMASTER/DEV-057 子任務修正，不新增主任務。編號是 Employee domain identifier，不能決定 Principal 或登入權限。Directory/DWD port 的設定不控制編號管理入口；可用 DTO 與已發布 Principal permission 決定操作能力，未配置 Directory 不提供連結／refresh capability。現行員工啟用資格規則不因此改寫。
+
+正常 PUT employee-number 必須保存原 commandId，僅呼叫 assign_employee_number_v2。既有 command receipt table 保存正規化 request fingerprint（target／number／Principal／原 workspace、registry CAS；不含重試時間）、原結果及 command audit。相同命令先讀 receipt 再判原 CAS；不同內容／Principal 使用同 ID 拒絕。新的命令仍驗唯一、退役號碼、workspace／registry CAS。assignment／tombstone／audit／receipt 同 transaction；audit 或 receipt 失敗則全部回復。response 保持原 DTO，讀回目前 Employee 明細，不能由 receipt 自動改 Employee 或 provider binding。
+
+沿既有治理 write transaction，在寫入前及 commit 前重驗 verified session／pair／Principal epoch；取得 admission→persistence owner lock 後重讀目前角色與 Employee 狀態，撤權或失效時整筆 rollback。local-json 只作明確開發 fixture；已套用 v1 保留歷史及舊來源回復相容性，正常 caller 不再呼叫它。forward-only 030 僅新增此 owner function，重用既有表；001–029 bytes 不變。發布前完成真實 disposable PostgreSQL 的重播、衝突、併發、audit/receipt 故障 rollback 及未授權拒絕；source-bound migration runner 必須先依既有 APP_INFRA_IMAGE_ROTATION 換成同一 frozen source 的 immutable image，受控 29→30 只追加 exact 030，之後一般發布仍 zero-DDL。回復僅限 Principal-only 來源；回復時不得改已發布 receipt 或 Employee／provider 歸屬，須明記本次功能修正是否隨回復撤回，不能以舊 UID 來源回復。
+特定發布模式與前置檢查：`DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2` 僅接受既有 ledger 為 29 列且 001–029 prefix checksum 全部吻合後追加 exact 030，或 ledger 已為 30 列且完整 bundle checksum 驗證後作無 DDL replay。runner 在任何 migration SQL、DDL 或 ledger INSERT 前先讀取既有 ledger並套用 29／30 exact-count fence；missing ledger、10／28／31 等其他列數或同列數 checksum drift 均零寫入失敗。optional policy 僅由 OrgMaster source-bound TARGET 啟用；generic caller 未帶 policy 的原行為不變。
+
+generic helper `scripts/lib/dev012-production-migration-runner.mjs` 已由 `infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile` COPY；因此 owner Job 必須使用同一 frozen source 所產生、經既有 `APP_INFRA_IMAGE_ROTATION` provider readback 的 immutable image，不可沿用舊 digest。Migration receipt 必須證明完整 30 列及 apply/replay readback；ordinary release 僅驗 full 30-entry bundle unchanged 並保持 zero DDL。
+
 ## 歷史引用入口（非施工指令）
 
 <a id="production-r3-release"></a>

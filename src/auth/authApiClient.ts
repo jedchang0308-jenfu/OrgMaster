@@ -2,6 +2,7 @@ export type AuthMode = {
   authMode: 'jenfu_firebase_bff'
   firebase: { apiKey: string; authDomain: string; projectId: string; appId: string }
   managedLoginEnabled?: boolean
+  employeeNumberManagementEnabled?: boolean
   ssoHandoffEnabled?: boolean
   correlationId: string
 }
@@ -17,6 +18,7 @@ export type DevelopmentAuthProfileView = {
 
 export type DevelopmentAuthMode = {
   authMode: 'local_development'
+  employeeNumberManagementEnabled?: boolean
   profiles: DevelopmentAuthProfileView[]
   session: AuthSessionView | null
   correlationId: string

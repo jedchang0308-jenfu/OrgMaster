@@ -5,6 +5,7 @@ import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
 const H40 = /^[a-f0-9]{40}$/
 const H64 = /^[a-f0-9]{64}$/
 const V3_CONTRACT_SHA256 = '857f8a94ab13f63071156f85e76e5c675b348588b1126c147e0e54b431b6e8c5'
+const DEV057_MIGRATION_PREFIX_001_029_SHA256 = 'c5548028cbf44d474d23666aed1723fe5c55f614d7ddc280e5aa725cb5257376'
 const REQUIRED_PLAIN_ENV = [
   'ORGMASTER_PERSISTENCE_MODE', 'ORGMASTER_PUBLIC_BASE_URL',
   'ORGMASTER_POSTGRES_POOL_MAX', 'ORGMASTER_POSTGRES_CONNECTION_TIMEOUT_MS',
@@ -49,6 +50,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   'db/migrations/027_dev057_principal_cutover_source_manifest.sql',
   'db/migrations/028_dev057_ai_pdm_principal_effective_grants_v3.sql',
   'db/migrations/029_dev057_human_business_principal_grants_v4.sql',
+  'db/migrations/030_dev057_employee_number_command_receipt.sql',
 ]
 
 function fail(code, detail = '') {
@@ -112,6 +114,8 @@ export function assertDev040V3Profile(profile, n1c) {
   const order = profile.migrations?.entries?.map((entry) => entry.path)
   if (profile.migrations?.ledger !== 'orgmaster_core.schema_migrations' || profile.migrations?.baselineCount !== 10 || JSON.stringify(order) !== JSON.stringify(PRODUCTION_MIGRATION_PATHS) || JSON.stringify(order.slice(0, 10)) !== JSON.stringify(n1c.migration.order)) fail('MIGRATION_MANIFEST_DRIFT')
   if (profile.migrations.entries.some((entry, index) => entry.order !== index + 1 || !H64.test(entry.sourceSha256) || !H64.test(entry.appliedSha256))) fail('MIGRATION_MANIFEST_DRIFT')
+  const immutablePrefixSha256 = createHash('sha256').update(JSON.stringify(profile.migrations.entries.slice(0, 29).map(({ order: entryOrder, version, path, sourceSha256, appliedSha256 }) => [entryOrder, version, path, sourceSha256, appliedSha256]))).digest('hex')
+  if (immutablePrefixSha256 !== DEV057_MIGRATION_PREFIX_001_029_SHA256) fail('MIGRATION_PREFIX_001_029_DRIFT')
   if (Object.values(profile.sideEffects || {}).some((value) => value !== 'DISABLED')) fail('SIDE_EFFECT_ENABLED')
   if (profile.operations?.CONFIGURE_ENTRYPOINT !== 'run.projects.locations.services.patch?updateMask=ingress,defaultUriDisabled,invokerIamDisabled') fail('ENTRYPOINT_OPERATION_MISSING')
   if (JSON.stringify(profile.edge) !== JSON.stringify({ servingDependency: false, rollbackDependency: false, ordinaryReleaseMutations: 0, disposition: 'RETAINED_UNUSED_EDGE' })) fail('EDGE_BOUNDARY_DRIFT')

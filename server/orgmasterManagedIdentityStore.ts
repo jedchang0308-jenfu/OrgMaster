@@ -18,6 +18,18 @@ import { assignEmployeeNumber, createEmptyManagedIdentityRegistry, parseEmployee
 import { fileExists, hashFileContent, withOrgMasterRootLock, writeVerifiedAtomicFile } from './orgmasterFileStore'
 import { canonicalManagedLoginIdentity, incrementRevision, type ManagedLoginIdentity } from './orgmasterManagedLoginContract'
 
+export type EmployeeNumberCommand = {
+  commandId: string; employeeId: string; employeeNumber: string; actor: string
+  expectedRegistryRevision: string | null; expectedWorkspaceRevision: string | null; now?: string
+}
+export type EmployeeNumberCommandResult = {
+  disposition: 'applied' | 'noop' | 'replayed'; assignment: EmployeeNumberAssignmentV1; revision: string
+}
+export function employeeNumberCommandHash(input: EmployeeNumberCommand) {
+  const parts = ['assign_employee_number_v2', input.employeeId, input.employeeNumber.trim().toUpperCase(), input.actor, input.expectedWorkspaceRevision, input.expectedRegistryRevision]
+  return createHash('sha256').update(parts.map(value => value === null ? '-:' : `${Buffer.byteLength(value, 'utf8')}:${value}`).join('')).digest('hex')
+}
+
 export type ManagedIdentityStoreErrorCode =
   | 'MANAGED_IDENTITY_STORE_INVALID'
   | 'MANAGED_IDENTITY_REVISION_CONFLICT'
@@ -245,6 +257,7 @@ export type CandidateInput = {
 export interface ManagedIdentityStoreV1 {
   readExisting(): Promise<{ exists: boolean; raw: string | null; document: ManagedIdentityDocumentV1; revision: string | null }>
   commit(expectedRevision: string | null, mutate: (current: ManagedIdentityDocumentV1) => ManagedIdentityDocumentV1, operationId?: string): Promise<{ exists: true; raw: string; document: ManagedIdentityDocumentV1; revision: string }>
+  assignNumberCommand(input: EmployeeNumberCommand): Promise<EmployeeNumberCommandResult>
   appendAssignment(employeeId: string, employeeNumber: string, actor: string, expectedRevision: string | null, now?: string, expectedWorkspaceRevision?: string | null): Promise<{ disposition: 'applied' | 'noop'; assignment: EmployeeNumberAssignmentV1; revision: string }>
   createCandidate(input: CandidateInput): Promise<{ token: string; expiresAt: string; workspaceRevision: string | null; registryRevision: string }>
   readCandidateForConfirmation(input: ManagedIdentityConfirmContext): Promise<ManagedIdentityConfirmationRead>
@@ -316,6 +329,44 @@ export function createManagedIdentityStore(input: { root: string; devEnabled: bo
       return { ...current, registry: result.registry, auditEvents: [...current.auditEvents, event] }
     }, `assign-employee-number:${employeeId}:${timestamp}`)
     return { disposition, assignment, revision: String(assignment.revision) }
+  }
+
+  const assignNumberCommand = async (request: EmployeeNumberCommand): Promise<EmployeeNumberCommandResult> => {
+    if (!request.commandId.trim() || request.commandId.length > 255) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDEMPOTENCY_CONFLICT')
+    const fingerprint = employeeNumberCommandHash(request)
+    const replay = (document: ManagedIdentityDocumentV1): EmployeeNumberCommandResult | null => {
+      const receipt = document.commandReceipts?.find(entry => entry.commandId === request.commandId)
+      if (!receipt) return null
+      if (receipt.action !== 'assign_employee_number_v2' || receipt.requestHashSha256 !== fingerprint || receipt.employeeId !== request.employeeId || receipt.identityRecordId !== null || receipt.responsePayload.contractVersion !== 'orgmaster.employee-number-command.v2') throw new ManagedIdentityStoreError('MANAGED_IDENTITY_IDEMPOTENCY_CONFLICT')
+      const assignment = receipt.responsePayload.assignment as EmployeeNumberAssignmentV1
+      if (!assignment || assignment.employeeId !== request.employeeId || !Number.isSafeInteger(assignment.revision)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_STORE_INVALID')
+      return { disposition: 'replayed', assignment, revision: String(assignment.revision) }
+    }
+    const current = await readExisting()
+    const previousResult = replay(current.document)
+    if (previousResult) return previousResult
+    let result!: EmployeeNumberCommandResult
+    const timestamp = request.now ?? nowIso(now())
+    try {
+      await commit(current.revision, document => {
+        const prior = replay(document)
+        if (prior) { result = prior; return document }
+        const previous = document.registry.assignments.find(entry => entry.employeeId === request.employeeId)
+        if (request.expectedRegistryRevision !== String(previous?.revision ?? 0)) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
+        if (document.currentWorkspaceAuthority && (request.expectedWorkspaceRevision !== null && document.currentWorkspaceAuthority.workspaceRevision !== request.expectedWorkspaceRevision || !document.currentWorkspaceAuthority.employeeIds.includes(request.employeeId))) throw new ManagedIdentityStoreError('MANAGED_IDENTITY_REVISION_CONFLICT')
+        const applied = assignEmployeeNumber(document.registry, request.employeeId, request.employeeNumber, request.actor, timestamp)
+        result = { disposition: applied.status, assignment: applied.assignment, revision: String(applied.assignment.revision) }
+        const receipt: ManagedIdentityCommandReceiptV1 = { commandId: request.commandId, requestHashSha256: fingerprint, action: 'assign_employee_number_v2', employeeId: request.employeeId, identityRecordId: null, responsePayload: { contractVersion: 'orgmaster.employee-number-command.v2', ...result }, createdAt: timestamp }
+        const event: ManagedIdentityAuditEventV1 = { id: 'managed-identity-audit-' + randomUUID(), commandId: request.commandId, action: previous ? 'employee_number_changed' : 'employee_number_assigned', employeeId: request.employeeId, employeeNumber: applied.assignment.employeeNumber, previousEmployeeNumber: previous?.employeeNumber ?? null, actor: request.actor, occurredAt: timestamp, result: 'applied', reasonCode: previous ? 'employee_number_correction' : 'employee_number_assignment', beforeHash: previous ? sha256(JSON.stringify(previous)) : null, afterHash: sha256(JSON.stringify(applied.assignment)) }
+        return { ...document, registry: applied.registry, commandReceipts: [...(document.commandReceipts ?? []), receipt], auditEvents: applied.status === 'noop' ? document.auditEvents : [...document.auditEvents, event] }
+      }, `number:${request.commandId}`)
+      return result
+    } catch (error) {
+      if (!(error instanceof ManagedIdentityStoreError) || error.code !== 'MANAGED_IDENTITY_REVISION_CONFLICT') throw error
+      const committed = replay((await readExisting()).document)
+      if (!committed) throw error
+      return committed
+    }
   }
 
   const createCandidate = async (candidate: CandidateInput) => {
@@ -634,5 +685,5 @@ export function createManagedIdentityStore(input: { root: string; devEnabled: bo
     return { enabled: committed.document.admissionAuthority?.admissionEnabled ?? false, revision, document: committed.document, fileRevision: committed.revision }
   }
 
-  return { readExisting, commit, appendAssignment, createCandidate, readCandidateForConfirmation, confirmCandidate, bindAuth, enqueueRefresh, claimRefresh, completeRefresh, retryRefresh, resolveAlias, setAdmission, verifyManagedLoginIdentity }
+  return { readExisting, commit, assignNumberCommand, appendAssignment, createCandidate, readCandidateForConfirmation, confirmCandidate, bindAuth, enqueueRefresh, claimRefresh, completeRefresh, retryRefresh, resolveAlias, setAdmission, verifyManagedLoginIdentity }
 }

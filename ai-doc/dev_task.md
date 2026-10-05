@@ -1,8 +1,12 @@
 # OrgMaster 開發任務
 
+**DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 依 [DEV-057 current correction](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current) 沿 DEV-057 既有子項；目前 LOCAL_FIX／TASK_OWNED_POSTGRES_PASS，protected merge／030 source-bound release／正式 details 仍待完成。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
+
 <a id="dev-057-current-contract"></a>
 
 ## DEV-057 員工 Google 連結矯正（2026-10-05）
+
+**目前交付（2026-10-05 03:58Z）：正式修正版已發布，Production API 已驗證，現有瀏覽器渲染未重驗。** protected source `c65dd31acb8d2c1895d0e9e8d2a93186dc28ef35`、owner run `37260139999` 十階段 SUCCESS／RELEASED；`orgmaster-prod-367d239442e2` 100%／零 tag。Jed 正常 Principal SSO 與治理／managed-identity 200，保存連結 `manageLink=false`；未登入／已撤銷 session 401，正式 client asset 已更新。未重綁 Employee／更改角色／新增 migration。PR104／105、必需 CI、sealed terminal、約 11 分鐘觀察及清理見[最新正式交付 checkpoint](qa/DEV-057-managed-identity-link-correction-2026-10-05.md#最新正式交付-checkpoint2026-10-05-0358z)。本段取代下兩段施工時「待發布」的進度，原始失敗因果保留；不宣稱完整 rendered browser L4 PASS。
 
 沿 `ORGMASTER/DEV-057#identity-grants`，本批僅 OrgMaster source／UI／錯誤分類修正；既有共同 Principal-only 正式結案紀錄保持原層級。正式 user SSO 已成功，但 Directory registration pending 被顯示為待連結且可重複 candidate；已保存的連結不得因 UI 操作重綁。現行同根因修復及 stage 見 [矯正證據](qa/DEV-057-managed-identity-link-correction-2026-10-05.md)。本批本機聚焦已通過，完整回歸／protected PR／owner release／正式 UI 驗證依各自證據推進，不由本機 PASS 宣稱 Production 修復。
 
@@ -10,7 +14,7 @@
 
 ## DEV-057 現行續接
 
-本輪只有 [Principal-only current契約](specs/DEV-057-identity-and-grant-contract-boundary.md) 一套有效施工指令；維持原native DEV／子任務及驗收分母。歷史原文／階段在 [HISTORY_ONLY任務快照](dev_task-history-2026-10-03.md)，不讀為當前命令。各層證據只證明本機／整合／正式實測的流程，不以文件成熟度或總PASS數改算完成率。
+Principal-only 身分／授權仍以 [current contract](specs/DEV-057-identity-and-grant-contract-boundary.md) 為施工入口並維持原驗收分母；DEV-014 有效員工編號義務沿 OrgMaster/DEV-057 的 [employee-number command v2 current correction](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current) 收束，不新增任務或改寫 Principal-only 完成結論。歷史原文／階段在 [HISTORY_ONLY任務快照](dev_task-history-2026-10-03.md)，不讀為當前命令。各層證據只證明本機／整合／正式實測流程，不以文件成熟度或總 PASS 數改算完成率。
 
 共同根因、F01–F10狀態及下一可驗交付依 [JENFU既有盤點](../../Jenfu-Platform/ai-doc/qa/DEV-015-principal-only-authorization-inventory-2026-09-29.md)；下方舊DEV-012／013與其他native任務保留原追溯，不重開其發布队列。
 

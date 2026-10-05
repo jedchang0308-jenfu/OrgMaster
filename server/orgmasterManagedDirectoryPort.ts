@@ -1,4 +1,4 @@
-import { GoogleAuth } from 'google-auth-library'
+import { GoogleAuth, JWT } from 'google-auth-library'
 import type { DirectoryState } from '../src/managedIdentity/types'
 
 export const GOOGLE_DIRECTORY_READ_SCOPE = 'https://www.googleapis.com/auth/admin.directory.user.readonly' as const
@@ -111,6 +111,7 @@ function validDomain(value: string) {
 
 export function readGoogleDirectoryRuntimeConfig(environment: NodeJS.ProcessEnv): GoogleDirectoryRuntimeConfig {
   if (environment.ORGMASTER_MANAGED_IDENTITY_ENABLED !== 'true') return { enabled: false, state: 'disabled' }
+  if (environment.GOOGLE_APPLICATION_CREDENTIALS?.trim() || environment.google_application_credentials?.trim()) return { enabled: false, state: 'invalid' }
   const customerId = environment.ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID?.trim() ?? ''
   const domain = normalizedDomain(environment.ORGMASTER_GOOGLE_DIRECTORY_DOMAIN ?? '')
   const delegatedSubject = normalizedEmail(environment.ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT ?? '')
@@ -136,7 +137,6 @@ function defaultCredentialTransport(): GoogleDirectoryCredentialTransport {
 export function createGoogleDirectoryAuthPort(input: {
   delegatedSubject: string
   serviceAccountEmail: string
-  getSourceAccessToken?: () => Promise<string | null | undefined>
   transport?: GoogleDirectoryCredentialTransport
   now?: () => number
   timeoutMs?: number
@@ -148,8 +148,7 @@ export function createGoogleDirectoryAuthPort(input: {
 
   const transport = input.transport ?? defaultCredentialTransport()
   const now = input.now ?? Date.now
-  const sourceAuth = input.getSourceAccessToken ? undefined : new GoogleAuth({ scopes: [GOOGLE_IAM_CREDENTIALS_SCOPE] })
-  const getSourceAccessToken = input.getSourceAccessToken ?? (() => sourceAuth!.getAccessToken())
+  const sourceAuth = new GoogleAuth({ scopes: [GOOGLE_IAM_CREDENTIALS_SCOPE] })
   let cachedToken: { value: string; expiresAt: number } | undefined
   let tokenRefresh: Promise<string> | undefined
 
@@ -166,7 +165,10 @@ export function createGoogleDirectoryAuthPort(input: {
   }
 
   const obtainDelegatedToken = async () => {
-    const sourceToken = (await getSourceAccessToken())?.trim().replace(/^Bearer\s+/i, '')
+    const sourceClient = await sourceAuth.getClient()
+    const credentialType = (sourceClient as typeof sourceClient & { credentials?: { type?: unknown } }).credentials?.type
+    if (sourceClient instanceof JWT || credentialType === 'service_account') throw new GoogleDirectoryAuthError('DIRECTORY_DELEGATION_INVALID', false)
+    const sourceToken = (await sourceClient.getAccessToken()).token?.trim().replace(/^Bearer\s+/i, '')
     if (!sourceToken) throw new GoogleDirectoryAuthError('DIRECTORY_AUTH_UNAVAILABLE', true)
     const issuedAt = Math.floor(now() / 1_000)
     const claims = {

@@ -1,5 +1,21 @@
 # DEV-057 員工 Google 連結狀態與 candidate 錯誤矯正
 
+## 最新正式交付 checkpoint（2026-10-05 03:58Z）
+
+**PUBLISHED_PRODUCTION_API_PASS / RENDERED_UI_NOT_VERIFIED。** 本節取代下方各施工時點的 MERGED_NOT_PUBLISHED、CI／owner release 待驗狀態；歷史中止及當時結論保留。OrgMaster 修正版已正式切流，沒有重綁員工或更改 Principal／角色。API 與正式送出的前端資產已驗證，現有使用者瀏覽器的實際重新整理／渲染尚未操作驗證，不宣稱本次完整 browser L4 完成。
+
+- PR [#104](https://github.com/jedchang0308-jenfu/OrgMaster/pull/104) 完成連結狀態／candidate 修正；同一發布續行根因集中於 PR [#105](https://github.com/jedchang0308-jenfu/OrgMaster/pull/105)。最終 protected master source `c65dd31acb8d2c1895d0e9e8d2a93186dc28ef35`；PR105 exact head `80ab8c81f21b1a67921c47371d646171f9185828`。Codex review／單人維護模式及必需 CI 保留。PR required CI [37259581891](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37259581891) 和 exact master CI [37259724530](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37259724530) 均 SUCCESS，包含完整 app tests／build；修正後原 QC 子集合 214/214 PASS，完整 owner suite 257/257 PASS，0 skip。
+- Owner release `ORGMASTER-REL-20261005033540336-C65DD31`，[run 37260139999](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37260139999) 原生十階段 SUCCESS，failure handler 正確 SKIPPED；03:49:05Z 完成。Cloud Build `8a9648ea-a268-45a7-922c-729145be8580` SUCCESS。29 個 applied migrations 原樣 verified，database disposition `UNCHANGED_VERIFIED`，零新 DDL。
+- 正式 provider readback：`orgmaster-prod-367d239442e2`、generation 233、100% traffic、零 candidate tag；immutable app image `sha256:b3cea5d7309308cdc170b6afcf7c185c225069bfa1b51e4412fbda1c89a2b499`。同 source 的 R40 infra reuse sealed SHA `7e121b7108110b233fa816c5faabf5245bf2e837318798730e715006eb3a5749`，重驗完整 75 地址／16 個 COPY inputs／numeric version 9／state serial 117。
+- 原生 sealed terminal `gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261005033540336-C65DD31/cacb524ce9a9a16cab46758162155951e42ff22a186470faab0ce0ddb0d1f9da/terminal.json` raw SHA `83593537d86532b5c1e2ebd606d68f5e2c48f2abd36a90d5983e893e8783f2ea`，result RELEASED；current control FINALIZED / RELEASED raw SHA `1fd57a1048500beb7dd6dce58c29e2ddcf7ca7ec92a380aa12fe5f7d519d6d1b`。
+- 03:53:51Z 真實 provider、原 numeric version 9 與 native normal Principal SSO：驗同 prior pair／Principal／employee-shijie，Platform session 200，OrgMaster start／authorize／callback 303，session reload／preference DB read／governance session／Jed managed-identity 均 200。身分模型 `JFS0005 / directory_linked_pending_auth`，registryRevision `1`，workspaceRevision `542451d9e8b9123916f692fa5d202456e0ac4876cd69983da79636f9e1a15ab4`，`manageLink=false`、savedLinkPreserved=true；不以 email 或 session 將 Directory row 改 active。
+- 未登入 preference／managed-identity 均 401，OrgMaster 已撤銷 session 401；task 自建 Platform session 亦 local logout 200、readback 401。沒有 global logout，使用者既有 session 未變更。credential material 僅供原生驗證記憶體使用，沒有寫入證據。
+- Canonical `/assets/index-Bg2Tpxuq.js` raw SHA `a95e6d5fc42620104a312248766767c3848a861f9085829f352a433b2a704758` 已送出「已連結／連結已保存／連結衝突」，舊首次登入提示不存在；此層是 DELIVERED_ASSET_NOT_RENDERED_USER_UI。CUA／computer-use trusted kernel Windows error 5，使用者原 OrgMaster tab 保留，不把資產文字命中當成 browser 操作 PASS。
+- 受限觀察 03:47:53Z–03:58:44.471Z：exact 新 revision 的 HTTP >=500 或 severity >=ERROR 查詢零 entries，完整第一頁；只證該約 11 分鐘區間，不推定長期零錯誤。
+- Principal-only 回復 baseline 保留 `orgmaster-prod-2e665c16ba0b`／source `5840bbc5b7195d33f7c0e3a998bbed3725a1626c`／image `sha256:d2e9f777d096952f75a867115927e889d9c35e052272d0bd6dc35b5e485acdb0`。本批未實際 rollback traffic，不以舊 UID 授權回復。reauth 暫時 runtime／Chrome 已退出並確認釋放，operator session 清理成功；原 PBDS dirty bytes 保持 SHA `b4c43cbc9c2a5c0fed27b59c8d43d5c7bd10fccbe4d28b3376200a27f7a319c3`。
+
+本機 operator 證據位於 `JENFU/output/dev-012/inputs/`：`dev057-managed-link-r40-delivery-readback.json`、`dev057-managed-link-authenticated-readback.json`、`dev057-managed-link-authenticated-cleanup.json`、`dev057-managed-link-production-observation.json`。sealed owner terminal 為正式發布權威；本 checkpoint 是發布後文件補記，未編入已凍結 source，不另外建立微小文件 PR。剩餘確認僅為現有使用者畫面重新整理後的渲染；不再要求重複連結或重做 Employee 設定。
+
 日期：2026-10-05。Owner：ORGMASTER／DEV-057#identity-grants。來源：使用者正常 SSO 登入 OrgMaster 後，employee-shijie 明細仍顯示「待連結」，再次查詢 Google 主帳號失敗。本批沒有 AI-PDM／Platform 修改，沒有身分資料變更或新 migration。
 
 ## 正式訊號與因果界線

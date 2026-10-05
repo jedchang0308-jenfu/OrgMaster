@@ -24,7 +24,7 @@ export function documentRevision(raw: string) { return sha256(raw) }
 const locks = new Map<string, Promise<void>>()
 async function withLock<T>(root: string, fn: () => Promise<T>) { const key = resolve(root); const previous = locks.get(key) ?? Promise.resolve(); let release!: () => void; const current = new Promise<void>((resolveRelease) => { release = resolveRelease }); const queued = previous.then(() => current); locks.set(key, queued); await previous; try { return await fn() } finally { release(); if (locks.get(key) === queued) locks.delete(key) } }
 export async function withGovernanceLock<T>(root: string, fn: () => Promise<T>) { return withLock(root, fn) }
-async function withActorWrite<T>(root: string, actor: GovernanceActorContext, run: (authorizeBeforeCommit: (check: () => void) => void) => Promise<T>) {
+export async function withActorWrite<T>(root: string, actor: GovernanceActorContext, run: (authorizeBeforeCommit: (check: () => void) => void) => Promise<T>) {
   return withLock(root, () => withPersistenceTransaction(async () => {
     let finalAuthority: (() => void) | undefined
     if (usesCloudSqlPersistence()) await assertCurrentGovernanceWriteActor(currentPersistenceTransactionDatabase(), actor, false)

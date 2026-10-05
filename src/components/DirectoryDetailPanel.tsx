@@ -46,7 +46,7 @@ export function DirectoryDetailPanel({
   governanceRefreshToken = 0,
   onGovernanceChanged,
 }: DirectoryDetailPanelProps) {
-  const managedIdentityEnabled = useAuthSession()?.managedIdentityEnabled === true
+  const employeeNumberManagementEnabled = useAuthSession()?.employeeNumberManagementEnabled === true
   const [expandedPositionIds, setExpandedPositionIds] = useState<Set<string>>(() => new Set())
 
   const togglePositionEmployees = (positionId: string) => {
@@ -159,7 +159,7 @@ export function DirectoryDetailPanel({
           </div>
         </section>
 
-        {managedIdentityEnabled ? <EmployeeManagedIdentitySection
+        {employeeNumberManagementEnabled ? <EmployeeManagedIdentitySection
           employee={employee}
           mutationAllowed={accountMutationEnvironmentAllowed ?? identityMutationAllowed}
           refreshToken={governanceRefreshToken}

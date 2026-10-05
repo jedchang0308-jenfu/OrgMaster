@@ -23,7 +23,6 @@ export type OrgmasterServerOptions = {
   devIdentityEnabled?: boolean
   accountEnrollmentEnabled?: boolean
   accountEnrollmentRuntime?: AccountEnrollmentHttpRuntimeV1
-  managedIdentityEnabled?: boolean
   managedIdentityService?: ManagedIdentityServiceV1
   managedIdentityDomain?: string
   managedIdentityDirectoryFixture?: LocalDirectoryFixture
@@ -101,16 +100,16 @@ export function createOrgmasterServer(options: OrgmasterServerOptions = {}) {
   const runtime = options.authRuntime ?? createOrgmasterAuthRuntime()
   const devIdentityEnabled = options.devIdentityEnabled ?? false
   const accountEnrollmentEnabled = options.accountEnrollmentEnabled ?? false
-  const managedIdentityEnabled = options.managedIdentityEnabled ?? (devIdentityEnabled || runtime.managedLoginEnabled === true)
   const managedIdentityService = options.managedIdentityService ?? (devIdentityEnabled && options.managedIdentityDomain
     ? createManagedIdentityService({ root, devEnabled: true, managedDomain: options.managedIdentityDomain, directoryCustomerId: options.managedIdentityDirectoryFixture?.customerId, directory: createLocalDeterministicDirectoryPort({ ...options.managedIdentityDirectoryFixture, domain: options.managedIdentityDomain }) })
     : runtime.managedIdentity)
+  const employeeNumberManagementEnabled = runtime.employeeNumberManagementEnabled === true && Boolean(managedIdentityService)
   const accountRuntime = accountEnrollmentEnabled ? (options.accountEnrollmentRuntime ?? createOrgmasterAccountEnrollmentRuntime({ root, devEnabled: devIdentityEnabled })) : null
   const middlewares: Middleware[] = [
     createOrgmasterMigrationGateMiddleware(root),
     createOrgmasterManagedLoginMiddleware(runtime.managedLoginOwner, runtime.managedLoginCallerVerifier),
     createOrgmasterAuthMiddleware(() => runtime, devIdentityEnabled),
-    ...(managedIdentityEnabled ? [createOrgmasterManagedIdentityMiddleware(root, devIdentityEnabled, managedIdentityService)] : []),
+    ...(employeeNumberManagementEnabled ? [createOrgmasterManagedIdentityMiddleware(root, devIdentityEnabled, managedIdentityService)] : []),
     createWorkbenchPreferenceMiddleware(root),
     ...(accountRuntime ? [accountRuntime.middleware] : []),
     createOrgmasterApiMiddleware(),

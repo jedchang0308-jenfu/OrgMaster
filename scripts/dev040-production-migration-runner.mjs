@@ -21,7 +21,15 @@ export const TARGET = Object.freeze({
   login: 'orgmaster-prod-migrator@jenfu-platform-prod.iam',
   ledger: 'orgmaster_core.schema_migrations',
   baselineCount: 10,
-  entryCount: 29,
+  entryCount: 30,
+  allowedExistingLedgerCounts: Object.freeze([29, 30]),
+  exactAppendEntry: Object.freeze({
+    order: 30,
+    version: 'dev057-orgmaster-030',
+    path: 'db/migrations/030_dev057_employee_number_command_receipt.sql',
+    sourceSha256: 'bade78acd6221b85c474fe7e7a5aacb8efb3e2b08ca2294e4fe384e545b66bcb',
+    appliedSha256: '5501715799f5b695467b6ccc146df5f2c0d147fdb5dcf8ad52777ac50c3acf87',
+  }),
   migratorRole: 'jenfu_orgmaster_migrator',
   runtimeRole: 'jenfu_orgmaster_runtime',
   coreSchema: 'orgmaster_core',
@@ -55,6 +63,9 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
   } catch { throw new Error('MIGRATION_INPUT_JSON_INVALID') }
   const bundle = assertMigrationBundle(value, { target: TARGET, sourceRevision: args.sourceRevision, bundleSha256: args.bundleSha256, bytes: object.bytes })
   if (bundle.entries.length !== TARGET.entryCount) throw new Error('MIGRATION_SET_DRIFT')
+  const append = bundle.entries.at(-1)
+  if (!append || append.order !== TARGET.exactAppendEntry.order || append.version !== TARGET.exactAppendEntry.version || append.path !== TARGET.exactAppendEntry.path
+    || append.sourceSha256 !== TARGET.exactAppendEntry.sourceSha256 || append.appliedSha256 !== TARGET.exactAppendEntry.appliedSha256) throw new Error('MIGRATION_SET_DRIFT')
   const database = new Client(databaseOptions(environment, token))
   await database.connect()
   try {
