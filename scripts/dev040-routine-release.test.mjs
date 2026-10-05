@@ -1618,3 +1618,179 @@ test('Workflow source renderer reproduces the sealed existing Org numeric-7 sour
   const value = expectedSmokeWorkflowSource({ root: '.', sourceRevision: newSource, profile, version: '7', readSourceFile: (_root, _revision, file) => fs.readFileSync(file) })
   assert.equal(sha256(value), '9ba919ee180f6b5d7a7cc068dc1b402271c9dfeff61a7a3e5d9b9f048e15a559')
 })
+
+
+// A second credential rotation follows a real released source-reuse baseline.
+// Neither the latest baseline nor its historical rotation is rewritten.
+async function freshRotationAfterReuseHarness() {
+  const h = await smokeReuseHarness()
+  await advanceSmokeReuseHarness(h, 'd'.repeat(40), 1)
+  const historical = new Map([...h.objects].map(([uri,row]) => [uri, Buffer.from(row.bytes)]))
+  const published = h.objects.get(h.rotationRef.uri).value
+  const credential = buildReauthReceipt({ sourceRevision: h.git.sourceRevision,
+    expected: { issuer: EXPECTED.issuer, subject: 'synthetic-provider-subject-001' },
+    authTime: Math.floor(Date.parse('2026-10-05T00:00:00Z') / 1000),
+    authenticatedAt: '2026-10-05T00:00:01Z', observedAt: '2026-10-05T00:00:02Z',
+    principal: { principalId: 'principal-synthetic-001', employeeId: 'employee-synthetic-001' },
+    previousVersion: '8', newVersion: '9' })
+  h.workflow.sourceContents = expectedSmokeWorkflowSource({ ...h.input, sourceRevision: h.git.sourceRevision, version:'9' })
+  h.workflow.revisionId = '000009-synthetic'
+  h.secret.name = 'projects/9536592944/secrets/orgmaster-prod-smoke-firebase-refresh-token/versions/9'
+  h.state.values.root_module.resources.find(row => row.address === 'google_workflows_workflow.candidate_smoke[0]').values.source_contents = h.workflow.sourceContents
+  h.manifest.source_revision = h.git.sourceRevision
+  h.stateMeta.serial = published.stateSerial + 1
+  const request = h.input.transport.request
+  h.input.transport.request = async url => {
+    if (url === 'https://secretmanager.googleapis.com/v1/projects/9536592944/secrets/orgmaster-prod-smoke-firebase-refresh-token/versions/9') {
+      h.requests.push(url); return h.secret
+    }
+    return request(url)
+  }
+  const seal = value => { const {receiptSha256:_old,...core}=value; return {...core,receiptSha256:sha256(canonicalize(core))} }
+  const rotationUri = 'gs://' + bucket + '/receipts/releases/FRESH-ROTATION-9/app-infra.json'
+  const selectFresh = ({rotation={},proof={}}={}) => {
+    const proofRef=h.put('gs://' + bucket + '/receipts/credential-reauth/fresh-9.json',seal({...credential,...proof}))
+    const fresh=seal({...published,sourceRevision:h.git.sourceRevision,stateSerial:h.stateMeta.serial,
+      stateJsonSha256:sha256(canonicalize(h.state)),outputManifestSha256:sha256(canonicalize(h.manifest)),
+      candidateSmokeRefreshTokenSecretVersion:'9',credentialEvidenceRef:proofRef,observedAt:'2026-10-05T00:00:03Z',...rotation})
+    h.freshRef=h.put(rotationUri,fresh)
+    h.input.intent.infraReceiptRef=h.freshRef;h.input.values.infra=fresh
+    h.options=parseDeployProductionArgs(['--check','--smoke-rotation-ref='+h.freshRef.uri+'#sha256='+h.freshRef.sha256])
+  }
+  selectFresh()
+  h.requests.length=0
+  return Object.assign(h,{historical,selectFresh})
+}
+
+test('fresh smoke rotation after released reuse passes CLI and native prepare with the latest baseline', async () => {
+  const h=await freshRotationAfterReuseHarness()
+  const baselineRef=structuredClone(h.input.intent.baselineIntentRef)
+  const verification=await verifyDeployProductionRelease({options:h.options,...h.input})
+  assert.equal(verification.smokeRotationContinuation.previousVersion,'8')
+  assert.equal(verification.smokeRotationContinuation.newVersion,'9')
+  const result=await executeReusePrepareHarness(h)
+  assert.deepEqual(result.value.facts.routine.baselineIntentRef,baselineRef)
+  assert.equal(result.value.facts.routine.previousRevision,'orgmaster-prod-reuse-1')
+  for(const [uri,bytes] of h.historical) assert.deepEqual(h.objects.get(uri).bytes,bytes,uri)
+})
+
+async function sourceReuseAfterFreshRotationHarness() {
+  const h=await freshRotationAfterReuseHarness()
+  const releaseId='FRESH-ROTATION-9-REUSE',sourceRevision='e'.repeat(40)
+  h.git={...h.git,sourceRevision,sourceTree:sourceRevision,remoteRevision:sourceRevision}
+  h.sourceIdentityBytes=Buffer.from('fresh own source identity '+sourceRevision)
+  h.sourceLock=buildSourceFreeze({profile,releaseId,observedAt:'2026-10-05T00:00:04Z',git:h.git,
+    sourceIdentityBytes:h.sourceIdentityBytes,migrationBundle:buildBundle(sourceRevision)})
+  h.sourceLockRef=h.put('gs://'+bucket+'/receipts/releases/'+releaseId+'/source-lock.json',h.sourceLock)
+  h.constructorInput={...h.constructorInput,releaseId,sourceLock:h.sourceLock,sourceLockRef:h.sourceLockRef,rotationRef:h.freshRef,observedAt:'2026-10-05T00:00:04Z'}
+  const reuse=await buildSmokeInfraReuseReceipt(h.constructorInput)
+  const reuseRef=h.put('gs://'+bucket+'/receipts/releases/'+releaseId+'/app-infra-reuse.json',reuse)
+  h.input.intent={...h.input.intent,sourceRevision,sourceSha256:h.sourceLock.sourceSha256,migrationManifestSha256:h.sourceLock.migrationManifestSha256,infraReceiptRef:reuseRef}
+  for(const name of ['authorization','readiness'])h.input.values[name].sourceRevision=sourceRevision
+  h.input.values.sourceLock={...h.sourceLock,releaseId:h.input.intent.releaseId};h.input.values.infra=reuse
+  h.input.buildMigrationBundle=async()=>buildBundle(sourceRevision)
+  h.options=parseDeployProductionArgs(['--check','--infra-reuse-ref='+reuseRef.uri+'#sha256='+reuseRef.sha256])
+  h.reuse=reuse
+  return h
+}
+
+test('fresh smoke rotation supports a subsequent source-only reuse without rewriting history', async () => {
+  const h=await sourceReuseAfterFreshRotationHarness()
+  const verification=await verifyDeployProductionRelease({options:h.options,...h.input})
+  assert.equal(verification.smokeRotationContinuation.newVersion,'9')
+  const result=await executeReusePrepareHarness(h)
+  assert.equal(result.value.facts.routine.previousRevision,'orgmaster-prod-reuse-1')
+  for(const [uri,bytes] of h.historical)assert.deepEqual(h.objects.get(uri).bytes,bytes,uri)
+})
+
+test('published fresh-rotation reuse supports the next release across both rotation histories', async () => {
+  const h=await sourceReuseAfterFreshRotationHarness()
+  const next=await advanceSmokeReuseHarness(h,'f'.repeat(40),2)
+  const snapshots=new Map([...h.objects].filter(([uri])=>uri!==h.controlUri).map(([uri,row])=>[uri,Buffer.from(row.bytes)]))
+  const verification=await verifyDeployProductionRelease({options:h.options,...h.input})
+  assert.equal(verification.smokeRotationContinuation.newVersion,'9')
+  assert.deepEqual(verification.baselineIntentRef,next.baselineIntentRef)
+  const result=await executeReusePrepareHarness(h)
+  assert.equal(result.value.facts.routine.previousRevision,'orgmaster-prod-reuse-2')
+  for(const [uri,bytes] of snapshots)assert.deepEqual(h.objects.get(uri).bytes,bytes,uri)
+})
+
+test('a third adjacent rotation validates both earlier released histories before the next owner prepare', async () => {
+  const h = await sourceReuseAfterFreshRotationHarness()
+  await advanceSmokeReuseHarness(h, 'f'.repeat(40), 2)
+  const historical = new Map([...h.objects].filter(([uri]) => uri !== h.controlUri)
+    .map(([uri, row]) => [uri, Buffer.from(row.bytes)]))
+  const prior = h.objects.get(h.freshRef.uri).value
+  const credential = buildReauthReceipt({ sourceRevision: h.git.sourceRevision,
+    expected: { issuer: EXPECTED.issuer, subject: 'synthetic-provider-subject-001' },
+    authTime: Math.floor(Date.parse('2026-10-05T00:00:00Z') / 1000),
+    authenticatedAt: '2026-10-05T00:00:01Z', observedAt: '2026-10-05T00:00:02Z',
+    principal: { principalId: 'principal-synthetic-001', employeeId: 'employee-synthetic-001' },
+    previousVersion: '9', newVersion: '10' })
+  const credentialRef = h.put('gs://' + bucket + '/receipts/credential-reauth/fresh-10.json', credential)
+  h.workflow.sourceContents = expectedSmokeWorkflowSource({ ...h.input, sourceRevision: h.git.sourceRevision, version: '10' })
+  h.workflow.revisionId = '000010-synthetic'
+  h.secret.name = 'projects/9536592944/secrets/orgmaster-prod-smoke-firebase-refresh-token/versions/10'
+  h.state.values.root_module.resources.find(row => row.address === 'google_workflows_workflow.candidate_smoke[0]')
+    .values.source_contents = h.workflow.sourceContents
+  h.manifest.source_revision = h.git.sourceRevision
+  h.stateMeta.serial = prior.stateSerial + 1
+  const request = h.input.transport.request
+  h.input.transport.request = async url => {
+    if (url === 'https://secretmanager.googleapis.com/v1/' + h.secret.name) {
+      h.requests.push(url); return h.secret
+    }
+    return request(url)
+  }
+  const { receiptSha256: _seal, ...priorCore } = prior
+  const core = { ...priorCore, sourceRevision: h.git.sourceRevision, stateSerial: h.stateMeta.serial,
+    stateJsonSha256: sha256(canonicalize(h.state)), outputManifestSha256: sha256(canonicalize(h.manifest)),
+    candidateSmokeRefreshTokenSecretVersion: '10', credentialEvidenceRef: credentialRef, observedAt: '2026-10-05T00:00:03Z' }
+  const rotation = { ...core, receiptSha256: sha256(canonicalize(core)) }
+  const ref = h.put('gs://' + bucket + '/receipts/releases/FRESH-ROTATION-10/app-infra.json', rotation)
+  h.input.intent.infraReceiptRef = ref; h.input.values.infra = rotation
+  h.options = parseDeployProductionArgs(['--check', '--smoke-rotation-ref=' + ref.uri + '#sha256=' + ref.sha256])
+  const verification = await verifyDeployProductionRelease({ options: h.options, ...h.input })
+  assert.equal(verification.smokeRotationContinuation.previousVersion, '9')
+  assert.equal(verification.smokeRotationContinuation.newVersion, '10')
+  const result = await executeReusePrepareHarness(h)
+  assert.equal(result.value.facts.routine.previousRevision, 'orgmaster-prod-reuse-2')
+  for (const [uri, bytes] of historical) assert.deepEqual(h.objects.get(uri).bytes, bytes, uri)
+})
+
+test('fresh smoke rotation rejects stale state, wrong version, owner, executable and unverified credentials before provider reads', async () => {
+  for(const defect of [
+    {rotation:{stateSerial:6}}, {rotation:{stateLineage:'wrong-lineage'}},
+    {rotation:{ownerApplicationId:'ai-pdm'}}, {rotation:{terraformAddressCount:74}},
+    {rotation:{controllerImageDigest:'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller@sha256:'+'f'.repeat(64)}},
+    {proof:{secret:{id:EXPECTED.secretId,previousVersion:'7',newVersion:'9',state:'ENABLED'}}},
+    {proof:{emailVerified:false}}, {proof:{sourceRevision:'f'.repeat(40)}},
+  ]){
+    const h=await freshRotationAfterReuseHarness();h.selectFresh(defect)
+    await assert.rejects(()=>verifyDeployProductionRelease({options:h.options,...h.input}))
+    assert.equal(h.requests.length,0)
+    for(const [uri,bytes] of h.historical)assert.deepEqual(h.objects.get(uri).bytes,bytes,uri)
+  }
+})
+
+test('fresh smoke rotation rejects tampered historical rotation references without selecting an older baseline', async () => {
+  const h=await freshRotationAfterReuseHarness()
+  const prior=h.objects.get(h.rotationRef.uri).value
+  const {receiptSha256:_old,...core}=prior
+  const forged={...core,stateSerial:999}
+  h.put(h.rotationRef.uri,{...forged,receiptSha256:sha256(canonicalize(forged))})
+  // The fixture transport rejects a changed immutable byte hash before the verifier.
+  await assert.rejects(()=>verifyDeployProductionRelease({options:h.options,...h.input}))
+  assert.equal(h.requests.length,0)
+})
+
+
+test('fresh smoke rotation reuse rejects malformed numeric versions even with a matching provider projection', async () => {
+  for(const version of ['0','09','-1','NaN','9007199254740992']){
+    const h=await smokeReuseHarness()
+    h.select({...h.reuse,candidateSmokeRefreshTokenSecretVersion:version,
+      providerReadback:{...h.reuse.providerReadback,exactNumericVersion:version}},true)
+    await assert.rejects(()=>verifyDeployProductionRelease({options:h.options,...h.input}),/SMOKE_REUSE_RECEIPT_INVALID/u)
+    assert.equal(h.requests.length,0)
+  }
+})

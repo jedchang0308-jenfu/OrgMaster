@@ -737,7 +737,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
       smokeRotationContinuation = await assertSmokeInfraReuseContinuation({ root, profile, transport, intent, values, baseline, readSourceFile, readInfrastructureTree })
     } else {
       if (values.infra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') fail('ROUTINE_INFRA_REF_CHANGED')
-      smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline, readSourceFile })
+      smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline, readSourceFile, readInfrastructureTree })
     }
   }
   for (const name of ['authorization', 'readiness']) {
