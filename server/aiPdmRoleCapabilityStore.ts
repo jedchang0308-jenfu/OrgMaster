@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, unlink, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { getWorkspaceIndex, getWorkspaceVersion, getWorkspacePaths } from './orgmasterWorkspaceStore'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
-import aiPdmCatalogFixture from '../config/catalogs/ai-pdm-role-catalog.v4.json'
+import { readActiveAiPdmRoleCatalog, readActivePublishedAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import {
   buildAiPdmRoleCapabilityProjection,
   roleCapabilitySourceKey,
@@ -258,8 +258,8 @@ async function readSynchronized(root: string) {
   return { state, organization }
 }
 
-function catalogRoleOrThrow(stableRoleId: string) {
-  const role = readAiPdmRoleCatalog().roles.find((candidate) => candidate.stableRoleId === stableRoleId)
+function catalogRoleOrThrow(stableRoleId: string, catalog = readAiPdmRoleCatalog()) {
+  const role = catalog.roles.find((candidate) => candidate.stableRoleId === stableRoleId)
   if (!role) throw new AiPdmRoleCapabilityStoreError('ROLE_NOT_FOUND')
   return role
 }
@@ -268,8 +268,8 @@ function uniqueIds(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
 }
 
-function buildProjection(state: StoreState, organization: OrganizationSource, stableRoleId: string): AiPdmRoleCapabilityProjection {
-  const role = catalogRoleOrThrow(stableRoleId)
+function buildProjection(state: StoreState, organization: OrganizationSource, stableRoleId: string, catalog = readAiPdmRoleCatalog()): AiPdmRoleCapabilityProjection {
+  const role = catalogRoleOrThrow(stableRoleId, catalog)
   return buildAiPdmRoleCapabilityProjection({
     stableRoleId,
     catalogRole: role,
@@ -397,8 +397,8 @@ function nowIso() {
   return process.env.ORGMASTER_ROLE_CAPABILITY_NOW?.trim() || new Date().toISOString()
 }
 
-function validateCatalog(mutation: AiPdmRoleCapabilityMutation) {
-  const catalog = readAiPdmRoleCatalog()
+async function validateCatalog(mutation: AiPdmRoleCapabilityMutation, root: string) {
+  const catalog = await readActiveAiPdmRoleCatalog(root)
   if (catalog.validationState !== 'valid') throw new AiPdmRoleCapabilityStoreError('CATALOG_PAYLOAD_HASH_MISMATCH')
   if (!mutation.expectedCatalogVersion || mutation.expectedCatalogVersion !== catalog.catalogVersion) throw new AiPdmRoleCapabilityStoreError('CATALOG_VERSION_CONFLICT')
   if (!mutation.expectedCatalogPayloadHash || mutation.expectedCatalogPayloadHash.toLowerCase() !== catalog.payloadHash.toLowerCase()) throw new AiPdmRoleCapabilityStoreError('CATALOG_PAYLOAD_HASH_MISMATCH')
@@ -421,14 +421,14 @@ function terminalReceipt(input: Omit<CommandReceipt, 'terminalAt'>, terminalAt =
 export async function readAiPdmRoleCapabilityProjection(root: string, stableRoleId: string) {
   return withLock(root, async () => {
     const { state, organization } = await readSynchronized(root)
-    return buildProjection(state, organization, stableRoleId)
+    return buildProjection(state, organization, stableRoleId, await readActiveAiPdmRoleCatalog(root))
   })
 }
 
 export async function previewAiPdmRoleCapabilityChange(root: string, mutation: Omit<AiPdmRoleCapabilityMutation, 'commandId'>) {
   return withLock(root, async () => {
     const { state, organization } = await readSynchronized(root)
-    validateCatalog(mutation as AiPdmRoleCapabilityMutation)
+    await validateCatalog(mutation as AiPdmRoleCapabilityMutation, root)
     validateMutationPreconditions(state, organization, mutation as AiPdmRoleCapabilityMutation)
     const prepared = prepareMutation(state, organization, { ...mutation, commandId: 'preview' })
     return {
@@ -449,7 +449,7 @@ export async function publishAiPdmRoleCapabilityChange(root: string, mutation: A
   return withLock(root, async () => {
     const { state, organization } = await readSynchronized(root)
     if (!mutation.commandId.trim()) throw new AiPdmRoleCapabilityStoreError('INVALID_COMMAND')
-    const catalog = validateCatalog(mutation)
+    const catalog = await validateCatalog(mutation, root)
     validateMutationPreconditions(state, organization, mutation)
     const requestHash = mutationRequestHash(mutation)
     if (mutation.requestHash && mutation.requestHash !== requestHash) throw new AiPdmRoleCapabilityStoreError('REQUEST_HASH_MISMATCH')
@@ -513,10 +513,12 @@ export async function publishAiPdmRoleCapabilityChange(root: string, mutation: A
 export async function readAiPdmRoleCapabilityWorkspace(root: string) {
   return withLock(root, async () => {
     const { state, organization } = await readSynchronized(root)
-    const catalog = readAiPdmRoleCatalog()
+    const catalog = await readActiveAiPdmRoleCatalog(root)
     if (catalog.validationState !== 'valid') throw new AiPdmRoleCapabilityStoreError('CATALOG_PAYLOAD_HASH_MISMATCH')
-    const publishedRoles = aiPdmCatalogFixture.roles
-    return { contractVersion: 'ai-pdm.role-capability-workspace.v2' as const, applicationId: 'ai-pdm' as const, catalogVersion: catalog.catalogVersion, catalogPayloadHash: catalog.payloadHash.toLowerCase(), governanceRevision: state.governanceRevision, organizationVersionId: organization.versionId, organizationRevision: organization.revision, projectionCursor: state.changeCursor, sourceDataAt: organization.sourceDataAt, roles: catalog.roles.map((role) => { const catalogRole = publishedRoles.find((candidate) => candidate.stableRoleId === role.stableRoleId); if (!catalogRole) throw new AiPdmRoleCapabilityStoreError('CATALOG_PAYLOAD_HASH_MISMATCH'); const projection = buildProjection(state, organization, role.stableRoleId); return { catalogRole, projection, effectiveHolderCount: projection.positions.flatMap((position) => position.employees).filter((employee) => employee.effectiveHolder).length } }) }
+    const publication = await readActivePublishedAiPdmRoleCatalog()
+    if (publication.catalogVersion !== catalog.catalogVersion || publication.catalogSha256 !== catalog.payloadHash) throw new AiPdmRoleCapabilityStoreError('CATALOG_PAYLOAD_HASH_MISMATCH')
+    const publishedRoles = publication.roles
+    return { contractVersion: 'ai-pdm.role-capability-workspace.v2' as const, applicationId: 'ai-pdm' as const, catalogVersion: catalog.catalogVersion, catalogPayloadHash: catalog.payloadHash.toLowerCase(), governanceRevision: state.governanceRevision, organizationVersionId: organization.versionId, organizationRevision: organization.revision, projectionCursor: state.changeCursor, sourceDataAt: organization.sourceDataAt, dataState: 'current' as const, mutationAllowed: false as const, roles: catalog.roles.map((role) => { const catalogRole = publishedRoles.find((candidate) => candidate.stableRoleId === role.stableRoleId); if (!catalogRole) throw new AiPdmRoleCapabilityStoreError('CATALOG_PAYLOAD_HASH_MISMATCH'); const projection = buildProjection(state, organization, role.stableRoleId, catalog); return { catalogRole, projection, effectiveHolderCount: projection.positions.flatMap((position) => position.employees).filter((employee) => employee.effectiveHolder).length } }) }
   })
 }
 

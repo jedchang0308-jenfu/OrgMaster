@@ -1,5 +1,11 @@
 # OrgMaster 文件地圖
 
+本批最高管理能力v6：[DEV-057契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader) → [native producer／consumer checkpoint](qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)。不以本機PASS替代正式指派讀回與L4。
+
+## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
+
+[本批任務](dev_task.md#dev-057-current-contract) → [exact active reader 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)。同一 active v5/v6 artifact 供 registry、治理讀寫及 role workspace；歷史指派仍只作 provenance，OrgMaster 的角色／scope owner 及唯一 grant v4 不變。新能力及080由AIPDM/DEV-121發布；AI-PDM 正常顯示 v4 直接讀既有已發布 PostgreSQL catalog/grants，不依賴缺 session 的 HTTP workspace。修正後 QA／CI／正式驗證尚未完成；下方前批結論保留其原層級。
+
 **DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 沿 DEV-057 既有子項與 [current correction 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current)；目前 LOCAL_FIX／TASK_OWNED_POSTGRES_PASS，protected merge／030 source-bound release／正式 details 仍待完成。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
 
 ## 本輪 Principal-only 唯一閱讀入口

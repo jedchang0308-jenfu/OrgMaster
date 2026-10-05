@@ -4,6 +4,14 @@
 
 <a id="dev-057-current-contract"></a>
 
+## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
+
+沿既有 `ORGMASTER/DEV-057#identity-grants`，參與 `AIPDM/DEV-121#system-admin-capabilities`；本批 [current reader 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)已 RD Implementation Ready。只修 exact active artifact 的 registry／治理／workspace 一致性，歷史指派不重寫。
+- [x] 本機 exact v5/v6、unknown／mixed／tamper／歷史 snapshot 與正常 server caller 回歸（LOCAL_PASS）。
+- [ ] 真實 PostgreSQL producer→AI-PDM consumer 的 direct/global、非 target Principal、scope、撤權與 expiry。
+- [ ] 同批 protected PR／required CI、ordinary owner release；先 v5正式讀回，再 v6升版後治理及grant readback／L4。
+本機／native整合見[本批checkpoint](qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)；最終QC／required CI與正式exact Jed grant／release／L4尚未完成。前批 Google連結及employee-number correction的原成果保留，不改判定、不新增主任務。
+
 ## DEV-057 員工 Google 連結矯正（2026-10-05）
 
 **目前交付（2026-10-05 03:58Z）：正式修正版已發布，Production API 已驗證，現有瀏覽器渲染未重驗。** protected source `c65dd31acb8d2c1895d0e9e8d2a93186dc28ef35`、owner run `37260139999` 十階段 SUCCESS／RELEASED；`orgmaster-prod-367d239442e2` 100%／零 tag。Jed 正常 Principal SSO 與治理／managed-identity 200，保存連結 `manageLink=false`；未登入／已撤銷 session 401，正式 client asset 已更新。未重綁 Employee／更改角色／新增 migration。PR104／105、必需 CI、sealed terminal、約 11 分鐘觀察及清理見[最新正式交付 checkpoint](qa/DEV-057-managed-identity-link-correction-2026-10-05.md#最新正式交付-checkpoint2026-10-05-0358z)。本段取代下兩段施工時「待發布」的進度，原始失敗因果保留；不宣稱完整 rendered browser L4 PASS。
