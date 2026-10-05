@@ -26,7 +26,7 @@ function rowToReadModel(row: Record<string, unknown>): ManagedIdentityReadModelV
     contractVersion: 'orgmaster.managed-identity.v1',
     employee: { id: String(row.employee_id ?? ''), status: row.employee_status === 'inactive' ? 'inactive' : 'active' },
     employeeNumber: { status: employeeNumber ? 'assigned' : 'unassigned', value: employeeNumber, revision: employeeNumber ? Number(row.registry_revision) : null },
-    identity: { state: identityState, provider: 'google.com', note: identityState === 'active' ? '已連結公司 Cloud Identity' : identityState === 'directory_linked_pending_auth' ? '已確認 Directory 身分，等待首次 Google 登入' : 'Google Admin 建立後由 OrgMaster 連結', directoryState: (row.directory_state as ManagedIdentityReadModelV1['identity']['directoryState']) ?? 'unknown', primaryEmail: typeof row.primary_email === 'string' ? row.primary_email : null, freshness: (row.freshness as ManagedIdentityReadModelV1['identity']['freshness']) ?? 'unknown' },
+    identity: { state: identityState, provider: 'google.com', note: identityState === 'active' ? '已連結公司 Cloud Identity' : identityState === 'directory_linked_pending_auth' ? 'Directory 連結已保存；登入資格依已發布的身分與權限判定' : 'Google Admin 建立後由 OrgMaster 連結', directoryState: (row.directory_state as ManagedIdentityReadModelV1['identity']['directoryState']) ?? 'unknown', primaryEmail: typeof row.primary_email === 'string' ? row.primary_email : null, freshness: (row.freshness as ManagedIdentityReadModelV1['identity']['freshness']) ?? 'unknown' },
     capabilities: { view: true, manageNumber: false, manageLink: false, refresh: false },
     registryRevision: row.registry_revision == null ? null : String(row.registry_revision),
     workspaceRevision: null,

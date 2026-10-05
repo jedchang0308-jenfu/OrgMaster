@@ -4,6 +4,8 @@
 
 文件角色：CURRENT_INDEX。本輪只讀 [DEV-057 現行任務](dev_task.md#dev-057-current-contract) → [唯一施工契約](specs/DEV-057-identity-and-grant-contract-boundary.md) → 該交付所需證據。CURRENT_CONTRACT 定義架構，任務／既有盤點維護進度，不從下方其他 DEV 或歷史日期推定本輪指令。
 
+本輪 OrgMaster 員工 Google 連結回歸沿 DEV-057 既有子項，現行呈現／重複操作規則在 [current 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#員工-google-連結的現行呈現及重複操作)，進度及證據在 [連結矯正](qa/DEV-057-managed-identity-link-correction-2026-10-05.md)。Directory pending 不等於尚未連結或 Principal 未啟用；原整合結案保留。
+
 三個native任務沿用 JENFU/DEV-015、ORGMASTER/DEV-057、AIPDM/DEV-121；正常授權只有Principal路徑，人類允許真實AAL1，未核實／原停用者保持停用，回復不能恢復UID授權。完整限制、owner及驗收以各自current契約為準。
 
 本輪 OrgMaster owner 範圍是 Principal／Employee 狀態／角色／scope 發布、Producer／Consumer PostgreSQL readback，及本 owner 的 login/session／治理 allow-deny／Principal-only recovery 證據；Platform 負責 Production login、SSO、Portal session 與入口 allow-deny，業務 capability／resource 決策由各 consumer 負責。各 owner 可按自己的正式出口獨立結案；DEV-015 聯合 Production L4 須等所有 owner 證據彙整，不能由單一 PASS 推定。Principal command 稽核及回復仍納入整合 L4。AI-PDM 一般業務 lifecycle／附件延至 AI-PDM/DEV-122，不阻擋 OrgMaster；F01–F10 ID 與授權出口保留；本輪正式授權scope已依[owner安全結案投影](qa/DEV-057-principal-authorization-production-closure-2026-10-05.json)及共同結案接受，文件QC／protected doc PR收尾，不回寫歷史DEV014 QA或DEV122業務PASS。

@@ -143,7 +143,9 @@ async function handle(request: IncomingMessage, response: ServerResponse, servic
     return true
   } catch (error) {
     const code = error instanceof ManagedIdentityServiceError ? error.code : 'MANAGED_IDENTITY_READ_FAILED'
-    sendJson(response, statusFor(code), { error: code })
+    const status = statusFor(code)
+    if (status >= 500) console.error(JSON.stringify({ event: 'orgmaster_managed_identity_request_failed', action: target.action, code }))
+    sendJson(response, status, { error: code })
     return true
   }
 }

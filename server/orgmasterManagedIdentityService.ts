@@ -171,7 +171,7 @@ export function createManagedIdentityService(input: {
         ...model,
         managedDomain: domain,
         employee: { id: employee.id, status: employee.status === 'inactive' ? 'inactive' : 'active' },
-        capabilities: { view: true, manageNumber: hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: hasPermission(governance.document, actor, LINK) && (input.devEnabled || isHumanPrivilegedActor(governance.document, actor)), refresh: hasPermission(governance.document, actor, REFRESH) },
+        capabilities: { view: true, manageNumber: hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: model.identity.state === 'not_linked' && hasPermission(governance.document, actor, LINK) && (input.devEnabled || isHumanPrivilegedActor(governance.document, actor)), refresh: hasPermission(governance.document, actor, REFRESH) },
         workspaceRevision,
       }
     }
@@ -182,8 +182,8 @@ export function createManagedIdentityService(input: {
     return {
       contractVersion: 'orgmaster.managed-identity.v1', managedDomain: domain, employee: { id: employee.id, status: employee.status === 'inactive' ? 'inactive' : 'active' },
       employeeNumber: { status: assignment ? 'assigned' : 'unassigned', value: assignment?.employeeNumber ?? null, derivedUsername: assignment ? deriveManagedUsername(assignment.employeeNumber, domain) : null, revision: assignment?.revision ?? null },
-      identity: { state: identity?.linkState === 'directory_linked_pending_auth' ? 'directory_linked_pending_auth' : identity?.linkState === 'active' ? 'active' : identity?.linkState === 'conflict' ? 'conflict' : 'not_linked', provider: 'google.com', note: identity?.linkState === 'active' ? '已連結公司 Cloud Identity' : identity ? '已確認 Directory 身分，等待首次 Google 登入' : 'Google Admin 建立後由 OrgMaster 連結', directoryState: observation?.directoryState ?? 'unknown', primaryEmail: identity?.lastVerifiedPrimaryEmail ?? null, freshness: observation?.freshness ?? 'unknown' },
-      capabilities: { view: true, manageNumber: internal ? false : hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: internal ? false : hasPermission(governance.document, actor, LINK) && (input.devEnabled || isHumanPrivilegedActor(governance.document, actor)), refresh: internal ? false : hasPermission(governance.document, actor, REFRESH) }, registryRevision: String(assignment?.revision ?? 0), workspaceRevision,
+      identity: { state: identity?.linkState === 'directory_linked_pending_auth' ? 'directory_linked_pending_auth' : identity?.linkState === 'active' ? 'active' : identity?.linkState === 'conflict' ? 'conflict' : 'not_linked', provider: 'google.com', note: identity?.linkState === 'active' ? '已連結公司 Cloud Identity' : identity ? 'Directory 連結已保存；登入資格依已發布的身分與權限判定' : 'Google Admin 建立後由 OrgMaster 連結', directoryState: observation?.directoryState ?? 'unknown', primaryEmail: identity?.lastVerifiedPrimaryEmail ?? null, freshness: observation?.freshness ?? 'unknown' },
+      capabilities: { view: true, manageNumber: internal ? false : hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: internal || identity !== null ? false : hasPermission(governance.document, actor, LINK) && (input.devEnabled || isHumanPrivilegedActor(governance.document, actor)), refresh: internal ? false : hasPermission(governance.document, actor, REFRESH) }, registryRevision: String(assignment?.revision ?? 0), workspaceRevision,
       admissionEnabled: state.document.admissionAuthority?.admissionEnabled ?? false,
     }
   }
@@ -216,6 +216,10 @@ export function createManagedIdentityService(input: {
     const registryRevision = model?.registryRevision ?? String(localAssignment?.revision ?? 0)
     if (!assignment) throw new ManagedIdentityServiceError('EMPLOYEE_NUMBER_REQUIRED')
     if (!request.expectedRegistryRevision || request.expectedWorkspaceRevision !== workspaceRevision || request.expectedRegistryRevision !== registryRevision) throw new ManagedIdentityServiceError('REVISION_CONFLICT', { retryable: true })
+    // Directory registration is already saved even before provider verification.
+    // Do not create another lease; PostgreSQL remains the concurrent-write fence.
+    const existingIdentity = model ? model.identity.state !== 'not_linked' : (state?.document.managedDailyIdentities ?? []).some((identity) => identity.employeeId === employeeId)
+    if (existingIdentity) throw new ManagedIdentityServiceError('DIRECTORY_IDENTITY_CONFLICT')
     const parsedEmail = parseManagedPrimaryEmail(request.primaryEmail, domain)
     if (!parsedEmail.ok) throw new ManagedIdentityServiceError(parsedEmail.code)
     if (!directory) throw new ManagedIdentityServiceError('DIRECTORY_READ_UNAVAILABLE', { retryable: true })
@@ -229,7 +233,7 @@ export function createManagedIdentityService(input: {
     const latestGovernance = await readGovernance()
     if (!hasPermission(latestGovernance.document, actor, LINK)) throw new ManagedIdentityServiceError('IDENTITY_LINK_REQUIRED')
     requireHumanPrivileged(latestGovernance.document, actor, input.devEnabled)
-    const created = await repository.createCandidate({ employeeId, employeeNumber: assignment.employeeNumber, expectedPrimaryEmail: parsedEmail.value, directoryCustomerId: result.user.customerId, directoryUserId: result.user.userId, primaryEmail: result.user.primaryEmail, sourceEtag: result.user.sourceEtag, workspaceRevision, registryRevision, actor: actor.principalId, now: input.now?.()?.toISOString() })
+    const created = await repository.createCandidate({ employeeId, employeeNumber: assignment.employeeNumber, expectedPrimaryEmail: parsedEmail.value, directoryCustomerId: result.user.customerId, directoryUserId: result.user.userId, primaryEmail: result.user.primaryEmail, sourceEtag: result.user.sourceEtag, workspaceRevision, registryRevision, actor: actor.principalId, now: input.now?.()?.toISOString() }).catch(mapStoreError)
     return { candidateToken: created.token, expiresAt: created.expiresAt, employee: { id: employeeId, employeeNumber: assignment.employeeNumber }, directory: { primaryEmail: parsedEmail.value }, workspaceRevision: created.workspaceRevision, registryRevision: created.registryRevision }
   }
   const confirmLink = async (employeeId: string, actor: GovernanceActorContext, request: ConfirmManagedIdentityLinkRequestV1) => {

@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Readable } from 'node:stream'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createOrgmasterManagedIdentityMiddleware } from './orgmasterManagedIdentityApi'
+import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import type { OrgmasterSession } from './orgmasterSessionRepository'
 import type { ManagedIdentityRepositoryV1 } from './orgmasterManagedIdentityRepository'
 import type { ManagedDirectoryPortV1 } from './orgmasterManagedDirectoryPort'
 import type { ManagedLoginIdentity } from './orgmasterManagedLoginContract'
@@ -195,5 +200,73 @@ describe('published privileged managed-identity gate', () => {
     await expect(service(store).findCandidate('employee-1', actor, request))
       .rejects.toMatchObject({ code: 'EMPLOYEE_NUMBER_REQUIRED' })
     expect(store.readExisting).toHaveBeenCalledOnce()
+  })
+})
+
+
+describe('Directory link state and candidate conflicts', () => {
+  const actor = { principalId: 'dev-principal-local-admin', employeeId: 'employee-1', issuer: 'urn:orgmaster:dev', subject: 'local-admin', bootstrap: true }
+  const request = { primaryEmail: 'person@jenfu.com.tw', expectedWorkspaceRevision: 'workspace-revision', expectedRegistryRevision: '1' }
+  function fixture(state: 'not_linked' | 'directory_linked_pending_auth' | 'active' | 'conflict' = 'not_linked') {
+    const model = { contractVersion: 'orgmaster.managed-identity.v1', employee: { id: 'employee-1', status: 'active' }, employeeNumber: { status: 'assigned', value: 'JFS0001', revision: 1 }, identity: { state, provider: 'google.com', note: '', primaryEmail: state === 'not_linked' ? null : 'person@jenfu.com.tw' }, capabilities: { view: true, manageNumber: false }, registryRevision: '1' }
+    const repository = { mode: 'postgresql', readEmployeeManagedIdentity: vi.fn(async () => model), createCandidate: vi.fn(async () => ({ token: 'candidate-1', expiresAt: '2026-10-06T00:00:00.000Z', workspaceRevision: 'workspace-revision', registryRevision: '1' })) }
+    const port = directory()
+    vi.mocked(port.findExactCandidate).mockResolvedValue({ ok: true, user: { customerId: 'customer-1', userId: 'google-1', primaryEmail: 'person@jenfu.com.tw', directoryState: 'present', sourceEtag: 'etag-1' }, observedAt: '2026-10-05T00:00:00.000Z' })
+    const service = createManagedIdentityService({ root: 'fixture', devEnabled: true, managedDomain: 'jenfu.com.tw', directoryCustomerId: 'customer-1', directory: port, repository: repository as unknown as ManagedIdentityRepositoryV1 })
+    return { service, repository, port }
+  }
+  it.each(['directory_linked_pending_auth', 'active', 'conflict'] as const)('does not offer or retry an already stored %s link', async (state) => {
+    const { service, repository, port } = fixture(state)
+    expect((await service.read('employee-1', actor)).capabilities.manageLink).toBe(false)
+    await expect(service.findCandidate('employee-1', actor, request)).rejects.toMatchObject({ code: 'DIRECTORY_IDENTITY_CONFLICT' })
+    expect(port.findExactCandidate).not.toHaveBeenCalled()
+    expect(repository.createCandidate).not.toHaveBeenCalled()
+  })
+  it('retains initial linking for an unlinked employee', async () => {
+    const { service, repository } = fixture()
+    expect((await service.read('employee-1', actor)).capabilities.manageLink).toBe(true)
+    expect((await service.findCandidate('employee-1', actor, request)).candidateToken).toBe('candidate-1')
+    expect(repository.createCandidate).toHaveBeenCalledOnce()
+  })
+  it.each([
+    ['MANAGED_IDENTITY_IDENTITY_CONFLICT', 'DIRECTORY_IDENTITY_CONFLICT'],
+    ['MANAGED_IDENTITY_REVISION_CONFLICT', 'REVISION_CONFLICT'],
+    ['MANAGED_IDENTITY_ADMISSION_DISABLED', 'DB_ADMISSION_DISABLED'],
+  ])('preserves PostgreSQL candidate error %s as %s after a concurrent change', async (rawCode, expectedCode) => {
+    const { service, repository } = fixture()
+    repository.createCandidate.mockRejectedValueOnce(new Error(rawCode))
+    await expect(service.findCandidate('employee-1', actor, request)).rejects.toMatchObject({ code: expectedCode })
+  })
+  it('keeps linking denied for an actor without identity permission', async () => {
+    const { service, repository, port } = fixture()
+    await expect(service.findCandidate('employee-1', { ...actor, principalId: 'dev-principal-employee', subject: 'local-employee', bootstrap: false }, request)).rejects.toMatchObject({ code: 'IDENTITY_LINK_REQUIRED' })
+    expect(repository.readEmployeeManagedIdentity).not.toHaveBeenCalled()
+    expect(port.findExactCandidate).not.toHaveBeenCalled()
+  })
+
+  async function candidateHttp(service: ReturnType<typeof fixture>['service']) {
+    const req = Readable.from([JSON.stringify(request)]) as IncomingMessage
+    req.method = 'POST'
+    req.url = '/api/orgmaster/employees/employee-1/managed-identity/candidate'
+    req.headers = { origin: 'https://orgmaster.test', host: 'orgmaster.test' }
+    setVerifiedRequestIdentity(req, { ...actor, identityIssuer: actor.issuer, identitySubject: actor.subject, assuranceLevel: 'aal1' } as OrgmasterSession)
+    return await new Promise<{ status: number; body: unknown }>((resolve) => {
+      const res = { statusCode: 0, setHeader: vi.fn(), end(body: string) { resolve({ status: this.statusCode, body: JSON.parse(body) }) } }
+      createOrgmasterManagedIdentityMiddleware('fixture', true, service)(req, res as unknown as ServerResponse, () => { throw new Error('Unexpected next') })
+    })
+  }
+  it('returns HTTP 409 for a stored link instead of a server failure', async () => {
+    const { service, repository } = fixture('directory_linked_pending_auth')
+    expect(await candidateHttp(service)).toEqual({ status: 409, body: { error: 'DIRECTORY_IDENTITY_CONFLICT' } })
+    expect(repository.createCandidate).not.toHaveBeenCalled()
+  })
+  it('logs only a safe action and error code for genuine candidate store failures', async () => {
+    const { service, repository } = fixture()
+    repository.createCandidate.mockRejectedValueOnce(new Error('private SQL and personal details'))
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await candidateHttp(service)).toEqual({ status: 503, body: { error: 'MANAGED_IDENTITY_WRITE_FAILED' } })
+      expect(log).toHaveBeenCalledWith(JSON.stringify({ event: 'orgmaster_managed_identity_request_failed', action: 'managed-identity/candidate', code: 'MANAGED_IDENTITY_WRITE_FAILED' }))
+    } finally { log.mockRestore() }
   })
 })

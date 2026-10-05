@@ -191,7 +191,8 @@ export function EmployeeManagedIdentitySection({ employee, mutationAllowed = fal
   const canManage = mutationAllowed && desktopMutationSurface && view.capabilities.manageNumber
   const assigned = view.employeeNumber.status === 'assigned'
   const linked = view.identity.state === 'active'
-  const canLink = mutationAllowed && desktopMutationSurface && Boolean(view.capabilities.manageLink) && assigned && view.identity.state !== 'active'
+  const identityLabel = linked ? '已啟用' : view.identity.state === 'directory_linked_pending_auth' ? '已連結' : view.identity.state === 'conflict' ? '連結衝突' : '待連結'
+  const canLink = mutationAllowed && desktopMutationSurface && Boolean(view.capabilities.manageLink) && assigned && view.identity.state === 'not_linked'
   const canRefresh = mutationAllowed && desktopMutationSurface && Boolean(view.capabilities.refresh) && assigned
   const refresh = async () => {
     if (refreshBusy) return
@@ -201,7 +202,7 @@ export function EmployeeManagedIdentitySection({ employee, mutationAllowed = fal
     finally { setRefreshBusy(false) }
   }
   return <><section className="inspector__section employee-identity-section" aria-labelledby={'managed-identity-heading-' + employee.id}>
-    <div className="section-heading"><span id={'managed-identity-heading-' + employee.id}>員工編號與登入身分</span>{assigned && <span className={'directory-detail__identity-status ' + (linked ? 'is-active' : 'is-pending_acceptance')}>{linked ? '已啟用' : '待連結'}</span>}</div>
+    <div className="section-heading"><span id={'managed-identity-heading-' + employee.id}>員工編號與登入身分</span>{assigned && <span className={'directory-detail__identity-status ' + (linked ? 'is-active' : 'is-pending_acceptance')}>{identityLabel}</span>}</div>
     <div className="directory-detail__identity-row managed-identity-row">
       <Hash size={15} aria-hidden="true" />
       <div className="directory-detail__identity-copy"><small>OrgMaster 登入編號</small><strong>{view.employeeNumber.value ?? '尚未設定'}</strong>{assigned && <small>預期登入名稱：{view.employeeNumber.derivedUsername ?? deriveManagedUsername(view.employeeNumber.value ?? '', view.managedDomain ?? 'jenfu.com.tw')}</small>}</div>
@@ -213,7 +214,7 @@ export function EmployeeManagedIdentitySection({ employee, mutationAllowed = fal
       {canLink && <button type="button" className="button button--quiet" onClick={() => setLinkDialogOpen(true)}>連結 Google 主帳號</button>}
       {canRefresh && <button type="button" className="button button--quiet" disabled={refreshBusy} onClick={() => { void refresh() }}>{refreshBusy ? '排程中…' : '重新整理狀態'}</button>}
     </div>
-    {assigned && <div className="directory-detail__identity-note">{linked ? 'Google 主帳號已啟用。' : view.identity.state === 'directory_linked_pending_auth' ? '等待員工首次使用 Google 登入。' : '尚未連結 Google 主帳號。'}</div>}
+    {assigned && <div className="directory-detail__identity-note">{linked ? 'Google 主帳號已啟用。' : view.identity.state === 'directory_linked_pending_auth' ? 'Google 主帳號連結已保存；登入與權限依已發布的身分與權限判定。' : view.identity.state === 'conflict' ? '帳號連結有衝突，請由管理者核對；未變更登入權限。' : '尚未連結 Google 主帳號。'}</div>}
     {!assigned && !canManage && <div className="directory-detail__identity-note">尚未設定員工編號，請聯絡具員工身分管理權限的管理者。</div>}
   </section><NumberDialog employee={employee} view={view} open={dialogOpen} onClose={() => setDialogOpen(false)} onSuccess={() => { void reload(); onChanged?.() }} /><ManagedIdentityLinkDialog employee={employee} view={view} open={linkDialogOpen} onClose={() => setLinkDialogOpen(false)} onSuccess={() => { void reload(); onChanged?.() }} /></>
 }

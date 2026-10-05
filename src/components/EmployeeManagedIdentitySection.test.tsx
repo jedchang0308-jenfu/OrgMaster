@@ -185,3 +185,23 @@ describe('EmployeeManagedIdentitySection', () => {
     act(() => root.unmount())
   })
 })
+
+
+describe('stored Google Directory links', () => {
+  afterEach(() => document.body.replaceChildren())
+  it.each([
+    ['directory_linked_pending_auth', '已連結'],
+    ['active', '已啟用'],
+    ['conflict', '連結衝突'],
+  ])('shows %s without offering a duplicate link even with stale capabilities', async (state, label) => {
+    api.loadManagedIdentity.mockResolvedValue({ ...base, employeeNumber: { status: 'assigned', value: 'JFS0001', revision: 1 }, identity: { ...base.identity, state, primaryEmail: 'person@jenfu.com.tw' }, capabilities: { ...base.capabilities, manageLink: true } })
+    const { host, root } = render()
+    await flush()
+    expect(host.querySelector('.directory-detail__identity-status')?.textContent).toBe(label)
+    expect(host.textContent).toContain('person@jenfu.com.tw')
+    expect(host.textContent).not.toContain('等待員工首次使用 Google 登入')
+    expect(Array.from(host.querySelectorAll('button')).some((button) => button.textContent === '連結 Google 主帳號')).toBe(false)
+    if (state === 'directory_linked_pending_auth') expect(host.textContent).toContain('已發布的身分與權限')
+    act(() => root.unmount())
+  })
+})
