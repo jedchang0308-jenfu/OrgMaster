@@ -281,3 +281,23 @@ test('Principal-only maintenance readback is idempotent and rejects wrong identi
     service: { ...active, traffic: [oldTraffic], trafficStatuses: [oldTraffic] }, intent,
   }), /DEV057_PRINCIPAL_RECOVERY_INVALID/u)
 })
+
+test('quiescence accepts Cloud Run omitting the automatic ceiling only after settled MANUAL zero', () => {
+  const before = { ...base, traffic: [oldTraffic], trafficStatuses: [oldTraffic],
+    scaling: { scalingMode: 'AUTOMATIC', maxInstanceCount: 1 } }
+  const after = { ...before, generation: '92', observedGeneration: '92',
+    scaling: { scalingMode: 'MANUAL', manualInstanceCount: 0 } }
+  assert.equal(assertPrincipalOnlyQuiescenceReadback({ before, after, oldRevision: old }), after)
+  for (const invalid of [
+    { scalingMode: 'MANUAL', manualInstanceCount: 1 },
+    { scalingMode: 'MANUAL', manualInstanceCount: 0, maxInstanceCount: 2 },
+    { scalingMode: 'MANUAL', manualInstanceCount: 0, minInstanceCount: 1 },
+  ]) assert.throws(() => assertPrincipalOnlyQuiescenceReadback({ before,
+    after: { ...after, scaling: invalid }, oldRevision: old }), /DEV057_PRINCIPAL_RECOVERY_INVALID/u)
+  const extraBefore = { ...before, scaling: { ...before.scaling, minInstanceCount: 1 } }
+  assert.throws(() => assertPrincipalOnlyQuiescenceReadback({ before: extraBefore,
+    after, oldRevision: old }), /DEV057_PRINCIPAL_RECOVERY_INVALID/u)
+  const manualBefore = { ...before, scaling: { scalingMode: 'MANUAL', manualInstanceCount: 0, maxInstanceCount: 1 } }
+  assert.throws(() => assertPrincipalOnlyQuiescenceReadback({ before: manualBefore,
+    after, oldRevision: old }), /DEV057_PRINCIPAL_RECOVERY_INVALID/u)
+})

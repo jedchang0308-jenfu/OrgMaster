@@ -275,3 +275,18 @@ test('maintenance restore rejects wrong owner, revision proof and provider readb
     assert.equal(h.mutations.length, 1, `${label} drift is rejected from provider readback`)
   }
 })
+
+test('native quiescence completes when provider normalizes MANUAL zero by dropping automatic max', async () => {
+  const providerAfter = { ...manualZero, scaling: { scalingMode: 'MANUAL', manualInstanceCount: 0 } }
+  const h = harness({ after: providerAfter })
+  const result = await h.quiesce()
+  assert.equal(h.mutations.length, 1)
+  assert.deepEqual(result.service.scaling, providerAfter.scaling)
+  assert.deepEqual(result.service.traffic, traffic)
+  assert.deepEqual(result.service.template, baseline.template)
+  const replay = harness({ before: providerAfter, after: providerAfter })
+  const repeated = await replay.quiesce()
+  assert.equal(replay.mutations.length, 0)
+  assert.equal(repeated.operationRef, null)
+  assert.deepEqual(repeated.service, providerAfter)
+})

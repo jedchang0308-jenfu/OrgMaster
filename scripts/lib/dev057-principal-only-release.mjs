@@ -82,7 +82,15 @@ export function assertPrincipalOnlyQuiescenceReadback({ before, after, oldRevisi
     || canonicalize(after.template) !== canonicalize(before.template)
     || ['ingress','defaultUriDisabled','invokerIamDisabled'].some(field => after[field] !== before[field])) fail()
   const stable = value => { const { scalingMode, manualInstanceCount, ...fields } = value ?? {}; return fields }
-  if (canonicalize(stable(after.scaling)) !== canonicalize(stable(before.scaling))) fail()
+  const beforeStable = stable(before.scaling)
+  const afterStable = stable(after.scaling)
+  // Cloud Run drops the automatic ceiling when the service enters MANUAL 0.
+  // Accept only that omitted field; a returned different ceiling or any other
+  // scaling drift still fails. Activation separately requires maxInstances=1.
+  if (before.scaling.scalingMode === 'AUTOMATIC' && !Object.hasOwn(afterStable, 'maxInstanceCount')) {
+    delete beforeStable.maxInstanceCount
+  }
+  if (canonicalize(afterStable) !== canonicalize(beforeStable)) fail()
   return after
 }
 

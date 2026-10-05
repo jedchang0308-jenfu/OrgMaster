@@ -340,3 +340,5 @@ managed Principal own governance 同根因修正沿 DEV-057 [交易契約](specs
 
 - [DEV-049權威spec §15](specs/DEV-049-existing-google-primary-account-link.md)：read-only Job證明`employee-shijie / JFS0005`的identity與alias皆0筆；新operator固定exact target，以既有keyless Directory readonly path及migration 013 security-definer routines完成candidate／confirm，支援精確replay並對Directory drift fail closed。
 - Operator只經owner-native immutable migration-runner image與既有Job受控覆寫執行，必須source-bound、receipt redacted並在finally回復migrator baseline；不新增schema／migration／IAM／Secret／service／Job，不直接table DML。Local gate為operator 5／5、DEV-040 release 82／82、abort 6／6、full regression 875 PASS／1 skipped、DB boundary及build PASS；Production apply尚未執行。
+
+- `qa/DEV-057-lifecycle-quiescence-normalization-2026-10-06.md` — DEV-057 / JENFU DEV-014: actual Cloud Run MANUAL-zero ceiling omission, bounded correction, local regression and accepted Scheduler fee status; positive Production lifecycle remains OPEN.
