@@ -17,10 +17,22 @@ import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057EmployeeNumberCommandReceiptV2Append, assertDev057EmployeeNumberCommandReceiptV2Remediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation, assertDev057PrincipalGrantsV3Append, assertDev057PrincipalGrantsV3Remediation, assertDev057PrincipalGrantsV4Append, assertDev057PrincipalGrantsV4Remediation } from './lib/dev040-routine-release.mjs'
 
-test('production runtime image includes the source-frozen v5 catalog read by governance', () => {
+test('production runtime image includes every approved catalog read by governance', () => {
   const dockerfile = fs.readFileSync('Dockerfile', 'utf8')
-  assert.match(dockerfile, /^COPY --from=builder --chown=65532:65532 \/app\/config\/catalogs\/ai-pdm-role-catalog\.v5\.json \.\/config\/catalogs\/ai-pdm-role-catalog\.v5\.json$/mu)
-  assert.match(dockerfile, /^COPY --from=builder --chown=65532:65532 \/app\/contracts \.\/contracts$/mu)
+  const repository = fs.readFileSync('server/aiPdmRoleCatalogRepository.ts', 'utf8')
+  const names = [...new Set([...repository.matchAll(/file:\s*'(ai-pdm-role-catalog\.v\d+\.json)'/gu)].map((match) => match[1]))]
+  assert.ok(names.length > 0, 'approved source artifacts must be identifiable')
+  const runnerStart = dockerfile.search(/^FROM scratch AS runner\s*$/mu)
+  assert.ok(runnerStart >= 0, 'the final application stage must be identifiable')
+  const runner = dockerfile.slice(runnerStart)
+  for (const name of names) {
+    const catalog = JSON.parse(fs.readFileSync(path.join('config/catalogs', name), 'utf8'))
+    assert.equal(catalog.applicationId, 'ai-pdm')
+    assert.equal(catalog.roles.length, 9)
+    const escapedName = name.replaceAll('.', '\\.')
+    assert.match(runner, new RegExp(`^COPY --from=builder --chown=65532:65532 /app/config/catalogs/${escapedName} \\./config/catalogs/${escapedName}$`, 'mu'))
+  }
+  assert.match(runner, /^COPY --from=builder --chown=65532:65532 \/app\/contracts \.\/contracts$/mu)
 })
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))

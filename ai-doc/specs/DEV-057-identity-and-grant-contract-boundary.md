@@ -14,6 +14,8 @@
 
 ## 本批 v5／v6 目錄讀取契約（2026-10-05，RD Implementation Ready）
 
+2026-10-05 正式追加驗收發現 final runner只包v5，v6 active後治理500；[包裝矯正與原FAIL](../qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md)是現行續點。最終應用image須包含reader允許的每份exact source artifact並在image build確認可讀；source checkout／PGPASS不替代image。角色／scope／schema及已發布指派保持；修正後ordinary owner release與正式HTTP仍待驗。
+
 參與 `AIPDM/DEV-121#system-admin-capabilities` 的新修正批次；source與原生producer／consumer整合已通過，正式發布尚未完成。見[本批checkpoint及層級限制](../qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)。人類允許 Jed 全部有效應用能力；AI-PDM 產生 immutable `ai-pdm.role-catalog.2026-10-05.v6`，其他八角色不擴權。OrgMaster 只維持 stable 角色／scope／Principal 指派，不解釋各 API 業務能力。
 
 正常 server 讀寫先從 active producer version/hash 選取一份 source-controlled exact v5/v6 artifact，完整驗證九角色及其 metadata／permission/hash。registry、governance validation／publish 與 role-capability workspace 必須引用同次 active artifact；不能只放寬 registry，仍使用 bundled v4/v5 workspace，也不使用 process-global mutable catalog。未知版本、mixed rows 或 tamper 仍 fail closed。前端顯示當前 server readback，不自行決定 active 版本。
