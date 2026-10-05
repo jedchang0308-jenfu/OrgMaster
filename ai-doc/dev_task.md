@@ -4,6 +4,16 @@
 
 <a id="dev-057-current-contract"></a>
 
+## DEV-057 active-v6 reader批次正式結案（2026-10-06，現行）
+
+[本owner正式closure](qa/DEV-057-catalog-v6-production-closure-2026-10-06.json)維護本批最終結果，參與AIPDM/DEV-121最高管理能力批次。PR112／required PR/master CI／owner37333434478已SUCCESS，source `22e81f31e478dd72170c61a71387c81b66efe688`、`orgmaster-prod-157cdf5f7cc2` 正式100%／零tag；migration UNCHANGED_VERIFIED／DDL0，未重寫任何指派。
+
+R13真實PG24案及實際catalog/workspace2案完成：無local manifest正向、missing/corrupt PG不能由local救回，cleanup通過。tested四檔與reviewed／merged來源等值；fresh正式SSO同Principal、治理session及正常role workspace200，active exact v6／九角色／readonly；Jed原exact direct/global指派與active v6閉合。獨立QA bounded5/5、QC無P1/P2，私人JENFU57raw及hash引用在owner closure。
+
+只關閉本批active reader／image packaging與persistence source修正；角色／scope／Principal producer邊界不變。低角色／撤權／scope／expiry等沿原正式及current PG層級，不改標fresh。原404／500／503、local CP與pre-auth argument FAIL保留；retained Principal-only recovery Ready不等於本批新traffic rehearsal。DEV-014其他Directory／Employee編號／背景義務及DEV-122未驗business保持原判定。
+
+<details><summary>HISTORY_ONLY：本批原始v6 reader進度（由上述正式結果取代）</summary>
+
 ## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
 
 [v6 包裝與 persistence source 矯正](qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md)：PR111 packaging已 RELEASED，正常治理session200；另確認role workspace503來自CloudSQL reader前的local stat。最小port修正、缺失／損壞拒絕與真實PG整鏈已PASS，獨立source QC通過；新版protected PR／ordinary release／正式HTTP及畫面待驗。保留先前404、500、503原FAIL，不重寫指派或歷史。
@@ -14,6 +24,9 @@
 - [x] 既有protected PR／required CI、v5/v6 ordinary owner release與exact Jed direct/global formal讀回（各自證據，不等於整批L4）。
 - [ ] 本批persistence source矯正的protected PR／required CI、ordinary owner release及v6 workspace／Jed UI驗收。
 本機／native整合見[原checkpoint](qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)與[本次source矯正checkpoint](qa/evidence/DEV057-CATALOG-PACKAGE-20261005/workspace-source-correction-checkpoint.json)；保留原凍結狀態，新版release與正式workspace／UI尚待驗。前批 Google連結及employee-number correction的原成果保留，不改判定、不新增主任務。
+
+
+</details>
 
 ## DEV-057 員工 Google 連結矯正（2026-10-05）
 

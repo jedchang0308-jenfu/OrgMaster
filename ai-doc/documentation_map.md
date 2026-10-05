@@ -1,5 +1,11 @@
 # OrgMaster 文件地圖
 
+## DEV-057 active-v6 reader：本批正式結案
+
+[owner closure](qa/DEV-057-catalog-v6-production-closure-2026-10-06.json) → [本批任務](dev_task.md#dev-057-current-contract) → [現行reader契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)。Org22e81／owner37333434478 RELEASED，正式治理與正常role workspace200；R13 PG與tested/merged四檔閉合。JENFU私人57raw、獨立QA5/5／QC無P1/P2的exact引用在closure。只結本批reader修正，不推論DEV-014其他義務／DEV-122；角色指派歷史不重寫、negative沿原層級。
+
+<details><summary>HISTORY_ONLY：本批早期進度</summary>
+
 本批最高管理能力v6：[DEV-057契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader) → [native producer／consumer checkpoint](qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)。不以本機PASS替代正式指派讀回與L4。
 
 ## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
@@ -7,6 +13,9 @@
 [v6 包裝與 persistence source 矯正](qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md)：PR111 packaging已 RELEASED，正常治理session200；另確認role workspace503來自CloudSQL reader前的local stat。最小port修正、缺失／損壞拒絕與真實PG整鏈已PASS，獨立source QC通過；新版protected PR／ordinary release／正式HTTP及畫面待驗。保留先前404、500、503原FAIL，不重寫指派或歷史。
 
 [本批任務](dev_task.md#dev-057-current-contract) → [exact active reader 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)。同一 active v5/v6 artifact 供 registry、治理讀寫及 role workspace；歷史指派仍只作 provenance，OrgMaster 的角色／scope owner 及唯一 grant v4 不變。新能力及080由AIPDM/DEV-121發布；AI-PDM 正常顯示 v4 直接讀既有已發布 PostgreSQL catalog/grants，不依賴缺 session 的 HTTP workspace。修正後 QA／CI／正式驗證尚未完成；下方前批結論保留其原層級。
+
+
+</details>
 
 **DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 沿 DEV-057 既有子項與 [current correction 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current)；目前 LOCAL_FIX／TASK_OWNED_POSTGRES_PASS，protected merge／030 source-bound release／正式 details 仍待完成。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
 
