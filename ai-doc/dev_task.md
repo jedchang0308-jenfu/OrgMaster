@@ -7,10 +7,10 @@
 ## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
 
 沿既有 `ORGMASTER/DEV-057#identity-grants`，參與 `AIPDM/DEV-121#system-admin-capabilities`；本批 [current reader 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)已 RD Implementation Ready。只修 exact active artifact 的 registry／治理／workspace 一致性，歷史指派不重寫。
-- [ ] 本機 exact v5/v6、unknown／mixed／tamper／歷史 snapshot 與正常 server caller 回歸。
+- [x] 本機 exact v5/v6、unknown／mixed／tamper／歷史 snapshot 與正常 server caller 回歸（LOCAL_PASS）。
 - [ ] 真實 PostgreSQL producer→AI-PDM consumer 的 direct/global、非 target Principal、scope、撤權與 expiry。
 - [ ] 同批 protected PR／required CI、ordinary owner release；先 v5正式讀回，再 v6升版後治理及grant readback／L4。
-以上尚未完成；前批 Google連結及employee-number correction的原成果保留，不改判定、不新增主任務。
+本機／native整合見[本批checkpoint](qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)；最終QC／required CI與正式exact Jed grant／release／L4尚未完成。前批 Google連結及employee-number correction的原成果保留，不改判定、不新增主任務。
 
 ## DEV-057 員工 Google 連結矯正（2026-10-05）
 

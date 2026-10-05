@@ -1,5 +1,7 @@
 # OrgMaster 文件地圖
 
+本批最高管理能力v6：[DEV-057契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader) → [native producer／consumer checkpoint](qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)。不以本機PASS替代正式指派讀回與L4。
+
 ## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
 
 [本批任務](dev_task.md#dev-057-current-contract) → [exact active reader 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)。同一 active v5/v6 artifact 供 registry、治理讀寫及 role workspace；歷史指派仍只作 provenance，OrgMaster 的角色／scope owner 及唯一 grant v4 不變。新能力及080由AIPDM/DEV-121發布；AI-PDM 正常顯示 v4 直接讀既有已發布 PostgreSQL catalog/grants，不依賴缺 session 的 HTTP workspace。修正後 QA／CI／正式驗證尚未完成；下方前批結論保留其原層級。
