@@ -1,8 +1,29 @@
 # OrgMaster 開發任務
 
-**DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 依 [DEV-057 current correction](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current) 沿 DEV-057 既有子項；目前 LOCAL_FIX／TASK_OWNED_POSTGRES_PASS，protected merge／030 source-bound release／正式 details 仍待完成。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
+**DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 依 [DEV-057 030 historical prerequisite](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current) 沿 DEV-057 既有子項；目前 LOCAL_FIX／TASK_OWNED_POSTGRES_PASS；此段保留 030 前序紀錄，current ledger ceiling 31 與尚未發布的 031 lifecycle slice 見 [DEV-057 current entry](#dev-057-dev014-principal-lifecycle-v2)。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
 
 <a id="dev-057-current-contract"></a>
+
+<a id="dev-057-dev014-principal-lifecycle-v2"></a>
+
+## DEV-057 DEV-014 Principal lifecycle v2 — current slice (2026-10-06, unpublished)
+
+Source: JENFU/DEV-014 QA014-07 through QA014-10; native owner: ORGMASTER/DEV-057. This is a remaining DEV-014 source slice, not a new task. The completed Principal-only authorization scope remains closed and unchanged; migration 030 is preserved as the immutable predecessor and the current bundle ceiling is 31.
+
+Migrations 001–030 are immutable. The source-bound remediation accepts only exact migration 031, version dev014-orgmaster-031, from a 30-row verified prefix, or checksum-verified no-DDL replay of all 31 rows. The filename and source/applied checksum binding are owned by [the lifecycle release contract](../scripts/lib/dev014-principal-lifecycle-release.mjs). Historical runtime v1 writer and worker EXECUTE surfaces are revoked. Normal writes use the verified human Principal path through the v2 identity-fenced writer; workload execution uses the typed owner/purpose/provider binding and actual PostgreSQL SESSION_USER. It does not trust a worker label, request-selected Principal, or UID/email fallback. Events freeze affected Principals and provider pairs so delivery cannot expand later to a dynamic Employee-wide target.
+
+Platform consumer migration 011 verifies the versioned OrgMaster producer contracts and manifest before DDL. Cross-application access stays on versioned contract views; OrgMaster does not access platform_core. Before the owner migration Job, the release requires a fresh source-matched APP_INFRA_IMAGE_ROTATION for the migration-runner image. Its validated receipt proves the exact 31-row ledger, at most one applied migration, and checksum-verified replay of the remainder; candidate follows receipt validation.
+
+The lifecycle install keeps ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED=false. Local enablement wiring is complete through the protected-source operator, source-bound readiness and the normal owner release; only false→true is permitted, with every other runtime field/Secret unchanged and zero DDL. The separate product Scheduler stays PAUSED through release, then its exact-job operator rereads both published owners before resume. Creation and actual activation still await the fee decision and provider evidence; this is independent of the DEV-040 release watchdog.
+
+Local SQL/capacity evidence remains [R6/R7](../../Jenfu-Platform/ai-doc/qa/evidence/DEV014-REMAINING-DELIVERY-20261005/orgmaster-lifecycle-r6-r7-local-projection-20261006.json): R7 passed 23 SQL cases; R6 completed 500 refresh attempts in 15 minutes, with 215 allowed/85 denied interactive requests. Directory/OIDC are synthetic. [R9 independent QC](../../Jenfu-Platform/ai-doc/qa/evidence/DEV014-REMAINING-DELIVERY-20261005/dev014-org-lifecycle-activation-qc-r9-20261006.projection.json) passed 326 cases across 27 Node files with no drift in its 727-file map, before official-source integration. It covers activation/Scheduler/recovery wiring; prior R8 312-case evidence remains frozen. Integration must retain the formal v6 packaging check and Dockerfile; the stale worktree's v5-only check is superseded. Full build/required CI, real provider latency, Cloud SQL IAM and Production L4 are still unverified.
+
+- [x] R7 task-owned native PostgreSQL: 23 local cases; exact runtime-connection refusal and cleanup recorded complete. Current 031 header-only correction reuses unchanged SQL body evidence; it is not a fresh applied-hash receipt.
+- [x] R6 synthetic capacity: 500 attempts/15 minutes, zero repeats/failures, max concurrency 2; not 500 real Google identities or unconditional interactive PASS.
+- [x] R9 source-frozen 326-case Node/caller QC on the pre-integration candidate; raw/source manifests retained. Post-integration checks, full build and required CI remain separate.
+- [ ] Fresh source-matched migration-runner image rotation and validated 30→31 or exact 31-row replay receipt.
+- [ ] Owner candidate and Principal recovery evidence, real provider/Scheduler readback, live IAM/SESSION_USER, production recovery and Production L4.
+- [ ] Production false→true owner activation and exact-job resume/readback. The local caller is implemented; [JENFU current sequence](../../Jenfu-Platform/ai-doc/specs/DEV-014-managed-identity-production-activation.md#current-lifecycle-completion-20261005) is authoritative. Failure containment pauses scheduling and records the outcome; recovery uses only a v2-compatible Principal-only background=false version. Post-release recovery and positive lifecycle behavior still require formal evidence.
 
 ## DEV-057 active-v6 reader批次正式結案（2026-10-06，現行）
 
@@ -28,6 +49,18 @@ R13真實PG24案及實際catalog/workspace2案完成：無local manifest正向�
 
 </details>
 
+<details><summary>HISTORY_ONLY：舊工作樹 v6 進度（由上述正式結案取代）</summary>
+
+## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
+
+沿既有 `ORGMASTER/DEV-057#identity-grants`，參與 `AIPDM/DEV-121#system-admin-capabilities`；本批 [current reader 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)已 RD Implementation Ready。只修 exact active artifact 的 registry／治理／workspace 一致性，歷史指派不重寫。
+- [ ] 本機 exact v5/v6、unknown／mixed／tamper／歷史 snapshot 與正常 server caller 回歸。
+- [ ] 真實 PostgreSQL producer→AI-PDM consumer 的 direct/global、非 target Principal、scope、撤權與 expiry。
+- [ ] 同批 protected PR／required CI、ordinary owner release；先 v5正式讀回，再 v6升版後治理及grant readback／L4。
+以上尚未完成；前批 Google連結及employee-number correction的原成果保留，不改判定、不新增主任務。
+
+</details>
+
 ## DEV-057 員工 Google 連結矯正（2026-10-05）
 
 **目前交付（2026-10-05 03:58Z）：正式修正版已發布，Production API 已驗證，現有瀏覽器渲染未重驗。** protected source `c65dd31acb8d2c1895d0e9e8d2a93186dc28ef35`、owner run `37260139999` 十階段 SUCCESS／RELEASED；`orgmaster-prod-367d239442e2` 100%／零 tag。Jed 正常 Principal SSO 與治理／managed-identity 200，保存連結 `manageLink=false`；未登入／已撤銷 session 401，正式 client asset 已更新。未重綁 Employee／更改角色／新增 migration。PR104／105、必需 CI、sealed terminal、約 11 分鐘觀察及清理見[最新正式交付 checkpoint](qa/DEV-057-managed-identity-link-correction-2026-10-05.md#最新正式交付-checkpoint2026-10-05-0358z)。本段取代下兩段施工時「待發布」的進度，原始失敗因果保留；不宣稱完整 rendered browser L4 PASS。
@@ -38,7 +71,7 @@ R13真實PG24案及實際catalog/workspace2案完成：無local manifest正向�
 
 ## DEV-057 現行續接
 
-Principal-only 身分／授權仍以 [current contract](specs/DEV-057-identity-and-grant-contract-boundary.md) 為施工入口並維持原驗收分母；DEV-014 有效員工編號義務沿 OrgMaster/DEV-057 的 [employee-number command v2 current correction](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current) 收束，不新增任務或改寫 Principal-only 完成結論。歷史原文／階段在 [HISTORY_ONLY任務快照](dev_task-history-2026-10-03.md)，不讀為當前命令。各層證據只證明本機／整合／正式實測流程，不以文件成熟度或總 PASS 數改算完成率。
+Principal-only 身分／授權仍以 [current contract](specs/DEV-057-identity-and-grant-contract-boundary.md) 為施工入口並維持原驗收分母；DEV-014 有效員工編號義務沿 OrgMaster/DEV-057 的 [employee-number 030 historical prerequisite](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current) 收束，不新增任務或改寫 Principal-only 完成結論。DEV-014 lifecycle v2 是另一個 DEV-057 source slice，尚未發布，見 [current lifecycle section](#dev-057-dev014-principal-lifecycle-v2)。歷史原文／階段在 [HISTORY_ONLY任務快照](dev_task-history-2026-10-03.md)，不讀為當前命令。各層證據只證明本機／整合／正式實測流程，不以文件成熟度或總 PASS 數改算完成率。
 
 共同根因、F01–F10狀態及下一可驗交付依 [JENFU既有盤點](../../Jenfu-Platform/ai-doc/qa/DEV-015-principal-only-authorization-inventory-2026-09-29.md)；下方舊DEV-012／013與其他native任務保留原追溯，不重開其發布队列。
 

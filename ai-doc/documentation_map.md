@@ -1,5 +1,13 @@
 # OrgMaster 文件地圖
 
+## DEV-057 DEV-014 Principal lifecycle v2 — current slice (2026-10-06, unpublished)
+
+[Current task](dev_task.md#dev-057-dev014-principal-lifecycle-v2) → [current contract](specs/DEV-057-identity-and-grant-contract-boundary.md#principal-lifecycle-v2-current). JENFU/DEV-014 QA014-07 through QA014-10 continues under ORGMASTER/DEV-057; the Principal-only authorization closure remains intact. Migration 030 is the immutable predecessor; exact 031 is the current ceiling. The v1 writer/worker EXECUTE surface is retired, workload access uses typed binding plus actual SESSION_USER, and events freeze Principal/pair targets. The 011 Platform consumer checks producer manifests before DDL. Runtime background flag stays false; the independent Scheduler draft remains PAUSED pending fee decision and provider readback.
+
+Evidence: [R6/R7 native SQL and synthetic capacity](../../Jenfu-Platform/ai-doc/qa/evidence/DEV014-REMAINING-DELIVERY-20261005/orgmaster-lifecycle-r6-r7-local-projection-20261006.json) and [R9 independent Node/caller QC](../../Jenfu-Platform/ai-doc/qa/evidence/DEV014-REMAINING-DELIVERY-20261005/dev014-org-lifecycle-activation-qc-r9-20261006.projection.json): 326 cases/27 files, no drift in the 727-source map, before official-source integration. Formal v6 packaging and Directory fixes must survive integration; full build/required CI, owner release/recovery, real provider/SESSION_USER and Production L4 remain unverified. The [single current activation sequence](../../Jenfu-Platform/ai-doc/specs/DEV-014-managed-identity-production-activation.md#current-lifecycle-completion-20261005) is install=false → sealed owner enablement → exact-job resume/readback. Local wiring is implemented, not published.
+
+Implementation entry: [owner enablement CLI](../scripts/dev040-deploy-production.mjs) (`--dev014-principal-lifecycle-enable`) → [published owner/consumer prerequisite reader](../scripts/lib/dev014-lifecycle-activation-prerequisites.mjs) → [runtime-only release guard](../scripts/lib/dev014-principal-lifecycle-release.mjs). [Scheduler operator](../scripts/dev014-lifecycle-scheduler.mjs) owns pause/resume and durable failure evidence; [plan gate](../scripts/lib/dev014-managed-lifecycle-plan-gate.mjs) and [Terraform module](../infra/google-cloud/dev014-managed-lifecycle/main.tf) own the fixed template and PAUSED creation, with live/current-source proof for an ENABLED no-op. Provider capability proof covers route presence/caller-denial only; positive event processing and L4 remain separate.
+
 ## DEV-057 active-v6 reader：本批正式結案
 
 [owner closure](qa/DEV-057-catalog-v6-production-closure-2026-10-06.json) → [本批任務](dev_task.md#dev-057-current-contract) → [現行reader契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)。Org22e81／owner37333434478 RELEASED，正式治理與正常role workspace200；R13 PG與tested/merged四檔閉合。JENFU私人57raw、獨立QA5/5／QC無P1/P2的exact引用在closure。只結本批reader修正，不推論DEV-014其他義務／DEV-122；角色指派歷史不重寫、negative沿原層級。
@@ -17,7 +25,7 @@
 
 </details>
 
-**DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 沿 DEV-057 既有子項與 [current correction 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current)；目前 LOCAL_FIX／TASK_OWNED_POSTGRES_PASS，protected merge／030 source-bound release／正式 details 仍待完成。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
+**HISTORY_ONLY：DEV-014 前序收尾快照：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 沿 DEV-057 既有子項與 [current correction 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current)；目前 LOCAL_FIX／TASK_OWNED_POSTGRES_PASS，protected merge／030 source-bound release／正式 details 仍待完成。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
 
 ## 本輪 Principal-only 唯一閱讀入口
 

@@ -7,6 +7,7 @@ import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
 import { assertRuntimeConfig, buildRuntimeConfig, resolvePlainEnvironment } from './lib/dev012-owner-release-runtime.mjs'
 import { assertPreparePrerequisites, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
+import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION } from './lib/dev014-principal-lifecycle-release.mjs'
 import { DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
@@ -100,7 +101,7 @@ test('S1B-21 OrgMaster v3 direct-run profile preserves staging boundary', () => 
 })
 
 test('S1B-21 OrgMaster runtime keeps credentials out of plain environment', () => {
-  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames.filter((name) => !['ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN'].includes(name)).map((name) => [name, profile.environment.fixedValues[name] ?? `plain-${name}`]))
+  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames.filter((name) => !['ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN'].includes(name) && !Object.hasOwn(profile.environment.controlledValues, name)).map((name) => [name, profile.environment.fixedValues[name] ?? `plain-${name}`]))
   const plainEnvironment = resolvePlainEnvironment(profile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
   const secretVersions = Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1']))
   const runtime = buildRuntimeConfig(profile, { plainEnvironment, secretVersions })
@@ -109,6 +110,7 @@ test('S1B-21 OrgMaster runtime keeps credentials out of plain environment', () =
   assert.equal(runtime.template.containers[0].env.filter((row) => row.name === 'ORGMASTER_POSTGRES_URL').length, 1)
   assert.equal(runtime.template.containers[0].env.find((row) => row.name === 'ORGMASTER_POSTGRES_URL').valueSource.secretKeyRef.secret, 'orgmaster-prod-postgres-url')
   assert.equal(runtime.plainEnvironment.ORGMASTER_JENFU_SSO_HANDOFF_MODE, 'on')
+  assert.equal(runtime.plainEnvironment.ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED, 'false')
   assert.throws(() => resolvePlainEnvironment(profile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'launch' }), /RUNTIME_CONFIG_READBACK_MISMATCH/u)
   assert.equal(assertRuntimeConfig(profile, runtime).containers.length, 2)
 })
@@ -161,7 +163,7 @@ test('OrgMaster owner prepare carries an active handoff value only through an ex
 
 test('OrgMaster owner prepare accepts the exact DEV-014 managed-directory activation authority', () => {
   const previousPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
-    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name))
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
     .map((name) => [name, 'fixture-public-value']))
   previousPlainEnvironment.ORGMASTER_JENFU_SSO_HANDOFF_MODE = 'on'
   const plainEnvironment = resolvePlainEnvironment(profile, previousPlainEnvironment, {})
@@ -364,11 +366,11 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-030 production migration bytes', () => {
+test('OrgMaster exact 001-031 production migration bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
-  assert.equal(bundle.bundle.entries.length, 30)
+  assert.equal(bundle.bundle.entries.length, 31)
   assert.equal(bundle.bundle.entries[10].version, 'dev040-r2-orgmaster-011')
   assert.equal(bundle.bundle.entries[11].version, 'dev047-orgmaster-012')
   assert.equal(bundle.bundle.entries[12].version, 'dev049-orgmaster-013')
@@ -392,6 +394,12 @@ test('OrgMaster exact 001-030 production migration bytes', () => {
   assert.equal(bundle.bundle.entries[29].path, 'db/migrations/030_dev057_employee_number_command_receipt.sql')
   assert.equal(bundle.bundle.entries[29].sourceSha256, 'bade78acd6221b85c474fe7e7a5aacb8efb3e2b08ca2294e4fe384e545b66bcb')
   assert.equal(bundle.bundle.entries[29].appliedSha256, '5501715799f5b695467b6ccc146df5f2c0d147fdb5dcf8ad52777ac50c3acf87')
+  assert.equal(bundle.bundle.entries[30].version, 'dev014-orgmaster-031')
+  assert.equal(bundle.bundle.entries[30].sourceSha256, '586a7d829041272c67df31f9d9d6531dfb16497dfdb780be954bb05e259d8ab7')
+  assert.equal(bundle.bundle.entries[30].appliedSha256, '676c231bf2f6f31d9fc153603b8429894fa0e1b0d1adb4fedc07a103d87295b9')
+  const changed30 = structuredClone(profile)
+  changed30.migrations.entries[29].sourceSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev040V3Profile(changed30, n1c), /MIGRATION_PREFIX_001_030_DRIFT/u)
   const changedPrefix = structuredClone(profile)
   changedPrefix.migrations.entries[28].sourceSha256 = '0'.repeat(64)
   assert.throws(() => assertDev040V3Profile(changedPrefix, n1c), /MIGRATION_PREFIX_001_029_DRIFT/u)
@@ -492,4 +500,21 @@ test('OrgMaster owner prepare binds the distinct DEV-057 employee number command
   assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION')
   fixture.values.readiness.slice = '057-PRINCIPAL-GRANTS-V4'
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+})
+
+test('DEV-014 owner prepare binds lifecycle v2 to exact source and keeps the trigger off', () => {
+  const plain = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+    .map((name) => [name, 'fixture-public-value']))
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: resolvePlainEnvironment(profile, plain), secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  fixture.intent.baselineIntentRef = ref('baseline-release-intent')
+  const remediation = DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION
+  fixture.values.authorization = { ...fixture.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-PRINCIPAL-LIFECYCLE-V2', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-PRINCIPAL-LIFECYCLE-V2', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION')
+  const enabled = buildRuntimeConfig(profile, { plainEnvironment: resolvePlainEnvironment(profile, runtimeConfig.plainEnvironment, { ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED: 'true' }), secretVersions: runtimeConfig.secretVersions })
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile, values: { ...fixture.values, runtimeConfig: { ...fixture.values.runtimeConfig, runtimeConfig: enabled } } }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/)
+  fixture.values.readiness.remediation = { ...remediation, appliedSha256: '0'.repeat(64) }
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /DEV014_PRINCIPAL_LIFECYCLE_V2_AUTHORITY_INVALID/)
 })

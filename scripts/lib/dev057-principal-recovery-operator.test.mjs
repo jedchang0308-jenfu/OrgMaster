@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { recoveryBuildRequest, assertRecoveryBuildReadback,
   recoveryRevisionRequest, assertRecoveryRevisionReadback,
-  recoveryProof, recoveryProofSha256 } from './dev057-principal-recovery-operator.mjs'
+  recoveryProof, recoveryProofSha256, recoveryOperationBinding } from './dev057-principal-recovery-operator.mjs'
 
 const sourceRevision = 'a'.repeat(40)
 const oldRevision = 'orgmaster-prod-oldrevision'
@@ -79,4 +79,16 @@ test('immutable proof joins the only safe rollback revision to the service UID',
   assert.throws(() => recoveryProof({ sourceRevision, serviceUid: before.uid,
     oldRevision, recoveryRevision: oldRevision, imageDigest }),
   /DEV057_RECOVERY_OPERATOR_PROOF_INPUT_INVALID/u)
+})
+
+test('same source and exact baseline reuse one operation while a recovered baseline needs a distinct immutable proof', () => {
+  const first = recoveryOperationBinding({ sourceRevision, serviceUid: before.uid, oldRevision })
+  assert.deepEqual(recoveryOperationBinding({ sourceRevision, serviceUid: before.uid, oldRevision }), first)
+  const next = recoveryOperationBinding({ sourceRevision, serviceUid: before.uid, oldRevision: first.revision })
+  assert.notEqual(next.receiptName, first.receiptName)
+  assert.notEqual(next.revision, first.revision)
+  assert.equal(recoveryProof({ sourceRevision, serviceUid: before.uid, oldRevision: first.revision,
+    recoveryRevision: next.revision, imageDigest }).recoveryRevision, next.revision)
+  assert.throws(() => recoveryProof({ sourceRevision, serviceUid: before.uid, oldRevision: first.revision,
+    recoveryRevision: first.revision, imageDigest }), /PROOF_INPUT_INVALID/u)
 })

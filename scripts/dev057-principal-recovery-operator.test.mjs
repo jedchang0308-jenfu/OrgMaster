@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { executeRecoveryOperation } from './dev057-principal-recovery-operator.mjs'
+import { parseDeployProductionArgs } from './dev040-deploy-production.mjs'
 
 const sourceRevision = 'a'.repeat(40)
 const oldRevision = 'orgmaster-prod-oldrevision'
@@ -31,12 +32,13 @@ function harness(scaling = { scalingMode: 'AUTOMATIC' }) {
     ingress: 'INGRESS_TRAFFIC_ALL', invokerIamDisabled: true,
     defaultUriDisabled: false, traffic: [oldTraffic], trafficStatuses: [oldTraffic] }
   const calls = []
-  let receipt = null
+  const receipts = new Map()
+  const revisions = new Map()
   let buildRequest = null
   let revisionRequest = null
   const transport = {
-    async readBytes() {
-      if (receipt) return receipt
+    async readBytes(uri) {
+      if (receipts.has(uri)) return receipts.get(uri)
       const error = new Error('missing'); error.code = 'MISSING'; throw error
     },
     async getService() { return structuredClone(service) },
@@ -67,29 +69,40 @@ function harness(scaling = { scalingMode: 'AUTOMATIC' }) {
     async waitArtifactEvidence() { calls.push('scan'); return { status: 'PASS' } },
     async patchService(_profile, request, mask) {
       assert.equal(mask, 'template')
-      assert.equal(service.traffic[0].revision, oldRevision)
+      assert.equal(request.etag, service.etag)
       revisionRequest = request
       calls.push('revision')
-      service = { ...service, etag: 'etag-two', generation: '11', observedGeneration: '11',
+      const generation = String(Number(service.generation) + 1)
+      service = { ...service, etag: `etag-${generation}`, generation, observedGeneration: generation,
         latestCreatedRevision: request.template.revision }
+      revisions.set(request.template.revision, { name: `${service.name}/revisions/${request.template.revision}`,
+        serviceAccount: request.template.serviceAccount,
+        conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }],
+        containers: [{ name: 'orgmaster', image: imageDigest,
+          startupProbe: { httpGet: { path: '/login', port: 8080 } } }] })
       return { response: structuredClone(service) }
     },
     async getRevision(_profile, name) {
-      assert.equal(name, revisionRequest.template.revision)
-      return { name: `${service.name}/revisions/${name}`,
-        serviceAccount: revisionRequest.template.serviceAccount,
-        conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }],
-        containers: [{ name: 'orgmaster', image: imageDigest,
-          startupProbe: { httpGet: { path: '/login', port: 8080 } } }] }
+      assert.ok(revisions.has(name))
+      return revisions.get(name)
     },
     async putJson(uri, proof) {
       calls.push('receipt')
       const bytes = Buffer.from(`${JSON.stringify(proof)}\n`)
-      receipt = { bytes, ref: { uri, sha256: hash(bytes) }, metadata: { generation: '43' } }
+      assert.equal(receipts.has(uri), false, 'new proof publication must never overwrite an immutable receipt')
+      const receipt = { bytes, ref: { uri, sha256: hash(bytes) }, metadata: { generation: String(43 + receipts.size) } }
+      receipts.set(uri, receipt)
       return receipt
     },
   }
-  return { transport, calls, service: () => service }
+  return { transport, calls, receipts, service: () => service,
+    serveMaintenance(revision) {
+      assert.ok(revisions.has(revision))
+      const generation = String(Number(service.generation) + 1)
+      const traffic = [{ type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision, percent: 100 }]
+      service = { ...service, generation, observedGeneration: generation, etag: `etag-${generation}`,
+        scaling: { scalingMode: 'AUTOMATIC', maxInstanceCount: 1 }, traffic, trafficStatuses: traffic }
+    } }
 }
 
 test('owner recovery operator builds once, creates only an untagged revision, and reuses the immutable proof', async () => {
@@ -99,6 +112,7 @@ test('owner recovery operator builds once, creates only an untagged revision, an
   const first = await executeRecoveryOperation(input)
   assert.equal(first.status, 'PASS')
   assert.equal(first.imageDigest, imageDigest)
+  assert.deepEqual(parseDeployProductionArgs([`--principal-only-recovery-ref=${first.ref.uri}#sha256=${first.ref.sha256}`]).principalOnlyRecoveryRef, first.ref)
   assert.deepEqual(h.calls, ['source', 'build', 'artifact', 'scan', 'revision', 'receipt'])
   assert.equal(h.service().traffic[0].revision, oldRevision)
   assert.equal(h.service().trafficStatuses.some((row) => row.tag), false)
@@ -113,6 +127,26 @@ test('owner recovery operator refuses a non-official source before a provider mu
     archive: Buffer.from('source'), sourceProof: { ...sourceProof, branchProtected: false },
     transport: h.transport }), /DEV057_RECOVERY_OPERATOR_SOURCE_INVALID/u)
   assert.deepEqual(h.calls, [])
+})
+
+test('same-source consecutive maintenance recoveries allocate distinct immutable proofs without reusing the serving recovery as rollback', async () => {
+  const h = harness()
+  const input = { profile, sourceRevision, archive: Buffer.from('official-source-archive'), sourceProof, transport: h.transport }
+  const first = await executeRecoveryOperation(input)
+  const firstBytes = Buffer.from(h.receipts.get(first.ref.uri).bytes)
+  h.serveMaintenance(first.recoveryRevision)
+  const second = await executeRecoveryOperation(input)
+  assert.equal(second.status, 'PASS')
+  assert.notEqual(second.ref.uri, first.ref.uri)
+  assert.notEqual(second.recoveryRevision, first.recoveryRevision)
+  assert.deepEqual(h.receipts.get(first.ref.uri).bytes, firstBytes)
+  assert.equal(JSON.parse(h.receipts.get(second.ref.uri).bytes).oldRevision, first.recoveryRevision)
+  assert.equal((await executeRecoveryOperation(input)).status, 'REUSED_PASS')
+  h.serveMaintenance(second.recoveryRevision)
+  const third = await executeRecoveryOperation(input)
+  assert.equal(third.status, 'PASS')
+  assert.equal(new Set([first.recoveryRevision, second.recoveryRevision, third.recoveryRevision]).size, 3)
+  assert.equal(h.receipts.size, 3)
 })
 
 test('stopped owner recovery creates an untagged revision without reopening traffic or scaling', async () => {

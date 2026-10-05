@@ -10,7 +10,7 @@ import { createGitArchive } from './lib/dev012-owner-stage-executor.mjs'
 import { verifyOfficialMergedSource } from './lib/dev012-official-source-review.mjs'
 import { assertRecoveryProofReadback } from './lib/dev057-principal-only-release.mjs'
 import { assertRecoveryBaseline, recoveryBuildRequest, assertRecoveryBuildReadback,
-  recoveryRevisionRequest, assertRecoveryRevisionReadback, recoveryProof } from './lib/dev057-principal-recovery-operator.mjs'
+  recoveryRevisionRequest, assertRecoveryRevisionReadback, recoveryProof, recoveryOperationBinding } from './lib/dev057-principal-recovery-operator.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const bucket = 'jenfu-platform-prod-orgmaster-release'
@@ -53,13 +53,22 @@ export async function executeRecoveryOperation({ profile, sourceRevision, archiv
     sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED') {
     throw new Error('DEV057_RECOVERY_OPERATOR_SOURCE_INVALID')
   }
-  const receiptUri = `gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/${sourceRevision}.json`
-  const existing = await optionalReceipt(transport, receiptUri)
+  const before = await transport.getService(profile)
+  const oldRevision = transport.effectiveRevision(before)
+  assertRecoveryBaseline({ profile, service: before, oldRevision, sourceRevision })
+  const binding = recoveryOperationBinding({ sourceRevision, serviceUid: before.uid, oldRevision })
+  const receiptRoot = `gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/`
+  const receiptUri = `${receiptRoot}${binding.receiptName}`
+  let existing = await optionalReceipt(transport, receiptUri)
+  if (!existing) {
+    const legacy = await optionalReceipt(transport, `${receiptRoot}${sourceRevision}.json`)
+    if (legacy?.value?.oldRevision === oldRevision && legacy.value.serviceUid === before.uid) existing = legacy
+  }
   if (existing) {
     const proof = existing.value
     const service = await transport.getService(profile)
     const revision = await transport.getRevision(profile, proof.recoveryRevision)
-    assertRecoveryProofReadback({ sourceRevision, oldRevision: proof.oldRevision,
+    assertRecoveryProofReadback({ sourceRevision, oldRevision,
       binding: { revision: proof.recoveryRevision,
         imageDigest: proof.imageDigest, serviceUid: proof.serviceUid,
         receiptRef: existing.ref },
@@ -67,10 +76,7 @@ export async function executeRecoveryOperation({ profile, sourceRevision, archiv
     return { status: 'REUSED_PASS', ref: existing.ref,
       generation: String(existing.metadata.generation) }
   }
-  const before = await transport.getService(profile)
-  const oldRevision = transport.effectiveRevision(before)
-  assertRecoveryBaseline({ profile, service: before, oldRevision, sourceRevision })
-  const plannedRevision = `orgmaster-prod-recovery-${sourceRevision.slice(0, 12)}`
+  const plannedRevision = binding.revision
   if ([plannedRevision, `${before.name}/revisions/${plannedRevision}`].includes(before.latestCreatedRevision)) {
     throw new Error('DEV057_RECOVERY_PARTIAL_REVISION_REQUIRES_READBACK')
   }

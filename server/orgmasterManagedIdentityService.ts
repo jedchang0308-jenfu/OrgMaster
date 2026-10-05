@@ -144,6 +144,10 @@ export function createManagedIdentityService(input: {
 }): ManagedIdentityServiceV1 {
   const repository = input.repository ?? createManagedIdentityRepository({ root: input.root, devEnabled: input.devEnabled })
   const directory = input.directory
+  const reserveInteractiveDirectoryRead = async () => {
+    try { await repository.reserveDirectoryRead() }
+    catch { throw new ManagedIdentityServiceError('DIRECTORY_READ_UNAVAILABLE', { retryable: true }) }
+  }
   const domain = input.managedDomain ?? (input.devEnabled ? 'orgmaster.test' : 'jenfu.com.tw')
   const customerId = input.directoryCustomerId ?? (input.devEnabled ? 'local-customer' : '')
   const readGovernance = async () => {
@@ -236,6 +240,7 @@ export function createManagedIdentityService(input: {
     const parsedEmail = parseManagedPrimaryEmail(request.primaryEmail, domain)
     if (!parsedEmail.ok) throw new ManagedIdentityServiceError(parsedEmail.code)
     if (!directory) throw new ManagedIdentityServiceError('DIRECTORY_READ_UNAVAILABLE', { retryable: true })
+    await reserveInteractiveDirectoryRead()
     const result = await directory.findExactCandidate(parsedEmail.value)
     if (!result.ok) {
       if (result.kind === 'retryable_error') throw new ManagedIdentityServiceError('DIRECTORY_READ_UNAVAILABLE', { retryable: true })
@@ -259,6 +264,7 @@ export function createManagedIdentityService(input: {
     try { confirmation = await repository.readCandidateForConfirmation({ ...request, employeeId, actor: actor.principalId }) } catch (error) { return mapStoreError(error) }
     if (confirmation.kind === 'replayed') return viewFor(employeeId, actor)
     if (!directory) throw new ManagedIdentityServiceError('DIRECTORY_READ_UNAVAILABLE', { retryable: true })
+    await reserveInteractiveDirectoryRead()
     const live = await directory.readByDirectoryKey(confirmation.snapshot.directoryCustomerId, confirmation.snapshot.directoryUserId)
     if (!live.ok) {
       if (live.kind === 'retryable_error') throw new ManagedIdentityServiceError('DIRECTORY_READ_UNAVAILABLE', { retryable: true })

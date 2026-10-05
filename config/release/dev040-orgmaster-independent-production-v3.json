@@ -157,7 +157,8 @@
       "ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT",
       "ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL",
       "ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL",
-      "ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT"
+      "ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT",
+      "ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED"
     ],
     "requiredSecretNames": [
       "ORGMASTER_POSTGRES_URL",
@@ -197,6 +198,10 @@
         "allowedValues": [
           "on"
         ]
+      },
+      "ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED": {
+        "defaultValue": "false",
+        "allowedValues": ["false", "true"]
       }
     }
   },
@@ -416,6 +421,13 @@
         "path": "db/migrations/030_dev057_employee_number_command_receipt.sql",
         "sourceSha256": "bade78acd6221b85c474fe7e7a5aacb8efb3e2b08ca2294e4fe384e545b66bcb",
         "appliedSha256": "5501715799f5b695467b6ccc146df5f2c0d147fdb5dcf8ad52777ac50c3acf87"
+      },
+      {
+        "order": 31,
+        "version": "dev014-orgmaster-031",
+        "path": "db/migrations/031_dev014_principal_lifecycle_v2.sql",
+        "sourceSha256": "586a7d829041272c67df31f9d9d6531dfb16497dfdb780be954bb05e259d8ab7",
+        "appliedSha256": "676c231bf2f6f31d9fc153603b8429894fa0e1b0d1adb4fedc07a103d87295b9"
       }
     ]
   },

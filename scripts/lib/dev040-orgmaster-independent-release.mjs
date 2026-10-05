@@ -18,6 +18,7 @@ const REQUIRED_PLAIN_ENV = [
   'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN', 'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
   'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
   'ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL', 'ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT',
+  'ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED',
 ]
 const REQUIRED_SECRET_ENV = ['ORGMASTER_POSTGRES_URL', 'ORGMASTER_SESSION_HASH_PEPPER']
 const PRODUCTION_MIGRATION_PATHS = [
@@ -51,6 +52,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   'db/migrations/028_dev057_ai_pdm_principal_effective_grants_v3.sql',
   'db/migrations/029_dev057_human_business_principal_grants_v4.sql',
   'db/migrations/030_dev057_employee_number_command_receipt.sql',
+  'db/migrations/031_dev014_principal_lifecycle_v2.sql',
 ]
 
 function fail(code, detail = '') {
@@ -109,13 +111,15 @@ export function assertDev040V3Profile(profile, n1c) {
     || fixed.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL !== 'platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com'
     || fixed.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT !== '101029748006912113815'
     || profile.environment.candidateOriginEnvironmentName !== 'ORGMASTER_RELEASE_CANDIDATE_ORIGIN') fail('ENVIRONMENT_VALUE_DRIFT')
-  if (JSON.stringify(profile.environment.controlledValues) !== JSON.stringify({ ORGMASTER_JENFU_SSO_HANDOFF_MODE: { defaultValue: 'on', allowedValues: ['on'] } })) fail('ENVIRONMENT_VALUE_DRIFT')
+  if (JSON.stringify(profile.environment.controlledValues) !== JSON.stringify({ ORGMASTER_JENFU_SSO_HANDOFF_MODE: { defaultValue: 'on', allowedValues: ['on'] }, ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED: { defaultValue: 'false', allowedValues: ['false', 'true'] } })) fail('ENVIRONMENT_VALUE_DRIFT')
   if (profile.environment.allowedSecretIds?.ORGMASTER_POSTGRES_URL !== 'orgmaster-prod-postgres-url' || profile.environment.allowedSecretIds?.ORGMASTER_SESSION_HASH_PEPPER !== 'orgmaster-prod-session-pepper' || profile.environment.numericVersionsRequired !== true) fail('SECRET_BOUNDARY_DRIFT')
   const order = profile.migrations?.entries?.map((entry) => entry.path)
   if (profile.migrations?.ledger !== 'orgmaster_core.schema_migrations' || profile.migrations?.baselineCount !== 10 || JSON.stringify(order) !== JSON.stringify(PRODUCTION_MIGRATION_PATHS) || JSON.stringify(order.slice(0, 10)) !== JSON.stringify(n1c.migration.order)) fail('MIGRATION_MANIFEST_DRIFT')
   if (profile.migrations.entries.some((entry, index) => entry.order !== index + 1 || !H64.test(entry.sourceSha256) || !H64.test(entry.appliedSha256))) fail('MIGRATION_MANIFEST_DRIFT')
   const immutablePrefixSha256 = createHash('sha256').update(JSON.stringify(profile.migrations.entries.slice(0, 29).map(({ order: entryOrder, version, path, sourceSha256, appliedSha256 }) => [entryOrder, version, path, sourceSha256, appliedSha256]))).digest('hex')
   if (immutablePrefixSha256 !== DEV057_MIGRATION_PREFIX_001_029_SHA256) fail('MIGRATION_PREFIX_001_029_DRIFT')
+  const prefix30Sha256 = createHash('sha256').update(JSON.stringify(profile.migrations.entries.slice(0, 30).map(({ order: entryOrder, version, path, sourceSha256, appliedSha256 }) => [entryOrder, version, path, sourceSha256, appliedSha256]))).digest('hex')
+  if (prefix30Sha256 !== 'd02cb50e2d77a7c1b3e72a8e82e44677af17beae4eb7e0e81fc1816ed8e8e062') fail('MIGRATION_PREFIX_001_030_DRIFT')
   if (Object.values(profile.sideEffects || {}).some((value) => value !== 'DISABLED')) fail('SIDE_EFFECT_ENABLED')
   if (profile.operations?.CONFIGURE_ENTRYPOINT !== 'run.projects.locations.services.patch?updateMask=ingress,defaultUriDisabled,invokerIamDisabled') fail('ENTRYPOINT_OPERATION_MISSING')
   if (JSON.stringify(profile.edge) !== JSON.stringify({ servingDependency: false, rollbackDependency: false, ordinaryReleaseMutations: 0, disposition: 'RETAINED_UNUSED_EDGE' })) fail('EDGE_BOUNDARY_DRIFT')

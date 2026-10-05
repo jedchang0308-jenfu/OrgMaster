@@ -1,0 +1,11 @@
+{
+  "contractId": "orgmaster.workload-principals.v1",
+  "contractVersion": "orgmaster.workload-principals.v1",
+  "owner": "orgmaster",
+  "signature": "orgmaster_contract.v_workload_principals_v1->TABLE(contract_version text,principal_id text,owner text,purpose text,provider_issuer text,provider_subject text,db_session_user text,binding_version bigint,enabled boolean)",
+  "signatureSha256": "83b4ddecc6a5315952e3ec5d7bbe30894e588b24f9731a5dcdcda4f1ddbecf03",
+  "payloadSha256": null,
+  "migration": "031_dev014_principal_lifecycle_v2.sql",
+  "authority": "DEV-014 current-lifecycle-completion-20261005",
+  "state": "CANDIDATE_UNAPPLIED"
+}

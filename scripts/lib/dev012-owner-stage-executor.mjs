@@ -5,6 +5,7 @@ import { gzipSync } from 'node:zlib'
 import { assertImmutableRef, assertProtectedGitHubContext, assertRuntimeConfig, candidateTagUriMatches, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
 import { dev013L4SequenceStep, dev013TerminalTransitionFact } from './dev013-l4-transition-sequence.mjs'
 import { buildDev014ConsumerConformance } from './dev014-consumer-conformance.mjs'
+import { assertDev014PrincipalLifecycleContainment } from './dev014-principal-lifecycle-release.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 export { candidateTagUriMatches } from './dev012-owner-release-runtime.mjs'
 
@@ -85,6 +86,8 @@ function assertIntentBase(intent, profile, intentRef, intentSha256) {
   return intent
 }
 
+import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION, assertDev014PrincipalLifecycleV2Append, assertDev014PrincipalLifecycleV2Remediation, assertDev014PrincipalLifecycleEnablement } from './dev014-principal-lifecycle-release.mjs'
+
 function acceptedStatus(value, statuses) {
   return value && statuses.includes(value.status) && value.releaseAuthority === true && value.evidenceScope !== 'LOCAL_SYNTHETIC'
 }
@@ -128,6 +131,20 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
       return { releaseMode: employeeNumberCommandReceiptV2 ? 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION' : principalGrantsV4 ? 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION' : principalGrantsV3 ? 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION' : cutoverSource ? 'DEV057_CUTOVER_SOURCE_REMEDIATION' : principalContract ? 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' : 'DEV057_WRITER_FENCE_REMEDIATION', remediation: expectedRemediation }
     }
     if (isDev014) {
+      if (values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-ENABLE') {
+        return assertDev014PrincipalLifecycleEnablement({profile,intent,readiness:values.readiness,authorization:values.authorization,after:runtime})
+      }
+      if (values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-V2') {
+        const transition = assertDev014PrincipalLifecycleV2Remediation(values.readiness, values.authorization)
+        if (!intent.baselineIntentRef
+          || values.authorization.ownerApplicationId !== profile.application.id || values.readiness.ownerApplicationId !== profile.application.id
+          || values.authorization.sourceRevision !== intent.sourceRevision || values.readiness.sourceRevision !== intent.sourceRevision
+          || values.authorization.releaseId !== intent.releaseId || values.readiness.releaseId !== intent.releaseId
+          || canonicalize(values.authorization.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
+          || runtime.plainEnvironment?.ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED !== 'false') fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
+        return transition
+      }
       if (values.readiness?.slice === '014-PRODUCER-CONTRACT') {
         const expectedRemediation = {
           kind: 'MANAGED_IDENTITY_LIFECYCLE_CONTRACT_COMPLETION',
@@ -385,8 +402,9 @@ export function assertMigrationReceipt(value, profile, intent, { historical = fa
       const principalGrantsV4Remediation = forwardPlan?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION'
       const employeeNumberCommandReceiptV2Remediation = forwardPlan?.releaseMode === 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'
       const principalGrantsV3Remediation = forwardPlan?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION'
-      const expectedLedgerCount = employeeNumberCommandReceiptV2Remediation ? 30 : principalGrantsV4Remediation ? 29 : principalGrantsV3Remediation ? 28 : cutoverSourceRemediation ? 27 : principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
-      const maximumAppliedCount = employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
+      const lifecycleV2Remediation = forwardPlan?.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION'
+      const expectedLedgerCount = lifecycleV2Remediation ? 31 : employeeNumberCommandReceiptV2Remediation ? 30 : principalGrantsV4Remediation ? 29 : principalGrantsV3Remediation ? 28 : cutoverSourceRemediation ? 27 : principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const maximumAppliedCount = lifecycleV2Remediation || employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
       if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
     }
@@ -516,6 +534,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     }
     if (!verifyRoutineRelease) fail('ROUTINE_VERIFIER_REQUIRED')
     const routine = await verifyRoutineRelease({ intent, values, service })
+    if (routine.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION') assertDev014PrincipalLifecycleContainment(intent, profile, service)
     if (derived.controlledEnvironmentAuthority.releaseMode === 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD' && routine.releaseMode !== 'ROUTINE_UNCHANGED_RUNTIME') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION' && routine.releaseMode !== 'DEV014_LOGIN_FIXTURE_CORRECTION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION' && routine.releaseMode !== 'DEV057_WRITER_FENCE_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
@@ -524,6 +543,8 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION' && routine.releaseMode !== 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION' && routine.releaseMode !== 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_ENABLEMENT' && routine.releaseMode !== 'DEV014_PRINCIPAL_LIFECYCLE_ENABLEMENT') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (existing) {
       if (canonicalize(existing.value.facts.prerequisiteRefs) !== canonicalize(Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])))) fail('PREPARE_PREREQUISITE_INVALID')
       return existing
@@ -569,6 +590,15 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (!prepare.value.facts.routine?.baselineMigrationRef || canonicalize(prepare.value.facts.routine.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)) fail('ROUTINE_VERIFICATION_MISSING')
     const allowForward = prepare.value.facts.routine.migrationDisposition === 'FORWARD_APPLY'
     if (!allowForward && prepare.value.facts.routine.migrationDisposition !== 'UNCHANGED_VERIFIED') fail('ROUTINE_MIGRATION_DISPOSITION_INVALID')
+    if (prepare.value.facts.routine.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION') {
+      const service = await transport.getService(profile)
+      const recovery = assertDev014PrincipalLifecycleContainment(intent, profile, service)
+      const [proof, revision] = await Promise.all([
+        transport.readJson(recovery.receiptRef, profile.artifact.releaseBucket, ['receipts']),
+        transport.getRevision(profile, recovery.revision),
+      ])
+      assertPrincipalOnlyRecoveryReadback({ intent, profile, proof: proof.value, service, revision })
+    }
     let receipt = existing
     if (allowForward) {
       if (!receipt) {
@@ -683,7 +713,11 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
   const prepare = await optionalNamedJson(transport, paths.prepare, profile)
   const migration = await optionalNamedJson(transport, paths.migrate, profile)
   if (migration) assertMigrationReceipt(migration.value, profile, intent, { historical: true })
-  const databaseDisposition = migration ? (migration.value.facts?.disposition ?? 'FORWARD_APPLIED') : 'NOT_APPLIED'
+  // A failed Job or missing receipt does not prove that its transaction never
+  // committed. The next lifecycle attempt must inspect/replay the exact ledger.
+  const lifecycleV2Remediation = prepare?.value?.facts?.routine?.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION'
+  const databaseDisposition = migration ? (migration.value.facts?.disposition ?? 'FORWARD_APPLIED')
+    : lifecycleV2Remediation ? 'UNKNOWN_REQUIRES_LEDGER_READBACK' : 'NOT_APPLIED'
   const rollbackRevision = principalOnlyRollbackRevision(intent)
   let disposition = 'PRE_ACTIVATION_ABORTED'
   let entrypointRecovery = { changed: false, result: 'NOT_REQUIRED' }
@@ -716,7 +750,17 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
       await transport.removeCandidateTag({ profile, tag: deterministicTag, candidateRevision: deterministicRevision, expectedActiveRevision: activeRevision, deadlineAt: intent.deadlineAt })
     }
   }
-  const rollback = await writeStage(transport, paths, profile, intent, 'rollback', entrypoint?.ref ?? candidate?.ref ?? migration?.ref ?? null, { result: disposition, previousRevision: rollbackRevision, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'], entrypointRecovery, databaseDisposition })
+  let maintenanceRecovery = null
+  // Before a sealed candidate exists, the safe abort stays MANUAL0 and keeps
+  // the immutable prior RELEASED baseline for a new bounded forward attempt.
+  // Do not label an unprovable/unknown migration outcome as a deployed baseline.
+  if (candidate && intent.principalOnlyRecovery && lifecycleV2Remediation) {
+    const proof = await transport.readJson(intent.principalOnlyRecovery.receiptRef, profile.artifact.releaseBucket, ['receipts'])
+    const restored = await transport.restorePrincipalOnlyMaintenance({ profile, intent, proof: proof.value, deadlineAt: intent.deadlineAt })
+    maintenanceRecovery = { revision: rollbackRevision, providerOperationRef: restored.operationRef, status: 'PRINCIPAL_ONLY_MAINTENANCE_READ_BACK' }
+    disposition = 'ROLLED_BACK'
+  }
+  const rollback = await writeStage(transport, paths, profile, intent, 'rollback', entrypoint?.ref ?? candidate?.ref ?? migration?.ref ?? null, { result: disposition, previousRevision: rollbackRevision, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'], entrypointRecovery, databaseDisposition, ...(maintenanceRecovery ? { maintenanceRecovery } : {}) })
   const terminal = stageReceipt({ profile, intent, stage: 'terminal', previousReceiptRef: rollback.ref, facts: { result: disposition, previousRevision: rollbackRevision, entrypointRecovery, databaseDisposition }, observedAt: transport.now() })
   const terminalResult = await transport.putJson(paths.terminal, terminal, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
   await transport.publishIncident(profile, { correlationId: `${intent.releaseId}-${environment.GITHUB_RUN_ATTEMPT ?? '1'}`, ownerApplicationId: profile.application.id, sourceLockSha256: intent.sourceLockRef.sha256, eventRef: terminalResult.ref, occurredAt: transport.now() })

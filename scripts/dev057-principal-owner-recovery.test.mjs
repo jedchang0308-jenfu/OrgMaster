@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildRuntimeConfig, canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
+import { assertPrincipalOnlyMaintenanceReadback, principalOnlyMaintenanceRequest } from './lib/dev057-principal-only-release.mjs'
 const H40 = 'a'.repeat(40)
 const bucket = 'jenfu-platform-prod-orgmaster-release'
 const previousRevision = 'orgmaster-prod-previous'
@@ -13,7 +14,7 @@ const migrationRunnerDigest = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/org
 
 function recordedHarness() {
   const objects = new Map()
-  const calls = { createBuild: 0, runMigrationJob: 0 }
+  const calls = { createBuild: 0, runMigrationJob: 0, maintenanceRestore: [] }
   let generation = 0
   let service = {
     name: 'projects/jenfu-platform-prod/locations/asia-east1/services/orgmaster-prod', etag: 'e1', reconciling: false,
@@ -86,6 +87,18 @@ function recordedHarness() {
       if (service.defaultUriDisabled === false) delete service.defaultUriDisabled
       return structuredClone(service)
     },
+    async restorePrincipalOnlyMaintenance({ intent }) {
+      const before = await this.getService()
+      const request = principalOnlyMaintenanceRequest({ service: before, intent })
+      const after = { ...before, etag: 'e-maintenance', generation: String(Number(before.generation) + 1),
+        observedGeneration: String(Number(before.generation) + 1),
+        scaling: request.scaling, traffic: request.traffic, trafficStatuses: request.traffic }
+      assertPrincipalOnlyMaintenanceReadback({ before, after, intent })
+      service = { ...service, ...after }
+      const result = { service: structuredClone(service), operationRef: { name: 'operations/principal-maintenance-restore' } }
+      calls.maintenanceRestore.push({ intent: structuredClone(intent), result })
+      return result
+    },
     async removeCandidateTag({ candidateRevision: exact, expectedActiveRevision }) { assert.equal(exact, candidateRevision); const tagged = service.traffic.find((row) => row.tag); if (tagged && tagged.revision !== exact) throw new Error('CANDIDATE_TAG_OWNER_MISMATCH'); assert.equal(effectiveRevision(service), expectedActiveRevision); service = { ...service, etag: 'e4', generation: '5', observedGeneration: '5', traffic: service.traffic.filter((row) => !row.tag), trafficStatuses: service.trafficStatuses.filter((row) => !row.tag) }; return structuredClone(service) },
     async publishIncident() { return { messageIds: ['1'] } },
   }
@@ -122,6 +135,44 @@ async function authorizedRecordedInput(h, releaseId) {
   }
 }
 
+async function principalLifecycleRecoveryInput(h, releaseId) {
+  const uid = 'd65f379b-a342-4eb3-ba22-109aa5f368c5'
+  const recoveryRevision = 'orgmaster-prod-recovery-abcdef123456'
+  const image = `asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-recovery@sha256:${'9'.repeat(64)}`
+  let automatic = false
+  const getService = h.transport.getService
+  h.transport.getService = async () => ({ ...await getService(), uid,
+    scaling: automatic ? { scalingMode: 'AUTOMATIC', maxInstanceCount: 1 }
+      : { scalingMode: 'MANUAL', manualInstanceCount: 0 } })
+  const getRevision = h.transport.getRevision
+  h.transport.getRevision = async (profile, revision) => revision === recoveryRevision
+    ? { name: `projects/jenfu-platform-prod/locations/asia-east1/services/orgmaster-prod/revisions/${revision}`,
+      containers: [{ name: 'orgmaster', image }], conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] }
+    : getRevision(profile, revision)
+  const proof = await h.transport.putJson(`gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/${H40}.json`, {
+    schemaVersion: 'orgmaster.principal-only-recovery.v1', sourceRevision: H40,
+    projectId: h.profile.target.projectId, region: h.profile.target.region, service: h.profile.target.serviceName,
+    serviceUid: uid, oldRevision: previousRevision, recoveryRevision, imageDigest: image, status: 'PASS',
+  }, { bucket, prefix: 'receipts' })
+  const authorized = await authorizedRecordedInput(h, releaseId)
+  const original = (await h.transport.readJson(authorized.intentResult.ref)).value
+  const principalOnlyRecovery = { revision: recoveryRevision, imageDigest: image, serviceUid: uid, receiptRef: proof.ref }
+  const intentResult = await h.transport.putJson(`gs://${bucket}/receipts/intents/${releaseId}-with-recovery.json`,
+    { ...original, principalOnlyRecovery }, { bucket, prefix: 'receipts' })
+  const input = {
+    ...authorized.input,
+    capsuleRef: intentResult.ref.uri,
+    capsuleSha256: intentResult.ref.sha256,
+    verifyRoutineRelease: async ({ intent }) => ({
+      baselineIntentRef: intent.baselineIntentRef,
+      baselineMigrationRef: proof.ref,
+      migrationDisposition: 'FORWARD_APPLY',
+      releaseMode: 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION',
+    }),
+  }
+  return { h, input, proof, principalOnlyRecovery, recoveryRevision, setAutomatic(value) { automatic = value } }
+}
+
 
 for (const watchdogRecovered of [false, true]) test(`owner Principal-only release restores maintenance and preserves forward repair; watchdog already recovered=${watchdogRecovered}`, async () => {
   const h = recordedHarness()
@@ -138,7 +189,7 @@ for (const watchdogRecovered of [false, true]) test(`owner Principal-only releas
     ? { name: `projects/jenfu-platform-prod/locations/asia-east1/services/orgmaster-prod/revisions/${revision}`,
       containers: [{ name: 'orgmaster', image }], conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }] }
     : getRevision(profile, revision)
-  const proof = await h.transport.putJson(`gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/proof.json`, {
+  const proof = await h.transport.putJson(`gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/${H40}.json`, {
     schemaVersion: 'orgmaster.principal-only-recovery.v1', sourceRevision: H40,
     projectId: h.profile.target.projectId, region: h.profile.target.region, service: h.profile.target.serviceName,
     serviceUid: uid, oldRevision: previousRevision, recoveryRevision, imageDigest: image, status: 'PASS',
@@ -172,4 +223,108 @@ for (const watchdogRecovered of [false, true]) test(`owner Principal-only releas
   assert.deepEqual(trafficCalls, watchdogRecovered ? [] : [recoveryRevision])
   assert.equal(h.transport.effectiveRevision(await h.transport.getService()), recoveryRevision)
   assert.equal(h.service().traffic.some((row) => row.revision === previousRevision), false)
+})
+
+test('DEV-014 lifecycle forward migration rechecks containment before starting the Job', async () => {
+  const h = recordedHarness()
+  const { input, setAutomatic } = await principalLifecycleRecoveryInput(h, 'REL-LIFECYCLE-CONTAINMENT-001')
+  await executeOwnerStage({ ...input, stage: 'prepare' })
+  await executeOwnerStage({ ...input, stage: 'build' })
+
+  setAutomatic(true)
+  await assert.rejects(() => executeOwnerStage({ ...input, stage: 'migrate' }), /DEV014_PRINCIPAL_LIFECYCLE_CONTAINMENT_REQUIRED/u)
+  assert.equal(h.calls.runMigrationJob, 0, 'automatic scaling drift must fail before the migration Job starts')
+})
+
+test('DEV-014 lifecycle remediation forwards once and rollback selects only the maintenance recovery revision', async () => {
+  const h = recordedHarness()
+  const { input, principalOnlyRecovery, recoveryRevision, setAutomatic } = await principalLifecycleRecoveryInput(h, 'REL-LIFECYCLE-RECOVERY-001')
+  h.transport.runMigrationJob = async ({ profile, deployment, outputUri }) => {
+    h.calls.runMigrationJob += 1
+    const core = {
+      schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: profile.application.id,
+      sourceRevision: deployment.sourceRevision, manifestSha256: h.migrationManifestSha256,
+      status: 'PASS', boundaryStatus: 'PASS', baselineCount: 10, minimumLedgerCount: 10,
+      ledgerCount: 31, applied: 1, replayed: 30,
+      crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
+    }
+    return h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) }, { bucket, prefix: 'receipts' })
+  }
+  await executeOwnerStage({ ...input, stage: 'prepare' })
+  await executeOwnerStage({ ...input, stage: 'build' })
+  const migration = await executeOwnerStage({ ...input, stage: 'migrate' })
+  assert.equal(migration.value.ledgerCount, 31)
+  assert.equal(h.calls.runMigrationJob, 1)
+
+  const trafficCalls = []
+  const setTraffic = h.transport.setTraffic
+  h.transport.setTraffic = async (args) => { trafficCalls.push(args.revision); return setTraffic(args) }
+  h.transport.activatePrincipalOnly = async ({ recovery, candidateRevision, candidateTag }) => {
+    assert.deepEqual(recovery, principalOnlyRecovery)
+    setAutomatic(true)
+    return setTraffic({ revision: candidateRevision, candidateTag })
+  }
+  for (const stage of ['candidate', 'entrypoint', 'verify', 'decision', 'activate']) await executeOwnerStage({ ...input, stage })
+  const rollback = await executeOwnerStage({ ...input, stage: 'rollback' })
+
+  assert.equal(JSON.parse(rollback.bytes.toString()).facts.previousRevision, recoveryRevision)
+  assert.deepEqual(trafficCalls.filter((revision) => revision === recoveryRevision), [recoveryRevision])
+  assert.equal(h.calls.maintenanceRestore.length, 1)
+  assert.equal(h.calls.maintenanceRestore[0].intent.principalOnlyRecovery.revision, recoveryRevision)
+  assert.equal(trafficCalls.includes(previousRevision), false)
+  assert.equal(h.transport.effectiveRevision(await h.transport.getService()), recoveryRevision)
+  assert.equal(h.service().scaling.scalingMode, 'AUTOMATIC')
+  assert.equal(Number(h.service().scaling.maxInstanceCount), 1)
+  assert.equal(h.service().traffic.some((row) => row.revision === previousRevision), false)
+})
+
+test('DEV-014 pre-candidate migration failure stays MANUAL 0 and permits a new forward attempt from the released baseline', async () => {
+  const h = recordedHarness()
+  const { input, recoveryRevision } = await principalLifecycleRecoveryInput(h, 'REL-LIFECYCLE-PRE-CANDIDATE-FAIL-001')
+  await executeOwnerStage({ ...input, stage: 'prepare' })
+  await executeOwnerStage({ ...input, stage: 'build' })
+  h.transport.runMigrationJob = async () => {
+    h.calls.runMigrationJob += 1
+    throw new Error('SIMULATED_MIGRATION_JOB_FAILURE')
+  }
+  await assert.rejects(() => executeOwnerStage({ ...input, stage: 'migrate' }), /SIMULATED_MIGRATION_JOB_FAILURE/u)
+
+  const rollback = await executeOwnerStage({ ...input, stage: 'rollback' })
+  const rollbackValue = JSON.parse(rollback.bytes.toString())
+  assert.equal(rollbackValue.facts.result, 'PRE_ACTIVATION_ABORTED')
+  assert.equal(rollbackValue.facts.databaseDisposition, 'UNKNOWN_REQUIRES_LEDGER_READBACK',
+    'a failed Job with no receipt cannot prove that the database transaction did not commit')
+  assert.equal(Object.hasOwn(rollbackValue.facts, 'maintenanceRecovery'), false)
+  assert.equal(h.calls.maintenanceRestore.length, 0, 'before a sealed candidate the safe abort remains quiesced')
+  assert.equal(h.calls.runMigrationJob, 1)
+  const stoppedService = await h.transport.getService(h.profile)
+  assert.equal(h.transport.effectiveRevision(stoppedService), previousRevision)
+  assert.equal(stoppedService.scaling.scalingMode, 'MANUAL')
+  assert.ok([0, '0'].includes(stoppedService.scaling.manualInstanceCount))
+  const abortedControl = JSON.parse((await h.transport.readBytes(`gs://${bucket}/control/active.json`)).bytes.toString())
+  assert.equal(abortedControl.state, 'FINALIZED')
+  assert.equal(abortedControl.result, 'PRE_ACTIVATION_ABORTED')
+  assert.equal(abortedControl.candidateRevision, null)
+
+  const retry = await principalLifecycleRecoveryInput(h, 'REL-LIFECYCLE-PRE-CANDIDATE-RETRY-001')
+  await executeOwnerStage({ ...retry.input, stage: 'prepare' })
+  await executeOwnerStage({ ...retry.input, stage: 'build' })
+  h.transport.runMigrationJob = async ({ profile, deployment, outputUri }) => {
+    h.calls.runMigrationJob += 1
+    const core = {
+      schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: profile.application.id,
+      sourceRevision: deployment.sourceRevision, manifestSha256: h.migrationManifestSha256,
+      status: 'PASS', boundaryStatus: 'PASS', baselineCount: 10, minimumLedgerCount: 10,
+      ledgerCount: 31, applied: 0, replayed: 31,
+      crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
+    }
+    return h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) }, { bucket, prefix: 'receipts' })
+  }
+  const migration = await executeOwnerStage({ ...retry.input, stage: 'migrate' })
+  assert.equal(migration.value.ledgerCount, 31)
+  assert.equal(migration.value.applied, 0, 'fresh readback can prove that the unknown prior Job had already applied 031')
+  assert.equal(migration.value.replayed, 31)
+  assert.equal(h.calls.runMigrationJob, 2, 'retry runs a fresh forward/replay attempt after rechecking its own migration receipt')
+  assert.equal(h.calls.maintenanceRestore.length, 0)
+  assert.equal(recoveryRevision, retry.recoveryRevision)
 })
