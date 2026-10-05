@@ -4,7 +4,7 @@
 
 ## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
 
-[v6 最終映像包裝矯正](qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md)：AI-PDM v6 已發布，但 OrgMaster 正常治理讀回實際500；正式最終 image recipe 漏 COPY v6，正在集中修正 packaging／required regression及普通owner重發。原本 source／PG PASS與兩次正式 FAIL分層保留，不重寫指派或歷史。
+[v6 包裝與 persistence source 矯正](qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md)：PR111 packaging已 RELEASED，正常治理session200；另確認role workspace503來自CloudSQL reader前的local stat。最小port修正、缺失／損壞拒絕與真實PG整鏈已PASS，獨立source QC通過；新版protected PR／ordinary release／正式HTTP及畫面待驗。保留先前404、500、503原FAIL，不重寫指派或歷史。
 
 [本批任務](dev_task.md#dev-057-current-contract) → [exact active reader 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)。同一 active v5/v6 artifact 供 registry、治理讀寫及 role workspace；歷史指派仍只作 provenance，OrgMaster 的角色／scope owner 及唯一 grant v4 不變。新能力及080由AIPDM/DEV-121發布；AI-PDM 正常顯示 v4 直接讀既有已發布 PostgreSQL catalog/grants，不依賴缺 session 的 HTTP workspace。修正後 QA／CI／正式驗證尚未完成；下方前批結論保留其原層級。
 

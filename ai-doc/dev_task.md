@@ -6,13 +6,14 @@
 
 ## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
 
-[v6 最終映像包裝矯正](qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md)：AI-PDM v6 已發布，但 OrgMaster 正常治理讀回實際500；正式最終 image recipe 漏 COPY v6，正在集中修正 packaging／required regression及普通owner重發。原本 source／PG PASS與兩次正式 FAIL分層保留，不重寫指派或歷史。
+[v6 包裝與 persistence source 矯正](qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md)：PR111 packaging已 RELEASED，正常治理session200；另確認role workspace503來自CloudSQL reader前的local stat。最小port修正、缺失／損壞拒絕與真實PG整鏈已PASS，獨立source QC通過；新版protected PR／ordinary release／正式HTTP及畫面待驗。保留先前404、500、503原FAIL，不重寫指派或歷史。
 
 沿既有 `ORGMASTER/DEV-057#identity-grants`，參與 `AIPDM/DEV-121#system-admin-capabilities`；本批 [current reader 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)已 RD Implementation Ready。只修 exact active artifact 的 registry／治理／workspace 一致性，歷史指派不重寫。
 - [x] 本機 exact v5/v6、unknown／mixed／tamper／歷史 snapshot 與正常 server caller 回歸（LOCAL_PASS）。
-- [ ] 真實 PostgreSQL producer→AI-PDM consumer 的 direct/global、非 target Principal、scope、撤權與 expiry。
-- [ ] 同批 protected PR／required CI、ordinary owner release；先 v5正式讀回，再 v6升版後治理及grant readback／L4。
-本機／native整合見[本批checkpoint](qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)；最終QC／required CI與正式exact Jed grant／release／L4尚未完成。前批 Google連結及employee-number correction的原成果保留，不改判定、不新增主任務。
+- [x] 真實 PostgreSQL producer→AI-PDM consumer 的 direct/global、非 target Principal、scope、撤權與 expiry（R11／本批R13；LOCAL_NATIVE_PASS）。
+- [x] 既有protected PR／required CI、v5/v6 ordinary owner release與exact Jed direct/global formal讀回（各自證據，不等於整批L4）。
+- [ ] 本批persistence source矯正的protected PR／required CI、ordinary owner release及v6 workspace／Jed UI驗收。
+本機／native整合見[原checkpoint](qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)與[本次source矯正checkpoint](qa/evidence/DEV057-CATALOG-PACKAGE-20261005/workspace-source-correction-checkpoint.json)；保留原凍結狀態，新版release與正式workspace／UI尚待驗。前批 Google連結及employee-number correction的原成果保留，不改判定、不新增主任務。
 
 ## DEV-057 員工 Google 連結矯正（2026-10-05）
 

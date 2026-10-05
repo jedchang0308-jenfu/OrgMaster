@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "orgmaster.dev057.role-workspace-source-correction.v1",
+  "observedAt": "2026-10-05T15:15:22.197Z",
+  "status": "LOCAL_AND_NATIVE_PG_PASS_RELEASE_PENDING",
+  "priorServingSource": "5b1084f7ff200bde8529c228a6df4496acbab1fb",
+  "priorServingRevision": "orgmaster-prod-43d174f14e7c",
+  "failure": {
+    "rawEvidenceSha256": "f4e9ee66437f2acaf4e907a7f85602fc8ce4834f20bb3ec80b1fcd69a77fbccb",
+    "evidenceName": "dev121-admin-v6-2026-10-05T14-47-17-258Z-evidence.json",
+    "status": "FAIL",
+    "governance": {
+      "path": "/api/orgmaster/governance/session",
+      "status": 200,
+      "actorPrincipalMatches": true,
+      "verifiedSessionMode": true
+    },
+    "roleWorkspace": {
+      "path": "/api/orgmaster/governance/applications/ai-pdm/role-capabilities",
+      "status": 503,
+      "code": null,
+      "error": "ORGMASTER_SOURCE_UNAVAILABLE",
+      "contractVersion": null,
+      "catalogVersion": null,
+      "catalogPayloadHash": null,
+      "dataState": null,
+      "mutationAllowed": null,
+      "roleCount": null,
+      "systemAdminPresent": false,
+      "adminCapabilityCount": null,
+      "explicitAllowCount": null
+    },
+    "sessionCleanup": [
+      {
+        "owner": "OrgMaster",
+        "logoutStatus": 200,
+        "meAfterLogoutStatus": 401,
+        "passed": true
+      },
+      {
+        "owner": "AI-PDM",
+        "logoutStatus": 200,
+        "meAfterLogoutStatus": 401,
+        "passed": true
+      },
+      {
+        "owner": "Platform",
+        "logoutStatus": 200,
+        "meAfterLogoutStatus": 401,
+        "passed": true
+      }
+    ]
+  },
+  "source": {
+    "head": "5b1084f7ff200bde8529c228a6df4496acbab1fb",
+    "project": "C:/VIBE CODING/OrgMaster",
+    "files": [
+      {
+        "sha256": "4a5a8a82c3dd3568662885cc8bc2245270be808188bd11b4c01480125481c259",
+        "path": "server/aiPdmRoleCapabilityStore.ts"
+      },
+      {
+        "sha256": "beaebc0bc5ae0b3482ff749e99f2d5a7fc977d88149be1da8661b484174c880a",
+        "path": "server/aiPdmRoleCapabilityStore.test.ts"
+      },
+      {
+        "sha256": "e031d2fa1a71f5bfdf1ff8fa4c5012d978b1a85ab4e5cc173a0fee23b76006bf",
+        "path": "server/aiPdmRoleCatalogRepository.postgres.test.ts"
+      },
+      {
+        "sha256": "3fc32175e1fbf68c0c87aaa765dc436ca4dc473dc69a631bf8cbb44b51e56bc8",
+        "path": "scripts/qc-dev-047-postgres.mjs"
+      }
+    ]
+  },
+  "regression": {
+    "unit": {
+      "executed": 8,
+      "status": "PASS"
+    },
+    "ordinaryInvocationPostgres": "SKIPPED_NOT_PASS",
+    "typecheck": "PASS",
+    "native": {
+      "artifact": "workspace-native-postgres-r13.json",
+      "sha256": "450997d7496968f4443f977987da8e7f19bc8d03954101c6b3639a9c8a0efcc4",
+      "status": "PASS",
+      "cases": 24,
+      "v6ProductProbe": {
+        "executedCases": 2,
+        "actualCatalogReader": true,
+        "actualWorkspaceReader": true,
+        "restrictedRuntimeRole": "dev057_orgmaster_catalog_probe",
+        "noLocalManifestPositive": "PASS",
+        "localCannotRescueMissingPostgres": "PASS",
+        "localCannotRescueCorruptPostgres": "PASS"
+      },
+      "cleanup": {
+        "clientClosed": true,
+        "auxiliaryClientsClosed": true,
+        "clusterStopped": true,
+        "portReleased": true,
+        "tempRemoved": true
+      }
+    }
+  },
+  "sourceQc": {
+    "agent": "/root/dev121_qc_batch_v6",
+    "mode": "INDEPENDENT_READ_ONLY",
+    "status": "PASS",
+    "remainingP1P2": 0,
+    "correctedFinding": "PG connection URL query override rejected before Pool; protocol, host, DB and admin/runtime identity fenced"
+  },
+  "productionL4": false,
+  "release": "PENDING",
+  "primaryDatabaseWrites": false,
+  "schemaChange": false,
+  "employeeGrantChange": false,
+  "limits": [
+    "Native fixture is isolated synthetic PostgreSQL; not real-provider or Production L4",
+    "R11 catalog probe did not exercise role-workspace source; this regression adds it",
+    "Prior 404, 500 and 503 FAIL records remain historical evidence",
+    "No DEV-122 business completion implied"
+  ]
+}

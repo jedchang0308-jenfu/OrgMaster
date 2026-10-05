@@ -1,0 +1,1272 @@
+{
+  "contract": "DEV-057",
+  "runner": "DEV-057-postgres-qc-v2",
+  "evidenceScope": "TASK_OWNED_LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-10-05T15:12:30.764Z",
+  "productionWrites": false,
+  "executedCaseCount": 24,
+  "validationSlice": "existing-suite",
+  "sourceRevision": "5b1084f7ff200bde8529c228a6df4496acbab1fb",
+  "dirty": [
+    "M scripts/qc-dev-047-postgres.mjs",
+    " M server/aiPdmRoleCapabilityStore.test.ts",
+    " M server/aiPdmRoleCapabilityStore.ts",
+    " M server/aiPdmRoleCatalogRepository.postgres.test.ts"
+  ],
+  "serverVersion": "18.4",
+  "acceptedServerMajors": [
+    17,
+    18
+  ],
+  "migrations": [
+    {
+      "name": "001_dev004_orgmaster_app_sessions.sql",
+      "bytes": 2215,
+      "sha256": "536ac1e1cedcf67a1bb92dd8f19113a45790797dd07123d6a04baa876a14c79e"
+    },
+    {
+      "name": "002_dev006_orgmaster_persistence.sql",
+      "bytes": 5992,
+      "sha256": "10d71fbf556035b307c2b3997ad4e7499e9b3586dc60b351651af4b6973094da"
+    },
+    {
+      "name": "003_dev006_orgmaster_runtime_repository.sql",
+      "bytes": 11823,
+      "sha256": "2680c19df8f4bacddf53d5bfae55fb35658ff63f1e54de3f97727bd4bdd689ba"
+    },
+    {
+      "name": "004_dev040_active_principal_view.sql",
+      "bytes": 4594,
+      "sha256": "09591bddd33680bf584711884fb600ec996b356cff48ccfd1b6343c74a16f5b7"
+    },
+    {
+      "name": "005_dev005_entitlement_governance.sql",
+      "bytes": 41642,
+      "sha256": "cf5efbbe6ce29c9d6d8100961709d19ab90c1af79e31731608ae9a9dbf73a80d"
+    },
+    {
+      "name": "006_dev040_identity_admission_projection.sql",
+      "bytes": 5809,
+      "sha256": "0163c107446b0aeac4ef39b365fc57961133360cac1d9d3152be8e8c89eda3dd"
+    },
+    {
+      "name": "007_dev009_privileged_governance.sql",
+      "bytes": 11026,
+      "sha256": "4d77b8e62981bd67d97cb4c567e787873f43c187a3f23e50b9f670bde50e5c93"
+    },
+    {
+      "name": "008_dev002_portal_app_visibility.sql",
+      "bytes": 4913,
+      "sha256": "9fb17097e01994aa974766d30b60abfe800f5967c9bbcbeb7751231d62a69703"
+    },
+    {
+      "name": "009_dev039_application_entitlement_v2.sql",
+      "bytes": 6509,
+      "sha256": "d306d3242da919ff1fb52554785def319d06ca3f542a3b2b6cbf832164aea81c"
+    },
+    {
+      "name": "010_dev010_neutral_schema_boundary.sql",
+      "bytes": 14752,
+      "sha256": "081c6bc81e4565fae79302ac7be29f1999324d63f169bda7c6af1b581be49ff4"
+    },
+    {
+      "name": "011_dev046_workbench_list_width_preferences.sql",
+      "bytes": 1085,
+      "sha256": "a4370d5ae2d36efdfa8b6590d2241b2edaa696ad01c5ea7d8f6ab7d715eb0aaf"
+    },
+    {
+      "name": "012_dev047_managed_identity_bridge.sql",
+      "bytes": 63281,
+      "sha256": "ab18137f7cc8e3abc270bc67b5c93d765cddb8f48584f017eca52c24336c1680"
+    },
+    {
+      "name": "013_dev049_existing_google_primary_account_link.sql",
+      "bytes": 42753,
+      "sha256": "0518b9d594457fde706cfc007dfa3538b2827256c753dce8ba5f994139716319"
+    },
+    {
+      "name": "014_dev050_orgmaster_session_admission.sql",
+      "bytes": 3699,
+      "sha256": "f39ea5eb7e9f4accbe66961fa73345b788aa609b8a7de658c416335311463867"
+    },
+    {
+      "name": "015_dev013_restore_runtime_session_dml.sql",
+      "bytes": 1330,
+      "sha256": "d3a17f752b89138f4d636d1b21ae5a69a5ae29dc64960c61307398d7a234cc08"
+    },
+    {
+      "name": "016_dev014_managed_identity_lifecycle_contract.sql",
+      "bytes": 3151,
+      "sha256": "9d88d2dca9d72d5b7f9950509452c3483ea34a27d1f6091f3b6f1f9eec77ab4b"
+    },
+    {
+      "name": "017_dev014_invalidation_application_registration.sql",
+      "bytes": 13488,
+      "sha256": "170ce6415959862f2f601c1f0e6ce72b6e43d30931e95ae6cb0f9cbc8d70c3fd"
+    },
+    {
+      "name": "018_dev014_employee_activation_contract.sql",
+      "bytes": 2108,
+      "sha256": "19ca1febb8644869929ba2bd1286f32e3d0b3479d80b91997a41baea82acd450"
+    },
+    {
+      "name": "019_dev014_workspace_revision_contract.sql",
+      "bytes": 2465,
+      "sha256": "16bcc13c0c0b0637681d41ce9e1136fdbdf874615fe3bf22896fc8a7c163c3fe"
+    },
+    {
+      "name": "020_dev014_current_projection_contract.sql",
+      "bytes": 20096,
+      "sha256": "daa88612d4cc67bdb525282c79ab1b9e7a7efe8b0e538dba18140c0a0b1fe94b"
+    },
+    {
+      "name": "021_dev057_identity_grant_writer_fence.sql",
+      "bytes": 34527,
+      "sha256": "8968bbe3603a098be5acc9c7ef06691388890121719a6e2c2e408c08405cc6d9"
+    },
+    {
+      "name": "022_dev014_managed_login_session_admission.sql",
+      "bytes": 4210,
+      "sha256": "1e2c016cb4c5f1107f6c2531688f9e21bfcc2b1c1071565f63364cfa3f5574f8"
+    },
+    {
+      "name": "023_dev014_authority_principal_projection_contract.sql",
+      "bytes": 5801,
+      "sha256": "db9b422b801bb830f03c0448ae748e71047106d92de67080a8ca9d9cbd33bb22"
+    },
+    {
+      "name": "024_dev057_principal_identity_invariants.sql",
+      "bytes": 65396,
+      "sha256": "4fdd1dea344ecbe593c8cd009445e0bd2f43d21b08764929424fb9b81e2f7879"
+    },
+    {
+      "name": "025_dev057_ai_pdm_principal_effective_grants_v2.sql",
+      "bytes": 14455,
+      "sha256": "0a7e3c317398fb73f1388b8d863ef2ed994a9e92839ef94e88ff256292b60061"
+    },
+    {
+      "name": "026_dev057_session_principal_policy_path.sql",
+      "bytes": 4504,
+      "sha256": "cefbdc674845683279675db993def7b54250c0d6e4a7b4fcc51bfbcca74cf51c"
+    },
+    {
+      "name": "027_dev057_principal_cutover_source_manifest.sql",
+      "bytes": 2550,
+      "sha256": "7f42789257264e3a1587e9648e04319f3963fe0c02f6c914555175c53373728a"
+    },
+    {
+      "name": "028_dev057_ai_pdm_principal_effective_grants_v3.sql",
+      "bytes": 14858,
+      "sha256": "24d2742ff1b2232230d1ebb8c203e32568aec1add6ee0549ef3bdaa526a7139f"
+    },
+    {
+      "name": "029_dev057_human_business_principal_grants_v4.sql",
+      "bytes": 14534,
+      "sha256": "e24bad6ebafe8bbe9ec9ce167758ac52879d04ca670cfff4900c770dc41e5b6c"
+    },
+    {
+      "name": "030_dev057_employee_number_command_receipt.sql",
+      "bytes": 7599,
+      "sha256": "65f60cc28a053e32a685abfa4789f6a8cc194c39d590f62a4e89312f4c180b00"
+    }
+  ],
+  "checks": [
+    {
+      "id": "D57-01",
+      "label": "migration preflight rejects an existing legacy/managed active-principal collision before replacing views",
+      "status": "PASS",
+      "detail": {
+        "expected": "ACTIVE_PRINCIPAL_MAPPING_AMBIGUOUS",
+        "transactionRolledBack": true
+      }
+    },
+    {
+      "id": "D57-10",
+      "label": "migration rejects one principal assigned to two Employees without partial DDL",
+      "status": "PASS",
+      "detail": {
+        "expected": "PRINCIPAL_HISTORY_OWNER_CONFLICT",
+        "transactionRolledBack": true
+      }
+    },
+    {
+      "id": "D57-24",
+      "label": "fixture diagnostic executes native owner SELECTs in a read-only snapshot",
+      "status": "PASS",
+      "detail": {
+        "nativeOwnerMigrations": 29,
+        "readOnlyChecks": 8,
+        "selectedEmployeeCount": 2,
+        "fixturePresent": false,
+        "scope": "SQL_AND_READONLY_CONTRACT_NOT_PRODUCTION_LOGIN"
+      }
+    },
+    {
+      "id": "D57-09",
+      "label": "principal reservations preserve resolved and unresolved provider-pair history",
+      "status": "PASS",
+      "detail": {
+        "resolved": 1,
+        "unresolved": 1,
+        "aiMigratorTypedOnly": true,
+        "directRuntimeTableReadDenied": true
+      }
+    },
+    {
+      "id": "D57-18",
+      "label": "v2 session admission reads published policy roles and applications",
+      "status": "PASS",
+      "detail": {
+        "activePrincipalCount": 1,
+        "platformAccessDenied": true
+      }
+    },
+    {
+      "id": "D57-19",
+      "label": "cutover producer manifest is exact and AI-PDM migrator can read only the contract view",
+      "status": "PASS",
+      "detail": {
+        "manifestRows": 2,
+        "idempotentReplay": true,
+        "coreReadDenied": true
+      }
+    },
+    {
+      "id": "D57-02",
+      "label": "principal mapping and AI-PDM portal visibility do not depend on an OrgMaster role or the AI-PDM authority selector",
+      "status": "PASS",
+      "detail": {
+        "orgmasterRoleAssignments": 0,
+        "legacyIdentityMappingPreserved": true,
+        "portalApplications": [
+          "ai-pdm"
+        ],
+        "authoritySelectorInPortalView": false,
+        "orgmasterSessionRows": 0,
+        "aiOnlySessionRows": 1,
+        "v1ColumnsOwnersAndAclsPreserved": true
+      }
+    },
+    {
+      "id": "D57-03",
+      "label": "effective AI-PDM role assignments remain authority-gated while portal visibility is stable",
+      "status": "PASS",
+      "detail": {
+        "effectiveRoleCount": 1,
+        "authorityVersion": "4",
+        "portalVisibilityUnaffected": true
+      }
+    },
+    {
+      "id": "D57-04",
+      "label": "delegated AI-PDM permission grants portal visibility to the recipient principal",
+      "status": "PASS",
+      "detail": {
+        "recipient": "employee-two",
+        "portalVisible": true,
+        "effectiveRoleAuthorityStillRequired": true,
+        "assignmentVersion": "2"
+      }
+    },
+    {
+      "id": "D57-05",
+      "label": "governance publisher rejects historical-principal reassignment and duplicate active pairs",
+      "status": "PASS",
+      "detail": {
+        "reassignmentRejected": "PRINCIPAL_IDENTITY_RESERVATION_CONFLICT",
+        "duplicateRejected": "ACTIVE_PRINCIPAL_MAPPING_AMBIGUOUS"
+      }
+    },
+    {
+      "id": "D57-06",
+      "label": "bind and governance publication serialize in both writer orders",
+      "status": "PASS",
+      "detail": {
+        "publisherFirst": "bind waited, then rejected the published pair",
+        "binderFirst": "publisher waited, then rejected the reserved pair",
+        "lock": "managed_identity_admission_authority.singleton"
+      }
+    },
+    {
+      "id": "D57-11",
+      "label": "both writers enforce immutable principal ownership while allowing distinct principals and aliases",
+      "status": "PASS",
+      "detail": {
+        "crossEmployeeRejected": true,
+        "accountTypeChangeRejected": true,
+        "unresolvedReuseRejected": true,
+        "samePrincipalAliases": 2,
+        "employeeTwoPrincipals": 2,
+        "managedPairBound": true
+      }
+    },
+    {
+      "id": "D57-17",
+      "label": "principal grant v2 has one alias-independent row per effective grant",
+      "status": "PASS",
+      "detail": {
+        "aliasRows": 2,
+        "principalRows": 1,
+        "columns": [
+          "contract_version",
+          "assignment_version_id",
+          "assignment_version",
+          "assignment_id",
+          "grant_kind",
+          "delegation_id",
+          "application_id",
+          "principal_id",
+          "employee_id",
+          "subject_kind",
+          "target_principal_id",
+          "stable_role_id",
+          "role_code",
+          "catalog_version",
+          "scope_kind",
+          "scope_key",
+          "valid_from",
+          "valid_until",
+          "published_at",
+          "authority_version"
+        ],
+        "manifestSha256": "74a9890b416b547cd013673487a78322a49da44b415b903015d55768504bbe71"
+      }
+    },
+    {
+      "id": "D57-20",
+      "label": "principal grant v3 follows published assignments without the per-employee authority switch",
+      "status": "PASS",
+      "detail": {
+        "principalRows": 1,
+        "columns": [
+          "contract_version",
+          "assignment_version_id",
+          "assignment_version",
+          "assignment_id",
+          "grant_kind",
+          "delegation_id",
+          "application_id",
+          "principal_id",
+          "employee_id",
+          "subject_kind",
+          "target_principal_id",
+          "stable_role_id",
+          "role_code",
+          "catalog_version",
+          "scope_kind",
+          "scope_key",
+          "valid_from",
+          "valid_until",
+          "published_at"
+        ],
+        "manifestSha256": "87780eba5c737d88c6cfe1e0a5c019f7ff46c46cab6b0f0c4c6a14a3683d8b59",
+        "oldAuthoritySwitchIndependent": true,
+        "platformReadDenied": true
+      }
+    },
+    {
+      "id": "D57-23",
+      "label": "human management Principal receives published business roles with unchanged scope and immediate revocation",
+      "status": "PASS",
+      "detail": {
+        "privilegedDailyRole": true,
+        "aliasesDoNotDuplicateGrant": true,
+        "personalEquivalent": true,
+        "serviceDenied": true,
+        "scopePreserved": true,
+        "revokedImmediately": true,
+        "historicalV3Unchanged": true
+      }
+    },
+    {
+      "id": "D57-12",
+      "label": "owner reservations cannot be rewritten and runtime cannot call the private writer",
+      "status": "PASS",
+      "detail": {
+        "ownerMutationRejected": true,
+        "aliasDeletionRejected": true,
+        "privateWriterRuntimeDenied": true
+      }
+    },
+    {
+      "id": "D57-13",
+      "label": "managed-login verification binds the exact principal and bind replay preserves one reservation",
+      "status": "PASS",
+      "detail": {
+        "verifiedManagedPrincipal": "principal-managed:3fbd3321-b001-406d-9005-ee51af236cee",
+        "replayReservationCount": 1
+      }
+    },
+    {
+      "id": "D57-14",
+      "label": "authority v2 atomically switches, replays and reverses with exact target and readback",
+      "status": "PASS",
+      "detail": {
+        "firstAuthorityVersion": 5,
+        "reverseAuthorityVersion": 6,
+        "replayedReceiptId": "4063dcfd-af6c-4d09-bea7-440ab30a3114",
+        "outboxCount": 2,
+        "deniedMutationCount": 0
+      }
+    },
+    {
+      "id": "D57-15",
+      "label": "authority v2 rereads target admission after waiting for the producer lock",
+      "status": "PASS",
+      "detail": {
+        "waitedForProducerLock": true,
+        "postLockTargetRejected": true,
+        "receiptCount": 0,
+        "authorityVersion": 6
+      }
+    },
+    {
+      "id": "D57-16",
+      "label": "issued principal session binding is immutable while last-seen and revocation remain writable",
+      "status": "PASS",
+      "detail": {
+        "immutablePrincipal": true,
+        "immutableEpoch": true,
+        "revocationAllowed": true
+      }
+    },
+    {
+      "id": "D57-07",
+      "label": "identity-only producer keeps unclassified legacy mapping out of the account-typed adapter",
+      "status": "PASS",
+      "detail": {
+        "canonicalContainsUnclassifiedLegacy": true,
+        "typedAdapterRowsForIt": 0,
+        "unclassifiedPortalRows": 0,
+        "unclassifiedEffectiveRows": 0,
+        "classifiedPortalRows": 1,
+        "classifiedEffectiveRows": 1,
+        "ambiguousTypedRows": 2,
+        "ambiguousPortalRows": 0,
+        "ambiguousEffectiveRows": 0,
+        "explicitLegacyAdmissionPreserved": true
+      }
+    },
+    {
+      "id": "D57-08",
+      "label": "active managed mapping reaches typed adapter only through an exact managed identity match",
+      "status": "PASS",
+      "detail": {
+        "canonicalProducerRows": 1,
+        "typedAdapterRows": 1,
+        "accountType": "human_personal",
+        "platformLegacyProjectionUnchanged": true
+      }
+    },
+    {
+      "id": "D57-21",
+      "label": "published Principal grants drive actual share metadata and package access, revocation, scope and restore on one PostgreSQL",
+      "status": "PASS",
+      "detail": {
+        "evidenceScope": "TARGETED_ACTUAL_ORG029_PRODUCER_AND_AI_SHARE_READ_CONSUMER_AUTH_ONLY",
+        "catalogPublicationEvidence": {
+          "target": "task-owned-disposable-postgresql",
+          "catalogPrerequisiteScope": "055 + catalog-only ownership changes from 062",
+          "migrationHashes": {
+            "055_jenfu_role_catalog_publication.sql": "277525f7d4fb4044ca8f5beb85854e393bba49ca321bbd7459535461d2ead442",
+            "066_dev121_principal_role_catalog_v4.sql": "ae33547a48dc4627f055a5122c90638cb5d06f4e231ad5e9d0eb65d84975ac06",
+            "070_dev121_principal_role_catalog_v5.sql": "9b882ba60fd3a2e2b4bd13ca054f83e2de91b3513bbde11fe0698aa019179013",
+            "081_dev121_principal_role_catalog_v6.sql": "c3f4d0465e39cd54a8c8b9a676811b4c3e158aa5a1b2c7945981c05bdeef7284"
+          },
+          "rejectionCases": [
+            {
+              "id": "v5-hash",
+              "rejected": true,
+              "atomicRollback": true
+            },
+            {
+              "id": "v5-permissions",
+              "rejected": true,
+              "atomicRollback": true
+            },
+            {
+              "id": "v5-pointer",
+              "rejected": true,
+              "atomicRollback": true
+            },
+            {
+              "id": "v6-published-at",
+              "rejected": true,
+              "atomicRollback": true
+            },
+            {
+              "id": "v6-role-name",
+              "rejected": true,
+              "atomicRollback": true
+            },
+            {
+              "id": "v6-permissions",
+              "rejected": true,
+              "atomicRollback": true
+            },
+            {
+              "id": "v6-role-order",
+              "rejected": true,
+              "atomicRollback": true
+            }
+          ],
+          "firstApply": true,
+          "replayCount": 2,
+          "immutableHistoricalEntries": 27,
+          "activeRoleCount": 9,
+          "catalogVersion": "ai-pdm.role-catalog.2026-10-05.v6",
+          "catalogSha256": "bdc8d2b8f717e4af9d48cf882d1a564a5caaabaaaacdcf20bc5db36a5b6960af",
+          "orgmasterActiveCatalogReadback": [
+            "v5",
+            "v6"
+          ],
+          "displaySnapshot": {
+            "migration056Sha256": "38f432a6599abeea2517182257f702b4c0ddcbe00190bbbe115bafb17d757951",
+            "executedCases": 3,
+            "provider": "postgres",
+            "restrictedRole": "dev057_ai_pdm_consumer_probe",
+            "securityAuthority": false
+          },
+          "formalDiagnostic": {
+            "actualSelectQueries": 4,
+            "readOnly": true,
+            "absentFixtureRejected": true,
+            "scope": "NATIVE_SQL_COMPATIBILITY_ONLY_NOT_FORMAL_PRODUCTION_GRANT_PROOF"
+          }
+        },
+        "consumerPackage": "ai-pdm",
+        "runtimeRole": "dev057_ai_pdm_consumer_probe",
+        "downloadTestSha256": "5bad90d280fc49cd8b9c6393e93b1f5da9b5e9bb237f6b9f9ee40124af2aa858",
+        "producer029Sha256": "e24bad6ebafe8bbe9ec9ce167758ac52879d04ca670cfff4900c770dc41e5b6c",
+        "publishedVersions": [
+          "gov-dev057-contract-reviewer-assigned",
+          "gov-dev057-contract-revoked",
+          "gov-dev057-contract-scoped",
+          "gov-dev057-contract-restored",
+          "gov-dev057-contract-flow",
+          "gov-dev057-contract-file-handoff",
+          "gov-dev057-contract-file-revoked",
+          "gov-dev057-contract-file-scoped"
+        ],
+        "shareReadEvidence": [
+          {
+            "phase": "assigned",
+            "status": "PASS_SHARE_READ",
+            "cases": [
+              {
+                "id": "SREAD-01",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-02",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-03",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-04",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-05",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-06",
+                "authorization": "PASS"
+              }
+            ],
+            "publicMetadataBusiness": "PASS_METADATA",
+            "publicMetadataPositivePass": true,
+            "businessKnownBlocked": {
+              "id": "D122-08",
+              "code": null,
+              "querySha256": "7216177d70e9f26e64e462bccdebe2e2226e6434197bdea03563a105a372337c",
+              "status": "RESOLVED_IN_THIS_LOCAL_PHASE"
+            },
+            "syntheticVerifiedSession": true,
+            "syntheticBusinessSchema": true,
+            "syntheticStorageBytes": true,
+            "actualOrg029Producer": true,
+            "actualShareResolverAndDelivery": true,
+            "providerConformance": false,
+            "productionL4": false
+          },
+          {
+            "phase": "revoked",
+            "status": "PASS_AUTHORIZATION_ONLY",
+            "cases": [
+              {
+                "id": "SREAD-01",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-02",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-03",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-04",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-05",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-06",
+                "authorization": "PASS"
+              }
+            ],
+            "publicMetadataBusiness": "AUTHORIZATION_DENIED",
+            "publicMetadataPositivePass": false,
+            "businessKnownBlocked": {
+              "id": "D122-08",
+              "code": "NOT_RUN",
+              "querySha256": "7216177d70e9f26e64e462bccdebe2e2226e6434197bdea03563a105a372337c",
+              "status": "NOT_RUN_AUTHORIZATION_DENIED"
+            },
+            "syntheticVerifiedSession": true,
+            "syntheticBusinessSchema": true,
+            "syntheticStorageBytes": true,
+            "actualOrg029Producer": true,
+            "actualShareResolverAndDelivery": true,
+            "providerConformance": false,
+            "productionL4": false
+          },
+          {
+            "phase": "out-of-scope",
+            "status": "PASS_AUTHORIZATION_ONLY",
+            "cases": [
+              {
+                "id": "SREAD-01",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-02",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-03",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-04",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-05",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-06",
+                "authorization": "PASS"
+              }
+            ],
+            "publicMetadataBusiness": "AUTHORIZATION_DENIED",
+            "publicMetadataPositivePass": false,
+            "businessKnownBlocked": {
+              "id": "D122-08",
+              "code": "NOT_RUN",
+              "querySha256": "7216177d70e9f26e64e462bccdebe2e2226e6434197bdea03563a105a372337c",
+              "status": "NOT_RUN_AUTHORIZATION_DENIED"
+            },
+            "syntheticVerifiedSession": true,
+            "syntheticBusinessSchema": true,
+            "syntheticStorageBytes": true,
+            "actualOrg029Producer": true,
+            "actualShareResolverAndDelivery": true,
+            "providerConformance": false,
+            "productionL4": false
+          },
+          {
+            "phase": "restored",
+            "status": "PASS_SHARE_READ",
+            "cases": [
+              {
+                "id": "SREAD-01",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-02",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-03",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-04",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-05",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-06",
+                "authorization": "PASS"
+              }
+            ],
+            "publicMetadataBusiness": "PASS_METADATA",
+            "publicMetadataPositivePass": true,
+            "businessKnownBlocked": {
+              "id": "D122-08",
+              "code": null,
+              "querySha256": "7216177d70e9f26e64e462bccdebe2e2226e6434197bdea03563a105a372337c",
+              "status": "RESOLVED_IN_THIS_LOCAL_PHASE"
+            },
+            "syntheticVerifiedSession": true,
+            "syntheticBusinessSchema": true,
+            "syntheticStorageBytes": true,
+            "actualOrg029Producer": true,
+            "actualShareResolverAndDelivery": true,
+            "providerConformance": false,
+            "productionL4": false
+          },
+          {
+            "phase": "flow",
+            "status": "PASS_SHARE_READ",
+            "cases": [
+              {
+                "id": "SREAD-01",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-02",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-03",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-04",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-05",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-06",
+                "authorization": "PASS"
+              }
+            ],
+            "publicMetadataBusiness": "PASS_METADATA",
+            "publicMetadataPositivePass": true,
+            "businessKnownBlocked": {
+              "id": "D122-08",
+              "code": null,
+              "querySha256": "7216177d70e9f26e64e462bccdebe2e2226e6434197bdea03563a105a372337c",
+              "status": "RESOLVED_IN_THIS_LOCAL_PHASE"
+            },
+            "syntheticVerifiedSession": true,
+            "syntheticBusinessSchema": true,
+            "syntheticStorageBytes": true,
+            "actualOrg029Producer": true,
+            "actualShareResolverAndDelivery": true,
+            "providerConformance": false,
+            "productionL4": false
+          },
+          {
+            "phase": "file-handoff",
+            "status": "PASS_AUTHORIZATION_ONLY",
+            "cases": [
+              {
+                "id": "SREAD-01",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-02",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-03",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-04",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-05",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-06",
+                "authorization": "PASS"
+              }
+            ],
+            "publicMetadataBusiness": "AUTHORIZATION_DENIED",
+            "publicMetadataPositivePass": false,
+            "businessKnownBlocked": {
+              "id": "D122-08",
+              "code": "NOT_RUN",
+              "querySha256": "7216177d70e9f26e64e462bccdebe2e2226e6434197bdea03563a105a372337c",
+              "status": "NOT_RUN_AUTHORIZATION_DENIED"
+            },
+            "syntheticVerifiedSession": true,
+            "syntheticBusinessSchema": true,
+            "syntheticStorageBytes": true,
+            "actualOrg029Producer": true,
+            "actualShareResolverAndDelivery": true,
+            "providerConformance": false,
+            "productionL4": false
+          },
+          {
+            "phase": "file-revoked",
+            "status": "PASS_AUTHORIZATION_ONLY",
+            "cases": [
+              {
+                "id": "SREAD-01",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-02",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-03",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-04",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-05",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-06",
+                "authorization": "PASS"
+              }
+            ],
+            "publicMetadataBusiness": "AUTHORIZATION_DENIED",
+            "publicMetadataPositivePass": false,
+            "businessKnownBlocked": {
+              "id": "D122-08",
+              "code": "NOT_RUN",
+              "querySha256": "7216177d70e9f26e64e462bccdebe2e2226e6434197bdea03563a105a372337c",
+              "status": "NOT_RUN_AUTHORIZATION_DENIED"
+            },
+            "syntheticVerifiedSession": true,
+            "syntheticBusinessSchema": true,
+            "syntheticStorageBytes": true,
+            "actualOrg029Producer": true,
+            "actualShareResolverAndDelivery": true,
+            "providerConformance": false,
+            "productionL4": false
+          },
+          {
+            "phase": "file-scoped",
+            "status": "PASS_AUTHORIZATION_ONLY",
+            "cases": [
+              {
+                "id": "SREAD-01",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-02",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-03",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-04",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-05",
+                "authorization": "PASS"
+              },
+              {
+                "id": "SREAD-06",
+                "authorization": "PASS"
+              }
+            ],
+            "publicMetadataBusiness": "AUTHORIZATION_DENIED",
+            "publicMetadataPositivePass": false,
+            "businessKnownBlocked": {
+              "id": "D122-08",
+              "code": "NOT_RUN",
+              "querySha256": "7216177d70e9f26e64e462bccdebe2e2226e6434197bdea03563a105a372337c",
+              "status": "NOT_RUN_AUTHORIZATION_DENIED"
+            },
+            "syntheticVerifiedSession": true,
+            "syntheticBusinessSchema": true,
+            "syntheticStorageBytes": true,
+            "actualOrg029Producer": true,
+            "actualShareResolverAndDelivery": true,
+            "providerConformance": false,
+            "productionL4": false
+          }
+        ],
+        "actualShareReadCasesPerPhase": 6,
+        "totalHttpCasesPerPhase": 15,
+        "verifiedSession": "synthetic-v2-principal",
+        "providerConformance": false,
+        "productionL4": false,
+        "businessDetailSchema": "minimal-synthetic-query-fixture",
+        "storageBytes": "task-owned-synthetic",
+        "transferNumberingAndReviewProbes": "NOT_RUN_SELECTED_READ_SCOPE",
+        "publicMetadataPositivePass": true,
+        "businessKnownBlocked": "D122-08/LOCAL_METADATA_VERIFIED_PRODUCTION_NOT_RUN",
+        "download": "actual HTTP, owner-published v4 grants, restricted PostgreSQL, token/resource resolver, actual local bytes and persisted Principal audit"
+      }
+    },
+    {
+      "id": "D57-22",
+      "label": "management HTTP publishes and revokes a Principal grant through the product PostgreSQL writer",
+      "status": "PASS",
+      "detail": {
+        "testSha256": "ab0c6f0b6a1726956ed10b550e9c9e73c8b8dbb182bf630942dacdb01bbe9422",
+        "checkpoints": [
+          {
+            "stage": "read-before",
+            "elapsedMs": 206
+          },
+          {
+            "stage": "read-after",
+            "elapsedMs": 313,
+            "status": 200
+          },
+          {
+            "stage": "publish-before",
+            "elapsedMs": 449
+          },
+          {
+            "stage": "publish-after",
+            "elapsedMs": 577,
+            "status": 201
+          },
+          {
+            "stage": "revoke-before",
+            "elapsedMs": 577
+          },
+          {
+            "stage": "revoke-after",
+            "elapsedMs": 772,
+            "status": 201
+          },
+          {
+            "stage": "race-before",
+            "elapsedMs": 846,
+            "withdrawal": "session"
+          },
+          {
+            "stage": "lock-wait-before",
+            "elapsedMs": 858,
+            "forStage": "session"
+          },
+          {
+            "stage": "lock-wait-observed",
+            "elapsedMs": 939,
+            "forStage": "session"
+          },
+          {
+            "stage": "race-withdrawal-committed",
+            "elapsedMs": 946,
+            "withdrawal": "session"
+          },
+          {
+            "stage": "race-assertions-after",
+            "elapsedMs": 979,
+            "withdrawal": "session",
+            "status": 401
+          },
+          {
+            "stage": "race-after",
+            "elapsedMs": 1072,
+            "withdrawal": "session"
+          },
+          {
+            "stage": "race-before",
+            "elapsedMs": 1122,
+            "withdrawal": "epoch"
+          },
+          {
+            "stage": "lock-wait-before",
+            "elapsedMs": 1132,
+            "forStage": "epoch"
+          },
+          {
+            "stage": "lock-wait-observed",
+            "elapsedMs": 1205,
+            "forStage": "epoch"
+          },
+          {
+            "stage": "race-withdrawal-committed",
+            "elapsedMs": 1212,
+            "withdrawal": "epoch"
+          },
+          {
+            "stage": "race-assertions-after",
+            "elapsedMs": 1262,
+            "withdrawal": "epoch",
+            "status": 401
+          },
+          {
+            "stage": "race-after",
+            "elapsedMs": 1350,
+            "withdrawal": "epoch"
+          },
+          {
+            "stage": "race-before",
+            "elapsedMs": 1401,
+            "withdrawal": "governance-cas"
+          },
+          {
+            "stage": "lock-wait-before",
+            "elapsedMs": 1413,
+            "forStage": "governance-cas"
+          },
+          {
+            "stage": "lock-wait-observed",
+            "elapsedMs": 1471,
+            "forStage": "governance-cas"
+          },
+          {
+            "stage": "race-withdrawal-committed",
+            "elapsedMs": 1496,
+            "withdrawal": "governance-cas"
+          },
+          {
+            "stage": "race-assertions-after",
+            "elapsedMs": 1526,
+            "withdrawal": "governance-cas",
+            "status": 409
+          },
+          {
+            "stage": "race-after",
+            "elapsedMs": 1619,
+            "withdrawal": "governance-cas"
+          },
+          {
+            "stage": "race-before",
+            "elapsedMs": 1672,
+            "withdrawal": "workspace"
+          },
+          {
+            "stage": "lock-wait-before",
+            "elapsedMs": 1682,
+            "forStage": "workspace"
+          },
+          {
+            "stage": "lock-wait-observed",
+            "elapsedMs": 1752,
+            "forStage": "workspace"
+          },
+          {
+            "stage": "race-withdrawal-committed",
+            "elapsedMs": 1762,
+            "withdrawal": "workspace"
+          },
+          {
+            "stage": "race-assertions-after",
+            "elapsedMs": 1781,
+            "withdrawal": "workspace",
+            "status": 409
+          },
+          {
+            "stage": "race-after",
+            "elapsedMs": 1868,
+            "withdrawal": "workspace"
+          },
+          {
+            "stage": "race-before",
+            "elapsedMs": 1922,
+            "withdrawal": "managed-quarantine"
+          },
+          {
+            "stage": "lock-wait-before",
+            "elapsedMs": 1931,
+            "forStage": "managed-quarantine"
+          },
+          {
+            "stage": "lock-wait-observed",
+            "elapsedMs": 2003,
+            "forStage": "managed-quarantine"
+          },
+          {
+            "stage": "race-withdrawal-committed",
+            "elapsedMs": 2011,
+            "withdrawal": "managed-quarantine"
+          },
+          {
+            "stage": "race-assertions-after",
+            "elapsedMs": 2063,
+            "withdrawal": "managed-quarantine",
+            "status": 401
+          },
+          {
+            "stage": "race-after",
+            "elapsedMs": 2165,
+            "withdrawal": "managed-quarantine"
+          },
+          {
+            "stage": "race-before",
+            "elapsedMs": 2231,
+            "withdrawal": "admission"
+          },
+          {
+            "stage": "lock-wait-before",
+            "elapsedMs": 2242,
+            "forStage": "admission"
+          },
+          {
+            "stage": "lock-wait-observed",
+            "elapsedMs": 2318,
+            "forStage": "admission"
+          },
+          {
+            "stage": "race-withdrawal-committed",
+            "elapsedMs": 2323,
+            "withdrawal": "admission"
+          },
+          {
+            "stage": "race-assertions-after",
+            "elapsedMs": 2376,
+            "withdrawal": "admission",
+            "status": 401
+          },
+          {
+            "stage": "race-after",
+            "elapsedMs": 2473,
+            "withdrawal": "admission"
+          },
+          {
+            "stage": "write-first-before",
+            "elapsedMs": 2473
+          },
+          {
+            "stage": "write-first-ready",
+            "elapsedMs": 2581
+          },
+          {
+            "stage": "lock-wait-before",
+            "elapsedMs": 2709,
+            "forStage": "write-first-revoker"
+          },
+          {
+            "stage": "lock-wait-observed",
+            "elapsedMs": 2725,
+            "forStage": "write-first-revoker"
+          },
+          {
+            "stage": "write-first-commit-before",
+            "elapsedMs": 2726
+          },
+          {
+            "stage": "write-first-commit-after",
+            "elapsedMs": 2727
+          },
+          {
+            "stage": "write-first-after",
+            "elapsedMs": 2747
+          },
+          {
+            "stage": "cleanup-after",
+            "elapsedMs": 2765
+          }
+        ],
+        "verifiedSession": "persisted-v2-principal-with-official-epoch-contract",
+        "platformEpochComposition": {
+          "source": "08e3832337330980705271fc9ec1c327236a7422",
+          "manifest": [
+            {
+              "contract_version": "jenfu.platform-contract.principal-auth-state.v3",
+              "signature_sha256": "2e56c51ca3d2ad4889d818013cc503fc2727c6817d1d9d71663538901d3de385"
+            }
+          ],
+          "migrations": [
+            {
+              "owner": "platform",
+              "path": "db/migrations/001_platform_auth_epoch_and_portal_sessions.sql",
+              "sha256": "4758d5758299473c30e54cec0a407dd1918c77c87ed2059d2174d7197fef4fee"
+            },
+            {
+              "owner": "platform",
+              "path": "db/migrations/002_dev005_employee_auth_epoch_invalidation.sql",
+              "sha256": "57e02ef732aba57fd2bc2e17e3174d80796bf779d705fa1d393e0d8ba0ce5153"
+            },
+            {
+              "owner": "platform",
+              "path": "db/migrations/003_dev010_platform_contract_producer.sql",
+              "sha256": "472c62b7ccb6b7c2295e3c8df1b3698345339a0fb7731ff0e8ddc5b45cef5a48"
+            },
+            {
+              "owner": "platform",
+              "path": "db/migrations/005_dev013_sso_handoff_and_auth_state.sql",
+              "sha256": "61d62cdd47518ce29306f95702ae13a6fcfc5ae5cde86ebdb63a63637438cfe2"
+            },
+            {
+              "owner": "platform",
+              "path": "db/migrations/006_dev014_global_invalidation_consumer.sql",
+              "sha256": "502e7b7ebfd2fc3ab1866c86b0c274f01423887a38a97c6a65015eb8ecb2bb6e"
+            },
+            {
+              "owner": "platform",
+              "path": "db/migrations/008_dev014_platform_authority_switch_contract.sql",
+              "sha256": "cff36d49d2c0538516aa886aad8542764c2ec04d44a8748c047aed2bb7cd4f03"
+            },
+            {
+              "owner": "platform",
+              "path": "db/migrations/009_dev015_principal_auth_state.sql",
+              "sha256": "e71ab07995d55f7597b7c382061a492109f88addbbbd7619a644d72925371b88"
+            },
+            {
+              "owner": "platform",
+              "path": "db/migrations/010_dev015_principal_auth_contract_manifest.sql",
+              "sha256": "3303c1528be281965a861f79f49f025c71d067018a5fc87cc295bc62dba5687d"
+            }
+          ]
+        },
+        "phases": [
+          "managed-no-json-alias",
+          "published-assignment",
+          "published-revocation",
+          "same-snapshot-cas",
+          "workspace-withdrawal",
+          "managed-quarantine",
+          "session-revocation",
+          "principal-epoch-withdrawal",
+          "write-first-revoke-waits"
+        ],
+        "ownerApi": "actual-http",
+        "consumer": "ai-pdm-runtime-grant-v3"
+      }
+    }
+  ],
+  "firstFailure": null,
+  "source": {
+    "runnerSha256": "3fc32175e1fbf68c0c87aaa765dc436ca4dc473dc69a631bf8cbb44b51e56bc8",
+    "contractRunnerSha256": "06e70b3a14a3430bf1d161d2dafd221ffc4f9fd3516d877e4cdd0f3c42e7fcf3",
+    "fixtureSha256": "1f3e2cf3904c02be1cac237c6369b25886b6daed0635fac84e45e30ea9a1795f"
+  },
+  "runtime": {
+    "project": "C:\\VIBE CODING\\OrgMaster",
+    "purpose": "DEV-057 isolated PostgreSQL validation",
+    "port": 52669,
+    "postgresPid": 124600,
+    "owningProcessTree": "node:85332 -> postgres:124600",
+    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev057-qc-3lmbEK",
+    "interruptedBy": null,
+    "cleanup": {
+      "clientClosed": true,
+      "auxiliaryClientsClosed": true,
+      "clusterStopped": true,
+      "portReleased": true,
+      "tempRemoved": true
+    }
+  }
+}

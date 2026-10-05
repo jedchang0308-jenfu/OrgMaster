@@ -14,7 +14,7 @@
 
 ## 本批 v5／v6 目錄讀取契約（2026-10-05，RD Implementation Ready）
 
-2026-10-05 正式追加驗收發現 final runner只包v5，v6 active後治理500；[包裝矯正與原FAIL](../qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md)是現行續點。最終應用image須包含reader允許的每份exact source artifact並在image build確認可讀；source checkout／PGPASS不替代image。角色／scope／schema及已發布指派保持；修正後ordinary owner release與正式HTTP仍待驗。
+最終應用image須包含reader允許的每份exact source artifact並在image build確認可讀；source checkout／PGPASS不替代image。工作區存在性和讀取必須共用同一persistence mode：CloudSQL不得預先依賴local manifest，local模式仍使用local artifact；缺失／損壞source fail closed，不能fallback另一mode或自動建立正式workspace。角色／scope／schema及已發布指派保持。實際packaging與source矯正的驗證層級只在[現行QA續點](../qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md#persistence-source-矯正與已發布狀態現行續點)维护，不在規格複製執行進度。
 
 參與 `AIPDM/DEV-121#system-admin-capabilities` 的新修正批次；source與原生producer／consumer整合已通過，正式發布尚未完成。見[本批checkpoint及層級限制](../qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)。人類允許 Jed 全部有效應用能力；AI-PDM 產生 immutable `ai-pdm.role-catalog.2026-10-05.v6`，其他八角色不擴權。OrgMaster 只維持 stable 角色／scope／Principal 指派，不解釋各 API 業務能力。
 
