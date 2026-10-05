@@ -1268,9 +1268,9 @@ async function runDev057Checks() {
     await client.query('CREATE ROLE dev057_ai_pdm_consumer_probe LOGIN IN ROLE jenfu_ai_pdm_runtime')
     await client.query('CREATE ROLE dev057_orgmaster_catalog_probe LOGIN IN ROLE jenfu_orgmaster_runtime')
     const catalogProbe=(expectedVersion)=>{
-      const probe=spawnSync(process.execPath,[path.join(root,'node_modules','vitest','vitest.mjs'),'run','server/aiPdmRoleCatalogRepository.postgres.test.ts'],{cwd:root,encoding:'utf8',windowsHide:true,timeout:90_000,env:{...process.env,CI:'1',DEV057_PRODUCT_CATALOG_EXPECTED_VERSION:expectedVersion,DEV057_PRODUCT_CATALOG_POSTGRES_URL:connectionString.replace('postgres@','dev057_orgmaster_catalog_probe@')}})
+      const probe=spawnSync(process.execPath,[path.join(root,'node_modules','vitest','vitest.mjs'),'run','server/aiPdmRoleCatalogRepository.postgres.test.ts'],{cwd:root,encoding:'utf8',windowsHide:true,timeout:90_000,env:{...process.env,CI:'1',DEV057_PRODUCT_CATALOG_EXPECTED_VERSION:expectedVersion,DEV057_PRODUCT_CATALOG_POSTGRES_URL:connectionString.replace('postgres@','dev057_orgmaster_catalog_probe@'),...(expectedVersion.endsWith('.v6')?{DEV057_PRODUCT_WORKSPACE_FIXTURE_POSTGRES_URL:connectionString}:{})}})
       assert.equal(probe.status,0,'OrgMaster active '+expectedVersion+' read failed: '+(probe.error?.message??'')+'\n'+(probe.stdout??'')+'\n'+(probe.stderr??''))
-      assert.match(probe.stdout,/Tests\s+1 passed/u,'OrgMaster product read must execute, not skip')
+      assert.match(probe.stdout,expectedVersion.endsWith('.v6')?/Tests\s+2 passed/u:/Tests\s+1 passed/u,'OrgMaster product catalog and v6 workspace read must execute, not skip')
     }
     const { catalog: principalCatalog, evidence: catalogPublicationEvidence } = await prepareNativeAiPdmCatalog(client, consumerRoot, catalogProbe)
     catalogPublicationEvidence.orgmasterActiveCatalogReadback=['v5','v6']

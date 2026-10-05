@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import * as persistence from './orgmasterPersistenceRepository'
+import * as workspaceStore from './orgmasterWorkspaceStore'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
@@ -17,6 +19,36 @@ describe('AI-PDM role capability save reason', () => {
 })
 
 describe('DEV-008 fail-closed source and terminal command receipt', () => {
+  it('reads a validated persistence workspace without any local manifest or version file', async () => {
+    const root = await mkdtemp(resolve(tmpdir(), 'orgmaster-dev057-provider-'))
+    await writeSyntheticWorkspaceFixture(root)
+    const index = await workspaceStore.getWorkspaceIndex(root)
+    const version = await workspaceStore.getWorkspaceVersion(root, index.currentVersionId)
+    await rm(resolve(root, 'data'), { recursive: true, force: true })
+    const source = vi.spyOn(persistence, 'persistenceArtifactExists').mockResolvedValue(true)
+    const indexRead = vi.spyOn(workspaceStore, 'getWorkspaceIndex').mockResolvedValue(index)
+    const versionRead = vi.spyOn(workspaceStore, 'getWorkspaceVersion').mockResolvedValue(version)
+    try {
+      const actual = await readAiPdmRoleCapabilityWorkspace(root)
+      expect(actual.organizationVersionId).toBe(index.currentVersionId)
+      expect(actual.organizationRevision).toBe(version.version.revision)
+      expect(actual.roles).toHaveLength(9)
+      expect(actual.mutationAllowed).toBe(false)
+      expect(source).toHaveBeenCalledWith(resolve(root, 'data', 'orgmaster-workspace.v1.json'), 'orgmaster-workspace.v1.json')
+      expect(versionRead).toHaveBeenCalledWith(root, index.currentVersionId)
+    } finally { source.mockRestore(); indexRead.mockRestore(); versionRead.mockRestore(); await rm(root, { recursive: true, force: true }) }
+  })
+  it.each(['missing', 'read-failed'])('does not use local workspace files when the authoritative source is %s', async (failure) => {
+    const root = await mkdtemp(resolve(tmpdir(), 'orgmaster-dev057-source-'))
+    await writeSyntheticWorkspaceFixture(root)
+    const probe = vi.spyOn(persistence, 'persistenceArtifactExists')
+    if (failure === 'missing') probe.mockResolvedValue(false)
+    else probe.mockRejectedValue(new persistence.OrgmasterPersistenceError('PERSISTENCE_READ_FAILED'))
+    try {
+      await expect(readAiPdmRoleCapabilityWorkspace(root)).rejects.toMatchObject({ code: 'ORGMASTER_SOURCE_UNAVAILABLE' })
+      expect(probe).toHaveBeenCalledWith(resolve(root, 'data', 'orgmaster-workspace.v1.json'), 'orgmaster-workspace.v1.json')
+    } finally { probe.mockRestore(); await rm(root, { recursive: true, force: true }) }
+  })
   it('does not fallback when the workspace source is absent', async () => {
     const root = await mkdtemp(resolve(tmpdir(), 'orgmaster-dev008-'))
     const previous = process.env.ORGMASTER_GOVERNANCE_DATA_DIR
