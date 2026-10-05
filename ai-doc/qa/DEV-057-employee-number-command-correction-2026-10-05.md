@@ -48,6 +48,18 @@
 
 新增 source-owned `scripts/dev014-directory-readback-canary.mjs`、26 案內建 Node 測試及 `scripts/dev014-directory-readback.Dockerfile`，用於剩餘 QA014-14／15 的實際 provider 只讀補證。此批不部署 application、不修改 migration 或角色／Employee；不混入同期 role-catalog 修正。
 
-執行邊界：image 來源必須是 required CI／Codex review 已通過的 protected master exact merge；Dockerfile 重用已讀回的 immutable OrgMaster runtime base。source revision、operation ID、最長八小時 expiry 為執行綁定，image ENV 與 CLI source 必須相符。臨時 Job 只掛既有 `orgmaster-prod-runtime` identity，metadata 必須吻合 project number `9536592944` 與該 identity。以既有 `orgmaster-prod-directory-dwd` signer、固定 delegated subject `jedchang0308@jenfu.com.tw` 和唯一 `admin.directory.user.readonly` scope，完成 keyless signJwt／OAuth exchange／單次固定 users.get；customer `C015t4buc`、domain、primary email、active 狀態只作 provider claim 核對，不作 Principal mapping fallback。禁止 credential aliases／key file，無 SQL、Cloud SQL proxy、Secret 讀取或 Employee mutation；不得使用會建立 candidate/link 的舊 operator 替代。
+執行邊界：image 來源必須是 required CI／Codex review 已通過的 protected master exact merge；Dockerfile 重用已讀回的 immutable OrgMaster runtime base。source revision、operation ID、最長八小時 expiry 為執行綁定，R1 的 image ENV 與 CLI source 必須相符（此包裝已由下方 R2 的 fixed image file 取代）。臨時 Job 只掛既有 `orgmaster-prod-runtime` identity，metadata 必須吻合 project number `9536592944` 與該 identity。以既有 `orgmaster-prod-directory-dwd` signer、固定 delegated subject `jedchang0308@jenfu.com.tw` 和唯一 `admin.directory.user.readonly` scope，完成 keyless signJwt／OAuth exchange／單次固定 users.get；customer `C015t4buc`、domain、primary email、active 狀態只作 provider claim 核對，不作 Principal mapping fallback。禁止 credential aliases／key file，無 SQL、Cloud SQL proxy、Secret 讀取或 Employee mutation；不得使用會建立 candidate/link 的舊 operator 替代。
 
 每階段五秒 deadline 包含 response body，設大小上限，redirect 拒絕；錯誤只回 phase／HTTP status／retry class，token、JWT、user ID、email、etag、provider error body 不輸出或保存。僅在記錄 build/image/source、實際 runtime fingerprint、safe receipt 與 Job terminal 後刪除自有 Job。26/26 synthetic tests 只證這些 guard；正式 users.get 尚未執行，不得提前記 PASS。即使此 canary PASS，也只證現行 runtime identity 下的 keyless provider read，不替代 app caller 的 identity lifecycle、背景撤銷或完整 DEV-014 L4。
+
+## Directory operator 包裝修正 R2（2026-10-05）
+
+PR #107 merge `b111b8ad075cf03df3f58a7446829d65a64c6024` 的第一個 operator build `1c0f54fc-8d8f-43c2-bcc1-8446f08e5912` 為 SUCCESS，digest `sha256:fac64cf3345bad4e0c2477743f20514e181822379fd7e1f7c2e31bcc403ab280`。該映像未執行 Job；它與已驗證 application loader 的入口設定不同，且執行器误讀 Platform policy／使用不同 artifact URI，故沒有完成 owner artifact assessment，也不能宣稱 provider read PASS。原 build、來源與失敗證據保留。
+
+本修正保留 immutable OrgMaster base 的 ENTRYPOINT／CMD、native loader 與依賴，僅複製已審查的 JS canary；在 OrgMaster 原 artifact URI 以獨立 operator tag 建置，不修改 vulnerability policy 或 application-service pointer。執行器必須載入 exact clean OrgMaster source 的 owner transport，以現有 GCC applicability、native inventory／loader closure、Artifact Registry、SBOM 與 build provenance 完成驗證。臨時 Job 以唯一固定 command `["/nodejs/bin/node","/app/scripts/dev014-directory-readback-canary.mjs"]` 選擇 canary，禁止其他 command、secret、volume、VPC 或 DB attachment。映像保留的 application default command 不會被此 Job 執行，且 operator tag 不得作正式服務發布輸入。
+
+新增包裝測例防止重建時再次更改 base loader；原 26 案安全 guard 保留。私有執行器在 build／Job POST 前落下 intent，未知回應只能 GET-only 核對 exact source／template，不重送。這是原 provider-readback 切片的修正，不新增主任務，不改員工／角色／DWD grant，也不重新發布 application。正式 provider read 及背景 lifecycle 義務仍待其實際證據。
+
+R2 收斂補充：實際 OrgMaster base 的 default command 為 `dist-server/server.mjs`（不是 Platform 的 `server.js`）；保留 owner native loader 的完整 config，包含原 environment 名稱。因此 build-only `ARG SOURCE_REVISION` 只產生固定 `/app/dev014-directory-source-revision.txt`（root-owned，0444），不新增 image ENV。Canary 以最多42 bytes讀此 immutable file，與 CLI exact source 比較；ENV 不提供來源 fallback。原 R1 ENV guard 歷史保留，新測例驗證缺檔／不同來源在任何 provider request 前拒絕，且偽造 ENV 無法覆蓋映像檔。這些更動仍只在同一 R2 修正批次。
+
+同一未推送 R2 批次亦補正 safe receipt：正向 `users.get` 必須實際為 HTTP 200，safe receipt 明記該 status；其他2xx即使帶相似claims也拒絕。原R1正向status為null的診斷限制保留，不回填歷史。聚焦28案包含此負向邊界；一般／恢復執行路徑共用 exact build request 與 Job template 讀回，不各自採用較弱檢查。

@@ -100,7 +100,8 @@ function run(fetchImpl, options = {}) {
     argv: options.argv ?? args(),
     env: options.env ?? { SOURCE_REVISION },
     fetchImpl,
-    now: () => NOW
+    now: () => NOW,
+    readImageSource: options.readImageSource ?? (async () => SOURCE_REVISION)
   })
 }
 
@@ -109,6 +110,7 @@ test('happy path uses metadata identity, one-scope DWD and exactly one fixed use
   const receipt = await run(fetchImpl)
 
   assert.equal(receipt.status, 'PASS')
+  assert.equal(receipt.httpStatus, 200)
   assert.equal(receipt.phase, 'users_get')
   assert.equal(receipt.directoryReadOperations, 1)
   assert.equal(receipt.databaseOperations, 0)
@@ -257,24 +259,24 @@ test('oversized metadata body is rejected before any later request', async () =>
   assert.equal(calls, 1)
 })
 
-test('SOURCE_REVISION must exist in the image environment and match the CLI argument', async (t) => {
+test('fixed image source binding must exist and match CLI without ENV fallback', async (t) => {
   const { fetchImpl } = makeFetch()
   await t.test('missing', async () => {
     let calls = 0
-    const receipt = await run(async () => { calls += 1; return textResponse('unused') }, { env: {} })
+    const receipt = await run(async () => { calls += 1; return textResponse('unused') }, { env: { SOURCE_REVISION }, readImageSource: async () => null })
     assert.equal(receipt.phase, 'source_preflight')
     assert.equal(receipt.status, 'SOURCE_REVISION_MISMATCH')
     assert.equal(calls, 0)
   })
   await t.test('mismatch', async () => {
     let calls = 0
-    const receipt = await run(async () => { calls += 1; return textResponse('unused') }, { env: { SOURCE_REVISION: 'f'.repeat(40) } })
+    const receipt = await run(async () => { calls += 1; return textResponse('unused') }, { env: { SOURCE_REVISION }, readImageSource: async () => 'f'.repeat(40) })
     assert.equal(receipt.phase, 'source_preflight')
     assert.equal(receipt.status, 'SOURCE_REVISION_MISMATCH')
     assert.equal(calls, 0)
   })
   await t.test('matching', async () => {
-    const receipt = await run(fetchImpl, { env: { SOURCE_REVISION } })
+    const receipt = await run(fetchImpl, { env: { SOURCE_REVISION: 'f'.repeat(40) }, readImageSource: async () => SOURCE_REVISION })
     assert.equal(receipt.status, 'PASS')
   })
 })
@@ -322,6 +324,7 @@ test('customer mismatch and domain mismatch fail closed after one fixed users.ge
     const { fetchImpl } = makeFetch({ user: userRecord({ customerId: 'wrong-customer' }) })
     const receipt = await run(fetchImpl)
     assert.equal(receipt.status, 'IDENTITY_CLAIM_MISMATCH')
+    assert.equal(receipt.httpStatus, 200)
     assert.equal(receipt.matches.customerId, false)
     assert.equal(receipt.directoryReadOperations, 1)
   })
@@ -329,6 +332,7 @@ test('customer mismatch and domain mismatch fail closed after one fixed users.ge
     const { fetchImpl } = makeFetch({ user: userRecord({ primaryEmail: 'jedchang0308@example.invalid' }) })
     const receipt = await run(fetchImpl)
     assert.equal(receipt.status, 'IDENTITY_CLAIM_MISMATCH')
+    assert.equal(receipt.httpStatus, 200)
     assert.equal(receipt.matches.domain, false)
     assert.equal(receipt.matches.primaryEmail, false)
     assert.equal(receipt.directoryReadOperations, 1)
@@ -385,4 +389,32 @@ test('argument parser requires exactly the three named values and bounds expiry'
     '--expires-at', '2026-10-04T23:59:59Z'
   ] })
   assert.equal(expired.status, 'INVALID_ARGUMENTS')
+})
+// The application owner policy binds its native loader configuration. Operator
+// selection belongs to the exact Job command, not a new image entrypoint.
+test('operator recipe preserves the immutable runtime loader and installs only the canary', async () => {
+  const recipe = await readFile(fileURLToPath(new URL('./dev014-directory-readback.Dockerfile', import.meta.url)), 'utf8')
+  assert.match(recipe, /^FROM asia-east1-docker\.pkg\.dev\/jenfu-platform-prod\/orgmaster-release\/orgmaster@sha256:9927dd5508f398d21e3ed6412845583ef49387aa8b5c628e41c99dd565b5ae92$/m)
+  assert.doesNotMatch(recipe, /^(?:ENTRYPOINT|CMD|ADD|ENV)\s/m)
+  assert.match(recipe, /dev014-directory-source-revision\.txt/)
+  assert.match(recipe, /mode: 292/)
+  const source = await readFile(fileURLToPath(new URL('./dev014-directory-readback-canary.mjs', import.meta.url)), 'utf8')
+  assert.match(source, /open\('\/app\/dev014-directory-source-revision\.txt', 'r'\)/)
+  assert.doesNotMatch(source, /env\.SOURCE_REVISION/)
+  assert.equal(recipe.match(/^COPY\s/gm)?.length, 1)
+  assert.match(recipe, /^COPY --chown=65532:65532 scripts\/dev014-directory-readback-canary\.mjs \/app\/scripts\/dev014-directory-readback-canary\.mjs$/m)
+  assert.match(recipe, /^USER 65532:65532$/m)
+  assert.doesNotMatch(recipe, /(?:apt-get|npm |pnpm |yarn |curl |wget )/)
+})
+
+test('users.get requires HTTP 200 even when another 2xx carries valid-looking claims', async () => {
+  const { fetchImpl } = makeFetch()
+  const receipt = await run((url, init) => String(url).startsWith('https://admin.googleapis.com/admin/directory/v1/users/')
+    ? jsonResponse(userRecord(), 201)
+    : fetchImpl(url, init))
+  assert.equal(receipt.phase, 'users_get')
+  assert.equal(receipt.status, 'DIRECTORY_STATUS_INVALID')
+  assert.equal(receipt.httpStatus, 201)
+  assert.equal(receipt.directoryReadOperations, 1)
+  assert.equal(receipt.mutationOperations, 0)
 })

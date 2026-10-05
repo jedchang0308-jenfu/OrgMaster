@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
+import { open } from 'node:fs/promises'
 
 const EXPECTED_PROJECT_NUMBER = '9536592944'
 const EXPECTED_RUNTIME_SERVICE_ACCOUNT = 'orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com'
@@ -296,11 +297,25 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.length > 0
 }
 
+// Read only the fixed image-owned source binding, with no ENV/CLI fallback.
+async function readImageSourceRevision() {
+  let file
+  try {
+    file = await open('/app/dev014-directory-source-revision.txt', 'r')
+    const bytes = Buffer.alloc(42)
+    const result = await file.read(bytes, 0, bytes.length, 0)
+    const value = bytes.subarray(0, result.bytesRead).toString('utf8')
+    return /^[a-f0-9]{40}\n$/.test(value) ? value.slice(0, 40) : null
+  } catch { return null }
+  finally { if (file) await file.close() }
+}
+
 export async function runDirectoryReadbackCanary({
   argv,
   env = process.env,
   fetchImpl = globalThis.fetch,
-  now = Date.now
+  now = Date.now,
+  readImageSource = readImageSourceRevision
 } = {}) {
   const initialNow = Number(now())
   const parsed = Number.isFinite(initialNow) ? parseArguments(argv, initialNow) : null
@@ -316,7 +331,7 @@ export async function runDirectoryReadbackCanary({
 
   try {
     receipt.phase = 'source_preflight'
-    if (!env || typeof env.SOURCE_REVISION !== 'string' || env.SOURCE_REVISION !== parsed.sourceRevision) {
+    if (typeof readImageSource !== 'function' || await readImageSource() !== parsed.sourceRevision) {
       fail(receipt.phase, 'source_revision_mismatch')
     }
 
@@ -402,13 +417,13 @@ export async function runDirectoryReadbackCanary({
     })
     const userUrl = DIRECTORY_USER_URL + encodeURIComponent(DELEGATED_SUBJECT) + '?' + query.toString()
     receipt.directoryReadOperations = 1
-    const user = await checkedJson(
-      await request(fetchImpl, userUrl, {
-        method: 'GET',
-        headers: { Authorization: 'Bearer ' + directoryAccessToken }
-      }, receipt.phase),
-      receipt.phase
-    )
+    const userResponse = await request(fetchImpl, userUrl, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer ' + directoryAccessToken }
+    }, receipt.phase)
+    receipt.httpStatus = userResponse.status
+    if (userResponse.status !== 200) fail(receipt.phase, 'directory_status_invalid', 'non_retryable', userResponse.status)
+    const user = await checkedJson(userResponse, receipt.phase)
 
     const primaryEmail = normalizeEmail(user.primaryEmail)
     const domain = primaryEmail.includes('@') ? primaryEmail.slice(primaryEmail.lastIndexOf('@') + 1) : ''
@@ -432,7 +447,7 @@ export async function runDirectoryReadbackCanary({
       receipt.phase = error.phase
       receipt.status = error.status.toUpperCase()
       receipt.retryClass = error.retryClass
-      receipt.httpStatus = error.httpStatus
+      receipt.httpStatus = error.httpStatus ?? receipt.httpStatus
       return receipt
     }
     receipt.phase = typeof receipt.phase === 'string' ? receipt.phase : 'internal'
