@@ -61,3 +61,5 @@ QA 入口：管理者正常 SSO → 員工明細 → 員工編號與登入身分
 - AFTER：完整`npm run test:dev-040:r2` **257/257 PASS，0 skip**；DB boundary及diff whitespace PASS。證據`output/dev057-fresh-rotation-owner-complete.log`。本批共新增7個回歸案例，包含CLI、原native owner prepare及異常拒絕；沒有删減既有案例。
 - source review：同owner immutable byte hash/self seal、exact published intent與source lock、RELEASED terminal／previousRevision、完整75地址與16個COPY inputs、歷史apply-time TTL、今日operator live double read、native prepare權限邊界與current CAS均保留。未修改runtime登入／role／schema、舊identity branch或發布來源規則。這是同執行者Codex review，不宣稱獨立人工QC。
 - 本節僅為本機修正出口；required CI、exact master來源、新owner release及正式行為readback仍須取得實際證據。
+
+- PR105首輪required CI `37259004603`：runtime container、完整257 owner tests、catalog測試及boundary均PASS；QC固定子集合實際214/214 PASS，但入口仍要求舊207分母，故在app tests/build之前退出1。不是測試失敗，也未發布。依該精確log將原固定分母同步至214，保留固定完整分母／fail0要求，在同PR續修；不直接重跑原提交或跳過CI。證據`JENFU/output/dev-012/inputs/dev057-rotation-pr105-ci-failure.log`。
