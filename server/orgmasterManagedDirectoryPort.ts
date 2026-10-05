@@ -41,6 +41,18 @@ export interface ManagedDirectoryPortV1 {
   readByDirectoryKey(customerId: string, userId: string): Promise<ManagedDirectoryReadResult>
 }
 
+// Keep the deadline alive through body decoding, including transports that do
+// not settle when their signal aborts. Never pass provider bodies into errors.
+async function withDirectoryDeadline<T>(timeoutMs: number, operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => { controller.abort(); reject(new DOMException('Directory deadline exceeded', 'AbortError')) }, timeoutMs)
+  })
+  try { return await Promise.race([operation(controller.signal), deadline]) }
+  finally { clearTimeout(timer) }
+}
+
 function normalizedEmail(value: string) { return value.trim().toLowerCase() }
 function observedAt() { return new Date().toISOString() }
 
@@ -152,23 +164,22 @@ export function createGoogleDirectoryAuthPort(input: {
   let cachedToken: { value: string; expiresAt: number } | undefined
   let tokenRefresh: Promise<string> | undefined
 
-  const post = async (url: string, headers: Record<string, string>, body: string) => {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 5_000)
-    try {
-      return await transport(url, { method: 'POST', headers, body, signal: controller.signal })
-    } catch {
-      throw new GoogleDirectoryAuthError('DIRECTORY_AUTH_UNAVAILABLE', true)
-    } finally {
-      clearTimeout(timer)
-    }
+  const post = async (url: string, headers: Record<string, string>, body: string, signal: AbortSignal) => {
+    signal.throwIfAborted()
+    const response = await transport(url, { method: 'POST', headers, body, signal })
+    if (response.status < 200 || response.status >= 300) return { status: response.status, body: null }
+    const payload = await response.json()
+    signal.throwIfAborted()
+    return { status: response.status, body: payload }
   }
 
-  const obtainDelegatedToken = async () => {
+  const obtainDelegatedToken = () => withDirectoryDeadline(input.timeoutMs ?? 5_000, async (signal) => {
     const sourceClient = await sourceAuth.getClient()
     const credentialType = (sourceClient as typeof sourceClient & { credentials?: { type?: unknown } }).credentials?.type
     if (sourceClient instanceof JWT || credentialType === 'service_account') throw new GoogleDirectoryAuthError('DIRECTORY_DELEGATION_INVALID', false)
+    signal.throwIfAborted()
     const sourceToken = (await sourceClient.getAccessToken()).token?.trim().replace(/^Bearer\s+/i, '')
+    signal.throwIfAborted()
     if (!sourceToken) throw new GoogleDirectoryAuthError('DIRECTORY_AUTH_UNAVAILABLE', true)
     const issuedAt = Math.floor(now() / 1_000)
     const claims = {
@@ -180,8 +191,8 @@ export function createGoogleDirectoryAuthPort(input: {
       exp: issuedAt + DWD_ASSERTION_LIFETIME_SECONDS,
     }
     const signUrl = `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${encodeURIComponent(serviceAccountEmail)}:signJwt`
-    const signedResponse = await post(signUrl, { Authorization: `Bearer ${sourceToken}`, 'Content-Type': 'application/json', Accept: 'application/json' }, JSON.stringify({ payload: JSON.stringify(claims) }))
-    const signedBody = await signedResponse.json()
+    const signedResponse = await post(signUrl, { Authorization: `Bearer ${sourceToken}`, 'Content-Type': 'application/json', Accept: 'application/json' }, JSON.stringify({ payload: JSON.stringify(claims) }), signal)
+    const signedBody = signedResponse.body
     const signedJwt = signedBody && typeof signedBody === 'object' && !Array.isArray(signedBody) && typeof (signedBody as Record<string, unknown>).signedJwt === 'string'
       ? String((signedBody as Record<string, unknown>).signedJwt)
       : ''
@@ -190,8 +201,8 @@ export function createGoogleDirectoryAuthPort(input: {
     }
 
     const tokenBody = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: signedJwt }).toString()
-    const tokenResponse = await post(GOOGLE_OAUTH_TOKEN_URL, { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, tokenBody)
-    const tokenJson = await tokenResponse.json()
+    const tokenResponse = await post(GOOGLE_OAUTH_TOKEN_URL, { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, tokenBody, signal)
+    const tokenJson = tokenResponse.body
     const value = tokenJson && typeof tokenJson === 'object' && !Array.isArray(tokenJson) && typeof (tokenJson as Record<string, unknown>).access_token === 'string'
       ? String((tokenJson as Record<string, unknown>).access_token).trim()
       : ''
@@ -203,7 +214,10 @@ export function createGoogleDirectoryAuthPort(input: {
     }
     cachedToken = { value, expiresAt: now() + expiresIn * 1_000 }
     return value
-  }
+  }).catch((error: unknown) => {
+    if (error instanceof GoogleDirectoryAuthError) throw error
+    throw new GoogleDirectoryAuthError('DIRECTORY_AUTH_UNAVAILABLE', true)
+  })
 
   const delegatedToken = () => {
     if (cachedToken && now() < cachedToken.expiresAt - ACCESS_TOKEN_REFRESH_SKEW_SECONDS * 1_000) return Promise.resolve(cachedToken.value)
@@ -240,22 +254,25 @@ export function createGoogleDirectoryReadOnlyPort(input: { customerId: string; d
   })
   const request = async (userKey: string): Promise<ManagedDirectoryReadResult> => {
     const observed = observedAt()
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 5_000)
     try {
+      return await withDirectoryDeadline<ManagedDirectoryReadResult>(input.timeoutMs ?? 5_000, async (signal) => {
       const url = `https://admin.googleapis.com/admin/directory/v1/users/${encodeURIComponent(userKey)}?projection=full`
       const headers = await input.auth.getRequestHeaders(url)
-      const response = await transport(url, { headers, signal: controller.signal })
+      signal.throwIfAborted()
+      const response = await transport(url, { headers, signal })
       if (response.status === 404) return { ok: false, kind: 'not_found', code: 'DIRECTORY_NOT_FOUND', observedAt: observed }
       if (response.status === 429 || response.status >= 500) return { ok: false, kind: 'retryable_error', code: response.status === 429 ? 'DIRECTORY_RATE_LIMITED' : 'DIRECTORY_READ_UNAVAILABLE', observedAt: observed }
       if (response.status < 200 || response.status >= 300) return { ok: false, kind: 'permanent_error', code: `DIRECTORY_HTTP_${response.status}`, observedAt: observed }
-      const user = parseGoogleUser(await response.json(), customerId)
+      const payload = await response.json()
+      signal.throwIfAborted()
+      const user = parseGoogleUser(payload, customerId)
       if (!user) return { ok: false, kind: 'permanent_error', code: 'DIRECTORY_RESPONSE_INVALID', observedAt: observed }
-      return { ok: true, user, observedAt: observed }
+      return { ok: true, user, observedAt: observed } as const
+      })
     } catch (error) {
       if (error instanceof GoogleDirectoryAuthError) return { ok: false, kind: error.retryable ? 'retryable_error' : 'permanent_error', code: error.code, observedAt: observed }
       return { ok: false, kind: 'retryable_error', code: error instanceof DOMException && error.name === 'AbortError' ? 'DIRECTORY_TIMEOUT' : 'DIRECTORY_READ_UNAVAILABLE', observedAt: observed }
-    } finally { clearTimeout(timer) }
+    }
   }
   return {
     mode: 'google-admin-readonly', writeOperations: 0,

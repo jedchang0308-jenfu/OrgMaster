@@ -10,7 +10,7 @@ import {
   type GoogleDirectoryCredentialTransport,
 } from './orgmasterManagedDirectoryPort'
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 const auth = { getRequestHeaders: vi.fn(async () => ({ Authorization: 'Bearer test' })) }
 
@@ -179,5 +179,115 @@ describe('local deterministic Directory adapter', () => {
       ok: true,
       user: { customerId: 'customer-1', userId: 'user-1', primaryEmail: 'person@jenfu.com.tw', directoryState: 'present', sourceEtag: 'etag-1' },
     })
+  })
+})
+
+
+describe('Directory full-response deadlines', () => {
+  const canonicalUser = { id: 'user-1', customerId: 'customer-1', primaryEmail: 'person@jenfu.com.tw', suspended: false, archived: false }
+  const createCredentialPort = (transport: GoogleDirectoryCredentialTransport) => {
+    const sourceClient = Object.assign(Object.create(Compute.prototype), { getAccessToken: vi.fn(async () => ({ token: 'synthetic-runtime-token' })) }) as Compute
+    vi.spyOn(GoogleAuth.prototype, 'getClient').mockResolvedValue(sourceClient)
+    return createGoogleDirectoryAuthPort({ delegatedSubject: 'admin@jenfu.com.tw', serviceAccountEmail: 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com', transport, timeoutMs: 20 })
+  }
+
+  it.each(['signJwt', 'oauth'] as const)('bounds a stalled %s body and clears the in-flight refresh for a safe retry', async (stage) => {
+    vi.useFakeTimers()
+    let stall = true
+    const signals: AbortSignal[] = []
+    const request: GoogleDirectoryCredentialTransport = vi.fn(async (url, init) => {
+      signals.push(init.signal)
+      const signing = url.includes(':signJwt')
+      return { status: 200, json: () => stall && (stage === 'signJwt' ? signing : !signing) ? new Promise<unknown>(() => {}) : Promise.resolve(signing ? { signedJwt: 'synthetic-signed-assertion' } : { access_token: 'synthetic-delegated-token', expires_in: 3600 }) }
+    })
+    const authPort = createCredentialPort(request)
+    const result = authPort.getRequestHeaders('https://admin.googleapis.com/unused').then(() => null, (error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(21)
+    expect(await result).toMatchObject({ code: 'DIRECTORY_AUTH_UNAVAILABLE', retryable: true })
+    expect(signals.every((signal) => signal.aborted)).toBe(true)
+    stall = false
+    await expect(authPort.getRequestHeaders('https://admin.googleapis.com/unused')).resolves.toMatchObject({ Authorization: 'Bearer synthetic-delegated-token' })
+  })
+
+  it('bounds stalled ADC and never signs with a source token resolved after the deadline', async () => {
+    vi.useFakeTimers()
+    let resolveToken!: (value: { token: string }) => void
+    const sourceClient = Object.assign(Object.create(Compute.prototype), { getAccessToken: vi.fn(() => new Promise<{ token: string }>((resolve) => { resolveToken = resolve })) }) as Compute
+    vi.spyOn(GoogleAuth.prototype, 'getClient').mockResolvedValue(sourceClient)
+    const request: GoogleDirectoryCredentialTransport = vi.fn()
+    const authPort = createGoogleDirectoryAuthPort({ delegatedSubject: 'admin@jenfu.com.tw', serviceAccountEmail: 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com', transport: request, timeoutMs: 20 })
+    const result = authPort.getRequestHeaders('https://admin.googleapis.com/unused').then(() => null, (error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(21)
+    expect(await result).toMatchObject({ code: 'DIRECTORY_AUTH_UNAVAILABLE', retryable: true })
+    resolveToken({ token: 'synthetic-late-token' })
+    await vi.advanceTimersByTimeAsync(1)
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('preserves a known delegation denial without waiting for or exposing its error body', async () => {
+    const body = vi.fn(() => new Promise<unknown>(() => {}))
+    const authPort = createCredentialPort(vi.fn(async () => ({ status: 403, json: body })))
+    await expect(authPort.getRequestHeaders('https://admin.googleapis.com/unused')).rejects.toMatchObject({ code: 'DIRECTORY_DELEGATION_INVALID', retryable: false })
+    expect(body).not.toHaveBeenCalled()
+  })
+
+  it('bounds users.get body decoding even when the transport ignores abort', async () => {
+    vi.useFakeTimers()
+    let signal: AbortSignal | undefined
+    const request = vi.fn(async (_url: string, init: { signal: AbortSignal }) => { signal = init.signal; return { status: 200, headers: new Headers(), json: () => new Promise<unknown>(() => {}) } })
+    const port = createGoogleDirectoryReadOnlyPort({ customerId: 'customer-1', domain: 'jenfu.com.tw', auth, transport: request, timeoutMs: 20 })
+    const result = port.findExactCandidate('person@jenfu.com.tw')
+    await vi.advanceTimersByTimeAsync(21)
+    await expect(result).resolves.toMatchObject({ ok: false, kind: 'retryable_error', code: 'DIRECTORY_TIMEOUT' })
+    expect(signal?.aborted).toBe(true)
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not issue a late Directory read after authentication exceeds the read deadline', async () => {
+    vi.useFakeTimers()
+    let resolveHeaders!: (headers: Record<string, string>) => void
+    const request = vi.fn()
+    const port = createGoogleDirectoryReadOnlyPort({ customerId: 'customer-1', domain: 'jenfu.com.tw', auth: { getRequestHeaders: () => new Promise((resolve) => { resolveHeaders = resolve }) }, transport: request, timeoutMs: 20 })
+    const result = port.findExactCandidate('person@jenfu.com.tw')
+    await vi.advanceTimersByTimeAsync(21)
+    await expect(result).resolves.toMatchObject({ ok: false, code: 'DIRECTORY_TIMEOUT', kind: 'retryable_error' })
+    resolveHeaders({ Authorization: 'Bearer synthetic-late-token' })
+    await vi.advanceTimersByTimeAsync(1)
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [404, 'not_found', 'DIRECTORY_NOT_FOUND'],
+    [429, 'retryable_error', 'DIRECTORY_RATE_LIMITED'],
+    [503, 'retryable_error', 'DIRECTORY_READ_UNAVAILABLE'],
+    [403, 'permanent_error', 'DIRECTORY_HTTP_403'],
+  ])('classifies HTTP %i without decoding or persisting an error body', async (status, kind, code) => {
+    const body = vi.fn(async () => ({ sensitiveProviderMaterial: 'never-read' }))
+    const request = vi.fn(async () => ({ status: Number(status), headers: new Headers(), json: body }))
+    const port = createGoogleDirectoryReadOnlyPort({ customerId: 'customer-1', domain: 'jenfu.com.tw', auth, transport: request })
+    await expect(port.readByDirectoryKey('customer-1', 'user-1')).resolves.toMatchObject({ ok: false, kind, code })
+    expect(body).not.toHaveBeenCalled()
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(port.writeOperations).toBe(0)
+  })
+
+  it.each([
+    [{ ...canonicalUser, archived: true }, 'DIRECTORY_USER_INELIGIBLE'],
+    [{ ...canonicalUser, customerId: 'other-customer' }, 'DIRECTORY_RESPONSE_INVALID'],
+    [{ ...canonicalUser, primaryEmail: 'primary@jenfu.com.tw' }, 'DIRECTORY_CANDIDATE_MISMATCH'],
+  ])('rejects archived, foreign customer and alias-hit candidates', async (user, code) => {
+    const request = transport(user)
+    const port = createGoogleDirectoryReadOnlyPort({ customerId: 'customer-1', domain: 'jenfu.com.tw', auth, transport: request })
+    await expect(port.findExactCandidate('person@jenfu.com.tw')).resolves.toMatchObject({ ok: false, code })
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(port.writeOperations).toBe(0)
+  })
+
+  it('rejects a foreign input domain and customer before any Directory read', async () => {
+    const request = transport(canonicalUser)
+    const port = createGoogleDirectoryReadOnlyPort({ customerId: 'customer-1', domain: 'jenfu.com.tw', auth, transport: request })
+    await expect(port.findExactCandidate('person@other.test')).resolves.toMatchObject({ ok: false, code: 'DIRECTORY_DOMAIN_MISMATCH' })
+    await expect(port.readByDirectoryKey('other-customer', 'user-1')).resolves.toMatchObject({ ok: false, code: 'DIRECTORY_KEY_MISMATCH' })
+    expect(request).not.toHaveBeenCalled()
   })
 })

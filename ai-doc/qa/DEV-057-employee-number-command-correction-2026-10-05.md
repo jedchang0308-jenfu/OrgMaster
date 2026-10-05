@@ -63,3 +63,17 @@ PR #107 merge `b111b8ad075cf03df3f58a7446829d65a64c6024` 的第一個 operator b
 R2 收斂補充：實際 OrgMaster base 的 default command 為 `dist-server/server.mjs`（不是 Platform 的 `server.js`）；保留 owner native loader 的完整 config，包含原 environment 名稱。因此 build-only `ARG SOURCE_REVISION` 只產生固定 `/app/dev014-directory-source-revision.txt`（root-owned，0444），不新增 image ENV。Canary 以最多42 bytes讀此 immutable file，與 CLI exact source 比較；ENV 不提供來源 fallback。原 R1 ENV guard 歷史保留，新測例驗證缺檔／不同來源在任何 provider request 前拒絕，且偽造 ENV 無法覆蓋映像檔。這些更動仍只在同一 R2 修正批次。
 
 同一未推送 R2 批次亦補正 safe receipt：正向 `users.get` 必須實際為 HTTP 200，safe receipt 明記該 status；其他2xx即使帶相似claims也拒絕。原R1正向status為null的診斷限制保留，不回填歷史。聚焦28案包含此負向邊界；一般／恢復執行路徑共用 exact build request 與 Job template 讀回，不各自採用較弱檢查。
+
+## 本輪 UI／PostgreSQL 與正式來源接合（2026-10-05）
+
+後續結果取代上方當時待驗快照，原數字與 FAIL／未驗狀態不改寫。JENFU/DEV-014 QA05／18／19 的 [scoped UI／native PostgreSQL](../../../Jenfu-Platform/ai-doc/qa/evidence/DEV014-REMAINING-DELIVERY-20261005/orgmaster-number-ui-postgres-projection.json) 七個 required checks 通過：正常 Employee 入口編號保存／重載、exact Employee assignment／durable receipt／canonical Principal audit、CAS 409 無額外寫入，DWD／admission 關閉時 Directory requests＝0；pending／conflict 安靜狀態、keyboard focus／Tab／Escape／ARIA DOM 與 1440／1024／390 viewport 通過。資料均為合成 disposable PostgreSQL；native Principal session 預先簽發、Platform epoch 為 static fixture，不冒充真實 SSO 發證、Production 編號異動或 screen-reader speech。所有 browser／server／PG／port／source／junction 清理完成。
+
+[真實 keyless provider query](../../../Jenfu-Platform/ai-doc/qa/evidence/DEV014-REMAINING-DELIVERY-20261005/orgmaster-keyless-directory-query-projection.json) 已有 PR109 exact protected source 的 immutable operator、唯一 users.get HTTP200 與原始 provider receipts／hash／Job 404 清理；沒有 Employee／DB／IAM／Secret 寫入。本項為 provider happy path，不擴張為所有負向或背景 PASS。[現行正式 source](../../../Jenfu-Platform/ai-doc/qa/evidence/DEV014-REMAINING-DELIVERY-20261005/orgmaster-current-source-projection.json) 為 cfdc683d5ec14deb3441b513a1c54b318b1bd766，owner run37306696077／orgmaster-prod-42c2e2cc2f93／generation241／100%，terminal RELEASED，image sha256:3417ae1e195cb6912402227885dc553a5b00462f5d759b48eaba232002709fdb；UI archive bytes 與本次 L3 一致。原 8ed 正式 API／畫面收據維持原 revision。
+
+## Directory 整條依賴 deadline 修正（本機候選；2026-10-05）
+
+來源 JENFU/DEV-014 QA13／15／16，由 ORGMASTER/DEV-057 同根因批次承接。原 app Directory auth 的 POST timer 在 headers 回來後就清除，成功 response.json() 可無限等待；ADC 也未被同一 deadline 約束。候選 shared deadline 包含 ADC／signJwt／OAuth／JSON body 及 Directory read，transport 即使忽略 abort 仍準時回 safe retryable error；遲到 ADC／token 不再發下一個 HTTP 請求。已知非2xx不解碼 upstream error body，保留原 readonly scope／keyless guard／status classification，失敗後 single-flight 可安全重試，不自動 helper retry。
+
+兩個候選檔案 local bytes SHA-256：server/orgmasterManagedDirectoryPort.ts＝1c2fd38801fa3c88e3bb096a42c48dab8a3eb72c49aa7160f3e9af7951545a32；test＝fd6e368b069660f00cae8ae1808defeffd70c24c25334b637acaa988090bb6a4。[原始 test 與局部投影](../../../Jenfu-Platform/ai-doc/qa/evidence/DEV014-REMAINING-DELIVERY-20261005/orgmaster-directory-deadline-local-projection.json) 記錄23／23、5 suites、typecheck及 targeted diff check exit0；Luna獨立靜態QC未見P1／P2。原 Vitest報告沒有內嵌 source hash，投影如實記錄 post-run bytes 核對，protected-source CI會再驗本批Git來源，不把本機hash當正式image證據。getClient stall與OAuth各個非2xx未逐端點獨立測試；共用deadline／guard可靜態追蹤。
+
+目前只完成 local correction，尚未合併／發布；候選包含本 source／test／必要 QA 同一 PR，保留其他15個既有 dirty檔案。無 migration／DB／IAM／Secret／runtime config 變更。Production只沿既有 owner-native protected source/CI、immutable baseline與十stage發布。背景 refresh／lifecycle snapshot／可信 workload actor／正常 dispatcher仍開放，不以本批23項或provider query宣稱DEV-014完整結案。
