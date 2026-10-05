@@ -4,6 +4,8 @@
 
 ## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
 
+[v6 最終映像包裝矯正](qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md)：AI-PDM v6 已發布，但 OrgMaster 正常治理讀回實際500；正式最終 image recipe 漏 COPY v6，正在集中修正 packaging／required regression及普通owner重發。原本 source／PG PASS與兩次正式 FAIL分層保留，不重寫指派或歷史。
+
 [本批任務](dev_task.md#dev-057-current-contract) → [exact active reader 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)。同一 active v5/v6 artifact 供 registry、治理讀寫及 role workspace；歷史指派仍只作 provenance，OrgMaster 的角色／scope owner 及唯一 grant v4 不變。新能力及080由AIPDM/DEV-121發布；AI-PDM 正常顯示 v4 直接讀既有已發布 PostgreSQL catalog/grants，不依賴缺 session 的 HTTP workspace。修正後 QA／CI／正式驗證尚未完成；下方前批結論保留其原層級。
 
 **DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 沿 DEV-057 既有子項與 [current correction 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current)；目前 LOCAL_FIX／TASK_OWNED_POSTGRES_PASS，protected merge／030 source-bound release／正式 details 仍待完成。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。

@@ -6,6 +6,8 @@
 
 ## DEV-057 目錄 v6 相容讀取（2026-10-05，執行中）
 
+[v6 最終映像包裝矯正](qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md)：AI-PDM v6 已發布，但 OrgMaster 正常治理讀回實際500；正式最終 image recipe 漏 COPY v6，正在集中修正 packaging／required regression及普通owner重發。原本 source／PG PASS與兩次正式 FAIL分層保留，不重寫指派或歷史。
+
 沿既有 `ORGMASTER/DEV-057#identity-grants`，參與 `AIPDM/DEV-121#system-admin-capabilities`；本批 [current reader 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#system-admin-catalog-v6-reader)已 RD Implementation Ready。只修 exact active artifact 的 registry／治理／workspace 一致性，歷史指派不重寫。
 - [x] 本機 exact v5/v6、unknown／mixed／tamper／歷史 snapshot 與正常 server caller 回歸（LOCAL_PASS）。
 - [ ] 真實 PostgreSQL producer→AI-PDM consumer 的 direct/global、非 target Principal、scope、撤權與 expiry。
