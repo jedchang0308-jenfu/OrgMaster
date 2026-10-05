@@ -12,6 +12,8 @@
 
 整理前文件原文在 [HISTORY_ONLY文件地圖](documentation_map-history-2026-10-03.md)，包含舊進度及取代關係；不預設載入、不執行舊雙軌／bridge／逐人／TOTP步骤。以下保留其他任務原索引，未因本次CA重新判定其完成度。
 
+員工連結修正版發布續行的同root修正仍在DEV-057：`dev057-smoke-rotation-continuation.mjs`重驗已發布reuse鏈後接新rotation、`dev040-routine-release.mjs`沿相同reader邊界判定，既有routine tests覆蓋direct與後續source reuse／原baseline／immutable歷史／malformed numeric及拒絕，CI與發布仍走原owner流程。版本9原生reauth及rotation證據、R38/R39未dispatch的STOPPED結果保留於同一[矯正紀錄](qa/DEV-057-managed-identity-link-correction-2026-10-05.md)，本機PASS不代替正式切流。
+
 本輪 own smoke freshness 矯正沿 DEV-057，原生 CLI／lib／聚焦測試為 `scripts/dev057-smoke-credential-reauth.mjs`、`scripts/lib/dev057-smoke-credential-reauth.mjs`、`scripts/dev057-smoke-credential-reauth.test.mjs`；[契約](specs/DEV-057-identity-and-grant-contract-boundary.md#smoke-憑證-freshness-的-owner-邊界)定義 fixed owner、prior pair、fresh password、Principal AAL1、版本／GitHub／receipt及TTL邊界。既有 `test:dev-040:r2` 納入聚焦測試，無新 CI job或 release gate；本機證據不算正式 reauth／發布。
 
 普通release續接的同根因矯正使用 `scripts/dev040-deploy-production.mjs`、`scripts/lib/dev040-routine-release.mjs`、`scripts/lib/dev057-smoke-rotation-continuation.mjs`，並沿既有 `scripts/dev040-routine-release.test.mjs`／QC固定分母；[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md#ordinary-release-的-own-smoke-rotation-續接)定義own ref、75項完整集合、原apply freshness與operator／prepare證據分層。不新增IAM、DDL、Secretpayload讀取或發布authority；Production驗證由原owner流程執行。

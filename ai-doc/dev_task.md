@@ -6,6 +6,8 @@
 
 沿 `ORGMASTER/DEV-057#identity-grants`，本批僅 OrgMaster source／UI／錯誤分類修正；既有共同 Principal-only 正式結案紀錄保持原層級。正式 user SSO 已成功，但 Directory registration pending 被顯示為待連結且可重複 candidate；已保存的連結不得因 UI 操作重綁。現行同根因修復及 stage 見 [矯正證據](qa/DEV-057-managed-identity-link-correction-2026-10-05.md)。本批本機聚焦已通過，完整回歸／protected PR／owner release／正式 UI 驗證依各自證據推進，不由本機 PASS 宣稱 Production 修復。
 
+本批發布續行發現同root的smoke新版本接續缺口：版本9已由原生reauth與受控plan/apply完成，R38 cross-source reuse選擇不適用同source，R39 direct check遇歷史reuse baseline拒絕。均停在prepare之前，未dispatch或切流。沿同DEV-057集中修正續接驗證器及完整正反測試；不重做員工綁定、不增加主任務。現行規則見[ordinary release契約](specs/DEV-057-identity-and-grant-contract-boundary.md#ordinary-release-的-own-smoke-rotation-續接)，本次stage及原native失敗證據見[同一矯正紀錄](qa/DEV-057-managed-identity-link-correction-2026-10-05.md)。
+
 ## DEV-057 現行續接
 
 本輪只有 [Principal-only current契約](specs/DEV-057-identity-and-grant-contract-boundary.md) 一套有效施工指令；維持原native DEV／子任務及驗收分母。歷史原文／階段在 [HISTORY_ONLY任務快照](dev_task-history-2026-10-03.md)，不讀為當前命令。各層證據只證明本機／整合／正式實測的流程，不以文件成熟度或總PASS數改算完成率。
