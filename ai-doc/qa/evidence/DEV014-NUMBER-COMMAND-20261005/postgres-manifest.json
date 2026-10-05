@@ -1,0 +1,344 @@
+{
+  "contract": "DEV-057",
+  "runner": "DEV-057-postgres-qc-v2",
+  "evidenceScope": "TASK_OWNED_LOCAL_ISOLATED",
+  "status": "PASS",
+  "generatedAt": "2026-10-05T04:58:55.016Z",
+  "productionWrites": false,
+  "executedCaseCount": 12,
+  "validationSlice": "employee-number-command-v2",
+  "numberCommandQcSha256": "d473648c42b245b249aaaa2df5913d308000a9afe004325c5fd90d9f58ddc54d",
+  "sourceRevision": "c65dd31acb8d2c1895d0e9e8d2a93186dc28ef35",
+  "dirty": [
+    "M ai-doc/dev_task.md",
+    " M ai-doc/documentation_map.md",
+    " M ai-doc/qa/DEV-057-gcc-pbds-applicability-2026-10-01.json",
+    " M ai-doc/qa/DEV-057-managed-identity-link-correction-2026-10-05.md",
+    " M ai-doc/specs/DEV-057-identity-and-grant-contract-boundary.md",
+    " M config/release/dev040-orgmaster-independent-production-v3.json",
+    " M scripts/dev040-production-migration-runner.mjs",
+    " M scripts/lib/dev012-owner-stage-executor.mjs",
+    " M scripts/lib/dev040-orgmaster-independent-release.mjs",
+    " M scripts/lib/dev040-routine-release.mjs",
+    " M scripts/lib/dev057-principal-contract-release.mjs",
+    " M scripts/qc-dev-047-postgres.mjs",
+    " M server/orgmasterAuthApi.test.ts",
+    " M server/orgmasterAuthApi.ts",
+    " M server/orgmasterGovernanceStore.ts",
+    " M server/orgmasterManagedIdentityRepository.ts",
+    " M server/orgmasterManagedIdentityService.ts",
+    " M server/orgmasterManagedIdentityStore.test.ts",
+    " M server/orgmasterManagedIdentityStore.ts",
+    " M server/orgmasterServer.test.ts",
+    " M server/orgmasterServer.ts",
+    " M src/auth/AuthGate.test.tsx",
+    " M src/auth/AuthGate.tsx",
+    " M src/auth/authApiClient.ts",
+    " M src/components/DirectoryDetailPanel.test.tsx",
+    " M src/components/DirectoryDetailPanel.tsx",
+    "?? db/migrations/030_dev057_employee_number_command_receipt.sql",
+    "?? scripts/lib/dev057-employee-number-postgres-qc.mjs"
+  ],
+  "serverVersion": "18.4",
+  "acceptedServerMajors": [
+    17,
+    18
+  ],
+  "migrations": [
+    {
+      "name": "001_dev004_orgmaster_app_sessions.sql",
+      "bytes": 2218,
+      "sha256": "4537d51bd42a452b04f8641beb11588810ce9326075f8933b16e5ae37706d3bd"
+    },
+    {
+      "name": "002_dev006_orgmaster_persistence.sql",
+      "bytes": 5992,
+      "sha256": "10d71fbf556035b307c2b3997ad4e7499e9b3586dc60b351651af4b6973094da"
+    },
+    {
+      "name": "003_dev006_orgmaster_runtime_repository.sql",
+      "bytes": 11823,
+      "sha256": "2680c19df8f4bacddf53d5bfae55fb35658ff63f1e54de3f97727bd4bdd689ba"
+    },
+    {
+      "name": "004_dev040_active_principal_view.sql",
+      "bytes": 4594,
+      "sha256": "09591bddd33680bf584711884fb600ec996b356cff48ccfd1b6343c74a16f5b7"
+    },
+    {
+      "name": "005_dev005_entitlement_governance.sql",
+      "bytes": 41642,
+      "sha256": "cf5efbbe6ce29c9d6d8100961709d19ab90c1af79e31731608ae9a9dbf73a80d"
+    },
+    {
+      "name": "006_dev040_identity_admission_projection.sql",
+      "bytes": 5809,
+      "sha256": "0163c107446b0aeac4ef39b365fc57961133360cac1d9d3152be8e8c89eda3dd"
+    },
+    {
+      "name": "007_dev009_privileged_governance.sql",
+      "bytes": 11257,
+      "sha256": "f83db791135586a5213b5de0e63e8088a76e0ab37dcee77f6c7601fbe15a4fd9"
+    },
+    {
+      "name": "008_dev002_portal_app_visibility.sql",
+      "bytes": 5033,
+      "sha256": "d9651deeeb652fcc60526a8c8a073d2322b18f3031a8303f9bc842fe0c8d50b4"
+    },
+    {
+      "name": "009_dev039_application_entitlement_v2.sql",
+      "bytes": 6640,
+      "sha256": "1f729d12800701106a216da3b698ddaf4d0faa00a626c24ab0bbd2142ba3f573"
+    },
+    {
+      "name": "010_dev010_neutral_schema_boundary.sql",
+      "bytes": 15073,
+      "sha256": "9abe3008ac0cd9370079faf09de6d6b6d8204e6ee6d10716070541e4d2216af4"
+    },
+    {
+      "name": "011_dev046_workbench_list_width_preferences.sql",
+      "bytes": 1110,
+      "sha256": "40796e45e9c80bb9163091f101245e17531a3c94bbf7296368b2b387456c0e1c"
+    },
+    {
+      "name": "012_dev047_managed_identity_bridge.sql",
+      "bytes": 63328,
+      "sha256": "5e5b62cd8786d0b285dab19a5f0ca1f47471484851f3b736afea4b944c86ac08"
+    },
+    {
+      "name": "013_dev049_existing_google_primary_account_link.sql",
+      "bytes": 43185,
+      "sha256": "ee77ccb7cea50d64c754bfdfb96f59b7b26ac3ff25c7cc28e26fd65763f1ad00"
+    },
+    {
+      "name": "014_dev050_orgmaster_session_admission.sql",
+      "bytes": 3699,
+      "sha256": "f39ea5eb7e9f4accbe66961fa73345b788aa609b8a7de658c416335311463867"
+    },
+    {
+      "name": "015_dev013_restore_runtime_session_dml.sql",
+      "bytes": 1373,
+      "sha256": "70f6f9442ba653fcaf8988961aaad123244fe87ba09e35755e812c35a44ef8e8"
+    },
+    {
+      "name": "016_dev014_managed_identity_lifecycle_contract.sql",
+      "bytes": 3151,
+      "sha256": "9d88d2dca9d72d5b7f9950509452c3483ea34a27d1f6091f3b6f1f9eec77ab4b"
+    },
+    {
+      "name": "017_dev014_invalidation_application_registration.sql",
+      "bytes": 13488,
+      "sha256": "170ce6415959862f2f601c1f0e6ce72b6e43d30931e95ae6cb0f9cbc8d70c3fd"
+    },
+    {
+      "name": "018_dev014_employee_activation_contract.sql",
+      "bytes": 2046,
+      "sha256": "ce5ab0204fe39eca3bd3e123ecfe8e84ea6dc8f008c6429e7c8bdc77d13c2229"
+    },
+    {
+      "name": "019_dev014_workspace_revision_contract.sql",
+      "bytes": 2398,
+      "sha256": "ac8c9e04edf208613e2291ab227a5e13b5ecdcc386820b75a31afdef1e3a8ede"
+    },
+    {
+      "name": "020_dev014_current_projection_contract.sql",
+      "bytes": 19719,
+      "sha256": "8bcf7f1528e581e281436efe509c26f845657be2d1767c500460f56ccd538d82"
+    },
+    {
+      "name": "021_dev057_identity_grant_writer_fence.sql",
+      "bytes": 33820,
+      "sha256": "9c925bd36b357ef2d3997eb362cbbef566fbd4308acd22e647b72d1f2adb3d5e"
+    },
+    {
+      "name": "022_dev014_managed_login_session_admission.sql",
+      "bytes": 4210,
+      "sha256": "1e2c016cb4c5f1107f6c2531688f9e21bfcc2b1c1071565f63364cfa3f5574f8"
+    },
+    {
+      "name": "023_dev014_authority_principal_projection_contract.sql",
+      "bytes": 5844,
+      "sha256": "ec0d317ba7ad389c065c7e4262275e149b23941ec052dfc1a007b01a4682ef84"
+    },
+    {
+      "name": "024_dev057_principal_identity_invariants.sql",
+      "bytes": 66721,
+      "sha256": "af5897b810393faee2db421abd0f9527530c29b2c0fcb07acd6b8df4db6365c5"
+    },
+    {
+      "name": "025_dev057_ai_pdm_principal_effective_grants_v2.sql",
+      "bytes": 14734,
+      "sha256": "95b02a753a5b5883a13a91e94709bd07734df01c569036dd0211c112a523c53b"
+    },
+    {
+      "name": "026_dev057_session_principal_policy_path.sql",
+      "bytes": 4507,
+      "sha256": "9f38433e30d5974562b6bef7025fdaca625e9ad180a44aff8f59eda9fe803aef"
+    },
+    {
+      "name": "027_dev057_principal_cutover_source_manifest.sql",
+      "bytes": 2616,
+      "sha256": "8dfd9fa0e99553aea12800c99b49da8b1671f935c57e47373bc1cc1cb0d8a43e"
+    },
+    {
+      "name": "028_dev057_ai_pdm_principal_effective_grants_v3.sql",
+      "bytes": 14858,
+      "sha256": "24d2742ff1b2232230d1ebb8c203e32568aec1add6ee0549ef3bdaa526a7139f"
+    },
+    {
+      "name": "029_dev057_human_business_principal_grants_v4.sql",
+      "bytes": 14266,
+      "sha256": "b3baacbe899a7676986bbd3e52622041801d8e8d693c4bd5e6d5e2e291567b0e"
+    },
+    {
+      "name": "030_dev057_employee_number_command_receipt.sql",
+      "bytes": 7519,
+      "sha256": "bade78acd6221b85c474fe7e7a5aacb8efb3e2b08ca2294e4fe384e545b66bcb"
+    }
+  ],
+  "checks": [
+    {
+      "id": "D57-01",
+      "label": "migration preflight rejects an existing legacy/managed active-principal collision before replacing views",
+      "status": "PASS",
+      "detail": {
+        "expected": "ACTIVE_PRINCIPAL_MAPPING_AMBIGUOUS",
+        "transactionRolledBack": true
+      }
+    },
+    {
+      "id": "D57-10",
+      "label": "migration rejects one principal assigned to two Employees without partial DDL",
+      "status": "PASS",
+      "detail": {
+        "expected": "PRINCIPAL_HISTORY_OWNER_CONFLICT",
+        "transactionRolledBack": true
+      }
+    },
+    {
+      "id": "NUM-01",
+      "label": "number assignment records canonical actor, exact receipt and audit atomically",
+      "status": "PASS",
+      "detail": {
+        "disposition": "applied",
+        "revision": "1",
+        "actor": "principal-legacy",
+        "receiptAndAudit": true
+      }
+    },
+    {
+      "id": "NUM-02",
+      "label": "same command replays original result despite its stale original CAS",
+      "status": "PASS",
+      "detail": {
+        "originalRevision": "1",
+        "noAdditionalWrites": true
+      }
+    },
+    {
+      "id": "NUM-03",
+      "label": "command reuse conflicts and stale new commands cannot mutate data",
+      "status": "PASS",
+      "detail": {
+        "conflictDimensions": [
+          "number",
+          "target",
+          "actor",
+          "CAS"
+        ],
+        "rejectedWithoutWrites": true
+      }
+    },
+    {
+      "id": "NUM-04",
+      "label": "correction retains number history without changing Employee or identity ownership",
+      "status": "PASS",
+      "detail": {
+        "revision": "2",
+        "oldNumberRetired": true,
+        "workspaceUnchanged": true
+      }
+    },
+    {
+      "id": "NUM-05",
+      "label": "retired numbers remain unavailable and a new noop command has one receipt and no audit",
+      "status": "PASS",
+      "detail": {
+        "noopReceipt": true,
+        "numberNeverReused": true
+      }
+    },
+    {
+      "id": "NUM-06",
+      "label": "concurrent identical commands converge on one receipt, assignment and audit",
+      "status": "PASS",
+      "detail": {
+        "oneReceipt": true,
+        "oneAudit": true,
+        "dispositions": [
+          "applied",
+          "replayed"
+        ]
+      }
+    },
+    {
+      "id": "NUM-07",
+      "label": "different employees racing for one number produce one winner and no duplicate",
+      "status": "PASS",
+      "detail": {
+        "winnerCount": 1,
+        "noDuplicateAssignment": true
+      }
+    },
+    {
+      "id": "NUM-08",
+      "label": "managed_identity_audit_events failure rolls back assignment, tombstone, receipt and audit together",
+      "status": "PASS",
+      "detail": {
+        "fullTransactionRolledBack": true,
+        "employeeNotActivated": true
+      }
+    },
+    {
+      "id": "NUM-09",
+      "label": "managed_identity_command_receipts failure rolls back assignment, tombstone, receipt and audit together",
+      "status": "PASS",
+      "detail": {
+        "fullTransactionRolledBack": true,
+        "employeeNotActivated": true
+      }
+    },
+    {
+      "id": "NUM-10",
+      "label": "owner command ACL denies sibling runtime and direct table mutation",
+      "status": "PASS",
+      "detail": {
+        "ownerOnlyExecution": true,
+        "directDmlDenied": true,
+        "identityBindingsUnchanged": true
+      }
+    }
+  ],
+  "firstFailure": null,
+  "source": {
+    "runnerSha256": "6fe4dada063cfb6684d5898ec47df2fddf536842f4de92e7045690f8c154abe8",
+    "contractRunnerSha256": "9188fac2a6f383499b39f81f6c0561160659f2910132ff3332fdad3ca3f9bf58",
+    "fixtureSha256": "1f3e2cf3904c02be1cac237c6369b25886b6daed0635fac84e45e30ea9a1795f"
+  },
+  "runtime": {
+    "project": "C:\\Users\\user\\.codex\\worktrees\\dev014-platform-release\\OrgMaster",
+    "purpose": "DEV-057 isolated PostgreSQL validation",
+    "port": 64265,
+    "postgresPid": 68624,
+    "owningProcessTree": "node:117496 -> postgres:68624",
+    "mutationScope": "C:\\Users\\user\\AppData\\Local\\Temp\\orgmaster-dev057-qc-zbucK2",
+    "interruptedBy": null,
+    "cleanup": {
+      "clientClosed": true,
+      "auxiliaryClientsClosed": true,
+      "clusterStopped": true,
+      "portReleased": true,
+      "tempRemoved": true
+    }
+  }
+}

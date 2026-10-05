@@ -46,6 +46,30 @@ async function listen(runtime: OrgmasterAuthRuntime, businessRead: () => void = 
 }
 
 describe('OrgMaster auth middleware', () => {
+  it('reports employee-number management independently from DWD-backed managed login', async () => {
+    const { runtime } = configuredRuntime()
+    Object.assign(runtime, {
+      managedLoginEnabled: false,
+      employeeNumberManagementEnabled: true,
+      managedIdentity: {},
+    })
+    const base = await listen(runtime)
+
+    const response = await fetch(base + '/api/auth/mode')
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      managedLoginEnabled: false,
+      employeeNumberManagementEnabled: true,
+    })
+    runtime.managedIdentity = undefined
+    const withoutService = await fetch(base + '/api/auth/mode')
+    expect(await withoutService.json()).toMatchObject({
+      managedLoginEnabled: false,
+      employeeNumberManagementEnabled: false,
+    })
+  })
+
   it('allows only the canonical and one exact V3 candidate origin', () => {
     const { config } = configuredRuntime()
     config.publicBaseUrl = new URL('https://orgmaster-prod-9536592944.asia-east1.run.app')

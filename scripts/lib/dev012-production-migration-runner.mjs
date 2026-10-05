@@ -216,6 +216,11 @@ export async function executeProductionMigration({ bundle, database, target, sou
   let applied = 0
   try {
     ledger = await readLedger(database, target.ledger)
+    if (target.allowedExistingLedgerCounts !== undefined) {
+      const allowedCounts = target.allowedExistingLedgerCounts
+      if (!Array.isArray(allowedCounts) || allowedCounts.length === 0 || allowedCounts.some((count) => !Number.isInteger(count) || count < 0)
+        || new Set(allowedCounts).size !== allowedCounts.length || !allowedCounts.includes(ledger.length)) fail('MIGRATION_EXISTING_LEDGER_COUNT_INVALID')
+    }
     pending = planMigration(bundle, ledger)
     for (const entry of pending) {
       await database.query('BEGIN')

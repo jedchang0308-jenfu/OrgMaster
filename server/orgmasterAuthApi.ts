@@ -67,6 +67,7 @@ export type OrgmasterAuthRuntime = {
   managedLoginOwner?: ManagedLoginOwnerServiceV1
   managedLoginCallerVerifier?: ManagedLoginCallerVerifier
   managedLoginEnabled?: boolean
+  employeeNumberManagementEnabled?: boolean
   ssoHandoffEnabled?: boolean
 }
 
@@ -297,20 +298,22 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
   const managedLoginCallerVerifier = environment.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL?.trim() && environment.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT?.trim()
     ? createGoogleManagedLoginCallerVerifier({ audience: configResult.config.publicBaseUrl.origin, expectedEmail: environment.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL, expectedSubject: environment.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT })
     : undefined
+  const managedIdentity = createManagedIdentityService({
+    root: environment.ORGMASTER_ROOT?.trim() || process.cwd(),
+    devEnabled: false,
+    repository: managedRepository,
+    directory: managedDirectory,
+    managedDomain: directoryConfig.enabled ? directoryConfig.domain : undefined,
+    directoryCustomerId: directoryConfig.enabled ? directoryConfig.customerId : undefined,
+  })
   return {
     configResult,
     firebase,
     principals: createPrincipalAdmissionRepository(database),
     epochs: createAuthEpochRepository(database),
     sessions: createOrgmasterSessionRepository(database),
-    managedIdentity: createManagedIdentityService({
-      root: environment.ORGMASTER_ROOT?.trim() || process.cwd(),
-      devEnabled: false,
-      repository: managedRepository,
-      directory: managedDirectory,
-      managedDomain: directoryConfig.enabled ? directoryConfig.domain : undefined,
-      directoryCustomerId: directoryConfig.enabled ? directoryConfig.customerId : undefined,
-    }),
+    managedIdentity,
+    employeeNumberManagementEnabled: Boolean(managedIdentity),
     managedLoginOwner,
     managedLoginCallerVerifier,
     managedLoginEnabled: directoryConfig.enabled,
@@ -334,6 +337,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         const current = developmentSession(request, devEnabled)
         sendJson(response, 200, {
           authMode: 'local_development',
+          employeeNumberManagementEnabled: runtime.employeeNumberManagementEnabled === true && Boolean(runtime.managedIdentity),
           profiles: publicDevelopmentProfiles(),
           session: current ? publicSession(current.session, id, current.profile ?? undefined) : null,
           correlationId: id,
@@ -361,7 +365,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/mode` && request.method === 'GET') {
         if (!runtime.configResult.configured) throw new OrgmasterAuthError(503, 'auth_server_not_configured')
-        sendJson(response, 200, { authMode: 'jenfu_firebase_bff', firebase: runtime.configResult.config.firebasePublicConfig, managedLoginEnabled: runtime.managedLoginEnabled === true, ssoHandoffEnabled: runtime.ssoHandoffEnabled === true, correlationId: id }, id)
+        sendJson(response, 200, { authMode: 'jenfu_firebase_bff', firebase: runtime.configResult.config.firebasePublicConfig, managedLoginEnabled: runtime.managedLoginEnabled === true, employeeNumberManagementEnabled: runtime.employeeNumberManagementEnabled === true && Boolean(runtime.managedIdentity), ssoHandoffEnabled: runtime.ssoHandoffEnabled === true, correlationId: id }, id)
         return
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/managed/alias` && request.method === 'POST') {

@@ -7,6 +7,7 @@ import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
 import { assertRuntimeConfig, buildRuntimeConfig, resolvePlainEnvironment } from './lib/dev012-owner-release-runtime.mjs'
 import { assertPreparePrerequisites, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
+import { DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -363,11 +364,11 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-029 production migration bytes', () => {
+test('OrgMaster exact 001-030 production migration bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
-  assert.equal(bundle.bundle.entries.length, 29)
+  assert.equal(bundle.bundle.entries.length, 30)
   assert.equal(bundle.bundle.entries[10].version, 'dev040-r2-orgmaster-011')
   assert.equal(bundle.bundle.entries[11].version, 'dev047-orgmaster-012')
   assert.equal(bundle.bundle.entries[12].version, 'dev049-orgmaster-013')
@@ -387,6 +388,13 @@ test('OrgMaster exact 001-029 production migration bytes', () => {
   assert.equal(bundle.bundle.entries[26].version, 'dev057-orgmaster-027')
   assert.equal(bundle.bundle.entries[27].version, 'dev057-orgmaster-028')
   assert.equal(bundle.bundle.entries[28].version, 'dev057-orgmaster-029')
+  assert.equal(bundle.bundle.entries[29].version, 'dev057-orgmaster-030')
+  assert.equal(bundle.bundle.entries[29].path, 'db/migrations/030_dev057_employee_number_command_receipt.sql')
+  assert.equal(bundle.bundle.entries[29].sourceSha256, 'bade78acd6221b85c474fe7e7a5aacb8efb3e2b08ca2294e4fe384e545b66bcb')
+  assert.equal(bundle.bundle.entries[29].appliedSha256, '5501715799f5b695467b6ccc146df5f2c0d147fdb5dcf8ad52777ac50c3acf87')
+  const changedPrefix = structuredClone(profile)
+  changedPrefix.migrations.entries[28].sourceSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev040V3Profile(changedPrefix, n1c), /MIGRATION_PREFIX_001_029_DRIFT/u)
 })
 
 test('S1B-21 OrgMaster release intent is exact, owner-bound and immutable', () => {
@@ -468,5 +476,20 @@ test('OrgMaster owner prepare binds DEV-057 human business grant v4 source', () 
   fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
   assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION')
   fixture.values.authorization.remediation = { ...remediation, contractView: 'orgmaster_contract.v_ai_pdm_principal_effective_grants_v2' }
+  assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
+})
+
+test('OrgMaster owner prepare binds the distinct DEV-057 employee number command v2 slice', () => {
+  const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
+    .filter((name) => !Object.hasOwn(profile.environment.fixedValues, name) && !Object.hasOwn(profile.environment.controlledValues, name))
+    .map((name) => [name, 'fixture-public-value']))
+  const runtimeConfig = buildRuntimeConfig(profile, { plainEnvironment: resolvePlainEnvironment(profile, priorPlainEnvironment), secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
+  const fixture = controlledPrerequisites(profile, runtimeConfig)
+  const remediation = DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION
+  fixture.intent.baselineIntentRef = ref('baseline-release-intent')
+  fixture.values.authorization = { ...fixture.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  fixture.values.readiness = { ...fixture.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation, baselineIntentRef: fixture.intent.baselineIntentRef }
+  assert.equal(assertPreparePrerequisites({ ...fixture, profile }).controlledEnvironmentAuthority.releaseMode, 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION')
+  fixture.values.readiness.slice = '057-PRINCIPAL-GRANTS-V4'
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/u)
 })

@@ -4,6 +4,7 @@ import { AuthApiError, getAuthMode, getCurrentSession, getDevelopmentAuthMode, l
 export interface AuthSessionContextValue {
   session: AuthSessionView
   managedIdentityEnabled: boolean
+  employeeNumberManagementEnabled: boolean
   phase: 'active' | 'processing' | 'failed'
   logout: () => Promise<void>
 }
@@ -16,13 +17,13 @@ export function useAuthSession() {
 
 type GateState =
   | { kind: 'loading' }
-  | { kind: 'authenticated'; session: AuthSessionView; mode: AuthMode | null }
+  | { kind: 'authenticated'; session: AuthSessionView; mode: AuthMode | null; employeeNumberManagementEnabled?: boolean }
   | { kind: 'login'; mode: AuthMode; message?: string }
   | { kind: 'development-login'; mode: DevelopmentAuthMode; message?: string }
   | { kind: 'blocked'; code: string; correlationId?: string }
   | { kind: 'unavailable'; correlationId?: string }
-  | { kind: 'logout-processing'; session: AuthSessionView; mode: AuthMode | null }
-  | { kind: 'logout-failed'; session: AuthSessionView; mode: AuthMode | null }
+  | { kind: 'logout-processing'; session: AuthSessionView; mode: AuthMode | null; employeeNumberManagementEnabled?: boolean }
+  | { kind: 'logout-failed'; session: AuthSessionView; mode: AuthMode | null; employeeNumberManagementEnabled?: boolean }
   | { kind: 'logout-complete' }
 
 function blockedState(error: unknown): GateState {
@@ -46,7 +47,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
           if (!active) return
           if (developmentMode) {
             setState(developmentMode.session
-              ? { kind: 'authenticated', session: developmentMode.session, mode: null }
+              ? {
+                  kind: 'authenticated',
+                  session: developmentMode.session,
+                  mode: null,
+                  employeeNumberManagementEnabled: developmentMode.employeeNumberManagementEnabled === true,
+                }
               : { kind: 'development-login', mode: developmentMode })
             return
           }
@@ -59,7 +65,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         // A resumed session needs the same server capability information as a new login.
         // If mode discovery fails, retain the verified session with new features disabled.
         const mode = await getAuthMode().catch(() => null)
-        if (active) setState({ kind: 'authenticated', session, mode })
+        if (active) setState({ kind: 'authenticated', session, mode, employeeNumberManagementEnabled: mode?.employeeNumberManagementEnabled === true })
       } catch (error) {
         if (!active) return
         if (error instanceof AuthApiError && error.status === 401) {
@@ -79,11 +85,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   async function submitDevelopmentLogin(profileId: DevelopmentAuthProfileView['id']) {
     if (state.kind !== 'development-login' || busy) return
+    const employeeNumberManagementEnabled = state.mode.employeeNumberManagementEnabled === true
     setBusy(true)
     setBusyProfileId(profileId)
     try {
       const session = await loginDevelopmentProfile(profileId)
-      setState({ kind: 'authenticated', session, mode: null })
+      setState({ kind: 'authenticated', session, mode: null, employeeNumberManagementEnabled })
     } catch {
       setState({ kind: 'development-login', mode: state.mode, message: '無法建立地端工作階段，請再試一次。' })
     } finally {
@@ -95,7 +102,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   async function logout() {
     if (state.kind !== 'authenticated' && state.kind !== 'logout-failed') return
     const previous = state
-    setState({ kind: 'logout-processing', session: previous.session, mode: previous.mode })
+    setState({ kind: 'logout-processing', session: previous.session, mode: previous.mode, employeeNumberManagementEnabled: previous.employeeNumberManagementEnabled })
     try {
       await logoutCurrentSession()
       if (previous.session.developmentProfile) {
@@ -106,7 +113,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         }
       } else setState({ kind: 'logout-complete' })
     } catch {
-      setState({ kind: 'logout-failed', session: previous.session, mode: previous.mode })
+      setState({ kind: 'logout-failed', session: previous.session, mode: previous.mode, employeeNumberManagementEnabled: previous.employeeNumberManagementEnabled })
     }
   }
 
@@ -114,6 +121,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return <AuthSessionContext.Provider value={{
       session: state.session,
       managedIdentityEnabled: Boolean(state.session.developmentProfile || state.mode?.managedLoginEnabled),
+      employeeNumberManagementEnabled: state.employeeNumberManagementEnabled === true || state.mode?.employeeNumberManagementEnabled === true,
       phase: state.kind === 'logout-processing' ? 'processing' : state.kind === 'logout-failed' ? 'failed' : 'active',
       logout,
     }}>

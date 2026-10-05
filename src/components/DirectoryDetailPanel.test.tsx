@@ -13,7 +13,8 @@ import {
 } from '../screenshotData'
 import { DirectoryDetailPanel } from './DirectoryDetailPanel'
 
-const auth = vi.hoisted(() => ({ managedIdentityEnabled: false }))
+const auth = vi.hoisted(() => ({ managedIdentityEnabled: false, employeeNumberManagementEnabled: false }))
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 vi.mock('../auth/AuthGate', () => ({ useAuthSession: () => auth }))
 vi.mock('./EmployeeManagedIdentitySection', () => ({ EmployeeManagedIdentitySection: () => <div>managed identity enabled</div> }))
 
@@ -39,7 +40,7 @@ function renderDepartmentDetail() {
 }
 
 describe('DirectoryDetailPanel department positions', () => {
-  it('shows a neutral unavailable state without loading the local-only identity flow until managed identity is enabled', () => {
+  it('shows the employee-number editor by number capability even when managed login is off', () => {
     const host = document.createElement('div')
     const root = createRoot(host)
     const render = () => root.render(<DirectoryDetailPanel selection={{ kind: 'employees', id: screenshotEmployees[0].id }} employees={screenshotEmployees} departments={screenshotDepartments} organizationLevels={screenshotOrganizationLevels} members={[]} onSetPrimaryAssignment={vi.fn()} onSelectPosition={vi.fn()} onSelectEntity={vi.fn()} onClose={vi.fn()} identityMutationAllowed />)
@@ -49,12 +50,18 @@ describe('DirectoryDetailPanel department positions', () => {
     expect(host.textContent).not.toContain('managed identity enabled')
     expect(host.querySelector('[role="alert"]')).toBeNull()
     expect([...host.querySelectorAll('button')].some((button) => button.textContent === '重新載入')).toBe(false)
-    auth.managedIdentityEnabled = true
+    auth.employeeNumberManagementEnabled = true
     act(render)
     expect(host.textContent).toContain('managed identity enabled')
     expect(host.textContent).not.toContain('員工編號管理尚未啟用。')
+    auth.employeeNumberManagementEnabled = false
+    auth.managedIdentityEnabled = true
+    act(render)
+    expect(host.textContent).toContain('員工編號管理尚未啟用。')
+    expect(host.textContent).not.toContain('managed identity enabled')
     act(() => root.unmount())
     auth.managedIdentityEnabled = false
+    auth.employeeNumberManagementEnabled = false
   })
   it('expands assigned employees below a position when clicked', () => {
     const { host, root, onSelectEntity } = renderDepartmentDetail()

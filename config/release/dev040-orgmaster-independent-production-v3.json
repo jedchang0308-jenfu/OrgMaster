@@ -409,6 +409,13 @@
         "path": "db/migrations/029_dev057_human_business_principal_grants_v4.sql",
         "sourceSha256": "b3baacbe899a7676986bbd3e52622041801d8e8d693c4bd5e6d5e2e291567b0e",
         "appliedSha256": "eaddde67a24255bf9849f3f6c4bc388cebf21732a0252a5d2313f9502ddf8d83"
+      },
+      {
+        "order": 30,
+        "version": "dev057-orgmaster-030",
+        "path": "db/migrations/030_dev057_employee_number_command_receipt.sql",
+        "sourceSha256": "bade78acd6221b85c474fe7e7a5aacb8efb3e2b08ca2294e4fe384e545b66bcb",
+        "appliedSha256": "5501715799f5b695467b6ccc146df5f2c0d147fdb5dcf8ad52777ac50c3acf87"
       }
     ]
   },

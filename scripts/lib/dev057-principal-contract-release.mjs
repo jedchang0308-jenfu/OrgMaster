@@ -38,3 +38,12 @@ export const DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION = Object.freeze({
   contractView: 'orgmaster_contract.v_ai_pdm_principal_effective_grants_v4',
   applicationId: 'ai-pdm',
 })
+
+export const DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION = Object.freeze({
+  kind: 'EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2',
+  migrationVersion: 'dev057-orgmaster-030',
+  migrationPath: 'db/migrations/030_dev057_employee_number_command_receipt.sql',
+  sourceSha256: 'bade78acd6221b85c474fe7e7a5aacb8efb3e2b08ca2294e4fe384e545b66bcb',
+  appliedSha256: '5501715799f5b695467b6ccc146df5f2c0d147fdb5dcf8ad52777ac50c3acf87',
+  functionSignature: 'orgmaster_core.assign_employee_number_v2(text,text,text,text,text,text,timestamptz)',
+})

@@ -12,6 +12,12 @@ const firebase = vi.hoisted(() => ({ getFirebaseIdToken: vi.fn(), getFirebaseGoo
 vi.mock('./authApiClient', async (importOriginal) => ({ ...(await importOriginal<typeof import('./authApiClient')>()), ...api }))
 vi.mock('./firebaseClient', () => firebase)
 
+function EmployeeNumberCapabilityProbe() {
+  const authSession = useAuthSession()
+  const enabled = (authSession as (typeof authSession & { employeeNumberManagementEnabled?: boolean }) | null)?.employeeNumberManagementEnabled
+  return <span>employee-numbers:{String(Boolean(enabled))}</span>
+}
+
 function SessionProbe() {
   const authSession = useAuthSession()
   return <>{authSession ? <><span>{`員工 ${authSession.session.user.employeeId}`}</span><span>{`managed:${authSession.managedIdentityEnabled}`}</span><button type="button" onClick={() => { void authSession.logout() }}>session logout</button></> : <span>尚未登入</span>}</>
@@ -45,7 +51,7 @@ describe('AuthGate', () => {
   it('mounts protected content only after a verified session', async () => {
     api.getCurrentSession.mockResolvedValue({ user: { principalId: 'p1', employeeId: 'e1' }, session: { expiresAt: new Date(Date.now() + 60_000).toISOString() }, assuranceLevel: 'aal1', correlationId: 'correlation-1' })
     await act(async () => {
-      root.render(<AuthGate><><div>protected organization data</div><SessionProbe /></></AuthGate>)
+      root.render(<AuthGate><><div>protected organization data</div><SessionProbe /><EmployeeNumberCapabilityProbe /></></AuthGate>)
       await Promise.resolve()
       await Promise.resolve()
     })
@@ -68,15 +74,24 @@ describe('AuthGate', () => {
 
   it('restores managed capabilities from the server when resuming a session', async () => {
     api.getCurrentSession.mockResolvedValue({ user: { principalId: 'p1', employeeId: 'e1' } })
-    api.getAuthMode.mockResolvedValue({ managedLoginEnabled: true })
-    await act(async () => root.render(<AuthGate><SessionProbe /></AuthGate>))
+    api.getAuthMode.mockResolvedValue({ managedLoginEnabled: true, employeeNumberManagementEnabled: false })
+    await act(async () => root.render(<AuthGate><><SessionProbe /><EmployeeNumberCapabilityProbe /></></AuthGate>))
     expect(container.textContent).toContain('managed:true')
+    expect(container.textContent).toContain('employee-numbers:false')
+  })
+
+  it('keeps employee-number entry available when DWD-backed managed login is off', async () => {
+    api.getCurrentSession.mockResolvedValue({ user: { principalId: 'p1', employeeId: 'e1' } })
+    api.getAuthMode.mockResolvedValue({ managedLoginEnabled: false, employeeNumberManagementEnabled: true })
+    await act(async () => root.render(<AuthGate><><SessionProbe /><EmployeeNumberCapabilityProbe /></></AuthGate>))
+    expect(container.textContent).toContain('managed:false')
+    expect(container.textContent).toContain('employee-numbers:true')
   })
 
   it('keeps a verified Principal session usable with new capabilities off when discovery fails', async () => {
     api.getCurrentSession.mockResolvedValue({ user: { principalId: 'p1', employeeId: 'e1' } })
     api.getAuthMode.mockRejectedValue(new AuthApiError(503, 'auth_server_not_configured'))
-    await act(async () => root.render(<AuthGate><SessionProbe /></AuthGate>))
+    await act(async () => root.render(<AuthGate><><SessionProbe /><EmployeeNumberCapabilityProbe /></></AuthGate>))
     expect(container.textContent).toContain('員工 e1')
     expect(container.textContent).toContain('managed:false')
   })
@@ -109,10 +124,10 @@ describe('AuthGate', () => {
 
   it('offers server-defined development profiles and enters with one click', async () => {
     const profile = { id: 'governance-manager', roleCode: 'orgmaster_governance_manager', roleName: '人員治理者', employeeId: 'employee-youhao', employeeName: '張祐豪', description: '管理身分與角色；不可發布治理政策' }
-    api.getDevelopmentAuthMode.mockResolvedValue({ authMode: 'local_development', profiles: [profile], session: null, correlationId: 'correlation-dev-mode' })
+    api.getDevelopmentAuthMode.mockResolvedValue({ authMode: 'local_development', employeeNumberManagementEnabled: true, profiles: [profile], session: null, correlationId: 'correlation-dev-mode' })
     api.loginDevelopmentProfile.mockResolvedValue({ user: { principalId: 'dev-principal-governance-manager', employeeId: profile.employeeId }, session: { expiresAt: new Date(Date.now() + 60_000).toISOString() }, assuranceLevel: 'aal1', developmentProfile: profile, correlationId: 'correlation-dev-session' })
     await act(async () => {
-      root.render(<AuthGate><><div>protected organization data</div><SessionProbe /></></AuthGate>)
+      root.render(<AuthGate><><div>protected organization data</div><SessionProbe /><EmployeeNumberCapabilityProbe /></></AuthGate>)
       await Promise.resolve()
       await Promise.resolve()
     })
@@ -128,6 +143,8 @@ describe('AuthGate', () => {
     expect(api.loginDevelopmentProfile).toHaveBeenCalledWith('governance-manager')
     expect(container.textContent).toContain('protected organization data')
     expect(container.textContent).toContain('員工 employee-youhao')
+    expect(container.textContent).toContain('managed:true')
+    expect(container.textContent).toContain('employee-numbers:true')
   })
 
   it('returns a development session directly to the role chooser after logout', async () => {
@@ -137,9 +154,10 @@ describe('AuthGate', () => {
     api.getDevelopmentAuthMode.mockResolvedValueOnce({ authMode: 'local_development', profiles: [profile], session: { user: { principalId: 'dev-principal-employee', employeeId: profile.employeeId }, session: { expiresAt: new Date(Date.now() + 60_000).toISOString() }, assuranceLevel: 'aal1', developmentProfile: profile, correlationId: 'correlation-dev-session' }, correlationId: 'correlation-dev-mode' })
       .mockResolvedValueOnce({ authMode: 'local_development', profiles: [profile], session: null, correlationId: 'correlation-dev-mode' })
     await act(async () => {
-      root.render(<AuthGate><SessionProbe /></AuthGate>)
+      root.render(<AuthGate><><SessionProbe /><EmployeeNumberCapabilityProbe /></></AuthGate>)
       await Promise.resolve()
     })
+    expect(container.textContent).toContain('employee-numbers:false')
     const logout = [...container.querySelectorAll('button')].find((candidate) => candidate.textContent === 'session logout') as HTMLButtonElement
     await act(async () => {
       logout.click()

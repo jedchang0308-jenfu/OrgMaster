@@ -9,6 +9,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import pg from 'pg'
+import { employeeNumberCases, runEmployeeNumberChecks } from './lib/dev057-employee-number-postgres-qc.mjs'
 import { classifyTarget, requiredCorrectionCases, resolvePostgresBin, resultExitCode, supportsServerVersion } from './lib/dev047-postgres-qc-contract.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -21,6 +22,8 @@ const dev053 = suite === 'dev053'
 const dev054 = suite === 'dev054'
 const dev055 = suite === 'dev055'
 const dev057 = suite === 'dev057'
+const numberScope = process.argv.includes('--scope=employee-number-command')
+if (numberScope && !dev057) throw new Error('NUMBER_COMMAND_SCOPE_REQUIRES_DEV057')
 const dev055OrLater = dev055 || dev057
 const dev049OrLater = dev049 || dev050 || dev052 || dev053 || dev054 || dev055 || dev057
 const outputDir = path.join(root, dev057 ? 'dev-057' : dev049 ? 'dev-049' : dev050 ? 'dev-050' : dev052 ? 'dev-052' : dev053 ? 'dev-053' : dev054 ? 'dev-054' : dev055 ? 'dev-055' : 'dev-047', 'postgres')
@@ -31,7 +34,7 @@ if (packageReadOnly && (!dev057 || !dev057ConsumerRoot)) throw new Error('DEV057
 if (dev057ConsumerRoot && !dev057) throw new Error('DEV057_CONSUMER_PROBE_REQUIRES_DEV057_SUITE')
 const outputPath = dev057 ? path.resolve(configuredDev057Output || path.join(os.tmpdir(), `orgmaster-dev057-postgres-${process.pid}.json`)) : path.join(outputDir, 'manifest.json')
 if (dev057 && configuredDev057Output && fs.existsSync(outputPath)) throw new Error('DEV057_QC_OUTPUT_ALREADY_EXISTS')
-const migrationCeiling = dev057 ? 29 : dev055 ? 20 : dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
+const migrationCeiling = dev057 ? 30 : dev055 ? 20 : dev054 ? 19 : dev053 ? 17 : dev052 ? 16 : dev050 ? 15 : dev049 ? 13 : 12
 const migrations = fs.readdirSync(path.join(root, 'db', 'migrations')).filter((name) => /^\d{3}_.*\.sql$/u.test(name) && Number(name.slice(0, 3)) <= migrationCeiling).sort()
 const checks = []
 const cleanup = { clientClosed: false, auxiliaryClientsClosed: false, clusterStopped: false, portReleased: false, tempRemoved: false }
@@ -2145,7 +2148,7 @@ async function main() {
   postgresBin = runtime.bin
   taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), dev057 ? 'orgmaster-dev057-qc-' : dev049 ? 'orgmaster-dev049-qc-' : dev050 ? 'orgmaster-dev050-qc-' : dev052 ? 'orgmaster-dev052-qc-' : dev053 ? 'orgmaster-dev053-qc-' : dev054 ? 'orgmaster-dev054-qc-' : dev055 ? 'orgmaster-dev055-qc-' : 'orgmaster-dev047-qc-'))
   clusterDir = path.join(taskRoot, 'cluster'); postgresLog = path.join(taskRoot, 'postgres.log'); port = await freePort()
-  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev057 ? 'DEV-057 isolated PostgreSQL 001-029 principal ownership and producer QC' : dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : dev055 ? 'DEV-055 isolated PostgreSQL 001-020 current projection contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'all clients closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
+  process.stdout.write(`${JSON.stringify({ runtimeDeclaration: { project: root, purpose: dev057 ? 'DEV-057 isolated PostgreSQL 001-030 principal ownership and producer QC' : dev049 ? 'DEV-049 isolated PostgreSQL 001-013 QC' : dev050 ? 'DEV-050 and DEV-013 recovery isolated PostgreSQL 001-015 QC' : dev052 ? 'DEV-052 isolated PostgreSQL 001-016 lifecycle contract QC' : dev053 ? 'DEV-053 isolated PostgreSQL 001-017 application registration QC' : dev054 ? 'DEV-054 isolated PostgreSQL 001-019 activation and workspace revision contract QC' : dev055 ? 'DEV-055 isolated PostgreSQL 001-020 current projection contract QC' : 'DEV-047 isolated PostgreSQL 001-012 and A17-A22 QC', port, owningProcessTree: 'qc-dev-047-postgres.mjs -> task-owned PostgreSQL cluster', cleanupCondition: 'all clients closed, cluster stopped, port released, temporary root removed', mutationScope: taskRoot, primaryDataWrites: false } })}\n`)
   run(path.join(postgresBin, 'initdb.exe'), ['-D', clusterDir, '--auth-local=trust', '--auth-host=trust', '--username=postgres', '--encoding=UTF8', '--no-locale'])
   run(path.join(postgresBin, 'pg_ctl.exe'), ['-D', clusterDir, '-l', postgresLog, '-o', `-p ${port} -h 127.0.0.1`, '-w', 'start'], { stdio: 'ignore' })
   started = true
@@ -2165,7 +2168,11 @@ async function main() {
   if (dev053) { await runDev053Checks(); return }
   if (dev054) { await runDev054Checks(); return }
   if (dev055) { await runDev055Checks(); return }
-  if (dev057) { await runDev057Checks(); return }
+  if (dev057) {
+    if (numberScope) await runEmployeeNumberChecks({ client, check, queryAs, expectDatabaseError, openAuxClient, closeAuxClient, currentWorkspaceRevision })
+    else await runDev057Checks()
+    return
+  }
 
   let identityOne
   await check('A17', 'managed link, admission, first-login bind and active-principal mapping', async () => {
@@ -2260,15 +2267,20 @@ finally {
   if (started) cleanup.clusterStopped = spawnSync(path.join(postgresBin, 'pg_ctl.exe'), ['-D', clusterDir, '-m', 'fast', '-w', 'stop'], { cwd: root, encoding: 'utf8', windowsHide: true, stdio: 'ignore' }).status === 0
   else cleanup.clusterStopped = true
   if (port) cleanup.portReleased = await released(port); else cleanup.portReleased = true
-  if (taskRoot) { try { fs.rmSync(taskRoot, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 }); cleanup.tempRemoved = !fs.existsSync(taskRoot) } catch { cleanup.tempRemoved = false } } else cleanup.tempRemoved = true
+  if (taskRoot) { try {
+    const absolute = path.resolve(taskRoot)
+    if (path.dirname(absolute).toLowerCase() !== path.resolve(os.tmpdir()).toLowerCase() || !/^orgmaster-dev\d+-qc-/u.test(path.basename(absolute))) throw new Error('QC_CLEANUP_TARGET_MISMATCH')
+    fs.rmSync(absolute, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 }); cleanup.tempRemoved = !fs.existsSync(taskRoot) } catch { cleanup.tempRemoved = false } } else cleanup.tempRemoved = true
 }
 
-const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06','D57-07','D57-08','D57-09','D57-10','D57-11','D57-12','D57-13','D57-14','D57-15','D57-16','D57-17','D57-18','D57-19','D57-20','D57-23','D57-24', ...(dev057ConsumerRoot ? ['D57-21','D57-22'] : [])] : requiredCorrectionCases
+const requiredCases = dev049 ? ['D49-01','D49-02','D49-03','D49-04','D49-05','D49-06'] : dev050 ? ['D50-01','D50-02','D50-03','D50-04','D50-05'] : dev052 ? ['D52-01','D52-02','D52-03'] : dev053 ? ['D53-01','D53-02','D53-03'] : dev054 ? ['D54-01','D54-02','D54-03','D54-04','D54-05','D54-06'] : dev055 ? ['D55-01','D55-02','D55-03','D55-04','D55-05'] : numberScope ? ['D57-01','D57-10', ...employeeNumberCases] : dev057 ? ['D57-01','D57-02','D57-03','D57-04','D57-05','D57-06','D57-07','D57-08','D57-09','D57-10','D57-11','D57-12','D57-13','D57-14','D57-15','D57-16','D57-17','D57-18','D57-19','D57-20','D57-23','D57-24', ...(dev057ConsumerRoot ? ['D57-21','D57-22'] : [])] : requiredCorrectionCases
 const allRequiredPassed = requiredCases.every((id) => checks.some((entry) => entry.id === id && entry.status === 'PASS'))
 const status = !firstFailure && allRequiredPassed && Object.values(cleanup).every(Boolean) ? 'PASS' : firstFailure?.reasonCode === 'POSTGRES_RUNTIME_MISSING' ? 'BLOCKED' : 'FAIL'
 const manifest = {
   contract: dev049 ? 'DEV-049' : dev050 ? 'DEV-050' : dev052 ? 'DEV-052' : dev053 ? 'DEV-053' : dev054 ? 'DEV-054' : dev055 ? 'DEV-055' : dev057 ? 'DEV-057' : 'DEV-047', runner: dev049 ? 'DEV-049-postgres-qc-v1' : dev050 ? 'DEV-050-postgres-qc-v1' : dev052 ? 'DEV-052-postgres-qc-v1' : dev053 ? 'DEV-053-postgres-qc-v1' : dev054 ? 'DEV-054-postgres-qc-v1' : dev055 ? 'DEV-055-postgres-qc-v1' : dev057 ? 'DEV-057-postgres-qc-v2' : 'DEV-047-postgres-qc-v1', evidenceScope: 'TASK_OWNED_LOCAL_ISOLATED', status,
   generatedAt: new Date().toISOString(), productionWrites: false, executedCaseCount: checks.length,
+  validationSlice: numberScope ? 'employee-number-command-v2' : 'existing-suite',
+  ...(numberScope ? { numberCommandQcSha256: sha256(fs.readFileSync(path.join(root, 'scripts/lib/dev057-employee-number-postgres-qc.mjs'))) } : {}),
   sourceRevision: run('git', ['rev-parse', 'HEAD']).stdout.trim(), dirty: run('git', ['status', '--short']).stdout.trim().split(/\r?\n/u).filter(Boolean),
   serverVersion, acceptedServerMajors: [17, 18], migrations: migrationEvidence, checks, firstFailure,
   source: {

@@ -5,7 +5,7 @@ import { gzipSync } from 'node:zlib'
 import { assertImmutableRef, assertProtectedGitHubContext, assertRuntimeConfig, candidateTagUriMatches, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
 import { dev013L4SequenceStep, dev013TerminalTransitionFact } from './dev013-l4-transition-sequence.mjs'
 import { buildDev014ConsumerConformance } from './dev014-consumer-conformance.mjs'
-import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
+import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 export { candidateTagUriMatches } from './dev012-owner-release-runtime.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
@@ -101,9 +101,10 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
       const principalContract = values.readiness?.slice === '057-PRINCIPAL-CONTRACT'
       const cutoverSource = values.readiness?.slice === '057-CUTOVER-SOURCE'
       const principalGrantsV4 = values.readiness?.slice === '057-PRINCIPAL-GRANTS-V4'
+      const employeeNumberCommandReceiptV2 = values.readiness?.slice === '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2'
       const principalGrantsV3 = values.readiness?.slice === '057-PRINCIPAL-GRANTS-V3'
-      const expectedSlice = principalGrantsV4 ? '057-PRINCIPAL-GRANTS-V4' : principalGrantsV3 ? '057-PRINCIPAL-GRANTS-V3' : cutoverSource ? '057-CUTOVER-SOURCE' : principalContract ? '057-PRINCIPAL-CONTRACT' : '057-WRITER-FENCE'
-      const expectedRemediation = principalGrantsV4 ? DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION : principalGrantsV3 ? DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION : cutoverSource ? DEV057_CUTOVER_SOURCE_REMEDIATION : principalContract ? DEV057_PRINCIPAL_CONTRACT_REMEDIATION : {
+      const expectedSlice = employeeNumberCommandReceiptV2 ? '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2' : principalGrantsV4 ? '057-PRINCIPAL-GRANTS-V4' : principalGrantsV3 ? '057-PRINCIPAL-GRANTS-V3' : cutoverSource ? '057-CUTOVER-SOURCE' : principalContract ? '057-PRINCIPAL-CONTRACT' : '057-WRITER-FENCE'
+      const expectedRemediation = employeeNumberCommandReceiptV2 ? DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION : principalGrantsV4 ? DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION : principalGrantsV3 ? DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION : cutoverSource ? DEV057_CUTOVER_SOURCE_REMEDIATION : principalContract ? DEV057_PRINCIPAL_CONTRACT_REMEDIATION : {
         kind: 'IDENTITY_GRANT_WRITER_FENCE',
         migrationVersion: 'dev057-orgmaster-021',
         contractViews: ['orgmaster_contract.v_active_principal_mappings_v1', 'orgmaster_contract.v_portal_app_visibility_v1'],
@@ -124,7 +125,7 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
         || canonicalize(values.readiness.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)
         || canonicalize(values.authorization.remediation) !== canonicalize(expectedRemediation)
         || canonicalize(values.readiness.remediation) !== canonicalize(expectedRemediation)) fail('CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID')
-      return { releaseMode: principalGrantsV4 ? 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION' : principalGrantsV3 ? 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION' : cutoverSource ? 'DEV057_CUTOVER_SOURCE_REMEDIATION' : principalContract ? 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' : 'DEV057_WRITER_FENCE_REMEDIATION', remediation: expectedRemediation }
+      return { releaseMode: employeeNumberCommandReceiptV2 ? 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION' : principalGrantsV4 ? 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION' : principalGrantsV3 ? 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION' : cutoverSource ? 'DEV057_CUTOVER_SOURCE_REMEDIATION' : principalContract ? 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' : 'DEV057_WRITER_FENCE_REMEDIATION', remediation: expectedRemediation }
     }
     if (isDev014) {
       if (values.readiness?.slice === '014-PRODUCER-CONTRACT') {
@@ -382,9 +383,10 @@ export function assertMigrationReceipt(value, profile, intent, { historical = fa
       const principalContractRemediation = forwardPlan?.releaseMode === 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION'
       const cutoverSourceRemediation = forwardPlan?.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION'
       const principalGrantsV4Remediation = forwardPlan?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION'
+      const employeeNumberCommandReceiptV2Remediation = forwardPlan?.releaseMode === 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'
       const principalGrantsV3Remediation = forwardPlan?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION'
-      const expectedLedgerCount = principalGrantsV4Remediation ? 29 : principalGrantsV3Remediation ? 28 : cutoverSourceRemediation ? 27 : principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
-      const maximumAppliedCount = principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
+      const expectedLedgerCount = employeeNumberCommandReceiptV2Remediation ? 30 : principalGrantsV4Remediation ? 29 : principalGrantsV3Remediation ? 28 : cutoverSourceRemediation ? 27 : principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const maximumAppliedCount = employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
       if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
     }
@@ -521,6 +523,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION' && routine.releaseMode !== 'DEV057_CUTOVER_SOURCE_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION' && routine.releaseMode !== 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (existing) {
       if (canonicalize(existing.value.facts.prerequisiteRefs) !== canonicalize(Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]])))) fail('PREPARE_PREREQUISITE_INVALID')
       return existing

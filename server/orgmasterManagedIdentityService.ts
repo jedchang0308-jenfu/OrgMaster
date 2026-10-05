@@ -20,7 +20,7 @@ import type { ManagedLoginIdentity } from './orgmasterManagedLoginContract'
 import { assignmentMatchesSecuritySubject, evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { isActiveAt } from '../src/governance/validation'
 import { developmentPermissionForActor } from './orgmasterGovernanceIdentity'
-import { loadOrganizationSource, readExistingGovernanceStore } from './orgmasterGovernanceStore'
+import { loadOrganizationSource, readExistingGovernanceStore, withActorWrite } from './orgmasterGovernanceStore'
 import { createManagedIdentityRepository, type ManagedIdentityRepositoryV1 } from './orgmasterManagedIdentityRepository'
 import type { ManagedDirectoryPortV1 } from './orgmasterManagedDirectoryPort'
 
@@ -118,8 +118,9 @@ function requireEmployeeId(employeeId: string) {
 }
 
 function mapStoreError(error: unknown): never {
+  if (error instanceof ManagedIdentityServiceError) throw error
   const code = error instanceof ManagedIdentityServiceError ? error.code : error instanceof Error ? error.message : ''
-  const known = ['EMPLOYEE_NUMBER_INVALID', 'EMPLOYEE_NUMBER_REQUIRED', 'EMPLOYEE_NUMBER_CONFLICT', 'EMPLOYEE_NUMBER_RETIRED', 'EMPLOYEE_NOT_FOUND', 'MANAGED_IDENTITY_REVISION_CONFLICT', 'MANAGED_IDENTITY_OWNER_CONFLICT', 'MANAGED_IDENTITY_JOURNAL_INVALID', 'MANAGED_IDENTITY_CANDIDATE_INVALID', 'MANAGED_IDENTITY_CANDIDATE_EXPIRED', 'MANAGED_IDENTITY_CANDIDATE_CONSUMED', 'MANAGED_IDENTITY_IDEMPOTENCY_CONFLICT', 'MANAGED_IDENTITY_IDENTITY_CONFLICT', 'MANAGED_IDENTITY_ADMISSION_DISABLED', 'MANAGED_IDENTITY_REFRESH_LEASE_CONFLICT', 'DIRECTORY_CANDIDATE_NOT_FOUND', 'DIRECTORY_CANDIDATE_MISMATCH', 'DIRECTORY_USER_INELIGIBLE', 'DIRECTORY_READ_UNAVAILABLE', 'LOGIN_NOT_AVAILABLE', 'HUMAN_PRIVILEGED_REQUIRED']
+  const known = ['EMPLOYEE_NUMBER_INVALID', 'EMPLOYEE_NUMBER_REQUIRED', 'EMPLOYEE_NUMBER_CONFLICT', 'EMPLOYEE_NUMBER_RETIRED', 'EMPLOYEE_NOT_FOUND', 'MANAGED_IDENTITY_REVISION_CONFLICT', 'MANAGED_IDENTITY_OWNER_CONFLICT', 'MANAGED_IDENTITY_JOURNAL_INVALID', 'MANAGED_IDENTITY_CANDIDATE_INVALID', 'MANAGED_IDENTITY_CANDIDATE_EXPIRED', 'MANAGED_IDENTITY_CANDIDATE_CONSUMED', 'MANAGED_IDENTITY_IDEMPOTENCY_CONFLICT', 'MANAGED_IDENTITY_IDENTITY_CONFLICT', 'MANAGED_IDENTITY_ADMISSION_DISABLED', 'MANAGED_IDENTITY_REFRESH_LEASE_CONFLICT', 'DIRECTORY_CANDIDATE_NOT_FOUND', 'DIRECTORY_CANDIDATE_MISMATCH', 'DIRECTORY_USER_INELIGIBLE', 'DIRECTORY_READ_UNAVAILABLE', 'LOGIN_NOT_AVAILABLE', 'HUMAN_PRIVILEGED_REQUIRED', 'IDENTITY_CONTEXT_REQUIRED', 'IDENTITY_AUTHORITY_UNAVAILABLE', 'IDENTITY_NUMBER_MANAGE_REQUIRED']
   if (code === 'MANAGED_IDENTITY_REVISION_CONFLICT') throw new ManagedIdentityServiceError('REVISION_CONFLICT', { retryable: true })
   if (code === 'MANAGED_IDENTITY_OWNER_CONFLICT') throw new ManagedIdentityServiceError('MANAGED_IDENTITY_WRITE_FAILED', { retryable: true })
   if (code === 'MANAGED_IDENTITY_JOURNAL_INVALID') throw new ManagedIdentityServiceError('MANAGED_IDENTITY_RECOVERY_REQUIRED', { retryable: true })
@@ -161,9 +162,9 @@ export function createManagedIdentityService(input: {
     }
   }
   const viewFor = async (employeeId: string, actor: GovernanceActorContext, internal = false): Promise<ManagedIdentityReadModelV1> => {
-    const { employee, workspaceRevision } = await readEmployee(employeeId)
     const governance = await readGovernance()
     if (!internal && !hasPermission(governance.document, actor, VIEW) && !hasPermission(governance.document, actor, MANAGE_NUMBER)) throw new ManagedIdentityServiceError('IDENTITY_VIEW_REQUIRED')
+    const { employee, workspaceRevision } = await readEmployee(employeeId)
     if (repository.mode === 'postgresql') {
       const model = await repository.readEmployeeManagedIdentity(employeeId)
       if (!model) throw new ManagedIdentityServiceError('EMPLOYEE_NOT_FOUND')
@@ -171,7 +172,7 @@ export function createManagedIdentityService(input: {
         ...model,
         managedDomain: domain,
         employee: { id: employee.id, status: employee.status === 'inactive' ? 'inactive' : 'active' },
-        capabilities: { view: true, manageNumber: hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: model.identity.state === 'not_linked' && hasPermission(governance.document, actor, LINK) && (input.devEnabled || isHumanPrivilegedActor(governance.document, actor)), refresh: hasPermission(governance.document, actor, REFRESH) },
+        capabilities: { view: true, manageNumber: hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: Boolean(directory) && model.identity.state === 'not_linked' && hasPermission(governance.document, actor, LINK) && (input.devEnabled || isHumanPrivilegedActor(governance.document, actor)), refresh: Boolean(directory) && hasPermission(governance.document, actor, REFRESH) },
         workspaceRevision,
       }
     }
@@ -183,31 +184,43 @@ export function createManagedIdentityService(input: {
       contractVersion: 'orgmaster.managed-identity.v1', managedDomain: domain, employee: { id: employee.id, status: employee.status === 'inactive' ? 'inactive' : 'active' },
       employeeNumber: { status: assignment ? 'assigned' : 'unassigned', value: assignment?.employeeNumber ?? null, derivedUsername: assignment ? deriveManagedUsername(assignment.employeeNumber, domain) : null, revision: assignment?.revision ?? null },
       identity: { state: identity?.linkState === 'directory_linked_pending_auth' ? 'directory_linked_pending_auth' : identity?.linkState === 'active' ? 'active' : identity?.linkState === 'conflict' ? 'conflict' : 'not_linked', provider: 'google.com', note: identity?.linkState === 'active' ? '已連結公司 Cloud Identity' : identity ? 'Directory 連結已保存；登入資格依已發布的身分與權限判定' : 'Google Admin 建立後由 OrgMaster 連結', directoryState: observation?.directoryState ?? 'unknown', primaryEmail: identity?.lastVerifiedPrimaryEmail ?? null, freshness: observation?.freshness ?? 'unknown' },
-      capabilities: { view: true, manageNumber: internal ? false : hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: internal || identity !== null ? false : hasPermission(governance.document, actor, LINK) && (input.devEnabled || isHumanPrivilegedActor(governance.document, actor)), refresh: internal ? false : hasPermission(governance.document, actor, REFRESH) }, registryRevision: String(assignment?.revision ?? 0), workspaceRevision,
+      capabilities: { view: true, manageNumber: internal ? false : hasPermission(governance.document, actor, MANAGE_NUMBER), manageLink: internal || !directory || identity !== null ? false : hasPermission(governance.document, actor, LINK) && (input.devEnabled || isHumanPrivilegedActor(governance.document, actor)), refresh: internal || !directory ? false : hasPermission(governance.document, actor, REFRESH) }, registryRevision: String(assignment?.revision ?? 0), workspaceRevision,
       admissionEnabled: state.document.admissionAuthority?.admissionEnabled ?? false,
     }
   }
   const readNumbers = async (actor: GovernanceActorContext): Promise<ManagedEmployeeNumberListReadModelV1> => {
-    const source = await loadOrganizationSource(input.root)
     const governance = await readGovernance()
     if (!hasPermission(governance.document, actor, VIEW) && !hasPermission(governance.document, actor, MANAGE_NUMBER)) throw new ManagedIdentityServiceError('IDENTITY_VIEW_REQUIRED')
+    const source = await loadOrganizationSource(input.root)
     return repository.readEmployeeNumbers(source.state.employees.map(({ id, name }) => ({ id, name: name ?? id })))
   }
   const assignNumber = async (employeeId: string, actor: GovernanceActorContext, request: AssignEmployeeNumberRequestV1) => {
-    const { employee, workspaceRevision } = await readEmployee(employeeId)
-    const governance = await readGovernance()
-    if (!hasPermission(governance.document, actor, MANAGE_NUMBER)) throw new ManagedIdentityServiceError('IDENTITY_NUMBER_MANAGE_REQUIRED')
-    requireHumanPrivileged(governance.document, actor, input.devEnabled)
     if (!request.commandId?.trim() || request.commandId.length > 255) throw new ManagedIdentityServiceError('INVALID_REQUEST')
-    if (request.expectedWorkspaceRevision !== undefined && request.expectedWorkspaceRevision !== workspaceRevision) throw new ManagedIdentityServiceError('REVISION_CONFLICT', { retryable: true })
-    try { await repository.appendAssignment(employee.id, request.employeeNumber, actor.principalId, request.expectedRegistryRevision, input.now?.()?.toISOString(), request.expectedWorkspaceRevision ?? workspaceRevision) } catch (error) { return mapStoreError(error) }
-    return viewFor(employee.id, actor)
+    const authorize = (document: GovernanceDocumentV3) => {
+      if (!hasPermission(document, actor, MANAGE_NUMBER)) throw new ManagedIdentityServiceError('IDENTITY_NUMBER_MANAGE_REQUIRED')
+      requireHumanPrivileged(document, actor, input.devEnabled)
+    }
+    try {
+      await withActorWrite(input.root, actor, async authorizeBeforeCommit => {
+        authorize((await readGovernance()).document)
+        await readEmployee(employeeId)
+        const result = await repository.assignNumberCommand({ commandId: request.commandId, employeeId, employeeNumber: request.employeeNumber, actor: actor.principalId, expectedRegistryRevision: request.expectedRegistryRevision, expectedWorkspaceRevision: request.expectedWorkspaceRevision ?? null, now: input.now?.()?.toISOString() })
+        // SQL holds the same admission/persistence locks as publication. These
+        // fresh facts and the shared session/epoch fence decide the one commit.
+        const latest = await readGovernance()
+        const employee = await readEmployee(employeeId)
+        if (result.disposition !== 'replayed' && request.expectedWorkspaceRevision != null && request.expectedWorkspaceRevision !== employee.workspaceRevision) throw new ManagedIdentityServiceError('REVISION_CONFLICT', { retryable: true })
+        authorize(latest.document)
+        authorizeBeforeCommit(() => authorize(latest.document))
+      })
+    } catch (error) { return mapStoreError(error) }
+    return viewFor(employeeId, actor)
   }
   const findCandidate = async (employeeId: string, actor: GovernanceActorContext, request: FindManagedIdentityCandidateRequestV1) => {
-    const { employee, workspaceRevision } = await readEmployee(employeeId)
     const governance = await readGovernance()
     if (!hasPermission(governance.document, actor, LINK)) throw new ManagedIdentityServiceError('IDENTITY_LINK_REQUIRED')
     requireHumanPrivileged(governance.document, actor, input.devEnabled)
+    const { employee, workspaceRevision } = await readEmployee(employeeId)
     if (employee.status !== 'active') throw new ManagedIdentityServiceError('EMPLOYEE_NOT_FOUND')
     const model = repository.mode === 'postgresql' ? await repository.readEmployeeManagedIdentity(employeeId) : null
     const state = model ? null : await repository.readExisting()
@@ -237,10 +250,10 @@ export function createManagedIdentityService(input: {
     return { candidateToken: created.token, expiresAt: created.expiresAt, employee: { id: employeeId, employeeNumber: assignment.employeeNumber }, directory: { primaryEmail: parsedEmail.value }, workspaceRevision: created.workspaceRevision, registryRevision: created.registryRevision }
   }
   const confirmLink = async (employeeId: string, actor: GovernanceActorContext, request: ConfirmManagedIdentityLinkRequestV1) => {
-    await readEmployee(employeeId)
     const governance = await readGovernance()
     if (!hasPermission(governance.document, actor, LINK)) throw new ManagedIdentityServiceError('IDENTITY_LINK_REQUIRED')
     requireHumanPrivileged(governance.document, actor, input.devEnabled)
+    await readEmployee(employeeId)
     if (!request.commandId?.trim() || request.commandId.length > 255 || !request.candidateToken?.trim() || !request.expectedRegistryRevision) throw new ManagedIdentityServiceError('INVALID_REQUEST')
     let confirmation
     try { confirmation = await repository.readCandidateForConfirmation({ ...request, employeeId, actor: actor.principalId }) } catch (error) { return mapStoreError(error) }
@@ -376,6 +389,7 @@ export function createManagedIdentityService(input: {
       const governance = await readGovernance()
       if (!hasPermission(governance.document, actor, REFRESH)) throw new ManagedIdentityServiceError('IDENTITY_REFRESH_REQUIRED')
       requireHumanPrivileged(governance.document, actor, input.devEnabled)
+      if (!directory) throw new ManagedIdentityServiceError('DIRECTORY_READ_UNAVAILABLE', { retryable: true })
       try { return await repository.enqueueRefresh({ employeeId, trigger, commandId, actor: actor.principalId }) } catch (error) { return mapStoreError(error) }
     },
     async claimRefresh(workerId, limit, leaseSeconds) { try { return (await repository.claimRefresh(workerId, limit, leaseSeconds)).claims } catch (error) { return mapStoreError(error) } },

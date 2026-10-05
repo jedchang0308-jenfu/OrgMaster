@@ -14,8 +14,8 @@ import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-r
 import { buildRuntimeConfig, canonicalize, createOwnerTransport, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeBlobTransition, assertDev057CatalogReadbackPackagingTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
-import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
-import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation, assertDev057PrincipalGrantsV3Append, assertDev057PrincipalGrantsV3Remediation, assertDev057PrincipalGrantsV4Append, assertDev057PrincipalGrantsV4Remediation } from './lib/dev040-routine-release.mjs'
+import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
+import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057EmployeeNumberCommandReceiptV2Append, assertDev057EmployeeNumberCommandReceiptV2Remediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation, assertDev057PrincipalGrantsV3Append, assertDev057PrincipalGrantsV3Remediation, assertDev057PrincipalGrantsV4Append, assertDev057PrincipalGrantsV4Remediation } from './lib/dev040-routine-release.mjs'
 
 test('production runtime image includes the source-frozen v5 catalog read by governance', () => {
   const dockerfile = fs.readFileSync('Dockerfile', 'utf8')
@@ -781,7 +781,7 @@ test('DEV-057 catalog packaging accepts only the reviewed read-only v4-to-v5 rec
 
 test('DEV-057 grant v4 admits only sealed 028-to-029 append with fresh runner evidence', async () => {
  const baselineBundle=prefixBundle(oldBundle.bundle,28);
- const currentBundle={bundle:newBundle.bundle};
+ const currentBundle={bundle:prefixBundle(newBundle.bundle,29)};
  const h=harness({baselineBundle,currentBundle});
  const remediation=DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION;
  h.input.values.authorization={...h.input.values.authorization,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION',devId:'DEV-057',slice:'057-PRINCIPAL-GRANTS-V4',remediation};
@@ -804,6 +804,43 @@ test('DEV-057 grant v4 admits only sealed 028-to-029 append with fresh runner ev
  assert.throws(()=>assertDev057PrincipalGrantsV4Remediation(invalid,h.input.values.authorization),/DEV057_PRINCIPAL_GRANTS_V4_AUTHORITY_INVALID/);
  h.input.transitionFingerprint=(_root,revision)=>revision;
  await assert.rejects(()=>verifyRoutineRelease(h.input),/ROUTINE_INFRA_CHANGED/);
+});
+
+test('DEV-057 employee number command v2 admits only the exact sealed 029-to-030 append', async () => {
+ const baselineBundle=prefixBundle(oldBundle.bundle,29);
+ const currentBundle={bundle:newBundle.bundle};
+ const h=harness({baselineBundle,currentBundle});
+ const remediation=DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION;
+ h.input.values.authorization={...h.input.values.authorization,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION',devId:'DEV-057',slice:'057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2',remediation};
+ h.input.values.readiness={...h.input.values.readiness,schemaVersion:'orgmaster.routine-release-readiness.v1',devId:'DEV-057',slice:'057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2',remediation};
+ attachForwardInfra(h);
+ const result=await verifyRoutineRelease(h.input);
+ assert.equal(result.releaseMode,'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION');
+ assert.equal(result.pendingMigrationCount,1);
+ assert.equal(assertDev057EmployeeNumberCommandReceiptV2Remediation(h.input.values.readiness,h.input.values.authorization).releaseMode,result.releaseMode);
+ assert.equal(assertDev057EmployeeNumberCommandReceiptV2Append(baselineBundle,currentBundle.bundle).pendingMigrationCount,1);
+ for(const field of ['version','path','sourceSha256','appliedSha256']) {
+  const drift=structuredClone(currentBundle.bundle);drift.entries[29][field]='wrong';
+  assert.throws(()=>assertDev057EmployeeNumberCommandReceiptV2Append(baselineBundle,drift),/DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_APPEND_INVALID/);
+ }
+ const prefixDrift=structuredClone(currentBundle.bundle);prefixDrift.entries[28].sourceSha256='0'.repeat(64);
+ assert.throws(()=>assertDev057EmployeeNumberCommandReceiptV2Append(baselineBundle,prefixDrift),/DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_APPEND_INVALID/);
+ assert.throws(()=>assertDev057EmployeeNumberCommandReceiptV2Append(prefixBundle(baselineBundle,28),currentBundle.bundle),/DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_APPEND_INVALID/);
+ assert.throws(()=>assertDev057EmployeeNumberCommandReceiptV2Append(baselineBundle,prefixBundle(currentBundle.bundle,29)),/DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_APPEND_INVALID/);
+ const invalid=structuredClone(h.input.values.readiness);invalid.remediation={...remediation,appliedSha256:'0'.repeat(64)};
+ assert.throws(()=>assertDev057EmployeeNumberCommandReceiptV2Remediation(invalid,h.input.values.authorization),/DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_AUTHORITY_INVALID/);
+ const mixed=harness({baselineBundle,currentBundle});
+ mixed.input.values.authorization=h.input.values.authorization;mixed.input.values.readiness=h.input.values.readiness;
+ await assert.rejects(()=>verifyRoutineRelease(mixed.input),/DEV013_MIGRATION_INFRA_RECEIPT_INVALID/);
+});
+
+test('DEV-057 employee number command v2 CLI mode is exclusive and requires its own infra receipt', () => {
+ const ref=`gs://${bucket}/receipts/releases/REL-EMPLOYEE-NUMBER/app-infra.json#sha256=${'a'.repeat(64)}`;
+ const options=parseDeployProductionArgs(['--prepare-only','--dev057-employee-number-command-receipt-v2-remediation',`--dev057-infra-ref=${ref}`]);
+ assert.equal(options.dev057EmployeeNumberCommandReceiptV2Remediation,true);
+ assert.equal(options.infraOption,'dev057');
+ assert.throws(()=>parseDeployProductionArgs(['--prepare-only','--dev057-employee-number-command-receipt-v2-remediation']),/DEV057_CONTROLLED_TRANSITION_INPUT_INCOMPLETE/);
+ assert.throws(()=>parseDeployProductionArgs(['--prepare-only','--dev057-employee-number-command-receipt-v2-remediation','--dev057-principal-grants-v4-remediation',`--dev057-infra-ref=${ref}`]),/DEV057_CONTROLLED_TRANSITION_INPUT_INVALID/);
 });
 
 

@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -78,4 +78,50 @@ describe('managed identity local registry', () => {
     const state = await store.readExisting()
     expect(state.document.auditEvents.filter((event) => event.action === 'managed_identity_auth_bound')).toHaveLength(1)
   })
+})
+
+describe('employee number command receipt', () => {
+  async function fixture(run: (store: ReturnType<typeof createManagedIdentityStore>) => Promise<void>) {
+    const root = await mkdtemp(join(tmpdir(), 'orgmaster-number-command-'))
+    try { await run(createManagedIdentityStore({ root, devEnabled: true })) }
+    finally { if (!root.startsWith(join(tmpdir(), 'orgmaster-number-command-'))) throw new Error('Unsafe task cleanup target'); await rm(root, { recursive: true, force: true }) }
+  }
+  const request = { commandId: 'number-command-1', employeeId: 'employee-1', employeeNumber: 'JFS0001', actor: 'principal-admin', expectedRegistryRevision: '0', expectedWorkspaceRevision: 'workspace-1' }
+  it('replays the committed result before the original revision CAS without another audit', async () => fixture(async store => {
+    const first = await store.assignNumberCommand(request)
+    const second = await store.assignNumberCommand({ ...request, employeeNumber: ' jfs0001 ' })
+    expect(first.disposition).toBe('applied')
+    expect(second).toMatchObject({ disposition: 'replayed', assignment: first.assignment, revision: first.revision })
+    const state = await store.readExisting()
+    expect(state.document.commandReceipts).toHaveLength(1)
+    expect(state.document.auditEvents).toHaveLength(1)
+    expect(state.document.auditEvents[0]).toMatchObject({ commandId: request.commandId, actor: request.actor })
+  }))
+  it('converges simultaneous exact retries and rejects a changed payload or Principal', async () => fixture(async store => {
+    await Promise.all([store.assignNumberCommand(request), store.assignNumberCommand(request)])
+    for (const changed of [{ employeeNumber: 'JFS0002' }, { actor: 'another-principal' }, { employeeId: 'employee-2' }]) {
+      await expect(store.assignNumberCommand({ ...request, ...changed })).rejects.toThrow('MANAGED_IDENTITY_IDEMPOTENCY_CONFLICT')
+    }
+    expect((await store.readExisting()).document.auditEvents).toHaveLength(1)
+  }))
+  it('retains CAS and non-reusable retired numbers for new commands', async () => fixture(async store => {
+    await store.assignNumberCommand(request)
+    await expect(store.assignNumberCommand({ ...request, commandId: 'stale', employeeNumber: 'JFS0002' })).rejects.toThrow('MANAGED_IDENTITY_REVISION_CONFLICT')
+    await store.assignNumberCommand({ ...request, commandId: 'correct', employeeNumber: 'JFS0002', expectedRegistryRevision: '1' })
+    await expect(store.assignNumberCommand({ ...request, commandId: 'reuse', employeeId: 'employee-2' })).rejects.toThrow('EMPLOYEE_NUMBER_RETIRED')
+    expect((await store.readExisting()).document.commandReceipts).toHaveLength(2)
+  }))
+  it('treats null workspace revision as omitted CAS but still enforces current employee membership', async () => fixture(async store => {
+    const initial = await store.readExisting()
+    await store.commit(initial.revision, document => ({
+      ...document,
+      currentWorkspaceAuthority: { workspaceVersionId: 'workspace-current', workspaceRevision: 'workspace-current-revision', employeeIds: ['employee-1'] },
+    }))
+
+    const applied = await store.assignNumberCommand({ ...request, commandId: 'number-command-null-workspace', expectedWorkspaceRevision: null })
+    expect(applied.disposition).toBe('applied')
+    await expect(store.assignNumberCommand({
+      ...request, commandId: 'number-command-null-workspace-non-member', employeeId: 'employee-2', employeeNumber: 'JFS0002', expectedWorkspaceRevision: null,
+    })).rejects.toThrow('MANAGED_IDENTITY_REVISION_CONFLICT')
+  }))
 })

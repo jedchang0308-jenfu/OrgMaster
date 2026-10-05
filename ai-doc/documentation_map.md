@@ -1,6 +1,10 @@
 # OrgMaster 文件地圖
 
+**DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 沿 DEV-057 既有子項與 [current correction 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current)；目前 LOCAL_FIX／TASK_OWNED_POSTGRES_PASS，protected merge／030 source-bound release／正式 details 仍待完成。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
+
 ## 本輪 Principal-only 唯一閱讀入口
+
+**員工 Google 連結矯正目前已正式發布（2026-10-05）**：source `c65dd31`／revision `orgmaster-prod-367d239442e2`／100% traffic，真實 Principal SSO、治理及 Jed 身分讀取 PASS，已保存連結禁止重複操作。進度權威為[最新正式交付 checkpoint](qa/DEV-057-managed-identity-link-correction-2026-10-05.md#最新正式交付-checkpoint2026-10-05-0358z)；下方續行文字保留歷史 R38／R39 及 root 修正來源，不再是待發布佇列。正式送出 asset 已確認，現有 user browser 渲染仍未驗，不混入原共同 Principal-only L4 結論。
 
 文件角色：CURRENT_INDEX。本輪只讀 [DEV-057 現行任務](dev_task.md#dev-057-current-contract) → [唯一施工契約](specs/DEV-057-identity-and-grant-contract-boundary.md) → 該交付所需證據。CURRENT_CONTRACT 定義架構，任務／既有盤點維護進度，不從下方其他 DEV 或歷史日期推定本輪指令。
 

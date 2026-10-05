@@ -10,10 +10,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const run = spawnSync(process.execPath, ['--test', 'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.test.mjs', 'scripts/dev049-production-admission.test.mjs', 'scripts/dev014-production-managed-link-runner.test.mjs', 'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev015-gcc-applicability.test.mjs', 'scripts/dev015-gcc-aligned-new-applicability.test.mjs', 'scripts/dev015-aligned-new-loader-inspection.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev012-owner-prerequisite-producer.test.mjs', 'scripts/lib/dev057-principal-only-release.test.mjs', 'scripts/lib/dev057-principal-forward-repair.test.mjs', 'scripts/lib/dev057-principal-recovery-operator.test.mjs', 'scripts/dev057-principal-recovery-operator.test.mjs', 'scripts/dev057-principal-only-recovery-server.test.mjs', 'scripts/dev057-principal-owner-recovery.test.mjs', 'scripts/dev057-recovery-release-input.test.mjs', 'scripts/dev057-principal-activation-transport.test.mjs'], { cwd: root, encoding: 'utf8' })
 process.stdout.write(run.stdout)
 process.stderr.write(run.stderr)
-// Keep the fixed QC denominator aligned with the current owner-test set.
-// Existing 207 cases plus 7 adjacent-rotation/consecutive-release regression cases.
+// Keep the fixed QC denominator aligned with this exact 19-file owner-test selection.
+// 207 baseline + 7 existing release regressions + 7 DEV-057 command/runner guard regressions = 221.
 // The complete owner QC run must verify this denominator before release.
-if (run.status !== 0 || !/\bpass 214\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 221\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 

@@ -2,6 +2,7 @@ import type { ManagedDailyIdentityV1, ManagedEmployeeNumberListReadModelV1, Mana
 import type { OrgmasterDatabase } from './orgmasterDatabase'
 import { createManagedIdentityStore, type ManagedIdentityAliasResolution, type ManagedIdentityConfirmationRead, type ManagedIdentityStoreV1 } from './orgmasterManagedIdentityStore'
 import type { ManagedLoginIdentity } from './orgmasterManagedLoginContract'
+import { currentPersistenceTransactionDatabase, usesCloudSqlPersistence } from './orgmasterPersistenceRepository'
 
 export type ManagedIdentityRepositoryMode = 'local-json' | 'postgresql'
 
@@ -85,15 +86,18 @@ export function createPostgresManagedIdentityRepository(database: OrgmasterDatab
     mode: 'postgresql',
     async readExisting() { throw new Error('POSTGRES_REPOSITORY_READ_DOCUMENT_UNSUPPORTED') },
     async commit() { throw new Error('POSTGRES_REPOSITORY_COMMIT_UNSUPPORTED') },
-    async appendAssignment(employeeId, employeeNumber, actor, expectedRevision, now, expectedWorkspaceRevision) {
-      const rows = await run<Record<string, unknown>>('SELECT * FROM orgmaster_core.assign_employee_number_v1($1,$2,$3,$4,$5,$6)', [employeeId, employeeNumber, actor, expectedWorkspaceRevision ?? null, expectedRevision, now ?? null])
+    // Old applied SQL is retained, but normal runtime requires a command receipt.
+    async appendAssignment() { throw new Error('MANAGED_IDENTITY_COMMAND_REQUIRED') },
+    async assignNumberCommand(input) {
+      const writer = usesCloudSqlPersistence() ? currentPersistenceTransactionDatabase() : database
+      const rows = (await writer.query<Record<string, unknown>>('SELECT * FROM orgmaster_core.assign_employee_number_v2($1,$2,$3,$4,$5,$6,$7)', [input.commandId, input.employeeId, input.employeeNumber, input.actor, input.expectedWorkspaceRevision, input.expectedRegistryRevision, input.now ?? null])).rows
       if (rows.length !== 1) throw new Error('MANAGED_IDENTITY_WRITE_FAILED')
       const row = rows[0]
-      const disposition = row.disposition === 'noop' ? 'noop' : row.disposition === 'applied' ? 'applied' : null
+      const disposition = row.disposition === 'replayed' ? 'replayed' : row.disposition === 'noop' ? 'noop' : row.disposition === 'applied' ? 'applied' : null
       const assignment = jsonObject(row.assignment)
       const revision = requiredString(row, 'revision')
-      if (!disposition || typeof assignment.employee_id !== 'string' || typeof assignment.employee_number !== 'string' || !Number.isSafeInteger(Number(assignment.revision))) throw new Error('MANAGED_IDENTITY_WRITE_FAILED')
-      return { disposition, assignment: { employeeId: assignment.employee_id, employeeNumber: assignment.employee_number, revision: Number(assignment.revision), assignedAt: String(assignment.assigned_at ?? ''), assignedBy: String(assignment.assigned_by ?? '') }, revision }
+      if (!disposition || assignment.employee_id !== input.employeeId || typeof assignment.employee_number !== 'string' || !Number.isSafeInteger(Number(assignment.revision)) || String(assignment.revision) !== revision) throw new Error('MANAGED_IDENTITY_WRITE_FAILED')
+      return { disposition, assignment: { employeeId: String(assignment.employee_id), employeeNumber: assignment.employee_number, revision: Number(assignment.revision), assignedAt: String(assignment.assigned_at ?? ''), assignedBy: String(assignment.assigned_by ?? '') }, revision }
     },
     async createCandidate(input) {
       const rows = await run<Record<string, unknown>>('SELECT * FROM orgmaster_core.lease_managed_identity_candidate_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [input.employeeId, input.employeeNumber, input.expectedPrimaryEmail, input.directoryCustomerId, input.directoryUserId, input.primaryEmail, input.sourceEtag, input.workspaceRevision, input.registryRevision, input.actor])

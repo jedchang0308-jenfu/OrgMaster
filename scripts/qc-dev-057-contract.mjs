@@ -74,6 +74,17 @@ assert.match(grantV4Sql,/GRANT SELECT ON orgmaster_contract\.v_ai_pdm_principal_
 assert.equal((grantV4Sql.match(/principal\.account_type IN \('human_personal', 'human_privileged'\)/gu)||[]).length,2);
 assert.ok(grantV4Sql.includes("catalog_valid.assignment_payload->>'targetPrincipalId' = principal.principal_id"));
 assert.ok(grantV4Sql.includes("principal.account_type = 'human_privileged'"));
-assert.deepEqual(profile.migrations.entries.at(-1),{order:29,version:'dev057-orgmaster-029',path:grantV4Path,sourceSha256:sourceSha256(grantV4Bytes),appliedSha256:sourceSha256(unwrapMigrationTransaction(grantV4Bytes))});
-process.stdout.write(`${JSON.stringify({ status: 'PASS', contract: 'DEV-057', migrations: [path, grantPath, grantV3Path, grantV4Path],
-  principalGrantManifestSha256: sourceSha256(grantV4ManifestBytes), productionWrites: false })}\n`)
+assert.deepEqual(profile.migrations.entries[28],{order:29,version:'dev057-orgmaster-029',path:grantV4Path,sourceSha256:sourceSha256(grantV4Bytes),appliedSha256:sourceSha256(unwrapMigrationTransaction(grantV4Bytes))});
+const employeeNumberPath='db/migrations/030_dev057_employee_number_command_receipt.sql';
+const employeeNumberBytes=fs.readFileSync(employeeNumberPath);
+const employeeNumberSql=employeeNumberBytes.toString('utf8').replace(/\r\n/gu,'\n');
+const employeeNumberEntry=profile.migrations.entries.at(-1);
+assert.deepEqual(employeeNumberEntry,{order:30,version:'dev057-orgmaster-030',path:employeeNumberPath,
+  sourceSha256:sourceSha256(employeeNumberBytes),appliedSha256:sourceSha256(unwrapMigrationTransaction(employeeNumberBytes))});
+assert.match(employeeNumberSql,/CREATE FUNCTION orgmaster_core\.assign_employee_number_v2\(p_command_id text, p_employee_id text, p_employee_number text, p_actor text, p_expected_workspace_revision text DEFAULT NULL, p_expected_registry_revision text DEFAULT NULL, p_now timestamptz DEFAULT NULL\)/u);
+assert.match(employeeNumberSql,/GRANT EXECUTE ON FUNCTION orgmaster_core\.assign_employee_number_v2\(text,text,text,text,text,text,timestamptz\) TO jenfu_orgmaster_runtime/u);
+assert.doesNotMatch(employeeNumberSql,/\b(?:CREATE|ALTER|DROP)\s+(?:TABLE|SCHEMA|SEQUENCE)\b/iu);
+assert.doesNotMatch(employeeNumberSql,/\bDROP\s+(?:FUNCTION|VIEW)\b/iu);
+process.stdout.write(`${JSON.stringify({ status: 'PASS', contract: 'DEV-057', migrations: [path, grantPath, grantV3Path, grantV4Path, employeeNumberPath],
+  principalGrantManifestSha256: sourceSha256(grantV4ManifestBytes), employeeNumberCommandSourceSha256: employeeNumberEntry.sourceSha256,
+  employeeNumberCommandAppliedSha256: employeeNumberEntry.appliedSha256, productionWrites: false })}\n`)
