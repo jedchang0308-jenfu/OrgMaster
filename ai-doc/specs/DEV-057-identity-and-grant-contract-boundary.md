@@ -16,7 +16,7 @@
 
 最終應用image須包含reader允許的每份exact source artifact並在image build確認可讀；source checkout／PGPASS不替代image。工作區存在性和讀取必須共用同一persistence mode：CloudSQL不得預先依賴local manifest，local模式仍使用local artifact；缺失／損壞source fail closed，不能fallback另一mode或自動建立正式workspace。角色／scope／schema及已發布指派保持。實際packaging與source矯正的驗證層級只在[現行QA續點](../qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md#persistence-source-矯正與已發布狀態現行續點)维护，不在規格複製執行進度。
 
-參與 `AIPDM/DEV-121#system-admin-capabilities` 的新修正批次；source與原生producer／consumer整合已通過，正式發布尚未完成。見[本批checkpoint及層級限制](../qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)。人類允許 Jed 全部有效應用能力；AI-PDM 產生 immutable `ai-pdm.role-catalog.2026-10-05.v6`，其他八角色不擴權。OrgMaster 只維持 stable 角色／scope／Principal 指派，不解釋各 API 業務能力。
+參與 `AIPDM/DEV-121#system-admin-capabilities` 的本批reader修正已正式發布及affected Production驗收；層級、source與獨立QA／QC依[owner closure](../qa/DEV-057-catalog-v6-production-closure-2026-10-06.json)。原checkpoint的尚未發布快照保持歷史含義，不推論其他DEV-014義務完成。見[本批checkpoint及層級限制](../qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)。人類允許 Jed 全部有效應用能力；AI-PDM 產生 immutable `ai-pdm.role-catalog.2026-10-05.v6`，其他八角色不擴權。OrgMaster 只維持 stable 角色／scope／Principal 指派，不解釋各 API 業務能力。
 
 正常 server 讀寫先從 active producer version/hash 選取一份 source-controlled exact v5/v6 artifact，完整驗證九角色及其 metadata／permission/hash。registry、governance validation／publish 與 role-capability workspace 必須引用同次 active artifact；不能只放寬 registry，仍使用 bundled v4/v5 workspace，也不使用 process-global mutable catalog。未知版本、mixed rows 或 tamper 仍 fail closed。前端顯示當前 server readback，不自行決定 active 版本。
 
