@@ -14,13 +14,15 @@ const enabled = process.env.ORGMASTER_DEV006_RUNTIME_INTEGRATION === '1'
 describe.skipIf(!enabled)('DEV-006 Cloud SQL product repository integration', () => {
   it('reads and CAS-writes workspace and management artifacts without touching local JSON', async () => {
     expect(resolveOrgmasterPersistenceMode()).toBe('cloud-sql')
+    const actorPrincipalId = process.env.ORGMASTER_DEV006_TEST_PRINCIPAL_ID?.trim()
+    expect(actorPrincipalId, 'ORGMASTER_DEV006_TEST_PRINCIPAL_ID must name an active Principal in the disposable integration database').toBeTruthy()
     const root = process.cwd()
     const workspace = await getWorkspaceIndex(root)
     const current = await getWorkspaceVersion(root, workspace.currentVersionId)
     const nextDocument = { ...current.document, savedAt: new Date(Date.parse(current.document.savedAt) + 1_000).toISOString() }
-    const saved = await saveWorkspaceVersion(root, workspace.currentVersionId, nextDocument, current.version.revision, 'current-maintenance')
+    const saved = await saveWorkspaceVersion(root, workspace.currentVersionId, nextDocument, current.version.revision, 'current-maintenance', actorPrincipalId!)
     expect(saved.version.revision).not.toBe(current.version.revision)
-    await expect(saveWorkspaceVersion(root, workspace.currentVersionId, nextDocument, current.version.revision, 'current-maintenance'))
+    await expect(saveWorkspaceVersion(root, workspace.currentVersionId, nextDocument, current.version.revision, 'current-maintenance', actorPrincipalId!))
       .rejects.toMatchObject({ code: 'VERSION_CONFLICT' })
 
     const methods = await readManagementMethodStore(root)

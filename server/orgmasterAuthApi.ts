@@ -19,7 +19,8 @@ import {
   type PublicDevelopmentAuthProfile,
 } from './orgmasterGovernanceIdentity'
 import { createPrincipalAdmissionRepository, PrincipalAdmissionError, type PrincipalAdmissionRepository } from './orgmasterPrincipalAdmissionRepository'
-import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import { readVerifiedRequestIdentity, setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import { withPersistencePrincipal } from './orgmasterPersistenceRepository'
 import { createOrgmasterSessionRepository, type OrgmasterSession, type OrgmasterSessionRepository } from './orgmasterSessionRepository'
 import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
 import { createManagedIdentityRepository } from './orgmasterManagedIdentityRepository'
@@ -412,7 +413,9 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         if (devEnabled && isLoopback(request) && !runtime.configResult.configured) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
         await verifySession(request, runtime)
       }
-      next()
+      const verified = readVerifiedRequestIdentity(request)
+      if (!verified) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
+      withPersistencePrincipal(verified.principalId, next)
     }
     void handle().catch((unknownError) => {
       if (response.writableEnded) return

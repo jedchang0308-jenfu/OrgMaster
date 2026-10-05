@@ -10,6 +10,34 @@
 
 本地進度只在 [DEV-057任務](../dev_task.md#dev-057-current-contract)維護；共同根因、授權出口與延期業務判定、跨專案階段及下一交付在 [JENFU既有盤點](../../../Jenfu-Platform/ai-doc/qa/DEV-015-principal-only-authorization-inventory-2026-09-29.md)，不在規格複製Rxx狀態。
 
+<a id="system-admin-catalog-v6-reader"></a>
+
+## 本批 v5／v6 目錄讀取契約（2026-10-05，RD Implementation Ready）
+
+最終應用image須包含reader允許的每份exact source artifact並在image build確認可讀；source checkout／PGPASS不替代image。工作區存在性和讀取必須共用同一persistence mode：CloudSQL不得預先依賴local manifest，local模式仍使用local artifact；缺失／損壞source fail closed，不能fallback另一mode或自動建立正式workspace。角色／scope／schema及已發布指派保持。實際packaging與source矯正的驗證層級只在[現行QA續點](../qa/DEV-057-catalog-v6-runtime-package-correction-2026-10-05.md#persistence-source-矯正與已發布狀態現行續點)维护，不在規格複製執行進度。
+
+參與 `AIPDM/DEV-121#system-admin-capabilities` 的本批reader修正已正式發布及affected Production驗收；層級、source與獨立QA／QC依[owner closure](../qa/DEV-057-catalog-v6-production-closure-2026-10-06.json)。原checkpoint的尚未發布快照保持歷史含義，不推論其他DEV-014義務完成。見[本批checkpoint及層級限制](../qa/DEV-057-active-catalog-v6-local-checkpoint-2026-10-05.json)。人類允許 Jed 全部有效應用能力；AI-PDM 產生 immutable `ai-pdm.role-catalog.2026-10-05.v6`，其他八角色不擴權。OrgMaster 只維持 stable 角色／scope／Principal 指派，不解釋各 API 業務能力。
+
+正常 server 讀寫先從 active producer version/hash 選取一份 source-controlled exact v5/v6 artifact，完整驗證九角色及其 metadata／permission/hash。registry、governance validation／publish 與 role-capability workspace 必須引用同次 active artifact；不能只放寬 registry，仍使用 bundled v4/v5 workspace，也不使用 process-global mutable catalog。未知版本、mixed rows 或 tamper 仍 fail closed。前端顯示當前 server readback，不自行決定 active 版本。
+
+AI-PDM 的角色能力顯示改為只讀 v4：consumer 在自己的 verified Principal/company PostgreSQL snapshot 讀已發布 catalog 及唯一 grant v4；持有人統計限目前公司 active profile 的 global/workspace 有效 Principal。不呼叫沒有 OrgMaster session 的 HTTP workspace、不轉傳 cookie、不合成治理草稿或 publication revision。OrgMaster 繼續提供身分／指派／scope 與正常治理 UI；此顯示讀取不寫 owner 資料，也不增加授權來源。
+
+歷史 v3/v5 assignment snapshot 只核對 stableRoleId／roleCode／subject／scope 等未變角色語義；原 catalogVersion 保持 provenance，不重新寫入 published policy 或提供旧版 permissions。新的指派仍須綁 exact active catalog。實際有效授權仍使用唯一 `v_ai_pdm_principal_effective_grants_v4`，保留 direct/global exact target、委派、有效期、Employee eligibility 與撤權。
+
+發布順序為 OrgMaster ordinary owner release（既有 30 筆 migration unchanged／zero DDL）先支援 v5/v6，讀回 v5 治理及拒絕成功後，再由 AI-PDM 在既有受控停用窗口發布081與v6候選。v6後OrgMaster需證明current workspace／activecatalog一致及相同exactPrincipal grant；不把短窗failclosed當正常可用。失敗沿既有Principal-only maintenance回復，不能重設AI-PDM activepointer或回UID版本。完整共同驗收以 [AI-PDM本批契約](../../../AI_PDM/.ai-doc/specs/DEV-121-target-authorization-boundary.md#system-admin-capability-batch)為準；原DEV-057結案與其他修正保留，這一批另驗。
+
+<details><summary>HISTORY_ONLY：舊工作樹 v6 讀取與發布快照（由上方正式契約取代）</summary>
+
+參與 `AIPDM/DEV-121#system-admin-capabilities` 的新修正批次；source 實作、整合與正式發布證據尚未完成。人類允許 Jed 全部有效應用能力；AI-PDM 產生 immutable `ai-pdm.role-catalog.2026-10-05.v6`，其他八角色不擴權。OrgMaster 只維持 stable 角色／scope／Principal 指派，不解釋各 API 業務能力。
+
+正常 server 讀寫先從 active producer version/hash 選取一份 source-controlled exact v5/v6 artifact，完整驗證九角色及其 metadata／permission/hash。registry、governance validation／publish 與 role-capability workspace 必須引用同次 active artifact；不能只放寬 registry，仍使用 bundled v4/v5 workspace，也不使用 process-global mutable catalog。未知版本、mixed rows 或 tamper 仍 fail closed。前端顯示當前 server readback，不自行決定 active 版本。
+
+歷史 v3/v5 assignment snapshot 只核對 stableRoleId／roleCode／subject／scope 等未變角色語義；原 catalogVersion 保持 provenance，不重新寫入 published policy 或提供旧版 permissions。新的指派仍須綁 exact active catalog。實際有效授權仍使用唯一 `v_ai_pdm_principal_effective_grants_v4`，保留 direct/global exact target、委派、有效期、Employee eligibility 與撤權。
+
+發布順序為 OrgMaster ordinary owner release（既有 30 筆 migration unchanged／zero DDL）先支援 v5/v6，讀回 v5 治理及拒絕成功後，再由 AI-PDM 在既有受控停用窗口發布080與v6候選。v6後OrgMaster需證明current workspace／activecatalog一致及相同exactPrincipal grant；不把短窗failclosed當正常可用。失敗沿既有Principal-only maintenance回復，不能重設AI-PDM activepointer或回UID版本。完整共同驗收以 [AI-PDM本批契約](../../../AI_PDM/.ai-doc/specs/DEV-121-target-authorization-boundary.md#system-admin-capability-batch)為準；原DEV-057結案與其他修正保留，這一批另驗。
+
+</details>
+
 ## Owner 與現行資料契約
 
 OrgMaster是Principal、provider pair、Employee狀態、account type、已發布角色與scope／委派的權威；不實作AI-PDM細部能力、resource predicate、worker用途或Platform登入。consumer只經版本化 `orgmaster_contract`，不得讀寫 `orgmaster_core`。
@@ -154,7 +182,9 @@ O01–O07沿原編號；失效雙軌斷言改驗終態與Principal-only恢復，
 
 <a id="employee-number-command-v2-current"></a>
 
-## DEV-057 current correction：DEV-014 員工編號 command v2
+## DEV-057 historical prerequisite：DEV-014 employee-number command v2
+
+> Historical predecessor only: preserve the following command-v2 contract and evidence. Migration 030 is an immutable prerequisite; current migration ceiling 31 and the active DEV-014 lifecycle slice are defined below.
 
 來源為 JENFU/DEV-014 QA014-05／06／18／19；沿 ORGMASTER/DEV-057 子任務修正，不新增主任務。編號是 Employee domain identifier，不能決定 Principal 或登入權限。Directory/DWD port 的設定不控制編號管理入口；可用 DTO 與已發布 Principal permission 決定操作能力，未配置 Directory 不提供連結／refresh capability。現行員工啟用資格規則不因此改寫。
 
@@ -164,6 +194,30 @@ O01–O07沿原編號；失效雙軌斷言改驗終態與Principal-only恢復，
 特定發布模式與前置檢查：`DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2` 僅接受既有 ledger 為 29 列且 001–029 prefix checksum 全部吻合後追加 exact 030，或 ledger 已為 30 列且完整 bundle checksum 驗證後作無 DDL replay。runner 在任何 migration SQL、DDL 或 ledger INSERT 前先讀取既有 ledger並套用 29／30 exact-count fence；missing ledger、10／28／31 等其他列數或同列數 checksum drift 均零寫入失敗。optional policy 僅由 OrgMaster source-bound TARGET 啟用；generic caller 未帶 policy 的原行為不變。
 
 generic helper `scripts/lib/dev012-production-migration-runner.mjs` 已由 `infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile` COPY；因此 owner Job 必須使用同一 frozen source 所產生、經既有 `APP_INFRA_IMAGE_ROTATION` provider readback 的 immutable image，不可沿用舊 digest。Migration receipt 必須證明完整 30 列及 apply/replay readback；ordinary release 僅驗 full 30-entry bundle unchanged 並保持 zero DDL。
+
+<a id="principal-lifecycle-v2-current"></a>
+
+## DEV-057 DEV-014 Principal lifecycle v2 (current, unpublished)
+
+Source: JENFU/DEV-014 QA014-07 through QA014-10, continued within native owner ORGMASTER/DEV-057. This is a remaining DEV-014 source slice, not a new DEV or a reversal of the completed Principal-only authorization scope.
+
+### Migration and write contract
+
+Migrations 001–030 are immutable. The only pending forward change is exact migration 031, version dev014-orgmaster-031, from a fully verified 30-row prefix; alternatively, a complete 31-row bundle may be checksum-verified and replayed without DDL. The exact migration filename and source/applied checksum are bound by [the owner release definition](../../scripts/lib/dev014-principal-lifecycle-release.mjs). The production runner accepts only existing ledger count 30 or 31, applies at most migration 031, then reads back the complete 31-row ledger.
+
+Normal artifact writes retain a verified human Principal actor and use the v2 identity-fenced persistence writer. A requested actor that differs from the verified principal fails closed. Workload execution is a typed owner/purpose/provider binding whose database login must match the actual PostgreSQL SESSION_USER; caller labels, actor-body values, UID/email fallbacks, or caller-selected executor identity are not trusted. Migration 031 revokes runtime EXECUTE on the historical v1 persistence writer and managed-identity worker entry points.
+
+The lifecycle event stores a frozen Principal and provider-pair snapshot with source revision and snapshot hash. Delivery targets those recorded Principal/pair values and does not re-expand a later Employee-wide dynamic target. OrgMaster owns and mutates only orgmaster_core and orgmaster_contract. Platform migration 011 verifies the versioned OrgMaster producer views and contract manifest before its DDL, then uses the published cross-application contracts; OrgMaster never reads or writes platform_core.
+
+### Release and evidence boundary
+
+A controlled 30→31 append requires a fresh, source-matched APP_INFRA_IMAGE_ROTATION for the migration-runner image before the owner Job. The receipt must validate the complete 31-row bundle and readback, with applied at most one and replayed equal to 31 minus applied; candidate creation follows the validated receipt. Ordinary release checks the unchanged 31-entry bundle and executes zero DDL.
+
+The lifecycle install keeps ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED=false. A separate protected-source operator seals fresh published OrgMaster/Platform terminal/control/native migration chains and current runtime identity/environment plus the PAUSED product Scheduler, then `--dev014-principal-lifecycle-enable` changes only false→true through the existing ten stages. Owner CI checks its source-bound attestation and baseline; it gains no sibling IAM/live read authority. Scheduler remains PAUSED throughout release, then the exact-job operator freshly joins both owners before resume/readback. Terraform owns fixed template/PAUSED creation and ignores only the operator-owned paused state; existing no-op plans require live readback, with a current-source transition receipt for ENABLED. Both success and failure/recovery are sealed create-only receipts. Fee decision, creation and Production evidence remain pending; this is not the release watchdog. [R9 independent QC](../../../Jenfu-Platform/ai-doc/qa/evidence/DEV014-REMAINING-DELIVERY-20261005/dev014-org-lifecycle-activation-qc-r9-20261006.projection.json) passed 326 Node cases before official-source integration, not Production L4.
+
+Current evidence is indexed in the [DEV-014 remaining-delivery ledger](../../../Jenfu-Platform/ai-doc/qa/evidence/DEV014-REMAINING-DELIVERY-20261005/index.json). R6 proved the 500-identity/15-minute synthetic workload; R7 native PostgreSQL proved 23 cases, including own runtime connection quiescence. The later 031 header correction preserves the SQL body and binds source/package hashes `586a7d829041272c67df31f9d9d6531dfb16497dfdb780be954bb05e259d8ab7` / `676c231bf2f6f31d9fc153603b8429894fa0e1b0d1adb4fedc07a103d87295b9`. R8 release tests cover 312 cases under a frozen local source map, including repeated recovery operations and unchanged-migration rollback. Earlier 22-case/126-test/25-test results remain historical source evidence. None proves Cloud SQL IAM, current Production ledger, Scheduler operation, or Production L4.
+
+Official source integration/CI and full candidate build, owner release/recovery, consumer migration 011, provider/Scheduler readback, actual production SESSION_USER/queue, controlled runtime activation, and Production lifecycle L4 remain incomplete. Install 031 with the flag false; activation and Scheduler resume follow [the single current JENFU contract, §§8–9](../../../Jenfu-Platform/ai-doc/specs/DEV-014-managed-identity-production-activation.md#current-lifecycle-completion-20261005). Platform must publish the dedicated lifecycle consumer proof joined to its canonical source/artifact, 011 receipt and route 401/lifecycle_caller_invalid; generic conformance cannot substitute, and route-denial proof is not positive event/L4 evidence. Repeated recovery proofs bind source + actual service UID + serving baseline; legacy readback accepts only the exact source-named receipt, and new operations require the exact derived key/revision. No arbitrary receipt basename is accepted. Keep the release flag false and Scheduler paused until the existing source-bound release and provider-readback path supplies evidence; this section adds no DEV or manual approval gate.
 
 ## 歷史引用入口（非施工指令）
 

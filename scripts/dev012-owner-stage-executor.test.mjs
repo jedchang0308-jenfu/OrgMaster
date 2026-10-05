@@ -377,3 +377,11 @@ test('DEV-057 employee number command v2 verifies exact 30-row receipt, replay a
  assert.doesNotThrow(()=>check(core));assert.doesNotThrow(()=>check({...core,applied:0,replayed:30}));
  for(const changed of [{ledgerCount:29},{applied:2,replayed:28},{replayed:28},{crossDatabaseDenials:[{database:'jenfu_dev',denied:false},{database:'jenfu_stg',denied:true}]}])assert.throws(()=>check({...core,...changed}),/MIGRATION_RECEIPT_INVALID/);
 });
+
+test('DEV-014 lifecycle v2 receipt proves 31 rows, at most one append and exact replay', () => {
+  const profile = { application: { id: 'orgmaster' } }, intent = { sourceRevision: H40, migrationManifestSha256: 'b'.repeat(64) }, forwardPlan = { releaseMode: 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION' }
+  const core = { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: H40, manifestSha256: intent.migrationManifestSha256, status: 'PASS', boundaryStatus: 'PASS', baselineCount: 10, minimumLedgerCount: 10, ledgerCount: 31, applied: 1, replayed: 30, crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }] }
+  const check = value => assertMigrationReceipt({ ...value, receiptSha256: sha256(canonicalize(value)) }, profile, intent, { allowForward: true, forwardPlan })
+  assert.doesNotThrow(() => check(core)); assert.doesNotThrow(() => check({ ...core, applied: 0, replayed: 31 }))
+  for (const changed of [{ ledgerCount: 30 }, { applied: 2, replayed: 29 }, { replayed: 29 }, { crossDatabaseDenials: [{ database: 'jenfu_dev', denied: false }, { database: 'jenfu_stg', denied: true }] }]) assert.throws(() => check({ ...core, ...changed }), /MIGRATION_RECEIPT_INVALID/)
+})

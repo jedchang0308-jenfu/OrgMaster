@@ -8,6 +8,8 @@ import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-releas
 import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 
+import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION, assertDev014PrincipalLifecycleV2Append, assertDev014PrincipalLifecycleV2Remediation, assertDev014PrincipalLifecycleRuntimeGuard, assertDev014PrincipalLifecycleEnablement } from './dev014-principal-lifecycle-release.mjs'
+
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 
@@ -75,6 +77,15 @@ function dev013NeutralInfrastructureInputs(profile) {
   value.environment.requiredPlainEnvironmentNames = required.filter((name) => !['ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN'].includes(name))
   delete value.environment?.fixedValues?.ORGMASTER_JENFU_SSO_BROKER_ORIGIN
   delete value.environment?.controlledValues?.ORGMASTER_JENFU_SSO_HANDOFF_MODE
+  if (value.environment?.controlledValues && Object.keys(value.environment.controlledValues).length === 0) delete value.environment.controlledValues
+  return value
+}
+
+export function dev014PrincipalLifecycleInfrastructureInputs(profile) {
+  const value = dev013NeutralInfrastructureInputs(profile)
+  const field = 'ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED'
+  value.environment.requiredPlainEnvironmentNames = value.environment.requiredPlainEnvironmentNames.filter(name => name !== field)
+  delete value.environment?.controlledValues?.[field]
   if (value.environment?.controlledValues && Object.keys(value.environment.controlledValues).length === 0) delete value.environment.controlledValues
   return value
 }
@@ -663,7 +674,14 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (!same(intent.foundationReceiptRef, baseline.intent.foundationReceiptRef)) fail('ROUTINE_INFRA_REF_CHANGED')
   const runtimeConfig = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
   const baselineRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
-  const controlledTransition = same(runtimeConfig, baselineRuntime)
+  const lifecycleGuard = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-V2'
+  const lifecycleEnable = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-ENABLE'
+  if (lifecycleGuard) assertDev014PrincipalLifecycleRuntimeGuard(profile, baselineRuntime, runtimeConfig)
+  const controlledTransition = lifecycleEnable
+    ? assertDev014PrincipalLifecycleEnablement({profile,intent,readiness:values.readiness,authorization:values.authorization,before:baselineRuntime,after:runtimeConfig})
+    : lifecycleGuard
+    ? assertDev014PrincipalLifecycleV2Remediation(values.readiness, values.authorization)
+    : same(runtimeConfig, baselineRuntime)
     ? values.readiness?.devId === 'DEV-057'
       ? values.readiness?.slice === '057-WRITER-FENCE'
         ? assertDev057WriterFenceRemediation(values.readiness, values.authorization)
@@ -679,7 +697,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
             ? assertDev057PrincipalGrantsV3Remediation(values.readiness, values.authorization)
           : null
       : values.readiness?.devId === 'DEV-014'
-      ? values.readiness?.slice === '014-PRODUCER-CONTRACT'
+      ? values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-V2'
+        ? assertDev014PrincipalLifecycleV2Remediation(values.readiness, values.authorization)
+      : values.readiness?.slice === '014-PRODUCER-CONTRACT'
         ? assertDev014ProducerContractRemediation(values.readiness, values.authorization)
         : values.readiness?.slice === '014-APPLICATION-REGISTRATION'
           ? assertDev014ApplicationRegistrationRemediation(values.readiness, values.authorization)
@@ -696,7 +716,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     : values.readiness?.devId === 'DEV-014'
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
-  const infrastructureHash = ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+  const infrastructureHash = lifecycleGuard
+    ? (root, revision) => transitionFingerprint(root, revision, [], dev014PrincipalLifecycleInfrastructureInputs)
+    : ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
@@ -718,11 +740,15 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const current = await buildMigrationBundle(intent.sourceRevision)
   if (current.bundle.manifestSha256 !== intent.migrationManifestSha256) fail('MIGRATION_MANIFEST_MISMATCH')
   let migration
+  if (lifecycleEnable && (baseline.bundle.value.entries?.length !== 31 || current.bundle.entries?.length !== 31)) fail('DEV014_LIFECYCLE_ENABLEMENT_LEDGER_REQUIRED')
   try {
     migration = { migrationDisposition: 'UNCHANGED_VERIFIED', pendingMigrationCount: 0, migrationInputsSha256: assertRoutineMigrationUnchanged(baseline.bundle.value, current.bundle) }
   } catch (error) {
+    if (lifecycleEnable) throw error // enablement executes zero DDL, without append fallback
     if (!controlledTransition || error?.code !== 'ROUTINE_MIGRATION_CHANGED') throw error
-    migration = controlledTransition.releaseMode === 'DEV014_PRODUCER_CONTRACT_REMEDIATION'
+    migration = controlledTransition.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION'
+      ? assertDev014PrincipalLifecycleV2Append(baseline.bundle.value, current.bundle)
+      : controlledTransition.releaseMode === 'DEV014_PRODUCER_CONTRACT_REMEDIATION'
       ? assertDev014ContractMigrationAppend(baseline.bundle.value, current.bundle)
       : controlledTransition.releaseMode === 'DEV014_APPLICATION_REGISTRATION_REMEDIATION'
         ? assertDev014ApplicationRegistrationAppend(baseline.bundle.value, current.bundle)
@@ -758,10 +784,11 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (!infraChanged) fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID')
     try { assertDev013MigrationInfraReceipt(values.infra, profile, values.infra?.sourceRevision) } catch { fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID') }
   } else if (infraChanged) {
-    if (controlledTransition || baseline.repair) fail('ROUTINE_INFRA_REF_CHANGED')
+    if ((controlledTransition && !lifecycleEnable) || baseline.repair) fail('ROUTINE_INFRA_REF_CHANGED')
     if (values.infra?.mutationProfile === 'APP_INFRA_REUSE') {
       smokeRotationContinuation = await assertSmokeInfraReuseContinuation({ root, profile, transport, intent, values, baseline, readSourceFile, readInfrastructureTree })
     } else {
+      if (lifecycleEnable) fail('DEV014_LIFECYCLE_ENABLEMENT_INFRA_REUSE_REQUIRED')
       if (values.infra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') fail('ROUTINE_INFRA_REF_CHANGED')
       smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline, readSourceFile, readInfrastructureTree })
     }

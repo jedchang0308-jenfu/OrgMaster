@@ -42,19 +42,23 @@ export async function readPrincipalOnlyRepairBaseline({ profile, transport, base
   const candidateFacts = seal(candidate, 'candidate')
   if (!same(terminal.value.previousReceiptRef, rollback.ref)
     || terminalFacts.previousRevision !== binding.revision || rollbackFacts.previousRevision !== binding.revision
-    || rollbackFacts.result !== 'ROLLED_BACK' || terminalFacts.databaseDisposition !== 'FORWARD_APPLIED'
-    || rollbackFacts.databaseDisposition !== 'FORWARD_APPLIED'
+    || rollbackFacts.result !== 'ROLLED_BACK'
+    || terminalFacts.databaseDisposition !== rollbackFacts.databaseDisposition
     || !same(candidateFacts.deploymentCapsuleRef, deployment.ref) || !same(candidateFacts.migrationReceiptRef, migration.ref)
     || !same(deployment.value.releaseIntentRef, baselineIntentRef) || deployment.value.sourceRevision !== intent.sourceRevision
     || candidateFacts.artifactDigest !== deployment.value.artifactDigest
     || !deployment.value.artifactDigest?.startsWith(`${profile.artifact.uri}@sha256:`)) fail()
   if (migration.value.schemaVersion === 'jenfu.dev012.stage-receipt.v1') {
     const facts = seal(migration, 'migrate')
-    if (facts.disposition !== 'UNCHANGED_VERIFIED' || facts.manifestSha256 !== intent.migrationManifestSha256) fail()
+    // Older sealed owner terminals called a verified replay FORWARD_APPLIED.
+    // Preserve that history while admitting the current truthful no-DDL result.
+    // Unknown or missing migration outcomes never become repair authority.
+    if (facts.disposition !== 'UNCHANGED_VERIFIED' || facts.manifestSha256 !== intent.migrationManifestSha256
+      || !['FORWARD_APPLIED', 'UNCHANGED_VERIFIED'].includes(terminalFacts.databaseDisposition)) fail()
   } else if (migration.value.schemaVersion !== 'jenfu.dev012.migration-receipt.v1'
     || migration.value.ownerApplicationId !== profile.application.id || migration.value.sourceRevision !== intent.sourceRevision
     || migration.value.manifestSha256 !== intent.migrationManifestSha256 || migration.value.status !== 'PASS'
-    || migration.value.boundaryStatus !== 'PASS') fail()
+    || migration.value.boundaryStatus !== 'PASS' || terminalFacts.databaseDisposition !== 'FORWARD_APPLIED') fail()
   if (!control) {
     const result = await transport.readBytes(paths.control, { prefixes: ['control'] })
     control = JSON.parse(result.bytes.toString('utf8'))

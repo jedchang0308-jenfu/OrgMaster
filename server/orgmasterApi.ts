@@ -13,6 +13,7 @@ import {
   getWorkspacePaths,
 } from './orgmasterWorkspaceStore'
 import { persistenceArtifactExists, usesCloudSqlPersistence } from './orgmasterPersistenceRepository'
+import { readVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 
 const API_PATH = '/api/orgmaster/document'
 const WORKSPACE_PATH = '/api/orgmaster/workspace'
@@ -158,7 +159,8 @@ function workspaceError(response: ServerResponse, error: unknown) {
     sendJson(response, 500, { error: 'WORKSPACE_INTERNAL_ERROR' })
     return
   }
-  const status = error.code === 'VERSION_CONFLICT' || error.code === 'MANIFEST_CONFLICT' ? 409
+  const status = error.code === 'WORKSPACE_ACTOR_REQUIRED' ? 401
+    : error.code === 'VERSION_CONFLICT' || error.code === 'MANIFEST_CONFLICT' ? 409
     : error.code === 'WORKSPACE_ENTRY_NOT_FOUND' ? 404
       : error.code === 'VERSION_INVALID' ? 422
         : 400
@@ -166,6 +168,20 @@ function workspaceError(response: ServerResponse, error: unknown) {
     error: error.code,
     ...(error.code === 'VERSION_INVALID' ? { reason: error.message || error.code } : {}),
   })
+}
+
+function workspaceMutationActor(request: IncomingMessage, response: ServerResponse) {
+  const session = readVerifiedRequestIdentity(request)
+  const principalId = session?.sessionSchemaVersion === 2 && session.epochKind === 'principal' &&
+    typeof session.principalAuthEpoch === 'number' && Number.isSafeInteger(session.principalAuthEpoch) &&
+    session.principalAuthEpoch >= 0 && Boolean(session.authenticatedAt)
+    ? session.principalId.trim() || undefined
+    : undefined
+  if (usesCloudSqlPersistence() && !principalId) {
+    sendJson(response, 401, { error: 'WORKSPACE_ACTOR_REQUIRED' })
+    return null
+  }
+  return principalId
 }
 
 async function parseJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
@@ -189,12 +205,15 @@ function handleWorkspaceRequest(request: IncomingMessage, response: ServerRespon
     return
   }
   if (pathname === `${WORKSPACE_PATH}/versions` && request.method === 'POST') {
+    const actorPrincipalId = workspaceMutationActor(request, response)
+    if (actorPrincipalId === null) return
     void parseJsonBody(request).then(async (body) => {
       const result = await createWorkspaceDraft(
         process.cwd(),
         String(body.sourceVersionId ?? ''),
         String(body.name ?? ''),
         String(body.expectedManifestRevision ?? request.headers['x-orgmaster-manifest-revision'] ?? ''),
+        actorPrincipalId,
       )
       sendJson(response, 201, result)
     }).catch((error) => workspaceError(response, error))
@@ -206,6 +225,8 @@ function handleWorkspaceRequest(request: IncomingMessage, response: ServerRespon
     return
   }
   if (versionId && request.method === 'PUT') {
+    const actorPrincipalId = workspaceMutationActor(request, response)
+    if (actorPrincipalId === null) return
     void parseJsonBody(request).then(async (body) => {
       const result = await saveWorkspaceVersion(
         process.cwd(),
@@ -213,12 +234,15 @@ function handleWorkspaceRequest(request: IncomingMessage, response: ServerRespon
         body.document as OrgDocumentFile,
         String(body.expectedVersionRevision ?? request.headers['x-orgmaster-revision'] ?? ''),
         body.mode === 'current-maintenance' ? 'current-maintenance' : 'draft-edit',
+        actorPrincipalId,
       )
       sendJson(response, 200, result, result.version.revision)
     }).catch((error) => workspaceError(response, error))
     return
   }
   if (versionId && request.method === 'PATCH') {
+    const actorPrincipalId = workspaceMutationActor(request, response)
+    if (actorPrincipalId === null) return
     void parseJsonBody(request).then(async (body) => {
       const action = body.action === 'archive' || body.action === 'restore' ? body.action : 'rename'
       const result = await updateWorkspaceEntry(
@@ -227,6 +251,7 @@ function handleWorkspaceRequest(request: IncomingMessage, response: ServerRespon
         action,
         typeof body.name === 'string' ? body.name : undefined,
         String(body.expectedManifestRevision ?? request.headers['x-orgmaster-manifest-revision'] ?? ''),
+        actorPrincipalId,
       )
       sendJson(response, 200, result)
     }).catch((error) => workspaceError(response, error))

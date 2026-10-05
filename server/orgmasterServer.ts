@@ -14,6 +14,7 @@ import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './o
 import { createLocalDeterministicDirectoryPort, type LocalDirectoryFixture } from './orgmasterManagedDirectoryPort'
 import { createWorkbenchPreferenceMiddleware } from './workbenchPreferenceApi'
 import { createOrgmasterManagedLoginMiddleware } from './orgmasterManagedLoginApi'
+import { createOrgmasterManagedIdentityLifecycleMiddleware, createOrgmasterManagedIdentityLifecycleRuntime, type ManagedIdentityLifecycleRuntime } from './orgmasterManagedIdentityLifecycleApi'
 
 type Middleware = Connect.NextHandleFunction
 
@@ -26,6 +27,7 @@ export type OrgmasterServerOptions = {
   managedIdentityService?: ManagedIdentityServiceV1
   managedIdentityDomain?: string
   managedIdentityDirectoryFixture?: LocalDirectoryFixture
+  managedIdentityLifecycleRuntime?: ManagedIdentityLifecycleRuntime
 }
 
 const contentTypes: Record<string, string> = {
@@ -107,6 +109,7 @@ export function createOrgmasterServer(options: OrgmasterServerOptions = {}) {
   const accountRuntime = accountEnrollmentEnabled ? (options.accountEnrollmentRuntime ?? createOrgmasterAccountEnrollmentRuntime({ root, devEnabled: devIdentityEnabled })) : null
   const middlewares: Middleware[] = [
     createOrgmasterMigrationGateMiddleware(root),
+    createOrgmasterManagedIdentityLifecycleMiddleware(options.managedIdentityLifecycleRuntime ?? createOrgmasterManagedIdentityLifecycleRuntime()),
     createOrgmasterManagedLoginMiddleware(runtime.managedLoginOwner, runtime.managedLoginCallerVerifier),
     createOrgmasterAuthMiddleware(() => runtime, devIdentityEnabled),
     ...(employeeNumberManagementEnabled ? [createOrgmasterManagedIdentityMiddleware(root, devIdentityEnabled, managedIdentityService)] : []),

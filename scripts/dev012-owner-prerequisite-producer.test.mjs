@@ -74,7 +74,7 @@ test('orgmaster intent producer preserves maintenance recovery for its real cons
     runtimeConfigRef: ref('runtime'), previousRevision: 'orgmaster-prod-old', deadlineAt: '2999-01-01T00:00:00.000Z',
     principalOnlyRecovery: { revision: 'orgmaster-prod-recovery', serviceUid: 'd65f379b-a342-4eb3-ba22-109aa5f368c5',
       imageDigest: `asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-recovery@sha256:${H64}`,
-      receiptRef: { uri: 'gs://owner-bucket/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/proof.json', sha256: H64 } },
+      receiptRef: { uri: `gs://owner-bucket/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/${H40}.json`, sha256: H64 } },
   }
   const common = { releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', status: 'PASS', projectId: 'project' }
   const authority = { ...common, environment: 'production', remainingHumanAction: 0, expiresAt: input.deadlineAt }

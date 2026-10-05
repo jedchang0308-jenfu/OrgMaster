@@ -39,6 +39,12 @@ export class WorkspaceStoreError extends Error {
   }
 }
 
+function workspaceWriterPrincipal(actorPrincipalId?: string) {
+  const principalId = actorPrincipalId?.trim() || undefined
+  if (usesCloudSqlPersistence() && !principalId) throw new WorkspaceStoreError('WORKSPACE_ACTOR_REQUIRED')
+  return principalId
+}
+
 export function getWorkspacePaths(rootDirectory = process.cwd()) {
   return {
     manifest: resolve(rootDirectory, 'data', 'orgmaster-workspace.v1.json'),
@@ -161,7 +167,9 @@ export async function createWorkspaceDraft(
   sourceVersionId: string,
   name: string,
   expectedManifestRevision: string,
+  actorPrincipalId?: string,
 ) {
+  const updatedBy = workspaceWriterPrincipal(actorPrincipalId)
   return withOrgMasterRootLock(rootDirectory, async () => {
     await assertMigrationWritesAllowed(rootDirectory)
     const current = await readManifest(rootDirectory)
@@ -183,7 +191,7 @@ export async function createWorkspaceDraft(
           artifactKey: 'orgmaster-workspace.v1.json', artifactKind: 'workspace-manifest', localPath: getWorkspacePaths(rootDirectory).manifest,
           payload: nextManifest as unknown as Record<string, unknown>, raw: `${JSON.stringify(nextManifest, null, 2)}\n`, expectedRevision: current.revision,
         },
-      ], { reasonCode: 'workspace_draft_create' })
+      ], { updatedBy, reasonCode: 'workspace_draft_create' })
     } catch (error) {
       if (error instanceof OrgmasterPersistenceError && error.code === 'PERSISTENCE_REVISION_CONFLICT') throw new WorkspaceStoreError('MANIFEST_CONFLICT')
       throw error
@@ -198,9 +206,11 @@ export async function saveWorkspaceVersion(
   document: OrgDocumentFile,
   expectedVersionRevision: string,
   mode: 'draft-edit' | 'current-maintenance',
+  actorPrincipalId?: string,
 ) {
-    await assertMigrationWritesAllowed(rootDirectory)
-  return withOrgMasterRootLock(rootDirectory, () => saveWorkspaceVersionUnlocked(rootDirectory, versionId, document, expectedVersionRevision, mode))
+  const updatedBy = workspaceWriterPrincipal(actorPrincipalId)
+  await assertMigrationWritesAllowed(rootDirectory)
+  return withOrgMasterRootLock(rootDirectory, () => saveWorkspaceVersionUnlocked(rootDirectory, versionId, document, expectedVersionRevision, mode, updatedBy))
 }
 
 export async function saveWorkspaceVersionUnlocked(
@@ -209,7 +219,9 @@ export async function saveWorkspaceVersionUnlocked(
   document: OrgDocumentFile,
   expectedVersionRevision: string,
   mode: 'draft-edit' | 'current-maintenance',
+  actorPrincipalId?: string,
 ) {
+    const updatedBy = workspaceWriterPrincipal(actorPrincipalId)
     const manifest = await readManifest(rootDirectory)
     const entry = manifest.manifest.entries.find((candidate) => candidate.id === versionId)
     if (!entry) throw new WorkspaceStoreError('WORKSPACE_ENTRY_NOT_FOUND')
@@ -224,7 +236,7 @@ export async function saveWorkspaceVersionUnlocked(
       await writePersistenceArtifacts([{
         artifactKey: `orgmaster-versions/${versionId}.json`, artifactKind: 'workspace-version', localPath: versionPath(rootDirectory, versionId),
         payload: parsed.document as unknown as Record<string, unknown>, raw: `${JSON.stringify(parsed.document, null, 2)}\n`, expectedRevision: current.version.revision,
-      }], { reasonCode: 'workspace_version_save' })
+      }], { updatedBy, reasonCode: 'workspace_version_save' })
     } catch (error) {
       if (error instanceof OrgmasterPersistenceError && error.code === 'PERSISTENCE_REVISION_CONFLICT') throw new WorkspaceStoreError('VERSION_CONFLICT')
       throw error
@@ -238,7 +250,9 @@ export async function updateWorkspaceEntry(
   action: 'rename' | 'archive' | 'restore',
   value: string | undefined,
   expectedManifestRevision: string,
+  actorPrincipalId?: string,
 ) {
+  const updatedBy = workspaceWriterPrincipal(actorPrincipalId)
   return withOrgMasterRootLock(rootDirectory, async () => {
     const current = await readManifest(rootDirectory)
     if (current.revision !== expectedManifestRevision) throw new WorkspaceStoreError('MANIFEST_CONFLICT')
@@ -253,7 +267,7 @@ export async function updateWorkspaceEntry(
       await writePersistenceArtifacts([{
         artifactKey: 'orgmaster-workspace.v1.json', artifactKind: 'workspace-manifest', localPath: getWorkspacePaths(rootDirectory).manifest,
         payload: result.value as unknown as Record<string, unknown>, raw: `${JSON.stringify(result.value, null, 2)}\n`, expectedRevision: current.revision,
-      }], { reasonCode: `workspace_${action}` })
+      }], { updatedBy, reasonCode: `workspace_${action}` })
     } catch (error) {
       if (error instanceof OrgmasterPersistenceError && error.code === 'PERSISTENCE_REVISION_CONFLICT') throw new WorkspaceStoreError('MANIFEST_CONFLICT')
       throw error

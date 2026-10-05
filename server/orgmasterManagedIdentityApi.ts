@@ -128,7 +128,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, servic
     if (target.action === 'managed-identity/refresh' && request.method === 'POST') {
       assertSameOrigin(request)
       const body = await readBody(request)
-      const input: ManagedIdentityRefreshRequestV1 = { commandId: String(body.commandId ?? ''), trigger: body.trigger === 'domain' || body.trigger === 'periodic' ? body.trigger : 'manual' }
+      const input: ManagedIdentityRefreshRequestV1 = { commandId: String(body.commandId ?? ''), trigger: 'manual' }
       sendJson(response, 202, await service.enqueueRefresh(target.employeeId, identity, input.trigger, input.commandId))
       return true
     }

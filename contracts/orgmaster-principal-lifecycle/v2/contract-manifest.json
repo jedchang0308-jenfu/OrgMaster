@@ -1,0 +1,11 @@
+{
+  "contractId": "orgmaster.principal-lifecycle.v2",
+  "contractVersion": "orgmaster.principal-lifecycle.v2",
+  "owner": "orgmaster",
+  "signature": "orgmaster_contract.v_principal_lifecycle_events_v2->TABLE(contract_version text,event_id text,operation_id text,source_revision text,originating_principal_id text,initiating_principal_id text,reason_code text,snapshot_text text,snapshot_hash character(64),created_at timestamp with time zone);orgmaster_contract.v_principal_lifecycle_targets_v2->TABLE(event_id text,principal_id text,employee_id text,account_type text,principal_issuer text,principal_subject text)",
+  "signatureSha256": "8d714f78e025eed9e3a067ee567f3c08607602943a60f9483fd0b973cf63a6cb",
+  "payloadSha256": null,
+  "migration": "031_dev014_principal_lifecycle_v2.sql",
+  "authority": "DEV-014 current-lifecycle-completion-20261005",
+  "state": "CANDIDATE_UNAPPLIED"
+}

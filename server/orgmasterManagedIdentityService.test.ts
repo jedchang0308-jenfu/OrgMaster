@@ -218,7 +218,7 @@ describe('Directory link state and candidate conflicts', () => {
   const request = { primaryEmail: 'person@jenfu.com.tw', expectedWorkspaceRevision: 'workspace-revision', expectedRegistryRevision: '1' }
   function fixture(state: 'not_linked' | 'directory_linked_pending_auth' | 'active' | 'conflict' = 'not_linked') {
     const model = { contractVersion: 'orgmaster.managed-identity.v1', employee: { id: 'employee-1', status: 'active' }, employeeNumber: { status: 'assigned', value: 'JFS0001', revision: 1 }, identity: { state, provider: 'google.com', note: '', primaryEmail: state === 'not_linked' ? null : 'person@jenfu.com.tw' }, capabilities: { view: true, manageNumber: false }, registryRevision: '1' }
-    const repository = { mode: 'postgresql', readEmployeeManagedIdentity: vi.fn(async () => model), createCandidate: vi.fn(async () => ({ token: 'candidate-1', expiresAt: '2026-10-06T00:00:00.000Z', workspaceRevision: 'workspace-revision', registryRevision: '1' })) }
+    const repository = { mode: 'postgresql', reserveDirectoryRead: vi.fn(async () => {}), readEmployeeManagedIdentity: vi.fn(async () => model), createCandidate: vi.fn(async () => ({ token: 'candidate-1', expiresAt: '2026-10-06T00:00:00.000Z', workspaceRevision: 'workspace-revision', registryRevision: '1' })) }
     const port = directory()
     vi.mocked(port.findExactCandidate).mockResolvedValue({ ok: true, user: { customerId: 'customer-1', userId: 'google-1', primaryEmail: 'person@jenfu.com.tw', directoryState: 'present', sourceEtag: 'etag-1' }, observedAt: '2026-10-05T00:00:00.000Z' })
     const service = createManagedIdentityService({ root: 'fixture', devEnabled: true, managedDomain: 'jenfu.com.tw', directoryCustomerId: 'customer-1', directory: port, repository: repository as unknown as ManagedIdentityRepositoryV1 })
@@ -253,10 +253,10 @@ describe('Directory link state and candidate conflicts', () => {
     expect(port.findExactCandidate).not.toHaveBeenCalled()
   })
 
-  async function candidateHttp(service: ReturnType<typeof fixture>['service']) {
-    const req = Readable.from([JSON.stringify(request)]) as IncomingMessage
+  async function candidateHttp(service: ReturnType<typeof fixture>['service'], action = 'managed-identity/candidate', body: unknown = request) {
+    const req = Readable.from([JSON.stringify(body)]) as IncomingMessage
     req.method = 'POST'
-    req.url = '/api/orgmaster/employees/employee-1/managed-identity/candidate'
+    req.url = `/api/orgmaster/employees/employee-1/${action}`
     req.headers = { origin: 'https://orgmaster.test', host: 'orgmaster.test' }
     setVerifiedRequestIdentity(req, { ...actor, identityIssuer: actor.issuer, identitySubject: actor.subject, assuranceLevel: 'aal1' } as OrgmasterSession)
     return await new Promise<{ status: number; body: unknown }>((resolve) => {
@@ -264,6 +264,63 @@ describe('Directory link state and candidate conflicts', () => {
       createOrgmasterManagedIdentityMiddleware('fixture', true, service)(req, res as unknown as ServerResponse, () => { throw new Error('Unexpected next') })
     })
   }
+  it('reserves one shared read before looking up a new candidate', async () => {
+    const { service, repository, port } = fixture()
+    await service.findCandidate('employee-1', actor, request)
+    expect(repository.reserveDirectoryRead).toHaveBeenCalledOnce()
+    expect(repository.reserveDirectoryRead.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(port.findExactCandidate).mock.invocationCallOrder[0])
+  })
+  it('does not call Directory or create a lease when the shared budget is unavailable', async () => {
+    const { service, repository, port } = fixture()
+    repository.reserveDirectoryRead.mockRejectedValueOnce(new Error('budget unavailable'))
+    await expect(service.findCandidate('employee-1', actor, request)).rejects.toMatchObject({ code: 'DIRECTORY_READ_UNAVAILABLE', details: { retryable: true } })
+    expect(port.findExactCandidate).not.toHaveBeenCalled()
+    expect(repository.createCandidate).not.toHaveBeenCalled()
+  })
+  it('reserves before a confirmation read and does not commit on budget rejection', async () => {
+    const { service, repository, port } = fixture()
+    const store = repository as unknown as ManagedIdentityRepositoryV1
+    store.readCandidateForConfirmation = vi.fn(async () => ({ kind: 'ready', snapshot: { directoryCustomerId: 'customer-1', directoryUserId: 'google-1', primaryEmail: 'person@jenfu.com.tw', sourceEtag: 'etag-1' } })) as never
+    store.confirmCandidate = vi.fn()
+    repository.reserveDirectoryRead.mockRejectedValueOnce(new Error('budget unavailable'))
+    await expect(service.confirmLink('employee-1', actor, { commandId: 'confirm-budget-1', candidateToken: 'candidate-1', expectedRegistryRevision: '1', expectedWorkspaceRevision: 'workspace-revision' })).rejects.toMatchObject({ code: 'DIRECTORY_READ_UNAVAILABLE' })
+    expect(repository.reserveDirectoryRead).toHaveBeenCalledOnce()
+    expect(port.readByDirectoryKey).not.toHaveBeenCalled()
+    expect(store.confirmCandidate).not.toHaveBeenCalled()
+  })
+  it('confirmation success spends exactly one shared grant before the provider and commits after live validation', async () => {
+    const { service, repository, port } = fixture()
+    const store = repository as unknown as ManagedIdentityRepositoryV1
+    const ready = vi.fn(async () => ({ kind: 'candidate', snapshot: { directoryCustomerId: 'customer-1', directoryUserId: 'google-1', primaryEmail: 'person@jenfu.com.tw', sourceEtag: null } }))
+    const commit = vi.fn(async () => ({ identityRecordId: 'identity-1', employeeId: 'employee-1' }))
+    store.readCandidateForConfirmation = ready as never
+    store.confirmCandidate = commit
+    const result = await service.confirmLink('employee-1', actor, { commandId: 'confirm-success', candidateToken: 'candidate-1', expectedRegistryRevision: '1', expectedWorkspaceRevision: 'workspace-revision' })
+    expect(result.employee.id).toBe('employee-1')
+    expect(repository.reserveDirectoryRead).toHaveBeenCalledOnce()
+    expect(port.readByDirectoryKey).toHaveBeenCalledExactlyOnceWith('customer-1', 'google-1')
+    expect(commit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ commandId: 'confirm-success', employeeId: 'employee-1', actor: actor.principalId }))
+    expect(ready.mock.invocationCallOrder[0]).toBeLessThan(repository.reserveDirectoryRead.mock.invocationCallOrder[0])
+    expect(repository.reserveDirectoryRead.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(port.readByDirectoryKey).mock.invocationCallOrder[0])
+    expect(vi.mocked(port.readByDirectoryKey).mock.invocationCallOrder[0]).toBeLessThan(commit.mock.invocationCallOrder[0])
+  })
+  it('confirmation replay returns the saved read model without spending a grant or repeating the provider or commit', async () => {
+    const { service, repository, port } = fixture('directory_linked_pending_auth')
+    const store = repository as unknown as ManagedIdentityRepositoryV1
+    store.readCandidateForConfirmation = vi.fn(async () => ({ kind: 'replayed', identityRecordId: 'identity-1' }))
+    store.confirmCandidate = vi.fn()
+    const result = await service.confirmLink('employee-1', actor, { commandId: 'confirm-replay', candidateToken: 'candidate-1', expectedRegistryRevision: '1', expectedWorkspaceRevision: 'workspace-revision' })
+    expect(result.identity.state).toBe('directory_linked_pending_auth')
+    expect(repository.reserveDirectoryRead).not.toHaveBeenCalled()
+    expect(port.readByDirectoryKey).not.toHaveBeenCalled()
+    expect(store.confirmCandidate).not.toHaveBeenCalled()
+  })
+  it.each(['periodic', 'domain', 'manual'])('forces a human %s request to a manual enqueue', async (trigger) => {
+    const { service } = fixture()
+    service.enqueueRefresh = vi.fn(async () => ({ disposition: 'queued', requestId: 'refresh-1' }))
+    expect(await candidateHttp(service, 'managed-identity/refresh', { commandId: 'manual-command', trigger })).toEqual({ status: 202, body: { disposition: 'queued', requestId: 'refresh-1' } })
+    expect(service.enqueueRefresh).toHaveBeenCalledWith('employee-1', expect.objectContaining({ principalId: actor.principalId }), 'manual', 'manual-command')
+  })
   it('returns HTTP 409 for a stored link instead of a server failure', async () => {
     const { service, repository } = fixture('directory_linked_pending_auth')
     expect(await candidateHttp(service)).toEqual({ status: 409, body: { error: 'DIRECTORY_IDENTITY_CONFLICT' } })

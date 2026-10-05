@@ -10,6 +10,17 @@ const DOCKERFILE = 'infra/google-cloud/dev-040-production-release/principal-only
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
 
+// Source alone is not a recovery operation identity: after rollback the active
+// baseline changes even when the reviewed source stays identical. Bind each
+// immutable proof/revision to source + actual service identity + old revision.
+export function recoveryOperationBinding({ sourceRevision, serviceUid, oldRevision }) {
+  if (!H40.test(sourceRevision ?? '') || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(serviceUid ?? '')
+    || !/^orgmaster-prod-[a-z0-9-]+$/u.test(oldRevision ?? '')) fail('OPERATION_BINDING_INVALID')
+  const baselineKey = sha256(canonicalize({ sourceRevision, serviceUid, oldRevision })).slice(0, 12)
+  return { receiptName: `${sourceRevision}-${baselineKey}.json`,
+    revision: `${SERVICE}-recovery-${sourceRevision.slice(0, 12)}-${baselineKey}` }
+}
+
 function fail(code) { throw new Error(`DEV057_RECOVERY_OPERATOR_${code}`) }
 function trafficIsOldOnly(service, oldRevision) {
   return [service?.traffic, service?.trafficStatuses].every((rows) =>
@@ -76,7 +87,7 @@ export function recoveryRevisionRequest({ profile, service, oldRevision, sourceR
   assertRecoveryBaseline({ profile, service, oldRevision, sourceRevision })
   if (!String(imageDigest ?? '').startsWith(`${IMAGE_URI}@sha256:`) ||
     !H64.test(String(imageDigest).slice(`${IMAGE_URI}@sha256:`.length))) fail('REVISION_INPUT_INVALID')
-  const revision = `${SERVICE}-recovery-${sourceRevision.slice(0, 12)}`
+  const revision = recoveryOperationBinding({ sourceRevision, serviceUid: service.uid, oldRevision }).revision
   return { name: SERVICE_NAME, etag: service.etag, template: {
     revision, serviceAccount: profile.target.runtimeServiceAccount,
     containers: [{ name: profile.runtime.containerName, image: imageDigest,
@@ -115,7 +126,8 @@ export function recoveryProof({ sourceRevision, serviceUid, oldRevision, recover
   if (!H40.test(sourceRevision ?? '') ||
     !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(serviceUid ?? '') ||
     !/^orgmaster-prod-[a-z0-9-]+$/u.test(oldRevision ?? '') ||
-    !/^orgmaster-prod-recovery-[a-f0-9]{12}$/u.test(recoveryRevision ?? '') ||
+    !(/^orgmaster-prod-recovery-[a-f0-9]{12}$/u.test(recoveryRevision ?? '')
+      || recoveryRevision === recoveryOperationBinding({ sourceRevision, serviceUid, oldRevision }).revision) ||
     !String(imageDigest ?? '').startsWith(`${IMAGE_URI}@sha256:`) ||
     !H64.test(String(imageDigest).slice(`${IMAGE_URI}@sha256:`.length))) fail('PROOF_INPUT_INVALID')
   return { schemaVersion: 'orgmaster.principal-only-recovery.v1', sourceRevision,

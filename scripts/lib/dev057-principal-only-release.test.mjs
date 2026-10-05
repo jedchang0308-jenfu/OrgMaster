@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { recoveryOperationBinding } from './dev057-principal-recovery-operator.mjs'
 import {
   assertPrincipalOnlyRecoveryBinding,
   assertPrincipalOnlyRecoveryReadback,
   assertRecoveryProofReadback,
   assertPrincipalOnlyActivationReadback,
   principalOnlyActivationRequest,
+  principalOnlyQuiescenceRequest,
+  assertPrincipalOnlyQuiescenceReadback,
+  principalOnlyMaintenanceRequest,
+  assertPrincipalOnlyMaintenanceReadback,
   principalOnlyRollbackRevision,
 } from './dev057-principal-only-release.mjs'
 
@@ -20,7 +25,7 @@ const intent = {
   sourceRevision: 'b'.repeat(40), previousRevision: old,
   principalOnlyRecovery: {
     revision: recovery, imageDigest: image, serviceUid: 'd65f379b-a342-4eb3-ba22-109aa5f368c5',
-    receiptRef: { uri: `gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/proof.json`, sha256: 'd'.repeat(64) },
+    receiptRef: { uri: `gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/${'b'.repeat(40)}.json`, sha256: 'd'.repeat(64) },
   },
 }
 const profile = { artifact: { releaseBucket: bucket }, target: {
@@ -28,6 +33,7 @@ const profile = { artifact: { releaseBucket: bucket }, target: {
 }, runtime: { containerName: 'orgmaster' } }
 const oldTraffic = { type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: old, percent: 100 }
 const candidateTraffic = { type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: candidate, percent: 0, tag }
+const recoveryTraffic = { type: 'TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION', revision: recovery, percent: 100 }
 const base = {
   name: serviceName, uid: 'd65f379b-a342-4eb3-ba22-109aa5f368c5', etag: 'etag-one', generation: '91',
   observedGeneration: '91', reconciling: false,
@@ -46,6 +52,24 @@ const revision = {
   conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }],
   containers: [{ name: 'orgmaster', image }],
 }
+
+test('operation-bound recovery readback rejects a mismatched immutable key or revision', () => {
+  const operation = recoveryOperationBinding({ sourceRevision: intent.sourceRevision, serviceUid: base.uid, oldRevision: old })
+  const binding = { ...intent.principalOnlyRecovery, revision: operation.revision,
+    receiptRef: { ...intent.principalOnlyRecovery.receiptRef, uri: `gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/${operation.receiptName}` } }
+  const input = { sourceRevision: intent.sourceRevision, oldRevision: old, profile, binding,
+    service: { ...base, traffic: [oldTraffic], trafficStatuses: [oldTraffic] },
+    proof: { ...proof, recoveryRevision: operation.revision }, revision: { ...revision, name: `${serviceName}/revisions/${operation.revision}` } }
+  assert.equal(assertRecoveryProofReadback(input), binding)
+  assert.throws(() => assertRecoveryProofReadback({ ...input, binding: { ...binding,
+    receiptRef: { ...binding.receiptRef, uri: binding.receiptRef.uri.replace(operation.receiptName, `${intent.sourceRevision}-${'0'.repeat(12)}.json`) } } }), /PRINCIPAL_RECOVERY_INVALID/u)
+  assert.throws(() => assertRecoveryProofReadback({ ...input, binding: { ...binding, revision: recovery } }), /PRINCIPAL_RECOVERY_INVALID/u)
+  for (const filename of ['proof.json', `${intent.sourceRevision}-unknown.json`, `${'e'.repeat(40)}.json`, `nested/${operation.receiptName}`]) {
+    const invalid = { ...binding, receiptRef: { ...binding.receiptRef,
+      uri: `gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/${filename}` } }
+    assert.throws(() => assertRecoveryProofReadback({ ...input, binding: invalid }), /PRINCIPAL_RECOVERY_INVALID/u)
+  }
+})
 
 test('Principal-only recovery is source-bound and distinct from the old security revision', () => {
   assert.equal(assertPrincipalOnlyRecoveryBinding(intent, bucket).revision, recovery)
@@ -162,4 +186,98 @@ test('activation matches exact traffic identities independently of provider row 
     service: { ...base, trafficStatuses: rows }, oldRevision: old,
     candidateRevision: candidate, candidateTag: tag, recoveryRevision: recovery }),
     /PRINCIPAL_RECOVERY_INVALID/u)
+})
+
+test('quiescence request is own-service, etag-bound, and changes only scaling plus baseline traffic', () => {
+  const baseline = { ...base, traffic: [oldTraffic], trafficStatuses: [oldTraffic],
+    scaling: { scalingMode: 'AUTOMATIC', maxInstanceCount: 1 },
+    ingress: 'INGRESS_TRAFFIC_INTERNAL_ONLY', defaultUriDisabled: true, invokerIamDisabled: false,
+    template: { serviceAccount: 'orgmaster-runtime', containers: [{ name: 'orgmaster', image: 'baseline' }] } }
+  const request = principalOnlyQuiescenceRequest({ service: baseline, oldRevision: old })
+  assert.deepEqual(Object.keys(request).sort(), ['etag', 'name', 'scaling', 'traffic'])
+  assert.equal(request.name, serviceName)
+  assert.equal(request.etag, baseline.etag)
+  assert.deepEqual(request.scaling, { scalingMode: 'MANUAL', manualInstanceCount: 0, maxInstanceCount: 1 })
+  assert.deepEqual(request.traffic, [oldTraffic])
+  assert.notEqual(request.traffic[0], baseline.traffic[0])
+
+  for (const invalid of [
+    { ...baseline, name: 'projects/jenfu-platform-prod/locations/asia-east1/services/platform-prod' },
+    { ...baseline, uid: '' },
+    { ...baseline, etag: '' },
+    { ...baseline, traffic: [candidateTraffic], trafficStatuses: [candidateTraffic] },
+    { ...baseline, trafficStatuses: [oldTraffic, candidateTraffic] },
+    { ...baseline, generation: '92', observedGeneration: '91' },
+    { ...baseline, scaling: { scalingMode: 'MANUAL', manualInstanceCount: 1 } },
+  ]) assert.throws(() => principalOnlyQuiescenceRequest({ service: invalid, oldRevision: old }), /DEV057_PRINCIPAL_RECOVERY_INVALID/u)
+})
+
+test('quiescence readback requires settled MANUAL 0 and preserves owner identity, revision, template, entrypoint and stable scaling', () => {
+  const before = { ...base, traffic: [oldTraffic], trafficStatuses: [oldTraffic],
+    scaling: { scalingMode: 'AUTOMATIC', maxInstanceCount: 1 },
+    ingress: 'INGRESS_TRAFFIC_INTERNAL_ONLY', defaultUriDisabled: true, invokerIamDisabled: false,
+    template: { serviceAccount: 'orgmaster-runtime', containers: [{ name: 'orgmaster', image: 'baseline' }] } }
+  const after = { ...before, etag: 'etag-two', generation: '92', observedGeneration: '92',
+    scaling: { scalingMode: 'MANUAL', manualInstanceCount: 0, maxInstanceCount: 1 } }
+  assert.equal(assertPrincipalOnlyQuiescenceReadback({ before, after, oldRevision: old }), after)
+  const changed = [
+    { uid: '11111111-2222-4333-8444-555555555555' },
+    { name: 'projects/jenfu-platform-prod/locations/asia-east1/services/platform-prod' },
+    { generation: '90', observedGeneration: '90' },
+    { generation: '92', observedGeneration: '91' },
+    { scaling: { scalingMode: 'MANUAL', manualInstanceCount: 1, maxInstanceCount: 1 } },
+    { scaling: { scalingMode: 'MANUAL', manualInstanceCount: 0, maxInstanceCount: 2 } },
+    { traffic: [{ ...oldTraffic, revision: recovery }], trafficStatuses: [{ ...oldTraffic, revision: recovery }] },
+    { trafficStatuses: [{ ...oldTraffic, revision: recovery }] },
+    { template: { serviceAccount: 'other-runtime', containers: [{ name: 'orgmaster', image: 'baseline' }] } },
+    { ingress: 'INGRESS_TRAFFIC_ALL' },
+    { defaultUriDisabled: false },
+    { invokerIamDisabled: true },
+  ]
+  for (const drift of changed) assert.throws(() => assertPrincipalOnlyQuiescenceReadback({
+    before, after: { ...after, ...drift }, oldRevision: old,
+  }), /DEV057_PRINCIPAL_RECOVERY_INVALID/u)
+})
+
+test('Principal-only maintenance request pins only the recovery revision and restores explicit automatic max-one scaling', () => {
+  const before = { ...base, scaling: { scalingMode: 'MANUAL', manualInstanceCount: '0', maxInstanceCount: 1 },
+    traffic: [oldTraffic], trafficStatuses: [oldTraffic] }
+  const request = principalOnlyMaintenanceRequest({ service: before, intent })
+  assert.deepEqual(request, {
+    name: serviceName, etag: before.etag,
+    scaling: { scalingMode: 'AUTOMATIC', manualInstanceCount: null, maxInstanceCount: 1 },
+    traffic: [recoveryTraffic],
+  })
+
+  const after = { ...before, etag: 'etag-maintenance', generation: '92', observedGeneration: '92',
+    scaling: { scalingMode: 'AUTOMATIC', manualInstanceCount: null, maxInstanceCount: 1 },
+    traffic: [recoveryTraffic], trafficStatuses: [recoveryTraffic] }
+  assert.equal(assertPrincipalOnlyMaintenanceReadback({ before, after, intent }), after)
+})
+
+test('Principal-only maintenance readback is idempotent and rejects wrong identity, revision, generation or service drift', () => {
+  const active = { ...base, scaling: { scalingMode: 'AUTOMATIC', maxInstanceCount: 1 },
+    traffic: [recoveryTraffic], trafficStatuses: [recoveryTraffic] }
+  assert.equal(assertPrincipalOnlyMaintenanceReadback({ before: active, after: active, intent }), active)
+
+  const before = { ...base, scaling: { scalingMode: 'MANUAL', manualInstanceCount: 0, maxInstanceCount: 1 },
+    traffic: [oldTraffic], trafficStatuses: [oldTraffic] }
+  const after = { ...before, generation: '92', observedGeneration: '92',
+    scaling: { scalingMode: 'AUTOMATIC', manualInstanceCount: null, maxInstanceCount: 1 },
+    traffic: [recoveryTraffic], trafficStatuses: [recoveryTraffic] }
+  const invalid = [
+    { ...before, name: 'projects/jenfu-platform-prod/locations/asia-east1/services/platform-prod' },
+    { ...after, uid: '11111111-2222-4333-8444-555555555555' },
+    { ...after, generation: '90', observedGeneration: '90' },
+    { ...after, scaling: { ...after.scaling, maxInstanceCount: 2 } },
+    { ...after, traffic: [oldTraffic], trafficStatuses: [oldTraffic] },
+    { ...after, template: { ...before.template, serviceAccount: 'other-runtime' } },
+    { ...after, ingress: 'INGRESS_TRAFFIC_INTERNAL_ONLY' },
+  ]
+  for (const service of invalid) {
+    assert.throws(() => assertPrincipalOnlyMaintenanceReadback({ before, after: service, intent }))
+  }
+  assert.throws(() => principalOnlyMaintenanceRequest({
+    service: { ...active, traffic: [oldTraffic], trafficStatuses: [oldTraffic] }, intent,
+  }), /DEV057_PRINCIPAL_RECOVERY_INVALID/u)
 })

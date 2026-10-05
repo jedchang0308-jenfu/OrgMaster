@@ -37,6 +37,14 @@ export type PersistenceEntitlementChange = {
 
 type Queryable = Pick<pg.Pool, 'query'>
 const transactionDatabase = new AsyncLocalStorage<Queryable>()
+const persistencePrincipal = new AsyncLocalStorage<string>()
+
+/** Carries the already verified security subject through normal API writes.
+ * This is actor propagation, not an authentication or capability decision. */
+export function withPersistencePrincipal<T>(principalId: string, run: () => T): T {
+  if (!principalId || principalId.trim() !== principalId || principalId.length > 255) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
+  return persistencePrincipal.run(principalId, run)
+}
 
 export class OrgmasterPersistenceError extends Error {
   constructor(public readonly code: 'PERSISTENCE_NOT_CONFIGURED' | 'PERSISTENCE_ARTIFACT_NOT_FOUND' | 'PERSISTENCE_REVISION_CONFLICT' | 'PERSISTENCE_READ_FAILED' | 'PERSISTENCE_WRITE_FAILED' | 'PERSISTENCE_MEDIA_NOT_FOUND') {
@@ -173,11 +181,15 @@ export async function writePersistenceArtifacts(changes: PersistenceArtifactWrit
     const authority = await database(input?.database).query('SELECT source_revision FROM orgmaster_core.read_active_persistence_authority_v1()')
     if (authority.rowCount !== 1) throw new OrgmasterPersistenceError('PERSISTENCE_READ_FAILED')
     const sourceRevision = sha256(canonicalJson({ previousSourceRevision: String(authority.rows[0].source_revision).trim(), changes: prepared.map(({ payload: _payload, ...metadata }) => metadata) }))
-    const updatedBy = input?.updatedBy?.trim() || 'orgmaster-runtime'
+    const verifiedPrincipal = persistencePrincipal.getStore()
+    const requestedPrincipal = input?.updatedBy?.trim()
+    if (verifiedPrincipal && requestedPrincipal && verifiedPrincipal !== requestedPrincipal) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
+    const updatedBy = verifiedPrincipal ?? requestedPrincipal
+    if (!updatedBy || updatedBy.length > 255) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
     const reasonCode = input?.reasonCode?.trim() || 'runtime_artifact_write'
     const entitlementChanges = input?.entitlementChanges ?? []
     const result = await database(input?.database).query(`SELECT authority_version, source_revision, outbox_count
-        FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v1($1::jsonb, $2, $3, $4, $5, $6::jsonb)`, [
+        FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v2($1::jsonb, $2, $3, $4, $5, $6::jsonb)`, [
       JSON.stringify(prepared), sourceRevision, updatedBy, reasonCode, input?.operationId ?? `orgmaster-write-${sourceRevision.slice(0, 24)}`, JSON.stringify(entitlementChanges),
     ])
     if (result.rowCount !== 1) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')

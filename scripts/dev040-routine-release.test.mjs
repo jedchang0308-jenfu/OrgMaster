@@ -14,13 +14,42 @@ import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-r
 import { buildRuntimeConfig, canonicalize, createOwnerTransport, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeBlobTransition, assertDev057CatalogReadbackPackagingTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
+import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION, assertDev014PrincipalLifecycleV2Append, assertDev014PrincipalLifecycleV2Remediation, assertDev014PrincipalLifecycleRuntimeGuard } from './lib/dev014-principal-lifecycle-release.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057EmployeeNumberCommandReceiptV2Append, assertDev057EmployeeNumberCommandReceiptV2Remediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation, assertDev057PrincipalGrantsV3Append, assertDev057PrincipalGrantsV3Remediation, assertDev057PrincipalGrantsV4Append, assertDev057PrincipalGrantsV4Remediation } from './lib/dev040-routine-release.mjs'
 
-test('production runtime image includes the source-frozen v5 catalog read by governance', () => {
+test('production runtime image includes every approved catalog read by governance', () => {
   const dockerfile = fs.readFileSync('Dockerfile', 'utf8')
-  assert.match(dockerfile, /^COPY --from=builder --chown=65532:65532 \/app\/config\/catalogs\/ai-pdm-role-catalog\.v5\.json \.\/config\/catalogs\/ai-pdm-role-catalog\.v5\.json$/mu)
-  assert.match(dockerfile, /^COPY --from=builder --chown=65532:65532 \/app\/contracts \.\/contracts$/mu)
+  const repository = fs.readFileSync('server/aiPdmRoleCatalogRepository.ts', 'utf8')
+  const names = [...new Set([...repository.matchAll(/file:\s*'(ai-pdm-role-catalog\.v\d+\.json)'/gu)].map((match) => match[1]))]
+  assert.ok(names.length > 0, 'approved source artifacts must be identifiable')
+  const runnerStart = dockerfile.search(/^FROM scratch AS runner\s*$/mu)
+  assert.ok(runnerStart >= 0, 'the final application stage must be identifiable')
+  const runner = dockerfile.slice(runnerStart)
+  for (const name of names) {
+    const catalog = JSON.parse(fs.readFileSync(path.join('config/catalogs', name), 'utf8'))
+    assert.equal(catalog.applicationId, 'ai-pdm')
+    assert.equal(catalog.roles.length, 9)
+    const escapedName = name.replaceAll('.', '\\.')
+    assert.match(runner, new RegExp(`^COPY --from=builder --chown=65532:65532 /app/config/catalogs/${escapedName} \\./config/catalogs/${escapedName}$`, 'mu'))
+  }
+  assert.match(runner, /^COPY --from=builder --chown=65532:65532 \/app\/contracts \.\/contracts$/mu)
+})
+
+test('DEV-014 CLI check and prepare-only paths cannot invoke lifecycle service mutation or workflow dispatch', () => {
+  const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
+  const main = source.slice(source.indexOf('async function main()'))
+  const checkReturn = main.indexOf('if (options.check) {')
+  const prerequisiteReceiptWrites = main.indexOf("for (const [name, value] of [['source-lock'")
+  const lifecycleGuard = main.indexOf('if (options.dev014PrincipalLifecycleV2Remediation && !options.prepareOnly)')
+  const quiescenceCall = main.indexOf('await executePrincipalLifecycleQuiescence(')
+  const workflowDispatch = main.indexOf("if (!options.prepareOnly) command('gh'")
+
+  assert.ok(checkReturn >= 0 && checkReturn < prerequisiteReceiptWrites)
+  assert.ok(prerequisiteReceiptWrites < quiescenceCall)
+  assert.ok(lifecycleGuard >= 0 && lifecycleGuard < quiescenceCall)
+  assert.ok(quiescenceCall < workflowDispatch)
+  assert.match(main.slice(workflowDispatch), /if \(!options\.prepareOnly\) command\('gh'/u)
 })
 
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
@@ -808,7 +837,7 @@ test('DEV-057 grant v4 admits only sealed 028-to-029 append with fresh runner ev
 
 test('DEV-057 employee number command v2 admits only the exact sealed 029-to-030 append', async () => {
  const baselineBundle=prefixBundle(oldBundle.bundle,29);
- const currentBundle={bundle:newBundle.bundle};
+ const currentBundle={bundle:prefixBundle(newBundle.bundle,30)};
  const h=harness({baselineBundle,currentBundle});
  const remediation=DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION;
  h.input.values.authorization={...h.input.values.authorization,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION',devId:'DEV-057',slice:'057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2',remediation};
@@ -1558,7 +1587,8 @@ test('actual ordinary CLI selection through routine decision accepts an own comp
   assert.equal(result.pendingMigrationCount, 0)
   assert.equal(result.liveLedgerRead, false)
   assert.equal(result.smokeRotationContinuation.newVersion, '8')
-  assert.equal(result.smokeRotationContinuation.executableInputCount, 16)
+  // Lifecycle readback is now copied into the exact migration-runner image.
+  assert.equal(result.smokeRotationContinuation.executableInputCount, 17)
   assert.equal(result.smokeRotationContinuation.terraformAddressCount, h.addresses.length)
   assert.equal(result.smokeRotationContinuation.providerCurrentReadback, false)
   assert.equal(result.operatorSmokeRotationReadback.evidenceScope, 'OPERATOR_PROVIDER_CURRENT_METADATA')
@@ -1829,5 +1859,61 @@ test('fresh smoke rotation reuse rejects malformed numeric versions even with a 
       providerReadback:{...h.reuse.providerReadback,exactNumericVersion:version}},true)
     await assert.rejects(()=>verifyDeployProductionRelease({options:h.options,...h.input}),/SMOKE_REUSE_RECEIPT_INVALID/u)
     assert.equal(h.requests.length,0)
+  }
+})
+
+test('DEV-014 lifecycle v2 adds only a default-off guard to the released runtime', async () => {
+  const beforeProfile = structuredClone(profile)
+  const field = 'ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED'
+  beforeProfile.environment.requiredPlainEnvironmentNames = beforeProfile.environment.requiredPlainEnvironmentNames.filter(name => name !== field)
+  delete beforeProfile.environment.controlledValues[field]
+  const beforePlain = { ...runtime.plainEnvironment }; delete beforePlain[field]
+  const beforeRuntime = buildRuntimeConfig(beforeProfile, { plainEnvironment: beforePlain, secretVersions: runtime.secretVersions })
+  assert.equal(assertDev014PrincipalLifecycleRuntimeGuard(profile, beforeRuntime, runtime), runtime)
+  const enabled = buildRuntimeConfig(profile, { plainEnvironment: resolvePlainEnvironment(profile, runtime.plainEnvironment, { [field]: 'true' }), secretVersions: runtime.secretVersions })
+  assert.throws(() => assertDev014PrincipalLifecycleRuntimeGuard(profile, beforeRuntime, enabled), /DEV014_PRINCIPAL_LIFECYCLE_RUNTIME_GUARD_INVALID/)
+  assert.throws(() => assertDev014PrincipalLifecycleRuntimeGuard(profile, enabled, runtime), /DEV014_PRINCIPAL_LIFECYCLE_RUNTIME_GUARD_INVALID/)
+  assert.throws(() => assertDev014PrincipalLifecycleRuntimeGuard(profile, beforeRuntime, { ...runtime, secretVersions: { ...runtime.secretVersions, ORGMASTER_SESSION_HASH_PEPPER: '2' } }), /DEV014_PRINCIPAL_LIFECYCLE_RUNTIME_GUARD_INVALID/)
+  assert.throws(() => assertDev014PrincipalLifecycleRuntimeGuard(profile, beforeRuntime, { ...runtime, plainEnvironment: { ...runtime.plainEnvironment, ORGMASTER_POSTGRES_POOL_MAX: '7' } }), /DEV014_PRINCIPAL_LIFECYCLE_RUNTIME_GUARD_INVALID/)
+  const h = harness({ baselineRuntime: beforeRuntime, baselineBundle: prefixBundle(oldBundle.bundle, 30), currentBundle: newBundle })
+  const authority = { schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-PRINCIPAL-LIFECYCLE-V2', remediation: DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION }
+  h.input.values.authorization = { ...h.input.values.authorization, ...authority }
+  h.input.values.readiness = { ...h.input.values.readiness, ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
+  attachForwardInfra(h)
+  assert.equal((await verifyRoutineRelease(h.input)).releaseMode, 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION')
+})
+
+test('DEV-014 lifecycle v2 admits only 030-to-031 with an immutable prefix and fresh source-matched runner', async () => {
+  const baselineBundle = prefixBundle(oldBundle.bundle, 30)
+  const currentBundle = { bundle: newBundle.bundle }
+  const h = harness({ baselineBundle, currentBundle })
+  const remediation = DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION
+  h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-PRINCIPAL-LIFECYCLE-V2', remediation }
+  h.input.values.readiness = { ...h.input.values.readiness, schemaVersion: 'orgmaster.routine-release-readiness.v1', devId: 'DEV-014', slice: '014-PRINCIPAL-LIFECYCLE-V2', remediation }
+  attachForwardInfra(h)
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode, 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION')
+  assert.equal(result.pendingMigrationCount, 1)
+  assert.equal(result.databaseVerification, 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
+  for (const field of ['order', 'version', 'path', 'sourceSha256', 'appliedSha256']) {
+    const drift = structuredClone(currentBundle.bundle); drift.entries[30][field] = 'wrong'
+    assert.throws(() => assertDev014PrincipalLifecycleV2Append(baselineBundle, drift), /DEV014_PRINCIPAL_LIFECYCLE_V2_APPEND_INVALID/)
+  }
+  const prefix = structuredClone(currentBundle.bundle); prefix.entries[29].sqlBase64 = 'drift'
+  assert.throws(() => assertDev014PrincipalLifecycleV2Append(baselineBundle, prefix), /DEV014_PRINCIPAL_LIFECYCLE_V2_APPEND_INVALID/)
+  assert.throws(() => assertDev014PrincipalLifecycleV2Append(prefixBundle(baselineBundle, 29), currentBundle.bundle), /DEV014_PRINCIPAL_LIFECYCLE_V2_APPEND_INVALID/)
+  const extra = structuredClone(currentBundle.bundle); extra.entries.push(extra.entries[30])
+  assert.throws(() => assertDev014PrincipalLifecycleV2Append(baselineBundle, extra), /DEV014_PRINCIPAL_LIFECYCLE_V2_APPEND_INVALID/)
+  const wrong = structuredClone(h.input.values.readiness); wrong.remediation = { ...remediation, triggerDisposition: 'ENABLED' }
+  assert.throws(() => assertDev014PrincipalLifecycleV2Remediation(wrong, h.input.values.authorization), /DEV014_PRINCIPAL_LIFECYCLE_V2_AUTHORITY_INVALID/)
+  h.input.values.infra.sourceRevision = oldSource
+  await assert.rejects(() => verifyRoutineRelease(h.input), /DEV013_MIGRATION_INFRA_RECEIPT_INVALID/)
+})
+
+test('DEV-014 lifecycle v2 CLI cannot combine historical remediation or use another owner infra receipt', () => {
+  const ref = `gs://${bucket}/receipts/releases/DEV014-LIFECYCLE-V2/app-infra.json#sha256=${'a'.repeat(64)}`
+  assert.equal(parseDeployProductionArgs(['--prepare-only', '--dev014-principal-lifecycle-v2-remediation', `--dev014-infra-ref=${ref}`]).dev014PrincipalLifecycleV2Remediation, true)
+  for (const args of [[], [`--dev057-infra-ref=${ref}`], ['--dev014-contract-remediation', `--dev014-infra-ref=${ref}`]]) {
+    assert.throws(() => parseDeployProductionArgs(['--prepare-only', '--dev014-principal-lifecycle-v2-remediation', ...args]), /DEV014_CONTROLLED_TRANSITION_INPUT_/)
   }
 })

@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "jenfu.dev014.managed-lifecycle-production-plan-profile.v1",
+  "profileId": "DEV014_MANAGED_LIFECYCLE_PRODUCTION",
+  "terraformRoot": "infra/google-cloud/dev014-managed-lifecycle",
+  "sourceRevisionMode": "clean-source-freeze",
+  "state": {
+    "bucket": "tfstate-jenfu-platform-prod",
+    "prefix": "dev-014/managed-lifecycle/production"
+  },
+  "provider": {
+    "source": "hashicorp/google",
+    "version": "7.45.0",
+    "lockFile": "infra/google-cloud/dev014-managed-lifecycle/.terraform.lock.hcl"
+  },
+  "target": {
+    "projectId": "jenfu-platform-prod",
+    "projectNumber": "9536592944",
+    "region": "asia-east1",
+    "canonicalOrigin": "https://orgmaster-prod-9536592944.asia-east1.run.app",
+    "runtimeServiceAccount": "orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com",
+    "runtimeServiceAccountUniqueId": "109928765105400231333"
+  },
+  "job": {
+    "name": "orgmaster-prod-managed-identity-lifecycle",
+    "schedule": "* * * * *",
+    "timeZone": "Asia/Taipei",
+    "method": "POST",
+    "uri": "https://orgmaster-prod-9536592944.asia-east1.run.app/api/internal/managed-identity-lifecycle/v2",
+    "body": null,
+    "headers": {},
+    "oidcServiceAccount": "orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com",
+    "oidcAudience": "https://orgmaster-prod-9536592944.asia-east1.run.app",
+    "attemptDeadlineSeconds": 60,
+    "workerWholeCycleDeadlineSeconds": 50,
+    "initialPaused": true,
+    "retryConfig": {
+      "configured": false,
+      "effectiveRetryCount": 0,
+      "normalization": "Cloud Scheduler removes an empty retry_config with retry_count=0; omission avoids perpetual diff."
+    }
+  },
+  "requiredConfigurationAddresses": {
+    "data.google_project.current": {
+      "mode": "data",
+      "type": "google_project"
+    },
+    "data.google_service_account.runtime": {
+      "mode": "data",
+      "type": "google_service_account"
+    },
+    "google_cloud_scheduler_job.managed_identity_lifecycle": {
+      "mode": "managed",
+      "type": "google_cloud_scheduler_job"
+    }
+  },
+  "requiredAddressSet": [
+    "data.google_project.current",
+    "data.google_service_account.runtime",
+    "google_cloud_scheduler_job.managed_identity_lifecycle"
+  ],
+  "requiredChangeAddresses": {
+    "google_cloud_scheduler_job.managed_identity_lifecycle": [
+      "create",
+      "no-op"
+    ]
+  },
+  "resolvedDataAddresses": [
+    "data.google_project.current",
+    "data.google_service_account.runtime"
+  ],
+  "allowedActions": [
+    "create",
+    "read",
+    "no-op"
+  ],
+  "forbiddenActions": [
+    "update",
+    "delete",
+    "replace"
+  ],
+  "resumeAuthority": "protected-source-exact-job-operator",
+  "operationalStateOwner": {
+    "terraformCreatePaused": true,
+    "terraformIgnoreChanges": ["paused"],
+    "operator": "scripts/dev014-lifecycle-scheduler.mjs",
+    "actions": ["pause", "resume"],
+    "existingJobPlanRequiresLiveReadback": true,
+    "enabledNoOpRequiresCurrentSourceTransitionReceipt": true
+  },
+  "resumePreconditions": [
+    "OrgMaster producer migration 031 applied and read back",
+    "Platform consumer migration 011 applied and read back",
+    "Owner candidate and Principal recovery evidence verified",
+    "Runtime lifecycle enable switch enabled through controlled source-bound configuration"
+  ],
+  "applyAuthorized": false
+}
