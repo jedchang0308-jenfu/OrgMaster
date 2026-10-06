@@ -366,3 +366,8 @@ managed Principal own governance 同根因修正沿 DEV-057 [交易契約](specs
 - Operator只經owner-native immutable migration-runner image與既有Job受控覆寫執行，必須source-bound、receipt redacted並在finally回復migrator baseline；不新增schema／migration／IAM／Secret／service／Job，不直接table DML。Local gate為operator 5／5、DEV-040 release 82／82、abort 6／6、full regression 875 PASS／1 skipped、DB boundary及build PASS；Production apply尚未執行。
 
 - `qa/DEV-057-lifecycle-quiescence-normalization-2026-10-06.md` — DEV-057 / JENFU DEV-014: actual Cloud Run MANUAL-zero ceiling omission, bounded correction, local regression and accepted Scheduler fee status; positive Production lifecycle remains OPEN.
+
+
+### 2026-10-06 原工作樹草稿本地保存（HISTORY_ONLY）
+
+[DEV-057 草稿收斂／歷史保存](qa/DEV-057-preserved-workspace-drafts-2026-10-06.md)：RECONCILED_HISTORY_ONLY。原 WIP 程式／測試已排除並對齊 protected master；保存時原稿及 SHA manifest 不改，沒有新的產品修正／migration／部署，不改變正式結案或 DEV-122 延期判定。必要 CI 與 review 由本次文件 PR 精確來源證明。

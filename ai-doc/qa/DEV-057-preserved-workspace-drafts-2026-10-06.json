@@ -1,0 +1,71 @@
+{
+  "schema": "preserved-workspace-drafts.v1",
+  "status": "WIP_NOT_RELEASE_READY",
+  "owner": "ORGMASTER/DEV-057",
+  "sourceHead": "466f35ae6059528115b979e7daf8c7de8a4a9e8e",
+  "branch": "codex/dev014-free-fixture-operator",
+  "verification": "PRESERVATION_ONLY_NOT_PRODUCT_QC",
+  "productionMutation": false,
+  "files": [
+    {
+      "path": "ai-doc/qa/DEV-057-gcc-pbds-applicability-2026-10-01.json",
+      "sha256": "b4c43cbc9c2a5c0fed27b59c8d43d5c7bd10fccbe4d28b3376200a27f7a319c3"
+    },
+    {
+      "path": "config/catalogs/ai-pdm-role-catalog.v6.json",
+      "sha256": "237e1a92814aa8fec87e878a8ffaac7f74bc9c5ce4fb6766c266970c9d509b8a"
+    },
+    {
+      "path": "scripts/dev057-production-principal-pair-diagnostic-runner.mjs",
+      "sha256": "a69fdcfae9f11c9fd5768b66f10f598754d5d129b9fc5f1d06aba6d2dec1f0e7"
+    },
+    {
+      "path": "scripts/dev057-production-principal-pair-diagnostic-runner.test.mjs",
+      "sha256": "396c428936d822923571cc36d1ba4d01818fd39f9f2ddf37014729011dbef949"
+    },
+    {
+      "path": "scripts/lib/dev057-native-ai-pdm-catalog-postgres-qc.mjs",
+      "sha256": "96dcb3fae0c7b4acd68705787a79643972fd1289fb2804506fc6d1540ccac8ef"
+    },
+    {
+      "path": "scripts/qc-dev-047-postgres.mjs",
+      "sha256": "b69416787eed7bbbd4c1acea16abac7bfec742f6a040a7ce4939467c9f6c090f"
+    },
+    {
+      "path": "server/aiPdmRoleCapabilityStore.ts",
+      "sha256": "80de512fca966ca91efd3c80d4def17a4700e676424d6937f424e6aee0cdf95a"
+    },
+    {
+      "path": "server/aiPdmRoleCatalogRepository.postgres.test.ts",
+      "sha256": "8fa251ad81bac383926b494b6512c1d68550e01dc056b24470bcbeeb30309415"
+    },
+    {
+      "path": "server/aiPdmRoleCatalogRepository.ts",
+      "sha256": "798d86b8fadf999f3d917f4fbb488c4c8681c3dca3d23a9d7c4703b0971dbf54"
+    },
+    {
+      "path": "server/applicationRoleCatalogRegistry.ts",
+      "sha256": "9d73491afae588591653f99ab02c74d45b97fb8addbe1403474fac87b0123cc8"
+    },
+    {
+      "path": "server/orgmasterGovernanceApi.ts",
+      "sha256": "015a13163ed80c9844c920deb98f3bebe84512d9dc5dcda4d7721fa8f9e69676"
+    },
+    {
+      "path": "server/orgmasterGovernanceStore.ts",
+      "sha256": "945bd08673fda680db17698db55cccadbd7ca6b89f24046b3c5f51d19e9edd1a"
+    },
+    {
+      "path": "server/privilegedAssignmentStore.ts",
+      "sha256": "098c99e3a1f460bc417fa645eb841186c356406872d9c594260ebf1c29c93a0a"
+    },
+    {
+      "path": "src/governance/aiPdmCatalog.ts",
+      "sha256": "0b247bb4a2233f2cdc6980935cc8c963584c46dc561a1a8898bdecddd609cb13"
+    },
+    {
+      "path": "vite.config.ts",
+      "sha256": "946697e10cec1e5f589181ff6aea3782c5b761913e94681317c04be02dfbd1fd"
+    }
+  ]
+}

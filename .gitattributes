@@ -6,3 +6,6 @@ scripts/dev015-aligned-new-loader-inspection.cjs -text whitespace=blank-at-eol,b
 scripts/lib/dev015-gcc-aligned-new-applicability.mjs text eol=lf
 scripts/dev015-gcc-aligned-new-applicability.test.mjs text eol=lf
 scripts/dev015-aligned-new-loader-inspection.test.mjs text eol=lf
+
+# Preserve the exact historical provider-observation bytes.
+ai-doc/qa/DEV-057-gcc-pbds-applicability-2026-10-01.json -text whitespace=cr-at-eol
