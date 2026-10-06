@@ -1,0 +1,195 @@
+{
+  "schemaVersion": "dev014-org-r6-enable-startup-failure-evidence.v1",
+  "capture": {
+    "readbackStartedAtUtc": "2026-10-06T06:15:11Z",
+    "readbackCompletedAtUtc": "2026-10-06T06:19:19Z",
+    "readOnly": true,
+    "cloudMutations": 0,
+    "credentialsOrTokensStored": false,
+    "filesystemChange": "Created this evidence file only."
+  },
+  "release": {
+    "repository": "jedchang0308-jenfu/OrgMaster",
+    "releaseId": "ORGMASTER-REL-20261006055619947-DEDA9F1",
+    "sourceRevision": "deda9f1f42041bb511096dd999f1ec3caf71504b",
+    "runId": 37421063518,
+    "runUrl": "https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37421063518",
+    "runStatus": "completed",
+    "runConclusion": "failure",
+    "runUpdatedAtUtc": "2026-10-06T06:05:10Z",
+    "releaseIntent": {
+      "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261006055619947-DEDA9F1/release-intent.json",
+      "sha256": "fbb3b6c7f7de8c34428f3de293dd28873dcf2d67e5694953b8aefd91fbe27c77"
+    },
+    "deploymentCapsule": {
+      "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261006055619947-DEDA9F1/fbb3b6c7f7de8c34428f3de293dd28873dcf2d67e5694953b8aefd91fbe27c77/deployment-capsule.json",
+      "schemaVersion": "jenfu.dev040.orgmaster-deployment-capsule.v2",
+      "artifactDigest": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:52f5948d84a26615048ef8fed37ca37896608db16071ca2891e60e66024adfb5",
+      "sourceRevision": "deda9f1f42041bb511096dd999f1ec3caf71504b",
+      "releaseIntentSha256": "fbb3b6c7f7de8c34428f3de293dd28873dcf2d67e5694953b8aefd91fbe27c77"
+    },
+    "jobs": [
+      { "stage": "prepare", "jobId": 112130294360, "conclusion": "success", "startedAtUtc": "2026-10-06T05:56:33Z", "completedAtUtc": "2026-10-06T05:57:19Z" },
+      { "stage": "build", "jobId": 112130510860, "conclusion": "success", "startedAtUtc": "2026-10-06T05:57:23Z", "completedAtUtc": "2026-10-06T06:03:05Z" },
+      { "stage": "migrate", "jobId": 112132077594, "conclusion": "success", "startedAtUtc": "2026-10-06T06:03:08Z", "completedAtUtc": "2026-10-06T06:03:34Z" },
+      { "stage": "candidate", "jobId": 112132214248, "conclusion": "failure", "startedAtUtc": "2026-10-06T06:03:40Z", "completedAtUtc": "2026-10-06T06:04:32Z" },
+      { "stage": "verify", "jobId": 112132483495, "conclusion": "skipped" },
+      { "stage": "entrypoint", "jobId": 112132483624, "conclusion": "skipped" },
+      { "stage": "decision", "jobId": 112132484664, "conclusion": "skipped" },
+      { "stage": "activate", "jobId": 112132484956, "conclusion": "skipped" },
+      { "stage": "canonical", "jobId": 112132485565, "conclusion": "skipped" },
+      { "stage": "failure", "jobId": 112132485567, "conclusion": "success", "startedAtUtc": "2026-10-06T06:04:37Z", "completedAtUtc": "2026-10-06T06:05:09Z" },
+      { "stage": "finalize", "jobId": 112132486138, "conclusion": "skipped" }
+    ],
+    "candidateWorkflowError": {
+      "jobId": 112132214248,
+      "step": "Execute candidate",
+      "timestampUtc": "2026-10-06T06:04:29.5342599Z",
+      "output": "PROVIDER_OPERATION_FAILED",
+      "exitCode": 1,
+      "logUrl": "https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37421063518/job/112132214248"
+    }
+  },
+  "candidateRevisionReadback": {
+    "projectId": "jenfu-platform-prod",
+    "region": "asia-east1",
+    "serviceName": "orgmaster-prod",
+    "revisionName": "orgmaster-prod-8773c61d48e7",
+    "createdAtUtc": "2026-10-06T06:04:07.499107Z",
+    "imageDigest": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:52f5948d84a26615048ef8fed37ca37896608db16071ca2891e60e66024adfb5",
+    "startupProbe": {
+      "httpGetPath": "/api/auth/mode",
+      "port": 8080,
+      "failureThreshold": 24,
+      "periodSeconds": 5,
+      "timeoutSeconds": 2
+    },
+    "observedGeneration": 1,
+    "conditions": [
+      { "type": "Ready", "status": "False", "reason": "HealthCheckContainerError", "lastTransitionTimeUtc": "2026-10-06T06:04:29.226783Z", "message": "The user-provided container failed the configured startup probe checks." },
+      { "type": "ContainerHealthy", "status": "False", "reason": "HealthCheckContainerError", "lastTransitionTimeUtc": "2026-10-06T06:04:29.226783Z", "message": "The user-provided container failed the configured startup probe checks." },
+      { "type": "Active", "status": "False", "severity": "Info", "lastTransitionTimeUtc": "2026-10-06T06:04:29.381449Z" },
+      { "type": "ContainerReady", "status": "True", "message": "Container image import completed.", "lastTransitionTimeUtc": "2026-10-06T06:04:19.854397Z" }
+    ],
+    "consoleLogsUrl": "https://console.cloud.google.com/logs/viewer?project=jenfu-platform-prod&resource=cloud_run_revision/service_name/orgmaster-prod/revision_name/orgmaster-prod-8773c61d48e7&advancedFilter=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22orgmaster-prod%22%0Aresource.labels.revision_name%3D%22orgmaster-prod-8773c61d48e7%22"
+  },
+  "startupErrorEvidence": {
+    "logSource": "projects/jenfu-platform-prod/logs/run.googleapis.com%2Fstderr",
+    "resource": {
+      "type": "cloud_run_revision",
+      "serviceName": "orgmaster-prod",
+      "revisionName": "orgmaster-prod-8773c61d48e7"
+    },
+    "timestampUtc": "2026-10-06T06:04:27.740073Z",
+    "severity": "ERROR",
+    "message": "Error: DEV040_R2_ORGMASTER_WRONG_PRODUCTION_TARGET",
+    "stack": [
+      "at assertOrgmasterProductionTarget (file:///app/dist-server/server.mjs:1617:86)",
+      "at createOrgmasterManagedIdentityLifecycleRuntime (file:///app/dist-server/server.mjs:18547:2)",
+      "at createOrgmasterServer (file:///app/dist-server/server.mjs:18685:96)",
+      "at startOrgmasterServer (file:///app/dist-server/server.mjs:18708:17)",
+      "at file:///app/dist-server/server.mjs:18712:81",
+      "at ModuleJob.run (node:internal/modules/esm/module_job:561:25)",
+      "at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:647:26)",
+      "at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+    ],
+    "projection": "exception and stack only; no full stdout/stderr or credential values stored"
+  },
+  "productionTargetGuard": {
+    "source": {
+      "repository": "jedchang0308-jenfu/OrgMaster",
+      "revision": "deda9f1f42041bb511096dd999f1ec3caf71504b",
+      "file": "server/orgmasterDatabase.ts",
+      "guardLines": "69-91",
+      "lifecycleCaller": "server/orgmasterManagedIdentityLifecycleApi.ts:101"
+    },
+    "requiredEnvironmentNames": [
+      "ORGMASTER_DEPLOYMENT_ENV",
+      "GOOGLE_CLOUD_PROJECT",
+      "GOOGLE_CLOUD_REGION",
+      "ORGMASTER_CLOUD_SQL_INSTANCE",
+      "ORGMASTER_CLOUD_SQL_CONNECTION_NAME",
+      "ORGMASTER_POSTGRES_DATABASE",
+      "ORGMASTER_POSTGRES_IAM_LOGIN"
+    ],
+    "missingEnvironmentNames": [
+      "ORGMASTER_DEPLOYMENT_ENV",
+      "GOOGLE_CLOUD_PROJECT",
+      "GOOGLE_CLOUD_REGION",
+      "ORGMASTER_CLOUD_SQL_INSTANCE",
+      "ORGMASTER_CLOUD_SQL_CONNECTION_NAME",
+      "ORGMASTER_POSTGRES_DATABASE",
+      "ORGMASTER_POSTGRES_IAM_LOGIN"
+    ],
+    "candidateRevisionObservedEnvironmentNames": [
+      "ORGMASTER_PERSISTENCE_MODE",
+      "ORGMASTER_PUBLIC_BASE_URL",
+      "ORGMASTER_POSTGRES_POOL_MAX",
+      "ORGMASTER_POSTGRES_CONNECTION_TIMEOUT_MS",
+      "ORGMASTER_POSTGRES_IDLE_TIMEOUT_MS",
+      "ORGMASTER_POSTGRES_STATEMENT_TIMEOUT_MS",
+      "ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS",
+      "JENFU_FIREBASE_PROJECT_ID",
+      "JENFU_IDENTITY_ISSUER",
+      "JENFU_IDENTITY_AUDIENCE",
+      "VITE_JENFU_FIREBASE_API_KEY",
+      "VITE_JENFU_FIREBASE_AUTH_DOMAIN",
+      "VITE_JENFU_FIREBASE_PROJECT_ID",
+      "VITE_JENFU_FIREBASE_APP_ID",
+      "ORGMASTER_JENFU_SSO_HANDOFF_MODE",
+      "ORGMASTER_JENFU_SSO_BROKER_ORIGIN",
+      "ORGMASTER_MANAGED_IDENTITY_ENABLED",
+      "ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID",
+      "ORGMASTER_GOOGLE_DIRECTORY_DOMAIN",
+      "ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT",
+      "ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL",
+      "ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL",
+      "ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT",
+      "ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED",
+      "ORGMASTER_POSTGRES_URL",
+      "ORGMASTER_SESSION_HASH_PEPPER",
+      "ORGMASTER_RELEASE_CANDIDATE_ORIGIN"
+    ],
+    "valuesExcluded": true
+  },
+  "serviceReadback": {
+    "projectId": "jenfu-platform-prod",
+    "region": "asia-east1",
+    "serviceName": "orgmaster-prod",
+    "serviceUrl": "https://orgmaster-prod-56gnizku7q-de.a.run.app",
+    "latestCreatedRevisionName": "orgmaster-prod-8773c61d48e7",
+    "latestReadyRevisionName": "orgmaster-prod-e3d1b46d16bf",
+    "statusTraffic": [
+      { "percent": 100, "revisionName": "orgmaster-prod-e3d1b46d16bf" }
+    ],
+    "specTraffic": [
+      { "percent": 100, "revisionName": "orgmaster-prod-e3d1b46d16bf" },
+      { "revisionName": "orgmaster-prod-8773c61d48e7", "tag": "candidate-8773c61d48e7" }
+    ],
+    "conditions": [
+      { "type": "Ready", "status": "False", "reason": "HealthCheckContainerError", "lastTransitionTimeUtc": "2026-10-06T06:04:29.394675Z" },
+      { "type": "ConfigurationsReady", "status": "False", "reason": "HealthCheckContainerError", "lastTransitionTimeUtc": "2026-10-06T06:04:29.262334Z" },
+      { "type": "RoutesReady", "status": "False", "reason": "HealthCheckContainerError", "lastTransitionTimeUtc": "2026-10-06T06:04:29.394675Z" }
+    ]
+  },
+  "terminalReceipt": {
+    "publicationStage": "rollback",
+    "recordStage": "terminal",
+    "status": "PASS",
+    "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261006055619947-DEDA9F1/fbb3b6c7f7de8c34428f3de293dd28873dcf2d67e5694953b8aefd91fbe27c77/terminal.json",
+    "sha256": "176a66d4587fe46807ce63e1ef0ab0835913af77376213c2501200f8d67fd3c9",
+    "generation": "1791266704210817",
+    "receiptSha256": "3884a6c03960ac9cb3c22e6a02bea1f630d7fa461d71d710c8db9d97e2e469c2",
+    "createdAtUtc": "2026-10-06T06:05:04Z",
+    "contentLength": 841,
+    "receiptObservedAtUtc": "2026-10-06T06:05:04.02Z",
+    "terminalResult": "PRE_ACTIVATION_ABORTED",
+    "databaseDisposition": "UNCHANGED_VERIFIED",
+    "previousRevision": "orgmaster-prod-e3d1b46d16bf",
+    "entrypointRecovery": { "changed": false, "result": "NOT_REQUIRED" },
+    "previousReceiptRef": {
+      "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261006055619947-DEDA9F1/fbb3b6c7f7de8c34428f3de293dd28873dcf2d67e5694953b8aefd91fbe27c77/rollback.json",
+      "sha256": "894f8c8c560ce517e1dbcdc2582c68925df459b032271ae7b4193a6c79d809fc"
+    }
+  }
+}

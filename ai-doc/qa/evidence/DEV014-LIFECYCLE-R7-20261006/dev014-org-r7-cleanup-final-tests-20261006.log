@@ -1,0 +1,42 @@
+✔ DEV-057 principal contract requires exact 26-row forward migration receipt (1.7932ms)
+✔ DEV-057 principal-only grant v3 requires exact 28-row forward migration receipt (0.3774ms)
+✔ application-only release preserves all ten stages without importing data or executing a migration job (15.8559ms)
+✔ controlled forward migration completes before candidate and is preserved in terminal disposition (5.8426ms)
+✔ DEV-014 producer remediation accepts only the exact sixteen-row migration receipt (5.0539ms)
+✔ DEV-014 application registration remediation accepts only the exact seventeen-row migration receipt (4.1837ms)
+✔ application-only intent cannot skip baseline verification by omitting the verifier (0.9647ms)
+✔ historical intent is readable for recovery but cannot re-enter any release stage (2.6674ms)
+✔ candidate smoke failure leaves production data and serving traffic unchanged (3.3319ms)
+✔ recorded provider transport executes the ten immutable owner stages without sibling state (4.462ms)
+✔ candidate tag readback accepts deterministic and provider-derived run.app URLs only (0.1829ms)
+✔ expired control is superseded only after terminal owner-run and settled baseline readback (0.6632ms)
+✔ rollback reports no database mutation when migrate receipt was never produced (2.1838ms)
+✔ post-activation rollback switches to the previous revision without rebinding the candidate tag (4.6421ms)
+✔ DEV-057 grant v4 verifies exact 29-row receipt, replay and isolation (1.246ms)
+✔ DEV-057 employee number command v2 verifies exact 30-row receipt, replay and isolation (0.4202ms)
+✔ DEV-014 lifecycle v2 receipt proves 31 rows, at most one append and exact replay (0.3577ms)
+✔ unsealed failed candidate is cleaned before a terminal abort can be sealed (2.3929ms)
+✔ configured failed candidate absent from status projection is cleaned with exact traffic CAS (23.9167ms)
+✔ unsealed cleanup denies statusOnly before PATCH (0.6228ms)
+✔ unsealed cleanup denies nonZero before PATCH (0.3424ms)
+✔ unsealed cleanup denies wrongRevision before PATCH (1.3757ms)
+✔ unsealed cleanup denies duplicate before PATCH (0.9073ms)
+✔ unsealed cleanup denies otherStatusTag before PATCH (0.8045ms)
+✔ unsealed cleanup denies generationDrift before PATCH (0.4005ms)
+✔ unsealed cleanup denies reconciling before PATCH (0.3203ms)
+✔ unsealed cleanup denies differentActive before PATCH (0.367ms)
+✔ cleanup does not succeed after configuredTag (1006.6752ms)
+✔ cleanup does not succeed after observedTag (0.8997ms)
+✔ cleanup does not succeed after failed (0.5142ms)
+✔ cleanup does not succeed after activeDrift (0.5278ms)
+✔ cleanup etag conflict is not retried (0.3643ms)
+✔ already clean settled service is a no-op (0.2404ms)
+✔ a failed service cannot borrow a healthy candidate for cleanup (0.7239ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1144.9859

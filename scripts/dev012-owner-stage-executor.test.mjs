@@ -385,3 +385,20 @@ test('DEV-014 lifecycle v2 receipt proves 31 rows, at most one append and exact 
   assert.doesNotThrow(() => check(core)); assert.doesNotThrow(() => check({ ...core, applied: 0, replayed: 31 }))
   for (const changed of [{ ledgerCount: 30 }, { applied: 2, replayed: 29 }, { replayed: 29 }, { crossDatabaseDenials: [{ database: 'jenfu_dev', denied: false }, { database: 'jenfu_stg', denied: true }] }]) assert.throws(() => check({ ...core, ...changed }), /MIGRATION_RECEIPT_INVALID/)
 })
+
+ test('unsealed failed candidate is cleaned before a terminal abort can be sealed',async()=>{
+  const h=recordedHarness(),{input,intentResult}=await authorizedRecordedInput(h,'UNSEALED-FAILURE')
+  for(const stage of ['prepare','build','migrate'])await executeOwnerStage({...input,stage})
+  const intent=(await h.transport.readJson(intentResult.ref)).value
+  const control={inputFingerprint:sha256(canonicalize({ownerApplicationId:h.profile.application.id,releaseId:intent.releaseId,sourceRevision:intent.sourceRevision,releaseIntentSha256:input.capsuleSha256}))}
+  const tag='candidate-'+control.inputFingerprint.slice(0,12),revision=h.profile.target.serviceName+'-'+control.inputFingerprint.slice(0,12)
+  let service={...h.service(),terminalCondition:{state:'CONDITION_FAILED'},traffic:[{revision:previousRevision,percent:100},{tag,revision,percent:0}],trafficStatuses:[{revision:previousRevision,percent:100}]}
+  const patches=[]
+  h.transport.getService=async()=>structuredClone(service)
+  h.transport.getRevision=async()=>({conditions:[{type:'Ready',state:'CONDITION_FAILED'}]})
+  h.transport.patchService=async(_profile,request,mask)=>{assert.equal(mask,'traffic');assert.equal(request.etag,service.etag);patches.push(request);service={...service,etag:'cleanup-e2',traffic:request.traffic,terminalCondition:{state:'CONDITION_SUCCEEDED'}};return {operationRef:{name:'operations/exact-cleanup'}}}
+  const terminal=await executeOwnerStage({...input,stage:'rollback'})
+  assert.equal(patches.length,1);assert.deepEqual(patches[0].traffic,[{revision:previousRevision,percent:100}])
+  assert.equal(JSON.parse((await h.transport.readBytes(terminal.ref.uri)).bytes).facts.result,'PRE_ACTIVATION_ABORTED')
+  assert.equal(JSON.parse(h.objects.get('gs://'+bucket+'/control/active.json').bytes).state,'FINALIZED')
+})

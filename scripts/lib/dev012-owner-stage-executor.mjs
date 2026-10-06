@@ -1,3 +1,4 @@
+import { cleanupUnsealedCandidateTag } from './dev012-unsealed-candidate-cleanup.mjs'
 import { assertPrincipalOnlyRecoveryBinding, assertPrincipalOnlyRecoveryReadback, principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { assertSmokeInfraReuseReceipt } from './dev057-smoke-rotation-continuation.mjs'
 import { spawnSync } from 'node:child_process'
@@ -746,13 +747,8 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
   } else {
     const deterministicRevision = `${profile.target.serviceName}-${fingerprint.slice(0, 12)}`
     const deterministicTag = `candidate-${fingerprint.slice(0, 12)}`
-    const service = await transport.getService(profile)
-    const tagged = service.trafficStatuses?.find((row) => row.tag === deterministicTag)
-    if (tagged) {
-      const activeRevision = transport.effectiveRevision(service)
-      if (![intent.previousRevision, rollbackRevision].includes(activeRevision)) fail('PRINCIPAL_ONLY_ROLLBACK_BASELINE_INVALID')
-      await transport.removeCandidateTag({ profile, tag: deterministicTag, candidateRevision: deterministicRevision, expectedActiveRevision: activeRevision, deadlineAt: intent.deadlineAt })
-    }
+    await cleanupUnsealedCandidateTag({ transport, profile, tag: deterministicTag, candidateRevision: deterministicRevision,
+      allowedActiveRevisions: [intent.previousRevision, rollbackRevision], deadlineAt: intent.deadlineAt })
   }
   let maintenanceRecovery = null
   // Before a sealed candidate exists, the safe abort stays MANUAL0 and keeps

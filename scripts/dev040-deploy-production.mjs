@@ -272,6 +272,7 @@ async function main() {
   // The existing quiescence CAS checks the unchanged active head before dispatch;
   // later owner stages use these refs after active control belongs to this run.
   const appliedAbortInfraBaseline = options.dev014PrincipalLifecycleV2Remediation && control.result === 'PRE_ACTIVATION_ABORTED'
+    && canonicalize(JSON.parse(previousIntent.bytes).infraReceiptRef) !== canonicalize(baseline.intent.infraReceiptRef)
     ? {attemptIntentRef:previousIntent.ref,infraReceiptRef:JSON.parse(previousIntent.bytes).infraReceiptRef,controlSnapshot:structuredClone(control)} : null
   const lifecycleV2Authority = lifecycleEnablement
     ? {devId:'DEV-014',slice:'014-PRINCIPAL-LIFECYCLE-ENABLE',enablement:lifecycleEnablement}

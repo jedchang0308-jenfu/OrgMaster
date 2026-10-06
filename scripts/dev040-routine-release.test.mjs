@@ -14,7 +14,7 @@ import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-r
 import { buildRuntimeConfig, canonicalize, createOwnerTransport, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeBlobTransition, assertDev057CatalogReadbackPackagingTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs, assertDev014LifecycleReplayInfra } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
-import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION, assertDev014PrincipalLifecycleV2Append, assertDev014PrincipalLifecycleV2Remediation, assertDev014PrincipalLifecycleRuntimeGuard } from './lib/dev014-principal-lifecycle-release.mjs'
+import { DEV014_LIFECYCLE_RUNTIME_TARGET, DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION, assertDev014PrincipalLifecycleV2Append, assertDev014PrincipalLifecycleV2Remediation, assertDev014PrincipalLifecycleRuntimeGuard } from './lib/dev014-principal-lifecycle-release.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, assertDev057EmployeeNumberCommandReceiptV2Append, assertDev057EmployeeNumberCommandReceiptV2Remediation, assertDev057PrincipalContractAppend, assertDev057PrincipalContractRemediation, assertDev057PrincipalGrantsV3Append, assertDev057PrincipalGrantsV3Remediation, assertDev057PrincipalGrantsV4Append, assertDev057PrincipalGrantsV4Remediation } from './lib/dev040-routine-release.mjs'
 
@@ -2081,4 +2081,14 @@ test('DEV-014 abort continuation preserves complete-set image proof and has no n
   f=>{f.h.input.values.infra.imageRotation.sourceRevision=oldSource},
   f=>{f.h.input.values.readiness.slice='014-PRINCIPAL-LIFECYCLE-ENABLE';f.h.input.values.authorization.slice='014-PRINCIPAL-LIFECYCLE-ENABLE'}
  ]){const f=lifecycleAbortedInfraHarness();mutate(f);const {receiptSha256:_seal,...core}=f.h.input.values.infra;f.h.input.values.infra=f.seal(core);await assert.rejects(()=>verifyRoutineRelease(f.h.input))}
+})
+
+ test('DEV-014 false-state correction appends only the exact target guard fields',()=>{
+  const beforePlain={...runtime.plainEnvironment};for(const name of Object.keys(DEV014_LIFECYCLE_RUNTIME_TARGET))delete beforePlain[name]
+  const before={...runtime,plainEnvironment:beforePlain}
+  assert.equal(assertDev014PrincipalLifecycleRuntimeGuard(profile,before,runtime),runtime)
+  for(const name of Object.keys(DEV014_LIFECYCLE_RUNTIME_TARGET)){
+    assert.throws(()=>assertDev014PrincipalLifecycleRuntimeGuard(profile,before,{...runtime,plainEnvironment:{...runtime.plainEnvironment,[name]:'wrong-target'}}))
+    assert.throws(()=>assertDev014PrincipalLifecycleRuntimeGuard(profile,{...before,plainEnvironment:{...beforePlain,[name]:'already-wrong-target'}},runtime))
+  }
 })

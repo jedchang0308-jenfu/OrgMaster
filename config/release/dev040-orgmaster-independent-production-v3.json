@@ -158,7 +158,14 @@
       "ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL",
       "ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL",
       "ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT",
-      "ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED"
+      "ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED",
+      "ORGMASTER_DEPLOYMENT_ENV",
+      "GOOGLE_CLOUD_PROJECT",
+      "GOOGLE_CLOUD_REGION",
+      "ORGMASTER_CLOUD_SQL_INSTANCE",
+      "ORGMASTER_CLOUD_SQL_CONNECTION_NAME",
+      "ORGMASTER_POSTGRES_DATABASE",
+      "ORGMASTER_POSTGRES_IAM_LOGIN"
     ],
     "requiredSecretNames": [
       "ORGMASTER_POSTGRES_URL",
@@ -190,7 +197,14 @@
       "ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT": "jedchang0308@jenfu.com.tw",
       "ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL": "orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com",
       "ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL": "platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com",
-      "ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT": "101029748006912113815"
+      "ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT": "101029748006912113815",
+      "ORGMASTER_DEPLOYMENT_ENV": "production",
+      "GOOGLE_CLOUD_PROJECT": "jenfu-platform-prod",
+      "GOOGLE_CLOUD_REGION": "asia-east1",
+      "ORGMASTER_CLOUD_SQL_INSTANCE": "jenfu-platform-prod-pg",
+      "ORGMASTER_CLOUD_SQL_CONNECTION_NAME": "jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg",
+      "ORGMASTER_POSTGRES_DATABASE": "jenfu_prod",
+      "ORGMASTER_POSTGRES_IAM_LOGIN": "orgmaster-prod-runtime@jenfu-platform-prod.iam"
     },
     "controlledValues": {
       "ORGMASTER_JENFU_SSO_HANDOFF_MODE": {
@@ -201,7 +215,10 @@
       },
       "ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED": {
         "defaultValue": "false",
-        "allowedValues": ["false", "true"]
+        "allowedValues": [
+          "false",
+          "true"
+        ]
       }
     }
   },
