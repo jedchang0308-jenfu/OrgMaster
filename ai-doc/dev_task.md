@@ -1,16 +1,19 @@
 # OrgMaster 開發任務
 
-**DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 依 [DEV-057 030 historical prerequisite](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current) 沿 DEV-057 既有子項；目前 LOCAL_FIX／TASK_OWNED_POSTGRES_PASS；此段保留 030 前序紀錄，current ledger ceiling 31 與尚未發布的 031 lifecycle slice 見 [DEV-057 current entry](#dev-057-dev014-principal-lifecycle-v2)。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
+**DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 依 [DEV-057 030 historical prerequisite](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current) 沿 DEV-057 既有子項；031 與 31-row ledger 已安裝，現行未完 slice 是 runner-only false-state owner release，後接獨立 runtime enablement，見 [DEV-057 current entry](#dev-057-dev014-principal-lifecycle-v2)。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
 
 <a id="dev-057-current-contract"></a>
 
 <a id="dev-057-dev014-principal-lifecycle-v2"></a>
 
-## DEV-057 DEV-014 Principal lifecycle v2 — installed, enablement/L4 pending (2026-10-06)
+## DEV-057 DEV-014 Principal lifecycle v2 — false-state owner release pending, enablement/L4 pending (2026-10-06)
 
-Current state: native release `ORGMASTER-REL-20261005232946673-F3E3130` is RELEASED at `orgmaster-prod-a48a05dc0080`, with the exact 31-entry migration ledger. The real runtime-only readback proved `orgmaster-prod-runtime@jenfu-platform-prod.iam`, read-only transaction and correct database; its temporary Job was deleted and read back absent. Background execution remains disabled and the permanent Scheduler PAUSED. Platform 011 was applied in its safely aborted R35, but its finalized consumer release and conformance are still pending. Neither install nor the runtime readback closes QA014-07 through QA014-10.
+Current state: OrgMaster release ORGMASTER-REL-20261005232946673-F3E3130 remains serving at orgmaster-prod-a48a05dc0080 with migration 031 installed and the complete 31-row ledger; runtime SESSION_USER readback passed. The background flag remains false and the product Scheduler PAUSED. Platform R38 source 2c864651bba305479ceab884712fc5b7e4b322a6 is RELEASED at 100% revision jenfu-platform-prod-918ba7cde2d7; native 011 verification is applied=0/replayed=11 ([receipt](../../Jenfu-Platform/output/dev-012/inputs/dev014-platform-published-lifecycle-false-chain-r38-20261006.json)). This completes the consumer-side replay evidence only. OrgMaster R3 runner image for source 8de46ca22483b8b56fc91dd8db0c9656a34e6881 is built, but APP_INFRA_IMAGE_ROTATION is not applied and no false-state owner release from that source is published.
 
-Next batch: [fixed-fixture v2 formal readback](qa/DEV-057-lifecycle-v2-formal-readback-2026-10-06.md), protected CI and runner rotation, then native owner enablement, exact-job resume, positive event/receipt/epoch, revoke and recovery L4. Existing original dirty files are preserved and excluded. The readback tool is read-only; fixture transitions use normal verified Principal UI commands. No new migration, manual SQL or automatic account activation.
+Next native sequence:
+1. Finish protected-source CI, then the runner-only false-state owner release using --dev014-principal-lifecycle-v2-remediation, a fresh source-bound --dev014-infra-ref, and proof-bound Principal-only recovery. Apply the existing APP_INFRA_IMAGE_ROTATION complete-address gate with only the exact runner image field changed and all non-image fields identical. Because the installed ledger already has 31 rows, require the complete checksum-native Job replay: applied=0, replayed=31. Keep the lifecycle flag false and Scheduler PAUSED; do not substitute smoke credential reuse or app-infra-reuse proof.
+2. After that owner release is finalized, run the existing --dev014-principal-lifecycle-enable mode separately under its unchanged gate. It is runtime-only false→true, requires UNCHANGED_VERIFIED and zero DDL, and is not combined with runner rotation.
+3. Resume only the exact Scheduler after the enablement release and fresh owner readbacks. Use the existing normal Principal fixture flow and v2 readback evidence for event, Platform receipt, auth epoch, replay/recovery, and Production L4. The readback is observational; no migration or manual SQL is added.
 
 <details><summary>HISTORY_ONLY: pre-install lifecycle checkpoints, superseded by the current state above</summary>
 
