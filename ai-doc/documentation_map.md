@@ -1,5 +1,7 @@
 # OrgMaster 文件地圖
 
+**DEV-057／DEV-014 lifecycle 最新續點（2026-10-06）：** [R4 artifact 阻斷與集中修正](qa/DEV-057-lifecycle-artifact-correction-2026-10-06.md)。R4 default-off owner 已 PRE_ACTIVATION_ABORTED；新 source-map-js 1.2.2 pin 與 parser regression 尚待本批 required CI／merge。R4 runner／native image proof／實際 migrator preflight 已完成但不是31-row replay；新 dependency source 必須重建並重新綁定 runner／infra／recovery／intent，不原樣重跑。flag=false、Scheduler=PAUSED；後續原生 replay→独立 enable→resume→正向 lifecycle／L4，DEV-057 背景 slice／DEV-014 仍 OPEN。
+
 ## DEV-057 DEV-014 Principal lifecycle v2 — false-state owner release pending (2026-10-06)
 
 **Current state:** OrgMaster migration 031 and the complete 31-row ledger are installed at the currently serving release ORGMASTER-REL-20261005232946673-F3E3130 / orgmaster-prod-a48a05dc0080; runtime SESSION_USER readback is complete. The worker flag remains false and the independent product Scheduler is PAUSED. Platform R38 is RELEASED at source 2c864651bba305479ceab884712fc5b7e4b322a6 and 100% revision jenfu-platform-prod-918ba7cde2d7; migration 011 readback is applied=0/replayed=11 ([provider receipt](../../Jenfu-Platform/output/dev-012/inputs/dev014-platform-published-lifecycle-false-chain-r38-20261006.json)). This is consumer replay evidence only.

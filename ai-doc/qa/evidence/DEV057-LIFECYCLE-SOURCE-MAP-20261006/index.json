@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "orgmaster.dev057.source-map-availability-local.v1",
+  "observedAt": "2026-10-06T04:58:40.330657+00:00",
+  "status": "LOCAL_PASS",
+  "candidateSourceBaseline": "0559a41db4008c9cbe84969b059490cedb306ec8",
+  "rootCause": {
+    "runId": 37414607113,
+    "buildId": "ac14089e-8f42-416e-b55a-96f9876aa786",
+    "artifactDigest": "sha256:bff3829eb71d7f21ed8d33033856ec776d0c336a96132dc7e0d306b7793f0e32",
+    "cve": "CVE-2026-93749",
+    "affectedVersion": "1.2.1",
+    "fixedVersion": "1.2.2",
+    "effectiveSeverity": "HIGH",
+    "occurrenceName": "projects/jenfu-platform-prod/occurrences/e1705da0-8ac3-47d4-abf1-99522ca68257"
+  },
+  "localValidation": {
+    "checks": 5,
+    "passed": 5,
+    "isolatedOfficialPackage": true,
+    "installedDependencyTreeUnchanged": true,
+    "packageBytes": 36349,
+    "registryIntegrity": "sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==",
+    "testFileSha256": "b99fa04452f094af3d03a077fba146494c5cbaa6cfc77151b64ae90c26151633"
+  },
+  "originalTestFailure": "valid indexed fixture attempted unrelated old fromSourceMap convenience path; corrected test to actual consumer parsing; original report preserved",
+  "requiredProductionSourceQc": "PENDING",
+  "productionL4": false,
+  "files": [
+    {
+      "file": "dev014-source-map-focused-check-20261006.json",
+      "rawSha256": "f7d5002b5e50d0fb57f87624ce68c3305ebc385ca03a38fd48f886915767234f",
+      "bytes": 3618
+    },
+    {
+      "file": "dev014-source-map-focused-recheck-20261006.json",
+      "rawSha256": "3c9dc38746d11cdd1a9c310e4dd8dfd32b939b1202febc618fe7d35bfcd8aed3",
+      "bytes": 2321
+    }
+  ]
+}

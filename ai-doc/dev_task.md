@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+**DEV-057／DEV-014 lifecycle 最新續點（2026-10-06）：** [R4 artifact 阻斷與集中修正](qa/DEV-057-lifecycle-artifact-correction-2026-10-06.md)。R4 default-off owner 已 PRE_ACTIVATION_ABORTED；新 source-map-js 1.2.2 pin 與 parser regression 尚待本批 required CI／merge。R4 runner／native image proof／實際 migrator preflight 已完成但不是31-row replay；新 dependency source 必須重建並重新綁定 runner／infra／recovery／intent，不原樣重跑。flag=false、Scheduler=PAUSED；後續原生 replay→独立 enable→resume→正向 lifecycle／L4，DEV-057 背景 slice／DEV-014 仍 OPEN。
+
 **DEV-014 有效義務收尾：** [員工編號 command receipt／DWD 能力分離](qa/DEV-057-employee-number-command-correction-2026-10-05.md) 依 [DEV-057 030 historical prerequisite](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current) 沿 DEV-057 既有子項；031 與 31-row ledger 已安裝，現行未完 slice 是 runner-only false-state owner release，後接獨立 runtime enablement，見 [DEV-057 current entry](#dev-057-dev014-principal-lifecycle-v2)。R40 與原 Principal-only 授權整合結案保持，不把本機測試加總成 Production 完成。
 
 <a id="dev-057-current-contract"></a>
