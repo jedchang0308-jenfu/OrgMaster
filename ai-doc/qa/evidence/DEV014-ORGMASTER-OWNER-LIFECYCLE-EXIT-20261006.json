@@ -1,0 +1,185 @@
+{
+  "schemaVersion": "orgmaster.dev057.lifecycle-owner-exit-projection.v1",
+  "observedAt": "2026-10-06T08:09:41.768Z",
+  "rawEvidenceRoot": "Jenfu-Platform/output/dev-012/inputs/",
+  "rawEvidenceFiles": {
+    "defaultOffOwner": "dev014-org-r7-owner-2026-10-06T07-06-19-083Z.json",
+    "enablementOwner": "dev014-org-r7-enable-owner-2026-10-06T07-18-59-212Z.json",
+    "schedulerResume": "dev014-scheduler-resume-r7-resume-20261006.json",
+    "inactiveNativeEvent": "dev014-orgmaster-lifecycle-v2-event-inactive-r7-20261006.json",
+    "inactiveExactRecovery": "dev014-orgmaster-lifecycle-v2-event-inactive-recovery-r7-20261006.json",
+    "restoreNativeEvent": "dev014-orgmaster-lifecycle-v2-event-restore-r7-20261006.json",
+    "fixtureStatusBefore": "dev014-fixture-status-r7-before-20261006.log",
+    "fixtureStatusInactive": "dev014-fixture-status-r7-inactive-20261006.log",
+    "fixtureStatusActivationCheck": "dev014-fixture-status-r7-activation-check-20261006.log",
+    "fixtureStatusRestore": "dev014-fixture-status-r7-restore-20261006.log",
+    "sessionBefore": "dev014-fixture-session-r7-before-20261006.log",
+    "sessionInactive": "dev014-fixture-session-r7-inactive-20261006.log",
+    "sessionRestoredSettled": "dev014-fixture-session-r7-restored-settled-20261006.log",
+    "sessionRecovered": "dev014-fixture-session-r7-recovered-20261006.log",
+    "ownerNodeTests": "dev014-org-r7-owner-tests-20261006.log",
+    "actualProfileStartupTests": "dev014-org-r7-runtime-startup-tests-20261006.log",
+    "databaseBoundary": "dev014-org-r7-db-boundary-20261006.log",
+    "selectedQc": "dev014-org-r7-qc-selected-tests-20261006.log"
+  },
+  "scope": {
+    "owner": "ORGMASTER/DEV-057",
+    "sourceSlice": "JENFU/DEV-014#lifecycle-v2",
+    "orgmasterLifecycleWorkerOwnerSlice": "COMPLETE",
+    "jointDev014Dev015": "DEV015_COMPLETE_DEV014_EFFECTIVE_OBLIGATIONS_COMPLETE_FINAL_DOC_DELIVERY_PENDING"
+  },
+  "protectedSource": {
+    "pullRequest": 121,
+    "requiredCiRun": 37425080699,
+    "requiredCi": "PASS",
+    "sourceCommit": "c41e3918f50257429b7eedff5ee7a2e451cc9ae4"
+  },
+  "defaultOffRelease": {
+    "releaseId": "ORGMASTER-REL-20261006065142642-C41E391",
+    "ownerRunId": 37426169123,
+    "status": "RELEASED",
+    "successfulProductionStages": 10,
+    "activeRevision": "orgmaster-prod-9d3be61df2d5",
+    "trafficPercent": 100,
+    "migration": {
+      "status": "PASS",
+      "database": "jenfu_prod",
+      "ledger": "orgmaster_core.schema_migrations",
+      "ledgerCount": 31,
+      "applied": 0,
+      "replayed": 31,
+      "crossDatabaseDenied": [
+        "jenfu_dev",
+        "jenfu_stg"
+      ]
+    }
+  },
+  "enablementRelease": {
+    "releaseId": "ORGMASTER-REL-20261006070633549-C41E391",
+    "ownerRunId": 37427653341,
+    "status": "RELEASED",
+    "activeRevision": "orgmaster-prod-a3dcae277231",
+    "trafficPercent": 100,
+    "effectiveLifecycleFlag": true,
+    "migrationDisposition": "UNCHANGED_VERIFIED",
+    "migrationsExecuted": 0,
+    "dataImportsExecuted": 0,
+    "pendingMigrationCount": 0
+  },
+  "schedulerResume": {
+    "job": "orgmaster-prod-managed-identity-lifecycle",
+    "schedule": "* * * * *",
+    "timeZone": "Asia/Taipei",
+    "providerReadback": "ENABLED",
+    "sealedReceiptSha256": "89cc8055582c1791de41b4607f15bca5c38b5d2fd95df0326744c57610636eb7"
+  },
+  "normalPrincipalFixtureReadback": {
+    "inactiveEvent": {
+      "eventId": "83f14e6e-3658-4ae2-b8ff-d2bc6abe3a37",
+      "receiptId": "090e9f4b-4c19-4752-bcf1-b4b81ed7980b",
+      "authEpoch": 1,
+      "deliveryStatus": "completed",
+      "deliveryAttempts": 1
+    },
+    "restoreEvent": {
+      "eventId": "0f051f77-eb8b-4627-b0da-d9ce4343ece1",
+      "receiptId": "55c977c2-8ff5-4feb-9f32-dff6951e1bd3",
+      "authEpoch": 2,
+      "deliveryStatus": "completed"
+    },
+    "nativeActorAndMutationReadback": {
+      "distinctExecutorAndDeliveryActorsVerified": true,
+      "databaseMode": "REPEATABLE_READ_READ_ONLY",
+      "databaseWrites": 0,
+      "serviceMutations": 0
+    },
+    "fixtureRestoration": {
+      "baselineStateSha256": "0eac22b1b193c295df7a78cde24083468e68a41c871f0d2800a63aae0d124fc8",
+      "roleOrPermissionBindingChanges": 0,
+      "otherFixtureStateMatchesBaseline": true
+    },
+    "sessionReadback": {
+      "existingSessionAfterRestore": {
+        "httpStatus": 401,
+        "reason": "auth_epoch_stale"
+      },
+      "freshNormalGoogleSessionAfterRecovery": {
+        "httpStatus": 200,
+        "assuranceLevel": "AAL1",
+        "owner": "Platform"
+      }
+    },
+    "completedReceiptStability": {
+      "sameEventAndReceipt": true,
+      "sameAuthEpoch": 1,
+      "deliveryStatus": "completed",
+      "manualReplayExecuted": false
+    }
+  },
+  "localEvidenceScope": {
+    "ownerNodeSuite": {
+      "pass": 354,
+      "fail": 0,
+      "skipped": 0
+    },
+    "actualProfileStartup": {
+      "pass": 17,
+      "fail": 0
+    },
+    "databaseBoundary": "PASS",
+    "postgresProtocolCases": 23,
+    "covers": [
+      "lost-response replay",
+      "idempotency",
+      "lease handling"
+    ],
+    "liveProductionFaultInjectionProven": false,
+    "runtimeSourceJoinFiles": 8
+  },
+  "ownerReceiptBoundaries": {
+    "productionL4": false,
+    "fullDev014Complete": false,
+    "fullDev014OrDev015CompletionClaimed": false,
+    "jointClosure": "FINAL_DOCUMENT_QC_CI_MERGE_PENDING",
+    "rawFixtureSnapshotIncluded": false,
+    "principalIdentityValuesIncluded": false
+  },
+  "rawEvidenceSha256": {
+    "defaultOffOwner": "fcf4e23231cfebf680c9807beb3eb7c8f4923646fdb93cd4c050474cb132d0fb",
+    "enablementOwner": "b9d94f1bb87c7782562df6e9dd7b21fd5404c4300762ce6d4735aac294059a44",
+    "schedulerResume": "39717169265f1f32aef71a1145d766363693bb0c9d7d46ca4e70dade132fc87a",
+    "inactiveNativeEvent": "8c8818664aa2421f9ecec2c2a56900233daba653f8365b07f1c7d2a9784e91fa",
+    "inactiveExactRecovery": "174fe3345fb35a46e19533dab126eb9594e02304a5e0f15f84d5c4ec9fdeae09",
+    "restoreNativeEvent": "8f36b323fb402b0e014373049290cb5f38b482b0365199cc2fed428729d523d7",
+    "fixtureStatusBefore": "34fe4bff87d2f4a36d22486a900d6ef6cd302adef50f68e9ed3bf3ac05605ac3",
+    "fixtureStatusInactive": "b23447a341f95d2cbe7fe848a7527e4dcb9607653f2add1dc310a8bd10eb6d95",
+    "fixtureStatusActivationCheck": "586422b1e5229534eef24789e490d000d0c8aec1d26ebfc562d9afd299e08934",
+    "fixtureStatusRestore": "f7d8443eb75b3e54c2fadf95b847b9d60ae1ad6ca74108ed9b6ddb64dc71566a",
+    "sessionBefore": "3e163db2da3bccae46c9f418ffd929bcd024560c04a3d3c667bd8347b43dbe9d",
+    "sessionInactive": "94bcdebfd72dc9d55144117f36b9b293c36f0cfa60df7fed0c9535909c0e2d11",
+    "sessionRestoredSettled": "e28d464977989e023b0c8871fd566d3727f41a8116cd39d0573e9f090d898ffd",
+    "sessionRecovered": "417645933886c178e78bfced2978c7f7958625971475555e021d291b98e7c6f0",
+    "ownerNodeTests": "fc62a5f3998c7d5592ba5f891433adc88fb1a59056125020eda9c2cd4f7df9f2",
+    "actualProfileStartupTests": "f2d8cd673471b12ab47f47792a65b5c557a66444026a1eea1bdf9ff5f47223d6",
+    "databaseBoundary": "58579b2c263fc4e04b66042ac203c62e6c5d74d5aa139c96c56ae6399188f0ca",
+    "selectedQc": "54eb2ce84bcdd82991fb5de7cd8731515d964f5e76ce40ba01f04ad484446d10"
+  },
+  "aggregatedLifecycleProductionEvidence": {
+    "status": "SCOPED_L4_PASS",
+    "originalOwnerReceiptFlagsUnchanged": true,
+    "manualFaultInjection": false,
+    "fixtureProfileLimits": "JFS9014 Platform recovery; no PDM profile/Org application role",
+    "expectedPdmDeny": "principal_account_unavailable; no automatic provisioning",
+    "activeThreeOwnerActor": "Jed",
+    "disabledFixture": "JFS9015 remains suspended"
+  },
+  "finalCrossOwnerReadback": {
+    "path": "dev014-r7-final-readback-evidence-20261006.json",
+    "sha256": "1685a43af8a1a78b25b671c074b378bd37f273fceec1ea77c26a88d37cf92e1a"
+  },
+  "taskUiCleanup": {
+    "verifiedProcessesAbsent": true,
+    "userOwnedSurfacesTouched": false,
+    "evidence": "dev014-task-ui-cleanup-after-20261006.json"
+  }
+}
