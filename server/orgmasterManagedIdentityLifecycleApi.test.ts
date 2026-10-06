@@ -1,5 +1,5 @@
 import { createServer, request as httpRequest, type Server } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -406,5 +406,18 @@ describe('OrgMaster managed identity lifecycle internal route', () => {
     }
     expect(() => createOrgmasterManagedIdentityLifecycleRuntime(productionTarget))
       .toThrow('MANAGED_LIFECYCLE_RUNTIME_CONFIG_INVALID')
+  })
+})
+
+ describe('source-owned enabled lifecycle startup',()=>{
+  it('starts from actual production release fixed values without connecting to the database',async()=>{
+    const profile=JSON.parse(await readFile('config/release/dev040-orgmaster-independent-production-v3.json','utf8'))
+    const environment={...profile.environment.fixedValues,ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED:'true',ORGMASTER_POSTGRES_URL:'postgres://synthetic.invalid/no-connect'}
+    const runtime=createOrgmasterManagedIdentityLifecycleRuntime(environment)
+    expect(runtime).toBeDefined();expect(typeof runtime?.verify).toBe('function');expect(typeof runtime?.worker.runOnce).toBe('function')
+    for(const key of ['ORGMASTER_DEPLOYMENT_ENV','GOOGLE_CLOUD_PROJECT','GOOGLE_CLOUD_REGION','ORGMASTER_CLOUD_SQL_INSTANCE','ORGMASTER_CLOUD_SQL_CONNECTION_NAME','ORGMASTER_POSTGRES_DATABASE','ORGMASTER_POSTGRES_IAM_LOGIN']){
+      expect(()=>createOrgmasterManagedIdentityLifecycleRuntime({...environment,[key]:'wrong-target'})).toThrow('DEV040_R2_ORGMASTER_WRONG_PRODUCTION_TARGET')
+      const missing={...environment};delete missing[key];expect(()=>createOrgmasterManagedIdentityLifecycleRuntime(missing)).toThrow('DEV040_R2_ORGMASTER_WRONG_PRODUCTION_TARGET')
+    }
   })
 })

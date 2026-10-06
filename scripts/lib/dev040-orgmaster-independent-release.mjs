@@ -1,3 +1,4 @@
+import { DEV014_LIFECYCLE_RUNTIME_TARGET } from './dev014-principal-lifecycle-release.mjs'
 import { assertPrincipalOnlyRecoveryBinding } from './dev057-principal-only-release.mjs'
 import { createHash } from 'node:crypto'
 import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
@@ -18,7 +19,7 @@ const REQUIRED_PLAIN_ENV = [
   'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN', 'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
   'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
   'ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL', 'ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT',
-  'ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED',
+  'ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED', ...Object.keys(DEV014_LIFECYCLE_RUNTIME_TARGET),
 ]
 const REQUIRED_SECRET_ENV = ['ORGMASTER_POSTGRES_URL', 'ORGMASTER_SESSION_HASH_PEPPER']
 const PRODUCTION_MIGRATION_PATHS = [
@@ -99,6 +100,7 @@ export function assertDev040V3Profile(profile, n1c) {
   if (JSON.stringify([...profile.environment.requiredPlainEnvironmentNames].sort()) !== JSON.stringify([...REQUIRED_PLAIN_ENV].sort())
     || JSON.stringify([...profile.environment.requiredSecretNames].sort()) !== JSON.stringify([...REQUIRED_SECRET_ENV].sort())) fail('ENVIRONMENT_SET_DRIFT')
   const fixed = profile.environment.fixedValues || {}
+  if (Object.entries(DEV014_LIFECYCLE_RUNTIME_TARGET).some(([name,value]) => fixed[name] !== value)) fail('ENVIRONMENT_VALUE_DRIFT')
   if (fixed.ORGMASTER_PERSISTENCE_MODE !== 'cloud-sql' || fixed.ORGMASTER_PUBLIC_BASE_URL !== target.canonicalOrigin || fixed.ORGMASTER_POSTGRES_POOL_MAX !== '6' || fixed.ORGMASTER_POSTGRES_QUERY_TIMEOUT_MS !== '35000'
     || fixed.JENFU_FIREBASE_PROJECT_ID !== target.projectId || fixed.JENFU_IDENTITY_ISSUER !== `https://securetoken.google.com/${target.projectId}` || fixed.JENFU_IDENTITY_AUDIENCE !== target.projectId
     || fixed.VITE_JENFU_FIREBASE_PROJECT_ID !== target.projectId

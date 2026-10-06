@@ -1,0 +1,5 @@
+
+> orgmaster-canvas@0.1.0 check:db-boundary
+> node scripts/check-shared-database-boundary.mjs
+
+DEV010_DB_RULESET_V1 PASS app=orgmaster governedFiles=21 diffMode=staged

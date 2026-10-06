@@ -8,7 +8,7 @@ import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-releas
 import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 
-import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION, assertDev014PrincipalLifecycleV2Append, assertDev014PrincipalLifecycleV2Remediation, assertDev014PrincipalLifecycleRuntimeGuard, assertDev014PrincipalLifecycleEnablement } from './dev014-principal-lifecycle-release.mjs'
+import { DEV014_LIFECYCLE_RUNTIME_TARGET, DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION, assertDev014PrincipalLifecycleV2Append, assertDev014PrincipalLifecycleV2Remediation, assertDev014PrincipalLifecycleRuntimeGuard, assertDev014PrincipalLifecycleEnablement } from './dev014-principal-lifecycle-release.mjs'
 
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
@@ -84,7 +84,8 @@ function dev013NeutralInfrastructureInputs(profile) {
 export function dev014PrincipalLifecycleInfrastructureInputs(profile) {
   const value = dev013NeutralInfrastructureInputs(profile)
   const field = 'ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED'
-  value.environment.requiredPlainEnvironmentNames = value.environment.requiredPlainEnvironmentNames.filter(name => name !== field)
+  value.environment.requiredPlainEnvironmentNames = value.environment.requiredPlainEnvironmentNames.filter(name => name !== field && !Object.hasOwn(DEV014_LIFECYCLE_RUNTIME_TARGET,name))
+  for (const name of Object.keys(DEV014_LIFECYCLE_RUNTIME_TARGET)) delete value.environment.fixedValues[name]
   delete value.environment?.controlledValues?.[field]
   if (value.environment?.controlledValues && Object.keys(value.environment.controlledValues).length === 0) delete value.environment.controlledValues
   return value

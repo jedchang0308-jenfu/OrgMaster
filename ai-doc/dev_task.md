@@ -1,6 +1,6 @@
 # OrgMaster 開發任務
 
-2026-10-06 DEV-014 remaining lifecycle release: source-map-js security correction is merged in PR119 (`5000a4b76c142229d886f7b1cd67a6eee7e980d8`). R5 runner/recovery builds succeeded but no R5 infrastructure rotation or owner release was dispatched. Current R4 control is FINALIZED/PRE_ACTIVATION_ABORTED after build; its image-only rotation was already APPLIED, while the successful service/data baseline remains f3e313. The current corrective batch freezes the immediate aborted attempt in source-bound readiness/authorization and verifies its sealed image lineage separately from the successful service/31-row data baseline. This is release reliability work inside DEV-057, not a new task or a completion claim. Lifecycle false, Scheduler PAUSED and positive L4 remain pending. See `ai-doc/qa/DEV-057-lifecycle-abort-infra-continuation-2026-10-06.md`.
+**HISTORY_ONLY — superseded by R7 current continuation below.** 2026-10-06 DEV-014 remaining lifecycle release: source-map-js security correction is merged in PR119 (`5000a4b76c142229d886f7b1cd67a6eee7e980d8`). R5 runner/recovery builds succeeded but no R5 infrastructure rotation or owner release was dispatched. Current R4 control is FINALIZED/PRE_ACTIVATION_ABORTED after build; its image-only rotation was already APPLIED, while the successful service/data baseline remains f3e313. The current corrective batch freezes the immediate aborted attempt in source-bound readiness/authorization and verifies its sealed image lineage separately from the successful service/31-row data baseline. This is release reliability work inside DEV-057, not a new task or a completion claim. Lifecycle false, Scheduler PAUSED and positive L4 remain pending. See `ai-doc/qa/DEV-057-lifecycle-abort-infra-continuation-2026-10-06.md`.
 
 
 **HISTORY_ONLY：R4／PR119 合併前快照（由上方 continuation 取代）：** [R4 artifact 阻斷與集中修正](qa/DEV-057-lifecycle-artifact-correction-2026-10-06.md)。R4 default-off owner 已 PRE_ACTIVATION_ABORTED；新 source-map-js 1.2.2 pin 與 parser regression 尚待本批 required CI／merge。R4 runner／native image proof／實際 migrator preflight 已完成但不是31-row replay；新 dependency source 必須重建並重新綁定 runner／infra／recovery／intent，不原樣重跑。flag=false、Scheduler=PAUSED；後續原生 replay→独立 enable→resume→正向 lifecycle／L4，DEV-057 背景 slice／DEV-014 仍 OPEN。
@@ -11,6 +11,16 @@
 
 <a id="dev-057-dev014-principal-lifecycle-v2"></a>
 
+## DEV-057 DEV-014 lifecycle — R7 target/startup and unsealed cleanup correction (2026-10-06)
+
+唯一續點：[R7 集中修正](qa/DEV-057-lifecycle-enabled-startup-correction-2026-10-06.md)。R6 default-off owner source deda9f1f42041bb511096dd999f1ec3caf71504b 已 RELEASED，正式 orgmaster-prod-e3d1b46d16bf 100%，原生 applied=0/replayed=31。其後 enablement run 37421063518 在 candidate 啟動時失敗，已 FINALIZED/PRE_ACTIVATION_ABORTED、UNCHANGED_VERIFIED；未切流，worker=false、Scheduler=PAUSED。實際 stderr 是 DEV040_R2_ORGMASTER_WRONG_PRODUCTION_TARGET，因 profile 缺七個固定 target 欄位；另有未 Ready candidate 未出現在 trafficStatuses 而漏清 configured tag 的發布收束缺口。
+
+本批只補齊精確固定 target 設定與未封存候選清理，不移除 server target guard、不改 SQL/已套用 migration/Principal 規則。354 owner Node、17 actual-profile startup 與 db-boundary 本機通過；正式啟用、正向 event/receipt/epoch/恢復仍待完成，DEV-014 背景 slice OPEN。
+
+合併與 required CI 後，先以精確失敗 revision/tag、合法 100% Principal-only baseline 和 etag CAS 收束殘留候選；安全讀回後才重新準備 source-bound owner release。沿現有 default-off checksum replay→獨立 enablement→原生 exact Scheduler resume→固定 JFS9014 正常 writer 停用/恢復與 receipt/epoch/L4，不原樣重跑過期計畫。不得重綁正式員工、自動啟用原停用者或新增 v1/bridge/pilot。DEV-057 R40 和 DEV-015 已完成授權整合維持原結案。
+
+<details><summary>HISTORY_ONLY: R3/R4/R6 checkpoints, superseded by R7 above</summary>
+
 ## DEV-057 DEV-014 Principal lifecycle v2 — false-state owner release pending, enablement/L4 pending (2026-10-06)
 
 Current state: OrgMaster release ORGMASTER-REL-20261005232946673-F3E3130 remains serving at orgmaster-prod-a48a05dc0080 with migration 031 installed and the complete 31-row ledger; runtime SESSION_USER readback passed. The background flag remains false and the product Scheduler PAUSED. Platform R38 source 2c864651bba305479ceab884712fc5b7e4b322a6 is RELEASED at 100% revision jenfu-platform-prod-918ba7cde2d7; native 011 verification is applied=0/replayed=11 ([receipt](../../Jenfu-Platform/output/dev-012/inputs/dev014-platform-published-lifecycle-false-chain-r38-20261006.json)). This completes the consumer-side replay evidence only. OrgMaster R3 runner image for source 8de46ca22483b8b56fc91dd8db0c9656a34e6881 is built, but APP_INFRA_IMAGE_ROTATION is not applied and no false-state owner release from that source is published.
@@ -19,6 +29,9 @@ Next native sequence:
 1. Finish protected-source CI, then the runner-only false-state owner release using --dev014-principal-lifecycle-v2-remediation, a fresh source-bound --dev014-infra-ref, and proof-bound Principal-only recovery. Apply the existing APP_INFRA_IMAGE_ROTATION complete-address gate with only the exact runner image field changed and all non-image fields identical. Because the installed ledger already has 31 rows, require the complete checksum-native Job replay: applied=0, replayed=31. Keep the lifecycle flag false and Scheduler PAUSED; do not substitute smoke credential reuse or app-infra-reuse proof.
 2. After that owner release is finalized, run the existing --dev014-principal-lifecycle-enable mode separately under its unchanged gate. It is runtime-only false→true, requires UNCHANGED_VERIFIED and zero DDL, and is not combined with runner rotation.
 3. Resume only the exact Scheduler after the enablement release and fresh owner readbacks. Use the existing normal Principal fixture flow and v2 readback evidence for event, Platform receipt, auth epoch, replay/recovery, and Production L4. The readback is observational; no migration or manual SQL is added.
+
+
+</details>
 
 <details><summary>HISTORY_ONLY: pre-install lifecycle checkpoints, superseded by the current state above</summary>
 

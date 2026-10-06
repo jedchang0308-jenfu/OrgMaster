@@ -22,6 +22,16 @@ export const DEV014_PLATFORM_LIFECYCLE_V2_CONSUMER = Object.freeze({
   appliedSha256:'877e29aa680039f205484c730f5952177cbfeb9ba76ac69cdaae0118df084b80',
 })
 
+export const DEV014_LIFECYCLE_RUNTIME_TARGET = Object.freeze({
+  "ORGMASTER_DEPLOYMENT_ENV": "production",
+  "GOOGLE_CLOUD_PROJECT": "jenfu-platform-prod",
+  "GOOGLE_CLOUD_REGION": "asia-east1",
+  "ORGMASTER_CLOUD_SQL_INSTANCE": "jenfu-platform-prod-pg",
+  "ORGMASTER_CLOUD_SQL_CONNECTION_NAME": "jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg",
+  "ORGMASTER_POSTGRES_DATABASE": "jenfu_prod",
+  "ORGMASTER_POSTGRES_IAM_LOGIN": "orgmaster-prod-runtime@jenfu-platform-prod.iam"
+})
+
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 
@@ -100,7 +110,8 @@ export function assertDev014PrincipalLifecycleRuntimeGuard(profile, before, afte
   const field = 'ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED'
   const from = before?.plainEnvironment?.[field]
   if (![undefined, 'false'].includes(from) || after?.plainEnvironment?.[field] !== 'false'
-    || !same(after.plainEnvironment, { ...before?.plainEnvironment, [field]: 'false' })
+    || Object.entries(DEV014_LIFECYCLE_RUNTIME_TARGET).some(([name,value]) => before?.plainEnvironment?.[name] !== undefined && before.plainEnvironment[name] !== value)
+    || !same(after.plainEnvironment, { ...before?.plainEnvironment, ...DEV014_LIFECYCLE_RUNTIME_TARGET, [field]: 'false' })
     || !same(after.secretVersions, before?.secretVersions)) fail('DEV014_PRINCIPAL_LIFECYCLE_RUNTIME_GUARD_INVALID')
   assertRuntimeConfig(profile, after)
   return after
