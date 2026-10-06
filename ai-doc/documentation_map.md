@@ -1,6 +1,8 @@
 # OrgMaster 文件地圖
 
-## DEV-057 DEV-014 Principal lifecycle v2 — current slice (2026-10-06, unpublished)
+## DEV-057 DEV-014 Principal lifecycle v2 — installed, enablement/L4 pending (2026-10-06)
+
+Current continuation: [bounded v2 event/epoch readback](qa/DEV-057-lifecycle-v2-formal-readback-2026-10-06.md) → [native CLI](../scripts/dev014-production-lifecycle-readback.mjs) and [read-only module](../scripts/lib/dev014-lifecycle-v2-readback.mjs). Installed 031 and runtime SESSION_USER evidence are complete; worker flag=false and Scheduler=PAUSED. Earlier unpublished checkpoints below remain source provenance, not the next execution queue. The readback-only batch must pass protected source CI and receive a new immutable runner image; it does not modify schema or fixtures.
 
 [Native readback prefix 矯正及兩次原始 FAIL](qa/DEV-057-lifecycle-readback-correction-2026-10-06.md)：正常 CLI publication regression 17/17 LOCAL PASS；同一子項續接 source／runner／ledger 讀回，不新增主任務，不推論 Production 完成。
 

@@ -6,7 +6,13 @@
 
 <a id="dev-057-dev014-principal-lifecycle-v2"></a>
 
-## DEV-057 DEV-014 Principal lifecycle v2 — current slice (2026-10-06, unpublished)
+## DEV-057 DEV-014 Principal lifecycle v2 — installed, enablement/L4 pending (2026-10-06)
+
+Current state: native release `ORGMASTER-REL-20261005232946673-F3E3130` is RELEASED at `orgmaster-prod-a48a05dc0080`, with the exact 31-entry migration ledger. The real runtime-only readback proved `orgmaster-prod-runtime@jenfu-platform-prod.iam`, read-only transaction and correct database; its temporary Job was deleted and read back absent. Background execution remains disabled and the permanent Scheduler PAUSED. Platform 011 was applied in its safely aborted R35, but its finalized consumer release and conformance are still pending. Neither install nor the runtime readback closes QA014-07 through QA014-10.
+
+Next batch: [fixed-fixture v2 formal readback](qa/DEV-057-lifecycle-v2-formal-readback-2026-10-06.md), protected CI and runner rotation, then native owner enablement, exact-job resume, positive event/receipt/epoch, revoke and recovery L4. Existing original dirty files are preserved and excluded. The readback tool is read-only; fixture transitions use normal verified Principal UI commands. No new migration, manual SQL or automatic account activation.
+
+<details><summary>HISTORY_ONLY: pre-install lifecycle checkpoints, superseded by the current state above</summary>
 
 發布前 native readback 出現固定 prefix separator 缺陷，已取得 credential／SQL 前的精確原因並完成聚焦修正；兩次失敗 execution 已終止且原 Job template 完整還原。[修正與原始 FAIL](qa/DEV-057-lifecycle-readback-correction-2026-10-06.md)記錄 LOCAL_REGRESSION 17/17；待 protected source／新 immutable runner 及 native ledger／queue readback，不計入 Production 或 L4 完成。
 
@@ -26,6 +32,8 @@ Local SQL/capacity evidence remains [R6/R7](../../Jenfu-Platform/ai-doc/qa/evide
 - [ ] Fresh source-matched migration-runner image rotation and validated 30→31 or exact 31-row replay receipt.
 - [ ] Owner candidate and Principal recovery evidence, real provider/Scheduler readback, live IAM/SESSION_USER, production recovery and Production L4.
 - [ ] Production false→true owner activation and exact-job resume/readback. The local caller is implemented; [JENFU current sequence](../../Jenfu-Platform/ai-doc/specs/DEV-014-managed-identity-production-activation.md#current-lifecycle-completion-20261005) is authoritative. Failure containment pauses scheduling and records the outcome; recovery uses only a v2-compatible Principal-only background=false version. Post-release recovery and positive lifecycle behavior still require formal evidence.
+
+</details>
 
 ## DEV-057 active-v6 reader批次正式結案（2026-10-06，現行）
 

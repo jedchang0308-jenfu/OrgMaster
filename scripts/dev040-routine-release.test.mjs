@@ -1587,8 +1587,9 @@ test('actual ordinary CLI selection through routine decision accepts an own comp
   assert.equal(result.pendingMigrationCount, 0)
   assert.equal(result.liveLedgerRead, false)
   assert.equal(result.smokeRotationContinuation.newVersion, '8')
-  // Lifecycle readback is now copied into the exact migration-runner image.
-  assert.equal(result.smokeRotationContinuation.executableInputCount, 17)
+  // The native v2 readback CLI adds one explicitly packaged helper to the
+  // complete executable-input closure; it must not reuse the old image.
+  assert.equal(result.smokeRotationContinuation.executableInputCount, 18)
   assert.equal(result.smokeRotationContinuation.terraformAddressCount, h.addresses.length)
   assert.equal(result.smokeRotationContinuation.providerCurrentReadback, false)
   assert.equal(result.operatorSmokeRotationReadback.evidenceScope, 'OPERATOR_PROVIDER_CURRENT_METADATA')

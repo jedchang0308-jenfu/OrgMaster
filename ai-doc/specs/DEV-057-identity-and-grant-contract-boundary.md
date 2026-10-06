@@ -4,6 +4,8 @@
 
 ## 唯一施工入口
 
+Lifecycle v2 remaining obligation has one current continuation: [bounded native event/epoch readback](../qa/DEV-057-lifecycle-v2-formal-readback-2026-10-06.md), installed 031 → published Platform 011 → owner false→true enablement → exact Scheduler resume → fixed-fixture revoke/restore/replay L4. Earlier unpublished install checkpoints are historical. The current readback batch changes only operator packaging and evidence reads; applied migrations stay immutable. There is no v1 worker, bridge or per-person authority transition.
+
 文件角色：CURRENT_CONTRACT。本地 `ORGMASTER/DEV-057#identity-grants`／`#principal-producer-impact` 參與 `JENFU/DEV-015`，consumer為 `AIPDM/DEV-121#target-authorization`。沿既有任務，架構已定案；不從歷史測試或文件成熟度推論正式交付完成。
 
 原文完整保存於 [HISTORY_ONLY快照](DEV-057-identity-and-grant-contract-boundary-history-2026-10-03.md)；逐人authority switch、雙版正常session、AAL2強制及舊catalog發布步骤均不再是施工入口。當輪來源／receipt仍可追溯，應用中的已套用migration不可改寫。

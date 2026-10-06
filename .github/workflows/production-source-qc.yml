@@ -26,6 +26,10 @@ jobs:
         run: docker build --target runtime-smoke --progress=plain .
       - run: npm ci
       - run: npm run test:dev-040:r2
+      - run: npm run test:dev-014:lifecycle-readback
+      - run: npm run test:dev-040:abort
+      - run: npm test -- --testTimeout=30000
+      - run: npm run build
       - run: npm exec vitest run server/aiPdmRoleCatalogRepository.test.ts
       - run: npm run check:db-boundary
       - run: npm run qc:dev-040:r2

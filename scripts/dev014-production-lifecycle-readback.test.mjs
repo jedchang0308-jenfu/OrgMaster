@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { readLifecycleSnapshot, runMain, safeReadbackErrorCode } from './dev014-production-lifecycle-readback.mjs'
 import { crc32cBase64 } from './lib/dev012-production-migration-runner.mjs'
+import { TARGET } from './dev040-production-migration-runner.mjs'
 
 function database(mode = 'migrator', identityOverrides = {}, fixtures = {}) {
   const calls = []
@@ -15,6 +16,48 @@ function database(mode = 'migrator', identityOverrides = {}, fixtures = {}) {
     if(sql.includes('UNION ALL SELECT')) return {rows:fixtures.errorRows ?? [{queue:'refresh',code:'TIMEOUT',count:'1'},{queue:'lifecycle',code:'private@example.test',count:'1'}]}
     return {rows:[]}
   } }
+}
+
+function v2Database({ accountRows = [], eventRows = [] } = {}) {
+  const calls = []
+  let identityRead = 0
+  return { calls, async query(sql, params = []) {
+    calls.push({ sql, params })
+    if (['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY', 'COMMIT', 'ROLLBACK',
+      "SET LOCAL statement_timeout = '10s'", "SET LOCAL idle_in_transaction_session_timeout = '10s'",
+      'SET LOCAL ROLE jenfu_orgmaster_migrator'].includes(sql)) return { rows: [] }
+    if (sql.includes('current_database()')) {
+      identityRead += 1
+      return { rows: [{ database: 'jenfu_prod', session_user: TARGET.login,
+        effective_user: identityRead === 1 ? TARGET.login : 'jenfu_orgmaster_migrator', transaction_read_only: 'on' }] }
+    }
+    if (sql.includes('v_active_principal_accounts_v1')) return { rows: accountRows }
+    if (sql.includes('v_principal_lifecycle_events_v2')) return { rows: eventRows }
+    if (sql.includes('read_principal_auth_state_v3')) return { rows: [] }
+    throw new Error('unexpected query in v2 CLI test')
+  } }
+}
+
+function productionEnvironment(source, job = TARGET.job) {
+  return { SOURCE_REVISION: source, OWNER_APPLICATION_ID: 'orgmaster', RELEASE_BUCKET: TARGET.releaseBucket,
+    GOOGLE_CLOUD_PROJECT: 'jenfu-platform-prod', GOOGLE_CLOUD_REGION: 'asia-east1',
+    CLOUD_SQL_INSTANCE_CONNECTION_NAME: 'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',
+    POSTGRES_DATABASE: 'jenfu_prod', POSTGRES_IAM_LOGIN: TARGET.login,
+    POSTGRES_SOCKET: '/cloudsql/jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg', CLOUD_RUN_JOB: job }
+}
+
+function publishFetch(outputRef, capture) {
+  return async (url, init = {}) => {
+    if (url.startsWith('http://metadata.google.internal/')) return Response.json({ access_token: 'synthetic-readback-token', expires_in: 3600 })
+    if (init.method === 'POST') {
+      assert.ok(url.includes(`name=${encodeURIComponent(outputRef.slice(`gs://${TARGET.releaseBucket}/`.length))}`))
+      assert.match(url, /ifGenerationMatch=0$/u)
+      capture.bytes = Buffer.from(init.body)
+      return Response.json({ generation: '1' })
+    }
+    if (url.includes('alt=media')) return new Response(capture.bytes)
+    return Response.json({ generation: '1', crc32c: crc32cBase64(capture.bytes) })
+  }
 }
 
 test('migrator uses one read-only snapshot, the original SQL login, and bounded owner-only aggregates', async()=>{
@@ -142,6 +185,123 @@ test('native migrator CLI accepts the documented output path and publishes an ex
   assert.ok(!bytes.includes(token))
 })
 
+test('v2 preflight CLI keeps the native migrator target and publishes under its source-bound fixed subprefix', async () => {
+  const source = 'c'.repeat(40)
+  const outputRef = `gs://${TARGET.releaseBucket}/receipts/releases/DEV014-LIFECYCLE-READBACK/v2/${source}/preflight-001.json`
+  const db = v2Database()
+  const capture = {}
+  let clientOptions, connected = 0, ended = 0
+  class Client {
+    constructor(options) { clientOptions = options }
+    async connect() { connected += 1 }
+    query(sql, params) { return db.query(sql, params) }
+    async end() { ended += 1 }
+  }
+  const result = await runMain({
+    argv: ['--mode=v2-preflight', `--source-revision=${source}`, `--output-ref=${outputRef}`, '--include-jed-smoke=false'],
+    environment: productionEnvironment(source), Client, fetchImpl: publishFetch(outputRef, capture),
+  })
+  assert.equal(clientOptions.user, TARGET.login)
+  assert.equal(clientOptions.database, 'jenfu_prod')
+  assert.equal(clientOptions.password, 'synthetic-readback-token')
+  assert.equal(connected, 1)
+  assert.equal(ended, 1)
+  assert.equal(result.mode, 'v2-preflight')
+  assert.equal(result.schemaVersion, 'orgmaster.dev014-lifecycle-v2-preflight.v1')
+  assert.equal(result.sourceRevision, source)
+  assert.equal(result.databaseWrites, 0)
+  assert.deepEqual(JSON.parse(capture.bytes), result)
+  assert.equal(db.calls[0].sql, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+  assert.ok(db.calls.some(call => call.sql === 'SET LOCAL ROLE jenfu_orgmaster_migrator'))
+  assert.equal(db.calls.at(-1).sql, 'COMMIT')
+  assert.equal(db.calls.some(call => call.sql.includes('schema_migrations') || call.sql.includes('managed_identity_lifecycle_outbox')), false)
+})
+
+test('v2 event CLI binds one fixed employee and exact operation selector without publishing when absent', async () => {
+  const source = 'd'.repeat(40)
+  const outputRef = `gs://${TARGET.releaseBucket}/receipts/releases/DEV014-LIFECYCLE-READBACK/v2/${source}/event-001.json`
+  const db = v2Database()
+  const fetchCalls = []
+  let ended = 0
+  class Client {
+    async connect() {}
+    query(sql, params) { return db.query(sql, params) }
+    async end() { ended += 1 }
+  }
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, method: init.method ?? 'GET' })
+    if (url.startsWith('http://metadata.google.internal/')) return Response.json({ access_token: 'synthetic-readback-token', expires_in: 3600 })
+    throw new Error('event lookup failure must not publish an object')
+  }
+  await assert.rejects(runMain({
+    argv: ['--mode=v2-event', `--source-revision=${source}`, `--output-ref=${outputRef}`,
+      '--employee-number=JFS9014', '--operation-id=DEV014-JFS9014-REVOKE-0001'],
+    environment: productionEnvironment(source), Client, fetchImpl,
+  }), /DEV014_LIFECYCLE_V2_READBACK_EVENT_NOT_FOUND/u)
+  const eventCall = db.calls.find(call => call.sql.includes('v_principal_lifecycle_events_v2'))
+  assert.ok(eventCall.sql.includes('operation_id=$2'))
+  assert.deepEqual(eventCall.params, ['orgmaster.principal-lifecycle.v2', 'DEV014-JFS9014-REVOKE-0001'])
+  assert.equal(db.calls.at(-1).sql, 'ROLLBACK')
+  assert.equal(fetchCalls.filter(call => call.method === 'POST').length, 0)
+  assert.equal(ended, 1)
+})
+
+test('v2 event created-after selector is bound as a timestamp and rejects ambiguous selectors before credentials', async () => {
+  const source = 'e'.repeat(40)
+  const outputRef = `gs://${TARGET.releaseBucket}/receipts/releases/DEV014-LIFECYCLE-READBACK/v2/${source}/event-002.json`
+  const db = v2Database()
+  let fetches = 0
+  class Client {
+    async connect() {}
+    query(sql, params) { return db.query(sql, params) }
+    async end() {}
+  }
+  const fetchImpl = async (url, init = {}) => {
+    fetches += 1
+    if (url.startsWith('http://metadata.google.internal/')) return Response.json({ access_token: 'synthetic-readback-token', expires_in: 3600 })
+    if (init.method === 'POST') throw new Error('empty candidate must not publish')
+    throw new Error('unexpected storage read')
+  }
+  await assert.rejects(runMain({
+    argv: ['--mode=v2-event', `--source-revision=${source}`, `--output-ref=${outputRef}`,
+      '--employee-number=JFS9015', '--created-after=2026-10-05T00:00:00Z'],
+    environment: productionEnvironment(source), Client, fetchImpl,
+  }), /DEV014_LIFECYCLE_V2_READBACK_EVENT_NOT_FOUND/u)
+  const eventCall = db.calls.find(call => call.sql.includes('v_principal_lifecycle_events_v2'))
+  assert.ok(eventCall.sql.includes('created_at >= $2::timestamptz'))
+  assert.equal(eventCall.params[2], '01a0c82b-372c-7d20-ba3b-6e3b892d2f63')
+  assert.equal(fetches, 1)
+
+  fetches = 0
+  await assert.rejects(runMain({
+    argv: ['--mode=v2-event', `--source-revision=${source}`, `--output-ref=${outputRef}`,
+      '--employee-number=JFS9015', '--operation-id=DEV014-JFS9015-REVOKE-0001', '--created-after=2026-10-05T00:00:00Z'],
+    environment: productionEnvironment(source), Client, fetchImpl,
+  }), /DEV014_LIFECYCLE_READBACK_ARG_INVALID/u)
+  assert.equal(fetches, 0)
+})
+
+test('unknown, duplicate, extra-mode, and wrong-target v2 arguments fail before reading credentials', async () => {
+  const source = 'f'.repeat(40)
+  const outputRef = `gs://${TARGET.releaseBucket}/receipts/releases/DEV014-LIFECYCLE-READBACK/v2/${source}/event-003.json`
+  let fetches = 0, clients = 0
+  class Client { constructor() { clients += 1 } }
+  const fetchImpl = async () => { fetches += 1; throw new Error('credentials must not be read') }
+  const invalid = [
+    ['--mode=v2-event', `--source-revision=${source}`, `--output-ref=${outputRef}`, '--employee-number=JFS9999', '--operation-id=OP-1'],
+    ['--mode=v2-event', `--source-revision=${source}`, `--output-ref=${outputRef}`, '--employee-number=JFS9014', '--operation-id=OP-1', '--created-after=2026-10-05T00:00:00Z'],
+    ['--mode=v2-preflight', `--source-revision=${source}`, `--output-ref=${outputRef}`, '--include-jed-smoke=maybe'],
+    ['--mode=v2-preflight', `--source-revision=${source}`, `--output-ref=${outputRef}`, '--latest=true'],
+    ['--mode=v2-preflight', `--source-revision=${source}`, `--source-revision=${source}`, `--output-ref=${outputRef}`],
+    ['--mode=migrator', `--source-revision=${source}`, `--output-ref=${outputRef}`, '--include-jed-smoke=true'],
+    ['--mode=runtime', `--source-revision=${source}`, `--output-ref=${outputRef}`, '--employee-number=JFS9014'],
+    ['--mode=v2-preflight', `--source-revision=${source}`, `--output-ref=gs://${TARGET.releaseBucket}/receipts/releases/DEV014-LIFECYCLE-READBACK/legacy-v2.json`],
+  ]
+  for (const argv of invalid) await assert.rejects(runMain({ argv, environment: productionEnvironment(source), Client, fetchImpl }), /DEV014_LIFECYCLE_READBACK_ARG_INVALID/u)
+  assert.equal(fetches, 0)
+  assert.equal(clients, 0)
+})
+
 test('diagnostics retain fixed guard/SQLSTATE codes and suppress arbitrary error messages',()=>{
   assert.equal(safeReadbackErrorCode({code:'MIGRATION_GCS_REF_INVALID',message:'private material'}),'MIGRATION_GCS_REF_INVALID')
   assert.equal(safeReadbackErrorCode({code:'42501',message:'private query'}),'42501')
@@ -151,4 +311,7 @@ test('diagnostics retain fixed guard/SQLSTATE codes and suppress arbitrary error
   assert.equal(safeReadbackErrorCode({code:'SECRET123'}),'UNCLASSIFIED_READBACK_FAILURE')
   assert.equal(safeReadbackErrorCode({code:'SECRE'}),'UNCLASSIFIED_READBACK_FAILURE')
   assert.equal(safeReadbackErrorCode(new Error('DEV014_LIFECYCLE_READBACK_SECRET123')),'UNCLASSIFIED_READBACK_FAILURE')
+  assert.equal(safeReadbackErrorCode(new Error('DEV014_LIFECYCLE_V2_READBACK_EVENT_NOT_FOUND')),'DEV014_LIFECYCLE_V2_READBACK_EVENT_NOT_FOUND')
+  assert.equal(safeReadbackErrorCode(new Error('DEV014_LIFECYCLE_V2_READBACK_DELIVERY_QUERY_INVALID')),'DEV014_LIFECYCLE_V2_READBACK_DELIVERY_QUERY_INVALID')
+  assert.equal(safeReadbackErrorCode(new Error('DEV014_LIFECYCLE_V2_READBACK_SECRET123')),'UNCLASSIFIED_READBACK_FAILURE')
 })
