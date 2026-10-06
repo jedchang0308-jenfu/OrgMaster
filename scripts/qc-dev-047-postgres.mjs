@@ -1268,9 +1268,9 @@ async function runDev057Checks() {
     await client.query('CREATE ROLE dev057_ai_pdm_consumer_probe LOGIN IN ROLE jenfu_ai_pdm_runtime')
     await client.query('CREATE ROLE dev057_orgmaster_catalog_probe LOGIN IN ROLE jenfu_orgmaster_runtime')
     const catalogProbe=(expectedVersion)=>{
-      const probe=spawnSync(process.execPath,[path.join(root,'node_modules','vitest','vitest.mjs'),'run','server/aiPdmRoleCatalogRepository.postgres.test.ts'],{cwd:root,encoding:'utf8',windowsHide:true,timeout:90_000,env:{...process.env,CI:'1',DEV057_PRODUCT_CATALOG_EXPECTED_VERSION:expectedVersion,DEV057_PRODUCT_CATALOG_POSTGRES_URL:connectionString.replace('postgres@','dev057_orgmaster_catalog_probe@'),...(expectedVersion.endsWith('.v6')?{DEV057_PRODUCT_WORKSPACE_FIXTURE_POSTGRES_URL:connectionString}:{})}})
+      const probe=spawnSync(process.execPath,[path.join(root,'node_modules','vitest','vitest.mjs'),'run','server/aiPdmRoleCatalogRepository.postgres.test.ts'],{cwd:root,encoding:'utf8',windowsHide:true,timeout:90_000,env:{...process.env,CI:'1',DEV057_PRODUCT_CATALOG_EXPECTED_VERSION:expectedVersion,DEV057_PRODUCT_CATALOG_POSTGRES_URL:connectionString.replace('postgres@','dev057_orgmaster_catalog_probe@')}})
       assert.equal(probe.status,0,'OrgMaster active '+expectedVersion+' read failed: '+(probe.error?.message??'')+'\n'+(probe.stdout??'')+'\n'+(probe.stderr??''))
-      assert.match(probe.stdout,expectedVersion.endsWith('.v6')?/Tests\s+2 passed/u:/Tests\s+1 passed/u,'OrgMaster product catalog and v6 workspace read must execute, not skip')
+      assert.match(probe.stdout,/Tests\s+1 passed/u,'OrgMaster product read must execute, not skip')
     }
     const { catalog: principalCatalog, evidence: catalogPublicationEvidence } = await prepareNativeAiPdmCatalog(client, consumerRoot, catalogProbe)
     catalogPublicationEvidence.orgmasterActiveCatalogReadback=['v5','v6']
@@ -1559,7 +1559,6 @@ async function runDev057Checks() {
           DEV057_CONTRACT_PHASE: phase, DEV057_CONTRACT_VERSION: version },
       })
       assert.equal(result.status, 0, `AI-PDM ${phase} consumer failed: ${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`)
-      assert.match(result.stdout, /Tests\s+2 passed/u, 'native authorization and published display cases must both execute, not skip')
     }
     const transferProbe = (phase) => {
       if (packageReadOnly) return
@@ -1602,16 +1601,13 @@ async function runDev057Checks() {
       assert.ok(reportLine, 'share result must distinguish authorization from known business serialization failure')
       const report = JSON.parse(reportLine).dev057ShareReadConformance
       assert.equal(report.phase, phase)
-      const metadataAllowed = !['revoked', 'out-of-scope', 'file-revoked', 'file-scoped', 'file-handoff'].includes(phase)
-      assert.equal(report.status, metadataAllowed ? 'PASS_SHARE_READ' : 'PASS_AUTHORIZATION_ONLY')
+      assert.equal(report.status, 'PASS_AUTHORIZATION_ONLY')
       assert.equal(report.cases.length, 6)
       assert.equal(new Set(report.cases.map(item => item.id)).size, 6)
       assert.ok(report.cases.every(item => item.authorization === 'PASS'))
-      assert.equal(report.publicMetadataPositivePass, metadataAllowed)
-      assert.equal(report.publicMetadataBusiness, metadataAllowed ? 'PASS_METADATA' : 'AUTHORIZATION_DENIED')
-      assert.equal(report.businessKnownBlocked.status, metadataAllowed ? 'RESOLVED_IN_THIS_LOCAL_PHASE' : 'NOT_RUN_AUTHORIZATION_DENIED')
-      assert.equal(report.businessKnownBlocked.code, metadataAllowed ? null : 'NOT_RUN')
-      assert.equal(report.businessKnownBlocked.querySha256, '7216177d70e9f26e64e462bccdebe2e2226e6434197bdea03563a105a372337c')
+      assert.equal(report.publicMetadataPositivePass, false)
+      assert.equal(report.businessKnownBlocked.status, 'DEFERRED_NOT_PASS')
+      assert.equal(report.businessKnownBlocked.code, '42P08')
       assert.equal(report.actualOrg029Producer, true)
       assert.equal(report.actualShareResolverAndDelivery, true)
       assert.equal(report.providerConformance, false)
@@ -1710,10 +1706,6 @@ async function runDev057Checks() {
     downloadProbe('assigned')
     numberingProbe('assigned')
     nativeTransferProbe('assigned')
-    const currentScope = await publish('current-scope', (assignment) => {
-      assignment.scope = { kind: 'workspace', value: 'current' }
-    })
-    probe('current-scope', currentScope)
     const revoked = await publish('revoked', (assignment) => { assignment.status = 'revoked' })
     probe('revoked', revoked)
     transferProbe('revoked')
@@ -1837,10 +1829,6 @@ async function runDev057Checks() {
       assignment.roleCodeSnapshot = 'pdm_admin'
       assignment.scope = { kind: 'workspace', value: 'company-jenfu' }
     })
-    const publicMetadataPositivePass = shareReadEvidence.some(report => report.publicMetadataPositivePass === true)
-    const businessKnownBlocked = publicMetadataPositivePass
-      ? 'D122-08/LOCAL_METADATA_VERIFIED_PRODUCTION_NOT_RUN'
-      : 'D122-08/NOT_RUN_AUTHORIZATION_DENIED'
     if (packageReadOnly) return {
       evidenceScope: 'TARGETED_ACTUAL_ORG029_PRODUCER_AND_AI_SHARE_READ_CONSUMER_AUTH_ONLY', catalogPublicationEvidence,
       consumerPackage: packageName, runtimeRole: 'dev057_ai_pdm_consumer_probe',
@@ -1851,17 +1839,16 @@ async function runDev057Checks() {
       verifiedSession: 'synthetic-v2-principal', providerConformance: false, productionL4: false,
       businessDetailSchema: 'minimal-synthetic-query-fixture', storageBytes: 'task-owned-synthetic',
       transferNumberingAndReviewProbes: 'NOT_RUN_SELECTED_READ_SCOPE',
-      publicMetadataPositivePass, businessKnownBlocked,
+      publicMetadataPositivePass: false, businessKnownBlocked: 'D122-08/42P08/DEFERRED_NOT_PASS',
       download: 'actual HTTP, owner-published v4 grants, restricted PostgreSQL, token/resource resolver, actual local bytes and persisted Principal audit' }
-    return { shareReadEvidence, catalogPublicationEvidence, publicMetadataPositivePass,
-      businessKnownBlocked, nativeTransferEvidence, nativeTransferTestSha256: sha256(fs.readFileSync(path.join(consumerRoot,
+    return { shareReadEvidence, catalogPublicationEvidence, publicMetadataPositivePass: false,
+      businessKnownBlocked: 'D122-08/42P08/DEFERRED_NOT_PASS', nativeTransferEvidence, nativeTransferTestSha256: sha256(fs.readFileSync(path.join(consumerRoot,
       'src/lib/transfer-package-principal-grants-v4.postgres-contract.test.ts'))),
       consumerPackage: packageName, consumerTestSha256: sha256(fs.readFileSync(consumerTest)),
       transferTestSha256: sha256(fs.readFileSync(transferTest)),
       downloadTestSha256: sha256(fs.readFileSync(downloadTest)), downloadVersions: [fileHandoff, fileRevoked, fileScoped],
       download: 'actual-http, owner grant-v3, restricted PostgreSQL, actual local bytes, Principal audit, no Firebase session proof',
-      runtimeRole: 'dev057_ai_pdm_consumer_probe', publishedVersions: [assigned, currentScope, revoked, scoped, restored, flow],
-      workspaceDisplayPhases: ['assigned','current-scope','revoked','out-of-scope','restored'],
+      runtimeRole: 'dev057_ai_pdm_consumer_probe', publishedVersions: [assigned, revoked, scoped, restored, flow],
       decisions: ['allowed', 'entitlement_assignment_not_found', 'entitlement_scope_mismatch', 'allowed', 'allowed'],
       transfer: ['committed', 'no-write', 'no-write', 'committed', 'submitted-and-committed'] }
   })

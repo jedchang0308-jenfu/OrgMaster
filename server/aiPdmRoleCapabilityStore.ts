@@ -1,8 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, unlink } from 'node:fs/promises'
+import { mkdir, readFile, rename, unlink, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { getWorkspaceIndex, getWorkspaceVersion, getWorkspacePaths } from './orgmasterWorkspaceStore'
-import { persistenceArtifactExists } from './orgmasterPersistenceRepository'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { readActiveAiPdmRoleCatalog, readActivePublishedAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import {
@@ -210,7 +209,7 @@ async function writeState(root: string, state: StoreState) {
 
 async function readOrganizationSource(root: string): Promise<OrganizationSource> {
   try {
-    if (!(await persistenceArtifactExists(getWorkspacePaths(root).manifest, 'orgmaster-workspace.v1.json'))) throw new AiPdmRoleCapabilityStoreError('ORGMASTER_SOURCE_UNAVAILABLE')
+    await stat(getWorkspacePaths(root).manifest)
     const index = await getWorkspaceIndex(root)
     const entry = index.versions.find((candidate) => candidate.id === index.currentVersionId)
     if (!entry || entry.loadStatus !== 'ready') throw new Error('current workspace unavailable')
