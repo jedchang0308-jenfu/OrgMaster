@@ -3,11 +3,15 @@ import pg from 'pg'
 import { pathToFileURL } from 'node:url'
 import { metadataAccessToken, assertRunnerTarget, publishGcsJson, parseGsUri } from './lib/dev012-production-migration-runner.mjs'
 import { TARGET, databaseOptions } from './dev040-production-migration-runner.mjs'
+import { readLifecycleV2EventSnapshot, readLifecycleV2PreflightSnapshot } from './lib/dev014-lifecycle-v2-readback.mjs'
 
 // parseGsUri adds '/' to the expected prefix in its guard comparison.
 const OUTPUT_PREFIX = 'receipts/releases/DEV014-LIFECYCLE-READBACK'
+const V2_OUTPUT_PREFIX = `${OUTPUT_PREFIX}/v2`
 const RUNTIME_LOGIN = 'orgmaster-prod-runtime@jenfu-platform-prod.iam'
 const MODES = Object.freeze({ migrator: TARGET.login, runtime: RUNTIME_LOGIN })
+const V2_MODES = new Set(['v2-preflight', 'v2-event'])
+const VALID_MODES = new Set([...Object.keys(MODES), ...V2_MODES])
 const safeErrors = new Set(['TIMEOUT', 'RATE_LIMITED', 'DIRECTORY_READ_UNAVAILABLE', 'LEASE_EXHAUSTED', 'DIRECTORY_PERMANENT_ERROR'])
 const safeRefreshTriggers = new Set(['manual', 'periodic', 'domain'])
 const safeRefreshStates = new Set(['queued', 'leased', 'completed', 'retry', 'dead'])
@@ -23,6 +27,49 @@ function count(value) { const number = Number(value); if (!Number.isSafeInteger(
 function seconds(value) { const number = Number(value); if (!Number.isFinite(number) || number < 0) fail('DURATION_INVALID'); return number }
 function safeClass(value, allowlist) { return typeof value === 'string' && allowlist.has(value) ? value : 'OTHER_SANITIZED' }
 function single(result) { if (result.rows.length !== 1) fail('ROW_COUNT_INVALID'); return result.rows[0] }
+
+function parseReadbackArgs(argv) {
+  const allowed = new Set(['mode', 'source-revision', 'output-ref', 'include-jed-smoke', 'employee-number', 'operation-id', 'created-after'])
+  const values = {}
+  for (const argument of argv) {
+    const match = argument.match(/^--([a-z0-9-]+)=(.*)$/u)
+    if (!match || !allowed.has(match[1]) || Object.hasOwn(values, match[1]) || match[2].length === 0) fail('ARG_INVALID')
+    values[match[1]] = match[2]
+  }
+  if (!Object.hasOwn(values, 'mode') || !Object.hasOwn(values, 'source-revision') || !Object.hasOwn(values, 'output-ref')
+    || !VALID_MODES.has(values.mode) || !/^[a-f0-9]{40}$/u.test(values['source-revision'])) fail('ARG_INVALID')
+
+  const supplied = new Set(Object.keys(values))
+  const base = new Set(['mode', 'source-revision', 'output-ref'])
+  const optional = new Set()
+  if (values.mode === 'v2-preflight') optional.add('include-jed-smoke')
+  if (values.mode === 'v2-event') {
+    optional.add('employee-number')
+    optional.add('operation-id')
+    optional.add('created-after')
+  }
+  for (const key of supplied) if (!base.has(key) && !optional.has(key)) fail('ARG_INVALID')
+
+  let selector = null
+  let includeJedSmokePrincipal = false
+  if (values.mode === 'v2-preflight') {
+    if (values['include-jed-smoke'] !== undefined && !['true', 'false'].includes(values['include-jed-smoke'])) fail('ARG_INVALID')
+    includeJedSmokePrincipal = values['include-jed-smoke'] === 'true'
+  }
+  if (values.mode === 'v2-event') {
+    if (!['JFS9014', 'JFS9015'].includes(values['employee-number'])) fail('ARG_INVALID')
+    const operationId = values['operation-id']
+    const createdAfter = values['created-after']
+    if ((operationId === undefined) === (createdAfter === undefined)) fail('ARG_INVALID')
+    if (operationId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$/u.test(operationId)) fail('ARG_INVALID')
+    if (createdAfter !== undefined && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/u.test(createdAfter)
+      || !Number.isFinite(Date.parse(createdAfter)))) fail('ARG_INVALID')
+    selector = operationId !== undefined
+      ? { employeeNumber: values['employee-number'], operationId }
+      : { employeeNumber: values['employee-number'], createdAfter }
+  }
+  return { values, selector, includeJedSmokePrincipal }
+}
 
 /** Only fixed owner-owned reads in one read-only snapshot. Runtime mode reads
  * its real session identity only: it cannot impersonate the migrator to read
@@ -99,18 +146,24 @@ export async function readLifecycleSnapshot(database, mode = 'migrator') {
 }
 
 export async function runMain({ argv = process.argv.slice(2), environment = process.env, fetchImpl = fetch, Client = pg.Client } = {}) {
-  const seen = new Set()
-  const args = Object.fromEntries(argv.map(value=>{ const match=value.match(/^--(mode|source-revision|output-ref)=(.+)$/u); if(!match || seen.has(match[1])) fail('ARG_INVALID'); seen.add(match[1]); return [match[1],match[2]] }))
-  if (argv.length!==3 || !MODES[args.mode] || !/^[a-f0-9]{40}$/u.test(args['source-revision'])) fail('ARG_INVALID')
+  const parsed = parseReadbackArgs(argv)
+  const { values: args, selector, includeJedSmokePrincipal } = parsed
   if (environment.SOURCE_REVISION !== args['source-revision']) fail('IMAGE_SOURCE_MISMATCH')
-  const expected = {...TARGET, login: MODES[args.mode], job: args.mode === 'runtime' ? 'orgmaster-prod-dev014-lifecycle-runtime-readback' : TARGET.job}
+  const ownerMode = args.mode === 'runtime' ? 'runtime' : 'migrator'
+  const expected = {...TARGET, login: MODES[ownerMode], job: ownerMode === 'runtime' ? 'orgmaster-prod-dev014-lifecycle-runtime-readback' : TARGET.job}
   assertRunnerTarget(environment, expected)
-  parseGsUri(args['output-ref'], TARGET.releaseBucket, OUTPUT_PREFIX)
+  const outputObject = parseGsUri(args['output-ref'], TARGET.releaseBucket, OUTPUT_PREFIX).object
+  if (V2_MODES.has(args.mode) && !outputObject.startsWith(`${V2_OUTPUT_PREFIX}/${args['source-revision']}/`)) fail('ARG_INVALID')
   const accessToken = await metadataAccessToken(fetchImpl)
   const database = new Client(databaseOptions(environment, accessToken))
   try {
     await database.connect()
-    const receipt = { ...await readLifecycleSnapshot(database,args.mode), sourceRevision:args['source-revision'], target:{project:'jenfu-platform-prod',projectNumber:'9536592944',region:'asia-east1',database:'jenfu_prod',owner:'orgmaster'} }
+    const snapshot = args.mode === 'v2-preflight'
+      ? await readLifecycleV2PreflightSnapshot(database, { includeJedSmokePrincipal })
+      : args.mode === 'v2-event'
+        ? await readLifecycleV2EventSnapshot(database, selector)
+        : await readLifecycleSnapshot(database, ownerMode)
+    const receipt = { ...snapshot, ...(V2_MODES.has(args.mode) ? { mode: args.mode } : {}), sourceRevision:args['source-revision'], target:{project:'jenfu-platform-prod',projectNumber:'9536592944',region:'asia-east1',database:'jenfu_prod',owner:'orgmaster'} }
     await publishGcsJson({ uri:args['output-ref'],expectedBucket:TARGET.releaseBucket,expectedPrefix:OUTPUT_PREFIX,value:receipt,token:accessToken,fetchImpl })
     process.stdout.write(JSON.stringify({status:'READ_ONLY_COMPLETE',mode:args.mode,sourceRevision:args['source-revision'],databaseWrites:0,ledgerRead:receipt.ledgerRead,queueRead:receipt.queueRead})+'\n')
     return receipt
@@ -128,8 +181,20 @@ export function safeReadbackErrorCode(error) {
   const guards = new Set(['COUNT_INVALID', 'DURATION_INVALID', 'ROW_COUNT_INVALID', 'MODE_INVALID',
     'DATABASE_IDENTITY_INVALID', 'LEDGER_INVALID', 'AGGREGATE_LIMIT', 'ERROR_CLASS_LIMIT',
     'ARG_INVALID', 'IMAGE_SOURCE_MISMATCH'].map(code=>'DEV014_LIFECYCLE_READBACK_'+code))
+  const v2Guards = new Set(['DATABASE_IDENTITY_INVALID', 'DATABASE_OPERATION_FAILED', 'DATABASE_ROLE_INVALID',
+    'DELIVERY_INVALID', 'DELIVERY_QUERY_INVALID', 'DELIVERY_RECEIPT_MISSING', 'EPOCH_QUERY_INVALID', 'EPOCH_RESULT_INVALID',
+    'EVENT_CANDIDATE_CAP', 'EVENT_CONTRACT_INVALID', 'EVENT_METADATA_INVALID', 'EVENT_NOT_FOUND',
+    'EVENT_NOT_UNIQUE', 'EVENT_QUERY_INVALID', 'EVENT_TARGET_AMBIGUOUS', 'EVENT_TARGET_CAP',
+    'EVENT_TARGET_COUNT_INVALID', 'EVENT_TARGET_PRINCIPAL_COUNT_INVALID', 'EVENT_TARGET_QUERY_INVALID',
+    'EVENT_TARGET_SCOPE_INVALID', 'FACT_QUERY_INVALID', 'FACT_ROW_CAP', 'FIXTURE_PRINCIPAL_AMBIGUOUS',
+    'FIXTURE_SELECTOR_INVALID', 'IDENTITY_FACT_AMBIGUOUS', 'IDENTITY_FACT_INVALID', 'JED_SMOKE_FACT_INVALID',
+    'NUMBER_INVALID', 'PREFLIGHT_OPTIONS_INVALID', 'QUERY_RESULT_INVALID', 'RECEIPT_EPOCH_MISMATCH',
+    'RECEIPT_INVALID', 'RECEIPT_MISMATCH', 'RECEIPT_NOT_UNIQUE', 'RECEIPT_QUERY_INVALID',
+    'RECEIPT_RESULT_INVALID', 'ROW_COUNT_INVALID', 'SELECTOR_INVALID', 'TIMESTAMP_INVALID',
+    'WORKLOAD_BINDING_INVALID', 'WORKLOAD_BINDING_QUERY_INVALID'].map(code=>'DEV014_LIFECYCLE_V2_READBACK_'+code))
   if (upstream.has(error?.code)) return error.code
   if (guards.has(error?.message)) return error.message
+  if (v2Guards.has(error?.message)) return error.message
   return 'UNCLASSIFIED_READBACK_FAILURE'
 }
 
