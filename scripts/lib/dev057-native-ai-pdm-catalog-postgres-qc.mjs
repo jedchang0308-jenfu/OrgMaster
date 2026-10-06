@@ -30,8 +30,8 @@ export async function prepareNativeAiPdmCatalog(database, consumerRoot, verifyBa
  const v5=JSON.parse(read('config/access-control/jenfu-role-catalog.v5.json'))
  if (verifyBaselineCatalog) await verifyBaselineCatalog(v5.catalogVersion)
  const v6=JSON.parse(read('config/access-control/jenfu-role-catalog.v6.json'))
- const sql=read('db/postgres/080_dev121_principal_role_catalog_v6.sql')
- const migrationPaths = ['055_jenfu_role_catalog_publication.sql', '066_dev121_principal_role_catalog_v4.sql', '070_dev121_principal_role_catalog_v5.sql', '080_dev121_principal_role_catalog_v6.sql']
+ const sql=read('db/postgres/081_dev121_principal_role_catalog_v6.sql')
+ const migrationPaths = ['055_jenfu_role_catalog_publication.sql', '066_dev121_principal_role_catalog_v4.sql', '070_dev121_principal_role_catalog_v5.sql', '081_dev121_principal_role_catalog_v6.sql']
  const evidence = { target: 'task-owned-disposable-postgresql', catalogPrerequisiteScope: '055 + catalog-only ownership changes from 062', migrationHashes: Object.fromEntries(migrationPaths.map(name => [name,createHash('sha256').update(read('db/postgres/'+name)).digest('hex')])), rejectionCases: [] }
  const snapshot = async () => { const rows={}; for(const name of ['role_catalog_publications','role_catalog_entries','active_role_catalog'])rows[name]=(await database.query('SELECT to_jsonb(t) AS row FROM ai_pdm_core.'+name+' t ORDER BY to_jsonb(t)::text')).rows;return rows }
  const entriesBefore = (await database.query('SELECT * FROM ai_pdm_core.role_catalog_entries ORDER BY catalog_version,display_order')).rows

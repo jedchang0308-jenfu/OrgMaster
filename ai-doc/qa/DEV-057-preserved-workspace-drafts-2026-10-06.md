@@ -1,3 +1,17 @@
+> 2026-10-06 現行收斂結論：RECONCILED_HISTORY_ONLY。保存的六項程式／測試差異均不採用，現行產品內容已對齊 protected master 466f35ae6059528115b979e7daf8c7de8a4a9e8e；原始 WIP commit 8a6b058 及 SHA manifest 保留。下方 WIP_NOT_RELEASE_READY 是保存時的歷史判定，不能當成新的待開發或發布指令。
+
+## 主線收斂與驗證範圍
+
+- 過期 080 migration binding、local manifest stat、刪除 PostgreSQL 正向／拒絕及執行數 probe：對齊現行 master，保留 081 與現有 PG-aware reader／測試。
+- CloudSQL early return：排除，因 DEV-056 明定讀取現行 V3 時沿既有 CAS／audit 同步缺漏的系統 catalog；跳過會違反 owner 契約。
+- Vite lifecycle plugin：不新增本機 dev／preview 入口；Production server 已掛載 lifecycle middleware。
+- 歷史 QA JSON 與保存 manifest 原始 bytes 不改寫；DEV-122 business 的歷史 deferred 結論仍保留於原 WIP。
+- 對 protected master 的最終產品／DB／release-config／dependency／workflow 差異為零。本 PR 的必要 CI 與 Codex review 以 GitHub exact head／merge 的結果為準，不用歷史 PASS 代替本 PR CI。三系統既有正式版本及流量不改變。
+
+---
+
+## 保存時的原紀錄（HISTORY_ONLY）
+
 # DEV-057 原工作樹草稿保存（2026-10-06）
 
 狀態：WIP_NOT_RELEASE_READY。來源分支為 codex/dev014-free-fixture-operator，保存前 HEAD 為 466f35ae6059528115b979e7daf8c7de8a4a9e8e。依人類「提交所有相關程式及開發文件」指示保存原有草稿；沒有執行新的 PR、合併、發布或 Production 變更。這不是新的施工入口，也不取代 DEV-057／DEV-015 的正式結案及 owner receipts。

@@ -370,4 +370,4 @@ managed Principal own governance 同根因修正沿 DEV-057 [交易契約](specs
 
 ### 2026-10-06 原工作樹草稿本地保存（HISTORY_ONLY）
 
-[DEV-057 草稿保存紀錄](qa/DEV-057-preserved-workspace-drafts-2026-10-06.md)僅保存未驗證原稿，狀態 WIP_NOT_RELEASE_READY；不改變現行正式結案、施工方向或 DEV-122 的延期判定。
+[DEV-057 草稿收斂／歷史保存](qa/DEV-057-preserved-workspace-drafts-2026-10-06.md)：RECONCILED_HISTORY_ONLY。原 WIP 程式／測試已排除並對齊 protected master；保存時原稿及 SHA manifest 不改，沒有新的產品修正／migration／部署，不改變正式結案或 DEV-122 延期判定。必要 CI 與 review 由本次文件 PR 精確來源證明。
