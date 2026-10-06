@@ -1,6 +1,24 @@
-# DEV-057／DEV-014 R7：enabled worker 啟動與未封存候選清理
+# DEV-057 / DEV-014 lifecycle v2 OrgMaster owner exit — 2026-10-06
 
-CURRENT_CONTINUATION，來源 JENFU/DEV-014 remaining lifecycle slice；沿 ORGMASTER/DEV-057，不新增主 DEV。
+CURRENT_OWNER_EXIT — OrgMaster lifecycle-worker owner slice complete; DEV-015 remains complete; DEV-014 effective obligations are complete, with final protected document delivery tracked separately.
+
+## Current owner readback
+
+Protected-source PR 121 passed required CI run 37425080699 and merged commit c41e3918f50257429b7eedff5ee7a2e451cc9ae4. The default-off release ORGMASTER-REL-20261006065142642-C41E391 (owner run 37426169123) completed ten production stages successfully and left 100% traffic on orgmaster-prod-9d3be61df2d5. The migration receipt records ledger count 31, applied=0 / replayed=31, and denied cross-database checks for jenfu_dev and jenfu_stg.
+
+The later, separate enablement release ORGMASTER-REL-20261006070633549-C41E391 (owner run 37427653341) completed ten production stages successfully and left 100% traffic on orgmaster-prod-a3dcae277231. It set the worker flag true through the existing runtime-only mode with UNCHANGED_VERIFIED, zero migrations and zero data imports. After that release and current readbacks, the exact product Scheduler was resumed; its * * * * * / Asia/Taipei configuration is provider-read-back ENABLED under sealed resume receipt SHA-256 89cc8055582c1791de41b4607f15bca5c38b5d2fd95df0326744c57610636eb7.
+
+Native evidence for the normal verified Principal fixture path records inactive event 83f14e6e-3658-4ae2-b8ff-d2bc6abe3a37 with receipt 090e9f4b-4c19-4752-bcf1-b4b81ed7980b at epoch 1. The later exact readback resolves the same event and receipt at that same epoch with one completed delivery attempt. The restore event 0f051f77-eb8b-4627-b0da-d9ce4343ece1 completed with receipt 55c977c2-8ff5-4feb-9f32-dff6951e1bd3 at epoch 2. Native worker readback confirms distinct executor and delivery actors, read-only database mode, zero database writes and zero service mutations; the fixed fixture content returned to its recorded baseline hash. The old session remains rejected after restoration with HTTP 401 auth_epoch_stale; a fresh normal Google AAL1 session returns HTTP 200 through the Platform fixture path. JFS9014 has no PDM profile and no OrgMaster application role; this is not a claim of its three-application allow. Jed current three-owner sessions share one verified Principal; JFS9015 remains suspended. The second production completed-event readback is receipt/epoch stability, not a manually triggered mutation replay.
+
+The owner Node suite recorded 354/354, actual-profile startup recorded 17/17, and DB-boundary validation passed. The 23 PostgreSQL cases and 8 runtime/source dependency files cover lost-response replay, idempotency and lease handling; they do not establish live Production fault-injection coverage. The safe [receipt/hash projection](evidence/DEV014-ORGMASTER-OWNER-LIFECYCLE-EXIT-20261006.json) includes only release and event receipts, outcome fields and raw evidence hashes; it omits raw fixture snapshots and principal identity values.
+
+## Closure boundary
+
+This evidence completes only the OrgMaster DEV-057 lifecycle-worker owner slice. Both sealed owner records retain productionL4=false and fullDev014Complete=false. Later aggregated normal fixture evidence proves the scoped Production lifecycle path separately; these earlier false flags are not rewritten. JFS9014 Portal-to-PDM denial is classified as the expected absence of an application profile (principal_account_unavailable), not an epoch defect; no profile was provisioned. DEV-015 authorization closure remains complete. JENFU DEV-014 effective obligations are complete; independent final document QC and protected PR delivery are tracked by the Platform closure matrix. This note does not declare all of DEV-014 or DEV-015 complete and does not promote a historical all-cases PASS.
+
+## HISTORY_ONLY — pre-release R7 target/startup correction and CI convergence
+
+HISTORY_ONLY — pre-release R7 correction context retained below; its former pending state is superseded by the current owner readback above.
 
 正式基線：R6 default-off ORGMASTER-REL-20261006054155079-DEDA9F1、orgmaster-prod-e3d1b46d16bf 100%、031 native applied=0/replayed=31；Platform R38 RELEASED、011 native applied=0/replayed=11。enablement ORGMASTER-REL-20261006055619947-DEDA9F1 / run 37421063518 的 candidate orgmaster-prod-8773c61d48e7 為 Ready FAILED，stderr 有精確 target guard exception；migrate UNCHANGED_VERIFIED/zero DDL。terminal PRE_ACTIVATION_ABORTED 保留原結果，不把 candidate 失敗算為 Principal 契約失敗。
 
