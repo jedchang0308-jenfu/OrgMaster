@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "orgmaster.dev014.abort-infra-evidence.v1",
+  "status": "LOCAL_FIX_NOT_RELEASED",
+  "productionL4": false,
+  "dev014Complete": false,
+  "evidence": [
+    {
+      "path": "dev014-abort-infra-red-20261006.log",
+      "sha256": "55d9d973ac0228cde70f00df21584ac6bfe4478940c3f264cf88c81b39640b6f"
+    },
+    {
+      "path": "dev014-abort-infra-green-20261006.log",
+      "sha256": "609092a915a248d635ab39da813bb337962e83528984ca215e6731c205ac7de1"
+    },
+    {
+      "path": "dev014-abort-infra-green-r2-20261006.log",
+      "sha256": "f14f1d172e508436dda0cec30a06ad82e0951bedc71a1d866669efb166fd04e8"
+    },
+    {
+      "path": "dev014-abort-infra-real-readback-20261006.json",
+      "sha256": "322f149a40e92ea343dd896aa34214cdd848198db820e3b087843e08f3dd000a"
+    },
+    {
+      "path": "dev014-abort-infra-green-r3-20261006.log",
+      "sha256": "435703d767fde699da3d92d64be545c43079104a5fe5327ccb6085157248370f"
+    },
+    {
+      "path": "dev014-abort-infra-green-r4-20261006.log",
+      "sha256": "a7875e016630304b95cd3491060fe2a6a4451de8a1f93686d88ebde6e984db3e"
+    },
+    {
+      "path": "dev014-abort-infra-owner-tests-final-20261006.log",
+      "sha256": "bc16102a2194bd5b753ca267ebdf9385db73385655e7a3713dfebb56125ca00a"
+    },
+    {
+      "path": "dev014-abort-infra-abort-tests-final-20261006.log",
+      "sha256": "fe7cb94bceff33051fc0a7b76b2fcfefa83ac853a1f41afd9327b91eb1901db8"
+    },
+    {
+      "path": "dev014-abort-infra-real-readback-final-20261006.json",
+      "sha256": "4c47c94e21909023351559f83cad4b45ea50fdcceab419d77e985fde4137b98d"
+    }
+  ],
+  "validatedSources": [
+    {
+      "path": "scripts/dev040-deploy-production.mjs",
+      "sha256": "020da543c711e3457e1a281b87ed33e60939ef7b20ab69c91dd96abc5f503e9c"
+    },
+    {
+      "path": "scripts/lib/dev040-routine-release.mjs",
+      "sha256": "72744a53a3d1ad191789e3c44cd10eaf9dd95811992d1c677bae9d4fdb675422"
+    },
+    {
+      "path": "scripts/dev040-routine-release.test.mjs",
+      "sha256": "527cb244e637ff535aa630a2e6ac2747fe75021f63d73d49e7dea0efddee1985"
+    },
+    {
+      "path": "scripts/qc-dev-040-r2-independent-release.mjs",
+      "sha256": "681475620f70a1c4c043aa8c76798280f97372b6bbebc565cd8f00c2ed5873a6"
+    }
+  ],
+  "localValidation": {
+    "ownerNodeCases": 337,
+    "ownerNodePass": 337,
+    "abortCases": 6,
+    "abortPass": 6,
+    "focusedCases": 4,
+    "focusedPass": 4,
+    "dbBoundary": "PASS",
+    "realProviderReceipts": "READ_ONLY_ACCEPTED",
+    "requiredCI": "PENDING",
+    "fullLocalBuild": "NOT_RUN_CAPACITY_BOUND_REMOTE_CI_REQUIRED"
+  }
+}

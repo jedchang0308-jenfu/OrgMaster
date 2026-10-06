@@ -1,0 +1,23 @@
+✖ DEV-014 build-abort continuation separates the applied runner from the successful service and ledger (30.4304ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 291.8357
+
+✖ failing tests:
+
+test at scripts\dev040-routine-release.test.mjs:2039:1
+✖ DEV-014 build-abort continuation separates the applied runner from the successful service and ledger (30.4304ms)
+  Error: DEV014_LIFECYCLE_REPLAY_INFRA_INVALID
+      at fail (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/lib/dev040-routine-release.mjs:13:43)
+      at assertDev014LifecycleReplayInfra (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/lib/dev040-routine-release.mjs:574:163)
+      at verifyRoutineRelease (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/lib/dev040-routine-release.mjs:851:7)
+      at async TestContext.<anonymous> (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/dev040-routine-release.test.mjs:2041:15)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    code: 'DEV014_LIFECYCLE_REPLAY_INFRA_INVALID'
+  }

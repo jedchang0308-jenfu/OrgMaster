@@ -1,0 +1,22 @@
+
+> orgmaster-canvas@0.1.0 test:dev-040:abort
+> npm --prefix tools/dev-040/abort-controller test
+
+
+> @jenfu/dev040-abort-controller@1.0.0 test
+> node --test server.test.mjs
+
+✔ S1B-13 single-capsule input and immutable control head (2.2926ms)
+✔ S1B-14 event parser and controller owner boundary (0.9202ms)
+✔ S1B-15 candidate and activation masks (0.2167ms)
+✔ S1B-16 immediate incident starts inside 120 seconds and verifies rollback (2.1746ms)
+✔ S1B-17 watchdog normalizes scheduler body, fences stopped owner and is idempotent (2.0126ms)
+✔ S1B-18 monitoring envelope and scoped readback are fail closed (1.1702ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 138.6409
