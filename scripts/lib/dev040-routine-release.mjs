@@ -521,6 +521,67 @@ export function assertDev013MigrationInfraReceipt(value, profile, sourceRevision
   return value
 }
 
+/** A completed owner image-only rotation can precede a checksum-only replay.
+ * The existing complete-set Terraform gate remains the mutation authority;
+ * this join admits its current-source receipt only in the default-off 031
+ * correction. Runtime enablement and ordinary releases retain their gates. */
+export function assertDev014LifecycleReplayInfra({ profile, intent, baselineIntent, infra, previousInfra, infraProfile }) {
+  const keys = ['schemaVersion','ownerApplicationId','projectId','region','sourceRevision','foundationManifestSha256',
+    'migrationRunnerDigest','controllerImageDigest','terraformAddressCount','terraformAddressesSha256','binaryPlanSha256',
+    'planJsonSha256','stateLineage','stateSerial','stateJsonSha256','outputManifestSha256','status','releaseAuthority','evidenceScope','observedAt','receiptSha256'].sort()
+  const addresses = [...(infraProfile?.stageA ?? []), ...(infraProfile?.stageBAdditional ?? [])].sort()
+  if (infraProfile?.ownerApplicationId !== 'orgmaster' || infraProfile.projectId !== 'jenfu-platform-prod'
+    || infraProfile.region !== 'asia-east1' || infraProfile.backendKey !== profile.state.backendKey
+    || !addresses.length || new Set(addresses).size !== addresses.length
+    || addresses.some(row => typeof row !== 'string')) fail('DEV014_LIFECYCLE_REPLAY_INFRA_INVALID')
+  for (const [row, source] of [[infra, intent.sourceRevision], [previousInfra, baselineIntent.sourceRevision]]) {
+    assertDev013MigrationInfraReceipt(row, profile, source)
+    const observedKeys = Object.keys(row).sort()
+    const hasRotation = row.mutationProfile === 'APP_INFRA_IMAGE_ROTATION' && row.imageRotation != null
+    const recovery = row.recoveryEvidence
+    if (recovery && (!same(Object.keys(recovery).sort(), ['mode','freshPlanJsonSha256','providerImagesSha256','runnerProvenanceSha256','providerBuildSha256','artifactRegistrySha256'].sort())
+      || recovery.mode !== 'FINALIZE_APPLIED_IMAGE_ROTATION_NO_MUTATION'
+      || Object.entries(recovery).some(([name,hash]) => name !== 'mode' && !/^[a-f0-9]{64}$/u.test(hash)))) fail('DEV014_LIFECYCLE_REPLAY_INFRA_INVALID')
+    const expectedKeys = [...keys,...(hasRotation ? ['mutationProfile','imageRotation'] : []),...(recovery ? ['recoveryEvidence'] : [])].sort()
+    if (!same(observedKeys, expectedKeys) || row.evidenceScope !== 'PRODUCTION_PROVIDER'
+      || row.terraformAddressCount !== addresses.length || row.terraformAddressesSha256 !== sha256(canonicalize(addresses))
+      || !Number.isSafeInteger(row.stateSerial) || row.stateSerial < 1
+      || !/^[a-f0-9-]{20,}$/iu.test(row.stateLineage ?? '') || !Number.isFinite(Date.parse(row.observedAt))
+      || ['foundationManifestSha256','binaryPlanSha256','planJsonSha256','stateJsonSha256','outputManifestSha256']
+        .some(name => !/^[a-f0-9]{64}$/u.test(row[name] ?? ''))
+      || !/^asia-east1-docker\.pkg\.dev\/jenfu-platform-prod\/orgmaster-release\/orgmaster-migration-runner@sha256:[a-f0-9]{64}$/u.test(row.migrationRunnerDigest ?? '')
+      || !/^asia-east1-docker\.pkg\.dev\/jenfu-platform-prod\/orgmaster-release\/orgmaster-abort-controller@sha256:[a-f0-9]{64}$/u.test(row.controllerImageDigest ?? '')) fail('DEV014_LIFECYCLE_REPLAY_INFRA_INVALID')
+  }
+  if (['foundationManifestSha256','controllerImageDigest','terraformAddressCount','terraformAddressesSha256','stateLineage']
+      .some(name => !same(infra[name], previousInfra[name]))
+    || infra.stateSerial <= previousInfra.stateSerial || Date.parse(infra.observedAt) < Date.parse(previousInfra.observedAt)
+    || infra.migrationRunnerDigest === previousInfra.migrationRunnerDigest) fail('DEV014_LIFECYCLE_REPLAY_INFRA_INVALID')
+  const proof = infra.imageRotation
+  if (infra.mutationProfile !== 'APP_INFRA_IMAGE_ROTATION' || proof?.schemaVersion !== 'jenfu.dev012.image-rotation-proof.v1'
+    || !same(Object.keys(proof).sort(), ['schemaVersion','sourceRevision','planJsonSha256','addressActions','updates'].sort())
+    || proof.sourceRevision !== intent.sourceRevision || proof.planJsonSha256 !== infra.planJsonSha256
+    || !Array.isArray(proof.addressActions) || proof.addressActions.some(row => !Array.isArray(row) || row.length !== 2
+      || !['read','no-op','update'].includes(row[1]) || (row[1] === 'read' && !row[0]?.startsWith('data.')))
+    || !same(proof.addressActions.map(row => row[0]).sort(), addresses)
+    || !same(proof.addressActions.filter(row => row[1] === 'update').map(row => row[0]), ['google_cloud_run_v2_job.migration[0]'])
+    || !Array.isArray(proof.updates) || proof.updates.length !== 1) fail('DEV014_LIFECYCLE_REPLAY_INFRA_INVALID')
+  const change = proof.updates[0]
+  if (!same(Object.keys(change).sort(), ['address','before','after'].sort()) || change.address !== 'google_cloud_run_v2_job.migration[0]') fail('DEV014_LIFECYCLE_REPLAY_INFRA_INVALID')
+  const before = structuredClone(change.before), after = structuredClone(change.after)
+  const beforeContainer = before?.template?.[0]?.template?.[0]?.containers?.[0]
+  const afterContainer = after?.template?.[0]?.template?.[0]?.containers?.[0]
+  if (!beforeContainer || !afterContainer || beforeContainer.image !== previousInfra.migrationRunnerDigest || afterContainer.image !== infra.migrationRunnerDigest
+    || [before,after].some(row => row.name !== profile.migrations.jobName || row.project !== profile.target.projectId || row.location !== profile.target.region)) fail('DEV014_LIFECYCLE_REPLAY_INFRA_INVALID')
+  beforeContainer.image = afterContainer.image = '__IMMUTABLE_IMAGE_DIGEST__'
+  // Same pre-existing Terraform normalization: gcloud client metadata alone
+  // may disappear; no runtime/template field is normalized or ignored.
+  if (before.client === 'gcloud' && /^\d+(?:\.\d+){1,3}$/u.test(before.client_version ?? '') && after.client == null && after.client_version == null) {
+    delete before.client; delete before.client_version; delete after.client; delete after.client_version
+  }
+  if (!same(before,after)) fail('DEV014_LIFECYCLE_REPLAY_INFRA_INVALID')
+  return { disposition: 'SOURCE_MATCHED_IMAGE_ROTATION_THEN_31_ROW_NATIVE_REPLAY', migrationRunnerDigest: infra.migrationRunnerDigest }
+}
+
 export function assertRoutineRuntimeReadback(profile, runtimeConfig, revision) {
   const expected = assertRuntimeConfig(profile, runtimeConfig)
   const observed = revision.containers?.find((row) => row.name === profile.runtime.containerName)
@@ -743,6 +804,13 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (lifecycleEnable && (baseline.bundle.value.entries?.length !== 31 || current.bundle.entries?.length !== 31)) fail('DEV014_LIFECYCLE_ENABLEMENT_LEDGER_REQUIRED')
   try {
     migration = { migrationDisposition: 'UNCHANGED_VERIFIED', pendingMigrationCount: 0, migrationInputsSha256: assertRoutineMigrationUnchanged(baseline.bundle.value, current.bundle) }
+    if (lifecycleGuard) {
+      if (baseline.bundle.value.entries?.length !== 31 || current.bundle.entries?.length !== 31) fail('DEV014_LIFECYCLE_REPLAY_LEDGER_REQUIRED')
+      // FORWARD_APPLY is the existing native Job-required disposition. Here
+      // the complete bundle is unchanged: the Job must replay all 31 checksums
+      // and produce a new receipt with applied=0. No DDL is authorized.
+      migration = { ...migration, migrationDisposition: 'FORWARD_APPLY', replayOnly: true }
+    }
   } catch (error) {
     if (lifecycleEnable) throw error // enablement executes zero DDL, without append fallback
     if (!controlledTransition || error?.code !== 'ROUTINE_MIGRATION_CHANGED') throw error
@@ -777,6 +845,11 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (migration.migrationDisposition === 'FORWARD_APPLY') {
     if (!infraChanged) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
     assertDev013MigrationInfraReceipt(values.infra, profile, intent.sourceRevision)
+    if (migration.replayOnly) {
+      const previousInfra = (await transport.readJson(baseline.intent.infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])).value
+      const infraProfile = JSON.parse(readSourceFile(root, intent.sourceRevision, 'config/release/dev040-production-release-infra-plan.json'))
+      assertDev014LifecycleReplayInfra({ profile, intent, baselineIntent: baseline.intent, infra: values.infra, previousInfra, infraProfile })
+    }
   } else if (controlledTransition?.releaseMode === 'DEV014_MANAGED_DIRECTORY_ACTIVATION') {
     if (!infraChanged) fail('DEV014_RUNTIME_INFRA_RECEIPT_INVALID')
     try { assertDev013MigrationInfraReceipt(values.infra, profile, intent.sourceRevision) } catch { fail('DEV014_RUNTIME_INFRA_RECEIPT_INVALID') }

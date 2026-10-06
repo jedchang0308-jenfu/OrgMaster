@@ -385,6 +385,7 @@ async function writeStage(transport, paths, profile, intent, stage, previousRece
 
 export function assertMigrationReceipt(value, profile, intent, { historical = false, allowForward = false, forwardPlan = null } = {}) {
   if (value?.schemaVersion === 'jenfu.dev012.stage-receipt.v1') {
+    if (allowForward && forwardPlan?.replayOnly === true) fail('MIGRATION_RECEIPT_INVALID')
     assertStage(value, profile, intent, 'migrate')
     if (value.facts?.disposition !== 'UNCHANGED_VERIFIED' || value.facts?.manifestSha256 !== intent.migrationManifestSha256 || canonicalize(value.facts?.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)) fail('MIGRATION_RECEIPT_INVALID')
     // Legacy migration receipts remain readable for rollback, never executable.
@@ -404,7 +405,10 @@ export function assertMigrationReceipt(value, profile, intent, { historical = fa
       const principalGrantsV3Remediation = forwardPlan?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION'
       const lifecycleV2Remediation = forwardPlan?.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION'
       const expectedLedgerCount = lifecycleV2Remediation ? 31 : employeeNumberCommandReceiptV2Remediation ? 30 : principalGrantsV4Remediation ? 29 : principalGrantsV3Remediation ? 28 : cutoverSourceRemediation ? 27 : principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
-      const maximumAppliedCount = lifecycleV2Remediation || employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
+      if (forwardPlan?.replayOnly === true && (!lifecycleV2Remediation || forwardPlan.pendingMigrationCount !== 0)) fail('MIGRATION_RECEIPT_INVALID')
+      if (forwardPlan?.replayOnly === true && (value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
+        || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev','jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
+      const maximumAppliedCount = lifecycleV2Remediation && forwardPlan?.replayOnly === true ? 0 : lifecycleV2Remediation || employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
       if (receiptSha256 !== sha256(canonicalize(core)) || value.baselineCount !== 10 || value.minimumLedgerCount !== 10 || value.ledgerCount !== expectedLedgerCount || !recoveryCountsValid || value.crossDatabaseDenials?.length !== 2 || value.crossDatabaseDenials.some((row) => !['jenfu_dev', 'jenfu_stg'].includes(row.database) || row.denied !== true)) fail('MIGRATION_RECEIPT_INVALID')
     }

@@ -8,11 +8,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { createGitArchive, createGitSourceIdentity, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
+import { assertMigrationReceipt, createGitArchive, createGitSourceIdentity, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, createOwnerTransport, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeBlobTransition, assertDev057CatalogReadbackPackagingTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeBlobTransition, assertDev057CatalogReadbackPackagingTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs, assertDev014LifecycleReplayInfra } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION, assertDev014PrincipalLifecycleV2Append, assertDev014PrincipalLifecycleV2Remediation, assertDev014PrincipalLifecycleRuntimeGuard } from './lib/dev014-principal-lifecycle-release.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
@@ -80,13 +80,13 @@ const plain = resolvePlainEnvironment(profile, Object.fromEntries(profile.enviro
   .map((name) => [name, 'fixture-public-value'])))
 const runtime = buildRuntimeConfig(profile, { plainEnvironment: plain, secretVersions: Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1'])) })
 
-function harness({ baselineRuntime = runtime, nextRuntime = runtime, baselineBundle = oldBundle.bundle, currentBundle = newBundle } = {}) {
+function harness({ baselineRuntime = runtime, nextRuntime = runtime, baselineBundle = oldBundle.bundle, currentBundle = newBundle, baselineInfra = {} } = {}) {
   const objects = new Map()
   function put(uri, value) { const bytes = Buffer.from(`${canonicalize(value)}\n`); const result = { bytes, ref: { uri, sha256: sha256(bytes) }, value }; objects.set(uri, result); return result.ref }
   const receipt = (name, value) => put(`gs://${bucket}/receipts/fixture/${name}.json`, value)
   const previousRevision = 'orgmaster-prod-aaaaaaaaaaaa'
   const artifactDigest = `${profile.artifact.uri}@sha256:${'d'.repeat(64)}`
-  const oldIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster', releaseId: 'ROUTINE-BASELINE', sourceRevision: oldSource, sourceSha256: 'e'.repeat(64), sourceLockRef: receipt('source', {}), authorizationPolicyRef: receipt('auth', {}), readinessReceiptRef: receipt('ready', {}), foundationReceiptRef: receipt('foundation', { ownerApplicationId: 'shared-foundation', projectId: profile.target.projectId, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_PROVIDER' }), infraReceiptRef: receipt('infra', {}), runtimeConfigRef: receipt('runtime', { runtimeConfig: baselineRuntime }), migrationManifestSha256: baselineBundle.manifestSha256, previousRevision: 'old-revision', deadlineAt: '2020-01-01T00:00:00Z' }
+  const oldIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster', releaseId: 'ROUTINE-BASELINE', sourceRevision: oldSource, sourceSha256: 'e'.repeat(64), sourceLockRef: receipt('source', {}), authorizationPolicyRef: receipt('auth', {}), readinessReceiptRef: receipt('ready', {}), foundationReceiptRef: receipt('foundation', { ownerApplicationId: 'shared-foundation', projectId: profile.target.projectId, status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_PROVIDER' }), infraReceiptRef: receipt('infra', baselineInfra), runtimeConfigRef: receipt('runtime', { runtimeConfig: baselineRuntime }), migrationManifestSha256: baselineBundle.manifestSha256, previousRevision: 'old-revision', deadlineAt: '2020-01-01T00:00:00Z' }
   // A prior release's expiry must not invalidate its historical evidence.
   const baselineIntentRef = receipt('intent', oldIntent)
   const paths = releasePaths(profile, oldIntent, baselineIntentRef.sha256)
@@ -1916,5 +1916,90 @@ test('DEV-014 lifecycle v2 CLI cannot combine historical remediation or use anot
   assert.equal(parseDeployProductionArgs(['--prepare-only', '--dev014-principal-lifecycle-v2-remediation', `--dev014-infra-ref=${ref}`]).dev014PrincipalLifecycleV2Remediation, true)
   for (const args of [[], [`--dev057-infra-ref=${ref}`], ['--dev014-contract-remediation', `--dev014-infra-ref=${ref}`]]) {
     assert.throws(() => parseDeployProductionArgs(['--prepare-only', '--dev014-principal-lifecycle-v2-remediation', ...args]), /DEV014_CONTROLLED_TRANSITION_INPUT_/)
+  }
+})
+
+
+function lifecycleReplayHarness() {
+  const infraProfile=JSON.parse(fs.readFileSync('config/release/dev040-production-release-infra-plan.json'))
+  const addresses=[...infraProfile.stageA,...infraProfile.stageBAdditional].sort()
+  const seal=core=>({...core,receiptSha256:sha256(canonicalize(core))})
+  const previous=seal({schemaVersion:'jenfu.dev012.app-infra-receipt.v1',ownerApplicationId:'orgmaster',projectId:'jenfu-platform-prod',region:'asia-east1',sourceRevision:oldSource,
+    foundationManifestSha256:'1'.repeat(64),migrationRunnerDigest:profile.artifact.migrationRunnerUri+'@sha256:'+'2'.repeat(64),controllerImageDigest:'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller@sha256:'+'3'.repeat(64),terraformAddressCount:addresses.length,terraformAddressesSha256:sha256(canonicalize(addresses)),binaryPlanSha256:'4'.repeat(64),planJsonSha256:'5'.repeat(64),stateLineage:'11111111-2222-4333-8444-555555555555',stateSerial:10,stateJsonSha256:'6'.repeat(64),outputManifestSha256:'7'.repeat(64),status:'APPLIED',releaseAuthority:true,evidenceScope:'PRODUCTION_PROVIDER',observedAt:'2026-10-05T00:00:00Z'})
+  const {receiptSha256:_before,...core}=previous
+  const runner = profile.artifact.migrationRunnerUri+'@sha256:'+'8'.repeat(64)
+  const template = image => ({name:profile.migrations.jobName,project:'jenfu-platform-prod',location:'asia-east1',template:[{template:[{service_account:profile.migrations.serviceAccount,containers:[{name:'migration',image,args:['--bundle-ref-required']}]}]}]})
+  const imageRotation={schemaVersion:'jenfu.dev012.image-rotation-proof.v1',sourceRevision:newSource,planJsonSha256:core.planJsonSha256,
+    addressActions:addresses.map(address=>[address,address==='google_cloud_run_v2_job.migration[0]'?'update':address.startsWith('data.')?'read':'no-op']),
+    updates:[{address:'google_cloud_run_v2_job.migration[0]',before:template(previous.migrationRunnerDigest),after:template(runner)}]}
+  const next=seal({...core,sourceRevision:newSource,migrationRunnerDigest:runner,stateSerial:11,observedAt:'2026-10-06T00:00:00Z',mutationProfile:'APP_INFRA_IMAGE_ROTATION',imageRotation})
+  const h=harness({baselineInfra:previous})
+  const authority={schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION',devId:'DEV-014',slice:'014-PRINCIPAL-LIFECYCLE-V2',remediation:DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION}
+  h.input.values.authorization={...h.input.values.authorization,...authority}
+  h.input.values.readiness={...h.input.values.readiness,...authority,schemaVersion:'orgmaster.routine-release-readiness.v1'}
+  h.input.values.infra=next;h.input.intent.infraReceiptRef=h.put('gs://'+bucket+'/receipts/fixture/replay-infra.json',next)
+  h.input.readSourceFile=()=>Buffer.from(JSON.stringify(infraProfile))
+  return {h,previous,next,infraProfile,seal}
+}
+
+test('DEV-014 installed 031 uses a fresh native checksum replay rather than smoke reuse or a skipped Job', async()=>{
+  const {h}=lifecycleReplayHarness()
+  const result=await verifyRoutineRelease(h.input)
+  assert.equal(result.releaseMode,'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION')
+  assert.equal(result.migrationDisposition,'FORWARD_APPLY')
+  assert.equal(result.pendingMigrationCount,0);assert.equal(result.replayOnly,true)
+  assert.equal(result.databaseVerification,'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
+  assert.equal(h.input.values.runtimeConfig.runtimeConfig.plainEnvironment.ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED,'false')
+})
+
+test('DEV-014 checksum replay rejects stale, sibling, incomplete or non-image infrastructure evidence',()=>{
+  const f=lifecycleReplayHarness(),base={profile,intent:f.h.input.intent,baselineIntent:{sourceRevision:oldSource},infra:f.next,previousInfra:f.previous,infraProfile:f.infraProfile}
+  assert.equal(assertDev014LifecycleReplayInfra(base).migrationRunnerDigest,f.next.migrationRunnerDigest)
+  for(const change of [{sourceRevision:oldSource},{ownerApplicationId:'ai-pdm'},{evidenceScope:'LOCAL_SYNTHETIC'},
+    {controllerImageDigest:f.previous.migrationRunnerDigest},{stateSerial:10},{stateLineage:'99999999-2222-4333-8444-555555555555'},
+    {terraformAddressCount:f.next.terraformAddressCount-1},{terraformAddressesSha256:'0'.repeat(64)},
+    {migrationRunnerDigest:f.previous.migrationRunnerDigest},{mutationProfile:'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'},{binaryPlanSha256:'bad'}]){
+    const {receiptSha256:_hash,...core}=f.next
+    assert.throws(()=>assertDev014LifecycleReplayInfra({...base,infra:f.seal({...core,...change})}))
+  }
+  assert.throws(()=>assertDev014LifecycleReplayInfra({...base,infra:{...f.next,receiptSha256:'0'.repeat(64)}}))
+})
+
+test('DEV-014 replay requires an actual sealed applied-zero receipt and rejects DDL or synthetic skip',async()=>{
+  const {h}=lifecycleReplayHarness(),plan=await verifyRoutineRelease(h.input)
+  const seal=core=>({...core,receiptSha256:sha256(canonicalize(core))})
+  const native=seal({schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:newSource,manifestSha256:newBundle.bundle.manifestSha256,database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',status:'PASS',boundaryStatus:'PASS',baselineCount:10,minimumLedgerCount:10,ledgerCount:31,applied:0,replayed:31,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]})
+  assertMigrationReceipt(native,profile,h.input.intent,{allowForward:true,forwardPlan:plan})
+  const {receiptSha256:_hash,...core}=native
+  for (const change of [{database:'jenfu_stg'}, {ledger:'platform_core.schema_migrations'}, {crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_dev',denied:true}]}]) {
+    assert.throws(()=>assertMigrationReceipt(seal({...core,...change}),profile,h.input.intent,{allowForward:true,forwardPlan:plan}),/MIGRATION_RECEIPT_INVALID/u)
+  }
+  assert.throws(()=>assertMigrationReceipt(seal({...core,applied:1,replayed:30}),profile,h.input.intent,{allowForward:true,forwardPlan:plan}),/MIGRATION_RECEIPT_INVALID/u)
+  assert.throws(()=>assertMigrationReceipt({schemaVersion:'jenfu.dev012.stage-receipt.v1'},profile,h.input.intent,{allowForward:true,forwardPlan:plan}),/MIGRATION_RECEIPT_INVALID/u)
+  h.input.values.runtimeConfig.runtimeConfig.plainEnvironment.ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED='true'
+  await assert.rejects(()=>verifyRoutineRelease(h.input),/DEV014_PRINCIPAL_LIFECYCLE_RUNTIME_GUARD_INVALID/u)
+})
+
+test('DEV-014 replay requires the complete native image-only proof, not a digest difference',()=>{
+  const f=lifecycleReplayHarness(),input={profile,intent:f.h.input.intent,baselineIntent:{sourceRevision:oldSource},infra:f.next,previousInfra:f.previous,infraProfile:f.infraProfile}
+  const {receiptSha256:_hash,...core}=f.next
+  for (const mutate of [x=>{delete x.imageRotation},x=>{delete x.mutationProfile},x=>{x.imageRotation.sourceRevision=oldSource},
+    x=>{x.imageRotation.planJsonSha256='0'.repeat(64)},x=>{x.imageRotation.addressActions.pop()},
+    x=>{x.imageRotation.addressActions[0]=x.imageRotation.addressActions[1]},
+    x=>{x.imageRotation.addressActions[0][1]='create'},x=>{x.imageRotation.updates[0].after.template[0].template[0].containers[0].args=['unsafe']},
+    x=>{x.imageRotation.updates[0].after.name='sibling-job'},x=>{x.imageRotation.updates[0].before.template[0].template[0].containers[0].image=f.next.migrationRunnerDigest},
+    x=>{x.imageRotation.updates[0].after.client='unknown-client'}]){
+    const changed=structuredClone(core);mutate(changed)
+    assert.throws(()=>assertDev014LifecycleReplayInfra({...input,infra:f.seal(changed)}),/DEV014_LIFECYCLE_REPLAY_INFRA_INVALID/u)
+  }
+})
+
+test('DEV-014 replay preserves only the existing sealed applied-rotation recovery shape',()=>{
+  const f=lifecycleReplayHarness(),input={profile,intent:f.h.input.intent,baselineIntent:{sourceRevision:oldSource},previousInfra:f.previous,infraProfile:f.infraProfile}
+  const {receiptSha256:_hash,...core}=f.next
+  const recoveryEvidence={mode:'FINALIZE_APPLIED_IMAGE_ROTATION_NO_MUTATION',freshPlanJsonSha256:'a'.repeat(64),providerImagesSha256:'b'.repeat(64),runnerProvenanceSha256:'c'.repeat(64),providerBuildSha256:'d'.repeat(64),artifactRegistrySha256:'e'.repeat(64)}
+  assertDev014LifecycleReplayInfra({...input,infra:f.seal({...core,recoveryEvidence})})
+  for(const change of [{mode:'UNCONTROLLED_APPLY'},{providerBuildSha256:'bad'},{unexpected:'value'}]){
+    assert.throws(()=>assertDev014LifecycleReplayInfra({...input,infra:f.seal({...core,recoveryEvidence:{...recoveryEvidence,...change}})}),/DEV014_LIFECYCLE_REPLAY_INFRA_INVALID/u)
   }
 })
