@@ -1,0 +1,12 @@
+✔ DEV-014 build-abort continuation separates the applied runner from the successful service and ledger (34.5203ms)
+✔ DEV-014 repeated build aborts validate every immutable image-only predecessor (100.3895ms)
+✔ DEV-014 abort continuation rejects invalid control, aliases, migrated state and unsealed joins (206.8854ms)
+✔ DEV-014 abort continuation preserves complete-set image proof and has no normal-release bypass (143.1536ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 711.9471

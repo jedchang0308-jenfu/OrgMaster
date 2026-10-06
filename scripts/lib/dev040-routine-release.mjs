@@ -726,6 +726,75 @@ export async function resolveRoutineControlBaseline({ profile, transport, contro
   return intent.baselineIntentRef
 }
 
+export async function readAppliedAbortInfraBaseline({profile,transport,baseline,intent,values,infraProfile}) {
+  const anchor=values.readiness?.appliedAbortInfraBaseline
+  if(!anchor && !values.authorization?.appliedAbortInfraBaseline) return null
+  if(!anchor || canonicalize(anchor)!==canonicalize(values.authorization?.appliedAbortInfraBaseline)) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
+  assertDev014PrincipalLifecycleV2Remediation(values.readiness,values.authorization)
+  const bucket=profile.artifact.releaseBucket,seen=new Set()
+  const readStage=async(uri,attempt,stage)=>{
+    const read=await transport.readBytes(uri,{prefixes:['receipts']})
+    const value=JSON.parse(read.bytes.toString('utf8'))
+    assertSealedStage(value,profile,attempt,stage)
+    return {...read,value}
+  }
+  async function chain(bound,depth){
+    if(depth>=8 || !same(Object.keys(bound??{}).sort(),['attemptIntentRef','controlSnapshot','infraReceiptRef'])) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
+    assertImmutableRef(bound.attemptIntentRef,bucket);assertImmutableRef(bound.infraReceiptRef,bucket)
+    if(seen.has(bound.attemptIntentRef.uri)) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
+    seen.add(bound.attemptIntentRef.uri)
+    const read=await transport.readJson(bound.attemptIntentRef,bucket,['receipts'])
+    const attempt=assertDev040ReleaseIntent(read.value,profile),control=bound.controlSnapshot
+    const {controlSha256,...controlCore}=control??{}
+    if(control?.schemaVersion!=='jenfu.dev012.owner-control-head.v1'||controlSha256!==sha256(canonicalize(controlCore))
+      ||control.state!=='FINALIZED'||control.result!=='PRE_ACTIVATION_ABORTED'||control.candidateRevision!==null
+      ||control.ownerApplicationId!==profile.application.id||control.service!==profile.target.serviceName||control.controlBucket!==bucket
+      ||control.releaseId!==attempt.releaseId||control.sourceRevision!==attempt.sourceRevision||control.sourceLockSha256!==attempt.sourceLockRef.sha256
+      ||!same(attempt.baselineIntentRef,intent.baselineIntentRef)||attempt.previousRevision!==baseline.activeRevision
+      ||baseline.bundle.value.entries?.length!==31
+      ||!same(attempt.foundationReceiptRef,baseline.intent.foundationReceiptRef)||!same(attempt.infraReceiptRef,bound.infraReceiptRef)) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
+    const paths=releasePaths(profile,attempt,bound.attemptIntentRef.sha256)
+    const [terminal,prepare]=await Promise.all([readStage(paths.terminal,attempt,'terminal'),readStage(paths.prepare,attempt,'prepare')])
+    if(terminal.value.facts?.result!=='PRE_ACTIVATION_ABORTED'
+      ||terminal.value.facts.previousRevision!==principalOnlyRollbackRevision(attempt)
+      ||control.previousRevision!==principalOnlyRollbackRevision(attempt)
+      ||terminal.value.facts.entrypointRecovery?.changed!==false) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
+    // This continuation covers a build abort, never a candidate or a potentially
+    // applied migration. A fresh complete native replay remains mandatory.
+    for(const stage of ['migrate','candidate','deployment']){
+      let present=false
+      try{await transport.readBytes(paths[stage],{prefixes:['receipts']});present=true}
+      catch(error){if(error.code!=='MISSING')throw error}
+      if(present)fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
+    }
+    const routine=prepare.value.facts?.routine,refs=prepare.value.facts?.prerequisiteRefs
+    if(routine?.releaseMode!=='DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION'||routine.migrationDisposition!=='FORWARD_APPLY'
+      ||routine.replayOnly!==true||routine.pendingMigrationCount!==0||routine.previousRevision!==baseline.activeRevision
+      ||routine.migrationInputsSha256!==sha256(canonicalize((({sourceRevision,manifestSha256,...inputs})=>inputs)(baseline.bundle.value)))
+      ||!same(routine.baselineIntentRef,intent.baselineIntentRef)||!same(refs?.infra,attempt.infraReceiptRef)
+      ||!same(refs?.readiness,attempt.readinessReceiptRef)||!same(refs?.authorization,attempt.authorizationPolicyRef)
+      ||!same(refs?.sourceLock,attempt.sourceLockRef)||!same(refs?.foundation,attempt.foundationReceiptRef)||!same(refs?.runtimeConfig,attempt.runtimeConfigRef)
+      ||prepare.value.facts.migrationRunnerDigest==null) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
+    const readiness=(await transport.readJson(attempt.readinessReceiptRef,bucket,['receipts'])).value
+    const authorization=(await transport.readJson(attempt.authorizationPolicyRef,bucket,['receipts'])).value
+    assertDev014PrincipalLifecycleV2Remediation(readiness,authorization)
+    for(const row of [readiness,authorization])if(row.ownerApplicationId!==profile.application.id||row.sourceRevision!==attempt.sourceRevision
+      ||row.releaseId!==attempt.releaseId||!same(row.baselineIntentRef,intent.baselineIntentRef))fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
+    const previousRuntime=baseline.runtime.value.runtimeConfig??baseline.runtime.value
+    const attemptRuntime=(await transport.readJson(attempt.runtimeConfigRef,bucket,['receipts'])).value
+    assertDev014PrincipalLifecycleRuntimeGuard(profile,previousRuntime,attemptRuntime.runtimeConfig??attemptRuntime)
+    const parent=readiness.appliedAbortInfraBaseline
+    if(!same(parent??null,authorization.appliedAbortInfraBaseline??null))fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
+    const previous=parent?await chain(parent,depth+1):{ref:baseline.intent.infraReceiptRef,sourceRevision:baseline.intent.sourceRevision,value:(await transport.readJson(baseline.intent.infraReceiptRef,bucket,['receipts'])).value}
+    const infra=(await transport.readJson(bound.infraReceiptRef,bucket,['receipts'])).value
+    assertDev014LifecycleReplayInfra({profile,intent:attempt,baselineIntent:{sourceRevision:previous.sourceRevision},infra,previousInfra:previous.value,infraProfile})
+    if(prepare.value.facts.migrationRunnerDigest!==infra.migrationRunnerDigest)fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
+    return {ref:bound.infraReceiptRef,sourceRevision:attempt.sourceRevision,value:infra,attemptIntentRef:bound.attemptIntentRef,terminalRef:terminal.ref,prepareRef:prepare.ref}
+  }
+  return chain(anchor,0)
+}
+
+
 export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
@@ -842,13 +911,17 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   }
   const infraChanged = !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
   let smokeRotationContinuation = null
+  let appliedAbortInfraBaseline = null
+  if (!migration.replayOnly && (values.readiness?.appliedAbortInfraBaseline || values.authorization?.appliedAbortInfraBaseline)) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
   if (migration.migrationDisposition === 'FORWARD_APPLY') {
     if (!infraChanged) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
     assertDev013MigrationInfraReceipt(values.infra, profile, intent.sourceRevision)
     if (migration.replayOnly) {
-      const previousInfra = (await transport.readJson(baseline.intent.infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])).value
       const infraProfile = JSON.parse(readSourceFile(root, intent.sourceRevision, 'config/release/dev040-production-release-infra-plan.json'))
-      assertDev014LifecycleReplayInfra({ profile, intent, baselineIntent: baseline.intent, infra: values.infra, previousInfra, infraProfile })
+      const applied = await readAppliedAbortInfraBaseline({profile,transport,baseline,intent,values,infraProfile})
+      const previousInfra = applied?.value ?? (await transport.readJson(baseline.intent.infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])).value
+      assertDev014LifecycleReplayInfra({ profile, intent, baselineIntent: {sourceRevision:applied?.sourceRevision ?? baseline.intent.sourceRevision}, infra: values.infra, previousInfra, infraProfile })
+      if (applied) appliedAbortInfraBaseline = {infraReceiptRef:applied.ref,attemptIntentRef:applied.attemptIntentRef,terminalRef:applied.terminalRef,prepareRef:applied.prepareRef,sourceRevision:applied.sourceRevision}
     }
   } else if (controlledTransition?.releaseMode === 'DEV014_MANAGED_DIRECTORY_ACTIVATION') {
     if (!infraChanged) fail('DEV014_RUNTIME_INFRA_RECEIPT_INVALID')
@@ -870,5 +943,5 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     const value = values[name]
     if (value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.releaseId !== intent.releaseId || !same(value.baselineIntentRef, intent.baselineIntentRef)) fail('ROUTINE_AUTHORITY_MISMATCH')
   }
-  return { ...(smokeRotationContinuation ? { smokeRotationContinuation } : {}), baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, ...(baseline.repair ? { principalOnlyForwardRepair: { rollbackRef: baseline.repair.rollbackRef, recoveryRef: baseline.repair.recoveryRef } } : {}), infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
+  return { ...(appliedAbortInfraBaseline ? { appliedAbortInfraBaseline } : {}), ...(smokeRotationContinuation ? { smokeRotationContinuation } : {}), baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, ...(baseline.repair ? { principalOnlyForwardRepair: { rollbackRef: baseline.repair.rollbackRef, recoveryRef: baseline.repair.recoveryRef } } : {}), infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
 }

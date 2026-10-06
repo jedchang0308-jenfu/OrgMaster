@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "orgmaster.dev014.aborted-infra-contract-readback.v1",
+  "observedAt": "2026-10-06T05:26:12.233Z",
+  "status": "READ_ONLY_REAL_RECEIPT_CHAIN_ACCEPTED",
+  "codeStage": "LOCAL_FIX_NOT_RELEASE_AUTHORITY",
+  "baselineIntentRef": {
+    "sha256": "4f8a36bb2a3835fdafdbd9bf347830dbd04ac6ab123047032e0f806fe65a1edf",
+    "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261005232946673-F3E3130/release-intent.json"
+  },
+  "serviceBaseline": "orgmaster-prod-a48a05dc0080",
+  "ledgerBaselineSource": "f3e31308b1d035868b9b1501c6d7e9431ebc4718",
+  "abortInfraRef": {
+    "sha256": "774d438e4c3f501eebdf25d065ad2dfd136e571ed93f5439f8223ff39be77097",
+    "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV014-LIFECYCLE-ORGMASTER-ROTATION-20261006-R4/app-infra.json"
+  },
+  "abortPrepareRef": {
+    "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261006043732373-45BC6CE/dd303bcef0cb3fae29d968de14bba8bbb499622296928fd36743cea9f498be4b/prepare.json",
+    "sha256": "cd4b0f0553d4f91ddd0e65868c8840d4fd2d0baa76a1d0d60a555d3251d55d5f"
+  },
+  "abortTerminalRef": {
+    "uri": "gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261006043732373-45BC6CE/dd303bcef0cb3fae29d968de14bba8bbb499622296928fd36743cea9f498be4b/terminal.json",
+    "sha256": "0c1881b2981c1455631a51dd12e676d4a08f37ad12c2662b7898dcf9233a6b10"
+  },
+  "imageBaseline": "asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-migration-runner@sha256:c7360e091830431fadc7b239a4d46ff34fb5df1a187300a0c73340a3c6468b99",
+  "stateSerial": 121,
+  "cloudMutations": 0,
+  "productionL4": false,
+  "fullDev014Complete": false
+}

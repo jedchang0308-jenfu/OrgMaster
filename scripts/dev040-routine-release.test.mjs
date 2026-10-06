@@ -2003,3 +2003,82 @@ test('DEV-014 replay preserves only the existing sealed applied-rotation recover
     assert.throws(()=>assertDev014LifecycleReplayInfra({...input,infra:f.seal({...core,recoveryEvidence:{...recoveryEvidence,...change}})}),/DEV014_LIFECYCLE_REPLAY_INFRA_INVALID/u)
   }
 })
+
+
+function lifecycleAbortedInfraHarness({cycles=1}={}) {
+ const f=lifecycleReplayHarness(),h=f.h,baseline=structuredClone(h.objects.get(h.input.intent.baselineIntentRef.uri).value)
+ const missing=h.input.transport.readBytes.bind(h.input.transport)
+ h.input.transport.readBytes=async(...args)=>{try{return await missing(...args)}catch(error){if(error.message==='MISSING')error.code='MISSING';throw error}}
+ let before=f.previous,anchor=null,last
+ for(let index=0;index<cycles;index++){
+  const source=(index+3).toString(16).repeat(40),releaseId='ABORTED-REPLAY-'+index
+  const core=structuredClone(f.next);delete core.receiptSha256;core.sourceRevision=source;core.stateSerial=11+index
+  core.imageRotation.sourceRevision=source;core.migrationRunnerDigest=profile.artifact.migrationRunnerUri+'@sha256:'+(index+4).toString(16).repeat(64)
+  core.imageRotation.updates[0].before.template[0].template[0].containers[0].image=before.migrationRunnerDigest
+  core.imageRotation.updates[0].after.template[0].template[0].containers[0].image=core.migrationRunnerDigest
+  const infra=f.seal(core),infraRef=h.put('gs://'+bucket+'/receipts/fixture/aborted-infra-'+index+'.json',infra)
+  const authority={...h.input.values.authorization,sourceRevision:source,releaseId,...(anchor?{appliedAbortInfraBaseline:anchor}:{})}
+  const readiness={...authority,schemaVersion:'orgmaster.routine-release-readiness.v1'}
+  const attempt={...h.input.intent,sourceRevision:source,releaseId,infraReceiptRef:infraRef,authorizationPolicyRef:h.put('gs://'+bucket+'/receipts/fixture/abort-auth-'+index+'.json',authority),readinessReceiptRef:h.put('gs://'+bucket+'/receipts/fixture/abort-ready-'+index+'.json',readiness)}
+  const attemptRef=h.put('gs://'+bucket+'/receipts/fixture/abort-intent-'+index+'.json',attempt),paths=releasePaths(profile,attempt,attemptRef.sha256)
+  const prepare=stageReceipt({profile,intent:attempt,stage:'prepare',observedAt:'2026-10-06T01:00:00Z',facts:{migrationRunnerDigest:infra.migrationRunnerDigest,prerequisiteRefs:{infra:infraRef,readiness:attempt.readinessReceiptRef,authorization:attempt.authorizationPolicyRef,sourceLock:attempt.sourceLockRef,foundation:attempt.foundationReceiptRef,runtimeConfig:attempt.runtimeConfigRef},routine:{releaseMode:'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION',migrationDisposition:'FORWARD_APPLY',replayOnly:true,pendingMigrationCount:0,migrationInputsSha256:sha256(canonicalize((({sourceRevision,manifestSha256,...inputs})=>inputs)(oldBundle.bundle))),previousRevision:attempt.previousRevision,baselineIntentRef:attempt.baselineIntentRef}}})
+  h.put(paths.prepare,prepare)
+  const terminal=stageReceipt({profile,intent:attempt,stage:'terminal',observedAt:'2026-10-06T01:01:00Z',facts:{result:'PRE_ACTIVATION_ABORTED',previousRevision:attempt.previousRevision,entrypointRecovery:{changed:false},databaseDisposition:'UNKNOWN_REQUIRES_LEDGER_READBACK'}})
+  h.put(paths.terminal,terminal)
+  const controlCore={schemaVersion:'jenfu.dev012.owner-control-head.v1',state:'FINALIZED',result:'PRE_ACTIVATION_ABORTED',ownerApplicationId:'orgmaster',service:profile.target.serviceName,controlBucket:bucket,sourceRevision:source,releaseId,sourceLockSha256:attempt.sourceLockRef.sha256,candidateRevision:null,previousRevision:attempt.previousRevision}
+  anchor={attemptIntentRef:attemptRef,infraReceiptRef:infraRef,controlSnapshot:{...controlCore,controlSha256:sha256(canonicalize(controlCore))}}
+  before=infra;last={attempt,attemptRef,paths,prepare,terminal,infra,infraRef}
+ }
+ const next=structuredClone(f.next);delete next.receiptSha256;next.stateSerial=before.stateSerial+1
+ next.imageRotation.updates[0].before.template[0].template[0].containers[0].image=before.migrationRunnerDigest
+ h.input.values.infra=f.seal(next);h.input.intent.infraReceiptRef=h.put('gs://'+bucket+'/receipts/fixture/replay-infra.json',h.input.values.infra)
+ for(const name of ['authorization','readiness'])h.input.values[name].appliedAbortInfraBaseline=structuredClone(anchor)
+ return {...f,anchor,last,baseline}
+}
+
+test('DEV-014 build-abort continuation separates the applied runner from the successful service and ledger',async()=>{
+ const {h,last}=lifecycleAbortedInfraHarness()
+ const result=await verifyRoutineRelease(h.input)
+ assert.equal(result.previousRevision,'orgmaster-prod-aaaaaaaaaaaa')
+ assert.deepEqual(result.baselineIntentRef,h.input.intent.baselineIntentRef)
+ assert.deepEqual(result.appliedAbortInfraBaseline.infraReceiptRef,last.infraRef)
+ assert.equal(result.migrationDisposition,'FORWARD_APPLY');assert.equal(result.replayOnly,true)
+ assert.equal(result.pendingMigrationCount,0);assert.equal(result.liveLedgerRead,false)
+ assert.equal(result.databaseVerification,'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
+})
+
+test('DEV-014 repeated build aborts validate every immutable image-only predecessor',async()=>{
+ const {h,last}=lifecycleAbortedInfraHarness({cycles:2}),result=await verifyRoutineRelease(h.input)
+ assert.deepEqual(result.appliedAbortInfraBaseline.infraReceiptRef,last.infraRef)
+ assert.equal(result.previousRevision,'orgmaster-prod-aaaaaaaaaaaa')
+ await assert.rejects(()=>verifyRoutineRelease(lifecycleAbortedInfraHarness({cycles:9}).h.input),/DEV014_ABORT_INFRA_BASELINE_INVALID/)
+})
+
+test('DEV-014 abort continuation rejects invalid control, aliases, migrated state and unsealed joins',async()=>{
+ for(const [index,mutate] of [
+  f=>{f.h.input.values.authorization.appliedAbortInfraBaseline.infraReceiptRef.sha256='0'.repeat(64)},
+  f=>{f.h.input.values.readiness.appliedAbortInfraBaseline.controlSnapshot.result='RELEASED'},
+  f=>{f.h.input.values.readiness.appliedAbortInfraBaseline.controlSnapshot.sourceRevision=oldSource},
+  f=>{f.h.input.values.readiness.appliedAbortInfraBaseline.controlSnapshot.candidateRevision='unexpected'},
+  f=>{f.h.input.values.readiness.appliedAbortInfraBaseline.unexpected=true},
+  f=>{f.h.put(f.last.paths.migrate,{unexpected:true})},
+  f=>{f.h.put(f.last.paths.candidate,{unexpected:true})},
+  f=>{f.h.put(f.last.paths.deployment,{unexpected:true})},
+  f=>{f.h.objects.delete(f.last.paths.prepare)},
+  f=>{f.h.put(f.last.paths.terminal,{...f.last.terminal,receiptSha256:'0'.repeat(64)})},
+  f=>{f.h.put(f.last.paths.prepare,stageReceipt({profile,intent:f.last.attempt,stage:'prepare',observedAt:'2026-10-06T01:00:00Z',facts:{...f.last.prepare.facts,routine:{...f.last.prepare.facts.routine,pendingMigrationCount:1}}}))},
+  f=>{f.h.put(f.last.paths.prepare,stageReceipt({profile,intent:f.last.attempt,stage:'prepare',observedAt:'2026-10-06T01:00:00Z',facts:{...f.last.prepare.facts,migrationRunnerDigest:'bad'}}))}
+ ].entries()){const f=lifecycleAbortedInfraHarness();mutate(f);if(index>0){const {controlSha256:_hash,...core}=f.h.input.values.readiness.appliedAbortInfraBaseline.controlSnapshot;f.h.input.values.readiness.appliedAbortInfraBaseline.controlSnapshot={...core,controlSha256:sha256(canonicalize(core))};f.h.input.values.authorization.appliedAbortInfraBaseline=structuredClone(f.h.input.values.readiness.appliedAbortInfraBaseline)}await assert.rejects(()=>verifyRoutineRelease(f.h.input))}
+})
+
+test('DEV-014 abort continuation preserves complete-set image proof and has no normal-release bypass',async()=>{
+ for(const mutate of [
+  f=>{f.h.input.values.infra.imageRotation.updates[0].before.template[0].template[0].containers[0].image=f.previous.migrationRunnerDigest},
+  f=>{f.h.input.values.infra.imageRotation.updates[0].after.template[0].template[0].containers[0].args=['unsafe']},
+  f=>{f.h.input.values.infra.imageRotation.addressActions.pop()},
+  f=>{f.h.input.values.infra.controllerImageDigest=f.h.input.values.infra.migrationRunnerDigest},
+  f=>{f.h.input.values.infra.stateSerial=f.last.infra.stateSerial},
+  f=>{f.h.input.values.infra.imageRotation.sourceRevision=oldSource},
+  f=>{f.h.input.values.readiness.slice='014-PRINCIPAL-LIFECYCLE-ENABLE';f.h.input.values.authorization.slice='014-PRINCIPAL-LIFECYCLE-ENABLE'}
+ ]){const f=lifecycleAbortedInfraHarness();mutate(f);const {receiptSha256:_seal,...core}=f.h.input.values.infra;f.h.input.values.infra=f.seal(core);await assert.rejects(()=>verifyRoutineRelease(f.h.input))}
+})

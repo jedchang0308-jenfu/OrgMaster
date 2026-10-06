@@ -1,0 +1,38 @@
+✖ DEV-014 build-abort continuation separates the applied runner from the successful service and ledger (28.1438ms)
+✖ DEV-014 repeated build aborts validate every immutable image-only predecessor (14.884ms)
+✔ DEV-014 abort continuation rejects invalid control, aliases, migrated state and unsealed joins (169.44ms)
+✔ DEV-014 abort continuation preserves complete-set image proof and has no normal-release bypass (81.1513ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 2
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 520.8373
+
+✖ failing tests:
+
+test at scripts\dev040-routine-release.test.mjs:2039:1
+✖ DEV-014 build-abort continuation separates the applied runner from the successful service and ledger (28.1438ms)
+  Error: DEV014_ABORT_INFRA_BASELINE_INVALID
+      at fail (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/lib/dev040-routine-release.mjs:13:43)
+      at chain (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/lib/dev040-routine-release.mjs:755:137)
+      at async verifyRoutineRelease (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/lib/dev040-routine-release.mjs:916:23)
+      at async TestContext.<anonymous> (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/dev040-routine-release.test.mjs:2041:15)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    code: 'DEV014_ABORT_INFRA_BASELINE_INVALID'
+  }
+
+test at scripts\dev040-routine-release.test.mjs:2050:1
+✖ DEV-014 repeated build aborts validate every immutable image-only predecessor (14.884ms)
+  Error: DEV014_ABORT_INFRA_BASELINE_INVALID
+      at fail (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/lib/dev040-routine-release.mjs:13:43)
+      at chain (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/lib/dev040-routine-release.mjs:755:137)
+      at async verifyRoutineRelease (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/lib/dev040-routine-release.mjs:916:23)
+      at async TestContext.<anonymous> (file:///C:/Users/user/.codex/worktrees/dev014-platform-release/OrgMaster/scripts/dev040-routine-release.test.mjs:2051:65)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    code: 'DEV014_ABORT_INFRA_BASELINE_INVALID'
+  }
