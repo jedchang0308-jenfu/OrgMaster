@@ -11,9 +11,9 @@ const run = spawnSync(process.execPath, ["--test", "scripts/dev040-orgmaster-ind
 process.stdout.write(run.stdout)
 process.stderr.write(run.stderr)
 // Keep the fixed QC denominator aligned with the exact 27-file package owner-test selection.
-// R8 frozen predecessor: 312 cases. Scheduler/enablement adds 14 cases.
+// R8 frozen predecessor: 312 cases. Scheduler/enablement adds 14; provider normalization adds 2.
 // This Node result does not replace the full regression/build commands below.
-if (run.status !== 0 || !/\bpass 326\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 328\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 

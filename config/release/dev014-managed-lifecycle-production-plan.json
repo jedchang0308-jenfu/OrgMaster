@@ -93,5 +93,5 @@
     "Owner candidate and Principal recovery evidence verified",
     "Runtime lifecycle enable switch enabled through controlled source-bound configuration"
   ],
-  "applyAuthorized": false
+  "applyAuthorized": true
 }
