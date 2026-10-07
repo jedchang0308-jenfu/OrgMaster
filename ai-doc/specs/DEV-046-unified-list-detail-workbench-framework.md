@@ -2,7 +2,7 @@
 
 文件成熟度：`RD Implementation Complete`
 
-狀態：`RD Implementation Complete / Automated Gate Passed / Browser QA-QC Passed / RD Tech Lead Review Passed after Contract Optimization / Local Release Gate Pending`
+狀態：`Prior Local Gates Passed / 2026-10-07 Shared Width Framework Complete / Local Automated Gates Passed / Scoped Browser QC Passed / Production Release Gated`。最新統一寬度追加範圍已完成9.4節的最小browser驗證；9/4與10/7較早分模組寬度觀察維持歷史效力。本輪不重簽18節完整normal-entry gate；部署前結論以[本輪分支驗證](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)為準，032／033尚未apply或納入現行production release mode。
 
 風險等級：`High`。本交付會改變八個既有功能的主要畫面、選取／明細狀態、鍵盤操作與版面偏好保存，並新增帳號層級偏好 API 與 forward-only migration；不得用局部元件測試取代完整正常入口及視覺 QC。
 
@@ -203,40 +203,59 @@ Arrow handlers只在 row root或其非互動內容生效；`input`、`textarea`�
 
 ### 9.1 Initial preferred width
 
-1. 等待 list data ready、`document.fonts.ready`（不可得時略過）與兩個 animation frames。
-2. 若帳號已有該 module preference，直接以 stored preferred width 計算 effective width，不執行 content-fit。
-3. 無 preference 時，frame先計算`autoMax=min(480px, containerWidth - 320px - 8px)`，再以CSS intrinsic track呈現：`fit-content(var(--workbench-list-auto-max)) 8px minmax(320px, 1fr)`；list slot另設`min-width:220px; max-width:autoMax`。不得clone DOM或把內容強制`white-space:nowrap`來量測。
-4. 穩定後只讀一次list track的`getBoundingClientRect().width`，依第9.2節clamp並凍結成本次mount的memory preferred；空清單使用`220px`。這次初始化不得送PUT。
-5. Content、filter、selection或detail後續變化不得重新量測或自動改寬，避免操作中跳動。
+1. 若帳號已有該module preference，直接以stored preferred width計算effective width。
+2. 無偏好時沿用CSS intrinsic content width，以`fit-content(min(800px, containerWidth - detailMin - 8px))`呈現清單；各module的list／detail minimum見9.4。不得clone DOM或強制內容nowrap量測。
+3. Intrinsic投影不建立假保存值、不送PUT；第一次pointer resize或左右鍵以實際list寬度為起點。
+4. 使用者調整後保留memory preferred；資料、filter或container變化不得將effective width回寫帳號。
 
 ### 9.2 Clamp
 
 ```text
-LIST_MIN = 220px
-LIST_MAX = 480px
-DETAIL_MIN = 320px
+policy = WORKBENCH_WIDTH_POLICIES[moduleId]
+LIST_MIN = policy.listMinWidthPx
+LIST_MAX = 800px
+DETAIL_MIN = policy.detailMinWidthPx
 SEPARATOR = 8px
+DUAL_MIN = LIST_MIN + SEPARATOR + DETAIL_MIN
 containerMax = containerWidth - DETAIL_MIN - SEPARATOR
-effective = clamp(preferred, LIST_MIN, min(LIST_MAX, containerMax))
+effective = clamp(preferred, LIST_MIN, min(LIST_MAX, containerMax))  # when containerWidth >= DUAL_MIN
 ```
 
-當 containerMax < LIST_MIN 或 container寬度小於 `640px`，改用第 10 節 single-surface 投影；此時不顯示 separator、不覆寫帳號 preferred width。Container放大後重新套用原 preferred width與當下 clamp。
+低於雙欄門檻時沿用9.4的guarded收合；加寬後恢復因寬度而關閉的detail，手動關閉保持關閉。此投影不覆寫帳號preferred width；外層panel minimum與內層雙欄門檻分別由同一policy設定。
 
 ### 9.3 Resize and persistence
 
-- Pointer drag每 frame最多更新一次 preview；只在 `pointerup`／`pointercancel`後送 commit。`pointercancel`回最後 committed effective width。
-- Separator keyboard：Left／Right=`16px`；Shift+Left／Right=`48px`；Home=minimum；End=當下maximum。
-- Keyboard連續操作以 `300ms` debounce合併一次 PUT；pointer resize只在結束時 PUT。不得每個 move寫 API。
+- Pointer move只更新本次memory preview；pointerup送commit，pointercancel停止拖曳且不commit。
+- Separator keyboard：Left／Right每次`8px`，從stored preferred或目前intrinsic寬度開始；每次按鍵commit，沿用既有保存入口。沒有Shift倍率或Home／End行為。
+- Pointer move與container resize不得寫API。
 - UI保存 preferred width，不保存 viewport clamp後的 effective width。
 - GET／PUT失敗不阻塞清單與明細；保留本次記憶體寬度，在 separator附近以單一 `aria-live="polite"` 狀態提示「版面偏好尚未儲存」。下一次 commit重試。
 - 禁止降級寫入 `localStorage` 冒充帳號偏好。
 
+### 9.4 2026-10-07 共用寬度政策（現行 amendment）
+
+使用者先採用「共用行為＋各面板寬度設定」，後續明確要求「連寬度限制都調到一樣」。Spec Impact Preflight=`Intentional replacement`：八個consumer全部沿用Employee的200px panel、66px list、200px detail與274px雙欄門檻，取代各module不同minimum與舊640px規則；selection、guard、帳號偏好與domain owner沿用。此slice風險Medium，僅OrgMaster本地產品與migration source，不包含遠端apply或release。
+
+| module | panel minimum | list minimum | detail minimum | 雙欄門檻 |
+|---|---:|---:|---:|---:|
+| employees / positions / departments / levels / duties / processes / management-methods / role-risks | 200px | 66px | 200px | 274px |
+
+- 唯一設定來源為`src/workspace/workbenchWidthPolicy.ts`，八個module引用同一份policy；外層module registry、內層frame、CSS grid、separator／clamp helper與偏好range沿用此來源。所有list preferred range為66–800px；無偏好沿用intrinsic content width。effective list width最多為`min(preferred, 800px, containerWidth - 200px - 8px)`，取代48% container cap與舊480px有效上限。任何 consumer 不得再定義員工專屬或模組專屬 minimum。
+- 雙欄門檻=`listMin + 8px + detailMin`。不足時請求既有guarded detail close；allow後只留list；guard拒絕或等待中投影為detail-only，保留editor與可用控制。
+- 同一次mount內，只有因寬度而成功關閉的detail會在空間恢復後自動重開；手動關閉不重開。恢復不強制轉移焦點；關閉時僅當焦點位於detail內才回到selected row／module tab。
+- 自動收合與恢復不送偏好PUT；內部分隔線pointerup或左右鍵才commit。左右鍵目前每次8px，pointercancel不commit。窄幅不覆寫帳號preferred值；內層divider維持8px熱區／1px視覺線。
+- 組織架構圖與角色治理僅沿用既有外層workspace resize，不接入list-detail政策。
+
+最小QA／QC：八個正常launcher入口、實際panel splitter縮窄／放大、手動關閉保持關閉、偏好保存後重載、窄幅無水平溢出／控制不被裁切、可見error與critical data sanity sweep；targeted component驗證涵蓋guard拒絕、pending close時快速加寬與hidden panel。本輪最新workspace source hash、viewport量測與19份screenshots位於`output/predeploy/20261007-branch-validation/ui/`，browser與component evidence分層記於[分支驗證報告](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)。較早分模組政策證據保留於`output/playwright/dev046/responsive-sharing-20261007/`；兩者均不取代18節完整normal-entry gate或protected production source freeze。
+
 ## 10. Responsive and accessibility contract
 
-- `containerWidth >= 640px`：同時顯示 list、separator、detail frame。
-- `containerWidth < 640px`：一次只呈現 list或detail content；detailOpen時顯示detail，關閉後回list。右欄的邏輯 owner仍在同一 frame，不建立 Drawer／Modal或第二 route。
+- Workspace split先依目前可用寬高把既存 split ratio clamp到各 panel minimum；minimum不足以維持所有 split時，暫時將已開啟 panels投影為 focused tab surface。這是 viewport projection，不改寫已保存的 desktop layout；空間恢復後沿用原排列。八個共用list-detail panel minimum均為`200px`，此下限以list-only狀態為準。
+- 八個consumer全部依9.4的274px雙欄門檻投影；足夠時list／separator／detail並列，未開啟明細的右欄保持空frame。
+- 不足時請求既有guarded close，allow後list-only；guard拒絕或等待中detail-only，保留未儲存editor。因寬度收合的明細在同一mount內加寬後自動恢復；手動關閉不恢復。右欄邏輯owner保持同一frame，不建立Drawer／Modal或第二route。
+- Workspace split divider維持`5px`視覺線，透明拖曳hit area擴至`24px`，避免精細拖曳目標難以操作。
 - DEV-033判定為mobile／coarse／readonly時，不提供 domain drag；清單導覽、選取、明細閱讀與返回仍可用。
-- Separator使用 `role="separator"`、`aria-orientation="vertical"`、`aria-valuemin/max/now`、可見 focus ring及至少 24px hit target；視覺線可維持 1px。
+- Separator使用`role="separator"`、`aria-orientation="vertical"`、`aria-valuemin/max/now`及可見focus ring；內層清單separator維持8px熱區／1px灰線，外層workspace divider為24px熱區／5px視覺線。
 - Row使用適合現有 DOM 的 `button`或 `role="option"`＋single-select list semantics；不得混用兩套選取語意。`aria-selected`與可見 selected state一致。
 - Detail open／close不以動畫作唯一訊號；遵守 reduced motion。
 - 無內容的層級 detail frame不顯示常駐教學卡，但保留 `aria-label="層級明細"`與 focus fallback。
@@ -344,8 +363,8 @@ type WorkbenchDetailFrameProps = {
 
 ### 11.4 Responsive presentation
 
-- `>=640px`沿用本節雙欄 anatomy。Account preferred width只改 list track，不改 header、row或detail tokens。
-- `<640px`沿用同一 primitives改為單一 surface；list或detail佔滿可用寬高，不縮成窄雙欄。Detail header成為返回層，仍只有一個close／back control。
+- 寬度達9.4的module雙欄門檻時沿用本節雙欄anatomy。Account preferred width只改list track，不改header、row或detail tokens。
+- 低於門檻時沿用同一primitives與guarded單欄投影；list或detail佔滿可用寬高，detail仍保留既有close控制。共用寬度政策取代舊的固定640px結構切換。
 - `<640px`或 coarse pointer時，row trigger、header primary action與detail close的最小hit target為`44×44px`；視覺字級、顏色與selected語言不變。Readonly mobile不顯示新增、編輯、刪除、拖曳handle或空 action gap。
 - 長標題與次要文字單行ellipsis；完整名稱必須透過accessible name取得。不得讓長字串撐破 list preferred width、detail header或產生document水平捲動。
 
@@ -413,7 +432,7 @@ PUT成功回同一 module projection。規則：
 - 身分只來自 `readVerifiedRequestIdentity(request)`；Browser不得提交 principal或employee ID。
 - `vite.config.ts`把preference plugin放在`orgmasterAuthApiPlugin()`之後；`createOrgmasterServer()`同樣把preference middleware放在auth middleware之後。兩條delivery path都必須由auth middleware先設定verified request identity，API handler不得自行解析cookie／development header。
 - module allowlist固定為第 11 節八個 ID；其他值 `404 PREFERENCE_MODULE_NOT_FOUND`。
-- body上限 4 KiB；`listWidthPx`只接受 `160..800` integer，否則 `400 PREFERENCE_VALUE_INVALID`。較寬值可保存為preferred，但畫面仍依第 9 節 clamp。
+- body上限 4 KiB；所有八個module的`listWidthPx`接受`66..800` integer，否則 `400 PREFERENCE_VALUE_INVALID`。較寬值可保存為preferred，但畫面仍依第 9 節 clamp。
 - 未驗證身分 `401 IDENTITY_CONTEXT_REQUIRED`；讀失敗 `503 PREFERENCE_READ_FAILED`；寫失敗 `503 PREFERENCE_WRITE_FAILED`。
 - PUT為每個principal＋module的last-write-wins idempotent upsert。偏好不影響domain correctness，不加入CAS、command ledger或global revision。
 - response `Cache-Control: no-store`；一般log不得輸出完整principal ID或整份偏好payload。
@@ -436,6 +455,8 @@ CREATE TABLE orgmaster_core.workbench_list_width_preferences (
 
 - Migration使用 `-- DB-CHANGE` header、owner=`orgmaster`、schemas=`orgmaster_core`、contract-impact=`none`、backward-compatible；只授予 `jenfu_orgmaster_runtime` SELECT／INSERT／UPDATE／DELETE，沒有跨app contract view。
 - 011明確依賴010 neutral schema boundary已套用；不得回改001～010，也不得在legacy `orgmaster`或`public`建立新物件。
+- Migration 032是歷史forward-only migration，曾只放寬Employee至`66..800`；不回改或重寫已套用的011。
+- Migration 033再以forward-only方式統一八個module的width check為`66..800`，不回改011或032；033僅為本地source，未apply，也不代表production release已授權。
 - Local-json mode使用 `data/user-preferences/workbench-list-widths/<sha256(principalId)>.v1.json`與 verified atomic write；檔名不得包含raw principal。單一runtime內以per-file queue序列化PUT。
 - 兩種 persistence mode投影完全相同；local file不是OrganizationDocument或workspace artifact。
 - 011只建立與測試 migration；production apply、authority switch與release另進release gate。
@@ -458,7 +479,7 @@ CREATE TABLE orgmaster_core.workbench_list_width_preferences (
 Production allowlist：
 
 - `src/App.tsx`
-- `src/workspace/{moduleRegistry,types,state,route,useWorkspaceController,listDetailWorkbench,workbenchPreferenceClient}.ts{,x}`
+- `src/workspace/{moduleRegistry,types,state,route,useWorkspaceController,listDetailWorkbench,workbenchPreferenceClient,workbenchWidthPolicy}.ts{,x}`
 - `src/components/workspace/{WorkspaceSurfacePrimitives,WorkbenchListSeparator,useListDetailWorkbenchInteraction}.tsx`
 - `src/components/workspace/WorkbenchPresentationPrimitives.tsx`
 - `src/components/workspace/adapters/{MasterDataModuleAdapter,DutyModuleAdapter,ProcessModuleAdapter,ManagementMethodModuleAdapter,RoleRiskModuleAdapter}.tsx`
@@ -468,6 +489,10 @@ Production allowlist：
 - `server/{orgmasterServer,workbenchPreferenceApi,workbenchPreferenceRepository}.ts`
 - `vite.config.ts`，只允許新增preference plugin且固定置於auth plugin之後。
 - `db/migrations/011_dev046_workbench_list_width_preferences.sql`
+- `db/migrations/032_dev046_employee_list_min_width.sql`（historical local forward-only source）
+- `db/migrations/033_dev046_shared_list_min_width.sql`（current local forward-only source）
+
+2026-10-07 local follow-up新增的032／033 migration只作為本地forward-only source change；目前DEV-040 production migration profile仍封存於031，未取得對應release profile前不得production apply或release。
 
 Test allowlist為上述檔案的同名 `*.test.ts(x)`、`server/orgmasterServer.test.ts`、`server/dev010DatabaseBoundary.test.ts`、`src/components/workspace/WorkspaceSingleLayerContract.test.tsx`及既有relation tests。唯一browser runner固定為`qa/dev-046/browser/normal-entry.mjs`，唯一結果索引固定為`output/playwright/dev046/manifest.md`；fixture helper若超過runner內可維護範圍才可建立`qa/dev-046/fixtures/workbench.mjs`。若需修改domain schema、Command、permission、其他 API、Organization／Governance production component、新 dependency或migration 001～010，立即停止回 PM／RD Technical Lead。
 
@@ -644,6 +669,15 @@ ADR判定：`不新增ADR`。本次是ADR-009既有panel owner／surface primiti
 
 ## 23. Change log
 
+- 2026-10-07部署前驗證：最新統一寬度完成9.4最小browser範圍、guard／pending／hidden component回歸及完整本地測試。R2 355／355、continuous QC、abort 6／6、staged DB boundary、Vitest 1144 passed／4 skipped與client／server build通過；八個正常入口縮窄／恢復／手動關閉／偏好重載、1024px desktop projection native tab split與390px touch檢查通過，task-owned runtime／browser已清理。唯讀production preflight因官方source freeze阻擋；032／033不在現行31筆release profile，未apply或deploy。證據與限制見[分支驗證報告](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)。下方同日未驗證記錄保留當時狀態，不覆寫此最新判定。
+- 2026-10-07 shared framework normalization（驗證前歷史checkpoint）：使用者要求所有面板的寬度限制一致。八個consumer維持共用`WorkspaceListDetailSurface`，panel/list/detail minimum統一為`200/66/200px`、dual threshold統一為`274px`，preference range統一為`66..800px`；移除員工專屬width alias與偏好range。新增033 forward-only migration供資料庫constraint日後一致化，未apply或release。`npm run build`與`npm run check:db-boundary`通過；當時尚未browser驗證或重跑測試，完整QA/QC及local release gate為pending。
+
+- 2026-10-07共用寬度slice：依使用者「請執行」採用共用行為＋各面板設定，八個consumer接入同一width policy、ResizeObserver與guarded收合／恢復；Employee門檻274px、其餘488px，手動關閉保持關閉。修正intrinsic list第一次keyboard resize以實際寬度起算。型別及client／server build通過，八個正常launcher入口完成1440×900實際splitter縮窄／恢復／手動關閉／keyboard preference PUT 200與reload觀察，無可見alert或document水平溢出；Process原資料0筆，僅隔離副本補1筆fixture。預期未登入401及未配置正式auth mode的503保留原始紀錄，不宣稱console零error。Targeted六suite因sandbox暫存rename EPERM在載入前失敗，實際執行tests=0；guard拒絕、快速加寬與hidden-panel新component cases尚未跑通，完整QA/QC gate保持pending。原032未apply、未production release。Evidence索引：`output/playwright/dev046/manifest.md`；本次所有暫時runtime／browser已清理且port released。
+- 2026-10-07：依使用者追加決策，Employee明細因surface低於`274px`而自動關閉後，寬度恢復到`274px`以上時自動恢復明細；手動關閉不會觸發加寬自動重開。尚未執行測試、建置或browser QC。
+- 2026-10-07：依使用者追加決策，Employee明細minimum由`320px`降至`200px`；雙欄最低容器寬度由`394px`降至`274px`（66px list＋8px separator＋200px detail），不足時仍經既有guarded transition自動關閉detail並保留list；其他consumer明細minimum維持`320px`。尚未執行測試、建置或browser QC。
+- 2026-10-07：依使用者決策將Employee外層panel minimum由`560px`降至`200px`；當Employee surface寬度低於`394px`（66px list＋8px separator＋320px detail）時，透過既有guarded transition關閉detail並保留list；`394–639px`改為緊湊雙欄。尚未執行測試、建置或browser QC。
+- 2026-10-07：依使用者欄寬回饋，Employee list下限由220px降至66px（縮小70%）；pointer／keyboard separator、偏好API／repository與Employee responsive track套用相同下限，其他module維持原範圍。新增032 forward-only migration調整Employee偏好constraint；僅本地source change，未套用資料庫或production release，後續驗證待執行。
+- 2026-10-07：修正 DEV-046同列收合內容在寬版仍外露，以及窄 viewport套用舊 workspace split ratio後把 Employee panel壓到640px以下的問題。關閉明細時維持空 detail frame；WorkspaceLayout以viewport投影clamped split，minimum不足時暫時以focused tabs呈現且不覆寫保存的layout。後續依拖曳回饋將Employee並列下限調整為560px，並擴大split divider透明hit area至24px。此 follow-up尚未執行測試、建置或browser QC。
 - 2026-09-04：完成local／isolated implementation與驗證。八個consumer均接入永久list／separator／detail frame；統一同列click關閉／重開、另一列click、ArrowUp／Down、Escape focus restore、pointer／keyboard resize及verified-principal account preference；011 migration／repository／API、Employee visual baseline、typed relation extension path與pointercancel cleanup已落地。八個正常入口確認frame結構，Employee完成1440×900／1024×768／390×844及互動證據；`npm test` 196 files／797 tests／1 skipped、typecheck、client／server build、DEV-010 N2 16／16、DB boundary與diff check通過。RD Technical Lead結論維持`Pass after Contract Optimization`；production migration、deploy與release仍待local release gate。
 - 2026-09-04：依使用者追加決策，將現行Employee workspace surface固定為八module的細部風格與排版基準；新增baseline authority、shared anatomy、三個presentation primitives、frozen tokens、responsive規則、允許／禁止差異、E5～E9、F046-09及兩個visual FMEA。RD Technical Lead重新覆核後維持`Pass after Contract Optimization`：這是ADR-009與既有DEV-046架構內的compatible refinement，不新增ADR、domain schema、runtime或產品程式變更。
 - 2026-09-04：依使用者確認建立DEV-046並直接補至`RD Implementation Ready`；固定八module共用frame、click／Arrow／Escape state machine、永遠存在的右detail frame、account-scoped resizable list width、DEV-041 relation extension path、011 migration／API／repository、S0～S6、A1～E4、F046-01～08與FMEA。RD Technical Lead完成根因、最小架構、技術債與證據審查，結論為`Pass after Contract Optimization`；本輪未修改產品程式、資料、runtime或release狀態。

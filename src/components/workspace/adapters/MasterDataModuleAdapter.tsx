@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { WorkspaceSurfaceVisibility } from '../../../workspace/types'
-import { WorkspaceListDetailSurface } from '../WorkspaceSurfacePrimitives'
+import { WorkspaceListDetailSurface, type WorkspaceListDetailSurfaceProps } from '../WorkspaceSurfacePrimitives'
 import { WorkbenchDetailFrame } from '../WorkbenchPresentationPrimitives'
 
 export type MasterDataModuleId = 'employees' | 'positions' | 'departments' | 'levels'
@@ -12,6 +12,7 @@ interface Props {
   detail?: ReactNode
   detailVisible?: boolean
   listWidthPx?: number | null
+  onDetailWidthTransition?: WorkspaceListDetailSurfaceProps['onDetailWidthTransition']
   onListWidthChange?: (width: number) => void
   onListWidthCommit?: (width: number) => void
 }
@@ -23,7 +24,7 @@ const labels: Record<MasterDataModuleId, string> = {
   levels: '層級',
 }
 
-export function MasterDataModuleAdapter({ moduleId, visibility, list, detail, detailVisible = Boolean(detail), listWidthPx, onListWidthChange, onListWidthCommit }: Props) {
+export function MasterDataModuleAdapter({ moduleId, visibility, list, detail, detailVisible = Boolean(detail), listWidthPx, onDetailWidthTransition, onListWidthChange, onListWidthCommit }: Props) {
   const className = `master-data-workspace master-data-workspace--${moduleId}${detailVisible ? '' : ' is-detail-less'}`
   return (
     <WorkspaceListDetailSurface
@@ -33,6 +34,7 @@ export function MasterDataModuleAdapter({ moduleId, visibility, list, detail, de
       dataModule={moduleId}
       detailVisible={detailVisible}
       listWidthPx={listWidthPx}
+      onDetailWidthTransition={onDetailWidthTransition}
       onListWidthChange={onListWidthChange}
       onListWidthCommit={onListWidthCommit}
       listClassName="master-data-workspace__list"

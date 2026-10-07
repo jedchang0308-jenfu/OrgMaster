@@ -59,6 +59,7 @@ describe('workspace layout', () => {
 
   it('opens a second visible region only when both minimum widths fit', () => {
     expect(resolveAutomaticPanelTarget(defaultWorkspaceLayout(), 'organization', 'duties', 1000)).toEqual({ kind: 'edge', stackPath: [], edge: 'right' })
-    expect(resolveAutomaticPanelTarget(defaultWorkspaceLayout(), 'organization', 'duties', 679)).toEqual({ kind: 'stack', stackPath: [] })
+    expect(resolveAutomaticPanelTarget(defaultWorkspaceLayout(), 'organization', 'duties', 564)).toEqual({ kind: 'stack', stackPath: [] })
+    expect(resolveAutomaticPanelTarget(defaultWorkspaceLayout(), 'organization', 'duties', 565)).toEqual({ kind: 'edge', stackPath: [], edge: 'right' })
   })
 })

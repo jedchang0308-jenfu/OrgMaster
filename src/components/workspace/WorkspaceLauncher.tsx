@@ -9,10 +9,11 @@ import { useWorkspacePanelDrag } from './WorkspacePanelDragContext'
 interface Props {
   openPanels: readonly WorkspaceModuleId[]
   onOpenModule: (moduleId: WorkspaceModuleId) => void
+  closePendingModuleId?: WorkspaceModuleId | null
   disabled?: boolean
 }
 
-export function WorkspaceLauncher({ openPanels, onOpenModule, disabled = false }: Props) {
+export function WorkspaceLauncher({ openPanels, onOpenModule, closePendingModuleId = null, disabled = false }: Props) {
   const [expanded, setExpanded] = useState(true)
   const panelDrag = useWorkspacePanelDrag()
   const authSession = useAuthSession()
@@ -46,14 +47,16 @@ export function WorkspaceLauncher({ openPanels, onOpenModule, disabled = false }
         {WORKSPACE_MODULE_ORDER.map((moduleId) => {
           const descriptor = getWorkspaceModule(moduleId)
           const opened = openPanels.includes(moduleId)
+          const itemDisabled = disabled || (opened && closePendingModuleId === moduleId)
           return (
             <button
               key={moduleId}
               type="button"
               className={`workspace-launcher__item${opened ? ' is-opened' : ''}`}
               aria-label={`${descriptor.label}${opened ? '，已開啟' : ''}`}
-              disabled={disabled}
-              draggable={!disabled}
+              aria-pressed={opened}
+              disabled={itemDisabled}
+              draggable={!itemDisabled}
               onDragStart={(event) => {
                 event.dataTransfer.effectAllowed = 'move'
                 event.dataTransfer.setData(WORKSPACE_PANEL_DRAG_MIME, JSON.stringify({ moduleId }))

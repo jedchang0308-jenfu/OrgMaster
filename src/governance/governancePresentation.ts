@@ -5,9 +5,52 @@ import type {
   GovernanceIdentityLinkV1,
   GovernancePolicyDataV1,
   GovernancePolicyVersionV1,
+  GovernanceRoleAssignmentV2,
 } from './types'
 
 type GovernancePolicyDataViewV2 = Omit<GovernanceDocumentV2['draft'], 'identityLinks'> & { identityLinks: GovernanceIdentityLinkViewV1[] }
+const governanceDateTime = new Intl.DateTimeFormat('zh-TW', {
+  timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+})
+
+export function formatGovernanceDateTime(value: string) {
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) ? governanceDateTime.format(date) : '時間未記錄'
+}
+
+export type GovernanceAssignmentChange = {
+  kind: '新增' | '調整' | '撤銷' | '移除'
+  assignment: GovernanceRoleAssignmentV2
+  before?: GovernanceRoleAssignmentV2
+}
+
+function assignmentContent(assignment: GovernanceRoleAssignmentV2) {
+  return JSON.stringify(assignment, (_key, value: unknown) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)))
+    }
+    return value
+  })
+}
+
+export function governanceAssignmentChanges(draft: GovernanceRoleAssignmentV2[], published: GovernanceRoleAssignmentV2[]): GovernanceAssignmentChange[] {
+  const previous = new Map(published.map((assignment) => [assignment.id, assignment]))
+  const remaining = new Set(draft.map((assignment) => assignment.id))
+  const changes: GovernanceAssignmentChange[] = []
+  for (const assignment of draft) {
+    const before = previous.get(assignment.id)
+    if (!before) changes.push({ kind: '新增', assignment })
+    else if (assignmentContent(assignment) !== assignmentContent(before)) {
+      changes.push({ kind: assignment.status === 'revoked' && before.status !== 'revoked' ? '撤銷' : '調整', assignment, before })
+    }
+  }
+  for (const assignment of published) {
+    if (!remaining.has(assignment.id)) changes.push({ kind: '移除', assignment })
+  }
+  return changes
+}
+
 export type GovernanceDocumentViewV2 = Omit<GovernanceDocumentV2, 'draft' | 'publishedVersions'> & { draft: GovernancePolicyDataViewV2; publishedVersions: Array<Omit<GovernanceDocumentV2['publishedVersions'][number], 'policy'> & { policy: GovernancePolicyDataViewV2 }> }
 
 export type GovernanceIdentityLinkViewV1 = Omit<GovernanceIdentityLinkV1, 'subject'> & {

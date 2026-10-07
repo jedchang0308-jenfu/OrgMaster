@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createSeedDocument } from '../../server/orgmasterGovernanceStore'
-import { describeGovernanceFailure, governancePublishBlockers, sameGlobalRoleAssignment } from './governancePresentation'
+import { describeGovernanceFailure, formatGovernanceDateTime, governancePublishBlockers, sameGlobalRoleAssignment } from './governancePresentation'
 
 function readyDraft() {
   const draft = createSeedDocument('2026-08-26T00:00:00.000Z').draft
@@ -10,6 +10,10 @@ function readyDraft() {
 }
 
 describe('governance presentation', () => {
+  it('renders publication timestamps in Taipei even across a UTC date boundary and tolerates missing dates', () => {
+    expect(formatGovernanceDateTime('2026-10-04T23:06:30.062Z')).toBe('2026/10/05 07:06')
+    expect(formatGovernanceDateTime('invalid')).toBe('時間未記錄')
+  })
   it('turns duplicate identity issues into one recoverable human message', () => {
     const failure = describeGovernanceFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: [
       { code: 'IDENTITY_CONFLICT', message: 'duplicate subject' },

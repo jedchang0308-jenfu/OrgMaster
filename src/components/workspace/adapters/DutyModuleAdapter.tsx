@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { WorkspaceSurfaceVisibility } from '../../../workspace/types'
-import { WorkspaceListDetailSurface } from '../WorkspaceSurfacePrimitives'
+import { WorkspaceListDetailSurface, type WorkspaceListDetailSurfaceProps } from '../WorkspaceSurfacePrimitives'
 import { WorkbenchDetailFrame } from '../WorkbenchPresentationPrimitives'
 
 interface Props {
@@ -10,13 +10,14 @@ interface Props {
   list?: ReactNode
   detail?: ReactNode
   detailVisible?: boolean
+  onDetailWidthTransition?: WorkspaceListDetailSurfaceProps['onDetailWidthTransition']
   listWidthPx?: number | null
   onListWidthChange?: (width: number) => void
   onListWidthCommit?: (width: number) => void
   onListRowNavigate?: (rowId: string, direction: 'up' | 'down') => void | Promise<{ kind: 'allow' | 'keep-open' }>
 }
 
-export function DutyModuleAdapter({ mode, visibility, children, list, detail, detailVisible = Boolean(detail), listWidthPx, onListWidthChange, onListWidthCommit, onListRowNavigate }: Props) {
+export function DutyModuleAdapter({ mode, visibility, children, list, detail, detailVisible = Boolean(detail), listWidthPx, onDetailWidthTransition, onListWidthChange, onListWidthCommit, onListRowNavigate }: Props) {
   return (
     <WorkspaceListDetailSurface
       ariaLabel="工作職掌完整工作台"
@@ -26,9 +27,10 @@ export function DutyModuleAdapter({ mode, visibility, children, list, detail, de
       dataModule="duties"
       dataVisibility={visibility}
       detailVisible={detailVisible}
+      onDetailWidthTransition={onDetailWidthTransition}
       listWidthPx={listWidthPx}
-    onListWidthChange={onListWidthChange}
-    onListWidthCommit={onListWidthCommit}
+      onListWidthChange={onListWidthChange}
+      onListWidthCommit={onListWidthCommit}
       onListRowNavigate={onListRowNavigate}
       listClassName={mode === 'configuration' ? 'duty-configuration-workspace__list' : ''}
       detailClassName={mode === 'configuration' ? 'duty-configuration-workspace__detail' : ''}

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { WorkspaceSurfaceVisibility } from '../../../workspace/types'
-import { WorkspaceListDetailSurface } from '../WorkspaceSurfacePrimitives'
+import { WorkspaceListDetailSurface, type WorkspaceListDetailSurfaceProps } from '../WorkspaceSurfacePrimitives'
 import { WorkbenchDetailFrame } from '../WorkbenchPresentationPrimitives'
 
 interface Props {
@@ -10,13 +10,14 @@ interface Props {
   list?: ReactNode
   detail?: ReactNode
   detailVisible?: boolean
+  onDetailWidthTransition?: WorkspaceListDetailSurfaceProps['onDetailWidthTransition']
   listWidthPx?: number | null
   onListWidthChange?: (width: number) => void
   onListWidthCommit?: (width: number) => void
   onListRowNavigate?: (rowId: string, direction: 'up' | 'down') => void | Promise<{ kind: 'allow' | 'keep-open' }>
 }
 
-export function ManagementMethodModuleAdapter({ mode, visibility, children, list, detail, detailVisible = Boolean(detail), listWidthPx, onListWidthChange, onListWidthCommit, onListRowNavigate }: Props) {
+export function ManagementMethodModuleAdapter({ mode, visibility, children, list, detail, detailVisible = Boolean(detail), listWidthPx, onDetailWidthTransition, onListWidthChange, onListWidthCommit, onListRowNavigate }: Props) {
   const resolvedList = list ?? children ?? null
   return <WorkspaceListDetailSurface
     className={`management-method-module-adapter management-method-module-adapter--${mode}`}
@@ -24,6 +25,7 @@ export function ManagementMethodModuleAdapter({ mode, visibility, children, list
     dataModule="management-methods"
     dataVisibility={visibility}
     detailVisible={detailVisible}
+    onDetailWidthTransition={onDetailWidthTransition}
     ariaLabel="管理辦法完整工作台"
     listLabel="管理辦法清單"
     detailLabel="管理辦法明細"

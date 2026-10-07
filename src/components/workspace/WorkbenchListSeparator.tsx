@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { WORKBENCH_LIST_WIDTH_MIN, WORKBENCH_LIST_WIDTH_MAX } from '../../workspace/workbenchWidthPolicy'
 
 interface Props {
   value: number | null
@@ -12,7 +13,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Math.round(value)))
 }
 
-export function WorkbenchListSeparator({ value, min = 160, max = 800, onChange, onCommit }: Props) {
+export function WorkbenchListSeparator({ value, min = WORKBENCH_LIST_WIDTH_MIN, max = WORKBENCH_LIST_WIDTH_MAX, onChange, onCommit }: Props) {
   const draggingRef = useRef(false)
   const startRef = useRef({ x: 0, width: value ?? 240 })
   const lastWidthRef = useRef(value ?? 240)
@@ -70,7 +71,7 @@ export function WorkbenchListSeparator({ value, min = 160, max = 800, onChange, 
         stopDragging(event.currentTarget, event.pointerId)
       }}
       onKeyDown={(event) => {
-        const current = value ?? 240
+        const current = value ?? event.currentTarget.parentElement?.querySelector<HTMLElement>('[data-workspace-slot="list"]')?.getBoundingClientRect().width ?? 240
         if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
           event.preventDefault()
           const next = clamp(current + (event.key === 'ArrowRight' ? 8 : -8), min, max)

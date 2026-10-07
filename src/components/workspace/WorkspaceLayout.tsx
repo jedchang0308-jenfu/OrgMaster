@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from 'react'
 import { Pin, PinOff, X } from 'lucide-react'
-import { clampWorkspaceSplitRatio, collectLayoutModules, moduleMinimum } from '../../workspace/layout'
+import { clampWorkspaceSplitRatio, collectLayoutModules, moduleMinimum, WORKSPACE_SPLIT_SEPARATOR_WIDTH } from '../../workspace/layout'
 import { getWorkspaceModule, isWorkspaceModuleId } from '../../workspace/moduleRegistry'
 import type { WorkspaceAction } from '../../workspace/state'
 import type {
@@ -38,8 +38,34 @@ function parsePanelDrag(event: DragEvent) {
 
 function minimumForNode(node: WorkspaceLayoutNodeV1, axis: 'horizontal' | 'vertical'): number {
   if (node.kind === 'stack') return Math.max(...node.tabs.map((moduleId) => moduleMinimum(moduleId, axis)))
-  if (node.axis === axis) return minimumForNode(node.first, axis) + minimumForNode(node.second, axis)
+  if (node.axis === axis) return minimumForNode(node.first, axis) + minimumForNode(node.second, axis) + WORKSPACE_SPLIT_SEPARATOR_WIDTH
   return Math.max(minimumForNode(node.first, axis), minimumForNode(node.second, axis))
+}
+
+function fitNodeToViewport(node: WorkspaceLayoutNodeV1, width: number, height: number): WorkspaceLayoutNodeV1 | null {
+  if (node.kind === 'stack') {
+    return width >= minimumForNode(node, 'horizontal') && height >= minimumForNode(node, 'vertical') ? node : null
+  }
+
+  const extent = (node.axis === 'horizontal' ? width : height) - WORKSPACE_SPLIT_SEPARATOR_WIDTH
+  const firstMinimum = minimumForNode(node.first, node.axis)
+  const secondMinimum = minimumForNode(node.second, node.axis)
+  const ratio = clampWorkspaceSplitRatio(node.ratio, extent, firstMinimum, secondMinimum)
+  if (ratio === null) return null
+
+  const firstExtent = extent * ratio
+  const secondExtent = extent - firstExtent
+  const first = fitNodeToViewport(
+    node.first,
+    node.axis === 'horizontal' ? firstExtent : width,
+    node.axis === 'vertical' ? firstExtent : height,
+  )
+  const second = fitNodeToViewport(
+    node.second,
+    node.axis === 'horizontal' ? secondExtent : width,
+    node.axis === 'vertical' ? secondExtent : height,
+  )
+  return first && second ? { ...node, ratio, first, second } : null
 }
 
 function updateDropPreview(event: DragEvent) {
@@ -61,6 +87,8 @@ function PanelRegion({
   mobileSingleSurface,
   draggingModuleId,
   setDraggingModuleId,
+  singleSurface,
+  projectedDesktop,
   dispatch,
   requestClose,
   renderPanel,
@@ -71,13 +99,15 @@ function PanelRegion({
   mobileSingleSurface: boolean
   draggingModuleId: WorkspaceModuleId | null
   setDraggingModuleId: (moduleId: WorkspaceModuleId | null) => void
+  singleSurface: boolean
+  projectedDesktop: boolean
   dispatch: Props['dispatch']
   requestClose: RequestPanelClose
   renderPanel: Props['renderPanel']
 }) {
   const regionRef = useRef<HTMLElement>(null)
   const [regionSize, setRegionSize] = useState({ width: 0, height: 0 })
-  const activeTab = mobileSingleSurface && session.focusedPanel && node.tabs.includes(session.focusedPanel)
+  const activeTab = singleSurface && session.focusedPanel && node.tabs.includes(session.focusedPanel)
     ? session.focusedPanel
     : node.activeTab
   const drop = (event: DragEvent, target: LayoutDropTarget) => {
@@ -87,7 +117,13 @@ function PanelRegion({
       return
     }
     event.preventDefault()
-    if (session.panels[moduleId]) {
+    if (projectedDesktop && session.panels[moduleId] && target.kind === 'edge') {
+      dispatch({ type: 'SPLIT_PROJECTED_PANEL', moduleId, edge: target.edge })
+    } else if (projectedDesktop) {
+      clearDropPreview(regionRef.current)
+      setDraggingModuleId(null)
+      return
+    } else if (session.panels[moduleId]) {
       dispatch({ type: 'MOVE_PANEL', moduleId, target })
     } else {
       dispatch({ type: 'OPEN_OR_FOCUS', intent: { moduleId, source: 'launcher' } as WorkspaceOpenIntent, target })
@@ -106,10 +142,15 @@ function PanelRegion({
   }, [])
   const canSplit = (moduleId: WorkspaceModuleId, edge: 'left' | 'right' | 'top' | 'bottom') => {
     if (mobileSingleSurface || (node.tabs.length === 1 && node.tabs[0] === moduleId)) return false
+    if (projectedDesktop && (!session.panels[moduleId] || !node.tabs.includes(moduleId))) return false
     const axis = edge === 'left' || edge === 'right' ? 'horizontal' : 'vertical'
     const available = axis === 'horizontal' ? regionSize.width : regionSize.height
     if (!available) return true
-    return moduleMinimum(moduleId, axis) + minimumForNode(node, axis) + 6 <= available
+    const remainingTabs = node.tabs.filter((tab) => tab !== moduleId)
+    const targetMinimum = projectedDesktop || node.tabs.includes(moduleId)
+      ? remainingTabs.length ? Math.max(...remainingTabs.map((tab) => moduleMinimum(tab, axis))) : 0
+      : minimumForNode(node, axis)
+    return targetMinimum > 0 && moduleMinimum(moduleId, axis) + targetMinimum + 6 <= available
   }
   return (
     <section ref={regionRef} className="workspace-region" aria-label="工作台區域">
@@ -147,7 +188,7 @@ function PanelRegion({
       <div className="workspace-region__content" aria-busy={session.closePendingModuleId ? 'true' : undefined}>
         {node.tabs.map((moduleId) => {
           const active = moduleId === activeTab
-          if (mobileSingleSurface && !active) return null
+          if (singleSurface && !active) return null
           return (
             <div
               key={moduleId}
@@ -174,7 +215,7 @@ function PanelRegion({
               {available && <span className="workspace-region__drop-preview"><span>{getWorkspaceModule(draggingModuleId).label}</span></span>}
             </div>
           })}
-          {(() => {
+          {!projectedDesktop && (() => {
             const target = { kind: 'stack', stackPath: path } as const
             return <div className="is-center" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; updateDropPreview(event) }} onDrop={(event) => drop(event, target)}><span className="workspace-region__drop-preview"><span>{getWorkspaceModule(draggingModuleId).label}</span></span></div>
           })()}
@@ -233,22 +274,48 @@ function SplitSeparator({
 
 export function WorkspaceLayout({ layout, session, mobileSingleSurface, dispatch, requestClose, renderPanel }: Props) {
   const panelDrag = useWorkspacePanelDrag()
+  const layoutRef = useRef<HTMLDivElement>(null)
   const [localDraggingModuleId, setLocalDraggingModuleId] = useState<WorkspaceModuleId | null>(null)
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
   const setDraggingModuleId = (moduleId: WorkspaceModuleId | null) => {
     setLocalDraggingModuleId(moduleId)
     if (moduleId) panelDrag?.beginDragging(moduleId)
     else panelDrag?.endDragging()
   }
   const draggingModuleId = panelDrag?.draggingModuleId ?? localDraggingModuleId
-  const mobileNode = useMemo<WorkspaceLayoutNodeV1 | null>(() => {
-    if (!mobileSingleSurface) return null
+  useEffect(() => {
+    const element = layoutRef.current
+    if (!element) return
+    const measure = (width = element.getBoundingClientRect().width, height = element.getBoundingClientRect().height) => {
+      setViewportSize((current) => current.width === width && current.height === height ? current : { width, height })
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      const handleResize = () => measure()
+      window.addEventListener('resize', handleResize)
+      return () => window.removeEventListener('resize', handleResize)
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry) measure(entry.contentRect.width, entry.contentRect.height)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  const responsiveNode = useMemo(() => {
+    if (mobileSingleSurface || !layout.root || viewportSize.width <= 0 || viewportSize.height <= 0) return null
+    return fitNodeToViewport(layout.root, viewportSize.width, viewportSize.height)
+  }, [layout.root, mobileSingleSurface, viewportSize.height, viewportSize.width])
+  const singleSurface = mobileSingleSurface || Boolean(layout.root && viewportSize.width > 0 && viewportSize.height > 0 && !responsiveNode)
+  const tabNode = useMemo<WorkspaceLayoutNodeV1 | null>(() => {
+    if (!singleSurface) return null
     const openPanels = collectLayoutModules(layout)
     const activeTab = session.focusedPanel && openPanels.includes(session.focusedPanel) ? session.focusedPanel : openPanels[0]
     return activeTab ? { kind: 'stack', tabs: openPanels, activeTab } : null
-  }, [layout, mobileSingleSurface, session.focusedPanel])
-  const root = mobileSingleSurface ? mobileNode : layout.root
+  }, [layout, session.focusedPanel, singleSurface])
+  const root = singleSurface ? tabNode : responsiveNode ?? layout.root
   const renderNode = (node: WorkspaceLayoutNodeV1, path: number[]): React.ReactNode => {
-    if (node.kind === 'stack') return <PanelRegion key={path.join('.') || 'root'} node={node} path={path} session={session} mobileSingleSurface={mobileSingleSurface} draggingModuleId={draggingModuleId} setDraggingModuleId={setDraggingModuleId} dispatch={dispatch} requestClose={requestClose} renderPanel={renderPanel} />
+    if (node.kind === 'stack') return <PanelRegion key={path.join('.') || 'root'} node={node} path={path} session={session} mobileSingleSurface={mobileSingleSurface} singleSurface={singleSurface} projectedDesktop={singleSurface && !mobileSingleSurface} draggingModuleId={draggingModuleId} setDraggingModuleId={setDraggingModuleId} dispatch={dispatch} requestClose={requestClose} renderPanel={renderPanel} />
     return (
       <div key={path.join('.') || 'root'} className={`workspace-split is-${node.axis}`} style={node.axis === 'horizontal' ? { gridTemplateColumns: `${node.ratio}fr auto ${1 - node.ratio}fr` } : { gridTemplateRows: `${node.ratio}fr auto ${1 - node.ratio}fr` }}>
         {renderNode(node.first, [...path, 0])}
@@ -258,5 +325,5 @@ export function WorkspaceLayout({ layout, session, mobileSingleSurface, dispatch
     )
   }
 
-  return <div className="workspace-layout">{root ? renderNode(root, []) : <div className="workspace-empty"><strong>工作台目前沒有開啟功能</strong><span>請從上方「功能」選單開啟需要的模組。</span></div>}</div>
+  return <div ref={layoutRef} className="workspace-layout">{root ? renderNode(root, []) : <div className="workspace-empty"><strong>工作台目前沒有開啟功能</strong><span>請從上方「功能」選單開啟需要的模組。</span></div>}</div>
 }

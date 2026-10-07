@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
+import { WORKBENCH_LIST_DETAIL_SEPARATOR_WIDTH, WORKBENCH_LIST_WIDTH_MAX, type WorkbenchWidthPolicy } from '../../workspace/workbenchWidthPolicy'
 
 export interface WorkbenchListFrameProps {
   title: string
@@ -70,6 +71,14 @@ export function WorkbenchDetailFrame({ title, eyebrow, actions, children, classN
   )
 }
 
-export function workbenchWidthStyle(width: number | null): CSSProperties {
-  return { '--workspace-list-width': width ? `${width}px` : 'max-content' } as CSSProperties
+export function workbenchWidthStyle(width: number | null, policy?: WorkbenchWidthPolicy): CSSProperties {
+  return {
+    '--workspace-list-width': width ? `${width}px` : 'max-content',
+    ...(policy ? {
+      '--workbench-list-min-width': `${policy.listMinWidthPx}px`,
+      '--workbench-detail-min-width': `${policy.detailMinWidthPx}px`,
+      '--workbench-list-max-width': `${WORKBENCH_LIST_WIDTH_MAX}px`,
+      '--workbench-separator-width': `${WORKBENCH_LIST_DETAIL_SEPARATOR_WIDTH}px`,
+    } : {}),
+  } as CSSProperties
 }

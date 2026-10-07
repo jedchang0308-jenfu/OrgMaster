@@ -2,6 +2,10 @@
 
 狀態：`RD Implementation Complete / Browser QA-QC Passed / Merged to master`
 
+> **2026-10-07 launcher toggle amendment（現行行為）**：功能入口對未開啟的 module 維持 open-or-focus；再次點擊已開啟的 module 時，透過既有 panel close guard 請求關閉。guard 回覆 keep-open 時保留 panel。此決策取代本文件原先「launcher 只 open-or-focus」的互動描述；panel/layout/route ownership 與 domain authority 不變。
+
+> **2026-10-07 追加驗證**：完整本地自動化與client／server build通過；隔離browser以正常員工launcher入口確認第二次點擊關閉panel。Guard拒絕與pending行為保留其component證據層級，不以無編輯的browser個案替代。證據見[本輪分支驗證](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)；本輪未merge或deploy。
+
 > **2026-09-04 DEV-046 intentional successor（現行產品方向）**：DEV-042 的完成狀態、single-layer launcher、panel owner、route／session authority與歷史證據保持有效；但 list-only module、固定 `242px／190px` 清單寬度、detail 關閉即移除右欄，以及 Process 保留專用最外層三區例外，已由 [DEV-046](DEV-046-unified-list-detail-workbench-framework.md) 明確取代。現行待實作契約是八個指定功能共用左清單＋永遠存在的右detail frame、click／Arrow／Escape互動、帳號層級可調清單寬度及DEV-041 typed relation extension path。本文件後續相反敘述只作DEV-042歷史provenance，不得覆寫DEV-046。
 
 > **2026-09-02 repository integration override（現行）**：DEV-042 single-layer workspace與DEV-041 relation baseline已由final integration commit `4e3b2ce`收斂，並經merge commit `c8cc16f`進入`master`。因此本文件舊段落中的candidate freeze、commit、merge authorization pending只作整合前provenance；現行無獨立開發或Git尾項。deploy／release未被本文件授權，僅在使用者另行提出release型指令時進入共用gate。
@@ -51,8 +55,8 @@
 
 ### 1.2 目標
 
-1. 頂部「功能」是所有十個模組的唯一正式入口；點擊後只執行 open-or-focus。
-2. 每種 module type 仍最多一份 panel；已開啟時保留其 context、layout、scroll 與 canvas viewport。
+1. 頂部「功能」是所有十個模組的唯一正式入口；未開啟時執行 open-or-focus，已開啟時再次點擊會請求 guarded close。
+2. 每種 module type 仍最多一份 panel；panel 開啟期間保留其 context、layout、scroll 與 canvas viewport；close guard 拒絕關閉時維持原狀。
 3. 有獨立明細的清單型模組，在同一 panel 內提供清單與可收合明細；關閉明細不關閉 panel、不清除已選項目與清單脈絡。
 4. 畫布、設定中心及已自帶完整清單／畫布編排的 workbench 保持其領域結構，不製造空白欄。
 5. 完整保留 DEV-039 panel composition 與 DEV-041 relation placement。
@@ -228,7 +232,7 @@ interface WorkspaceRouteState {
 
 正常入口固定為：`頂部工具列「功能」button → 可見module menuitem → 對應workspace panel tab／surface`。選單項目沿用registry label：`組織架構圖、員工、職位、部門、層級、工作職掌、流程規劃、管理辦法、兼任風險、角色治理`。點擊後：
 
-1. menu關閉，panel不存在則加入focused stack，存在則只focus／reveal。
+1. 未開啟的 module 加入 focused stack；已開啟的 module 透過既有 close guard 請求關閉，guard 拒絕時保留 panel。
 2. panel tab的可見label與registry label一致；不得先顯示同名drawer、full-workbench CTA或promotion loading state。
 3. launcher操作本身不改變version、workspace mode、capability或domain data。
 4. 直接導向legacy standalone route時，第一次讀取即轉為同一panel與canonical `/`；browser Back不得重新顯示legacy composition。
@@ -237,7 +241,7 @@ interface WorkspaceRouteState {
 
 ### 7.1 唯一入口
 
-- `WorkspaceLauncher`只接受`onOpenModule(moduleId)`；十個項目全部呼叫`controller.openOrFocus({ moduleId, source: 'launcher' })`，不帶context即代表保留既有context。
+- `WorkspaceLauncher`以`onOpenModule(moduleId)`回報選取；App依目前`openPanels`分流：已開啟的module呼叫`requestWorkspacePanelClose(moduleId)`，其他module呼叫`controller.openOrFocus({ moduleId, source: 'launcher' })`。open intent不帶context，保留既有context。
 - Toolbar、global search、legacy route、organization duty-config、module row deep link都轉成 `WorkspaceOpenIntent`；不得直接寫 layout 或建立第二 entry switch。
 - `openDutyConfiguration`同時確保organization與duties panel存在；duties intent明確帶入合法context，故由單一open reducer sanitize後替換，保留雙panel關係配置，不再開drawer。
 
@@ -387,7 +391,7 @@ rg -n "WorkspaceQuickDrawer|DrawerWorkspaceModuleId|WORKSPACE_DRAWER_MODULES|isD
 
 必測 pure cases：
 
-1. launcher重點同一 module只聚焦，不覆寫context、不新增panel。
+1. launcher點擊未開啟module會open-or-focus；再次點擊已開啟module會走close guard，不覆寫context、不新增重複panel。
 2. 明確帶context的intent經sanitizer更新context；未帶context只聚焦；invalid entity fail-closed。
 3. detail close保留ID／selection/query，route `details`正確移除；reopen可還原。
 4. route read／write順序穩定；舊canonical與四種legacy route正規化一次。
@@ -423,7 +427,7 @@ rg -n "WorkspaceQuickDrawer|DrawerWorkspaceModuleId|WORKSPACE_DRAWER_MODULES|isD
 
 | ID | Scenario | Pass |
 |---|---|---|
-| F042-E1 | 十模組launcher | 全部直接open-or-focus，0 drawer／0 duplicate |
+| F042-E1 | 十模組launcher | 未開啟時全部可open-or-focus；已開啟時再次點擊走guarded close；0 drawer／0 duplicate |
 | F042-E2 | employees／positions／departments list-detail | close後同row、query、scroll保留；三panel互不串位 |
 | F042-E3 | duties | configuration收合、audit／distribution保留；Duty DnD source／target存在 |
 | F042-E4 | processes | 流程清單新增入口可見，mindmap／flow與bridge存在，無雙清單 |
@@ -451,7 +455,7 @@ rg -n "WorkspaceQuickDrawer|DrawerWorkspaceModuleId|WORKSPACE_DRAWER_MODULES|isD
 | 失敗模式 | 早期偵測 | 恢復／停止 |
 |---|---|---|
 | 只CSS隱藏drawer | source scan仍有drawer state／controller | S2 fail；刪除正式路徑與dead code後重跑，不接受feature flag長期並存 |
-| launcher重置context | 重複點擊後query／selection／viewport改變 | S1 fail；launcher intent不得帶context，不得在App補暫存副本 |
+| launcher繞過close guard | 點擊已開啟的dirty module後直接移除panel | fail；沿用既有close guard，keep-open時保留panel；launcher intent仍不得帶context |
 | detail跨panel串位 | A panel選取後B panel detail變更 | S3 fail；回到panel context owner，禁止增加global selection if/else |
 | detail收合丟scroll | close/reopen回list top | 保持list mounted與DOM scroll；若必須unmount，使用既有visualState，不新增store |
 | management dirty內容遺失 | close detail未出guard或route先變 | rollback該slice；guard allow後才dispatch close |
