@@ -32,6 +32,15 @@
 | DEV-046 舊 fixture 的條件不再低於 274 threshold | 調整 fixture 以符合目前 threshold 規則 | 更新後相關驗證通過。 |
 | workspace split 寬度計算未納入實際 5 px divider | 將 divider 納入計算 | 邊界驗證為 564/565。 |
 | lifecycle 031 fixture 的 CRLF/LF byte 差異造成 fixture 比對問題 | 測試讀檔時 normalize CRLF | 未修改 migration 或 Production binding；focused tests 12/12 通過。 |
+| PR #124 首次 Linux QC 的兩個日期斷言失敗（run `37589351379`） | Intl 的日期／時間 literal 會因 ICU 版本產生 U+2009；改用 `formatToParts` 擷取數字欄位並明確組成 `YYYY/MM/DD HH:mm` | 保留 Asia/Taipei、跨 UTC 日期及 invalid-date 斷言；另加入異序 parts／U+2009 literal 測試，不放寬原斷言。原失敗日誌為 `pr-124-qc-failed.log`。 |
+
+### 日期格式修正後的追加驗證
+
+驗證基準為 `7196fedd2b455f957ebf551e427619fbc7809cd7` 加日期 formatter 與其測試修正。Targeted Vitest 為 16 passed／3 files（也含現行 discovery 找到的歷史拷貝），完整 Vitest 為 1145 passed／4 skipped、224 files passed／2 skipped；build 通過，R2 355/355，DB boundary 對原分支基準 `88248e5b` 通過（23 governed files）。證據為 `date-format-targeted.log`、`retry-vitest.log`、`retry-build.log`、`retry-r2.log`、`retry-db-boundary.log`。
+
+R2 continuous QC 再次通過（339 tests、receipt `output/dev-040-r2/s1b/DEV040-R2-S1B-20261007T075353992Z-DFF56884`），獨立 abort 6/6；證據為 `retry-qc-r2.log`、`retry-abort.log`。所有驗證命令 exit 0，task-specific TEMP 在命令結束後清理。
+
+原 scoped browser 的八份 source hash 對應 workspace／width source，未受此 formatter 修正影響；不把原 browser 紀錄改寫成日期 formatter 的 Production 驗證。
 
 ## Migration 與 Production 證據界線
 

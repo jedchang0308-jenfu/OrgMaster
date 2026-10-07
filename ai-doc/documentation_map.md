@@ -2,6 +2,8 @@
 
 ## 2026-10-07 分支追加範圍驗證（現行；Production Release Gated）
 
+PR #124 的 Linux 日期 literal 差異已修正；追加驗證六項必要 gates 全數通過，完整 Vitest 為 1145 passed／4 skipped。原始結果與修正後結果分別保留於[本輪 QA 報告](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)，下段原始 scoped browser 與 1144-test snapshot 不改寫。
+
 分支`持續優化`／驗證基準`88248e5b3a06835c14f02efce34ebee5b3924e11`加本輪工作樹的本輪追加狀態為`Local Automated Gates Passed / Scoped Browser QC Passed / Production Release Gated`。DEV-040 R2 355/355、continuous QC PASS、abort 6/6、全套Vitest 224 files／1144 passed／4 skipped、build與staged-mode DB boundary均通過（23 governed files）。Read-only deploy preflight升權後以`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE` exit 1，未進provider readback；sandbox首試為`SOURCE_GIT_READ_FAILED`。Sourcehash 8檔drift=0、001–031 migration diff=0。最新browser harness `output/predeploy/20261007-branch-validation/ui/observations.json`為`pass=true`，只涵蓋DEV-039 viewport-fit、DEV-042 launcher toggle與DEV-046八模組共用寬度相關互動；未重跑DEV-046完整A1～E9／F046 gate，也不代表Production readiness或L4。截圖共19張已視覺覆核；PID 40988 runtime、browser、port及temporary root均已清理。詳見[本輪 QA 報告](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)。普通release只驗證001–031並保持零DDL；032／033可保留為未套用source，只有要套用時才需受控migration流程。先前preflight實際因branch非受保護`master`而阻擋；後續人類已於2026-10-07授權Production部署與切流，目前待protected master source及正式read-only preflight。
 
 ## DEV-037 發布版本辨識 UI（2026-10-07，本地完成）

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createSeedDocument } from '../../server/orgmasterGovernanceStore'
 import { describeGovernanceFailure, formatGovernanceDateTime, governancePublishBlockers, sameGlobalRoleAssignment } from './governancePresentation'
 
@@ -13,6 +13,24 @@ describe('governance presentation', () => {
   it('renders publication timestamps in Taipei even across a UTC date boundary and tolerates missing dates', () => {
     expect(formatGovernanceDateTime('2026-10-04T23:06:30.062Z')).toBe('2026/10/05 07:06')
     expect(formatGovernanceDateTime('invalid')).toBe('時間未記錄')
+  })
+  it('uses an ASCII space regardless of Intl date-time literals', () => {
+    const formatToParts = vi.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts').mockReturnValue([
+      { type: 'month', value: '10' },
+      { type: 'literal', value: '/' },
+      { type: 'day', value: '05' },
+      { type: 'literal', value: '/' },
+      { type: 'year', value: '2026' },
+      { type: 'literal', value: ' at ' },
+      { type: 'hour', value: '07' },
+      { type: 'literal', value: String.fromCharCode(0x2009) },
+      { type: 'minute', value: '06' },
+    ])
+    try {
+      expect(formatGovernanceDateTime('2026-10-04T23:06:30.062Z')).toBe('2026/10/05 07:06')
+    } finally {
+      formatToParts.mockRestore()
+    }
   })
   it('turns duplicate identity issues into one recoverable human message', () => {
     const failure = describeGovernanceFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: [

@@ -16,7 +16,11 @@ const governanceDateTime = new Intl.DateTimeFormat('zh-TW', {
 
 export function formatGovernanceDateTime(value: string) {
   const date = new Date(value)
-  return Number.isFinite(date.getTime()) ? governanceDateTime.format(date) : '時間未記錄'
+  if (!Number.isFinite(date.getTime())) return '時間未記錄'
+  const parts = Object.fromEntries(
+    governanceDateTime.formatToParts(date).map(({ type, value: partValue }) => [type, partValue]),
+  ) as Record<string, string>
+  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`
 }
 
 export type GovernanceAssignmentChange = {
