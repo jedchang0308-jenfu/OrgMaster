@@ -263,12 +263,12 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
   - 證據：`ai-doc/specs/DEV-047-permanent-managed-identity-link-and-login-alias.md`；`ai-doc/specs/DEV-047-implementation-slice.md`；`ai-doc/reports/capa-dev-047-postgres-qc-readiness-2026-09-16.md`；`qa/dev-047/postgres/manifest.json`；本文件`DEV-047`決策歷史；`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`
   - 計入交付：是
 
-- ◇ DEV-046 [交付點] [追加範圍已驗證／Production Release Gated] [P1] [2026-10-07 Local Automated Gates Passed／Scoped Browser QC Passed] 統一清單明細工作台與可擴充關係拖曳框架
-  - 摘要：八個模組共用list-detail frame與寬度policy，minimum為200／66／200px、dual threshold 274px、偏好66–800px；本輪分支自動化與scoped browser切片通過，但未重跑DEV-046完整A1～E9／F046 gate。032／033僅source、未apply。
+- ✓ DEV-046 [交付點] [Production Released／Scoped Local Browser QC Passed／Production Interactive UI Not Verified] [P1] [2026-10-07 Local Automated Gates Passed／Scoped Browser QC Passed] 統一清單明細工作台與可擴充關係拖曳框架
+  - 摘要：八個模組共用list-detail frame與寬度policy，minimum為200／66／200px、dual threshold 274px、偏好66–800px；protected source已完成普通zero-DDL Production release。未重跑DEV-046完整A1～E9／F046 gate；032／033仍未apply且不阻擋本次release。
   - 來源 ID：`USER-2026-09-04-COMMON-LIST-DETAIL-WORKBENCH`、`USER-2026-09-04-DETAIL-CLICK-ARROW-ESC-BEHAVIOR`、`USER-2026-09-04-ACCOUNT-SCOPED-LIST-WIDTH`、`USER-2026-09-04-DEV046-RD-IMPLEMENTATION-READY-TECH-LEAD-REVIEW`、`USER-2026-09-04-DEV046-EMPLOYEE-VISUAL-BASELINE`
   - 父任務：DEV-039；intentional successor：DEV-042 list-detail behavior；relation baseline：DEV-041；ADR-009 amendment
-  - 現行狀態：DB boundary staged-mode已通過；先前read-only deploy preflight因source尚未凍結於official remote而未進provider readback。人類已於2026-10-07授權Production部署與切流；目前待clean protected master source及正式read-only preflight。
-  - 阻塞 / 恢復條件：先前preflight升權後以`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE` exit 1，未進provider readback；sandbox首試為`SOURCE_GIT_READ_FAILED`。目前branch`持續優化`不是受保護master source。sourcehash 8檔drift=0、001–031 migration diff=0；ordinary UI release仍只驗證001–031並零DDL，032／033未apply但不構成阻擋；只有要套用它們時才需受控migration流程。尚待official protected master與正式preflight，不宣稱Production readiness／L4。
+  - 現行狀態：2026-10-07 source `8fa175573d52f0461e3c656b8ae12d3d81c1343d`已由[公開workflow](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37590957908)完成十個release stages；readback PASS，`FINALIZED / RELEASED`、100% traffic、candidate／canonical authenticated API smoke PASS、`UNCHANGED_VERIFIED`、零DDL／import、candidate tags 0。canonical JS／CSS與local build逐bytes SHA一致。
+  - 發布前preflight紀錄：當時升權後以`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE` exit 1、未進provider readback；sandbox首試為`SOURCE_GIT_READ_FAILED`。該source freeze阻擋已由後續protected source release解除。032／033仍未apply，ordinary bundle仍為001–031零DDL；只有要套用032／033時才需受控流程。
   - 證據：[權威規格](specs/DEV-046-unified-list-detail-workbench-framework.md)、[本輪分支部署前驗證紀錄](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)、[browser observations](../output/predeploy/20261007-branch-validation/ui/observations.json)、`output/predeploy/20261007-branch-validation/` logs。
   - 計入交付：是
 
@@ -1157,14 +1157,14 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 
 ## DEV-046：統一清單明細工作台與可擴充關係拖曳框架
 
-狀態：原local implementation complete；2026-10-07追加範圍 Local Automated Gates Passed / Scoped Browser QC Passed / Production Release Gated
-文件成熟度：`Prior Gates Passed / Shared Width Implementation Complete / Scoped Browser QC Passed / Staged DB Boundary Passed / Deploy Preflight Blocked by Source Freeze / Production Release Gated`
+狀態：`Production Released / Scoped Local Browser QC Passed / Production Interactive UI Not Verified`
+文件成熟度：`Prior Gates Passed / Shared Width Implementation Complete / Scoped Browser QC Passed / Staged DB Boundary Passed / Production Released`
 節點類型：交付點
 優先級：P1
 父交付點：DEV-039；intentional successor：DEV-042 list-detail behavior；relation baseline：DEV-041；架構權威ADR-009
 是否計入產品交付完成：是
 權威規格：`ai-doc/specs/DEV-046-unified-list-detail-workbench-framework.md`
-執行邊界：local／isolated S0～S6已完成；未apply production migration、未deploy、未執行release
+執行邊界：local／isolated S0～S6已完成；普通Production release已完成且零DDL，032／033未apply；未重簽完整DEV-046 18節gate或DEV-014／L4。
 風險等級：High（八個主要UI、selection／detail state、帳號偏好API／migration與relation回歸）
 
 ### Current Phase交付契約
@@ -1190,9 +1190,9 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 - 驗收：權威spec A1～E9、F046-01～09與FMEA已落地；targeted、full regression（196 files／797 tests／1 skipped）、typecheck、client／server build、DB boundary、diff check及三viewport normal-entry／Employee visual parity evidence齊全。全量回歸中曾出現一次既有 entitlement test 5 秒逾時，單獨重跑及再次全量均通過。
   - 瀏覽器證據：八個 module 的正常入口均確認永久 list／separator／detail slot；Employee 另完成同列關閉／重開、ArrowUp／Down、Escape focus restore、keyboard resize、preference PUT 200、1440×900／1024×768／390×844 截圖；總表：`output/playwright/dev046/manifest.md`。
   - 2026-10-07較早分模組寬度追加驗證（歷史snapshot）：八個正常launcher入口完成1440×900 splitter縮窄／自動恢復、手動關閉維持、keyboard resize、8次偏好PUT 200與reload；當時Employee門檻274px、其他consumer門檻488px，並非最新統一274px設定。當時Targeted六suite因暫存rename EPERM未載入，實際tests=0；此狀態由下方後續證據更新，不刪除原始執行結果。
-- 2026-10-07最新分支驗證：`r2.log` 355/355、DEV-040 R2 QC PASS、abort 6/6、全套Vitest 224 files／1144 passed／4 skipped、build通過（client 2191／server 85 modules，含大於500kB chunk warning）。Scoped browser harness `ui/observations.json` 為`pass=true`：八個module正常launcher於259px縮窄後可在647px恢復；manual close保持，鍵盤各一次PUT 200且reload preferred一致，container resize為0 PUT，無可見alert或document水平溢出；Process只在隔離copied data補1筆fixture。預期`auth/me` 401與`auth/mode` 503仍可見，無pageerror。另完成1024 fine-pointer六panel projection／edge-drop與390 touch單region檢查；19張截圖已人工檢視。Runtime PID 40988、browser及temporary root均清理，port已釋放。此為scoped browser QC，不代表重跑DEV-046全套A1～E9／F046 gate。獨立`npm run check:db-boundary` staged mode PASS（23 governed files）；read-only deploy preflight的sandbox試跑以`SOURCE_GIT_READ_FAILED`終止，升權重跑則`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE` exit 1，未進入provider readback。Sourcehash 8檔drift=0、001–031 migration diff=0。
+- 2026-10-07發布前分支驗證snapshot：`r2.log` 355/355、DEV-040 R2 QC PASS、abort 6/6、全套Vitest 224 files／1144 passed／4 skipped、build通過（client 2191／server 85 modules，含大於500kB chunk warning）。Scoped browser harness `ui/observations.json` 為`pass=true`：八個module正常launcher於259px縮窄後可在647px恢復；manual close保持，鍵盤各一次PUT 200且reload preferred一致，container resize為0 PUT，無可見alert或document水平溢出；Process只在隔離copied data補1筆fixture。預期`auth/me` 401與`auth/mode` 503仍可見，無pageerror。另完成1024 fine-pointer六panel projection／edge-drop與390 touch單region檢查；19張截圖已人工檢視。當時識別的本地runtime、browser、temporary root已清理，port已釋放。此為scoped browser QC，不代表重跑DEV-046全套A1～E9／F046 gate。獨立`npm run check:db-boundary` staged mode PASS（23 governed files）；發布前read-only deploy preflight的sandbox試跑以`SOURCE_GIT_READ_FAILED`終止，升權重跑則`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE` exit 1，未進入provider readback。Sourcehash 8檔drift=0、001–031 migration diff=0。後續Production delivery見下方最新狀態。
 - 證據：[本輪分支部署前驗證紀錄](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)、[latest browser observations](../output/predeploy/20261007-branch-validation/ui/observations.json)、[R2/QC/Vitest/build logs](../output/predeploy/20261007-branch-validation/)。
-- 現行限制：先前read-only deploy preflight升權後回報`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE`，exit 1且未進provider readback；人類已於2026-10-07授權Production部署與切流，目前待official protected master及正式read-only preflight。普通release仍驗證001–031並零DDL；032／033可保留未apply，只有要套用它們時才需受控流程。沒有Production readiness／L4新證據。
+- 現行Production readback：workflow十個release stages成功、failure stage skipped；API smoke為platform-principal-session 200、SSO start／authorize／callback 303、session reload 200、preference-db-read 200、preference-unauthenticated 401、session-revoked 401。這些status不改變workbenchPreference使用local JSON的既有判定。Canonical JS／CSS逐bytes SHA與local build一致；普通release `UNCHANGED_VERIFIED`、零DDL／import、candidate tags 0，032／033仍未apply。已識別本地runtime、ports、TEMP與`gh watch`均退出／清理。Production互動畫面未驗證：CUA `getState`及newtab呼叫timeout／kernel reset且未取得tab ID，是否建立／清理該tab未知；不宣稱browser surface全數清理。狀態為`Production Released / Scoped Local Browser QC Passed / Production Interactive UI Not Verified`，不代表完整DEV-014／L4或重簽DEV-046完整18節gate；既有lifecycle flag維持true。詳見[本輪QA](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)。
 - 停止條件：需要改domain schema／Command／permission、DEV-033 mobile boundary、第二selection／resolver／mutation owner、allowlist外核心檔或production migration／release時停止回PM／Tech Lead。
 
 ### 變更紀錄

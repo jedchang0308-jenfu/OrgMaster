@@ -7,7 +7,7 @@
 - 驗證基準：`88248e5b3a06835c14f02efce34ebee5b3924e11` 加本輪工作樹；browser report保存八份實際source SHA-256。Git提交後需維持相同產品source內容。
 - 變更範圍：DEV-037 Governance published version 展示、DEV-039 viewport fit、DEV-042 launcher 再次點擊關閉，以及 DEV-046 八個模組的 200/66/200 寬度配置、274 threshold 與 66..800 preferences。
 - 證據位置：`output/predeploy/20261007-branch-validation/`
-- 本報告只整理分支與本地驗證證據。它不代表 Production readiness、Production L4 或發布授權；本次未執行 Production deploy。
+- 本報告原始內容記錄發布前的分支與本地驗證；原始preflight／browser證據保留為歷史快照。2026-10-07後續Production交付與目前限制見「最新 Production delivery」段落。
 
 ## 驗證結果
 
@@ -44,16 +44,16 @@ R2 continuous QC 再次通過（339 tests、receipt `output/dev-040-r2/s1b/DEV04
 
 ## Migration 與 Production 證據界線
 
-工作樹中新增的 `032_dev046_employee_list_min_width.sql` 與 `033_dev046_shared_list_min_width.sql` 是 source 變更，依本次任務提供的狀態尚未套用。Production ordinary release 的 bundle ceiling 仍為 31；本報告沒有 migration Job、資料庫套用或 Production readback 證據。
+工作樹中新增的 `032_dev046_employee_list_min_width.sql` 與 `033_dev046_shared_list_min_width.sql` 是 source 變更，當時尚未套用。Production ordinary release 的 bundle ceiling 仍為 31；本節記錄的preflight快照沒有 migration Job、資料庫套用或 Production readback 證據。後續普通zero-DDL release的readback見下方最新交付段落。
 
 - 官方來源要求clean exact `master`、HEAD等於官方remote `master`及provider保護；本分支提交不等於該條件完成。依據：`scripts/lib/dev012-owner-prerequisite-producer.mjs`與`config/release/dev040-orgmaster-independent-production-v3.json`。
 - Ordinary release固定驗證完整001–031 migration bundle，要求`UNCHANGED_VERIFIED`、零DDL且不啟動migration Job；release archive可以包含032／033 source，但它們不會進入bundle或被套用。現有controlled append mode不含032／033，只限制不能在本次套用這兩筆，不阻擋普通zero-DDL UI release；未來要套用時才需新的受控forward-only流程。依據：`scripts/lib/dev040-orgmaster-independent-release.mjs`、`scripts/lib/dev040-routine-release.mjs`與`AGENTS.md`。本次preflight實際阻擋仍是官方source freeze，不是migration manifest。
 - Migration 011 SQL source定義的資料庫constraint為160–800px；目前`workbenchPreference` API使用local JSON，沒有PostgreSQL／Cloud SQL persistence path，因此該constraint不影響本次UI路徑。032／033仍未套用；後續若要套用它們，需走受控migration流程。
-- 001–031沒有本輪修改；未執行任何migration、provider寫入、push、merge或deploy。現行production serving revision／live constraint未在本輪讀回。
+- 001–031沒有本輪修改；此發布前快照未執行migration、provider寫入、push、merge或deploy，當時的production serving revision／live constraint亦未讀回。
 
-後續人類已於2026-10-07授權Production部署與切流。本報告記錄的preflight結果仍是當時的`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE`；目前待clean protected master source及正式read-only preflight。032／033未套用不構成本次普通zero-DDL UI release的阻擋。
+本節的preflight結果是發布前當時的`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE`，並非目前狀態。人類其後於2026-10-07授權Production部署與切流，已從clean protected `master`完成普通zero-DDL release；032／033仍未套用且不構成阻擋。見下方最新交付段落。
 
-自動化測試、QC與build只證明各自涵蓋的本地／來源檢查；Vitest命令依現行設定也掃描`output/playwright/dev035/runtime-20260826`歷史拷貝，因此1144不是本次新增測試數。本紀錄不宣稱整體發布條件完成，不升級歷史receipt或生命週期證據。
+自動化測試、QC與build只證明各自涵蓋的本地／來源檢查；Vitest命令依現行設定也掃描`output/playwright/dev035/runtime-20260826`歷史拷貝，因此1144不是本次新增測試數。上述本地驗證快照不代表整體發布條件完成，也不升級歷史receipt或生命週期證據。
 
 ## 最新 browser 追加範圍
 
@@ -71,4 +71,10 @@ R2 continuous QC 再次通過（339 tests、receipt `output/dev-040-r2/s1b/DEV04
 
 - [x] 暫存新SQL後重跑`npm run check:db-boundary`通過。
 - [x] 補上最新browser追加範圍結果與證據位置。
-- [x] 唯讀deploy preflight已執行；source freeze阻擋如上，並非READY。
+- [x] 唯讀deploy preflight曾因source freeze阻擋；此為發布前歷史結果，後續發布結果見下節。
+
+## 最新 Production delivery
+
+2026-10-07，protected source `8fa175573d52f0461e3c656b8ae12d3d81c1343d` 的[公開workflow](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37590957908)完成十個release stages；failure stage skipped。Production readback PASS：`FINALIZED / RELEASED`、traffic 100%、candidate及canonical authenticated API smoke PASS、`UNCHANGED_VERIFIED`、零DDL／import、candidate tags 0。Smoke觀察包括 platform-principal-session 200、SSO start／authorize／callback 303、session reload 200、preference-db-read 200、preference-unauthenticated 401、session-revoked 401；這些status不改變workbenchPreference使用local JSON的既有路徑判定。canonical JS／CSS與本地build逐bytes SHA一致；證據為`output/predeploy/20261007-branch-validation/production-readback-summary.json`及`production-assets.json`。完整receipt只保存在ignored evidence；本段不複製production資源或敏感metadata。
+
+目前狀態：`Production Released / Scoped Local Browser QC Passed / Production Interactive UI Not Verified`。此結果不代表完整DEV-014／L4，也不重簽DEV-046完整18節gate；既有lifecycle flag維持true。032／033仍未apply，普通release為零DDL。此次CUA `getState`與newtab呼叫均timeout／kernel reset，未取得tab ID；production互動畫面結果及該tab是否建立／清理均未知。已識別的本地runtime、ports、TEMP與`gh watch`命令均已退出／清理；不據此宣稱production browser surface全數清理。
