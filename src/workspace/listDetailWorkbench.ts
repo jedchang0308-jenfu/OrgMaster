@@ -1,7 +1,9 @@
+import { WORKBENCH_LIST_WIDTH_MIN, WORKBENCH_LIST_WIDTH_MAX } from './workbenchWidthPolicy'
+
 export type WorkbenchRowDirection = 'up' | 'down'
 
-export const LIST_WIDTH_MIN = 160
-export const LIST_WIDTH_MAX = 800
+export const LIST_WIDTH_MIN = WORKBENCH_LIST_WIDTH_MIN
+export const LIST_WIDTH_MAX = WORKBENCH_LIST_WIDTH_MAX
 
 export function clampWorkbenchListWidth(value: number, min = LIST_WIDTH_MIN, max = LIST_WIDTH_MAX) {
   return Math.max(min, Math.min(max, Math.round(value)))

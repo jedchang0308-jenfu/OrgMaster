@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
+import { WORKBENCH_LIST_WIDTH_MAX, workbenchListWidthMin } from '../src/workspace/workbenchWidthPolicy'
 
 export const WORKBENCH_PREFERENCE_MODULES = ['employees', 'positions', 'departments', 'levels', 'duties', 'processes', 'management-methods', 'role-risks'] as const
 export type WorkbenchPreferenceModuleId = typeof WORKBENCH_PREFERENCE_MODULES[number]
@@ -8,11 +9,8 @@ export interface WorkbenchListWidthProjection { preferredPx: number; updatedAt: 
 export interface WorkbenchPreferenceDocument { version: 1; listWidths: Partial<Record<WorkbenchPreferenceModuleId, WorkbenchListWidthProjection>> }
 
 const moduleSet = new Set<string>(WORKBENCH_PREFERENCE_MODULES)
-const MIN_WIDTH = 160
-const MAX_WIDTH = 800
-
 export function isWorkbenchPreferenceModuleId(value: string): value is WorkbenchPreferenceModuleId { return moduleSet.has(value) }
-export function isValidWorkbenchListWidth(value: unknown): value is number { return Number.isInteger(value) && (value as number) >= MIN_WIDTH && (value as number) <= MAX_WIDTH }
+export function isValidWorkbenchListWidth(value: unknown, moduleId: WorkbenchPreferenceModuleId): value is number { return Number.isInteger(value) && (value as number) >= workbenchListWidthMin(moduleId) && (value as number) <= WORKBENCH_LIST_WIDTH_MAX }
 export function workbenchPreferenceFilePath(root: string, principalId: string) {
   const digest = createHash('sha256').update(principalId).digest('hex')
   return resolve(root, 'data', 'user-preferences', 'workbench-list-widths', `${digest}.v1.json`)
@@ -29,7 +27,7 @@ function sanitize(value: unknown): WorkbenchPreferenceDocument {
       if (!item || typeof item !== 'object' || Array.isArray(item)) continue
       const preferredPx = (item as Record<string, unknown>).preferredPx
       const updatedAt = (item as Record<string, unknown>).updatedAt
-      if (isValidWorkbenchListWidth(preferredPx) && typeof updatedAt === 'string' && !Number.isNaN(Date.parse(updatedAt))) listWidths[moduleId] = { preferredPx, updatedAt }
+      if (isValidWorkbenchListWidth(preferredPx, moduleId) && typeof updatedAt === 'string' && !Number.isNaN(Date.parse(updatedAt))) listWidths[moduleId] = { preferredPx, updatedAt }
     }
   }
   return { version: 1, listWidths }
@@ -71,5 +69,3 @@ export function createWorkbenchPreferenceRepository(root: string): WorkbenchPref
   }
   return { read, upsert }
 }
-
-export const WORKBENCH_PREFERENCE_WIDTH_RANGE = { min: MIN_WIDTH, max: MAX_WIDTH } as const

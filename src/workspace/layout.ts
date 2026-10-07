@@ -1,6 +1,7 @@
 import { getWorkspaceModule, isWorkspaceModuleId } from './moduleRegistry'
 import type {
   LayoutDropTarget,
+  LayoutEdge,
   WorkspaceLayoutNodeV1,
   WorkspaceLayoutV1,
   WorkspaceModuleId,
@@ -8,6 +9,7 @@ import type {
 
 const MAX_LAYOUT_DEPTH = 9
 const DEFAULT_RATIO = 0.5
+export const WORKSPACE_SPLIT_SEPARATOR_WIDTH = 5
 
 function stack(moduleId: WorkspaceModuleId): WorkspaceLayoutNodeV1 {
   return { kind: 'stack', tabs: [moduleId], activeTab: moduleId }
@@ -211,6 +213,35 @@ export function moveWorkspacePanel(layout: WorkspaceLayoutV1, moduleId: Workspac
   return collectLayoutModules(inserted).includes(moduleId) ? inserted : layout
 }
 
+export function splitWorkspacePanelFromProjectedStack(
+  layout: WorkspaceLayoutV1,
+  moduleId: WorkspaceModuleId,
+  edge: LayoutEdge,
+  preferredActiveTab: WorkspaceModuleId | null,
+): WorkspaceLayoutV1 {
+  const tabs = collectLayoutModules(layout)
+  if (!layout.root || tabs.length < 2 || !tabs.includes(moduleId)) return layout
+  const remainingTabs = tabs.filter((tab) => tab !== moduleId)
+  if (remainingTabs.length === 0) return layout
+
+  const remaining: WorkspaceLayoutNodeV1 = {
+    kind: 'stack',
+    tabs: remainingTabs,
+    activeTab: preferredActiveTab && remainingTabs.includes(preferredActiveTab) ? preferredActiveTab : remainingTabs[0],
+  }
+  const incoming = stack(moduleId)
+  const horizontal = edge === 'left' || edge === 'right'
+  const incomingFirst = edge === 'left' || edge === 'top'
+  const root: WorkspaceLayoutNodeV1 = {
+    kind: 'split',
+    axis: horizontal ? 'horizontal' : 'vertical',
+    ratio: DEFAULT_RATIO,
+    first: incomingFirst ? incoming : remaining,
+    second: incomingFirst ? remaining : incoming,
+  }
+  return { ...layout, root }
+}
+
 export function resizeWorkspaceSplit(layout: WorkspaceLayoutV1, splitPath: number[], ratio: number): WorkspaceLayoutV1 {
   if (!layout.root || !Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) return layout
   const target = nodeAtPath(layout.root, splitPath)
@@ -269,7 +300,7 @@ export function resolveAutomaticPanelTarget(
   if (layout.root.kind === 'stack') {
     const activeMinimum = moduleMinimum(focusedStack.activeTab, 'horizontal')
     const incomingMinimum = moduleMinimum(incomingModuleId, 'horizontal')
-    if (Number.isFinite(availableWidth) && activeMinimum + incomingMinimum <= availableWidth) {
+    if (Number.isFinite(availableWidth) && activeMinimum + incomingMinimum + WORKSPACE_SPLIT_SEPARATOR_WIDTH <= availableWidth) {
       return { kind: 'edge', stackPath: focusedPath, edge: 'right' }
     }
   }

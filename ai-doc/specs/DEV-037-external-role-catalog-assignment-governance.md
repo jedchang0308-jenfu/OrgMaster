@@ -16,6 +16,26 @@
 
 本修訂不回寫既有 V1／V2 bytes、published snapshot、audit、程式或 QA 結果。下文的 `local-only`、`not-synchronized`、`publish-as-approval` 與 high-risk 檢查仍是 DEV-037 當時驗收語意；RD 不得只修改這些歷史敘述後宣稱 live integration 已完成。
 
+## 2026-10-07 發布版本呈現修正（現行 UI；歷史資料不改寫）
+
+來源：使用者在正式「發布版本」畫面指出無法辨識版本，要求依「溝通思考」優化 UI。此切片沿 ORGMASTER/DEV-037，僅修改 OrgMaster 前端呈現；正式角色發布與契約 authority 沿 DEV-040／DEV-057，前述 local-only 驗收保留其原歷史層級。
+
+Spec Impact Preflight：`Intentional replacement`，替換本頁過時的固定 sandbox／not-synchronized 呈現，不修改 persisted effectState、版本、audit、API、權限、migration 或外部 consumer。使用者此次 UI 修正指令是決策來源，未授權 production deploy。
+
+- 正常入口：功能 → 角色治理 → 發布版本。精確 `document.activePolicyVersionId` 對應版本置頂為「OrgMaster 目前使用」；不能把最大版號或最新日期當作目前版本。
+- 歷史版本由版號新到舊排列；顯示「第 N 版」、發布原因及台北時間，不常駐顯示 schema V3、workspace ID 或重複同步 badge。缺少發布原因顯示「未記錄發布原因」。
+- 同日續修來源：使用者新增朱宇鴻／研發人員及蕭暶吟／生管人員，指出在發布版本看不到。發布頁須顯示「待發布角色指派」，以目前精確 active version 的 immutable policy 與 draft 按 assignment ID 比對新增／調整／撤銷／移除，顯示員工、保存的角色名稱、範圍與台北有效期間；調整及撤銷保留原設定對照。此計數只代表角色指派變更，不代表其他治理設定或外部 consumer 狀態。
+- 已發布 V2/V3 版本可展開「查看指派內容」，只讀取該版本 policy，不能以草稿或目前角色目錄替代歷史角色快照。版本缺失／舊版無法直接比對時明示限制並列草稿，不猜測新增數；無變更只表示角色指派與目前版本相同。一般指派新增成功提示明說已存草稿，提供進入發布頁的入口。發布 API、資料、權限及版本切換 gates 保持原契約。
+- 全頁只保留一次外部權限查核限制；本頁無 consumer readback，不推定 AI-PDM 已生效或尚未同步。sandbox 標籤僅在 session 明示 `local-development` 時顯示，草稿更新時間使用可讀格式。
+- 無選用版本與無歷史紀錄分別呈現；若 active ID 存在但 summary 遺失，顯示可重新載入的錯誤，不將其他版本冒充目前版本。
+- 既有 manage／publish／workspace／mobile gates 與 exact-version reactivation 維持；歷史 V1/V2 不提供改用操作。文案改為「發布新版本」與「改用第 N 版」。
+- 唯讀時不顯示無法執行的發布待設定提示。窄版治理導覽改為可水平捲動的單列，以保留版本內容的閱讀寬度；workspace scoped CSS 必須維持同一窄版骨架。
+- 本地驗收：正常及較舊 active version、歷史排序、唯讀／writer、缺失 current、空白、日期跨 UTC 日界、無水平溢出；以接近使用者畫面的 1032×835、1242×668 及 390×844 真實 browser smoke 確認。現有使用者 browser 保留；臨時驗證 runtime/browser 結束後清理。
+
+使用思考習慣：#受眾、#內容組織、#溝通設計
+
+2026-10-07分支驗證：包含最新`GovernanceCenter.test.tsx`與presentation回歸的完整Vitest通過，client／server build通過；既有發布版本與草稿預覽browser證據保留原synthetic display fixture層級。驗證、修正追溯與部署阻擋見[本輪分支驗證](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)，不代表外部consumer readback或production已部署。
+
 ## 1. Outcome
 
 OrgMaster 成為外部 Application Role 的集中指派治理端，但不成為外部 Permission 設計器：

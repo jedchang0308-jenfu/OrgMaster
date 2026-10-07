@@ -22,7 +22,8 @@ const scheduler = {name:LIFECYCLE_SCHEDULER_NAME,state:'PAUSED',
     oidcToken:{serviceAccountEmail:'orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com',
       audience:'https://orgmaster-prod-9536592944.asia-east1.run.app'}},retryConfig:{retryCount:0,maxRetryDuration:'0s'}}
 const platformEntry=JSON.parse(fs.readFileSync(new URL('./dev014-platform-011-consumer-entry.fixture.json',import.meta.url)))
-const orgSql=fs.readFileSync(fileURLToPath(new URL('../../db/migrations/031_dev014_principal_lifecycle_v2.sql',import.meta.url)))
+// Git archives preserve LF bytes; Windows text checkouts may contain CRLF.
+const orgSql=Buffer.from(fs.readFileSync(fileURLToPath(new URL('../../db/migrations/031_dev014_principal_lifecycle_v2.sql',import.meta.url)),'utf8').replace(/\r\n/gu,'\n'))
 const orgBody=Buffer.from(unwrapMigrationTransaction(orgSql.toString('utf8')))
 
 function harness({enabled=true}={}) {

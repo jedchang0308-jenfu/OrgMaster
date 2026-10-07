@@ -263,13 +263,13 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
   - 證據：`ai-doc/specs/DEV-047-permanent-managed-identity-link-and-login-alias.md`；`ai-doc/specs/DEV-047-implementation-slice.md`；`ai-doc/reports/capa-dev-047-postgres-qc-readiness-2026-09-16.md`；`qa/dev-047/postgres/manifest.json`；本文件`DEV-047`決策歷史；`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`
   - 計入交付：是
 
-- ✓ DEV-046 [交付點] [local完成／回歸通過／release gated] [P1] [RD Implementation Complete／Automated Gate Passed／Browser QA-QC Passed／Local Release Gate Pending] 統一清單明細工作台與可擴充關係拖曳框架
-  - 摘要：將員工、職位、部門、層級、工作職掌、流程、管理辦法與兼任風險統一為左清單＋永遠存在的右detail frame；細部風格／排版以Employee為基準，共用presentation primitives／visual tokens、選取、鍵盤、調寬、帳號偏好與relation binding。
+- ◇ DEV-046 [交付點] [追加範圍已驗證／Production Release Gated] [P1] [2026-10-07 Local Automated Gates Passed／Scoped Browser QC Passed] 統一清單明細工作台與可擴充關係拖曳框架
+  - 摘要：八個模組共用list-detail frame與寬度policy，minimum為200／66／200px、dual threshold 274px、偏好66–800px；本輪分支自動化與scoped browser切片通過，但未重跑DEV-046完整A1～E9／F046 gate。032／033僅source、未apply。
   - 來源 ID：`USER-2026-09-04-COMMON-LIST-DETAIL-WORKBENCH`、`USER-2026-09-04-DETAIL-CLICK-ARROW-ESC-BEHAVIOR`、`USER-2026-09-04-ACCOUNT-SCOPED-LIST-WIDTH`、`USER-2026-09-04-DEV046-RD-IMPLEMENTATION-READY-TECH-LEAD-REVIEW`、`USER-2026-09-04-DEV046-EMPLOYEE-VISUAL-BASELINE`
   - 父任務：DEV-039；intentional successor：DEV-042 list-detail behavior；relation baseline：DEV-041；ADR-009 amendment
-  - 結果：RD依權威spec第16節完成S0→S6；targeted與full regression、typecheck、client／server build、DB boundary、diff check及task-owned browser QA／QC均通過。正式production migration、deploy與release仍受release gate管制。
-  - 阻塞 / 恢復條件：現行P0／P1 readiness gap=0；若需改domain schema／Command／permission、DEV-033 mobile mutation boundary、建立第二selection／resolver／mutation owner、allowlist外核心檔或production migration／release，立即停止回PM／Tech Lead。
-  - 證據：`ai-doc/specs/DEV-046-unified-list-detail-workbench-framework.md`
+  - 現行狀態：DB boundary staged-mode已通過；先前read-only deploy preflight因source尚未凍結於official remote而未進provider readback。人類已於2026-10-07授權Production部署與切流；目前待clean protected master source及正式read-only preflight。
+  - 阻塞 / 恢復條件：先前preflight升權後以`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE` exit 1，未進provider readback；sandbox首試為`SOURCE_GIT_READ_FAILED`。目前branch`持續優化`不是受保護master source。sourcehash 8檔drift=0、001–031 migration diff=0；ordinary UI release仍只驗證001–031並零DDL，032／033未apply但不構成阻擋；只有要套用它們時才需受控migration流程。尚待official protected master與正式preflight，不宣稱Production readiness／L4。
+  - 證據：[權威規格](specs/DEV-046-unified-list-detail-workbench-framework.md)、[本輪分支部署前驗證紀錄](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)、[browser observations](../output/predeploy/20261007-branch-validation/ui/observations.json)、`output/predeploy/20261007-branch-validation/` logs。
   - 計入交付：是
 
 - ✓ DEV-045 [交付點] [local完成／回歸追蹤] [P1] [RD Implementation Complete／Browser QC Passed／Production Provisioning Gated] 員工帳號邀請與登入身分設定
@@ -298,12 +298,14 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
   - 計入交付：是
 
 - ✓ DEV-042 [交付點] [完成] [P1] [RD Implementation Complete／Browser QA-QC Passed／Merged to master] 單層功能工作台與可收合清單明細
-  - 摘要：移除「功能抽屜 → 在工作台開啟」第二層入口；頂部功能選單直接新增或聚焦唯一對應面板。有清單的模組統一採「清單＋緊鄰明細」工作台，明細可收合而保留清單、查詢、篩選與捲動脈絡。
+  - 摘要：移除「功能抽屜 → 在工作台開啟」第二層入口；頂部功能選單可新增／聚焦面板，再點擊已開啟功能會經 close guard 關閉面板。有清單的模組統一採「清單＋緊鄰明細」工作台，明細可收合而保留清單、查詢、篩選與捲動脈絡。
   - 來源 ID：`USER-2026-09-02-SINGLE-LAYER-WORKSPACE-INTENTIONAL-REPLACEMENT`、`USER-2026-09-02-DEV042-RD-IMPLEMENTATION-READY`、`USER-2026-09-02-DEV042-RD-TECH-LEAD-REVIEW`
   - 父交付點：DEV-039；DEV-041 的共用關係拖曳互動列為不得回歸基線
   - 權威契約：`ai-doc/specs/DEV-042-single-layer-workspace-contract.md`；ADR-009 DEV-042 amendment。
   - 進度補充：既有 localhost:5000 smoke與fresh task-owned 5080 Browser S7均已完成；E1～E9通過，manifest為`output/playwright/dev042/manifest.md`，fixture已archive。四個DEV-040 full-regression failures已依目前workspace-scoped catalog contract修正並完成回歸。
-  - 下一步：已併入 DEV-039 現行基線，無獨立開發、candidate freeze、commit或merge尾項；deploy／release僅在使用者另行提出release型指令時進入共用gate。
+  - 2026-10-07 follow-up：依使用者要求，已開啟的launcher項目再次點擊會經既有close guard請求關閉；branch browser harness確認再次點擊可正常關閉。這只驗證本次toggle slice，不重開DEV-042全套S7 gate。
+  - 證據：[本輪分支部署前驗證紀錄](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)、[scoped browser observations](../output/predeploy/20261007-branch-validation/ui/observations.json)。
+  - 下一步：原DEV-042 implementation仍是已整合基線；本次follow-up只記錄其scoped browser結果。Production deploy／release gated，待專用release gate。
   - 計入交付：是
 
 - ✓ DEV-041 [開發點] [完成] [P1] [RD Implementation Complete／Browser Native QA-QC Passed／Merged to master] 跨面板關係拖曳互動一致化
@@ -351,6 +353,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 - ✓ DEV-037 [開發點] [完成] [P0] [RD Implementation Complete／QA-QC Passed／Local Release Gate Pending／OrgMaster Only] 外部角色目錄與角色指派權責重整
   - 摘要：外部系統擁有自己的 Application Role、Permission、Role-Permission mapping 與領域審核政策；OrgMaster 只讀取具版本的角色目錄，集中治理員工角色指派、scope、有效期間、代理、指派審核及 audit。
+  - 本輪 UI 修正：2026-10-07 發布版本辨識改善已完成本地 QC；精確目前版本置頂、歷史新到舊、發布原因與台北時間，16 tests／build／7 browser cases PASS；未部署正式站。
   - 來源 ID：`USER-2026-08-27-EXTERNAL-ROLE-CATALOG-ASSIGNMENT-BOUNDARY`
   - 父任務：DEV-027、DEV-035
   - 完成內容：已依權威契約完成 S1→S4；V2 domain、bundled read-only catalog、V1→V2 非破壞 migration、server／API ownership guard、assignment／role delegation／publish、UI normal delivery path、stale recovery、legacy compatibility、RWD 與完整 regression 均完成。
@@ -1154,8 +1157,8 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 
 ## DEV-046：統一清單明細工作台與可擴充關係拖曳框架
 
-狀態：local implementation complete；automated gate與task-owned browser QA／QC通過
-文件成熟度：`RD Implementation Complete / Automated Gate Passed / Browser QA-QC Passed / Local Release Gate Pending`
+狀態：原local implementation complete；2026-10-07追加範圍 Local Automated Gates Passed / Scoped Browser QC Passed / Production Release Gated
+文件成熟度：`Prior Gates Passed / Shared Width Implementation Complete / Scoped Browser QC Passed / Staged DB Boundary Passed / Deploy Preflight Blocked by Source Freeze / Production Release Gated`
 節點類型：交付點
 優先級：P1
 父交付點：DEV-039；intentional successor：DEV-042 list-detail behavior；relation baseline：DEV-041；架構權威ADR-009
@@ -1167,10 +1170,11 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 ### Current Phase交付契約
 
 - 八個consumer固定為employees、positions、departments、levels、duties、processes、management-methods、role-risks；Organization與Governance不在本次scope。
+- 2026-10-07現行width policy集中於`workbenchWidthPolicy.ts`；八個panel/list/detail minimum統一為200／66／200px，雙欄門檻274px，帳號偏好範圍66–800px。八個共用guarded自動收合／同一mount內恢復，手動關閉保持關閉；不以container投影回寫帳號preferred。
 - 沿用`WorkspaceListDetailSurface`作唯一frame，桌面永遠render list／separator／detail；Level先保留空detail slot，不為形式一致虛構domain內容。
 - 細部風格與排版以現行Employee workspace surface為control specimen；共用`WorkbenchListFrame`／`WorkbenchListRow`／`WorkbenchDetailFrame`與scoped tokens，固定32px list header、34px search、Employee row／selected語言、40px detail header、18px standard section及`standard|edge-to-edge`body boundary。list-detail separator保留操作熱區但只呈現1px灰線，與多功能workspace split的藍色5px分隔線區隔。
 - 同列click關閉／重開detail，另一列click與ArrowUp／Down切換，Escape依modal／editor／relation／dirty guard precedence關閉；selection不因detail關閉而清除。
-- 無帳號偏好時只做一次content-fit；preferred width依verified principal＋module經GET／PUT保存，effective clamp不回寫。Local-json與Cloud SQL以同一repository contract實作，新增forward-only 011 migration。
+- 無帳號偏好時沿用CSS intrinsic content width；preferred width依verified principal＋module經GET／PUT保存，effective clamp不回寫。目前workbenchPreference API只有local JSON persistence，沒有PostgreSQL／Cloud SQL persistence path；011及032／033為資料庫migration source，不影響此UI路徑。普通zero-DDL release可保持032／033未apply，只有要套用時才需受控migration流程。
 - Relation仍只有DEV-041 strict MIME、single `RelationPlacementSession`、`resolveRegisteredDrop()`、shared bindings及App mutation owner；新增pair依typed extension checklist另立可驗收DEV。
 - RD依S0 contract／visual guard→S1 frame／interaction／presentation primitives→S2 preference vertical slice→S3 Employee control＋master／Duty→S4 Process／Management Method／Role Risk→S5 relation cleanup→S6 candidate verification執行；A1～E9與F046-01～09為完成Gate。
 
@@ -1185,11 +1189,20 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 
 - 驗收：權威spec A1～E9、F046-01～09與FMEA已落地；targeted、full regression（196 files／797 tests／1 skipped）、typecheck、client／server build、DB boundary、diff check及三viewport normal-entry／Employee visual parity evidence齊全。全量回歸中曾出現一次既有 entitlement test 5 秒逾時，單獨重跑及再次全量均通過。
   - 瀏覽器證據：八個 module 的正常入口均確認永久 list／separator／detail slot；Employee 另完成同列關閉／重開、ArrowUp／Down、Escape focus restore、keyboard resize、preference PUT 200、1440×900／1024×768／390×844 截圖；總表：`output/playwright/dev046/manifest.md`。
-- 下一步：僅剩 local release gate；production migration、deploy、release及新的 relation pair 需另立授權與驗收。
+  - 2026-10-07較早分模組寬度追加驗證（歷史snapshot）：八個正常launcher入口完成1440×900 splitter縮窄／自動恢復、手動關閉維持、keyboard resize、8次偏好PUT 200與reload；當時Employee門檻274px、其他consumer門檻488px，並非最新統一274px設定。當時Targeted六suite因暫存rename EPERM未載入，實際tests=0；此狀態由下方後續證據更新，不刪除原始執行結果。
+- 2026-10-07最新分支驗證：`r2.log` 355/355、DEV-040 R2 QC PASS、abort 6/6、全套Vitest 224 files／1144 passed／4 skipped、build通過（client 2191／server 85 modules，含大於500kB chunk warning）。Scoped browser harness `ui/observations.json` 為`pass=true`：八個module正常launcher於259px縮窄後可在647px恢復；manual close保持，鍵盤各一次PUT 200且reload preferred一致，container resize為0 PUT，無可見alert或document水平溢出；Process只在隔離copied data補1筆fixture。預期`auth/me` 401與`auth/mode` 503仍可見，無pageerror。另完成1024 fine-pointer六panel projection／edge-drop與390 touch單region檢查；19張截圖已人工檢視。Runtime PID 40988、browser及temporary root均清理，port已釋放。此為scoped browser QC，不代表重跑DEV-046全套A1～E9／F046 gate。獨立`npm run check:db-boundary` staged mode PASS（23 governed files）；read-only deploy preflight的sandbox試跑以`SOURCE_GIT_READ_FAILED`終止，升權重跑則`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE` exit 1，未進入provider readback。Sourcehash 8檔drift=0、001–031 migration diff=0。
+- 證據：[本輪分支部署前驗證紀錄](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)、[latest browser observations](../output/predeploy/20261007-branch-validation/ui/observations.json)、[R2/QC/Vitest/build logs](../output/predeploy/20261007-branch-validation/)。
+- 現行限制：先前read-only deploy preflight升權後回報`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE`，exit 1且未進provider readback；人類已於2026-10-07授權Production部署與切流，目前待official protected master及正式read-only preflight。普通release仍驗證001–031並零DDL；032／033可保留未apply，只有要套用它們時才需受控流程。沒有Production readiness／L4新證據。
 - 停止條件：需要改domain schema／Command／permission、DEV-033 mobile boundary、第二selection／resolver／mutation owner、allowlist外核心檔或production migration／release時停止回PM／Tech Lead。
 
 ### 變更紀錄
 
+- 2026-10-07共用寬度slice：使用者核准「共用行為＋各面板寬度設定」並要求執行；八個consumer接入同一policy與frame，修正intrinsic list第一次keyboard resize的起點。當時typecheck及client／server build通過，八個browser寬度與偏好觀察已保存於`output/playwright/dev046/responsive-sharing-20261007/observations.json`，暫時runtime／browser已清理且ports released。自動驗證受sandbox EPERM阻擋，完整QA/QC pending；原032未apply，未release。
+- 2026-10-07 shared framework normalization：使用者要求所有面板的寬度限制一致。八個consumer沿用同一`WorkspaceListDetailSurface`，共用policy設定panel/list/detail minimum為200／66／200px、dual threshold 274px、偏好66–800px；移除員工專屬width alias。新增033 forward-only migration統一資料庫constraint，尚未apply。`npm run build`與`npm run check:db-boundary`通過；最新統一設定尚未browser／test驗證，完整QA/QC與local release gate仍pending。
+- 2026-10-07 follow-up：同列再點擊收合明細內容，並讓寬版遵守`detailVisible`；WorkspaceLayout以viewport投影clamped split，空間不足時改用focused tabs，保留原保存排列。依拖曳回饋將Employee並列minimum調整為560px，560–639px時維持list／detail並列，並擴大split divider透明hit area至24px。另依清單欄寬回饋，Employee list最低寬度由220px降至66px（縮小70%），並以032 forward-only migration讓帳號偏好可保存新範圍。未執行測試、建置或browser QC，032未套用；9/4既有證據不代表本follow-up已驗證。
+- 2026-10-07 follow-up：依使用者追加決策，Employee外層panel minimum由560px調為200px；surface寬度不足394px時經既有明細transition自動關閉detail，只保留完整list，394px以上可並列顯示list與detail。未執行測試、建置或browser QC。
+- 2026-10-07 follow-up：依使用者追加決策，Employee明細minimum由320px調為200px；雙欄minimum由394px更新為274px（66px list＋8px separator＋200px detail），不足時自動關閉detail並保留list；其他consumer明細minimum維持320px。未執行測試、建置或browser QC。
+- 2026-10-07 follow-up：Employee明細因寬度不足自動關閉後，寬度恢復至274px以上會自動重開；使用者手動關閉的明細維持關閉。未執行測試、建置或browser QC。
 - 2026-09-04：依使用者追加決策，將細部風格與排版固定以Employee workspace surface為基準；新增三個presentation primitives、scoped visual tokens、`standard|edge-to-edge`detail body boundary與F046-09 visual parity Gate。Tech Lead重新覆核後維持通過；未修改產品程式或runtime。
 - 2026-09-04：完成DEV-046 local／isolated implementation。八個consumer接入永久list／separator／detail frame；統一click／Arrow／Escape、清單寬度pointer／keyboard調整與verified-principal account preference；補上011 forward-only migration、preference repository／API、typed relation extension path及Employee視覺基準。`npm test` 196 files／797 tests／1 skipped、typecheck、client／server build、DEV-010 N2 16／16、DB boundary、diff check及task-owned browser evidence通過；未apply production migration、deploy或release。
 - 2026-09-04：依使用者要求建立並補至`RD Implementation Ready`；RD Technical Lead完成根因、最小架構、技術債、FMEA與證據審查後通過。本輪只修改權威spec、ADR amendment與索引，未修改產品程式或執行runtime／測試。
@@ -1396,8 +1409,8 @@ Readiness：`P0 gap=0 / P1 gap=0`
 
 ### 驗收方向
 
-- 所有現有模組都能由頂部功能入口直接開啟或聚焦完整面板；產品畫面不再出現快速抽屜、底部「在工作台開啟」或 drawer promotion 中間態。
-- 重複點擊同一功能不建立第二個同類面板、不重設既有工作脈絡，也不改動其他面板排列。
+- 所有現有模組都能由頂部功能入口開啟或聚焦完整面板；已開啟項目再次點擊時經 close guard 關閉。產品畫面不再出現快速抽屜、底部「在工作台開啟」或 drawer promotion 中間態。
+- 點擊已開啟功能時不建立重複面板、不改動其他面板排列；close guard拒絕時，原panel與工作脈絡保持不變。
 - 所有清單型模組均能完成「清單 → 開明細 → 關明細 → 回原清單位置」；搜尋、篩選、選取來源與捲動脈絡不遺失。
 - 寬面板採左清單、右明細緊鄰；窄面板仍可完整完成清單與明細工作，不出現不可操作的壓縮雙欄、水平溢出或被遮蔽控制。
 - 重新整理、瀏覽器返回／前進與可分享URL能還原已開啟panel、focus及合法的選取／detail context；既有standalone routes被一次性正規化且不重新顯示drawer。
@@ -1434,6 +1447,7 @@ Readiness：`P0 gap=0 / P1 gap=0`
 
 ### 變更紀錄
 
+- 2026-10-07 launcher toggle scoped verification：branch browser harness確認已開啟module再次點擊後正常關閉；此為toggle slice的browser evidence，不重跑DEV-042既有完整S7／E1～E9 gate。branch-level自動化與其他viewport結果見[本輪QA報告](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)及`output/predeploy/20261007-branch-validation/ui/observations.json`。Production release仍gated。
 - 2026-09-02：既有使用者 localhost:5000 完成探索性 browser smoke，確認十個頂部功能入口均可直接加入／聚焦，員工清單與相鄰明細可開關，關閉後來源列 focus restore且舊 `WorkspaceQuickDrawer` 未掛載；未使用 fresh fixture／task-owned runtime，正式 S7 仍維持 pending。
 - 2026-09-02：依權威契約完成 DEV-042 production implementation。移除正式 drawer／promotion control flow，十模組統一頂部 open-or-focus；master-data／Duty／Management Method採相鄰list-detail，`openDetails`為session唯一明細權威，URL支援`details=none`與無效明細fail-closed，窄panel採單surface投影，明細關閉後恢復來源row focus。targeted `8 files／34 tests`＋`6 files／16 tests`、typecheck、client／server build、source scan與allowlist diff check通過；full regression `170 files／711 passed／4 failed／1 skipped`，四個失敗均為既有 DEV-040 tests；Browser S7尚未執行。狀態更新為`Implementation Code Complete / Targeted Automated Gate Passed / Full Regression Blocked by Pre-existing DEV-040 Failures / Browser QA-QC Pending`。
 - 2026-09-02：依RD技術主管審查優化DEV-042契約，結論`Pass after contract optimization`。移除逐panel detail副本、`contextMode`及三態runtime taxonomy，固定session-owned唯一`openDetails`＋route projection、optional-context open intent與`supportsCollapsibleDetail:boolean`；補上`details=none`相容歧義修正、context／localSelection原子不變量、窄化production allowlist及排除test的source scan。P0／P1 readiness gap維持0；未修改產品程式或執行測試／commit／deploy。
@@ -1803,14 +1817,15 @@ Phase 1無剩餘P0／P1人類產品決策。DEV-004 `004-S0～S5`與DEV-006 S1�
 
 ## DEV-039：可組合規劃桌面與跨面板關聯配置
 
-狀態：`Current Phase Complete / QA-QC Passed / Merged to master / Release Not Requested`
-文件成熟度：`Implementation Complete / QA-QC Passed / Repository Integrated`
+狀態：`Prior Current Phase Complete / QA-QC Passed / Merged to master；2026-10-07 viewport-fit follow-up Scoped Browser QC Passed / Production Release Gated`
+文件成熟度：`Prior Implementation Complete / Prior QA-QC Passed / Repository Integrated / Scoped Viewport Follow-up Verified / Production Release Gated`
 節點類型：交付點
 是否計入產品交付完成：是
 來源 ID：`USER-2026-08-28-COMPOSABLE-PLANNING-DESKTOP`、`USER-2026-08-28-BRANCH-LEVEL-UI-REPLACEMENT`、`USER-2026-08-28-DEV039-HCS-ROUND-1`、`USER-2026-08-28-DEV039-HCS-ROUND-2`、`USER-2026-08-28-DEV039-HCS-ROUND-3`、`USER-2026-08-28-DEV039-HCS-ROUND-4`、`USER-2026-08-28-DEV039-MATURE-MODULE-SLICE-1`、`USER-2026-08-28-DEV039-ALL-CURRENT-FUNCTION-PARITY`、`USER-2026-08-30-STABLE-PANEL-OWNERSHIP-ARCHITECTURE`、`USER-2026-08-30-DEV039-S6-IMPLEMENTATION-READY`、`USER-2026-08-31-NATIVE-CROSS-PANEL-RELATION-PLACEMENT`、`USER-2026-08-31-FIRST-PRINCIPLES-RELATION-PLACEMENT-ARCHITECTURE`
 父任務：DEV-038
 風險等級：Medium（主要 UI flow、跨面板互動與舊版移除改變；Current Phase 不改 schema、API、權限或 domain authority）
-分支：`codex/dev-039-composable-workspace`
+分支：`codex/dev-039-composable-workspace`（已整併基線）；viewport-fit follow-up 位於`持續優化`
+2026-10-07 viewport-fit follow-up current evidence：branch harness viewport/tab-layout slice通過，1024 fine-pointer六panel以單一stack作窄幅投影，saved layout未變且仍可拖曳；edge drop建立2 regions／1 separator、保留6 tabs，只有明確drop才更新saved layout。390 touch單region停用drag且無document overflow。19張該範圍截圖已視覺覆核；PID 40988 runtime/browser已關閉、port released、temporary root removed。詳見[本輪QA報告](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)與`output/predeploy/20261007-branch-validation/ui/observations.json`。這是限定slice的browser QC，不等於DEV-039完整18節或Production gate。
 現行判讀優先序：先讀主spec第2.1～2.5.2節、parity第0.1～0.2節及`output/playwright/dev039/manifest.md`頂部Current gate snapshot／RD handoff；本節下方標示日期的runner／QA／QC段落均為provenance，若與上述快照不同，以現行快照為準，不得把歷史`E1 not-run`或`E3 warning open`當成目前狀態。最新 paired strict record見主spec第26.21.25節，桌面 viewport extension見第26.21.26節，歷史 blocked runner見第26.21.24節。
 執行邊界：S0～S6產品與證據維持歷史完成；S7已完成Implementation Readiness Review、relation core實作與正式 QA-QC：`relationPlacement.ts` pure reducer、App唯一協調器、typed effect／capability path、Employee／Duty／Process source handle／target wiring、舊平行state清理、Process composition harness與B16 pure fixture harness已完成；targeted component `3 files／19 tests`、full regression `160 files／664 tests（1 skipped）`、typecheck、build與source scan已通過。本輪新增E2 fail-closed與Process canvas lifecycle自動化測試不改產品契約。Process canvas 幾何窄修正後 split／reload／flow source handles、owner canvas與overflow observation已通過，artifact為`F039-S7-E3-process-geometry-after-fix.png`。最新隔離 fixture 七案 B16 合併 browser runner（五個E2 failure-path＋`E3-LIFECYCLE`＋`E3-WARNING`）為`7 passed`；五案 E2 `historyEvidence`與E3兩案 evidence均已完成並覆核。ProcessNode→Duty與paired Duty→ProcessNode均有strict native pass（artifact分別為`F039-S7-E1-process-duty-native-strict.json`與`F039-S7-E1-duty-process-native-strict.json`），四個 E1 minimum directions aggregate為`Pass（evidence）`；E4只剩候選凍結授權。不執行commit、merge、deploy或release。下方單案pass、blocked provenance與舊keyboard baseline不得取代最新aggregate判定。
 
@@ -2292,6 +2307,8 @@ Re-entry trigger：全部現有功能完成parity manifest並通過正常入口�
 
 ### 變更紀錄
 
+- 2026-10-07 viewport-fit follow-up scoped verification（現行追加範圍）：最新branch browser harness exit 0，`ui/observations.json`為`pass=true`。1024 fine-pointer viewport的六panel saved split因空間不足投影成1 stack，saved layout不變且`draggable=true`；真實`dragTo` edge drop建立2 regions／1 separator、保留6 tabs，明確drop後才更新saved layout。390 touch單region為`draggable=false`且無document overflow。此結果只驗收該follow-up，不重新宣稱DEV-039完整18節browser gate通過；測試／build與remaining preflight及DB gate見[branch validation report](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)。Runtime/browser已關閉、port released、temporary root removed；19張該範圍截圖已視覺覆核。
+- 2026-10-07 follow-up 初始實作紀錄（當時未驗）：修正窄viewport將saved split投影成單一tab stack後，該投影誤停用桌面tab drag及drop path無法對應實際layout的問題。此狀態由上方後續scoped verification更新；保留此行作執行時點provenance。
 - 2026-09-02：依實際 946×698 桌面試用修正 DEV-039 工作台 tab 無法拖曳分割的回歸。根因是 Shell 把 `viewportWidth < 1024` 直接當成 mobile single-surface，導致 fine-pointer 桌面的 tab `draggable=false` 且 pin／arrange 消失；改由 `resolveWorkspaceCompositionCapability` 只以 hover＋fine pointer 判斷 layout composition，split 方向仍由 module minimum 動態限制，domain mutation capability 不變。新增 `LAYOUT-TAB-DRAG-01`／B17、capability 與 native MIME drop-zone 回歸；targeted `2 files／8 tests`、typecheck、946×698 真實滑鼠拖曳由 1 個 stack 形成 2 個 region 通過，證據為 `F039-QC-13-narrow-desktop-tab-drag-split.png`。本次修正尚未 commit、merge、deploy 或 release。
 - 2026-09-01：DEV-039新增 E1 paired Duty→ProcessNode reverse native boundary。全新 B16 fixture `draft-fac7242d-f6b5-4e48-80f7-2d1424548be0`命中 source／target geometry並讀到 strict `application/x-orgmaster-entity` 至 `dragover`，但未產生 terminal `drop`、UI結果或domain mutation；API `200`且revision不變。artifact=`output/playwright/dev039/F039-S7-E1-duty-process-native-blocked.json`，archive manifest=`3294af10da7136c203ca3cac0f3a049e9d69563421cda22f09584d253e3313d0`。正式判定`E1-DUT-PROC-NATIVE=blocked／not-run`，E1 aggregate、正式 QA-QC與E4不變；除非取得可讀真實 HTML5 `DataTransfer`的新runner，否則停止同類重試，不新增synthetic fallback、第二MIME／resolver／mutation owner或第二份證據清冊。
 
@@ -2608,8 +2625,28 @@ RD 現可直接依 spec 第 14 節 S0→S6 實作。若需要 allowlist 外 prod
 架構決策：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
 QA／QC：`ai-doc/qa/DEV-037-external-role-assignment-validation-plan.md`
 
-### Human Decision Brief
+### 2026-10-07 發布版本辨識 UI 修正
 
+風險：Low（前端文案／排列，既有發布與改用 handlers 及權限 gate 不變）。執行邊界：OrgMaster 本地 source／測試／build／隔離 browser；未授權正式部署或其他專案修改。
+驗收：精確 active ID 置頂、較舊版本亦正確；historical newest-first；發布原因／台北日期可讀；不以 persisted not-synchronized 或固定 sandbox 標籤推定正式外部狀態；缺失 active record 不猜測；唯讀及 V1/V2 reactivation gate 不變。規格：[本輪 UI amendment](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-07-發布版本呈現修正現行-ui歷史資料不改寫)。
+最小 QA：component regression 覆蓋精確 ID、遺失／未選用／空白、唯讀／writer、local label；日期跨日測試；1032×835／1242×668／390×844 正常入口 browser，visible error sweep、counter/data sanity、keyboard focus 與 no-overflow。mock API/browser fixture 只證明呈現及既有 handler binding，不證明正式權限或外部 consumer。
+狀態：本地 RD／QC 完成。targeted 3 files／16 tests PASS，`npm run build` PASS；compiled artifact 的正常入口 keyboard／1032×835／1242×668／390×844 與 older-current／missing-current／unselected／empty 共 7 browser cases PASS。已人工檢視實際 desktop／mobile 圖，current 在首屏、原因可讀、全頁及 main 無水平溢出；窄版治理導覽改為橫向列，nav height <70px、main width ≥200px。task-owned browser／server 全部关闭，port released=true；使用者原有正式 browser 未操作。
+證據：[本地 browser report](../output/playwright/dev037-version-ui-20261007/report.json)、[桌面畫面](../output/playwright/dev037-version-ui-20261007/versions-1032.png)、[窄版畫面](../output/playwright/dev037-version-ui-20261007/versions-390.png)、`tests.log`／`build.log` 同目錄。Build entry bytes 經 HTTP SHA parity 驗證，report 記錄 source／artifact hashes、runtime PID／port及 cleanup。最初測試因 sandbox temp rename EPERM，改為 task-owned temp 後正常；browser 缺 bundled binary 及 sandbox profile startup 失敗原報告保留，最後使用獲准的隔離 installed Edge。首輪無 overflow 的技術 PASS 經視覺檢視重開：workspace CSS 覆蓋手機 grid，已用 scoped specificity 修正並重驗；`versions-390-before-specificity-fix.png` 與 `report-mobile-visual-reopened.json` 保留原結果，不以原數字 PASS 冒充 visual PASS。
+Git boundary：本輪產品只改 `src/components/GovernanceCenter.tsx`／`.css`、`src/governance/governancePresentation.ts`／`.test.ts`，新增 `src/components/GovernanceCenter.test.tsx`；本節／spec UI amendment／map同步。原 App／WorkspaceLauncher／ADR-009／DEV-042 修改的四份 SHA 未變；其他並行出現的 WorkspaceLayout／WorkspaceSurfacePrimitives／moduleRegistry 修改未納入本輪。未 stage／commit／修改資料或權限／deploy；不重算原 DEV-037 或 DEV-057 的 production 完成結論。
+
+#### 同日續修：草稿與版本內的指派可見性
+
+來源：使用者在角色指派看到新增兩筆人員設定，但發布頁只有摘要，無法確認被哪個版本納入。只讀 source 核對 `publishGovernance` 從 draft 建立 immutable policy 並切換 active pointer；一般新增 command 只寫 draft。正式兩筆設定是否已發布未作 live readback，截圖不能替代版本 policy。
+
+本地實作：發布頁先列「待發布角色指派」，與精確 active policy 按 ID／完整內容（物件 key 次序無關）比對；新增、調整、撤銷、移除及原設定可讀。已發布 V2/V3 可展開其保存的指派，角色名称取 snapshot、不用現行 catalog 改寫歷史。無基準／legacy／資料未完整載入時只列草稿並明示不能比對；一般指派成功提示與入口引導至發布頁。僅續改三份產品檔 `GovernanceCenter.tsx`／`.css`／`governancePresentation.ts`；不改後端或 persisted 資料。
+
+證據：[本地範例預覽](../output/playwright/dev037-version-ui-20261007/draft-preview/report.json)、[桌面草稿](../output/playwright/dev037-version-ui-20261007/draft-preview/draft-1032.png)、[手機草稿](../output/playwright/dev037-version-ui-20261007/draft-preview/draft-390.png)、[模擬發布後展開](../output/playwright/dev037-version-ui-20261007/draft-preview/published.png)、同層上一級 `build-draft-preview.log`。最新建置完成；人工檢視 desktop／mobile 草稿、目前版本展開、模擬發布後及資料缺失共五份圖，姓名／AI-PDM 角色／範圍／期間可讀，無水平溢出。這些是 synthetic display fixtures，沒有發送治理寫入、production 或 consumer readback；未新增或執行自動化測試，前節 16 tests／7 cases 僅是前次呈現修正的歷史證據。最初範例缺 applicationId 顯示錯誤應用，已拒收並修正 fixture 後重截，原圖及報告保留於 `draft-preview/initial-fixture-capture`。task-owned browser／server 已關閉且 port released=true；沒有操作使用者的正式 tab，尚未部署。
+
+### 2026-10-07 branch validation cross-reference
+
+本分支full automated suite與build結果見[本輪QA報告](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)。該報告的scoped browser harness聚焦DEV-039／042／046工作台，不是Governance published-version畫面的新browser覆核；DEV-037自身較早的component、browser與實際畫面證據仍依本節原記錄判讀，不推定外部consumer或Production狀態。
+
+### Human Decision Brief
 - `Human Confirmed / 2026-08-27`：每個外部系統自行定義 Application Role、Permission、Role-Permission mapping 與領域審核政策；OrgMaster 不維護外部 Permission 細節。
 - `Human Confirmed`：OrgMaster 負責員工／principal 到外部 Application Role 的 assignment，以及 scope、有效期間、撤銷／重新啟用、角色代理、角色指派審核與治理 audit。
 - `Human Confirmed`：目前仍只修改 OrgMaster；AI-PDM 不修改，未串接前不得宣稱角色已在 AI-PDM 生效。

@@ -35,7 +35,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, reposi
     if (!isWorkbenchPreferenceModuleId(moduleId)) throw new WorkbenchPreferenceApiError(404, 'PREFERENCE_MODULE_NOT_FOUND')
     if (request.method !== 'PUT') { sendJson(response, 405, { error: 'METHOD_NOT_ALLOWED' }); return true }
     const body = await readJsonBody(request)
-    if (body.version !== 1 || !isValidWorkbenchListWidth(body.listWidthPx)) throw new WorkbenchPreferenceApiError(400, 'PREFERENCE_VALUE_INVALID')
+    if (body.version !== 1 || !isValidWorkbenchListWidth(body.listWidthPx, moduleId)) throw new WorkbenchPreferenceApiError(400, 'PREFERENCE_VALUE_INVALID')
     const projection = await repository.upsert(identity.principalId, moduleId, body.listWidthPx)
     sendJson(response, 200, { version: 1, moduleId, listWidth: projection })
     return true

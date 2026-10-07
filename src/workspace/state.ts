@@ -9,12 +9,14 @@ import {
   reconcileWorkspaceLayout,
   removeWorkspacePanel,
   resizeWorkspaceSplit,
+  splitWorkspacePanelFromProjectedStack,
   setWorkspaceActiveTab,
 } from './layout'
 import { getWorkspaceDefaultContext, getWorkspaceModule } from './moduleRegistry'
 import { sanitizeEntityRef } from './route'
 import type {
   LayoutDropTarget,
+  LayoutEdge,
   WorkspaceOpenIntent,
   SharedSelection,
   WorkspaceModuleId,
@@ -32,6 +34,7 @@ export type WorkspaceAction =
   | { type: 'COMMIT_CLOSE_PANEL'; moduleId: WorkspaceModuleId }
   | { type: 'SET_ACTIVE_TAB'; stackPath: number[]; moduleId: WorkspaceModuleId }
   | { type: 'MOVE_PANEL'; moduleId: WorkspaceModuleId; target: LayoutDropTarget }
+  | { type: 'SPLIT_PROJECTED_PANEL'; moduleId: WorkspaceModuleId; edge: LayoutEdge }
   | { type: 'RESIZE_SPLIT'; splitPath: number[]; ratio: number }
   | { type: 'SET_PINNED'; moduleId: WorkspaceModuleId; pinned: boolean }
   | { type: 'SET_SHARED_SELECTION'; selection: SharedSelection }
@@ -310,6 +313,11 @@ export function reduceWorkspaceState(
   }
   if (action.type === 'MOVE_PANEL') {
     const layout = moveWorkspacePanel(state.layout, action.moduleId, action.target)
+    return layout === state.layout ? { state, effects: [] } : withWorkspaceEffects(state, { ...state, layout }, null)
+  }
+  if (action.type === 'SPLIT_PROJECTED_PANEL') {
+    if (!state.session.panels[action.moduleId]) return { state, effects: [] }
+    const layout = splitWorkspacePanelFromProjectedStack(state.layout, action.moduleId, action.edge, state.session.focusedPanel)
     return layout === state.layout ? { state, effects: [] } : withWorkspaceEffects(state, { ...state, layout }, null)
   }
   if (action.type === 'RESIZE_SPLIT') {

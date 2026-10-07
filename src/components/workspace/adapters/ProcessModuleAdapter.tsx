@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { WorkspaceSurfaceVisibility } from '../../../workspace/types'
-import { WorkspaceListDetailSurface } from '../WorkspaceSurfacePrimitives'
+import { WorkspaceListDetailSurface, type WorkspaceListDetailSurfaceProps } from '../WorkspaceSurfacePrimitives'
 import { WorkbenchDetailFrame } from '../WorkbenchPresentationPrimitives'
 
 interface Props {
@@ -9,13 +9,14 @@ interface Props {
   list?: ReactNode
   detail?: ReactNode
   detailVisible?: boolean
+  onDetailWidthTransition?: WorkspaceListDetailSurfaceProps['onDetailWidthTransition']
   listWidthPx?: number | null
   onListWidthChange?: (width: number) => void
   onListWidthCommit?: (width: number) => void
   onListRowNavigate?: (rowId: string, direction: 'up' | 'down') => void | Promise<{ kind: 'allow' | 'keep-open' }>
 }
 
-export function ProcessModuleAdapter({ visibility, children, list, detail, detailVisible = Boolean(detail), listWidthPx, onListWidthChange, onListWidthCommit, onListRowNavigate }: Props) {
+export function ProcessModuleAdapter({ visibility, children, list, detail, detailVisible = Boolean(detail), listWidthPx, onDetailWidthTransition, onListWidthChange, onListWidthCommit, onListRowNavigate }: Props) {
   return <WorkspaceListDetailSurface
     className="process-module-adapter"
     dataVisibility={visibility}
@@ -26,6 +27,7 @@ export function ProcessModuleAdapter({ visibility, children, list, detail, detai
     list={list ?? children ?? null}
     detail={detail ?? null}
     detailVisible={detailVisible}
+    onDetailWidthTransition={onDetailWidthTransition}
     listWidthPx={listWidthPx}
     onListWidthChange={onListWidthChange}
     onListWidthCommit={onListWidthCommit}

@@ -2,6 +2,8 @@
 
 狀態：`Current Phase Complete / QA-QC Passed / Merged to master / Release Not Requested`
 
+> **2026-10-07 viewport-fit follow-up（current local branch）**：修正desktop responsive focused-stack投影停用fine-pointer tab drag及synthetic stack path無法更新saved layout的問題。使用者從投影stack的edge drop會明確建立 dragged panel＋remaining tabs split；自動viewport projection本身仍不修改saved layout。此 follow-up於`持續優化`完成本地自動化、build與scope browser QC：1024px fine-pointer桌面六panel不足時投影單一stack，saved layout不變且tab仍可拖曳；實際edge drop形成兩個region／一條separator並保留六tabs，明確drop後才保存新layout。390px touch維持單區且tab不可拖曳；兩viewport無document水平溢出。外層split admission納入實際5px divider，boundary為564／565px。詳見[本輪分支驗證](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)。既有merge狀態只代表先前基線；本輪未merge或deploy。
+
 文件成熟度：`Implementation Complete / QA-QC Passed / Repository Integrated`
 
 > **2026-09-02 repository integration correction（現行）**：目前可驗證的Git事實為：DEV-039基線由commit `164a779`建立；DEV-041／042與最終workspace整合位於`4e3b2ce`；merge commit `c8cc16f`已將該整合納入`master`。舊分支紀錄中的`86510f4`在目前repository不可達，只作歷史provenance，不得再當作candidate、merge或下一步權威。DEV-034／038的現行domain不變量由本文件與ADR-008引用，舊固定UI gate退休；DEV-041／042作為已完成子契約併入本交付。Current Phase無未完成開發、candidate freeze、commit或merge尾項；deploy／release只有在使用者另行提出release型指令時才進入單一gate。
@@ -1048,7 +1050,7 @@ Fresh artifacts統一進`output/playwright/dev039/manifest.md`，並以parity ID
 - stack：`role="tablist"`＋`role="tab"`＋`role="tabpanel"`；只有active tab進一般tab order，hidden panel不得接受focus。
 - layout drag：只從tab handle啟動，使用`application/x-orgmaster-panel-layout`；drop zone只在drag期間出現。
 - domain drag：只從業務物件專用handle啟動，使用`application/x-orgmaster-entity`；不得由separator、tab、panel空白區啟動。
-- container小於minimum時不靠overflow硬塞；resolver回到focused stack。只有composition capability不成立時不mount split controls；viewport寬度本身不得停用hover＋fine pointer桌面的tab drag。
+- container小於既存layout minimum時不靠overflow硬塞；畫面暫時投影為focused stack，但不得把這個viewport projection寫回原layout。hover＋fine pointer仍可拖曳tab；若在投影stack的edge drop zone放下已開啟panel，將該panel拆出並與其餘tabs組成明確的新split，這個使用者操作才更新layout。composition capability不成立時不mount split controls；viewport寬度或readonly mode不得停用hover＋fine pointer桌面的tab drag。
 
 ## 22. Repo、Module、File與Symbol Impact
 
@@ -2463,6 +2465,7 @@ S0～S5依賴與domain架構仍判定有效；AR-08～AR-11已取得實作、sou
 
 ## 30. 變更紀錄
 
+- 2026-10-07：修正桌面viewport-fit fallback將tab drag誤判為mobile composition並停用的問題。viewport投影仍不改寫saved layout；fine-pointer桌面從投影stack的edge drop會將拖曳panel與其餘tabs建立明確split，最小尺寸依參與module與實際可用軸向計算。尚未執行測試、建置或browser QC。
 - 2026-09-01：headful native runner capability probe與最後一次 targeted rerun均未形成可採用的新增產品證據。headful probe詳見第26.21.22節；`ProcessPlanningWorkbench.test.tsx`本次重跑超過60秒無輸出後安全停止，保留既有 `1 file／5 tests passed`成功紀錄，不以未完成重跑覆蓋基線。fixture `draft-cdd24b6d-d8de-404a-ac9a-1ee9a257b899`已recoverably archive，cleanup CLI exit=`0`、final `manifestRevision=49bf03ff348e27e5dc66b0d428119e6ef759e9b99eb6e504de5bfff61bad728b`；task-owned `5080`已釋放，5000未被觸碰。E1／E4判定不變，未commit、merge、deploy或release。
 
 - 2026-09-01：新增第26.21.21節 ProcessNode source handle pan-arbitration 窄修正。於既有 `ProcessNodeCard` source handle 加入 `onMouseDownCapture` stopPropagation，避免 React Flow pane 的 d3 pan 在 HTML5 drag promotion 前攔截 mousedown；保留同一 strict MIME／resolver／Command／API path，並補 `ProcessPlanningWorkbench` regression（`1 file／5 tests passed`）。`npx tsc --noEmit --pretty false`、`npm run build`均通過；修正後 runner只觀察到 strict MIME 的 `dragstart／dragend`，仍未取得可採用`dragover／drop`，E1／E4判定不變，無 domain mutation、synthetic event或第二輸入路徑。
