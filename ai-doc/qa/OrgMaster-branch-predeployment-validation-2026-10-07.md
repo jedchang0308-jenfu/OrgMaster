@@ -38,9 +38,11 @@
 工作樹中新增的 `032_dev046_employee_list_min_width.sql` 與 `033_dev046_shared_list_min_width.sql` 是 source 變更，依本次任務提供的狀態尚未套用。Production ordinary release 的 bundle ceiling 仍為 31；本報告沒有 migration Job、資料庫套用或 Production readback 證據。
 
 - 官方來源要求clean exact `master`、HEAD等於官方remote `master`及provider保護；本分支提交不等於該條件完成。依據：`scripts/lib/dev012-owner-prerequisite-producer.mjs`與`config/release/dev040-orgmaster-independent-production-v3.json`。
-- 目前完整migration manifest固定001–031且拒絕額外檔案，ordinary release要求完整bundle不變／zero DDL；現有controlled append modes不包含032／033。依據：`scripts/lib/dev040-orgmaster-independent-release.mjs`、`scripts/lib/dev040-routine-release.mjs`與`AGENTS.md`。這是來源發布規則的阻擋，不是本次已讀回的production ledger結果。
-- 011的資料庫constraint仍定義160–800px；032只放寬employees，033才放寬全部模組。現在`server/workbenchPreferenceRepository.ts`使用local JSON persistence，66px PUT的本地browser成功不代表Cloud SQL constraint已一致；後續接入DB persistence仍須完成受控migration與驗證。
+- Ordinary release固定驗證完整001–031 migration bundle，要求`UNCHANGED_VERIFIED`、零DDL且不啟動migration Job；release archive可以包含032／033 source，但它們不會進入bundle或被套用。現有controlled append mode不含032／033，只限制不能在本次套用這兩筆，不阻擋普通zero-DDL UI release；未來要套用時才需新的受控forward-only流程。依據：`scripts/lib/dev040-orgmaster-independent-release.mjs`、`scripts/lib/dev040-routine-release.mjs`與`AGENTS.md`。本次preflight實際阻擋仍是官方source freeze，不是migration manifest。
+- Migration 011 SQL source定義的資料庫constraint為160–800px；目前`workbenchPreference` API使用local JSON，沒有PostgreSQL／Cloud SQL persistence path，因此該constraint不影響本次UI路徑。032／033仍未套用；後續若要套用它們，需走受控migration流程。
 - 001–031沒有本輪修改；未執行任何migration、provider寫入、push、merge或deploy。現行production serving revision／live constraint未在本輪讀回。
+
+後續人類已於2026-10-07授權Production部署與切流。本報告記錄的preflight結果仍是當時的`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE`；目前待clean protected master source及正式read-only preflight。032／033未套用不構成本次普通zero-DDL UI release的阻擋。
 
 自動化測試、QC與build只證明各自涵蓋的本地／來源檢查；Vitest命令依現行設定也掃描`output/playwright/dev035/runtime-20260826`歷史拷貝，因此1144不是本次新增測試數。本紀錄不宣稱整體發布條件完成，不升級歷史receipt或生命週期證據。
 

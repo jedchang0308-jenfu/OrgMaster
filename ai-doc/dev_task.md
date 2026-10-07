@@ -267,8 +267,8 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
   - 摘要：八個模組共用list-detail frame與寬度policy，minimum為200／66／200px、dual threshold 274px、偏好66–800px；本輪分支自動化與scoped browser切片通過，但未重跑DEV-046完整A1～E9／F046 gate。032／033僅source、未apply。
   - 來源 ID：`USER-2026-09-04-COMMON-LIST-DETAIL-WORKBENCH`、`USER-2026-09-04-DETAIL-CLICK-ARROW-ESC-BEHAVIOR`、`USER-2026-09-04-ACCOUNT-SCOPED-LIST-WIDTH`、`USER-2026-09-04-DEV046-RD-IMPLEMENTATION-READY-TECH-LEAD-REVIEW`、`USER-2026-09-04-DEV046-EMPLOYEE-VISUAL-BASELINE`
   - 父任務：DEV-039；intentional successor：DEV-042 list-detail behavior；relation baseline：DEV-041；ADR-009 amendment
-  - 現行狀態：DB boundary staged-mode已通過；read-only deploy preflight因source尚未凍結於official remote而未進provider readback，Production release仍gated。
-  - 阻塞 / 恢復條件：本次preflight升權後以`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE` exit 1，未進provider readback；sandbox首試為`SOURCE_GIT_READ_FAILED`。目前branch`持續優化`不是受保護master source。sourcehash 8檔drift=0、001–031 migration diff=0；普通Production bundle上限為001–031，032／033未apply。Production release仍gated，不宣稱Production readiness／L4。
+  - 現行狀態：DB boundary staged-mode已通過；先前read-only deploy preflight因source尚未凍結於official remote而未進provider readback。人類已於2026-10-07授權Production部署與切流；目前待clean protected master source及正式read-only preflight。
+  - 阻塞 / 恢復條件：先前preflight升權後以`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE` exit 1，未進provider readback；sandbox首試為`SOURCE_GIT_READ_FAILED`。目前branch`持續優化`不是受保護master source。sourcehash 8檔drift=0、001–031 migration diff=0；ordinary UI release仍只驗證001–031並零DDL，032／033未apply但不構成阻擋；只有要套用它們時才需受控migration流程。尚待official protected master與正式preflight，不宣稱Production readiness／L4。
   - 證據：[權威規格](specs/DEV-046-unified-list-detail-workbench-framework.md)、[本輪分支部署前驗證紀錄](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)、[browser observations](../output/predeploy/20261007-branch-validation/ui/observations.json)、`output/predeploy/20261007-branch-validation/` logs。
   - 計入交付：是
 
@@ -1174,7 +1174,7 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 - 沿用`WorkspaceListDetailSurface`作唯一frame，桌面永遠render list／separator／detail；Level先保留空detail slot，不為形式一致虛構domain內容。
 - 細部風格與排版以現行Employee workspace surface為control specimen；共用`WorkbenchListFrame`／`WorkbenchListRow`／`WorkbenchDetailFrame`與scoped tokens，固定32px list header、34px search、Employee row／selected語言、40px detail header、18px standard section及`standard|edge-to-edge`body boundary。list-detail separator保留操作熱區但只呈現1px灰線，與多功能workspace split的藍色5px分隔線區隔。
 - 同列click關閉／重開detail，另一列click與ArrowUp／Down切換，Escape依modal／editor／relation／dirty guard precedence關閉；selection不因detail關閉而清除。
-- 無帳號偏好時沿用CSS intrinsic content width；preferred width依verified principal＋module經GET／PUT保存，effective clamp不回寫。Local-json與Cloud SQL沿用同一repository contract，011為歷史migration；032仍僅本地source，未apply。
+- 無帳號偏好時沿用CSS intrinsic content width；preferred width依verified principal＋module經GET／PUT保存，effective clamp不回寫。目前workbenchPreference API只有local JSON persistence，沒有PostgreSQL／Cloud SQL persistence path；011及032／033為資料庫migration source，不影響此UI路徑。普通zero-DDL release可保持032／033未apply，只有要套用時才需受控migration流程。
 - Relation仍只有DEV-041 strict MIME、single `RelationPlacementSession`、`resolveRegisteredDrop()`、shared bindings及App mutation owner；新增pair依typed extension checklist另立可驗收DEV。
 - RD依S0 contract／visual guard→S1 frame／interaction／presentation primitives→S2 preference vertical slice→S3 Employee control＋master／Duty→S4 Process／Management Method／Role Risk→S5 relation cleanup→S6 candidate verification執行；A1～E9與F046-01～09為完成Gate。
 
@@ -1192,7 +1192,7 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
   - 2026-10-07較早分模組寬度追加驗證（歷史snapshot）：八個正常launcher入口完成1440×900 splitter縮窄／自動恢復、手動關閉維持、keyboard resize、8次偏好PUT 200與reload；當時Employee門檻274px、其他consumer門檻488px，並非最新統一274px設定。當時Targeted六suite因暫存rename EPERM未載入，實際tests=0；此狀態由下方後續證據更新，不刪除原始執行結果。
 - 2026-10-07最新分支驗證：`r2.log` 355/355、DEV-040 R2 QC PASS、abort 6/6、全套Vitest 224 files／1144 passed／4 skipped、build通過（client 2191／server 85 modules，含大於500kB chunk warning）。Scoped browser harness `ui/observations.json` 為`pass=true`：八個module正常launcher於259px縮窄後可在647px恢復；manual close保持，鍵盤各一次PUT 200且reload preferred一致，container resize為0 PUT，無可見alert或document水平溢出；Process只在隔離copied data補1筆fixture。預期`auth/me` 401與`auth/mode` 503仍可見，無pageerror。另完成1024 fine-pointer六panel projection／edge-drop與390 touch單region檢查；19張截圖已人工檢視。Runtime PID 40988、browser及temporary root均清理，port已釋放。此為scoped browser QC，不代表重跑DEV-046全套A1～E9／F046 gate。獨立`npm run check:db-boundary` staged mode PASS（23 governed files）；read-only deploy preflight的sandbox試跑以`SOURCE_GIT_READ_FAILED`終止，升權重跑則`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE` exit 1，未進入provider readback。Sourcehash 8檔drift=0、001–031 migration diff=0。
 - 證據：[本輪分支部署前驗證紀錄](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)、[latest browser observations](../output/predeploy/20261007-branch-validation/ui/observations.json)、[R2/QC/Vitest/build logs](../output/predeploy/20261007-branch-validation/)。
-- 現行限制：Read-only deploy preflight升權後回報`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE`，exit 1且未進provider readback；032／033僅source未apply，普通Production bundle仍為001–031。Production release gated，無Production readiness／L4新證據。
+- 現行限制：先前read-only deploy preflight升權後回報`SOURCE_NOT_FROZEN_AT_OFFICIAL_REMOTE`，exit 1且未進provider readback；人類已於2026-10-07授權Production部署與切流，目前待official protected master及正式read-only preflight。普通release仍驗證001–031並零DDL；032／033可保留未apply，只有要套用它們時才需受控流程。沒有Production readiness／L4新證據。
 - 停止條件：需要改domain schema／Command／permission、DEV-033 mobile boundary、第二selection／resolver／mutation owner、allowlist外核心檔或production migration／release時停止回PM／Tech Lead。
 
 ### 變更紀錄

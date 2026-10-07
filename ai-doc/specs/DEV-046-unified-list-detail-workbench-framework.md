@@ -2,7 +2,7 @@
 
 文件成熟度：`RD Implementation Complete`
 
-狀態：`Prior Local Gates Passed / 2026-10-07 Shared Width Framework Complete / Local Automated Gates Passed / Scoped Browser QC Passed / Production Release Gated`。最新統一寬度追加範圍已完成9.4節的最小browser驗證；9/4與10/7較早分模組寬度觀察維持歷史效力。本輪不重簽18節完整normal-entry gate；部署前結論以[本輪分支驗證](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)為準，032／033尚未apply或納入現行production release mode。
+狀態：`Prior Local Gates Passed / 2026-10-07 Shared Width Framework Complete / Local Automated Gates Passed / Scoped Browser QC Passed / Production Release Gated`。最新統一寬度追加範圍已完成9.4節的最小browser驗證；9/4與10/7較早分模組寬度觀察維持歷史效力。本輪不重簽18節完整normal-entry gate；部署前結論以[本輪分支驗證](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)為準。032／033尚未apply且不屬於現行001–031 ordinary migration bundle；普通UI release可維持UNCHANGED_VERIFIED及零DDL。後續人類已於2026-10-07授權Production部署與切流，目前待clean protected master source及正式read-only preflight；未apply 032／033不是阻擋原因。
 
 風險等級：`High`。本交付會改變八個既有功能的主要畫面、選取／明細狀態、鍵盤操作與版面偏好保存，並新增帳號層級偏好 API 與 forward-only migration；不得用局部元件測試取代完整正常入口及視覺 QC。
 
@@ -456,10 +456,10 @@ CREATE TABLE orgmaster_core.workbench_list_width_preferences (
 - Migration使用 `-- DB-CHANGE` header、owner=`orgmaster`、schemas=`orgmaster_core`、contract-impact=`none`、backward-compatible；只授予 `jenfu_orgmaster_runtime` SELECT／INSERT／UPDATE／DELETE，沒有跨app contract view。
 - 011明確依賴010 neutral schema boundary已套用；不得回改001～010，也不得在legacy `orgmaster`或`public`建立新物件。
 - Migration 032是歷史forward-only migration，曾只放寬Employee至`66..800`；不回改或重寫已套用的011。
-- Migration 033再以forward-only方式統一八個module的width check為`66..800`，不回改011或032；033僅為本地source，未apply，也不代表production release已授權。
-- Local-json mode使用 `data/user-preferences/workbench-list-widths/<sha256(principalId)>.v1.json`與 verified atomic write；檔名不得包含raw principal。單一runtime內以per-file queue序列化PUT。
-- 兩種 persistence mode投影完全相同；local file不是OrganizationDocument或workspace artifact。
-- 011只建立與測試 migration；production apply、authority switch與release另進release gate。
+- Migration 033再以forward-only方式統一八個module的width check為`66..800`，不回改011或032；033僅為本地source，未apply。它不屬ordinary UI release必要內容；只有要套用migration時才需要受控forward-only流程。
+- 目前workbenchPreference API使用local JSON persistence，路徑為`data/user-preferences/workbench-list-widths/<sha256(principalId)>.v1.json`並以verified atomic write保存；沒有PostgreSQL／Cloud SQL persistence path。檔名不得包含raw principal。單一runtime內以per-file queue序列化PUT。
+- Local JSON file不是OrganizationDocument或workspace artifact；目前UI路徑不受Cloud SQL constraint約束。
+- Production migration apply與authority switch依各自release gate處理；普通UI release沿用001–031 bundle，`UNCHANGED_VERIFIED`且零DDL，不需要套用032／033。
 
 ## 14. Failure recovery and consistency
 
@@ -492,7 +492,7 @@ Production allowlist：
 - `db/migrations/032_dev046_employee_list_min_width.sql`（historical local forward-only source）
 - `db/migrations/033_dev046_shared_list_min_width.sql`（current local forward-only source）
 
-2026-10-07 local follow-up新增的032／033 migration只作為本地forward-only source change；目前DEV-040 production migration profile仍封存於031，未取得對應release profile前不得production apply或release。
+2026-10-07 local follow-up新增的032／033 migration是本地forward-only source，未套用且不在DEV-040的001–031 ordinary migration bundle。普通UI release可保留這兩個source檔未apply，並以UNCHANGED_VERIFIED、零DDL完成；只有要套用032／033時才需新受控migration profile與owner Job。此前preflight實際因source未凍結於official remote而停止；後續人類已授權Production部署與切流，現待protected master source及正式read-only preflight。
 
 Test allowlist為上述檔案的同名 `*.test.ts(x)`、`server/orgmasterServer.test.ts`、`server/dev010DatabaseBoundary.test.ts`、`src/components/workspace/WorkspaceSingleLayerContract.test.tsx`及既有relation tests。唯一browser runner固定為`qa/dev-046/browser/normal-entry.mjs`，唯一結果索引固定為`output/playwright/dev046/manifest.md`；fixture helper若超過runner內可維護範圍才可建立`qa/dev-046/fixtures/workbench.mjs`。若需修改domain schema、Command、permission、其他 API、Organization／Governance production component、新 dependency或migration 001～010，立即停止回 PM／RD Technical Lead。
 
@@ -669,7 +669,7 @@ ADR判定：`不新增ADR`。本次是ADR-009既有panel owner／surface primiti
 
 ## 23. Change log
 
-- 2026-10-07部署前驗證：最新統一寬度完成9.4最小browser範圍、guard／pending／hidden component回歸及完整本地測試。R2 355／355、continuous QC、abort 6／6、staged DB boundary、Vitest 1144 passed／4 skipped與client／server build通過；八個正常入口縮窄／恢復／手動關閉／偏好重載、1024px desktop projection native tab split與390px touch檢查通過，task-owned runtime／browser已清理。唯讀production preflight因官方source freeze阻擋；032／033不在現行31筆release profile，未apply或deploy。證據與限制見[分支驗證報告](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)。下方同日未驗證記錄保留當時狀態，不覆寫此最新判定。
+- 2026-10-07部署前驗證：最新統一寬度完成9.4最小browser範圍、guard／pending／hidden component回歸及完整本地測試。R2 355／355、continuous QC、abort 6／6、staged DB boundary、Vitest 1144 passed／4 skipped與client／server build通過；八個正常入口縮窄／恢復／手動關閉／偏好重載、1024px desktop projection native tab split與390px touch檢查通過，task-owned runtime／browser已清理。先前唯讀production preflight因official source freeze阻擋；032／033未apply且不在ordinary 31筆migration bundle，但普通UI release可零DDL保留未apply。後續人類已授權Production部署與切流，目前待protected master source及正式preflight。證據與限制見[分支驗證報告](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)。下方同日未驗證記錄保留當時狀態，不覆寫此最新判定。
 - 2026-10-07 shared framework normalization（驗證前歷史checkpoint）：使用者要求所有面板的寬度限制一致。八個consumer維持共用`WorkspaceListDetailSurface`，panel/list/detail minimum統一為`200/66/200px`、dual threshold統一為`274px`，preference range統一為`66..800px`；移除員工專屬width alias與偏好range。新增033 forward-only migration供資料庫constraint日後一致化，未apply或release。`npm run build`與`npm run check:db-boundary`通過；當時尚未browser驗證或重跑測試，完整QA/QC及local release gate為pending。
 
 - 2026-10-07共用寬度slice：依使用者「請執行」採用共用行為＋各面板設定，八個consumer接入同一width policy、ResizeObserver與guarded收合／恢復；Employee門檻274px、其餘488px，手動關閉保持關閉。修正intrinsic list第一次keyboard resize以實際寬度起算。型別及client／server build通過，八個正常launcher入口完成1440×900實際splitter縮窄／恢復／手動關閉／keyboard preference PUT 200與reload觀察，無可見alert或document水平溢出；Process原資料0筆，僅隔離副本補1筆fixture。預期未登入401及未配置正式auth mode的503保留原始紀錄，不宣稱console零error。Targeted六suite因sandbox暫存rename EPERM在載入前失敗，實際執行tests=0；guard拒絕、快速加寬與hidden-panel新component cases尚未跑通，完整QA/QC gate保持pending。原032未apply、未production release。Evidence索引：`output/playwright/dev046/manifest.md`；本次所有暫時runtime／browser已清理且port released。
