@@ -2733,7 +2733,17 @@ Git boundary：本輪產品只改 `src/components/GovernanceCenter.tsx`／`.css`
 - `GovernanceCenter.test.tsx`：5／5 PASS。兩條歷史頁首斷言已更新，符合使用者移除頁首與草稿更新列的現行需求。
 - `git diff --check`：PASS。歷史 capture-only UI 檢視仍只證明 mocked API 呈現；未執行真實 OpenAI 呼叫、新推薦 API 專用 negative/race 測試或正式互動 UI 驗收，不以本地 gate 推論這些項目已驗證。
 
-目前為正式提交候選；PR、Production Source QC、正式十階段發布與流量 readback 尚待完成，完成前不標記已部署。
+以上是提交前驗證快照。其後 PR、required Production Source QC、正式十階段發布與流量讀回已完成，詳見下方正式發布紀錄。
+
+### 2026-10-08 Production release receipt（完成）
+
+- PR [#126](https://github.com/jedchang0308-jenfu/OrgMaster/pull/126) 通過 required `Production Source QC`（workflow [37709232027](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37709232027)），並 merge 至受保護 `master`；source revision／merge commit：`d134e3e3046cf44b91507d9a9399d2f11286b40d`。
+- OrgMaster owner workflow [37709765666](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37709765666) 的 `prepare → build → migrate → candidate → entrypoint → verify → decision → activate → canonical → finalize` 十階段全部成功，failure stage skipped。release：`ORGMASTER-REL-20261008004906354-D134E3E`。
+- Finalized terminal receipt：`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261008004906354-D134E3E/6b2668e0421191e5042c2352f211aee4e114c30aa5d20ea88dc87ab39eea0750/terminal.json`，SHA-256 `44e3ccc1e0345038697c068309cb7f2f4c095d37b8808ae5f1005bc12e4ad121`；結果 `RELEASED`、`remainingHumanAction=0`。正式 artifact：`orgmaster@sha256:c9bc99aba53c74bd7999afea83f4fdfacc2d9669a31a21152abcdd341400cb8e`。
+- Post-release readback：服務 `orgmaster-prod` 的 provider default URL `https://orgmaster-prod-56gnizku7q-de.a.run.app`，`latestReadyRevision=orgmaster-prod-ceacdac90393`，traffic 100% 指向同一 revision；temporary candidate tags 0。
+- Migration receipt：`UNCHANGED_VERIFIED`、`migrationsExecuted=0`、`dataImportsExecuted=0`、`pendingMigrationCount=0`。資料庫驗證依前一正式 release 證據加本次 runtime smoke，`liveLedgerRead=false`；本次未執行 DDL／import。
+- 詳細來源、receipt 與驗證範圍：[DEV-037 production release QA](qa/DEV-037-production-release-2026-10-08.md)。部署包含 DEV-037 矩陣／智慧推薦功能與 DEV-040 artifact retry 修正；未新增指派或發布治理資料。
+- 尚未執行正式環境互動式矩陣／推薦 UI 驗收或真實 OpenAI provider 呼叫；workflow smoke 不代表這兩項已驗證。AI-PDM 外部權限治理邊界不變。
 
 ### 2026-10-07 branch validation cross-reference
 
