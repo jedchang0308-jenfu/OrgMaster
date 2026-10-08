@@ -1,8 +1,8 @@
 # OrgMaster 文件地圖
 
-## 2026-10-08 DEV-037 矩陣／推薦與 DEV-040 發布候選
+## 2026-10-08 DEV-037 矩陣／推薦與 DEV-040 release（Production Released）
 
-本輪候選包含 DEV-037 角色 × 系統矩陣、空格新增操作、員工推薦 API/UI，以及 DEV-040 owner build input 身分、建置重用、提交 fence 與未知結果 readback 修正。直接紀錄：[DEV-037 續記](dev_task.md#2026-10-08-發布前完整驗證續記)、[矩陣／推薦契約](specs/DEV-037-external-role-catalog-assignment-governance.md)、[DEV-040 artifact retry 契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#owner-artifact-input-reuse-20261007)、[QA plan](qa/DEV-037-external-role-assignment-validation-plan.md)。本地 gate 全數通過；PR、Production Source QC、正式部署與流量 readback 尚待完成。新推薦 API、真實 AI provider 與正式互動 UI 不列為已驗證。
+PR [#126](https://github.com/jedchang0308-jenfu/OrgMaster/pull/126) 的 required `Production Source QC` 通過（[workflow 37709232027](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37709232027)），merge source `d134e3e3046cf44b91507d9a9399d2f11286b40d`。OrgMaster production workflow [37709765666](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37709765666) 十階段成功並 finalized：`ORGMASTER-REL-20261008004906354-D134E3E`、revision `orgmaster-prod-ceacdac90393`、provider readback 100% traffic／0 candidate tags、`UNCHANGED_VERIFIED`／0 DDL／0 import。Terminal receipt 與逐項證據見[DEV-037 production release QA](qa/DEV-037-production-release-2026-10-08.md)及[DEV 任務紀錄](dev_task.md#2026-10-08-production-release-receipt完成)。本次部署了矩陣／智慧推薦程式，但未驗證正式環境互動式 UI或真實 OpenAI provider 呼叫；不代表 AI-PDM 權限已由 OrgMaster 寫入或同步。
 
 ## 2026-10-07 分支追加範圍與 Production delivery（現行）
 
