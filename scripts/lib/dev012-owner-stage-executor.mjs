@@ -500,6 +500,20 @@ async function writeControl({ transport, paths, profile, intent, fingerprint, ca
   return transport.putJson(paths.control, value, { bucket: profile.artifact.releaseBucket, prefix: 'control', ifGenerationMatch: current ? String(current.metadata.generation) : '0' })
 }
 
+async function writeBuildCheckpoint(transport, uri, profile, value) {
+  const existing = await optionalNamedJson(transport, uri, profile)
+  if (!existing) return transport.putJson(uri, value, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
+  // Preserve original provenance/observation times after a partial receipt write.
+  for (const key of ['schemaVersion', 'ownerApplicationId', 'sourceRevision', 'artifactDigest', 'sourceObject', 'buildInputSha256', 'cloudBuild', 'resourceUrl']) {
+    if (canonicalize(existing.value[key] ?? null) !== canonicalize(value[key] ?? null)) fail('BUILD_EVIDENCE_CHECKPOINT_MISMATCH', key)
+  }
+  if (existing.value.status !== 'PASS') fail('BUILD_EVIDENCE_CHECKPOINT_MISMATCH', 'status')
+  for (const key of ['occurrenceNames', 'buildOccurrenceNames', 'discoveryOccurrenceNames']) {
+    if (Array.isArray(value[key]) && (!Array.isArray(existing.value[key]) || existing.value[key].length === 0 || !existing.value[key].every(name => value[key].includes(name)))) fail('BUILD_EVIDENCE_CHECKPOINT_MISMATCH', key)
+  }
+  return existing
+}
+
 function publicBuildReceipt(build) {
   return { name: build.name, id: build.id, projectId: build.projectId, status: build.status, serviceAccount: build.serviceAccount, createTime: build.createTime, startTime: build.startTime, finishTime: build.finishTime, sourceProvenance: build.sourceProvenance, results: build.results, options: build.options }
 }
@@ -569,8 +583,8 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (!Buffer.isBuffer(sourceIdentityBytes) || sha256(sourceIdentityBytes) !== intent.sourceSha256) fail('SOURCE_IDENTITY_HASH_MISMATCH')
     const sourceBytes = await createSourceArchive(intent.sourceRevision)
     if (!Buffer.isBuffer(sourceBytes) || sourceBytes.length === 0) fail('SOURCE_ARCHIVE_FAILED')
-    const sourceUri = `gs://${profile.artifact.releaseBucket}/source/releases/${intent.releaseId}/${capsuleSha256}/source.tar.gz`
     const sourceArchive = gzipSync(sourceBytes, { level: 9 })
+    const sourceUri = `gs://${profile.artifact.releaseBucket}/source/archives/${sha256(sourceArchive)}/source.tar.gz`
     const source = await transport.putBytes(sourceUri, sourceArchive, { bucket: profile.artifact.releaseBucket, prefix: 'source', contentType: 'application/gzip' })
     const migration = await buildMigrationBundle(intent.sourceRevision)
     if (migration.bundle?.manifestSha256 !== intent.migrationManifestSha256 || sha256(migration.bytes) !== migration.bundleSha256) fail('MIGRATION_MANIFEST_MISMATCH')
@@ -578,11 +592,18 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const bundle = await transport.putBytes(bundleUri, migration.bytes, { bucket: profile.artifact.releaseBucket, prefix: profile.artifact.migrationBundlePrefix, contentType: 'application/json' })
     const build = await transport.createBuild({ profile, intent, sourceObject: source, deadlineAt: intent.deadlineAt })
     const artifact = await transport.readArtifactImage(profile, build.artifactDigest)
-    const analysis = await transport.waitArtifactEvidence({ profile, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, deadlineAt: intent.deadlineAt })
-    const provenance = await transport.putJson(paths.provenance, { schemaVersion: 'jenfu.dev012.build-provenance-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, sourceObject: { ...source.ref, generation: String(source.metadata.generation), crc32c: source.metadata.crc32c }, artifactDigest: build.artifactDigest, cloudBuild: publicBuildReceipt(build.build), artifactRegistry: artifact, status: 'PASS' }, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
-    const sbom = await transport.putJson(paths.sbom, { schemaVersion: 'jenfu.dev012.sbom-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, ...analysis.sbomExport, occurrenceNames: analysis.sbomOccurrenceNames, status: 'PASS' }, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
-    const scan = await transport.putJson(paths.scan, { schemaVersion: 'jenfu.dev012.scan-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, buildOccurrenceNames: analysis.buildOccurrenceNames, discoveryOccurrenceNames: analysis.discoveryOccurrenceNames, vulnerabilityCount: analysis.vulnerabilityCount, blockingVulnerabilityCount: analysis.blockingVulnerabilityCount, ...(analysis.rawHighOrCriticalVulnerabilityCount !== undefined ? { rawHighOrCriticalVulnerabilityCount: analysis.rawHighOrCriticalVulnerabilityCount, notAffectedAssessments: analysis.notAffectedAssessments } : {}), maximumAllowedSeverity: profile.build.maximumAllowedSeverity, observedAt: analysis.observedAt, status: 'PASS' }, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
-    const buildStage = await writeStage(transport, paths, profile, intent, 'build', prepare.ref, { artifactDigest: build.artifactDigest, sourceObject: { ...source.ref, generation: String(source.metadata.generation), crc32c: source.metadata.crc32c }, migrationBundleRef: bundle.ref, provenanceReceiptRef: provenance.ref, sbomReceiptRef: sbom.ref, scanReceiptRef: scan.ref })
+    const analysis = await transport.waitArtifactEvidence({ profile, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, deadlineAt: intent.deadlineAt, requireActiveAnalysis: build.reused === true })
+    const provenance = await writeBuildCheckpoint(transport, paths.provenance, profile, { schemaVersion: 'jenfu.dev012.build-provenance-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, sourceObject: { ...source.ref, generation: String(source.metadata.generation), crc32c: source.metadata.crc32c }, artifactDigest: build.artifactDigest, cloudBuild: publicBuildReceipt(build.build), artifactRegistry: artifact, ...(build.buildInputSha256 ? { buildInputSha256: build.buildInputSha256, buildDisposition: build.disposition, sourceArchiveSha256: build.sourceArchiveSha256, artifactSourceRevision: intent.sourceRevision } : {}), status: 'PASS' })
+    const sbom = await writeBuildCheckpoint(transport, paths.sbom, profile, { schemaVersion: 'jenfu.dev012.sbom-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, ...analysis.sbomExport, occurrenceNames: analysis.sbomOccurrenceNames, status: 'PASS' })
+    const scan = await writeBuildCheckpoint(transport, paths.scan, profile, { schemaVersion: 'jenfu.dev012.scan-receipt.v1', ownerApplicationId: profile.application.id, sourceRevision: intent.sourceRevision, artifactDigest: build.artifactDigest, buildOccurrenceNames: analysis.buildOccurrenceNames, discoveryOccurrenceNames: analysis.discoveryOccurrenceNames, vulnerabilityCount: analysis.vulnerabilityCount, blockingVulnerabilityCount: analysis.blockingVulnerabilityCount, ...(analysis.rawHighOrCriticalVulnerabilityCount !== undefined ? { rawHighOrCriticalVulnerabilityCount: analysis.rawHighOrCriticalVulnerabilityCount, notAffectedAssessments: analysis.notAffectedAssessments } : {}), maximumAllowedSeverity: profile.build.maximumAllowedSeverity, observedAt: analysis.observedAt, status: 'PASS' })
+    const priorBuildStage = await optionalNamedJson(transport, paths.build, profile)
+    if (priorBuildStage) {
+      assertStage(priorBuildStage.value, profile, intent, 'build')
+      const expected = { artifactDigest: build.artifactDigest, ...(build.buildInputSha256 ? { buildInputSha256: build.buildInputSha256 } : {}), sourceObject: { ...source.ref, generation: String(source.metadata.generation), crc32c: source.metadata.crc32c }, migrationBundleRef: bundle.ref, provenanceReceiptRef: provenance.ref, sbomReceiptRef: sbom.ref, scanReceiptRef: scan.ref }
+      if (canonicalize(priorBuildStage.value.previousReceiptRef) !== canonicalize(prepare.ref)) fail('BUILD_STAGE_CHECKPOINT_MISMATCH')
+      for (const [key, value] of Object.entries(expected)) if (canonicalize(priorBuildStage.value.facts[key]) !== canonicalize(value)) fail('BUILD_STAGE_CHECKPOINT_MISMATCH', key)
+    }
+    const buildStage = priorBuildStage ?? await writeStage(transport, paths, profile, intent, 'build', prepare.ref, { artifactDigest: build.artifactDigest, ...(build.buildInputSha256 ? { buildInputSha256: build.buildInputSha256, buildDisposition: build.disposition } : {}), sourceObject: { ...source.ref, generation: String(source.metadata.generation), crc32c: source.metadata.crc32c }, migrationBundleRef: bundle.ref, provenanceReceiptRef: provenance.ref, sbomReceiptRef: sbom.ref, scanReceiptRef: scan.ref })
     const deployment = { schemaVersion: profile.schemas.deploymentCapsule, ownerApplicationId: profile.application.id, releaseIntentRef: intentRef, releaseIntentSha256: capsuleSha256, sourceRevision: intent.sourceRevision, sourceObject: { ...source.ref, generation: String(source.metadata.generation), crc32c: source.metadata.crc32c }, artifactDigest: build.artifactDigest, migrationBundleRef: bundle.ref, migrationRunnerDigest: prepare.value.facts.migrationRunnerDigest, buildReceiptRef: buildStage.ref, provenanceReceiptRef: provenance.ref, sbomReceiptRef: sbom.ref, scanReceiptRef: scan.ref, deadlineAt: intent.deadlineAt }
     assertDeployment(deployment, profile, intent, intentRef, capsuleSha256)
     return transport.putJson(paths.deployment, deployment, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })

@@ -1424,3 +1424,39 @@ Platform protected release run `35579062204`已在migration 006 prerequisite以S
 5. Human authorization必須明確涵蓋OrgMaster migration 016與exact Production owner release；既有只允許Platform migrations 006／007且禁止其他migration的DEV-014授權不能推定擴張。
 
 直接契約：[DEV-052](DEV-052-managed-identity-lifecycle-producer-contract.md)。QA分母：[DEV-040 R2 QA §16](../qa/DEV-040-R2-independent-production-release-validation-plan.md)。
+
+<a id="owner-artifact-input-reuse-20261007"></a>
+## 2026-10-07 Owner artifact 輸入與重試維護（本地修改／行為驗證待執行）
+
+本輪人類已明確授權 Jenfu-Platform、OrgMaster、AI_PDM 的 skill／AGENTS／DEV 規則及 owner executor 本地修改。各 repo 只修改自己的 source 與規則；沒有部署、IAM、Terraform、正式 DB 或 traffic 操作。原歷史 production closure、固定 QA 分母與 receipts 保留，不把本次維護宣稱為 Production PASS。
+
+### 身分與重用
+
+- 分開 reviewed source revision、artifact 輸入／digest、release attempt。OCI `SOURCE_VERSION` 改用原 build 的完整 source revision；releaseId、deadline 與 runtime 設定仍由本次 intent／receipts 綁定。Dockerfile revision/tree labels、app runtime commit binding與 source guard 保留，不將舊來源偽裝為新來源。
+- App build source archive 存於 own bucket `source/archives/<gzip-bytes-sha256>/source.tar.gz`；create-only 寫入並驗證 bytes、generation 與 CRC。Build identity 包含 owner、archive SHA、immutable generation、builder digest、Dockerfile/target、全部 build args、image repository、builder identity 與 request options；releaseId/deadline 不納入 artifact 身分。
+- Builder 在既有 regional Cloud Build history 以 `owner-build-<buildInputSha256>` 尋找原 build，驗證完整請求及 provider source provenance、SUCCESS 與 digest。相同 source／輸入的 SUCCESS 重用 digest；active build 等待完成，不重新 POST。不從 mutable image tag 推定 digest。
+- 新 intent 仍產生本次 source-bound provenance／build association，保留原 Cloud Build ID、source、create/start/finish time。Reused digest 必須重新讀回目前 Artifact Registry／SBOM／scanner policy，且 DISCOVERY 為持續分析 ACTIVE、未歸檔；失效時只停止並要求 security metadata refresh，不藉重建略過 policy。
+- 這條 app fast path目前是 **同一完整 source／archive與 recipe** 的 provider-build 重用，不能聲稱支援任意跨 source app reuse。跨 source 工具重用仍由既有 app-infra reuse producer 證明 Dockerfile／COPY／dependencies／base/builder／args 等實際 executable inputs 未變，發布新的 source-bound reuse receipt； changed runner 仍須 exact image-only rotation。靜態檔案相等不等於外部套件解析或輸出已證明等價。
+
+### 失敗與證據邊界
+
+- POST 前在既有 own receipt store 寫不可變 `receipts/build-inputs/<key>/submission-N.json` fence。Provider 寫入結果未知或 fence 存在但 build 尚不可見時，只做有界 readback，不新增提交。進程在 fence 與 POST 之間中斷亦屬未解 submission；須查證後恢復，不自動清 fence、重建、增加權限或要求新 releaseId。
+- 只有 provider `INTERNAL_ERROR`／`EXPIRED` 可沿相同輸入有界重試，最多三次提交並 backoff。明確 HTTP 400／401／403／429 rejection 以原 fence hash 另存不可變 rejected marker，修正前置條件後的提交亦納入三次上限，不把已拒絕請求當作 unknown write；一般 FAILURE／TIMEOUT／CANCELLED 要追查第一個有效錯誤與輸入／前置條件，不能換 releaseId 原樣重建。後段 migration／candidate／smoke 失敗不作廢已成功的 build。
+- 同一 capsule 部分收據已寫入時，驗證 identity／hash／occurrence joins 後保留原 provenance、SBOM、scan與 build stage checkpoint，不偽造新時間；補齊缺少的 deployment capsule。
+- 逐項確認 evidence 的 relevant input、環境、角色、route、fixture、case implementation 與層級。只重驗失效部分及其下游；Git SHA 或對話輪次本身不要求全量重驗。視覺變更仍驗最終 frozen candidate；安全／資料／權限、source fence、owner isolation、inactive candidate、rollback 與現有 protected stages保持。
+- 已知 exact migration Job／override permission、既有 ledger baseline、producer contract/catalog 缺口須在現有 owner prepare/readiness 中先收斂再進付費 build；穩定有效 facts 可重用，變更／漂移／失敗才刷新。本次不新增 live DB probe、bootstrap 或把 verifier提升為 deployer；不得以同輸入重建補前置條件。
+
+### 效率驗收與狀態
+
+| 情境 | 必要結果 |
+|---|---|
+| 相同 verified source／artifact request 換 releaseId 或重試 | 原 digest；新增映像與 build POST 為 0 |
+| App-only，工具 executable inputs 未變 | 只建受影響 app；未變工具新增映像為 0，沿原 infra reuse proof |
+| Docs 已確認排除於 artifact/check inputs，未要求重新發布 | App build／deploy 為 0；不拿 archive 全等宣稱跨 source reuse |
+| source／recipe／dependency 或 security policy實質改變 | 失效的 artifact/evidence 必須重新取得，不降低安全要求 |
+| 重試中斷、未知 outcome或 deterministic failure | 有界 provider readback／診斷；不能重複 POST 或偽造 PASS |
+| 一般同風險發布 | 無新增人工確認；用既有 CI／provider／receipt 時間確認總時間不增加 |
+
+目前只完成本地 source／規則修改及語法／diff 檢查。沒有新增或執行測試、build、付費 scan 或 provider 操作；行為、時間與帳單節省均未驗證，維護出口保持待驗證，正式 deploy仍須原 owner release 授權與既定證據。Release-executor 變更只補其必要 contract/recovery coverage；有效 app/build/QC 證據依實際輸入重用，不為每個 DEV 重跑同一共用 gate。
+
+API依據：[Cloud Build history tags/filter](https://docs.cloud.google.com/build/docs/view-build-results)、[regional builds list](https://docs.cloud.google.com/build/docs/api/reference/rest/v1/projects.builds/list)。持續分析 ACTIVE／stale metadata 邊界依[Artifact Analysis 文件](https://docs.cloud.google.com/artifact-analysis/docs/container-scanning-overview)；過期 metadata refresh不等同必須產生新映像。

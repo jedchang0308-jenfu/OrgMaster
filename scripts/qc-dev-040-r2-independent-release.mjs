@@ -15,8 +15,9 @@ process.stderr.write(run.stderr)
 // Installed-031 replay and complete native image-proof checks add 5 cases: predecessor total 333.
 // Four actual build-abort lineage cases extend this same 27-file selection to 337.
 // R7 exact false-state target guard and unsealed-cleanup integration add 2 selected cases: total 339.
+// Unknown Cloud Build submission-fence recovery adds one selected case: total 340.
 // This Node result does not replace the full regression/build commands below.
-if (run.status !== 0 || !/\bpass 339\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 340\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 

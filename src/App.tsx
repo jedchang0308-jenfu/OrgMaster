@@ -3257,6 +3257,7 @@ function ProtectedApp() {
         departments={departments}
         roles={roles}
         currentOrganizationVersionId={workspaceIndex?.currentVersionId ?? null}
+        currentOrganizationRevision={isDirty ? null : serverRevision ?? activeWorkspaceVersion?.revision ?? null}
         visibility={visibility}
         workspaceMutationAllowed={workspaceMutationAllowed}
         refreshToken={governanceRefreshToken}

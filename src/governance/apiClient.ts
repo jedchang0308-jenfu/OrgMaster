@@ -1,6 +1,7 @@
 import type { GovernanceCommandV2, GovernanceDocumentV2, GovernanceRoleAssignmentV2, ExternalRoleCatalogSnapshotV1, GovernanceCommandReceiptV2 } from './types'
 import type { PrivilegedAssignmentExpected, PrivilegedAssignmentRequest } from './privilegedAssignments'
 import type { GovernanceDocumentViewV2 } from './governancePresentation'
+import type { EmployeeRecommendationRequest, EmployeeRecommendationResponse } from './employeeRecommendations'
 
 export const GOVERNANCE_API_PATH = '/api/orgmaster/governance'
 export type GovernanceVersionSummary = { id: string; kind: 'legacy-policy-v1' | 'assignment-governance-v2' | 'assignment-governance-v3'; versionNumber: number; publishedAt: string; publishedByPrincipalId: string; publishReason: string; snapshotHash: string; organizationVersionId: string; effectState: string }
@@ -73,6 +74,7 @@ const headers = { 'Content-Type': 'application/json', 'X-OrgMaster-Dev-Issuer': 
 async function request<T>(path: string, init: RequestInit = {}) { const response = await fetch(`${GOVERNANCE_API_PATH}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new GovernanceApiError(payload.error ?? 'GOVERNANCE_REQUEST_FAILED', response.status, payload.issues); return { payload: payload as T, revision: response.headers.get('X-OrgMaster-Governance-Revision') ?? '' } }
 export async function loadGovernance() { return request<GovernanceApiSnapshot>('/') }
 export async function loadGovernanceSession() { return request<GovernanceSession>('/session') }
+export async function recommendGovernanceEmployees(input: EmployeeRecommendationRequest, signal?: AbortSignal) { return request<EmployeeRecommendationResponse>('/employee-recommendations', { method: 'POST', body: JSON.stringify(input), signal }) }
 export async function linkCurrentGovernanceIdentity(revision: string, commandId: string, employeeId: string) { return request<{ status: string; document: GovernanceDocumentViewV2; revision: string }>('/identity-links/current', { method: 'POST', body: JSON.stringify({ expectedRevision: revision, commandId, employeeId }) }) }
 export async function patchGovernanceDraft(revision: string, command: GovernanceCommandV2) { return request<{ status: string; document: GovernanceDocumentViewV2; revision: string }>('/draft', { method: 'PATCH', body: JSON.stringify({ expectedRevision: revision, command }) }) }
 export async function validateGovernanceAssignment(value: Partial<GovernanceRoleAssignmentV2>) { return request<{ status: 'valid' | 'invalid'; issues: Array<{ code: string; path: string; message: string }>; catalogVersion: string; payloadHash: string; effectState: string; checkedAt: string }>('/validate/assignment', { method: 'POST', body: JSON.stringify(value) }) }

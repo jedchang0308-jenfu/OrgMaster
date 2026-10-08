@@ -48,7 +48,7 @@ describe('governance version presentation', () => {
     expect(snapshot.versions.map((entry) => entry.versionNumber)).toEqual([6, 7, 9, 8])
     expect(host.textContent).toContain('第7次角色調整')
     expect(host.textContent).toContain('2026/10/05 07:06')
-    expect(host.textContent).toContain('草稿更新 2026/10/06 16:05')
+    expect(host.textContent).not.toContain('草稿更新 2026/10/06 16:05')
     for (const text of ['current-unreadable-machine-id', 'V3 指派治理', '尚未同步至外部系統', '本機治理沙盒', '目前生效']) expect(host.textContent).not.toContain(text)
     expect([...host.querySelectorAll('button')].some((node) => /改用|發布新版本/.test(node.textContent ?? ''))).toBe(false)
     expect(host.querySelector('.governance-publish-readiness')).toBeNull()
@@ -84,8 +84,8 @@ describe('governance version presentation', () => {
     expect(mocks.setActiveGovernanceVersion).toHaveBeenCalledWith('governance-revision', expect.any(String), '重新啟用角色指派版本', 'version-8')
   })
 
-  it('retains the sandbox label only for a confirmed local development session', async () => {
+  it('omits the removed governance heading in a local development session', async () => {
     const host = await render(fixture(), false, 'local-development')
-    expect(host.textContent).toContain('本機治理沙盒')
+    expect(host.textContent).not.toContain('本機治理沙盒')
   })
 })

@@ -326,6 +326,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
   - 規格：`ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md`；跨系統主契約與QA／QC位於`C:\VIBE CODING\Jenfu-Management-system\ai-doc\specs`／`qa`
   - ADR：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md` 2026-08-30 amendment
   - 計入交付：否（跨 repository 交付由 Jenfu Management System DEV-001 計算）
+  - 發布維護（2026-10-07）：[artifact 輸入與重試](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#owner-artifact-input-reuse-20261007)已本地修改；行為／效率驗證待執行、未發布。保留原歷史完成與分母，沿本 native owner 維護，不新增跨專案部署權限。
 
 - ✓ DEV-039 [交付點] [完成] [P1] [Implementation Complete／QA-QC Passed／Merged to master／Current workspace baseline] 可組合規劃桌面與跨面板關聯配置
   - 摘要：S0～S6工作台與面板邊界保留；S7以單一 typed Placement Session 統一 native／keyboard，沿用既有 resolver 與 mutation authority。最新 B16 fixture `draft-02d6deb8-9c2b-4653-85a9-a970b9bff50c` 合併 E2 五案＋E3-LIFECYCLE＋E3-WARNING native CDP 共 `7 passed`；五案均含 `historyEvidence` 行為性 Undo round-trip，E2 aggregate為 `Pass（evidence）`，E3兩案為`pass`。另以全新隔離 fixture `draft-f002b99c-88a4-417f-8892-a32b64e2b673`完成 ProcessNode→Duty、`draft-4af67fa3-4e33-4644-8768-cb65d4642396`完成 paired Duty→ProcessNode，四個 E1 minimum directions均有strict native pass evidence；正式 QA-QC已覆核，並已由`164a779`、`4e3b2ce`與`c8cc16f`完成repository integration。deploy／release未要求。
@@ -354,6 +355,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 - ✓ DEV-037 [開發點] [完成] [P0] [RD Implementation Complete／QA-QC Passed／Local Release Gate Pending／OrgMaster Only] 外部角色目錄與角色指派權責重整
   - 摘要：外部系統擁有自己的 Application Role、Permission、Role-Permission mapping 與領域審核政策；OrgMaster 只讀取具版本的角色目錄，集中治理員工角色指派、scope、有效期間、代理、指派審核及 audit。
   - 本輪 UI 修正：2026-10-07 發布版本辨識改善已完成本地 QC；精確目前版本置頂、歷史新到舊、發布原因與台北時間，16 tests／build／7 browser cases PASS；未部署正式站。
+  - 追加推薦 slice：2026-10-07 智慧推薦已本地實作，僅填新增表單；build／mocked UI capture 完成，API negative／race 與真實 AI provider 未驗證，不沿用歷史 QC 結論。
   - 來源 ID：`USER-2026-08-27-EXTERNAL-ROLE-CATALOG-ASSIGNMENT-BOUNDARY`
   - 父任務：DEV-027、DEV-035
   - 完成內容：已依權威契約完成 S1→S4；V2 domain、bundled read-only catalog、V1→V2 非破壞 migration、server／API ownership guard、assignment／role delegation／publish、UI normal delivery path、stale recovery、legacy compatibility、RWD 與完整 regression 均完成。
@@ -2641,6 +2643,97 @@ Git boundary：本輪產品只改 `src/components/GovernanceCenter.tsx`／`.css`
 本地實作：發布頁先列「待發布角色指派」，與精確 active policy 按 ID／完整內容（物件 key 次序無關）比對；新增、調整、撤銷、移除及原設定可讀。已發布 V2/V3 可展開其保存的指派，角色名称取 snapshot、不用現行 catalog 改寫歷史。無基準／legacy／資料未完整載入時只列草稿並明示不能比對；一般指派成功提示與入口引導至發布頁。僅續改三份產品檔 `GovernanceCenter.tsx`／`.css`／`governancePresentation.ts`；不改後端或 persisted 資料。
 
 證據：[本地範例預覽](../output/playwright/dev037-version-ui-20261007/draft-preview/report.json)、[桌面草稿](../output/playwright/dev037-version-ui-20261007/draft-preview/draft-1032.png)、[手機草稿](../output/playwright/dev037-version-ui-20261007/draft-preview/draft-390.png)、[模擬發布後展開](../output/playwright/dev037-version-ui-20261007/draft-preview/published.png)、同層上一級 `build-draft-preview.log`。最新建置完成；人工檢視 desktop／mobile 草稿、目前版本展開、模擬發布後及資料缺失共五份圖，姓名／AI-PDM 角色／範圍／期間可讀，無水平溢出。這些是 synthetic display fixtures，沒有發送治理寫入、production 或 consumer readback；未新增或執行自動化測試，前節 16 tests／7 cases 僅是前次呈現修正的歷史證據。最初範例缺 applicationId 顯示錯誤應用，已拒收並修正 fixture 後重截，原圖及報告保留於 `draft-preview/initial-fixture-capture`。task-owned browser／server 已關閉且 port released=true；沒有操作使用者的正式 tab，尚未部署。
+
+### 2026-10-07 角色與系統矩陣 UI
+
+來源：使用者更新需求為角色與系統矩陣、員工顯示於交叉格且格內可新增／刪除、狀態使用顏色標籤並附圖例，其餘明細使用彈窗。此為 OrgMaster／DEV-037 同專案 UI slice；不修改 AI-PDM、資料、API或外部權限。
+
+實作：矩陣列為角色、欄為系統；姓名開啟明細，新增彈窗沿用既有驗證與草稿 command，撤銷格內單筆有效指派；同員工同角色多筆有效指派先開明細選擇，避免批次撤銷。顏色代表目前有效（綠）、未生效（藍）、已到期（灰）、已撤銷（紅），圖例緊鄰標題。明細顯示 scope、期間、目錄版本及與目前發布版的比對結果。沿用 manage、catalog、workspace 與 mobile-readonly gates；AI-PDM 新增仍只寫 OrgMaster 草稿，需要另行發布版本；不代表 AI-PDM 權限已變更。特權 system_admin 仍留在原專區。
+
+證據：[capture-only 報告與 runtime cleanup](../output/playwright/dev037-role-system-matrix-20261007/report.json)、[桌面矩陣](../output/playwright/dev037-role-system-matrix-20261007/matrix-desktop.png)、[新增彈窗](../output/playwright/dev037-role-system-matrix-20261007/add-assignment-dialog.png)、[員工明細彈窗](../output/playwright/dev037-role-system-matrix-20261007/employee-details-dialog.png)、[390px 矩陣](../output/playwright/dev037-role-system-matrix-20261007/matrix-mobile.png)、[390px 明細](../output/playwright/dev037-role-system-matrix-20261007/employee-details-mobile.png)。`npm run build` PASS；人工檢視 desktop／mobile 圖及新增／明細彈窗。未新增或執行自動化測試；預覽只用合成資料，非 GET API request=0，沒有 production 或 consumer readback。browser/server 已關閉且 port released=true，正式 browser 未操作，沒有 deploy／release。工作分支因 `.git` refs 權限無法建立，變更仍在 `master`；未 stage／commit。規格：[本地 UI 契約](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-07-角色與系統指派矩陣-ui-修訂)。
+
+#### 同日續修：隱藏不可指派且無指派紀錄的矩陣列
+
+來源：使用者在本機矩陣選取 `external_specialist · AI-PDM` 並要求刪除。目錄將此角色標為不可指派，該列沒有指派員工。
+
+實作：矩陣省略不可指派且沒有既存指派紀錄的 AI-PDM 角色；已有指派（含歷史／撤銷紀錄）時仍保留矩陣列。角色只從矩陣呈現中隱藏，仍保留於唯讀角色目錄；不刪目錄、指派資料或改變權限。
+
+驗證：`npm run build`（TypeScript、client、server build）PASS；`git diff --check` PASS。未新增或執行自動化測試，也未重新檢視本次修改後的 browser 畫面；不沿用前一版矩陣截圖冒充視覺驗證。未部署或操作使用者的 browser。
+
+#### 同日續修：移除角色列重複的系統標籤
+
+來源：使用者選取角色列下方重複的 `AI-PDM` 標籤並要求刪除。
+
+實作：矩陣左欄只保留角色名稱；移除角色代碼及每列重複的系統名稱，系統名稱只在欄標題顯示。缺少角色名稱快照時顯示「角色名稱未記錄」，不以代碼代替。
+
+驗證：`npm run build`（TypeScript、client、server build）PASS；`git diff --check` PASS。未新增或執行自動化測試，也未重新檢視本次修改後的 browser 畫面；未操作使用者的 browser。
+
+#### 同日續修：合併各系統的管理員矩陣列
+
+來源：使用者要求不要在縱軸按系統分別列出管理員，改為一列「系統管理員」。
+
+實作：將 OrgMaster `orgmaster_admin` 與 AI-PDM `pdm_admin` 呈現在同一列；各系統交叉格仍綁定原角色 ID、指派資料及操作。特權 `system_admin` 維持原特權區。僅整理矩陣視圖，不合併或改變底層權限。
+
+驗證：`npm run build`（TypeScript、client、server build）PASS；`git diff --check` PASS。未新增或執行自動化測試，也未重新檢視本次修改後的 browser 畫面；未操作使用者的 browser。
+
+#### 同日續修：管理員列置頂與欄名樣式
+
+來源：使用者要求將「系統管理員」移至矩陣最上方，並把「角色 ↓ 系統 →」改為以斜線分隔、不使用箭頭。
+
+實作：管理員彙整列固定置頂；左上角欄名改為「角色 / 系統」。
+
+驗證：`npm run build`（TypeScript、client、server build）PASS；`git diff --check` PASS。未新增或執行自動化測試，也未操作使用者的 browser。
+
+#### 同日續修：精簡矩陣上方資訊
+
+來源：使用者要求刪除矩陣上方操作說明及 `System × role` 小標，並將狀態圖例與右上操作區排版整合。
+
+實作：移除上述兩段文字；矩陣標題、四種狀態圖例及「查看待發布內容／特權設定」收進單一工具列，窄版允許換行。既有色彩狀態和按鈕行為維持不變。
+
+驗證：`npm run build`（TypeScript、client、server build）與 `git diff --check` 通過；未執行自動化測試，未操作使用者的 browser，也未重新檢視本次修改後畫面。
+
+#### 同日續修：移除治理頁上方標題列
+
+來源：使用者選取包含系統名稱、「角色指派治理」及草稿更新時間的標題列並要求刪除。
+
+實作：移除治理面板可見標題列，使矩陣內容上移；保留螢幕閱讀器可讀的隱藏頁面標題。草稿更新時間不再佔據畫面，其他治理行為維持不變。
+
+驗證：本地 build 與 `git diff --check` 通過；未執行測試、未操作使用者 browser，沒有修改後的視覺驗收。
+
+#### 同日續修：移除矩陣指派筆數
+
+來源：使用者選取矩陣標題旁的「0 筆指派」並要求刪除。
+
+實作：矩陣標題不再顯示指派筆數；其他治理區段的筆數資訊不變。
+
+驗證：本地 build 與 `git diff --check` 通過；未執行測試或操作使用者 browser。
+
+#### 同日續修：空白交叉格新增操作
+
+來源：使用者要求在顯示「尚無員工」的矩陣交叉格增加「新增」按鈕。
+
+實作：可指派角色即使目前沒有員工也顯示「新增」；編輯權限、目錄或角色條件未就緒時停用並提示原因。手機唯讀及不可指派角色不顯示操作。
+
+驗證：本地 build 與 `git diff --check` 通過；未執行自動化測試，未操作使用者 browser。
+
+#### 同日續修：智慧推薦員工
+
+來源：使用者要求依組織架構智慧辨識並推薦員工，隨後「開始實作」。本地僅 OrgMaster，沿用 DEV-037／DEV-040 advisory-only 邊界。
+
+實作：新增彈窗提供智慧推薦；伺服器從已保存的現行組織讀 effective Employee→Position、部門、上級職位與 execute/review 職掌。規則推薦先比對明確職位／職掌，OpenAI 可補語意匹配；沒有 provider 設定或失敗時明示規則 fallback。active/assignable/recommendationAllowed/employee catalog gates、有效任職、重疊草稿指派排除、PDM 管理職責與本人排除、revision/catalog 前後核對保留。點候選只填員工；不建立推薦決策或直接發布權限。配置：`OPENAI_API_KEY` 與 `ORGMASTER_EMPLOYEE_RECOMMENDATION_MODEL`（可沿用 management method model）。
+
+狀態：本地實作完成／Build Passed／Mocked UI Captured；新推薦 API、negative/race 與真實 provider 尚未做行為驗證。依本輪 developer 限制，未新增或執行自動化測試；不以 build/capture 宣稱 QA-QC Passed。獨立 1242×668／390×844 畫面檢視、零 page error、無指派資料寫入，runtime/browser cleanup 完成；證據在 `output/playwright/dev037-employee-recommendations-20261007/`。此為 2026-10-07 歷史實作快照，後續驗證與發布狀態見下節。
+
+### 2026-10-08 發布前完整驗證續記
+
+使用者明確要求提交目前 OrgMaster 程式與開發文件，並部署至正式服務及切流。此次納入矩陣／員工推薦功能與既有 DEV-040 release executor 輸入重用／未知 Cloud Build 結果恢復修改；沒有 SQL、migration、Terraform、IAM、Secret、正式資料或其他專案變更。
+
+- `npm run test:dev-040:r2`：356／356 PASS；Cloud Build 未知 POST 結果新增 fence readback、零重複提交案例。
+- `npm run qc:dev-040:r2`：PASS；固定 owner test 分母 340／340、abort-controller 6／6、DB boundary、Vitest 224 files（1145 passed／4 skipped）與 production build 均通過。Owner report 存於 `output/dev-040-r2/s1b/` 下該輪唯一的 `owner-report.json`。
+- `GovernanceCenter.test.tsx`：5／5 PASS。兩條歷史頁首斷言已更新，符合使用者移除頁首與草稿更新列的現行需求。
+- `git diff --check`：PASS。歷史 capture-only UI 檢視仍只證明 mocked API 呈現；未執行真實 OpenAI 呼叫、新推薦 API 專用 negative/race 測試或正式互動 UI 驗收，不以本地 gate 推論這些項目已驗證。
+
+目前為正式提交候選；PR、Production Source QC、正式十階段發布與流量 readback 尚待完成，完成前不標記已部署。
 
 ### 2026-10-07 branch validation cross-reference
 

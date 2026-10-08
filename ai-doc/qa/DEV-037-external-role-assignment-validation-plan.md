@@ -308,3 +308,16 @@ Manifest必須連結每張 artifact、case ID、viewport、source revision、dat
 QC只回報事實、不修改產品；失敗回送RD，RD只修受影響allowlist，接著重跑受影響targeted gate與必要delivery path。只有QC通過後，PM才能把DEV-037標為 Implementation Complete／QA-QC Passed。
 
 使用思考習慣：#可驗證性、#證據品質、#使用者視角
+
+## 2026-10-07 智慧推薦 slice：驗證層與剩餘範圍
+
+本輪依 developer 限制未新增或執行自動化測試。`npm run build` 與 diff check 為本地靜態／建置層；`output/playwright/dev037-employee-recommendations-20261007/` 為 mocked API capture-only 呈現層。1242×668 推薦入口、規則 fallback、兩位有理由候選及選取後員工欄位；390×844 維持唯讀。無 page error、未送出資料寫入；task-owned browser/server 已關閉、port 釋放。這些結果不證明推薦 backend／模型語意，不能升為新 slice QA-QC Passed。
+
+後續獲要求做行為驗證時，targeted 範圍固定為：未授權與 forbidden-role 不呼叫 provider；不存在的 workspace 不初始化；inactive／expired／future 任職與同 scope 重疊指派不回傳；PDM 管理員不由職級、同部門或一般設備維護推定；模型虛構 position/duty、跨職位 duty、缺直接職位依據的空 duty 輸出 fail to labelled rules；provider timeout／取消／缺設定／context-limit 可恢復；治理、organization revision、catalog 漂移回 conflict；關閉／換 scope／改期間後舊回應不顯示；選候選只填表、不寫 draft/publish。真實 provider 與 production readback 需另具相應證據；此清單不自動授權 production 或跨專案動作。
+
+## 2026-10-08 release candidate 本地驗證
+
+- DEV-040 R2 regression 356／356 PASS；DEV-040 R2 owner contract/recovery QC PASS（固定分母 340／340）；abort-controller 6／6 PASS。
+- QC 內含 `npm run check:db-boundary`、Vitest 224 files（1145 passed／4 skipped）及 `npm run build`，全部 PASS；`GovernanceCenter.test.tsx` 5／5 PASS。使用者要求移除治理頁首後，歷史測試已更新為驗證頁首與草稿更新時間不存在。
+- 此輪未呼叫推薦 API 的真實 OpenAI provider，未對正式資料執行推薦，也未完成正式互動 UI 驗收；production smoke／流量 evidence 以正式 release receipt 為準，不能由本地測試替代。
+- source 還需經單一 PR 合併至受保護 `master` 並通過 `Production Source QC`，再由 `npm run deploy:production` 完成正式十階段與 canonical traffic readback。此候選檢查不含 production release authority。
