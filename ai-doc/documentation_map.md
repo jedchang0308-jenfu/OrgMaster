@@ -1,5 +1,9 @@
 # OrgMaster 文件地圖
 
+## 2026-10-08 DEV-037 矩陣／推薦與 DEV-040 發布候選
+
+本輪候選包含 DEV-037 角色 × 系統矩陣、空格新增操作、員工推薦 API/UI，以及 DEV-040 owner build input 身分、建置重用、提交 fence 與未知結果 readback 修正。直接紀錄：[DEV-037 續記](dev_task.md#2026-10-08-發布前完整驗證續記)、[矩陣／推薦契約](specs/DEV-037-external-role-catalog-assignment-governance.md)、[DEV-040 artifact retry 契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#owner-artifact-input-reuse-20261007)、[QA plan](qa/DEV-037-external-role-assignment-validation-plan.md)。本地 gate 全數通過；PR、Production Source QC、正式部署與流量 readback 尚待完成。新推薦 API、真實 AI provider 與正式互動 UI 不列為已驗證。
+
 ## 2026-10-07 分支追加範圍與 Production delivery（現行）
 
 PR #124 的 Linux 日期 literal 差異已修正；追加驗證六項必要 gates 全數通過，完整 Vitest 為 1145 passed／4 skipped。原始結果與修正後結果分別保留於[本輪 QA 報告](qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)，下段原始 scoped browser 與 1144-test snapshot 不改寫。
@@ -13,6 +17,14 @@ Production delivery：source `8fa175573d52f0461e3c656b8ae12d3d81c1343d` 的[公�
 同日續修：[草稿與版本內指派可見性](dev_task.md#同日續修草稿與版本內的指派可見性) → [範例預覽證據](../output/playwright/dev037-version-ui-20261007/draft-preview/report.json)。此段記錄DEV-037本地完成時的build與五份desktop／mobile圖檢視；當時未新增／執行自動化測試或正式發布，16 tests／7 cases保留為初次呈現修正證據。後續source `8fa175573d52f0461e3c656b8ae12d3d81c1343d` production release包含DEV-037 source，見上方最新delivery；Production interactive UI仍未驗證。
 
 [UI 現行呈現契約](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-07-發布版本呈現修正現行-ui歷史資料不改寫) → [DEV-037 本輪切片與 QA](dev_task.md#2026-10-07-發布版本辨識-ui-修正) → [本地 browser evidence](../output/playwright/dev037-version-ui-20261007/report.json)。精確目前版本置頂、歷史新到舊、發布原因與台北時間，sandbox 依 session 判斷；不以歷史 persisted effectState 推定外部實際權限。16 tests／build／7 browser cases與實際 desktop／mobile 圖檢視 PASS，runtime cleanup完成。此為本地驗證快照；後續Production source包含DEV-037，見上方delivery；Production interactive UI仍未驗證。既有DEV-040／DEV-057正式權責與歷史證據不變。
+
+## DEV-037 角色 × 系統矩陣 UI（2026-10-07，本地）
+
+[本地 UI 契約](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-07-角色與系統指派矩陣-ui-修訂) → [DEV-037 slice 與完成記錄](dev_task.md#2026-10-07-角色與系統矩陣-ui) → [capture-only 報告](../output/playwright/dev037-role-system-matrix-20261007/report.json)。角色為列、系統為欄，員工列在交叉格；狀態以綠／藍／灰／紅標籤辨識，scope、期間、目錄與發布比較集中在彈窗。標題、狀態圖例及兩個操作入口排在單一精簡工具列，不顯示指派筆數；矩陣上方的系統／環境、頁面標題、草稿更新時間列、英文小標與操作說明句均已移除，保留輔助科技可讀的隱藏頁面標題。桌面可指派交叉格即使空白也有「新增」按鈕；條件未就緒時停用，手機唯讀和不可指派角色不提供。Build 與合成資料 desktop／mobile 視覺檢視完成；本次續修 build 通過，未執行測試、未讀回正式權限、未發布或部署。正式 AI-PDM 權限不由矩陣新增操作直接改變。
+
+## DEV-037 智慧推薦員工（2026-10-07，本地）
+
+[推薦契約](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-07-智慧推薦員工本地-implementation-slice) → [本地交付記錄](dev_task.md#同日續修智慧推薦員工) → [UI capture](../output/playwright/dev037-employee-recommendations-20261007/report.json)。新增彈窗依已保存的現行組織與職掌產生候選；規則先匹配、AI 可補語意，fallback 明示。catalog／manage／有效任職／既有指派／revision gates 保留，PDM 管理員需明確資訊系統管理依據，候選選取只填表單。狀態為本地實作完成／Build Passed／Mocked UI Captured；未新增或執行自動化測試、未驗證 server negative/race 或真實 AI provider、未發布／部署，不回填歷史 QA-QC 結論。task-owned runtime/browser 已清理；原 user-owned surfaces 不變。
 
 ## DEV-057 / JENFU DEV-014 lifecycle — OrgMaster owner exit (2026-10-06)
 
@@ -314,7 +326,7 @@ managed Principal own governance 同根因修正沿 DEV-057 [交易契約](specs
 - `DEV-039` 文件索引規則：第26.9～26.12節及較早manifest段落只保留為歷史紀錄；現行派工、驗收、runner admission、QA-QC與狀態判定一律以主spec第2.1節及第26.13～26.21.26節及parity manifest第16.6～16.15.22節為準。Process canvas 的 before blocker、after-fix 幾何 observation 與窄測試見主spec第26.17節；native runner preflight見第26.18節；E2 failure-path見第26.21節；paired E1 strict pass見第26.21.25節；desktop viewport extension見第26.21.26節與Parity第16.15.22節；E1～E3 aggregate已通過 evidence／QA-QC，但E4仍須明確授權，不得由文件索引推論已完成release。
 - `DEV-038`（`RD Implementation Ready / MVP Implemented / QA-QC Pending / UI Composition Replaced by DEV-039`）：Process domain、V7 migration、Dagre／React Flow投影、Duty link、relation reuse、keyboard placement、三向高亮與draft reload persistence繼續作權威；固定composition與`ProcessOrganizationCanvas`已依DEV-039 removal allowlist退出runtime。ADR-008單一資料權威、Duty delete fail closed與DEV-034 relation authority不變。權威契約：`ai-doc/specs/DEV-038-process-duty-responsibility-planning-workbench.md`；ADR：`ai-doc/adr/ADR-008-process-planning-organization-version-authority.md`；摘要：`ai-doc/dev_task.md#dev-038流程職掌責任聯動規劃工作台`。
 
-- `DEV-037`（`RD Implementation Complete / QA-QC Passed / Human Confirmed / Intentional Replacement / Local Release Gate Pending / OrgMaster Only`）：外部系統擁有自己的 Application Role、Permission、Role-Permission mapping、領域 Approval Policy 與最終 enforcement；OrgMaster 擁有共用 IAM principal mapping、employee-to-role assignment、scope、有效期間、角色代理、指派發布與 governance-change audit。Current Phase 已完成固定 9-role bundled read-only catalog、V2 assignment governance、V1 非破壞 migration、server／API ownership guard、normal Toolbar delivery path、stale fail-closed、legacy compatibility、RWD 與 full regression；unknown／inactive／unassignable／stale catalog fail closed，發布固定標示 `OrgMaster only / not synchronized`。live integration 已納入 DEV-040 文件規劃但尚未進 RD；DEV-037 未修改 AI-PDM、未 deploy／release。完整證據：`output/playwright/dev037/manifest.md`；權威契約：`ai-doc/specs/DEV-037-external-role-catalog-assignment-governance.md`；QA／QC：`ai-doc/qa/DEV-037-external-role-assignment-validation-plan.md`；摘要：`ai-doc/dev_task.md#dev-037外部角色目錄與角色指派權責重整`；ADR：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`。
+- `DEV-037`（`RD Implementation Complete / QA-QC Passed / Human Confirmed / Intentional Replacement / Local Release Gate Pending / OrgMaster Only`）：外部系統擁有自己的 Application Role、Permission、Role-Permission mapping、領域 Approval Policy 與最終 enforcement；OrgMaster 擁有共用 IAM principal mapping、employee-to-role assignment、scope、有效期間、角色代理、指派發布與 governance-change audit。Current Phase 已完成固定 9-role bundled read-only catalog、V2 assignment governance、V1 非破壞 migration、server／API ownership guard、normal Toolbar delivery path、stale fail-closed、legacy compatibility、RWD 與 full regression；unknown／inactive／unassignable／stale catalog fail closed，發布固定標示 `OrgMaster only / not synchronized`。一般角色矩陣不呈現不可指派且無指派紀錄的 AI-PDM 角色；只讀角色目錄仍完整保留。矩陣只在系統欄標題顯示系統名稱，角色列只顯示角色名稱、不顯示代碼；OrgMaster `orgmaster_admin` 與 AI-PDM `pdm_admin` 共用置頂的「系統管理員」視覺列，各系統仍保留原角色 ID 與指派操作。左上角欄名使用「角色 / 系統」。live integration 已納入 DEV-040 文件規劃但尚未進 RD；DEV-037 未修改 AI-PDM、未 deploy／release。完整證據：`output/playwright/dev037/manifest.md`；權威契約：`ai-doc/specs/DEV-037-external-role-catalog-assignment-governance.md`；QA／QC：`ai-doc/qa/DEV-037-external-role-assignment-validation-plan.md`；摘要：`ai-doc/dev_task.md#dev-037外部角色目錄與角色指派權責重整`；ADR：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`。
 
 - `DEV-036`（`RD Implementation Complete / QA-QC Passed / Human Confirmed Minimum Viable Dual-Perspective Scope / Local Release Gate Pending`）：建立左側快速清單、單筆 Duty Drawer 與完整 URL 工作台的三層分工。最小第一輪仍顯示兩個正式視角：Audit 以 Duty 為列，只有 `q`、三 anomaly 複選、列表及 read-only Drawer；Distribution 以 active Position 為列，只有 Position／department 共用 `q` 與四類 relation count，0 必須保留且 count 不可點擊。canonical `/duty-planning` 預設 audit，legacy anomalies／matrix alias安全正規化；正常入口位於工作執掌清單 header，手機只讀。department／lane filter、cell 展開、分布 Duty 鑽取、跨視角偏好記憶及工作台 mutation均延後。證據：`output/playwright/dev036/manifest.md`。權威摘要：`ai-doc/dev_task.md#dev-036雙視角責任規劃完整工作台`；工程契約：`ai-doc/specs/DEV-036-duty-dual-perspective-workbench.md`。
 
@@ -387,3 +399,7 @@ managed Principal own governance 同根因修正沿 DEV-057 [交易契約](specs
 ### 2026-10-06 原工作樹草稿本地保存（HISTORY_ONLY）
 
 [DEV-057 草稿收斂／歷史保存](qa/DEV-057-preserved-workspace-drafts-2026-10-06.md)：RECONCILED_HISTORY_ONLY。原 WIP 程式／測試已排除並對齊 protected master；保存時原稿及 SHA manifest 不改，沒有新的產品修正／migration／部署，不改變正式結案或 DEV-122 延期判定。必要 CI 與 review 由本次文件 PR 精確來源證明。
+
+## DEV-040 owner artifact 維護（2026-10-07，待驗證／未發布）
+
+[同一 owner spec／重試與效率契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#owner-artifact-input-reuse-20261007) → [native任務索引](dev_task.md#總任務清單)。本次只做本地規則與 executor 修改；原 production closure 不回填。本機語法／diff不代表行為、時間或掃描節省已驗證。

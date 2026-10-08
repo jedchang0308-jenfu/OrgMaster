@@ -20,6 +20,61 @@ const profile = {
 
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } })
 
+function ownerBuildFixture({ invisibleListReads = 0, unknownBuildPost = false } = {}) {
+  const sourceUri = `gs://${bucket}/source/releases/R/source.tgz`
+  const buildId = '5554e6a9-1c0f-48bd-877a-7f04d651915e'
+  const buildsEndpoint = `https://cloudbuild.googleapis.com/v1/projects/${profile.target.projectId}/locations/${profile.target.region}/builds`
+  const objects = new Map()
+  const builds = new Map()
+  const seen = []
+  let listCalls = 0
+  let buildPosts = 0
+  let unknownPostThrown = false
+  const fetchImpl = async (uri, options = {}) => {
+    const value = new URL(String(uri))
+    seen.push({ url: value.href, method: options.method ?? 'GET', body: options.body && typeof options.body === 'string' ? JSON.parse(options.body) : null })
+    if (value.hostname === 'storage.googleapis.com' && value.pathname.startsWith('/upload/storage/v1/')) {
+      const object = value.searchParams.get('name')
+      const bytes = Buffer.from(options.body)
+      const record = { bytes, metadata: { generation: '1', crc32c: crc32cBase64(bytes) } }
+      objects.set(object, record)
+      return json(record.metadata)
+    }
+    if (value.hostname === 'storage.googleapis.com' && value.pathname.startsWith('/storage/v1/')) {
+      const marker = `/b/${encodeURIComponent(bucket)}/o/`
+      const index = value.pathname.indexOf(marker)
+      assert.notEqual(index, -1)
+      const object = decodeURIComponent(value.pathname.slice(index + marker.length))
+      const record = objects.get(object)
+      if (!record) return json({ error: { status: 'NOT_FOUND' } }, 404)
+      return value.searchParams.get('alt') === 'media' ? new Response(record.bytes) : json(record.metadata)
+    }
+    if (options.method !== 'POST' && value.href.startsWith(buildsEndpoint) && !value.pathname.endsWith(`/${buildId}`)) {
+      listCalls += 1
+      if (listCalls <= invisibleListReads) return json({ builds: [] })
+      return json({ builds: [...builds.values()] })
+    }
+    if (value.href === buildsEndpoint && options.method === 'POST') {
+      buildPosts += 1
+      const request = JSON.parse(options.body)
+      const build = {
+        id: buildId, status: 'SUCCESS', projectId: profile.target.projectId,
+        serviceAccount: request.serviceAccount, steps: request.steps, source: request.source,
+        images: request.images, tags: request.tags, timeout: request.timeout, queueTtl: request.queueTtl,
+        logsBucket: request.logsBucket, options: request.options,
+        sourceProvenance: { resolvedStorageSource: { bucket, object: 'source/releases/R/source.tgz', generation: '9' } },
+        results: { images: [{ name: request.images[0], digest: `sha256:${H64}` }] },
+      }
+      builds.set(buildId, build)
+      if (unknownBuildPost && !unknownPostThrown) { unknownPostThrown = true; throw new Error('provider response lost') }
+      return json({ name: `operations/build/${buildId}`, metadata: { build: { id: buildId } } })
+    }
+    if (value.href === `${buildsEndpoint}/${buildId}`) return json(builds.get(buildId))
+    throw new Error(`unexpected request ${value.href}`)
+  }
+  return { sourceUri, buildId, buildsEndpoint, fetchImpl, seen, get buildPosts() { return buildPosts } }
+}
+
 function controllerResolutionHarness({ changeIndex = () => {}, childMediaType = 'application/vnd.oci.image.manifest.v1+json' } = {}) {
   const owner = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json'))
   const imageUri = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller'
@@ -134,28 +189,32 @@ test('owner transport reads a generation-bound object from any explicitly allowe
 })
 
 test('Cloud Build gets the exact regional build resource, pinned builder, source generation and verified provenance', async () => {
-  const sourceUri = `gs://${bucket}/source/releases/R/source.tgz`
-  const buildTag = `${profile.artifact.uri}:release-${H40}`
-  const seen = []
-  const build = {
-    status: 'SUCCESS', projectId: profile.target.projectId,
-    serviceAccount: `projects/${profile.target.projectId}/serviceAccounts/${profile.identities.builder}`,
-    options: { requestedVerifyOption: 'VERIFIED' },
-    sourceProvenance: { resolvedStorageSource: { bucket, object: 'source/releases/R/source.tgz', generation: '9' } },
-    results: { images: [{ name: buildTag, digest: `sha256:${H64}` }] },
-  }
-  const fetchImpl = async (url, options = {}) => {
-    seen.push({ url: String(url), method: options.method ?? 'GET', body: options.body ? JSON.parse(options.body) : null })
-    if (options.method === 'POST') return json({ name: 'operations/build/NTU1NGU2YTktMWMwZi00OGJkLTg3N2EtN2YwNGQ2NTE5MTVl', metadata: { build: { id: '5554e6a9-1c0f-48bd-877a-7f04d651915e' } } })
-    return json(build)
-  }
-  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl, sleep: async () => undefined })
-  const result = await transport.createBuild({ profile, intent: { sourceRevision: H40, sourceSha256: H64, releaseId: 'REL-001' }, sourceObject: { ref: { uri: sourceUri, sha256: H64 }, metadata: { generation: '9' } }, deadlineAt: '2999-01-01T00:00:00.000Z' })
+  const fixture = ownerBuildFixture()
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: fixture.fetchImpl, sleep: async () => undefined })
+  const result = await transport.createBuild({ profile, intent: { sourceRevision: H40, sourceSha256: H64, releaseId: 'REL-001' }, sourceObject: { ref: { uri: fixture.sourceUri, sha256: H64 }, metadata: { generation: '9' } }, deadlineAt: '2999-01-01T00:00:00.000Z' })
   assert.equal(result.artifactDigest, `${profile.artifact.uri}@sha256:${H64}`)
-  assert.equal(seen[1].url, 'https://cloudbuild.googleapis.com/v1/projects/jenfu-platform-prod/locations/asia-east1/builds/5554e6a9-1c0f-48bd-877a-7f04d651915e')
-  assert.equal(seen[0].body.steps[0].name, profile.build.dockerBuilderImage)
-  assert.equal(seen[0].body.steps[0].dir, 'source')
-  assert.equal(seen[0].body.source.storageSource.generation, '9')
+  assert.equal(fixture.seen.find(request => request.url === `${fixture.buildsEndpoint}/${fixture.buildId}`).url, 'https://cloudbuild.googleapis.com/v1/projects/jenfu-platform-prod/locations/asia-east1/builds/5554e6a9-1c0f-48bd-877a-7f04d651915e')
+  const submission = fixture.seen.find(request => request.url === fixture.buildsEndpoint && request.method === 'POST').body
+  assert.equal(submission.steps[0].name, profile.build.dockerBuilderImage)
+  assert.equal(submission.steps[0].dir, 'source')
+  assert.equal(submission.source.storageSource.generation, '9')
+  assert.ok(submission.tags.some(tag => tag.startsWith('owner-build-')))
+  assert.ok(submission.tags.includes('owner-submission-1'))
+  assert.ok(submission.steps[0].args.includes(`SOURCE_VERSION=${H40}`))
+  assert.equal(result.disposition, 'BUILT')
+  assert.equal(fixture.buildPosts, 1)
+})
+
+test('an unknown Cloud Build POST outcome reads back its durable fence and never submits twice', async () => {
+  const fixture = ownerBuildFixture({ invisibleListReads: 2, unknownBuildPost: true })
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: fixture.fetchImpl, sleep: async () => undefined })
+  const sourceObject = { ref: { uri: fixture.sourceUri, sha256: H64 }, metadata: { generation: '9' } }
+  const deadlineAt = '2999-01-01T00:00:00.000Z'
+  await assert.rejects(() => transport.createBuild({ profile, intent: { sourceRevision: H40, sourceSha256: H64, releaseId: 'REL-001' }, sourceObject, deadlineAt }), error => error.code === 'OUTCOME_UNKNOWN')
+  const result = await transport.createBuild({ profile, intent: { sourceRevision: H40, sourceSha256: H64, releaseId: 'REL-002' }, sourceObject, deadlineAt })
+  assert.equal(result.disposition, 'REUSED_PROVIDER_BUILD')
+  assert.equal(result.reused, true)
+  assert.equal(fixture.buildPosts, 1)
 })
 
 test('Artifact Registry, provenance, SBOM and vulnerability evidence fail closed', async () => {

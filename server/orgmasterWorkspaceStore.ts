@@ -155,6 +155,14 @@ export async function getWorkspaceVersion(rootDirectory: string, versionId: stri
   return getWorkspaceVersionUnlocked(rootDirectory, versionId)
 }
 
+/** Advisory reads must never bootstrap a missing workspace or run a migration. */
+export async function readCurrentWorkspaceVersion(rootDirectory: string): Promise<WorkspaceDocumentResult> {
+  const { manifest } = await readManifest(rootDirectory)
+  const entry = manifest.entries.find(candidate => candidate.id === manifest.currentVersionId && candidate.kind === 'current')
+  if (!entry) throw new WorkspaceStoreError('WORKSPACE_NOT_FOUND')
+  return readVersion(rootDirectory, entry)
+}
+
 export async function getWorkspaceVersionUnlocked(rootDirectory: string, versionId: string): Promise<WorkspaceDocumentResult> {
   const manifest = await ensureManifest(rootDirectory)
   const entry = manifest.entries.find((candidate) => candidate.id === versionId)

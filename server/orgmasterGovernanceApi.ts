@@ -26,6 +26,7 @@ import { ApplicationEntitlementError, type FinancialManagementGrantInput, type F
 import { previewFinancialRoleAssignment, publishFinancialRoleAssignment, readFinancialRoleAssignmentReceipt, readFinancialRoleAssignmentWorkspace } from './applicationRoleAssignmentStore'
 import { previewFinancialManagementGrant, publishFinancialManagementGrant, readFinancialManagementGrantReceipt, readFinancialManagementGrantWorkspace } from './applicationManagementGrantStore'
 import { resolveIdentityLinkUpsert, assertIdentityLinkStatusMutationAllowed as assertIdentityLinkStatusMutationAllowedPolicy } from './orgmasterIdentityLinkPolicy'
+import { recommendGovernanceEmployees } from './employeeRecommendationService'
 
 export const API_PATH = '/api/orgmaster/governance'
 const MAX_BODY = 1024 * 1024
@@ -209,6 +210,24 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
   const url = new URL(request.url ?? '/', 'http://orgmaster.local'); const path = url.pathname.slice(API_PATH.length) || '/';
   if (path === '/employee-authority-switch') { sendJson(response, 410, { error: 'LEGACY_AUTHORITY_SWITCH_RETIRED' }); return }
   const actor = path.startsWith('/applications/ai-pdm/') ? aiPdmActorOrThrow(request, devEnabled) : actorOrThrow(request, devEnabled); const current = await readGovernanceStore(root); const document = current.document
+  if (path === '/employee-recommendations' && request.method === 'POST') {
+    if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED')
+    const body = await parseBody(request)
+    const controller = new AbortController()
+    const onClose = () => controller.abort()
+    response.once('close', onClose)
+    try {
+      const result = await recommendGovernanceEmployees(root, body, current, actor, controller.signal)
+      if (!response.destroyed) sendJson(response, 200, result, current.revision)
+    } catch (error) {
+      if (response.destroyed || controller.signal.aborted) return
+      const code = error instanceof GovernanceStoreError ? error.code : ''
+      if (code === 'EMPLOYEE_RECOMMENDATION_FORBIDDEN' || code === 'EMPLOYEE_RECOMMENDATION_BUSY') {
+        sendJson(response, code === 'EMPLOYEE_RECOMMENDATION_FORBIDDEN' ? 403 : 429, { error: code })
+      } else throw error
+    } finally { response.removeListener('close', onClose) }
+    return
+  }
   if (path === '/session' && request.method === 'GET') { sendJson(response, 200, { runtimeMode: actor.bootstrap ? 'local-development' : 'verified-session', actor: { principalId: actor.principalId, employeeId: actor.employeeId, subjectHint: '••••' }, capabilities: { manage: canManage(document, actor), publish: canPermission(document, actor, 'orgmaster.governance.publish'), simulate: canPermission(document, actor, 'orgmaster.governance.simulate') } }, current.revision); return }
   if (path === '/' && request.method === 'GET') { sendJson(response, 200, { document: sanitizedDocument(document), catalogs: [await readActiveAiPdmRoleCatalog(root)], revision: current.revision, activeVersionId: document.activePolicyVersionId, versions: document.publishedVersions.map((version: any) => ({ id: version.id, kind: version.kind ?? 'legacy-policy-v1', versionNumber: version.versionNumber, publishedAt: version.publishedAt, publishedByPrincipalId: version.publishedByPrincipalId, publishReason: version.publishReason, snapshotHash: version.snapshotHash, organizationVersionId: version.organizationSnapshot.workspaceVersionId, effectState: version.effectState ?? 'legacy' })) }, current.revision); return }
   if (path.startsWith('/versions/') && request.method === 'GET') { const id = decodeURIComponent(path.slice('/versions/'.length)); const version = document.publishedVersions.find((entry: any) => entry.id === id); if (!version) throw new GovernanceStoreError('POLICY_VERSION_NOT_FOUND'); sendJson(response, 200, { version: sanitizedDocument({ ...document, draft: document.draft, publishedVersions: [version] }).publishedVersions[0] }, current.revision); return }

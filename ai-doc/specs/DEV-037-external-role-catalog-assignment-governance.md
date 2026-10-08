@@ -779,8 +779,71 @@ QC 依 `ai-doc/qa/DEV-037-external-role-assignment-validation-plan.md` 凍結的
 
 使用思考習慣：#權責劃分、#限制條件、#可驗證性
 
+## 2026-10-07 角色與系統指派矩陣 UI 修訂
+
+來源：使用者確認角色指派頁需改為「角色 × 系統」矩陣，員工顯示在交叉格、格內可新增／撤銷；狀態以顏色標籤辨識並在矩陣旁提供顏色圖例；範圍、期間等其餘資料改在彈窗查看。此為 DEV-037 同專案 UI slice，不新增權限語意。
+
+### 呈現與互動契約
+
+- 矩陣列為角色、欄為系統；左上角欄名使用「角色 / 系統」，不使用方向箭頭。角色列只顯示角色名稱；系統名稱由欄標題呈現，不在每列重複，角色代碼也不顯示。OrgMaster `orgmaster_admin` 與 AI-PDM `pdm_admin` 合併顯示為「系統管理員」一列並固定置頂；各系統交叉格仍使用該系統原有角色與指派資料，這項合併僅改變呈現。角色在所屬系統的交叉格呈現員工及操作；其他系統交叉格顯示「—」。AI-PDM 只列可指派角色，以及仍有既存指派紀錄的角色；不可指派且沒有指派紀錄的角色不占空白矩陣列，仍保留在唯讀角色目錄。其他系統沿用其現有目錄呈現規則。停用／歷史角色只要仍有指派紀錄就保留；特權 `system_admin` 維持原專區，不混入一般矩陣。
+- 每個有效交叉格以員工為單位列出指派。員工姓名開啟明細；`＋新增員工` 開啟已帶入系統與角色的新增彈窗。格內 `×` 採既有撤銷 command；同一員工在該角色有多筆有效指派時，先開明細讓管理者選定單筆，避免一次撤銷多個 scope。
+- 狀態依指派狀態與有效時間推導：有效期間內為綠色「有效」、開始時間尚未到為藍色「尚未生效」、截止時間已到為灰色「已到期」、已撤銷為紅色「已撤銷」。撤銷優先於日期判定，時間標籤每分鐘更新。圖例緊鄰矩陣標題，顏色之外保留文字標籤供辨識；操作入口與標題收在同一工具列，降低表格前的垂直佔用。
+- 新增彈窗只收員工、範圍及生效／截止時間；系統與角色固定顯示，避免新增到錯誤交叉格。沿用現有指派檢核與 `UPSERT_ROLE_ASSIGNMENT`，送出只把設定加入 OrgMaster 草稿，發布版本仍是後續步驟；此操作不直接變更 AI-PDM 的登入權限。
+- 明細彈窗集中呈現每筆適用範圍、台北時間生效期間、目錄版本、目前發布版本比對結果及可用的單筆撤銷操作。缺少可比較的現行版本時明確顯示無法直接比較，不自行推定已發布。
+- 仍受既有 manage、catalog-validity、workspace及手機唯讀 gates 控制。矩陣僅為讀取投影；financial-management-system 若以既存資料出現，因現行專用 command／preview／publish 流程不同，不由一般草稿矩陣新增或撤銷。
+
+### 本地實作與證據
+
+本地只修改 `src/components/GovernanceCenter.tsx` 與 `src/components/GovernanceCenter.css`；沒有變更 schema、API、外部系統、治理資料或發布版本。`npm run build` 通過。未新增或執行自動化測試；以合成資料進行 capture-only desktop／390px mobile 畫面檢視，覆核矩陣狀態色、圖例、員工明細與新增彈窗。預覽 API 對非 GET 一律拒絕；結果、截圖及 runtime cleanup 留在本機 `output/playwright/dev037-role-system-matrix-20261007/`。task-owned Edge、server 已關閉且 port 已釋放。這些證據只確認本機呈現及既有 handler 綁定，不是 Production／AI-PDM 權限讀回，也未 deploy／release。
+
+Git boundary：工作區仍在 `master`；建立工作分支因 `.git` refs 寫入遭拒而未完成。未 stage／commit；未觸碰使用者原有正式 browser tab。
+
+#### 2026-10-07 同日續修：精簡矩陣上方資訊
+
+來源：使用者要求移除矩陣操作說明句與 `System × role` 小標，並整合圖例和右上操作區以節省版面。
+
+實作契約：矩陣標題、四種顏色狀態圖例、「查看待發布內容」及「特權設定」收在同一精簡工具列；移除指派筆數、重複操作說明及英文小標。窄版可換行，保留按鈕、狀態名稱與既有互動，不改狀態語意或治理行為。
+
+驗證：以 `npm run build` 與 `git diff --check` 檢查；不操作使用者的 browser，不沿用修改前截圖作本次視覺證據。
+
+#### 2026-10-07 同日續修：移除治理頁上方標題列
+
+來源：使用者選取「OrgMaster／角色指派治理／草稿更新時間」標題列並要求刪除。
+
+實作契約：治理面板不再顯示系統／環境標籤、治理頁標題與草稿更新時間列，矩陣內容因此上移；保留螢幕閱讀器可辨識的隱藏頁面標題與區域名稱。治理資料更新時間不再於此處呈現，其他發布及指派行為不變。
+
+驗證：本地 build 與 diff check；未操作使用者的 browser，未宣稱本次畫面視覺覆核。
+
+#### 2026-10-07 同日續修：移除矩陣指派筆數
+
+來源：使用者選取矩陣標題旁的「0 筆指派」並要求刪除。
+
+實作契約：矩陣工具列不顯示指派筆數；其他治理區段原有的筆數仍保留。
+
+#### 2026-10-07 同日續修：空白交叉格顯示新增操作
+
+來源：使用者選取「尚無員工」的系統／角色交叉格，要求增加「新增」按鈕。
+
+實作契約：桌面可指派交叉格即使尚無員工仍顯示「新增」按鈕；治理編輯權限、目錄有效性或目標角色指派條件未就緒時顯示停用狀態及原因。不可指派角色與手機唯讀仍不提供新增操作。
+
+#### 2026-10-07 智慧推薦員工（本地 implementation slice）
+
+成熟度：RD Implementation Ready。使用者「開始實作」授權 OrgMaster 本地開發。此為 DEV-040 advisory-only 的 compatible extension：推薦只是新增指派表單的暫存候選提示，不建立 per-employee recommendation decision、職位採用政策或任何發布權限。
+
+- 入口固定在既有新增彈窗；僅 AI-PDM 有效目錄中 `recommendationAllowed=true`、active、assignable、employee subject 的角色提供「智慧推薦」。OrgMaster 管理角色、特權 `system_admin`、外部專員不提供。
+- 新增唯讀 `POST /api/orgmaster/governance/employee-recommendations`，要求 verified/manage actor（保留既有 loopback development actor）、治理 revision、現行組織 version/revision、catalog version/hash、role、scope、期間。伺服器讀已保存的現行組織，缺資料不初始化或遷移。回應前重新確認治理／組織／目錄，漂移回傳 conflict。
+- 候選由 active employee、active position、當下有效任職產生；排除指定 scope／期間已有重疊草稿指派的員工，管理員候選另排除本人。規則先比對職位、部門、職掌；AI 補職掌語意與組織關係匹配。PDM 管理員必須有明確系統／帳號／權限管理職位或執行／審核職掌，不能由職級推定。
+- AI 只收職位／部門／上級職位／職掌資料，不 join 員工姓名欄位、Employee ID 或登入身分；自由文字可能仍含使用者原有內容。以 JSON schema 回傳可追溯 position/duty ID。輸出只接受存在且已傳送的 ID，理由由原始職位／職掌重建；沒有 duty ID 的輸出還需直接職位規則依據，組織內容視為資料。上限為 200 職位／70,000 字元、12 職掌／職位、12 個模型 match、1,500 output tokens、20 秒、零自動重試、每 actor 一個／每 process 四個同時請求，最多回傳八位員工。
+- 使用既有 OpenAI provider/key；模型由 `ORGMASTER_EMPLOYEE_RECOMMENDATION_MODEL` 設定，可沿用 `ORGMASTER_MANAGEMENT_METHOD_MODEL`。缺設定、provider 失敗或輸入超限時使用明示的「規則推薦」，不假稱 AI。結果最多八位，顯示姓名、部門、職位、依據；點選只填員工欄位，scope／期間／送出／發布維持既有流程。
+- 關閉彈窗、變更角色／scope／期間／revision 時取消並丟棄舊結果；手機唯讀及 permission gates 維持。無候選、錯誤與 fallback 狀態可恢復，手動選員工仍可用。
+
+影響檔案：既有 GovernanceCenter／CSS／apiClient／governance API、workspace 唯讀 helper、新 recommendation types/rules/service/component、`.env.example` 及 DEV-037 直接文件。無 dependency、schema、migration、外部專案或 production 變更。驗證層限 build／diff 與本機呈現檢視；未獲要求時不新增或執行自動化測試，provider 真實語意、API negative／race 與 production 權限不宣稱已驗證。
+
+本輪交付：UI/API/service/rules 已本地實作；`npm run build` 通過。獨立 Edge 的 1242×668 彈窗入口、規則 fallback 候選、帶入員工，以及 390×844 唯讀矩陣畫面已以 mocked API 擷取；selected employee=`matrix-zhu`，dialog 698×551 且沒有內部垂直溢位。影像僅作 UI 覆核，不代表 server/API 或 AI provider 行為通過。紀錄：`output/playwright/dev037-employee-recommendations-20261007/report.json`；初次沙盒 Edge 啟動失敗已保留，後續在核准的本機執行環境完成，task-owned server/browser 關閉且 port 釋放。未新增／執行自動化測試，未真實呼叫 AI、未操作使用者分頁或 localhost:5000、未送出指派／發布／部署。新 slice 不覆寫歷史 QA-QC Passed。
+
 ## 28. Change Log
 
 - 2026-08-27：依使用者要求從 `Brief Ready` 升級為 `RD Contract Ready`；固定 bundled read-only catalog、assignment／role delegation、publish-as-approval、local-only effect、legacy V1 compatibility、UI／API ownership boundary、QA/QC evidence 與 stop conditions。未修改 OrgMaster 產品程式或 AI-PDM。
 - 2026-08-27：完成 RD Readiness Review，升級為 `RD Implementation Ready / RD Not Started`；固定 V2 file／schema、AI-PDM 9-role readonly manifest與 source hashes、V1 non-destructive migration、command／route／error signatures、UI field matrix、S1～S4 gates、isolated QC runtime與 evidence path。未修改產品程式或 AI-PDM。
 - 2026-08-27：完成 DEV-037 RD implementation 與 QA/QC；S1～S4 fresh gates 通過（122 files／553 tests、build、normal Toolbar UI、1440×900／1024×768／390×844、stale catalog、legacy migration、API negative、forbidden scan、AI-PDM before／after unchanged、runtime cleanup），升級為 `RD Implementation Complete / QA-QC Passed / Local Release Gate Pending / OrgMaster Only`。未修改 AI-PDM，未 deploy／release。
+- 2026-10-07：依使用者更新需求完成角色 × 系統矩陣、狀態顏色圖例、單筆撤銷及新增／明細彈窗；build與合成資料畫面檢視完成，未執行測試或 deploy／release。Git 工作分支建立遭 `.git` 寫入權限阻擋，修改留在 `master` 工作目錄。
