@@ -17,8 +17,9 @@ process.stderr.write(run.stderr)
 // R7 exact false-state target guard and unsealed-cleanup integration add 2 selected cases: total 339.
 // Unknown Cloud Build submission-fence recovery adds one selected case: total 340.
 // Eight DEV-057 completed-credential continuation cases extend this same selection to 348.
+// Six historical applied-image predecessor cases extend this exact selection to 354.
 // This Node result does not replace the full regression/build commands below.
-if (run.status !== 0 || !/\bpass 348\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 354\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 

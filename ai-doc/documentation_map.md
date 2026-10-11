@@ -411,3 +411,5 @@ managed Principal own governance 同根因修正沿 DEV-057 [交易契約](specs
 ## DEV-040 owner artifact 維護（2026-10-07，待驗證／未發布）
 
 [同一 owner spec／重試與效率契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#owner-artifact-input-reuse-20261007) → [native任務索引](dev_task.md#總任務清單)。本次只做本地規則與 executor 修改；原 production closure 不回填。本機語法／diff不代表行為、時間或掃描節省已驗證。
+
+- `ORGMASTER/DEV-057#smoke-reauth-continuation`: [historical applied-image predecessor source](specs/DEV-057-identity-and-grant-contract-boundary.md#historical-applied-image-predecessor-source--2026-10-11); source `AI-PDM/DEV-121#rd-capabilities`, current native resolver correction and synthetic/source CI evidence tracked in the existing DEV, without rewriting historical Production receipts.

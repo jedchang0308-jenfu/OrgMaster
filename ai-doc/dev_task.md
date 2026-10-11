@@ -1,5 +1,9 @@
 # OrgMaster 開發任務
 
+## DEV-057 historical image predecessor continuation（2026-10-11）
+
+Native `ORGMASTER/DEV-057#smoke-reauth-continuation`，來源 `AI-PDM/DEV-121#rd-capabilities`。原生發布前置把歷史 image receipt 的 build source 當成已發布 application source，會拒絕已 RELEASED 且完整 infrastructure inputs 相同的合法基線。本輪僅在歷史 predecessor resolver 接受 exact `APP_INFRA_IMAGE_ROTATION` 的 source 差異，重驗同 owner immutable receipt、source lock、對應 RELEASED terminal、完整 infrastructure bytes；新 rotation source fence、copy closure、完整地址、state、credential checks 不變。原始 receipt 與当前基線不改。原版 synthetic RED 已在 source guard 重現；新增六項 6/6、owner Node 370/370、QC 選取 354/354、abort 6/6、app 895 PASS／4 skip、型別與 build／db-boundary PASS。QC 建立的合成資料已清理。Luna 只讀差異審查未發現 guard 缺口。protected CI、Production 相容發布與 RD 驗收仍待證。
+
 ## DEV-057 smoke credential continuation（2026-10-11）
 
 Native `ORGMASTER/DEV-057#smoke-reauth-continuation`，來源 `AI-PDM/DEV-121#rd-capabilities`，沿已授權 OrgMaster own credential reauth／版本續接。已提交新 Secret 但 Workflow 未承接時，原證據逾期不能靠新增下一版本解決；原生工具補上嚴格 original proof＋current numeric version＋fresh password／相同 Principal/Employee 的續接，addVersion 零呼叫，private immutable proof link，consumer freshness 不變。35 focused／364 owner Node 合成測試 PASS；protected CI、真正重驗／rotation／發布待證。契約與本輪 acceptance 見 [completed credential continuation](specs/DEV-057-identity-and-grant-contract-boundary.md#dev-057-completed-smoke-credential-continuation--2026-10-11)。不新增主 DEV，不將本機結果當正式修復。
