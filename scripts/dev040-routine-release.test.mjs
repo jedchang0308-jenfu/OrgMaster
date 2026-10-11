@@ -955,6 +955,131 @@ function smokeContinuationHarness({ controllerImageDigest = 'asia-east1-docker.p
   return Object.assign(h, { update, requests, workflow, secret, sourceEdits, addresses, rotationUri })
 }
 
+function republishSmokeContinuationBaseline(h, baselineRead, { terminalFacts = {} } = {}) {
+  const oldPaths = h.paths
+  const baselineIntentRef = h.put(baselineRead.ref.uri, baselineRead.value)
+  h.input.intent.baselineIntentRef = baselineIntentRef
+  h.input.values.authorization.baselineIntentRef = baselineIntentRef
+  h.input.values.readiness.baselineIntentRef = baselineIntentRef
+  const paths = releasePaths(profile, baselineRead.value, baselineIntentRef.sha256)
+  const migration = structuredClone(h.objects.get(oldPaths.migrate).value)
+  const migrationRef = h.put(paths.migrate, migration)
+  const deployment = structuredClone(h.objects.get(oldPaths.deployment).value)
+  deployment.releaseIntentRef = baselineIntentRef
+  const deploymentRef = h.put(paths.deployment, deployment)
+  const reseal = (value) => {
+    const { receiptSha256: _oldSeal, ...core } = value
+    return { ...core, receiptSha256: sha256(canonicalize(core)) }
+  }
+  const candidate = structuredClone(h.objects.get(oldPaths.candidate).value)
+  candidate.facts.deploymentCapsuleRef = deploymentRef
+  candidate.facts.migrationReceiptRef = migrationRef
+  h.put(paths.candidate, reseal(candidate))
+  const terminal = structuredClone(h.objects.get(oldPaths.terminal).value)
+  terminal.facts = { ...terminal.facts, ...terminalFacts }
+  h.put(paths.terminal, reseal(terminal))
+  h.paths = paths
+  return { baselineIntentRef, paths }
+}
+
+function historicalImagePredecessorHarness({ rawSource = 'c'.repeat(40), imageReceipt = true, infraDrift = false, forgedSourceLock = false } = {}) {
+  const h = smokeContinuationHarness()
+  const baselineRead = h.objects.get(h.input.intent.baselineIntentRef.uri)
+  const priorRef = baselineRead.value.infraReceiptRef
+  const priorValue = h.objects.get(priorRef.uri).value
+  const { receiptSha256: _priorSeal, ...rawCore } = priorValue
+  rawCore.sourceRevision = rawSource
+  if (imageReceipt) {
+    const priorRunner = profile.artifact.migrationRunnerUri + '@sha256:' + '1'.repeat(64)
+    const nextRunner = rawCore.migrationRunnerDigest
+    const jobTemplate = (image) => ({ name: profile.migrations.jobName, project: profile.target.projectId, location: profile.target.region,
+      template: [{ template: [{ service_account: profile.migrations.serviceAccount,
+        containers: [{ name: 'migration', image, args: ['--bundle-ref-required'] }] }] }] })
+    rawCore.mutationProfile = 'APP_INFRA_IMAGE_ROTATION'
+    rawCore.imageRotation = { schemaVersion: 'jenfu.dev012.image-rotation-proof.v1', sourceRevision: rawSource,
+      planJsonSha256: rawCore.planJsonSha256,
+      addressActions: h.addresses.map(address => [address, address === 'google_cloud_run_v2_job.migration[0]' ? 'update' : address.startsWith('data.') ? 'read' : 'no-op']),
+      updates: [{ address: 'google_cloud_run_v2_job.migration[0]', before: jobTemplate(priorRunner), after: jobTemplate(nextRunner) }] }
+  } else {
+    delete rawCore.mutationProfile
+    delete rawCore.imageRotation
+  }
+  const historicalRef = h.put('gs://' + bucket + '/receipts/releases/HISTORICAL-IMAGE-FIXTURE/app-infra.json',
+    { ...rawCore, receiptSha256: sha256(canonicalize(rawCore)) })
+  baselineRead.value.infraReceiptRef = historicalRef
+  if (forgedSourceLock) {
+    const forgedLock = buildSourceFreeze({ profile, releaseId: baselineRead.value.releaseId, observedAt: '2026-09-22T08:00:00Z',
+      git: { sourceRevision: rawSource, sourceTree: rawSource, branch: 'master', remoteRevision: rawSource, clean: true },
+      sourceIdentityBytes: Buffer.from('synthetic forged historical source lock'), migrationBundle: buildBundle(rawSource) })
+    baselineRead.value.sourceLockRef = h.put('gs://' + bucket + '/receipts/fixture/forged-historical-source-lock.json', forgedLock)
+    baselineRead.value.sourceSha256 = forgedLock.sourceSha256
+  }
+  republishSmokeContinuationBaseline(h, baselineRead)
+  const sameTree = Buffer.from('synthetic complete OrgMaster infrastructure tree')
+  const trees = new Map([[oldSource, sameTree], [newSource, sameTree], [rawSource, sameTree]])
+  if (infraDrift) trees.set(rawSource, Buffer.from('synthetic drifted OrgMaster infrastructure tree'))
+  h.input.readInfrastructureTree = (_root, revision) => {
+    const tree = trees.get(revision)
+    if (!tree) throw new Error('Unexpected synthetic source revision ' + revision)
+    return Buffer.from(tree)
+  }
+  return Object.assign(h, { historicalRef, baselineRead, trees })
+}
+
+test('ordinary smoke rotation accepts a sealed historical image receipt when complete infrastructure bytes match', async () => {
+  const h = historicalImagePredecessorHarness()
+  const historicalBytes = Buffer.from(h.objects.get(h.historicalRef.uri).bytes)
+  const baselineBytes = Buffer.from(h.objects.get(h.input.intent.baselineIntentRef.uri).bytes)
+  const result = await verifyDeployProductionRelease({ options: h.options, ...h.input })
+  assert.equal(result.smokeRotationContinuation.newVersion, '8')
+  assert.equal(result.smokeRotationContinuation.terraformAddressCount, h.addresses.length)
+  assert.equal(h.objects.get(h.historicalRef.uri).value.sourceRevision, 'c'.repeat(40))
+  assert.deepEqual(h.objects.get(h.historicalRef.uri).bytes, historicalBytes)
+  assert.deepEqual(h.objects.get(h.input.intent.baselineIntentRef.uri).bytes, baselineBytes)
+})
+
+test('historical image source mismatch rejects a changed complete infrastructure tree', async () => {
+  const h = historicalImagePredecessorHarness({ infraDrift: true })
+  await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }), /SMOKE_REUSE_CHAIN_INPUT_DRIFT/u)
+  assert.equal(h.requests.length, 0)
+})
+
+test('historical image source mismatch rejects a forged source lock even when it is resealed', async () => {
+  const h = historicalImagePredecessorHarness({ forgedSourceLock: true })
+  await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }), /SMOKE_REUSE_CHAIN_SOURCE_INVALID/u)
+  assert.equal(h.requests.length, 0)
+})
+
+test('historical image source mismatch rejects a wrong released terminal or baseline reference', async () => {
+  const terminal = historicalImagePredecessorHarness()
+  const terminalValue = structuredClone(terminal.objects.get(terminal.paths.terminal).value)
+  terminalValue.facts.candidateRevision = 'orgmaster-prod-wrong-revision'
+  const { receiptSha256: _oldSeal, ...terminalCore } = terminalValue
+  terminal.put(terminal.paths.terminal, { ...terminalCore, receiptSha256: sha256(canonicalize(terminalCore)) })
+  await assert.rejects(() => verifyDeployProductionRelease({ options: terminal.options, ...terminal.input }), /ROUTINE_BASELINE_NOT_RELEASED/u)
+  assert.equal(terminal.requests.length, 0)
+
+  const baselineRef = historicalImagePredecessorHarness()
+  const forgedRef = { ...baselineRef.input.intent.baselineIntentRef, sha256: 'f'.repeat(64) }
+  baselineRef.input.intent.baselineIntentRef = forgedRef
+  baselineRef.input.values.authorization.baselineIntentRef = forgedRef
+  baselineRef.input.values.readiness.baselineIntentRef = forgedRef
+  await assert.rejects(() => verifyDeployProductionRelease({ options: baselineRef.options, ...baselineRef.input }), error => error?.code === 'ERR_ASSERTION')
+  assert.equal(baselineRef.requests.length, 0)
+})
+
+test('historical source mismatch remains rejected for a non-image infrastructure receipt', async () => {
+  const h = historicalImagePredecessorHarness({ imageReceipt: false })
+  await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }), /SMOKE_REUSE_CHAIN_SOURCE_INVALID/u)
+  assert.equal(h.requests.length, 0)
+})
+
+test('the current smoke rotation still has to match the current frozen release source', async () => {
+  const h = historicalImagePredecessorHarness()
+  h.update({ rotation: { sourceRevision: 'd'.repeat(40) } })
+  await assert.rejects(() => verifyDeployProductionRelease({ options: h.options, ...h.input }), /SMOKE_ROTATION_INFRA_INVALID/u)
+  assert.equal(h.requests.length, 0)
+})
 async function smokeReuseHarness({ oci = false } = {}) {
   const childDocument = { schemaVersion: 2, mediaType: 'application/vnd.oci.image.manifest.v1+json',
     config: { digest: 'sha256:' + 'e'.repeat(64) }, layers: [{ digest: 'sha256:' + 'f'.repeat(64) }] }
