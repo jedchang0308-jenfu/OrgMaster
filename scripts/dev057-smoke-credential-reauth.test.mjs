@@ -4,7 +4,7 @@ import { generateKeyPairSync, sign } from 'node:crypto'
 import fs from 'node:fs'
 import { assertOwnerProfile, assertOwnerSourceFence, createdSecretVersion, firebaseApi, githubSecretMetadataCurrent, secretVersion, verifyOldPair } from './dev057-smoke-credential-reauth.mjs'
 import {
-  EXPECTED, REAUTH_SCHEMA, ReauthError, admitLocalRequest, assertFreshAuthTime, assertPlatformMe, buildReauthReceipt,
+  EXPECTED, REAUTH_SCHEMA, ReauthError, admitLocalRequest, assertResumeReceipt, parseResumeReceiptRef, assertFreshAuthTime, assertPlatformMe, buildReauthReceipt,
   identityPairHash, localPageSecurityHeaders, localRequestDenial, parseReauthArguments, resolveVersionBinding,
   runReauthentication, sha256, validateReauthReceipt, verifyFirebaseIdToken,
 } from './lib/dev057-smoke-credential-reauth.mjs'
@@ -477,4 +477,144 @@ test('untyped adapter errors cannot expose raw provider fields or credential-lik
   assert.equal(result.status, 'PARTIAL')
   assert.equal(result.code, 'REAUTH_FAILED')
   assert.doesNotMatch(JSON.stringify({ result, partial }), /secret-test-only|raw-password-test-only|private-test/u)
+})
+
+function continuationFixture() {
+  const original = NOW - 600000
+  const receipt = buildReauthReceipt({ sourceRevision: 'b'.repeat(40), expected, principal,
+    authTime: Math.floor(original / 1000) - 15, authenticatedAt: new Date(original).toISOString(),
+    observedAt: new Date(original + 1000).toISOString(), previousVersion: '9', newVersion: '10' })
+  return { receipt, ref: { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/credential-reauth/synthetic.json', sha256: 'c'.repeat(64) } }
+}
+function resumeHarness(overrides = {}) {
+  const events = []
+  const bytes = Buffer.from('persisted-version-10-refresh-token')
+  const resume = continuationFixture()
+  let sessionReads = 0
+  const value = adapter({
+    createPlatformSession: async () => { sessionReads = 0; return { status: 200, cookie: 'jenfu_portal_session=synthetic-continuation' } },
+    me: async () => ++sessionReads <= 2 ? { status: 200, value: meValue } : { status: 401 },
+    latestSecretVersion: async () => ({ version: '10', state: 'ENABLED' }),
+    readSecretVersion: async (version) => { assert.equal(version, '10'); return { state: 'ENABLED', bytes } },
+    addSecretVersion: async () => { events.push('ADD'); throw new Error('must not add a Secret version') },
+    setGithubSecret: async (payload) => { assert.deepEqual(payload, Buffer.from('persisted-version-10-refresh-token')); events.push('GITHUB') },
+    writeReceipt: async (receipt) => { events.push(receipt); return { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/credential-reauth/fresh.json', sha256: 'd'.repeat(64) } },
+    writeContinuationReceipt: async (link) => { events.push(link); return { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/credential-continuation/link.json', sha256: 'e'.repeat(64) } },
+    ...overrides })
+  const run = () => runReauthentication({ adapter: value, email: 'private-test@example.invalid', password: 'pw', expected,
+    sourceRevision: 'a'.repeat(40), commit: true, previousVersion: '9', newVersion: '10', resume, now: () => NOW })
+  return { run, events, bytes, resume }
+}
+
+test('continuation CLI requires own immutable ref, explicit adjacent pair and commit', () => {
+  const raw = continuationFixture().ref.uri + '#sha256=' + 'c'.repeat(64)
+  assert.deepEqual(parseResumeReceiptRef(raw), continuationFixture().ref)
+  assert.deepEqual(parseReauthArguments(['--commit', '--previous-version', '9', '--new-version', '10', '--resume-receipt', raw]),
+    { commit: true, previousVersion: '9', newVersion: '10', resumeRef: continuationFixture().ref })
+  for (const bad of [raw.replace('orgmaster-release', 'aipdm-release'), raw.replace('synthetic.json', '../synthetic.json'), raw.replace('.json#', 'xjson#'), raw.replace('c'.repeat(64), 'bad')])
+    assert.throws(() => parseResumeReceiptRef(bad), /RESUME_RECEIPT_REF_INVALID/u)
+  assert.throws(() => parseReauthArguments(['--resume-receipt', raw]), /USAGE/u)
+  assert.throws(() => parseReauthArguments(['--commit', '--resume-receipt', raw]), /USAGE/u)
+})
+
+test('completed proof is checked at original auth time but tamper, foreign owner, pair and future proof fail', () => {
+  const fixture = continuationFixture()
+  const options = { expected, previousVersion: '9', newVersion: '10', nowMs: NOW }
+  assert.throws(() => validateReauthReceipt(fixture.receipt, { sourceRevision: 'b'.repeat(40), expectedPreviousVersion: '9', expectedNewVersion: '10', nowMs: NOW }), /FRESHNESS/u)
+  assert.equal(assertResumeReceipt(fixture, options), true)
+  for (const change of [{ ownerApplicationId: 'ai-pdm' }, { status: 'PARTIAL' }, { identityPairSha256: 'f'.repeat(64) }, { observedAt: new Date(NOW + 60000).toISOString() }]) {
+    const core = { ...fixture.receipt, ...change }; delete core.receiptSha256
+    assert.throws(() => assertResumeReceipt({ ...fixture, receipt: { ...core, receiptSha256: sha256(core) } }, options))
+  }
+  assert.throws(() => assertResumeReceipt({ ...fixture, receipt: { ...fixture.receipt, principalId: 'principal-tampered' } }, options), /REAUTH_RECEIPT_INVALID/u)
+  assert.throws(() => assertResumeReceipt(fixture, { ...options, previousVersion: '10', newVersion: '11' }), /REAUTH_RECEIPT_INVALID/u)
+})
+
+test('continuation reauths and reseals current v10, syncs exact persisted bytes once and never adds a version', async () => {
+  const h = resumeHarness()
+  const original = JSON.stringify(h.resume.receipt)
+  const result = await h.run()
+  assert.equal(result.status, 'REVALIDATED')
+  assert.deepEqual(result.priorRef, h.resume.ref)
+  assert.equal(h.events.filter((event) => event === 'GITHUB').length, 1)
+  assert.equal(h.events.includes('ADD'), false)
+  const receipt = h.events.find((event) => event?.schemaVersion === REAUTH_SCHEMA)
+  assert.equal(validateReauthReceipt(receipt, { sourceRevision: 'a'.repeat(40), expectedPreviousVersion: '9', expectedNewVersion: '10', nowMs: NOW }), true)
+  assert.equal(Object.hasOwn(receipt, 'mutation'), false)
+  const link = h.events.find((event) => event?.schemaVersion === 'jenfu.dev057.smoke-credential-continuation.v1')
+  assert.deepEqual(link.priorRef, h.resume.ref)
+  assert.deepEqual(link.freshRef, result.ref)
+  assert.equal(result.continuationRef.uri.includes('/credential-continuation/'), true)
+  assert.equal(JSON.stringify(h.resume.receipt), original)
+  assert.deepEqual([...h.bytes], new Array(h.bytes.length).fill(0))
+  assert.doesNotMatch(JSON.stringify(h.events), /persisted-version-10-refresh-token|private-test@example|jenfu_portal_session/u)
+})
+
+test('continuation still requires new fresh password, enabled verified account and same Principal/Employee', async () => {
+  for (const overrides of [
+    { verifyIdToken: async () => claims({ auth_time: Math.floor(NOW / 1000) - 301 }) },
+    { lookupAccount: async () => ({ localId: SUBJECT, disabled: true, emailVerified: true }) },
+    { lookupAccount: async () => ({ localId: SUBJECT, disabled: false, emailVerified: false }) },
+    { me: (() => { let count = 0; return async () => ++count <= 2 ? { status: 200, value: { ...meValue, user: { ...principal, employeeId: 'employee-other-123' } } } : { status: 401 } })() },
+    { me: (() => { let count = 0; return async () => ++count <= 2 ? { status: 200, value: { ...meValue, user: { ...principal, principalId: 'principal-other-123' } } } : { status: 401 } })() },
+    { logout: async () => ({ status: 403 }) },
+  ]) {
+    const h = resumeHarness(overrides)
+    await assert.rejects(h.run)
+    assert.equal(h.events.length, 0)
+  }
+})
+
+test('continuation rejects latest/version drift and a persisted credential for a different identity before GitHub', async () => {
+  let verifyCalls = 0
+  for (const overrides of [
+    { latestSecretVersion: async () => ({ version: '11', state: 'ENABLED' }) },
+    { latestSecretVersion: async () => ({ version: '10', state: 'DISABLED' }) },
+    { latestSecretVersion: (() => { let count = 0; return async () => ({ version: ++count <= 2 ? '10' : '11', state: 'ENABLED' }) })() },
+    { verifyIdToken: async () => claims(++verifyCalls === 1 ? {} : { sub: 'foreign-firebase-subject-012345' }) },
+  ]) {
+    const h = resumeHarness(overrides)
+    await assert.rejects(h.run)
+    assert.equal(h.events.length, 0)
+  }
+})
+
+test('continuation preserves old refresh auth time while requiring the password authentication to be fresh', async () => {
+  let calls = 0
+  const h = resumeHarness({ verifyIdToken: async () => claims({ auth_time: Math.floor(NOW / 1000) - (++calls === 1 ? 15 : 3600) }) })
+  assert.equal((await h.run()).status, 'REVALIDATED')
+})
+
+test('unknown GitHub sync or link failure is partial, never retries/adds a version and clears persisted bytes', async () => {
+  for (const failure of ['github', 'link']) {
+    let writes = 0
+    let passes = 0
+    let partials = 0
+    const h = resumeHarness({
+      setGithubSecret: async () => { writes += 1; if (failure === 'github') throw new ReauthError('GITHUB_SECRET_WRITE_FAILED') },
+      writeReceipt: async () => { passes += 1; return { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/credential-reauth/fresh.json', sha256: 'd'.repeat(64) } },
+      writeContinuationReceipt: async () => { throw new ReauthError('CONTINUATION_RECEIPT_FAILED') },
+      writePartialReceipt: async (receipt) => { partials += 1; assert.equal(receipt.mutation.secretVersionCreated, false); assert.deepEqual(receipt.continuation.priorRef, h.resume.ref); assert.equal(receipt.continuation.freshRef !== null, failure === 'link') },
+    })
+    assert.equal((await h.run()).status, 'PARTIAL')
+    assert.equal(writes, 1)
+    assert.equal(partials, 1)
+    assert.equal(passes, failure === 'github' ? 0 : 1)
+    assert.equal(h.events.includes('ADD'), false)
+    assert.deepEqual([...h.bytes], new Array(h.bytes.length).fill(0))
+  }
+})
+
+
+test('persisted current credential must pass normal Platform revocation/epoch checks before synchronization', async () => {
+  for (const overrides of [
+    { createPlatformSession: (() => { let count = 0; return async () => ++count === 1 ? { status: 200, cookie: 'jenfu_portal_session=synthetic' } : { status: 401 } })() },
+    { me: (() => { let count = 0; return async () => ++count <= 2 ? { status: 200, value: meValue } : { status: 401 } })() },
+    { lookupAccount: (() => { let count = 0; return async () => ({ localId: SUBJECT, disabled: ++count > 1, emailVerified: true }) })() },
+  ]) {
+    const h = resumeHarness(overrides)
+    await assert.rejects(h.run)
+    assert.equal(h.events.length, 0)
+    assert.deepEqual([...h.bytes], new Array(h.bytes.length).fill(0))
+  }
 })

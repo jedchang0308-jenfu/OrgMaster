@@ -45,11 +45,15 @@ export function parseReauthArguments(args) {
   let commit = false
   let previousVersion
   let newVersion
+  let resumeRef
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
     if (arg === '--commit') {
       if (commit) fail('USAGE')
       commit = true
+    } else if (arg === '--resume-receipt') {
+      if (resumeRef || !args[index + 1]) fail('USAGE')
+      resumeRef = parseResumeReceiptRef(args[++index])
     } else if (arg === '--previous-version' || arg === '--new-version') {
       const value = args[index + 1]
       if (typeof value !== 'string' || value.startsWith('--')) fail('USAGE')
@@ -69,7 +73,23 @@ export function parseReauthArguments(args) {
   const binding = previousVersion === undefined
     ? resolveVersionBinding()
     : resolveVersionBinding(previousVersion, newVersion)
-  return { commit, ...binding }
+  if (resumeRef && (!commit || previousVersion === undefined)) fail('USAGE')
+  return { commit, ...binding, ...(resumeRef ? { resumeRef } : {}) }
+}
+
+export function parseResumeReceiptRef(value) {
+  const match = /^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/credential-reauth\/([A-Za-z0-9_.-]+\.json)#sha256=([a-f0-9]{64})$/u.exec(value ?? '')
+  if (!match || match[1].includes('..')) fail('RESUME_RECEIPT_REF_INVALID')
+  return { uri: value.slice(0, value.lastIndexOf('#')), sha256: match[2] }
+}
+export function assertResumeReceipt({ receipt, ref }, { expected, previousVersion, newVersion, nowMs }) {
+  if (!ref || Object.keys(ref).sort().join(',') !== 'sha256,uri' || parseResumeReceiptRef(ref.uri + '#sha256=' + ref.sha256).uri !== ref.uri ||
+      !Number.isFinite(Date.parse(receipt?.observedAt)) || Date.parse(receipt.observedAt) > nowMs + 30000) fail('RESUME_RECEIPT_INVALID')
+  // Validate the completed mutation at its original time; a new password authentication is still mandatory below.
+  validateReauthReceipt(receipt, { sourceRevision: receipt.sourceRevision, expectedPreviousVersion: previousVersion,
+    expectedNewVersion: newVersion, nowMs: Date.parse(receipt.observedAt) })
+  if (receipt.identityPairSha256 !== identityPairHash(expected.issuer, expected.subject)) fail('RESUME_IDENTITY_MISMATCH')
+  return true
 }
 
 export function canonicalize(value) {
@@ -153,7 +173,7 @@ function receiptCore(receipt) {
   const { receiptSha256, ...core } = receipt ?? {}
   return core
 }
-export function buildReauthReceipt({ sourceRevision, expected, authTime, authenticatedAt, principal, previousVersion, newVersion, observedAt, status = 'PASS', mutation = null }) {
+export function buildReauthReceipt({ sourceRevision, expected, authTime, authenticatedAt, principal, previousVersion, newVersion, observedAt, status = 'PASS', mutation = null, continuation = null }) {
   if (!/^[a-f0-9]{40}$/u.test(sourceRevision ?? '') || expected?.issuer !== EXPECTED.issuer ||
       !/^[A-Za-z0-9_-]{20,128}$/u.test(expected?.subject ?? '') || !principal ||
       !IDENTIFIER.test(principal.principalId ?? '') || !IDENTIFIER.test(principal.employeeId ?? '') ||
@@ -178,6 +198,7 @@ export function buildReauthReceipt({ sourceRevision, expected, authTime, authent
     secret: { id: EXPECTED.secretId, previousVersion: String(previousVersion), newVersion: String(newVersion), state: status === 'PASS' ? 'ENABLED' : 'UNKNOWN' },
     github: { repository: EXPECTED.repository, environment: EXPECTED.githubEnvironment, secretName: EXPECTED.githubSecretName, configured: status === 'PASS' },
     ...(mutation ? { mutation: { secretVersionCreated: mutation.secretVersionCreated === true, githubSecretConfigured: mutation.githubSecretConfigured === true } } : {}),
+    ...(status === 'PARTIAL' && continuation ? { continuation } : {}),
     status,
     releaseAuthority: false,
     evidenceScope: REAUTH_SCOPE,
@@ -261,7 +282,7 @@ function safeCookie(value) {
 }
 export async function runReauthentication({
   adapter, email, password, expected, sourceRevision, commit = false,
-  previousVersion, newVersion, now = () => Date.now(), expiresAt = Number.POSITIVE_INFINITY,
+  previousVersion, newVersion, resume = null, now = () => Date.now(), expiresAt = Number.POSITIVE_INFINITY,
 }) {
   if ((previousVersion === undefined) !== (newVersion === undefined)) fail('SECRET_VERSION_BINDING_INVALID')
   const versionBinding = previousVersion === undefined
@@ -274,11 +295,17 @@ export async function runReauthentication({
     if (typeof expiresAt !== 'number' || Number.isNaN(expiresAt) || now() >= expiresAt) fail('LOCAL_PAGE_EXPIRED')
   }
   assertWithinDeadline()
+  if (resume) {
+    if (!commit) fail('RESUME_REQUIRES_COMMIT')
+    assertResumeReceipt(resume, { expected, ...versionBinding, nowMs: now() })
+  }
   let sessionCookie = null
   let logoutComplete = false
   let mutationStarted = false
   let secretVersionCreated = false
   let githubSecretConfigured = false
+  let freshRef = null
+  let continuationRef = null
   let identity
   let authTime
   let authenticatedAt
@@ -308,36 +335,56 @@ export async function runReauthentication({
     logoutComplete = true
     assertLoggedOut(await adapter.me(sessionCookie))
     if (!commit) return { status: 'VERIFIED_ONLY', evidenceScope: REAUTH_SCOPE }
+    if (resume && (identity.principalId !== resume.receipt.principalId || identity.employeeId !== resume.receipt.employeeId)) fail('RESUME_PRINCIPAL_MISMATCH')
     const current = await adapter.latestSecretVersion()
-    if (current?.version !== versionBinding.previousVersion || current?.state !== 'ENABLED') fail('SECRET_VERSION_CHANGED')
+    if (current?.version !== (resume ? versionBinding.newVersion : versionBinding.previousVersion) || current?.state !== 'ENABLED') fail('SECRET_VERSION_CHANGED')
     assertFreshAuthTime(claims, now())
     assertWithinDeadline()
-    mutationStarted = true
-    const added = await adapter.addSecretVersion(signedIn.refreshToken)
-    const version = String(added?.version ?? '')
-    if (SECRET_VERSION.test(version) && Number.isSafeInteger(Number(version))) { observedNewVersion = version; secretVersionCreated = true }
-    if (version !== versionBinding.newVersion) fail('SECRET_VERSION_NONMONOTONIC')
+    let version = versionBinding.newVersion
+    if (!resume) {
+      mutationStarted = true
+      const added = await adapter.addSecretVersion(signedIn.refreshToken)
+      version = String(added?.version ?? '')
+      if (SECRET_VERSION.test(version) && Number.isSafeInteger(Number(version))) { observedNewVersion = version; secretVersionCreated = true }
+      if (version !== versionBinding.newVersion) fail('SECRET_VERSION_NONMONOTONIC')
+    } else { observedNewVersion = version }
     const latestAfterWrite = await adapter.latestSecretVersion()
     if (latestAfterWrite?.version !== versionBinding.newVersion || latestAfterWrite?.state !== 'ENABLED') fail('SECRET_VERSION_RACE')
     const readback = await adapter.readSecretVersion(version)
     transientSecretBytes = readback?.bytes ?? null
     if (readback?.state !== 'ENABLED' || !Buffer.isBuffer(readback.bytes)) fail('SECRET_VERSION_READBACK_MISMATCH')
     let readbackRefreshToken = readback.bytes.toString('utf8')
-    let expectedRefreshBytes
-    try { expectedRefreshBytes = Buffer.from(signedIn.refreshToken, 'utf8') } catch { readbackRefreshToken = ''; fail('SECRET_VERSION_READBACK_MISMATCH') }
-    let exactReadback = false
-    try { exactReadback = readback.bytes.length === expectedRefreshBytes.length && timingSafeEqual(readback.bytes, expectedRefreshBytes) }
-    finally { expectedRefreshBytes.fill(0) }
-    if (!exactReadback) { readbackRefreshToken = ''; fail('SECRET_VERSION_READBACK_MISMATCH') }
+    if (!resume) {
+      const expectedRefreshBytes = Buffer.from(signedIn.refreshToken, 'utf8')
+      let exactReadback = false
+      try { exactReadback = readback.bytes.length === expectedRefreshBytes.length && timingSafeEqual(readback.bytes, expectedRefreshBytes) }
+      finally { expectedRefreshBytes.fill(0) }
+      if (!exactReadback) { readbackRefreshToken = ''; fail('SECRET_VERSION_READBACK_MISMATCH') }
+    }
+    // For continuation, the immutable numeric version is re-read and its signed identity is verified below.
     try { refreshedToken = await adapter.refreshSecret(readbackRefreshToken) }
     finally { readbackRefreshToken = '' }
     const refreshedClaims = await adapter.verifyIdToken(refreshedToken.idToken, now())
     assertExpectedPair(refreshedClaims, expected)
     assertAccountLookup(await adapter.lookupAccount(refreshedToken.idToken), expected.subject)
+    if (resume) {
+      // Signature/pair validity alone does not prove the persisted token survives current revocation/epoch checks.
+      const persistedSession = await adapter.createPlatformSession(refreshedToken.idToken)
+      if (persistedSession?.status !== 200) fail('PERSISTED_PLATFORM_SESSION_CREATE_FAILED')
+      sessionCookie = safeCookie(persistedSession.cookie)
+      logoutComplete = false
+      const persistedIdentity = assertStablePlatformMe(await adapter.me(sessionCookie), await adapter.me(sessionCookie))
+      if (persistedIdentity.principalId !== identity.principalId || persistedIdentity.employeeId !== identity.employeeId) fail('RESUME_PRINCIPAL_MISMATCH')
+      const persistedLogout = await adapter.logout(sessionCookie)
+      if (persistedLogout?.status !== 200) fail('PLATFORM_LOGOUT_FAILED')
+      logoutComplete = true
+      assertLoggedOut(await adapter.me(sessionCookie))
+    }
     const latestBeforeGithub = await adapter.latestSecretVersion()
     if (latestBeforeGithub?.version !== versionBinding.newVersion || latestBeforeGithub?.state !== 'ENABLED') fail('SECRET_VERSION_RACE')
     assertFreshAuthTime(claims, now())
     assertWithinDeadline()
+    mutationStarted = true
     await adapter.setGithubSecret(readback.bytes)
     const githubReady = await adapter.githubSecretPresent()
     if (githubReady !== true) fail('GITHUB_SECRET_READBACK_FAILED')
@@ -354,7 +401,14 @@ export async function runReauthentication({
       expectedNewVersion: versionBinding.newVersion, nowMs: now(),
     })
     const ref = await adapter.writeReceipt(receipt)
-    return { status: 'COMMITTED', evidenceScope: REAUTH_SCOPE, ref }
+    freshRef = ref
+    if (resume) continuationRef = await adapter.writeContinuationReceipt({
+      schemaVersion: 'jenfu.dev057.smoke-credential-continuation.v1', ownerApplicationId: EXPECTED.ownerApplicationId,
+      projectId: EXPECTED.projectId, sourceRevision, priorSourceRevision: resume.receipt.sourceRevision,
+      priorRef: resume.ref, freshRef: ref, secret: receipt.secret, status: 'PASS',
+      releaseAuthority: false, evidenceScope: REAUTH_SCOPE, credentialMaterialPresent: false, observedAt,
+    })
+    return { status: resume ? 'REVALIDATED' : 'COMMITTED', evidenceScope: REAUTH_SCOPE, ref, ...(resume ? { priorRef: resume.ref, continuationRef } : {}) }
   } catch (error) {
     if (sessionCookie && !logoutComplete) {
       try { await adapter.logout(sessionCookie); logoutComplete = true } catch {}
@@ -367,9 +421,10 @@ export async function runReauthentication({
         previousVersion: versionBinding.previousVersion, newVersion: observedNewVersion,
         observedAt: new Date(now()).toISOString(), status: 'PARTIAL',
         mutation: { secretVersionCreated, githubSecretConfigured },
+        ...(resume ? { continuation: { priorRef: resume.ref, freshRef, continuationRef } } : {}),
       })
       const partialRef = await adapter.writePartialReceipt(partial)
-      return { status: 'PARTIAL', code: redactedErrorCode(error), evidenceScope: REAUTH_SCOPE, partialRef }
+      return { status: 'PARTIAL', code: redactedErrorCode(error), evidenceScope: REAUTH_SCOPE, partialRef, ...(resume ? { freshRef, priorRef: resume.ref, continuationRef } : {}) }
     }
     throw error instanceof ReauthError ? error : new ReauthError('REAUTH_FAILED')
   } finally {

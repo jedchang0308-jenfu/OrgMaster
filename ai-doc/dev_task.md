@@ -1,5 +1,9 @@
 # OrgMaster 開發任務
 
+## DEV-057 smoke credential continuation（2026-10-11）
+
+Native `ORGMASTER/DEV-057#smoke-reauth-continuation`，來源 `AI-PDM/DEV-121#rd-capabilities`，沿已授權 OrgMaster own credential reauth／版本續接。已提交新 Secret 但 Workflow 未承接時，原證據逾期不能靠新增下一版本解決；原生工具補上嚴格 original proof＋current numeric version＋fresh password／相同 Principal/Employee 的續接，addVersion 零呼叫，private immutable proof link，consumer freshness 不變。35 focused／364 owner Node 合成測試 PASS；protected CI、真正重驗／rotation／發布待證。契約與本輪 acceptance 見 [completed credential continuation](specs/DEV-057-identity-and-grant-contract-boundary.md#dev-057-completed-smoke-credential-continuation--2026-10-11)。不新增主 DEV，不將本機結果當正式修復。
+
 ## DEV-057 AI-PDM RD v7 compatible reader（2026-10-11）
 
 Native `ORGMASTER/DEV-057#catalog-v7`，來源 `AI-PDM/DEV-121#rd-capabilities`。本輪人類續行授權包含 OrgMaster v7 相容修改與 own protected Production release。Exact v7 合成重現先被 STALE 拒絕；reader 加入固定 v7/hash 與 runtime artifact 後，七檔 50/50、型別檢查 PASS。保留 v5/v6、active DB publication 與全內容檢查；沒有 migration、指派重寫或恢復停用帳號。下一步：protected PR/required CI → OrgMaster ordinary release → AI-PDM v7 發布後 exact active publication 與 RD 正式驗收；尚未宣稱 Production 完成。契約見 [v7 compatible reader](specs/DEV-057-identity-and-grant-contract-boundary.md#ai-pdm-rd-catalog-v7-compatible-reader--2026-10-11)。隔離 worktree `dev057-catalog-v7-20261011` 保留待發布；owner 本對話，結束時移除 task-owned dependency junction，證據及來源保留。
@@ -196,6 +200,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
   - 摘要：三專案一次啟用Principal-only；OrgMaster發布身分與角色、Platform管登入session、AI-PDM管能力與資源。未核實／原停用者不啟用；歷史業務資料保留。
   - 來源 ID：`JENFU/DEV-015#identity-grants`；本地 owner `ORGMASTER/DEV-057`。
   - 進度：已套用 migration、contract／PostgreSQL及原發布證據保留，依原始receipt／歷史快照判讀，不由摘要重算。OrgMaster 本輪出口限於已發布 Principal／Employee狀態／角色／scope、實際 producer→consumer PostgreSQL一致性、本owner治理session／allow-deny／撤權／事件稽核及Principal-only發布／回復。Platform登入／SSO／Portal session由Platform取證；AI-PDM capability／resource／command／workload由consumer取證；共同DEV-015彙整，不把這些實作责任轉給OrgMaster。具備自己的正式出口證據即可獨立結案；本機／整合或其他owner PASS不等於聯合Production L4。
+  - 本輪 RD v7 續接：來源 `AI-PDM/DEV-121#rd-capabilities`；相容 reader 已合併，own smoke 同版本續接沿頂部 `ORGMASTER/DEV-057#smoke-reauth-continuation`，35 focused／364 owner Node／348 QC 子集合／6 abort／typecheck PASS，protected source CI、真正重驗及發布待證；不計為新增交付點。
   - 下一步：完成頂部員工 Google 連結矯正的 protected PR／required CI／OrgMaster owner release及正式呈現驗證；原共同授權出口與歷史證據保留。AI-PDM一般業務lifecycle／附件仍AIPDM/DEV-122延期NOT_PASS，不成為新的OrgMaster security施工佇列。
   - 證據：[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md)、[現行續接](#dev-057-current-contract)、[歷史決策與原驗證](dev_task-history-2026-10-03.md)；狀態依每項實際層級認列。
   - 計入交付：是（僅本輪DEV-057 Principal-only授權scope與正式owner出口）；不回寫 DEV-055／056或歷史DEV014／DEV118的驗證結論。
