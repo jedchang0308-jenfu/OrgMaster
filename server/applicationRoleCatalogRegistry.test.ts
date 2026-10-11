@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import v5 from '../config/catalogs/ai-pdm-role-catalog.v5.json'
 import v6 from '../config/catalogs/ai-pdm-role-catalog.v6.json'
+import v7 from '../config/catalogs/ai-pdm-role-catalog.v7.json'
 
 const mocks = vi.hoisted(() => ({
   cloudSql: vi.fn(), query: vi.fn(), readback: vi.fn(),
@@ -20,7 +21,7 @@ describe('application role catalog registry', () => {
     vi.clearAllMocks()
     mocks.readback.mockResolvedValue({ ...v5, sourcePath: 'postgres:ai_pdm_contract.v_application_role_catalog_v1' })
   })
-  it.each([v5, v6])('exposes only the active producer artifact $catalogVersion in its persistence transaction', async (publication) => {
+  it.each([v5, v6, v7])('exposes only the active producer artifact $catalogVersion in its persistence transaction', async (publication) => {
     mocks.cloudSql.mockReturnValue(true)
     mocks.readback.mockResolvedValue({ ...publication, sourcePath: 'postgres:ai_pdm_contract.v_application_role_catalog_v1' })
     const catalogs = await readApplicationRoleCatalogs()

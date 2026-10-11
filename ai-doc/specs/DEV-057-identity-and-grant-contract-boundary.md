@@ -16,6 +16,14 @@ The normal verified Principal fixture path now has native readbacks for the inac
 
 The owner receipts explicitly retain productionL4=false and fullDev014Complete=false. They do not close full JENFU DEV-014 or DEV-015: DEV-015 closure remains complete. JFS9014 PDM normal-entry denial is expected missing-profile behavior, not an epoch defect; JENFU DEV-014 final document/CI/merge delivery is tracked separately. Do not infer a whole-task or historical all-cases PASS from this OrgMaster owner exit. The earlier R3/R4/R6/R7 failed, aborted and pre-release checkpoints remain immutable history; the current exact status and machine bindings are in the owner-exit projection. Future authorized corrections retain the same protected-source, runner rotation, complete 31-row replay, separate runtime-only enablement, and exact Scheduler readback gates; no applied migration or historical receipt is rewritten.
 
+## AI-PDM RD catalog v7 compatible reader — 2026-10-11
+
+Native owner: `ORGMASTER/DEV-057#catalog-v7`; source obligation: `AI-PDM/DEV-121#rd-capabilities`. The human continuation explicitly includes this compatible reader and its own protected Production release. The immutable producer artifact is `ai-pdm.role-catalog.2026-10-10.v7`, canonical hash `4d624b16a58299a78bc3bac4b7f39f261ec2ba34ae604f06ed7cdb7a078e01f9`, raw file hash `121ca7cd424b9d919cb9217516c0c5f6dcec3879ee389b0d676b9dd62cb0d94d`. Only RD's `page:numbering.drawings.view` is added; approval-decision authority and all other role definitions stay unchanged.
+
+OrgMaster accepts v7 alongside exact v5/v6 snapshots. The live active contract publication remains the authority; complete metadata, publication order, digest and source-snapshot equality checks still fail closed. Vendoring a snapshot never changes assignments or provides a fallback for an unavailable/invalid database publication. Runtime packaging includes all three approved artifacts. There is no OrgMaster migration, grant rewrite or additional account opening. Publish the compatible OrgMaster reader before AI-PDM activates v7 through its own governed migration/release. Local synthetic readback and required CI are separate from active v7 Production readback and RD user acceptance.
+
+Local reproduction rejected the exact valid v7 with `EXTERNAL_CATALOG_STALE`. After correction, four focused files passed 27 cases and TypeScript passed. Protected source review/CI, own owner release and active v7 Production readback remain pending at this source checkpoint. Reuse unchanged 31-entry ledger and infrastructure evidence through the native ordinary owner path; do not rebuild unchanged tool images or edit historical receipts.
+
 ## 歷史引用入口（非施工指令）
 
 <a id="production-r3-release"></a>

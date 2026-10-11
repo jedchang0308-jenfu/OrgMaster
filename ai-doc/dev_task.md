@@ -1,5 +1,10 @@
 # OrgMaster 開發任務
 
+## DEV-057 AI-PDM RD v7 compatible reader（2026-10-11）
+
+Native `ORGMASTER/DEV-057#catalog-v7`，來源 `AI-PDM/DEV-121#rd-capabilities`。本輪人類續行授權包含 OrgMaster v7 相容修改與 own protected Production release。Exact v7 合成重現先被 STALE 拒絕；reader 加入固定 v7/hash 與 runtime artifact 後，四檔 27/27、型別檢查 PASS。保留 v5/v6、active DB publication 與全內容檢查；沒有 migration、指派重寫或恢復停用帳號。下一步：protected PR/required CI → OrgMaster ordinary release → AI-PDM v7 發布後 exact active publication 與 RD 正式驗收；尚未宣稱 Production 完成。契約見 [v7 compatible reader](specs/DEV-057-identity-and-grant-contract-boundary.md#ai-pdm-rd-catalog-v7-compatible-reader--2026-10-11)。隔離 worktree `dev057-catalog-v7-20261011` 保留待發布；owner 本對話，結束時移除 task-owned dependency junction，證據及來源保留。
+
+
 **HISTORY_ONLY — superseded by R7 current continuation below.** 2026-10-06 DEV-014 remaining lifecycle release: source-map-js security correction is merged in PR119 (`5000a4b76c142229d886f7b1cd67a6eee7e980d8`). R5 runner/recovery builds succeeded but no R5 infrastructure rotation or owner release was dispatched. Current R4 control is FINALIZED/PRE_ACTIVATION_ABORTED after build; its image-only rotation was already APPLIED, while the successful service/data baseline remains f3e313. The current corrective batch freezes the immediate aborted attempt in source-bound readiness/authorization and verifies its sealed image lineage separately from the successful service/31-row data baseline. This is release reliability work inside DEV-057, not a new task or a completion claim. Lifecycle false, Scheduler PAUSED and positive L4 remain pending. See `ai-doc/qa/DEV-057-lifecycle-abort-infra-continuation-2026-10-06.md`.
 
 

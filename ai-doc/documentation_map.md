@@ -1,5 +1,9 @@
 # OrgMaster 文件地圖
 
+## DEV-057 AI-PDM RD v7 reader（2026-10-11）
+
+[相容契約](specs/DEV-057-identity-and-grant-contract-boundary.md#ai-pdm-rd-catalog-v7-compatible-reader--2026-10-11) → [現行任務](dev_task.md#dev-057-ai-pdm-rd-v7-compatible-reader2026-10-11)。原生 owner `ORGMASTER/DEV-057#catalog-v7`，來源 `AI-PDM/DEV-121#rd-capabilities`。Exact v7 reader/runtime 包裝與 synthetic allow/tamper-deny：27 cases、typecheck PASS；protected CI/own release/正式 active v7/RD 驗收待證。沒有 OrgMaster migration 或角色指派變更。
+
 ## 2026-10-08 DEV-037 矩陣／推薦與 DEV-040 release（Production Released）
 
 PR [#126](https://github.com/jedchang0308-jenfu/OrgMaster/pull/126) 的 required `Production Source QC` 通過（[workflow 37709232027](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37709232027)），merge source `d134e3e3046cf44b91507d9a9399d2f11286b40d`。OrgMaster production workflow [37709765666](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/37709765666) 十階段成功並 finalized：`ORGMASTER-REL-20261008004906354-D134E3E`、revision `orgmaster-prod-ceacdac90393`、provider readback 100% traffic／0 candidate tags、`UNCHANGED_VERIFIED`／0 DDL／0 import。Terminal receipt 與逐項證據見[DEV-037 production release QA](qa/DEV-037-production-release-2026-10-08.md)及[DEV 任務紀錄](dev_task.md#2026-10-08-production-release-receipt完成)。本次部署了矩陣／智慧推薦程式，但未驗證正式環境互動式 UI或真實 OpenAI provider 呼叫；不代表 AI-PDM 權限已由 OrgMaster 寫入或同步。
