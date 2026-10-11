@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import { createOwnerTransport } from './lib/dev012-owner-release-runtime.mjs'
 import {
-  EXPECTED, ReauthError, parseReauthArguments, redactedErrorCode, runReauthentication, startLocalReauthPage, verifyFirebaseIdToken,
+  EXPECTED, ReauthError, assertResumeReceipt, parseReauthArguments, redactedErrorCode, runReauthentication, startLocalReauthPage, verifyFirebaseIdToken,
 } from './lib/dev057-smoke-credential-reauth.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -144,7 +144,7 @@ export function githubSecretMetadataCurrent(rows, startedAt) {
     Number.isFinite(Date.parse(row.updatedAt)) && Date.parse(row.updatedAt) >= Math.floor(startedAt / 1000) * 1000)
 }
 async function main() {
-  const { commit, previousVersion, newVersion } = parseReauthArguments(process.argv.slice(2))
+  const { commit, previousVersion, newVersion, resumeRef } = parseReauthArguments(process.argv.slice(2))
   const profile = JSON.parse(await fs.readFile(PROFILE, 'utf8'))
   assertOwnerProfile(profile)
   const sourceRevision = readOwnerSource()
@@ -154,13 +154,20 @@ async function main() {
   if (typeof firebaseKey !== 'string' || !/^[A-Za-z0-9_-]{20,256}$/u.test(firebaseKey)) fail('FIREBASE_API_KEY_REQUIRED')
   const firebase = firebaseApi(fetch, firebaseKey)
   const latest = await secretVersion(call, 'latest')
-  if (latest.version !== previousVersion || latest.state !== 'ENABLED') fail('PRIOR_SECRET_VERSION_MISMATCH')
-  const prior = await readSecretVersion(call, previousVersion)
+  if (latest.version !== (resumeRef ? newVersion : previousVersion) || latest.state !== 'ENABLED') fail('PRIOR_SECRET_VERSION_MISMATCH')
+  const prior = await readSecretVersion(call, resumeRef ? newVersion : previousVersion)
   let expected
   try { expected = await verifyOldPair({ firebase, oldBytes: prior.bytes, nowMs: Date.now() }) } finally { prior.bytes.fill(0) }
   const ghList = () => JSON.parse(command('gh', ['secret', 'list', '--env', EXPECTED.githubEnvironment, '--repo', EXPECTED.repository, '--json', 'name,updatedAt'], { code: 'GITHUB_SECRET_READBACK_FAILED' }))
   if (!ghList().some((row) => row.name === EXPECTED.githubSecretName)) fail('GITHUB_SECRET_NOT_PRESENT')
   const transport = createOwnerTransport({ token })
+  let resume = null
+  if (resumeRef) {
+    const parent = await transport.readJson(resumeRef, EXPECTED.releaseBucket, ['receipts/credential-reauth'])
+    resume = { receipt: parent.value, ref: parent.ref }
+    assertResumeReceipt(resume, { expected, previousVersion, newVersion, nowMs: Date.now() })
+    command('git', ['merge-base', '--is-ancestor', resume.receipt.sourceRevision, sourceRevision], { code: 'RESUME_SOURCE_NOT_ANCESTOR' })
+  }
   let githubWriteStartedAt = null
   const adapter = {
     signIn: firebase.signIn,
@@ -225,9 +232,17 @@ async function main() {
     },
     githubSecretPresent: async () => githubWriteStartedAt !== null && githubSecretMetadataCurrent(ghList(), githubWriteStartedAt),
     writeReceipt: async (receipt) => {
+      if (readOwnerSource() !== sourceRevision) fail('OWNER_SOURCE_NOT_FROZEN')
       const name = 'receipts/credential-reauth/' + new Date().toISOString().replaceAll(':', '-') + '-' + randomBytes(8).toString('hex') + '.json'
       const uri = 'gs://' + profile.artifact.releaseBucket + '/' + name
       const result = await transport.putJson(uri, receipt, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
+      return result.ref
+    },
+    writeContinuationReceipt: async (receipt) => {
+      if (readOwnerSource() !== sourceRevision) fail('OWNER_SOURCE_NOT_FROZEN')
+      const name = 'receipts/credential-continuation/' + Date.now() + '-' + randomBytes(8).toString('hex') + '.json'
+      const result = await transport.putJson('gs://' + profile.artifact.releaseBucket + '/' + name, receipt,
+        { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
       return result.ref
     },
     writePartialReceipt: async (receipt) => {
@@ -249,7 +264,7 @@ async function main() {
       try {
         const result = await runReauthentication({
           adapter, email: submittedEmail, password: submittedPassword, expected, sourceRevision, commit,
-          previousVersion, newVersion, expiresAt: started + 900000,
+          previousVersion, newVersion, resume, expiresAt: started + 900000,
         })
         finish(result)
         return result
@@ -267,8 +282,8 @@ async function main() {
   finally { clearTimeout(expiryTimer); await page.close() }
   if (submittedResult) result = submittedResult
   process.stdout.write(JSON.stringify({ status: result.status, evidenceScope: result.evidenceScope ?? null, ref: result.ref ?? result.partialRef ?? null,
-    code: result.code ?? null, durationSeconds: Math.round((Date.now() - started) / 1000) }) + '\n')
-  if (!['VERIFIED_ONLY', 'COMMITTED'].includes(result.status)) process.exitCode = 2
+    priorRef: result.priorRef ?? null, continuationRef: result.continuationRef ?? null, freshRef: result.freshRef ?? null, code: result.code ?? null, durationSeconds: Math.round((Date.now() - started) / 1000) }) + '\n')
+  if (!['VERIFIED_ONLY', 'COMMITTED', 'REVALIDATED'].includes(result.status)) process.exitCode = 2
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => { process.stderr.write((redactedErrorCode(error)) + '\n'); process.exitCode = 1 })
