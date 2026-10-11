@@ -9,9 +9,12 @@ export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-28.v5' a
 export const AI_PDM_ROLE_CATALOG_SHA256 = '4f05dd4228b51e5086f30886330f48f1f137e37d383a26114bb34f5874d39197' as const
 export const AI_PDM_ROLE_CATALOG_V6_VERSION = 'ai-pdm.role-catalog.2026-10-05.v6' as const
 export const AI_PDM_ROLE_CATALOG_V6_SHA256 = 'bdc8d2b8f717e4af9d48cf882d1a564a5caaabaaaacdcf20bc5db36a5b6960af' as const
+export const AI_PDM_ROLE_CATALOG_V7_VERSION = 'ai-pdm.role-catalog.2026-10-10.v7' as const
+export const AI_PDM_ROLE_CATALOG_V7_SHA256 = '4d624b16a58299a78bc3bac4b7f39f261ec2ba34ae604f06ed7cdb7a078e01f9' as const
 const APPROVED_CATALOGS = {
   [AI_PDM_ROLE_CATALOG_VERSION]: { file: 'ai-pdm-role-catalog.v5.json', hash: AI_PDM_ROLE_CATALOG_SHA256 },
   [AI_PDM_ROLE_CATALOG_V6_VERSION]: { file: 'ai-pdm-role-catalog.v6.json', hash: AI_PDM_ROLE_CATALOG_V6_SHA256 },
+  [AI_PDM_ROLE_CATALOG_V7_VERSION]: { file: 'ai-pdm-role-catalog.v7.json', hash: AI_PDM_ROLE_CATALOG_V7_SHA256 },
 } as const
 
 export type PublishedAiPdmRole = {
@@ -33,7 +36,7 @@ export type PublishedAiPdmRole = {
 export type PublishedAiPdmRoleCatalog = {
   contractVersion: typeof JENFU_ENTITLEMENT_CONTRACT_VERSION
   applicationId: typeof AI_PDM_APPLICATION_ID
-  catalogVersion: typeof AI_PDM_ROLE_CATALOG_VERSION | typeof AI_PDM_ROLE_CATALOG_V6_VERSION
+  catalogVersion: typeof AI_PDM_ROLE_CATALOG_VERSION | typeof AI_PDM_ROLE_CATALOG_V6_VERSION | typeof AI_PDM_ROLE_CATALOG_V7_VERSION
   publishedAt: string
   roles: PublishedAiPdmRole[]
   catalogSha256: string
