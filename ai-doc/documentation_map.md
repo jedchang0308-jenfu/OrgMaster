@@ -2,7 +2,7 @@
 
 ## DEV-057 AI-PDM RD v7 reader（2026-10-11）
 
-[相容契約](specs/DEV-057-identity-and-grant-contract-boundary.md#ai-pdm-rd-catalog-v7-compatible-reader--2026-10-11) → [現行任務](dev_task.md#dev-057-ai-pdm-rd-v7-compatible-reader2026-10-11)。原生 owner `ORGMASTER/DEV-057#catalog-v7`，來源 `AI-PDM/DEV-121#rd-capabilities`。Exact v7 reader/runtime 包裝與 synthetic allow/tamper-deny：27 cases、typecheck PASS；protected CI/own release/正式 active v7/RD 驗收待證。沒有 OrgMaster migration 或角色指派變更。
+[相容契約](specs/DEV-057-identity-and-grant-contract-boundary.md#ai-pdm-rd-catalog-v7-compatible-reader--2026-10-11) → [現行任務](dev_task.md#dev-057-ai-pdm-rd-v7-compatible-reader2026-10-11)。原生 owner `ORGMASTER/DEV-057#catalog-v7`，來源 `AI-PDM/DEV-121#rd-capabilities`。Exact v7 reader/runtime 包裝與 synthetic allow/tamper-deny：50 cases、typecheck PASS；protected CI/own release/正式 active v7/RD 驗收待證。沒有 OrgMaster migration 或角色指派變更。
 
 ## 2026-10-08 DEV-037 矩陣／推薦與 DEV-040 release（Production Released）
 

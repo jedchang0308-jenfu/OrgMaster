@@ -22,7 +22,7 @@ Native owner: `ORGMASTER/DEV-057#catalog-v7`; source obligation: `AI-PDM/DEV-121
 
 OrgMaster accepts v7 alongside exact v5/v6 snapshots. The live active contract publication remains the authority; complete metadata, publication order, digest and source-snapshot equality checks still fail closed. Vendoring a snapshot never changes assignments or provides a fallback for an unavailable/invalid database publication. Runtime packaging includes all three approved artifacts. There is no OrgMaster migration, grant rewrite or additional account opening. Publish the compatible OrgMaster reader before AI-PDM activates v7 through its own governed migration/release. Local synthetic readback and required CI are separate from active v7 Production readback and RD user acceptance.
 
-Local reproduction rejected the exact valid v7 with `EXTERNAL_CATALOG_STALE`. After correction, four focused files passed 27 cases and TypeScript passed. Protected source review/CI, own owner release and active v7 Production readback remain pending at this source checkpoint. Reuse unchanged 31-entry ledger and infrastructure evidence through the native ordinary owner path; do not rebuild unchanged tool images or edit historical receipts.
+Local reproduction rejected the exact valid v7 with `EXTERNAL_CATALOG_STALE`. After correction, seven focused reader/registry/governance/capability files passed 50 cases and TypeScript passed. Protected source review/CI, own owner release and active v7 Production readback remain pending at this source checkpoint. Reuse unchanged 31-entry ledger and infrastructure evidence through the native ordinary owner path; do not rebuild unchanged tool images or edit historical receipts.
 
 ## 歷史引用入口（非施工指令）
 

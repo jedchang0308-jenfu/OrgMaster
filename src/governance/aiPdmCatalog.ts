@@ -1,6 +1,7 @@
 import type { ExternalRoleCatalogRoleV1, ExternalRoleCatalogSnapshotV1, GovernanceApplicationRoleV1, GovernanceApplicationV1, GovernancePermissionV1 } from './types'
 import aiPdmCatalogFixture from '../../config/catalogs/ai-pdm-role-catalog.v5.json'
 import aiPdmCatalogV6Fixture from '../../config/catalogs/ai-pdm-role-catalog.v6.json'
+import aiPdmCatalogV7Fixture from '../../config/catalogs/ai-pdm-role-catalog.v7.json'
 import historicalAiPdmCatalogFixture from '../../contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
 
 export const AI_PDM_CATALOG_SOURCE_HASHES = {
@@ -91,7 +92,8 @@ export function historicalAiPdmRoleSnapshotMatches(value: {
 }, currentRole: ExternalRoleCatalogRoleV1 | undefined) {
   if (!currentRole) return false
   const provenance = value.catalogVersion === AI_PDM_HISTORICAL_CATALOG_VERSION ? historicalAiPdmCatalogFixture
-    : value.catalogVersion === AI_PDM_ROLE_CATALOG_VERSION ? aiPdmCatalogFixture : null
+    : value.catalogVersion === AI_PDM_ROLE_CATALOG_VERSION ? aiPdmCatalogFixture
+    : value.catalogVersion === aiPdmCatalogV6Fixture.catalogVersion ? aiPdmCatalogV6Fixture : null
   if (!provenance) return false
   const historical = provenance.roles.find((role) => role.stableRoleId === value.roleId)
   return !!historical && historical.roleCode === value.roleCodeSnapshot &&
@@ -132,7 +134,9 @@ export function createAiPdmRoleCatalog(validationState: ExternalRoleCatalogSnaps
     applicationId: 'ai-pdm' as const,
     catalogVersion: artifact.catalogVersion,
     sourceKind: 'bundled-fixture' as const,
-    sourceRefs: artifact.catalogVersion === aiPdmCatalogV6Fixture.catalogVersion
+    sourceRefs: artifact.catalogVersion === aiPdmCatalogV7Fixture.catalogVersion
+      ? [{ path: 'AI_PDM/config/access-control/jenfu-role-catalog.v7.json', range: 'canonical artifact', sha256: '121ca7cd424b9d919cb9217516c0c5f6dcec3879ee389b0d676b9dd62cb0d94d' }, ...AI_PDM_ROLE_CATALOG_SOURCE_REFS.slice(1)]
+      : artifact.catalogVersion === aiPdmCatalogV6Fixture.catalogVersion
       ? [{ path: 'AI_PDM/config/access-control/jenfu-role-catalog.v6.json', range: 'canonical artifact', sha256: '237e1a92814aa8fec87e878a8ffaac7f74bc9c5ce4fb6766c266970c9d509b8a' }, ...AI_PDM_ROLE_CATALOG_SOURCE_REFS.slice(1)]
       : [...AI_PDM_ROLE_CATALOG_SOURCE_REFS],
     capturedAt,
@@ -144,7 +148,8 @@ export function createAiPdmRoleCatalog(validationState: ExternalRoleCatalogSnaps
 export type ExternalRoleCatalogValidationIssue = { code: string; path: string; message: string }
 export function validateExternalRoleCatalog(snapshot: ExternalRoleCatalogSnapshotV1): ExternalRoleCatalogValidationIssue[] {
   const artifact = snapshot.catalogVersion === aiPdmCatalogFixture.catalogVersion ? aiPdmCatalogFixture
-    : snapshot.catalogVersion === aiPdmCatalogV6Fixture.catalogVersion ? aiPdmCatalogV6Fixture : null
+    : snapshot.catalogVersion === aiPdmCatalogV6Fixture.catalogVersion ? aiPdmCatalogV6Fixture
+    : snapshot.catalogVersion === aiPdmCatalogV7Fixture.catalogVersion ? aiPdmCatalogV7Fixture : null
   const issues: ExternalRoleCatalogValidationIssue[] = []
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
   if (snapshot.applicationId !== 'ai-pdm') add('EXTERNAL_CATALOG_OWNER_INVALID', 'applicationId', 'catalog owner 必須為 ai-pdm')
