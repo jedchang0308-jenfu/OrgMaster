@@ -46,6 +46,29 @@ async function listen(runtime: OrgmasterAuthRuntime, businessRead: () => void = 
 }
 
 describe('OrgMaster auth middleware', () => {
+  it('returns only the verified session employee email, ignoring caller target IDs', async () => {
+    const readSessionEmail = vi.fn(async () => 'jed@example.test')
+    const { runtime, config, sessions } = configuredRuntime({ readSessionEmail })
+    sessions.set(hashSessionToken(config.sessionHashPepper, 'valid-session'), {
+      id: 'session-1', identityIssuer: config.identityIssuer, identitySubject: 'uid-1', principalId: 'principal-1', employeeId: 'employee-1', authEpoch: 0,
+      sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 0, issuedAt: new Date().toISOString(), authenticatedAt: new Date().toISOString(), expiresAt: '2099-01-01T00:00:00Z', revokedAt: null, assuranceLevel: 'aal1',
+    })
+    const base = await listen(runtime)
+    const response = await fetch(base + '/api/auth/me?employeeId=another-employee', { headers: { cookie: 'orgmaster_session=valid-session' } })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ user: { employeeId: 'employee-1', principalId: 'principal-1', email: 'jed@example.test' } })
+    expect(readSessionEmail).toHaveBeenCalledExactlyOnceWith('employee-1')
+    readSessionEmail.mockRejectedValueOnce(new Error('directory unavailable'))
+    const fallback = await fetch(base + '/api/auth/me', { headers: { cookie: 'orgmaster_session=valid-session' } })
+    expect(fallback.status).toBe(200)
+    expect(await fallback.json()).toMatchObject({ user: { employeeId: 'employee-1', email: null } })
+    const calls = readSessionEmail.mock.calls.length
+    runtime.epochs!.readPrincipalState = vi.fn(async () => ({ authEpoch: 1, revokedBefore: null }))
+    expect((await fetch(base + '/api/auth/me', { headers: { cookie: 'orgmaster_session=valid-session' } })).status).toBe(401)
+    expect((await fetch(base + '/api/auth/me')).status).toBe(401)
+    expect(readSessionEmail).toHaveBeenCalledTimes(calls)
+  })
+
   it('reports employee-number management independently from DWD-backed managed login', async () => {
     const { runtime } = configuredRuntime()
     Object.assign(runtime, {

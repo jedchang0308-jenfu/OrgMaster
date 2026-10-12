@@ -460,6 +460,8 @@ export type GovernanceCommandV2 =
   | Extract<GovernanceCommand, { type: 'UPSERT_IDENTITY_LINK' | 'SET_IDENTITY_LINK_STATUS' | 'UPSERT_APPLICATION_ROLE' | 'SET_APPLICATION_ROLE_STATUS' | 'UPSERT_PERMISSION' | 'SET_PERMISSION_STATUS' | 'SET_ROLE_PERMISSION_GRANT' | 'REMOVE_ROLE_PERMISSION_GRANT' }>
   | { type: 'UPSERT_ROLE_ASSIGNMENT'; commandId: string; reason: string; value: GovernanceRoleAssignmentV2 }
   | { type: 'REVOKE_ROLE_ASSIGNMENT'; commandId: string; reason: string; id: string }
+  | { type: 'RESTORE_ROLE_ASSIGNMENT'; commandId: string; reason: string; id: string }
+  | { type: 'REMOVE_ROLE_ASSIGNMENT'; commandId: string; reason: string; id: string }
   | { type: 'UPSERT_ROLE_DELEGATION'; commandId: string; reason: string; value: GovernanceRoleDelegationV2 }
   | { type: 'REVOKE_ROLE_DELEGATION'; commandId: string; reason: string; id: string }
   | { type: 'UPSERT_PRINCIPAL_ADMISSION'; commandId: string; reason: string; value: GovernancePrincipalAdmissionV1 }

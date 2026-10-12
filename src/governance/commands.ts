@@ -76,11 +76,28 @@ function entityInfoV2(command: GovernanceCommandV2) {
 function replaceByIdV2<T extends { id: string }>(items: T[], value: T) { const index = items.findIndex((item) => item.id === value.id); if (index < 0) return [...items, value]; const next = [...items]; next[index] = value; return next }
 function removeGrantV2(data: GovernancePolicyDataV2, roleId: string, permissionId: string) { return data.rolePermissionGrants.filter((grant) => !(grant.roleId === roleId && grant.permissionId === permissionId)) }
 
+function assertAssignmentLifecycleCommand(document: GovernanceDocumentV2 | GovernanceDocumentV3, command: GovernanceCommandV2 | GovernanceCommandV3, source: Parameters<typeof validatePolicyDataV2>[1], catalogs: NonNullable<Parameters<typeof validatePolicyDataV2>[2]>) {
+  if (command.type !== 'RESTORE_ROLE_ASSIGNMENT' && command.type !== 'REMOVE_ROLE_ASSIGNMENT') return
+  const assignment = document.draft.roleAssignments.find((value) => value.id === command.id)
+  const deny = (code: string, message: string): never => { throw new GovernanceValidationError([{ code, path: 'roleAssignments', message }]) }
+  if (!assignment) return deny('ASSIGNMENT_NOT_FOUND', '找不到這筆角色指派，請重新載入。')
+  if ('basis' in assignment && (assignment.basis !== 'manual' || !('subjectKind' in assignment) || assignment.subjectKind !== 'employee' || !('targetPrincipalId' in assignment) || assignment.targetPrincipalId !== null)) deny('ASSIGNMENT_OWNER_COMMAND_REQUIRED', '此指派須由所屬系統的專用介面管理。')
+  if (command.type === 'REMOVE_ROLE_ASSIGNMENT') {
+    if (assignment.status !== 'revoked') deny('ASSIGNMENT_REVOKE_REQUIRED', '請先撤銷指派，再刪除。')
+    if (document.draft.roleDelegations.some((value) => value.sourceAssignmentId === assignment.id)) deny('ASSIGNMENT_IN_USE', '這筆指派仍被角色代理引用，無法刪除。')
+  } else {
+    if (assignment.validTo !== null && Date.parse(assignment.validTo) <= Date.now()) deny('ASSIGNMENT_EXPIRED', '指派已到期，請新增有效期間的指派。')
+    if (source && !source.state.employees.some((employee) => employee.id === assignment.employeeId && employee.status === 'active')) deny('EMPLOYEE_NOT_ACTIVE', '停用員工不能啟用角色指派。')
+    if (assignment.applicationId === 'orgmaster' && !document.draft.applicationRoles.some((role) => role.id === assignment.roleId && role.status === 'active')) deny('REFERENCE_NOT_FOUND', '角色已停用，無法啟用指派。')
+    if (assignment.applicationId === 'ai-pdm' && assignment.catalogVersion !== catalogs.find((catalog) => catalog.applicationId === 'ai-pdm')?.catalogVersion) deny('EXTERNAL_CATALOG_STALE', '角色目錄已更新，請新增使用目前目錄的指派。')
+  }
+}
+
 export function governanceV2CommandSurfaceIssue(document: GovernanceDocumentV2, command: GovernanceCommandV2, catalogs: Parameters<typeof validatePolicyDataV2>[2] = []) {
   let assignment: GovernanceDocumentV2['draft']['roleAssignments'][number] | undefined
   let delegation: GovernanceDocumentV2['draft']['roleDelegations'][number] | undefined
   if (command.type === 'UPSERT_ROLE_ASSIGNMENT') assignment = command.value
-  if (command.type === 'REVOKE_ROLE_ASSIGNMENT') assignment = document.draft.roleAssignments.find((value) => value.id === command.id)
+  if (command.type === 'REVOKE_ROLE_ASSIGNMENT' || command.type === 'RESTORE_ROLE_ASSIGNMENT' || command.type === 'REMOVE_ROLE_ASSIGNMENT') assignment = document.draft.roleAssignments.find((value) => value.id === command.id)
   if (command.type === 'UPSERT_ROLE_DELEGATION') delegation = command.value
   if (command.type === 'REVOKE_ROLE_DELEGATION') delegation = document.draft.roleDelegations.find((value) => value.id === command.id)
   const applicationId = assignment?.applicationId ?? delegation?.applicationId
@@ -91,6 +108,7 @@ export function governanceV2CommandSurfaceIssue(document: GovernanceDocumentV2, 
 }
 
 export function applyGovernanceCommandV2(document: GovernanceDocumentV2, command: GovernanceCommandV2, source?: Parameters<typeof validatePolicyDataV2>[1], catalogs: Parameters<typeof validatePolicyDataV2>[2] = []): CommandApplyResultV2 {
+  assertAssignmentLifecycleCommand(document, command, source, catalogs)
   if (['UPSERT_APPLICATION_ROLE', 'SET_APPLICATION_ROLE_STATUS', 'UPSERT_PERMISSION', 'SET_PERMISSION_STATUS', 'SET_ROLE_PERMISSION_GRANT', 'REMOVE_ROLE_PERMISSION_GRANT'].includes(command.type)) {
     const value = (command as any).value; const targetRole = value?.applicationId ? value : document.draft.applicationRoles.find((role) => role.id === (command as any).id); const targetPermission = value?.applicationId ? value : document.draft.permissions.find((permission) => permission.id === (command as any).id)
     if ((targetRole?.applicationId && targetRole.applicationId !== 'orgmaster') || (targetPermission?.applicationId && targetPermission.applicationId !== 'orgmaster')) throw new GovernanceValidationError([{ code: 'EXTERNAL_CATALOG_READ_ONLY', path: '', message: '外部角色／權限只能由外部系統管理' }])
@@ -109,6 +127,8 @@ export function applyGovernanceCommandV2(document: GovernanceDocumentV2, command
     case 'REMOVE_ROLE_PERMISSION_GRANT': data = { ...data, rolePermissionGrants: removeGrantV2(data, command.roleId, command.permissionId) }; break
     case 'UPSERT_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: replaceByIdV2(data.roleAssignments, command.value) }; break
     case 'REVOKE_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: data.roleAssignments.map((value) => value.id === command.id ? { ...value, status: 'revoked' as const } : value) }; break
+    case 'RESTORE_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: data.roleAssignments.map((value) => value.id === command.id ? { ...value, status: 'active' as const } : value) }; break
+    case 'REMOVE_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: data.roleAssignments.filter((value) => value.id !== command.id) }; break
     case 'UPSERT_ROLE_DELEGATION': data = { ...data, roleDelegations: replaceByIdV2(data.roleDelegations, command.value) }; break
     case 'REVOKE_ROLE_DELEGATION': data = { ...data, roleDelegations: data.roleDelegations.map((value) => value.id === command.id ? { ...value, status: 'revoked' as const } : value) }; break
     case 'UPSERT_PRINCIPAL_ADMISSION': data = { ...data, principalAdmissions: replaceByIdV2(data.principalAdmissions ?? [], command.value) }; break
@@ -148,6 +168,7 @@ export function applyGovernanceCommandV3(
   catalogs: Parameters<typeof validatePolicyDataV3>[2] = [],
 ): CommandApplyResultV3 {
   if (!actorPrincipalId.trim()) throw new GovernanceValidationError([{ code: 'IDENTITY_CONTEXT_REQUIRED', path: 'actorPrincipalId', message: '治理命令需要已驗 Principal' }])
+  assertAssignmentLifecycleCommand(document, command, source, catalogs)
   if (command.type === 'UPSERT_ROLE_ASSIGNMENT' && 'basis' in command.value) {
     throw new GovernanceValidationError([{ code: 'ASSIGNMENT_OWNER_COMMAND_REQUIRED', path: 'roleAssignments', message: 'V3 指派只能使用專用 owner 命令' }])
   }
@@ -166,7 +187,7 @@ export function applyGovernanceCommandV3(
     throw new GovernanceValidationError([{ code: 'EXTERNAL_CATALOG_STALE', path: 'catalogVersion',
       message: '新指派或代理必須使用目前發布的 catalog version' }])
   }
-  const assignment = command.type === 'UPSERT_ROLE_ASSIGNMENT' ? command.value : command.type === 'REVOKE_ROLE_ASSIGNMENT' ? document.draft.roleAssignments.find((value) => value.id === command.id) : undefined
+  const assignment = command.type === 'UPSERT_ROLE_ASSIGNMENT' ? command.value : command.type === 'REVOKE_ROLE_ASSIGNMENT' || command.type === 'RESTORE_ROLE_ASSIGNMENT' || command.type === 'REMOVE_ROLE_ASSIGNMENT' ? document.draft.roleAssignments.find((value) => value.id === command.id) : undefined
   const delegation = command.type === 'UPSERT_ROLE_DELEGATION' ? command.value : command.type === 'REVOKE_ROLE_DELEGATION' ? document.draft.roleDelegations.find((value) => value.id === command.id) : undefined
   const roleId = assignment?.roleId ?? delegation?.roleId
   const applicationId = assignment?.applicationId ?? delegation?.applicationId
@@ -189,6 +210,8 @@ export function applyGovernanceCommandV3(
     case 'REMOVE_ROLE_PERMISSION_GRANT': data = { ...data, rolePermissionGrants: removeGrantV2(data, command.roleId, command.permissionId) }; break
     case 'UPSERT_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: replaceByIdV2(data.roleAssignments, normalizeV3Assignment(command.value, command.reason, actorPrincipalId)) }; break
     case 'REVOKE_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: data.roleAssignments.map((value) => value.id === command.id ? { ...value, status: 'revoked' as const } : value) }; break
+    case 'RESTORE_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: data.roleAssignments.map((value) => value.id === command.id ? { ...value, status: 'active' as const } : value) }; break
+    case 'REMOVE_ROLE_ASSIGNMENT': data = { ...data, roleAssignments: data.roleAssignments.filter((value) => value.id !== command.id) }; break
     case 'UPSERT_ROLE_DELEGATION': data = { ...data, roleDelegations: replaceByIdV2(data.roleDelegations, command.value) }; break
     case 'REVOKE_ROLE_DELEGATION': data = { ...data, roleDelegations: data.roleDelegations.map((value) => value.id === command.id ? { ...value, status: 'revoked' as const } : value) }; break
     case 'UPSERT_PRINCIPAL_ADMISSION': data = { ...data, principalAdmissions: replaceByIdV2(data.principalAdmissions ?? [], command.value) }; break

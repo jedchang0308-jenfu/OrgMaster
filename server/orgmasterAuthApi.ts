@@ -70,6 +70,7 @@ export type OrgmasterAuthRuntime = {
   managedLoginEnabled?: boolean
   employeeNumberManagementEnabled?: boolean
   ssoHandoffEnabled?: boolean
+  readSessionEmail?: (employeeId: string) => Promise<string | null>
 }
 
 type RuntimeFactory = () => OrgmasterAuthRuntime
@@ -313,6 +314,10 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     principals: createPrincipalAdmissionRepository(database),
     epochs: createAuthEpochRepository(database),
     sessions: createOrgmasterSessionRepository(database),
+    readSessionEmail: async (employeeId) => {
+      const model = await managedRepository.readEmployeeManagedIdentity(employeeId)
+      return model?.employee.id === employeeId ? model.identity.primaryEmail?.trim() || null : null
+    },
     managedIdentity,
     employeeNumberManagementEnabled: Boolean(managedIdentity),
     managedLoginOwner,
@@ -404,7 +409,12 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         if (!development && devEnabled && isLoopback(request) && !runtime.configResult.configured) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
         const session = development?.session ?? await verifySession(request, runtime)
         if (development) setVerifiedRequestIdentity(request, session)
-        sendJson(response, 200, publicSession(session, id, development?.profile ?? undefined), id)
+        const payload = publicSession(session, id, development?.profile ?? undefined)
+        // Display-only own email; optional directory metadata never decides session authority.
+        const email = !development && runtime.readSessionEmail
+          ? await runtime.readSessionEmail(session.employeeId).catch(() => null)
+          : null
+        sendJson(response, 200, { ...payload, user: { ...payload.user, email } }, id)
         return
       }
       const development = developmentSession(request, devEnabled)

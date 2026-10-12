@@ -10,6 +10,20 @@
 父交付點：DEV-027
 架構決策：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md`、`ai-doc/adr/ADR-005-governance-policy-snapshot-boundary.md`
 
+## 2026-10-12 已撤銷指派操作（目前本地切片）
+
+來源：使用者在角色指派矩陣的「已撤銷」項目要求增加「刪除」及「啟用」。沿 `ORGMASTER/DEV-037`；Medium、`RD Implementation Ready`。Spec Impact Preflight=`Compatible exception`：補齊既有重新啟用入口，新增只移除草稿的 audited command；已發布版本與 audit 永不刪改。未授權 production deploy 或正式資料操作。
+
+- 骨架保持系統／角色矩陣、員工姓名與狀態；已撤銷的普通 manual Employee 指派就地提供啟用／刪除。多 scope 時先開原明細選擇一筆，不做批次；exact Principal／position adoption／財務 owner 路徑不擴張。
+- 啟用以 ID-only `RESTORE_ROLE_ASSIGNMENT` 只恢復 status，保留原 scope、期間、catalog reference、V3 provenance／metadata。拒絕已到期、停用員工、停用角色、過期 catalog、重複 active 與特殊 owner 指派；未來期間仍顯示尚未生效。
+- 刪除先在原明細確認，再以 ID-only `REMOVE_ROLE_ASSIGNMENT` 移出草稿。僅接受 revoked；任何代理引用都拒絕。不刪 Employee、role、published snapshot 或稽核。
+- 兩命令走既有 PATCH draft、manage／verified actor、revision CAS、command idempotency、audit／atomic persistence，再走既有 publish；不修改 SQL／migration／權限或 sibling source。UI 沿 workspace、767px 以下唯讀及 catalog-ready gates，pending 禁重複，失敗保留內容與重試／重新載入。
+- 最小 QA：domain 驗狀態、scope／provenance／歷史保留、expired／stale／duplicate／owner fail-seeking；實際 store 驗 audit／CAS／replay／readback；component 驗單筆／多筆、取消／確認／失敗／唯讀／busy；frozen build 真實 browser 1242×668／1024×768／390×844 從角色治理入口驗啟用、刪除與發布預覽、visible error sweep、資料 sanity、鍵盤及窄版無破版。產物位於 `output/playwright/dev037-assignment-actions-20261012/`，temporary runtime／tab 用完清理。Local evidence 不證明正式 mutation。
+
+結果：`RD Implementation Complete / Local Targeted QC Passed / Production Not Deployed`。聚焦 12 files／75 tests PASS，型別修正與 inactive Employee 增補後 3 files／18 tests PASS（本切片唯一案例合計 76）；final typecheck／client＋server build、DB boundary static check PASS。CUA 正常導覽→維護模式→native restore、delete cancel／409 retry／成功／reload、撤銷回歸、keyboard Enter／Escape、draft preview 與三 viewport 通過；desktop 8 角色／3 筆 prerequisite，成功刪除後 native 與 UI 均為 2 筆；其他空格及無 published history 為明確 fixture，不冒充正式資料或完整發布驗證。真正治理 middleware／CAS／audit／local file persistence 均在 task-owned isolated root；synthetic loopback actor 與 workspace facade 不證明 Production Principal 或 PostgreSQL。
+
+初次 build 的 test-view／union narrowing 型別 FAIL、預覽 workspace summary 缺 updatedAt 及測試 cookie／current-view 隱藏操作均保留原 log；前兩項修正於 test／harness，current-view 與無 manage 是既有 gate，切換維護後出現操作。browser exact version 未提供，標 UNKNOWN。源碼／served asset hashes、native readback、viewport／screenshots／操作在上述產物；三次 task-owned PID 已停止、5091 釋放、tab 4 關閉／viewport reset；user-owned production tab 1 保留，正式未寫入或發布。既有 DEV-037／DEV-040／DEV-057 歷史判定不變。
+
 ## 2026-08-30 Compatibility Amendment
 
 `DEV-037` 的完成狀態與 fresh evidence 只證明 2026-08-27 的 OrgMaster local-only V2 delivery，不證明 Jenfu Platform live integration。使用者後續確認 `4A / 5A / 6B`：Phase 1 改由 versioned read-only access view 發布有效指派；AI-PDM 既有 Firebase principal 納入 active employee migration；外部角色由授權角色管理者直接生效，不另設 high-risk maker-checker。新目標由 `DEV-040` 與 ADR-007 amendment 追蹤。

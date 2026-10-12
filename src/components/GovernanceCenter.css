@@ -426,6 +426,13 @@
 .governance-matrix__person-name:hover { color: #2456c8; text-decoration: underline; }
 .governance-matrix__person-name small { border-radius: 999px; padding: 2px 5px; background: #e9eef8; color: #65728a; font-size: 9px; white-space: nowrap; }
 .governance-matrix__person-statuses { display: flex; grid-column: 1 / -1; flex-wrap: wrap; gap: 4px; }
+.governance-matrix__actions { display: flex; grid-column: 1 / -1; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
+.governance-matrix__actions button { border: 0; padding: 2px 0; background: transparent; color: #315fda; font: inherit; font-size: 11px; cursor: pointer; }
+.governance-matrix__actions button:last-child { color: #a93636; }
+.governance-matrix__actions button:disabled { opacity: .55; cursor: not-allowed; }
+.governance-matrix__actions button:focus-visible { outline: 2px solid #aabfff; outline-offset: 3px; }
+.governance-assignment-details__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.governance-assignment-details__actions p { flex-basis: 100%; margin: 0 0 4px; color: #a93636; }
 .governance-assignment-status { display: inline-flex; align-items: center; border: 1px solid transparent; border-radius: 999px; padding: 3px 7px; font-size: 10px; font-weight: 750; line-height: 1.3; white-space: nowrap; }
 .governance-assignment-status--effective { border-color: #b9e2c6; background: #e8f6ec; color: #176d3b; }
 .governance-assignment-status--future { border-color: #c6d7fb; background: #eaf1ff; color: #2859b8; }

@@ -1,5 +1,13 @@
 # OrgMaster 文件地圖
 
+## DEV-037 已撤銷指派操作（2026-10-12）
+
+[啟用／刪除契約與結果](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-12-已撤銷指派操作目前本地切片) → [原生切片](dev_task.md#2026-10-12-已撤銷指派操作切片)。ID-only restore 保留 scope／period／V3 provenance，revoked-only confirmed removal 只移出草稿、保留 history／audit；既有 manage／workspace／mobile／CAS／publish gates。76 個唯一聚焦案例、final build、native middleware／isolated persistence 與桌面／手機 CUA PASS，產物=`output/playwright/dev037-assignment-actions-20261012/`；`Local Targeted QC Passed / Production Not Deployed`，不擴張 Principal／position／financial owner 或 sibling scope，不改歷史完成率。
+
+## DEV-039 頂列帳號與更新選單（2026-10-12）
+
+[本輪切片契約與驗證結果](specs/DEV-039-composable-planning-workspace.md#2026-10-12-頂列帳號與更新選單) → [DEV-039 任務](dev_task.md#dev-039可組合規劃桌面與跨面板關聯配置)。水平三點選單、session own 顯示信箱、no-store JS／CSS 版本比對、dirty reload 阻擋及既有 AuthGate 登出；`Local Targeted QC Passed / Production Not Deployed`。聚焦 tests／build、1242／1024／390 實際 CUA 操作與截圖在 `output/playwright/dev039-account-menu-20261012/`；正式 metadata／互動未測，不改 DEV-039 全量歷史結論。
+
 ## DEV-057 smoke credential continuation（2026-10-11）
 
 [原生續接契約與驗收](specs/DEV-057-identity-and-grant-contract-boundary.md#dev-057-completed-smoke-credential-continuation--2026-10-11) → [現行任務](dev_task.md#dev-057-smoke-credential-continuation2026-10-11)。CLI／lib／原生聚焦測試與既有 QC 分母同步，原生 owner `ORGMASTER/DEV-057#smoke-reauth-continuation`；35 focused／364 owner Node 合成 PASS。Source CI、真實同版本重驗及 numeric rotation／protected release 待證；未改 Platform consumer、IAM、SQL 或 runtime。
