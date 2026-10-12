@@ -157,6 +157,23 @@ input:focus-visible {
   flex: 0 0 auto;
 }
 
+.account-menu { position: relative; flex: 0 0 auto; margin-left: auto; }
+.account-menu__trigger { width: 34px; padding: 0; }
+.account-menu__trigger[aria-expanded="true"] { color: var(--blue-deep); background: var(--blue-soft); }
+.account-menu__panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 80; width: min(320px, calc(100vw - 20px)); padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(27, 39, 56, .14); color: #40516e; }
+.account-menu__panel button { border: 0; border-radius: 5px; background: transparent; font: inherit; cursor: pointer; }
+.account-menu__panel button:hover { background: #f3f6fb; }
+.account-menu__panel button[aria-disabled="true"], .account-menu__panel button:disabled { color: #8b98aa; cursor: default; }
+.account-menu__update { width: 100%; min-height: 40px; padding: 5px 10px; text-align: left; }
+.account-menu__separator { height: 1px; margin: 12px 0 15px; background: #dfe5ef; }
+.account-menu__account { display: flex; align-items: center; gap: 12px; padding: 0 7px 4px; }
+.account-menu__identity { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.account-menu__identity strong { font-size: 16px; font-weight: 600; }
+.account-menu__identity span { color: #8b9fbe; font-size: 14px; }
+.account-menu__logout { flex: 0 0 auto; min-height: 40px; padding: 5px 7px; font-size: 13px !important; }
+.account-menu__feedback { margin: 3px 10px 5px; color: #73839b; font-size: 12px; }
+.account-menu__feedback.is-error { color: #b33d47; }
+
 .document-menu__trigger {
   width: auto;
   min-width: 34px;

@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Check, ChevronLeft, ChevronRight, LayoutGrid, LogOut } from 'lucide-react'
-import { useAuthSession } from '../../auth/AuthGate'
+import { Check, ChevronLeft, ChevronRight, LayoutGrid } from 'lucide-react'
 import { WORKSPACE_MODULE_ORDER, getWorkspaceModule } from '../../workspace/moduleRegistry'
 import type { WorkspaceModuleId } from '../../workspace/types'
 import { WORKSPACE_PANEL_DRAG_MIME } from './WorkspaceLayout'
@@ -16,13 +15,6 @@ interface Props {
 export function WorkspaceLauncher({ openPanels, onOpenModule, closePendingModuleId = null, disabled = false }: Props) {
   const [expanded, setExpanded] = useState(true)
   const panelDrag = useWorkspacePanelDrag()
-  const authSession = useAuthSession()
-  const developmentProfile = authSession?.session.developmentProfile
-  const sessionAction = authSession?.phase === 'processing'
-    ? developmentProfile ? '切換中…' : '登出處理中…'
-    : authSession?.phase === 'failed'
-      ? developmentProfile ? '重試切換' : '重試登出'
-      : developmentProfile ? '切換角色' : '登出'
 
   return (
     <aside id="workspace-launcher" className={`workspace-launcher${expanded ? ' is-expanded' : ' is-collapsed'}`} aria-label="功能導覽">
@@ -71,23 +63,6 @@ export function WorkspaceLauncher({ openPanels, onOpenModule, closePendingModule
           )
         })}
       </nav>
-      {authSession && (
-        <div className="workspace-launcher__session" aria-label="登入狀態">
-          <span className="workspace-launcher__session-user">{developmentProfile ? developmentProfile.employeeName : `員工 ${authSession.session.user.employeeId}`}</span>
-          {developmentProfile && <span className="workspace-launcher__session-role">{developmentProfile.roleName}</span>}
-          {authSession.phase === 'failed' && <span className="workspace-launcher__session-alert" role="alert">{developmentProfile ? '切換失敗，工作階段仍有效。' : '登出失敗，工作階段仍有效。'}</span>}
-          <button
-            type="button"
-            className="workspace-launcher__session-logout"
-            onClick={() => { void authSession.logout() }}
-            disabled={authSession.phase === 'processing'}
-            aria-label={sessionAction.replace('…', '')}
-          >
-            <LogOut size={15} aria-hidden="true" />
-            <span>{sessionAction}</span>
-          </button>
-        </div>
-      )}
     </aside>
   )
 }

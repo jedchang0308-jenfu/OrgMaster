@@ -30,6 +30,7 @@ type MatrixRole = { key: string; name: string; targets: Partial<Record<Governanc
 type AssignmentDialogState = { kind: 'add'; applicationId: 'ai-pdm' | 'orgmaster'; roleId: string; roleName: string } | { kind: 'details'; applicationId: GovernanceRoleAssignmentV2['applicationId']; roleId: string; roleName: string; employeeId: string }
 function assignmentStatusColor(assignment: GovernanceRoleAssignmentV2, at: number): AssignmentStatusColor { if (assignment.status === 'revoked') return 'revoked'; const from = Date.parse(assignment.validFrom); const to = assignment.validTo ? Date.parse(assignment.validTo) : null; if (Number.isFinite(from) && from > at) return 'future'; if (to !== null && Number.isFinite(to) && to <= at) return 'expired'; return 'effective' }
 function assignmentStatusLabel(status: AssignmentStatusColor) { return status === 'effective' ? '有效' : status === 'future' ? '尚未生效' : status === 'expired' ? '已到期' : '已撤銷' }
+function assignmentLifecycleEditable(assignment: GovernanceRoleAssignmentV2) { return assignment.applicationId !== 'financial-management-system' && (!('basis' in assignment) || (assignment.basis === 'manual' && 'subjectKind' in assignment && assignment.subjectKind === 'employee' && 'targetPrincipalId' in assignment && assignment.targetPrincipalId === null)) }
 function applicationName(applicationId: GovernanceRoleAssignmentV2['applicationId'], applications: Array<{ id: string; name: string }>) { return applications.find((application) => application.id === applicationId)?.name ?? (applicationId === 'ai-pdm' ? 'AI-PDM' : applicationId === 'orgmaster' ? 'OrgMaster' : '財務管理系統') }
 
 export function GovernanceCenter({ employees, departments, roles: _roles, currentOrganizationVersionId, currentOrganizationRevision = null, visibility = 'active', initialSection = 'identity', onSectionChange, workspaceMutationAllowed = true, refreshToken = 0, onChanged, onOpenEmployee }: Props) {
@@ -51,6 +52,8 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const [assignmentValidFrom, setAssignmentValidFrom] = useState(now().slice(0, 16))
   const [assignmentValidTo, setAssignmentValidTo] = useState('')
   const [assignmentDialog, setAssignmentDialog] = useState<AssignmentDialogState | null>(null)
+  const [assignmentRemovalId, setAssignmentRemovalId] = useState<string | null>(null)
+  const commandPendingRef = useRef(false)
   const assignmentDialogRef = useRef<HTMLDialogElement>(null)
   const [clockNow, setClockNow] = useState(Date.now())
   const [delegationSourceId, setDelegationSourceId] = useState('')
@@ -166,7 +169,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     }
   }, [assignmentRoleId, assignmentScopeKind, selectableRoles])
 
-  async function runCommand(command: GovernanceCommandV2, success: string) { setBusy(true); clearFeedback(); try { const result = await patchGovernanceDraft(revision, command); setSnapshot((current) => current ? { ...current, document: result.payload.document } : current); setRevision(result.revision || result.payload.revision); setNotice(result.payload.status === 'noop' ? '內容沒有變更' : success); onChanged?.(); return true } catch (error) { recordFailure(error); return false } finally { setBusy(false) } }
+  async function runCommand(command: GovernanceCommandV2, success: string) { if (commandPendingRef.current) return false; commandPendingRef.current = true; setBusy(true); clearFeedback(); try { const result = await patchGovernanceDraft(revision, command); setSnapshot((current) => current ? { ...current, document: result.payload.document } : current); setRevision(result.revision || result.payload.revision); setNotice(result.payload.status === 'noop' ? '內容沒有變更' : success); onChanged?.(); return true } catch (error) { recordFailure(error); return false } finally { commandPendingRef.current = false; setBusy(false) } }
   function assignmentValue(): GovernanceRoleAssignmentV2 | null {
     if (!assignmentEmployeeId || !assignmentRoleId || !draft) return null
     const selectedInternal = internalRoles.find((role) => role.id === assignmentRoleId)
@@ -210,9 +213,12 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   }
   async function submitAssignment() { const value = assignmentValue(); if (!value) { recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: [{ code: 'EXTERNAL_ROLE_UNKNOWN', message: '請選擇有效角色。' }] }); return } setBusy(true); clearFeedback(); try { const checked = await validateGovernanceAssignment(value); if (checked.payload.status !== 'valid') { recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: checked.payload.issues }); return } const ok = await runCommand({ type: 'UPSERT_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: value.applicationId === 'ai-pdm' ? '建立外部應用角色指派' : '建立 OrgMaster 治理角色指派', value }, '角色指派已加入草稿，尚未發布。'); if (ok) { setCheckResult(checked.payload); setAssignmentDialog(null) } } catch (error) { recordFailure(error) } finally { setBusy(false) } }
   async function revokeAssignment(value: GovernanceRoleAssignmentV2) { if (value.status !== 'active') return false; const ok = await runCommand({ type: 'REVOKE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '撤銷角色指派', id: value.id }, '角色指派已撤銷'); if (ok) setAssignmentDialog(null); return ok }
+  function assignmentRestoreBlocked(assignment: GovernanceRoleAssignmentV2) { return assignment.validTo !== null && Date.parse(assignment.validTo) <= clockNow ? '指派已到期，請新增有效期間的指派' : !employees.some((employee) => employee.id === assignment.employeeId && employee.status === 'active') ? '停用員工不能啟用角色指派' : assignment.applicationId === 'ai-pdm' && assignment.catalogVersion !== catalog?.catalogVersion ? '角色目錄已更新，請新增使用目前目錄的指派' : '' }
+  async function restoreAssignment(value: GovernanceRoleAssignmentV2) { if (!mutationAllowed || value.status !== 'revoked' || !assignmentLifecycleEditable(value) || assignmentRestoreBlocked(value)) return; const ok = await runCommand({ type: 'RESTORE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '啟用角色指派', id: value.id }, '角色指派已啟用於草稿，尚未發布。'); if (ok) closeAssignmentDialog() }
+  async function removeAssignment(value: GovernanceRoleAssignmentV2) { if (!mutationAllowed || value.status !== 'revoked' || !assignmentLifecycleEditable(value)) return; const ok = await runCommand({ type: 'REMOVE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '刪除已撤銷角色指派', id: value.id }, '角色指派已從草稿刪除，尚未發布。'); if (ok) closeAssignmentDialog() }
   function openAssignmentAdd(role: MatrixRoleTarget) { if (!mutationAllowed || !role.assignable || (role.applicationId !== 'orgmaster' && role.applicationId !== 'ai-pdm')) return; const scopeKind = role.applicationId === 'orgmaster' ? 'global' : (role.allowedScopeKinds[0] as typeof assignmentScopeKind | undefined) ?? 'workspace'; setAssignmentApplicationId(role.applicationId); setAssignmentRoleId(role.id); setAssignmentEmployeeId(''); setAssignmentScopeKind(scopeKind); setAssignmentScopeValue(scopeKind === 'workspace' ? 'current' : ''); setAssignmentValidFrom(new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)); setAssignmentValidTo(''); clearFeedback(); setAssignmentDialog({ kind: 'add', applicationId: role.applicationId, roleId: role.id, roleName: role.name }) }
-  function openAssignmentDetails(role: MatrixRoleTarget, employeeId: string) { clearFeedback(); setAssignmentDialog({ kind: 'details', applicationId: role.applicationId, roleId: role.id, roleName: role.name, employeeId }) }
-  function closeAssignmentDialog() { assignmentDialogRef.current?.close(); setAssignmentDialog(null) }
+  function openAssignmentDetails(role: MatrixRoleTarget, employeeId: string) { clearFeedback(); setAssignmentRemovalId(null); setAssignmentDialog({ kind: 'details', applicationId: role.applicationId, roleId: role.id, roleName: role.name, employeeId }) }
+  function closeAssignmentDialog() { assignmentDialogRef.current?.close(); setAssignmentDialog(null); setAssignmentRemovalId(null) }
   function submitDelegation() { const source = externalAssignments.find((value) => value.id === delegationSourceId); if (!source || !delegationToEmployeeId || !delegationValidTo || !delegationReason.trim()) { recordFailure({ code: 'ROLE_DELEGATION_INVALID' }); return } const value: GovernanceRoleDelegationV2 = { id: `delegation-${crypto.randomUUID()}`, sourceAssignmentId: source.id, fromEmployeeId: source.employeeId, toEmployeeId: delegationToEmployeeId, applicationId: 'ai-pdm', roleId: source.roleId, catalogVersion: source.catalogVersion!, scope: source.scope, status: 'active', validFrom: source.validFrom, validTo: new Date(delegationValidTo).toISOString(), reason: delegationReason.trim(), effectState: 'not-synchronized' }; void runCommand({ type: 'UPSERT_ROLE_DELEGATION', commandId: crypto.randomUUID(), reason: '建立角色代理', value }, '角色代理已建立，尚未同步至目標系統') }
   async function loadAudit() { try { const result = await loadGovernanceAudit(); setAudit(result.payload.items as Array<Record<string, unknown>>) } catch (error) { recordFailure(error) } }
   function changeSection(next: SectionId) { setSection(next); if (next !== 'assignments') setPrivilegedView(false); onSectionChange?.(next); clearFeedback(); if (next === 'audit') void loadAudit() }
@@ -243,10 +249,15 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
           const employeeAssignments = roleAssignmentsForCell.filter((assignment) => assignment.employeeId === employeeId)
           const statuses = [...new Set(employeeAssignments.map((assignment) => assignmentStatusColor(assignment, clockNow)))]
           const activeAssignments = employeeAssignments.filter((assignment) => assignment.status === 'active')
+          const revokedAssignments = employeeAssignments.filter((assignment) => assignment.status === 'revoked' && assignmentLifecycleEditable(assignment))
           return <li className="governance-matrix__person" key={employeeId}>
             <button type="button" className="governance-matrix__person-name" onClick={() => openAssignmentDetails(targetRole, employeeId)}>{employeeName(employees, employeeId)}{employeeAssignments.length > 1 && <small>{employeeAssignments.length} 筆</small>}</button>
             <div className="governance-matrix__person-statuses">{statuses.map((status) => <AssignmentStatusBadge key={status} status={status} />)}</div>
             {mutationAllowed && activeAssignments.length > 0 && <button type="button" className="governance-matrix__remove" aria-label={`撤銷 ${employeeName(employees, employeeId)} 的 ${targetRole.name} 指派`} title="撤銷員工指派" disabled={busy} onClick={() => activeAssignments.length === 1 ? void revokeAssignment(activeAssignments[0]) : openAssignmentDetails(targetRole, employeeId)}>×</button>}
+            {mutationAllowed && revokedAssignments.length > 0 && <div className="governance-matrix__actions">
+              <button type="button" aria-label={`啟用 ${employeeName(employees, employeeId)} 的 ${targetRole.name} 指派`} disabled={busy || !targetRole.assignable || (revokedAssignments.length === 1 && Boolean(assignmentRestoreBlocked(revokedAssignments[0])))} title={revokedAssignments.length === 1 ? assignmentRestoreBlocked(revokedAssignments[0]) || '啟用於草稿，發布後生效' : '選擇要啟用的指派'} onClick={() => revokedAssignments.length === 1 ? void restoreAssignment(revokedAssignments[0]) : openAssignmentDetails(targetRole, employeeId)}>啟用</button>
+              <button type="button" aria-label={`刪除 ${employeeName(employees, employeeId)} 的 ${targetRole.name} 指派`} disabled={busy} onClick={() => { openAssignmentDetails(targetRole, employeeId); if (revokedAssignments.length === 1) setAssignmentRemovalId(revokedAssignments[0].id) }}>刪除</button>
+            </div>}
           </li>
         })}</ul> : <span className="governance-matrix__no-assignments">尚無員工</span>}
         {showAddAssignment && <button type="button" className="governance-matrix__add" aria-label={`新增 ${targetRole.name} 指派`} title={addAssignmentDisabledReason} disabled={busy || !mutationAllowed || !targetRole.assignable} onClick={() => openAssignmentAdd(targetRole)}><span aria-hidden="true">＋</span> 新增</button>}
@@ -262,7 +273,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
         {assignmentApplicationId === 'ai-pdm' && employeeRecommendationAllowed(recommendationRole) && <GovernanceEmployeeRecommendations request={recommendationRequest} selectedEmployeeId={assignmentEmployeeId} disabled={busy || !mutationAllowed || visibility === 'hidden' || section !== 'assignments'} onSelect={employeeId => { if (employees.some(employee => employee.id === employeeId && employee.status === 'active')) setAssignmentEmployeeId(employeeId); else recordFailure({ code: 'EMPLOYEE_NOT_ACTIVE' }) }} />}
         <AssignmentForm employees={employees} departments={departments} applicationId={assignmentApplicationId} onApplicationChange={(value) => { setAssignmentApplicationId(value); setAssignmentRoleId(''); setAssignmentScopeKind(value === 'orgmaster' ? 'global' : 'workspace'); setAssignmentScopeValue(value === 'orgmaster' ? '' : 'current') }} onRoleChange={setAssignmentRoleId} roleId={assignmentRoleId} roles={selectableRoles} employeeId={assignmentEmployeeId} onEmployeeChange={setAssignmentEmployeeId} scopeKind={assignmentScopeKind} scopeValue={assignmentScopeValue} onScopeKindChange={(value) => { setAssignmentScopeKind(value); setAssignmentScopeValue(value === 'workspace' ? 'current' : '') }} onScopeValueChange={setAssignmentScopeValue} validFrom={assignmentValidFrom} validTo={assignmentValidTo} onValidFrom={setAssignmentValidFrom} onValidTo={setAssignmentValidTo} onSubmit={() => void submitAssignment()} busy={busy} contextLocked />
       </> : <>
-        <p className="governance-assignment-dialog__intro">範圍、期間及版本資訊集中顯示於此；點「撤銷此筆」只會撤銷該筆指派。</p>
+        <p className="governance-assignment-dialog__intro">操作只影響所選指派；草稿變更發布後生效。</p>
         <div className="governance-assignment-details">{ordinaryRoleAssignments.filter((assignment) => assignment.applicationId === assignmentDialog.applicationId && assignment.roleId === assignmentDialog.roleId && assignment.employeeId === assignmentDialog.employeeId).map((assignment) => {
           const pendingChange = pendingAssignmentChanges.find((change) => change.assignment.id === assignment.id)
           const status = assignmentStatusColor(assignment, clockNow)
@@ -270,6 +281,16 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
             <div className="governance-assignment-details__title"><strong>{assignment.roleNameSnapshot || assignment.roleCodeSnapshot}</strong><AssignmentStatusBadge status={status} /></div>
             <dl><div><dt>適用範圍</dt><dd>{assignmentScopeLabel(assignment.scope, departments)}</dd></div><div><dt>生效期間</dt><dd>{assignmentPeriod(assignment)}</dd></div><div><dt>目錄版本</dt><dd>{assignment.catalogVersion ?? 'OrgMaster 內部角色'}</dd></div><div><dt>發布狀態</dt><dd>{assignmentComparisonAvailable ? pendingChange ? `草稿待發布：${pendingChange.kind}` : '已包含於目前發布版本' : '無法與目前發布版本直接比較'}</dd></div></dl>
             {mutationAllowed && assignment.status === 'active' && <button type="button" className="button button--quiet" disabled={busy} onClick={() => void revokeAssignment(assignment)}>撤銷此筆指派</button>}
+            {mutationAllowed && assignment.status === 'revoked' && assignmentLifecycleEditable(assignment) && <div className="governance-assignment-details__actions">
+              {assignmentRemovalId === assignment.id ? <>
+                <p>刪除此筆指派？發布歷史與稽核紀錄仍會保留。</p>
+                <button type="button" className="button button--quiet" disabled={busy} onClick={() => setAssignmentRemovalId(null)}>取消刪除</button>
+                <button type="button" className="button button--danger" disabled={busy} onClick={() => void removeAssignment(assignment)}>刪除此筆指派</button>
+              </> : <>
+                <button type="button" className="button button--quiet" disabled={busy || Boolean(assignmentRestoreBlocked(assignment))} title={assignmentRestoreBlocked(assignment)} onClick={() => void restoreAssignment(assignment)}>啟用此筆指派</button>
+                <button type="button" className="button button--quiet" disabled={busy} onClick={() => setAssignmentRemovalId(assignment.id)}>刪除</button>
+              </>}
+            </div>}
           </article>
         })}</div>
       </>}

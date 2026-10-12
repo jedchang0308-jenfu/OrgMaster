@@ -347,6 +347,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
   - 來源 ID：`USER-2026-08-28-COMPOSABLE-PLANNING-DESKTOP`、`USER-2026-08-28-BRANCH-LEVEL-UI-REPLACEMENT`、`USER-2026-08-28-DEV039-HCS-ROUND-1`、`USER-2026-08-28-DEV039-HCS-ROUND-2`、`USER-2026-08-28-DEV039-HCS-ROUND-3`、`USER-2026-08-28-DEV039-HCS-ROUND-4`、`USER-2026-08-28-DEV039-MATURE-MODULE-SLICE-1`、`USER-2026-08-28-DEV039-ALL-CURRENT-FUNCTION-PARITY`、`USER-2026-08-30-STABLE-PANEL-OWNERSHIP-ARCHITECTURE`、`USER-2026-08-30-DEV039-S6-IMPLEMENTATION-READY`、`USER-2026-08-31-NATIVE-CROSS-PANEL-RELATION-PLACEMENT`、`USER-2026-08-31-FIRST-PRINCIPLES-RELATION-PLACEMENT-ARCHITECTURE`
   - 父任務：DEV-038
   - 下一步：Current Phase 已經 `4e3b2ce` 整合並由 `c8cc16f` 合併至 `master`；不重跑既有 E1～E3 證據，不再建立獨立candidate freeze／commit／merge任務。deploy／release只在使用者明確提出時進入單一release gate。
+  - 頂列選單維護（2026-10-12）：`codex/topbar-account-menu` 已完成三點選單、檢查更新與本人姓名／信箱／登出；本地 targeted tests、build 與桌面／手機 CUA 驗證通過，尚未合併或部署。詳見下方同日切片與 `output/playwright/dev039-account-menu-20261012/`，不新增交付分母。
   - 阻塞 / 恢復條件：Current Phase無開發 blocker。若未來需要schema／API／permission、第二business state、generic event bus、plugin、未登錄關係或改變ADR-008／009，另開DEV並重新做impact review。
   - 證據：S0～S6歷史證據與S7 B16 evidence位於`output/playwright/dev039/manifest.md`；S7新增`relationPlacement.test.ts`、`entityDrag.test.ts`、`ProcessPlanningWorkbench.test.tsx` composition harness、`ProcessDutyBridge.test.tsx`、`ProcessPlanningCanvas.lifecycle.test.tsx`、workspace architecture／layout regression及`scripts/dev039-s7-fixture.test.ts`，最新 targeted pure／fixture `11 files／57 tests`、component／composition `6 files／24 tests`（關聯與lifecycle合併重跑 `4 files／20 tests`）、full regression `160 files／664 tests（1 skipped）`、typecheck、build與source scan通過；Process canvas after-fix artifact為`F039-S7-E3-process-geometry-after-fix.png`，同一B16 split／reload／flow量測與產品 console `0／0`已記錄。B16 fixture已建立、讀回並封存；最新 E2／E3 record fixture為`draft-02d6deb8-9c2b-4653-85a9-a970b9bff50c`，archive manifest revision=`562a844e860c2baf9714986f5ce61a93fc92c565f06750c85022b21f517e656c`。Playwright E2 fresh artifacts為`F039-S7-E2-invalid-pair.png`、`F039-S7-E2-invalid.png`（語意為COMMIT-REJECT）、`F039-S7-E2-capability-loss.png`、`F039-S7-E2-409-recovery.png`、`F039-S7-E2-unload.png`，五案 status `200`、hydrated→after assignment／relation／link IDs與revision不變、persistence snapshot無「未儲存變更」、產品 diagnostics為空；五案均含 `historyEvidence` 合法 mutation＋恰好一次 Undo round-trip 回完整 canonical baseline，E2 aggregate為`Pass（evidence）`，E3兩案為`pass`。最新 E1 CUA evidence為主spec第26.21.18節／parity第16.15.16節（fixture `draft-5e4cbfa1-db5c-4c7c-af22-2b3000d0fcbc`、新增link `process-duty-5ca3f40b-7335-4bf0-9679-fde86117c778`、API status `200`、archive manifest revision `005fda19cd0655480ee0a4d71cdaf3a8ac0140bf783e6045e536d9dc6f372c56`）；該筆未驗證 strict `DataTransfer.types`，不計為 E1 pass。可重跑 script為`output/playwright/dev039/e2-admission.pw.ts`（本機需使用與helper相同的 Playwright `1.62.1` CLI，並可用`DEV039_E2_VERSION_ID`指定新fixture，避免`npx`另載一份測試runtime造成雙module）；fixture helper現已補loopback identity headers、Windows CLI entrypoint、timestamp-only 409 revision bump與stale route recovery；新增自動化 E2 fail-closed與Process canvas lifecycle tests 不改產品契約。
   - 歷史分支：`codex/dev-039-composable-workspace`；現行權威為`master@c8cc16f`
@@ -369,6 +370,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 - ✓ DEV-037 [開發點] [完成] [P0] [RD Implementation Complete／QA-QC Passed／Local Release Gate Pending／OrgMaster Only] 外部角色目錄與角色指派權責重整
   - 摘要：外部系統擁有自己的 Application Role、Permission、Role-Permission mapping 與領域審核政策；OrgMaster 只讀取具版本的角色目錄，集中治理員工角色指派、scope、有效期間、代理、指派審核及 audit。
   - 本輪 UI 修正：2026-10-07 發布版本辨識改善已完成本地 QC；精確目前版本置頂、歷史新到舊、發布原因與台北時間，16 tests／build／7 browser cases PASS；未部署正式站。
+  - 指派操作維護（2026-10-12）：已撤銷普通指派增加啟用／確認刪除；76 個唯一聚焦案例、final build 與 native middleware 隔離 CUA 通過。草稿／發布歷史邊界保留，尚未合併或部署；不新增交付分母。
   - 追加推薦 slice：2026-10-07 智慧推薦已本地實作，僅填新增表單；build／mocked UI capture 完成，API negative／race 與真實 AI provider 未驗證，不沿用歷史 QC 結論。
   - 來源 ID：`USER-2026-08-27-EXTERNAL-ROLE-CATALOG-ASSIGNMENT-BOUNDARY`
   - 父任務：DEV-027、DEV-035
@@ -1833,6 +1835,10 @@ Phase 1無剩餘P0／P1人類產品決策。DEV-004 `004-S0～S5`與DEV-006 S1�
 
 ## DEV-039：可組合規劃桌面與跨面板關聯配置
 
+### 2026-10-12 頂列帳號選單切片
+
+本輪新增頂列最右側水平三點選單，依使用者參考圖保留更新／分隔／姓名信箱與登出骨架；本地 `RD Implementation Complete / Local Targeted QC Passed / Production Not Deployed`，既有 DEV-039 完成基線不變。範圍／QA／結果見[權威切片契約](specs/DEV-039-composable-planning-workspace.md#2026-10-12-頂列帳號與更新選單)。只讀 session own 顯示信箱，更新以 same-origin/no-store JS／CSS URLs 比對並保留 dirty reload fence；不新增 migration／權限，不執行正式部署。6 檔 46 tests、修正後 helper 8/8 與 final build PASS；CUA desktop／1024／mobile、current／new／failed 更新、reload、missing email、logout／retry 與 keyboard PASS，evidence=`output/playwright/dev039-account-menu-20261012/`。測試 runtime 已停止／5089 釋放；成功測試分頁已關閉、viewport reset；最初連線失敗分頁因其 data URL 被 CUA policy 阻擋手動 close，保留工具的 turn-end 自動清理義務，owner 為本輪 Agent。user-owned 正式 tab 未導航／登出。
+
 狀態：`Prior Current Phase Complete / QA-QC Passed / Merged to master；2026-10-07 viewport-fit follow-up Scoped Browser QC Passed / Production Release Gated`
 文件成熟度：`Prior Implementation Complete / Prior QA-QC Passed / Repository Integrated / Scoped Viewport Follow-up Verified / Production Release Gated`
 節點類型：交付點
@@ -2629,6 +2635,10 @@ RD 現可直接依 spec 第 14 節 S0→S6 實作。若需要 allowlist 外 prod
 - 2026-08-27：建立 DEV-038 `Brief Ready`，記錄流程優先的規劃順序、三種圖形投影、ProcessNode↔Duty↔DutyPositionRelation↔Position 資料鏈、中央橋接欄、由左向右配置、React Flow＋Dagre 優先、DEV-034／036 相容邊界、Minimum Viable Slice、驗收及 Future Phase。未修改產品程式、測試、資料、dependency、deploy 或 release。
 
 ## DEV-037：外部角色目錄與角色指派權責重整
+
+### 2026-10-12 已撤銷指派操作切片
+
+本地 `RD Implementation Complete / Local Targeted QC Passed / Production Not Deployed`，沿[同日權威契約與結果](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-12-已撤銷指派操作目前本地切片)。三點選單先前修改與其他 DEV-058 文件保留；本切片僅 ordinary Employee assignment status-only restore／revoked draft removal、既有 API allowlist／稽核與 UI。12 files／75 tests＋final affected 3 files／18 tests、final build／db-boundary PASS；CUA 正常入口、維護模式／唯讀 gate、native 保存與 reload、刪除 cancel／conflict retry、keyboard、1242／1024／390 及 draft preview evidence=`output/playwright/dev037-assignment-actions-20261012/`。API/store 是本地隔離 JSON，browser auth／workspace 為 harness，不證明正式 Principal、PG 或發布生效；三個 exact PID／5091／tab 4 已清理、viewport reset，正式使用者 tab 保留。本輪 branch=`codex/topbar-account-menu`、base HEAD=`49e25a7e422ef6f224037b497693a2732429a447`，未 commit／merge／deploy。
 
 狀態：完成（`RD Implementation Complete / QA-QC Passed / Local Release Gate Pending / OrgMaster Only`）
 文件成熟度：`RD Implementation Complete`

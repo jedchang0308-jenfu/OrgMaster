@@ -25,7 +25,7 @@ export type DevelopmentAuthMode = {
 }
 
 export type AuthSessionView = {
-  user: { principalId: string; employeeId: string }
+  user: { principalId: string; employeeId: string; email?: string | null }
   session: { expiresAt: string }
   assuranceLevel: 'aal1' | 'aal2'
   developmentProfile?: DevelopmentAuthProfileView

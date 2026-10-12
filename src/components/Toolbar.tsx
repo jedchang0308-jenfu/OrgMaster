@@ -9,6 +9,7 @@ import { groupByDepartmentAndLevel } from '../positionGrouping'
 import type { Department, Employee, OrganizationLevel, PositionView } from '../types'
 import type { OrgWorkspaceVersionSummary, WorkspaceMode } from '../versionWorkspace'
 import { VersionSwitcher } from './VersionSwitcher'
+import { AccountMenu } from './AccountMenu'
 
 interface ToolbarProps {
   members: PositionView[]
@@ -172,6 +173,7 @@ export function Toolbar({
             </div>
           )}
         </div>
+        <AccountMenu employees={employees} reloadBlocked={isDirty || autoSavePending || autoSaveError} />
       </div>
     </header>
   )

@@ -1,5 +1,20 @@
 # DEV-039：可組合規劃桌面與跨面板關聯配置
 
+## 2026-10-12 頂列帳號與更新選單
+
+本輪使用者的 browser comment 授權 OrgMaster 本地實作；Medium、`RD Implementation Ready`。此切片與既有 workspace chrome 相容，保留版本／儲存／搜尋及 domain 權限，將側欄帳號操作移至頂列最右側三點按鈕。原 DEV-039 完整驗證紀錄不由本切片覆寫。
+
+- 參考圖骨架：頂列最右側水平三點，右對齊單一白色選單；上方「立即檢查更新」、分隔線、下方姓名／信箱與右側「登出」。資料取實際 session 的 Employee 與既有公司主信箱，缺失時顯示未提供；不得硬編參考圖帳號。
+- `/api/auth/me` 只在既有完整 session／Principal／epoch 驗證後，依該 session 的 Employee ID 讀取可選顯示信箱；忽略 caller 目標 ID。無信箱／讀取失敗仍保留 verified session，不授權或改變任何角色、登入、DB、schema、session lifetime 或跨專案存取。
+- 更新：同 origin 根頁 GET、no-store、timeout，比對目前載入與伺服器 HTML 的 module entry 與同 origin stylesheet URLs（涵蓋 CSS-only release）；缺失／非 HTML／HTTP 或 network failure 顯示可重試錯誤。有新版後明確點「更新並重新載入」；dirty／autosave pending／failed 時阻擋 reload。route 不變，檢查本身不 mutation、不 reload。
+- 操作：點擊／Enter／Space／箭頭可開；上下／Home／End 可換操作焦點；Escape 關閉並回到 trigger，Tab 或外部點擊關閉。登出沿用 AuthGate，处理中防重複、失敗保留 session 並可重試；本地角色切換沿用既有登出流程。
+- 範圍：Toolbar、AccountMenu、appUpdate、必要 CSS、auth me 顯示欄位及 targeted tests；不改 release executor、migration、provider 或正式資料。不執行 production 部署。
+- QA/QC：正常入口 → 展開 → 姓名／信箱 → 更新（current／available／error／pending）→ 登出（success／failure／pending）；fail-seeking 包含缺信箱、錯誤 HTML、dirty reload fence、重複操作與鍵盤收合。1242×668／390×844 實際畫面驗證對齊、浮層裁切、水平溢出、可見錯誤與代表性資料；targeted tests、build、來源 diff，隔離 runtime／UI cleanup。API/unit／本地 fixture 視覺各保留原層級，不宣稱 production PASS。
+
+結果：`Local Targeted QC Passed / Production Not Deployed`。6 檔／46 tests PASS；CSS-only 修正後 appUpdate 8/8 PASS（原 7 案＋新 1 案，非額外 8 案分母），最終 typecheck／client／server build PASS。CUA 操作最終 built app：1242×668／1024×768／390×844 的選單與 trigger 均在 viewport 內，document scrollWidth 等於 viewport；實際姓名／信箱與缺信箱、current／available／error 更新、明確 reload、End／Escape focus restore、正常登出、失敗保留與重試登出 PASS。dirty reload fence 與 pending duplicate 由 component tests 覆蓋，未冒充 browser 證據。
+
+證據位於 `output/playwright/dev039-account-menu-20261012/`：`targeted-tests.log`、`css-update-tests.log`、`build.log`、`observations.json`、`runtime.json`、`menu-desktop-final.png`、`menu-mobile.png`、`retry-errors.png`。HTTP fixture 回應與組織資料為本地隔離合成／讀取後 in-memory 變體；本 fixture 的 published assignments 明確為空，治理列仍為 8 個角色，帳號資料非 production readback。初次 sandbox temp rename failure 未跑任何測試；升權後同範圍重跑 PASS。初次 sandbox loopback timeout 由本地 runtime 升權解決；CUA 未開放 navigator/browser exact-version 查詢，版本未知，不宣稱該項已測。目標 UI 截圖已視覺對照參考骨架；scope 不包含完整 DEV-039 回歸或 production 認證／metadata DB readback。
+
 狀態：`Current Phase Complete / QA-QC Passed / Merged to master / Release Not Requested`
 
 > **2026-10-07 viewport-fit follow-up（current local branch）**：修正desktop responsive focused-stack投影停用fine-pointer tab drag及synthetic stack path無法更新saved layout的問題。使用者從投影stack的edge drop會明確建立 dragged panel＋remaining tabs split；自動viewport projection本身仍不修改saved layout。此 follow-up於`持續優化`完成本地自動化、build與scope browser QC：1024px fine-pointer桌面六panel不足時投影單一stack，saved layout不變且tab仍可拖曳；實際edge drop形成兩個region／一條separator並保留六tabs，明確drop後才保存新layout。390px touch維持單區且tab不可拖曳；兩viewport無document水平溢出。外層split admission納入實際5px divider，boundary為564／565px。詳見[本輪分支驗證](../qa/OrgMaster-branch-predeployment-validation-2026-10-07.md)。既有merge狀態只代表先前基線；本輪未merge或deploy。
