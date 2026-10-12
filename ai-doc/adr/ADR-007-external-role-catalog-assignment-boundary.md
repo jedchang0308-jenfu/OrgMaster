@@ -8,6 +8,25 @@
 取代：`ai-doc/adr/ADR-004-authorization-approval-policy-boundary.md` 的外部應用角色／權限／審核政策權威條款
 保留：ADR-004 的共用 IAM `2A`、AI-PDM approval transaction／domain apply 邊界；ADR-005 的獨立治理 store 與不可變發布快照原則
 
+<a id="2026-10-12-b-dev058"></a>
+
+## 2026-10-12 B 方案與動態角色協作增補
+
+分類：`Human Confirmed / Compatible Refinement / RD Implementation Ready / Documents Only`。
+決策來源：人類選B、要求與AI-PDM DEV-123協作，再要求補至RD Implementation Ready，明定本輪僅OrgMaster文件、不開始程式實作。native owner=`ORGMASTER/DEV-058`，來源=`AIPDM/DEV-123#orgmaster-compatibility`；[任務](../dev_task.md#dev-058-federated-role-catalog-central-assignment)／[唯一SPEC](../specs/DEV-058-federated-role-catalog-central-assignment.md)／[QA24案](../qa/DEV-058-dynamic-role-assignment-validation-plan.md)。
+
+1. 各系統管理角色與能力／current policy；OrgMaster唯一管理人員任用、scope、期間、代理、撤銷及發布。選B取代前輪C討論，不新增C產品遷移。
+2. legacy九角色原hash與exact artifact保持；dynamic依versioned current/history、builtin prefix、custom template、lifecycle、canonical及受控profile驗證，不要求每次合法能力／custom變更部署OrgMaster。
+3. inactive停止該角色能力但保留合法任用，禁新指派、可讀可撤銷；同ID恢復只採當前未revoked／expired且scope／來源合法者。角色restore不等於任用restore，provenance／snapshot／audit不改寫。
+4. 合格人員直接保存／發布，人控與提醒維持；不新增maker-checker、風險分數阻擋或逾期提醒凍結。現行Principal、exact privileged、scope／validity及position來源失效guard保留。
+5. 不增加業務request對OrgMasterHTTP的依賴。Org管理API故障暫停配人；sharedDB／IdP仍是依賴，無本地ACL／stale授權保底。
+6. READ COMMITTED及freshactor／writer fence保持；單操作凍結已驗catalog context，不凍結actor資格／不跨ownercore取鎖。相容於producer允許重疊交易的原provenance任用。
+7. generic V2命令把tuple／CAS／actor納hash，結果與既有audit同交易；new result欄納eventhash，old bytes保持。unknown查原ID，同ID原payload重送；不新增command store／worker。
+8. grants v4欄位／manifest與applied029不變；own readiness一表一view、initialNOT_READY、owner-only，公開12欄對齊DEV-123。READY需真consumer、source／profile及owner evidence，不是marker。
+9. 文件成熟度與產品／release分開；本輪AI-PDM只讀，code／SQL／runner／tests及正式操作均未開始。producer package／native雙端證據按各owner進入條件取得，不用mock完成peer。
+
+沿用本ADR，未新增長期權責選項；不另建重複ADR。不改既有部署、appliedmigrations、immutablehistory或原驗證結論。
+
 ## 2026-08-30 Jenfu Platform Amendment
 
 分類：`Human Confirmed / Intentional Replacement / Documents Only`
