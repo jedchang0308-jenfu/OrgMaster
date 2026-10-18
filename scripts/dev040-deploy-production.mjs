@@ -129,8 +129,16 @@ export function selectDeployInfrastructureRef(options, baseline) {
   return options.smokeRotationRef ?? options.toolRotationRef ?? options.infraReuseRef ?? options.infraReceiptRef ?? baseline.intent.infraReceiptRef
 }
 
+export function assertDeployToolRotationSelection(options, intent, infra) {
+  if (!options.toolRotationRef) return true
+  const selectedDirectly = canonicalize(options.toolRotationRef) === canonicalize(intent.infraReceiptRef)
+  if ((selectedDirectly && infra?.toolRotation?.schemaVersion !== 'orgmaster.ordinary-tool-image-rotation.v1') ||
+      (!selectedDirectly && !options.smokeRotationRef)) throw new Error('TOOL_ROTATION_REF_INVALID')
+  return true
+}
+
 export async function verifyDeployProductionRelease({ options, ...input }) {
-  if (options.toolRotationRef && (canonicalize(options.toolRotationRef) !== canonicalize(input.intent.infraReceiptRef) || input.values.infra?.toolRotation?.schemaVersion !== 'orgmaster.ordinary-tool-image-rotation.v1')) throw new Error('TOOL_ROTATION_REF_INVALID')
+  assertDeployToolRotationSelection(options, input.intent, input.values.infra)
   if (options.smokeRotationRef && canonicalize(options.smokeRotationRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_ROTATION_REF_MISMATCH')
   if (options.infraReuseRef && canonicalize(options.infraReuseRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_REUSE_REF_MISMATCH')
   if (input.values.infra?.mutationProfile === 'APP_INFRA_REUSE' && !options.infraReuseRef) throw new Error('SMOKE_REUSE_REF_REQUIRED')
