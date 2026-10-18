@@ -2,7 +2,7 @@
 
 ## DEV-040 production tool 設定解耦（2026-10-18）
 
-[來源與映像依賴契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018) → [本輪任務](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)。中立 target／connection options、四個設定呼叫端、三個映像 package 與現行 catalog 延遲快照；驗證由 `test:production-tools` 及 required `Production Source QC` 維護。發布準備限 PR／CI／source packaging，正式 build proof／rotation／owner release 依既有契約另行執行。
+[來源與映像依賴契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018) → [受控工具 rotation／一般發布](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018) → [本輪任務](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)。PR134 已 merge；續授權僅 OrgMaster 補齊 source-bound runner image-only plan／完整75地址證據與原 ten-stage ordinary release。新增 `test:dev-040:tool-rotation` 納入 required Source QC；正式 rotation／發布／postverify 仍待本輪 provider evidence，維持零 DDL、資料／grant／IAM／Secret／跨專案限制。
 
 ## DEV-037 已撤銷指派操作（2026-10-12）
 

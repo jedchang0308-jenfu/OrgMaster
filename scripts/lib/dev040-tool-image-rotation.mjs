@@ -1,0 +1,243 @@
+import { spawnSync } from 'node:child_process'
+import { gunzipSync } from 'node:zlib'
+import { canonicalize, sha256, assertImmutableRef } from './dev012-owner-release-runtime.mjs'
+import { readGitBlob } from './dev012-owner-stage-executor.mjs'
+import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
+
+export const TOOL_RECIPES = Object.freeze([
+  'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
+  'infra/google-cloud/dev-040-production-release/dev057-principal-pair-diagnostic.Dockerfile',
+  'infra/google-cloud/dev-040-production-release/dev057-v4-catalog-readback.Dockerfile',
+])
+export const MIGRATION_JOB_ADDRESS = 'google_cloud_run_v2_job.migration[0]'
+const H40 = /^[a-f0-9]{40}$/u
+const H64 = /^[a-f0-9]{64}$/u
+const same = (a, b) => canonicalize(a) === canonicalize(b)
+function fail(code) { throw Object.assign(new Error(`TOOL_ROTATION_${code}`), { code: `TOOL_ROTATION_${code}` }) }
+export function sealToolEvidence(core) { return { ...core, receiptSha256: sha256(canonicalize(core)) } }
+export function assertToolSeal(value) {
+  const { receiptSha256, ...core } = value ?? {}
+  if (!H64.test(receiptSha256 ?? '') || receiptSha256 !== sha256(canonicalize(core))) fail('EVIDENCE_HASH_INVALID')
+  return value
+}
+export function assertToolOwner(profile) {
+  if (profile.application.id !== 'orgmaster' || profile.target.projectId !== 'jenfu-platform-prod'
+    || profile.target.region !== 'asia-east1' || profile.target.serviceName !== 'orgmaster-prod'
+    || profile.artifact.releaseBucket !== 'jenfu-platform-prod-orgmaster-release'
+    || profile.state.backendKey !== 'dev-040-r2/production-release/default.tfstate') fail('OWNER_INVALID')
+}
+export function toolExecutableInputs(root, revision) {
+  if (!H40.test(revision)) fail('SOURCE_INVALID')
+  const recipe = TOOL_RECIPES[0]
+  const read = file => readGitBlob(root, file, revision)
+  const files = [recipe, ...read(recipe).toString('utf8').split(/\r?\n/u)
+    .filter(line => line.startsWith('COPY ')).flatMap(line => line.trim().split(/\s+/u).slice(1, -1))]
+  for (const file of ['.dockerignore', `${recipe}.dockerignore`, '.gitattributes']) {
+    const exists = spawnSync('git', ['cat-file', '-e', `${revision}:${file}`], { cwd: root, windowsHide: true })
+    if (exists.status === 0) files.push(file)
+  }
+  if (files.some(file => !/^[A-Za-z0-9._/-]+$/u.test(file) || file.includes('..'))) fail('COPY_INVALID')
+  return [...new Set(files)].sort().map(path => ({ path, sha256: sha256(read(path)) }))
+}
+export function toolInfrastructureFingerprint(root, revision) {
+  if (!H40.test(revision)) fail('SOURCE_INVALID')
+  const result = spawnSync('git', ['ls-tree', '-r', '-z', revision, '--',
+    'infra/google-cloud/dev-040-production-release', 'config/release/dev040-orgmaster-independent-production-v3.json',
+    'config/release/dev040-production-release-infra-plan.json', 'config/dev-010/n1c-orgmaster.json'],
+  { cwd: root, encoding: null, windowsHide: true })
+  if (result.status !== 0 || !result.stdout.length) fail('SOURCE_INVALID')
+  const entries = result.stdout.toString('utf8').split('\0').filter(Boolean)
+    .filter(entry => !TOOL_RECIPES.includes(entry.split('\t').at(-1)))
+  return sha256(entries.join('\0'))
+}
+export function rotationAddresses(infraProfile) {
+  const addresses = [...(infraProfile.stageA ?? []), ...(infraProfile.stageBAdditional ?? [])].sort()
+  if (infraProfile.ownerApplicationId !== 'orgmaster' || infraProfile.projectId !== 'jenfu-platform-prod'
+    || infraProfile.region !== 'asia-east1' || infraProfile.backendKey !== 'dev-040-r2/production-release/default.tfstate'
+    || !addresses.length || new Set(addresses).size !== addresses.length) fail('ADDRESS_SET_INVALID')
+  return addresses
+}
+export function assertToolRotationPlan({ plan, infraProfile, previousImage, nextImage, allowNoop = false }) {
+  const imagePattern = /^asia-east1-docker\.pkg\.dev\/jenfu-platform-prod\/orgmaster-release\/orgmaster-migration-runner@sha256:[a-f0-9]{64}$/u
+  if (![previousImage, nextImage].every(value => imagePattern.test(value ?? '')) || (!allowNoop && previousImage === nextImage)
+    || plan.errored === true || plan.complete === false || !Array.isArray(plan.resource_changes)
+    || (plan.deferred_changes?.length ?? 0)) fail('PLAN_INVALID')
+  const addresses = rotationAddresses(infraProfile)
+  const rows = [...plan.resource_changes]
+  // Terraform omits already-resolved data sources from resource_changes. They
+  // remain bound by the complete provider-refreshed prior state, not guessed.
+  const missing = addresses.filter(address => !rows.some(row => row.address === address))
+  if (missing.length) {
+    const prior = plan.prior_state?.values?.root_module
+    if ((prior?.child_modules?.length ?? 0) || !same(prior?.resources?.map(row => row.address).sort(), addresses)) fail('ADDRESS_SET_INVALID')
+    for (const address of missing) {
+      const row = prior.resources.find(value => value.address === address)
+      if (!address.startsWith('data.') || row?.mode !== 'data' || !row.values) fail('ADDRESS_SET_INVALID')
+      rows.push({ address, mode: 'data', change: { actions: ['no-op'], before: row.values, after: row.values } })
+    }
+  }
+  if (!same(rows.map(row => row.address).sort(), addresses) || new Set(rows.map(row => row.address)).size !== rows.length) fail('ADDRESS_SET_INVALID')
+  for (const row of rows) {
+    if (!['managed', 'data'].includes(row.mode)) fail('ACTION_DENIED')
+    const actions = row.change?.actions
+    const expected = row.address === MIGRATION_JOB_ADDRESS && previousImage !== nextImage ? 'update'
+      : row.mode === 'data' ? ['read', 'no-op'].find(action => same(actions, [action])) : 'no-op'
+    if (!expected || !same(actions, [expected]) || (row.mode === 'data') !== row.address.startsWith('data.')
+      || (row.change?.importing != null) || (row.change?.replace_paths?.length ?? 0)) fail('ACTION_DENIED')
+    if (expected === 'no-op' && !same(row.change.before, row.change.after)) fail('NON_IMAGE_CHANGE_DENIED')
+  }
+  const job = rows.find(row => row.address === MIGRATION_JOB_ADDRESS)
+  const before = structuredClone(job.change.before), after = structuredClone(job.change.after)
+  for (const row of [before, after]) if (row?.project !== 'jenfu-platform-prod' || row.location !== 'asia-east1'
+    || row.name !== 'orgmaster-prod-migration-runner') fail('JOB_INVALID')
+  const oldContainer = before.template?.[0]?.template?.[0]?.containers?.[0]
+  const newContainer = after.template?.[0]?.template?.[0]?.containers?.[0]
+  if (oldContainer?.image !== previousImage || newContainer?.image !== nextImage) fail('IMAGE_INVALID')
+  oldContainer.image = newContainer.image = '__BOUND_IMAGE__'
+  if (before.client === 'gcloud' && /^\d+(?:\.\d+){1,3}$/u.test(before.client_version ?? '') && after.client == null && after.client_version == null) {
+    delete before.client; delete before.client_version; delete after.client; delete after.client_version
+  }
+  if (!same(before, after)) fail('NON_IMAGE_CHANGE_DENIED')
+  return { schemaVersion: 'jenfu.dev012.image-rotation-proof.v1',
+    addressActions: rows.map(row => [row.address, row.change.actions[0]]).sort((a, b) => a[0].localeCompare(b[0])),
+    updates: previousImage === nextImage ? [] : [{ address: job.address, before: job.change.before, after: job.change.after }] }
+}
+
+export async function assertToolBuildProof({ root, profile, build, sourceRevision, imageDigest, transport }) {
+  assertToolSeal(build)
+  assertMigrationToolBuildEvidence({ profile, proof: build })
+  if (build.sourceRevision !== sourceRevision || build.artifactDigest !== imageDigest
+    || build.status !== 'PASS' || build.scan?.status !== 'PASS' || build.scan?.blockingVulnerabilityCount !== 0
+    || build.cloudBuild?.status !== 'SUCCESS' || build.artifactRegistry?.uri !== imageDigest
+    || build.scan?.resourceUrl !== `https://${imageDigest}`
+    || !H64.test(build.buildInputSha256 ?? '') || !H64.test(build.sourceSha256 ?? '')
+    || build.sourceObject?.generation !== String(build.cloudBuild?.sourceProvenance?.resolvedStorageSource?.generation)) fail('BUILD_PROOF_INVALID')
+  const storage = build.cloudBuild.sourceProvenance.resolvedStorageSource
+  if (storage.bucket !== profile.artifact.releaseBucket || build.sourceObject.uri !== `gs://${storage.bucket}/${storage.object}`) fail('BUILD_PROOF_INVALID')
+  // This is historical evidence validation, not a new source freeze: app-only
+  // releases may have a newer HEAD while retaining unchanged tool inputs.
+  const identity = spawnSync('git', ['ls-tree', '-r', '-z', '--full-tree', sourceRevision],
+    { cwd: root, encoding: null, maxBuffer: 256 * 1024 * 1024, windowsHide: true })
+  if (identity.status !== 0 || !identity.stdout.length || build.sourceSha256 !== sha256(identity.stdout)) fail('SOURCE_PROOF_INVALID')
+  const archive = spawnSync('git', ['archive', '--format=tar', '--prefix=source/', sourceRevision],
+    { cwd: root, encoding: null, maxBuffer: 256 * 1024 * 1024, windowsHide: true })
+  if (archive.status !== 0 || !H64.test(build.sourceObject.sha256 ?? '')
+    || build.sourceObject.uri !== `gs://${profile.artifact.releaseBucket}/source/archives/${build.sourceObject.sha256}/source.tar.gz`) fail('SOURCE_PROOF_INVALID')
+  // Preserve the original compressed-byte hash. Windows/Linux gzip OS headers
+  // differ, so recompression is not an archive identity comparison.
+  const frozenArchive = await transport.readBytes(build.sourceObject.uri, { prefixes: ['source'], expectedSha256: build.sourceObject.sha256 })
+  let expanded
+  try { expanded = gunzipSync(frozenArchive.bytes, { maxOutputLength: 256 * 1024 * 1024 }) } catch { fail('SOURCE_PROOF_INVALID') }
+  if (sha256(frozenArchive.bytes) !== build.sourceObject.sha256 || !expanded.equals(archive.stdout)) fail('SOURCE_PROOF_INVALID')
+}
+
+export function assertToolRotationState({ state, infraProfile, profile, sourceRevision, image, controllerImage, foundationHash }) {
+  assertToolOwner(profile)
+  const resources = module => [...(module?.resources ?? []), ...(module?.child_modules ?? []).flatMap(resources)]
+  const rows = resources(state.stateJson?.values?.root_module)
+  if (!same(rows.map(row => row.address).sort(), rotationAddresses(infraProfile))
+    || new Set(rows.map(row => row.address)).size !== rows.length || !Number.isSafeInteger(state.stateMeta?.serial)
+    || state.stateMeta.serial < 1 || typeof state.stateMeta.lineage !== 'string' || !state.stateMeta.lineage) fail('STATE_READBACK_INVALID')
+  const manifest = state.stateJson.values.outputs?.app_release_infra_manifest?.value ?? state.stateJson.outputs?.app_release_infra_manifest?.value
+  if (manifest?.source_revision !== sourceRevision || manifest.project_id !== profile.target.projectId || manifest.region !== profile.target.region
+    || manifest.migration_runner_digest !== image || manifest.controller_image_digest !== controllerImage
+    || manifest.foundation_manifest_sha256 !== foundationHash || manifest.application_service !== profile.target.serviceName
+    || manifest.release_bucket !== profile.artifact.releaseBucket || manifest.incident_runtime !== true) fail('STATE_READBACK_INVALID')
+  const job = rows.find(row => row.address === MIGRATION_JOB_ADDRESS)?.values
+  if (job?.name !== 'orgmaster-prod-migration-runner' || job.project !== profile.target.projectId || job.location !== profile.target.region
+    || job.template?.[0]?.template?.[0]?.containers?.[0]?.image !== image) fail('STATE_READBACK_INVALID')
+  return manifest
+}
+
+/** Native prepare validates immutable evidence; the operator also reads live state before dispatch. */
+export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline }) {
+  assertToolOwner(profile); assertToolSeal(receipt)
+  const proof = receipt.toolRotation
+  if (receipt.schemaVersion !== 'jenfu.dev012.app-infra-receipt.v1' || receipt.mutationProfile !== 'APP_INFRA_IMAGE_ROTATION'
+    || receipt.ownerApplicationId !== 'orgmaster' || receipt.projectId !== profile.target.projectId || receipt.region !== profile.target.region
+    || receipt.status !== 'APPLIED' || receipt.releaseAuthority !== true || receipt.evidenceScope !== 'PRODUCTION_PROVIDER'
+    || proof?.schemaVersion !== 'orgmaster.ordinary-tool-image-rotation.v1' || proof.ddlExecuted !== 0
+    || !H40.test(receipt.sourceRevision ?? '') || !H40.test(proof.baselineSourceRevision ?? '')
+    || !H64.test(receipt.foundationManifestSha256 ?? '') || !H64.test(receipt.binaryPlanSha256 ?? '')
+    || !H64.test(receipt.planJsonSha256 ?? '') || !H64.test(receipt.stateJsonSha256 ?? '')
+    || receipt.controllerImageDigest !== proof.previousControllerImageDigest) fail('RECEIPT_INVALID')
+  const read = async ref => {
+    assertImmutableRef(ref, profile.artifact.releaseBucket, ['receipts'])
+    return transport.readJson(ref, profile.artifact.releaseBucket, ['receipts'])
+  }
+  const [planRead, buildRead, stateRead, outputRead, beforeJobRead, afterJobRead, beforeStateRead, originalIntentRead, priorInfraRead, controlRead] = await Promise.all([
+    read(proof.planJsonRef), read(proof.buildProofRef), read(proof.afterStateRef), read(proof.outputManifestRef),
+    read(proof.providerJobBeforeRef), read(proof.providerJobAfterRef),
+    read(proof.beforeStateRef), read(proof.baselineIntentRef), read(proof.baselineInfraRef),
+    read(proof.controlSnapshotRef),
+  ])
+  assertImmutableRef(proof.binaryPlanRef, profile.artifact.releaseBucket, ['receipts'])
+  if (proof.binaryPlanRef.sha256 !== receipt.binaryPlanSha256 || proof.planJsonRef.sha256 !== receipt.planJsonSha256
+    || proof.afterStateRef.sha256 !== receipt.stateJsonSha256 || proof.outputManifestRef.sha256 !== receipt.outputManifestSha256) fail('PLAN_HASH_INVALID')
+  const binary = await transport.readBytes(proof.binaryPlanRef.uri, { prefixes: ['receipts'], expectedSha256: receipt.binaryPlanSha256 })
+  if (sha256(binary.bytes) !== receipt.binaryPlanSha256 || sha256(planRead.bytes) !== receipt.planJsonSha256
+    || sha256(stateRead.bytes) !== receipt.stateJsonSha256 || sha256(outputRead.bytes) !== receipt.outputManifestSha256) fail('PLAN_HASH_INVALID')
+  const infraProfile = JSON.parse(readGitBlob(root, 'config/release/dev040-production-release-infra-plan.json', intent.sourceRevision))
+  const derived = assertToolRotationPlan({ plan: planRead.value, infraProfile, previousImage: proof.previousMigrationRunnerDigest, nextImage: receipt.migrationRunnerDigest })
+  if (!same(receipt.imageRotation, { ...derived, sourceRevision: receipt.sourceRevision, planJsonSha256: receipt.planJsonSha256 })
+    || receipt.terraformAddressCount !== rotationAddresses(infraProfile).length
+    || receipt.terraformAddressesSha256 !== sha256(canonicalize(rotationAddresses(infraProfile)))) fail('PLAN_PROOF_INVALID')
+  const build = buildRead.value
+  await assertToolBuildProof({ root, profile, build, sourceRevision: receipt.sourceRevision, imageDigest: receipt.migrationRunnerDigest, transport })
+  const sourceProof = proof.sourceProof
+  if (sourceProof?.sourceRevision !== receipt.sourceRevision || sourceProof.repository !== profile.application.repository
+    || sourceProof.branch !== profile.application.branch || sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
+    || sourceProof.branchProtected !== true || sourceProof.requiredSourceQc !== 'SUCCESS') fail('SOURCE_PROOF_INVALID')
+  const originalIntent = originalIntentRead.value, priorInfra = priorInfraRead.value
+  if (originalIntent.ownerApplicationId !== 'orgmaster' || originalIntent.sourceRevision !== proof.baselineSourceRevision
+    || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)
+    || priorInfra.migrationRunnerDigest !== proof.previousMigrationRunnerDigest
+    || priorInfra.controllerImageDigest !== receipt.controllerImageDigest
+    || priorInfra.foundationManifestSha256 !== receipt.foundationManifestSha256) fail('BASELINE_INVALID')
+  const { controlSha256, ...controlCore } = controlRead.value
+  if (controlRead.ref.sha256 !== proof.controlBaseline?.sha256 || controlSha256 !== sha256(canonicalize(controlCore))
+    || controlCore.state !== 'FINALIZED' || controlCore.result !== 'RELEASED' || controlCore.ownerApplicationId !== 'orgmaster'
+    || controlCore.service !== 'orgmaster-prod' || controlCore.sourceRevision !== proof.baselineSourceRevision
+    || controlCore.releaseId !== originalIntent.releaseId) fail('BASELINE_INVALID')
+  const manifest = assertToolRotationState({ state: stateRead.value, infraProfile, profile, sourceRevision: receipt.sourceRevision,
+    image: receipt.migrationRunnerDigest, controllerImage: receipt.controllerImageDigest, foundationHash: receipt.foundationManifestSha256 })
+  if (stateRead.value.stateMeta.serial !== receipt.stateSerial || stateRead.value.stateMeta.lineage !== receipt.stateLineage
+    || !same(manifest, outputRead.value)) fail('STATE_READBACK_INVALID')
+  if (beforeStateRead.value.stateMeta.lineage !== receipt.stateLineage
+    || !Number.isSafeInteger(beforeStateRead.value.stateMeta.serial) || beforeStateRead.value.stateMeta.serial >= receipt.stateSerial) fail('STATE_READBACK_INVALID')
+  const beforeSource = beforeStateRead.value.stateJson?.values?.outputs?.app_release_infra_manifest?.value?.source_revision
+    ?? beforeStateRead.value.stateJson?.outputs?.app_release_infra_manifest?.value?.source_revision
+  if (!H40.test(beforeSource ?? '')) fail('STATE_READBACK_INVALID')
+  assertToolRotationState({ state: beforeStateRead.value, infraProfile, profile, sourceRevision: beforeSource,
+    image: proof.previousMigrationRunnerDigest, controllerImage: receipt.controllerImageDigest, foundationHash: receipt.foundationManifestSha256 })
+  if (planRead.value.variables?.source_revision?.value !== receipt.sourceRevision
+    || planRead.value.variables?.migration_runner_image_digest?.value !== receipt.migrationRunnerDigest
+    || planRead.value.variables?.controller_image_digest?.value !== receipt.controllerImageDigest
+    || planRead.value.variables?.foundation_manifest_sha256?.value !== receipt.foundationManifestSha256) fail('PLAN_PROOF_INVALID')
+  if (toolInfrastructureFingerprint(root, proof.baselineSourceRevision) !== toolInfrastructureFingerprint(root, receipt.sourceRevision)
+    || toolInfrastructureFingerprint(root, receipt.sourceRevision) !== toolInfrastructureFingerprint(root, intent.sourceRevision)
+    || !same(toolExecutableInputs(root, receipt.sourceRevision), toolExecutableInputs(root, intent.sourceRevision))) fail('SOURCE_INPUT_DRIFT')
+  const before = beforeJobRead.value, after = afterJobRead.value
+  if (before.name !== after.name || before.uid !== after.uid || before.uid !== proof.jobUid
+    || after.name !== `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/orgmaster-prod-migration-runner`
+    || after.reconciling === true || String(after.observedGeneration) !== String(after.generation)) fail('JOB_READBACK_INVALID')
+  const templateBefore = structuredClone(before.template), templateAfter = structuredClone(after.template)
+  if (templateBefore?.template?.containers?.[0]?.image !== proof.previousMigrationRunnerDigest
+    || templateAfter?.template?.containers?.[0]?.image !== receipt.migrationRunnerDigest) fail('JOB_READBACK_INVALID')
+  templateBefore.template.containers[0].image = templateAfter.template.containers[0].image = '__BOUND_IMAGE__'
+  if (!same(templateBefore, templateAfter)) fail('NON_IMAGE_CHANGE_DENIED')
+  if (receipt.foundationManifestSha256 !== outputRead.value.foundation_manifest_sha256
+    || receipt.migrationRunnerDigest !== outputRead.value.migration_runner_digest
+    || receipt.controllerImageDigest !== outputRead.value.controller_image_digest
+    || outputRead.value.source_revision !== receipt.sourceRevision) fail('STATE_READBACK_INVALID')
+  const live = await transport.request(`https://run.googleapis.com/v2/${after.name}`)
+  if (live.uid !== after.uid || live.reconciling === true || String(live.observedGeneration) !== String(live.generation)
+    || !same(live.template, after.template)) fail('LIVE_JOB_DRIFT')
+  // The first publication joins the exact original baseline. Later app-only
+  // publications may retain the same immutable tool proof with unchanged inputs.
+  if (!same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
+    && !same(proof.baselineIntentRef, intent.baselineIntentRef)) fail('BASELINE_INVALID')
+  return { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', sourceRevision: receipt.sourceRevision,
+    migrationRunnerDigest: receipt.migrationRunnerDigest, binaryPlanRef: proof.binaryPlanRef, planJsonRef: proof.planJsonRef,
+    terraformAddressCount: receipt.terraformAddressCount, ddlExecuted: 0 }
+}

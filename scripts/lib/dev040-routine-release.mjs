@@ -2,6 +2,7 @@ import { assertSmokeRotationContinuation, assertSmokeInfraReuseContinuation, rea
 import { readPrincipalOnlyRepairBaseline } from './dev057-principal-forward-repair.mjs'
 import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
+import { assertOrdinaryToolRotation } from './dev040-tool-image-rotation.mjs'
 import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256 } from './dev012-owner-release-runtime.mjs'
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
@@ -847,6 +848,10 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     : values.readiness?.devId === 'DEV-014'
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
+  const toolRotation = values.infra?.toolRotation == null ? null : await assertOrdinaryToolRotation({
+    root, profile, transport, intent, receipt: values.infra, baseline,
+  })
+  if (toolRotation && (controlledTransition || baseline.repair || !same(runtimeConfig, baselineRuntime))) fail('TOOL_ROTATION_ORDINARY_ONLY')
   const infrastructureHash = lifecycleGuard
     ? (root, revision) => transitionFingerprint(root, revision, [], dev014PrincipalLifecycleInfrastructureInputs)
     : ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
@@ -858,7 +863,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (!values.infra || same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)) fail('ROUTINE_INFRA_CHANGED')
     if (controlledTransition?.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION') cutoverInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
     else if (controlledTransition?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION') principalSmokeInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
-    else fail('ROUTINE_INFRA_CHANGED')
+    else if (!toolRotation) fail('ROUTINE_INFRA_CHANGED')
   }
   if (baseline.repair) {
     if (!intent.principalOnlyRecovery || !same(runtimeConfig, baselineRuntime)) fail('ROUTINE_REPAIR_RUNTIME_CHANGED')
@@ -932,7 +937,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     try { assertDev013MigrationInfraReceipt(values.infra, profile, values.infra?.sourceRevision) } catch { fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID') }
   } else if (infraChanged) {
     if ((controlledTransition && !lifecycleEnable) || baseline.repair) fail('ROUTINE_INFRA_REF_CHANGED')
-    if (values.infra?.mutationProfile === 'APP_INFRA_REUSE') {
+    if (toolRotation) {
+      // Full immutable plan/source proof was checked above; SQL stays unchanged.
+    } else if (values.infra?.mutationProfile === 'APP_INFRA_REUSE') {
       smokeRotationContinuation = await assertSmokeInfraReuseContinuation({ root, profile, transport, intent, values, baseline, readSourceFile, readInfrastructureTree })
     } else {
       if (lifecycleEnable) fail('DEV014_LIFECYCLE_ENABLEMENT_INFRA_REUSE_REQUIRED')

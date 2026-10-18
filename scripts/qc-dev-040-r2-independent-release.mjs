@@ -102,6 +102,7 @@ const syntheticRegressionData = await prepareSyntheticRegressionData()
 let ownerExitCommands
 try {
   ownerExitCommands = [
+  ['npm run test:dev-040:tool-rotation', ['run', 'test:dev-040:tool-rotation']],
   ['npm run test:production-tools', ['run', 'test:production-tools']],
   ['npm run test:dev-040:abort', ['run', 'test:dev-040:abort']],
   ['npm run check:db-boundary', ['run', 'check:db-boundary']],
@@ -130,6 +131,10 @@ const files = [
   'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.mjs',
   'scripts/dev040-production-migration-runner.test.mjs', 'scripts/qc-dev-040-r2-independent-release.mjs',
   'scripts/lib/orgmaster-production-database.mjs', 'scripts/lib/orgmaster-production-database.test.mjs',
+  'scripts/dev040-tool-image-rotation.mjs', 'scripts/dev040-tool-image-rotation.test.mjs',
+  'scripts/lib/dev040-tool-image-build.mjs', 'scripts/lib/dev040-tool-image-build.test.mjs',
+  'scripts/lib/dev040-tool-image-rotation.mjs', 'scripts/lib/dev040-tool-image-rotation.test.mjs',
+  'scripts/lib/dev040-tool-terraform.mjs', 'scripts/lib/dev040-tool-terraform.test.mjs',
   'scripts/production-tool-packaging.test.mjs', 'scripts/dev057-production-v4-catalog-readback-runner.mjs',
   'scripts/dev057-production-v4-catalog-readback-runner.test.mjs',
   'scripts/dev014-production-lifecycle-readback.mjs', 'scripts/dev014-production-lifecycle-readback.test.mjs',

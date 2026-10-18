@@ -28,6 +28,7 @@ jobs:
       - name: Install the production tools' exact locked dependency closure
         run: npm ci --prefix infra/google-cloud/dev-040-production-release/migration-runner --omit=dev --ignore-scripts
       - run: npm run test:production-tools
+      - run: npm run test:dev-040:tool-rotation
       - name: Build and import isolated production tool images
         env:
           SOURCE_REVISION: ${{ github.sha }}

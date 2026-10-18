@@ -1436,7 +1436,19 @@ DEV-014 lifecycle readback、DEV-049 admission、DEV-057 Principal pair diagnost
 
 `npm run test:production-tools` 驗證設定相容、拒絕行為與由三份實際 Dockerfile COPY 所組出的隔離 package，包含延遲路徑。required `Production Source QC` 同時建置三個真實工具映像並在禁止網路的容器中匯入其所有 entrypoints；既有 owner／abort／lifecycle／app／database-boundary gates 保留。此層證據不宣稱正式資料庫連線或 production PASS。
 
-交付停在可審查 PR、required CI 與來源／包裝準備。正式 merge、provider artifact build／scan／digest、source-matched `APP_INFRA_IMAGE_ROTATION`、完整 before／after proof、既有 infrastructure fingerprint 准入及 owner release 仍依原契約處理；這次三份 recipe／runner executable inputs 已改，不能重用先前相同輸入證明或放寬 sealed historical exceptions。沒有新增 migration、IAM／Secret、正式資料或部署授權。
+PR #134 已合併至 `ad4e6be3355305329833a83005889be61c46f6ee`。其後人類明確授權僅 OrgMaster 補齊受控映像 rotation／一般發布路徑、完成 PR／required CI／merge／正式發布與發布後驗證；不擴張正式資料、grant、IAM／Secret 或跨專案責任。第一個一般發布 preflight 的 `SMOKE_REUSE_RECEIPT_INVALID` 保留為原失敗，不能套用歷史 lifecycle remediation 例外來略過。
+
+<a id="ordinary-tool-image-rotation-20261018"></a>
+### 一般發布的受控工具映像 rotation
+
+- `npm run rotate:production:tools -- --check|--apply` 僅接受乾淨、exact protected `master` merge source、單一 merged PR 與 provider required `Production Source QC=SUCCESS`；以目前 FINALIZED／RELEASED control、原 baseline intent／infra、own Terraform backend 與 live service／Job readback 為前置。`--check` 只讀，不建映像、不套用、不發布收據。
+- 固定既有 `orgmaster-prod-migration-runner`，沿既有 builder、source archive、provider build reuse／submission fence、scan／SBOM policy 建置必要 runner。兩個未部署診斷 recipe 由 required CI 驗證，不因此建立新正式 Job。除三份具名 Dockerfile 外的 infrastructure／profile／plan／N1C inputs 必須完全相同；每次 app-only 重用還要核對 runner COPY 的全部 committed executable inputs。
+- 保留原始 binary plan、JSON plan、before／after state、output manifest、build／registry／scan、protected source、原 control snapshot、provider Job 與原 baseline 的 immutable hash refs。完整 75 地址不可缺漏；Terraform 若省略已解析 data source，只能由同份 plan 的完整 refreshed prior state 補上 read-only no-op 證明，不能補猜 managed resource。
+- 所有 managed actions 必須 no-op，唯一例外是 migration Job 的 update；完整 before／after 只允許第一個 container 的 immutable image 改變，以及原既有 gcloud client metadata 正規化。拒絕 create／delete／replace／import／targeted plan、任何其他欄位／IAM／Secret／service／traffic 變更。source／control generation 與 state serial／lineage 在套用前重新核對；只套用 hash 相符的已封存 binary plan。
+- Prepared 與 apply fence 綁定相同 source、plan、baseline 與 serial。重試先重驗所有準備證據；已存在提交 fence 的未知結果只做 provider／state readback，不重送 apply。成功須有 source-bound `APP_INFRA_IMAGE_ROTATION`／`jenfu.dev012.image-rotation-proof.v1` 與 settled Job image readback，才可發布 APPLIED 收據。
+- 一般發布由 `npm run deploy:production -- --tool-image-rotation-ref=<own immutable receipt>` 接入原 ten-stage workflow。原 prepare 重新驗證同一份證據、其來源與 live Job；維持相同 foundation／runtime／31-row bundle、`migrate=UNCHANGED_VERIFIED`、零 Job 執行、零 DDL／import／bootstrap。此 lane 不與歷史 remediation／runtime enablement／smoke credential exception 混用，也不新增人類步驟或弱化 required CI。
+
+行為與反向案例由 `npm run test:dev-040:tool-rotation` 加入既有 required Source QC 與 owner QC；owner／abort／DB boundary／app gates 依實際變動保留。實際正式結果另記 dated owner evidence；本契約本身不宣稱發布成功。
 
 <a id="owner-artifact-input-reuse-20261007"></a>
 ## 2026-10-07 Owner artifact 輸入與重試維護（本地修改／行為驗證待執行）
