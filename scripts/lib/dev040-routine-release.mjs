@@ -798,6 +798,13 @@ export async function readAppliedAbortInfraBaseline({profile,transport,baseline,
 }
 
 
+export function resolveRoutineToolRotationRef(values, toolRotationRef = null) {
+  const authorizationRef = values.authorization?.toolRotationRef ?? null
+  const readinessRef = values.readiness?.toolRotationRef ?? null
+  if (!same(authorizationRef, readinessRef) || (toolRotationRef && authorizationRef && !same(toolRotationRef, authorizationRef))) fail('TOOL_ROTATION_AUTHORITY_MISMATCH')
+  return toolRotationRef ?? authorizationRef
+}
+
 export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, toolRotationRef = null, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
@@ -849,6 +856,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     : values.readiness?.devId === 'DEV-014'
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
+  toolRotationRef = resolveRoutineToolRotationRef(values, toolRotationRef)
   const toolRotation = values.infra?.toolRotation == null ? null : await assertOrdinaryToolRotation({
     root, profile, transport, intent, receipt: values.infra, baseline, readLiveJob: readLiveToolJob,
   })
