@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { gzipSync, gunzipSync } from 'node:zlib'
 import { createGitArchive, createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
 import { canonicalize, sha256 } from './dev012-owner-release-runtime.mjs'
+import { matchGitSourceArchive } from './dev040-git-archive.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
@@ -135,7 +136,6 @@ export async function reuseMigrationToolImage({ root, profile, sourceRevision, c
     || !['readBytes', 'createBuild', 'readArtifactImage', 'waitArtifactEvidence'].every(name => typeof transport?.[name] === 'function')) fail('TOOL_IMAGE_INPUT_INVALID')
   if (historicalGitBytes(root, ['rev-parse', 'HEAD']).toString('utf8').trim() !== currentSourceRevision) fail('TOOL_IMAGE_CURRENT_SOURCE_MISMATCH')
   const sourceSha256 = sha256(historicalGitBytes(root, ['ls-tree', '-r', '-z', '--full-tree', sourceRevision]))
-  const archive = historicalGitBytes(root, ['archive', '--format=tar', '--prefix=source/', sourceRevision])
   const storage = providerBuild?.sourceProvenance?.resolvedStorageSource
   const objectMatch = /^source\/archives\/([a-f0-9]{64})\/source\.tar\.gz$/u.exec(storage?.object ?? '')
   if (storage?.bucket !== profile.artifact.releaseBucket || !objectMatch
@@ -149,7 +149,7 @@ export async function reuseMigrationToolImage({ root, profile, sourceRevision, c
     || typeof source.metadata?.crc32c !== 'string' || !source.metadata.crc32c) fail('TOOL_IMAGE_SOURCE_OBJECT_INVALID')
   let expanded
   try { expanded = gunzipSync(source.bytes, { maxOutputLength: 256 * 1024 * 1024 }) } catch { fail('TOOL_IMAGE_SOURCE_ARCHIVE_INVALID') }
-  if (!expanded.equals(archive)) fail('TOOL_IMAGE_SOURCE_ARCHIVE_INVALID')
+  matchGitSourceArchive(root, sourceRevision, expanded)
   const toolProfile = structuredClone(profile)
   toolProfile.artifact.uri = profile.artifact.migrationRunnerUri
   toolProfile.build.dockerfile = MIGRATION_RUNNER_DOCKERFILE

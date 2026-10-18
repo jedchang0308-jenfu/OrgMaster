@@ -2,6 +2,8 @@
 
 ## DEV-040 production tool 設定解耦（2026-10-18）
 
+最新：[任務現況](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)記錄 native rotation 已APPLIED／完整75-address source/plan/scan/SBOM證據；第一次 owner release在prepare因Git CRLF/LF archive差異停止，正式app與data仍舊baseline。沿[同一來源與重試契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018)補 explicit Git export profile 與完整tar byte match，不重建原image、不重做rotation、不放寬來源或IAM。
+
 PR135 已 merge、官方 master CI PASS；首次正式 rotation 先在 build readback 的同專案 ID 別名停止，SUCCESS image 保留，Job／app／資料未變。後續 exact alias／historical merged-source association／existing-build-only 續接沿[同一契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018)與[任務現況](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)收斂，不擴張資料／grant／IAM／Secret／跨專案權限，也不以重建取代證據修正。
 
 [來源與映像依賴契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018) → [受控工具 rotation／一般發布](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018) → [本輪任務](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)。PR134 已 merge；續授權僅 OrgMaster 補齊 source-bound runner image-only plan／完整75地址證據與原 ten-stage ordinary release。新增 `test:dev-040:tool-rotation` 納入 required Source QC；正式 rotation／發布／postverify 仍待本輪 provider evidence，維持零 DDL、資料／grant／IAM／Secret／跨專案限制。

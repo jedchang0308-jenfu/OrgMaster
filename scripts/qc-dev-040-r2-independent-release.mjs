@@ -134,6 +134,7 @@ const files = [
   'scripts/dev040-production-migration-runner.test.mjs', 'scripts/qc-dev-040-r2-independent-release.mjs',
   'scripts/lib/orgmaster-production-database.mjs', 'scripts/lib/orgmaster-production-database.test.mjs',
   'scripts/dev040-tool-image-rotation.mjs', 'scripts/dev040-tool-image-rotation.test.mjs',
+  'scripts/lib/dev040-git-archive.mjs', 'scripts/lib/dev040-git-archive.test.mjs',
   'scripts/lib/dev040-tool-image-build.mjs', 'scripts/lib/dev040-tool-image-build.test.mjs',
   'scripts/lib/dev040-tool-image-rotation.mjs', 'scripts/lib/dev040-tool-image-rotation.test.mjs',
   'scripts/lib/dev040-tool-terraform.mjs', 'scripts/lib/dev040-tool-terraform.test.mjs',

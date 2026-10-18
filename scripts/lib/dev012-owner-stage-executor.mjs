@@ -1,4 +1,5 @@
 import { cleanupUnsealedCandidateTag } from './dev012-unsealed-candidate-cleanup.mjs'
+import { readGitSourceArchive } from './dev040-git-archive.mjs'
 import { assertPrincipalOnlyRecoveryBinding, assertPrincipalOnlyRecoveryReadback, principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { assertSmokeInfraReuseReceipt } from './dev057-smoke-rotation-continuation.mjs'
 import { spawnSync } from 'node:child_process'
@@ -56,7 +57,7 @@ export function createGitArchive(root, sourceRevision) {
     return result.stdout
   }
   if (String(run(['rev-parse', 'HEAD'])).trim() !== sourceRevision || String(run(['status', '--porcelain=v1', '--untracked-files=no'])).trim() !== '') fail('SOURCE_CHECKOUT_NOT_FROZEN')
-  const bytes = run(['archive', '--format=tar', '--prefix=source/', sourceRevision], null)
+  const bytes = readGitSourceArchive(root, sourceRevision)
   if (!Buffer.isBuffer(bytes) || bytes.length === 0) fail('SOURCE_ARCHIVE_FAILED')
   return bytes
 }
