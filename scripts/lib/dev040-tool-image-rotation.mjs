@@ -76,6 +76,16 @@ export function rotationAddresses(infraProfile) {
     || !addresses.length || new Set(addresses).size !== addresses.length) fail('ADDRESS_SET_INVALID')
   return addresses
 }
+
+function candidateSmokeVersionFromState(state) {
+  const resource = state?.resources?.find(row => row.mode === 'managed' && row.type === 'google_workflows_workflow' && row.name === 'candidate_smoke')
+  const source = resource?.instances?.[0]?.attributes?.source_contents
+  const marker = 'orgmaster-prod-smoke-firebase-refresh-token'
+  const offset = typeof source === 'string' ? source.indexOf(marker) : -1
+  const match = offset < 0 ? null : /\bversion\s*:\s*["']([1-9][0-9]*)["']/u.exec(source.slice(offset, offset + 240))
+  if (!match || !Number.isSafeInteger(Number(match[1]))) return null
+  return match[1]
+}
 export function assertToolRotationPlan({ plan, infraProfile, previousImage, nextImage, allowNoop = false }) {
   const imagePattern = /^asia-east1-docker\.pkg\.dev\/jenfu-platform-prod\/orgmaster-release\/orgmaster-migration-runner@sha256:[a-f0-9]{64}$/u
   if (![previousImage, nextImage].every(value => imagePattern.test(value ?? '')) || (!allowNoop && previousImage === nextImage)
@@ -254,9 +264,11 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
   // publications may retain the same immutable tool proof with unchanged inputs.
   if (!same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
     && !same(proof.baselineIntentRef, intent.baselineIntentRef)) fail('BASELINE_INVALID')
+  const candidateSmokeRefreshTokenSecretVersion = candidateSmokeVersionFromState(stateRead.value.stateMeta)
   return { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', sourceRevision: receipt.sourceRevision,
     migrationRunnerDigest: receipt.migrationRunnerDigest, binaryPlanRef: proof.binaryPlanRef, planJsonRef: proof.planJsonRef,
     terraformAddressCount: receipt.terraformAddressCount, ddlExecuted: 0,
+    ...(candidateSmokeRefreshTokenSecretVersion ? { candidateSmokeRefreshTokenSecretVersion } : {}),
     liveJobReadback: readLiveJob ? 'VERIFIED' : 'REQUIRED_AT_DEPLOYER_MIGRATE', archiveExportProfile: archiveProof.exportProfile }
 }
 

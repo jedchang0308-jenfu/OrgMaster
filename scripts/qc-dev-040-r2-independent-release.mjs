@@ -20,8 +20,9 @@ process.stderr.write(run.stderr)
 // Six historical applied-image predecessor cases extend this exact selection to 354.
 // One existing-build-only no-submission recovery case extends this selection to 355.
 // One role-bounded migrate live-readback/candidate-blocking case extends it to 356.
+// Three release-proof composition cases extend this exact selection to 359.
 // This Node result does not replace the full regression/build commands below.
-if (run.status !== 0 || !/\bpass 356\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 359\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 
@@ -152,6 +153,7 @@ const files = [
   'scripts/lib/dev012-owner-release-runtime.mjs', 'scripts/lib/dev012-owner-stage-executor.mjs', 'scripts/lib/dev015-gcc-applicability.mjs', 'scripts/lib/dev015-gcc-aligned-new-applicability.mjs', 'scripts/dev015-aligned-new-loader-inspection.cjs', 'scripts/dev015-aligned-new-loader-inspection.test.mjs', 'scripts/dev015-gcc-aligned-new-applicability.test.mjs', 'config/release/dev015-gcc-aligned-new-applicability.json', 'scripts/dev015-native-image-inventory.cjs', 'scripts/dev015-gcc-applicability.test.mjs', 'config/release/dev015-gcc-pbds-applicability.json', 'scripts/lib/dev012-production-migration-runner.mjs',
   'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs', 'scripts/dev057-principal-activation-transport.test.mjs',
   'scripts/lib/dev040-routine-release.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev040-deploy-production.mjs',
+  'scripts/lib/dev040-app-artifact-reuse.mjs', 'scripts/dev057-smoke-credential-rotation.mjs', 'scripts/lib/dev057-smoke-rotation-continuation.mjs',
   'scripts/dev014-lifecycle-scheduler.mjs', 'scripts/lib/dev014-lifecycle-scheduler-contract.mjs',
   'scripts/lib/dev014-lifecycle-activation-prerequisites.mjs', 'scripts/lib/dev014-lifecycle-activation-prerequisites.test.mjs',
   'scripts/lib/dev014-platform-011-consumer-entry.fixture.json', 'scripts/lib/dev014-principal-lifecycle-release.mjs',

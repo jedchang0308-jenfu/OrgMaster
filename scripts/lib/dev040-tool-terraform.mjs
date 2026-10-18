@@ -182,9 +182,10 @@ function notificationEmail(attributes) {
 }
 
 /** Purely rebuilds the owner module's inputs from the exact raw Terraform state. */
-export function terraformVariablesFromState({ state, profile, sourceRevision, nextImage }) {
+export function terraformVariablesFromState({ state, profile, sourceRevision, nextImage = null, candidateSmokeRefreshTokenSecretVersion = null }) {
   const release = assertProfile(profile)
   if (!H40.test(sourceRevision ?? '')) fail('SOURCE_REVISION_INVALID')
+  nextImage ??= state?.outputs?.app_release_infra_manifest?.value?.migration_runner_digest ?? null
   const expectedRunner = new RegExp(`^${release.artifact.migrationRunnerUri.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}@sha256:[a-f0-9]{64}$`, 'u')
   if (!expectedRunner.test(nextImage ?? '')) fail('NEXT_IMAGE_INVALID')
 
@@ -212,7 +213,10 @@ export function terraformVariablesFromState({ state, profile, sourceRevision, ne
   if (workflow.project !== PROJECT_ID || workflow.region !== REGION || workflow.name !== release.verification.candidateWorkflowName) {
     fail('CANDIDATE_WORKFLOW_BINDING_INVALID')
   }
-  const candidateSmokeRefreshTokenSecretVersion = candidateSecretVersion(workflow.source_contents)
+  const currentCandidateSmokeRefreshTokenSecretVersion = candidateSecretVersion(workflow.source_contents)
+  const selectedCandidateSmokeRefreshTokenSecretVersion = candidateSmokeRefreshTokenSecretVersion ?? currentCandidateSmokeRefreshTokenSecretVersion
+  if (!/^[1-9][0-9]*$/u.test(selectedCandidateSmokeRefreshTokenSecretVersion) ||
+      !Number.isSafeInteger(Number(selectedCandidateSmokeRefreshTokenSecretVersion))) fail('CANDIDATE_SECRET_VERSION_INVALID')
 
   const notification = oneResource(entries, 'google_monitoring_notification_channel', 'incident')
   if (notification.project !== PROJECT_ID || notification.type !== 'email') fail('NOTIFICATION_CHANNEL_BINDING_INVALID')
@@ -235,7 +239,7 @@ export function terraformVariablesFromState({ state, profile, sourceRevision, ne
     cloud_sql_connection_name: CLOUD_SQL_CONNECTION,
     migration_runner_image_digest: nextImage,
     approved_notification_email: approvedNotificationEmail,
-    candidate_smoke_refresh_token_secret_version: candidateSmokeRefreshTokenSecretVersion,
+    candidate_smoke_refresh_token_secret_version: selectedCandidateSmokeRefreshTokenSecretVersion,
     source_revision: sourceRevision,
     foundation_manifest_sha256: manifest.foundation_manifest_sha256,
   }
