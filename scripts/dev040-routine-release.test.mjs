@@ -1,7 +1,7 @@
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
 import { assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
-import { appArtifactSourceEquivalence } from './lib/dev040-app-artifact-reuse.mjs'
+import { appArtifactSourceEquivalence, assertReusableAbortedTerminal } from './lib/dev040-app-artifact-reuse.mjs'
 import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -2287,4 +2287,19 @@ test('app artifact reuse accepts only the fixed release-executor path set', () =
     run(['add', '.']); run(['commit', '-m', 'runtime change']); const changed = run(['rev-parse', 'HEAD'])
     assert.throws(() => appArtifactSourceEquivalence(directory, baseline, changed), /APP_ARTIFACT_REUSE_RUNTIME_INPUT_CHANGED/u)
   } finally { fs.rmSync(directory, { recursive: true, force: true }) }
+})
+
+test('app artifact reuse validates the emitted pre-activation abort terminal shape', () => {
+  const intent = { previousRevision: 'orgmaster-prod-baseline' }
+  const current = { facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: intent.previousRevision,
+    entrypointRecovery: { changed: false, result: 'BASELINE_ALREADY_ACTIVE', providerOperationRef: null },
+    databaseDisposition: 'UNCHANGED_VERIFIED' } }
+  assert.equal(assertReusableAbortedTerminal(current, intent), current.facts)
+  for (const facts of [
+    { ...current.facts, result: 'ROLLED_BACK' },
+    { ...current.facts, previousRevision: 'orgmaster-prod-other' },
+    { ...current.facts, databaseDisposition: 'FORWARD_APPLIED' },
+    { ...current.facts, remainingHumanAction: 1 },
+    { ...current.facts, entrypointRecovery: { changed: true, result: 'BASELINE_ALREADY_ACTIVE' } },
+  ]) assert.throws(() => assertReusableAbortedTerminal({ facts }, intent), /APP_ARTIFACT_REUSE_EVIDENCE_INVALID/u)
 })

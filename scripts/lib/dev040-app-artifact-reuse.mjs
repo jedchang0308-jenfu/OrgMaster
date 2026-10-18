@@ -85,6 +85,18 @@ function assertStageReceipt(value, profile, intent, stage) {
       value.status !== 'PASS' || receiptSha256 !== sha256(canonicalize(core))) fail('APP_ARTIFACT_REUSE_STAGE_INVALID')
 }
 
+export function assertReusableAbortedTerminal(value, attemptedIntent) {
+  const facts = value?.facts
+  const recovery = facts?.entrypointRecovery
+  const recoveryShapeValid = recovery && typeof recovery.changed === 'boolean' &&
+    ['NOT_REQUIRED', 'BASELINE_ALREADY_ACTIVE', 'BASELINE_RESTORED'].includes(recovery.result) &&
+    (recovery.result === 'BASELINE_RESTORED' ? recovery.changed === true : recovery.changed === false)
+  if (facts?.result !== 'PRE_ACTIVATION_ABORTED' || facts.previousRevision !== attemptedIntent?.previousRevision ||
+      !['NOT_APPLIED', 'UNCHANGED_VERIFIED'].includes(facts.databaseDisposition) || !recoveryShapeValid ||
+      (facts.remainingHumanAction != null && facts.remainingHumanAction !== 0)) fail('APP_ARTIFACT_REUSE_EVIDENCE_INVALID')
+  return facts
+}
+
 export async function buildAbortedAppArtifactReuse({ root, profile, transport, releaseSourceRevision,
   attemptedIntent, attemptedIntentRef, sourceProof }) {
   const intentRead = await readExact(transport, profile, attemptedIntentRef)
@@ -102,10 +114,10 @@ export async function buildAbortedAppArtifactReuse({ root, profile, transport, r
   ])
   assertStageReceipt(build.value, profile, attemptedIntent, 'build')
   assertStageReceipt(terminal.value, profile, attemptedIntent, 'terminal')
+  assertReusableAbortedTerminal(terminal.value, attemptedIntent)
   const artifactDigest = deployment.value.artifactDigest
   const sourceObject = deployment.value.sourceObject
   if (deployment.value.sourceRevision !== attemptedIntent.sourceRevision || !same(deployment.value.releaseIntentRef, attemptedIntentRef) ||
-      terminal.value.facts?.result !== 'PRE_ACTIVATION_ABORTED' || terminal.value.facts?.remainingHumanAction !== 0 ||
       !artifactDigest?.startsWith(`${profile.artifact.uri}@sha256:`) || build.value.facts?.artifactDigest !== artifactDigest ||
       provenance.value.schemaVersion !== 'jenfu.dev012.build-provenance-receipt.v1' || provenance.value.status !== 'PASS' ||
       provenance.value.sourceRevision !== attemptedIntent.sourceRevision || provenance.value.artifactDigest !== artifactDigest ||
