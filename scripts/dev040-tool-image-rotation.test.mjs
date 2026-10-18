@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url'
 import test, { before, after } from 'node:test'
 import { gzipSync } from 'node:zlib'
 import { executeToolImageRotation, assertRequiredToolSourceQc, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
-import { assertDeployToolRotationSelection, parseDeployProductionArgs, selectDeployInfrastructureRef } from './dev040-deploy-production.mjs'
+import { assertDeployToolRotationSelection, bindDeployToolRotationAuthority, parseDeployProductionArgs, selectDeployInfrastructureRef } from './dev040-deploy-production.mjs'
+import { resolveRoutineToolRotationRef } from './lib/dev040-routine-release.mjs'
 import { canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { sealToolEvidence, assertToolSeal, rotationAddresses, MIGRATION_JOB_ADDRESS, assertToolBuildProof } from './lib/dev040-tool-image-rotation.mjs'
 import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-stage-executor.mjs'
@@ -288,6 +289,12 @@ test('ordinary CLI binds the exact own rotation receipt and rejects mixed or alt
   assert.equal(composed.reuseAbortedAppArtifact, true)
   const toolRef = options.toolRotationRef
   const smokeRef = composed.smokeRotationRef
+  const authorization = bindDeployToolRotationAuthority(composed, { schemaVersion: 'orgmaster.routine-release-authorization.v1' })
+  const readiness = bindDeployToolRotationAuthority(composed, { schemaVersion: 'orgmaster.routine-release-readiness.v1' })
+  assert.deepEqual(resolveRoutineToolRotationRef({ authorization, readiness }), toolRef)
+  assert.deepEqual(resolveRoutineToolRotationRef({ authorization, readiness }, toolRef), toolRef)
+  assert.throws(() => resolveRoutineToolRotationRef({ authorization, readiness: { ...readiness, toolRotationRef: smokeRef } }), /TOOL_ROTATION_AUTHORITY_MISMATCH/u)
+  assert.throws(() => resolveRoutineToolRotationRef({ authorization, readiness }, smokeRef), /TOOL_ROTATION_AUTHORITY_MISMATCH/u)
   assert.doesNotThrow(() => assertDeployToolRotationSelection(options, { infraReceiptRef: toolRef },
     { toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1' } }))
   assert.doesNotThrow(() => assertDeployToolRotationSelection(composed, { infraReceiptRef: smokeRef },
