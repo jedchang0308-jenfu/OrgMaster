@@ -1,4 +1,5 @@
-import { gzipSync } from 'node:zlib'
+import { spawnSync } from 'node:child_process'
+import { gzipSync, gunzipSync } from 'node:zlib'
 import { createGitArchive, createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
 import { canonicalize, sha256 } from './dev012-owner-release-runtime.mjs'
 
@@ -43,6 +44,8 @@ function assertBuildEvidence({ buildResult, profile, intent, sourceObject }) {
   const expectedStorage = { ...gsObject(sourceObject.ref, profile.artifact.releaseBucket), generation: String(sourceObject.metadata.generation) }
   const inputHash = buildResult?.buildInputSha256
   const cloudBuild = buildResult?.build
+  const projectAliases = [profile.target.projectId]
+  if (/^[1-9][0-9]*$/u.test(String(profile.target.projectNumber ?? ''))) projectAliases.push(String(profile.target.projectNumber))
 
   if (!H64.test(inputHash ?? '') || buildResult.sourceArchiveSha256 !== sourceObject.ref.sha256
     || typeof buildResult.reused !== 'boolean'
@@ -50,7 +53,7 @@ function assertBuildEvidence({ buildResult, profile, intent, sourceObject }) {
   ) fail('TOOL_IMAGE_BUILD_INPUT_INVALID')
 
   if (!cloudBuild || !BUILD_ID.test(cloudBuild.id ?? '')
-    || cloudBuild.name !== `projects/${profile.target.projectId}/locations/${profile.target.region}/builds/${cloudBuild.id}`
+    || !projectAliases.some(project => cloudBuild.name === `projects/${project}/locations/${profile.target.region}/builds/${cloudBuild.id}`)
     || cloudBuild.projectId !== profile.target.projectId
     || cloudBuild.serviceAccount !== `projects/${profile.target.projectId}/serviceAccounts/${profile.identities.builder}`
     || cloudBuild.status !== 'SUCCESS') {
@@ -93,6 +96,77 @@ function assertArtifactAndScan({ profile, imageReadback, scanEvidence, imageDige
     || scanEvidence.sbomExport?.resourceUrl !== resourceUrl
     || typeof scanEvidence.sbomExport?.discoveryOccurrenceId !== 'string'
     || !Number.isFinite(Date.parse(scanEvidence.observedAt ?? ''))) fail('TOOL_IMAGE_SCAN_EVIDENCE_INVALID')
+}
+
+async function readAndSealMigrationToolImage({ profile, intent, buildResult, source, transport, deadlineAt }) {
+  const validated = assertBuildEvidence({ buildResult, profile, intent, sourceObject: source })
+  const imageDigest = buildResult.artifactDigest
+  const artifactRegistry = await transport.readArtifactImage(profile, imageDigest)
+  const scan = await transport.waitArtifactEvidence({ profile, sourceRevision: intent.sourceRevision,
+    artifactDigest: imageDigest, deadlineAt, requireActiveAnalysis: buildResult.reused })
+  assertArtifactAndScan({ profile, imageReadback: artifactRegistry, scanEvidence: scan, imageDigest })
+  const sourceObject = { ref: { uri: source.ref.uri, sha256: source.ref.sha256 },
+    metadata: { generation: String(source.metadata.generation), crc32c: source.metadata.crc32c } }
+  // The parent owns official merged-source authorization and any current-source association.
+  const core = {
+    schemaVersion: 'orgmaster.tool-image-build.v1', ownerApplicationId: 'orgmaster',
+    releaseId: intent.releaseId, sourceRevision: intent.sourceRevision, sourceSha256: intent.sourceSha256,
+    artifactDigest: imageDigest, status: 'PASS',
+    sourceObject: { ...sourceObject.ref, ...sourceObject.metadata },
+    cloudBuild: structuredClone(validated.cloudBuild), buildInputSha256: validated.inputHash,
+    artifactRegistry: structuredClone(artifactRegistry), scan: structuredClone(scan),
+    buildDisposition: buildResult.disposition, reused: buildResult.reused,
+  }
+  return { imageDigest, buildProof: { ...core, receiptSha256: sha256(canonicalize(core)) }, sourceObject }
+}
+
+function historicalGitBytes(root, args) {
+  const result = spawnSync('git', args, { cwd: root, encoding: null, maxBuffer: 256 * 1024 * 1024, windowsHide: true })
+  if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout) || result.stdout.length === 0) fail('GIT_SOURCE_INSPECTION_FAILED')
+  return result.stdout
+}
+
+/** Read an existing exact provider build; submission authority remains disabled by reuseOnly. */
+export async function reuseMigrationToolImage({ root, profile, sourceRevision, currentSourceRevision, providerBuild, transport, deadlineAt }) {
+  if (typeof root !== 'string' || !root || profile?.application?.id !== 'orgmaster'
+    || !profile?.artifact?.releaseBucket || !profile?.artifact?.migrationRunnerUri || !profile?.build
+    || !H40.test(sourceRevision ?? '') || !H40.test(currentSourceRevision ?? '')
+    || !Number.isFinite(Date.parse(deadlineAt ?? '')) || Date.parse(deadlineAt) <= Date.now()
+    || !['readBytes', 'createBuild', 'readArtifactImage', 'waitArtifactEvidence'].every(name => typeof transport?.[name] === 'function')) fail('TOOL_IMAGE_INPUT_INVALID')
+  if (historicalGitBytes(root, ['rev-parse', 'HEAD']).toString('utf8').trim() !== currentSourceRevision) fail('TOOL_IMAGE_CURRENT_SOURCE_MISMATCH')
+  const sourceSha256 = sha256(historicalGitBytes(root, ['ls-tree', '-r', '-z', '--full-tree', sourceRevision]))
+  const archive = historicalGitBytes(root, ['archive', '--format=tar', '--prefix=source/', sourceRevision])
+  const storage = providerBuild?.sourceProvenance?.resolvedStorageSource
+  const objectMatch = /^source\/archives\/([a-f0-9]{64})\/source\.tar\.gz$/u.exec(storage?.object ?? '')
+  if (storage?.bucket !== profile.artifact.releaseBucket || !objectMatch
+    || !/^[1-9][0-9]*$/u.test(String(storage?.generation ?? ''))) fail('TOOL_IMAGE_BUILD_PROVENANCE_INVALID')
+  const sourceUri = `gs://${storage.bucket}/${storage.object}`
+  const archiveSha256 = objectMatch[1]
+  const source = await transport.readBytes(sourceUri, { prefixes: ['source'], expectedSha256: archiveSha256 })
+  if (!Buffer.isBuffer(source?.bytes) || sha256(source.bytes) !== archiveSha256
+    || source.ref?.uri !== sourceUri || source.ref.sha256 !== archiveSha256
+    || String(source.metadata?.generation) !== String(storage.generation)
+    || typeof source.metadata?.crc32c !== 'string' || !source.metadata.crc32c) fail('TOOL_IMAGE_SOURCE_OBJECT_INVALID')
+  let expanded
+  try { expanded = gunzipSync(source.bytes, { maxOutputLength: 256 * 1024 * 1024 }) } catch { fail('TOOL_IMAGE_SOURCE_ARCHIVE_INVALID') }
+  if (!expanded.equals(archive)) fail('TOOL_IMAGE_SOURCE_ARCHIVE_INVALID')
+  const toolProfile = structuredClone(profile)
+  toolProfile.artifact.uri = profile.artifact.migrationRunnerUri
+  toolProfile.build.dockerfile = MIGRATION_RUNNER_DOCKERFILE
+  toolProfile.build.dockerTarget = 'runtime'
+  const intent = { sourceRevision, sourceSha256, releaseId: `ORGMASTER-TOOL-${sourceRevision.slice(0, 12).toUpperCase()}` }
+  const inputTags = (providerBuild?.tags ?? []).filter(tag => /^owner-build-[a-f0-9]{64}$/u.test(tag))
+  if (inputTags.length !== 1) fail('TOOL_IMAGE_BUILD_INPUT_INVALID')
+  const original = { build: providerBuild, artifactDigest: `${toolProfile.artifact.uri}@${providerBuild?.results?.images?.[0]?.digest}`,
+    buildInputSha256: inputTags[0].slice('owner-build-'.length), sourceArchiveSha256: archiveSha256,
+    reused: true, disposition: 'REUSED_PROVIDER_BUILD' }
+  assertBuildEvidence({ buildResult: original, profile: toolProfile, intent, sourceObject: source })
+  const buildResult = await transport.createBuild({ profile: toolProfile, intent, sourceObject: source, deadlineAt, reuseOnly: true })
+  if (buildResult?.reused !== true || buildResult.build?.id !== providerBuild.id
+    || buildResult.artifactDigest !== original.artifactDigest || buildResult.buildInputSha256 !== original.buildInputSha256
+    || ['createTime', 'startTime', 'finishTime', 'sourceProvenance'].some(key =>
+      canonicalize(buildResult.build?.[key]) !== canonicalize(providerBuild[key]))) fail('TOOL_IMAGE_BUILD_REUSE_MISMATCH')
+  return readAndSealMigrationToolImage({ profile: toolProfile, intent, buildResult, source, transport, deadlineAt })
 }
 
 /** Revalidate the sealed producer's original request/provenance, including recipe. */
@@ -144,10 +218,6 @@ export async function buildMigrationToolImage({ root, profile, sourceRevision, s
     || typeof uploadedSource.metadata?.crc32c !== 'string' || !uploadedSource.metadata.crc32c) {
     fail('TOOL_IMAGE_SOURCE_OBJECT_INVALID')
   }
-  const sourceObject = {
-    ref: { uri: uploadedSource.ref.uri, sha256: uploadedSource.ref.sha256 },
-    metadata: { generation: String(uploadedSource.metadata.generation), crc32c: uploadedSource.metadata.crc32c },
-  }
   const toolProfile = structuredClone(profile)
   toolProfile.artifact.uri = profile.artifact.migrationRunnerUri
   toolProfile.build.dockerfile = MIGRATION_RUNNER_DOCKERFILE
@@ -156,33 +226,5 @@ export async function buildMigrationToolImage({ root, profile, sourceRevision, s
 
   // createBuild owns build lookup, submission fences, bounded retries, and unknown-outcome recovery.
   const buildResult = await transport.createBuild({ profile: toolProfile, intent, sourceObject: uploadedSource, deadlineAt })
-  const validated = assertBuildEvidence({ buildResult, profile: toolProfile, intent, sourceObject })
-  const imageDigest = buildResult.artifactDigest
-  const imageReadback = await transport.readArtifactImage(toolProfile, imageDigest)
-  const scanEvidence = await transport.waitArtifactEvidence({ profile: toolProfile, sourceRevision, artifactDigest: imageDigest, deadlineAt, requireActiveAnalysis: buildResult.reused })
-  assertArtifactAndScan({ profile: toolProfile, imageReadback, scanEvidence, imageDigest })
-
-  // Official merged-source evidence belongs to the parent rotation receipt's separate sourceProof.
-  const proofCore = {
-    schemaVersion: 'orgmaster.tool-image-build.v1',
-    ownerApplicationId: 'orgmaster',
-    releaseId,
-    sourceRevision,
-    sourceSha256,
-    artifactDigest: imageDigest,
-    status: 'PASS',
-    sourceObject: {
-      ...sourceObject.ref,
-      generation: sourceObject.metadata.generation,
-      crc32c: sourceObject.metadata.crc32c,
-    },
-    cloudBuild: structuredClone(validated.cloudBuild),
-    buildInputSha256: validated.inputHash,
-    artifactRegistry: structuredClone(imageReadback),
-    scan: structuredClone(scanEvidence),
-    buildDisposition: buildResult.disposition,
-    reused: buildResult.reused,
-  }
-  const buildProof = { ...proofCore, receiptSha256: sha256(canonicalize(proofCore)) }
-  return { imageDigest, buildProof, sourceObject }
+  return readAndSealMigrationToolImage({ profile: toolProfile, intent, buildResult, source: uploadedSource, transport, deadlineAt })
 }

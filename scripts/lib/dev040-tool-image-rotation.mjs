@@ -50,6 +50,24 @@ export function toolInfrastructureFingerprint(root, revision) {
     .filter(entry => !TOOL_RECIPES.includes(entry.split('\t').at(-1)))
   return sha256(entries.join('\0'))
 }
+export function assertToolArtifactAssociation({ root, profile, sourceRevision, buildSourceRevision, proof }) {
+  if (sourceRevision === buildSourceRevision) {
+    if (proof != null) fail('ARTIFACT_SOURCE_INVALID')
+    return
+  }
+  if (!H40.test(sourceRevision ?? '') || !H40.test(buildSourceRevision ?? '')
+    || proof?.schemaVersion !== 'orgmaster.reviewed-tool-build-source.v1'
+    || proof.sourceRevision !== buildSourceRevision || proof.rotationSourceRevision !== sourceRevision
+    || proof.repository !== profile.application.repository || proof.branch !== profile.application.branch
+    || proof.status !== 'HISTORICAL_MERGED_SOURCE_VERIFIED' || proof.requiredSourceQc !== 'SUCCESS'
+    || !Number.isSafeInteger(proof.requiredSourceQcCheckId) || proof.requiredSourceQcCheckId < 1
+    || !Number.isSafeInteger(proof.pullRequestNumber) || proof.pullRequestNumber < 1
+    || !Number.isFinite(Date.parse(proof.mergedAt ?? ''))) fail('ARTIFACT_SOURCE_INVALID')
+  const ancestor = spawnSync('git', ['merge-base', '--is-ancestor', buildSourceRevision, sourceRevision], { cwd: root, windowsHide: true })
+  const tree = spawnSync('git', ['rev-parse', `${buildSourceRevision}^{tree}`], { cwd: root, encoding: 'utf8', windowsHide: true })
+  if (ancestor.status !== 0 || tree.status !== 0 || tree.stdout.trim() !== proof.sourceTree
+    || !same(toolExecutableInputs(root, buildSourceRevision), toolExecutableInputs(root, sourceRevision))) fail('ARTIFACT_SOURCE_INVALID')
+}
 export function rotationAddresses(infraProfile) {
   const addresses = [...(infraProfile.stageA ?? []), ...(infraProfile.stageBAdditional ?? [])].sort()
   if (infraProfile.ownerApplicationId !== 'orgmaster' || infraProfile.projectId !== 'jenfu-platform-prod'
@@ -150,7 +168,7 @@ export function assertToolRotationState({ state, infraProfile, profile, sourceRe
 }
 
 /** Native prepare validates immutable evidence; the operator also reads live state before dispatch. */
-export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline }) {
+export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline, readLiveJob = true }) {
   assertToolOwner(profile); assertToolSeal(receipt)
   const proof = receipt.toolRotation
   if (receipt.schemaVersion !== 'jenfu.dev012.app-infra-receipt.v1' || receipt.mutationProfile !== 'APP_INFRA_IMAGE_ROTATION'
@@ -183,7 +201,8 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || receipt.terraformAddressCount !== rotationAddresses(infraProfile).length
     || receipt.terraformAddressesSha256 !== sha256(canonicalize(rotationAddresses(infraProfile)))) fail('PLAN_PROOF_INVALID')
   const build = buildRead.value
-  await assertToolBuildProof({ root, profile, build, sourceRevision: receipt.sourceRevision, imageDigest: receipt.migrationRunnerDigest, transport })
+  assertToolArtifactAssociation({ root, profile, sourceRevision: receipt.sourceRevision, buildSourceRevision: build.sourceRevision, proof: proof.artifactSourceProof })
+  await assertToolBuildProof({ root, profile, build, sourceRevision: build.sourceRevision, imageDigest: receipt.migrationRunnerDigest, transport })
   const sourceProof = proof.sourceProof
   if (sourceProof?.sourceRevision !== receipt.sourceRevision || sourceProof.repository !== profile.application.repository
     || sourceProof.branch !== profile.application.branch || sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
@@ -230,14 +249,29 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || receipt.migrationRunnerDigest !== outputRead.value.migration_runner_digest
     || receipt.controllerImageDigest !== outputRead.value.controller_image_digest
     || outputRead.value.source_revision !== receipt.sourceRevision) fail('STATE_READBACK_INVALID')
-  const live = await transport.request(`https://run.googleapis.com/v2/${after.name}`)
-  if (live.uid !== after.uid || live.reconciling === true || String(live.observedGeneration) !== String(live.generation)
-    || !same(live.template, after.template)) fail('LIVE_JOB_DRIFT')
+  if (readLiveJob) await assertToolJobLiveReadback({ profile, transport, receipt, recordedJob: after })
   // The first publication joins the exact original baseline. Later app-only
   // publications may retain the same immutable tool proof with unchanged inputs.
   if (!same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
     && !same(proof.baselineIntentRef, intent.baselineIntentRef)) fail('BASELINE_INVALID')
   return { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', sourceRevision: receipt.sourceRevision,
     migrationRunnerDigest: receipt.migrationRunnerDigest, binaryPlanRef: proof.binaryPlanRef, planJsonRef: proof.planJsonRef,
-    terraformAddressCount: receipt.terraformAddressCount, ddlExecuted: 0 }
+    terraformAddressCount: receipt.terraformAddressCount, ddlExecuted: 0,
+    liveJobReadback: readLiveJob ? 'VERIFIED' : 'REQUIRED_AT_DEPLOYER_MIGRATE' }
+}
+
+/** Exact-job deployer readback; the prepare verifier gains no Job permission. */
+export async function assertToolJobLiveReadback({ profile, transport, receipt, recordedJob = null }) {
+  assertToolOwner(profile); assertToolSeal(receipt)
+  const proof = receipt.toolRotation
+  if (proof?.schemaVersion !== 'orgmaster.ordinary-tool-image-rotation.v1') fail('RECEIPT_INVALID')
+  assertImmutableRef(proof.providerJobAfterRef, profile.artifact.releaseBucket, ['receipts'])
+  const after = recordedJob ?? (await transport.readJson(proof.providerJobAfterRef, profile.artifact.releaseBucket, ['receipts'])).value
+  const expectedName = `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/orgmaster-prod-migration-runner`
+  if (after.name !== expectedName || after.uid !== proof.jobUid
+    || after.template?.template?.containers?.[0]?.image !== receipt.migrationRunnerDigest) fail('JOB_READBACK_INVALID')
+  const live = await transport.request(`https://run.googleapis.com/v2/${expectedName}`)
+  if (live.uid !== after.uid || live.reconciling === true || String(live.observedGeneration) !== String(live.generation)
+    || !same(live.template, after.template)) fail('LIVE_JOB_DRIFT')
+  return { jobName: live.name, uid: live.uid, generation: String(live.generation), migrationRunnerDigest: receipt.migrationRunnerDigest }
 }

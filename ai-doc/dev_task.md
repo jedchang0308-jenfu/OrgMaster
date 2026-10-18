@@ -2,6 +2,8 @@
 
 ## DEV-040 production tool 設定解耦（2026-10-18）
 
+續接狀態：PR135 已合併至 `7b4caed847003509ca8668f0153952e05034c7f5`，PR／master required CI 均 PASS（39122709834／39122904610）。正式只讀 preflight 75 地址 PASS；build `b84ff653-d07f-42c3-933b-a04a084c85c4` 已 SUCCESS，image `sha256:28e997842c7c95a8a89a0f76ed16e34797f500dcd1d962208b6cb6227ec189ab`。首次 apply 在 provider project-number 別名驗證遭拒，原始失敗保留於本任務 output；尚未建立 rotation prepared／apply fence，正式 Job 仍為舊 `61130a83...`、最後 execution `78p7d` 未變。當前修正 branch `codex/tool-rotation-provider-readback` 僅補 exact alias 與 existing-build-only 續接，保留原 build/source/provenance，透過完整輸入等價與 source-bound association 重用，不建第二個工具映像。正式 rotation／owner release／postverify 仍待 provider 證據；下段是 PR135 前置紀錄，不是完成宣告。
+
 本輪僅 OrgMaster 發布／診斷工具技術債；[PR134](https://github.com/jedchang0308-jenfu/OrgMaster/pull/134) 已合併，來源 `ad4e6be3355305329833a83005889be61c46f6ee`，required CI 通過。正式一般發布 preflight 的 `SMOKE_REUSE_RECEIPT_INVALID` 尚未變更正式服務或資料。人類續授權補齊[受控工具映像 rotation 與一般發布](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018)，沿本 DEV／active PR 收斂：完整來源與 plan／state／provider 證據、75 地址、唯一 runner image 欄位、零 DDL，維持資料／grant／IAM／Secret／跨專案限制。當前 branch `codex/ordinary-tool-image-rotation`；本機新路徑 48／48、owner 370、abort 6、production-tools／DB boundary／build 與既有 owner QC PASS，app 930 PASS／4 既有 skip。獨立來源審查三項發現已修正並補反向案例、限縮重審通過；provider 只讀 plan 的 75-address proof／唯一 image update 通過，不宣稱完全沒有 observation drift。required CI／merge、正式 rotation／發布／postverify 尚待本輪 provider 證據。隔離 worktree `.worktrees/release-tool-config-decoupling` 保留本任務來源及原始失敗，owner 為本對話；完成後保留供發布證據交接。
 
 ## DEV-057 historical image predecessor continuation（2026-10-11）

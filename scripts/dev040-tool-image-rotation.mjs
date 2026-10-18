@@ -8,10 +8,10 @@ import { readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
 import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 import { verifyOfficialMergedSource } from './lib/dev012-official-source-review.mjs'
 import { readRoutineBaseline } from './lib/dev040-routine-release.mjs'
-import { buildMigrationToolImage } from './lib/dev040-tool-image-build.mjs'
+import { buildMigrationToolImage, reuseMigrationToolImage } from './lib/dev040-tool-image-build.mjs'
 import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
 import { assertToolOwner, assertToolRotationPlan, assertToolRotationState, sealToolEvidence,
-  toolInfrastructureFingerprint, rotationAddresses, assertOrdinaryToolRotation, assertToolSeal, assertToolBuildProof } from './lib/dev040-tool-image-rotation.mjs'
+  toolInfrastructureFingerprint, rotationAddresses, assertOrdinaryToolRotation, assertToolSeal, assertToolBuildProof, assertToolArtifactAssociation } from './lib/dev040-tool-image-rotation.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 function fail(code) { throw Object.assign(new Error(`TOOL_ROTATION_${code}`), { code: `TOOL_ROTATION_${code}` }) }
@@ -35,15 +35,37 @@ export function assertRequiredToolSourceQc(checks, revision) {
   const latest = (checks.check_runs ?? []).filter(check => check.name === 'Production Source QC'
     && check.app?.id === 15368 && check.head_sha === revision).sort((a, b) => b.id - a.id)[0]
   if (!Number.isSafeInteger(latest?.id) || latest.id < 1 || latest.status !== 'completed' || latest.conclusion !== 'success') fail('REQUIRED_SOURCE_QC_MISSING')
+  return latest
+}
+export async function readHistoricalToolBuildSource({ root, profile, sourceRevision, providerBuild, readGithub }) {
+  const revisions = providerBuild?.steps?.[0]?.args?.filter(value => value.startsWith('SOURCE_REVISION=')) ?? []
+  if (revisions.length !== 1 || !/^SOURCE_REVISION=[a-f0-9]{40}$/u.test(revisions[0])) fail('ARTIFACT_SOURCE_INVALID')
+  const revision = revisions[0].slice('SOURCE_REVISION='.length)
+  const [commit, pulls, checks] = await Promise.all([
+    readGithub(`git/commits/${revision}`), readGithub(`commits/${revision}/pulls?per_page=100`), readGithub(`commits/${revision}/check-runs?per_page=100`),
+  ])
+  const merged = pulls.filter(pull => pull.state === 'closed' && pull.merge_commit_sha === revision
+    && pull.base?.ref === profile.application.branch && pull.base.repo?.full_name === profile.application.repository
+    && Number.isFinite(Date.parse(pull.merged_at ?? '')))
+  if (commit.sha !== revision || merged.length !== 1) fail('ARTIFACT_SOURCE_INVALID')
+  const check = assertRequiredToolSourceQc(checks, revision)
+  const proof = { schemaVersion: 'orgmaster.reviewed-tool-build-source.v1', sourceRevision: revision,
+    rotationSourceRevision: sourceRevision, sourceTree: commit.tree.sha, repository: profile.application.repository,
+    branch: profile.application.branch, pullRequestNumber: merged[0].number, pullRequestUrl: merged[0].html_url,
+    mergedAt: merged[0].merged_at, requiredSourceQc: 'SUCCESS', requiredSourceQcCheckId: check.id, status: 'HISTORICAL_MERGED_SOURCE_VERIFIED' }
+  assertToolArtifactAssociation({ root, profile, sourceRevision, buildSourceRevision: revision, proof })
+  return { providerBuild, sourceRevision: revision, sourceProof: proof }
 }
 export async function executeToolImageRotation({ root, profile, git, sourceProof, transport, terraform,
-  build = buildMigrationToolImage, apply = false, now = () => new Date().toISOString(),
+  build = buildMigrationToolImage, reuseBuild = null, apply = false, now = () => new Date().toISOString(),
   verifySource = () => readGitAuthority(root, profile), readBaseline = readRoutineBaseline,
   variablesFromState = terraformVariablesFromState }) {
   assertToolOwner(profile)
   if (sourceProof?.sourceRevision !== git.sourceRevision || sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
     || sourceProof.requiredSourceQc !== 'SUCCESS' || git.clean !== true || git.branch !== 'master') fail('OFFICIAL_SOURCE_REQUIRED')
   const bucket = profile.artifact.releaseBucket
+  if (reuseBuild) assertToolArtifactAssociation({ root, profile, sourceRevision: git.sourceRevision,
+    buildSourceRevision: reuseBuild.sourceRevision, proof: reuseBuild.sourceProof })
   const prefix = `gs://${bucket}/receipts/tool-rotations/${git.sourceRevision}`
   const infraProfile = JSON.parse(readGitBlob(root, 'config/release/dev040-production-release-infra-plan.json', git.sourceRevision))
   const head = await transport.readBytes(`gs://${bucket}/control/active.json`, { prefixes: ['control'] })
@@ -86,6 +108,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
       || prepared.sourceRevision !== git.sourceRevision || !same(prepared.baselineIntentRef, baselineIntentRef)
       || !same(prepared.baselineInfraRef, baseline.intent.infraReceiptRef)
       || prepared.baselineSourceRevision !== baseline.intent.sourceRevision || !same(prepared.sourceProof, sourceProof)
+      || !same(prepared.artifactSourceProof ?? null, reuseBuild?.sourceProof ?? null)
       || prepared.controlBaseline.sha256 !== head.ref.sha256 || prepared.controlGeneration !== String(head.metadata.generation)) fail('PREPARED_BASELINE_CHANGED')
   } else {
     const beforeState = await terraform.read()
@@ -96,9 +119,12 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     const readinessPlan = await terraform.plan({ variables })
     assertToolRotationPlan({ plan: readinessPlan.plan, infraProfile, previousImage, nextImage: previousImage, allowNoop: true })
     await sameControl()
-    if (!apply) return { status: 'READY_FOR_IMAGE_BUILD', releaseAuthority: false, sourceRevision: git.sourceRevision,
+    if (!apply) return { status: reuseBuild ? 'READY_FOR_EXISTING_BUILD_REUSE' : 'READY_FOR_IMAGE_BUILD', releaseAuthority: false, sourceRevision: git.sourceRevision,
+      ...(reuseBuild ? { buildSourceRevision: reuseBuild.sourceRevision, buildId: reuseBuild.providerBuild.id } : {}),
       baselineIntentRef, addressCount: rotationAddresses(infraProfile).length, ddlExecuted: 0 }
-    const buildResult = await build({ root, profile, sourceRevision: git.sourceRevision,
+    const buildResult = reuseBuild ? await reuseMigrationToolImage({ root, profile, sourceRevision: reuseBuild.sourceRevision,
+      currentSourceRevision: git.sourceRevision, providerBuild: reuseBuild.providerBuild, transport,
+      deadlineAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() }) : await build({ root, profile, sourceRevision: git.sourceRevision,
       sourceSha256: sha256(createGitSourceIdentity(root, git.sourceRevision)),
       releaseId: `ORGMASTER-TOOL-${git.sourceRevision.slice(0, 12).toUpperCase()}`, transport,
       deadlineAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() })
@@ -120,6 +146,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     prepared = sealToolEvidence({ schemaVersion: 'orgmaster.tool-image-rotation-prepared.v1', sourceRevision: git.sourceRevision,
       baselineIntentRef, baselineInfraRef: baseline.intent.infraReceiptRef, baselineSourceRevision: baseline.intent.sourceRevision,
       controlBaseline: head.ref, controlSnapshotRef: controlSnapshot.ref, controlGeneration: String(head.metadata.generation), sourceProof,
+      ...(reuseBuild ? { artifactSourceProof: reuseBuild.sourceProof } : {}),
       previousImage, nextImage, controllerImage, foundationHash: manifest.foundation_manifest_sha256,
       beforeStateRef: before.ref, providerJobBeforeRef: job.ref, buildProofRef: buildProof.ref,
       binaryPlanRef: binary.ref, planJsonRef: plan.ref, imageRotation: { ...rotation, sourceRevision: git.sourceRevision, planJsonSha256: plan.ref.sha256 },
@@ -141,7 +168,9 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     || savedPlan.value.variables?.migration_runner_image_digest?.value !== prepared.nextImage
     || savedPlan.value.variables?.controller_image_digest?.value !== controllerImage
     || savedPlan.value.variables?.foundation_manifest_sha256?.value !== prepared.foundationHash) fail('PREPARED_PLAN_INVALID')
-  await assertToolBuildProof({ root, profile, build: savedBuild.value, sourceRevision: git.sourceRevision, imageDigest: prepared.nextImage, transport })
+  assertToolArtifactAssociation({ root, profile, sourceRevision: git.sourceRevision,
+    buildSourceRevision: savedBuild.value.sourceRevision, proof: prepared.artifactSourceProof })
+  await assertToolBuildProof({ root, profile, build: savedBuild.value, sourceRevision: savedBuild.value.sourceRevision, imageDigest: prepared.nextImage, transport })
   if (!fence) {
     await sameControl()
     const state = await terraform.read()
@@ -185,7 +214,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
       binaryPlanRef: prepared.binaryPlanRef, planJsonRef: prepared.planJsonRef, beforeStateRef: prepared.beforeStateRef,
       afterStateRef: stateRead.ref, outputManifestRef: outputRead.ref, buildProofRef: prepared.buildProofRef,
       providerJobBeforeRef: prepared.providerJobBeforeRef, providerJobAfterRef: jobRead.ref, jobUid: afterJob.uid,
-      sourceProof: prepared.sourceProof },
+      sourceProof: prepared.sourceProof, ...(prepared.artifactSourceProof ? { artifactSourceProof: prepared.artifactSourceProof } : {}) },
     status: 'APPLIED', releaseAuthority: true, evidenceScope: 'PRODUCTION_PROVIDER', observedAt: now() })
   // Re-run the same consumer before publishing APPLIED; an invalid proof cannot
   // be upgraded into an owner release prerequisite by an operator-only shortcut.
@@ -197,7 +226,8 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
 
 async function main() {
   const argv = process.argv.slice(2)
-  if (argv.length !== 1 || !['--check', '--apply'].includes(argv[0])) fail('ARGUMENT_INVALID')
+  const reuseId = argv[1]?.match(/^--reuse-build-id=([a-f0-9]{8}-[a-f0-9-]{27})$/u)?.[1] ?? null
+  if (![1, 2].includes(argv.length) || !['--check', '--apply'].includes(argv[0]) || (argv.length === 2 && !reuseId)) fail('ARGUMENT_INVALID')
   const profile = JSON.parse(readGitBlob(root, 'config/release/dev040-orgmaster-independent-production-v3.json'))
   const git = readGitAuthority(root, profile)
   const githubToken = process.env.GITHUB_TOKEN || capture('gh', ['auth', 'token'])
@@ -209,10 +239,13 @@ async function main() {
   const token = process.env.GOOGLE_OAUTH_ACCESS_TOKEN || capture(process.platform === 'win32' ? 'pwsh' : 'gcloud',
     process.platform === 'win32' ? ['-NoProfile', '-Command', 'gcloud auth print-access-token'] : ['auth', 'print-access-token'])
   const transport = createOwnerTransport({ token })
+  const reuseBuild = reuseId ? await readHistoricalToolBuildSource({ root, profile, sourceRevision: git.sourceRevision,
+    providerBuild: await transport.request(`https://cloudbuild.googleapis.com/v1/projects/${profile.target.projectId}/locations/${profile.target.region}/builds/${reuseId}`),
+    readGithub: async endpoint => JSON.parse(capture('gh', ['api', `repos/${profile.application.repository}/${endpoint}`])) }) : null
   const outputDirectory = path.join(root, 'output', 'tool-rotation-native', git.sourceRevision)
   await mkdir(outputDirectory, { recursive: true })
   const terraform = createToolTerraform({ root, outputDirectory, environment: { ...process.env, GOOGLE_OAUTH_ACCESS_TOKEN: token } })
-  const result = await executeToolImageRotation({ root, profile, git, sourceProof, transport, terraform, apply: argv[0] === '--apply' })
+  const result = await executeToolImageRotation({ root, profile, git, sourceProof, transport, terraform, reuseBuild, apply: argv[0] === '--apply' })
   process.stdout.write(`${JSON.stringify(result)}\n`)
 }
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
