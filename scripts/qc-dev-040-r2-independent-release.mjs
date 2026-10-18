@@ -102,6 +102,7 @@ const syntheticRegressionData = await prepareSyntheticRegressionData()
 let ownerExitCommands
 try {
   ownerExitCommands = [
+  ['npm run test:production-tools', ['run', 'test:production-tools']],
   ['npm run test:dev-040:abort', ['run', 'test:dev-040:abort']],
   ['npm run check:db-boundary', ['run', 'check:db-boundary']],
   ['npm test -- --testTimeout=30000', ['test', '--', '--testTimeout=30000']],
@@ -128,6 +129,15 @@ const files = [
   'scripts/lib/dev040-orgmaster-independent-release.mjs', 'scripts/dev040-orgmaster-independent-release.mjs',
   'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.mjs',
   'scripts/dev040-production-migration-runner.test.mjs', 'scripts/qc-dev-040-r2-independent-release.mjs',
+  'scripts/lib/orgmaster-production-database.mjs', 'scripts/lib/orgmaster-production-database.test.mjs',
+  'scripts/production-tool-packaging.test.mjs', 'scripts/dev057-production-v4-catalog-readback-runner.mjs',
+  'scripts/dev057-production-v4-catalog-readback-runner.test.mjs',
+  'scripts/dev014-production-lifecycle-readback.mjs', 'scripts/dev014-production-lifecycle-readback.test.mjs',
+  'scripts/lib/dev014-lifecycle-v2-readback.mjs',
+  'scripts/dev057-production-principal-pair-diagnostic-runner.mjs', 'scripts/dev057-production-principal-pair-diagnostic-runner.test.mjs',
+  'server/aiPdmRoleCatalogRepository.ts', '.github/workflows/production-source-qc.yml',
+  ...['v5', 'v6', 'v7'].map(version => `config/catalogs/ai-pdm-role-catalog.${version}.json`),
+  'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json',
   'scripts/qc-dev-047-postgres.mjs', 'scripts/qc-dev-052-contract.mjs',
   'scripts/lib/dev049-production-admission.mjs', 'scripts/dev049-production-admission-runner.mjs', 'scripts/dev049-production-admission.test.mjs',
   'scripts/dev014-production-managed-link-runner.mjs', 'scripts/dev014-production-managed-link-runner.test.mjs',

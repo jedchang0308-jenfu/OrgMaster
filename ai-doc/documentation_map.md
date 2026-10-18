@@ -1,5 +1,9 @@
 # OrgMaster 文件地圖
 
+## DEV-040 production tool 設定解耦（2026-10-18）
+
+[來源與映像依賴契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018) → [本輪任務](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)。中立 target／connection options、四個設定呼叫端、三個映像 package 與現行 catalog 延遲快照；驗證由 `test:production-tools` 及 required `Production Source QC` 維護。發布準備限 PR／CI／source packaging，正式 build proof／rotation／owner release 依既有契約另行執行。
+
 ## DEV-037 已撤銷指派操作（2026-10-12）
 
 [啟用／刪除契約與結果](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-12-已撤銷指派操作目前本地切片) → [原生切片](dev_task.md#2026-10-12-已撤銷指派操作切片)。ID-only restore 保留 scope／period／V3 provenance，revoked-only confirmed removal 只移出草稿、保留 history／audit；既有 manage／workspace／mobile／CAS／publish gates。76 個唯一聚焦案例、final build、native middleware／isolated persistence 與桌面／手機 CUA PASS，產物=`output/playwright/dev037-assignment-actions-20261012/`；`Local Targeted QC Passed / Production Not Deployed`，不擴張 Principal／position／financial owner 或 sibling scope，不改歷史完成率。

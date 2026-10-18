@@ -3,6 +3,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
+import { TARGET as PRODUCTION_TARGET, databaseOptions } from './lib/orgmaster-production-database.mjs'
 import {
   assertMigrationBundle,
   assertRunnerTarget,
@@ -15,10 +16,7 @@ import {
 } from './lib/dev012-production-migration-runner.mjs'
 
 export const TARGET = Object.freeze({
-  ownerApplicationId: 'orgmaster',
-  releaseBucket: 'jenfu-platform-prod-orgmaster-release',
-  job: 'orgmaster-prod-migration-runner',
-  login: 'orgmaster-prod-migrator@jenfu-platform-prod.iam',
+  ...PRODUCTION_TARGET,
   ledger: 'orgmaster_core.schema_migrations',
   baselineCount: 10,
   entryCount: 31,
@@ -35,20 +33,6 @@ export const TARGET = Object.freeze({
   coreSchema: 'orgmaster_core',
   siblingCoreSchemas: ['ai_pdm_core', 'platform_core'],
 })
-
-export function databaseOptions(environment, token, database = 'jenfu_prod') {
-  return {
-    host: environment.POSTGRES_SOCKET,
-    database,
-    user: environment.POSTGRES_IAM_LOGIN,
-    password: token,
-    ssl: false,
-    application_name: 'dev012-orgmaster-production-migrator',
-    connectionTimeoutMillis: 10_000,
-    query_timeout: 35_000,
-    statement_timeout: 30_000,
-  }
-}
 
 export async function runMain({ argv = process.argv.slice(2), environment = process.env, fetchImpl = fetch, Client = pg.Client } = {}) {
   const args = parseRunnerArgs(argv)

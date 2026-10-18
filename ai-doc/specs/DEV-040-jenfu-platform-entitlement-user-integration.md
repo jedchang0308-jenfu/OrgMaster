@@ -1425,6 +1425,19 @@ Platform protected release run `35579062204`已在migration 006 prerequisite以S
 
 直接契約：[DEV-052](DEV-052-managed-identity-lifecycle-producer-contract.md)。QA分母：[DEV-040 R2 QA §16](../qa/DEV-040-R2-independent-production-release-validation-plan.md)。
 
+<a id="production-tool-database-config-20261018"></a>
+## 2026-10-18 發布工具共用設定解耦
+
+沿 DEV-040 維護發布工具：`scripts/lib/orgmaster-production-database.mjs` 僅保存 OrgMaster production owner／bucket／Job／IAM login 識別及 PostgreSQL connection options；匯入時沒有 I/O、credential 或執行入口。`dev040-production-migration-runner.mjs` 組合該識別與自己的 ledger、baseline／entry counts、exact append hash、schema／role policy，保留完整 migration 准入責任。
+
+DEV-014 lifecycle readback、DEV-049 admission、DEV-057 Principal pair diagnostic 與 catalog readback 直接引用中立模組。admission 的 target 公開形狀與各 Job／runtime login override、固定 production target guard、連線名稱、timeout、SSL、denied-database probes 均維持。其他獨立工具未納入；不改 Principal／catalog／grant 業務語意或任何 applied SQL。
+
+兩個 DEV-057 獨立 operator recipe 不再 COPY migration 執行入口；仍保留 `dev012-production-migration-runner.mjs` 的 target guard、GCS integrity／immutable publication primitives，以及 locked `pg`。catalog operator 保留 TypeScript reader、歷史 fixture 與 v5/v6/v7 source snapshots：現行 DB reader 延遲讀取對應 snapshot 並作完整內容比對，因此補齊原 recipe 遺漏的 v6/v7，不改既有 reader 語意。migration image 保留 admission／managed-link／fixture／authority-switch／lifecycle entrypoints 及其必要 helpers。
+
+`npm run test:production-tools` 驗證設定相容、拒絕行為與由三份實際 Dockerfile COPY 所組出的隔離 package，包含延遲路徑。required `Production Source QC` 同時建置三個真實工具映像並在禁止網路的容器中匯入其所有 entrypoints；既有 owner／abort／lifecycle／app／database-boundary gates 保留。此層證據不宣稱正式資料庫連線或 production PASS。
+
+交付停在可審查 PR、required CI 與來源／包裝準備。正式 merge、provider artifact build／scan／digest、source-matched `APP_INFRA_IMAGE_ROTATION`、完整 before／after proof、既有 infrastructure fingerprint 准入及 owner release 仍依原契約處理；這次三份 recipe／runner executable inputs 已改，不能重用先前相同輸入證明或放寬 sealed historical exceptions。沒有新增 migration、IAM／Secret、正式資料或部署授權。
+
 <a id="owner-artifact-input-reuse-20261007"></a>
 ## 2026-10-07 Owner artifact 輸入與重試維護（本地修改／行為驗證待執行）
 
