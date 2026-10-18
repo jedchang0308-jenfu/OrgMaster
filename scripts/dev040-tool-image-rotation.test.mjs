@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import test, { before, after } from 'node:test'
 import { gzipSync } from 'node:zlib'
 import { executeToolImageRotation, assertRequiredToolSourceQc, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
-import { parseDeployProductionArgs, selectDeployInfrastructureRef } from './dev040-deploy-production.mjs'
+import { assertDeployToolRotationSelection, parseDeployProductionArgs, selectDeployInfrastructureRef } from './dev040-deploy-production.mjs'
 import { canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { sealToolEvidence, assertToolSeal, rotationAddresses, MIGRATION_JOB_ADDRESS, assertToolBuildProof } from './lib/dev040-tool-image-rotation.mjs'
 import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-stage-executor.mjs'
@@ -286,6 +286,16 @@ test('ordinary CLI binds the exact own rotation receipt and rejects mixed or alt
   const composed = parseDeployProductionArgs(['--check', `--tool-image-rotation-ref=${ref}`, `--smoke-rotation-ref=${smoke}`, '--reuse-aborted-app-artifact'])
   assert.equal(selectDeployInfrastructureRef(composed, { intent: { infraReceiptRef: null } }).uri, smoke.split('#')[0])
   assert.equal(composed.reuseAbortedAppArtifact, true)
+  const toolRef = options.toolRotationRef
+  const smokeRef = composed.smokeRotationRef
+  assert.doesNotThrow(() => assertDeployToolRotationSelection(options, { infraReceiptRef: toolRef },
+    { toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1' } }))
+  assert.doesNotThrow(() => assertDeployToolRotationSelection(composed, { infraReceiptRef: smokeRef },
+    { mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' }))
+  assert.throws(() => assertDeployToolRotationSelection(options, { infraReceiptRef: smokeRef },
+    { mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' }), /TOOL_ROTATION_REF_INVALID/u)
+  assert.throws(() => assertDeployToolRotationSelection(options, { infraReceiptRef: toolRef },
+    { mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' }), /TOOL_ROTATION_REF_INVALID/u)
   for (const arg of ['--dev014-principal-lifecycle-v2-remediation', '--principal-only-recovery-ref=bad']) {
     assert.throws(() => parseDeployProductionArgs([`--tool-image-rotation-ref=${ref}`, arg]))
   }
