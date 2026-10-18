@@ -16,7 +16,7 @@ import {
   executeOrgMasterAdmission,
   ORGMASTER_ADMISSION_TARGET,
 } from './lib/dev049-production-admission.mjs'
-import { databaseOptions } from './dev040-production-migration-runner.mjs'
+import { databaseOptions } from './lib/orgmaster-production-database.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u

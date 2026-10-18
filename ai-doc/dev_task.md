@@ -1,5 +1,9 @@
 # OrgMaster 開發任務
 
+## DEV-040 production tool 設定解耦（2026-10-18）
+
+本輪僅 OrgMaster 發布／診斷工具技術債：抽離無副作用 database config、移轉四個設定呼叫端、精簡兩個獨立 operator image，migration policy 留在原 runner。沿既有 DEV-040，不新增主 DEV；契約與發布準備邊界見 [工具設定解耦](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018)。PR／CI 驗證進行中，正式 merge／artifact rotation／部署／資料／grant／IAM／Secret 未執行。隔離 worktree `.worktrees/release-tool-config-decoupling` 保留供本次 PR 交接，owner 為本對話。
+
 ## DEV-057 historical image predecessor continuation（2026-10-11）
 
 Native `ORGMASTER/DEV-057#smoke-reauth-continuation`，來源 `AI-PDM/DEV-121#rd-capabilities`。原生發布前置把歷史 image receipt 的 build source 當成已發布 application source，會拒絕已 RELEASED 且完整 infrastructure inputs 相同的合法基線。本輪僅在歷史 predecessor resolver 接受 exact `APP_INFRA_IMAGE_ROTATION` 的 source 差異，重驗同 owner immutable receipt、source lock、對應 RELEASED terminal、完整 infrastructure bytes；新 rotation source fence、copy closure、完整地址、state、credential checks 不變。原始 receipt 與当前基線不改。原版 synthetic RED 已在 source guard 重現；新增六項 6/6、owner Node 370/370、QC 選取 354/354、abort 6/6、app 895 PASS／4 skip、型別與 build／db-boundary PASS。QC 建立的合成資料已清理。Luna 只讀差異審查未發現 guard 缺口。protected CI、Production 相容發布與 RD 驗收仍待證。

@@ -1,4 +1,5 @@
 import { canonicalize, sha256 } from './dev012-production-migration-runner.mjs'
+import { TARGET } from './orgmaster-production-database.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
@@ -13,15 +14,15 @@ const ORIGIN_BUCKETS = Object.freeze({
 })
 
 export const ORGMASTER_ADMISSION_TARGET = Object.freeze({
-  ownerApplicationId: 'orgmaster',
+  ownerApplicationId: TARGET.ownerApplicationId,
   projectId: 'jenfu-platform-prod',
   projectNumber: '9536592944',
   region: 'asia-east1',
   instance: 'jenfu-platform-prod-pg',
   database: 'jenfu_prod',
-  jobName: 'orgmaster-prod-migration-runner',
-  releaseBucket: 'jenfu-platform-prod-orgmaster-release',
-  login: 'orgmaster-prod-migrator@jenfu-platform-prod.iam',
+  jobName: TARGET.job,
+  releaseBucket: TARGET.releaseBucket,
+  login: TARGET.login,
 })
 
 function fail(code, detail = '') {
