@@ -21,9 +21,10 @@ process.stderr.write(run.stderr)
 // One existing-build-only no-submission recovery case extends this selection to 355.
 // One role-bounded migrate live-readback/candidate-blocking case extends it to 356.
 // Three release-proof composition cases extend this exact selection to 359.
-// Prior-source smoke receipt continuation adds one selected case: total 360.
+// Prior-source smoke receipt continuation and the emitted abort-terminal schema
+// add two selected cases: total 361.
 // This Node result does not replace the full regression/build commands below.
-if (run.status !== 0 || !/\bpass 360\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 361\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 
