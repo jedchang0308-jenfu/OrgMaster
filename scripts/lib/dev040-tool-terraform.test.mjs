@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 import { createToolTerraform, terraformVariablesFromState } from './dev040-tool-terraform.mjs'
+import { submitSmokeRotationApplyOnce } from '../dev057-smoke-credential-rotation.mjs'
 
 const REPOSITORY_ROOT = process.cwd()
 const RELEASE_PROFILE = JSON.parse(fs.readFileSync(path.join(REPOSITORY_ROOT, 'config/release/dev040-orgmaster-independent-production-v3.json'), 'utf8'))
@@ -177,6 +178,10 @@ test('rebuilds the full bounded variable set from synthetic raw state', () => {
     foundation_manifest_sha256: 'f'.repeat(64),
   })
   assert.equal(Object.hasOwn(variables, 'github_read_token'), false)
+  const smokeRotation = terraformVariablesFromState({ state, profile: PROFILE, sourceRevision: SOURCE_REVISION,
+    candidateSmokeRefreshTokenSecretVersion: '10' })
+  assert.equal(smokeRotation.migration_runner_image_digest, PREVIOUS_IMAGE)
+  assert.equal(smokeRotation.candidate_smoke_refresh_token_secret_version, '10')
 })
 
 test('accepts the exact short migration job name emitted by the own Terraform output', () => {
@@ -457,4 +462,45 @@ test('sanitizes injected command errors without returning stderr or sensitive te
   } finally {
     removeTemporaryDirectory(directory)
   }
+})
+
+test('smoke rotation submits a saved plan once after sealing its immutable fence', async () => {
+  const expectedFence = { schemaVersion: 'fixture.v1', preparedReceiptSha256: 'a'.repeat(64) }
+  const trace = []
+  const result = await submitSmokeRotationApplyOnce({ fenceRead: null, expectedFence,
+    beforeSubmit: async () => trace.push('control'),
+    readBaseline: async () => { trace.push('baseline'); return { serial: 7 } },
+    assertBaseline: value => assert.equal(value.serial, 7),
+    readBinaryPlan: async () => { trace.push('plan'); return { bytes: Buffer.from('saved') } },
+    putFence: async value => { trace.push('fence'); assert.deepEqual(value, expectedFence); return { reused: false } },
+    applyPlan: async value => { trace.push('apply'); assert.deepEqual(value.bytes, Buffer.from('saved')); throw new Error('unknown completion') },
+  })
+  assert.deepEqual(result, { submitted: true, fenced: true })
+  assert.deepEqual(trace, ['control', 'baseline', 'plan', 'fence', 'apply'])
+})
+
+test('smoke rotation with an existing fence performs readback without a duplicate apply', async () => {
+  const expectedFence = { schemaVersion: 'fixture.v1', preparedReceiptSha256: 'b'.repeat(64) }
+  let calls = 0
+  const never = async () => { calls += 1; throw new Error('must not run') }
+  const result = await submitSmokeRotationApplyOnce({ fenceRead: { value: structuredClone(expectedFence) }, expectedFence,
+    beforeSubmit: never, readBaseline: never, assertBaseline: never, readBinaryPlan: never, putFence: never, applyPlan: never })
+  assert.deepEqual(result, { submitted: false, fenced: true })
+  assert.equal(calls, 0)
+})
+
+test('smoke rotation rejects a changed fence and skips a raced duplicate submission', async () => {
+  const expectedFence = { schemaVersion: 'fixture.v1', preparedReceiptSha256: 'c'.repeat(64) }
+  await assert.rejects(submitSmokeRotationApplyOnce({ fenceRead: { value: { ...expectedFence, preparedReceiptSha256: 'd'.repeat(64) } }, expectedFence,
+    beforeSubmit: async () => {}, readBaseline: async () => ({}), assertBaseline: () => {}, readBinaryPlan: async () => ({}),
+    putFence: async () => ({ reused: false }), applyPlan: async () => {} }),
+  error => error.code === 'SMOKE_ROTATION_APPLY_FENCE_INVALID')
+  let applies = 0
+  const result = await submitSmokeRotationApplyOnce({ fenceRead: null, expectedFence,
+    beforeSubmit: async () => {}, readBaseline: async () => ({}), assertBaseline: () => {},
+    readBinaryPlan: async () => ({ bytes: Buffer.from('saved') }), putFence: async () => ({ reused: true }),
+    applyPlan: async () => { applies += 1 },
+  })
+  assert.deepEqual(result, { submitted: false, fenced: true })
+  assert.equal(applies, 0)
 })

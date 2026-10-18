@@ -176,6 +176,41 @@ test('application-only release preserves all ten stages without importing data o
   assert.equal(h.service().traffic.length, 1)
 })
 
+test('release-executor-only continuation reuses the provider build and never submits a new image build', async () => {
+  const h = recordedHarness()
+  const { input, intentResult } = await authorizedRecordedInput(h, 'ROUTINE-APP-ARTIFACT-REUSE')
+  const intent = (await h.transport.readJson(intentResult.ref)).value
+  const artifactSourceRevision = 'b'.repeat(40)
+  const artifactSourceObject = { uri: `gs://${bucket}/source/archives/${'b'.repeat(64)}/source.tar.gz`, sha256: 'b'.repeat(64), generation: '7', crc32c: 'old-crc32c' }
+  const association = { schemaVersion: 'orgmaster.release-executor-only-app-artifact-reuse.v1',
+    releaseSourceRevision: intent.sourceRevision, artifactSourceRevision,
+    artifactDigest: `${h.profile.artifact.uri}@sha256:${'d'.repeat(64)}` }
+  input.verifyRoutineRelease = async () => ({ baselineIntentRef: intent.baselineIntentRef,
+    baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) },
+    migrationDisposition: 'UNCHANGED_VERIFIED', appArtifactReuse: association })
+  h.transport.createBuild = async () => assert.fail('cross-source continuation must not submit or select a current-source build')
+  let observedEvidenceSource = null
+  const originalEvidence = h.transport.waitArtifactEvidence
+  h.transport.waitArtifactEvidence = async inputValue => { observedEvidenceSource = inputValue.sourceRevision; return originalEvidence.call(h.transport, inputValue) }
+  input.reuseAppArtifact = async ({ association: actual }) => {
+    assert.deepEqual(actual, association)
+    return { artifactDigest: association.artifactDigest, buildInputSha256: 'c'.repeat(64), sourceArchiveSha256: artifactSourceObject.sha256,
+      reused: true, disposition: 'REUSED_CROSS_SOURCE_RELEASE_EXECUTOR_ONLY', artifactSourceRevision, artifactSourceObject,
+      association, build: { name: 'projects/p/locations/r/builds/b-old', id: 'b-old', projectId: h.profile.target.projectId,
+        status: 'SUCCESS', serviceAccount: `projects/${h.profile.target.projectId}/serviceAccounts/${h.profile.identities.builder}`,
+        sourceProvenance: { resolvedStorageSource: { bucket, object: artifactSourceObject.uri.split('/').slice(3).join('/'), generation: artifactSourceObject.generation } },
+        results: { images: [{ name: `${h.profile.artifact.uri}:release-${artifactSourceRevision}`, digest: 'sha256:' + 'd'.repeat(64) }] },
+        options: { requestedVerifyOption: 'VERIFIED' } } }
+  }
+  await executeOwnerStage({ ...input, stage: 'prepare' })
+  const deploymentRef = await executeOwnerStage({ ...input, stage: 'build' })
+  const deployment = (await h.transport.readJson(deploymentRef.ref)).value
+  assert.equal(deployment.artifactSourceRevision, artifactSourceRevision)
+  assert.deepEqual(deployment.artifactSourceObject, artifactSourceObject)
+  assert.deepEqual(deployment.appArtifactReuse, association)
+  assert.equal(observedEvidenceSource, artifactSourceRevision)
+})
+
 test('native rotation prepare seals the summary and migrate requires exact live Job readback before any candidate', async () => {
   async function preparedRotationCase(releaseId) {
     const h = recordedHarness()

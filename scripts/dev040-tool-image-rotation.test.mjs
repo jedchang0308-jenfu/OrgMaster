@@ -282,9 +282,14 @@ test('ordinary CLI binds the exact own rotation receipt and rejects mixed or alt
   const ref = `gs://${bucket}/receipts/tool-rotations/${'a'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`
   const options = parseDeployProductionArgs(['--check', `--tool-image-rotation-ref=${ref}`])
   assert.equal(selectDeployInfrastructureRef(options, { intent: { infraReceiptRef: null } }).uri, ref.split('#')[0])
+  const smoke = `gs://${bucket}/receipts/releases/ORGMASTER-SMOKE-V11-${'C'.repeat(12)}/app-infra.json#sha256=${'c'.repeat(64)}`
+  const composed = parseDeployProductionArgs(['--check', `--tool-image-rotation-ref=${ref}`, `--smoke-rotation-ref=${smoke}`, '--reuse-aborted-app-artifact'])
+  assert.equal(selectDeployInfrastructureRef(composed, { intent: { infraReceiptRef: null } }).uri, smoke.split('#')[0])
+  assert.equal(composed.reuseAbortedAppArtifact, true)
   for (const arg of ['--dev014-principal-lifecycle-v2-remediation', '--principal-only-recovery-ref=bad']) {
     assert.throws(() => parseDeployProductionArgs([`--tool-image-rotation-ref=${ref}`, arg]))
   }
+  assert.throws(() => parseDeployProductionArgs(['--reuse-aborted-app-artifact', '--dev014-activate']))
   assert.throws(() => parseDeployProductionArgs([`--tool-image-rotation-ref=${ref.replace(bucket, 'other-release')}`]))
 })
 test('required source QC uses the latest matching run instead of an older success', () => {

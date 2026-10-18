@@ -6,6 +6,7 @@ import { assertOrdinaryToolRotation } from './dev040-tool-image-rotation.mjs'
 import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256 } from './dev012-owner-release-runtime.mjs'
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
+import { assertAppArtifactReuse } from './dev040-app-artifact-reuse.mjs'
 import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 
@@ -797,7 +798,7 @@ export async function readAppliedAbortInfraBaseline({profile,transport,baseline,
 }
 
 
-export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
+export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, toolRotationRef = null, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
   transport.assertServiceSettled(service)
@@ -851,7 +852,21 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const toolRotation = values.infra?.toolRotation == null ? null : await assertOrdinaryToolRotation({
     root, profile, transport, intent, receipt: values.infra, baseline, readLiveJob: readLiveToolJob,
   })
+  let toolRotationPredecessor = null
+  if (toolRotationRef && !same(toolRotationRef, intent.infraReceiptRef)) {
+    assertImmutableRef(toolRotationRef, profile.artifact.releaseBucket, ['receipts/tool-rotations'])
+    const read = await transport.readJson(toolRotationRef, profile.artifact.releaseBucket, ['receipts/tool-rotations'])
+    if (!same(read.ref, toolRotationRef)) fail('TOOL_ROTATION_REF_INVALID')
+    toolRotationPredecessor = await assertOrdinaryToolRotation({ root, profile, transport,
+      intent: { ...intent, infraReceiptRef: toolRotationRef }, receipt: read.value, baseline, readLiveJob: readLiveToolJob })
+    toolRotationPredecessor = { receipt: read.value, continuationEvidence: toolRotationPredecessor, receiptRef: toolRotationRef }
+  }
   if (toolRotation && (controlledTransition || baseline.repair || !same(runtimeConfig, baselineRuntime))) fail('TOOL_ROTATION_ORDINARY_ONLY')
+  if (toolRotationPredecessor && (controlledTransition || baseline.repair || !same(runtimeConfig, baselineRuntime))) fail('TOOL_ROTATION_ORDINARY_ONLY')
+  const appReuseLeft = values.authorization?.appArtifactReuse ?? null
+  const appReuseRight = values.readiness?.appArtifactReuse ?? null
+  if (!same(appReuseLeft, appReuseRight)) fail('APP_ARTIFACT_REUSE_AUTHORITY_MISMATCH')
+  const appArtifactReuse = appReuseLeft == null ? null : await assertAppArtifactReuse({ root, profile, transport, intent, association: appReuseLeft })
   const infrastructureHash = lifecycleGuard
     ? (root, revision) => transitionFingerprint(root, revision, [], dev014PrincipalLifecycleInfrastructureInputs)
     : ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
@@ -863,7 +878,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (!values.infra || same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)) fail('ROUTINE_INFRA_CHANGED')
     if (controlledTransition?.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION') cutoverInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
     else if (controlledTransition?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION') principalSmokeInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
-    else if (!toolRotation) fail('ROUTINE_INFRA_CHANGED')
+    else if (!toolRotation && !toolRotationPredecessor) fail('ROUTINE_INFRA_CHANGED')
   }
   if (baseline.repair) {
     if (!intent.principalOnlyRecovery || !same(runtimeConfig, baselineRuntime)) fail('ROUTINE_REPAIR_RUNTIME_CHANGED')
@@ -944,12 +959,13 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     } else {
       if (lifecycleEnable) fail('DEV014_LIFECYCLE_ENABLEMENT_INFRA_REUSE_REQUIRED')
       if (values.infra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') fail('ROUTINE_INFRA_REF_CHANGED')
-      smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline, readSourceFile, readInfrastructureTree })
+      smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline,
+        predecessor: toolRotationPredecessor, readSourceFile, readInfrastructureTree })
     }
   }
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]
     if (value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.releaseId !== intent.releaseId || !same(value.baselineIntentRef, intent.baselineIntentRef)) fail('ROUTINE_AUTHORITY_MISMATCH')
   }
-  return { ...(toolRotation ? { toolImageRotation: toolRotation } : {}), ...(appliedAbortInfraBaseline ? { appliedAbortInfraBaseline } : {}), ...(smokeRotationContinuation ? { smokeRotationContinuation } : {}), baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, ...(baseline.repair ? { principalOnlyForwardRepair: { rollbackRef: baseline.repair.rollbackRef, recoveryRef: baseline.repair.recoveryRef } } : {}), infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
+  return { ...(toolRotation ? { toolImageRotation: toolRotation } : {}), ...(toolRotationPredecessor ? { toolImageRotationPredecessor: toolRotationPredecessor.continuationEvidence } : {}), ...(appArtifactReuse ? { appArtifactReuse } : {}), ...(appliedAbortInfraBaseline ? { appliedAbortInfraBaseline } : {}), ...(smokeRotationContinuation ? { smokeRotationContinuation } : {}), baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, ...(baseline.repair ? { principalOnlyForwardRepair: { rollbackRef: baseline.repair.rollbackRef, recoveryRef: baseline.repair.recoveryRef } } : {}), infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
 }

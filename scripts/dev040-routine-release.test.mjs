@@ -1,6 +1,7 @@
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
-import { buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { assertSmokeCredentialRotationPlan, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { appArtifactSourceEquivalence } from './lib/dev040-app-artifact-reuse.mjs'
 import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -2216,4 +2217,57 @@ test('DEV-014 abort continuation preserves complete-set image proof and has no n
     assert.throws(()=>assertDev014PrincipalLifecycleRuntimeGuard(profile,before,{...runtime,plainEnvironment:{...runtime.plainEnvironment,[name]:'wrong-target'}}))
     assert.throws(()=>assertDev014PrincipalLifecycleRuntimeGuard(profile,{...before,plainEnvironment:{...beforePlain,[name]:'already-wrong-target'}},runtime))
   }
+})
+
+test('smoke credential rotation plan admits exactly one Workflow version update across the complete address set', () => {
+  const sourceRevision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim()
+  const infraProfile = JSON.parse(fs.readFileSync('config/release/dev040-production-release-infra-plan.json', 'utf8'))
+  const addresses = [...infraProfile.stageA, ...infraProfile.stageBAdditional].sort()
+  const workflowAddress = 'google_workflows_workflow.candidate_smoke[0]'
+  const beforeSource = expectedSmokeWorkflowSource({ root: process.cwd(), profile, sourceRevision, version: '10' })
+  const afterSource = expectedSmokeWorkflowSource({ root: process.cwd(), profile, sourceRevision, version: '11' })
+  const resource_changes = addresses.map(address => {
+    const mode = address.startsWith('data.') ? 'data' : 'managed'
+    if (address === workflowAddress) return { address, mode, change: { actions: ['update'],
+      before: { project: profile.target.projectId, region: profile.target.region, name: profile.verification.candidateWorkflowName,
+        service_account: profile.identities.smoke, source_contents: beforeSource, revision_id: '000010-old', update_time: 'old' },
+      after: { project: profile.target.projectId, region: profile.target.region, name: profile.verification.candidateWorkflowName,
+        service_account: profile.identities.smoke, source_contents: afterSource, revision_id: null, update_time: null } } }
+    const value = { marker: address }
+    return { address, mode, change: { actions: [mode === 'data' ? 'read' : 'no-op'], before: value, after: value } }
+  })
+  const plan = { complete: true, errored: false, resource_changes, variables: {
+    candidate_smoke_refresh_token_secret_version: { value: '11' }, source_revision: { value: sourceRevision } } }
+  const result = assertSmokeCredentialRotationPlan({ root: process.cwd(), profile, sourceRevision, plan, infraProfile, previousVersion: '10', nextVersion: '11' })
+  assert.equal(result.addressActions.length, 75)
+  assert.equal(result.update.address, workflowAddress)
+  for (const mutate of [
+    value => { value.resource_changes.find(row => row.address !== workflowAddress && row.mode === 'managed').change.actions = ['update'] },
+    value => { value.resource_changes.find(row => row.address === workflowAddress).change.after.service_account = 'other@example.invalid' },
+    value => { value.resource_changes.pop() },
+    value => { value.variables.candidate_smoke_refresh_token_secret_version.value = '12' },
+  ]) {
+    const changed = structuredClone(plan); mutate(changed)
+    assert.throws(() => assertSmokeCredentialRotationPlan({ root: process.cwd(), profile, sourceRevision, plan: changed, infraProfile, previousVersion: '10', nextVersion: '11' }))
+  }
+})
+
+test('app artifact reuse accepts only the fixed release-executor path set', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'orgmaster-app-artifact-reuse-'))
+  const run = args => { const result = spawnSync('git', args, { cwd: directory, encoding: 'utf8' }); assert.equal(result.status, 0, result.stderr); return result.stdout.trim() }
+  try {
+    run(['init']); run(['config', 'user.email', 'test@example.invalid']); run(['config', 'user.name', 'test'])
+    for (const file of ['Dockerfile', '.dockerignore', 'package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.ts', 'vite.server.config.ts']) {
+      fs.writeFileSync(path.join(directory, file), `${file}-baseline\n`)
+    }
+    run(['add', '.']); run(['commit', '-m', 'baseline']); const baseline = run(['rev-parse', 'HEAD'])
+    fs.mkdirSync(path.join(directory, 'scripts'), { recursive: true })
+    fs.writeFileSync(path.join(directory, 'scripts', 'dev040-deploy-production.mjs'), 'release-only\n')
+    run(['add', '.']); run(['commit', '-m', 'release executor']); const release = run(['rev-parse', 'HEAD'])
+    const proof = appArtifactSourceEquivalence(directory, baseline, release)
+    assert.deepEqual(proof.changedPaths.map(row => row.path), ['scripts/dev040-deploy-production.mjs'])
+    fs.writeFileSync(path.join(directory, 'Dockerfile'), 'runtime-change\n')
+    run(['add', '.']); run(['commit', '-m', 'runtime change']); const changed = run(['rev-parse', 'HEAD'])
+    assert.throws(() => appArtifactSourceEquivalence(directory, baseline, changed), /APP_ARTIFACT_REUSE_RUNTIME_INPUT_CHANGED/u)
+  } finally { fs.rmSync(directory, { recursive: true, force: true }) }
 })

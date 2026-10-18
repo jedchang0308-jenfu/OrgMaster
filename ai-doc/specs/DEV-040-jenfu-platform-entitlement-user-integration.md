@@ -1452,6 +1452,15 @@ PR #134 已合併至 `ad4e6be3355305329833a83005889be61c46f6ee`。其後人類�
 
 行為與反向案例由 `npm run test:dev-040:tool-rotation` 加入既有 required Source QC 與 owner QC；owner／abort／DB boundary／app gates 依實際變動保留。實際正式結果另記 dated owner evidence；本契約本身不宣稱發布成功。
 
+<a id="release-proof-composition-20261018"></a>
+### 2026-10-18 發布證據組合與 Workflow credential version rotation
+
+- 固定 continuation 只承接同服務既有 `PRE_ACTIVATION_ABORTED` attempt。`--reuse-aborted-app-artifact` 必須重驗該 attempt 的 immutable intent、build、deployment capsule、provenance、SBOM、scan 與 terminal receipts，保留原 artifact source／archive／build ID／digest／時間；目前 protected merge source 相對原 artifact source 只能新增或修改契約內 exact release-executor／test／文件 allowlist，且 Dockerfile、`.dockerignore`、package／lock、TypeScript 與 Vite build inputs 必須逐 blob 相同。Provider lookup 使用原 build identity 且 `reuseOnly=true`，查無或任一 runtime input 漂移即停止，禁止 build POST、重標來源或重建映像。
+- 已套用的 `APP_INFRA_IMAGE_ROTATION` 與後續 `APP_INFRA_SMOKE_CREDENTIAL_ROTATION` 是兩份獨立 immutable predecessor proof。前者完整證明 baseline 到 migration Job image-only state；後者以該 tool state 為起點，重新綁定目前 protected source、required `Production Source QC` 與 fresh same-Principal reauthentication，只允許既有 candidate-smoke Workflow 引用既有 enabled Secret 的下一個 numeric version。不得把兩次變更合成一份 plan 或擴張任何 resource／field exception。
+- Native smoke producer 從 own Terraform backend 重建完整 inputs，plan 必須涵蓋 exact 75-address set；所有 data source 只讀，所有 managed resource no-op，唯一 update 是 `google_workflows_workflow.candidate_smoke[0]` 的 `source_contents`，且 byte delta 只能是 bound Secret version。Workflow name、service account 與其餘 provider fields、migration runner/controller digest、foundation manifest 及所有非 Workflow state 保持。這個 lane 不新增 Secret version、不改 Secret payload／IAM／grant／資料／schema／service／traffic，也不建任何映像。
+- Plan binary、JSON、before state、Workflow before、control snapshot 與 source／credential／tool refs 先 create-only 封存為 prepared receipt；apply 前重驗 source、control generation、state serial／lineage 與 live Workflow。Immutable apply fence 寫入後才可套用 exact saved plan。呼叫結果不明或 fence 已存在時只做 Terraform state 及 provider Workflow readback，永不重送 apply；成功後封存 after state／manifest／Workflow readback 及完整 hash join。
+- 一般發布以 `deploy:production -- --tool-image-rotation-ref=<tool> --smoke-rotation-ref=<workflow> --reuse-aborted-app-artifact` 進入原十階段。Prepare 分別重驗 tool predecessor、smoke continuation 及 app artifact equivalence；build stage 只讀回原 provider artifact，migrate 維持 `UNCHANGED_VERIFIED` 與零 Job 執行／DDL／import／bootstrap。任何一條 proof 缺漏、過期、漂移或不匹配均在 candidate 前 fail closed；實際正式結果只由本次 owner receipts 與發布後 provider readback 證明。
+
 <a id="owner-artifact-input-reuse-20261007"></a>
 ## 2026-10-07 Owner artifact 輸入與重試維護（本地修改／行為驗證待執行）
 
