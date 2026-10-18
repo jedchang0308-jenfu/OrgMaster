@@ -9,6 +9,7 @@ import { canonicalize, sha256 } from './dev012-owner-release-runtime.mjs'
 import { createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
 import {
   assertOrdinaryToolRotation,
+  assertToolArtifactAssociation,
   assertToolBuildProof,
   assertToolOwner,
   assertToolRotationPlan,
@@ -92,6 +93,13 @@ function createSourceFixture() {
   const ordinarySourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
   runGit(root, ['checkout', '--quiet', '--detach', ordinarySourceRevision])
+  const changedCopyInput = 'scripts/lib/dev012-production-migration-runner.mjs'
+  fs.appendFileSync(path.join(root, ...changedCopyInput.split('/')), '\n// changed after historical tool build\n')
+  runGit(root, ['add', changedCopyInput])
+  runGit(root, ['commit', '--quiet', '-m', 'change copied runner input after tool build'])
+  const copyInputDriftSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+
+  runGit(root, ['checkout', '--quiet', '--detach', ordinarySourceRevision])
   fs.writeFileSync(path.join(root, '.dockerignore'), '# added after the tool image rotation\n')
   runGit(root, ['add', '.dockerignore'])
   runGit(root, ['commit', '--quiet', '-m', 'add dockerignore after tool image build'])
@@ -113,7 +121,7 @@ function createSourceFixture() {
 
   return {
     root, baselineSourceRevision, rotationSourceRevision, ordinarySourceRevision,
-    toolInputDriftSourceRevision, driftSourceRevision,
+    copyInputDriftSourceRevision, toolInputDriftSourceRevision, driftSourceRevision,
     sourceIdentitySha256, sourceArchive, sourceArchiveBytes, sourceArchiveSha256,
     sourceArchiveObject: `source/archives/${sourceArchiveSha256}/source.tar.gz`,
   }
@@ -515,6 +523,7 @@ function providerJob(image, generation) {
 
 function makeReceiptHarness({
   intentSourceRevision = sourceFixture.rotationSourceRevision,
+  receiptSourceRevision = sourceFixture.rotationSourceRevision,
   baselineUsesRotation = false,
   sourceArchiveBytes = sourceFixture.sourceArchiveBytes,
   buildPatch = {},
@@ -527,7 +536,7 @@ function makeReceiptHarness({
   const plan = {
     ...nativePlanFixture().plan,
     variables: {
-      source_revision: { value: sourceFixture.rotationSourceRevision },
+      source_revision: { value: receiptSourceRevision },
       migration_runner_image_digest: { value: NEXT_IMAGE },
       controller_image_digest: { value: CONTROLLER_IMAGE },
       foundation_manifest_sha256: { value: FOUNDATION_HASH },
@@ -539,7 +548,7 @@ function makeReceiptHarness({
     foundation_manifest_sha256: FOUNDATION_HASH,
     migration_runner_digest: NEXT_IMAGE,
     controller_image_digest: CONTROLLER_IMAGE,
-    source_revision: sourceFixture.rotationSourceRevision,
+    source_revision: receiptSourceRevision,
     project_id: profile.target.projectId,
     region: profile.target.region,
     application_service: profile.target.serviceName,
@@ -621,7 +630,7 @@ function makeReceiptHarness({
   const derived = assertToolRotationPlan({ plan, infraProfile, previousImage: PREVIOUS_IMAGE, nextImage: NEXT_IMAGE })
   const imageRotation = {
     ...derived,
-    sourceRevision: sourceFixture.rotationSourceRevision,
+    sourceRevision: receiptSourceRevision,
     planJsonSha256: sha256(planBytes),
     ...proofPatch,
   }
@@ -644,8 +653,11 @@ function makeReceiptHarness({
     providerJobBeforeRef,
     providerJobAfterRef,
     binaryPlanRef,
+    ...(buildProof.sourceRevision === receiptSourceRevision ? {} : {
+      artifactSourceProof: reviewedToolBuildSourceProof(profile, buildProof.sourceRevision, receiptSourceRevision),
+    }),
     sourceProof: {
-      sourceRevision: sourceFixture.rotationSourceRevision,
+      sourceRevision: receiptSourceRevision,
       repository: profile.application.repository,
       branch: profile.application.branch,
       status: 'OFFICIAL_MERGED_PR_VERIFIED',
@@ -658,7 +670,7 @@ function makeReceiptHarness({
     ownerApplicationId: 'orgmaster',
     projectId: 'jenfu-platform-prod',
     region: 'asia-east1',
-    sourceRevision: sourceFixture.rotationSourceRevision,
+    sourceRevision: receiptSourceRevision,
     foundationManifestSha256: outputManifest.foundation_manifest_sha256,
     migrationRunnerDigest: NEXT_IMAGE,
     controllerImageDigest: CONTROLLER_IMAGE,
@@ -758,12 +770,30 @@ function mutateBuildEvidence(fixture, mutate) {
   resealReceipt(fixture)
 }
 
+function reviewedToolBuildSourceProof(profile, buildSourceRevision, rotationSourceRevision) {
+  return {
+    schemaVersion: 'orgmaster.reviewed-tool-build-source.v1',
+    sourceRevision: buildSourceRevision,
+    rotationSourceRevision,
+    sourceTree: runGit(sourceFixture.root, ['rev-parse', `${buildSourceRevision}^{tree}`]),
+    repository: profile.application.repository,
+    branch: profile.application.branch,
+    pullRequestNumber: 417,
+    pullRequestUrl: `https://github.com/${profile.application.repository}/pull/417`,
+    mergedAt: '2026-10-18T00:00:00.000Z',
+    requiredSourceQc: 'SUCCESS',
+    requiredSourceQcCheckId: 9417,
+    status: 'HISTORICAL_MERGED_SOURCE_VERIFIED',
+  }
+}
+
 test('accepts the first rotation and a later source-only release reusing its immutable receipt', async () => {
   const first = makeReceiptHarness()
   const firstResult = await assertOrdinaryToolRotation({
     root: sourceFixture.root, profile: first.profile, transport: first.transport,
     intent: first.intent, receipt: first.receipt, baseline: first.baseline,
   })
+  assert.equal(Object.hasOwn(first.receipt.toolRotation, 'artifactSourceProof'), false)
   assert.equal(firstResult.evidenceScope, 'OWNER_SEALED_TOOL_IMAGE_ROTATION')
   assert.equal(firstResult.terraformAddressCount, rotationAddresses(infraProfileAt()).length)
   assert.equal(firstResult.ddlExecuted, 0)
@@ -787,6 +817,51 @@ test('accepts the first rotation and a later source-only release reusing its imm
   } finally {
     runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
   }
+})
+
+test('accepts a complete consumer receipt associating a historical image build with its newer rotation source', async () => {
+  const fixture = makeReceiptHarness({
+    intentSourceRevision: sourceFixture.ordinarySourceRevision,
+    baselineUsesRotation: true,
+    receiptSourceRevision: sourceFixture.ordinarySourceRevision,
+  })
+  const priorHead = runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
+  try {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', sourceFixture.ordinarySourceRevision])
+    const build = fixture.jsonObjects.get(fixture.receipt.toolRotation.buildProofRef.uri).value
+    assert.equal(build.sourceRevision, sourceFixture.rotationSourceRevision)
+    assert.equal(build.artifactDigest, NEXT_IMAGE)
+    assert.equal(build.cloudBuild.id, '12345678-1234-1234-1234-123456789abc')
+    assert.equal(build.cloudBuild.createTime, '2026-10-18T00:00:00.000Z')
+    assert.equal(build.sourceObject.sha256, sourceFixture.sourceArchiveSha256)
+    assert.deepEqual(fixture.receipt.toolRotation.artifactSourceProof,
+      reviewedToolBuildSourceProof(fixture.profile, sourceFixture.rotationSourceRevision, sourceFixture.ordinarySourceRevision))
+    const result = await validateRotationFixture(fixture)
+    assert.equal(result.sourceRevision, sourceFixture.ordinarySourceRevision)
+    assert.equal(result.migrationRunnerDigest, NEXT_IMAGE)
+  } finally {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
+  }
+})
+
+test('artifact association rejects changed COPY/context inputs and a mismatched historical source proof', () => {
+  const profile = productionProfile()
+  const buildSourceRevision = sourceFixture.rotationSourceRevision
+  const assertAssociation = (currentRevision, proof) => assertToolArtifactAssociation({
+    root: sourceFixture.root, profile, sourceRevision: currentRevision, buildSourceRevision, proof,
+  })
+  assert.doesNotThrow(() => assertAssociation(sourceFixture.ordinarySourceRevision,
+    reviewedToolBuildSourceProof(profile, buildSourceRevision, sourceFixture.ordinarySourceRevision)))
+
+  for (const changedSourceRevision of [sourceFixture.copyInputDriftSourceRevision, sourceFixture.toolInputDriftSourceRevision]) {
+    assert.throws(() => assertAssociation(changedSourceRevision,
+      reviewedToolBuildSourceProof(profile, buildSourceRevision, changedSourceRevision)),
+    error => error?.code === 'TOOL_ROTATION_ARTIFACT_SOURCE_INVALID')
+  }
+  const wrongSourceProof = reviewedToolBuildSourceProof(profile, buildSourceRevision, sourceFixture.ordinarySourceRevision)
+  wrongSourceProof.rotationSourceRevision = sourceFixture.baselineSourceRevision
+  assert.throws(() => assertAssociation(sourceFixture.ordinarySourceRevision, wrongSourceProof),
+    error => error?.code === 'TOOL_ROTATION_ARTIFACT_SOURCE_INVALID')
 })
 
 test('rejects later reuse after .dockerignore drift while the historical source archive remains valid', async () => {
@@ -848,7 +923,7 @@ test('rejects changes to state, output, saved-plan hashes, and the sealed image 
   await assert.rejects(() => assertOrdinaryToolRotation({
     root: sourceFixture.root, profile: badBuild.profile, transport: badBuild.transport,
     intent: badBuild.intent, receipt: badBuild.receipt, baseline: badBuild.baseline,
-  }), /^Error: TOOL_IMAGE_BUILD_TARGET_INVALID:--tag$/u)
+  }), error => error?.code === 'TOOL_ROTATION_ARTIFACT_SOURCE_INVALID')
 
   const corruptSeal = makeReceiptHarness()
   corruptSeal.receipt.receiptSha256 = '0'.repeat(64)

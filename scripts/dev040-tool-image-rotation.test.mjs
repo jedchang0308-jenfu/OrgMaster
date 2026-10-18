@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test, { before, after } from 'node:test'
 import { gzipSync } from 'node:zlib'
-import { executeToolImageRotation, assertRequiredToolSourceQc } from './dev040-tool-image-rotation.mjs'
+import { executeToolImageRotation, assertRequiredToolSourceQc, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
 import { parseDeployProductionArgs, selectDeployInfrastructureRef } from './dev040-deploy-production.mjs'
 import { canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { sealToolEvidence, assertToolSeal, rotationAddresses, MIGRATION_JOB_ADDRESS, assertToolBuildProof } from './lib/dev040-tool-image-rotation.mjs'
@@ -67,8 +67,13 @@ before(() => {
     fs.appendFileSync(path.join(directory, RECIPE), '\n# synthetic controlled image rotation\n')
     runGit(directory, ['add', RECIPE])
     runGit(directory, ['commit', '--quiet', '-m', 'synthetic tool source'])
+    const rotationSourceRevision = runGit(directory, ['rev-parse', 'HEAD'])
+    fs.writeFileSync(path.join(directory, 'producer-build-notes.md'), 'non-executable producer documentation\n')
+    runGit(directory, ['add', 'producer-build-notes.md'])
+    runGit(directory, ['commit', '--quiet', '-m', 'synthetic producer documentation only'])
     sourceRevision = runGit(directory, ['rev-parse', 'HEAD'])
     sourceFixture = { root: directory, baselineRevision,
+      rotationSourceRevision,
       sourceTree: runGit(directory, ['rev-parse', 'HEAD^{tree}']),
       identitySha256: sha256(createGitSourceIdentity(directory, sourceRevision)),
       archive: gzipSync(createGitArchive(directory, sourceRevision), { level: 9 }) }
@@ -300,6 +305,54 @@ test('required source QC uses the latest matching run instead of an older succes
   ] }, sourceRevision))
   assert.throws(() => assertRequiredToolSourceQc({ check_runs: unrelated }, sourceRevision),
     error => error.code === 'TOOL_ROTATION_REQUIRED_SOURCE_QC_MISSING')
+})
+test('historical build source reader accepts a merged old recipe source with a newer producer-doc revision', async () => {
+  const historicalRevision = sourceFixture.rotationSourceRevision
+  const providerBuild = { steps: [{ args: ['--build-arg', `SOURCE_REVISION=${historicalRevision}`] }] }
+  const calls = []
+  const endpoints = {
+    [`git/commits/${historicalRevision}`]: {
+      sha: historicalRevision,
+      tree: { sha: runGit(sourceFixture.root, ['rev-parse', `${historicalRevision}^{tree}`]) },
+    },
+    [`commits/${historicalRevision}/pulls?per_page=100`]: [{
+      number: 417,
+      state: 'closed',
+      merge_commit_sha: historicalRevision,
+      base: { ref: profile.application.branch, repo: { full_name: profile.application.repository } },
+      merged_at: NOW,
+      html_url: `https://github.com/${profile.application.repository}/pull/417`,
+    }],
+    [`commits/${historicalRevision}/check-runs?per_page=100`]: { check_runs: [{
+      id: 9417,
+      name: 'Production Source QC',
+      app: { id: 15368 },
+      head_sha: historicalRevision,
+      status: 'completed',
+      conclusion: 'success',
+    }] },
+  }
+  const result = await readHistoricalToolBuildSource({
+    root: sourceFixture.root,
+    profile,
+    sourceRevision,
+    providerBuild,
+    readGithub: async endpoint => {
+      calls.push(endpoint)
+      assert.ok(Object.hasOwn(endpoints, endpoint), `UNEXPECTED_GITHUB_READ:${endpoint}`)
+      return endpoints[endpoint]
+    },
+  })
+  assert.equal(result.providerBuild, providerBuild)
+  assert.equal(result.sourceRevision, historicalRevision)
+  assert.equal(result.sourceProof.schemaVersion, 'orgmaster.reviewed-tool-build-source.v1')
+  assert.equal(result.sourceProof.sourceRevision, historicalRevision)
+  assert.equal(result.sourceProof.rotationSourceRevision, sourceRevision)
+  assert.equal(result.sourceProof.sourceTree, endpoints[`git/commits/${historicalRevision}`].tree.sha)
+  assert.equal(result.sourceProof.status, 'HISTORICAL_MERGED_SOURCE_VERIFIED')
+  assert.equal(result.sourceProof.requiredSourceQc, 'SUCCESS')
+  assert.equal(result.sourceProof.requiredSourceQcCheckId, 9417)
+  assert.deepEqual(calls.sort(), Object.keys(endpoints).sort())
 })
 test('read-only readiness verifies all 75 addresses without a build, mutation or publication', async () => {
   const h = harness()

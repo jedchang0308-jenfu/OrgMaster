@@ -893,7 +893,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     }
   }
 
-  async function createBuild({ profile, intent, sourceObject, deadlineAt }) {
+  async function createBuild({ profile, intent, sourceObject, deadlineAt, reuseOnly = false }) {
     assertImmutableRef(sourceObject.ref, profile.artifact.releaseBucket, ['source'])
     if (!Number.isFinite(Date.parse(deadlineAt)) || Date.parse(deadlineAt) <= Date.now()
       || !H40.test(intent.sourceRevision ?? '') || !H64.test(intent.sourceSha256 ?? '')
@@ -956,6 +956,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     let build = successful[0] ?? active[0] ?? null
     let reused = Boolean(build)
     if (!build) {
+      if (reuseOnly) fail('BUILD_REUSE_NOT_FOUND')
       // Only provider internal/queue-expiry failures are automatic retries, at most 3 submissions.
       if (matches.some(item => !['INTERNAL_ERROR', 'EXPIRED'].includes(item.status))) fail('BUILD_RETRY_REQUIRES_INPUT_FIX', matches.map(item => `${item.id}/${item.status}`).join(','))
       let submission = 1

@@ -50,6 +50,24 @@ export function toolInfrastructureFingerprint(root, revision) {
     .filter(entry => !TOOL_RECIPES.includes(entry.split('\t').at(-1)))
   return sha256(entries.join('\0'))
 }
+export function assertToolArtifactAssociation({ root, profile, sourceRevision, buildSourceRevision, proof }) {
+  if (sourceRevision === buildSourceRevision) {
+    if (proof != null) fail('ARTIFACT_SOURCE_INVALID')
+    return
+  }
+  if (!H40.test(sourceRevision ?? '') || !H40.test(buildSourceRevision ?? '')
+    || proof?.schemaVersion !== 'orgmaster.reviewed-tool-build-source.v1'
+    || proof.sourceRevision !== buildSourceRevision || proof.rotationSourceRevision !== sourceRevision
+    || proof.repository !== profile.application.repository || proof.branch !== profile.application.branch
+    || proof.status !== 'HISTORICAL_MERGED_SOURCE_VERIFIED' || proof.requiredSourceQc !== 'SUCCESS'
+    || !Number.isSafeInteger(proof.requiredSourceQcCheckId) || proof.requiredSourceQcCheckId < 1
+    || !Number.isSafeInteger(proof.pullRequestNumber) || proof.pullRequestNumber < 1
+    || !Number.isFinite(Date.parse(proof.mergedAt ?? ''))) fail('ARTIFACT_SOURCE_INVALID')
+  const ancestor = spawnSync('git', ['merge-base', '--is-ancestor', buildSourceRevision, sourceRevision], { cwd: root, windowsHide: true })
+  const tree = spawnSync('git', ['rev-parse', `${buildSourceRevision}^{tree}`], { cwd: root, encoding: 'utf8', windowsHide: true })
+  if (ancestor.status !== 0 || tree.status !== 0 || tree.stdout.trim() !== proof.sourceTree
+    || !same(toolExecutableInputs(root, buildSourceRevision), toolExecutableInputs(root, sourceRevision))) fail('ARTIFACT_SOURCE_INVALID')
+}
 export function rotationAddresses(infraProfile) {
   const addresses = [...(infraProfile.stageA ?? []), ...(infraProfile.stageBAdditional ?? [])].sort()
   if (infraProfile.ownerApplicationId !== 'orgmaster' || infraProfile.projectId !== 'jenfu-platform-prod'
@@ -183,7 +201,8 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || receipt.terraformAddressCount !== rotationAddresses(infraProfile).length
     || receipt.terraformAddressesSha256 !== sha256(canonicalize(rotationAddresses(infraProfile)))) fail('PLAN_PROOF_INVALID')
   const build = buildRead.value
-  await assertToolBuildProof({ root, profile, build, sourceRevision: receipt.sourceRevision, imageDigest: receipt.migrationRunnerDigest, transport })
+  assertToolArtifactAssociation({ root, profile, sourceRevision: receipt.sourceRevision, buildSourceRevision: build.sourceRevision, proof: proof.artifactSourceProof })
+  await assertToolBuildProof({ root, profile, build, sourceRevision: build.sourceRevision, imageDigest: receipt.migrationRunnerDigest, transport })
   const sourceProof = proof.sourceProof
   if (sourceProof?.sourceRevision !== receipt.sourceRevision || sourceProof.repository !== profile.application.repository
     || sourceProof.branch !== profile.application.branch || sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
