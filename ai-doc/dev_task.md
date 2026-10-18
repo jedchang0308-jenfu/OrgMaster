@@ -2,7 +2,7 @@
 
 ## DEV-040 production tool 設定解耦（2026-10-18）
 
-本輪僅 OrgMaster 發布／診斷工具技術債：抽離無副作用 database config、移轉四個設定呼叫端、精簡兩個獨立 operator image，migration policy 留在原 runner。沿既有 DEV-040，不新增主 DEV；契約與發布準備邊界見 [工具設定解耦](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018)。PR／CI 驗證進行中，正式 merge／artifact rotation／部署／資料／grant／IAM／Secret 未執行。隔離 worktree `.worktrees/release-tool-config-decoupling` 保留供本次 PR 交接，owner 為本對話。
+本輪僅 OrgMaster 發布／診斷工具技術債：抽離無副作用 database config、移轉四個設定呼叫端、精簡兩個獨立 operator image，migration policy 留在原 runner。沿既有 DEV-040，不新增主 DEV；契約與發布準備邊界見 [工具設定解耦](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018)。本機 owner 370／lifecycle 43／abort 6／isolated-package 3／設定與 catalog 10 均 PASS，app 930 PASS／4 既有 skip、build／DB boundary／continuous QC PASS；獨立 source review 的缺口已收斂。交付來源與 required CI 以 [PR134](https://github.com/jedchang0308-jenfu/OrgMaster/pull/134) 的當前 head／provider checks 為準；正式 merge／artifact rotation／部署／資料／grant／IAM／Secret 未執行。隔離 worktree `.worktrees/release-tool-config-decoupling` 保留供本次 PR 交接，owner 為本對話。
 
 ## DEV-057 historical image predecessor continuation（2026-10-11）
 

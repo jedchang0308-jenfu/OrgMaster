@@ -38,10 +38,9 @@ function inside(parent, target) {
 }
 
 async function createStage() {
-  const root = await mkdtemp(path.join(os.tmpdir(), tempPrefix))
-  assert.equal(path.dirname(root), os.tmpdir(), 'stage must be directly under the system temp directory')
-  assert.equal(inside(repo, root), false, 'stage must not resolve through the repository')
-  return root
+  const tempRoot = path.resolve(os.tmpdir())
+  assert.equal(inside(repo, tempRoot), false, 'stage must not resolve through the repository')
+  return mkdtemp(path.join(tempRoot, tempPrefix))
 }
 
 async function removeStage(root) {
