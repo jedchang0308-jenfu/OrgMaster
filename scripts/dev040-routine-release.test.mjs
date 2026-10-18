@@ -1,6 +1,6 @@
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
-import { assertSmokeCredentialRotationPlan, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { appArtifactSourceEquivalence } from './lib/dev040-app-artifact-reuse.mjs'
 import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
 import assert from 'node:assert/strict'
@@ -955,6 +955,23 @@ function smokeContinuationHarness({ controllerImageDigest = 'asia-east1-docker.p
   update()
   return Object.assign(h, { update, requests, workflow, secret, sourceEdits, addresses, rotationUri })
 }
+
+test('app artifact reuse may bind a prior-source smoke receipt only when infrastructure and executable inputs are identical', async () => {
+  const h = smokeContinuationHarness()
+  const currentSource = 'c'.repeat(40)
+  const intent = { ...h.input.intent, sourceRevision: currentSource }
+  const baselineIntent = h.objects.get(intent.baselineIntentRef.uri).value
+  const baseline = { intent: baselineIntent, activeRevision: intent.previousRevision }
+  const sameTree = Buffer.from('synthetic identical complete infrastructure tree')
+  const input = { root: h.input.root, profile: h.input.profile, transport: h.input.transport, intent,
+    values: h.input.values, baseline, readSourceFile: h.input.readSourceFile,
+    readInfrastructureTree: () => Buffer.from(sameTree) }
+  await assert.rejects(() => assertSmokeRotationContinuation(input), /SMOKE_ROTATION_INFRA_INVALID/u)
+  const result = await assertSmokeRotationContinuation({ ...input, sourceReuse: true })
+  assert.equal(result.sourceRevision, currentSource)
+  assert.equal(result.newVersion, '8')
+  assert.equal(result.providerCurrentReadback, false)
+})
 
 function republishSmokeContinuationBaseline(h, baselineRead, { terminalFacts = {} } = {}) {
   const oldPaths = h.paths

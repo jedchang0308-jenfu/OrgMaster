@@ -960,7 +960,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
       if (lifecycleEnable) fail('DEV014_LIFECYCLE_ENABLEMENT_INFRA_REUSE_REQUIRED')
       if (values.infra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') fail('ROUTINE_INFRA_REF_CHANGED')
       smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline,
-        predecessor: toolRotationPredecessor, readSourceFile, readInfrastructureTree })
+        predecessor: toolRotationPredecessor, readSourceFile, readInfrastructureTree,
+        sourceReuse: appArtifactReuse != null && values.infra.sourceRevision !== intent.sourceRevision })
     }
   }
   for (const name of ['authorization', 'readiness']) {

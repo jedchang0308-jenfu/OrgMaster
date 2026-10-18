@@ -310,7 +310,7 @@ async function assertNativeSmokeRotationProof({ root, profile, transport, intent
 }
 
 export async function assertSmokeRotationContinuation(input) {
-  return assertAppliedSmokeRotation(input)
+  return assertAppliedSmokeRotation({ ...input, sourceReuse: input.sourceReuse === true })
 }
 
 export function expectedSmokeWorkflowSource({ root, sourceRevision, profile, version, readSourceFile = readReleaseSourceFile }) {
