@@ -26,8 +26,8 @@ function assertSeal(value, schemaVersion, code) {
   return value
 }
 
-function workflowControlPlane(value) {
-  const { sourceContents, revisionId, updateTime, ...stable } = value ?? {}
+export function workflowControlPlane(value) {
+  const { sourceContents, revisionCreateTime, revisionId, updateTime, ...stable } = value ?? {}
   return stable
 }
 
