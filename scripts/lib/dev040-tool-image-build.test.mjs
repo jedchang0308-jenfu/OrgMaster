@@ -7,6 +7,7 @@ import { after, test } from 'node:test'
 import { canonicalize, sha256 } from './dev012-owner-release-runtime.mjs'
 import { createGitArchive, createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
 import { buildMigrationToolImage, reuseMigrationToolImage, assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
+import { readGitSourceArchive, matchGitSourceArchive } from './dev040-git-archive.mjs'
 
 const RELEASE_ID = 'REL-TOOL-0001'
 const DEADLINE = '2999-01-01T00:00:00.000Z'
@@ -25,6 +26,8 @@ function makeSource() {
     git('init', '--quiet')
     git('config', 'user.name', 'Tool Image Test')
     git('config', 'user.email', 'tool-image-test@example.invalid')
+    git('config', 'core.autocrlf', 'false')
+    git('config', 'core.eol', 'lf')
     fs.writeFileSync(path.join(root, 'source.txt'), 'source bytes for migration runner\n')
     git('add', 'source.txt')
     git('commit', '--quiet', '-m', 'fixture source')
@@ -207,7 +210,10 @@ test('builds the migration runner with an immutable source archive and sealed ev
     assert.equal(sourceObject.ref.sha256, sha256(calls.putBytes[0].bytes))
     assert.equal(sourceObject.ref.uri, `gs://${profile.artifact.releaseBucket}/source/archives/${sourceObject.ref.sha256}/source.tar.gz`)
     assert.equal(sourceObject.metadata.generation, '73')
-    assert.deepEqual(gunzipSync(calls.putBytes[0].bytes), createGitArchive(source.root, source.sourceRevision))
+    const canonicalTar = readGitSourceArchive(source.root, source.sourceRevision)
+    assert.deepEqual(gunzipSync(calls.putBytes[0].bytes), canonicalTar)
+    assert.deepEqual(calls.putBytes[0].bytes, gzipSync(canonicalTar, { level: 9 }))
+    assert.deepEqual(createGitArchive(source.root, source.sourceRevision), canonicalTar)
     assert.deepEqual(calls.putBytes[0].options, { bucket: profile.artifact.releaseBucket, prefix: 'source', contentType: 'application/gzip' })
 
     const expectedBuildProfile = structuredClone(originalProfile)
@@ -318,7 +324,12 @@ async function reuseHarness() {
     const source = makeSource()
     historicalFixture = source
     const profile = makeProfile()
-    const archive = gzipSync(createGitArchive(source.root, source.sourceRevision), { level: 9 })
+    const legacy = spawnSync('git', ['-c', 'core.autocrlf=true', '-c', 'core.eol=crlf', '-c', 'tar.umask=0002',
+      'archive', '--format=tar', '--prefix=source/', source.sourceRevision],
+    { cwd: source.root, encoding: null, windowsHide: true })
+    assert.equal(legacy.status, 0)
+    assert.notDeepEqual(legacy.stdout, readGitSourceArchive(source.root, source.sourceRevision))
+    const archive = gzipSync(legacy.stdout, { level: 9 })
     // Preserve a Linux-produced gzip header even when this test runs on Windows.
     archive[9] = 3
     const hash = sha256(archive)
@@ -368,7 +379,7 @@ async function reuseHarness() {
   return h
 }
 
-test('read-only reuse pins the original build and source archive while refreshing active scan evidence', async () => {
+test('read-only reuse accepts exact legacy CRLF bytes from an LF host and preserves original evidence', async () => {
   const h = await reuseHarness()
   const result = await reuseMigrationToolImage(h.input)
   assert.equal(h.calls.posts, 0)
@@ -378,6 +389,8 @@ test('read-only reuse pins the original build and source archive while refreshin
   assert.equal(h.calls.readBytes[0].uri, h.downloaded.ref.uri)
   assert.deepEqual(h.calls.readBytes[0].options, { prefixes: ['source'], expectedSha256: h.downloaded.ref.sha256 })
   assert.deepEqual(h.calls.createBuild[0].sourceObject.bytes, historicalFixture.sourceObject.bytes)
+  assert.notEqual(matchGitSourceArchive(h.input.root, h.input.sourceRevision,
+    gunzipSync(h.downloaded.bytes)).exportProfile, 'CANONICAL_GIT_LF')
   assert.equal(h.calls.createBuild[0].intent.sourceSha256, historicalFixture.sourceSha256)
   assert.equal(result.buildProof.sourceRevision, historicalFixture.sourceRevision)
   assert.notEqual(result.buildProof.sourceRevision, h.input.currentSourceRevision)
@@ -420,7 +433,7 @@ test('reuse validates the original compressed hash, generation and historical ta
       h.providerBuild.sourceProvenance.resolvedStorageSource.object = `source/archives/${hash}/source.tar.gz`
     }
     await assert.rejects(reuseMigrationToolImage(h.input), error =>
-      ['TOOL_IMAGE_SOURCE_OBJECT_INVALID', 'TOOL_IMAGE_SOURCE_ARCHIVE_INVALID', 'TOOL_IMAGE_BUILD_PROVENANCE_INVALID'].includes(error.code))
+      ['TOOL_IMAGE_SOURCE_OBJECT_INVALID', 'TOOL_IMAGE_SOURCE_ARCHIVE_INVALID', 'SOURCE_ARCHIVE_PROFILE_MISMATCH', 'TOOL_IMAGE_BUILD_PROVENANCE_INVALID'].includes(error.code))
     assert.equal(h.calls.createBuild.length, 0)
     assert.equal(h.calls.posts, 0)
   }

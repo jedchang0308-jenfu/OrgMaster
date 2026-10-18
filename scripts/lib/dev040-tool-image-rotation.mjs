@@ -3,6 +3,7 @@ import { gunzipSync } from 'node:zlib'
 import { canonicalize, sha256, assertImmutableRef } from './dev012-owner-release-runtime.mjs'
 import { readGitBlob } from './dev012-owner-stage-executor.mjs'
 import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
+import { matchGitSourceArchive } from './dev040-git-archive.mjs'
 
 export const TOOL_RECIPES = Object.freeze([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -137,16 +138,15 @@ export async function assertToolBuildProof({ root, profile, build, sourceRevisio
   const identity = spawnSync('git', ['ls-tree', '-r', '-z', '--full-tree', sourceRevision],
     { cwd: root, encoding: null, maxBuffer: 256 * 1024 * 1024, windowsHide: true })
   if (identity.status !== 0 || !identity.stdout.length || build.sourceSha256 !== sha256(identity.stdout)) fail('SOURCE_PROOF_INVALID')
-  const archive = spawnSync('git', ['archive', '--format=tar', '--prefix=source/', sourceRevision],
-    { cwd: root, encoding: null, maxBuffer: 256 * 1024 * 1024, windowsHide: true })
-  if (archive.status !== 0 || !H64.test(build.sourceObject.sha256 ?? '')
+  if (!H64.test(build.sourceObject.sha256 ?? '')
     || build.sourceObject.uri !== `gs://${profile.artifact.releaseBucket}/source/archives/${build.sourceObject.sha256}/source.tar.gz`) fail('SOURCE_PROOF_INVALID')
   // Preserve the original compressed-byte hash. Windows/Linux gzip OS headers
   // differ, so recompression is not an archive identity comparison.
   const frozenArchive = await transport.readBytes(build.sourceObject.uri, { prefixes: ['source'], expectedSha256: build.sourceObject.sha256 })
   let expanded
   try { expanded = gunzipSync(frozenArchive.bytes, { maxOutputLength: 256 * 1024 * 1024 }) } catch { fail('SOURCE_PROOF_INVALID') }
-  if (sha256(frozenArchive.bytes) !== build.sourceObject.sha256 || !expanded.equals(archive.stdout)) fail('SOURCE_PROOF_INVALID')
+  if (sha256(frozenArchive.bytes) !== build.sourceObject.sha256) fail('SOURCE_PROOF_INVALID')
+  try { return matchGitSourceArchive(root, sourceRevision, expanded) } catch { fail('SOURCE_PROOF_INVALID') }
 }
 
 export function assertToolRotationState({ state, infraProfile, profile, sourceRevision, image, controllerImage, foundationHash }) {
@@ -202,7 +202,7 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || receipt.terraformAddressesSha256 !== sha256(canonicalize(rotationAddresses(infraProfile)))) fail('PLAN_PROOF_INVALID')
   const build = buildRead.value
   assertToolArtifactAssociation({ root, profile, sourceRevision: receipt.sourceRevision, buildSourceRevision: build.sourceRevision, proof: proof.artifactSourceProof })
-  await assertToolBuildProof({ root, profile, build, sourceRevision: build.sourceRevision, imageDigest: receipt.migrationRunnerDigest, transport })
+  const archiveProof = await assertToolBuildProof({ root, profile, build, sourceRevision: build.sourceRevision, imageDigest: receipt.migrationRunnerDigest, transport })
   const sourceProof = proof.sourceProof
   if (sourceProof?.sourceRevision !== receipt.sourceRevision || sourceProof.repository !== profile.application.repository
     || sourceProof.branch !== profile.application.branch || sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
@@ -257,7 +257,7 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
   return { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', sourceRevision: receipt.sourceRevision,
     migrationRunnerDigest: receipt.migrationRunnerDigest, binaryPlanRef: proof.binaryPlanRef, planJsonRef: proof.planJsonRef,
     terraformAddressCount: receipt.terraformAddressCount, ddlExecuted: 0,
-    liveJobReadback: readLiveJob ? 'VERIFIED' : 'REQUIRED_AT_DEPLOYER_MIGRATE' }
+    liveJobReadback: readLiveJob ? 'VERIFIED' : 'REQUIRED_AT_DEPLOYER_MIGRATE', archiveExportProfile: archiveProof.exportProfile }
 }
 
 /** Exact-job deployer readback; the prepare verifier gains no Job permission. */
