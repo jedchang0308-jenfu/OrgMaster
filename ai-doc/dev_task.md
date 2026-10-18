@@ -2,7 +2,7 @@
 
 ## DEV-040 production tool 設定解耦（2026-10-18）
 
-本輪僅 OrgMaster 發布／診斷工具技術債：抽離無副作用 database config、移轉四個設定呼叫端、精簡兩個獨立 operator image，migration policy 留在原 runner。沿既有 DEV-040，不新增主 DEV；契約與發布準備邊界見 [工具設定解耦](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018)。本機 owner 370／lifecycle 43／abort 6／isolated-package 3／設定與 catalog 10 均 PASS，app 930 PASS／4 既有 skip、build／DB boundary／continuous QC PASS；獨立 source review 的缺口已收斂。交付來源與 required CI 以 [PR134](https://github.com/jedchang0308-jenfu/OrgMaster/pull/134) 的當前 head／provider checks 為準；正式 merge／artifact rotation／部署／資料／grant／IAM／Secret 未執行。隔離 worktree `.worktrees/release-tool-config-decoupling` 保留供本次 PR 交接，owner 為本對話。
+本輪僅 OrgMaster 發布／診斷工具技術債；[PR134](https://github.com/jedchang0308-jenfu/OrgMaster/pull/134) 已合併，來源 `ad4e6be3355305329833a83005889be61c46f6ee`，required CI 通過。正式一般發布 preflight 的 `SMOKE_REUSE_RECEIPT_INVALID` 尚未變更正式服務或資料。人類續授權補齊[受控工具映像 rotation 與一般發布](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018)，沿本 DEV／active PR 收斂：完整來源與 plan／state／provider 證據、75 地址、唯一 runner image 欄位、零 DDL，維持資料／grant／IAM／Secret／跨專案限制。當前 branch `codex/ordinary-tool-image-rotation`；本機新路徑 48／48、owner 370、abort 6、production-tools／DB boundary／build 與既有 owner QC PASS，app 930 PASS／4 既有 skip。獨立來源審查三項發現已修正並補反向案例、限縮重審通過；provider 只讀 plan 的 75-address proof／唯一 image update 通過，不宣稱完全沒有 observation drift。required CI／merge、正式 rotation／發布／postverify 尚待本輪 provider 證據。隔離 worktree `.worktrees/release-tool-config-decoupling` 保留本任務來源及原始失敗，owner 為本對話；完成後保留供發布證據交接。
 
 ## DEV-057 historical image predecessor continuation（2026-10-11）
 

@@ -35,8 +35,13 @@ async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile
 export function parseDeployProductionArgs(argv) {
   const options = { check: false, prepareOnly: false, dev014Activate: false, dev014PrincipalLifecycleV2Remediation: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014ManagedPrincipalProjectionRemediation: false, dev014LoginFixtureCorrection: false, dev057WriterFenceRemediation: false, dev057PrincipalContractRemediation: false, dev057CutoverSourceRemediation: false, dev057PrincipalGrantsV3Remediation: false, dev057PrincipalGrantsV4Remediation: false, dev057EmployeeNumberCommandReceiptV2Remediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null, smokeRotationRef: null, infraReuseRef: null, principalOnlyRecoveryRef: null }
   options.dev014PrincipalLifecycleEnable = false
+  options.toolRotationRef = null
   for (const arg of argv) {
-    if (arg.startsWith('--principal-only-recovery-ref=') && options.principalOnlyRecoveryRef === null) {
+    if (arg.startsWith('--tool-image-rotation-ref=') && options.toolRotationRef === null) {
+      const match = /^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/tool-rotations\/[a-f0-9]{40}\/app-infra\.json#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--tool-image-rotation-ref='.length))
+      if (!match) throw new Error('TOOL_ROTATION_REF_INVALID')
+      options.toolRotationRef = { uri: arg.slice('--tool-image-rotation-ref='.length).split('#')[0], sha256: match.groups.sha256 }
+    } else if (arg.startsWith('--principal-only-recovery-ref=') && options.principalOnlyRecoveryRef === null) {
       const match = /^(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/DEV057-PRINCIPAL-ONLY-RECOVERY\/[a-f0-9]{40}(?:-[a-f0-9]{12})?\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--principal-only-recovery-ref='.length))
       if (!match) throw new Error('DEV057_RECOVERY_REF_INVALID')
       options.principalOnlyRecoveryRef = { ...match.groups }
@@ -96,6 +101,7 @@ export function parseDeployProductionArgs(argv) {
   const dev014Mode = Number(options.dev014PrincipalLifecycleEnable) + Number(options.dev014PrincipalLifecycleV2Remediation) + Number(options.dev014Activate) + Number(options.dev014ContractRemediation) + Number(options.dev014ApplicationRegistrationRemediation) + Number(options.dev014ActivationContractRemediation) + Number(options.dev014ProjectionContractRemediation) + Number(options.dev014ManagedPrincipalProjectionRemediation) + Number(options.dev014LoginFixtureCorrection)
   const dev057Mode = Number(options.dev057WriterFenceRemediation) + Number(options.dev057PrincipalContractRemediation) + Number(options.dev057CutoverSourceRemediation) + Number(options.dev057PrincipalGrantsV3Remediation) + Number(options.dev057PrincipalGrantsV4Remediation) + Number(options.dev057EmployeeNumberCommandReceiptV2Remediation)
   if (options.check && options.prepareOnly) throw new Error('INVALID_ARGUMENTS')
+  if (options.toolRotationRef && (controlled || dev014Mode || dev057Mode || options.infraReceiptRef || options.smokeRotationRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('TOOL_ROTATION_ORDINARY_ONLY')
   if (controlled !== 0 && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && (!['off', 'on'].includes(options.handoffMode) || !['guard', 'activate', 'rollback'].includes(options.action))) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INVALID')
   if (dev014Mode > 1 || (dev014Mode === 1 && controlled !== 0)) throw new Error('DEV014_CONTROLLED_TRANSITION_INPUT_INVALID')
@@ -116,10 +122,11 @@ export function parseDeployProductionArgs(argv) {
 export const parseArgs = parseDeployProductionArgs
 
 export function selectDeployInfrastructureRef(options, baseline) {
-  return options.infraReuseRef ?? options.smokeRotationRef ?? options.infraReceiptRef ?? baseline.intent.infraReceiptRef
+  return options.toolRotationRef ?? options.infraReuseRef ?? options.smokeRotationRef ?? options.infraReceiptRef ?? baseline.intent.infraReceiptRef
 }
 
 export async function verifyDeployProductionRelease({ options, ...input }) {
+  if (options.toolRotationRef && (canonicalize(options.toolRotationRef) !== canonicalize(input.intent.infraReceiptRef) || input.values.infra?.toolRotation?.schemaVersion !== 'orgmaster.ordinary-tool-image-rotation.v1')) throw new Error('TOOL_ROTATION_REF_INVALID')
   if (options.smokeRotationRef && canonicalize(options.smokeRotationRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_ROTATION_REF_MISMATCH')
   if (options.infraReuseRef && canonicalize(options.infraReuseRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_REUSE_REF_MISMATCH')
   if (input.values.infra?.mutationProfile === 'APP_INFRA_REUSE' && !options.infraReuseRef) throw new Error('SMOKE_REUSE_REF_REQUIRED')

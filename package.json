@@ -8,6 +8,8 @@
     "npm": ">=11 <12"
   },
   "scripts": {
+    "rotate:production:tools": "node scripts/dev040-tool-image-rotation.mjs",
+    "test:dev-040:tool-rotation": "node --test scripts/lib/dev040-tool-image-build.test.mjs scripts/lib/dev040-tool-image-rotation.test.mjs scripts/lib/dev040-tool-terraform.test.mjs && node --test scripts/dev040-tool-image-rotation.test.mjs",
     "test:production-tools": "node --experimental-transform-types --test scripts/production-tool-packaging.test.mjs && node --experimental-transform-types --test scripts/lib/orgmaster-production-database.test.mjs scripts/dev057-production-v4-catalog-readback-runner.test.mjs",
     "reauth:dev-057:smoke": "node scripts/dev057-smoke-credential-reauth.mjs",
     "test:dev-057:smoke": "node --test scripts/dev057-smoke-credential-reauth.test.mjs",
