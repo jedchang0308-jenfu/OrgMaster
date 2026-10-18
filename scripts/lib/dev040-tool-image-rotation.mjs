@@ -168,7 +168,7 @@ export function assertToolRotationState({ state, infraProfile, profile, sourceRe
 }
 
 /** Native prepare validates immutable evidence; the operator also reads live state before dispatch. */
-export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline }) {
+export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline, readLiveJob = true }) {
   assertToolOwner(profile); assertToolSeal(receipt)
   const proof = receipt.toolRotation
   if (receipt.schemaVersion !== 'jenfu.dev012.app-infra-receipt.v1' || receipt.mutationProfile !== 'APP_INFRA_IMAGE_ROTATION'
@@ -249,14 +249,29 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || receipt.migrationRunnerDigest !== outputRead.value.migration_runner_digest
     || receipt.controllerImageDigest !== outputRead.value.controller_image_digest
     || outputRead.value.source_revision !== receipt.sourceRevision) fail('STATE_READBACK_INVALID')
-  const live = await transport.request(`https://run.googleapis.com/v2/${after.name}`)
-  if (live.uid !== after.uid || live.reconciling === true || String(live.observedGeneration) !== String(live.generation)
-    || !same(live.template, after.template)) fail('LIVE_JOB_DRIFT')
+  if (readLiveJob) await assertToolJobLiveReadback({ profile, transport, receipt, recordedJob: after })
   // The first publication joins the exact original baseline. Later app-only
   // publications may retain the same immutable tool proof with unchanged inputs.
   if (!same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
     && !same(proof.baselineIntentRef, intent.baselineIntentRef)) fail('BASELINE_INVALID')
   return { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', sourceRevision: receipt.sourceRevision,
     migrationRunnerDigest: receipt.migrationRunnerDigest, binaryPlanRef: proof.binaryPlanRef, planJsonRef: proof.planJsonRef,
-    terraformAddressCount: receipt.terraformAddressCount, ddlExecuted: 0 }
+    terraformAddressCount: receipt.terraformAddressCount, ddlExecuted: 0,
+    liveJobReadback: readLiveJob ? 'VERIFIED' : 'REQUIRED_AT_DEPLOYER_MIGRATE' }
+}
+
+/** Exact-job deployer readback; the prepare verifier gains no Job permission. */
+export async function assertToolJobLiveReadback({ profile, transport, receipt, recordedJob = null }) {
+  assertToolOwner(profile); assertToolSeal(receipt)
+  const proof = receipt.toolRotation
+  if (proof?.schemaVersion !== 'orgmaster.ordinary-tool-image-rotation.v1') fail('RECEIPT_INVALID')
+  assertImmutableRef(proof.providerJobAfterRef, profile.artifact.releaseBucket, ['receipts'])
+  const after = recordedJob ?? (await transport.readJson(proof.providerJobAfterRef, profile.artifact.releaseBucket, ['receipts'])).value
+  const expectedName = `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/orgmaster-prod-migration-runner`
+  if (after.name !== expectedName || after.uid !== proof.jobUid
+    || after.template?.template?.containers?.[0]?.image !== receipt.migrationRunnerDigest) fail('JOB_READBACK_INVALID')
+  const live = await transport.request(`https://run.googleapis.com/v2/${expectedName}`)
+  if (live.uid !== after.uid || live.reconciling === true || String(live.observedGeneration) !== String(live.generation)
+    || !same(live.template, after.template)) fail('LIVE_JOB_DRIFT')
+  return { jobName: live.name, uid: live.uid, generation: String(live.generation), migrationRunnerDigest: receipt.migrationRunnerDigest }
 }

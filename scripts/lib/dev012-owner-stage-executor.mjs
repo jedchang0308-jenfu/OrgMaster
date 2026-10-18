@@ -518,7 +518,7 @@ function publicBuildReceipt(build) {
   return { name: build.name, id: build.id, projectId: build.projectId, status: build.status, serviceAccount: build.serviceAccount, createTime: build.createTime, startTime: build.startTime, finishTime: build.finishTime, sourceProvenance: build.sourceProvenance, results: build.results, options: build.options }
 }
 
-export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, profile, profileSha256 = profile?.contractSha256, transport, environment = process.env, validateIntent, createSourceIdentity, createSourceArchive, buildMigrationBundle, verifyRoutineRelease }) {
+export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, profile, profileSha256 = profile?.contractSha256, transport, environment = process.env, validateIntent, createSourceIdentity, createSourceArchive, buildMigrationBundle, verifyRoutineRelease, verifyToolJobReadback }) {
   if (!STAGES.has(stage)) fail('STAGE_DENIED')
   const { intent, intentRef, paths } = await readIntentAndPaths({ transport, profile, capsuleRef, capsuleSha256, validateIntent })
   const fingerprint = sha256(canonicalize({ ownerApplicationId: profile.application.id, releaseId: intent.releaseId, sourceRevision: intent.sourceRevision, releaseIntentSha256: capsuleSha256 }))
@@ -616,6 +616,14 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (!prepare.value.facts.routine?.baselineMigrationRef || canonicalize(prepare.value.facts.routine.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)) fail('ROUTINE_VERIFICATION_MISSING')
     const allowForward = prepare.value.facts.routine.migrationDisposition === 'FORWARD_APPLY'
     if (!allowForward && prepare.value.facts.routine.migrationDisposition !== 'UNCHANGED_VERIFIED') fail('ROUTINE_MIGRATION_DISPOSITION_INVALID')
+    const infra = (await transport.readJson(intent.infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])).value
+    let toolImageLiveReadback = null
+    if (infra.toolRotation) {
+      if (allowForward || !prepare.value.facts.routine.toolImageRotation || !verifyToolJobReadback
+        || prepare.value.facts.routine.toolImageRotation.migrationRunnerDigest !== infra.migrationRunnerDigest) fail('TOOL_JOB_READBACK_REQUIRED')
+      toolImageLiveReadback = await verifyToolJobReadback(infra)
+      if (toolImageLiveReadback?.migrationRunnerDigest !== infra.migrationRunnerDigest) fail('TOOL_JOB_READBACK_REQUIRED')
+    }
     if (prepare.value.facts.routine.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION') {
       const service = await transport.getService(profile)
       const recovery = assertDev014PrincipalLifecycleContainment(intent, profile, service)
@@ -631,7 +639,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
         await transport.runMigrationJob({ profile, deployment: deployment.value, outputUri: paths.migrate, deadlineAt: intent.deadlineAt })
         receipt = await readNamedJson(transport, paths.migrate, profile)
       }
-    } else receipt ??= await writeStage(transport, paths, profile, intent, 'migrate', prepare.ref, { ...prepare.value.facts.routine, disposition: 'UNCHANGED_VERIFIED', manifestSha256: intent.migrationManifestSha256, migrationsExecuted: 0, dataImportsExecuted: 0 })
+    } else receipt ??= await writeStage(transport, paths, profile, intent, 'migrate', prepare.ref, { ...prepare.value.facts.routine, ...(toolImageLiveReadback ? { toolImageLiveReadback } : {}), disposition: 'UNCHANGED_VERIFIED', manifestSha256: intent.migrationManifestSha256, migrationsExecuted: 0, dataImportsExecuted: 0 })
     assertMigrationReceipt(receipt.value, profile, intent, { allowForward, forwardPlan: prepare.value.facts.routine })
     return receipt
   }

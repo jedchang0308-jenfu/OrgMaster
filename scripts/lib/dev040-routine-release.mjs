@@ -797,7 +797,7 @@ export async function readAppliedAbortInfraBaseline({profile,transport,baseline,
 }
 
 
-export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree }) {
+export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
   transport.assertServiceSettled(service)
@@ -849,7 +849,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
       ? assertDev014ManagedDirectoryRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
   const toolRotation = values.infra?.toolRotation == null ? null : await assertOrdinaryToolRotation({
-    root, profile, transport, intent, receipt: values.infra, baseline,
+    root, profile, transport, intent, receipt: values.infra, baseline, readLiveJob: readLiveToolJob,
   })
   if (toolRotation && (controlledTransition || baseline.repair || !same(runtimeConfig, baselineRuntime))) fail('TOOL_ROTATION_ORDINARY_ONLY')
   const infrastructureHash = lifecycleGuard
@@ -951,5 +951,5 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     const value = values[name]
     if (value.ownerApplicationId !== profile.application.id || value.sourceRevision !== intent.sourceRevision || value.releaseId !== intent.releaseId || !same(value.baselineIntentRef, intent.baselineIntentRef)) fail('ROUTINE_AUTHORITY_MISMATCH')
   }
-  return { ...(appliedAbortInfraBaseline ? { appliedAbortInfraBaseline } : {}), ...(smokeRotationContinuation ? { smokeRotationContinuation } : {}), baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, ...(baseline.repair ? { principalOnlyForwardRepair: { rollbackRef: baseline.repair.rollbackRef, recoveryRef: baseline.repair.recoveryRef } } : {}), infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
+  return { ...(toolRotation ? { toolImageRotation: toolRotation } : {}), ...(appliedAbortInfraBaseline ? { appliedAbortInfraBaseline } : {}), ...(smokeRotationContinuation ? { smokeRotationContinuation } : {}), baselineIntentRef: intent.baselineIntentRef, baselineTerminalRef: baseline.terminal.ref, baselineMigrationRef: baseline.migration.ref, ...(baseline.repair ? { principalOnlyForwardRepair: { rollbackRef: baseline.repair.rollbackRef, recoveryRef: baseline.repair.recoveryRef } } : {}), infrastructureSha256, ...migration, previousRevision: intent.previousRevision, databaseVerification: migration.migrationDisposition === 'FORWARD_APPLY' ? 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE' : 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE', liveLedgerRead: false, releaseMode: controlledTransition?.releaseMode ?? 'ROUTINE_UNCHANGED_RUNTIME', controlledTransition }
 }

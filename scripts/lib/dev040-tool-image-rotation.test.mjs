@@ -11,6 +11,7 @@ import {
   assertOrdinaryToolRotation,
   assertToolArtifactAssociation,
   assertToolBuildProof,
+  assertToolJobLiveReadback,
   assertToolOwner,
   assertToolRotationPlan,
   assertToolSeal,
@@ -842,6 +843,48 @@ test('accepts a complete consumer receipt associating a historical image build w
   } finally {
     runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
   }
+})
+
+test('prepare validates sealed rotation evidence without a live Job read; migrate readback separately rejects drift', async () => {
+  const fixture = makeReceiptHarness()
+  let requestCount = 0
+  fixture.transport.request = async () => {
+    requestCount += 1
+    throw new Error('LIVE_JOB_READ_FORBIDDEN_DURING_PREPARE')
+  }
+  const summary = await assertOrdinaryToolRotation({
+    root: sourceFixture.root, profile: fixture.profile, transport: fixture.transport,
+    intent: fixture.intent, receipt: fixture.receipt, baseline: fixture.baseline, readLiveJob: false,
+  })
+  assert.equal(summary.evidenceScope, 'OWNER_SEALED_TOOL_IMAGE_ROTATION')
+  assert.equal(summary.migrationRunnerDigest, NEXT_IMAGE)
+  assert.equal(requestCount, 0)
+
+  const recordedJob = fixture.jsonObjects.get(fixture.receipt.toolRotation.providerJobAfterRef.uri).value
+  const driftedJob = structuredClone(recordedJob)
+  driftedJob.template.template.containers[0].args.push('--live-drift')
+  fixture.transport.request = async url => {
+    requestCount += 1
+    assert.equal(url, `https://run.googleapis.com/v2/${JOB_NAME}`)
+    return driftedJob
+  }
+  await assert.rejects(() => assertToolJobLiveReadback({
+    profile: fixture.profile, transport: fixture.transport, receipt: fixture.receipt,
+  }), error => error?.code === 'TOOL_ROTATION_LIVE_JOB_DRIFT')
+  assert.equal(requestCount, 1)
+
+  const invalidSource = makeReceiptHarness()
+  invalidSource.receipt.toolRotation.sourceProof.status = 'UNVERIFIED'
+  resealReceipt(invalidSource)
+  invalidSource.transport.request = async () => {
+    requestCount += 1
+    throw new Error('LIVE_JOB_READ_FORBIDDEN_DURING_PREPARE')
+  }
+  await assert.rejects(() => assertOrdinaryToolRotation({
+    root: sourceFixture.root, profile: invalidSource.profile, transport: invalidSource.transport,
+    intent: invalidSource.intent, receipt: invalidSource.receipt, baseline: invalidSource.baseline, readLiveJob: false,
+  }), error => error?.code === 'TOOL_ROTATION_SOURCE_PROOF_INVALID')
+  assert.equal(requestCount, 1)
 })
 
 test('artifact association rejects changed COPY/context inputs and a mismatched historical source proof', () => {

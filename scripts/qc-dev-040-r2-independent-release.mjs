@@ -19,8 +19,9 @@ process.stderr.write(run.stderr)
 // Eight DEV-057 completed-credential continuation cases extend this same selection to 348.
 // Six historical applied-image predecessor cases extend this exact selection to 354.
 // One existing-build-only no-submission recovery case extends this selection to 355.
+// One role-bounded migrate live-readback/candidate-blocking case extends it to 356.
 // This Node result does not replace the full regression/build commands below.
-if (run.status !== 0 || !/\bpass 355\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 356\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 
