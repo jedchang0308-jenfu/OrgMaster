@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 import { createToolTerraform, terraformVariablesFromState } from './dev040-tool-terraform.mjs'
-import { submitSmokeRotationApplyOnce } from '../dev057-smoke-credential-rotation.mjs'
+import { submitSmokeRotationApplyOnce, workflowControlPlane } from '../dev057-smoke-credential-rotation.mjs'
 
 const REPOSITORY_ROOT = process.cwd()
 const RELEASE_PROFILE = JSON.parse(fs.readFileSync(path.join(REPOSITORY_ROOT, 'config/release/dev040-orgmaster-independent-production-v3.json'), 'utf8'))
@@ -487,6 +487,27 @@ test('smoke rotation with an existing fence performs readback without a duplicat
     beforeSubmit: never, readBaseline: never, assertBaseline: never, readBinaryPlan: never, putFence: never, applyPlan: never })
   assert.deepEqual(result, { submitted: false, fenced: true })
   assert.equal(calls, 0)
+})
+
+test('smoke rotation ignores provider-owned revision timestamps but preserves the stable control plane', () => {
+  const before = {
+    name: 'projects/example/locations/asia-east1/workflows/candidate-smoke',
+    serviceAccount: 'smoke@example.invalid',
+    sourceContents: 'version: "10"',
+    createTime: '2026-09-09T00:00:00Z',
+    revisionCreateTime: '2026-10-11T00:00:00Z',
+    revisionId: '000010-old',
+    updateTime: '2026-10-11T00:00:01Z',
+  }
+  const after = {
+    ...before,
+    sourceContents: 'version: "11"',
+    revisionCreateTime: '2026-10-18T16:00:53Z',
+    revisionId: '000011-new',
+    updateTime: '2026-10-18T16:00:54Z',
+  }
+  assert.deepEqual(workflowControlPlane(after), workflowControlPlane(before))
+  assert.notDeepEqual(workflowControlPlane({ ...after, serviceAccount: 'other@example.invalid' }), workflowControlPlane(before))
 })
 
 test('smoke rotation rejects a changed fence and skips a raced duplicate submission', async () => {
