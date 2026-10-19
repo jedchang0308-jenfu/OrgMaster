@@ -18,6 +18,20 @@ const profile = {
   environment: { requiredPlainEnvironmentNames: ['NODE_ENV'], requiredSecretNames: ['SESSION_SECRET'], allowedSecretIds: { SESSION_SECRET: 'platform-prod-session-pepper' }, candidateOriginEnvironmentName: 'PORTAL_RELEASE_CANDIDATE_ORIGIN', fixedValues: { NODE_ENV: 'production' } },
 }
 
+test('explicit existing-build-only recovery never submits a replacement when lookup is empty', async () => {
+  const own = JSON.parse(fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url)))
+  let writes = 0
+  const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
+    if (options.method && options.method !== 'GET') { writes++; throw new Error('UNEXPECTED_WRITE') }
+    assert.ok(String(url).startsWith(`https://cloudbuild.googleapis.com/v1/projects/${own.target.projectId}/locations/${own.target.region}/builds?`))
+    return json({ builds: [] })
+  } })
+  await assert.rejects(() => transport.createBuild({ profile: own, intent: { sourceRevision: H40, sourceSha256: H64, releaseId: 'REL-REUSE-ONLY' },
+    sourceObject: { ref: { uri: `gs://${own.artifact.releaseBucket}/source/archives/${H64}/source.tar.gz`, sha256: H64 }, metadata: { generation: '9' } },
+    deadlineAt: '2999-01-01T00:00:00.000Z', reuseOnly: true }), error => error.code === 'BUILD_REUSE_NOT_FOUND')
+  assert.equal(writes, 0)
+})
+
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } })
 
 function ownerBuildFixture({ invisibleListReads = 0, unknownBuildPost = false } = {}) {

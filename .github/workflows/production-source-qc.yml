@@ -25,6 +25,25 @@ jobs:
       - name: Build and verify the patched runtime
         run: docker build --target runtime-smoke --progress=plain .
       - run: npm ci
+      - name: Install the production tools' exact locked dependency closure
+        run: npm ci --prefix infra/google-cloud/dev-040-production-release/migration-runner --omit=dev --ignore-scripts
+      - run: npm run test:production-tools
+      - run: npm run test:dev-040:tool-rotation
+      - name: Build and import isolated production tool images
+        env:
+          SOURCE_REVISION: ${{ github.sha }}
+        run: |
+          for tool in migration-runner dev057-principal-pair-diagnostic dev057-v4-catalog-readback; do
+            image="orgmaster-tool:${tool}"
+            docker build --build-arg SOURCE_REVISION="$SOURCE_REVISION" \
+              -f "infra/google-cloud/dev-040-production-release/${tool}.Dockerfile" -t "$image" .
+            case "$tool" in
+              migration-runner) modules='["dev040-production-migration-runner", "dev014-production-lifecycle-readback", "dev049-production-admission-runner", "dev014-production-managed-link-runner", "dev014-production-login-fixture-runner", "dev014-production-login-authority-switch-runner"]' ;;
+              *) modules="[\"${tool/dev057-/dev057-production-}-runner\"]" ;;
+            esac
+            docker run --rm --network none --entrypoint node "$image" --experimental-transform-types \
+              --input-type=module -e "for (const name of $modules) await import('./scripts/' + name + '.mjs')"
+          done
       - run: npm run test:dev-040:r2
       - run: npm run test:dev-014:lifecycle-readback
       - run: npm run test:dev-040:abort

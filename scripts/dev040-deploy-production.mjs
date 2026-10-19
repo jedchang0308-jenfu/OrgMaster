@@ -17,6 +17,8 @@ import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION } from './lib/dev014-principa
 import { executePrincipalLifecycleQuiescence } from './lib/dev014-principal-lifecycle-quiescence.mjs'
 import { readLifecycleActivationPrerequisites } from './lib/dev014-lifecycle-activation-prerequisites.mjs'
 import { verifyOfficialMergedSource } from './lib/dev012-official-source-review.mjs'
+import { buildAbortedAppArtifactReuse } from './lib/dev040-app-artifact-reuse.mjs'
+import { assertRequiredToolSourceQc } from './dev040-tool-image-rotation.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 function command(name, args) {
@@ -33,15 +35,21 @@ async function verifyDev013Predecessor(transport, predecessorReceiptRef, profile
 }
 
 export function parseDeployProductionArgs(argv) {
-  const options = { check: false, prepareOnly: false, dev014Activate: false, dev014PrincipalLifecycleV2Remediation: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014ManagedPrincipalProjectionRemediation: false, dev014LoginFixtureCorrection: false, dev057WriterFenceRemediation: false, dev057PrincipalContractRemediation: false, dev057CutoverSourceRemediation: false, dev057PrincipalGrantsV3Remediation: false, dev057PrincipalGrantsV4Remediation: false, dev057EmployeeNumberCommandReceiptV2Remediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null, smokeRotationRef: null, infraReuseRef: null, principalOnlyRecoveryRef: null }
+  const options = { check: false, prepareOnly: false, reuseAbortedAppArtifact: false, dev014Activate: false, dev014PrincipalLifecycleV2Remediation: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014ManagedPrincipalProjectionRemediation: false, dev014LoginFixtureCorrection: false, dev057WriterFenceRemediation: false, dev057PrincipalContractRemediation: false, dev057CutoverSourceRemediation: false, dev057PrincipalGrantsV3Remediation: false, dev057PrincipalGrantsV4Remediation: false, dev057EmployeeNumberCommandReceiptV2Remediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null, smokeRotationRef: null, infraReuseRef: null, principalOnlyRecoveryRef: null }
   options.dev014PrincipalLifecycleEnable = false
+  options.toolRotationRef = null
   for (const arg of argv) {
-    if (arg.startsWith('--principal-only-recovery-ref=') && options.principalOnlyRecoveryRef === null) {
+    if (arg.startsWith('--tool-image-rotation-ref=') && options.toolRotationRef === null) {
+      const match = /^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/tool-rotations\/[a-f0-9]{40}\/app-infra\.json#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--tool-image-rotation-ref='.length))
+      if (!match) throw new Error('TOOL_ROTATION_REF_INVALID')
+      options.toolRotationRef = { uri: arg.slice('--tool-image-rotation-ref='.length).split('#')[0], sha256: match.groups.sha256 }
+    } else if (arg.startsWith('--principal-only-recovery-ref=') && options.principalOnlyRecoveryRef === null) {
       const match = /^(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/DEV057-PRINCIPAL-ONLY-RECOVERY\/[a-f0-9]{40}(?:-[a-f0-9]{12})?\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--principal-only-recovery-ref='.length))
       if (!match) throw new Error('DEV057_RECOVERY_REF_INVALID')
       options.principalOnlyRecoveryRef = { ...match.groups }
     } else if (arg === '--check' && !options.check) options.check = true
     else if (arg === '--prepare-only' && !options.prepareOnly) options.prepareOnly = true
+    else if (arg === '--reuse-aborted-app-artifact' && !options.reuseAbortedAppArtifact) options.reuseAbortedAppArtifact = true
     else if (arg === '--dev014-principal-lifecycle-v2-remediation' && !options.dev014PrincipalLifecycleV2Remediation) options.dev014PrincipalLifecycleV2Remediation = true
     else if (arg === '--dev014-principal-lifecycle-enable' && !options.dev014PrincipalLifecycleEnable) options.dev014PrincipalLifecycleEnable = true
     else if (arg === '--dev014-activate' && !options.dev014Activate) options.dev014Activate = true
@@ -90,12 +98,13 @@ export function parseDeployProductionArgs(argv) {
       if (!match) throw new Error('DEV057_INFRA_REF_INVALID')
       options.infraReceiptRef = match.groups
       options.infraOption = 'dev057'
-    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--dev014-principal-lifecycle-v2-remediation|--dev014-activate|--dev014-contract-remediation|--dev014-application-registration-remediation|--dev014-activation-contract-remediation|--dev014-projection-contract-remediation|--dev014-managed-principal-projection-remediation|--dev014-login-fixture-correction --dev014-infra-ref=URI#sha256=HASH] [--dev057-writer-fence-remediation|--dev057-principal-contract-remediation|--dev057-cutover-source-remediation|--dev057-principal-grants-v3-remediation|--dev057-principal-grants-v4-remediation|--dev057-employee-number-command-receipt-v2-remediation --dev057-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
+    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--tool-image-rotation-ref=URI#sha256=HASH --smoke-rotation-ref=URI#sha256=HASH --reuse-aborted-app-artifact] [--dev014-principal-lifecycle-v2-remediation|--dev014-activate|--dev014-contract-remediation|--dev014-application-registration-remediation|--dev014-activation-contract-remediation|--dev014-projection-contract-remediation|--dev014-managed-principal-projection-remediation|--dev014-login-fixture-correction --dev014-infra-ref=URI#sha256=HASH] [--dev057-writer-fence-remediation|--dev057-principal-contract-remediation|--dev057-cutover-source-remediation|--dev057-principal-grants-v3-remediation|--dev057-principal-grants-v4-remediation|--dev057-employee-number-command-receipt-v2-remediation --dev057-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
   }
   const controlled = [options.handoffMode, options.action, options.predecessorReceiptRef].filter((value) => value !== null).length
   const dev014Mode = Number(options.dev014PrincipalLifecycleEnable) + Number(options.dev014PrincipalLifecycleV2Remediation) + Number(options.dev014Activate) + Number(options.dev014ContractRemediation) + Number(options.dev014ApplicationRegistrationRemediation) + Number(options.dev014ActivationContractRemediation) + Number(options.dev014ProjectionContractRemediation) + Number(options.dev014ManagedPrincipalProjectionRemediation) + Number(options.dev014LoginFixtureCorrection)
   const dev057Mode = Number(options.dev057WriterFenceRemediation) + Number(options.dev057PrincipalContractRemediation) + Number(options.dev057CutoverSourceRemediation) + Number(options.dev057PrincipalGrantsV3Remediation) + Number(options.dev057PrincipalGrantsV4Remediation) + Number(options.dev057EmployeeNumberCommandReceiptV2Remediation)
   if (options.check && options.prepareOnly) throw new Error('INVALID_ARGUMENTS')
+  if (options.toolRotationRef && (controlled || dev014Mode || dev057Mode || options.infraReceiptRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('TOOL_ROTATION_ORDINARY_ONLY')
   if (controlled !== 0 && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && (!['off', 'on'].includes(options.handoffMode) || !['guard', 'activate', 'rollback'].includes(options.action))) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INVALID')
   if (dev014Mode > 1 || (dev014Mode === 1 && controlled !== 0)) throw new Error('DEV014_CONTROLLED_TRANSITION_INPUT_INVALID')
@@ -110,20 +119,34 @@ export function parseDeployProductionArgs(argv) {
   if (options.infraReceiptRef && controlled !== 3 && dev014Mode !== 1 && dev057Mode !== 1) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (options.smokeRotationRef && (controlled || dev014Mode || dev057Mode || options.infraReceiptRef || options.principalOnlyRecoveryRef)) throw new Error('SMOKE_ROTATION_ORDINARY_ONLY')
   if (options.infraReuseRef && (controlled || (dev014Mode && !options.dev014PrincipalLifecycleEnable) || dev057Mode || options.infraReceiptRef || options.smokeRotationRef)) throw new Error('SMOKE_REUSE_ORDINARY_ONLY')
+  if (options.reuseAbortedAppArtifact && (controlled || dev014Mode || dev057Mode || options.infraReceiptRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('APP_ARTIFACT_REUSE_ORDINARY_ONLY')
   return options
 }
 
 export const parseArgs = parseDeployProductionArgs
 
 export function selectDeployInfrastructureRef(options, baseline) {
-  return options.infraReuseRef ?? options.smokeRotationRef ?? options.infraReceiptRef ?? baseline.intent.infraReceiptRef
+  return options.smokeRotationRef ?? options.toolRotationRef ?? options.infraReuseRef ?? options.infraReceiptRef ?? baseline.intent.infraReceiptRef
+}
+
+export function assertDeployToolRotationSelection(options, intent, infra) {
+  if (!options.toolRotationRef) return true
+  const selectedDirectly = canonicalize(options.toolRotationRef) === canonicalize(intent.infraReceiptRef)
+  if ((selectedDirectly && infra?.toolRotation?.schemaVersion !== 'orgmaster.ordinary-tool-image-rotation.v1') ||
+      (!selectedDirectly && !options.smokeRotationRef)) throw new Error('TOOL_ROTATION_REF_INVALID')
+  return true
+}
+
+export function bindDeployToolRotationAuthority(options, value) {
+  return options.toolRotationRef ? { ...value, toolRotationRef: options.toolRotationRef } : value
 }
 
 export async function verifyDeployProductionRelease({ options, ...input }) {
+  assertDeployToolRotationSelection(options, input.intent, input.values.infra)
   if (options.smokeRotationRef && canonicalize(options.smokeRotationRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_ROTATION_REF_MISMATCH')
   if (options.infraReuseRef && canonicalize(options.infraReuseRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_REUSE_REF_MISMATCH')
   if (input.values.infra?.mutationProfile === 'APP_INFRA_REUSE' && !options.infraReuseRef) throw new Error('SMOKE_REUSE_REF_REQUIRED')
-  const verification = await verifyRoutineRelease(input)
+  const verification = await verifyRoutineRelease({ ...input, toolRotationRef: options.toolRotationRef })
   if (options.smokeRotationRef || options.infraReuseRef) {
     if (!verification.smokeRotationContinuation) throw new Error('SMOKE_ROTATION_CONTINUATION_MISSING')
     verification.operatorSmokeRotationReadback = await readSmokeRotationProvider({ ...input, continuation: verification.smokeRotationContinuation })
@@ -173,6 +196,19 @@ async function main() {
   const releaseId = `ORGMASTER-REL-${observedAt.replace(/[^0-9]/gu, '')}-${git.sourceRevision.slice(0, 7).toUpperCase()}`
   const deadlineAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
   const sourceLock = buildSourceFreeze({ profile, releaseId, observedAt, git, sourceIdentityBytes: createGitSourceIdentity(root, git.sourceRevision), migrationBundle: await buildMigrationBundle(git.sourceRevision) })
+  let appArtifactReuse = null
+  if (options.reuseAbortedAppArtifact) {
+    if (control.result !== 'PRE_ACTIVATION_ABORTED') throw new Error('APP_ARTIFACT_REUSE_ABORT_REQUIRED')
+    const attemptedIntent = JSON.parse(previousIntent.bytes)
+    const sourceProof = await verifyOfficialMergedSource({ repository: profile.application.repository,
+      branch: profile.application.branch, revision: git.sourceRevision, sourceTree: git.sourceTree,
+      token: process.env.GITHUB_TOKEN || command('gh', ['auth', 'token']), rulesetId: 24077876 })
+    const checks = JSON.parse(command('gh', ['api', `repos/${profile.application.repository}/commits/${git.sourceRevision}/check-runs?per_page=100`]))
+    assertRequiredToolSourceQc(checks, git.sourceRevision)
+    sourceProof.requiredSourceQc = 'SUCCESS'
+    appArtifactReuse = await buildAbortedAppArtifactReuse({ root, profile, transport,
+      releaseSourceRevision: git.sourceRevision, attemptedIntent, attemptedIntentRef: previousIntent.ref, sourceProof })
+  }
   const previousRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
   const previousMode = previousRuntime.plainEnvironment?.ORGMASTER_JENFU_SSO_HANDOFF_MODE ?? null
   let plainEnvironment = options.dev014Activate || options.dev014PrincipalLifecycleV2Remediation ? resolvePlainEnvironment(profile, previousRuntime.plainEnvironment, {}) : previousRuntime.plainEnvironment
@@ -277,10 +313,10 @@ async function main() {
   const lifecycleV2Authority = lifecycleEnablement
     ? {devId:'DEV-014',slice:'014-PRINCIPAL-LIFECYCLE-ENABLE',enablement:lifecycleEnablement}
     : dev014PrincipalLifecycleV2Remediation ? { devId: 'DEV-014', slice: '014-PRINCIPAL-LIFECYCLE-V2', remediation: dev014PrincipalLifecycleV2Remediation, ...(appliedAbortInfraBaseline ? {appliedAbortInfraBaseline} : {}) } : {}
-  const authorization = { ...authority, ...lifecycleV2Authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014ManagedPrincipalProjectionRemediation ? { devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation: dev014ManagedPrincipalProjectionRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}), ...(dev057WriterFenceRemediation ? { devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation: dev057WriterFenceRemediation } : {}), ...(dev057PrincipalContractRemediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation: dev057PrincipalContractRemediation } : {}), ...(dev057CutoverSourceRemediation ? { devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation: dev057CutoverSourceRemediation } : {}), ...(dev057PrincipalGrantsV3Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation: dev057PrincipalGrantsV3Remediation } : {}), ...(dev057PrincipalGrantsV4Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation: dev057PrincipalGrantsV4Remediation } : {}), ...(dev057EmployeeNumberCommandReceiptV2Remediation ? { devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation: dev057EmployeeNumberCommandReceiptV2Remediation } : {}) }
-  const readiness = transition
+  const authorization = bindDeployToolRotationAuthority(options, { ...authority, ...lifecycleV2Authority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', ...(appArtifactReuse ? { appArtifactReuse } : {}), ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014ManagedPrincipalProjectionRemediation ? { devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation: dev014ManagedPrincipalProjectionRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}), ...(dev057WriterFenceRemediation ? { devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation: dev057WriterFenceRemediation } : {}), ...(dev057PrincipalContractRemediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation: dev057PrincipalContractRemediation } : {}), ...(dev057CutoverSourceRemediation ? { devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation: dev057CutoverSourceRemediation } : {}), ...(dev057PrincipalGrantsV3Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation: dev057PrincipalGrantsV3Remediation } : {}), ...(dev057PrincipalGrantsV4Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation: dev057PrincipalGrantsV4Remediation } : {}), ...(dev057EmployeeNumberCommandReceiptV2Remediation ? { devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation: dev057EmployeeNumberCommandReceiptV2Remediation } : {}) })
+  const readiness = bindDeployToolRotationAuthority(options, transition
     ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v2', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
-    : { ...authority, ...lifecycleV2Authority, schemaVersion: 'orgmaster.routine-release-readiness.v1', ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014ManagedPrincipalProjectionRemediation ? { devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation: dev014ManagedPrincipalProjectionRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}), ...(dev057WriterFenceRemediation ? { devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation: dev057WriterFenceRemediation } : {}), ...(dev057PrincipalContractRemediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation: dev057PrincipalContractRemediation } : {}), ...(dev057CutoverSourceRemediation ? { devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation: dev057CutoverSourceRemediation } : {}), ...(dev057PrincipalGrantsV3Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation: dev057PrincipalGrantsV3Remediation } : {}), ...(dev057PrincipalGrantsV4Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation: dev057PrincipalGrantsV4Remediation } : {}), ...(dev057EmployeeNumberCommandReceiptV2Remediation ? { devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation: dev057EmployeeNumberCommandReceiptV2Remediation } : {}) }
+    : { ...authority, ...lifecycleV2Authority, schemaVersion: 'orgmaster.routine-release-readiness.v1', ...(appArtifactReuse ? { appArtifactReuse } : {}), ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014ManagedPrincipalProjectionRemediation ? { devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation: dev014ManagedPrincipalProjectionRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}), ...(dev057WriterFenceRemediation ? { devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation: dev057WriterFenceRemediation } : {}), ...(dev057PrincipalContractRemediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation: dev057PrincipalContractRemediation } : {}), ...(dev057CutoverSourceRemediation ? { devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation: dev057CutoverSourceRemediation } : {}), ...(dev057PrincipalGrantsV3Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation: dev057PrincipalGrantsV3Remediation } : {}), ...(dev057PrincipalGrantsV4Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation: dev057PrincipalGrantsV4Remediation } : {}), ...(dev057EmployeeNumberCommandReceiptV2Remediation ? { devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation: dev057EmployeeNumberCommandReceiptV2Remediation } : {}) })
   const infraReceiptRef = selectDeployInfrastructureRef(options, baseline)
   const values = { sourceLock, runtimeConfig, authorization, readiness,
     foundation: (await transport.readJson(baseline.intent.foundationReceiptRef, profile.artifact.releaseBucket)).value,

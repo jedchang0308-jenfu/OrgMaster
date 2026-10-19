@@ -4,7 +4,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
-import { TARGET, databaseOptions } from './dev040-production-migration-runner.mjs'
+import { TARGET, databaseOptions } from './lib/orgmaster-production-database.mjs'
 import {
   assertRunnerTarget, metadataAccessToken, parseGsUri, publishGcsJson,
   readGcsObject, sha256,

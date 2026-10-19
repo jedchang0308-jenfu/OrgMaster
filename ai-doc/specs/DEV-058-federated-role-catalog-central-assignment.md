@@ -24,7 +24,7 @@
 
 ## 2. 現況、失效機制與目標資料流
 
-本輪開始讀取 branch `codex/topbar-account-menu`／HEAD `681d058f85a25f61d67f29cd9d0b8462ceb97987`；寫作期間其他工作切到 `master / 24cbf0f6c71cf619565c3e5789b75e3505c3564d`（PR131 合併）。本輪未切分支／commit。先前 DEV-058 文件由該工作保存在 stash「preserve unrelated DEV-058 docs while deploying 681d058」，本輪只取回本任務內容續補，未 pop／drop stash或覆蓋其他文件增補。AI-PDM文件在 `C:/VIBE CODING/AI_PDM/.ai-doc`，其記錄source為 `d3fc1bf72b3630f8a748746c40584e595d396dac`，本輪Git readback受限、current HEAD／dirty UNKNOWN；實際DEV-123文件SHA256=`260b1e15bcde999d72f8e636ac800f643b85245a076d2cee67e595b8ca62d3cb`。來源／文件狀態都不是部署證據。
+2026-10-12 文件撰寫來源快照（不是目前分支／peer狀態）：當時開始讀取 branch `codex/topbar-account-menu`／HEAD `681d058f85a25f61d67f29cd9d0b8462ceb97987`；寫作期間其他工作切到 `master / 24cbf0f6c71cf619565c3e5789b75e3505c3564d`（PR131 合併）。當時未切分支／commit。先前 DEV-058 文件由該工作保存在 stash「preserve unrelated DEV-058 docs while deploying 681d058」，當時只取回本任務內容續補，未 pop／drop stash或覆蓋其他文件增補。AI-PDM文件在 `C:/VIBE CODING/AI_PDM/.ai-doc`，其記錄source為 `d3fc1bf72b3630f8a748746c40584e595d396dac`，當時Git readback受限、current HEAD／dirty UNKNOWN；當時DEV-123文件SHA256=`260b1e15bcde999d72f8e636ac800f643b85245a076d2cee67e595b8ca62d3cb`。來源／文件狀態都不是部署證據。
 
 DEV-037 restore/remove 及 DEV-039 帳號選單已在上述 PR131 source；本輪只讀產品程式，保留其原契約／證據。PDM「恢復角色」與 OrgMaster「重新啟用已撤銷指派」不同：前者不解除 revoked，後者需 explicit 合格管理者、active 人員／角色及合法期間／scope；REMOVE 只移出 revoked 草稿列，歷史保留。DEV-058 僅將 restore 的固定 catalogVersion equality 改為可信歷史驗證（§6.1），不推翻其其他資格條件。
 

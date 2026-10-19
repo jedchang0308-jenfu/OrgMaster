@@ -9,7 +9,7 @@ RUN npm ci --omit=dev --ignore-scripts \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx
 
 COPY scripts/lib/dev012-production-migration-runner.mjs scripts/lib/dev012-production-migration-runner.mjs
-COPY scripts/dev040-production-migration-runner.mjs scripts/dev040-production-migration-runner.mjs
+COPY scripts/lib/orgmaster-production-database.mjs scripts/lib/orgmaster-production-database.mjs
 COPY scripts/dev057-production-principal-pair-diagnostic-runner.mjs scripts/dev057-production-principal-pair-diagnostic-runner.mjs
 
 ARG SOURCE_REVISION

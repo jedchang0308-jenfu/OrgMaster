@@ -8,7 +8,9 @@ import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { createOwnerTransport } from './lib/dev012-owner-release-runtime.mjs'
 import { verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
+import { assertToolJobLiveReadback } from './lib/dev040-tool-image-rotation.mjs'
 import { createGitArchive, createGitSourceIdentity, executeOwnerStage, parseOwnerStageArgs, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
+import { reuseAppArtifactBuild } from './lib/dev040-app-artifact-reuse.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const profilePath = 'config/release/dev040-orgmaster-independent-production-v3.json'
@@ -28,7 +30,9 @@ async function main() {
     createSourceIdentity: async (sourceRevision) => createGitSourceIdentity(root, sourceRevision),
     createSourceArchive: async (sourceRevision) => createGitArchive(root, sourceRevision),
     buildMigrationBundle,
-    verifyRoutineRelease: (input) => verifyRoutineRelease({ ...input, root, profile, transport, buildMigrationBundle }),
+    verifyRoutineRelease: (input) => verifyRoutineRelease({ ...input, root, profile, transport, buildMigrationBundle, readLiveToolJob: false }),
+    verifyToolJobReadback: (receipt) => assertToolJobLiveReadback({ profile, transport, receipt }),
+    reuseAppArtifact: reuseAppArtifactBuild,
   })
   process.stdout.write(`${JSON.stringify({ stage: args.stage, ref: result.ref, generation: String(result.metadata.generation), status: 'PASS' })}\n`)
 }

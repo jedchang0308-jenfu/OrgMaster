@@ -176,6 +176,124 @@ test('application-only release preserves all ten stages without importing data o
   assert.equal(h.service().traffic.length, 1)
 })
 
+test('release-executor-only continuation reuses the provider build and never submits a new image build', async () => {
+  const h = recordedHarness()
+  const { input, intentResult } = await authorizedRecordedInput(h, 'ROUTINE-APP-ARTIFACT-REUSE')
+  const intent = (await h.transport.readJson(intentResult.ref)).value
+  const artifactSourceRevision = 'b'.repeat(40)
+  const artifactSourceObject = { uri: `gs://${bucket}/source/archives/${'b'.repeat(64)}/source.tar.gz`, sha256: 'b'.repeat(64), generation: '7', crc32c: 'old-crc32c' }
+  const association = { schemaVersion: 'orgmaster.release-executor-only-app-artifact-reuse.v1',
+    releaseSourceRevision: intent.sourceRevision, artifactSourceRevision,
+    artifactDigest: `${h.profile.artifact.uri}@sha256:${'d'.repeat(64)}` }
+  input.verifyRoutineRelease = async () => ({ baselineIntentRef: intent.baselineIntentRef,
+    baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) },
+    migrationDisposition: 'UNCHANGED_VERIFIED', appArtifactReuse: association })
+  h.transport.createBuild = async () => assert.fail('cross-source continuation must not submit or select a current-source build')
+  let observedEvidenceSource = null
+  const originalEvidence = h.transport.waitArtifactEvidence
+  h.transport.waitArtifactEvidence = async inputValue => { observedEvidenceSource = inputValue.sourceRevision; return originalEvidence.call(h.transport, inputValue) }
+  input.reuseAppArtifact = async ({ association: actual }) => {
+    assert.deepEqual(actual, association)
+    return { artifactDigest: association.artifactDigest, buildInputSha256: 'c'.repeat(64), sourceArchiveSha256: artifactSourceObject.sha256,
+      reused: true, disposition: 'REUSED_CROSS_SOURCE_RELEASE_EXECUTOR_ONLY', artifactSourceRevision, artifactSourceObject,
+      association, build: { name: 'projects/p/locations/r/builds/b-old', id: 'b-old', projectId: h.profile.target.projectId,
+        status: 'SUCCESS', serviceAccount: `projects/${h.profile.target.projectId}/serviceAccounts/${h.profile.identities.builder}`,
+        sourceProvenance: { resolvedStorageSource: { bucket, object: artifactSourceObject.uri.split('/').slice(3).join('/'), generation: artifactSourceObject.generation } },
+        results: { images: [{ name: `${h.profile.artifact.uri}:release-${artifactSourceRevision}`, digest: 'sha256:' + 'd'.repeat(64) }] },
+        options: { requestedVerifyOption: 'VERIFIED' } } }
+  }
+  await executeOwnerStage({ ...input, stage: 'prepare' })
+  const deploymentRef = await executeOwnerStage({ ...input, stage: 'build' })
+  const deployment = (await h.transport.readJson(deploymentRef.ref)).value
+  assert.equal(deployment.artifactSourceRevision, artifactSourceRevision)
+  assert.deepEqual(deployment.artifactSourceObject, artifactSourceObject)
+  assert.deepEqual(deployment.appArtifactReuse, association)
+  assert.equal(observedEvidenceSource, artifactSourceRevision)
+})
+
+test('native rotation prepare seals the summary and migrate requires exact live Job readback before any candidate', async () => {
+  async function preparedRotationCase(releaseId) {
+    const h = recordedHarness()
+    const { input, intentResult } = await authorizedRecordedInput(h, releaseId)
+    const intent = (await h.transport.readJson(intentResult.ref)).value
+    const priorInfra = (await h.transport.readJson(intent.infraReceiptRef)).value
+    const migrationRunnerDigest = priorInfra.migrationRunnerDigest
+    const infra = {
+      ...priorInfra,
+      mutationProfile: 'APP_INFRA_IMAGE_ROTATION',
+      toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1' },
+    }
+    const infraResult = await h.transport.putJson(
+      `gs://${bucket}/receipts/prerequisites/${releaseId}-tool-rotation-infra.json`, infra, { bucket, prefix: 'receipts' })
+    const revisedIntent = { ...intent, infraReceiptRef: infraResult.ref }
+    const capsule = await h.transport.putJson(
+      `gs://${bucket}/receipts/intents/${releaseId}-tool-rotation.json`, revisedIntent, { bucket, prefix: 'receipts' })
+    input.capsuleRef = capsule.ref.uri
+    input.capsuleSha256 = capsule.ref.sha256
+    input.verifyRoutineRelease = async ({ intent: currentIntent }) => ({
+      ...(await verifiedBaseline({ intent: currentIntent })),
+      toolImageRotation: {
+        evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION',
+        sourceRevision: currentIntent.sourceRevision,
+        migrationRunnerDigest,
+      },
+    })
+    await executeOwnerStage({ ...input, stage: 'prepare' })
+    await executeOwnerStage({ ...input, stage: 'build' })
+    return { h, input, infra, migrationRunnerDigest }
+  }
+
+  async function denyCandidateAfterMigrationGate(context, verifyToolJobReadback, expectedError) {
+    let migrationJobs = 0
+    let candidateCreates = 0
+    const createCandidate = context.h.transport.createCandidate
+    context.h.transport.runMigrationJob = async () => { migrationJobs += 1 }
+    context.h.transport.createCandidate = async (...args) => {
+      candidateCreates += 1
+      return createCandidate(...args)
+    }
+    await assert.rejects(() => executeOwnerStage({
+      ...context.input,
+      stage: 'migrate',
+      ...(verifyToolJobReadback ? { verifyToolJobReadback } : {}),
+    }), error => error?.code === expectedError)
+    assert.equal(migrationJobs, 0)
+    assert.equal([...context.h.objects.keys()].some(uri => uri.endsWith('/migrate.json')), false)
+    await assert.rejects(() => executeOwnerStage({ ...context.input, stage: 'candidate' }), error => error?.code === 'MISSING')
+    assert.equal(candidateCreates, 0)
+  }
+
+  const accepted = await preparedRotationCase('TOOL-ROTATION-LIVE-READBACK')
+  let liveReadbacks = 0
+  let migrationJobs = 0
+  accepted.h.transport.runMigrationJob = async () => { migrationJobs += 1 }
+  const migration = await executeOwnerStage({
+    ...accepted.input,
+    stage: 'migrate',
+    verifyToolJobReadback: async infra => {
+      liveReadbacks += 1
+      assert.equal(infra.mutationProfile, 'APP_INFRA_IMAGE_ROTATION')
+      assert.equal(infra.migrationRunnerDigest, accepted.migrationRunnerDigest)
+      return { migrationRunnerDigest: accepted.migrationRunnerDigest, generation: '12' }
+    },
+  })
+  assert.equal(liveReadbacks, 1)
+  assert.equal(migrationJobs, 0)
+  assert.equal(migration.value.facts.toolImageLiveReadback.generation, '12')
+  assert.equal(migration.value.facts.disposition, 'UNCHANGED_VERIFIED')
+
+  const missing = await preparedRotationCase('TOOL-ROTATION-MISSING-LIVE-READBACK')
+  await denyCandidateAfterMigrationGate(missing, null, 'TOOL_JOB_READBACK_REQUIRED')
+
+  const drifted = await preparedRotationCase('TOOL-ROTATION-DRIFTED-LIVE-READBACK')
+  let driftChecks = 0
+  await denyCandidateAfterMigrationGate(drifted, async () => {
+    driftChecks += 1
+    throw Object.assign(new Error('TOOL_ROTATION_LIVE_JOB_DRIFT'), { code: 'TOOL_ROTATION_LIVE_JOB_DRIFT' })
+  }, 'TOOL_ROTATION_LIVE_JOB_DRIFT')
+  assert.equal(driftChecks, 1)
+})
+
 test('controlled forward migration completes before candidate and is preserved in terminal disposition', async () => {
   const h = recordedHarness()
   const { input } = await authorizedRecordedInput(h, 'CONTROLLED-FORWARD-MIGRATION')

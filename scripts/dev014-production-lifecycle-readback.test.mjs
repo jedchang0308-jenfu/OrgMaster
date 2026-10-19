@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { readLifecycleSnapshot, runMain, safeReadbackErrorCode } from './dev014-production-lifecycle-readback.mjs'
 import { crc32cBase64 } from './lib/dev012-production-migration-runner.mjs'
-import { TARGET } from './dev040-production-migration-runner.mjs'
+import { TARGET } from './lib/orgmaster-production-database.mjs'
 
 function database(mode = 'migrator', identityOverrides = {}, fixtures = {}) {
   const calls = []

@@ -1,5 +1,23 @@
 # OrgMaster 文件地圖
 
+[來源 AI_PDM / CAPA-002](../../AI_PDM/.ai-doc/capa-register.md#capa-002)：三專案發布阻塞與規則精簡的唯一案件，整案狀態由 AI_PDM owner 維護。OrgMaster 範圍的 CA-3 結果沿[既有 DEV-040／DEV-057 owner 出口](dev_task.md#dev040-production-release-20261019)追蹤；規範精簡 [PR #133](https://github.com/jedchang0308-jenfu/OrgMaster/pull/133) 與發布收尾 [PR #144](https://github.com/jedchang0308-jenfu/OrgMaster/pull/144) 已合併。歷史發布結果保留原始 owner 證據，PA 文件驗證與 CA-3 實際產品／發布結果分開記錄；本段不回寫其他專案，不將本專案 RELEASED 推論為跨專案 CAPA 整案結案。
+
+## DEV-040／DEV-057 PR134 正式發布收尾（2026-10-19）
+
+[既有任務內的完整來源、plan、收據、失敗與清理紀錄](dev_task.md#dev040-production-release-20261019)。[PR134](https://github.com/jedchang0308-jenfu/OrgMaster/pull/134) 與必要修正 PR135～143 已合併；正式 source=`eaf57c72a0f0e285fa45ea9edc7f8d9b5db5f1f6`，[owner workflow 39149384356](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/39149384356) 十階段成功，`ORGMASTER-REL-20261018172319997-EAF57C7 / FINALIZED / RELEASED / remainingHumanAction=0`。`orgmaster-prod-8ea68362879c` Ready、100% traffic、0 tags；候選／canonical Principal API smoke PASS。App／tool 沿用既有 digest，獨立 image-only rotation 與 smoke numeric 10→11 rotation 各自保留完整75地址plan；`UNCHANGED_VERIFIED / migrationsExecuted=0 / imports=0 / liveLedgerRead=false`，不宣稱本次31-row replay或全產品UI／跨專案驗收。完整本機證據=`output/release-closeout/ORGMASTER-REL-20261018172319997-EAF57C7/`，正式發布權威仍是 immutable owner receipts。
+
+本次發布clone／worktree／dependency junction／空容器及已REVALIDATED憑證tab已清理，62458／65342已釋放；159份本機證據與provider原始收據／plan留在上述ignored目錄，Git refs與正式recovery資源保留。原`codex/dev058-docs-submission`分支、AGENTS bytes、CAPA任務／索引既有修改及另一個v7 worktree未清理；本次文件交付僅納入本次發布紀錄與直接索引，不提交原工作樹的其他修改。
+
+## DEV-040 production tool 設定解耦（2026-10-18）
+
+歷史快照：以下是本次發布前的阻塞與續接索引；現行 `RELEASED`、零 DDL、rotation 與清理證據見 [2026-10-19 正式發布收尾](dev_task.md#dev040-production-release-20261019)。
+
+最新：[任務現況](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)記錄 native rotation 已APPLIED／完整75-address source/plan/scan/SBOM證據；第一次 owner release在prepare因Git CRLF/LF archive差異停止，正式app與data仍舊baseline。沿[同一來源與重試契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018)補 explicit Git export profile 與完整tar byte match，不重建原image、不重做rotation、不放寬來源或IAM。
+
+PR135 已 merge、官方 master CI PASS；首次正式 rotation 先在 build readback 的同專案 ID 別名停止，SUCCESS image 保留，Job／app／資料未變。後續 exact alias／historical merged-source association／existing-build-only 續接沿[同一契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018)與[任務現況](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)收斂，不擴張資料／grant／IAM／Secret／跨專案權限，也不以重建取代證據修正。
+
+[來源與映像依賴契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018) → [受控工具 rotation／一般發布](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018) → [本輪任務](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)。PR134 已 merge；續授權僅 OrgMaster 補齊 source-bound runner image-only plan／完整75地址證據與原 ten-stage ordinary release。新增 `test:dev-040:tool-rotation` 納入 required Source QC；正式 rotation／發布／postverify 仍待本輪 provider evidence，維持零 DDL、資料／grant／IAM／Secret／跨專案限制。
+
 ## DEV-058 B 方案動態角色與集中指派（2026-10-12）
 
 [原生任務](dev_task.md#dev-058-federated-role-catalog-central-assignment) → [唯一工程契約](specs/DEV-058-federated-role-catalog-central-assignment.md)／[QA24案](qa/DEV-058-dynamic-role-assignment-validation-plan.md)／[ADR-007增補](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。成熟度 `RD Implementation Ready / Human Confirmed / Documents Only`；DTO／command／audit結果查詢、profile／context、own DDL／ACL／12欄readiness及固定unit/PG/UI/DUAL入口已收斂。來源 [AIPDM/DEV-123](../../AI_PDM/.ai-doc/specs/DEV-123-role-permission-editor-contract.md)僅唯讀；本輪無code／SQL／runner或產品驗證，產品NOT_IMPLEMENTED、QA24 NOT_RUN。下一步等待人類產品RD指示，受控producer資產與真雙端／owner enablement依slice gate，不從文件ready推定相容已完成。
@@ -13,6 +31,8 @@
 [本輪切片契約與驗證結果](specs/DEV-039-composable-planning-workspace.md#2026-10-12-頂列帳號與更新選單) → [DEV-039 任務](dev_task.md#dev-039可組合規劃桌面與跨面板關聯配置)。水平三點選單、session own 顯示信箱、no-store JS／CSS 版本比對、dirty reload 阻擋及既有 AuthGate 登出；`Local Targeted QC Passed / Production Not Deployed`。聚焦 tests／build、1242／1024／390 實際 CUA 操作與截圖在 `output/playwright/dev039-account-menu-20261012/`；正式 metadata／互動未測，不改 DEV-039 全量歷史結論。
 
 ## DEV-057 smoke credential continuation（2026-10-11）
+
+本次正式狀態已由 [2026-10-19 收尾](dev_task.md#dev040-production-release-20261019) 取代：同一 Principal 的 v11 重驗、Workflow `000011-696`、protected release 與正式 API smoke PASS；以下35 focused／364 owner Node與「待證」為原本機快照，保留其歷史層級。
 
 [原生續接契約與驗收](specs/DEV-057-identity-and-grant-contract-boundary.md#dev-057-completed-smoke-credential-continuation--2026-10-11) → [現行任務](dev_task.md#dev-057-smoke-credential-continuation2026-10-11)。CLI／lib／原生聚焦測試與既有 QC 分母同步，原生 owner `ORGMASTER/DEV-057#smoke-reauth-continuation`；35 focused／364 owner Node 合成 PASS。Source CI、真實同版本重驗及 numeric rotation／protected release 待證；未改 Platform consumer、IAM、SQL 或 runtime。
 

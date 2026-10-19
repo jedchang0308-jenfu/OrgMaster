@@ -1,4 +1,4 @@
-FROM node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf
+FROM node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS runtime
 
 LABEL io.jenfu.dev014.admission-contract="source-bound-v1"
 
@@ -10,6 +10,7 @@ RUN npm ci --omit=dev --ignore-scripts \
     && rm -rf /usr/local/lib/node_modules/npm \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx
 COPY scripts/lib/dev012-production-migration-runner.mjs scripts/lib/dev012-production-migration-runner.mjs
+COPY scripts/lib/orgmaster-production-database.mjs scripts/lib/orgmaster-production-database.mjs
 COPY scripts/lib/dev012-orgmaster-production-data.mjs scripts/lib/dev012-orgmaster-production-data.mjs
 COPY scripts/lib/dev049-production-admission.mjs scripts/lib/dev049-production-admission.mjs
 COPY scripts/lib/dev014-consumer-conformance.mjs scripts/lib/dev014-consumer-conformance.mjs

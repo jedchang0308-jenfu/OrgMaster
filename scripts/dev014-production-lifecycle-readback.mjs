@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import pg from 'pg'
 import { pathToFileURL } from 'node:url'
 import { metadataAccessToken, assertRunnerTarget, publishGcsJson, parseGsUri } from './lib/dev012-production-migration-runner.mjs'
-import { TARGET, databaseOptions } from './dev040-production-migration-runner.mjs'
+import { TARGET, databaseOptions } from './lib/orgmaster-production-database.mjs'
 import { readLifecycleV2EventSnapshot, readLifecycleV2PreflightSnapshot } from './lib/dev014-lifecycle-v2-readback.mjs'
 
 // parseGsUri adds '/' to the expected prefix in its guard comparison.

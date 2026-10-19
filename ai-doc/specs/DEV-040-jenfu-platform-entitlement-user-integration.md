@@ -1425,6 +1425,43 @@ Platform protected release run `35579062204`已在migration 006 prerequisite以S
 
 直接契約：[DEV-052](DEV-052-managed-identity-lifecycle-producer-contract.md)。QA分母：[DEV-040 R2 QA §16](../qa/DEV-040-R2-independent-production-release-validation-plan.md)。
 
+<a id="production-tool-database-config-20261018"></a>
+## 2026-10-18 發布工具共用設定解耦
+
+沿 DEV-040 維護發布工具：`scripts/lib/orgmaster-production-database.mjs` 僅保存 OrgMaster production owner／bucket／Job／IAM login 識別及 PostgreSQL connection options；匯入時沒有 I/O、credential 或執行入口。`dev040-production-migration-runner.mjs` 組合該識別與自己的 ledger、baseline／entry counts、exact append hash、schema／role policy，保留完整 migration 准入責任。
+
+DEV-014 lifecycle readback、DEV-049 admission、DEV-057 Principal pair diagnostic 與 catalog readback 直接引用中立模組。admission 的 target 公開形狀與各 Job／runtime login override、固定 production target guard、連線名稱、timeout、SSL、denied-database probes 均維持。其他獨立工具未納入；不改 Principal／catalog／grant 業務語意或任何 applied SQL。
+
+兩個 DEV-057 獨立 operator recipe 不再 COPY migration 執行入口；仍保留 `dev012-production-migration-runner.mjs` 的 target guard、GCS integrity／immutable publication primitives，以及 locked `pg`。catalog operator 保留 TypeScript reader、歷史 fixture 與 v5/v6/v7 source snapshots：現行 DB reader 延遲讀取對應 snapshot 並作完整內容比對，因此補齊原 recipe 遺漏的 v6/v7，不改既有 reader 語意。migration image 保留 admission／managed-link／fixture／authority-switch／lifecycle entrypoints 及其必要 helpers。
+
+`npm run test:production-tools` 驗證設定相容、拒絕行為與由三份實際 Dockerfile COPY 所組出的隔離 package，包含延遲路徑。required `Production Source QC` 同時建置三個真實工具映像並在禁止網路的容器中匯入其所有 entrypoints；既有 owner／abort／lifecycle／app／database-boundary gates 保留。此層證據不宣稱正式資料庫連線或 production PASS。
+
+PR #134 已合併至 `ad4e6be3355305329833a83005889be61c46f6ee`。其後人類明確授權僅 OrgMaster 補齊受控映像 rotation／一般發布路徑、完成 PR／required CI／merge／正式發布與發布後驗證；不擴張正式資料、grant、IAM／Secret 或跨專案責任。第一個一般發布 preflight 的 `SMOKE_REUSE_RECEIPT_INVALID` 保留為原失敗，不能套用歷史 lifecycle remediation 例外來略過。
+
+<a id="ordinary-tool-image-rotation-20261018"></a>
+### 一般發布的受控工具映像 rotation
+
+- `npm run rotate:production:tools -- --check|--apply` 僅接受乾淨、exact protected `master` merge source、單一 merged PR 與 provider required `Production Source QC=SUCCESS`；以目前 FINALIZED／RELEASED control、原 baseline intent／infra、own Terraform backend 與 live service／Job readback 為前置。`--check` 只讀，不建映像、不套用、不發布收據。
+- 固定既有 `orgmaster-prod-migration-runner`，沿既有 builder、source archive、provider build reuse／submission fence、scan／SBOM policy 建置必要 runner。兩個未部署診斷 recipe 由 required CI 驗證，不因此建立新正式 Job。除三份具名 Dockerfile 外的 infrastructure／profile／plan／N1C inputs 必須完全相同；每次 app-only 重用還要核對 runner COPY 的全部 committed executable inputs。
+- 保留原始 binary plan、JSON plan、before／after state、output manifest、build／registry／scan、protected source、原 control snapshot、provider Job 與原 baseline 的 immutable hash refs。完整 75 地址不可缺漏；Terraform 若省略已解析 data source，只能由同份 plan 的完整 refreshed prior state 補上 read-only no-op 證明，不能補猜 managed resource。
+- 所有 managed actions 必須 no-op，唯一例外是 migration Job 的 update；完整 before／after 只允許第一個 container 的 immutable image 改變，以及原既有 gcloud client metadata 正規化。拒絕 create／delete／replace／import／targeted plan、任何其他欄位／IAM／Secret／service／traffic 變更。source／control generation 與 state serial／lineage 在套用前重新核對；只套用 hash 相符的已封存 binary plan。
+- Prepared 與 apply fence 綁定相同 source、plan、baseline 與 serial。重試先重驗所有準備證據；已存在提交 fence 的未知結果只做 provider／state readback，不重送 apply。成功須有 source-bound `APP_INFRA_IMAGE_ROTATION`／`jenfu.dev012.image-rotation-proof.v1` 與 settled Job image readback，才可發布 APPLIED 收據。
+- Provider Cloud Build 名稱只接受 profile 已綁定的 project ID 或 project number 兩種同資源別名，projectId／builder／region／build UUID 仍須精確相符。若 producer 修正而已存在成功映像，可使用 `--reuse-build-id=<own UUID>`：先驗證原 build source 是目前 protected source 的已合併祖先、其 merged PR／最新 required CI，以及完全相同的 recipe／COPY／context inputs；讀取原始 generation-bound source archive 並比對 Git bytes，沿原 build request 的完整輸入驗證與目前 registry／active scan／SBOM 政策重用。此模式只允許查到既有 build；查無即拒絕，零 build POST／零新映像。原 source／digest／build ID／時間與 provenance 保留在 build proof，新的 source-bound rotation receipt 另封存 `artifactSourceProof` 關聯，不把舊 build 改寫成新來源。
+- Git archive 輸出須明確指定 export profile，不依主機的全域 `core.autocrlf`。新的 source producer 固定 `core.autocrlf=false,core.eol=lf,tar.umask=0002`，且保留既有 clean/exact-source freeze。讀回既有工具 archive 時仍先驗原始 compressed SHA／generation／CRC／provenance；解壓內容只能逐 byte 等於同一 committed revision 由 Git 產生的 canonical LF profile，或固定 `core.autocrlf=true,core.eol=crlf,tar.umask=0002` 的 legacy profile。兩者均遵循 committed `.gitattributes`，完整 tar header／path／mode／內容／padding 必須相同，不允許任意 line-ending normalization、逐檔忽略、改寫舊 archive／receipt 或以新 build 代替來源證明。prepare 明記實際匹配的 `archiveExportProfile`；required CI 以實際歷史來源與固定 tar hash重現跨主機相容性，另測 content/header/extra-byte 拒絕。
+- 一般發布由 `npm run deploy:production -- --tool-image-rotation-ref=<own immutable receipt>` 接入原 ten-stage workflow。Operator 先做 live Job readback；prepare verifier 重新驗證同一份完整封存證據與來源，明記 `REQUIRED_AT_DEPLOYER_MIGRATE`，不提升 verifier 的 IAM。既有 migrate 階段使用原 deployer 的 exact-job Viewer 權限重讀 Job，核對 sealed after snapshot 的 UID／generation／template／image，缺漏或漂移在寫 migrate receipt／建立 candidate 前停止。維持相同 foundation／runtime／31-row bundle、`migrate=UNCHANGED_VERIFIED`、零 Job 執行、零 DDL／import／bootstrap。此 lane 不與歷史 remediation／runtime enablement／smoke credential exception 混用，也不新增人類步驟、身分或弱化 required CI。
+
+行為與反向案例由 `npm run test:dev-040:tool-rotation` 加入既有 required Source QC 與 owner QC；owner／abort／DB boundary／app gates 依實際變動保留。實際正式結果另記 dated owner evidence；本契約本身不宣稱發布成功。
+
+<a id="release-proof-composition-20261018"></a>
+### 2026-10-18 發布證據組合與 Workflow credential version rotation
+
+- 固定 continuation 只承接同服務既有 `PRE_ACTIVATION_ABORTED` attempt。`--reuse-aborted-app-artifact` 必須重驗該 attempt 的 immutable intent、build、deployment capsule、provenance、SBOM、scan 與 terminal receipts，保留原 artifact source／archive／build ID／digest／時間；abort terminal 依 emitter 實際封存的 `result／previousRevision／entrypointRecovery／databaseDisposition` 驗證，若歷史證據帶有 `remainingHumanAction` 則只能為 0，不得要求 emitter 從未寫入的欄位。目前 protected merge source 相對原 artifact source 只能新增或修改契約內 exact release-executor／test／文件 allowlist，且 Dockerfile、`.dockerignore`、package／lock、TypeScript 與 Vite build inputs 必須逐 blob 相同。Provider lookup 使用原 build identity 且 `reuseOnly=true`，查無或任一 runtime input 漂移即停止，禁止 build POST、重標來源或重建映像。
+- 已套用的 `APP_INFRA_IMAGE_ROTATION` 與後續 `APP_INFRA_SMOKE_CREDENTIAL_ROTATION` 是兩份獨立 immutable predecessor proof。前者完整證明 baseline 到 migration Job image-only state；後者以該 tool state 為起點，重新綁定目前 protected source、required `Production Source QC` 與 fresh same-Principal reauthentication，只允許既有 candidate-smoke Workflow 引用既有 enabled Secret 的下一個 numeric version。不得把兩次變更合成一份 plan 或擴張任何 resource／field exception。
+- 若 Workflow 變更已由 immutable plan／apply fence 完成，但 receipt completion 因 provider-owned revision metadata 正規化而停止，後續 protected source 可在同一次 `--reuse-aborted-app-artifact` continuation 直接重用該 sealed smoke receipt；僅當 app artifact equivalence 已限制來源差異於既有 release-executor allowlist，且目前來源、rotation 來源、tool predecessor 與 released baseline 的完整 infrastructure tree、Terraform address set 及 runner／controller executable closure 逐 byte 相同時成立。原 rotation source／plan／state／credential／時間不得改寫，provider Workflow／Secret 仍須 fresh readback；這不授權新的 Terraform apply、Secret version、image build、DDL、IAM、grant、runtime、traffic 或資料變更。
+- Native smoke producer 從 own Terraform backend 重建完整 inputs，plan 必須涵蓋 exact 75-address set；所有 data source 只讀，所有 managed resource no-op，唯一 update 是 `google_workflows_workflow.candidate_smoke[0]` 的 `source_contents`，且 byte delta 只能是 bound Secret version。Workflow name、service account 與其餘 provider fields、migration runner/controller digest、foundation manifest 及所有非 Workflow state 保持。這個 lane 不新增 Secret version、不改 Secret payload／IAM／grant／資料／schema／service／traffic，也不建任何映像。
+- Plan binary、JSON、before state、Workflow before、control snapshot 與 source／credential／tool refs 先 create-only 封存為 prepared receipt；apply 前重驗 source、control generation、state serial／lineage 與 live Workflow。Immutable apply fence 寫入後才可套用 exact saved plan。呼叫結果不明或 fence 已存在時只做 Terraform state 及 provider Workflow readback，永不重送 apply；成功後封存 after state／manifest／Workflow readback 及完整 hash join。
+- 一般發布以 `deploy:production -- --tool-image-rotation-ref=<tool> --smoke-rotation-ref=<workflow> --reuse-aborted-app-artifact` 進入原十階段。Prepare 分別重驗 tool predecessor、smoke continuation 及 app artifact equivalence；build stage 只讀回原 provider artifact，migrate 維持 `UNCHANGED_VERIFIED` 與零 Job 執行／DDL／import／bootstrap。任何一條 proof 缺漏、過期、漂移或不匹配均在 candidate 前 fail closed；實際正式結果只由本次 owner receipts 與發布後 provider readback 證明。
+
 <a id="owner-artifact-input-reuse-20261007"></a>
 ## 2026-10-07 Owner artifact 輸入與重試維護（本地修改／行為驗證待執行）
 

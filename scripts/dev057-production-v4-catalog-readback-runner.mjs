@@ -4,7 +4,7 @@ import process from 'node:process'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
-import { TARGET, databaseOptions } from './dev040-production-migration-runner.mjs'
+import { TARGET, databaseOptions } from './lib/orgmaster-production-database.mjs'
 import {
   assertRunnerTarget, metadataAccessToken, parseGsUri, publishGcsJson,
 } from './lib/dev012-production-migration-runner.mjs'

@@ -114,17 +114,29 @@ await check('managed-login owner API binds caller, Firebase, Directory stable ke
   assert.doesNotMatch(ownerReceipt, /(?:primaryEmail|idToken|last_verified_primary_email)/iu)
 })
 
-await check('DEV-047 runner exposes isolated DEV-049 suite and current protected release boundary', async () => {
-  const [runner, packageJson, agents, spec] = await Promise.all([
+await check('DEV-047 runner exposes isolated DEV-049 suite and source-owned release migration prefix', async () => {
+  const [runner, packageJson, profileSource, spec] = await Promise.all([
     source('scripts/qc-dev-047-postgres.mjs'),
     source('package.json'),
-    source('AGENTS.md'),
+    source('config/release/dev040-orgmaster-independent-production-v3.json'),
     source('ai-doc/specs/DEV-049-existing-google-primary-account-link.md'),
   ])
   includesAll(runner, ["--suite=", "suite === 'dev049'", "'D49-01'", "'D49-06'", 'task-owned PostgreSQL cluster'])
   includesAll(packageJson, ['qc:dev-049:postgres', 'qc:dev-049:browser', 'test:dev-049'])
-  assert.match(agents, /001–020 bundle/u)
-  assert.match(agents, /DEV-013 production activation recovery slice[^\n]*012／013／014／015/u)
+  // Verify the release input, not historical prose in the agent entrypoint.
+  const profile = JSON.parse(profileSource)
+  assert.equal(profile.application.branch, 'master')
+  assert.equal(profile.workflow.onlyInput, 'releaseCapsuleRef')
+  assert.equal(profile.migrations.ledger, 'orgmaster_core.schema_migrations')
+  const entries = profile.migrations.entries
+  assert.deepEqual(entries.slice(0, 20).map((entry) => entry.order), Array.from({ length: 20 }, (_, index) => index + 1))
+  assert.deepEqual(entries.slice(11, 15).map((entry) => entry.path), [
+    'db/migrations/012_dev047_managed_identity_bridge.sql',
+    'db/migrations/013_dev049_existing_google_primary_account_link.sql',
+    'db/migrations/014_dev050_orgmaster_session_admission.sql',
+    'db/migrations/015_dev013_restore_runtime_session_dml.sql',
+  ])
+  assert.equal(entries[12].sourceSha256, createHash('sha256').update(migration).digest('hex'))
   includesAll(spec, [
     'db/migrations/013_dev049_existing_google_primary_account_link.sql',
     'Production activation amendment',

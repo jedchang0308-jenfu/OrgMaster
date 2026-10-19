@@ -18,8 +18,13 @@ process.stderr.write(run.stderr)
 // Unknown Cloud Build submission-fence recovery adds one selected case: total 340.
 // Eight DEV-057 completed-credential continuation cases extend this same selection to 348.
 // Six historical applied-image predecessor cases extend this exact selection to 354.
+// One existing-build-only no-submission recovery case extends this selection to 355.
+// One role-bounded migrate live-readback/candidate-blocking case extends it to 356.
+// Three release-proof composition cases extend this exact selection to 359.
+// Prior-source smoke receipt continuation and the emitted abort-terminal schema
+// add two selected cases: total 361.
 // This Node result does not replace the full regression/build commands below.
-if (run.status !== 0 || !/\bpass 354\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+if (run.status !== 0 || !/\bpass 361\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 
@@ -102,6 +107,8 @@ const syntheticRegressionData = await prepareSyntheticRegressionData()
 let ownerExitCommands
 try {
   ownerExitCommands = [
+  ['npm run test:dev-040:tool-rotation', ['run', 'test:dev-040:tool-rotation']],
+  ['npm run test:production-tools', ['run', 'test:production-tools']],
   ['npm run test:dev-040:abort', ['run', 'test:dev-040:abort']],
   ['npm run check:db-boundary', ['run', 'check:db-boundary']],
   ['npm test -- --testTimeout=30000', ['test', '--', '--testTimeout=30000']],
@@ -128,12 +135,27 @@ const files = [
   'scripts/lib/dev040-orgmaster-independent-release.mjs', 'scripts/dev040-orgmaster-independent-release.mjs',
   'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.mjs',
   'scripts/dev040-production-migration-runner.test.mjs', 'scripts/qc-dev-040-r2-independent-release.mjs',
+  'scripts/lib/orgmaster-production-database.mjs', 'scripts/lib/orgmaster-production-database.test.mjs',
+  'scripts/dev040-tool-image-rotation.mjs', 'scripts/dev040-tool-image-rotation.test.mjs',
+  'scripts/lib/dev040-git-archive.mjs', 'scripts/lib/dev040-git-archive.test.mjs',
+  'scripts/lib/dev040-tool-image-build.mjs', 'scripts/lib/dev040-tool-image-build.test.mjs',
+  'scripts/lib/dev040-tool-image-rotation.mjs', 'scripts/lib/dev040-tool-image-rotation.test.mjs',
+  'scripts/lib/dev040-tool-terraform.mjs', 'scripts/lib/dev040-tool-terraform.test.mjs',
+  'scripts/production-tool-packaging.test.mjs', 'scripts/dev057-production-v4-catalog-readback-runner.mjs',
+  'scripts/dev057-production-v4-catalog-readback-runner.test.mjs',
+  'scripts/dev014-production-lifecycle-readback.mjs', 'scripts/dev014-production-lifecycle-readback.test.mjs',
+  'scripts/lib/dev014-lifecycle-v2-readback.mjs',
+  'scripts/dev057-production-principal-pair-diagnostic-runner.mjs', 'scripts/dev057-production-principal-pair-diagnostic-runner.test.mjs',
+  'server/aiPdmRoleCatalogRepository.ts', '.github/workflows/production-source-qc.yml',
+  ...['v5', 'v6', 'v7'].map(version => `config/catalogs/ai-pdm-role-catalog.${version}.json`),
+  'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json',
   'scripts/qc-dev-047-postgres.mjs', 'scripts/qc-dev-052-contract.mjs',
   'scripts/lib/dev049-production-admission.mjs', 'scripts/dev049-production-admission-runner.mjs', 'scripts/dev049-production-admission.test.mjs',
   'scripts/dev014-production-managed-link-runner.mjs', 'scripts/dev014-production-managed-link-runner.test.mjs',
   'scripts/lib/dev012-owner-release-runtime.mjs', 'scripts/lib/dev012-owner-stage-executor.mjs', 'scripts/lib/dev015-gcc-applicability.mjs', 'scripts/lib/dev015-gcc-aligned-new-applicability.mjs', 'scripts/dev015-aligned-new-loader-inspection.cjs', 'scripts/dev015-aligned-new-loader-inspection.test.mjs', 'scripts/dev015-gcc-aligned-new-applicability.test.mjs', 'config/release/dev015-gcc-aligned-new-applicability.json', 'scripts/dev015-native-image-inventory.cjs', 'scripts/dev015-gcc-applicability.test.mjs', 'config/release/dev015-gcc-pbds-applicability.json', 'scripts/lib/dev012-production-migration-runner.mjs',
   'scripts/dev012-owner-release-runtime.test.mjs', 'scripts/dev012-owner-stage-executor.test.mjs', 'scripts/dev057-principal-activation-transport.test.mjs',
   'scripts/lib/dev040-routine-release.mjs', 'scripts/dev040-routine-release.test.mjs', 'scripts/dev040-deploy-production.mjs',
+  'scripts/lib/dev040-app-artifact-reuse.mjs', 'scripts/dev057-smoke-credential-rotation.mjs', 'scripts/lib/dev057-smoke-rotation-continuation.mjs',
   'scripts/dev014-lifecycle-scheduler.mjs', 'scripts/lib/dev014-lifecycle-scheduler-contract.mjs',
   'scripts/lib/dev014-lifecycle-activation-prerequisites.mjs', 'scripts/lib/dev014-lifecycle-activation-prerequisites.test.mjs',
   'scripts/lib/dev014-platform-011-consumer-entry.fixture.json', 'scripts/lib/dev014-principal-lifecycle-release.mjs',
