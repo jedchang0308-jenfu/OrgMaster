@@ -151,7 +151,7 @@ export interface GovernanceDocumentV1 {
 export type GovernanceVersionKind = 'legacy-policy-v1' | 'assignment-governance-v2' | 'assignment-governance-v3'
 export type AssignmentEffectState = 'orgmaster-enforced' | 'not-synchronized'
 export type ExternalRoleCatalogState = 'valid' | 'stale' | 'invalid' | 'unavailable'
-export type ExternalRoleCatalogSourceKind = 'bundled-fixture'
+export type ExternalRoleCatalogSourceKind = 'bundled-fixture' | 'application-contract'
 
 export type PrincipalAccountTypeV1 = 'human_personal' | 'human_privileged' | 'legacy_shared' | 'service'
 export type SharedRetirementStateV1 = 'not_applicable' | 'pending_replacement' | 'replacement_verified' | 'login_disabled' | 'retired'

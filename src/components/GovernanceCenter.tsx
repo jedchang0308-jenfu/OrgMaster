@@ -137,7 +137,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const privilegedMode = Boolean(systemAdminRole && classifyAssignmentSurface('ai-pdm', systemAdminRole) === 'privileged_system_admin')
   const externalAssignments = roleAssignments.filter((assignment) => assignment.applicationId === 'ai-pdm' && assignment.status === 'active')
   const publishBlockers = draft && session ? governancePublishBlockersV2(draft, session.actor, currentOrganizationVersionId) : []
-  const publishMutationAllowed = mutationAllowed && Boolean(session?.capabilities.publish)
+  const publishMutationAllowed = identityMutationAllowed && Boolean(session?.capabilities.publish)
   const simulationAllowed = Boolean(session?.capabilities.simulate)
   const versions = [...(snapshot?.versions ?? [])].sort((a, b) => b.versionNumber - a.versionNumber)
   const currentGovernanceVersion = versions.find((version) => version.id === document.activePolicyVersionId)
@@ -212,10 +212,10 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     }
   }
   async function submitAssignment() { const value = assignmentValue(); if (!value) { recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: [{ code: 'EXTERNAL_ROLE_UNKNOWN', message: '請選擇有效角色。' }] }); return } setBusy(true); clearFeedback(); try { const checked = await validateGovernanceAssignment(value); if (checked.payload.status !== 'valid') { recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: checked.payload.issues }); return } const ok = await runCommand({ type: 'UPSERT_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: value.applicationId === 'ai-pdm' ? '建立外部應用角色指派' : '建立 OrgMaster 治理角色指派', value }, '角色指派已加入草稿，尚未發布。'); if (ok) { setCheckResult(checked.payload); setAssignmentDialog(null) } } catch (error) { recordFailure(error) } finally { setBusy(false) } }
-  async function revokeAssignment(value: GovernanceRoleAssignmentV2) { if (value.status !== 'active') return false; const ok = await runCommand({ type: 'REVOKE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '撤銷角色指派', id: value.id }, '角色指派已撤銷'); if (ok) setAssignmentDialog(null); return ok }
+  async function revokeAssignment(value: GovernanceRoleAssignmentV2) { if (!identityMutationAllowed || value.status !== 'active') return false; const ok = await runCommand({ type: 'REVOKE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '撤銷角色指派', id: value.id }, '角色指派已撤銷'); if (ok) setAssignmentDialog(null); return ok }
   function assignmentRestoreBlocked(assignment: GovernanceRoleAssignmentV2) { return assignment.validTo !== null && Date.parse(assignment.validTo) <= clockNow ? '指派已到期，請新增有效期間的指派' : !employees.some((employee) => employee.id === assignment.employeeId && employee.status === 'active') ? '停用員工不能啟用角色指派' : assignment.applicationId === 'ai-pdm' && assignment.catalogVersion !== catalog?.catalogVersion ? '角色目錄已更新，請新增使用目前目錄的指派' : '' }
   async function restoreAssignment(value: GovernanceRoleAssignmentV2) { if (!mutationAllowed || value.status !== 'revoked' || !assignmentLifecycleEditable(value) || assignmentRestoreBlocked(value)) return; const ok = await runCommand({ type: 'RESTORE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '啟用角色指派', id: value.id }, '角色指派已啟用於草稿，尚未發布。'); if (ok) closeAssignmentDialog() }
-  async function removeAssignment(value: GovernanceRoleAssignmentV2) { if (!mutationAllowed || value.status !== 'revoked' || !assignmentLifecycleEditable(value)) return; const ok = await runCommand({ type: 'REMOVE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '刪除已撤銷角色指派', id: value.id }, '角色指派已從草稿刪除，尚未發布。'); if (ok) closeAssignmentDialog() }
+  async function removeAssignment(value: GovernanceRoleAssignmentV2) { if (!identityMutationAllowed || value.status !== 'revoked' || !assignmentLifecycleEditable(value)) return; const ok = await runCommand({ type: 'REMOVE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '刪除已撤銷角色指派', id: value.id }, '角色指派已從草稿刪除，尚未發布。'); if (ok) closeAssignmentDialog() }
   function openAssignmentAdd(role: MatrixRoleTarget) { if (!mutationAllowed || !role.assignable || (role.applicationId !== 'orgmaster' && role.applicationId !== 'ai-pdm')) return; const scopeKind = role.applicationId === 'orgmaster' ? 'global' : (role.allowedScopeKinds[0] as typeof assignmentScopeKind | undefined) ?? 'workspace'; setAssignmentApplicationId(role.applicationId); setAssignmentRoleId(role.id); setAssignmentEmployeeId(''); setAssignmentScopeKind(scopeKind); setAssignmentScopeValue(scopeKind === 'workspace' ? 'current' : ''); setAssignmentValidFrom(new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)); setAssignmentValidTo(''); clearFeedback(); setAssignmentDialog({ kind: 'add', applicationId: role.applicationId, roleId: role.id, roleName: role.name }) }
   function openAssignmentDetails(role: MatrixRoleTarget, employeeId: string) { clearFeedback(); setAssignmentRemovalId(null); setAssignmentDialog({ kind: 'details', applicationId: role.applicationId, roleId: role.id, roleName: role.name, employeeId }) }
   function closeAssignmentDialog() { assignmentDialogRef.current?.close(); setAssignmentDialog(null); setAssignmentRemovalId(null) }
@@ -253,9 +253,9 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
           return <li className="governance-matrix__person" key={employeeId}>
             <button type="button" className="governance-matrix__person-name" onClick={() => openAssignmentDetails(targetRole, employeeId)}>{employeeName(employees, employeeId)}{employeeAssignments.length > 1 && <small>{employeeAssignments.length} 筆</small>}</button>
             <div className="governance-matrix__person-statuses">{statuses.map((status) => <AssignmentStatusBadge key={status} status={status} />)}</div>
-            {mutationAllowed && activeAssignments.length > 0 && <button type="button" className="governance-matrix__remove" aria-label={`撤銷 ${employeeName(employees, employeeId)} 的 ${targetRole.name} 指派`} title="撤銷員工指派" disabled={busy} onClick={() => activeAssignments.length === 1 ? void revokeAssignment(activeAssignments[0]) : openAssignmentDetails(targetRole, employeeId)}>×</button>}
-            {mutationAllowed && revokedAssignments.length > 0 && <div className="governance-matrix__actions">
-              <button type="button" aria-label={`啟用 ${employeeName(employees, employeeId)} 的 ${targetRole.name} 指派`} disabled={busy || !targetRole.assignable || (revokedAssignments.length === 1 && Boolean(assignmentRestoreBlocked(revokedAssignments[0])))} title={revokedAssignments.length === 1 ? assignmentRestoreBlocked(revokedAssignments[0]) || '啟用於草稿，發布後生效' : '選擇要啟用的指派'} onClick={() => revokedAssignments.length === 1 ? void restoreAssignment(revokedAssignments[0]) : openAssignmentDetails(targetRole, employeeId)}>啟用</button>
+            {identityMutationAllowed && activeAssignments.length > 0 && <button type="button" className="governance-matrix__remove" aria-label={`撤銷 ${employeeName(employees, employeeId)} 的 ${targetRole.name} 指派`} title="撤銷員工指派" disabled={busy} onClick={() => activeAssignments.length === 1 ? void revokeAssignment(activeAssignments[0]) : openAssignmentDetails(targetRole, employeeId)}>×</button>}
+            {identityMutationAllowed && revokedAssignments.length > 0 && <div className="governance-matrix__actions">
+              <button type="button" aria-label={`啟用 ${employeeName(employees, employeeId)} 的 ${targetRole.name} 指派`} disabled={busy || !mutationAllowed || !targetRole.assignable || (revokedAssignments.length === 1 && Boolean(assignmentRestoreBlocked(revokedAssignments[0])))} title={revokedAssignments.length === 1 ? assignmentRestoreBlocked(revokedAssignments[0]) || '啟用於草稿，發布後生效' : '選擇要啟用的指派'} onClick={() => revokedAssignments.length === 1 ? void restoreAssignment(revokedAssignments[0]) : openAssignmentDetails(targetRole, employeeId)}>啟用</button>
               <button type="button" aria-label={`刪除 ${employeeName(employees, employeeId)} 的 ${targetRole.name} 指派`} disabled={busy} onClick={() => { openAssignmentDetails(targetRole, employeeId); if (revokedAssignments.length === 1) setAssignmentRemovalId(revokedAssignments[0].id) }}>刪除</button>
             </div>}
           </li>
@@ -280,14 +280,14 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
           return <article className="governance-assignment-details__item" key={assignment.id}>
             <div className="governance-assignment-details__title"><strong>{assignment.roleNameSnapshot || assignment.roleCodeSnapshot}</strong><AssignmentStatusBadge status={status} /></div>
             <dl><div><dt>適用範圍</dt><dd>{assignmentScopeLabel(assignment.scope, departments)}</dd></div><div><dt>生效期間</dt><dd>{assignmentPeriod(assignment)}</dd></div><div><dt>目錄版本</dt><dd>{assignment.catalogVersion ?? 'OrgMaster 內部角色'}</dd></div><div><dt>發布狀態</dt><dd>{assignmentComparisonAvailable ? pendingChange ? `草稿待發布：${pendingChange.kind}` : '已包含於目前發布版本' : '無法與目前發布版本直接比較'}</dd></div></dl>
-            {mutationAllowed && assignment.status === 'active' && <button type="button" className="button button--quiet" disabled={busy} onClick={() => void revokeAssignment(assignment)}>撤銷此筆指派</button>}
-            {mutationAllowed && assignment.status === 'revoked' && assignmentLifecycleEditable(assignment) && <div className="governance-assignment-details__actions">
+            {identityMutationAllowed && assignment.status === 'active' && <button type="button" className="button button--quiet" disabled={busy} onClick={() => void revokeAssignment(assignment)}>撤銷此筆指派</button>}
+            {identityMutationAllowed && assignment.status === 'revoked' && assignmentLifecycleEditable(assignment) && <div className="governance-assignment-details__actions">
               {assignmentRemovalId === assignment.id ? <>
                 <p>刪除此筆指派？發布歷史與稽核紀錄仍會保留。</p>
                 <button type="button" className="button button--quiet" disabled={busy} onClick={() => setAssignmentRemovalId(null)}>取消刪除</button>
                 <button type="button" className="button button--danger" disabled={busy} onClick={() => void removeAssignment(assignment)}>刪除此筆指派</button>
               </> : <>
-                <button type="button" className="button button--quiet" disabled={busy || Boolean(assignmentRestoreBlocked(assignment))} title={assignmentRestoreBlocked(assignment)} onClick={() => void restoreAssignment(assignment)}>啟用此筆指派</button>
+                <button type="button" className="button button--quiet" disabled={busy || !mutationAllowed || Boolean(assignmentRestoreBlocked(assignment))} title={assignmentRestoreBlocked(assignment)} onClick={() => void restoreAssignment(assignment)}>啟用此筆指派</button>
                 <button type="button" className="button button--quiet" disabled={busy} onClick={() => setAssignmentRemovalId(assignment.id)}>刪除</button>
               </>}
             </div>}
@@ -328,7 +328,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     <h3>歷史版本</h3>
     <ol className="governance-version-list">
       {historicalGovernanceVersions.map((version) => <li key={version.id}>
-        <VersionRecord version={version} busy={busy} employees={employees} departments={departments} assignments={snapshot?.document.publishedVersions.find((record) => record.id === version.id)?.policy.roleAssignments} onReactivate={publishMutationAllowed ? reactivate : undefined} />
+        <VersionRecord version={version} busy={busy} employees={employees} departments={departments} assignments={snapshot?.document.publishedVersions.find((record) => record.id === version.id)?.policy.roleAssignments} onReactivate={publishMutationAllowed && catalogReady ? reactivate : undefined} />
       </li>)}
     </ol>
   </section>}

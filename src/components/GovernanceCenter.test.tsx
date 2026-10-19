@@ -40,6 +40,13 @@ beforeEach(() => {
 afterEach(() => { for (const { root, host } of mounted.splice(0)) { act(() => root.unmount()); host.remove() } })
 
 describe('governance version presentation', () => {
+  it('does not hide withdrawal publication merely because the external catalog is unavailable', async () => {
+    const snapshot = fixture()
+    snapshot.catalogs[0].validationState = 'unavailable'
+    const host = await render(snapshot, true)
+    expect([...host.querySelectorAll('button')].some(node => node.textContent === '發布新版本')).toBe(true)
+    expect([...host.querySelectorAll('button')].some(node => /改用第/.test(node.textContent ?? ''))).toBe(false)
+  })
   it('shows the exact selected older version first, meaningful reasons and Taipei dates without mutating history', async () => {
     const snapshot = fixture()
     const host = await render(snapshot)

@@ -8,6 +8,7 @@ import { ensureCommandShape } from '../src/governance/commands'
 import type { GovernanceActorContext, GovernanceCommandV2, GovernanceDocumentV3, GovernanceIdentityLinkV1 } from '../src/governance/types'
 import { createHash, randomUUID } from 'node:crypto'
 import { readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
+import { storedGovernanceCatalogs } from './governanceReduction'
 import { readVerifiedRequestIdentity, verifiedGovernanceActor } from './orgmasterRequestIdentity'
 import { PrivilegedAssignmentError, type PrivilegedAssignmentRequest } from '../src/governance/privilegedAssignments'
 import { previewPrivilegedAssignment, publishPrivilegedAssignment, readPrivilegedAssignmentReceipt, readPrivilegedAssignmentWorkspace } from './privilegedAssignmentStore'
@@ -43,6 +44,15 @@ function errorResponse(response: ServerResponse, error: unknown) { const applica
 function actorOrThrow(request: IncomingMessage, enabled: boolean) { const actor = verifiedGovernanceActor(request) ?? resolveDevelopmentIdentity(request, enabled); if (!actor) throw new GovernanceStoreError(enabled ? 'IDENTITY_CONTEXT_REQUIRED' : 'IDENTITY_PROVIDER_NOT_CONFIGURED'); return actor }
 function aiPdmActorOrThrow(request: IncomingMessage, enabled: boolean) { const actor = resolveDevelopmentIdentity(request, enabled) ?? verifiedGovernanceActor(request); if (!actor) throw new GovernanceStoreError(enabled ? 'IDENTITY_CONTEXT_REQUIRED' : 'IDENTITY_PROVIDER_NOT_CONFIGURED'); return actor }
 function canManage(document: any, actor: GovernanceActorContext) { return canPermission(document, actor, 'orgmaster.governance.manage') }
+async function displayRoleCatalogs(document: GovernanceDocumentV3, root: string) {
+  try { return [await readActiveAiPdmRoleCatalog(root)] }
+  catch (error) {
+    const stored = storedGovernanceCatalogs(document)?.filter(value => value.applicationId === 'ai-pdm')
+    if (!stored?.length) throw error
+    // Historical metadata keeps existing assignments visible, but cannot enable new grants.
+    return stored.map(value => ({ ...value, validationState: 'unavailable' as const }))
+  }
+}
 function canPermission(document: any, actor: GovernanceActorContext, permissionCode: string) { const development = developmentPermissionForActor(actor, permissionCode); if (development !== null) return development; if (actor.bootstrap && !document.activePolicyVersionId) return true; return evaluateVerifiedPrincipalPermission(document, actor, permissionCode).status === 'allowed' }
 function canManageAiPdmRoleCapability(document: any, actor: GovernanceActorContext) { return actor.bootstrap || canPermission(document, actor, 'orgmaster.governance.manage') }
 export function currentIdentityLinkValue(document: GovernanceDocumentV3, actor: GovernanceActorContext, employeeId: string, at = new Date().toISOString()): GovernanceIdentityLinkV1 {
@@ -229,7 +239,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
     return
   }
   if (path === '/session' && request.method === 'GET') { sendJson(response, 200, { runtimeMode: actor.bootstrap ? 'local-development' : 'verified-session', actor: { principalId: actor.principalId, employeeId: actor.employeeId, subjectHint: '••••' }, capabilities: { manage: canManage(document, actor), publish: canPermission(document, actor, 'orgmaster.governance.publish'), simulate: canPermission(document, actor, 'orgmaster.governance.simulate') } }, current.revision); return }
-  if (path === '/' && request.method === 'GET') { sendJson(response, 200, { document: sanitizedDocument(document), catalogs: [await readActiveAiPdmRoleCatalog(root)], revision: current.revision, activeVersionId: document.activePolicyVersionId, versions: document.publishedVersions.map((version: any) => ({ id: version.id, kind: version.kind ?? 'legacy-policy-v1', versionNumber: version.versionNumber, publishedAt: version.publishedAt, publishedByPrincipalId: version.publishedByPrincipalId, publishReason: version.publishReason, snapshotHash: version.snapshotHash, organizationVersionId: version.organizationSnapshot.workspaceVersionId, effectState: version.effectState ?? 'legacy' })) }, current.revision); return }
+  if (path === '/' && request.method === 'GET') { sendJson(response, 200, { document: sanitizedDocument(document), catalogs: await displayRoleCatalogs(document, root), revision: current.revision, activeVersionId: document.activePolicyVersionId, versions: document.publishedVersions.map((version: any) => ({ id: version.id, kind: version.kind ?? 'legacy-policy-v1', versionNumber: version.versionNumber, publishedAt: version.publishedAt, publishedByPrincipalId: version.publishedByPrincipalId, publishReason: version.publishReason, snapshotHash: version.snapshotHash, organizationVersionId: version.organizationSnapshot.workspaceVersionId, effectState: version.effectState ?? 'legacy' })) }, current.revision); return }
   if (path.startsWith('/versions/') && request.method === 'GET') { const id = decodeURIComponent(path.slice('/versions/'.length)); const version = document.publishedVersions.find((entry: any) => entry.id === id); if (!version) throw new GovernanceStoreError('POLICY_VERSION_NOT_FOUND'); sendJson(response, 200, { version: sanitizedDocument({ ...document, draft: document.draft, publishedVersions: [version] }).publishedVersions[0] }, current.revision); return }
   if (path === '/audit' && request.method === 'GET') { const audit = await readGovernanceAudit(root, Number(url.searchParams.get('limit') ?? 50), Number(url.searchParams.get('cursor') ?? 0)); sendJson(response, 200, audit, current.revision); return }
   if (path === '/applications/financial-management-system/role-assignments' && request.method === 'GET') { const workspace = await readFinancialRoleAssignmentWorkspace(root, actor); sendJson(response, 200, workspace, workspace.governanceRevision); return }
@@ -341,19 +351,31 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
     const body = await parseBody(request)
     if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED')
     const expected = String(body.expectedRevision ?? request.headers['x-orgmaster-governance-revision'] ?? '')
-    if (expected !== current.revision) throw new GovernanceStoreError('REVISION_CONFLICT')
     const candidate = body.command as any
     if (!ensureCommandShape(candidate)) throw new GovernanceStoreError('INVALID_JSON')
     if (LEGACY_EXTERNAL_COMMANDS.includes(String(candidate.type))) throw new GovernanceStoreError('EXTERNAL_CATALOG_READ_ONLY')
     if (!(V2_COMMANDS as readonly string[]).includes(String(candidate.type))) throw new GovernanceStoreError('INVALID_JSON')
     if (accountEnrollmentEnabled && (candidate.type === 'UPSERT_IDENTITY_LINK' || candidate.type === 'SET_IDENTITY_LINK_STATUS')) throw new GovernanceStoreError('IDENTITY_ACCOUNT_FLOW_REQUIRED')
     if (candidate.type === 'SET_IDENTITY_LINK_STATUS') assertIdentityLinkStatusMutationAllowed(document, actor, String(candidate.id ?? ''), candidate.status === 'inactive' ? 'inactive' : 'active')
-    const result = await applyDraftCommand(root, current.revision, candidate as GovernanceCommandV2, actor)
+    const result = await applyDraftCommand(root, expected, candidate as GovernanceCommandV2, actor)
     sendJson(response, 200, { status: result.status, document: sanitizedDocument(result.document), revision: result.revision }, result.revision)
     return
   }
   if (path === '/validate/assignment' && request.method === 'POST') { const body = await parseBody(request); if (!canPermission(document, actor, 'orgmaster.governance.simulate')) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED'); const result = await validateAssignmentCandidate(root, body as any); sendJson(response, 200, result, current.revision); return }
-  if (path === '/versions' && request.method === 'POST') { const body = await parseBody(request); if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED'); if (!canPermission(document, actor, 'orgmaster.governance.publish')) throw new GovernanceStoreError('GOVERNANCE_PUBLISH_REQUIRED'); const expected = String(body.expectedRevision ?? request.headers['x-orgmaster-governance-revision'] ?? ''); if (expected !== current.revision) throw new GovernanceStoreError('REVISION_CONFLICT'); const result = await publishGovernance(root, current.revision, String(body.commandId ?? ''), String(body.reason ?? ''), String(body.organizationVersionId ?? ''), actor); const version: any = result.document.publishedVersions.at(-1); sendJson(response, 201, { versionSummary: { id: version.id, kind: version.kind, versionNumber: version.versionNumber, publishedAt: version.publishedAt, snapshotHash: version.snapshotHash, organizationVersionId: version.organizationSnapshot.workspaceVersionId, effectState: version.effectState }, revision: result.revision }, result.revision); return }
+  if (path === '/versions' && request.method === 'POST') {
+    const body = await parseBody(request)
+    if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED')
+    if (!canPermission(document, actor, 'orgmaster.governance.publish')) throw new GovernanceStoreError('GOVERNANCE_PUBLISH_REQUIRED')
+    const expected = String(body.expectedRevision ?? request.headers['x-orgmaster-governance-revision'] ?? '')
+    const result = await publishGovernance(root, expected, String(body.commandId ?? ''), String(body.reason ?? ''), String(body.organizationVersionId ?? ''), actor)
+    const version = result.document.publishedVersions.find(value => value.id === result.versionId)
+    sendJson(response, result.status === 'replayed' ? 200 : 201, { status: result.status, versionSummary: version ? {
+      id: version.id, kind: version.kind, versionNumber: version.versionNumber, publishedAt: version.publishedAt,
+      snapshotHash: version.snapshotHash, organizationVersionId: version.organizationSnapshot.workspaceVersionId,
+      effectState: 'effectState' in version ? version.effectState : 'legacy',
+    } : null, revision: result.revision }, result.revision)
+    return
+  }
   if (path === '/active-version' && request.method === 'POST') { const body = await parseBody(request); if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED'); if (!canPermission(document, actor, 'orgmaster.governance.publish')) throw new GovernanceStoreError('GOVERNANCE_PUBLISH_REQUIRED'); const expected = String(body.expectedRevision ?? request.headers['x-orgmaster-governance-revision'] ?? ''); if (expected !== current.revision) throw new GovernanceStoreError('REVISION_CONFLICT'); const result = await setActivePolicy(root, current.revision, String(body.commandId ?? ''), String(body.reason ?? ''), body.versionId === null ? null : String(body.versionId ?? ''), actor); sendJson(response, 200, { activePolicyVersionId: result.document.activePolicyVersionId, revision: result.revision }, result.revision); return }
   if ((path === '/evaluate/permission' || path === '/evaluate/reviewers') && request.method === 'POST') { sendJson(response, 410, { error: 'LEGACY_GOVERNANCE_EVALUATOR_RETIRED' }); return }
   sendJson(response, 404, { error: 'ROUTE_NOT_FOUND' })

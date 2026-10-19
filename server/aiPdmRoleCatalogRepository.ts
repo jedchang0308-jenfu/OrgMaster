@@ -11,7 +11,7 @@ export const AI_PDM_ROLE_CATALOG_V6_VERSION = 'ai-pdm.role-catalog.2026-10-05.v6
 export const AI_PDM_ROLE_CATALOG_V6_SHA256 = 'bdc8d2b8f717e4af9d48cf882d1a564a5caaabaaaacdcf20bc5db36a5b6960af' as const
 export const AI_PDM_ROLE_CATALOG_V7_VERSION = 'ai-pdm.role-catalog.2026-10-10.v7' as const
 export const AI_PDM_ROLE_CATALOG_V7_SHA256 = '4d624b16a58299a78bc3bac4b7f39f261ec2ba34ae604f06ed7cdb7a078e01f9' as const
-const APPROVED_CATALOGS = {
+const APPROVED_CATALOGS: Record<string, { file: string; hash: string }> = {
   [AI_PDM_ROLE_CATALOG_VERSION]: { file: 'ai-pdm-role-catalog.v5.json', hash: AI_PDM_ROLE_CATALOG_SHA256 },
   [AI_PDM_ROLE_CATALOG_V6_VERSION]: { file: 'ai-pdm-role-catalog.v6.json', hash: AI_PDM_ROLE_CATALOG_V6_SHA256 },
   [AI_PDM_ROLE_CATALOG_V7_VERSION]: { file: 'ai-pdm-role-catalog.v7.json', hash: AI_PDM_ROLE_CATALOG_V7_SHA256 },
@@ -36,7 +36,7 @@ export type PublishedAiPdmRole = {
 export type PublishedAiPdmRoleCatalog = {
   contractVersion: typeof JENFU_ENTITLEMENT_CONTRACT_VERSION
   applicationId: typeof AI_PDM_APPLICATION_ID
-  catalogVersion: typeof AI_PDM_ROLE_CATALOG_VERSION | typeof AI_PDM_ROLE_CATALOG_V6_VERSION | typeof AI_PDM_ROLE_CATALOG_V7_VERSION
+  catalogVersion: string
   publishedAt: string
   roles: PublishedAiPdmRole[]
   catalogSha256: string
@@ -129,6 +129,41 @@ export async function readPublishedAiPdmRoleCatalog(root = process.cwd(), catalo
 type CatalogQueryResult = { rows: Array<Record<string, unknown>>; rowCount?: number | null }
 export type AiPdmRoleCatalogQueryable = { query: (sql: string, values?: unknown[]) => Promise<CatalogQueryResult> }
 
+/** New CONTENT versions may change business capabilities, not the assignment contract. */
+function validateAssignmentCompatibleCatalog(catalog: PublishedAiPdmRoleCatalog, baseline: PublishedAiPdmRoleCatalog) {
+  const invalid = () => { throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID') }
+  if (catalog.contractVersion !== baseline.contractVersion || catalog.applicationId !== baseline.applicationId ||
+    !Number.isFinite(Date.parse(catalog.publishedAt)) || catalog.roles.length !== baseline.roles.length || !isSha256(catalog.catalogSha256)) invalid()
+  const identity = (role: PublishedAiPdmRole) => {
+    const { permissions: _permissions, roleDefinitionHash: _hash, ...fields } = role
+    return fields
+  }
+  const roles = catalog.roles.map((role, index) => {
+    const original = baseline.roles[index]
+    if (!isDeepStrictEqual(identity(role), identity(original)) || !Array.isArray(role.permissions)) invalid()
+    const seen = new Set<string>()
+    const permissions = role.permissions.map(permission => {
+      if (!permission || Object.keys(permission).sort().join(',') !== 'allowed,code,kind' ||
+        !['page', 'action'].includes(permission.kind) || typeof permission.code !== 'string' ||
+        !/^[a-z0-9][a-z0-9._-]{0,159}$/.test(permission.code) || typeof permission.allowed !== 'boolean') invalid()
+      const key = `${permission.kind}:${permission.code}`
+      if (seen.has(key)) invalid()
+      seen.add(key)
+      return { code: permission.code, kind: permission.kind, allowed: permission.allowed }
+    })
+    const normalized = { ...original, permissions, roleDefinitionHash: role.roleDefinitionHash }
+    for (const denied of original.permissions.filter(permission => !permission.allowed)) {
+      if (!permissions.some(permission => permission.kind === denied.kind && permission.code === denied.code && !permission.allowed)) invalid()
+    }
+    if (original.roleCode === 'system_admin' && !isDeepStrictEqual(permissions, original.permissions)) invalid()
+    if (sha256(canonicalRole(normalized)) !== role.roleDefinitionHash) invalid()
+    return normalized
+  })
+  const normalized = { ...catalog, roles }
+  if (sha256(canonicalCatalog(normalized)) !== catalog.catalogSha256) invalid()
+  return normalized
+}
+
 export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmRoleCatalogQueryable, expectedCatalogSha256?: string): Promise<PublishedAiPdmRoleCatalog> {
   let rows: Array<Record<string, unknown>>
   try {
@@ -146,7 +181,8 @@ export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmR
   }
   if (!rows.length) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
   const first = rows[0]
-  if (!Object.hasOwn(APPROVED_CATALOGS, String(first.catalog_version))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
+  const pinned = Object.hasOwn(APPROVED_CATALOGS, String(first.catalog_version))
+  if (!pinned && !/^ai-pdm\.role-catalog\.\d{4}-\d{2}-\d{2}\.v[1-9]\d*$/.test(String(first.catalog_version))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
   if (expectedCatalogSha256 && String(first.catalog_sha256).toLowerCase() !== expectedCatalogSha256.toLowerCase()) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
   if (rows.some((row, index) => row.contract_version !== first.contract_version || row.application_id !== first.application_id || row.catalog_version !== first.catalog_version || row.catalog_sha256 !== first.catalog_sha256 || Number(row.display_order) !== index)) {
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
@@ -175,6 +211,15 @@ export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmR
     })),
     sourcePath: 'postgres:ai_pdm_contract.v_application_role_catalog_v1',
   } as PublishedAiPdmRoleCatalog
+  if (!pinned) {
+    try {
+      if (rows.some(row => new Date(row.published_at as string | Date).toISOString() !== new Date(publishedAt).toISOString())) throw new Error('mixed publication')
+      return validateAssignmentCompatibleCatalog(catalog, await readPublishedAiPdmRoleCatalog(process.cwd(), AI_PDM_ROLE_CATALOG_V7_VERSION))
+    } catch (error) {
+      if (error instanceof AiPdmRoleCatalogRepositoryError) throw error
+      throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
+    }
+  }
   // jsonb preserves values, but not nested object key insertion order. The
   // producer's frozen digest was computed from its source JSON serialization,
   // so hashing decoded jsonb would reject an identical published catalog.

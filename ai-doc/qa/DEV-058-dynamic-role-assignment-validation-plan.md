@@ -1,135 +1,106 @@
 # DEV-058：動態角色與集中指派驗證計畫
 
-日期：2026-10-12。Owner：`ORGMASTER/DEV-058`。來源：`AIPDM/DEV-123#orgmaster-compatibility`。
-依據：[唯一 SPEC](../specs/DEV-058-federated-role-catalog-central-assignment.md)。
-狀態：`QA Plan Defined / RD Implementation Ready Aligned / Documents Only`；QA058-01..24 全部 `NOT_RUN`。本輪只補固定runner／schema／DDL負例計畫，沒有執行產品測試、PG、browser、停機或正式操作；文件自查不是產品QC。
+修訂：2026-10-19。Owner：`ORGMASTER/DEV-058`；來源：`AIPDM/DEV-123#orgmaster-compatibility`。
+依據：[唯一SPEC](../specs/DEV-058-federated-role-catalog-central-assignment.md)；對齊grouped-v2／七日常角色／九歷史身份／alias及compatibility_v2。
+狀態：`Plan Defined / Partial Implementation Verified / Dynamic Handoff Pending`。本輪局部結果見§6；全體24案仍未執行，不等同完整dynamic驗收。
+**保留QA058-01..24原ID及安全／功能目的；0/24執行，全部NOT_RUN。** 不以本輪精簡刪減分母，不回寫原PASS；AI-PDM固定52案獨立，QA123-29/30/44/52的真consumer要求仍有效。
 
-## 1. 範圍、角色及資料
+本版取代四個專用runner、固定16檔、獨立versioned evidence JSON及重複逐層證明的前置。使用同一次可信操作支援多個案例，補受影響部分；沒有該層證據的案例仍不能PASS。本輪沒有產品測試、PG、browser或停機操作，文件自查不是獨立QC。
 
-驗證 OM-C1..4，維持原 B058-01..08 驗收方向。AI-PDM 的 44 案、QA123-29/30/44 與本 DEV 分母各自獨立；OrgMaster 不能因 mock PDM 宣告 true producer-consumer 或 peer L4 完成。
+## 1. 最少前置與資料
 
-角色：
-- O-MANAGER：當前合法 OrgMaster治理 manage/simulate/publish；正常任用入口。
-- O-READ：只讀管理者，無 mutation；O-PRIV：既有 exact privileged Principal 特權資格。
-- P-EDITOR：PDM 當前 direct global system_admin／human_privileged；P-DAILY：同 Employee 的 daily Principal，不能替代特權。
-- E1/E2 為 active Employee，E3 inactive；其 ID及Principal由隔離 fixture 正常 owner 機制建立。上述是別名，不指定正式員工或帳號。
+- 角色：O-MANAGER具當前OrgMaster manage/simulate/publish；O-READ無mutation；O-PRIV沿exact privileged入口。P-EDITOR具PDM政策管理資格，P-DAILY不能代同Employee的特權Principal。身分不能從body/名稱/workload推導。
+- 人員E1/E2 active、E3 inactive；只用隔離環境或另經授權的指定資料，不指定正式員工／帳號。業務父資料可預備，預期配人／發布結果由正常owner流程建立。
+- F-L：已核實legacy v5/v6/v7及原任用／audit，不猜source v7已active。
+- F-D：producer實際grouped-v2 current/history、受控schema/registry/protected綁定及canonical vectors；七canonical、舊生管alias、hidden system_admin、custom C1。
+- F-A：有效／revoked／expired／scope錯誤／position來源失效及代理；含原採購與原生管兩種任用，不合併或改寫ID。
+- F-R：可控制兩交易時序、撤權及commit後回應遺失；只在task-owned環境故障注入。
+- F-C：compatibility_v2 NOT_READY／READY、多列／錯綁定及ACL負例。marker fixture不能證明live consumer已相容。
 
-fixture 群組：
-| 名稱 | 前置內容 | 邊界 |
-|---|---|---|
-| F-L | 合法 legacy active v5/v6/v7、既有九身份、原 hash、舊任用及audit | 不以 source v7 猜正式 baseline；不同已支援legacy另參數化 |
-| F-D | producer受控profile/vectors；D1新增C1並授至少一個合法editable能力、D2能力改變、D3停用、D4同ID恢復，保留完整tombstones/history | 至少連續兩版，正常發布由PDM正常UI/API建立；零能力custom不可被測成Allow。純validator負例可fixture建立 |
-| F-A | 同一角色的有效、撤銷、到期、scope錯誤、position來源失效與代理任用 | 測試對象指派由 OrgMaster 正常流程建立；不能 seed 預期發布成功結果 |
-| F-C | NOT_READY／READY、來源binding、最小ACL及wrong多列/格式 | PG simulator只證明契約負例，不證明 live consumer 已升級 |
-| F-R | 可控制先讀catalog／先activate／撤權／回應遺失的隔離 transaction案例 | 必須記SQL/操作時序及freeze tuple；不對正式環境注入故障 |
+跨owner物件由各自owner處理。OrgMaster單repo測試不建寫sibling core；contract simulator清楚標示，只證明decoder或本owner交易，不能完成真雙端案例。H1/H2/H3未收斂時只停依賴它的整合／READY，本地獨立工作可繼續。
 
-shared PG test物件各由自己owner建立，僅經versioned contract。Org單repoPG simulator以own測試物件＋test-onlyQueryable adapter供catalogfixture，不建立任何siblingcore／原生producer表，不能沿用會建ai_pdm_core的歷史DEV-057fixture當本DEV命令。兩owner原生producer／contract時序屬DUAL，需另外人類授權。
+## 2. 必須看到的結果與失敗
 
-## 2. 證據層級與正常交付
+正常路徑：PDM「設定→流程→角色與權限」建立／保存、唯讀預覽及單一apply → OrgMaster正常工作台「角色指派」選人／範圍／期間並發布 → PDM正常protected操作。停用／恢復由PDM同一apply流程，撤銷在OrgMaster；不新增PDM待啟用版本／獨立activate。direct URL/API或seed可補技術證據，不能代替正常入口可用。
 
-| 層級 | 能證明 | 不能代替 |
-|---|---|---|
-| U：unit／contract fixture | canonical、metadata、validation、DTO、錯誤語意 | 真PG／正常入口／雙端／正式 |
-| PG：task-owned disposable PostgreSQL | writer fence、transaction、CAS、current/history view、ACL | browser及實際對方runtime |
-| UI：OrgMaster正常入口與實際API | 新增、發布、撤銷、歷史與viewport／keyboard | PDM protected operation的結果 |
-| DUAL：兩個真實owner runtime及契約 | 角色policy→Org指派→PDM使用／停用／恢復 | 原source QA所要求的正式L4 |
-| PROD：另有明確owner/environment/action授權的目標環境 | 該source／角色／路徑的正式行為 | 其他app、全DEV或歷史所有案例 |
+證據只記實際層級：U/API（decoder／service／middleware）；PG（原生交易／DDL／ACL）；UI（正常頁面與own API）；DUAL（兩個真owner及contract）；PROD（另具正式授權的實際環境）。本地或模擬不能填DUAL／PROD的PASS，build不能填UI的PASS。相關輸入與假設未變的有效證據可重用，保留原來源與時間。
 
-正常路徑：PDM「設定→流程→角色與權限」建立／啟用 C1 → OrgMaster工作台「角色指派」選C1/E1/scope/期間 → 發布頁預覽及發布 → PDM正常登入與protected操作。角色停用／恢復由PDM正常UI，撤銷由OrgMaster正常UI。direct URL、seed、DB mutation或fixture畫面不能替代這條交付路徑。
+必要失敗涵蓋：錯來源/hash/profile；inactive毒化整份治理；舊來源被current覆寫；scope/Principal越權；重送重複寫；交易混版／撤權後提交；假READY。這些直接對應下列案例，不另建立必填FMEA或新增審查流程。
 
-UI記錄1440×900、1024×768及390×844；窄版依DEV-033唯讀。記actor／Principal、URL與起始入口、source/dirty boundary、fixture ID、版本tuple、正常操作、可見結果、截圖及console/API error。不存在預期空fixture時，空白角色清單／全零critical count為失敗。
+## 3. 保留的24案
 
-## 3. FMEA 與先找失敗的案例
+所有結果均NOT_RUN；「U/PG/UI/DUAL」是該案各主張所需層級，並非每個測試都要在所有層重跑。case可參數化、共用同次往返，必要主張未被證明仍不計完成。
 
-| 失效模式 | 可能原因 | 使用者影響 | 偵測方式 | 優先級 | 對策／案例 |
-|---|---|---|---|---|---|
-| custom遭拒 | 固定九reader | 新角色無法配人 | 合法第十角色讀取／配人 | P1 | format decoder；02/08 |
-| protected/profile未驗 | 只放寬數量 | 偽造特權／錯角色 | hash／template負例 | P0 | 受控profile；03/04/22 |
-| inactive使整份失效 | 將歷史當新任用驗 | 撤銷被阻、其他角色受累 | inactive讀取及撤銷 | P0 | intent分離；10/11 |
-| provenance改寫／混版 | current代替history | 原任用失效／歷史失真 | 原bytes/hash／版本比對 | P0 | trusted history；05/06/09 |
-| 操作混catalog | RC多次取active | 並行結果不一致 | 雙連線兩時序 | P0 | operation context；17/18 |
-| actor也被freeze | 捕捉舊資格 | 撤權後仍commit | 等鎖後撤權 | P0 | fresh writer fence；19 |
-| READY僅marker | 缺live source證據 | 舊reader誤啟用 | static-only/ACL負例 | P0 | owner evidence；20/21 |
-| 警告隱藏／假空資料 | UI或依賴狀態混淆 | 誤配／不能撤銷 | error sweep/keyboard/viewport/sanity | P1 | 就地風險狀態；23 |
-| 管理API停機拖停PDM | 新增HTTP授權依賴 | 業務不可用 | 只隔離OrgAPI | P1 | SQL權威／不增加callback；24 |
-
-## 4. 固定案例
-
-下表所有操作均為未來QC計畫，結果一律 NOT_RUN。表中的操作資格、fixture與層級為必要前置；不足時判未充分驗證／阻塞，不縮小判定。
-
-| ID | 前置及操作 | 預期／失敗判定 | 層級／對照 |
+| ID | 操作／資料 | 預期與失敗判定 | 必要證據 |
 |---|---|---|---|
-| QA058-01 | F-L；讀支援legacy current及治理歷史 | 原bytes/hash／九身份可驗，原audit與任用未變；未部署v7不能被猜為active | U/PG；B058-01/05 |
-| QA058-02 | F-D；合法9..64角色含custom及inactive | header/prefix/template/status完整，decoder接受並供UI顯示 | U/PG；B058-01 |
-| QA058-03 | F-D改role/status/content hash、canonical排序或sidecar | 拒絕錯payload，不降級static或補另一版本 | U/PG；B058-06 |
-| QA058-04 | 缺builtin/重複ID/code/name/65角色/非法scope/custom特權 | 拒絕，不接受越界或物理DELETE；system_admin必須合法active | U/PG；B058-06 |
-| QA058-05 | F-A原catalogVersion與current不同，history完整 | 可信原snapshot合法，能力變化不要求hash與current相等；原provenance不回填／改寫 | U/PG；B058-05 |
-| QA058-06 | history缺失、同version多hash、身份不符 | 契約錯誤；顯示來源不可核實，不以name/code或clienthash保底 | U/PG；B058-05/06 |
-| QA058-07 | O-READ/O-MANAGER/O-PRIV及P-DAILY各送read/write | 原資格界線維持；無資格403或session失效401，body actor不能提升資格 | U/API/PG；B058-06 |
-| QA058-08 | P-EDITOR正常建立啟用C1；O-MANAGER正常選E1、配人、發布 | PDM protected操作實際依scope/能力Allow；UI顯示草稿／已發布，不靠seed造結果 | UI/DUAL；B058-02、QA123-29 |
-| QA058-09 | 已有C1任用，PDM啟用D2只改合法能力 | 不改Org任用snapshot/audit/ID；PDM下一操作讀新能力 | PG/DUAL；B058-05 |
-| QA058-10 | PDM停用C1；讀Org列表並嘗試新任用／代理 | 原人員可見，新增拒絕422/invalid；其他角色仍可讀可用，不毒化whole document | U/PG/UI/DUAL；B058-03 |
-| QA058-11 | O-MANAGER由inactive列撤銷既有任用並發布 | 撤銷成功、audit來源正確；inactive不阻擋撤銷，沒有修改其他任用 | UI/PG/DUAL；B058-03 |
-| QA058-12 | C1 inactive、原direct＋delegated及另一合法角色 | PDM不授C1能力，另一角色按既有priority/deny規則判權；v4presence不被單獨當Allow | PG/DUAL；B058-03、QA123-44 |
-| QA058-13 | 恢復同C1，原有效、撤銷、到期／錯scope／失效來源各一筆 | 只仍合法者可能恢復；撤銷／到期者不復活，不新增／rewrite任用；不把角色恢復混為指派重新啟用 | PG/UI/DUAL；B058-04、QA123-44 |
-| QA058-14 | manual與position_adoption，改職稱／部門及結束來源任職 | 改名不改role；manual不連帶撤銷，來源失效維持既有denial | U/PG/DUAL；B058-05 |
-| QA058-15 | 恢復inactive source後代理仍expired/revoked或source revoked | 不恢復已失效代理；原scope、subject、來源鏈完整驗證 | U/PG/DUAL；B058-04/05 |
-| QA058-16 | 同commandId重播、同ID改catalogbinding、治理revision stale、commit後current換版及回應遺失；GET /commands/{id} | 當前資格下原結果可查／同內容replay，已commit不被新catalog否認；not_observed不當成未commit證明；異內容及新操作CAS衝突拒絕，不盲目新ID | API/PG；B058-07 |
-| QA058-17 | 預檢D1；PDM D2先activate，Org後取catalog／送write | 舊expectedtuple拒絕409，保持未提交輸入；沒有half write | PG/DUAL；B058-07、QA123-30 |
-| QA058-18 | Org先freeze合法D1；其後PDM D2停用C1，再完成Org交易 | 同操作只用D1context；若其他fence成立可保存D1provenance，PDM下一操作仍依D2deny | PG/DUAL；B058-07、QA123-30/44 |
-| QA058-19 | catalog已freeze後，actor/lifecycle撤權在writer等待期間commit | fresh post-lock／precommit fence拒絕，整筆回滾；catalogfreeze不替actor授權 | PG；B058-06/07 |
-| QA058-20 | missing/多列/NOT_READY/wrongprofile/source相容宣告 | PDM拒絕publish/activate／enablement；真consumer不足不能只靠READY過關 | PG/DUAL；B058-06、QA123-28 |
-| QA058-21 | readiness NOT_READY預設；測PUBLIC、ownruntime、PDM、owner ACL | 僅精確SELECT；只有owner維護，runtime不可UPDATE/core/DDL；active/history/grants owner隔離 | PG；B058-06 |
-| QA058-22 | dedicated system_admin；ordinary/selfgrant／同Employee另一Principal/workload | dedicated合法路徑及v4subject資格維持；其餘拒絕，不借custom自授 | U/API/PG/DUAL；B058-06 |
-| QA058-23 | 正常入口、loading/非空/明確空/錯誤/inactive/history/conflict；三viewport及keyboard | 名稱/來源/期間可辨，inactive可撤銷；無未預期visibleerror/假空/overflow，手機唯讀 | UI；B058-01/03 |
-| QA058-24 | Org管理API不可達，sharedDB/IdP仍可用；PDM正常業務及Org配人 | PDM無新增OrgHTTP依賴，既有操作依SQLcontract；配人清楚不可用，不開localACL。sharedDB故障另判拒絕，不能宣稱全獨立 | DUAL；B058-08 |
+| QA058-01 | F-L讀current及原治理歷史 | 原bytes/hash、九身份及audit保持；legacy期間不提前套七role/disposition，不能猜v7 active | U；受影響DB mapping用PG |
+| QA058-02 | F-D合法9..64身份、七日常profile、alias、system及custom | reader接受完整身份，UI只提供七canonical＋active custom，一般選單不列system_admin／legacy-only | U/PG mapping；UI併23 |
+| QA058-03 | 改role/status/profile/content hash、canonical／來源綁定 | 拒絕錯payload，不static fallback／union；不能只驗DB自報hash。完整policy語意由PDM驗，不在Org複製editor引擎 | U；實際contract併DUAL |
+| QA058-04 | 缺builtin、duplicate ID/code/name、65列、非法custom/scope/profile/alias | identity不得物理刪除／重用；custom不可變principal/global或任意alias；system保護及alias關係不合法拒絕 | U/API |
+| QA058-05 | 原version≠current，含舊採購／生管及presentation改名 | 原snapshot合法可讀，code/name/catalogVersion/scope/期間不回填；按原identity驗history，不用新顯示名比對舊證據 | U/PG；原grant結果併DUAL |
+| QA058-06 | 缺history、同version多hash或identity不符 | 依賴該證據的新授權拒絕、顯示來源問題，不以姓名／client hash保底；維護若另有可信own原snapshot則按SPEC§5，仍不能擴權 | U/API；來源失敗併PG |
+| QA058-07 | O-READ/MANAGER/PRIV、P-DAILY、body actor／workload | 原資格線維持，401/403；不能以同Employee另一Principal或role名稱提升資格 | API；fresh admission併19 |
+| QA058-08 | P-EDITOR正常建立有合法能力的custom；Org正常配E1/scope/期間並發布 | PDM正常protected操作依scope/能力實際Allow；draft與published可辨，不靠seed產生成功結果 | UI/DUAL；QA123-29/52 |
+| QA058-09 | D1任用後PDM啟用D2合法能力變更 | Org原任用/snapshot/audit與compatibility revision不變，無OrgMaster source／部署變更，PDM下一操作讀新policy；兩種採購／生管按原scope/priority分別判，不union | PG/DUAL；QA123-29/52 |
+| QA058-10 | PDM停用C1或採購／生管，Org讀列表並嘗試新任用/推薦/代理 | 新增／擴權拒絕，既有人可見；alias與canonical狀態同步，其他角色及治理資料不被毒化 | U/API；UI/DUAL |
+| QA058-11 | 從inactive列撤銷並發布，含舊生管原列 | 操作資格／原來源及audit正確，inactive不阻擋合法減權，不改其他任用；缺current時只依可信own原資料及既有guard | UI/PG；效果併DUAL |
+| QA058-12 | inactive的direct＋delegated與另一active role並存 | PDM只停止停用角色能力，另一角色仍正常；v4 presence不是capability Allow，不因alias漏status | PG/DUAL；QA123-44 |
+| QA058-13 | 恢復同ID；原有效／revoked／expired／錯scope／失效來源 | 只仍合法者可能再生效，不復活失效任用；角色restore不等於任用restore，legacy-only已撤舊列不以restore新增回授 | PG/UI/DUAL；QA123-44/52 |
+| QA058-14 | manual/position_adoption調職、改職稱／部門、來源任職結束 | manual由人檢視、不自動授撤；position來源失效仍Deny；不依presentation/職稱改role或重寫原source | U/PG；雙端結果併整合 |
+| QA058-15 | 恢復角色但代理/source已revoked/expired或scope不含 | 原來源鏈、subject及期間仍驗，無代理復活或scope合併；舊生管代理保持原identity | U/PG；DUAL負例 |
+| QA058-16 | 同ID同內容/異內容/異actor、新CAS衝突、commit後換current/丟回應 | 合法replay先於新操作CAS；原結果可查，not_observed不當未commit證明；不新ID盲重送。PDM故障仍可查own commit，legacy缺結果不假造 | API/PG |
+| QA058-17 | Org預檢後PDM先apply D2，Org才取current | 原expected tuple409，零half write、不force；新格式/profile不能被舊預檢省略 | PG雙連線/DUAL；QA123-30 |
+| QA058-18 | Org先freeze D1，PDM再啟用停用角色的D2，Org完成 | 同操作只用D1context；其他guard成立可保存舊provenance，PDM下一操作依D2拒停用能力；不宣稱跨owner同時commit | PG/DUAL；QA123-30/44 |
+| QA058-19 | current已freeze，actor撤權於writer等待時commit | 取鎖後fresh身份／資格fence拒絕、全部rollback；catalog context不凍結admission | 真PG雙連線 |
+| QA058-20 | compatibility缺失／多列／NOT_READY／錯schema/profile/source | grouped-v2不能用v1 READY；PDM單一apply／首次rollout仍拒絕。已同意的證據重用不另核准，缺實際H1/H2/H3資料不以mock marker通過 | PG；真source與runtime併DUAL |
+| QA058-21 | 自有NOT_READY初始化；PUBLIC/ownruntime/PDM/owner權限及revision | 正確13欄，僅精確SELECT；runtime不可寫table/DDL或繼承owner；owner CAS、manifest／初始狀態及forward migration符合邊界 | 原生PG/ACL；SQL改動才db-boundary |
+| QA058-22 | dedicated system_admin、ordinary/selfgrant/另一Principal/workload | 原特權入口成功與負例邊界維持；hidden-protected不進一般選單，PDM管理員名字不給權，custom不能自授 | U/API/PG；真任用併DUAL |
+| QA058-23 | 正常入口及loading/非空/明確空/error/inactive/history/conflict/pending、keyboard | 有來源/名稱/期間，inactive可撤銷，錯誤不假空；舊response不套新session。1440×900/1024×768/390×844首次受影響UI核對，390沿唯讀；無overflow/visibleerror | 真UI，畫面與操作記錄 |
+| QA058-24 | 只讓task-owned Org管理API不可達，DB/IdP可用 | PDM正常業務仍沿SQLcontract無新增HTTP依賴；Org配人明示不可用，不開localACL。sharedDB/IdP失效另拒絕；只清自己資源 | DUAL；既有等價故障證據可重用 |
 
-schema/ACL視為行為：需實際effective privileges與負例；GRANT文字不是PASS。case18允許合法舊provenance不是把舊能力帶入runtime；若實作把D1能力當D2authorizingcache即FAIL。
+case17/18的D1/D2表示兩時序的前後版本；完整正常往返可用legacy→grouped A→B能力變更→C停用→D恢復，撤銷後再操作確認Deny。同一輪同時核對新任用只選procurement、舊production_planning保持、alias status同步，完成peer QA52所需主張，不另建第二套整合流程。
 
-## 5. QC 固定入口與結果紀錄
+## 4. 單一驗證路徑與證據重用
 
-固定package scripts／完整16檔unit命令及runner輸入以[SPEC§10.1](../specs/DEV-058-federated-role-catalog-central-assignment.md#101-實作檔案順序與固定驗證入口)為唯一來源，RD實作時建立，本輪不修改package/scripts/tests、不執行。以下是後續固定執行順序，命令缺失／無測試／skipped不能當PASS：
+**本節是DEV-058唯一驗證入口。** 沿既有工具依下列順序收集結果，不預先要求新test:dev-058、四個qc runner或自訂manifest/evidence格式。需要重現既有工具無法控制的安全時序時，才補最小fixture/helper，不能因精簡取消該時序案例。
 
-```powershell
-npm run test:dev-058
-npm run qc:dev-058:contract
-npm run qc:dev-058:postgres
-npm run qc:dev-058:browser
-npm run check:db-boundary
-npm run build
-# 兩owner具名授權與真實runtime完成後才可執行：
-npm run qc:dev-058:dual -- --manifest=output/dev-058/inputs/dual-owner-manifest.v1.json
-```
-
-local aggregate `qc:dev-058`只含unit/contract/PG/browser，不含DUAL／PROD，不完成peer QA123-29/30/44。既有build內含tsc，無typecheck script。PG／UI環境限task-owned；runtime cleanup／origin／profile/evidence manifest schema沿SPEC。
-
-| 固定案例群 | executor及必要補充 | 通過資料 |
+| 步驟 | 使用既有入口／操作 | 何時執行與出口 |
 |---|---|---|
-| 01–06 | contract＋unit＋PG simulator；active profile/root/vector來源核實 | original bytes／canonical bytes／hash；current19+9欄及metadata mapping；history同version唯一hash；未知欄／null錯誤／UTF／順序／64邊界拒絕；GET新header／舊client409及write body discriminator |
-| 07／22 | API/store／privileged現行負例，PG writer fence | body actor不授權，另一Principal、workload、self grant、ordinary system_admin拒絕；既有特權workspace/schema與AAL保留 |
-| 08–15 | 正常UI與DUAL，並行存留／恢復／scope／delegation | unchanged published snapshot/audit；角色inactive與assignment revoked不同；restore ID-only及legacy provenance；removal無引用／歷史不刪 |
-| 16 | command-query新測試與API、PG；commit後drop HTTP／改current；legacy audit／noop／不同actor／同ID異payload | complete原result及HTTPstatus；replay先於new CAS；own可讀而PDM不可達仍查commit；not_observed不換ID；new audit hash含result／舊event hash不變 |
-| 17–19 | PG雙連線時序＋DUAL native producer | SQLstatement freeze兩順序／取鎖後撤權／fresh writer fence；no mixed-context。simulator不填真producerPASS |
-| 20–21 | own新migration、native information_schema/ACL及runtime負例 | 12公開欄順序／NOT_READY／owner/PK/CHECK／COALESCE缺discriminator拒絕、manifestbytes；PUBLIC/sibling/DML拒絕；明確legacy-v1/flexible-v2及startup負例、view故障不fallback、READY source/profile/evidence gate |
-| 23 | browser正常工作台入口、keyboard、3viewports、session切換／pending | screenshots/route/roles/CTA/error sweep/data sanity；390唯讀、無溢出；舊response不套到新Principal |
-| 24 | explicit雙端授權後僅停止verified Org API task-ownedtree；DB/IdP仍可用 | PDM正常protected操作/SQL權威繼續；Org配人明示不可用；sharedDB故障另denial；cleanup與port釋放 |
+| A 受影響回歸 | `npm test -- <相關測試檔>`；沿現有Vitest/API測試 | 改decoder／任用／API的正反例與原始失敗；不按固定16個檔名判完成。新增/移檔後重新對照case涵蓋 |
+| B 資料與交易 | 既有task-owned PG harness／相關suite；必要時只補本slice fixture | SQL/ACL、CAS、audit/replay、fresh fence及17/18/19真時序。模擬producer只記其實際層，不當native雙端 |
+| B SQL邊界／建置 | `npm run check:db-boundary`；`npm run build` | 實際SQL／boundary變更才跑前者；app/type/package改動或缺有效證據才跑build，不因docs變更重跑 |
+| C 一次完整整合 | 兩個已具名授權的真owner、正常UI/API及versioned DB contract | 正常往返／別名／scope／撤銷與角色生命週期，含必要失敗，對照24案及peer29/30/44/52；不自動啟動或修改對方repo |
+| C UI檢查 | 既有browser/CUA、正常工作台入口，受影響畫面與操作 | 首次七角色呈現／互動改動驗上述3viewport、鍵盤、錯誤與資料sanity；後續無關變更沿有效結果，不逐case重截全套 |
 
-DDL補充負例：角色不存在、profile占位hash、非法baseline/protected、NOT_READY帶ref/binding、READY缺完整binding、stale compatibility CAS／bigint overflow、重跑shape漂移及appliedmigration變更均拒絕；runtime不得直接table／列DML或繼承migrator。DDL設計的owner typed validator需驗full binding，DB CHECK discriminator不等於完整owner證據通過。
+H1/H2/H3未交付或對方環境不可得，保留相應NOT_RUN／BLOCKED，不能把本地證據改標DUAL。只暫停受阻項，不因一個未用projection或無關歷史證據缺漏拖住獨立切片。
 
-開始temporary runtime前記專案、purpose、port、process tree、資料目錄／mutation scope及cleanup條件；結束時只清理本task所有的process／UI與port。AI-PDM runtime、測試、修改與跨repo整合需具名專案／動作授權，文件來源引用不構成授權。
+最少記錄：執行來源／相關輸入、環境及層級、actor/fixture別名、case ID、版本tuple、操作／SQL時序、實際結果及log／畫面／audit引用。可沿既有QC／發布紀錄，不建專用receipt平台。案例對應表可用同一段log支援多個ID；該案例需要的主張缺證據則不計PASS。沒有行為證據不因檔案存在、build成功或marker READY通過。
 
-每個結果至少記：QA ID、source revision及dirty boundary、artifact/fixture hash、環境、actor／Principal、API/route/viewport、catalog current/history tuple、操作或SQL順序、before/after、audit/receipt/denial、判定及失敗證據。不得把unit、simulator或build的PASS填入UI、DUAL或PROD欄。
+一般人控風險（調職後是否保留、人選是否適當、恢復前檢視）以現有就地提醒及管理者決定驗收，沒有第二人簽核、分數計算／逾期凍結測試前置。越權、撤銷／到期、scope、來源與資料完整性仍是系統拒絕條件。
 
-固定判定：
-- PASS：指定層級及正常delivery path符合預期；UI另有可見錯誤掃描、資料sanity及畫面證據。
-- FAIL：unexpected Allow/Deny、丟失歷史、inactive阻斷整份、混版、半寫入或正常入口不可用；回RD，變更後重驗受影響案例。
-- 未充分驗證：只驗部分層級或無必要UI／雙端證據；產品維持未驗收。
-- Blocked：source/fixture/runtime/權限或實作路徑不可得；先只讀定位有效阻擋，不推測使用者缺條件。
+暫時環境只用task-owned資料／process/tab，記PID/port及必要識別；結束確認自己資源與port清理，既有user runtime不碰。不得指向正式資料或由OrgMaster建寫siblingcore；runtime／雙端操作需在當時具名授權範圍。前一文件階段未啟動資源；本次隔離測試及清理見§6。
 
-## 6. 本輪文件狀態
+判定：必要主張及層級皆有證據才PASS；有反例FAIL並回修；缺部分證據未充分驗證；缺依賴／執行路徑BLOCKED或維持NOT_RUN。第一個有效失敗保留，修復後只重驗受影響範圍。
 
-QA058-01..24及peer必要整合均NOT_RUN。固定DTO/preimage／readback／own DDL／runner／資料及證據契約已對齊SPEC的RD Implementation Ready；腳本及fixture仍由後續RD建立。無產品／PG／UI／雙端／正式PASS。
+## 5. 前一文件階段自查（HISTORY_ONLY）
 
-本輪RD文件自查：QA24 ID唯一且連續；SPEC／QA直接local links存在；fence成對、無trailing whitespace；新readiness view的12欄與DEV-123§7.2逐欄一致；DEV/map/ADR成熟度已同步；tracked文件git diff --check無錯。工作樹修改範圍為本DEV的五份Markdown，未新增SQL／JSON schema／runner／tests、未執行產品驗證。這些只證明文件結構及契約對照，不是QC／runtime正確性或owner啟用證據。
+本輪只更新SPEC、此QA及直接索引／ADR；產品、PG／UI／雙端／正式驗證均NOT_RUN。文件自查檢查24個案例ID及原目的保留、peer v2/profile/alias與14欄宣告一致、交接未被假稱已完成、引用與Markdown及變更範圍；實際結果在本輪交付回報，不使用產品PASS標籤。
 
-使用思考習慣：#可驗證性、#證據基礎、#多層次分析
+2026-10-19文件自查：24 ID唯一且與原版完全相同，直接引用檔存在、14公開欄與H1..H5齊全，diff whitespace正常；最後peer文件hash與SPEC記錄一致。只改既有五份Markdown，AGENTS原修改內容保持；這些結果不證明runtime／DB／UI或雙端相容已完成。
+
+2026-10-12文件自查與原來的Implementation Ready註記是歷史；2026-10-19按人類指示修訂為精簡契約／peer待交接。未修改AI-PDM52案或歷史驗證，沒有更改AGENTS／required CI／release gate。
+
+## 6. 本輪局部切片驗證
+
+2026-10-19後續使用者授權本機修復；原§5的文件限定屬歷史。本輪不更改24案ID、目的或whole狀態，完整dynamic仍未實作。
+
+- `server/orgmasterGovernanceReduction.test.ts`：實際owner publish產生snapshotHash/audit綁定；PDM current故障後正常HTTP工作台仍可讀（標unavailable），PATCH撤權及發布／同命令重送不讀live catalog；混合新增、restore、scope／期間／身份或內部資格變更不走減權捷徑。原發布重送回原版本，不誤報後續版本。
+- `server/aiPdmRoleCatalogRepository.compatible.test.ts`：接受後續九身份能力內容版本，仍拒絕hash竄改、任用metadata、順序、protected變更；舊任用只有可信自有history才可續讀，同version不同hash拒絕。
+- 原生PG案例由AI-PDM實際owner artifact builder產生A/B，再經真jsonb view由SELECT-only OrgMaster consumer讀取；直接core存取與DELETE權限拒絕。這是隔離SQL契約／ACL證據，不是正常雙端UI配人／L4或正式驗收。
+- `GovernanceAssignmentActions.test.tsx`及`GovernanceCenter.test.tsx`：目錄不可用時保留撤銷／已撤列移除／發布入口；新增、restore及歷史activate仍受限制。這是DOM元件互動，不冒充實機browser／視覺QC。
+- 原身分fresh actor、管理者連續性、既有v5/v6/v7、命令及API測試維持；型別與最終聚合回歸結果以本次交付紀錄為準。未改SQL或required CI／release executor。
+- 第一輪曾發現future JSONB欄位順序被誤判、HTTP重複CAS擋合法重送；已修正並補回歸。PG唯讀view先回55000而非42501的oracle，改為實查DELETE privilege=false加實際拒絕；未改產品權限求PASS。
+
+最終聚合：18檔、133 PASS／1 SKIP（未設定隔離PG連線時的原生案例）；同一原生案例另以實際AI-PDM builder與隔離PostgreSQL執行，9／9 PASS，不與聚合重複加總。TypeScript、前後端隔離build及既有DB boundary通過；Luna唯讀源碼審查未發現P1/P2，但未執行測試且不稱正式QC。AI-PDM builder自身7／7與既有v7 fixture檢查通過。
+
+臨時PG僅本任務cluster與動態port，停止後確認port釋放並移除測試data；保留工具log。未操作既有或正式資料。整體QA24、peer52、完整dynamic與正式啟用保持NOT_RUN／NOT_IMPLEMENTED；未執行真實browser、required CI或production驗證。

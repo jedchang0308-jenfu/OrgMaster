@@ -20,7 +20,7 @@ PR135 已 merge、官方 master CI PASS；首次正式 rotation 先在 build rea
 
 ## DEV-058 B 方案動態角色與集中指派（2026-10-12）
 
-[原生任務](dev_task.md#dev-058-federated-role-catalog-central-assignment) → [唯一工程契約](specs/DEV-058-federated-role-catalog-central-assignment.md)／[QA24案](qa/DEV-058-dynamic-role-assignment-validation-plan.md)／[ADR-007增補](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。成熟度 `RD Implementation Ready / Human Confirmed / Documents Only`；DTO／command／audit結果查詢、profile／context、own DDL／ACL／12欄readiness及固定unit/PG/UI/DUAL入口已收斂。來源 [AIPDM/DEV-123](../../AI_PDM/.ai-doc/specs/DEV-123-role-permission-editor-contract.md)僅唯讀；本輪無code／SQL／runner或產品驗證，產品NOT_IMPLEMENTED、QA24 NOT_RUN。下一步等待人類產品RD指示，受控producer資產與真雙端／owner enablement依slice gate，不從文件ready推定相容已完成。
+2026-10-19 current：[原生任務](dev_task.md#dev-058-federated-role-catalog-central-assignment) → [SPEC §0](specs/DEV-058-federated-role-catalog-central-assignment.md#0-本輪可獨立交付切片)／[QA §6](qa/DEV-058-dynamic-role-assignment-validation-plan.md#6-本輪局部切片驗證)／[ADR-007](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。撤權及九身份內容版本相容已本機實作；完整dynamic產品與QA24 whole未完成。consumer相容草案13欄、不逐版固定核可PDM registryHash，必要hash／identity／scope／protected與首次rollout證據維持。
 
 ## DEV-037 已撤銷指派操作（2026-10-12）
 
