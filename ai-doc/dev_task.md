@@ -1,5 +1,7 @@
 # OrgMaster 開發任務
 
+[來源 AI_PDM / CAPA-002](../../AI_PDM/.ai-doc/capa-register.md#capa-002)（2026-10-15 歷史紀錄：OPEN）：當時僅精簡 AGENTS 的歷史安裝與發布狀態，未執行產品修改或正式操作。2026-10-19 補記 OrgMaster 範圍：規範精簡已由 [PR #133](https://github.com/jedchang0308-jenfu/OrgMaster/pull/133) 合併；CA-3 沿 DEV-057／040 的本次正式發布、原始失敗、受控 rotation 與發布後驗證見[既有 owner 出口](#dev040-production-release-20261019)，收尾文件已由 [PR #144](https://github.com/jedchang0308-jenfu/OrgMaster/pull/144) 合併。PA 文件驗證與 CA-3 實際結果分開記錄；本段只補本專案追蹤，不更新其他專案或原案件狀態，不宣稱三專案 CAPA 整案結案，無新 native DEV；整案狀態仍以 AI_PDM owner 案件為準。
+
 <a id="dev040-production-release-20261019"></a>
 
 ## DEV-040／DEV-057：PR134 正式發布與證據收尾（2026-10-19）
