@@ -1,5 +1,7 @@
 # OrgMaster 文件地圖
 
+[來源 AI_PDM / CAPA-002](../../AI_PDM/.ai-doc/capa-register.md#capa-002)：三專案發布阻塞與規則精簡的唯一案件，整案狀態由 AI_PDM owner 維護。OrgMaster 範圍的 CA-3 結果沿[既有 DEV-040／DEV-057 owner 出口](dev_task.md#dev040-production-release-20261019)追蹤；規範精簡 [PR #133](https://github.com/jedchang0308-jenfu/OrgMaster/pull/133) 與發布收尾 [PR #144](https://github.com/jedchang0308-jenfu/OrgMaster/pull/144) 已合併。歷史發布結果保留原始 owner 證據，PA 文件驗證與 CA-3 實際產品／發布結果分開記錄；本段不回寫其他專案，不將本專案 RELEASED 推論為跨專案 CAPA 整案結案。
+
 ## DEV-040／DEV-057 PR134 正式發布收尾（2026-10-19）
 
 [既有任務內的完整來源、plan、收據、失敗與清理紀錄](dev_task.md#dev040-production-release-20261019)。[PR134](https://github.com/jedchang0308-jenfu/OrgMaster/pull/134) 與必要修正 PR135～143 已合併；正式 source=`eaf57c72a0f0e285fa45ea9edc7f8d9b5db5f1f6`，[owner workflow 39149384356](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/39149384356) 十階段成功，`ORGMASTER-REL-20261018172319997-EAF57C7 / FINALIZED / RELEASED / remainingHumanAction=0`。`orgmaster-prod-8ea68362879c` Ready、100% traffic、0 tags；候選／canonical Principal API smoke PASS。App／tool 沿用既有 digest，獨立 image-only rotation 與 smoke numeric 10→11 rotation 各自保留完整75地址plan；`UNCHANGED_VERIFIED / migrationsExecuted=0 / imports=0 / liveLedgerRead=false`，不宣稱本次31-row replay或全產品UI／跨專案驗收。完整本機證據=`output/release-closeout/ORGMASTER-REL-20261018172319997-EAF57C7/`，正式發布權威仍是 immutable owner receipts。
