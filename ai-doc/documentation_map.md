@@ -18,6 +18,10 @@ PR135 已 merge、官方 master CI PASS；首次正式 rotation 先在 build rea
 
 [來源與映像依賴契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018) → [受控工具 rotation／一般發布](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018) → [本輪任務](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)。PR134 已 merge；續授權僅 OrgMaster 補齊 source-bound runner image-only plan／完整75地址證據與原 ten-stage ordinary release。新增 `test:dev-040:tool-rotation` 納入 required Source QC；正式 rotation／發布／postverify 仍待本輪 provider evidence，維持零 DDL、資料／grant／IAM／Secret／跨專案限制。
 
+## DEV-058 B 方案動態角色與集中指派（2026-10-12）
+
+[原生任務](dev_task.md#dev-058-federated-role-catalog-central-assignment) → [唯一工程契約](specs/DEV-058-federated-role-catalog-central-assignment.md)／[QA24案](qa/DEV-058-dynamic-role-assignment-validation-plan.md)／[ADR-007增補](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。成熟度 `RD Implementation Ready / Human Confirmed / Documents Only`；DTO／command／audit結果查詢、profile／context、own DDL／ACL／12欄readiness及固定unit/PG/UI/DUAL入口已收斂。來源 [AIPDM/DEV-123](../../AI_PDM/.ai-doc/specs/DEV-123-role-permission-editor-contract.md)僅唯讀；本輪無code／SQL／runner或產品驗證，產品NOT_IMPLEMENTED、QA24 NOT_RUN。下一步等待人類產品RD指示，受控producer資產與真雙端／owner enablement依slice gate，不從文件ready推定相容已完成。
+
 ## DEV-037 已撤銷指派操作（2026-10-12）
 
 [啟用／刪除契約與結果](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-12-已撤銷指派操作目前本地切片) → [原生切片](dev_task.md#2026-10-12-已撤銷指派操作切片)。ID-only restore 保留 scope／period／V3 provenance，revoked-only confirmed removal 只移出草稿、保留 history／audit；既有 manage／workspace／mobile／CAS／publish gates。76 個唯一聚焦案例、final build、native middleware／isolated persistence 與桌面／手機 CUA PASS，產物=`output/playwright/dev037-assignment-actions-20261012/`；`Local Targeted QC Passed / Production Not Deployed`，不擴張 Principal／position／financial owner 或 sibling scope，不改歷史完成率。
