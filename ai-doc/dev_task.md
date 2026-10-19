@@ -1,6 +1,66 @@
 # OrgMaster 開發任務
 
+<a id="dev040-production-release-20261019"></a>
+
+## DEV-040／DEV-057：PR134 正式發布與證據收尾（2026-10-19）
+
+狀態：`Production RELEASED / Post-release Readback PASS / remainingHumanAction=0`。本節結案本次 OrgMaster 工具設定抽離、受控 image rotation、smoke 同身分重新驗證與一般發布；不改其他 DEV、跨專案驗收或既有歷史證據的完成分母。時間以下同時保留 provider UTC，正式完成時間為 **2026-10-19 01:30:50（Asia/Taipei）／2026-10-18T17:30:50.808Z**。
+
+### 來源、審查與正式結果
+
+- 起始 [PR #134](https://github.com/jedchang0308-jenfu/OrgMaster/pull/134) 已合併（`ad4e6be3355305329833a83005889be61c46f6ee`）；後續同範圍 PR #135～#143 已走既有 protected PR／required `Production Source QC`。最新 [PR #143](https://github.com/jedchang0308-jenfu/OrgMaster/pull/143) head=`540cbfc458c754bdb599189357baf58c280d541f`、正式 merge source=`eaf57c72a0f0e285fa45ea9edc7f8d9b5db5f1f6`；[Codex 審查](https://github.com/jedchang0308-jenfu/OrgMaster/pull/143#issuecomment-6252798323)、[PR required CI 39148851892](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/39148851892)、[master required CI 39149078460](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/39149078460) 均保留。沒有使用 admin bypass。
+- 正常入口 `npm run deploy:production`；release=`ORGMASTER-REL-20261018172319997-EAF57C7`，[owner workflow 39149384356](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/39149384356) 的 `prepare → build → migrate → candidate → entrypoint → verify → decision → activate → canonical → finalize` 十階段全部 success；failure handler skipped。原生 terminal=`PASS / RELEASED / remainingHumanAction=0`；`control/active.json`=`FINALIZED / RELEASED`、同一 source／release。
+- 正式 target=`jenfu-platform-prod / asia-east1 / orgmaster-prod`；canonical=`https://orgmaster-prod-9536592944.asia-east1.run.app`。provider readback：`orgmaster-prod-8ea68362879c` Ready、100% traffic、0 candidate tags；前一個正式 recovery baseline=`orgmaster-prod-1a9b606130ae` 保留，未刪正式服務、revision、release bucket 或映像。
+- 本機／required CI 的適用驗證已完成：R2 owner 377/377、QC 選取 361/361、tool 54/54＋13/13、production tools 13/13、abort 6/6、app 930 PASS／4 skipped、build 與 DB boundary PASS。這些仍是本機／CI 層證據；正式發布完成由上列 owner workflow、native receipts 與 provider readback 支持，不將 RD 自查改稱獨立 QC，也不新增全產品 UI／跨專案 L4 結論。
+
+### 映像、plan 與憑證責任
+
+- App digest=`asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster@sha256:718f0ce418047cb1b71966c5a470e25725907de2fa731803177266efba251eee`。原 build=`231b0e76-62e9-4f25-b39b-0382e429ee0a`、artifact source=`a26f422c0ab0f49a180af531398a27bdf7eb5469`、source archive SHA-256=`2df45643cf1f74314be61650d6dd727b8b540fa4bd4335545b097de45c339fc5`、build-input SHA-256=`082bcdc8f1003a04aba88c441084c2c879bcc696ae49b80ba5de4e65705d2849`。本次 build receipt 明列 `REUSED_CROSS_SOURCE_RELEASE_EXECUTOR_ONLY`，保留原 provenance／SBOM／scan 及新 executor source 關聯，沒有重建映像；不把原 artifact 標為新 source 建置。
+- Tool digest=`asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-migration-runner@sha256:28e997842c7c95a8a89a0f76ed16e34797f500dcd1d962208b6cb6227ec189ab`。原 build=`b84ff653-d07f-42c3-933b-a04a084c85c4`、build source=`7b4caed847003509ca8668f0153952e05034c7f5`；rotation source=`47576d1db2144d8ea826fe2205a8131c96ed6356`。`APP_INFRA_IMAGE_ROTATION` 完整 75 addresses，唯一 update=`google_cloud_run_v2_job.migration[0]` 的 immutable image；完整 before／after 其餘值相同（只適用既有 gcloud client metadata normalization）。controller、IAM、Secret resource、grant、sibling resources 不在該 plan 變更中。
+- Tool rotation root=`gs://jenfu-platform-prod-orgmaster-release/receipts/tool-rotations/47576d1db2144d8ea826fe2205a8131c96ed6356/`：`app-infra.json#sha256=c8c13739c03ed909879b07d074df2e10100a02edf20e9c8239af6ee918902cf7`；`plan.bin#sha256=538ea3ee229eb5a7492d56903ee90cf5b93353d817ec53d2ac8905cfbcd9dd83`；`plan.json#sha256=88a94d98d643f74093512be7333167b273a0980cc74a8632a205d14af3e856b3`。來源、完整 plan、前後 state／Job、build proof／output manifest 均保存，不以 digest 差異代替 rotation proof。
+- 原401=`auth_token_invalid` 已以同一 Principal 的唯讀撤銷狀態定位：既有登入時間 `2026-10-11T09:39:48.000Z` 早於 `revokedBefore=2026-10-17T15:48:00.510Z`。受人類另行授權，既有 Job 暫時切換已封裝 reader，唯一診斷 execution=`orgmaster-prod-migration-runner-bf9bx`；完整還原前後 template SHA-256 同為 `114b791d19d33e013b6f35bbd6fbe7a0bb1c09783124803c2aae4ffcec0ce297`，`databaseWrites=0 / ddl=0 / imagesBuilt=0`。不能將整段任務寫成零 Job executions。原生讀回=`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV014-LIFECYCLE-READBACK/v2/7b4caed847003509ca8668f0153952e05034c7f5/smoke-principal-revocation-20261018-R1.json#sha256=48165ccdb4722b81c26abc45fde1023da4051741c940e44f843f844cfb0fb977`。
+- 原 smoke Secret 僅新增授權的 v11 並同步原 GitHub production secret；同一 Principal／Employee／provider pair。原 COMMITTED 收據=`gs://jenfu-platform-prod-orgmaster-release/receipts/credential-reauth/2026-10-18T13-45-36.661Z-918b3a404ef4b8c7.json#sha256=bbdf970363fdb9ea2e6fa6952335b43e0aef258966c4c2620aa95c9ebc072457`。後續重新驗證沿用 v11，沒有新增 v12：`gs://jenfu-platform-prod-orgmaster-release/receipts/credential-reauth/2026-10-18T15-58-03.189Z-b9afad31d73086be.json#sha256=11e76dcd4524195d23d6d15f810e2276cf5acd6e660832f8356a9e529071b110`；continuation=`gs://jenfu-platform-prod-orgmaster-release/receipts/credential-continuation/1792339084281-fbaa74f62a2d1cac.json#sha256=72f0929c6d8b3ab5be8797379a2f4940dd96e069f8b875cb869967ae2f1094bf`。密碼、token、cookie 不寫入文件。
+- 獨立 `APP_INFRA_SMOKE_CREDENTIAL_ROTATION` root=`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-SMOKE-V11-5CFD92199493/`：`app-infra.json#sha256=e1303a2bd9b9d61da65e1711a9e4b5a63847d2cb13c4f8d055e761b06f6946ee`；`plan.bin#sha256=ea92446d1a24abb4ed47662d95e15a58121c3d65b917982a71943d87f0ea8de8`；`plan.json#sha256=1f3a6401357898559fa9a62d592e7db7b333e16b6edf0ecb618c9409c61ec80d`。同一 75 addresses，唯一 Workflow 內容變動為固定 Secret version `10 → 11`；沒有與 image-only rotation 合成一個寬鬆 plan。provider readback Workflow=`orgmaster-prod-candidate-smoke / 000011-696 / ACTIVE`、原 smoke SA；Secret v11=`ENABLED`。
+- 一般發布 `migrate=UNCHANGED_VERIFIED`、`migrationsExecuted=0`、`pendingMigrationCount=0`、`dataImportsExecuted=0`；完整 001–031 source bundle 未變，無 DDL／import／bootstrap／grant 或手動業務資料修改。`databaseVerification=PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE`、`liveLedgerRead=false`：本次沒有重新 SQL 讀取或 replay 31-row ledger，不擴稱全資料逐筆比對。正常登入／登出 smoke 的 session 操作與業務資料修改分開記錄。
+
+### 正式 smoke 與原生收據
+
+Candidate execution=`40852a77-5369-4c38-bcc3-ec465195239a`：auth-mode／Platform Principal session／session reload／authenticated preferences／governance session／managed-identity read 為200，SSO start／authorize／callback 為303；未登入 probes 與撤銷 session 為401，整體 PASS。Canonical smoke：Platform Principal session200、SSO三段303、reload200、preference read200、未登入401、撤銷401，整體 PASS。帳號註冊、外部通知、file／outbox delivery 在 verify receipt 均為 DISABLED。這些為既有正式 API smoke 分母，不代表新跑互動式 UI 或其他專案業務驗收。
+
+Immutable intent=`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261018172319997-EAF57C7/release-intent.json#sha256=fe233057a005ae1f1df1af175c635d0ed91c4f67949e597b9b52ccb3a9a5138e`。下表 object 路徑均接在 `gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261018172319997-EAF57C7/fe233057a005ae1f1df1af175c635d0ed91c4f67949e597b9b52ccb3a9a5138e/`；SHA-256 是完整 provider object bytes 的雜湊，與 JSON 內部 `receiptSha256` 欄位不同。
+
+| Object（全部 PASS） | Object SHA-256 |
+| --- | --- |
+| prepare.json | `0d24eaa329195df9c7fcfbf7f3dd4742d224f09e3e670d6099b1a85310f34588` |
+| build.json | `0ef264f6f7c8a5fe4acfc9dcd0917a22ec6b8dbbdcd3be67a7d9bd91955d1ce4` |
+| migrate.json | `f3e1d7b4d6ba709b61a930dd99eeb2ce8bb6fea08d715f7a05ce1688bfce4249` |
+| candidate.json | `c36fe7889a000448d4f9817cf0d56d17979ba76365e7ca5d26e302113b0c0b97` |
+| entrypoint.json | `115d5fe9aa7dedaea1d034d0bab6675b418f10487decd4262cc0a8bcb26efe91` |
+| verify.json | `4bdf3fb23d9f2a6c3a4a6db4641ce0252f0806b9218306b8445a69c957c06f1d` |
+| decision.json | `7b3d658a7067a55745fae4fea5be58ca130d979f08e013e671d505d34aff8667` |
+| activate.json | `93c19226244351ad459f43d9a35703a3d02450ea656e4aa2dd76b5831d3275d5` |
+| canonical.json | `c73c3c5faf113a6f856d56e38c2ff495f2a27013aae5fae766b0b6ecc7aa7877` |
+| finalize.json | `e7c8bb84479dab6378c86369427201df21ddd6b53912015ec784822c0d1ffd04` |
+| terminal.json | `37cebb929f8d7183f785c59aa75050494b7368046997cece25c4558a64a7a636` |
+| provenance.json | `f46ff73aeb68696e42a1115258233fec09a00c978e48dd332b0dde78696bb77f` |
+| sbom.json | `fe6df289a0c2453c5dc46bcecbf8c347fbdb7350e1198674938c371cf642c1a8` |
+| scan.json | `4f86885be2213b3b3b061a2ddb87ece1f08ab7dd4b7c562d8d1ec6e230e9ff77` |
+| dev014-consumer-conformance.json | `7cf260dcccb6e733b17bbbb197e88787040f76e26917eed28c06677609859e90` |
+
+同根 `deployment-capsule.json` SHA-256=`4f0f841979f92a4212fabff922f1773c06e556afcf559bbfcf3b0e3f1f041009`；intent 同層的 owner authorization／readiness／runtime config／source lock 亦保存。全部原生資料仍由 owner immutable objects 提供發布權威；本機收尾驗證為 `releaseAuthority=false`。
+
+### 失敗保留、完成範圍與資源收尾
+
+- 原 [401 失敗 run 39127645349](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/39127645349)、`ORGMASTER-REL-20261018123122113-A26F422` 的 `PRE_ACTIVATION_ABORTED` terminal 原樣保留；其 object ref=`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261018123122113-A26F422/70f29d0abfe2f4d57d471149fb2ba032af083c5250c80c6c3328d9a6b84077a6/terminal.json#sha256=bc3096e74b3114e2ba4d46dc79a4d6c49b26617ece5cf4fdcdfd499a09815067`。其後 [run 39148126448](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/39148126448) 在 prepare 因 `ROUTINE_INFRA_CHANGED` fail-fast，下游 skipped、未 build／migrate／candidate／切流；PR143 將 tool rotation ref 同時綁到 immutable authorization／readiness，native prepare 比對後才續發。舊失敗不是當前未完成事項，不改寫原收據。
+- 本次任務無待完成的 PR／required CI／rotation／reauth／正式發布／發布後 API smoke 或人工操作；不把 DEV-058、AI-PDM v7/RD、其他歷史 local slice 或跨專案 CAPA 整案視為本次已完成，也不為它們執行額外正式操作。未重跑無關 UI／性能 benchmark，不將本次成功推論為那些分母通過。
+- 完整本機保存位置=`output/release-closeout/ORGMASTER-REL-20261018172319997-EAF57C7/`：`preserved-local-files.json` 記錄159份原本機檔案的來源／保存路徑／bytes／SHA-256；包含第一個有效失敗、Job 診斷及還原、owner QC reports、原 handoff 與 source reviews。`provider/` 保存 release／兩個 rotation 的原 object bytes、binary／JSON plan、before／after state／Job／Workflow；同一目錄下另存 GH PR134～143／run／branch protection 與正式 readback。私有 metadata／plan 留在 ignored output，不放進 tracked 文件；沒有密碼／token／cookie 證據副本。
+- 清理結果（2026-10-19）：本次 `C:\VIBE CODING\OrgMaster\.release-clones\prod-2f7c4af`、其 dependency junction、`C:\VIBE CODING\OrgMaster\.worktrees\release-tool-config-decoupling` 與兩個已空容器已移除；來源保留於 local／remote Git refs，159份本機證據逐bytes保存（4,138,674 bytes），其餘本次依賴／build／Terraform provider cache 可重建。Native Git removal 曾因 `Filename too long` 部分失敗並解除登錄；保留原 `cleanup-result.json`，另逐檔分類殘留740份（629 committed source／97已保存證據／14可重建cache）、確認0 links與無active use後，只清除此精確殘留目錄；最終 `cleanup-recovery-result.json`（上述本機保留位置，非 Git 追蹤檔案） 為PASS。這是人工授權範圍內的 task-resource cleanup 記錄，`releaseAuthority=false / governorReceipt=false`，不偽稱 Governor adapter receipt，也不以系統free-space差值宣稱精確回收量。
+- CUA確認唯一殘留本任務憑證頁 `tabId=1200850196` 已為REVALIDATED後關閉，remaining matching tabs=0；本機62458／65342皆無listener，無本次runtime存活。原主分支仍 `codex/dev058-docs-submission@1d71d50102a91bfdb1e9b5f47020a30e9886b096`；AGENTS bytes SHA與收尾前相同，原CAPA任務／索引修改保留。不切換、不reset、不提交他人修改；另一個 `C:\VIBE CODING\.worktrees\OrgMaster\dev057-catalog-v7-20261011`／原分支保留，非本次清理對象。正式retained revisions、bucket、映像、Workflow／Secret版本與Scheduler皆保留。
+- `evidence-checks.json`（上述本機保留位置，非 Git 追蹤檔案） 為本機保存／一致性檢查；205份文字檔的JWT／Firebase refresh-token／private-key實值模式檢查為0命中。原工作樹的既有修改另外保留；本節僅記錄已完成發布與本機清理，文件提交不建立正式映像或觸發正式發布。
+
 ## DEV-040 production tool 設定解耦（2026-10-18）
+
+歷史快照：以下為本次發布完成前的續接紀錄；現行完成狀態與原始失敗出口見 [2026-10-19 正式發布收尾](#dev040-production-release-20261019)，不再將下列 pending 作為本次待辦。
 
 目前續接（取代下方舊 pending 記錄）：PR136 已 merge `47576d1db2144d8ea826fe2205a8131c96ed6356`，required CI PASS。受控 tool rotation 已 APPLIED，native receipt=`gs://jenfu-platform-prod-orgmaster-release/receipts/tool-rotations/47576d1db2144d8ea826fe2205a8131c96ed6356/app-infra.json#sha256=c8c13739c03ed909879b07d074df2e10100a02edf20e9c8239af6ee918902cf7`；完整75地址、唯一Job image、原build b84ff653／image28e99784重用、scan/SBOM PASS，Job generation267且execution未增加。一般發布 preflight READY／UNCHANGED_VERIFIED；第一次 workflow39126097695在 prepare 以 SOURCE_PROOF_INVALID 停止，app build／candidate／traffic 未執行，active control仍為既有24cb RELEASED。已定位 Windows 系統 Git autocrlf=true 產生909個CRLF export差異，raw tree identity相同；同一原 archive 的 gzip SHA=b067e292...／tar SHA=008f3bcd...可用明確 legacy Git profile 精確重現，不是任意正規化。當前 branch `codex/tool-archive-export-profile` 補 canonical LF producer與 exact legacy replay；保留原rotation、build、archive、receipt與首錯，無需再次image rotation／build，後續正式release/postverify仍待證。
 
@@ -10,9 +70,13 @@
 
 ## DEV-057 historical image predecessor continuation（2026-10-11）
 
+現行本次發布狀態：已由 [2026-10-19 正式發布收尾](#dev040-production-release-20261019) 完成 protected source／owner release 相容路徑；下段為原本機驗證快照，不再是本次發布阻塞。外部 RD 業務驗收保留其原分母。
+
 Native `ORGMASTER/DEV-057#smoke-reauth-continuation`，來源 `AI-PDM/DEV-121#rd-capabilities`。原生發布前置把歷史 image receipt 的 build source 當成已發布 application source，會拒絕已 RELEASED 且完整 infrastructure inputs 相同的合法基線。本輪僅在歷史 predecessor resolver 接受 exact `APP_INFRA_IMAGE_ROTATION` 的 source 差異，重驗同 owner immutable receipt、source lock、對應 RELEASED terminal、完整 infrastructure bytes；新 rotation source fence、copy closure、完整地址、state、credential checks 不變。原始 receipt 與当前基線不改。原版 synthetic RED 已在 source guard 重現；新增六項 6/6、owner Node 370/370、QC 選取 354/354、abort 6/6、app 895 PASS／4 skip、型別與 build／db-boundary PASS。QC 建立的合成資料已清理。Luna 只讀差異審查未發現 guard 缺口。protected CI、Production 相容發布與 RD 驗收仍待證。
 
 ## DEV-057 smoke credential continuation（2026-10-11）
+
+現行本次發布狀態：同一 Principal 的 v11 重驗、numeric Workflow rotation、protected release 與正式 smoke 已完成，詳見 [2026-10-19 正式發布收尾](#dev040-production-release-20261019)；下段「待證」保留為原歷史快照。
 
 Native `ORGMASTER/DEV-057#smoke-reauth-continuation`，來源 `AI-PDM/DEV-121#rd-capabilities`，沿已授權 OrgMaster own credential reauth／版本續接。已提交新 Secret 但 Workflow 未承接時，原證據逾期不能靠新增下一版本解決；原生工具補上嚴格 original proof＋current numeric version＋fresh password／相同 Principal/Employee 的續接，addVersion 零呼叫，private immutable proof link，consumer freshness 不變。35 focused／364 owner Node 合成測試 PASS；protected CI、真正重驗／rotation／發布待證。契約與本輪 acceptance 見 [completed credential continuation](specs/DEV-057-identity-and-grant-contract-boundary.md#dev-057-completed-smoke-credential-continuation--2026-10-11)。不新增主 DEV，不將本機結果當正式修復。
 
@@ -348,7 +412,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
   - 規格：`ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md`；跨系統主契約與QA／QC位於`C:\VIBE CODING\Jenfu-Management-system\ai-doc\specs`／`qa`
   - ADR：`ai-doc/adr/ADR-007-external-role-catalog-assignment-boundary.md` 2026-08-30 amendment
   - 計入交付：否（跨 repository 交付由 Jenfu Management System DEV-001 計算）
-  - 發布維護（2026-10-07）：[artifact 輸入與重試](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#owner-artifact-input-reuse-20261007)已本地修改；行為／效率驗證待執行、未發布。保留原歷史完成與分母，沿本 native owner 維護，不新增跨專案部署權限。
+  - 發布維護（2026-10-19 現行）：[本次正式發布與完整證據](#dev040-production-release-20261019) 已 `RELEASED`，完成既有 artifact 重用、受控 image／smoke rotation 及 native prepare proof binding；[artifact 輸入與重試](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#owner-artifact-input-reuse-20261007) 的本次適用路徑有 native 成功證據，本次沒有重建映像。未重跑的全量效率 benchmark／其他歷史分母不升級，跨專案權限不變。
 
 - ✓ DEV-039 [交付點] [完成] [P1] [Implementation Complete／QA-QC Passed／Merged to master／Current workspace baseline] 可組合規劃桌面與跨面板關聯配置
   - 摘要：S0～S6工作台與面板邊界保留；S7以單一 typed Placement Session 統一 native／keyboard，沿用既有 resolver 與 mutation authority。最新 B16 fixture `draft-02d6deb8-9c2b-4653-85a9-a970b9bff50c` 合併 E2 五案＋E3-LIFECYCLE＋E3-WARNING native CDP 共 `7 passed`；五案均含 `historyEvidence` 行為性 Undo round-trip，E2 aggregate為 `Pass（evidence）`，E3兩案為`pass`。另以全新隔離 fixture `draft-f002b99c-88a4-417f-8892-a32b64e2b673`完成 ProcessNode→Duty、`draft-4af67fa3-4e33-4644-8768-cb65d4642396`完成 paired Duty→ProcessNode，四個 E1 minimum directions均有strict native pass evidence；正式 QA-QC已覆核，並已由`164a779`、`4e3b2ce`與`c8cc16f`完成repository integration。deploy／release未要求。
