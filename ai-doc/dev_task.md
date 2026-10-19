@@ -72,7 +72,7 @@ Immutable intent=`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/O
 
 ## DEV-058 B 方案協作文件入口（2026-10-12）
 
-原生 `ORGMASTER/DEV-058`承接 `AIPDM/DEV-123#orgmaster-compatibility`；[任務入口](#dev-058-federated-role-catalog-central-assignment) → [唯一SPEC](specs/DEV-058-federated-role-catalog-central-assignment.md)／[QA24案](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。已達 `RD Implementation Ready / Human Confirmed / Documents Only`，完整DTO／command／audit結果查詢、own readiness DDL／ACL與固定驗證入口已定義。依人類本輪指示僅OrgMaster文件，產品NOT_IMPLEMENTED，所有產品驗證NOT_RUN；AI-PDM唯讀、未建立SQL／runner或開始實作。
+2026-10-19後續授權：`ORGMASTER/DEV-058`與`AIPDM/DEV-123#orgmaster-compatibility`的本機撤權／既有九身份目錄解耦切片已實作；[SPEC §0](specs/DEV-058-federated-role-catalog-central-assignment.md#0-本輪可獨立交付切片)及[QA §6](qa/DEV-058-dynamic-role-assignment-validation-plan.md#6-本輪局部切片驗證)記錄範圍與證據。完整dynamic仍NOT_IMPLEMENTED、QA24 whole NOT_RUN；不等待完整editor才交付撤權修復，不執行正式migration／發布。
 
 ## DEV-057 historical image predecessor continuation（2026-10-11）
 
@@ -278,12 +278,12 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## 總任務清單
 
-- ○ DEV-058 [交付點] [RD Implementation Ready／Human Confirmed] [P1] [文件完成／產品待排] B 方案動態角色目錄與集中指派
-  - 摘要：各系統管理角色及能力；OrgMaster承接custom／停用／恢復與可信歷史，集中配人／撤銷／發布，人控及提醒保持。
+- ○ DEV-058 [交付點] [RD Contract Ready／Peer Handoff Pending] [P1] [文件限定／產品待排] B 方案動態角色目錄與集中指派
+  - 摘要：對齊七日常角色／舊生管別名、custom及生命週期；集中配人，人控與提醒維持，移除重複政策引擎與工具／證據前置。
   - 來源 ID：`USER-2026-10-12-CHOOSE-B-WRITE-ORGMASTER-DOCS`
   - 來源 ID：`AIPDM/DEV-123#orgmaster-compatibility`
-  - 下一步：使用者要求OrgMaster產品RD後，按[SPEC§10](specs/DEV-058-federated-role-catalog-central-assignment.md#10-rd-交接與階段)實作OM-C1→C2→C3→C4。
-  - 阻塞／恢復條件：本輪文件限定；producer受控profile/vectors與actual v2/history為slice依賴，真雙端／正式另依具名授權及owner gates。
+  - 下一步：依[SPEC§9交接](specs/DEV-058-federated-role-catalog-central-assignment.md#9-ai-pdm-交接項目)收斂H1/H2/H3；後續產品RD依OM-C1..5真正依賴推進。
+  - 阻塞／恢復條件：本輪不實作；producer資料／驗證責任及證據重用待peer確認，之前不宣告READY、不跳過現行PDM安全限制。獨立工作可繼續，雙端／正式操作仍依其授權範圍。
   - 證據：[唯一SPEC](specs/DEV-058-federated-role-catalog-central-assignment.md)、[QA24案](qa/DEV-058-dynamic-role-assignment-validation-plan.md)、[ADR增補](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)；文件自查非產品QC。
   - 計入交付：是（新範圍；文件成熟不算產品完成，不改既有DEV完成率／驗證結論）。
 
@@ -842,26 +842,28 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## DEV-058：B 方案動態角色目錄與集中人員指派
 
-日期：2026-10-12（Asia/Taipei）。狀態：○產品待排；文件 `RD Implementation Ready / Human Confirmed / Documents Only`。
+修訂：2026-10-19（Asia/Taipei）。狀態：局部實作／驗證中；完整dynamic產品待交接，whole QA24 NOT_RUN。
 Owner `ORGMASTER/DEV-058`；source `AIPDM/DEV-123#orgmaster-compatibility`，協作主鍵 `AIPDM/DEV-123#role-permission-editor`。
 
-人類決定採B，並要求本輪補齊DTO／命令／結果查詢schema、DDL設計及固定驗證入口；只修改OrgMaster文件，暫不程式實作。原brief與RD Contract Ready沿同一份SPEC升級，沒有新ADR或重複權威文件。
+人類採B並後續授權依效率計畫修復兩repo本機程式、測試及文件。既有九身份內容相容／撤權切片獨立交付，完整dynamic仍待H1/H3實際producer與首次rollout證據；H2 consumer不逐版核可完整業務registry已定案。
 
-| 入口 | 已完成工程契約 |
+| 入口 | 本版權威內容 |
 |---|---|
-| [唯一SPEC](specs/DEV-058-federated-role-catalog-central-assignment.md) | §4 publication／metadata／snapshot／profile；§6 closed命令、audit結果、query/replay及context；§8 own DDL／12欄readiness／manifest／ACL；§10修改surface、固定scripts與DEV-123對照 |
-| [QA24案](qa/DEV-058-dynamic-role-assignment-validation-plan.md) | preserved24案＋schema/DDL/command subcases，unit／PG-simulator／UI／DUAL分層，未知結果及cleanup判定 |
-| [ADR-007增補](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058) | app-owned角色／能力、OrgMaster配人權威、人控提醒、legacy相容、v4不變 |
+| [唯一SPEC](specs/DEV-058-federated-role-catalog-central-assignment.md) | §2七角色／alias；§3一份current/history契約與驗證分工；§4–5既有API／交易與授權；§6 compatibility_v2／精簡DDL；§9 H1..H5交接 |
+| [QA24案](qa/DEV-058-dynamic-role-assignment-validation-plan.md) | 保留24 ID及原安全／功能目的，涵蓋grouped-v2與alias；同次整合支援多案，沿既有工具，只補受影響證據 |
+| [ADR-007增補](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058) | B權責／人控提醒、v4及歷史不變；本次工程簡化取代前版多層工具／證據要求 |
 
-Execution boundary：本輪documents only。下一次人類要求OrgMaster RD後依OM-C1..4執行；producerregistry/vectors由受控來源freeze，缺資產不能完成C1／READY。任何對方repo/runtime／雙端mutation及正式環境仍按原具名授權，不從協作引用推定。
+Execution boundary：documents only。H1資料與vectors、H2最小consumer驗證資料／責任仍待交付確認；H3證據重用原則已與peer最新文件一致，實際owner/live consumer紀錄尚待交付。PDM現行policy／首次rollout gate保持，不以本文件豁免。H4對齊OM-C1..5／peer52案，H5處理首次切換及legacy寫入退場；整合／正式操作仍需其專案／動作／環境範圍。
 
-RD固定入口已在SPEC定義 `test:dev-058`、`qc:dev-058:{contract,postgres,browser,dual}`；本輪沒有新增package script、schema JSON、SQL、test或執行命令。保留既有READ COMMITTED／Principal fence、restore/remove與v4 manifest；無人員或歷史資料重寫。
+唯一驗證入口改為[QA§4](qa/DEV-058-dynamic-role-assignment-validation-plan.md#4-單一驗證路徑與證據重用)，先重用npm test、相關PG與browser工具，移除固定16檔／四套runner、自訂證據JSON、讀取協商header與長期legacy寫入模式前置。保留READ COMMITTED／fresh Principal、CAS／同ID冪等、audit、撤銷／scope／來源、owner ACL／forward migration及既有release gate；無人員／歷史重寫。
 
 產品 `NOT_IMPLEMENTED`；QA058-01..24、true producer-consumer、UI／PG／停機及正式enablement全 `NOT_RUN`。文件自查不等於獨立QC或Architecture Finalized。2026-10-12 文件撰寫快照：當時未建立branch/worktree、stage／commit／merge／部署；寫作期間其他工作更新HEAD／保存stash，保留其內容與證據。
 
 2026-10-19 文件交付整理：沿用 [PR #132](https://github.com/jedchang0308-jenfu/OrgMaster/pull/132)，只解決兩份索引與master的文件衝突，保留已合併發布／CAPA紀錄及原工作樹其他修改。required CI只記其實際來源驗證層級，不作QA058產品驗收；本次不實作產品、不重建正式映像或重新發布，產品與跨專案驗收狀態不變。
 
-Future capsules：調職人工待檢視及其他app接入依SPEC§12，未要求；不作本期隱含前置。
+HISTORY_ONLY（前一文件階段）：2026-10-19精簡修訂：對齊grouped-v2與14欄compatibility_v2，減少重複驗證與證據要求；QA24仍0/24執行、peer52案未更動，H1..H5未假稱完成。此次只修改既有五份Markdown，保留AGENTS及其他工作內容，不跑產品tests/build或變更既有PR／正式服務。 後續本機修復授權與實際結果以本節current及QA§6為準。
+
+後續需求：調職人工待檢視及其他app接入依SPEC§10，未要求，不作本期隱含前置。
 
 ## DEV-057：身分與權限發布契約邊界
 

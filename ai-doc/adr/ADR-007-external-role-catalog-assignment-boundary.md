@@ -12,20 +12,20 @@
 
 ## 2026-10-12 B 方案與動態角色協作增補
 
-分類：`Human Confirmed / Compatible Refinement / RD Implementation Ready / Documents Only`。
-決策來源：人類選B、要求與AI-PDM DEV-123協作，再要求補至RD Implementation Ready，明定本輪僅OrgMaster文件、不開始程式實作。native owner=`ORGMASTER/DEV-058`，來源=`AIPDM/DEV-123#orgmaster-compatibility`；[任務](../dev_task.md#dev-058-federated-role-catalog-central-assignment)／[唯一SPEC](../specs/DEV-058-federated-role-catalog-central-assignment.md)／[QA24案](../qa/DEV-058-dynamic-role-assignment-validation-plan.md)。
+2026-10-19修訂。分類：`Human Confirmed / Local Slice Verified / Dynamic Handoff Pending`。後續授權及局部驗證見DEV-058 §0，完整dynamic未完成。
+決策來源：人類選B及本輪明確要求依自用需求精簡DEV-058、對齊最新DEV-123，保留授權／資料安全、人控及提醒；後續已授權兩repo本機撤權與目錄解耦修復，不含正式操作。B權責為Compatible Refinement；本次工程要求是對前版的Intentional Replacement。native owner=`ORGMASTER/DEV-058`，來源=`AIPDM/DEV-123#orgmaster-compatibility`；[任務](../dev_task.md#dev-058-federated-role-catalog-central-assignment)／[唯一SPEC](../specs/DEV-058-federated-role-catalog-central-assignment.md)／[QA24案](../qa/DEV-058-dynamic-role-assignment-validation-plan.md)。
 
 1. 各系統管理角色與能力／current policy；OrgMaster唯一管理人員任用、scope、期間、代理、撤銷及發布。選B取代前輪C討論，不新增C產品遷移。
-2. legacy九角色原hash與exact artifact保持；dynamic依versioned current/history、builtin prefix、custom template、lifecycle、canonical及受控profile驗證，不要求每次合法能力／custom變更部署OrgMaster。
+2. 對齊flexible.v2七日常profile、九歷史身份、舊生管legacy-only別名及hidden-protected system_admin；current/history格式與hash須可信，原ID/code/scope/期間及歷史bytes不改。OrgMaster不另建PDM能力編輯規則引擎，其驗證責任與受控資料由SPEC H2列peer確認，未確認前不跳過現行PDM限制。
 3. inactive停止該角色能力但保留合法任用，禁新指派、可讀可撤銷；同ID恢復只採當前未revoked／expired且scope／來源合法者。角色restore不等於任用restore，provenance／snapshot／audit不改寫。
 4. 合格人員直接保存／發布，人控與提醒維持；不新增maker-checker、風險分數阻擋或逾期提醒凍結。現行Principal、exact privileged、scope／validity及position來源失效guard保留。
 5. 不增加業務request對OrgMasterHTTP的依賴。Org管理API故障暫停配人；sharedDB／IdP仍是依賴，無本地ACL／stale授權保底。
 6. READ COMMITTED及freshactor／writer fence保持；單操作凍結已驗catalog context，不凍結actor資格／不跨ownercore取鎖。相容於producer允許重疊交易的原provenance任用。
-7. generic V2命令把tuple／CAS／actor納hash，結果與既有audit同交易；new result欄納eventhash，old bytes保持。unknown查原ID，同ID原payload重送；不新增command store／worker。
-8. grants v4欄位／manifest與applied029不變；own readiness一表一view、initialNOT_READY、owner-only，公開12欄對齊DEV-123。READY需真consumer、source／profile及owner evidence，不是marker。
-9. 文件成熟度與產品／release分開；本輪AI-PDM只讀，code／SQL／runner／tests及正式操作均未開始。producer package／native雙端證據按各owner進入條件取得，不用mock完成peer。
+7. 延用API／命令／audit，把必要tuple／CAS／actor納新hash，結果同交易，舊bytes保持；unknown查原ID同內容重送，不新建命令平台。內部UI/API同批升級，移除自訂讀取協商header與多組未發布封套；外部closed contract仍維持必要版本。
+8. grants v4／manifest與applied029不變；own compatibility_v2一表一view、初始NOT_READY、owner-only，13公開欄（未發布草案；已發布須新版本）對齊DEV-123。移除前版private enablement_binding及新receipt體系，重用既有發布／QC紀錄；peer同日精簡已允許此證據重用，H3仍需實際owner/live consumer紀錄。PDM首次rollout gate不略過，不造READY或豁免真consumer證據。 完整registryHash仍入contentHash，由PDM驗業務語意，不作OrgMaster逐版核可；一般能力變更不更新consumer相容列或部署。
+9. 保留QA24全部ID及目的，改為既有工具、一次真實往返及按影響補驗，不強制固定16檔／四個runner／獨立證據JSON。legacy舊寫入於受控dynamic切換後退場，歷史decoder保留。H1..H5保留完整dynamic交接；本輪只交付已具名授權的本機局部切片，完整產品與正式結果不宣稱完成。
 
-沿用本ADR，未新增長期權責選項；不另建重複ADR。不改既有部署、appliedmigrations、immutablehistory或原驗證結論。
+沿用本ADR，不另建重複決策／審批流程。前版Implementation Ready屬歷史，當前跨owner契約待收斂；不改既有部署、appliedmigrations、immutablehistory、QA分母或原驗證結論。
 
 ## 2026-08-30 Jenfu Platform Amendment
 

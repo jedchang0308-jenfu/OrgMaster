@@ -24,6 +24,7 @@ async function render(snapshot = fixture(), manage = true, mobile = false) {
   mocks.patchGovernanceDraft.mockImplementation(async (_revision, command: GovernanceCommandV2) => {
     const document = structuredClone(snapshot.document)
     if (command.type === 'RESTORE_ROLE_ASSIGNMENT') document.draft.roleAssignments = document.draft.roleAssignments.map(v => v.id === command.id ? { ...v, status: 'active' } : v)
+    if (command.type === 'REVOKE_ROLE_ASSIGNMENT') document.draft.roleAssignments = document.draft.roleAssignments.map(v => v.id === command.id ? { ...v, status: 'revoked' } : v)
     if (command.type === 'REMOVE_ROLE_ASSIGNMENT') document.draft.roleAssignments = document.draft.roleAssignments.filter(v => v.id !== command.id)
     return { revision: 'r2', payload: { document, revision: 'r2', status: 'applied' } }
   })
@@ -46,6 +47,24 @@ it('restores the exact revoked row with a status-only ID command', async () => {
   expect(mocks.patchGovernanceDraft).toHaveBeenCalledWith('r1', expect.objectContaining({ type: 'RESTORE_ROLE_ASSIGNMENT', id: 'revoked-0' }))
   expect(host.querySelector('.governance-matrix__person-statuses')?.textContent).toBe('有效')
   expect(host.textContent).toContain('尚未發布')
+})
+it('keeps withdrawal and removal available while an unavailable catalog still disables new/restore grants', async () => {
+  const snapshot = fixture()
+  snapshot.catalogs[0].validationState = 'unavailable'
+  const assignment = snapshot.document.draft.roleAssignments[0]
+  assignment.applicationId = 'ai-pdm'; assignment.roleId = 'role-rd'; assignment.roleCodeSnapshot = 'rd'
+  assignment.roleNameSnapshot = '研發人員'; assignment.catalogVersion = snapshot.catalogs[0].catalogVersion
+  assignment.scope = { kind: 'workspace', value: 'company-test' }; assignment.effectState = 'not-synchronized'
+  assignment.status = 'active'
+  await render(snapshot)
+  const remove = host.querySelector<HTMLButtonElement>('.governance-matrix__remove')!
+  expect(remove).not.toBeNull()
+  expect(remove.disabled).toBe(false)
+  await click(remove)
+  expect(mocks.patchGovernanceDraft).toHaveBeenCalledWith('r1', expect.objectContaining({ type: 'REVOKE_ROLE_ASSIGNMENT', id: assignment.id }))
+  expect(textButton('啟用').disabled).toBe(true)
+  expect(textButton('刪除').disabled).toBe(false)
+  expect([...host.querySelectorAll<HTMLButtonElement>('.governance-matrix__add')].every(button => button.disabled)).toBe(true)
 })
 it('requires confirmation, supports cancellation, then removes exactly one row', async () => {
   await render()

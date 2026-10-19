@@ -98,7 +98,7 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
       if (admission.sharedRetirementState !== 'not_applicable') add('ADMISSION_RETIREMENT_STATE_INVALID', `principalAdmissions[${index}].sharedRetirementState`, 'human admission 必須為 not_applicable')
     } else if (admission.identityLinkId !== null || admission.sharedRetirementState === 'not_applicable' && admission.accountType === 'legacy_shared') add('ADMISSION_IDENTITY_LINK_FORBIDDEN', `principalAdmissions[${index}]`, 'shared/service admission 不得建立 identity link')
   }
-  const appIds = new Set(data.applications.filter((v) => v.status === 'active').map((v) => v.id)); const employeeIds = new Set(source?.state.employees.map((v) => v.id) ?? []); const roles = new Map(data.applicationRoles.map((role) => [role.id, role])); const permissions = new Map(data.permissions.map((permission) => [permission.id, permission])); const catalogByApp = new Map(catalogs.map((catalog) => [catalog.applicationId, catalog]))
+  const appIds = new Set(data.applications.filter((v) => v.status === 'active').map((v) => v.id)); const employeeIds = new Set(source?.state.employees.map((v) => v.id) ?? []); const roles = new Map(data.applicationRoles.map((role) => [role.id, role])); const permissions = new Map(data.permissions.map((permission) => [permission.id, permission])); const catalogByApp = new Map([...catalogs].reverse().map((catalog) => [catalog.applicationId, catalog]))
   for (const catalog of catalogs) { if (catalog.validationState === 'stale') add('EXTERNAL_CATALOG_STALE', `catalogs.${catalog.applicationId}`, '外部 catalog 已過期'); if (catalog.validationState === 'invalid') add('EXTERNAL_CATALOG_INVALID', `catalogs.${catalog.applicationId}`, '外部 catalog 驗證失敗'); if (catalog.validationState === 'unavailable') add('EXTERNAL_CATALOG_UNAVAILABLE', `catalogs.${catalog.applicationId}`, '外部 catalog 暫時無法取得') }
   for (const [index, role] of data.applicationRoles.entries()) { if (role.applicationId !== 'orgmaster') add('EXTERNAL_CATALOG_READ_ONLY', `applicationRoles[${index}]`, '外部 application role 只能由外部系統定義'); if (!appIds.has(role.applicationId)) add('APPLICATION_NOT_FOUND', `applicationRoles[${index}]`, 'application 不存在') }
   for (const [index, permission] of data.permissions.entries()) { if (permission.applicationId !== 'orgmaster') add('EXTERNAL_CATALOG_READ_ONLY', `permissions[${index}]`, '外部 permission 只能由外部系統定義'); if (!appIds.has(permission.applicationId)) add('APPLICATION_NOT_FOUND', `permissions[${index}]`, 'application 不存在') }
@@ -137,7 +137,7 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
         const currentSnapshot = assignment.catalogVersion === catalog?.catalogVersion &&
           assignment.roleCodeSnapshot === catalogRole.code && assignment.roleNameSnapshot === catalogRole.displayName
         const historicalSnapshot = assignment.applicationId === 'ai-pdm' &&
-          historicalAiPdmRoleSnapshotMatches(assignment, catalogRole)
+          historicalAiPdmRoleSnapshotMatches(assignment, catalogRole, catalogs)
         if ((!currentSnapshot && !historicalSnapshot) || assignment.effectState !== 'not-synchronized') add('EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID', `roleAssignments[${index}]`, '外部 role snapshot 與 catalog 不一致')
       }
     }
@@ -145,13 +145,13 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
   }
   for (const [index, delegation] of data.roleDelegations.entries()) {
     const sourceAssignment = data.roleAssignments.find((assignment) => assignment.id === delegation.sourceAssignmentId); const delegateSource = sourceAssignment?.applicationId === 'ai-pdm' ? sourceAssignment : undefined; const catalog = catalogByApp.get('ai-pdm'); const catalogRole = catalog?.roles.find((entry) => entry.stableRoleId === delegation.roleId)
-    if (!sourceAssignment || !delegateSource || sourceAssignment.status !== 'active') add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}].sourceAssignmentId`, '代理來源 assignment 無效')
+    if (!sourceAssignment || !delegateSource || (delegation.status === 'active' && sourceAssignment.status !== 'active')) add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}].sourceAssignmentId`, '代理來源 assignment 無效')
     if (delegation.fromEmployeeId === delegation.toEmployeeId) add('DELEGATION_SELF', `roleDelegations[${index}]`, '代理人不可與來源相同')
     if (source && (!employeeIds.has(delegation.fromEmployeeId) || !employeeIds.has(delegation.toEmployeeId))) add('EMPLOYEE_NOT_FOUND', `roleDelegations[${index}]`, 'employee 不存在')
     const historicalDelegation = delegateSource?.catalogVersion === delegation.catalogVersion &&
       historicalAiPdmRoleSnapshotMatches({ catalogVersion: delegation.catalogVersion,
         roleId: delegation.roleId, roleCodeSnapshot: delegateSource.roleCodeSnapshot,
-        roleNameSnapshot: delegateSource.roleNameSnapshot, scope: delegation.scope }, catalogRole)
+         roleNameSnapshot: delegateSource.roleNameSnapshot, scope: delegation.scope }, catalogRole, catalogs)
     if (!catalog || !catalogRole || (delegation.catalogVersion !== catalog.catalogVersion && !historicalDelegation)) add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}]`, '代理 catalog role 無效')
     if (catalogRole) {
       const surfaceIssue = genericV2AssignmentSurfaceIssue('ai-pdm', { stableRoleId: delegation.roleId, code: catalogRole.code }, catalogRole)
@@ -197,7 +197,7 @@ export function validatePolicyDataV3(data: GovernancePolicyDataV3, source?: Gove
       || assignment.basis !== 'manual' || assignment.subjectKind !== 'principal' || !assignment.targetPrincipalId
       || assignment.scope.kind !== 'global' || assignment.sources.length || assignment.validTo !== null
       || (assignment.catalogVersion !== catalog?.catalogVersion &&
-        !historicalAiPdmRoleSnapshotMatches(assignment, role)) || assignment.effectState !== 'not-synchronized') {
+        !historicalAiPdmRoleSnapshotMatches(assignment, role, catalogs)) || assignment.effectState !== 'not-synchronized') {
       add('PRIVILEGED_ASSIGNMENT_INVALID', path, 'system_admin只允許server-derived principal-scoped V3 assignment')
     }
     const matchingAdmissions = admissions.filter((admission) => {
