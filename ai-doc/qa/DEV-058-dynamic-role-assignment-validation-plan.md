@@ -1,11 +1,11 @@
 # DEV-058：動態角色與集中指派驗證計畫
 
-修訂：2026-10-19。Owner：`ORGMASTER/DEV-058`；來源：`AIPDM/DEV-123#orgmaster-compatibility`。
+修訂：2026-10-21。Owner：`ORGMASTER/DEV-058`；來源：`AIPDM/DEV-123#orgmaster-compatibility`。
 依據：[唯一SPEC](../specs/DEV-058-federated-role-catalog-central-assignment.md)；對齊grouped-v2／七日常角色／九歷史身份／alias及compatibility_v2。
-狀態：`Plan Defined / Partial Implementation Verified / Dynamic Handoff Pending`。本輪局部結果見§6；全體24案仍未執行，不等同完整dynamic驗收。
-**保留QA058-01..24原ID及安全／功能目的；0/24執行，全部NOT_RUN。** 不以本輪精簡刪減分母，不回寫原PASS；AI-PDM固定52案獨立，QA123-29/30/44/52的真consumer要求仍有效。
+狀態：`Local Contract Slice Verified / Full Case Closure Pending`。2026-10-21本機結果見§7；24案仍需依各自必要層級關閉，不等同完整dynamic驗收。
+**保留QA058-01..24原ID及安全／功能目的；完整case closure仍0/24，全部維持NOT_RUN。** §7的單元/契約斷言只作部分層級證據，不提前填整案PASS；AI-PDM固定52案獨立，QA123-29/30/44/52的真consumer要求仍有效。
 
-本版取代四個專用runner、固定16檔、獨立versioned evidence JSON及重複逐層證明的前置。使用同一次可信操作支援多個案例，補受影響部分；沒有該層證據的案例仍不能PASS。本輪沒有產品測試、PG、browser或停機操作，文件自查不是獨立QC。
+本版取代四個專用runner、固定16檔、獨立versioned evidence JSON及重複逐層證明的前置。使用同一次可信操作支援多個案例，補受影響部分；沒有該層證據的案例仍不能PASS。2026-10-19文件階段沒有產品操作；2026-10-21已執行本機契約/單元、build與DB boundary，仍沒有原生PG migration、browser、故障注入或L4，且不稱獨立QC。
 
 ## 1. 最少前置與資料
 
@@ -29,7 +29,7 @@
 
 ## 3. 保留的24案
 
-所有結果均NOT_RUN；「U/PG/UI/DUAL」是該案各主張所需層級，並非每個測試都要在所有層重跑。case可參數化、共用同次往返，必要主張未被證明仍不計完成。
+所有案例的完整關閉狀態均NOT_RUN；「U/PG/UI/DUAL」是各主張所需層級。§7已取得的U/contract證據可被後續案例重用，但必要PG/UI/DUAL主張未被證明時仍不計整案完成。
 
 | ID | 操作／資料 | 預期與失敗判定 | 必要證據 |
 |---|---|---|---|
@@ -53,7 +53,7 @@
 | QA058-18 | Org先freeze D1，PDM再啟用停用角色的D2，Org完成 | 同操作只用D1context；其他guard成立可保存舊provenance，PDM下一操作依D2拒停用能力；不宣稱跨owner同時commit | PG/DUAL；QA123-30/44 |
 | QA058-19 | current已freeze，actor撤權於writer等待時commit | 取鎖後fresh身份／資格fence拒絕、全部rollback；catalog context不凍結admission | 真PG雙連線 |
 | QA058-20 | compatibility缺失／多列／NOT_READY／錯schema/profile/source | grouped-v2不能用v1 READY；PDM單一apply／首次rollout仍拒絕。已同意的證據重用不另核准，缺實際H1/H2/H3資料不以mock marker通過 | PG；真source與runtime併DUAL |
-| QA058-21 | 自有NOT_READY初始化；PUBLIC/ownruntime/PDM/owner權限及revision | 正確13欄，僅精確SELECT；runtime不可寫table/DDL或繼承owner；owner CAS、manifest／初始狀態及forward migration符合邊界 | 原生PG/ACL；SQL改動才db-boundary |
+| QA058-21 | 自有NOT_READY初始化；PUBLIC/ownruntime/PDM/owner權限及revision | 正確14欄，僅精確SELECT；runtime不可寫table/DDL或繼承owner；owner CAS、manifest／初始狀態及forward migration符合邊界 | 原生PG/ACL；SQL改動才db-boundary |
 | QA058-22 | dedicated system_admin、ordinary/selfgrant/另一Principal/workload | 原特權入口成功與負例邊界維持；hidden-protected不進一般選單，PDM管理員名字不給權，custom不能自授 | U/API/PG；真任用併DUAL |
 | QA058-23 | 正常入口及loading/非空/明確空/error/inactive/history/conflict/pending、keyboard | 有來源/名稱/期間，inactive可撤銷，錯誤不假空；舊response不套新session。1440×900/1024×768/390×844首次受影響UI核對，390沿唯讀；無overflow/visibleerror | 真UI，畫面與操作記錄 |
 | QA058-24 | 只讓task-owned Org管理API不可達，DB/IdP可用 | PDM正常業務仍沿SQLcontract無新增HTTP依賴；Org配人明示不可用，不開localACL。sharedDB/IdP失效另拒絕；只清自己資源 | DUAL；既有等價故障證據可重用 |
@@ -92,7 +92,7 @@ H1/H2/H3未交付或對方環境不可得，保留相應NOT_RUN／BLOCKED，不�
 
 ## 6. 本輪局部切片驗證
 
-2026-10-19後續使用者授權本機修復；原§5的文件限定屬歷史。本輪不更改24案ID、目的或whole狀態，完整dynamic仍未實作。
+2026-10-19後續使用者授權本機修復；原§5的文件限定屬歷史。本節記錄當時既有九身份相容／撤權切片，不更改24案ID、目的或whole狀態；2026-10-21完整dynamic consumer增量另見§7。
 
 - `server/orgmasterGovernanceReduction.test.ts`：實際owner publish產生snapshotHash/audit綁定；PDM current故障後正常HTTP工作台仍可讀（標unavailable），PATCH撤權及發布／同命令重送不讀live catalog；混合新增、restore、scope／期間／身份或內部資格變更不走減權捷徑。原發布重送回原版本，不誤報後續版本。
 - `server/aiPdmRoleCatalogRepository.compatible.test.ts`：接受後續九身份能力內容版本，仍拒絕hash竄改、任用metadata、順序、protected變更；舊任用只有可信自有history才可續讀，同version不同hash拒絕。
@@ -103,4 +103,17 @@ H1/H2/H3未交付或對方環境不可得，保留相應NOT_RUN／BLOCKED，不�
 
 最終聚合：18檔、133 PASS／1 SKIP（未設定隔離PG連線時的原生案例）；同一原生案例另以實際AI-PDM builder與隔離PostgreSQL執行，9／9 PASS，不與聚合重複加總。TypeScript、前後端隔離build及既有DB boundary通過；Luna唯讀源碼審查未發現P1/P2，但未執行測試且不稱正式QC。AI-PDM builder自身7／7與既有v7 fixture檢查通過。
 
-臨時PG僅本任務cluster與動態port，停止後確認port釋放並移除測試data；保留工具log。未操作既有或正式資料。整體QA24、peer52、完整dynamic與正式啟用保持NOT_RUN／NOT_IMPLEMENTED；未執行真實browser、required CI或production驗證。
+臨時PG僅本任務cluster與動態port，停止後確認port釋放並移除測試data；保留工具log。未操作既有或正式資料。該輪整體QA24、peer52、完整dynamic與正式啟用保持NOT_RUN／NOT_IMPLEMENTED；未執行真實browser、required CI或production驗證。後續source實作狀態以§7為準。
+
+## 7. 2026-10-21 dynamic consumer本機證據
+
+固定入口：`npm run test:dev-058:contracts`。它涵蓋dynamic v2 decoder、真實AI-PDM vector、current/history與舊任用provenance、角色/profile/lifecycle錯誤、指派tuple CAS、compatibility_v2 14欄及既有減權回歸。
+
+| 執行 | 結果 | 支持的部分案例 | 尚缺層級 |
+|---|---|---|---|
+| `npm run test:dev-058:contracts` | PASS：5檔，28 passed／1 skipped | QA01–06、09–18、20–22的U/API/contract部分 | skip的原生PG、UI、DUAL |
+| `npm run check:db-boundary` | PASS：24 governed files | QA21 source boundary部分 | migration/ACL實際readback |
+| AI-PDM固定入口讀實際migration 034與v7 vector | PASS：Node contract 3/3；Vitest整體69/69 | QA02/03/20/21及H1～H3 source前置 | live DB與正常往返 |
+| OrgMaster `npm run build` | PASS | app編譯與UI接線 | browser操作與視覺 |
+
+migration 034仍未套用，compatibility保持NOT_READY；AI-PDM migration 086亦未套用且mode為DISABLED。H4還缺正常PDM新增角色→OrgMaster指派→PDM停用→OrgMaster撤銷→PDM恢復的真實兩端旅程；H5還缺DEV-121／122精確多資源target action、具名測試環境、owner readback及首次切換。這些只阻止依賴它們的完整案例與啟用，不抹除已通過的本機證據。

@@ -5,7 +5,7 @@ import { developmentPermissionForActor, resolveDevelopmentIdentity } from './org
 import { evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { GovernanceValidationError } from '../src/governance/validation'
 import { ensureCommandShape } from '../src/governance/commands'
-import type { GovernanceActorContext, GovernanceCommandV2, GovernanceDocumentV3, GovernanceIdentityLinkV1 } from '../src/governance/types'
+import type { GovernanceActorContext, GovernanceCommandV2, GovernanceDocumentV3, GovernanceExpectedCatalogV1, GovernanceIdentityLinkV1 } from '../src/governance/types'
 import { createHash, randomUUID } from 'node:crypto'
 import { readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import { storedGovernanceCatalogs } from './governanceReduction'
@@ -165,6 +165,18 @@ function privilegedOperationResponse(request: PrivilegedAssignmentRequest, previ
 
 function recordBody(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function governanceWriteContext(body: Record<string, unknown>): { expectedOrganizationRevision?: string; expectedCatalog?: GovernanceExpectedCatalogV1 } {
+  const expectedCatalog = recordBody(body.expectedCatalog)
+  return {
+    ...(body.expectedOrganizationRevision === undefined ? {} : { expectedOrganizationRevision: String(body.expectedOrganizationRevision) }),
+    ...(body.expectedCatalog === undefined ? {} : { expectedCatalog: {
+      catalogVersion: String(expectedCatalog.catalogVersion ?? ''),
+      catalogSha256: String(expectedCatalog.catalogSha256 ?? ''),
+      activationGeneration: String(expectedCatalog.activationGeneration ?? ''),
+    } }),
+  }
 }
 
 function financialExpected(body: Record<string, unknown>) {
@@ -357,7 +369,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
     if (!(V2_COMMANDS as readonly string[]).includes(String(candidate.type))) throw new GovernanceStoreError('INVALID_JSON')
     if (accountEnrollmentEnabled && (candidate.type === 'UPSERT_IDENTITY_LINK' || candidate.type === 'SET_IDENTITY_LINK_STATUS')) throw new GovernanceStoreError('IDENTITY_ACCOUNT_FLOW_REQUIRED')
     if (candidate.type === 'SET_IDENTITY_LINK_STATUS') assertIdentityLinkStatusMutationAllowed(document, actor, String(candidate.id ?? ''), candidate.status === 'inactive' ? 'inactive' : 'active')
-    const result = await applyDraftCommand(root, expected, candidate as GovernanceCommandV2, actor)
+    const result = await applyDraftCommand(root, expected, candidate as GovernanceCommandV2, actor, undefined, governanceWriteContext(body))
     sendJson(response, 200, { status: result.status, document: sanitizedDocument(result.document), revision: result.revision }, result.revision)
     return
   }
@@ -367,7 +379,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
     if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED')
     if (!canPermission(document, actor, 'orgmaster.governance.publish')) throw new GovernanceStoreError('GOVERNANCE_PUBLISH_REQUIRED')
     const expected = String(body.expectedRevision ?? request.headers['x-orgmaster-governance-revision'] ?? '')
-    const result = await publishGovernance(root, expected, String(body.commandId ?? ''), String(body.reason ?? ''), String(body.organizationVersionId ?? ''), actor)
+    const result = await publishGovernance(root, expected, String(body.commandId ?? ''), String(body.reason ?? ''), String(body.organizationVersionId ?? ''), actor, governanceWriteContext(body))
     const version = result.document.publishedVersions.find(value => value.id === result.versionId)
     sendJson(response, result.status === 'replayed' ? 200 : 201, { status: result.status, versionSummary: version ? {
       id: version.id, kind: version.kind, versionNumber: version.versionNumber, publishedAt: version.publishedAt,
@@ -376,7 +388,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
     } : null, revision: result.revision }, result.revision)
     return
   }
-  if (path === '/active-version' && request.method === 'POST') { const body = await parseBody(request); if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED'); if (!canPermission(document, actor, 'orgmaster.governance.publish')) throw new GovernanceStoreError('GOVERNANCE_PUBLISH_REQUIRED'); const expected = String(body.expectedRevision ?? request.headers['x-orgmaster-governance-revision'] ?? ''); if (expected !== current.revision) throw new GovernanceStoreError('REVISION_CONFLICT'); const result = await setActivePolicy(root, current.revision, String(body.commandId ?? ''), String(body.reason ?? ''), body.versionId === null ? null : String(body.versionId ?? ''), actor); sendJson(response, 200, { activePolicyVersionId: result.document.activePolicyVersionId, revision: result.revision }, result.revision); return }
+  if (path === '/active-version' && request.method === 'POST') { const body = await parseBody(request); if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED'); if (!canPermission(document, actor, 'orgmaster.governance.publish')) throw new GovernanceStoreError('GOVERNANCE_PUBLISH_REQUIRED'); const expected = String(body.expectedRevision ?? request.headers['x-orgmaster-governance-revision'] ?? ''); if (expected !== current.revision) throw new GovernanceStoreError('REVISION_CONFLICT'); const result = await setActivePolicy(root, current.revision, String(body.commandId ?? ''), String(body.reason ?? ''), body.versionId === null ? null : String(body.versionId ?? ''), actor, governanceWriteContext(body)); sendJson(response, 200, { activePolicyVersionId: result.document.activePolicyVersionId, revision: result.revision }, result.revision); return }
   if ((path === '/evaluate/permission' || path === '/evaluate/reviewers') && request.method === 'POST') { sendJson(response, 410, { error: 'LEGACY_GOVERNANCE_EVALUATOR_RETIRED' }); return }
   sendJson(response, 404, { error: 'ROUTE_NOT_FOUND' })
 }

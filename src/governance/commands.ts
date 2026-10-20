@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import type { GovernanceCommand, GovernanceCommandV2, GovernanceCommandV3, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernancePolicyDataV1, GovernancePolicyDataV2, GovernancePolicyDataV3, GovernanceRoleAssignmentV2, GovernanceRoleAssignmentV3 } from './types'
 import { genericV2AssignmentSurfaceIssue } from './assignmentSurface'
+import { aiPdmRoleSelectable } from './aiPdmRoleSchema'
+import { historicalAiPdmRoleSnapshotMatches } from './aiPdmCatalog'
 import { assertValidDocument, GovernanceValidationError, validatePolicyData, validatePolicyDataV2, validatePolicyDataV3 } from './validation'
 
 export function canonicalJson(value: unknown) { return JSON.stringify(value) }
@@ -77,6 +79,12 @@ function replaceByIdV2<T extends { id: string }>(items: T[], value: T) { const i
 function removeGrantV2(data: GovernancePolicyDataV2, roleId: string, permissionId: string) { return data.rolePermissionGrants.filter((grant) => !(grant.roleId === roleId && grant.permissionId === permissionId)) }
 
 function assertAssignmentLifecycleCommand(document: GovernanceDocumentV2 | GovernanceDocumentV3, command: GovernanceCommandV2 | GovernanceCommandV3, source: Parameters<typeof validatePolicyDataV2>[1], catalogs: NonNullable<Parameters<typeof validatePolicyDataV2>[2]>) {
+  if((command.type==='UPSERT_ROLE_ASSIGNMENT'&&command.value.status==='active')||command.type==='UPSERT_ROLE_DELEGATION'){
+    if(command.value.applicationId==='ai-pdm'){
+      const catalog=catalogs.find(value=>value.applicationId==='ai-pdm'),role=catalog?.roles.find(value=>value.stableRoleId===command.value.roleId)
+      if(!role||!aiPdmRoleSelectable(role))throw new GovernanceValidationError([{code:'EXTERNAL_ROLE_UNASSIGNABLE',path:'roleAssignments',message:'只能新增使用中且可選的角色指派或代理。'}])
+    }
+  }
   if (command.type !== 'RESTORE_ROLE_ASSIGNMENT' && command.type !== 'REMOVE_ROLE_ASSIGNMENT') return
   const assignment = document.draft.roleAssignments.find((value) => value.id === command.id)
   const deny = (code: string, message: string): never => { throw new GovernanceValidationError([{ code, path: 'roleAssignments', message }]) }
@@ -89,7 +97,11 @@ function assertAssignmentLifecycleCommand(document: GovernanceDocumentV2 | Gover
     if (assignment.validTo !== null && Date.parse(assignment.validTo) <= Date.now()) deny('ASSIGNMENT_EXPIRED', '指派已到期，請新增有效期間的指派。')
     if (source && !source.state.employees.some((employee) => employee.id === assignment.employeeId && employee.status === 'active')) deny('EMPLOYEE_NOT_ACTIVE', '停用員工不能啟用角色指派。')
     if (assignment.applicationId === 'orgmaster' && !document.draft.applicationRoles.some((role) => role.id === assignment.roleId && role.status === 'active')) deny('REFERENCE_NOT_FOUND', '角色已停用，無法啟用指派。')
-    if (assignment.applicationId === 'ai-pdm' && assignment.catalogVersion !== catalogs.find((catalog) => catalog.applicationId === 'ai-pdm')?.catalogVersion) deny('EXTERNAL_CATALOG_STALE', '角色目錄已更新，請新增使用目前目錄的指派。')
+    if(assignment.applicationId==='ai-pdm'){
+      const catalog=catalogs.find(value=>value.applicationId==='ai-pdm'),role=catalog?.roles.find(value=>value.stableRoleId===assignment.roleId)
+      if(!role||!aiPdmRoleSelectable(role))deny('EXTERNAL_ROLE_UNASSIGNABLE','角色已停用或僅保留舊指派，不能恢復。')
+      if(assignment.catalogVersion!==catalog?.catalogVersion&&!historicalAiPdmRoleSnapshotMatches(assignment,role,catalogs))deny('EXTERNAL_CATALOG_STALE','無法驗證原指派的歷史身份。')
+    }
   }
 }
 
@@ -104,7 +116,8 @@ export function governanceV2CommandSurfaceIssue(document: GovernanceDocumentV2, 
   const roleId = assignment?.roleId ?? delegation?.roleId
   if (!applicationId || !roleId) return null
   const catalogRole = applicationId === 'ai-pdm' ? catalogs.find((catalog) => catalog.applicationId === 'ai-pdm')?.roles.find((role) => role.stableRoleId === roleId) : undefined
-  return genericV2AssignmentSurfaceIssue(applicationId, { stableRoleId: roleId, code: assignment?.roleCodeSnapshot ?? catalogRole?.code ?? '' }, catalogRole)
+  const reducing=['REVOKE_ROLE_ASSIGNMENT','REMOVE_ROLE_ASSIGNMENT','REVOKE_ROLE_DELEGATION'].includes(command.type)
+  return genericV2AssignmentSurfaceIssue(applicationId, { stableRoleId: roleId, code: assignment?.roleCodeSnapshot ?? catalogRole?.code ?? '' }, reducing&&catalogRole?{...catalogRole,status:'active'}:catalogRole)
 }
 
 export function applyGovernanceCommandV2(document: GovernanceDocumentV2, command: GovernanceCommandV2, source?: Parameters<typeof validatePolicyDataV2>[1], catalogs: Parameters<typeof validatePolicyDataV2>[2] = []): CommandApplyResultV2 {
@@ -193,7 +206,8 @@ export function applyGovernanceCommandV3(
   const applicationId = assignment?.applicationId ?? delegation?.applicationId
   if (roleId && applicationId) {
     const catalogRole = applicationId === 'ai-pdm' ? catalog?.roles.find((role) => role.stableRoleId === roleId) : undefined
-    const surfaceIssue = genericV2AssignmentSurfaceIssue(applicationId, { stableRoleId: roleId, code: assignment?.roleCodeSnapshot ?? catalogRole?.code ?? '' }, catalogRole)
+    const reducing=['REVOKE_ROLE_ASSIGNMENT','REMOVE_ROLE_ASSIGNMENT','REVOKE_ROLE_DELEGATION'].includes(command.type)
+    const surfaceIssue = genericV2AssignmentSurfaceIssue(applicationId, { stableRoleId: roleId, code: assignment?.roleCodeSnapshot ?? catalogRole?.code ?? '' }, reducing&&catalogRole?{...catalogRole,status:'active'}:catalogRole)
     if (surfaceIssue) throw new GovernanceValidationError([{ code: surfaceIssue, path: delegation ? 'roleDelegations' : 'roleAssignments', message: surfaceIssue === 'PRIVILEGED_ASSIGNMENT_SURFACE_REQUIRED' ? '特權角色必須使用專用治理介面' : 'catalog role policy不完整或矛盾' }])
   }
 

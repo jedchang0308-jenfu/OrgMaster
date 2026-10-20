@@ -180,6 +180,10 @@ export interface ExternalRoleCatalogRoleV1 {
   delegationAllowed?: boolean
   assignmentTier?: 'app_admin' | 'cross_app_override'
   unassignableReason?: 'INTEGRATION_METADATA_REQUIRED'
+  permissionRoleId?: string
+  presentationName?: string
+  presentationOrder?: number
+  assignmentDisposition?: 'selectable' | 'legacy-only' | 'hidden-protected'
 }
 
 export interface ExternalRoleCatalogSnapshotV1 {
@@ -193,6 +197,22 @@ export interface ExternalRoleCatalogSnapshotV1 {
   validationState: ExternalRoleCatalogState
   effectState: 'not-synchronized'
   roles: ExternalRoleCatalogRoleV1[]
+  publicationFormat?: 'dynamic-policy-v1'
+  canonicalizationVersion?: 'jenfu.canonical-json.v1'
+  roleSchemaId?: 'ai-pdm.role-schema.flexible.v2'
+  roleProfileSchemaId?: 'ai-pdm.role-profile-schema.v1'
+  activationGeneration?: string
+  baselineRoleIdentityHash?: string
+  roleIdentityHash?: string
+  protectedPolicyHash?: string
+  registryHash?: string
+  roleProfileHash?: string
+}
+
+export interface GovernanceExpectedCatalogV1 {
+  catalogVersion: string
+  catalogSha256: string
+  activationGeneration: string
 }
 
 export interface GovernanceRoleAssignmentV2 {

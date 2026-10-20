@@ -18,10 +18,9 @@ PR135 已 merge、官方 master CI PASS；首次正式 rotation 先在 build rea
 
 [來源與映像依賴契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018) → [受控工具 rotation／一般發布](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018) → [本輪任務](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)。PR134 已 merge；續授權僅 OrgMaster 補齊 source-bound runner image-only plan／完整75地址證據與原 ten-stage ordinary release。新增 `test:dev-040:tool-rotation` 納入 required Source QC；正式 rotation／發布／postverify 仍待本輪 provider evidence，維持零 DDL、資料／grant／IAM／Secret／跨專案限制。
 
-## DEV-058 B 方案動態角色與集中指派（2026-10-12）
+## DEV-058 B 方案動態角色與集中指派（2026-10-21）
 
-2026-10-19 current：[原生任務](dev_task.md#dev-058-federated-role-catalog-central-assignment) → [SPEC §0](specs/DEV-058-federated-role-catalog-central-assignment.md#0-本輪可獨立交付切片)／[QA §6](qa/DEV-058-dynamic-role-assignment-validation-plan.md#6-本輪局部切片驗證)／[ADR-007](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。撤權及九身份內容版本相容已本機實作；完整dynamic產品與QA24 whole未完成。consumer相容草案13欄、不逐版固定核可PDM registryHash，必要hash／identity／scope／protected與首次rollout證據維持。
-
+本機實作已完成：OrgMaster dynamic current/history reader、assignment CAS/UI、migration 034與14欄compatibility_v2；AI-PDM DEV-123提供35欄producer、editor/API/UI與真實vector。固定入口OrgMaster 28 PASS／1 SKIP、AI-PDM 69 PASS＋Node 3 PASS，兩邊DB boundary及build通過。migration未套用，NOT_READY/DISABLED維持；完整QA24/52、原生PG、正常browser、L4及首次啟用待辦。入口：[SPEC §11](specs/DEV-058-federated-role-catalog-central-assignment.md#11-2026-10-21-本機實作與證據)／[QA §7](qa/DEV-058-dynamic-role-assignment-validation-plan.md#7-2026-10-21-dynamic-consumer本機證據)／[ADR-007](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。
 ## DEV-037 已撤銷指派操作（2026-10-12）
 
 [啟用／刪除契約與結果](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-12-已撤銷指派操作目前本地切片) → [原生切片](dev_task.md#2026-10-12-已撤銷指派操作切片)。ID-only restore 保留 scope／period／V3 provenance，revoked-only confirmed removal 只移出草稿、保留 history／audit；既有 manage／workspace／mobile／CAS／publish gates。76 個唯一聚焦案例、final build、native middleware／isolated persistence 與桌面／手機 CUA PASS，產物=`output/playwright/dev037-assignment-actions-20261012/`；`Local Targeted QC Passed / Production Not Deployed`，不擴張 Principal／position／financial owner 或 sibling scope，不改歷史完成率。

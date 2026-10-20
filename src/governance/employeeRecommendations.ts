@@ -1,4 +1,5 @@
 import type { OrgDirectoryState } from '../types'
+import { aiPdmRoleSelectable } from './aiPdmRoleSchema'
 import type { ExternalRoleCatalogRoleV1, GovernanceRoleAssignmentV2, GovernanceScopeV1 } from './types'
 
 export type EmployeeRecommendationRequest = {
@@ -44,7 +45,7 @@ export type RecommendationPosition = {
 export type RecommendationMatch = { positionId: string; dutyIds: string[] }
 
 export function employeeRecommendationAllowed(role: ExternalRoleCatalogRoleV1 | undefined) {
-  return Boolean(role && role.status === 'active' && role.assignable && role.recommendationAllowed === true
+  return Boolean(role && aiPdmRoleSelectable(role) && role.recommendationAllowed === true
     && role.subjectKind === 'employee' && role.code !== 'system_admin' && role.code !== 'external_specialist')
 }
 
