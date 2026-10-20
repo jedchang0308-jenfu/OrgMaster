@@ -142,7 +142,7 @@ OrgMaster035新增 ai-pdm.role-policy-manager.v1 manifest 與兩個contract函�
 
 ### 本輪續接（2026-10-21，0254）
 
-本機核心整合已驗證，整體 DEV 仍 In Progress／正式 rollout disabled。
+本輪本機可整合實作目標已達成；DEV-058／DEV-123整案仍 In Progress／正式 rollout disabled。
 
 | 現行入口 | 實際結果與證據範圍 |
 |---|---|
@@ -150,7 +150,9 @@ OrgMaster035新增 ai-pdm.role-policy-manager.v1 manifest 與兩個contract函�
 | AI-PDM test:dev-123:contracts | 48檔401 PASS＋Node6 PASS；typecheck／route map亦PASS，真實v7 vector及35／14欄契約一致 |
 | Build／DB boundary | PDM0227 isolated build PASS（126頁、artifact/primary/cleanup=true，主SQLite原本不存在且仍不存在、容量lease已釋放）；OrgMaster final audit-id build PASS；另有受影響governance store/API/command三檔32 PASS；最終staged DB boundary PASS（OrgMaster25／AI-PDM26 governed files），diff/cached diff check均PASS |
 | 隔離PG18 | actual PDM service create/save/preview/apply、同ID併發／重播、draft CAS、stale base與末端audit故障rollback PASS；actual OrgMaster decoder／v2-fenced指派與發布／PDM evaluator完整角色生命週期PASS |
-| Targeted browser | PDM role editor actual component/mock API：10 checks、27 screenshots；share actual page/mock API：4 cases、4 screenshots，1440/390無console error／水平overflow。正常登入／HTTP全旅程不在此主張內 |
+| Targeted browser | OrgMaster actual GovernanceCenter＋adapter/mock API：8 checks、9 screenshots（自訂角色、普通配人隔離system_admin、expectedCatalog tuple、inactive可撤銷、390唯讀與1440/390無overflow）；PDM role editor：10 checks、27 screenshots，share page：4 cases、4 screenshots。正常登入／HTTP全旅程不在此主張內 |
+
+OrgMaster畫面直接證據：實作工作樹 output/qa/dev-058/ui-targeted-20261021/ui-targeted-results.json，使用actual consumer驗證frozen v7與domain-builder inactive fixture；原harness失敗log保留。
 
 Native直接證據：OrgMaster實作工作樹 output/qa/dev-058/native-pg-bilateral-audit-id-20261021/report.json（最新共用append guard與最新PDM主線後重驗）。正常domain命令完成PDM新增角色→OrgMaster任用→PDM停用且立即不授權（Org任用歷史保留）→Org撤銷→PDM恢復且不復活任用→Org明確恢復，PDM才重新允許；最後generation=3。任用寫入走actual applyDraftCommand／publishGovernance與identity-fenced v2 writer，沒有用owner DML直接改測試中的任用。初始化workspace／governance／READY／ENABLED是明示owner fixture，Platform auth-state是stub、session為合成；不是正常HTTP／登入browser／Platform／PG17 release／production proof。先前八次執行保留於 native-pg-bilateral-20261021-final/report.json；最新第9次因harness缺PDM_DATA_DIR而失敗，第10次只補task-owned資料目錄後PASS，沒有為此改產品。原始log、實際來源hash及兩個PID/start token／port／task root清理readback均已保存。
 
