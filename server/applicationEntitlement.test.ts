@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { issuerFingerprintSha256, principalFingerprintSha256 } from '../src/governance/identityAdmission'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { readFinancialRoleCatalog } from './financialRoleCatalogRepository'
-import { ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, readGovernanceStore, setActivePolicy } from './orgmasterGovernanceStore'
+import { appendGovernanceAudit, ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, publishGovernance, readGovernanceStore, setActivePolicy } from './orgmasterGovernanceStore'
+import { GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
 import { previewFinancialManagementGrant, publishFinancialManagementGrant } from './applicationManagementGrantStore'
 import { previewFinancialRoleAssignment, publishFinancialRoleAssignment } from './applicationRoleAssignmentStore'
 import { assertFinancialAuthority, FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH } from './applicationEntitlementCommon'
@@ -13,6 +14,7 @@ import { FINANCIAL_CATALOG_VERSION } from '../src/governance/financialCatalog'
 import { readApplicationRoleCatalogs } from './applicationRoleCatalogRegistry'
 import { buildOrganizationSnapshot, validateDocumentV3 } from '../src/governance/validation'
 import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
+import { storedGovernanceCatalogs } from './governanceReduction'
 
 const roots: string[] = []
 
@@ -39,13 +41,18 @@ async function writeDocument(root: string, document: Awaited<ReturnType<typeof r
     const source = await loadOrganizationSource(root)
     const { basePolicyVersionId: _base, updatedAt: _updated, ...policy } = structuredClone(document.draft)
     const id = 'published-fixture'
-    document.publishedVersions.push({ kind: 'assignment-governance-v3', id, versionNumber: 1,
-      publishedAt: new Date().toISOString(), publishedByPrincipalId: 'fixture', publishReason: 'fixture',
-      snapshotHash: 'fixture', effectState: 'not-synchronized', policy,
+    const payload = { kind: 'assignment-governance-v3' as const, effectState: 'not-synchronized' as const, policy,
       externalRoleCatalogs: [readAiPdmRoleCatalog(), await readFinancialRoleCatalog('valid')],
-      organizationSnapshot: buildOrganizationSnapshot(source) })
+      organizationSnapshot: buildOrganizationSnapshot(source) }
+    const snapshotHash = publicationSnapshotHash(payload)
+    document.publishedVersions.push({ ...payload, id, versionNumber: 1,
+      publishedAt: new Date().toISOString(), publishedByPrincipalId: 'fixture', publishReason: 'fixture',
+      hashFormat: GOVERNANCE_PUBLICATION_HASH_FORMAT, snapshotHash })
     document.activePolicyVersionId = id
     document.draft.basePolicyVersionId = id
+    document.auditEvents = appendGovernanceAudit(document, { commandId: 'fixture-seed', reason: 'fixture', type: 'PUBLISH_ASSIGNMENTS' },
+      { principalId: 'fixture', employeeId: null, issuer: 'fixture', subject: 'fixture', bootstrap: true },
+      { action: 'PUBLISH_ASSIGNMENTS', entityType: 'assignmentVersion', entityId: id, beforeHash: null, afterHash: snapshotHash }).auditEvents
   }
   await writeFile(getGovernancePaths(root).current, `${JSON.stringify(document, null, 2)}\n`)
 }
@@ -78,8 +85,20 @@ describe('DEV-039 generic Financial entitlement v2', () => {
     expect(persisted.document.draft.roleAssignments).toContainEqual(expect.objectContaining({ employeeId: targetEmployeeId, applicationId: 'financial-management-system', roleId: 'role-finance-staff', status: 'active' }))
     expect(persisted.document.publishedVersions.at(-1)?.externalRoleCatalogs.some((catalog) => catalog.applicationId === 'financial-management-system')).toBe(true)
     expect(persisted.document.auditEvents.some((event) => event.commandId === 'dev039-role-assignment-1')).toBe(true)
+    expect(storedGovernanceCatalogs(persisted.document)).not.toBeNull()
+    expect(persisted.document.auditEvents.find(event => event.id === receipt.auditReference)?.entityType).toBe('applicationRoleAssignment')
+    expect(persisted.document.auditEvents.filter(event => event.commandId === receipt.commandId)).toHaveLength(1)
+    expect(new Set(persisted.document.auditEvents.map(event => event.commandId)).size).toBe(persisted.document.auditEvents.length)
     expect((await publishFinancialRoleAssignment(root, actor, { ...input, commandId: 'dev039-role-assignment-1', requestHash: preview.requestHash, previewHash: preview.previewHash })).replayed).toBe(true)
     const latest = await readGovernanceStore(root)
+    const collisionInput = { ...input, expectedGovernanceRevision: latest.revision }
+    const collisionPreview = await previewFinancialRoleAssignment(root, actor, collisionInput)
+    const internalCommandId = latest.document.auditEvents.find(event => event.entityType === 'assignmentVersion' &&
+      event.entityId === latest.document.activePolicyVersionId)!.commandId
+    await expect(publishFinancialRoleAssignment(root, actor, { ...collisionInput, commandId: internalCommandId,
+      requestHash: collisionPreview.requestHash, previewHash: collisionPreview.previewHash }))
+      .rejects.toMatchObject({ code: 'COMMAND_ID_REUSED' })
+    expect((await readGovernanceStore(root)).revision).toBe(latest.revision)
     await expect(previewFinancialRoleAssignment(root, actor, { ...input, expectedGovernanceRevision: latest.revision, expectedCatalogPayloadHash: 'f'.repeat(64) })).rejects.toMatchObject({ code: 'CATALOG_BINDING_CONFLICT' })
   })
 
@@ -108,6 +127,10 @@ describe('DEV-039 generic Financial entitlement v2', () => {
     expect(receipt).toMatchObject({ receiptStatus: 'applied', replayed: false })
     const persisted = await readGovernanceStore(root)
     expect(persisted.document.draft.managementGrants.filter((grant) => grant.applicationId === 'financial-management-system' && grant.status === 'active')).toHaveLength(2)
+    expect(storedGovernanceCatalogs(persisted.document)).not.toBeNull()
+    expect(persisted.document.auditEvents.find(event => event.id === receipt.auditReference)?.entityType).toBe('applicationManagementGrant')
+    expect(persisted.document.auditEvents.filter(event => event.commandId === receipt.commandId)).toHaveLength(1)
+    expect(new Set(persisted.document.auditEvents.map(event => event.commandId)).size).toBe(persisted.document.auditEvents.length)
     expect((await publishFinancialManagementGrant(root, actor, { ...input, commandId: 'dev039-grant-1', requestHash: preview.requestHash, previewHash: preview.previewHash })).replayed).toBe(true)
     const latest = await readGovernanceStore(root)
     await expect(previewFinancialManagementGrant(root, actor, { ...input, expectedGovernanceRevision: latest.revision, operations: [{ ...input.operations[0], principalId: actor.principalId, employeeId: adminEmployeeId }] })).rejects.toMatchObject({ code: 'SELF_GRANT_FORBIDDEN' })
@@ -179,11 +202,17 @@ describe('DEV-039 generic Financial entitlement v2', () => {
     expect(() => assertFinancialAuthority(current.document, actor, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH)).not.toThrow()
     const prior = current.document.publishedVersions[0]
     if (prior.kind !== 'assignment-governance-v3') throw Error('fixture')
-    const withdrawn = { ...structuredClone(prior), id: 'published-withdrawal', versionNumber: 2 }
-    withdrawn.policy.roleAssignments = withdrawn.policy.roleAssignments.filter(assignment => assignment.applicationId === 'orgmaster')
-    withdrawn.policy.managementGrants = []
-    current.document.publishedVersions.push(withdrawn)
-    await writeDocument(root, current.document)
+    // Publish a real audit-bound target, then simulate a stale editable draft.
+    const withdrawalDraft = structuredClone(current.document)
+    withdrawalDraft.draft.roleAssignments = withdrawalDraft.draft.roleAssignments.filter(assignment => assignment.applicationId === 'orgmaster')
+    withdrawalDraft.draft.managementGrants = []
+    await writeDocument(root, withdrawalDraft)
+    const prepared = await readGovernanceStore(root)
+    const withdrawal = await publishGovernance(root, prepared.revision, 'prepare-withdrawal', 'prepare Financial withdrawal', source.workspaceVersionId, actor)
+    const withdrawn = withdrawal.document.publishedVersions.find(version => version.id === withdrawal.versionId)!
+    withdrawal.document.activePolicyVersionId = prior.id
+    withdrawal.document.draft = current.document.draft
+    await writeDocument(root, withdrawal.document)
     const beforeActivation = await readGovernanceStore(root)
     await setActivePolicy(root, beforeActivation.revision, 'activate-withdrawal', 'withdraw Financial', withdrawn.id, actor)
     const active = await readGovernanceStore(root)

@@ -12,6 +12,7 @@ import { applyDraftCommand, getGovernancePaths, loadOrganizationSource, publishG
 import { createOrgmasterGovernanceMiddleware } from './orgmasterGovernanceApi'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
+import { canonicalJson, sha256, GOVERNANCE_PUBLICATION_HASH_FORMAT } from '../src/governance/commands'
 
 const fault = vi.hoisted(() => ({ offline: false, reads: 0 }))
 vi.mock('./applicationRoleCatalogRegistry', async importOriginal => {
@@ -63,6 +64,64 @@ async function fixture(withRevokedDelegation = false) {
 }
 
 describe('DEV-058 catalog-independent reduction', () => {
+  it('retains audit-bound provenance after jsonb reorders nested object keys', async () => {
+    const { root, source, actor, published } = await fixture()
+    const reordered = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(reordered)
+      if (!value || typeof value !== 'object') return value
+      return Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reordered(item)]))
+    }
+    const document = reordered(published.document) as typeof published.document
+    const active = document.publishedVersions.find(version => version.id === document.activePolicyVersionId)!
+    expect(active.kind === 'assignment-governance-v3' && active.hashFormat).toBe(GOVERNANCE_PUBLICATION_HASH_FORMAT)
+    expect(storedGovernanceCatalogs(document)).not.toBeNull()
+    await writeFile(getGovernancePaths(root).current, JSON.stringify(document))
+    fault.offline = true; fault.reads = 0
+    const read = await readGovernanceStore(root)
+    const draft = await applyDraftCommand(root, read.revision,
+      { type: 'REVOKE_ROLE_ASSIGNMENT', id: 'rd', commandId: 'jsonb-revoke', reason: 'withdraw after jsonb read' }, actor)
+    await publishGovernance(root, draft.revision, 'jsonb-publish', 'publish withdrawal', source.workspaceVersionId, actor)
+    expect(fault.reads).toBe(0)
+  })
+
+  it('keeps exact legacy hash validation and rejects unknown formats or changed content', async () => {
+    const { published } = await fixture()
+    const document = structuredClone(published.document)
+    const active = document.publishedVersions.find(version => version.id === document.activePolicyVersionId)!
+    if (active.kind !== 'assignment-governance-v3') throw Error('test version')
+    const payload = { kind: active.kind, policy: active.policy, externalRoleCatalogs: active.externalRoleCatalogs,
+      organizationSnapshot: active.organizationSnapshot, effectState: active.effectState }
+    const event = document.auditEvents.find(event => event.entityId === active.id)!
+    delete active.hashFormat
+    active.snapshotHash = sha256(canonicalJson(payload)); event.afterHash = active.snapshotHash
+    expect(storedGovernanceCatalogs(document)).not.toBeNull()
+    Object.assign(active, { hashFormat: 'unknown' })
+    expect(storedGovernanceCatalogs(document)).toBeNull()
+    delete active.hashFormat
+    active.externalRoleCatalogs[0].roles[0].displayName = 'changed'
+    expect(storedGovernanceCatalogs(document)).toBeNull()
+  })
+
+  it('preserves unmarked legacy audit hashes and rejects an unknown audit hash format', async () => {
+    const { root, published } = await fixture()
+    const document = structuredClone(published.document)
+    let previousEventHash: string | null = null
+    for (const event of document.auditEvents) {
+      delete event.hashFormat
+      event.previousEventHash = previousEventHash
+      const input = { id: event.id, commandId: event.commandId, commandHash: event.commandHash,
+        occurredAt: event.occurredAt, actorPrincipalId: event.actorPrincipalId, action: event.action,
+        entityType: event.entityType, entityId: event.entityId, reason: event.reason,
+        beforeHash: event.beforeHash, afterHash: event.afterHash, previousEventHash: event.previousEventHash }
+      event.eventHash = sha256(canonicalJson(input)); previousEventHash = event.eventHash
+    }
+    await writeFile(getGovernancePaths(root).current, JSON.stringify(document))
+    await expect(readGovernanceStore(root)).resolves.toBeDefined()
+    Object.assign(document.auditEvents[0], { hashFormat: 'unknown' })
+    await writeFile(getGovernancePaths(root).current, JSON.stringify(document))
+    await expect(readGovernanceStore(root)).rejects.toMatchObject({ code: 'AUDIT_CHAIN_INVALID' })
+  })
+
   it('keeps the normal HTTP workspace visible and permits withdrawal/publish during a catalog outage', async () => {
     const { root, source, actor, published } = await fixture()
     fault.offline = true

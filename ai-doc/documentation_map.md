@@ -20,7 +20,11 @@ PR135 已 merge、官方 master CI PASS；首次正式 rotation 先在 build rea
 
 ## DEV-058 B 方案動態角色與集中指派（2026-10-21）
 
-本機實作已完成：OrgMaster dynamic current/history reader、assignment CAS/UI、migration 034與14欄compatibility_v2；AI-PDM DEV-123提供35欄producer、editor/API/UI與真實vector。固定入口OrgMaster 28 PASS／1 SKIP、AI-PDM 69 PASS＋Node 3 PASS，兩邊DB boundary及build通過。migration未套用，NOT_READY/DISABLED維持；完整QA24/52、原生PG、正常browser、L4及首次啟用待辦。入口：[SPEC §11](specs/DEV-058-federated-role-catalog-central-assignment.md#11-2026-10-21-本機實作與證據)／[QA §7](qa/DEV-058-dynamic-role-assignment-validation-plan.md#7-2026-10-21-dynamic-consumer本機證據)／[ADR-007](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。
+本機核心整合已驗證，整體DEV仍In Progress／正式rollout disabled：OrgMaster固定入口7檔37 PASS／1 SKIP；PDM48檔401＋Node6 PASS，typecheck、route map、兩邊build及DB boundary通過。隔離PG18以actual PDM service、OrgMaster v2-fenced domain命令及PDM evaluator完成新增→任用→停用→撤銷→恢復，並驗證CAS／replay／audit故障rollback；JSONB歷史hash缺陷已修正，raw failures保留。
+
+證據及責任：[SPEC §11](specs/DEV-058-federated-role-catalog-central-assignment.md#11-2026-10-21-本機實作與證據)／[QA §7](qa/DEV-058-dynamic-role-assignment-validation-plan.md#7-2026-10-21-dynamic-consumer本機證據)。目前native使用owner bootstrap／合成session／Platform stub，PDM targeted browser仍用mock API；正常登入HTTP/browser、CG、完整QA24/52及正式首次啟用尚未關閉。正式migration／資料／部署／traffic／IAM／Secret均未操作，source初始NOT_READY/DISABLED保持；不將本機PASS改稱正式或全案驗收。
+
+
 ## DEV-037 已撤銷指派操作（2026-10-12）
 
 [啟用／刪除契約與結果](specs/DEV-037-external-role-catalog-assignment-governance.md#2026-10-12-已撤銷指派操作目前本地切片) → [原生切片](dev_task.md#2026-10-12-已撤銷指派操作切片)。ID-only restore 保留 scope／period／V3 provenance，revoked-only confirmed removal 只移出草稿、保留 history／audit；既有 manage／workspace／mobile／CAS／publish gates。76 個唯一聚焦案例、final build、native middleware／isolated persistence 與桌面／手機 CUA PASS，產物=`output/playwright/dev037-assignment-actions-20261012/`；`Local Targeted QC Passed / Production Not Deployed`，不擴張 Principal／position／financial owner 或 sibling scope，不改歷史完成率。

@@ -7,6 +7,17 @@ import { assertValidDocument, GovernanceValidationError, validatePolicyData, val
 
 export function canonicalJson(value: unknown) { return JSON.stringify(value) }
 export function sha256(value: string) { return createHash('sha256').update(value).digest('hex') }
+export const GOVERNANCE_PUBLICATION_HASH_FORMAT = 'orgmaster.sorted-json.v1' as const
+/** Hash the persisted JSON value independently of jsonb object-key ordering.
+ * Command/audit hashes keep their existing serialization contract. */
+export function publicationSnapshotHash(value: unknown) {
+  const sorted = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(sorted)
+    if (!item || typeof item !== 'object') return item
+    return Object.fromEntries(Object.keys(item).sort().map(key => [key, sorted((item as Record<string, unknown>)[key])]))
+  }
+  return sha256(JSON.stringify(sorted(JSON.parse(JSON.stringify(value)))))
+}
 export function commandHash(command: unknown) { return sha256(canonicalJson(command)) }
 export type CommandApplyResult = { status: 'applied' | 'noop'; document: GovernanceDocumentV1; entityType: string; entityId: string | null; beforeHash: string | null; afterHash: string | null }
 

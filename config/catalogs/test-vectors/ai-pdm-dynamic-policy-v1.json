@@ -3875,7 +3875,7 @@
       "candidateCatalogVersion": "ai-pdm.role-policy.10000000-0000-4000-8000-000000000001",
       "roleSchemaId": "ai-pdm.role-schema.flexible.v2",
       "roleProfileSchemaId": "ai-pdm.role-profile-schema.v1",
-      "registryHash": "fb824e6ddedc5d0590bef6f1bed730bd579d27e11af89b5a8760a5d6a426239c",
+      "registryHash": "c2340c96a64004538b11fd59b1a1c4f03a88779c7db722f583037b4dc6c49869",
       "baselineRoleIdentityHash": "265483921bbdadfdf8933f1d0cdcbebc1b4df42983c84784a7176fdd5f05d55c",
       "roleIdentityHash": "10cb69230ee393a3272da1da321fe3a91b672dc8887bb26107127fec49488e7b",
       "roleProfileHash": "c08943e0a6012810be11c8a34acf7574a4b666d4d2e2bacc56341f153c786e61",
@@ -5827,7 +5827,7 @@
         "role-system-admin": "9b53d29ad637b913b3c34e2ce646203b87a9d02b45a1f566277efd79f5d385c2",
         "role-custom-30000000-0000-4000-8000-000000000001": "d5c85bedece8dda2c0953c818deb2d410ab893e1d35768b70ead5b94ae5304dc"
       },
-      "contentHash": "052d31f1e4e055ab8e71fc7b9c6deb61e830c4fccbd62e12a97f81c209699059"
+      "contentHash": "aaf3e3349f6439c6602a7b381af2c342d2654beb40f4274978ea5669090a03f9"
     }
   }
 ]

@@ -22,8 +22,10 @@
 5. 不增加業務request對OrgMasterHTTP的依賴。Org管理API故障暫停配人；sharedDB／IdP仍是依賴，無本地ACL／stale授權保底。
 6. READ COMMITTED及freshactor／writer fence保持；單操作凍結已驗catalog context，不凍結actor資格／不跨ownercore取鎖。相容於producer允許重疊交易的原provenance任用。
 7. 延用API／命令／audit，把必要tuple／CAS／actor納新hash，結果同交易，舊bytes保持；unknown查原ID同內容重送，不新建命令平台。內部UI/API同批升級，移除自訂讀取協商header與多組未發布封套；外部closed contract仍維持必要版本。
-8. grants v4／manifest與applied029不變；own compatibility_v2一表一view、初始NOT_READY、owner-only，13公開欄（未發布草案；已發布須新版本）對齊DEV-123。移除前版private enablement_binding及新receipt體系，重用既有發布／QC紀錄；peer同日精簡已允許此證據重用，H3仍需實際owner/live consumer紀錄。PDM首次rollout gate不略過，不造READY或豁免真consumer證據。 完整registryHash仍入contentHash，由PDM驗業務語意，不作OrgMaster逐版核可；一般能力變更不更新consumer相容列或部署。
+8. grants v4／manifest與applied029不變；own compatibility_v2一表一view、初始NOT_READY、owner-only，14公開欄（未發布草案；已發布須新版本）對齊DEV-123。移除前版private enablement_binding及新receipt體系，重用既有發布／QC紀錄；peer同日精簡已允許此證據重用，H3仍需實際owner/live consumer紀錄。PDM首次rollout gate不略過，不造READY或豁免真consumer證據。 完整registryHash仍入contentHash，由PDM驗業務語意，不作OrgMaster逐版核可；一般能力變更不更新consumer相容列或部署。
 9. 保留QA24全部ID及目的，改為既有工具、一次真實往返及按影響補驗，不強制固定16檔／四個runner／獨立證據JSON。legacy舊寫入於受控dynamic切換後退場，歷史decoder保留。H1..H5保留完整dynamic交接；本輪只交付已具名授權的本機局部切片，完整產品與正式結果不宣稱完成。
+
+2026-10-21實作持續中：部分consumer/contract與PDM圖號/料號caller已驗，完整兩端尚缺。apply等待後fresh資格已新增OrgMaster versioned fence及當前時點查驗，回歸PASS、原生競爭待驗，涵蓋撤權/quarantine/identity-link與grant期限；現有v4不改、不得跨core。此為DEV058/123本身待辦，非只等DEV121/122結案；具體待辦及證據沿SPEC§11、QA§7。
 
 沿用本ADR，不另建重複決策／審批流程。前版Implementation Ready屬歷史，當前跨owner契約待收斂；不改既有部署、appliedmigrations、immutablehistory、QA分母或原驗證結論。
 

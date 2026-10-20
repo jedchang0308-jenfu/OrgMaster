@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { readApplicationRoleCatalogs } from './applicationRoleCatalogRegistry'
 import { appendGovernanceAudit, commitGovernanceMutation, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
 import { validateFinancialExternalRoleCatalog } from '../src/governance/financialCatalog'
@@ -194,9 +195,13 @@ export async function publishFinancialRoleAssignment(root: string, actor: Govern
     const nextDraft = { ...current.document.draft, roleAssignments: nextRoleAssignments, updatedAt: new Date().toISOString() }
     let document = publishFinancialPolicy(current.document, nextDraft, catalogs, source, actor, request.reason, new Date().toISOString())
     document = appendGovernanceAudit(document, { commandId: request.commandId, reason: request.reason.trim(), type: request.operation }, actor, { action: `financial_role_assignment_${request.operation}`, entityType: 'applicationRoleAssignment', entityId: request.assignmentId ?? null, beforeHash: commandRequestHash(preview.beforeAssignments), afterHash: commandRequestHash(preview.afterAssignments) })
+    const auditReference = document.auditEvents.at(-1)?.id ?? null
+    const publishedVersion = document.publishedVersions.at(-1)!
+    document = appendGovernanceAudit(document, { commandId: randomUUID(), reason: request.reason.trim(), type: 'PUBLISH_ASSIGNMENTS' }, actor,
+      { action: 'PUBLISH_ASSIGNMENTS', entityType: 'assignmentVersion', entityId: publishedVersion.id, beforeHash: null, afterHash: publishedVersion.snapshotHash })
     const receipt: GovernanceCommandReceiptV2 = {
       contractVersion: 'orgmaster.governance-command-receipt.v2', commandId: request.commandId, requestHash: preview.requestHash, previewHash: preview.previewHash,
-      receiptStatus: 'applied', acceptedAt: new Date().toISOString(), terminalAt: new Date().toISOString(), decisionCode: 'COMMAND_APPLIED', auditReference: document.auditEvents.at(-1)?.id ?? null,
+      receiptStatus: 'applied', acceptedAt: new Date().toISOString(), terminalAt: new Date().toISOString(), decisionCode: 'COMMAND_APPLIED', auditReference,
       securityAlertReference: null, sessionRefresh: 'pending', governanceRevision: document.publishedVersions.at(-1)?.id ?? current.revision, replayed: false, attempt: 1,
     }
     document = { ...document, commandReceipts: [...document.commandReceipts, receipt] }

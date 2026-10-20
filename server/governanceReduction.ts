@@ -1,4 +1,4 @@
-import { canonicalJson, sha256 } from '../src/governance/commands'
+import { canonicalJson, sha256, GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
 import { GovernanceValidationError } from '../src/governance/validation'
 import type { GovernanceDocumentV3, GovernancePolicyDataV3, GovernanceRoleAssignmentV3 } from '../src/governance/types'
 
@@ -10,7 +10,10 @@ export function storedGovernanceCatalogs(document: GovernanceDocumentV3, version
   if (!version || version.kind !== 'assignment-governance-v3') return null
   const payload = { kind: version.kind, policy: version.policy, externalRoleCatalogs: version.externalRoleCatalogs,
     organizationSnapshot: version.organizationSnapshot, effectState: version.effectState }
-  if (sha256(canonicalJson(payload)) !== version.snapshotHash ||
+  if (version.hashFormat !== undefined && version.hashFormat !== GOVERNANCE_PUBLICATION_HASH_FORMAT) return null
+  const expectedHash = version.hashFormat === GOVERNANCE_PUBLICATION_HASH_FORMAT
+    ? publicationSnapshotHash(payload) : sha256(canonicalJson(payload))
+  if (expectedHash !== version.snapshotHash ||
     !document.auditEvents.some(event => event.entityId === version.id && event.afterHash === version.snapshotHash)) return null
   return version.externalRoleCatalogs
 }

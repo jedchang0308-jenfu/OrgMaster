@@ -392,6 +392,7 @@ export interface GovernanceMigrationStateV3 extends Omit<GovernanceMigrationStat
 }
 
 export interface GovernanceAuditEventV3 extends GovernanceAuditEventV1 {
+  hashFormat?: 'orgmaster.sorted-json.v1'
   detail?: {
     targetPrincipalAdmissionId: string
     employeeId: string
@@ -418,6 +419,7 @@ export interface GovernanceAssignmentVersionV3 {
   publishedByPrincipalId: string
   publishReason: string
   snapshotHash: string
+  hashFormat?: 'orgmaster.sorted-json.v1'
   effectState: 'not-synchronized'
   policy: GovernancePolicyDataV3
   externalRoleCatalogs: ExternalRoleCatalogSnapshotV1[]

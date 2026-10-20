@@ -214,7 +214,13 @@ export function validateExternalRoleCatalog(snapshot: ExternalRoleCatalogSnapsho
     if (!role.displayName.trim() || !role.code.trim()) add('EXTERNAL_CATALOG_ROLE_INVALID', `roles[${index}]`, 'role code／名稱不可為空')
     if (!role.assignable && !role.unassignableReason) add('EXTERNAL_CATALOG_ROLE_INVALID', `roles[${index}]`, '不可指派角色必須提供原因')
   })
-  if (JSON.stringify(snapshot.roles) !== JSON.stringify(artifact ? metadataRoles(artifact) : compatiblePublication ? metadataRoles(aiPdmCatalogV7Fixture) : [])) add('EXTERNAL_CATALOG_INVALID', 'roles', 'catalog role semantics 不符合 AI-PDM publication')
+  const expectedRoles = artifact ? metadataRoles(artifact) : compatiblePublication ? metadataRoles(aiPdmCatalogV7Fixture) : []
+  // jsonb may reorder object keys; keep role order, exact fields and values fixed.
+  if (snapshot.roles.length !== expectedRoles.length || snapshot.roles.some((role, index) => {
+    const expected = expectedRoles[index]
+    return !expected || Object.keys(role).length !== Object.keys(expected).length ||
+      Object.entries(expected).some(([key, value]) => JSON.stringify(role[key as keyof typeof role]) !== JSON.stringify(value))
+  })) add('EXTERNAL_CATALOG_INVALID', 'roles', 'catalog role semantics 不符合 AI-PDM publication')
   return issues
 }
 
