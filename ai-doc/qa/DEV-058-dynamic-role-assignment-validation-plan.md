@@ -213,3 +213,13 @@ PDM已補submission list/detail/search的canonical group與分頁前過濾、原
 C 槽約13 GiB，Governor `dev058-dev123-auth-http-qa-20261021` 回 EMERGENCY；已依 skill 只讀盤點，沒有可安全執行的清理候選，未繞過。Next/Vite build/runtime compilation 尚未啟動；先前一次容量風險接受不適用此請求。需先釋放空間或指定其他足夠容量的本機磁碟，再重新檢查相同容量請求。普通 source 修改與有界小測試已繼續；新 app source 的完整 build 待驗，不能把舊 build 標成此次修正後 PASS。
 
 正式 migration、部署、正式資料寫入、traffic/IAM/Secret 均未執行。SQL 未改；本次不因文件/SSO修改重跑未變的 migration 或 release executor。
+
+### 本次協作保存與交接
+
+OrgMaster產品修正已保存於 `codex/dev058-dynamic-pdm-consumer` 的 `1f0330915ff3ae2344498226864c6919f49b0d3b`；PDM已保存於 `codex/dev123-role-policy-editor` 的 `7d29b4c4f48b0775c32a8fcf3c97f6d6482d5e39`。兩者都是本機隔離分支，未推送/合併/正式發布。
+
+PDM新增caller修正已收斂：附件delete/restore/preview/upload的canonical parent/model edit、同交易normalized category交給實際write、精確drawing preview路由、conditional model.review選派/target/comparison/最終決策；合法前版引用與退回修改恢復路徑保留。固定入口55檔494 PASS＋Node9 PASS；最後私有接線索引另以Node9及domain/bilateral10重驗，semantic registry hash及SQL086～089不變。PDM final typecheck、staged DB boundary26檔PASS；OrgMaster70 PASS/1 SKIP與typecheckPASS保持。新PDM query未跑原生PG、app完整build仍未執行，不移用歷史證據補成PASS。
+
+完整正常登入與兩端旅程仍未完成，03/04之外的case依本節表維持原缺項。後續先取得非正式SSO/測試帳號與可啟動應用的容量，再沿原固定入口/正常導航完成受阻旅程；真PG競爭、fault/ACL/expiry及實際bytes等剩餘QA按原案例補齊。正式migration、部署、正式資料寫入仍排除。
+
+資源已收尾：兩個probe PID16972/41584均fingerprint absent、54736/50274 listener=0，own Chrome tab已關閉；僅本輪PDM dependency junction已移除且共享target與代表檔保持，九個暫存檔先逐bytes保存後移除；Governor session已ended，兩筆runtime released。保留兩個工作樹與ignored output證據供續接，不清其他session資源。
