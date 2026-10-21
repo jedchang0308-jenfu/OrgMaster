@@ -114,6 +114,45 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(accepted.headers.get('set-cookie')).toContain('Max-Age=3600')
   })
 
+  it('uses and clears only the local transaction cookie for loopback HTTP development', async () => {
+    const value=runtime()
+    if (!value.configResult.configured) throw new Error('missing fixture config')
+    value.configResult.config.publicBaseUrl=new URL('http://127.0.0.1:5000')
+    value.configResult.config.secureCookie=false
+    const deps=dependencies('on')
+    deps.environment={...deps.environment,NODE_ENV:'test'}
+    const base=await listen(value,deps)
+    const start=await fetch(`${base}/api/auth/jenfu-sso/start`,{redirect:'manual'})
+    const cookie=start.headers.get('set-cookie')!
+    expect(cookie).toMatch(/^orgmaster_sso_tx=/u)
+    expect(cookie).toContain('Path=/; HttpOnly; SameSite=Lax')
+    expect(cookie).not.toContain('Secure')
+    expect(cookie).not.toContain('__Host-')
+    const location=new URL(start.headers.get('location')!)
+    const callback=new URL('/api/auth/jenfu-sso/callback',base)
+    callback.search=new URLSearchParams({code:'opaque-code',state:location.searchParams.get('state')!,iss:`${brokerOrigin}/api/sso`}).toString()
+    const accepted=await fetch(callback,{redirect:'manual',headers:{cookie:cookie.split(';')[0]}})
+    expect(accepted.status).toBe(303)
+    expect(accepted.headers.get('set-cookie')).toContain('orgmaster_sso_tx=; Max-Age=0')
+    expect(value.sessions!.create).toHaveBeenCalledOnce()
+  })
+
+  it('does not accept the local cookie name on the HTTPS handoff lane',async()=>{
+    const value=runtime(),deps=dependencies('on'),base=await listen(value,deps)
+    const start=await fetch(`${base}/api/auth/jenfu-sso/start`,{redirect:'manual'})
+    const cookie=start.headers.get('set-cookie')!
+    expect(cookie).toMatch(/^__Host-jenfu_sso_tx=/u)
+    expect(cookie).toContain('; Secure')
+    expect(cookie).not.toContain('Domain=')
+    const location=new URL(start.headers.get('location')!)
+    const callback=new URL('/api/auth/jenfu-sso/callback',base)
+    callback.search=new URLSearchParams({code:'opaque-code',state:location.searchParams.get('state')!,iss:`${brokerOrigin}/api/sso`}).toString()
+    const rejected=await fetch(callback,{redirect:'manual',headers:{cookie:cookie.split(';')[0].replace('__Host-jenfu_sso_tx=','orgmaster_sso_tx=')}})
+    expect(rejected.status).toBe(400)
+    expect(deps.serviceToken).not.toHaveBeenCalled()
+    expect(value.sessions!.create).not.toHaveBeenCalled()
+  })
+
   it('rejects callback when original authentication time is at or before revokedBefore', async () => {
     const value = runtime()
     vi.mocked(value.epochs!.readPrincipalState).mockResolvedValue({ authEpoch: 7, revokedBefore: '2026-09-17T02:56:00.000Z' })

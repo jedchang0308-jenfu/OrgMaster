@@ -72,6 +72,8 @@ Immutable intent=`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/O
 
 ## DEV-058 B 方案動態角色與集中指派（2026-10-21）
 
+**正常旅程續接：** 本機 HTTP SSO transaction Cookie 問題已修正並由真 Chrome before/after 驗證；HTTPS 安全 cookie 與 callback 身分 guard 保持。既有固定入口已含 SSO 回歸，9檔70 PASS／1 SKIP；消費端另補真 producer 64角色上限與19種非法身份/alias/profile負例。QA逐案狀態見[QA §8](qa/DEV-058-dynamic-role-assignment-validation-plan.md#8-2026-10-21-正常旅程續接與逐案狀態)，03/04關閉、其餘保留實際缺項。非正式SSO設定/帳號未提供，C槽約13GiB且Governor EMERGENCY禁止編譯；正常登入雙端與此次app修正後build仍待驗。PDM附件/模型審核caller缺口由DEV-123同範圍修正，未執行正式migration、部署或資料寫入。下段0254的已完成本機切片及build為當時證據，不改稱新source的完整驗收。
+
 本輪本機可整合實作目標完成；DEV整案仍In Progress／正式rollout disabled：OrgMaster固定入口7檔37 PASS／1 SKIP；PDM48檔401＋Node6 PASS，typecheck、route map、兩邊build及DB boundary通過。隔離PG18以actual PDM service、OrgMaster v2-fenced domain命令及PDM evaluator完成新增→任用→停用→撤銷→恢復，並驗證CAS／replay／audit故障rollback；JSONB歷史hash與commandId重用缺陷已修正，raw failures保留。OrgMaster targeted browser 8 checks／9 screenshots通過（actual component＋mock API）；受影響治理回歸另32 PASS。
 
 證據及責任：[SPEC §11](specs/DEV-058-federated-role-catalog-central-assignment.md#11-2026-10-21-本機實作與證據)／[QA §7](qa/DEV-058-dynamic-role-assignment-validation-plan.md#7-2026-10-21-dynamic-consumer本機證據)。目前native使用owner bootstrap／合成session／Platform stub，PDM targeted browser仍用mock API；正常登入HTTP/browser、CG、完整QA24/52及正式首次啟用尚未關閉。正式migration／資料／部署／traffic／IAM／Secret均未操作，source初始NOT_READY/DISABLED保持；不將本機PASS改稱正式或全案驗收。

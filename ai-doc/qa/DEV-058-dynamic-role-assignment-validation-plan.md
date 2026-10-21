@@ -3,9 +3,9 @@
 修訂：2026-10-21。Owner：`ORGMASTER/DEV-058`；來源：`AIPDM/DEV-123#orgmaster-compatibility`。
 依據：[唯一SPEC](../specs/DEV-058-federated-role-catalog-central-assignment.md)；對齊grouped-v2／七日常角色／九歷史身份／alias及compatibility_v2。
 狀態：`Local Contract Slice Verified / Full Case Closure Pending`。2026-10-21本機結果見§7；24案仍需依各自必要層級關閉，不等同完整dynamic驗收。
-**保留QA058-01..24原ID及安全／功能目的；完整case closure仍0/24，全部維持NOT_RUN。** §7的單元/契約斷言只作部分層級證據，不提前填整案PASS；AI-PDM固定52案獨立，QA123-29/30/44/52的真consumer要求仍有效。
+**保留QA058-01..24原ID及安全／功能目的；目前完整case closure為2/24（03、04），其餘逐案狀態見§8。** 已執行的部分證據記PARTIAL，尚未執行的必要時序記NOT_RUN；AI-PDM固定52案獨立，QA123-29/30/44/52的真consumer要求仍有效。
 
-本版取代四個專用runner、固定16檔、獨立versioned evidence JSON及重複逐層證明的前置。使用同一次可信操作支援多個案例，補受影響部分；沒有該層證據的案例仍不能PASS。2026-10-19文件階段沒有產品操作；2026-10-21已執行本機契約/單元、build與DB boundary，仍沒有原生PG migration、browser、故障注入或L4，且不稱獨立QC。
+本版取代四個專用runner、固定16檔、獨立versioned evidence JSON及重複逐層證明的前置。使用同一次可信操作支援多個案例，補受影響部分；沒有該層證據的案例仍不能PASS。2026-10-19文件階段沒有產品操作；後續本機原生PG、browser與故障注入的實際範圍見§7／§8，不稱正常登入、正式環境或獨立QC。
 
 ## 1. 最少前置與資料
 
@@ -29,7 +29,7 @@
 
 ## 3. 保留的24案
 
-所有案例的完整關閉狀態均NOT_RUN；「U/PG/UI/DUAL」是各主張所需層級。§7已取得的U/contract證據可被後續案例重用，但必要PG/UI/DUAL主張未被證明時仍不計整案完成。
+「U/PG/UI/DUAL」是各主張所需層級；目前逐案關閉狀態見§8。已取得的有效證據可重用，但必要PG/UI/DUAL主張未被證明時仍不計整案完成。
 
 | ID | 操作／資料 | 預期與失敗判定 | 必要證據 |
 |---|---|---|---|
@@ -163,3 +163,53 @@ Native直接證據：OrgMaster實作工作樹 output/qa/dev-058/native-pg-bilate
 PDM已補submission list/detail/search的canonical group與分頁前過濾、原檔／ZIP逐成員view+download及storage前後重驗、numbering export讀取的實際內容群組、Preview／recognition完整verified initiator及worker當前Principal/session/grant／實際來源重驗。088保留舊job NULL且提醒重試；089將transfer metadata綁定新registry hash。Org035與PDM086～089只套於task-owned PG18，正式migration／資料／部署／traffic／IAM／Secret均未操作；source初始仍NOT_READY/revision0及DISABLED/generation0。
 
 尚未關閉：正常登入HTTP/browser旅程、20action全部caller與CG01/02逐案驗收、QA24/52完整case closure、required CI及另行授權的正式首次切換。上述局部PASS只支持實際層級；不以mock browser或native synthetic session冒充正式L4。DEV121/122最新遠端main=02239aaeaac82702bbc8c4d58b38d47fca051afe已合入PDM分支540a0013b3bc8dbb6f4751f15d87494c159126f5；這次主線差異只有兩個release-recovery程式／測試，app／worker／SQL未變。任務120條path在合併未改，0227 build的app輸入維持，無須重建；先前77檔raw SHA保存紀錄仍是歷史證據。同範圍待驗不推成外部任務阻塞。
+
+## 8. 2026-10-21 正常旅程續接與逐案狀態
+
+本次沿用既有隔離分支與有效證據，不操作正式環境。下表的 PASS 只代表該案原定必要主張已取得證據，不表示整案 DEV、正常登入或正式驗收完成；PARTIAL 不是 NOT_RUN，也不計為完整關閉。
+
+共用證據：
+
+- **U**：固定 `test:dev-058:contracts` 與原有回歸；本次補 `server/aiPdmDynamicRoleCatalog.test.ts`，含實際 PDM builder 產生的 64 身份正例、19 種獨立非法 identity/scope/profile/alias/protected 負例，共 26 PASS。新邊界向量的 provenance 記 producer source hash，不改原 v5/v6/v7 vectors。
+- **N**：§7 的 `native-pg-bilateral-audit-id-20261021/report.json` 及原生 manager/schema/ACL 報告。可重用未改的 SQL、policy service 與角色生命週期主張；合成 session、Platform stub、bootstrap owner fixture 的限制保持，不改稱正常登入。
+- **V**：§7 的 targeted browser 報告；使用真實元件、mock API，不能完成正常導航、真 SSO 或全雙端 UI 主張。
+- **S**：`output/qa/dev-058/normal-journey-20261021/` 保存真 Chrome 的 Cookie before/after、兩端 actual SSO start 薄型 HTTP probe、SSO guard 測試及來源 hash。兩端原本 HTTP 使用缺 Secure 的 `__Host-jenfu_sso_tx`，瀏覽器皆未帶回；修正後 local name 分別為 `orgmaster_sso_tx`／`ai_pdm_sso_tx`，皆已帶回。HTTPS 仍用 Secure 的原名稱，callback 不讀 local-name fallback。OrgMaster SSO/config 13 PASS；PDM SSO 16 PASS。probe 沒有 callback、IdP、broker exchange、DB 或 session issuance，**normalLogin=false**。
+
+下表 ID 欄為 QA058 的編號尾碼；分母仍 24。
+
+| ID | 狀態 | 已有證據／確切缺項 |
+|---|---|---|
+| 01 | PARTIAL | U/N 可讀 legacy、保持 bytes/hash；完整舊治理／audit 資料組尚未逐組關閉 |
+| 02 | PARTIAL | U 的 9..64 與完整 profile、N 的真 JSONB mapping、V 的七角色/custom；正常 UI 併23仍缺 |
+| 03 | PASS | U 拒絕內容/hash/schema/profile/來源及 self-consistently rehashed identity 竄改，無 fallback；N 實際 producer→versioned DB contract→Org reader 已成功，未以 DB 自報 hash 當唯一驗證 |
+| 04 | PASS | U 包含缺 builtin、重複 ID/code/name、65 列、custom principal/global/metadata/code、alias/status/profile 與 protected 負例；64 正例排除一律拒絕的假通過 |
+| 05 | PARTIAL | U 的可信舊 history、N 的 custom provenance；原採購/生管各 scope/priority/改名的原生組合仍缺 |
+| 06 | PARTIAL | U 的 missing history／錯 identity／same version different hash；相應真 DB 來源失敗仍缺 |
+| 07 | PARTIAL | 既有 API 身分/資格拒絕；真 post-wait admission 併19未執行 |
+| 08 | BLOCKED | N 有 actual domain 角色往返；缺非正式 SSO 設定與正常登入 UI/API 完整旅程 |
+| 09 | PARTIAL | U 能力版本相容、N inactive 後下一判權拒絕且任用不改；採購/生管 A→B 能力變更整組仍缺 |
+| 10 | PARTIAL | U 阻止 inactive 新增/恢復/推薦；N 停用與 V 既有列可見；正常兩端新任用/代理與 alias 組仍缺 |
+| 11 | PARTIAL | N actual Org command 撤銷/發布及 PDM deny、V inactive 可撤；舊生管與缺 current 組尚未完整合驗 |
+| 12 | PARTIAL | U 有 inactive skip 與另一 active role；direct/delegated/alias 混合原生結果仍缺 |
+| 13 | PARTIAL | N 同 ID 恢復不復活已撤任用、明確 Org restore 才恢復；expired/wrong-scope/invalid-source 與正常 UI 仍缺 |
+| 14 | PARTIAL | 原人控提醒/來源 guard 證據可重用；實際調部門及職稱、manual/position 兩組原生旅程仍缺 |
+| 15 | PARTIAL | 既有 U 驗來源鏈/scope/期間；原生 revoked/expired delegation 與恢復後雙端負例仍缺 |
+| 16 | PARTIAL | U/API replay/reuse/CAS，N concurrent/replay/command readback；Org commit 後 drop HTTP/換 current 整組仍缺 |
+| 17 | NOT_RUN | 尚未執行 Org preflight D1→PDM commit D2→Org 取 current 的真雙連線順序；不能用 U stale tuple 代替 |
+| 18 | NOT_RUN | 尚未執行 Org freeze D1→PDM D2→同 Org writer 完成的真順序；正常逐步 lifecycle 不等同重疊 |
+| 19 | NOT_RUN | 尚未執行 Org writer 等鎖時撤權並 commit 的競爭；既有 PDM apply-manager fence 證據不是此案 |
+| 20 | PARTIAL | U compatibility 矩陣與 N NOT_READY/DISABLED；缺全部 invalid marker 的原生拒絕及正常 source/runtime readback |
+| 21 | PARTIAL | 真 PG18 034/035、14 欄/manifest、NOT_READY/revision0、雙 runtime/owner SELECT 與 foreign core/UPDATE 拒絕已驗；完整 PUBLIC/inherited/owner-CAS 負例尚未全部對照。不額外要求 production 或 PG17 |
+| 22 | PARTIAL | U/API exact Principal/global、hidden profile、custom 不自授；全組真 privileged 任用與雙端結果仍缺 |
+| 23 | PARTIAL | V 有 1440/390/custom/inactive/tuple/no-overflow；仍缺正常登入導航、1024、keyboard 及 loading/empty/error/history/pending 全組 |
+| 24 | NOT_RUN | 尚未執行僅停止 Org HTTP、保持 DB/IdP 的真雙端業務故障旅程；source 無 HTTP 依賴不算運行證據 |
+
+目前完整關閉 **2/24（03、04）**；其餘沒有刪除或改寫預期目的。PDM 的52案／17AC／CG01/02保持獨立追蹤。
+
+### 環境限制與續接順序
+
+非正式 SSO broker/IdP 設定與測試帳號尚未提供；本機 Platform DB URL 空白，沒有可沿用的非正式 auth runtime。不得改用正式 session 或 demo/quick-login 冒充 Principal 正常登入。待提供非正式入口及既有測試帳號識別後，沿正常入口完成08/23及 peer 29/30/44/52；不需提供密碼到文件或聊天。
+
+C 槽約13 GiB，Governor `dev058-dev123-auth-http-qa-20261021` 回 EMERGENCY；已依 skill 只讀盤點，沒有可安全執行的清理候選，未繞過。Next/Vite build/runtime compilation 尚未啟動；先前一次容量風險接受不適用此請求。需先釋放空間或指定其他足夠容量的本機磁碟，再重新檢查相同容量請求。普通 source 修改與有界小測試已繼續；新 app source 的完整 build 待驗，不能把舊 build 標成此次修正後 PASS。
+
+正式 migration、部署、正式資料寫入、traffic/IAM/Secret 均未執行。SQL 未改；本次不因文件/SSO修改重跑未變的 migration 或 release executor。

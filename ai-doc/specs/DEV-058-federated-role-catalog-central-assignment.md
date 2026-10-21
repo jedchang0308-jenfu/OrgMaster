@@ -279,3 +279,13 @@ Native直接證據：OrgMaster實作工作樹 output/qa/dev-058/native-pg-bilate
 PDM已補submission list/detail/search的canonical group與分頁前過濾、原檔／ZIP逐成員view+download及storage前後重驗、numbering export讀取的實際內容群組、Preview／recognition完整verified initiator及worker當前Principal/session/grant／實際來源重驗。088保留舊job NULL且提醒重試；089將transfer metadata綁定新registry hash。Org035與PDM086～089只套於task-owned PG18，正式migration／資料／部署／traffic／IAM／Secret均未操作；source初始仍NOT_READY/revision0及DISABLED/generation0。
 
 尚未關閉：正常登入HTTP/browser旅程、20action全部caller與CG01/02逐案驗收、QA24/52完整case closure、required CI及另行授權的正式首次切換。上述局部PASS只支持實際層級；不以mock browser或native synthetic session冒充正式L4。DEV121/122最新遠端main=02239aaeaac82702bbc8c4d58b38d47fca051afe已合入PDM分支540a0013b3bc8dbb6f4751f15d87494c159126f5；這次主線差異只有兩個release-recovery程式／測試，app／worker／SQL未變。任務120條path在合併未改，0227 build的app輸入維持，無須重建；先前77檔raw SHA保存紀錄仍是歷史證據。同範圍待驗不推成外部任務阻塞。
+
+### 11.6 正常登入旅程續接（2026-10-21）
+
+最新逐案狀態以[QA §8](../qa/DEV-058-dynamic-role-assignment-validation-plan.md#8-2026-10-21-正常旅程續接與逐案狀態)為準：保留24案分母，03/04已關閉，其餘列明PARTIAL/NOT_RUN/BLOCKED與原定必要證據。此次未把模型審核/檔案配送等PDM caller主張移給OrgMaster負責；對方修正仍在DEV-123。
+
+本機正常登入前置曾有雙端同一缺陷：HTTP loopback回傳的 `__Host-jenfu_sso_tx` 缺Secure，真Chrome未保存／帶回。OrgMaster在已驗證的loopback development/test auth設定中使用 `orgmaster_sso_tx`；PDM使用不同的 `ai_pdm_sso_tx`，避免不同port共享host的交易cookie互撞。HTTPS仍使用原 `__Host-jenfu_sso_tx` + Secure/Path=/HttpOnly/SameSite=Lax/無Domain；callback僅讀取該設定所選名稱，不接受local名稱fallback。MAC/PKCE/state/issuer/session/epoch與Principal guard沒有放寬。
+
+`test:dev-058:contracts` 現為9檔70 PASS／1 SKIP，並保留未帶PG時原SKIP旗標；原生PG證據依既有適用範圍重用。新64角色測試向量由實際PDM純domain builder生成，原vectors與SQL未改。真Chrome Cookie after已通過，但只執行start；沒有callback/token/IdP/DB/session issuance，不能宣稱正常登入完成。
+
+尚缺非正式Platform SSO/IdP環境及既有測試帳號識別；C槽約13GiB觸發Governor EMERGENCY，Next/Vite編譯與新source完整build待容量解除後重驗。舊0254 build只保留當時source證據，不標成此次SSO/caller修改後PASS。此輪禁止正式migration、部署、正式資料寫入的限制保持；沒有新增發布或人工核准關卡。

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import vectors from '../config/catalogs/test-vectors/ai-pdm-dynamic-policy-v1.json'
+import boundaryVector from '../config/catalogs/test-vectors/ai-pdm-dynamic-policy-boundary-v1.json'
 import { decodeDynamicAiPdmRoleCatalog } from './aiPdmDynamicRoleCatalog'
 import { readHistoricalAiPdmRoleCatalogFromDatabase, readPublishedAiPdmRoleCatalog, readPublishedAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
 import { createAiPdmRoleCatalog, validateExternalRoleCatalog } from '../src/governance/aiPdmCatalog'
@@ -20,6 +21,14 @@ function projection(vector= vectors[2]):Record<string,unknown>[]{
     presentation_order:p.roleProfiles[index].presentationOrder,assignment_disposition:p.roleProfiles[index].assignmentDisposition}))
 }
 describe('dynamic PDM catalog independent consumer',()=>{
+  it('accepts the producer-built maximum of 64 complete identities',async()=>{
+    const baseline=await readPublishedAiPdmRoleCatalog(process.cwd(),boundaryVector.baselineCatalogVersion)
+    const catalog=decodeDynamicAiPdmRoleCatalog(projection(boundaryVector),[baseline])
+    expect(catalog.roles).toHaveLength(64)
+    expect(catalog.catalogSha256).toBe(boundaryVector.policy.contentHash)
+    expect(catalog.roleProfiles.filter(profile=>profile.assignmentDisposition==='selectable')).toHaveLength(62)
+    expect(validateExternalRoleCatalog(createAiPdmRoleCatalog('valid',catalog.publishedAt,catalog))).toEqual([])
+  })
   for(const vector of vectors)it(`verifies complete producer vector from ${vector.baselineCatalogVersion}`,async()=>{
     const baseline=await readPublishedAiPdmRoleCatalog(process.cwd(),vector.baselineCatalogVersion)
     const catalog=decodeDynamicAiPdmRoleCatalog(projection(vector),[baseline])
@@ -47,6 +56,31 @@ describe('dynamic PDM catalog independent consumer',()=>{
     ]){const rows=structuredClone(projection());mutate(rows);expect(()=>decodeDynamicAiPdmRoleCatalog(rows,[baseline])).toThrow('EXTERNAL_CATALOG_INVALID')}
     expect(()=>decodeDynamicAiPdmRoleCatalog(projection().slice(0,8),[baseline])).toThrow('EXTERNAL_CATALOG_INVALID')
     expect(()=>decodeDynamicAiPdmRoleCatalog(Array.from({length:65},()=>projection()[0]),[baseline])).toThrow('EXTERNAL_CATALOG_INVALID')
+  })
+  it.each<[string, (rows: Record<string,unknown>[]) => void]>([
+    ['duplicate stable ID', rows=>{rows[9].stable_role_id=rows[0].stable_role_id}],
+    ['duplicate role code', rows=>{rows[9].role_code=rows[0].role_code}],
+    ['duplicate display name', rows=>{rows[9].display_name=rows[0].display_name}],
+    ['custom Principal subject', rows=>{rows[9].subject_kind='principal'}],
+    ['custom global scope', rows=>{rows[9].allowed_scope_kinds=['global']}],
+    ['custom admin tier', rows=>{rows[9].assignment_tier='system_admin'}],
+    ['custom caller metadata', rows=>{rows[9].metadata={aliasOf:'role-system-admin'}}],
+    ['custom alias target', rows=>{rows[9].permission_role_id='role-procurement'}],
+    ['custom hidden profile', rows=>{rows[9].assignment_disposition='hidden-protected'}],
+    ['custom profile name mismatch', rows=>{rows[9].presentation_name='另一個名稱'}],
+    ['blank custom name', rows=>{rows[9].display_name='   '}],
+    ['oversized custom name', rows=>{rows[9].display_name='角'.repeat(81)}],
+    ['noncanonical custom code', rows=>{rows[9].role_code='custom_caller_selected'}],
+    ['legacy alias subject change', rows=>{rows[4].subject_kind='principal'}],
+    ['legacy alias scope change', rows=>{rows[4].allowed_scope_kinds=['global']}],
+    ['legacy alias status mismatch', rows=>{rows[4].role_status='inactive'}],
+    ['legacy alias capabilities', rows=>{rows[4].permissions=[{kind:'action',code:'pdm.drawing.view',allowed:true}]}],
+    ['protected role profile', rows=>{rows[8].assignment_disposition='selectable'}],
+    ['protected role permissions', rows=>{rows[8].permissions=[]}],
+  ])('rejects %s independently at the consumer boundary',async(_label,mutate)=>{
+    const baseline=await readPublishedAiPdmRoleCatalog(process.cwd(),vectors[2].baselineCatalogVersion)
+    const rows=structuredClone(projection());mutate(rows)
+    expect(()=>decodeDynamicAiPdmRoleCatalog(rows,[baseline])).toThrow('EXTERNAL_CATALOG_INVALID')
   })
   it('reads v2 for a dynamic active pointer, with no legacy fallback on a missing v2 view',async()=>{
     const rows=projection(),queries:string[]=[]

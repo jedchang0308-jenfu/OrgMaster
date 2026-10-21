@@ -1,0 +1,3368 @@
+{
+  "provenance": {
+    "layer": "synthetic immutable vector from actual PDM pure domain builder; not publication/DB/login proof",
+    "source": "src/lib/role-policy-editor.ts",
+    "sourceSha256": "1f81417107cbeafdbe87d98e6d0bb580c68728630ea84d46ca54821b4aaf549f"
+  },
+  "baselineCatalogVersion": "ai-pdm.role-catalog.2026-10-10.v7",
+  "publishedAt": "2026-10-21T00:00:00.000Z",
+  "activationGeneration": "64",
+  "policy": {
+    "format": "dynamic-policy-v1",
+    "applicationId": "ai-pdm",
+    "candidateCatalogVersion": "ai-pdm.role-policy.58000000-0000-4000-8000-000000000064",
+    "roleSchemaId": "ai-pdm.role-schema.flexible.v2",
+    "roleProfileSchemaId": "ai-pdm.role-profile-schema.v1",
+    "registryHash": "c2340c96a64004538b11fd59b1a1c4f03a88779c7db722f583037b4dc6c49869",
+    "baselineRoleIdentityHash": "265483921bbdadfdf8933f1d0cdcbebc1b4df42983c84784a7176fdd5f05d55c",
+    "roleIdentityHash": "ed1f09500139ed8bbe849cb52f06196eb3fc9c7a62e10c0234a7a58179c3d7be",
+    "roleProfileHash": "09e67c9eb3d46ada1b8ffe78baa97864e3618171c7e280403c94b35f24f19a22",
+    "protectedPolicyHash": "604184ece311dabaf4cc7c0fec8ac802425f79363933d2d66ea67c82369803a6",
+    "roles": [
+      {
+        "stableRoleId": "role-rd",
+        "roleCode": "rd",
+        "displayName": "研發人員",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [
+          {
+            "code": "manufacturing.baseline.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.approval.batch.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.approval.request",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.attachments.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.candidate.review.submit",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.draft.obsolete",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.draft.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.duplicate_check",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.link_variant",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.notification.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.recognition.formalize",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.recognition.review",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.recognition.run",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.task.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.cancel",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.view",
+            "allowed": true
+          },
+          {
+            "code": "pdm.file_metadata.detect",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.view",
+            "allowed": true
+          },
+          {
+            "code": "pdm.shared_model.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.view",
+            "allowed": true
+          },
+          {
+            "code": "submission.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.review.submit",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.review.withdraw",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.drawings.view",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.request",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.search",
+            "kind": "page",
+            "allowed": true
+          }
+        ],
+        "roleStatus": "active",
+        "roleDefinitionHash": "997d22247718da2cd00810468594f611034470056539c7e61bd2ce84d970d331"
+      },
+      {
+        "stableRoleId": "role-rd-manager",
+        "roleCode": "rd_manager",
+        "displayName": "研發主管",
+        "assignable": true,
+        "risk": "high",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [
+          {
+            "code": "approval.inbox.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "approval.request.apply",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "approval.request.cleanup",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "approval.request.decide",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "integration.procurement.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "integration.procurement.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "manufacturing.baseline.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "manufacturing.baseline.release",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "manufacturing.baseline.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.approval.batch.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.approval.request",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.attachments.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.candidate.review.submit",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.draft.obsolete",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.draft.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.drawing_revision_lifecycle_review",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.duplicate_check",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.export.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.link_variant",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.notification.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.publish",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.recognition.formalize",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.recognition.review",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.recognition.run",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.task.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.cancel",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.view",
+            "allowed": true
+          },
+          {
+            "code": "pdm.shared_model.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "pdm.shared_model.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.view",
+            "allowed": true
+          },
+          {
+            "code": "post_release_change",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.decide",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.lifecycle.decide",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.retry",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.review",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.share",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.publish",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.review.submit",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.review.withdraw",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.reports",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.request",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.search",
+            "kind": "page",
+            "allowed": true
+          }
+        ],
+        "roleStatus": "active",
+        "roleDefinitionHash": "478145bbb85436f022a8989356324f50dcc1d57051081ee74e13ff4a61b2bb11"
+      },
+      {
+        "stableRoleId": "role-qa",
+        "roleCode": "qa",
+        "displayName": "QA/QC",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [
+          {
+            "code": "numbering.drawing_revision_lifecycle_review",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.notification.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.task.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.view",
+            "allowed": true
+          },
+          {
+            "code": "numbering.reports",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.search",
+            "kind": "page",
+            "allowed": true
+          }
+        ],
+        "roleStatus": "active",
+        "roleDefinitionHash": "ec093ee6061c36fd259caa9d82d085b99cced98bd5c00447f7d15f3ffaaf473d"
+      },
+      {
+        "stableRoleId": "role-manufacturing",
+        "roleCode": "manufacturing",
+        "displayName": "生產人員",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [
+          {
+            "code": "handoff.published.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "manufacturing.baseline.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.view",
+            "allowed": true
+          },
+          {
+            "code": "pdm.shared_model.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.view",
+            "allowed": true
+          },
+          {
+            "code": "numbering.drawings.view",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.reports",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.search",
+            "kind": "page",
+            "allowed": true
+          }
+        ],
+        "roleStatus": "active",
+        "roleDefinitionHash": "8d6cfe4c67433919cf9a2f45d7860278c8411d915cccd917aa408cc3a9e98304"
+      },
+      {
+        "stableRoleId": "role-production-planning",
+        "roleCode": "production_planning",
+        "displayName": "生管人員",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [
+          {
+            "code": "handoff.published.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "manufacturing.baseline.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "pdm.shared_model.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.drawings.view",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.search",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.tasks",
+            "kind": "page",
+            "allowed": true
+          }
+        ],
+        "roleStatus": "active",
+        "roleDefinitionHash": "0f937fd1b82958189f593c27d5e2fe06ca22d904ecffbdfc26a573b2c0e6dcfa"
+      },
+      {
+        "stableRoleId": "role-procurement",
+        "roleCode": "procurement",
+        "displayName": "採購",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [
+          {
+            "code": "integration.procurement.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.view",
+            "allowed": true
+          },
+          {
+            "code": "pdm.shared_model.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.view",
+            "allowed": true
+          },
+          {
+            "code": "numbering.drawings.view",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.reports",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.search",
+            "kind": "page",
+            "allowed": true
+          }
+        ],
+        "roleStatus": "active",
+        "roleDefinitionHash": "cfb23f7e3225d0d298e11362f8c9a42d4a44b747321063fd4554d6d76fdbf645"
+      },
+      {
+        "stableRoleId": "role-external-specialist",
+        "roleCode": "external_specialist",
+        "displayName": "外部專員",
+        "assignable": true,
+        "risk": "high",
+        "subjectKind": "employee",
+        "recommendationAllowed": false,
+        "delegationAllowed": false,
+        "allowedScopeKinds": [
+          "project"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": {
+          "requiresManualDirect": true,
+          "requiresFiniteValidUntil": true
+        },
+        "permissions": [
+          {
+            "kind": "action",
+            "code": "pdm.drawing.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.view",
+            "allowed": true
+          },
+          {
+            "code": "numbering.search",
+            "kind": "page",
+            "allowed": true
+          }
+        ],
+        "roleStatus": "active",
+        "roleDefinitionHash": "44169338f197e24bdd3e50d79ee20a1c929cce139cdddb6a005e953a89a11e59"
+      },
+      {
+        "stableRoleId": "role-pdm-admin",
+        "roleCode": "pdm_admin",
+        "displayName": "PDM管理員",
+        "assignable": true,
+        "risk": "high",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [
+          {
+            "code": "accounts.identity.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "accounts.invitation.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "accounts.lifecycle.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "accounts.session.revoke",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "approval.inbox.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "approval.request.apply",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "approval.request.cleanup",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "approval.request.decide",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "integration.procurement.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "integration.procurement.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "manufacturing.baseline.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "manufacturing.baseline.release",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "manufacturing.baseline.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.approval.batch.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.approval.request",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.attachments.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.audit_report.generate",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.candidate.review.submit",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.draft.admin_confirm",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.draft.obsolete",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.draft.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.drawing_revision_lifecycle_review",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.duplicate_check",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.export.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.link_variant",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.notification.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.publish",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.recognition.formalize",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.recognition.review",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.recognition.run",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.task.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.cancel",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.workspace.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "obsolete_part_root",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.view",
+            "allowed": true
+          },
+          {
+            "code": "pdm.file_metadata.detect",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.view",
+            "allowed": true
+          },
+          {
+            "code": "pdm.shared_model.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "pdm.shared_model.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.view",
+            "allowed": true
+          },
+          {
+            "code": "post_release_change",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "settings.admin_matrix",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "settings.integration.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "settings.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "settings.secret.manage",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "settings.storage_evidence.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.decide",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.lifecycle.decide",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.retry",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.review",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.share",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "submission.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.create",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.publish",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.review.submit",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.review.withdraw",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.update",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "transfer.package.view",
+            "kind": "action",
+            "allowed": true
+          },
+          {
+            "code": "numbering.reports",
+            "kind": "page",
+            "allowed": true
+          },
+          {
+            "code": "numbering.search",
+            "kind": "page",
+            "allowed": true
+          }
+        ],
+        "roleStatus": "active",
+        "roleDefinitionHash": "b38f8556c97adfe755335af40670e227cb53e83fd10686cb6616037cb72dd272"
+      },
+      {
+        "stableRoleId": "role-system-admin",
+        "roleCode": "system_admin",
+        "displayName": "系統管理員",
+        "assignable": true,
+        "risk": "critical",
+        "subjectKind": "principal",
+        "recommendationAllowed": false,
+        "delegationAllowed": false,
+        "allowedScopeKinds": [
+          "global"
+        ],
+        "assignmentTier": "cross_app_override",
+        "metadata": {
+          "requiresHumanPrivilegedPrincipal": true,
+          "forbidSelfAssignment": true
+        },
+        "permissions": [
+          {
+            "kind": "action",
+            "code": "accounts.identity.manage",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "accounts.invitation.manage",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "accounts.lifecycle.manage",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "accounts.session.revoke",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "approval.inbox.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "approval.request.apply",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "approval.request.cleanup",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "approval.request.decide",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "handoff.published.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "integration.procurement.manage",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "integration.procurement.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "manufacturing.baseline.manage",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "manufacturing.baseline.release",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "manufacturing.baseline.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.approval.batch.create",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.approval.request",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.attachments.manage",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.audit_report.generate",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.candidate.review.submit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.create",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.draft.admin_confirm",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.draft.obsolete",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.draft.update",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.drawing_revision_lifecycle_review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.duplicate_check",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.export.create",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.link_variant",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.notification.update",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.recognition.formalize",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.recognition.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.recognition.run",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.task.update",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.workspace.cancel",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.workspace.create",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.workspace.update",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "numbering.workspace.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "obsolete_part_root",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.drawing.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.file_metadata.detect",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.model.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.part.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.shared_model.manage",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.shared_model.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.download",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.edit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "pdm.transfer.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "post_release_change",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "settings.admin_matrix",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "settings.integration.manage",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "settings.manage",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "settings.secret.manage",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "settings.storage_evidence.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "submission.create",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "submission.decide",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "submission.lifecycle.decide",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "submission.retry",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "submission.review",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "submission.share",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "submission.update",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "submission.view",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "transfer.package.create",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "transfer.package.publish",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "transfer.package.review.submit",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "transfer.package.review.withdraw",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "transfer.package.update",
+            "allowed": true
+          },
+          {
+            "kind": "action",
+            "code": "transfer.package.view",
+            "allowed": true
+          },
+          {
+            "kind": "page",
+            "code": "numbering.drawings.view",
+            "allowed": true
+          },
+          {
+            "kind": "page",
+            "code": "numbering.reports",
+            "allowed": true
+          },
+          {
+            "kind": "page",
+            "code": "numbering.request",
+            "allowed": true
+          },
+          {
+            "kind": "page",
+            "code": "numbering.search",
+            "allowed": true
+          },
+          {
+            "kind": "page",
+            "code": "numbering.tasks",
+            "allowed": true
+          }
+        ],
+        "roleStatus": "active",
+        "roleDefinitionHash": "fc9ebba9e6d16688dbd577bf544bdeea9d014b1f3a01c65a7d9eb96cb8b88133"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000001",
+        "roleCode": "custom_58000000000040008000000000000001",
+        "displayName": "邊界角色 1",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "2fe1bad169ae9e95f2306fff71e31f2a79b9a6fb8b3735837f890ecac203bbe5"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000002",
+        "roleCode": "custom_58000000000040008000000000000002",
+        "displayName": "邊界角色 2",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "e78bdb1991d894687a2064f088213769b65547f67f620ae9c3d2fa53162abd82"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000003",
+        "roleCode": "custom_58000000000040008000000000000003",
+        "displayName": "邊界角色 3",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "9c39052015624b22d57232ddfff46340077c4a8f439b53c914931ccc0ad71ab0"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000004",
+        "roleCode": "custom_58000000000040008000000000000004",
+        "displayName": "邊界角色 4",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "57f3acfe36bcbf249880a3aab2a695b4938c805e1cfb6cb6c48c609c7adad91c"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000005",
+        "roleCode": "custom_58000000000040008000000000000005",
+        "displayName": "邊界角色 5",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "c98d2c08dacf105f3e868549553ffd9709efa089fec5dab13357be57d4a6b58a"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000006",
+        "roleCode": "custom_58000000000040008000000000000006",
+        "displayName": "邊界角色 6",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "56fc67aed948475e4cee466ef1ed3752d97463c65537ec079bc7f0406d615c13"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000007",
+        "roleCode": "custom_58000000000040008000000000000007",
+        "displayName": "邊界角色 7",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "3d9b9ba8956ca68da2621490cf76b716e4c6179cb9ef5877d9bf0add5fa9d15b"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000008",
+        "roleCode": "custom_58000000000040008000000000000008",
+        "displayName": "邊界角色 8",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "e642cf38b573d3539ec2eeb3b5f70a74c5db0c3e43ed80cc36c0b660884aba15"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000009",
+        "roleCode": "custom_58000000000040008000000000000009",
+        "displayName": "邊界角色 9",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "734936234f07250f49a92e6d55b187540d3291effc57da322cbee1b5a439bc27"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000010",
+        "roleCode": "custom_58000000000040008000000000000010",
+        "displayName": "邊界角色 10",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "ee5fd4a0f18bf02087101d9c2736ede4fa510368614e1b74255e4fa315ffdcf6"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000011",
+        "roleCode": "custom_58000000000040008000000000000011",
+        "displayName": "邊界角色 11",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "54ea8e2b4343781359b034174ae75d51110349b3a1b8b6a99ebb0accbf67fa89"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000012",
+        "roleCode": "custom_58000000000040008000000000000012",
+        "displayName": "邊界角色 12",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "493a21ed59580f5b9f903cef735bf19db2647641ff11c0ca8d1777a818f873ec"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000013",
+        "roleCode": "custom_58000000000040008000000000000013",
+        "displayName": "邊界角色 13",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "8fb0e89a0a94b16ff5b03a0b19aff19fea02550a92df90ddfb8d659b7d192598"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000014",
+        "roleCode": "custom_58000000000040008000000000000014",
+        "displayName": "邊界角色 14",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "9c872e72c582d84a3bf6247c4e03550713be2403d7e30661d96a9a51373b9811"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000015",
+        "roleCode": "custom_58000000000040008000000000000015",
+        "displayName": "邊界角色 15",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "f6b278191a34c640e85115236505ea3071fa24dec8957baa5d05d82de4f32c02"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000016",
+        "roleCode": "custom_58000000000040008000000000000016",
+        "displayName": "邊界角色 16",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "3a32c593073e041c534a939dc49217eacd77f2af5e3beb157eeff595a7c57681"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000017",
+        "roleCode": "custom_58000000000040008000000000000017",
+        "displayName": "邊界角色 17",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "037e29ee5188cd88718351b5bd5f406620d08d3875f262b1ff822df92328e8c6"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000018",
+        "roleCode": "custom_58000000000040008000000000000018",
+        "displayName": "邊界角色 18",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "3272fa9c545d2439ff99ea3bcd8b9aefa5ed6712ffa07767ab0fd7a05cf3a157"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000019",
+        "roleCode": "custom_58000000000040008000000000000019",
+        "displayName": "邊界角色 19",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "c22d1f1d7c4ccbd086b3842e63b2eebd312a0c3f2c11e6a0d1cbb694b7477605"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000020",
+        "roleCode": "custom_58000000000040008000000000000020",
+        "displayName": "邊界角色 20",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "cc1285d289542cf7caff8dc89482f9796177a18a2e1ef1faad00500844e61688"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000021",
+        "roleCode": "custom_58000000000040008000000000000021",
+        "displayName": "邊界角色 21",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "22222b1f2fe8640c47ec9e173e923d9079fa09d688750f670312b0fe22014b9b"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000022",
+        "roleCode": "custom_58000000000040008000000000000022",
+        "displayName": "邊界角色 22",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "5a8e67d6525bedd78f9424b539520331b6e24ccc6078f9be592b5b08ecd81e35"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000023",
+        "roleCode": "custom_58000000000040008000000000000023",
+        "displayName": "邊界角色 23",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "aee642aa6d0590f022a950d3852f36e97a734d3cfc8ef92e4d0d74d9af4409eb"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000024",
+        "roleCode": "custom_58000000000040008000000000000024",
+        "displayName": "邊界角色 24",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "4cfa5f4b79de6af32dd31d12a0e014b0c8f36d8e744fe0f081993cf1a6bb218c"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000025",
+        "roleCode": "custom_58000000000040008000000000000025",
+        "displayName": "邊界角色 25",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "e28d5522f85d05455f175ac10843c9fa1265b4f914191489763bd497742a8c2e"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000026",
+        "roleCode": "custom_58000000000040008000000000000026",
+        "displayName": "邊界角色 26",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "89ed570747e6e13f49689bd368ef13bbcf169326530c4299ec2ab509ffef4fb6"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000027",
+        "roleCode": "custom_58000000000040008000000000000027",
+        "displayName": "邊界角色 27",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "abe8c60c09032ad8779993610bd9650ad88169f991e60dd4115456e9f6569cd5"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000028",
+        "roleCode": "custom_58000000000040008000000000000028",
+        "displayName": "邊界角色 28",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "0f637e9792d074f92319e74670176b06ce2a5e2f1878b25de77cf9e8789fff08"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000029",
+        "roleCode": "custom_58000000000040008000000000000029",
+        "displayName": "邊界角色 29",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "0ca5e8b60d4060b6d9b825dc772c922bc4788c4b21ddeb458130205f05f7ed90"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000030",
+        "roleCode": "custom_58000000000040008000000000000030",
+        "displayName": "邊界角色 30",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "239f4644ec4a447eeacd197e93368a16ce8810990206929287bf7dcbf68e7a12"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000031",
+        "roleCode": "custom_58000000000040008000000000000031",
+        "displayName": "邊界角色 31",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "e363c6537e247983d57722992a18f466da3551f38324f94115ef982501876acc"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000032",
+        "roleCode": "custom_58000000000040008000000000000032",
+        "displayName": "邊界角色 32",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "ef6e291f80d9614c784b83b483459b17b84e22be8b091b7e2efdac2db20f799e"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000033",
+        "roleCode": "custom_58000000000040008000000000000033",
+        "displayName": "邊界角色 33",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "7ca8d0da0d6df34b2e7737d068d9498cf1388af84b6f0a159d6bba743fdf170c"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000034",
+        "roleCode": "custom_58000000000040008000000000000034",
+        "displayName": "邊界角色 34",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "8537424b360f6e9f27605b1e784ea9ac7b1315465729a7c4362efe0862caff34"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000035",
+        "roleCode": "custom_58000000000040008000000000000035",
+        "displayName": "邊界角色 35",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "9073ebf157ec20f3e54483aa41cbb7be6d8683cea4c4821d4c22194072e9fbd5"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000036",
+        "roleCode": "custom_58000000000040008000000000000036",
+        "displayName": "邊界角色 36",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "d764f7a1d8d17ea61bfed979fa4b27433d6aed1b542092ff406ae47daf71b8aa"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000037",
+        "roleCode": "custom_58000000000040008000000000000037",
+        "displayName": "邊界角色 37",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "9964c06742364ce7f3b9cde4b2bc1c9a9a5a0fee4c762245f5ac3d5fd95cf895"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000038",
+        "roleCode": "custom_58000000000040008000000000000038",
+        "displayName": "邊界角色 38",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "6b5bef3f88c4a9bc21f6bdeeea11bc97793286c0f24f6149e4dc3257e2de26cf"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000039",
+        "roleCode": "custom_58000000000040008000000000000039",
+        "displayName": "邊界角色 39",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "29660d3df8a61a79aa2eb135e20ab27842654adc437b2f2768a8b2a38badea63"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000040",
+        "roleCode": "custom_58000000000040008000000000000040",
+        "displayName": "邊界角色 40",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "b7c4611db48ee66bc81d53ed8e9ebc7969cbb51543ad832fcfaf27783a6fe9b4"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000041",
+        "roleCode": "custom_58000000000040008000000000000041",
+        "displayName": "邊界角色 41",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "aa76915c276f397873005b31ab424f0a4fdc421b48b7faeb6463875c64470108"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000042",
+        "roleCode": "custom_58000000000040008000000000000042",
+        "displayName": "邊界角色 42",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "4710b22a5931fcc740460f51f112abc3ff64543ca06c83ac93e4279ff265e2ef"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000043",
+        "roleCode": "custom_58000000000040008000000000000043",
+        "displayName": "邊界角色 43",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "8d0e913070f3048cc86ef0bef829c2c125e24e3d60157d554a9ed8a3753195b7"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000044",
+        "roleCode": "custom_58000000000040008000000000000044",
+        "displayName": "邊界角色 44",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "2c8a4eb316db4b87224b54c6535c42cc1ebb013fa04dc85df71678028639909d"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000045",
+        "roleCode": "custom_58000000000040008000000000000045",
+        "displayName": "邊界角色 45",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "fb6cd76870c9cafb1d4628e0d0a91ea70c98cb1fd328bc375aacea034594646d"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000046",
+        "roleCode": "custom_58000000000040008000000000000046",
+        "displayName": "邊界角色 46",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "ea8a07f60a05a14a8e4be2c00387291d4290f4e95e4bf89b833a1451b646dc4e"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000047",
+        "roleCode": "custom_58000000000040008000000000000047",
+        "displayName": "邊界角色 47",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "c1c4c8c8f562d3882d434349a492958c860a7012415bd63349cced4b995c37fc"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000048",
+        "roleCode": "custom_58000000000040008000000000000048",
+        "displayName": "邊界角色 48",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "5d16fc3c458e4a5edbe8588288f1e06a1488323c891facffd83dd03d6ada28df"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000049",
+        "roleCode": "custom_58000000000040008000000000000049",
+        "displayName": "邊界角色 49",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "6b7d98ed847e641a03e4bd4b073c1d4ef03f50fd6f517f9d11ac4c359df09ef4"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000050",
+        "roleCode": "custom_58000000000040008000000000000050",
+        "displayName": "邊界角色 50",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "5eed7c578959e3dadeded69fa6ce03f222da42b92d758da3271b25297005f6bc"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000051",
+        "roleCode": "custom_58000000000040008000000000000051",
+        "displayName": "邊界角色 51",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "14329275896c4c8fde3fbf9198bd20bf2d12268b5b74c72b57a2b4631a7fc651"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000052",
+        "roleCode": "custom_58000000000040008000000000000052",
+        "displayName": "邊界角色 52",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "d857243d0642bfb160d24bbd4e3eab08bf636321db63d7f7aedbc41b0eeaee38"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000053",
+        "roleCode": "custom_58000000000040008000000000000053",
+        "displayName": "邊界角色 53",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "03519a20895cc17f8ef462a0b21b5009d0bd60e9708865b358e5caf98a86ae8b"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000054",
+        "roleCode": "custom_58000000000040008000000000000054",
+        "displayName": "邊界角色 54",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "2b14e1b58c7918b99b042c00ce231c3c82ae612e88cec73eb5fe4c88ae96578e"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000055",
+        "roleCode": "custom_58000000000040008000000000000055",
+        "displayName": "邊界角色 55",
+        "assignable": true,
+        "risk": "normal",
+        "subjectKind": "employee",
+        "recommendationAllowed": true,
+        "delegationAllowed": true,
+        "allowedScopeKinds": [
+          "workspace"
+        ],
+        "assignmentTier": "app_admin",
+        "metadata": null,
+        "permissions": [],
+        "roleStatus": "active",
+        "roleDefinitionHash": "9aba393541c835d668988129e46d057e3d3cb916ba885372a9c33f9909ae4405"
+      }
+    ],
+    "roleProfiles": [
+      {
+        "stableRoleId": "role-rd",
+        "permissionRoleId": "role-rd",
+        "presentationName": "RD",
+        "presentationOrder": 0,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-rd-manager",
+        "permissionRoleId": "role-rd-manager",
+        "presentationName": "RD主管",
+        "presentationOrder": 1,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-qa",
+        "permissionRoleId": "role-qa",
+        "presentationName": "QA/QC",
+        "presentationOrder": 2,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-manufacturing",
+        "permissionRoleId": "role-manufacturing",
+        "presentationName": "生產人員",
+        "presentationOrder": 3,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-production-planning",
+        "permissionRoleId": "role-procurement",
+        "presentationName": "採購／生管（舊生管指派）",
+        "presentationOrder": 4,
+        "assignmentDisposition": "legacy-only"
+      },
+      {
+        "stableRoleId": "role-procurement",
+        "permissionRoleId": "role-procurement",
+        "presentationName": "採購／生管",
+        "presentationOrder": 4,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-external-specialist",
+        "permissionRoleId": "role-external-specialist",
+        "presentationName": "外部專員",
+        "presentationOrder": 5,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-pdm-admin",
+        "permissionRoleId": "role-pdm-admin",
+        "presentationName": "PDM管理員",
+        "presentationOrder": 6,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-system-admin",
+        "permissionRoleId": "role-system-admin",
+        "presentationName": "系統管理員",
+        "presentationOrder": 8,
+        "assignmentDisposition": "hidden-protected"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000001",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000001",
+        "presentationName": "邊界角色 1",
+        "presentationOrder": 7,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000002",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000002",
+        "presentationName": "邊界角色 2",
+        "presentationOrder": 8,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000003",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000003",
+        "presentationName": "邊界角色 3",
+        "presentationOrder": 9,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000004",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000004",
+        "presentationName": "邊界角色 4",
+        "presentationOrder": 10,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000005",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000005",
+        "presentationName": "邊界角色 5",
+        "presentationOrder": 11,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000006",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000006",
+        "presentationName": "邊界角色 6",
+        "presentationOrder": 12,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000007",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000007",
+        "presentationName": "邊界角色 7",
+        "presentationOrder": 13,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000008",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000008",
+        "presentationName": "邊界角色 8",
+        "presentationOrder": 14,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000009",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000009",
+        "presentationName": "邊界角色 9",
+        "presentationOrder": 15,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000010",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000010",
+        "presentationName": "邊界角色 10",
+        "presentationOrder": 16,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000011",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000011",
+        "presentationName": "邊界角色 11",
+        "presentationOrder": 17,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000012",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000012",
+        "presentationName": "邊界角色 12",
+        "presentationOrder": 18,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000013",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000013",
+        "presentationName": "邊界角色 13",
+        "presentationOrder": 19,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000014",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000014",
+        "presentationName": "邊界角色 14",
+        "presentationOrder": 20,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000015",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000015",
+        "presentationName": "邊界角色 15",
+        "presentationOrder": 21,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000016",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000016",
+        "presentationName": "邊界角色 16",
+        "presentationOrder": 22,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000017",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000017",
+        "presentationName": "邊界角色 17",
+        "presentationOrder": 23,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000018",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000018",
+        "presentationName": "邊界角色 18",
+        "presentationOrder": 24,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000019",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000019",
+        "presentationName": "邊界角色 19",
+        "presentationOrder": 25,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000020",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000020",
+        "presentationName": "邊界角色 20",
+        "presentationOrder": 26,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000021",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000021",
+        "presentationName": "邊界角色 21",
+        "presentationOrder": 27,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000022",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000022",
+        "presentationName": "邊界角色 22",
+        "presentationOrder": 28,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000023",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000023",
+        "presentationName": "邊界角色 23",
+        "presentationOrder": 29,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000024",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000024",
+        "presentationName": "邊界角色 24",
+        "presentationOrder": 30,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000025",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000025",
+        "presentationName": "邊界角色 25",
+        "presentationOrder": 31,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000026",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000026",
+        "presentationName": "邊界角色 26",
+        "presentationOrder": 32,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000027",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000027",
+        "presentationName": "邊界角色 27",
+        "presentationOrder": 33,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000028",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000028",
+        "presentationName": "邊界角色 28",
+        "presentationOrder": 34,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000029",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000029",
+        "presentationName": "邊界角色 29",
+        "presentationOrder": 35,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000030",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000030",
+        "presentationName": "邊界角色 30",
+        "presentationOrder": 36,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000031",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000031",
+        "presentationName": "邊界角色 31",
+        "presentationOrder": 37,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000032",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000032",
+        "presentationName": "邊界角色 32",
+        "presentationOrder": 38,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000033",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000033",
+        "presentationName": "邊界角色 33",
+        "presentationOrder": 39,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000034",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000034",
+        "presentationName": "邊界角色 34",
+        "presentationOrder": 40,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000035",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000035",
+        "presentationName": "邊界角色 35",
+        "presentationOrder": 41,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000036",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000036",
+        "presentationName": "邊界角色 36",
+        "presentationOrder": 42,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000037",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000037",
+        "presentationName": "邊界角色 37",
+        "presentationOrder": 43,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000038",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000038",
+        "presentationName": "邊界角色 38",
+        "presentationOrder": 44,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000039",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000039",
+        "presentationName": "邊界角色 39",
+        "presentationOrder": 45,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000040",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000040",
+        "presentationName": "邊界角色 40",
+        "presentationOrder": 46,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000041",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000041",
+        "presentationName": "邊界角色 41",
+        "presentationOrder": 47,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000042",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000042",
+        "presentationName": "邊界角色 42",
+        "presentationOrder": 48,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000043",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000043",
+        "presentationName": "邊界角色 43",
+        "presentationOrder": 49,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000044",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000044",
+        "presentationName": "邊界角色 44",
+        "presentationOrder": 50,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000045",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000045",
+        "presentationName": "邊界角色 45",
+        "presentationOrder": 51,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000046",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000046",
+        "presentationName": "邊界角色 46",
+        "presentationOrder": 52,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000047",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000047",
+        "presentationName": "邊界角色 47",
+        "presentationOrder": 53,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000048",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000048",
+        "presentationName": "邊界角色 48",
+        "presentationOrder": 54,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000049",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000049",
+        "presentationName": "邊界角色 49",
+        "presentationOrder": 55,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000050",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000050",
+        "presentationName": "邊界角色 50",
+        "presentationOrder": 56,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000051",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000051",
+        "presentationName": "邊界角色 51",
+        "presentationOrder": 57,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000052",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000052",
+        "presentationName": "邊界角色 52",
+        "presentationOrder": 58,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000053",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000053",
+        "presentationName": "邊界角色 53",
+        "presentationOrder": 59,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000054",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000054",
+        "presentationName": "邊界角色 54",
+        "presentationOrder": 60,
+        "assignmentDisposition": "selectable"
+      },
+      {
+        "stableRoleId": "role-custom-58000000-0000-4000-8000-000000000055",
+        "permissionRoleId": "role-custom-58000000-0000-4000-8000-000000000055",
+        "presentationName": "邊界角色 55",
+        "presentationOrder": 61,
+        "assignmentDisposition": "selectable"
+      }
+    ],
+    "identityHashes": {
+      "role-rd": "8e0c0f4d3b9ec1766f3605adeb715725701d30a7e2671ac16509040686d2d4d9",
+      "role-rd-manager": "3c65b920c00f68d6a87a91682c48d88395c131e8c3e077a76896397fb0c6dea2",
+      "role-qa": "53fcf20b141077c7662c5f39b9898a4e4f776cf45e1c088ee09ba40c8ff165ed",
+      "role-manufacturing": "052f9efa3b021d7e76a65db82b5b8b8bfea883496ae7cd408800433b60eda807",
+      "role-production-planning": "d976633f5e2cf27f1c9211254af43b6a44ae3b6bc999d6c758c05bc3dbe256b0",
+      "role-procurement": "ce15bbad23a380fd012d1c8b2979674f5542a1c23e2ab75751d6b82b452ef01d",
+      "role-external-specialist": "34480faf9c3f3a511bce8ff0e3192534e4f854aa4f0ea18f4bb5c9e9fc918f4b",
+      "role-pdm-admin": "4d713823aadf525374ab361c9b9082f58768e6d4f29cff6329c13028aecc5063",
+      "role-system-admin": "9b53d29ad637b913b3c34e2ce646203b87a9d02b45a1f566277efd79f5d385c2",
+      "role-custom-58000000-0000-4000-8000-000000000001": "0ee92147c211dd432ac988e4af9933d2b42c644f522867786c613ebc6104061c",
+      "role-custom-58000000-0000-4000-8000-000000000002": "f5707dd9fdad224c69831e90da0f56f8bb54f55de526d4909d48a034f2c3a6f9",
+      "role-custom-58000000-0000-4000-8000-000000000003": "516acf3f08122c918ca6739b3e69b76fd37d7c92e9382d48bee010c3887cb4bc",
+      "role-custom-58000000-0000-4000-8000-000000000004": "37ac0f57da86d73594e70293b62595c4b17b30ab4e7044e829a576ffb7a418b5",
+      "role-custom-58000000-0000-4000-8000-000000000005": "a375b2ad5f93935f14eea6566fffd20798f015298343104d12079d42c3613699",
+      "role-custom-58000000-0000-4000-8000-000000000006": "845b5773ed41d94779f732f9765ffad589098ae0ae6e41f7374b58498f984728",
+      "role-custom-58000000-0000-4000-8000-000000000007": "f502580510be2f8d9088e457726e58c9f0fe687c5ed0dc899f83ba46809fdce3",
+      "role-custom-58000000-0000-4000-8000-000000000008": "0810a39a89ed004f84124cb9c6db76c286851091d02d69ce7ea03aa9e182bc75",
+      "role-custom-58000000-0000-4000-8000-000000000009": "28ccb206921f6c81b6f5b5d2e9921a05cedc610a715879e1e4768264697e18f1",
+      "role-custom-58000000-0000-4000-8000-000000000010": "b41b2351347ac071c2826ae823f87ef81ef89abc52da63b3519c6109a84a5693",
+      "role-custom-58000000-0000-4000-8000-000000000011": "e66a88cc0730331acb72363967d2de8f2e8185206d44c3240e745891c59eb21b",
+      "role-custom-58000000-0000-4000-8000-000000000012": "00638ff8afa67f36d2a879adbf381a8c9b563cf37a52e6781d9b10946d503069",
+      "role-custom-58000000-0000-4000-8000-000000000013": "9d33b0f574d9812c38f60a21b553f39490e7578e5572259a7599f3e0725575a5",
+      "role-custom-58000000-0000-4000-8000-000000000014": "9b3d8b89a82e48c0d6cc0ada837e3006d9587a11a80553d80e9a78adcf13ed87",
+      "role-custom-58000000-0000-4000-8000-000000000015": "7549768b84a38c70c6d3b5063bfd6a04a8bd9e869b9c2fb6d53bb12bf077cc94",
+      "role-custom-58000000-0000-4000-8000-000000000016": "fd0be66fb16706c6343921ce95d899a88e6292a5bfb1008640dec7ffb564c372",
+      "role-custom-58000000-0000-4000-8000-000000000017": "137ecd2e62efbc7f590ef1d34d3e2a119785adc1c07565c17f14352d234c9106",
+      "role-custom-58000000-0000-4000-8000-000000000018": "eb5ed6a3b6add7309c7bf363e337d47d3fdd7c226c78c6f727106a89f76e60a6",
+      "role-custom-58000000-0000-4000-8000-000000000019": "fc70614ffbd0aec525cca7854e77abc3fb0dea46dc82648dc132bed32c51c6da",
+      "role-custom-58000000-0000-4000-8000-000000000020": "af5c61db71d2135fc8b6231b37db020bacaea05549048b7af7cdc470fdfb7cfd",
+      "role-custom-58000000-0000-4000-8000-000000000021": "78e1948919b2e91af5744e4dc93677c35a81c6449f858fb847b7769919d9dc57",
+      "role-custom-58000000-0000-4000-8000-000000000022": "447e8107be5f4ea1dbd1bf5650bd8bedada69b8f28697ced25dc301a45563183",
+      "role-custom-58000000-0000-4000-8000-000000000023": "6339c95e9620842183f77a5bbb8b12d0f8bd6ab682afae4ac241ddbb5568c4c3",
+      "role-custom-58000000-0000-4000-8000-000000000024": "88277f150f6e218771b50742578bba20e3a45dff9274621439fc691f9f5c3fcd",
+      "role-custom-58000000-0000-4000-8000-000000000025": "9530a20ee2e473f6a3246f27fc6f91a0298ba3c0c00f7f7a148d6ee2a3b16b9b",
+      "role-custom-58000000-0000-4000-8000-000000000026": "ea665c0b1f2b96726b27dbb6a3634970ae32d569a9c8bfb99ee31fc4196cd448",
+      "role-custom-58000000-0000-4000-8000-000000000027": "111cc1398130652238ed02ebe33c10506bb0cd0748e61dd70c1d14f701d699e4",
+      "role-custom-58000000-0000-4000-8000-000000000028": "7c0bd3bb94beac626d6f504f2e8c85ed3a8b71095b5c023a5aa94ed0ac270a40",
+      "role-custom-58000000-0000-4000-8000-000000000029": "9261c7e39d41400df600d2f15b47c00e4a480faff5c15bdba76496505bc936d5",
+      "role-custom-58000000-0000-4000-8000-000000000030": "f9c8a7a417166cc9664757ba102bf7acf8581c94067362f1d8633cf1a7caa5bc",
+      "role-custom-58000000-0000-4000-8000-000000000031": "d4bea8bc0924da895b5b015bb3c910d71649fc35233e5950c140308170e838e3",
+      "role-custom-58000000-0000-4000-8000-000000000032": "f5ba7ffc2f7d5668497d2c7b2a45b3c5bc357d7209e39a79585e283f82fe0136",
+      "role-custom-58000000-0000-4000-8000-000000000033": "cfc7b4e23ea0a26298e5649807c5fd9d44a43b9ab0ad4377b1d392e6eff0be20",
+      "role-custom-58000000-0000-4000-8000-000000000034": "48fe545b3925f67cb56d5bb4989a299c21e48ccc189ef7554770d2510c205a71",
+      "role-custom-58000000-0000-4000-8000-000000000035": "bcb0db62d1eafc7af1b0d92cca3161c9892fd2cc473023491c176e3cdce4fa33",
+      "role-custom-58000000-0000-4000-8000-000000000036": "c96f3fddefcbd2b0093c25a7640141cdd57ef2935542c6864aa4a56b00f97309",
+      "role-custom-58000000-0000-4000-8000-000000000037": "943bcd340ef441ca44c1cb40c8b2bdf1ae05544b552fd6723b7ea57af8e55f63",
+      "role-custom-58000000-0000-4000-8000-000000000038": "3995f48743403a8a01a2eb4da4fa9d56149158a0b72b586402116161473c3022",
+      "role-custom-58000000-0000-4000-8000-000000000039": "cbe06a514d563405159726aebb1b2f57d10e59875e7b0660f004ba5d080951f8",
+      "role-custom-58000000-0000-4000-8000-000000000040": "4bcdb520f7add7c84139156f0dff054076703164e25c77742e89747fa870804e",
+      "role-custom-58000000-0000-4000-8000-000000000041": "8f79f4589e682abcfa42e8d6088ee24df012f47a62b1428ce15540c16c35ddd0",
+      "role-custom-58000000-0000-4000-8000-000000000042": "b06dbac0ec13ddfaf87719190646e655cbbd35c0819f0edb4a8c16e054bcdeaf",
+      "role-custom-58000000-0000-4000-8000-000000000043": "fd11b9db15430b59ca5bbb9a14f43c6f16f6e4e8e40d5612d0f2a0a2b1e83fd3",
+      "role-custom-58000000-0000-4000-8000-000000000044": "b6c44471351c9c51bcf473e083193210c0adbd6b11af1972db044225958ba508",
+      "role-custom-58000000-0000-4000-8000-000000000045": "f19d5ae7ce772696af111a6f722864306f8a109d721288bcc342b936618198af",
+      "role-custom-58000000-0000-4000-8000-000000000046": "20207a1110c7fad986bbc9e054b7ea1edec31ed50b896fec17172925b6e314b2",
+      "role-custom-58000000-0000-4000-8000-000000000047": "e18a268024e0e2d3dcf931e32bdf03558e00c4e2905924a20bb78b88bca870aa",
+      "role-custom-58000000-0000-4000-8000-000000000048": "f8c2f249d800385141787610ee897cefddc7d402452e47b798f51eb9863337be",
+      "role-custom-58000000-0000-4000-8000-000000000049": "eb40e6506630065e72a6a4cf3dc1fe937895ad52d9969a41208dfeace8004ea3",
+      "role-custom-58000000-0000-4000-8000-000000000050": "8647540bb1334ade80c3c1254a0fb688ac72ad3ccc5c28aca38c98449771dbd6",
+      "role-custom-58000000-0000-4000-8000-000000000051": "15bc5bc47987d87608895e18273982f2e83b000825c5d7855e938fd187335aaa",
+      "role-custom-58000000-0000-4000-8000-000000000052": "8ce73f6be658e107c6ad5781a883856dcef6872d57f3ef5f0ab3bc309397f16b",
+      "role-custom-58000000-0000-4000-8000-000000000053": "190e391b69bd496912aea9dc2e2508fb95917d01f62bdc6c2069e535be4b460c",
+      "role-custom-58000000-0000-4000-8000-000000000054": "b1702515ba93088f154d6ef776ccad7f8c3cd40185a9990f2796d9a0c66af9ba",
+      "role-custom-58000000-0000-4000-8000-000000000055": "3a0cc1f7d97b954f556057814ebac7ddf6005f931b13648ebb12504c90a6af5f"
+    },
+    "contentHash": "5b822e7b32dabe03fd92d32ffb86e9a1378c596c00f8947c1173a718285fe8ae"
+  }
+}
