@@ -445,6 +445,27 @@
         "path": "db/migrations/031_dev014_principal_lifecycle_v2.sql",
         "sourceSha256": "586a7d829041272c67df31f9d9d6531dfb16497dfdb780be954bb05e259d8ab7",
         "appliedSha256": "676c231bf2f6f31d9fc153603b8429894fa0e1b0d1adb4fedc07a103d87295b9"
+      },
+      {
+        "order": 32,
+        "version": "dev058-orgmaster-034",
+        "path": "db/migrations/034_dev058_ai_pdm_role_policy_compatibility_v2.sql",
+        "sourceSha256": "5206a2c0098db100c64a6e76e0b220a3e3759dfb1e69cba52f7559ddbfb831d0",
+        "appliedSha256": "a76afb99b66fbb7045981230737d2a83119ee4f18763925351456e227bd11843"
+      },
+      {
+        "order": 33,
+        "version": "dev058-orgmaster-035",
+        "path": "db/migrations/035_dev058_ai_pdm_compatibility_definer_read.sql",
+        "sourceSha256": "80ae5123812f9909ca17b2581fe2638576cf182905bc11761f937595ec9271ee",
+        "appliedSha256": "502d1d7858dbd82745a60d007aeb187703b032928720da695871aaba7ab50fed"
+      },
+      {
+        "order": 34,
+        "version": "dev058-orgmaster-036",
+        "path": "db/migrations/036_dev058_retire_unused_role_policy_readiness.sql",
+        "sourceSha256": "e5a6d5e6d808ad7d5a327b70e9cbc976b58ef894db0dc54a681f8fecfc2636a1",
+        "appliedSha256": "075b5a48233a51723c64059baa2c45735f891fcbcd93ab60664161acbf10e2f4"
       }
     ]
   },

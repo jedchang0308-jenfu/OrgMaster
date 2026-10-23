@@ -78,7 +78,7 @@ describe('governance store', () => {
     await expect(applyDraftCommand(root, applied.revision, forgedV3, actor)).rejects.toMatchObject({
       issues: expect.arrayContaining([expect.objectContaining({ code: 'ASSIGNMENT_OWNER_COMMAND_REQUIRED' })]),
     })
-    const replay = await applyDraftCommand(root, applied.revision, command, actor)
+    const replay = await applyDraftCommand(root, initial.revision, command, actor)
     expect(replay.status).toBe('replayed')
     expect(replay.revision).toBe(applied.revision)
     const candidate = await validateAssignmentCandidate(root, { ...command.value, id: undefined, catalogVersion: null })

@@ -18,9 +18,9 @@ PR135 已 merge、官方 master CI PASS；首次正式 rotation 先在 build rea
 
 [來源與映像依賴契約](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#production-tool-database-config-20261018) → [受控工具 rotation／一般發布](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018) → [本輪任務](dev_task.md#dev-040-production-tool-設定解耦2026-10-18)。PR134 已 merge；續授權僅 OrgMaster 補齊 source-bound runner image-only plan／完整75地址證據與原 ten-stage ordinary release。新增 `test:dev-040:tool-rotation` 納入 required Source QC；正式 rotation／發布／postverify 仍待本輪 provider evidence，維持零 DDL、資料／grant／IAM／Secret／跨專案限制。
 
-## DEV-058 B 方案動態角色與集中指派（2026-10-12）
+## DEV-058 B 方案動態角色與集中指派
 
-2026-10-19 current：[原生任務](dev_task.md#dev-058-federated-role-catalog-central-assignment) → [SPEC §0](specs/DEV-058-federated-role-catalog-central-assignment.md#0-本輪可獨立交付切片)／[QA §6](qa/DEV-058-dynamic-role-assignment-validation-plan.md#6-本輪局部切片驗證)／[ADR-007](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。撤權及九身份內容版本相容已本機實作；完整dynamic產品與QA24 whole未完成。consumer相容草案13欄、不逐版固定核可PDM registryHash，必要hash／identity／scope／protected與首次rollout證據維持。
+[規格／PDM交接](specs/DEV-058-federated-role-catalog-central-assignment.md) → [唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。三類按變更選用：契約／資格、原生交易／ACL、一次正常雙端旅程。
 
 ## DEV-037 已撤銷指派操作（2026-10-12）
 

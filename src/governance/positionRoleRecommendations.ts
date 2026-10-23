@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { aiPdmRoleSelectable } from './aiPdmRoleSchema'
 import type { ExternalRoleCatalogRoleV1, GovernanceOrganizationSnapshotV1, PositionRolePolicyV1, PositionRoleRecommendationStateV1, RecommendationDecisionV1 } from './types'
 
 export type PositionRoleRecommendationV1 = {
@@ -65,7 +66,7 @@ export function buildPositionRoleRecommendations(input: RecommendationInput): Po
     const matchingAssignments = employeePositionAssignments.filter((assignment) => assignment.positionId === policy.positionId)
     if (!matchingAssignments.length) continue
     const role = input.catalog.roles.find((candidate) => candidate.stableRoleId === policy.stableRoleId)
-    if (!role || role.status !== 'active' || role.assignable === false || role.recommendationAllowed === false) continue
+    if (!role || !aiPdmRoleSelectable(role) || role.recommendationAllowed === false) continue
     const scope = policyScope(policy, input.workspaceKey)
     if (!scope || !role.allowedScopeKinds.includes(scope.kind)) continue
     const sourcePositionIds = [...new Set(matchingAssignments.map((assignment) => assignment.positionId))].sort()

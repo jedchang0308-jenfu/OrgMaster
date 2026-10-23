@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw, AlertTriangle } from 'lucide-react'
-import { loadGovernance, loadGovernanceAudit, loadGovernanceSession, patchGovernanceDraft, publishGovernancePolicy, setActiveGovernanceVersion, validateGovernanceAssignment, type GovernanceApiSnapshot, type GovernanceSession, type GovernanceVersionSummary } from '../governance/apiClient'
+import { loadGovernance, loadGovernanceAudit, loadGovernanceCommandResult, loadGovernanceSession, patchGovernanceDraft, publishGovernancePolicy, setActiveGovernanceVersion, validateGovernanceAssignment, type GovernanceApiSnapshot, type GovernanceSession, type GovernanceVersionSummary } from '../governance/apiClient'
 import { describeGovernanceFailure, formatGovernanceDateTime, governanceAssignmentChanges, governancePublishBlockersV2, type GovernanceAssignmentChange, type GovernanceFailureView } from '../governance/governancePresentation'
 import { classifyAssignmentSurface, isSystemAdminRoleIdentity } from '../governance/assignmentSurface'
+import { aiPdmRoleSelectable } from '../governance/aiPdmRoleSchema'
+import { historicalAiPdmRoleSnapshotMatches } from '../governance/aiPdmCatalog'
 import type { GovernanceCommandV2, GovernanceRoleAssignmentV2, GovernanceRoleDelegationV2, ExternalRoleCatalogSnapshotV1 } from '../governance/types'
 import type { Department, Employee, Role } from '../types'
 import { GovernanceAssignmentCheck, type GovernanceAssignmentCheckResult } from './GovernanceAssignmentCheck'
@@ -22,12 +24,17 @@ const activeAt = (status: string, from: string, to: string | null, at = now()) =
 function employeeName(employees: Employee[], employeeId: string) { return employees.find((employee) => employee.id === employeeId)?.name ?? employeeId }
 function accountTypeLabel(accountType?: string) { return accountType === 'human_personal' ? '日常帳號' : accountType === 'human_privileged' ? '特權帳號' : accountType === 'legacy_shared' ? '共用帳號' : accountType === 'service' ? '服務帳號' : '未分類' }
 function scopeLabel(scope: GovernanceRoleAssignmentV2['scope']) { return scope.kind === 'global' ? '全域' : `${scope.kind}：${scope.value}` }
-function roleLabel(catalogs: ExternalRoleCatalogSnapshotV1[], _draft: GovernanceApiSnapshot['document']['draft'], assignment: GovernanceRoleAssignmentV2) { if (assignment.applicationId === 'orgmaster') return assignment.roleNameSnapshot; return catalogs.flatMap((catalog) => catalog.roles).find((role) => role.stableRoleId === assignment.roleId)?.displayName ?? assignment.roleNameSnapshot }
+function roleLabel(catalogs: ExternalRoleCatalogSnapshotV1[], _draft: GovernanceApiSnapshot['document']['draft'], assignment: GovernanceRoleAssignmentV2) { if (assignment.applicationId === 'orgmaster') return assignment.roleNameSnapshot; const role = catalogs.flatMap((catalog) => catalog.roles).find((candidate) => candidate.stableRoleId === assignment.roleId); return role?.presentationName ?? role?.displayName ?? assignment.roleNameSnapshot }
 function isPrivilegedSystemAdminAssignment(assignment: GovernanceRoleAssignmentV2) { return assignment.applicationId === 'ai-pdm' && (assignment.roleId === 'role-system-admin' || assignment.roleCodeSnapshot === 'system_admin') }
 type AssignmentStatusColor = 'effective' | 'future' | 'expired' | 'revoked'
 type MatrixRoleTarget = { applicationId: GovernanceRoleAssignmentV2['applicationId']; id: string; name: string; allowedScopeKinds: readonly string[]; assignable: boolean }
 type MatrixRole = { key: string; name: string; targets: Partial<Record<GovernanceRoleAssignmentV2['applicationId'], MatrixRoleTarget>> }
 type AssignmentDialogState = { kind: 'add'; applicationId: 'ai-pdm' | 'orgmaster'; roleId: string; roleName: string } | { kind: 'details'; applicationId: GovernanceRoleAssignmentV2['applicationId']; roleId: string; roleName: string; employeeId: string }
+type UnconfirmedCommand = { commandId: string; actorPrincipalId: string; operation: string; retrySend: () => Promise<unknown>; canRetry?: boolean }
+function writeOutcomeUncertain(error: unknown) {
+  const value = error as { status?: number; code?: string } | null
+  return typeof value?.status === 'number' ? value.status >= 500 : typeof value?.code !== 'string'
+}
 function assignmentStatusColor(assignment: GovernanceRoleAssignmentV2, at: number): AssignmentStatusColor { if (assignment.status === 'revoked') return 'revoked'; const from = Date.parse(assignment.validFrom); const to = assignment.validTo ? Date.parse(assignment.validTo) : null; if (Number.isFinite(from) && from > at) return 'future'; if (to !== null && Number.isFinite(to) && to <= at) return 'expired'; return 'effective' }
 function assignmentStatusLabel(status: AssignmentStatusColor) { return status === 'effective' ? '有效' : status === 'future' ? '尚未生效' : status === 'expired' ? '已到期' : '已撤銷' }
 function assignmentLifecycleEditable(assignment: GovernanceRoleAssignmentV2) { return assignment.applicationId !== 'financial-management-system' && (!('basis' in assignment) || (assignment.basis === 'manual' && 'subjectKind' in assignment && assignment.subjectKind === 'employee' && 'targetPrincipalId' in assignment && assignment.targetPrincipalId === null)) }
@@ -54,6 +61,9 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const [assignmentDialog, setAssignmentDialog] = useState<AssignmentDialogState | null>(null)
   const [assignmentRemovalId, setAssignmentRemovalId] = useState<string | null>(null)
   const commandPendingRef = useRef(false)
+  const [unconfirmedCommand, setUnconfirmedCommand] = useState<UnconfirmedCommand | null>(null)
+  const unconfirmedRef = useRef<UnconfirmedCommand | null>(null)
+  const currentActorRef = useRef('')
   const assignmentDialogRef = useRef<HTMLDialogElement>(null)
   const [clockNow, setClockNow] = useState(Date.now())
   const [delegationSourceId, setDelegationSourceId] = useState('')
@@ -77,14 +87,23 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const draft = snapshot?.document?.draft ?? null
   const catalogs = snapshot?.catalogs ?? []
   const catalog = catalogs.find((entry) => entry.applicationId === 'ai-pdm')
+  const expectedCatalog = catalog?.publicationFormat === 'dynamic-policy-v1'
+    ? { catalogVersion: catalog.catalogVersion, catalogSha256: catalog.catalogSha256 ?? catalog.payloadHash }
+    : undefined
   const actorPrincipalId = session?.actor.principalId ?? ''
+  currentActorRef.current = actorPrincipalId
+  useEffect(() => {
+    if (!actorPrincipalId || !unconfirmedRef.current || unconfirmedRef.current.actorPrincipalId === actorPrincipalId) return
+    unconfirmedRef.current = null
+    setUnconfirmedCommand(null)
+  }, [actorPrincipalId])
   const identityLinks = draft?.identityLinks ?? []
   const catalogReady = catalog?.validationState === 'valid'
-  const identityMutationAllowed = workspaceMutationAllowed && Boolean(session?.capabilities.manage) && !mobileReadOnly
+  const identityMutationAllowed = workspaceMutationAllowed && Boolean(session?.capabilities.manage) && !mobileReadOnly && !unconfirmedCommand
   const mutationAllowed = identityMutationAllowed && catalogReady
   const internalRoles = useMemo(() => draft?.applicationRoles.filter((role) => role.applicationId === 'orgmaster' && role.status === 'active') ?? [], [draft])
   const externalRoles = catalog?.roles.filter((role) => role.status === 'active') ?? []
-  const selectableRoles = assignmentApplicationId === 'orgmaster' ? internalRoles.map((role) => ({ id: role.id, code: role.code, name: role.name, allowedScopeKinds: ['global'] as const })) : externalRoles.filter((role) => role.assignable && !isSystemAdminRoleIdentity(role)).map((role) => ({ id: role.stableRoleId, code: role.code, name: role.displayName, allowedScopeKinds: role.allowedScopeKinds }))
+  const selectableRoles = assignmentApplicationId === 'orgmaster' ? internalRoles.map((role) => ({ id: role.id, code: role.code, name: role.name, allowedScopeKinds: ['global'] as const })) : externalRoles.filter((role) => aiPdmRoleSelectable(role) && !isSystemAdminRoleIdentity(role)).sort((a,b)=>(a.presentationOrder??99)-(b.presentationOrder??99)).map((role) => ({ id: role.stableRoleId, code: role.code, name: role.presentationName??role.displayName, allowedScopeKinds: role.allowedScopeKinds }))
   const roleAssignments = draft?.roleAssignments ?? []
   const ordinaryRoleAssignments = roleAssignments.filter((assignment) => !isPrivilegedSystemAdminAssignment(assignment))
   const matrixRoles = useMemo(() => {
@@ -107,9 +126,9 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     for (const roleCatalog of catalogs) for (const role of roleCatalog.roles) {
       if (roleCatalog.applicationId === 'ai-pdm' && isSystemAdminRoleIdentity(role)) continue
       const key = `${roleCatalog.applicationId}:${role.stableRoleId}`
-      const assignable = roleCatalog.applicationId === 'ai-pdm' && roleCatalog.validationState === 'valid' && role.status === 'active' && role.assignable && role.allowedScopeKinds.length > 0
-      const visibleInMatrix = assigned.has(key) || (role.status === 'active' && (roleCatalog.applicationId !== 'ai-pdm' || (role.assignable && role.allowedScopeKinds.length > 0)))
-      if (visibleInMatrix) addRoleTarget({ applicationId: roleCatalog.applicationId, id: role.stableRoleId, name: role.displayName, allowedScopeKinds: role.allowedScopeKinds, assignable }, role.code)
+      const assignable = roleCatalog.applicationId === 'ai-pdm' && roleCatalog.validationState === 'valid' && aiPdmRoleSelectable(role) && role.allowedScopeKinds.length > 0
+      const visibleInMatrix = assigned.has(key) || (role.status === 'active' && (roleCatalog.applicationId !== 'ai-pdm' || (aiPdmRoleSelectable(role) && role.allowedScopeKinds.length > 0)))
+      if (visibleInMatrix) addRoleTarget({ applicationId: roleCatalog.applicationId, id: role.stableRoleId, name: role.presentationName??role.displayName, allowedScopeKinds: role.allowedScopeKinds, assignable }, role.code)
     }
     for (const assignment of ordinaryRoleAssignments) {
       const key = `${assignment.applicationId}:${assignment.roleId}`
@@ -122,7 +141,8 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
       if (leftIsAdministrator !== rightIsAdministrator) return leftIsAdministrator ? -1 : 1
       const leftOrder = applicationOrder.findIndex((applicationId) => left.targets[applicationId] !== undefined)
       const rightOrder = applicationOrder.findIndex((applicationId) => right.targets[applicationId] !== undefined)
-      return leftOrder - rightOrder || left.name.localeCompare(right.name, 'zh-Hant')
+      const presentation=(value:MatrixRole)=>catalogs.find(c=>c.applicationId==='ai-pdm')?.roles.find(role=>role.stableRoleId===value.targets['ai-pdm']?.id)?.presentationOrder??99
+      return leftOrder - rightOrder || presentation(left)-presentation(right) || left.name.localeCompare(right.name, 'zh-Hant')
     })
   }, [catalogs, draft?.applicationRoles, ordinaryRoleAssignments])
   const matrixApplications = useMemo(() => {
@@ -169,7 +189,68 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     }
   }, [assignmentRoleId, assignmentScopeKind, selectableRoles])
 
-  async function runCommand(command: GovernanceCommandV2, success: string) { if (commandPendingRef.current) return false; commandPendingRef.current = true; setBusy(true); clearFeedback(); try { const result = await patchGovernanceDraft(revision, command); setSnapshot((current) => current ? { ...current, document: result.payload.document } : current); setRevision(result.revision || result.payload.revision); setNotice(result.payload.status === 'noop' ? '內容沒有變更' : success); onChanged?.(); return true } catch (error) { recordFailure(error); return false } finally { commandPendingRef.current = false; setBusy(false) } }
+  async function confirmCommandResult(pending: UnconfirmedCommand) {
+    try {
+      const result = (await loadGovernanceCommandResult(pending.commandId)).payload
+      if (currentActorRef.current !== pending.actorPrincipalId) return false
+      if (result.commandId !== pending.commandId || result.status !== 'committed' || result.result?.operation !== pending.operation) {
+        const next = { ...pending, canRetry: result.commandId === pending.commandId && result.status === 'not_observed' }
+        unconfirmedRef.current = next
+        setUnconfirmedCommand(next)
+        setNotice('操作結果尚未確認；請稍後再次查詢，系統不會重新送出。')
+        return false
+      }
+      if (!await refresh(false) || currentActorRef.current !== pending.actorPrincipalId) return false
+      unconfirmedRef.current = null
+      setUnconfirmedCommand(null)
+      setFailure(null)
+      setNotice('已查明原操作完成，並重新載入目前資料。')
+      onChanged?.()
+      return true
+    } catch {
+      if (currentActorRef.current === pending.actorPrincipalId) setNotice('目前無法查明操作結果；請稍後再次查詢，系統不會重新送出。')
+      return false
+    }
+  }
+  async function handleWriteFailure(error: unknown, pending: UnconfirmedCommand) {
+    if (currentActorRef.current !== pending.actorPrincipalId) return false
+    if (!writeOutcomeUncertain(error)) { recordFailure(error); return false }
+    unconfirmedRef.current = pending
+    setUnconfirmedCommand(pending)
+    setNotice('回應中斷，正在查詢原操作結果。')
+    return confirmCommandResult(pending)
+  }
+  async function retryUnconfirmedCommand() {
+    const pending = unconfirmedRef.current
+    if (!pending?.canRetry || commandPendingRef.current || pending.actorPrincipalId !== currentActorRef.current) return
+    commandPendingRef.current = true; setBusy(true)
+    try {
+      await pending.retrySend()
+      await confirmCommandResult(pending)
+    } catch (error) {
+      if (currentActorRef.current === pending.actorPrincipalId) {
+        recordFailure(error)
+        await confirmCommandResult(pending)
+      }
+    } finally { commandPendingRef.current = false; setBusy(false) }
+  }
+  async function runCommand(command: GovernanceCommandV2, success: string) {
+    if (commandPendingRef.current || unconfirmedRef.current) return false
+    const boundCommand = structuredClone(command)
+    const boundCatalog = expectedCatalog ? { ...expectedCatalog } : undefined
+    const send = () => patchGovernanceDraft(revision, boundCommand, currentOrganizationRevision ?? undefined, boundCatalog)
+    const pending = { commandId: command.commandId, actorPrincipalId, operation: command.type, retrySend: send }
+    commandPendingRef.current = true; setBusy(true); clearFeedback()
+    try {
+      const result = await send()
+      if (currentActorRef.current !== pending.actorPrincipalId) return false
+      if (!result.payload.document || !(result.revision || result.payload.revision)) throw new Error('INVALID_WRITE_RESPONSE')
+      setSnapshot(current => current ? { ...current, document: result.payload.document } : current)
+      setRevision(result.revision || result.payload.revision)
+      setNotice(result.payload.status === 'noop' ? '內容沒有變更' : success); onChanged?.(); return true
+    } catch (error) { return await handleWriteFailure(error, pending) }
+    finally { commandPendingRef.current = false; setBusy(false) }
+  }
   function assignmentValue(): GovernanceRoleAssignmentV2 | null {
     if (!assignmentEmployeeId || !assignmentRoleId || !draft) return null
     const selectedInternal = internalRoles.find((role) => role.id === assignmentRoleId)
@@ -213,7 +294,16 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   }
   async function submitAssignment() { const value = assignmentValue(); if (!value) { recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: [{ code: 'EXTERNAL_ROLE_UNKNOWN', message: '請選擇有效角色。' }] }); return } setBusy(true); clearFeedback(); try { const checked = await validateGovernanceAssignment(value); if (checked.payload.status !== 'valid') { recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: checked.payload.issues }); return } const ok = await runCommand({ type: 'UPSERT_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: value.applicationId === 'ai-pdm' ? '建立外部應用角色指派' : '建立 OrgMaster 治理角色指派', value }, '角色指派已加入草稿，尚未發布。'); if (ok) { setCheckResult(checked.payload); setAssignmentDialog(null) } } catch (error) { recordFailure(error) } finally { setBusy(false) } }
   async function revokeAssignment(value: GovernanceRoleAssignmentV2) { if (!identityMutationAllowed || value.status !== 'active') return false; const ok = await runCommand({ type: 'REVOKE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '撤銷角色指派', id: value.id }, '角色指派已撤銷'); if (ok) setAssignmentDialog(null); return ok }
-  function assignmentRestoreBlocked(assignment: GovernanceRoleAssignmentV2) { return assignment.validTo !== null && Date.parse(assignment.validTo) <= clockNow ? '指派已到期，請新增有效期間的指派' : !employees.some((employee) => employee.id === assignment.employeeId && employee.status === 'active') ? '停用員工不能啟用角色指派' : assignment.applicationId === 'ai-pdm' && assignment.catalogVersion !== catalog?.catalogVersion ? '角色目錄已更新，請新增使用目前目錄的指派' : '' }
+  function assignmentRestoreBlocked(assignment: GovernanceRoleAssignmentV2) {
+    if(assignment.validTo!==null&&Date.parse(assignment.validTo)<=clockNow)return '指派已到期，請新增有效期間的指派'
+    if(!employees.some(employee=>employee.id===assignment.employeeId&&employee.status==='active'))return '停用員工不能啟用角色指派'
+    if(assignment.applicationId==='ai-pdm'){
+      const role=catalog?.roles.find(value=>value.stableRoleId===assignment.roleId)
+      if(!role||!aiPdmRoleSelectable(role))return '角色已停用或僅保留舊指派，不能恢復'
+      if(assignment.catalogVersion!==catalog?.catalogVersion&&!historicalAiPdmRoleSnapshotMatches(assignment,role,catalogs))return '原指派歷史身份待驗證'
+    }
+    return ''
+  }
   async function restoreAssignment(value: GovernanceRoleAssignmentV2) { if (!mutationAllowed || value.status !== 'revoked' || !assignmentLifecycleEditable(value) || assignmentRestoreBlocked(value)) return; const ok = await runCommand({ type: 'RESTORE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '啟用角色指派', id: value.id }, '角色指派已啟用於草稿，尚未發布。'); if (ok) closeAssignmentDialog() }
   async function removeAssignment(value: GovernanceRoleAssignmentV2) { if (!identityMutationAllowed || value.status !== 'revoked' || !assignmentLifecycleEditable(value)) return; const ok = await runCommand({ type: 'REMOVE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '刪除已撤銷角色指派', id: value.id }, '角色指派已從草稿刪除，尚未發布。'); if (ok) closeAssignmentDialog() }
   function openAssignmentAdd(role: MatrixRoleTarget) { if (!mutationAllowed || !role.assignable || (role.applicationId !== 'orgmaster' && role.applicationId !== 'ai-pdm')) return; const scopeKind = role.applicationId === 'orgmaster' ? 'global' : (role.allowedScopeKinds[0] as typeof assignmentScopeKind | undefined) ?? 'workspace'; setAssignmentApplicationId(role.applicationId); setAssignmentRoleId(role.id); setAssignmentEmployeeId(''); setAssignmentScopeKind(scopeKind); setAssignmentScopeValue(scopeKind === 'workspace' ? 'current' : ''); setAssignmentValidFrom(new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)); setAssignmentValidTo(''); clearFeedback(); setAssignmentDialog({ kind: 'add', applicationId: role.applicationId, roleId: role.id, roleName: role.name }) }
@@ -222,24 +312,52 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   function submitDelegation() { const source = externalAssignments.find((value) => value.id === delegationSourceId); if (!source || !delegationToEmployeeId || !delegationValidTo || !delegationReason.trim()) { recordFailure({ code: 'ROLE_DELEGATION_INVALID' }); return } const value: GovernanceRoleDelegationV2 = { id: `delegation-${crypto.randomUUID()}`, sourceAssignmentId: source.id, fromEmployeeId: source.employeeId, toEmployeeId: delegationToEmployeeId, applicationId: 'ai-pdm', roleId: source.roleId, catalogVersion: source.catalogVersion!, scope: source.scope, status: 'active', validFrom: source.validFrom, validTo: new Date(delegationValidTo).toISOString(), reason: delegationReason.trim(), effectState: 'not-synchronized' }; void runCommand({ type: 'UPSERT_ROLE_DELEGATION', commandId: crypto.randomUUID(), reason: '建立角色代理', value }, '角色代理已建立，尚未同步至目標系統') }
   async function loadAudit() { try { const result = await loadGovernanceAudit(); setAudit(result.payload.items as Array<Record<string, unknown>>) } catch (error) { recordFailure(error) } }
   function changeSection(next: SectionId) { setSection(next); if (next !== 'assignments') setPrivilegedView(false); onSectionChange?.(next); clearFeedback(); if (next === 'audit') void loadAudit() }
-  async function publish() { if (!currentOrganizationVersionId || !publishReason.trim() || publishBlockers.length) { recordFailure({ code: publishBlockers.length ? 'GOVERNANCE_VALIDATION_FAILED' : 'ORGANIZATION_VERSION_INVALID', issues: publishBlockers.map((blocker) => ({ code: blocker.code, message: blocker.message })) }); return } setBusy(true); clearFeedback(); try { const result = await publishGovernancePolicy(revision, crypto.randomUUID(), publishReason.trim(), currentOrganizationVersionId); await refresh(false); setPublishReason(''); setNotice(`OrgMaster 已發布第${result.payload.versionSummary.versionNumber}版`) } catch (error) { recordFailure(error) } finally { setBusy(false) } }
-  async function reactivate(versionId: string, versionNumber: number) { setBusy(true); try { await setActiveGovernanceVersion(revision, crypto.randomUUID(), '重新啟用角色指派版本', versionId); await refresh(false); setNotice(`角色指派版本 v${versionNumber} 已重新啟用`) } catch (error) { recordFailure(error) } finally { setBusy(false) } }
+  async function publish() {
+    if (commandPendingRef.current || unconfirmedRef.current) return
+    if (!currentOrganizationVersionId || !publishReason.trim() || publishBlockers.length) { recordFailure({ code: publishBlockers.length ? 'GOVERNANCE_VALIDATION_FAILED' : 'ORGANIZATION_VERSION_INVALID', issues: publishBlockers.map(blocker => ({ code: blocker.code, message: blocker.message })) }); return }
+    const commandId = crypto.randomUUID()
+    const boundCatalog = expectedCatalog ? { ...expectedCatalog } : undefined
+    const send = () => publishGovernancePolicy(revision, commandId, publishReason.trim(), currentOrganizationVersionId, currentOrganizationRevision ?? undefined, boundCatalog)
+    const pending = { commandId, actorPrincipalId, operation: 'PUBLISH_ASSIGNMENTS', retrySend: send }
+    commandPendingRef.current = true; setBusy(true); clearFeedback()
+    try {
+      const result = await send()
+      if (currentActorRef.current !== pending.actorPrincipalId) return
+      if (!result.payload.versionSummary?.id) throw new Error('INVALID_WRITE_RESPONSE')
+      await refresh(false); setPublishReason(''); setNotice(`OrgMaster 已發布第${result.payload.versionSummary.versionNumber}版`)
+    } catch (error) { await handleWriteFailure(error, pending) }
+    finally { commandPendingRef.current = false; setBusy(false) }
+  }
+  async function reactivate(versionId: string, versionNumber: number) {
+    if (commandPendingRef.current || unconfirmedRef.current) return
+    const commandId = crypto.randomUUID()
+    const boundCatalog = expectedCatalog ? { ...expectedCatalog } : undefined
+    const send = () => setActiveGovernanceVersion(revision, commandId, '重新啟用角色指派版本', versionId, currentOrganizationRevision ?? undefined, boundCatalog)
+    const pending = { commandId, actorPrincipalId, operation: 'ACTIVATE_ASSIGNMENT_VERSION', retrySend: send }
+    commandPendingRef.current = true; setBusy(true)
+    try {
+      await send()
+      if (currentActorRef.current !== pending.actorPrincipalId) return
+      await refresh(false); setNotice(`角色指派版本 v${versionNumber} 已重新啟用`)
+    } catch (error) { await handleWriteFailure(error, pending) }
+    finally { commandPendingRef.current = false; setBusy(false) }
+  }
   async function checkAssignment() { const value = assignmentValue(); if (!value) return; setBusy(true); clearFeedback(); try { const result = await validateGovernanceAssignment(value); setCheckResult(result.payload); if (result.payload.status === 'valid') setNotice('指派檢查通過，尚未寫入治理資料') } catch (error) { recordFailure(error) } finally { setBusy(false) } }
 
-  const content = <section className="governance-center governance-center--workspace" role="region" aria-labelledby="governance-title"><h1 className="governance-visually-hidden" id="governance-title">角色指派治理</h1><div className="governance-center__body"><nav className="governance-nav" aria-label="治理區段">{NAV.map((item) => <button type="button" key={item.id} className={section === item.id ? 'is-active' : ''} onClick={() => changeSection(item.id)}>{item.label}</button>)}</nav><main className="governance-main">{mobileReadOnly && <div className="governance-readonly" role="status">手機僅供閱讀</div>}{failure && <div className="governance-error" role="alert"><span>{failure.message}</span>{failure.canReload && <button type="button" className="button" onClick={() => void refresh()}>重新載入</button>}</div>}{notice && <div className="governance-notice" role="status">{notice}</div>}{!draft && !failure && <div className="governance-loading" role="status">載入治理資料…</div>}
+  const content = <section className="governance-center governance-center--workspace" role="region" aria-labelledby="governance-title"><h1 className="governance-visually-hidden" id="governance-title">角色指派治理</h1><div className="governance-center__body"><nav className="governance-nav" aria-label="治理區段">{NAV.map((item) => <button type="button" key={item.id} className={section === item.id ? 'is-active' : ''} onClick={() => changeSection(item.id)}>{item.label}</button>)}</nav><main className="governance-main">{mobileReadOnly && <div className="governance-readonly" role="status">手機僅供閱讀</div>}{failure && <div className="governance-error" role="alert"><span>{failure.message}</span>{failure.canReload && <button type="button" className="button" onClick={() => void refresh()}>重新載入</button>}</div>}{notice && <div className="governance-notice" role="status">{notice}</div>}{unconfirmedCommand && <div className="governance-readonly" role="status"><span>上一筆操作結果尚未確認，暫停新的變更。</span><button type="button" className="button" disabled={busy} onClick={() => { const pending = unconfirmedRef.current; if (!pending) return; setBusy(true); void confirmCommandResult(pending).finally(() => setBusy(false)) }}>查詢操作結果</button>{unconfirmedCommand.canRetry && <button type="button" className="button" disabled={busy} onClick={() => void retryUnconfirmedCommand()}>重送原操作</button>}</div>}{!draft && !failure && <div className="governance-loading" role="status">載入治理資料…</div>}
 {draft && section === 'identity' && <section className="governance-section"><SectionHeading eyebrow="Employee identity governance" title="帳號治理" count={`${identityLinks.length} 筆`} /><p className="governance-muted">這裡是跨員工檢視與異常定位；建立或管理登入身分請回到指定員工的「登入身分」明細。</p><div className="governance-table-wrap"><table className="governance-table"><thead><tr><th>登入身分</th><th>Employee</th><th>Issuer</th><th>帳號類型</th><th>狀態</th>{identityMutationAllowed && <th>操作</th>}</tr></thead><tbody>{identityLinks.map((link) => { const admission = draft.principalAdmissions?.find((candidate) => candidate.identityLinkId === link.id && candidate.status === 'active'); const isCurrent = link.principalId === actorPrincipalId; const canStatus = identityMutationAllowed && !admission && !isCurrent; return <tr key={link.id}><td>{link.subjectHint}<small>Principal {link.principalId}</small></td><td><button type="button" className="governance-employee-link" onClick={() => onOpenEmployee?.(link.employeeId)}>{employeeName(employees, link.employeeId)}</button></td><td>{link.issuer}</td><td>{accountTypeLabel(admission?.accountType)}</td><td>{link.status === 'active' ? '有效' : '停用'}</td>{identityMutationAllowed && <td>{canStatus ? <button type="button" className="button button--quiet" disabled={busy} onClick={() => void runCommand({ type: 'SET_IDENTITY_LINK_STATUS', commandId: crypto.randomUUID(), reason: link.status === 'active' ? '停用身分連結' : '重新啟用身分連結', id: link.id, status: link.status === 'active' ? 'inactive' : 'active' }, link.status === 'active' ? '身分連結已停用' : '身分連結已重新啟用')}>{link.status === 'active' ? '停用' : '重新啟用'}</button> : <small>{admission ? '已有帳號准入' : isCurrent ? '目前登入身分' : '唯讀'}</small>}</td>}</tr> })}</tbody></table></div>{!identityLinks.length && <p className="governance-empty">尚無已連結的登入身分；請從員工明細開始建立關係。</p>}</section>}
-{draft && section === 'catalog' && <section className="governance-section"><SectionHeading eyebrow="External role catalog" title="應用角色目錄" count={`${(catalog?.roles.length ?? 0) + internalRoles.length} 筆`} /><div className="governance-source-note">AI-PDM · {catalog?.catalogVersion ?? '尚未取得'} · {catalog?.validationState === 'valid' ? '來源有效' : `來源${catalog?.validationState ?? '未知'}`} · 只讀</div><div className="governance-role-groups"><RoleGroup title="OrgMaster 自有角色" roles={internalRoles.map((role) => ({ id: role.id, name: role.name, code: role.code, risk: role.code === 'orgmaster_admin' ? 'high' : 'normal', assignable: true, scope: 'global' }))} /><RoleGroup title="AI-PDM 角色（唯讀）" roles={(catalog?.roles ?? []).map((role) => ({ id: role.stableRoleId, name: role.displayName, code: role.code, risk: role.riskLevel, assignable: role.assignable, scope: role.allowedScopeKinds.join('、') }))} /></div><p className="governance-muted">外部系統定義角色能力與權限細節；OrgMaster 只管理人員角色指派與治理狀態。</p></section>}
+{draft && section === 'catalog' && <section className="governance-section"><SectionHeading eyebrow="External role catalog" title="應用角色目錄" count={`${(catalog?.roles.length ?? 0) + internalRoles.length} 筆`} /><div className="governance-source-note">AI-PDM · {catalog?.catalogVersion ?? '尚未取得'} · {catalog?.validationState === 'valid' ? '來源有效' : `來源${catalog?.validationState ?? '未知'}`} · 只讀</div><div className="governance-role-groups"><RoleGroup title="OrgMaster 自有角色" roles={internalRoles.map((role) => ({ id: role.id, name: role.name, code: role.code, risk: role.code === 'orgmaster_admin' ? 'high' : 'normal', assignable: true, scope: 'global' }))} /><RoleGroup title="AI-PDM 角色（唯讀）" roles={(catalog?.roles ?? []).map((role) => ({ id: role.stableRoleId, name: role.presentationName ?? role.displayName, code: role.code, risk: role.riskLevel, assignable: role.assignable && role.status === 'active' && (role.assignmentDisposition === undefined || role.assignmentDisposition === 'selectable'), scope: role.allowedScopeKinds.join('、') }))} /></div><p className="governance-muted">外部系統定義角色能力與權限細節；OrgMaster 只管理人員角色指派與治理狀態。</p></section>}
 {draft && section === 'assignments' && <section className="governance-section">
   {privilegedView ? <>
     <div className="governance-privileged__mode-switch"><button type="button" className="button button--quiet" onClick={() => { clearFeedback(); setPrivilegedView(false) }}>返回角色指派</button></div>
-    {privilegedMode ? <GovernancePrivilegedAssignments employees={employees} workspaceMutationAllowed={workspaceMutationAllowed && !mobileReadOnly} onChanged={() => void refresh(false)} /> : <div className="governance-privileged__state" role="alert"><strong>特權設定目前僅供閱讀</strong><p>system_admin 角色契約未完整符合目前目錄；暫時無法管理特權指派。</p></div>}
+    {privilegedMode ? <GovernancePrivilegedAssignments employees={employees} workspaceMutationAllowed={workspaceMutationAllowed && !mobileReadOnly && !unconfirmedCommand} onChanged={() => void refresh(false)} /> : <div className="governance-privileged__state" role="alert"><strong>特權設定目前僅供閱讀</strong><p>system_admin 角色契約未完整符合目前目錄；暫時無法管理特權指派。</p></div>}
   </> : <>
     <div className="governance-matrix-toolbar"><SectionHeading title="系統 × 角色指派矩陣" /><div className="governance-matrix-toolbar__tools"><AssignmentStatusLegend /><div className="governance-draft-shortcut"><button type="button" className="button button--quiet" onClick={() => changeSection('versions')}>查看待發布內容</button><button type="button" className="button button--quiet" onClick={() => { clearFeedback(); setPrivilegedView(true) }}>特權設定</button></div></div></div>
     {matrixRoles.length && matrixApplications.length ? <><div className="governance-matrix-scroll"><table className="governance-matrix"><caption className="governance-visually-hidden">角色為列、系統為欄；員工指派顯示於所屬系統的交叉格。各系統管理員集中顯示於系統管理員列。</caption><thead><tr><th scope="col">角色 / 系統</th>{matrixApplications.map((application) => <th scope="col" key={application.id}>{application.name}</th>)}</tr></thead><tbody>{matrixRoles.map((role) => <tr key={role.key}><th scope="row"><strong>{role.name}</strong></th>{matrixApplications.map((application) => {
       const targetRole = role.targets[application.id]
       if (!targetRole) return <td key={application.id} className="governance-matrix__empty-cell"><span aria-label="不適用">—</span></td>
       const catalogRole = targetRole.applicationId === 'ai-pdm' ? catalog?.roles.find((role) => role.stableRoleId === targetRole.id) : undefined
-      const roleCanBeAssigned = targetRole.applicationId === 'orgmaster' ? targetRole.assignable : catalogRole?.status === 'active' && catalogRole.assignable && catalogRole.allowedScopeKinds.length > 0
+      const roleCanBeAssigned = targetRole.applicationId === 'orgmaster' ? targetRole.assignable : catalogRole && aiPdmRoleSelectable(catalogRole) && catalogRole.allowedScopeKinds.length > 0
       const showAddAssignment = !mobileReadOnly && targetRole.applicationId !== 'financial-management-system' && roleCanBeAssigned
       const addAssignmentDisabledReason = !identityMutationAllowed ? '目前沒有角色指派管理權限' : !catalogReady ? '角色目錄尚未就緒' : '新增員工指派'
       const roleAssignmentsForCell = ordinaryRoleAssignments.filter((assignment) => assignment.applicationId === targetRole.applicationId && assignment.roleId === targetRole.id)

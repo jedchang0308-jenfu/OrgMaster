@@ -9,3 +9,8 @@ scripts/dev015-aligned-new-loader-inspection.test.mjs text eol=lf
 
 # Preserve the exact historical provider-observation bytes.
 ai-doc/qa/DEV-057-gcc-pbds-applicability-2026-10-01.json -text whitespace=cr-at-eol
+
+# Versioned DEV-058 manifest signatures use their exact LF source bytes.
+contracts/ai-pdm-role-policy-consumer-compatibility/v2/contract-manifest.json text eol=lf
+contracts/ai-pdm-role-policy-manager/v1/contract-manifest.json text eol=lf
+db/migrations/035_dev058_ai_pdm_compatibility_definer_read.sql text eol=lf

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { readApplicationRoleCatalogs } from './applicationRoleCatalogRegistry'
 import { appendGovernanceAudit, commitGovernanceMutation, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
 import type { GovernanceActorContext, GovernanceCommandReceiptV2, GovernanceDocumentV3, GovernanceRoleAssignmentV3, ManagementGrantV1 } from '../src/governance/types'
@@ -6,9 +7,9 @@ import {
   FINANCIAL_APPLICATION_ID,
   FINANCIAL_ROLE_ASSIGNMENT_MANAGE,
   FINANCIAL_ROLE_ASSIGNMENT_PUBLISH,
-  FinancialManagementGrantInput,
-  FinancialManagementGrantOperation,
-  FinancialManagementGrantPublishInput,
+  type FinancialManagementGrantInput,
+  type FinancialManagementGrantOperation,
+  type FinancialManagementGrantPublishInput,
   assertExpectedRevisions,
   assertPrivilegedAdmin,
   activeFinancialGrants,
@@ -138,8 +139,12 @@ export async function publishFinancialManagementGrant(root: string, actor: Gover
     const catalogs = await readApplicationRoleCatalogs(root)
     let document = publishFinancialPolicy(current.document, nextDraft, catalogs, source, actor, request.operations.map((operation) => operation.reason.trim()).join('; '), new Date().toISOString())
     document = appendGovernanceAudit(document, { commandId: request.commandId, reason: request.operations.map((operation) => operation.reason.trim()).join('; '), type: 'financial_management_grant_batch' }, actor, { action: 'financial_management_grant_batch', entityType: 'applicationManagementGrant', entityId: null, beforeHash: commandRequestHash(preview.beforeGrants), afterHash: commandRequestHash(preview.afterGrants) })
+    const auditReference = document.auditEvents.at(-1)?.id ?? null
+    const publishedVersion = document.publishedVersions.at(-1)!
+    document = appendGovernanceAudit(document, { commandId: randomUUID(), reason: request.operations.map(operation => operation.reason.trim()).join('; '), type: 'PUBLISH_ASSIGNMENTS' }, actor,
+      { action: 'PUBLISH_ASSIGNMENTS', entityType: 'assignmentVersion', entityId: publishedVersion.id, beforeHash: null, afterHash: publishedVersion.snapshotHash })
     const receipt: GovernanceCommandReceiptV2 = {
-      contractVersion: 'orgmaster.governance-command-receipt.v2', commandId: request.commandId, requestHash: preview.requestHash, previewHash: preview.previewHash, receiptStatus: 'applied', acceptedAt: new Date().toISOString(), terminalAt: new Date().toISOString(), decisionCode: 'COMMAND_APPLIED', auditReference: document.auditEvents.at(-1)?.id ?? null, securityAlertReference: null, sessionRefresh: 'pending', governanceRevision: document.publishedVersions.at(-1)?.id ?? current.revision, replayed: false, attempt: 1,
+      contractVersion: 'orgmaster.governance-command-receipt.v2', commandId: request.commandId, requestHash: preview.requestHash, previewHash: preview.previewHash, receiptStatus: 'applied', acceptedAt: new Date().toISOString(), terminalAt: new Date().toISOString(), decisionCode: 'COMMAND_APPLIED', auditReference, securityAlertReference: null, sessionRefresh: 'pending', governanceRevision: document.publishedVersions.at(-1)?.id ?? current.revision, replayed: false, attempt: 1,
     }
     document = { ...document, commandReceipts: [...document.commandReceipts, receipt] }
     return { document, reasonCode: 'financial_management_grant_publish', updatedBy: actor.principalId }

@@ -1,0 +1,25 @@
+{
+  "contractVersion": "ai-pdm.role-policy-consumer-compatibility.v2",
+  "producer": "orgmaster",
+  "consumer": "ai-pdm",
+  "databaseObject": "orgmaster_contract.v_ai_pdm_role_policy_compatibility_v2",
+  "columns": [
+    { "name": "application_id", "type": "text" },
+    { "name": "consumer_id", "type": "text" },
+    { "name": "contract_version", "type": "text" },
+    { "name": "compatibility_revision", "type": "bigint" },
+    { "name": "supported_publication_format", "type": "text" },
+    { "name": "supported_canonicalization_version", "type": "text" },
+    { "name": "supported_role_schema_id", "type": "text" },
+    { "name": "supported_role_profile_schema_id", "type": "text" },
+    { "name": "accepted_registry_hash", "type": "text" },
+    { "name": "accepted_baseline_role_identity_hash", "type": "text" },
+    { "name": "accepted_protected_policy_hash", "type": "text" },
+    { "name": "consumer_source_revision", "type": "text" },
+    { "name": "enablement_ref", "type": "text" },
+    { "name": "readiness", "type": "text" }
+  ],
+  "initialReadiness": "NOT_READY",
+  "readinessAuthority": "OrgMaster owner only; complete source-bound consumer and integration evidence required",
+  "scope": "New dynamic policy application only; accepted_registry_hash pins registry semantics at rollout and does not approve each catalog revision; never a prerequisite for revoking existing personnel assignments"
+}

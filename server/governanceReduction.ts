@@ -1,6 +1,6 @@
-import { canonicalJson, sha256 } from '../src/governance/commands'
+import { canonicalJson, sha256, GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
 import { GovernanceValidationError } from '../src/governance/validation'
-import type { GovernanceDocumentV3, GovernancePolicyDataV3, GovernanceRoleAssignmentV3 } from '../src/governance/types'
+import type { ExternalRoleCatalogSnapshotV1, GovernanceDocumentV3, GovernancePolicyDataV3, GovernanceRoleAssignmentV3 } from '../src/governance/types'
 
 const same = (left: unknown, right: unknown) => canonicalJson(left) === canonicalJson(right)
 
@@ -10,7 +10,10 @@ export function storedGovernanceCatalogs(document: GovernanceDocumentV3, version
   if (!version || version.kind !== 'assignment-governance-v3') return null
   const payload = { kind: version.kind, policy: version.policy, externalRoleCatalogs: version.externalRoleCatalogs,
     organizationSnapshot: version.organizationSnapshot, effectState: version.effectState }
-  if (sha256(canonicalJson(payload)) !== version.snapshotHash ||
+  if (version.hashFormat !== undefined && version.hashFormat !== GOVERNANCE_PUBLICATION_HASH_FORMAT) return null
+  const expectedHash = version.hashFormat === GOVERNANCE_PUBLICATION_HASH_FORMAT
+    ? publicationSnapshotHash(payload) : sha256(canonicalJson(payload))
+  if (expectedHash !== version.snapshotHash ||
     !document.auditEvents.some(event => event.entityId === version.id && event.afterHash === version.snapshotHash)) return null
   return version.externalRoleCatalogs
 }
@@ -32,6 +35,30 @@ export function withStoredGovernanceHistory(document: GovernanceDocumentV3, curr
     }
   }
   return result
+}
+
+/** An unpublished draft can outlive its producer version. History proves its
+ * provenance only; the current catalog remains first for every new grant. */
+export async function withPublishedGovernanceHistory(
+  document: GovernanceDocumentV3,
+  current: ExternalRoleCatalogSnapshotV1[],
+  loadHistorical?: (catalogVersion: string) => Promise<ExternalRoleCatalogSnapshotV1>,
+) {
+  const result = withStoredGovernanceHistory(document, current)
+  if (!loadHistorical) return result
+  const known = new Set(result.filter(value => value.applicationId === 'ai-pdm').map(value => value.catalogVersion))
+  const missing = [...new Set([...document.draft.roleAssignments, ...document.draft.roleDelegations]
+    .filter(value => value.applicationId === 'ai-pdm' && value.catalogVersion && !known.has(value.catalogVersion))
+    .map(value => value.catalogVersion!))]
+  const historical = await Promise.all(missing.map(async version => {
+    const catalog = await loadHistorical(version)
+    if (catalog.applicationId !== 'ai-pdm' || catalog.catalogVersion !== version || catalog.validationState !== 'valid') {
+      throw new GovernanceValidationError([{ code: 'EXTERNAL_CATALOG_INVALID', path: 'catalogVersion',
+        message: '歷史目錄必須來自已驗證的同一應用與版本' }])
+    }
+    return catalog
+  }))
+  return withStoredGovernanceHistory(document, [...result, ...historical])
 }
 
 function reducedEntry(before: GovernanceRoleAssignmentV3, after: GovernanceRoleAssignmentV3) {

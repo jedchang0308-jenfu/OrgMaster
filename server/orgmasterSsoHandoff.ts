@@ -6,6 +6,9 @@ import { ORGMASTER_SESSION_MAX_AGE_SECONDS } from './orgmasterAuthConfig'
 import { createOpaqueSessionToken, hashSessionToken, readSessionToken, sessionCookie } from './orgmasterAuthCookies'
 
 const COOKIE = '__Host-jenfu_sso_tx'
+// HTTP loopback development cannot use a __Host- cookie without Secure.
+// Keep local applications distinct because cookies do not isolate by port.
+function transactionCookieName(secure: boolean) { return secure ? COOKIE : 'orgmaster_sso_tx' }
 const MAX_RETURN_TO = 1024
 
 type Tx = { state: string; verifier: string; returnTo: string; issuer: string; clientId: 'orgmaster'; expiresAt: number }
@@ -55,10 +58,11 @@ function callbackFailure(errorValue: unknown) {
   return { status: 502, code: 'sso_dependency_unavailable' }
 }
 
-function cookieValue(header: string | undefined) {
-  const item = header?.split(';').map((value) => value.trim()).find((value) => value.startsWith(`${COOKIE}=`))
+function cookieValue(header: string | undefined, secure: boolean) {
+  const name = transactionCookieName(secure)
+  const item = header?.split(';').map((value) => value.trim()).find((value) => value.startsWith(`${name}=`))
   if (!item) return null
-  try { return decodeURIComponent(item.slice(COOKIE.length + 1)) } catch { return null }
+  try { return decodeURIComponent(item.slice(name.length + 1)) } catch { return null }
 }
 
 function sign(value: string, secret: string) {
@@ -86,8 +90,8 @@ function decodeTx(value: string | null, secret: string, now: number): Tx | null 
   } catch { return null }
 }
 
-function clearCookie(secure: boolean) { return `${COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
-function transactionCookie(value: string, secure: boolean, maxAge = 300) { return `${COOKIE}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
+function clearCookie(secure: boolean) { return `${transactionCookieName(secure)}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
+function transactionCookie(value: string, secure: boolean, maxAge = 300) { return `${transactionCookieName(secure)}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
 
 function baseConfig(runtime: OrgmasterAuthRuntime, environment: NodeJS.ProcessEnv) {
   if (!runtime.configResult.configured || !runtime.epochs || !runtime.principals || !runtime.sessions) throw new Error('not configured')
@@ -168,7 +172,7 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     return true
   }
   if (request.method !== 'GET') { error(response, 405, 'sso_request_invalid', id); return true }
-  const tx = decodeTx(cookieValue(request.headers.cookie), setup.config.sessionHashPepper, now())
+  const tx = decodeTx(cookieValue(request.headers.cookie, setup.config.secureCookie), setup.config.sessionHashPepper, now())
   const state = url.searchParams.get('state')
   const code = url.searchParams.get('code')
   const issuer = url.searchParams.get('iss')

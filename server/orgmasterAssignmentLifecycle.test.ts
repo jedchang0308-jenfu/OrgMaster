@@ -31,15 +31,17 @@ it('routes restore/remove through managed draft CAS, audit, idempotent replay an
     const restore = { type: 'RESTORE_ROLE_ASSIGNMENT', id: value.id, commandId: 'restore', reason: '啟用指派' }
     expect((await request(restore, revision, { 'content-type': 'application/json', cookie: 'orgmaster_dev_profile=employee' })).response.status).toBe(403)
     expect((await request(restore, 'stale')).response.status).toBe(409)
-    const result = await request(restore)
+    const restoreExpectedRevision = revision
+    const result = await request(restore, restoreExpectedRevision)
     expect(result.response.status).toBe(200)
     expect(result.body.document.draft.roleAssignments[0]).toEqual({ ...frozen.document.draft.roleAssignments[0], status: 'active' })
-    expect((await request(restore)).body.status).toBe('replayed')
+    expect((await request(restore, restoreExpectedRevision)).body.status).toBe('replayed')
     const remove = { type: 'REMOVE_ROLE_ASSIGNMENT', id: value.id, commandId: 'remove', reason: '刪除指派' }
     expect((await request(remove)).response.status).toBe(422)
     expect((await request({ type: 'REVOKE_ROLE_ASSIGNMENT', id: value.id, commandId: 'revoke', reason: '撤銷指派' })).response.status).toBe(200)
-    expect((await request(remove)).response.status).toBe(200)
-    expect((await request(remove)).body.status).toBe('replayed')
+    const removeExpectedRevision = revision
+    expect((await request(remove, removeExpectedRevision)).response.status).toBe(200)
+    expect((await request(remove, removeExpectedRevision)).body.status).toBe('replayed')
     expect((await request({ ...remove, reason: 'conflicting command reuse' })).response.status).toBe(409)
     const persisted = await readGovernanceStore(root)
     expect(persisted.document.draft.roleAssignments).toEqual([])

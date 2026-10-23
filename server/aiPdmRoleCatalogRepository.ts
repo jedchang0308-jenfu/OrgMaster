@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { access, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
+import { decodeDynamicAiPdmRoleCatalog, type DynamicCatalogMetadata } from './aiPdmDynamicRoleCatalog.ts'
 
 export const JENFU_ENTITLEMENT_CONTRACT_VERSION = 'jenfu.platform-entitlement.v1' as const
 export const AI_PDM_APPLICATION_ID = 'ai-pdm' as const
@@ -29,7 +30,8 @@ export type PublishedAiPdmRole = {
   allowedScopeKinds: Array<'workspace' | 'project' | 'global'>
   assignmentTier: 'app_admin' | 'cross_app_override'
   permissions: Array<{ code: string; kind: 'page' | 'action'; allowed: boolean }>
-  metadata?: Record<string, string | boolean | number | null>
+  metadata?: Record<string, string | boolean | number | null> | null
+  roleStatus?: 'active' | 'inactive'
   roleDefinitionHash: string
 }
 
@@ -41,7 +43,7 @@ export type PublishedAiPdmRoleCatalog = {
   roles: PublishedAiPdmRole[]
   catalogSha256: string
   sourcePath: string
-}
+} & Partial<DynamicCatalogMetadata>
 
 export class AiPdmRoleCatalogRepositoryError extends Error {
   constructor(readonly code: 'EXTERNAL_CATALOG_UNAVAILABLE' | 'EXTERNAL_CATALOG_INVALID' | 'EXTERNAL_CATALOG_STALE') {
@@ -129,6 +131,15 @@ export async function readPublishedAiPdmRoleCatalog(root = process.cwd(), catalo
 type CatalogQueryResult = { rows: Array<Record<string, unknown>>; rowCount?: number | null }
 export type AiPdmRoleCatalogQueryable = { query: (sql: string, values?: unknown[]) => Promise<CatalogQueryResult> }
 
+const AI_PDM_ROLE_CATALOG_V2_COLUMNS = `contract_version, application_id, catalog_version, published_at, catalog_sha256,
+              display_order, stable_role_id, role_code, display_name, assignable, risk,
+              subject_kind, recommendation_allowed, delegation_allowed, allowed_scope_kinds,
+              assignment_tier, permissions, metadata, role_definition_hash,
+              publication_format, canonicalization_version, role_schema_id,
+              baseline_role_identity_hash, role_identity_hash, protected_policy_hash, registry_hash,
+              role_profile_schema_id, role_profile_hash, role_status, permission_role_id,
+              presentation_name, presentation_order, assignment_disposition, lifecycle`
+
 /** New CONTENT versions may change business capabilities, not the assignment contract. */
 function validateAssignmentCompatibleCatalog(catalog: PublishedAiPdmRoleCatalog, baseline: PublishedAiPdmRoleCatalog) {
   const invalid = () => { throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID') }
@@ -164,23 +175,16 @@ function validateAssignmentCompatibleCatalog(catalog: PublishedAiPdmRoleCatalog,
   return normalized
 }
 
-export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmRoleCatalogQueryable, expectedCatalogSha256?: string): Promise<PublishedAiPdmRoleCatalog> {
-  let rows: Array<Record<string, unknown>>
-  try {
-    const result = await database.query(
-      `SELECT contract_version, application_id, catalog_version, published_at, catalog_sha256,
-              display_order, stable_role_id, role_code, display_name, assignable, risk,
-              subject_kind, recommendation_allowed, delegation_allowed, allowed_scope_kinds,
-              assignment_tier, permissions, metadata, role_definition_hash
-         FROM ai_pdm_contract.v_application_role_catalog_v1
-        ORDER BY display_order`,
-    )
-    rows = result.rows
-  } catch {
-    throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
-  }
+async function decodeDatabaseCatalogRows(rows: Array<Record<string, unknown>>, expectedCatalogSha256?: string): Promise<PublishedAiPdmRoleCatalog> {
   if (!rows.length) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
   const first = rows[0]
+  if (first.publication_format === 'dynamic-policy-v1' || String(first.catalog_version).startsWith('ai-pdm.role-policy.')) {
+    try {
+      const decoded = decodeDynamicAiPdmRoleCatalog(rows, await Promise.all(Object.keys(APPROVED_CATALOGS).map(version => readPublishedAiPdmRoleCatalog(process.cwd(), version))))
+      if (expectedCatalogSha256 && decoded.catalogSha256 !== expectedCatalogSha256.toLowerCase()) throw new Error('catalog binding conflict')
+      return decoded
+    } catch { throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID') }
+  }
   const pinned = Object.hasOwn(APPROVED_CATALOGS, String(first.catalog_version))
   if (!pinned && !/^ai-pdm\.role-catalog\.\d{4}-\d{2}-\d{2}\.v[1-9]\d*$/.test(String(first.catalog_version))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
   if (expectedCatalogSha256 && String(first.catalog_sha256).toLowerCase() !== expectedCatalogSha256.toLowerCase()) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
@@ -209,7 +213,7 @@ export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmR
       ...(row.metadata == null ? {} : { metadata: row.metadata }),
       roleDefinitionHash: row.role_definition_hash,
     })),
-    sourcePath: 'postgres:ai_pdm_contract.v_application_role_catalog_v1',
+    sourcePath: 'postgres:ai_pdm_contract.v_application_role_catalog_v2',
   } as PublishedAiPdmRoleCatalog
   if (!pinned) {
     try {
@@ -231,4 +235,45 @@ export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmR
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
   }
   return catalog
+}
+
+/** Read exactly one current producer projection. The producer owns the active pointer. */
+export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmRoleCatalogQueryable, expectedCatalogSha256?: string): Promise<PublishedAiPdmRoleCatalog> {
+  let rows: Array<Record<string, unknown>>
+  try {
+    const result = await database.query(
+      `SELECT ${AI_PDM_ROLE_CATALOG_V2_COLUMNS}
+         FROM ai_pdm_contract.v_application_role_catalog_v2
+        ORDER BY display_order`,
+    )
+    rows = result.rows
+  } catch {
+    throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
+  }
+  return decodeDatabaseCatalogRows(rows, expectedCatalogSha256)
+}
+
+/** Read one immutable publication needed to validate stored assignment provenance. */
+export async function readHistoricalAiPdmRoleCatalogFromDatabase(
+  database: AiPdmRoleCatalogQueryable,
+  catalogVersion: string,
+  expectedCatalogSha256?: string,
+): Promise<PublishedAiPdmRoleCatalog> {
+  if (!nonBlank(catalogVersion) || catalogVersion.length > 200) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
+  let rows: Array<Record<string, unknown>>
+  try {
+    const result = await database.query(
+      `SELECT ${AI_PDM_ROLE_CATALOG_V2_COLUMNS}
+         FROM ai_pdm_contract.v_role_policy_publications_v1
+        WHERE application_id = $1 AND catalog_version = $2
+        ORDER BY display_order`,
+      [AI_PDM_APPLICATION_ID, catalogVersion],
+    )
+    rows = result.rows
+  } catch {
+    throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
+  }
+  const catalog = await decodeDatabaseCatalogRows(rows, expectedCatalogSha256)
+  if (catalog.catalogVersion !== catalogVersion) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
+  return { ...catalog, sourcePath: 'postgres:ai_pdm_contract.v_role_policy_publications_v1' }
 }

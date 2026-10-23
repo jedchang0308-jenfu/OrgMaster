@@ -1,3 +1,4 @@
+import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
 import { assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
@@ -9,7 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { assertMigrationReceipt, createGitArchive, createGitSourceIdentity, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
+import { assertMigrationReceipt, assertPreparePrerequisites, createGitArchive, createGitSourceIdentity, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, createOwnerTransport, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
@@ -1732,7 +1733,17 @@ test('actual ordinary CLI selection through routine decision accepts an own comp
   assert.equal(result.smokeRotationContinuation.newVersion, '8')
   // Includes the native v2 readback helper and neutral database config. The
   // complete executable-input closure must not reuse an older runner image.
-  assert.equal(result.smokeRotationContinuation.executableInputCount, 19)
+  const executableInputs = new Set()
+  for (const [dockerfile, prefix] of [
+    ['infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile', ''],
+    ['tools/dev-040/abort-controller/Dockerfile', 'tools/dev-040/abort-controller/'],
+  ]) {
+    executableInputs.add(dockerfile)
+    for (const line of fs.readFileSync(dockerfile, 'utf8').split(/\r?\n/u).filter(line => line.startsWith('COPY ')))
+      for (const input of line.slice(5).trim().split(/\s+/u).slice(0, -1)) executableInputs.add(prefix + input)
+  }
+  assert.ok(executableInputs.has('scripts/lib/dev058-role-policy-migration.mjs'))
+  assert.equal(result.smokeRotationContinuation.executableInputCount, executableInputs.size)
   assert.equal(result.smokeRotationContinuation.terraformAddressCount, h.addresses.length)
   assert.equal(result.smokeRotationContinuation.providerCurrentReadback, false)
   assert.equal(result.operatorSmokeRotationReadback.evidenceScope, 'OPERATOR_PROVIDER_CURRENT_METADATA')
@@ -2019,7 +2030,7 @@ test('DEV-014 lifecycle v2 adds only a default-off guard to the released runtime
   assert.throws(() => assertDev014PrincipalLifecycleRuntimeGuard(profile, enabled, runtime), /DEV014_PRINCIPAL_LIFECYCLE_RUNTIME_GUARD_INVALID/)
   assert.throws(() => assertDev014PrincipalLifecycleRuntimeGuard(profile, beforeRuntime, { ...runtime, secretVersions: { ...runtime.secretVersions, ORGMASTER_SESSION_HASH_PEPPER: '2' } }), /DEV014_PRINCIPAL_LIFECYCLE_RUNTIME_GUARD_INVALID/)
   assert.throws(() => assertDev014PrincipalLifecycleRuntimeGuard(profile, beforeRuntime, { ...runtime, plainEnvironment: { ...runtime.plainEnvironment, ORGMASTER_POSTGRES_POOL_MAX: '7' } }), /DEV014_PRINCIPAL_LIFECYCLE_RUNTIME_GUARD_INVALID/)
-  const h = harness({ baselineRuntime: beforeRuntime, baselineBundle: prefixBundle(oldBundle.bundle, 30), currentBundle: newBundle })
+  const h = harness({ baselineRuntime: beforeRuntime, baselineBundle: prefixBundle(oldBundle.bundle, 30), currentBundle: { bundle: prefixBundle(newBundle.bundle, 31) } })
   const authority = { schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-PRINCIPAL-LIFECYCLE-V2', remediation: DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION }
   h.input.values.authorization = { ...h.input.values.authorization, ...authority }
   h.input.values.readiness = { ...h.input.values.readiness, ...authority, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
@@ -2029,7 +2040,7 @@ test('DEV-014 lifecycle v2 adds only a default-off guard to the released runtime
 
 test('DEV-014 lifecycle v2 admits only 030-to-031 with an immutable prefix and fresh source-matched runner', async () => {
   const baselineBundle = prefixBundle(oldBundle.bundle, 30)
-  const currentBundle = { bundle: newBundle.bundle }
+  const currentBundle = { bundle: prefixBundle(newBundle.bundle, 31) }
   const h = harness({ baselineBundle, currentBundle })
   const remediation = DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION
   h.input.values.authorization = { ...h.input.values.authorization, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', devId: 'DEV-014', slice: '014-PRINCIPAL-LIFECYCLE-V2', remediation }
@@ -2076,7 +2087,7 @@ function lifecycleReplayHarness() {
     addressActions:addresses.map(address=>[address,address==='google_cloud_run_v2_job.migration[0]'?'update':address.startsWith('data.')?'read':'no-op']),
     updates:[{address:'google_cloud_run_v2_job.migration[0]',before:template(previous.migrationRunnerDigest),after:template(runner)}]}
   const next=seal({...core,sourceRevision:newSource,migrationRunnerDigest:runner,stateSerial:11,observedAt:'2026-10-06T00:00:00Z',mutationProfile:'APP_INFRA_IMAGE_ROTATION',imageRotation})
-  const h=harness({baselineInfra:previous})
+  const h=harness({baselineInfra:previous,baselineBundle:prefixBundle(oldBundle.bundle,31),currentBundle:{bundle:prefixBundle(newBundle.bundle,31)}})
   const authority={schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION',devId:'DEV-014',slice:'014-PRINCIPAL-LIFECYCLE-V2',remediation:DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION}
   h.input.values.authorization={...h.input.values.authorization,...authority}
   h.input.values.readiness={...h.input.values.readiness,...authority,schemaVersion:'orgmaster.routine-release-readiness.v1'}
@@ -2111,7 +2122,7 @@ test('DEV-014 checksum replay rejects stale, sibling, incomplete or non-image in
 test('DEV-014 replay requires an actual sealed applied-zero receipt and rejects DDL or synthetic skip',async()=>{
   const {h}=lifecycleReplayHarness(),plan=await verifyRoutineRelease(h.input)
   const seal=core=>({...core,receiptSha256:sha256(canonicalize(core))})
-  const native=seal({schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:newSource,manifestSha256:newBundle.bundle.manifestSha256,database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',status:'PASS',boundaryStatus:'PASS',baselineCount:10,minimumLedgerCount:10,ledgerCount:31,applied:0,replayed:31,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]})
+  const native=seal({schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:newSource,manifestSha256:h.input.intent.migrationManifestSha256,database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',status:'PASS',boundaryStatus:'PASS',baselineCount:10,minimumLedgerCount:10,ledgerCount:31,applied:0,replayed:31,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]})
   assertMigrationReceipt(native,profile,h.input.intent,{allowForward:true,forwardPlan:plan})
   const {receiptSha256:_hash,...core}=native
   for (const change of [{database:'jenfu_stg'}, {ledger:'platform_core.schema_migrations'}, {crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_dev',denied:true}]}]) {
@@ -2164,7 +2175,7 @@ function lifecycleAbortedInfraHarness({cycles=1}={}) {
   const readiness={...authority,schemaVersion:'orgmaster.routine-release-readiness.v1'}
   const attempt={...h.input.intent,sourceRevision:source,releaseId,infraReceiptRef:infraRef,authorizationPolicyRef:h.put('gs://'+bucket+'/receipts/fixture/abort-auth-'+index+'.json',authority),readinessReceiptRef:h.put('gs://'+bucket+'/receipts/fixture/abort-ready-'+index+'.json',readiness)}
   const attemptRef=h.put('gs://'+bucket+'/receipts/fixture/abort-intent-'+index+'.json',attempt),paths=releasePaths(profile,attempt,attemptRef.sha256)
-  const prepare=stageReceipt({profile,intent:attempt,stage:'prepare',observedAt:'2026-10-06T01:00:00Z',facts:{migrationRunnerDigest:infra.migrationRunnerDigest,prerequisiteRefs:{infra:infraRef,readiness:attempt.readinessReceiptRef,authorization:attempt.authorizationPolicyRef,sourceLock:attempt.sourceLockRef,foundation:attempt.foundationReceiptRef,runtimeConfig:attempt.runtimeConfigRef},routine:{releaseMode:'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION',migrationDisposition:'FORWARD_APPLY',replayOnly:true,pendingMigrationCount:0,migrationInputsSha256:sha256(canonicalize((({sourceRevision,manifestSha256,...inputs})=>inputs)(oldBundle.bundle))),previousRevision:attempt.previousRevision,baselineIntentRef:attempt.baselineIntentRef}}})
+  const prepare=stageReceipt({profile,intent:attempt,stage:'prepare',observedAt:'2026-10-06T01:00:00Z',facts:{migrationRunnerDigest:infra.migrationRunnerDigest,prerequisiteRefs:{infra:infraRef,readiness:attempt.readinessReceiptRef,authorization:attempt.authorizationPolicyRef,sourceLock:attempt.sourceLockRef,foundation:attempt.foundationReceiptRef,runtimeConfig:attempt.runtimeConfigRef},routine:{releaseMode:'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION',migrationDisposition:'FORWARD_APPLY',replayOnly:true,pendingMigrationCount:0,migrationInputsSha256:sha256(canonicalize((({sourceRevision,manifestSha256,...inputs})=>inputs)(prefixBundle(oldBundle.bundle,31)))),previousRevision:attempt.previousRevision,baselineIntentRef:attempt.baselineIntentRef}}})
   h.put(paths.prepare,prepare)
   const terminal=stageReceipt({profile,intent:attempt,stage:'terminal',observedAt:'2026-10-06T01:01:00Z',facts:{result:'PRE_ACTIVATION_ABORTED',previousRevision:attempt.previousRevision,entrypointRecovery:{changed:false},databaseDisposition:'UNKNOWN_REQUIRES_LEDGER_READBACK'}})
   h.put(paths.terminal,terminal)
@@ -2302,4 +2313,95 @@ test('app artifact reuse validates the emitted pre-activation abort terminal sha
     { ...current.facts, remainingHumanAction: 1 },
     { ...current.facts, entrypointRecovery: { changed: true, result: 'BASELINE_ALREADY_ACTIVE' } },
   ]) assert.throws(() => assertReusableAbortedTerminal({ facts }, intent), /APP_ARTIFACT_REUSE_EVIDENCE_INVALID/u)
+})
+
+
+function rolePolicyHarness() {
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 31), currentBundle: newBundle })
+  const common = { devId: 'DEV-058', slice: '058-ROLE-POLICY', remediation: DEV058_ROLE_POLICY_REMEDIATION }
+  h.input.values.authorization = { ...h.input.values.authorization, ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
+  h.input.values.readiness = { ...h.input.values.readiness, ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
+  attachForwardInfra(h)
+  return h
+}
+
+test('DEV-058 uses the exact 31-prefix and full 034-036 append; subsequent ordinary release executes zero DDL', async () => {
+  const h = rolePolicyHarness()
+  const plan = await verifyRoutineRelease(h.input)
+  assert.equal(plan.releaseMode, DEV058_RELEASE_MODE)
+  assert.equal(plan.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(plan.pendingMigrationCount, 3)
+  assert.equal(plan.databaseVerification, 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
+  assert.equal(plan.liveLedgerRead, false)
+  const ordinary = await verifyRoutineRelease(harness().input)
+  assert.equal(ordinary.migrationDisposition, 'UNCHANGED_VERIFIED')
+  assert.equal(ordinary.pendingMigrationCount, 0)
+  assert.equal(ordinary.releaseMode, 'ROUTINE_UNCHANGED_RUNTIME')
+  assert.equal(ordinary.databaseVerification, 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE')
+})
+
+test('DEV-058 append rejects changed prefixes, incomplete/foreign suffixes, authority drift and runtime changes', async () => {
+  const before = prefixBundle(oldBundle.bundle, 31)
+  for (const mutate of [
+    bundle => { bundle.entries[30].appliedSha256 = '0'.repeat(64) },
+    bundle => { bundle.entries.splice(31, 1) },
+    bundle => { bundle.entries[32].sourceSha256 = '0'.repeat(64) },
+    bundle => { [bundle.entries[31], bundle.entries[32]] = [bundle.entries[32], bundle.entries[31]] },
+    bundle => { bundle.entries[31].path = 'db/migrations/032_dev046_unrelated.sql' },
+    bundle => { bundle.database = 'jenfu_stg' },
+  ]) {
+    const after = structuredClone(newBundle.bundle); mutate(after)
+    assert.throws(() => assertDev058RolePolicyAppend(before, after))
+  }
+  for (const count of [30, 32, 34]) assert.throws(() => assertDev058RolePolicyAppend(prefixBundle(oldBundle.bundle, count), newBundle.bundle))
+  for (const field of ['sourceRevision', 'releaseId', 'baselineIntentRef', 'remediation', 'slice', 'ownerApplicationId']) {
+    const h = rolePolicyHarness(); h.input.values.authorization[field] = 'changed'
+    await assert.rejects(() => verifyRoutineRelease(h.input), /DEV058_ROLE_POLICY_AUTHORITY_INVALID/)
+  }
+  const runtimeDrift = rolePolicyHarness()
+  runtimeDrift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_SESSION_HASH_PEPPER = '2'
+  await assert.rejects(() => verifyRoutineRelease(runtimeDrift.input), /DEV058_RUNTIME_CHANGED/)
+  const staleInfra = rolePolicyHarness(); staleInfra.input.values.infra.sourceRevision = oldSource
+  await assert.rejects(() => verifyRoutineRelease(staleInfra.input), /DEV013_MIGRATION_INFRA_RECEIPT_INVALID/)
+  const undeclared = harness({ baselineBundle: before })
+  await assert.rejects(() => verifyRoutineRelease(undeclared.input), /ROUTINE_MIGRATION_CHANGED/)
+})
+
+test('DEV-058 normal CLI emits one exact recipe and rejects arbitrary or mixed append requests', () => {
+  const ref = `gs://${bucket}/receipts/releases/DEV058-ROLE-POLICY/app-infra.json#sha256=${'a'.repeat(64)}`
+  const args = ['--dev058-role-policy-append', `--dev058-infra-ref=${ref}`]
+  for (const mode of ['--check', '--prepare-only']) {
+    const parsed = parseDeployProductionArgs([mode, ...args])
+    assert.equal(parsed.dev058RolePolicyAppend, true)
+    assert.equal(parsed.infraOption, 'dev058')
+  }
+  for (const invalid of [
+    [args[0]], [args[1]], [...args, args[0]], [...args, '--dev014-activate'],
+    [...args, '--dev057-principal-grants-v4-remediation'],
+    [args[0], `--dev057-infra-ref=${ref}`],
+    [...args, `--tool-image-rotation-ref=${ref}`], [...args, '--reuse-aborted-app-artifact'],
+    [...args, '--migration-mode=anything'], [...args, '--sql=SELECT-1'],
+  ]) assert.throws(() => parseDeployProductionArgs(invalid))
+  const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
+  assert.equal((source.match(/\.\.\.dev058Authority/g) ?? []).length, 2, 'same recipe must be bound into authorization and readiness')
+  assert.deepEqual(DEV058_ROLE_POLICY_REMEDIATION.migrationEntries, DEV058_MIGRATION_ENTRIES)
+})
+
+
+test('DEV-058 native prepare accepts the same bound recipe with an enabled lifecycle and rejects authority drift', () => {
+  const h = rolePolicyHarness()
+  const common = { releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', status: 'PASS', environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00Z', projectId: profile.target.projectId }
+  const enabled = buildRuntimeConfig(profile, { plainEnvironment: resolvePlainEnvironment(profile, runtime.plainEnvironment, { ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED: 'true' }), secretVersions: runtime.secretVersions })
+  const values = {
+    sourceLock: { ...common, status: 'SOURCE_FROZEN', sourceRevision: newSource, clean: true },
+    authorization: { ...common, ...h.input.values.authorization }, readiness: { ...common, ...h.input.values.readiness },
+    foundation: { ...common, status: 'APPLIED' }, infra: { ...common, ...h.input.values.infra },
+    runtimeConfig: { ...common, status: 'VERIFIED', runtimeConfig: enabled },
+  }
+  const verify = current => assertPreparePrerequisites({ intent: h.input.intent, profile, values: current })
+  assert.equal(verify(values).controlledEnvironmentAuthority.releaseMode, DEV058_RELEASE_MODE)
+  for (const field of ['sourceRevision', 'releaseId', 'baselineIntentRef', 'remediation']) {
+    const changed = structuredClone(values); changed.authorization[field] = 'changed'
+    assert.throws(() => verify(changed), /DEV058_ROLE_POLICY_AUTHORITY_INVALID/)
+  }
 })

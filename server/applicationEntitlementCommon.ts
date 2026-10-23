@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { buildOrganizationSnapshot, isActiveAt } from '../src/governance/validation'
-import { canonicalJson, sha256 } from '../src/governance/commands'
+import { canonicalJson, sha256, GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
 import { currentPublishedPolicyV3 } from '../src/governance/evaluatePermission'
 import { hasCrossAppOverride } from '../src/governance/privilegedAssignments'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceAssignmentVersionV3, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV3, GovernanceRoleAssignmentV3, ManagementGrantV1 } from '../src/governance/types'
@@ -129,7 +129,8 @@ export function publishFinancialPolicy(document: GovernanceDocumentV3, nextDraft
     publishedAt: at,
     publishedByPrincipalId: actor.principalId,
     publishReason: reason.trim(),
-    snapshotHash: sha256(canonicalJson(versionPayload)),
+    hashFormat: GOVERNANCE_PUBLICATION_HASH_FORMAT,
+    snapshotHash: publicationSnapshotHash(versionPayload),
   }
   return {
     ...document,

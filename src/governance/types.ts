@@ -180,6 +180,10 @@ export interface ExternalRoleCatalogRoleV1 {
   delegationAllowed?: boolean
   assignmentTier?: 'app_admin' | 'cross_app_override'
   unassignableReason?: 'INTEGRATION_METADATA_REQUIRED'
+  permissionRoleId?: string
+  presentationName?: string
+  presentationOrder?: number
+  assignmentDisposition?: 'selectable' | 'legacy-only' | 'hidden-protected'
 }
 
 export interface ExternalRoleCatalogSnapshotV1 {
@@ -193,6 +197,20 @@ export interface ExternalRoleCatalogSnapshotV1 {
   validationState: ExternalRoleCatalogState
   effectState: 'not-synchronized'
   roles: ExternalRoleCatalogRoleV1[]
+  publicationFormat?: 'dynamic-policy-v1'
+  canonicalizationVersion?: 'jenfu.canonical-json.v1'
+  roleSchemaId?: 'ai-pdm.role-schema.flexible.v2'
+  roleProfileSchemaId?: 'ai-pdm.role-profile-schema.v1'
+  baselineRoleIdentityHash?: string
+  roleIdentityHash?: string
+  protectedPolicyHash?: string
+  registryHash?: string
+  roleProfileHash?: string
+}
+
+export interface GovernanceExpectedCatalogV1 {
+  catalogVersion: string
+  catalogSha256: string
 }
 
 export interface GovernanceRoleAssignmentV2 {
@@ -372,6 +390,9 @@ export interface GovernanceMigrationStateV3 extends Omit<GovernanceMigrationStat
 }
 
 export interface GovernanceAuditEventV3 extends GovernanceAuditEventV1 {
+  hashFormat?: 'orgmaster.sorted-json.v1'
+  commandHashFormat?: 'orgmaster.governance-command.v2'
+  commandResult?: GovernanceCommandResultV1
   detail?: {
     targetPrincipalAdmissionId: string
     employeeId: string
@@ -390,6 +411,25 @@ export interface GovernanceAuditEventV3 extends GovernanceAuditEventV1 {
   }
 }
 
+export interface GovernanceCommandResultV1 {
+  operation: string
+  outcome: 'applied' | 'noop' | 'published' | 'activated' | 'deactivated'
+  entityType: string
+  entityId: string | null
+  versionId?: string | null
+}
+
+export interface GovernanceCommandQueryResultV1 {
+  status: 'committed' | 'not_observed'
+  commandId: string
+  commandHash: string | null
+  auditReference: string | null
+  entityType: string | null
+  entityId: string | null
+  occurredAt: string | null
+  result: GovernanceCommandResultV1 | null
+}
+
 export interface GovernanceAssignmentVersionV3 {
   kind: 'assignment-governance-v3'
   id: string
@@ -398,6 +438,7 @@ export interface GovernanceAssignmentVersionV3 {
   publishedByPrincipalId: string
   publishReason: string
   snapshotHash: string
+  hashFormat?: 'orgmaster.sorted-json.v1'
   effectState: 'not-synchronized'
   policy: GovernancePolicyDataV3
   externalRoleCatalogs: ExternalRoleCatalogSnapshotV1[]

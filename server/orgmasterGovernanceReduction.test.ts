@@ -12,6 +12,7 @@ import { applyDraftCommand, getGovernancePaths, loadOrganizationSource, publishG
 import { createOrgmasterGovernanceMiddleware } from './orgmasterGovernanceApi'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
+import { canonicalJson, sha256, GOVERNANCE_PUBLICATION_HASH_FORMAT } from '../src/governance/commands'
 
 const fault = vi.hoisted(() => ({ offline: false, reads: 0 }))
 vi.mock('./applicationRoleCatalogRegistry', async importOriginal => {
@@ -63,6 +64,66 @@ async function fixture(withRevokedDelegation = false) {
 }
 
 describe('DEV-058 catalog-independent reduction', () => {
+  it('retains audit-bound provenance after jsonb reorders nested object keys', async () => {
+    const { root, source, actor, published } = await fixture()
+    const reordered = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(reordered)
+      if (!value || typeof value !== 'object') return value
+      return Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reordered(item)]))
+    }
+    const document = reordered(published.document) as typeof published.document
+    const active = document.publishedVersions.find(version => version.id === document.activePolicyVersionId)!
+    expect(active.kind === 'assignment-governance-v3' && active.hashFormat).toBe(GOVERNANCE_PUBLICATION_HASH_FORMAT)
+    expect(storedGovernanceCatalogs(document)).not.toBeNull()
+    await writeFile(getGovernancePaths(root).current, JSON.stringify(document))
+    fault.offline = true; fault.reads = 0
+    const read = await readGovernanceStore(root)
+    const draft = await applyDraftCommand(root, read.revision,
+      { type: 'REVOKE_ROLE_ASSIGNMENT', id: 'rd', commandId: 'jsonb-revoke', reason: 'withdraw after jsonb read' }, actor)
+    await publishGovernance(root, draft.revision, 'jsonb-publish', 'publish withdrawal', source.workspaceVersionId, actor)
+    expect(fault.reads).toBe(0)
+  })
+
+  it('keeps exact legacy hash validation and rejects unknown formats or changed content', async () => {
+    const { published } = await fixture()
+    const document = structuredClone(published.document)
+    const active = document.publishedVersions.find(version => version.id === document.activePolicyVersionId)!
+    if (active.kind !== 'assignment-governance-v3') throw Error('test version')
+    const payload = { kind: active.kind, policy: active.policy, externalRoleCatalogs: active.externalRoleCatalogs,
+      organizationSnapshot: active.organizationSnapshot, effectState: active.effectState }
+    const event = document.auditEvents.find(event => event.entityId === active.id)!
+    delete active.hashFormat
+    active.snapshotHash = sha256(canonicalJson(payload)); event.afterHash = active.snapshotHash
+    expect(storedGovernanceCatalogs(document)).not.toBeNull()
+    Object.assign(active, { hashFormat: 'unknown' })
+    expect(storedGovernanceCatalogs(document)).toBeNull()
+    delete active.hashFormat
+    active.externalRoleCatalogs[0].roles[0].displayName = 'changed'
+    expect(storedGovernanceCatalogs(document)).toBeNull()
+  })
+
+  it('preserves unmarked legacy audit hashes and rejects an unknown audit hash format', async () => {
+    const { root, published } = await fixture()
+    const document = structuredClone(published.document)
+    let previousEventHash: string | null = null
+    for (const event of document.auditEvents) {
+      delete event.hashFormat
+      delete event.commandHashFormat
+      delete event.commandResult
+      event.previousEventHash = previousEventHash
+      const input = { id: event.id, commandId: event.commandId, commandHash: event.commandHash,
+        occurredAt: event.occurredAt, actorPrincipalId: event.actorPrincipalId, action: event.action,
+        entityType: event.entityType, entityId: event.entityId, reason: event.reason,
+        beforeHash: event.beforeHash, afterHash: event.afterHash, previousEventHash: event.previousEventHash }
+      event.eventHash = sha256(canonicalJson(input)); previousEventHash = event.eventHash
+    }
+    await writeFile(getGovernancePaths(root).current, JSON.stringify(document))
+    await expect(readGovernanceStore(root)).resolves.toBeDefined()
+    Object.assign(document.auditEvents[0], { hashFormat: 'unknown' })
+    await writeFile(getGovernancePaths(root).current, JSON.stringify(document))
+    await expect(readGovernanceStore(root)).rejects.toMatchObject({ code: 'AUDIT_CHAIN_INVALID' })
+  })
+
   it('keeps the normal HTTP workspace visible and permits withdrawal/publish during a catalog outage', async () => {
     const { root, source, actor, published } = await fixture()
     fault.offline = true
@@ -103,6 +164,53 @@ describe('DEV-058 catalog-independent reduction', () => {
       expect(fault.reads).toBe(0)
     } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())) }
   })
+  it('replays active-version over HTTP with the original CAS and rejects command, CAS, context and actor rewrites', async () => {
+    const { root, source, actor, published } = await fixture()
+    let requestActor = actor
+    const middleware = createOrgmasterGovernanceMiddleware(root, false)
+    const server = createServer((request, response) => {
+      setVerifiedRequestIdentity(request, { principalId: requestActor.principalId, employeeId: requestActor.employeeId,
+        identityIssuer: requestActor.issuer, identitySubject: requestActor.subject } as OrgmasterSession)
+      middleware(request, response, () => { response.statusCode = 404; response.end() })
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const port = (server.address() as { port: number }).port
+    const call = async (method: string, path: string, body?: unknown) => {
+      const response = await fetch(`http://127.0.0.1:${port}/api/orgmaster/governance${path}`, { method,
+        headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) })
+      return { status: response.status, body: await response.json() }
+    }
+    const publication = await call('POST', '/versions', { expectedRevision: published.revision,
+      commandId: 'http-active-publish', reason: 'prepare active-version replay', organizationVersionId: source.workspaceVersionId })
+    expect(publication.status).toBe(201)
+    const versionId = publication.body.versionSummary.id
+    const catalog = readAiPdmRoleCatalog('valid')
+    const original = {
+      expectedRevision: publication.body.revision,
+      commandId: 'http-active-activate', reason: 'activate published policy', versionId,
+      expectedOrganizationRevision: source.workspaceRevision,
+      expectedCatalog: { catalogVersion: catalog.catalogVersion, catalogSha256: catalog.catalogSha256 ?? catalog.payloadHash },
+    }
+    try {
+      const applied = await call('POST', '/active-version', original)
+      expect(applied.status).toBe(200)
+      expect(applied.body.activePolicyVersionId).toBe(versionId)
+      const replayed = await call('POST', '/active-version', original)
+      expect(replayed.status).toBe(200)
+      expect(replayed.body).toEqual(applied.body)
+      const commandResult = await call('GET', '/commands/http-active-activate')
+      expect(commandResult.status).toBe(200)
+      expect(commandResult.body).toMatchObject({
+        status: 'committed', commandId: original.commandId,
+        result: { operation: 'ACTIVATE_ASSIGNMENT_VERSION', outcome: 'activated', entityType: 'assignmentVersion', entityId: versionId, versionId },
+      })
+      await expect(call('POST', '/active-version', { ...original, reason: 'rewritten payload' })).resolves.toMatchObject({ status: 409, body: { error: 'COMMAND_ID_REUSED' } })
+      await expect(call('POST', '/active-version', { ...original, expectedRevision: applied.body.revision })).resolves.toMatchObject({ status: 409, body: { error: 'COMMAND_ID_REUSED' } })
+      await expect(call('POST', '/active-version', { ...original, expectedOrganizationRevision: 'rewritten-organization-revision' })).resolves.toMatchObject({ status: 409, body: { error: 'COMMAND_ID_REUSED' } })
+      requestActor = { ...actor, principalId: 'rewritten-principal', subject: 'rewritten-subject' }
+      await expect(call('POST', '/active-version', original)).resolves.toMatchObject({ status: 409, body: { error: 'COMMAND_ID_REUSED' } })
+    } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())) }
+  })
   it('reads, revokes, publishes and replays with zero current-catalog reads during an outage', async () => {
     const { root, source, actor, published } = await fixture(true)
     fault.offline = true; fault.reads = 0
@@ -110,10 +218,10 @@ describe('DEV-058 catalog-independent reduction', () => {
     const command = { type: 'REVOKE_ROLE_ASSIGNMENT' as const, id: 'rd', commandId: 'revoke', reason: 'withdraw access' }
     const draft = await applyDraftCommand(root, current.revision, command, actor)
     expect(draft.document.draft.roleAssignments.find(value => value.id === 'rd')?.status).toBe('revoked')
-    expect((await applyDraftCommand(root, 'stale-cas', command, actor)).status).toBe('replayed')
+    expect((await applyDraftCommand(root, published.revision, command, actor)).status).toBe('replayed')
     const result = await publishGovernance(root, draft.revision, 'publish-revoke', 'publish withdrawal', source.workspaceVersionId, actor)
     expect(result.document.publishedVersions).toHaveLength(published.document.publishedVersions.length + 1)
-    expect((await publishGovernance(root, 'stale-cas', 'publish-revoke', 'publish withdrawal', source.workspaceVersionId, actor)).status).toBe('replayed')
+    expect((await publishGovernance(root, draft.revision, 'publish-revoke', 'publish withdrawal', source.workspaceVersionId, actor)).status).toBe('replayed')
     expect((await readGovernanceStore(root)).document.auditEvents.filter(event => event.commandId === 'revoke')).toHaveLength(1)
     expect(fault.reads).toBe(0)
     await expect(applyDraftCommand(root, result.revision, { ...command, reason: 'different request' }, actor)).rejects.toMatchObject({ code: 'COMMAND_ID_REUSED' })

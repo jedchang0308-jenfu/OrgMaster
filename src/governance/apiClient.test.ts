@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { previewPrivilegedAssignment, publishPrivilegedAssignment } from './apiClient'
+import { loadGovernanceCommandResult, patchGovernanceDraft, previewPrivilegedAssignment, publishGovernancePolicy, publishPrivilegedAssignment, setActiveGovernanceVersion } from './apiClient'
 import type { PrivilegedAssignmentRequest } from './privilegedAssignments'
 
 const request: PrivilegedAssignmentRequest = {
@@ -12,6 +12,26 @@ const request: PrivilegedAssignmentRequest = {
 }
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('DEV-058 dynamic assignment version/hash binding', () => {
+  it('uses the same two-field producer binding for draft, publish and restore requests', async () => {
+    const bodies: Record<string, unknown>[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+    const expectedCatalog = { catalogVersion: 'ai-pdm.role-policy.00000000-0000-4000-8000-000000000001', catalogSha256: 'd'.repeat(64) }
+    await patchGovernanceDraft('governance-r1', { type: 'REVOKE_ROLE_ASSIGNMENT', commandId: 'draft-command', reason: 'fixture', id: 'assignment-1' }, 'organization-r1', expectedCatalog)
+    await publishGovernancePolicy('governance-r2', 'publish-command', 'fixture', 'current', 'organization-r1', expectedCatalog)
+    await setActiveGovernanceVersion('governance-r3', 'restore-command', 'fixture', 'assignment-version-1', 'organization-r1', expectedCatalog)
+    expect(bodies).toHaveLength(3)
+    for (const body of bodies) {
+      expect(body.expectedCatalog).toEqual(expectedCatalog)
+      expect(Object.keys(body.expectedCatalog as Record<string, unknown>)).toEqual(['catalogVersion', 'catalogSha256'])
+      expect(body.expectedOrganizationRevision).toBe('organization-r1')
+    }
+  })
+})
 
 describe('DEV-009 privileged assignment HTTP payloads', () => {
   it('keeps preview request fields separate from the preview response', async () => {
@@ -40,5 +60,26 @@ describe('DEV-009 privileged assignment HTTP payloads', () => {
 
     expect(body).toMatchObject({ phase: 'publish', commandId: 'command-1', requestHash: 'b'.repeat(64), preview: { previewHash: 'c'.repeat(64) } })
     expect(Object.keys(body.preview as Record<string, unknown>)).toEqual(['previewHash'])
+  })
+})
+
+describe('DEV-058 command result query', () => {
+  it('encodes the original command ID and returns the committed result DTO', async () => {
+    let requestedUrl = ''
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      requestedUrl = String(input)
+      return new Response(JSON.stringify({
+        status: 'committed', commandId: 'command/with space', commandHash: 'a'.repeat(64),
+        auditReference: 'audit-1', entityType: 'roleAssignment', entityId: 'assignment-1',
+        occurredAt: '2026-10-23T00:00:00.000Z', result: {
+          operation: 'REVOKE_ROLE_ASSIGNMENT', outcome: 'applied', entityType: 'roleAssignment', entityId: 'assignment-1',
+        },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+
+    const result = await loadGovernanceCommandResult('command/with space')
+
+    expect(requestedUrl).toBe('/api/orgmaster/governance/commands/command%2Fwith%20space')
+    expect(result.payload).toMatchObject({ status: 'committed', commandId: 'command/with space', result: { outcome: 'applied' } })
   })
 })

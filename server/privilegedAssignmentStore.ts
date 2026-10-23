@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import { buildOrganizationSnapshot } from '../src/governance/validation'
-import { canonicalJson, sha256 } from '../src/governance/commands'
+import { canonicalJson, sha256, GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
 import {
   assertFreshPrivilegedSession,
   assertPrivilegedPreconditions,
@@ -142,7 +142,8 @@ export async function publishPrivilegedAssignment(
       publishedAt: committedAt,
       publishedByPrincipalId: actor.principalId,
       publishReason: request.reason.trim(),
-      snapshotHash: sha256(canonicalJson(snapshotPayload)),
+      hashFormat: GOVERNANCE_PUBLICATION_HASH_FORMAT,
+      snapshotHash: publicationSnapshotHash(snapshotPayload),
       effectState: 'not-synchronized' as const,
       policy,
       externalRoleCatalogs: [catalog],
@@ -170,6 +171,10 @@ export async function publishPrivilegedAssignment(
       },
     }, committedAt)
     const auditReference = document.auditEvents.at(-1)!.id
+    document = appendGovernanceAudit(document, { ...auditCommand, commandId: randomUUID(), type: 'PUBLISH_ASSIGNMENTS' }, actor, {
+      action: 'PUBLISH_ASSIGNMENTS', entityType: 'assignmentVersion', entityId: version.id,
+      beforeHash: null, afterHash: version.snapshotHash,
+    }, committedAt)
     const securityAlertReference = `security-alert-${randomUUID()}`
     const invalidationReference = `session-invalidation-${randomUUID()}`
     const receipt: GovernanceCommandReceiptV2 = {

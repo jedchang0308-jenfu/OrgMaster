@@ -6,9 +6,10 @@ import { issuerFingerprintSha256, principalFingerprintSha256 } from '../src/gove
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { buildOrganizationSnapshot } from '../src/governance/validation'
 import { privilegedRequestHash } from '../src/governance/privilegedAssignments'
-import { ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
+import { appendGovernanceAudit, ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
 import { previewPrivilegedAssignment, publishPrivilegedAssignment } from './privilegedAssignmentStore'
 import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
+import { storedGovernanceCatalogs } from './governanceReduction'
 
 const roots: string[] = []
 
@@ -70,10 +71,28 @@ describe('privileged assignment store transaction', () => {
     const persisted = await readGovernanceStore(root)
     expect(persisted.document.publishedVersions.at(-1)?.kind).toBe('assignment-governance-v3')
     expect(persisted.document.draft.roleAssignments.at(-1)).toMatchObject({ employeeId: targetEmployeeId, targetPrincipalId, subjectKind: 'principal', basis: 'manual', validTo: null })
-    expect(persisted.document.auditEvents.filter((event) => event.commandId === publishRequest.commandId)).toHaveLength(1)
+    expect(persisted.document.auditEvents.filter((event) => event.commandId === publishRequest.commandId && event.entityType === 'roleAssignment')).toHaveLength(1)
+    const version = persisted.document.publishedVersions.at(-1)!
+    const bindingEvents = persisted.document.auditEvents.filter(event =>
+      event.entityType === 'assignmentVersion' && event.entityId === version.id && event.afterHash === version.snapshotHash)
+    expect(bindingEvents).toHaveLength(1)
+    expect(bindingEvents[0].commandId).not.toBe(publishRequest.commandId)
+    expect(new Set(persisted.document.auditEvents.map(event => event.commandId)).size).toBe(persisted.document.auditEvents.length)
+    expect(persisted.document.auditEvents.find(event => event.id === receipt.auditReference)?.entityType).toBe('roleAssignment')
+    expect(() => appendGovernanceAudit(persisted.document,
+      { commandId: bindingEvents[0].commandId, type: 'UPSERT_ROLE_ASSIGNMENT', reason: 'reuse visible internal publication id' },
+      actor, { action: 'UPSERT_ROLE_ASSIGNMENT', entityType: 'roleAssignment', entityId: null, beforeHash: null, afterHash: null }))
+      .toThrowError(expect.objectContaining({ code: 'COMMAND_ID_REUSED' }))
     expect(persisted.document.auditEvents.find((event) => event.commandId === publishRequest.commandId)?.detail?.assuranceLevel).toBe('aal1')
     expect(persisted.document.securityAlertIntents).toHaveLength(1)
     expect(persisted.document.sessionInvalidationOutbox).toHaveLength(1)
+    const reordered = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(reordered)
+      if (!value || typeof value !== 'object') return value
+      return Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reordered(item)]))
+    }
+    await writeFile(getGovernancePaths(root).current, JSON.stringify(reordered(persisted.document)))
+    expect(storedGovernanceCatalogs((await readGovernanceStore(root)).document)).not.toBeNull()
 
     const expiredSession = { ...freshSession, authenticatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString() }
     const replay = await publishPrivilegedAssignment(root, actor, expiredSession, publishRequest)
