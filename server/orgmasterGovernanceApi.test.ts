@@ -1,3 +1,7 @@
+import { createServer } from 'node:http'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { assertIdentityLinkStatusMutationAllowed, createOrgmasterGovernanceMiddleware, currentIdentityLinkValue, governanceErrorStatus, orgmasterGovernanceApiPlugin } from './orgmasterGovernanceApi'
 import { DEV_ISSUER, DEV_SUBJECT, resolveDevelopmentIdentity } from './orgmasterGovernanceIdentity'
@@ -5,6 +9,9 @@ import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2To
 import { createSeedDocumentV2 } from '../src/governance/migrateGovernanceV1ToV2'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { GovernanceStoreError } from './orgmasterGovernanceStore'
+import { ensureGovernanceStore, getGovernancePaths, readGovernanceStore } from './orgmasterGovernanceStore'
+import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import type { OrgmasterSession } from './orgmasterSessionRepository'
 describe('governance API boundary', () => { it('registers the plugin and accepts only the fixed loopback dev identity', () => { expect(orgmasterGovernanceApiPlugin().name).toBe('orgmaster-local-governance-api'); const request = { socket: { remoteAddress: '127.0.0.1' }, headers: { 'x-orgmaster-dev-issuer': DEV_ISSUER, 'x-orgmaster-dev-subject': DEV_SUBJECT } } as any; expect(resolveDevelopmentIdentity(request, true)?.principalId).toBe('dev-principal-local-admin'); expect(resolveDevelopmentIdentity(request, false)).toBeNull() }) })
 
 describe('governance API failure mapping', () => {
@@ -69,5 +76,84 @@ describe('Principal-only retired authority API', () => {
     expect(response.statusCode).toBe(410)
     expect(JSON.parse(body)).toEqual({ error: 'LEGACY_AUTHORITY_SWITCH_RETIRED' })
     expect(next).not.toHaveBeenCalled()
+  })
+})
+
+describe('QA058-07 mounted actor boundary', () => {
+  const providerPairSession: OrgmasterSession = {
+    id: 'qa07-provider-pair-session', identityIssuer: 'urn:qa07:workload', identitySubject: 'provider-pair-workload',
+    principalId: 'qa07-workload-principal', employeeId: 'qa07-workload-employee', authEpoch: 0,
+    sessionSchemaVersion: 2, epochKind: 'provider_pair', principalAuthEpoch: 0,
+    issuedAt: '2026-10-23T00:00:00.000Z', authenticatedAt: '2026-10-23T00:00:00.000Z',
+    expiresAt: '2099-01-01T00:00:00.000Z', revokedAt: null, assuranceLevel: 'aal1',
+  }
+
+  async function call(root: string, session: OrgmasterSession | null, body: Record<string, unknown>, devIdentity = false) {
+    const middleware = createOrgmasterGovernanceMiddleware(root, true)
+    const server = createServer((request, response) => {
+      if (session) setVerifiedRequestIdentity(request, session)
+      middleware(request, response, () => { response.statusCode = 404; response.end() })
+    })
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', () => resolve())
+    })
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('QA07_TEST_SERVER_ADDRESS_MISSING')
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/orgmaster/governance/draft`, {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          ...(devIdentity ? { 'x-orgmaster-dev-issuer': DEV_ISSUER, 'x-orgmaster-dev-subject': DEV_SUBJECT } : {}),
+        },
+        body: JSON.stringify(body),
+      })
+      return { status: response.status, body: await response.json() as Record<string, unknown> }
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()))
+    }
+  }
+
+  it('accepts the fixed manager fixture, then rejects forged body actor and provider_pair caller without mutation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'orgmaster-qa07-mounted-'))
+    try {
+      const initial = await ensureGovernanceStore(root)
+      const managerCommand = {
+        type: 'SET_PERMISSION_STATUS', commandId: 'qa07-manager-positive', reason: 'QA058-07 mounted manager fixture',
+        id: 'permission-orgmaster-governance-manage', status: 'active',
+      }
+      const managerResponse = await call(root, null, { expectedRevision: initial.revision, command: managerCommand }, true)
+      expect(managerResponse.status).toBe(200)
+      expect(managerResponse.body).toMatchObject({ status: 'noop' })
+      const beforeDeniedRaw = await readFile(getGovernancePaths(root).current, 'utf8')
+      const beforeDenied = JSON.parse(beforeDeniedRaw) as { auditEvents: Array<{ commandId: string }> }
+
+      const forgedBody = {
+        expectedRevision: (await readGovernanceStore(root)).revision,
+        principalId: 'dev-principal-local-admin',
+        actor: { principalId: 'dev-principal-local-admin', issuer: DEV_ISSUER, subject: DEV_SUBJECT, employeeId: null },
+        command: {
+          type: 'SET_PERMISSION_STATUS', commandId: 'qa07-forged-body-actor', reason: 'QA058-07 forged body actor',
+          id: 'permission-orgmaster-governance-manage', status: 'active',
+        },
+      }
+      for (const session of [
+        { ...providerPairSession, id: 'qa07-ordinary-session', principalId: 'qa07-ordinary-principal', employeeId: 'qa07-ordinary-employee', epochKind: 'principal' as const },
+        providerPairSession,
+      ]) {
+        const denied = await call(root, session, forgedBody)
+        expect(denied.status, session.epochKind).toBe(403)
+        expect(denied.body).toEqual({ error: 'GOVERNANCE_ADMIN_REQUIRED' })
+      }
+
+      const afterDeniedRaw = await readFile(getGovernancePaths(root).current, 'utf8')
+      const afterDenied = JSON.parse(afterDeniedRaw) as { auditEvents: Array<{ commandId: string }> }
+      expect(afterDeniedRaw).toBe(beforeDeniedRaw)
+      expect(afterDenied.auditEvents).toHaveLength(beforeDenied.auditEvents.length)
+      expect(afterDenied.auditEvents.some(event => event.commandId === 'qa07-forged-body-actor')).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

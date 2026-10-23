@@ -14,7 +14,7 @@ import {
 } from '../src/governance/privilegedAssignments'
 import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2ToV3'
 import { createSeedDocumentV2 } from '../src/governance/migrateGovernanceV1ToV2'
-import { validatePolicyDataV3 } from '../src/governance/validation'
+import { isActiveAt, validatePolicyDataV3 } from '../src/governance/validation'
 import { GovernanceValidationError } from '../src/governance/validation'
 import { assertDynamicCatalogBinding } from './orgmasterGovernanceStore'
 import type {
@@ -78,12 +78,13 @@ function assignmentValue(
   selectedRole: ExternalRoleCatalogRoleV1,
   status: 'active' | 'revoked' = 'active',
   id = 'fixture-assignment',
+  overrides: Partial<GovernanceRoleAssignmentV2> = {},
 ): GovernanceRoleAssignmentV2 {
   return {
     id, employeeId, applicationId: 'ai-pdm', roleId: selectedRole.stableRoleId,
     roleCodeSnapshot: selectedRole.code, roleNameSnapshot: selectedRole.displayName,
     catalogVersion: catalog.catalogVersion, scope: { kind: 'workspace', value: workspaceKey },
-    status, validFrom: '2026-10-01T00:00:00.000Z', validTo: null, effectState: 'not-synchronized',
+    status, validFrom: '2026-10-01T00:00:00.000Z', validTo: null, effectState: 'not-synchronized', ...overrides,
   }
 }
 
@@ -105,9 +106,10 @@ function v3DocumentWithAssignment(
   catalog: ExternalRoleCatalogSnapshotV1,
   selectedRole: ExternalRoleCatalogRoleV1,
   status: 'active' | 'revoked' = 'active',
+  overrides: Partial<GovernanceRoleAssignmentV2> = {},
 ) {
   const v2 = createSeedDocumentV2(now)
-  v2.draft.roleAssignments.push(assignmentValue(catalog, selectedRole, status))
+  v2.draft.roleAssignments.push(assignmentValue(catalog, selectedRole, status, 'fixture-assignment', overrides))
   return migrateGovernanceV2ToV3(v2, 'dynamic-role-fixture', catalog, now)
 }
 
@@ -264,6 +266,85 @@ describe('DEV-058 dynamic catalog assignment consumer', () => {
     expect(validatePolicyDataV3(wrongSourceCatalog.draft, undefined, catalogs)).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'ROLE_DELEGATION_INVALID' }),
     ]))
+  })
+
+  it('does not revive a revoked delegation source when an inactive custom role is reactivated', () => {
+    const customId = 'role-custom-30000000-0000-4000-8000-000000000001'
+    const historicalCatalog = structuredClone(dynamicV7)
+    historicalCatalog.catalogVersion = 'ai-pdm.role-policy.20000000-0000-4000-8000-000000000003'
+    const historicalCustom = role(historicalCatalog, customId)
+    const inactiveCatalog = structuredClone(dynamicV7)
+    role(inactiveCatalog, customId).status = 'inactive'
+    const reactivatedCatalog = structuredClone(dynamicV7)
+    const document = v3DocumentWithAssignment(historicalCatalog, historicalCustom)
+    const delegation = delegationValue(historicalCatalog, historicalCustom)
+    document.draft.roleDelegations = [delegation]
+
+    expect(validatePolicyDataV3(document.draft, undefined, [inactiveCatalog, historicalCatalog])).toEqual([])
+    const revokedDelegation = applyGovernanceCommandV3(document, {
+      type: 'REVOKE_ROLE_DELEGATION', commandId: 'custom-source-delegation-revoke', reason: '撤銷來源代理', id: delegation.id,
+    }, 'principal-fixture', undefined, [inactiveCatalog, historicalCatalog])
+    const revokedSource = applyGovernanceCommandV3(revokedDelegation.document, {
+      type: 'REVOKE_ROLE_ASSIGNMENT', commandId: 'custom-source-assignment-revoke', reason: '撤銷來源任用', id: 'fixture-assignment',
+    }, 'principal-fixture', undefined, [inactiveCatalog, historicalCatalog])
+    expect(revokedSource.document.draft.roleAssignments[0]).toMatchObject({
+      status: 'revoked', roleId: customId, roleCodeSnapshot: historicalCustom.code,
+      roleNameSnapshot: historicalCustom.displayName, catalogVersion: historicalCatalog.catalogVersion,
+      scope: { kind: 'workspace', value: workspaceKey },
+    })
+    expect(revokedSource.document.draft.roleDelegations[0]).toMatchObject({
+      status: 'revoked', roleId: customId, catalogVersion: historicalCatalog.catalogVersion,
+      scope: { kind: 'workspace', value: workspaceKey },
+    })
+
+    // Re-reading with the role active keeps both invalidated records revoked.
+    expect(validatePolicyDataV3(revokedSource.document.draft, undefined, [reactivatedCatalog, historicalCatalog])).toEqual([])
+    const reactivationAttempt = delegationValue(reactivatedCatalog, role(reactivatedCatalog, customId), {
+      id: delegation.id,
+      sourceAssignmentId: 'fixture-assignment',
+    })
+    expectGovernanceCode(() => applyGovernanceCommandV3(revokedSource.document, {
+      type: 'UPSERT_ROLE_DELEGATION', commandId: 'custom-source-delegation-reactivate', reason: '不得因角色恢復重建失效代理',
+      value: reactivationAttempt,
+    }, 'principal-fixture', undefined, [reactivatedCatalog, historicalCatalog]), 'ROLE_DELEGATION_INVALID')
+  })
+
+  it('rejects delegation that outlives an expired source and keeps an expired delegation ineffective after role reactivation', () => {
+    const customId = 'role-custom-30000000-0000-4000-8000-000000000001'
+    const historicalCatalog = structuredClone(dynamicV7)
+    historicalCatalog.catalogVersion = 'ai-pdm.role-policy.20000000-0000-4000-8000-000000000004'
+    const historicalCustom = role(historicalCatalog, customId)
+    const inactiveCatalog = structuredClone(dynamicV7)
+    role(inactiveCatalog, customId).status = 'inactive'
+    const reactivatedCatalog = structuredClone(dynamicV7)
+
+    const expiredSource = v3DocumentWithAssignment(historicalCatalog, historicalCustom, 'active', {
+      validTo: '2026-10-15T00:00:00.000Z',
+    })
+    expiredSource.draft.roleDelegations = [delegationValue(historicalCatalog, historicalCustom, {
+      validTo: '2026-11-01T00:00:00.000Z',
+    })]
+    expect(isActiveAt(expiredSource.draft.roleAssignments[0].status, expiredSource.draft.roleAssignments[0].validFrom, expiredSource.draft.roleAssignments[0].validTo, now)).toBe(false)
+    expect(validatePolicyDataV3(expiredSource.draft, undefined, [reactivatedCatalog, historicalCatalog])).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'ROLE_DELEGATION_INVALID' }),
+    ]))
+
+    const expiredDelegation = v3DocumentWithAssignment(historicalCatalog, historicalCustom)
+    const delegation = delegationValue(historicalCatalog, historicalCustom, { validTo: '2026-10-15T00:00:00.000Z' })
+    expiredDelegation.draft.roleDelegations = [delegation]
+    expect(validatePolicyDataV3(expiredDelegation.draft, undefined, [inactiveCatalog, historicalCatalog])).toEqual([])
+    expect(validatePolicyDataV3(expiredDelegation.draft, undefined, [reactivatedCatalog, historicalCatalog])).toEqual([])
+    expect(isActiveAt(delegation.status, delegation.validFrom, delegation.validTo, now)).toBe(false)
+    expect(expiredDelegation.draft.roleAssignments[0]).toMatchObject({
+      roleId: customId, roleCodeSnapshot: historicalCustom.code,
+      roleNameSnapshot: historicalCustom.displayName, catalogVersion: historicalCatalog.catalogVersion,
+      scope: { kind: 'workspace', value: workspaceKey },
+    })
+    const revoked = applyGovernanceCommandV3(expiredDelegation, {
+      type: 'REVOKE_ROLE_DELEGATION', commandId: 'expired-delegation-revoke', reason: '撤銷到期代理', id: delegation.id,
+    }, 'principal-fixture', undefined, [reactivatedCatalog, historicalCatalog])
+    expect(revoked.document.draft.roleDelegations[0]).toMatchObject({ id: delegation.id, status: 'revoked' })
+    expect(validatePolicyDataV3(revoked.document.draft, undefined, [reactivatedCatalog, historicalCatalog])).toEqual([])
   })
 
   it('keeps system_admin on its existing exact-principal global flow, outside generic assignment', () => {
