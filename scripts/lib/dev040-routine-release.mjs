@@ -15,6 +15,7 @@ import { DEV014_LIFECYCLE_RUNTIME_TARGET, DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIAT
 
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
+const H40 = /^[a-f0-9]{40}$/u
 
 const CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS = new Set([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -816,6 +817,17 @@ export function assertToolRotationReleaseCompatibility({ toolRotation, toolRotat
     && (toolRotationPredecessor || controlledTransition.releaseMode !== DEV058_RELEASE_MODE))) fail('TOOL_ROTATION_ORDINARY_ONLY')
 }
 
+// DEV-058 may append its exact schema after an already verified tool-image
+// rotation.  The infra receipt remains bound to that rotation source; all
+// other forward transitions stay bound to the current release source.
+export function resolveMigrationInfraReceiptSource({ controlledTransition, toolRotation, intentSourceRevision }) {
+  if (controlledTransition?.releaseMode !== DEV058_RELEASE_MODE || toolRotation == null) return intentSourceRevision
+  if (toolRotation.evidenceScope !== 'OWNER_SEALED_TOOL_IMAGE_ROTATION' || toolRotation.ddlExecuted !== 0
+    || !H40.test(toolRotation.sourceRevision ?? '')
+    || !['VERIFIED', 'REQUIRED_AT_DEPLOYER_MIGRATE'].includes(toolRotation.liveJobReadback)) fail('DEV058_TOOL_ROTATION_SOURCE_INVALID')
+  return toolRotation.sourceRevision
+}
+
 export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, toolRotationRef = null, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
@@ -962,7 +974,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (!migration.replayOnly && (values.readiness?.appliedAbortInfraBaseline || values.authorization?.appliedAbortInfraBaseline)) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
   if (migration.migrationDisposition === 'FORWARD_APPLY') {
     if (!infraChanged) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
-    assertDev013MigrationInfraReceipt(values.infra, profile, intent.sourceRevision)
+    assertDev013MigrationInfraReceipt(values.infra, profile, resolveMigrationInfraReceiptSource({
+      controlledTransition, toolRotation, intentSourceRevision: intent.sourceRevision,
+    }))
     if (migration.replayOnly) {
       const infraProfile = JSON.parse(readSourceFile(root, intent.sourceRevision, 'config/release/dev040-production-release-infra-plan.json'))
       const applied = await readAppliedAbortInfraBaseline({profile,transport,baseline,intent,values,infraProfile})

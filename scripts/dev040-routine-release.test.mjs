@@ -15,7 +15,7 @@ import { assertMigrationReceipt, assertPreparePrerequisites, createGitArchive, c
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildRuntimeConfig, canonicalize, createOwnerTransport, releasePaths, resolvePlainEnvironment, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
-import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeBlobTransition, assertDev057CatalogReadbackPackagingTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs, assertDev014LifecycleReplayInfra } from './lib/dev040-routine-release.mjs'
+import { assertDev013ControlledMigrationAppend, assertDev013MigrationInfraReceipt, assertDev013PredecessorReceipt, assertDev014ActivationContractAppend, assertDev014ActivationContractRemediation, assertDev014ApplicationRegistrationAppend, assertDev014ContractMigrationAppend, assertDev014LoginFixtureCorrection, assertDev014ManagedPrincipalProjectionAppend, assertDev014ManagedPrincipalProjectionRemediation, assertDev014ProjectionContractAppend, assertDev014ProjectionContractRemediation, assertDev057CutoverInfraTransition, assertDev057PrincipalSmokeBlobTransition, assertDev057CatalogReadbackPackagingTransition, assertDev057PrincipalSmokeInfraTransition, assertDev057PrincipalSmokeProfileTransition, assertDev057WriterFenceAppend, assertDev057WriterFenceRemediation, assertRoutineMigrationUnchanged, assertRoutineRuntimeReadback, filterControlledInfrastructureTree, resolveMigrationInfraReceiptSource, resolveRoutineControlBaseline, verifyRoutineRelease, releaseInfrastructureInputs, assertDev014LifecycleReplayInfra } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV014_LIFECYCLE_RUNTIME_TARGET, DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION, assertDev014PrincipalLifecycleV2Append, assertDev014PrincipalLifecycleV2Remediation, assertDev014PrincipalLifecycleRuntimeGuard } from './lib/dev014-principal-lifecycle-release.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
@@ -2357,6 +2357,33 @@ test('DEV-058 uses the exact 31-prefix and full 034-036 append; subsequent ordin
   assert.equal(ordinary.pendingMigrationCount, 0)
   assert.equal(ordinary.releaseMode, 'ROUTINE_UNCHANGED_RUNTIME')
   assert.equal(ordinary.databaseVerification, 'PRIOR_RELEASE_EVIDENCE_PLUS_CURRENT_RUNTIME_SMOKE')
+})
+
+test('DEV-058 reuses only the verified tool rotation source for its forward infra receipt', () => {
+  const verified = {
+    evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION',
+    sourceRevision: oldSource,
+    ddlExecuted: 0,
+    liveJobReadback: 'REQUIRED_AT_DEPLOYER_MIGRATE',
+  }
+  assert.equal(resolveMigrationInfraReceiptSource({
+    controlledTransition: { releaseMode: DEV058_RELEASE_MODE }, toolRotation: verified, intentSourceRevision: newSource,
+  }), oldSource)
+  const receipt = attachForwardInfra(rolePolicyHarness(), oldSource)
+  assert.equal(assertDev013MigrationInfraReceipt(receipt, profile, oldSource), receipt)
+
+  for (const unverified of [
+    { ...verified, evidenceScope: 'PROVIDER' },
+    { ...verified, ddlExecuted: 1 },
+    { ...verified, liveJobReadback: 'UNVERIFIED' },
+  ]) assert.throws(() => resolveMigrationInfraReceiptSource({
+    controlledTransition: { releaseMode: DEV058_RELEASE_MODE }, toolRotation: unverified, intentSourceRevision: newSource,
+  }), /DEV058_TOOL_ROTATION_SOURCE_INVALID/u)
+
+  assert.equal(resolveMigrationInfraReceiptSource({
+    controlledTransition: { releaseMode: 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION' }, toolRotation: verified, intentSourceRevision: newSource,
+  }), newSource)
+  assert.throws(() => assertDev013MigrationInfraReceipt(receipt, profile, newSource), /DEV013_MIGRATION_INFRA_RECEIPT_INVALID/u)
 })
 
 test('DEV-058 append rejects changed prefixes, incomplete/foreign suffixes, authority drift and runtime changes', async () => {
