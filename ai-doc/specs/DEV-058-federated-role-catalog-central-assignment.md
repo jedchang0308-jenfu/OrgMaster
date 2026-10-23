@@ -2,7 +2,7 @@
 
 修訂：2026-10-23。Owner：`ORGMASTER/DEV-058`；協作：`AIPDM/DEV-123#role-permission-editor`。
 
-[任務](../dev_task.md#dev-058-federated-role-catalog-central-assignment) · [驗收、狀態與證據](../qa/DEV-058-dynamic-role-assignment-validation-plan.md) · [ADR-007](../adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。PDM 工程契約為其 `.ai-doc/specs/DEV-123-role-permission-editor-contract.md`；實際工作樹與證據來源只記在 QA。本輪不執行正式 migration、部署或正式資料寫入。
+[任務](../dev_task.md#dev-058-federated-role-catalog-central-assignment) · [驗收、狀態與證據](../qa/DEV-058-dynamic-role-assignment-validation-plan.md) · [ADR-007](../adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。PDM 工程契約為其 `.ai-doc/specs/DEV-123-role-permission-editor-contract.md`；實際工作樹與證據來源只記在 QA。正式操作僅限人類另行授權的034–036相容migration／reader部署，依§6順序及原release控制執行；不改寫人員指派、IAM或Secrets。
 
 <a id="0-本輪可獨立交付切片"></a>
 

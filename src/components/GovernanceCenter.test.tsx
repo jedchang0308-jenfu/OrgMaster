@@ -95,4 +95,25 @@ describe('governance version presentation', () => {
     const host = await render(fixture(), false, 'local-development')
     expect(host.textContent).not.toContain('本機治理沙盒')
   })
+
+  it('shows a visible initial network failure without an assignment matrix, then reloads on refresh', async () => {
+    const networkFailure = new TypeError('Failed to fetch')
+    mocks.loadGovernance.mockRejectedValueOnce(networkFailure).mockResolvedValueOnce({ payload: fixture('version-7'), revision: 'governance-revision' })
+    mocks.loadGovernanceSession.mockRejectedValueOnce(networkFailure).mockResolvedValueOnce({ payload: session, revision: 'governance-revision' })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    mounted.push({ host, root })
+
+    await act(async () => { root.render(<GovernanceCenter employees={[]} departments={[]} roles={[]} currentOrganizationVersionId="organization-current" initialSection="assignments" refreshToken={0} />) })
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('治理操作未完成')
+    expect(host.querySelector('.governance-matrix')).toBeNull()
+    expect(host.textContent).not.toContain('系統 × 角色指派矩陣')
+
+    await act(async () => { root.render(<GovernanceCenter employees={[]} departments={[]} roles={[]} currentOrganizationVersionId="organization-current" initialSection="assignments" refreshToken={1} />) })
+    expect(host.querySelector('[role="alert"]')).toBeNull()
+    expect(host.querySelector('.governance-matrix')).not.toBeNull()
+    expect(mocks.loadGovernance).toHaveBeenCalledTimes(2)
+    expect(mocks.loadGovernanceSession).toHaveBeenCalledTimes(2)
+  })
 })

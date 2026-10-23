@@ -60,6 +60,10 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       'src/governance/validation.ts'].map(file => [orgRoot, 'orgmaster', file]),
     ...['src/lib/role-policy-service.ts', 'src/lib/role-policy-editor.ts', 'src/lib/jenfu-principal-request-guard.ts',
       'src/lib/jenfu-principal-permission-service.ts', 'src/lib/repositories/jenfu-entitlement-repository.ts',
+      'src/app/api/submissions/route.ts', 'src/lib/principal-submission-access.ts',
+      'src/lib/repositories/submission-list-async-repository.ts', 'src/lib/repositories/dashboard-async-repository.ts',
+      'src/lib/jenfu-principal-http.ts', 'src/lib/auth-config.ts', 'src/lib/platform-session-key-ring.ts',
+      'src/lib/db-async-provider.ts', 'src/lib/company-context.ts',
       'config/access-control/ai-pdm-role-policy-contract-v2.manifest.json'].map(file => [pdmRoot, 'ai-pdm', file]),
   ]
   const inputHashes = () => directInputs.map(([root, owner, file]) => ({ owner, file, sha256: digest(readFileSync(path.join(root, file))) }))
@@ -143,7 +147,7 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
     await admin.query(`INSERT INTO ai_pdm_core.role_priority_versions(id,version_code,priority_json,status)
       VALUES('native-priority','native-priority.v1',$1,'active')`,
     [JSON.stringify(activeCatalog.roles.filter(role => !role.stableRoleId.startsWith('role-custom-')).map(role => role.roleCode))])
-    const target = { id: 'native-target-link', employeeId: 'employee-native-target', principalId: 'principal-native-target', issuer: 'issuer-native-target', subject: 'subject-native-target', status: 'active', validFrom: now, validTo: null }
+    const target = { id: 'native-target-link', employeeId: 'employee-native-target', principalId: 'principal-native-target', issuer: 'https://securetoken.google.com/task-owned-native', subject: 'subject-native-target', status: 'active', validFrom: now, validTo: null }
     const delegatedTarget = { ...target, id: 'native-delegate-link', employeeId: 'employee-native-delegate',
       principalId: 'principal-native-delegate', issuer: 'issuer-native-delegate', subject: 'subject-native-delegate' }
     const links = [{ ...manager.link, validTo: null }, target, delegatedTarget]
@@ -350,6 +354,89 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       assert.equal(delegatedDecision.allowed, true, delegatedDecision.decisionCode)
       assert.equal(delegatedDecision.roleCode, custom.roleCode)
     }, [qa16])
+
+    await check('QA058-24-org-http-outage-pdm-business-read', async () => {
+      const profile = (await admin.query('SELECT pdm_user_id FROM ai_pdm_core.principal_accounts WHERE principal_id=$1', [target.principalId])).rows[0]
+      // Business data is a prerequisite; the permission and assignment were
+      // produced by the real PDM apply and Org API above, never seeded here.
+      // The shared manager fixture uses a deliberately noncanonical company
+      // code; this real business route requires the existing JENFU binding.
+      assert.equal((await admin.query(`UPDATE ai_pdm_core.companies SET company_code='JENFU'
+        WHERE id='company-jenfu' AND company_code='DEV058-TASK-FIXTURE' AND company_kind='business'`)).rowCount, 1)
+      await admin.query("INSERT INTO ai_pdm_core.items(id,part_number,part_name) VALUES('native-outage-item','native-outage-part','隔離停機前置零件')")
+      await admin.query(`INSERT INTO ai_pdm_core.drawings(id,company_id,drawing_number,owner_id,created_by)
+        VALUES('native-outage-drawing','company-jenfu','native-outage-drawing',$1,$1)`, [profile.pdm_user_id])
+      await admin.query(`INSERT INTO ai_pdm_core.submissions(id,item_id,drawing_number,revision,material,surface_finish,
+        document_type,change_description,status,submitted_by,source_entity_type,source_entity_id)
+        VALUES('native-outage-submission','native-outage-item','native-outage-drawing','A','fixture','fixture',
+        'drawing','task-owned read prerequisite','Pending',$1,'drawing','native-outage-drawing')`, [profile.pdm_user_id])
+      const session = targetSessions.get(target.principalId)
+      const environment = {
+        PDM_DB_PROVIDER: 'postgres', PDM_POSTGRES_URL: `postgresql://jenfu_ai_pdm_runtime@${handle.host}:${handle.port}/${handle.databaseName}`,
+        PDM_POSTGRES_MAX_CONNECTIONS: '1', DEV010_N2_DATABASE_BOUNDARY: 'required',
+        PDM_AUTH_MODE: 'firebase_bff', PDM_JENFU_PLATFORM_AUTH_MODE: 'on', PDM_JENFU_ENTITLEMENT_MODE: 'enforce',
+        JENFU_FIREBASE_PROJECT_ID: 'task-owned-native', PDM_FIREBASE_PROJECT_ID: 'task-owned-native',
+        JENFU_IDENTITY_AUDIENCE: 'task-owned-native', JENFU_IDENTITY_ISSUER: target.issuer,
+        PDM_SESSION_ISSUER: session.keyRing.issuer, PDM_SESSION_AUDIENCE: session.keyRing.audience,
+        PDM_SESSION_CURRENT_KEY_ID: session.keyRing.currentKeyId,
+        PDM_SESSION_CURRENT_SECRET: session.keyRing.keys[session.keyRing.currentKeyId],
+        PDM_SESSION_PREVIOUS_KEY_ID: '', PDM_SESSION_PREVIOUS_SECRET: '',
+        PDM_TRUST_GOOGLE_WORKSPACE_MFA: 'false', PDM_ALLOW_GOOGLE_WORKSPACE_AAL1_PRIVILEGED: 'false', PDM_GOOGLE_WORKSPACE_DOMAINS: '',
+      }
+      const previous = Object.fromEntries(Object.keys(environment).map(name => [name, process.env[name]]))
+      Object.assign(process.env, environment)
+      let stopped = false
+      try {
+        const route = await imp(pdmRoot, 'src/app/api/submissions/route.ts')
+        const routeDatabase = dbProvider.getAsyncDatabaseClient()
+        const transaction = routeDatabase.transaction.bind(routeDatabase)
+        routeDatabase.transaction = async (run, options) => {
+          try { return await transaction(run, options) }
+          catch (error) {
+            // Retain the real dependency failure before the HTTP handler maps
+            // it to 503. No session token, key, query parameters or payload.
+            console.log(JSON.stringify({ pdmBusinessReadFailure: { code: error.code ?? error.name,
+              at: String(error.stack).split('\n').map(line => line.trim()).filter(line => line.startsWith('at ')).slice(0, 7) } }))
+            throw error
+          }
+        }
+        const readBusiness = async () => {
+          const response = await route.GET(new Request('http://127.0.0.1/api/submissions', {
+            headers: { cookie: 'pdm_session=' + session.token },
+          }))
+          const body = await response.json()
+          assert.equal(response.status, 200, JSON.stringify(body))
+          const row = body.submissions.find(value => value.id === 'native-outage-submission')
+          assert.ok(row, 'AUTHORIZED_NONEMPTY_BUSINESS_READ_REQUIRED')
+          assert.equal(row.drawing_number, 'native-outage-drawing')
+          return row.id
+        }
+        assert.equal(await readBusiness(), 'native-outage-submission')
+        const before = await effects(), grants = await targetGrants()
+        const idpState = (await admin.query('SELECT * FROM platform_contract.task_owned_principal_auth_state ORDER BY principal_id')).rows
+        server.closeAllConnections()
+        await new Promise(resolve => server.close(resolve))
+        stopped = true
+        assert.equal(await portReleased(httpPort), true, 'ORG_HTTP_MUST_ACTUALLY_STOP')
+        await assert.rejects(() => call('GET', '/session'), error => error.cause?.code === 'ECONNREFUSED')
+        assert.equal((await orgRuntime.query('SELECT 1 AS ready')).rows[0].ready, 1)
+        assert.equal(await readBusiness(), 'native-outage-submission')
+        assert.equal((await targetDecision())[0].allowed, true)
+        assert.deepEqual(await targetGrants(), grants)
+        assert.deepEqual(await effects(), before)
+        assert.deepEqual((await admin.query('SELECT * FROM platform_contract.task_owned_principal_auth_state ORDER BY principal_id')).rows, idpState)
+        console.log(JSON.stringify({ orgHttpOutage: { listenerClosed: true, assignmentApi: 'ECONNREFUSED',
+          pdmActualSubmissionRoute: 200, businessRow: 'native-outage-submission', databaseAvailable: true,
+          fixtureIdpStateUnchanged: true, assignmentsAndAuditUnchanged: true, normalSso: false } }))
+      } finally {
+        await dbProvider.closeAsyncDatabaseClient()
+        if (stopped) await new Promise((resolve, reject) => { server.once('error', reject); server.listen(httpPort, '127.0.0.1', resolve) })
+        for (const [name, value] of Object.entries(previous)) {
+          if (value === undefined) delete process.env[name]; else process.env[name] = value
+        }
+      }
+      assert.equal((await call('GET', '/session')).status, 200, 'ORG_HTTP_RECOVERY_REQUIRED')
+    }, [baselineId])
 
     const qa17 = 'QA058-17-producer-commits-before-consumer-read'
     await check(qa17, async () => {
