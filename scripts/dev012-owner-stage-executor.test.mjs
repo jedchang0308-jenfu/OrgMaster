@@ -3,6 +3,7 @@ import test from 'node:test'
 import { gunzipSync } from 'node:zlib'
 import { buildRuntimeConfig, canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { assertMigrationReceipt, assertStaleControlSafeToSupersede, candidateTagUriMatches, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
+import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_RELEASE_MODE } from './lib/dev058-role-policy-migration.mjs'
 
 const H40 = 'a'.repeat(40)
 const baselineRef = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/baseline.json', sha256: 'e'.repeat(64) }
@@ -502,6 +503,43 @@ test('DEV-014 lifecycle v2 receipt proves 31 rows, at most one append and exact 
   const check = value => assertMigrationReceipt({ ...value, receiptSha256: sha256(canonicalize(value)) }, profile, intent, { allowForward: true, forwardPlan })
   assert.doesNotThrow(() => check(core)); assert.doesNotThrow(() => check({ ...core, applied: 0, replayed: 31 }))
   for (const changed of [{ ledgerCount: 30 }, { applied: 2, replayed: 29 }, { replayed: 29 }, { crossDatabaseDenials: [{ database: 'jenfu_dev', denied: false }, { database: 'jenfu_stg', denied: true }] }]) assert.throws(() => check({ ...core, ...changed }), /MIGRATION_RECEIPT_INVALID/)
+})
+
+test('DEV-058 role-policy append requires the native receipt, exact append counts, and isolation', () => {
+  const profile = { application: { id: 'orgmaster' } }
+  const intent = { sourceRevision: H40, migrationManifestSha256: 'b'.repeat(64) }
+  const forwardPlan = { releaseMode: DEV058_RELEASE_MODE, pendingMigrationCount: DEV058_MIGRATION_ENTRIES.length }
+  const core = {
+    schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: H40,
+    manifestSha256: intent.migrationManifestSha256, status: 'PASS', boundaryStatus: 'PASS',
+    database: 'jenfu_prod', ledger: 'orgmaster_core.schema_migrations', baselineCount: 10, minimumLedgerCount: 10,
+    ledgerCount: DEV058_MIGRATION_ENTRY_COUNT, applied: 1, replayed: DEV058_MIGRATION_ENTRY_COUNT - 1,
+    crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
+  }
+  const receipt = (value) => ({ ...value, receiptSha256: sha256(canonicalize(value)) })
+  const check = (value, plan = forwardPlan) => assertMigrationReceipt(receipt(value), profile, intent, { allowForward: true, forwardPlan: plan })
+
+  for (let applied = 0; applied <= DEV058_MIGRATION_ENTRIES.length; applied += 1) {
+    assert.doesNotThrow(() => check({ ...core, applied, replayed: DEV058_MIGRATION_ENTRY_COUNT - applied }))
+  }
+  for (const changed of [
+    { ledgerCount: DEV058_MIGRATION_ENTRY_COUNT - 1 },
+    { ledgerCount: DEV058_MIGRATION_ENTRY_COUNT + 1 },
+    { applied: -1, replayed: DEV058_MIGRATION_ENTRY_COUNT + 1 },
+    { applied: DEV058_MIGRATION_ENTRIES.length + 1, replayed: DEV058_MIGRATION_ENTRY_COUNT - DEV058_MIGRATION_ENTRIES.length - 1 },
+    { replayed: DEV058_MIGRATION_ENTRY_COUNT },
+    { database: 'jenfu_dev' },
+    { ledger: 'platform_core.schema_migrations' },
+    { crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }] },
+    { crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_dev', denied: true }] },
+    { crossDatabaseDenials: [{ database: 'jenfu_dev', denied: false }, { database: 'jenfu_stg', denied: true }] },
+  ]) {
+    assert.throws(() => check({ ...core, ...changed }), /MIGRATION_RECEIPT_INVALID/)
+  }
+  assert.throws(() => check(core, { ...forwardPlan, pendingMigrationCount: DEV058_MIGRATION_ENTRIES.length - 1 }), /MIGRATION_RECEIPT_INVALID/)
+
+  const stageReceipt = { schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: H40, stage: 'migrate', status: 'PASS' }
+  assert.throws(() => assertMigrationReceipt(stageReceipt, profile, intent, { allowForward: true, forwardPlan }), /MIGRATION_RECEIPT_INVALID/)
 })
 
  test('unsealed failed candidate is cleaned before a terminal abort can be sealed',async()=>{

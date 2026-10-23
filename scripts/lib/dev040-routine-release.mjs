@@ -7,6 +7,7 @@ import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, re
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { assertAppArtifactReuse } from './dev040-app-artifact-reuse.mjs'
+import { DEV058_RELEASE_MODE, assertDev058RolePolicyAppend, assertDev058RolePolicyAuthority } from './dev058-role-policy-migration.mjs'
 import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 
@@ -814,10 +815,14 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (!same(intent.foundationReceiptRef, baseline.intent.foundationReceiptRef)) fail('ROUTINE_INFRA_REF_CHANGED')
   const runtimeConfig = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
   const baselineRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
+  const rolePolicyAppend = values.readiness?.devId === 'DEV-058'
+  if (rolePolicyAppend && !same(runtimeConfig, baselineRuntime)) fail('DEV058_RUNTIME_CHANGED')
   const lifecycleGuard = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-V2'
   const lifecycleEnable = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-ENABLE'
   if (lifecycleGuard) assertDev014PrincipalLifecycleRuntimeGuard(profile, baselineRuntime, runtimeConfig)
-  const controlledTransition = lifecycleEnable
+  const controlledTransition = rolePolicyAppend
+    ? assertDev058RolePolicyAuthority(values.readiness, values.authorization, intent)
+    : lifecycleEnable
     ? assertDev014PrincipalLifecycleEnablement({profile,intent,readiness:values.readiness,authorization:values.authorization,before:baselineRuntime,after:runtimeConfig})
     : lifecycleGuard
     ? assertDev014PrincipalLifecycleV2Remediation(values.readiness, values.authorization)
@@ -877,7 +882,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const appArtifactReuse = appReuseLeft == null ? null : await assertAppArtifactReuse({ root, profile, transport, intent, association: appReuseLeft })
   const infrastructureHash = lifecycleGuard
     ? (root, revision) => transitionFingerprint(root, revision, [], dev014PrincipalLifecycleInfrastructureInputs)
-    : ['DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+    : [DEV058_RELEASE_MODE, 'DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
@@ -902,6 +907,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (lifecycleEnable && (baseline.bundle.value.entries?.length !== 31 || current.bundle.entries?.length !== 31)) fail('DEV014_LIFECYCLE_ENABLEMENT_LEDGER_REQUIRED')
   try {
     migration = { migrationDisposition: 'UNCHANGED_VERIFIED', pendingMigrationCount: 0, migrationInputsSha256: assertRoutineMigrationUnchanged(baseline.bundle.value, current.bundle) }
+    if (rolePolicyAppend) fail('DEV058_MIGRATION_APPEND_INVALID')
     if (lifecycleGuard) {
       if (baseline.bundle.value.entries?.length !== 31 || current.bundle.entries?.length !== 31) fail('DEV014_LIFECYCLE_REPLAY_LEDGER_REQUIRED')
       // FORWARD_APPLY is the existing native Job-required disposition. Here
@@ -912,7 +918,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   } catch (error) {
     if (lifecycleEnable) throw error // enablement executes zero DDL, without append fallback
     if (!controlledTransition || error?.code !== 'ROUTINE_MIGRATION_CHANGED') throw error
-    migration = controlledTransition.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION'
+    migration = controlledTransition.releaseMode === DEV058_RELEASE_MODE
+      ? assertDev058RolePolicyAppend(baseline.bundle.value, current.bundle)
+      : controlledTransition.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION'
       ? assertDev014PrincipalLifecycleV2Append(baseline.bundle.value, current.bundle)
       : controlledTransition.releaseMode === 'DEV014_PRODUCER_CONTRACT_REMEDIATION'
       ? assertDev014ContractMigrationAppend(baseline.bundle.value, current.bundle)

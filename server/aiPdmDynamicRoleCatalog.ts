@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { aiPdmRoleProfiles, type AiPdmRoleProfile } from '../src/governance/aiPdmRoleSchema'
+import { aiPdmRoleProfiles, type AiPdmRoleProfile } from '../src/governance/aiPdmRoleSchema.ts'
 import type { PublishedAiPdmRole, PublishedAiPdmRoleCatalog } from './aiPdmRoleCatalogRepository'
 
 const invalid=():never=>{throw new Error('EXTERNAL_CATALOG_INVALID')}
@@ -40,7 +40,7 @@ const protectedHash=(baseline:PublishedAiPdmRoleCatalog)=>hash({systemAdmin:prot
   frozenEntries:baseline.roles.slice(0,8).map(role=>({stableRoleId:role.stableRoleId,permissions:permissions(role)}))})
 export type DynamicCatalogMetadata={publicationFormat:'dynamic-policy-v1';canonicalizationVersion:'jenfu.canonical-json.v1';
   roleSchemaId:'ai-pdm.role-schema.flexible.v2';roleProfileSchemaId:'ai-pdm.role-profile-schema.v1';
-  baselineRoleIdentityHash:string;roleIdentityHash:string;protectedPolicyHash:string;registryHash:string;roleProfileHash:string;activationGeneration:string;
+  baselineRoleIdentityHash:string;roleIdentityHash:string;protectedPolicyHash:string;registryHash:string;roleProfileHash:string;
   roleProfiles:AiPdmRoleProfile[]}
 
 /** Decode the complete v2 producer preimage. No sibling source directory or capability approval table. */
@@ -48,11 +48,11 @@ export function decodeDynamicAiPdmRoleCatalog(rows:Record<string,unknown>[],base
   assert(Array.isArray(rows)&&rows.length>=9&&rows.length<=64)
   const first=rows[0]
   const fields=['contract_version','application_id','catalog_version','catalog_sha256','publication_format','canonicalization_version','role_schema_id',
-    'role_profile_schema_id','baseline_role_identity_hash','role_identity_hash','protected_policy_hash','registry_hash','role_profile_hash','activation_generation','lifecycle']
+    'role_profile_schema_id','baseline_role_identity_hash','role_identity_hash','protected_policy_hash','registry_hash','role_profile_hash','lifecycle']
   assert(first.contract_version==='jenfu.platform-entitlement.v1'&&first.application_id==='ai-pdm'&&first.publication_format==='dynamic-policy-v1'&&
     first.canonicalization_version==='jenfu.canonical-json.v1'&&first.role_schema_id==='ai-pdm.role-schema.flexible.v2'&&
     first.role_profile_schema_id==='ai-pdm.role-profile-schema.v1'&&new RegExp('^ai-pdm\\.role-policy\\.'+uuidPattern+'$','u').test(String(first.catalog_version))&&
-    typeof first.activation_generation==='string'&&/^(0|[1-9][0-9]*)$/u.test(first.activation_generation)&&['active','retired'].includes(String(first.lifecycle)))
+    ['active','retired'].includes(String(first.lifecycle)))
   for(const key of ['catalog_sha256','baseline_role_identity_hash','role_identity_hash','protected_policy_hash','registry_hash','role_profile_hash'])assert(hashPattern.test(String(first[key])))
   const publishedAt=new Date(first.published_at as string|Date).toISOString()
   assert(rows.every((row,index)=>row.display_order===index&&fields.every(key=>equal(row[key]??null,first[key]??null))&&
@@ -112,5 +112,5 @@ export function decodeDynamicAiPdmRoleCatalog(rows:Record<string,unknown>[],base
     publicationFormat:'dynamic-policy-v1',canonicalizationVersion:'jenfu.canonical-json.v1',roleSchemaId:'ai-pdm.role-schema.flexible.v2',
     roleProfileSchemaId:'ai-pdm.role-profile-schema.v1',baselineRoleIdentityHash:String(first.baseline_role_identity_hash),roleIdentityHash:String(first.role_identity_hash),
     protectedPolicyHash:String(first.protected_policy_hash),registryHash:String(first.registry_hash),roleProfileHash:String(first.role_profile_hash),
-    activationGeneration:String(first.activation_generation),roleProfiles:expectedProfiles}
+    roleProfiles:expectedProfiles}
 }

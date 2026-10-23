@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { issuerFingerprintSha256, principalFingerprintSha256 } from '../src/governance/identityAdmission'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { readFinancialRoleCatalog } from './financialRoleCatalogRepository'
-import { appendGovernanceAudit, ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, publishGovernance, readGovernanceStore, setActivePolicy } from './orgmasterGovernanceStore'
+import { appendGovernanceAudit, ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, publishGovernance, readGovernanceCommandResult, readGovernanceStore, setActivePolicy } from './orgmasterGovernanceStore'
 import { GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
 import { previewFinancialManagementGrant, publishFinancialManagementGrant } from './applicationManagementGrantStore'
 import { previewFinancialRoleAssignment, publishFinancialRoleAssignment } from './applicationRoleAssignmentStore'
@@ -214,8 +214,18 @@ describe('DEV-039 generic Financial entitlement v2', () => {
     withdrawal.document.draft = current.document.draft
     await writeDocument(root, withdrawal.document)
     const beforeActivation = await readGovernanceStore(root)
-    await setActivePolicy(root, beforeActivation.revision, 'activate-withdrawal', 'withdraw Financial', withdrawn.id, actor)
+    const activation = await setActivePolicy(root, beforeActivation.revision, 'activate-withdrawal', 'withdraw Financial', withdrawn.id, actor)
+    expect(activation.status).toBe('applied')
     const active = await readGovernanceStore(root)
+    const activationEvent = active.document.auditEvents.find(event => event.commandId === 'activate-withdrawal')
+    expect(activationEvent?.commandResult).toEqual({
+      operation: 'ACTIVATE_ASSIGNMENT_VERSION', outcome: 'activated', entityType: 'assignmentVersion',
+      entityId: withdrawn.id, versionId: withdrawn.id,
+    })
+    const replayedActivation = await setActivePolicy(root, beforeActivation.revision, 'activate-withdrawal', 'withdraw Financial', withdrawn.id, actor)
+    expect(replayedActivation.status).toBe('replayed')
+    expect(replayedActivation.revision).toBe(activation.revision)
+    expect((await readGovernanceCommandResult(root, 'activate-withdrawal', actor)).result).toEqual(activationEvent?.commandResult)
     expect(active.document.draft.roleAssignments.some(assignment => assignment.applicationId === 'financial-management-system')).toBe(true)
     expect(active.document.draft.managementGrants).toHaveLength(2)
     expect(() => assertFinancialAuthority(active.document, actor, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH)).toThrow('APP_MANAGEMENT_GRANT_REQUIRED')

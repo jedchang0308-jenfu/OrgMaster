@@ -7,26 +7,16 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const run = spawnSync(process.execPath, ["--test", "scripts/dev040-orgmaster-independent-release.test.mjs", "scripts/dev040-production-migration-runner.test.mjs", "scripts/dev049-production-admission.test.mjs", "scripts/dev014-production-managed-link-runner.test.mjs", "scripts/dev012-owner-release-runtime.test.mjs", "scripts/dev012-owner-stage-executor.test.mjs", "scripts/dev040-routine-release.test.mjs", "scripts/dev012-owner-prerequisite-producer.test.mjs", "scripts/dev012-official-source-review.test.mjs", "scripts/lib/dev057-principal-only-release.test.mjs", "scripts/lib/dev057-principal-forward-repair.test.mjs", "scripts/lib/dev057-principal-recovery-operator.test.mjs", "scripts/dev057-principal-recovery-operator.test.mjs", "scripts/dev057-principal-only-recovery-server.test.mjs", "scripts/dev057-principal-owner-recovery.test.mjs", "scripts/dev057-recovery-release-input.test.mjs", "scripts/dev057-principal-activation-transport.test.mjs", "scripts/dev015-gcc-applicability.test.mjs", "scripts/dev015-gcc-aligned-new-applicability.test.mjs", "scripts/dev015-aligned-new-loader-inspection.test.mjs", "scripts/dev057-production-principal-pair-diagnostic-runner.test.mjs", "scripts/dev057-smoke-credential-reauth.test.mjs", "scripts/lib/dev014-principal-lifecycle-release.test.mjs", "scripts/lib/dev014-principal-lifecycle-quiescence.test.mjs", "scripts/dev057-principal-quiescence-transport.test.mjs", "scripts/lib/dev014-managed-lifecycle-plan-gate.test.mjs", "scripts/lib/dev014-lifecycle-activation-prerequisites.test.mjs"], { cwd: root, encoding: 'utf8' })
-process.stdout.write(run.stdout)
-process.stderr.write(run.stderr)
-// Keep the fixed QC denominator aligned with the exact 27-file package owner-test selection.
-// R8 frozen predecessor: 312 cases. Scheduler/enablement adds 14; provider normalization adds 2.
-// Installed-031 replay and complete native image-proof checks add 5 cases: predecessor total 333.
-// Four actual build-abort lineage cases extend this same 27-file selection to 337.
-// R7 exact false-state target guard and unsealed-cleanup integration add 2 selected cases: total 339.
-// Unknown Cloud Build submission-fence recovery adds one selected case: total 340.
-// Eight DEV-057 completed-credential continuation cases extend this same selection to 348.
-// Six historical applied-image predecessor cases extend this exact selection to 354.
-// One existing-build-only no-submission recovery case extends this selection to 355.
-// One role-bounded migrate live-readback/candidate-blocking case extends it to 356.
-// Three release-proof composition cases extend this exact selection to 359.
-// Prior-source smoke receipt continuation and the emitted abort-terminal schema
-// add two selected cases: total 361.
-// This Node result does not replace the full regression/build commands below.
-if (run.status !== 0 || !/\bpass 361\b/u.test(run.stdout) || !/\bfail 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
+// package.json owns the Node contract-test selection.
+const run = spawnSync(process.execPath, [npmCli, 'run', 'test:dev-040:r2'], { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, windowsHide: true })
+process.stdout.write(run.stdout)
+process.stderr.write(run.stderr)
+// Keep the selected contract tests; new cases do not require a second numeric quota.
+// Node must execute tests successfully, with no failures or cancellations.
+if (run.status !== 0 || !/\bpass [1-9][0-9]*\b/u.test(run.stdout)
+  || !/\bfail 0\b/u.test(run.stdout) || !/\bcancelled 0\b/u.test(run.stdout)) process.exit(run.status || 1)
 
 async function prepareSyntheticRegressionData() {
   const dataRoot = path.join(root, 'data')
@@ -133,6 +123,7 @@ const files = [
   'ai-doc/dev_task.md', 'ai-doc/documentation_map.md',
   'config/release/dev040-orgmaster-independent-production-v3.json', 'config/release/dev040-production-release-infra-plan.json',
   'scripts/lib/dev040-orgmaster-independent-release.mjs', 'scripts/dev040-orgmaster-independent-release.mjs',
+  'scripts/lib/dev058-role-policy-migration.mjs',
   'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.mjs',
   'scripts/dev040-production-migration-runner.test.mjs', 'scripts/qc-dev-040-r2-independent-release.mjs',
   'scripts/lib/orgmaster-production-database.mjs', 'scripts/lib/orgmaster-production-database.test.mjs',
@@ -146,7 +137,7 @@ const files = [
   'scripts/dev014-production-lifecycle-readback.mjs', 'scripts/dev014-production-lifecycle-readback.test.mjs',
   'scripts/lib/dev014-lifecycle-v2-readback.mjs',
   'scripts/dev057-production-principal-pair-diagnostic-runner.mjs', 'scripts/dev057-production-principal-pair-diagnostic-runner.test.mjs',
-  'server/aiPdmRoleCatalogRepository.ts', '.github/workflows/production-source-qc.yml',
+  'server/aiPdmRoleCatalogRepository.ts', 'server/aiPdmDynamicRoleCatalog.ts', 'src/governance/aiPdmRoleSchema.ts', '.github/workflows/production-source-qc.yml',
   ...['v5', 'v6', 'v7'].map(version => `config/catalogs/ai-pdm-role-catalog.${version}.json`),
   'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json',
   'scripts/qc-dev-047-postgres.mjs', 'scripts/qc-dev-052-contract.mjs',

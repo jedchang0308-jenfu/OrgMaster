@@ -51,7 +51,7 @@ function projection(): Record<string, unknown>[] {
     role_profile_schema_id: policy.roleProfileSchemaId,
     baseline_role_identity_hash: policy.baselineRoleIdentityHash, role_identity_hash: policy.roleIdentityHash,
     registry_hash: policy.registryHash, protected_policy_hash: policy.protectedPolicyHash,
-    activation_generation: vector.activationGeneration, role_profile_hash: policy.roleProfileHash,
+    role_profile_hash: policy.roleProfileHash,
     permission_role_id: policy.roleProfiles[index].permissionRoleId,
     presentation_name: policy.roleProfiles[index].presentationName,
     presentation_order: policy.roleProfiles[index].presentationOrder,
@@ -121,10 +121,10 @@ function recommendationInput(catalog: ExternalRoleCatalogSnapshotV1, stableRoleI
 
 describe('DEV-058 dynamic catalog assignment consumer', () => {
   it('requires the exact current tuple for dynamic grants and restores', () => {
-    const expected = { catalogVersion: dynamicV7.catalogVersion, catalogSha256: dynamicV7.catalogSha256!, activationGeneration: dynamicV7.activationGeneration! }
+    const expected = { catalogVersion: dynamicV7.catalogVersion, catalogSha256: dynamicV7.catalogSha256! }
     expect(() => assertDynamicCatalogBinding(dynamicV7, { expectedCatalog: expected })).not.toThrow()
     expect(() => assertDynamicCatalogBinding(dynamicV7, {})).toThrowError(expect.objectContaining({ code: 'EXTERNAL_CATALOG_VERSION_CONFLICT' }))
-    expect(() => assertDynamicCatalogBinding(dynamicV7, { expectedCatalog: { ...expected, activationGeneration: '999' } })).toThrowError(expect.objectContaining({ code: 'EXTERNAL_CATALOG_VERSION_CONFLICT' }))
+    expect(() => assertDynamicCatalogBinding(dynamicV7, { expectedCatalog: { ...expected, catalogVersion: 'ai-pdm.role-policy.00000000-0000-4000-8000-000000000999' } })).toThrowError(expect.objectContaining({ code: 'EXTERNAL_CATALOG_VERSION_CONFLICT' }))
     expect(() => assertDynamicCatalogBinding(baselineV7, {})).not.toThrow()
   })
   it('allows an active selectable custom role to be newly assigned and a revoked assignment to be restored', () => {

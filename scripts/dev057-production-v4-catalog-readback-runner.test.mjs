@@ -150,11 +150,11 @@ test('database readback validates actual v5/v6/v7 projections against the select
       },
     }, expected.catalogSha256)
 
-    assert.match(statement, /FROM ai_pdm_contract\.v_application_role_catalog_v1/u)
+    assert.match(statement, /FROM ai_pdm_contract\.v_application_role_catalog_v2/u)
     assert.equal(actual.catalogVersion, catalogVersion)
     assert.equal(actual.catalogSha256, expected.catalogSha256)
     assert.deepEqual(actual.roles, expected.roles)
-    assert.equal(actual.sourcePath, 'postgres:ai_pdm_contract.v_application_role_catalog_v1')
+    assert.equal(actual.sourcePath, 'postgres:ai_pdm_contract.v_application_role_catalog_v2')
     const readbackRole = actual.roles.find((role) => role.stableRoleId === 'role-rd')
     assert.ok(readbackRole)
     assert.deepEqual(summarizeGovernance(document([{

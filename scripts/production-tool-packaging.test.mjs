@@ -420,7 +420,7 @@ test('isolated pg imports, entrypoint guards, lifecycle modes, v2 readback, and 
         async end() {}
         async query(sql) {
           queries++;
-          if (sql.includes('v_application_role_catalog_v1')) return { rows };
+          if (sql.includes('FROM ai_pdm_contract.v_application_role_catalog_v2')) return { rows };
           if (sql.includes('read_active_persistence_artifact_v1')) return { rows: [{
             payload: { publishedVersions: [{ id: 'policy-v1', kind: 'assignment-governance-v3', policy: { roleAssignments: [] } }], activePolicyVersionId: 'policy-v1', draft: { roleAssignments: [] } },
             source_sha256: 'b'.repeat(64) }] };

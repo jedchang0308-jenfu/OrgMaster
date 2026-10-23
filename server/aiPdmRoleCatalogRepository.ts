@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { access, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import { decodeDynamicAiPdmRoleCatalog, type DynamicCatalogMetadata } from './aiPdmDynamicRoleCatalog'
+import { decodeDynamicAiPdmRoleCatalog, type DynamicCatalogMetadata } from './aiPdmDynamicRoleCatalog.ts'
 
 export const JENFU_ENTITLEMENT_CONTRACT_VERSION = 'jenfu.platform-entitlement.v1' as const
 export const AI_PDM_APPLICATION_ID = 'ai-pdm' as const
@@ -135,7 +135,7 @@ const AI_PDM_ROLE_CATALOG_V2_COLUMNS = `contract_version, application_id, catalo
               display_order, stable_role_id, role_code, display_name, assignable, risk,
               subject_kind, recommendation_allowed, delegation_allowed, allowed_scope_kinds,
               assignment_tier, permissions, metadata, role_definition_hash,
-              publication_format, canonicalization_version, role_schema_id, activation_generation,
+              publication_format, canonicalization_version, role_schema_id,
               baseline_role_identity_hash, role_identity_hash, protected_policy_hash, registry_hash,
               role_profile_schema_id, role_profile_hash, role_status, permission_role_id,
               presentation_name, presentation_order, assignment_disposition, lifecycle`

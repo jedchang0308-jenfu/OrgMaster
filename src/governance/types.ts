@@ -201,7 +201,6 @@ export interface ExternalRoleCatalogSnapshotV1 {
   canonicalizationVersion?: 'jenfu.canonical-json.v1'
   roleSchemaId?: 'ai-pdm.role-schema.flexible.v2'
   roleProfileSchemaId?: 'ai-pdm.role-profile-schema.v1'
-  activationGeneration?: string
   baselineRoleIdentityHash?: string
   roleIdentityHash?: string
   protectedPolicyHash?: string
@@ -212,7 +211,6 @@ export interface ExternalRoleCatalogSnapshotV1 {
 export interface GovernanceExpectedCatalogV1 {
   catalogVersion: string
   catalogSha256: string
-  activationGeneration: string
 }
 
 export interface GovernanceRoleAssignmentV2 {
@@ -393,6 +391,8 @@ export interface GovernanceMigrationStateV3 extends Omit<GovernanceMigrationStat
 
 export interface GovernanceAuditEventV3 extends GovernanceAuditEventV1 {
   hashFormat?: 'orgmaster.sorted-json.v1'
+  commandHashFormat?: 'orgmaster.governance-command.v2'
+  commandResult?: GovernanceCommandResultV1
   detail?: {
     targetPrincipalAdmissionId: string
     employeeId: string
@@ -409,6 +409,25 @@ export interface GovernanceAuditEventV3 extends GovernanceAuditEventV1 {
     authenticatedAt: string
     sessionReference: string
   }
+}
+
+export interface GovernanceCommandResultV1 {
+  operation: string
+  outcome: 'applied' | 'noop' | 'published' | 'activated' | 'deactivated'
+  entityType: string
+  entityId: string | null
+  versionId?: string | null
+}
+
+export interface GovernanceCommandQueryResultV1 {
+  status: 'committed' | 'not_observed'
+  commandId: string
+  commandHash: string | null
+  auditReference: string | null
+  entityType: string | null
+  entityId: string | null
+  occurredAt: string | null
+  result: GovernanceCommandResultV1 | null
 }
 
 export interface GovernanceAssignmentVersionV3 {

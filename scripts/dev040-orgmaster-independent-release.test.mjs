@@ -10,6 +10,7 @@ import { assertPreparePrerequisites, readGitBlob } from './lib/dev012-owner-stag
 import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION } from './lib/dev014-principal-lifecycle-release.mjs'
 import { DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
+import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_MIGRATION_PREFIX_COUNT, assertDev058MigrationEntries } from './lib/dev058-role-policy-migration.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const read = (file) => JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
@@ -19,6 +20,7 @@ const H = 'a'.repeat(64)
 const ref = (name) => ({ uri: `gs://${profile.artifact.releaseBucket}/receipts/${name}.json`, sha256: H })
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex')
+const migrationIdentity = ({ order, version, path, sourceSha256, appliedSha256 }) => [order, version, path, sourceSha256, appliedSha256]
 
 function controlledPrerequisites(ownerProfile, runtimeConfig) {
   const intent = { releaseId: 'DEV013-L4-ORGMASTER-001', sourceRevision: 'b'.repeat(40) }
@@ -366,11 +368,21 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-031 production migration bytes', () => {
+test('OrgMaster exact 001-031 prefix plus DEV-058 034-036 production migration bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
-  assert.equal(bundle.bundle.entries.length, 31)
+  assert.equal(bundle.bundle.entries.length, DEV058_MIGRATION_ENTRY_COUNT)
+  assertDev058MigrationEntries(bundle.bundle.entries)
+  assert.deepEqual(
+    bundle.bundle.entries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(migrationIdentity),
+    DEV058_MIGRATION_ENTRIES.map(migrationIdentity),
+  )
+  assert.deepEqual(
+    profile.migrations.entries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(migrationIdentity),
+    DEV058_MIGRATION_ENTRIES.map(migrationIdentity),
+  )
+  assert.equal(profile.migrations.entries.some(({ path }) => path.startsWith('db/migrations/032_') || path.startsWith('db/migrations/033_')), false)
   assert.equal(bundle.bundle.entries[10].version, 'dev040-r2-orgmaster-011')
   assert.equal(bundle.bundle.entries[11].version, 'dev047-orgmaster-012')
   assert.equal(bundle.bundle.entries[12].version, 'dev049-orgmaster-013')
@@ -403,6 +415,32 @@ test('OrgMaster exact 001-031 production migration bytes', () => {
   const changedPrefix = structuredClone(profile)
   changedPrefix.migrations.entries[28].sourceSha256 = '0'.repeat(64)
   assert.throws(() => assertDev040V3Profile(changedPrefix, n1c), /MIGRATION_PREFIX_001_029_DRIFT/u)
+  const changedPrefix031 = structuredClone(profile)
+  changedPrefix031.migrations.entries[30].sourceSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev040V3Profile(changedPrefix031, n1c), /MIGRATION_PREFIX_001_031_DRIFT/u)
+
+  for (const [index, entry] of DEV058_MIGRATION_ENTRIES.entries()) {
+    const missing = structuredClone(profile)
+    missing.migrations.entries.splice(DEV058_MIGRATION_PREFIX_COUNT + index, 1)
+    assert.throws(() => assertDev040V3Profile(missing, n1c), /MIGRATION_MANIFEST_DRIFT/u, `missing ${entry.path}`)
+
+    const tampered = structuredClone(profile)
+    tampered.migrations.entries[DEV058_MIGRATION_PREFIX_COUNT + index].sourceSha256 = '0'.repeat(64)
+    assert.throws(() => assertDev040V3Profile(tampered, n1c), /DEV058_MIGRATION_APPEND_INVALID/u, `tampered ${entry.path}`)
+  }
+
+  for (const index of [0, 1]) {
+    const reordered = structuredClone(profile)
+    const first = DEV058_MIGRATION_PREFIX_COUNT + index
+    ;[reordered.migrations.entries[first], reordered.migrations.entries[first + 1]] = [reordered.migrations.entries[first + 1], reordered.migrations.entries[first]]
+    assert.throws(() => assertDev040V3Profile(reordered, n1c), /MIGRATION_MANIFEST_DRIFT/u, `reordered DEV-058 suffix ${index}`)
+  }
+
+  for (const [index, path] of ['db/migrations/032_dev046_employee_list_min_width.sql', 'db/migrations/033_dev046_shared_list_min_width.sql'].entries()) {
+    const mixed = structuredClone(profile)
+    mixed.migrations.entries[DEV058_MIGRATION_PREFIX_COUNT + index].path = path
+    assert.throws(() => assertDev040V3Profile(mixed, n1c), /MIGRATION_MANIFEST_DRIFT/u, `mixed unauthorized ${path}`)
+  }
 })
 
 test('S1B-21 OrgMaster release intent is exact, owner-bound and immutable', () => {
@@ -517,4 +555,21 @@ test('DEV-014 owner prepare binds lifecycle v2 to exact source and keeps the tri
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile, values: { ...fixture.values, runtimeConfig: { ...fixture.values.runtimeConfig, runtimeConfig: enabled } } }), /CONTROLLED_ENVIRONMENT_AUTHORITY_INVALID/)
   fixture.values.readiness.remediation = { ...remediation, appliedSha256: '0'.repeat(64) }
   assert.throws(() => assertPreparePrerequisites({ ...fixture, profile }), /DEV014_PRINCIPAL_LIFECYCLE_V2_AUTHORITY_INVALID/)
+})
+
+
+test('required source QC runs the existing verification through one owner entry without a case-count quota', () => {
+  const workflow = fs.readFileSync('.github/workflows/production-source-qc.yml', 'utf8')
+  const qc = fs.readFileSync('scripts/qc-dev-040-r2-independent-release.mjs', 'utf8')
+  assert.equal((workflow.match(/run: npm run qc:dev-040:r2/g) ?? []).length, 1)
+  assert.match(qc, /\[npmCli, 'run', 'test:dev-040:r2'\]/u)
+  for (const command of ['npm run test:production-tools', 'npm run test:dev-040:tool-rotation', 'npm run test:dev-040:abort', 'npm test -- --testTimeout=30000', 'npm run build', 'npm run check:db-boundary']) {
+    assert.ok(qc.includes(`['${command}',`), command)
+    assert.ok(!workflow.includes(`run: ${command}\n`), `${command} must run once through QC`)
+  }
+  assert.ok(!workflow.includes('run: npm run test:dev-040:r2\n'))
+  assert.doesNotMatch(qc, /pass [0-9]+\\b/u)
+  assert.match(workflow, /name: Production Source QC/u)
+  assert.match(workflow, /docker build --target runtime-smoke/u)
+  assert.match(workflow, /docker run --rm --network none/u)
 })

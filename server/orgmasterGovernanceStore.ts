@@ -10,7 +10,7 @@ import { createSeedDocumentV2, migrateGovernanceV1ToV2 } from '../src/governance
 import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2ToV3'
 import { assignmentMatchesSecuritySubject, evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { readApplicationRoleCatalogs, readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
-import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceAuditEventV1, GovernanceAuditEventV3, GovernanceCommandV2, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceExpectedCatalogV1, GovernanceOrgSource, GovernancePolicyDataV1, GovernanceRoleAssignmentV2 } from '../src/governance/types'
+import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceAuditEventV1, GovernanceAuditEventV3, GovernanceCommandV2, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceExpectedCatalogV1, GovernanceOrgSource, GovernancePolicyDataV1, GovernanceRoleAssignmentV2, GovernanceCommandResultV1, GovernanceCommandQueryResultV1 } from '../src/governance/types'
 import { OrgmasterPersistenceError, currentPersistenceTransactionDatabase, withPersistenceTransaction, persistenceArtifactExists, readPersistenceArtifact, usesCloudSqlPersistence, writePersistenceArtifacts, type PersistenceEntitlementChange } from './orgmasterPersistenceRepository'
 import { assertMigrationWritesAllowed } from './orgmasterMigrationGate'
 import { storedGovernanceCatalogs, isGovernanceReduction, withStoredGovernanceHistory } from './governanceReduction'
@@ -63,14 +63,29 @@ function auditEventHashInput(event: Omit<GovernanceAuditEventV3, 'eventHash'> | 
     previousEventHash: event.previousEventHash,
     ...(event.detail ? { detail: event.detail } : {}),
     ...(event.hashFormat ? { hashFormat: event.hashFormat } : {}),
+    ...(event.commandHashFormat ? { commandHashFormat: event.commandHashFormat } : {}),
+    ...(event.commandResult ? { commandResult: event.commandResult } : {}),
   }
 }
 function eventHash(event: Omit<GovernanceAuditEventV3, 'eventHash'> | GovernanceAuditEventV3) {
   if (event.hashFormat !== undefined && event.hashFormat !== GOVERNANCE_PUBLICATION_HASH_FORMAT) throw new GovernanceStoreError('AUDIT_CHAIN_INVALID')
+  if (event.commandHashFormat !== undefined && event.commandHashFormat !== GOVERNANCE_COMMAND_HASH_FORMAT) throw new GovernanceStoreError('AUDIT_CHAIN_INVALID')
   return event.hashFormat === GOVERNANCE_PUBLICATION_HASH_FORMAT
     ? publicationSnapshotHash(auditEventHashInput(event)) : sha256(canonicalJson(auditEventHashInput(event)))
 }
-export function appendGovernanceAudit<T extends GovernanceDocumentV2 | GovernanceDocumentV3>(document: T, command: { commandId: string; reason: string; type?: string }, actor: GovernanceActorContext, info: { action: string; entityType: string; entityId: string | null; beforeHash: string | null; afterHash: string | null; detail?: NonNullable<GovernanceDocumentV3['auditEvents'][number]['detail']> }, now = new Date().toISOString()): T { if (document.auditEvents.some(event => event.commandId === command.commandId)) throw new GovernanceStoreError('COMMAND_ID_REUSED'); const previousEventHash = document.auditEvents.at(-1)?.eventHash ?? null; const base = { id: `audit-${randomUUID()}`, commandId: command.commandId, commandHash: commandHash(command), occurredAt: now, actorPrincipalId: actor.principalId, action: info.action, entityType: info.entityType, entityId: info.entityId, reason: command.reason, beforeHash: info.beforeHash, afterHash: info.afterHash, previousEventHash, ...(info.detail ? { detail: info.detail } : {}), ...(document.schemaVersion === 3 ? { hashFormat: GOVERNANCE_PUBLICATION_HASH_FORMAT } : {}) }; return { ...document, auditEvents: [...document.auditEvents, { ...base, eventHash: eventHash(base) }] } as T }
+export function appendGovernanceAudit<T extends GovernanceDocumentV2 | GovernanceDocumentV3>(document: T, command: { commandId: string; reason: string; type?: string }, actor: GovernanceActorContext, info: { action: string; entityType: string; entityId: string | null; beforeHash: string | null; afterHash: string | null; detail?: NonNullable<GovernanceDocumentV3['auditEvents'][number]['detail']>; commandHashFormat?: typeof GOVERNANCE_COMMAND_HASH_FORMAT; commandResult?: GovernanceCommandResultV1 }, now = new Date().toISOString()): T {
+  if (document.auditEvents.some(event => event.commandId === command.commandId)) throw new GovernanceStoreError('COMMAND_ID_REUSED')
+  const previousEventHash = document.auditEvents.at(-1)?.eventHash ?? null
+  const base = { id: `audit-${randomUUID()}`, commandId: command.commandId, commandHash: commandHash(command), occurredAt: now,
+    actorPrincipalId: actor.principalId, action: info.action, entityType: info.entityType, entityId: info.entityId,
+    reason: command.reason, beforeHash: info.beforeHash, afterHash: info.afterHash, previousEventHash,
+    ...(info.detail ? { detail: info.detail } : {}),
+    ...(document.schemaVersion === 3 ? { hashFormat: GOVERNANCE_PUBLICATION_HASH_FORMAT } : {}),
+    ...(info.commandHashFormat ? { commandHashFormat: info.commandHashFormat } : {}),
+    ...(info.commandResult ? { commandResult: info.commandResult } : {}) }
+  return { ...document, auditEvents: [...document.auditEvents, { ...base, eventHash: eventHash(base) }] } as T
+}
+
 const appendAudit = appendGovernanceAudit
 function validateAuditChain(document: { auditEvents: GovernanceAuditEventV1[] | GovernanceAuditEventV3[] }) { let previous: string | null = null; for (const event of document.auditEvents) { if (event.previousEventHash !== previous || eventHash(event) !== event.eventHash) throw new GovernanceStoreError('AUDIT_CHAIN_INVALID'); previous = event.eventHash } }
 function actorHasPolicyPermissionV1(policy: GovernancePolicyDataV1, actor: GovernanceActorContext, permissionCode: string, now = new Date().toISOString()) { const link = policy.identityLinks.find((value) => value.principalId === actor.principalId && value.issuer === actor.issuer && value.subject === actor.subject && isActiveAt(value.status, value.validFrom, value.validTo, now)); if (!link) return false; const permission = policy.permissions.find((value) => value.applicationId === 'orgmaster' && value.code === permissionCode && value.status === 'active'); if (!permission) return false; const activeRoles = new Set(policy.applicationRoles.filter((role) => role.applicationId === 'orgmaster' && role.status === 'active').map((role) => role.id)); const roleIds = new Set(policy.roleAssignments.filter((assignment) => assignment.employeeId === link.employeeId && activeRoles.has(assignment.roleId) && assignment.scope.kind === 'global' && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, now)).map((assignment) => assignment.roleId)); const grants = policy.rolePermissionGrants.filter((grant) => roleIds.has(grant.roleId) && grant.permissionId === permission.id); return !grants.some((grant) => grant.effect === 'deny') && grants.some((grant) => grant.effect === 'allow') }
@@ -224,12 +239,44 @@ export async function readGovernanceStore(root = process.cwd()) { return ensureG
 export async function readExistingGovernanceStore(root = process.cwd()) { return readV3Raw(root) }
 type GovernanceWriteContext = { expectedOrganizationRevision?: string; expectedCatalog?: GovernanceExpectedCatalogV1 }
 
+const GOVERNANCE_COMMAND_HASH_FORMAT = 'orgmaster.governance-command.v2' as const
+function boundGovernanceCommand<T extends { commandId: string; reason: string; type: string }>(command: T, expectedRevision: string, actor: GovernanceActorContext, context: GovernanceWriteContext) {
+  return { commandId: command.commandId, reason: command.reason, type: command.type,
+    commandHashFormat: GOVERNANCE_COMMAND_HASH_FORMAT, actorPrincipalId: actor.principalId,
+    payload: JSON.parse(JSON.stringify(command)) as Record<string, unknown>, expectedGovernanceRevision: expectedRevision,
+    expectedOrganizationRevision: context.expectedOrganizationRevision ?? null, expectedCatalog: context.expectedCatalog ?? null }
+}
+function assertGovernanceReplay(existing: GovernanceAuditEventV3, bound: ReturnType<typeof boundGovernanceCommand>, legacy: unknown, actor: GovernanceActorContext) {
+  const expectedHash = commandHash(existing.commandHashFormat === GOVERNANCE_COMMAND_HASH_FORMAT ? bound : legacy)
+  if (existing.actorPrincipalId !== actor.principalId || existing.commandHash !== expectedHash) throw new GovernanceStoreError('COMMAND_ID_REUSED')
+}
+/** Own audit is sufficient for recovery; producer availability never decides whether a command committed. */
+export async function readGovernanceCommandResult(root: string, commandId: string, actor: GovernanceActorContext): Promise<GovernanceCommandQueryResultV1> {
+  if (!commandId.trim()) throw new GovernanceStoreError('INVALID_COMMAND')
+  return withPersistenceTransaction(async () => {
+    if (usesCloudSqlPersistence()) {
+      try { await assertCurrentGovernanceWriteActor(currentPersistenceTransactionDatabase(), actor, false) }
+      catch (error) { if (error instanceof GovernanceWriteActorError) throw new GovernanceStoreError(error.code); throw error }
+    }
+    const stored = await readPersistenceArtifact({ localPath: getGovernancePaths(root).current,
+      artifactKey: 'orgmaster-governance.v3.json', artifactKind: 'governance' })
+    const document = stored.payload as unknown as GovernanceDocumentV3
+    if (document.app !== 'OrgMaster' || document.schemaVersion !== 3 || !Array.isArray(document.auditEvents)) throw new GovernanceStoreError('GOVERNANCE_READ_FAILED')
+    validateAuditChain(document)
+    assertCurrentManagementAuthority(document, actor)
+    const event = document.auditEvents.find(value => value.commandId === commandId)
+    return event ? { status: 'committed', commandId, commandHash: event.commandHash, auditReference: event.id,
+      entityType: event.entityType, entityId: event.entityId, occurredAt: event.occurredAt, result: event.commandResult ?? null }
+      : { status: 'not_observed', commandId, commandHash: null, auditReference: null,
+        entityType: null, entityId: null, occurredAt: null, result: null }
+  })
+}
+
 export function assertDynamicCatalogBinding(catalog: ExternalRoleCatalogSnapshotV1, context: GovernanceWriteContext) {
   if (catalog.publicationFormat !== 'dynamic-policy-v1') return
   const expected = context.expectedCatalog
-  if (!expected || !/^[a-f0-9]{64}$/u.test(expected.catalogSha256) || !/^(0|[1-9][0-9]*)$/u.test(expected.activationGeneration) ||
-    expected.catalogVersion !== catalog.catalogVersion || expected.catalogSha256 !== (catalog.catalogSha256 ?? catalog.payloadHash) ||
-    expected.activationGeneration !== catalog.activationGeneration) {
+  if (!expected || !/^[a-f0-9]{64}$/u.test(expected.catalogSha256) ||
+    expected.catalogVersion !== catalog.catalogVersion || expected.catalogSha256 !== (catalog.catalogSha256 ?? catalog.payloadHash)) {
     throw new GovernanceStoreError('EXTERNAL_CATALOG_VERSION_CONFLICT')
   }
 }
@@ -240,9 +287,10 @@ export async function applyDraftCommand(root: string, expectedRevision: string, 
     authorizeBeforeCommit(() => assertCurrentManagementAuthority(current.document, actor))
     assertCurrentManagementAuthority(current.document, actor)
     const commandEnvelope = { ...command, ...(context.expectedOrganizationRevision ? { expectedOrganizationRevision: context.expectedOrganizationRevision } : {}), ...(context.expectedCatalog ? { expectedCatalog: context.expectedCatalog } : {}) }
+    const boundCommand = boundGovernanceCommand(command, expectedRevision, actor, context)
     const existing = current.document.auditEvents.find(event => event.commandId === command.commandId)
     if (existing) {
-      if (existing.commandHash !== commandHash(commandEnvelope) || existing.actorPrincipalId !== actor.principalId) throw new GovernanceStoreError('COMMAND_ID_REUSED')
+      assertGovernanceReplay(existing, boundCommand, commandEnvelope, actor)
       return { status: 'replayed' as const, document: current.document, revision: current.revision }
     }
     if (current.revision !== expectedRevision) throw new GovernanceStoreError('REVISION_CONFLICT')
@@ -259,11 +307,11 @@ export async function applyDraftCommand(root: string, expectedRevision: string, 
       (command.type === 'UPSERT_ROLE_DELEGATION' && command.value.applicationId === 'ai-pdm') || command.type === 'RESTORE_ROLE_ASSIGNMENT'
     if (expandsAiPdmAccess && currentAiPdmCatalog) assertDynamicCatalogBinding(currentAiPdmCatalog, context)
     const applied = applyGovernanceCommandV3(current.document, command, actor.principalId, validationSource(source), catalogs)
-    if (applied.status === 'noop') return { status: 'noop' as const, document: current.document, revision: current.revision }
     if (reducingCommand && !isGovernanceReduction(current.document.draft, applied.document.draft)) throw new GovernanceStoreError('GOVERNANCE_VALIDATION_FAILED')
-    const audited = appendAudit(applied.document, commandEnvelope, actor, { action: command.type, entityType: applied.entityType,
-      entityId: applied.entityId, beforeHash: applied.beforeHash, afterHash: applied.afterHash })
-    return persistV3(root, current, audited, source, undefined, catalogs)
+    const audited = appendAudit(applied.document, boundCommand, actor, { action: command.type, entityType: applied.entityType,
+      entityId: applied.entityId, beforeHash: applied.beforeHash, afterHash: applied.afterHash, commandHashFormat: GOVERNANCE_COMMAND_HASH_FORMAT,
+      commandResult: { operation: command.type, outcome: applied.status, entityType: applied.entityType, entityId: applied.entityId } })
+    return { ...await persistV3(root, current, audited, source, undefined, catalogs), status: applied.status }
   })
 }
 export async function validateAssignmentCandidate(root: string, value: Partial<GovernanceRoleAssignmentV2>) {
@@ -302,19 +350,20 @@ export async function publishGovernance(root: string, expectedRevision: string, 
   return withActorWrite(root, actor, async authorizeBeforeCommit => {
     const current = await readV3Raw(root)
     authorizeBeforeCommit(() => assertCurrentPublicationAuthority(current.document, actor))
+    assertCurrentPublicationAuthority(current.document, actor)
+    const boundCommand = boundGovernanceCommand({ commandId, reason, type: 'PUBLISH_ASSIGNMENTS', organizationVersionId }, expectedRevision, actor, context)
+    const existing = current.document.auditEvents.find(event => event.commandId === commandId)
+    if (existing) {
+      const legacy = existing.commandHashFormat === GOVERNANCE_COMMAND_HASH_FORMAT ? null : { commandId, reason, type: 'PUBLISH_ASSIGNMENTS', expectedOrganizationRevision: context.expectedOrganizationRevision ?? (await loadOrganizationSource(root)).workspaceRevision, ...(context.expectedCatalog ? { expectedCatalog: context.expectedCatalog } : {}) }
+      assertGovernanceReplay(existing, boundCommand, legacy, actor)
+      return { status: 'replayed' as const, document: current.document, revision: current.revision,
+        versionId: existing.commandResult?.versionId ?? (existing.entityType === 'assignmentVersion' ? existing.entityId : null) }
+    }
     const source = await loadOrganizationSource(root)
     if (context.expectedOrganizationRevision && context.expectedOrganizationRevision !== source.workspaceRevision) throw new GovernanceStoreError('ORGANIZATION_REVISION_CONFLICT')
     const now = new Date().toISOString()
     assertActorEmployeeActive(source, actor)
-    assertCurrentPublicationAuthority(current.document, actor, now)
     if (!commandId.trim() || !reason.trim() || reason.trim().length > 240) throw new GovernanceStoreError('GOVERNANCE_VALIDATION_FAILED')
-    const publishCommand = { commandId, reason, type: 'PUBLISH_ASSIGNMENTS', expectedOrganizationRevision: context.expectedOrganizationRevision ?? source.workspaceRevision, ...(context.expectedCatalog ? { expectedCatalog: context.expectedCatalog } : {}) }
-    const existing = current.document.auditEvents.find(event => event.commandId === commandId)
-    if (existing) {
-      if (existing.commandHash !== commandHash(publishCommand) || existing.actorPrincipalId !== actor.principalId) throw new GovernanceStoreError('COMMAND_ID_REUSED')
-      return { status: 'replayed' as const, document: current.document, revision: current.revision,
-        versionId: existing.entityType === 'assignmentVersion' ? existing.entityId : null }
-    }
     if (current.revision !== expectedRevision) throw new GovernanceStoreError('REVISION_CONFLICT')
     if (source.workspaceVersionId !== organizationVersionId) throw new GovernanceStoreError('ORGANIZATION_VERSION_INVALID')
     if (!actorHasDraftPermission(current.document, actor, 'orgmaster.governance.publish', now)) throw new GovernanceStoreError('GOVERNANCE_PUBLISH_REQUIRED')
@@ -338,8 +387,9 @@ export async function publishGovernance(root: string, expectedRevision: string, 
     const next: GovernanceDocumentV3 = { ...current.document, activePolicyVersionId: version.id,
       publishedVersions: [...current.document.publishedVersions, version],
       draft: { ...current.document.draft, basePolicyVersionId: version.id, updatedAt: now } }
-    const audited = appendAudit(next, publishCommand, actor, { action: 'PUBLISH_ASSIGNMENTS',
-      entityType: 'assignmentVersion', entityId: version.id, beforeHash: null, afterHash: version.snapshotHash }, now)
+    const audited = appendAudit(next, boundCommand, actor, { action: 'PUBLISH_ASSIGNMENTS',
+      entityType: 'assignmentVersion', entityId: version.id, beforeHash: null, afterHash: version.snapshotHash, commandHashFormat: GOVERNANCE_COMMAND_HASH_FORMAT,
+      commandResult: { operation: 'PUBLISH_ASSIGNMENTS', outcome: 'published', entityType: 'assignmentVersion', entityId: version.id, versionId: version.id } }, now)
     return { ...await persistV3(root, current, audited, source, undefined, catalogs), versionId: version.id }
   })
 }
@@ -347,6 +397,15 @@ export async function setActivePolicy(root: string, expectedRevision: string, co
   return withActorWrite(root, actor, async authorizeBeforeCommit => {
     const current = await readV3Raw(root)
     authorizeBeforeCommit(() => assertCurrentPublicationAuthority(current.document, actor))
+    assertCurrentPublicationAuthority(current.document, actor)
+    const operation = versionId ? 'ACTIVATE_ASSIGNMENT_VERSION' : 'REVOKE_ASSIGNMENT_VERSION'
+    const boundCommand = boundGovernanceCommand({ commandId, reason, type: operation, versionId }, expectedRevision, actor, context)
+    const existing = current.document.auditEvents.find(event => event.commandId === commandId)
+    if (existing) {
+      const legacy = existing.commandHashFormat === GOVERNANCE_COMMAND_HASH_FORMAT ? null : { commandId, reason, type: operation, expectedOrganizationRevision: context.expectedOrganizationRevision ?? (await loadOrganizationSource(root)).workspaceRevision, ...(context.expectedCatalog ? { expectedCatalog: context.expectedCatalog } : {}) }
+      assertGovernanceReplay(existing, boundCommand, legacy, actor)
+      return { status: 'replayed' as const, document: current.document, revision: current.revision }
+    }
     if (current.revision !== expectedRevision) throw new GovernanceStoreError('REVISION_CONFLICT')
     const target = versionId ? current.document.publishedVersions.find(version => version.id === versionId) : null
     if (versionId && !target) throw new GovernanceStoreError('POLICY_VERSION_NOT_FOUND')
@@ -368,13 +427,8 @@ export async function setActivePolicy(root: string, expectedRevision: string, co
     assertCurrentPublicationAuthority(current.document, actor)
     assertActivationContinuity(target, actor)
     if (!commandId.trim() || !reason.trim() || reason.trim().length > 240) throw new GovernanceStoreError('GOVERNANCE_VALIDATION_FAILED')
-    const command = { commandId, reason, type: versionId ? 'ACTIVATE_ASSIGNMENT_VERSION' : 'REVOKE_ASSIGNMENT_VERSION', expectedOrganizationRevision: context.expectedOrganizationRevision ?? source.workspaceRevision, ...(context.expectedCatalog ? { expectedCatalog: context.expectedCatalog } : {}) }
-    const existing = current.document.auditEvents.find(event => event.commandId === commandId)
-    if (existing) {
-      if (existing.commandHash !== commandHash(command) || existing.actorPrincipalId !== actor.principalId) throw new GovernanceStoreError('COMMAND_ID_REUSED')
-      return { status: 'replayed' as const, document: current.document, revision: current.revision }
-    }
-    const audited = appendAudit({ ...current.document, activePolicyVersionId: versionId }, command, actor, { action: command.type, entityType: 'assignmentVersion', entityId: versionId, beforeHash: current.document.activePolicyVersionId, afterHash: versionId })
+    const audited = appendAudit({ ...current.document, activePolicyVersionId: versionId }, boundCommand, actor, { action: operation, entityType: 'assignmentVersion', entityId: versionId, beforeHash: current.document.activePolicyVersionId, afterHash: versionId, commandHashFormat: GOVERNANCE_COMMAND_HASH_FORMAT,
+      commandResult: { operation, outcome: versionId ? 'activated' : 'deactivated', entityType: 'assignmentVersion', entityId: versionId, versionId } })
     // The editable draft may still reference a prior owner-published catalog.
     // This proves draft readability only; target activation was checked above.
     return persistV3(root, current, audited, source, undefined,

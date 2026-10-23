@@ -5,9 +5,14 @@ import { describe, expect, it } from 'vitest'
 const root = process.cwd()
 const manifestPath = `${root}/contracts/ai-pdm-role-policy-consumer-compatibility/v2/contract-manifest.json`
 const migrationPath = `${root}/db/migrations/034_dev058_ai_pdm_role_policy_compatibility_v2.sql`
+const retirementPath = `${root}/db/migrations/036_dev058_retire_unused_role_policy_readiness.sql`
+const dynamicReaderPaths = [
+  `${root}/server/aiPdmDynamicRoleCatalog.ts`,
+  `${root}/server/aiPdmRoleCatalogRepository.ts`,
+]
 
 describe('DEV-058 AI-PDM compatibility v2 contract', () => {
-  it('publishes the fixed fourteen-column contract and exact manifest signature', async () => {
+  it('binds historical migration 034 to the immutable canonical manifest artifact', async () => {
     const raw = await readFile(manifestPath, 'utf8')
     const manifest = JSON.parse(raw) as { columns: Array<{ name: string; type: string }>; initialReadiness: string }
     expect(manifest.columns.map(column => column.name)).toEqual([
@@ -18,12 +23,16 @@ describe('DEV-058 AI-PDM compatibility v2 contract', () => {
       'consumer_source_revision', 'enablement_ref', 'readiness',
     ])
     expect(manifest.initialReadiness).toBe('NOT_READY')
-    const signature = createHash('sha256').update(raw, 'utf8').digest('hex')
+    // Migration 034 stores the repository's canonical LF artifact hash. Git
+    // may materialize this unchanged historical artifact with CRLF on Windows.
+    const canonicalRaw = raw.replace(/\r\n?/gu, '\n')
+    const signature = createHash('sha256').update(canonicalRaw, 'utf8').digest('hex')
+    expect(signature).toBe('398d6c501c7f69e609750774a40b093be8197129fe73115e51b77ad22c34b94c')
     const migration = await readFile(migrationPath, 'utf8')
     expect(migration).toContain(`'${signature}'`)
   })
 
-  it('starts NOT_READY and grants runtimes only contract-view SELECT', async () => {
+  it('keeps readiness checks historical and removes the retired contract from the current reader path', async () => {
     const migration = await readFile(migrationPath, 'utf8')
     expect(migration).toContain("'NOT_READY'")
     expect(migration).toContain('GRANT SELECT ON orgmaster_contract.v_ai_pdm_role_policy_compatibility_v2')
@@ -36,6 +45,16 @@ describe('DEV-058 AI-PDM compatibility v2 contract', () => {
 
     expect(migration).toContain('REVOKE ALL ON TABLE orgmaster_core.ai_pdm_role_policy_compatibility')
     expect(migration).not.toMatch(/GRANT\s+(?:INSERT|UPDATE|DELETE|ALL)[\s\S]*jenfu_(?:orgmaster|ai_pdm)_runtime/iu)
+
+    const retirement = await readFile(retirementPath, 'utf8')
+    expect(retirement).toContain('DROP VIEW orgmaster_contract.v_ai_pdm_role_policy_compatibility_v2')
+    expect(retirement).toContain('DROP TABLE orgmaster_core.ai_pdm_role_policy_compatibility')
+    expect(retirement).toContain("DELETE FROM orgmaster_core.contract_manifest")
+    expect(retirement).toContain("readiness = 'NOT_READY'")
+    for (const path of dynamicReaderPaths) {
+      const source = await readFile(path, 'utf8')
+      expect(source).not.toMatch(/\breadiness\b/u)
+    }
   })
 
   it('publishes a narrow post-wait manager contract without changing the existing views', async () => {

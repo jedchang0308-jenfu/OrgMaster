@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite'
-import { applyDraftCommand, publishGovernance, readGovernanceAudit, readGovernanceStore, setActivePolicy, validateAssignmentCandidate, GovernanceStoreError } from './orgmasterGovernanceStore'
+import { applyDraftCommand, publishGovernance, readGovernanceAudit, readGovernanceCommandResult, readGovernanceStore, setActivePolicy, validateAssignmentCandidate, GovernanceStoreError } from './orgmasterGovernanceStore'
 import { developmentPermissionForActor, resolveDevelopmentIdentity } from './orgmasterGovernanceIdentity'
 import { evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { GovernanceValidationError } from '../src/governance/validation'
@@ -174,7 +174,6 @@ function governanceWriteContext(body: Record<string, unknown>): { expectedOrgani
     ...(body.expectedCatalog === undefined ? {} : { expectedCatalog: {
       catalogVersion: String(expectedCatalog.catalogVersion ?? ''),
       catalogSha256: String(expectedCatalog.catalogSha256 ?? ''),
-      activationGeneration: String(expectedCatalog.activationGeneration ?? ''),
     } }),
   }
 }
@@ -231,7 +230,14 @@ function financialManagementGrantRequest(body: Record<string, unknown>, phase: '
 async function handle(request: IncomingMessage, response: ServerResponse, root: string, devEnabled: boolean, accountEnrollmentEnabled: boolean) {
   const url = new URL(request.url ?? '/', 'http://orgmaster.local'); const path = url.pathname.slice(API_PATH.length) || '/';
   if (path === '/employee-authority-switch') { sendJson(response, 410, { error: 'LEGACY_AUTHORITY_SWITCH_RETIRED' }); return }
-  const actor = path.startsWith('/applications/ai-pdm/') ? aiPdmActorOrThrow(request, devEnabled) : actorOrThrow(request, devEnabled); const current = await readGovernanceStore(root); const document = current.document
+  const actor = path.startsWith('/applications/ai-pdm/') ? aiPdmActorOrThrow(request, devEnabled) : actorOrThrow(request, devEnabled)
+  const commandResultPath = path.match(/^\/commands\/([^/]+)$/)
+  if (commandResultPath && request.method === 'GET') {
+    const result = await readGovernanceCommandResult(root, decodeURIComponent(commandResultPath[1]), actor)
+    sendJson(response, 200, result)
+    return
+  }
+  const current = await readGovernanceStore(root); const document = current.document
   if (path === '/employee-recommendations' && request.method === 'POST') {
     if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED')
     const body = await parseBody(request)
@@ -388,7 +394,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
     } : null, revision: result.revision }, result.revision)
     return
   }
-  if (path === '/active-version' && request.method === 'POST') { const body = await parseBody(request); if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED'); if (!canPermission(document, actor, 'orgmaster.governance.publish')) throw new GovernanceStoreError('GOVERNANCE_PUBLISH_REQUIRED'); const expected = String(body.expectedRevision ?? request.headers['x-orgmaster-governance-revision'] ?? ''); if (expected !== current.revision) throw new GovernanceStoreError('REVISION_CONFLICT'); const result = await setActivePolicy(root, current.revision, String(body.commandId ?? ''), String(body.reason ?? ''), body.versionId === null ? null : String(body.versionId ?? ''), actor, governanceWriteContext(body)); sendJson(response, 200, { activePolicyVersionId: result.document.activePolicyVersionId, revision: result.revision }, result.revision); return }
+  if (path === '/active-version' && request.method === 'POST') { const body = await parseBody(request); if (!canManage(document, actor)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_REQUIRED'); if (!canPermission(document, actor, 'orgmaster.governance.publish')) throw new GovernanceStoreError('GOVERNANCE_PUBLISH_REQUIRED'); const expected = String(body.expectedRevision ?? request.headers['x-orgmaster-governance-revision'] ?? ''); const result = await setActivePolicy(root, expected, String(body.commandId ?? ''), String(body.reason ?? ''), body.versionId === null ? null : String(body.versionId ?? ''), actor, governanceWriteContext(body)); sendJson(response, 200, { activePolicyVersionId: result.document.activePolicyVersionId, revision: result.revision }, result.revision); return }
   if ((path === '/evaluate/permission' || path === '/evaluate/reviewers') && request.method === 'POST') { sendJson(response, 410, { error: 'LEGACY_GOVERNANCE_EVALUATOR_RETIRED' }); return }
   sendJson(response, 404, { error: 'ROUTE_NOT_FOUND' })
 }

@@ -88,7 +88,7 @@ describe('governance version presentation', () => {
     expect([...host.querySelectorAll('button')].some((node) => node.textContent === '改用第6版')).toBe(false)
     const switchVersion = [...host.querySelectorAll('button')].find((node) => node.textContent === '改用第8版')!
     await act(async () => switchVersion.click())
-    expect(mocks.setActiveGovernanceVersion).toHaveBeenCalledWith('governance-revision', expect.any(String), '重新啟用角色指派版本', 'version-8')
+    expect(mocks.setActiveGovernanceVersion).toHaveBeenCalledWith('governance-revision', expect.any(String), '重新啟用角色指派版本', 'version-8', undefined, undefined)
   })
 
   it('omits the removed governance heading in a local development session', async () => {

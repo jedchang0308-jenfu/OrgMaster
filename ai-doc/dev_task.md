@@ -70,14 +70,9 @@ Immutable intent=`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/O
 
 本輪僅 OrgMaster 發布／診斷工具技術債；[PR134](https://github.com/jedchang0308-jenfu/OrgMaster/pull/134) 已合併，來源 `ad4e6be3355305329833a83005889be61c46f6ee`，required CI 通過。正式一般發布 preflight 的 `SMOKE_REUSE_RECEIPT_INVALID` 尚未變更正式服務或資料。人類續授權補齊[受控工具映像 rotation 與一般發布](specs/DEV-040-jenfu-platform-entitlement-user-integration.md#ordinary-tool-image-rotation-20261018)，沿本 DEV／active PR 收斂：完整來源與 plan／state／provider 證據、75 地址、唯一 runner image 欄位、零 DDL，維持資料／grant／IAM／Secret／跨專案限制。當前 branch `codex/ordinary-tool-image-rotation`；本機新路徑 48／48、owner 370、abort 6、production-tools／DB boundary／build 與既有 owner QC PASS，app 930 PASS／4 既有 skip。獨立來源審查三項發現已修正並補反向案例、限縮重審通過；provider 只讀 plan 的 75-address proof／唯一 image update 通過，不宣稱完全沒有 observation drift。required CI／merge、正式 rotation／發布／postverify 尚待本輪 provider 證據。隔離 worktree `.worktrees/release-tool-config-decoupling` 保留本任務來源及原始失敗，owner 為本對話；完成後保留供發布證據交接。
 
-## DEV-058 B 方案動態角色與集中指派（2026-10-21）
+## DEV-058 B 方案動態角色與集中指派
 
-**正常旅程續接：** 本機 HTTP SSO transaction Cookie 問題已修正並由真 Chrome before/after 驗證；HTTPS 安全 cookie 與 callback 身分 guard 保持。既有固定入口已含 SSO 回歸，9檔70 PASS／1 SKIP；消費端另補真 producer 64角色上限與19種非法身份/alias/profile負例。QA逐案狀態見[QA §8](qa/DEV-058-dynamic-role-assignment-validation-plan.md#8-2026-10-21-正常旅程續接與逐案狀態)，03/04關閉、其餘保留實際缺項。非正式SSO設定/帳號未提供，C槽約13GiB且Governor EMERGENCY禁止編譯；正常登入雙端與此次app修正後build仍待驗。PDM附件/模型審核caller缺口由DEV-123同範圍修正，未執行正式migration、部署或資料寫入。下段0254的已完成本機切片及build為當時證據，不改稱新source的完整驗收。
-
-本輪本機可整合實作目標完成；DEV整案仍In Progress／正式rollout disabled：OrgMaster固定入口7檔37 PASS／1 SKIP；PDM48檔401＋Node6 PASS，typecheck、route map、兩邊build及DB boundary通過。隔離PG18以actual PDM service、OrgMaster v2-fenced domain命令及PDM evaluator完成新增→任用→停用→撤銷→恢復，並驗證CAS／replay／audit故障rollback；JSONB歷史hash與commandId重用缺陷已修正，raw failures保留。OrgMaster targeted browser 8 checks／9 screenshots通過（actual component＋mock API）；受影響治理回歸另32 PASS。
-
-證據及責任：[SPEC §11](specs/DEV-058-federated-role-catalog-central-assignment.md#11-2026-10-21-本機實作與證據)／[QA §7](qa/DEV-058-dynamic-role-assignment-validation-plan.md#7-2026-10-21-dynamic-consumer本機證據)。目前native使用owner bootstrap／合成session／Platform stub，PDM targeted browser仍用mock API；正常登入HTTP/browser、CG、完整QA24/52及正式首次啟用尚未關閉。正式migration／資料／部署／traffic／IAM／Secret均未操作，source初始NOT_READY/DISABLED保持；不將本機PASS改稱正式或全案驗收。
-
+入口：[規格](specs/DEV-058-federated-role-catalog-central-assignment.md)／[唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。OrgMaster 配人、AI-PDM DEV-123 管角色能力；按變更選驗、共用有效證據，不重複列關卡。
 
 ## DEV-057 historical image predecessor continuation（2026-10-11）
 
@@ -283,14 +278,9 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## 總任務清單
 
-- ◐ DEV-058 [交付點] [Local Implementation In Progress／Rollout Disabled] [P1] B 方案動態角色目錄與集中指派
-  - 摘要：AI-PDM管理角色與能力；OrgMaster管理人員、scope、有效期與撤銷。dynamic source/API/UI/DDL及雙邊schema/vector已完成，風險維持人控與系統提醒。
-  - 來源 ID：`USER-2026-10-12-CHOOSE-B-WRITE-ORGMASTER-DOCS`
-  - 來源 ID：`AIPDM/DEV-123#orgmaster-compatibility`
-  - 下一步：H4補正常登入HTTP/browser；已取得native domain生命週期、positive apply與故障實證。H5在本機範圍驗收後，由owner於另行授權的具名環境執行migration/readback及READY/ENABLED。
-  - 阻塞／恢復條件：正式migration未套用；隔離PG18已套035與086～089，初始OrgMaster NOT_READY、AI-PDM DISABLED；不以本機contract/build取代PG/UI/L4或正式授權。
-  - 證據：[唯一SPEC §11](specs/DEV-058-federated-role-catalog-central-assignment.md#11-2026-10-21-本機實作與證據)、[QA §7](qa/DEV-058-dynamic-role-assignment-validation-plan.md#7-2026-10-21-dynamic-consumer本機證據)、[ADR增補](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058)。
-  - 計入交付：是（本機實作切片；不改production或完整QA完成率）。
+- ◐ DEV-058 [P1] B方案動態角色與集中配人（狀態見QA）
+  - [驗收、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)；[規格](specs/DEV-058-federated-role-catalog-central-assignment.md)。
+
 - ✅ DEV-057 [本輪Principal-only授權出口完成] [P0] [原native scope／歷史證據保留] [既有Production Authorization PASS／員工連結矯正中] 身分與權限發布契約邊界
   - 摘要：三專案一次啟用Principal-only；OrgMaster發布身分與角色、Platform管登入session、AI-PDM管能力與資源。未核實／原停用者不啟用；歷史業務資料保留。
   - 來源 ID：`JENFU/DEV-015#identity-grants`；本地 owner `ORGMASTER/DEV-057`。
@@ -846,21 +836,8 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## DEV-058：B 方案動態角色目錄與集中人員指派
 
-修訂：2026-10-21（Asia/Taipei）。狀態：`Local Implementation In Progress / Rollout Disabled`；完整QA24、positive ENABLED atomic apply、正常browser、L4及首次啟用待辦。Owner `ORGMASTER/DEV-058`；source `AIPDM/DEV-123#orgmaster-compatibility`，協作主鍵 `AIPDM/DEV-123#role-permission-editor`。
+[規格與雙方責任](specs/DEV-058-federated-role-catalog-central-assignment.md)／[24項目的、狀態與證據](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。任用人控、系統提醒；授權／資料安全／回復控制保留。正式 migration、部署與正式資料寫入仍排除。
 
-人類採B並授權兩repo隔離工作樹完成本機程式、測試及文件。OrgMaster已完成35欄current/history reader、dynamic schema/hash/profile/alias/lifecycle驗證、人員指派expected catalog tuple與org revision CAS、UI呈現/提醒及14欄compatibility_v2 migration 034；AI-PDM已完成registry/editor/API/UI/migration 086與真實vector。
-
-| 入口 | 本版權威內容 |
-|---|---|
-| [唯一SPEC §11](specs/DEV-058-federated-role-catalog-central-assignment.md#11-2026-10-21-本機實作與證據) | 實作面、H1～H5狀態、固定驗證與啟用邊界 |
-| [QA24 §7](qa/DEV-058-dynamic-role-assignment-validation-plan.md#7-2026-10-21-dynamic-consumer本機證據) | `test:dev-058:contracts` 7檔37 PASS／1 SKIP、DB boundary及雙邊contract；完整案例不提前標PASS |
-| [ADR-007增補](adr/ADR-007-external-role-catalog-assignment-boundary.md#2026-10-12-b-dev058) | B權責、人控提醒、stable identity/history與owner邊界 |
-
-H1/H2完成本機source交接；H3隔離schema/ACL及manager鎖等待正反已驗，live初始仍NOT_READY；H4已有native domain雙端旅程，缺正常登入HTTP/browser；H5待正式另行授權的首次rollout。隔離PG18已套035與086～089，正式migration未執行、AI-PDM初始mode仍DISABLED，無正式資料、部署、traffic、IAM或Secret變更。
-
-固定本機入口為`npm run test:dev-058:contracts`及`npm run check:db-boundary`；AI-PDM以`ORGMASTER_DEV058_ROOT`指向此工作樹執行`npm run test:dev-123:contracts`。本機PASS只支持實際單元/contract/build層級，不替代QA058-01..24、QA123 whole52、PG、browser、L4、required CI或Production。
-
-保留兩個本任務隔離工作樹（OrgMaster-release／dev123-role-policy-editor）及Governor active session，原因為本目標尚在開發；OrgMaster DEV-058/RD接續正常登入HTTP/browser與完整case closure後交付／清理。source/test/doc修正暫存未提交；PDM已合入觀察main 8632026，77檔raw bytes保留證據沿DEV-123 output。
 ## DEV-057：身分與權限發布契約邊界
 
 - 主責／來源：ORGMASTER/DEV-057；來源JENFU/DEV-015；consumer AIPDM/DEV-121。

@@ -124,7 +124,7 @@ export const AI_PDM_ROLE_CATALOG_SOURCE_REFS = [
 
 type CatalogRoleMetadata = { stableRoleId: string; roleCode: string; displayName: string; assignable: boolean; risk: string; allowedScopeKinds: string[]; subjectKind: string; recommendationAllowed: boolean; delegationAllowed: boolean; assignmentTier: string; roleStatus?: 'active'|'inactive' }
 type CatalogMetadataArtifact = { catalogVersion: string; catalogSha256: string; publishedAt: string; roles: CatalogRoleMetadata[] } & Partial<Pick<ExternalRoleCatalogSnapshotV1,
-  'publicationFormat'|'canonicalizationVersion'|'roleSchemaId'|'roleProfileSchemaId'|'activationGeneration'|'baselineRoleIdentityHash'|'roleIdentityHash'|'protectedPolicyHash'|'registryHash'|'roleProfileHash'>>
+  'publicationFormat'|'canonicalizationVersion'|'roleSchemaId'|'roleProfileSchemaId'|'baselineRoleIdentityHash'|'roleIdentityHash'|'protectedPolicyHash'|'registryHash'|'roleProfileHash'>>
 function metadataRoles(artifact: CatalogMetadataArtifact): ExternalRoleCatalogRoleV1[] { return artifact.roles.map((role) => ({
   stableRoleId: role.stableRoleId,
   code: role.roleCode,
@@ -157,7 +157,7 @@ export function createAiPdmRoleCatalog(validationState: ExternalRoleCatalogSnaps
     capturedAt,
     roles: dynamic ? metadataRoles(artifact).map((role,index)=>({...role,status:artifact.roles[index].roleStatus!,...aiPdmRoleProfiles(artifact.roles)[index]})) : metadataRoles(artifact),
     ...(dynamic?{publicationFormat:artifact.publicationFormat,canonicalizationVersion:artifact.canonicalizationVersion,roleSchemaId:artifact.roleSchemaId,
-      roleProfileSchemaId:artifact.roleProfileSchemaId,activationGeneration:artifact.activationGeneration,baselineRoleIdentityHash:artifact.baselineRoleIdentityHash,
+      roleProfileSchemaId:artifact.roleProfileSchemaId,baselineRoleIdentityHash:artifact.baselineRoleIdentityHash,
       roleIdentityHash:artifact.roleIdentityHash,protectedPolicyHash:artifact.protectedPolicyHash,registryHash:artifact.registryHash,roleProfileHash:artifact.roleProfileHash}:{}),
   }
   return { ...base, payloadHash: artifact.catalogSha256, ...(compatiblePublication ? { catalogSha256: artifact.catalogSha256 } : {}), validationState, effectState: 'not-synchronized' }
@@ -174,7 +174,6 @@ export function validateExternalRoleCatalog(snapshot: ExternalRoleCatalogSnapsho
     if(snapshot.applicationId!=='ai-pdm'||snapshot.sourceKind!=='application-contract'||snapshot.validationState!=='valid'||snapshot.effectState!=='not-synchronized'||
       !/^ai-pdm\.role-policy\.[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(snapshot.catalogVersion)||
       snapshot.canonicalizationVersion!=='jenfu.canonical-json.v1'||snapshot.roleSchemaId!=='ai-pdm.role-schema.flexible.v2'||snapshot.roleProfileSchemaId!=='ai-pdm.role-profile-schema.v1'||
-      typeof snapshot.activationGeneration!=='string'||!/^(0|[1-9][0-9]*)$/u.test(snapshot.activationGeneration)||
       snapshot.catalogSha256!==snapshot.payloadHash||[snapshot.payloadHash,snapshot.baselineRoleIdentityHash,snapshot.roleIdentityHash,snapshot.protectedPolicyHash,snapshot.registryHash,snapshot.roleProfileHash].some(value=>!value||!/^[a-f0-9]{64}$/u.test(value))||
       !Array.isArray(snapshot.sourceRefs)||snapshot.sourceRefs.length!==1||snapshot.sourceRefs[0].path!=='ai_pdm_contract.v_application_role_catalog_v2'||snapshot.sourceRefs[0].sha256!==snapshot.payloadHash)
       add('EXTERNAL_CATALOG_INVALID','publicationFormat','動態目錄必須經過完整 producer preimage 驗證')

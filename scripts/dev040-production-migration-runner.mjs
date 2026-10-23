@@ -4,6 +4,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 import { TARGET as PRODUCTION_TARGET, databaseOptions } from './lib/orgmaster-production-database.mjs'
+import { DEV058_MIGRATION_ENTRY_COUNT, assertDev058MigrationEntries } from './lib/dev058-role-policy-migration.mjs'
 import {
   assertMigrationBundle,
   assertRunnerTarget,
@@ -19,15 +20,8 @@ export const TARGET = Object.freeze({
   ...PRODUCTION_TARGET,
   ledger: 'orgmaster_core.schema_migrations',
   baselineCount: 10,
-  entryCount: 31,
-  allowedExistingLedgerCounts: Object.freeze([30, 31]),
-  exactAppendEntry: Object.freeze({
-    order: 31,
-    version: 'dev014-orgmaster-031',
-    path: 'db/migrations/031_dev014_principal_lifecycle_v2.sql',
-    sourceSha256: '586a7d829041272c67df31f9d9d6531dfb16497dfdb780be954bb05e259d8ab7',
-    appliedSha256: '676c231bf2f6f31d9fc153603b8429894fa0e1b0d1adb4fedc07a103d87295b9',
-  }),
+  entryCount: DEV058_MIGRATION_ENTRY_COUNT,
+  allowedExistingLedgerCounts: Object.freeze([31, 32, 33, 34]),
   migratorRole: 'jenfu_orgmaster_migrator',
   runtimeRole: 'jenfu_orgmaster_runtime',
   coreSchema: 'orgmaster_core',
@@ -46,10 +40,7 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
     value = JSON.parse(object.bytes.toString('utf8'))
   } catch { throw new Error('MIGRATION_INPUT_JSON_INVALID') }
   const bundle = assertMigrationBundle(value, { target: TARGET, sourceRevision: args.sourceRevision, bundleSha256: args.bundleSha256, bytes: object.bytes })
-  if (bundle.entries.length !== TARGET.entryCount) throw new Error('MIGRATION_SET_DRIFT')
-  const append = bundle.entries.at(-1)
-  if (!append || append.order !== TARGET.exactAppendEntry.order || append.version !== TARGET.exactAppendEntry.version || append.path !== TARGET.exactAppendEntry.path
-    || append.sourceSha256 !== TARGET.exactAppendEntry.sourceSha256 || append.appliedSha256 !== TARGET.exactAppendEntry.appliedSha256) throw new Error('MIGRATION_SET_DRIFT')
+  assertDev058MigrationEntries(bundle.entries)
   const database = new Client(databaseOptions(environment, token))
   await database.connect()
   try {

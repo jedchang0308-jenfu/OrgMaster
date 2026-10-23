@@ -2,6 +2,7 @@ import { DEV014_LIFECYCLE_RUNTIME_TARGET } from './dev014-principal-lifecycle-re
 import { assertPrincipalOnlyRecoveryBinding } from './dev057-principal-only-release.mjs'
 import { createHash } from 'node:crypto'
 import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
+import { DEV058_MIGRATION_ENTRIES, assertDev058MigrationEntries } from './dev058-role-policy-migration.mjs'
 
 const H40 = /^[a-f0-9]{40}$/
 const H64 = /^[a-f0-9]{64}$/
@@ -54,6 +55,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   'db/migrations/029_dev057_human_business_principal_grants_v4.sql',
   'db/migrations/030_dev057_employee_number_command_receipt.sql',
   'db/migrations/031_dev014_principal_lifecycle_v2.sql',
+  ...DEV058_MIGRATION_ENTRIES.map(entry => entry.path),
 ]
 
 function fail(code, detail = '') {
@@ -122,6 +124,7 @@ export function assertDev040V3Profile(profile, n1c) {
   if (immutablePrefixSha256 !== DEV057_MIGRATION_PREFIX_001_029_SHA256) fail('MIGRATION_PREFIX_001_029_DRIFT')
   const prefix30Sha256 = createHash('sha256').update(JSON.stringify(profile.migrations.entries.slice(0, 30).map(({ order: entryOrder, version, path, sourceSha256, appliedSha256 }) => [entryOrder, version, path, sourceSha256, appliedSha256]))).digest('hex')
   if (prefix30Sha256 !== 'd02cb50e2d77a7c1b3e72a8e82e44677af17beae4eb7e0e81fc1816ed8e8e062') fail('MIGRATION_PREFIX_001_030_DRIFT')
+  assertDev058MigrationEntries(profile.migrations.entries)
   if (Object.values(profile.sideEffects || {}).some((value) => value !== 'DISABLED')) fail('SIDE_EFFECT_ENABLED')
   if (profile.operations?.CONFIGURE_ENTRYPOINT !== 'run.projects.locations.services.patch?updateMask=ingress,defaultUriDisabled,invokerIamDisabled') fail('ENTRYPOINT_OPERATION_MISSING')
   if (JSON.stringify(profile.edge) !== JSON.stringify({ servingDependency: false, rollbackDependency: false, ordinaryReleaseMutations: 0, disposition: 'RETAINED_UNUSED_EDGE' })) fail('EDGE_BOUNDARY_DRIFT')

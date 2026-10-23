@@ -12,6 +12,8 @@ COPY scripts/lib/dev012-production-migration-runner.mjs scripts/lib/dev012-produ
 COPY scripts/lib/orgmaster-production-database.mjs scripts/lib/orgmaster-production-database.mjs
 COPY scripts/dev057-production-v4-catalog-readback-runner.mjs scripts/dev057-production-v4-catalog-readback-runner.mjs
 COPY server/aiPdmRoleCatalogRepository.ts server/aiPdmRoleCatalogRepository.ts
+COPY server/aiPdmDynamicRoleCatalog.ts server/aiPdmDynamicRoleCatalog.ts
+COPY src/governance/aiPdmRoleSchema.ts src/governance/aiPdmRoleSchema.ts
 COPY config/catalogs/ai-pdm-role-catalog.v5.json config/catalogs/ai-pdm-role-catalog.v5.json
 COPY config/catalogs/ai-pdm-role-catalog.v6.json config/catalogs/ai-pdm-role-catalog.v6.json
 COPY config/catalogs/ai-pdm-role-catalog.v7.json config/catalogs/ai-pdm-role-catalog.v7.json

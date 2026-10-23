@@ -16,7 +16,7 @@ function projection(vector= vectors[2]):Record<string,unknown>[]{
     role_definition_hash:role.roleDefinitionHash,role_status:role.roleStatus,lifecycle:'active',publication_format:p.format,
     canonicalization_version:'jenfu.canonical-json.v1',role_schema_id:p.roleSchemaId,role_profile_schema_id:p.roleProfileSchemaId,
     baseline_role_identity_hash:p.baselineRoleIdentityHash,role_identity_hash:p.roleIdentityHash,registry_hash:p.registryHash,
-    protected_policy_hash:p.protectedPolicyHash,activation_generation:vector.activationGeneration,role_profile_hash:p.roleProfileHash,
+    protected_policy_hash:p.protectedPolicyHash,role_profile_hash:p.roleProfileHash,
     permission_role_id:p.roleProfiles[index].permissionRoleId,presentation_name:p.roleProfiles[index].presentationName,
     presentation_order:p.roleProfiles[index].presentationOrder,assignment_disposition:p.roleProfiles[index].assignmentDisposition}))
 }

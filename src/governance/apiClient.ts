@@ -1,4 +1,4 @@
-import type { GovernanceCommandV2, GovernanceDocumentV2, GovernanceRoleAssignmentV2, ExternalRoleCatalogSnapshotV1, GovernanceCommandReceiptV2, GovernanceExpectedCatalogV1 } from './types'
+import type { GovernanceCommandV2, GovernanceDocumentV2, GovernanceRoleAssignmentV2, ExternalRoleCatalogSnapshotV1, GovernanceCommandReceiptV2, GovernanceExpectedCatalogV1, GovernanceCommandQueryResultV1 } from './types'
 import type { PrivilegedAssignmentExpected, PrivilegedAssignmentRequest } from './privilegedAssignments'
 import type { GovernanceDocumentViewV2 } from './governancePresentation'
 import type { EmployeeRecommendationRequest, EmployeeRecommendationResponse } from './employeeRecommendations'
@@ -82,6 +82,7 @@ export async function publishGovernancePolicy(revision: string, commandId: strin
 export async function setActiveGovernanceVersion(revision: string, commandId: string, reason: string, versionId: string | null, expectedOrganizationRevision?: string, expectedCatalog?: GovernanceExpectedCatalogV1) { return request<{ activePolicyVersionId: string | null; revision: string }>('/active-version', { method: 'POST', body: JSON.stringify({ expectedRevision: revision, commandId, reason, versionId, expectedOrganizationRevision, expectedCatalog }) }) }
 export async function loadGovernanceVersion(id: string) { return request<{ version: GovernanceDocumentV2['publishedVersions'][number] }>(`/versions/${encodeURIComponent(id)}`) }
 export async function loadGovernanceAudit(limit = 50, cursor?: string | null) { return request<{ items: unknown[]; nextCursor: string | null }>(`/audit?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`) }
+export async function loadGovernanceCommandResult(commandId: string) { return request<GovernanceCommandQueryResultV1>(`/commands/${encodeURIComponent(commandId)}`) }
 function privilegedOperationBody(requestValue: PrivilegedAssignmentRequest, phase: 'preview' | 'publish') {
   return {
     contractVersion: 'orgmaster.privileged-assignment-operation.v1' as const,

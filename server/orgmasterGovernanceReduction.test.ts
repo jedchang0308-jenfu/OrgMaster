@@ -108,6 +108,8 @@ describe('DEV-058 catalog-independent reduction', () => {
     let previousEventHash: string | null = null
     for (const event of document.auditEvents) {
       delete event.hashFormat
+      delete event.commandHashFormat
+      delete event.commandResult
       event.previousEventHash = previousEventHash
       const input = { id: event.id, commandId: event.commandId, commandHash: event.commandHash,
         occurredAt: event.occurredAt, actorPrincipalId: event.actorPrincipalId, action: event.action,
@@ -162,6 +164,53 @@ describe('DEV-058 catalog-independent reduction', () => {
       expect(fault.reads).toBe(0)
     } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())) }
   })
+  it('replays active-version over HTTP with the original CAS and rejects command, CAS, context and actor rewrites', async () => {
+    const { root, source, actor, published } = await fixture()
+    let requestActor = actor
+    const middleware = createOrgmasterGovernanceMiddleware(root, false)
+    const server = createServer((request, response) => {
+      setVerifiedRequestIdentity(request, { principalId: requestActor.principalId, employeeId: requestActor.employeeId,
+        identityIssuer: requestActor.issuer, identitySubject: requestActor.subject } as OrgmasterSession)
+      middleware(request, response, () => { response.statusCode = 404; response.end() })
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const port = (server.address() as { port: number }).port
+    const call = async (method: string, path: string, body?: unknown) => {
+      const response = await fetch(`http://127.0.0.1:${port}/api/orgmaster/governance${path}`, { method,
+        headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) })
+      return { status: response.status, body: await response.json() }
+    }
+    const publication = await call('POST', '/versions', { expectedRevision: published.revision,
+      commandId: 'http-active-publish', reason: 'prepare active-version replay', organizationVersionId: source.workspaceVersionId })
+    expect(publication.status).toBe(201)
+    const versionId = publication.body.versionSummary.id
+    const catalog = readAiPdmRoleCatalog('valid')
+    const original = {
+      expectedRevision: publication.body.revision,
+      commandId: 'http-active-activate', reason: 'activate published policy', versionId,
+      expectedOrganizationRevision: source.workspaceRevision,
+      expectedCatalog: { catalogVersion: catalog.catalogVersion, catalogSha256: catalog.catalogSha256 ?? catalog.payloadHash },
+    }
+    try {
+      const applied = await call('POST', '/active-version', original)
+      expect(applied.status).toBe(200)
+      expect(applied.body.activePolicyVersionId).toBe(versionId)
+      const replayed = await call('POST', '/active-version', original)
+      expect(replayed.status).toBe(200)
+      expect(replayed.body).toEqual(applied.body)
+      const commandResult = await call('GET', '/commands/http-active-activate')
+      expect(commandResult.status).toBe(200)
+      expect(commandResult.body).toMatchObject({
+        status: 'committed', commandId: original.commandId,
+        result: { operation: 'ACTIVATE_ASSIGNMENT_VERSION', outcome: 'activated', entityType: 'assignmentVersion', entityId: versionId, versionId },
+      })
+      await expect(call('POST', '/active-version', { ...original, reason: 'rewritten payload' })).resolves.toMatchObject({ status: 409, body: { error: 'COMMAND_ID_REUSED' } })
+      await expect(call('POST', '/active-version', { ...original, expectedRevision: applied.body.revision })).resolves.toMatchObject({ status: 409, body: { error: 'COMMAND_ID_REUSED' } })
+      await expect(call('POST', '/active-version', { ...original, expectedOrganizationRevision: 'rewritten-organization-revision' })).resolves.toMatchObject({ status: 409, body: { error: 'COMMAND_ID_REUSED' } })
+      requestActor = { ...actor, principalId: 'rewritten-principal', subject: 'rewritten-subject' }
+      await expect(call('POST', '/active-version', original)).resolves.toMatchObject({ status: 409, body: { error: 'COMMAND_ID_REUSED' } })
+    } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())) }
+  })
   it('reads, revokes, publishes and replays with zero current-catalog reads during an outage', async () => {
     const { root, source, actor, published } = await fixture(true)
     fault.offline = true; fault.reads = 0
@@ -169,10 +218,10 @@ describe('DEV-058 catalog-independent reduction', () => {
     const command = { type: 'REVOKE_ROLE_ASSIGNMENT' as const, id: 'rd', commandId: 'revoke', reason: 'withdraw access' }
     const draft = await applyDraftCommand(root, current.revision, command, actor)
     expect(draft.document.draft.roleAssignments.find(value => value.id === 'rd')?.status).toBe('revoked')
-    expect((await applyDraftCommand(root, 'stale-cas', command, actor)).status).toBe('replayed')
+    expect((await applyDraftCommand(root, published.revision, command, actor)).status).toBe('replayed')
     const result = await publishGovernance(root, draft.revision, 'publish-revoke', 'publish withdrawal', source.workspaceVersionId, actor)
     expect(result.document.publishedVersions).toHaveLength(published.document.publishedVersions.length + 1)
-    expect((await publishGovernance(root, 'stale-cas', 'publish-revoke', 'publish withdrawal', source.workspaceVersionId, actor)).status).toBe('replayed')
+    expect((await publishGovernance(root, draft.revision, 'publish-revoke', 'publish withdrawal', source.workspaceVersionId, actor)).status).toBe('replayed')
     expect((await readGovernanceStore(root)).document.auditEvents.filter(event => event.commandId === 'revoke')).toHaveLength(1)
     expect(fault.reads).toBe(0)
     await expect(applyDraftCommand(root, result.revision, { ...command, reason: 'different request' }, actor)).rejects.toMatchObject({ code: 'COMMAND_ID_REUSED' })
