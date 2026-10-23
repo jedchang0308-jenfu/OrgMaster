@@ -24,6 +24,7 @@ import type {
   GovernanceIdentityLinkV1,
   GovernancePrincipalAdmissionV1,
   GovernanceRoleAssignmentV2,
+  GovernanceRoleDelegationV2,
 } from '../src/governance/types'
 
 const vector = vectors[2]
@@ -83,6 +84,20 @@ function assignmentValue(
     roleCodeSnapshot: selectedRole.code, roleNameSnapshot: selectedRole.displayName,
     catalogVersion: catalog.catalogVersion, scope: { kind: 'workspace', value: workspaceKey },
     status, validFrom: '2026-10-01T00:00:00.000Z', validTo: null, effectState: 'not-synchronized',
+  }
+}
+
+function delegationValue(
+  catalog: ExternalRoleCatalogSnapshotV1,
+  selectedRole: ExternalRoleCatalogRoleV1,
+  overrides: Partial<GovernanceRoleDelegationV2> = {},
+): GovernanceRoleDelegationV2 {
+  return {
+    id: 'fixture-delegation', sourceAssignmentId: 'fixture-assignment', fromEmployeeId: employeeId, toEmployeeId: 'employee-2',
+    applicationId: 'ai-pdm', roleId: selectedRole.stableRoleId, catalogVersion: catalog.catalogVersion,
+    scope: { kind: 'workspace', value: workspaceKey }, status: 'active',
+    validFrom: '2026-10-01T00:00:00.000Z', validTo: '2026-11-01T00:00:00.000Z',
+    reason: 'fixture delegation', effectState: 'not-synchronized', ...overrides,
   }
 }
 
@@ -206,6 +221,49 @@ describe('DEV-058 dynamic catalog assignment consumer', () => {
       type: 'RESTORE_ROLE_ASSIGNMENT', commandId: 'inactive-custom-restore', reason: 'fixture', id: 'fixture-assignment',
     }, 'principal-fixture', undefined, [inactiveCatalog]), 'EXTERNAL_ROLE_UNASSIGNABLE')
     expect(buildPositionRoleRecommendations(recommendationInput(inactiveCatalog, custom.stableRoleId))).toEqual([])
+  })
+
+  it('retains a historical custom delegation for read and revoke while rejecting new or expanded delegation', () => {
+    const historicalCatalog = structuredClone(dynamicV7)
+    historicalCatalog.catalogVersion = 'ai-pdm.role-policy.20000000-0000-4000-8000-000000000002'
+    const inactiveCatalog = structuredClone(dynamicV7)
+    const historicalCustom = role(historicalCatalog, 'role-custom-30000000-0000-4000-8000-000000000001')
+    const inactiveCustom = role(inactiveCatalog, historicalCustom.stableRoleId)
+    inactiveCustom.status = 'inactive'
+    expect(historicalCustom).toMatchObject({ status: 'active', delegationAllowed: true })
+    expect(inactiveCustom).toMatchObject({ status: 'inactive', delegationAllowed: true })
+
+    const existing = v3DocumentWithAssignment(historicalCatalog, historicalCustom)
+    const delegation = delegationValue(historicalCatalog, historicalCustom)
+    existing.draft.roleDelegations = [delegation]
+    // Current is the first catalog in the established ordering; the later
+    // snapshot is immutable history for the same recorded role identity.
+    const catalogs = [inactiveCatalog, historicalCatalog]
+    expect(validatePolicyDataV3(existing.draft, undefined, catalogs)).toEqual([])
+
+    const revoked = applyGovernanceCommandV3(existing, {
+      type: 'REVOKE_ROLE_DELEGATION', commandId: 'historical-delegation-revoke', reason: 'fixture', id: delegation.id,
+    }, 'principal-fixture', undefined, catalogs)
+    expect(revoked.document.draft.roleDelegations[0]).toMatchObject({ id: delegation.id, status: 'revoked' })
+
+    const fresh = structuredClone(existing)
+    fresh.draft.roleDelegations = []
+    expectGovernanceCode(() => applyGovernanceCommandV3(fresh, {
+      type: 'UPSERT_ROLE_DELEGATION', commandId: 'inactive-custom-delegation-new', reason: 'fixture',
+      value: { ...delegation, id: 'inactive-custom-delegation-new', catalogVersion: inactiveCatalog.catalogVersion },
+    }, 'principal-fixture', undefined, [inactiveCatalog]), 'EXTERNAL_ROLE_UNASSIGNABLE')
+
+    const expanded = structuredClone(existing)
+    expanded.draft.roleDelegations[0] = { ...delegation, scope: { kind: 'project', value: 'project-1' } }
+    expect(validatePolicyDataV3(expanded.draft, undefined, catalogs)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'ROLE_DELEGATION_INVALID' }),
+    ]))
+
+    const wrongSourceCatalog = structuredClone(existing)
+    wrongSourceCatalog.draft.roleDelegations[0] = { ...delegation, catalogVersion: baselineV7.catalogVersion }
+    expect(validatePolicyDataV3(wrongSourceCatalog.draft, undefined, catalogs)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'ROLE_DELEGATION_INVALID' }),
+    ]))
   })
 
   it('keeps system_admin on its existing exact-principal global flow, outside generic assignment', () => {

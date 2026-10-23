@@ -1434,7 +1434,7 @@ DEV-014 lifecycle readback、DEV-049 admission、DEV-057 Principal pair diagnost
 
 兩個 DEV-057 獨立 operator recipe 不再 COPY migration 執行入口；仍保留 `dev012-production-migration-runner.mjs` 的 target guard、GCS integrity／immutable publication primitives，以及 locked `pg`。catalog operator 保留 TypeScript reader、歷史 fixture 與 v5/v6/v7 source snapshots：現行 DB reader 延遲讀取對應 snapshot 並作完整內容比對，因此補齊原 recipe 遺漏的 v6/v7，不改既有 reader 語意。migration image 保留 admission／managed-link／fixture／authority-switch／lifecycle entrypoints 及其必要 helpers。
 
-`npm run test:production-tools` 驗證設定相容、拒絕行為與由三份實際 Dockerfile COPY 所組出的隔離 package，包含延遲路徑。required `Production Source QC` 同時建置三個真實工具映像並在禁止網路的容器中匯入其所有 entrypoints；既有 owner／abort／lifecycle／app／database-boundary gates 保留。此層證據不宣稱正式資料庫連線或 production PASS。
+`npm run test:production-tools` 驗證設定相容、拒絕行為與由三份實際 Dockerfile COPY 所組出的隔離 package，包含延遲路徑。required `Production Source QC` 保持同一 job：只有 `AGENTS.md`／`ai-doc/**/*.md` 變更時執行 diff check；任何其他檔案、空或無法判定的 diff 均走原 source 檢查，建置三個工具映像並在禁止網路的容器匯入 entrypoints，既有 owner／abort／lifecycle／app／database-boundary 驗證由同一次 `qc:dev-040:r2` 執行，不再另跑一遍。branch protection、正式來源／artifact／回復驗證不變；此層證據不宣稱正式資料庫連線或 production PASS。
 
 PR #134 已合併至 `ad4e6be3355305329833a83005889be61c46f6ee`。其後人類明確授權僅 OrgMaster 補齊受控映像 rotation／一般發布路徑、完成 PR／required CI／merge／正式發布與發布後驗證；不擴張正式資料、grant、IAM／Secret 或跨專案責任。第一個一般發布 preflight 的 `SMOKE_REUSE_RECEIPT_INVALID` 保留為原失敗，不能套用歷史 lifecycle remediation 例外來略過。
 

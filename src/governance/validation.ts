@@ -157,7 +157,9 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
          roleNameSnapshot: delegateSource.roleNameSnapshot, scope: delegation.scope }, catalogRole, catalogs)
     if (!catalog || !catalogRole || (delegation.catalogVersion !== catalog.catalogVersion && !historicalDelegation)) add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}]`, '代理 catalog role 無效')
     if (catalogRole) {
-      const surfaceIssue = genericV2AssignmentSurfaceIssue('ai-pdm', { stableRoleId: delegation.roleId, code: catalogRole.code }, catalogRole)
+      // Retained delegation is provenance, just like its source assignment.
+      // Fresh delegation commands still require a selectable current role.
+      const surfaceIssue = genericV2AssignmentSurfaceIssue('ai-pdm', { stableRoleId: delegation.roleId, code: catalogRole.code }, historicalDelegation ? { ...catalogRole, status: 'active' } : catalogRole)
       if (surfaceIssue) add(surfaceIssue, `roleDelegations[${index}]`, surfaceIssue === 'PRIVILEGED_ASSIGNMENT_SURFACE_REQUIRED' ? '特權角色不得使用一般代理路徑' : 'catalog role policy 不完整或矛盾')
       if (catalogRole.delegationAllowed !== true) add('ROLE_DELEGATION_INVALID', `roleDelegations[${index}]`, '外部 role 不允許代理')
     }

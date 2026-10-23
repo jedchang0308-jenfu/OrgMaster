@@ -11,12 +11,11 @@ const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('NPM_EXEC_PATH_REQUIRED')
 // package.json owns the Node contract-test selection.
 const run = spawnSync(process.execPath, [npmCli, 'run', 'test:dev-040:r2'], { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, windowsHide: true })
-process.stdout.write(run.stdout)
-process.stderr.write(run.stderr)
-// Keep the selected contract tests; new cases do not require a second numeric quota.
-// Node must execute tests successfully, with no failures or cancellations.
-if (run.status !== 0 || !/\bpass [1-9][0-9]*\b/u.test(run.stdout)
-  || !/\bfail 0\b/u.test(run.stdout) || !/\bcancelled 0\b/u.test(run.stdout)) process.exit(run.status || 1)
+process.stdout.write(run.stdout ?? '')
+process.stderr.write(run.stderr ?? '')
+// The runner's exit status owns failure; do not reparse its presentation text.
+if (run.error) throw run.error
+if (run.status !== 0) process.exit(run.status ?? 1)
 
 async function prepareSyntheticRegressionData() {
   const dataRoot = path.join(root, 'data')

@@ -56,7 +56,8 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
     ...['scripts/dev058-dev123-native-org-journey.mjs', 'scripts/dev058-dev123-native-bootstrap.mjs',
       'scripts/dev058-dev123-native-fixtures.mjs', 'server/orgmasterGovernanceApi.ts', 'server/orgmasterGovernanceStore.ts',
       'server/orgmasterGovernanceWriteActor.ts', 'server/orgmasterPersistenceRepository.ts',
-      'server/governanceReduction.ts', 'server/aiPdmRoleCatalogRepository.ts'].map(file => [orgRoot, 'orgmaster', file]),
+      'server/governanceReduction.ts', 'server/aiPdmRoleCatalogRepository.ts',
+      'src/governance/validation.ts'].map(file => [orgRoot, 'orgmaster', file]),
     ...['src/lib/role-policy-service.ts', 'src/lib/role-policy-editor.ts', 'src/lib/jenfu-principal-request-guard.ts',
       'src/lib/jenfu-principal-permission-service.ts', 'src/lib/repositories/jenfu-entitlement-repository.ts',
       'config/access-control/ai-pdm-role-policy-contract-v2.manifest.json'].map(file => [pdmRoot, 'ai-pdm', file]),
@@ -143,9 +144,14 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       VALUES('native-priority','native-priority.v1',$1,'active')`,
     [JSON.stringify(activeCatalog.roles.filter(role => !role.stableRoleId.startsWith('role-custom-')).map(role => role.roleCode))])
     const target = { id: 'native-target-link', employeeId: 'employee-native-target', principalId: 'principal-native-target', issuer: 'issuer-native-target', subject: 'subject-native-target', status: 'active', validFrom: now, validTo: null }
-    const links = [{ ...manager.link, validTo: null }, target]
+    const delegatedTarget = { ...target, id: 'native-delegate-link', employeeId: 'employee-native-delegate',
+      principalId: 'principal-native-delegate', issuer: 'issuer-native-delegate', subject: 'subject-native-delegate' }
+    const links = [{ ...manager.link, validTo: null }, target, delegatedTarget]
     const state = structuredClone(screenshot.screenshotOrganizationState)
     for (const link of links) state.employees.push({ ...structuredClone(state.employees[0]), id: link.employeeId, name: '隔離驗證人員', status: 'active', departmentIds: [], primaryAssignmentId: null })
+    const delegationSourceEmployeeId = 'employee-native-delegation-source'
+    state.employees.push({ ...structuredClone(state.employees[0]), id: delegationSourceEmployeeId,
+      name: '隔離代理來源', status: 'active', departmentIds: [], primaryAssignmentId: null })
     const workspaceDocument = documentStorage.createOrgDocumentFile(state, 'document', now)
     const manifest = workspace.createWorkspaceManifest('current', now)
     const governance = migration.migrateGovernanceV2ToV3(seed.createSeedDocumentV2(now), 'native-v2-fixture', catalog, now)
@@ -174,11 +180,13 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
           AND batch_id=(SELECT active_batch_id FROM orgmaster_core.persistence_authority WHERE singleton)`,
       [JSON.stringify(payload), hash, Buffer.byteLength(JSON.stringify(payload)), key])).rowCount, 1)
     }
-    await admin.query(`INSERT INTO orgmaster_core.principal_ownership_reservations(principal_id,employee_id,account_type,first_seen_at,source_revision)
-      VALUES($1,$2,'human_personal',$3,'native-target-baseline')`, [target.principalId, target.employeeId, now])
-    await admin.query(`INSERT INTO orgmaster_core.principal_identity_reservations(principal_issuer,principal_subject,employee_id,first_seen_at,source_kind,source_revision,principal_id)
-      VALUES($1,$2,$3,$4,'legacy','native-target-baseline',$5)`, [target.issuer, target.subject, target.employeeId, now, target.principalId])
-    await admin.query('INSERT INTO platform_contract.task_owned_principal_auth_state(principal_id) VALUES($1)', [target.principalId])
+    for (const link of [target, delegatedTarget]) {
+      await admin.query(`INSERT INTO orgmaster_core.principal_ownership_reservations(principal_id,employee_id,account_type,first_seen_at,source_revision)
+        VALUES($1,$2,'human_personal',$3,'native-target-baseline')`, [link.principalId, link.employeeId, now])
+      await admin.query(`INSERT INTO orgmaster_core.principal_identity_reservations(principal_issuer,principal_subject,employee_id,first_seen_at,source_kind,source_revision,principal_id)
+        VALUES($1,$2,$3,$4,'legacy','native-target-baseline',$5)`, [link.issuer, link.subject, link.employeeId, now, link.principalId])
+      await admin.query('INSERT INTO platform_contract.task_owned_principal_auth_state(principal_id) VALUES($1)', [link.principalId])
+    }
     await admin.query('COMMIT')
     const source = await store.loadOrganizationSource(orgRoot)
     const { basePolicyVersionId: _base, updatedAt: _updated, ...policy } = governance.draft
@@ -277,44 +285,70 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
 
     const qa16 = 'QA058-16-real-http-commit-drop-query-replay'
     const baselineId = 'actual-http-publication-and-admitted-pdm-target-positive'
-    let targetToken, targetKeyRing
+    const targetSessions = new Map()
     const trustPolicy = { enabled: false, domains: [], allowAal1PrivilegedPilot: false }
-    const targetDecision = () => requestGuard.withVerifiedJenfuPrincipalRequest({ token: targetToken,
-      keyRing: targetKeyRing, identityIssuer: target.issuer, trustPolicy, database: client },
+    const decisionFor = link => requestGuard.withVerifiedJenfuPrincipalRequest({ ...targetSessions.get(link.principalId),
+      identityIssuer: link.issuer, trustPolicy, database: client },
     (snapshot, actor) => permissionService.evaluatePrincipalResourcePermissionsInSnapshot(snapshot, actor,
       [{ permissionKind: 'action', permissionCode: 'pdm.drawing.view' }], { workspaceCode: 'company-jenfu' }))
+    const targetDecision = () => decisionFor(target)
     const targetGrants = async () => (await orgRuntime.query(`SELECT assignment_id,assignment_version_id,
       assignment_version::text,role_code,catalog_version,scope_kind,scope_key,valid_from,valid_until
       FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4
       WHERE principal_id=$1 AND assignment_id=$2`, [target.principalId, assignment.id])).rows
-    await check(baselineId, async () => {
-      const published = await call('POST', '/versions', { ...await binding(), commandId: crypto.randomUUID(),
-        reason: 'task-owned actual target publication', organizationVersionId: source.workspaceVersionId })
-      assert.equal(published.status, 201, JSON.stringify(published.body))
+    async function admitPdmTarget(link, email) {
       const typed = (await admin.query(`SELECT mapping_version::text,published_at
-        FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_id=$1`, [target.principalId])).rows[0]
+        FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_id=$1`, [link.principalId])).rows[0]
       assert.ok(typed)
       await tx(c => c.queryOne(`SELECT ai_pdm_core.ensure_authorized_first_login_account_v1(
         :issuer,:subject,:principal,:employee,'human_personal',CAST(:mapping AS bigint),
-        CAST(:published AS timestamptz),:email) AS account`, { issuer: target.issuer, subject: target.subject,
-        principal: target.principalId, employee: target.employeeId, mapping: typed.mapping_version,
-        published: new Date(typed.published_at).toISOString(), email: 'native-target@example.test' }))
-      const profile = (await admin.query('SELECT * FROM ai_pdm_core.principal_accounts WHERE principal_id=$1', [target.principalId])).rows[0]
-      targetKeyRing = { issuer: 'task-owned-native', audience: 'ai-pdm', currentKeyId: 'native-key',
+        CAST(:published AS timestamptz),:email) AS account`, { issuer: link.issuer, subject: link.subject,
+        principal: link.principalId, employee: link.employeeId, mapping: typed.mapping_version,
+        published: new Date(typed.published_at).toISOString(), email }))
+      const profile = (await admin.query('SELECT * FROM ai_pdm_core.principal_accounts WHERE principal_id=$1', [link.principalId])).rows[0]
+      const keyRing = { issuer: 'task-owned-native', audience: 'ai-pdm', currentKeyId: 'native-key',
         keys: { 'native-key': crypto.randomBytes(32).toString('hex') } }
       const issuedAt = Math.floor(Date.now() / 1000)
-      targetToken = sessionTokens.issueJenfuPrincipalSession({ principalId: target.principalId,
-        employeeId: target.employeeId, identityIssuer: target.issuer, identitySubject: target.subject,
+      const token = sessionTokens.issueJenfuPrincipalSession({ principalId: link.principalId,
+        employeeId: link.employeeId, identityIssuer: link.issuer, identitySubject: link.subject,
         authEpoch: 0, accountLifecycleVersion: Number(profile.lifecycle_version), profileVersion: Number(profile.profile_version),
         companyId: profile.company_id, authenticatedAt: issuedAt, assuranceLevel: 'aal1', secondFactor: null,
-        assurancePolicyHash: assurance.principalAssurancePolicyHash(trustPolicy), maxAgeSeconds: 3600 }, targetKeyRing, issuedAt)
-      const claims = sessionTokens.verifyJenfuPrincipalSession(targetToken, targetKeyRing)
+        assurancePolicyHash: assurance.principalAssurancePolicyHash(trustPolicy), maxAgeSeconds: 3600 }, keyRing, issuedAt)
+      const claims = sessionTokens.verifyJenfuPrincipalSession(token, keyRing)
       await tx(c => new pdmSessions.JenfuPrincipalSessionRegistry(c).register(claims))
+      targetSessions.set(link.principalId, { token, keyRing })
+    }
+    await check(baselineId, async () => {
+      assert.equal(custom.delegationAllowed, true)
+      // Keep the delegated source independent from the assignment whose
+      // validity/catalog is deliberately expanded in the separate race case.
+      const sourceAssignmentId = 'native-delegation-source'
+      const sourceAssignment = await call('PATCH', '/draft', { ...await binding(), command: { type: 'UPSERT_ROLE_ASSIGNMENT',
+        commandId: crypto.randomUUID(), reason: 'task-owned actual delegation source', value: {
+          ...assignment, id: sourceAssignmentId, employeeId: delegationSourceEmployeeId,
+        } } })
+      assert.equal(sourceAssignment.status, 200, JSON.stringify(sourceAssignment.body))
+      const delegated = await call('PATCH', '/draft', { ...await binding(), command: { type: 'UPSERT_ROLE_DELEGATION',
+        commandId: crypto.randomUUID(), reason: 'task-owned actual delegation', value: {
+          id: 'native-custom-delegation', sourceAssignmentId, fromEmployeeId: delegationSourceEmployeeId,
+          toEmployeeId: delegatedTarget.employeeId, applicationId: 'ai-pdm', roleId: custom.stableRoleId,
+          catalogVersion: currentTuple.catalogVersion, scope: assignment.scope, status: 'active', validFrom: now,
+          validTo: new Date(Date.parse(expiresAt) - 60000).toISOString(), reason: 'task-owned delegation', effectState: 'not-synchronized',
+        } } })
+      assert.equal(delegated.status, 200, JSON.stringify(delegated.body))
+      const published = await call('POST', '/versions', { ...await binding(), commandId: crypto.randomUUID(),
+        reason: 'task-owned actual target publication', organizationVersionId: source.workspaceVersionId })
+      assert.equal(published.status, 201, JSON.stringify(published.body))
+      await admitPdmTarget(target, 'native-target@example.test')
+      await admitPdmTarget(delegatedTarget, 'native-delegate@example.test')
       assert.equal((await targetGrants()).length, 1)
       const [decision] = await targetDecision()
       assert.equal(decision.allowed, true, decision.decisionCode)
       assert.equal(decision.assignmentId, assignment.id)
       assert.equal(decision.roleCode, custom.roleCode)
+      const [delegatedDecision] = await decisionFor(delegatedTarget)
+      assert.equal(delegatedDecision.allowed, true, delegatedDecision.decisionCode)
+      assert.equal(delegatedDecision.roleCode, custom.roleCode)
     }, [qa16])
 
     const qa17 = 'QA058-17-producer-commits-before-consumer-read'
@@ -388,7 +422,8 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       }
     }, [qa17])
 
-    await check('QA058-10-unpublished-draft-history-after-producer-change', async () => {
+    const qa10 = 'QA058-10-unpublished-draft-history-after-producer-change'
+    await check(qa10, async () => {
       currentTuple = await tuple()
       const reactivateRequest = await prepare([{ type: 'reactivate', stableRoleId: custom.stableRoleId }])
       await tx(c => service.applyRolePolicy(c, verified, reactivateRequest))
@@ -410,6 +445,36 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       assert.notEqual(grant[0].catalog_version, draftVersion, 'UNPUBLISHED_DRAFT_MUST_NOT_CHANGE_EFFECTIVE_GRANT')
       assert.equal((await targetDecision())[0].allowed, false)
     }, [qa18])
+
+    await check('QA058-12-inactive-direct-delegated-and-active-sibling', async () => {
+      assert.equal((await targetDecision())[0].allowed, false)
+      const [delegatedDecision] = await decisionFor(delegatedTarget)
+      assert.equal(delegatedDecision.allowed, false)
+      assert.equal(delegatedDecision.decisionCode, 'permission_not_granted')
+      const delegatedGrants = (await orgRuntime.query(`SELECT grant_kind,delegation_id,stable_role_id,
+        assignment_id,role_code,scope_kind,scope_key
+        FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4 WHERE principal_id=$1`, [delegatedTarget.principalId])).rows
+      assert.deepEqual(delegatedGrants, [{ grant_kind: 'delegated', delegation_id: 'native-custom-delegation',
+        stable_role_id: custom.stableRoleId, assignment_id: 'native-custom-delegation', role_code: custom.roleCode,
+        scope_kind: 'workspace', scope_key: 'company-jenfu' }])
+      const active = await catalogReader.readPublishedAiPdmRoleCatalogFromDatabase(orgRuntime)
+      const sibling = active.roles.find(role => role.stableRoleId === 'role-rd')
+      assert.equal(sibling.roleStatus, 'active')
+      const added = await call('PATCH', '/draft', { ...await binding(), command: { type: 'UPSERT_ROLE_ASSIGNMENT',
+        commandId: crypto.randomUUID(), reason: 'active sibling remains usable', value: { ...assignment,
+          id: 'native-active-sibling', roleId: sibling.stableRoleId, roleCodeSnapshot: sibling.roleCode,
+          roleNameSnapshot: sibling.displayName, catalogVersion: active.catalogVersion } } })
+      assert.equal(added.status, 200, JSON.stringify(added.body))
+      const published = await call('POST', '/versions', { ...await binding(), commandId: crypto.randomUUID(),
+        reason: 'native mixed active and inactive roles', organizationVersionId: source.workspaceVersionId })
+      assert.equal(published.status, 201, JSON.stringify(published.body))
+      const [allowed] = await targetDecision()
+      assert.equal(allowed.allowed, true, allowed.decisionCode)
+      assert.equal(allowed.roleCode, 'rd')
+      assert.equal(allowed.assignmentId, 'native-active-sibling')
+      assert.equal((await decisionFor(delegatedTarget))[0].allowed, false)
+      assert.equal((await targetGrants()).length, 1, 'INACTIVE_DIRECT_GRANT_MUST_REMAIN_VISIBLE')
+    }, [qa10])
 
     await check('QA058-19-org-writer-post-lock-session-revocation', async () => {
       const body = { ...await binding(), command: { type: 'REVOKE_ROLE_ASSIGNMENT',
@@ -437,7 +502,7 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
         await admin.query('ROLLBACK').catch(() => undefined)
         await Promise.allSettled([pending].filter(Boolean))
       }
-    }, [baselineId])
+    }, [qa10])
     await check('direct-execution-inputs-unchanged', async () => assert.deepEqual(inputHashes(), testedInputs))
     console.log(JSON.stringify({ status: cases.every(value => value.status === 'PASS') ? 'PASS' : 'FAIL', cases, identityEvidence: 'synthetic-issuance-real-cookie-auth-and-db', production: false }))
   } finally {

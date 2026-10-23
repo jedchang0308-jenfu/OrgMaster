@@ -1,7 +1,7 @@
 # OrgMaster 工作指引
 
 - 任務與契約由 [dev_task](ai-doc/dev_task.md)／[文件地圖](ai-doc/documentation_map.md) 進入；沿原隔離分支，保留既有修改與資料。
-- 人決定任用與例外，系統提醒；授權與資料完整性仍須系統把關。只補受影響驗證、重用有效證據，結果集中原 QA；新 SHA／回合／文件不觸發整包重跑，一般修正不另建任務、簽核或證據格式。
+- 人決定任用與例外，系統提醒；授權與資料完整性仍須系統把關。驗證按影響選用，結果只回填原 QA；重用有效證據，不因新 SHA／回合／文件重跑，不另建任務、簽核或證據格式。
 
 ## 資料與授權 — DEV010_DB_RULESET_V1
 
@@ -15,4 +15,4 @@
 - 須有人類對正式環境與動作的既有授權；本文件不授權正式 migration、部署、資料、IAM／Secret 或跨專案操作。
 - 只限 `orgmaster-prod` 自有 schema／release 資源；DB=`jenfu-platform-prod / asia-east1 / jenfu-platform-prod-pg / jenfu_prod`，runtime／migrator 分離，不碰 sibling／共享 foundation。入口用 provider 驗證的 `run.app`，保留未用 edge 資產。
 - 唯一普通入口 `npm run deploy:production`（`-- --check` 只讀）；保留 clean exact `master` PR merge、review／QC、required `Production Source QC` 與 provider branch protection（admin enforced、零 bypass、禁 force-push／刪除）。沿 immutable capsule、concurrency 與先前 RELEASED baseline；普通發布 `UNCHANGED_VERIFIED`，零 DDL／import／bootstrap。
-- 未知寫入先 readback；回復限自身 traffic → candidate tag → entry baseline，維持 Principal-only，不 down migration／改寫正式資料。特殊 migration／工具 rotation／復原沿 [DEV-040](ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md)、[profile](config/release/dev040-orgmaster-independent-production-v3.json) 與 [回復參考](ai-doc/specs/DEV-040-release-recovery-reference.md)，不略過既有執行器。只改 release executor 才補其受影響測試，不加第二人核准或等待。
+- 未知寫入先 readback；回復限自身 traffic → candidate tag → entry baseline，維持 Principal-only，不 down migration／改寫正式資料。特殊 migration／工具 rotation／復原沿 [DEV-040](ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md)、[profile](config/release/dev040-orgmaster-independent-production-v3.json) 與 [回復參考](ai-doc/specs/DEV-040-release-recovery-reference.md)，不略過既有執行器。release executor 改變才補相關測試；required CI 的純文件分支只查 diff，其餘沿原 QC，不加第二人核准或等待。

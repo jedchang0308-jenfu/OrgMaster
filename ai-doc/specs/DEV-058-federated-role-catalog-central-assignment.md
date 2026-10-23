@@ -48,7 +48,7 @@ PDM 流程為保存草稿 → 唯讀預覽差異 → 單一 apply 生效；OrgMa
 | `orgmaster_contract` manager v1 lock／eligibility | 035 獨立管理資格 fence |
 | `orgmaster_contract.v_ai_pdm_principal_effective_grants_v4` | 現行任用投影；欄位／manifest／applied029 不改，grant 存在不等於能力 Allow |
 
-current／history 的固定 **34 欄及順序**以 PDM `config/access-control/ai-pdm-role-policy-contract-v2.manifest.json` 的 producer 為準；signature=`eb6a72e51ec738cd854a0d4c25749edd7f1f434927b1fb1d916998367025aaa8`。不再手抄第二份欄位表；必須包含 `lifecycle`，不含 `activation_generation`。固定 SELECT、snake_case→camelCase；不用 SELECT * 或 client 指定來源。版本保留真 bigint 非負十進位字串，不轉成不安全 Number。
+current／history 的固定 **34 欄、順序及 signature**只以 PDM `config/access-control/ai-pdm-role-policy-contract-v2.manifest.json` 的 producer 為準，不在文件重抄。必須包含 `lifecycle`，不含 `activation_generation`。固定 SELECT、snake_case→camelCase；不用 SELECT * 或 client 指定來源。版本保留真 bigint 非負十進位字串，不轉成不安全 Number。
 
 單操作一次讀 current：驗全列 header／身份唯一／catalog 順序；UI 另按 presentationOrder 排序。current v1／v2 指向同一 active pointer；history 驗 version→hash 唯一及原 identity，只有 active／retired 可作 provenance，draft 不可授權。
 
@@ -103,7 +103,7 @@ legacy 新寫入於受控 dynamic 切換後退場，保留歷史 decoder／原 b
 
 ## 7. 開發與驗收
 
-修改既有 reader、types／validation、store／API、推薦與指派 UI，重用發布／persistence。[QA §4](../qa/DEV-058-dynamic-role-assignment-validation-plan.md#4-單一驗證路徑與證據重用) 是唯一選驗入口；契約／資格、原生交易／ACL、正常雙端旅程按影響選用並共用證據。OM-C1～C5、H1～H5 及 CG 只供覆蓋對照，不各設 runner／簽核；required CI 沿既有執行器。
+修改既有 reader、types／validation、store／API、推薦與指派 UI，重用發布／persistence。[QA §4](../qa/DEV-058-dynamic-role-assignment-validation-plan.md#4-單一驗證路徑與證據重用) 是唯一選驗入口：引用有效證據，只補受影響缺口，回填原 24 項目的。OM-C／H／CG 都是交接或覆蓋索引，不另設 runner、報告或簽核；required CI 共用既有 QC，純文件走同一 check 的 diff 分支。
 
 <a id="8-關卡與驗收"></a>
 <a id="9-ai-pdm-交接"></a>

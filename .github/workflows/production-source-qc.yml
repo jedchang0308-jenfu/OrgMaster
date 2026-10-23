@@ -18,16 +18,41 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+      - name: Select documentation or source verification
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess
+          base = os.environ.get('BASE_SHA', '')
+          files = []
+          if re.fullmatch(r'[0-9a-f]{40}', base) and base != '0' * 40:
+              result = subprocess.run(['git', 'diff', '--no-renames', '--name-only', '-z', base, 'HEAD'], capture_output=True)
+              if result.returncode == 0:
+                  files = [name for name in result.stdout.split(b'\0') if name]
+          docs_only = bool(files) and all(name == b'AGENTS.md' or (name.startswith(b'ai-doc/') and name.endswith(b'.md')) for name in files)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'docs_only={str(docs_only).lower()}\n')
+          if docs_only:
+              subprocess.run(['git', 'diff', '--check', base, 'HEAD'], check=True)
+          print('Documentation diff checked; source unchanged.' if docs_only else 'Source verification required.')
+          PY
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.scope.outputs.docs_only != 'true'
         with:
           node-version: 24
           cache: npm
       - name: Build and verify the patched runtime
+        if: steps.scope.outputs.docs_only != 'true'
         run: docker build --target runtime-smoke --progress=plain .
       - run: npm ci
+        if: steps.scope.outputs.docs_only != 'true'
       - name: Install the production tools' exact locked dependency closure
+        if: steps.scope.outputs.docs_only != 'true'
         run: npm ci --prefix infra/google-cloud/dev-040-production-release/migration-runner --omit=dev --ignore-scripts
       - name: Build and import isolated production tool images
+        if: steps.scope.outputs.docs_only != 'true'
         env:
           SOURCE_REVISION: ${{ github.sha }}
         run: |
@@ -44,3 +69,4 @@ jobs:
           done
       # QC owns contract tests, tool tests, abort tests, DB boundary, app tests and build.
       - run: npm run qc:dev-040:r2
+        if: steps.scope.outputs.docs_only != 'true'
