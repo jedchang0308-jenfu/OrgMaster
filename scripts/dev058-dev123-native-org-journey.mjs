@@ -54,11 +54,13 @@ async function portReleased(port) {
 await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, pdmRoot, orgRoot }) => {
   const directInputs = [
     ...['scripts/dev058-dev123-native-org-journey.mjs', 'scripts/dev058-dev123-native-bootstrap.mjs',
+      'scripts/dev058-dev123-native-loader.mjs',
       'scripts/dev058-dev123-native-fixtures.mjs', 'server/orgmasterGovernanceApi.ts', 'server/orgmasterGovernanceStore.ts',
       'server/orgmasterGovernanceWriteActor.ts', 'server/orgmasterPersistenceRepository.ts',
       'server/governanceReduction.ts', 'server/aiPdmRoleCatalogRepository.ts',
       'src/governance/validation.ts'].map(file => [orgRoot, 'orgmaster', file]),
     ...['src/lib/role-policy-service.ts', 'src/lib/role-policy-editor.ts', 'src/lib/jenfu-principal-request-guard.ts',
+      'src/lib/jenfu-principal-published-grant-validation.ts',
       'src/lib/jenfu-principal-permission-service.ts', 'src/lib/repositories/jenfu-entitlement-repository.ts',
       'src/app/api/submissions/route.ts', 'src/lib/principal-submission-access.ts',
       'src/lib/repositories/submission-list-async-repository.ts', 'src/lib/repositories/dashboard-async-repository.ts',
@@ -296,6 +298,9 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
     (snapshot, actor) => permissionService.evaluatePrincipalResourcePermissionsInSnapshot(snapshot, actor,
       [{ permissionKind: 'action', permissionCode: 'pdm.drawing.view' }], { workspaceCode: 'company-jenfu' }))
     const targetDecision = () => decisionFor(target)
+    const { JenfuEntitlementRepositoryError } = await imp(pdmRoot, 'src/lib/repositories/jenfu-entitlement-repository.ts')
+    const assertNoPublishedGrant = link => assert.rejects(() => decisionFor(link), error =>
+      error instanceof JenfuEntitlementRepositoryError && error.code === 'permission_not_granted')
     const targetGrants = async () => (await orgRuntime.query(`SELECT assignment_id,assignment_version_id,
       assignment_version::text,role_code,catalog_version,scope_kind,scope_key,valid_from,valid_until
       FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4
@@ -562,6 +567,126 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       assert.equal((await decisionFor(delegatedTarget))[0].allowed, false)
       assert.equal((await targetGrants()).length, 1, 'INACTIVE_DIRECT_GRANT_MUST_REMAIN_VISIBLE')
     }, [qa10])
+
+    const qa10Alias = 'QA058-10-producer-procurement-alias-reactivate'
+    await check(qa10Alias, async () => {
+      const aliasIds = ['role-procurement', 'role-production-planning']
+      const readAliases = async () => (await orgRuntime.query(`SELECT stable_role_id,role_code,display_name,
+        permission_role_id,presentation_name,presentation_order,assignment_disposition,role_status
+        FROM ai_pdm_contract.v_application_role_catalog_v2
+        WHERE stable_role_id=ANY($1) ORDER BY stable_role_id`, [aliasIds])).rows
+      const readPriority = async () => {
+        const row = await client.queryOne('SELECT priority_json FROM role_priority_versions WHERE status=\'active\' LIMIT 1')
+        assert.ok(row, 'PDM_ROLE_PRIORITY_MUST_EXIST')
+        return JSON.parse(row.priority_json)
+      }
+      const before = await readAliases()
+      assert.deepEqual(before.map(row => row.stable_role_id), [...aliasIds].sort())
+      assert.deepEqual(before.find(row => row.stable_role_id === 'role-procurement'), {
+        stable_role_id: 'role-procurement', role_code: 'procurement', display_name: '採購',
+        permission_role_id: 'role-procurement', presentation_name: '採購／生管', presentation_order: 4,
+        assignment_disposition: 'selectable', role_status: 'active'
+      })
+      assert.deepEqual(before.find(row => row.stable_role_id === 'role-production-planning'), {
+        stable_role_id: 'role-production-planning', role_code: 'production_planning', display_name: '生管人員',
+        permission_role_id: 'role-procurement', presentation_name: '採購／生管（舊生管指派）', presentation_order: 4,
+        assignment_disposition: 'legacy-only', role_status: 'active'
+      })
+      const priority = await readPriority()
+      assert.ok(priority.includes('procurement') && priority.includes('production_planning'))
+
+      const deactivate = await prepare([{ type: 'deactivate', stableRoleId: 'role-procurement' }])
+      await tx(c => service.applyRolePolicy(c, verified, deactivate))
+      currentTuple = await tuple()
+      const inactive = await readAliases()
+      assert.deepEqual(inactive.map(row => row.role_status), ['inactive', 'inactive'])
+      assert.deepEqual(inactive.map(({ role_status: _status, ...row }) => row), before.map(({ role_status: _status, ...row }) => row))
+      assert.deepEqual(await readPriority(), priority, 'ALIAS_STATUS_MUST_NOT_CREATE_OR_REORDER_PRIORITY')
+
+      const reactivate = await prepare([{ type: 'reactivate', stableRoleId: 'role-procurement' }])
+      await tx(c => service.applyRolePolicy(c, verified, reactivate))
+      currentTuple = await tuple()
+      const active = await readAliases()
+      assert.deepEqual(active.map(row => row.role_status), ['active', 'active'])
+      assert.deepEqual(active.map(({ role_status: _status, ...row }) => row), before.map(({ role_status: _status, ...row }) => row))
+      assert.deepEqual(await readPriority(), priority, 'ALIAS_REACTIVATION_MUST_PRESERVE_ROLECODE_PRIORITY')
+    }, ['QA058-12-inactive-direct-delegated-and-active-sibling'])
+
+    const qa13 = 'QA058-13-revoked-source-not-revived-by-role-restore'
+    await check(qa13, async () => {
+      const revokedDelegation = await call('PATCH', '/draft', { ...await binding(), command: {
+        type: 'REVOKE_ROLE_DELEGATION', commandId: crypto.randomUUID(), reason: 'native revoked source delegation', id: 'native-custom-delegation'
+      } })
+      assert.equal(revokedDelegation.status, 200, JSON.stringify(revokedDelegation.body))
+      const revokedSource = await call('PATCH', '/draft', { ...await binding(), command: {
+        type: 'REVOKE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: 'native revoked delegation source', id: 'native-delegation-source'
+      } })
+      assert.equal(revokedSource.status, 200, JSON.stringify(revokedSource.body))
+      const published = await call('POST', '/versions', { ...await binding(), commandId: crypto.randomUUID(),
+        reason: 'native revoked source projection', organizationVersionId: source.workspaceVersionId })
+      assert.equal(published.status, 201, JSON.stringify(published.body))
+      const read = await call('GET', '/')
+      assert.equal(read.body.document.draft.roleAssignments.find(value => value.id === 'native-delegation-source').status, 'revoked')
+      assert.equal(read.body.document.draft.roleDelegations.find(value => value.id === 'native-custom-delegation').status, 'revoked')
+      const revokedRows = (await orgRuntime.query(`SELECT grant_kind,delegation_id,assignment_id
+        FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4 WHERE principal_id=$1`, [delegatedTarget.principalId])).rows
+      assert.deepEqual(revokedRows, [])
+      await assertNoPublishedGrant(delegatedTarget)
+
+      // The real PDM role restore must not recreate an Org source or delegation.
+      const restore = await prepare([{ type: 'reactivate', stableRoleId: custom.stableRoleId }])
+      await tx(c => service.applyRolePolicy(c, verified, restore))
+      currentTuple = await tuple()
+      const restoredCatalog = await catalogReader.readPublishedAiPdmRoleCatalogFromDatabase(orgRuntime)
+      assert.equal(restoredCatalog.roles.find(role => role.stableRoleId === custom.stableRoleId).roleStatus, 'active')
+      const afterRestoreRows = (await orgRuntime.query(`SELECT grant_kind,delegation_id,assignment_id
+        FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4 WHERE principal_id=$1`, [delegatedTarget.principalId])).rows
+      assert.deepEqual(afterRestoreRows, [])
+      await assertNoPublishedGrant(delegatedTarget)
+    }, ['QA058-12-inactive-direct-delegated-and-active-sibling'])
+
+    const qa15 = 'QA058-15-expired-source-not-revived-by-role-restore'
+    await check(qa15, async () => {
+      const expiredSourceFrom = new Date(Date.now() - 5 * 3600000).toISOString()
+      const expiredSourceTo = new Date(Date.now() - 3 * 3600000).toISOString()
+      const expiredDelegationTo = new Date(Date.now() - 4 * 3600000).toISOString()
+      const expiredSource = await call('PATCH', '/draft', { ...await binding(), command: { type: 'UPSERT_ROLE_ASSIGNMENT',
+        commandId: crypto.randomUUID(), reason: 'native expired delegation source', value: { ...assignment,
+          id: 'native-expired-delegation-source', employeeId: delegationSourceEmployeeId,
+          catalogVersion: currentTuple.catalogVersion,
+          validFrom: expiredSourceFrom, validTo: expiredSourceTo } } })
+      assert.equal(expiredSource.status, 200, JSON.stringify(expiredSource.body))
+      const expiredDelegation = await call('PATCH', '/draft', { ...await binding(), command: { type: 'UPSERT_ROLE_DELEGATION',
+        commandId: crypto.randomUUID(), reason: 'native expired delegation', value: {
+          id: 'native-expired-delegation', sourceAssignmentId: 'native-expired-delegation-source',
+          fromEmployeeId: delegationSourceEmployeeId, toEmployeeId: delegatedTarget.employeeId,
+          applicationId: 'ai-pdm', roleId: custom.stableRoleId, catalogVersion: currentTuple.catalogVersion,
+          scope: assignment.scope, status: 'active', validFrom: expiredSourceFrom, validTo: expiredDelegationTo,
+          reason: 'native expired delegation', effectState: 'not-synchronized'
+        } } })
+      assert.equal(expiredDelegation.status, 200, JSON.stringify(expiredDelegation.body))
+      const published = await call('POST', '/versions', { ...await binding(), commandId: crypto.randomUUID(),
+        reason: 'native expired source projection', organizationVersionId: source.workspaceVersionId })
+      assert.equal(published.status, 201, JSON.stringify(published.body))
+      const read = await call('GET', '/')
+      assert.equal(read.body.document.draft.roleAssignments.find(value => value.id === 'native-expired-delegation-source').validTo, expiredSourceTo)
+      assert.equal(read.body.document.draft.roleDelegations.find(value => value.id === 'native-expired-delegation').validTo, expiredDelegationTo)
+      const expiredRows = (await orgRuntime.query(`SELECT grant_kind,delegation_id,assignment_id
+        FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4 WHERE principal_id=$1`, [delegatedTarget.principalId])).rows
+      assert.deepEqual(expiredRows, [])
+      await assertNoPublishedGrant(delegatedTarget)
+
+      const deactivate = await prepare([{ type: 'deactivate', stableRoleId: custom.stableRoleId }])
+      await tx(c => service.applyRolePolicy(c, verified, deactivate))
+      currentTuple = await tuple()
+      const reactivate = await prepare([{ type: 'reactivate', stableRoleId: custom.stableRoleId }])
+      await tx(c => service.applyRolePolicy(c, verified, reactivate))
+      currentTuple = await tuple()
+      const afterRestoreRows = (await orgRuntime.query(`SELECT grant_kind,delegation_id,assignment_id
+        FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4 WHERE principal_id=$1`, [delegatedTarget.principalId])).rows
+      assert.deepEqual(afterRestoreRows, [])
+      await assertNoPublishedGrant(delegatedTarget)
+    }, [qa13])
 
     await check('QA058-19-org-writer-post-lock-session-revocation', async () => {
       const body = { ...await binding(), command: { type: 'REVOKE_ROLE_ASSIGNMENT',

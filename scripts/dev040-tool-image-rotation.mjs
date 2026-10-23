@@ -11,7 +11,7 @@ import { readRoutineBaseline } from './lib/dev040-routine-release.mjs'
 import { buildMigrationToolImage, reuseMigrationToolImage } from './lib/dev040-tool-image-build.mjs'
 import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
 import { assertToolOwner, assertToolRotationPlan, assertToolRotationState, sealToolEvidence,
-  toolInfrastructureFingerprint, rotationAddresses, assertOrdinaryToolRotation, assertToolSeal, assertToolBuildProof, assertToolArtifactAssociation } from './lib/dev040-tool-image-rotation.mjs'
+  assertToolInfrastructureTransition, rotationAddresses, assertOrdinaryToolRotation, assertToolSeal, assertToolBuildProof, assertToolArtifactAssociation } from './lib/dev040-tool-image-rotation.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 function fail(code) { throw Object.assign(new Error(`TOOL_ROTATION_${code}`), { code: `TOOL_ROTATION_${code}` }) }
@@ -80,7 +80,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   const service = await transport.getService(profile)
   transport.assertServiceSettled(service); transport.assertCanonicalEntrypoint(profile, service)
   if (transport.effectiveRevision(service) !== baseline.activeRevision || [...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some(row => row.tag)) fail('BASELINE_INVALID')
-  if (toolInfrastructureFingerprint(root, baseline.intent.sourceRevision) !== toolInfrastructureFingerprint(root, git.sourceRevision)) fail('INFRASTRUCTURE_SOURCE_CHANGED')
+  assertToolInfrastructureTransition(root, baseline.intent.sourceRevision, git.sourceRevision)
   const previousInfra = (await transport.readJson(baseline.intent.infraReceiptRef, bucket, ['receipts'])).value
   const previousImage = previousInfra.migrationRunnerDigest
   const controllerImage = previousInfra.controllerImageDigest

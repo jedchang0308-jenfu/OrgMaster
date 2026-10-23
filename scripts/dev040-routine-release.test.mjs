@@ -1,4 +1,5 @@
 import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
+import { assertToolRotationReleaseCompatibility } from './lib/dev040-routine-release.mjs'
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
 import { assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
@@ -2324,6 +2325,24 @@ function rolePolicyHarness() {
   attachForwardInfra(h)
   return h
 }
+
+test('verified image rotation can precede only the exact DEV-058 append without combining runtime or predecessor changes', () => {
+  const rotation = { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', ddlExecuted: 0 }
+  const input = { toolRotation: rotation, toolRotationPredecessor: null,
+    controlledTransition: { releaseMode: DEV058_RELEASE_MODE }, repair: false, runtimeChanged: false }
+  assert.doesNotThrow(() => assertToolRotationReleaseCompatibility(input))
+  assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input, controlledTransition: null }))
+  assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input, toolRotation: null,
+    toolRotationPredecessor: rotation, controlledTransition: null }))
+  for (const changes of [
+    { repair: true }, { runtimeChanged: true },
+    { toolRotationPredecessor: rotation },
+    { toolRotation: null, toolRotationPredecessor: rotation },
+    { controlledTransition: { releaseMode: 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION' } },
+    { controlledTransition: { releaseMode: 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION' } },
+    { controlledTransition: {} },
+  ]) assert.throws(() => assertToolRotationReleaseCompatibility({ ...input, ...changes }), /TOOL_ROTATION_ORDINARY_ONLY/u)
+})
 
 test('DEV-058 uses the exact 31-prefix and full 034-036 append; subsequent ordinary release executes zero DDL', async () => {
   const h = rolePolicyHarness()

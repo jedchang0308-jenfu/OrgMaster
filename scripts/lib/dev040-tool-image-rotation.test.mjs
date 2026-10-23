@@ -7,8 +7,10 @@ import { gunzipSync, gzipSync } from 'node:zlib'
 
 import { canonicalize, sha256 } from './dev012-owner-release-runtime.mjs'
 import { createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
+import { assertToolRotationReleaseCompatibility } from './dev040-routine-release.mjs'
 import {
   assertOrdinaryToolRotation,
+  assertToolInfrastructureTransition,
   assertToolArtifactAssociation,
   assertToolBuildProof,
   assertToolJobLiveReadback,
@@ -76,12 +78,22 @@ function createSourceFixture() {
     fs.writeFileSync(destination, readGitBytes(ROOT, sourceRevision, file))
   }
 
+  const fullProductionProfile = JSON.parse(readGitBytes(ROOT, sourceRevision, PRODUCTION_PROFILE_PATH).toString('utf8'))
+  const baselineProductionProfile = structuredClone(fullProductionProfile)
+  baselineProductionProfile.migrations.entries = baselineProductionProfile.migrations.entries.slice(0, 31)
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(baselineProductionProfile, null, 2)}\n`)
+
   runGit(root, ['init', '--quiet'])
   runGit(root, ['config', 'user.name', 'Tool Rotation Test'])
   runGit(root, ['config', 'user.email', 'tool-rotation-test@example.invalid'])
   runGit(root, ['add', '--all'])
   runGit(root, ['commit', '--quiet', '-m', 'baseline infrastructure source'])
   const baselineSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(fullProductionProfile, null, 2)}\n`)
+  runGit(root, ['add', PRODUCTION_PROFILE_PATH])
+  runGit(root, ['commit', '--quiet', '-m', 'append DEV-058 migration profile'])
+  const appendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
   fs.appendFileSync(path.join(root, ...RUNNER_RECIPE.split('/')), '\n# source-bound image rotation fixture\n')
   runGit(root, ['add', RUNNER_RECIPE])
@@ -121,7 +133,7 @@ function createSourceFixture() {
   const sourceArchiveSha256 = sha256(sourceArchiveBytes)
 
   return {
-    root, baselineSourceRevision, rotationSourceRevision, ordinarySourceRevision,
+    root, baselineSourceRevision, appendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
     copyInputDriftSourceRevision, toolInputDriftSourceRevision, driftSourceRevision,
     sourceIdentitySha256, sourceArchive, sourceArchiveBytes, sourceArchiveSha256,
     sourceArchiveObject: `source/archives/${sourceArchiveSha256}/source.tar.gz`,
@@ -376,6 +388,74 @@ function rowFor(plan, address) {
 function assertRotationCode(run, code) {
   assert.throws(run, error => error?.code === `TOOL_ROTATION_${code}`)
 }
+
+function commitProfileVariant(baseRevision, mutate, message) {
+  const priorHead = runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
+  try {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', baseRevision])
+    const profile = JSON.parse(readGitBytes(sourceFixture.root, baseRevision, PRODUCTION_PROFILE_PATH).toString('utf8'))
+    mutate(profile)
+    fs.writeFileSync(path.join(sourceFixture.root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(profile, null, 2)}\n`)
+    runGit(sourceFixture.root, ['add', PRODUCTION_PROFILE_PATH])
+    runGit(sourceFixture.root, ['commit', '--quiet', '-m', message])
+    return runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
+  } finally {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
+  }
+}
+
+function commitNonRecipeVariant(baseRevision, mutate, message) {
+  const priorHead = runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
+  try {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', baseRevision])
+    const file = path.join(sourceFixture.root, ...'infra/google-cloud/dev-040-production-release/migration.tf'.split('/'))
+    mutate(file)
+    runGit(sourceFixture.root, ['add', 'infra/google-cloud/dev-040-production-release/migration.tf'])
+    runGit(sourceFixture.root, ['commit', '--quiet', '-m', message])
+    return runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
+  } finally {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
+  }
+}
+
+test('allows the exact DEV-058 profile append and existing recipe changes only', () => {
+  const appendTransition = assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.baselineSourceRevision, sourceFixture.appendSourceRevision)
+  assert.equal(appendTransition.disposition, 'DEV058_ROLE_POLICY_APPEND')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.rotationSourceRevision, sourceFixture.ordinarySourceRevision).disposition, 'UNCHANGED')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.baselineSourceRevision, sourceFixture.rotationSourceRevision).disposition,
+  'DEV058_ROLE_POLICY_APPEND')
+
+  const prefixDrift = commitProfileVariant(sourceFixture.appendSourceRevision,
+    profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }, 'drift DEV-058 migration prefix')
+  const suffixDrift = commitProfileVariant(sourceFixture.appendSourceRevision,
+    profile => { profile.migrations.entries.at(-1).path = 'db/migrations/037_unapproved.sql' }, 'drift DEV-058 migration suffix')
+  const runtimeDrift = commitProfileVariant(sourceFixture.appendSourceRevision,
+    profile => { profile.runtime.timeoutSeconds += 1 }, 'drift runtime profile')
+  const identityDrift = commitProfileVariant(sourceFixture.appendSourceRevision,
+    profile => { profile.identities.runtimeDbLogin = 'orgmaster-prod-runtime-drift@jenfu-platform-prod.iam' }, 'drift IAM identity')
+  const nonRecipeDrift = commitNonRecipeVariant(sourceFixture.appendSourceRevision,
+    file => fs.appendFileSync(file, '\n# non-recipe infrastructure drift fixture\n'), 'drift non-recipe infrastructure')
+
+  for (const revision of [prefixDrift, suffixDrift, runtimeDrift, identityDrift, nonRecipeDrift]) {
+    assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
+      sourceFixture.baselineSourceRevision, revision), 'SOURCE_INPUT_DRIFT')
+  }
+})
+
+test('bridges the complete native rotation proof to the DEV-058 controlled gate', async () => {
+  const fixture = makeReceiptHarness()
+  const toolRotation = await validateRotationFixture(fixture)
+  assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({
+    toolRotation,
+    toolRotationPredecessor: null,
+    controlledTransition: { releaseMode: 'DEV058_ROLE_POLICY_APPEND' },
+    repair: false,
+    runtimeChanged: false,
+  }))
+})
 
 test('accepts the frozen complete profile-address plan with one migration image update', () => {
   const plan = makePlan()
