@@ -640,7 +640,9 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const infra = (await transport.readJson(intent.infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])).value
     let toolImageLiveReadback = null
     if (infra.toolRotation) {
-      if (allowForward || !prepare.value.facts.routine.toolImageRotation || !verifyToolJobReadback
+      const controlledRolePolicyAppend = prepare.value.facts.routine.releaseMode === DEV058_RELEASE_MODE
+        && prepare.value.facts.routine.controlledTransition?.releaseMode === DEV058_RELEASE_MODE
+      if ((allowForward && !controlledRolePolicyAppend) || !prepare.value.facts.routine.toolImageRotation || !verifyToolJobReadback
         || prepare.value.facts.routine.toolImageRotation.migrationRunnerDigest !== infra.migrationRunnerDigest) fail('TOOL_JOB_READBACK_REQUIRED')
       toolImageLiveReadback = await verifyToolJobReadback(infra)
       if (toolImageLiveReadback?.migrationRunnerDigest !== infra.migrationRunnerDigest) fail('TOOL_JOB_READBACK_REQUIRED')
