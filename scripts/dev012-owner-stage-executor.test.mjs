@@ -3,7 +3,7 @@ import test from 'node:test'
 import { gunzipSync } from 'node:zlib'
 import { buildRuntimeConfig, canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { assertMigrationReceipt, assertStaleControlSafeToSupersede, candidateTagUriMatches, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
-import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_RELEASE_MODE } from './lib/dev058-role-policy-migration.mjs'
+import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION } from './lib/dev058-role-policy-migration.mjs'
 
 const H40 = 'a'.repeat(40)
 const baselineRef = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/baseline.json', sha256: 'e'.repeat(64) }
@@ -293,6 +293,139 @@ test('native rotation prepare seals the summary and migrate requires exact live 
     throw Object.assign(new Error('TOOL_ROTATION_LIVE_JOB_DRIFT'), { code: 'TOOL_ROTATION_LIVE_JOB_DRIFT' })
   }, 'TOOL_ROTATION_LIVE_JOB_DRIFT')
   assert.equal(driftChecks, 1)
+})
+
+test('DEV-058 controlled append may consume the rotated runner only after exact live Job digest readback', async () => {
+  async function preparedControlledRotationCase(releaseId) {
+    const h = recordedHarness()
+    const { input, intentResult } = await authorizedRecordedInput(h, releaseId)
+    const intent = (await h.transport.readJson(intentResult.ref)).value
+    const priorInfra = (await h.transport.readJson(intent.infraReceiptRef)).value
+    const rotatedInfra = {
+      ...priorInfra,
+      mutationProfile: 'APP_INFRA_IMAGE_ROTATION',
+      toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1' },
+    }
+    const common = {
+      releaseAuthority: true,
+      evidenceScope: 'PROVIDER',
+      status: 'PASS',
+      environment: 'production',
+      projectId: 'jenfu-platform-prod',
+      remainingHumanAction: 0,
+      expiresAt: '2999-01-01T00:00:00.000Z',
+      ownerApplicationId: intent.ownerApplicationId,
+      sourceRevision: intent.sourceRevision,
+      releaseId: intent.releaseId,
+      baselineIntentRef: intent.baselineIntentRef,
+      devId: 'DEV-058',
+      slice: '058-ROLE-POLICY',
+      remediation: DEV058_ROLE_POLICY_REMEDIATION,
+    }
+    const authorization = await h.transport.putJson(
+      `gs://${bucket}/receipts/prerequisites/${releaseId}-dev058-authorization.json`,
+      { ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' },
+      { bucket, prefix: 'receipts' })
+    const readiness = await h.transport.putJson(
+      `gs://${bucket}/receipts/prerequisites/${releaseId}-dev058-readiness.json`,
+      { ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' },
+      { bucket, prefix: 'receipts' })
+    const infra = await h.transport.putJson(
+      `gs://${bucket}/receipts/prerequisites/${releaseId}-dev058-infra.json`, rotatedInfra,
+      { bucket, prefix: 'receipts' })
+    const revisedIntent = { ...intent, authorizationPolicyRef: authorization.ref, readinessReceiptRef: readiness.ref, infraReceiptRef: infra.ref }
+    const capsule = await h.transport.putJson(
+      `gs://${bucket}/receipts/intents/${releaseId}-dev058-rotation.json`, revisedIntent,
+      { bucket, prefix: 'receipts' })
+    input.capsuleRef = capsule.ref.uri
+    input.capsuleSha256 = capsule.ref.sha256
+    input.verifyRoutineRelease = async ({ intent: currentIntent }) => ({
+      baselineIntentRef: currentIntent.baselineIntentRef,
+      baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) },
+      migrationDisposition: 'FORWARD_APPLY',
+      pendingMigrationCount: DEV058_MIGRATION_ENTRIES.length,
+      releaseMode: DEV058_RELEASE_MODE,
+      controlledTransition: { releaseMode: DEV058_RELEASE_MODE },
+      toolImageRotation: {
+        evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION',
+        sourceRevision: currentIntent.sourceRevision,
+        migrationRunnerDigest: rotatedInfra.migrationRunnerDigest,
+      },
+    })
+    await executeOwnerStage({ ...input, stage: 'prepare' })
+    await executeOwnerStage({ ...input, stage: 'build' })
+    return { h, input, infra: rotatedInfra }
+  }
+
+  const accepted = await preparedControlledRotationCase('DEV058-ROTATION-READBACK')
+  let jobs = 0
+  accepted.h.transport.runMigrationJob = async ({ deployment, outputUri }) => {
+    jobs += 1
+    const core = {
+      schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: accepted.h.profile.application.id,
+      sourceRevision: deployment.sourceRevision, database: 'jenfu_prod', ledger: 'orgmaster_core.schema_migrations',
+      manifestSha256: accepted.h.migrationManifestSha256, baselineCount: 10, minimumLedgerCount: 10,
+      ledgerCount: DEV058_MIGRATION_ENTRY_COUNT, applied: DEV058_MIGRATION_ENTRIES.length,
+      replayed: DEV058_MIGRATION_ENTRY_COUNT - DEV058_MIGRATION_ENTRIES.length,
+      crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
+      boundaryStatus: 'PASS', status: 'PASS',
+    }
+    await accepted.h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) }, { bucket, prefix: 'receipts' })
+  }
+  let readbacks = 0
+  const migration = await executeOwnerStage({
+    ...accepted.input,
+    stage: 'migrate',
+    verifyToolJobReadback: async infra => {
+      readbacks += 1
+      assert.equal(infra.migrationRunnerDigest, accepted.infra.migrationRunnerDigest)
+      return { migrationRunnerDigest: accepted.infra.migrationRunnerDigest, generation: '12' }
+    },
+  })
+  assert.equal(readbacks, 1)
+  assert.equal(jobs, 1)
+  assert.equal(migration.value.schemaVersion, 'jenfu.dev012.migration-receipt.v1')
+  assert.equal(migration.value.ledgerCount, DEV058_MIGRATION_ENTRY_COUNT)
+  assert.equal(migration.value.applied, DEV058_MIGRATION_ENTRIES.length)
+
+  const mismatched = await preparedControlledRotationCase('DEV058-ROTATION-BAD-READBACK')
+  mismatched.h.transport.runMigrationJob = async () => assert.fail('digest mismatch must stop before the migration Job')
+  await assert.rejects(() => executeOwnerStage({
+    ...mismatched.input,
+    stage: 'migrate',
+    verifyToolJobReadback: async () => ({ migrationRunnerDigest: 'wrong-digest' }),
+  }), error => error?.code === 'TOOL_JOB_READBACK_REQUIRED')
+  assert.equal([...mismatched.h.objects.keys()].some(uri => uri.endsWith('/migrate.json')), false)
+
+  const ordinaryForward = recordedHarness()
+  const ordinaryInput = await authorizedRecordedInput(ordinaryForward, 'ORDINARY-FORWARD-ROTATION')
+  const ordinaryIntent = (await ordinaryForward.transport.readJson(ordinaryInput.intentResult.ref)).value
+  const ordinaryInfra = (await ordinaryForward.transport.readJson(ordinaryIntent.infraReceiptRef)).value
+  const ordinaryInfraResult = await ordinaryForward.transport.putJson(
+    `gs://${bucket}/receipts/prerequisites/ORDINARY-FORWARD-ROTATION-rotated-infra.json`,
+    { ...ordinaryInfra, mutationProfile: 'APP_INFRA_IMAGE_ROTATION', toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1' } },
+    { bucket, prefix: 'receipts' })
+  const ordinaryCapsule = await ordinaryForward.transport.putJson(
+    `gs://${bucket}/receipts/intents/ORDINARY-FORWARD-ROTATION-rotated.json`,
+    { ...ordinaryIntent, infraReceiptRef: ordinaryInfraResult.ref }, { bucket, prefix: 'receipts' })
+  ordinaryInput.input.capsuleRef = ordinaryCapsule.ref.uri
+  ordinaryInput.input.capsuleSha256 = ordinaryCapsule.ref.sha256
+  ordinaryInput.input.verifyRoutineRelease = async ({ intent: currentIntent }) => ({
+    baselineIntentRef: currentIntent.baselineIntentRef,
+    baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) },
+    migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 4,
+  })
+  await executeOwnerStage({ ...ordinaryInput.input, stage: 'prepare' })
+  await executeOwnerStage({ ...ordinaryInput.input, stage: 'build' })
+  let ordinaryReadback = 0
+  ordinaryForward.transport.runMigrationJob = async () => assert.fail('ordinary forward rotation must stop before the migration Job')
+  await assert.rejects(() => executeOwnerStage({
+    ...ordinaryInput.input,
+    stage: 'migrate',
+    verifyToolJobReadback: async () => { ordinaryReadback += 1; return { migrationRunnerDigest: ordinaryInfra.migrationRunnerDigest } },
+  }), error => error?.code === 'TOOL_JOB_READBACK_REQUIRED')
+  assert.equal(ordinaryReadback, 0)
+  assert.equal([...ordinaryForward.objects.keys()].some(uri => uri.endsWith('/migrate.json')), false)
 })
 
 test('controlled forward migration completes before candidate and is preserved in terminal disposition', async () => {
