@@ -99,6 +99,8 @@ API 前綴 `/api/orgmaster/governance`，沿 verified session／Origin／JSON、
 
 首次交付沿雙方既有流程：**PDM 086–088 schema-only（保留 v1／legacy 判權）→ Org 034–036 相容 consumer → 真實相容驗證 → PDM writer → 管理者 apply**。Org 沿 `deploy:production` 的固定 `--dev058-role-policy-append`／`--dev058-infra-ref`；精確 prefix、追加、續跑及 checksum 只由 [既有 profile](../../config/release/dev040-orgmaster-independent-production-v3.json) 與執行器維護，不接受任意 SQL。後續普通發布仍 `UNCHANGED_VERIFIED`／零 DDL；不新增 mode、workflow、IAM 或人工關卡。
 
+runner 映像沿既有 `rotate:production:tools`，同一份 current-source `APP_INFRA_IMAGE_ROTATION` 完整實證交給 `--dev058-infra-ref`，不另造 plain receipt 或第二個 rotation ref。只容許已鎖定的 31-entry prefix→034–036 profile 差異，其餘非工具 recipe 的 infrastructure／profile、runtime 與資料責任不變；仍驗 protected source／CI、完整 saved plan、唯一 Job image 更新及實際 provider readback。工具輪替本身零 DDL，不授權其他 controlled transition。
+
 legacy 新寫入於受控 dynamic 切換後退場，保留歷史 decoder／原 bytes；不留長期雙可寫模式或環境開關 fallback。dynamic 後回復用相容 reader／新 policy 版本，不部署 static-only、不 down migration。正式來源、相容窗口、發布及回復沿 [AGENTS](../../AGENTS.md)／DEV-040 既有控制。
 
 ## 7. 開發與驗收

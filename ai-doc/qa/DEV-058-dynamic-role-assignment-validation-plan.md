@@ -27,12 +27,12 @@ U／API=契約與資格；PG=真 SQL／交易／ACL／競爭；UI／DUAL=正常�
 | QA058-07 | reader／manager／exact privileged／普通人／workload 及偽 body actor 各資格線維持、401/403 | PASS：原資格／identity-fenced writer正反與J26 fresh actor，合併O26 mounted API：ordinary／provider_pair fixture偽造body actor均403、artifact／audit零變更；入站驗證仍沿原auth/writer證據，不冒稱真provider登入 |
 | QA058-08 | PDM 正常建立合法 custom→Org 配人/scope/期間並發布→PDM 真 protected 操作 Allow | BLOCKED：N 僅 domain 往返；缺正常 SSO/UI/API 證據，併 PDM29/52 |
 | QA058-09 | D1任用後D2能力變更，原任用/snapshot/audit 不改、無 Org source／部署變更；下一請求採新政策 | PASS：J26真D1/D2與下一PDM請求改判，合併U26 A→B原任用／audit及採購／舊生管priority／scope不union；不要求所有斷言重演於同一旅程。正常SSO／UI仍見08/23與PDM29/52 |
-| QA058-10 | inactive 禁新任用／推薦／代理／擴權，原人員可見，alias 同步，其他角色／資料不受污染 | PARTIAL：U21/N/V、J26/D26/O26已驗inactive read/revoke、新任用／推薦／代理／擴權拒絕、原published grant不改，direct/delegated Deny而active sibling Allow；producer alias停用／恢復差異待補，畫面統一23 |
+| QA058-10 | inactive 禁新任用／推薦／代理／擴權，原人員可見，alias 同步，其他角色／資料不受污染 | PASS：U21/N/V、J26/D26/O26已驗inactive read/revoke、新任用／推薦／代理／擴權拒絕、原published grant不改，direct/delegated Deny而active sibling Allow；N24真producer停用／恢復採購時舊生管同步、identity／profile／priority不變，畫面統一23 |
 | QA058-11 | inactive 原列可撤銷／發布，actor/provenance/audit 正確，不影響其他任用 | PASS：U26/D26 inactive canonical／legacy與delegation撤銷、原provenance持久化，合併原reduction的離線own snapshot發布／actor及audit hash正反與J26真提交；共用同一publisher／audit機制，不再要求同一inactive案例重驗全部audit欄位 |
 | QA058-12 | 停用角色的 direct/delegated 都不授能力，另一 active role 正常；v4 presence 不等於 Allow | PASS：J26 r15真PDM request guard/evaluator，inactive direct/delegated均Deny，新增active RD sibling後該人Allow、僅inactive代理者仍Deny；v4 direct/delegated身份／scope欄位保留。非正常SSO／UI；alias差異仍由09/10追蹤 |
-| QA058-13 | 同ID角色恢復只採仍合法任用，不復活 revoked/expired/錯scope/失效來源；legacy-only 不新增回授 | PARTIAL：N、U26/O26已驗有效custom恢復與revoked／expired／legacy-only拒絕、角色恢復不重建revoked source；失效來源的PDM投影差異與15共用，正常畫面統一23 |
+| QA058-13 | 同ID角色恢復只採仍合法任用，不復活 revoked/expired/錯scope/失效來源；legacy-only 不新增回授 | PASS：N、U26/O26有效custom恢復與revoked／expired／legacy-only拒絕、來源scope／期間檢查；N24真Org撤source／delegation並發布後v4無grant，PDM protected request拒絕，真producer恢復同ID仍不復活。正常畫面統一23 |
 | QA058-14 | manual 調職／改名由人檢視，不自動授撤／改role；position_adoption 來源失效仍 Deny | PARTIAL：原職位改名／異動不重寫manual任用、推薦不等於採用與偽造position_adoption拒絕可重用；仍補既有position-adoption有效mutation與來源失效guard，不逐次組織改名重跑雙端 |
-| QA058-15 | source revoked/expired 或 scope 不含，代理不得隨角色恢復復活；舊生管 identity 不變 | PARTIAL：O26以真command撤代理再撤source，角色inactive→active後同ID重建仍拒；expired delegation無效、source不含期間／scope拒絕，legacy identity沿U26；仍需適用PDM原生投影的失效source／expiry證據，不重演已驗domain分支 |
+| QA058-15 | source revoked/expired 或 scope 不含，代理不得隨角色恢復復活；舊生管 identity 不變 | PASS：O26真command撤代理再撤source，同ID重建／超source期間／scope拒絕；N24真Org已到期source／delegation合法記錄及發布後v4無grant，PDM protected request拒絕，producer停用再恢復角色仍Deny；legacy identity沿U26／N24，不重演已驗domain分支 |
 | QA058-16 | 同ID同內容 replay、異actor/內容拒絕、CAS、commit後丟回應／換current；原結果可查且不重複 | PASS：J26/O26真HTTP commit後丟回應→原ID查回／相同body-CAS唯一重送／異內容409／producer離線仍查own結果，合併U26 store/API異actor、CAS與catalog binding拒絕及401/403；不再重演同store hash oracle |
 | QA058-17 | Org 預檢D1→PDM commit D2→Org取current，舊 tuple 409、零 half write | PASS：J26 真producer apply D2後，Org舊tuple回409；artifact/batch/audit/outbox均未改，不以U stale tuple代替 |
 | QA058-18 | Org 先凍結D1→PDM停用角色D2→Org依D1完成；PDM下一請求依D2 Deny | PASS：J26 觀察到真PG鎖與blocker PID；Org凍結D1、PDM inactive D2先commit，Org仍發布D1，v4 grant在且PDM新request guard/evaluator為permission_not_granted；非正常SSO |
@@ -53,6 +53,8 @@ U／API=契約與資格；PG=真 SQL／交易／ACL／競爭；UI／DUAL=正常�
 | SQL／ACL／防重／交易／競爭 | 共用隔離 PG；同交易一次末端失敗及狀態回原值可證原子性，不逐 DML 注入相同 abort。不同 owner／transaction、17／18 兩種時序與19撤權保留各自斷言；改 SQL／DB boundary 才跑 `check:db-boundary` |
 | 正常 UI／雙端／業務配送 | 共用一段正常登入旅程完成 custom、能力變更、停用／撤銷／恢復、採購／生管差異及24停 HTTP；各 QA／AC／CG 引用同份結果。不同授權 guard／target、長任務最終採用及實際 bytes 保留差異斷言，不逐 route 重走 UI |
 
+隔離原生旅程沿既有 harness：取得本任務 capacity session，設定 `PDM_DEV123_ROOT`／`ORGMASTER_DEV058_GOVERNOR_SESSION` 後，執行 `node --experimental-transform-types --experimental-loader ./scripts/dev058-dev123-native-loader.mjs scripts/dev058-dev123-native-org-journey.mjs`；loader 只處理既有 alias／Node import，納入同次來源 hash，不代正常 Next／SSO runtime。
+
 同失效機制、責任邊界及判定條件一致，來源／fixture／環境／假設仍有效即可重用；新 SHA、文件或回合不使全部證據失效。新 SQL／caller 只刷新受影響部分。commit 前 rollback 不代替 commit 後丟回應：後者仍驗原 ID 查回／安全重送及零重複；不同資格／grant/helper 仍驗各自拒絕。
 
 來源、環境及限制在同次 run 記一次，個案引用結果，不加 receipt 格式、逐案報告／截圖包或第二人核准。`Production Source QC` 永遠保留：僅 `AGENTS.md`／`ai-doc/**/*.md` 變更時只查 diff；其他或未知變更沿原完整 QC。日常本機不再複跑 CI 已涵蓋的檢查；build／release 測試只在其輸入受影響或證據不足時補。缺正常登入只阻塞相關旅程。
@@ -68,6 +70,8 @@ U／API=契約與資格；PG=真 SQL／交易／ACL／競爭；UI／DUAL=正常�
 
 | 引用 | 已驗結果／原證據 | 適用限制 |
 |---|---|---|
+| L24 | `role-policy-release-tool-regression-20261024-r1.log`：routine／tool producer／證據驗證器三檔141PASS；`role-policy-tool-source-readback-20261023-r1.log`確認現provider baseline `5465a3cf`→merged `b2deeebb` 只有允許的exact append／recipe差異 | 修共同producer與consumer，沿同一APP_INFRA_IMAGE_ROTATION實證，不新增mode／receipt／workflow或IAM；本機fixture正反包含完整75地址、saved plan、immutable image綁定、其他profile／IAM／runtime漂移拒絕。這是RD自查，尚非provider rotation、正式migration或部署 |
+| N24 | `native-org-journey-20261024-r22.log`：12PASS，PDM source `0c3a4a2`，新增採購／舊生管停復readback、真Org撤source／delegation與到期記錄發布→v4零grant→PDM typed `permission_not_granted`，角色恢復仍拒絕；同名runtime-release.json零未釋放process | 共用既有兩owner PG／HTTP環境；來源before/after hash一致，含loader及實際published-grant guard。身份issuance／Platform state仍synthetic，非正常SSO或正式驗收。r20漏loader setup失敗、r21正確guard拒絕被錯oracle判FAIL及依賴BLOCKED均保留；只修harness oracle，未改產品。PG／HTTP／port／temp與lease/session已清 |
 | O26 | `native-org-journey-20261023-r19.log`：9PASS，新增真Org HTTP停機＋PDM cookie guard／非空業務API與恢復；同名runtime-release.json零未釋放process。Luna原工具輸出：API18、dynamic assignment9、GovernanceCenter7共34PASS；`outage-actor-lifecycle-typecheck-20261023-r1.log` exit0。PDM CAST修正另有`nullable-submission-focused-20261023-r1.log`兩檔10PASS及DB boundary PASS | native直接input前後hash不變，PDM query原始hash見各log；身份／Platform state為fixture，不是正常SSO。r16公司fixture與r17/18真42P08失敗保留，r19明示修正後來源；PG／HTTP／port／temp與capacity lease/session全清。三個focused test只證各自layer，不稱獨立QC |
 | U26 | 當前Org `contracts-final-source-20261023.log`：15檔102PASS／1原SKIP；PDM `dev123-contracts-final-20261023-1792763201613.log`：55檔520PASS及Node8PASS。Org compatible／provenance journey／reduction及PDM entitlement repository測試；v7 exact snapshot另由§6完整CI的同名10項PASS支持，分別覆蓋legacy hash／原audit、任用及兩身份priority／scope隔離 | 依各owner原斷言合併01/05/09，不新增同機制native驗證；更名只驗identity與presentation分離，不擴增已發布角色改名功能。PDM log位於當前PDM樹，非正常SSO／UI或正式驗收 |
 | U23／B23 | 2026-10-23 version/hash pair、34欄decoder、input／API序列化：固定入口11檔82 PASS／1原SKIP，typecheck／build／DB boundary PASS；build=`build-version-hash-pair-20261023.log` | 沿本機原執行紀錄；非正常SSO或新PDM原生交易。DB boundary初次header格式失敗及修正、destructive警告保留 |
@@ -100,3 +104,5 @@ U／API=契約與資格；PG=真 SQL／交易／ACL／競爭；UI／DUAL=正常�
 授權帳密檔由指定luna在process記憶體解析，無帳號／密碼／Email／token輸出或複製；只讀nonprod `projects.accounts.lookup` 回HTTP403即停止，未使用密碼、未登入、未重試／變更IAM或帳號。因此測試帳號在nonprod的存在性與Principal/grant仍UNKNOWN，不是密碼錯誤，也不要求人類重新貼帳密。這份provider前置查核只有metadata／公開GET／source，沒有session、schema、business data或正式寫入，不提供08/23的正常SSO／UI PASS；20的獨立PG證據另見C26／S26。
 
 2026-10-23 已核對PDM聊天原始人類回答（`call_b8ebc1c4d3c1404c818d33f5ad43e3d8`）：允許 `jenfu-platform-prod / orgmaster-prod` 034–036相容migration與reader部署，不含人員指派改寫／IAM／Secrets；等待PDM086–088成功readback後才執行。另人類在本聊天已批准Platform非正式v2 SSO配合；隔離樹=`C:/VIBE CODING/.worktrees/Jenfu-Platform/dev058-nonprod-v2-sso-20261023`，其他既有工作樹不變。正常SSO仍待實證，授權不是PASS。
+
+2026-10-24 非正式IdP前置：兩組授權帳號各一次 Firebase password sign-in 均回 `auth/invalid-credential`，不推定密碼錯誤或帳號不存在，也不重試。改用已有權限的 Platform nonprod runtime 身分唯讀 lookup 成功：兩組只找到一筆，Email未驗證、無MFA；未更改帳號／verification／密碼／IAM／Secret，沒有憑證輸出。現live stg登入頁只提供密碼，沒有Google登入入口；本任務分頁已關閉。正常旅程仍缺可正常驗證的非正式測試身分及current三端runtime，不以prod IdP或合成session補過。PDM原始人類回答 `call_d89ec41155c748fc81bd3ad5f34b604f` 已選沿用公司既有Google管理員登入政策；不為此任務新增MFA系統，原身分／session／exact grant／撤權控制仍保留。

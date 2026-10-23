@@ -4,6 +4,7 @@ import { canonicalize, sha256, assertImmutableRef } from './dev012-owner-release
 import { readGitBlob } from './dev012-owner-stage-executor.mjs'
 import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
 import { matchGitSourceArchive } from './dev040-git-archive.mjs'
+import { assertDev058RolePolicyAppend } from './dev058-role-policy-migration.mjs'
 
 export const TOOL_RECIPES = Object.freeze([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -13,6 +14,13 @@ export const TOOL_RECIPES = Object.freeze([
 export const MIGRATION_JOB_ADDRESS = 'google_cloud_run_v2_job.migration[0]'
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
+const PRODUCTION_PROFILE_PATH = 'config/release/dev040-orgmaster-independent-production-v3.json'
+const TOOL_INFRASTRUCTURE_PATHS = Object.freeze([
+  'infra/google-cloud/dev-040-production-release',
+  PRODUCTION_PROFILE_PATH,
+  'config/release/dev040-production-release-infra-plan.json',
+  'config/dev-010/n1c-orgmaster.json',
+])
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 function fail(code) { throw Object.assign(new Error(`TOOL_ROTATION_${code}`), { code: `TOOL_ROTATION_${code}` }) }
 export function sealToolEvidence(core) { return { ...core, receiptSha256: sha256(canonicalize(core)) } }
@@ -40,16 +48,47 @@ export function toolExecutableInputs(root, revision) {
   if (files.some(file => !/^[A-Za-z0-9._/-]+$/u.test(file) || file.includes('..'))) fail('COPY_INVALID')
   return [...new Set(files)].sort().map(path => ({ path, sha256: sha256(read(path)) }))
 }
-export function toolInfrastructureFingerprint(root, revision) {
+function infrastructureTreeEntries(root, revision) {
   if (!H40.test(revision)) fail('SOURCE_INVALID')
-  const result = spawnSync('git', ['ls-tree', '-r', '-z', revision, '--',
-    'infra/google-cloud/dev-040-production-release', 'config/release/dev040-orgmaster-independent-production-v3.json',
-    'config/release/dev040-production-release-infra-plan.json', 'config/dev-010/n1c-orgmaster.json'],
-  { cwd: root, encoding: null, windowsHide: true })
+  const result = spawnSync('git', ['ls-tree', '-r', '-z', revision, '--', ...TOOL_INFRASTRUCTURE_PATHS],
+    { cwd: root, encoding: null, windowsHide: true })
   if (result.status !== 0 || !result.stdout.length) fail('SOURCE_INVALID')
-  const entries = result.stdout.toString('utf8').split('\0').filter(Boolean)
+  return result.stdout.toString('utf8').split('\0').filter(Boolean)
+}
+export function toolInfrastructureFingerprint(root, revision) {
+  const entries = infrastructureTreeEntries(root, revision)
     .filter(entry => !TOOL_RECIPES.includes(entry.split('\t').at(-1)))
   return sha256(entries.join('\0'))
+}
+function readProductionProfile(root, revision) {
+  try { return JSON.parse(readGitBlob(root, PRODUCTION_PROFILE_PATH, revision).toString('utf8')) } catch { fail('SOURCE_INVALID') }
+}
+function nonRecipeInfrastructureEntries(root, revision) {
+  return infrastructureTreeEntries(root, revision)
+    .filter(entry => {
+      const file = entry.split('\t').at(-1)
+      return file !== PRODUCTION_PROFILE_PATH && !TOOL_RECIPES.includes(file)
+    })
+}
+/**
+ * The baseline-to-receipt transition may carry the exact DEV-058 migration
+ * append alongside existing tool recipe changes. Every other infrastructure
+ * input, including every non-recipe tree entry and every profile field, stays
+ * byte-equivalent. The receipt-to-intent check remains strict below.
+ */
+export function assertToolInfrastructureTransition(root, beforeRevision, afterRevision) {
+  const beforeFingerprint = toolInfrastructureFingerprint(root, beforeRevision)
+  const afterFingerprint = toolInfrastructureFingerprint(root, afterRevision)
+  if (beforeFingerprint === afterFingerprint) return { disposition: 'UNCHANGED', beforeFingerprint, afterFingerprint }
+
+  const beforeProfile = readProductionProfile(root, beforeRevision)
+  const afterProfile = readProductionProfile(root, afterRevision)
+  try { assertDev058RolePolicyAppend(beforeProfile.migrations, afterProfile.migrations) } catch { fail('SOURCE_INPUT_DRIFT') }
+  const { migrations: _beforeMigrations, ...beforeProfileWithoutMigrations } = beforeProfile
+  const { migrations: _afterMigrations, ...afterProfileWithoutMigrations } = afterProfile
+  if (!same(beforeProfileWithoutMigrations, afterProfileWithoutMigrations)
+    || !same(nonRecipeInfrastructureEntries(root, beforeRevision), nonRecipeInfrastructureEntries(root, afterRevision))) fail('SOURCE_INPUT_DRIFT')
+  return { disposition: 'DEV058_ROLE_POLICY_APPEND', beforeFingerprint, afterFingerprint }
 }
 export function assertToolArtifactAssociation({ root, profile, sourceRevision, buildSourceRevision, proof }) {
   if (sourceRevision === buildSourceRevision) {
@@ -243,8 +282,8 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || planRead.value.variables?.migration_runner_image_digest?.value !== receipt.migrationRunnerDigest
     || planRead.value.variables?.controller_image_digest?.value !== receipt.controllerImageDigest
     || planRead.value.variables?.foundation_manifest_sha256?.value !== receipt.foundationManifestSha256) fail('PLAN_PROOF_INVALID')
-  if (toolInfrastructureFingerprint(root, proof.baselineSourceRevision) !== toolInfrastructureFingerprint(root, receipt.sourceRevision)
-    || toolInfrastructureFingerprint(root, receipt.sourceRevision) !== toolInfrastructureFingerprint(root, intent.sourceRevision)
+  assertToolInfrastructureTransition(root, proof.baselineSourceRevision, receipt.sourceRevision)
+  if (toolInfrastructureFingerprint(root, receipt.sourceRevision) !== toolInfrastructureFingerprint(root, intent.sourceRevision)
     || !same(toolExecutableInputs(root, receipt.sourceRevision), toolExecutableInputs(root, intent.sourceRevision))) fail('SOURCE_INPUT_DRIFT')
   const before = beforeJobRead.value, after = afterJobRead.value
   if (before.name !== after.name || before.uid !== after.uid || before.uid !== proof.jobUid

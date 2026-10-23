@@ -806,6 +806,16 @@ export function resolveRoutineToolRotationRef(values, toolRotationRef = null) {
   return toolRotationRef ?? authorizationRef
 }
 
+// Rotation changes only the existing Job image. DEV-058 may consume that same
+// verified infra receipt before its separately authorized exact schema append.
+// A second predecessor receipt, runtime change or other controlled mode cannot
+// inherit this allowance.
+export function assertToolRotationReleaseCompatibility({ toolRotation, toolRotationPredecessor, controlledTransition, repair, runtimeChanged }) {
+  if (!toolRotation && !toolRotationPredecessor) return
+  if (repair || runtimeChanged || (controlledTransition
+    && (toolRotationPredecessor || controlledTransition.releaseMode !== DEV058_RELEASE_MODE))) fail('TOOL_ROTATION_ORDINARY_ONLY')
+}
+
 export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, toolRotationRef = null, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
@@ -874,8 +884,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
       intent: { ...intent, infraReceiptRef: toolRotationRef }, receipt: read.value, baseline, readLiveJob: readLiveToolJob })
     toolRotationPredecessor = { receipt: read.value, continuationEvidence: toolRotationPredecessor, receiptRef: toolRotationRef }
   }
-  if (toolRotation && (controlledTransition || baseline.repair || !same(runtimeConfig, baselineRuntime))) fail('TOOL_ROTATION_ORDINARY_ONLY')
-  if (toolRotationPredecessor && (controlledTransition || baseline.repair || !same(runtimeConfig, baselineRuntime))) fail('TOOL_ROTATION_ORDINARY_ONLY')
+  assertToolRotationReleaseCompatibility({ toolRotation, toolRotationPredecessor, controlledTransition,
+    repair: Boolean(baseline.repair), runtimeChanged: !same(runtimeConfig, baselineRuntime) })
   const appReuseLeft = values.authorization?.appArtifactReuse ?? null
   const appReuseRight = values.readiness?.appArtifactReuse ?? null
   if (!same(appReuseLeft, appReuseRight)) fail('APP_ARTIFACT_REUSE_AUTHORITY_MISMATCH')
