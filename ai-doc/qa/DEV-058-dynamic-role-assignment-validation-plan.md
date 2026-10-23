@@ -1,6 +1,6 @@
 # DEV-058：驗收與證據
 
-修訂：2026-10-23。OrgMaster DEV-058 統籌，AI-PDM DEV-123 管理角色／能力。**In Progress／Not Released**；[規格](../specs/DEV-058-federated-role-catalog-central-assignment.md)不另記進度。本文件只維護驗收目的、缺口及證據；正式操作僅限人類另行授權的 `orgmaster-prod` 034–036 相容 migration／reader部署，須先有PDM schema成功及既有release條件；不改寫人員指派、IAM或Secrets。
+修訂：2026-10-24。OrgMaster DEV-058 統籌，AI-PDM DEV-123 管理角色／能力。**In Progress／Not Released**；[規格](../specs/DEV-058-federated-role-catalog-central-assignment.md)不另記進度。本文件只維護驗收目的、缺口及證據；正式操作僅限人類另行授權的 `orgmaster-prod` 034–036 相容 migration／reader部署，須先有PDM schema成功及既有release條件；不改寫人員指派、IAM或Secrets。
 
 ## 1. 最少前置與資料
 
@@ -131,3 +131,7 @@ PR152後續已merge為`66e8bfc0e87ba251b4a1eccd7c409c952862de3f`，PR run`399939
 該workflow最終FAILURE：prepare／build／migrate／candidate／entrypoint成功，verify失敗，decision以後SKIPPED，failure recovery成功。原生`migrate.json`經bytes／SHA與原prepare forward plan核對PASS：034–036 applied3、replayed31、ledger34、boundary PASS，execution=`orgmaster-prod-migration-runner-ccxfj`，SHA=`5b62d06a5a2ec53cf53a4e4cdf568ec8d69dca912a9b9b08eac377f9485d2ebc`。原生`terminal.json` SHA=`41b51c81ccde73953239bac055f605a477f1dee56f2f37f2524af22f3ec29f2a`，`FORWARD_APPLIED／PRE_ACTIVATION_ABORTED`、入口`BASELINE_ALREADY_ACTIVE`；provider讀回active revision仍為`orgmaster-prod-e44ff9eaaac4`、tags為空。DDL成功不能轉寫成reader發布成功，不down migration、不覆寫失敗收據，PDM writer維持等待consumer實證。
 
 verify的真實候選revision／digest已與smoke execution `738aeffb-b0ab-444b-b0e7-144ab67604b6`參數逐一匹配。失敗發生於Platform `/api/auth/firebase/session`：HTTP401／`auth_token_invalid`，correlation=`09005078-d487-4fb5-b643-e05c9b07094e`；Cloud Logging同correlation亦指向`jenfu-platform-prod-72052e763a3b`。尚未到Org callback或角色catalog讀取，不能歸因為Org業務API失敗。既存Secret11的refresh／IdP簽章與帳號唯讀檢查、operator FirebaseAdmin revoked-check均PASS，帳號已驗證且未停用；尚不能判為Secret過期，也不能由operator成功推定production runtime或Principal撤權barrier成功。只繼續唯讀診斷，不盲重試release／session，不改IAM／Secret或放寬授權；08／23及正式consumer缺口維持原判定。
+
+Platform實際映像`sha256:e9903dac19e80e6dafb9e86260fd0392e4d7c2c2660c0bb33c659a4ae3018f51`的registry manifest／config原始SHA逐一核對，OCI來源為`fb70380224032ce0955867a8774c0b0fbabb2f60`，不能由revision字尾猜commit。該actual commit的session route／service／Firebase verifier／epoch及Principal repository與本機現行相應檔案一致；401仍有「runtime verifier失敗」或「auth_time不通過Principal revokedBefore」兩類可能，現有redacted log不足以區分。未取得production auth-state讀回前不宣稱根因已確認，也不以新的Secret替換或放寬barrier處理。
+
+本機r6已正常停止：退出前Platform sessions=0、PDM accounts=0，三端port及PG port釋放，PG temp清理PASS；沒有fresh SSO成功。已還原本任務Next生成檔的等價變動，source保存在Org PR153、Platform PR140及PDM PR479（draft）。Org source CI `39997762086` SUCCESS；Platform首次CI `39997785632`的fixture `NODE_ENV`型別失敗保留，最小型別修正後24 focused tests及typecheck PASS，遠端CI `39998183066` SUCCESS。PDM首次CI `39997818875`同樣因fixture型別失敗，原失敗保留；最小型別修正head `22c7b0581151787bf0b002919160f6f7af821341`的11 focused tests／typecheck:app及遠端CI `39998756789`（含isolated build）均PASS。53個adapter結果與native r25有效範圍可重用，仍不代替08／23。root負責的task-owned ADC／TLS副本清理被工具自動核准政策拒絕（只回報`blocked by policy`），目前仍在原受限Governor temp目錄；未刪除成功，不改寫原始帳密或共用憑證。
