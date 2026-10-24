@@ -1,10 +1,24 @@
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createOrgmasterAuthMiddleware, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
 import { parseHandoff, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
 import v2Vectors from '../contracts/jenfu-sso-handoff/v2/conformance-vectors.json'
+
+const googleAuthMocks = vi.hoisted(() => ({
+  GoogleAuth: vi.fn(),
+  Impersonated: vi.fn(),
+  getClient: vi.fn(),
+  getIdTokenClient: vi.fn(),
+  legacyFetchIdToken: vi.fn(),
+  impersonatedFetchIdToken: vi.fn(),
+}))
+vi.mock('google-auth-library', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('google-auth-library')>()),
+  GoogleAuth: googleAuthMocks.GoogleAuth,
+  Impersonated: googleAuthMocks.Impersonated,
+}))
 
 const openServers: Array<ReturnType<typeof createServer>> = []
 afterEach(async () => { await Promise.all(openServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
@@ -12,6 +26,16 @@ afterEach(async () => { await Promise.all(openServers.splice(0).map((server) => 
 const now = Date.parse('2026-09-17T03:00:00.000Z')
 const publicOrigin = 'https://orgmaster-stg-123456789.asia-east1.run.app'
 const brokerOrigin = 'https://jenfu-platform-stg-123456789.asia-east1.run.app'
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  googleAuthMocks.GoogleAuth.mockImplementation(function () { return { getClient: googleAuthMocks.getClient, getIdTokenClient: googleAuthMocks.getIdTokenClient } })
+  googleAuthMocks.Impersonated.mockImplementation(function () { return { fetchIdToken: googleAuthMocks.impersonatedFetchIdToken } })
+  googleAuthMocks.getClient.mockResolvedValue({ sourceClient: true })
+  googleAuthMocks.getIdTokenClient.mockResolvedValue({ idTokenProvider: { fetchIdToken: googleAuthMocks.legacyFetchIdToken } })
+  googleAuthMocks.legacyFetchIdToken.mockResolvedValue('legacy-service-token')
+  googleAuthMocks.impersonatedFetchIdToken.mockResolvedValue('google-signed-service-token')
+})
 
 function runtime() {
   const config: OrgmasterAuthConfig = {
@@ -112,6 +136,129 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
       expiresAt: '2026-09-17T04:00:00.000Z',
     }))
     expect(accepted.headers.get('set-cookie')).toContain('Max-Age=3600')
+  })
+
+  it('keeps the existing getIdTokenClient path when impersonation is unset', async () => {
+    const value = runtime()
+    const deps = dependencies('on')
+    delete deps.serviceToken
+    googleAuthMocks.legacyFetchIdToken.mockResolvedValue('google-signed-service-token')
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.searchParams.set('code', 'opaque-code')
+    callback.searchParams.set('state', location.searchParams.get('state')!)
+    callback.searchParams.set('iss', `${brokerOrigin}/api/sso`)
+    const accepted = await fetch(callback, { redirect: 'manual', headers: { cookie: start.headers.get('set-cookie')!.split(';')[0] } })
+    expect(accepted.status).toBe(303)
+    expect(googleAuthMocks.getIdTokenClient).toHaveBeenCalledWith(brokerOrigin)
+    expect(googleAuthMocks.getClient).not.toHaveBeenCalled()
+    expect(googleAuthMocks.Impersonated).not.toHaveBeenCalled()
+  })
+
+  it.each(['http://127.0.0.1:4317', 'https://localhost:4317'])('uses development loopback impersonation for %s', async (localBrokerOrigin) => {
+    const value = runtime()
+    const deps = dependencies('on', { ...handoff(), issuer: `${localBrokerOrigin}/api/sso` })
+    delete deps.serviceToken
+    deps.environment = {
+      NODE_ENV: 'development',
+      ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on',
+      ORGMASTER_JENFU_SSO_BROKER_ORIGIN: localBrokerOrigin,
+      JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: 'owner-nonprod@project.iam.gserviceaccount.com',
+    }
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.searchParams.set('code', 'opaque-code')
+    callback.searchParams.set('state', location.searchParams.get('state')!)
+    callback.searchParams.set('iss', `${localBrokerOrigin}/api/sso`)
+    const accepted = await fetch(callback, { redirect: 'manual', headers: { cookie: start.headers.get('set-cookie')!.split(';')[0] } })
+    expect(accepted.status).toBe(303)
+    expect(googleAuthMocks.getClient).toHaveBeenCalledOnce()
+    expect(googleAuthMocks.getIdTokenClient).not.toHaveBeenCalled()
+    expect(googleAuthMocks.GoogleAuth).toHaveBeenCalledWith({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] })
+    expect(googleAuthMocks.Impersonated).toHaveBeenCalledWith({ sourceClient: { sourceClient: true }, targetPrincipal: 'owner-nonprod@project.iam.gserviceaccount.com', targetScopes: ['https://www.googleapis.com/auth/cloud-platform'], lifetime: 300 })
+    expect(googleAuthMocks.impersonatedFetchIdToken).toHaveBeenCalledWith(localBrokerOrigin)
+  })
+
+  it('rejects production impersonation configuration before broker exchange', async () => {
+    const value = runtime()
+    const deps = dependencies('on')
+    delete deps.serviceToken
+    deps.environment = { ...deps.environment, JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: 'owner-nonprod@project.iam.gserviceaccount.com' }
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.searchParams.set('code', 'opaque-code')
+    callback.searchParams.set('state', location.searchParams.get('state')!)
+    callback.searchParams.set('iss', `${brokerOrigin}/api/sso`)
+    const rejected = await fetch(callback, { redirect: 'manual', headers: { cookie: start.headers.get('set-cookie')!.split(';')[0] } })
+    expect(rejected.status).toBe(502)
+    expect(await rejected.json()).toMatchObject({ code: 'sso_dependency_unavailable' })
+    expect(googleAuthMocks.getClient).not.toHaveBeenCalled()
+    expect(googleAuthMocks.getIdTokenClient).not.toHaveBeenCalled()
+    expect(deps.fetch).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['empty target', { JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: '' }, 'JENFU_SSO_IMPERSONATION_TARGET_INVALID'],
+    ['Cloud Run', { K_SERVICE: 'run-service', JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: 'owner-nonprod@project.iam.gserviceaccount.com' }, 'JENFU_SSO_IMPERSONATION_CLOUD_RUN_FORBIDDEN'],
+  ])('rejects %s local impersonation configuration before broker exchange', async (_label, extra, _errorCode) => {
+    const value = runtime()
+    const localBrokerOrigin = 'http://127.0.0.1:4317'
+    const deps = dependencies('on', { ...handoff(), issuer: `${localBrokerOrigin}/api/sso` })
+    delete deps.serviceToken
+    deps.environment = {
+      NODE_ENV: 'development',
+      ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on',
+      ORGMASTER_JENFU_SSO_BROKER_ORIGIN: localBrokerOrigin,
+      JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: 'owner-nonprod@project.iam.gserviceaccount.com',
+      ...extra,
+    }
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.searchParams.set('code', 'opaque-code')
+    callback.searchParams.set('state', location.searchParams.get('state')!)
+    callback.searchParams.set('iss', `${localBrokerOrigin}/api/sso`)
+    const rejected = await fetch(callback, { redirect: 'manual', headers: { cookie: start.headers.get('set-cookie')!.split(';')[0] } })
+    expect(rejected.status).toBe(502)
+    expect(await rejected.json()).toMatchObject({ code: 'sso_dependency_unavailable' })
+    expect(googleAuthMocks.getClient).not.toHaveBeenCalled()
+    expect(googleAuthMocks.getIdTokenClient).not.toHaveBeenCalled()
+    expect(googleAuthMocks.Impersonated).not.toHaveBeenCalled()
+    expect(deps.fetch).not.toHaveBeenCalled()
+  })
+
+  it('does not fall back when local source credential acquisition fails', async () => {
+    const value = runtime()
+    const localBrokerOrigin = 'http://127.0.0.1:4317'
+    const deps = dependencies('on', { ...handoff(), issuer: `${localBrokerOrigin}/api/sso` })
+    delete deps.serviceToken
+    deps.environment = {
+      NODE_ENV: 'development',
+      ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on',
+      ORGMASTER_JENFU_SSO_BROKER_ORIGIN: localBrokerOrigin,
+      JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: 'owner-nonprod@project.iam.gserviceaccount.com',
+    }
+    googleAuthMocks.getClient.mockRejectedValue(new Error('source credential unavailable'))
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.searchParams.set('code', 'opaque-code')
+    callback.searchParams.set('state', location.searchParams.get('state')!)
+    callback.searchParams.set('iss', `${localBrokerOrigin}/api/sso`)
+    const rejected = await fetch(callback, { redirect: 'manual', headers: { cookie: start.headers.get('set-cookie')!.split(';')[0] } })
+    expect(rejected.status).toBe(502)
+    expect(await rejected.json()).toMatchObject({ code: 'sso_dependency_unavailable' })
+    expect(googleAuthMocks.getIdTokenClient).not.toHaveBeenCalled()
+    expect(googleAuthMocks.Impersonated).not.toHaveBeenCalled()
+    expect(deps.fetch).not.toHaveBeenCalled()
   })
 
   it('uses and clears only the local transaction cookie for loopback HTTP development', async () => {

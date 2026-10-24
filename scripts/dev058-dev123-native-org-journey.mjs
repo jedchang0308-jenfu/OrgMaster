@@ -58,6 +58,8 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       'scripts/dev058-dev123-native-fixtures.mjs', 'server/orgmasterGovernanceApi.ts', 'server/orgmasterGovernanceStore.ts',
       'server/orgmasterGovernanceWriteActor.ts', 'server/orgmasterPersistenceRepository.ts',
       'server/governanceReduction.ts', 'server/aiPdmRoleCatalogRepository.ts',
+      'server/aiPdmRoleCapabilityStore.ts', 'server/privilegedAssignmentStore.ts', 'server/orgmasterWorkspaceStore.ts',
+      'src/governance/aiPdmRoleCapability.ts', 'src/governance/privilegedAssignments.ts',
       'src/governance/validation.ts'].map(file => [orgRoot, 'orgmaster', file]),
     ...['src/lib/role-policy-service.ts', 'src/lib/role-policy-editor.ts', 'src/lib/jenfu-principal-request-guard.ts',
       'src/lib/jenfu-principal-published-grant-validation.ts',
@@ -133,12 +135,13 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
   assert.ok(custom, 'ACTUAL_PDM_CUSTOM_CREATION_REQUIRED')
 
   const runtimeUrl = `postgresql://jenfu_orgmaster_runtime@${handle.host}:${handle.port}/${handle.databaseName}`
-  const names = ['ORGMASTER_PERSISTENCE_MODE', 'ORGMASTER_POSTGRES_URL', 'ORGMASTER_POSTGRES_POOL_MAX', 'DEV010_N2_RUN_ID']
+  const names = ['ORGMASTER_PERSISTENCE_MODE', 'ORGMASTER_POSTGRES_URL', 'ORGMASTER_POSTGRES_POOL_MAX', 'DEV010_N2_RUN_ID', 'ORGMASTER_GOVERNANCE_DATA_DIR']
   const previousEnvironment = Object.fromEntries(names.map(name => [name, process.env[name]]))
   process.env.ORGMASTER_PERSISTENCE_MODE = 'cloud-sql'
   process.env.ORGMASTER_POSTGRES_URL = runtimeUrl
   process.env.ORGMASTER_POSTGRES_POOL_MAX = '1'
   process.env.DEV010_N2_RUN_ID = 'dev058-org-http-writer'
+  process.env.ORGMASTER_GOVERNANCE_DATA_DIR = path.join(handle.taskRoot, 'role-capability-state')
   const observer = admin
   let server, httpPort, httpStartToken, httpRegistered=false
   try {
@@ -152,7 +155,11 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
     const target = { id: 'native-target-link', employeeId: 'employee-native-target', principalId: 'principal-native-target', issuer: 'https://securetoken.google.com/task-owned-native', subject: 'subject-native-target', status: 'active', validFrom: now, validTo: null }
     const delegatedTarget = { ...target, id: 'native-delegate-link', employeeId: 'employee-native-delegate',
       principalId: 'principal-native-delegate', issuer: 'issuer-native-delegate', subject: 'subject-native-delegate' }
-    const links = [{ ...manager.link, validTo: null }, target, delegatedTarget]
+    const privilegedTarget = { ...target, id: 'native-privileged-link', employeeId: 'employee-native-privileged',
+      principalId: 'principal-native-privileged', issuer: 'issuer-native-privileged', subject: 'subject-native-privileged' }
+    const links = [{ ...manager.link, validTo: null }, target, delegatedTarget, privilegedTarget]
+    const accountTypeByPrincipal = new Map([[manager.link.principalId, 'human_privileged'], [privilegedTarget.principalId, 'human_privileged'],
+      [target.principalId, 'human_personal'], [delegatedTarget.principalId, 'human_personal']])
     const state = structuredClone(screenshot.screenshotOrganizationState)
     for (const link of links) state.employees.push({ ...structuredClone(state.employees[0]), id: link.employeeId, name: '隔離驗證人員', status: 'active', departmentIds: [], primaryAssignmentId: null })
     const delegationSourceEmployeeId = 'employee-native-delegation-source'
@@ -164,7 +171,7 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
     governance.draft.identityLinks = links
     governance.draft.principalAdmissions = links.map((link, index) => ({ id: 'native-admission-' + index,
       identityLinkId: link.id, principalFingerprintSha256: admission.principalFingerprintSha256(link.issuer, link.subject),
-      issuerFingerprintSha256: admission.issuerFingerprintSha256(link.issuer), accountType: index === 0 ? 'human_privileged' : 'human_personal',
+      issuerFingerprintSha256: admission.issuerFingerprintSha256(link.issuer), accountType: accountTypeByPrincipal.get(link.principalId),
       sharedRetirementState: 'not_applicable', status: 'active', recordedAt: now, evidenceRefSha256: digest('task-owned-native-admission-' + index) }))
     const old = await activeGovernanceArtifact(admin)
     const oldActive = old.payload.publishedVersions.find(version => version.id === old.payload.activePolicyVersionId)
@@ -178,6 +185,11 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
         roleCodeSnapshot: 'orgmaster_admin', roleNameSnapshot: 'OrgMaster 管理者', catalogVersion: null, scope: { kind: 'global' },
         status: 'active', validFrom: now, validTo: null, effectState: 'orgmaster-enforced', basis: 'manual', sources: [],
         subjectKind: 'employee', targetPrincipalId: null, createdByPrincipalId: manager.link.principalId }]
+    governance.draft.managementGrants = [{
+      id: 'native-org-manager-cross-app-override', principalId: manager.link.principalId, employeeId: manager.link.employeeId,
+      applicationId: 'ai-pdm', capability: 'orgmaster.cross_app_override', status: 'active', validFrom: now, validTo: null,
+      grantedByPrincipalId: 'bootstrap-fixture', reason: 'native dedicated privileged operator baseline',
+    }]
     await admin.query('BEGIN')
     for (const [key, payload] of [['orgmaster-workspace.v1.json', manifest], ['orgmaster-versions/current.json', workspaceDocument]]) {
       const hash = digest(commands.canonicalJson(payload))
@@ -186,9 +198,9 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
           AND batch_id=(SELECT active_batch_id FROM orgmaster_core.persistence_authority WHERE singleton)`,
       [JSON.stringify(payload), hash, Buffer.byteLength(JSON.stringify(payload)), key])).rowCount, 1)
     }
-    for (const link of [target, delegatedTarget]) {
+    for (const link of [target, delegatedTarget, privilegedTarget]) {
       await admin.query(`INSERT INTO orgmaster_core.principal_ownership_reservations(principal_id,employee_id,account_type,first_seen_at,source_revision)
-        VALUES($1,$2,'human_personal',$3,'native-target-baseline')`, [link.principalId, link.employeeId, now])
+        VALUES($1,$2,$3,$4,'native-target-baseline')`, [link.principalId, link.employeeId, accountTypeByPrincipal.get(link.principalId), now])
       await admin.query(`INSERT INTO orgmaster_core.principal_identity_reservations(principal_issuer,principal_subject,employee_id,first_seen_at,source_kind,source_revision,principal_id)
         VALUES($1,$2,$3,$4,'legacy','native-target-baseline',$5)`, [link.issuer, link.subject, link.employeeId, now, link.principalId])
       await admin.query('INSERT INTO platform_contract.task_owned_principal_auth_state(principal_id) VALUES($1)', [link.principalId])
@@ -293,11 +305,12 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
     const baselineId = 'actual-http-publication-and-admitted-pdm-target-positive'
     const targetSessions = new Map()
     const trustPolicy = { enabled: false, domains: [], allowAal1PrivilegedPilot: false }
-    const decisionFor = link => requestGuard.withVerifiedJenfuPrincipalRequest({ ...targetSessions.get(link.principalId),
+    const decisionFor = (link, permissionCode = 'pdm.drawing.view') => requestGuard.withVerifiedJenfuPrincipalRequest({ ...targetSessions.get(link.principalId),
       identityIssuer: link.issuer, trustPolicy, database: client },
     (snapshot, actor) => permissionService.evaluatePrincipalResourcePermissionsInSnapshot(snapshot, actor,
-      [{ permissionKind: 'action', permissionCode: 'pdm.drawing.view' }], { workspaceCode: 'company-jenfu' }))
+      [{ permissionKind: 'action', permissionCode }], { workspaceCode: 'company-jenfu' }))
     const targetDecision = () => decisionFor(target)
+    const privilegedAdminDecision = () => decisionFor(privilegedTarget, 'settings.admin_matrix')
     const { JenfuEntitlementRepositoryError } = await imp(pdmRoot, 'src/lib/repositories/jenfu-entitlement-repository.ts')
     const assertNoPublishedGrant = link => assert.rejects(() => decisionFor(link), error =>
       error instanceof JenfuEntitlementRepositoryError && error.code === 'permission_not_granted')
@@ -305,15 +318,15 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       assignment_version::text,role_code,catalog_version,scope_kind,scope_key,valid_from,valid_until
       FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4
       WHERE principal_id=$1 AND assignment_id=$2`, [target.principalId, assignment.id])).rows
-    async function admitPdmTarget(link, email) {
+    async function admitPdmTarget(link, email, accountType = 'human_personal', assuranceLevel = 'aal1') {
       const typed = (await admin.query(`SELECT mapping_version::text,published_at
         FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_id=$1`, [link.principalId])).rows[0]
       assert.ok(typed)
       await tx(c => c.queryOne(`SELECT ai_pdm_core.ensure_authorized_first_login_account_v1(
-        :issuer,:subject,:principal,:employee,'human_personal',CAST(:mapping AS bigint),
+        :issuer,:subject,:principal,:employee,:accountType,CAST(:mapping AS bigint),
         CAST(:published AS timestamptz),:email) AS account`, { issuer: link.issuer, subject: link.subject,
         principal: link.principalId, employee: link.employeeId, mapping: typed.mapping_version,
-        published: new Date(typed.published_at).toISOString(), email }))
+        published: new Date(typed.published_at).toISOString(), email, accountType }))
       const profile = (await admin.query('SELECT * FROM ai_pdm_core.principal_accounts WHERE principal_id=$1', [link.principalId])).rows[0]
       const keyRing = { issuer: 'task-owned-native', audience: 'ai-pdm', currentKeyId: 'native-key',
         keys: { 'native-key': crypto.randomBytes(32).toString('hex') } }
@@ -321,7 +334,7 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       const token = sessionTokens.issueJenfuPrincipalSession({ principalId: link.principalId,
         employeeId: link.employeeId, identityIssuer: link.issuer, identitySubject: link.subject,
         authEpoch: 0, accountLifecycleVersion: Number(profile.lifecycle_version), profileVersion: Number(profile.profile_version),
-        companyId: profile.company_id, authenticatedAt: issuedAt, assuranceLevel: 'aal1', secondFactor: null,
+        companyId: profile.company_id, authenticatedAt: issuedAt, assuranceLevel, secondFactor: assuranceLevel === 'aal2' ? 'totp' : null,
         assurancePolicyHash: assurance.principalAssurancePolicyHash(trustPolicy), maxAgeSeconds: 3600 }, keyRing, issuedAt)
       const claims = sessionTokens.verifyJenfuPrincipalSession(token, keyRing)
       await tx(c => new pdmSessions.JenfuPrincipalSessionRegistry(c).register(claims))
@@ -359,6 +372,102 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       assert.equal(delegatedDecision.allowed, true, delegatedDecision.decisionCode)
       assert.equal(delegatedDecision.roleCode, custom.roleCode)
     }, [qa16])
+
+    const qa14 = 'QA058-14-native-role-capability-source-invalidation'
+    await check(qa14, async () => {
+      const roleId = 'role-rd-manager'
+      const rolePath = '/applications/ai-pdm/role-capabilities/' + encodeURIComponent(roleId)
+      const expected = async () => {
+        const roleWorkspace = await call('GET', '/applications/ai-pdm/role-capabilities')
+        assert.equal(roleWorkspace.status, 200, JSON.stringify(roleWorkspace.body))
+        return { expectedCatalogVersion: roleWorkspace.body.catalogVersion, expectedCatalogPayloadHash: roleWorkspace.body.catalogPayloadHash,
+          expectedGovernanceRevision: roleWorkspace.body.governanceRevision, expectedOrganizationRevision: roleWorkspace.body.organizationRevision }
+      }
+      const initial = await call('GET', rolePath)
+      assert.equal(initial.status, 200, JSON.stringify(initial.body))
+      const adoptedPositionIds = ['position-management-manager', 'position-marketing-specialist']
+      const adoption = { ...await expected(), operation: 'set_position_adoptions', adoptedPositionIds,
+        baseProjectionCursor: initial.body.changeCursor, reason: 'native QA058-14 position adoption' }
+      const adoptionPreview = await call('POST', rolePath + '/preview', adoption)
+      assert.equal(adoptionPreview.status, 200, JSON.stringify(adoptionPreview.body))
+      const adoptionPublish = await call('POST', rolePath + '/publish', { ...adoption, commandId: crypto.randomUUID() })
+      assert.equal(adoptionPublish.status, 200, JSON.stringify(adoptionPublish.body))
+      assert.equal(adoptionPublish.body.receipt.receiptStatus, 'applied')
+      const afterAdoption = await call('GET', rolePath)
+      assert.deepEqual(afterAdoption.body.positions.filter(position => position.adopted).map(position => position.positionId).sort(), [...adoptedPositionIds].sort())
+
+      const sourceChange = { ...await expected(), operation: 'set_assignment_sources', changes: [{ employeeId: 'employee-youhao', positionId: 'position-management-manager', selected: true }],
+        baseProjectionCursor: afterAdoption.body.changeCursor, reason: 'native QA058-14 assignment source selection' }
+      const sourcePreview = await call('POST', rolePath + '/preview', sourceChange)
+      assert.equal(sourcePreview.status, 200, JSON.stringify(sourcePreview.body))
+      const sourcePublish = await call('POST', rolePath + '/publish', { ...sourceChange, commandId: crypto.randomUUID() })
+      assert.equal(sourcePublish.status, 200, JSON.stringify(sourcePublish.body))
+      const selectedProjection = await call('GET', rolePath)
+      const selectedEmployee = selectedProjection.body.positions.find(position => position.positionId === 'position-management-manager')?.employees.find(employee => employee.employeeId === 'employee-youhao')
+      assert.deepEqual(selectedEmployee && { sourceSelected: selectedEmployee.sourceSelected, effectiveHolder: selectedEmployee.effectiveHolder, sourceCount: selectedEmployee.sourceCount },
+        { sourceSelected: true, effectiveHolder: true, sourceCount: 1 })
+
+      const workspaceStore = await imp(orgRoot, 'server/orgmasterWorkspaceStore.ts')
+      const currentWorkspace = await workspaceStore.getWorkspaceVersion(orgRoot, 'current')
+      const expiredState = structuredClone(currentWorkspace.document.state)
+      const expired = expiredState.assignments.find(value => value.id === 'assignment-management-manager-youhao')
+      assert.ok(expired, 'QA058-14-SOURCE_ASSIGNMENT_MUST_EXIST')
+      expired.validTo = '2026-01-02'
+      expiredState.employees.find(employee => employee.id === 'employee-youhao').primaryAssignmentId = 'assignment-marketing-specialist-youhao'
+      const expiredDocument = documentStorage.createOrgDocumentFile(expiredState, 'document', currentWorkspace.document.savedAt)
+      await workspaceStore.saveWorkspaceVersion(orgRoot, 'current', expiredDocument, currentWorkspace.version.revision, 'current-maintenance', manager.link.principalId)
+
+      const afterSourceExpiry = await call('GET', rolePath)
+      const survivingEmployee = afterSourceExpiry.body.positions.find(position => position.positionId === 'position-marketing-specialist')?.employees.find(employee => employee.employeeId === 'employee-youhao')
+      assert.deepEqual(survivingEmployee && { sourceSelected: survivingEmployee.sourceSelected, effectiveHolder: survivingEmployee.effectiveHolder, sourceCount: survivingEmployee.sourceCount },
+        { sourceSelected: false, effectiveHolder: false, sourceCount: 0 })
+      const configuredStateDirectory = process.env.ORGMASTER_GOVERNANCE_DATA_DIR?.trim()
+      const statePath = path.resolve(orgRoot, configuredStateDirectory || 'data', 'ai-pdm-role-capability.v1.json')
+      const persisted = JSON.parse(readFileSync(statePath, 'utf8'))
+      assert.deepEqual(persisted.assignmentSourcesByRole[roleId], [{ employeeId: 'employee-youhao', positionId: 'position-management-manager' }])
+    }, [baselineId])
+
+    const qa22 = 'QA058-22-native-dedicated-system-admin-exact-principal'
+    await check(qa22, async () => {
+      const current = await store.readExistingGovernanceStore(orgRoot)
+      const privilegedAdmission = current.document.draft.principalAdmissions.find(value => value.identityLinkId === privilegedTarget.id)
+      assert.ok(privilegedAdmission, 'QA058-22-PRIVILEGED_ADMISSION_MUST_EXIST')
+      const bound = await binding()
+      const expected = { catalogVersion: bound.expectedCatalog.catalogVersion, catalogPayloadHash: bound.expectedCatalog.catalogSha256,
+        governanceRevision: bound.expectedRevision, organizationRevision: bound.expectedOrganizationRevision }
+      const request = { contractVersion: 'orgmaster.privileged-assignment-operation.v1', phase: 'preview', operation: 'grant_system_admin',
+        applicationId: 'ai-pdm', stableRoleId: 'role-system-admin',
+        payload: { employeeId: privilegedTarget.employeeId, principalAdmissionId: privilegedAdmission.id }, expected,
+        reason: 'native QA058-22 exact Principal dedicated grant' }
+      const preview = await call('POST', '/privileged-assignments/preview', request)
+      assert.equal(preview.status, 200, JSON.stringify(preview.body))
+      assert.equal(preview.body.operation, 'grant_system_admin')
+      const commandId = crypto.randomUUID()
+      const published = await call('POST', '/privileged-assignments/publish', { ...request, phase: 'publish', commandId,
+        requestHash: preview.body.requestHash, preview: preview.body.preview })
+      assert.equal(published.status, 200, JSON.stringify(published.body))
+      assert.equal(published.body.receiptStatus, 'applied')
+
+      const orgReadback = await call('GET', '/privileged-assignments?applicationId=ai-pdm&stableRoleId=role-system-admin')
+      assert.equal(orgReadback.status, 200, JSON.stringify(orgReadback.body))
+      assert.ok(orgReadback.body.assignments.some(value => value.employeeId === privilegedTarget.employeeId && value.status === 'active'))
+      const grants = (await orgRuntime.query(`SELECT principal_id,grant_kind,assignment_id,role_code,scope_kind,scope_key
+        FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4
+        WHERE principal_id=$1 AND role_code='system_admin'`, [privilegedTarget.principalId])).rows
+      assert.equal(grants.length, 1)
+      assert.deepEqual(grants[0], { principal_id: privilegedTarget.principalId, grant_kind: 'direct', assignment_id: grants[0].assignment_id,
+        role_code: 'system_admin', scope_kind: 'global', scope_key: null })
+
+      await admitPdmTarget(privilegedTarget, 'native-privileged@example.test', 'human_privileged', 'aal2')
+      const [allowed] = await privilegedAdminDecision()
+      assert.equal(allowed.allowed, true, allowed.decisionCode)
+      assert.equal(allowed.roleCode, 'system_admin')
+      assert.equal(allowed.assignmentId, grants[0].assignment_id)
+      const [differentPrincipal] = await decisionFor(target, 'settings.admin_matrix')
+      assert.equal(differentPrincipal.allowed, false, differentPrincipal.decisionCode)
+      assert.equal(differentPrincipal.decisionCode, 'permission_not_granted')
+      assert.equal(differentPrincipal.roleCode, null)
+    }, [baselineId])
 
     await check('QA058-24-org-http-outage-pdm-business-read', async () => {
       const profile = (await admin.query('SELECT pdm_user_id FROM ai_pdm_core.principal_accounts WHERE principal_id=$1', [target.principalId])).rows[0]

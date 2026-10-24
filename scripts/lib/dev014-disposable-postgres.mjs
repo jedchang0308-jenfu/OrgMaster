@@ -147,6 +147,10 @@ function validateStartOptions(options, environment) {
 }
 
 export function createDisposablePostgresManager(overrides = {}) {
+  const maxConnections = overrides.maxConnections ?? 8
+  if (!Number.isSafeInteger(maxConnections) || maxConnections < 8 || maxConnections > 64) {
+    throw codedError('DISPOSABLE_POSTGRES_CONNECTION_LIMIT_INVALID', 'The task connection limit must be an integer from 8 to 64.')
+  }
   const deps = {
     environment: overrides.environment ?? process.env,
     tempDir: overrides.tempDir ?? (() => os.tmpdir()),
@@ -331,7 +335,7 @@ export function createDisposablePostgresManager(overrides = {}) {
       const serverOptions = [
         `-p ${state.port}`,
         '-h 127.0.0.1',
-        '-c max_connections=8',
+        `-c max_connections=${maxConnections}`,
         '-c shared_buffers=16MB',
         '-c max_wal_size=64MB',
         '-c min_wal_size=32MB',

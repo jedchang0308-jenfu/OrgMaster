@@ -13,6 +13,24 @@ const GOVERNOR = 'C:/Users/user/.codex/skills/ai-dev-resource-governor/scripts/r
 const POSTGRES18_BIN = 'C:/Program Files/PostgreSQL/18/bin'
 const PDM_ROLES = Object.freeze({ migrator: 'jenfu_ai_pdm_migrator', runtime: 'jenfu_ai_pdm_runtime' })
 const ORG_ROLES = Object.freeze({ migrator: 'jenfu_orgmaster_migrator', runtime: 'jenfu_orgmaster_runtime' })
+const PLATFORM_ROLES = Object.freeze({
+  migrator: 'jenfu_platform_migrator',
+  runtime: 'jenfu_platform_runtime',
+  login: 'platform-prod-runtime@jenfu-platform-prod.iam',
+})
+const PLATFORM_MIGRATION_NAMES = Object.freeze([
+  '001_platform_auth_epoch_and_portal_sessions.sql',
+  '002_dev005_employee_auth_epoch_invalidation.sql',
+  '003_dev010_platform_contract_producer.sql',
+  '004_dev010_orgmaster_consumer.sql',
+  '005_dev013_sso_handoff_and_auth_state.sql',
+  '006_dev014_global_invalidation_consumer.sql',
+  '007_dev014_managed_login_intents.sql',
+  '008_dev014_platform_authority_switch_contract.sql',
+  '009_dev015_principal_auth_state.sql',
+  '010_dev015_principal_auth_contract_manifest.sql',
+  '011_dev014_principal_lifecycle_receipt_v2.sql',
+])
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -22,6 +40,61 @@ function requireRoot(name) {
   const value = process.env[name]
   if (!value || !path.isAbsolute(value)) throw new Error(`${name}_ABSOLUTE_PATH_REQUIRED`)
   return fs.realpathSync(value)
+}
+
+function resolvePlatformRoot(options = {}) {
+  if (options === null || typeof options !== 'object' || Array.isArray(options)) {
+    throw new TypeError('OPTIONS_OBJECT_REQUIRED')
+  }
+  const value = Object.hasOwn(options, 'platformRoot') ? options.platformRoot : process.env.PLATFORM_DEV058_ROOT
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value !== 'string' || !path.isAbsolute(value)) throw new Error('PLATFORM_DEV058_ROOT_ABSOLUTE_PATH_REQUIRED')
+  const requestedRoot = path.resolve(value)
+  const root = fs.realpathSync(requestedRoot)
+  const marker = path.join(root, 'AGENTS.md')
+  const migrations = path.join(root, 'db', 'migrations')
+  const assertRegular = (candidate, code) => {
+    const stat = fs.lstatSync(candidate)
+    if (!stat.isFile() || stat.isSymbolicLink() || !samePath(fs.realpathSync(candidate), candidate)) throw new Error(code)
+  }
+  const rootStat = fs.lstatSync(root)
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || !samePath(requestedRoot, root)) {
+    throw new Error('PLATFORM_DEV058_ROOT_DIRECTORY_REJECTED')
+  }
+  assertRegular(marker, 'PLATFORM_DEV058_ROOT_MARKER_REJECTED')
+  const migrationStat = fs.lstatSync(migrations)
+  if (!migrationStat.isDirectory() || migrationStat.isSymbolicLink() || !samePath(fs.realpathSync(migrations), migrations)) {
+    throw new Error('PLATFORM_DEV058_ROOT_MIGRATIONS_REJECTED')
+  }
+  return root
+}
+
+function samePath(left, right) {
+  const a = path.resolve(left)
+  const b = path.resolve(right)
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+}
+
+function readPlatformMigrations(platformRoot) {
+  return PLATFORM_MIGRATION_NAMES.map((name, index) => {
+    const sourcePath = path.join(platformRoot, 'db', 'migrations', name)
+    const stat = fs.lstatSync(sourcePath)
+    if (!stat.isFile() || stat.isSymbolicLink() || !samePath(fs.realpathSync(sourcePath), sourcePath)) {
+      throw new Error(`PLATFORM_MIGRATION_SOURCE_REJECTED:${name}`)
+    }
+    const bytes = fs.readFileSync(sourcePath)
+    return Object.freeze({
+      index: index + 1,
+      name,
+      relativePath: `db/migrations/${name}`,
+      bytes,
+      sourceSha256: sha256(bytes),
+    })
+  })
+}
+
+function runtimeConnectionUrl(handle, user) {
+  return `postgresql://${encodeURIComponent(user)}@${handle.host}:${handle.port}/${handle.databaseName}?sslmode=disable`
 }
 
 function requireGovernorSession() {
@@ -215,7 +288,8 @@ async function preparePdmLegacyLedger(client, packageValue) {
   [entry.version, entry.name, entry.checksum])
 }
 
-async function createBaseDatabase(admin, pdmConfig) {
+async function createBaseDatabase(admin, pdmConfig, { platformRoot = null } = {}) {
+  const hasActualPlatform = platformRoot !== null
   await admin.query('CREATE EXTENSION IF NOT EXISTS pgcrypto')
   await admin.query(`DO $roles$
     BEGIN
@@ -229,6 +303,16 @@ async function createBaseDatabase(admin, pdmConfig) {
       CREATE ROLE jenfu_workspace NOLOGIN;
     END
   $roles$`)
+  if (hasActualPlatform) {
+    await admin.query(`CREATE ROLE "${PLATFORM_ROLES.login}" LOGIN;
+      GRANT ${PLATFORM_ROLES.runtime} TO "${PLATFORM_ROLES.login}";
+      CREATE SCHEMA platform_core AUTHORIZATION jenfu_platform_migrator;
+      DO $database_owner_bootstrap$
+      BEGIN
+        EXECUTE format('GRANT CREATE ON DATABASE %I TO jenfu_platform_migrator', current_database());
+      END
+      $database_owner_bootstrap$`)
+  }
   await admin.query(`CREATE SCHEMA ai_pdm_core AUTHORIZATION jenfu_ai_pdm_migrator;
     CREATE SCHEMA ai_pdm_contract AUTHORIZATION jenfu_ai_pdm_migrator;
     CREATE SCHEMA ai_pdm_legacy_stage AUTHORIZATION jenfu_ai_pdm_migrator;
@@ -237,39 +321,39 @@ async function createBaseDatabase(admin, pdmConfig) {
     CREATE SCHEMA orgmaster AUTHORIZATION jenfu_orgmaster_migrator;
     CREATE SCHEMA organization AUTHORIZATION jenfu_orgmaster_migrator;
     CREATE SCHEMA access_governance AUTHORIZATION jenfu_orgmaster_migrator;
-    CREATE SCHEMA platform_contract AUTHORIZATION jenfu_platform_migrator;
-    -- Synthetic Platform contract fixture for this task-owned cluster only;
-    -- it is not Platform SSO, L4, or a production identity source.
-    CREATE TABLE platform_contract.task_owned_manifest_fixture (
-      contract_id text PRIMARY KEY, contract_version text NOT NULL,
-      signature_sha256 char(64) NOT NULL, payload_sha256 char(64));
-    ALTER TABLE platform_contract.task_owned_manifest_fixture OWNER TO jenfu_platform_migrator;
-    CREATE VIEW platform_contract.v_contract_manifest_v1 AS
-      SELECT contract_id,contract_version,signature_sha256,payload_sha256 FROM platform_contract.task_owned_manifest_fixture;
-    ALTER VIEW platform_contract.v_contract_manifest_v1 OWNER TO jenfu_platform_migrator;
-    CREATE TABLE platform_contract.task_owned_principal_auth_state (
-      principal_id text PRIMARY KEY, auth_epoch bigint NOT NULL DEFAULT 0,
-      revoked_before timestamptz NULL, version bigint NOT NULL DEFAULT 1);
-    ALTER TABLE platform_contract.task_owned_principal_auth_state OWNER TO jenfu_platform_migrator;
-    CREATE OR REPLACE FUNCTION platform_contract.read_principal_auth_state_v3(p_principal_id text)
-    RETURNS TABLE(principal_id text, auth_epoch bigint, revoked_before timestamptz, version bigint)
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path = platform_contract, pg_catalog
-    AS $function$
-      SELECT state.principal_id, state.auth_epoch, state.revoked_before, state.version
-      FROM task_owned_principal_auth_state state
-      WHERE state.principal_id = p_principal_id
-    $function$;
-    ALTER FUNCTION platform_contract.read_principal_auth_state_v3(text) OWNER TO jenfu_platform_migrator;
-    REVOKE ALL ON FUNCTION platform_contract.read_principal_auth_state_v3(text) FROM PUBLIC;
-    GRANT USAGE ON SCHEMA platform_contract TO jenfu_ai_pdm_migrator, jenfu_orgmaster_migrator, jenfu_ai_pdm_runtime, jenfu_orgmaster_runtime;
-    GRANT SELECT ON platform_contract.v_contract_manifest_v1 TO jenfu_ai_pdm_migrator;
-    GRANT EXECUTE ON FUNCTION platform_contract.read_principal_auth_state_v3(text)
-      TO jenfu_ai_pdm_migrator, jenfu_ai_pdm_runtime, jenfu_orgmaster_migrator, jenfu_orgmaster_runtime`)
-  await admin.query(`INSERT INTO platform_contract.task_owned_manifest_fixture
-    (contract_id,contract_version,signature_sha256,payload_sha256) VALUES($1,$2,$3,NULL)`,
-  [pdmConfig.migration.requiredDependency.contractId, pdmConfig.migration.requiredDependency.contractVersion,
-    pdmConfig.migration.requiredDependency.signatureSha256])
+    CREATE SCHEMA platform_contract AUTHORIZATION jenfu_platform_migrator;`)
+  if (!hasActualPlatform) {
+    await admin.query(`CREATE TABLE platform_contract.task_owned_manifest_fixture (
+        contract_id text PRIMARY KEY, contract_version text NOT NULL,
+        signature_sha256 char(64) NOT NULL, payload_sha256 char(64));
+      ALTER TABLE platform_contract.task_owned_manifest_fixture OWNER TO jenfu_platform_migrator;
+      CREATE VIEW platform_contract.v_contract_manifest_v1 AS
+        SELECT contract_id,contract_version,signature_sha256,payload_sha256 FROM platform_contract.task_owned_manifest_fixture;
+      ALTER VIEW platform_contract.v_contract_manifest_v1 OWNER TO jenfu_platform_migrator;
+      CREATE TABLE platform_contract.task_owned_principal_auth_state (
+        principal_id text PRIMARY KEY, auth_epoch bigint NOT NULL DEFAULT 0,
+        revoked_before timestamptz NULL, version bigint NOT NULL DEFAULT 1);
+      ALTER TABLE platform_contract.task_owned_principal_auth_state OWNER TO jenfu_platform_migrator;
+      CREATE OR REPLACE FUNCTION platform_contract.read_principal_auth_state_v3(p_principal_id text)
+      RETURNS TABLE(principal_id text, auth_epoch bigint, revoked_before timestamptz, version bigint)
+      LANGUAGE sql STABLE SECURITY DEFINER
+      SET search_path = platform_contract, pg_catalog
+      AS $function$
+        SELECT state.principal_id, state.auth_epoch, state.revoked_before, state.version
+        FROM task_owned_principal_auth_state state
+        WHERE state.principal_id = p_principal_id
+      $function$;
+      ALTER FUNCTION platform_contract.read_principal_auth_state_v3(text) OWNER TO jenfu_platform_migrator;
+      REVOKE ALL ON FUNCTION platform_contract.read_principal_auth_state_v3(text) FROM PUBLIC;
+      GRANT USAGE ON SCHEMA platform_contract TO jenfu_ai_pdm_migrator, jenfu_orgmaster_migrator, jenfu_ai_pdm_runtime, jenfu_orgmaster_runtime;
+      GRANT SELECT ON platform_contract.v_contract_manifest_v1 TO jenfu_ai_pdm_migrator;
+      GRANT EXECUTE ON FUNCTION platform_contract.read_principal_auth_state_v3(text)
+        TO jenfu_ai_pdm_migrator, jenfu_ai_pdm_runtime, jenfu_orgmaster_migrator, jenfu_orgmaster_runtime`)
+    await admin.query(`INSERT INTO platform_contract.task_owned_manifest_fixture
+      (contract_id,contract_version,signature_sha256,payload_sha256) VALUES($1,$2,$3,NULL)`,
+    [pdmConfig.migration.requiredDependency.contractId, pdmConfig.migration.requiredDependency.contractVersion,
+      pdmConfig.migration.requiredDependency.signatureSha256])
+  }
 }
 
 async function createLedgers(pdmOwner, orgOwner) {
@@ -293,12 +377,14 @@ function gitHead(root) {
   return value
 }
 
-export async function withDev058Dev123Database(evaluate) {
+export async function withDev058Dev123Database(evaluate, options = {}) {
   if (typeof evaluate !== 'function') throw new TypeError('EVALUATE_CALLBACK_REQUIRED')
   const pdmRoot = requireRoot('PDM_DEV123_ROOT')
   const orgRoot = ORG_ROOT
+  const platformRoot = resolvePlatformRoot(options)
+  const platformMigrations = platformRoot ? readPlatformMigrations(platformRoot) : []
   const session = requireGovernorSession()
-  const manager = createDisposablePostgresManager({ environment: safePostgresEnvironment() })
+  const manager = createDisposablePostgresManager({ environment: safePostgresEnvironment(), maxConnections: options.maxConnections })
   let handle
   let registered = false
   let governorStartToken = null
@@ -332,9 +418,28 @@ export async function withDev058Dev123Database(evaluate) {
     const orgPackage = buildOrgmasterPackage()
     const pdmRevision = gitHead(pdmRoot)
     const orgRevision = gitHead(orgRoot)
+    const platformRevision = platformRoot ? gitHead(platformRoot) : null
 
-    await createBaseDatabase(admin, pdmConfig)
+    await createBaseDatabase(admin, pdmConfig, { platformRoot })
     await createLedgers(pdmOwner, orgOwner)
+    async function applyPlatform(item) {
+      const ledgerEntries = item.index === 3 ? platformMigrations.slice(0, 3) : item.index < 3 ? [] : [item]
+      await applyOwnedSql(pdmOwner, PLATFORM_ROLES.migrator, item.bytes.toString('utf8'),
+        `Platform owner migration ${item.relativePath}`, async () => {
+          for (const entry of ledgerEntries) {
+            await pdmOwner.query(`INSERT INTO platform_core.schema_migrations(version,name,checksum_sha256,source_revision)
+              VALUES($1,$2,$3,$4)`, [entry.name.slice(0, 3), entry.name.slice(4, -4), entry.sourceSha256, platformRevision])
+          }
+        }, item.index === 8 ? async () => {
+          // Historical authority-switch bodies reference retired compatibility
+          // relations. Preserve the original SQL without giving Platform access
+          // to OrgMaster core; this unused body is not part of the SSO proof.
+          await pdmOwner.query('SET LOCAL check_function_bodies = off')
+        } : null)
+    }
+    if (platformRoot) {
+      for (const item of platformMigrations.slice(0, 3)) await applyPlatform(item)
+    }
     async function applyPdm(item) {
       if (item.sourcePath.includes('/066_')) await seedDev121V3Catalog(pdmOwner, v3Catalog)
       await applyOwnedSql(pdmOwner, PDM_ROLES.migrator, item.sql, `AI-PDM owner prefix ${item.sourcePath}`, async () => {
@@ -353,7 +458,7 @@ export async function withDev058Dev123Database(evaluate) {
     const orgMigrations = fs.readdirSync(orgMigrationRoot)
       .filter(name => /^0(1[1-9]|2[0-9]|3[01]|3[45])_.*\.sql$/u.test(name)).sort()
     const deferredOrgMigrations = orgMigrations.filter(name => name.startsWith('034_') || name.startsWith('035_'))
-    for (const name of orgMigrations.filter(name => !deferredOrgMigrations.includes(name))) {
+    async function applyOrgMigration(name) {
       if (name.startsWith('012_')) await seedDev014Persistence(orgOwner)
       const bytes = fs.readFileSync(path.join(orgMigrationRoot, name))
       await applyOwnedSql(orgOwner, ORG_ROLES.migrator, bytes.toString('utf8'), `OrgMaster owner migration ${name}`, async () => {
@@ -361,13 +466,17 @@ export async function withDev058Dev123Database(evaluate) {
           VALUES($1,$2,$3,$4)`, [name.slice(0, 3), name.slice(4, -4), sha256(bytes), orgRevision])
       })
     }
+    for (const name of orgMigrations.filter(name => !deferredOrgMigrations.includes(name) && !name.startsWith('031_'))) {
+      await applyOrgMigration(name)
+    }
+    if (platformRoot) {
+      for (const item of platformMigrations.slice(3, 10)) await applyPlatform(item)
+    }
+    for (const name of orgMigrations.filter(name => name.startsWith('031_'))) await applyOrgMigration(name)
+    if (platformRoot) await applyPlatform(platformMigrations[10])
     for (const item of pdmPackage.entries.slice(15)) await applyPdm(item)
     for (const name of deferredOrgMigrations) {
-      const bytes = fs.readFileSync(path.join(orgMigrationRoot, name))
-      await applyOwnedSql(orgOwner, ORG_ROLES.migrator, bytes.toString('utf8'), `OrgMaster owner migration ${name}`, async () => {
-        await orgOwner.query(`INSERT INTO orgmaster_core.schema_migrations(version,name,checksum_sha256,source_revision)
-          VALUES($1,$2,$3,$4)`, [name.slice(0, 3), name.slice(4, -4), sha256(bytes), orgRevision])
-      })
+      await applyOrgMigration(name)
     }
     const pdmPost085Root = path.join(pdmRoot, 'db', 'postgres')
     const pdmPost085 = fs.readdirSync(pdmPost085Root).filter(name => /^08[6-8]_.*\.sql$/u.test(name)).sort()
@@ -390,7 +499,42 @@ export async function withDev058Dev123Database(evaluate) {
     clients.push(orgRuntime)
     await pdmRuntime.query(`SET ROLE ${PDM_ROLES.runtime}`)
     await orgRuntime.query(`SET ROLE ${ORG_ROLES.runtime}`)
-    callbackResult = await evaluate({ admin, pdmRuntime, orgRuntime, handle, pdmRoot, orgRoot })
+    const callbackInput = { admin, pdmRuntime, orgRuntime, handle, pdmRoot, orgRoot }
+    if (platformRoot) {
+      const platformRuntime = await connectTaskClient(handle, 'codex-dev058-platform-runtime-bootstrap', PLATFORM_ROLES.login)
+      clients.push(platformRuntime)
+      await platformRuntime.query(`SET ROLE ${PLATFORM_ROLES.runtime}`)
+      const runtimeReadback = (await platformRuntime.query(`
+        SELECT session_user::text AS session_user, current_user::text AS current_user,
+          pg_has_role(session_user, $1, 'member') AS runtime_member,
+          pg_has_role(session_user, $2, 'member') AS migrator_member,
+          has_schema_privilege(current_user, 'platform_core', 'USAGE') AS platform_core_usage,
+          has_schema_privilege(current_user, 'platform_core', 'CREATE') AS platform_core_create,
+          has_table_privilege(current_user, 'platform_contract.v_contract_manifest_v1', 'SELECT') AS manifest_select,
+          has_function_privilege(current_user, 'platform_contract.read_principal_auth_state_v3(text)', 'EXECUTE') AS auth_state_execute
+      `, [PLATFORM_ROLES.runtime, PLATFORM_ROLES.migrator])).rows[0]
+      assert.deepEqual(runtimeReadback, {
+        session_user: PLATFORM_ROLES.login,
+        current_user: PLATFORM_ROLES.runtime,
+        runtime_member: true,
+        migrator_member: false,
+        platform_core_usage: true,
+        platform_core_create: false,
+        manifest_select: true,
+        auth_state_execute: true,
+      })
+      callbackInput.platformRoot = platformRoot
+      callbackInput.platformRuntime = platformRuntime
+      callbackInput.platformRuntimeUrl = runtimeConnectionUrl(handle, PLATFORM_ROLES.login)
+      callbackInput.platformRuntimeReadback = runtimeReadback
+      callbackInput.platformMigrationEvidence = Object.freeze({
+        sourceRevision: platformRevision,
+        deferredUnusedBodies: Object.freeze(['008_dev014_platform_authority_switch_contract.sql']),
+        migrations: Object.freeze(platformMigrations.map(({ index, name, relativePath, sourceSha256 }) =>
+          Object.freeze({ index, name, relativePath, sourceSha256 }))),
+      })
+    }
+    callbackResult = await evaluate(callbackInput)
   } catch (error) {
     failure = error
   } finally {
