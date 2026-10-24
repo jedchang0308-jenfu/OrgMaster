@@ -1,6 +1,6 @@
 # DEV-058：驗收與證據
 
-修訂：2026-10-24。OrgMaster DEV-058 統籌，AI-PDM DEV-123 管理角色／能力。**In Progress／Not Released**；[規格](../specs/DEV-058-federated-role-catalog-central-assignment.md)不另記進度。本文件只維護驗收目的、缺口及證據；正式操作僅限人類另行授權的 `orgmaster-prod` 034–036 相容 migration／reader部署，須先有PDM schema成功及既有release條件；不改寫人員指派、IAM或Secrets。
+修訂：2026-10-24。OrgMaster DEV-058 統籌，AI-PDM DEV-123 管理角色／能力。**In Progress／Not Released**；[規格](../specs/DEV-058-federated-role-catalog-central-assignment.md)不另記進度。本文件只維護驗收目的、缺口及證據；本輪人類明確禁止正式 migration、部署及正式資料寫入，以下舊授權／provider 結果只保留歷史事實，不作為本輪操作授權。公司 IdP 僅允許本次暫加 localhost、保留原網域並於驗證後移除，不擴張 IAM／Secret。
 
 ## 1. 最少前置與資料
 
@@ -143,3 +143,15 @@ verify的真實候選revision／digest已與smoke execution `738aeffb-b0ab-444b-
 Platform實際映像`sha256:e9903dac19e80e6dafb9e86260fd0392e4d7c2c2660c0bb33c659a4ae3018f51`的registry manifest／config原始SHA逐一核對，OCI來源為`fb70380224032ce0955867a8774c0b0fbabb2f60`，不能由revision字尾猜commit。該actual commit的session route／service／Firebase verifier／epoch及Principal repository與本機現行相應檔案一致；401仍有「runtime verifier失敗」或「auth_time不通過Principal revokedBefore」兩類可能，現有redacted log不足以區分。未取得production auth-state讀回前不宣稱根因已確認，也不以新的Secret替換或放寬barrier處理。
 
 本機r6已正常停止：退出前Platform sessions=0、PDM accounts=0，三端port及PG port釋放，PG temp清理PASS；沒有fresh SSO成功。已還原本任務Next生成檔的等價變動，source保存在Org PR153、Platform PR140及PDM PR479（draft）。Org source CI `39997762086` SUCCESS；Platform首次CI `39997785632`的fixture `NODE_ENV`型別失敗保留，最小型別修正後24 focused tests及typecheck PASS，遠端CI `39998183066` SUCCESS。PDM首次CI `39997818875`同樣因fixture型別失敗，原失敗保留；最小型別修正head `22c7b0581151787bf0b002919160f6f7af821341`的11 focused tests／typecheck:app及遠端CI `39998756789`（含isolated build）均PASS。53個adapter結果與native r25有效範圍可重用，仍不代替08／23。root負責的task-owned ADC／TLS副本清理被工具自動核准政策拒絕（只回報`blocked by policy`），目前仍在原受限Governor temp目錄；未刪除成功，不改寫原始帳密或共用憑證。
+
+### 2026-10-24 localhost 授權後的正常 SSO 續接
+
+人類已明確批准公司 IdP 暫加 `localhost`、保留原有網域並於驗證後移除；本輪禁止正式 migration、部署及正式資料寫入。Chrome 既有公司登入可讀 Firebase Console。原分頁控制失效後，沿同一 JED profile 新分頁恢復，沒有要求重登 Console；UI baseline 為原8域，實際新增後讀回9域且原8域均在。`output/qa/dev-058/company-idp-localhost-20261024-r5-intent.json`／`r5-added.json`／`r5-added.png` 記錄本任務只新增 localhost。本輪未能通過 ADC 前置，先只移除此項；重新載入 Console 後讀回原8域完整保留、localhost不存在，見 `r5-cleanup.json`／`r5-cleanup.png`，`cleanupPending=false`。後續正常旅程續接時可依同一人類授權按需重加並於末端再移除，不把本次清理當成 SSO 驗證完成。
+
+本機 runtime r7 在啟動 PG／三端之前的 FirebaseAdmin `getUser` 唯讀前置失敗：`app/invalid-credential`、底層400，包含 `invalid_grant` 與明確重新驗證訊號；沒有 fresh session、PDM account 或業務寫入。原始失敗保存於 `local-sso-runtime-20261024-r7.jsonl`，安全診斷為 `local-sso-credential-precondition-20261024-r7.json`，不保存 provider 原訊息或憑證。已開啟同一公司身分、既有 cloud-platform 範圍的 ADC 重新驗證，只更新本任務受限 temp 的私有副本；Google「驗證您的身分」頁交由人類輸入既有密碼，原授權帳密檔本輪實讀僅有另外兩對帳密。既有 Console 登入與伺服器 ADC 是不同前置，不把此失敗歸因為 PDM／OrgMaster 產品功能或正式401的已知根因。
+
+人類回覆已完成後，實際 UI 仍停在密碼頁；下一步顯示「請輸入密碼」，沒有送出猜測帳密。03:17 UTC唯讀檢查亦未收到 callback、私有 ADC 檔未更新，已提供同一分頁位置與安全截圖再次交接，不據人類回覆直接改成 PASS。保留 task-owned Google callback PID31276／port8085及其受限 temp，以便完成同一流程；原始 fingerprint 與清理責任見 `local-adc-reauth-runtime-20261024-r7.json`，由本任務於完成／取消後停止並確認port釋放。整合驗證lease已於r7失敗後釋放，三端port11000／13000／15000無本輪listener。
+
+QA058 原24目的維持21 PASS／2 PARTIAL／1 BLOCKED；02／23的正常畫面、08與PDM29／52的正常雙邊旅程仍待實證，其餘適用證據重用。未變更產品、未重跑已充分驗證的 native／adapter 分母；同時保留正式 reader 未發布與 PDM writer 等待的缺口，不由文件完成宣稱產品交付。
+
+08的 ordinary custom 正例不要求另一個真人：可由合法 manager 正常配給自身 Employee，但須排除原 PDM `system_admin` 等重疊 Allow，取得同一 protected operation 的拒絕→custom 任用發布後 Allow及對應 scope／grant。現有 baseline 含 PDM 管理權，不得直接把 manager 的200算成 custom 生效；可於 editor 檢查後在隔離環境正常撤除該 PDM grant，保留獨立 Org 管理權，再驗配人。特權自授禁止與獨立 reviewer/no-self 仍依各自原案例驗證，不擴為所有任用必須雙人的新要求。
