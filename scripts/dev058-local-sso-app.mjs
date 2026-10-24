@@ -178,6 +178,19 @@ async function closeNodeServer(server) {
   })
 }
 
+export function restoreGeneratedFileIfUnchanged(filePath, beforeBytes, generatedBytes) {
+  let currentBytes
+  try {
+    currentBytes = fs.readFileSync(filePath)
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+  if (!currentBytes.equals(generatedBytes)) return false
+  if (!currentBytes.equals(beforeBytes)) fs.writeFileSync(filePath, beforeBytes)
+  return true
+}
+
 async function loadNextRuntime(input) {
   phase = 'next-modules'
   const nextRoot = path.join(input.root, 'node_modules', 'next')
@@ -188,6 +201,8 @@ async function loadNextRuntime(input) {
   const distExisted = fs.existsSync(dist.resolved)
   const nextEnvPath = path.join(input.root, 'next-env.d.ts')
   const nextEnvBefore = fs.readFileSync(nextEnvPath)
+  const tsconfigPath = path.join(input.root, 'tsconfig.json')
+  const tsconfigBefore = fs.readFileSync(tsconfigPath)
   const loadConfig = configModule.default.default ?? configModule.default
   phase = 'next-config'
   const conf = await loadConfig(constantsModule.PHASE_DEVELOPMENT_SERVER, input.root, { silent: true })
@@ -222,6 +237,7 @@ async function loadNextRuntime(input) {
     throw fail('DEV058_NEXT_CONFIG_NOT_APPLIED')
   }
   const nextEnvGenerated = fs.readFileSync(nextEnvPath)
+  const tsconfigGenerated = fs.readFileSync(tsconfigPath)
   const upgradeHandler = nextApp.getUpgradeHandler()
   phase = 'next-https'
   const httpsServer = https.createServer({ cert: fs.readFileSync(input.certPath), key: fs.readFileSync(input.keyPath) }, (request, response) => {
@@ -244,7 +260,8 @@ async function loadNextRuntime(input) {
       await nextApp.close()
       httpsServer.closeAllConnections?.()
       await closeNodeServer(httpsServer)
-      if (fs.readFileSync(nextEnvPath).equals(nextEnvGenerated)) fs.writeFileSync(nextEnvPath, nextEnvBefore)
+      restoreGeneratedFileIfUnchanged(nextEnvPath, nextEnvBefore, nextEnvGenerated)
+      restoreGeneratedFileIfUnchanged(tsconfigPath, tsconfigBefore, tsconfigGenerated)
       const cleanup = taskCleanupPath(input.root, dist.resolved, distExisted)
       if (cleanup) await fs.promises.rm(cleanup, { recursive: true, force: true })
     },
