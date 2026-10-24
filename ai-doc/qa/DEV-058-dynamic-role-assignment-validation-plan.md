@@ -155,3 +155,9 @@ Platform實際映像`sha256:e9903dac19e80e6dafb9e86260fd0392e4d7c2c2660c0bb33c65
 QA058 原24目的維持21 PASS／2 PARTIAL／1 BLOCKED；02／23的正常畫面、08與PDM29／52的正常雙邊旅程仍待實證，其餘適用證據重用。未變更產品、未重跑已充分驗證的 native／adapter 分母；同時保留正式 reader 未發布與 PDM writer 等待的缺口，不由文件完成宣稱產品交付。
 
 08的 ordinary custom 正例不要求另一個真人：可由合法 manager 正常配給自身 Employee，但須排除原 PDM `system_admin` 等重疊 Allow，取得同一 protected operation 的拒絕→custom 任用發布後 Allow及對應 scope／grant。現有 baseline 含 PDM 管理權，不得直接把 manager 的200算成 custom 生效；可於 editor 檢查後在隔離環境正常撤除該 PDM grant，保留獨立 Org 管理權，再驗配人。特權自授禁止與獨立 reviewer/no-self 仍依各自原案例驗證，不擴為所有任用必須雙人的新要求。
+
+續接結果（03:24 UTC起，取代上述「仍等密碼」現況）：人類送出密碼後，Google 已進入既有存取範圍確認與 CLI 驗證完成頁。首次私有 ADC 更新仍 exit1，錯誤為 `None could not be converted to bytes`；已核對已安裝 gcloud 原碼，指定帳號時會解析 ID token，而這次只要求 cloud-platform scope。r8改用標準不帶 ACCOUNT 的登入並在 Google UI 選同一 Jed，OAuth scope完全不變，CLI exit0／私有憑證成功存檔；再恢復原有 quota project 本機欄位後，r9 `getUser` PASS，Email已驗證、未停用、Google provider符合原baseline，見 `local-sso-credential-precondition-20261024-r9.json`。原r7／r8前置失敗保留；未擴 IAM、Secret 或 OAuth scope，未修改共用 ADC。兩次 Google callback process均已退出、Governor runtime release、port8085釋放。
+
+`local-sso-runtime-20261024-r9.jsonl` 記錄真隔離 PG及三端 listening；實際 Platform migrations=11，沒有seed session、PDM account或欲驗custom任用。三端來源在登入前保存於 `local-sso-source-r9-observed.json`，Org=`8bd0f66`／Platform=`b5e8fd6`／PDM=`f5d4a13`，文件與generated next-env排除，不把HEAD差異當產品漂移。依原授權再次暫加 localhost，r6 intent／added原件確認9域、原8域完整保留；r5 cleanup只代表前次暫加已移除，不能移用為r6清理完成。
+
+目前三個正常入口皆遇 `ERR_CERT_AUTHORITY_INVALID`，已交接人類親自處理 Platform `https://localhost:11000/login`、Org `https://127.0.0.1:15000/`、PDM `https://localhost:13000/login`；依 computer-use 安全限制，AI不代按略過警告、不修改全域信任。三端仍留用以續接本輪驗證，runtime ownership沿原Governor紀錄；r6 localhost於末端只移除本次新增項並fresh readback。這是runtime readiness，尚非正常SSO成功或02／08／23通過。
