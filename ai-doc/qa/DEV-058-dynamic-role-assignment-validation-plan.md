@@ -184,4 +184,4 @@ r12最後交易逾時後未再無限重開；controller退出前實讀Platform s
 
 Org PR153來源`811b67c`的required CI `40065299857`首次在Alpine CDN TLS下載失敗（apk exit99），尚未執行Source QC；限定一次重試後attempt2／job`120788414885`完整SUCCESS。原失敗保留，不改gate或略過套件安全更新；此CI不提供正常SSO／任用UI或正式發布證據。
 
-補記與清理後文件來源`61dfe84`的PR153 required `Production Source QC` run `40065878472`／job `120788905450`亦SUCCESS。PDM採納修正PR479來源`b015f760`的兩項required CI `40064627215`均SUCCESS；文件PR482來源`5aa1633c`保留52 QA列並以`DOCUMENTATION_ONLY`判定，兩項required CI `40065936291`均SUCCESS。三個PR仍為draft／未合併，CI只支持各自來源，不把r12受阻旅程改判PASS。
+補記與清理後Org PR153文件來源`7461e83`的required `Production Source QC` run `40066328753`／job `120790255511` SUCCESS。PDM採納修正PR479來源`b015f760`的兩項required CI `40064627215`均SUCCESS；清理同步後文件PR482來源`f595c1d4`保留52 QA列並以`DOCUMENTATION_ONLY`判定，兩項required CI `40066402466`均SUCCESS。三個PR仍為draft／未合併，CI只支持各自來源，不把r12受阻旅程改判PASS。
