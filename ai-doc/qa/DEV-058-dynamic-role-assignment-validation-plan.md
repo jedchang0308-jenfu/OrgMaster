@@ -166,7 +166,7 @@ r9停止後、修正harness前的來源比對為 Org785／Platform857／PDM8849 
 
 續接 r10／r11（2026-10-24，取代上述「憑證尚未處理」現況）：人類提供三端實際頁面，已通過本機 TLS 提示；Platform 顯示泛用登入失敗，OrgMaster 卻顯示開發測試角色，PDM 停於正常平台登入入口。r10 Console 唯讀基線仍為原8域、localhost未加回；同時 Vite 預設 development mode 啟用了 profile auth，遮住正常 SSO。這兩項是本機測試前置遺漏，不能據泛用訊息判定公司帳密錯誤。r10結束時 Platform sessions=0、PDM accounts=0，三端與隔離PG已停、port釋放；原始結果見 `local-sso-runtime-20261024-r10.jsonl`／`r10-cleanup.json`。活躍瀏覽器HMR連線使兩端Next shutdown超過controller期限，未完成原清理helper；已核對僅本次generated設定差異並恢復，r11調整為先關閉本server連線再關Next，其完整收尾結果仍待實測，不能以helper 3/3替代。
 
-沿既有人類授權暫加 localhost，r7 intent及`company-idp-localhost-20261024-r7-added-readback.json`／`.png`確認9域且原8域完整保留；最初dialog關閉時grid尚未更新的讀值另留於r7-added原件，後續穩定讀回才作新增證據，不覆寫原件。目前`cleanupPending=true`，只保留本任務新增localhost供正常登入，驗證結束由本任務精確移除。
+沿既有人類授權暫加 localhost，r7 intent及`company-idp-localhost-20261024-r7-added-readback.json`／`.png`確認9域且原8域完整保留；最初dialog關閉時grid尚未更新的讀值另留於r7-added原件，後續穩定讀回才作新增證據，不覆寫原件。r12停止後已只移除本任務新增localhost，fresh reload實讀原8域且無其他刪減，見`company-idp-localhost-20261024-r7-cleanup.json`／`.png`；`cleanupPending=false`。
 
 r11使用任務專用Vite mode `dev058-sso`，保留本機server、關閉development profile auth，不載入production mode設定。runner在ready前實讀 `/api/auth/development/profiles`=404、`/api/auth/mode`=200且SSO=true；`normalAuthPreflight`與三端listening見 `local-sso-runtime-20261024-r11.jsonl`。正常瀏覽器已顯示OrgMaster「使用平台登入」，截圖=`local-sso-normal-entry-orgmaster-20261024-r11.png`；三端實際來源見 `local-sso-source-r11-observed.json`。Google popup已進入公司帳號選擇頁，但自動操作／截圖在該頁逾時，已交接人類先完成Platform；尚無正常SSO／雙邊session成功證據。24目的維持21 PASS／2 PARTIAL／1 BLOCKED，02／08／23仍待原驗收行為；未執行正式migration、部署、正式業務資料寫入或IAM／Secret擴張。
 
@@ -176,8 +176,12 @@ r11使用任務專用Vite mode `dev058-sso`，保留本機server、關閉develop
 
 r11正常矩陣入口 `/settings/workflow` 另遇設定讀取503／`principal_dependency_unavailable`。`local-sso-matrix-environment-failure-20261024-r11.json` 保存當時觀察到8筆PG FATAL，皆為reserved connection slots；小型fixture只有8連線、保留3個superuser名額，Next多route pool超出可用額度，不能寫PG error0。UI失敗截圖與pool觀察原件保留；runtime退出前Platform sessions=1／PDM accounts=1，三端均exit0、各port釋放、PG temp移除，見`local-sso-runtime-20261024-r11-cleanup.json`。先關本server HMR再關Next的收尾已實際正常完成，generated設定bytes fence亦已執行；Git僅stat cache殘留的M不視為檔案內容差異。
 
-r12只修正隔離測試叢集容量：普通fixture仍8，三端journey明確指定32（constructor限8～64，不改資料權限）；manager/helper 17/17 PASS。`local-sso-runtime-prelogin-20261024-r12.json` 實讀max_connections32及三端session/account全0；新run不能沿用r11 session當作完成。已在同Chrome公司身分重新走正常Google選帳，並將重驗受影響的設定矩陣及任用旅程。localhost仍為同任務唯一暫加項，整批末端精確移除並fresh reload原8域；正式migration、部署、正式資料與IAM／Secret擴張仍禁止。
+r12只修正隔離測試叢集容量：普通fixture仍8，三端journey明確指定32（constructor限8～64，不改資料權限）；manager/helper 17/17 PASS。`local-sso-runtime-prelogin-20261024-r12.json` 實讀max_connections32及三端session/account全0；新run不能沿用r11 session當作完成。已在同Chrome公司身分重新走正常Google選帳，但受下段瀏覽器操作限制，未重驗設定矩陣及任用旅程。正式migration、部署、正式資料與IAM／Secret擴張仍禁止。
 
 r12後續正常登入仍受瀏覽器操作限制：第二個Google交易已由Platform明確回報popup逾時；第三個交易可見公司帳戶，但背景頁mouse input／screenshot逾時，鍵盤Return未見頁面變化。`local-sso-login-control-readback-20261024-r12-second.json`（05:19:36Z）實讀三端session/account仍0、PG ERROR/FATAL=0，只有一個未到期intent；不據此推定帳密錯誤、增長timeout或將r11成功session移用r12。保留當次交易交接前景操作，其餘原驗收狀態不變。
 
+r12最後交易逾時後未再無限重開；controller退出前實讀Platform sessions=0／PDM accounts=0。Org／Platform／PDM與PG依所有權順序停止，四個PID均不再執行，11000／13000／15000／54944均釋放，PG temp移除；容量lease `708a93f0-0eb9-442f-ba8a-1c06f43fc3e1`以`failed`釋放。兩個Next工作樹的`next-env.d.ts`內容hash均與各自HEAD相同，僅Git stat cache顯示M；未覆寫或清除既有`.tmp`／QA證據。
+
 Org PR153來源`811b67c`的required CI `40065299857`首次在Alpine CDN TLS下載失敗（apk exit99），尚未執行Source QC；限定一次重試後attempt2／job`120788414885`完整SUCCESS。原失敗保留，不改gate或略過套件安全更新；此CI不提供正常SSO／任用UI或正式發布證據。
+
+補記與清理後文件來源`61dfe84`的PR153 required `Production Source QC` run `40065878472`／job `120788905450`亦SUCCESS。PDM採納修正PR479來源`b015f760`的兩項required CI `40064627215`均SUCCESS；文件PR482來源`5aa1633c`保留52 QA列並以`DOCUMENTATION_ONLY`判定，兩項required CI `40065936291`均SUCCESS。三個PR仍為draft／未合併，CI只支持各自來源，不把r12受阻旅程改判PASS。
