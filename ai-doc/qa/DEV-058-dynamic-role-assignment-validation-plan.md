@@ -210,4 +210,10 @@ r14收尾已停止OrgMaster／Platform／PDM與隔離PostgreSQL，11000／13000�
 
 DEV-123協作唯讀檢查發現，治理中心原來源選單只檢查`ai-pdm`與assignment狀態，會把inactive角色、`delegationAllowed=false`、legacy-only舊生管及protected `system_admin`等任用顯示為可選；server仍會拒絕，沒有形成未授權授權，但使用者會在送出後才得到錯誤。現行UI已與既有server契約對齊：來源須在有效期間、來源員工有效、角色為current selectable且`delegationAllowed=true`，並排除protected surface；代理人只列不同於來源的有效員工，截止時間須在未來且不得超出來源期間。合法代理的資料內容、命令與發布流程不變。
 
-針對性元件回歸涵蓋一個合法RD來源及不可代理角色、legacy-only舊生管、`system_admin`、inactive角色、已到期來源、停用員工；另完成合法表單送出與UI讀回。4檔26PASS及完整build PASS。此層證明產品UI資格與表單資料，不取代尚待ADC重新驗證的公司Google正常登入重播；r14撤權與localhost移除狀態均未改動。
+針對性元件回歸涵蓋一個合法RD來源及不可代理角色、legacy-only舊生管、`system_admin`、inactive角色、已到期來源、停用員工；另完成合法表單送出與UI讀回。4檔26PASS及完整build PASS，`60a7cde…`的required Production Source QC run `40118220606` SUCCESS。此層只證明產品UI資格與表單資料；下方另列正常登入補驗的現況，不把元件結果當Google旅程。
+
+正常UI補驗已改用明確的`DEV058_LOCAL_SSO_SCENARIO=delegation-r16`：Google actor只保留OrgMaster管理任用，另一Employee持有有效可代理RD與獨立的legacy v6生管前置。現行隔離baseline實際輸出scenario相符、actor的PDM direct=0／system_admin=0；owner另以DB讀回source RD=1、legacy planning=1、delegations=0。這些是前置資料與零重疊授權的證據，沒有seed欲驗的代理結果；r14 authority v8已撤銷特權的歷史不改寫，沒有重授同一Google actor。
+
+本輪已自行完成任務私有ADC重新登入與Firebase getUser，原quota project只補到私有副本，三端只注入任務私有ADC路徑；未修改共用ADC、IAM、Secret或OAuth scope。此前兩次Node載入器在案例前失敗並清理PG，沿既有`--experimental-transform-types --experimental-loader ./scripts/dev058-dev123-native-loader.mjs`後三端與隔離PG就緒。實際啟動後才補入的runtime summary兩個zero-count欄位目前只做syntax／diff檢查，沒有把摘要欄位修改冒稱已重跑整段；baseline輸出的兩個零值維持其原證據。
+
+目前正常UI仍為**BLOCKED**：Chrome「JED-鉦富」在`https://localhost:11000/login`顯示本機憑證警告，CUA要求人類親自放行。尚未完成本輪Google登入、合法RD代理表單／發布／PDM判權及舊生管scope／期間的正常UI讀回；既有113 PASS／1 SKIP契約、r14與r15結果各按原層重用。三端11000／15000／13000與隔離PG保留供續接，runtime／browser／IdP由原owner管理；本輪localhost已暫時加入，驗完由owner精確移除並確認原網域保留、停止任務資源及恢復Next自動生成差異。不能沿r14的cleanup宣稱本輪已清理。正式migration、部署、正式業務資料寫入及IAM／Secret變更仍禁止，DEV-058維持In Progress／Not Released，PDM的52 QA／17 AC／CG不縮減。

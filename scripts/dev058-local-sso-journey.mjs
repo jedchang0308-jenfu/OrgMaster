@@ -18,6 +18,8 @@ const taskTemp = process.env.DEV058_LOCAL_SSO_TASK_TEMP
 assert.match(session ?? '', /^[a-f0-9-]{36}$/iu)
 assert.ok(taskTemp && path.isAbsolute(taskTemp), 'DEV058_LOCAL_SSO_TASK_TEMP_REQUIRED')
 const privateDir = path.join(taskTemp, 'credentials')
+const scenario = process.env.DEV058_LOCAL_SSO_SCENARIO?.trim() || 'privileged-r14'
+assert.ok(['privileged-r14', 'delegation-r16'].includes(scenario), 'DEV058_LOCAL_SSO_SCENARIO_INVALID')
 const origins = { platform: 'https://localhost:11000', orgmaster: 'https://127.0.0.1:15000', 'ai-pdm': 'https://localhost:13000' }
 const roots = { platform: process.env.PLATFORM_DEV058_ROOT, orgmaster: root, 'ai-pdm': process.env.PDM_DEV123_ROOT }
 const records = []
@@ -137,6 +139,7 @@ try {
   const common = {
     ...osEnvironment(), NODE_ENV: 'development', NEXT_TELEMETRY_DISABLED: '1',
     CLOUDSDK_CONFIG: privateDir, NODE_EXTRA_CA_CERTS: path.join(privateDir, 'local-ca.pem'),
+    GOOGLE_APPLICATION_CREDENTIALS: path.join(privateDir, 'application_default_credentials.json'),
     JENFU_FIREBASE_PROJECT_ID: firebase.projectId,
     JENFU_IDENTITY_ISSUER: `https://securetoken.google.com/${firebase.projectId}`,
     JENFU_IDENTITY_AUDIENCE: firebase.projectId,
@@ -146,7 +149,7 @@ try {
   }
   // Obtain fresh verified IdP facts through the already-authorized readonly ADC.
   process.env.CLOUDSDK_CONFIG = privateDir
-  delete process.env.GOOGLE_APPLICATION_CREDENTIALS
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = path.join(privateDir, 'application_default_credentials.json')
   const { initializeApp, applicationDefault } = await import('firebase-admin/app')
   const { getAuth } = await import('firebase-admin/auth')
   const adminApp = initializeApp({ credential: applicationDefault(), projectId: firebase.projectId }, `dev058-local-${process.pid}`)
@@ -160,11 +163,14 @@ try {
     const orgUrl = `postgresql://jenfu_orgmaster_runtime@${handle.host}:${handle.port}/${handle.databaseName}?sslmode=disable`
     Object.assign(process.env, { ORGMASTER_PERSISTENCE_MODE: 'cloud-sql', ORGMASTER_POSTGRES_URL: orgUrl,
       ORGMASTER_POSTGRES_POOL_MAX: '1', ORGMASTER_GOVERNANCE_DATA_DIR: path.join(handle.taskRoot, 'org-governance') })
-    const baseline = await prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot: root, identity })
+    const baseline = await prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot: root, identity, scenario })
     await orgRuntime.end()
     const db = await import('../server/orgmasterDatabase.ts'); await db.closeOrgmasterDatabase()
-    emit('baseline', { prepared: true, managerPrincipal: baseline.managerLink.principalId,
+    emit('baseline', { prepared: true, scenario: baseline.scenario, managerPrincipal: baseline.managerLink.principalId,
       targetPrincipal: baseline.targetLink.principalId, catalog: baseline.catalogMetadata,
+      sourceAssignmentId: baseline.sourceAssignmentId, legacyPlanningAssignmentId: baseline.legacyPlanningAssignmentId,
+      managerDirectAiPdmGrantCount: baseline.managerDirectAiPdmGrantCount,
+      managerSystemAdminGrantCount: baseline.managerSystemAdminGrantCount,
       actualPlatformMigrations: platformMigrationEvidence.migrations.length,
       deferredUnusedBodies: platformMigrationEvidence.deferredUnusedBodies,
       pdmAccountsSeeded: false, sessionsSeeded: false, desiredCustomGrantSeeded: false })
@@ -221,8 +227,12 @@ try {
       assert.equal(authMode.body.ssoHandoffEnabled, true, 'LOCAL_SSO_HANDOFF_NOT_ENABLED')
       emit('normalAuthPreflight', { developmentProfilesDisabled: true, orgmasterSsoHandoffEnabled: true })
       fs.writeFileSync(path.join(taskTemp, 'local-sso-runtime.json'), JSON.stringify({ pid: process.pid, origins,
-        pgPort: handle.port, database: handle.databaseName, managerPrincipal: baseline.managerLink.principalId,
-        targetPrincipal: baseline.targetLink.principalId, apps: records.map(({ kind, pid, port, startToken }) => ({ kind, pid, port, startToken })) }, null, 2))
+        pgPort: handle.port, database: handle.databaseName, scenario: baseline.scenario,
+        managerPrincipal: baseline.managerLink.principalId, targetPrincipal: baseline.targetLink.principalId,
+        sourceAssignmentId: baseline.sourceAssignmentId, legacyPlanningAssignmentId: baseline.legacyPlanningAssignmentId,
+        managerDirectAiPdmGrantCount: baseline.managerDirectAiPdmGrantCount,
+        managerSystemAdminGrantCount: baseline.managerSystemAdminGrantCount,
+        apps: records.map(({ kind, pid, port, startToken }) => ({ kind, pid, port, startToken })) }, null, 2))
       emit('localSsoReady', { origins, pgPort: handle.port, businessData: 'disposable local only', normalLogin: 'PENDING' })
       while (!stopping && !fs.existsSync(stopFile)) {
         assert.ok(records.every(record => !record.exited), 'APP_EXITED_DURING_JOURNEY')

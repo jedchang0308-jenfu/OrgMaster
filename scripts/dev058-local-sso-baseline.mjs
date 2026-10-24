@@ -135,11 +135,12 @@ async function enableManagedLoginAdmission(admin) {
  * verification, normal sessions, PDM account creation and desiredApply remain
  * caller-owned runtime actions.
  */
-export async function prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot, identity }) {
+export async function prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot, identity, scenario = 'privileged-r14' }) {
   if (!admin || typeof admin.query !== 'function') throw new TypeError('DEV058_ADMIN_CLIENT_REQUIRED')
   if (!orgRuntime || typeof orgRuntime.query !== 'function') throw new TypeError('DEV058_ORG_RUNTIME_CLIENT_REQUIRED')
   requireText(orgRoot, 'DEV058_ORG_ROOT_REQUIRED')
   requireIdentity(identity)
+  if (!['privileged-r14', 'delegation-r16'].includes(scenario)) throw new Error('DEV058_LOCAL_SSO_SCENARIO_INVALID')
 
   const now = new Date().toISOString()
   const managerLink = {
@@ -180,6 +181,12 @@ export async function prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot, iden
 
   const activeCatalog = await catalogReader.readPublishedAiPdmRoleCatalogFromDatabase(orgRuntime)
   const catalog = orgCatalog.createAiPdmRoleCatalog('valid', activeCatalog.publishedAt, activeCatalog)
+  const legacyArtifact = scenario === 'delegation-r16'
+    ? await catalogReader.readPublishedAiPdmRoleCatalog(orgRoot, catalogReader.AI_PDM_ROLE_CATALOG_V6_VERSION)
+    : null
+  const legacyCatalog = legacyArtifact
+    ? orgCatalog.createAiPdmRoleCatalog('valid', legacyArtifact.publishedAt, legacyArtifact)
+    : null
   const financialCatalog = await financial.readFinancialRoleCatalog('valid', orgRoot)
   const pdmConfiguration = await preparePdmConfiguration(admin, activeCatalog)
   const accountTypeByPrincipal = new Map([
@@ -211,36 +218,58 @@ export async function prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot, iden
   }))
 
   const old = await activeGovernanceArtifact(admin)
-  const systemAdminRole = catalog.roles.find(role => role.stableRoleId === 'role-system-admin')
-  assert.ok(systemAdminRole, 'DEV058_SYSTEM_ADMIN_CATALOG_ROLE_MISSING')
-  requireEqual(systemAdminRole.code, 'system_admin', 'DEV058_SYSTEM_ADMIN_CATALOG_CODE_MISMATCH')
-  requireEqual(systemAdminRole.status, 'active', 'DEV058_SYSTEM_ADMIN_CATALOG_STATUS_MISMATCH')
-  requireEqual(systemAdminRole.assignable, true, 'DEV058_SYSTEM_ADMIN_CATALOG_NOT_ASSIGNABLE')
-  requireEqual(systemAdminRole.subjectKind, 'principal', 'DEV058_SYSTEM_ADMIN_CATALOG_SUBJECT_MISMATCH')
-  requireEqual(systemAdminRole.assignmentTier, 'cross_app_override', 'DEV058_SYSTEM_ADMIN_CATALOG_TIER_MISMATCH')
-  requireEqual(JSON.stringify(systemAdminRole.allowedScopeKinds), JSON.stringify(['global']), 'DEV058_SYSTEM_ADMIN_CATALOG_SCOPE_MISMATCH')
-  const managerGrant = {
-    id: 'assignment-dev058-manager-system-admin',
-    employeeId: managerLink.employeeId,
-    applicationId: 'ai-pdm',
-    roleId: systemAdminRole.stableRoleId,
-    roleCodeSnapshot: systemAdminRole.code,
-    roleNameSnapshot: systemAdminRole.displayName,
-    catalogVersion: catalog.catalogVersion,
-    scope: { kind: 'global' },
-    status: 'active',
-    validFrom: now,
-    validTo: null,
-    effectState: 'not-synchronized',
-    basis: 'manual',
-    subjectKind: 'principal',
-    targetPrincipalId: managerLink.principalId,
-    sources: [],
-    metadata: { sponsorEmployeeId: null, reviewDueAt: null },
-    createdByPrincipalId: 'bootstrap-fixture',
-    createdReason: 'DEV058 local SSO manager baseline',
+  const scenarioAssignments = []
+  if (scenario === 'privileged-r14') {
+    const systemAdminRole = catalog.roles.find(role => role.stableRoleId === 'role-system-admin')
+    assert.ok(systemAdminRole, 'DEV058_SYSTEM_ADMIN_CATALOG_ROLE_MISSING')
+    requireEqual(systemAdminRole.code, 'system_admin', 'DEV058_SYSTEM_ADMIN_CATALOG_CODE_MISMATCH')
+    requireEqual(systemAdminRole.status, 'active', 'DEV058_SYSTEM_ADMIN_CATALOG_STATUS_MISMATCH')
+    requireEqual(systemAdminRole.assignable, true, 'DEV058_SYSTEM_ADMIN_CATALOG_NOT_ASSIGNABLE')
+    requireEqual(systemAdminRole.subjectKind, 'principal', 'DEV058_SYSTEM_ADMIN_CATALOG_SUBJECT_MISMATCH')
+    requireEqual(systemAdminRole.assignmentTier, 'cross_app_override', 'DEV058_SYSTEM_ADMIN_CATALOG_TIER_MISMATCH')
+    requireEqual(JSON.stringify(systemAdminRole.allowedScopeKinds), JSON.stringify(['global']), 'DEV058_SYSTEM_ADMIN_CATALOG_SCOPE_MISMATCH')
+    scenarioAssignments.push({
+      id: 'assignment-dev058-manager-system-admin', employeeId: managerLink.employeeId,
+      applicationId: 'ai-pdm', roleId: systemAdminRole.stableRoleId,
+      roleCodeSnapshot: systemAdminRole.code, roleNameSnapshot: systemAdminRole.displayName,
+      catalogVersion: catalog.catalogVersion, scope: { kind: 'global' }, status: 'active',
+      validFrom: now, validTo: null, effectState: 'not-synchronized', basis: 'manual',
+      subjectKind: 'principal', targetPrincipalId: managerLink.principalId, sources: [],
+      metadata: { sponsorEmployeeId: null, reviewDueAt: null },
+      createdByPrincipalId: 'bootstrap-fixture', createdReason: 'DEV058 local SSO manager baseline',
+    })
+  } else {
+    const rdRole = catalog.roles.find(role => role.stableRoleId === 'role-rd')
+    const planningRole = legacyCatalog?.roles.find(role => role.stableRoleId === 'role-production-planning')
+    assert.ok(rdRole && planningRole && legacyCatalog, 'DEV058_DELEGATION_SCENARIO_ROLE_MISSING')
+    requireEqual(rdRole.status, 'active', 'DEV058_RD_ROLE_NOT_ACTIVE')
+    requireEqual(rdRole.assignable, true, 'DEV058_RD_ROLE_NOT_ASSIGNABLE')
+    requireEqual(rdRole.delegationAllowed, true, 'DEV058_RD_ROLE_NOT_DELEGABLE')
+    const sourceValidTo = new Date(Date.parse(now) + 7 * 24 * 60 * 60 * 1000).toISOString()
+    const planningValidFrom = new Date(Date.parse(now) - 20 * 24 * 60 * 60 * 1000).toISOString()
+    const planningValidTo = new Date(Date.parse(now) + 40 * 24 * 60 * 60 * 1000).toISOString()
+    scenarioAssignments.push({
+      id: 'assignment-dev058-source-rd', employeeId: targetLink.employeeId,
+      applicationId: 'ai-pdm', roleId: rdRole.stableRoleId,
+      roleCodeSnapshot: rdRole.code, roleNameSnapshot: rdRole.displayName,
+      catalogVersion: catalog.catalogVersion, scope: { kind: 'workspace', value: 'company-jenfu' },
+      status: 'active', validFrom: now, validTo: sourceValidTo, effectState: 'not-synchronized',
+      basis: 'manual', subjectKind: 'employee', targetPrincipalId: null, sources: [],
+      metadata: { sponsorEmployeeId: managerLink.employeeId, reviewDueAt: sourceValidTo },
+      createdByPrincipalId: 'bootstrap-fixture', createdReason: 'DEV058 R16 delegation source',
+    }, {
+      id: 'assignment-dev058-legacy-planning', employeeId: targetLink.employeeId,
+      applicationId: 'ai-pdm', roleId: planningRole.stableRoleId,
+      roleCodeSnapshot: planningRole.code, roleNameSnapshot: planningRole.displayName,
+      catalogVersion: legacyCatalog.catalogVersion, scope: { kind: 'workspace', value: 'company-jenfu' },
+      status: 'active', validFrom: planningValidFrom, validTo: planningValidTo,
+      effectState: 'not-synchronized', basis: 'manual', subjectKind: 'employee',
+      targetPrincipalId: null, sources: [],
+      metadata: { sponsorEmployeeId: managerLink.employeeId, reviewDueAt: planningValidTo },
+      createdByPrincipalId: 'bootstrap-fixture', createdReason: 'DEV058 R16 retained legacy planning fixture',
+    })
   }
-  governance.draft.roleAssignments = [managerGrant, {
+  governance.draft.roleAssignments = [...scenarioAssignments, {
     id: 'dev058-local-sso-orgmaster-admin',
     employeeId: managerLink.employeeId,
     applicationId: 'orgmaster',
@@ -259,7 +288,7 @@ export async function prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot, iden
     targetPrincipalId: null,
     createdByPrincipalId: managerLink.principalId,
   }]
-  governance.draft.managementGrants = [{
+  governance.draft.managementGrants = scenario === 'privileged-r14' ? [{
     id: 'dev058-local-sso-cross-app-override',
     principalId: managerLink.principalId,
     employeeId: managerLink.employeeId,
@@ -270,15 +299,16 @@ export async function prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot, iden
     validTo: null,
     grantedByPrincipalId: 'bootstrap-fixture',
     reason: 'DEV058 local SSO manager baseline',
-  }]
+  }] : []
 
   await writeWorkspaceAndTargetReservations(admin, { workspaceDocument, manifest, target: targetLink, now })
   const source = await store.loadOrganizationSource(orgRoot)
   const { basePolicyVersionId: _base, updatedAt: _updated, ...policy } = governance.draft
+  const externalRoleCatalogs = [catalog, ...(legacyCatalog && legacyCatalog.catalogVersion !== catalog.catalogVersion ? [legacyCatalog] : []), financialCatalog]
   const publishedPayload = {
     kind: 'assignment-governance-v3',
     policy,
-    externalRoleCatalogs: [catalog, financialCatalog],
+    externalRoleCatalogs,
     organizationSnapshot: validation.buildOrganizationSnapshot(source),
     effectState: 'not-synchronized',
   }
@@ -289,7 +319,7 @@ export async function prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot, iden
     snapshotHash: commands.publicationSnapshotHash(publishedPayload) }]
   governance.activePolicyVersionId = 'dev058-local-sso-baseline'
   governance.draft.basePolicyVersionId = 'dev058-local-sso-baseline'
-  const issues = validation.validateDocumentV3(governance, source, [catalog, financialCatalog])
+  const issues = validation.validateDocumentV3(governance, source, externalRoleCatalogs)
   if (issues.length) throw new Error(`DEV058_LOCAL_SSO_GOVERNANCE_INVALID:${issues.map(issue => issue.code).join(',')}`)
   await publishGovernance(admin, governance, old.canonical_sha256, 'local-sso-baseline', managerLink)
 
@@ -309,6 +339,18 @@ export async function prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot, iden
   requireEqual(targetTyped.employee_id, targetLink.employeeId, 'DEV058_TARGET_EMPLOYEE_MAPPING_MISMATCH')
   requireEqual(targetTyped.account_type, 'human_personal', 'DEV058_TARGET_ACCOUNT_TYPE_MISMATCH')
 
+  let managerDirectAiPdmGrantCount = null
+  let managerSystemAdminGrantCount = null
+  if (scenario === 'delegation-r16') {
+    const managerGrants = (await admin.query(`SELECT grant_kind,stable_role_id,role_code
+      FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4
+      WHERE principal_id=$1`, [managerLink.principalId])).rows
+    managerDirectAiPdmGrantCount = managerGrants.filter(row => row.grant_kind === 'direct').length
+    managerSystemAdminGrantCount = managerGrants.filter(row => row.stable_role_id === 'role-system-admin' || row.role_code === 'system_admin').length
+    requireEqual(managerDirectAiPdmGrantCount, 0, 'DEV058_R16_MANAGER_DIRECT_AI_PDM_GRANT_PRESENT')
+    requireEqual(managerSystemAdminGrantCount, 0, 'DEV058_R16_MANAGER_SYSTEM_ADMIN_GRANT_PRESENT')
+  }
+
   const platformAdmission = await enableManagedLoginAdmission(admin)
   return Object.freeze({
     managerLink: Object.freeze({ ...managerLink }),
@@ -320,6 +362,11 @@ export async function prepareLocalSsoBaseline({ admin, orgRuntime, orgRoot, iden
       governanceVersionId: 'dev058-local-sso-baseline',
       pdmConfiguration,
     }),
+    scenario,
+    sourceAssignmentId: scenario === 'delegation-r16' ? 'assignment-dev058-source-rd' : null,
+    legacyPlanningAssignmentId: scenario === 'delegation-r16' ? 'assignment-dev058-legacy-planning' : null,
+    managerDirectAiPdmGrantCount,
+    managerSystemAdminGrantCount,
     platformAdmission,
   })
 }
