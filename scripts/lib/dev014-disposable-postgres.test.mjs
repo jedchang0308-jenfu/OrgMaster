@@ -213,6 +213,21 @@ test('starts independent localhost PG17/18 fixtures and cleans only their task r
   assert.equal(f.clients.every((client) => client.ended), true)
 })
 
+test('uses an explicit bounded connection limit for a multi-app fixture', async () => {
+  const f = fixture()
+  const manager = createDisposablePostgresManager({ ...f.dependencies, maxConnections: 32 })
+  const handle = await manager.startDisposablePostgres()
+  const start = f.calls.find(call => call.args.at(-1) === 'start')
+  assert.ok(start.args[start.args.indexOf('-o') + 1].includes('-c max_connections=32'))
+  await handle.cleanup()
+})
+
+test('rejects invalid connection limits before starting PostgreSQL', () => {
+  for (const maxConnections of [0, 7, 65, 8.5, '32']) {
+    assert.throws(() => createDisposablePostgresManager({ maxConnections }), { code: 'DISPOSABLE_POSTGRES_CONNECTION_LIMIT_INVALID' })
+  }
+})
+
 test('ignores stdio only for the long-running pg_ctl start command', async () => {
   const f = fixture()
   const manager = createDisposablePostgresManager(f.dependencies)

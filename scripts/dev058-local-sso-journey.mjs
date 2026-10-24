@@ -233,7 +233,7 @@ try {
         (SELECT count(*)::int FROM ai_pdm_core.principal_accounts) AS pdm_accounts`)).rows[0]
       emit('runtimeReadback', counts)
     } finally { await stopApps() }
-  })
+  }, { maxConnections: 32 })
 } catch (error) {
   const raw = String(error.code ?? error.message ?? 'LOCAL_SSO_FAILED')
   const code = /^[A-Za-z0-9_:., -]{1,250}$/u.test(raw) ? raw : 'LOCAL_SSO_FAILED'

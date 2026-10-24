@@ -384,7 +384,7 @@ export async function withDev058Dev123Database(evaluate, options = {}) {
   const platformRoot = resolvePlatformRoot(options)
   const platformMigrations = platformRoot ? readPlatformMigrations(platformRoot) : []
   const session = requireGovernorSession()
-  const manager = createDisposablePostgresManager({ environment: safePostgresEnvironment() })
+  const manager = createDisposablePostgresManager({ environment: safePostgresEnvironment(), maxConnections: options.maxConnections })
   let handle
   let registered = false
   let governorStartToken = null
