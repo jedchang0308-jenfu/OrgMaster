@@ -25,7 +25,7 @@ U／API=契約與資格；PG=真 SQL／交易／ACL／競爭；UI／DUAL=正常�
 | QA058-05 | 舊任用／snapshot／改名可讀；ID/code/name/catalogVersion/scope/期間/priority 不回填或合併 | PASS：U26 Org兩身份持久化／撤銷readback與名稱／presentation分離，PDM原roleCode priority、deny及scope隔離；本版不開放已發布身份改名，不新增rename功能或重演同一pair。正常入口見08/23 |
 | QA058-06 | 缺 history、同 version 多 hash、identity 不符時拒絕依賴它的新授權 | PASS：C26真history SQL三種失敗均拒；H26證error傳回，非減權Store在mutate前await current/history，無fallback。減權仍依SPEC§5，不另重演同一reader失敗的HTTP旅程 |
 | QA058-07 | reader／manager／exact privileged／普通人／workload 及偽 body actor 各資格線維持、401/403 | PASS：原資格／identity-fenced writer正反與J26 fresh actor，合併O26 mounted API：ordinary／provider_pair fixture偽造body actor均403、artifact／audit零變更；入站驗證仍沿原auth/writer證據，不冒稱真provider登入 |
-| QA058-08 | PDM 正常建立合法 custom→Org 配人/scope/期間並發布→PDM 真 protected 操作 Allow | BLOCKED：N 僅 domain 往返；缺正常 SSO/UI/API 證據，併 PDM29/52 |
+| QA058-08 | PDM 正常建立合法 custom→Org 配人/scope/期間並發布→PDM 真 protected 操作 Allow | PASS：r14 以公司 Google SSO 登入；PDM UI 建立並套用僅含 `pdm.drawing.view` 的 custom role，Org UI 對同一 Employee 配人並發布。撤銷同 Principal 的 `system_admin` 後重登，PDM 圖號工作台正常顯示，另以同 session 呼叫需 `pdm.drawing.download` 的 export API 得 403／`permission_not_granted` 且零寫入。證據及限制見§6 r14 |
 | QA058-09 | D1任用後D2能力變更，原任用/snapshot/audit 不改、無 Org source／部署變更；下一請求採新政策 | PASS：J26真D1/D2與下一PDM請求改判，合併U26 A→B原任用／audit及採購／舊生管priority／scope不union；不要求所有斷言重演於同一旅程。正常SSO／UI仍見08/23與PDM29/52 |
 | QA058-10 | inactive 禁新任用／推薦／代理／擴權，原人員可見，alias 同步，其他角色／資料不受污染 | PASS：U21/N/V、J26/D26/O26已驗inactive read/revoke、新任用／推薦／代理／擴權拒絕、原published grant不改，direct/delegated Deny而active sibling Allow；N24真producer停用／恢復採購時舊生管同步、identity／profile／priority不變，畫面統一23 |
 | QA058-11 | inactive 原列可撤銷／發布，actor/provenance/audit 正確，不影響其他任用 | PASS：U26/D26 inactive canonical／legacy與delegation撤銷、原provenance持久化，合併原reduction的離線own snapshot發布／actor及audit hash正反與J26真提交；共用同一publisher／audit機制，不再要求同一inactive案例重驗全部audit欄位 |
@@ -40,7 +40,7 @@ U／API=契約與資格；PG=真 SQL／交易／ACL／競爭；UI／DUAL=正常�
 | QA058-20 | 首次dynamic／外部契約變更有真consumer相容；schema/registry不符拒絕首次上線 | PASS：C26真producer正常create/save/preview/apply→OrgRuntime fixed34欄current/history；schema／registry及缺欄位真SQL失敗均拒、無static fallback。限隔離PG契約相容，不代表正常SSO／UI或正式上線 |
 | QA058-21 | immutable034/035；036只退役冷狀態，configured/READY零損失拒絕；最小有效ACL與manager fence保留 | PASS：R23未變036四項、A26現行035 ACL九子斷言及P26真post-wait manager撤權零效果；只證隔離PG／migration／ACL，非正式或正常SSO。migrator為NOLOGIN角色SET LOCAL ROLE，不冒稱provider登入 |
 | QA058-22 | 專用system_admin入口；ordinary/selfgrant/另一Principal/workload拒絕，hidden不進一般選單，custom不自授 | PASS：原U/API及元件hidden／專用入口正反保留；N25真專用preview/publish對另一active human_privileged Principal授direct global system_admin，v4及PDM真guard/evaluator exact target Allow、不同Principal Deny。管理者既有明示資格是前置，未seed目標grant；正常SSO／畫面見08/23 |
-| QA058-23 | 正常導航與 loading/非空/明確空/error/inactive/history/conflict/pending、keyboard、來源/名稱/期間可辨 | PARTIAL：V mock兩寬度與O26初次network failure提醒／無任用矩陣／既有reload恢復已驗；正常入口、鍵盤及其餘狀態仍待補。390唯讀；1024沿DEV-033有效證據，門檻／接線或layout改變才補 |
+| QA058-23 | 正常導航與 loading/非空/明確空/error/inactive/history/conflict/pending、keyboard、來源/名稱/期間可辨 | PARTIAL：V mock兩寬度與O26初次network failure提醒／無任用矩陣／既有reload恢復已驗；r14 補正常 Google SSO、PDM角色套用、Org配人／特權撤銷及PDM正常入口。鍵盤與其餘狀態仍待補。390唯讀；1024沿DEV-033有效證據，門檻／接線或layout改變才補 |
 | QA058-24 | 只停task-owned Org管理HTTP、DB/IdP仍可用，PDM業務不受新增HTTP依賴影響，Org明示不可配人 | PASS：O26 r19實停Org listener／任用API ECONNREFUSED，PDM真GET submissions handler在停機前後均200且同筆非空資料；DB、fixture IdP state、grants／audit不變，Org HTTP恢復；合併component失敗提醒。限隔離synthetic issuance，不代08/23正常SSO |
 
 ## 4. 單一驗證路徑與證據重用
@@ -185,3 +185,13 @@ r12最後交易逾時後未再無限重開；controller退出前實讀Platform s
 Org PR153來源`811b67c`的required CI `40065299857`首次在Alpine CDN TLS下載失敗（apk exit99），尚未執行Source QC；限定一次重試後attempt2／job`120788414885`完整SUCCESS。原失敗保留，不改gate或略過套件安全更新；此CI不提供正常SSO／任用UI或正式發布證據。
 
 補記與清理後Org PR153文件來源`7461e83`的required `Production Source QC` run `40066328753`／job `120790255511` SUCCESS。PDM採納修正PR479來源`b015f760`的兩項required CI `40064627215`均SUCCESS；清理同步後文件PR482來源`f595c1d4`保留52 QA列並以`DOCUMENTATION_ONLY`判定，兩項required CI `40066402466`均SUCCESS。三個PR仍為draft／未合併，CI只支持各自來源，不把r12受阻旅程改判PASS。
+
+### 2026-10-24 r14 正常雙邊角色旅程與本機 system_admin 撤銷
+
+r14 以公司 Google SSO 登入 `jedchang0308@jenfu.com.tw`，三端使用同一 verified Principal／Employee。PDM 正常 UI 建立、儲存並套用 `role-custom-47344587-0401-4bee-99a4-10cccbb160e9`（`ai-pdm.role-policy.019562f3-a290-4eff-b7ec-bcc5f87309b9`），只授 `pdm.drawing.view`；OrgMaster 再由正常 UI 對同一 Employee 指派並發布。之後在專用特權入口撤銷同 Principal 的 `system_admin`，UI 顯示「已撤銷」，DB readback 為 authority version 8、`effectiveCount=0`，歷史任用保留 `status=revoked` 與有限 `validTo`；安全告警及 session invalidation intent 亦保留。證據：`local-sso-system-admin-revoked-status-20261024-r14.png`、`local-sso-system-admin-revoked-readback-20261024-r14.json`。
+
+撤銷後重新由 Platform 正常入口開啟 PDM：`/numbering/drawings` 可顯示，證明 custom role 的 `pdm.drawing.view` 生效；同 session POST `/api/numbering/export-jobs` 因未授 `pdm.drawing.download` 回 403／`permission_not_granted`，`numbering_export_jobs` 維持 0。證據：`local-sso-custom-role-view-allowed-20261024-r14.png`、`local-sso-custom-role-download-denied-20261024-r14.png`、`local-sso-custom-role-allow-deny-readback-20261024-r14.json`。因此 QA058-08 改 PASS；目前原24目的為22 PASS／2 PARTIAL／0 BLOCKED，QA058-02／23 的其餘 UI 狀態仍依原分母待補，不宣稱24案或PDM 52 QA整體完成。
+
+旅程亦發現 Portal 舊 `v_portal_app_visibility_v1` 只納入 `human_personal`，使已驗證的 `human_privileged` Principal 雖持有有效 Employee business role，Platform仍不顯示 PDM。新 forward-only migration `037_dev058_human_privileged_portal_visibility.sql` 改由 v4 effective grants 判定 PDM可見性，`system_admin` 的 exact-Principal規則不變；隔離資料庫套用前只見OrgMaster，套用後同一Principal可見OrgMaster與PDM。固定readiness現驗 `portal_uses_v4_grants=true`；DB boundary PASS，受影響7個Vitest PASS。此migration只在task-owned PostgreSQL套用，沒有正式migration、部署或正式資料寫入。
+
+r14收尾已停止OrgMaster／Platform／PDM與隔離PostgreSQL，11000／13000／15000／64052均無listener；本機測試分頁已關閉。公司IdP先讀回原8域＋本任務`localhost`後，精確移除`localhost`並再次讀回原8域完整保留；證據為`company-idp-localhost-20261024-r8-cleanup.json`及`local-sso-runtime-20261024-r14-cleanup.json`。

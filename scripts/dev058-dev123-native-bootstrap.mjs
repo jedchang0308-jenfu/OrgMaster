@@ -486,6 +486,8 @@ export async function withDev058Dev123Database(evaluate, options = {}) {
     }
     const org036 = fs.readFileSync(path.join(orgMigrationRoot, '036_dev058_retire_unused_role_policy_readiness.sql'), 'utf8')
     await applyOwnedSql(orgOwner, ORG_ROLES.migrator, org036, 'OrgMaster owner migration 036_dev058_retire_unused_role_policy_readiness.sql')
+    const org037 = fs.readFileSync(path.join(orgMigrationRoot, '037_dev058_human_privileged_portal_visibility.sql'), 'utf8')
+    await applyOwnedSql(orgOwner, ORG_ROLES.migrator, org037, 'OrgMaster owner migration 037_dev058_human_privileged_portal_visibility.sql')
 
     // The existing small disposable cluster reserves three superuser slots.
     // Release completed owner connections before opening real runtime sessions.

@@ -13,11 +13,14 @@ try {
       to_regclass('platform_contract.task_owned_manifest_fixture') IS NULL AS no_synthetic_manifest,
       to_regprocedure('platform_contract.read_principal_auth_state_v3(text)') IS NOT NULL AS actual_v3_auth_state,
       to_regclass('orgmaster_contract.v_ai_pdm_principal_effective_grants_v4') IS NOT NULL AS actual_v4_grants,
+      position('v_ai_pdm_principal_effective_grants_v4' in
+        pg_get_viewdef('orgmaster_contract.v_portal_app_visibility_v1'::regclass, true)) > 0 AS portal_uses_v4_grants,
       to_regclass('ai_pdm_contract.v_role_policy_publications_v1') IS NOT NULL AS actual_role_policy_history,
       (SELECT count(*)::int FROM ai_pdm_contract.v_application_role_catalog_v1) AS initial_catalog_rows
     `)).rows[0]
     assert.deepEqual(row, { platform_migrations: 11, portal_sessions: 0, no_synthetic_auth_state: true,
       no_synthetic_manifest: true, actual_v3_auth_state: true, actual_v4_grants: true,
+      portal_uses_v4_grants: true,
       actual_role_policy_history: true, initial_catalog_rows: 9 })
     console.log(JSON.stringify({ threeAppDatabaseReadiness: 'PASS', ...row, platformRuntimeReadback,
       platformSource: platformMigrationEvidence.sourceRevision,
