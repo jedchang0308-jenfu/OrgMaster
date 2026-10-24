@@ -177,3 +177,7 @@ r11使用任務專用Vite mode `dev058-sso`，保留本機server、關閉develop
 r11正常矩陣入口 `/settings/workflow` 另遇設定讀取503／`principal_dependency_unavailable`。`local-sso-matrix-environment-failure-20261024-r11.json` 保存當時觀察到8筆PG FATAL，皆為reserved connection slots；小型fixture只有8連線、保留3個superuser名額，Next多route pool超出可用額度，不能寫PG error0。UI失敗截圖與pool觀察原件保留；runtime退出前Platform sessions=1／PDM accounts=1，三端均exit0、各port釋放、PG temp移除，見`local-sso-runtime-20261024-r11-cleanup.json`。先關本server HMR再關Next的收尾已實際正常完成，generated設定bytes fence亦已執行；Git僅stat cache殘留的M不視為檔案內容差異。
 
 r12只修正隔離測試叢集容量：普通fixture仍8，三端journey明確指定32（constructor限8～64，不改資料權限）；manager/helper 17/17 PASS。`local-sso-runtime-prelogin-20261024-r12.json` 實讀max_connections32及三端session/account全0；新run不能沿用r11 session當作完成。已在同Chrome公司身分重新走正常Google選帳，並將重驗受影響的設定矩陣及任用旅程。localhost仍為同任務唯一暫加項，整批末端精確移除並fresh reload原8域；正式migration、部署、正式資料與IAM／Secret擴張仍禁止。
+
+r12後續正常登入仍受瀏覽器操作限制：第二個Google交易已由Platform明確回報popup逾時；第三個交易可見公司帳戶，但背景頁mouse input／screenshot逾時，鍵盤Return未見頁面變化。`local-sso-login-control-readback-20261024-r12-second.json`（05:19:36Z）實讀三端session/account仍0、PG ERROR/FATAL=0，只有一個未到期intent；不據此推定帳密錯誤、增長timeout或將r11成功session移用r12。保留當次交易交接前景操作，其餘原驗收狀態不變。
+
+Org PR153來源`811b67c`的required CI `40065299857`首次在Alpine CDN TLS下載失敗（apk exit99），尚未執行Source QC；限定一次重試後attempt2／job`120788414885`完整SUCCESS。原失敗保留，不改gate或略過套件安全更新；此CI不提供正常SSO／任用UI或正式發布證據。
