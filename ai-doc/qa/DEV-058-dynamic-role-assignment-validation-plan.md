@@ -1,6 +1,6 @@
 # DEV-058：驗收與證據
 
-修訂：2026-10-24。OrgMaster DEV-058 統籌，AI-PDM DEV-123 管理角色／能力。**In Progress／Not Released**；[規格](../specs/DEV-058-federated-role-catalog-central-assignment.md)不另記進度。本文件只維護驗收目的、缺口及證據；本輪人類明確禁止正式 migration、部署及正式資料寫入，以下舊授權／provider 結果只保留歷史事實，不作為本輪操作授權。公司 IdP 僅允許本次暫加 localhost、保留原網域並於驗證後移除，不擴張 IAM／Secret。
+修訂：2026-10-25。OrgMaster DEV-058 統籌，AI-PDM DEV-123 管理角色／能力。**In Progress／Not Released**；[規格](../specs/DEV-058-federated-role-catalog-central-assignment.md)不另記進度。本文件只維護驗收目的、缺口及證據；本輪人類明確禁止正式 migration、部署及正式資料寫入，以下舊授權／provider 結果只保留歷史事實，不作為本輪操作授權。公司 IdP 僅允許本次暫加 localhost、保留原網域並於驗證後移除，不擴張 IAM／Secret。
 
 ## 1. 最少前置與資料
 
@@ -19,7 +19,7 @@ U／API=契約與資格；PG=真 SQL／交易／ACL／競爭；UI／DUAL=正常�
 | ID | 必須證明的結果 | 狀態、已有證據與待補 |
 |---|---|---|
 | QA058-01 | legacy 原 bytes/hash、九身份、治理歷史／audit 保留；不提前套新 disposition 或猜 active v7 | PASS：U26 exact legacy snapshot／hash與原audit正反，合併S26原v1九身份／publication不變；沿原preimage，不重算舊hash。不另加九次登入或同目的native旅程 |
-| QA058-02 | 完整9..64身份與七 profile／alias／system／custom；一般 UI 只列 canonical＋active custom | PARTIAL：U21/U23、N mapping、V；正常 UI 併23 |
+| QA058-02 | 完整9..64身份與七 profile／alias／system／custom；一般 UI 只列 canonical＋active custom | PASS：U21/U23、N mapping與R15實際Chromium矩陣；一般列只出現canonical與active custom，legacy alias不另列，system_admin只一列，inactive custom保留歷史但無新增入口 |
 | QA058-03 | 錯 schema／profile／canonical hash／來源綁定拒絕，不能只信自報 hash 或 fallback／union | PASS：U21/U23 竄改正反與 N 原 producer→reader；新34欄真 SQL 由20補 |
 | QA058-04 | 缺 builtin、重複身份／code／name、65列、非法 custom／scope／alias／protected metadata 拒絕；64正例 | PASS：U21/U23；身份不刪除／重用，custom 不得變 principal／global／任意 alias |
 | QA058-05 | 舊任用／snapshot／改名可讀；ID/code/name/catalogVersion/scope/期間/priority 不回填或合併 | PASS：U26 Org兩身份持久化／撤銷readback與名稱／presentation分離，PDM原roleCode priority、deny及scope隔離；本版不開放已發布身份改名，不新增rename功能或重演同一pair。正常入口見08/23 |
@@ -40,7 +40,7 @@ U／API=契約與資格；PG=真 SQL／交易／ACL／競爭；UI／DUAL=正常�
 | QA058-20 | 首次dynamic／外部契約變更有真consumer相容；schema/registry不符拒絕首次上線 | PASS：C26真producer正常create/save/preview/apply→OrgRuntime fixed34欄current/history；schema／registry及缺欄位真SQL失敗均拒、無static fallback。限隔離PG契約相容，不代表正常SSO／UI或正式上線 |
 | QA058-21 | immutable034/035；036只退役冷狀態，configured/READY零損失拒絕；最小有效ACL與manager fence保留 | PASS：R23未變036四項、A26現行035 ACL九子斷言及P26真post-wait manager撤權零效果；只證隔離PG／migration／ACL，非正式或正常SSO。migrator為NOLOGIN角色SET LOCAL ROLE，不冒稱provider登入 |
 | QA058-22 | 專用system_admin入口；ordinary/selfgrant/另一Principal/workload拒絕，hidden不進一般選單，custom不自授 | PASS：原U/API及元件hidden／專用入口正反保留；N25真專用preview/publish對另一active human_privileged Principal授direct global system_admin，v4及PDM真guard/evaluator exact target Allow、不同Principal Deny。管理者既有明示資格是前置，未seed目標grant；正常SSO／畫面見08/23 |
-| QA058-23 | 正常導航與 loading/非空/明確空/error/inactive/history/conflict/pending、keyboard、來源/名稱/期間可辨 | PARTIAL：V mock兩寬度與O26初次network failure提醒／無任用矩陣／既有reload恢復已驗；r14 補正常 Google SSO、PDM角色套用、Org配人／特權撤銷及PDM正常入口。鍵盤與其餘狀態仍待補。390唯讀；1024沿DEV-033有效證據，門檻／接線或layout改變才補 |
+| QA058-23 | 正常導航與 loading/非空/明確空/error/inactive/history/conflict/pending、keyboard、來源/名稱/期間可辨 | PASS：r14正常Google SSO與雙端角色旅程；R15實際Chromium補loading、非空矩陣、代理明確空狀態、503錯誤、inactive/history、鍵盤開啟／關閉與焦點回復、來源／名稱／期間，並重驗1440／1024／390；既有元件案例涵蓋conflict、pending與reload恢復 |
 | QA058-24 | 只停task-owned Org管理HTTP、DB/IdP仍可用，PDM業務不受新增HTTP依賴影響，Org明示不可配人 | PASS：O26 r19實停Org listener／任用API ECONNREFUSED，PDM真GET submissions handler在停機前後均200且同筆非空資料；DB、fixture IdP state、grants／audit不變，Org HTTP恢復；合併component失敗提醒。限隔離synthetic issuance，不代08/23正常SSO |
 
 ## 4. 單一驗證路徑與證據重用
@@ -87,6 +87,7 @@ U／API=契約與資格；PG=真 SQL／交易／ACL／競爭；UI／DUAL=正常�
 | J26 | `native-org-journey-20261023-r15.log`：8項PASS，含原HTTP drop/query/replay、正例、17/18/19、未發布draft歷史與QA12 direct/delegated inactive＋active sibling；validation.ts納入直接inputs且前後hash相同；HTTP/PG/port/temp清理及同名runtime-release.json成功 | 真兩owner服務／cookie auth／PG及PDM session guard/evaluator；Platform state與session issuance為合成fixture，非正常SSO／UI／正式環境。r9/r11與r14代理歷史讀取產品失敗、r13 fixture失敗保留，不以新PASS刪舊失敗 |
 | H26 | `history-provenance-regression-20261023-r2.log`：6檔38PASS；`history-provenance-typecheck-20261023-r1.log`對應tsc exit0；native API import PASS | helper補讀只驗provenance，current仍為新授權來源；wrong app/version/invalid/missing來源拒絕，無static fallback |
 | D26 | `delegation-inactive-regression-20261023-r1.log`：validation／commands／surface／privileged／lifecycle／dynamic assignment共6檔41PASS；`delegation-inactive-typecheck-20261023-r1.log`對應tsc exit0 | 補retained delegation可信歷史可讀可撤；新代理、scope擴張、錯source catalog仍拒絕。真失敗重現見r14，unit未另外執行未修版本，不宣稱獨立QC |
+| R15 | `output/qa/dev-058/browser-dynamic-r15/report.json`：production build artifact、實際Chromium 9/9 PASS；1440動態矩陣與代理空狀態、1024可操作、390唯讀、empty／denied／stale／503均完成，page／console error=0，browser／server／port／task artifact清理PASS。另 `test:dev-058:contracts` 15檔113PASS／1既有SKIP，`GovernanceCenter`＋特權元件2檔12PASS | 使用tracked v7 dynamic test vector與runner內最小workspace/governance fixture，不讀忽略的本機資料或正式資料；mock API只證UI狀態，正常Google SSO與真雙端判權沿r14。本輪只更新既有browser gate與文件，未改產品、DB、IAM／Secret、正式migration／部署／資料 |
 | A26／P26 | `native-manager-acl-20261023-r1.mjs`與`.log`：現行035 definer owner/search_path／最小EXECUTE、真runtime合法／wrongPrincipal false、migrator角色合法、兩角色core DML拒絕、OrgRuntime／未授權inherited helper拒絕共九子斷言PASS；`native-policy-20261023-final-r5.log`含真post-wait manager撤權零效果及原生current/history pair | task-owned PG18；034當前raw CRLF hash明列，不冒稱R23舊bytes；036 bytes未變才重用R23。migrator以NOLOGIN角色在owner交易SET ROLE驗有效ACL。source bytes前後相同，PG／port／temp全清、lease/session已結束；非provider／SSO證據 |
 | C26 | `native-catalog-integrity-20261023-r2.mjs`與`.log`共7PASS：真PDM producer→Org actual runtime current/history固定34欄；schema／registry、history缺版本／同版異hash／identity及缺欄位SQL均拒絕；各fault後restore回原hash、受測source前後不變 | fault injection只在task-owned producer views，未修改已套用SQL／產品；PG18／synthetic identity／production=false。PG／port／temp清理及lease/session結束；r1 clientRoleId fixture拒絕原檔/log保留。非正常SSO／UI／正式驗收 |
 | S26 | `schema-first-20261023-r3.log`、`schema-first-runner-20261023-r2.mjs`及bootstrap複本r2：先PDM086–088時Org035兩helper不存在；v1九列／19欄、原manifest子集／pointer／publication／舊read ACL不變，再Org034–036成功，兩真runtime讀取v2/history34欄及legacy九列 | 原tracked bootstrap／SQL未改；原manifest之外可新增manifest，所以整份metadata digest可不同。9個受測source於run後逐hash一致，PG／port／temp與lease/session全清。r1 loader及r2 metadata-query fixture失敗保留；只證冷安裝recipe，合併C26作reader相容證據，不代provider retained-worker／正式GO或正常SSO |
@@ -195,3 +196,11 @@ r14 以公司 Google SSO 登入 `jedchang0308@jenfu.com.tw`，三端使用同一
 旅程亦發現 Portal 舊 `v_portal_app_visibility_v1` 只納入 `human_personal`，使已驗證的 `human_privileged` Principal 雖持有有效 Employee business role，Platform仍不顯示 PDM。新 forward-only migration `037_dev058_human_privileged_portal_visibility.sql` 改由 v4 effective grants 判定 PDM可見性，`system_admin` 的 exact-Principal規則不變；隔離資料庫套用前只見OrgMaster，套用後同一Principal可見OrgMaster與PDM。固定readiness現驗 `portal_uses_v4_grants=true`；DB boundary PASS，受影響7個Vitest PASS。此migration只在task-owned PostgreSQL套用，沒有正式migration、部署或正式資料寫入。
 
 r14收尾已停止OrgMaster／Platform／PDM與隔離PostgreSQL，11000／13000／15000／64052均無listener；本機測試分頁已關閉。公司IdP先讀回原8域＋本任務`localhost`後，精確移除`localhost`並再次讀回原8域完整保留；證據為`company-idp-localhost-20261024-r8-cleanup.json`及`local-sso-runtime-20261024-r14-cleanup.json`。
+
+### 2026-10-25 r15 動態矩陣與狀態覆核
+
+沿既有 `qc-dev-009-privileged-browser.mjs` 更新已改版的常駐功能導覽入口，並改用 tracked v7 dynamic test vector及runner內最小合法fixture，不再依賴被忽略的本機 `data/`。production build artifact由實際Chromium完成9/9：一般矩陣只列canonical與active custom、system_admin只一列、inactive custom保留撤銷歷史且無新增入口；明細顯示角色名稱、catalog version、scope與期間；鍵盤可開關明細／新增對話框並回復焦點；代理明示空狀態、503可恢復錯誤、empty／denied／stale、1440／1024／390唯讀皆通過。`pageErrors=0`、`consoleErrors=0`，browser／server／port／task artifact完整清理；報告及畫面位於 `output/qa/dev-058/browser-dynamic-r15/`。
+
+同次固定入口 `test:dev-058:contracts` 為15檔113 PASS／1既有SKIP，`GovernanceCenter.test.tsx`與`GovernancePrivilegedAssignments.test.tsx`為2檔12 PASS。R15與r14正常Google SSO／真雙端判權合併後，QA058-02／23改PASS，原24目的為 **24 PASS／0 PARTIAL／0 BLOCKED**。這只關閉DEV-058本機驗收目的；DEV-058仍為In Progress／Not Released，正式reader／writer及AI-PDM QA50的合法STEP／IGES來源仍未完成。本輪未執行正式migration、部署、正式資料寫入或IAM／Secret變更。
+
+本輪再次讀回r14撤銷證據：authority version 8、reason=`revoke_system_admin`、`systemAdmin.effectiveCount=0`，歷史任用仍為`revoked`且有有限`validTo`。r15只在隔離browser mock中重演特權授予／撤銷，沒有重新授予本機Principal；r14之OrgMaster／Platform／PDM／PostgreSQL已停止，故本機 `system_admin` 撤銷狀態維持。

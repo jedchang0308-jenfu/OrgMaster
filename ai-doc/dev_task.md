@@ -72,7 +72,7 @@ Immutable intent=`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/O
 
 ## DEV-058 B 方案動態角色與集中指派
 
-入口：[規格](specs/DEV-058-federated-role-catalog-central-assignment.md)／[唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。OrgMaster 配人、AI-PDM DEV-123 管角色能力；按變更選驗、共用有效證據，不重複列關卡。
+入口：[規格](specs/DEV-058-federated-role-catalog-central-assignment.md)／[唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。OrgMaster 配人、AI-PDM DEV-123 管角色能力；按變更選驗、共用有效證據，不重複列關卡。2026-10-25本機24項目的已全部PASS；正式reader／writer與AI-PDM QA50仍依各自邊界保留，DEV-058維持In Progress／Not Released。
 
 ## DEV-057 historical image predecessor continuation（2026-10-11）
 
@@ -836,7 +836,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## DEV-058：B 方案動態角色目錄與集中人員指派
 
-[規格與雙方責任](specs/DEV-058-federated-role-catalog-central-assignment.md)／[24項目的、狀態與證據](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。任用人控、系統提醒；授權／資料安全／回復控制保留。正式 migration、部署與正式資料寫入仍排除。
+[規格與雙方責任](specs/DEV-058-federated-role-catalog-central-assignment.md)／[24項目的、狀態與證據](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。任用人控、系統提醒；授權／資料安全／回復控制保留。2026-10-25本機24項目的全部PASS；正式reader／writer與AI-PDM QA50仍未完成，正式 migration、部署與正式資料寫入仍排除。
 
 ## DEV-057：身分與權限發布契約邊界
 
