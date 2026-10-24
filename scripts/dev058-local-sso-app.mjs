@@ -245,6 +245,11 @@ async function loadNextRuntime(input) {
       if (!response.writableEnded) response.destroy()
     })
   })
+  const sockets = new Set()
+  httpsServer.on('connection', socket => {
+    sockets.add(socket)
+    socket.once('close', () => sockets.delete(socket))
+  })
   httpsServer.on('upgrade', (request, socket, head) => {
     void upgradeHandler(request, socket, head).catch(() => socket.destroy())
   })
@@ -257,9 +262,12 @@ async function loadNextRuntime(input) {
   return Object.freeze({
     server: httpsServer,
     close: async () => {
-      await nextApp.close()
+      // Browser HMR sockets belong to this server and must close before Next
+      // can finish shutdown; closeAllConnections alone excludes upgrades.
+      for (const socket of sockets) socket.destroy()
       httpsServer.closeAllConnections?.()
       await closeNodeServer(httpsServer)
+      await nextApp.close()
       restoreGeneratedFileIfUnchanged(nextEnvPath, nextEnvBefore, nextEnvGenerated)
       restoreGeneratedFileIfUnchanged(tsconfigPath, tsconfigBefore, tsconfigGenerated)
       const cleanup = taskCleanupPath(input.root, dist.resolved, distExisted)
@@ -273,6 +281,9 @@ async function loadOrgmasterRuntime(input) {
   const viteModule = await import(pathToFileURL(path.join(input.root, 'node_modules', 'vite', 'dist', 'node', 'index.js')).href)
   const server = await viteModule.createServer({
     root: input.root,
+    // Keep Vite's local server while disabling development-profile auth in
+    // the normal SSO journey. A task-specific mode avoids production env files.
+    mode: 'dev058-sso',
     configFile: path.join(input.root, 'vite.config.ts'),
     server: {
       https: { cert: fs.readFileSync(input.certPath), key: fs.readFileSync(input.keyPath) },

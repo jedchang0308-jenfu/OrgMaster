@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import net from 'node:net'
+import https from 'node:https'
 import { spawn, execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { withDev058Dev123Database } from './dev058-dev123-native-bootstrap.mjs'
@@ -41,6 +42,24 @@ async function freePort(port, host = '127.0.0.1') {
   const server = net.createServer()
   await new Promise((resolve, reject) => server.once('error', reject).listen(port, host, resolve))
   await new Promise(resolve => server.close(resolve))
+}
+async function readLocalAuth(pathname) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(new URL(pathname, origins.orgmaster), {
+      ca: fs.readFileSync(path.join(privateDir, 'local-ca.pem')), timeout: 15_000,
+    }, response => {
+      let body = ''
+      response.setEncoding('utf8')
+      response.on('data', chunk => { body += chunk })
+      response.on('error', reject)
+      response.on('end', () => {
+        try { resolve({ status: response.statusCode, body: JSON.parse(body) }) }
+        catch { reject(new Error('LOCAL_AUTH_RESPONSE_INVALID')) }
+      })
+    })
+    request.on('error', reject)
+    request.on('timeout', () => request.destroy(new Error('LOCAL_AUTH_TIMEOUT')))
+  })
 }
 function osEnvironment() {
   const env = {}
@@ -195,6 +214,12 @@ try {
         PDM_TRUST_GOOGLE_WORKSPACE_MFA: 'true', PDM_ALLOW_GOOGLE_WORKSPACE_AAL1_PRIVILEGED: 'true',
         PDM_GOOGLE_WORKSPACE_DOMAINS: 'jenfu.com.tw',
       }))
+      const developmentAuth = await readLocalAuth('/api/auth/development/profiles')
+      assert.equal(developmentAuth.status, 404, 'LOCAL_SSO_DEVELOPMENT_AUTH_MUST_BE_DISABLED')
+      const authMode = await readLocalAuth('/api/auth/mode')
+      assert.equal(authMode.status, 200, 'LOCAL_SSO_AUTH_MODE_UNAVAILABLE')
+      assert.equal(authMode.body.ssoHandoffEnabled, true, 'LOCAL_SSO_HANDOFF_NOT_ENABLED')
+      emit('normalAuthPreflight', { developmentProfilesDisabled: true, orgmasterSsoHandoffEnabled: true })
       fs.writeFileSync(path.join(taskTemp, 'local-sso-runtime.json'), JSON.stringify({ pid: process.pid, origins,
         pgPort: handle.port, database: handle.databaseName, managerPrincipal: baseline.managerLink.principalId,
         targetPrincipal: baseline.targetLink.principalId, apps: records.map(({ kind, pid, port, startToken }) => ({ kind, pid, port, startToken })) }, null, 2))
