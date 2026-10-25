@@ -90,6 +90,13 @@ function createSourceFixture() {
   runGit(root, ['commit', '--quiet', '-m', 'baseline infrastructure source'])
   const baselineSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
+  const partialProductionProfile = structuredClone(fullProductionProfile)
+  partialProductionProfile.migrations.entries = partialProductionProfile.migrations.entries.slice(0, -1)
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(partialProductionProfile, null, 2)}\n`)
+  runGit(root, ['add', PRODUCTION_PROFILE_PATH])
+  runGit(root, ['commit', '--quiet', '-m', 'append partial DEV-058 migration profile'])
+  const partialAppendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+
   fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(fullProductionProfile, null, 2)}\n`)
   runGit(root, ['add', PRODUCTION_PROFILE_PATH])
   runGit(root, ['commit', '--quiet', '-m', 'append DEV-058 migration profile'])
@@ -133,7 +140,7 @@ function createSourceFixture() {
   const sourceArchiveSha256 = sha256(sourceArchiveBytes)
 
   return {
-    root, baselineSourceRevision, appendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
+    root, baselineSourceRevision, partialAppendSourceRevision, appendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
     copyInputDriftSourceRevision, toolInputDriftSourceRevision, driftSourceRevision,
     sourceIdentitySha256, sourceArchive, sourceArchiveBytes, sourceArchiveSha256,
     sourceArchiveObject: `source/archives/${sourceArchiveSha256}/source.tar.gz`,
@@ -422,6 +429,8 @@ test('allows the exact DEV-058 profile append and existing recipe changes only',
   const appendTransition = assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.baselineSourceRevision, sourceFixture.appendSourceRevision)
   assert.equal(appendTransition.disposition, 'DEV058_ROLE_POLICY_APPEND')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.partialAppendSourceRevision, sourceFixture.appendSourceRevision).disposition, 'DEV058_ROLE_POLICY_APPEND')
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.rotationSourceRevision, sourceFixture.ordinarySourceRevision).disposition, 'UNCHANGED')
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
