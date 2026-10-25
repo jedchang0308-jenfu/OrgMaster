@@ -72,7 +72,7 @@ Immutable intent=`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/O
 
 ## DEV-058 B 方案動態角色與集中指派
 
-入口：[規格](specs/DEV-058-federated-role-catalog-central-assignment.md)／[唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。OrgMaster 配人、AI-PDM DEV-123 管角色能力；按變更選驗、共用有效證據，不重複列關卡。r14／r15支持本機24目的PASS，r16完成代理來源資格修正；R17完成公司Google正常代理／PDM判權與legacy planning讀回，臨時IAM、localhost、私有ADC與runtime均已撤回或清理。R18再由AI-PDM以合法SLDPRT＋STEP完成QA50 multipleBindings；該外部來源缺口關閉，QA50其餘非Principal舊入口仍PARTIAL。正式操作仍禁止；正式reader／writer保留，DEV-058維持In Progress／Not Released。
+入口：[規格](specs/DEV-058-federated-role-catalog-central-assignment.md)／[唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。OrgMaster 配人、AI-PDM DEV-123 管角色能力；按變更選驗、共用有效證據，不重複列關卡。r14／r15支持本機24目的PASS，r16完成代理來源資格修正；R17完成公司Google正常代理／PDM判權與legacy planning讀回，臨時IAM、localhost、私有ADC與runtime均已撤回或清理。R18以合法SLDPRT＋STEP完成QA50 multipleBindings；R19再把model-basis及baseline create／release接上Principal，25個隔離HTTP案例PASS，QA50本機工程判定PASS。正式操作仍禁止；正式reader／writer保留，DEV-058為RD Implementation Complete／Local QA PASS／Not Released。
 
 ## DEV-057 historical image predecessor continuation（2026-10-11）
 
@@ -836,7 +836,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## DEV-058：B 方案動態角色目錄與集中人員指派
 
-[規格與雙方責任](specs/DEV-058-federated-role-catalog-central-assignment.md)／[24項目的、狀態與證據](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。任用人控、系統提醒；授權／資料安全／回復控制保留。r14／r15組合支持本機24目的PASS；r16完成代理來源資格修正；R17完成公司Google正常代理、PDM判權及legacy planning讀回，臨時IAM／localhost／私有ADC／runtime均清理。R18由AI-PDM以合法SLDPRT＋STEP完成QA50 multipleBindings；該外部來源缺口關閉，QA50其餘非Principal舊入口仍PARTIAL。正式reader／writer未完成，正式migration、部署及正式業務資料寫入仍排除。
+[規格與雙方責任](specs/DEV-058-federated-role-catalog-central-assignment.md)／[24項目的、狀態與證據](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。任用人控、系統提醒；授權／資料安全／回復控制保留。r14／r15組合支持本機24目的PASS；r16完成代理來源資格修正；R17完成公司Google正常代理、PDM判權及legacy planning讀回，臨時IAM／localhost／私有ADC／runtime均清理。R18由AI-PDM以合法SLDPRT＋STEP完成QA50 multipleBindings；R19補齊model-basis及baseline create／release的Principal、必要能力AND、company fence與同交易audit，25個隔離HTTP案例PASS，QA50本機工程判定PASS。DEV-058為RD Implementation Complete／Local QA PASS／Not Released；正式reader／writer未完成，正式migration、部署及正式業務資料寫入仍排除。
 
 ## DEV-057：身分與權限發布契約邊界
 

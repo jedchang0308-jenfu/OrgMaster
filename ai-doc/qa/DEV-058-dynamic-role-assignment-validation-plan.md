@@ -1,6 +1,6 @@
 # DEV-058：驗收與證據
 
-修訂：2026-10-25。OrgMaster DEV-058 統籌，AI-PDM DEV-123 管理角色／能力。**In Progress／Not Released**；[規格](../specs/DEV-058-federated-role-catalog-central-assignment.md)不另記進度。本文件只維護驗收目的、缺口及證據；本輪人類明確禁止正式 migration、部署及正式資料寫入，以下舊授權／provider 結果只保留歷史事實，不作為本輪操作授權。公司 IdP 的 localhost 與三個既有 service account 的最小 ID-token 簽發角色僅依本次明確授權暫加，驗證後均撤除並讀回；Secret 未變更。
+修訂：2026-10-26。OrgMaster DEV-058 統籌，AI-PDM DEV-123 管理角色／能力。**RD Implementation Complete／Local QA PASS／Not Released**；[規格](../specs/DEV-058-federated-role-catalog-central-assignment.md)不另記進度。本文件只維護驗收目的、缺口及證據；本輪人類明確禁止正式 migration、部署及正式資料寫入，以下舊授權／provider 結果只保留歷史事實，不作為本輪操作授權。公司 IdP 的 localhost 與三個既有 service account 的最小 ID-token 簽發角色僅依本次明確授權暫加，驗證後均撤除並讀回；Secret 未變更。
 
 ## 1. 最少前置與資料
 
@@ -235,3 +235,9 @@ Platform 重新整理後顯示 AI-PDM 入口；由該入口正常登入 PDM，�
 ### 2026-10-25 R18：AI-PDM QA50 合法中間格式交接
 
 使用者提供的`D-0007-MA1.STEP`與`D-0007-MA1.IGS`均通過格式唯讀查核；兩者在PDM皆屬`intermediate`，因此AI-PDM owner選STEP並與既有ZIP內同名SLDPRT／SLDDRW完成隔離原生旅程。三檔正常upload／submit後review package同時保留`drawing_2d`、`cad_3d`、`intermediate`，`multipleBindings.status=PASS`；兩個review權限負例皆403且168張own tables不變，恢復後approve200。主證據SHA-256=`373B14B2F0F698F7C71B0E91AF3CB163F7CA45B4B65C811D4C3C85C2E090BBB8`，來源manifest SHA-256=`A1FE0C2D059AE57BCB329A2083BB07C16689B33CDA25C5AF78772B69E0079B6D`。此外部來源缺口已關閉；QA50仍因model-basis及baseline create／release非Principal舊入口維持PARTIAL，正式reader／writer仍待完成。隔離PG／bridge／temp已清理，本輪無正式migration、部署、正式資料、IAM或Secret變更。
+
+### 2026-10-26 R19：AI-PDM QA50 Principal mutation 收尾
+
+AI-PDM PR #479 commit `bdb5155effb38fd36f67e548b5f272eca1fbe5d3`把model-basis、baseline draft與baseline release接上verified Principal。依內部自用與人控原則保留既有簡化生命週期，不新增approval request、指定reviewer、no-self或第二人核准；只補model-basis的`drawing.edit AND model.edit`、2D-only的`drawing.review AND model.review`、baseline draft的`transfer.edit`、baseline release的`transfer.publish AND model.publish`，以及company fence、模型歸屬、原有狀態guard與同交易Principal audit。
+
+隔離native r6以registered synthetic AAL2 Principal、真role-policy apply、一次性PostgreSQL及loopback route完成25個HTTP案例：shared-model basis與2D-only為200、baseline draft為201、release為200並讀回Released；九個必要能力逐一撤除皆403，每次168張`ai_pdm_core`表row count／digest完全不變。主證據=`output/qa/dev-123/dev123-native-model-baseline-http-20261026-r6.json`，SHA-256=`38F3AEBE1BE1E618DC485663FEEFFECFD074D46E83083BDCE1662562A3C310AE`；PG ERROR/FATAL=0、asyncErrors=0，bridge／runtime／Governor temp均已清理。產品來源commit `bdb5155effb38fd36f67e548b5f272eca1fbe5d3`的required CI run `40210711554`兩項均SUCCESS。R18與R19合併後QA123-50本機工程判定PASS；DEV-058原24目的仍為24 PASS。本輪證據不是正式reader／writer、完整正式驗收或正式發布；正式migration、部署、正式業務資料、IAM與Secret變更仍未執行。
