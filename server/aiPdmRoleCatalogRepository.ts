@@ -6,16 +6,19 @@ import { decodeDynamicAiPdmRoleCatalog, type DynamicCatalogMetadata } from './ai
 
 export const JENFU_ENTITLEMENT_CONTRACT_VERSION = 'jenfu.platform-entitlement.v1' as const
 export const AI_PDM_APPLICATION_ID = 'ai-pdm' as const
+export const AI_PDM_ROLE_CATALOG_V3_VERSION = 'ai-pdm.role-catalog.2026-09-03.v3' as const
+export const AI_PDM_ROLE_CATALOG_V3_SHA256 = '46376639b7aec06798786b9d1a113ba604cf90ca31541a9464ecce7a49d116c8' as const
 export const AI_PDM_ROLE_CATALOG_VERSION = 'ai-pdm.role-catalog.2026-09-28.v5' as const
 export const AI_PDM_ROLE_CATALOG_SHA256 = '4f05dd4228b51e5086f30886330f48f1f137e37d383a26114bb34f5874d39197' as const
 export const AI_PDM_ROLE_CATALOG_V6_VERSION = 'ai-pdm.role-catalog.2026-10-05.v6' as const
 export const AI_PDM_ROLE_CATALOG_V6_SHA256 = 'bdc8d2b8f717e4af9d48cf882d1a564a5caaabaaaacdcf20bc5db36a5b6960af' as const
 export const AI_PDM_ROLE_CATALOG_V7_VERSION = 'ai-pdm.role-catalog.2026-10-10.v7' as const
 export const AI_PDM_ROLE_CATALOG_V7_SHA256 = '4d624b16a58299a78bc3bac4b7f39f261ec2ba34ae604f06ed7cdb7a078e01f9' as const
-const APPROVED_CATALOGS: Record<string, { file: string; hash: string }> = {
-  [AI_PDM_ROLE_CATALOG_VERSION]: { file: 'ai-pdm-role-catalog.v5.json', hash: AI_PDM_ROLE_CATALOG_SHA256 },
-  [AI_PDM_ROLE_CATALOG_V6_VERSION]: { file: 'ai-pdm-role-catalog.v6.json', hash: AI_PDM_ROLE_CATALOG_V6_SHA256 },
-  [AI_PDM_ROLE_CATALOG_V7_VERSION]: { file: 'ai-pdm-role-catalog.v7.json', hash: AI_PDM_ROLE_CATALOG_V7_SHA256 },
+const APPROVED_CATALOGS: Record<string, { path: string; hash: string }> = {
+  [AI_PDM_ROLE_CATALOG_V3_VERSION]: { path: 'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json', hash: AI_PDM_ROLE_CATALOG_V3_SHA256 },
+  [AI_PDM_ROLE_CATALOG_VERSION]: { path: 'config/catalogs/ai-pdm-role-catalog.v5.json', hash: AI_PDM_ROLE_CATALOG_SHA256 },
+  [AI_PDM_ROLE_CATALOG_V6_VERSION]: { path: 'config/catalogs/ai-pdm-role-catalog.v6.json', hash: AI_PDM_ROLE_CATALOG_V6_SHA256 },
+  [AI_PDM_ROLE_CATALOG_V7_VERSION]: { path: 'config/catalogs/ai-pdm-role-catalog.v7.json', hash: AI_PDM_ROLE_CATALOG_V7_SHA256 },
 } as const
 
 export type PublishedAiPdmRole = {
@@ -111,7 +114,7 @@ function validateCatalog(catalog: PublishedAiPdmRoleCatalog) {
 export async function readPublishedAiPdmRoleCatalog(root = process.cwd(), catalogVersion: PublishedAiPdmRoleCatalog['catalogVersion'] = AI_PDM_ROLE_CATALOG_VERSION): Promise<PublishedAiPdmRoleCatalog> {
   const approved = APPROVED_CATALOGS[catalogVersion]
   if (!approved) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
-  const sourcePath = resolve(root, 'config', 'catalogs', approved.file)
+  const sourcePath = resolve(root, approved.path)
   let raw: string
   try {
     await access(sourcePath)

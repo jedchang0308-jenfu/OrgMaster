@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import pg from 'pg'
 import { describe, expect, it } from 'vitest'
-import { readPublishedAiPdmRoleCatalog, readPublishedAiPdmRoleCatalogFromDatabase, type PublishedAiPdmRoleCatalog } from './aiPdmRoleCatalogRepository'
+import { readHistoricalAiPdmRoleCatalogFromDatabase, readPublishedAiPdmRoleCatalog, readPublishedAiPdmRoleCatalogFromDatabase, type PublishedAiPdmRoleCatalog } from './aiPdmRoleCatalogRepository'
 import { createAiPdmRoleCatalog, validateExternalRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { validatePolicyDataV3 } from '../src/governance/validation'
 import { createSeedDocumentV2 } from '../src/governance/migrateGovernanceV1ToV2'
@@ -45,6 +45,23 @@ const reorder = (value: unknown): unknown => Array.isArray(value) ? value.map(re
   value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, reorder(child)])) : value
 
 describe('DEV-058 assignment-compatible content publications', () => {
+  it('accepts the exact frozen v3 publication as historical provenance without weakening new-version checks', async () => {
+    const historical = await readPublishedAiPdmRoleCatalog(process.cwd(), 'ai-pdm.role-catalog.2026-09-03.v3')
+    const decoded = await readHistoricalAiPdmRoleCatalogFromDatabase(
+      { query: async () => ({ rows: catalogRows(historical) }) }, historical.catalogVersion, historical.catalogSha256,
+    )
+    expect(decoded).toMatchObject({ catalogVersion: historical.catalogVersion,
+      catalogSha256: historical.catalogSha256, roles: expect.arrayContaining([
+        expect.objectContaining({ stableRoleId: 'role-system-admin', roleCode: 'system_admin' }),
+      ]) })
+
+    const tampered = catalogRows(historical)
+    tampered.find(row => row.role_code === 'system_admin')!.permissions = []
+    await expect(readHistoricalAiPdmRoleCatalogFromDatabase(
+      { query: async () => ({ rows: tampered }) }, historical.catalogVersion, historical.catalogSha256,
+    )).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
+  })
+
   it('accepts two capability versions without a new consumer pin, even after jsonb key reordering', async () => {
     for (const version of [8, 9]) {
       const expected = await compatibleCatalog(version)
