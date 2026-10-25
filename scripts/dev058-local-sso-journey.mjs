@@ -150,13 +150,24 @@ try {
   // Obtain fresh verified IdP facts through the already-authorized readonly ADC.
   process.env.CLOUDSDK_CONFIG = privateDir
   process.env.GOOGLE_APPLICATION_CREDENTIALS = path.join(privateDir, 'application_default_credentials.json')
-  const { initializeApp, applicationDefault } = await import('firebase-admin/app')
-  const { getAuth } = await import('firebase-admin/auth')
-  const adminApp = initializeApp({ credential: applicationDefault(), projectId: firebase.projectId }, `dev058-local-${process.pid}`)
-  const user = await getAuth(adminApp).getUser(savedIdentity.subject)
-  assert.equal(user.emailVerified, true); assert.equal(user.disabled, false)
-  const google = user.providerData.find(row => row.providerId === 'google.com')
-  assert.equal(google?.uid, savedIdentity.googleSubject)
+  const { GoogleAuth } = await import('google-auth-library')
+  const googleAuth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform', 'openid', 'email'] })
+  const googleClient = await googleAuth.getClient()
+  const googleAccess = await googleClient.getAccessToken()
+  const googleAccessToken = typeof googleAccess === 'string' ? googleAccess : googleAccess?.token
+  assert.ok(googleAccessToken, 'LOCAL_SSO_ADC_ACCESS_TOKEN_MISSING')
+  const identityResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${firebase.projectId}/accounts:lookup`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${googleAccessToken}`, 'Content-Type': 'application/json', 'x-goog-user-project': firebase.projectId },
+    body: JSON.stringify({ localId: [savedIdentity.subject] }),
+  })
+  assert.equal(identityResponse.status, 200, 'LOCAL_SSO_IDENTITY_LOOKUP_FAILED')
+  const identityBody = await identityResponse.json()
+  const user = identityBody.users?.[0]
+  assert.equal(user?.localId, savedIdentity.subject)
+  assert.equal(user?.emailVerified, true); assert.notEqual(user?.disabled, true)
+  const google = user?.providerUserInfo?.find(row => row.providerId === 'google.com')
+  assert.equal(google?.rawId, savedIdentity.googleSubject)
   const identity = { ...savedIdentity, email: user.email, issuer: common.JENFU_IDENTITY_ISSUER }
   await withDev058Dev123Database(async ({ admin, orgRuntime, pdmRuntime, platformRuntime, platformRuntimeUrl, handle, platformMigrationEvidence }) => {
     await pdmRuntime.end(); await platformRuntime.end()
@@ -195,6 +206,8 @@ try {
         ...firebaseEnv('NEXT_PUBLIC_JENFU_FIREBASE_'), JENFU_RUNTIME_ENVIRONMENT: 'development',
         PORTAL_PUBLIC_BASE_URL: origins.platform, PORTAL_POSTGRES_URL: platformRuntimeUrl,
         PORTAL_POSTGRES_POOL_MAX: '2', PORTAL_SESSION_HASH_PEPPER: crypto.randomBytes(32).toString('hex'),
+        NEXT_PUBLIC_DEV058_GOOGLE_PROMPT: 'none', NEXT_PUBLIC_DEV058_GOOGLE_LOGIN_HINT: identity.email,
+        DEV058_FIREBASE_USER_ADC_PROJECT: firebase.projectId,
         PORTAL_APP_ORGMASTER_BASE_URL: origins.orgmaster, PORTAL_APP_AI_PDM_BASE_URL: origins['ai-pdm'],
         PORTAL_APP_ORGMASTER_STATUS: 'active', PORTAL_APP_AI_PDM_STATUS: 'active',
         PORTAL_SUPPORT_HREF: 'mailto:jedchang0308@jenfu.com.tw', PORTAL_MANAGED_GOOGLE_LOGIN_ENABLED: 'true',

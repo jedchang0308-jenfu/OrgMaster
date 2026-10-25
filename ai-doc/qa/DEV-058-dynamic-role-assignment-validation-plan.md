@@ -1,6 +1,6 @@
 # DEV-058：驗收與證據
 
-修訂：2026-10-25。OrgMaster DEV-058 統籌，AI-PDM DEV-123 管理角色／能力。**In Progress／Not Released**；[規格](../specs/DEV-058-federated-role-catalog-central-assignment.md)不另記進度。本文件只維護驗收目的、缺口及證據；本輪人類明確禁止正式 migration、部署及正式資料寫入，以下舊授權／provider 結果只保留歷史事實，不作為本輪操作授權。公司 IdP 僅允許本次暫加 localhost、保留原網域並於驗證後移除，不擴張 IAM／Secret。
+修訂：2026-10-25。OrgMaster DEV-058 統籌，AI-PDM DEV-123 管理角色／能力。**In Progress／Not Released**；[規格](../specs/DEV-058-federated-role-catalog-central-assignment.md)不另記進度。本文件只維護驗收目的、缺口及證據；本輪人類明確禁止正式 migration、部署及正式資料寫入，以下舊授權／provider 結果只保留歷史事實，不作為本輪操作授權。公司 IdP 的 localhost 與三個既有 service account 的最小 ID-token 簽發角色僅依本次明確授權暫加，驗證後均撤除並讀回；Secret 未變更。
 
 ## 1. 最少前置與資料
 
@@ -221,3 +221,13 @@ DEV-123協作唯讀檢查發現，治理中心原來源選單只檢查`ai-pdm`�
 本輪正常代理／舊生管UI補驗仍為**BLOCKED**，但阻塞已由憑證警告更新為既有本機服務身分前置：同一任務私有ADC對Platform／OrgMaster／AI-PDM三個既有service account的`iam.serviceAccounts.getOpenIdToken`有效權限均為false，實際`generateIdToken`皆HTTP 403 `PERMISSION_DENIED`。Firebase同actor fresh `getUser`則為Email已驗證、未停用、Google subject相符；Platform登入可成功是因既有Principal直接讀取，不需走service-account impersonation，兩項結果不可混為一個路徑。沒有新增IAM、Secret、替代token或放寬Google驗證；正常UI委派／發布、PDM delegated RD判權與legacy生管scope／期間因此均NOT_RUN。
 
 同次修正Org callback的公開錯誤映射：僅在broker status與v2公開code精確配對時保留重新驗證／拒絕／stale／code family，未知、錯配、畸形、過大或內部錯誤仍回`sso_dependency_unavailable`，不輸出service identity或provider細節。聚焦SSO 25/25、固定`test:dev-058:contracts` 15檔124 PASS／1既有SKIP。安全證據在`output/qa/dev-058/r16-safe-provider-stage-20261025.json`與`company-idp-localhost-20261025-r16-cleanup.json`；後者證明只移除`localhost`，9域恢復原8域且fresh readback完全相同。三端11000／15000／13000、隔離PG50883、一次性PG資料及Governor lease/session均已停止或釋放，本機session隨runtime失效。正式migration、部署、正式業務資料寫入及IAM／Secret變更仍禁止，DEV-058維持In Progress／Not Released，r14／r15原24項本機結果及PDM的52 QA／17 AC／CG分母不縮減。
+
+### 2026-10-25 R17：正常代理／PDM 雙端旅程與臨時權限收尾
+
+沿同一 `delegation-r16` 隔離資料，以公司 Google 正常 SSO 建立 verified Principal／Employee session。OrgMaster 正常 UI 建立草稿 `DEV058 R17 delegation QA`，由有效 `role-rd` 來源任用建立代理 `delegation-fddb713a-786d-4514-b20d-3815075b2d00`，scope=`company-jenfu`、期限未超過來源，並發布 governance version 2。發布後 DB 讀回 manager 為 direct=0／delegated=1／`system_admin`=0；來源仍保留 RD v7 與 legacy planning v6 direct 任用，沒有重授特權或以預植代理結果替代正常操作。
+
+Platform 重新整理後顯示 AI-PDM 入口；由該入口正常登入 PDM，工作台顯示 RD 功能，直接進入 `/settings` 則顯示僅系統管理員可用，證明 delegated RD Allow 與 `system_admin` Deny 同時成立。OrgMaster 正常畫面亦讀回 legacy planning 的 catalog=`ai-pdm.role-catalog.2026-10-05.v6`、scope=`company-jenfu`、有效期間與 current published 狀態，關閉 R16 保留的正常代理／legacy scope 與期間子項。PDM 主頁登出成功並回登入頁；Platform 登出對話框因瀏覽器前景操作逾時未取得 UI 完成證據，未宣稱成功，剩餘本機 session 隨任務 runtime 停止及一次性資料庫移除而失效。
+
+本輪修正本機 normal-SSO 前置：journey 以 Identity Toolkit `accounts:lookup` 搭配明確 user project 驗證 actor，Platform 只在 development 且 project 精確相符時使用任務私有 user ADC；瀏覽器 `prompt=none`／`login_hint` 亦只由明確本機旗標啟用，正常預設仍為 `select_account`。Platform 聚焦 3 檔47 PASS、OrgMaster 聚焦 2 檔27 PASS、Platform typecheck與Org journey syntax均 PASS。機器可讀證據為 `output/qa/dev-058/local-sso-bilateral-r17-readback-20261025.json`，SHA-256=`5097553085CB2C694BA99CBF096B632EACBE96A24255CE3D336482497B4EB855`；原 QA058 24目的仍沿 r14／r15 的24 PASS，不另增加分母。
+
+臨時 IAM 最終 provider readback：`platform-prod-runtime`、`orgmaster-prod-runtime`、`aipdm-prod-runtime` 的 direct binding=false、effective `iam.serviceAccounts.getOpenIdToken`=false，`generateIdToken`皆403；臨時角色只含該一 permission。IdP 已由9域恢復原8域且 localhost=false；四份任務私有 ADC 副本恢復原 SHA-256=`E69BAB0A36D10FAF5F524CC46C496C409B9856EC84F34FD7610714B6FA9B279E`，私有 token cache 已歸零。11000／13000／15000與隔離PG port均無listener，Governor session `fbbff7e8-0cf3-4cd7-9743-084e42bcdaa3`已正常結束。未變更Secret，未執行正式migration、部署或正式業務資料寫入；正式reader／writer與AI-PDM QA50合法中間格式來源仍待完成，DEV-058維持In Progress／Not Released。

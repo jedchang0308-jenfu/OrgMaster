@@ -72,7 +72,7 @@ Immutable intent=`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/O
 
 ## DEV-058 B 方案動態角色與集中指派
 
-入口：[規格](specs/DEV-058-federated-role-catalog-central-assignment.md)／[唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。OrgMaster 配人、AI-PDM DEV-123 管角色能力；按變更選驗、共用有效證據，不重複列關卡。r14／r15組合證據支持本機24目的PASS；r16代理來源資格修正4檔26PASS、完整build與原head required CI PASS。新非特權delegation-r16隔離baseline已證PDM direct=0／system_admin=0、RD與舊生管前置存在；ADC已恢復，正常代理／舊生管UI補驗仍因Chrome本機憑證警告BLOCKED，不能用前置就緒當UI通過。runtime與本輪localhost由原owner驗後清理，正式操作仍禁止；正式reader／writer及AI-PDM QA50保留，DEV-058維持In Progress／Not Released。
+入口：[規格](specs/DEV-058-federated-role-catalog-central-assignment.md)／[唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。OrgMaster 配人、AI-PDM DEV-123 管角色能力；按變更選驗、共用有效證據，不重複列關卡。r14／r15支持本機24目的PASS，r16完成代理來源資格修正；R17再以公司Google正常SSO完成代理建立／發布、PDM delegated RD Allow與`system_admin` Deny，以及legacy planning scope／期間讀回。manager最終為direct=0／delegated=1／`system_admin`=0；臨時IAM、localhost、私有ADC與runtime均已撤回或清理並讀回。正式操作仍禁止；正式reader／writer及AI-PDM QA50保留，DEV-058維持In Progress／Not Released。
 
 ## DEV-057 historical image predecessor continuation（2026-10-11）
 
@@ -836,7 +836,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## DEV-058：B 方案動態角色目錄與集中人員指派
 
-[規格與雙方責任](specs/DEV-058-federated-role-catalog-central-assignment.md)／[24項目的、狀態與證據](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。任用人控、系統提醒；授權／資料安全／回復控制保留。r14／r15組合支持本機24目的PASS；r16代理來源修正完成，actor最終讀回direct=0／delegated=0／`system_admin`=0。補充正常UI旅程已越過憑證警告並完成Platform Google session，但既有三個service account的`getOpenIdToken`有效權限皆缺少，Org callback無法安全完成；代理／發布、PDM delegated判權及legacy scope／期間維持NOT_RUN。Org公開broker錯誤映射已最小修正，固定DEV-058 contracts為124 PASS／1既有SKIP；沒有放寬身分驗證或改IAM／Secret。`localhost`已精確移除並恢復原8域，三端／PG／lease/session已清理。正式reader／writer與AI-PDM QA50未完成，正式migration、部署及正式業務資料寫入仍排除。
+[規格與雙方責任](specs/DEV-058-federated-role-catalog-central-assignment.md)／[24項目的、狀態與證據](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。任用人控、系統提醒；授權／資料安全／回復控制保留。r14／r15組合支持本機24目的PASS；r16完成代理來源資格修正。R17以公司Google正常SSO完成正常代理建立／發布、PDM delegated RD可用、設定頁因無`system_admin`拒絕，以及legacy planning目錄／scope／期間讀回；manager最終direct=0／delegated=1／`system_admin`=0。臨時最小IAM已從三個service account撤除且permission=false／簽發403，localhost恢復原8域，私有ADC、三端／PG／lease/session均清理。正式reader／writer與AI-PDM QA50未完成，正式migration、部署及正式業務資料寫入仍排除。
 
 ## DEV-057：身分與權限發布契約邊界
 
