@@ -321,9 +321,13 @@ export async function applyDraftCommand(root: string, expectedRevision: string, 
     return { ...await persistV3(root, current, audited, source, undefined, catalogs), status: applied.status }
   })
 }
-export async function validateAssignmentCandidate(root: string, value: Partial<GovernanceRoleAssignmentV2>) {
-  const source = await loadOrganizationSource(root)
-  const catalog = await readActiveAiPdmRoleCatalog(root)
+export function validateAssignmentCandidateWithCatalogs(
+  document: GovernanceDocumentV3,
+  value: Partial<GovernanceRoleAssignmentV2>,
+  catalog: ExternalRoleCatalogSnapshotV1,
+  catalogs: ExternalRoleCatalogSnapshotV1[],
+  source?: GovernanceOrgSource,
+) {
   const candidate: GovernanceRoleAssignmentV2 = {
     id: value.id ?? 'candidate', employeeId: value.employeeId ?? '',
     applicationId: value.applicationId ?? 'ai-pdm', roleId: value.roleId ?? '',
@@ -333,7 +337,6 @@ export async function validateAssignmentCandidate(root: string, value: Partial<G
     validFrom: value.validFrom ?? new Date().toISOString(), validTo: value.validTo ?? null,
     effectState: value.effectState ?? 'not-synchronized',
   }
-  const current = await readV3Raw(root)
   const normalized = {
     ...candidate, basis: 'manual' as const, subjectKind: 'employee' as const,
     targetPrincipalId: null, sources: [],
@@ -341,9 +344,9 @@ export async function validateAssignmentCandidate(root: string, value: Partial<G
     createdByPrincipalId: 'system:generic-v2-validator', createdReason: 'generic V2 validation adapter',
   }
   const issues = validatePolicyDataV3({
-    ...current.document.draft,
-    roleAssignments: [...current.document.draft.roleAssignments.filter((assignment) => assignment.id !== candidate.id), normalized],
-  }, validationSource(source), [catalog])
+    ...document.draft,
+    roleAssignments: [...document.draft.roleAssignments.filter((assignment) => assignment.id !== candidate.id), normalized],
+  }, source, catalogs)
   // Historical snapshots remain readable, but preview is for a new mutation.
   if (candidate.applicationId === 'ai-pdm' && candidate.catalogVersion !== catalog.catalogVersion) {
     issues.push({ code: 'EXTERNAL_CATALOG_STALE', path: 'catalogVersion',
@@ -352,6 +355,13 @@ export async function validateAssignmentCandidate(root: string, value: Partial<G
   return { status: issues.length ? 'invalid' as const : 'valid' as const, issues,
     catalogVersion: catalog.catalogVersion, payloadHash: catalog.payloadHash,
     effectState: candidate.effectState, checkedAt: new Date().toISOString() }
+}
+export async function validateAssignmentCandidate(root: string, value: Partial<GovernanceRoleAssignmentV2>) {
+  const source = await loadOrganizationSource(root)
+  const current = await readV3Raw(root)
+  const catalog = await readActiveAiPdmRoleCatalog(root)
+  const catalogs = await governanceCatalogsWithHistory(current.document, [catalog])
+  return validateAssignmentCandidateWithCatalogs(current.document, value, catalog, catalogs, validationSource(source))
 }
 export async function publishGovernance(root: string, expectedRevision: string, commandId: string, reason: string, organizationVersionId: string, actor: GovernanceActorContext, context: GovernanceWriteContext = {}) {
   return withActorWrite(root, actor, async authorizeBeforeCommit => {
