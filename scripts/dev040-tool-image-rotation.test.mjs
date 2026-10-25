@@ -8,8 +8,8 @@ import { gzipSync } from 'node:zlib'
 import { executeToolImageRotation, assertRequiredToolSourceQc, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
 import { assertDeployToolRotationSelection, bindDeployToolRotationAuthority, parseDeployProductionArgs, selectDeployInfrastructureRef } from './dev040-deploy-production.mjs'
 import { resolveRoutineToolRotationRef } from './lib/dev040-routine-release.mjs'
-import { canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
-import { sealToolEvidence, assertToolSeal, rotationAddresses, MIGRATION_JOB_ADDRESS, assertToolBuildProof } from './lib/dev040-tool-image-rotation.mjs'
+import { canonicalize, sha256, releasePaths } from './lib/dev012-owner-release-runtime.mjs'
+import { sealToolEvidence, assertToolSeal, rotationAddresses, MIGRATION_JOB_ADDRESS, assertToolBuildProof, assertOrdinaryToolRotation } from './lib/dev040-tool-image-rotation.mjs'
 import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-stage-executor.mjs'
 import { buildMigrationToolImage } from './lib/dev040-tool-image-build.mjs'
 
@@ -381,6 +381,55 @@ test('read-only readiness verifies all 75 addresses without a build, mutation or
   const result = await executeToolImageRotation(h.input)
   assert.equal(result.status, 'READY_FOR_IMAGE_BUILD'); assert.equal(result.addressCount, 75)
   assert.equal(result.ddlExecuted, 0); assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
+})
+test('a sealed pre-activation abort may anchor the next image rotation while retaining the released service baseline', async () => {
+  const h = harness()
+  const failedReleaseId = 'ORGMASTER-ABORTED-BUILD'
+  const sourceLockRef = h.seed(`gs://${bucket}/receipts/releases/${failedReleaseId}/source-lock.json`, { status: 'PASS' })
+  const previousInfra = { ...JSON.parse(h.store.get(h.infraRef.uri).toString('utf8')), receiptSha256: 'fixture-prior-rotation' }
+  const previousInfraRef = h.seed(`gs://${bucket}/receipts/tool-rotations/${sourceFixture.baselineRevision}/app-infra.json`, previousInfra)
+  const failedIntent = { ownerApplicationId: 'orgmaster', releaseId: failedReleaseId,
+    sourceRevision: sourceFixture.baselineRevision, sourceLockRef, baselineIntentRef: h.baselineIntentRef,
+    infraReceiptRef: previousInfraRef, previousRevision: h.baseline.activeRevision }
+  const failedIntentRef = h.seed(`gs://${bucket}/receipts/releases/${failedReleaseId}/release-intent.json`, failedIntent)
+  const paths = releasePaths(profile, failedIntent, failedIntentRef.sha256)
+  const rollbackCore = { schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
+    releaseId: failedReleaseId, sourceRevision: failedIntent.sourceRevision, stage: 'rollback', status: 'PASS', observedAt: NOW,
+    previousReceiptRef: null, facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: h.baseline.activeRevision,
+      databaseDisposition: 'NOT_APPLIED', entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' },
+      recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'] } }
+  const rollbackRef = h.seed(paths.rollback, { ...rollbackCore, receiptSha256: sha256(canonicalize(rollbackCore)) })
+  const terminalCore = { schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
+    releaseId: failedReleaseId, sourceRevision: failedIntent.sourceRevision, stage: 'terminal', status: 'PASS', observedAt: NOW,
+    previousReceiptRef: rollbackRef, facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: h.baseline.activeRevision,
+      databaseDisposition: 'NOT_APPLIED', entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' } } }
+  h.seed(paths.terminal, { ...terminalCore, receiptSha256: sha256(canonicalize(terminalCore)) })
+  const controlCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result: 'PRE_ACTIVATION_ABORTED',
+    ownerApplicationId: 'orgmaster', service: 'orgmaster-prod', controlBucket: bucket, releaseId: failedReleaseId,
+    sourceRevision: failedIntent.sourceRevision, sourceLockSha256: sourceLockRef.sha256, candidateRevision: null,
+    previousRevision: h.baseline.activeRevision }
+  h.seed(h.controlUri, { ...controlCore, controlSha256: sha256(canonicalize(controlCore)) })
+  let priorChecks = 0
+  const result = await executeToolImageRotation({ ...h.input, apply: true,
+    resolveControlBaseline: async ({ control, attempt }) => {
+      assert.equal(control.result, 'PRE_ACTIVATION_ABORTED'); assert.deepEqual(attempt.ref, failedIntentRef)
+      return h.baselineIntentRef
+    },
+    assertPreviousRotation: async ({ intent, receipt, baseline }) => {
+      priorChecks++; assert.deepEqual(intent, failedIntent); assert.deepEqual(receipt, previousInfra); assert.equal(baseline, h.baseline)
+    } })
+  assert.equal(result.status, 'APPLIED'); assert.equal(priorChecks, 1)
+  const prepared = h.json('prepared'), receipt = h.json('app-infra')
+  assert.deepEqual(prepared.baselineIntentRef, failedIntentRef)
+  assert.deepEqual(prepared.baselineInfraRef, previousInfraRef)
+  assert.equal(prepared.baselineSourceRevision, failedIntent.sourceRevision)
+  assert.equal(receipt.toolRotation.controlBaseline.sha256, sha256(h.store.get(h.controlUri)))
+  const tamperedRollback = JSON.parse(h.store.get(paths.rollback).toString('utf8'))
+  tamperedRollback.facts.entrypointRecovery.changed = true
+  h.seed(paths.rollback, tamperedRollback)
+  await assert.rejects(assertOrdinaryToolRotation({ root: sourceFixture.root, profile, transport: h.input.transport,
+    intent: { sourceRevision, infraReceiptRef: result.ref, baselineIntentRef: h.baselineIntentRef }, receipt, baseline: h.baseline }),
+  error => error.code === 'TOOL_ROTATION_BASELINE_INVALID')
 })
 test('non-protected source and non-finalized control stop before provider builds or apply', async () => {
   const h = harness()

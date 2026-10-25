@@ -7,7 +7,7 @@ import { canonicalize, sha256, createOwnerTransport } from './lib/dev012-owner-r
 import { readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
 import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 import { verifyOfficialMergedSource } from './lib/dev012-official-source-review.mjs'
-import { readRoutineBaseline } from './lib/dev040-routine-release.mjs'
+import { readRoutineBaseline, resolveRoutineControlBaseline } from './lib/dev040-routine-release.mjs'
 import { buildMigrationToolImage, reuseMigrationToolImage } from './lib/dev040-tool-image-build.mjs'
 import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
 import { assertToolOwner, assertToolRotationPlan, assertToolRotationState, sealToolEvidence,
@@ -59,6 +59,7 @@ export async function readHistoricalToolBuildSource({ root, profile, sourceRevis
 export async function executeToolImageRotation({ root, profile, git, sourceProof, transport, terraform,
   build = buildMigrationToolImage, reuseBuild = null, apply = false, now = () => new Date().toISOString(),
   verifySource = () => readGitAuthority(root, profile), readBaseline = readRoutineBaseline,
+  resolveControlBaseline = resolveRoutineControlBaseline, assertPreviousRotation = assertOrdinaryToolRotation,
   variablesFromState = terraformVariablesFromState }) {
   assertToolOwner(profile)
   if (sourceProof?.sourceRevision !== git.sourceRevision || sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
@@ -71,17 +72,28 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   const head = await transport.readBytes(`gs://${bucket}/control/active.json`, { prefixes: ['control'] })
   const control = JSON.parse(head.bytes.toString('utf8'))
   const { controlSha256, ...controlCore } = control
-  if (controlSha256 !== sha256(canonicalize(controlCore)) || control.state !== 'FINALIZED' || control.result !== 'RELEASED'
+  if (controlSha256 !== sha256(canonicalize(controlCore)) || control.state !== 'FINALIZED'
+    || !['RELEASED', 'PRE_ACTIVATION_ABORTED'].includes(control.result)
     || control.ownerApplicationId !== 'orgmaster' || control.service !== 'orgmaster-prod') fail('CONTROL_NOT_RELEASED')
   const intentRead = await transport.readBytes(`gs://${bucket}/receipts/releases/${control.releaseId}/release-intent.json`, { prefixes: ['receipts'] })
+  const controlIntent = JSON.parse(intentRead.bytes.toString('utf8'))
   const baselineIntentRef = intentRead.ref
-  const baseline = await readBaseline({ profile, transport, baselineIntentRef })
-  if (baseline.intent.sourceRevision !== control.sourceRevision || baseline.activeRevision !== control.candidateRevision) fail('BASELINE_INVALID')
+  const releasedBaselineIntentRef = control.result === 'RELEASED' ? baselineIntentRef
+    : await resolveControlBaseline({ profile, transport, control, attempt: { ...intentRead, value: controlIntent } })
+  const baseline = await readBaseline({ profile, transport, baselineIntentRef: releasedBaselineIntentRef })
+  if (control.result === 'RELEASED') {
+    if (baseline.intent.sourceRevision !== control.sourceRevision || baseline.activeRevision !== control.candidateRevision) fail('BASELINE_INVALID')
+  } else if (control.candidateRevision !== null || control.previousRevision !== controlIntent.previousRevision
+    || baseline.activeRevision !== controlIntent.previousRevision || !same(controlIntent.baselineIntentRef, releasedBaselineIntentRef)) fail('BASELINE_INVALID')
   const service = await transport.getService(profile)
   transport.assertServiceSettled(service); transport.assertCanonicalEntrypoint(profile, service)
   if (transport.effectiveRevision(service) !== baseline.activeRevision || [...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some(row => row.tag)) fail('BASELINE_INVALID')
-  assertToolInfrastructureTransition(root, baseline.intent.sourceRevision, git.sourceRevision)
-  const previousInfra = (await transport.readJson(baseline.intent.infraReceiptRef, bucket, ['receipts'])).value
+  assertToolInfrastructureTransition(root, controlIntent.sourceRevision, git.sourceRevision)
+  const previousInfraRef = controlIntent.infraReceiptRef
+  const previousInfra = (await transport.readJson(previousInfraRef, bucket, ['receipts'])).value
+  if (control.result === 'PRE_ACTIVATION_ABORTED' && !same(previousInfraRef, baseline.intent.infraReceiptRef)) {
+    await assertPreviousRotation({ root, profile, transport, intent: controlIntent, receipt: previousInfra, baseline })
+  }
   const previousImage = previousInfra.migrationRunnerDigest
   const controllerImage = previousInfra.controllerImageDigest
   const jobName = `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/orgmaster-prod-migration-runner`
@@ -95,7 +107,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   const existing = await optionalJson(transport, `${prefix}/app-infra.json`, bucket)
   if (existing) {
     await assertOrdinaryToolRotation({ root, profile, transport, intent: { sourceRevision: git.sourceRevision,
-      infraReceiptRef: existing.ref, baselineIntentRef }, receipt: existing.value, baseline })
+      infraReceiptRef: existing.ref, baselineIntentRef: releasedBaselineIntentRef }, receipt: existing.value, baseline })
     return { status: 'APPLIED', reused: true, ref: existing.ref }
   }
   await terraform.initialize()
@@ -106,8 +118,8 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     assertToolSeal(prepared)
     if (prepared.schemaVersion !== 'orgmaster.tool-image-rotation-prepared.v1'
       || prepared.sourceRevision !== git.sourceRevision || !same(prepared.baselineIntentRef, baselineIntentRef)
-      || !same(prepared.baselineInfraRef, baseline.intent.infraReceiptRef)
-      || prepared.baselineSourceRevision !== baseline.intent.sourceRevision || !same(prepared.sourceProof, sourceProof)
+      || !same(prepared.baselineInfraRef, previousInfraRef)
+      || prepared.baselineSourceRevision !== controlIntent.sourceRevision || !same(prepared.sourceProof, sourceProof)
       || !same(prepared.artifactSourceProof ?? null, reuseBuild?.sourceProof ?? null)
       || prepared.controlBaseline.sha256 !== head.ref.sha256 || prepared.controlGeneration !== String(head.metadata.generation)) fail('PREPARED_BASELINE_CHANGED')
   } else {
@@ -144,7 +156,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
       transport.putBytes(`${prefix}/control-baseline.json`, head.bytes, { bucket, prefix: 'receipts', contentType: 'application/json' }),
     ])
     prepared = sealToolEvidence({ schemaVersion: 'orgmaster.tool-image-rotation-prepared.v1', sourceRevision: git.sourceRevision,
-      baselineIntentRef, baselineInfraRef: baseline.intent.infraReceiptRef, baselineSourceRevision: baseline.intent.sourceRevision,
+      baselineIntentRef, baselineInfraRef: previousInfraRef, baselineSourceRevision: controlIntent.sourceRevision,
       controlBaseline: head.ref, controlSnapshotRef: controlSnapshot.ref, controlGeneration: String(head.metadata.generation), sourceProof,
       ...(reuseBuild ? { artifactSourceProof: reuseBuild.sourceProof } : {}),
       previousImage, nextImage, controllerImage, foundationHash: manifest.foundation_manifest_sha256,
@@ -219,7 +231,8 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   // Re-run the same consumer before publishing APPLIED; an invalid proof cannot
   // be upgraded into an owner release prerequisite by an operator-only shortcut.
   await assertOrdinaryToolRotation({ root, profile, transport, intent: { sourceRevision: git.sourceRevision,
-    infraReceiptRef: { uri: `${prefix}/app-infra.json`, sha256: sha256(Buffer.from(`${canonicalize(receipt)}\n`)) }, baselineIntentRef }, receipt, baseline })
+    infraReceiptRef: { uri: `${prefix}/app-infra.json`, sha256: sha256(Buffer.from(`${canonicalize(receipt)}\n`)) },
+    baselineIntentRef: releasedBaselineIntentRef }, receipt, baseline })
   const result = await put('app-infra', receipt)
   return { status: 'APPLIED', ref: result.ref, migrationRunnerDigest: receipt.migrationRunnerDigest, ddlExecuted: 0 }
 }

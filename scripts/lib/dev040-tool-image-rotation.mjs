@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { gunzipSync } from 'node:zlib'
-import { canonicalize, sha256, assertImmutableRef } from './dev012-owner-release-runtime.mjs'
+import { canonicalize, sha256, assertImmutableRef, releasePaths } from './dev012-owner-release-runtime.mjs'
 import { readGitBlob } from './dev012-owner-stage-executor.mjs'
 import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
 import { matchGitSourceArchive } from './dev040-git-archive.mjs'
@@ -23,6 +23,14 @@ const TOOL_INFRASTRUCTURE_PATHS = Object.freeze([
 ])
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 function fail(code) { throw Object.assign(new Error(`TOOL_ROTATION_${code}`), { code: `TOOL_ROTATION_${code}` }) }
+function assertControlStage(value, intent, stage) {
+  const { receiptSha256, ...core } = value ?? {}
+  if (!H64.test(receiptSha256 ?? '') || receiptSha256 !== sha256(canonicalize(core))
+    || value.schemaVersion !== 'jenfu.dev012.stage-receipt.v1' || value.ownerApplicationId !== 'orgmaster'
+    || value.releaseId !== intent.releaseId || value.sourceRevision !== intent.sourceRevision
+    || value.stage !== stage || value.status !== 'PASS') fail('BASELINE_INVALID')
+  return value.facts
+}
 export function sealToolEvidence(core) { return { ...core, receiptSha256: sha256(canonicalize(core)) } }
 export function assertToolSeal(value) {
   const { receiptSha256, ...core } = value ?? {}
@@ -264,9 +272,31 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || priorInfra.foundationManifestSha256 !== receipt.foundationManifestSha256) fail('BASELINE_INVALID')
   const { controlSha256, ...controlCore } = controlRead.value
   if (controlRead.ref.sha256 !== proof.controlBaseline?.sha256 || controlSha256 !== sha256(canonicalize(controlCore))
-    || controlCore.state !== 'FINALIZED' || controlCore.result !== 'RELEASED' || controlCore.ownerApplicationId !== 'orgmaster'
+    || controlCore.state !== 'FINALIZED' || !['RELEASED', 'PRE_ACTIVATION_ABORTED'].includes(controlCore.result) || controlCore.ownerApplicationId !== 'orgmaster'
     || controlCore.service !== 'orgmaster-prod' || controlCore.sourceRevision !== proof.baselineSourceRevision
     || controlCore.releaseId !== originalIntent.releaseId) fail('BASELINE_INVALID')
+  if (controlCore.result === 'RELEASED') {
+    if (controlCore.candidateRevision !== baseline.activeRevision) fail('BASELINE_INVALID')
+  } else {
+    if (controlCore.controlBucket !== profile.artifact.releaseBucket || controlCore.candidateRevision !== null
+      || controlCore.previousRevision !== originalIntent.previousRevision || originalIntent.previousRevision !== baseline.activeRevision
+      || controlCore.sourceLockSha256 !== originalIntent.sourceLockRef?.sha256
+      || !same(originalIntent.baselineIntentRef, intent.baselineIntentRef)) fail('BASELINE_INVALID')
+    const paths = releasePaths(profile, originalIntent, originalIntentRead.ref.sha256)
+    const [rollbackRead, terminalRead] = await Promise.all([
+      transport.readBytes(paths.rollback, { prefixes: ['receipts'] }),
+      transport.readBytes(paths.terminal, { prefixes: ['receipts'] }),
+    ])
+    const rollbackFacts = assertControlStage(JSON.parse(rollbackRead.bytes.toString('utf8')), originalIntent, 'rollback')
+    const terminal = JSON.parse(terminalRead.bytes.toString('utf8'))
+    const terminalFacts = assertControlStage(terminal, originalIntent, 'terminal')
+    if (rollbackFacts.result !== 'PRE_ACTIVATION_ABORTED' || terminalFacts.result !== 'PRE_ACTIVATION_ABORTED'
+      || rollbackFacts.previousRevision !== baseline.activeRevision || terminalFacts.previousRevision !== baseline.activeRevision
+      || rollbackFacts.entrypointRecovery?.changed !== false || !same(terminalFacts.entrypointRecovery, rollbackFacts.entrypointRecovery)
+      || terminalFacts.databaseDisposition !== rollbackFacts.databaseDisposition
+      || !same(rollbackFacts.recoveryOrder, ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'])
+      || !same(terminal.previousReceiptRef, rollbackRead.ref)) fail('BASELINE_INVALID')
+  }
   const manifest = assertToolRotationState({ state: stateRead.value, infraProfile, profile, sourceRevision: receipt.sourceRevision,
     image: receipt.migrationRunnerDigest, controllerImage: receipt.controllerImageDigest, foundationHash: receipt.foundationManifestSha256 })
   if (stateRead.value.stateMeta.serial !== receipt.stateSerial || stateRead.value.stateMeta.lineage !== receipt.stateLineage
@@ -302,7 +332,8 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
   // The first publication joins the exact original baseline. Later app-only
   // publications may retain the same immutable tool proof with unchanged inputs.
   if (!same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
-    && !same(proof.baselineIntentRef, intent.baselineIntentRef)) fail('BASELINE_INVALID')
+    && !same(proof.baselineIntentRef, intent.baselineIntentRef)
+    && !(controlCore.result === 'PRE_ACTIVATION_ABORTED' && same(originalIntent.baselineIntentRef, intent.baselineIntentRef))) fail('BASELINE_INVALID')
   const candidateSmokeRefreshTokenSecretVersion = candidateSmokeVersionFromState(stateRead.value.stateMeta)
   return { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', sourceRevision: receipt.sourceRevision,
     migrationRunnerDigest: receipt.migrationRunnerDigest, binaryPlanRef: proof.binaryPlanRef, planJsonRef: proof.planJsonRef,
