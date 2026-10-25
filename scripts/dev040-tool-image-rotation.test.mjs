@@ -385,7 +385,7 @@ test('read-only readiness verifies all 75 addresses without a build, mutation or
 test('read-only readiness resolves an exact sealed pre-activation abort to its released predecessor', async () => {
   const h = harness()
   const attemptIntent = { ownerApplicationId: 'orgmaster', releaseId: 'ORGMASTER-ABORTED-ATTEMPT',
-    sourceRevision, baselineIntentRef: h.baselineIntentRef }
+    sourceRevision, baselineIntentRef: h.baselineIntentRef, infraReceiptRef: h.infraRef }
   const attemptRef = h.seed(`gs://${bucket}/receipts/releases/${attemptIntent.releaseId}/release-intent.json`, attemptIntent)
   const terminalUri = `gs://${bucket}/receipts/releases/${attemptIntent.releaseId}/${attemptRef.sha256}/terminal.json`
   const terminalRef = h.seed(terminalUri, { result: 'PRE_ACTIVATION_ABORTED' })
@@ -402,6 +402,33 @@ test('read-only readiness resolves an exact sealed pre-activation abort to its r
   assert.equal(result.status, 'READY_FOR_IMAGE_BUILD')
   assert.deepEqual(result.baselineIntentRef, h.baselineIntentRef)
   assert.ok(h.trace.includes(`read:${terminalRef.uri}`))
+  assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
+})
+test('read-only readiness uses an already-applied rotation from the sealed aborted attempt as the live infrastructure baseline', async () => {
+  const h = harness()
+  const appliedInfra = { ownerApplicationId: 'orgmaster', sourceRevision: sourceFixture.rotationSourceRevision,
+    migrationRunnerDigest: oldImage, controllerImageDigest: controllerImage, foundationManifestSha256: FOUNDATION }
+  const appliedInfraRef = h.seed(`gs://${bucket}/receipts/tool-rotations/${sourceFixture.rotationSourceRevision}/app-infra.json`, appliedInfra)
+  const attemptIntent = { ownerApplicationId: 'orgmaster', releaseId: 'ORGMASTER-ABORTED-APPLIED-TOOL',
+    sourceRevision, baselineIntentRef: h.baselineIntentRef, infraReceiptRef: appliedInfraRef }
+  const attemptRef = h.seed(`gs://${bucket}/receipts/releases/${attemptIntent.releaseId}/release-intent.json`, attemptIntent)
+  const terminalUri = `gs://${bucket}/receipts/releases/${attemptIntent.releaseId}/${attemptRef.sha256}/terminal.json`
+  h.seed(terminalUri, { result: 'PRE_ACTIVATION_ABORTED' })
+  const abortedCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result: 'PRE_ACTIVATION_ABORTED',
+    ownerApplicationId: 'orgmaster', service: 'orgmaster-prod', releaseId: attemptIntent.releaseId,
+    sourceRevision: attemptIntent.sourceRevision, previousRevision: h.baseline.activeRevision, candidateRevision: null }
+  const aborted = { ...abortedCore, controlSha256: sha256(canonicalize(abortedCore)) }
+  h.seed(h.controlUri, aborted)
+  h.input.resolveControlBaseline = async () => h.baselineIntentRef
+  let validationCount = 0
+  h.input.validateExistingRotation = async ({ intent, receipt, baseline }) => {
+    validationCount++
+    assert.deepEqual(intent, attemptIntent); assert.deepEqual(receipt, appliedInfra); assert.deepEqual(baseline, h.baseline)
+  }
+  h.state.manifest.source_revision = sourceFixture.rotationSourceRevision
+  const result = await executeToolImageRotation(h.input)
+  assert.equal(result.status, 'READY_FOR_IMAGE_BUILD')
+  assert.equal(validationCount, 1)
   assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
 })
 test('non-protected source and non-finalized control stop before provider builds or apply', async () => {
