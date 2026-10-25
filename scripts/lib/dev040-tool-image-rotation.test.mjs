@@ -5,7 +5,7 @@ import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { gunzipSync, gzipSync } from 'node:zlib'
 
-import { canonicalize, sha256 } from './dev012-owner-release-runtime.mjs'
+import { canonicalize, sha256, releasePaths } from './dev012-owner-release-runtime.mjs'
 import { createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
 import { assertToolRotationReleaseCompatibility } from './dev040-routine-release.mjs'
 import {
@@ -92,6 +92,13 @@ function createSourceFixture() {
   runGit(root, ['commit', '--quiet', '-m', 'baseline infrastructure source'])
   const baselineSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
+  const partialProductionProfile = structuredClone(fullProductionProfile)
+  partialProductionProfile.migrations.entries = partialProductionProfile.migrations.entries.slice(0, 34)
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(partialProductionProfile, null, 2)}\n`)
+  runGit(root, ['add', PRODUCTION_PROFILE_PATH])
+  runGit(root, ['commit', '--quiet', '-m', 'append partial DEV-058 migration profile'])
+  const partialAppendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+
   fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(dev058ProductionProfile, null, 2)}\n`)
   runGit(root, ['add', PRODUCTION_PROFILE_PATH])
   runGit(root, ['commit', '--quiet', '-m', 'append DEV-058 migration profile'])
@@ -140,7 +147,8 @@ function createSourceFixture() {
   const sourceArchiveSha256 = sha256(sourceArchiveBytes)
 
   return {
-    root, baselineSourceRevision, dev058SourceRevision, appendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
+    root, baselineSourceRevision, partialAppendSourceRevision, dev058SourceRevision,
+    appendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
     copyInputDriftSourceRevision, toolInputDriftSourceRevision, driftSourceRevision,
     sourceIdentitySha256, sourceArchive, sourceArchiveBytes, sourceArchiveSha256,
     sourceArchiveObject: `source/archives/${sourceArchiveSha256}/source.tar.gz`,
@@ -435,6 +443,10 @@ test('allows only the exact DEV-058 and DEV-059 profile appends plus existing re
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.dev058SourceRevision, sourceFixture.appendSourceRevision).disposition,
   'DEV059_FMS_AUTHORITY_APPEND')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.partialAppendSourceRevision, sourceFixture.dev058SourceRevision).disposition, 'DEV058_ROLE_POLICY_APPEND')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.partialAppendSourceRevision, sourceFixture.appendSourceRevision).disposition, 'DEV059_FMS_AUTHORITY_APPEND')
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.rotationSourceRevision, sourceFixture.ordinarySourceRevision).disposition, 'UNCHANGED')
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
@@ -801,6 +813,7 @@ function makeReceiptHarness({
   }
   const baseline = {
     intent: { infraReceiptRef: baselineUsesRotation ? receiptRef : previousInfraRef },
+    activeRevision: 'orgmaster-prod-baseline',
   }
   const transport = {
     async readJson(ref) {
@@ -827,6 +840,60 @@ function makeReceiptHarness({
 function resealReceipt(fixture) {
   const { receiptSha256: _oldHash, ...core } = fixture.receipt
   fixture.receipt = sealToolEvidence(core)
+}
+
+function bindPreActivationAbort(fixture) {
+  const attemptIntent = {
+    schemaVersion: fixture.profile.schemas.releaseIntent,
+    ownerApplicationId: 'orgmaster',
+    releaseId: 'ROTATION-ABORTED-ATTEMPT',
+    sourceRevision: sourceFixture.rotationSourceRevision,
+    sourceSha256: '7'.repeat(64),
+    sourceLockRef: fixture.previousInfraRef,
+    authorizationPolicyRef: fixture.previousInfraRef,
+    readinessReceiptRef: fixture.previousInfraRef,
+    foundationReceiptRef: fixture.previousInfraRef,
+    infraReceiptRef: fixture.previousInfraRef,
+    runtimeConfigRef: fixture.previousInfraRef,
+    migrationManifestSha256: '8'.repeat(64),
+    previousRevision: fixture.baseline.activeRevision,
+    deadlineAt: '2026-10-18T01:00:00.000Z',
+    baselineIntentRef: fixture.originalBaselineIntentRef,
+  }
+  const attemptRef = fixture.putJson('release-intent', attemptIntent, `releases/${attemptIntent.releaseId}`)
+  const terminal = sealToolEvidence({
+    schemaVersion: 'jenfu.dev012.stage-receipt.v1',
+    ownerApplicationId: 'orgmaster',
+    releaseId: attemptIntent.releaseId,
+    sourceRevision: attemptIntent.sourceRevision,
+    stage: 'terminal',
+    status: 'PASS',
+    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: fixture.baseline.activeRevision },
+  })
+  const terminalUri = releasePaths(fixture.profile, attemptIntent, attemptRef.sha256).terminal
+  const terminalBytes = Buffer.from(canonicalize(terminal))
+  const terminalRef = { uri: terminalUri, sha256: sha256(terminalBytes) }
+  fixture.jsonObjects.set(terminalUri, { ref: terminalRef, bytes: terminalBytes, value: structuredClone(terminal) })
+  const controlCore = {
+    schemaVersion: 'jenfu.dev012.owner-control-head.v1',
+    state: 'FINALIZED',
+    result: 'PRE_ACTIVATION_ABORTED',
+    ownerApplicationId: 'orgmaster',
+    service: 'orgmaster-prod',
+    releaseId: attemptIntent.releaseId,
+    sourceRevision: attemptIntent.sourceRevision,
+    sourceLockSha256: attemptIntent.sourceLockRef.sha256,
+    previousRevision: fixture.baseline.activeRevision,
+    candidateRevision: null,
+  }
+  const control = { ...controlCore, controlSha256: sha256(canonicalize(controlCore)) }
+  const controlRef = fixture.putJson('control-head-aborted', control, `releases/${attemptIntent.releaseId}`)
+  fixture.receipt.toolRotation.controlSnapshotRef = controlRef
+  fixture.receipt.toolRotation.controlBaseline.sha256 = controlRef.sha256
+  fixture.receipt.toolRotation.controlAttemptIntentRef = attemptRef
+  fixture.receipt.toolRotation.controlTerminalRef = terminalRef
+  resealReceipt(fixture)
+  return { attemptIntent, attemptRef, terminal, terminalRef, control, controlRef }
 }
 
 function replaceJsonObject(fixture, ref, value) {
@@ -1130,22 +1197,29 @@ test('binds build source identity and gzip archive hashes to the frozen Git revi
   assert.equal(result.migrationRunnerDigest, NEXT_IMAGE)
 })
 
-test('requires the hash-bound original finalized control head and rejects a bad control result', async () => {
+test('requires the hash-bound finalized control head and accepts an exact sealed pre-activation abort predecessor', async () => {
   const missingBinding = makeReceiptHarness()
   delete missingBinding.receipt.toolRotation.controlBaseline.sha256
   resealReceipt(missingBinding)
 
-  const badControl = makeReceiptHarness()
-  const { controlSha256: _oldControlHash, ...badControlCore } = badControl.controlSnapshot
-  badControlCore.result = 'PRE_ACTIVATION_ABORTED'
-  const badControlSnapshot = { ...badControlCore, controlSha256: sha256(canonicalize(badControlCore)) }
-  const badControlRef = badControl.putJson('control-head-invalid', badControlSnapshot, 'releases/ROTATION-BASELINE')
-  badControl.receipt.toolRotation.controlSnapshotRef = badControlRef
-  badControl.receipt.toolRotation.controlBaseline.sha256 = badControlRef.sha256
-  resealReceipt(badControl)
+  const validAbort = makeReceiptHarness()
+  const abort = bindPreActivationAbort(validAbort)
+  const accepted = await validateRotationFixture(validAbort)
+  assert.equal(accepted.migrationRunnerDigest, NEXT_IMAGE)
+  assert.deepEqual(validAbort.receipt.toolRotation.controlAttemptIntentRef, abort.attemptRef)
+
+  const badPrevious = makeReceiptHarness()
+  const badAbort = bindPreActivationAbort(badPrevious)
+  const { controlSha256: _oldControlHash, ...badControlCore } = badAbort.control
+  badControlCore.previousRevision = 'orgmaster-prod-wrong'
+  const badControl = { ...badControlCore, controlSha256: sha256(canonicalize(badControlCore)) }
+  const badControlRef = badPrevious.putJson('control-head-aborted-wrong', badControl, `releases/${badAbort.attemptIntent.releaseId}`)
+  badPrevious.receipt.toolRotation.controlSnapshotRef = badControlRef
+  badPrevious.receipt.toolRotation.controlBaseline.sha256 = badControlRef.sha256
+  resealReceipt(badPrevious)
 
   await Promise.all([
     assert.rejects(() => validateRotationFixture(missingBinding), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
-    assert.rejects(() => validateRotationFixture(badControl), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
+    assert.rejects(() => validateRotationFixture(badPrevious), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
   ])
 })

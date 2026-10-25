@@ -34,7 +34,9 @@ export function assertDev059FmsAuthorityAppend(before, after) {
   const beforeEntryCount = before.entries?.length
   if (canonicalize(staticInputs(before)) !== canonicalize(staticInputs(after))
     || before.baselineCount !== 10
-    || ![DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_ENTRY_COUNT].includes(beforeEntryCount)
+    || !Number.isSafeInteger(beforeEntryCount)
+    || beforeEntryCount < DEV058_MIGRATION_PREFIX_COUNT
+    || beforeEntryCount > DEV058_MIGRATION_ENTRY_COUNT
     || canonicalize(before.entries) !== canonicalize(after.entries.slice(0, beforeEntryCount))) fail('DEV059_MIGRATION_APPEND_INVALID')
   return {
     migrationDisposition: 'FORWARD_APPLY',
