@@ -690,6 +690,15 @@ function makeReceiptHarness({
     infraReceiptRef: previousInfraRef,
   }
   const originalBaselineIntentRef = putJson('release-intent', originalBaselineIntent, 'releases/ROTATION-BASELINE')
+  const originalBaselineTerminal = sealToolEvidence({
+    schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
+    releaseId: originalBaselineIntent.releaseId, sourceRevision: originalBaselineIntent.sourceRevision,
+    stage: 'terminal', status: 'PASS', previousReceiptRef: null,
+    facts: { result: 'RELEASED', candidateRevision: 'orgmaster-prod-baseline' },
+    observedAt: '2026-10-17T23:59:00.000Z',
+  })
+  const originalBaselineTerminalRef = putJson('terminal', originalBaselineTerminal,
+    `releases/${originalBaselineIntent.releaseId}/${originalBaselineIntentRef.sha256}`)
   const controlCore = {
     schemaVersion: 'jenfu.dev012.owner-control-head.v1',
     state: 'FINALIZED',
@@ -808,16 +817,18 @@ function makeReceiptHarness({
       return { ref: item.ref, bytes: Buffer.from(item.bytes), value: structuredClone(item.value) }
     },
     async readBytes(uri) {
+      const json = jsonObjects.get(uri)
+      if (json) return { bytes: Buffer.from(json.bytes), ref: structuredClone(json.ref) }
       const bytes = byteObjects.get(uri)
       if (!bytes) throw new Error('FIXTURE_BYTES_MISSING')
-      return { bytes: Buffer.from(bytes) }
+      return { bytes: Buffer.from(bytes), ref: { uri, sha256: sha256(bytes) } }
     },
     async request() { return structuredClone(afterJob) },
   }
 
   return {
     profile, transport, intent, baseline, receipt, receiptRef, jsonObjects, byteObjects,
-    originalBaselineIntentRef, previousInfraRef, controlSnapshotRef, controlSnapshot, planJsonRef, buildProofRef, binaryPlanRef,
+    originalBaselineIntentRef, originalBaselineTerminalRef, previousInfraRef, controlSnapshotRef, controlSnapshot, planJsonRef, buildProofRef, binaryPlanRef,
     putJson,
     planBytes, binaryPlanBytes, stateBytes, outputBytes,
   }
@@ -1254,4 +1265,24 @@ test('requires the hash-bound finalized control head and accepts an exact sealed
     assert.rejects(() => validateRotationFixture(badPrepare), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
     assert.rejects(() => validateRotationFixture(badRollback), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
   ])
+})
+
+test('retains a sealed abort-backed tool rotation after a later application-only release', async () => {
+  const retained = makeReceiptHarness({ baselineUsesRotation: true })
+  bindPreActivationAbort(retained)
+  retained.baseline.activeRevision = 'orgmaster-prod-successor'
+
+  const accepted = await validateRotationFixture(retained)
+  assert.equal(accepted.migrationRunnerDigest, NEXT_IMAGE)
+
+  const tampered = makeReceiptHarness({ baselineUsesRotation: true })
+  bindPreActivationAbort(tampered)
+  tampered.baseline.activeRevision = 'orgmaster-prod-successor'
+  const original = tampered.jsonObjects.get(tampered.originalBaselineTerminalRef.uri).value
+  replaceJsonObject(tampered, tampered.originalBaselineTerminalRef, resealReceiptValue({
+    ...original,
+    facts: { ...original.facts, candidateRevision: 'orgmaster-prod-detached' },
+  }))
+  await assert.rejects(() => validateRotationFixture(tampered),
+    error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID')
 })
