@@ -191,10 +191,15 @@ async function decodeDatabaseCatalogRows(rows: Array<Record<string, unknown>>, e
   const pinned = Object.hasOwn(APPROVED_CATALOGS, String(first.catalog_version))
   if (!pinned && !/^ai-pdm\.role-catalog\.\d{4}-\d{2}-\d{2}\.v[1-9]\d*$/.test(String(first.catalog_version))) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
   if (expectedCatalogSha256 && String(first.catalog_sha256).toLowerCase() !== expectedCatalogSha256.toLowerCase()) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
-  if (rows.some((row, index) => row.contract_version !== first.contract_version || row.application_id !== first.application_id || row.catalog_version !== first.catalog_version || row.catalog_sha256 !== first.catalog_sha256 || Number(row.display_order) !== index)) {
+  const publishedAtValues = rows.map(row => {
+    const value = row.published_at instanceof Date ? row.published_at : new Date(String(row.published_at))
+    if (!Number.isFinite(value.getTime())) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
+    return value.toISOString()
+  })
+  if (rows.some((row, index) => row.contract_version !== first.contract_version || row.application_id !== first.application_id || row.catalog_version !== first.catalog_version || row.catalog_sha256 !== first.catalog_sha256 || Number(row.display_order) !== index || publishedAtValues[index] !== publishedAtValues[0])) {
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
   }
-  const publishedAt = first.published_at instanceof Date ? first.published_at.toISOString() : String(first.published_at)
+  const publishedAt = publishedAtValues[0]
   const catalog = {
     contractVersion: first.contract_version,
     applicationId: first.application_id,
@@ -230,10 +235,12 @@ async function decodeDatabaseCatalogRows(rows: Array<Record<string, unknown>>, e
   // jsonb preserves values, but not nested object key insertion order. The
   // producer's frozen digest was computed from its source JSON serialization,
   // so hashing decoded jsonb would reject an identical published catalog.
-  // Compare exact values against the independently validated source snapshot.
+  // Compare exact content against the independently validated source snapshot.
+  // The digest intentionally excludes publishedAt; historical imports may keep
+  // the actual publication instant instead of the fixture creation instant.
   const approved = await readPublishedAiPdmRoleCatalog(process.cwd(), first.catalog_version as PublishedAiPdmRoleCatalog['catalogVersion'])
-  const { sourcePath: _publishedPath, ...publishedValues } = approved
-  const { sourcePath: _databasePath, ...databaseValues } = catalog
+  const { sourcePath: _publishedPath, publishedAt: _publishedAt, ...publishedValues } = approved
+  const { sourcePath: _databasePath, publishedAt: _databasePublishedAt, ...databaseValues } = catalog
   if (!isDeepStrictEqual(databaseValues, publishedValues)) {
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
   }

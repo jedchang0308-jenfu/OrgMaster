@@ -47,11 +47,12 @@ const reorder = (value: unknown): unknown => Array.isArray(value) ? value.map(re
 describe('DEV-058 assignment-compatible content publications', () => {
   it('accepts the exact frozen v3 publication as historical provenance without weakening new-version checks', async () => {
     const historical = await readPublishedAiPdmRoleCatalog(process.cwd(), 'ai-pdm.role-catalog.2026-09-03.v3')
+    const importedAt = '2026-09-03T05:14:23.111Z'
     const decoded = await readHistoricalAiPdmRoleCatalogFromDatabase(
-      { query: async () => ({ rows: catalogRows(historical) }) }, historical.catalogVersion, historical.catalogSha256,
+      { query: async () => ({ rows: catalogRows(historical).map(row => ({ ...row, published_at: importedAt })) }) }, historical.catalogVersion, historical.catalogSha256,
     )
     expect(decoded).toMatchObject({ catalogVersion: historical.catalogVersion,
-      catalogSha256: historical.catalogSha256, roles: expect.arrayContaining([
+      catalogSha256: historical.catalogSha256, publishedAt: importedAt, roles: expect.arrayContaining([
         expect.objectContaining({ stableRoleId: 'role-system-admin', roleCode: 'system_admin' }),
       ]) })
 
