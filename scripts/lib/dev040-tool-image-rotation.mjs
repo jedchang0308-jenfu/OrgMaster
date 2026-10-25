@@ -93,7 +93,17 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
 
   const beforeProfile = readProductionProfile(root, beforeRevision)
   const afterProfile = readProductionProfile(root, afterRevision)
-  try { assertDev058RolePolicyAppend(beforeProfile.migrations, afterProfile.migrations) } catch { fail('SOURCE_INPUT_DRIFT') }
+  try {
+    const beforeMigrations = beforeProfile.migrations
+    const afterMigrations = afterProfile.migrations
+    if (beforeMigrations.entries?.length === 31) assertDev058RolePolicyAppend(beforeMigrations, afterMigrations)
+    else {
+      if (!Number.isSafeInteger(beforeMigrations.entries?.length) || beforeMigrations.entries.length < 31
+        || beforeMigrations.entries.length >= (afterMigrations.entries?.length ?? 0)
+        || !same(beforeMigrations.entries, afterMigrations.entries.slice(0, beforeMigrations.entries.length))) fail('SOURCE_INPUT_DRIFT')
+      assertDev058RolePolicyAppend({ ...beforeMigrations, entries: beforeMigrations.entries.slice(0, 31) }, afterMigrations)
+    }
+  } catch { fail('SOURCE_INPUT_DRIFT') }
   const { migrations: _beforeMigrations, ...beforeProfileWithoutMigrations } = beforeProfile
   const { migrations: _afterMigrations, ...afterProfileWithoutMigrations } = afterProfile
   if (!same(beforeProfileWithoutMigrations, afterProfileWithoutMigrations)
