@@ -106,9 +106,11 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   if (transport.effectiveRevision(service) !== baseline.activeRevision || [...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some(row => row.tag)) fail('BASELINE_INVALID')
   let previousInfraRef = baseline.intent.infraReceiptRef
   let previousInfra = (await transport.readJson(previousInfraRef, bucket, ['receipts'])).value
+  const existing = await optionalJson(transport, `${prefix}/app-infra.json`, bucket)
   if (controlAttemptIntent && !same(controlAttemptIntent.infraReceiptRef, previousInfraRef)) {
     const appliedRotation = await transport.readJson(controlAttemptIntent.infraReceiptRef, bucket, ['receipts'])
-    await validateExistingRotation({ root, profile, transport, intent: controlAttemptIntent, receipt: appliedRotation.value, baseline })
+    await validateExistingRotation({ root, profile, transport, intent: controlAttemptIntent,
+      receipt: appliedRotation.value, baseline, readLiveJob: !existing })
     previousInfraRef = appliedRotation.ref
     previousInfra = appliedRotation.value
   }
@@ -130,7 +132,6 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     const current = await transport.readBytes(head.ref.uri, { prefixes: ['control'] })
     if (!current.bytes.equals(head.bytes) || String(current.metadata.generation) !== String(head.metadata.generation)) fail('CONTROL_CAS_CHANGED')
   }
-  const existing = await optionalJson(transport, `${prefix}/app-infra.json`, bucket)
   if (existing) {
     await assertOrdinaryToolRotation({ root, profile, transport, intent: { sourceRevision: git.sourceRevision,
       infraReceiptRef: existing.ref, baselineIntentRef }, receipt: existing.value, baseline })
