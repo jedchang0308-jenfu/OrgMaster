@@ -329,9 +329,18 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
       read(proof.controlAttemptIntentRef), read(proof.controlPrepareRef), read(proof.controlRollbackRef), read(proof.controlTerminalRef),
     ])
     const attemptIntent = assertDev040ReleaseIntent(attemptRead.value, profile)
+    const historicalTerminalUri = releasePaths(profile, originalIntent, proof.baselineIntentRef.sha256).terminal
+    const historicalTerminalBytes = await transport.readBytes(historicalTerminalUri, { prefixes: ['receipts'] })
+    let historicalTerminalValue
+    try { historicalTerminalValue = JSON.parse(historicalTerminalBytes.bytes.toString('utf8')) } catch { fail('BASELINE_INVALID') }
+    const historicalTerminal = assertToolControlStage(historicalTerminalValue, profile, originalIntent, 'terminal')
+    const historicalActiveRevision = historicalTerminal.facts?.candidateRevision
+    if (historicalTerminalBytes.ref?.uri !== historicalTerminalUri || historicalTerminal.facts?.result !== 'RELEASED'
+      || typeof historicalActiveRevision !== 'string' || !historicalActiveRevision
+      || (same(intent.baselineIntentRef, proof.baselineIntentRef) && baseline.activeRevision !== historicalActiveRevision)) fail('BASELINE_INVALID')
     assertToolPreActivationAbortControl({ profile, attemptIntent, attemptRef: attemptRead.ref,
       baselineIntentRef: proof.baselineIntentRef, infraRef: proof.baselineInfraRef, priorInfra,
-      baselineActiveRevision: baseline.activeRevision, control: controlCore, prepareRead, rollbackRead, terminalRead })
+      baselineActiveRevision: historicalActiveRevision, control: controlCore, prepareRead, rollbackRead, terminalRead })
     if (same(attemptIntent.infraReceiptRef, originalIntent.infraReceiptRef)) {
       if (originalIntent.sourceRevision !== proof.baselineSourceRevision
         || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
