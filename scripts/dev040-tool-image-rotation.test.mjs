@@ -8,7 +8,7 @@ import { gzipSync } from 'node:zlib'
 import { executeToolImageRotation, assertRequiredToolSourceQc, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
 import { assertDeployToolRotationSelection, bindDeployToolRotationAuthority, parseDeployProductionArgs, selectDeployInfrastructureRef } from './dev040-deploy-production.mjs'
 import { resolveRoutineToolRotationRef } from './lib/dev040-routine-release.mjs'
-import { canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
+import { canonicalize, sha256, releasePaths } from './lib/dev012-owner-release-runtime.mjs'
 import { sealToolEvidence, assertToolSeal, rotationAddresses, MIGRATION_JOB_ADDRESS, assertToolBuildProof } from './lib/dev040-tool-image-rotation.mjs'
 import { createGitArchive, createGitSourceIdentity } from './lib/dev012-owner-stage-executor.mjs'
 import { buildMigrationToolImage } from './lib/dev040-tool-image-build.mjs'
@@ -382,26 +382,46 @@ test('read-only readiness verifies all 75 addresses without a build, mutation or
   assert.equal(result.status, 'READY_FOR_IMAGE_BUILD'); assert.equal(result.addressCount, 75)
   assert.equal(result.ddlExecuted, 0); assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
 })
-test('read-only readiness resolves an exact sealed pre-activation abort to its released predecessor', async () => {
-  const h = harness()
-  const attemptIntent = { ownerApplicationId: 'orgmaster', releaseId: 'ORGMASTER-ABORTED-ATTEMPT',
-    sourceRevision, baselineIntentRef: h.baselineIntentRef, infraReceiptRef: h.infraRef }
+function bindProducerAbort(h, { releaseId, infraRef }) {
+  const attemptIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster',
+    releaseId, sourceRevision, sourceSha256: '4'.repeat(64), sourceLockRef: h.infraRef,
+    authorizationPolicyRef: h.infraRef, readinessReceiptRef: h.infraRef, foundationReceiptRef: h.infraRef,
+    infraReceiptRef: infraRef, runtimeConfigRef: h.infraRef, migrationManifestSha256: '5'.repeat(64),
+    previousRevision: h.baseline.activeRevision, deadlineAt: '2026-10-18T03:00:00.000Z',
+    baselineIntentRef: h.baselineIntentRef }
   const attemptRef = h.seed(`gs://${bucket}/receipts/releases/${attemptIntent.releaseId}/release-intent.json`, attemptIntent)
-  const terminalUri = `gs://${bucket}/receipts/releases/${attemptIntent.releaseId}/${attemptRef.sha256}/terminal.json`
-  const terminalRef = h.seed(terminalUri, { result: 'PRE_ACTIVATION_ABORTED' })
+  const paths = releasePaths(profile, attemptIntent, attemptRef.sha256)
+  const prepareRef = h.seed(paths.prepare, sealToolEvidence({ schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
+    releaseId: attemptIntent.releaseId, sourceRevision, stage: 'prepare', status: 'PASS', previousReceiptRef: null,
+    facts: { prerequisiteRefs: { infra: infraRef }, migrationRunnerDigest: oldImage }, observedAt: NOW }))
+  const rollbackRef = h.seed(paths.rollback, sealToolEvidence({ schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
+    releaseId: attemptIntent.releaseId, sourceRevision, stage: 'rollback', status: 'PASS', previousReceiptRef: null,
+    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: h.baseline.activeRevision,
+      recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'],
+      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' }, observedAt: NOW }))
+  const terminalRef = h.seed(paths.terminal, sealToolEvidence({ schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
+    releaseId: attemptIntent.releaseId, sourceRevision, stage: 'terminal', status: 'PASS', previousReceiptRef: rollbackRef,
+    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: h.baseline.activeRevision,
+      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' }, observedAt: NOW }))
   const abortedCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result: 'PRE_ACTIVATION_ABORTED',
     ownerApplicationId: 'orgmaster', service: 'orgmaster-prod', releaseId: attemptIntent.releaseId,
-    sourceRevision: attemptIntent.sourceRevision, previousRevision: h.baseline.activeRevision, candidateRevision: null }
+    sourceRevision: attemptIntent.sourceRevision, sourceLockSha256: attemptIntent.sourceLockRef.sha256,
+    previousRevision: h.baseline.activeRevision, candidateRevision: null }
   const aborted = { ...abortedCore, controlSha256: sha256(canonicalize(abortedCore)) }
   h.seed(h.controlUri, aborted)
   h.input.resolveControlBaseline = async ({ control, attempt }) => {
     assert.deepEqual(control, aborted); assert.deepEqual(attempt.ref, attemptRef)
     return h.baselineIntentRef
   }
+  return { attemptIntent, attemptRef, prepareRef, rollbackRef, terminalRef, aborted }
+}
+test('read-only readiness resolves an exact sealed pre-activation abort to its released predecessor', async () => {
+  const h = harness()
+  const abort = bindProducerAbort(h, { releaseId: 'ORGMASTER-ABORTED-ATTEMPT', infraRef: h.infraRef })
   const result = await executeToolImageRotation(h.input)
   assert.equal(result.status, 'READY_FOR_IMAGE_BUILD')
   assert.deepEqual(result.baselineIntentRef, h.baselineIntentRef)
-  assert.ok(h.trace.includes(`read:${terminalRef.uri}`))
+  for (const ref of [abort.prepareRef, abort.rollbackRef, abort.terminalRef]) assert.ok(h.trace.includes(`read:${ref.uri}`))
   assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
 })
 test('read-only readiness uses an already-applied rotation from the sealed aborted attempt as the live infrastructure baseline', async () => {
@@ -409,21 +429,11 @@ test('read-only readiness uses an already-applied rotation from the sealed abort
   const appliedInfra = { ownerApplicationId: 'orgmaster', sourceRevision: sourceFixture.rotationSourceRevision,
     migrationRunnerDigest: oldImage, controllerImageDigest: controllerImage, foundationManifestSha256: FOUNDATION }
   const appliedInfraRef = h.seed(`gs://${bucket}/receipts/tool-rotations/${sourceFixture.rotationSourceRevision}/app-infra.json`, appliedInfra)
-  const attemptIntent = { ownerApplicationId: 'orgmaster', releaseId: 'ORGMASTER-ABORTED-APPLIED-TOOL',
-    sourceRevision, baselineIntentRef: h.baselineIntentRef, infraReceiptRef: appliedInfraRef }
-  const attemptRef = h.seed(`gs://${bucket}/receipts/releases/${attemptIntent.releaseId}/release-intent.json`, attemptIntent)
-  const terminalUri = `gs://${bucket}/receipts/releases/${attemptIntent.releaseId}/${attemptRef.sha256}/terminal.json`
-  h.seed(terminalUri, { result: 'PRE_ACTIVATION_ABORTED' })
-  const abortedCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result: 'PRE_ACTIVATION_ABORTED',
-    ownerApplicationId: 'orgmaster', service: 'orgmaster-prod', releaseId: attemptIntent.releaseId,
-    sourceRevision: attemptIntent.sourceRevision, previousRevision: h.baseline.activeRevision, candidateRevision: null }
-  const aborted = { ...abortedCore, controlSha256: sha256(canonicalize(abortedCore)) }
-  h.seed(h.controlUri, aborted)
-  h.input.resolveControlBaseline = async () => h.baselineIntentRef
+  const abort = bindProducerAbort(h, { releaseId: 'ORGMASTER-ABORTED-APPLIED-TOOL', infraRef: appliedInfraRef })
   let validationCount = 0
   h.input.validateExistingRotation = async ({ intent, receipt, baseline }) => {
     validationCount++
-    assert.deepEqual(intent, attemptIntent); assert.deepEqual(receipt, appliedInfra); assert.deepEqual(baseline, h.baseline)
+    assert.deepEqual(intent, abort.attemptIntent); assert.deepEqual(receipt, appliedInfra); assert.deepEqual(baseline, h.baseline)
   }
   h.state.manifest.source_revision = sourceFixture.rotationSourceRevision
   const result = await executeToolImageRotation(h.input)

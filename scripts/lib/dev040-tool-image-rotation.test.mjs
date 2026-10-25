@@ -826,6 +826,11 @@ function resealReceipt(fixture) {
   fixture.receipt = sealToolEvidence(core)
 }
 
+function resealReceiptValue(value) {
+  const { receiptSha256: _oldHash, ...core } = value
+  return sealToolEvidence(core)
+}
+
 function bindPreActivationAbort(fixture) {
   const attemptIntent = {
     schemaVersion: fixture.profile.schemas.releaseIntent,
@@ -845,19 +850,37 @@ function bindPreActivationAbort(fixture) {
     baselineIntentRef: fixture.originalBaselineIntentRef,
   }
   const attemptRef = fixture.putJson('release-intent', attemptIntent, `releases/${attemptIntent.releaseId}`)
+  const paths = releasePaths(fixture.profile, attemptIntent, attemptRef.sha256)
+  const prepare = sealToolEvidence({
+    schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
+    releaseId: attemptIntent.releaseId, sourceRevision: attemptIntent.sourceRevision,
+    stage: 'prepare', status: 'PASS', previousReceiptRef: null,
+    facts: { prerequisiteRefs: { infra: fixture.previousInfraRef }, migrationRunnerDigest: PREVIOUS_IMAGE },
+    observedAt: '2026-10-18T00:30:00.000Z',
+  })
+  const prepareRef = fixture.putJson('prepare', prepare, `releases/${attemptIntent.releaseId}/${attemptRef.sha256}`)
+  const rollback = sealToolEvidence({
+    schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
+    releaseId: attemptIntent.releaseId, sourceRevision: attemptIntent.sourceRevision,
+    stage: 'rollback', status: 'PASS', previousReceiptRef: null,
+    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: fixture.baseline.activeRevision,
+      recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'],
+      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' },
+    observedAt: '2026-10-18T00:31:00.000Z',
+  })
+  const rollbackRef = fixture.putJson('rollback', rollback, `releases/${attemptIntent.releaseId}/${attemptRef.sha256}`)
   const terminal = sealToolEvidence({
     schemaVersion: 'jenfu.dev012.stage-receipt.v1',
     ownerApplicationId: 'orgmaster',
     releaseId: attemptIntent.releaseId,
     sourceRevision: attemptIntent.sourceRevision,
-    stage: 'terminal',
-    status: 'PASS',
-    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: fixture.baseline.activeRevision },
+    stage: 'terminal', status: 'PASS', previousReceiptRef: rollbackRef,
+    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: fixture.baseline.activeRevision,
+      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' },
+    observedAt: '2026-10-18T00:32:00.000Z',
   })
-  const terminalUri = releasePaths(fixture.profile, attemptIntent, attemptRef.sha256).terminal
-  const terminalBytes = Buffer.from(canonicalize(terminal))
-  const terminalRef = { uri: terminalUri, sha256: sha256(terminalBytes) }
-  fixture.jsonObjects.set(terminalUri, { ref: terminalRef, bytes: terminalBytes, value: structuredClone(terminal) })
+  const terminalRef = fixture.putJson('terminal', terminal, `releases/${attemptIntent.releaseId}/${attemptRef.sha256}`)
+  assert.equal(prepareRef.uri, paths.prepare); assert.equal(rollbackRef.uri, paths.rollback); assert.equal(terminalRef.uri, paths.terminal)
   const controlCore = {
     schemaVersion: 'jenfu.dev012.owner-control-head.v1',
     state: 'FINALIZED',
@@ -875,9 +898,12 @@ function bindPreActivationAbort(fixture) {
   fixture.receipt.toolRotation.controlSnapshotRef = controlRef
   fixture.receipt.toolRotation.controlBaseline.sha256 = controlRef.sha256
   fixture.receipt.toolRotation.controlAttemptIntentRef = attemptRef
+  fixture.receipt.toolRotation.controlPrepareRef = prepareRef
+  fixture.receipt.toolRotation.controlRollbackRef = rollbackRef
   fixture.receipt.toolRotation.controlTerminalRef = terminalRef
   resealReceipt(fixture)
-  return { attemptIntent, attemptRef, terminal, terminalRef, control, controlRef }
+  return { attemptIntent, attemptRef, prepare, prepareRef, rollback, rollbackRef,
+    terminal, terminalRef, control, controlRef }
 }
 
 function replaceJsonObject(fixture, ref, value) {
@@ -1202,8 +1228,28 @@ test('requires the hash-bound finalized control head and accepts an exact sealed
   badPrevious.receipt.toolRotation.controlBaseline.sha256 = badControlRef.sha256
   resealReceipt(badPrevious)
 
+  const badPrepare = makeReceiptHarness()
+  const badPrepareAbort = bindPreActivationAbort(badPrepare)
+  const foreignInfraRef = badPrepare.putJson('foreign-infra',
+    badPrepare.jsonObjects.get(badPrepare.previousInfraRef.uri).value, 'foreign')
+  const badPrepareRef = replaceJsonObject(badPrepare, badPrepareAbort.prepareRef,
+    resealReceiptValue({ ...badPrepareAbort.prepare, facts: { ...badPrepareAbort.prepare.facts,
+      prerequisiteRefs: { infra: foreignInfraRef } } }))
+  badPrepare.receipt.toolRotation.controlPrepareRef = badPrepareRef
+  resealReceipt(badPrepare)
+
+  const badRollback = makeReceiptHarness()
+  const badRollbackAbort = bindPreActivationAbort(badRollback)
+  const badRollbackRef = replaceJsonObject(badRollback, badRollbackAbort.rollbackRef,
+    resealReceiptValue({ ...badRollbackAbort.rollback, facts: { ...badRollbackAbort.rollback.facts,
+      recoveryOrder: ['TAG_CLEANUP', 'TRAFFIC_ROLLBACK', 'ENTRYPOINT_BASELINE_RESTORE'] } }))
+  badRollback.receipt.toolRotation.controlRollbackRef = badRollbackRef
+  resealReceipt(badRollback)
+
   await Promise.all([
     assert.rejects(() => validateRotationFixture(missingBinding), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
     assert.rejects(() => validateRotationFixture(badPrevious), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
+    assert.rejects(() => validateRotationFixture(badPrepare), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
+    assert.rejects(() => validateRotationFixture(badRollback), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
   ])
 })
