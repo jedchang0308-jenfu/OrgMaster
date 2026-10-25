@@ -9,6 +9,7 @@ export const DEV058_MIGRATION_ENTRIES = Object.freeze([
   Object.freeze({ order: 32, version: 'dev058-orgmaster-034', path: 'db/migrations/034_dev058_ai_pdm_role_policy_compatibility_v2.sql', sourceSha256: '5206a2c0098db100c64a6e76e0b220a3e3759dfb1e69cba52f7559ddbfb831d0', appliedSha256: 'a76afb99b66fbb7045981230737d2a83119ee4f18763925351456e227bd11843' }),
   Object.freeze({ order: 33, version: 'dev058-orgmaster-035', path: 'db/migrations/035_dev058_ai_pdm_compatibility_definer_read.sql', sourceSha256: '80ae5123812f9909ca17b2581fe2638576cf182905bc11761f937595ec9271ee', appliedSha256: '502d1d7858dbd82745a60d007aeb187703b032928720da695871aaba7ab50fed' }),
   Object.freeze({ order: 34, version: 'dev058-orgmaster-036', path: 'db/migrations/036_dev058_retire_unused_role_policy_readiness.sql', sourceSha256: 'e5a6d5e6d808ad7d5a327b70e9cbc976b58ef894db0dc54a681f8fecfc2636a1', appliedSha256: '075b5a48233a51723c64059baa2c45735f891fcbcd93ab60664161acbf10e2f4' }),
+  Object.freeze({ order: 35, version: 'dev058-orgmaster-037', path: 'db/migrations/037_dev058_human_privileged_portal_visibility.sql', sourceSha256: '5f2d9cfdc3e3999310da0ddbb804acb30ed009e1c701940c1ee726f8b84a8e7f', appliedSha256: '5edb7a18448b4849ff848a572564098cd2d3be491ad182775b5c91761ef1103f' }),
 ])
 export const DEV058_MIGRATION_ENTRY_COUNT = DEV058_MIGRATION_PREFIX_COUNT + DEV058_MIGRATION_ENTRIES.length
 export const DEV058_ROLE_POLICY_REMEDIATION = Object.freeze({
