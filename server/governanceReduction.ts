@@ -50,14 +50,17 @@ export async function withPublishedGovernanceHistory(
   const missing = [...new Set([...document.draft.roleAssignments, ...document.draft.roleDelegations]
     .filter(value => value.applicationId === 'ai-pdm' && value.catalogVersion && !known.has(value.catalogVersion))
     .map(value => value.catalogVersion!))]
-  const historical = await Promise.all(missing.map(async version => {
+  const historical: ExternalRoleCatalogSnapshotV1[] = []
+  for (const version of missing) {
     const catalog = await loadHistorical(version)
     if (catalog.applicationId !== 'ai-pdm' || catalog.catalogVersion !== version || catalog.validationState !== 'valid') {
       throw new GovernanceValidationError([{ code: 'EXTERNAL_CATALOG_INVALID', path: 'catalogVersion',
         message: '歷史目錄必須來自已驗證的同一應用與版本' }])
     }
-    return catalog
-  }))
+    // Cloud SQL history reads share the governance transaction client. pg does
+    // not support concurrent queries on one client, so keep these deterministic.
+    historical.push(catalog)
+  }
   return withStoredGovernanceHistory(document, [...result, ...historical])
 }
 
