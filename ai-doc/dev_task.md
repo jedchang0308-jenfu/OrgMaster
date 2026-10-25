@@ -836,7 +836,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## DEV-058：B 方案動態角色目錄與集中人員指派
 
-[規格與雙方責任](specs/DEV-058-federated-role-catalog-central-assignment.md)／[24項目的、狀態與證據](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。任用人控、系統提醒；授權／資料安全／回復控制保留。r14／r15組合支持本機24目的PASS；r16代理來源修正及針對性回歸完成，新非特權旅程的正常UI補驗仍因本機憑證警告BLOCKED。正式reader／writer與AI-PDM QA50未完成，正式migration、部署及正式業務資料寫入仍排除；本輪runtime／localhost待原owner驗後清理。
+[規格與雙方責任](specs/DEV-058-federated-role-catalog-central-assignment.md)／[24項目的、狀態與證據](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。任用人控、系統提醒；授權／資料安全／回復控制保留。r14／r15組合支持本機24目的PASS；r16代理來源修正完成，actor最終讀回direct=0／delegated=0／`system_admin`=0。補充正常UI旅程已越過憑證警告並完成Platform Google session，但既有三個service account的`getOpenIdToken`有效權限皆缺少，Org callback無法安全完成；代理／發布、PDM delegated判權及legacy scope／期間維持NOT_RUN。Org公開broker錯誤映射已最小修正，固定DEV-058 contracts為124 PASS／1既有SKIP；沒有放寬身分驗證或改IAM／Secret。`localhost`已精確移除並恢復原8域，三端／PG／lease/session已清理。正式reader／writer與AI-PDM QA50未完成，正式migration、部署及正式業務資料寫入仍排除。
 
 ## DEV-057：身分與權限發布契約邊界
 

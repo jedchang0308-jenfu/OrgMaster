@@ -204,6 +204,53 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
   })
 
   it.each([
+    [401, 'sso_reauthentication_required'],
+    [403, 'sso_access_denied'],
+    [403, 'sso_principal_stale'],
+    [400, 'sso_code_invalid'],
+    [400, 'sso_code_expired'],
+    [400, 'sso_code_consumed'],
+    [400, 'sso_pkce_invalid'],
+  ])('preserves the safe broker failure %i %s', async (status, code) => {
+    const value = runtime()
+    const deps = dependencies('on')
+    deps.fetch = vi.fn(async () => new Response(JSON.stringify({ code }), { status, headers: { 'content-type': 'application/json' } }))
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.searchParams.set('code', 'opaque-code')
+    callback.searchParams.set('state', location.searchParams.get('state')!)
+    callback.searchParams.set('iss', `${brokerOrigin}/api/sso`)
+    const rejected = await fetch(callback, { redirect: 'manual', headers: { cookie: start.headers.get('set-cookie')!.split(';')[0] } })
+    expect(rejected.status).toBe(status)
+    expect(await rejected.json()).toMatchObject({ code })
+    expect(value.sessions!.create).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['unknown code', 400, JSON.stringify({ code: 'internal_failure' })],
+    ['status mismatch', 503, JSON.stringify({ code: 'sso_reauthentication_required' })],
+    ['malformed JSON', 400, '{'],
+    ['oversized body', 400, JSON.stringify({ code: 'sso_code_invalid', padding: 'x'.repeat(4097) })],
+  ])('keeps %s broker failures generic', async (_case, status, body) => {
+    const value = runtime()
+    const deps = dependencies('on')
+    deps.fetch = vi.fn(async () => new Response(body, { status }))
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.searchParams.set('code', 'opaque-code')
+    callback.searchParams.set('state', location.searchParams.get('state')!)
+    callback.searchParams.set('iss', `${brokerOrigin}/api/sso`)
+    const rejected = await fetch(callback, { redirect: 'manual', headers: { cookie: start.headers.get('set-cookie')!.split(';')[0] } })
+    expect(rejected.status).toBe(502)
+    expect(await rejected.json()).toMatchObject({ code: 'sso_dependency_unavailable' })
+    expect(value.sessions!.create).not.toHaveBeenCalled()
+  })
+
+  it.each([
     ['empty target', { JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: '' }, 'JENFU_SSO_IMPERSONATION_TARGET_INVALID'],
     ['Cloud Run', { K_SERVICE: 'run-service', JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: 'owner-nonprod@project.iam.gserviceaccount.com' }, 'JENFU_SSO_IMPERSONATION_CLOUD_RUN_FORBIDDEN'],
   ])('rejects %s local impersonation configuration before broker exchange', async (_label, extra, _errorCode) => {

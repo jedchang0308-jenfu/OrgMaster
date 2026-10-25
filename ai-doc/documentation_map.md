@@ -20,7 +20,7 @@ PR135 已 merge、官方 master CI PASS；首次正式 rotation 先在 build rea
 
 ## DEV-058 B 方案動態角色與集中指派
 
-[規格／PDM交接](specs/DEV-058-federated-role-catalog-central-assignment.md) → [唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。三類按變更選用：契約／資格、原生交易／ACL、一次正常雙端旅程。r14／r15支持本機24目的PASS；r16代理來源修正、26項回歸與build通過，新非特權baseline已證PDM direct及system_admin皆0。正常代理／舊生管UI補驗仍因本機憑證警告BLOCKED，runtime／localhost待原owner驗後清理；正式reader／writer、正式操作禁止與AI-PDM QA50另依其責任邊界追蹤。
+[規格／PDM交接](specs/DEV-058-federated-role-catalog-central-assignment.md) → [唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。三類按變更選用：契約／資格、原生交易／ACL、一次正常雙端旅程。r14／r15支持本機24目的PASS；r16代理來源修正完成，actor最終為PDM direct=0／delegated=0／`system_admin`=0。正常補驗已完成Platform Google session並越過本機憑證提示，後續因既有service account缺`getOpenIdToken`有效權限而BLOCKED；委派／發布、PDM delegated判權與legacy scope／期間均NOT_RUN，沒有新增IAM／Secret或替代驗證。Org安全錯誤映射與124 PASS／1既有SKIP已回填驗收表；localhost恢復原8域、三端／PG／Governor已收尾。正式reader／writer、正式操作禁止與AI-PDM QA50另依其責任邊界追蹤。
 
 ## DEV-037 已撤銷指派操作（2026-10-12）
 

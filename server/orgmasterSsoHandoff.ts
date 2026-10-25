@@ -26,6 +26,20 @@ type Handoff = {
   expiresAt: string
 }
 
+class BrokerExchangeFailure extends Error {
+  constructor(readonly status: number, readonly publicCode: string) { super('broker exchange failed') }
+}
+
+const BROKER_PUBLIC_FAILURES = new Map<string, number>([
+  ['sso_reauthentication_required', 401],
+  ['sso_access_denied', 403],
+  ['sso_principal_stale', 403],
+  ['sso_code_invalid', 400],
+  ['sso_code_expired', 400],
+  ['sso_code_consumed', 400],
+  ['sso_pkce_invalid', 400],
+])
+
 export type OrgmasterSsoHandoffDependencies = {
   environment?: NodeJS.ProcessEnv
   now?: () => number
@@ -53,11 +67,26 @@ function exactObject(value: unknown, keys: readonly string[]) {
 }
 
 function callbackFailure(errorValue: unknown) {
+  if (errorValue instanceof BrokerExchangeFailure) return { status: errorValue.status, code: errorValue.publicCode }
   const code = errorValue instanceof Error ? errorValue.message : ''
-  if (code === 'handoff invalid' || code === 'handoff expired' || code === 'exchange failed') return { status: 400, code: 'sso_code_invalid' }
+  if (code === 'handoff invalid' || code === 'handoff expired') return { status: 400, code: 'sso_code_invalid' }
   if (code === 'stale handoff') return { status: 403, code: 'sso_principal_stale' }
   if (code === 'handoff factor invalid') return { status: 401, code: 'auth_token_invalid' }
   return { status: 502, code: 'sso_dependency_unavailable' }
+}
+
+async function brokerFailure(response: Response) {
+  let code = ''
+  try {
+    const body = await response.text()
+    if (Buffer.byteLength(body, 'utf8') <= 4096) {
+      const parsed = JSON.parse(body) as { code?: unknown }
+      if (typeof parsed?.code === 'string') code = parsed.code
+    }
+  } catch { /* fixed generic failure below */ }
+  const expectedStatus = BROKER_PUBLIC_FAILURES.get(code)
+  if (expectedStatus !== undefined && response.status === expectedStatus) throw new BrokerExchangeFailure(expectedStatus, code)
+  throw new Error('broker exchange unavailable')
 }
 
 function cookieValue(header: string | undefined, secure: boolean) {
@@ -209,7 +238,7 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     const token = await getServiceToken(setup.brokerOrigin)
     const body = new URLSearchParams({ grant_type: 'authorization_code', code, client_id: 'orgmaster', redirect_uri: `${setup.config.publicBaseUrl.origin}/api/auth/jenfu-sso/callback`, code_verifier: tx.verifier })
     const brokerResponse = await fetchImpl(`${setup.brokerOrigin}/api/sso/token`, { method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Jenfu-Service-Identity': `Bearer ${token}` }, body })
-    if (!brokerResponse.ok) throw new Error('exchange failed')
+    if (!brokerResponse.ok) await brokerFailure(brokerResponse)
     const handoff = parseHandoff(await brokerResponse.json(), setup.issuer, now())
     const principal = await setup.principals.resolveActivePrincipal(handoff.identity.identityIssuer, handoff.identity.identitySubject)
     const authState = await setup.epochs.readPrincipalState(handoff.identity.principalId)
