@@ -5,7 +5,7 @@ import { readGitBlob } from './dev012-owner-stage-executor.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
 import { matchGitSourceArchive } from './dev040-git-archive.mjs'
-import { assertDev058RolePolicyAppend } from './dev058-role-policy-migration.mjs'
+import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_PREFIX_SHA256 } from './dev058-role-policy-migration.mjs'
 
 export const TOOL_RECIPES = Object.freeze([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -120,13 +120,20 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
   try {
     const beforeMigrations = beforeProfile.migrations
     const afterMigrations = afterProfile.migrations
-    if (beforeMigrations.entries?.length === 31) assertDev058RolePolicyAppend(beforeMigrations, afterMigrations)
-    else {
-      if (!Number.isSafeInteger(beforeMigrations.entries?.length) || beforeMigrations.entries.length < 31
-        || beforeMigrations.entries.length >= (afterMigrations.entries?.length ?? 0)
-        || !same(beforeMigrations.entries, afterMigrations.entries.slice(0, beforeMigrations.entries.length))) fail('SOURCE_INPUT_DRIFT')
-      assertDev058RolePolicyAppend({ ...beforeMigrations, entries: beforeMigrations.entries.slice(0, 31) }, afterMigrations)
-    }
+    const identity = ({ order, version, path, sourceSha256, appliedSha256 }) => [order, version, path, sourceSha256, appliedSha256]
+    const beforeEntries = beforeMigrations.entries
+    const afterEntries = afterMigrations.entries
+    const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+    const approvedSuffix = DEV058_MIGRATION_ENTRIES.map(identity)
+    if (!Array.isArray(beforeEntries) || !Array.isArray(afterEntries)
+      || beforeMigrations.baselineCount !== 10 || afterMigrations.baselineCount !== 10
+      || !same(staticInputs(beforeMigrations), staticInputs(afterMigrations))
+      || beforeEntries.length < DEV058_MIGRATION_PREFIX_COUNT || beforeEntries.length >= afterEntries.length
+      || afterEntries.length > DEV058_MIGRATION_PREFIX_COUNT + approvedSuffix.length
+      || sha256(JSON.stringify(beforeEntries.slice(0, DEV058_MIGRATION_PREFIX_COUNT).map(identity))) !== DEV058_MIGRATION_PREFIX_SHA256
+      || !same(beforeEntries, afterEntries.slice(0, beforeEntries.length))
+      || !same(beforeEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, beforeEntries.length - DEV058_MIGRATION_PREFIX_COUNT))
+      || !same(afterEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, afterEntries.length - DEV058_MIGRATION_PREFIX_COUNT))) fail('SOURCE_INPUT_DRIFT')
   } catch { fail('SOURCE_INPUT_DRIFT') }
   const { migrations: _beforeMigrations, ...beforeProfileWithoutMigrations } = beforeProfile
   const { migrations: _afterMigrations, ...afterProfileWithoutMigrations } = afterProfile
