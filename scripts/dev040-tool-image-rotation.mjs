@@ -60,6 +60,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   build = buildMigrationToolImage, reuseBuild = null, apply = false, now = () => new Date().toISOString(),
   verifySource = () => readGitAuthority(root, profile), readBaseline = readRoutineBaseline,
   resolveControlBaseline = resolveRoutineControlBaseline,
+  validateExistingRotation = assertOrdinaryToolRotation,
   variablesFromState = terraformVariablesFromState }) {
   assertToolOwner(profile)
   if (sourceProof?.sourceRevision !== git.sourceRevision || sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
@@ -94,8 +95,15 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   const service = await transport.getService(profile)
   transport.assertServiceSettled(service); transport.assertCanonicalEntrypoint(profile, service)
   if (transport.effectiveRevision(service) !== baseline.activeRevision || [...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some(row => row.tag)) fail('BASELINE_INVALID')
-  assertToolInfrastructureTransition(root, baseline.intent.sourceRevision, git.sourceRevision)
-  const previousInfra = (await transport.readJson(baseline.intent.infraReceiptRef, bucket, ['receipts'])).value
+  let previousInfraRef = baseline.intent.infraReceiptRef
+  let previousInfra = (await transport.readJson(previousInfraRef, bucket, ['receipts'])).value
+  if (control.result === 'PRE_ACTIVATION_ABORTED' && !same(controlIntent.infraReceiptRef, previousInfraRef)) {
+    const appliedRotation = await transport.readJson(controlIntent.infraReceiptRef, bucket, ['receipts'])
+    await validateExistingRotation({ root, profile, transport, intent: controlIntent, receipt: appliedRotation.value, baseline })
+    previousInfraRef = appliedRotation.ref
+    previousInfra = appliedRotation.value
+  }
+  assertToolInfrastructureTransition(root, previousInfra.sourceRevision, git.sourceRevision)
   const previousImage = previousInfra.migrationRunnerDigest
   const controllerImage = previousInfra.controllerImageDigest
   const jobName = `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/orgmaster-prod-migration-runner`
@@ -120,16 +128,16 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     assertToolSeal(prepared)
     if (prepared.schemaVersion !== 'orgmaster.tool-image-rotation-prepared.v1'
       || prepared.sourceRevision !== git.sourceRevision || !same(prepared.baselineIntentRef, baselineIntentRef)
-      || !same(prepared.baselineInfraRef, baseline.intent.infraReceiptRef)
+      || !same(prepared.baselineInfraRef, previousInfraRef)
       || !same(prepared.controlAttemptIntentRef ?? null, control.result === 'PRE_ACTIVATION_ABORTED' ? intentRead.ref : null)
       || !same(prepared.controlTerminalRef ?? null, controlTerminalRef)
-      || prepared.baselineSourceRevision !== baseline.intent.sourceRevision || !same(prepared.sourceProof, sourceProof)
+      || prepared.baselineSourceRevision !== previousInfra.sourceRevision || !same(prepared.sourceProof, sourceProof)
       || !same(prepared.artifactSourceProof ?? null, reuseBuild?.sourceProof ?? null)
       || prepared.controlBaseline.sha256 !== head.ref.sha256 || prepared.controlGeneration !== String(head.metadata.generation)) fail('PREPARED_BASELINE_CHANGED')
   } else {
     const beforeState = await terraform.read()
     const manifest = beforeState.manifest
-    if (manifest.migration_runner_digest !== previousImage || manifest.controller_image_digest !== controllerImage
+    if (manifest.source_revision !== previousInfra.sourceRevision || manifest.migration_runner_digest !== previousImage || manifest.controller_image_digest !== controllerImage
       || manifest.foundation_manifest_sha256 !== previousInfra.foundationManifestSha256) fail('STATE_BASELINE_CHANGED')
     const variables = variablesFromState({ state: beforeState.stateMeta, profile, sourceRevision: git.sourceRevision, nextImage: previousImage })
     const readinessPlan = await terraform.plan({ variables })
@@ -160,7 +168,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
       transport.putBytes(`${prefix}/control-baseline.json`, head.bytes, { bucket, prefix: 'receipts', contentType: 'application/json' }),
     ])
     prepared = sealToolEvidence({ schemaVersion: 'orgmaster.tool-image-rotation-prepared.v1', sourceRevision: git.sourceRevision,
-      baselineIntentRef, baselineInfraRef: baseline.intent.infraReceiptRef, baselineSourceRevision: baseline.intent.sourceRevision,
+      baselineIntentRef, baselineInfraRef: previousInfraRef, baselineSourceRevision: previousInfra.sourceRevision,
       ...(control.result === 'PRE_ACTIVATION_ABORTED' ? { controlAttemptIntentRef: intentRead.ref, controlTerminalRef } : {}),
       controlBaseline: head.ref, controlSnapshotRef: controlSnapshot.ref, controlGeneration: String(head.metadata.generation), sourceProof,
       ...(reuseBuild ? { artifactSourceProof: reuseBuild.sourceProof } : {}),

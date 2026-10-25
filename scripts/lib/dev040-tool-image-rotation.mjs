@@ -227,8 +227,9 @@ export function assertToolRotationState({ state, infraProfile, profile, sourceRe
 }
 
 /** Native prepare validates immutable evidence; the operator also reads live state before dispatch. */
-export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline, readLiveJob = true }) {
+export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline, readLiveJob = true, rotationDepth = 0 }) {
   assertToolOwner(profile); assertToolSeal(receipt)
+  if (!Number.isSafeInteger(rotationDepth) || rotationDepth < 0 || rotationDepth > 8) fail('BASELINE_INVALID')
   const proof = receipt.toolRotation
   if (receipt.schemaVersion !== 'jenfu.dev012.app-infra-receipt.v1' || receipt.mutationProfile !== 'APP_INFRA_IMAGE_ROTATION'
     || receipt.ownerApplicationId !== 'orgmaster' || receipt.projectId !== profile.target.projectId || receipt.region !== profile.target.region
@@ -267,8 +268,7 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || sourceProof.branch !== profile.application.branch || sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
     || sourceProof.branchProtected !== true || sourceProof.requiredSourceQc !== 'SUCCESS') fail('SOURCE_PROOF_INVALID')
   const originalIntent = originalIntentRead.value, priorInfra = priorInfraRead.value
-  if (originalIntent.ownerApplicationId !== 'orgmaster' || originalIntent.sourceRevision !== proof.baselineSourceRevision
-    || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)
+  if (originalIntent.ownerApplicationId !== 'orgmaster'
     || priorInfra.migrationRunnerDigest !== proof.previousMigrationRunnerDigest
     || priorInfra.controllerImageDigest !== receipt.controllerImageDigest
     || priorInfra.foundationManifestSha256 !== receipt.foundationManifestSha256) fail('BASELINE_INVALID')
@@ -278,7 +278,9 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || controlCore.ownerApplicationId !== 'orgmaster' || controlCore.service !== 'orgmaster-prod') fail('BASELINE_INVALID')
   if (controlCore.result === 'RELEASED') {
     if (proof.controlAttemptIntentRef != null || proof.controlTerminalRef != null
-      || controlCore.sourceRevision !== proof.baselineSourceRevision || controlCore.releaseId !== originalIntent.releaseId) fail('BASELINE_INVALID')
+      || controlCore.sourceRevision !== proof.baselineSourceRevision || controlCore.releaseId !== originalIntent.releaseId
+      || originalIntent.sourceRevision !== proof.baselineSourceRevision
+      || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
   } else {
     if (controlCore.candidateRevision !== null || !proof.controlAttemptIntentRef || !proof.controlTerminalRef) fail('BASELINE_INVALID')
     const [attemptRead, terminalRead] = await Promise.all([read(proof.controlAttemptIntentRef), read(proof.controlTerminalRef)])
@@ -291,6 +293,15 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
       || attemptIntent.previousRevision !== baseline.activeRevision || controlCore.previousRevision !== baseline.activeRevision
       || terminalRead.ref.uri !== expectedTerminalUri || terminal.facts?.result !== 'PRE_ACTIVATION_ABORTED'
       || terminal.facts.previousRevision !== baseline.activeRevision) fail('BASELINE_INVALID')
+    if (same(attemptIntent.infraReceiptRef, originalIntent.infraReceiptRef)) {
+      if (originalIntent.sourceRevision !== proof.baselineSourceRevision
+        || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
+    } else {
+      if (!same(attemptIntent.infraReceiptRef, proof.baselineInfraRef)
+        || priorInfra.sourceRevision !== proof.baselineSourceRevision) fail('BASELINE_INVALID')
+      await assertOrdinaryToolRotation({ root, profile, transport, intent: attemptIntent, receipt: priorInfra,
+        baseline, readLiveJob: false, rotationDepth: rotationDepth + 1 })
+    }
   }
   const manifest = assertToolRotationState({ state: stateRead.value, infraProfile, profile, sourceRevision: receipt.sourceRevision,
     image: receipt.migrationRunnerDigest, controllerImage: receipt.controllerImageDigest, foundationHash: receipt.foundationManifestSha256 })
