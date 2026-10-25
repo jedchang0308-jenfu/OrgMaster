@@ -200,7 +200,10 @@ export function validatePolicyDataV3(data: GovernancePolicyDataV3, source?: Gove
     if (!role || classifyAssignmentSurface('ai-pdm', role) !== 'privileged_system_admin') add('CATALOG_ROLE_CONTRACT_MISMATCH', path, 'system_admin catalog policy不完整或矛盾')
     if (assignment.applicationId !== 'ai-pdm' || assignment.roleId !== 'role-system-admin' || assignment.roleCodeSnapshot !== 'system_admin'
       || assignment.basis !== 'manual' || assignment.subjectKind !== 'principal' || !assignment.targetPrincipalId
-      || assignment.scope.kind !== 'global' || assignment.sources.length || assignment.validTo !== null
+      || assignment.scope.kind !== 'global' || assignment.sources.length
+      || !['active', 'revoked'].includes(assignment.status)
+      || (assignment.status === 'active' && assignment.validTo !== null)
+      || (assignment.status === 'revoked' && (assignment.validTo === null || !Number.isFinite(Date.parse(assignment.validTo)) || Date.parse(assignment.validTo) < Date.parse(assignment.validFrom)))
       || (assignment.catalogVersion !== catalog?.catalogVersion &&
         !historicalAiPdmRoleSnapshotMatches(assignment, role, catalogs)) || assignment.effectState !== 'not-synchronized') {
       add('PRIVILEGED_ASSIGNMENT_INVALID', path, 'system_admin只允許server-derived principal-scoped V3 assignment')

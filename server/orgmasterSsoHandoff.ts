@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { GoogleAuth } from 'google-auth-library'
+import { GoogleAuth, Impersonated } from 'google-auth-library'
 import type { OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import { ORGMASTER_SESSION_MAX_AGE_SECONDS } from './orgmasterAuthConfig'
 import { createOpaqueSessionToken, hashSessionToken, readSessionToken, sessionCookie } from './orgmasterAuthCookies'
@@ -10,6 +10,8 @@ const COOKIE = '__Host-jenfu_sso_tx'
 // Keep local applications distinct because cookies do not isolate by port.
 function transactionCookieName(secure: boolean) { return secure ? COOKIE : 'orgmaster_sso_tx' }
 const MAX_RETURN_TO = 1024
+const IMPERSONATE_SERVICE_ACCOUNT_ENV = 'JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT'
+const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
 
 type Tx = { state: string; verifier: string; returnTo: string; issuer: string; clientId: 'orgmaster'; expiresAt: number }
 type Handoff = {
@@ -23,6 +25,20 @@ type Handoff = {
   issuedAt: string
   expiresAt: string
 }
+
+class BrokerExchangeFailure extends Error {
+  constructor(readonly status: number, readonly publicCode: string) { super('broker exchange failed') }
+}
+
+const BROKER_PUBLIC_FAILURES = new Map<string, number>([
+  ['sso_reauthentication_required', 401],
+  ['sso_access_denied', 403],
+  ['sso_principal_stale', 403],
+  ['sso_code_invalid', 400],
+  ['sso_code_expired', 400],
+  ['sso_code_consumed', 400],
+  ['sso_pkce_invalid', 400],
+])
 
 export type OrgmasterSsoHandoffDependencies = {
   environment?: NodeJS.ProcessEnv
@@ -51,11 +67,26 @@ function exactObject(value: unknown, keys: readonly string[]) {
 }
 
 function callbackFailure(errorValue: unknown) {
+  if (errorValue instanceof BrokerExchangeFailure) return { status: errorValue.status, code: errorValue.publicCode }
   const code = errorValue instanceof Error ? errorValue.message : ''
-  if (code === 'handoff invalid' || code === 'handoff expired' || code === 'exchange failed') return { status: 400, code: 'sso_code_invalid' }
+  if (code === 'handoff invalid' || code === 'handoff expired') return { status: 400, code: 'sso_code_invalid' }
   if (code === 'stale handoff') return { status: 403, code: 'sso_principal_stale' }
   if (code === 'handoff factor invalid') return { status: 401, code: 'auth_token_invalid' }
   return { status: 502, code: 'sso_dependency_unavailable' }
+}
+
+async function brokerFailure(response: Response) {
+  let code = ''
+  try {
+    const body = await response.text()
+    if (Buffer.byteLength(body, 'utf8') <= 4096) {
+      const parsed = JSON.parse(body) as { code?: unknown }
+      if (typeof parsed?.code === 'string') code = parsed.code
+    }
+  } catch { /* fixed generic failure below */ }
+  const expectedStatus = BROKER_PUBLIC_FAILURES.get(code)
+  if (expectedStatus !== undefined && response.status === expectedStatus) throw new BrokerExchangeFailure(expectedStatus, code)
+  throw new Error('broker exchange unavailable')
 }
 
 function cookieValue(header: string | undefined, secure: boolean) {
@@ -104,10 +135,36 @@ function baseConfig(runtime: OrgmasterAuthRuntime, environment: NodeJS.ProcessEn
   return { config: runtime.configResult.config, brokerOrigin: broker.origin, issuer: `${broker.origin}/api/sso`, phase: phase as 'off' | 'on', principals: runtime.principals, epochs: runtime.epochs, sessions: runtime.sessions }
 }
 
-async function defaultServiceToken(audience: string) {
-  const auth = new GoogleAuth()
-  const client = await auth.getIdTokenClient(audience)
-  return client.idTokenProvider.fetchIdToken(audience)
+function validImpersonationTarget(value: string | undefined) {
+  const target = value?.trim()
+  if (!target || !/^[^\s@]+@[^\s@]+\.gserviceaccount\.com$/u.test(target)) throw new Error('JENFU_SSO_IMPERSONATION_TARGET_INVALID')
+  return target
+}
+
+function validLoopbackAudience(value: string, environment: NodeJS.ProcessEnv) {
+  let parsed: URL
+  try { parsed = new URL(value) } catch { throw new Error('JENFU_SSO_IMPERSONATION_AUDIENCE_INVALID') }
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/gu, '')
+  const loopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+  if (environment.NODE_ENV !== 'development' || !['http:', 'https:'].includes(parsed.protocol) || !loopback || parsed.username || parsed.password || (parsed.pathname !== '/' && parsed.pathname !== '') || parsed.search || parsed.hash) throw new Error('JENFU_SSO_IMPERSONATION_AUDIENCE_INVALID')
+  return parsed.origin
+}
+
+async function defaultServiceToken(audience: string, environment: NodeJS.ProcessEnv) {
+  const configuredTarget = environment[IMPERSONATE_SERVICE_ACCOUNT_ENV]
+  if (configuredTarget === undefined) {
+    const auth = new GoogleAuth()
+    const client = await auth.getIdTokenClient(audience)
+    return client.idTokenProvider.fetchIdToken(audience)
+  }
+  if (environment.K_SERVICE !== undefined) throw new Error('JENFU_SSO_IMPERSONATION_CLOUD_RUN_FORBIDDEN')
+  if (environment.NODE_ENV !== 'development') throw new Error('JENFU_SSO_IMPERSONATION_DEVELOPMENT_ONLY')
+  const targetPrincipal = validImpersonationTarget(configuredTarget)
+  const loopbackAudience = validLoopbackAudience(audience, environment)
+  const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] })
+  const sourceClient = await auth.getClient()
+  const impersonated = new Impersonated({ sourceClient, targetPrincipal, targetScopes: [CLOUD_PLATFORM_SCOPE], lifetime: 300 })
+  return impersonated.fetchIdToken(loopbackAudience)
 }
 
 export function parseHandoff(value: unknown, expectedIssuer: string, now: number): Handoff {
@@ -147,7 +204,7 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
   const now = dependencies.now ?? Date.now
   const random = dependencies.randomBytes ?? randomBytes
   const fetchImpl = dependencies.fetch ?? fetch
-  const getServiceToken = dependencies.serviceToken ?? defaultServiceToken
+  const getServiceToken = dependencies.serviceToken ?? ((audience: string) => defaultServiceToken(audience, environment))
   let setup
   try { setup = baseConfig(runtime, environment) } catch { error(response, 503, 'sso_server_not_configured', id); return true }
   if (setup.phase !== 'on') { error(response, 404, 'sso_request_invalid', id); return true }
@@ -181,7 +238,7 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     const token = await getServiceToken(setup.brokerOrigin)
     const body = new URLSearchParams({ grant_type: 'authorization_code', code, client_id: 'orgmaster', redirect_uri: `${setup.config.publicBaseUrl.origin}/api/auth/jenfu-sso/callback`, code_verifier: tx.verifier })
     const brokerResponse = await fetchImpl(`${setup.brokerOrigin}/api/sso/token`, { method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Jenfu-Service-Identity': `Bearer ${token}` }, body })
-    if (!brokerResponse.ok) throw new Error('exchange failed')
+    if (!brokerResponse.ok) await brokerFailure(brokerResponse)
     const handoff = parseHandoff(await brokerResponse.json(), setup.issuer, now())
     const principal = await setup.principals.resolveActivePrincipal(handoff.identity.identityIssuer, handoff.identity.identitySubject)
     const authState = await setup.epochs.readPrincipalState(handoff.identity.principalId)

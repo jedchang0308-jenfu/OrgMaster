@@ -24,7 +24,9 @@ const sourceFiles = [
   'src/governance/apiClient.ts', 'src/governance/privilegedAssignments.ts',
   'src/governance/governancePresentation.ts',
   'src/components/GovernanceCenter.tsx', 'src/components/GovernancePrivilegedAssignments.tsx',
-  'src/components/GovernanceCenter.css', 'scripts/qc-dev-009-privileged-browser.mjs',
+  'src/components/GovernanceCenter.css',
+  'config/catalogs/test-vectors/ai-pdm-dynamic-policy-v1.json',
+  'scripts/qc-dev-009-privileged-browser.mjs',
 ]
 const checks = []
 const screenshots = []
@@ -116,16 +118,6 @@ function startStaticServer() {
 }
 
 function governanceFixture() {
-  const document = readJson(path.join(root, 'data', 'orgmaster-governance.v3.json'))
-  const sanitize = (link) => {
-    const { subject, ...rest } = link
-    return { ...rest, subjectHint: typeof subject === 'string' && subject.length > 4 ? `••••${subject.slice(-4)}` : '••••', subjectFingerprint: sha256(Buffer.from(`${link.issuer}\0${subject}`, 'utf8')).slice(0, 12) }
-  }
-  const sanitized = {
-    ...document,
-    draft: { ...document.draft, identityLinks: document.draft.identityLinks.map(sanitize) },
-    publishedVersions: document.publishedVersions.map((version) => ({ ...version, policy: { ...version.policy, identityLinks: version.policy.identityLinks.map(sanitize) } })),
-  }
   const published = readJson(path.join(root, 'contracts', 'jenfu-platform-entitlement', 'v1', 'fixtures', 'application-role-catalog.sample.json'))
   const catalog = {
     applicationId: 'ai-pdm', catalogVersion: published.catalogVersion, payloadHash: published.catalogSha256,
@@ -136,17 +128,45 @@ function governanceFixture() {
       recommendationAllowed: role.recommendationAllowed, delegationAllowed: role.delegationAllowed, assignmentTier: role.assignmentTier,
     })),
   }
-  return { document: sanitized, catalogs: [catalog], revision: 'dev009-browser-governance-revision', activeVersionId: sanitized.activePolicyVersionId, versions: [] }
+  const updatedAt = '2026-10-20T00:00:00.000Z'
+  const document = {
+    app: 'OrgMaster', schemaVersion: 3,
+    draft: {
+      applications: [{ id: 'orgmaster', name: 'OrgMaster', status: 'active' }, { id: 'ai-pdm', name: 'AI-PDM', status: 'active' }],
+      identityLinks: [],
+      applicationRoles: [{ id: 'role-orgmaster-admin', applicationId: 'orgmaster', code: 'orgmaster_admin', name: 'OrgMaster 管理者', status: 'active', systemDefined: true }],
+      permissions: [], rolePermissionGrants: [], roleAssignments: [], roleDelegations: [], principalAdmissions: [],
+      positionRolePolicies: [], applicationPositionAdoptions: [], managementGrants: [], basePolicyVersionId: null, updatedAt,
+    },
+    activePolicyVersionId: null, publishedVersions: [], auditEvents: [],
+    migration: { sourceSchemaVersion: 2, sourceRevision: 'dev009-browser-fixture', migratedAt: updatedAt },
+    securityAlertIntents: [], sessionInvalidationOutbox: [], commandReceipts: [],
+  }
+  return { document, catalogs: [catalog], revision: 'dev009-browser-governance-revision', activeVersionId: null, versions: [] }
 }
 
 function workspaceFixtures() {
-  const manifest = readJson(path.join(root, 'data', 'orgmaster-workspace.v1.json'))
-  const currentEntry = manifest.entries.find((entry) => entry.id === manifest.currentVersionId)
-  const document = readJson(path.join(root, 'data', 'orgmaster-versions', `${manifest.currentVersionId}.json`))
-  const revision = sha256(fs.readFileSync(path.join(root, 'data', 'orgmaster-versions', `${manifest.currentVersionId}.json`)))
-  const version = { ...currentEntry, updatedAt: document.savedAt, revision, loadStatus: 'ready' }
+  const currentVersionId = 'workspace-dev009-browser'
+  const savedAt = '2026-10-20T00:00:00.000Z'
+  const document = {
+    app: 'OrgMaster', version: 7, kind: 'document', savedAt,
+    state: {
+      members: [],
+      employees: [
+        { id: 'employee-browser-operator', name: '測試管理者', departmentIds: ['department-browser'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null, status: 'active' },
+        { id: 'employee-browser-target', name: '測試人員', departmentIds: ['department-browser'], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null, status: 'active' },
+      ],
+      departments: [{ id: 'department-browser', name: '測試部門', parentId: null }],
+      roles: [], positions: [], assignments: [], roleCombinationRiskRules: [],
+      organizationLevels: [{ id: 'level-browser', name: '測試層級', order: 0 }],
+      organizationLayout: { mode: 'tree', showLevelGuides: true, positionYOverrides: {} },
+      duties: [], dutyPositionRelations: [], processes: [], processNodes: [], processEdges: [], processNodeDutyLinks: [],
+    },
+  }
+  const revision = sha256(Buffer.from(JSON.stringify(document)))
+  const version = { id: currentVersionId, name: '現行版', kind: 'current', status: 'active', basedOnVersionId: null, createdAt: savedAt, archivedAt: null, updatedAt: savedAt, revision, loadStatus: 'ready' }
   return {
-    index: { app: 'OrgMaster', workspaceVersion: 1, currentVersionId: manifest.currentVersionId, manifestRevision: sha256(Buffer.from(JSON.stringify(manifest))), versions: [version] },
+    index: { app: 'OrgMaster', workspaceVersion: 1, currentVersionId, manifestRevision: revision, versions: [version] },
     version: { version, document },
   }
 }
@@ -169,9 +189,11 @@ function privilegedRole() {
 function stateFor(mode) {
   return {
     mode,
+    governance,
     assignments: [],
     eligiblePrincipals: mode === 'empty' ? [] : [admission],
     slowPreview: false,
+    governanceDelayMs: 0,
   }
 }
 
@@ -181,8 +203,8 @@ function privilegedWorkspace(state) {
       : state.mode === 'empty' ? ['NO_ELIGIBLE_PRINCIPAL'] : []
   return {
     contractVersion: 'orgmaster.privileged-assignment-workspace.v1', applicationId: 'ai-pdm', stableRoleId: 'role-system-admin',
-    catalogVersion: governance.catalogs[0].catalogVersion, catalogPayloadHash: governance.catalogs[0].payloadHash,
-    governanceRevision: governance.revision, organizationVersionId: workspace.index.currentVersionId,
+    catalogVersion: state.governance.catalogs[0].catalogVersion, catalogPayloadHash: state.governance.catalogs[0].payloadHash,
+    governanceRevision: state.governance.revision, organizationVersionId: workspace.index.currentVersionId,
     organizationRevision: workspace.version.version.revision, sourceDataAt: workspace.version.document.savedAt,
     mutationAllowed: blockers.length === 0, blockers, role: privilegedRole(), eligiblePrincipals: state.eligiblePrincipals, assignments: state.assignments,
   }
@@ -206,14 +228,19 @@ async function fulfillApi(route, state) {
   const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/u, '') : url.pathname
   const key = `${request.method()} ${url.pathname}${url.search}`
   apiRequests.push(key)
-  if (pathname === '/api/auth/me' && request.method() === 'GET') return route.fulfill(json({ user: { principalId: 'principal-browser-operator', employeeId: employeeIds[0] }, session: { expiresAt: '2026-09-03T23:59:59.000Z' }, assuranceLevel: 'aal2', correlationId: 'dev009-browser' }))
+  if (pathname === '/api/auth/mode' && request.method() === 'GET') return route.fulfill(json({ authMode: 'jenfu_firebase_bff', firebase: { apiKey: 'browser-fixture', authDomain: 'browser-fixture.invalid', projectId: 'browser-fixture', appId: 'browser-fixture' }, managedLoginEnabled: false, ssoHandoffEnabled: false, correlationId: 'dev009-browser-mode' }))
+  if (pathname === '/api/auth/me' && request.method() === 'GET') return route.fulfill(json({ user: { principalId: 'principal-browser-operator', employeeId: employeeIds[0] }, session: { expiresAt: '2027-09-03T23:59:59.000Z' }, assuranceLevel: 'aal2', correlationId: 'dev009-browser' }))
+  if (pathname === '/api/orgmaster/preferences/workbench' && request.method() === 'GET') return route.fulfill(json({ version: 1, listWidths: {} }))
   if (pathname === '/api/orgmaster/workspace' && request.method() === 'GET') return route.fulfill(json(workspace.index))
   if (pathname === `/api/orgmaster/workspace/versions/${workspace.index.currentVersionId}` && request.method() === 'GET') return route.fulfill(json(workspace.version))
   if (pathname === `/api/orgmaster/workspace/versions/${workspace.index.currentVersionId}` && request.method() === 'PUT') {
     const body = request.postDataJSON()
     return route.fulfill(json({ version: workspace.version.version, document: body.document }))
   }
-  if (pathname === '/api/orgmaster/governance' && request.method() === 'GET') return route.fulfill(json(governance, 200, { 'x-orgmaster-governance-revision': governance.revision }))
+  if (pathname === '/api/orgmaster/governance' && request.method() === 'GET') {
+    if (state.governanceDelayMs) await new Promise((resolve) => setTimeout(resolve, state.governanceDelayMs))
+    return route.fulfill(json(state.governance, 200, { 'x-orgmaster-governance-revision': state.governance.revision }))
+  }
   if (pathname === '/api/orgmaster/governance/session' && request.method() === 'GET') return route.fulfill(json({ runtimeMode: 'verified-session', actor: { principalId: 'principal-browser-operator', subjectHint: '••••ator' }, capabilities: { manage: true, publish: true, simulate: true } }))
   if (pathname === '/api/orgmaster/governance/privileged-assignments' && request.method() === 'GET') {
     if (state.mode === 'error') return route.fulfill(json({ error: 'ORGMASTER_UNAVAILABLE' }, 503))
@@ -256,35 +283,115 @@ async function openPrivilegedWorkspace(context, state, keyboard = false) {
   })
   await page.route('**/api/**', (route) => fulfillApi(route, state))
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 30000 })
-  const launcher = page.getByRole('button', { name: '功能', exact: true })
-  await launcher.waitFor({ state: 'visible', timeout: 30000 })
-  await assert.doesNotReject(async () => launcher.waitFor({ state: 'attached' }))
+  const governanceLauncher = page.getByRole('button', { name: /^角色治理/u })
+  await governanceLauncher.waitFor({ state: 'visible', timeout: 30000 })
+  await assert.doesNotReject(async () => governanceLauncher.waitFor({ state: 'attached' }))
   if ((page.viewportSize()?.width ?? 0) > 767) {
     const maintenanceToggle = page.getByRole('button', { name: /唯讀：現行版/u })
     await maintenanceToggle.click()
     await page.getByRole('button', { name: /編輯中：現行版/u }).waitFor({ state: 'visible' })
   }
   if (keyboard) {
-    await launcher.focus()
+    await governanceLauncher.focus()
     await page.keyboard.press('Enter')
-    await page.getByRole('menu', { name: '功能' }).waitFor({ state: 'visible' })
-    await page.keyboard.press('Escape')
-    assert.equal(await launcher.evaluate((node) => node === document.activeElement), true)
+    await page.getByRole('region', { name: '角色指派治理' }).waitFor({ state: 'visible', timeout: 30000 })
+    assert.equal(await governanceLauncher.getAttribute('aria-pressed'), 'true')
+  } else {
+    await governanceLauncher.click()
   }
-  await launcher.click()
-  await page.getByRole('menuitem', { name: /角色治理/u }).click()
   await page.getByRole('region', { name: '角色指派治理' }).waitFor({ state: 'visible', timeout: 30000 })
   await page.getByRole('button', { name: '角色指派', exact: true }).click()
-  const ordinaryRoleSelect = page.getByRole('combobox', { name: '切換角色', exact: true })
-  await page.waitForTimeout(500)
-  if (await ordinaryRoleSelect.count() !== 1) {
-    const diagnostics = await page.getByRole('combobox').evaluateAll((nodes) => nodes.map((node) => ({ name: node.getAttribute('aria-label') ?? node.closest('label')?.textContent ?? '', value: node.value })))
-    const body = (await page.locator('body').innerText()).replace(/\s+/gu, ' ').slice(0, 1800)
-    throw new Error(`DEV009_ROLE_SELECT_MISSING comboboxes=${JSON.stringify(diagnostics)} body=${body}`)
-  }
-  await ordinaryRoleSelect.selectOption('role-system-admin')
+  await page.getByRole('button', { name: '特權設定', exact: true }).click()
   if (state.mode === 'error') await page.getByRole('alert').waitFor({ state: 'visible' })
   else await page.getByRole('heading', { name: '特權設定', exact: true }).waitFor({ state: 'visible' })
+  return page
+}
+
+function dynamicGovernanceFixture() {
+  const source = readJson(path.join(root, 'config', 'catalogs', 'test-vectors', 'ai-pdm-dynamic-policy-v1.json'))
+    .find((entry) => entry.baselineCatalogVersion === 'ai-pdm.role-catalog.2026-10-10.v7').policy
+  const profiles = new Map(source.roleProfiles.map((profile) => [profile.stableRoleId, profile]))
+  const roles = source.roles.map((role) => {
+    const profile = profiles.get(role.stableRoleId)
+    return {
+      stableRoleId: role.stableRoleId,
+      code: role.roleCode,
+      displayName: role.displayName,
+      status: role.roleStatus,
+      assignable: role.assignable,
+      riskLevel: role.risk,
+      allowedScopeKinds: role.allowedScopeKinds,
+      subjectKind: role.subjectKind,
+      recommendationAllowed: role.recommendationAllowed,
+      delegationAllowed: role.delegationAllowed,
+      assignmentTier: role.assignmentTier,
+      metadata: role.metadata,
+      permissionRoleId: profile.permissionRoleId,
+      presentationName: profile.presentationName,
+      presentationOrder: profile.presentationOrder,
+      assignmentDisposition: profile.assignmentDisposition,
+    }
+  })
+  const activeCustom = roles.find((role) => role.stableRoleId.startsWith('role-custom-'))
+  assert.ok(activeCustom)
+  const inactiveCustom = {
+    ...activeCustom,
+    stableRoleId: 'role-custom-40000000-0000-4000-8000-000000000002',
+    code: 'custom_40000000000040008000000000000002',
+    displayName: '停用供應協作',
+    status: 'inactive',
+    permissionRoleId: 'role-custom-40000000-0000-4000-8000-000000000002',
+    presentationName: '停用供應協作',
+    presentationOrder: 8,
+  }
+  const snapshot = structuredClone(governance)
+  snapshot.revision = 'dev058-browser-governance-revision'
+  snapshot.catalogs = [{
+    ...governance.catalogs[0],
+    catalogVersion: source.candidateCatalogVersion,
+    payloadHash: source.contentHash,
+    publishedAt: '2026-10-19T09:30:00.000Z',
+    capturedAt: '2026-10-19T09:30:00.000Z',
+    sourceKind: 'application-contract',
+    roles: [...roles, inactiveCustom],
+  }]
+  snapshot.document.draft.roleAssignments.push({
+    id: 'assignment-inactive-custom-history',
+    employeeId: targetEmployeeId,
+    applicationId: 'ai-pdm',
+    roleId: inactiveCustom.stableRoleId,
+    roleCodeSnapshot: inactiveCustom.code,
+    roleNameSnapshot: inactiveCustom.displayName,
+    catalogVersion: source.candidateCatalogVersion,
+    scope: { kind: 'workspace', value: 'current' },
+    status: 'revoked',
+    validFrom: '2026-10-20T00:00:00.000Z',
+    validTo: '2026-11-20T00:00:00.000Z',
+    effectState: 'not-synchronized',
+  })
+  return snapshot
+}
+
+async function openAssignmentWorkspace(context, state) {
+  const page = await context.newPage()
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
+  await page.route('**/api/**', (route) => fulfillApi(route, state))
+  await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 30000 })
+  const launcher = page.getByRole('button', { name: /^角色治理/u })
+  await page.waitForTimeout(1000)
+  if (await launcher.count() !== 1) throw new Error(`DEV058_LAUNCHER_MISSING body=${(await page.locator('body').innerText()).replace(/\s+/gu, ' ').slice(0, 1200)}`)
+  await launcher.waitFor({ state: 'visible', timeout: 5000 })
+  await page.getByRole('button', { name: /唯讀：現行版/u }).click()
+  await page.getByRole('button', { name: /編輯中：現行版/u }).waitFor({ state: 'visible' })
+  await launcher.focus()
+  await page.keyboard.press('Enter')
+  await page.getByText('載入治理資料…', { exact: true }).waitFor({ state: 'visible' })
+  await page.getByRole('region', { name: '角色指派治理' }).waitFor({ state: 'visible', timeout: 30000 })
+  const assignments = page.getByRole('button', { name: '角色指派', exact: true })
+  await assignments.focus()
+  await page.keyboard.press('Enter')
+  await page.getByRole('table', { name: /角色為列/u }).waitFor({ state: 'visible' })
   return page
 }
 
@@ -302,8 +409,62 @@ async function runScenario(viewport, mode, name, task) {
 }
 
 async function runBrowserChecks() {
+  {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+    const state = stateFor('current')
+    state.governance = dynamicGovernanceFixture()
+    state.governanceDelayMs = 350
+    const page = await openAssignmentWorkspace(context, state)
+    const rowNames = await page.locator('.governance-matrix tbody th').allTextContents()
+    for (const expected of ['RD', 'RD主管', 'QA/QC', '生產人員', '採購／生管', '外部專員', '系統管理員', '供應協作', '停用供應協作']) {
+      assert.equal(rowNames.includes(expected), true, `missing matrix role: ${expected}`)
+    }
+    assert.equal(rowNames.includes('採購／生管（舊生管指派）'), false)
+    assert.equal(rowNames.filter((name) => name === '系統管理員').length, 1)
+    assert.equal(await page.getByRole('button', { name: '新增 供應協作 指派' }).count(), 1)
+    assert.equal(await page.getByRole('button', { name: '新增 停用供應協作 指派' }).count(), 0)
+    await capture(page, '1440-dev058-dynamic-matrix')
+
+    const historicalEmployee = workspace.version.document.state.employees.find((employee) => employee.id === targetEmployeeId)
+    assert.ok(historicalEmployee)
+    const inactiveRow = page.getByRole('row', { name: /停用供應協作/u })
+    const employeeButton = inactiveRow.getByRole('button', { name: historicalEmployee.name }).first()
+    await employeeButton.focus()
+    await page.keyboard.press('Enter')
+    const details = page.getByRole('dialog', { name: /指派明細/u })
+    await details.waitFor({ state: 'visible' })
+    const detailText = await details.innerText()
+    assert.equal(detailText.includes('停用供應協作'), true)
+    assert.equal(detailText.includes(state.governance.catalogs[0].catalogVersion), true)
+    assert.equal(detailText.includes('目前工作區'), true)
+    assert.equal(detailText.includes('2026/10/20'), true)
+    assert.equal(await details.getByRole('button', { name: '啟用此筆指派' }).isDisabled(), true)
+    await page.keyboard.press('Escape')
+    await details.waitFor({ state: 'hidden' })
+    assert.equal(await employeeButton.evaluate((node) => node === document.activeElement), true)
+
+    const activeCustomAdd = page.getByRole('button', { name: '新增 供應協作 指派' })
+    await activeCustomAdd.focus()
+    await page.keyboard.press('Enter')
+    const addDialog = page.getByRole('dialog', { name: '新增員工指派' })
+    await addDialog.waitFor({ state: 'visible' })
+    assert.equal((await addDialog.innerText()).includes('AI-PDM · 供應協作'), true)
+    assert.equal(await addDialog.getByRole('button', { name: '取消' }).count(), 1)
+    await page.keyboard.press('Escape')
+    await addDialog.waitFor({ state: 'hidden' })
+    assert.equal(await activeCustomAdd.evaluate((node) => node === document.activeElement), true)
+
+    await page.getByRole('button', { name: '角色代理', exact: true }).focus()
+    await page.keyboard.press('Enter')
+    await page.getByText('尚無角色代理', { exact: true }).waitFor({ state: 'visible' })
+    assert.equal(await noHorizontalOverflow(page), true)
+    checks.push({ id: 'QA058-02-23', label: 'dynamic canonical and active custom matrix, inactive history, explicit empty state, source/name/period and keyboard dialogs', status: 'PASS', viewport: '1440x900' })
+    await capture(page, '1440-dev058-dynamic-roles')
+    await context.close()
+  }
+
   await runScenario({ width: 1440, height: 900 }, 'current', '1440-current', async (page, state) => {
-    assert.equal(await page.getByLabel('員工').count(), 0)
+    assert.equal(await page.getByRole('combobox', { name: '員工', exact: true }).count(), 0)
     assert.equal(await page.getByText('尚未採用職位', { exact: true }).count(), 0)
     await page.getByLabel('特權身分').selectOption(admission.principalAdmissionId)
     await page.getByLabel('操作原因').fill('DEV-009 瀏覽器授予驗證')
@@ -319,12 +480,11 @@ async function runBrowserChecks() {
     assert.equal(await noHorizontalOverflow(page), true)
     checks.push({ id: 'QA-009-S2-01', label: 'normal launcher, privileged mode switch, grant and revoke publish', status: 'PASS', viewport: '1440x900' })
 
-    await page.getByLabel('切換角色').selectOption('role-system-admin')
     state.slowPreview = true
     await page.getByLabel('特權身分').selectOption(admission.principalAdmissionId)
     await page.getByLabel('操作原因').fill('DEV-009 late response')
     await page.getByRole('button', { name: '預覽授予' }).click()
-    await page.getByLabel('切換角色').selectOption('role-rd')
+    await page.getByRole('button', { name: '返回角色指派' }).click()
     await page.waitForTimeout(650)
     assert.equal(await page.getByRole('heading', { name: /操作預覽/u }).count(), 0)
     checks.push({ id: 'QA-009-S2-02', label: 'role change discards late privileged preview response', status: 'PASS', viewport: '1440x900' })

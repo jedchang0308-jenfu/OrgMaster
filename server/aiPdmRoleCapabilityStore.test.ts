@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import * as persistence from './orgmasterPersistenceRepository'
 import * as workspaceStore from './orgmasterWorkspaceStore'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { AiPdmRoleCapabilityStoreError, readAiPdmRoleCapabilityReceipt, readAiPdmRoleCapabilityWorkspace, publishAiPdmRoleCapabilityChange, resolveAiPdmRoleCapabilityUnknown, validateAiPdmRoleCapabilityReason } from './aiPdmRoleCapabilityStore'
+import { createOrgDocumentFile } from '../src/documentStorage'
+import { AiPdmRoleCapabilityStoreError, readAiPdmRoleCapabilityProjection, readAiPdmRoleCapabilityReceipt, readAiPdmRoleCapabilityWorkspace, publishAiPdmRoleCapabilityChange, resolveAiPdmRoleCapabilityUnknown, validateAiPdmRoleCapabilityReason } from './aiPdmRoleCapabilityStore'
 import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
 
 describe('AI-PDM role capability save reason', () => {
@@ -81,5 +82,63 @@ describe('DEV-008 fail-closed source and terminal command receipt', () => {
       expect((await readAiPdmRoleCapabilityReceipt(root, 'dev008-noop')).decisionCode).toBe('COMMAND_NOOP')
       expect((await resolveAiPdmRoleCapabilityUnknown(root, 'dev008-absent', 'a'.repeat(64), 'cancel_if_absent_or_expired')).decisionCode).toBe('COMMAND_NOT_OBSERVED')
     } finally { if (previous === undefined) delete process.env.ORGMASTER_GOVERNANCE_DATA_DIR; else process.env.ORGMASTER_GOVERNANCE_DATA_DIR = previous; await rm(root, { recursive: true, force: true }) }
+  })
+
+  it('keeps a published source selection while an authoritative assignment expires', async () => {
+    const root = await mkdtemp(resolve(tmpdir(), 'orgmaster-dev058-qa14-'))
+    await writeSyntheticWorkspaceFixture(root)
+    const previous = process.env.ORGMASTER_GOVERNANCE_DATA_DIR
+    process.env.ORGMASTER_GOVERNANCE_DATA_DIR = resolve(root, 'state')
+    const roleId = 'role-rd-manager'
+    const adoptedPositionIds = ['position-management-manager', 'position-marketing-specialist']
+    const selectedSource = { employeeId: 'employee-youhao', positionId: 'position-management-manager' }
+    try {
+      const workspace = await readAiPdmRoleCapabilityWorkspace(root)
+      const beforeAdoption = await readAiPdmRoleCapabilityProjection(root, roleId)
+      const adopted = await publishAiPdmRoleCapabilityChange(root, {
+        stableRoleId: roleId, operation: 'set_position_adoptions', adoptedPositionIds,
+        baseProjectionCursor: beforeAdoption.changeCursor, commandId: 'dev058-qa14-adopt', reason: 'QA058-14 valid position adoption',
+        expectedCatalogVersion: workspace.catalogVersion, expectedCatalogPayloadHash: workspace.catalogPayloadHash,
+        expectedGovernanceRevision: workspace.governanceRevision, expectedOrganizationRevision: workspace.organizationRevision,
+      })
+      expect(adopted.status).toBe('applied')
+      const afterAdoption = await readAiPdmRoleCapabilityProjection(root, roleId)
+      expect(afterAdoption.positions.filter(position => position.adopted).map(position => position.positionId).sort()).toEqual([...adoptedPositionIds].sort())
+
+      const afterAdoptionWorkspace = await readAiPdmRoleCapabilityWorkspace(root)
+      const selected = await publishAiPdmRoleCapabilityChange(root, {
+        stableRoleId: roleId, operation: 'set_assignment_sources', changes: [{ ...selectedSource, selected: true }],
+        baseProjectionCursor: afterAdoption.changeCursor, commandId: 'dev058-qa14-source-select', reason: 'QA058-14 valid assignment source',
+        expectedCatalogVersion: afterAdoptionWorkspace.catalogVersion, expectedCatalogPayloadHash: afterAdoptionWorkspace.catalogPayloadHash,
+        expectedGovernanceRevision: afterAdoptionWorkspace.governanceRevision, expectedOrganizationRevision: afterAdoptionWorkspace.organizationRevision,
+      })
+      expect(selected.status).toBe('applied')
+      const selectedProjection = await readAiPdmRoleCapabilityProjection(root, roleId)
+      const selectedEmployee = selectedProjection.positions.find(position => position.positionId === selectedSource.positionId)?.employees.find(employee => employee.employeeId === selectedSource.employeeId)
+      expect(selectedEmployee).toMatchObject({ sourceSelected: true, effectiveHolder: true, sourceCount: 1 })
+
+      const index = await workspaceStore.getWorkspaceIndex(root)
+      const current = await workspaceStore.getWorkspaceVersion(root, index.currentVersionId)
+      const expiredDocument = createOrgDocumentFile({
+        ...current.document.state,
+        assignments: current.document.state.assignments.map(assignment => assignment.id === 'assignment-management-manager-youhao'
+          ? { ...assignment, validTo: '2026-01-02' }
+          : assignment),
+        employees: current.document.state.employees.map(employee => employee.id === selectedSource.employeeId
+          ? { ...employee, primaryAssignmentId: 'assignment-marketing-specialist-youhao' }
+          : employee),
+      }, 'document', current.document.savedAt)
+      await workspaceStore.saveWorkspaceVersion(root, index.currentVersionId, expiredDocument, current.version.revision, 'current-maintenance')
+
+      const afterSourceExpiry = await readAiPdmRoleCapabilityProjection(root, roleId)
+      const survivingEmployee = afterSourceExpiry.positions.find(position => position.positionId === 'position-marketing-specialist')?.employees.find(employee => employee.employeeId === selectedSource.employeeId)
+      expect(survivingEmployee).toMatchObject({ sourceSelected: false, effectiveHolder: false, sourceCount: 0 })
+      const state = JSON.parse(await readFile(resolve(root, 'state', 'ai-pdm-role-capability.v1.json'), 'utf8'))
+      expect(state.assignmentSourcesByRole[roleId]).toContainEqual(selectedSource)
+    } finally {
+      if (previous === undefined) delete process.env.ORGMASTER_GOVERNANCE_DATA_DIR
+      else process.env.ORGMASTER_GOVERNANCE_DATA_DIR = previous
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

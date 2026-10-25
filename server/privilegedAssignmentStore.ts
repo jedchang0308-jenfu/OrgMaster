@@ -24,6 +24,7 @@ import {
   loadOrganizationSource,
   readGovernanceStore,
 } from './orgmasterGovernanceStore'
+import { withStoredGovernanceHistory } from './governanceReduction'
 
 export type PrivilegedAssignmentPublishRequest = PrivilegedAssignmentRequest & {
   commandId: string
@@ -134,7 +135,8 @@ export async function publishPrivilegedAssignment(
     const nextDraft = draftDocument.draft
     const policy = policyFromDraft(draftDocument)
     const organizationSnapshot = buildOrganizationSnapshot(source, committedAt)
-    const snapshotPayload = { kind: 'assignment-governance-v3' as const, policy, externalRoleCatalogs: [catalog], organizationSnapshot, effectState: 'not-synchronized' as const }
+    const externalRoleCatalogs = withStoredGovernanceHistory(current.document, [catalog])
+    const snapshotPayload = { kind: 'assignment-governance-v3' as const, policy, externalRoleCatalogs, organizationSnapshot, effectState: 'not-synchronized' as const }
     const version = {
       kind: 'assignment-governance-v3' as const,
       id: `assignment-policy-${randomUUID()}`,
@@ -146,7 +148,7 @@ export async function publishPrivilegedAssignment(
       snapshotHash: publicationSnapshotHash(snapshotPayload),
       effectState: 'not-synchronized' as const,
       policy,
-      externalRoleCatalogs: [catalog],
+      externalRoleCatalogs,
       organizationSnapshot,
     }
     let document: GovernanceDocumentV3 = {

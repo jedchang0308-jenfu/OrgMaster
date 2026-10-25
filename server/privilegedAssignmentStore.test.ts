@@ -1,25 +1,65 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { issuerFingerprintSha256, principalFingerprintSha256 } from '../src/governance/identityAdmission'
-import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
+import { createAiPdmRoleCatalog, readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { buildOrganizationSnapshot } from '../src/governance/validation'
 import { privilegedRequestHash } from '../src/governance/privilegedAssignments'
+import { GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
+import type { ExternalRoleCatalogSnapshotV1 } from '../src/governance/types'
 import { appendGovernanceAudit, ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
 import { previewPrivilegedAssignment, publishPrivilegedAssignment } from './privilegedAssignmentStore'
 import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
 import { storedGovernanceCatalogs } from './governanceReduction'
+import { AI_PDM_ROLE_CATALOG_V7_VERSION, readPublishedAiPdmRoleCatalog } from './aiPdmRoleCatalogRepository'
+import { decodeDynamicAiPdmRoleCatalog } from './aiPdmDynamicRoleCatalog'
+import vectors from '../config/catalogs/test-vectors/ai-pdm-dynamic-policy-v1.json'
+
+const catalogOverride = vi.hoisted(() => ({ value: undefined as ExternalRoleCatalogSnapshotV1 | undefined }))
+vi.mock('./applicationRoleCatalogRegistry', async importOriginal => {
+  const original = await importOriginal<typeof import('./applicationRoleCatalogRegistry')>()
+  return {
+    ...original,
+    readActiveAiPdmRoleCatalog: async (...args: Parameters<typeof original.readActiveAiPdmRoleCatalog>) =>
+      catalogOverride.value ?? original.readActiveAiPdmRoleCatalog(...args),
+    readApplicationRoleCatalogs: async (...args: Parameters<typeof original.readApplicationRoleCatalogs>) =>
+      catalogOverride.value ? [catalogOverride.value] : original.readApplicationRoleCatalogs(...args),
+  }
+})
 
 const roots: string[] = []
 
-afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
+beforeEach(() => { catalogOverride.value = undefined })
+afterEach(async () => { catalogOverride.value = undefined; await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev009-store-'))
   roots.push(root)
   await writeSyntheticWorkspaceFixture(root)
   return root
+}
+
+function dynamicCatalogFixture() {
+  const vector = vectors[2]
+  const policy = vector.policy
+  return { vector, rows: policy.roles.map((role, index) => ({
+    contract_version: 'jenfu.platform-entitlement.v1', application_id: 'ai-pdm',
+    catalog_version: policy.candidateCatalogVersion, catalog_sha256: policy.contentHash,
+    published_at: vector.publishedAt, display_order: index, stable_role_id: role.stableRoleId,
+    role_code: role.roleCode, display_name: role.displayName, assignable: role.assignable,
+    risk: role.risk, subject_kind: role.subjectKind, recommendation_allowed: role.recommendationAllowed,
+    delegation_allowed: role.delegationAllowed, allowed_scope_kinds: role.allowedScopeKinds,
+    assignment_tier: role.assignmentTier, metadata: role.metadata, permissions: role.permissions,
+    role_definition_hash: role.roleDefinitionHash, role_status: role.roleStatus,
+    publication_format: policy.format, canonicalization_version: 'jenfu.canonical-json.v1',
+    role_schema_id: policy.roleSchemaId, role_profile_schema_id: policy.roleProfileSchemaId,
+    baseline_role_identity_hash: policy.baselineRoleIdentityHash, role_identity_hash: policy.roleIdentityHash,
+    registry_hash: policy.registryHash, protected_policy_hash: policy.protectedPolicyHash,
+    role_profile_hash: policy.roleProfileHash, permission_role_id: policy.roleProfiles[index].permissionRoleId,
+    presentation_name: policy.roleProfiles[index].presentationName, presentation_order: policy.roleProfiles[index].presentationOrder,
+    assignment_disposition: policy.roleProfiles[index].assignmentDisposition, lifecycle: 'active',
+  })) }
 }
 
 describe('privileged assignment store transaction', () => {
@@ -98,5 +138,48 @@ describe('privileged assignment store transaction', () => {
     const replay = await publishPrivilegedAssignment(root, actor, expiredSession, publishRequest)
     expect(replay).toMatchObject({ replayed: true, auditReference: receipt.auditReference, securityAlertReference: receipt.securityAlertReference })
     await expect(publishPrivilegedAssignment(root, actor, expiredSession, { ...publishRequest, requestHash: 'f'.repeat(64) })).rejects.toMatchObject({ code: 'COMMAND_ID_REUSED' })
+  })
+
+  it('revokes a prior-catalog system_admin after the active AI-PDM catalog changes', async () => {
+    const oldArtifact = await readPublishedAiPdmRoleCatalog(process.cwd(), AI_PDM_ROLE_CATALOG_V7_VERSION)
+    const oldCatalog = createAiPdmRoleCatalog('valid', oldArtifact.publishedAt, oldArtifact)
+    catalogOverride.value = oldCatalog
+    const root = await fixtureRoot()
+    const seeded = await ensureGovernanceStore(root)
+    const source = await loadOrganizationSource(root)
+    const actorEmployeeId = source.state.employees[0].id
+    const issuer = 'https://securetoken.google.com/dev058-fixture'
+    const actorSubject = 'actor-subject'
+    const actorPrincipalId = 'principal-override-fixture'
+    const recordedAt = new Date().toISOString()
+    const actorLink = { id: 'link-actor', principalId: actorPrincipalId, issuer, subject: actorSubject, employeeId: actorEmployeeId, status: 'active' as const, validFrom: '2026-01-01T00:00:00.000Z', validTo: null }
+    seeded.document.draft.identityLinks = [actorLink]
+    seeded.document.draft.principalAdmissions = [{ id: 'admission-actor', identityLinkId: actorLink.id, accountType: 'human_privileged', status: 'active', sharedRetirementState: 'not_applicable', principalFingerprintSha256: principalFingerprintSha256(issuer, actorSubject), issuerFingerprintSha256: issuerFingerprintSha256(issuer), evidenceRefSha256: 'a'.repeat(64), recordedAt }]
+    seeded.document.draft.managementGrants = [{ id: 'grant-override', principalId: actorPrincipalId, employeeId: actorEmployeeId, applicationId: 'ai-pdm', capability: 'orgmaster.cross_app_override', status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null, grantedByPrincipalId: 'bootstrap-fixture', reason: 'fixture' }]
+    seeded.document.draft.roleAssignments.push({ id: 'old-system-admin', employeeId: actorEmployeeId, applicationId: 'ai-pdm', roleId: 'role-system-admin', roleCodeSnapshot: 'system_admin', roleNameSnapshot: '系統管理員', catalogVersion: oldCatalog.catalogVersion, scope: { kind: 'global' }, status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null, effectState: 'not-synchronized', basis: 'manual', subjectKind: 'principal', targetPrincipalId: actorPrincipalId, sources: [], createdByPrincipalId: actorPrincipalId })
+    const { basePolicyVersionId: _base, updatedAt: _updated, ...policy } = structuredClone(seeded.document.draft)
+    const organizationSnapshot = buildOrganizationSnapshot(source, recordedAt)
+    const snapshot = { kind: 'assignment-governance-v3' as const, policy, externalRoleCatalogs: [oldCatalog], organizationSnapshot, effectState: 'not-synchronized' as const }
+    const version = { ...snapshot, id: 'published-old-catalog', versionNumber: 1, publishedAt: recordedAt, publishedByPrincipalId: actorPrincipalId, publishReason: 'fixture', hashFormat: GOVERNANCE_PUBLICATION_HASH_FORMAT, snapshotHash: '' }
+    version.snapshotHash = publicationSnapshotHash(snapshot)
+    seeded.document.publishedVersions.push(version)
+    seeded.document.activePolicyVersionId = version.id
+    seeded.document.draft.basePolicyVersionId = version.id
+    seeded.document = appendGovernanceAudit(seeded.document, { commandId: 'publish-old-catalog', reason: 'fixture' }, { principalId: actorPrincipalId, issuer, subject: actorSubject, employeeId: actorEmployeeId, bootstrap: true }, { action: 'PUBLISH_ASSIGNMENTS', entityType: 'assignmentVersion', entityId: version.id, beforeHash: null, afterHash: version.snapshotHash }, recordedAt)
+    await writeFile(getGovernancePaths(root).current, `${JSON.stringify(seeded.document, null, 2)}\n`)
+
+    const dynamic = dynamicCatalogFixture()
+    const currentArtifact = decodeDynamicAiPdmRoleCatalog(dynamic.rows, [oldArtifact])
+    catalogOverride.value = createAiPdmRoleCatalog('valid', currentArtifact.publishedAt, currentArtifact)
+    const current = await readGovernanceStore(root)
+    const actor = { principalId: actorPrincipalId, issuer, subject: actorSubject, employeeId: actorEmployeeId, bootstrap: false }
+    const request = { operation: 'revoke_system_admin' as const, assignmentId: 'old-system-admin', applicationId: 'ai-pdm' as const, stableRoleId: 'role-system-admin' as const, reason: 'catalog drift must not block withdrawal', expected: { catalogVersion: catalogOverride.value.catalogVersion, catalogPayloadHash: catalogOverride.value.payloadHash, governanceRevision: current.revision, organizationRevision: source.workspaceRevision } }
+    const preview = await previewPrivilegedAssignment(root, actor, request)
+    const session = { sessionId: 'fresh-session', principalId: actorPrincipalId, assuranceLevel: 'aal1' as const, authenticatedAt: new Date(Date.now() - 30_000).toISOString() }
+    const receipt = await publishPrivilegedAssignment(root, actor, session, { ...request, commandId: 'revoke-after-catalog-change', requestHash: preview.requestHash, previewHash: preview.previewHash })
+    expect(receipt).toMatchObject({ receiptStatus: 'applied', decisionCode: 'COMMAND_APPLIED' })
+    const persisted = await readGovernanceStore(root)
+    expect(persisted.document.draft.roleAssignments.find(value => value.id === 'old-system-admin')?.status).toBe('revoked')
+    expect(persisted.document.publishedVersions.at(-1)?.externalRoleCatalogs.map(value => value.catalogVersion)).toEqual([catalogOverride.value.catalogVersion, oldCatalog.catalogVersion])
   })
 })
