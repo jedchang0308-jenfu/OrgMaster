@@ -1,5 +1,9 @@
-import { canonicalize } from './dev012-production-migration-runner.mjs'
-import { DEV058_MIGRATION_ENTRY_COUNT, assertDev058MigrationEntries } from './dev058-role-policy-migration.mjs'
+import { canonicalize, sha256 } from './dev012-production-migration-runner.mjs'
+import {
+  DEV058_MIGRATION_ENTRY_COUNT,
+  DEV058_MIGRATION_PREFIX_COUNT,
+  assertDev058MigrationEntries,
+} from './dev058-role-policy-migration.mjs'
 
 export const DEV059_FMS_AUTHORITY_MIGRATION = Object.freeze({
   order: 36,
@@ -21,4 +25,20 @@ export function assertDev059MigrationEntries(entries) {
   if (Object.hasOwn(entries.at(-1) ?? {}, 'sqlBase64')
     && entries.at(-1).name !== 'dev065_fms_authority_projection') fail('DEV059_MIGRATION_NAME_INVALID')
   return entries
+}
+
+export function assertDev059FmsAuthorityAppend(before, after) {
+  const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+  const migrationInputs = ({ sourceRevision, manifestSha256, ...inputs }) => inputs
+  assertDev059MigrationEntries(after.entries)
+  const beforeEntryCount = before.entries?.length
+  if (canonicalize(staticInputs(before)) !== canonicalize(staticInputs(after))
+    || before.baselineCount !== 10
+    || ![DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_ENTRY_COUNT].includes(beforeEntryCount)
+    || canonicalize(before.entries) !== canonicalize(after.entries.slice(0, beforeEntryCount))) fail('DEV059_MIGRATION_APPEND_INVALID')
+  return {
+    migrationDisposition: 'FORWARD_APPLY',
+    pendingMigrationCount: DEV059_MIGRATION_ENTRY_COUNT - beforeEntryCount,
+    migrationInputsSha256: sha256(canonicalize(migrationInputs(after))),
+  }
 }

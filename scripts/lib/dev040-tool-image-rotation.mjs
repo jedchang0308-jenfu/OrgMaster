@@ -5,6 +5,7 @@ import { readGitBlob } from './dev012-owner-stage-executor.mjs'
 import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
 import { matchGitSourceArchive } from './dev040-git-archive.mjs'
 import { assertDev058RolePolicyAppend } from './dev058-role-policy-migration.mjs'
+import { assertDev059FmsAuthorityAppend } from './dev059-fms-authority-migration.mjs'
 
 export const TOOL_RECIPES = Object.freeze([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -71,8 +72,8 @@ function nonRecipeInfrastructureEntries(root, revision) {
     })
 }
 /**
- * The baseline-to-receipt transition may carry the exact DEV-058 migration
- * append alongside existing tool recipe changes. Every other infrastructure
+ * The baseline-to-receipt transition may carry the exact DEV-058 or DEV-059
+ * migration append alongside existing tool recipe changes. Every other infrastructure
  * input, including every non-recipe tree entry and every profile field, stays
  * byte-equivalent. The receipt-to-intent check remains strict below.
  */
@@ -83,12 +84,20 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
 
   const beforeProfile = readProductionProfile(root, beforeRevision)
   const afterProfile = readProductionProfile(root, afterRevision)
-  try { assertDev058RolePolicyAppend(beforeProfile.migrations, afterProfile.migrations) } catch { fail('SOURCE_INPUT_DRIFT') }
+  let disposition = 'DEV058_ROLE_POLICY_APPEND'
+  try {
+    assertDev058RolePolicyAppend(beforeProfile.migrations, afterProfile.migrations)
+  } catch {
+    try {
+      assertDev059FmsAuthorityAppend(beforeProfile.migrations, afterProfile.migrations)
+      disposition = 'DEV059_FMS_AUTHORITY_APPEND'
+    } catch { fail('SOURCE_INPUT_DRIFT') }
+  }
   const { migrations: _beforeMigrations, ...beforeProfileWithoutMigrations } = beforeProfile
   const { migrations: _afterMigrations, ...afterProfileWithoutMigrations } = afterProfile
   if (!same(beforeProfileWithoutMigrations, afterProfileWithoutMigrations)
     || !same(nonRecipeInfrastructureEntries(root, beforeRevision), nonRecipeInfrastructureEntries(root, afterRevision))) fail('SOURCE_INPUT_DRIFT')
-  return { disposition: 'DEV058_ROLE_POLICY_APPEND', beforeFingerprint, afterFingerprint }
+  return { disposition, beforeFingerprint, afterFingerprint }
 }
 export function assertToolArtifactAssociation({ root, profile, sourceRevision, buildSourceRevision, proof }) {
   if (sourceRevision === buildSourceRevision) {

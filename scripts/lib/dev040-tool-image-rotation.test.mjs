@@ -81,6 +81,8 @@ function createSourceFixture() {
   const fullProductionProfile = JSON.parse(readGitBytes(ROOT, sourceRevision, PRODUCTION_PROFILE_PATH).toString('utf8'))
   const baselineProductionProfile = structuredClone(fullProductionProfile)
   baselineProductionProfile.migrations.entries = baselineProductionProfile.migrations.entries.slice(0, 31)
+  const dev058ProductionProfile = structuredClone(fullProductionProfile)
+  dev058ProductionProfile.migrations.entries = dev058ProductionProfile.migrations.entries.slice(0, 35)
   fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(baselineProductionProfile, null, 2)}\n`)
 
   runGit(root, ['init', '--quiet'])
@@ -90,9 +92,14 @@ function createSourceFixture() {
   runGit(root, ['commit', '--quiet', '-m', 'baseline infrastructure source'])
   const baselineSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
-  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(fullProductionProfile, null, 2)}\n`)
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(dev058ProductionProfile, null, 2)}\n`)
   runGit(root, ['add', PRODUCTION_PROFILE_PATH])
   runGit(root, ['commit', '--quiet', '-m', 'append DEV-058 migration profile'])
+  const dev058SourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(fullProductionProfile, null, 2)}\n`)
+  runGit(root, ['add', PRODUCTION_PROFILE_PATH])
+  runGit(root, ['commit', '--quiet', '-m', 'append DEV-059 migration profile'])
   const appendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
   fs.appendFileSync(path.join(root, ...RUNNER_RECIPE.split('/')), '\n# source-bound image rotation fixture\n')
@@ -133,7 +140,7 @@ function createSourceFixture() {
   const sourceArchiveSha256 = sha256(sourceArchiveBytes)
 
   return {
-    root, baselineSourceRevision, appendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
+    root, baselineSourceRevision, dev058SourceRevision, appendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
     copyInputDriftSourceRevision, toolInputDriftSourceRevision, driftSourceRevision,
     sourceIdentitySha256, sourceArchive, sourceArchiveBytes, sourceArchiveSha256,
     sourceArchiveObject: `source/archives/${sourceArchiveSha256}/source.tar.gz`,
@@ -418,15 +425,21 @@ function commitNonRecipeVariant(baseRevision, mutate, message) {
   }
 }
 
-test('allows the exact DEV-058 profile append and existing recipe changes only', () => {
+test('allows only the exact DEV-058 and DEV-059 profile appends plus existing recipe changes', () => {
+  const dev058Transition = assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.baselineSourceRevision, sourceFixture.dev058SourceRevision)
+  assert.equal(dev058Transition.disposition, 'DEV058_ROLE_POLICY_APPEND')
   const appendTransition = assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.baselineSourceRevision, sourceFixture.appendSourceRevision)
-  assert.equal(appendTransition.disposition, 'DEV058_ROLE_POLICY_APPEND')
+  assert.equal(appendTransition.disposition, 'DEV059_FMS_AUTHORITY_APPEND')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.dev058SourceRevision, sourceFixture.appendSourceRevision).disposition,
+  'DEV059_FMS_AUTHORITY_APPEND')
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.rotationSourceRevision, sourceFixture.ordinarySourceRevision).disposition, 'UNCHANGED')
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.baselineSourceRevision, sourceFixture.rotationSourceRevision).disposition,
-  'DEV058_ROLE_POLICY_APPEND')
+  'DEV059_FMS_AUTHORITY_APPEND')
 
   const prefixDrift = commitProfileVariant(sourceFixture.appendSourceRevision,
     profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }, 'drift DEV-058 migration prefix')
