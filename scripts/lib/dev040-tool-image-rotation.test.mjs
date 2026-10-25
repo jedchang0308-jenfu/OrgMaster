@@ -823,9 +823,6 @@ function resealReceiptValue(value) {
 }
 
 function bindPreActivationAbort(fixture) {
-  const abortInfra = structuredClone(fixture.jsonObjects.get(fixture.previousInfraRef.uri).value)
-  abortInfra.sourceRevision = sourceFixture.rotationSourceRevision
-  const abortInfraRef = fixture.putJson('app-infra-aborted-attempt', abortInfra, 'tool-rotations/ABORTED-ATTEMPT')
   const attemptIntent = {
     schemaVersion: fixture.profile.schemas.releaseIntent,
     ownerApplicationId: 'orgmaster',
@@ -836,7 +833,7 @@ function bindPreActivationAbort(fixture) {
     authorizationPolicyRef: fixture.previousInfraRef,
     readinessReceiptRef: fixture.previousInfraRef,
     foundationReceiptRef: fixture.previousInfraRef,
-    infraReceiptRef: abortInfraRef,
+    infraReceiptRef: fixture.previousInfraRef,
     runtimeConfigRef: fixture.previousInfraRef,
     migrationManifestSha256: '8'.repeat(64),
     previousRevision: fixture.baseline.activeRevision,
@@ -849,7 +846,7 @@ function bindPreActivationAbort(fixture) {
     schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
     releaseId: attemptIntent.releaseId, sourceRevision: attemptIntent.sourceRevision,
     stage: 'prepare', status: 'PASS', previousReceiptRef: null,
-    facts: { prerequisiteRefs: { infra: abortInfraRef }, migrationRunnerDigest: PREVIOUS_IMAGE },
+    facts: { prerequisiteRefs: { infra: fixture.previousInfraRef }, migrationRunnerDigest: PREVIOUS_IMAGE },
     observedAt: '2026-10-18T00:30:00.000Z',
   })
   const prepareRef = fixture.putJson('prepare', prepare, `releases/${attemptIntent.releaseId}/${attemptRef.sha256}`)
@@ -891,14 +888,13 @@ function bindPreActivationAbort(fixture) {
   const controlRef = fixture.putJson('control-head-aborted', control, `releases/${attemptIntent.releaseId}`)
   fixture.receipt.toolRotation.controlSnapshotRef = controlRef
   fixture.receipt.toolRotation.controlBaseline.sha256 = controlRef.sha256
-  fixture.receipt.toolRotation.baselineInfraRef = abortInfraRef
   fixture.receipt.toolRotation.controlAttemptIntentRef = attemptRef
   fixture.receipt.toolRotation.controlPrepareRef = prepareRef
   fixture.receipt.toolRotation.controlRollbackRef = rollbackRef
   fixture.receipt.toolRotation.controlTerminalRef = terminalRef
   resealReceipt(fixture)
-  return { abortInfra, abortInfraRef, attemptIntent, attemptRef, prepare, prepareRef,
-    rollback, rollbackRef, terminal, terminalRef, control, controlRef }
+  return { attemptIntent, attemptRef, prepare, prepareRef, rollback, rollbackRef,
+    terminal, terminalRef, control, controlRef }
 }
 
 function replaceJsonObject(fixture, ref, value) {
@@ -1225,9 +1221,11 @@ test('requires the hash-bound finalized control head and accepts an exact sealed
 
   const badPrepare = makeReceiptHarness()
   const badPrepareAbort = bindPreActivationAbort(badPrepare)
+  const foreignInfraRef = badPrepare.putJson('foreign-infra',
+    badPrepare.jsonObjects.get(badPrepare.previousInfraRef.uri).value, 'foreign')
   const badPrepareRef = replaceJsonObject(badPrepare, badPrepareAbort.prepareRef,
     resealReceiptValue({ ...badPrepareAbort.prepare, facts: { ...badPrepareAbort.prepare.facts,
-      prerequisiteRefs: { infra: badPrepare.previousInfraRef } } }))
+      prerequisiteRefs: { infra: foreignInfraRef } } }))
   badPrepare.receipt.toolRotation.controlPrepareRef = badPrepareRef
   resealReceipt(badPrepare)
 
