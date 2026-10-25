@@ -2344,12 +2344,12 @@ test('verified image rotation can precede only the exact DEV-058 append without 
   ]) assert.throws(() => assertToolRotationReleaseCompatibility({ ...input, ...changes }), /TOOL_ROTATION_ORDINARY_ONLY/u)
 })
 
-test('DEV-058 uses the exact 31-prefix and full 034-036 append; subsequent ordinary release executes zero DDL', async () => {
+test('DEV-058 uses the exact 31-prefix and full 034-037 append; subsequent ordinary release executes zero DDL', async () => {
   const h = rolePolicyHarness()
   const plan = await verifyRoutineRelease(h.input)
   assert.equal(plan.releaseMode, DEV058_RELEASE_MODE)
   assert.equal(plan.migrationDisposition, 'FORWARD_APPLY')
-  assert.equal(plan.pendingMigrationCount, 3)
+  assert.equal(plan.pendingMigrationCount, 4)
   assert.equal(plan.databaseVerification, 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
   assert.equal(plan.liveLedgerRead, false)
   const ordinary = await verifyRoutineRelease(harness().input)
