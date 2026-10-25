@@ -20,7 +20,7 @@ PR135 已 merge、官方 master CI PASS；首次正式 rotation 先在 build rea
 
 ## DEV-058 B 方案動態角色與集中指派
 
-[規格／PDM交接](specs/DEV-058-federated-role-catalog-central-assignment.md) → [唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。三類按變更選用：契約／資格、原生交易／ACL、一次正常雙端旅程。r14／r15支持本機24目的PASS，r16完成代理來源資格修正；R17以公司Google正常SSO完成正常代理建立／發布、PDM delegated RD Allow與`system_admin` Deny，以及legacy planning目錄／scope／期間讀回。manager最終direct=0／delegated=1／`system_admin`=0；臨時最小IAM、localhost、私有ADC、三端／PG／Governor均已撤回或清理並讀回。正式reader／writer、正式操作禁止與AI-PDM QA50另依其責任邊界追蹤，DEV-058維持In Progress／Not Released。
+[規格／PDM交接](specs/DEV-058-federated-role-catalog-central-assignment.md) → [唯一驗收表、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。三類按變更選用：契約／資格、原生交易／ACL、一次正常雙端旅程。r14／r15支持本機24目的PASS，r16完成代理來源資格修正；R17完成公司Google正常代理、PDM判權與legacy planning讀回，臨時IAM／localhost／私有ADC／runtime均完成收尾。R18由AI-PDM以合法SLDPRT＋STEP完成QA50 multipleBindings，外部來源缺口關閉；QA50其餘非Principal舊入口仍PARTIAL。正式reader／writer與正式操作禁止另依責任邊界追蹤，DEV-058維持In Progress／Not Released。
 
 ## DEV-037 已撤銷指派操作（2026-10-12）
 
