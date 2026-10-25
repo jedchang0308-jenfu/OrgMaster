@@ -58,7 +58,7 @@ function validateAssignmentInput(input: FinancialRoleAssignmentInput, catalog: E
     if (!input.stableRoleId?.trim()) throw new ApplicationEntitlementError('ROLE_NOT_FOUND')
     const role = catalog.roles.find((entry) => entry.stableRoleId === input.stableRoleId)
     if (!role) throw new ApplicationEntitlementError('ROLE_NOT_FOUND')
-    if (role.status !== 'active' || !role.assignable) throw new ApplicationEntitlementError('CATALOG_INCOMPATIBLE')
+    if (role.status !== 'active' || !role.assignable || role.assignmentDisposition === 'legacy-only' || role.assignmentPolicy === 'existing_only') throw new ApplicationEntitlementError('CATALOG_INCOMPATIBLE')
     if (role.subjectKind !== 'employee' || role.assignmentTier !== 'app_admin') throw new ApplicationEntitlementError('UNSUPPORTED_SUBJECT')
   }
 }
@@ -108,6 +108,8 @@ function applyAssignment(document: GovernanceDocumentV3, input: FinancialRoleAss
     roleCodeSnapshot: role.code,
     roleNameSnapshot: role.displayName,
     catalogVersion: catalog.catalogVersion,
+    authoringCatalogVersion: catalog.catalogVersion,
+    authoringCatalogSha256: catalog.catalogSha256 ?? catalog.contentSha256 ?? catalog.payloadHash,
     scope: input.scope,
     status: 'active',
     validFrom: input.validFrom,
@@ -146,7 +148,7 @@ function buildPreview(document: GovernanceDocumentV3, organizationRevision: stri
 
 export async function readFinancialRoleAssignmentWorkspace(root: string, actor: GovernanceActorContext) {
   const current = await readGovernanceStore(root)
-  const catalogs = await readApplicationRoleCatalogs(root)
+  const catalogs = await readApplicationRoleCatalogs(root, { requirePublishedFinancial: true })
   const catalog = financialCatalog(catalogs)
   assertFinancialAuthority(current.document, actor, FINANCIAL_ROLE_ASSIGNMENT_MANAGE)
   const source = await loadOrganizationSource(root)
@@ -163,7 +165,7 @@ export async function readFinancialRoleAssignmentWorkspace(root: string, actor: 
 export async function previewFinancialRoleAssignment(root: string, actor: GovernanceActorContext, input: FinancialRoleAssignmentInput) {
   const current = await readGovernanceStore(root)
   const source = await loadOrganizationSource(root)
-  const catalog = financialCatalog(await readApplicationRoleCatalogs(root))
+  const catalog = financialCatalog(await readApplicationRoleCatalogs(root, { requirePublishedFinancial: true }))
   assertFinancialAuthority(current.document, actor, FINANCIAL_ROLE_ASSIGNMENT_MANAGE)
   assertExpectedRevisions(input, current.revision, source.workspaceRevision)
   validateAssignmentInput(input, catalog, source)
@@ -183,7 +185,7 @@ export async function publishFinancialRoleAssignment(root: string, actor: Govern
   const replay = replayReceipt(observed.document, request)
   if (replay) return replay
   const committed = await commitGovernanceMutation(root, request.expectedGovernanceRevision, async (current, source) => {
-    const catalogs = await readApplicationRoleCatalogs(root)
+    const catalogs = await readApplicationRoleCatalogs(root, { requirePublishedFinancial: true })
     const catalog = financialCatalog(catalogs)
     assertFinancialAuthority(current.document, actor, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH)
     assertExpectedRevisions(request, current.revision, source.workspaceRevision)

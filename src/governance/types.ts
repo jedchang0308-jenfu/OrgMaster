@@ -184,6 +184,11 @@ export interface ExternalRoleCatalogRoleV1 {
   presentationName?: string
   presentationOrder?: number
   assignmentDisposition?: 'selectable' | 'legacy-only' | 'hidden-protected'
+  /** FMS owner catalog fields. They are retained verbatim for the consumer. */
+  builtIn?: boolean
+  capabilityIds?: string[]
+  assignmentPolicy?: 'open' | 'existing_only'
+  roleDefinitionHash?: string
 }
 
 export interface ExternalRoleCatalogSnapshotV1 {
@@ -194,6 +199,14 @@ export interface ExternalRoleCatalogSnapshotV1 {
   capturedAt: string
   payloadHash: string
   catalogSha256?: string
+  contentSha256?: string
+  artifactSha256?: string
+  registryVersion?: string
+  formatVersion?: string
+  publishedByPrincipalId?: string
+  publishedByEmployeeId?: string
+  sourceDraftId?: string
+  sourceDraftRevision?: number
   validationState: ExternalRoleCatalogState
   effectState: 'not-synchronized'
   roles: ExternalRoleCatalogRoleV1[]
@@ -221,6 +234,8 @@ export interface GovernanceRoleAssignmentV2 {
   roleCodeSnapshot: string
   roleNameSnapshot: string
   catalogVersion: string | null
+  authoringCatalogVersion?: string | null
+  authoringCatalogSha256?: string | null
   scope: GovernanceScopeV1
   status: 'active' | 'revoked'
   validFrom: string
@@ -336,7 +351,7 @@ export interface ManagementGrantV1 {
   principalId: string
   employeeId: string
   applicationId: 'ai-pdm' | 'financial-management-system'
-  capability: 'orgmaster.position_role_recommendation.manage' | 'ai-pdm.position_adoption.manage' | 'ai-pdm.role_assignment.manage' | 'ai-pdm.role_assignment.publish' | 'financial-management-system.role_assignment.manage' | 'financial-management-system.role_assignment.publish' | 'orgmaster.cross_app_override' | 'platform.entitlement_authority.switch'
+  capability: 'orgmaster.position_role_recommendation.manage' | 'ai-pdm.position_adoption.manage' | 'ai-pdm.role_assignment.manage' | 'ai-pdm.role_assignment.publish' | 'financial-management-system.role_assignment.manage' | 'financial-management-system.role_assignment.publish' | 'financial-management-system.catalog.read' | 'financial-management-system.catalog.edit' | 'financial-management-system.catalog.publish' | 'financial-management-system.catalog.import' | 'financial-management-system.catalog.activate' | 'financial-management-system.workflow.read' | 'financial-management-system.workflow.edit' | 'financial-management-system.workflow.publish' | 'financial-management-system.workflow.activate' | 'financial-management-system.workflow.reassign' | 'orgmaster.cross_app_override' | 'platform.entitlement_authority.switch'
   status: 'active' | 'revoked'
   validFrom: string
   validTo: string | null
@@ -352,6 +367,8 @@ export interface GovernanceRoleAssignmentV3 {
   roleCodeSnapshot: string
   roleNameSnapshot: string
   catalogVersion: string | null
+  authoringCatalogVersion?: string | null
+  authoringCatalogSha256?: string | null
   scope: GovernanceScopeV1
   status: 'active' | 'revoked'
   validFrom: string

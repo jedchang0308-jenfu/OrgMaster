@@ -2,6 +2,18 @@
 
 [來源 AI_PDM / CAPA-002](../../AI_PDM/.ai-doc/capa-register.md#capa-002)（2026-10-15 歷史紀錄：OPEN）：當時僅精簡 AGENTS 的歷史安裝與發布狀態，未執行產品修改或正式操作。2026-10-19 補記 OrgMaster 範圍：規範精簡已由 [PR #133](https://github.com/jedchang0308-jenfu/OrgMaster/pull/133) 合併；CA-3 沿 DEV-057／040 的本次正式發布、原始失敗、受控 rotation 與發布後驗證見[既有 owner 出口](#dev040-production-release-20261019)，收尾文件已由 [PR #144](https://github.com/jedchang0308-jenfu/OrgMaster/pull/144) 合併。PA 文件驗證與 CA-3 實際結果分開記錄；本段只補本專案追蹤，不更新其他專案或原案件狀態，不宣稱三專案 CAPA 整案結案，無新 native DEV；整案狀態仍以 AI_PDM owner 案件為準。
 
+<a id="dev-059-fms-principal-assignment"></a>
+
+## DEV-059：FMS-specific versioned typed Principal／effective assignment／protected grant／candidate catalog import producer
+
+- 狀態：`Development Complete / RD Self-check Passed / Production Not Run`；FMS-specific producer、正式 migration profile 接入及隔離 owner-contract 驗證完成，正式發布另行處理。
+- 來源：`JF-FMS/DEV-068`。範圍是 versioned typed Principal、effective assignment、protected grant 與 candidate catalog import producer；沿 B 方案由 FMS 定義角色與能力、OrgMaster 集中任用，不改既有權責。
+- 必要正向 AC：FMS 版本綁定的 typed Principal／effective assignment／protected grant 與 candidate catalog 可由 OrgMaster producer 以受保護、可讀回的契約提供給 FMS，並保留既有 OrgMaster／AI-PDM 及 v1／v2 bytes。
+- 必要反向 AC：版本、Principal、scope、期限、撤權、CAS、來源或 catalog candidate 不符時拒絕且不產生 grant／import 副作用；不得改寫既有 OrgMaster／AI-PDM 權責或未列入 FMS 接入的其他應用資料。
+- 唯一 writer worktree：`C:\VIBE CODING\.worktrees\OrgMaster\fms-integration-20261026`；本次已同步基線 `origin/master@450e7cd`。
+- 執行邊界：僅限本次指定的 JF-FMS／Jenfu-Platform／OrgMaster FMS 接入工作樹；其他跨專案、正式發布／正式資料、IAM／Secret／credential／billing 均不在授權內。
+- 驗證：production profile migration 001～038、authority／candidate／admission、FMS runtime read-only ACL、peer runtime view denial 與 manifest pin 7/7 PASS；release runner 33/33、focused owner tests 14/14、typecheck、routine 3/3 與 DB boundary PASS。task-owned PostgreSQL 已停止，port／temp root 已釋放。
+
 <a id="dev040-production-release-20261019"></a>
 
 ## DEV-040／DEV-057：PR134 正式發布與證據收尾（2026-10-19）
@@ -277,6 +289,8 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 - 文件成熟度：DEV-047為`RD Implementation Complete / Local QA-QC Passed / CAPA Closed / Production Release Gated`。2026-09-16 已完成 task-owned PostgreSQL 001～012 與 A17～A22、target／cleanup 安全及結果可信修復；Google Admin仍擁有外部帳號生命週期，OrgMaster零provider write。
 
 ## 總任務清單
+
+- ✅ DEV-059 [P1] [Development Complete / Production Not Run] FMS-specific typed Principal／effective assignment／protected grant／candidate catalog import producer（狀態見 [DEV-059](#dev-059-fms-principal-assignment)）
 
 - ◐ DEV-058 [P1] B方案動態角色與集中配人（狀態見QA）
   - [驗收、證據與待辦](qa/DEV-058-dynamic-role-assignment-validation-plan.md)；[規格](specs/DEV-058-federated-role-catalog-central-assignment.md)。

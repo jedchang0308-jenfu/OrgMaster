@@ -1,0 +1,24 @@
+import { canonicalize } from './dev012-production-migration-runner.mjs'
+import { DEV058_MIGRATION_ENTRY_COUNT, assertDev058MigrationEntries } from './dev058-role-policy-migration.mjs'
+
+export const DEV059_FMS_AUTHORITY_MIGRATION = Object.freeze({
+  order: 36,
+  version: 'dev059-orgmaster-038',
+  path: 'db/migrations/038_dev065_fms_authority_projection.sql',
+  sourceSha256: '78f21d02147e64c3100c8a6eb0cc27bd11eab8aaf268204baacf3bf7368569c9',
+  appliedSha256: '47b5b1edf1231a31a3af0d0b355283f3acc24c0653cb29b861f99698d5186da3',
+})
+export const DEV059_MIGRATION_ENTRY_COUNT = DEV058_MIGRATION_ENTRY_COUNT + 1
+
+const identity = ({ order, version, path, sourceSha256, appliedSha256 }) => [order, version, path, sourceSha256, appliedSha256]
+
+function fail(code) { throw Object.assign(new Error(code), { code }) }
+
+export function assertDev059MigrationEntries(entries) {
+  if (!Array.isArray(entries) || entries.length !== DEV059_MIGRATION_ENTRY_COUNT) fail('MIGRATION_SET_DRIFT')
+  assertDev058MigrationEntries(entries.slice(0, DEV058_MIGRATION_ENTRY_COUNT))
+  if (canonicalize(identity(entries.at(-1))) !== canonicalize(identity(DEV059_FMS_AUTHORITY_MIGRATION))) fail('DEV059_MIGRATION_APPEND_INVALID')
+  if (Object.hasOwn(entries.at(-1) ?? {}, 'sqlBase64')
+    && entries.at(-1).name !== 'dev065_fms_authority_projection') fail('DEV059_MIGRATION_NAME_INVALID')
+  return entries
+}

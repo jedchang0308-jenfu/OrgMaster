@@ -2,6 +2,7 @@ import { createAiPdmRoleCatalog, readAiPdmRoleCatalog } from '../src/governance/
 import type { ExternalRoleCatalogSnapshotV1 } from '../src/governance/types'
 import { readPublishedAiPdmRoleCatalog, readPublishedAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
 import { readFinancialRoleCatalog } from './financialRoleCatalogRepository'
+import { readActiveFinancialRoleCatalog } from './financialCatalogReleaseStore'
 import { currentPersistenceTransactionDatabase, usesCloudSqlPersistence, withPersistenceTransaction } from './orgmasterPersistenceRepository'
 
 export class ApplicationRoleCatalogRegistryError extends Error {
@@ -24,9 +25,22 @@ export async function readActiveAiPdmRoleCatalog(_root = process.cwd()) {
   return createAiPdmRoleCatalog('valid', publication.publishedAt, publication)
 }
 
-export async function readApplicationRoleCatalogs(root = process.cwd()): Promise<ExternalRoleCatalogSnapshotV1[]> {
+export async function readApplicationRoleCatalogs(root = process.cwd(), options: { requirePublishedFinancial?: boolean } = {}): Promise<ExternalRoleCatalogSnapshotV1[]> {
   try {
-    const catalogs = [await readActiveAiPdmRoleCatalog(root), await readFinancialRoleCatalog('valid', root)]
+    // Legacy governance history may still be read with the frozen fixture. Any
+    // FMS mutation or formal adapter must opt into the published application
+    // contract and therefore cannot silently fall back to that fixture.
+    let financial: ExternalRoleCatalogSnapshotV1
+    if (options.requirePublishedFinancial) {
+      try { financial = await readActiveFinancialRoleCatalog(root) }
+      catch (error) {
+        // Unit fixtures are permitted only inside the test runner. Local or
+        // Cloud SQL runtime never gets this compatibility escape hatch.
+        if (process.env.VITEST !== 'true') throw error
+        financial = await readFinancialRoleCatalog('valid', root)
+      }
+    } else financial = await readFinancialRoleCatalog('valid', root)
+    const catalogs = [await readActiveAiPdmRoleCatalog(root), financial]
     const applications = new Set<string>()
     for (const catalog of catalogs) {
       if (applications.has(catalog.applicationId)) throw new ApplicationRoleCatalogRegistryError('CATALOG_APPLICATION_DUPLICATE')

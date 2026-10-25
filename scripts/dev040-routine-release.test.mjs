@@ -2318,7 +2318,7 @@ test('app artifact reuse validates the emitted pre-activation abort terminal sha
 
 
 function rolePolicyHarness() {
-  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 31), currentBundle: newBundle })
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 31), currentBundle: { bundle: prefixBundle(newBundle.bundle, 35) } })
   const common = { devId: 'DEV-058', slice: '058-ROLE-POLICY', remediation: DEV058_ROLE_POLICY_REMEDIATION }
   h.input.values.authorization = { ...h.input.values.authorization, ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
   h.input.values.readiness = { ...h.input.values.readiness, ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }

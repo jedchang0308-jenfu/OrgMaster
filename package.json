@@ -14,6 +14,7 @@
     "reauth:dev-057:smoke": "node scripts/dev057-smoke-credential-reauth.mjs",
     "test:dev-057:smoke": "node --test scripts/dev057-smoke-credential-reauth.test.mjs",
     "check:db-boundary": "node scripts/check-shared-database-boundary.mjs",
+    "test:dev-059:fms-authority:postgres": "node scripts/test-dev-059-fms-authority-postgres.mjs",
     "dev-010:n2:freeze": "node scripts/dev010-n2-source-freeze.mjs",
     "test:dev-010:n2": "node --test scripts/dev010-n2-source-freeze.test.mjs scripts/dev010-n2-orgmaster.test.mjs",
     "qc:dev-010:n2:orgmaster": "node scripts/qc-dev-010-n2-orgmaster.mjs",
