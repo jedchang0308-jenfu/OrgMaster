@@ -441,6 +441,20 @@ test('read-only readiness uses an already-applied rotation from the sealed abort
   assert.equal(validationCount, 1)
   assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
 })
+test('a published successor treats the aborted-attempt rotation as historical before validating the successor', async () => {
+  const h = harness()
+  const appliedInfra = { ownerApplicationId: 'orgmaster', sourceRevision: sourceFixture.rotationSourceRevision,
+    migrationRunnerDigest: oldImage, controllerImageDigest: controllerImage, foundationManifestSha256: FOUNDATION }
+  const appliedInfraRef = h.seed(`gs://${bucket}/receipts/tool-rotations/${sourceFixture.rotationSourceRevision}/app-infra.json`, appliedInfra)
+  bindProducerAbort(h, { releaseId: 'ORGMASTER-ABORTED-PUBLISHED-SUCCESSOR', infraRef: appliedInfraRef })
+  h.seed(`${h.prefix}/app-infra.json`, { invalidSuccessorFixture: true })
+  let priorLiveReadback = null
+  h.input.validateExistingRotation = async ({ readLiveJob }) => { priorLiveReadback = readLiveJob }
+  h.state.manifest.source_revision = sourceFixture.rotationSourceRevision
+  await assert.rejects(executeToolImageRotation(h.input), /TOOL_ROTATION_/u)
+  assert.equal(priorLiveReadback, false)
+  assert.equal(h.calls.builds, 0); assert.equal(h.calls.applies, 0)
+})
 test('non-protected source and non-finalized control stop before provider builds or apply', async () => {
   const h = harness()
   await assert.rejects(executeToolImageRotation({ ...h.input, sourceProof: {} }), /OFFICIAL_SOURCE_REQUIRED/u)
