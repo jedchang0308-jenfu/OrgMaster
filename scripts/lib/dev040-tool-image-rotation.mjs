@@ -31,13 +31,37 @@ export function assertToolSeal(value) {
   return value
 }
 
-function assertToolControlTerminal(value, profile, intent) {
+function assertToolControlStage(value, profile, intent, stage) {
   const { receiptSha256, ...core } = value ?? {}
   if (value?.schemaVersion !== 'jenfu.dev012.stage-receipt.v1'
     || value.ownerApplicationId !== profile.application.id || value.releaseId !== intent.releaseId
-    || value.sourceRevision !== intent.sourceRevision || value.stage !== 'terminal' || value.status !== 'PASS'
+    || value.sourceRevision !== intent.sourceRevision || value.stage !== stage || value.status !== 'PASS'
     || receiptSha256 !== sha256(canonicalize(core))) fail('BASELINE_INVALID')
   return value
+}
+export function assertToolPreActivationAbortControl({ profile, attemptIntent, attemptRef, baselineIntentRef,
+  infraRef, priorInfra, baselineActiveRevision, control, prepareRead, rollbackRead, terminalRead }) {
+  const paths = releasePaths(profile, attemptIntent, attemptRef.sha256)
+  const prepare = assertToolControlStage(prepareRead.value, profile, attemptIntent, 'prepare')
+  const rollback = assertToolControlStage(rollbackRead.value, profile, attemptIntent, 'rollback')
+  const terminal = assertToolControlStage(terminalRead.value, profile, attemptIntent, 'terminal')
+  const rollbackFacts = rollback.facts, terminalFacts = terminal.facts
+  if (prepareRead.ref.uri !== paths.prepare || rollbackRead.ref.uri !== paths.rollback || terminalRead.ref.uri !== paths.terminal
+    || control.releaseId !== attemptIntent.releaseId || control.sourceRevision !== attemptIntent.sourceRevision
+    || control.sourceLockSha256 !== attemptIntent.sourceLockRef.sha256 || control.previousRevision !== baselineActiveRevision
+    || control.candidateRevision !== null || !same(attemptIntent.baselineIntentRef, baselineIntentRef)
+    || !same(attemptIntent.infraReceiptRef, infraRef) || attemptIntent.previousRevision !== baselineActiveRevision
+    || !same(prepare.facts?.prerequisiteRefs?.infra, infraRef)
+    || prepare.facts?.migrationRunnerDigest !== priorInfra.migrationRunnerDigest
+    || rollbackFacts?.result !== 'PRE_ACTIVATION_ABORTED' || terminalFacts?.result !== 'PRE_ACTIVATION_ABORTED'
+    || rollbackFacts.previousRevision !== baselineActiveRevision || terminalFacts.previousRevision !== baselineActiveRevision
+    || !['NOT_APPLIED', 'UNCHANGED_VERIFIED'].includes(rollbackFacts.databaseDisposition)
+    || terminalFacts.databaseDisposition !== rollbackFacts.databaseDisposition
+    || rollbackFacts.entrypointRecovery?.changed !== false
+    || !same(terminalFacts.entrypointRecovery, rollbackFacts.entrypointRecovery)
+    || !same(rollbackFacts.recoveryOrder, ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'])
+    || !same(terminal.previousReceiptRef, rollbackRead.ref)) fail('BASELINE_INVALID')
+  return { prepare, rollback, terminal }
 }
 export function assertToolOwner(profile) {
   if (profile.application.id !== 'orgmaster' || profile.target.projectId !== 'jenfu-platform-prod'
@@ -268,7 +292,6 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || sourceProof.branchProtected !== true || sourceProof.requiredSourceQc !== 'SUCCESS') fail('SOURCE_PROOF_INVALID')
   const originalIntent = originalIntentRead.value, priorInfra = priorInfraRead.value
   if (originalIntent.ownerApplicationId !== 'orgmaster' || originalIntent.sourceRevision !== proof.baselineSourceRevision
-    || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)
     || priorInfra.migrationRunnerDigest !== proof.previousMigrationRunnerDigest
     || priorInfra.controllerImageDigest !== receipt.controllerImageDigest
     || priorInfra.foundationManifestSha256 !== receipt.foundationManifestSha256) fail('BASELINE_INVALID')
@@ -277,20 +300,18 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || controlCore.state !== 'FINALIZED' || !['RELEASED', 'PRE_ACTIVATION_ABORTED'].includes(controlCore.result)
     || controlCore.ownerApplicationId !== 'orgmaster' || controlCore.service !== 'orgmaster-prod') fail('BASELINE_INVALID')
   if (controlCore.result === 'RELEASED') {
-    if (proof.controlAttemptIntentRef != null || proof.controlTerminalRef != null
+    if (proof.controlAttemptIntentRef != null || proof.controlPrepareRef != null || proof.controlRollbackRef != null
+      || proof.controlTerminalRef != null || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)
       || controlCore.sourceRevision !== proof.baselineSourceRevision || controlCore.releaseId !== originalIntent.releaseId) fail('BASELINE_INVALID')
   } else {
-    if (controlCore.candidateRevision !== null || !proof.controlAttemptIntentRef || !proof.controlTerminalRef) fail('BASELINE_INVALID')
-    const [attemptRead, terminalRead] = await Promise.all([read(proof.controlAttemptIntentRef), read(proof.controlTerminalRef)])
+    if (!proof.controlAttemptIntentRef || !proof.controlPrepareRef || !proof.controlRollbackRef || !proof.controlTerminalRef) fail('BASELINE_INVALID')
+    const [attemptRead, prepareRead, rollbackRead, terminalRead] = await Promise.all([
+      read(proof.controlAttemptIntentRef), read(proof.controlPrepareRef), read(proof.controlRollbackRef), read(proof.controlTerminalRef),
+    ])
     const attemptIntent = assertDev040ReleaseIntent(attemptRead.value, profile)
-    const expectedTerminalUri = releasePaths(profile, attemptIntent, attemptRead.ref.sha256).terminal
-    const terminal = assertToolControlTerminal(terminalRead.value, profile, attemptIntent)
-    if (controlCore.releaseId !== attemptIntent.releaseId || controlCore.sourceRevision !== attemptIntent.sourceRevision
-      || controlCore.sourceLockSha256 !== attemptIntent.sourceLockRef.sha256
-      || !same(attemptIntent.baselineIntentRef, proof.baselineIntentRef)
-      || attemptIntent.previousRevision !== baseline.activeRevision || controlCore.previousRevision !== baseline.activeRevision
-      || terminalRead.ref.uri !== expectedTerminalUri || terminal.facts?.result !== 'PRE_ACTIVATION_ABORTED'
-      || terminal.facts.previousRevision !== baseline.activeRevision) fail('BASELINE_INVALID')
+    assertToolPreActivationAbortControl({ profile, attemptIntent, attemptRef: attemptRead.ref,
+      baselineIntentRef: proof.baselineIntentRef, infraRef: proof.baselineInfraRef, priorInfra,
+      baselineActiveRevision: baseline.activeRevision, control: controlCore, prepareRead, rollbackRead, terminalRead })
   }
   const manifest = assertToolRotationState({ state: stateRead.value, infraProfile, profile, sourceRevision: receipt.sourceRevision,
     image: receipt.migrationRunnerDigest, controllerImage: receipt.controllerImageDigest, foundationHash: receipt.foundationManifestSha256 })
