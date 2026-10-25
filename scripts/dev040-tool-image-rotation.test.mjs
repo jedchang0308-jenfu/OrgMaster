@@ -382,6 +382,28 @@ test('read-only readiness verifies all 75 addresses without a build, mutation or
   assert.equal(result.status, 'READY_FOR_IMAGE_BUILD'); assert.equal(result.addressCount, 75)
   assert.equal(result.ddlExecuted, 0); assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
 })
+test('read-only readiness resolves an exact sealed pre-activation abort to its released predecessor', async () => {
+  const h = harness()
+  const attemptIntent = { ownerApplicationId: 'orgmaster', releaseId: 'ORGMASTER-ABORTED-ATTEMPT',
+    sourceRevision, baselineIntentRef: h.baselineIntentRef }
+  const attemptRef = h.seed(`gs://${bucket}/receipts/releases/${attemptIntent.releaseId}/release-intent.json`, attemptIntent)
+  const terminalUri = `gs://${bucket}/receipts/releases/${attemptIntent.releaseId}/${attemptRef.sha256}/terminal.json`
+  const terminalRef = h.seed(terminalUri, { result: 'PRE_ACTIVATION_ABORTED' })
+  const abortedCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result: 'PRE_ACTIVATION_ABORTED',
+    ownerApplicationId: 'orgmaster', service: 'orgmaster-prod', releaseId: attemptIntent.releaseId,
+    sourceRevision: attemptIntent.sourceRevision, previousRevision: h.baseline.activeRevision, candidateRevision: null }
+  const aborted = { ...abortedCore, controlSha256: sha256(canonicalize(abortedCore)) }
+  h.seed(h.controlUri, aborted)
+  h.input.resolveControlBaseline = async ({ control, attempt }) => {
+    assert.deepEqual(control, aborted); assert.deepEqual(attempt.ref, attemptRef)
+    return h.baselineIntentRef
+  }
+  const result = await executeToolImageRotation(h.input)
+  assert.equal(result.status, 'READY_FOR_IMAGE_BUILD')
+  assert.deepEqual(result.baselineIntentRef, h.baselineIntentRef)
+  assert.ok(h.trace.includes(`read:${terminalRef.uri}`))
+  assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
+})
 test('non-protected source and non-finalized control stop before provider builds or apply', async () => {
   const h = harness()
   await assert.rejects(executeToolImageRotation({ ...h.input, sourceProof: {} }), /OFFICIAL_SOURCE_REQUIRED/u)
