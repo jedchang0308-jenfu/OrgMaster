@@ -3,11 +3,11 @@ import { spawnSync } from 'node:child_process'
 import { readFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { canonicalize, sha256, createOwnerTransport } from './lib/dev012-owner-release-runtime.mjs'
+import { canonicalize, sha256, createOwnerTransport, releasePaths } from './lib/dev012-owner-release-runtime.mjs'
 import { readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
 import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 import { verifyOfficialMergedSource } from './lib/dev012-official-source-review.mjs'
-import { readRoutineBaseline } from './lib/dev040-routine-release.mjs'
+import { readRoutineBaseline, resolveRoutineControlBaseline } from './lib/dev040-routine-release.mjs'
 import { buildMigrationToolImage, reuseMigrationToolImage } from './lib/dev040-tool-image-build.mjs'
 import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
 import { assertToolOwner, assertToolRotationPlan, assertToolRotationState, sealToolEvidence,
@@ -59,6 +59,7 @@ export async function readHistoricalToolBuildSource({ root, profile, sourceRevis
 export async function executeToolImageRotation({ root, profile, git, sourceProof, transport, terraform,
   build = buildMigrationToolImage, reuseBuild = null, apply = false, now = () => new Date().toISOString(),
   verifySource = () => readGitAuthority(root, profile), readBaseline = readRoutineBaseline,
+  resolveControlBaseline = resolveRoutineControlBaseline,
   variablesFromState = terraformVariablesFromState }) {
   assertToolOwner(profile)
   if (sourceProof?.sourceRevision !== git.sourceRevision || sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
@@ -71,12 +72,25 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   const head = await transport.readBytes(`gs://${bucket}/control/active.json`, { prefixes: ['control'] })
   const control = JSON.parse(head.bytes.toString('utf8'))
   const { controlSha256, ...controlCore } = control
-  if (controlSha256 !== sha256(canonicalize(controlCore)) || control.state !== 'FINALIZED' || control.result !== 'RELEASED'
+  if (controlSha256 !== sha256(canonicalize(controlCore)) || control.state !== 'FINALIZED'
+    || !['RELEASED', 'PRE_ACTIVATION_ABORTED'].includes(control.result)
+    || (control.result === 'PRE_ACTIVATION_ABORTED' && control.candidateRevision !== null)
     || control.ownerApplicationId !== 'orgmaster' || control.service !== 'orgmaster-prod') fail('CONTROL_NOT_RELEASED')
   const intentRead = await transport.readBytes(`gs://${bucket}/receipts/releases/${control.releaseId}/release-intent.json`, { prefixes: ['receipts'] })
-  const baselineIntentRef = intentRead.ref
+  const controlIntent = JSON.parse(intentRead.bytes.toString('utf8'))
+  const attempt = { ...intentRead, value: controlIntent }
+  const baselineIntentRef = control.result === 'RELEASED'
+    ? intentRead.ref
+    : await resolveControlBaseline({ profile, transport, control, attempt })
+  let controlTerminalRef = null
+  if (control.result === 'PRE_ACTIVATION_ABORTED') {
+    const terminal = await transport.readBytes(releasePaths(profile, controlIntent, intentRead.ref.sha256).terminal, { prefixes: ['receipts'] })
+    controlTerminalRef = terminal.ref
+  }
   const baseline = await readBaseline({ profile, transport, baselineIntentRef })
-  if (baseline.intent.sourceRevision !== control.sourceRevision || baseline.activeRevision !== control.candidateRevision) fail('BASELINE_INVALID')
+  if ((control.result === 'RELEASED'
+    && (baseline.intent.sourceRevision !== control.sourceRevision || baseline.activeRevision !== control.candidateRevision))
+    || (control.result === 'PRE_ACTIVATION_ABORTED' && baseline.activeRevision !== control.previousRevision)) fail('BASELINE_INVALID')
   const service = await transport.getService(profile)
   transport.assertServiceSettled(service); transport.assertCanonicalEntrypoint(profile, service)
   if (transport.effectiveRevision(service) !== baseline.activeRevision || [...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some(row => row.tag)) fail('BASELINE_INVALID')
@@ -107,6 +121,8 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     if (prepared.schemaVersion !== 'orgmaster.tool-image-rotation-prepared.v1'
       || prepared.sourceRevision !== git.sourceRevision || !same(prepared.baselineIntentRef, baselineIntentRef)
       || !same(prepared.baselineInfraRef, baseline.intent.infraReceiptRef)
+      || !same(prepared.controlAttemptIntentRef ?? null, control.result === 'PRE_ACTIVATION_ABORTED' ? intentRead.ref : null)
+      || !same(prepared.controlTerminalRef ?? null, controlTerminalRef)
       || prepared.baselineSourceRevision !== baseline.intent.sourceRevision || !same(prepared.sourceProof, sourceProof)
       || !same(prepared.artifactSourceProof ?? null, reuseBuild?.sourceProof ?? null)
       || prepared.controlBaseline.sha256 !== head.ref.sha256 || prepared.controlGeneration !== String(head.metadata.generation)) fail('PREPARED_BASELINE_CHANGED')
@@ -145,6 +161,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     ])
     prepared = sealToolEvidence({ schemaVersion: 'orgmaster.tool-image-rotation-prepared.v1', sourceRevision: git.sourceRevision,
       baselineIntentRef, baselineInfraRef: baseline.intent.infraReceiptRef, baselineSourceRevision: baseline.intent.sourceRevision,
+      ...(control.result === 'PRE_ACTIVATION_ABORTED' ? { controlAttemptIntentRef: intentRead.ref, controlTerminalRef } : {}),
       controlBaseline: head.ref, controlSnapshotRef: controlSnapshot.ref, controlGeneration: String(head.metadata.generation), sourceProof,
       ...(reuseBuild ? { artifactSourceProof: reuseBuild.sourceProof } : {}),
       previousImage, nextImage, controllerImage, foundationHash: manifest.foundation_manifest_sha256,
@@ -209,6 +226,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     mutationProfile: 'APP_INFRA_IMAGE_ROTATION', imageRotation: prepared.imageRotation,
     toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1', ddlExecuted: 0,
       baselineIntentRef, baselineInfraRef: prepared.baselineInfraRef, baselineSourceRevision: prepared.baselineSourceRevision,
+      ...(prepared.controlAttemptIntentRef ? { controlAttemptIntentRef: prepared.controlAttemptIntentRef, controlTerminalRef: prepared.controlTerminalRef } : {}),
       previousMigrationRunnerDigest: prepared.previousImage, previousControllerImageDigest: prepared.controllerImage,
       controlBaseline: prepared.controlBaseline, controlSnapshotRef: prepared.controlSnapshotRef, controlGeneration: prepared.controlGeneration,
       binaryPlanRef: prepared.binaryPlanRef, planJsonRef: prepared.planJsonRef, beforeStateRef: prepared.beforeStateRef,
