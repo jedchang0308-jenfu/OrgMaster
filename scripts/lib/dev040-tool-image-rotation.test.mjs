@@ -430,6 +430,8 @@ test('allows the exact DEV-058 profile append and existing recipe changes only',
     sourceFixture.baselineSourceRevision, sourceFixture.appendSourceRevision)
   assert.equal(appendTransition.disposition, 'DEV058_ROLE_POLICY_APPEND')
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.baselineSourceRevision, sourceFixture.partialAppendSourceRevision).disposition, 'DEV058_ROLE_POLICY_APPEND')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.partialAppendSourceRevision, sourceFixture.appendSourceRevision).disposition, 'DEV058_ROLE_POLICY_APPEND')
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.rotationSourceRevision, sourceFixture.ordinarySourceRevision).disposition, 'UNCHANGED')

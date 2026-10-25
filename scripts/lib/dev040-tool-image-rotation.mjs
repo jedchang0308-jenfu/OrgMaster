@@ -5,7 +5,8 @@ import { readGitBlob } from './dev012-owner-stage-executor.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
 import { matchGitSourceArchive } from './dev040-git-archive.mjs'
-import { assertDev058RolePolicyAppend } from './dev058-role-policy-migration.mjs'
+import { assertDev058RolePolicyAppend, DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_PREFIX_COUNT,
+  DEV058_MIGRATION_PREFIX_SHA256 } from './dev058-role-policy-migration.mjs'
 
 export const TOOL_RECIPES = Object.freeze([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -104,6 +105,23 @@ function nonRecipeInfrastructureEntries(root, revision) {
       return file !== PRODUCTION_PROFILE_PATH && !TOOL_RECIPES.includes(file)
     })
 }
+function assertHistoricalDev058ToolAppend(beforeMigrations, afterMigrations) {
+  const identity = ({ order, version, path, sourceSha256, appliedSha256 }) => [order, version, path, sourceSha256, appliedSha256]
+  const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+  const beforeEntries = beforeMigrations.entries, afterEntries = afterMigrations.entries
+  const suffixLength = (afterEntries?.length ?? 0) - DEV058_MIGRATION_PREFIX_COUNT
+  if (!Array.isArray(beforeEntries) || !Array.isArray(afterEntries)
+    || beforeMigrations.baselineCount !== 10 || afterMigrations.baselineCount !== 10
+    || beforeEntries.length < DEV058_MIGRATION_PREFIX_COUNT || beforeEntries.length >= afterEntries.length
+    || suffixLength < 1 || suffixLength > DEV058_MIGRATION_ENTRIES.length
+    || sha256(JSON.stringify(afterEntries.slice(0, DEV058_MIGRATION_PREFIX_COUNT).map(identity))) !== DEV058_MIGRATION_PREFIX_SHA256
+    || !same(beforeEntries, afterEntries.slice(0, beforeEntries.length))
+    || !same(afterEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), DEV058_MIGRATION_ENTRIES.slice(0, suffixLength).map(identity))
+    || !same(staticInputs(beforeMigrations), staticInputs(afterMigrations))) fail('SOURCE_INPUT_DRIFT')
+  if (suffixLength === DEV058_MIGRATION_ENTRIES.length) {
+    assertDev058RolePolicyAppend({ ...beforeMigrations, entries: beforeEntries.slice(0, DEV058_MIGRATION_PREFIX_COUNT) }, afterMigrations)
+  }
+}
 /**
  * The baseline-to-receipt transition may carry the exact DEV-058 migration
  * append alongside existing tool recipe changes. Every other infrastructure
@@ -118,15 +136,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
   const beforeProfile = readProductionProfile(root, beforeRevision)
   const afterProfile = readProductionProfile(root, afterRevision)
   try {
-    const beforeMigrations = beforeProfile.migrations
-    const afterMigrations = afterProfile.migrations
-    if (beforeMigrations.entries?.length === 31) assertDev058RolePolicyAppend(beforeMigrations, afterMigrations)
-    else {
-      if (!Number.isSafeInteger(beforeMigrations.entries?.length) || beforeMigrations.entries.length < 31
-        || beforeMigrations.entries.length >= (afterMigrations.entries?.length ?? 0)
-        || !same(beforeMigrations.entries, afterMigrations.entries.slice(0, beforeMigrations.entries.length))) fail('SOURCE_INPUT_DRIFT')
-      assertDev058RolePolicyAppend({ ...beforeMigrations, entries: beforeMigrations.entries.slice(0, 31) }, afterMigrations)
-    }
+    assertHistoricalDev058ToolAppend(beforeProfile.migrations, afterProfile.migrations)
   } catch { fail('SOURCE_INPUT_DRIFT') }
   const { migrations: _beforeMigrations, ...beforeProfileWithoutMigrations } = beforeProfile
   const { migrations: _afterMigrations, ...afterProfileWithoutMigrations } = afterProfile
