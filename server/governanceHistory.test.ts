@@ -92,6 +92,30 @@ describe('governance published catalog history composition', () => {
     expect(loadHistorical).not.toHaveBeenCalled()
   })
 
+  it('loads multiple missing historical catalogs sequentially for one transaction client', async () => {
+    const { document, current, d4: historical } = await fixture()
+    const earlierVersion = 'ai-pdm.role-catalog.2026-09-01.v3'
+    document.draft.roleAssignments.push({
+      ...document.draft.roleAssignments[0], id: 'assignment-d3', catalogVersion: earlierVersion,
+    })
+    let activeReads = 0
+    const loadedVersions: string[] = []
+    const result = await withPublishedGovernanceHistory(document, current, async catalogVersion => {
+      activeReads += 1
+      if (activeReads !== 1) throw new Error('CONCURRENT_TRANSACTION_QUERY')
+      try {
+        await new Promise(resolve => setTimeout(resolve, 0))
+        loadedVersions.push(catalogVersion)
+        return { ...historical, catalogVersion }
+      } finally {
+        activeReads -= 1
+      }
+    })
+
+    expect(loadedVersions).toEqual([historical.catalogVersion, earlierVersion])
+    expect(result.slice(-2).map(catalog => catalog.catalogVersion)).toEqual(loadedVersions)
+  })
+
   it.each([
     ['wrong application', async () => readFinancialRoleCatalog('valid')],
     ['wrong catalog version', async () => d5],
