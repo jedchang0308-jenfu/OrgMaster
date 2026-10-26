@@ -331,6 +331,7 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || sourceProof.branchProtected !== true || sourceProof.requiredSourceQc !== 'SUCCESS') fail('SOURCE_PROOF_INVALID')
   const originalIntent = originalIntentRead.value, priorInfra = priorInfraRead.value
   if (originalIntent.ownerApplicationId !== 'orgmaster'
+    || priorInfra.sourceRevision !== proof.baselineSourceRevision
     || priorInfra.migrationRunnerDigest !== proof.previousMigrationRunnerDigest
     || priorInfra.controllerImageDigest !== receipt.controllerImageDigest
     || priorInfra.foundationManifestSha256 !== receipt.foundationManifestSha256) fail('BASELINE_INVALID')
@@ -341,9 +342,9 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
   if (controlCore.result === 'RELEASED') {
     if (proof.controlAttemptIntentRef != null || proof.controlPrepareRef != null || proof.controlRollbackRef != null
       || proof.controlTerminalRef != null
-      || controlCore.sourceRevision !== proof.baselineSourceRevision || controlCore.releaseId !== originalIntent.releaseId
-      || originalIntent.sourceRevision !== proof.baselineSourceRevision
+      || controlCore.sourceRevision !== originalIntent.sourceRevision || controlCore.releaseId !== originalIntent.releaseId
       || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
+    assertToolStateSourceContinuation(root, proof.baselineSourceRevision, originalIntent.sourceRevision, receipt.sourceRevision)
   } else {
     if (!proof.controlAttemptIntentRef || !proof.controlPrepareRef || !proof.controlRollbackRef || !proof.controlTerminalRef) fail('BASELINE_INVALID')
     const [attemptRead, prepareRead, rollbackRead, terminalRead] = await Promise.all([

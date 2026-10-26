@@ -632,6 +632,8 @@ function providerJob(image, generation) {
 function makeReceiptHarness({
   intentSourceRevision = sourceFixture.rotationSourceRevision,
   receiptSourceRevision = sourceFixture.rotationSourceRevision,
+  baselineToolSourceRevision = sourceFixture.baselineSourceRevision,
+  baselineReleaseSourceRevision = sourceFixture.baselineSourceRevision,
   baselineUsesRotation = false,
   sourceArchiveBytes = sourceFixture.sourceArchiveBytes,
   buildPatch = {},
@@ -693,7 +695,7 @@ function makeReceiptHarness({
     ownerApplicationId: 'orgmaster',
     projectId: profile.target.projectId,
     region: profile.target.region,
-    sourceRevision: sourceFixture.baselineSourceRevision,
+    sourceRevision: baselineToolSourceRevision,
     foundationManifestSha256: FOUNDATION_HASH,
     migrationRunnerDigest: PREVIOUS_IMAGE,
     controllerImageDigest: CONTROLLER_IMAGE,
@@ -702,13 +704,13 @@ function makeReceiptHarness({
   const originalBaselineIntent = {
     ownerApplicationId: 'orgmaster',
     releaseId: 'ROTATION-BASELINE',
-    sourceRevision: sourceFixture.baselineSourceRevision,
+    sourceRevision: baselineReleaseSourceRevision,
     infraReceiptRef: previousInfraRef,
   }
   const originalBaselineIntentRef = putJson('release-intent', originalBaselineIntent, 'releases/ROTATION-BASELINE')
   const originalBaselineTerminal = sealToolEvidence({
     schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
-    releaseId: originalBaselineIntent.releaseId, sourceRevision: originalBaselineIntent.sourceRevision,
+    releaseId: originalBaselineIntent.releaseId, sourceRevision: baselineReleaseSourceRevision,
     stage: 'terminal', status: 'PASS', previousReceiptRef: null,
     facts: { result: 'RELEASED', candidateRevision: 'orgmaster-prod-baseline' },
     observedAt: '2026-10-17T23:59:00.000Z',
@@ -721,7 +723,7 @@ function makeReceiptHarness({
     result: 'RELEASED',
     ownerApplicationId: 'orgmaster',
     service: 'orgmaster-prod',
-    sourceRevision: sourceFixture.baselineSourceRevision,
+    sourceRevision: baselineReleaseSourceRevision,
     releaseId: originalBaselineIntent.releaseId,
   }
   const controlSnapshot = { ...controlCore, controlSha256: sha256(canonicalize(controlCore)) }
@@ -735,7 +737,7 @@ function makeReceiptHarness({
   beforeState.stateMeta.serial = 40
   beforeState.stateJson.values.root_module.resources.find(row => row.address === MIGRATION_JOB_ADDRESS).values = terraformJob(PREVIOUS_IMAGE)
   const beforeManifest = beforeState.stateJson.values.outputs.app_release_infra_manifest.value
-  beforeManifest.source_revision = sourceFixture.baselineSourceRevision
+  beforeManifest.source_revision = baselineToolSourceRevision
   beforeManifest.migration_runner_digest = PREVIOUS_IMAGE
   const beforeStateRef = putJson('before-state', beforeState)
   const outputManifestRef = putJson('output-manifest', outputManifest)
@@ -754,7 +756,7 @@ function makeReceiptHarness({
   const toolRotation = {
     schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1',
     ddlExecuted: 0,
-    baselineSourceRevision: sourceFixture.baselineSourceRevision,
+    baselineSourceRevision: baselineToolSourceRevision,
     previousMigrationRunnerDigest: PREVIOUS_IMAGE,
     previousControllerImageDigest: CONTROLLER_IMAGE,
     jobUid: JOB_UID,
@@ -1014,6 +1016,40 @@ test('accepts the first rotation and a later source-only release reusing its imm
     assert.deepEqual(later.intent.infraReceiptRef, later.baseline.intent.infraReceiptRef)
     assert.equal(laterResult.sourceRevision, sourceFixture.rotationSourceRevision)
     assert.equal(laterResult.migrationRunnerDigest, NEXT_IMAGE)
+  } finally {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
+  }
+})
+
+test('accepts a released application-source successor that still references an older equivalent tool receipt', async () => {
+  const fixture = makeReceiptHarness({
+    baselineToolSourceRevision: sourceFixture.rotationSourceRevision,
+    baselineReleaseSourceRevision: sourceFixture.ordinarySourceRevision,
+    intentSourceRevision: sourceFixture.ordinarySourceRevision,
+    receiptSourceRevision: sourceFixture.ordinarySourceRevision,
+  })
+  const priorHead = runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
+  try {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', sourceFixture.ordinarySourceRevision])
+    const result = await validateRotationFixture(fixture)
+    assert.equal(result.sourceRevision, sourceFixture.ordinarySourceRevision)
+
+    const mismatchedControl = makeReceiptHarness({
+      baselineToolSourceRevision: sourceFixture.rotationSourceRevision,
+      baselineReleaseSourceRevision: sourceFixture.ordinarySourceRevision,
+      intentSourceRevision: sourceFixture.ordinarySourceRevision,
+      receiptSourceRevision: sourceFixture.ordinarySourceRevision,
+    })
+    const control = structuredClone(mismatchedControl.jsonObjects.get(mismatchedControl.controlSnapshotRef.uri).value)
+    control.sourceRevision = sourceFixture.rotationSourceRevision
+    const { controlSha256: _oldHash, ...controlCore } = control
+    control.controlSha256 = sha256(canonicalize(controlCore))
+    const controlRef = replaceJsonObject(mismatchedControl, mismatchedControl.controlSnapshotRef, control)
+    mismatchedControl.receipt.toolRotation.controlSnapshotRef = controlRef
+    mismatchedControl.receipt.toolRotation.controlBaseline.sha256 = controlRef.sha256
+    resealReceipt(mismatchedControl)
+    await assert.rejects(() => validateRotationFixture(mismatchedControl),
+      error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID')
   } finally {
     runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
   }
