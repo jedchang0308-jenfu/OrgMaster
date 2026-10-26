@@ -71,10 +71,15 @@ before(() => {
     const rotationSourceRevision = runGit(directory, ['rev-parse', 'HEAD'])
     fs.writeFileSync(path.join(directory, 'producer-build-notes.md'), 'non-executable producer documentation\n')
     runGit(directory, ['add', 'producer-build-notes.md'])
-    runGit(directory, ['commit', '--quiet', '-m', 'synthetic producer documentation only'])
+    runGit(directory, ['commit', '--quiet', '-m', 'synthetic state successor documentation only'])
+    const stateSuccessorRevision = runGit(directory, ['rev-parse', 'HEAD'])
+    fs.appendFileSync(path.join(directory, 'producer-build-notes.md'), 'current source successor\n')
+    runGit(directory, ['add', 'producer-build-notes.md'])
+    runGit(directory, ['commit', '--quiet', '-m', 'synthetic current source documentation only'])
     sourceRevision = runGit(directory, ['rev-parse', 'HEAD'])
     sourceFixture = { root: directory, baselineRevision,
       rotationSourceRevision,
+      stateSuccessorRevision,
       sourceTree: runGit(directory, ['rev-parse', 'HEAD^{tree}']),
       identitySha256: sha256(createGitSourceIdentity(directory, sourceRevision)),
       archive: gzipSync(createGitArchive(directory, sourceRevision), { level: 9 }) }
@@ -381,6 +386,36 @@ test('read-only readiness verifies all 75 addresses without a build, mutation or
   const result = await executeToolImageRotation(h.input)
   assert.equal(result.status, 'READY_FOR_IMAGE_BUILD'); assert.equal(result.addressCount, 75)
   assert.equal(result.ddlExecuted, 0); assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
+})
+test('read-only readiness accepts an infra-equivalent protected state source successor', async () => {
+  const h = harness()
+  const successorInfra = { ...JSON.parse(h.store.get(h.infraRef.uri).toString('utf8')),
+    sourceRevision: sourceFixture.rotationSourceRevision }
+  h.baseline.intent.infraReceiptRef = h.seed(h.infraRef.uri, successorInfra)
+  h.state.manifest.source_revision = sourceFixture.stateSuccessorRevision
+  const result = await executeToolImageRotation(h.input)
+  assert.equal(result.status, 'READY_FOR_IMAGE_BUILD')
+  assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
+})
+test('read-only readiness rejects an unrelated or tool-drifted state source before plan or mutation', async () => {
+  for (const revision of ['f'.repeat(40), sourceFixture.rotationSourceRevision]) {
+    const h = harness()
+    h.state.manifest.source_revision = revision
+    await assert.rejects(executeToolImageRotation(h.input), /STATE_BASELINE_CHANGED/u)
+    assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 0 })
+  }
+})
+test('state source continuation keeps runner, controller and foundation bindings exact', async () => {
+  for (const [field, value] of [
+    ['migration_runner_digest', `${profile.artifact.migrationRunnerUri}@sha256:${'f'.repeat(64)}`],
+    ['controller_image_digest', `asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller@sha256:${'f'.repeat(64)}`],
+    ['foundation_manifest_sha256', 'f'.repeat(64)],
+  ]) {
+    const h = harness()
+    h.state.manifest[field] = value
+    await assert.rejects(executeToolImageRotation(h.input), /STATE_BASELINE_CHANGED/u)
+    assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 0 })
+  }
 })
 function bindProducerAbort(h, { releaseId, infraRef }) {
   const attemptIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster',
