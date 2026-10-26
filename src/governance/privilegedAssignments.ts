@@ -98,12 +98,14 @@ export function assertFreshPrivilegedSession(actor: GovernanceActorContext, sess
 export function hasCrossAppOverride(document: GovernanceDocumentV3, actor: GovernanceActorContext, at = new Date().toISOString()) {
   const policy = currentPublishedPolicyV3(document)
   if (!policy || !actor.principalId || !actor.employeeId) return false
-  const links = policy.identityLinks.filter((link) => link.principalId === actor.principalId && link.employeeId === actor.employeeId
-    && link.issuer === actor.issuer && link.subject === actor.subject && isActiveAt(link.status, link.validFrom, link.validTo, at))
-  if (links.length !== 1) return false
-  const activeLink = links[0]
-  const privilegedAdmission = (policy.principalAdmissions ?? []).find((admission) => admission.identityLinkId === activeLink.id && admission.accountType === 'human_privileged' && admission.status === 'active')
-  if (!privilegedAdmission) return false
+  // The authenticated session already resolved the provider pair to a canonical
+  // Principal/Employee.  Authorization must therefore follow that verified
+  // principal binding instead of making a historical provider-pair snapshot a
+  // second login authority (for example after an SSO handoff or provider rotation).
+  const privilegedLinks = policy.identityLinks.filter((link) => link.principalId === actor.principalId && link.employeeId === actor.employeeId
+    && isActiveAt(link.status, link.validFrom, link.validTo, at)
+    && (policy.principalAdmissions ?? []).some((admission) => admission.identityLinkId === link.id && admission.accountType === 'human_privileged' && admission.status === 'active'))
+  if (privilegedLinks.length !== 1) return false
   return policy.managementGrants.some((grant) => grant.principalId === actor.principalId && grant.employeeId === actor.employeeId
     && grant.applicationId === 'ai-pdm' && grant.capability === 'orgmaster.cross_app_override'
     && isActiveAt(grant.status, grant.validFrom, grant.validTo, at))
