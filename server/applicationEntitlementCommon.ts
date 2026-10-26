@@ -31,6 +31,7 @@ export type FinancialApplicationErrorCode =
   | 'UNSUPPORTED_SUBJECT' | 'UNSUPPORTED_SCOPE' | 'INVALID_VALIDITY' | 'CATALOG_INCOMPATIBLE'
   | 'SELF_GRANT_FORBIDDEN' | 'GOVERNANCE_CONTINUITY_REQUIRED' | 'DUPLICATE_ACTIVE_ASSIGNMENT'
   | 'ASSIGNMENT_NOT_FOUND' | 'COMMAND_NOT_OBSERVED'
+  | 'INITIAL_AUTHORITY_ALREADY_EXISTS' | 'INITIAL_AUTHORITY_TARGET_INVALID' | 'INITIAL_AUTHORITY_ROLE_SET_INVALID'
 
 export class ApplicationEntitlementError extends Error {
   constructor(readonly code: FinancialApplicationErrorCode, readonly details?: unknown) {
