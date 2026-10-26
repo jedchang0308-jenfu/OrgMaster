@@ -977,6 +977,43 @@ test('app artifact reuse may bind a prior-source smoke receipt only when infrast
   assert.equal(result.providerCurrentReadback, false)
 })
 
+test('native smoke proof follows released successor history to its apply-time baseline', async () => {
+  const h = smokeContinuationHarness()
+  const targetRef = structuredClone(h.input.intent.baselineIntentRef)
+  const target = h.objects.get(targetRef.uri).value
+  const releaseId = 'SMOKE-ROTATION-SUCCESSOR-FIXTURE'
+  const successorRevision = 'orgmaster-prod-successor'
+  const successorLock = buildSourceFreeze({ profile, releaseId, observedAt: '2026-09-23T09:00:00.000Z',
+    git: { sourceRevision: oldSource, sourceTree: oldSource, branch: 'master', remoteRevision: oldSource, clean: true },
+    sourceIdentityBytes: Buffer.from('synthetic successor source identity'), migrationBundle: oldBundle })
+  const successorLockRef = h.put('gs://' + bucket + '/receipts/releases/' + releaseId + '/source-lock.json', successorLock)
+  const successor = { ...target, releaseId, sourceLockRef: successorLockRef, sourceSha256: successorLock.sourceSha256,
+    baselineIntentRef: targetRef, previousRevision: h.input.intent.previousRevision }
+  const successorRef = h.put('gs://' + bucket + '/receipts/releases/' + releaseId + '/release-intent.json', successor)
+  const successorPaths = releasePaths(profile, successor, successorRef.sha256)
+  h.put(successorPaths.terminal, stageReceipt({ profile, intent: successor, stage: 'terminal',
+    facts: { result: 'RELEASED', remainingHumanAction: 0, candidateRevision: successorRevision,
+      artifactDigest: profile.artifact.uri + '@sha256:' + 'd'.repeat(64) }, observedAt: '2026-09-23T09:01:00.000Z' }))
+
+  const missingRef = { uri: 'gs://' + bucket + '/receipts/releases/SMOKE-NATIVE-FIXTURE/missing.json', sha256: 'f'.repeat(64) }
+  const rotation = h.objects.get(h.input.intent.infraReceiptRef.uri).value
+  h.update({ rotation: { smokeRotation: { schemaVersion: 'orgmaster.smoke-credential-rotation.v1',
+    baselineIntentRef: targetRef, toolRotationRef: target.infraReceiptRef,
+    credentialEvidenceRef: rotation.credentialEvidenceRef, previousVersion: '7', nextVersion: '8',
+    stateLineage: rotation.stateLineage, beforeSerial: 5,
+    sourceProof: { sourceRevision: newSource, status: 'OFFICIAL_MERGED_PR_VERIFIED', branchProtected: true, requiredSourceQc: 'SUCCESS' },
+    preparedRef: missingRef, planJsonRef: missingRef, beforeStateRef: missingRef, afterStateRef: missingRef,
+    outputManifestRef: missingRef, providerWorkflowBeforeRef: missingRef, providerWorkflowAfterRef: missingRef,
+    controlSnapshotRef: missingRef, binaryPlanRef: missingRef, controlBaseline: missingRef, controlGeneration: '1', planProof: {} } } })
+  const intent = { ...h.input.intent, baselineIntentRef: successorRef, previousRevision: successorRevision }
+  const baseline = { intent: successor, activeRevision: successorRevision }
+  const sameTree = Buffer.from('synthetic identical complete infrastructure tree')
+  await assert.rejects(() => assertSmokeRotationContinuation({ root: h.input.root, profile: h.input.profile,
+    transport: h.input.transport, intent, values: h.input.values, baseline, readSourceFile: h.input.readSourceFile,
+    readInfrastructureTree: () => Buffer.from(sameTree), sourceReuse: true }), /MISSING/u)
+  assert.equal(h.requests.length, 0)
+})
+
 function republishSmokeContinuationBaseline(h, baselineRead, { terminalFacts = {} } = {}) {
   const oldPaths = h.paths
   const baselineIntentRef = h.put(baselineRead.ref.uri, baselineRead.value)
