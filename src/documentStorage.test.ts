@@ -73,6 +73,19 @@ describe('document storage', () => {
     expect(document.state.members).not.toBe(state.members)
   })
 
+  it('keeps the signature stable when JSON object keys arrive in a different order', () => {
+    const reordered = Object.fromEntries(Object.entries(state).reverse()) as unknown as OrgDirectoryState
+    const reorderedNested = {
+      ...reordered,
+      organizationLayout: {
+        positionYOverrides: reordered.organizationLayout.positionYOverrides,
+        showLevelGuides: reordered.organizationLayout.showLevelGuides,
+        mode: reordered.organizationLayout.mode,
+      },
+    }
+    expect(orgStateSignature(reorderedNested)).toBe(orgStateSignature(state))
+  })
+
   it('never persists a legacy member parent field in the V3 writer', () => {
     const legacyState = {
       ...state,
