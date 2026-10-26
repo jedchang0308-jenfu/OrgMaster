@@ -95,6 +95,22 @@ export function toolInfrastructureFingerprint(root, revision) {
     .filter(entry => !TOOL_RECIPES.includes(entry.split('\t').at(-1)))
   return sha256(entries.join('\0'))
 }
+function gitIsAncestor(root, ancestor, descendant) {
+  if (!H40.test(ancestor ?? '') || !H40.test(descendant ?? '')) return false
+  const result = spawnSync('git', ['merge-base', '--is-ancestor', ancestor, descendant],
+    { cwd: root, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'] })
+  if (result.error) fail('SOURCE_INVALID')
+  return result.status === 0
+}
+export function assertToolStateSourceContinuation(root, baselineRevision, stateRevision, currentRevision) {
+  if (stateRevision === baselineRevision) return { disposition: 'EXACT_BASELINE', stateRevision }
+  if (!gitIsAncestor(root, baselineRevision, stateRevision) || !gitIsAncestor(root, stateRevision, currentRevision)
+    || toolInfrastructureFingerprint(root, baselineRevision) !== toolInfrastructureFingerprint(root, stateRevision)
+    || !same(toolExecutableInputs(root, baselineRevision), toolExecutableInputs(root, stateRevision))) {
+    fail('STATE_BASELINE_CHANGED')
+  }
+  return { disposition: 'VERIFIED_SOURCE_SUCCESSOR', stateRevision }
+}
 function readProductionProfile(root, revision) {
   try { return JSON.parse(readGitBlob(root, PRODUCTION_PROFILE_PATH, revision).toString('utf8')) } catch { fail('SOURCE_INVALID') }
 }

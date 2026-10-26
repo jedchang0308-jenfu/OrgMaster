@@ -13,7 +13,7 @@ import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-t
 import { assertDev040ReleaseIntent } from './lib/dev040-orgmaster-independent-release.mjs'
 import { assertToolOwner, assertToolRotationPlan, assertToolRotationState, sealToolEvidence,
   assertToolInfrastructureTransition, rotationAddresses, assertOrdinaryToolRotation, assertToolSeal, assertToolBuildProof,
-  assertToolArtifactAssociation, assertToolPreActivationAbortControl } from './lib/dev040-tool-image-rotation.mjs'
+  assertToolArtifactAssociation, assertToolPreActivationAbortControl, assertToolStateSourceContinuation } from './lib/dev040-tool-image-rotation.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 function fail(code) { throw Object.assign(new Error(`TOOL_ROTATION_${code}`), { code: `TOOL_ROTATION_${code}` }) }
@@ -156,7 +156,8 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   } else {
     const beforeState = await terraform.read()
     const manifest = beforeState.manifest
-    if (manifest.source_revision !== previousInfra.sourceRevision || manifest.migration_runner_digest !== previousImage || manifest.controller_image_digest !== controllerImage
+    assertToolStateSourceContinuation(root, previousInfra.sourceRevision, manifest.source_revision, git.sourceRevision)
+    if (manifest.migration_runner_digest !== previousImage || manifest.controller_image_digest !== controllerImage
       || manifest.foundation_manifest_sha256 !== previousInfra.foundationManifestSha256) fail('STATE_BASELINE_CHANGED')
     const variables = variablesFromState({ state: beforeState.stateMeta, profile, sourceRevision: git.sourceRevision, nextImage: previousImage })
     const readinessPlan = await terraform.plan({ variables })
