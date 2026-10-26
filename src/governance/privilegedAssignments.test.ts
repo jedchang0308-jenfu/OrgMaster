@@ -70,9 +70,10 @@ describe('DEV-009 privileged assignment policy', () => {
     expect(() => assertFreshPrivilegedSession(actor, { ...session, principalId: 'principal-other' }, new Date(now))).toThrowError(expect.objectContaining({ code: 'STEP_UP_REQUIRED' }))
   })
 
-  it('binds cross-app override to the exact privileged principal, not the employee', () => {
+  it('binds cross-app override to the verified privileged principal, not the provider-pair snapshot or employee', () => {
     const document = fixture()
     expect(hasCrossAppOverride(document, actor, now)).toBe(true)
+    expect(hasCrossAppOverride(document, { ...actor, issuer: 'issuer-after-sso-handoff', subject: 'subject-after-provider-rotation' }, now)).toBe(true)
     expect(hasCrossAppOverride(document, { ...actor, principalId: 'principal-daily', subject: 'subject-daily' }, now)).toBe(false)
   })
 
