@@ -39,6 +39,23 @@ export function assertRequiredToolSourceQc(checks, revision) {
   if (!Number.isSafeInteger(latest?.id) || latest.id < 1 || latest.status !== 'completed' || latest.conclusion !== 'success') fail('REQUIRED_SOURCE_QC_MISSING')
   return latest
 }
+export function assertAppliedRecoverySourceProof({ preparedSourceProof, currentSourceProof, revision, sourceTree, commit, pulls, checks }) {
+  const merged = (pulls ?? []).filter(pull => pull.state === 'closed' && pull.merge_commit_sha === revision
+    && pull.base?.ref === currentSourceProof?.branch && pull.base?.repo?.full_name === currentSourceProof?.repository
+    && Number.isFinite(Date.parse(pull.merged_at ?? '')))
+  const check = assertRequiredToolSourceQc(checks, revision)
+  if (commit?.sha !== revision || commit?.tree?.sha !== sourceTree || merged.length !== 1
+    || preparedSourceProof?.schemaVersion !== 'jenfu.dev012.official-merged-source.v1'
+    || preparedSourceProof.repository !== currentSourceProof.repository || preparedSourceProof.branch !== currentSourceProof.branch
+    || preparedSourceProof.sourceRevision !== revision || preparedSourceProof.sourceTree !== sourceTree
+    || preparedSourceProof.branchProtected !== true || preparedSourceProof.reviewMode !== currentSourceProof.reviewMode
+    || preparedSourceProof.rulesetId !== currentSourceProof.rulesetId
+    || !same(preparedSourceProof.requiredChecks, currentSourceProof.requiredChecks)
+    || preparedSourceProof.pullRequestNumber !== merged[0].number || preparedSourceProof.pullRequestUrl !== merged[0].html_url
+    || preparedSourceProof.mergedAt !== merged[0].merged_at || preparedSourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
+    || preparedSourceProof.requiredSourceQc !== 'SUCCESS' || check.conclusion !== 'success') fail('RECOVERY_SOURCE_INVALID')
+  return preparedSourceProof
+}
 export async function readHistoricalToolBuildSource({ root, profile, sourceRevision, providerBuild, readGithub }) {
   const revisions = providerBuild?.steps?.[0]?.args?.filter(value => value.startsWith('SOURCE_REVISION=')) ?? []
   if (revisions.length !== 1 || !/^SOURCE_REVISION=[a-f0-9]{40}$/u.test(revisions[0])) fail('ARTIFACT_SOURCE_INVALID')
@@ -297,14 +314,28 @@ async function main() {
       sourceTree: capture('git', ['rev-parse', `${recoveryRevision}^{tree}`]), remoteRevision: recoveryRevision }
   }
   const githubToken = process.env.GITHUB_TOKEN || capture('gh', ['auth', 'token'])
-  const sourceProof = await verifyOfficialMergedSource({ repository: profile.application.repository, branch: profile.application.branch,
-    revision: git.sourceRevision, sourceTree: git.sourceTree, token: githubToken, rulesetId: 24077876 })
-  const checks = JSON.parse(capture('gh', ['api', `repos/${profile.application.repository}/commits/${git.sourceRevision}/check-runs?per_page=100`]))
-  assertRequiredToolSourceQc(checks, git.sourceRevision)
-  sourceProof.requiredSourceQc = 'SUCCESS'
+  const currentSourceProof = await verifyOfficialMergedSource({ repository: profile.application.repository, branch: profile.application.branch,
+    revision: currentGit.sourceRevision, sourceTree: currentGit.sourceTree, token: githubToken, rulesetId: 24077876 })
+  const currentChecks = JSON.parse(capture('gh', ['api', `repos/${profile.application.repository}/commits/${currentGit.sourceRevision}/check-runs?per_page=100`]))
+  assertRequiredToolSourceQc(currentChecks, currentGit.sourceRevision)
+  currentSourceProof.requiredSourceQc = 'SUCCESS'
   const token = process.env.GOOGLE_OAUTH_ACCESS_TOKEN || capture(process.platform === 'win32' ? 'pwsh' : 'gcloud',
     process.platform === 'win32' ? ['-NoProfile', '-Command', 'gcloud auth print-access-token'] : ['auth', 'print-access-token'])
   const transport = createOwnerTransport({ token })
+  let sourceProof = currentSourceProof
+  if (recoveryRevision) {
+    const preparedRead = await transport.readBytes(`gs://${profile.artifact.releaseBucket}/receipts/tool-rotations/${recoveryRevision}/prepared.json`, { prefixes: ['receipts'] })
+    let prepared
+    try { prepared = JSON.parse(preparedRead.bytes.toString('utf8')) } catch { fail('RECOVERY_SOURCE_INVALID') }
+    const commit = JSON.parse(capture('gh', ['api',
+      `repos/${profile.application.repository}/git/commits/${recoveryRevision}`]))
+    const pulls = JSON.parse(capture('gh', ['api',
+      `repos/${profile.application.repository}/commits/${recoveryRevision}/pulls?per_page=100`]))
+    const checks = JSON.parse(capture('gh', ['api',
+      `repos/${profile.application.repository}/commits/${recoveryRevision}/check-runs?per_page=100`]))
+    sourceProof = assertAppliedRecoverySourceProof({ preparedSourceProof: prepared.sourceProof, currentSourceProof,
+      revision: recoveryRevision, sourceTree: git.sourceTree, commit, pulls, checks })
+  }
   const reuseBuild = reuseId ? await readHistoricalToolBuildSource({ root, profile, sourceRevision: git.sourceRevision,
     providerBuild: await transport.request(`https://cloudbuild.googleapis.com/v1/projects/${profile.target.projectId}/locations/${profile.target.region}/builds/${reuseId}`),
     readGithub: async endpoint => JSON.parse(capture('gh', ['api', `repos/${profile.application.repository}/${endpoint}`])) }) : null

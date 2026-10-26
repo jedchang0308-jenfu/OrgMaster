@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test, { before, after } from 'node:test'
 import { gzipSync } from 'node:zlib'
-import { executeToolImageRotation, assertRequiredToolSourceQc, parseToolRotationArgs, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
+import { executeToolImageRotation, assertAppliedRecoverySourceProof, assertRequiredToolSourceQc, parseToolRotationArgs, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
 import { assertDeployToolRotationSelection, bindDeployToolRotationAuthority, parseDeployProductionArgs, selectDeployInfrastructureRef } from './dev040-deploy-production.mjs'
 import { resolveRoutineToolRotationRef } from './lib/dev040-routine-release.mjs'
 import { canonicalize, sha256, releasePaths } from './lib/dev012-owner-release-runtime.mjs'
@@ -39,6 +39,33 @@ test('tool rotation CLI limits applied-source recovery to apply mode and one exa
   assert.throws(() => parseToolRotationArgs(['--check', `--recover-applied-source=${revision}`]), /ARGUMENT_INVALID/u)
   assert.throws(() => parseToolRotationArgs(['--apply', '--recover-applied-source=short']), /ARGUMENT_INVALID/u)
   assert.throws(() => parseToolRotationArgs(['--apply', `--recover-applied-source=${revision}`, '--reuse-build-id=12345678-1234-1234-1234-123456789abc']), /ARGUMENT_INVALID/u)
+})
+
+test('applied-source recovery reuses only the sealed proof of the exact merged ancestor and successful QC', () => {
+  const revision = 'a'.repeat(40)
+  const sourceTree = 'b'.repeat(40)
+  const mergedAt = '2026-10-26T00:00:00.000Z'
+  const currentSourceProof = {
+    repository: 'jedchang0308-jenfu/OrgMaster', branch: 'master', branchProtected: true,
+    reviewMode: 'SOLO_MAINTAINER_NO_HUMAN_APPROVAL_REQUIRED', rulesetId: 24077876,
+    requiredChecks: ['Production Source QC'],
+  }
+  const preparedSourceProof = {
+    schemaVersion: 'jenfu.dev012.official-merged-source.v1', ...currentSourceProof,
+    sourceRevision: revision, sourceTree, pullRequestNumber: 172,
+    pullRequestUrl: 'https://github.com/jedchang0308-jenfu/OrgMaster/pull/172', mergedAt,
+    status: 'OFFICIAL_MERGED_PR_VERIFIED', requiredSourceQc: 'SUCCESS',
+  }
+  const commit = { sha: revision, tree: { sha: sourceTree } }
+  const pulls = [{ state: 'closed', merge_commit_sha: revision, merged_at: mergedAt, number: 172,
+    html_url: preparedSourceProof.pullRequestUrl, base: { ref: 'master', repo: { full_name: currentSourceProof.repository } } }]
+  const checks = { check_runs: [{ id: 11, name: 'Production Source QC', head_sha: revision,
+    status: 'completed', conclusion: 'success', app: { id: 15368 } }] }
+  assert.equal(assertAppliedRecoverySourceProof({ preparedSourceProof, currentSourceProof, revision, sourceTree, commit, pulls, checks }), preparedSourceProof)
+  assert.throws(() => assertAppliedRecoverySourceProof({ preparedSourceProof: { ...preparedSourceProof, sourceRevision: 'c'.repeat(40) },
+    currentSourceProof, revision, sourceTree, commit, pulls, checks }), /RECOVERY_SOURCE_INVALID/u)
+  assert.throws(() => assertAppliedRecoverySourceProof({ preparedSourceProof, currentSourceProof, revision, sourceTree, commit, pulls,
+    checks: { check_runs: checks.check_runs.map(row => ({ ...row, conclusion: 'failure' })) } }), /REQUIRED_SOURCE_QC_MISSING/u)
 })
 
 function runGit(cwd, args) {
