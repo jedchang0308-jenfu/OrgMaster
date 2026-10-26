@@ -24,17 +24,19 @@ import { assertDev057CutoverSourceAppend, assertDev057CutoverSourceRemediation, 
 test('production runtime image includes every approved catalog read by governance', () => {
   const dockerfile = fs.readFileSync('Dockerfile', 'utf8')
   const repository = fs.readFileSync('server/aiPdmRoleCatalogRepository.ts', 'utf8')
-  const names = [...new Set([...repository.matchAll(/file:\s*'(ai-pdm-role-catalog\.v\d+\.json)'/gu)].map((match) => match[1]))]
-  assert.ok(names.length > 0, 'approved source artifacts must be identifiable')
+  const catalogPaths = [...new Set([...repository.matchAll(/path:\s*'([^']+\.json)'/gu)].map((match) => match[1]))]
+  assert.ok(catalogPaths.length > 0, 'approved source artifacts must be identifiable')
   const runnerStart = dockerfile.search(/^FROM scratch AS runner\s*$/mu)
   assert.ok(runnerStart >= 0, 'the final application stage must be identifiable')
   const runner = dockerfile.slice(runnerStart)
-  for (const name of names) {
-    const catalog = JSON.parse(fs.readFileSync(path.join('config/catalogs', name), 'utf8'))
+  for (const catalogPath of catalogPaths) {
+    const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'))
     assert.equal(catalog.applicationId, 'ai-pdm')
     assert.equal(catalog.roles.length, 9)
-    const escapedName = name.replaceAll('.', '\\.')
-    assert.match(runner, new RegExp(`^COPY --from=builder --chown=65532:65532 /app/config/catalogs/${escapedName} \\./config/catalogs/${escapedName}$`, 'mu'))
+    if (catalogPath.startsWith('config/catalogs/')) {
+      const escapedPath = catalogPath.replaceAll('.', '\\.')
+      assert.match(runner, new RegExp(`^COPY --from=builder --chown=65532:65532 /app/${escapedPath} \\./${escapedPath}$`, 'mu'))
+    }
   }
   assert.match(runner, /^COPY --from=builder --chown=65532:65532 \/app\/contracts \.\/contracts$/mu)
 })

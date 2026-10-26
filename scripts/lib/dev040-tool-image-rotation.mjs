@@ -5,8 +5,8 @@ import { readGitBlob } from './dev012-owner-stage-executor.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
 import { matchGitSourceArchive } from './dev040-git-archive.mjs'
-import { assertDev058RolePolicyAppend } from './dev058-role-policy-migration.mjs'
-import { assertDev059FmsAuthorityAppend } from './dev059-fms-authority-migration.mjs'
+import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_PREFIX_SHA256 } from './dev058-role-policy-migration.mjs'
+import { DEV059_FMS_AUTHORITY_MIGRATION, DEV059_MIGRATION_ENTRY_COUNT } from './dev059-fms-authority-migration.mjs'
 
 export const TOOL_RECIPES = Object.freeze([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -32,13 +32,37 @@ export function assertToolSeal(value) {
   return value
 }
 
-function assertToolControlTerminal(value, profile, intent) {
+function assertToolControlStage(value, profile, intent, stage) {
   const { receiptSha256, ...core } = value ?? {}
   if (value?.schemaVersion !== 'jenfu.dev012.stage-receipt.v1'
     || value.ownerApplicationId !== profile.application.id || value.releaseId !== intent.releaseId
-    || value.sourceRevision !== intent.sourceRevision || value.stage !== 'terminal' || value.status !== 'PASS'
+    || value.sourceRevision !== intent.sourceRevision || value.stage !== stage || value.status !== 'PASS'
     || receiptSha256 !== sha256(canonicalize(core))) fail('BASELINE_INVALID')
   return value
+}
+export function assertToolPreActivationAbortControl({ profile, attemptIntent, attemptRef, baselineIntentRef,
+  infraRef, priorInfra, baselineActiveRevision, control, prepareRead, rollbackRead, terminalRead }) {
+  const paths = releasePaths(profile, attemptIntent, attemptRef.sha256)
+  const prepare = assertToolControlStage(prepareRead.value, profile, attemptIntent, 'prepare')
+  const rollback = assertToolControlStage(rollbackRead.value, profile, attemptIntent, 'rollback')
+  const terminal = assertToolControlStage(terminalRead.value, profile, attemptIntent, 'terminal')
+  const rollbackFacts = rollback.facts, terminalFacts = terminal.facts
+  if (prepareRead.ref.uri !== paths.prepare || rollbackRead.ref.uri !== paths.rollback || terminalRead.ref.uri !== paths.terminal
+    || control.releaseId !== attemptIntent.releaseId || control.sourceRevision !== attemptIntent.sourceRevision
+    || control.sourceLockSha256 !== attemptIntent.sourceLockRef.sha256 || control.previousRevision !== baselineActiveRevision
+    || control.candidateRevision !== null || !same(attemptIntent.baselineIntentRef, baselineIntentRef)
+    || !same(attemptIntent.infraReceiptRef, infraRef) || attemptIntent.previousRevision !== baselineActiveRevision
+    || !same(prepare.facts?.prerequisiteRefs?.infra, infraRef)
+    || prepare.facts?.migrationRunnerDigest !== priorInfra.migrationRunnerDigest
+    || rollbackFacts?.result !== 'PRE_ACTIVATION_ABORTED' || terminalFacts?.result !== 'PRE_ACTIVATION_ABORTED'
+    || rollbackFacts.previousRevision !== baselineActiveRevision || terminalFacts.previousRevision !== baselineActiveRevision
+    || !['NOT_APPLIED', 'UNCHANGED_VERIFIED'].includes(rollbackFacts.databaseDisposition)
+    || terminalFacts.databaseDisposition !== rollbackFacts.databaseDisposition
+    || rollbackFacts.entrypointRecovery?.changed !== false
+    || !same(terminalFacts.entrypointRecovery, rollbackFacts.entrypointRecovery)
+    || !same(rollbackFacts.recoveryOrder, ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'])
+    || !same(terminal.previousReceiptRef, rollbackRead.ref)) fail('BASELINE_INVALID')
+  return { prepare, rollback, terminal }
 }
 export function assertToolOwner(profile) {
   if (profile.application.id !== 'orgmaster' || profile.target.projectId !== 'jenfu-platform-prod'
@@ -94,22 +118,27 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
 
   const beforeProfile = readProductionProfile(root, beforeRevision)
   const afterProfile = readProductionProfile(root, afterRevision)
-  let disposition = 'DEV059_FMS_AUTHORITY_APPEND'
+  let disposition
   try {
     const beforeMigrations = beforeProfile.migrations
     const afterMigrations = afterProfile.migrations
-    try {
-      assertDev059FmsAuthorityAppend(beforeMigrations, afterMigrations)
-    } catch {
-      if (beforeMigrations.entries?.length === 31) assertDev058RolePolicyAppend(beforeMigrations, afterMigrations)
-      else {
-        if (!Number.isSafeInteger(beforeMigrations.entries?.length) || beforeMigrations.entries.length < 31
-          || beforeMigrations.entries.length >= (afterMigrations.entries?.length ?? 0)
-          || !same(beforeMigrations.entries, afterMigrations.entries.slice(0, beforeMigrations.entries.length))) fail('SOURCE_INPUT_DRIFT')
-        assertDev058RolePolicyAppend({ ...beforeMigrations, entries: beforeMigrations.entries.slice(0, 31) }, afterMigrations)
-      }
-      disposition = 'DEV058_ROLE_POLICY_APPEND'
-    }
+    const identity = ({ order, version, path, sourceSha256, appliedSha256 }) => [order, version, path, sourceSha256, appliedSha256]
+    const beforeEntries = beforeMigrations.entries
+    const afterEntries = afterMigrations.entries
+    const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
+    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, DEV059_FMS_AUTHORITY_MIGRATION].map(identity)
+    if (!Array.isArray(beforeEntries) || !Array.isArray(afterEntries)
+      || beforeMigrations.baselineCount !== 10 || afterMigrations.baselineCount !== 10
+      || !same(staticInputs(beforeMigrations), staticInputs(afterMigrations))
+      || beforeEntries.length < DEV058_MIGRATION_PREFIX_COUNT || beforeEntries.length >= afterEntries.length
+      || afterEntries.length > DEV058_MIGRATION_PREFIX_COUNT + approvedSuffix.length
+      || sha256(JSON.stringify(beforeEntries.slice(0, DEV058_MIGRATION_PREFIX_COUNT).map(identity))) !== DEV058_MIGRATION_PREFIX_SHA256
+      || !same(beforeEntries, afterEntries.slice(0, beforeEntries.length))
+      || !same(beforeEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, beforeEntries.length - DEV058_MIGRATION_PREFIX_COUNT))
+      || !same(afterEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, afterEntries.length - DEV058_MIGRATION_PREFIX_COUNT))) fail('SOURCE_INPUT_DRIFT')
+    disposition = afterEntries.length === DEV059_MIGRATION_ENTRY_COUNT
+      ? 'DEV059_FMS_AUTHORITY_APPEND'
+      : 'DEV058_ROLE_POLICY_APPEND'
   } catch { fail('SOURCE_INPUT_DRIFT') }
   const { migrations: _beforeMigrations, ...beforeProfileWithoutMigrations } = beforeProfile
   const { migrations: _afterMigrations, ...afterProfileWithoutMigrations } = afterProfile
@@ -294,22 +323,29 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || controlCore.state !== 'FINALIZED' || !['RELEASED', 'PRE_ACTIVATION_ABORTED'].includes(controlCore.result)
     || controlCore.ownerApplicationId !== 'orgmaster' || controlCore.service !== 'orgmaster-prod') fail('BASELINE_INVALID')
   if (controlCore.result === 'RELEASED') {
-    if (proof.controlAttemptIntentRef != null || proof.controlTerminalRef != null
+    if (proof.controlAttemptIntentRef != null || proof.controlPrepareRef != null || proof.controlRollbackRef != null
+      || proof.controlTerminalRef != null
       || controlCore.sourceRevision !== proof.baselineSourceRevision || controlCore.releaseId !== originalIntent.releaseId
       || originalIntent.sourceRevision !== proof.baselineSourceRevision
       || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
   } else {
-    if (controlCore.candidateRevision !== null || !proof.controlAttemptIntentRef || !proof.controlTerminalRef) fail('BASELINE_INVALID')
-    const [attemptRead, terminalRead] = await Promise.all([read(proof.controlAttemptIntentRef), read(proof.controlTerminalRef)])
+    if (!proof.controlAttemptIntentRef || !proof.controlPrepareRef || !proof.controlRollbackRef || !proof.controlTerminalRef) fail('BASELINE_INVALID')
+    const [attemptRead, prepareRead, rollbackRead, terminalRead] = await Promise.all([
+      read(proof.controlAttemptIntentRef), read(proof.controlPrepareRef), read(proof.controlRollbackRef), read(proof.controlTerminalRef),
+    ])
     const attemptIntent = assertDev040ReleaseIntent(attemptRead.value, profile)
-    const expectedTerminalUri = releasePaths(profile, attemptIntent, attemptRead.ref.sha256).terminal
-    const terminal = assertToolControlTerminal(terminalRead.value, profile, attemptIntent)
-    if (controlCore.releaseId !== attemptIntent.releaseId || controlCore.sourceRevision !== attemptIntent.sourceRevision
-      || controlCore.sourceLockSha256 !== attemptIntent.sourceLockRef.sha256
-      || !same(attemptIntent.baselineIntentRef, proof.baselineIntentRef)
-      || attemptIntent.previousRevision !== baseline.activeRevision || controlCore.previousRevision !== baseline.activeRevision
-      || terminalRead.ref.uri !== expectedTerminalUri || terminal.facts?.result !== 'PRE_ACTIVATION_ABORTED'
-      || terminal.facts.previousRevision !== baseline.activeRevision) fail('BASELINE_INVALID')
+    const historicalTerminalUri = releasePaths(profile, originalIntent, proof.baselineIntentRef.sha256).terminal
+    const historicalTerminalBytes = await transport.readBytes(historicalTerminalUri, { prefixes: ['receipts'] })
+    let historicalTerminalValue
+    try { historicalTerminalValue = JSON.parse(historicalTerminalBytes.bytes.toString('utf8')) } catch { fail('BASELINE_INVALID') }
+    const historicalTerminal = assertToolControlStage(historicalTerminalValue, profile, originalIntent, 'terminal')
+    const historicalActiveRevision = historicalTerminal.facts?.candidateRevision
+    if (historicalTerminalBytes.ref?.uri !== historicalTerminalUri || historicalTerminal.facts?.result !== 'RELEASED'
+      || typeof historicalActiveRevision !== 'string' || !historicalActiveRevision
+      || (same(intent.baselineIntentRef, proof.baselineIntentRef) && baseline.activeRevision !== historicalActiveRevision)) fail('BASELINE_INVALID')
+    assertToolPreActivationAbortControl({ profile, attemptIntent, attemptRef: attemptRead.ref,
+      baselineIntentRef: proof.baselineIntentRef, infraRef: proof.baselineInfraRef, priorInfra,
+      baselineActiveRevision: historicalActiveRevision, control: controlCore, prepareRead, rollbackRead, terminalRead })
     if (same(attemptIntent.infraReceiptRef, originalIntent.infraReceiptRef)) {
       if (originalIntent.sourceRevision !== proof.baselineSourceRevision
         || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')

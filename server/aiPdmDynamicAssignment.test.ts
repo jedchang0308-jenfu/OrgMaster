@@ -16,7 +16,7 @@ import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2To
 import { createSeedDocumentV2 } from '../src/governance/migrateGovernanceV1ToV2'
 import { isActiveAt, validatePolicyDataV3 } from '../src/governance/validation'
 import { GovernanceValidationError } from '../src/governance/validation'
-import { assertDynamicCatalogBinding } from './orgmasterGovernanceStore'
+import { assertDynamicCatalogBinding, validateAssignmentCandidateWithCatalogs } from './orgmasterGovernanceStore'
 import type {
   ExternalRoleCatalogSnapshotV1,
   ExternalRoleCatalogRoleV1,
@@ -204,6 +204,24 @@ describe('DEV-058 dynamic catalog assignment consumer', () => {
       type: 'REVOKE_ROLE_ASSIGNMENT', commandId: 'inactive-custom-revoke', reason: 'fixture', id: 'fixture-assignment',
     }, 'principal-fixture', undefined, [inactiveCatalog])
     expect(revoke.document.draft.roleAssignments[0]).toMatchObject({ id: 'fixture-assignment', status: 'revoked' })
+  })
+
+  it('previews a new current assignment while retaining a revoked custom role from catalog history', () => {
+    const historicalCatalog = structuredClone(dynamicV7)
+    historicalCatalog.catalogVersion = 'ai-pdm.role-policy.20000000-0000-4000-8000-000000000005'
+    const historicalCustom = role(historicalCatalog, 'role-custom-30000000-0000-4000-8000-000000000001')
+    const currentCatalog = structuredClone(dynamicV7)
+    role(currentCatalog, historicalCustom.stableRoleId).status = 'inactive'
+    const currentRole = role(currentCatalog, 'role-rd')
+    const document = v3DocumentWithAssignment(historicalCatalog, historicalCustom, 'revoked')
+
+    const result = validateAssignmentCandidateWithCatalogs(document, {
+      ...assignmentValue(currentCatalog, currentRole, 'active', 'new-current-assignment'),
+      id: undefined,
+    }, currentCatalog, [currentCatalog, historicalCatalog])
+
+    expect(result.status).toBe('valid')
+    expect(result.issues).toEqual([])
   })
 
   it('blocks new, restored, and recommended assignments for an inactive role', () => {
