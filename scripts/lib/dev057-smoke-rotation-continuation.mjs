@@ -81,6 +81,33 @@ async function smokeRotationAppliedPredecessor({ root, profile, transport, inten
         terminal.facts?.result !== 'RELEASED' || terminal.facts.remainingHumanAction !== 0 ||
         terminal.facts.candidateRevision !== revision) fail('SMOKE_REUSE_CHAIN_RELEASE_INVALID')
   }
+  const assertReleasedIntent = async (releaseIntent, intentRef, revision) => {
+    if (!same(await readRef(intentRef), releaseIntent)) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+    assertDev040ReleaseIntent(releaseIntent, profile)
+    const lock = await readRef(releaseIntent.sourceLockRef)
+    assertReuseSourceLock(lock, profile)
+    if (lock.releaseId !== releaseIntent.releaseId || lock.sourceRevision !== releaseIntent.sourceRevision ||
+        lock.sourceSha256 !== releaseIntent.sourceSha256 ||
+        lock.migrationManifestSha256 !== releaseIntent.migrationManifestSha256) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+    await assertReleased(releaseIntent, intentRef, revision)
+  }
+  const resolveRotationBaseline = async (targetRef, releaseIntent, intentRef, revision) => {
+    assertImmutableRef(targetRef, EXPECTED.releaseBucket, ['receipts'])
+    const visitedIntents = new Set()
+    let current = releaseIntent, currentRef = intentRef, expectedRevision = revision
+    for (let depth = 0; depth <= MAX_SMOKE_REUSE_CHAIN_DEPTH; depth += 1) {
+      if (visitedIntents.has(currentRef.uri)) fail('SMOKE_REUSE_CHAIN_CYCLE')
+      visitedIntents.add(currentRef.uri)
+      await assertReleasedIntent(current, currentRef, expectedRevision)
+      if (same(currentRef, targetRef)) return currentRef
+      if (depth === MAX_SMOKE_REUSE_CHAIN_DEPTH) fail('SMOKE_REUSE_CHAIN_DEPTH_EXCEEDED')
+      if (!current.baselineIntentRef) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+      expectedRevision = current.previousRevision
+      currentRef = current.baselineIntentRef
+      current = await readRef(currentRef)
+    }
+    fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+  }
   // A new applied credential rotation may follow a released source-reuse
   // baseline. Validate that baseline's original anchored rotation and its whole
   // released history first. It is the apply-time predecessor, never a replacement
@@ -127,16 +154,15 @@ async function smokeRotationAppliedPredecessor({ root, profile, transport, inten
         const expectedTree = tree ?? readInfrastructureTree(root, intent.sourceRevision)
         if (!expectedTree.equals(readInfrastructureTree(root, value.sourceRevision))
           || (historicalImageSource && !expectedTree.equals(readInfrastructureTree(root, currentIntent.sourceRevision)))) fail('SMOKE_REUSE_CHAIN_INPUT_DRIFT')
-        if (!same(await readRef(currentIntentRef), currentIntent)) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
-        assertDev040ReleaseIntent(currentIntent, profile)
-        const originalLock = await readRef(currentIntent.sourceLockRef)
-        assertReuseSourceLock(originalLock, profile)
-        if (originalLock.releaseId !== currentIntent.releaseId || originalLock.sourceRevision !== currentIntent.sourceRevision ||
-            originalLock.sourceSha256 !== currentIntent.sourceSha256 ||
-            originalLock.migrationManifestSha256 !== currentIntent.migrationManifestSha256) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
-        await assertReleased(currentIntent, currentIntentRef, expectedActiveRevision)
+        await assertReleasedIntent(currentIntent, currentIntentRef, expectedActiveRevision)
       }
-      return value
+      const rotationBaselineIntentRef = rotation.smokeRotation?.baselineIntentRef &&
+        !same(rotation.smokeRotation.baselineIntentRef, currentIntentRef)
+        ? sourceReuse
+          ? await resolveRotationBaseline(rotation.smokeRotation.baselineIntentRef, currentIntent, currentIntentRef, expectedActiveRevision)
+          : fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+        : currentIntentRef
+      return { ...value, receiptRef: ref, rotationBaselineIntentRef }
     }
     if (!sourceReuse) fail('SMOKE_ROTATION_INFRA_INVALID')
     if (++depth > MAX_SMOKE_REUSE_CHAIN_DEPTH) fail('SMOKE_REUSE_CHAIN_DEPTH_EXCEEDED')
@@ -245,6 +271,7 @@ async function assertAppliedSmokeRotation({ root, profile, transport, intent, va
   if (prior.candidateSmokeRefreshTokenSecretVersion != null &&
       prior.candidateSmokeRefreshTokenSecretVersion !== credential.secret.previousVersion) fail('SMOKE_ROTATION_VERSION_INVALID')
   if (rotation.smokeRotation) await assertNativeSmokeRotationProof({ root, profile, transport, intent, rotation, prior,
+    rotationBaselineIntentRef: prior.rotationBaselineIntentRef ?? intent.baselineIntentRef,
     infraProfile: afterProfile, previousVersion: credential.secret.previousVersion, nextVersion: credential.secret.newVersion,
     readSourceFile })
   return { evidenceScope: 'OWNER_SEALED_APPLIED_ROTATION', infraReceiptRef: intent.infraReceiptRef,
@@ -257,11 +284,11 @@ async function assertAppliedSmokeRotation({ root, profile, transport, intent, va
     providerCurrentReadback: false, credentialMaterialPresent: false }
 }
 
-async function assertNativeSmokeRotationProof({ root, profile, transport, intent, rotation, prior, infraProfile,
+async function assertNativeSmokeRotationProof({ root, profile, transport, intent, rotation, prior, rotationBaselineIntentRef, infraProfile,
   previousVersion, nextVersion, readSourceFile }) {
   const proof = rotation.smokeRotation
   if (proof?.schemaVersion !== 'orgmaster.smoke-credential-rotation.v1' ||
-      !same(proof.baselineIntentRef, intent.baselineIntentRef) || !same(proof.toolRotationRef, prior.receiptRef) ||
+      !same(proof.baselineIntentRef, rotationBaselineIntentRef) || !same(proof.toolRotationRef, prior.receiptRef) ||
       !same(proof.credentialEvidenceRef, rotation.credentialEvidenceRef) || proof.previousVersion !== previousVersion ||
       proof.nextVersion !== nextVersion || proof.stateLineage !== rotation.stateLineage || !Number.isSafeInteger(proof.beforeSerial) ||
       proof.beforeSerial >= rotation.stateSerial || proof.sourceProof?.sourceRevision !== rotation.sourceRevision ||
