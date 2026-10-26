@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test, { before, after } from 'node:test'
 import { gzipSync } from 'node:zlib'
-import { executeToolImageRotation, assertAppliedRecoverySourceProof, assertRequiredToolSourceQc, parseToolRotationArgs, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
+import { executeToolImageRotation, assertAppliedRecoverySourceProof, assertRequiredToolSourceQc, assertReusableAfterStateEvidence, parseToolRotationArgs, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
 import { assertDeployToolRotationSelection, bindDeployToolRotationAuthority, parseDeployProductionArgs, selectDeployInfrastructureRef } from './dev040-deploy-production.mjs'
 import { resolveRoutineToolRotationRef } from './lib/dev040-routine-release.mjs'
 import { canonicalize, sha256, releasePaths } from './lib/dev012-owner-release-runtime.mjs'
@@ -66,6 +66,16 @@ test('applied-source recovery reuses only the sealed proof of the exact merged a
     currentSourceProof, revision, sourceTree, commit, pulls, checks }), /RECOVERY_SOURCE_INVALID/u)
   assert.throws(() => assertAppliedRecoverySourceProof({ preparedSourceProof, currentSourceProof, revision, sourceTree, commit, pulls,
     checks: { check_runs: checks.check_runs.map(row => ({ ...row, conclusion: 'failure' })) } }), /REQUIRED_SOURCE_QC_MISSING/u)
+})
+
+test('applied recovery reuses sealed after-state when only Terraform check result order changes', () => {
+  const row = (address) => ({ config_addr: address, objects: [{ object_addr: address, status: 'pass' }], status: 'pass' })
+  const existing = { stateMeta: { serial: 131, lineage: 'lineage', check_results: [row('b'), row('a')] },
+    stateJson: { format_version: '1.0' }, manifest: { source_revision: 'a'.repeat(40) } }
+  const current = { ...existing, stateMeta: { ...existing.stateMeta, check_results: [row('a'), row('b')] } }
+  assert.equal(assertReusableAfterStateEvidence(existing, current), existing)
+  assert.throws(() => assertReusableAfterStateEvidence(existing,
+    { ...current, stateMeta: { ...current.stateMeta, serial: 132 } }), /RECOVERY_AFTER_STATE_CHANGED/u)
 })
 
 function runGit(cwd, args) {

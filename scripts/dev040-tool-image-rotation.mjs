@@ -9,7 +9,7 @@ import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-e
 import { verifyOfficialMergedSource } from './lib/dev012-official-source-review.mjs'
 import { readRoutineBaseline, resolveRoutineControlBaseline } from './lib/dev040-routine-release.mjs'
 import { buildMigrationToolImage, reuseMigrationToolImage } from './lib/dev040-tool-image-build.mjs'
-import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
+import { createToolTerraform, normalizeTerraformStateMeta, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
 import { assertDev040ReleaseIntent } from './lib/dev040-orgmaster-independent-release.mjs'
 import { assertToolOwner, assertToolRotationPlan, assertToolRotationState, sealToolEvidence,
   assertToolInfrastructureTransition, rotationAddresses, assertOrdinaryToolRotation, assertToolSeal, assertToolBuildProof,
@@ -55,6 +55,11 @@ export function assertAppliedRecoverySourceProof({ preparedSourceProof, currentS
     || preparedSourceProof.mergedAt !== merged[0].merged_at || preparedSourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
     || preparedSourceProof.requiredSourceQc !== 'SUCCESS' || check.conclusion !== 'success') fail('RECOVERY_SOURCE_INVALID')
   return preparedSourceProof
+}
+export function assertReusableAfterStateEvidence(existing, current) {
+  const normalize = value => ({ ...value, stateMeta: normalizeTerraformStateMeta(value?.stateMeta) })
+  if (!existing || !current || !same(normalize(existing), normalize(current))) fail('RECOVERY_AFTER_STATE_CHANGED')
+  return existing
 }
 export async function readHistoricalToolBuildSource({ root, profile, sourceRevision, providerBuild, readGithub }) {
   const revisions = providerBuild?.steps?.[0]?.args?.filter(value => value.startsWith('SOURCE_REVISION=')) ?? []
@@ -258,9 +263,13 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     || afterJob.template?.template?.containers?.[0]?.image !== prepared.nextImage || afterJob.reconciling === true
     || String(afterJob.generation) !== String(afterJob.observedGeneration)) fail('APPLY_OUTCOME_UNRESOLVED')
   await sameControl()
-  const [stateRead, outputRead, jobRead] = await Promise.all([
-    put('after-state', afterState), put('output-manifest', manifest), put('provider-job-after', afterJob),
+  const existingAfterState = fence ? await optionalJson(transport, `${prefix}/after-state.json`, bucket) : null
+  const [outputRead, jobRead] = await Promise.all([
+    put('output-manifest', manifest), put('provider-job-after', afterJob),
   ])
+  const stateRead = existingAfterState
+    ? { ...existingAfterState, value: assertReusableAfterStateEvidence(existingAfterState.value, afterState) }
+    : await put('after-state', afterState)
   const receipt = sealToolEvidence({ schemaVersion: 'jenfu.dev012.app-infra-receipt.v1', ownerApplicationId: 'orgmaster',
     projectId: profile.target.projectId, region: profile.target.region, sourceRevision: git.sourceRevision,
     foundationManifestSha256: prepared.foundationHash, migrationRunnerDigest: prepared.nextImage,
