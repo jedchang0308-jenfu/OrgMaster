@@ -273,12 +273,29 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   return { status: 'APPLIED', ref: result.ref, migrationRunnerDigest: receipt.migrationRunnerDigest, ddlExecuted: 0 }
 }
 
+export function parseToolRotationArgs(argv) {
+  const mode = argv[0]
+  const options = argv.slice(1)
+  const reuse = options.filter(value => value.startsWith('--reuse-build-id='))
+  const recovery = options.filter(value => value.startsWith('--recover-applied-source='))
+  const reuseId = reuse[0]?.match(/^--reuse-build-id=([a-f0-9]{8}-[a-f0-9-]{27})$/u)?.[1] ?? null
+  const recoveryRevision = recovery[0]?.match(/^--recover-applied-source=([a-f0-9]{40})$/u)?.[1] ?? null
+  if (!['--check', '--apply'].includes(mode) || options.length > 1 || reuse.length > 1 || recovery.length > 1
+    || (options.length === 1 && !reuseId && !recoveryRevision) || (reuseId && recoveryRevision)
+    || (recoveryRevision && mode !== '--apply')) fail('ARGUMENT_INVALID')
+  return { apply: mode === '--apply', reuseId, recoveryRevision }
+}
+
 async function main() {
-  const argv = process.argv.slice(2)
-  const reuseId = argv[1]?.match(/^--reuse-build-id=([a-f0-9]{8}-[a-f0-9-]{27})$/u)?.[1] ?? null
-  if (![1, 2].includes(argv.length) || !['--check', '--apply'].includes(argv[0]) || (argv.length === 2 && !reuseId)) fail('ARGUMENT_INVALID')
+  const { apply, reuseId, recoveryRevision } = parseToolRotationArgs(process.argv.slice(2))
   const profile = JSON.parse(readGitBlob(root, 'config/release/dev040-orgmaster-independent-production-v3.json'))
-  const git = readGitAuthority(root, profile)
+  const currentGit = readGitAuthority(root, profile)
+  let git = currentGit
+  if (recoveryRevision) {
+    assertToolStateSourceContinuation(root, recoveryRevision, currentGit.sourceRevision, currentGit.sourceRevision)
+    git = { ...currentGit, sourceRevision: recoveryRevision,
+      sourceTree: capture('git', ['rev-parse', `${recoveryRevision}^{tree}`]), remoteRevision: recoveryRevision }
+  }
   const githubToken = process.env.GITHUB_TOKEN || capture('gh', ['auth', 'token'])
   const sourceProof = await verifyOfficialMergedSource({ repository: profile.application.repository, branch: profile.application.branch,
     revision: git.sourceRevision, sourceTree: git.sourceTree, token: githubToken, rulesetId: 24077876 })
@@ -294,7 +311,12 @@ async function main() {
   const outputDirectory = path.join(root, 'output', 'tool-rotation-native', git.sourceRevision)
   await mkdir(outputDirectory, { recursive: true })
   const terraform = createToolTerraform({ root, outputDirectory, environment: { ...process.env, GOOGLE_OAUTH_ACCESS_TOKEN: token } })
-  const result = await executeToolImageRotation({ root, profile, git, sourceProof, transport, terraform, reuseBuild, apply: argv[0] === '--apply' })
+  const verifySource = recoveryRevision ? () => {
+    const observed = readGitAuthority(root, profile)
+    if (!same(observed, currentGit)) fail('SOURCE_CHANGED')
+    return git
+  } : undefined
+  const result = await executeToolImageRotation({ root, profile, git, sourceProof, transport, terraform, reuseBuild, apply, ...(verifySource ? { verifySource } : {}) })
   process.stdout.write(`${JSON.stringify(result)}\n`)
 }
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
