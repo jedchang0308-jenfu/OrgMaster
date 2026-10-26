@@ -11,6 +11,7 @@ RUN npm ci --omit=dev --ignore-scripts \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx
 COPY scripts/lib/dev012-production-migration-runner.mjs scripts/lib/dev012-production-migration-runner.mjs
 COPY scripts/lib/dev058-role-policy-migration.mjs scripts/lib/dev058-role-policy-migration.mjs
+COPY scripts/lib/dev059-fms-authority-migration.mjs scripts/lib/dev059-fms-authority-migration.mjs
 COPY scripts/lib/orgmaster-production-database.mjs scripts/lib/orgmaster-production-database.mjs
 COPY scripts/lib/dev012-orgmaster-production-data.mjs scripts/lib/dev012-orgmaster-production-data.mjs
 COPY scripts/lib/dev049-production-admission.mjs scripts/lib/dev049-production-admission.mjs

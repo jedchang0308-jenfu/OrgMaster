@@ -5,6 +5,7 @@ import type { GovernanceActorContext, GovernanceCommandReceiptV2, GovernanceDocu
 import {
   ApplicationEntitlementError,
   FINANCIAL_APPLICATION_ID,
+  FINANCIAL_PROTECTED_OPERATIONS,
   FINANCIAL_ROLE_ASSIGNMENT_MANAGE,
   FINANCIAL_ROLE_ASSIGNMENT_PUBLISH,
   type FinancialManagementGrantInput,
@@ -33,7 +34,7 @@ function validateOperation(operation: FinancialManagementGrantOperation, documen
   const admission = activeAdmission(document, operation.principalId, operation.employeeId)
   if (!admission) throw new ApplicationEntitlementError('PRINCIPAL_NOT_FOUND')
   if (admission.accountType !== 'human_personal') throw new ApplicationEntitlementError('UNSUPPORTED_SUBJECT')
-  if (!Array.isArray(operation.capabilities) || operation.capabilities.length === 0 || new Set(operation.capabilities).size !== operation.capabilities.length || operation.capabilities.some((capability) => capability !== FINANCIAL_ROLE_ASSIGNMENT_MANAGE && capability !== FINANCIAL_ROLE_ASSIGNMENT_PUBLISH)) throw new ApplicationEntitlementError('INVALID_COMMAND')
+  if (!Array.isArray(operation.capabilities) || operation.capabilities.length === 0 || new Set(operation.capabilities).size !== operation.capabilities.length || operation.capabilities.some((capability) => capability !== FINANCIAL_ROLE_ASSIGNMENT_MANAGE && capability !== FINANCIAL_ROLE_ASSIGNMENT_PUBLISH && !FINANCIAL_PROTECTED_OPERATIONS.includes(capability as typeof FINANCIAL_PROTECTED_OPERATIONS[number]))) throw new ApplicationEntitlementError('INVALID_COMMAND')
   const from = Date.parse(operation.validFrom)
   const until = operation.validUntil === null ? null : Date.parse(operation.validUntil)
   if (!Number.isFinite(from) || (operation.validUntil !== null && !Number.isFinite(until)) || (until !== null && from >= until)) throw new ApplicationEntitlementError('INVALID_VALIDITY')
@@ -136,7 +137,7 @@ export async function publishFinancialManagementGrant(root: string, actor: Gover
     if (request.requestHash !== preview.requestHash) throw new ApplicationEntitlementError('REQUEST_HASH_CONFLICT')
     if (request.previewHash !== preview.previewHash) throw new ApplicationEntitlementError('PREVIEW_HASH_CONFLICT')
     const nextDraft = { ...current.document.draft, managementGrants: applyGrantOperations(current.document, request.operations, actor), updatedAt: new Date().toISOString() }
-    const catalogs = await readApplicationRoleCatalogs(root)
+    const catalogs = await readApplicationRoleCatalogs(root, { requirePublishedFinancial: true })
     let document = publishFinancialPolicy(current.document, nextDraft, catalogs, source, actor, request.operations.map((operation) => operation.reason.trim()).join('; '), new Date().toISOString())
     document = appendGovernanceAudit(document, { commandId: request.commandId, reason: request.operations.map((operation) => operation.reason.trim()).join('; '), type: 'financial_management_grant_batch' }, actor, { action: 'financial_management_grant_batch', entityType: 'applicationManagementGrant', entityId: null, beforeHash: commandRequestHash(preview.beforeGrants), afterHash: commandRequestHash(preview.afterGrants) })
     const auditReference = document.auditEvents.at(-1)?.id ?? null

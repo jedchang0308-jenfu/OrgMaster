@@ -8,6 +8,19 @@ import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceA
 export const FINANCIAL_APPLICATION_ID = 'financial-management-system' as const
 export const FINANCIAL_ROLE_ASSIGNMENT_MANAGE = 'financial-management-system.role_assignment.manage' as const
 export const FINANCIAL_ROLE_ASSIGNMENT_PUBLISH = 'financial-management-system.role_assignment.publish' as const
+export const FINANCIAL_PROTECTED_OPERATIONS = [
+  'financial-management-system.catalog.read',
+  'financial-management-system.catalog.edit',
+  'financial-management-system.catalog.publish',
+  'financial-management-system.catalog.import',
+  'financial-management-system.catalog.activate',
+  'financial-management-system.workflow.read',
+  'financial-management-system.workflow.edit',
+  'financial-management-system.workflow.publish',
+  'financial-management-system.workflow.activate',
+  'financial-management-system.workflow.reassign',
+] as const
+export type FinancialManagementCapability = typeof FINANCIAL_ROLE_ASSIGNMENT_MANAGE | typeof FINANCIAL_ROLE_ASSIGNMENT_PUBLISH | typeof FINANCIAL_PROTECTED_OPERATIONS[number]
 
 export type FinancialApplicationErrorCode =
   | 'FINANCIAL_CATALOG_UNAVAILABLE' | 'FINANCIAL_CATALOG_INVALID' | 'FINANCIAL_CATALOG_VERSION_CONFLICT' | 'CATALOG_REGISTRY_UNAVAILABLE'
@@ -57,7 +70,7 @@ export type FinancialManagementGrantOperation = {
   operation: 'upsert' | 'revoke'
   principalId: string
   employeeId: string
-  capabilities: Array<typeof FINANCIAL_ROLE_ASSIGNMENT_MANAGE | typeof FINANCIAL_ROLE_ASSIGNMENT_PUBLISH>
+  capabilities: FinancialManagementCapability[]
   validFrom: string
   validUntil: string | null
   reason: string
@@ -98,13 +111,13 @@ export function hasFinancialOwnerRole(document: GovernanceDocumentV3, actor: Gov
   return policy.roleAssignments.some((assignment) => assignment.applicationId === FINANCIAL_APPLICATION_ID && assignment.employeeId === actor.employeeId && assignment.roleId === 'role-owner' && assignment.status === 'active' && assignment.subjectKind === 'employee' && assignment.scope.kind === 'workspace' && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, at))
 }
 
-export function hasFinancialManagementGrant(document: GovernanceDocumentV3, actor: GovernanceActorContext, capability: typeof FINANCIAL_ROLE_ASSIGNMENT_MANAGE | typeof FINANCIAL_ROLE_ASSIGNMENT_PUBLISH, at = new Date().toISOString()) {
+export function hasFinancialManagementGrant(document: GovernanceDocumentV3, actor: GovernanceActorContext, capability: FinancialManagementCapability, at = new Date().toISOString()) {
   const policy = currentPublishedPolicyV3(document)
   if (!actor.principalId || !actor.employeeId || !policy) return false
   return policy.managementGrants.some((grant) => grant.applicationId === FINANCIAL_APPLICATION_ID && grant.principalId === actor.principalId && grant.employeeId === actor.employeeId && grant.capability === capability && isActiveAt(grant.status, grant.validFrom, grant.validTo, at))
 }
 
-export function assertFinancialAuthority(document: GovernanceDocumentV3, actor: GovernanceActorContext, capability: typeof FINANCIAL_ROLE_ASSIGNMENT_MANAGE | typeof FINANCIAL_ROLE_ASSIGNMENT_PUBLISH, at = new Date().toISOString()) {
+export function assertFinancialAuthority(document: GovernanceDocumentV3, actor: GovernanceActorContext, capability: FinancialManagementCapability, at = new Date().toISOString()) {
   if (!actor.employeeId) throw new ApplicationEntitlementError('IDENTITY_REQUIRED')
   if (!hasFinancialOwnerRole(document, actor, at)) throw new ApplicationEntitlementError('APP_MANAGEMENT_GRANT_REQUIRED')
   if (!hasFinancialManagementGrant(document, actor, capability, at)) throw new ApplicationEntitlementError(capability === FINANCIAL_ROLE_ASSIGNMENT_PUBLISH ? 'APP_PUBLISH_GRANT_REQUIRED' : 'APP_MANAGEMENT_GRANT_REQUIRED')

@@ -4,7 +4,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 import { TARGET as PRODUCTION_TARGET, databaseOptions } from './lib/orgmaster-production-database.mjs'
-import { DEV058_MIGRATION_ENTRY_COUNT, assertDev058MigrationEntries } from './lib/dev058-role-policy-migration.mjs'
+import { DEV059_MIGRATION_ENTRY_COUNT, assertDev059MigrationEntries } from './lib/dev059-fms-authority-migration.mjs'
 import {
   assertMigrationBundle,
   assertRunnerTarget,
@@ -20,8 +20,8 @@ export const TARGET = Object.freeze({
   ...PRODUCTION_TARGET,
   ledger: 'orgmaster_core.schema_migrations',
   baselineCount: 10,
-  entryCount: DEV058_MIGRATION_ENTRY_COUNT,
-  allowedExistingLedgerCounts: Object.freeze([31, 32, 33, 34, 35]),
+  entryCount: DEV059_MIGRATION_ENTRY_COUNT,
+  allowedExistingLedgerCounts: Object.freeze([31, 32, 33, 34, 35, 36]),
   migratorRole: 'jenfu_orgmaster_migrator',
   runtimeRole: 'jenfu_orgmaster_runtime',
   coreSchema: 'orgmaster_core',
@@ -40,7 +40,7 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
     value = JSON.parse(object.bytes.toString('utf8'))
   } catch { throw new Error('MIGRATION_INPUT_JSON_INVALID') }
   const bundle = assertMigrationBundle(value, { target: TARGET, sourceRevision: args.sourceRevision, bundleSha256: args.bundleSha256, bytes: object.bytes })
-  assertDev058MigrationEntries(bundle.entries)
+  assertDev059MigrationEntries(bundle.entries)
   const database = new Client(databaseOptions(environment, token))
   await database.connect()
   try {
