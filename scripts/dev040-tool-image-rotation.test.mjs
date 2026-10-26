@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test, { before, after } from 'node:test'
 import { gzipSync } from 'node:zlib'
-import { executeToolImageRotation, assertRequiredToolSourceQc, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
+import { executeToolImageRotation, assertRequiredToolSourceQc, parseToolRotationArgs, readHistoricalToolBuildSource } from './dev040-tool-image-rotation.mjs'
 import { assertDeployToolRotationSelection, bindDeployToolRotationAuthority, parseDeployProductionArgs, selectDeployInfrastructureRef } from './dev040-deploy-production.mjs'
 import { resolveRoutineToolRotationRef } from './lib/dev040-routine-release.mjs'
 import { canonicalize, sha256, releasePaths } from './lib/dev012-owner-release-runtime.mjs'
@@ -28,6 +28,18 @@ const NOW = '2026-10-18T02:00:00.000Z'
 const JOB_NAME = `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/orgmaster-prod-migration-runner`
 const LINEAGE = '11111111-2222-4333-8444-555555555555'
 const RECIPE = 'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile'
+
+test('tool rotation CLI limits applied-source recovery to apply mode and one exact revision', () => {
+  const revision = 'a'.repeat(40)
+  assert.deepEqual(parseToolRotationArgs(['--apply', `--recover-applied-source=${revision}`]), {
+    apply: true,
+    reuseId: null,
+    recoveryRevision: revision,
+  })
+  assert.throws(() => parseToolRotationArgs(['--check', `--recover-applied-source=${revision}`]), /ARGUMENT_INVALID/u)
+  assert.throws(() => parseToolRotationArgs(['--apply', '--recover-applied-source=short']), /ARGUMENT_INVALID/u)
+  assert.throws(() => parseToolRotationArgs(['--apply', `--recover-applied-source=${revision}`, '--reuse-build-id=12345678-1234-1234-1234-123456789abc']), /ARGUMENT_INVALID/u)
+})
 
 function runGit(cwd, args) {
   const result = spawnSync('git', ['-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=.git/no-hooks', ...args], {
