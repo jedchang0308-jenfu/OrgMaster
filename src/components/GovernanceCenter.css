@@ -35,6 +35,14 @@
 .governance-card { display: grid; gap: 3px; min-width: 0; border: 1px solid #e0e6f0; border-radius: 10px; padding: 13px; background: #fff; color: #25324a; text-align: left; }
 .governance-card strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; }
 .governance-source-note { color: #687487; font-size: 11px; }
+.governance-initial-authority { display: grid; gap: 10px; border: 1px solid #dce4f2; border-radius: 10px; padding: 14px; background: #f7f9fd; }
+.governance-initial-authority h3, .governance-initial-authority p { margin: 0; }
+.governance-initial-authority small { color: #687487; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.governance-initial-authority label { display: grid; gap: 6px; color: #43506a; font-size: 11px; }
+.governance-initial-authority textarea { min-height: 74px; border: 1px solid #d9dee7; border-radius: 7px; padding: 8px 9px; background: #fff; color: #25324a; font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; resize: vertical; }
+.governance-initial-authority__preview { display: grid; gap: 4px; border-radius: 8px; padding: 10px 12px; background: #edf8ef; color: #2b6f42; font-size: 11px; }
+.governance-initial-authority__error { color: #a93636; font-size: 11px; }
+.governance-initial-authority__actions { display: flex; justify-content: flex-end; gap: 8px; }
 .governance-risk { color: #3d6dce !important; font-weight: 700; }
 .governance-risk--high { color: #b46425 !important; }
 .governance-notice { margin-bottom: 14px; border-radius: 8px; padding: 10px 12px; background: #ebf8ee; color: #2b7b45; font-size: 12px; }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadGovernanceCommandResult, patchGovernanceDraft, previewPrivilegedAssignment, publishGovernancePolicy, publishPrivilegedAssignment, setActiveGovernanceVersion } from './apiClient'
+import { loadFinancialInitialAuthorityReceipt, loadGovernanceCommandResult, patchGovernanceDraft, previewFinancialInitialAuthority, previewPrivilegedAssignment, publishFinancialInitialAuthority, publishGovernancePolicy, publishPrivilegedAssignment, setActiveGovernanceVersion, type FinancialInitialAuthorityRequest } from './apiClient'
 import type { PrivilegedAssignmentRequest } from './privilegedAssignments'
 
 const request: PrivilegedAssignmentRequest = {
@@ -81,5 +81,39 @@ describe('DEV-058 command result query', () => {
 
     expect(requestedUrl).toBe('/api/orgmaster/governance/commands/command%2Fwith%20space')
     expect(result.payload).toMatchObject({ status: 'committed', commandId: 'command/with space', result: { outcome: 'applied' } })
+  })
+})
+
+describe('DEV-065 financial initial authority HTTP payloads', () => {
+  const initial: FinancialInitialAuthorityRequest = {
+    employeeId: 'employee-shijie', stableRoleIds: ['role-finance-manager', 'role-owner'],
+    scope: { kind: 'workspace', value: 'company-jenfu' }, validFrom: '2026-10-26T00:00:00.000Z', validUntil: null,
+    reason: '建立 JF-FMS 初始角色治理權限', release: { version: 'catalog-v1' },
+    expectedGovernanceRevision: 'governance-r1', expectedOrganizationRevision: 'organization-r1',
+  }
+
+  it('keeps preview read-only and binds publish to the exact preview hashes', async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+
+    await previewFinancialInitialAuthority(initial)
+    await publishFinancialInitialAuthority(initial, 'command-1', 'a'.repeat(64), 'b'.repeat(64))
+
+    expect(requests[0]).toMatchObject({ url: '/api/orgmaster/governance/applications/financial-management-system/initial-authority/preview', body: initial })
+    expect(requests[0].body).not.toHaveProperty('commandId')
+    expect(requests[1]).toMatchObject({ url: '/api/orgmaster/governance/applications/financial-management-system/initial-authority/publish', body: { ...initial, commandId: 'command-1', requestHash: 'a'.repeat(64), previewHash: 'b'.repeat(64) } })
+  })
+
+  it('encodes receipt command IDs', async () => {
+    let requestedUrl = ''
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      requestedUrl = String(input)
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+    await loadFinancialInitialAuthorityReceipt('command/with space')
+    expect(requestedUrl).toBe('/api/orgmaster/governance/applications/financial-management-system/initial-authority/commands/command%2Fwith%20space')
   })
 })

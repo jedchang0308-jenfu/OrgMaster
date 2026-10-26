@@ -6,7 +6,30 @@ import type { EmployeeRecommendationRequest, EmployeeRecommendationResponse } fr
 export const GOVERNANCE_API_PATH = '/api/orgmaster/governance'
 export type GovernanceVersionSummary = { id: string; kind: 'legacy-policy-v1' | 'assignment-governance-v2' | 'assignment-governance-v3'; versionNumber: number; publishedAt: string; publishedByPrincipalId: string; publishReason: string; snapshotHash: string; organizationVersionId: string; effectState: string }
 export type GovernanceApiSnapshot = { document: GovernanceDocumentViewV2; catalogs: ExternalRoleCatalogSnapshotV1[]; revision: string; activeVersionId: string | null; versions: GovernanceVersionSummary[] }
-export type GovernanceSession = { runtimeMode: string; actor: { principalId: string; employeeId: string | null; subjectHint: string }; capabilities: { manage: boolean; publish: boolean; simulate: boolean } }
+export type GovernanceSession = { runtimeMode: string; actor: { principalId: string; employeeId: string | null; subjectHint: string }; capabilities: { manage: boolean; publish: boolean; simulate: boolean; crossAppOverride?: boolean } }
+export type FinancialInitialAuthorityRequest = {
+  employeeId: string
+  stableRoleIds: string[]
+  scope: { kind: 'workspace'; value: string }
+  validFrom: string
+  validUntil: string | null
+  reason: string
+  release: Record<string, unknown>
+  expectedGovernanceRevision: string
+  expectedOrganizationRevision: string
+}
+export type FinancialInitialAuthorityPreview = {
+  applicationId: 'financial-management-system'
+  catalogBinding: { catalogVersion: string; catalogSha256: string }
+  beforeAssignments: unknown[]
+  afterAssignments: Array<{ employeeId: string; roleId: string; roleNameSnapshot: string }>
+  beforeGrants: unknown[]
+  afterGrants: Array<{ employeeId: string; principalId: string; capability: string }>
+  authorizationEffect: 'not_committed'
+  organizationRevision: string
+  requestHash: string
+  previewHash: string
+}
 export type PrivilegedAssignmentWorkspace = {
   contractVersion: 'orgmaster.privileged-assignment-workspace.v1'
   applicationId: 'ai-pdm'
@@ -101,3 +124,6 @@ export async function loadPrivilegedAssignmentWorkspace() { return request<Privi
 export async function previewPrivilegedAssignment(requestValue: PrivilegedAssignmentRequest) { return request<PrivilegedAssignmentOperationResponse>('/privileged-assignments/preview', { method: 'POST', body: JSON.stringify(privilegedOperationBody(requestValue, 'preview')) }) }
 export async function publishPrivilegedAssignment(requestValue: PrivilegedAssignmentRequest, commandId: string, requestHash: string, previewHash: string) { return request<GovernanceCommandReceiptV2>('/privileged-assignments/publish', { method: 'POST', body: JSON.stringify({ ...privilegedOperationBody(requestValue, 'publish'), commandId, requestHash, preview: { previewHash } }) }) }
 export async function loadPrivilegedAssignmentReceipt(commandId: string) { return request<GovernanceCommandReceiptV2>(`/privileged-assignments/commands/${encodeURIComponent(commandId)}`) }
+export async function previewFinancialInitialAuthority(input: FinancialInitialAuthorityRequest) { return request<FinancialInitialAuthorityPreview>('/applications/financial-management-system/initial-authority/preview', { method: 'POST', body: JSON.stringify(input) }) }
+export async function publishFinancialInitialAuthority(input: FinancialInitialAuthorityRequest, commandId: string, requestHash: string, previewHash: string) { return request<GovernanceCommandReceiptV2 & { authorizationEffect: 'committed' }>('/applications/financial-management-system/initial-authority/publish', { method: 'POST', body: JSON.stringify({ ...input, commandId, requestHash, previewHash }) }) }
+export async function loadFinancialInitialAuthorityReceipt(commandId: string) { return request<GovernanceCommandReceiptV2>(`/applications/financial-management-system/initial-authority/commands/${encodeURIComponent(commandId)}`) }

@@ -10,6 +10,7 @@ import type { Department, Employee, Role } from '../types'
 import { GovernanceAssignmentCheck, type GovernanceAssignmentCheckResult } from './GovernanceAssignmentCheck'
 import { GovernancePrivilegedAssignments } from './GovernancePrivilegedAssignments'
 import { GovernanceEmployeeRecommendations } from './GovernanceEmployeeRecommendations'
+import { GovernanceFinancialInitialAuthority } from './GovernanceFinancialInitialAuthority'
 import { employeeRecommendationAllowed, type EmployeeRecommendationRequest } from '../governance/employeeRecommendations'
 import './GovernanceCenter.css'
 
@@ -167,6 +168,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const publishBlockers = draft && session ? governancePublishBlockersV2(draft, session.actor, currentOrganizationVersionId) : []
   const publishMutationAllowed = identityMutationAllowed && Boolean(session?.capabilities.publish)
   const simulationAllowed = Boolean(session?.capabilities.simulate)
+  const financialAuthorityInitialized = Boolean(draft?.roleAssignments.some((assignment) => assignment.applicationId === 'financial-management-system'))
   const versions = [...(snapshot?.versions ?? [])].sort((a, b) => b.versionNumber - a.versionNumber)
   const currentGovernanceVersion = versions.find((version) => version.id === document.activePolicyVersionId)
   const historicalGovernanceVersions = versions.filter((version) => version.id !== document.activePolicyVersionId)
@@ -371,6 +373,14 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     <div className="governance-privileged__mode-switch"><button type="button" className="button button--quiet" onClick={() => { clearFeedback(); setPrivilegedView(false) }}>返回角色指派</button></div>
     {privilegedMode ? <GovernancePrivilegedAssignments employees={employees} workspaceMutationAllowed={workspaceMutationAllowed && !mobileReadOnly && !unconfirmedCommand} onChanged={() => void refresh(false)} /> : <div className="governance-privileged__state" role="alert"><strong>特權設定目前僅供閱讀</strong><p>system_admin 角色契約未完整符合目前目錄；暫時無法管理特權指派。</p></div>}
   </> : <>
+    {!financialAuthorityInitialized && session?.capabilities.crossAppOverride === true && session.actor.employeeId && currentOrganizationRevision && <GovernanceFinancialInitialAuthority
+      employeeId={session.actor.employeeId}
+      employeeName={employeeName(employees, session.actor.employeeId)}
+      governanceRevision={revision}
+      organizationRevision={currentOrganizationRevision}
+      disabled={!workspaceMutationAllowed || mobileReadOnly || Boolean(unconfirmedCommand)}
+      onChanged={() => { void refresh(false); onChanged?.() }}
+    />}
     <div className="governance-matrix-toolbar"><SectionHeading title="系統 × 角色指派矩陣" /><div className="governance-matrix-toolbar__tools"><AssignmentStatusLegend /><div className="governance-draft-shortcut"><button type="button" className="button button--quiet" onClick={() => changeSection('versions')}>查看待發布內容</button><button type="button" className="button button--quiet" onClick={() => { clearFeedback(); setPrivilegedView(true) }}>特權設定</button></div></div></div>
     {matrixRoles.length && matrixApplications.length ? <><div className="governance-matrix-scroll"><table className="governance-matrix"><caption className="governance-visually-hidden">角色為列、系統為欄；員工指派顯示於所屬系統的交叉格。各系統管理員集中顯示於系統管理員列。</caption><thead><tr><th scope="col">角色 / 系統</th>{matrixApplications.map((application) => <th scope="col" key={application.id}>{application.name}</th>)}</tr></thead><tbody>{matrixRoles.map((role) => <tr key={role.key}><th scope="row"><strong>{role.name}</strong></th>{matrixApplications.map((application) => {
       const targetRole = role.targets[application.id]
