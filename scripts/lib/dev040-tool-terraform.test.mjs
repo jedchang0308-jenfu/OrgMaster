@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
-import { createToolTerraform, terraformVariablesFromState } from './dev040-tool-terraform.mjs'
+import { createToolTerraform, normalizeTerraformStateMeta, terraformVariablesFromState } from './dev040-tool-terraform.mjs'
 import { submitSmokeRotationApplyOnce, workflowControlPlane } from '../dev057-smoke-credential-rotation.mjs'
 
 const REPOSITORY_ROOT = process.cwd()
@@ -16,6 +16,13 @@ const PREVIOUS_IMAGE = `${RELEASE_PROFILE.artifact.migrationRunnerUri}@sha256:${
 const NEXT_IMAGE = `${RELEASE_PROFILE.artifact.migrationRunnerUri}@sha256:${'c'.repeat(64)}`
 const CONTROLLER_IMAGE = `asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller@sha256:${'d'.repeat(64)}`
 const TEST_EMAIL = 'synthetic-owner@example.invalid'
+
+test('normalizes Terraform check result and object order for stable evidence', () => {
+  const row = (address, objects = [address]) => ({ config_addr: address,
+    objects: objects.map(object_addr => ({ object_addr, status: 'pass' })), status: 'pass' })
+  assert.deepEqual(normalizeTerraformStateMeta({ serial: 1, check_results: [row('b'), row('a', ['a.2', 'a.1'])] }),
+    { serial: 1, check_results: [row('a', ['a.1', 'a.2']), row('b')] })
+})
 
 function resourceFromAddress(address) {
   const data = address.startsWith('data.')

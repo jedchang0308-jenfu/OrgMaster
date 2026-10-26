@@ -49,6 +49,18 @@ function canonical(value) {
   return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]))
 }
 
+export function normalizeTerraformStateMeta(value) {
+  const normalized = structuredClone(value)
+  if (!Array.isArray(normalized?.check_results)) return normalized
+  const compare = (left, right) => JSON.stringify(canonical(left)).localeCompare(JSON.stringify(canonical(right)))
+  normalized.check_results = normalized.check_results.map(row => {
+    const result = structuredClone(row)
+    if (Array.isArray(result?.objects)) result.objects.sort(compare)
+    return result
+  }).sort(compare)
+  return normalized
+}
+
 function same(left, right) {
   return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right))
 }
@@ -398,7 +410,7 @@ export function createToolTerraform({ root, outputDirectory, environment = proce
       let snapshotCreated = false
       try {
         const stateRaw = await invoke(['state', 'pull'])
-        const stateMeta = parseJson(stateRaw, 'STATE_OUTPUT_INVALID')
+        const stateMeta = normalizeTerraformStateMeta(parseJson(stateRaw, 'STATE_OUTPUT_INVALID'))
         await writePrivateFile(stateSnapshotPath, Buffer.isBuffer(stateRaw) ? stateRaw : Buffer.from(String(stateRaw), 'utf8'))
         snapshotCreated = true
         const stateJson = parseJson(await invoke(['show', '-json', stateSnapshotPath]), 'STATE_SHOW_INVALID')
