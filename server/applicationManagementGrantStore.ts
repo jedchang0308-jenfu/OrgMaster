@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { readApplicationRoleCatalogs } from './applicationRoleCatalogRegistry'
 import { appendGovernanceAudit, commitGovernanceMutation, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
+import { currentPublishedPolicyV3 } from '../src/governance/evaluatePermission'
+import { hasCrossAppOverride } from '../src/governance/privilegedAssignments'
 import type { GovernanceActorContext, GovernanceCommandReceiptV2, GovernanceDocumentV3, GovernanceRoleAssignmentV3, ManagementGrantV1 } from '../src/governance/types'
+import { isActiveAt } from '../src/governance/validation'
 import {
   ApplicationEntitlementError,
   FINANCIAL_APPLICATION_ID,
@@ -16,6 +19,7 @@ import {
   activeFinancialGrants,
   commandRequestHash,
   grantKey,
+  hasFinancialOwnerRole,
   isActiveEmployee,
   previewHash as makePreviewHash,
   publishFinancialPolicy,
@@ -27,14 +31,47 @@ function activeAdmission(document: GovernanceDocumentV3, principalId: string, em
   return (document.draft.principalAdmissions ?? []).find((admission) => admission.identityLinkId === link.id && admission.status === 'active') ?? null
 }
 
+function activeCrossAppOverrideHolders(document: GovernanceDocumentV3, at: string) {
+  const policy = currentPublishedPolicyV3(document)
+  if (!policy) return new Set<string>()
+  const candidates = new Map<string, { principalId: string; employeeId: string }>()
+  for (const grant of policy.managementGrants) {
+    if (grant.applicationId !== 'ai-pdm' || grant.capability !== 'orgmaster.cross_app_override'
+      || !isActiveAt(grant.status, grant.validFrom, grant.validTo, at)) continue
+    candidates.set(`${grant.principalId}|${grant.employeeId}`, { principalId: grant.principalId, employeeId: grant.employeeId })
+  }
+  return new Set([...candidates.entries()]
+    .filter(([, candidate]) => hasCrossAppOverride(document, { ...candidate, issuer: '', subject: '', bootstrap: false }, at))
+    .map(([key]) => key))
+}
+
+function isSolePrivilegedFinancialOwnerBootstrap(operation: FinancialManagementGrantOperation, document: GovernanceDocumentV3, actor: GovernanceActorContext, at: string) {
+  if (!actor.employeeId || operation.operation !== 'upsert' || operation.principalId !== actor.principalId || operation.employeeId !== actor.employeeId) return false
+  if (!hasCrossAppOverride(document, actor, at) || !hasFinancialOwnerRole(document, actor, at)) return false
+  const holders = activeCrossAppOverrideHolders(document, at)
+  if (holders.size !== 1 || !holders.has(`${actor.principalId}|${actor.employeeId}`)) return false
+  const policy = currentPublishedPolicyV3(document)
+  if (!policy) return false
+  const activeCapabilities = new Set(policy.managementGrants
+    .filter((grant) => grant.applicationId === FINANCIAL_APPLICATION_ID && grant.principalId === actor.principalId
+      && grant.employeeId === actor.employeeId && isActiveAt(grant.status, grant.validFrom, grant.validTo, at))
+    .map((grant) => grant.capability))
+  const missingProtectedCapabilities = FINANCIAL_PROTECTED_OPERATIONS.filter((capability) => !activeCapabilities.has(capability))
+  return missingProtectedCapabilities.length > 0
+    && operation.capabilities.length === missingProtectedCapabilities.length
+    && operation.capabilities.every((capability) => missingProtectedCapabilities.includes(capability as typeof FINANCIAL_PROTECTED_OPERATIONS[number]))
+}
+
 function validateOperation(operation: FinancialManagementGrantOperation, document: GovernanceDocumentV3, source: Awaited<ReturnType<typeof loadOrganizationSource>>, actor: GovernanceActorContext) {
   if (!operation.principalId.trim() || !operation.employeeId.trim()) throw new ApplicationEntitlementError('PRINCIPAL_NOT_FOUND')
   if (!isActiveEmployee(source, operation.employeeId)) throw new ApplicationEntitlementError('EMPLOYEE_NOT_FOUND')
-  if (operation.principalId === actor.principalId || operation.employeeId === actor.employeeId) throw new ApplicationEntitlementError('SELF_GRANT_FORBIDDEN')
+  if (!Array.isArray(operation.capabilities) || operation.capabilities.length === 0 || new Set(operation.capabilities).size !== operation.capabilities.length || operation.capabilities.some((capability) => capability !== FINANCIAL_ROLE_ASSIGNMENT_MANAGE && capability !== FINANCIAL_ROLE_ASSIGNMENT_PUBLISH && !FINANCIAL_PROTECTED_OPERATIONS.includes(capability as typeof FINANCIAL_PROTECTED_OPERATIONS[number]))) throw new ApplicationEntitlementError('INVALID_COMMAND')
+  const selfTargeted = operation.principalId === actor.principalId || operation.employeeId === actor.employeeId
+  const bootstrap = selfTargeted && isSolePrivilegedFinancialOwnerBootstrap(operation, document, actor, new Date().toISOString())
+  if (selfTargeted && !bootstrap) throw new ApplicationEntitlementError('SELF_GRANT_FORBIDDEN')
   const admission = activeAdmission(document, operation.principalId, operation.employeeId)
   if (!admission) throw new ApplicationEntitlementError('PRINCIPAL_NOT_FOUND')
-  if (admission.accountType !== 'human_personal') throw new ApplicationEntitlementError('UNSUPPORTED_SUBJECT')
-  if (!Array.isArray(operation.capabilities) || operation.capabilities.length === 0 || new Set(operation.capabilities).size !== operation.capabilities.length || operation.capabilities.some((capability) => capability !== FINANCIAL_ROLE_ASSIGNMENT_MANAGE && capability !== FINANCIAL_ROLE_ASSIGNMENT_PUBLISH && !FINANCIAL_PROTECTED_OPERATIONS.includes(capability as typeof FINANCIAL_PROTECTED_OPERATIONS[number]))) throw new ApplicationEntitlementError('INVALID_COMMAND')
+  if (admission.accountType !== (bootstrap ? 'human_privileged' : 'human_personal')) throw new ApplicationEntitlementError('UNSUPPORTED_SUBJECT')
   const from = Date.parse(operation.validFrom)
   const until = operation.validUntil === null ? null : Date.parse(operation.validUntil)
   if (!Number.isFinite(from) || (operation.validUntil !== null && !Number.isFinite(until)) || (until !== null && from >= until)) throw new ApplicationEntitlementError('INVALID_VALIDITY')
