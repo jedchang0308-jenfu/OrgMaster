@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { ExternalRoleCatalogRoleV1, ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceDocumentV3 } from '../src/governance/types'
 import { validateFinancialExternalRoleCatalog } from '../src/governance/financialCatalog'
 import { appendGovernanceAudit, commitGovernanceMutation, getGovernancePaths, readGovernanceStore } from './orgmasterGovernanceStore'
@@ -217,7 +217,10 @@ export async function publishFinancialCatalog(root: string, actor: GovernanceAct
     const aiPdm = await readActiveAiPdmRoleCatalog(root)
     let document = publishFinancialPolicy(current.document, nextDraft, [aiPdm, catalog], source, actor, request.reason, new Date().toISOString())
     document = appendGovernanceAudit(document, { commandId: request.commandId, reason: request.reason.trim(), type: auditType }, actor, { action: 'financial_catalog_release_publish', entityType: 'financialCatalogRelease', entityId: catalog.catalogVersion, beforeHash: current.document.activePolicyVersionId, afterHash: document.publishedVersions.at(-1)?.snapshotHash ?? null })
-    return { document, reasonCode: 'financial_catalog_release_publish', updatedBy: actor.principalId }
+    const publishedVersion = document.publishedVersions.at(-1)!
+    document = appendGovernanceAudit(document, { commandId: randomUUID(), reason: request.reason.trim(), type: 'PUBLISH_ASSIGNMENTS' }, actor,
+      { action: 'PUBLISH_ASSIGNMENTS', entityType: 'assignmentVersion', entityId: publishedVersion.id, beforeHash: null, afterHash: publishedVersion.snapshotHash })
+    return { document, reasonCode: 'financial_catalog_release_publish', updatedBy: actor.principalId, validationCatalogs: [aiPdm, catalog] }
   }, actor, (document) => assertFinancialAuthority(document, actor, 'financial-management-system.catalog.publish'))
   return { status: 'applied' as const, revision: committed.revision, catalogVersion: catalog.catalogVersion, catalogSha256: catalog.contentSha256 }
 }

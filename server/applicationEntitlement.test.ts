@@ -6,7 +6,7 @@ import { issuerFingerprintSha256, principalFingerprintSha256 } from '../src/gove
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { readFinancialRoleCatalog } from './financialRoleCatalogRepository'
 import { appendGovernanceAudit, ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, publishGovernance, readGovernanceCommandResult, readGovernanceStore, setActivePolicy } from './orgmasterGovernanceStore'
-import { GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
+import { GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash, sha256 } from '../src/governance/commands'
 import { previewFinancialManagementGrant, publishFinancialManagementGrant } from './applicationManagementGrantStore'
 import { previewFinancialRoleAssignment, publishFinancialRoleAssignment } from './applicationRoleAssignmentStore'
 import { assertFinancialAuthority, FINANCIAL_PROTECTED_OPERATIONS, FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH } from './applicationEntitlementCommon'
@@ -15,8 +15,15 @@ import { readApplicationRoleCatalogs } from './applicationRoleCatalogRegistry'
 import { buildOrganizationSnapshot, validateDocumentV3 } from '../src/governance/validation'
 import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
 import { storedGovernanceCatalogs } from './governanceReduction'
+import { publishFinancialCatalog } from './financialCatalogReleaseStore'
 
 const roots: string[] = []
+
+function releaseCanonical(value: unknown): string {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string' || typeof value === 'number') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(releaseCanonical).join(',')}]`
+  return `{${Object.keys(value as Record<string, unknown>).sort().map((key) => `${JSON.stringify(key)}:${releaseCanonical((value as Record<string, unknown>)[key])}`).join(',')}}`
+}
 
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 
@@ -161,7 +168,31 @@ describe('DEV-039 generic Financial entitlement v2', () => {
     expect((await publishFinancialManagementGrant(root, actor, { ...input, commandId: 'dev039-sole-owner-bootstrap', requestHash: preview.requestHash, previewHash: preview.previewHash })).replayed).toBe(true)
     const latest = await readGovernanceStore(root)
     expect(latest.document.draft.managementGrants.filter((grant) => grant.applicationId === 'financial-management-system' && grant.principalId === actor.principalId && grant.status === 'active')).toHaveLength(12)
-    await expect(previewFinancialManagementGrant(root, actor, { ...input, expectedGovernanceRevision: latest.revision })).rejects.toMatchObject({ code: 'SELF_GRANT_FORBIDDEN' })
+    const releaseRoleBase = { stableRoleId: 'role-owner', code: 'owner', displayName: '負責人', builtIn: true,
+      capabilityIds: ['finance.dashboard.view', 'finance.role_assignment.manage'], allowedScopeKinds: ['workspace'], assignmentPolicy: 'open' as const }
+    const releaseRole = { ...releaseRoleBase, roleDefinitionHash: sha256(releaseCanonical(releaseRoleBase)) }
+    const publishedAt = '2026-10-27T00:00:00.000Z'
+    const catalogDocument = { formatVersion: 'jf.configuration-catalog.v1', applicationId: 'financial-management-system',
+      catalogVersion: 'financial-management-system.catalog.owner-bootstrap.v2', registryVersion: 'fms.registry.v2',
+      roles: [releaseRole], publishedAt, publishedBy: { principalId: actor.principalId, employeeId } }
+    const artifactUtf8 = `${releaseCanonical(catalogDocument)}\n`
+    const release = { applicationId: catalogDocument.applicationId, version: catalogDocument.catalogVersion,
+      contentSha256: sha256(releaseCanonical(catalogDocument)), artifactSha256: sha256(artifactUtf8), artifactUtf8,
+      sourceDraftId: 'owner-bootstrap-v2', sourceDraftRevision: 2,
+      createdBy: catalogDocument.publishedBy, createdAt: publishedAt }
+    const catalogResult = await publishFinancialCatalog(root, actor, release, {
+      commandId: 'dev039-owner-bootstrap-catalog-v2', expectedGovernanceRevision: latest.revision,
+      reason: 'Publish the owner bootstrap catalog update',
+    })
+    expect(catalogResult).toMatchObject({ status: 'applied', catalogVersion: catalogDocument.catalogVersion })
+    const afterCatalog = await readGovernanceStore(root)
+    expect(afterCatalog.document.draft.roleAssignments).toContainEqual(expect.objectContaining({
+      id: 'financial-owner-bootstrap-fixture', catalogVersion: catalogDocument.catalogVersion,
+      roleCodeSnapshot: releaseRole.code, roleNameSnapshot: releaseRole.displayName,
+    }))
+    expect(storedGovernanceCatalogs(afterCatalog.document)?.find((catalog) => catalog.applicationId === 'financial-management-system'))
+      .toMatchObject({ catalogVersion: catalogDocument.catalogVersion, contentSha256: release.contentSha256 })
+    await expect(previewFinancialManagementGrant(root, actor, { ...input, expectedGovernanceRevision: afterCatalog.revision })).rejects.toMatchObject({ code: 'SELF_GRANT_FORBIDDEN' })
   })
 
   it('keeps privileged self-grant forbidden when another cross-app override holder exists', async () => {
