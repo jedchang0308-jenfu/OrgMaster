@@ -9,7 +9,7 @@ import { appendGovernanceAudit, ensureGovernanceStore, getGovernancePaths, loadO
 import { GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
 import { previewFinancialManagementGrant, publishFinancialManagementGrant } from './applicationManagementGrantStore'
 import { previewFinancialRoleAssignment, publishFinancialRoleAssignment } from './applicationRoleAssignmentStore'
-import { assertFinancialAuthority, FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH } from './applicationEntitlementCommon'
+import { assertFinancialAuthority, FINANCIAL_PROTECTED_OPERATIONS, FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH } from './applicationEntitlementCommon'
 import { FINANCIAL_CATALOG_VERSION } from '../src/governance/financialCatalog'
 import { readApplicationRoleCatalogs } from './applicationRoleCatalogRegistry'
 import { buildOrganizationSnapshot, validateDocumentV3 } from '../src/governance/validation'
@@ -134,6 +134,53 @@ describe('DEV-039 generic Financial entitlement v2', () => {
     expect((await publishFinancialManagementGrant(root, actor, { ...input, commandId: 'dev039-grant-1', requestHash: preview.requestHash, previewHash: preview.previewHash })).replayed).toBe(true)
     const latest = await readGovernanceStore(root)
     await expect(previewFinancialManagementGrant(root, actor, { ...input, expectedGovernanceRevision: latest.revision, operations: [{ ...input.operations[0], principalId: actor.principalId, employeeId: adminEmployeeId }] })).rejects.toMatchObject({ code: 'SELF_GRANT_FORBIDDEN' })
+  })
+
+  it('allows the sole privileged Financial owner to bootstrap exactly all missing protected capabilities once', async () => {
+    const root = await fixtureRoot()
+    const seeded = await readGovernanceStore(root)
+    const source = await loadOrganizationSource(root)
+    const employeeId = source.state.employees[0].id
+    const issuer = 'https://securetoken.google.com/dev039-sole-owner-bootstrap'
+    const actorLink = personalLink('link-sole-owner-bootstrap', 'principal-sole-owner-bootstrap', issuer, 'sole-owner-bootstrap', employeeId)
+    seeded.document.draft.identityLinks = [actorLink]
+    seeded.document.draft.principalAdmissions = [admission('admission-sole-owner-bootstrap', actorLink, 'human_privileged')]
+    seeded.document.draft.roleAssignments.push({ id: 'financial-owner-bootstrap-fixture', employeeId, applicationId: 'financial-management-system', roleId: 'role-owner', roleCodeSnapshot: 'owner', roleNameSnapshot: '負責人', catalogVersion: FINANCIAL_CATALOG_VERSION, scope: { kind: 'workspace', value: 'company-jenfu' }, status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null, effectState: 'not-synchronized', basis: 'manual', subjectKind: 'employee', targetPrincipalId: null, sources: [], metadata: { sponsorEmployeeId: null, reviewDueAt: null }, createdByPrincipalId: 'bootstrap-fixture', createdReason: 'DEV-039 sole owner bootstrap fixture' })
+    seeded.document.draft.managementGrants = [
+      { id: 'sole-owner-override-fixture', principalId: actorLink.principalId, employeeId, applicationId: 'ai-pdm', capability: 'orgmaster.cross_app_override', status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null, grantedByPrincipalId: 'bootstrap-fixture', reason: 'DEV-039 sole owner bootstrap fixture' },
+      ...[FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH].map((capability) => ({ id: `sole-owner-${capability}`, principalId: actorLink.principalId, employeeId, applicationId: 'financial-management-system' as const, capability, status: 'active' as const, validFrom: '2026-01-01T00:00:00.000Z', validTo: null, grantedByPrincipalId: 'bootstrap-fixture', reason: 'DEV-039 sole owner bootstrap fixture' })),
+    ]
+    await writeDocument(root, seeded.document)
+    const current = await readGovernanceStore(root)
+    const actor = { principalId: actorLink.principalId, issuer, subject: actorLink.subject, employeeId, bootstrap: false }
+    const input = { operations: [{ operation: 'upsert' as const, principalId: actor.principalId, employeeId, capabilities: [...FINANCIAL_PROTECTED_OPERATIONS], validFrom: '2026-01-01T00:00:00.000Z', validUntil: null, reason: 'Complete sole owner FMS protected capabilities' }], expectedGovernanceRevision: current.revision, expectedOrganizationRevision: source.workspaceRevision }
+    await expect(previewFinancialManagementGrant(root, actor, { ...input, operations: [{ ...input.operations[0], capabilities: [...FINANCIAL_PROTECTED_OPERATIONS.slice(0, -1)] }] })).rejects.toMatchObject({ code: 'SELF_GRANT_FORBIDDEN' })
+    const preview = await previewFinancialManagementGrant(root, actor, input)
+    const receipt = await publishFinancialManagementGrant(root, actor, { ...input, commandId: 'dev039-sole-owner-bootstrap', requestHash: preview.requestHash, previewHash: preview.previewHash })
+    expect(receipt).toMatchObject({ receiptStatus: 'applied', replayed: false })
+    expect((await publishFinancialManagementGrant(root, actor, { ...input, commandId: 'dev039-sole-owner-bootstrap', requestHash: preview.requestHash, previewHash: preview.previewHash })).replayed).toBe(true)
+    const latest = await readGovernanceStore(root)
+    expect(latest.document.draft.managementGrants.filter((grant) => grant.applicationId === 'financial-management-system' && grant.principalId === actor.principalId && grant.status === 'active')).toHaveLength(12)
+    await expect(previewFinancialManagementGrant(root, actor, { ...input, expectedGovernanceRevision: latest.revision })).rejects.toMatchObject({ code: 'SELF_GRANT_FORBIDDEN' })
+  })
+
+  it('keeps privileged self-grant forbidden when another cross-app override holder exists', async () => {
+    const root = await fixtureRoot()
+    const seeded = await readGovernanceStore(root)
+    const source = await loadOrganizationSource(root)
+    const [employeeId, secondEmployeeId] = source.state.employees.slice(0, 2).map((employee) => employee.id)
+    const issuer = 'https://securetoken.google.com/dev039-multiple-admins'
+    const actorLink = personalLink('link-multiple-admins-actor', 'principal-multiple-admins-actor', issuer, 'multiple-admins-actor', employeeId)
+    const secondLink = personalLink('link-multiple-admins-second', 'principal-multiple-admins-second', issuer, 'multiple-admins-second', secondEmployeeId)
+    seeded.document.draft.identityLinks = [actorLink, secondLink]
+    seeded.document.draft.principalAdmissions = [admission('admission-multiple-admins-actor', actorLink, 'human_privileged'), admission('admission-multiple-admins-second', secondLink, 'human_privileged')]
+    seeded.document.draft.roleAssignments.push({ id: 'financial-owner-multiple-admins-fixture', employeeId, applicationId: 'financial-management-system', roleId: 'role-owner', roleCodeSnapshot: 'owner', roleNameSnapshot: '負責人', catalogVersion: FINANCIAL_CATALOG_VERSION, scope: { kind: 'workspace', value: 'company-jenfu' }, status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null, effectState: 'not-synchronized', basis: 'manual', subjectKind: 'employee', targetPrincipalId: null, sources: [], metadata: { sponsorEmployeeId: null, reviewDueAt: null }, createdByPrincipalId: 'bootstrap-fixture', createdReason: 'DEV-039 multiple admins fixture' })
+    seeded.document.draft.managementGrants = [actorLink, secondLink].map((link) => ({ id: `override-${link.id}`, principalId: link.principalId, employeeId: link.employeeId, applicationId: 'ai-pdm' as const, capability: 'orgmaster.cross_app_override', status: 'active' as const, validFrom: '2026-01-01T00:00:00.000Z', validTo: null, grantedByPrincipalId: 'bootstrap-fixture', reason: 'DEV-039 multiple admins fixture' }))
+    await writeDocument(root, seeded.document)
+    const current = await readGovernanceStore(root)
+    const actor = { principalId: actorLink.principalId, issuer, subject: actorLink.subject, employeeId, bootstrap: false }
+    const input = { operations: [{ operation: 'upsert' as const, principalId: actor.principalId, employeeId, capabilities: [...FINANCIAL_PROTECTED_OPERATIONS], validFrom: '2026-01-01T00:00:00.000Z', validUntil: null, reason: 'Attempt bootstrap with multiple admins' }], expectedGovernanceRevision: current.revision, expectedOrganizationRevision: source.workspaceRevision }
+    await expect(previewFinancialManagementGrant(root, actor, input)).rejects.toMatchObject({ code: 'SELF_GRANT_FORBIDDEN' })
   })
 
   it('delivers the grant-then-owner-assignment sequence without seeding the owner grant', async () => {
