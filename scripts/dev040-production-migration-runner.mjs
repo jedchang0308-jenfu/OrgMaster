@@ -21,7 +21,7 @@ export const TARGET = Object.freeze({
   ledger: 'orgmaster_core.schema_migrations',
   baselineCount: 10,
   entryCount: DEV059_MIGRATION_ENTRY_COUNT,
-  allowedExistingLedgerCounts: Object.freeze([31, 32, 33, 34, 35, 36]),
+  allowedExistingLedgerCounts: Object.freeze([31, 32, 33, 34, 35, 36, 37]),
   migratorRole: 'jenfu_orgmaster_migrator',
   runtimeRole: 'jenfu_orgmaster_runtime',
   coreSchema: 'orgmaster_core',

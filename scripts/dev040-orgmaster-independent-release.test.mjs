@@ -11,7 +11,7 @@ import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION } from './lib/dev014-principa
 import { DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_MIGRATION_PREFIX_COUNT, assertDev058MigrationEntries } from './lib/dev058-role-policy-migration.mjs'
-import { DEV059_FMS_AUTHORITY_MIGRATION, DEV059_MIGRATION_ENTRY_COUNT, assertDev059MigrationEntries } from './lib/dev059-fms-authority-migration.mjs'
+import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_MIGRATION_ENTRY_COUNT, assertDev059MigrationEntries } from './lib/dev059-fms-authority-migration.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const read = (file) => JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
@@ -369,7 +369,7 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-031 prefix plus DEV-058 034-037 and DEV-059 038 production migration bytes', () => {
+test('OrgMaster exact 001-031 prefix plus DEV-058 034-037 and FMS 038-039 production migration bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
@@ -384,7 +384,7 @@ test('OrgMaster exact 001-031 prefix plus DEV-058 034-037 and DEV-059 038 produc
     profile.migrations.entries.slice(DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_ENTRY_COUNT).map(migrationIdentity),
     DEV058_MIGRATION_ENTRIES.map(migrationIdentity),
   )
-  assert.deepEqual(migrationIdentity(bundle.bundle.entries.at(-1)), migrationIdentity(DEV059_FMS_AUTHORITY_MIGRATION))
+  assert.deepEqual(bundle.bundle.entries.slice(-DEV059_FMS_AUTHORITY_MIGRATIONS.length).map(migrationIdentity), DEV059_FMS_AUTHORITY_MIGRATIONS.map(migrationIdentity))
   assert.equal(profile.migrations.entries.some(({ path }) => path.startsWith('db/migrations/032_') || path.startsWith('db/migrations/033_')), false)
   assert.equal(bundle.bundle.entries[10].version, 'dev040-r2-orgmaster-011')
   assert.equal(bundle.bundle.entries[11].version, 'dev047-orgmaster-012')

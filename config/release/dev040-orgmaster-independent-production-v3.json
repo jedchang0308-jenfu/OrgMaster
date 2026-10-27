@@ -480,6 +480,13 @@
         "path": "db/migrations/038_dev065_fms_authority_projection.sql",
         "sourceSha256": "78f21d02147e64c3100c8a6eb0cc27bd11eab8aaf268204baacf3bf7368569c9",
         "appliedSha256": "47b5b1edf1231a31a3af0d0b355283f3acc24c0653cb29b861f99698d5186da3"
+      },
+      {
+        "order": 37,
+        "version": "dev065-orgmaster-039",
+        "path": "db/migrations/039_dev065_fms_portal_visibility.sql",
+        "sourceSha256": "8a39b85b0e091e5ca674f39c41571dc3babcf2d9df4efbd6db075a4e4c529270",
+        "appliedSha256": "cce612b37ff2a7c660f636480ef0ffb64c165cab87fb495afaba877e2d970541"
       }
     ]
   },

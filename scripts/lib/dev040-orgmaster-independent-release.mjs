@@ -3,7 +3,7 @@ import { assertPrincipalOnlyRecoveryBinding } from './dev057-principal-only-rele
 import { createHash } from 'node:crypto'
 import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { DEV058_MIGRATION_ENTRIES } from './dev058-role-policy-migration.mjs'
-import { DEV059_FMS_AUTHORITY_MIGRATION, assertDev059MigrationEntries } from './dev059-fms-authority-migration.mjs'
+import { DEV059_FMS_AUTHORITY_MIGRATIONS, assertDev059MigrationEntries } from './dev059-fms-authority-migration.mjs'
 
 const H40 = /^[a-f0-9]{40}$/
 const H64 = /^[a-f0-9]{64}$/
@@ -57,7 +57,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   'db/migrations/030_dev057_employee_number_command_receipt.sql',
   'db/migrations/031_dev014_principal_lifecycle_v2.sql',
   ...DEV058_MIGRATION_ENTRIES.map(entry => entry.path),
-  DEV059_FMS_AUTHORITY_MIGRATION.path,
+  ...DEV059_FMS_AUTHORITY_MIGRATIONS.map(entry => entry.path),
 ]
 
 function fail(code, detail = '') {
