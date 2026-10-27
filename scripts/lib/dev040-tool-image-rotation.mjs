@@ -6,7 +6,7 @@ import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-releas
 import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
 import { matchGitSourceArchive } from './dev040-git-archive.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_PREFIX_SHA256 } from './dev058-role-policy-migration.mjs'
-import { DEV059_FMS_AUTHORITY_MIGRATION, DEV059_MIGRATION_ENTRY_COUNT } from './dev059-fms-authority-migration.mjs'
+import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_MIGRATION_ENTRY_COUNT } from './dev059-fms-authority-migration.mjs'
 
 export const TOOL_RECIPES = Object.freeze([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -142,7 +142,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
     const beforeEntries = beforeMigrations.entries
     const afterEntries = afterMigrations.entries
     const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
-    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, DEV059_FMS_AUTHORITY_MIGRATION].map(identity)
+    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, ...DEV059_FMS_AUTHORITY_MIGRATIONS].map(identity)
     if (!Array.isArray(beforeEntries) || !Array.isArray(afterEntries)
       || beforeMigrations.baselineCount !== 10 || afterMigrations.baselineCount !== 10
       || !same(staticInputs(beforeMigrations), staticInputs(afterMigrations))
@@ -152,7 +152,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
       || !same(beforeEntries, afterEntries.slice(0, beforeEntries.length))
       || !same(beforeEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, beforeEntries.length - DEV058_MIGRATION_PREFIX_COUNT))
       || !same(afterEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, afterEntries.length - DEV058_MIGRATION_PREFIX_COUNT))) fail('SOURCE_INPUT_DRIFT')
-    disposition = afterEntries.length === DEV059_MIGRATION_ENTRY_COUNT
+    disposition = afterEntries.length > DEV058_MIGRATION_ENTRY_COUNT
       ? 'DEV059_FMS_AUTHORITY_APPEND'
       : 'DEV058_ROLE_POLICY_APPEND'
   } catch { fail('SOURCE_INPUT_DRIFT') }

@@ -2547,5 +2547,5 @@ test('DEV-059 CLI binds one exact FMS authority recipe and rejects mixed modes',
   ]) assert.throws(() => parseDeployProductionArgs(invalid))
   const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
   assert.equal((source.match(/\.\.\.dev059Authority/g) ?? []).length, 2)
-  assert.deepEqual(DEV059_FMS_AUTHORITY_REMEDIATION.migrationEntries, [newBundle.bundle.entries.at(-1)].map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
+  assert.deepEqual(DEV059_FMS_AUTHORITY_REMEDIATION.migrationEntries, newBundle.bundle.entries.slice(-2).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
 })

@@ -12,11 +12,22 @@ export const DEV059_FMS_AUTHORITY_MIGRATION = Object.freeze({
   sourceSha256: '78f21d02147e64c3100c8a6eb0cc27bd11eab8aaf268204baacf3bf7368569c9',
   appliedSha256: '47b5b1edf1231a31a3af0d0b355283f3acc24c0653cb29b861f99698d5186da3',
 })
+export const DEV065_FMS_PORTAL_VISIBILITY_MIGRATION = Object.freeze({
+  order: 37,
+  version: 'dev065-orgmaster-039',
+  path: 'db/migrations/039_dev065_fms_portal_visibility.sql',
+  sourceSha256: '8a39b85b0e091e5ca674f39c41571dc3babcf2d9df4efbd6db075a4e4c529270',
+  appliedSha256: 'cce612b37ff2a7c660f636480ef0ffb64c165cab87fb495afaba877e2d970541',
+})
+export const DEV059_FMS_AUTHORITY_MIGRATIONS = Object.freeze([
+  DEV059_FMS_AUTHORITY_MIGRATION,
+  DEV065_FMS_PORTAL_VISIBILITY_MIGRATION,
+])
 export const DEV059_RELEASE_MODE = 'DEV059_FMS_AUTHORITY_APPEND'
-export const DEV059_MIGRATION_ENTRY_COUNT = DEV058_MIGRATION_ENTRY_COUNT + 1
+export const DEV059_MIGRATION_ENTRY_COUNT = DEV058_MIGRATION_ENTRY_COUNT + DEV059_FMS_AUTHORITY_MIGRATIONS.length
 export const DEV059_FMS_AUTHORITY_REMEDIATION = Object.freeze({
   kind: 'FMS_AUTHORITY_PROJECTION',
-  migrationEntries: Object.freeze([DEV059_FMS_AUTHORITY_MIGRATION]),
+  migrationEntries: DEV059_FMS_AUTHORITY_MIGRATIONS,
   consumerApplicationId: 'jf-fms',
   applicationId: 'financial-management-system',
   contractVersion: 'jenfu.orgmaster.fms-authority.v1',
@@ -30,9 +41,11 @@ const same = (a, b) => canonicalize(a) === canonicalize(b)
 export function assertDev059MigrationEntries(entries) {
   if (!Array.isArray(entries) || entries.length !== DEV059_MIGRATION_ENTRY_COUNT) fail('MIGRATION_SET_DRIFT')
   assertDev058MigrationEntries(entries.slice(0, DEV058_MIGRATION_ENTRY_COUNT))
-  if (canonicalize(identity(entries.at(-1))) !== canonicalize(identity(DEV059_FMS_AUTHORITY_MIGRATION))) fail('DEV059_MIGRATION_APPEND_INVALID')
-  if (Object.hasOwn(entries.at(-1) ?? {}, 'sqlBase64')
-    && entries.at(-1).name !== 'dev065_fms_authority_projection') fail('DEV059_MIGRATION_NAME_INVALID')
+  if (canonicalize(entries.slice(-DEV059_FMS_AUTHORITY_MIGRATIONS.length).map(identity))
+    !== canonicalize(DEV059_FMS_AUTHORITY_MIGRATIONS.map(identity))) fail('DEV059_MIGRATION_APPEND_INVALID')
+  const expectedNames = ['dev065_fms_authority_projection', 'dev065_fms_portal_visibility']
+  if (entries.slice(-expectedNames.length).some((entry, index) => Object.hasOwn(entry ?? {}, 'sqlBase64')
+    && entry.name !== expectedNames[index])) fail('DEV059_MIGRATION_NAME_INVALID')
   return entries
 }
 
@@ -45,7 +58,7 @@ export function assertDev059FmsAuthorityAppend(before, after) {
     || before.baselineCount !== 10
     || !Number.isSafeInteger(beforeEntryCount)
     || beforeEntryCount < DEV058_MIGRATION_PREFIX_COUNT
-    || beforeEntryCount > DEV058_MIGRATION_ENTRY_COUNT
+    || beforeEntryCount >= DEV059_MIGRATION_ENTRY_COUNT
     || canonicalize(before.entries) !== canonicalize(after.entries.slice(0, beforeEntryCount))) fail('DEV059_MIGRATION_APPEND_INVALID')
   return {
     migrationDisposition: 'FORWARD_APPLY',
