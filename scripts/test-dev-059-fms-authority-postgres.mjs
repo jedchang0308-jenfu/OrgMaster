@@ -6,7 +6,8 @@ import pg from 'pg'
 import { createDisposablePostgresManager } from './lib/dev014-disposable-postgres.mjs'
 
 const root = process.cwd()
-const manifestHash = 'abdbcf13cdaea492a8e506d274800b74e2336dafd38be221efa1f4b14d28c6c2'
+const manifestHashV1 = 'abdbcf13cdaea492a8e506d274800b74e2336dafd38be221efa1f4b14d28c6c2'
+const manifestHashV2 = 'a7a12188c7b1bb1860f008edfca1abaced2fe3c4afa144c5457f1b5b83c571bb'
 const checks = []
 const manager = createDisposablePostgresManager()
 let handle
@@ -116,7 +117,7 @@ try {
     GRANT SELECT ON platform_contract.v_principal_lifecycle_receipts_v2 TO jenfu_orgmaster_migrator;`)
 
   const profile = JSON.parse(fs.readFileSync(path.join(root, 'config/release/dev040-orgmaster-independent-production-v3.json'), 'utf8'))
-  assert.equal(profile.migrations.entries.length, 37)
+  assert.equal(profile.migrations.entries.length, 38)
   let ownerStateSeeded = false
   for (const entry of profile.migrations.entries.slice(0, -1)) {
     if (!ownerStateSeeded && entry.path.startsWith('db/migrations/012_')) {
@@ -132,16 +133,22 @@ try {
   }
   assert.equal(ownerStateSeeded, true)
   const finalEntry = profile.migrations.entries.at(-1)
-  assert.equal(finalEntry.version, 'dev065-orgmaster-039')
+  assert.equal(finalEntry.version, 'dev065-orgmaster-040')
   await admin.query(fs.readFileSync(path.join(root, finalEntry.path), 'utf8'))
-  pass('production-profile-migrations-001-through-039')
+  pass('production-profile-migrations-001-through-040')
 
-  const authority = await admin.query(`SELECT principal_id, employee_id, assignments, protected_grants, manifest_hash, workspace_revision FROM orgmaster_contract.v_fms_authority_v1 ORDER BY principal_id`)
+  const legacyAuthority = await admin.query(`SELECT principal_id, assignments, protected_grants, manifest_hash FROM orgmaster_contract.v_fms_authority_v1 ORDER BY principal_id`)
+  assert.deepEqual(legacyAuthority.rows.map((row) => row.principal_id), ['principal-one', 'principal-three', 'principal-two'])
+  assert.equal(legacyAuthority.rows.find((row) => row.principal_id === 'principal-three').assignments.length, 0)
+  assert.ok(legacyAuthority.rows.every((row) => row.manifest_hash === manifestHashV1))
+  pass('v1-authority-remains-compatible')
+
+  const authority = await admin.query(`SELECT principal_id, employee_id, assignments, protected_grants, manifest_hash, workspace_revision FROM orgmaster_contract.v_fms_authority_v2 ORDER BY principal_id`)
   assert.deepEqual(authority.rows.map((row) => row.principal_id), ['principal-one', 'principal-three', 'principal-two'])
-  assert.equal(authority.rows.find((row) => row.principal_id === 'principal-three').assignments.length, 0)
+  assert.equal(authority.rows.find((row) => row.principal_id === 'principal-three').assignments.length, 1)
   assert.equal(authority.rows.find((row) => row.principal_id === 'principal-three').protected_grants.length, 1)
-  assert.ok(authority.rows.every((row) => row.manifest_hash === manifestHash && /^[a-f0-9]{64}$/u.test(row.workspace_revision)))
-  pass('authority-excludes-expired-and-privileged-ordinary-assignment')
+  assert.ok(authority.rows.every((row) => row.manifest_hash === manifestHashV2 && /^[a-f0-9]{64}$/u.test(row.workspace_revision)))
+  pass('v2-authority-projects-typed-human-business-assignment')
 
   const portal = await admin.query(`SELECT application_id, principal_subject, assignment_version::text, visibility_state
     FROM orgmaster_contract.v_portal_app_visibility_v1
@@ -149,46 +156,48 @@ try {
     ORDER BY principal_subject`)
   assert.deepEqual(portal.rows, [
     { application_id: 'financial-management-system', principal_subject: 'subject-one', assignment_version: '1', visibility_state: 'visible' },
+    { application_id: 'financial-management-system', principal_subject: 'subject-three', assignment_version: '1', visibility_state: 'visible' },
     { application_id: 'financial-management-system', principal_subject: 'subject-two', assignment_version: '1', visibility_state: 'visible' },
   ])
   assert.equal((await admin.query(`SELECT has_table_privilege('jenfu_platform_runtime','orgmaster_contract.v_portal_app_visibility_v1','SELECT') AS allowed`)).rows[0].allowed, true)
   pass('portal-visibility-reuses-effective-fms-authority')
 
-  const candidates = await admin.query(`SELECT principal_id, employee_id, stable_role_id FROM orgmaster_contract.v_fms_principal_candidates_v1 ORDER BY principal_id`)
+  const candidates = await admin.query(`SELECT principal_id, employee_id, stable_role_id FROM orgmaster_contract.v_fms_principal_candidates_v2 ORDER BY principal_id`)
   assert.deepEqual(candidates.rows, [
     { principal_id: 'principal-one', employee_id: 'employee-one', stable_role_id: 'role-operator' },
+    { principal_id: 'principal-three', employee_id: 'employee-three', stable_role_id: 'role-reviewer' },
     { principal_id: 'principal-two', employee_id: 'employee-two', stable_role_id: 'role-reviewer' },
   ])
-  pass('candidate-denominator-requires-effective-personal-assignment')
+  pass('candidate-denominator-requires-effective-typed-human-assignment')
 
-  const admissions = await admin.query(`SELECT principal_id, employee_id, account_type, typed_account_version, mapping_version, security_binding_stamp FROM orgmaster_contract.v_fms_principal_admissions_v1 ORDER BY principal_id`)
+  const admissions = await admin.query(`SELECT principal_id, employee_id, account_type, typed_account_version, mapping_version, security_binding_stamp FROM orgmaster_contract.v_fms_principal_admissions_v2 ORDER BY principal_id`)
   assert.equal(admissions.rows.length, 4)
   assert.ok(admissions.rows.every((row) => row.typed_account_version === row.mapping_version && row.security_binding_stamp === null))
   pass('typed-principal-admission-readback')
 
   const fms = await connect('fms_runtime', 'dev059-fms-reader')
   try {
-    assert.equal((await fms.query('SELECT count(*)::int AS count FROM orgmaster_contract.v_fms_authority_v1')).rows[0].count, 3)
+    assert.equal((await fms.query('SELECT count(*)::int AS count FROM orgmaster_contract.v_fms_authority_v2')).rows[0].count, 3)
     await assert.rejects(fms.query('SELECT * FROM orgmaster_core.persistence_artifacts LIMIT 1'), (error) => error.code === '42501')
-    await assert.rejects(fms.query(`UPDATE orgmaster_contract.v_fms_authority_v1 SET employee_id='tampered'`), (error) => ['42501', '55000'].includes(error.code))
+    await assert.rejects(fms.query(`UPDATE orgmaster_contract.v_fms_authority_v2 SET employee_id='tampered'`), (error) => ['42501', '55000'].includes(error.code))
   } finally { await fms.end() }
   pass('fms-runtime-read-only-versioned-views')
 
   for (const role of ['jenfu_platform_runtime', 'jenfu_ai_pdm_runtime']) {
     const denied = await admin.query(`SELECT has_schema_privilege($1,'orgmaster_contract','USAGE') AS schema_usage,
-      has_table_privilege($1,'orgmaster_contract.v_fms_authority_v1','SELECT') AS authority_select`, [role])
+      has_table_privilege($1,'orgmaster_contract.v_fms_authority_v2','SELECT') AS authority_select`, [role])
     assert.equal(denied.rows[0].authority_select, false)
   }
   pass('non-fms-peer-runtimes-denied-authority-view')
 
-  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'contracts/orgmaster-fms-authority/v1/contract-manifest.json'), 'utf8'))
-  const manifestBytes = fs.readFileSync(path.join(root, 'contracts/orgmaster-fms-authority/v1/contract-manifest.json'), 'utf8').replace(/\r\n/gu, '\n')
-  assert.equal(hash(manifestBytes), manifestHash)
-  assert.equal(manifest.contractVersion, 'jenfu.orgmaster.fms-authority.v1')
-  assert.deepEqual((await admin.query(`SELECT signature_sha256 FROM orgmaster_core.contract_manifest WHERE contract_id='orgmaster.fms-authority'`)).rows, [{ signature_sha256: manifestHash }])
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'contracts/orgmaster-fms-authority/v2/contract-manifest.json'), 'utf8'))
+  const manifestBytes = fs.readFileSync(path.join(root, 'contracts/orgmaster-fms-authority/v2/contract-manifest.json'), 'utf8').replace(/\r\n/gu, '\n')
+  assert.equal(hash(manifestBytes), manifestHashV2)
+  assert.equal(manifest.contractVersion, 'jenfu.orgmaster.fms-authority.v2')
+  assert.deepEqual((await admin.query(`SELECT signature_sha256 FROM orgmaster_core.contract_manifest WHERE contract_id='orgmaster.fms-authority-v2'`)).rows, [{ signature_sha256: manifestHashV2 }])
   pass('manifest-and-database-pin-match')
 } finally {
   if (handle) cleanup = await handle.cleanup()
-  console.log(JSON.stringify({ status: checks.length === 8 && cleanup?.clientClosed && cleanup?.clusterStopped && cleanup?.portReleased && cleanup?.tempRemoved ? 'PASS' : 'FAIL', checks, cleanup, production: false }))
+  console.log(JSON.stringify({ status: checks.length === 9 && cleanup?.clientClosed && cleanup?.clusterStopped && cleanup?.portReleased && cleanup?.tempRemoved ? 'PASS' : 'FAIL', checks, cleanup, production: false }))
 }
 // The task-owned runtime is fully released by the finally block above.

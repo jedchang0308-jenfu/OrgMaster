@@ -19,9 +19,17 @@ export const DEV065_FMS_PORTAL_VISIBILITY_MIGRATION = Object.freeze({
   sourceSha256: '8a39b85b0e091e5ca674f39c41571dc3babcf2d9df4efbd6db075a4e4c529270',
   appliedSha256: 'cce612b37ff2a7c660f636480ef0ffb64c165cab87fb495afaba877e2d970541',
 })
+export const DEV065_FMS_HUMAN_BUSINESS_AUTHORITY_V2_MIGRATION = Object.freeze({
+  order: 38,
+  version: 'dev065-orgmaster-040',
+  path: 'db/migrations/040_dev065_fms_human_business_authority_v2.sql',
+  sourceSha256: 'c2b921711d73ef829b8f64f4381219175a1a44df6aaa22893fbdd7e1080946ce',
+  appliedSha256: 'cf461db2e8ae115f24c7a6acf593e04b577c723fc6c2fc91d9bd19179ca2b126',
+})
 export const DEV059_FMS_AUTHORITY_MIGRATIONS = Object.freeze([
   DEV059_FMS_AUTHORITY_MIGRATION,
   DEV065_FMS_PORTAL_VISIBILITY_MIGRATION,
+  DEV065_FMS_HUMAN_BUSINESS_AUTHORITY_V2_MIGRATION,
 ])
 export const DEV059_RELEASE_MODE = 'DEV059_FMS_AUTHORITY_APPEND'
 export const DEV059_MIGRATION_ENTRY_COUNT = DEV058_MIGRATION_ENTRY_COUNT + DEV059_FMS_AUTHORITY_MIGRATIONS.length
@@ -30,7 +38,7 @@ export const DEV059_FMS_AUTHORITY_REMEDIATION = Object.freeze({
   migrationEntries: DEV059_FMS_AUTHORITY_MIGRATIONS,
   consumerApplicationId: 'jf-fms',
   applicationId: 'financial-management-system',
-  contractVersion: 'jenfu.orgmaster.fms-authority.v1',
+  contractVersion: 'jenfu.orgmaster.fms-authority.v2',
 })
 
 const identity = ({ order, version, path, sourceSha256, appliedSha256 }) => [order, version, path, sourceSha256, appliedSha256]
@@ -43,7 +51,7 @@ export function assertDev059MigrationEntries(entries) {
   assertDev058MigrationEntries(entries.slice(0, DEV058_MIGRATION_ENTRY_COUNT))
   if (canonicalize(entries.slice(-DEV059_FMS_AUTHORITY_MIGRATIONS.length).map(identity))
     !== canonicalize(DEV059_FMS_AUTHORITY_MIGRATIONS.map(identity))) fail('DEV059_MIGRATION_APPEND_INVALID')
-  const expectedNames = ['dev065_fms_authority_projection', 'dev065_fms_portal_visibility']
+  const expectedNames = ['dev065_fms_authority_projection', 'dev065_fms_portal_visibility', 'dev065_fms_human_business_authority_v2']
   if (entries.slice(-expectedNames.length).some((entry, index) => Object.hasOwn(entry ?? {}, 'sqlBase64')
     && entry.name !== expectedNames[index])) fail('DEV059_MIGRATION_NAME_INVALID')
   return entries
