@@ -116,4 +116,14 @@ describe('DEV-065 financial initial authority HTTP payloads', () => {
     await loadFinancialInitialAuthorityReceipt('command/with space')
     expect(requestedUrl).toBe('/api/orgmaster/governance/applications/financial-management-system/initial-authority/commands/command%2Fwith%20space')
   })
+
+  it('surfaces the server code field instead of hiding a revision conflict', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 'GOVERNANCE_REVISION_CONFLICT' }), {
+      status: 409, headers: { 'content-type': 'application/json' },
+    })))
+
+    await expect(previewFinancialInitialAuthority(initial)).rejects.toMatchObject({
+      code: 'GOVERNANCE_REVISION_CONFLICT', status: 409,
+    })
+  })
 })
