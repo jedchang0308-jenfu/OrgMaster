@@ -44,7 +44,15 @@ export async function withPublishedGovernanceHistory(
   current: ExternalRoleCatalogSnapshotV1[],
   loadHistorical?: (catalogVersion: string) => Promise<ExternalRoleCatalogSnapshotV1>,
 ) {
-  const result = withStoredGovernanceHistory(document, current)
+  // The active, audit-bound publication is the authoritative current catalog.
+  // A registry fixture may still be needed for applications absent from that
+  // publication, but it must not replace a newly published application catalog.
+  const storedCurrent = storedGovernanceCatalogs(document)
+  const storedApplications = new Set(storedCurrent?.map(value => value.applicationId) ?? [])
+  const authoritativeCurrent = storedCurrent
+    ? [...storedCurrent, ...current.filter(value => !storedApplications.has(value.applicationId))]
+    : current
+  const result = withStoredGovernanceHistory(document, authoritativeCurrent)
   if (!loadHistorical) return result
   const known = new Set(result.filter(value => value.applicationId === 'ai-pdm').map(value => value.catalogVersion))
   const missing = [...new Set([...document.draft.roleAssignments, ...document.draft.roleDelegations]

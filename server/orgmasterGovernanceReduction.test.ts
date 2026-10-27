@@ -6,13 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { createSeedDocumentV2 } from '../src/governance/migrateGovernanceV1ToV2'
 import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2ToV3'
-import { isGovernanceReduction, storedGovernanceCatalogs, withStoredGovernanceHistory } from './governanceReduction'
+import { isGovernanceReduction, storedGovernanceCatalogs, withPublishedGovernanceHistory, withStoredGovernanceHistory } from './governanceReduction'
 import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
 import { applyDraftCommand, getGovernancePaths, loadOrganizationSource, publishGovernance, readGovernanceStore } from './orgmasterGovernanceStore'
 import { createOrgmasterGovernanceMiddleware } from './orgmasterGovernanceApi'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
-import { canonicalJson, sha256, GOVERNANCE_PUBLICATION_HASH_FORMAT } from '../src/governance/commands'
+import { canonicalJson, sha256, GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
 
 const fault = vi.hoisted(() => ({ offline: false, reads: 0 }))
 vi.mock('./applicationRoleCatalogRegistry', async importOriginal => {
@@ -273,5 +273,26 @@ describe('DEV-058 catalog-independent reduction', () => {
     const { published } = await fixture()
     const catalogs = storedGovernanceCatalogs(published.document)!
     expect(() => withStoredGovernanceHistory(published.document, [{ ...catalogs[0], payloadHash: '0'.repeat(64) }])).toThrow()
+  })
+  it('prefers the audit-bound active application catalog over a registry baseline', async () => {
+    const { published } = await fixture()
+    const document = structuredClone(published.document)
+    const active = document.publishedVersions.find(version => version.id === document.activePolicyVersionId)!
+    if (active.kind !== 'assignment-governance-v3') throw Error('test version')
+    const aiPdm = active.externalRoleCatalogs[0]
+    const baselineFinancial = { ...structuredClone(aiPdm), applicationId: 'financial-management-system',
+      catalogVersion: 'financial-management-system.role-catalog.baseline', payloadHash: 'b'.repeat(64) }
+    const publishedFinancial = { ...structuredClone(baselineFinancial),
+      catalogVersion: 'financial-management-system.catalog.release.v1', payloadHash: 'c'.repeat(64) }
+    active.externalRoleCatalogs.push(publishedFinancial)
+    const payload = { kind: active.kind, policy: active.policy, externalRoleCatalogs: active.externalRoleCatalogs,
+      organizationSnapshot: active.organizationSnapshot, effectState: active.effectState }
+    active.snapshotHash = publicationSnapshotHash(payload)
+    document.auditEvents.find(event => event.entityId === active.id)!.afterHash = active.snapshotHash
+
+    const catalogs = await withPublishedGovernanceHistory(document, [aiPdm, baselineFinancial])
+
+    expect(catalogs.filter(value => value.applicationId === 'financial-management-system').map(value => value.catalogVersion))
+      .toEqual(['financial-management-system.catalog.release.v1'])
   })
 })
