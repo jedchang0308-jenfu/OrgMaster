@@ -5,7 +5,7 @@
 
 ## DEV-057 ProJED 最小 Principal publication（2026-10-28，本機 DB slice）
 
-[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-minimum-principal-publication-2026-10-28) → [DEV-057 任務與前兩次失敗／修正](dev_task.md#dev-057-projed-principal-publication-2026-10-28)。Endpoint `POST /api/internal/projed-principals/v1` 發布 `orgmaster.projed-principal.v1`；personal Principal 不建立 Employee／business grant，舊 Employee v1 契約保留。最新原生 PG 18/18 PASS 證據=`../output/qa/dev-057/projed-principal/2026-10-28T16-39-12-377Z-3b64190a/result.json`；fixture 31+11 後補齊 OrgMaster 032–040，再套新 041。unit/API/server composition 54/54、fixture helper 14/14、TypeScript 與 client/server build PASS；未驗真 Firebase／OIDC／Session 或 Platform 012–013，041 正式 manifest／tool capsule 尚待接入，未部署。DEV-057 整體結案維持既有狀態；局部入口不是新 required gate。
+[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-minimum-principal-publication-2026-10-28) → [DEV-057 任務與前兩次失敗／修正](dev_task.md#dev-057-projed-principal-publication-2026-10-28)。Endpoint `POST /api/internal/projed-principals/v1` 發布 `orgmaster.projed-principal.v1`；personal Principal 不建立 Employee／business grant，舊 Employee v1 契約保留。最新原生 PG 18/18 PASS 證據=`../output/qa/dev-057/projed-principal/2026-10-28T16-39-12-377Z-3b64190a/result.json`；fixture 31+11 後補齊 OrgMaster 032–040，再套新 041。unit/API/server composition 54/54、fixture helper 14/14、TypeScript 與 client/server build PASS；未驗真 Firebase／OIDC／Session 或 Platform 012–013。042 是現有 `jenfu_platform_migrator` 執行 Platform-owned SECURITY DEFINER state reader 所需的 view-only SELECT grant；無 runtime／core ACL、workload identity、IAM 或業務授權，現為 source／本地 disposable 驗證，尚未套用持久環境或納入正式 release package。上述證據不包含 042；041 正式 manifest／tool capsule 尚待接入，未部署。DEV-057 整體結案維持既有狀態；局部入口不是新 required gate。
 
 ## DEV-040／DEV-057 PR134 正式發布收尾（2026-10-19）
 
