@@ -1,7 +1,7 @@
 # DEV-060：OrgMaster 地端 SSO 與應用內單一前端權限投影
 
-- 文件成熟度：Implemented Source Checkpoint；原契約驗收範圍保持不變。
-- 執行狀態：Source Implemented / Deterministic Self-check Passed / Local Acceptance BLOCKED；尚未完成 DEV-060。
+- 文件成熟度：Source / Local Acceptance Complete；原契約驗收範圍保持不變。
+- 執行狀態：RD Self-check Passed / Local Acceptance Passed / PR Review Pending；真實 non-production activation DEFERRED。
 - Native task：ORGMASTER/DEV-060#frontend-permission-projection。
 - 跨專案主控：JENFU/DEV-021。
 - 建立日期：2026-10-28（Asia/Taipei）。
@@ -174,44 +174,52 @@ OrgMaster runtime 只使用 disposable／task-owned data；不得把 production 
 
 ## 10. RD 驗證與證據
 
-2026-10-28 RD 自查紀錄。工作樹 `C:\VIBE CODING\.worktrees\OrgMaster\dev060-app-permission-provider-20261028`、branch `codex/dev060-app-permission-provider`；基線 `6c8cca6428419549ed44f8fe3dcb78c18ac28e0b`。主控同步確認 `origin/master=4e6744adc28f99590e629f1b35ad62a69fe7cb26` 已為祖先、behind 0，同步未改變本任務 dirty 內容。
+2026-10-28 RD 自查；工作樹 `C:\VIBE CODING\.worktrees\OrgMaster\dev060-app-permission-provider-20261028`、branch `codex/dev060-app-permission-provider`。原 source checkpoint `da5ee08f2e7b90e8cb1619619bbc97c315447343`，文件修正 HEAD `d1919a70d29ed78dd58deefb057386a62c14ae7e`；其後 browser 發現提示推動工作區高度，已以單一 positioned feedback 修正，並在兩埠驗證 app top=0、無 document-height overflow。最後產品修改僅 provider feedback／CSS；之後的 test、runner 與文件不改產品行為。
 
-已實作 versioned projection、唯一 authenticated-shell provider、GovernanceCenter／治理及管理辦法入口共用 selector、publish／active-version 後單次失效，以及 resource API 401／403 的失效通知。`management.crossAppOverride` 沿原 server guard 保留，employeeId 由 AuthGate 取得。資源 capability、server 當下授權與既有 v2 SSO handler 均維持原責任；未新增產品 fake login。
+已實作 canonical versioned projection、唯一 authenticated-shell provider、global consumers、publish／active-version 與 resource API 401／403 invalidation；保留 `management.crossAppOverride`、AuthGate actor、resource response 及 server 當下授權，沒有新增產品 fake login。
 
 | 檢查 | 實際結果與限制 |
 |---|---|
-| 全 app suite `npm test -- --testTimeout=30000` | 188 files PASS、2 skipped；1090 tests PASS、5 skipped。此證據早於最後 notice／launcher／cache 修正；受影響部分另跑下列 focused checks，未把跳過案例列為 PASS。 |
-| 恢復後 focused contract／provider／治理 UI unit tests | 10 files、110 tests PASS；含 AuthGate、SSO、projection、provider、治理及 client。`--configLoader runner`，30s test timeout。 |
-| 補足的 SSO negatives／server projection／module entry | 3 files、56 tests PASS；涵蓋錯誤 state／audience／service proof、account conflict、Position／department／任職不自動授權，以及 denied module 不可點擊或拖曳。與上一列有重疊，不相加。 |
-| `npm run test:dev-004:auth` | 5 files、35 tests PASS；證據可重用，後續未改 AuthGate 或 auth handler。 |
-| TypeScript `tsc --noEmit` | 最後 source checkpoint PASS。 |
-| `node --test scripts/dev-local.test.mjs` | 10/10 PASS；含真實暫時 listener 的 Windows PID 查證與不干擾未知程序。 |
-| 1010／12010 `dev:local --check-only` | 兩埠皆 AVAILABLE；只證明啟動前埠檢查，未啟動 App。 |
-| build | 中途 `npm run build` PASS；最後 source／cache 修正後的 final build 因容量預檢 BLOCKED，未執行，不宣稱 exact-current artifact PASS。 |
-| 三畫面 local runner／browser acceptance | 全部 `BLOCKED / NOT_RUN`；沒有 UI screenshot、實際 request count 或 runtime evidence，不以 unit tests 取代第 9.1 節 UI 驗收。 |
-| required Production Source QC／PR | 未 push／未執行；本 checkpoint 不代表 required CI 或獨立 QC 通過。 |
-| 真實 non-production IAM／ADC／外部 Chrome SSO | 依原人類決策 `DEFERRED / NOT_RUN`；正式環境亦未操作。 |
+| 最後 source typecheck + client/server build | PASS；`tsc --noEmit`、Vite client build、Vite SSR build，兩個 Vite 階段使用 `--configLoader runner` 避免共享依賴 cache。UI 修正後重驗，見 `tmp/dev060-post-browser-build.log`；既有 chunk-size warning 保留。 |
+| 最後 provider／治理／module focused checks | 3 files、24 tests PASS；含 publish 後 revision-2、activation 後 revision-3 的 state readback。 |
+| 恢復後 focused contract／provider／治理 checks | 10 files、110 tests PASS；其後受影響部分由上一列重驗。 |
+| SSO negatives／server projection／module entry | 3 files、56 tests PASS；與其他 focused suite 重疊，不相加。 |
+| 全 app suite | 188 files PASS、2 skipped；1090 tests PASS、5 skipped。此證據早於最後局部修改，只重用未受影響範圍；跳過案例未列 PASS。 |
+| Auth suite／launcher | auth 5 files、35 tests PASS；launcher 10/10 PASS。後續未改 auth handler 或 launcher。 |
+| 1010 default／12010 override | 兩個 task-owned runner 實際啟動，HTTP 200 與 exact-worktree listener PID 查證通過；結束後兩埠皆 AVAILABLE。 |
+| 1010 local browser | **10/10 PASS**；1440×900、Chromium 153.0.8010.12，manifest `output/playwright/dev060/1010/2026-10-28T12-36-30-967Z/manifest.json`。 |
+| 12010 local browser | **10/10 PASS**；同 viewport／browser，manifest `output/playwright/dev060/12010/2026-10-28T12-38-10-054Z/manifest.json`。 |
+| PR／required CI | [Draft PR #186](https://github.com/jedchang0308-jenfu/OrgMaster/pull/186)。`d1919a7` 的 Production Source QC PASS；後續最新 HEAD 狀態以 PR 為準，本機 RD 自查不宣稱獨立 QC。 |
+| 真實 non-production IAM／ADC／外部 Chrome SSO | 依原決策 **DEFERRED / NOT_RUN**；沒有正式環境操作。 |
 
-第 9.1 節 10 個案例的 deterministic 層已覆蓋 callback/local-session、同 shell dedupe、typed allow/deny、resource capability 保留、401/403/503/timeout、publish/activation invalidation、403 不重送、A/B late-response isolation、SSO fail-closed 與無 Position 自動授權。三個實際畫面、真正 route 切換 request count、UI 訊息／資源操作及固定埠 runtime 仍是原必要驗收，全部待執行。第 11 節完成條件尚未全數成立。
+### 10.1 原第 9.1 節驗收對照
 
-原始失敗保留在本工作樹 `tmp/`：首輪 68 PASS／27 FAIL（舊 GovernanceSession owner fixtures）；改接 provider 後曾有一項 5s timeout（當時與 build 並行），沿專案 30s 契約重跑通過。Windows PID 查詢的兩次失敗由獨立 readback 確認 `spawnSync powershell.exe ETIMEDOUT`；上限調為 15s 後真實 PID 測試通過。未把原失敗刪除或改記為 PASS。
+| 原案例 | 本次實際證據 |
+|---|---|
+| 1：injected identity／handoff／App-local session | 1010／12010 deterministic HTTP A/B callback、HttpOnly local session、broker-independent session read、logout PASS；不冒充外部 SSO browser journey。 |
+| 2：三畫面共用一次 global projection | 兩埠治理、員工、管理辦法切換後，首次 shell projection request count=1。 |
+| 3：navigation／actions 一致 | typed selector、治理 action／module focused checks，加上 browser ready-denied 停用同 scope 入口；workspace／resource 自身限制仍保留。 |
+| 4：resource capability 不被 global 誤放行 | 兩埠管理辦法 create=false 與 employee identity resource actions=false 的 UI 測試 PASS，global admin allow 仍無法產生資源 action。 |
+| 5：200 false／401／403／503／timeout 分開 | 兩埠 ready-denied 無 retry error、401 清 shell 並提供登入恢復、503／timeout 顯示 retry、403 顯示撤權提示；各有 screenshot／status 紀錄。 |
+| 6：publish／active-version invalidation | 兩埠各操作只增加一個 projection request；focused state readback 使用新 revision。 |
+| 7：stale projection 下 403 | 兩埠真實 client 對 injected 403 的命令只送一次，provider 失效、入口停用並顯示提示，未重送命令。 |
+| 8：A→B／late response | 兩埠既有 development profile A logout／B login 後無 A 的治理入口；principal switch／unmount／A late response 由 provider focused tests 查證。 |
+| 9：SSO negative contracts | state、audience、PKCE、service proof、account conflict HTTP／contract tests fail-closed PASS；真實非正式 IAM journey 仍在第 9.2 節 deferred。 |
+| 10：組織主資料不自動授權 | verified published grant 撤銷後，即使加入 Position、department、任職與組織圖來源，server projection 仍全 denied。 |
 
-依賴由 exact-lock 現成 release worktree junction 重用，450 個已安裝 package manifest 比對無版本差異、44 個 optional package 缺省，未安裝套件。初次 Vite cache 曾沿 junction 寫入 `.vite`／`.vite-temp`；共享 cache 留存，後續改用 task cacheDir 及 runner loader，未清除共享內容。
+Browser evidence 為 **LOCAL_SIMULATED**：既有 administrator／employee development profiles；permission status／revision、no-op publish／activation 與 rejected mutation response fixtures；resource-denied fixtures；為顯示既有員工身分 UI 而在測試頁面注入 employee-number feature discovery。未新增產品 fake-login／authority bypass，沒有 token／cookie／ADC／驗證碼紀錄；sample data 僅在此工作樹的 `data/`，有 `.dev060-disposable.json` marker，保留未刪除。Browser runner 已收斂為 `scripts/dev060-permission-browser.mjs`，拒絕未知 data 或非 exact-worktree runtime；需由 Host 供應既有 Governor session／script binding 後執行。
 
-容量限制：Governor session `a5bea155-2945-48dc-83e9-f9eaaedce5f8` 的 `dev060-final-build`（build，25 GiB reservation）與 `dev060-local-browser`（integration_test，10 GiB reservation）均為 BLOCKED。當時 C: free 17,596,735,488 bytes，protected floor 25,534,503,118 bytes；沒有 risk acceptance／lease，沒有執行 blocked operation。這些是資源預留值，不是本任務實際耗用量；下一次需以同範圍有效容量 admission 才能續跑。
+### 10.2 首敗、來源與資源收尾
 
-後續命令沿原範圍保留，容量限制解除後執行受影響的 final build 與全部 local UI 驗收：
+- 首輪 unit 68 PASS／27 FAIL（舊 session owner fixtures）與一項 5s timeout 的後續獨立失敗均留在 `tmp/`；改接 provider、沿專案 30s timeout 重驗後通過。
+- Windows PID 查詢 5s timeout 的兩次失敗由 readback 證實；改為有界 15s 後真實 listener 測試通過。
+- 第一個 browser failure 保留於 `output/playwright/dev060/1010/manifest.json`、`failure.png`：fresh workspace 首次並行初始化先 500 後 200，permission session 200、無 pageerror。先以單次 API bootstrap 完成 fixture，再顯式等待 workspace ready；沒有放寬授權或省略案例。早期 8-case、9-case 與最終 10-case 各自保留 timestamped evidence，未覆寫首敗。
+- 依賴沿 exact-lock 現成 release-worktree junction 重用，450 個實際 package manifest 無版本差異、44 個 optional package 缺省；未安裝套件。初次共享 Vite cache 留存未刪，後續使用 task cacheDir／runner loader。
+- 原 build／integration 預檢 BLOCKED 不是產品失敗。人類其後明確接受本次容量風險，原 session `a5bea155-2945-48dc-83e9-f9eaaedce5f8` 取得 HUMAN_RISK_ACCEPTED。
+- build lease `a63ad416-95f5-4eb3-83eb-1b4a3868c8fe` 與既有 10 GiB browser lease `2cf54726-5b41-4d1a-bd1f-96531cbb6685` **均 RELEASED / completed**；主控已明確將 UI 修正後 build refresh 納入同一 10 GiB integration 範圍，未建立第二個 concurrent reservation。
+- 自有 listener PID／Chromium 皆停止並解除 fingerprint 登錄，1010／12010 已釋放；其他 session／專案未被停止。原 `tmp/dev060-main-handoff.md` 留存 exact SHA、PR／CI、manifest、lease receipt 與保留資料責任；`tmp/` 未加入 PR。
 
-~~~powershell
-npx vitest run --configLoader runner --testTimeout=30000 server/orgmasterSsoHandoff.test.ts server/orgmasterGovernanceApi.test.ts src/auth/AuthGate.test.tsx src/auth/OrgMasterPermissionProvider.test.tsx
-npm run test:dev-004:auth
-npm run build
-git diff --check
-~~~
-
-本次 Browser evidence 記錄 exact commit、URL、fixture、三個畫面、projection request count、HTTP status 與 sanitized error／correlation ID，只證明 local runner／projection；禁止記錄 cookie、token、ADC 或驗證碼。真實 SSO browser evidence 留待下一個 activation session。
-
-本機測試 log、容量機器結果與接手 checkpoint 位於既有 `tmp/dev060-main-handoff.md`；最終 local UI／CI 未通過前不將本 DEV 標成完成，不建立 production release 主張。
+本次 source／deterministic／local UI 範圍已完成；PR review／最新 required CI 沿既有流程，不 merge／release。真實 non-production activation 維持第 9.2 節 **DEFERRED / NOT_RUN**，未縮減原驗收分母。
 
 ## 11. 完成與停止條件
 

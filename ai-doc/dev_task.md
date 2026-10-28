@@ -4,13 +4,13 @@
 
 ## DEV-060：OrgMaster 應用內單一前端權限投影
 
-- 狀態：`Source Implemented / Deterministic Self-check Passed / Local Acceptance BLOCKED`；唯一 global app projection／provider 已實作，resource-specific capability 保持原 endpoint；DEV-060 尚未完成。
+- 狀態：`Source / Local Acceptance Complete / PR Review Pending`；唯一 global app projection／provider 與本次 local 驗收已完成，resource-specific capability 保持原 endpoint；真實 non-production activation 仍為 deferred。
 - 來源：`JENFU/DEV-021`；本 repo 同時交付 1010／12010 local profile、既有 v2 SSO source 與 OrgMaster app-scoped provider／snapshot。真實 non-production IAM／browser activation 不在本 session。
 - 核心邊界：OrgMaster 繼續擁有 Principal／Employee／有效 role assignment／scope／期限／撤權；Position 與組織圖不自動等於權限，App capability 仍由各 App 擁有。
 - 唯一契約：[DEV-060 OrgMaster 前端權限投影契約](specs/DEV-060-app-scoped-frontend-permission-projection.md)。
-- 自查：全 app suite 1090 PASS／5 skipped；恢復後 focused 110 PASS，補足 negatives／module entry 56 PASS（兩者有重疊），auth 35 PASS、launcher 10 PASS、最後 typecheck PASS。中途 build PASS；final build 與三畫面 runtime／browser 因 OrgMaster 容量 admission BLOCKED 而未執行，required CI 未執行，不能視為完整驗收。
-- 下一步：保留原第 9.1 節全部驗收分母；容量限制解除後執行 1010／12010 task-owned runtime、三畫面與 401／403／503／A-B／invalidation UI 查證、final build 及獨立 PR／required CI。真實 IAM／ADC／外部 SSO activation 保持 `DEFERRED / NOT_RUN`；不 merge／release。
-- 資源／交接：專用工作樹 `C:\VIBE CODING\.worktrees\OrgMaster\dev060-app-permission-provider-20261028` 保留 source 與本機 logs；既有 `tmp/dev060-main-handoff.md` 記錄容量操作 ID、共享依賴與接手狀態，由 DEV-060 owner 續辦。無暫時 App runtime／browser 待停止。
+- 自查：全 app suite 1090 PASS／5 skipped；focused 110 PASS、negatives／module 56 PASS（重疊不相加），auth 35 PASS、launcher 10 PASS。UI feedback 修正後 targeted 24 PASS、最後 typecheck／client/server build PASS；1010 與 12010 各 10/10 browser cases PASS，原第 9.1 節逐項對照見 spec。均為 RD／LOCAL_SIMULATED，不宣稱獨立 QC 或真實 IAM／SSO。
+- 下一步：沿 [Draft PR #186](https://github.com/jedchang0308-jenfu/OrgMaster/pull/186) 完成 source review 與最新 exact-HEAD required CI；`d1919a7` 的 Production Source QC 已 PASS，後續狀態以 PR 為準。真實 IAM／ADC／外部 SSO activation 保持 `DEFERRED / NOT_RUN`；不 merge／release。
+- 資源／交接：專用工作樹 `C:\VIBE CODING\.worktrees\OrgMaster\dev060-app-permission-provider-20261028` 保留 source、logs 與 task-owned disposable data；原 `tmp/dev060-main-handoff.md` 記錄 SHA／PR／manifest／責任。自有 runtime／browser 全部停止、兩埠 AVAILABLE；build 與既有 10 GiB integration lease 皆 `RELEASED / completed`，未安裝或刪除資料，主控可接續 Platform。
 
 [來源 AI_PDM / CAPA-002](../../AI_PDM/.ai-doc/capa-register.md#capa-002)（2026-10-15 歷史紀錄：OPEN）：當時僅精簡 AGENTS 的歷史安裝與發布狀態，未執行產品修改或正式操作。2026-10-19 補記 OrgMaster 範圍：規範精簡已由 [PR #133](https://github.com/jedchang0308-jenfu/OrgMaster/pull/133) 合併；CA-3 沿 DEV-057／040 的本次正式發布、原始失敗、受控 rotation 與發布後驗證見[既有 owner 出口](#dev040-production-release-20261019)，收尾文件已由 [PR #144](https://github.com/jedchang0308-jenfu/OrgMaster/pull/144) 合併。PA 文件驗證與 CA-3 實際結果分開記錄；本段只補本專案追蹤，不更新其他專案或原案件狀態，不宣稱三專案 CAPA 整案結案，無新 native DEV；整案狀態仍以 AI_PDM owner 案件為準。
 
@@ -302,7 +302,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## 總任務清單
 
-- ◐ DEV-060 [P1] [Source Implemented／Local Acceptance BLOCKED] OrgMaster 地端 SSO 與應用內單一前端權限投影（狀態見 [DEV-060](#dev-060-frontend-permission-projection)）
+- ◐ DEV-060 [P1] [Source／Local Acceptance Complete；PR Review Pending] OrgMaster 地端 SSO 與應用內單一前端權限投影（狀態見 [DEV-060](#dev-060-frontend-permission-projection)）
 
 - ✅ DEV-059 [P1] [Development Complete / Production Not Run] FMS-specific typed Principal／effective assignment／protected grant／candidate catalog import producer（狀態見 [DEV-059](#dev-059-fms-principal-assignment)）
 

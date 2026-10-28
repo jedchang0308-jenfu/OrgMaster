@@ -26,7 +26,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); vi.useRealTimers() })
 function Probe({ page }: { page: string }) {
   const { state, allows } = useOrgMasterPermissions()
-  return <button data-state={state.kind} disabled={!allows('orgmaster.governance.manage')}>{page}</button>
+  return <button data-state={state.kind} data-revision={state.kind === 'ready' ? state.projection.governanceRevision : undefined} disabled={!allows('orgmaster.governance.manage')}>{page}</button>
 }
 async function render(page = 'governance') {
   await act(async () => root.render(<StrictMode><OrgMasterPermissionProvider><Probe page={page} /><Probe page="action" /></OrgMasterPermissionProvider></StrictMode>))
@@ -124,8 +124,11 @@ describe('OrgMaster app permission shell', () => {
     revision = 'revision-2'
     await act(async () => { await publishGovernancePolicy('revision-1', 'publish-1', 'fixture', 'workspace-1') })
     expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/session'))).toHaveLength(2)
+    expect(container.querySelector('button[data-revision]')?.getAttribute('data-revision')).toBe('revision-2')
+    revision = 'revision-3'
     await act(async () => { await setActiveGovernanceVersion('revision-2', 'activate-1', 'fixture', 'version-2') })
     expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/session'))).toHaveLength(3)
+    expect(container.querySelector('button[data-revision]')?.getAttribute('data-revision')).toBe('revision-3')
     allowed = false
     await act(async () => { await orgMasterPermissionFetch('/api/orgmaster/employees/employee-a/identity', { method: 'POST', body: '{}' }) })
     expect(fetcher.mock.calls.filter(([url]) => url.includes('/employees/'))).toHaveLength(1)

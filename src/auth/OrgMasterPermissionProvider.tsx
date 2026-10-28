@@ -3,6 +3,7 @@ import { useAuthSession } from './AuthGate'
 import { GovernanceApiError, loadGovernanceSession } from '../governance/apiClient'
 import { type OrgMasterPermissionCode, type OrgMasterPermissionProjectionV1 } from './permissionContract'
 import { subscribeOrgMasterPermissionInvalidation, type PermissionInvalidationReason } from './permissionInvalidation'
+import './OrgMasterPermissionProvider.css'
 
 type State = { kind: 'loading' } | { kind: 'ready'; projection: OrgMasterPermissionProjectionV1 } | { kind: 'unauthenticated' } | { kind: 'unavailable' }
 type ContextValue = { state: State; allows: (code: OrgMasterPermissionCode) => boolean; invalidate: (reason: PermissionInvalidationReason) => void; retry: () => void }
@@ -62,11 +63,14 @@ function SessionPermissionProvider({ principalId, active, children }: { principa
   const retry = useCallback(() => { setPermissionChanged(false); invalidate('permissions-changed') }, [invalidate])
   const visibleState: State = active ? state : { kind: 'loading' }
   const value = useMemo(() => ({ state: visibleState, allows: (code: OrgMasterPermissionCode) => visibleState.kind === 'ready' && visibleState.projection.permissions[code] === true, invalidate, retry }), [visibleState, invalidate, retry])
+  const feedback = visibleState.kind === 'unavailable'
+    ? <>目前無法確認操作權限。<button type="button" onClick={retry}>重試權限</button></>
+    : visibleState.kind === 'unauthenticated'
+      ? <>登入已失效，請重新登入。<button type="button" onClick={() => window.location.reload()}>返回登入</button></>
+      : permissionChanged ? <>操作權限可能已變更。請確認目前可用的操作後再繼續。</>
+        : visibleState.kind === 'loading' ? <>正在確認操作權限…</> : null
   return <Context.Provider value={value}>
-    {visibleState.kind === 'loading' ? <div role="status">正在確認操作權限…</div> : null}
-    {permissionChanged ? <div role="alert">操作權限可能已變更。請確認目前可用的操作後再繼續。</div> : null}
-    {visibleState.kind === 'unavailable' ? <div role="alert">目前無法確認操作權限。<button type="button" onClick={retry}>重試權限</button></div> : null}
-    {visibleState.kind === 'unauthenticated' ? <div role="alert">登入已失效，請重新登入。<button type="button" onClick={() => window.location.reload()}>返回登入</button></div> : null}
+    {feedback ? <div className="orgmaster-permission-feedback" role={visibleState.kind === 'loading' && !permissionChanged ? 'status' : 'alert'}>{feedback}</div> : null}
     {visibleState.kind !== 'unauthenticated' && children}
   </Context.Provider>
 }
