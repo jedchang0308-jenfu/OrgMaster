@@ -12,6 +12,7 @@ import { orgmasterManagedLoginApiPlugin } from './server/orgmasterManagedLoginAp
 let managedLoginRuntime: ReturnType<typeof createOrgmasterAuthRuntime> | undefined
 
 export default defineConfig({
+  cacheDir: '.codex-tmp/vite',
   plugins: [orgmasterManagedLoginApiPlugin(() => {
     managedLoginRuntime ??= createOrgmasterAuthRuntime()
     return { service: managedLoginRuntime.managedLoginOwner, verifier: managedLoginRuntime.managedLoginCallerVerifier }

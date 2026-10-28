@@ -3,10 +3,12 @@ import type { PrivilegedAssignmentExpected, PrivilegedAssignmentRequest } from '
 import type { GovernanceDocumentViewV2 } from './governancePresentation'
 import type { EmployeeRecommendationRequest, EmployeeRecommendationResponse } from './employeeRecommendations'
 
+import { captureOrgMasterPermissionInvalidation } from '../auth/permissionInvalidation'
+import { isOrgMasterPermissionProjection } from '../auth/permissionContract'
+
 export const GOVERNANCE_API_PATH = '/api/orgmaster/governance'
 export type GovernanceVersionSummary = { id: string; kind: 'legacy-policy-v1' | 'assignment-governance-v2' | 'assignment-governance-v3'; versionNumber: number; publishedAt: string; publishedByPrincipalId: string; publishReason: string; snapshotHash: string; organizationVersionId: string; effectState: string }
 export type GovernanceApiSnapshot = { document: GovernanceDocumentViewV2; catalogs: ExternalRoleCatalogSnapshotV1[]; revision: string; activeVersionId: string | null; versions: GovernanceVersionSummary[] }
-export type GovernanceSession = { runtimeMode: string; actor: { principalId: string; employeeId: string | null; subjectHint: string }; capabilities: { manage: boolean; publish: boolean; simulate: boolean; crossAppOverride?: boolean } }
 export type FinancialInitialAuthorityRequest = {
   employeeId: string
   stableRoleIds: string[]
@@ -94,9 +96,26 @@ export type PrivilegedAssignmentOperationResponse = {
 }
 export class GovernanceApiError extends Error { constructor(public readonly code: string, public readonly status: number, public readonly issues?: unknown) { super(code) } }
 const headers = { 'Content-Type': 'application/json', 'X-OrgMaster-Dev-Issuer': 'urn:orgmaster:dev', 'X-OrgMaster-Dev-Subject': 'local-admin' }
-async function request<T>(path: string, init: RequestInit = {}) { const response = await fetch(`${GOVERNANCE_API_PATH}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new GovernanceApiError(payload.code ?? payload.error ?? 'GOVERNANCE_REQUEST_FAILED', response.status, payload.issues); return { payload: payload as T, revision: response.headers.get('X-OrgMaster-Governance-Revision') ?? '' } }
+async function request<T>(path: string, init: RequestInit = {}) {
+  const invalidate = captureOrgMasterPermissionInvalidation()
+  const response = await fetch(`${GOVERNANCE_API_PATH}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    if (response.status === 401) invalidate('unauthenticated')
+    else if (response.status === 403) invalidate('forbidden')
+    throw new GovernanceApiError(payload.code ?? payload.error ?? 'GOVERNANCE_REQUEST_FAILED', response.status, payload.issues)
+  }
+  if (init.method === 'POST' && (path === '/versions' || path === '/active-version')) invalidate('permissions-changed')
+  return { payload: payload as T, revision: response.headers.get('X-OrgMaster-Governance-Revision') ?? '' }
+}
 export async function loadGovernance() { return request<GovernanceApiSnapshot>('/') }
-export async function loadGovernanceSession() { return request<GovernanceSession>('/session') }
+export async function loadGovernanceSession(principalId: string, signal?: AbortSignal) {
+  const response = await fetch(`${GOVERNANCE_API_PATH}/session`, { signal, credentials: 'same-origin', cache: 'no-store' })
+  const payload: unknown = await response.json().catch(() => null)
+  if (!response.ok) throw new GovernanceApiError('PERMISSION_REQUEST_FAILED', response.status)
+  if (!isOrgMasterPermissionProjection(payload, principalId)) throw new GovernanceApiError('PERMISSION_CONTRACT_MISMATCH', 503)
+  return { payload, revision: response.headers.get('X-OrgMaster-Governance-Revision') ?? '' }
+}
 export async function recommendGovernanceEmployees(input: EmployeeRecommendationRequest, signal?: AbortSignal) { return request<EmployeeRecommendationResponse>('/employee-recommendations', { method: 'POST', body: JSON.stringify(input), signal }) }
 export async function linkCurrentGovernanceIdentity(revision: string, commandId: string, employeeId: string) { return request<{ status: string; document: GovernanceDocumentViewV2; revision: string }>('/identity-links/current', { method: 'POST', body: JSON.stringify({ expectedRevision: revision, commandId, employeeId }) }) }
 export async function patchGovernanceDraft(revision: string, command: GovernanceCommandV2, expectedOrganizationRevision?: string, expectedCatalog?: GovernanceExpectedCatalogV1) { return request<{ status: string; document: GovernanceDocumentViewV2; revision: string }>('/draft', { method: 'PATCH', body: JSON.stringify({ expectedRevision: revision, command, expectedOrganizationRevision, expectedCatalog }) }) }

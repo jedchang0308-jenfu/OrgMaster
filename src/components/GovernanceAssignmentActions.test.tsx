@@ -8,7 +8,9 @@ import { readAiPdmRoleCatalog } from '../governance/aiPdmCatalog'
 import type { GovernanceApiSnapshot } from '../governance/apiClient'
 import type { GovernanceCommandV2 } from '../governance/types'
 
-const mocks = vi.hoisted(() => ({ loadGovernance: vi.fn(), loadGovernanceSession: vi.fn(), patchGovernanceDraft: vi.fn() }))
+const mocks = vi.hoisted(() => ({ loadGovernance: vi.fn(), allows: vi.fn(), patchGovernanceDraft: vi.fn() }))
+vi.mock('../auth/OrgMasterPermissionProvider', () => ({ useOrgMasterPermissions: () => ({ state: { kind: 'ready', projection: { management: { crossAppOverride: false } } }, allows: mocks.allows }) }))
+vi.mock('../auth/AuthGate', () => ({ useAuthSession: () => ({ session: { user: { principalId: 'operator', employeeId: 'employee-1' } } }) }))
 vi.mock('../governance/apiClient', async original => ({ ...await original<typeof import('../governance/apiClient')>(), ...mocks }))
 let host: HTMLDivElement, root: Root
 const employee = { id: 'employee-1', name: '王小明', status: 'active' as const, departmentIds: [], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null }
@@ -19,7 +21,7 @@ function fixture(count = 1): GovernanceApiSnapshot {
 }
 async function render(snapshot = fixture(), manage = true, mobile = false) {
   mocks.loadGovernance.mockResolvedValue({ payload: snapshot, revision: 'r1' })
-  mocks.loadGovernanceSession.mockResolvedValue({ payload: { runtimeMode: 'verified-session', actor: { principalId: 'operator', employeeId: employee.id }, capabilities: { manage, publish: manage, simulate: manage } } })
+  mocks.allows.mockReturnValue(manage)
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: mobile, addEventListener: vi.fn(), removeEventListener: vi.fn() }) })
   mocks.patchGovernanceDraft.mockImplementation(async (_revision, command: GovernanceCommandV2) => {
     const document = structuredClone(snapshot.document)

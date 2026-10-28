@@ -1,3 +1,4 @@
+import { orgMasterPermissionFetch as fetch } from '../auth/permissionInvalidation'
 import type { ManagementMethodCreateInputV1, ManagementMethodSessionV1, ManagementMethodSummaryV1, ManagementMethodV1, EditorDocumentV1, MethodMediaAssetV1 } from './types'
 
 const BASE = '/api/orgmaster/management-methods'

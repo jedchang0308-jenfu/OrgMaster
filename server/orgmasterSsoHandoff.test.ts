@@ -5,6 +5,7 @@ import { createOrgmasterAuthMiddleware, type OrgmasterAuthRuntime } from './orgm
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
 import { parseHandoff, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
 import v2Vectors from '../contracts/jenfu-sso-handoff/v2/conformance-vectors.json'
+import type { OrgmasterSession } from './orgmasterSessionRepository'
 
 const googleAuthMocks = vi.hoisted(() => ({
   GoogleAuth: vi.fn(),
@@ -86,6 +87,62 @@ function dependencies(mode: 'off' | 'on', exchange = handoff()): OrgmasterSsoHan
 }
 
 describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
+  it.each([1010, 12010])('completes local v2 handoff, app-local read and logout for A/B at localhost:%i', async port => {
+    const value = runtime()
+    if (!value.configResult.configured) throw new Error('fixture config missing')
+    const origin = `http://localhost:${port}`
+    value.configResult.config.publicBaseUrl = new URL(origin)
+    value.configResult.config.secureCookie = false
+    value.firebase = {} as NonNullable<OrgmasterAuthRuntime['firebase']>
+    const localBroker = `http://localhost:${port === 1010 ? 1000 : 12000}`
+    const clock = Date.now()
+    let proof = handoff()
+    const sessions = new Map<string, OrgmasterSession>()
+    value.principals!.resolveActivePrincipal = vi.fn(async () => ({ ...proof.identity, mappingVersion: 1, publishedAt: new Date(clock).toISOString() }))
+    value.sessions!.create = vi.fn(async input => {
+      const session = { ...input, id: 'fixture-session-' + sessions.size, revokedAt: null }
+      sessions.set(input.sessionIdHash, session)
+      return session
+    })
+    value.sessions!.findByHash = vi.fn(async hash => sessions.get(hash) ?? null)
+    value.sessions!.revokeByHash = vi.fn(async hash => { const session = sessions.get(hash); if (session) session.revokedAt = new Date(clock).toISOString() })
+    const deps: OrgmasterSsoHandoffDependencies = {
+      environment: { NODE_ENV: 'development', ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on', ORGMASTER_JENFU_SSO_BROKER_ORIGIN: localBroker },
+      now: () => clock,
+      serviceToken: vi.fn(async () => 'injected-service-proof'),
+      fetch: vi.fn(async (_url, init) => {
+        const request = new URLSearchParams(String(init?.body))
+        expect(request.get('redirect_uri')).toBe(`${origin}/api/auth/jenfu-sso/callback`)
+        expect(request.get('code_verifier')).toBeTruthy()
+        return new Response(JSON.stringify(proof), { status: 200 })
+      }),
+    }
+    const base = await listen(value, deps)
+    for (const id of ['a', 'b']) {
+      proof = { ...handoff(), issuer: `${localBroker}/api/sso`, identity: { ...handoff().identity, principalId: `principal-${id}`, employeeId: `employee-${id}`, identitySubject: `uid-${id}` },
+        authentication: { ...handoff().authentication, authenticatedAt: new Date(clock - 1000).toISOString() },
+        sourceSessionExpiresAt: new Date(clock + 3600000).toISOString(), issuedAt: new Date(clock - 1000).toISOString(), expiresAt: new Date(clock + 30000).toISOString() }
+      const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+      const authorize = new URL(start.headers.get('location')!)
+      expect(authorize.origin).toBe(localBroker)
+      expect(authorize.searchParams.get('redirect_uri')).toBe(`${origin}/api/auth/jenfu-sso/callback`)
+      const callback = new URL('/api/auth/jenfu-sso/callback', base)
+      callback.search = new URLSearchParams({ code: `fixture-code-${id}`, state: authorize.searchParams.get('state')!, iss: `${localBroker}/api/sso` }).toString()
+      const accepted = await fetch(callback, { redirect: 'manual', headers: { cookie: start.headers.get('set-cookie')!.split(';')[0] } })
+      expect(accepted.status).toBe(303)
+      const localCookie = accepted.headers.getSetCookie().find(cookie => cookie.startsWith('orgmaster_session='))!
+      expect(localCookie).toContain('HttpOnly')
+      const cookie = localCookie.split(';')[0]
+      const exchangeCount = vi.mocked(deps.fetch!).mock.calls.length
+      const current = await fetch(`${base}/api/auth/me`, { headers: { cookie } })
+      expect(current.status).toBe(200)
+      expect(await current.json()).toMatchObject({ user: { principalId: `principal-${id}`, employeeId: `employee-${id}` } })
+      expect(vi.mocked(deps.fetch!).mock.calls.length).toBe(exchangeCount)
+      const logout = await fetch(`${base}/api/auth/logout`, { method: 'POST', headers: { cookie, origin, 'content-type': 'application/json' }, body: '{}' })
+      expect(logout.status).toBe(200)
+      expect((await fetch(`${base}/api/auth/me`, { headers: { cookie } })).status).toBe(401)
+    }
+  })
   it('checks the locked v2 wire vector and rejects extra authority or expired proof', () => {
     const vector = { ...v2Vectors.valid, audience: 'orgmaster' }
     const clock = Date.parse(v2Vectors.clock)
@@ -96,6 +153,25 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(() => parseHandoff({ ...vector, contractVersion: 'jenfu.sso-handoff.v1', authorization: { applicationId: 'orgmaster', assignmentVersion: 1 } }, vector.issuer, clock)).toThrow('handoff invalid')
     expect(() => parseHandoff({ ...vector, expiresAt: '2026-09-24T11:59:59.000Z' }, vector.issuer, clock)).toThrow('handoff expired')
     expect(() => parseHandoff({ ...vector, authState: { authEpoch: -1, revokedBefore: null } }, vector.issuer, clock)).toThrow('handoff invalid')
+    expect(() => parseHandoff({ ...vector, audience: 'ai-pdm' }, vector.issuer, clock)).toThrow('handoff invalid')
+  })
+  it.each(['state', 'audience', 'service-proof', 'account-conflict'])('fails closed for %s without creating a local session', async failure => {
+    const value = runtime()
+    const proof = handoff()
+    if (failure === 'audience') proof.audience = 'ai-pdm'
+    const deps = dependencies('on', proof)
+    if (failure === 'service-proof') deps.serviceToken = vi.fn(async () => { throw new Error('injected credential unavailable') })
+    if (failure === 'account-conflict') vi.mocked(value.sessions!.findByHash).mockResolvedValue({ id: 'existing-session', identityIssuer: 'issuer', identitySubject: 'subject', principalId: 'different-principal', employeeId: 'employee-2', authEpoch: 0, sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 7, issuedAt: new Date(now).toISOString(), authenticatedAt: new Date(now).toISOString(), expiresAt: '2099-01-01T00:00:00Z', revokedAt: null, assuranceLevel: 'aal1' })
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const authorize = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.search = new URLSearchParams({ code: 'fixture-code', state: failure === 'state' ? 'incorrect-state' : authorize.searchParams.get('state')!, iss: `${brokerOrigin}/api/sso` }).toString()
+    const cookie = start.headers.get('set-cookie')!.split(';')[0] + (failure === 'account-conflict' ? '; orgmaster_session=existing-fixture' : '')
+    const denied = await fetch(callback, { redirect: 'manual', headers: { cookie } })
+    expect(denied.status).toBe(failure === 'account-conflict' ? 409 : failure === 'service-proof' ? 502 : 400)
+    expect(value.sessions!.create).not.toHaveBeenCalled()
+    if (failure === 'state' || failure === 'service-proof') expect(deps.fetch).not.toHaveBeenCalled()
   })
   it('keeps health available and direct start fail-closed while mode is off', async () => {
     const value = runtime()

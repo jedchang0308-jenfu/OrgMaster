@@ -1,0 +1,14 @@
+.orgmaster-permission-feedback {
+  position: absolute;
+  z-index: 160;
+  top: 52px;
+  right: 16px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid #e2c47c;
+  border-radius: 8px;
+  background: #fffaf0;
+  color: #7a5300;
+  box-shadow: 0 4px 16px rgb(16 24 40 / 12%);
+}
+.orgmaster-permission-feedback button { margin-left: 8px; }

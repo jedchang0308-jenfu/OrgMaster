@@ -10,7 +10,9 @@ import type { GovernanceCommandV2, GovernanceRoleAssignmentV2 } from '../governa
 import type { Employee } from '../types'
 import { GovernanceCenter } from './GovernanceCenter'
 
-const mocks = vi.hoisted(() => ({ loadGovernance: vi.fn(), loadGovernanceSession: vi.fn(), patchGovernanceDraft: vi.fn() }))
+const mocks = vi.hoisted(() => ({ loadGovernance: vi.fn(), patchGovernanceDraft: vi.fn() }))
+vi.mock('../auth/OrgMasterPermissionProvider', () => ({ useOrgMasterPermissions: () => ({ state: { kind: 'ready', projection: { management: { crossAppOverride: false } } }, allows: () => true }) }))
+vi.mock('../auth/AuthGate', () => ({ useAuthSession: () => ({ session: { user: { principalId: 'principal-operator', employeeId: 'employee-recipient' } } }) }))
 vi.mock('../governance/apiClient', async original => ({ ...await original<typeof import('../governance/apiClient')>(), ...mocks }))
 
 const employees: Employee[] = [
@@ -54,7 +56,6 @@ let root: Root
 
 async function render(snapshot = fixture()) {
   mocks.loadGovernance.mockResolvedValue({ payload: snapshot, revision: snapshot.revision })
-  mocks.loadGovernanceSession.mockResolvedValue({ payload: { runtimeMode: 'verified-session', actor: { principalId: 'principal-operator', employeeId: 'employee-recipient' }, capabilities: { manage: true, publish: true, simulate: true } } })
   mocks.patchGovernanceDraft.mockImplementation(async (_revision: string, command: GovernanceCommandV2) => {
     const document = structuredClone(snapshot.document)
     if (command.type === 'UPSERT_ROLE_DELEGATION') document.draft.roleDelegations.push(command.value)

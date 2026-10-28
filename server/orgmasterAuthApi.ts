@@ -15,6 +15,7 @@ import {
   isLoopback,
   publicDevelopmentProfiles,
   resolveDevelopmentIdentity,
+  isDevelopmentAuthEnabled,
   type DevelopmentAuthProfile,
   type PublicDevelopmentAuthProfile,
 } from './orgmasterGovernanceIdentity'
@@ -329,6 +330,7 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
 
 export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = () => createOrgmasterAuthRuntime(), devEnabled = false, ssoDependencies: OrgmasterSsoHandoffDependencies = {}): Connect.NextHandleFunction {
   const runtime = runtimeFactory()
+  devEnabled = isDevelopmentAuthEnabled(devEnabled, ssoDependencies.environment ?? process.env) && runtime.ssoHandoffEnabled !== true
   const rateLimit = createRateLimiter()
   return (request, response, next) => {
     const pathname = new URL(request.url ?? '/', 'http://orgmaster.local').pathname

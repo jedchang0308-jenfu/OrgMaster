@@ -5,6 +5,20 @@ import { describe, expect, it, vi } from 'vitest'
 import { WorkspaceLauncher } from './WorkspaceLauncher'
 
 describe('WorkspaceLauncher', () => {
+  it('keeps denied module entries visible and prevents opening or dragging them', async () => {
+    const onOpenModule = vi.fn()
+    const host = document.createElement('div')
+    const root = createRoot(host)
+    await act(async () => root.render(<WorkspaceLauncher openPanels={[]} onOpenModule={onOpenModule} moduleAllowed={id => id !== 'governance'} />))
+    const governance = host.querySelector<HTMLButtonElement>('button[aria-label="角色治理"]')
+    expect(governance).not.toBeNull()
+    expect(governance!.disabled).toBe(true)
+    expect(governance!.draggable).toBe(false)
+    await act(async () => governance!.click())
+    expect(onOpenModule).not.toHaveBeenCalled()
+    await act(async () => root.unmount())
+    host.remove()
+  })
   it('renders a persistent navigation list with checkmarks for opened modules', async () => {
     const host = document.createElement('div')
     const root = createRoot(host)
