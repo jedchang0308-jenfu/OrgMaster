@@ -610,6 +610,7 @@ try {
     `, [proof.issuer, proof.subject])
     assert.equal(targetPairBefore.rows[0].count, 0, 'The Firebase target alias is not pre-linked')
     const before = await legacySnapshot(owner)
+    const requestId = randomUUID()
 
     try {
       await setWorkspaceEmployeeStatus(owner, workspace, row.employee_id, 'inactive')
@@ -625,7 +626,7 @@ try {
       `, [row.principal_id])
       assert.equal(companyGrants.rows[0].count, 0, 'Inactive Employee must not retain an active company grant projection')
 
-      const result = await enroll(runtime, randomUUID(), proof)
+      const result = await enroll(runtime, requestId, proof)
       assert.equal(result.principalKind, 'employee')
       assert.equal(result.principalId, row.principal_id)
       assert.equal(result.employeeId, row.employee_id)
