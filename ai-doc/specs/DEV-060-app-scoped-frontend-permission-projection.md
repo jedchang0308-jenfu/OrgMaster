@@ -250,4 +250,8 @@ Browser evidence 為 **LOCAL_SIMULATED**：既有 administrator／employee devel
 
 真實 SSO 後 `/api/auth/me` 已確認 Principal A、沒有 developmentProfile；SSO 模式的 profiles endpoint 404。AuthGate 先驗證真實 session，server 及下游 resolver 不再讓 dev cookie／headers 覆蓋真實 Principal，logout 使用正常撤銷路徑；純 local 角色模式保留。113 項相關測試與型別檢查通過。正常 workspace／permission projection 200，Platform 全域登出後 OrgMaster `/me` 及 projection 401。
 
-隔離 workspace fixture 曾缺合法 manifest entry 與預設層級，主控已使用 owner factory 修補，不改產品 guard 或角色。Principal 撤權整鏈、最新 exact-head CI／merge 與資源清理尚待主控完成；未宣稱整案或 production PASS。
+隔離 workspace fixture 曾缺合法 manifest entry 與預設層級，已使用 owner factory 修補，不改產品 guard 或角色。三視圖切換只有一次 projection request；既有 session 直接進入 App 與 Portal SSO 的 permission map 相同。錯誤 callback 400，原 Principal 不變；SSO 模式 dev profiles 404。兩個真實 service-identity／audience 負測均在 broker 回 401。
+
+使用者已明確決定 Principal 撤權案例待補：目前 Firebase A／B 不具有 managed-identity lifecycle 資料，現行 owner API 禁止直接停用 active admission；未用登出、app-grant withdrawal 或偽造 AAL2 代替。其餘本輪 P5 項目已完成；Cloud SQL IAM、Google Workspace 端登入及完整業務流程不在本次通過聲明內。
+
+本任務 Chrome、三個 App 與 PG15432 已按指紋停止，12000／12010／12020／15432 釋放；12 個尚待釋放的 runtime registry records 已核銷，capacity lease 釋放、session ended。資料／私密設定與 ignored 證據保留供後續，未入 Git。最新 required CI／merge 狀態以 PR #186 provider 為準，沒有 production 變更。
