@@ -45,27 +45,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
     mounted.current = true
     let active = true
     void (async () => {
-      if (import.meta.env.DEV) {
-        try {
-          const developmentMode = await getDevelopmentAuthMode()
-          if (!active) return
-          if (developmentMode) {
-            setState(developmentMode.session
-              ? {
-                  kind: 'authenticated',
-                  session: developmentMode.session,
-                  mode: null,
-                  employeeNumberManagementEnabled: developmentMode.employeeNumberManagementEnabled === true,
-                }
-              : { kind: 'development-login', mode: developmentMode })
-            return
-          }
-        } catch {
-          // Production runtimes intentionally do not expose development profiles.
-        }
-      }
       try {
         const session = await getCurrentSession()
+        if (!active) return
+        if (import.meta.env.DEV && session.developmentProfile) {
+          const developmentMode = await getDevelopmentAuthMode().catch(() => null)
+          if (active) setState({ kind: 'authenticated', session, mode: null, employeeNumberManagementEnabled: developmentMode?.employeeNumberManagementEnabled === true })
+          return
+        }
         // A resumed session needs the same server capability information as a new login.
         // If mode discovery fails, retain the verified session with new features disabled.
         const mode = await getAuthMode().catch(() => null)
@@ -73,6 +60,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
       } catch (error) {
         if (!active) return
         if (error instanceof AuthApiError && error.status === 401) {
+          if (import.meta.env.DEV) {
+            try {
+              // The server exposes this only in pure local role mode. An
+              // existing real SSO session never reaches this fallback.
+              const developmentMode = await getDevelopmentAuthMode()
+              if (!active) return
+              if (developmentMode) {
+                setState(developmentMode.session
+                  ? { kind: 'authenticated', session: developmentMode.session, mode: null, employeeNumberManagementEnabled: developmentMode.employeeNumberManagementEnabled === true }
+                  : { kind: 'development-login', mode: developmentMode })
+                return
+              }
+            } catch {
+              // SSO and production runtimes do not expose development profiles.
+            }
+          }
           try {
             const mode = await getAuthMode()
             if (active) setState({ kind: 'login', mode, message: error.code === 'auth_epoch_stale' ? '登入已失效，請重新登入。' : undefined })

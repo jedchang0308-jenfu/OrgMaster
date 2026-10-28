@@ -241,3 +241,13 @@ Browser evidence 為 **LOCAL_SIMULATED**：既有 administrator／employee devel
 - 工作樹出現未知且與本任務檔案重疊的修改，或 port owner 無法驗證。
 
 資料庫 migration、IAM／Secret、正式資料、production deployment、真實 non-production SSO activation、其他 App provider 及跨 App cache 均不在本任務。
+
+## 12. P5 續授權 checkpoint（2026-10-28）
+
+使用者已指示續做真實 non-production SSO 及三 repo protected merge，並完成 ADC 授權；前文 P5 deferred 是先前階段快照，現行整鏈狀態以 Platform DEV-021 §12 為準。沒有 production release／資料／IAM／Secret 授權。
+
+本輪修正 owner transform，限制 001–009 歷史 owner rebind 並保留 ACL recipients，010 之後只 unwrap；既有 001–010 package hashes 不變。46 項相關 source／runner tests 與 DB boundary 通過，獨立唯讀 cross-review 無阻擋。主控按原始來源順序在 task-owned 15432 cluster 修復 23 項受影響 Platform-role ACL（包含 REVOKE），未重播 migration 或改舊收據。
+
+真實 SSO 後 `/api/auth/me` 已確認 Principal A、沒有 developmentProfile；SSO 模式的 profiles endpoint 404。AuthGate 先驗證真實 session，server 及下游 resolver 不再讓 dev cookie／headers 覆蓋真實 Principal，logout 使用正常撤銷路徑；純 local 角色模式保留。113 項相關測試與型別檢查通過。正常 workspace／permission projection 200，Platform 全域登出後 OrgMaster `/me` 及 projection 401。
+
+隔離 workspace fixture 曾缺合法 manifest entry 與預設層級，主控已使用 owner factory 修補，不改產品 guard 或角色。Principal 撤權整鏈、最新 exact-head CI／merge 與資源清理尚待主控完成；未宣稱整案或 production PASS。

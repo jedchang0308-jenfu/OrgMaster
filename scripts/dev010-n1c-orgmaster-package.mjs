@@ -53,6 +53,66 @@ export function assertN1cOrgmasterTarget(environment, readback = null, config = 
   return { ...observed, status: 'PASS' }
 }
 
+function rebindHistoricalOwner(sql) {
+  const replacements = []
+  let statement = []
+  const is = (index, word) => statement[index]?.keyword === word
+  const finishStatement = () => {
+    let owner
+    if (is(0, 'SET')) {
+      const index = is(1, 'LOCAL') || is(1, 'SESSION') ? 2 : 1
+      if (is(index, 'ROLE')) owner = statement[index + 1]
+    } else if (is(0, 'CREATE') && is(1, 'SCHEMA')) {
+      const index = statement.findIndex(token => token.keyword === 'AUTHORIZATION')
+      if (index !== -1) owner = statement[index + 1]
+    } else if (is(0, 'ALTER')) {
+      if (is(1, 'DEFAULT') && is(2, 'PRIVILEGES') && is(3, 'FOR') && (is(4, 'ROLE') || is(4, 'USER'))) owner = statement[5]
+      else if (is(statement.length - 3, 'OWNER') && is(statement.length - 2, 'TO')) owner = statement.at(-1)
+    }
+    if (owner?.value === 'jenfu_platform_migrator') replacements.push(owner)
+    statement = []
+  }
+  // Read top-level SQL tokens only. Stored bodies, comments and quoted text are
+  // opaque, so a role mentioned inside them is never treated as an owner clause.
+  let cursor = 0
+  while (cursor < sql.length) {
+    if (sql.startsWith('--', cursor)) { const end = sql.indexOf('\n', cursor); cursor = end === -1 ? sql.length : end + 1; continue }
+    if (sql.startsWith('/*', cursor)) {
+      let depth = 1; cursor += 2
+      while (cursor < sql.length && depth) {
+        if (sql.startsWith('/*', cursor)) { depth++; cursor += 2 }
+        else if (sql.startsWith('*/', cursor)) { depth--; cursor += 2 }
+        else cursor++
+      }
+      continue
+    }
+    const delimiter = /^\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$/u.exec(sql.slice(cursor))?.[0]
+    if (delimiter) { const end = sql.indexOf(delimiter, cursor + delimiter.length); cursor = end === -1 ? sql.length : end + delimiter.length; continue }
+    const quote = sql[cursor]
+    if (quote === "'" || quote === '"') {
+      const start = cursor++
+      const escaped = quote === "'" && /(?:^|[^A-Za-z_0-9])E$/iu.test(sql.slice(Math.max(0, start - 2), start))
+      while (cursor < sql.length) {
+        if (escaped && sql[cursor] === '\\') { cursor += 2; continue }
+        if (sql[cursor++] !== quote) continue
+        if (sql[cursor] === quote) { cursor++; continue }
+        break
+      }
+      if (quote === '"') statement.push({ start, end: cursor, quoted: true, value: sql.slice(start + 1, cursor - 1).replaceAll('""', '"') })
+      continue
+    }
+    const word = /^[A-Za-z_][A-Za-z_0-9$]*/u.exec(sql.slice(cursor))?.[0]
+    if (word) { statement.push({ start: cursor, end: cursor + word.length, value: word.toLowerCase(), keyword: word.toUpperCase() }); cursor += word.length; continue }
+    if (sql[cursor] === ';') finishStatement()
+    cursor++
+  }
+  for (const token of replacements.reverse()) {
+    const role = token.quoted ? '"jenfu_orgmaster_migrator"' : 'jenfu_orgmaster_migrator'
+    sql = sql.slice(0, token.start) + role + sql.slice(token.end)
+  }
+  return sql
+}
+
 export function deriveOrgmasterMigration(relativePath, bytes) {
   const normalized = String(bytes).replace(/\r\n/gu, '\n')
   const beginCount = normalized.match(/^BEGIN;\s*$/gmu)?.length ?? 0
@@ -60,13 +120,15 @@ export function deriveOrgmasterMigration(relativePath, bytes) {
   const envelope = /^(?<leading>(?:(?:--[^\n]*)?\n)*)BEGIN;\s*\n(?<body>[\s\S]*?)\nCOMMIT;\s*$/u.exec(normalized)
   if (!envelope || beginCount !== 1 || commitCount !== 1) fail('DEV010_N1C_ORGMASTER_TRANSACTION_SHAPE_MISMATCH', relativePath)
   const body = `${envelope.groups?.leading ?? ''}${envelope.groups?.body ?? ''}\n`
-  let rebound = relativePath.includes('/010_') ? body : body.replaceAll('jenfu_platform_migrator', 'jenfu_orgmaster_migrator')
-  rebound = rebound
+  // 010 establishes neutral ownership. Later migrations already name their
+  // owner explicitly; their cross-project ACLs must remain source-identical.
+  const historical = /^00[1-9]_.+\.sql$/u.test(path.basename(relativePath))
+  let rebound = historical ? rebindHistoricalOwner(body) : body
+  if (historical) rebound = rebound
     .replace(/^CREATE EXTENSION IF NOT EXISTS pgcrypto;\s*$/gmu, '')
     .replace(/^CREATE SCHEMA IF NOT EXISTS (?:orgmaster|organization|access_governance) AUTHORIZATION jenfu_orgmaster_migrator;\s*$/gmu, '')
     .replace(/^ALTER SCHEMA (?:orgmaster|organization|access_governance) OWNER TO jenfu_orgmaster_migrator;\s*$/gmu, '')
   if (/^BEGIN;|\nCOMMIT;\s*$/u.test(rebound)) fail('DEV010_N1C_ORGMASTER_TRANSACTION_TRANSFORM_FAILED', relativePath)
-  if (!relativePath.includes('/010_') && rebound.includes('jenfu_platform_migrator')) fail('DEV010_N1C_ORGMASTER_OWNER_REBIND_FAILED', relativePath)
   return rebound
 }
 

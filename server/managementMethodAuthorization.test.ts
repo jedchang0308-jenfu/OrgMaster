@@ -1,8 +1,23 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { managementMethodPermissionCodes, actorFromRequest } from './managementMethodAuthorization'
 import { DEVELOPMENT_AUTH_PROFILES, DEV_ISSUER, DEV_SUBJECT, developmentPermissionForActor } from './orgmasterGovernanceIdentity'
+import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 
 describe('management method authorization mapping', () => {
+  it('cannot override a verified real Principal with stale development credentials in a downstream API', () => {
+    const request = { socket: { remoteAddress: '127.0.0.1' }, headers: { cookie: 'orgmaster_dev_profile=administrator', 'x-orgmaster-dev-issuer': DEV_ISSUER, 'x-orgmaster-dev-subject': DEV_SUBJECT } } as any
+    setVerifiedRequestIdentity(request, { id: 'real-session', principalId: 'principal-real', employeeId: 'employee-real', identityIssuer: 'https://securetoken.google.com/nonprod', identitySubject: 'uid-real', assuranceLevel: 'aal1', principalAuthEpoch: 1 } as any)
+    expect(actorFromRequest(request, true)).toMatchObject({ principalId: 'principal-real', employeeId: 'employee-real', bootstrap: false })
+  })
+  it.each(['cookie', 'headers'])('refuses a downstream dev bootstrap actor via %s in SSO mode', source => {
+    vi.stubEnv('ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'on')
+    try {
+      const request = { socket: { remoteAddress: '127.0.0.1' }, headers: source === 'cookie'
+        ? { cookie: 'orgmaster_dev_profile=administrator' }
+        : { 'x-orgmaster-dev-issuer': DEV_ISSUER, 'x-orgmaster-dev-subject': DEV_SUBJECT } } as any
+      expect(actorFromRequest(request, true)).toBeNull()
+    } finally { vi.unstubAllEnvs() }
+  })
   it('uses the six DEV-027 orgmaster permissions', () => {
     expect(Object.values(managementMethodPermissionCodes)).toEqual(expect.arrayContaining([
       'orgmaster.management_method.create',
