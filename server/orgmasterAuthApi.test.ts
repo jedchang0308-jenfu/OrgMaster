@@ -7,7 +7,7 @@ import type { OrgmasterSession } from './orgmasterSessionRepository'
 import { PrincipalAdmissionError } from './orgmasterPrincipalAdmissionRepository'
 
 const openServers: Array<ReturnType<typeof createServer>> = []
-afterEach(async () => { await Promise.all(openServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
+afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(openServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
 
 function configuredRuntime(overrides: Partial<OrgmasterAuthRuntime> = {}) {
   const config: OrgmasterAuthConfig = {
@@ -46,6 +46,46 @@ async function listen(runtime: OrgmasterAuthRuntime, businessRead: () => void = 
 }
 
 describe('OrgMaster auth middleware', () => {
+  it.each(['runtime', 'environment'] as const)('disables dev profiles, cookies and headers when SSO is enabled by %s', async authority => {
+    if (authority === 'environment') vi.stubEnv('ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'on')
+    const { runtime } = configuredRuntime({ ssoHandoffEnabled: authority === 'runtime' })
+    let reads = 0
+    const base = await listen(runtime, () => { reads++ }, true)
+    expect((await fetch(`${base}/api/auth/development/profiles`)).status).toBe(404)
+    const login = await fetch(`${base}/api/auth/development/session`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ profileId: 'administrator' }) })
+    expect(login.status).toBe(404)
+    expect(login.headers.get('set-cookie')).toBeNull()
+    for (const headers of [
+      { cookie: 'orgmaster_dev_profile=administrator' },
+      { 'x-orgmaster-dev-issuer': 'urn:orgmaster:dev', 'x-orgmaster-dev-subject': 'local-admin' },
+    ]) {
+      expect((await fetch(`${base}/api/auth/me`, { headers })).status).toBe(401)
+      expect((await fetch(`${base}/api/protected`, { headers })).status).toBe(401)
+    }
+    expect(reads).toBe(0)
+    expect(runtime.sessions!.create).not.toHaveBeenCalled()
+  })
+
+  it('keeps the real SSO Principal authoritative over stale dev cookies/headers and revokes its session on logout', async () => {
+    const { runtime, config, sessions } = configuredRuntime({ ssoHandoffEnabled: true })
+    sessions.set(hashSessionToken(config.sessionHashPepper, 'real-local-session'), {
+      id: 'real-session', identityIssuer: config.identityIssuer, identitySubject: 'uid-1', principalId: 'principal-1', employeeId: 'employee-1', authEpoch: 0,
+      sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 0, issuedAt: new Date().toISOString(), authenticatedAt: new Date().toISOString(), expiresAt: '2099-01-01T00:00:00Z', revokedAt: null, assuranceLevel: 'aal1',
+    })
+    const base = await listen(runtime, () => undefined, true)
+    config.publicBaseUrl = new URL(base)
+    const headers = { cookie: 'orgmaster_session=real-local-session; orgmaster_dev_profile=administrator', 'x-orgmaster-dev-issuer': 'urn:orgmaster:dev', 'x-orgmaster-dev-subject': 'local-admin' }
+    const response = await fetch(`${base}/api/auth/me`, { headers })
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body).toMatchObject({ user: { principalId: 'principal-1', employeeId: 'employee-1' } })
+    expect(body).not.toHaveProperty('developmentProfile')
+    expect(runtime.epochs!.readPrincipalState).toHaveBeenCalledWith('principal-1')
+    const logout = await fetch(`${base}/api/auth/logout`, { method: 'POST', headers: { ...headers, origin: base, 'content-type': 'application/json' }, body: '{}' })
+    expect(logout.status).toBe(200)
+    expect(runtime.sessions!.revokeByHash).toHaveBeenCalledExactlyOnceWith(hashSessionToken(config.sessionHashPepper, 'real-local-session'), 'local_logout')
+    expect((await fetch(`${base}/api/auth/me`, { headers })).status).toBe(401)
+  })
   it('returns only the verified session employee email, ignoring caller target IDs', async () => {
     const readSessionEmail = vi.fn(async () => 'jed@example.test')
     const { runtime, config, sessions } = configuredRuntime({ readSessionEmail })

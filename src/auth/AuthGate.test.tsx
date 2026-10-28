@@ -26,10 +26,12 @@ function SessionProbe() {
 let root: Root
 let container: HTMLDivElement
 beforeEach(() => {
+  vi.resetAllMocks()
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   window.history.replaceState({}, '', '/')
   api.getDevelopmentAuthMode.mockRejectedValue(new AuthApiError(404, 'auth_request_invalid'))
   api.getAuthMode.mockResolvedValue({ managedLoginEnabled: false })
+  api.getCurrentSession.mockRejectedValue(new AuthApiError(401, 'auth_session_invalid'))
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -41,6 +43,16 @@ afterEach(async () => {
 })
 
 describe('AuthGate', () => {
+  it('resumes a real local SSO Principal before an empty development role chooser can intercept it', async () => {
+    api.getCurrentSession.mockResolvedValue({ user: { principalId: 'principal-dev021-p5-a', employeeId: 'employee-a' }, session: { expiresAt: '2099-01-01T00:00:00Z' }, assuranceLevel: 'aal1', correlationId: 'real-local-session' })
+    api.getAuthMode.mockResolvedValue({ ssoHandoffEnabled: true, managedLoginEnabled: false })
+    api.getDevelopmentAuthMode.mockResolvedValue({ authMode: 'local_development', profiles: [], session: null })
+    await act(async () => root.render(<AuthGate><SessionProbe /></AuthGate>))
+    expect(container.textContent).toContain('員工 employee-a')
+    expect(container.textContent).not.toContain('選擇測試角色')
+    expect(api.getDevelopmentAuthMode).not.toHaveBeenCalled()
+    expect(api.loginDevelopmentProfile).not.toHaveBeenCalled()
+  })
   it('does not mount protected content before session verification completes', async () => {
     api.getCurrentSession.mockReturnValue(new Promise(() => undefined))
     await act(async () => root.render(<AuthGate><div>protected organization data</div></AuthGate>))

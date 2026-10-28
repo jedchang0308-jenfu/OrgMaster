@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http'
 import type { GovernanceActorContext } from '../src/governance/types'
+import { readVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 
 export const DEV_ISSUER = 'urn:orgmaster:dev'
 export const DEV_SUBJECT = 'local-admin'
@@ -92,13 +93,21 @@ export function isLoopback(request: IncomingMessage) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
 }
 
+export function isDevelopmentAuthEnabled(enabled: boolean, environment: NodeJS.ProcessEnv = process.env) {
+  // Selecting SSO disables local impersonation even if SSO configuration is
+  // incomplete. A development Vite server must not become a fallback admin.
+  return enabled && String(environment.ORGMASTER_JENFU_SSO_HANDOFF_MODE ?? 'off').trim() !== 'on'
+}
+
 export function resolveDevelopmentProfile(request: IncomingMessage, enabled: boolean) {
-  if (!enabled || !isLoopback(request)) return null
+  if (!isDevelopmentAuthEnabled(enabled) || !isLoopback(request)) return null
   return developmentProfileById(cookieValue(request.headers.cookie, DEVELOPMENT_PROFILE_COOKIE))
 }
 
 export function resolveDevelopmentIdentity(request: IncomingMessage, enabled: boolean): GovernanceActorContext | null {
-  if (!enabled || !isLoopback(request)) return null
+  if (!isDevelopmentAuthEnabled(enabled) || !isLoopback(request)) return null
+  const verified = readVerifiedRequestIdentity(request)
+  if (verified && verified.identityIssuer !== DEV_ISSUER) return null
   const profile = resolveDevelopmentProfile(request, enabled)
   if (profile) return { principalId: profile.principalId, issuer: DEV_ISSUER, subject: profile.subject, employeeId: profile.employeeId, bootstrap: profile.bootstrap }
   const issuer = request.headers['x-orgmaster-dev-issuer']

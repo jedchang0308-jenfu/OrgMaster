@@ -484,7 +484,7 @@ describe.skipIf(!adminUrl || !runtimeUrl || !consumerUrl)('DEV-057 management HT
           const after = await readGovernanceStore(process.cwd())
           expect(after.document.auditEvents.some(event => event.commandId === commandId)).toBe(false)
           if (withdrawal === 'governance-cas') {
-            expect((await call('GET', '/session')).body.capabilities.manage).toBe(false)
+            expect((await call('GET', '/session')).body.permissions['orgmaster.governance.manage']).toBe(false)
             expect((await call('PATCH', '/draft', { expectedRevision: after.revision, command: {
               type: 'UPSERT_ROLE_ASSIGNMENT', commandId: commandId + '-fresh', reason: 'missing role',
               value: { ...assignment, id: commandId + '-fresh' },

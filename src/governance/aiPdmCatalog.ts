@@ -40,7 +40,7 @@ export const GOVERNANCE_APPLICATIONS: GovernanceApplicationV1[] = [
   { id: 'ai-pdm', name: 'AI-PDM', status: 'active' },
   { id: 'financial-management-system', name: 'Financial Management System', status: 'active' },
 ]
-export const ORGMASTER_PERMISSIONS: GovernancePermissionV1[] = [
+export const ORGMASTER_PERMISSIONS = [
   { id: 'permission-orgmaster-governance-manage', applicationId: 'orgmaster', kind: 'system', code: 'orgmaster.governance.manage', name: '管理治理設定', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-governance-publish', applicationId: 'orgmaster', kind: 'system', code: 'orgmaster.governance.publish', name: '發布治理政策', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-governance-simulate', applicationId: 'orgmaster', kind: 'system', code: 'orgmaster.governance.simulate', name: '執行治理測試器', risk: 'normal', status: 'active' },
@@ -56,7 +56,7 @@ export const ORGMASTER_PERMISSIONS: GovernancePermissionV1[] = [
   { id: 'permission-orgmaster-management-method-edit-draft', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.management_method.edit_draft', name: '編輯管理辦法草稿', risk: 'normal', status: 'active' },
   { id: 'permission-orgmaster-management-method-manage-readable', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.management_method.manage_read_availability', name: '管理管理辦法閱讀狀態', risk: 'high', status: 'active' },
   { id: 'permission-orgmaster-management-method-manage-metadata', applicationId: 'orgmaster', kind: 'action', code: 'orgmaster.management_method.manage_metadata', name: '管理管理辦法 metadata', risk: 'normal', status: 'active' },
-]
+] as const satisfies readonly GovernancePermissionV1[]
 export const GOVERNANCE_ROLE_TEMPLATES: GovernanceApplicationRoleV1[] = [
   { id: 'role-orgmaster-admin', applicationId: 'orgmaster', code: 'orgmaster_admin', name: 'OrgMaster 管理者', status: 'active', systemDefined: true },
   { id: 'role-pdm-admin', applicationId: 'ai-pdm', code: 'pdm_admin', name: 'PDM 管理者範本', status: 'active', systemDefined: true },
