@@ -1,5 +1,15 @@
 # OrgMaster 開發任務
 
+<a id="dev-060-frontend-permission-projection"></a>
+
+## DEV-060：OrgMaster 應用內單一前端權限投影
+
+- 狀態：`RD Implementation Ready / Documents Complete / Implementation Not Started`；已完成 current-code scope inventory，固定為一份 global app projection，resource-specific capability 保持原 endpoint。
+- 來源：`JENFU/DEV-021`；本 repo 同時交付 1010／12010 local profile、既有 v2 SSO source 與 OrgMaster app-scoped provider／snapshot。真實 non-production IAM／browser activation 不在本 session。
+- 核心邊界：OrgMaster 繼續擁有 Principal／Employee／有效 role assignment／scope／期限／撤權；Position 與組織圖不自動等於權限，App capability 仍由各 App 擁有。
+- 唯一契約：[DEV-060 OrgMaster 前端權限投影契約](specs/DEV-060-app-scoped-frontend-permission-projection.md)。
+- 下一步：在契約指定的專用工作樹先提交文件、更新基線，再升級既有 governance session endpoint、建立 provider、改接 global consumers 並執行三畫面 projection 與 deterministic SSO tests；真實 activation 保持 `DEFERRED / NOT_RUN`。
+
 [來源 AI_PDM / CAPA-002](../../AI_PDM/.ai-doc/capa-register.md#capa-002)（2026-10-15 歷史紀錄：OPEN）：當時僅精簡 AGENTS 的歷史安裝與發布狀態，未執行產品修改或正式操作。2026-10-19 補記 OrgMaster 範圍：規範精簡已由 [PR #133](https://github.com/jedchang0308-jenfu/OrgMaster/pull/133) 合併；CA-3 沿 DEV-057／040 的本次正式發布、原始失敗、受控 rotation 與發布後驗證見[既有 owner 出口](#dev040-production-release-20261019)，收尾文件已由 [PR #144](https://github.com/jedchang0308-jenfu/OrgMaster/pull/144) 合併。PA 文件驗證與 CA-3 實際結果分開記錄；本段只補本專案追蹤，不更新其他專案或原案件狀態，不宣稱三專案 CAPA 整案結案，無新 native DEV；整案狀態仍以 AI_PDM owner 案件為準。
 
 <a id="dev-059-fms-principal-assignment"></a>
@@ -289,6 +299,8 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 - 文件成熟度：DEV-047為`RD Implementation Complete / Local QA-QC Passed / CAPA Closed / Production Release Gated`。2026-09-16 已完成 task-owned PostgreSQL 001～012 與 A17～A22、target／cleanup 安全及結果可信修復；Google Admin仍擁有外部帳號生命週期，OrgMaster零provider write。
 
 ## 總任務清單
+
+- ○ DEV-060 [P1] [RD Implementation Ready／Documents Complete] OrgMaster 地端 SSO 與應用內單一前端權限投影（狀態見 [DEV-060](#dev-060-frontend-permission-projection)）
 
 - ✅ DEV-059 [P1] [Development Complete / Production Not Run] FMS-specific typed Principal／effective assignment／protected grant／candidate catalog import producer（狀態見 [DEV-059](#dev-059-fms-principal-assignment)）
 

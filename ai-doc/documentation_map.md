@@ -1,6 +1,7 @@
 # OrgMaster 文件地圖
 
 [來源 AI_PDM / CAPA-002](../../AI_PDM/.ai-doc/capa-register.md#capa-002)：三專案發布阻塞與規則精簡的唯一案件，整案狀態由 AI_PDM owner 維護。OrgMaster 範圍的 CA-3 結果沿[既有 DEV-040／DEV-057 owner 出口](dev_task.md#dev040-production-release-20261019)追蹤；規範精簡 [PR #133](https://github.com/jedchang0308-jenfu/OrgMaster/pull/133) 與發布收尾 [PR #144](https://github.com/jedchang0308-jenfu/OrgMaster/pull/144) 已合併。歷史發布結果保留原始 owner 證據，PA 文件驗證與 CA-3 實際產品／發布結果分開記錄；本段不回寫其他專案，不將本專案 RELEASED 推論為跨專案 CAPA 整案結案。
+- 地端 SSO 與應用內單一前端權限投影：[ORGMASTER/DEV-060](dev_task.md#dev-060-frontend-permission-projection) → [RD Implementation Ready 唯一開發契約](specs/DEV-060-app-scoped-frontend-permission-projection.md)。契約已固定 1010／12010、既有 v2 source、global projection、resource capability 邊界與 403 後失效；真實 non-production IAM／browser activation 另案，產品實作仍未開始。
 - FMS-specific Principal／assignment／grant producer：[ORGMASTER/DEV-059](dev_task.md#dev-059-fms-principal-assignment)；跨專案來源與整鏈驗收由 JF-FMS/DEV-068 任務入口承接。
 
 ## DEV-040／DEV-057 PR134 正式發布收尾（2026-10-19）
