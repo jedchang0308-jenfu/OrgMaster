@@ -116,7 +116,7 @@ test('DEV-057 runner entry count matches the controlled production profile and r
   assert.equal(TARGET.entryCount, profile.migrations.entries.length)
   assert.equal(TARGET.entryCount, 40)
   assert.equal(profile.migrations.baselineCount, 10)
-  assert.deepEqual(TARGET.allowedExistingLedgerCounts, [31, 32, 33, 34, 35, 36, 37, 38, 39, 40])
+  assert.deepEqual(TARGET.allowedExistingLedgerCounts, [38, 39, 40])
   assert.deepEqual(profile.migrations.entries.slice(31).map((entry) => entry.version), ['dev058-orgmaster-034', 'dev058-orgmaster-035', 'dev058-orgmaster-036', 'dev058-orgmaster-037', 'dev059-orgmaster-038', 'dev065-orgmaster-039', 'dev065-orgmaster-040', 'dev057-orgmaster-041', 'dev057-orgmaster-042'])
   const input = fixture()
   assertMigrationBundle(input.bundle, { target: TARGET, sourceRevision: H40, bundleSha256: input.bundleSha256, bytes: input.bytes })
@@ -135,9 +135,9 @@ test('S1B-21 OrgMaster runner accepts only exact production target and refs', ()
   assert.equal(crc32cBase64(Buffer.from('123456789')), '4waSgw==')
 })
 
-test('OrgMaster runner applies the full DEV-058/059/057 suffix and resumes only verified 31-40 row prefixes', async () => {
+test('OrgMaster runner applies only the exact DEV-057 two-row append from verified 38-40 row prefixes', async () => {
   const input = fixture()
-  for (const count of [31, 32, 33, 34, 35, 36, 37, 38, 39, 40]) {
+  for (const count of [38, 39, 40]) {
     const ledger = ledgerFor(input.bundle, count)
     assert.deepEqual(planMigration(input.bundle, ledger).map((entry) => entry.version), input.bundle.entries.slice(count).map((entry) => entry.version))
     const statements = []
@@ -156,9 +156,9 @@ test('OrgMaster runner applies the full DEV-058/059/057 suffix and resumes only 
   assert.throws(() => planMigration(input.bundle, missing), /LEDGER_PREFIX_MISMATCH|BASELINE_INCOMPLETE/)
 })
 
-test('OrgMaster pre-write ledger guard rejects 030/010/029/041 and invalid prefix fields', async () => {
+test('OrgMaster pre-write ledger guard rejects pre-DEV-057 counts, row 41 and wrong prefixes before writes', async () => {
   const input = fixture()
-  for (const count of [30, 10, 29, 41]) {
+  for (const count of [10, 29, 30, 31, 32, 33, 34, 35, 36, 37, 41]) {
     const ledger = ledgerFor(input.bundle, Math.min(count, 40))
     if (count === 41) ledger.push({ version: 'unexpected-extra', name: 'unexpected', checksum_sha256: 'f'.repeat(64), source_revision: 'prior' })
     const statements = []
@@ -169,8 +169,8 @@ test('OrgMaster pre-write ledger guard rejects 030/010/029/041 and invalid prefi
   await assert.rejects(() => executeProductionMigration({ bundle: input.bundle, database: fakeDatabase([], missingStatements, { missingLedger: true }), target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true }), /MIGRATION_BASELINE_MISSING/)
   assert.equal(writesStarted(missingStatements), false)
   for (const field of ['version', 'name', 'checksum_sha256']) {
-    const corrupt = ledgerFor(input.bundle, 31)
-    corrupt[30][field] = field === 'checksum_sha256' ? 'f'.repeat(64) : `wrong-${field}`
+    const corrupt = ledgerFor(input.bundle, 38)
+    corrupt[37][field] = field === 'checksum_sha256' ? 'f'.repeat(64) : `wrong-${field}`
     const corruptStatements = []
     await assert.rejects(() => executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(corrupt, corruptStatements), target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true }), /MIGRATION_LEDGER_PREFIX_MISMATCH/)
     assert.equal(writesStarted(corruptStatements), false, `${field} drift must fail before append SQL or ledger insert`)
@@ -291,7 +291,7 @@ test('schema runner rejects bootstrap arguments before credential, network or da
 test('schema runner entrypoint migrates and publishes without reading or importing business data', async () => {
   const input = fixture()
   const requests = [], statements = []
-  const ledger = ledgerFor(input.bundle, 31)
+  const ledger = ledgerFor(input.bundle, 38)
   let published
   class Client {
     constructor(options) { this.options = options }
@@ -316,11 +316,11 @@ test('schema runner entrypoint migrates and publishes without reading or importi
   }
   const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`]
   const result = await runMain({ argv, environment, Client, fetchImpl })
-  assert.equal(result.applied, 9)
+  assert.equal(result.applied, 2)
   assert.equal(result.productionData, undefined)
   assert.equal(result.ledgerBootstrap, undefined)
   assert.equal(requests.some((url) => /production-data|bootstrap/u.test(url)), false)
-  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, 9)
+  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, 2)
   assert.equal(ledger.length, 40)
   const businessReads = statements.filter((sql) => {
     const statement = sql.trimStart()
