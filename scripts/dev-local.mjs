@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { createProcessGuard } from './dev-local-processes.mjs'
 
 export const DEFAULT_PORT = 1010
 const HEALTH_TIMEOUT_MS = 1_500
@@ -61,22 +62,25 @@ export function buildNpmInvocation({ execPath = process.execPath, npmCliPath, pr
       '--strictPort',
       '--configLoader', 'runner',
     ],
-    options: { cwd: projectRoot, shell: false, stdio: 'inherit', windowsHide: false },
+    options: { cwd: projectRoot, shell: false, stdio: 'inherit', windowsHide: true, detached: process.platform !== 'win32' },
   }
 }
 
-export function probeLoopbackPort(port) {
+export async function probeLoopbackPort(port) {
   const checkedPort = parsePort(port)
-  return new Promise((resolve, reject) => {
+  const probe = host => new Promise((resolve, reject) => {
     const server = net.createServer()
     server.once('error', (error) => {
       if (error.code === 'EADDRINUSE') resolve(false)
+      else if (host === '::1' && ['EAFNOSUPPORT', 'EADDRNOTAVAIL'].includes(error.code)) resolve(true)
       else reject(error)
     })
-    server.listen({ host: '127.0.0.1', port: checkedPort, exclusive: true }, () => {
+    server.listen({ host, port: checkedPort, exclusive: true, ipv6Only: host === '::1' }, () => {
       server.close((error) => error ? reject(error) : resolve(true))
     })
   })
+  const results = await Promise.all([probe('127.0.0.1'), probe('::1')])
+  return results.every(Boolean)
 }
 
 export async function checkLoopbackHealth(port, { timeoutMs = HEALTH_TIMEOUT_MS, fetchImpl = fetch } = {}) {
@@ -183,10 +187,11 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
-async function waitForStartup(port, hasExited) {
+async function waitForStartup(port, hasExited, refresh = async () => {}) {
   const deadline = Date.now() + STARTUP_TIMEOUT_MS
   while (Date.now() < deadline) {
     if (hasExited()) return { ok: false, reason: 'process_exited' }
+    await refresh()
     const result = await checkLoopbackHealth(port)
     if (result.ok) return result
     await wait(STARTUP_POLL_MS)
@@ -243,6 +248,7 @@ export async function run(args = process.argv.slice(2), dependencies = {}) {
     }
     const invocation = buildNpmInvocation({ npmCliPath, projectRoot, port: options.port })
     console.log(`Starting the existing Vite API-plugin server on 127.0.0.1:${options.port}...`)
+    const spawnedAt = Date.now()
     const child = (dependencies.spawn ?? spawn)(invocation.command, invocation.args, invocation.options)
     let exitResult
     const exitPromise = new Promise((resolve) => {
@@ -252,42 +258,65 @@ export async function run(args = process.argv.slice(2), dependencies = {}) {
       exitResult = result
       return result
     })
-    const forwardSignal = (signal) => {
-      if (child.exitCode === null) child.kill(signal)
+    const guard = (dependencies.createProcessGuard ?? createProcessGuard)({ child, port: options.port, probe: probeLoopbackPort, spawnedAt })
+    let cleanupPromise
+    const cleanup = () => cleanupPromise ??= (async () => {
+      const result = await guard.stop()
+      if (result.remaining.length || !result.portReleased || result.errors?.length) {
+        console.error(`Cleanup incomplete: remaining owned PIDs [${result.remaining.join(', ')}]; port ${options.port} ${result.portReleased ? 'released' : 'still occupied (unverified owners were not stopped)'}.${result.errors?.length ? ` ${result.errors.join(' ')}` : ''}`)
+        if (!result.portReleased) {
+          try {
+            const owners = await (dependencies.listPortOwners ?? listPortOwners)(options.port)
+            console.error(`Remaining listeners: ${owners.map(owner => `PID ${owner.pid} (${owner.name})`).join(', ') || 'PID unavailable'}.`)
+          } catch (error) { console.error(`Remaining listener PID lookup failed: ${error.message}`) }
+        }
+      } else console.log(`Stopped the owned process tree; port ${options.port} is released.`)
+      return result
+    })()
+    let stopRequested = false
+    let resolveStop
+    const stopPromise = new Promise(resolve => { resolveStop = resolve })
+    const forwardSignal = () => {
+      stopRequested = true
+      resolveStop({ code: 1 })
+      void cleanup().catch(error => console.error(error.message))
     }
-    const onInterrupt = () => forwardSignal('SIGINT')
-    const onTerminate = () => forwardSignal('SIGTERM')
-    process.on('SIGINT', onInterrupt)
-    process.on('SIGTERM', onTerminate)
+    const signals = dependencies.signals ?? process
+    signals.on('SIGINT', forwardSignal)
+    signals.on('SIGTERM', forwardSignal)
 
     try {
-      const ready = await waitForStartup(options.port, () => exitResult !== undefined)
+      await guard.captureRoot()
+      const ready = await Promise.race([
+        (dependencies.waitForStartup ?? waitForStartup)(options.port, () => stopRequested || exitResult !== undefined, guard.refresh),
+        stopPromise.then(() => ({ ok: false, reason: 'interrupted' })),
+      ])
       if (!ready.ok) {
-        console.error(`Local health check failed (${ready.reason}); stopping the child started by this launcher.`)
-        if (child.exitCode === null) child.kill('SIGINT')
-        await Promise.race([exitPromise, wait(2_000)])
+        console.error(`Local health check failed (${ready.reason}); stopping the owned process tree.`)
+        await cleanup()
         return 1
       }
       const started = await inspect({ port: options.port, projectRoot })
       if (started.state !== 'running') {
         console.error(`The listener became reachable but its worktree ownership could not be verified. ${formatStatus(started, projectRoot)}`)
-        if (child.exitCode === null) child.kill('SIGINT')
-        await Promise.race([exitPromise, wait(2_000)])
+        await cleanup()
         return 1
       }
       report = started
       console.log(`Local URL: http://localhost:${options.port}`)
       console.log(formatStatus(report, projectRoot))
-      if (!options.noBrowser) openBrowser(options.port)
-      const result = await exitPromise
+      if (!options.noBrowser && !stopRequested) openBrowser(options.port)
+      const result = await Promise.race([exitPromise, stopPromise])
+      const stopped = await cleanup()
       if (result.error) {
         console.error(result.error.message)
         return 1
       }
-      return result.code
+      return stopped.remaining.length || !stopped.portReleased || stopped.errors?.length ? 1 : result.code
     } finally {
-      process.off('SIGINT', onInterrupt)
-      process.off('SIGTERM', onTerminate)
+      signals.off('SIGINT', forwardSignal)
+      signals.off('SIGTERM', forwardSignal)
+      await cleanup()
     }
   }
 

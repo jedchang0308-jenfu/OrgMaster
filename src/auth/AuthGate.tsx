@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AuthApiError, getAuthMode, getCurrentSession, getDevelopmentAuthMode, loginDevelopmentProfile, logoutCurrentSession, type AuthMode, type AuthSessionView, type DevelopmentAuthMode, type DevelopmentAuthProfileView } from './authApiClient'
 
 export interface AuthSessionContextValue {
@@ -7,6 +7,7 @@ export interface AuthSessionContextValue {
   employeeNumberManagementEnabled: boolean
   phase: 'active' | 'processing' | 'failed'
   logout: () => Promise<void>
+  recoverSession: () => Promise<void>
 }
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null)
@@ -37,8 +38,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>({ kind: 'loading' })
   const [busy, setBusy] = useState(false)
   const [busyProfileId, setBusyProfileId] = useState<DevelopmentAuthProfileView['id'] | null>(null)
+  const recoveryFlight = useRef<Promise<void> | null>(null)
+  const mounted = useRef(false)
 
   useEffect(() => {
+    mounted.current = true
     let active = true
     void (async () => {
       if (import.meta.env.DEV) {
@@ -80,7 +84,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         setState(blockedState(error))
       }
     })()
-    return () => { active = false }
+    return () => { active = false; mounted.current = false }
   }, [])
 
   async function submitDevelopmentLogin(profileId: DevelopmentAuthProfileView['id']) {
@@ -99,7 +103,38 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
   }
 
+  function recoverFailedSession(previous: Extract<GateState, { session: AuthSessionView }>): Promise<void> {
+    if (recoveryFlight.current) return recoveryFlight.current
+    const flight = (async () => {
+      try {
+        const session = await getCurrentSession()
+        if (mounted.current) setState({ kind: 'authenticated', session, mode: previous.mode, employeeNumberManagementEnabled: previous.employeeNumberManagementEnabled })
+      } catch (error) {
+        if (!mounted.current) return
+        if (error instanceof AuthApiError && error.status === 401) {
+          try {
+            if (previous.session.developmentProfile) {
+              const mode = await getDevelopmentAuthMode()
+              if (mounted.current) setState({ kind: 'development-login', mode, message: '登入已失效，請重新登入。' })
+            } else {
+              const mode = await getAuthMode()
+              if (mounted.current) setState({ kind: 'login', mode, message: '登入已失效，請重新登入。' })
+            }
+          } catch (modeError) { if (mounted.current) setState(blockedState(modeError)) }
+        } else setState({ kind: 'logout-failed', session: previous.session, mode: previous.mode, employeeNumberManagementEnabled: previous.employeeNumberManagementEnabled })
+      }
+    })()
+    recoveryFlight.current = flight
+    void flight.finally(() => { if (recoveryFlight.current === flight) recoveryFlight.current = null })
+    return flight
+  }
+
+  async function recoverSession() {
+    if (state.kind === 'logout-failed') await recoverFailedSession(state)
+  }
+
   async function logout() {
+    if (recoveryFlight.current) return
     if (state.kind !== 'authenticated' && state.kind !== 'logout-failed') return
     const previous = state
     setState({ kind: 'logout-processing', session: previous.session, mode: previous.mode, employeeNumberManagementEnabled: previous.employeeNumberManagementEnabled })
@@ -114,6 +149,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       } else setState({ kind: 'logout-complete' })
     } catch {
       setState({ kind: 'logout-failed', session: previous.session, mode: previous.mode, employeeNumberManagementEnabled: previous.employeeNumberManagementEnabled })
+      await recoverFailedSession(previous)
     }
   }
 
@@ -124,6 +160,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       employeeNumberManagementEnabled: state.employeeNumberManagementEnabled === true || state.mode?.employeeNumberManagementEnabled === true,
       phase: state.kind === 'logout-processing' ? 'processing' : state.kind === 'logout-failed' ? 'failed' : 'active',
       logout,
+      recoverSession,
     }}>
       {children}
     </AuthSessionContext.Provider>

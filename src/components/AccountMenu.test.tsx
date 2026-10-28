@@ -19,7 +19,7 @@ async function click(text: string) { await act(async () => button(text).click())
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-  mocks.auth = { session: { user: { principalId: 'principal-1', employeeId: 'employee-1', email: 'jed@example.test' }, session: { expiresAt: '2099-01-01' }, assuranceLevel: 'aal1', correlationId: 'test-account' }, managedIdentityEnabled: true, employeeNumberManagementEnabled: true, phase: 'active', logout: vi.fn(async () => {}) }
+  mocks.auth = { session: { user: { principalId: 'principal-1', employeeId: 'employee-1', email: 'jed@example.test' }, session: { expiresAt: '2099-01-01' }, assuranceLevel: 'aal1', correlationId: 'test-account' }, managedIdentityEnabled: true, employeeNumberManagementEnabled: true, phase: 'active', logout: vi.fn(async () => {}), recoverSession: vi.fn(async () => {}) }
   mocks.check.mockReset().mockResolvedValue(false)
   blocked = false
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)

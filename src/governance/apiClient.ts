@@ -3,7 +3,7 @@ import type { PrivilegedAssignmentExpected, PrivilegedAssignmentRequest } from '
 import type { GovernanceDocumentViewV2 } from './governancePresentation'
 import type { EmployeeRecommendationRequest, EmployeeRecommendationResponse } from './employeeRecommendations'
 
-import { invalidateOrgMasterPermissions } from '../auth/permissionInvalidation'
+import { captureOrgMasterPermissionInvalidation } from '../auth/permissionInvalidation'
 import { isOrgMasterPermissionProjection } from '../auth/permissionContract'
 
 export const GOVERNANCE_API_PATH = '/api/orgmaster/governance'
@@ -97,14 +97,15 @@ export type PrivilegedAssignmentOperationResponse = {
 export class GovernanceApiError extends Error { constructor(public readonly code: string, public readonly status: number, public readonly issues?: unknown) { super(code) } }
 const headers = { 'Content-Type': 'application/json', 'X-OrgMaster-Dev-Issuer': 'urn:orgmaster:dev', 'X-OrgMaster-Dev-Subject': 'local-admin' }
 async function request<T>(path: string, init: RequestInit = {}) {
+  const invalidate = captureOrgMasterPermissionInvalidation()
   const response = await fetch(`${GOVERNANCE_API_PATH}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
-    if (response.status === 401) invalidateOrgMasterPermissions('unauthenticated')
-    else if (response.status === 403) invalidateOrgMasterPermissions('forbidden')
+    if (response.status === 401) invalidate('unauthenticated')
+    else if (response.status === 403) invalidate('forbidden')
     throw new GovernanceApiError(payload.code ?? payload.error ?? 'GOVERNANCE_REQUEST_FAILED', response.status, payload.issues)
   }
-  if (init.method === 'POST' && (path === '/versions' || path === '/active-version')) invalidateOrgMasterPermissions('permissions-changed')
+  if (init.method === 'POST' && (path === '/versions' || path === '/active-version')) invalidate('permissions-changed')
   return { payload: payload as T, revision: response.headers.get('X-OrgMaster-Governance-Revision') ?? '' }
 }
 export async function loadGovernance() { return request<GovernanceApiSnapshot>('/') }

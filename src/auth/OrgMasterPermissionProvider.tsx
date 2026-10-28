@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useAuthSession } from './AuthGate'
 import { GovernanceApiError, loadGovernanceSession } from '../governance/apiClient'
 import { type OrgMasterPermissionCode, type OrgMasterPermissionProjectionV1 } from './permissionContract'
@@ -9,7 +9,7 @@ type State = { kind: 'loading' } | { kind: 'ready'; projection: OrgMasterPermiss
 type ContextValue = { state: State; allows: (code: OrgMasterPermissionCode) => boolean; invalidate: (reason: PermissionInvalidationReason) => void; retry: () => void }
 const Context = createContext<ContextValue | null>(null)
 
-function SessionPermissionProvider({ principalId, active, children }: { principalId: string; active: boolean; children: ReactNode }) {
+function SessionPermissionProvider({ principalId, active, failed, recoverSession, children }: { principalId: string; active: boolean; failed: boolean; recoverSession: () => Promise<void>; children: ReactNode }) {
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [permissionChanged, setPermissionChanged] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -23,6 +23,9 @@ function SessionPermissionProvider({ principalId, active, children }: { principa
     if (reason === 'unauthenticated') setState({ kind: 'unauthenticated' })
     else { setState({ kind: 'loading' }); setAttempt(value => value + 1) }
   }, [])
+  // Establish the session fence before child passive effects dispatch requests.
+  // Projection retry does not replace this subscription; logout does.
+  useLayoutEffect(() => active ? subscribeOrgMasterPermissionInvalidation(invalidate) : undefined, [active, invalidate])
   useEffect(() => {
     mounted.current = true
     if (!active) {
@@ -52,16 +55,18 @@ function SessionPermissionProvider({ principalId, active, children }: { principa
         }
       })()
     }
-    const unsubscribe = subscribeOrgMasterPermissionInvalidation(invalidate)
     return () => {
-      mounted.current = false; unsubscribe()
+      mounted.current = false
       queueMicrotask(() => {
         if (!mounted.current) { generation.current++; controller.current?.abort(); flight.current = null }
       })
     }
   }, [principalId, active, attempt, invalidate])
-  const retry = useCallback(() => { setPermissionChanged(false); invalidate('permissions-changed') }, [invalidate])
-  const visibleState: State = active ? state : { kind: 'loading' }
+  const retry = useCallback(() => {
+    if (failed) { void recoverSession(); return }
+    setPermissionChanged(false); invalidate('permissions-changed')
+  }, [failed, recoverSession, invalidate])
+  const visibleState: State = active ? state : { kind: failed ? 'unavailable' : 'loading' }
   const value = useMemo(() => ({ state: visibleState, allows: (code: OrgMasterPermissionCode) => visibleState.kind === 'ready' && visibleState.projection.permissions[code] === true, invalidate, retry }), [visibleState, invalidate, retry])
   const feedback = visibleState.kind === 'unavailable'
     ? <>目前無法確認操作權限。<button type="button" onClick={retry}>重試權限</button></>
@@ -77,7 +82,7 @@ function SessionPermissionProvider({ principalId, active, children }: { principa
 export function OrgMasterPermissionProvider({ children }: { children: ReactNode }) {
   const auth = useAuthSession()
   if (!auth) throw new Error('OrgMasterPermissionProvider requires AuthGate')
-  return <SessionPermissionProvider key={auth.session.user.principalId} principalId={auth.session.user.principalId} active={auth.phase === 'active'}>{children}</SessionPermissionProvider>
+  return <SessionPermissionProvider key={auth.session.user.principalId} principalId={auth.session.user.principalId} active={auth.phase === 'active'} failed={auth.phase === 'failed'} recoverSession={auth.recoverSession}>{children}</SessionPermissionProvider>
 }
 export function useOrgMasterPermissions() {
   const value = useContext(Context)

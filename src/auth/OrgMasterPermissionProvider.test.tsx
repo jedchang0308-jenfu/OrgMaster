@@ -7,7 +7,7 @@ const identity = vi.hoisted(() => ({ principalId: 'principal-a', phase: 'active'
 vi.mock('./AuthGate', () => ({ useAuthSession: () => ({ phase: identity.phase, session: { user: { principalId: identity.principalId, employeeId: 'employee-a' } } }) }))
 import { OrgMasterPermissionProvider, useOrgMasterPermissions } from './OrgMasterPermissionProvider'
 import { invalidateOrgMasterPermissions, orgMasterPermissionFetch } from './permissionInvalidation'
-import { publishGovernancePolicy, setActiveGovernanceVersion } from '../governance/apiClient'
+import { patchGovernanceDraft, publishGovernancePolicy, setActiveGovernanceVersion } from '../governance/apiClient'
 
 const projection = (principalId = identity.principalId, allow = true) => ({
   contractVersion: 'orgmaster.frontend-permission-projection.v1', applicationId: 'orgmaster',
@@ -32,11 +32,41 @@ async function render(page = 'governance') {
   await act(async () => root.render(<StrictMode><OrgMasterPermissionProvider><Probe page={page} /><Probe page="action" /></OrgMasterPermissionProvider></StrictMode>))
 }
 describe('OrgMaster app permission shell', () => {
+  it.each(['resource-401', 'resource-403', 'governance-401', 'governance-403', 'publish', 'activation'])('ignores A late %s notification after B is ready', async operation => {
+    let finish!: (response: Response) => void
+    const fetcher = vi.fn((url: string) => url.endsWith('/session')
+      ? Promise.resolve(json(projection(identity.principalId)))
+      : new Promise<Response>(resolve => { finish = resolve }))
+    vi.stubGlobal('fetch', fetcher); await render()
+    const command = operation === 'publish' ? publishGovernancePolicy('r1', 'late-a', 'fixture', 'workspace-a')
+      : operation === 'activation' ? setActiveGovernanceVersion('r1', 'late-a', 'fixture', 'version-a')
+        : operation.startsWith('governance') ? patchGovernanceDraft('r1', { type: 'SET_PERMISSION_STATUS', commandId: 'late-a', reason: 'fixture', id: 'fixture', status: 'inactive' })
+          : orgMasterPermissionFetch('/api/orgmaster/employees/employee-a/identity', { method: 'POST' })
+    const handled = command.catch(() => undefined)
+    identity.principalId = 'principal-b'; await render()
+    await act(async () => { finish(json({}, operation.endsWith('401') ? 401 : operation.endsWith('403') ? 403 : 200)); await handled })
+    expect(container.querySelector('button[data-state]')?.getAttribute('data-state')).toBe('ready')
+    expect(container.querySelector<HTMLButtonElement>('button[data-state]')?.disabled).toBe(false)
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/session'))).toHaveLength(2)
+    expect(fetcher.mock.calls.filter(([url]) => !url.endsWith('/session'))).toHaveLength(1)
+  })
   it('fetches once across concurrent consumers, StrictMode, and three module switches', async () => {
     const fetcher = vi.fn(async () => json(projection())); vi.stubGlobal('fetch', fetcher)
     await render(); await render('employees'); await render('management-methods')
     expect(fetcher).toHaveBeenCalledTimes(1)
     expect(container.querySelectorAll('button:disabled')).toHaveLength(0)
+  })
+  it('ignores an old request after logout recovery for the same Principal', async () => {
+    let finish!: (response: Response) => void
+    const fetcher = vi.fn((url: string) => url.endsWith('/session')
+      ? Promise.resolve(json(projection())) : new Promise<Response>(resolve => { finish = resolve }))
+    vi.stubGlobal('fetch', fetcher); await render()
+    const pending = orgMasterPermissionFetch('/api/orgmaster/employees/employee-a/identity')
+    identity.phase = 'processing'; await render()
+    identity.phase = 'active'; await render()
+    await act(async () => { finish(json({}, 401)); await pending })
+    expect(container.querySelector('[data-state]')?.getAttribute('data-state')).toBe('ready')
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/session'))).toHaveLength(2)
   })
   it.each([401, 503])('keeps HTTP %i distinct from a normal denied projection', async status => {
     vi.stubGlobal('fetch', vi.fn(async () => json({}, status))); await render()
