@@ -78,7 +78,7 @@ assert.deepEqual(profile.migrations.entries[28],{order:29,version:'dev057-orgmas
 const employeeNumberPath='db/migrations/030_dev057_employee_number_command_receipt.sql';
 const employeeNumberBytes=fs.readFileSync(employeeNumberPath);
 const employeeNumberSql=employeeNumberBytes.toString('utf8').replace(/\r\n/gu,'\n');
-const employeeNumberEntry=profile.migrations.entries.at(-1);
+const employeeNumberEntry=profile.migrations.entries.find(({version})=>version==='dev057-orgmaster-030');
 assert.deepEqual(employeeNumberEntry,{order:30,version:'dev057-orgmaster-030',path:employeeNumberPath,
   sourceSha256:sourceSha256(employeeNumberBytes),appliedSha256:sourceSha256(unwrapMigrationTransaction(employeeNumberBytes))});
 assert.match(employeeNumberSql,/CREATE FUNCTION orgmaster_core\.assign_employee_number_v2\(p_command_id text, p_employee_id text, p_employee_number text, p_actor text, p_expected_workspace_revision text DEFAULT NULL, p_expected_registry_revision text DEFAULT NULL, p_now timestamptz DEFAULT NULL\)/u);

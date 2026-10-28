@@ -20,12 +20,13 @@ let runtime
 let cleanup = null
 let firstFailure = null
 let migrationSha256 = null
+let migration043Sha256 = null
 let migrationCounts = null
 const currentBaselineMigrations = []
 let legacyBaseline = null
 let governorRuntime = null
 let sourceInputs = null
-const expectedChecks = 18
+const expectedChecks = 21
 
 function registerRuntime() {
   if (!governorSession) return
@@ -162,6 +163,71 @@ async function seedLegacyReservation(client, input) {
   }
 }
 
+async function activeWorkspaceArtifactForEmployee(client, employeeId) {
+  const result = await client.query(`
+    SELECT workspace.batch_id::text AS batch_id, workspace.artifact_key, workspace.payload
+    FROM orgmaster_core.persistence_authority authority
+    JOIN orgmaster_core.persistence_batches batch
+      ON batch.id=authority.active_batch_id AND batch.status='active'
+    JOIN orgmaster_core.persistence_artifacts governance
+      ON governance.batch_id=batch.id
+     AND governance.artifact_key='orgmaster-governance.v2.json'
+     AND governance.artifact_kind='governance'
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE WHEN jsonb_typeof(governance.payload->'publishedVersions')='array'
+        THEN governance.payload->'publishedVersions' ELSE '[]'::jsonb END
+    ) version(value)
+    JOIN orgmaster_core.persistence_artifacts workspace
+      ON workspace.batch_id=batch.id
+     AND workspace.artifact_kind='workspace-version'
+     AND workspace.artifact_key='orgmaster-versions/'||
+       (version.value#>>'{organizationSnapshot,workspaceVersionId}')||'.json'
+     AND (trim(workspace.source_sha256)=version.value#>>'{organizationSnapshot,workspaceRevision}'
+       OR trim(workspace.canonical_sha256)=version.value#>>'{organizationSnapshot,workspaceRevision}')
+    WHERE authority.singleton=true
+      AND version.value->>'id'=governance.payload->>'activePolicyVersionId'
+      AND EXISTS(
+        SELECT 1 FROM jsonb_array_elements(
+          CASE WHEN jsonb_typeof(workspace.payload#>'{state,employees}')='array'
+            THEN workspace.payload#>'{state,employees}' ELSE '[]'::jsonb END
+        ) employee(value)
+        WHERE employee.value->>'id'=$1 AND employee.value->>'status'='active'
+      )
+    FETCH FIRST 1 ROW ONLY
+  `, [employeeId])
+  assert.equal(result.rowCount, 1, 'Expected the active synthetic workspace artifact for the admitted Employee')
+  return result.rows[0]
+}
+
+async function setWorkspaceEmployeeStatus(client, artifact, employeeId, status) {
+  const result = await client.query(`
+    UPDATE orgmaster_core.persistence_artifacts workspace
+    SET payload=jsonb_set(workspace.payload,'{state,employees}',(
+      SELECT COALESCE(jsonb_agg(
+        CASE WHEN employee.value->>'id'=$3
+          THEN jsonb_set(employee.value,'{status}',to_jsonb($4::text),true)
+          ELSE employee.value END
+      ),'[]'::jsonb)
+      FROM jsonb_array_elements(workspace.payload#>'{state,employees}') employee(value)
+    ),true)
+    WHERE workspace.batch_id=$1::uuid AND workspace.artifact_key=$2
+      AND EXISTS(
+        SELECT 1 FROM jsonb_array_elements(workspace.payload#>'{state,employees}') employee(value)
+        WHERE employee.value->>'id'=$3
+      )
+    RETURNING 1
+  `, [artifact.batch_id, artifact.artifact_key, employeeId, status])
+  assert.equal(result.rowCount, 1, 'Expected one isolated synthetic workspace artifact update')
+}
+
+async function seedVerifiedEmployeeGooglePair(client, input) {
+  await client.query(`
+    INSERT INTO orgmaster_core.principal_subjects_v2
+      (principal_issuer,principal_subject,principal_id,principal_kind,employee_id,first_seen_at,source_revision)
+    VALUES ('https://accounts.google.com',$1,$2,'employee',$3,clock_timestamp(),'dev057-existing-google-pair-fixture')
+  `, [input.googleSubject, input.principalId, input.employeeId])
+}
+
 async function seedManagedIdentityWithLegacyPair(client) {
   const id = randomUUID()
   const principalId = 'principal-managed:' + id
@@ -231,7 +297,7 @@ function fixtureMigrationCounts(fixture) {
 try {
   sourceInputs = { orgmaster: root, platform: platformRoot }
   handle = await startDisposablePostgres({
-    purpose: 'DEV-057 ProJED Principal publication migration 041 isolated PostgreSQL regression',
+    purpose: 'DEV-057 ProJED Principal publication migrations 041 and 043 isolated PostgreSQL regression',
   })
   registerRuntime()
   await check('fixture-rejects-wrong-project-root', async () => {
@@ -290,6 +356,21 @@ try {
     assert.equal(permission.rows[0].db_session_user, runtimeLogin)
   })
   if (!migrationOk) throw Object.assign(new Error('Migration 041 baseline check failed'), { code: 'DEV057_MIGRATION_BASELINE_INVALID' })
+
+  const migration043Path = path.join(root, 'db/migrations/043_dev057_projed_employee_private_admission.sql')
+  const migration043 = fs.readFileSync(migration043Path)
+  migration043Sha256 = createHash('sha256').update(migration043).digest('hex')
+  const migration043Ok = await check('043-forward-view-and-publisher-preserve-employee-v1-contract', async () => {
+    assert.ok(fs.lstatSync(migration043Path).isFile() && !fs.lstatSync(migration043Path).isSymbolicLink())
+    assert.equal(fs.realpathSync(migration043Path), migration043Path)
+    await owner.query(migration043.toString('utf8'))
+    assertLegacyUnchanged(legacyBaseline, await legacySnapshot(owner))
+    const view = await owner.query(`
+      SELECT count(*)::int AS count FROM orgmaster_contract.v_projed_principal_admissions_v1 WHERE false
+    `)
+    assert.equal(view.rows[0].count, 0)
+  })
+  if (!migration043Ok) throw Object.assign(new Error('Migration 043 candidate did not preserve existing contracts'), { code: 'DEV057_MIGRATION_043_INVALID' })
 
   runtime = await connectOrgmasterRuntime()
   await check('publisher-uses-actual-session-user-and-existing-purpose-binding', async () => {
@@ -448,9 +529,11 @@ try {
     assert.equal(admission.rows[0].count, 0)
     assertLegacyUnchanged(before, await legacySnapshot(owner))
   })
-  await check('active-employee-principal-can-enroll-without-changing-v1-facts', async () => {
+
+  await check('inactive-employee-with-existing-google-pair-can-first-publish-projed', async () => {
     const mapping = await owner.query(`
-      SELECT mapping.principal_issuer, mapping.principal_subject, mapping.principal_id, mapping.employee_id
+      SELECT mapping.principal_issuer, mapping.principal_subject, mapping.principal_id,
+        mapping.employee_id, pair.principal_kind
       FROM orgmaster_contract.v_active_principal_mappings_v1 mapping
       JOIN orgmaster_core.principal_subjects_v2 pair
         ON pair.principal_issuer=mapping.principal_issuer
@@ -458,6 +541,171 @@ try {
        AND pair.principal_id=mapping.principal_id
        AND pair.principal_kind='employee'
       WHERE mapping.employee_status='active' AND mapping.employee_id IS NOT NULL
+        AND NOT EXISTS(
+          SELECT 1 FROM orgmaster_core.projed_principal_admissions admission
+          WHERE admission.principal_id=mapping.principal_id
+        )
+      ORDER BY mapping.principal_issuer, mapping.principal_subject, mapping.principal_id
+      FETCH FIRST 1 ROW ONLY
+    `)
+    assert.equal(mapping.rowCount, 1, 'Expected an existing Employee Principal with no prior ProJED admission')
+    const row = mapping.rows[0]
+    const googleSubject = 'dev057-preexisting-google-proof-' + randomUUID()
+    const targetSubject = 'dev057-target-firebase-' + randomUUID()
+    const proof = {
+      issuer: row.principal_issuer,
+      subject: targetSubject,
+      googleSubject,
+      authenticatedAt: new Date(Date.now() - 60_000).toISOString(),
+    }
+    const workspace = await activeWorkspaceArtifactForEmployee(owner, row.employee_id)
+    const ownerBefore = await owner.query(`
+      SELECT principal_id, principal_kind, employee_id
+      FROM orgmaster_core.principal_owners_v2 WHERE principal_id=$1
+    `, [row.principal_id])
+    assert.deepEqual(ownerBefore.rows, [{
+      principal_id: row.principal_id,
+      principal_kind: 'employee',
+      employee_id: row.employee_id,
+    }])
+    await seedVerifiedEmployeeGooglePair(owner, {
+      principalId: row.principal_id,
+      employeeId: row.employee_id,
+      googleSubject,
+    })
+    const verifiedPair = await owner.query(`
+      SELECT principal_id, principal_kind, employee_id
+      FROM orgmaster_core.principal_subjects_v2
+      WHERE principal_issuer=$1 AND principal_subject=$2
+    `, [googleIssuer, googleSubject])
+    assert.deepEqual(verifiedPair.rows, [{
+      principal_id: row.principal_id,
+      principal_kind: 'employee',
+      employee_id: row.employee_id,
+    }])
+    const admissionBefore = await owner.query(
+      'SELECT count(*)::int AS count FROM orgmaster_core.projed_principal_admissions WHERE principal_id=$1',
+      [row.principal_id],
+    )
+    const receiptsBefore = await owner.query(
+      'SELECT count(*)::int AS count FROM orgmaster_core.projed_principal_publication_receipts WHERE principal_id=$1',
+      [row.principal_id],
+    )
+    assert.equal(admissionBefore.rows[0].count, 0)
+    assert.equal(receiptsBefore.rows[0].count, 0, 'First ProJED publication must not depend on a prior receipt')
+    const targetPairBefore = await owner.query(`
+      SELECT count(*)::int AS count FROM orgmaster_core.principal_subjects_v2
+      WHERE principal_issuer=$1 AND principal_subject=$2
+    `, [proof.issuer, proof.subject])
+    assert.equal(targetPairBefore.rows[0].count, 0, 'The Firebase target alias is not pre-linked')
+    const before = await legacySnapshot(owner)
+
+    try {
+      await setWorkspaceEmployeeStatus(owner, workspace, row.employee_id, 'inactive')
+      const employeeMappings = await owner.query(`
+        SELECT count(*)::int AS count FROM orgmaster_contract.v_active_principal_mappings_v1
+        WHERE principal_id=$1 AND employee_status='active'
+      `, [row.principal_id])
+      assert.equal(employeeMappings.rows[0].count, 0, 'Company Employee mapping must be inactive')
+      const companyGrants = await owner.query(`
+        SELECT count(*)::int AS count
+        FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4
+        WHERE principal_id=$1
+      `, [row.principal_id])
+      assert.equal(companyGrants.rows[0].count, 0, 'Inactive Employee must not retain an active company grant projection')
+
+      const result = await enroll(runtime, randomUUID(), proof)
+      assert.equal(result.principalKind, 'employee')
+      assert.equal(result.principalId, row.principal_id)
+      assert.equal(result.employeeId, row.employee_id)
+      assert.equal(result.identityIssuer, row.principal_issuer)
+      assert.equal(result.identitySubject, targetSubject)
+      assert.equal(result.googleSubject, googleSubject)
+
+      const newPair = await owner.query(`
+        SELECT principal_id, principal_kind, employee_id
+        FROM orgmaster_core.principal_subjects_v2
+        WHERE principal_issuer=$1 AND principal_subject=$2
+      `, [proof.issuer, targetSubject])
+      assert.deepEqual(newPair.rows, [{
+        principal_id: row.principal_id,
+        principal_kind: 'employee',
+        employee_id: row.employee_id,
+      }], 'Typed publisher may add the verified target Firebase alias only to the existing Employee Principal')
+      const ownerAfter = await owner.query(`
+        SELECT principal_id, principal_kind, employee_id
+        FROM orgmaster_core.principal_owners_v2 WHERE principal_id=$1
+      `, [row.principal_id])
+      assert.deepEqual(ownerAfter.rows, ownerBefore.rows, 'No Employee ownership or Employee ID change is allowed')
+      const published = await owner.query(`
+        SELECT principal_id, principal_kind, employee_id, principal_issuer, principal_subject
+        FROM orgmaster_contract.v_projed_principal_admissions_v1
+        WHERE principal_issuer=$1 AND principal_subject=$2
+      `, [proof.issuer, proof.subject])
+      assert.deepEqual(published.rows, [{
+        principal_id: row.principal_id,
+        principal_kind: 'employee',
+        employee_id: row.employee_id,
+        principal_issuer: proof.issuer,
+        principal_subject: targetSubject,
+      }])
+      const receipt = await owner.query(`
+        SELECT request_id, principal_id, request_fingerprint->>'issuer' AS issuer,
+          request_fingerprint->>'subject' AS subject,
+          request_fingerprint->>'googleSubject' AS google_subject
+        FROM orgmaster_core.projed_principal_publication_receipts WHERE request_id=$1
+      `, [requestId])
+      assert.deepEqual(receipt.rows, [{
+        request_id: requestId,
+        principal_id: row.principal_id,
+        issuer: proof.issuer,
+        subject: proof.subject,
+        google_subject: proof.googleSubject,
+      }], 'The transaction records the exact current proof; it does not require a prior ProJED receipt')
+      const unpublishedAliases = await owner.query(`
+        SELECT count(*)::int AS count
+        FROM orgmaster_contract.v_projed_principal_admissions_v1 admission
+        WHERE admission.principal_id=$1
+          AND NOT EXISTS(
+            SELECT 1 FROM orgmaster_core.projed_principal_publication_receipts receipt
+            WHERE receipt.principal_id=admission.principal_id
+              AND receipt.request_fingerprint->>'issuer'=admission.principal_issuer
+              AND receipt.request_fingerprint->>'subject'=admission.principal_subject
+              AND receipt.request_fingerprint->>'googleSubject'=admission.google_subject
+          )
+      `, [row.principal_id])
+      assert.equal(unpublishedAliases.rows[0].count, 0, 'Unpublished historical aliases must not become ProJED admissions')
+      const rawGoogleAlias = await owner.query(`
+        SELECT count(*)::int AS count FROM orgmaster_contract.v_projed_principal_admissions_v1
+        WHERE principal_issuer=$1 AND principal_subject=$2
+      `, [googleIssuer, googleSubject])
+      assert.equal(rawGoogleAlias.rows[0].count, 0, 'Google provider ownership pair is not a Firebase login alias')
+    } finally {
+      await owner.query(
+        'UPDATE orgmaster_core.persistence_artifacts SET payload=$3::jsonb WHERE batch_id=$1::uuid AND artifact_key=$2',
+        [workspace.batch_id, workspace.artifact_key, JSON.stringify(workspace.payload)],
+      )
+    }
+    assertLegacyUnchanged(before, await legacySnapshot(owner))
+  })
+
+  await check('active-employee-principal-can-enroll-without-changing-v1-facts', async () => {
+    const mapping = await owner.query(`
+      SELECT mapping.principal_issuer, mapping.principal_subject, mapping.principal_id, mapping.employee_id,
+        admission.google_subject
+      FROM orgmaster_contract.v_active_principal_mappings_v1 mapping
+      JOIN orgmaster_core.principal_subjects_v2 pair
+        ON pair.principal_issuer=mapping.principal_issuer
+       AND pair.principal_subject=mapping.principal_subject
+       AND pair.principal_id=mapping.principal_id
+       AND pair.principal_kind='employee'
+      LEFT JOIN orgmaster_core.projed_principal_admissions admission
+        ON admission.principal_id=mapping.principal_id AND admission.status='active'
+      WHERE mapping.employee_status='active' AND mapping.employee_id IS NOT NULL
+        AND NOT EXISTS(
+          SELECT 1 FROM orgmaster_core.projed_principal_admissions inactive
+          WHERE inactive.principal_id=mapping.principal_id AND inactive.status<>'active'
+        )
       ORDER BY mapping.principal_issuer, mapping.principal_subject, mapping.principal_id
       FETCH FIRST 1 ROW ONLY
     `)
@@ -467,7 +715,7 @@ try {
     const proof = {
       issuer: row.principal_issuer,
       subject: row.principal_subject,
-      googleSubject: 'dev057-active-employee-google-' + randomUUID(),
+      googleSubject: row.google_subject ?? 'dev057-active-employee-google-' + randomUUID(),
       authenticatedAt: new Date(Date.now() - 60_000).toISOString(),
     }
     const result = await enroll(runtime, randomUUID(), proof)
@@ -492,6 +740,91 @@ try {
       WHERE principal_issuer=$1 AND principal_subject=$2
     `, [googleIssuer, proof.googleSubject])
     assert.equal(rawGoogleAdmission.rows[0].count, 0, 'Google alias is reserved for ownership, not an active login mapping')
+    assertLegacyUnchanged(before, await legacySnapshot(owner))
+  })
+
+  await check('previously-admitted-employee-keeps-private-admission-after-employee-inactive', async () => {
+    const mapped = await owner.query(`
+      SELECT mapping.principal_issuer, mapping.principal_subject, mapping.principal_id,
+        mapping.employee_id, pair.principal_kind, admission.google_subject
+      FROM orgmaster_contract.v_active_principal_mappings_v1 mapping
+      JOIN orgmaster_core.principal_subjects_v2 pair
+        ON pair.principal_issuer=mapping.principal_issuer
+       AND pair.principal_subject=mapping.principal_subject
+       AND pair.principal_id=mapping.principal_id
+       AND pair.principal_kind='employee'
+      JOIN orgmaster_core.projed_principal_admissions admission
+        ON admission.principal_id=mapping.principal_id AND admission.status='active'
+      WHERE mapping.employee_status='active' AND mapping.employee_id IS NOT NULL
+        AND EXISTS(
+          SELECT 1 FROM orgmaster_core.projed_principal_publication_receipts receipt
+          WHERE receipt.principal_id=mapping.principal_id
+            AND receipt.request_fingerprint->>'issuer'=mapping.principal_issuer
+            AND receipt.request_fingerprint->>'subject'=mapping.principal_subject
+            AND receipt.request_fingerprint->>'googleSubject'=admission.google_subject
+        )
+      ORDER BY mapping.principal_issuer, mapping.principal_subject, mapping.principal_id
+      FETCH FIRST 1 ROW ONLY
+    `)
+    assert.equal(mapped.rowCount, 1, 'Expected a previously admitted active Employee pair from the preceding publication check')
+    const row = mapped.rows[0]
+    const workspace = await activeWorkspaceArtifactForEmployee(owner, row.employee_id)
+    const before = await legacySnapshot(owner)
+    const proof = {
+      issuer: row.principal_issuer,
+      subject: row.principal_subject,
+      googleSubject: row.google_subject,
+      authenticatedAt: new Date(Date.now() - 60_000).toISOString(),
+    }
+    try {
+      await setWorkspaceEmployeeStatus(owner, workspace, row.employee_id, 'inactive')
+      const employeeMapping = await owner.query(`
+        SELECT count(*)::int AS count FROM orgmaster_contract.v_active_principal_mappings_v1
+        WHERE principal_issuer=$1 AND principal_subject=$2 AND principal_id=$3 AND employee_status='active'
+      `, [row.principal_issuer, row.principal_subject, row.principal_id])
+      assert.equal(employeeMapping.rows[0].count, 0, 'Company Employee mapping must be inactive')
+      const companyGrants = await owner.query(`
+        SELECT count(*)::int AS count
+        FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v4
+        WHERE principal_id=$1
+      `, [row.principal_id])
+      assert.equal(companyGrants.rows[0].count, 0, 'Inactive Employee must not retain an active company grant projection')
+
+      const result = await enroll(runtime, randomUUID(), proof)
+      assert.equal(result.principalKind, 'employee')
+      assert.equal(result.principalId, row.principal_id)
+      assert.equal(result.employeeId, row.employee_id)
+      assert.equal(result.identityIssuer, row.principal_issuer)
+      assert.equal(result.identitySubject, row.principal_subject)
+      assert.equal(result.googleSubject, row.google_subject)
+
+      const admission = await owner.query(`
+        SELECT principal_id, google_subject, status
+        FROM orgmaster_core.projed_principal_admissions WHERE principal_id=$1
+      `, [row.principal_id])
+      assert.deepEqual(admission.rows, [{
+        principal_id: row.principal_id,
+        google_subject: row.google_subject,
+        status: 'active',
+      }])
+      const published = await owner.query(`
+        SELECT principal_id, principal_kind, employee_id, principal_issuer, principal_subject
+        FROM orgmaster_contract.v_projed_principal_admissions_v1
+        WHERE principal_issuer=$1 AND principal_subject=$2
+      `, [row.principal_issuer, row.principal_subject])
+      assert.deepEqual(published.rows, [{
+        principal_id: row.principal_id,
+        principal_kind: 'employee',
+        employee_id: row.employee_id,
+        principal_issuer: row.principal_issuer,
+        principal_subject: row.principal_subject,
+      }])
+    } finally {
+      await owner.query(
+        'UPDATE orgmaster_core.persistence_artifacts SET payload=$3::jsonb WHERE batch_id=$1::uuid AND artifact_key=$2',
+        [workspace.batch_id, workspace.artifact_key, JSON.stringify(workspace.payload)],
+      )
+    }
     assertLegacyUnchanged(before, await legacySnapshot(owner))
   })
 
@@ -585,6 +918,23 @@ try {
     `, [first.principalId])
     assert.equal(inactive.rowCount, 1)
     assert.equal(inactive.rows[0].status, 'inactive')
+    await expectSqlMessage(
+      () => enroll(runtime, randomUUID(), proof),
+      'PROJED_PRINCIPAL_INACTIVE',
+    )
+    const stillDisabled = await owner.query(`
+      SELECT status, mapping_revision::text FROM orgmaster_core.projed_principal_admissions
+      WHERE principal_id=$1
+    `, [first.principalId])
+    assert.deepEqual(stillDisabled.rows, [{
+      status: 'inactive',
+      mapping_revision: inactive.rows[0].mapping_revision,
+    }], 'Publisher must not reactivate a disabled ProJED admission')
+    const receiptCount = await owner.query(`
+      SELECT count(*)::int AS count FROM orgmaster_core.projed_principal_publication_receipts
+      WHERE principal_id=$1
+    `, [first.principalId])
+    assert.equal(receiptCount.rows[0].count, 1, 'Rejected disabled admission must not add a publication receipt')
     const reactivated = await owner.query(`
       UPDATE orgmaster_core.projed_principal_admissions
       SET status='active' WHERE principal_id=$1
@@ -692,7 +1042,7 @@ try {
     status,
     scope: 'LOCAL_SYNTHETIC_PG_ONLY; Google/Firebase token verification and HTTP session flow are not exercised',
     production: false,
-    source: { migration041Sha256: migrationSha256, fixtureInputs: sourceInputs },
+    source: { migration041Sha256: migrationSha256, migration043Sha256, fixtureInputs: sourceInputs },
     fixture: migrationCounts,
     currentBaselineMigrations,
     checks,

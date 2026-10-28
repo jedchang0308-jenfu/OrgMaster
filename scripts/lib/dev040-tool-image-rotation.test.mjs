@@ -484,7 +484,7 @@ test('allows only the exact DEV-058 and DEV-059 profile appends plus existing re
   }
 })
 
-test('accepts the exact DEV-057 ProJED profile append from 38 to 40 and rejects drift', () => {
+test('accepts the exact DEV-057 ProJED profile append from 38 to 41 and rejects drift', () => {
   const transition = assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.appendSourceRevision, sourceFixture.projedAppendSourceRevision)
   assert.equal(transition.disposition, DEV057_PROJED_RELEASE_MODE)
@@ -497,8 +497,8 @@ test('accepts the exact DEV-057 ProJED profile append from 38 to 40 and rejects 
     profile => { profile.migrations.entries[39].appliedSha256 = 'f'.repeat(64) }, 'drift ProJED 042 applied hash')
   const prefixDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
     profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }, 'drift ProJED inherited prefix')
-  const unexpectedThirdMigration = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
-    profile => { profile.migrations.entries.push({ order: 41, version: 'dev057-orgmaster-043', path: 'db/migrations/043_unapproved.sql', sourceSha256: 'a'.repeat(64), appliedSha256: 'b'.repeat(64) }) },
+  const unexpectedFourthMigration = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries.push({ order: 42, version: 'dev057-orgmaster-044', path: 'db/migrations/044_unapproved.sql', sourceSha256: 'a'.repeat(64), appliedSha256: 'b'.repeat(64) }) },
     'append unexpected ProJED migration')
   const runtimeDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
     profile => { profile.runtime.timeoutSeconds += 1 }, 'drift ProJED runtime profile')
@@ -506,7 +506,7 @@ test('accepts the exact DEV-057 ProJED profile append from 38 to 40 and rejects 
     file => fs.appendFileSync(file, '\n# ProJED non-recipe infrastructure drift fixture\n'), 'drift ProJED non-recipe infrastructure')
 
   for (const revision of [firstMigrationHashDrift, secondMigrationHashDrift, prefixDrift,
-    unexpectedThirdMigration, runtimeDrift, nonRecipeDrift]) {
+    unexpectedFourthMigration, runtimeDrift, nonRecipeDrift]) {
     assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
       sourceFixture.appendSourceRevision, revision), 'SOURCE_INPUT_DRIFT')
   }

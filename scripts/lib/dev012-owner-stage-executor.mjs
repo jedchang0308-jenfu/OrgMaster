@@ -10,7 +10,7 @@ import { buildDev014ConsumerConformance } from './dev014-consumer-conformance.mj
 import { assertDev014PrincipalLifecycleContainment } from './dev014-principal-lifecycle-release.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_RELEASE_MODE, assertDev058RolePolicyAuthority } from './dev058-role-policy-migration.mjs'
 import { DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityReleaseAuthority } from './dev059-fms-authority-migration.mjs'
-import { DEV057_PROJED_MIGRATION_ENTRY_COUNT, DEV057_PROJED_RELEASE_MODE, assertDev057ProjedReleaseAuthority } from './dev057-projed-principal-migration.mjs'
+import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_MIGRATION_ENTRY_COUNT, DEV057_PROJED_RELEASE_MODE, assertDev057ProjedReleaseAuthority } from './dev057-projed-principal-migration.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 export { candidateTagUriMatches } from './dev012-owner-release-runtime.mjs'
 
@@ -419,7 +419,7 @@ export function assertMigrationReceipt(value, profile, intent, { historical = fa
       if (forwardPlan?.replayOnly === true && (!lifecycleV2Remediation || forwardPlan.pendingMigrationCount !== 0)) fail('MIGRATION_RECEIPT_INVALID')
       if (forwardPlan?.replayOnly === true && (value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev','jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
-      const maximumAppliedCount = projedPrincipalAppend ? 2 : fmsAuthorityAppend ? forwardPlan.pendingMigrationCount : rolePolicyAppend ? DEV058_MIGRATION_ENTRIES.length : lifecycleV2Remediation && forwardPlan?.replayOnly === true ? 0 : lifecycleV2Remediation || employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
+      const maximumAppliedCount = projedPrincipalAppend ? DEV057_PROJED_MIGRATIONS.length : fmsAuthorityAppend ? forwardPlan.pendingMigrationCount : rolePolicyAppend ? DEV058_MIGRATION_ENTRIES.length : lifecycleV2Remediation && forwardPlan?.replayOnly === true ? 0 : lifecycleV2Remediation || employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
       if (rolePolicyAppend && (forwardPlan.pendingMigrationCount !== DEV058_MIGRATION_ENTRIES.length
         || value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev', 'jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
@@ -427,7 +427,7 @@ export function assertMigrationReceipt(value, profile, intent, { historical = fa
         || forwardPlan.pendingMigrationCount > DEV059_MIGRATION_ENTRY_COUNT - 31
         || value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev', 'jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
-      if (projedPrincipalAppend && (forwardPlan.pendingMigrationCount !== 2
+      if (projedPrincipalAppend && (forwardPlan.pendingMigrationCount !== DEV057_PROJED_MIGRATIONS.length
         || value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev', 'jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied

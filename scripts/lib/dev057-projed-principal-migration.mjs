@@ -16,10 +16,17 @@ export const DEV057_PROJED_MIGRATIONS = Object.freeze([
     sourceSha256: '2d098555162ef1cdbbc86126df4974171754b959ed4611877f99105f4e42597f',
     appliedSha256: '4f2b0e7b005f319175dae1b7d624f8da378e0d8c27b851296efeb61ac6265963',
   }),
+  Object.freeze({
+    order: 41,
+    version: 'dev057-orgmaster-043',
+    path: 'db/migrations/043_dev057_projed_employee_private_admission.sql',
+    sourceSha256: '2e5db34d47a81b2a4e3bd9465373e4fcf29d8148af183e6bb8a7e4cbe6276ad6',
+    appliedSha256: '7fad572cd77370c5e7b230bcef9b9319c1f3d287226eed57cb61c7d37842b7af',
+  }),
 ])
 
 export const DEV057_PROJED_RELEASE_MODE = 'DEV057_PROJED_PRINCIPAL_APPEND'
-export const DEV057_PROJED_MIGRATION_ENTRY_COUNT = 40
+export const DEV057_PROJED_MIGRATION_ENTRY_COUNT = 38 + DEV057_PROJED_MIGRATIONS.length
 export const DEV057_PROJED_REMEDIATION = Object.freeze({
   kind: 'PROJED_PRINCIPAL_PUBLICATION',
   migrationEntries: DEV057_PROJED_MIGRATIONS,
@@ -42,7 +49,7 @@ export function assertDev057ProjedMigrationEntries(entries) {
     fail('DEV057_PROJED_MIGRATION_APPEND_INVALID')
   }
 
-  const expectedNames = ['dev057_projed_principal_publication', 'dev057_projed_principal_state_reader']
+  const expectedNames = ['dev057_projed_principal_publication', 'dev057_projed_principal_state_reader', 'dev057_projed_employee_private_admission']
   if (entries.slice(38).some((entry, index) => Object.hasOwn(entry ?? {}, 'sqlBase64')
     && entry.name !== expectedNames[index])) fail('DEV057_PROJED_MIGRATION_NAME_INVALID')
   return entries
@@ -60,7 +67,7 @@ export function assertDev057ProjedAppend(before, after) {
 
   return {
     migrationDisposition: 'FORWARD_APPLY',
-    pendingMigrationCount: 2,
+    pendingMigrationCount: DEV057_PROJED_MIGRATIONS.length,
     migrationInputsSha256: sha256(canonicalize(migrationInputs(after))),
   }
 }

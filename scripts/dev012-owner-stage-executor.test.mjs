@@ -704,10 +704,10 @@ test('DEV-059 FMS authority append requires the 36-row native receipt and planne
   }
 })
 
-test('DEV-057 ProJED principal append requires exact 40-row native receipt and two pending migrations', () => {
+test('DEV-057 ProJED principal append requires exact 41-row native receipt and three pending migrations', () => {
   const profile = { application: { id: 'orgmaster' } }
   const intent = { sourceRevision: H40, migrationManifestSha256: 'b'.repeat(64) }
-  const forwardPlan = { releaseMode: DEV057_PROJED_RELEASE_MODE, pendingMigrationCount: 2 }
+  const forwardPlan = { releaseMode: DEV057_PROJED_RELEASE_MODE, pendingMigrationCount: 3 }
   const core = {
     schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: H40,
     manifestSha256: intent.migrationManifestSha256, status: 'PASS', boundaryStatus: 'PASS',
@@ -717,13 +717,13 @@ test('DEV-057 ProJED principal append requires exact 40-row native receipt and t
   }
   const receipt = value => ({ ...value, receiptSha256: sha256(canonicalize(value)) })
   const check = (value, plan = forwardPlan) => assertMigrationReceipt(receipt(value), profile, intent, { allowForward: true, forwardPlan: plan })
-  for (let applied = 0; applied <= 2; applied += 1) {
+  for (let applied = 0; applied <= 3; applied += 1) {
     assert.doesNotThrow(() => check({ ...core, applied, replayed: DEV057_PROJED_MIGRATION_ENTRY_COUNT - applied }))
   }
   for (const changed of [
-    { ledgerCount: 39 },
-    { ledgerCount: 41 },
-    { applied: 3, replayed: DEV057_PROJED_MIGRATION_ENTRY_COUNT - 3 },
+    { ledgerCount: 40 },
+    { ledgerCount: 42 },
+    { applied: 4, replayed: DEV057_PROJED_MIGRATION_ENTRY_COUNT - 4 },
     { ownerApplicationId: 'platform' },
     { database: 'jenfu_dev' },
     { manifestSha256: 'f'.repeat(64) },
@@ -731,7 +731,7 @@ test('DEV-057 ProJED principal append requires exact 40-row native receipt and t
     { crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }] },
     { crossDatabaseDenials: [{ database: 'jenfu_dev', denied: false }, { database: 'jenfu_stg', denied: true }] },
   ]) assert.throws(() => check({ ...core, ...changed }), /MIGRATION_RECEIPT_INVALID/u)
-  for (const pendingMigrationCount of [1, 3]) {
+  for (const pendingMigrationCount of [1, 2, 4]) {
     assert.throws(() => check(core, { ...forwardPlan, pendingMigrationCount }), /MIGRATION_RECEIPT_INVALID/u)
   }
 
@@ -768,7 +768,7 @@ test('DEV-057 ProJED fresh prepare binds exact recipe and migrate requires live 
     input.verifyRoutineRelease = async ({ intent: currentIntent }) => ({
       baselineIntentRef: currentIntent.baselineIntentRef,
       baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) },
-      migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 2,
+      migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 3,
       releaseMode: DEV057_PROJED_RELEASE_MODE,
       controlledTransition: { releaseMode: DEV057_PROJED_RELEASE_MODE },
       toolImageRotation: {
@@ -793,7 +793,7 @@ test('DEV-057 ProJED fresh prepare binds exact recipe and migrate requires live 
       schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: accepted.h.profile.application.id,
       sourceRevision: deployment.sourceRevision, database: 'jenfu_prod', ledger: 'orgmaster_core.schema_migrations',
       manifestSha256: accepted.h.migrationManifestSha256, baselineCount: 10, minimumLedgerCount: 10,
-      ledgerCount: DEV057_PROJED_MIGRATION_ENTRY_COUNT, applied: 2, replayed: DEV057_PROJED_MIGRATION_ENTRY_COUNT - 2,
+      ledgerCount: DEV057_PROJED_MIGRATION_ENTRY_COUNT, applied: 3, replayed: DEV057_PROJED_MIGRATION_ENTRY_COUNT - 3,
       crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
       boundaryStatus: 'PASS', status: 'PASS',
     }

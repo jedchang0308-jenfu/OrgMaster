@@ -53,7 +53,7 @@ const authorization = {
 
 test('DEV-057 ProJED suffix matches exact source and applied migration bytes', () => {
   assert.equal(DEV057_PROJED_RELEASE_MODE, 'DEV057_PROJED_PRINCIPAL_APPEND')
-  assert.equal(DEV057_PROJED_MIGRATION_ENTRY_COUNT, 40)
+  assert.equal(DEV057_PROJED_MIGRATION_ENTRY_COUNT, 41)
   assert.equal(before.entries.length, 38)
   assert.equal(after.entries.length, DEV057_PROJED_MIGRATION_ENTRY_COUNT)
   assert.equal(sourceBundle.baselineCount, 10)
@@ -68,23 +68,25 @@ test('DEV-057 ProJED suffix matches exact source and applied migration bytes', (
 
 test('migration entries reject hash changes, altered prefixes, unknown suffixes, and partial release sets', () => {
   for (const field of ['sourceSha256', 'appliedSha256']) {
-    const changedHash = structuredClone(after.entries)
-    changedHash[38][field] = '0'.repeat(64)
-    assert.throws(() => assertDev057ProjedMigrationEntries(changedHash))
+    for (const index of [38, 39, 40]) {
+      const changedHash = structuredClone(after.entries)
+      changedHash[index][field] = '0'.repeat(64)
+      assert.throws(() => assertDev057ProjedMigrationEntries(changedHash))
+    }
   }
 
   const changedPrefix = structuredClone(after.entries)
   changedPrefix[12].appliedSha256 = '0'.repeat(64)
   assert.throws(() => assertDev057ProjedMigrationEntries(changedPrefix))
 
-  assert.throws(() => assertDev057ProjedMigrationEntries(after.entries.slice(0, 39)))
-  assert.throws(() => assertDev057ProjedMigrationEntries([...after.entries, { order: 41, version: 'unknown', path: 'unknown.sql' }]))
+  for (const count of [38, 39, 40]) assert.throws(() => assertDev057ProjedMigrationEntries(after.entries.slice(0, count)))
+  assert.throws(() => assertDev057ProjedMigrationEntries([...after.entries, { order: 42, version: 'unknown', path: 'unknown.sql' }]))
 })
 
-test('append accepts only the unchanged 38-row baseline to exact 40-row suffix', () => {
+test('append accepts only the unchanged 38-row baseline to exact 41-row suffix', () => {
   const result = assertDev057ProjedAppend(before, after)
   assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
-  assert.equal(result.pendingMigrationCount, 2)
+  assert.equal(result.pendingMigrationCount, 3)
   assert.match(result.migrationInputsSha256, /^[0-9a-f]{64}$/u)
 
   const partialBefore = { ...before, entries: [...before.entries, after.entries[38]] }
