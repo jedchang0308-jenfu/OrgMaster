@@ -169,33 +169,44 @@ async function activeWorkspaceArtifactForEmployee(client, employeeId) {
     FROM orgmaster_core.persistence_authority authority
     JOIN orgmaster_core.persistence_batches batch
       ON batch.id=authority.active_batch_id AND batch.status='active'
-    JOIN orgmaster_core.persistence_artifacts governance
-      ON governance.batch_id=batch.id
-     AND governance.artifact_key='orgmaster-governance.v2.json'
-     AND governance.artifact_kind='governance'
-    CROSS JOIN LATERAL jsonb_array_elements(
-      CASE WHEN jsonb_typeof(governance.payload->'publishedVersions')='array'
-        THEN governance.payload->'publishedVersions' ELSE '[]'::jsonb END
-    ) version(value)
+    JOIN orgmaster_core.persistence_artifacts manifest
+      ON manifest.batch_id=batch.id
+     AND manifest.artifact_key='orgmaster-workspace.v1.json'
+     AND manifest.artifact_kind='workspace-manifest'
     JOIN orgmaster_core.persistence_artifacts workspace
       ON workspace.batch_id=batch.id
      AND workspace.artifact_kind='workspace-version'
      AND workspace.artifact_key='orgmaster-versions/'||
-       (version.value#>>'{organizationSnapshot,workspaceVersionId}')||'.json'
-     AND (trim(workspace.source_sha256)=version.value#>>'{organizationSnapshot,workspaceRevision}'
-       OR trim(workspace.canonical_sha256)=version.value#>>'{organizationSnapshot,workspaceRevision}')
+       (manifest.payload->>'currentVersionId')||'.json'
+     AND workspace.payload->>'kind'='document'
+     AND trim(workspace.canonical_sha256) ~ '^[a-f0-9]{64}$'
+    JOIN orgmaster_core.v_current_workspace_employees_v1 current_employee
+      ON current_employee.workspace_version_id=manifest.payload->>'currentVersionId'
+     AND current_employee.workspace_revision=trim(workspace.canonical_sha256)
+     AND current_employee.employee_id=$1
+     AND current_employee.employee_status='active'
     WHERE authority.singleton=true
-      AND version.value->>'id'=governance.payload->>'activePolicyVersionId'
       AND EXISTS(
-        SELECT 1 FROM jsonb_array_elements(
-          CASE WHEN jsonb_typeof(workspace.payload#>'{state,employees}')='array'
-            THEN workspace.payload#>'{state,employees}' ELSE '[]'::jsonb END
-        ) employee(value)
-        WHERE employee.value->>'id'=$1 AND employee.value->>'status'='active'
+        SELECT 1
+        FROM orgmaster_core.persistence_artifacts governance
+        CROSS JOIN LATERAL jsonb_array_elements(
+          CASE WHEN jsonb_typeof(governance.payload->'publishedVersions')='array'
+            THEN governance.payload->'publishedVersions' ELSE '[]'::jsonb END
+        ) version(value)
+        WHERE governance.batch_id=batch.id
+          AND governance.artifact_key='orgmaster-governance.v3.json'
+          AND governance.artifact_kind='governance'
+          AND version.value->>'id'=governance.payload->>'activePolicyVersionId'
+          AND version.value->>'kind'='assignment-governance-v3'
+          AND version.value#>>'{organizationSnapshot,workspaceVersionId}'=manifest.payload->>'currentVersionId'
+          AND version.value#>>'{organizationSnapshot,workspaceRevision}' ~ '^[a-f0-9]{64}$'
       )
-    FETCH FIRST 1 ROW ONLY
+      AND EXISTS(
+        SELECT 1 FROM orgmaster_contract.v_active_principal_mappings_v1 mapping
+        WHERE mapping.employee_id=$1 AND mapping.employee_status='active'
+      )
   `, [employeeId])
-  assert.equal(result.rowCount, 1, 'Expected the active synthetic workspace artifact for the admitted Employee')
+  assert.equal(result.rowCount, 1, 'Expected exactly one active canonical workspace snapshot for the mapped Employee')
   return result.rows[0]
 }
 
