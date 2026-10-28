@@ -1,7 +1,7 @@
 # DEV-060：OrgMaster 地端 SSO 與應用內單一前端權限投影
 
-- 文件成熟度：RD Implementation Ready。
-- 執行狀態：Documents Complete / Implementation Not Started。
+- 文件成熟度：Implemented Source Checkpoint；原契約驗收範圍保持不變。
+- 執行狀態：Source Implemented / Deterministic Self-check Passed / Local Acceptance BLOCKED；尚未完成 DEV-060。
 - Native task：ORGMASTER/DEV-060#frontend-permission-projection。
 - 跨專案主控：JENFU/DEV-021。
 - 建立日期：2026-10-28（Asia/Taipei）。
@@ -21,7 +21,7 @@
 
 ## 2. Current-code inventory 與合併判定
 
-已查證：
+實作前基線已查證：
 
 - src/auth/AuthGate.tsx 已在持久 shell 取得目前 session，並區分 local development profile、Platform SSO 與 unavailable。
 - src/components/GovernanceCenter.tsx 每次載入／refresh 會同時呼叫 loadGovernance() 與 loadGovernanceSession()；/api/orgmaster/governance/session 回傳 governance manage／publish／simulate 等 global capabilities。
@@ -71,6 +71,7 @@ type OrgMasterPermissionProjectionV1 = {
   generatedAt: string
   governanceRevision: string
   permissions: Record<OrgMasterPermissionCode, boolean>
+  management: { crossAppOverride: boolean }
 }
 ~~~
 
@@ -81,6 +82,7 @@ type OrgMasterPermissionProjectionV1 = {
 - 無 session 為 401；verified session 但 permission false 仍回 200 projection；governance／identity authority 無法取得為 503，不回 all false。
 - Response Cache-Control: no-store；第一切片只在 React provider 記憶體保存。
 - 現有 GovernanceSession 的 manage／publish／simulate consumer 改讀 typed permission code，不保留第二套 boolean alias。
+- 實作盤點補正：既有財務初始授權入口使用的 crossAppOverride 仍由 hasCrossAppOverride server guard 計算，以 management.crossAppOverride 回傳；它是 OrgMaster 自己的治理能力，不包含外部 App 的 capability。actor 的 employeeId 沿既有 AuthGate session 取得。
 
 ## 5. 前端 provider contract
 
@@ -128,9 +130,13 @@ OrgMaster runtime 只使用 disposable／task-owned data；不得把 production 
 | server/orgmasterGovernanceApi.ts | 將既有 /session 回應升級為 typed app projection；沿現行 actor／published permission evaluator |
 | src/governance/apiClient.ts | 定義 v1 contract、runtime shape validation 與錯誤分類 |
 | src/auth/OrgMasterPermissionProvider.tsx | provider、selector、dedupe、invalidation、late-response guard |
+| src/auth/permissionContract.ts、permissionInvalidation.ts | canonical typed contract、runtime validation、同 App 記憶體內失效通知 |
+| src/governance/aiPdmCatalog.ts | 保留 canonical permission code literal type，server／UI 共用 |
 | src/App.tsx | 在 authenticated shell 掛載唯一 provider |
 | src/components/GovernanceCenter.tsx | 移除 direct loadGovernanceSession；改讀 provider，publish／403 後 invalidation |
 | 導覽／module entry 的實際 consumer | 只改接 global permission；resource-specific capability 保持原資料流 |
+| src/accountEnrollment/apiClient.ts、src/managedIdentity/apiClient.ts、src/managementMethods/apiClient.ts | 401／403 通知 provider 失效，保留原 resource response 與命令語意 |
+| vite.config.ts | 使用 worktree 自有 .codex-tmp/vite cache，local runner 採 runner config loader |
 | server/orgmasterGovernanceApi.test.ts | projection allow／deny、401／503、development actor、無 Position 自動授權 |
 | src/auth/OrgMasterPermissionProvider.test.tsx | dedupe、principal switch、retry、unmount、late response |
 | server/orgmasterSsoHandoff.test.ts、src/auth/AuthGate.test.tsx | 1010／12010 callback、SSO login、logout／account switch 與錯誤語意 |
@@ -168,16 +174,44 @@ OrgMaster runtime 只使用 disposable／task-owned data；不得把 production 
 
 ## 10. RD 驗證與證據
 
-本文件建立回合未執行測試；實作回合至少執行：
+2026-10-28 RD 自查紀錄。工作樹 `C:\VIBE CODING\.worktrees\OrgMaster\dev060-app-permission-provider-20261028`、branch `codex/dev060-app-permission-provider`；基線 `6c8cca6428419549ed44f8fe3dcb78c18ac28e0b`。主控同步確認 `origin/master=4e6744adc28f99590e629f1b35ad62a69fe7cb26` 已為祖先、behind 0，同步未改變本任務 dirty 內容。
+
+已實作 versioned projection、唯一 authenticated-shell provider、GovernanceCenter／治理及管理辦法入口共用 selector、publish／active-version 後單次失效，以及 resource API 401／403 的失效通知。`management.crossAppOverride` 沿原 server guard 保留，employeeId 由 AuthGate 取得。資源 capability、server 當下授權與既有 v2 SSO handler 均維持原責任；未新增產品 fake login。
+
+| 檢查 | 實際結果與限制 |
+|---|---|
+| 全 app suite `npm test -- --testTimeout=30000` | 188 files PASS、2 skipped；1090 tests PASS、5 skipped。此證據早於最後 notice／launcher／cache 修正；受影響部分另跑下列 focused checks，未把跳過案例列為 PASS。 |
+| 恢復後 focused contract／provider／治理 UI unit tests | 10 files、110 tests PASS；含 AuthGate、SSO、projection、provider、治理及 client。`--configLoader runner`，30s test timeout。 |
+| 補足的 SSO negatives／server projection／module entry | 3 files、56 tests PASS；涵蓋錯誤 state／audience／service proof、account conflict、Position／department／任職不自動授權，以及 denied module 不可點擊或拖曳。與上一列有重疊，不相加。 |
+| `npm run test:dev-004:auth` | 5 files、35 tests PASS；證據可重用，後續未改 AuthGate 或 auth handler。 |
+| TypeScript `tsc --noEmit` | 最後 source checkpoint PASS。 |
+| `node --test scripts/dev-local.test.mjs` | 10/10 PASS；含真實暫時 listener 的 Windows PID 查證與不干擾未知程序。 |
+| 1010／12010 `dev:local --check-only` | 兩埠皆 AVAILABLE；只證明啟動前埠檢查，未啟動 App。 |
+| build | 中途 `npm run build` PASS；最後 source／cache 修正後的 final build 因容量預檢 BLOCKED，未執行，不宣稱 exact-current artifact PASS。 |
+| 三畫面 local runner／browser acceptance | 全部 `BLOCKED / NOT_RUN`；沒有 UI screenshot、實際 request count 或 runtime evidence，不以 unit tests 取代第 9.1 節 UI 驗收。 |
+| required Production Source QC／PR | 未 push／未執行；本 checkpoint 不代表 required CI 或獨立 QC 通過。 |
+| 真實 non-production IAM／ADC／外部 Chrome SSO | 依原人類決策 `DEFERRED / NOT_RUN`；正式環境亦未操作。 |
+
+第 9.1 節 10 個案例的 deterministic 層已覆蓋 callback/local-session、同 shell dedupe、typed allow/deny、resource capability 保留、401/403/503/timeout、publish/activation invalidation、403 不重送、A/B late-response isolation、SSO fail-closed 與無 Position 自動授權。三個實際畫面、真正 route 切換 request count、UI 訊息／資源操作及固定埠 runtime 仍是原必要驗收，全部待執行。第 11 節完成條件尚未全數成立。
+
+原始失敗保留在本工作樹 `tmp/`：首輪 68 PASS／27 FAIL（舊 GovernanceSession owner fixtures）；改接 provider 後曾有一項 5s timeout（當時與 build 並行），沿專案 30s 契約重跑通過。Windows PID 查詢的兩次失敗由獨立 readback 確認 `spawnSync powershell.exe ETIMEDOUT`；上限調為 15s 後真實 PID 測試通過。未把原失敗刪除或改記為 PASS。
+
+依賴由 exact-lock 現成 release worktree junction 重用，450 個已安裝 package manifest 比對無版本差異、44 個 optional package 缺省，未安裝套件。初次 Vite cache 曾沿 junction 寫入 `.vite`／`.vite-temp`；共享 cache 留存，後續改用 task cacheDir 及 runner loader，未清除共享內容。
+
+容量限制：Governor session `a5bea155-2945-48dc-83e9-f9eaaedce5f8` 的 `dev060-final-build`（build，25 GiB reservation）與 `dev060-local-browser`（integration_test，10 GiB reservation）均為 BLOCKED。當時 C: free 17,596,735,488 bytes，protected floor 25,534,503,118 bytes；沒有 risk acceptance／lease，沒有執行 blocked operation。這些是資源預留值，不是本任務實際耗用量；下一次需以同範圍有效容量 admission 才能續跑。
+
+後續命令沿原範圍保留，容量限制解除後執行受影響的 final build 與全部 local UI 驗收：
 
 ~~~powershell
-npx vitest run server/orgmasterSsoHandoff.test.ts server/orgmasterGovernanceApi.test.ts src/auth/AuthGate.test.tsx src/auth/OrgMasterPermissionProvider.test.tsx
+npx vitest run --configLoader runner --testTimeout=30000 server/orgmasterSsoHandoff.test.ts server/orgmasterGovernanceApi.test.ts src/auth/AuthGate.test.tsx src/auth/OrgMasterPermissionProvider.test.tsx
 npm run test:dev-004:auth
 npm run build
 git diff --check
 ~~~
 
 本次 Browser evidence 記錄 exact commit、URL、fixture、三個畫面、projection request count、HTTP status 與 sanitized error／correlation ID，只證明 local runner／projection；禁止記錄 cookie、token、ADC 或驗證碼。真實 SSO browser evidence 留待下一個 activation session。
+
+本機測試 log、容量機器結果與接手 checkpoint 位於既有 `tmp/dev060-main-handoff.md`；最終 local UI／CI 未通過前不將本 DEV 標成完成，不建立 production release 主張。
 
 ## 11. 完成與停止條件
 

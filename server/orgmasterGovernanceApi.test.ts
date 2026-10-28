@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,7 +7,7 @@ import { assertIdentityLinkStatusMutationAllowed, createOrgmasterGovernanceMiddl
 import { DEV_ISSUER, DEV_SUBJECT, resolveDevelopmentIdentity } from './orgmasterGovernanceIdentity'
 import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2ToV3'
 import { createSeedDocumentV2 } from '../src/governance/migrateGovernanceV1ToV2'
-import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
+import { ORGMASTER_PERMISSIONS, readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { GovernanceStoreError } from './orgmasterGovernanceStore'
 import { ensureGovernanceStore, getGovernancePaths, readGovernanceStore } from './orgmasterGovernanceStore'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
@@ -153,6 +153,79 @@ describe('QA058-07 mounted actor boundary', () => {
       expect(afterDenied.auditEvents).toHaveLength(beforeDenied.auditEvents.length)
       expect(afterDenied.auditEvents.some(event => event.commandId === 'qa07-forged-body-actor')).toBe(false)
     } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('DEV-060 app permission projection HTTP contract', () => {
+  it('evaluates verified published grants, ignores positions/draft grants and reflects revocation immediately', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dev060-published-'))
+    const actorSession: OrgmasterSession = { id: 'session-a', identityIssuer: 'issuer-a', identitySubject: 'subject-a', principalId: 'principal-a', employeeId: 'employee-a', authEpoch: 0, sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 7, issuedAt: '2026-01-01T00:00:00Z', authenticatedAt: '2026-01-01T00:00:00Z', expiresAt: '2099-01-01T00:00:00Z', revokedAt: null, assuranceLevel: 'aal1' }
+    const initial = await ensureGovernanceStore(root)
+    const document = initial.document
+    const policy = structuredClone(document.draft)
+    policy.roleAssignments = [{ id: 'assignment-a', employeeId: 'employee-a', applicationId: 'orgmaster', roleId: 'role-orgmaster-admin', roleCodeSnapshot: 'orgmaster_admin', roleNameSnapshot: 'OrgMaster 管理者', catalogVersion: null, scope: { kind: 'global' }, status: 'active', validFrom: '2026-01-01T00:00:00Z', validTo: null, effectState: 'orgmaster-enforced', basis: 'manual', sources: [], subjectKind: 'employee', targetPrincipalId: null, createdByPrincipalId: 'principal-admin' }]
+    document.activePolicyVersionId = 'published-a'
+    document.publishedVersions = [{ kind: 'assignment-governance-v3', id: 'published-a', versionNumber: 1, publishedAt: '2026-01-01T00:00:00Z', publishedByPrincipalId: 'principal-admin', publishReason: 'fixture', snapshotHash: 'fixture-hash', effectState: 'not-synchronized', policy, externalRoleCatalogs: [], organizationSnapshot: { workspaceVersionId: 'workspace-a', workspaceRevision: 'workspace-revision', capturedAt: '2026-01-01T00:00:00Z', employees: [{ id: 'employee-a', primaryAssignmentId: 'position-a' }], departments: [], organizationRoles: [], positions: [], assignments: [] } }]
+    const middleware = createOrgmasterGovernanceMiddleware(root, false)
+    const server = createServer((request, response) => { if (request.headers['x-test-session'] === 'a') setVerifiedRequestIdentity(request, actorSession); middleware(request, response, () => { response.statusCode = 404; response.end() }) })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('address_missing')
+    const url = `http://127.0.0.1:${address.port}/api/orgmaster/governance/session`
+    try {
+      expect((await fetch(url)).status).toBe(401)
+      await writeFile(getGovernancePaths(root).current, JSON.stringify(document))
+      const allowed = await fetch(url, { headers: { 'x-test-session': 'a' } })
+      expect(allowed.status).toBe(200)
+      const first = await allowed.json()
+      expect(first.permissions['orgmaster.governance.manage']).toBe(true)
+      expect(first.management.crossAppOverride).toBe(false)
+      policy.roleAssignments[0].status = 'revoked'
+      await writeFile(getGovernancePaths(root).current, JSON.stringify(document))
+      const denied = await fetch(url, { headers: { 'x-test-session': 'a' } })
+      expect(denied.status).toBe(200)
+      const second = await denied.json()
+      expect(second.governanceRevision).not.toBe(first.governanceRevision)
+      expect(Object.values(second.permissions).every(value => value === false)).toBe(true)
+      const organization = document.publishedVersions[0].organizationSnapshot
+      organization.departments = [{ id: 'department-a', parentId: null }]
+      organization.positions = [{ id: 'position-a', roleId: 'role-orgmaster-admin', departmentId: 'department-a', parentPositionId: null, status: 'active' }]
+      organization.assignments = [{ id: 'position-assignment-a', employeeId: 'employee-a', positionId: 'position-a', assignmentType: 'regular', validFrom: '2026-01-01T00:00:00Z', validTo: null }]
+      await writeFile(getGovernancePaths(root).current, JSON.stringify(document))
+      const positionOnly = await (await fetch(url, { headers: { 'x-test-session': 'a' } })).json()
+      expect(Object.values(positionOnly.permissions).every(value => value === false)).toBe(true)
+      await writeFile(getGovernancePaths(root).current, '{unreadable')
+      expect((await fetch(url, { headers: { 'x-test-session': 'a' } })).status).toBe(503)
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()))
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+  it('returns a versioned projection from the canonical OrgMaster catalog without external roles', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dev060-projection-'))
+    const middleware = createOrgmasterGovernanceMiddleware(root, true)
+    const server = createServer((request, response) => middleware(request, response, () => { response.statusCode = 404; response.end() }))
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('address_missing')
+    try {
+      const url = 'http://127.0.0.1:' + address.port + '/api/orgmaster/governance/session'
+      const absent = await fetch(url)
+      expect(absent.status).toBe(401)
+      const response = await fetch(url, { headers: { 'x-orgmaster-dev-issuer': DEV_ISSUER, 'x-orgmaster-dev-subject': DEV_SUBJECT } })
+      const body = await response.json()
+      expect(response.status).toBe(200)
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(body).toMatchObject({ contractVersion: 'orgmaster.frontend-permission-projection.v1', applicationId: 'orgmaster', principalId: 'dev-principal-local-admin' })
+      expect(Object.keys(body.permissions).sort()).toEqual(ORGMASTER_PERMISSIONS.map(({ code }) => code).sort())
+      expect(Object.values(body.permissions).every(value => typeof value === 'boolean')).toBe(true)
+      expect(body).not.toHaveProperty('capabilities')
+      expect(body).not.toHaveProperty('actor')
+      expect(body.management).toHaveProperty('crossAppOverride')
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()))
       await rm(root, { recursive: true, force: true })
     }
   })

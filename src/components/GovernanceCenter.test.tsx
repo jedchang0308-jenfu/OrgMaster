@@ -4,11 +4,13 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSeedDocumentV2 } from '../governance/migrateGovernanceV1ToV2'
 import { readAiPdmRoleCatalog } from '../governance/aiPdmCatalog'
-import type { GovernanceApiSnapshot, GovernanceSession, GovernanceVersionSummary } from '../governance/apiClient'
+import type { GovernanceApiSnapshot, GovernanceVersionSummary } from '../governance/apiClient'
 import { GovernanceCenter } from './GovernanceCenter'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
-const mocks = vi.hoisted(() => ({ loadGovernance: vi.fn(), loadGovernanceSession: vi.fn(), setActiveGovernanceVersion: vi.fn() }))
+const mocks = vi.hoisted(() => ({ loadGovernance: vi.fn(), allows: vi.fn(), setActiveGovernanceVersion: vi.fn() }))
+vi.mock('../auth/OrgMasterPermissionProvider', () => ({ useOrgMasterPermissions: () => ({ state: { kind: 'ready', projection: { management: { crossAppOverride: false } } }, allows: mocks.allows }) }))
+vi.mock('../auth/AuthGate', () => ({ useAuthSession: () => ({ session: { user: { principalId: 'principal-operator', employeeId: 'employee-operator' } } }) }))
 vi.mock('../governance/apiClient', async (importOriginal) => ({ ...await importOriginal<typeof import('../governance/apiClient')>(), ...mocks }))
 
 function version(number: number, kind: GovernanceVersionSummary['kind'] = 'assignment-governance-v3'): GovernanceVersionSummary {
@@ -20,12 +22,11 @@ function fixture(activeId: string | null = 'version-7'): GovernanceApiSnapshot {
   document.draft.roleAssignments.push({ id: 'operator-admin', applicationId: 'orgmaster', employeeId: 'employee-operator', roleId: 'role-orgmaster-admin', roleCodeSnapshot: 'orgmaster_admin', roleNameSnapshot: '管理者', catalogVersion: null, scope: { kind: 'global' }, status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null, effectState: 'orgmaster-enforced' })
   return { document: { ...document, draft: { ...document.draft, identityLinks: [] }, publishedVersions: [] }, catalogs: [readAiPdmRoleCatalog()], revision: 'governance-revision', activeVersionId: activeId, versions: [version(6, 'assignment-governance-v2'), version(7), version(9), version(8)] }
 }
-const session: GovernanceSession = { runtimeMode: 'verified-session', actor: { principalId: 'principal-operator', employeeId: 'employee-operator', subjectHint: '••••' }, capabilities: { manage: false, publish: false, simulate: false } }
 const mounted: Array<{ host: HTMLElement; root: ReturnType<typeof createRoot> }> = []
 
-async function render(snapshot: GovernanceApiSnapshot, canPublish = false, runtimeMode = 'verified-session') {
+async function render(snapshot: GovernanceApiSnapshot, canPublish = false, _runtimeMode = 'verified-session') {
   mocks.loadGovernance.mockResolvedValue({ payload: snapshot, revision: snapshot.revision })
-  mocks.loadGovernanceSession.mockResolvedValue({ payload: { ...session, runtimeMode, capabilities: { ...session.capabilities, manage: canPublish, publish: canPublish } } })
+  mocks.allows.mockReturnValue(canPublish)
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
@@ -99,7 +100,6 @@ describe('governance version presentation', () => {
   it('shows a visible initial network failure without an assignment matrix, then reloads on refresh', async () => {
     const networkFailure = new TypeError('Failed to fetch')
     mocks.loadGovernance.mockRejectedValueOnce(networkFailure).mockResolvedValueOnce({ payload: fixture('version-7'), revision: 'governance-revision' })
-    mocks.loadGovernanceSession.mockRejectedValueOnce(networkFailure).mockResolvedValueOnce({ payload: session, revision: 'governance-revision' })
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)
@@ -114,6 +114,5 @@ describe('governance version presentation', () => {
     expect(host.querySelector('[role="alert"]')).toBeNull()
     expect(host.querySelector('.governance-matrix')).not.toBeNull()
     expect(mocks.loadGovernance).toHaveBeenCalledTimes(2)
-    expect(mocks.loadGovernanceSession).toHaveBeenCalledTimes(2)
   })
 })

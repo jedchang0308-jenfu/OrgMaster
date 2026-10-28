@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw, AlertTriangle } from 'lucide-react'
-import { loadGovernance, loadGovernanceAudit, loadGovernanceCommandResult, loadGovernanceSession, patchGovernanceDraft, publishGovernancePolicy, setActiveGovernanceVersion, validateGovernanceAssignment, type GovernanceApiSnapshot, type GovernanceSession, type GovernanceVersionSummary } from '../governance/apiClient'
+import { loadGovernance, loadGovernanceAudit, loadGovernanceCommandResult, patchGovernanceDraft, publishGovernancePolicy, setActiveGovernanceVersion, validateGovernanceAssignment, type GovernanceApiSnapshot, type GovernanceVersionSummary } from '../governance/apiClient'
 import { describeGovernanceFailure, formatGovernanceDateTime, governanceAssignmentChanges, governancePublishBlockersV2, type GovernanceAssignmentChange, type GovernanceFailureView } from '../governance/governancePresentation'
 import { classifyAssignmentSurface, isSystemAdminRoleIdentity } from '../governance/assignmentSurface'
 import { aiPdmRoleSelectable } from '../governance/aiPdmRoleSchema'
@@ -13,6 +13,8 @@ import { GovernanceEmployeeRecommendations } from './GovernanceEmployeeRecommend
 import { GovernanceFinancialInitialAuthority } from './GovernanceFinancialInitialAuthority'
 import { employeeRecommendationAllowed, type EmployeeRecommendationRequest } from '../governance/employeeRecommendations'
 import './GovernanceCenter.css'
+import { useOrgMasterPermissions } from '../auth/OrgMasterPermissionProvider'
+import { useAuthSession } from '../auth/AuthGate'
 
 export type GovernanceSectionId = 'identity' | 'catalog' | 'assignments' | 'delegation' | 'versions' | 'audit' | 'check'
 type Props = { employees: Employee[]; departments: Department[]; roles: Role[]; currentOrganizationVersionId: string | null; currentOrganizationRevision?: string | null; visibility?: 'active' | 'hidden'; initialSection?: GovernanceSectionId; onSectionChange?: (section: GovernanceSectionId) => void; workspaceMutationAllowed?: boolean; refreshToken?: number; onChanged?: () => void; onOpenEmployee?: (employeeId: string) => void }
@@ -43,7 +45,9 @@ function applicationName(applicationId: GovernanceRoleAssignmentV2['applicationI
 
 export function GovernanceCenter({ employees, departments, roles: _roles, currentOrganizationVersionId, currentOrganizationRevision = null, visibility = 'active', initialSection = 'identity', onSectionChange, workspaceMutationAllowed = true, refreshToken = 0, onChanged, onOpenEmployee }: Props) {
   const [snapshot, setSnapshot] = useState<GovernanceApiSnapshot | null>(null)
-  const [session, setSession] = useState<GovernanceSession | null>(null)
+  const { state: permissionState, allows } = useOrgMasterPermissions()
+  const auth = useAuthSession()
+  const actor = auth?.session.user ?? { principalId: '', employeeId: '' }
   const [revision, setRevision] = useState('')
   const [section, setSection] = useState<SectionId>(initialSection)
   const [failure, setFailure] = useState<GovernanceFailureView | null>(null)
@@ -76,7 +80,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
 
   const clearFeedback = useCallback(() => { setFailure(null); setNotice('') }, [])
   const recordFailure = useCallback((error: unknown) => { setNotice(''); setFailure(describeGovernanceFailure(error)) }, [])
-  const refresh = useCallback(async (reset = true) => { if (reset) clearFeedback(); try { const [loaded, currentSession] = await Promise.all([loadGovernance(), loadGovernanceSession()]); setSnapshot(loaded.payload); setRevision(loaded.revision || loaded.payload.revision); setSession(currentSession.payload); return true } catch (error) { recordFailure(error); return false } }, [clearFeedback, recordFailure])
+  const refresh = useCallback(async (reset = true) => { if (reset) clearFeedback(); try { const loaded = await loadGovernance(); setSnapshot(loaded.payload); setRevision(loaded.revision || loaded.payload.revision); return true } catch (error) { recordFailure(error); return false } }, [clearFeedback, recordFailure])
   useEffect(() => { if (visibility === 'hidden') return; void refresh() }, [refresh, refreshToken, visibility])
   useEffect(() => { const media = window.matchMedia('(max-width: 767px)'); const update = () => setMobileReadOnly(media.matches); update(); media.addEventListener('change', update); return () => media.removeEventListener('change', update) }, [])
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 3200); return () => window.clearTimeout(timer) }, [notice])
@@ -91,7 +95,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const expectedCatalog = catalog?.publicationFormat === 'dynamic-policy-v1'
     ? { catalogVersion: catalog.catalogVersion, catalogSha256: catalog.catalogSha256 ?? catalog.payloadHash }
     : undefined
-  const actorPrincipalId = session?.actor.principalId ?? ''
+  const actorPrincipalId = actor.principalId
   currentActorRef.current = actorPrincipalId
   useEffect(() => {
     if (!actorPrincipalId || !unconfirmedRef.current || unconfirmedRef.current.actorPrincipalId === actorPrincipalId) return
@@ -100,7 +104,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   }, [actorPrincipalId])
   const identityLinks = draft?.identityLinks ?? []
   const catalogReady = catalog?.validationState === 'valid'
-  const identityMutationAllowed = workspaceMutationAllowed && Boolean(session?.capabilities.manage) && !mobileReadOnly && !unconfirmedCommand
+  const identityMutationAllowed = workspaceMutationAllowed && allows('orgmaster.governance.manage') && !mobileReadOnly && !unconfirmedCommand
   const mutationAllowed = identityMutationAllowed && catalogReady
   const internalRoles = useMemo(() => draft?.applicationRoles.filter((role) => role.applicationId === 'orgmaster' && role.status === 'active') ?? [], [draft])
   const externalRoles = catalog?.roles.filter((role) => role.status === 'active') ?? []
@@ -165,9 +169,9 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   })
   const delegationSource = delegationSourceAssignments.find((assignment) => assignment.id === delegationSourceId)
   const delegationRecipients = employees.filter((employee) => employee.status === 'active' && employee.id !== delegationSource?.employeeId)
-  const publishBlockers = draft && session ? governancePublishBlockersV2(draft, session.actor, currentOrganizationVersionId) : []
-  const publishMutationAllowed = identityMutationAllowed && Boolean(session?.capabilities.publish)
-  const simulationAllowed = Boolean(session?.capabilities.simulate)
+  const publishBlockers = draft && actor.principalId ? governancePublishBlockersV2(draft, actor, currentOrganizationVersionId) : []
+  const publishMutationAllowed = identityMutationAllowed && allows('orgmaster.governance.publish')
+  const simulationAllowed = allows('orgmaster.governance.simulate')
   const financialAuthorityInitialized = Boolean(draft?.roleAssignments.some((assignment) => assignment.applicationId === 'financial-management-system'))
   const versions = [...(snapshot?.versions ?? [])].sort((a, b) => b.versionNumber - a.versionNumber)
   const currentGovernanceVersion = versions.find((version) => version.id === document.activePolicyVersionId)
@@ -373,9 +377,9 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     <div className="governance-privileged__mode-switch"><button type="button" className="button button--quiet" onClick={() => { clearFeedback(); setPrivilegedView(false) }}>返回角色指派</button></div>
     {privilegedMode ? <GovernancePrivilegedAssignments employees={employees} workspaceMutationAllowed={workspaceMutationAllowed && !mobileReadOnly && !unconfirmedCommand} onChanged={() => void refresh(false)} /> : <div className="governance-privileged__state" role="alert"><strong>特權設定目前僅供閱讀</strong><p>system_admin 角色契約未完整符合目前目錄；暫時無法管理特權指派。</p></div>}
   </> : <>
-    {!financialAuthorityInitialized && session?.capabilities.crossAppOverride === true && session.actor.employeeId && currentOrganizationRevision && <GovernanceFinancialInitialAuthority
-      employeeId={session.actor.employeeId}
-      employeeName={employeeName(employees, session.actor.employeeId)}
+    {!financialAuthorityInitialized && permissionState.kind === 'ready' && permissionState.projection.management.crossAppOverride && actor.employeeId && currentOrganizationRevision && <GovernanceFinancialInitialAuthority
+      employeeId={actor.employeeId}
+      employeeName={employeeName(employees, actor.employeeId)}
       governanceRevision={revision}
       organizationRevision={currentOrganizationRevision}
       disabled={!workspaceMutationAllowed || mobileReadOnly || Boolean(unconfirmedCommand)}

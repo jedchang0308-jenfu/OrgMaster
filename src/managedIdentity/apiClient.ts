@@ -1,3 +1,4 @@
+import { orgMasterPermissionFetch as fetch } from '../auth/permissionInvalidation'
 import type { AssignEmployeeNumberRequestV1, ConfirmManagedIdentityLinkRequestV1, FindManagedIdentityCandidateRequestV1, ManagedEmployeeNumberListReadModelV1, ManagedIdentityCandidateResponseV1, ManagedIdentityReadModelV1, ManagedIdentityRefreshRequestV1, ManagedIdentityRefreshResultV1 } from './types'
 
 export const MANAGED_IDENTITY_API_PATH = '/api/orgmaster/employees'

@@ -5,30 +5,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GovernanceCenter } from './GovernanceCenter'
 import { createSeedDocumentV2 } from '../governance/migrateGovernanceV1ToV2'
 import { readAiPdmRoleCatalog } from '../governance/aiPdmCatalog'
-import type { GovernanceApiSnapshot, GovernanceSession, GovernanceVersionSummary } from '../governance/apiClient'
+import type { GovernanceApiSnapshot, GovernanceVersionSummary } from '../governance/apiClient'
 import type { GovernanceCommandQueryResultV1, GovernanceRoleAssignmentV2 } from '../governance/types'
 
 const mocks = vi.hoisted(() => ({
   loadGovernance: vi.fn(),
-  loadGovernanceSession: vi.fn(),
+  actor: { principalId: 'principal-a', employeeId: 'employee-1' },
   patchGovernanceDraft: vi.fn(),
   publishGovernancePolicy: vi.fn(),
   setActiveGovernanceVersion: vi.fn(),
   loadGovernanceCommandResult: vi.fn(),
 }))
+vi.mock('../auth/OrgMasterPermissionProvider', () => ({ useOrgMasterPermissions: () => ({ state: { kind: 'ready', projection: { management: { crossAppOverride: false } } }, allows: () => true }) }))
+vi.mock('../auth/AuthGate', () => ({ useAuthSession: () => ({ session: { user: mocks.actor } }) }))
 vi.mock('../governance/apiClient', async (importOriginal) => ({ ...await importOriginal<typeof import('../governance/apiClient')>(), ...mocks }))
 
 const employee = { id: 'employee-1', name: '王小明', status: 'active' as const, departmentIds: [], primaryAssignmentId: null, administrativeApproverOverrideEmployeeId: null }
 let host: HTMLDivElement
 let root: Root
-
-function session(principalId = 'principal-a'): GovernanceSession {
-  return {
-    runtimeMode: 'verified-session',
-    actor: { principalId, employeeId: employee.id, subjectHint: '••••' },
-    capabilities: { manage: true, publish: true, simulate: true },
-  }
-}
 
 function assignment(status: GovernanceRoleAssignmentV2['status'] = 'revoked'): GovernanceRoleAssignmentV2 {
   return {
@@ -68,9 +62,8 @@ function commandResponse(commandId: string, operation: string, status: Governanc
   return { payload: commandResult(commandId, operation, status) }
 }
 
-function queueLoad(value: GovernanceApiSnapshot, principalId = 'principal-a') {
+function queueLoad(value: GovernanceApiSnapshot) {
   mocks.loadGovernance.mockResolvedValueOnce({ payload: value, revision: value.revision })
-  mocks.loadGovernanceSession.mockResolvedValueOnce({ payload: session(principalId), revision: value.revision })
 }
 
 async function mount(initialSection: 'assignments' | 'versions' = 'assignments', refreshToken = 0) {
@@ -89,6 +82,7 @@ async function startRestore() {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.actor.principalId = 'principal-a'
   ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
   HTMLDialogElement.prototype.showModal = function () { this.open = true }
   HTMLDialogElement.prototype.close = function () { this.open = false }
@@ -120,7 +114,6 @@ describe('governance command recovery', () => {
     expect(mocks.loadGovernanceCommandResult).toHaveBeenCalledWith(commandId)
     expect(mocks.loadGovernanceCommandResult).toHaveBeenCalledTimes(1)
     expect(mocks.loadGovernance).toHaveBeenCalledTimes(2)
-    expect(mocks.loadGovernanceSession).toHaveBeenCalledTimes(2)
     expect(host.textContent).toContain('已查明原操作完成')
     expect(host.querySelector('.governance-matrix__person-statuses')?.textContent).toBe('有效')
   })
@@ -239,10 +232,9 @@ describe('governance command recovery', () => {
     const initial = snapshot('revoked', 'r1')
     const afterActorChange = snapshot('revoked', 'r2')
     const staleCommittedState = snapshot('active', 'r3')
-    queueLoad(initial, 'principal-a')
-    queueLoad(afterActorChange, 'principal-b')
+    queueLoad(initial)
+    queueLoad(afterActorChange)
     mocks.loadGovernance.mockResolvedValueOnce({ payload: staleCommittedState, revision: staleCommittedState.revision })
-    mocks.loadGovernanceSession.mockResolvedValue({ payload: session('principal-b'), revision: staleCommittedState.revision })
     mocks.patchGovernanceDraft.mockRejectedValueOnce(new TypeError('response lost'))
     let resolveQuery!: (value: GovernanceCommandQueryResultV1) => void
     mocks.loadGovernanceCommandResult.mockImplementation(() => new Promise<GovernanceCommandQueryResultV1>((resolve) => { resolveQuery = resolve }))
@@ -252,6 +244,7 @@ describe('governance command recovery', () => {
     await clickButton('啟用')
     expect(mocks.loadGovernanceCommandResult).toHaveBeenCalledTimes(1)
 
+    mocks.actor.principalId = 'principal-b'
     await mount('assignments', 1)
     await act(async () => resolveQuery(commandResponse(mocks.patchGovernanceDraft.mock.calls[0][1].commandId, 'RESTORE_ROLE_ASSIGNMENT').payload))
 

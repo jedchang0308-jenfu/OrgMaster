@@ -16,6 +16,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { AlertTriangle, Check, MousePointerClick, Trash2, UserRoundPlus } from 'lucide-react'
 import { AuthGate, useAuthSession } from './auth/AuthGate'
+import { OrgMasterPermissionProvider, useOrgMasterPermissions } from './auth/OrgMasterPermissionProvider'
 import { createUuidV7 } from './employeeIdentity'
 import { screenshotOrganizationState } from './screenshotData'
 import { removeEmployeeFromDirectory, updateDepartmentInDirectory, updateEmployeeInDirectory } from './directories'
@@ -364,6 +365,7 @@ function findDirectoryDataElement(attribute: string, value: string) {
 }
 
 function ProtectedApp() {
+  const { allows: permissionAllows } = useOrgMasterPermissions()
   const managedIdentityEnabled = useAuthSession()?.managedIdentityEnabled === true
   const initialState = screenshotOrganizationState
   const [serverReady, setServerReady] = useState(false)
@@ -3270,6 +3272,9 @@ function ProtectedApp() {
 
   const openPanels = workspaceController.state.route.openPanels
   const workspaceNavigation = <WorkspaceLauncher
+    moduleAllowed={moduleId => moduleId === 'governance'
+      ? permissionAllows('orgmaster.governance.manage') || permissionAllows('orgmaster.governance.publish') || permissionAllows('orgmaster.governance.simulate')
+      : moduleId !== 'management-methods' || permissionAllows('orgmaster.management_method.read_readable') || permissionAllows('orgmaster.management_method.read_draft') || permissionAllows('orgmaster.management_method.create')}
     openPanels={openPanels}
     closePendingModuleId={workspaceController.state.session.closePendingModuleId}
     onOpenModule={(moduleId) => {
@@ -3451,5 +3456,5 @@ function ProtectedApp() {
 }
 
 export default function App() {
-  return <AuthGate><ProtectedApp /></AuthGate>
+  return <AuthGate><OrgMasterPermissionProvider><ProtectedApp /></OrgMasterPermissionProvider></AuthGate>
 }

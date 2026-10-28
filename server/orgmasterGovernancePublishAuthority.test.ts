@@ -87,8 +87,8 @@ describe('governance publication authority', () => {
       const response = await fetch(`http://127.0.0.1:${address.port}/api/orgmaster/governance/session`, {
         headers: { 'x-orgmaster-dev-issuer': DEV_ISSUER, 'x-orgmaster-dev-subject': DEV_SUBJECT },
       })
-      expect(response.status).toBe(500)
-      expect(await response.json()).toEqual({ error: 'GOVERNANCE_READ_FAILED' })
+      expect(response.status).toBe(503)
+      expect(await response.json()).toEqual({ error: 'ORGMASTER_SOURCE_UNAVAILABLE' })
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
       if (previousMode === undefined) delete process.env.ORGMASTER_PERSISTENCE_MODE

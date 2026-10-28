@@ -1,3 +1,8 @@
+param(
+  [Parameter(ValueFromRemainingArguments = $true)]
+  [string[]]$LauncherArgs
+)
+
 $ErrorActionPreference = 'Continue'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -5,12 +10,12 @@ Set-Location -LiteralPath $projectRoot
 
 Write-Host 'OrgMaster local development environment' -ForegroundColor Cyan
 Write-Host "Project: $projectRoot"
-Write-Host 'URL: http://localhost:5000/'
+Write-Host 'URL: http://localhost:1010/'
 Write-Host 'This window stays open while the server is running. Press Ctrl+C to stop.' -ForegroundColor DarkGray
 Write-Host ''
 
-# Use cmd.exe for npm so Windows PowerShell does not treat npm.ps1 as a restricted script.
-& cmd.exe /d /c npm.cmd run dev:local
+# Use npm.cmd so Windows PowerShell does not treat npm.ps1 as a restricted script.
+& npm.cmd run dev:local -- @LauncherArgs
 $exitCode = $LASTEXITCODE
 
 Write-Host ''

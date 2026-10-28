@@ -10,9 +10,10 @@ interface Props {
   onOpenModule: (moduleId: WorkspaceModuleId) => void
   closePendingModuleId?: WorkspaceModuleId | null
   disabled?: boolean
+  moduleAllowed?: (moduleId: WorkspaceModuleId) => boolean
 }
 
-export function WorkspaceLauncher({ openPanels, onOpenModule, closePendingModuleId = null, disabled = false }: Props) {
+export function WorkspaceLauncher({ openPanels, onOpenModule, closePendingModuleId = null, disabled = false, moduleAllowed }: Props) {
   const [expanded, setExpanded] = useState(true)
   const panelDrag = useWorkspacePanelDrag()
 
@@ -39,7 +40,7 @@ export function WorkspaceLauncher({ openPanels, onOpenModule, closePendingModule
         {WORKSPACE_MODULE_ORDER.map((moduleId) => {
           const descriptor = getWorkspaceModule(moduleId)
           const opened = openPanels.includes(moduleId)
-          const itemDisabled = disabled || (opened && closePendingModuleId === moduleId)
+          const itemDisabled = disabled || moduleAllowed?.(moduleId) === false || (opened && closePendingModuleId === moduleId)
           return (
             <button
               key={moduleId}
