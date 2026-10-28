@@ -233,4 +233,3 @@ git diff --check
 - 工作樹出現未知且與本任務檔案重疊的修改，或 port owner 無法驗證。
 
 資料庫 migration、IAM／Secret、正式資料、production deployment、真實 non-production SSO activation、其他 App provider 及跨 App cache 均不在本任務。
-
