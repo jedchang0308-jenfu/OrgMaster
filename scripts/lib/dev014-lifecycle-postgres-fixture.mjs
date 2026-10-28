@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 
 const LOOPBACK = '127.0.0.1'
 const TASK_ROOT_PREFIX = 'orgmaster-dev014-disposable-pg-'
@@ -151,7 +152,17 @@ function assertRepositoryRoot(rootValue, expectedName) {
   if (typeof rootValue !== 'string' || !path.isAbsolute(rootValue)) throw fail('DEV014_FIXTURE_REPOSITORY_ROOT_INVALID')
   const root = path.resolve(rootValue)
   assertRealDirectory(root, 'DEV014_FIXTURE_REPOSITORY_ROOT_INVALID')
-  if (path.basename(root).toLowerCase() !== expectedName.toLowerCase()) throw fail('DEV014_FIXTURE_REPOSITORY_ROOT_INVALID')
+  // A registered worktree may have any directory name. Identify the actual
+  // app by its package and Git root instead of requiring a copied folder.
+  try {
+    const packagePath = path.join(root, 'package.json')
+    const stat = fs.lstatSync(packagePath)
+    if (!stat.isFile() || stat.isSymbolicLink() || !samePath(fs.realpathSync(packagePath), packagePath)) throw new Error('package path')
+    const expectedPackage = expectedName === 'OrgMaster' ? 'orgmaster-canvas' : 'jenfu-management-system'
+    if (JSON.parse(fs.readFileSync(packagePath, 'utf8')).name !== expectedPackage) throw new Error('package identity')
+    const gitRoot = execFileSync('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', windowsHide: true }).trim()
+    if (!samePath(gitRoot, root)) throw new Error('git root')
+  } catch (error) { throw fail('DEV014_FIXTURE_REPOSITORY_ROOT_INVALID', error) }
   const marker = path.join(root, 'AGENTS.md')
   try {
     const stat = fs.lstatSync(marker)

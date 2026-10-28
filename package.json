@@ -101,6 +101,8 @@
     "qc:dev-054:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev054",
     "qc:dev-055:contract": "node scripts/qc-dev-055-contract.mjs",
     "qc:dev-055:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev055",
+    "test:dev-057:projed-principal": "vitest run server/orgmasterProjedPrincipalService.test.ts server/orgmasterProjedPrincipalRepository.test.ts server/orgmasterProjedPrincipalApi.test.ts server/orgmasterAuthApi.test.ts server/orgmasterServer.test.ts",
+    "test:dev-057:projed-principal:postgres": "node scripts/dev057-projed-principal-postgres.mjs",
     "qc:dev-057:contract": "node scripts/qc-dev-057-contract.mjs",
     "qc:dev-057:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev057"
   },

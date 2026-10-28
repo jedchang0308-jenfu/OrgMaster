@@ -8,6 +8,7 @@ import { orgmasterAccountEnrollmentApiPlugin } from './server/orgmasterAccountEn
 import { orgmasterManagedIdentityApiPlugin } from './server/orgmasterManagedIdentityApi'
 import { workbenchPreferenceApiPlugin } from './server/workbenchPreferenceApi'
 import { orgmasterManagedLoginApiPlugin } from './server/orgmasterManagedLoginApi'
+import { orgmasterProjedPrincipalApiPlugin } from './server/orgmasterProjedPrincipalApi'
 
 let managedLoginRuntime: ReturnType<typeof createOrgmasterAuthRuntime> | undefined
 
@@ -15,5 +16,8 @@ export default defineConfig({
   plugins: [orgmasterManagedLoginApiPlugin(() => {
     managedLoginRuntime ??= createOrgmasterAuthRuntime()
     return { service: managedLoginRuntime.managedLoginOwner, verifier: managedLoginRuntime.managedLoginCallerVerifier }
+  }), orgmasterProjedPrincipalApiPlugin(() => {
+    managedLoginRuntime ??= createOrgmasterAuthRuntime()
+    return { service: managedLoginRuntime.projedPrincipalOwner, verifier: managedLoginRuntime.managedLoginCallerVerifier }
   }), orgmasterAuthApiPlugin(), orgmasterManagedIdentityApiPlugin(), workbenchPreferenceApiPlugin(), orgmasterAccountEnrollmentApiPlugin(), react(), orgmasterApiPlugin(), orgmasterGovernanceApiPlugin({ accountEnrollmentEnabled: true }), orgmasterManagementMethodApiPlugin()],
 })

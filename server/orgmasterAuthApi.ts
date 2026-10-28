@@ -28,6 +28,8 @@ import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort, readG
 import { handleOrgmasterSsoRequest, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
 import { createGoogleManagedLoginCallerVerifier, type ManagedLoginCallerVerifier } from './orgmasterManagedLoginApi'
 import { createManagedLoginOwnerService, type ManagedLoginOwnerServiceV1 } from './orgmasterManagedLoginService'
+import { createProjedPrincipalRepository } from './orgmasterProjedPrincipalRepository'
+import { createProjedPrincipalService, type ProjedPrincipalService } from './orgmasterProjedPrincipalService'
 
 export const ORGMASTER_AUTH_API_PATH = '/api/auth'
 const MAX_BODY_BYTES = 32 * 1024
@@ -67,6 +69,7 @@ export type OrgmasterAuthRuntime = {
   managedIdentity?: ManagedIdentityServiceV1
   managedLoginOwner?: ManagedLoginOwnerServiceV1
   managedLoginCallerVerifier?: ManagedLoginCallerVerifier
+  projedPrincipalOwner?: ProjedPrincipalService
   managedLoginEnabled?: boolean
   employeeNumberManagementEnabled?: boolean
   ssoHandoffEnabled?: boolean
@@ -322,6 +325,7 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     employeeNumberManagementEnabled: Boolean(managedIdentity),
     managedLoginOwner,
     managedLoginCallerVerifier,
+    projedPrincipalOwner: createProjedPrincipalService({ firebase, repository: createProjedPrincipalRepository(database) }),
     managedLoginEnabled: directoryConfig.enabled,
     ssoHandoffEnabled: environment.ORGMASTER_JENFU_SSO_HANDOFF_MODE === 'on' && Boolean(environment.ORGMASTER_JENFU_SSO_BROKER_ORIGIN?.trim()),
   }
