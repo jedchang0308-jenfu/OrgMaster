@@ -12,6 +12,7 @@ import { DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION } from './lib/dev
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_MIGRATION_PREFIX_COUNT, assertDev058MigrationEntries } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_MIGRATION_ENTRY_COUNT, assertDev059MigrationEntries } from './lib/dev059-fms-authority-migration.mjs'
+import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_MIGRATION_ENTRY_COUNT, assertDev057ProjedMigrationEntries } from './lib/dev057-projed-principal-migration.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const read = (file) => JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
@@ -369,12 +370,14 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-031 prefix plus DEV-058 034-037 and FMS 038-040 production migration bytes', () => {
+test('OrgMaster exact 001-031 prefix plus DEV-058 034-037, FMS 038-040 and ProJED 041-043 production migration bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
-  assert.equal(bundle.bundle.entries.length, DEV059_MIGRATION_ENTRY_COUNT)
-  assertDev059MigrationEntries(bundle.bundle.entries)
+  assert.equal(bundle.bundle.entries.length, DEV057_PROJED_MIGRATION_ENTRY_COUNT)
+  assert.equal(bundle.bundle.entries.length, 41)
+  assertDev059MigrationEntries(bundle.bundle.entries.slice(0, DEV059_MIGRATION_ENTRY_COUNT))
+  assertDev057ProjedMigrationEntries(bundle.bundle.entries)
   assertDev058MigrationEntries(bundle.bundle.entries.slice(0, DEV058_MIGRATION_ENTRY_COUNT))
   assert.deepEqual(
     bundle.bundle.entries.slice(DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_ENTRY_COUNT).map(migrationIdentity),
@@ -384,7 +387,9 @@ test('OrgMaster exact 001-031 prefix plus DEV-058 034-037 and FMS 038-040 produc
     profile.migrations.entries.slice(DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_ENTRY_COUNT).map(migrationIdentity),
     DEV058_MIGRATION_ENTRIES.map(migrationIdentity),
   )
-  assert.deepEqual(bundle.bundle.entries.slice(-DEV059_FMS_AUTHORITY_MIGRATIONS.length).map(migrationIdentity), DEV059_FMS_AUTHORITY_MIGRATIONS.map(migrationIdentity))
+  assert.deepEqual(bundle.bundle.entries.slice(DEV058_MIGRATION_ENTRY_COUNT, DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity), DEV059_FMS_AUTHORITY_MIGRATIONS.map(migrationIdentity))
+  assert.deepEqual(bundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity), DEV057_PROJED_MIGRATIONS.map(migrationIdentity))
+  assert.deepEqual(profile.migrations.entries.slice(0, DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity), bundle.bundle.entries.slice(0, DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity))
   assert.equal(profile.migrations.entries.some(({ path }) => path.startsWith('db/migrations/032_') || path.startsWith('db/migrations/033_')), false)
   assert.equal(bundle.bundle.entries[10].version, 'dev040-r2-orgmaster-011')
   assert.equal(bundle.bundle.entries[11].version, 'dev047-orgmaster-012')
@@ -430,6 +435,17 @@ test('OrgMaster exact 001-031 prefix plus DEV-058 034-037 and FMS 038-040 produc
     const tampered = structuredClone(profile)
     tampered.migrations.entries[DEV058_MIGRATION_PREFIX_COUNT + index].sourceSha256 = '0'.repeat(64)
     assert.throws(() => assertDev040V3Profile(tampered, n1c), /DEV058_MIGRATION_APPEND_INVALID/u, `tampered ${entry.path}`)
+  }
+
+  for (const [index, entry] of DEV057_PROJED_MIGRATIONS.entries()) {
+    const migrationIndex = DEV059_MIGRATION_ENTRY_COUNT + index
+    const missing = structuredClone(profile)
+    missing.migrations.entries.splice(migrationIndex, 1)
+    assert.throws(() => assertDev040V3Profile(missing, n1c), /MIGRATION_MANIFEST_DRIFT/u, `missing ${entry.path}`)
+
+    const tampered = structuredClone(profile)
+    tampered.migrations.entries[migrationIndex].sourceSha256 = '0'.repeat(64)
+    assert.throws(() => assertDev040V3Profile(tampered, n1c), /DEV057_PROJED_MIGRATION_APPEND_INVALID/u, `tampered ${entry.path}`)
   }
 
   for (const index of [0, 1]) {

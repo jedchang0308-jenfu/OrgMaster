@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:orgmaster:projed-principal:v1",
+  "title": "ProJED minimum Principal publication",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "principalId", "principalKind", "employeeId", "identityIssuer", "identitySubject", "googleSubject", "mappingRevision", "publishedAt"],
+  "properties": {
+    "contractVersion": { "const": "orgmaster.projed-principal.v1" },
+    "principalId": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "principalKind": { "enum": ["employee", "personal"] },
+    "employeeId": { "type": ["string", "null"], "minLength": 1, "maxLength": 255 },
+    "identityIssuer": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "identitySubject": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "googleSubject": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Server-verified google.com subject; never derived from email." },
+    "mappingRevision": { "type": "string", "pattern": "^[1-9][0-9]{0,18}$", "description": "Positive signed int64 decimal, at most 9223372036854775807; consumers must check the numeric bound." },
+    "publishedAt": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" }
+  },
+  "allOf": [{
+    "if": { "properties": { "principalKind": { "const": "employee" } } },
+    "then": { "properties": { "employeeId": { "type": "string" } } },
+    "else": { "properties": { "employeeId": { "type": "null" } } }
+  }]
+}

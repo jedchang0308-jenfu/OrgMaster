@@ -8,6 +8,7 @@ import { gunzipSync, gzipSync } from 'node:zlib'
 import { canonicalize, sha256, releasePaths } from './dev012-owner-release-runtime.mjs'
 import { createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
 import { assertToolRotationReleaseCompatibility } from './dev040-routine-release.mjs'
+import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_RELEASE_MODE } from './dev057-projed-principal-migration.mjs'
 import {
   assertOrdinaryToolRotation,
   assertToolInfrastructureTransition,
@@ -79,9 +80,11 @@ function createSourceFixture() {
   }
 
   const fullProductionProfile = JSON.parse(readGitBytes(ROOT, sourceRevision, PRODUCTION_PROFILE_PATH).toString('utf8'))
-  const baselineProductionProfile = structuredClone(fullProductionProfile)
+  const fmsProductionProfile = structuredClone(fullProductionProfile)
+  fmsProductionProfile.migrations.entries = fmsProductionProfile.migrations.entries.slice(0, 38)
+  const baselineProductionProfile = structuredClone(fmsProductionProfile)
   baselineProductionProfile.migrations.entries = baselineProductionProfile.migrations.entries.slice(0, 31)
-  const dev058ProductionProfile = structuredClone(fullProductionProfile)
+  const dev058ProductionProfile = structuredClone(fmsProductionProfile)
   dev058ProductionProfile.migrations.entries = dev058ProductionProfile.migrations.entries.slice(0, 35)
   fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(baselineProductionProfile, null, 2)}\n`)
 
@@ -92,7 +95,7 @@ function createSourceFixture() {
   runGit(root, ['commit', '--quiet', '-m', 'baseline infrastructure source'])
   const baselineSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
-  const partialProductionProfile = structuredClone(fullProductionProfile)
+  const partialProductionProfile = structuredClone(fmsProductionProfile)
   partialProductionProfile.migrations.entries = partialProductionProfile.migrations.entries.slice(0, 34)
   fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(partialProductionProfile, null, 2)}\n`)
   runGit(root, ['add', PRODUCTION_PROFILE_PATH])
@@ -104,10 +107,19 @@ function createSourceFixture() {
   runGit(root, ['commit', '--quiet', '-m', 'append DEV-058 migration profile'])
   const dev058SourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
-  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(fullProductionProfile, null, 2)}\n`)
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(fmsProductionProfile, null, 2)}\n`)
   runGit(root, ['add', PRODUCTION_PROFILE_PATH])
   runGit(root, ['commit', '--quiet', '-m', 'append DEV-059 migration profile'])
   const appendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+
+  const projedProductionProfile = structuredClone(fmsProductionProfile)
+  projedProductionProfile.migrations.entries = [...fmsProductionProfile.migrations.entries, ...DEV057_PROJED_MIGRATIONS]
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(projedProductionProfile, null, 2)}\n`)
+  runGit(root, ['add', PRODUCTION_PROFILE_PATH])
+  runGit(root, ['commit', '--quiet', '-m', 'append ProJED principal migrations'])
+  const projedAppendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+
+  runGit(root, ['checkout', '--quiet', '--detach', appendSourceRevision])
 
   fs.appendFileSync(path.join(root, ...RUNNER_RECIPE.split('/')), '\n# source-bound image rotation fixture\n')
   runGit(root, ['add', RUNNER_RECIPE])
@@ -148,7 +160,7 @@ function createSourceFixture() {
 
   return {
     root, baselineSourceRevision, partialAppendSourceRevision, dev058SourceRevision,
-    appendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
+    appendSourceRevision, projedAppendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
     copyInputDriftSourceRevision, toolInputDriftSourceRevision, driftSourceRevision,
     sourceIdentitySha256, sourceArchive, sourceArchiveBytes, sourceArchiveSha256,
     sourceArchiveObject: `source/archives/${sourceArchiveSha256}/source.tar.gz`,
@@ -469,6 +481,34 @@ test('allows only the exact DEV-058 and DEV-059 profile appends plus existing re
   for (const revision of [prefixDrift, suffixDrift, runtimeDrift, identityDrift, nonRecipeDrift]) {
     assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
       sourceFixture.baselineSourceRevision, revision), 'SOURCE_INPUT_DRIFT')
+  }
+})
+
+test('accepts the exact DEV-057 ProJED profile append from 38 to 41 and rejects drift', () => {
+  const transition = assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.appendSourceRevision, sourceFixture.projedAppendSourceRevision)
+  assert.equal(transition.disposition, DEV057_PROJED_RELEASE_MODE)
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.baselineSourceRevision, sourceFixture.projedAppendSourceRevision).disposition, DEV057_PROJED_RELEASE_MODE)
+
+  const firstMigrationHashDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries[38].sourceSha256 = 'f'.repeat(64) }, 'drift ProJED 041 source hash')
+  const secondMigrationHashDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries[39].appliedSha256 = 'f'.repeat(64) }, 'drift ProJED 042 applied hash')
+  const prefixDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }, 'drift ProJED inherited prefix')
+  const unexpectedFourthMigration = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries.push({ order: 42, version: 'dev057-orgmaster-044', path: 'db/migrations/044_unapproved.sql', sourceSha256: 'a'.repeat(64), appliedSha256: 'b'.repeat(64) }) },
+    'append unexpected ProJED migration')
+  const runtimeDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.runtime.timeoutSeconds += 1 }, 'drift ProJED runtime profile')
+  const nonRecipeDrift = commitNonRecipeVariant(sourceFixture.projedAppendSourceRevision,
+    file => fs.appendFileSync(file, '\n# ProJED non-recipe infrastructure drift fixture\n'), 'drift ProJED non-recipe infrastructure')
+
+  for (const revision of [firstMigrationHashDrift, secondMigrationHashDrift, prefixDrift,
+    unexpectedFourthMigration, runtimeDrift, nonRecipeDrift]) {
+    assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
+      sourceFixture.appendSourceRevision, revision), 'SOURCE_INPUT_DRIFT')
   }
 })
 

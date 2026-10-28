@@ -5,6 +5,7 @@ import { buildRuntimeConfig, canonicalize, sha256 } from './lib/dev012-owner-rel
 import { assertMigrationReceipt, assertStaleControlSafeToSupersede, candidateTagUriMatches, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE } from './lib/dev059-fms-authority-migration.mjs'
+import { DEV057_PROJED_MIGRATION_ENTRY_COUNT, DEV057_PROJED_RELEASE_MODE, DEV057_PROJED_REMEDIATION } from './lib/dev057-projed-principal-migration.mjs'
 
 const H40 = 'a'.repeat(40)
 const baselineRef = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/baseline.json', sha256: 'e'.repeat(64) }
@@ -51,7 +52,7 @@ test('DEV-057 principal-only grant v3 requires exact 28-row forward migration re
   }
 })
 
-function recordedHarness() {
+function recordedHarness(ownerApplicationId = 'platform') {
   const objects = new Map()
   let generation = 0
   let service = {
@@ -128,7 +129,7 @@ function recordedHarness() {
     async publishIncident() { return { messageIds: ['1'] } },
   }
   const profile = {
-    application: { id: 'platform', repository: 'owner/repo', branch: 'main' },
+    application: { id: ownerApplicationId, repository: 'owner/repo', branch: 'main' },
     profileVersion: 'CONTINUOUS_NO_DWELL_V3_DIRECT_RUN_APP', contractSha256: 'f'.repeat(64),
     target: { projectId: 'jenfu-platform-prod', projectNumber: '9536592944', region: 'asia-east1', serviceName: 'jenfu-platform-prod', runtimeServiceAccount: 'platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com', canonicalOrigin, entryPolicy: { ingress: 'INGRESS_TRAFFIC_ALL', defaultUriDisabled: false, invokerIamDisabled: true } },
     runtime: { containerName: 'platform', cloudSqlProxyContainer: 'cloud-sql-proxy', cloudSqlProxyImage: `proxy@sha256:${'f'.repeat(64)}`, cloudSqlProxyPort: 5432, cloudSqlProxyMaximumConnections: 24, cloudSqlConnectionName: 'p:r:i', network: 'runtime-vpc', subnet: 'runtime-subnet', port: 8080, startupProbePath: '/ready', cpu: '1', memory: '512Mi', concurrency: 20, timeoutSeconds: 60, maxInstances: 1, poolMax: 4 },
@@ -152,7 +153,7 @@ async function authorizedRecordedInput(h, releaseId) {
   const foundationReceiptRef = await refFor('foundation', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod' })
   const infraReceiptRef = await refFor('infra', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod', migrationRunnerDigest })
   const runtimeConfigRef = await refFor('runtime', { ...common, status: 'VERIFIED', projectId: 'jenfu-platform-prod', ...buildRuntimeConfig(h.profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } }) })
-  const intent = { baselineIntentRef: baselineRef, schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId, sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
+  const intent = { baselineIntentRef: baselineRef, schemaVersion: 'owner.intent.v2', ownerApplicationId: h.profile.application.id, releaseId, sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
   const intentResult = await h.transport.putJson(`gs://${bucket}/receipts/intents/${releaseId}.json`, intent, { bucket, prefix: 'receipts' })
   return {
     intentResult,
@@ -701,6 +702,135 @@ test('DEV-059 FMS authority append requires the 36-row native receipt and planne
   for (const pendingMigrationCount of [0, DEV059_MIGRATION_ENTRY_COUNT - 30]) {
     assert.throws(() => check(core, { ...forwardPlan, pendingMigrationCount }), /MIGRATION_RECEIPT_INVALID/u)
   }
+})
+
+test('DEV-057 ProJED principal append requires exact 41-row native receipt and three pending migrations', () => {
+  const profile = { application: { id: 'orgmaster' } }
+  const intent = { sourceRevision: H40, migrationManifestSha256: 'b'.repeat(64) }
+  const forwardPlan = { releaseMode: DEV057_PROJED_RELEASE_MODE, pendingMigrationCount: 3 }
+  const core = {
+    schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: H40,
+    manifestSha256: intent.migrationManifestSha256, status: 'PASS', boundaryStatus: 'PASS',
+    database: 'jenfu_prod', ledger: 'orgmaster_core.schema_migrations', baselineCount: 10, minimumLedgerCount: 10,
+    ledgerCount: DEV057_PROJED_MIGRATION_ENTRY_COUNT, applied: 1, replayed: DEV057_PROJED_MIGRATION_ENTRY_COUNT - 1,
+    crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
+  }
+  const receipt = value => ({ ...value, receiptSha256: sha256(canonicalize(value)) })
+  const check = (value, plan = forwardPlan) => assertMigrationReceipt(receipt(value), profile, intent, { allowForward: true, forwardPlan: plan })
+  for (let applied = 0; applied <= 3; applied += 1) {
+    assert.doesNotThrow(() => check({ ...core, applied, replayed: DEV057_PROJED_MIGRATION_ENTRY_COUNT - applied }))
+  }
+  for (const changed of [
+    { ledgerCount: 40 },
+    { ledgerCount: 42 },
+    { applied: 4, replayed: DEV057_PROJED_MIGRATION_ENTRY_COUNT - 4 },
+    { ownerApplicationId: 'platform' },
+    { database: 'jenfu_dev' },
+    { manifestSha256: 'f'.repeat(64) },
+    { sourceRevision: 'c'.repeat(40) },
+    { crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }] },
+    { crossDatabaseDenials: [{ database: 'jenfu_dev', denied: false }, { database: 'jenfu_stg', denied: true }] },
+  ]) assert.throws(() => check({ ...core, ...changed }), /MIGRATION_RECEIPT_INVALID/u)
+  for (const pendingMigrationCount of [1, 2, 4]) {
+    assert.throws(() => check(core, { ...forwardPlan, pendingMigrationCount }), /MIGRATION_RECEIPT_INVALID/u)
+  }
+
+  const stageReceipt = { schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision: H40, stage: 'migrate', status: 'PASS' }
+  assert.throws(() => assertMigrationReceipt(stageReceipt, profile, intent, { allowForward: true, forwardPlan }), /MIGRATION_RECEIPT_INVALID/u)
+})
+
+test('DEV-057 ProJED fresh prepare binds exact recipe and migrate requires live runner digest readback', async () => {
+  async function projedInput(releaseId, remediation = DEV057_PROJED_REMEDIATION) {
+    const h = recordedHarness('orgmaster')
+    const { input, intentResult } = await authorizedRecordedInput(h, releaseId)
+    const intent = (await h.transport.readJson(intentResult.ref)).value
+    const priorInfra = (await h.transport.readJson(intent.infraReceiptRef)).value
+    const rotatedInfra = {
+      ...priorInfra,
+      mutationProfile: 'APP_INFRA_IMAGE_ROTATION',
+      toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1' },
+    }
+    const common = {
+      releaseAuthority: true, evidenceScope: 'PROVIDER', status: 'PASS', environment: 'production',
+      projectId: 'jenfu-platform-prod', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z',
+      ownerApplicationId: intent.ownerApplicationId, sourceRevision: intent.sourceRevision, releaseId: intent.releaseId,
+      baselineIntentRef: intent.baselineIntentRef, devId: 'DEV-057', slice: '057-PROJED-PRINCIPAL', remediation,
+    }
+    const authorization = await h.transport.putJson(`gs://${bucket}/receipts/prerequisites/${releaseId}-projed-authorization.json`,
+      { ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }, { bucket, prefix: 'receipts' })
+    const readiness = await h.transport.putJson(`gs://${bucket}/receipts/prerequisites/${releaseId}-projed-readiness.json`,
+      { ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }, { bucket, prefix: 'receipts' })
+    const infra = await h.transport.putJson(`gs://${bucket}/receipts/prerequisites/${releaseId}-projed-infra.json`, rotatedInfra, { bucket, prefix: 'receipts' })
+    const revisedIntent = { ...intent, authorizationPolicyRef: authorization.ref, readinessReceiptRef: readiness.ref, infraReceiptRef: infra.ref }
+    const capsule = await h.transport.putJson(`gs://${bucket}/receipts/intents/${releaseId}-projed-principal.json`, revisedIntent, { bucket, prefix: 'receipts' })
+    input.capsuleRef = capsule.ref.uri
+    input.capsuleSha256 = capsule.ref.sha256
+    input.verifyRoutineRelease = async ({ intent: currentIntent }) => ({
+      baselineIntentRef: currentIntent.baselineIntentRef,
+      baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) },
+      migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 3,
+      releaseMode: DEV057_PROJED_RELEASE_MODE,
+      controlledTransition: { releaseMode: DEV057_PROJED_RELEASE_MODE },
+      toolImageRotation: {
+        evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION',
+        sourceRevision: currentIntent.sourceRevision,
+        migrationRunnerDigest: rotatedInfra.migrationRunnerDigest,
+      },
+    })
+    return { h, input, intent, infra: rotatedInfra }
+  }
+
+  const accepted = await projedInput('DEV057-PROJED-PREPARE-EXACT')
+  const firstPrepare = await executeOwnerStage({ ...accepted.input, stage: 'prepare' })
+  const sameAuthorityPrepare = await executeOwnerStage({ ...accepted.input, stage: 'prepare' })
+  assert.equal(sameAuthorityPrepare.ref.sha256, firstPrepare.ref.sha256)
+  await executeOwnerStage({ ...accepted.input, stage: 'build' })
+
+  let jobs = 0
+  accepted.h.transport.runMigrationJob = async ({ deployment, outputUri }) => {
+    jobs += 1
+    const core = {
+      schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: accepted.h.profile.application.id,
+      sourceRevision: deployment.sourceRevision, database: 'jenfu_prod', ledger: 'orgmaster_core.schema_migrations',
+      manifestSha256: accepted.h.migrationManifestSha256, baselineCount: 10, minimumLedgerCount: 10,
+      ledgerCount: DEV057_PROJED_MIGRATION_ENTRY_COUNT, applied: 3, replayed: DEV057_PROJED_MIGRATION_ENTRY_COUNT - 3,
+      crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
+      boundaryStatus: 'PASS', status: 'PASS',
+    }
+    await accepted.h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) }, { bucket, prefix: 'receipts' })
+  }
+  let readbacks = 0
+  const migration = await executeOwnerStage({
+    ...accepted.input,
+    stage: 'migrate',
+    verifyToolJobReadback: async infra => {
+      readbacks += 1
+      assert.equal(infra.migrationRunnerDigest, accepted.infra.migrationRunnerDigest)
+      return { migrationRunnerDigest: accepted.infra.migrationRunnerDigest, generation: '14' }
+    },
+  })
+  assert.equal(readbacks, 1)
+  assert.equal(jobs, 1)
+  assert.equal(migration.value.ledgerCount, DEV057_PROJED_MIGRATION_ENTRY_COUNT)
+
+  const wrongRecipe = await projedInput('DEV057-PROJED-WRONG-RECIPE', { ...DEV057_PROJED_REMEDIATION, contractVersion: 'wrong-contract' })
+  await assert.rejects(() => executeOwnerStage({ ...wrongRecipe.input, stage: 'prepare' }), error => error?.code === 'DEV057_PROJED_PRINCIPAL_AUTHORITY_INVALID')
+  assert.equal([...wrongRecipe.h.objects.keys()].some(uri => uri.endsWith('/prepare.json')), false)
+
+  const wrongDigest = await projedInput('DEV057-PROJED-WRONG-DIGEST')
+  await executeOwnerStage({ ...wrongDigest.input, stage: 'prepare' })
+  await executeOwnerStage({ ...wrongDigest.input, stage: 'build' })
+  let wrongDigestJobs = 0
+  wrongDigest.h.transport.runMigrationJob = async () => { wrongDigestJobs += 1 }
+  const objectsBefore = wrongDigest.h.objects.size
+  await assert.rejects(() => executeOwnerStage({
+    ...wrongDigest.input,
+    stage: 'migrate',
+    verifyToolJobReadback: async () => ({ migrationRunnerDigest: 'wrong-digest', generation: '15' }),
+  }), error => error?.code === 'TOOL_JOB_READBACK_REQUIRED')
+  assert.equal(wrongDigestJobs, 0)
+  assert.equal(wrongDigest.h.objects.size, objectsBefore)
+  assert.equal([...wrongDigest.h.objects.keys()].some(uri => uri.endsWith('/migrate.json')), false)
 })
 
 test('DEV-059 rotated runner requires exact live digest readback before its migration Job', async () => {
