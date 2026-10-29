@@ -175,15 +175,19 @@ class FakeOrgmasterOwnerClient {
   }
 }
 
+function platformFence(requested, overrides = {}) {
+  return {
+    sandboxId: requested.sandboxId, resetId: requested.resetId,
+    sourceGeneration: requested.sourceGeneration, generation: requested.generation,
+    status: 'resetting', sessionsRevoked: true, registryRetained: true, ...overrides,
+  }
+}
+
 function owner(client, fence = {}) {
   return createOrgmasterLocalGenerationFenceOwner({
     client,
     target,
-    readPlatformFence: async requested => ({
-      sandboxId: requested.sandboxId, resetId: requested.resetId,
-      sourceGeneration: requested.sourceGeneration, generation: requested.generation,
-      generationState: 'resetting', sourceGenerationState: 'revoked', ...fence,
-    }),
+    readPlatformFence: async requested => platformFence(requested, fence),
   })
 }
 
@@ -278,9 +282,7 @@ test('rejects mismatched marker, data directory, operator, or application connec
   client.markerGeneration = generation
   const api = createOrgmasterLocalGenerationFenceOwner({
     client, target: wrongTarget,
-    readPlatformFence: async requested => ({ sandboxId: requested.sandboxId, resetId: requested.resetId,
-      sourceGeneration: requested.sourceGeneration, generation: requested.generation,
-      generationState: 'resetting', sourceGenerationState: 'revoked' }),
+    readPlatformFence: async requested => platformFence(requested),
   })
   await assert.rejects(api.rebindAndFenceSessions(scope), error => error.code === 'LOCAL_GENERATION_FENCE_TARGET_IDENTITY_MISMATCH')
   assert.equal(client.calls.every(call => !call.sql.startsWith('COMMENT ON DATABASE')), true)
@@ -289,28 +291,38 @@ test('rejects mismatched marker, data directory, operator, or application connec
   const operatorClient = new FakeOrgmasterOwnerClient({ markerGeneration: generation })
   const operatorApi = createOrgmasterLocalGenerationFenceOwner({
     client: operatorClient, target: wrongOperatorTarget,
-    readPlatformFence: async requested => ({ sandboxId: requested.sandboxId, resetId: requested.resetId,
-      sourceGeneration: requested.sourceGeneration, generation: requested.generation,
-      generationState: 'resetting', sourceGenerationState: 'revoked' }),
+    readPlatformFence: async requested => platformFence(requested),
   })
   await assert.rejects(operatorApi.rebindAndFenceSessions(scope), error => error.code === 'LOCAL_GENERATION_FENCE_TARGET_IDENTITY_MISMATCH')
   assert.equal(operatorClient.calls.some(call => call.sql.startsWith('UPDATE ')), false)
 })
 
-test('requires the exact Platform resetting and source-revoked fence before opening a transaction', async () => {
-  const client = new FakeOrgmasterOwnerClient()
-  const api = owner(client, { sourceGenerationState: 'active' })
-  await assert.rejects(api.rebindAndFenceSessions(scope), error => error.code === 'LOCAL_GENERATION_FENCE_PLATFORM_RESET_FENCE_REQUIRED')
-  assert.equal(client.calls.some(call => call.sql.startsWith('BEGIN')), false)
-  assert.equal(client.calls.every(call => !call.sql.startsWith('COMMENT ON DATABASE')), true)
+test('requires the exact Platform resetting DTO with revoked sessions and retained registry before opening a transaction', async () => {
+  for (const fence of [
+    { status: 'ready' },
+    { sessionsRevoked: false },
+    { registryRetained: false },
+  ]) {
+    const client = new FakeOrgmasterOwnerClient()
+    const api = owner(client, fence)
+    await assert.rejects(api.rebindAndFenceSessions(scope), error => error.code === 'LOCAL_GENERATION_FENCE_PLATFORM_RESET_FENCE_REQUIRED')
+    assert.equal(client.calls.some(call => call.sql.startsWith('BEGIN')), false)
+    assert.equal(client.calls.every(call => !call.sql.startsWith('COMMENT ON DATABASE')), true)
+  }
 })
 
 test('rejects a mismatched Platform generation identity without touching the target', async () => {
   const client = new FakeOrgmasterOwnerClient()
   const api = createOrgmasterLocalGenerationFenceOwner({ client, target,
-    readPlatformFence: async requested => ({ sandboxId: requested.sandboxId, resetId: requested.resetId,
-      sourceGeneration: requested.sourceGeneration, generation: unrelatedGeneration,
-      generationState: 'resetting', sourceGenerationState: 'revoked' }) })
+    readPlatformFence: async requested => platformFence(requested, { generation: unrelatedGeneration }) })
+  await assert.rejects(api.readGenerationFence(scope), error => error.code === 'LOCAL_GENERATION_FENCE_PLATFORM_FENCE_MISMATCH')
+  assert.equal(client.calls.length, 0)
+})
+
+test('accepts only the exact server-side Platform readState DTO shape', async () => {
+  const client = new FakeOrgmasterOwnerClient()
+  const api = createOrgmasterLocalGenerationFenceOwner({ client, target,
+    readPlatformFence: async requested => ({ ...platformFence(requested), browserReportedStatus: 'resetting' }) })
   await assert.rejects(api.readGenerationFence(scope), error => error.code === 'LOCAL_GENERATION_FENCE_PLATFORM_FENCE_MISMATCH')
   assert.equal(client.calls.length, 0)
 })

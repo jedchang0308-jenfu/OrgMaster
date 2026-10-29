@@ -17,14 +17,15 @@ export type OrgmasterLocalGenerationFenceTarget = Readonly<{
   runtimeRoles: readonly ['jenfu_platform_runtime', 'jenfu_orgmaster_runtime', 'jenfu_ai_pdm_runtime', 'fms_runtime']
 }>
 
-/** Typed read-only projection supplied by the Platform owner adapter. */
+/** Exact server-side ownerport readState projection; browser payloads are not an input. */
 export type PlatformLocalGenerationFence = Readonly<{
   sandboxId: string
   resetId: string
   sourceGeneration: string
   generation: string
-  generationState: 'resetting' | 'ready' | 'failed'
-  sourceGenerationState: 'active' | 'revoked'
+  status: 'resetting' | 'ready' | 'failed'
+  sessionsRevoked: boolean
+  registryRetained: boolean
 }>
 
 export type OrgmasterLocalGenerationFenceClient = {
@@ -81,6 +82,7 @@ export type OrgmasterLocalGenerationFenceResult = Readonly<{
 export function createOrgmasterLocalGenerationFenceOwner(input: {
   client: OrgmasterLocalGenerationFenceClient
   target: OrgmasterLocalGenerationFenceTarget
+  /** Server-side Platform ownerport closure bound to readState, not browser-supplied state. */
   readPlatformFence(scope: OrgmasterLocalGenerationFenceScope): Promise<PlatformLocalGenerationFence>
 }): Readonly<{
   rebindAndFenceSessions(scope: OrgmasterLocalGenerationFenceScope): Promise<OrgmasterLocalGenerationFenceResult>

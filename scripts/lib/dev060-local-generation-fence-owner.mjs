@@ -70,11 +70,11 @@ function assertTarget(value) {
 }
 
 function assertPlatformFence(scope, value) {
-  const keys = ['sandboxId', 'resetId', 'sourceGeneration', 'generation', 'generationState', 'sourceGenerationState']
+  const keys = ['sandboxId', 'resetId', 'sourceGeneration', 'generation', 'status', 'sessionsRevoked', 'registryRetained']
   if (!exactObject(value, keys) || value.sandboxId !== scope.sandboxId || value.resetId !== scope.resetId ||
     value.sourceGeneration !== scope.sourceGeneration || value.generation !== scope.generation ||
-    !['resetting', 'ready', 'failed'].includes(value.generationState) ||
-    !['active', 'revoked'].includes(value.sourceGenerationState)) {
+    !['resetting', 'ready', 'failed'].includes(value.status) ||
+    typeof value.sessionsRevoked !== 'boolean' || typeof value.registryRetained !== 'boolean') {
     fail('PLATFORM_FENCE_MISMATCH')
   }
   return Object.freeze({ ...value })
@@ -88,7 +88,7 @@ function platformFenceFor(scope, readPlatformFence) {
 }
 
 function requireResettingFence(fence) {
-  if (fence.generationState !== 'resetting' || fence.sourceGenerationState !== 'revoked') {
+  if (fence.status !== 'resetting' || fence.sessionsRevoked !== true || fence.registryRetained !== true) {
     fail('PLATFORM_RESET_FENCE_REQUIRED')
   }
 }
@@ -289,8 +289,10 @@ async function readFenceSnapshot(client, target, scope, platformFence, { allowMi
 function buildReadiness(snapshot) {
   const reasons = []
   if (snapshot.targetGeneration !== snapshot.generation) reasons.push('target_generation_not_rebound')
-  if (snapshot.platformFence.generationState !== 'resetting' && snapshot.platformFence.generationState !== 'ready' ||
-    snapshot.platformFence.sourceGenerationState !== 'revoked') reasons.push('platform_fence_not_ready')
+  if (snapshot.platformFence.status !== 'resetting' && snapshot.platformFence.status !== 'ready' ||
+    snapshot.platformFence.sessionsRevoked !== true || snapshot.platformFence.registryRetained !== true) {
+    reasons.push('platform_fence_not_ready')
+  }
   if (snapshot.activePriorSessionCount !== 0) reasons.push('active_prior_sessions')
   if (snapshot.activeTargetSessionCount !== 0) reasons.push('active_target_sessions')
   if (snapshot.activeApplicationConnectionCount !== 0) reasons.push('applications_not_offline')
@@ -322,8 +324,9 @@ function databaseError(error) {
 
 /**
  * Creates the OrgMaster-owned local generation fence facade. The caller owns
- * the connection and supplies the task-verified target plus a typed Platform
- * fence reader. No file, PDM, FMS, Platform, or business-data writes occur.
+ * the connection and supplies the task-verified target plus a server-side
+ * Platform ownerport readState closure; browser-reported state is not accepted.
+ * No file, PDM, FMS, Platform, or business-data writes occur.
  */
 export function createOrgmasterLocalGenerationFenceOwner({ client, target: targetValue, readPlatformFence } = {}) {
   if (!client || typeof client.query !== 'function' || typeof readPlatformFence !== 'function') {
