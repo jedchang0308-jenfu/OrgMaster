@@ -60,8 +60,10 @@ function assertTarget(value) {
     value.databaseName !== `jenfu_local_${value.sandboxId.replaceAll('-', '_')}` ||
     !/^jenfu_local_[a-z0-9_]{3,51}$/u.test(value.databaseName) ||
     !absoluteDataDirectory(value.dataDirectory) || !Number.isSafeInteger(value.port) ||
-    value.port < 1024 || value.port > 65535 || !OPERATOR_ROLE.test(value.operatorRole ?? '') ||
+    value.port < 1024 || value.port > 65535 ||
+    !(OPERATOR_ROLE.test(value.operatorRole ?? '') || value.operatorRole === 'postgres') ||
     typeof value.databaseOwnerRole !== 'string' || !ROLE_NAME.test(value.databaseOwnerRole) ||
+    (value.operatorRole === 'postgres' && value.databaseOwnerRole !== 'postgres') ||
     !Array.isArray(value.runtimeRoles) || value.runtimeRoles.length !== APP_RUNTIME_ROLES.length ||
     value.runtimeRoles.some((role, index) => role !== APP_RUNTIME_ROLES[index])) {
     fail('TARGET_DESCRIPTOR_INVALID')
@@ -108,7 +110,7 @@ function exactCount(row, field, code) {
   return value
 }
 
-async function readTargetFacts(client, target, scope, { allowMigratorCurrentUser = false } = {}) {
+async function readTargetFacts(client, target, scope) {
   const result = await client.query(`SELECT current_database() AS database_name,
       pg_catalog.host(pg_catalog.inet_server_addr()) AS server_address,
       pg_catalog.inet_server_port() AS server_port,
@@ -117,7 +119,7 @@ async function readTargetFacts(client, target, scope, { allowMigratorCurrentUser
       (SELECT pg_catalog.shobj_description(oid,'pg_database') FROM pg_catalog.pg_database
         WHERE datname=current_database()) AS database_comment,
       pg_catalog.pg_get_userbyid(database.datdba) AS database_owner,
-      pg_catalog.pg_has_role(session_user,'${MIGRATOR}','MEMBER') AS operator_can_set_migrator,
+      (operator_role.rolsuper OR pg_catalog.pg_has_role(session_user,'${MIGRATOR}','MEMBER')) AS operator_can_set_migrator,
       (operator_role.rolsuper OR pg_catalog.pg_has_role(session_user,'pg_monitor','MEMBER') OR
         pg_catalog.pg_has_role(session_user,'pg_read_all_stats','MEMBER')) AS operator_can_read_activity
     FROM pg_catalog.pg_database database
@@ -126,12 +128,13 @@ async function readTargetFacts(client, target, scope, { allowMigratorCurrentUser
   const row = result.rows?.[0]
   const expectedMarker = row?.database_comment
   const targetGeneration = parseTargetGeneration(expectedMarker, scope)
-  const currentUserAllowed = row?.current_user === target.operatorRole ||
-    (allowMigratorCurrentUser && row?.current_user === MIGRATOR)
+  const clusterSuperuser = target.operatorRole === 'postgres'
   if (result.rows?.length !== 1 || row.database_name !== target.databaseName ||
     !['127.0.0.1', '::1'].includes(row.server_address) || Number(row.server_port) !== target.port ||
-    row.data_directory !== target.dataDirectory || row.session_user !== target.operatorRole || !currentUserAllowed ||
+    row.data_directory !== target.dataDirectory || row.session_user !== target.operatorRole ||
+    row.current_user !== target.operatorRole ||
     row.database_owner !== target.databaseOwnerRole ||
+    row.operator_is_superuser !== clusterSuperuser ||
     row.operator_can_set_migrator !== true || row.operator_can_read_activity !== true) {
     fail('TARGET_IDENTITY_MISMATCH')
   }
@@ -266,8 +269,8 @@ async function readSessionFenceCounts(client, scope) {
   })
 }
 
-async function readFenceSnapshot(client, target, scope, platformFence, { allowMigratorCurrentUser = false } = {}) {
-  const dbTarget = await readTargetFacts(client, target, scope, { allowMigratorCurrentUser })
+async function readFenceSnapshot(client, target, scope, platformFence) {
+  const dbTarget = await readTargetFacts(client, target, scope)
   await assertRuntimeRoles(client)
   await assertOwnerObjects(client)
   const activeApplicationConnectionCount = await assertNoApplicationConnections(client, target)
@@ -409,7 +412,9 @@ export function createOrgmasterLocalGenerationFenceOwner({ client, target: targe
         ) RETURNING session.id::text`, [scope.sandboxId, scope.sourceGeneration])
       revokedSessionCount = changedSessions.rows?.length ?? 0
 
-      const targetAfter = await readTargetFacts(client, target, scope, { allowMigratorCurrentUser: true })
+      await client.query('RESET ROLE')
+      await assertRuntimeRoles(client)
+      const targetAfter = await readTargetFacts(client, target, scope)
       if (targetAfter.targetGeneration !== scope.generation) fail('TARGET_REBIND_READBACK_MISMATCH')
       const sessionsAfter = await readSessionFenceCounts(client, scope)
       if (sessionsAfter.activePriorSessionCount !== 0 || sessionsAfter.activeSourceSessionCount !== 0 ||

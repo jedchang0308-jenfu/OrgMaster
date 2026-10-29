@@ -38,11 +38,18 @@ function rowCounts(sessions, generationValue) {
 }
 
 class FakeOrgmasterOwnerClient {
-  constructor({ markerGeneration = sourceGeneration, appConnections = 0, unknownActiveGeneration = false } = {}) {
+  constructor({ target: targetValue = target, operatorIsSuperuser = false, migratorMembership = true,
+    monitorMembership = true, dataDirectoryReadable = true, markerGeneration = sourceGeneration, appConnections = 0,
+    unknownActiveGeneration = false } = {}) {
+    this.target = targetValue
+    this.operatorIsSuperuser = operatorIsSuperuser
+    this.migratorMembership = migratorMembership
+    this.monitorMembership = monitorMembership
+    this.dataDirectoryReadable = dataDirectoryReadable
     this.markerGeneration = markerGeneration
     this.appConnections = appConnections
     this.calls = []
-    this.currentRole = target.operatorRole
+    this.currentRole = this.target.operatorRole
     this.transactions = []
     this.sessions = {
       nativeSessions: new Map([
@@ -79,7 +86,7 @@ class FakeOrgmasterOwnerClient {
 
   async query(sql, values = []) {
     const flat = sql.replace(/\s+/gu, ' ').trim()
-    this.calls.push({ sql: flat, values: structuredClone(values) })
+    this.calls.push({ sql: flat, values: structuredClone(values), currentRole: this.currentRole })
     if (flat === 'BEGIN ISOLATION LEVEL SERIALIZABLE' || flat === 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY') {
       this.transactions.push({ markerGeneration: this.markerGeneration, currentRole: this.currentRole,
         sessions: structuredClone(this.sessions) })
@@ -94,19 +101,28 @@ class FakeOrgmasterOwnerClient {
       }
       return { rows: [], rowCount: null }
     }
-    if (flat === 'COMMIT') { this.transactions.pop(); this.currentRole = target.operatorRole; return { rows: [], rowCount: null } }
+    if (flat === 'COMMIT') { this.transactions.pop(); this.currentRole = this.target.operatorRole; return { rows: [], rowCount: null } }
     if (flat.startsWith('SET LOCAL lock_timeout') || flat.startsWith('SET LOCAL statement_timeout') ||
       flat === `SET LOCAL ROLE ${ownerRole}`) {
       if (flat === `SET LOCAL ROLE ${ownerRole}`) this.currentRole = ownerRole
       return { rows: [], rowCount: null }
     }
+    if (flat === 'RESET ROLE') {
+      this.currentRole = this.target.operatorRole
+      return { rows: [], rowCount: null }
+    }
     if (flat.includes('pg_advisory_xact_lock')) return { rows: [{ pg_advisory_xact_lock: null }], rowCount: 1 }
+    if (flat.includes("current_setting('data_directory')") &&
+      (this.currentRole !== this.target.operatorRole || !this.dataDirectoryReadable)) {
+      throw Object.assign(new Error('permission denied to read parameter "data_directory"'), { code: '42501' })
+    }
     if (flat.includes('current_database() AS database_name')) return { rows: [{
-      database_name: target.databaseName, server_address: '127.0.0.1', server_port: target.port,
-      data_directory: target.dataDirectory, session_user: target.operatorRole, current_user: this.currentRole,
+      database_name: this.target.databaseName, server_address: '127.0.0.1', server_port: this.target.port,
+      data_directory: this.target.dataDirectory, session_user: this.target.operatorRole, current_user: this.currentRole,
       database_comment: `jenfu.local-principal-bootstrap.v1:${sandboxId}:${this.markerGeneration}`,
-      database_owner: target.databaseOwnerRole, operator_is_superuser: false,
-      operator_can_set_migrator: true, operator_can_read_activity: true,
+      database_owner: this.target.databaseOwnerRole, operator_is_superuser: this.operatorIsSuperuser,
+      operator_can_set_migrator: this.operatorIsSuperuser || this.migratorMembership,
+      operator_can_read_activity: this.operatorIsSuperuser || this.monitorMembership,
     }], rowCount: 1 }
     if (flat.startsWith('SELECT rolname::text AS role_name')) return { rows: [...runtimeRoles, ownerRole].map(role_name => ({
       role_name, rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolbypassrls: false,
@@ -183,10 +199,10 @@ function platformFence(requested, overrides = {}) {
   }
 }
 
-function owner(client, fence = {}) {
+function owner(client, fence = {}, targetValue = target) {
   return createOrgmasterLocalGenerationFenceOwner({
     client,
-    target,
+    target: targetValue,
     readPlatformFence: async requested => platformFence(requested, fence),
   })
 }
@@ -223,11 +239,64 @@ test('generation fence serializes OrgMaster rebinding, revokes only source-gener
   assert.ok(statements.some(sql => sql.includes('pg_advisory_xact_lock')))
   assert.ok(client.calls.some(call => call.sql.includes('pg_stat_activity') &&
     JSON.stringify(call.values) === JSON.stringify([runtimeRoles])))
+  const targetFactReads = client.calls.filter(call => call.sql.includes("current_setting('data_directory')"))
+  assert.ok(targetFactReads.length >= 3)
+  assert.ok(targetFactReads.every(call => call.currentRole === target.operatorRole))
+  const appUpdateIndex = statements.findIndex(sql => sql.startsWith('UPDATE orgmaster_core.app_sessions AS session'))
+  const resetRoleIndex = statements.indexOf('RESET ROLE')
+  const targetReadbackIndex = statements.findIndex((sql, index) => index > appUpdateIndex &&
+    sql.includes("current_setting('data_directory')"))
+  assert.ok(resetRoleIndex > appUpdateIndex && resetRoleIndex < targetReadbackIndex)
   assert.ok(statements.every(sql => !sql.startsWith('COMMENT ON DATABASE')))
   assert.ok(statements.some(sql => sql.startsWith('UPDATE orgmaster_core.local_sandbox_session_bindings')))
   assert.ok(statements.some(sql => sql.startsWith('UPDATE orgmaster_core.app_sessions')))
   assert.ok(statements.every(sql => !/\b(?:DELETE|TRUNCATE)\b/iu.test(sql)))
   assert.ok(statements.every(sql => !/(?:persistence_artifacts|published_versions|local_principal_lifecycle_events\s+SET|local_principal_lifecycle_session_bindings\s+SET)/iu.test(sql)))
+})
+
+test('mock enforces PostgreSQL 42501 for data_directory reads under the migrator role', async () => {
+  const client = new FakeOrgmasterOwnerClient()
+  client.currentRole = ownerRole
+  await assert.rejects(client.query("SELECT pg_catalog.current_setting('data_directory')"), error => error.code === '42501')
+})
+
+test('supports the verified local postgres superuser without extra grants', async () => {
+  const postgresTarget = { ...target, operatorRole: 'postgres', databaseOwnerRole: 'postgres' }
+  const client = new FakeOrgmasterOwnerClient({ target: postgresTarget, operatorIsSuperuser: true,
+    migratorMembership: false, monitorMembership: false, markerGeneration: generation })
+  const result = await owner(client, {}, postgresTarget).rebindAndFenceSessions(scope)
+
+  assert.equal(result.readiness.ready, true)
+  assert.equal(client.currentRole, 'postgres')
+  assert.ok(client.calls.some(call => call.sql.includes('(operator_role.rolsuper OR pg_catalog.pg_has_role(session_user')))
+  assert.ok(client.calls.filter(call => call.sql.includes("current_setting('data_directory')"))
+    .every(call => call.currentRole === 'postgres'))
+  assert.ok(client.calls.every(call => !/^GRANT\b/iu.test(call.sql)))
+})
+
+test('rejects postgres target when the connected role is not actually a superuser', async () => {
+  const postgresTarget = { ...target, operatorRole: 'postgres', databaseOwnerRole: 'postgres' }
+  const client = new FakeOrgmasterOwnerClient({ target: postgresTarget, operatorIsSuperuser: false,
+    migratorMembership: false, monitorMembership: false, dataDirectoryReadable: true, markerGeneration: generation })
+  const api = owner(client, {}, postgresTarget)
+  await assert.rejects(api.readGenerationFence(scope), error => error.code === 'LOCAL_GENERATION_FENCE_TARGET_IDENTITY_MISMATCH')
+  assert.equal(client.calls.some(call => call.sql.startsWith('UPDATE ')), false)
+})
+
+test('rejects a scoped operator without data_directory visibility instead of granting it', async () => {
+  const client = new FakeOrgmasterOwnerClient({ dataDirectoryReadable: false })
+  const api = owner(client)
+  await assert.rejects(api.readGenerationFence(scope), error =>
+    error.code === 'LOCAL_GENERATION_FENCE_OWNER_OPERATION_FAILED' && error.databaseCode === '42501')
+  assert.equal(client.calls.some(call => call.sql.startsWith('GRANT ')), false)
+  assert.equal(client.calls.some(call => call.sql.startsWith('UPDATE ')), false)
+})
+
+test('requires postgres operator targets to declare postgres as database owner', async () => {
+  const client = new FakeOrgmasterOwnerClient()
+  const invalidTarget = { ...target, operatorRole: 'postgres' }
+  assert.throws(() => owner(client, {}, invalidTarget), error => error.code === 'LOCAL_GENERATION_FENCE_TARGET_DESCRIPTOR_INVALID')
+  assert.equal(client.calls.length, 0)
 })
 
 test('same reset replays by generation-marker and readback without repeated target mutation', async () => {
