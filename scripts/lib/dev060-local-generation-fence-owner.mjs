@@ -164,9 +164,27 @@ async function assertRuntimeRoles(client) {
 }
 
 async function assertNoApplicationConnections(client, target) {
-  const result = await client.query(`SELECT count(*)::int AS connection_count
-    FROM pg_catalog.pg_stat_activity
-    WHERE pid <> pg_catalog.pg_backend_pid() AND usename=ANY($1::name[])`, [target.runtimeRoles])
+  const result = await client.query(`WITH RECURSIVE runtime_role_members(role_oid) AS (
+      SELECT runtime_group.oid
+      FROM pg_catalog.pg_roles runtime_group
+      WHERE runtime_group.rolname=ANY($1::name[])
+      UNION
+      SELECT member_role.oid
+      FROM runtime_role_members parent
+      JOIN pg_catalog.pg_auth_members membership ON membership.roleid=parent.role_oid
+      JOIN pg_catalog.pg_roles member_role ON member_role.oid=membership.member
+    ), runtime_login_members AS (
+      SELECT DISTINCT member_role.rolname::text AS role_name
+      FROM runtime_role_members member
+      JOIN pg_catalog.pg_roles member_role ON member_role.oid=member.role_oid
+      WHERE member_role.rolcanlogin
+    )
+    SELECT count(*)::int AS connection_count
+    FROM pg_catalog.pg_stat_activity activity
+    JOIN runtime_login_members runtime_login ON runtime_login.role_name=activity.usename::text
+    WHERE activity.pid <> pg_catalog.pg_backend_pid()
+      AND activity.datname=current_database()
+      AND runtime_login.role_name <> session_user::text`, [target.runtimeRoles])
   if (result.rows?.length !== 1 || exactCount(result.rows[0], 'connection_count', 'APP_CONNECTION_READBACK_INVALID') !== 0) {
     fail('APPLICATIONS_NOT_OFFLINE')
   }

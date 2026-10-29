@@ -11,6 +11,16 @@ const sessionId = '60000000-0000-4000-8000-000000000010'
 const fixedTime = '2026-10-30T00:00:00.000Z'
 const ownerRole = 'jenfu_orgmaster_migrator'
 const runtimeRoles = ['jenfu_platform_runtime', 'jenfu_orgmaster_runtime', 'jenfu_ai_pdm_runtime', 'fms_runtime']
+const defaultRuntimeMemberships = [
+  ['jenfu_platform_runtime', 'platform_http_login'],
+  ['jenfu_orgmaster_runtime', 'orgmaster_connection_group'],
+  ['orgmaster_connection_group', 'orgmaster_http_login'],
+  ['jenfu_ai_pdm_runtime', 'ai_pdm_http_login'],
+  ['fms_runtime', 'fms_http_login'],
+]
+const defaultRuntimeLoginRoles = new Set([
+  'platform_http_login', 'orgmaster_http_login', 'ai_pdm_http_login', 'fms_http_login',
+])
 const scope = Object.freeze({ sandboxId, resetId, sourceGeneration, generation })
 const target = Object.freeze({
   contractVersion: 'orgmaster.local-generation-fence-target.v1',
@@ -42,13 +52,17 @@ function rowCounts(sessions, sandboxValue, sourceGenerationValue, generationValu
 class FakeOrgmasterOwnerClient {
   constructor({ target: targetValue = target, operatorIsSuperuser = false, migratorMembership = true,
     monitorMembership = true, dataDirectoryReadable = true, markerGeneration = sourceGeneration, appConnections = 0,
-    dataDirectoryOutput, unknownActiveGeneration = false } = {}) {
+    dataDirectoryOutput, activeLoginConnections = [], runtimeMemberships = defaultRuntimeMemberships,
+    runtimeLoginRoles = defaultRuntimeLoginRoles, unknownActiveGeneration = false } = {}) {
     this.target = targetValue
     this.operatorIsSuperuser = operatorIsSuperuser
     this.migratorMembership = migratorMembership
     this.monitorMembership = monitorMembership
     this.dataDirectoryReadable = dataDirectoryReadable
     this.dataDirectoryOutput = dataDirectoryOutput ?? targetValue.dataDirectory
+    this.activeLoginConnections = [...activeLoginConnections]
+    this.runtimeMemberships = runtimeMemberships.map(([role, member]) => [role, member])
+    this.runtimeLoginRoles = new Set(runtimeLoginRoles)
     this.markerGeneration = markerGeneration
     this.appConnections = appConnections
     this.calls = []
@@ -157,7 +171,24 @@ class FakeOrgmasterOwnerClient {
       ['orgmaster_contract', 'v_local_principal_lifecycle_events_v1', 'v'],
       ['orgmaster_contract', 'v_local_principal_lifecycle_state_v1', 'v'],
     ].map(([schema_name, relname, relkind]) => ({ schema_name, relname, relkind, owner: ownerRole })), rowCount: 5 }
-    if (flat.includes('FROM pg_catalog.pg_stat_activity')) return { rows: [{ connection_count: this.appConnections }], rowCount: 1 }
+    if (flat.startsWith('WITH RECURSIVE runtime_role_members')) {
+      const runtimeGroupNames = new Set(values[0])
+      const memberRoleNames = new Set([...runtimeGroupNames].filter(role => this.runtimeLoginRoles.has(role)))
+      const pending = [...runtimeGroupNames]
+      while (pending.length) {
+        const parentRole = pending.pop()
+        for (const [role, member] of this.runtimeMemberships) {
+          if (role === parentRole && !memberRoleNames.has(member)) {
+            memberRoleNames.add(member)
+            pending.push(member)
+          }
+        }
+      }
+      const applicationLoginNames = new Set([...memberRoleNames].filter(role =>
+        this.runtimeLoginRoles.has(role) && role !== this.target.operatorRole))
+      const namedLoginConnectionCount = this.activeLoginConnections.filter(role => applicationLoginNames.has(role)).length
+      return { rows: [{ connection_count: this.appConnections + namedLoginConnectionCount }], rowCount: 1 }
+    }
     if (flat.startsWith('WITH bindings AS')) {
       const counts = rowCounts(this.sessions, values[0], values[1], values[2])
       return { rows: [{ conflicting_binding_count: counts.conflictCount,
@@ -293,6 +324,35 @@ test('keeps POSIX data-directory comparison case sensitive', async () => {
     dataDirectoryOutput: '/var/lib/postgresql/OrgMaster', markerGeneration: generation })
   const api = owner(client, {}, posixTarget)
   await assert.rejects(api.readGenerationFence(scope), error => error.code === 'LOCAL_GENERATION_FENCE_TARGET_IDENTITY_MISMATCH')
+})
+
+test('finds named LOGIN aliases through recursive pg_auth_members and scopes connections to this database', async () => {
+  const client = new FakeOrgmasterOwnerClient({ activeLoginConnections: ['orgmaster_http_login', 'orgmaster_http_login'] })
+  const api = owner(client)
+  await assert.rejects(api.readGenerationFence(scope), error =>
+    error.code === 'LOCAL_GENERATION_FENCE_APPLICATIONS_NOT_OFFLINE')
+  const connectionQuery = client.calls.find(call => call.sql.startsWith('WITH RECURSIVE runtime_role_members'))
+  assert.ok(connectionQuery)
+  assert.deepEqual(connectionQuery.values, [runtimeRoles])
+  assert.ok(connectionQuery.sql.includes('pg_catalog.pg_auth_members'))
+  assert.ok(connectionQuery.sql.includes('member_role.rolcanlogin'))
+  assert.ok(!connectionQuery.sql.includes('runtime_group.rolcanlogin'))
+  assert.ok(connectionQuery.sql.includes('activity.datname=current_database()'))
+  assert.ok(connectionQuery.sql.includes('runtime_login.role_name <> session_user::text'))
+  assert.ok(!connectionQuery.sql.includes('pg_catalog.pg_has_role'))
+  const countReadback = await client.query(connectionQuery.sql, connectionQuery.values)
+  assert.equal(countReadback.rows[0].connection_count, 2)
+})
+
+test('does not count postgres operator as an application connection', async () => {
+  const postgresTarget = { ...target, operatorRole: 'postgres', databaseOwnerRole: 'postgres' }
+  const runtimeLoginRoles = new Set([...defaultRuntimeLoginRoles, 'postgres'])
+  const runtimeMemberships = [...defaultRuntimeMemberships, ['jenfu_orgmaster_runtime', 'postgres']]
+  const client = new FakeOrgmasterOwnerClient({ target: postgresTarget, operatorIsSuperuser: true,
+    migratorMembership: false, monitorMembership: false, markerGeneration: generation,
+    activeLoginConnections: ['postgres'], runtimeMemberships, runtimeLoginRoles })
+  const snapshot = await owner(client, {}, postgresTarget).readGenerationFence(scope)
+  assert.equal(snapshot.activeApplicationConnectionCount, 0)
 })
 
 test('readiness blocks already-inactive native sessions while source registration bindings remain unrevoked', async () => {
