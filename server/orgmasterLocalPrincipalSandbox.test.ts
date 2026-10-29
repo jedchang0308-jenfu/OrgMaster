@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { contractDigest, LOCAL_FIXTURE_VERSION, LOCAL_IDENTITY_ISSUER } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
 import { readAiPdmRoleCatalogV7 } from './localPrincipalSandboxFixture.mjs'
 import { AI_PDM_ROLE_CATALOG_V7_SHA256, AI_PDM_ROLE_CATALOG_V7_VERSION, LOCAL_PRINCIPAL_FIXTURE_VERSION } from './localPrincipalSandboxFixture.mjs'
-import { createOrgmasterLocalPrincipalSandbox, verifyOrgmasterLocalIntrospection } from './orgmasterLocalPrincipalSandbox'
+import {
+  createOrgmasterLocalPrincipalSandbox,
+  verifyOrgmasterLocalIntrospection,
+  verifyOrgmasterLocalLifecycleAssertion,
+  verifyOrgmasterLocalLifecycleSessionBinding,
+} from './orgmasterLocalPrincipalSandbox'
 
 const localTokenProof = vi.hoisted(() => vi.fn(async (_input: { expected: Record<string, unknown> }) => {
   throw new Error('stop-after-token-expectation')
@@ -68,7 +73,9 @@ async function captureTokenExpectation(profile: ReturnType<typeof testProfile>) 
   const root = await sandboxRoot(profile)
   const query = vi.fn(async () => ({ rows: [{
     database_name: 'jenfu_local_orgmaster_test', login_role: 'jenfu_orgmaster_runtime', active_role: 'jenfu_orgmaster_runtime',
-    server_address: '127.0.0.1', server_port: 53761, role_superuser: false, role_login: true, role_replication: false,
+    server_address: '127.0.0.1', server_port: 53761,
+    database_comment: `jenfu.local-principal-bootstrap.v1:orgmaster-test:${profile.generation}`,
+    role_superuser: false, role_login: true, role_replication: false,
     role_create_role: false, role_create_database: false, role_bypass_rls: false, database_create_allowed: false,
     runtime_owns_database: false, runtime_owns_schema: false, runtime_can_create_schema_object: false,
     runtime_member_of_migrator: false,
@@ -89,17 +96,47 @@ async function captureTokenExpectation(profile: ReturnType<typeof testProfile>) 
   }
 }
 
-function testEnvironment(root: string): NodeJS.ProcessEnv {
+function testEnvironment(root: string, databasePort = '53761'): NodeJS.ProcessEnv {
   return {
     NODE_ENV: 'development', JENFU_LOCAL_SANDBOX_ENABLED: '1', JENFU_LOCAL_SANDBOX_ID: 'orgmaster-test',
     JENFU_LOCAL_SANDBOX_ORIGIN: 'http://127.0.0.1:5173', JENFU_LOCAL_SANDBOX_PLATFORM_ORIGIN: 'http://127.0.0.1:8000',
     JENFU_LOCAL_SANDBOX_BIND_HOST: '127.0.0.1',
-    JENFU_LOCAL_SANDBOX_DATABASE_URL: 'postgres://jenfu_orgmaster_runtime:synthetic@127.0.0.1:53761/jenfu_local_orgmaster_test',
+    JENFU_LOCAL_SANDBOX_DATABASE_URL: `postgres://jenfu_orgmaster_runtime:synthetic@127.0.0.1:${databasePort}/jenfu_local_orgmaster_test`,
     JENFU_LOCAL_SANDBOX_RUNTIME_ROLE: 'jenfu_orgmaster_runtime', JENFU_LOCAL_SANDBOX_ROOT: root,
   } as NodeJS.ProcessEnv
 }
 
 describe('OrgMaster local principal sandbox runtime gates', () => {
+  it('accepts only assertions for the current owner lifecycle versions and invalidates older session bindings', () => {
+    const profile = testProfile()
+    const current = {
+      state: { principalStatus: 'active' as const, employeeStatus: 'active' as const,
+        accountLifecycleVersion: 2, profileVersion: 2,
+        grants: [{ applicationId: 'orgmaster' as const, companyId: 'company-jenfu', stableRoleId: 'role-orgmaster-admin',
+          catalogVersion: 'orgmaster.local.v1', catalogSha256: 'a'.repeat(64), roleDefinitionHash: 'b'.repeat(64),
+          scopeKind: 'global', scopeRef: null, grantVersion: 1, status: 'active' as const,
+          validFrom: '2026-01-01T00:00:00.000Z', validUntil: null }] },
+      stateHash: 'c'.repeat(64), lastEventId: '65d57913-024b-449f-a6b9-621664044478',
+    }
+    const assertion = { applicationId: 'orgmaster', sandboxId: profile.sandboxId, generation: profile.generation,
+      fixtureVersion: profile.fixture.fixtureVersion, fixtureHash: profile.fixture.fixtureHash,
+      nativeSessionContractVersion: profile.nativeSessionContractVersion, identityIssuer: LOCAL_IDENTITY_ISSUER,
+      accountType: 'human_privileged', principalId: 'local-test-admin', employeeId: 'employee-local-test-admin',
+      accountLifecycleVersion: 2, profileVersion: 2, grants: current.state.grants }
+    expect(() => verifyOrgmasterLocalLifecycleAssertion(assertion as never, profile as never, current, current.state.grants)).not.toThrow()
+    expect(() => verifyOrgmasterLocalLifecycleAssertion({ ...assertion, accountLifecycleVersion: 1, profileVersion: 1 } as never,
+      profile as never, current, current.state.grants)).toThrow('local_session_invalid')
+
+    const staleBinding = { sandbox_id: profile.sandboxId, generation: profile.generation, principal_id: 'local-test-admin',
+      fixture_version: profile.fixture.fixtureVersion, fixture_hash: profile.fixture.fixtureHash,
+      account_lifecycle_version: 1, profile_version: 1, state_hash: 'd'.repeat(64) }
+    expect(() => verifyOrgmasterLocalLifecycleSessionBinding(staleBinding, profile as never, current,
+      profile.fixture.scenarios[0])).toThrow('local_session_invalid')
+    expect(() => verifyOrgmasterLocalLifecycleSessionBinding({ ...staleBinding, account_lifecycle_version: 2,
+      profile_version: 2, state_hash: current.stateHash }, profile as never, current,
+      profile.fixture.scenarios[0])).not.toThrow()
+  })
+
   it('accepts signed trace metadata and a longer parent lifetime while preserving the native bound', () => {
     const binding = { registration_id: 'registration', portal_session_id: 'parent', join_digest: 'b'.repeat(64), generation: 'generation' }
     const session = { principalAuthEpoch: 7, expiresAt: '2026-10-30T00:00:00.000Z' }
@@ -132,7 +169,9 @@ describe('OrgMaster local principal sandbox runtime gates', () => {
     const listenerVerifier = vi.fn(async () => '127.0.0.1')
     const query = vi.fn(async (_sql: string) => ({
       rows: [{ database_name: 'jenfu_local_wrong', login_role: 'jenfu_orgmaster_runtime', active_role: 'jenfu_orgmaster_runtime',
-        server_address: '127.0.0.1', server_port: 53761, role_superuser: false, role_login: true, role_replication: false, role_create_role: false,
+        server_address: '127.0.0.1', server_port: 53761,
+        database_comment: 'jenfu.local-principal-bootstrap.v1:orgmaster-test:65d57913-024b-449f-a6b9-62166404447b',
+        role_superuser: false, role_login: true, role_replication: false, role_create_role: false,
         role_create_database: false, role_bypass_rls: false, database_create_allowed: false,
         runtime_owns_database: false, runtime_owns_schema: false, runtime_can_create_schema_object: false,
         runtime_member_of_migrator: false }], rowCount: 1,
@@ -156,7 +195,9 @@ describe('OrgMaster local principal sandbox runtime gates', () => {
     const root = await sandboxRoot()
     const query = vi.fn(async (_sql: string) => ({ rows: [{
       database_name: 'jenfu_local_orgmaster_test', login_role: 'jenfu_orgmaster_runtime', active_role: 'jenfu_orgmaster_runtime',
-      server_address: '127.0.0.1', server_port: 53761, role_superuser: false, role_login: true, role_replication: false,
+      server_address: '127.0.0.1', server_port: 15439,
+      database_comment: 'jenfu.local-principal-bootstrap.v1:orgmaster-test:65d57913-024b-449f-a6b9-62166404447b',
+      role_superuser: false, role_login: true, role_replication: false,
       role_create_role: false, role_create_database: false, role_bypass_rls: false, database_create_allowed: false,
       runtime_owns_database: false, runtime_owns_schema: false, runtime_can_create_schema_object: false,
       runtime_member_of_migrator: false,
@@ -164,7 +205,7 @@ describe('OrgMaster local principal sandbox runtime gates', () => {
     const release = vi.fn()
     const pool = { connect: vi.fn(async () => ({ query, release })), end: vi.fn(async () => undefined) }
     const sandbox = createOrgmasterLocalPrincipalSandbox({
-      environment: testEnvironment(root), listenerVerifier: vi.fn(async () => '127.0.0.1'), poolFactory: vi.fn(() => pool) as never,
+      environment: testEnvironment(root, '15439'), listenerVerifier: vi.fn(async () => '127.0.0.1'), poolFactory: vi.fn(() => pool) as never,
     })
     try {
       const result = await sandbox.start({

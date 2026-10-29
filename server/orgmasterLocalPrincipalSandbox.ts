@@ -6,6 +6,7 @@ import {
   LOCAL_IDENTITY_ISSUER,
   assertLocalSandboxRequest,
   contractDigest,
+  isLoopbackHost,
   readLocalSandboxConfig,
   type LocalAssertion,
   type LocalSandboxConfig,
@@ -22,6 +23,11 @@ import { hashSessionToken } from './orgmasterAuthCookies'
 import { ORGMASTER_SESSION_MAX_AGE_SECONDS } from './orgmasterAuthConfig'
 import { readOrgmasterLocalRuntimeProfile, type OrgmasterLocalRuntimeProfile } from './orgmasterLocalSandboxProfile'
 import { createOrgmasterLocalListenerVerifier } from './orgmasterLocalSandboxListener.mjs'
+import {
+  localPrincipalLifecycleLockKey,
+  readCurrentLocalPrincipalLifecycleState,
+  type LocalPrincipalLifecycleState,
+} from './localPrincipalSandboxLifecycle.mjs'
 
 const CALLBACK_PATH = '/api/auth/local-sandbox/callback'
 const LOCAL_SESSION_CONTRACT_VERSION = 'jenfu.orgmaster-session.v2'
@@ -46,6 +52,7 @@ type LocalTargetRow = {
   active_role: string
   server_address: string | null
   server_port: number | string | null
+  database_comment: string | null
   role_superuser: boolean
   role_login: boolean
   role_replication: boolean
@@ -126,7 +133,7 @@ function assertPersistenceTarget(environment: NodeJS.ProcessEnv, config: LocalSa
     (environment.ORGMASTER_POSTGRES_URL?.trim() && environment.ORGMASTER_POSTGRES_URL.trim() !== config.databaseUrl)) unavailable()
 }
 
-async function assertLocalDatabaseTarget(database: Queryable, config: LocalSandboxConfig) {
+async function assertLocalDatabaseTarget(database: Queryable, config: LocalSandboxConfig, profile: OrgmasterLocalRuntimeProfile) {
   let result: QueryResultLike<LocalTargetRow>
   try {
     result = await database.query<LocalTargetRow>(`
@@ -135,6 +142,8 @@ async function assertLocalDatabaseTarget(database: Queryable, config: LocalSandb
              current_user AS active_role,
              host(inet_server_addr()) AS server_address,
              inet_server_port() AS server_port,
+             (SELECT pg_catalog.shobj_description(oid, 'pg_database')
+                FROM pg_catalog.pg_database WHERE datname = current_database()) AS database_comment,
              runtime_role.rolsuper AS role_superuser,
              runtime_role.rolcanlogin AS role_login,
              runtime_role.rolreplication AS role_replication,
@@ -160,11 +169,22 @@ async function assertLocalDatabaseTarget(database: Queryable, config: LocalSandb
     `)
   } catch { return unavailable() }
   const row = result.rows[0]
-  const databaseUrl = new URL(config.databaseUrl)
+  let databaseUrl: URL
+  let expectedPort: number
+  let databaseUser: string
+  try {
+    databaseUrl = new URL(config.databaseUrl)
+    expectedPort = databaseUrl.port ? Number(databaseUrl.port) : 5432
+    databaseUser = decodeURIComponent(databaseUrl.username)
+  } catch { return unavailable() }
+  const expectedMarker = `jenfu.local-principal-bootstrap.v1:${profile.sandboxId}:${profile.generation}`
   if (result.rows.length !== 1 || !row || row.database_name !== config.databaseName ||
     row.login_role !== config.runtimeRole || row.active_role !== config.runtimeRole ||
-    databaseUrl.hostname !== '127.0.0.1' || databaseUrl.port !== '53761' ||
-    row.server_address !== '127.0.0.1' || Number(row.server_port) !== 53761 || row.role_superuser || !row.role_login || row.role_replication ||
+    !['postgres:', 'postgresql:'].includes(databaseUrl.protocol) || !isLoopbackHost(databaseUrl.hostname) ||
+    !isLoopbackHost(config.bindHost) || databaseUrl.pathname !== `/${config.databaseName}` || databaseUser !== config.runtimeRole ||
+    !Number.isSafeInteger(expectedPort) || expectedPort < 1 || expectedPort > 65535 ||
+    !isLoopbackHost(row.server_address) || Number(row.server_port) !== expectedPort || row.database_comment !== expectedMarker ||
+    row.role_superuser || !row.role_login || row.role_replication ||
     row.role_create_role || row.role_create_database || row.role_bypass_rls || row.database_create_allowed ||
     row.runtime_owns_database || row.runtime_owns_schema || row.runtime_can_create_schema_object || row.runtime_member_of_migrator) unavailable()
 }
@@ -221,7 +241,28 @@ async function validateNativeOwnerBindings(database: Queryable, profile: Orgmast
   return { row, orgmasterFixtureGrants }
 }
 
-function verifyAssertionOwnerBinding(assertion: LocalAssertion, profile: OrgmasterLocalRuntimeProfile, expectedOrgGrants: LocalScenario['grants']) {
+type CurrentLifecycle = Awaited<ReturnType<typeof readCurrentLocalPrincipalLifecycleState>>
+
+function activeOrgmasterLifecycleGrants(state: LocalPrincipalLifecycleState, nowMs = Date.now()) {
+  return state.grants.filter((grant) => grant.applicationId === 'orgmaster' && grant.status === 'active' &&
+    Date.parse(grant.validFrom) <= nowMs && (grant.validUntil === null || Date.parse(grant.validUntil) > nowMs))
+}
+
+function lifecycleAllowsOrgmaster(state: LocalPrincipalLifecycleState, nowMs = Date.now()) {
+  return state.principalStatus === 'active' && state.employeeStatus === 'active' &&
+    activeOrgmasterLifecycleGrants(state, nowMs).length > 0
+}
+
+async function readCurrentLifecycle(database: Queryable, profile: OrgmasterLocalRuntimeProfile, scenario: LocalScenario) {
+  try {
+    return await readCurrentLocalPrincipalLifecycleState(database, {
+      sandboxId: profile.sandboxId, generation: profile.generation, principalId: scenario.principalId,
+    }, scenario, profile)
+  } catch { return unavailable() }
+}
+
+export function verifyOrgmasterLocalLifecycleAssertion(assertion: LocalAssertion, profile: OrgmasterLocalRuntimeProfile,
+  current: CurrentLifecycle, expectedOrgGrants: LocalScenario['grants']) {
   if (assertion.applicationId !== 'orgmaster' || assertion.sandboxId !== profile.sandboxId ||
     assertion.generation !== profile.generation || assertion.fixtureVersion !== profile.fixture.fixtureVersion ||
     assertion.fixtureHash !== profile.fixture.fixtureHash ||
@@ -230,6 +271,20 @@ function verifyAssertionOwnerBinding(assertion: LocalAssertion, profile: Orgmast
     assertion.principalId === '' || assertion.employeeId === '' ||
     contractDigest([...assertion.grants].map((grant) => contractDigest(grant)).sort()) !==
       contractDigest(expectedOrgGrants.map((grant) => contractDigest(grant)).sort())) unavailable()
+  if (assertion.accountLifecycleVersion !== current.state.accountLifecycleVersion ||
+    assertion.profileVersion !== current.state.profileVersion) authInvalid(true)
+}
+
+export function verifyOrgmasterLocalLifecycleSessionBinding(binding: {
+  sandbox_id: string; generation: string; principal_id: string; fixture_version: string; fixture_hash: string;
+  account_lifecycle_version: number; profile_version: number; state_hash: string
+}, profile: OrgmasterLocalRuntimeProfile, current: CurrentLifecycle, scenario: LocalScenario, nowMs = Date.now()) {
+  if (binding.sandbox_id !== profile.sandboxId || binding.generation !== profile.generation ||
+    binding.principal_id !== scenario.principalId || binding.fixture_version !== profile.fixture.fixtureVersion ||
+    binding.fixture_hash !== profile.fixture.fixtureHash ||
+    binding.account_lifecycle_version !== current.state.accountLifecycleVersion ||
+    binding.profile_version !== current.state.profileVersion || !sameHash(binding.state_hash, current.stateHash) ||
+    !lifecycleAllowsOrgmaster(current.state, nowMs)) authInvalid(true)
 }
 
 export function verifyOrgmasterLocalIntrospection(value: Record<string, unknown>,
@@ -295,7 +350,7 @@ export function createOrgmasterLocalPrincipalSandbox({
     poolUrl ||= config.databaseUrl
     const client = await pool.connect()
     try {
-      await assertLocalDatabaseTarget(client, config)
+      await assertLocalDatabaseTarget(client, config, profile)
       return { config, profile, listenAddress, client, pool: pool!, localClient: createLocalSandboxClient({
         config, clientId: 'orgmaster', key: profile.key, fetch: fetchImpl,
       }) }
@@ -350,7 +405,11 @@ export function createOrgmasterLocalPrincipalSandbox({
 
   async function validateFixtureAndOwner(database: Queryable, profile: OrgmasterLocalRuntimeProfile, scenario: LocalScenario) {
     await readPdmCatalog(database, profile)
-    return validateNativeOwnerBindings(database, profile, scenario)
+    const native = await validateNativeOwnerBindings(database, profile, scenario)
+    const currentLifecycle = await readCurrentLifecycle(database, profile, scenario)
+    if (!lifecycleAllowsOrgmaster(currentLifecycle.state)) authInvalid(true)
+    return { ...native, currentLifecycle,
+      orgmasterLifecycleGrants: activeOrgmasterLifecycleGrants(currentLifecycle.state) }
   }
 
   return {
@@ -366,13 +425,18 @@ export function createOrgmasterLocalPrincipalSandbox({
       const value = await context()
       try {
         const nowMs = Date.now()
-        const eligible = value.profile.fixture.scenarios.filter((scenario) => scenario.principalStatus === 'active' &&
+        const baselineEligible = value.profile.fixture.scenarios.filter((scenario) => scenario.principalStatus === 'active' &&
           scenario.employeeStatus === 'active' && scenario.grants.some((grant) => grant.applicationId === 'orgmaster' &&
             grant.status === 'active' && Date.parse(grant.validFrom) <= nowMs &&
             (grant.validUntil === null || Date.parse(grant.validUntil) > nowMs)))
-        if (!eligible.length) unavailable()
         await readPdmCatalog(value.client, value.profile)
-        for (const scenario of eligible) await validateNativeOwnerBindings(value.client, value.profile, scenario)
+        const eligible: LocalScenario[] = []
+        for (const scenario of baselineEligible) {
+          await validateNativeOwnerBindings(value.client, value.profile, scenario, nowMs)
+          const currentLifecycle = await readCurrentLifecycle(value.client, value.profile, scenario)
+          if (lifecycleAllowsOrgmaster(currentLifecycle.state, nowMs)) eligible.push(scenario)
+        }
+        if (!eligible.length) unavailable()
         return { authMode: 'local_principal_sandbox' as const, localSandboxEnabled: true as const, correlationId }
       } finally { await endContext(value) }
     },
@@ -429,9 +493,9 @@ export function createOrgmasterLocalPrincipalSandbox({
         if (!scenario || assertion.principalId !== scenario.principalId || assertion.employeeId !== scenario.employeeId ||
           assertion.identityIssuer !== scenario.identityIssuer || assertion.identitySubject !== scenario.identitySubject ||
           assertion.accountType !== scenario.accountType) authInvalid(true)
-        const { row, orgmasterFixtureGrants } = await validateFixtureAndOwner(value.client, value.profile, scenario)
+        const { row, currentLifecycle, orgmasterLifecycleGrants } = await validateFixtureAndOwner(value.client, value.profile, scenario)
         if (row.principal_id !== assertion.principalId || row.employee_id !== assertion.employeeId || row.account_type !== assertion.accountType) authInvalid(true)
-        verifyAssertionOwnerBinding(assertion, value.profile, orgmasterFixtureGrants)
+        verifyOrgmasterLocalLifecycleAssertion(assertion, value.profile, currentLifecycle, orgmasterLifecycleGrants)
         const principals = createPrincipalAdmissionRepository(value.client as never)
         const epochs = createAuthEpochRepository(value.client as never)
         const [principal, state] = await Promise.all([
@@ -454,7 +518,14 @@ export function createOrgmasterLocalPrincipalSandbox({
         await value.client.query('BEGIN ISOLATION LEVEL READ COMMITTED')
         let session: OrgmasterSession
         try {
-          await assertLocalDatabaseTarget(value.client, value.config)
+          await assertLocalDatabaseTarget(value.client, value.config, value.profile)
+          await value.client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [localPrincipalLifecycleLockKey({
+            sandboxId: value.profile.sandboxId, generation: value.profile.generation, principalId: scenario.principalId,
+          })])
+          const lockedLifecycle = await readCurrentLifecycle(value.client, value.profile, scenario)
+          if (lockedLifecycle.stateHash !== currentLifecycle.stateHash || !lifecycleAllowsOrgmaster(lockedLifecycle.state)) authInvalid(true)
+          const lockedOrgmasterGrants = activeOrgmasterLifecycleGrants(lockedLifecycle.state)
+          verifyOrgmasterLocalLifecycleAssertion(assertion, value.profile, lockedLifecycle, lockedOrgmasterGrants)
           const sessions = createOrgmasterSessionRepository(value.client as never)
           session = await sessions.create({
             sessionIdHash: sessionHash,
@@ -481,6 +552,14 @@ export function createOrgmasterLocalPrincipalSandbox({
             assertion.portalSessionId, assertion.scenarioId, value.profile.fixture.fixtureVersion,
             value.profile.fixture.fixtureHash, value.profile.nativeSessionContractVersion,
             nativeSessionIdHash, assertion.joinDigest, idempotencyKey])
+          await value.client.query(`
+            INSERT INTO orgmaster_core.local_principal_lifecycle_session_bindings (
+              session_id, sandbox_id, generation, principal_id, fixture_version, fixture_hash,
+              account_lifecycle_version, profile_version, state_hash
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `, [session.id, value.profile.sandboxId, value.profile.generation, scenario.principalId,
+            value.profile.fixture.fixtureVersion, value.profile.fixture.fixtureHash,
+            lockedLifecycle.state.accountLifecycleVersion, lockedLifecycle.state.profileVersion, lockedLifecycle.stateHash])
           await value.client.query('COMMIT')
         } catch (error) {
           await value.client.query('ROLLBACK').catch(() => undefined)
@@ -538,7 +617,7 @@ export function createOrgmasterLocalPrincipalSandbox({
           const active = await value.localClient.introspect({ nativeSessionIdHash, expectedJoinDigest: assertion.joinDigest })
           verifyOrgmasterLocalIntrospection(active, pendingBinding, session)
           await value.client.query('BEGIN ISOLATION LEVEL READ COMMITTED')
-          await assertLocalDatabaseTarget(value.client, value.config)
+          await assertLocalDatabaseTarget(value.client, value.config, value.profile)
           const activated = await value.client.query(`
             UPDATE ${BINDING_TABLE}
                SET status = 'active', updated_at = CURRENT_TIMESTAMP
@@ -597,8 +676,23 @@ export function createOrgmasterLocalPrincipalSandbox({
         const binding = bindingResult.rows[0]
         if (!sameHash(binding.native_session_id_hash, sha256(token))) authInvalid(true)
         const scenario = await verifyNativePrincipal(value.client, session, binding, value.profile)
-        await validateFixtureAndOwner(value.client, value.profile, scenario)
+        const { currentLifecycle } = await validateFixtureAndOwner(value.client, value.profile, scenario)
+        const lifecycleBindingResult = await value.client.query<{
+          sandbox_id: string; generation: string; principal_id: string; fixture_version: string; fixture_hash: string;
+          account_lifecycle_version: number; profile_version: number; state_hash: string
+        }>(`
+          SELECT sandbox_id, generation, principal_id, fixture_version, fixture_hash,
+                 account_lifecycle_version, profile_version, state_hash
+            FROM orgmaster_core.local_principal_lifecycle_session_bindings
+           WHERE session_id = $1 AND sandbox_id = $2
+           FETCH FIRST 2 ROWS ONLY
+        `, [session.id, value.profile.sandboxId])
+        if (lifecycleBindingResult.rows.length !== 1) authInvalid(true)
+        const lifecycleBinding = lifecycleBindingResult.rows[0]
+        verifyOrgmasterLocalLifecycleSessionBinding(lifecycleBinding, value.profile, currentLifecycle, scenario)
         await introspect(value.localClient, binding, session)
+        const lifecycleAfterIntrospection = await readCurrentLifecycle(value.client, value.profile, scenario)
+        verifyOrgmasterLocalLifecycleSessionBinding(lifecycleBinding, value.profile, lifecycleAfterIntrospection, scenario)
         return { session, profile: value.profile, persistenceTargetUrl: value.config.databaseUrl }
       } catch (error) {
         if (error instanceof OrgmasterLocalPrincipalSandboxError) throw error

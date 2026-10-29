@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
 
-import { createLedger, executeMigration, verifyNoSessions } from './dev060-local-native-bootstrap-owner.mjs'
+import { createLedger, executeMigration, verifyLocalObjects, verifyNoSessions } from './dev060-local-native-bootstrap-owner.mjs'
 
 const sha256 = value => createHash('sha256').update(value).digest('hex')
 const REVISION = 'a'.repeat(40)
@@ -22,13 +22,16 @@ const asColumnRows = columns => columns.map(([column_name, data_type, character_
 class FakeClient {
   constructor({ ledgerRows = [], receiptRows = [], sessions = 0, legacySessions = 0,
     sessionTables = ['orgmaster_core.app_sessions'], nativeLedgerRows = [],
-    badLedgerShape = false, failOn = null, legacyView = false } = {}) {
+    badLedgerShape = false, failOn = null, legacyView = false, missingLocalLifecycleContract = false,
+    missingLocalLifecycleSessionBindings = false } = {}) {
     this.ledgerRows = ledgerRows
     this.receiptRows = receiptRows
     this.sessions = sessions
     this.legacySessions = legacySessions
     this.sessionTables = sessionTables
     this.legacyView = legacyView
+    this.missingLocalLifecycleContract = missingLocalLifecycleContract
+    this.missingLocalLifecycleSessionBindings = missingLocalLifecycleSessionBindings
     this.nativeLedgerRows = nativeLedgerRows
     this.badLedgerShape = badLedgerShape
     this.failOn = failOn
@@ -40,6 +43,12 @@ class FakeClient {
     this.calls.push({ sql: normalized, values })
     if (normalized.startsWith('SELECT current_database()')) {
       return { rows: [{ database_name: 'jenfu_local_orgmaster', address: '127.0.0.1' }] }
+    }
+    if (normalized.startsWith('SELECT to_regclass(')) return { rows: [{ binding: true, publication: true,
+      lifecycle_events: true, lifecycle_contract: !this.missingLocalLifecycleContract,
+      lifecycle_session_bindings: !this.missingLocalLifecycleSessionBindings }] }
+    if (normalized.startsWith('SELECT count(*)::int AS value FROM orgmaster_core.workload_principal_bindings')) {
+      return { rows: [{ value: 2 }] }
     }
     if (normalized === 'BEGIN' || normalized.startsWith('BEGIN ISOLATION LEVEL ') || normalized === 'COMMIT' || normalized === 'ROLLBACK' ||
         normalized === 'SET LOCAL ROLE jenfu_orgmaster_migrator') return { rows: [] }
@@ -90,6 +99,22 @@ class FakeClient {
     throw new Error(`Unexpected fake query: ${normalized}`)
   }
 }
+
+test('local object readback requires lifecycle events, session bindings, and the typed contract view', async () => {
+  const client = new FakeClient()
+  const result = await verifyLocalObjects(client)
+  assert.deepEqual(result.objects, [
+    'orgmaster_core.local_sandbox_session_bindings',
+    'orgmaster_contract.v_local_principal_publications_v1',
+    'orgmaster_core.local_principal_lifecycle_events',
+    'orgmaster_contract.v_local_principal_lifecycle_events_v1',
+    'orgmaster_core.local_principal_lifecycle_session_bindings',
+  ])
+  await assert.rejects(verifyLocalObjects(new FakeClient({ missingLocalLifecycleContract: true })),
+    { code: 'LOCAL_NATIVE_ORGMASTER_LOCAL_OBJECTS_MISSING' })
+  await assert.rejects(verifyLocalObjects(new FakeClient({ missingLocalLifecycleSessionBindings: true })),
+    { code: 'LOCAL_NATIVE_ORGMASTER_LOCAL_OBJECTS_MISSING' })
+})
 
 function nativeEntry() {
   return { owner: 'orgmaster', version: 'native-1', name: 'native bootstrap', appliedSha256: sha256(MIGRATION_SQL),

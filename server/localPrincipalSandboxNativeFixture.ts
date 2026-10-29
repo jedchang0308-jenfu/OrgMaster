@@ -1,4 +1,4 @@
-import { dirname, isAbsolute, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createOrgDocumentFile, parseOrgDocument } from '../src/documentStorage'
 import { createDefaultOrganizationLevels } from '../src/organizationLevels'
@@ -618,16 +618,20 @@ function activePolicy(version: GovernanceAssignmentVersionV3) {
   }
 }
 
+function isWithin(parent: string, candidate: string) {
+  const pathFromParent = relative(parent, candidate)
+  return pathFromParent === '' ||
+    (pathFromParent !== '..' &&
+      !pathFromParent.startsWith('..' + sep) &&
+      !isAbsolute(pathFromParent))
+}
+
 function assertTargetRoot(targetRoot: string) {
   if (typeof targetRoot !== 'string' || !targetRoot.trim() || !isAbsolute(targetRoot)) {
     return fail('native_fixture_target_root_must_be_absolute')
   }
   const target = resolve(targetRoot)
-  const pathFromRepository = relative(REPOSITORY_ROOT, target)
-  if (pathFromRepository === '' ||
-    (pathFromRepository !== '..' &&
-      !pathFromRepository.startsWith('..' + '\\') &&
-      !isAbsolute(pathFromRepository))) {
+  if (isWithin(REPOSITORY_ROOT, target) || isWithin(target, REPOSITORY_ROOT)) {
     return fail('native_fixture_target_root_must_be_isolated')
   }
   return target

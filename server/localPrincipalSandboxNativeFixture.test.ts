@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { createAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2ToV3'
@@ -461,6 +462,26 @@ describe('local principal native fixture materializer', () => {
     expect(publicationSnapshotHash(hashPayload)).toBe(result.governanceVersion.snapshotHash)
     expect(JSON.stringify(hashPayload)).not.toContain('orgmaster.local-role-catalog.v1')
     expect(result.governanceVersion.versionNumber).toBe(1)
+  })
+
+  it('keeps the native fixture target root disjoint from the repository in both directions', async () => {
+    const fixture = buildLocalPrincipalSandboxFixture()
+    const input = {
+      fixture,
+      sandboxId: 'dev060-native-target-root-isolation',
+      targetRoot: targetRoot(),
+      pdmCatalogReadback: await pdmReadbackFixture(),
+      fmsCatalogPin: fmsCatalogPinFixture(),
+    }
+    const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+    for (const rejectedRoot of [repositoryRoot, join(repositoryRoot, '.native-fixture-output'), dirname(repositoryRoot)]) {
+      expect(() => materializeLocalPrincipalSandboxNativeFixture({
+        ...input,
+        targetRoot: rejectedRoot,
+      })).toThrowError(LocalPrincipalSandboxNativeFixtureError)
+    }
+    expect(materializeLocalPrincipalSandboxNativeFixture(input).databaseName)
+      .toBe('jenfu_local_dev060_native_target_root_isolation')
   })
 
   it('requires database PDM v7 readback and rejects non-owner FMS sources', async () => {

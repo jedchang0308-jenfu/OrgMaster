@@ -210,10 +210,14 @@ export async function verifyOrgmasterSeed(client, sandboxId) {
 
 export async function verifyLocalObjects(client) {
   await guardTarget(client)
-  const objects=await client.query("SELECT to_regclass('orgmaster_core.local_sandbox_session_bindings') IS NOT NULL AS binding,to_regclass('orgmaster_contract.v_local_principal_publications_v1') IS NOT NULL AS publication")
+  const objects=await client.query("SELECT to_regclass('orgmaster_core.local_sandbox_session_bindings') IS NOT NULL AS binding,to_regclass('orgmaster_contract.v_local_principal_publications_v1') IS NOT NULL AS publication,to_regclass('orgmaster_core.local_principal_lifecycle_events') IS NOT NULL AS lifecycle_events,to_regclass('orgmaster_contract.v_local_principal_lifecycle_events_v1') IS NOT NULL AS lifecycle_contract,to_regclass('orgmaster_core.local_principal_lifecycle_session_bindings') IS NOT NULL AS lifecycle_session_bindings")
   const disabled=await client.query("SELECT count(*)::int AS value FROM orgmaster_core.workload_principal_bindings WHERE principal_id IN ('principal-workload:orgmaster-managed-identity-lifecycle','principal-workload:platform-principal-lifecycle-invalidation') AND enabled=false")
-  if(objects.rows?.length!==1 || objects.rows[0].binding!==true || objects.rows[0].publication!==true || disabled.rows?.[0]?.value!==2)throw fail('LOCAL_OBJECTS_MISSING')
-  return {objects:['orgmaster_core.local_sandbox_session_bindings','orgmaster_contract.v_local_principal_publications_v1'],workloadBindingsDisabled:2}
+  if(objects.rows?.length!==1 || objects.rows[0].binding!==true || objects.rows[0].publication!==true ||
+    objects.rows[0].lifecycle_events!==true || objects.rows[0].lifecycle_contract!==true ||
+    objects.rows[0].lifecycle_session_bindings!==true || disabled.rows?.[0]?.value!==2)throw fail('LOCAL_OBJECTS_MISSING')
+  return {objects:['orgmaster_core.local_sandbox_session_bindings','orgmaster_contract.v_local_principal_publications_v1',
+    'orgmaster_core.local_principal_lifecycle_events','orgmaster_contract.v_local_principal_lifecycle_events_v1',
+    'orgmaster_core.local_principal_lifecycle_session_bindings'],workloadBindingsDisabled:2}
 }
 
 async function ensureLocalReceiptTable(client) {

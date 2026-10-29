@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { LOCAL_SANDBOX_VERSION, canonicalJson, sha256 } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
 import {
@@ -21,7 +23,7 @@ const input: EmptyLocalOwnerBootstrapInput = {
     databaseUrl: 'postgres://local-only.invalid/orgmaster',
   },
   target: { port: 5432, sessionUser: 'local_org_seed_0123456789abcdef' },
-  targetRoot: 'C:\\dev060\\empty-owner',
+  targetRoot: join(tmpdir(), 'orgmaster-empty-owner'),
   createdAt: '2026-10-29T00:00:00Z',
 }
 
