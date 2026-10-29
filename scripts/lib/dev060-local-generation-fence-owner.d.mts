@@ -42,6 +42,7 @@ export type OrgmasterLocalGenerationFenceSnapshot = Readonly<{
   generation: string
   targetGeneration: string
   platformFence: PlatformLocalGenerationFence
+  unrevokedSourceBindingCount: number
   activePriorSessionCount: number
   activeSourceSessionCount: number
   activeTargetSessionCount: number
@@ -56,6 +57,7 @@ export type OrgmasterLocalGenerationFenceReadiness = Readonly<{
   ready: boolean
   reasons: readonly string[]
   targetGeneration: string
+  unrevokedSourceBindingCount: number
   activePriorSessionCount: number
   activeSourceSessionCount: number
   activeTargetSessionCount: number

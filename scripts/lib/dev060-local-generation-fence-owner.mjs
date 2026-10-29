@@ -248,6 +248,8 @@ async function readSessionFenceCounts(client, scope) {
     )
     SELECT
       (SELECT count(*)::int FROM conflicts) AS conflicting_binding_count,
+      (SELECT count(*)::int FROM orgmaster_core.local_sandbox_session_bindings
+        WHERE sandbox_id=$1 AND generation=$2::uuid AND status <> 'revoked') AS unrevoked_source_binding_count,
       count(*) FILTER (WHERE generation <> $3::uuid)::int AS active_prior_session_count,
       count(*) FILTER (WHERE generation = $2::uuid)::int AS active_source_session_count,
       count(*) FILTER (WHERE generation = $3::uuid)::int AS active_target_session_count,
@@ -262,6 +264,7 @@ async function readSessionFenceCounts(client, scope) {
   const conflictingBindingCount = exactCount(row, 'conflicting_binding_count', 'SESSION_FENCE_READBACK_INVALID')
   if (conflictingBindingCount !== 0) fail('BINDING_GENERATION_CONFLICT')
   return Object.freeze({
+    unrevokedSourceBindingCount: exactCount(row, 'unrevoked_source_binding_count', 'SESSION_FENCE_READBACK_INVALID'),
     activePriorSessionCount: exactCount(row, 'active_prior_session_count', 'SESSION_FENCE_READBACK_INVALID'),
     activeSourceSessionCount: exactCount(row, 'active_source_session_count', 'SESSION_FENCE_READBACK_INVALID'),
     activeTargetSessionCount: exactCount(row, 'active_target_session_count', 'SESSION_FENCE_READBACK_INVALID'),
@@ -297,12 +300,14 @@ function buildReadiness(snapshot) {
     reasons.push('platform_fence_not_ready')
   }
   if (snapshot.activePriorSessionCount !== 0) reasons.push('active_prior_sessions')
+  if (snapshot.unrevokedSourceBindingCount !== 0) reasons.push('unrevoked_source_bindings')
   if (snapshot.activeTargetSessionCount !== 0) reasons.push('active_target_sessions')
   if (snapshot.activeApplicationConnectionCount !== 0) reasons.push('applications_not_offline')
   return Object.freeze({
     ready: reasons.length === 0,
     reasons: Object.freeze(reasons),
     targetGeneration: snapshot.targetGeneration,
+    unrevokedSourceBindingCount: snapshot.unrevokedSourceBindingCount,
     activePriorSessionCount: snapshot.activePriorSessionCount,
     activeSourceSessionCount: snapshot.activeSourceSessionCount,
     activeTargetSessionCount: snapshot.activeTargetSessionCount,
@@ -421,6 +426,7 @@ export function createOrgmasterLocalGenerationFenceOwner({ client, target: targe
         sessionsAfter.activeTargetSessionCount !== 0 || sessionsAfter.activePriorGenerations.length !== 0) {
         fail('ACTIVE_PRIOR_SESSION_READBACK_MISMATCH')
       }
+      if (sessionsAfter.unrevokedSourceBindingCount !== 0) fail('SOURCE_BINDING_READBACK_MISMATCH')
       const preservedAfter = await readPreservedCounts(client, scope.sandboxId)
       if (JSON.stringify(preservedAfter) !== JSON.stringify(preservedBefore)) fail('PRESERVED_HISTORY_CHANGED')
 

@@ -20,7 +20,7 @@ const target = Object.freeze({
   runtimeRoles,
 })
 
-function rowCounts(sessions, generationValue) {
+function rowCounts(sessions, sandboxValue, sourceGenerationValue, generationValue) {
   const boundIds = new Set([
     ...sessions.bindings.map(binding => binding.sessionId),
     ...sessions.lifecycleBindings.map(binding => binding.sessionId),
@@ -30,6 +30,8 @@ function rowCounts(sessions, generationValue) {
   const prior = active.filter(session => session.generation !== generationValue)
   return {
     conflictCount: 0,
+    unrevokedSourceBindingCount: sessions.bindings.filter(binding => binding.sandboxId === sandboxValue &&
+      binding.generation === sourceGenerationValue && binding.status !== 'revoked').length,
     activePriorSessionCount: prior.length,
     activeSourceSessionCount: active.filter(session => session.generation === sourceGeneration).length,
     activeTargetSessionCount: active.filter(session => session.generation === generationValue).length,
@@ -150,8 +152,9 @@ class FakeOrgmasterOwnerClient {
     ].map(([schema_name, relname, relkind]) => ({ schema_name, relname, relkind, owner: ownerRole })), rowCount: 5 }
     if (flat.includes('FROM pg_catalog.pg_stat_activity')) return { rows: [{ connection_count: this.appConnections }], rowCount: 1 }
     if (flat.startsWith('WITH bindings AS')) {
-      const counts = rowCounts(this.sessions, values[2])
+      const counts = rowCounts(this.sessions, values[0], values[1], values[2])
       return { rows: [{ conflicting_binding_count: counts.conflictCount,
+        unrevoked_source_binding_count: counts.unrevokedSourceBindingCount,
         active_prior_session_count: counts.activePriorSessionCount,
         active_source_session_count: counts.activeSourceSessionCount,
         active_target_session_count: counts.activeTargetSessionCount,
@@ -223,6 +226,7 @@ test('generation fence serializes OrgMaster rebinding, revokes only source-gener
   assert.equal(result.revokedBindingCount, 2)
   assert.equal(result.readiness.ready, true)
   assert.equal(result.readiness.targetGeneration, generation)
+  assert.equal(result.readiness.unrevokedSourceBindingCount, 0)
   assert.equal(result.readiness.activePriorSessionCount, 0)
   assert.equal(client.markerGeneration, generation)
   assert.equal(client.sessions.events.length, 1)
@@ -258,6 +262,32 @@ test('mock enforces PostgreSQL 42501 for data_directory reads under the migrator
   const client = new FakeOrgmasterOwnerClient()
   client.currentRole = ownerRole
   await assert.rejects(client.query("SELECT pg_catalog.current_setting('data_directory')"), error => error.code === '42501')
+})
+
+test('readiness blocks already-inactive native sessions while source registration bindings remain unrevoked', async () => {
+  const client = new FakeOrgmasterOwnerClient({ markerGeneration: generation })
+  for (const session of client.sessions.nativeSessions.values()) {
+    if (session.generation === sourceGeneration) {
+      session.revokedAt = fixedTime
+      session.revokeReason = 'prior_reset'
+    }
+  }
+  const api = owner(client)
+  const before = await api.readiness(scope)
+  assert.equal(before.activeSourceSessionCount, 0)
+  assert.equal(before.unrevokedSourceBindingCount, 2)
+  assert.equal(before.ready, false)
+  assert.ok(before.reasons.includes('unrevoked_source_bindings'))
+
+  const result = await api.rebindAndFenceSessions(scope)
+  assert.equal(result.status, 'rebound')
+  assert.equal(result.revokedSessionCount, 0)
+  assert.equal(result.revokedBindingCount, 2)
+  assert.equal(result.readiness.ready, true)
+  assert.equal(result.readiness.unrevokedSourceBindingCount, 0)
+  assert.ok(client.sessions.bindings.filter(binding => binding.generation === sourceGeneration)
+    .every(binding => binding.status === 'revoked'))
+  assert.equal(client.sessions.lifecycleBindings.length, 1)
 })
 
 test('supports the verified local postgres superuser without extra grants', async () => {
