@@ -42,12 +42,13 @@ function rowCounts(sessions, sandboxValue, sourceGenerationValue, generationValu
 class FakeOrgmasterOwnerClient {
   constructor({ target: targetValue = target, operatorIsSuperuser = false, migratorMembership = true,
     monitorMembership = true, dataDirectoryReadable = true, markerGeneration = sourceGeneration, appConnections = 0,
-    unknownActiveGeneration = false } = {}) {
+    dataDirectoryOutput, unknownActiveGeneration = false } = {}) {
     this.target = targetValue
     this.operatorIsSuperuser = operatorIsSuperuser
     this.migratorMembership = migratorMembership
     this.monitorMembership = monitorMembership
     this.dataDirectoryReadable = dataDirectoryReadable
+    this.dataDirectoryOutput = dataDirectoryOutput ?? targetValue.dataDirectory
     this.markerGeneration = markerGeneration
     this.appConnections = appConnections
     this.calls = []
@@ -118,14 +119,20 @@ class FakeOrgmasterOwnerClient {
       (this.currentRole !== this.target.operatorRole || !this.dataDirectoryReadable)) {
       throw Object.assign(new Error('permission denied to read parameter "data_directory"'), { code: '42501' })
     }
-    if (flat.includes('current_database() AS database_name')) return { rows: [{
-      database_name: this.target.databaseName, server_address: '127.0.0.1', server_port: this.target.port,
-      data_directory: this.target.dataDirectory, session_user: this.target.operatorRole, current_user: this.currentRole,
-      database_comment: `jenfu.local-principal-bootstrap.v1:${sandboxId}:${this.markerGeneration}`,
-      database_owner: this.target.databaseOwnerRole, operator_is_superuser: this.operatorIsSuperuser,
-      operator_can_set_migrator: this.operatorIsSuperuser || this.migratorMembership,
-      operator_can_read_activity: this.operatorIsSuperuser || this.monitorMembership,
-    }], rowCount: 1 }
+    if (flat.includes('current_database() AS database_name')) {
+      const targetFactRow = {
+        database_name: this.target.databaseName, server_address: '127.0.0.1', server_port: this.target.port,
+        data_directory: this.dataDirectoryOutput, session_user: this.target.operatorRole, current_user: this.currentRole,
+        database_comment: `jenfu.local-principal-bootstrap.v1:${sandboxId}:${this.markerGeneration}`,
+        database_owner: this.target.databaseOwnerRole,
+        operator_can_set_migrator: this.operatorIsSuperuser || this.migratorMembership,
+        operator_can_read_activity: this.operatorIsSuperuser || this.monitorMembership,
+      }
+      if (flat.includes('operator_role.rolsuper AS operator_is_superuser')) {
+        targetFactRow.operator_is_superuser = this.operatorIsSuperuser
+      }
+      return { rows: [targetFactRow], rowCount: 1 }
+    }
     if (flat.startsWith('SELECT rolname::text AS role_name')) return { rows: [...runtimeRoles, ownerRole].map(role_name => ({
       role_name, rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolbypassrls: false,
     })), rowCount: runtimeRoles.length + 1 }
@@ -262,6 +269,30 @@ test('mock enforces PostgreSQL 42501 for data_directory reads under the migrator
   const client = new FakeOrgmasterOwnerClient()
   client.currentRole = ownerRole
   await assert.rejects(client.query("SELECT pg_catalog.current_setting('data_directory')"), error => error.code === '42501')
+})
+
+test('fake target projection omits superuser fact unless SQL selects its explicit alias', async () => {
+  const client = new FakeOrgmasterOwnerClient()
+  const result = await client.query("SELECT current_database() AS database_name, pg_catalog.current_setting('data_directory') AS data_directory")
+  assert.equal(Object.hasOwn(result.rows[0], 'operator_is_superuser'), false)
+})
+
+test('selects superuser alias and normalizes Windows data-directory separators and case', async () => {
+  const windowsTarget = { ...target, dataDirectory: 'C:\\Users\\PrivateAdmin\\OrgMaster Data' }
+  const client = new FakeOrgmasterOwnerClient({ target: windowsTarget,
+    dataDirectoryOutput: 'c:/users/privateadmin/orgmaster data', markerGeneration: generation })
+  const snapshot = await owner(client, {}, windowsTarget).readGenerationFence(scope)
+  const targetQuery = client.calls.find(call => call.sql.includes("current_setting('data_directory')"))
+  assert.equal(snapshot.targetGeneration, generation)
+  assert.ok(targetQuery.sql.includes('operator_role.rolsuper AS operator_is_superuser'))
+})
+
+test('keeps POSIX data-directory comparison case sensitive', async () => {
+  const posixTarget = { ...target, dataDirectory: '/var/lib/PostgreSQL/OrgMaster' }
+  const client = new FakeOrgmasterOwnerClient({ target: posixTarget,
+    dataDirectoryOutput: '/var/lib/postgresql/OrgMaster', markerGeneration: generation })
+  const api = owner(client, {}, posixTarget)
+  await assert.rejects(api.readGenerationFence(scope), error => error.code === 'LOCAL_GENERATION_FENCE_TARGET_IDENTITY_MISMATCH')
 })
 
 test('readiness blocks already-inactive native sessions while source registration bindings remain unrevoked', async () => {

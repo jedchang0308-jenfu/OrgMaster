@@ -45,11 +45,20 @@ function assertScope(value) {
 }
 
 function absoluteDataDirectory(value) {
-  if (typeof value !== 'string' || !value || value !== value.trim() || value.includes('\0') ||
-    value.includes('/') && value.startsWith('//')) return false
+  if (typeof value !== 'string' || !value || value !== value.trim() || value.includes('\0')) return false
   const slash = value.replaceAll('\\', '/')
+  if (slash.startsWith('//')) return false
   const absolute = slash.startsWith('/') || /^[a-z]:\//iu.test(slash)
   return absolute && !slash.split('/').includes('..') && !slash.endsWith('/..')
+}
+
+function normalizeDataDirectory(value) {
+  if (!absoluteDataDirectory(value)) return null
+  const slashPath = value.replaceAll('\\', '/')
+  const windowsPath = /^[a-z]:\//iu.test(slashPath)
+  const normalizedPath = windowsPath ? path.win32.normalize(slashPath) : path.posix.normalize(slashPath)
+  const normalized = normalizedPath.replaceAll('\\', '/').replace(/\/$/u, '') || '/'
+  return windowsPath ? normalized.toLowerCase() : normalized
 }
 
 function assertTarget(value) {
@@ -116,6 +125,7 @@ async function readTargetFacts(client, target, scope) {
       pg_catalog.inet_server_port() AS server_port,
       pg_catalog.current_setting('data_directory') AS data_directory,
       session_user::text AS session_user,current_user::text AS current_user,
+      operator_role.rolsuper AS operator_is_superuser,
       (SELECT pg_catalog.shobj_description(oid,'pg_database') FROM pg_catalog.pg_database
         WHERE datname=current_database()) AS database_comment,
       pg_catalog.pg_get_userbyid(database.datdba) AS database_owner,
@@ -131,7 +141,8 @@ async function readTargetFacts(client, target, scope) {
   const clusterSuperuser = target.operatorRole === 'postgres'
   if (result.rows?.length !== 1 || row.database_name !== target.databaseName ||
     !['127.0.0.1', '::1'].includes(row.server_address) || Number(row.server_port) !== target.port ||
-    row.data_directory !== target.dataDirectory || row.session_user !== target.operatorRole ||
+    normalizeDataDirectory(row.data_directory) !== normalizeDataDirectory(target.dataDirectory) ||
+    row.session_user !== target.operatorRole ||
     row.current_user !== target.operatorRole ||
     row.database_owner !== target.databaseOwnerRole ||
     row.operator_is_superuser !== clusterSuperuser ||
