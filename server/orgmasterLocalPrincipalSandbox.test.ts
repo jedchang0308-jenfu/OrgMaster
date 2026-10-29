@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { contractDigest, LOCAL_FIXTURE_VERSION, LOCAL_IDENTITY_ISSUER } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
-import { readAiPdmRoleCatalogV7 } from './localPrincipalSandboxFixture.mjs'
+import { buildLocalPrincipalSandboxFixtureV2, readAiPdmRoleCatalogV7 } from './localPrincipalSandboxFixture.mjs'
 import { AI_PDM_ROLE_CATALOG_V7_SHA256, AI_PDM_ROLE_CATALOG_V7_VERSION, LOCAL_PRINCIPAL_FIXTURE_VERSION } from './localPrincipalSandboxFixture.mjs'
 import {
   createOrgmasterLocalPrincipalSandbox,
@@ -107,6 +107,20 @@ function testEnvironment(root: string, databasePort = '53761'): NodeJS.ProcessEn
 }
 
 describe('OrgMaster local principal sandbox runtime gates', () => {
+  it('binds the versioned v2 fixture and hash into the local callback token-proof API request', async () => {
+    const fixture = buildLocalPrincipalSandboxFixtureV2({ createdAt: '2026-10-30T12:00:00.000Z' })
+    const profile = { ...testProfile(), fixture }
+    const expected = await captureTokenExpectation(profile)
+
+    expect(expected).toMatchObject({
+      applicationId: 'orgmaster',
+      sandboxId: profile.sandboxId,
+      generation: profile.generation,
+      fixtureVersion: fixture.fixtureVersion,
+      fixtureHash: fixture.fixtureHash,
+    })
+  })
+
   it('accepts only assertions for the current owner lifecycle versions and invalidates older session bindings', () => {
     const profile = testProfile()
     const current = {
