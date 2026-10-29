@@ -72,6 +72,71 @@ export class OrgmasterLocalPrincipalSandboxError extends Error {
   }
 }
 
+type LocalSandboxAuthStage =
+  | 'runtime_context'
+  | 'session_lookup'
+  | 'session_binding_lookup'
+  | 'principal_auth_state'
+  | 'fixture_owner_readiness'
+  | 'lifecycle_binding_lookup'
+  | 'native_auth_introspection'
+  | 'lifecycle_recheck'
+
+const diagnosticErrorNames = new Set([
+  'AggregateError', 'AuthEpochUnavailableError', 'DatabaseError', 'Error', 'OrgmasterLocalPrincipalSandboxError',
+  'PrincipalAdmissionError', 'RangeError', 'TypeError',
+])
+const diagnosticNodeCodes = new Set(['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENOTFOUND', 'ETIMEDOUT'])
+const diagnosticSandboxCodes = new Set(['auth_contract_mismatch', 'auth_epoch_unavailable', 'auth_origin_invalid', 'auth_request_invalid', 'local_sandbox_unavailable', 'local_session_invalid'])
+
+function emitLocalSandboxAuthDiagnostic(
+  request: IncomingMessage,
+  correlationId: string | undefined,
+  stage: LocalSandboxAuthStage,
+  error: unknown,
+) {
+  const remoteAddress = request.socket.remoteAddress ?? ''
+  const loopback = remoteAddress === '127.0.0.1' || remoteAddress === '::1' || remoteAddress === '::ffff:127.0.0.1'
+  if (!loopback || !['development', 'test'].includes(String(process.env.NODE_ENV ?? ''))) return
+  try {
+    const candidateName = error instanceof Error ? error.constructor.name : ''
+    const errorName = diagnosticErrorNames.has(candidateName) ? candidateName : 'UnknownError'
+    let errorCode = 'unclassified_error'
+    if (error instanceof OrgmasterLocalPrincipalSandboxError) {
+      errorCode = diagnosticSandboxCodes.has(error.code) ? error.code : 'local_sandbox_error'
+    } else if (error instanceof PrincipalAdmissionError) {
+      errorCode = error.code
+    } else if (error instanceof AuthEpochUnavailableError) {
+      errorCode = 'auth_epoch_unavailable'
+    } else if (error && typeof error === 'object' && 'code' in error) {
+      const candidate = (error as { code?: unknown }).code
+      if (typeof candidate === 'string' && (/^[0-9A-Z]{5}$/u.test(candidate) || diagnosticNodeCodes.has(candidate))) errorCode = candidate
+    }
+    const stackFrames: string[] = []
+    if (error instanceof Error && typeof error.stack === 'string') {
+      for (const line of error.stack.split('\n').slice(1)) {
+        const match = line.match(/^\s*at (?:(.*?) \()?(.+?):(\d+):(\d+)\)?$/u)
+        if (!match) continue
+        const functionName = (match[1] ?? 'anonymous').trim().replace(/^async\s+/u, '')
+        const safeFunction = /^[A-Za-z0-9_$.:<>-]{1,80}$/u.test(functionName) ? functionName : 'anonymous'
+        const sourceName = (match[2].split(/[\\/]/u).pop() ?? '').replace(/[^A-Za-z0-9_.-]/gu, '').slice(-64) || 'source'
+        stackFrames.push(`${safeFunction}@${sourceName}:${match[3]}`)
+        if (stackFrames.length === 3) break
+      }
+    }
+    console.error('ORGMASTER_AUTH_DIAGNOSTIC', JSON.stringify({
+      event: 'orgmaster_auth_failure',
+      correlationId: correlationId && /^[A-Za-z0-9_-]{8,64}$/u.test(correlationId) ? correlationId : 'unavailable',
+      stage,
+      errorName,
+      errorCode,
+      stackFrames,
+    }))
+  } catch {
+    // Diagnostics must never change the authentication decision.
+  }
+}
+
 function unavailable(): never { throw new OrgmasterLocalPrincipalSandboxError(503, 'local_sandbox_unavailable') }
 function authInvalid(clearCookie = false): never { throw new OrgmasterLocalPrincipalSandboxError(401, 'local_session_invalid', clearCookie) }
 function exactKeys(value: unknown, keys: string[]) {
@@ -654,8 +719,15 @@ export function createOrgmasterLocalPrincipalSandbox({
       } finally { await endContext(value) }
     },
 
-    async verify(request: IncomingMessage): Promise<LocalSandboxSessionResult> {
-      const value = await context(request)
+    async verify(request: IncomingMessage, correlationId?: string): Promise<LocalSandboxSessionResult> {
+      let value: Awaited<ReturnType<typeof context>>
+      try {
+        value = await context(request)
+      } catch (error) {
+        emitLocalSandboxAuthDiagnostic(request, correlationId, 'runtime_context', error)
+        throw error
+      }
+      let diagnosticStage: LocalSandboxAuthStage = 'session_lookup'
       try {
         const token = cookieHeader(request, localSessionCookieName(value.profile.sandboxId))
         if (!token || token.length > 256) authInvalid(true)
@@ -664,6 +736,7 @@ export function createOrgmasterLocalPrincipalSandbox({
         const session = await sessions.findByHash(hash)
         if (!session || session.revokedAt || Date.parse(session.expiresAt) <= Date.now() ||
           session.sessionSchemaVersion !== 2 || session.epochKind !== 'principal' || session.principalAuthEpoch === null || !session.authenticatedAt) authInvalid(true)
+        diagnosticStage = 'session_binding_lookup'
         const bindingResult = await value.client.query<BindingRow>(`
           SELECT session_id, sandbox_id, generation, registration_id, portal_session_id, scenario_id,
                  fixture_version, fixture_hash, native_session_contract_version, native_session_id_hash,
@@ -675,8 +748,11 @@ export function createOrgmasterLocalPrincipalSandbox({
         if (bindingResult.rows.length !== 1) authInvalid(true)
         const binding = bindingResult.rows[0]
         if (!sameHash(binding.native_session_id_hash, sha256(token))) authInvalid(true)
+        diagnosticStage = 'principal_auth_state'
         const scenario = await verifyNativePrincipal(value.client, session, binding, value.profile)
+        diagnosticStage = 'fixture_owner_readiness'
         const { currentLifecycle } = await validateFixtureAndOwner(value.client, value.profile, scenario)
+        diagnosticStage = 'lifecycle_binding_lookup'
         const lifecycleBindingResult = await value.client.query<{
           sandbox_id: string; generation: string; principal_id: string; fixture_version: string; fixture_hash: string;
           account_lifecycle_version: number; profile_version: number; state_hash: string
@@ -690,11 +766,16 @@ export function createOrgmasterLocalPrincipalSandbox({
         if (lifecycleBindingResult.rows.length !== 1) authInvalid(true)
         const lifecycleBinding = lifecycleBindingResult.rows[0]
         verifyOrgmasterLocalLifecycleSessionBinding(lifecycleBinding, value.profile, currentLifecycle, scenario)
+        diagnosticStage = 'native_auth_introspection'
         await introspect(value.localClient, binding, session)
+        diagnosticStage = 'lifecycle_recheck'
         const lifecycleAfterIntrospection = await readCurrentLifecycle(value.client, value.profile, scenario)
         verifyOrgmasterLocalLifecycleSessionBinding(lifecycleBinding, value.profile, lifecycleAfterIntrospection, scenario)
         return { session, profile: value.profile, persistenceTargetUrl: value.config.databaseUrl }
       } catch (error) {
+        if (!(error instanceof OrgmasterLocalPrincipalSandboxError) || error.status >= 500) {
+          emitLocalSandboxAuthDiagnostic(request, correlationId, diagnosticStage, error)
+        }
         if (error instanceof OrgmasterLocalPrincipalSandboxError) throw error
         if (error instanceof PrincipalAdmissionError) {
           if (error.code === 'principal_directory_unavailable') unavailable()

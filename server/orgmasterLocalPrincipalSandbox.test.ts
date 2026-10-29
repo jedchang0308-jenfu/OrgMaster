@@ -24,6 +24,7 @@ vi.mock('../contracts/local-principal-sandbox/v1/client.mjs', () => ({
 
 const roots: string[] = []
 afterEach(async () => {
+  vi.restoreAllMocks()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
@@ -176,6 +177,51 @@ describe('OrgMaster local principal sandbox runtime gates', () => {
     await expect(sandbox.mode('correlation')).rejects.toThrow('local_sandbox_unavailable')
     expect(listenerVerifier).not.toHaveBeenCalled()
     expect(poolFactory).not.toHaveBeenCalled()
+  })
+
+  it('emits a sanitized local diagnostic for the exact sandbox session lookup failure stage', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    const root = await sandboxRoot()
+    const lookupError = Object.assign(new Error('private database detail and opaque session token'), { code: '08006' })
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{
+        database_name: 'jenfu_local_orgmaster_test', login_role: 'jenfu_orgmaster_runtime', active_role: 'jenfu_orgmaster_runtime',
+        server_address: '127.0.0.1', server_port: 53761,
+        database_comment: `jenfu.local-principal-bootstrap.v1:orgmaster-test:${testProfile().generation}`,
+        role_superuser: false, role_login: true, role_replication: false,
+        role_create_role: false, role_create_database: false, role_bypass_rls: false, database_create_allowed: false,
+        runtime_owns_database: false, runtime_owns_schema: false, runtime_can_create_schema_object: false,
+        runtime_member_of_migrator: false,
+      }], rowCount: 1 })
+      .mockRejectedValueOnce(lookupError)
+    const client = { query, release: vi.fn() }
+    const pool = { connect: vi.fn(async () => client), end: vi.fn(async () => undefined) }
+    const sandbox = createOrgmasterLocalPrincipalSandbox({
+      environment: testEnvironment(root), listenerVerifier: vi.fn(async () => '127.0.0.1'), poolFactory: vi.fn(() => pool) as never,
+    })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const request = {
+      url: '/api/orgmaster/governance/session', method: 'GET',
+      headers: { host: '127.0.0.1:5173', cookie: 'orgmaster_local_session_orgmaster-test=opaque-session-token' },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as never
+
+    try {
+      await expect(sandbox.verify(request, 'local-sandbox-diag-01')).rejects.toMatchObject({ status: 503, code: 'local_sandbox_unavailable' })
+      expect(log).toHaveBeenCalledOnce()
+      expect(log.mock.calls[0]?.[0]).toBe('ORGMASTER_AUTH_DIAGNOSTIC')
+      const diagnostic = JSON.parse(String(log.mock.calls[0]?.[1])) as Record<string, unknown>
+      expect(diagnostic).toMatchObject({
+        correlationId: 'local-sandbox-diag-01', stage: 'session_lookup', errorName: 'Error', errorCode: '08006',
+      })
+      expect(JSON.stringify(diagnostic)).not.toContain('private database detail')
+      expect(JSON.stringify(diagnostic)).not.toContain('opaque-session-token')
+      expect((diagnostic.stackFrames as string[]).length).toBeLessThanOrEqual(3)
+    } finally {
+      await sandbox.close()
+      log.mockRestore()
+      vi.unstubAllEnvs()
+    }
   })
 
   it('proves the actual database target after the OS listener and private profile gates', async () => {

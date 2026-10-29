@@ -7,7 +7,7 @@ import type { OrgmasterSession } from './orgmasterSessionRepository'
 import { PrincipalAdmissionError } from './orgmasterPrincipalAdmissionRepository'
 
 const openServers: Array<ReturnType<typeof createServer>> = []
-afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(openServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
+afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await Promise.all(openServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
 
 function configuredRuntime(overrides: Partial<OrgmasterAuthRuntime> = {}) {
   const config: OrgmasterAuthConfig = {
@@ -267,6 +267,107 @@ describe('OrgMaster auth middleware', () => {
     const second = await fetch(`${base}/api/protected`, { headers: { cookie: `orgmaster_session=${token}` } })
     expect(second.status).toBe(401)
     expect(await second.json()).toMatchObject({ code: 'auth_epoch_stale' })
+  })
+
+  it('emits local-only sanitized diagnostics for the failing session auth stage', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    const { runtime } = configuredRuntime()
+    const token = 'diagnostic-session-token-that-must-not-be-logged'
+    const secretMessage = `private-error ${token} sentinel`
+    const lookupError = Object.assign(new Error(secretMessage), { code: '08006' })
+    runtime.sessions!.findByHash = vi.fn(async () => { throw lookupError })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const base = await listen(runtime)
+
+    const response = await fetch(`${base}/api/protected`, {
+      headers: { cookie: `orgmaster_session=${token}`, 'x-correlation-id': 'local-auth-diag-001' },
+    })
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ code: 'auth_server_not_configured' })
+    expect(log).toHaveBeenCalledOnce()
+    expect(log.mock.calls[0]?.[0]).toBe('ORGMASTER_AUTH_DIAGNOSTIC')
+    const diagnostic = JSON.parse(String(log.mock.calls[0]?.[1])) as Record<string, unknown>
+    expect(diagnostic).toMatchObject({
+      event: 'orgmaster_auth_failure',
+      correlationId: 'local-auth-diag-001',
+      stage: 'session_lookup',
+      errorName: 'Error',
+      errorCode: '08006',
+    })
+    expect(Array.isArray(diagnostic.stackFrames)).toBe(true)
+    expect((diagnostic.stackFrames as string[]).length).toBeLessThanOrEqual(3)
+    expect(JSON.stringify(diagnostic)).not.toContain(secretMessage)
+    expect(JSON.stringify(diagnostic)).not.toContain(token)
+  })
+
+  it('identifies principal resolution and principal state failures without exposing error messages', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const token = 'diagnostic-principal-stage-token-that-must-not-be-logged'
+    const cases = [
+      { stage: 'principal_resolution', fail: (runtime: OrgmasterAuthRuntime) => {
+        runtime.principals!.resolveActivePrincipal = vi.fn(async () => { throw new PrincipalAdmissionError('principal_directory_unavailable') })
+      } },
+      { stage: 'principal_state', fail: (runtime: OrgmasterAuthRuntime) => {
+        runtime.epochs!.readPrincipalState = vi.fn(async () => { throw new Error(`private-state-message ${token}`) })
+      } },
+    ] as const
+
+    for (const [index, testCase] of cases.entries()) {
+      const { runtime, config, sessions } = configuredRuntime()
+      sessions.set(hashSessionToken(config.sessionHashPepper, token), {
+        id: `diagnostic-session-${index}`, identityIssuer: config.identityIssuer, identitySubject: 'uid-1',
+        principalId: 'principal-1', employeeId: 'employee-1', authEpoch: 0,
+        sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 0,
+        issuedAt: new Date().toISOString(), authenticatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
+      })
+      testCase.fail(runtime)
+      const base = await listen(runtime)
+      const response = await fetch(`${base}/api/protected`, { headers: { cookie: `orgmaster_session=${token}` } })
+
+      expect(response.status).toBe(503)
+      const entries = log.mock.calls.map((call) => JSON.parse(String(call[1])) as Record<string, unknown>)
+      expect(entries.at(-1)).toMatchObject({ stage: testCase.stage })
+      expect(JSON.stringify(entries.at(-1))).not.toContain(token)
+      expect((entries.at(-1)?.stackFrames as string[]).length).toBeLessThanOrEqual(3)
+    }
+  })
+
+  it('does not emit auth diagnostics for production mode or a nonlocal runtime URL', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { runtime: productionRuntime } = configuredRuntime()
+    productionRuntime.sessions!.findByHash = vi.fn(async () => { throw new Error('private failure') })
+    vi.stubEnv('NODE_ENV', 'production')
+    const productionBase = await listen(productionRuntime)
+    const productionResponse = await fetch(`${productionBase}/api/protected`, { headers: { cookie: 'orgmaster_session=opaque-token-value' } })
+    expect(productionResponse.status).toBe(503)
+    expect(log).not.toHaveBeenCalled()
+
+    vi.stubEnv('NODE_ENV', 'development')
+    const { runtime: remoteRuntime } = configuredRuntime()
+    if (remoteRuntime.configResult.configured) remoteRuntime.configResult.config.publicBaseUrl = new URL('https://orgmaster.example.test')
+    remoteRuntime.sessions!.findByHash = vi.fn(async () => { throw new Error('private failure') })
+    const remoteBase = await listen(remoteRuntime)
+    const remoteResponse = await fetch(`${remoteBase}/api/protected`, { headers: { cookie: 'orgmaster_session=another-opaque-token' } })
+    expect(remoteResponse.status).toBe(503)
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  it('diagnoses missing runtime dependencies on local development requests', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('ORGMASTER_PUBLIC_BASE_URL', 'http://127.0.0.1:5173')
+    const runtime: OrgmasterAuthRuntime = { configResult: { configured: false, missing: ['ORGMASTER_POSTGRES_URL'], reason: 'test' } }
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const base = await listen(runtime)
+
+    const response = await fetch(`${base}/api/protected`)
+
+    expect(response.status).toBe(503)
+    expect(log).toHaveBeenCalledOnce()
+    const diagnostic = JSON.parse(String(log.mock.calls[0]?.[1])) as Record<string, unknown>
+    expect(diagnostic).toMatchObject({ stage: 'runtime_dependencies', errorCode: 'auth_server_not_configured' })
   })
 
   it('allows the development identity only for exact headers on loopback', async () => {

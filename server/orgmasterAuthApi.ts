@@ -170,6 +170,85 @@ function requireDevelopmentOrigin(request: IncomingMessage) {
   }
 }
 
+type LocalAuthDiagnosticStage = 'runtime_dependencies' | 'session_lookup' | 'principal_resolution' | 'principal_state'
+
+const diagnosticErrorNames = new Set([
+  'AggregateError', 'AuthEpochUnavailableError', 'DatabaseError', 'Error', 'OrgmasterAuthError',
+  'PrincipalAdmissionError', 'RangeError', 'TypeError',
+])
+const diagnosticNodeCodes = new Set(['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENOTFOUND', 'ETIMEDOUT'])
+
+function isLoopbackHostname(hostname: string) {
+  const normalized = hostname.replace(/^\[|\]$/gu, '').toLowerCase()
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1' || normalized.startsWith('127.')
+}
+
+function localDiagnosticEnabled(request: IncomingMessage, runtime: OrgmasterAuthRuntime) {
+  if (!isLoopback(request) || !['development', 'test'].includes(String(process.env.NODE_ENV ?? ''))) return false
+  try {
+    const baseUrl = runtime.configResult.configured
+      ? runtime.configResult.config.publicBaseUrl
+      : new URL(process.env.ORGMASTER_PUBLIC_BASE_URL ?? '')
+    return baseUrl.protocol === 'http:' && isLoopbackHostname(baseUrl.hostname)
+  } catch {
+    return false
+  }
+}
+
+function sanitizedErrorName(error: unknown) {
+  const candidate = error instanceof Error ? error.constructor.name : ''
+  return diagnosticErrorNames.has(candidate) ? candidate : 'UnknownError'
+}
+
+function sanitizedErrorCode(error: unknown) {
+  if (error instanceof OrgmasterAuthError || error instanceof PrincipalAdmissionError) return error.code
+  if (error instanceof AuthEpochUnavailableError) return 'auth_epoch_unavailable'
+  const candidate = error && typeof error === 'object' && 'code' in error
+    ? (error as { code?: unknown }).code
+    : undefined
+  if (typeof candidate !== 'string') return 'unclassified_error'
+  if (/^[0-9A-Z]{5}$/u.test(candidate)) return candidate
+  if (diagnosticNodeCodes.has(candidate)) return candidate
+  return 'unclassified_error'
+}
+
+function sanitizedStackFrames(error: unknown) {
+  if (!(error instanceof Error) || typeof error.stack !== 'string') return [] as string[]
+  const frames: string[] = []
+  for (const line of error.stack.split('\n').slice(1)) {
+    const match = line.match(/^\s*at (?:(.*?) \()?(.+?):(\d+):(\d+)\)?$/u)
+    if (!match) continue
+    const functionName = (match[1] ?? 'anonymous').trim().replace(/^async\s+/u, '')
+    const safeFunction = /^[A-Za-z0-9_$.:<>-]{1,80}$/u.test(functionName) ? functionName : 'anonymous'
+    const sourceName = (match[2].split(/[\\/]/u).pop() ?? '').replace(/[^A-Za-z0-9_.-]/gu, '').slice(-64) || 'source'
+    frames.push(`${safeFunction}@${sourceName}:${match[3]}`)
+    if (frames.length === 3) break
+  }
+  return frames
+}
+
+function emitLocalAuthDiagnostic(
+  request: IncomingMessage,
+  runtime: OrgmasterAuthRuntime,
+  correlationId: string,
+  stage: LocalAuthDiagnosticStage,
+  error: unknown,
+) {
+  if (!localDiagnosticEnabled(request, runtime)) return
+  try {
+    console.error('ORGMASTER_AUTH_DIAGNOSTIC', JSON.stringify({
+      event: 'orgmaster_auth_failure',
+      correlationId,
+      stage,
+      errorName: sanitizedErrorName(error),
+      errorCode: sanitizedErrorCode(error),
+      stackFrames: sanitizedStackFrames(error),
+    }))
+  } catch {
+    // Diagnostics must never change the authentication decision.
+  }
+}
+
 async function readJsonBody(request: IncomingMessage) {
   if (!String(request.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
     throw new OrgmasterAuthError(415, 'auth_json_required')
@@ -225,14 +304,22 @@ function publicSession(session: OrgmasterSession, id: string, developmentProfile
   }
 }
 
-async function verifySession(request: IncomingMessage, runtime: OrgmasterAuthRuntime) {
-  const { config, principals, epochs, sessions } = dependencies(runtime)
+async function verifySession(request: IncomingMessage, runtime: OrgmasterAuthRuntime, correlationId: string) {
+  let authDependencies: ReturnType<typeof dependencies>
+  try {
+    authDependencies = dependencies(runtime)
+  } catch (error) {
+    emitLocalAuthDiagnostic(request, runtime, correlationId, 'runtime_dependencies', error)
+    throw error
+  }
+  const { config, principals, epochs, sessions } = authDependencies
   const token = readSessionToken(request.headers.cookie)
   if (!token) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
   let session: OrgmasterSession | null
   try {
     session = await sessions.findByHash(hashSessionToken(config.sessionHashPepper, token))
-  } catch {
+  } catch (error) {
+    emitLocalAuthDiagnostic(request, runtime, correlationId, 'session_lookup', error)
     throw new OrgmasterAuthError(503, 'auth_server_not_configured')
   }
   if (!session || session.revokedAt || Date.parse(session.expiresAt) <= Date.now()) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
@@ -241,11 +328,23 @@ async function verifySession(request: IncomingMessage, runtime: OrgmasterAuthRun
     session.principalAuthEpoch < 0 || !session.authenticatedAt) {
     throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
   }
-  const principal = await principals.resolveActivePrincipal(session.identityIssuer, session.identitySubject)
+  let principal: Awaited<ReturnType<typeof principals.resolveActivePrincipal>>
+  try {
+    principal = await principals.resolveActivePrincipal(session.identityIssuer, session.identitySubject)
+  } catch (error) {
+    emitLocalAuthDiagnostic(request, runtime, correlationId, 'principal_resolution', error)
+    throw error
+  }
   if (principal.principalId !== session.principalId || principal.employeeId !== session.employeeId) {
     throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
   }
-  const state = await epochs.readPrincipalState(session.principalId)
+  let state: Awaited<ReturnType<typeof epochs.readPrincipalState>>
+  try {
+    state = await epochs.readPrincipalState(session.principalId)
+  } catch (error) {
+    emitLocalAuthDiagnostic(request, runtime, correlationId, 'principal_state', error)
+    throw error
+  }
   if (state.authEpoch !== session.principalAuthEpoch) throw new OrgmasterAuthError(401, 'auth_epoch_stale', true)
   if (state.revokedBefore && Date.parse(session.authenticatedAt) <= Date.parse(state.revokedBefore)) {
     throw new OrgmasterAuthError(401, 'auth_epoch_stale', true)
@@ -400,7 +499,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
           sendJson(response, 404, { code: 'auth_request_invalid', correlationId: id }, id)
           return
         }
-        const authenticated = await runtime.localSandbox.verify(request)
+        const authenticated = await runtime.localSandbox.verify(request, id)
         setVerifiedRequestIdentity(request, authenticated.session)
         if (pathname === `${ORGMASTER_AUTH_API_PATH}/me`) {
           sendJson(response, 200, publicSession(authenticated.session, id), id)
@@ -484,7 +583,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         }
         const development = developmentSession(request, devEnabled)
         if (!development && devEnabled && isLoopback(request) && !runtime.configResult.configured) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
-        const session = development?.session ?? await verifySession(request, runtime)
+        const session = development?.session ?? await verifySession(request, runtime, id)
         if (development) setVerifiedRequestIdentity(request, session)
         const payload = publicSession(session, id, development?.profile ?? undefined)
         // Display-only own email; optional directory metadata never decides session authority.
@@ -498,7 +597,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
       if (development) setVerifiedRequestIdentity(request, development.session)
       else {
         if (devEnabled && isLoopback(request) && !runtime.configResult.configured) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
-        await verifySession(request, runtime)
+        await verifySession(request, runtime, id)
       }
       const verified = readVerifiedRequestIdentity(request)
       if (!verified) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
