@@ -14,6 +14,8 @@ import {
 export const AI_PDM_ROLE_CATALOG_V7_VERSION = 'ai-pdm.role-catalog.2026-10-10.v7'
 export const AI_PDM_ROLE_CATALOG_V7_SHA256 = '4d624b16a58299a78bc3bac4b7f39f261ec2ba34ae604f06ed7cdb7a078e01f9'
 export const LOCAL_PRINCIPAL_FIXTURE_VERSION = 'orgmaster.local-principal-fixtures.2026-10-29.v1'
+export const LOCAL_PRINCIPAL_FIXTURE_V2_VERSION = 'orgmaster.local-principal-fixtures.2026-10-30.v2'
+export const LOCAL_EXTERNAL_SPECIALIST_TERM_DAYS = 90
 export const LOCAL_SANDBOX_COMPANY_ID = 'company-jenfu'
 export const LOCAL_SANDBOX_WORKSPACE_REF = 'company-jenfu'
 
@@ -350,7 +352,7 @@ export function validateLocalPrincipalSandboxFixture(fixture, {
   catalogVersion = AI_PDM_ROLE_CATALOG_V7_VERSION,
   catalogSha256 = AI_PDM_ROLE_CATALOG_V7_SHA256,
   sourceSha256 = catalogSource?.sourceSha256,
-  fixtureVersion = LOCAL_PRINCIPAL_FIXTURE_VERSION,
+  fixtureVersion,
   ownerRoleDefinitions = {},
 } = {}) {
   assertCatalogSource(catalogSource, { catalogVersion, catalogSha256, sourceSha256 })
@@ -358,8 +360,8 @@ export function validateLocalPrincipalSandboxFixture(fixture, {
   const ownerCatalogs = validateOwnerRoleDefinitions(ownerRoleDefinitions)
   assertFixtureEnvelope(fixture)
   if (fixture.contractVersion !== LOCAL_FIXTURE_VERSION ||
-    fixture.fixtureVersion !== fixtureVersion ||
-    fixture.fixtureVersion !== LOCAL_PRINCIPAL_FIXTURE_VERSION) {
+    ![LOCAL_PRINCIPAL_FIXTURE_VERSION, LOCAL_PRINCIPAL_FIXTURE_V2_VERSION].includes(fixture.fixtureVersion) ||
+    fixtureVersion !== undefined && fixture.fixtureVersion !== fixtureVersion) {
     fail('local_fixture_version_mismatch')
   }
 
@@ -413,20 +415,33 @@ export function validateLocalPrincipalSandboxFixture(fixture, {
     disabled.principalStatus !== 'disabled' || disabled.employeeStatus !== 'inactive') {
     fail('local_fixture_invalid')
   }
+  if (fixture.fixtureVersion === LOCAL_PRINCIPAL_FIXTURE_V2_VERSION) {
+    const external = scenarios.get('catalog-external-specialist')
+    const externalGrants = external?.grants.filter((grant) =>
+      grant.applicationId === 'ai-pdm' && grant.stableRoleId === 'role-external-specialist') ?? []
+    const externalGrant = externalGrants[0]
+    if (external?.accountType !== 'human_personal' || external.principalStatus !== 'active' ||
+      external.employeeStatus !== 'active' || externalGrants.length !== 1 ||
+      externalGrant.scopeKind !== 'project' || !externalGrant.scopeRef ||
+      externalGrant.status !== 'active' || externalGrant.validUntil === null ||
+      Date.parse(externalGrant.validUntil) <= Date.parse(externalGrant.validFrom)) {
+      fail('local_fixture_invalid')
+    }
+  }
   return fixture
 }
 
-export function buildLocalPrincipalSandboxFixture({
+function buildLocalPrincipalSandboxFixtureForVersion({
   root = REPOSITORY_ROOT,
   catalogSource,
   catalogVersion = AI_PDM_ROLE_CATALOG_V7_VERSION,
   catalogSha256 = AI_PDM_ROLE_CATALOG_V7_SHA256,
   sourceSha256,
-  fixtureVersion = LOCAL_PRINCIPAL_FIXTURE_VERSION,
+  fixtureVersion,
+  externalSpecialistWindow = null,
   ownerRoleDefinitions = {},
   ownerDirectGrants = [],
 } = {}) {
-  if (fixtureVersion !== LOCAL_PRINCIPAL_FIXTURE_VERSION) fail('local_fixture_version_mismatch')
   const source = catalogSource ?? readAiPdmRoleCatalogV7({
     root,
     catalogVersion,
@@ -474,7 +489,8 @@ export function buildLocalPrincipalSandboxFixture({
     ...source.catalog.roles.map((role) => makeScenario(
       'catalog-' + role.roleCode.replaceAll('_', '-'),
       'catalog role ' + role.roleCode + ' direct assignment',
-      { role },
+      { role, ...(role.roleCode === 'external_specialist' && externalSpecialistWindow
+        ? externalSpecialistWindow : {}) },
     )),
   ]
 
@@ -492,5 +508,28 @@ export function buildLocalPrincipalSandboxFixture({
     sourceSha256: sourceSha256 ?? source.sourceSha256,
     fixtureVersion,
     ownerRoleDefinitions,
+  })
+}
+
+export function buildLocalPrincipalSandboxFixture({
+  fixtureVersion = LOCAL_PRINCIPAL_FIXTURE_VERSION,
+  ...options
+} = {}) {
+  if (fixtureVersion !== LOCAL_PRINCIPAL_FIXTURE_VERSION) fail('local_fixture_version_mismatch')
+  return buildLocalPrincipalSandboxFixtureForVersion({ ...options, fixtureVersion })
+}
+
+export function buildLocalPrincipalSandboxFixtureV2({
+  createdAt,
+  ...options
+} = {}) {
+  const createdAtMs = typeof createdAt === 'string' ? Date.parse(createdAt) : NaN
+  if (!Number.isFinite(createdAtMs)) fail('local_fixture_generation_time_invalid')
+  const validFrom = new Date(createdAtMs).toISOString()
+  const validUntil = new Date(createdAtMs + LOCAL_EXTERNAL_SPECIALIST_TERM_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  return buildLocalPrincipalSandboxFixtureForVersion({
+    ...options,
+    fixtureVersion: LOCAL_PRINCIPAL_FIXTURE_V2_VERSION,
+    externalSpecialistWindow: { validFrom, validUntil },
   })
 }

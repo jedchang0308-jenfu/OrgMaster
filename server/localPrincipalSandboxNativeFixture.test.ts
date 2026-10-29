@@ -14,6 +14,8 @@ import {
 } from '../contracts/local-principal-sandbox/v1/owner-publication.mjs'
 import {
   buildLocalPrincipalSandboxFixture,
+  buildLocalPrincipalSandboxFixtureV2,
+  LOCAL_PRINCIPAL_FIXTURE_V2_VERSION,
   LOCAL_SANDBOX_COMPANY_ID,
   readAiPdmRoleCatalogV7,
 } from './localPrincipalSandboxFixture.mjs'
@@ -276,6 +278,11 @@ describe('local principal native fixture materializer', () => {
     expect(result.governanceVersion.policy.roleAssignments).toHaveLength(
       fixture.scenarios.reduce((count, scenario) => count + scenario.grants.length, 0),
     )
+    const legacyExternal = fixture.scenarios.find((scenario) =>
+      scenario.scenarioId === 'catalog-external-specialist')!
+    const legacyExternalAssignment = result.governanceVersion.policy.roleAssignments.find((assignment) =>
+      assignment.employeeId === legacyExternal.employeeId && assignment.roleId === 'role-external-specialist')!
+    expect(legacyExternalAssignment.metadata).toEqual({ sponsorEmployeeId: null, reviewDueAt: null })
     const publicationEvent = result.governance.auditEvents.find((event) =>
       event.entityId === result.governanceVersion.id && event.afterHash === result.governanceVersion.snapshotHash)
     expect(publicationEvent).toMatchObject({
@@ -296,6 +303,43 @@ describe('local principal native fixture materializer', () => {
     expect((repeated.governanceVersion.policy.principalAdmissions ?? []).map((admission) =>
       admission.evidenceRefSha256)).toEqual((result.governanceVersion.policy.principalAdmissions ?? []).map((admission) =>
       admission.evidenceRefSha256))
+  })
+
+  it('materializes the future external-specialist project expiry, active internal sponsor, review date, and identity anchor', async () => {
+    const fixture = buildLocalPrincipalSandboxFixtureV2({ createdAt: stamp })
+    const result = materializeLocalPrincipalSandboxNativeFixture({
+      fixture,
+      sandboxId: 'dev060-native-external-specialist-v2',
+      targetRoot: targetRoot(),
+      pdmCatalogReadback: await pdmReadbackFixture(),
+      fmsCatalogPin: fmsCatalogPinFixture(),
+      createdAt: stamp,
+    })
+    const externalScenario = fixture.scenarios.find((scenario) =>
+      scenario.scenarioId === 'catalog-external-specialist')!
+    const externalGrant = externalScenario.grants[0]
+    const sponsor = fixture.scenarios.find((scenario) => scenario.scenarioId === 'active')!
+    const assignment = result.governanceVersion.policy.roleAssignments.find((candidate) =>
+      candidate.employeeId === externalScenario.employeeId && candidate.roleId === 'role-external-specialist')!
+    const workspaceEmployee = result.workspace.currentVersion.state.employees.find((employee) =>
+      employee.id === externalScenario.employeeId)!
+
+    expect(fixture.fixtureVersion).toBe(LOCAL_PRINCIPAL_FIXTURE_V2_VERSION)
+    expect(assignment).toMatchObject({
+      scope: { kind: 'project', value: externalGrant.scopeRef },
+      validFrom: externalGrant.validFrom,
+      validTo: externalGrant.validUntil,
+      metadata: { sponsorEmployeeId: sponsor.employeeId },
+    })
+    expect(assignment.metadata.sponsorEmployeeId).not.toBe(externalScenario.employeeId)
+    expect(assignment.metadata.reviewDueAt).toBe(
+      new Date(Date.parse(externalGrant.validUntil!) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    )
+    expect(Date.parse(assignment.metadata.reviewDueAt!)).toBeGreaterThan(Date.parse(externalGrant.validFrom))
+    expect(Date.parse(assignment.metadata.reviewDueAt!)).toBeLessThan(Date.parse(externalGrant.validUntil!))
+    expect(workspaceEmployee).toMatchObject({ departmentIds: [], primaryAssignmentId: null })
+    expect(result.workspace.currentVersion.state.positions).toHaveLength(0)
+    expect(result.workspace.currentVersion.state.assignments).toHaveLength(0)
   })
 
   it('reads the audited seed through the runtime store after JSONB key reordering and a live FMS version change', async () => {

@@ -25,6 +25,7 @@ import {
   LOCAL_SANDBOX_COMPANY_ID,
   AI_PDM_ROLE_CATALOG_V7_SHA256,
   AI_PDM_ROLE_CATALOG_V7_VERSION,
+  LOCAL_PRINCIPAL_FIXTURE_V2_VERSION,
   readAiPdmRoleCatalogV7,
   validateLocalPrincipalSandboxFixture,
 } from './localPrincipalSandboxFixture.mjs'
@@ -447,10 +448,22 @@ function roleForGrant(
   }
 }
 
+function externalSpecialistReviewDueAt(validFrom: string, validUntil: string | null) {
+  const fromMs = Date.parse(validFrom)
+  const untilMs = validUntil === null ? NaN : Date.parse(validUntil)
+  const reviewDueMs = untilMs - 30 * 24 * 60 * 60 * 1000
+  if (!Number.isFinite(fromMs) || !Number.isFinite(untilMs) || reviewDueMs <= fromMs) {
+    return fail('fixture_external_specialist_review_window_invalid')
+  }
+  return new Date(reviewDueMs).toISOString()
+}
+
 function nativeRoleAssignment(
   grant: LocalGrant,
   scenario: LocalScenario,
   resolvedRole: ReturnType<typeof roleForGrant>,
+  fixtureVersion: string,
+  externalSpecialistSponsorEmployeeId: string | null,
 ): GovernanceDocumentV3['draft']['roleAssignments'][number] {
   const subjectKind = resolvedRole.roleSubjectKind
   const isSystemAdmin = grant.applicationId === 'ai-pdm' &&
@@ -461,6 +474,18 @@ function nativeRoleAssignment(
   const scope = grant.scopeKind === 'global'
     ? { kind: 'global' as const }
     : { kind: grant.scopeKind as 'workspace' | 'department' | 'project' | 'product', value: grant.scopeRef! }
+  const isExternalSpecialist = grant.applicationId === 'ai-pdm' &&
+    grant.stableRoleId === 'role-external-specialist'
+  const metadata = isExternalSpecialist && fixtureVersion === LOCAL_PRINCIPAL_FIXTURE_V2_VERSION
+    ? (() => {
+      if (!externalSpecialistSponsorEmployeeId || externalSpecialistSponsorEmployeeId === scenario.employeeId ||
+        scenario.accountType !== 'human_personal' || grant.scopeKind !== 'project') {
+        return fail('fixture_external_specialist_sponsor_invalid')
+      }
+      return { sponsorEmployeeId: externalSpecialistSponsorEmployeeId,
+        reviewDueAt: externalSpecialistReviewDueAt(grant.validFrom, grant.validUntil) }
+    })()
+    : { sponsorEmployeeId: null, reviewDueAt: null }
   return {
     id: 'local-assignment-' + scenario.scenarioId + '-' + grant.applicationId + '-' +
       grant.stableRoleId,
@@ -479,7 +504,7 @@ function nativeRoleAssignment(
     subjectKind,
     targetPrincipalId: subjectKind === 'principal' ? scenario.principalId : null,
     sources: [],
-    metadata: { sponsorEmployeeId: null, reviewDueAt: null },
+    metadata,
     createdByPrincipalId: LOCAL_FIXTURE_PUBLISHER,
     createdReason: 'DEV-060 local principal sandbox fixture',
   }
@@ -702,6 +727,16 @@ function materializeLocalPrincipalSandboxNativeFixtureCore(
       !fixture.scenarios.some((scenario) => scenario.employeeId === employee.id))) {
     fail('native_workspace_version_invalid')
   }
+  if (fixture.fixtureVersion === LOCAL_PRINCIPAL_FIXTURE_V2_VERSION) {
+    const external = fixture.scenarios.find((scenario) => scenario.scenarioId === 'catalog-external-specialist')
+    const externalEmployee = external && parsedWorkspace.document.state.employees.find((employee) =>
+      employee.id === external.employeeId)
+    if (!external || !externalEmployee || externalEmployee.departmentIds.length !== 0 ||
+      externalEmployee.primaryAssignmentId !== null || parsedWorkspace.document.state.positions.length !== 0 ||
+      parsedWorkspace.document.state.assignments.length !== 0) {
+      fail('fixture_external_specialist_identity_anchor_invalid')
+    }
+  }
   const workspaceRevision = publicationSnapshotHash(currentVersion)
   const governanceSource: GovernanceOrgSource = {
     workspaceVersionId,
@@ -772,11 +807,23 @@ function materializeLocalPrincipalSandboxNativeFixtureCore(
     const admission = buildAdmission(scenario, active, createdAt, identityContentDigest)
     return admission ? [admission] : []
   })
+  const externalSpecialistSponsor = fixture.fixtureVersion === LOCAL_PRINCIPAL_FIXTURE_V2_VERSION
+    ? fixture.scenarios.find((scenario) => scenario.scenarioId === 'active' &&
+      scenario.accountType === 'human_personal' && scenario.principalStatus === 'active' &&
+      scenario.employeeStatus === 'active' && scenario.grants.some((grant) =>
+        grant.applicationId === 'ai-pdm' && grant.status === 'active' &&
+        grant.stableRoleId === 'role-rd'))
+    : undefined
+  if (fixture.fixtureVersion === LOCAL_PRINCIPAL_FIXTURE_V2_VERSION && !externalSpecialistSponsor) {
+    fail('fixture_external_specialist_sponsor_invalid')
+  }
   const allAssignments = fixture.scenarios.flatMap((scenario) =>
     scenario.grants.map((grant) => nativeRoleAssignment(
       grant,
       scenario,
       roleForGrant(grant, scenario, initialPolicy, pdmCatalog, pdmReadback, fmsCatalog),
+      fixture.fixtureVersion,
+      externalSpecialistSponsor?.employeeId ?? null,
     )))
   const policy: GovernancePolicyDataV3 = {
     ...initialPolicy,

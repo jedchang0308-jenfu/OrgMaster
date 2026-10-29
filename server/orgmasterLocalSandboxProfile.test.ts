@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { contractDigest, LOCAL_FIXTURE_VERSION, LOCAL_IDENTITY_ISSUER } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
-import { readAiPdmRoleCatalogV7 } from './localPrincipalSandboxFixture.mjs'
+import { readAiPdmRoleCatalogV7, buildLocalPrincipalSandboxFixtureV2,
+  LOCAL_PRINCIPAL_FIXTURE_V2_VERSION } from './localPrincipalSandboxFixture.mjs'
 import { AI_PDM_ROLE_CATALOG_V7_SHA256, AI_PDM_ROLE_CATALOG_V7_VERSION, LOCAL_PRINCIPAL_FIXTURE_VERSION } from './localPrincipalSandboxFixture.mjs'
 import { readOrgmasterLocalRuntimeProfile } from './orgmasterLocalSandboxProfile'
 
@@ -65,6 +66,15 @@ describe('OrgMaster private local runtime profile', () => {
     expect(result.assurancePolicyHash).toBeUndefined()
     expect(Object.isFrozen(result)).toBe(true)
     expect(Object.isFrozen(result.fixture.scenarios[0])).toBe(true)
+  })
+
+  it('accepts the versioned future fixture for a separately generated sandbox profile', async () => {
+    const futureFixture = buildLocalPrincipalSandboxFixtureV2({ createdAt: '2026-10-30T12:00:00.000Z' })
+    const root = await writeProfile({ ...validProfile(), fixture: futureFixture })
+    const result = await readOrgmasterLocalRuntimeProfile(root, 'orgmaster-test')
+    expect(result.fixture.fixtureVersion).toBe(LOCAL_PRINCIPAL_FIXTURE_V2_VERSION)
+    expect(result.fixture.scenarios.find((scenario) => scenario.scenarioId === 'catalog-external-specialist')
+      ?.grants[0].validUntil).toBe('2027-01-28T12:00:00.000Z')
   })
 
   it('accepts synthetic AAL2 only with an explicit true flag and a paired policy hash', async () => {

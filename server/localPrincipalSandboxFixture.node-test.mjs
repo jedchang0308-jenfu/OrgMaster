@@ -9,9 +9,12 @@ import {
   AI_PDM_ROLE_CATALOG_V7_SHA256,
   AI_PDM_ROLE_CATALOG_V7_VERSION,
   LOCAL_PRINCIPAL_FIXTURE_VERSION,
+  LOCAL_PRINCIPAL_FIXTURE_V2_VERSION,
+  LOCAL_EXTERNAL_SPECIALIST_TERM_DAYS,
   LOCAL_SANDBOX_COMPANY_ID,
   LOCAL_SANDBOX_WORKSPACE_REF,
   buildLocalPrincipalSandboxFixture,
+  buildLocalPrincipalSandboxFixtureV2,
   readAiPdmRoleCatalogV7,
   validateAiPdmRoleCatalogV7,
   validateLocalPrincipalSandboxFixture,
@@ -53,6 +56,33 @@ test('builds a versioned exact-envelope fixture with all required lifecycle scen
     scenario.principalId.startsWith('local-') &&
     scenario.employeeId.startsWith('employee-local-') &&
     scenario.identitySubject.startsWith('local-')))
+  assert.equal(fixture.fixtureHash, 'a4d2ab8fa27246339d8bed2a7a5bc5cd5b27fcb8fc4f4007248f55d87905505f')
+})
+
+test('future v2 factory gives the external specialist a finite project term without changing the v1 manifest', () => {
+  const createdAt = '2026-10-30T12:00:00.000Z'
+  const v1 = buildLocalPrincipalSandboxFixture()
+  const future = buildLocalPrincipalSandboxFixtureV2({ createdAt })
+  const external = future.scenarios.find((entry) => entry.scenarioId === 'catalog-external-specialist')
+  const grant = external.grants[0]
+
+  assert.equal(v1.fixtureVersion, LOCAL_PRINCIPAL_FIXTURE_VERSION)
+  assert.equal(v1.fixtureHash, 'a4d2ab8fa27246339d8bed2a7a5bc5cd5b27fcb8fc4f4007248f55d87905505f')
+  assert.equal(future.contractVersion, v1.contractVersion)
+  assert.equal(future.fixtureVersion, LOCAL_PRINCIPAL_FIXTURE_V2_VERSION)
+  assert.notEqual(future.fixtureHash, v1.fixtureHash)
+  assert.equal(grant.scopeKind, 'project')
+  assert.equal(grant.status, 'active')
+  assert.equal(grant.validFrom, createdAt)
+  assert.equal(Date.parse(grant.validUntil) - Date.parse(grant.validFrom),
+    LOCAL_EXTERNAL_SPECIALIST_TERM_DAYS * 24 * 60 * 60 * 1000)
+  assert.equal(assertFixtureEnvelope(future), future)
+  assert.equal(validateLocalPrincipalSandboxFixture(future), future)
+
+  const missingExpiry = reseal(future, (value) => {
+    value.scenarios.find((entry) => entry.scenarioId === 'catalog-external-specialist').grants[0].validUntil = null
+  })
+  assert.throws(() => validateLocalPrincipalSandboxFixture(missingExpiry), errorCode('local_fixture_invalid'))
 })
 
 test('uses the exact nine v7 role IDs, hashes, account types, and allowed scopes', () => {

@@ -3,6 +3,8 @@ import type { LocalFixture } from '../contracts/local-principal-sandbox/v1/proto
 export const AI_PDM_ROLE_CATALOG_V7_VERSION: 'ai-pdm.role-catalog.2026-10-10.v7'
 export const AI_PDM_ROLE_CATALOG_V7_SHA256: '4d624b16a58299a78bc3bac4b7f39f261ec2ba34ae604f06ed7cdb7a078e01f9'
 export const LOCAL_PRINCIPAL_FIXTURE_VERSION: 'orgmaster.local-principal-fixtures.2026-10-29.v1'
+export const LOCAL_PRINCIPAL_FIXTURE_V2_VERSION: 'orgmaster.local-principal-fixtures.2026-10-30.v2'
+export const LOCAL_EXTERNAL_SPECIALIST_TERM_DAYS: 90
 export const LOCAL_SANDBOX_COMPANY_ID: 'company-jenfu'
 export const LOCAL_SANDBOX_WORKSPACE_REF: 'company-jenfu'
 
@@ -83,6 +85,9 @@ export type BuildLocalPrincipalSandboxFixtureOptions = {
   ownerRoleDefinitions?: Partial<Record<OwnerApplicationId, OwnerRoleCatalog>>
   ownerDirectGrants?: OwnerDirectGrant[]
 }
+export type BuildLocalPrincipalSandboxFixtureV2Options = Omit<BuildLocalPrincipalSandboxFixtureOptions, 'fixtureVersion'> & {
+  createdAt: string
+}
 export type ValidateLocalPrincipalSandboxFixtureOptions = {
   catalogSource?: AiPdmV7CatalogSource
   catalogVersion?: string
@@ -98,6 +103,7 @@ export function validateAiPdmRoleCatalogV7(
   options?: ValidateAiPdmRoleCatalogV7Options,
 ): AiPdmV7CatalogSource
 export function buildLocalPrincipalSandboxFixture(options?: BuildLocalPrincipalSandboxFixtureOptions): LocalFixture
+export function buildLocalPrincipalSandboxFixtureV2(options: BuildLocalPrincipalSandboxFixtureV2Options): LocalFixture
 export function validateLocalPrincipalSandboxFixture(
   fixture: unknown,
   options?: ValidateLocalPrincipalSandboxFixtureOptions,
