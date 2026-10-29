@@ -83,7 +83,7 @@ type LocalSandboxAuthStage =
   | 'lifecycle_recheck'
 
 const diagnosticErrorNames = new Set([
-  'AggregateError', 'AuthEpochUnavailableError', 'DatabaseError', 'Error', 'OrgmasterLocalPrincipalSandboxError',
+  'AggregateError', 'AuthEpochUnavailableError', 'DatabaseError', 'Error', 'LocalSandboxError', 'OrgmasterLocalPrincipalSandboxError',
   'PrincipalAdmissionError', 'RangeError', 'TypeError',
 ])
 const diagnosticNodeCodes = new Set(['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENOTFOUND', 'ETIMEDOUT'])
@@ -110,8 +110,17 @@ function emitLocalSandboxAuthDiagnostic(
       errorCode = 'auth_epoch_unavailable'
     } else if (error && typeof error === 'object' && 'code' in error) {
       const candidate = (error as { code?: unknown }).code
-      if (typeof candidate === 'string' && (/^[0-9A-Z]{5}$/u.test(candidate) || diagnosticNodeCodes.has(candidate))) errorCode = candidate
+      if (typeof candidate === 'string' && (/^[0-9A-Z]{5}$/u.test(candidate) || diagnosticNodeCodes.has(candidate) ||
+        candidateName === 'LocalSandboxError' && /^[a-z][a-z0-9_]{1,63}$/u.test(candidate))) errorCode = candidate
     }
+    const errorStatus = error && typeof error === 'object' && 'status' in error
+      ? (error as { status?: unknown }).status
+      : error && typeof error === 'object' && 'statusCode' in error
+        ? (error as { statusCode?: unknown }).statusCode
+        : undefined
+    const safeErrorStatus = typeof errorStatus === 'number' && Number.isSafeInteger(errorStatus) && errorStatus >= 100 && errorStatus <= 599
+      ? errorStatus
+      : null
     const stackFrames: string[] = []
     if (error instanceof Error && typeof error.stack === 'string') {
       for (const line of error.stack.split('\n').slice(1)) {
@@ -130,6 +139,7 @@ function emitLocalSandboxAuthDiagnostic(
       stage,
       errorName,
       errorCode,
+      errorStatus: safeErrorStatus,
       stackFrames,
     }))
   } catch {
@@ -458,14 +468,22 @@ export function createOrgmasterLocalPrincipalSandbox({
     return scenario
   }
 
-  async function introspect(localClient: LocalSandboxClient, binding: BindingRow, session: OrgmasterSession) {
-    let result: Record<string, unknown>
-    try { result = await localClient.introspect({ nativeSessionIdHash: binding.native_session_id_hash, expectedJoinDigest: binding.join_digest }) }
+  async function introspect(
+    localClient: LocalSandboxClient,
+    binding: BindingRow,
+    session: OrgmasterSession,
+    request: IncomingMessage,
+    correlationId: string | undefined,
+  ) {
+    try {
+      const result = await localClient.introspect({ nativeSessionIdHash: binding.native_session_id_hash, expectedJoinDigest: binding.join_digest })
+      verifyOrgmasterLocalIntrospection(result, binding, session)
+    }
     catch (error) {
+      emitLocalSandboxAuthDiagnostic(request, correlationId, 'native_auth_introspection', error)
       if (statusOf(error) === 401) authInvalid(true)
       unavailable()
     }
-    verifyOrgmasterLocalIntrospection(result!, binding, session)
   }
 
   async function validateFixtureAndOwner(database: Queryable, profile: OrgmasterLocalRuntimeProfile, scenario: LocalScenario) {
@@ -767,13 +785,13 @@ export function createOrgmasterLocalPrincipalSandbox({
         const lifecycleBinding = lifecycleBindingResult.rows[0]
         verifyOrgmasterLocalLifecycleSessionBinding(lifecycleBinding, value.profile, currentLifecycle, scenario)
         diagnosticStage = 'native_auth_introspection'
-        await introspect(value.localClient, binding, session)
+        await introspect(value.localClient, binding, session, request, correlationId)
         diagnosticStage = 'lifecycle_recheck'
         const lifecycleAfterIntrospection = await readCurrentLifecycle(value.client, value.profile, scenario)
         verifyOrgmasterLocalLifecycleSessionBinding(lifecycleBinding, value.profile, lifecycleAfterIntrospection, scenario)
         return { session, profile: value.profile, persistenceTargetUrl: value.config.databaseUrl }
       } catch (error) {
-        if (!(error instanceof OrgmasterLocalPrincipalSandboxError) || error.status >= 500) {
+        if (diagnosticStage !== 'native_auth_introspection' && (!(error instanceof OrgmasterLocalPrincipalSandboxError) || error.status >= 500)) {
           emitLocalSandboxAuthDiagnostic(request, correlationId, diagnosticStage, error)
         }
         if (error instanceof OrgmasterLocalPrincipalSandboxError) throw error

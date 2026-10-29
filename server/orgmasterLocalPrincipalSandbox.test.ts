@@ -182,7 +182,7 @@ describe('OrgMaster local principal sandbox runtime gates', () => {
   it('emits a sanitized local diagnostic for the exact sandbox session lookup failure stage', async () => {
     vi.stubEnv('NODE_ENV', 'development')
     const root = await sandboxRoot()
-    const lookupError = Object.assign(new Error('private database detail and opaque session token'), { code: '08006' })
+    const lookupError = Object.assign(new Error('private database detail and opaque session token'), { code: '08006', status: 503 })
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [{
         database_name: 'jenfu_local_orgmaster_test', login_role: 'jenfu_orgmaster_runtime', active_role: 'jenfu_orgmaster_runtime',
@@ -212,7 +212,7 @@ describe('OrgMaster local principal sandbox runtime gates', () => {
       expect(log.mock.calls[0]?.[0]).toBe('ORGMASTER_AUTH_DIAGNOSTIC')
       const diagnostic = JSON.parse(String(log.mock.calls[0]?.[1])) as Record<string, unknown>
       expect(diagnostic).toMatchObject({
-        correlationId: 'local-sandbox-diag-01', stage: 'session_lookup', errorName: 'Error', errorCode: '08006',
+        correlationId: 'local-sandbox-diag-01', stage: 'session_lookup', errorName: 'Error', errorCode: '08006', errorStatus: 503,
       })
       expect(JSON.stringify(diagnostic)).not.toContain('private database detail')
       expect(JSON.stringify(diagnostic)).not.toContain('opaque-session-token')
