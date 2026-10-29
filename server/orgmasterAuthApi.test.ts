@@ -61,7 +61,7 @@ describe('OrgMaster auth middleware', () => {
       mode: vi.fn(async (correlationId: string) => ({ authMode: 'local_principal_sandbox' as const, localSandboxEnabled: true as const, correlationId })),
       start: vi.fn(async () => ({ location: 'http://127.0.0.1:8000/api/local-sandbox/authorize?clientId=orgmaster&redirectUri=http%3A%2F%2F127.0.0.1%3A5173%2Fapi%2Fauth%2Flocal-sandbox%2Fcallback', cookie: 'orgmaster_local_tx_test=transaction; Path=/api/auth/local-sandbox/callback' })),
       callback: vi.fn(async () => ({ location: '/', cookie: 'orgmaster_local_session_test=token; Path=/', clearTransactionCookie: 'orgmaster_local_tx_test=; Max-Age=0' })),
-      verify: vi.fn(async () => ({ session, profile: {} as never, persistenceTargetUrl: 'postgres://sandbox_runtime:synthetic@127.0.0.1:53761/jenfu_local_auth_test' })),
+      verify: vi.fn(async () => ({ session, profile: {} as never, persistenceTargetUrl: 'postgres://sandbox_runtime:synthetic@127.0.0.1:53761/jenfu_local_orgmaster_test' })),
       logout: vi.fn(async () => ({ cookies: ['orgmaster_local_session_test=; Max-Age=0'] })),
       clearSessionCookie: vi.fn(async () => 'orgmaster_local_session_test=; Max-Age=0'),
       close: vi.fn(async () => undefined),

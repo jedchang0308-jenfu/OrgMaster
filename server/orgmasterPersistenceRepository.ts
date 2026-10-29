@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { readFile, stat } from 'node:fs/promises'
 import pg from 'pg'
 import { writeVerifiedAtomicFile } from './orgmasterFileStore'
-import { closeOrgmasterDatabase, closeOrgmasterLocalSandboxDatabase, createOrgmasterDatabase, createOrgmasterLocalSandboxDatabase } from './orgmasterDatabase'
+import { closeOrgmasterDatabase, closeOrgmasterLocalSandboxDatabase, createOrgmasterDatabase, createOrgmasterLocalSandboxDatabase, isOrgmasterLocalSandboxDatabaseTarget } from './orgmasterDatabase'
 
 export type OrgmasterPersistenceMode = 'local-json' | 'cloud-sql'
 export type PersistenceArtifactKind = 'workspace-manifest' | 'workspace-version' | 'governance' | 'management-methods'
@@ -126,12 +126,7 @@ export function withPersistencePrincipal<T>(principalId: string, run: () => T): 
 
 /** Bind ordinary OrgMaster persistence calls to the already verified local sandbox DB for this request. */
 export function withOrgmasterLocalSandboxPersistenceTarget<T>(databaseUrl: string, run: () => T): T {
-  let target: URL
-  try { target = new URL(databaseUrl) } catch { throw new OrgmasterPersistenceError('PERSISTENCE_NOT_CONFIGURED') }
-  const host = target.hostname.replace(/^\[|\]$/gu, '').toLowerCase()
-  if (!['postgres:', 'postgresql:'].includes(target.protocol) ||
-    host !== '127.0.0.1' || target.port !== '53761' ||
-    target.search || target.hash || !target.pathname || !target.username || !target.password) {
+  if (!isOrgmasterLocalSandboxDatabaseTarget(databaseUrl)) {
     throw new OrgmasterPersistenceError('PERSISTENCE_NOT_CONFIGURED')
   }
   if ((process.env.ORGMASTER_PERSISTENCE_MODE && process.env.ORGMASTER_PERSISTENCE_MODE !== 'cloud-sql') ||

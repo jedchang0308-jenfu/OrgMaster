@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { closeOrgmasterLocalSandboxDatabase, createOrgmasterLocalSandboxDatabase } from './orgmasterDatabase'
 import { OrgmasterPersistenceError, resolveOrgmasterPersistenceMode, warnOrgmasterLocalPersistenceDiagnostic, withOrgmasterLocalSandboxPersistenceTarget } from './orgmasterPersistenceRepository'
 
 afterEach(() => vi.unstubAllEnvs())
@@ -18,6 +19,37 @@ describe('OrgMaster local sandbox persistence scope', () => {
     expect(mode).toBe('cloud-sql')
     expect(resolveOrgmasterPersistenceMode()).toBe('local-json')
     expect(process.env.ORGMASTER_POSTGRES_URL).toBe('')
+  })
+
+  it('binds an alternate verified loopback port and rejects a conflicting configured target', async () => {
+    vi.stubEnv('ORGMASTER_PERSISTENCE_MODE', '')
+    vi.stubEnv('ORGMASTER_POSTGRES_URL', '')
+    const target = 'postgresql://jenfu_orgmaster_runtime:synthetic@127.0.0.1:58727/jenfu_local_orgmaster_reset'
+    const mode = await withOrgmasterLocalSandboxPersistenceTarget(target, async () => {
+      await Promise.resolve()
+      return resolveOrgmasterPersistenceMode()
+    })
+    expect(mode).toBe('cloud-sql')
+    expect(resolveOrgmasterPersistenceMode()).toBe('local-json')
+
+    vi.stubEnv('ORGMASTER_POSTGRES_URL', 'postgresql://jenfu_orgmaster_runtime:synthetic@127.0.0.1:53761/jenfu_local_orgmaster_reset')
+    expect(() => withOrgmasterLocalSandboxPersistenceTarget(target, () => undefined))
+      .toThrowError(OrgmasterPersistenceError)
+  })
+
+  it('opens only an OrgMaster sandbox target on a legal loopback port', async () => {
+    const accepted = 'postgresql://jenfu_orgmaster_runtime:synthetic@127.0.0.1:58727/jenfu_local_orgmaster_reset'
+    try {
+      expect(createOrgmasterLocalSandboxDatabase(accepted)).toBeDefined()
+      expect(() => createOrgmasterLocalSandboxDatabase(
+        'postgresql://jenfu_orgmaster_runtime:synthetic@127.0.0.1:58727/jenfu_local_ai_pdm_reset',
+      )).toThrow('ORGMASTER_LOCAL_SANDBOX_TARGET_INVALID')
+      expect(() => createOrgmasterLocalSandboxDatabase(
+        'postgresql://jenfu_orgmaster_runtime:synthetic@127.0.0.1:0/jenfu_local_orgmaster_reset',
+      )).toThrow('ORGMASTER_LOCAL_SANDBOX_TARGET_INVALID')
+    } finally {
+      await closeOrgmasterLocalSandboxDatabase()
+    }
   })
 
   it('rejects a conflicting formal persistence target before downstream database access', () => {

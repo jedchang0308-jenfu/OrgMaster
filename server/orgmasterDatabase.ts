@@ -130,13 +130,24 @@ export function createOrgmasterDatabase(connectionString: string, environment: N
 }
 
 /** A separately cached loopback-only pool used by the explicit local sandbox request scope. */
+export function isOrgmasterLocalSandboxDatabaseTarget(connectionString: string) {
+  try {
+    const target = new URL(connectionString)
+    const host = target.hostname.replace(/^\[|\]$/gu, '').toLowerCase()
+    const port = Number(target.port || '5432')
+    const runtimeRole = decodeURIComponent(target.username)
+    return ['postgres:', 'postgresql:'].includes(target.protocol) &&
+      host === '127.0.0.1' && Number.isInteger(port) && port >= 1024 && port <= 65535 &&
+      /^\/jenfu_local_orgmaster_[a-z][a-z0-9_]{2,40}$/u.test(target.pathname) &&
+      /^[a-z][a-z0-9_]{2,62}$/u.test(runtimeRole) && Boolean(target.password) &&
+      !target.search && !target.hash
+  } catch {
+    return false
+  }
+}
+
 export function createOrgmasterLocalSandboxDatabase(connectionString: string): OrgmasterDatabase {
-  let target: URL
-  try { target = new URL(connectionString) } catch { throw new Error('ORGMASTER_LOCAL_SANDBOX_TARGET_INVALID') }
-  const host = target.hostname.replace(/^\[|\]$/gu, '').toLowerCase()
-  if (!['postgres:', 'postgresql:'].includes(target.protocol) ||
-    host !== '127.0.0.1' || target.port !== '53761' ||
-    target.pathname.length < 2 || target.search || target.hash || !target.username || !target.password) {
+  if (!isOrgmasterLocalSandboxDatabaseTarget(connectionString)) {
     throw new Error('ORGMASTER_LOCAL_SANDBOX_TARGET_INVALID')
   }
   if (localSandboxPool && localSandboxPoolUrl !== connectionString) {
