@@ -41,6 +41,7 @@ class MemoryDatabase implements EmptyLocalOwnerBootstrapDatabase {
   failAt: string | null = null
   admissionAuthorityExists = true
   admissionEnabled = false
+  currentRole = 'jenfu_orgmaster_migrator'
   installedVersions = [...Array.from({ length: 10 }, (_, index) =>
     `dev010-n1c-orgmaster-${String(index + 1).padStart(3, '0')}`), 'dev040-r2-orgmaster-011']
 
@@ -82,6 +83,10 @@ class MemoryDatabase implements EmptyLocalOwnerBootstrapDatabase {
       throw Object.assign(new Error('FAKE_DATABASE_FAILURE'), { code: '23505' })
     }
     if (/^(BEGIN|SET LOCAL|COMMIT|ROLLBACK)/u.test(normalized)) return { rows: [], rowCount: null }
+    if (normalized === 'SELECT session_user, current_user') return { rows: [{
+      session_user: input.target.sessionUser,
+      current_user: this.currentRole,
+    }], rowCount: 1 }
     if (normalized.startsWith('SELECT current_database()')) return { rows: [{
       database_name: input.config.databaseName,
       address: '127.0.0.1',
@@ -232,8 +237,19 @@ describe('local empty owner bootstrap', () => {
     expect(database.activeBatchId).toBe(result.batchId)
     expect(database.artifacts.get(result.batchId)).toHaveLength(3)
     expect(database.statements).toContain('SET LOCAL ROLE jenfu_orgmaster_migrator')
+    expect(database.statements).toContain('SELECT session_user, current_user')
     expect(database.statements.at(-1)).toBe('COMMIT')
     expect(database.statements.some((statement) => statement.startsWith('INSERT INTO orgmaster_core.persistence_batches'))).toBe(true)
+  })
+
+  it('refuses to seed unless the scoped login currently holds the OrgMaster migrator role', async () => {
+    const database = new MemoryDatabase()
+    database.currentRole = input.target.sessionUser
+    await expect(initializeEmptyLocalOwnerBootstrap(database, input)).rejects.toMatchObject({
+      code: 'LOCAL_EMPTY_BOOTSTRAP_ROLE_SCOPE_MISMATCH',
+    })
+    expect(database.batches.size).toBe(0)
+    expect(database.statements.at(-1)).toBe('ROLLBACK')
   })
 
   it('reuses the exact active empty publication without writing new state', async () => {

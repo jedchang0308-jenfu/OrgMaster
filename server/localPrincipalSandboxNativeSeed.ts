@@ -7,7 +7,20 @@ import { prepareEmptyLocalOwnerBootstrap } from './localPrincipalSandboxEmptyBoo
 
 type Queryable = { query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }> }
 type SeedTarget = { port: number; dataDirectory: string; sessionUser: string }
+const ORGMASTER_MIGRATOR_ROLE = 'jenfu_orgmaster_migrator'
+const SCOPED_SEED_LOGIN = /^local_org_seed_[a-f0-9]{16}$/
 const fail = (code: string): never => { throw new Error('LOCAL_PRINCIPAL_SEED_' + code) }
+
+export function assertLocalPrincipalNativeSeedRole(target: SeedTarget, actual: Record<string, unknown>) {
+  if (!SCOPED_SEED_LOGIN.test(target.sessionUser) || actual.session_user !== target.sessionUser ||
+    actual.current_user !== ORGMASTER_MIGRATOR_ROLE) fail('ROLE_SCOPE_MISMATCH')
+}
+
+async function assertCurrentSeedRole(database: Queryable, target: SeedTarget) {
+  const result = await database.query('SELECT session_user, current_user')
+  if (result.rows?.length !== 1) fail('ROLE_SCOPE_MISMATCH')
+  assertLocalPrincipalNativeSeedRole(target, result.rows[0])
+}
 
 function publicationProof(materialized: ReturnType<typeof materializeLocalPrincipalSandboxNativeFixture>, sandboxId: string) {
   const artifacts = materialized.persistenceArtifacts.map(artifact => ({ ...artifact,
@@ -30,7 +43,7 @@ export async function publishLocalPrincipalSandboxAuditProvenance(database: Quer
 }) {
   const { config, target } = input
   if (config.applicationId !== 'orgmaster' || input.fixture.sandboxId !== config.sandboxId ||
-    !/^local_org_seed_[a-f0-9]{16}$/.test(target.sessionUser)) fail('TARGET_INVALID')
+    !SCOPED_SEED_LOGIN.test(target.sessionUser)) fail('TARGET_INVALID')
   const materialized = materializeLocalPrincipalSandboxNativeFixture(input.fixture)
   const legacy = materializeLegacyLocalPrincipalSandboxNativeFixtureForBatchProof(input.fixture)
   if (materialized.databaseName !== config.databaseName || legacy.fixtureHash !== materialized.fixtureHash) fail('TARGET_INVALID')
@@ -48,6 +61,7 @@ export async function publishLocalPrincipalSandboxAuditProvenance(database: Quer
     if (physical.rows.length !== 1) fail('TARGET_MISMATCH')
     assertLocalPrincipalNativeSeedTarget(config, target, physical.rows[0])
     await database.query('SET LOCAL ROLE jenfu_orgmaster_migrator')
+    await assertCurrentSeedRole(database, target)
     const authority = await database.query(`SELECT active_batch_id,authority_version
       FROM orgmaster_core.persistence_authority WHERE singleton=true FOR UPDATE`)
     if (authority.rows.length !== 1 || !authority.rows[0].active_batch_id) fail('AUTHORITY_MISSING')
@@ -141,7 +155,7 @@ export function assertLocalPrincipalNativeSeedTarget(config: LocalSandboxConfig,
   if (config.applicationId !== 'orgmaster' || !/^jenfu_local_[a-z0-9_]{3,51}$/.test(config.databaseName) ||
     !Number.isInteger(target.port) || target.port < 1024 || target.port > 65535 || !path.isAbsolute(target.dataDirectory) ||
     actual.database_name !== config.databaseName || !['127.0.0.1', '::1'].includes(String(actual.address)) ||
-    actual.port !== target.port || !/^local_org_seed_[a-f0-9]{16}$/.test(target.sessionUser) ||
+    actual.port !== target.port || !SCOPED_SEED_LOGIN.test(target.sessionUser) ||
     actual.session_user !== target.sessionUser) fail('TARGET_MISMATCH')
 }
 
@@ -155,7 +169,7 @@ export async function seedLocalPrincipalSandboxNativeFixture(database: Queryable
   const { config, target } = input
   if (config.applicationId !== 'orgmaster' || input.fixture.sandboxId !== config.sandboxId ||
     !Number.isInteger(target.port) || target.port < 1024 || target.port > 65535 || !path.isAbsolute(target.dataDirectory) ||
-    !/^local_org_seed_[a-f0-9]{16}$/.test(target.sessionUser)) fail('TARGET_INVALID')
+    !SCOPED_SEED_LOGIN.test(target.sessionUser)) fail('TARGET_INVALID')
   const materialized = materializeLocalPrincipalSandboxNativeFixture(input.fixture)
   if (materialized.databaseName !== config.databaseName) fail('TARGET_INVALID')
   const artifacts = materialized.persistenceArtifacts.map(artifact => ({ ...artifact,
@@ -181,6 +195,7 @@ export async function seedLocalPrincipalSandboxNativeFixture(database: Queryable
     await database.query("SET LOCAL lock_timeout = '5s'")
     await database.query("SET LOCAL statement_timeout = '30s'")
     await database.query('SET LOCAL ROLE jenfu_orgmaster_migrator')
+    await assertCurrentSeedRole(database, target)
     await database.query('SELECT singleton FROM orgmaster_core.managed_identity_admission_authority WHERE singleton = true FOR UPDATE')
     const authority = await database.query(`SELECT active_batch_id, authority_version FROM orgmaster_core.persistence_authority
       WHERE singleton = true FOR UPDATE`)

@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { canonicalJson, readLocalSandboxConfig, sha256 } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
-import { assertLocalPrincipalNativeSeedTarget, assertLocalSeedBatchProof } from './localPrincipalSandboxNativeSeed'
+import { assertLocalPrincipalNativeSeedRole, assertLocalPrincipalNativeSeedTarget, assertLocalSeedBatchProof } from './localPrincipalSandboxNativeSeed'
 
 const config = readLocalSandboxConfig({ NODE_ENV: 'development', JENFU_LOCAL_SANDBOX_ENABLED: '1',
   JENFU_LOCAL_SANDBOX_ID: 'seed-test', JENFU_LOCAL_SANDBOX_ORIGIN: 'http://localhost:12010',
@@ -26,6 +26,19 @@ describe('owner-only native synthetic initialization target', () => {
   it('cannot turn a runtime or different App config into an owner initializer', () => {
     expect(() => assertLocalPrincipalNativeSeedTarget({ ...config, applicationId: 'ai-pdm' }, target, row)).toThrow()
     expect(() => assertLocalPrincipalNativeSeedTarget({ ...config, databaseName: 'formal' }, target, { ...row, database_name: 'formal' })).toThrow()
+  })
+  it('requires the one-use seed login to assume only the OrgMaster migrator role', () => {
+    expect(() => assertLocalPrincipalNativeSeedRole(target, {
+      session_user: target.sessionUser, current_user: 'jenfu_orgmaster_migrator',
+    })).not.toThrow()
+    for (const actual of [
+      { session_user: 'postgres', current_user: 'jenfu_orgmaster_migrator' },
+      { session_user: target.sessionUser, current_user: target.sessionUser },
+      { session_user: target.sessionUser, current_user: 'jenfu_platform_migrator' },
+    ]) expect(() => assertLocalPrincipalNativeSeedRole(target, actual)).toThrow('ROLE_SCOPE_MISMATCH')
+    expect(() => assertLocalPrincipalNativeSeedRole({ ...target, sessionUser: 'postgres' }, {
+      session_user: 'postgres', current_user: 'jenfu_orgmaster_migrator',
+    })).toThrow('ROLE_SCOPE_MISMATCH')
   })
   it('accepts retirement or reuse only for the exact owner factory publication', () => {
     const payload = { version: 3, employees: [], assignments: [] }

@@ -273,6 +273,12 @@ function assertTargetRow(row: Record<string, unknown> | undefined, input: EmptyL
       Number(row.port) !== input.target.port || row.session_user !== input.target.sessionUser) fail('TARGET_MISMATCH')
 }
 
+async function assertScopedMigratorRole(database: EmptyLocalOwnerBootstrapDatabase, input: EmptyLocalOwnerBootstrapInput) {
+  const result = await database.query('SELECT session_user, current_user')
+  if (result.rows?.length !== 1 || result.rows[0]?.session_user !== input.target.sessionUser ||
+      result.rows[0]?.current_user !== 'jenfu_orgmaster_migrator') fail('ROLE_SCOPE_MISMATCH')
+}
+
 function databaseFailure(error: unknown) {
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
   if (code.startsWith('LOCAL_EMPTY_BOOTSTRAP_')) return error as Error
@@ -345,6 +351,7 @@ export async function initializeEmptyLocalOwnerBootstrap(
     await database.query("SET LOCAL lock_timeout = '5s'")
     await database.query("SET LOCAL statement_timeout = '30s'")
     await database.query('SET LOCAL ROLE jenfu_orgmaster_migrator')
+    await assertScopedMigratorRole(database, input)
     const bridge = await database.query(`SELECT to_regclass('orgmaster_core.managed_identity_admission_authority')
       IS NOT NULL AS authority_exists`)
     if (bridge.rows?.length !== 1 || typeof bridge.rows[0].authority_exists !== 'boolean') fail('ADMISSION_AUTHORITY_INVALID')

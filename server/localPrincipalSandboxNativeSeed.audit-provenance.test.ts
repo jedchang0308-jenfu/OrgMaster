@@ -198,6 +198,9 @@ class FakeSeedDatabase {
         address: this.options.physicalAddress ?? '127.0.0.1', port: this.input.target.port,
         session_user: this.options.physicalSessionUser ?? this.input.target.sessionUser }], rowCount: null }
     }
+    if (normalized === 'SELECT session_user, current_user') {
+      return { rows: [{ session_user: this.input.target.sessionUser, current_user: 'jenfu_orgmaster_migrator' }], rowCount: 1 }
+    }
     if (normalized.includes('FROM orgmaster_core.persistence_authority WHERE singleton=true FOR UPDATE')) {
       return { rows: [structuredClone(this.state.authority)], rowCount: null }
     }
