@@ -51,7 +51,8 @@ class FakeClient {
       return { rows: [{ value: 2 }] }
     }
     if (normalized === 'BEGIN' || normalized.startsWith('BEGIN ISOLATION LEVEL ') || normalized === 'COMMIT' || normalized === 'ROLLBACK' ||
-        normalized === 'SET LOCAL ROLE jenfu_orgmaster_migrator') return { rows: [] }
+        normalized === 'SET LOCAL ROLE jenfu_orgmaster_migrator' ||
+        normalized === 'SET LOCAL search_path TO pg_catalog, orgmaster_core, orgmaster_contract, public') return { rows: [] }
     if (normalized.startsWith('CREATE TABLE IF NOT EXISTS orgmaster_core.schema_migrations') ||
         normalized.startsWith('CREATE TABLE IF NOT EXISTS orgmaster_core.local_native_bootstrap_receipts') ||
         normalized.startsWith('CREATE TABLE orgmaster_core.schema_migrations')) return { rows: [] }
@@ -127,6 +128,21 @@ function localEntry() {
     path: 'db/migrations/local/042_dev060_local_principal_session_binding.sql', sourceSha256: sha256(source),
     appliedSha256: sha256(MIGRATION_SQL), sql: MIGRATION_SQL }
 }
+
+test('an owner migration resolves neutral extensions independently of an inherited sibling search path', async () => {
+  const client = new FakeClient()
+  const query = client.query.bind(client)
+  let extensionVisible = false
+  client.query = async (sql, values) => {
+    if (sql.startsWith('SET LOCAL search_path ') && sql.includes('public')) extensionVisible = true
+    if (sql === MIGRATION_SQL && !extensionVisible) {
+      throw Object.assign(new Error('function digest(text,text) does not exist'), { code: '42883' })
+    }
+    return query(sql, values)
+  }
+  assert.equal((await executeMigration(client, nativeEntry(), REVISION)).reused, false)
+  assert.equal(client.ledgerRows.length, 1)
+})
 
 test('createLedger uses IF NOT EXISTS and accepts only the expected ledger column shape', async () => {
   const client = new FakeClient()

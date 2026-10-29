@@ -86,6 +86,10 @@ export async function executeMigration(client, entry, sourceRevision, options = 
   await client.query('BEGIN')
   try {
     await client.query('SET LOCAL ROLE ' + MIGRATOR)
+    // Another owner may have left a session-level search_path while installing
+    // its legacy package. OrgMaster's unqualified pgcrypto calls must resolve
+    // through the neutral, non-writable public extension schema every time.
+    await client.query('SET LOCAL search_path TO pg_catalog, orgmaster_core, orgmaster_contract, public')
     if (entry.localOnly === true) {
       await ensureLocalReceiptTable(client)
       const existing = await client.query(`SELECT source_path, btrim(source_sha256) AS source_sha256,

@@ -345,9 +345,29 @@ export async function initializeEmptyLocalOwnerBootstrap(
     await database.query("SET LOCAL lock_timeout = '5s'")
     await database.query("SET LOCAL statement_timeout = '30s'")
     await database.query('SET LOCAL ROLE jenfu_orgmaster_migrator')
-    const admission = await database.query(`SELECT singleton FROM orgmaster_core.managed_identity_admission_authority
-      WHERE singleton=true FOR UPDATE`)
-    if (admission.rows?.length !== 1) fail('ADMISSION_AUTHORITY_INVALID')
+    const bridge = await database.query(`SELECT to_regclass('orgmaster_core.managed_identity_admission_authority')
+      IS NOT NULL AS authority_exists`)
+    if (bridge.rows?.length !== 1 || typeof bridge.rows[0].authority_exists !== 'boolean') fail('ADMISSION_AUTHORITY_INVALID')
+    if (bridge.rows[0].authority_exists) {
+      const admission = await database.query(`SELECT singleton,admission_enabled FROM orgmaster_core.managed_identity_admission_authority
+        WHERE singleton=true FOR UPDATE`)
+      if (admission.rows?.length !== 1 || admission.rows[0].admission_enabled !== false) fail('ADMISSION_AUTHORITY_INVALID')
+    } else {
+      // Migration 012 requires an empty active owner publication, but creates
+      // the admission authority itself. Admit only the exact native 001..011
+      // prefix; an absent authority after the bridge is a failed dependency.
+      const prefix = await database.query(`SELECT version,btrim(checksum_sha256) AS checksum_sha256
+        FROM orgmaster_core.schema_migrations ORDER BY version`)
+      const expected = new Set([
+        ...Array.from({ length: 10 }, (_, index) => `dev010-n1c-orgmaster-${String(index + 1).padStart(3, '0')}`),
+        'dev040-r2-orgmaster-011',
+      ])
+      if (prefix.rows?.length !== expected.size || prefix.rows.some(row =>
+        typeof row.version !== 'string' || !expected.delete(row.version) ||
+        typeof row.checksum_sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(row.checksum_sha256)) || expected.size !== 0) {
+        fail('ADMISSION_AUTHORITY_INVALID')
+      }
+    }
     const authorityResult = await database.query(`SELECT active_batch_id::text AS active_batch_id,authority_version
       FROM orgmaster_core.persistence_authority WHERE singleton=true FOR UPDATE`)
     if (authorityResult.rows?.length !== 1) fail('PERSISTENCE_AUTHORITY_INVALID')

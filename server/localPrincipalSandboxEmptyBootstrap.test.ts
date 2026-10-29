@@ -39,6 +39,10 @@ class MemoryDatabase implements EmptyLocalOwnerBootstrapDatabase {
   sessions = 0
   priorBatchCount = 0
   failAt: string | null = null
+  admissionAuthorityExists = true
+  admissionEnabled = false
+  installedVersions = [...Array.from({ length: 10 }, (_, index) =>
+    `dev010-n1c-orgmaster-${String(index + 1).padStart(3, '0')}`), 'dev040-r2-orgmaster-011']
 
   seedActiveBatch(batchId: string, prepared: PreparedEmptyLocalOwnerBootstrap, options: {
     manifest?: unknown
@@ -84,7 +88,17 @@ class MemoryDatabase implements EmptyLocalOwnerBootstrapDatabase {
       port: input.target.port,
       session_user: input.target.sessionUser,
     }], rowCount: 1 }
-    if (normalized.includes('FROM orgmaster_core.managed_identity_admission_authority')) return { rows: [{ singleton: true }], rowCount: 1 }
+    if (normalized.startsWith("SELECT to_regclass('orgmaster_core.managed_identity_admission_authority')")) {
+      return { rows: [{ authority_exists: this.admissionAuthorityExists }], rowCount: 1 }
+    }
+    if (normalized.includes('FROM orgmaster_core.schema_migrations')) return {
+      rows: this.installedVersions.map(version => ({ version, checksum_sha256: 'a'.repeat(64) })),
+      rowCount: this.installedVersions.length,
+    }
+    if (normalized.includes('FROM orgmaster_core.managed_identity_admission_authority')) {
+      if (!this.admissionAuthorityExists) throw Object.assign(new Error('relation does not exist'), { code: '42P01' })
+      return { rows: [{ singleton: true, admission_enabled: this.admissionEnabled }], rowCount: 1 }
+    }
     if (normalized.includes('FROM orgmaster_core.persistence_authority')) return { rows: [{
       active_batch_id: this.activeBatchId,
       authority_version: this.authorityVersion,
@@ -143,6 +157,41 @@ function errorCode(error: unknown) {
 }
 
 describe('local empty owner bootstrap', () => {
+  it('initializes the required empty publication before migration 012 creates the admission authority', async () => {
+    const database = new MemoryDatabase()
+    database.admissionAuthorityExists = false
+    await initializeEmptyLocalOwnerBootstrap(database, input)
+    expect(database.batches.size).toBe(1)
+    expect(database.artifacts.values().next().value).toHaveLength(3)
+    expect(database.statements.some(sql => sql.includes('FROM orgmaster_core.managed_identity_admission_authority'))).toBe(false)
+    expect(database.statements.at(-1)).toBe('COMMIT')
+  })
+
+  it('refuses a missing authority after bridge installation or with an incomplete native prefix', async () => {
+    for (const versions of [
+      [...new MemoryDatabase().installedVersions, 'dev047-orgmaster-012'],
+      new MemoryDatabase().installedVersions.slice(1),
+    ]) {
+      const database = new MemoryDatabase()
+      database.admissionAuthorityExists = false
+      database.installedVersions = versions
+      await expect(initializeEmptyLocalOwnerBootstrap(database, input)).rejects.toMatchObject({
+        code: 'LOCAL_EMPTY_BOOTSTRAP_ADMISSION_AUTHORITY_INVALID',
+      })
+      expect(database.batches.size).toBe(0)
+      expect(database.statements.at(-1)).toBe('ROLLBACK')
+    }
+  })
+
+  it('refuses an enabled managed admission authority before writing an empty publication', async () => {
+    const database = new MemoryDatabase()
+    database.admissionEnabled = true
+    await expect(initializeEmptyLocalOwnerBootstrap(database, input)).rejects.toMatchObject({
+      code: 'LOCAL_EMPTY_BOOTSTRAP_ADMISSION_AUTHORITY_INVALID',
+    })
+    expect(database.batches.size).toBe(0)
+  })
+
   it('prepares exactly three hashed native artifacts and a valid empty active V3 policy', () => {
     const prepared = prepareEmptyLocalOwnerBootstrap(input)
     expect(prepared.status).toBe('materialized-in-memory')
