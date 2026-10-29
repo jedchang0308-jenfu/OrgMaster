@@ -1,7 +1,9 @@
 # DEV-060：OrgMaster 地端 SSO 與應用內單一前端權限投影
 
-- 文件成熟度：Source / Local Acceptance Complete；原契約驗收範圍保持不變。
-- 執行狀態：RD Self-check Passed / Local Acceptance Passed / PR Review Pending；真實 non-production activation DEFERRED。
+- 現行切片（2026-10-30）：§13的local Principal sandbox仍在進行；主責回報真 PostgreSQL forward batch `5425902e-efca-4e9f-b8ec-f3a8d1364963` 已 audit-bound、舊批次保留 retired、fixture hash 不變，session GET 200。Chrome 組織圖／員工／職位各一筆 projection request 均 200。此證據限於已跑案例，不代表 lifecycle、完整 allow/deny、PR／CI 或 release 完成；§12的既有成果維持前階段範圍。
+
+- 文件成熟度（§12 前階段）：Source / Local Acceptance Complete；原契約驗收範圍保持不變。
+- 執行狀態（§12 前階段）：RD Self-check Passed / Local Acceptance Passed / PR Review Pending；真實 non-production activation DEFERRED。
 - Native task：ORGMASTER/DEV-060#frontend-permission-projection。
 - 跨專案主控：JENFU/DEV-021。
 - 建立日期：2026-10-28（Asia/Taipei）。
@@ -255,3 +257,49 @@ Browser evidence 為 **LOCAL_SIMULATED**：既有 administrator／employee devel
 使用者已明確決定 Principal 撤權案例待補：目前 Firebase A／B 不具有 managed-identity lifecycle 資料，現行 owner API 禁止直接停用 active admission；未用登出、app-grant withdrawal 或偽造 AAL2 代替。其餘本輪 P5 項目已完成；Cloud SQL IAM、Google Workspace 端登入及完整業務流程不在本次通過聲明內。
 
 本任務 Chrome、三個 App 與 PG15432 已按指紋停止，12000／12010／12020／15432 釋放；12 個尚待釋放的 runtime registry records 已核銷，capacity lease 釋放、session ended。資料／私密設定與 ignored 證據保留供後續，未入 Git。最新 required CI／merge 狀態以 PR #186 provider 為準，沒有 production 變更。
+
+<a id="local-synthetic-fixtures"></a>
+
+## 13. 現行切片：版本化虛構身分與生命週期fixture（2026-10-29）
+
+Native=`ORGMASTER/DEV-060#local-synthetic-fixtures`；跨專案來源=`JENFU/DEV-021#local-principal-sandbox`。共用契約與A～J任務鏈唯一維護於Platform `ai-doc/specs/DEV-021-platform-app-permission-projection-contract.md` §14，本文只定義OrgMaster責任。參與者是Platform DEV-021、PDM DEV-126與FMS DEV-069；DEV-057不重開，DEV-059保留既有正式FMS producer來源。
+
+### 13.1 Fixture owner與版本join
+
+OrgMaster提供版本化synthetic Principal／Employee／company／role assignment／scope／grant及其lifecycle資料，供Platform local issuer與App server透過typed contracts消費。OrgMaster不簽發共用session；App capability由各App定義。正式canonical人員資料與原writer保護維持既有責任，日常fixture不讀取或複製正式任用、provider session、密碼或credential。
+
+fixture manifest至少含common contract version、fixtureVersion／既有規則下的內容hash、sandboxId／generation、catalog version／catalogSha256／roleDefinitionHash、來源定義版本；每個scenario含虛構Principal／Employee、identityIssuer／subject、company、有效scope／role／grant、期限、authEpoch、accountLifecycleVersion／profileVersion及預期狀態。case可有意配置invalid／expired／revoked，但不得把缺失資料自動補成active。
+
+PDM定義沿`ai-pdm.role-catalog.2026-10-10.v7`九角色；owner檔為`config/catalogs/ai-pdm-role-catalog.v7.json`，reader在`server/aiPdmRoleCatalogRepository.ts`。FMS沿自己的版本catalog／protected grants。只同步定義與已審查版本，不同步正式人員任用，也不藉管理職位自動配權。檔案raw SHA與catalogSha256是不同欄位，沿現有validator驗證，不能拿其中一個覆蓋另一個。
+
+fixture importer／bootstrap僅寫task-owned OrgMaster資料，維持typed Principal、scope／期限、CAS、audit及runtime非owner限制；透過版本contract供其他App讀取，不能直接寫PDM／FMS core。需要schema時用`db/migrations`新forward-only migration；若純fixture可沿現有factory完成，不為文件新增DDL。
+
+### 13.2 交付切片與驗收
+
+| 待辦 | 依賴與交付 | 完成證據 |
+|---|---|---|
+| O60-A 來源／定義收斂 | Platform共用profile；核對專屬writer、現有v7及FMS版本、typed readers／fixture factory | 記錄來源與版本join；未混入既有dirty server差異 |
+| O60-B 虛構fixture | active／無grant／wrong company／wrong scope／expired／revoked／disabled scenarios，正反資料完整 | parser／owner factory測試及隔離PG typed readback |
+| O60-C lifecycle | lifecycle變更傳回Platform權威更新epoch／撤銷，App下次protected request失效；reset與generation一致 | 停用／撤權／期限、CAS、舊session拒絕；故障不產生半套active grant |
+| O60-D OrgMaster consumer | 自身AuthGate／App session adapter接common profile，保留唯一OrgMasterPermissionProvider與resource projections | 正常OrgMaster三視圖、換帳號／late response、401／denied／unavailable分流 |
+| O60-E PR／CI／地端交付 | 合併本owner切片；可與其他repo獨立交付 | focused tests、typecheck／受影響build、SQL變更時DB boundary；provider required CI與protected master merge；1010／12010交付 |
+| O60-F 真實鏈／發布準備 | 若正式producer／consumer受本次影響，驗證真實非正式owner publication及相容性 | 真實身分／授權／撤權獨立證據；local fixture PASS不代填 |
+| O60-G 發布／結案 | 自有正式範圍沿DEV-040及`npm run deploy:production`；common任務鏈H～J | 自有source／artifact／native receipt與served version；正式拒絕sandbox、正常OrgMaster權限及受影響FMS contract readback；回復與資源交接 |
+
+現行（2026-10-30）：O60-A已建立獨立writer並核對官方基線。O60-B／D仍為`IN_PROGRESS`：native materializer已加入可驗hash-chain的publication audit event；主責回報真 PostgreSQL forward batch=`5425902e-efca-4e9f-b8ec-f3a8d1364963`、source revision=`99682eed…35a458`、fixture hash不變、舊批次保留為retired、`audit_bound=true`。`/api/orgmaster/governance/session` 回應200；Chrome組織圖、員工、職位各僅發出一次permission projection request且均回應200、無permission error。OrgMaster source範圍50項focused tests與strict TypeScript通過；另一child的7項fake-SQL測試屬合成證據，與主責真PG證據分開。
+
+本輪補充的隔離合成profile lifecycle證據見[Platform DEV-021 R1 JSON](<C:/VIBE CODING/.worktrees/Jenfu-Platform/dev021-local-principal-sandbox-20261029/ai-doc/qa/evidence/DEV021-LOCAL-PROFILE-LIFECYCLE-20261030-R1.json>)：`profile_changed` event=`5f7a9290-7ae1-42ea-8a62-ed6d594e5d75`，lifecycle version 1→2，central auth epoch=3；錯 generation／fixture hash、stale／future version及foreign Principal投影均被拒絕，完全相同的native projection／event重播未再次變更或增加epoch。四個舊App session均401；首輪fresh PDM login的401失敗保留，修復後四個App readback均200。這只證明該isolated synthetic profile、source及runtime；不證明reset／generation完整一致、真實managed Principal、production、IAM或Secret。O60-C lifecycle因此仍為部分進行中；reset與generation案例待驗，真實managed-identity lifecycle撤權沿§12既有決定維持`DEFERRED / NOT_RUN`。
+
+External-specialist來源修正採新增`orgmaster.local-principal-fixtures.2026-10-30.v2`，common envelope仍是`jenfu.local-principal-fixtures.v1`。V2 factory以同一個`createdAt`產生90天project grant；native materializer將有效的內部active sponsor寫入`sponsorEmployeeId`，並設`reviewDueAt = validUntil - 30 days`，同時保留external Employee無department／position／assignment anchor。原v1 builder與既有hash `a4d2ab8fa27246339d8bed2a7a5bc5cd5b27fcb8fc4f4007248f55d87905505f`固定不變；本輪未改寫immutable envelope、既有manifest或generated data。未來若需更新sandbox，應以單一新`createdAt`呼叫`buildLocalPrincipalSandboxFixtureV2({ createdAt })`，將同一時間交給native materializer，並建立新的sandboxId、generation及profile；只發布新的versioned fixture/hash，不覆寫舊生成物。Fixture／native／profile及OrgMaster callback focused tests共27項通過；callback測試使用mock client／pool，只證明v2 fixtureVersion/hash傳入token-proof API，不是live API或DB驗證。本輪未執行build、DB、runtime／cloud或production操作。
+
+O60-C reset／generation、完整allow/deny、PR／required CI及release仍未完成；上述source與隔離lifecycle證據不代填未跑案例，也不結案。共用cluster狀態見Platform DEV-021 §14.14。
+
+### 13.3 Conformance與交付條件
+
+common／fixture／catalog版本hash不符、Principal或Employee停用、grant過期／撤銷、company／scope不符應明確拒絕。fixture endpoint、bootstrap、lifecycle及reset控制面同時要求development＋loopback＋explicit flag；正式／非loopback不可啟用，不能用dev cookie／headers覆寫正式Principal。中央session authority不可用時回unavailable，不自動採用固定角色。
+
+隔離PG需證明typed owner資料實際持久化、contract view／runtime ACL正確、peer core不可讀、lifecycle與audit一致；Chrome證據另證明正常使用入口及單一投影。日常sandbox、真PG、真實Google／owner publication、production各按原證據層記錄。
+
+正式發布輸入不帶fixture資料或local key；需要發布的owner先維持新舊contract相容，consumer就緒才啟用。自有發布失敗依DEV-040既定traffic→tag→entry recovery，不能回退資料或跨改其他App。未受影響正式artifact只需有效相容證據，無需為參與整合重部署。
+
+DEV-060新增切片只有在O60-A～G適用工作完成且主責收到可追溯結果時結案；若已部署但必要功能／撤權未驗，標`DEPLOYED / ACCEPTANCE_PENDING`。正式target或外部身分條件缺少只阻塞相依階段，source／隔離驗證可繼續。現行source／隔離runtime進度沿§13.2及Platform DEV-021 §14.14記錄，正式操作尚未執行。

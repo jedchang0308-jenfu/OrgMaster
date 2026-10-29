@@ -4,13 +4,16 @@
 
 ## DEV-060：OrgMaster 應用內單一前端權限投影
 
-- 狀態：`Source / Local + Live SSO Acceptance Complete`；單一 projection、真實 non-production SSO、三視圖只取一次 projection、全域登出及直接入口比對已通過。Principal 撤權依使用者決定保留 `DEFERRED / NOT_RUN`，不列 PASS；詳見契約§12。
-- 來源：`JENFU/DEV-021`；交付 1010／12010 local profile、v2 SSO 與 app-scoped provider。使用者已續授權本輪真實 non-production 驗證及 protected merge；未授權 production release／資料／IAM／Secret 變更。
+- 現行狀態：`IN_PROGRESS / Bounded PG + Chrome PASS / Release Not Accepted`。[主控 reset R2](<C:/VIBE CODING/.worktrees/Jenfu-Platform/dev021-local-principal-sandbox-20261029/ai-doc/qa/evidence/DEV021-LOCAL-RESET-20261030-R2.json>)記錄兩輪真 PG 重置與四 App 新登入成功。OrgMaster 下游 persistence guard 固定 PG port／App-specific DB 名稱曾導致 503，`83b85e8` 修正後真正 `/api/orgmaster/governance/session` 回 200；focused 35/35、persistence guard 6/6、TypeScript及exact-head Production Source QC run `40964858997` 通過。完整 LS、PR 合併、真實非正式與正式發布仍待完成；Principal 真實 lifecycle 案例仍 DEFERRED / NOT_RUN。
+
+- 前次限定切片紀錄（以下最新整合證據更新前）：`IN_PROGRESS / Local Principal Sandbox`；writer=`C:\VIBE CODING\.worktrees\OrgMaster\dev060-local-principal-sandbox-20261029`，基線 `origin/master@325ade49a7376a5046ffc090b55b2550d66485e3`。§13 native materializer 已產生帶 hash-chain audit binding 的 publication。主責回報真 PostgreSQL forward batch=`5425902e-efca-4e9f-b8ec-f3a8d1364963`、source revision=`99682eed…35a458`、fixture hash 不變、舊批次保留為 retired、`audit_bound=true`（audit=`edaf6576-c0a1-4f7e-8458-b2ae9a3e1305`）；local `/api/orgmaster/governance/session` 回應 200。Chrome 組織圖／員工／職位各取一次 permission projection，均回應 200 且無 permission error。另有[Platform DEV-021 R1隔離合成profile lifecycle證據](<C:/VIBE CODING/.worktrees/Jenfu-Platform/dev021-local-principal-sandbox-20261029/ai-doc/qa/evidence/DEV021-LOCAL-PROFILE-LIFECYCLE-20261030-R1.json>)：profile_changed event=`5f7a9290-7ae1-42ea-8a62-ed6d594e5d75`、auth epoch 3、舊session均401、首輪fresh PDM失敗保留、修復後四個App readback均200且exact replay未重複變更。source另新增external-specialist fixture v2（90天期限、內部sponsor及到期前30天review）；既有v1 hash `a4d2ab8fa27246339d8bed2a7a5bc5cd5b27fcb8fc4f4007248f55d87905505f`與generated data不變。Fixture／native／profile及OrgMaster callback focused tests 27/27通過；callback使用mock client／pool，僅驗證v2 fixtureVersion／hash送入token-proof API，非live API／DB驗證。本輪未執行DB／runtime／cloud操作。reset／generation案例、完整allow/deny、PR／required CI與release仍待完成；真實managed-identity lifecycle撤權維持`DEFERRED / NOT_RUN`，不以局部證據結案。
+- 前階段成果：`Source / Local + Live SSO Acceptance Complete`；單一 projection、真實 non-production SSO、三視圖只取一次 projection、全域登出及直接入口比對已通過。Principal 撤權依使用者決定保留 `DEFERRED / NOT_RUN`，不列 PASS；詳見契約§12。
+- 來源：`JENFU/DEV-021`；交付 1010／12010 local profile、v2 SSO 與 app-scoped provider。前述 source 子切片範圍為 DEV-060 source／tests／docs 及推送至既有 PR #189；本輪不執行 DB／runtime／cloud 操作，亦未授權 production release／資料／IAM／Secret 變更。
 - 核心邊界：OrgMaster 繼續擁有 Principal／Employee／有效 role assignment／scope／期限／撤權；Position 與組織圖不自動等於權限，App capability 仍由各 App 擁有。
 - 唯一契約：[DEV-060 OrgMaster 前端權限投影契約](specs/DEV-060-app-scoped-frontend-permission-projection.md)。
-- 自查：全 app suite 1090 PASS／5 skipped；focused 110 PASS、negatives／module 56 PASS（重疊不相加），auth 35 PASS、launcher 10 PASS。UI feedback 修正後 targeted 24 PASS、最後 typecheck／client/server build PASS；1010 與 12010 各 10/10 browser cases PASS，原第 9.1 節逐項對照見 spec。均為 RD／LOCAL_SIMULATED，不宣稱獨立 QC 或真實 IAM／SSO。
-- 交付：沿 [PR #186](https://github.com/jedchang0308-jenfu/OrgMaster/pull/186) 的 source review、最新 exact-HEAD required CI 與原分支保護交付；provider 是合併狀態權威。113 項本輪 SSO/dev-identity 回歸與 46 項 owner-transform 回歸依各自輸入有效；不把 source 合併當成 production release。
-- 資源／交接：專用工作樹與證據保留；本輪已依 native fingerprint 停止 OrgMaster 14592 的自有程序樹，12010 已釋放。協調者的 Chrome、另兩個 App、PG15432、capacity lease 與 runtime registry 均已結束；隔離資料／私密 ADC 設定留在 task-owned temp，未入 Git，後續由本任務協調者處理。
+- 前階段自查（§12）：全 app suite 1090 PASS／5 skipped；focused 110 PASS、negatives／module 56 PASS（重疊不相加），auth 35 PASS、launcher 10 PASS。UI feedback 修正後 targeted 24 PASS、typecheck／client/server build PASS；1010 與 12010 各 10/10 browser cases PASS，原第 9.1 節逐項對照見 spec。§13 source focused tests 50 PASS、strict TypeScript PASS；forward publisher child 的 7 項 fake-SQL tests 只代表合成測試，不與主責真 PG 證據混算。均不宣稱獨立 QC。
+- 前階段交付（§12）：沿 [PR #186](https://github.com/jedchang0308-jenfu/OrgMaster/pull/186) 的 source review、exact-HEAD required CI 與原分支保護交付；provider 是合併狀態權威。113 項 SSO/dev-identity 回歸與 46 項 owner-transform 回歸依各自輸入有效。§13 尚無 PR／required CI／release 完成證據；source 合併不等於 production release。
+- 前階段資源／交接（§12）：專用工作樹與證據保留；當時已依 native fingerprint 停止 OrgMaster 14592 的自有程序樹，12010 已釋放。協調者的 Chrome、另兩個 App、PG15432、capacity lease 與 runtime registry 均已結束；隔離資料／私密 ADC 設定留在 task-owned temp，未入 Git，後續由本任務協調者處理。
 
 [來源 AI_PDM / CAPA-002](../../AI_PDM/.ai-doc/capa-register.md#capa-002)（2026-10-15 歷史紀錄：OPEN）：當時僅精簡 AGENTS 的歷史安裝與發布狀態，未執行產品修改或正式操作。2026-10-19 補記 OrgMaster 範圍：規範精簡已由 [PR #133](https://github.com/jedchang0308-jenfu/OrgMaster/pull/133) 合併；CA-3 沿 DEV-057／040 的本次正式發布、原始失敗、受控 rotation 與發布後驗證見[既有 owner 出口](#dev040-production-release-20261019)，收尾文件已由 [PR #144](https://github.com/jedchang0308-jenfu/OrgMaster/pull/144) 合併。PA 文件驗證與 CA-3 實際結果分開記錄；本段只補本專案追蹤，不更新其他專案或原案件狀態，不宣稱三專案 CAPA 整案結案，無新 native DEV；整案狀態仍以 AI_PDM owner 案件為準。
 
@@ -302,7 +305,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## 總任務清單
 
-- ◐ DEV-060 [P1] [Source／Local Acceptance Complete；PR Review Pending] OrgMaster 地端 SSO 與應用內單一前端權限投影（狀態見 [DEV-060](#dev-060-frontend-permission-projection)）
+- ◐ DEV-060 [P1] [Local Principal Sandbox IN_PROGRESS；完整發布待驗] OrgMaster 地端 SSO 與應用內單一前端權限投影（狀態見 [DEV-060](#dev-060-frontend-permission-projection)）
 
 - ✅ DEV-059 [P1] [Development Complete / Production Not Run] FMS-specific typed Principal／effective assignment／protected grant／candidate catalog import producer（狀態見 [DEV-059](#dev-059-fms-principal-assignment)）
 

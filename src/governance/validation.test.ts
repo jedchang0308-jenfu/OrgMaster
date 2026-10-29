@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { validateDocument, validateDocumentV2, validateGenericV2AssignmentSurface, validatePolicyDataV2 } from './validation'
+import { validateDocument, validateDocumentV2, validateDocumentV3, validateGenericV2AssignmentSurface, validatePolicyDataV2 } from './validation'
 import { createSeedDocument } from '../../server/orgmasterGovernanceStore'
 import { createSeedDocumentV2, } from './migrateGovernanceV1ToV2'
-import { readAiPdmRoleCatalog } from './aiPdmCatalog'
+import { migrateGovernanceV2ToV3 } from './migrateGovernanceV2ToV3'
+import { createAiPdmRoleCatalog, readAiPdmRoleCatalog } from './aiPdmCatalog'
+import v7 from '../../config/catalogs/ai-pdm-role-catalog.v7.json'
 describe('governance validation diagnostics', () => { it('accepts the V1 seed document', () => { const issues = validateDocument(createSeedDocument()); expect(issues, JSON.stringify(issues)).toEqual([]) }) })
 describe('governance V2 validation diagnostics', () => {
   it('accepts internal and supported external assignment invariants', () => {
@@ -29,6 +31,33 @@ describe('governance V2 validation diagnostics', () => {
     expect(validatePolicyDataV2({ ...document.draft, roleAssignments: [
       { ...historical, roleNameSnapshot: 'unverified-role-name' }
     ] }, undefined, [catalog]).some((issue) => issue.code === 'EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID')).toBe(true)
+  })
+  it('accepts the same V3 PDM assignment after JSONB-style object-key reordering', () => {
+    const catalog = createAiPdmRoleCatalog('valid', v7.publishedAt, v7)
+    const v2 = createSeedDocumentV2('2026-09-25T00:00:00.000Z', catalog)
+    const base = migrateGovernanceV2ToV3(v2, 'jsonb-order-fixture', catalog, '2026-09-25T00:00:00.000Z')
+    const role = catalog.roles.find((value) => value.stableRoleId === 'role-rd')!
+    const assignment = {
+      id: 'assignment-jsonb-order', employeeId: 'employee-1', applicationId: 'ai-pdm' as const,
+      roleId: role.stableRoleId, roleCodeSnapshot: role.code, roleNameSnapshot: role.displayName,
+      catalogVersion: catalog.catalogVersion, scope: { kind: 'workspace' as const, value: 'workspace-1' },
+      status: 'active' as const, validFrom: '2026-09-25T00:00:00.000Z', validTo: null,
+      effectState: 'not-synchronized' as const, basis: 'manual' as const, subjectKind: 'employee' as const,
+      targetPrincipalId: null, sources: [], metadata: { sponsorEmployeeId: null, reviewDueAt: null },
+      createdByPrincipalId: 'principal-fixture', createdReason: 'jsonb order fixture',
+    }
+    const document = { ...base, draft: { ...base.draft, roleAssignments: [assignment] } }
+    const jsonbReorder = <T>(value: T): T => {
+      if (Array.isArray(value)) return value.map(jsonbReorder) as T
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, jsonbReorder(item)])) as T
+      }
+      return value
+    }
+    const reorderedDocument = jsonbReorder(document)
+    const reorderedCatalog = jsonbReorder(catalog)
+    expect(validateDocumentV3(document, undefined, [catalog])).toEqual([])
+    expect(validateDocumentV3(reorderedDocument, undefined, [reorderedCatalog])).toEqual([])
   })
   it('rejects system admin from every generic V2 assignment validation path', () => {
     const document = createSeedDocumentV2()

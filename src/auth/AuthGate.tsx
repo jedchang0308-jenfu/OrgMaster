@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { AuthApiError, getAuthMode, getCurrentSession, getDevelopmentAuthMode, loginDevelopmentProfile, logoutCurrentSession, type AuthMode, type AuthSessionView, type DevelopmentAuthMode, type DevelopmentAuthProfileView } from './authApiClient'
+import { AuthApiError, getAuthMode, getCurrentSession, getDevelopmentAuthMode, loginDevelopmentProfile, logoutCurrentSession, type AuthModeResponse, type AuthSessionView, type DevelopmentAuthMode, type DevelopmentAuthProfileView } from './authApiClient'
 
 export interface AuthSessionContextValue {
   session: AuthSessionView
@@ -18,13 +18,13 @@ export function useAuthSession() {
 
 type GateState =
   | { kind: 'loading' }
-  | { kind: 'authenticated'; session: AuthSessionView; mode: AuthMode | null; employeeNumberManagementEnabled?: boolean }
-  | { kind: 'login'; mode: AuthMode; message?: string }
+  | { kind: 'authenticated'; session: AuthSessionView; mode: AuthModeResponse | null; employeeNumberManagementEnabled?: boolean }
+  | { kind: 'login'; mode: AuthModeResponse; message?: string }
   | { kind: 'development-login'; mode: DevelopmentAuthMode; message?: string }
   | { kind: 'blocked'; code: string; correlationId?: string }
   | { kind: 'unavailable'; correlationId?: string }
-  | { kind: 'logout-processing'; session: AuthSessionView; mode: AuthMode | null; employeeNumberManagementEnabled?: boolean }
-  | { kind: 'logout-failed'; session: AuthSessionView; mode: AuthMode | null; employeeNumberManagementEnabled?: boolean }
+  | { kind: 'logout-processing'; session: AuthSessionView; mode: AuthModeResponse | null; employeeNumberManagementEnabled?: boolean }
+  | { kind: 'logout-failed'; session: AuthSessionView; mode: AuthModeResponse | null; employeeNumberManagementEnabled?: boolean }
   | { kind: 'logout-complete' }
 
 function blockedState(error: unknown): GateState {
@@ -190,6 +190,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
           <small>{profile.description}</small>
         </button>)}
       </div>
+    </section>
+  </main>
+  if (state.mode.authMode === 'local_principal_sandbox' && state.mode.localSandboxEnabled) return <main className="auth-gate">
+    <section className="auth-login auth-login--managed" aria-labelledby="local-sandbox-login-title">
+      <div><p className="auth-login__eyebrow">隔離地端測試環境</p><h1 id="local-sandbox-login-title">使用本機測試身分登入</h1><p>登入會沿用 OrgMaster 原生權限與工作階段檢查。</p></div>
+      {state.message && <p className="auth-login__error" role="alert">{state.message}</p>}
+      <button type="button" disabled={busy} onClick={() => { window.location.assign(`/api/auth/local-sandbox/start?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`) }}>{busy ? '準備登入…' : '使用本機測試身分登入'}</button>
     </section>
   </main>
   if (state.mode.ssoHandoffEnabled) return <main className="auth-gate">

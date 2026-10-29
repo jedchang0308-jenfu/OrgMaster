@@ -11,7 +11,7 @@ import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2To
 import { assignmentMatchesSecuritySubject, evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { readApplicationRoleCatalogs, readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceAuditEventV1, GovernanceAuditEventV3, GovernanceCommandV2, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceExpectedCatalogV1, GovernanceOrgSource, GovernancePolicyDataV1, GovernanceRoleAssignmentV2, GovernanceCommandResultV1, GovernanceCommandQueryResultV1 } from '../src/governance/types'
-import { OrgmasterPersistenceError, currentPersistenceTransactionDatabase, withPersistenceTransaction, persistenceArtifactExists, readPersistenceArtifact, usesCloudSqlPersistence, writePersistenceArtifacts, type PersistenceEntitlementChange } from './orgmasterPersistenceRepository'
+import { OrgmasterPersistenceError, currentPersistenceTransactionDatabase, withPersistenceTransaction, persistenceArtifactExists, readPersistenceArtifact, usesCloudSqlPersistence, warnOrgmasterLocalPersistenceDiagnostic, writePersistenceArtifacts, type OrgmasterLocalPersistenceDiagnosticStage, type PersistenceEntitlementChange } from './orgmasterPersistenceRepository'
 import { assertMigrationWritesAllowed } from './orgmasterMigrationGate'
 import { storedGovernanceCatalogs, isGovernanceReduction, withPublishedGovernanceHistory } from './governanceReduction'
 import { readHistoricalAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
@@ -74,10 +74,10 @@ function eventHash(event: Omit<GovernanceAuditEventV3, 'eventHash'> | Governance
   return event.hashFormat === GOVERNANCE_PUBLICATION_HASH_FORMAT
     ? publicationSnapshotHash(auditEventHashInput(event)) : sha256(canonicalJson(auditEventHashInput(event)))
 }
-export function appendGovernanceAudit<T extends GovernanceDocumentV2 | GovernanceDocumentV3>(document: T, command: { commandId: string; reason: string; type?: string }, actor: GovernanceActorContext, info: { action: string; entityType: string; entityId: string | null; beforeHash: string | null; afterHash: string | null; detail?: NonNullable<GovernanceDocumentV3['auditEvents'][number]['detail']>; commandHashFormat?: typeof GOVERNANCE_COMMAND_HASH_FORMAT; commandResult?: GovernanceCommandResultV1 }, now = new Date().toISOString()): T {
+export function appendGovernanceAudit<T extends GovernanceDocumentV2 | GovernanceDocumentV3>(document: T, command: { commandId: string; reason: string; type?: string }, actor: GovernanceActorContext, info: { action: string; entityType: string; entityId: string | null; beforeHash: string | null; afterHash: string | null; detail?: NonNullable<GovernanceDocumentV3['auditEvents'][number]['detail']>; commandHashFormat?: typeof GOVERNANCE_COMMAND_HASH_FORMAT; commandResult?: GovernanceCommandResultV1; auditEventId?: string }, now = new Date().toISOString()): T {
   if (document.auditEvents.some(event => event.commandId === command.commandId)) throw new GovernanceStoreError('COMMAND_ID_REUSED')
   const previousEventHash = document.auditEvents.at(-1)?.eventHash ?? null
-  const base = { id: `audit-${randomUUID()}`, commandId: command.commandId, commandHash: commandHash(command), occurredAt: now,
+  const base = { id: info.auditEventId ?? `audit-${randomUUID()}`, commandId: command.commandId, commandHash: commandHash(command), occurredAt: now,
     actorPrincipalId: actor.principalId, action: info.action, entityType: info.entityType, entityId: info.entityId,
     reason: command.reason, beforeHash: info.beforeHash, afterHash: info.afterHash, previousEventHash,
     ...(info.detail ? { detail: info.detail } : {}),
@@ -177,20 +177,33 @@ export async function loadOrganizationSource(root = process.cwd()): Promise<Gove
 function validationSource(source: GovernanceOrgSource): GovernanceOrgSource | undefined { return source.workspaceVersionId === 'test-current' ? undefined : source }
 async function readV2Raw(root: string) { const path = getGovernancePaths(root).legacyV2; try { const stored = await readPersistenceArtifact({ localPath: path, artifactKey: 'orgmaster-governance.v2.json', artifactKind: 'governance' }); const document = stored.payload as unknown as GovernanceDocumentV2; validateAuditChain(document); if (document.app !== 'OrgMaster' || document.schemaVersion !== 2) throw new GovernanceStoreError('GOVERNANCE_SCHEMA_UNSUPPORTED'); return { raw: stored.raw, document, revision: stored.revision } } catch (error) { if (error instanceof GovernanceStoreError) throw error; throw new GovernanceStoreError('GOVERNANCE_READ_FAILED') } }
 async function readV3Raw(root: string): Promise<GovernanceStoreRead> {
+  let stage: OrgmasterLocalPersistenceDiagnosticStage = 'governance_v3_artifact_read'
   try {
     const stored = await readPersistenceArtifact({ localPath: getGovernancePaths(root).current,
       artifactKey: 'orgmaster-governance.v3.json', artifactKind: 'governance' })
     const document = stored.payload as unknown as GovernanceDocumentV3
+    stage = 'governance_v3_audit_chain_validate'
     validateAuditChain(document)
+    stage = 'governance_workspace_source_read'
     const source = validationSource(await loadOrganizationSource(root))
+    stage = 'governance_v3_owned_catalog_validate'
     const ownedCatalogs = storedGovernanceCatalogs(document)
     // This proves readability/provenance, never permission to create a new grant.
-    const catalogs = ownedCatalogs && !validateDocumentV3(document, source, ownedCatalogs).length
-      ? ownedCatalogs : await governanceCatalogsWithHistory(document, await readApplicationRoleCatalogs(root))
+    let catalogs: ExternalRoleCatalogSnapshotV1[]
+    if (ownedCatalogs && !validateDocumentV3(document, source, ownedCatalogs).length) {
+      catalogs = ownedCatalogs
+    } else {
+      stage = 'governance_v3_catalog_history_read'
+      catalogs = await governanceCatalogsWithHistory(document, await readApplicationRoleCatalogs(root))
+    }
+    stage = 'governance_v3_document_validate'
     const issues = validateDocumentV3(document, source, catalogs)
     if (issues.length) throw new GovernanceStoreError('GOVERNANCE_READ_FAILED', issues)
     return { raw: stored.raw, document, revision: stored.revision }
   } catch (error) {
+    warnOrgmasterLocalPersistenceDiagnostic(stage, error, 'orgmaster-governance.v3.json', {
+      validationIssues: error instanceof GovernanceStoreError ? error.details : undefined,
+    })
     if (error instanceof GovernanceStoreError) throw error
     throw new GovernanceStoreError('GOVERNANCE_READ_FAILED')
   }
@@ -246,7 +259,7 @@ export async function readGovernanceStore(root = process.cwd()) { return ensureG
 export async function readExistingGovernanceStore(root = process.cwd()) { return readV3Raw(root) }
 type GovernanceWriteContext = { expectedOrganizationRevision?: string; expectedCatalog?: GovernanceExpectedCatalogV1 }
 
-const GOVERNANCE_COMMAND_HASH_FORMAT = 'orgmaster.governance-command.v2' as const
+export const GOVERNANCE_COMMAND_HASH_FORMAT = 'orgmaster.governance-command.v2' as const
 function boundGovernanceCommand<T extends { commandId: string; reason: string; type: string }>(command: T, expectedRevision: string, actor: GovernanceActorContext, context: GovernanceWriteContext) {
   return { commandId: command.commandId, reason: command.reason, type: command.type,
     commandHashFormat: GOVERNANCE_COMMAND_HASH_FORMAT, actorPrincipalId: actor.principalId,
