@@ -136,9 +136,11 @@ export function isOrgmasterLocalSandboxDatabaseTarget(connectionString: string) 
     const host = target.hostname.replace(/^\[|\]$/gu, '').toLowerCase()
     const port = Number(target.port || '5432')
     const runtimeRole = decodeURIComponent(target.username)
+    // The exact sandbox id, database name, generation, runtime role, and live server port
+    // are verified by localSandbox.verify before this request-scoped URL reaches this guard.
     return ['postgres:', 'postgresql:'].includes(target.protocol) &&
       host === '127.0.0.1' && Number.isInteger(port) && port >= 1024 && port <= 65535 &&
-      /^\/jenfu_local_orgmaster_[a-z][a-z0-9_]{2,40}$/u.test(target.pathname) &&
+      /^\/jenfu_local_[a-z][a-z0-9_]{2,50}$/u.test(target.pathname) &&
       /^[a-z][a-z0-9_]{2,62}$/u.test(runtimeRole) && Boolean(target.password) &&
       !target.search && !target.hash
   } catch {
