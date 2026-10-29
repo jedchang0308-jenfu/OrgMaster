@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createOrgmasterAuthMiddleware, isAllowedOrgmasterRequestOrigin, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
+import { createOrgmasterAuthMiddleware, createOrgmasterAuthRuntime, isAllowedOrgmasterRequestOrigin, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
 import { hashSessionToken } from './orgmasterAuthCookies'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
@@ -46,6 +46,63 @@ async function listen(runtime: OrgmasterAuthRuntime, businessRead: () => void = 
 }
 
 describe('OrgMaster auth middleware', () => {
+  it('keeps local principal sandbox requests on native session middleware and hides synthetic development profiles', async () => {
+    vi.stubEnv('ORGMASTER_PERSISTENCE_MODE', '')
+    vi.stubEnv('ORGMASTER_POSTGRES_URL', '')
+    const session: OrgmasterSession = {
+      id: 'local-session-row', identityIssuer: 'urn:jenfu:local-principal-sandbox', identitySubject: 'local-scenario',
+      principalId: 'local-principal', employeeId: 'employee-local-principal', authEpoch: 3,
+      sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 3,
+      issuedAt: new Date().toISOString(), authenticatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
+    }
+    const localSandbox = {
+      enabledCandidate: true,
+      mode: vi.fn(async (correlationId: string) => ({ authMode: 'local_principal_sandbox' as const, localSandboxEnabled: true as const, correlationId })),
+      start: vi.fn(async () => ({ location: 'http://127.0.0.1:8000/api/local-sandbox/authorize?clientId=orgmaster&redirectUri=http%3A%2F%2F127.0.0.1%3A5173%2Fapi%2Fauth%2Flocal-sandbox%2Fcallback', cookie: 'orgmaster_local_tx_test=transaction; Path=/api/auth/local-sandbox/callback' })),
+      callback: vi.fn(async () => ({ location: '/', cookie: 'orgmaster_local_session_test=token; Path=/', clearTransactionCookie: 'orgmaster_local_tx_test=; Max-Age=0' })),
+      verify: vi.fn(async () => ({ session, profile: {} as never, persistenceTargetUrl: 'postgres://sandbox_runtime:synthetic@127.0.0.1:53761/jenfu_local_auth_test' })),
+      logout: vi.fn(async () => ({ cookies: ['orgmaster_local_session_test=; Max-Age=0'] })),
+      clearSessionCookie: vi.fn(async () => 'orgmaster_local_session_test=; Max-Age=0'),
+      close: vi.fn(async () => undefined),
+    }
+    const runtime: OrgmasterAuthRuntime = {
+      configResult: { configured: false, missing: [], reason: 'local test mode' },
+      localSandbox: localSandbox as unknown as NonNullable<OrgmasterAuthRuntime['localSandbox']>,
+    }
+    const base = await listen(runtime, () => undefined, true)
+    const mode = await fetch(`${base}/api/auth/mode`)
+    expect(mode.status).toBe(200)
+    expect(await mode.json()).toMatchObject({ authMode: 'local_principal_sandbox', localSandboxEnabled: true })
+    expect((await fetch(`${base}/api/auth/development/profiles`)).status).toBe(404)
+    expect((await fetch(`${base}/api/auth/firebase/session`, { method: 'POST' })).status).toBe(410)
+
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    expect(start.status).toBe(302)
+    expect(start.headers.get('location')).toContain('%2Fapi%2Fauth%2Flocal-sandbox%2Fcallback')
+    expect(start.headers.get('set-cookie')).toContain('orgmaster_local_tx_test')
+
+    expect((await fetch(`${base}/api/protected`)).status).toBe(200)
+    expect((await fetch(`${base}/api/protected`)).status).toBe(200)
+    expect(localSandbox.verify).toHaveBeenCalledTimes(2)
+    const logout = await fetch(`${base}/api/auth/logout`, {
+      method: 'POST', headers: { origin: base, 'content-type': 'application/json' }, body: '{}',
+    })
+    expect(logout.status).toBe(200)
+    expect(localSandbox.logout).toHaveBeenCalledTimes(1)
+    expect(runtime.firebase).toBeUndefined()
+  })
+
+  it('selects local-only runtime before reading formal Firebase or Google configuration', () => {
+    const environment = { NODE_ENV: 'development', JENFU_LOCAL_SANDBOX_ENABLED: '1' } as NodeJS.ProcessEnv
+    const runtime = createOrgmasterAuthRuntime(environment)
+    expect(runtime.localSandbox?.enabledCandidate).toBe(true)
+    expect(runtime.firebase).toBeUndefined()
+    expect(runtime.principals).toBeUndefined()
+    expect(runtime.sessions).toBeUndefined()
+    return runtime.localSandbox?.close()
+  })
+
   it.each(['runtime', 'environment'] as const)('disables dev profiles, cookies and headers when SSO is enabled by %s', async authority => {
     if (authority === 'environment') vi.stubEnv('ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'on')
     const { runtime } = configuredRuntime({ ssoHandoffEnabled: authority === 'runtime' })

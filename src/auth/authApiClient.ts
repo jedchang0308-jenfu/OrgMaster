@@ -7,6 +7,17 @@ export type AuthMode = {
   correlationId: string
 }
 
+export type LocalPrincipalSandboxMode = {
+  authMode: 'local_principal_sandbox'
+  localSandboxEnabled: true
+  managedLoginEnabled?: false
+  employeeNumberManagementEnabled?: false
+  ssoHandoffEnabled?: false
+  correlationId: string
+}
+
+export type AuthModeResponse = AuthMode | LocalPrincipalSandboxMode
+
 export type DevelopmentAuthProfileView = {
   id: 'administrator' | 'governance-manager' | 'method-manager' | 'employee'
   roleCode: string
@@ -46,7 +57,7 @@ async function json<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T>
 }
 
 export function getAuthMode() {
-  return json<AuthMode>('/api/auth/mode')
+  return json<AuthModeResponse>('/api/auth/mode')
 }
 
 export function getDevelopmentAuthMode() {

@@ -31,6 +31,8 @@ import { FinancialCatalogReleaseError, publishFinancialCatalog } from './financi
 import { previewFinancialInitialAuthority, publishFinancialInitialAuthority, readFinancialInitialAuthorityReceipt, type FinancialInitialAuthorityInput, type FinancialInitialAuthorityPublishInput } from './financialInitialAuthorityStore'
 import { resolveIdentityLinkUpsert, assertIdentityLinkStatusMutationAllowed as assertIdentityLinkStatusMutationAllowedPolicy } from './orgmasterIdentityLinkPolicy'
 import { recommendGovernanceEmployees } from './employeeRecommendationService'
+import { LOCAL_IDENTITY_ISSUER } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
+import { warnOrgmasterLocalPersistenceDiagnostic, withOrgmasterLocalPrincipalDiagnosticContext } from './orgmasterPersistenceRepository'
 
 export const API_PATH = '/api/orgmaster/governance'
 const MAX_BODY = 1024 * 1024
@@ -270,8 +272,16 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
     sendJson(response, 200, result)
     return
   }
-  const current = await readGovernanceStore(root).catch(error => {
-    if (path === '/session') throw new GovernanceStoreError('ORGMASTER_SOURCE_UNAVAILABLE')
+  const governanceRead = actor.issuer === LOCAL_IDENTITY_ISSUER
+    ? withOrgmasterLocalPrincipalDiagnosticContext(() => readGovernanceStore(root))
+    : readGovernanceStore(root)
+  const current = await governanceRead.catch(error => {
+    if (path === '/session') {
+      warnOrgmasterLocalPersistenceDiagnostic('governance_session_store_read', error, undefined, {
+        localPrincipalRequest: actor.issuer === LOCAL_IDENTITY_ISSUER,
+      })
+      throw new GovernanceStoreError('ORGMASTER_SOURCE_UNAVAILABLE')
+    }
     throw error
   }); const document = current.document
   if (path === '/employee-recommendations' && request.method === 'POST') {

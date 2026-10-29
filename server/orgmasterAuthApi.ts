@@ -21,7 +21,7 @@ import {
 } from './orgmasterGovernanceIdentity'
 import { createPrincipalAdmissionRepository, PrincipalAdmissionError, type PrincipalAdmissionRepository } from './orgmasterPrincipalAdmissionRepository'
 import { readVerifiedRequestIdentity, setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
-import { withPersistencePrincipal } from './orgmasterPersistenceRepository'
+import { withOrgmasterLocalSandboxPersistenceTarget, withPersistencePrincipal } from './orgmasterPersistenceRepository'
 import { createOrgmasterSessionRepository, type OrgmasterSession, type OrgmasterSessionRepository } from './orgmasterSessionRepository'
 import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
 import { createManagedIdentityRepository } from './orgmasterManagedIdentityRepository'
@@ -29,6 +29,7 @@ import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort, readG
 import { handleOrgmasterSsoRequest, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
 import { createGoogleManagedLoginCallerVerifier, type ManagedLoginCallerVerifier } from './orgmasterManagedLoginApi'
 import { createManagedLoginOwnerService, type ManagedLoginOwnerServiceV1 } from './orgmasterManagedLoginService'
+import { createOrgmasterLocalPrincipalSandbox, OrgmasterLocalPrincipalSandboxError, type OrgmasterLocalPrincipalSandbox } from './orgmasterLocalPrincipalSandbox'
 
 export const ORGMASTER_AUTH_API_PATH = '/api/auth'
 const MAX_BODY_BYTES = 32 * 1024
@@ -61,6 +62,7 @@ export class OrgmasterAuthError extends Error {
 
 export type OrgmasterAuthRuntime = {
   configResult: OrgmasterAuthConfigResult
+  localSandbox?: OrgmasterLocalPrincipalSandbox
   firebase?: FirebaseIdentityProvider
   principals?: PrincipalAdmissionRepository
   epochs?: AuthEpochRepository
@@ -110,6 +112,14 @@ function sendJson(response: ServerResponse, status: number, payload: unknown, id
 
 function asAuthError(error: unknown) {
   if (error instanceof OrgmasterAuthError) return error
+  if (error instanceof OrgmasterLocalPrincipalSandboxError) {
+    const code: AuthDecisionCode = error.status === 401 ? 'auth_session_invalid'
+      : error.status === 403 ? 'auth_origin_invalid'
+        : error.status === 409 ? 'auth_contract_mismatch'
+          : error.status === 404 ? 'auth_request_invalid'
+            : 'auth_server_not_configured'
+    return new OrgmasterAuthError(error.status, code, error.clearCookie)
+  }
   if (error instanceof PrincipalAdmissionError) return new OrgmasterAuthError(statusForCode[error.code], error.code)
   if (error instanceof AuthEpochUnavailableError) return new OrgmasterAuthError(503, 'auth_epoch_unavailable')
   return new OrgmasterAuthError(503, 'auth_server_not_configured')
@@ -282,6 +292,12 @@ function createRateLimiter() {
 }
 
 export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = process.env): OrgmasterAuthRuntime {
+  if (environment.JENFU_LOCAL_SANDBOX_ENABLED === '1') {
+    return {
+      configResult: { configured: false, missing: [], reason: 'Local principal sandbox runtime is active.' },
+      localSandbox: createOrgmasterLocalPrincipalSandbox({ environment }),
+    }
+  }
   const configResult = readOrgmasterAuthConfig(environment)
   if (!configResult.configured) return { configResult }
   const database = createOrgmasterDatabase(configResult.config.postgresUrl)
@@ -330,13 +346,72 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
 
 export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = () => createOrgmasterAuthRuntime(), devEnabled = false, ssoDependencies: OrgmasterSsoHandoffDependencies = {}): Connect.NextHandleFunction {
   const runtime = runtimeFactory()
-  devEnabled = isDevelopmentAuthEnabled(devEnabled, ssoDependencies.environment ?? process.env) && runtime.ssoHandoffEnabled !== true
+  devEnabled = !runtime.localSandbox?.enabledCandidate && isDevelopmentAuthEnabled(devEnabled, ssoDependencies.environment ?? process.env) && runtime.ssoHandoffEnabled !== true
   const rateLimit = createRateLimiter()
   return (request, response, next) => {
     const pathname = new URL(request.url ?? '/', 'http://orgmaster.local').pathname
     if (!pathname.startsWith('/api/')) return next()
     const id = correlationId(request)
     const handle = async () => {
+      if (runtime.localSandbox?.enabledCandidate) {
+        if (pathname === `${ORGMASTER_AUTH_API_PATH}/development/profiles` || pathname === `${ORGMASTER_AUTH_API_PATH}/development/session`) {
+          sendJson(response, 404, { code: 'auth_request_invalid', correlationId: id }, id)
+          return
+        }
+        if ((pathname === `${ORGMASTER_AUTH_API_PATH}/local-sandbox/start` || pathname === `${ORGMASTER_AUTH_API_PATH}/jenfu-sso/start`) && request.method === 'GET') {
+          rateLimit(request)
+          const result = await runtime.localSandbox.start(request)
+          response.statusCode = 302
+          response.setHeader('Location', result.location)
+          response.setHeader('Cache-Control', 'no-store')
+          response.setHeader('X-Correlation-Id', id)
+          response.setHeader('Set-Cookie', result.cookie)
+          response.end()
+          return
+        }
+        if ((pathname === `${ORGMASTER_AUTH_API_PATH}/local-sandbox/callback` || pathname === `${ORGMASTER_AUTH_API_PATH}/jenfu-sso/callback`) && request.method === 'GET') {
+          rateLimit(request)
+          const result = await runtime.localSandbox.callback(request)
+          response.statusCode = 302
+          response.setHeader('Location', result.location)
+          response.setHeader('Cache-Control', 'no-store')
+          response.setHeader('Referrer-Policy', 'no-referrer')
+          response.setHeader('X-Correlation-Id', id)
+          response.setHeader('Set-Cookie', [result.clearTransactionCookie, result.cookie])
+          response.end()
+          return
+        }
+        if (pathname === `${ORGMASTER_AUTH_API_PATH}/mode` && request.method === 'GET') {
+          sendJson(response, 200, await runtime.localSandbox.mode(id), id)
+          return
+        }
+        if (pathname === `${ORGMASTER_AUTH_API_PATH}/logout` && request.method === 'POST') {
+          const body = await readJsonBody(request)
+          if (Object.keys(body).length !== 0) throw new OrgmasterAuthError(400, 'auth_request_invalid')
+          const result = await runtime.localSandbox.logout(request)
+          sendJson(response, 200, { status: 'completed', correlationId: id }, id, result.cookies)
+          return
+        }
+        if (pathname === `${ORGMASTER_AUTH_API_PATH}/firebase/session` && request.method === 'POST') {
+          sendJson(response, 410, { code: 'auth_route_retired', correlationId: id }, id)
+          return
+        }
+        if (pathname.startsWith(ORGMASTER_AUTH_API_PATH) && (pathname !== `${ORGMASTER_AUTH_API_PATH}/me` || request.method !== 'GET')) {
+          sendJson(response, 404, { code: 'auth_request_invalid', correlationId: id }, id)
+          return
+        }
+        const authenticated = await runtime.localSandbox.verify(request)
+        setVerifiedRequestIdentity(request, authenticated.session)
+        if (pathname === `${ORGMASTER_AUTH_API_PATH}/me`) {
+          sendJson(response, 200, publicSession(authenticated.session, id), id)
+          return
+        }
+        const verified = readVerifiedRequestIdentity(request)
+        if (!verified) throw new OrgmasterAuthError(401, 'auth_session_invalid')
+        withOrgmasterLocalSandboxPersistenceTarget(authenticated.persistenceTargetUrl, () =>
+          withPersistencePrincipal(verified.principalId, next))
+        return
+      }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/development/profiles` && request.method === 'GET') {
         if (!devEnabled || !isLoopback(request)) {
           sendJson(response, 404, { code: 'auth_request_invalid', correlationId: id }, id)
@@ -433,7 +508,12 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
       if (response.writableEnded) return
       const error = asAuthError(unknownError)
       const secure = runtime.configResult.configured ? runtime.configResult.config.secureCookie : true
-      sendJson(response, error.status, { code: error.code, correlationId: id }, id, error.clearCookie ? clearSessionCookie(secure) : undefined)
+      const cookie = error.clearCookie
+        ? runtime.localSandbox?.enabledCandidate
+          ? runtime.localSandbox.clearSessionCookie().catch(() => undefined)
+          : Promise.resolve(clearSessionCookie(secure))
+        : Promise.resolve(undefined)
+      void cookie.then((value) => sendJson(response, error.status, { code: error.code, correlationId: id }, id, value))
     })
   }
 }
@@ -442,10 +522,14 @@ export function orgmasterAuthApiPlugin(): Plugin {
   return {
     name: 'orgmaster-auth-api',
     configureServer(server: ViteDevServer) {
-      server.middlewares.use(createOrgmasterAuthMiddleware(() => createOrgmasterAuthRuntime(), server.config.command === 'serve' && server.config.mode === 'development'))
+      const runtime = createOrgmasterAuthRuntime()
+      server.middlewares.use(createOrgmasterAuthMiddleware(() => runtime, server.config.command === 'serve' && server.config.mode === 'development'))
+      server.httpServer?.once('close', () => { void runtime.localSandbox?.close() })
     },
     configurePreviewServer(server: PreviewServer) {
-      server.middlewares.use(createOrgmasterAuthMiddleware(() => createOrgmasterAuthRuntime(), false))
+      const runtime = createOrgmasterAuthRuntime()
+      server.middlewares.use(createOrgmasterAuthMiddleware(() => runtime, false))
+      server.httpServer?.once('close', () => { void runtime.localSandbox?.close() })
     },
   }
 }

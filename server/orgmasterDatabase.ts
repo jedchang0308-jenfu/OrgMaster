@@ -33,6 +33,8 @@ export type OrgmasterProductionTarget = {
 
 let runtimePool: pg.Pool | null = null
 let runtimeSignature = ''
+let localSandboxPool: pg.Pool | null = null
+let localSandboxPoolUrl = ''
 
 function positiveInteger(value: string | undefined, fallback: number, name: string) {
   const normalized = value?.trim()
@@ -125,6 +127,40 @@ export function createOrgmasterDatabase(connectionString: string, environment: N
   })
   runtimeSignature = signature
   return runtimePool
+}
+
+/** A separately cached loopback-only pool used by the explicit local sandbox request scope. */
+export function createOrgmasterLocalSandboxDatabase(connectionString: string): OrgmasterDatabase {
+  let target: URL
+  try { target = new URL(connectionString) } catch { throw new Error('ORGMASTER_LOCAL_SANDBOX_TARGET_INVALID') }
+  const host = target.hostname.replace(/^\[|\]$/gu, '').toLowerCase()
+  if (!['postgres:', 'postgresql:'].includes(target.protocol) ||
+    host !== '127.0.0.1' || target.port !== '53761' ||
+    target.pathname.length < 2 || target.search || target.hash || !target.username || !target.password) {
+    throw new Error('ORGMASTER_LOCAL_SANDBOX_TARGET_INVALID')
+  }
+  if (localSandboxPool && localSandboxPoolUrl !== connectionString) {
+    void localSandboxPool.end().catch(() => undefined)
+    localSandboxPool = null
+  }
+  localSandboxPool ??= new pg.Pool({
+    application_name: 'orgmaster-local-sandbox-persistence',
+    connectionString,
+    connectionTimeoutMillis: 2500,
+    idleTimeoutMillis: 30_000,
+    max: 4,
+    query_timeout: 5000,
+    statement_timeout: 5000,
+  })
+  localSandboxPoolUrl = connectionString
+  return localSandboxPool
+}
+
+export async function closeOrgmasterLocalSandboxDatabase() {
+  const pool = localSandboxPool
+  localSandboxPool = null
+  localSandboxPoolUrl = ''
+  await pool?.end()
 }
 
 export async function closeOrgmasterDatabase() {

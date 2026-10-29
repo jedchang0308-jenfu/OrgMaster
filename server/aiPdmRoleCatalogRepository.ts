@@ -178,12 +178,12 @@ function validateAssignmentCompatibleCatalog(catalog: PublishedAiPdmRoleCatalog,
   return normalized
 }
 
-async function decodeDatabaseCatalogRows(rows: Array<Record<string, unknown>>, expectedCatalogSha256?: string): Promise<PublishedAiPdmRoleCatalog> {
+async function decodeDatabaseCatalogRows(rows: Array<Record<string, unknown>>, expectedCatalogSha256?: string, root = process.cwd()): Promise<PublishedAiPdmRoleCatalog> {
   if (!rows.length) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
   const first = rows[0]
   if (first.publication_format === 'dynamic-policy-v1' || String(first.catalog_version).startsWith('ai-pdm.role-policy.')) {
     try {
-      const decoded = decodeDynamicAiPdmRoleCatalog(rows, await Promise.all(Object.keys(APPROVED_CATALOGS).map(version => readPublishedAiPdmRoleCatalog(process.cwd(), version))))
+      const decoded = decodeDynamicAiPdmRoleCatalog(rows, await Promise.all(Object.keys(APPROVED_CATALOGS).map(version => readPublishedAiPdmRoleCatalog(root, version))))
       if (expectedCatalogSha256 && decoded.catalogSha256 !== expectedCatalogSha256.toLowerCase()) throw new Error('catalog binding conflict')
       return decoded
     } catch { throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID') }
@@ -226,7 +226,7 @@ async function decodeDatabaseCatalogRows(rows: Array<Record<string, unknown>>, e
   if (!pinned) {
     try {
       if (rows.some(row => new Date(row.published_at as string | Date).toISOString() !== new Date(publishedAt).toISOString())) throw new Error('mixed publication')
-      return validateAssignmentCompatibleCatalog(catalog, await readPublishedAiPdmRoleCatalog(process.cwd(), AI_PDM_ROLE_CATALOG_V7_VERSION))
+      return validateAssignmentCompatibleCatalog(catalog, await readPublishedAiPdmRoleCatalog(root, AI_PDM_ROLE_CATALOG_V7_VERSION))
     } catch (error) {
       if (error instanceof AiPdmRoleCatalogRepositoryError) throw error
       throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
@@ -238,7 +238,7 @@ async function decodeDatabaseCatalogRows(rows: Array<Record<string, unknown>>, e
   // Compare exact content against the independently validated source snapshot.
   // The digest intentionally excludes publishedAt; historical imports may keep
   // the actual publication instant instead of the fixture creation instant.
-  const approved = await readPublishedAiPdmRoleCatalog(process.cwd(), first.catalog_version as PublishedAiPdmRoleCatalog['catalogVersion'])
+  const approved = await readPublishedAiPdmRoleCatalog(root, first.catalog_version as PublishedAiPdmRoleCatalog['catalogVersion'])
   const { sourcePath: _publishedPath, publishedAt: _publishedAt, ...publishedValues } = approved
   const { sourcePath: _databasePath, publishedAt: _databasePublishedAt, ...databaseValues } = catalog
   if (!isDeepStrictEqual(databaseValues, publishedValues)) {
@@ -246,6 +246,11 @@ async function decodeDatabaseCatalogRows(rows: Array<Record<string, unknown>>, e
   }
   return catalog
 }
+
+/** Validate a captured producer-contract readback without granting the owner
+ * initializer another App's runtime role. This pure decoder does not establish
+ * live-source provenance; the coordinator must supply its actual SQL readback. */
+export { decodeDatabaseCatalogRows as decodePublishedAiPdmRoleCatalogRows }
 
 /** Read exactly one current producer projection. The producer owns the active pointer. */
 export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmRoleCatalogQueryable, expectedCatalogSha256?: string): Promise<PublishedAiPdmRoleCatalog> {
