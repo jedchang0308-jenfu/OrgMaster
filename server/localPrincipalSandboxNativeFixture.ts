@@ -704,7 +704,9 @@ function localFmsManagementGrants(
   }
   const scenario = fixture.scenarios.find(row => row.scenarioId === input.scenarioId)
   const sourceOwner = scenario?.grants.some(grant => grant.applicationId === 'financial-management-system'
-    && grant.stableRoleId === 'role-owner' && grant.companyId === LOCAL_SANDBOX_COMPANY_ID
+    // FMS business rows use jenfu-machinery; OrgMaster workspace / the common
+    // synthetic fixture use company-jenfu. Both are fixed IDs of this company.
+    && grant.stableRoleId === 'role-owner' && [LOCAL_SANDBOX_COMPANY_ID, 'jenfu-machinery'].includes(grant.companyId)
     && grant.scopeKind === 'workspace' && grant.scopeRef === 'company-jenfu'
     && isActiveAt(grant.status, grant.validFrom, grant.validUntil, at))
   const owner = scenario && assignments.find(row => row.employeeId === scenario.employeeId

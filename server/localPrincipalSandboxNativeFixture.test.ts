@@ -226,6 +226,10 @@ describe('local principal native fixture materializer', () => {
     expect(result.governanceVersion.snapshotHash).not.toBe(ordinary.governanceVersion.snapshotHash)
     expect(storedGovernanceCatalogs(result.governance)).not.toBeNull()
     expect(result.persistenceArtifacts.find(row => row.artifactKind === 'governance')?.raw).toContain(FINANCIAL_ROLE_ASSIGNMENT_MANAGE)
+    const fmsCompanyResult = materializeLocalPrincipalSandboxNativeFixture({ ...input,
+      fixture: fixtureWithFmsGrant(fmsCatalogPin, { companyId: 'jenfu-machinery', scopeRef: 'company-jenfu' }),
+      fmsManagement: { scenarioId: 'active', capabilities: [FINANCIAL_ROLE_ASSIGNMENT_MANAGE] } })
+    expect(fmsCompanyResult.governanceVersion.policy.managementGrants).toHaveLength(1)
     for (const invalid of [
       { scenarioId: 'active', capabilities: [] },
       { scenarioId: 'active', capabilities: [FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_MANAGE] },
