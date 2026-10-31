@@ -109,7 +109,7 @@ export function activeIdentityLink(document: GovernanceDocumentV3, actor: Govern
 export function hasFinancialOwnerRole(document: GovernanceDocumentV3, actor: GovernanceActorContext, at = new Date().toISOString()) {
   const policy = currentPublishedPolicyV3(document)
   if (!actor.principalId || !actor.employeeId || !policy) return false
-  return policy.roleAssignments.some((assignment) => assignment.applicationId === FINANCIAL_APPLICATION_ID && assignment.employeeId === actor.employeeId && assignment.roleId === 'role-owner' && assignment.status === 'active' && assignment.subjectKind === 'employee' && assignment.scope.kind === 'workspace' && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, at))
+  return policy.roleAssignments.some((assignment) => assignment.applicationId === FINANCIAL_APPLICATION_ID && assignment.employeeId === actor.employeeId && assignment.roleId === 'role-owner' && assignment.status === 'active' && assignment.subjectKind === 'employee' && assignment.scope.kind === 'workspace' && assignment.scope.value === 'company-jenfu' && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, at))
 }
 
 export function hasFinancialManagementGrant(document: GovernanceDocumentV3, actor: GovernanceActorContext, capability: FinancialManagementCapability, at = new Date().toISOString()) {

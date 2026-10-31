@@ -306,6 +306,8 @@ DEV-060新增切片只有在O60-A～G適用工作完成且主責收到可追溯�
 
 ## 14. FMS 人員任用的 owner workspace
 
+角色版本啟用沿同一OrgMaster own-session writer。正常API以`/applications/financial-management-system/catalog/activation`讀現行版本，`/preview`只讀相容差異，`/activate`帶原requestHash／previewHash／commandId提交，`/commands/{commandId}`查原結果；前綴均為`/api/orgmaster/governance`。舊`catalog/releases/publish` HTTP入口使用相同preview-proof啟用handler，不保留可繞過正常preview的平行HTTP寫入。import准入只允許讀預覽；正式套用須分別持有import、publish、activate三項具名權限，cached replay亦須當下仍有三權。角色缺失若影響任何active-status任用即拒絕，退役仍保留既有任用與authoring catalog lineage；並行版本由原CAS決定唯一成功者。收據與publication／audit原子提交，附加record的完整內容、requestHash與previewHash進同一audit hash；泛用治理讀取不回傳此proof，原Principal仍需catalog.read資格才可查原命令。上述source不是FMS normalized owner receipt或跨系統已啟用證據；尚需FMS server-owned immutable intent、accepted typed owner reader與正常UI交接驗證，完成前保持IN_PROGRESS。
+
 FMS `/admin/users` 由正常 Platform OrgMaster launch 進入 `/fms/role-assignments`。治理操作在 OrgMaster 自有已驗證 session 內完成；不轉貼 FMS actor、不沿用本地 users 或開發身分 headers。普通 FMS 判權仍讀原 Tier-0 投影。
 
 - `GET /api/orgmaster/governance/applications/financial-management-system/employees` 是 `orgmaster.fms-employee-directory.v1`：沿現有 FMS workspace owner role 加 exact-Principal `role_assignment.manage`；只回 employeeId、displayName、未具名權威提供時為null的employeeNumber、active／assignable，以及 directoryRevision、governanceRevision、readAt／cursor。搜尋 q 最多80字，預設20／上限50；cursor綁搜尋與版本。不得回整份組織資料、聯絡或財務個資。
