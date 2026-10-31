@@ -13,6 +13,7 @@ import {
   assertExpectedCatalog,
   assertExpectedRevisions,
   assertFinancialAuthority,
+  hasFinancialManagementGrant,
   catalogBinding,
   commandRequestHash,
   isActiveEmployee,
@@ -27,9 +28,12 @@ export type FinancialRoleAssignmentWorkspace = {
   governanceRevision: string
   organizationRevision: string
   assignmentVersionId: string | null
+  roles: Array<{ stableRoleId: string; roleCode: string; roleName: string }>
+  allowedOperations: { preview: true; publish: boolean }
   assignments: Array<{
     assignmentId: string
     employeeId: string
+    employeeName?: string
     stableRoleId: string
     roleCode: string
     roleName: string
@@ -48,7 +52,7 @@ function financialCatalog(catalogs: ExternalRoleCatalogSnapshotV1[]) {
 
 function validateAssignmentInput(input: FinancialRoleAssignmentInput, catalog: ExternalRoleCatalogSnapshotV1, organization: Awaited<ReturnType<typeof loadOrganizationSource>>) {
   assertExpectedCatalog(input, catalogBinding(catalog))
-  if (!input.employeeId.trim() || !isActiveEmployee(organization, input.employeeId)) throw new ApplicationEntitlementError('EMPLOYEE_NOT_FOUND')
+  if (!input.employeeId.trim() || input.operation === 'upsert' && !isActiveEmployee(organization, input.employeeId)) throw new ApplicationEntitlementError('EMPLOYEE_NOT_FOUND')
   if (input.scope.kind !== 'workspace' || input.scope.value !== 'company-jenfu') throw new ApplicationEntitlementError('UNSUPPORTED_SCOPE')
   if (!input.reason.trim() || input.reason.trim().length > 240) throw new ApplicationEntitlementError('INVALID_COMMAND')
   const from = Date.parse(input.validFrom)
@@ -85,6 +89,11 @@ function assignmentTarget(document: GovernanceDocumentV3, input: FinancialRoleAs
   if (input.operation === 'revoke') {
     const found = currentAssignments(document).find((assignment) => assignment.id === input.assignmentId && assignment.status === 'active')
     if (!found) throw new ApplicationEntitlementError('ASSIGNMENT_NOT_FOUND')
+    if (found.employeeId !== input.employeeId || found.scope.kind !== input.scope.kind
+      || !('value' in found.scope) || found.scope.value !== input.scope.value
+      || input.stableRoleId !== undefined && input.stableRoleId !== found.roleId) {
+      throw new ApplicationEntitlementError('ASSIGNMENT_NOT_FOUND')
+    }
     return found
   }
   const existing = currentAssignments(document).find((assignment) => assignment.id === input.assignmentId)
@@ -158,7 +167,13 @@ export async function readFinancialRoleAssignmentWorkspace(root: string, actor: 
     governanceRevision: current.revision,
     organizationRevision: source.workspaceRevision,
     assignmentVersionId: current.document.activePolicyVersionId,
-    assignments: currentAssignments(current.document).map(redacted),
+    roles: catalog.roles.filter(role => role.status === 'active' && role.assignable
+      && role.assignmentDisposition !== 'legacy-only' && role.assignmentPolicy !== 'existing_only'
+      && role.subjectKind === 'employee' && role.assignmentTier === 'app_admin')
+      .map(role => ({ stableRoleId: role.stableRoleId, roleCode: role.code, roleName: role.displayName })),
+    allowedOperations: { preview: true, publish: hasFinancialManagementGrant(current.document, actor, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH) },
+    assignments: currentAssignments(current.document).map(assignment => ({ ...redacted(assignment),
+      employeeName: source.state.employees.find(employee => employee.id === assignment.employeeId)?.name ?? assignment.employeeId })),
   } satisfies FinancialRoleAssignmentWorkspace
 }
 
@@ -172,9 +187,16 @@ export async function previewFinancialRoleAssignment(root: string, actor: Govern
   return buildPreview(current.document, source.workspaceRevision, input, catalog, actor)
 }
 
+function financialAssignmentReceipt(document: GovernanceDocumentV3, receipt: GovernanceCommandReceiptV2) {
+  return document.auditEvents.some(event => event.id === receipt.auditReference
+    && event.commandId === receipt.commandId && event.entityType === 'applicationRoleAssignment'
+    && ['financial_role_assignment_upsert', 'financial_role_assignment_revoke'].includes(event.action))
+}
+
 function replayReceipt(document: GovernanceDocumentV3, request: FinancialRoleAssignmentPublishInput): GovernanceCommandReceiptV2 | null {
   const receipt = document.commandReceipts.find((entry) => entry.commandId === request.commandId)
   if (!receipt) return null
+  if (!financialAssignmentReceipt(document, receipt)) throw new ApplicationEntitlementError('COMMAND_ID_CONFLICT')
   if (receipt.requestHash !== request.requestHash || receipt.previewHash !== request.previewHash) throw new ApplicationEntitlementError('COMMAND_ID_CONFLICT')
   return { ...receipt, replayed: true }
 }
@@ -182,6 +204,7 @@ function replayReceipt(document: GovernanceDocumentV3, request: FinancialRoleAss
 export async function publishFinancialRoleAssignment(root: string, actor: GovernanceActorContext, request: FinancialRoleAssignmentPublishInput) {
   if (!request.commandId.trim()) throw new ApplicationEntitlementError('INVALID_COMMAND')
   const observed = await readGovernanceStore(root)
+  assertFinancialAuthority(observed.document, actor, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH)
   const replay = replayReceipt(observed.document, request)
   if (replay) return replay
   const committed = await commitGovernanceMutation(root, request.expectedGovernanceRevision, async (current, source) => {
@@ -214,9 +237,13 @@ export async function publishFinancialRoleAssignment(root: string, actor: Govern
   return { ...receipt, governanceRevision: committed.revision }
 }
 
-export async function readFinancialRoleAssignmentReceipt(root: string, commandId: string) {
+export async function readFinancialRoleAssignmentReceipt(root: string, commandId: string, actor: GovernanceActorContext) {
+  if (!commandId.trim() || commandId.length > 128) throw new ApplicationEntitlementError('INVALID_COMMAND')
   const current = await readGovernanceStore(root)
-  return current.document.commandReceipts.find((entry) => entry.commandId === commandId) ?? {
+  assertFinancialAuthority(current.document, actor, FINANCIAL_ROLE_ASSIGNMENT_MANAGE)
+  const receipt = current.document.commandReceipts.find((entry) => entry.commandId === commandId)
+  const ownNamespace = receipt && financialAssignmentReceipt(current.document, receipt)
+  return ownNamespace ? receipt : {
     contractVersion: 'orgmaster.governance-command-receipt.v2' as const, commandId, requestHash: '', previewHash: '', receiptStatus: 'not_found' as const,
     acceptedAt: null, terminalAt: null, decisionCode: 'COMMAND_NOT_FOUND', auditReference: null, securityAlertReference: null, sessionRefresh: 'pending' as const, governanceRevision: current.revision, replayed: false, attempt: 0,
   }
