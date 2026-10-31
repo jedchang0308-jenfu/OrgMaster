@@ -317,3 +317,5 @@ FMS `/admin/users` 由正常 Platform OrgMaster launch 進入 `/fms/role-assignm
 此接法重用OrgMaster的人類session與寫入權威，不新增delegated-human-session、IAM或Secret。來源、隔離Chrome、真實SSO與正式發布分開驗證，進度只回填原DEV-060／JF-FMS DEV-069與DEV-068。
 
 隔離native initializer可由顯式`fixtureSource.fmsManagement={scenarioId,capabilities}`建立管理測試資料，預設不建立。OrgMaster只接受既有active `human_personal`虛構身分，原fixture的公司只接受固定FMS業務ID `jenfu-machinery`／共同隔離ID `company-jenfu`，原fixture與native policy均須有company-jenfu workspace有效`role-owner`；capabilities只限原FMS任用兩項及十項protected operations，逐項明列、不得重複。grant綁其exact Principal／Employee及原任用期限，納入同一policy publication／audit與artifact source hash；不由HTTP／runtime呼叫，不更新既有publication，不授予PDM override或system_admin。非owner、錯公司／scope、停用或不支援capability拒絕。一般財務身分的403案例保留，新增管理fixture只供允許案例。
+
+地端runtime的fixture readiness與bootstrap精確驗證分開：bootstrap仍以原publication／grantVersion逐欄比對；runtime可接受較新native publication中語意完全相同的任用。只將grantVersion對齊已驗證的現行出版版本；OrgMaster自身虛擬catalog的id／整份policy hash可隨新版更新，角色definition hash仍須相同。外部App catalog／角色definition、公司／scope、status與有效期、Principal／Employee、lifecycle／epoch檢查不變；任用撤銷、新增／改角色等差異不能藉publication升版取得fixture准入。不得重寫fixture、已套用publication或舊收據以消除差異。

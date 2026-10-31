@@ -122,7 +122,14 @@ function directoryMatchesWorkspace(
 }
 
 function assignmentLine(assignment: FmsRoleAssignment) {
-  return `${assignment.employeeName ?? assignment.employeeId} · ${assignment.roleName} · ${effectiveState(assignment, Date.now())} · ${assignment.validFrom.slice(0, 10)} 至 ${assignment.validUntil?.slice(0, 10) ?? '未設定'}`
+  return `${assignment.employeeName ?? assignment.employeeId} · ${assignment.roleName} · ${effectiveState(assignment, Date.now())} · ${displayLocalDateTime(assignment.validFrom)} 至 ${displayLocalDateTime(assignment.validUntil)}`
+}
+
+function displayLocalDateTime(value: string | null | undefined) {
+  if (!value) return '未設定'
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return value
+  return localDateTime(date).replace('T', ' ')
 }
 
 function effectiveState(assignment: FmsRoleAssignment, now: number) {
@@ -657,7 +664,7 @@ export function FmsRoleAssignmentWorkspace() {
               {visibleAssignments.map((assignment) => <li key={assignment.assignmentId}>
                 <div className="fms-role-assignment__assignment-info">
                   <span>{assignment.employeeName ?? assignment.employeeId} · {assignment.roleName}</span>
-                  <span>{effectiveState(assignment, Date.now())} · {assignment.validFrom.slice(0, 10)} 至 {assignment.validUntil?.slice(0, 10) ?? '未設定'}</span>
+                  <span>{effectiveState(assignment, Date.now())} · {displayLocalDateTime(assignment.validFrom)} 至 {displayLocalDateTime(assignment.validUntil)}</span>
                 </div>
                 {assignment.status === 'active' ? <button type="button" className="fms-role-assignment__secondary" onClick={() => startRevocation(assignment)} disabled={locked || Boolean(revokeAssignment) || !activeWorkspace.allowedOperations.preview}>撤銷任用</button> : null}
               </li>)}
@@ -676,7 +683,7 @@ export function FmsRoleAssignmentWorkspace() {
         {revokeAssignment ? <form className="fms-role-assignment__form" onSubmit={(event) => void submitPreview(event)}>
           <h2>撤銷任用</h2>
           <p>{revokeAssignment.employeeName ?? revokeAssignment.employeeId} · {revokeAssignment.roleName}</p>
-          <p>原任用期間：{revokeAssignment.validFrom.slice(0, 10)} 至 {revokeAssignment.validUntil?.slice(0, 10) ?? '未設定'}</p>
+          <p>原任用期間：{displayLocalDateTime(revokeAssignment.validFrom)} 至 {displayLocalDateTime(revokeAssignment.validUntil)}</p>
           <label htmlFor="fms-revoke-reason">撤銷理由</label>
           <textarea id="fms-revoke-reason" value={reason} maxLength={240} onChange={(event) => setReason(event.target.value)} disabled={locked} required rows={3} />
           <div className="fms-role-assignment__actions">

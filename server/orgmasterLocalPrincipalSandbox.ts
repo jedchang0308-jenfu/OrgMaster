@@ -13,7 +13,7 @@ import {
   type LocalScenario,
   type LocalAssertionExpectation,
 } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
-import { ownerGrantsMatchFixture, validateLocalOwnerPublication, type LocalOwnerPublication } from '../contracts/local-principal-sandbox/v1/owner-publication.mjs'
+import { ownerGrantsMatchFixturePolicy, validateLocalOwnerPublication, type LocalOwnerPublication } from '../contracts/local-principal-sandbox/v1/owner-publication.mjs'
 import { readPublishedAiPdmRoleCatalogFromDatabase, type PublishedAiPdmRoleCatalog } from './aiPdmRoleCatalogRepository'
 import { createAuthEpochRepository, AuthEpochUnavailableError } from './orgmasterAuthEpochRepository'
 import { createOrgmasterSessionRepository, type OrgmasterSession } from './orgmasterSessionRepository'
@@ -311,8 +311,8 @@ async function validateNativeOwnerBindings(database: Queryable, profile: Orgmast
     (grant.validUntil === null || Date.parse(grant.validUntil) > nowMs))
   const pdmFixtureGrants = active('ai-pdm')
   const orgmasterFixtureGrants = active('orgmaster')
-  if (!ownerGrantsMatchFixture(row, scenario, 'ai-pdm', pdmFixtureGrants, nowMs) ||
-    !ownerGrantsMatchFixture(row, scenario, 'orgmaster', orgmasterFixtureGrants, nowMs)) unavailable()
+  if (!ownerGrantsMatchFixturePolicy(row, scenario, 'ai-pdm', pdmFixtureGrants, nowMs) ||
+    !ownerGrantsMatchFixturePolicy(row, scenario, 'orgmaster', orgmasterFixtureGrants, nowMs)) unavailable()
   return { row, orgmasterFixtureGrants }
 }
 

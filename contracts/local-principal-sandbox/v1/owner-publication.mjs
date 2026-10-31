@@ -146,3 +146,21 @@ export function ownerGrantsMatchFixture(row, scenario, applicationId, expectedGr
   const sort = values => values.map(value => contractDigest(value)).sort()
   return contractDigest(sort(observed)) === contractDigest(sort(expectedGrants))
 }
+
+/** Runtime readiness compares the fixed fixture's authority, while allowing a
+ * later native publication to carry the same grants. Bootstrap keeps using the
+ * exact comparison above. Role definitions, external catalogs, scope, validity
+ * and revocation remain pinned; only owner-controlled publication metadata moves.
+ */
+export function ownerGrantsMatchFixturePolicy(row, scenario, applicationId, expectedGrants, nowMs = Date.now()) {
+  const publication = validateLocalOwnerPublication(row, scenario).published_version
+  if (expectedGrants.some(grant => !Number.isSafeInteger(grant.grantVersion) ||
+    grant.grantVersion < 1 || grant.grantVersion > Number(publication.versionNumber))) return false
+  const currentExpected = expectedGrants.map(grant => ({
+    ...grant,
+    grantVersion: Number(publication.versionNumber),
+    ...(applicationId === 'orgmaster' && grant.grantVersion < Number(publication.versionNumber)
+      ? { catalogVersion: publication.id, catalogSha256: publication.snapshotHash } : {}),
+  }))
+  return ownerGrantsMatchFixture(row, scenario, applicationId, currentExpected, nowMs)
+}
