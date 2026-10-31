@@ -13,7 +13,10 @@ type Pending = { commandId: string; requestHash: string; previewHash: string; re
 /** Both applications retain their own verified session. postMessage carries data, never authority. */
 export function FmsCatalogActivationWorkspace() {
   const auth = useAuthSession(), principal = auth?.session.user.principalId ?? ''
-  const identity = useRef(principal); identity.current = principal
+  const sessionIdentity = JSON.stringify([principal, auth?.session.user.employeeId, auth?.session.session?.expiresAt])
+  const priorIdentity = useRef(sessionIdentity), generation = useRef(0)
+  if (priorIdentity.current !== sessionIdentity) { priorIdentity.current = sessionIdentity; generation.current += 1 }
+  const identity = useRef(''); identity.current = sessionIdentity + ':' + generation.current
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [handoff, setHandoff] = useState<Handoff | null>(null)
   const handoffRef = useRef<Handoff | null>(null)
@@ -30,15 +33,16 @@ export function FmsCatalogActivationWorkspace() {
   }
   useEffect(() => {
     let current = true
+    const owner = identity.current
     handoffRef.current = null; pending.current = null; previewRequest.current = null; awaitingIssue.current = false
     setWorkspace(null); setHandoff(null); setPreview(null); setUnknown(false); setBusy(false); setMessage(null); setError(null)
     if (principal) void loadFmsCatalogActivationWorkspace().then(value => {
-      if (!current || identity.current !== principal) return
+      if (!current || identity.current !== owner) return
       setWorkspace(value)
       if (value.fmsOrigin && window.opener) window.opener.postMessage({ protocol: PROTOCOL, type: 'ready' }, value.fmsOrigin)
     }).catch(() => { if (current) setError('目前無法讀取角色目錄，請稍後重試。') })
     return () => { current = false }
-  }, [principal])
+  }, [sessionIdentity])
   useEffect(() => {
     if (!workspace?.fmsOrigin || !window.opener) return
     const receive = (event: MessageEvent) => {
@@ -54,7 +58,7 @@ export function FmsCatalogActivationWorkspace() {
         setError('尚未取得啟用請求；請回 FMS 查詢原操作結果。'); setBusy(false); setUnknown(true); return
       }
       if (data.type !== 'issued' || !awaitingIssue.current || data.operationId !== pending.current.commandId || !object(data.checkpoint)) return
-      const original = pending.current, owner = principal
+      const original = pending.current, owner = identity.current
       // Exactly one issuance response may trigger the already requested activation.
       pending.current = null; awaitingIssue.current = false
       void activateFmsCatalog({ ...original.request, commandId: original.commandId, requestHash: original.requestHash,
@@ -70,10 +74,10 @@ export function FmsCatalogActivationWorkspace() {
     }
     window.addEventListener('message', receive)
     return () => window.removeEventListener('message', receive)
-  }, [workspace, principal])
+  }, [workspace, sessionIdentity])
   const inspect = async () => {
     if (!handoff || busy || unknown) return
-    const owner = principal; setBusy(true); setError(null); setMessage(null); setPreview(null)
+    const owner = identity.current; setBusy(true); setError(null); setMessage(null); setPreview(null)
     try {
       const current = await loadFmsCatalogActivationWorkspace()
       const request = { release: handoff.release, reason, expectedGovernanceRevision: current.governanceRevision,
@@ -93,7 +97,7 @@ export function FmsCatalogActivationWorkspace() {
     send({ type: 'issue', selection: { operationId: commandId, version: handoff!.release.version, previewHash: preview.previewHash, expected: preview.expected } })
   }
   const observe = async () => {
-    const original = pending.current, owner = principal
+    const original = pending.current, owner = identity.current
     if (!original || busy) return
     setBusy(true); setError(null)
     try {
