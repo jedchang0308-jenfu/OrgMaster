@@ -188,6 +188,7 @@ beforeEach(() => {
 
 afterEach(() => {
   act(() => root.unmount())
+  vi.useRealTimers()
   host.remove()
   sessionStorage.clear()
   localStorage.clear()
@@ -196,6 +197,21 @@ afterEach(() => {
 })
 
 describe('FMS catalog activation workspace', () => {
+  it('keeps the original lookup available when FMS does not answer and ignores late issuance', async () => {
+    await mount(); await preparePreview()
+    mocks.receipt.mockRejectedValue(new Error('not observed'))
+    vi.useFakeTimers()
+    await click('啟用此版本')
+    await act(async () => { vi.advanceTimersByTime(15_000) })
+    expect(host.textContent).toContain('尚未取得 FMS 回覆')
+    expect(host.textContent).not.toContain('處理中…')
+    await sendMessage({ protocol: PROTOCOL, type: 'issued', nonce: NONCE, operationId: COMMAND_ID, checkpoint })
+    expect(mocks.activate).not.toHaveBeenCalled()
+    await click('查詢原操作')
+    expect(mocks.receipt).toHaveBeenCalledExactlyOnceWith(COMMAND_ID)
+    expect(messagesOfType('issue')).toHaveLength(1)
+    expect(mocks.activate).not.toHaveBeenCalled()
+  })
   it('does not preview or activate without a valid FMS init message', async () => {
     const storageWrites = spyOnStorageWrites()
     await mount()

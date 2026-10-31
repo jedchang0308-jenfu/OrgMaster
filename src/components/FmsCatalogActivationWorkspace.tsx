@@ -26,6 +26,8 @@ export function FmsCatalogActivationWorkspace() {
   const previewRequest = useRef<FmsCatalogActivationPreviewRequest | null>(null)
   const pending = useRef<Pending | null>(null)
   const awaitingIssue = useRef(false)
+  const issueTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearIssueTimer = () => { if (issueTimer.current !== null) clearTimeout(issueTimer.current); issueTimer.current = null }
   const [busy, setBusy] = useState(false), [unknown, setUnknown] = useState(false)
   const [message, setMessage] = useState<string | null>(null), [error, setError] = useState<string | null>(null)
   const send = (data: Record<string, unknown>) => {
@@ -42,7 +44,7 @@ export function FmsCatalogActivationWorkspace() {
       if (!current || identity.current !== owner) return
       setWorkspace(value)
     }).catch(() => { if (current) setError('目前無法讀取角色目錄，請稍後重試。') })
-    return () => { current = false }
+    return () => { current = false; clearIssueTimer() }
   }, [sessionIdentity])
   useEffect(() => {
     if (!workspace?.fmsOrigin) return
@@ -61,10 +63,12 @@ export function FmsCatalogActivationWorkspace() {
       }
       if (!handoffRef.current || data.nonce !== handoffRef.current.nonce || !pending.current) return
       if (data.type === 'issue-failed') {
+        clearIssueTimer()
         awaitingIssue.current = false
         setError('尚未取得啟用請求；請回 FMS 查詢原操作結果。'); setBusy(false); setUnknown(true); return
       }
       if (data.type !== 'issued' || !awaitingIssue.current || data.operationId !== pending.current.commandId || !object(data.checkpoint)) return
+      clearIssueTimer()
       const original = pending.current, owner = identity.current
       // Exactly one issuance response may trigger the already requested activation.
       pending.current = null; awaitingIssue.current = false
@@ -102,6 +106,14 @@ export function FmsCatalogActivationWorkspace() {
     pending.current = { commandId, requestHash: preview.requestHash, previewHash: preview.previewHash, request: previewRequest.current }
     awaitingIssue.current = true
     setBusy(true); setError(null)
+    const original = pending.current, owner = identity.current
+    clearIssueTimer()
+    issueTimer.current = setTimeout(() => {
+      issueTimer.current = null
+      if (identity.current !== owner || pending.current !== original || !awaitingIssue.current) return
+      awaitingIssue.current = false; setBusy(false); setUnknown(true)
+      setError('尚未取得 FMS 回覆；請回 FMS 查詢原操作，勿重複送出。')
+    }, 15_000)
     send({ type: 'issue', selection: { operationId: commandId, version: handoff!.release.version, previewHash: preview.previewHash, expected: preview.expected } })
   }
   const observe = async () => {
