@@ -8,7 +8,7 @@ const expected = {
   "protocol.d.mts": "947939f8279af5d8e96b2846bf2c3be04e6e5f991464a57b40d5ae0ccb1cb8f9",
   "client.mjs": "f89ff8fc333521fb8dea386f17829ae8d3c15046e8edd8bc12c60d69f1d76115",
   "client.d.mts": "175cc455926cd93ad5ebb446b6ca4df88f24614665e6f508dda2c1286d9431a8",
-  "owner-publication.mjs": "76e31cfb0a48893f53a500b3781d51232d80a05689a7295b96791836ef86369e",
+  "owner-publication.mjs": "32bc9ba9276542c01bbfaf5016b200adf897bd17005cb3fba16f215e93a66015",
   "owner-publication.d.mts": "0bc034cc7f805ea7363a44279b50b2999cb123bfdcc8873216317e918c88f52a"
 }
 for (const [name, digest] of Object.entries(expected)) {

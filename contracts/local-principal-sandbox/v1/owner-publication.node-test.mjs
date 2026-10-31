@@ -144,3 +144,24 @@ test('publication readiness preserves external catalog, company, role and same-v
  const revoked=advancePublication(fixture());revoked.pdm_grants=[]
  assert.equal(ownerGrantsMatchFixturePolicy(revoked,scenario,'ai-pdm',localGrantsFromOwnerPublication(fixture(),scenario,'ai-pdm',time),time),false)
 })
+
+test('a later FMS catalog can carry an exact fixture grant without changing its authority',()=>{
+ const app='financial-management-system',original=fixture(),expected=localGrantsFromOwnerPublication(original,scenario,app,time)
+ const bound={...scenario,grants:expected}
+ const next=advancePublication(fixture()),catalog=next.published_version.externalRoleCatalogs.find(value=>value.applicationId===app)
+ catalog.catalogVersion='fms.test.v2';catalog.contentSha256='c'.repeat(64)
+ next.fms_authority.catalog_version=catalog.catalogVersion;next.fms_authority.catalog_content_sha256=catalog.contentSha256
+ next.fms_authority.assignments.forEach(grant=>{grant.catalogVersion=catalog.catalogVersion;grant.catalogSha256=catalog.contentSha256})
+ rehash(next)
+ assert.equal(ownerGrantsMatchFixture(next,bound,app,expected,time),false)
+ assert.equal(ownerGrantsMatchFixturePolicy(next,bound,app,expected,time),true)
+ const fresh=localGrantsFromOwnerPublication(next,bound,app,time)
+ assert.equal(ownerGrantsMatchFixturePolicy(next,bound,app,fresh,time),true)
+ for(const patch of [{catalogSha256:'f'.repeat(64)},{companyId:'other-company'},{roleDefinitionHash:'e'.repeat(64)},
+  {scopeRef:'other-workspace'},{validUntil:new Date(time+1000).toISOString()}])
+  assert.equal(ownerGrantsMatchFixturePolicy(next,bound,app,[{...expected[0],...patch}],time),false)
+ catalog.roles[0].roleDefinitionHash='d'.repeat(64);rehash(next)
+ assert.equal(ownerGrantsMatchFixturePolicy(next,bound,app,expected,time),false)
+ next.fms_authority.assignments=[]
+ assert.equal(ownerGrantsMatchFixturePolicy(next,bound,app,expected,time),false)
+})

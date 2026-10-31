@@ -4,6 +4,8 @@
 
 ## DEV-060：OrgMaster 應用內單一前端權限投影
 
+- 2026-11-01 R12／R13 本機原生進展：外部 Chrome 經正常 Platform SSO，FMS 已發布版本交接 OrgMaster preview／activate，再由 FMS 透過 041 typed owner view 查原 operation `7cfd0bcf-5213-474a-bc2d-bf15bcd694fd`，回覆 confirmed／active。隔離 PG 讀回一筆 OrgMaster applied receipt、兩筆 FMS issued（保留第一筆 422）與一筆 immutable confirmation；未停用寫入／不可變 guard。首次啟用因兩筆 revoked assignment 舊目錄快照被驗證器誤拒，已改為核對受 audit 約束的歷史 catalog，原撤銷列不改寫、恢復任用仍驗現行目錄。之後 local fixture metadata pin 造成權限刷新拒絕，已同步 Platform／OrgMaster canonical owner-publication：僅 exact immutable fixture grant 可隨較新 FMS publication 前進目錄 metadata，role hash／company／scope／效期／撤權仍固定。相關 32 項治理回歸、17 項 Node 契約及 TypeScript 通過；新 SSO 可讀新任用版本，revoked 身分的 FMS 入口仍拒絕。這是隔離 synthetic／native／Chrome 證據；正式 041、完整異常矩陣、其餘 DEV-068／DEV-065 與正式發布仍未完成。
+
 - 2026-11-01 catalog activation開發中：新owner workspace／preview／activate／commands API已接正常verified session。preview只讀，綁governance與organization revisions、release/publisher/hashes，顯示角色與既有任用影響；移除仍任用角色拒絕。啟用分別驗import/publish/activate三權、CAS、同交易publication/audit/唯一收據，replay先驗當下權限，收據proof綁audit hash並只從原Principal protected endpoint回傳。既有release publish HTTP別名也須preview proof，內部compat writer補三權與replay前查驗。新client保留unknown/not-observed不重送。此為source／mounted HTTP／隔離file-store進度，正常跨App UI、FMS immutable intent/typed owner readback、PG與正式發布尚未完成，不能填完整DEV-068 PASS。
 
 - CI首敗保留：#194 head `7c050a0` 的required run `41236594236`，1230項Vitest通過，但shared owner-publication新增向後相容helper後漏更新兩個conformance pin而失敗（Node 58/60）。已核對Platform canonical與OrgMaster consumer bytes相同並更新兩筆pin；PDM／FMS只vendor未變的protocol/client，不帶owner-publication，不為此改動兩repo。修復後重跑原native conformance，provider新head仍待，不繞過required CI。
