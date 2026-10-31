@@ -149,8 +149,8 @@ export function ownerGrantsMatchFixture(row, scenario, applicationId, expectedGr
 
 /** Runtime readiness compares the fixed fixture's authority, while allowing a
  * later native publication to carry the same grants. Bootstrap keeps using the
- * exact comparison above. Role definitions, external catalogs, scope, validity
- * and revocation remain pinned; only owner-controlled publication metadata moves.
+ * exact comparison above. Role definitions, scope, validity and revocation stay
+ * pinned. A later FMS catalog may advance only an exact immutable fixture grant.
  */
 export function ownerGrantsMatchFixturePolicy(row, scenario, applicationId, expectedGrants, nowMs = Date.now()) {
   const publication = validateLocalOwnerPublication(row, scenario).published_version
@@ -162,5 +162,17 @@ export function ownerGrantsMatchFixturePolicy(row, scenario, applicationId, expe
     ...(applicationId === 'orgmaster' && grant.grantVersion < Number(publication.versionNumber)
       ? { catalogVersion: publication.id, catalogSha256: publication.snapshotHash } : {}),
   }))
-  return ownerGrantsMatchFixture(row, scenario, applicationId, currentExpected, nowMs)
+  if (ownerGrantsMatchFixture(row, scenario, applicationId, currentExpected, nowMs)) return true
+  if (applicationId !== 'financial-management-system') return false
+  const catalogs = publication.externalRoleCatalogs.filter(catalog => catalog.applicationId === applicationId)
+  if (catalogs.length !== 1) return false
+  const catalog = catalogs[0]
+  const advanced = expectedGrants.map(grant => {
+    if (grant.grantVersion >= Number(publication.versionNumber) ||
+      !Array.isArray(scenario.grants) || !scenario.grants.some(baseline =>
+        contractDigest({ ...baseline, grantVersion: grant.grantVersion }) === contractDigest(grant))) return grant
+    return { ...grant, grantVersion: Number(publication.versionNumber),
+      catalogVersion: catalog.catalogVersion, catalogSha256: catalog.contentSha256 }
+  })
+  return ownerGrantsMatchFixture(row, scenario, applicationId, advanced, nowMs)
 }

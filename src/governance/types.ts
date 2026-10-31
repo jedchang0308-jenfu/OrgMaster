@@ -512,6 +512,26 @@ export interface GovernanceCommandReceiptV2 {
   governanceRevision: string
   replayed: boolean
   attempt: number
+  financialCatalogActivation?: {
+    contractVersion: 'orgmaster.fms-catalog-activation-record.v1'
+    principalId: string
+    employeeId: string
+    catalogVersion: string
+    contentSha256: string
+    artifactSha256: string
+    governanceRevisionBefore: string
+    organizationRevision: string
+    assignmentVersionBefore: string
+    catalogBindingRevisionBefore: string
+    grantRevisionBefore: string
+    assignmentVersionAfter: string
+    publishedSnapshotHash: string
+    grantIds: string[]
+    authEpoch: number
+    authenticatedAt: string
+    authorityReadAt: string
+    fmsCheckpoint?: import('../../server/financialCatalogIntent').FmsCatalogCheckpoint
+  }
 }
 
 export type GovernanceCommandV2 =

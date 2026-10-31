@@ -306,6 +306,8 @@ DEV-060新增切片只有在O60-A～G適用工作完成且主責收到可追溯�
 
 ## 14. FMS 人員任用的 owner workspace
 
+角色版本啟用沿同一OrgMaster own-session writer。正常API以`/applications/financial-management-system/catalog/activation`讀現行版本，`/preview`只讀相容差異，`/activate`帶原requestHash／previewHash／commandId提交，`/commands/{commandId}`查原結果；前綴均為`/api/orgmaster/governance`。舊`catalog/releases/publish` HTTP入口使用相同preview-proof啟用handler，不保留可繞過正常preview的平行HTTP寫入。import准入只允許讀預覽；正式套用須分別持有import、publish、activate三項具名權限，cached replay亦須當下仍有三權。角色缺失若影響任何active-status任用即拒絕，退役仍保留既有任用與authoring catalog lineage；並行版本由原CAS決定唯一成功者。收據與publication／audit原子提交，附加record的完整內容、requestHash與previewHash進同一audit hash；泛用治理讀取不回傳此proof，原Principal仍需catalog.read資格才可查原命令。上述source不是FMS normalized owner receipt或跨系統已啟用證據；尚需FMS server-owned immutable intent、accepted typed owner reader與正常UI交接驗證，完成前保持IN_PROGRESS。
+
 FMS `/admin/users` 由正常 Platform OrgMaster launch 進入 `/fms/role-assignments`。治理操作在 OrgMaster 自有已驗證 session 內完成；不轉貼 FMS actor、不沿用本地 users 或開發身分 headers。普通 FMS 判權仍讀原 Tier-0 投影。
 
 - `GET /api/orgmaster/governance/applications/financial-management-system/employees` 是 `orgmaster.fms-employee-directory.v1`：沿現有 FMS workspace owner role 加 exact-Principal `role_assignment.manage`；只回 employeeId、displayName、未具名權威提供時為null的employeeNumber、active／assignable，以及 directoryRevision、governanceRevision、readAt／cursor。搜尋 q 最多80字，預設20／上限50；cursor綁搜尋與版本。不得回整份組織資料、聯絡或財務個資。
@@ -318,6 +320,16 @@ FMS `/admin/users` 由正常 Platform OrgMaster launch 進入 `/fms/role-assignm
 
 隔離native initializer可由顯式`fixtureSource.fmsManagement={scenarioId,capabilities}`建立管理測試資料，預設不建立。OrgMaster只接受既有active `human_personal`虛構身分，原fixture的公司只接受固定FMS業務ID `jenfu-machinery`／共同隔離ID `company-jenfu`，原fixture與native policy均須有company-jenfu workspace有效`role-owner`；capabilities只限原FMS任用兩項及十項protected operations，逐項明列、不得重複。grant綁其exact Principal／Employee及原任用期限，納入同一policy publication／audit與artifact source hash；不由HTTP／runtime呼叫，不更新既有publication，不授予PDM override或system_admin。非owner、錯公司／scope、停用或不支援capability拒絕。一般財務身分的403案例保留，新增管理fixture只供允許案例。
 
-Platform地端runtime的fixture readiness與bootstrap精確驗證分開：bootstrap仍以原publication／grantVersion逐欄比對；runtime可接受較新native publication中語意完全相同的任用。只將grantVersion對齊已驗證的現行出版版本；OrgMaster自身虛擬catalog的id／整份policy hash可隨新版更新，角色definition hash仍須相同。外部App catalog／角色definition、公司／scope、status與有效期、Principal／Employee、lifecycle／epoch檢查不變；任用撤銷、新增／改角色等差異不能藉publication升版取得fixture准入。不得重寫fixture、已套用publication或舊收據以消除差異。
+Platform地端runtime的fixture readiness與bootstrap精確驗證分開：bootstrap仍以原publication／grantVersion逐欄比對；runtime可接受較新native publication中語意完全相同的任用。grantVersion對齊已驗證的現行出版版本；OrgMaster自身虛擬catalog的id／整份policy hash可隨新版更新。FMS catalog version／content hash也可隨較新publication前進，但舊grant必須逐欄符合immutable scenario fixture（僅grantVersion可對齊原版本）；再與現行owner grant完整比對。角色definition hash、公司／scope、status與有效期、Principal／Employee、lifecycle／epoch仍固定；任用撤銷、新增／改角色、偽造舊catalog hash或同版本漂移不得取得fixture准入。其他外部App catalog檢查不變，不重寫fixture、已套用publication或舊收據消除差異。
 
 OrgMaster的auth mode只驗runtime target／listener／私有profile與既定catalog配置，不逐一讀全部scenario的任用資格；單一Principal無任用或已停用不使其他人登入入口關閉。每次session仍驗native Principal／Employee／epoch、immutable fixture identity與lifecycle/session binding、有效owner publication及中央introspection。業務權限由原生current owner projection／每次操作writer判定，不能以初始fixture grant等同登入服務配置。中央明確401／403拒絕映射為該session失效；真正authority／target不可用仍503。bootstrap精確內容驗證保留。
+
+2026-11-01 續作：已接收並保存 FMS 原始 checkpoint（intentId／operationId／inputHash、身分、來源與四項 expected revision），新收據封存採 orgmaster.sorted-json.v1，避免 jsonb 鍵順序影響讀回。一般 migration 041 提供僅供 FMS runtime SELECT 的 versioned receipt／current-binding views；manifest 以完整檔案 bytes SHA 綁定。新增正常 catalog-activation 畫面，只接受伺服器配置的 FMS origin 與原 opener／nonce，仍由 OrgMaster 自己的 verified session writer 寫入。10 分鐘只限制新 intent 准入；原命令逾期後仍可唯讀恢復。此切片的 source／unit 檢查已完成；原生 PG、Chrome 整鏈、CI 與正式啟用尚待完成，DEV-060 保持 IN_PROGRESS。
+
+中央啟用交接允許瀏覽器未保留 opener：FMS 只向自己建立的固定 OrgMaster origin 視窗傳送資料；OrgMaster 首次 init 綁定唯一來源視窗與 nonce，後續不得更換。此通道不傳遞人類憑證或授權，實際寫入仍由 OrgMaster verified session／三項 protected grants 判定。FMS capabilityIds 的完整空陣列表示不授予能力，接收端須原樣保留；缺欄位或 null 仍拒絕，不補預設能力。原生驗證首次 422 已保留，修正後整鏈讀回尚待完成。
+
+2026-11-01 R12／R13 續作：正常外部 Chrome／synthetic SSO／隔離 PG 已完成交接、預覽、OrgMaster單次啟用與 FMS typed recovery confirmed／active，原 operation 為 `7cfd0bcf-5213-474a-bc2d-bf15bcd694fd`。041 view讀回一筆applied，FMS保留首次422的issuer與新issuer，只有一筆immutable confirmation。撤銷任用保留原catalog快照，驗證僅接受受publication hash與audit約束的歷史catalog；恢復任用不得沿舊目錄繞過當前角色檢查。已驗新SSO讀新目錄與revoked身分FMS入口拒絕。正式041／新目錄發布及完整DEV-068／DEV-065驗收仍待，以上不代表正式發布完成。
+
+FMS 視窗未回覆 issuance 時，OrgMaster 的15秒等待只解除介面忙碌，保留原 operation 查詢並標示未知；不宣稱伺服器拒絕、不取消已離開分頁的 FMS 寫入、不重送。等待結束後忽略晚到的 issuance，避免背景新增 OrgMaster activate；已收到 checkpoint 並送出的 activate 不受此介面計時器中止。此分支由 React／mock transport 測試驗證，尚非新增 Chrome 或正式證據。
+
+正式伺服器在 `NODE_ENV=production` 且 Cloud Run `K_SERVICE=orgmaster-prod` 時，預設使用既有 FMS canonical origin 與 formal realm；其他環境仍使用明確設定。顯式 local 或無效 override 在正式環境會拒絕，不能退回預設值掩蓋設定錯誤。此部署預設已有來源單元測試，正式 provider／整鏈證據另驗。

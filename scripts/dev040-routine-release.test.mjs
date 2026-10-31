@@ -1,5 +1,5 @@
 import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
-import { DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend } from './lib/dev059-fms-authority-migration.mjs'
+import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend } from './lib/dev059-fms-authority-migration.mjs'
 import { assertToolRotationReleaseCompatibility } from './lib/dev040-routine-release.mjs'
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
@@ -2547,5 +2547,5 @@ test('DEV-059 CLI binds one exact FMS authority recipe and rejects mixed modes',
   ]) assert.throws(() => parseDeployProductionArgs(invalid))
   const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
   assert.equal((source.match(/\.\.\.dev059Authority/g) ?? []).length, 2)
-  assert.deepEqual(DEV059_FMS_AUTHORITY_REMEDIATION.migrationEntries, newBundle.bundle.entries.slice(-3).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
+  assert.deepEqual(DEV059_FMS_AUTHORITY_REMEDIATION.migrationEntries, newBundle.bundle.entries.slice(-DEV059_FMS_AUTHORITY_MIGRATIONS.length).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
 })

@@ -26,10 +26,20 @@ export const DEV065_FMS_HUMAN_BUSINESS_AUTHORITY_V2_MIGRATION = Object.freeze({
   sourceSha256: 'c2b921711d73ef829b8f64f4381219175a1a44df6aaa22893fbdd7e1080946ce',
   appliedSha256: 'cf461db2e8ae115f24c7a6acf593e04b577c723fc6c2fc91d9bd19179ca2b126',
 })
+export const DEV060_FMS_CATALOG_ACTIVATION_MIGRATION = Object.freeze({
+  order: 39,
+  version: 'dev060-orgmaster-041',
+  path: 'db/migrations/041_dev060_fms_catalog_activation_receipts_v1.sql',
+  sourceSha256: 'ef07d43635451e532f2e625d545aae6cd9e6cd3720210d87ba72fb26f21242c9',
+  appliedSha256: '09cac4ea5769f66502b80c44ceff961617fc604e2ec5a2a18ff92f53f5bf8908',
+})
+// Extend the existing exact owner append recipe; historical SQL and the
+// immutable DEV-058 prefix retain their original identities and checksums.
 export const DEV059_FMS_AUTHORITY_MIGRATIONS = Object.freeze([
   DEV059_FMS_AUTHORITY_MIGRATION,
   DEV065_FMS_PORTAL_VISIBILITY_MIGRATION,
   DEV065_FMS_HUMAN_BUSINESS_AUTHORITY_V2_MIGRATION,
+  DEV060_FMS_CATALOG_ACTIVATION_MIGRATION,
 ])
 export const DEV059_RELEASE_MODE = 'DEV059_FMS_AUTHORITY_APPEND'
 export const DEV059_MIGRATION_ENTRY_COUNT = DEV058_MIGRATION_ENTRY_COUNT + DEV059_FMS_AUTHORITY_MIGRATIONS.length
@@ -39,6 +49,7 @@ export const DEV059_FMS_AUTHORITY_REMEDIATION = Object.freeze({
   consumerApplicationId: 'jf-fms',
   applicationId: 'financial-management-system',
   contractVersion: 'jenfu.orgmaster.fms-authority.v2',
+  catalogActivationContractVersion: 'orgmaster.fms-catalog-activation.v1',
 })
 
 const identity = ({ order, version, path, sourceSha256, appliedSha256 }) => [order, version, path, sourceSha256, appliedSha256]
@@ -51,7 +62,7 @@ export function assertDev059MigrationEntries(entries) {
   assertDev058MigrationEntries(entries.slice(0, DEV058_MIGRATION_ENTRY_COUNT))
   if (canonicalize(entries.slice(-DEV059_FMS_AUTHORITY_MIGRATIONS.length).map(identity))
     !== canonicalize(DEV059_FMS_AUTHORITY_MIGRATIONS.map(identity))) fail('DEV059_MIGRATION_APPEND_INVALID')
-  const expectedNames = ['dev065_fms_authority_projection', 'dev065_fms_portal_visibility', 'dev065_fms_human_business_authority_v2']
+  const expectedNames = ['dev065_fms_authority_projection', 'dev065_fms_portal_visibility', 'dev065_fms_human_business_authority_v2', 'dev060_fms_catalog_activation_receipts_v1']
   if (entries.slice(-expectedNames.length).some((entry, index) => Object.hasOwn(entry ?? {}, 'sqlBase64')
     && entry.name !== expectedNames[index])) fail('DEV059_MIGRATION_NAME_INVALID')
   return entries

@@ -119,7 +119,15 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
   }
   const activeAssignments = new Map<string, GovernanceRoleAssignmentV2>()
   for (const [index, assignment] of data.roleAssignments.entries()) {
-    const role = roles.get(assignment.roleId); const catalog = assignment.applicationId === 'ai-pdm' || assignment.applicationId === 'financial-management-system' ? catalogByApp.get(assignment.applicationId) : undefined; const catalogRole = catalog?.roles.find((entry) => entry.stableRoleId === assignment.roleId)
+    const role = roles.get(assignment.roleId)
+    const currentCatalog = assignment.applicationId === 'ai-pdm' || assignment.applicationId === 'financial-management-system' ? catalogByApp.get(assignment.applicationId) : undefined
+    // Revoked FMS rows retain their original owner-published snapshot. They do
+    // not grant access, and restoring them must still use the current catalog.
+    const historicalFinancialCatalog = assignment.applicationId === 'financial-management-system' && assignment.status === 'revoked'
+      ? catalogs.find(entry => entry.applicationId === assignment.applicationId && entry.catalogVersion === assignment.catalogVersion
+        && !validateFinancialExternalRoleCatalog(entry).length) : undefined
+    const catalog = historicalFinancialCatalog ?? currentCatalog
+    const catalogRole = catalog?.roles.find((entry) => entry.stableRoleId === assignment.roleId)
     if (source && !employeeIds.has(assignment.employeeId)) add('EMPLOYEE_NOT_FOUND', `roleAssignments[${index}].employeeId`, 'employee 不存在')
     if (!role && assignment.applicationId === 'orgmaster') add('REFERENCE_NOT_FOUND', `roleAssignments[${index}].roleId`, 'OrgMaster role 不存在')
     if (!isScopeValid(assignment.scope)) add('SCOPE_INVALID', `roleAssignments[${index}].scope`, 'scope 無效')

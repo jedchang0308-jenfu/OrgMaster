@@ -18,6 +18,7 @@ import { AlertTriangle, Check, MousePointerClick, Trash2, UserRoundPlus } from '
 import { AuthGate, useAuthSession } from './auth/AuthGate'
 import { OrgMasterPermissionProvider, useOrgMasterPermissions } from './auth/OrgMasterPermissionProvider'
 import { FmsRoleAssignmentWorkspace } from './components/FmsRoleAssignmentWorkspace'
+import { FmsCatalogActivationWorkspace } from './components/FmsCatalogActivationWorkspace'
 import { createUuidV7 } from './employeeIdentity'
 import { screenshotOrganizationState } from './screenshotData'
 import { removeEmployeeFromDirectory, updateDepartmentInDirectory, updateEmployeeInDirectory } from './directories'
@@ -3459,6 +3460,8 @@ function ProtectedApp() {
 export default function App() {
   const content = typeof window !== 'undefined' && window.location.pathname === '/fms/role-assignments'
     ? <FmsRoleAssignmentWorkspace />
+    : typeof window !== 'undefined' && window.location.pathname === '/fms/catalog-activation'
+      ? <FmsCatalogActivationWorkspace />
     : <ProtectedApp />
   return <AuthGate><OrgMasterPermissionProvider>{content}</OrgMasterPermissionProvider></AuthGate>
 }
