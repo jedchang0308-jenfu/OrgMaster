@@ -8,8 +8,8 @@ const expected = {
   "protocol.d.mts": "947939f8279af5d8e96b2846bf2c3be04e6e5f991464a57b40d5ae0ccb1cb8f9",
   "client.mjs": "f89ff8fc333521fb8dea386f17829ae8d3c15046e8edd8bc12c60d69f1d76115",
   "client.d.mts": "175cc455926cd93ad5ebb446b6ca4df88f24614665e6f508dda2c1286d9431a8",
-  "owner-publication.mjs": "de6b93ed90b9b41e6f8efae5fcb81373bafd8a3fdde6c07111994bdbaa6cbe25",
-  "owner-publication.d.mts": "e08b4b579a66c1a91232ac4a702926aca9ea607d9dfa9d89359cc7595605b0ce"
+  "owner-publication.mjs": "76e31cfb0a48893f53a500b3781d51232d80a05689a7295b96791836ef86369e",
+  "owner-publication.d.mts": "0bc034cc7f805ea7363a44279b50b2999cb123bfdcc8873216317e918c88f52a"
 }
 for (const [name, digest] of Object.entries(expected)) {
   test('shared local-principal contract content is pinned: ' + name, () => {
