@@ -53,5 +53,13 @@
     "Not real Google / real nonproduction / production acceptance",
     "F69-16 managed Principal lifecycle remains human-DEFERRED",
     "No formal deployment, formal IAM, business financial writes or native SQL changes in this increment"
-  ]
+  ],
+  "authBoundary": {
+    "mode": "Runtime/target/catalog configuration only; no all-person eligibility scan",
+    "session": "Native identity, epoch, fixture identity/lifecycle binding, current owner publication and central introspection retained",
+    "business": "Native current-owner projection and operation writer retain permission checks",
+    "explicitIntrospectionDenial": "401 or 403 invalidates only this session",
+    "tests": "Two source regressions cover no-grant and disabled Principal without closing auth mode",
+    "changedNativeGrantBrowserCase": "NOT_RUN; unchanged authority publication and FMS target revocation covered by R5"
+  }
 }

@@ -13,7 +13,7 @@ import {
   type LocalScenario,
   type LocalAssertionExpectation,
 } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
-import { ownerGrantsMatchFixturePolicy, validateLocalOwnerPublication, type LocalOwnerPublication } from '../contracts/local-principal-sandbox/v1/owner-publication.mjs'
+import { validateLocalOwnerPublication, type LocalOwnerPublication } from '../contracts/local-principal-sandbox/v1/owner-publication.mjs'
 import { readPublishedAiPdmRoleCatalogFromDatabase, type PublishedAiPdmRoleCatalog } from './aiPdmRoleCatalogRepository'
 import { createAuthEpochRepository, AuthEpochUnavailableError } from './orgmasterAuthEpochRepository'
 import { createOrgmasterSessionRepository, type OrgmasterSession } from './orgmasterSessionRepository'
@@ -303,17 +303,13 @@ function compareOwnerPdmCatalog(row: LocalOwnerPublication, profile: OrgmasterLo
   }) || observed.size !== roles.size) unavailable()
 }
 
-async function validateNativeOwnerBindings(database: Queryable, profile: OrgmasterLocalRuntimeProfile, scenario: LocalScenario, nowMs = Date.now()) {
+async function readNativeOwnerPublication(database: Queryable, profile: OrgmasterLocalRuntimeProfile, scenario: LocalScenario) {
   const row = await readOwnerPublication(database, scenario)
   compareOwnerPdmCatalog(row, profile)
-  const active = (applicationId: LocalScenario['grants'][number]['applicationId']) => scenario.grants.filter((grant) =>
-    grant.applicationId === applicationId && grant.status === 'active' && Date.parse(grant.validFrom) <= nowMs &&
-    (grant.validUntil === null || Date.parse(grant.validUntil) > nowMs))
-  const pdmFixtureGrants = active('ai-pdm')
-  const orgmasterFixtureGrants = active('orgmaster')
-  if (!ownerGrantsMatchFixturePolicy(row, scenario, 'ai-pdm', pdmFixtureGrants, nowMs) ||
-    !ownerGrantsMatchFixturePolicy(row, scenario, 'orgmaster', orgmasterFixtureGrants, nowMs)) unavailable()
-  return { row, orgmasterFixtureGrants }
+  // The immutable fixture establishes synthetic identity and lifecycle history.
+  // Current business grants belong to the native permission provider, not the
+  // authentication service's configuration/readiness decision.
+  return row
 }
 
 type CurrentLifecycle = Awaited<ReturnType<typeof readCurrentLocalPrincipalLifecycleState>>
@@ -481,17 +477,17 @@ export function createOrgmasterLocalPrincipalSandbox({
     }
     catch (error) {
       emitLocalSandboxAuthDiagnostic(request, correlationId, 'native_auth_introspection', error)
-      if (statusOf(error) === 401) authInvalid(true)
+      if ([401, 403].includes(statusOf(error))) authInvalid(true)
       unavailable()
     }
   }
 
   async function validateFixtureAndOwner(database: Queryable, profile: OrgmasterLocalRuntimeProfile, scenario: LocalScenario) {
     await readPdmCatalog(database, profile)
-    const native = await validateNativeOwnerBindings(database, profile, scenario)
+    const row = await readNativeOwnerPublication(database, profile, scenario)
     const currentLifecycle = await readCurrentLifecycle(database, profile, scenario)
     if (!lifecycleAllowsOrgmaster(currentLifecycle.state)) authInvalid(true)
-    return { ...native, currentLifecycle,
+    return { row, currentLifecycle,
       orgmasterLifecycleGrants: activeOrgmasterLifecycleGrants(currentLifecycle.state) }
   }
 
@@ -507,19 +503,10 @@ export function createOrgmasterLocalPrincipalSandbox({
     async mode(correlationId: string) {
       const value = await context()
       try {
-        const nowMs = Date.now()
-        const baselineEligible = value.profile.fixture.scenarios.filter((scenario) => scenario.principalStatus === 'active' &&
-          scenario.employeeStatus === 'active' && scenario.grants.some((grant) => grant.applicationId === 'orgmaster' &&
-            grant.status === 'active' && Date.parse(grant.validFrom) <= nowMs &&
-            (grant.validUntil === null || Date.parse(grant.validUntil) > nowMs)))
+        // A missing/revoked person's grants must not close the login entry for
+        // every other person. Identity, session and lifecycle checks run on the
+        // selected Principal; permission checks run at each business operation.
         await readPdmCatalog(value.client, value.profile)
-        const eligible: LocalScenario[] = []
-        for (const scenario of baselineEligible) {
-          await validateNativeOwnerBindings(value.client, value.profile, scenario, nowMs)
-          const currentLifecycle = await readCurrentLifecycle(value.client, value.profile, scenario)
-          if (lifecycleAllowsOrgmaster(currentLifecycle.state, nowMs)) eligible.push(scenario)
-        }
-        if (!eligible.length) unavailable()
         return { authMode: 'local_principal_sandbox' as const, localSandboxEnabled: true as const, correlationId }
       } finally { await endContext(value) }
     },

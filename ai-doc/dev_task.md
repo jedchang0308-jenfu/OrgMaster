@@ -4,6 +4,8 @@
 
 ## DEV-060：OrgMaster 應用內單一前端權限投影
 
+- 2026-11-01 auth責任邊界續修：auth mode僅驗配置，不遍歷所有scenario的任用；每次session保留native身分／epoch／lifecycle與owner publication／中央introspection，業務權限仍讀原生current owner projection。中央401／403僅使該session失效。無grant與disabled Principal兩項mode回歸通過，尚未以原生UI另造Org/PDM授權變動案例。
+
 - 2026-11-01 owner workspace原生整合：同一R5 PG18已驗正常Portal→FMS→Org SSO、canonical目錄、明確選角、新增與撤銷各一筆applied、現行資料刷新及返回FMS本人權限。首筆提交後因publication v1→v2使未變權限被fixture版本誤拒，保留首敗並改runtime語意比對；strict bootstrap仍精確，role definition／外部catalog／scope／期限／撤權不放寬。v3撤銷後成功讀回，未重送新增。日期改本機時間並驗跨UTC午夜。證據：[R5](qa/evidence/DEV060-FMS-OWNER-WORKSPACE-20261101-R5.json)。這是合成地端RD整合，真實Google／正式發布與完整任務驗收仍待，F69-16維持DEFERRED。
 
 - 2026-11-01 native管理fixture增量：原工作區#192已protected merge，Chrome已證Portal→Org own-session SSO與finance-manager拒絕管理（APP_MANAGEMENT_GRANT_REQUIRED）；原fixtures管理授權空，新增顯式fmsManagement source選項以驗允許案例。owner／公司／scope／身分／期限與capability allowlist由OrgMaster materializer檢查，輸入進同一policy／audit／source hash。相關materializer／native-seed／audit-provenance共20項及TypeScript通過；本增量的native正向Chrome仍待執行，不宣稱正式授權／發布通過。見§14。
