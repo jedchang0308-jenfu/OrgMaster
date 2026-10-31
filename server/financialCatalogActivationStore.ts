@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { currentPublishedPolicyV3 } from '../src/governance/evaluatePermission'
+import { publicationSnapshotHash } from '../src/governance/commands'
 import { isActiveAt } from '../src/governance/validation'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceCommandReceiptV2, GovernanceDocumentV3 } from '../src/governance/types'
 import { appendGovernanceAudit, commitGovernanceMutation, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
 import { readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import { ApplicationEntitlementError, assertExpectedRevisions, assertFinancialAuthority, commandRequestHash, FINANCIAL_APPLICATION_ID, hasFinancialManagementGrant, publishFinancialPolicy } from './applicationEntitlementCommon'
 import { rebaseFinancialCatalogAssignments, validateAndNormalizeFinancialCatalogRelease } from './financialCatalogReleaseStore'
+import { readFinancialCatalogPeerOrigin, verifyFinancialCatalogCheckpoint, type CatalogActivationExpected, type FmsCatalogCheckpoint } from './financialCatalogIntent'
 
 const ACTIVATE = 'financial_catalog_activate'
 const OPERATIONS = ['financial-management-system.catalog.import', 'financial-management-system.catalog.publish', 'financial-management-system.catalog.activate'] as const
@@ -19,6 +21,7 @@ export type FinancialCatalogActivationPublishInput = FinancialCatalogActivationI
   commandId: string
   requestHash: string
   previewHash: string
+  fmsCheckpoint?: unknown
 }
 
 function assertActivationAuthority(document: GovernanceDocumentV3, actor: GovernanceActorContext) {
@@ -65,6 +68,8 @@ function preview(document: GovernanceDocumentV3, organizationRevision: string, c
   const requestHash = activationRequestHash(candidate, actor, request)
   const impact = {
     before: binding(before), after: binding(candidate), assignmentVersion: document.activePolicyVersionId,
+    expected: { governanceRevision: request.expectedGovernanceRevision, assignmentVersion: document.activePolicyVersionId!,
+      catalogBindingRevision: binding(before).contentSha256, grantRevision: request.expectedGovernanceRevision },
     addedRoles: candidate.roles.filter(role => !prior.has(role.stableRoleId)).map(role => ({ stableRoleId: role.stableRoleId, displayName: role.displayName })),
     removedRoles: before.roles.filter(role => !next.has(role.stableRoleId)).map(role => ({ stableRoleId: role.stableRoleId, displayName: role.displayName })),
     changedRoles,
@@ -83,6 +88,7 @@ export async function readFinancialCatalogActivationWorkspace(root: string, acto
   assertFinancialAuthority(current.document, actor, OPERATIONS[0])
   const source = await loadOrganizationSource(root)
   return { applicationId: FINANCIAL_APPLICATION_ID, governanceRevision: current.revision, organizationRevision: source.workspaceRevision,
+    fmsOrigin: readFinancialCatalogPeerOrigin(),
     assignmentVersion: current.document.activePolicyVersionId, activeCatalog: binding(currentCatalog(current.document)),
     allowedOperations: { preview: true, activate: OPERATIONS.every(operation => hasFinancialManagementGrant(current.document, actor, operation)) } }
 }
@@ -103,24 +109,36 @@ function ownReceipt(document: GovernanceDocumentV3, commandId: string, actor: Go
   const published = proof && document.publishedVersions.find(item => item.id === proof.assignmentVersionAfter && item.kind === 'assignment-governance-v3')
   if (!proof || proof.contractVersion !== 'orgmaster.fms-catalog-activation-record.v1' || !event ||
     proof.principalId !== actor.principalId || proof.employeeId !== actor.employeeId || event.actorPrincipalId !== actor.principalId ||
-    event.entityId !== proof.catalogVersion || event.afterHash !== commandRequestHash({ requestHash: receipt.requestHash, previewHash: receipt.previewHash, record: proof }) ||
+    event.entityId !== proof.catalogVersion || event.afterHash !== publicationSnapshotHash({ requestHash: receipt.requestHash, previewHash: receipt.previewHash, record: proof }) ||
     !published || published.snapshotHash !== proof.publishedSnapshotHash || published.publishedByPrincipalId !== actor.principalId ||
     receipt.governanceRevision !== published.id || receipt.acceptedAt !== published.publishedAt || receipt.terminalAt !== published.publishedAt ||
     receipt.receiptStatus !== 'applied') throw new ApplicationEntitlementError('COMMAND_ID_CONFLICT')
   return receipt
 }
-function actorProof(document: GovernanceDocumentV3, actor: GovernanceActorContext) {
+function actorProof(document: GovernanceDocumentV3, actor: GovernanceActorContext, nowMs: number) {
   if (!actor.employeeId || !Number.isSafeInteger(actor.principalAuthEpoch) || Number(actor.principalAuthEpoch) < 0 ||
     typeof actor.authenticatedAt !== 'string' || !Number.isFinite(Date.parse(actor.authenticatedAt))) throw new ApplicationEntitlementError('IDENTITY_REQUIRED')
-  const at = new Date().toISOString()
+  const at = new Date(nowMs).toISOString()
+  if (Date.parse(actor.authenticatedAt) > nowMs) throw new ApplicationEntitlementError('IDENTITY_REQUIRED')
   const grants = currentPublishedPolicyV3(document)?.managementGrants.filter(grant =>
     grant.applicationId === FINANCIAL_APPLICATION_ID && grant.principalId === actor.principalId &&
     grant.employeeId === actor.employeeId && OPERATIONS.includes(grant.capability as typeof OPERATIONS[number]) &&
     isActiveAt(grant.status, grant.validFrom, grant.validTo, at)) ?? []
-  return { employeeId: actor.employeeId, grantIds: grants.map(grant => grant.id).sort(),
-    authEpoch: Number(actor.principalAuthEpoch), authenticatedAt: new Date(actor.authenticatedAt).toISOString() }
+  if (grants.length > 64) throw new ApplicationEntitlementError('FINANCIAL_CATALOG_UNAVAILABLE')
+  return { employeeId: actor.employeeId, grantIds: [...new Set(grants.map(grant => grant.id))].sort(),
+    authEpoch: Number(actor.principalAuthEpoch), authenticatedAt: new Date(actor.authenticatedAt).toISOString(), authorityReadAt: at }
 }
-export async function activateFinancialCatalog(root: string, actor: GovernanceActorContext, release: unknown, request: FinancialCatalogActivationPublishInput) {
+function checkpoint(request: FinancialCatalogActivationPublishInput, actor: GovernanceActorContext,
+  candidate: ExternalRoleCatalogSnapshotV1, expected: CatalogActivationExpected,
+  source: FmsCatalogCheckpoint['source'] | undefined, requireUnexpired = true, nowMs = Date.now()) {
+  if (request.fmsCheckpoint === undefined) return undefined
+  if (!actor.employeeId) throw new ApplicationEntitlementError('IDENTITY_REQUIRED')
+  return verifyFinancialCatalogCheckpoint(request.fmsCheckpoint, { operationId: request.commandId, principalId: actor.principalId,
+    employeeId: actor.employeeId, catalogVersion: candidate.catalogVersion, contentSha256: candidate.contentSha256!,
+    artifactSha256: candidate.artifactSha256!, previewHash: request.previewHash, expected }, source, nowMs, requireUnexpired)
+}
+export async function activateFinancialCatalog(root: string, actor: GovernanceActorContext, release: unknown, request: FinancialCatalogActivationPublishInput,
+  options: { handoffSource?: FmsCatalogCheckpoint['source'] } = {}) {
   validateRequest(request)
   if (typeof request.commandId !== 'string' || !request.commandId.trim() || request.commandId.length > 128 ||
     !/^[a-f0-9]{64}$/u.test(request.requestHash) || !/^[a-f0-9]{64}$/u.test(request.previewHash)) throw new ApplicationEntitlementError('INVALID_COMMAND')
@@ -130,6 +148,12 @@ export async function activateFinancialCatalog(root: string, actor: GovernanceAc
   if (request.requestHash !== activationRequestHash(candidate, actor, request)) throw new ApplicationEntitlementError('REQUEST_HASH_CONFLICT')
   const replay = ownReceipt(observed.document, request.commandId, actor)
   if (replay) {
+    const saved = replay.financialCatalogActivation!
+    const incoming = checkpoint(request, actor, candidate, { governanceRevision: saved.governanceRevisionBefore,
+      assignmentVersion: saved.assignmentVersionBefore, catalogBindingRevision: saved.catalogBindingRevisionBefore,
+      grantRevision: saved.grantRevisionBefore }, options.handoffSource, false)
+    if (publicationSnapshotHash(incoming ?? null) !== publicationSnapshotHash(saved.fmsCheckpoint ?? null))
+      throw new ApplicationEntitlementError('COMMAND_ID_CONFLICT')
     if (replay.requestHash !== request.requestHash || replay.previewHash !== request.previewHash ||
       replay.financialCatalogActivation?.catalogVersion !== candidate.catalogVersion ||
       replay.financialCatalogActivation?.contentSha256 !== candidate.contentSha256 ||
@@ -144,7 +168,9 @@ export async function activateFinancialCatalog(root: string, actor: GovernanceAc
     if (calculated.previewHash !== request.previewHash) throw new ApplicationEntitlementError('PREVIEW_HASH_CONFLICT')
     if (!calculated.compatible) throw new ApplicationEntitlementError('CATALOG_INCOMPATIBLE')
     if (calculated.alreadyActive) throw new ApplicationEntitlementError('CATALOG_BINDING_CONFLICT')
-    const proof = actorProof(current.document, actor)
+    const admittedAt = Date.now()
+    const acceptedCheckpoint = checkpoint(request, actor, candidate, calculated.expected, options.handoffSource, true, admittedAt)
+    const proof = actorProof(current.document, actor, admittedAt)
     const priorReleases = current.document.publishedVersions.filter(version => version.kind === 'assignment-governance-v3')
       .flatMap(version => version.externalRoleCatalogs).filter(catalog => catalog.applicationId === FINANCIAL_APPLICATION_ID && catalog.catalogVersion === candidate.catalogVersion)
     if (priorReleases.some(catalog => catalog.contentSha256 !== candidate.contentSha256 || catalog.artifactSha256 !== candidate.artifactSha256))
@@ -156,10 +182,12 @@ export async function activateFinancialCatalog(root: string, actor: GovernanceAc
     const activation: RecordProof = { contractVersion: 'orgmaster.fms-catalog-activation-record.v1', principalId: actor.principalId,
       ...proof, catalogVersion: candidate.catalogVersion, contentSha256: candidate.contentSha256!, artifactSha256: candidate.artifactSha256!,
       governanceRevisionBefore: current.revision, organizationRevision: source.workspaceRevision,
-      assignmentVersionBefore: current.document.activePolicyVersionId!, assignmentVersionAfter: published.id, publishedSnapshotHash: published.snapshotHash }
+      assignmentVersionBefore: current.document.activePolicyVersionId!, catalogBindingRevisionBefore: calculated.expected.catalogBindingRevision,
+      grantRevisionBefore: calculated.expected.grantRevision, assignmentVersionAfter: published.id, publishedSnapshotHash: published.snapshotHash,
+      ...(acceptedCheckpoint ? { fmsCheckpoint: acceptedCheckpoint } : {}) }
     document = appendGovernanceAudit(document, { commandId: request.commandId, reason: request.reason.trim(), type: ACTIVATE }, actor,
       { action: ACTIVATE, entityType: 'financialCatalogRelease', entityId: candidate.catalogVersion, beforeHash: current.document.activePolicyVersionId,
-        afterHash: commandRequestHash({ requestHash: calculated.requestHash, previewHash: calculated.previewHash, record: activation }) }, at)
+        afterHash: publicationSnapshotHash({ requestHash: calculated.requestHash, previewHash: calculated.previewHash, record: activation }) }, at)
     const auditReference = document.auditEvents.at(-1)!.id
     document = appendGovernanceAudit(document, { commandId: randomUUID(), reason: request.reason.trim(), type: 'PUBLISH_ASSIGNMENTS' }, actor,
       { action: 'PUBLISH_ASSIGNMENTS', entityType: 'assignmentVersion', entityId: published.id, beforeHash: current.document.activePolicyVersionId, afterHash: published.snapshotHash }, at)

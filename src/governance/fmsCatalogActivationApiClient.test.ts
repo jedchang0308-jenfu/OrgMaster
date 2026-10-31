@@ -47,6 +47,7 @@ const binding = (catalogVersion: string, contentSha256: string, artifactSha256: 
   artifactSha256,
 })
 const workspace = {
+  fmsOrigin: null,
   applicationId: 'financial-management-system' as const,
   governanceRevision: 'gov-r1',
   organizationRevision: 'org-r1',
@@ -61,6 +62,7 @@ const preview = {
   before: binding('fms-v7', hashA, hashA),
   after: binding(release.version, release.contentSha256, release.artifactSha256),
   assignmentVersion: 'assignment-v7',
+  expected: { governanceRevision: 'gov-r1', assignmentVersion: 'assignment-v7', catalogBindingRevision: hashA, grantRevision: 'gov-r1' },
   addedRoles: [{ stableRoleId: 'finance-auditor', displayName: '財務稽核' }],
   removedRoles: [],
   changedRoles: [{
@@ -89,11 +91,14 @@ const activationProof = {
   governanceRevisionBefore: 'gov-r1',
   organizationRevision: 'org-r1',
   assignmentVersionBefore: 'assignment-v7',
+  catalogBindingRevisionBefore: hashA,
+  grantRevisionBefore: 'gov-r1',
   assignmentVersionAfter: 'assignment-v8',
   publishedSnapshotHash: hashA,
   grantIds: ['grant-fms-catalog'],
   authEpoch: 2,
   authenticatedAt: '2026-11-01T01:00:00.000Z',
+  authorityReadAt: '2026-11-01T01:00:00.000Z',
 }
 const activationResult = {
   contractVersion: 'orgmaster.governance-command-receipt.v2',

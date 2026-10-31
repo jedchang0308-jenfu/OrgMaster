@@ -2,6 +2,7 @@ import { captureOrgMasterPermissionInvalidation } from '../auth/permissionInvali
 import type { FinancialCatalogActivationInput, FinancialCatalogActivationPublishInput } from '../../server/financialCatalogActivationStore'
 import type { FmsCatalogReleaseInput } from '../../server/financialCatalogReleaseStore'
 import type { GovernanceCommandReceiptV2 } from './types'
+import type { CatalogActivationExpected } from '../../server/financialCatalogIntent'
 
 const API_PATH = '/api/orgmaster/governance'
 const FMS_PATH = '/applications/financial-management-system'
@@ -10,6 +11,7 @@ const SHA256 = /^[a-f0-9]{64}$/u
 const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/u
 
 export type FmsCatalogActivationWorkspace = {
+  fmsOrigin: string | null
   applicationId: typeof APPLICATION_ID
   governanceRevision: string
   organizationRevision: string
@@ -32,6 +34,7 @@ export type FmsCatalogActivationPreview = {
   before: FmsCatalogBinding
   after: FmsCatalogBinding
   assignmentVersion: string
+  expected: CatalogActivationExpected
   addedRoles: Array<{ stableRoleId: string; displayName: string }>
   removedRoles: Array<{ stableRoleId: string; displayName: string }>
   changedRoles: Array<{
@@ -138,6 +141,7 @@ function isWorkspace(value: unknown): value is FmsCatalogActivationWorkspace {
   const body = record(value)
   const operations = record(body?.allowedOperations)
   return body?.applicationId === APPLICATION_ID
+    && (body.fmsOrigin === null || nonEmptyString(body.fmsOrigin) && (() => { try { const url = new URL(body.fmsOrigin); return url.origin === body.fmsOrigin && ['http:', 'https:'].includes(url.protocol) } catch { return false } })())
     && nonEmptyString(body.governanceRevision)
     && nonEmptyString(body.organizationRevision)
     && nonEmptyString(body.assignmentVersion)
@@ -149,10 +153,13 @@ function isWorkspace(value: unknown): value is FmsCatalogActivationWorkspace {
 function isPreview(value: unknown): value is FmsCatalogActivationPreview {
   const body = record(value)
   const operations = record(body?.allowedOperations)
+  const expected = record(body?.expected)
   return body?.applicationId === APPLICATION_ID
     && sha256(body.requestHash) && sha256(body.previewHash)
     && isBinding(body.before) && isBinding(body.after)
     && nonEmptyString(body.assignmentVersion)
+    && nonEmptyString(expected?.governanceRevision) && expected?.assignmentVersion === body.assignmentVersion
+    && expected?.catalogBindingRevision === record(body.before)?.contentSha256 && nonEmptyString(expected?.grantRevision)
     && Array.isArray(body.addedRoles) && body.addedRoles.every(isRoleSummary)
     && Array.isArray(body.removedRoles) && body.removedRoles.every(isRoleSummary)
     && Array.isArray(body.changedRoles) && body.changedRoles.every(isChangedRole)
@@ -177,11 +184,14 @@ function isActivationRecord(value: unknown): value is NonNullable<GovernanceComm
     && nonEmptyString(body.governanceRevisionBefore)
     && nonEmptyString(body.organizationRevision)
     && nonEmptyString(body.assignmentVersionBefore)
+    && nonEmptyString(body.catalogBindingRevisionBefore)
+    && nonEmptyString(body.grantRevisionBefore)
     && nonEmptyString(body.assignmentVersionAfter)
     && sha256(body.publishedSnapshotHash)
     && textArray(body.grantIds)
     && Number.isSafeInteger(body.authEpoch) && Number(body.authEpoch) >= 0
     && validInstant(body.authenticatedAt)
+    && validInstant(body.authorityReadAt)
 }
 
 function isReceipt(value: unknown): value is GovernanceCommandReceiptV2 {

@@ -31,6 +31,7 @@ import { previewFinancialRoleAssignment, publishFinancialRoleAssignment, readFin
 import { previewFinancialManagementGrant, publishFinancialManagementGrant, readFinancialManagementGrantReceipt, readFinancialManagementGrantWorkspace } from './applicationManagementGrantStore'
 import { FinancialCatalogReleaseError } from './financialCatalogReleaseStore'
 import { activateFinancialCatalog, previewFinancialCatalogActivation, readFinancialCatalogActivationReceipt, readFinancialCatalogActivationWorkspace } from './financialCatalogActivationStore'
+import { readFinancialCatalogHandoffSource } from './financialCatalogIntent'
 import { previewFinancialInitialAuthority, publishFinancialInitialAuthority, readFinancialInitialAuthorityReceipt, type FinancialInitialAuthorityInput, type FinancialInitialAuthorityPublishInput } from './financialInitialAuthorityStore'
 import { resolveIdentityLinkUpsert, assertIdentityLinkStatusMutationAllowed as assertIdentityLinkStatusMutationAllowedPolicy } from './orgmasterIdentityLinkPolicy'
 import { recommendGovernanceEmployees } from './employeeRecommendationService'
@@ -248,6 +249,7 @@ function financialCatalogReleaseRequest(body: Record<string, unknown>) {
     expectedOrganizationRevision: String(expected.expectedOrganizationRevision ?? expected.organizationRevision ?? ''),
     requestHash: String(body.requestHash ?? ''),
     previewHash: String(body.previewHash ?? ''),
+    ...(Object.hasOwn(body, 'fmsCheckpoint') ? { fmsCheckpoint: body.fmsCheckpoint } : {}),
   }
 }
 
@@ -336,7 +338,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
   }
   if (['/applications/financial-management-system/catalog/activation/activate', '/applications/financial-management-system/catalog/releases/publish'].includes(path) && request.method === 'POST') {
     const requestData = financialCatalogReleaseRequest(await parseBody(request))
-    const receipt = await activateFinancialCatalog(root, actor, requestData.release, requestData)
+    const receipt = await activateFinancialCatalog(root, actor, requestData.release, requestData, { handoffSource: readFinancialCatalogHandoffSource() })
     sendJson(response, 200, { ...receipt, authorizationEffect: receipt.replayed ? 'replayed' : 'committed' }, receipt.governanceRevision); return
   }
   const financialCatalogCommand = path.match(/^\/applications\/financial-management-system\/catalog\/activation\/commands\/([^/]+)$/)

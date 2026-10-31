@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { createOrgmasterGovernanceMiddleware } from './orgmasterGovernanceApi'
@@ -17,6 +17,7 @@ import { readFinancialRoleCatalog } from './financialRoleCatalogRepository'
 import { appendGovernanceAudit, ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, readGovernanceStore } from './orgmasterGovernanceStore'
 import { activateFinancialCatalog, previewFinancialCatalogActivation, readFinancialCatalogActivationReceipt, readFinancialCatalogActivationWorkspace } from './financialCatalogActivationStore'
 import type { GovernanceActorContext, GovernanceDocumentV3 } from '../src/governance/types'
+import type { FmsCatalogCheckpoint } from './financialCatalogIntent'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
@@ -84,7 +85,68 @@ function releaseFor(actor: GovernanceActorContext, roleId = 'role-owner') {
     artifactSha256: sha(artifactUtf8), artifactUtf8, sourceDraftId: 'published-draft', sourceDraftRevision: 2,
     createdBy: catalog.publishedBy, createdAt }
 }
+function checkpointFor(actor: GovernanceActorContext, release: ReturnType<typeof releaseFor>,
+  preview: Awaited<ReturnType<typeof previewFinancialCatalogActivation>>, operationId: string): FmsCatalogCheckpoint {
+  const issuedAt = new Date(Date.now() - 1000).toISOString()
+  const fields = { schemaVersion: 'fms.governance-intent.v1' as const, intentId: 'issued-' + operationId, operationId,
+    principalId: actor.principalId, applicationId: 'financial-management-system' as const, companyId: 'jenfu-machinery' as const,
+    catalogVersion: release.version, artifactRef: 'fms://catalog/' + release.version, contentSha256: release.contentSha256,
+    artifactSha256: release.artifactSha256, previewHash: preview.previewHash,
+    expectedGovernanceRevision: preview.expected.governanceRevision, expectedAssignmentVersion: preview.expected.assignmentVersion,
+    expectedCatalogBindingRevision: preview.expected.catalogBindingRevision, expectedGrantRevision: preview.expected.grantRevision,
+    expiresAt: new Date(Date.parse(issuedAt) + 600_000).toISOString(), registeredReturnRouteId: 'roles' as const }
+  return { schemaVersion: 'fms.governance-checkpoint.v1', source: 'local_test', employeeId: actor.employeeId!, issuedAt,
+    intent: { ...fields, inputHash: sha(canonical(fields)) }, receipt: null }
+}
 describe('native FMS catalog activation lifecycle', () => {
+  it('seals the accepted FMS intent, survives jsonb key ordering, and replays after expiry without issuing another publication', async () => {
+    const { root, actor, request } = await setup(), release = releaseFor(actor)
+    const calculated = await previewFinancialCatalogActivation(root, actor, release, request)
+    const fmsCheckpoint = checkpointFor(actor, release, calculated, 'fms-issued-operation')
+    const command = { ...request, commandId: fmsCheckpoint.intent.operationId, requestHash: calculated.requestHash,
+      previewHash: calculated.previewHash, fmsCheckpoint }
+    const receipt = await activateFinancialCatalog(root, actor, release, command, { handoffSource: 'local_test' })
+    expect(receipt.financialCatalogActivation).toMatchObject({ fmsCheckpoint,
+      catalogBindingRevisionBefore: calculated.expected.catalogBindingRevision, grantRevisionBefore: calculated.expected.grantRevision })
+    const proof = receipt.financialCatalogActivation!
+    expect(Date.parse(proof.authorityReadAt)).toBeGreaterThanOrEqual(Date.parse(fmsCheckpoint.issuedAt))
+    const before = await readGovernanceStore(root)
+    // jsonb does not retain JavaScript insertion order. The proof seal must.
+    await writeFile(getGovernancePaths(root).current, canonical(before.document) + '\n')
+    expect(await readFinancialCatalogActivationReceipt(root, actor, command.commandId)).toEqual(receipt)
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse(fmsCheckpoint.intent.expiresAt) + 1)
+    try {
+      expect(await activateFinancialCatalog(root, actor, release, command, { handoffSource: 'local_test' })).toEqual({ ...receipt, replayed: true })
+      await expect(activateFinancialCatalog(root, actor, release, { ...command, fmsCheckpoint: undefined }, { handoffSource: 'local_test' }))
+        .rejects.toMatchObject({ code: 'COMMAND_ID_CONFLICT' })
+    } finally { now.mockRestore() }
+    const after = await readGovernanceStore(root)
+    expect(after.document.publishedVersions).toHaveLength(before.document.publishedVersions.length)
+    expect(after.document.commandReceipts).toHaveLength(before.document.commandReceipts.length)
+  })
+
+  it('refuses missing server source, mismatched actor/revision, expired or altered intents without a write', async () => {
+    const { root, actor, request } = await setup(), release = releaseFor(actor)
+    const calculated = await previewFinancialCatalogActivation(root, actor, release, request)
+    const checkpoint = checkpointFor(actor, release, calculated, 'reject-fms-intent')
+    const command = { ...request, commandId: checkpoint.intent.operationId, requestHash: calculated.requestHash, previewHash: calculated.previewHash }
+    const original = (await readGovernanceStore(root)).raw
+    await expect(activateFinancialCatalog(root, actor, release, { ...command, fmsCheckpoint: checkpoint }))
+      .rejects.toMatchObject({ code: 'FINANCIAL_CATALOG_UNAVAILABLE' })
+    for (const mutate of [
+      (value: FmsCatalogCheckpoint) => { value.source = 'formal' },
+      (value: FmsCatalogCheckpoint) => { value.employeeId = 'other-employee' },
+      (value: FmsCatalogCheckpoint) => { value.intent.principalId = 'other-principal' },
+      (value: FmsCatalogCheckpoint) => { value.intent.expectedGrantRevision = 'stale' },
+      (value: FmsCatalogCheckpoint) => { value.intent.inputHash = 'a'.repeat(64) },
+      (value: FmsCatalogCheckpoint) => { value.issuedAt = '2026-01-01T00:00:00.000Z'; value.intent.expiresAt = '2026-01-01T00:10:00.000Z'; const { inputHash: _, ...fields } = value.intent; value.intent.inputHash = sha(canonical(fields)) },
+    ]) {
+      const changed = structuredClone(checkpoint); mutate(changed)
+      await expect(activateFinancialCatalog(root, actor, release, { ...command, fmsCheckpoint: changed }, { handoffSource: 'local_test' })).rejects.toThrow()
+      expect((await readGovernanceStore(root)).raw).toBe(original)
+    }
+  })
+
   it('connects mounted workspace, preview, activation and original-command readback through the verified session', async () => {
     const { root, actor, request } = await setup(), release = releaseFor(actor)
     const middleware = createOrgmasterGovernanceMiddleware(root, false)

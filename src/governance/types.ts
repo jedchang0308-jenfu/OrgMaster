@@ -522,11 +522,15 @@ export interface GovernanceCommandReceiptV2 {
     governanceRevisionBefore: string
     organizationRevision: string
     assignmentVersionBefore: string
+    catalogBindingRevisionBefore: string
+    grantRevisionBefore: string
     assignmentVersionAfter: string
     publishedSnapshotHash: string
     grantIds: string[]
     authEpoch: number
     authenticatedAt: string
+    authorityReadAt: string
+    fmsCheckpoint?: import('../../server/financialCatalogIntent').FmsCatalogCheckpoint
   }
 }
 
