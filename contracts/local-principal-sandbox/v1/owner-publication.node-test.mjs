@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { contractDigest, LOCAL_IDENTITY_ISSUER } from './protocol.mjs'
-import { localOrgmasterRoleCatalog, localGrantsFromOwnerPublication, ownerGrantsMatchFixture, validateLocalOwnerPublication } from './owner-publication.mjs'
+import { localOrgmasterRoleCatalog, localGrantsFromOwnerPublication, ownerGrantsMatchFixture, ownerGrantsMatchFixturePolicy, validateLocalOwnerPublication } from './owner-publication.mjs'
 import { readAiPdmRoleCatalogV7 } from '../../../server/localPrincipalSandboxFixture.mjs'
 
 const time = Date.parse('2026-10-29T12:00:00.000Z'), stamp = new Date(time).toISOString()
@@ -98,4 +98,49 @@ test('withdrawn, extra or altered native grants differ from the fixed expected f
  row.pdm_grants=fixture().pdm_grants.concat(fixture().pdm_grants)
  assert.equal(ownerGrantsMatchFixture(row,scenario,'ai-pdm',expected,time),false)
  assert.equal(ownerGrantsMatchFixture(fixture(),scenario,'ai-pdm',[{...expected[0],companyId:'other-company'}],time),false)
+})
+
+function advancePublication(row) {
+ row.published_version.id='publication-test-v2'
+ row.published_version.versionNumber=2
+ row.published_version.organizationSnapshot.workspaceVersionId='workspace-test-updated'
+ rehash(row)
+ row.pdm_grants.forEach(grant=>{grant.assignment_version_id=row.published_version.id;grant.assignment_version='2'})
+ row.fms_authority.assignment_version=row.published_version.id
+ row.fms_authority.assignments.forEach(grant=>{grant.assignmentVersion=row.published_version.id})
+ return row
+}
+test('runtime readiness survives a native publication advancing without authority changes; bootstrap remains exact',()=>{
+ for(const app of ['orgmaster','ai-pdm','financial-management-system']) {
+  const original=fixture(),expected=localGrantsFromOwnerPublication(original,scenario,app,time)
+  const next=advancePublication(fixture())
+  assert.equal(ownerGrantsMatchFixture(next,scenario,app,expected,time),false)
+  assert.equal(ownerGrantsMatchFixturePolicy(next,scenario,app,expected,time),true)
+  assert.equal(ownerGrantsMatchFixturePolicy(original,scenario,app,[{...expected[0],grantVersion:3}],time),false)
+ }
+})
+test('publication advance does not hide changed role definitions, revoked grants, scope or validity',()=>{
+ const expected=localGrantsFromOwnerPublication(fixture(),scenario,'orgmaster',time)
+ for(const mutate of [
+  row=>{row.published_version.policy.rolePermissionGrants[0].effect='deny'},
+  row=>{row.published_version.policy.roleAssignments[0].status='revoked'},
+  row=>{row.published_version.policy.roleAssignments[0].scope.kind='workspace'},
+  row=>{row.published_version.policy.roleAssignments[0].validTo=new Date(time-1).toISOString()},
+  row=>{row.published_version.policy.roleAssignments[0].validFrom=new Date(time+1).toISOString()},
+ ]) {
+  const row=advancePublication(fixture());mutate(row);rehash(row)
+  assert.equal(ownerGrantsMatchFixturePolicy(row,scenario,'orgmaster',expected,time),false)
+ }
+})
+test('publication readiness preserves external catalog, company, role and same-version pins',()=>{
+ for(const app of ['ai-pdm','financial-management-system']){
+  const expected=localGrantsFromOwnerPublication(fixture(),scenario,app,time)
+  for(const change of [{catalogSha256:'f'.repeat(64)},{companyId:'other-company'},{stableRoleId:'other-role'},{scopeRef:'other-workspace'}]){
+   assert.equal(ownerGrantsMatchFixturePolicy(advancePublication(fixture()),scenario,app,[{...expected[0],...change}],time),false)
+  }
+ }
+ const row=fixture(),expected=localGrantsFromOwnerPublication(row,scenario,'orgmaster',time)
+ assert.equal(ownerGrantsMatchFixturePolicy(row,scenario,'orgmaster',[{...expected[0],catalogSha256:'f'.repeat(64)}],time),false)
+ const revoked=advancePublication(fixture());revoked.pdm_grants=[]
+ assert.equal(ownerGrantsMatchFixturePolicy(revoked,scenario,'ai-pdm',localGrantsFromOwnerPublication(fixture(),scenario,'ai-pdm',time),time),false)
 })

@@ -11,3 +11,4 @@ export function localOrgmasterRoleCatalog(version: Record<string, unknown>): {
 }
 export function localGrantsFromOwnerPublication(value: unknown, scenario: LocalScenario, applicationId: ApplicationId, nowMs?: number): LocalGrant[]
 export function ownerGrantsMatchFixture(value: unknown, scenario: LocalScenario, applicationId: ApplicationId, grants: LocalGrant[], nowMs?: number): boolean
+export function ownerGrantsMatchFixturePolicy(value: unknown, scenario: LocalScenario, applicationId: ApplicationId, grants: LocalGrant[], nowMs?: number): boolean

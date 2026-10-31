@@ -149,10 +149,53 @@ afterEach(() => {
   host.remove()
   sessionStorage.clear()
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
   vi.unstubAllGlobals()
 })
 
 describe('FMS role assignment workspace', () => {
+  it('shows validity dates as local date and time across UTC midnight without changing submitted values', async () => {
+    vi.stubEnv('TZ', 'Etc/GMT-8')
+    const boundaryAssignment = {
+      ...currentAssignment,
+      validFrom: '2026-10-31T19:31:00.000Z',
+      validUntil: '2026-11-01T19:31:00.000Z',
+    }
+    const boundaryWorkspace = { ...initialWorkspace, assignments: [boundaryAssignment] }
+    const boundaryRevokePreview = {
+      ...revokePreview,
+      beforeAssignments: [boundaryAssignment],
+      afterAssignments: [{ ...boundaryAssignment, status: 'revoked' }],
+    }
+    mocks.loadWorkspace.mockResolvedValueOnce(boundaryWorkspace)
+    mocks.preview.mockResolvedValueOnce(boundaryRevokePreview)
+
+    await mount()
+    await change('fms-current-assignment-employee', employee.employeeId)
+    expect(host.textContent).toContain('2026-11-01 03:31 至 2026-11-02 03:31')
+
+    await click('撤銷任用')
+    expect(host.textContent).toContain('原任用期間：2026-11-01 03:31 至 2026-11-02 03:31')
+    await change('fms-revoke-reason', '員工離職')
+    await click('預覽撤銷')
+
+    expect(mocks.preview).toHaveBeenCalledWith(expect.objectContaining({
+      validFrom: boundaryAssignment.validFrom,
+      validUntil: boundaryAssignment.validUntil,
+    }))
+    expect(host.textContent).toContain('2026-11-01 03:31 至 2026-11-02 03:31')
+  })
+
+  it('preserves invalid validity values in the current assignment list', async () => {
+    const invalidAssignment = { ...currentAssignment, validFrom: 'invalid-date' }
+    mocks.loadWorkspace.mockResolvedValueOnce({ ...initialWorkspace, assignments: [invalidAssignment] })
+
+    await mount()
+    await change('fms-current-assignment-employee', employee.employeeId)
+
+    expect(host.textContent).toContain('invalid-date 至 未設定')
+  })
+
   it('previews the canonical employee assignment, publishes once and refreshes the workspace', async () => {
     mocks.loadWorkspace.mockResolvedValueOnce(initialWorkspace).mockResolvedValueOnce(refreshedWorkspace)
     mocks.searchEmployees.mockResolvedValueOnce(directoryPage()).mockResolvedValueOnce(directoryPage('gov-r2', 'org-r2'))

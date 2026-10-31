@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { contractDigest, LOCAL_FIXTURE_VERSION, LOCAL_IDENTITY_ISSUER } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
 import { buildLocalPrincipalSandboxFixtureV2, readAiPdmRoleCatalogV7 } from './localPrincipalSandboxFixture.mjs'
 import { AI_PDM_ROLE_CATALOG_V7_SHA256, AI_PDM_ROLE_CATALOG_V7_VERSION, LOCAL_PRINCIPAL_FIXTURE_VERSION } from './localPrincipalSandboxFixture.mjs'
+import * as catalogRepository from './aiPdmRoleCatalogRepository'
 import {
   createOrgmasterLocalPrincipalSandbox,
   verifyOrgmasterLocalIntrospection,
@@ -108,6 +109,38 @@ function testEnvironment(root: string, databasePort = '53761'): NodeJS.ProcessEn
 }
 
 describe('OrgMaster local principal sandbox runtime gates', () => {
+  it.each(['active', 'disabled'] as const)('keeps auth mode available with no eligible grants or an %s fixture Principal', async (status) => {
+    const profile = testProfile()
+    profile.fixture.scenarios[0].principalStatus = status
+    profile.fixture.scenarios[0].employeeStatus = status === 'disabled' ? 'inactive' : 'active'
+    const { fixtureHash: _fixtureHash, ...body } = profile.fixture
+    profile.fixture.fixtureHash = contractDigest(body)
+    const root = await sandboxRoot(profile)
+    const query = vi.fn(async () => ({ rows: [{
+      database_name: 'jenfu_local_orgmaster_test', login_role: 'jenfu_orgmaster_runtime', active_role: 'jenfu_orgmaster_runtime',
+      server_address: '127.0.0.1', server_port: 53761,
+      database_comment: `jenfu.local-principal-bootstrap.v1:orgmaster-test:${profile.generation}`,
+      role_superuser: false, role_login: true, role_replication: false, role_create_role: false,
+      role_create_database: false, role_bypass_rls: false, database_create_allowed: false,
+      runtime_owns_database: false, runtime_owns_schema: false, runtime_can_create_schema_object: false,
+      runtime_member_of_migrator: false,
+    }] }))
+    const catalog = readAiPdmRoleCatalogV7().catalog
+    vi.spyOn(catalogRepository, 'readPublishedAiPdmRoleCatalogFromDatabase').mockResolvedValue({
+      ...catalog, sourcePath: profile.catalogBinding.sourcePath,
+    } as never)
+    const client = { query, release: vi.fn() }
+    const sandbox = createOrgmasterLocalPrincipalSandbox({
+      environment: testEnvironment(root), listenerVerifier: vi.fn(async () => '127.0.0.1'),
+      poolFactory: vi.fn(() => ({ connect: async () => client, end: async () => undefined })) as never,
+    })
+    try {
+      await expect(sandbox.mode('mode-without-business-eligibility')).resolves.toMatchObject({
+        authMode: 'local_principal_sandbox', localSandboxEnabled: true,
+      })
+    } finally { await sandbox.close() }
+  })
+
   it('binds the versioned v2 fixture and hash into the local callback token-proof API request', async () => {
     const fixture = buildLocalPrincipalSandboxFixtureV2({ createdAt: '2026-10-30T12:00:00.000Z' })
     const profile = { ...testProfile(), fixture }

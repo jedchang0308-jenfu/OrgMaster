@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "task": "ORGMASTER/DEV-060",
+  "relatedTasks": [
+    "JENFU/DEV-021",
+    "JF-FMS/DEV-069",
+    "JF-FMS/DEV-068"
+  ],
+  "environment": "synthetic isolated local PG18 + external Chrome JED",
+  "sandboxId": "dev069-owner-admin-20261101",
+  "generation": "7eae78e8-c707-464d-b424-cd55927d1bb1",
+  "targetDigest": "96b72760a13ed55893107feaefe9a279af0d955b5acd6c093123249b4e41c994",
+  "principalId": "local-catalog-pdm-admin",
+  "employeeId": "employee-local-catalog-pdm-admin",
+  "firstFailure": {
+    "code": "auth_server_not_configured",
+    "stage": "fixture_owner_readiness",
+    "correlationId": "fab7a80f-8ebd-47a9-9fa4-2e477a40ed7e",
+    "committed": true,
+    "reason": "Unchanged native authority rejected after publication v1 to v2."
+  },
+  "results": {
+    "directory": "PASS",
+    "explicitRolePreview": "PASS",
+    "publish": {
+      "commandId": "16b47232-0fb3-41c4-ba11-55876300f003",
+      "receiptStatus": "applied",
+      "attempt": 1,
+      "count": 1
+    },
+    "recovery": "Same DB and immutable fixture; source reload only; no resubmit",
+    "revoke": {
+      "commandId": "2bd48126-69b7-4709-9511-fa645fa7875d",
+      "receiptStatus": "applied",
+      "attempt": 1,
+      "count": 1
+    },
+    "assignmentId": "financial-assignment-f497f609586b8a9397a44b1228310e89",
+    "assignmentStatus": "revoked",
+    "publicationVersion": 3,
+    "automaticWorkspaceRefresh": "PASS",
+    "localTimeDisplay": "2026-11-01 03:31",
+    "returnOrgmasterToFmsSso": "PASS",
+    "fmsCurrentPermissionProjection": "PASS"
+  },
+  "proof": {
+    "dbReadback": "Runtime-role BEGIN READ ONLY; receipts/audit/assignment from native own persistence reader, 2026-10-31T19:49:46.757Z",
+    "screenshot": "output/playwright/dev060-owner-workspace-revoked-20261101-r5.png",
+    "httpCapture": "Raw CDP capture unavailable during paused response; no HTTP trace PASS claimed"
+  },
+  "limits": [
+    "RD integration evidence, not independent QC",
+    "Not real Google / real nonproduction / production acceptance",
+    "F69-16 managed Principal lifecycle remains human-DEFERRED",
+    "No formal deployment, formal IAM, business financial writes or native SQL changes in this increment"
+  ],
+  "authBoundary": {
+    "mode": "Runtime/target/catalog configuration only; no all-person eligibility scan",
+    "session": "Native identity, epoch, fixture identity/lifecycle binding, current owner publication and central introspection retained",
+    "business": "Native current-owner projection and operation writer retain permission checks",
+    "explicitIntrospectionDenial": "401 or 403 invalidates only this session",
+    "tests": "Two source regressions cover no-grant and disabled Principal without closing auth mode",
+    "changedNativeGrantBrowserCase": "NOT_RUN; unchanged authority publication and FMS target revocation covered by R5"
+  }
+}

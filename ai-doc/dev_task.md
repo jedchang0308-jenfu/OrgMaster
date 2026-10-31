@@ -4,6 +4,12 @@
 
 ## DEV-060：OrgMaster 應用內單一前端權限投影
 
+- CI首敗保留：#194 head `7c050a0` 的required run `41236594236`，1230項Vitest通過，但shared owner-publication新增向後相容helper後漏更新兩個conformance pin而失敗（Node 58/60）。已核對Platform canonical與OrgMaster consumer bytes相同並更新兩筆pin；PDM／FMS只vendor未變的protocol/client，不帶owner-publication，不為此改動兩repo。修復後重跑原native conformance，provider新head仍待，不繞過required CI。
+
+- 2026-11-01 auth責任邊界續修：auth mode僅驗配置，不遍歷所有scenario的任用；每次session保留native身分／epoch／lifecycle與owner publication／中央introspection，業務權限仍讀原生current owner projection。中央401／403僅使該session失效。無grant與disabled Principal兩項mode回歸通過，尚未以原生UI另造Org/PDM授權變動案例。
+
+- 2026-11-01 owner workspace原生整合：同一R5 PG18已驗正常Portal→FMS→Org SSO、canonical目錄、明確選角、新增與撤銷各一筆applied、現行資料刷新及返回FMS本人權限。首筆提交後因publication v1→v2使未變權限被fixture版本誤拒，保留首敗並改runtime語意比對；strict bootstrap仍精確，role definition／外部catalog／scope／期限／撤權不放寬。v3撤銷後成功讀回，未重送新增。日期改本機時間並驗跨UTC午夜。證據：[R5](qa/evidence/DEV060-FMS-OWNER-WORKSPACE-20261101-R5.json)。這是合成地端RD整合，真實Google／正式發布與完整任務驗收仍待，F69-16維持DEFERRED。
+
 - 2026-11-01 native管理fixture增量：原工作區#192已protected merge，Chrome已證Portal→Org own-session SSO與finance-manager拒絕管理（APP_MANAGEMENT_GRANT_REQUIRED）；原fixtures管理授權空，新增顯式fmsManagement source選項以驗允許案例。owner／公司／scope／身分／期限與capability allowlist由OrgMaster materializer檢查，輸入進同一policy／audit／source hash。相關materializer／native-seed／audit-provenance共20項及TypeScript通過；本增量的native正向Chrome仍待執行，不宣稱正式授權／發布通過。見§14。
 
 - 2026-11-01 FMS owner workspace來源完成：固定 `/fms/role-assignments` 經正常SSO保留OrgMaster own-session writer；canonical員工最小搜尋／分頁、既有任用workspace的roles與publish決策、固定返回Platform FMS入口已接source。撤銷綁定既有任用Employee／scope／role，native隔離file-store已驗停用員工既有任用撤銷commit／收據／重播去重；不開放其新增任用。收據沿既有FMS管理權限並過濾App namespace，cached publish仍驗當下權限。UI保留未知命令的Principal-bound sessionStorage、重新載入後查原收據、409未觀測命令不重送、native CAS衝突重新載入／預覽、明確選角及row-bound撤銷。6個相關測試檔共77項與TypeScript通過；這是RD來源自查，尚無本輪Chrome／SSO／正式PASS，不重開已人類DEFERRED的managed lifecycle。完整契約見[§14](specs/DEV-060-app-scoped-frontend-permission-projection.md#14-fms-人員任用的-owner-workspace)，跨repo正式財務設定APPLIED與M2維護狀態見JF-FMS R42／R43。
