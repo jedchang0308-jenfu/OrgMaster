@@ -303,3 +303,15 @@ common／fixture／catalog版本hash不符、Principal或Employee停用、grant�
 正式發布輸入不帶fixture資料或local key；需要發布的owner先維持新舊contract相容，consumer就緒才啟用。自有發布失敗依DEV-040既定traffic→tag→entry recovery，不能回退資料或跨改其他App。未受影響正式artifact只需有效相容證據，無需為參與整合重部署。
 
 DEV-060新增切片只有在O60-A～G適用工作完成且主責收到可追溯結果時結案；若已部署但必要功能／撤權未驗，標`DEPLOYED / ACCEPTANCE_PENDING`。正式target或外部身分條件缺少只阻塞相依階段，source／隔離驗證可繼續。現行source／隔離runtime進度沿§13.2及Platform DEV-021 §14.14記錄，正式操作尚未執行。
+
+## 14. FMS 人員任用的 owner workspace
+
+FMS `/admin/users` 由正常 Platform OrgMaster launch 進入 `/fms/role-assignments`。治理操作在 OrgMaster 自有已驗證 session 內完成；不轉貼 FMS actor、不沿用本地 users 或開發身分 headers。普通 FMS 判權仍讀原 Tier-0 投影。
+
+- `GET /api/orgmaster/governance/applications/financial-management-system/employees` 是 `orgmaster.fms-employee-directory.v1`：沿現有 FMS workspace owner role 加 exact-Principal `role_assignment.manage`；只回 employeeId、displayName、未具名權威提供時為null的employeeNumber、active／assignable，以及 directoryRevision、governanceRevision、readAt／cursor。搜尋 q 最多80字，預設20／上限50；cursor綁搜尋與版本。不得回整份組織資料、聯絡或財務個資。
+- 既有 role-assignments workspace 回傳目前任用、canonical可指派roles及原preview／publish權限決策。新增任用需在職Employee且角色可指派；撤銷使用既有assignmentId與其Employee／scope／role，停用Employee仍可撤銷既有任用，不藉此開啟新任用。目標與角色均需明確選擇，不預選owner角色。
+- preview／publish／commands收據沿原OrgMaster API與CAS、目錄綁定、原子audit及Principal v2 session／epoch fence。收據讀取要求既有FMS任用管理權限，且只解析此App任用namespace；重播仍驗當下publish權限。
+- 結果未知時，原commandId／requestHash／previewHash按Principal存於分頁sessionStorage；不存憑證或任用輸入。重新載入後仍先查原收據，not_found不冒稱拒絕或清除；`COMMAND_NOT_OBSERVED`等不確定結果不得改發新命令。資料版本衝突提供重新載入／預覽，不能靠使用者反覆F5。
+- 工作區返回入口 `/api/orgmaster/governance/applications/financial-management-system/return` 只使用已設定SSO broker（或明確local sandbox平台origin）組固定Platform FMS launch；不接受request提供目的地。回到FMS後由其原權限provider明確刷新一次。
+
+此接法重用OrgMaster的人類session與寫入權威，不新增delegated-human-session、IAM或Secret。來源、隔離Chrome、真實SSO與正式發布分開驗證，進度只回填原DEV-060／JF-FMS DEV-069與DEV-068。

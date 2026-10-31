@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { readFinancialEmployeeDirectory } from './fmsEmployeeDirectory'
+import { financialWorkspaceReturnUrl } from './fmsWorkspaceNavigation'
 import { ORGMASTER_PERMISSIONS } from '../src/governance/aiPdmCatalog'
 import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite'
 import { applyDraftCommand, publishGovernance, readGovernanceAudit, readGovernanceCommandResult, readGovernanceStore, setActivePolicy, validateAssignmentCandidate, GovernanceStoreError } from './orgmasterGovernanceStore'
@@ -266,6 +268,11 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
   const url = new URL(request.url ?? '/', 'http://orgmaster.local'); const path = url.pathname.slice(API_PATH.length) || '/';
   if (path === '/employee-authority-switch') { sendJson(response, 410, { error: 'LEGACY_AUTHORITY_SWITCH_RETIRED' }); return }
   const actor = path.startsWith('/applications/ai-pdm/') ? aiPdmActorOrThrow(request, devEnabled) : actorOrThrow(request, devEnabled, path === '/session')
+  if (path === '/applications/financial-management-system/return' && request.method === 'GET') {
+    const target = financialWorkspaceReturnUrl()
+    if (!target) throw new GovernanceStoreError('ORGMASTER_SOURCE_UNAVAILABLE')
+    response.statusCode = 303; response.setHeader('Location', target); response.setHeader('Cache-Control', 'no-store'); response.setHeader('Referrer-Policy', 'no-referrer'); response.end(); return
+  }
   const commandResultPath = path.match(/^\/commands\/([^/]+)$/)
   if (commandResultPath && request.method === 'GET') {
     const result = await readGovernanceCommandResult(root, decodeURIComponent(commandResultPath[1]), actor)
@@ -319,11 +326,12 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
   if (financialInitialAuthorityCommand && request.method === 'GET') { const receipt = await readFinancialInitialAuthorityReceipt(root, decodeURIComponent(financialInitialAuthorityCommand[1])); sendJson(response, receipt.receiptStatus === 'not_found' ? 404 : 200, receipt, receipt.governanceRevision); return }
   if (path.startsWith('/versions/') && request.method === 'GET') { const id = decodeURIComponent(path.slice('/versions/'.length)); const version = document.publishedVersions.find((entry: any) => entry.id === id); if (!version) throw new GovernanceStoreError('POLICY_VERSION_NOT_FOUND'); sendJson(response, 200, { version: sanitizedDocument({ ...document, draft: document.draft, publishedVersions: [version] }).publishedVersions[0] }, current.revision); return }
   if (path === '/audit' && request.method === 'GET') { const audit = await readGovernanceAudit(root, Number(url.searchParams.get('limit') ?? 50), Number(url.searchParams.get('cursor') ?? 0)); sendJson(response, 200, audit, current.revision); return }
+  if (path === '/applications/financial-management-system/employees' && request.method === 'GET') { const directory = await readFinancialEmployeeDirectory(root, actor, url.searchParams); sendJson(response, 200, directory, directory.governanceRevision); return }
   if (path === '/applications/financial-management-system/role-assignments' && request.method === 'GET') { const workspace = await readFinancialRoleAssignmentWorkspace(root, actor); sendJson(response, 200, workspace, workspace.governanceRevision); return }
   if (path === '/applications/financial-management-system/role-assignments/preview' && request.method === 'POST') { const body = await parseBody(request); const preview = await previewFinancialRoleAssignment(root, actor, financialRoleAssignmentRequest(body, 'preview')); sendJson(response, 200, preview, current.revision); return }
   if (path === '/applications/financial-management-system/role-assignments/publish' && request.method === 'POST') { const body = await parseBody(request); const published = await publishFinancialRoleAssignment(root, actor, financialRoleAssignmentRequest(body, 'publish') as FinancialRoleAssignmentPublishInput); sendJson(response, 200, { ...published, authorizationEffect: 'committed' }, published.governanceRevision); return }
   const financialAssignmentCommand = path.match(/^\/applications\/financial-management-system\/role-assignments\/commands\/([^/]+)$/)
-  if (financialAssignmentCommand && request.method === 'GET') { const receipt = await readFinancialRoleAssignmentReceipt(root, decodeURIComponent(financialAssignmentCommand[1])); sendJson(response, receipt.receiptStatus === 'not_found' ? 404 : 200, receipt, receipt.governanceRevision); return }
+  if (financialAssignmentCommand && request.method === 'GET') { const receipt = await readFinancialRoleAssignmentReceipt(root, decodeURIComponent(financialAssignmentCommand[1]), actor); sendJson(response, receipt.receiptStatus === 'not_found' ? 404 : 200, receipt, receipt.governanceRevision); return }
   if (path === '/applications/financial-management-system/management-grants' && request.method === 'GET') { const workspace = await readFinancialManagementGrantWorkspace(root, actor); sendJson(response, 200, workspace, workspace.governanceRevision); return }
   if (path === '/applications/financial-management-system/management-grants/preview' && request.method === 'POST') { const body = await parseBody(request); const preview = await previewFinancialManagementGrant(root, actor, financialManagementGrantRequest(body, 'preview')); sendJson(response, 200, preview, current.revision); return }
   if (path === '/applications/financial-management-system/management-grants/publish' && request.method === 'POST') { const body = await parseBody(request); const published = await publishFinancialManagementGrant(root, actor, financialManagementGrantRequest(body, 'publish') as FinancialManagementGrantPublishInput); sendJson(response, 200, { ...published, authorizationEffect: 'committed' }, published.governanceRevision); return }

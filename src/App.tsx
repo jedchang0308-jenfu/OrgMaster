@@ -17,6 +17,7 @@ import '@xyflow/react/dist/style.css'
 import { AlertTriangle, Check, MousePointerClick, Trash2, UserRoundPlus } from 'lucide-react'
 import { AuthGate, useAuthSession } from './auth/AuthGate'
 import { OrgMasterPermissionProvider, useOrgMasterPermissions } from './auth/OrgMasterPermissionProvider'
+import { FmsRoleAssignmentWorkspace } from './components/FmsRoleAssignmentWorkspace'
 import { createUuidV7 } from './employeeIdentity'
 import { screenshotOrganizationState } from './screenshotData'
 import { removeEmployeeFromDirectory, updateDepartmentInDirectory, updateEmployeeInDirectory } from './directories'
@@ -3456,5 +3457,8 @@ function ProtectedApp() {
 }
 
 export default function App() {
-  return <AuthGate><OrgMasterPermissionProvider><ProtectedApp /></OrgMasterPermissionProvider></AuthGate>
+  const content = typeof window !== 'undefined' && window.location.pathname === '/fms/role-assignments'
+    ? <FmsRoleAssignmentWorkspace />
+    : <ProtectedApp />
+  return <AuthGate><OrgMasterPermissionProvider>{content}</OrgMasterPermissionProvider></AuthGate>
 }
