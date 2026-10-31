@@ -34,6 +34,7 @@ import { publicationSnapshotHash } from '../src/governance/commands'
 import { readGovernanceStore } from './orgmasterGovernanceStore'
 import { storedGovernanceCatalogs } from './governanceReduction'
 import { readFinancialRoleCatalog } from './financialRoleCatalogRepository'
+import { FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH, hasFinancialManagementGrant } from './applicationEntitlementCommon'
 
 const stamp = '2026-10-29T12:00:00.000Z'
 
@@ -114,7 +115,7 @@ function fmsCatalogPinFixture(): LocalPrincipalSandboxFmsCatalogPin {
   }) as LocalPrincipalSandboxFmsCatalogPin
 }
 
-function fixtureWithFmsGrant(fmsCatalog: LocalPrincipalSandboxFmsCatalogPin) {
+function fixtureWithFmsGrant(fmsCatalog: LocalPrincipalSandboxFmsCatalogPin, scope = { companyId: 'jenfu-machinery', scopeRef: 'workspace-jenfu-machinery' }) {
   const ownerCatalog = {
     applicationId: 'financial-management-system' as const,
     contractVersion: 'fms.native-fixture-owner-role-catalog.v1',
@@ -132,8 +133,8 @@ function fixtureWithFmsGrant(fmsCatalog: LocalPrincipalSandboxFmsCatalogPin) {
   return buildLocalPrincipalSandboxFixture({
     ownerRoleDefinitions: { 'financial-management-system': ownerCatalog },
     ownerDirectGrants: [{ scenarioId: 'active', applicationId: 'financial-management-system',
-      stableRoleId: 'role-owner', companyId: 'jenfu-machinery', scopeKind: 'workspace',
-      scopeRef: 'workspace-jenfu-machinery', grantVersion: 1, status: 'active',
+      stableRoleId: 'role-owner', companyId: scope.companyId, scopeKind: 'workspace',
+      scopeRef: scope.scopeRef, grantVersion: 1, status: 'active',
       validFrom: '2026-01-01T00:00:00.000Z', validUntil: null, grantKind: 'direct' }],
   })
 }
@@ -206,6 +207,50 @@ async function writeMaterializedArtifacts(
 }
 
 describe('local principal native fixture materializer', () => {
+  it('creates only explicitly requested FMS management grants for a qualified synthetic owner, bound to the published policy', async () => {
+    const fmsCatalogPin = fmsCatalogPinFixture()
+    const fixture = fixtureWithFmsGrant(fmsCatalogPin, { companyId: 'company-jenfu', scopeRef: 'company-jenfu' })
+    const input = { fixture, sandboxId: 'dev060-fms-management-fixture', targetRoot: targetRoot(),
+      pdmCatalogReadback: await pdmReadbackFixture(), fmsCatalogPin, createdAt: stamp }
+    const ordinary = materializeLocalPrincipalSandboxNativeFixture(input)
+    expect(ordinary.governanceVersion.policy.managementGrants).toEqual([])
+    const result = materializeLocalPrincipalSandboxNativeFixture({ ...input,
+      fmsManagement: { scenarioId: 'active', capabilities: [FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH] } })
+    const scenario = fixture.scenarios.find(row => row.scenarioId === 'active')!
+    const grants = result.governanceVersion.policy.managementGrants
+    expect(grants).toHaveLength(2)
+    expect(grants.every(grant => grant.principalId === scenario.principalId && grant.employeeId === scenario.employeeId
+      && grant.applicationId === 'financial-management-system')).toBe(true)
+    expect(hasFinancialManagementGrant(result.governance, { principalId: scenario.principalId, employeeId: scenario.employeeId,
+      issuer: scenario.identityIssuer, subject: scenario.identitySubject, bootstrap: false }, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH, stamp)).toBe(true)
+    expect(result.governanceVersion.snapshotHash).not.toBe(ordinary.governanceVersion.snapshotHash)
+    expect(storedGovernanceCatalogs(result.governance)).not.toBeNull()
+    expect(result.persistenceArtifacts.find(row => row.artifactKind === 'governance')?.raw).toContain(FINANCIAL_ROLE_ASSIGNMENT_MANAGE)
+    const fmsCompanyResult = materializeLocalPrincipalSandboxNativeFixture({ ...input,
+      fixture: fixtureWithFmsGrant(fmsCatalogPin, { companyId: 'jenfu-machinery', scopeRef: 'company-jenfu' }),
+      fmsManagement: { scenarioId: 'active', capabilities: [FINANCIAL_ROLE_ASSIGNMENT_MANAGE] } })
+    expect(fmsCompanyResult.governanceVersion.policy.managementGrants).toHaveLength(1)
+    for (const invalid of [
+      { scenarioId: 'active', capabilities: [] },
+      { scenarioId: 'active', capabilities: [FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_MANAGE] },
+      { scenarioId: 'active', capabilities: ['ai-pdm.orgmaster.cross_app_override'] },
+      { scenarioId: 'active', capabilities: [FINANCIAL_ROLE_ASSIGNMENT_MANAGE], principalId: 'arbitrary' },
+    ]) expect(() => materializeLocalPrincipalSandboxNativeFixture({ ...input, fmsManagement: invalid as never }))
+      .toThrow('fms_management_fixture_invalid')
+    for (const scenarioId of ['catalog-rd', 'catalog-system-admin', 'disabled', 'missing']) {
+      expect(() => materializeLocalPrincipalSandboxNativeFixture({ ...input,
+        fmsManagement: { scenarioId, capabilities: [FINANCIAL_ROLE_ASSIGNMENT_MANAGE] } }))
+        .toThrow('fms_management_fixture_owner_required')
+    }
+    expect(() => materializeLocalPrincipalSandboxNativeFixture({ ...input, fixture: fixtureWithFmsGrant(fmsCatalogPin),
+      fmsManagement: { scenarioId: 'active', capabilities: [FINANCIAL_ROLE_ASSIGNMENT_MANAGE] } }))
+      .toThrow('fms_management_fixture_owner_required')
+    expect(() => materializeLocalPrincipalSandboxNativeFixture({ ...input,
+      fixture: fixtureWithFmsGrant(fmsCatalogPin, { companyId: 'company-local-other', scopeRef: 'company-jenfu' }),
+      fmsManagement: { scenarioId: 'active', capabilities: [FINANCIAL_ROLE_ASSIGNMENT_MANAGE] } }))
+      .toThrow('fms_management_fixture_owner_required')
+  })
+
   it('returns typed missing-input information instead of substituting an FMS bundled catalog', async () => {
     const fixture = buildLocalPrincipalSandboxFixture()
     const pdmCatalogReadback = await pdmReadbackFixture()

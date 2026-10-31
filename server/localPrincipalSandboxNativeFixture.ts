@@ -11,6 +11,7 @@ import {
 } from '../src/governance/aiPdmCatalog'
 import {
   buildOrganizationSnapshot,
+  isActiveAt,
   validateDocumentV3,
 } from '../src/governance/validation'
 import {
@@ -40,10 +41,12 @@ import type {
   GovernanceDocumentV3,
   GovernanceOrgSource,
   GovernancePolicyDataV3,
+  ManagementGrantV1,
   GovernanceScopeV1,
 } from '../src/governance/types'
 import type { OrgDirectoryState } from '../src/types'
 import type { PersistenceArtifactWrite } from './orgmasterPersistenceRepository'
+import { FINANCIAL_PROTECTED_OPERATIONS, FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH, type FinancialManagementCapability } from './applicationEntitlementCommon'
 
 export const LOCAL_PRINCIPAL_NATIVE_FIXTURE_VERSION =
   'orgmaster.local-principal-native-fixture.v1' as const
@@ -77,6 +80,8 @@ export type LocalPrincipalSandboxNativeFixtureInput = {
    * pure materializer never establishes live activation evidence by itself.
    */
   fmsCatalogPin: LocalPrincipalSandboxFmsCatalogPin
+  /** Explicit synthetic-owner setup, consumed only by the native initializer. */
+  fmsManagement?: { scenarioId: string; capabilities: FinancialManagementCapability[] }
   createdAt?: string
 }
 
@@ -680,6 +685,46 @@ function artifact(
   }
 }
 
+function localFmsManagementGrants(
+  input: LocalPrincipalSandboxNativeFixtureInput['fmsManagement'],
+  fixture: LocalFixture,
+  assignments: GovernanceRoleAssignmentV3[],
+  at: string,
+): ManagementGrantV1[] {
+  if (input === undefined) return []
+  const allowed = new Set<string>([FINANCIAL_ROLE_ASSIGNMENT_MANAGE,
+    FINANCIAL_ROLE_ASSIGNMENT_PUBLISH, ...FINANCIAL_PROTECTED_OPERATIONS])
+  if (!input || Object.getPrototypeOf(input) !== Object.prototype
+    || Object.keys(input).sort().join(',') !== 'capabilities,scenarioId'
+    || typeof input.scenarioId !== 'string' || !Array.isArray(input.capabilities)
+    || !input.capabilities.length || input.capabilities.length > allowed.size
+    || new Set(input.capabilities).size !== input.capabilities.length
+    || input.capabilities.some(capability => typeof capability !== 'string' || !allowed.has(capability))) {
+    fail('fms_management_fixture_invalid')
+  }
+  const scenario = fixture.scenarios.find(row => row.scenarioId === input.scenarioId)
+  const sourceOwner = scenario?.grants.some(grant => grant.applicationId === 'financial-management-system'
+    // FMS business rows use jenfu-machinery; OrgMaster workspace / the common
+    // synthetic fixture use company-jenfu. Both are fixed IDs of this company.
+    && grant.stableRoleId === 'role-owner' && [LOCAL_SANDBOX_COMPANY_ID, 'jenfu-machinery'].includes(grant.companyId)
+    && grant.scopeKind === 'workspace' && grant.scopeRef === 'company-jenfu'
+    && isActiveAt(grant.status, grant.validFrom, grant.validUntil, at))
+  const owner = scenario && assignments.find(row => row.employeeId === scenario.employeeId
+    && row.applicationId === 'financial-management-system' && row.roleId === 'role-owner'
+    && row.subjectKind === 'employee' && row.scope.kind === 'workspace' && row.scope.value === 'company-jenfu'
+    && isActiveAt(row.status, row.validFrom, row.validTo, at))
+  if (!scenario || scenario.accountType !== 'human_personal' || scenario.principalStatus !== 'active'
+    || scenario.employeeStatus !== 'active' || !sourceOwner || !owner) fail('fms_management_fixture_owner_required')
+  return input.capabilities.map(capability => ({
+    id: 'local-fms-management-' + publicationSnapshotHash({ principalId: scenario.principalId, capability }).slice(0, 24),
+    principalId: scenario.principalId, employeeId: scenario.employeeId,
+    applicationId: 'financial-management-system', capability, status: 'active',
+    validFrom: owner.validFrom, validTo: owner.validTo,
+    grantedByPrincipalId: LOCAL_FIXTURE_PUBLISHER,
+    reason: 'Explicit DEV-060 synthetic FMS management fixture',
+  }))
+}
+
 /**
  * Builds an owner-native, three-artifact OrgMaster seed entirely in memory.
  * It never opens a database or creates files; the returned changes are shaped
@@ -830,6 +875,8 @@ function materializeLocalPrincipalSandboxNativeFixtureCore(
     identityLinks,
     principalAdmissions: admissions,
     roleAssignments: allAssignments,
+    managementGrants: [...initialPolicy.managementGrants,
+      ...localFmsManagementGrants(input.fmsManagement, fixture, allAssignments, createdAt)],
   }
 
   const versionPayload = {
