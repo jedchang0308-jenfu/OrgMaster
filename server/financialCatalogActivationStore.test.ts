@@ -99,6 +99,37 @@ function checkpointFor(actor: GovernanceActorContext, release: ReturnType<typeof
     intent: { ...fields, inputHash: sha(canonical(fields)) }, receipt: null }
 }
 describe('native FMS catalog activation lifecycle', () => {
+  it('preserves revoked snapshots through a catalog change and still rejects altered or restored old snapshots', async () => {
+    const { root, actor } = await setup(), current = await readGovernanceStore(root)
+    const old = await readFinancialRoleCatalog('valid'), viewer = old.roles.find(role => role.stableRoleId === 'role-viewer')!
+    const revoked = { ...current.document.draft.roleAssignments.find(item => item.id === 'catalog-owner-assignment')!,
+      id: 'revoked-viewer', roleId: viewer.stableRoleId, roleCodeSnapshot: viewer.code, roleNameSnapshot: viewer.displayName,
+      status: 'revoked' as const }
+    current.document.draft.roleAssignments.push(revoked)
+    await persistFixture(root, current.document)
+    const workspace = await readFinancialCatalogActivationWorkspace(root, actor)
+    const request = { reason: 'Keep revoked provenance', expectedGovernanceRevision: workspace.governanceRevision,
+      expectedOrganizationRevision: workspace.organizationRevision }
+    const release = releaseFor(actor), calculated = await previewFinancialCatalogActivation(root, actor, release, request)
+    expect(calculated.compatible).toBe(true)
+    await activateFinancialCatalog(root, actor, release, { ...request, commandId: 'revoked-history',
+      requestHash: calculated.requestHash, previewHash: calculated.previewHash })
+    const persisted = await readGovernanceStore(root)
+    expect(persisted.document.draft.roleAssignments.find(item => item.id === revoked.id)).toEqual(revoked)
+    const { validateDocumentV3 } = await import('../src/governance/validation')
+    const { withStoredGovernanceHistory } = await import('./governanceReduction')
+    const source = await loadOrganizationSource(root), active = persisted.document.publishedVersions.at(-1)!
+    if (active.kind !== 'assignment-governance-v3') throw new Error('EXPECTED_V3')
+    const history = withStoredGovernanceHistory(persisted.document, active.externalRoleCatalogs)
+    expect(validateDocumentV3(persisted.document, source, history)).toEqual([])
+    const row = persisted.document.draft.roleAssignments.find(item => item.id === revoked.id)!
+    row.roleNameSnapshot = 'altered history'
+    expect(validateDocumentV3(persisted.document, source, history).some(issue => issue.code === 'EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID')).toBe(true)
+    row.roleNameSnapshot = revoked.roleNameSnapshot; row.status = 'active'
+    expect(validateDocumentV3(persisted.document, source, history).some(issue => issue.code === 'EXTERNAL_ROLE_UNKNOWN')).toBe(true)
+    row.status = 'revoked'
+    expect(validateDocumentV3(persisted.document, source, active.externalRoleCatalogs).some(issue => issue.code === 'EXTERNAL_ROLE_UNKNOWN')).toBe(true)
+  })
   it('accepts a complete empty capability list as a no-access custom role while rejecting null', async () => {
     const { root, actor, request } = await setup(), release = releaseFor(actor)
     const catalog = JSON.parse(release.artifactUtf8)
