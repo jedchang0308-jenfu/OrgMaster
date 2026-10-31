@@ -26,7 +26,7 @@ export function validateFinancialExternalRoleCatalog(snapshot: ExternalRoleCatal
     if (snapshot.sourceKind === 'bundled-fixture') {
       if (role.stableRoleId !== FINANCIAL_ROLE_IDS[index]) add('EXTERNAL_ROLE_UNKNOWN', `roles[${index}].stableRoleId`, 'Financial stable role ID 不一致')
       if (role.status !== 'active' || role.assignable !== true || role.subjectKind !== 'employee' || role.assignmentTier !== 'app_admin' || role.recommendationAllowed !== false || role.delegationAllowed !== false || role.allowedScopeKinds.length !== 1 || role.allowedScopeKinds[0] !== 'workspace') add('CATALOG_ROLE_CONTRACT_MISMATCH', `roles[${index}]`, 'Financial role 必須是 active employee workspace app_admin ordinary role')
-    } else if (!role.stableRoleId.trim() || !role.code.trim() || !role.displayName.trim() || role.status !== 'active' || role.subjectKind !== 'employee' || role.assignmentTier !== 'app_admin' || role.allowedScopeKinds.length !== 1 || role.allowedScopeKinds[0] !== 'workspace' || !Array.isArray(role.capabilityIds) || !role.capabilityIds.length || !/^[a-f0-9]{64}$/u.test(role.roleDefinitionHash ?? '') || !['open', 'existing_only'].includes(role.assignmentPolicy ?? '')) {
+    } else if (!role.stableRoleId.trim() || !role.code.trim() || !role.displayName.trim() || role.status !== 'active' || role.subjectKind !== 'employee' || role.assignmentTier !== 'app_admin' || role.allowedScopeKinds.length !== 1 || role.allowedScopeKinds[0] !== 'workspace' || !Array.isArray(role.capabilityIds) || !/^[a-f0-9]{64}$/u.test(role.roleDefinitionHash ?? '') || !['open', 'existing_only'].includes(role.assignmentPolicy ?? '')) {
       add('CATALOG_ROLE_CONTRACT_MISMATCH', `roles[${index}]`, 'FMS role 必須保留完整能力、scope、assignment policy 與 role hash')
     }
   }

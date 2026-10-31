@@ -99,6 +99,25 @@ function checkpointFor(actor: GovernanceActorContext, release: ReturnType<typeof
     intent: { ...fields, inputHash: sha(canonical(fields)) }, receipt: null }
 }
 describe('native FMS catalog activation lifecycle', () => {
+  it('accepts a complete empty capability list as a no-access custom role while rejecting null', async () => {
+    const { root, actor, request } = await setup(), release = releaseFor(actor)
+    const catalog = JSON.parse(release.artifactUtf8)
+    const raw = { stableRoleId: 'role-empty', code: 'Empty', displayName: '無能力角色', builtIn: false,
+      capabilityIds: [], allowedScopeKinds: ['workspace'], assignmentPolicy: 'open' }
+    catalog.roles.push({ ...raw, roleDefinitionHash: sha(canonical(raw)) })
+    catalog.roles.sort((a: { stableRoleId: string }, b: { stableRoleId: string }) => a.stableRoleId < b.stableRoleId ? -1 : 1)
+    const encode = () => ({ ...release, artifactUtf8: canonical(catalog) + '\n', contentSha256: sha(canonical(catalog)), artifactSha256: sha(canonical(catalog) + '\n') })
+    const valid = encode(), calculated = await previewFinancialCatalogActivation(root, actor, valid, request)
+    expect(calculated.addedRoles).toContainEqual({ stableRoleId: 'role-empty', displayName: '無能力角色' })
+    catalog.roles.find((role: { stableRoleId: string }) => role.stableRoleId === 'role-empty').capabilityIds = null
+    await expect(previewFinancialCatalogActivation(root, actor, encode(), request)).rejects.toThrow('FINANCIAL_CATALOG_RELEASE_INVALID')
+    const receipt = await activateFinancialCatalog(root, actor, valid, { ...request, commandId: 'empty-capability-role',
+      requestHash: calculated.requestHash, previewHash: calculated.previewHash })
+    expect(receipt.receiptStatus).toBe('applied')
+    const persisted = await readGovernanceStore(root)
+    const snapshot = persisted.document.publishedVersions.at(-1)!
+    expect(snapshot.kind === 'assignment-governance-v3' && snapshot.externalRoleCatalogs.find(item => item.applicationId === 'financial-management-system')?.roles.find(role => role.stableRoleId === 'role-empty')?.capabilityIds).toEqual([])
+  })
   it('seals the accepted FMS intent, survives jsonb key ordering, and replays after expiry without issuing another publication', async () => {
     const { root, actor, request } = await setup(), release = releaseFor(actor)
     const calculated = await previewFinancialCatalogActivation(root, actor, release, request)

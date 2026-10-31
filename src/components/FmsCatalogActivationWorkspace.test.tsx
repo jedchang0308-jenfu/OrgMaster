@@ -269,7 +269,8 @@ describe('FMS catalog activation workspace', () => {
     expect(localStorage.length).toBe(0)
   })
 
-  it('activates at most once after a trusted issued message and only checks the original receipt when unknown', async () => {
+  it.each([true, false])('activates once and checks the original receipt when unknown (opener=%s)', async hasOpener => {
+    if (!hasOpener) vi.stubGlobal('opener', null)
     const storageWrites = spyOnStorageWrites()
     mocks.activate.mockRejectedValue(new TypeError('response unavailable'))
     mocks.receipt

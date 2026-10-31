@@ -20,6 +20,7 @@ export function FmsCatalogActivationWorkspace() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [handoff, setHandoff] = useState<Handoff | null>(null)
   const handoffRef = useRef<Handoff | null>(null)
+  const peer = useRef<Window | null>(window.opener)
   const [reason, setReason] = useState('啟用 FMS 角色目錄')
   const [preview, setPreview] = useState<FmsCatalogActivationPreview | null>(null)
   const previewRequest = useRef<FmsCatalogActivationPreviewRequest | null>(null)
@@ -28,29 +29,35 @@ export function FmsCatalogActivationWorkspace() {
   const [busy, setBusy] = useState(false), [unknown, setUnknown] = useState(false)
   const [message, setMessage] = useState<string | null>(null), [error, setError] = useState<string | null>(null)
   const send = (data: Record<string, unknown>) => {
-    if (workspace?.fmsOrigin && window.opener && handoffRef.current)
-      window.opener.postMessage({ protocol: PROTOCOL, nonce: handoffRef.current.nonce, ...data }, workspace.fmsOrigin)
+    if (workspace?.fmsOrigin && peer.current && handoffRef.current)
+      peer.current.postMessage({ protocol: PROTOCOL, nonce: handoffRef.current.nonce, ...data }, workspace.fmsOrigin)
   }
   useEffect(() => {
     let current = true
     const owner = identity.current
     handoffRef.current = null; pending.current = null; previewRequest.current = null; awaitingIssue.current = false
+    peer.current = window.opener
     setWorkspace(null); setHandoff(null); setPreview(null); setUnknown(false); setBusy(false); setMessage(null); setError(null)
     if (principal) void loadFmsCatalogActivationWorkspace().then(value => {
       if (!current || identity.current !== owner) return
       setWorkspace(value)
-      if (value.fmsOrigin && window.opener) window.opener.postMessage({ protocol: PROTOCOL, type: 'ready' }, value.fmsOrigin)
     }).catch(() => { if (current) setError('目前無法讀取角色目錄，請稍後重試。') })
     return () => { current = false }
   }, [sessionIdentity])
   useEffect(() => {
-    if (!workspace?.fmsOrigin || !window.opener) return
+    if (!workspace?.fmsOrigin) return
     const receive = (event: MessageEvent) => {
-      if (event.origin !== workspace.fmsOrigin || event.source !== window.opener || !object(event.data) || event.data.protocol !== PROTOCOL) return
+      if (event.origin !== workspace.fmsOrigin || !event.source || peer.current && event.source !== peer.current ||
+        !object(event.data) || event.data.protocol !== PROTOCOL) return
       const data = event.data
       if (data.type === 'init' && !handoffRef.current && typeof data.nonce === 'string' && /^[a-f0-9-]{36}$/u.test(data.nonce) && object(data.release)) {
         const next = { nonce: data.nonce, release: data.release as unknown as FmsCatalogReleaseInput }
-        handoffRef.current = next; setHandoff(next); return
+        // An opener-less browser may still deliver the configured FMS window's direct message.
+        // Bind that single source once; later messages must keep both source and nonce.
+        peer.current = event.source as Window
+        handoffRef.current = next; setHandoff(next)
+        peer.current.postMessage({ protocol: PROTOCOL, type: 'received', nonce: next.nonce }, workspace.fmsOrigin)
+        return
       }
       if (!handoffRef.current || data.nonce !== handoffRef.current.nonce || !pending.current) return
       if (data.type === 'issue-failed') {
@@ -73,6 +80,7 @@ export function FmsCatalogActivationWorkspace() {
       }).finally(() => { if (identity.current === owner) setBusy(false) })
     }
     window.addEventListener('message', receive)
+    if (peer.current) peer.current.postMessage({ protocol: PROTOCOL, type: 'ready' }, workspace.fmsOrigin)
     return () => window.removeEventListener('message', receive)
   }, [workspace, sessionIdentity])
   const inspect = async () => {
@@ -111,7 +119,7 @@ export function FmsCatalogActivationWorkspace() {
   return <main className="fms-role-assignment">
     <header className="fms-role-assignment__header"><h1>啟用 FMS 角色目錄</h1></header>
     {!handoff ? <p role="status">{workspace ? '請從 FMS 的角色設定開啟此頁。' : '正在讀取角色目錄…'}</p> : <>
-      <section><h2>{handoff.release.version}</h2><label htmlFor="catalog-reason">變更原因</label>
+      <section><h2>待啟用版本</h2><p>發布於 {new Date(handoff.release.createdAt).toLocaleString('zh-TW')}</p><label htmlFor="catalog-reason">變更原因</label>
         <input id="catalog-reason" value={reason} maxLength={240} disabled={busy || unknown || !!message}
           onChange={event => { setReason(event.target.value); setPreview(null) }} />
         {!unknown && !message && <button disabled={busy || !reason.trim()} onClick={() => void inspect()}>預覽影響</button>}

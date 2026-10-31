@@ -87,7 +87,7 @@ function parseRole(value: unknown): FmsCatalogRole {
     assignmentPolicy: role.assignmentPolicy === 'existing_only' ? 'existing_only' : role.assignmentPolicy === 'open' ? 'open' : (() => { throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID') })(),
     roleDefinitionHash: hash(role.roleDefinitionHash),
   }
-  if (typeof role.builtIn !== 'boolean' || !result.capabilityIds.length || new Set(result.capabilityIds).size !== result.capabilityIds.length || result.capabilityIds.some((id, index) => index > 0 && result.capabilityIds[index - 1] > id) || result.allowedScopeKinds.length !== 1 || result.allowedScopeKinds[0] !== 'workspace' || roleHash(result) !== result.roleDefinitionHash) throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID')
+  if (typeof role.builtIn !== 'boolean' || !Array.isArray(role.capabilityIds) || new Set(result.capabilityIds).size !== result.capabilityIds.length || result.capabilityIds.some((id, index) => index > 0 && result.capabilityIds[index - 1] > id) || result.allowedScopeKinds.length !== 1 || result.allowedScopeKinds[0] !== 'workspace' || roleHash(result) !== result.roleDefinitionHash) throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID')
   return result
 }
 
