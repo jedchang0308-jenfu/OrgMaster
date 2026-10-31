@@ -16,5 +16,8 @@ export default defineConfig({
   plugins: [orgmasterManagedLoginApiPlugin(() => {
     managedLoginRuntime ??= createOrgmasterAuthRuntime()
     return { service: managedLoginRuntime.managedLoginOwner, verifier: managedLoginRuntime.managedLoginCallerVerifier }
-  }), orgmasterAuthApiPlugin(), orgmasterManagedIdentityApiPlugin(), workbenchPreferenceApiPlugin(), orgmasterAccountEnrollmentApiPlugin(), react(), orgmasterApiPlugin(), orgmasterGovernanceApiPlugin({ accountEnrollmentEnabled: true }), orgmasterManagementMethodApiPlugin()],
+  }), orgmasterAuthApiPlugin(), orgmasterManagedIdentityApiPlugin(() => {
+    managedLoginRuntime ??= createOrgmasterAuthRuntime()
+    return managedLoginRuntime.managedIdentity
+  }), workbenchPreferenceApiPlugin(), orgmasterAccountEnrollmentApiPlugin(), react(), orgmasterApiPlugin(), orgmasterGovernanceApiPlugin({ accountEnrollmentEnabled: true }), orgmasterManagementMethodApiPlugin()],
 })

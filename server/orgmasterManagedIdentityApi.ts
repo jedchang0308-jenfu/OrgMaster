@@ -152,15 +152,17 @@ async function handle(request: IncomingMessage, response: ServerResponse, servic
 
 export function createOrgmasterManagedIdentityMiddleware(root = process.cwd(), devEnabled = false, service?: ManagedIdentityServiceV1): Connect.NextHandleFunction {
   const directoryConfig = readGoogleDirectoryRuntimeConfig(process.env)
-  const directory = devEnabled
-    ? createLocalDeterministicDirectoryPort()
-    : directoryConfig.enabled
-      ? createGoogleDirectoryReadOnlyPort({
-          customerId: directoryConfig.customerId,
-          domain: directoryConfig.domain,
-          auth: createGoogleDirectoryAuthPort({ delegatedSubject: directoryConfig.delegatedSubject, serviceAccountEmail: directoryConfig.serviceAccountEmail }),
-        })
-      : undefined
+  const directory = service
+    ? undefined
+    : devEnabled
+      ? createLocalDeterministicDirectoryPort()
+      : directoryConfig.enabled
+        ? createGoogleDirectoryReadOnlyPort({
+            customerId: directoryConfig.customerId,
+            domain: directoryConfig.domain,
+            auth: createGoogleDirectoryAuthPort({ delegatedSubject: directoryConfig.delegatedSubject, serviceAccountEmail: directoryConfig.serviceAccountEmail }),
+          })
+        : undefined
   const runtime = service ?? createManagedIdentityService({
     root,
     devEnabled,
@@ -174,10 +176,24 @@ export function createOrgmasterManagedIdentityMiddleware(root = process.cwd(), d
   }
 }
 
-export function orgmasterManagedIdentityApiPlugin(): Plugin {
+export function orgmasterManagedIdentityApiPlugin(
+  managedIdentityService?: () => ManagedIdentityServiceV1 | undefined,
+): Plugin {
   return {
     name: 'orgmaster-managed-identity-api',
-    configureServer(server: ViteDevServer) { server.middlewares.use(createOrgmasterManagedIdentityMiddleware(server.config.root, server.config.command === 'serve' && server.config.mode === 'development')) },
-    configurePreviewServer(server: PreviewServer) { server.middlewares.use(createOrgmasterManagedIdentityMiddleware(process.cwd(), false)) },
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use(createOrgmasterManagedIdentityMiddleware(
+        server.config.root,
+        server.config.command === 'serve' && server.config.mode === 'development',
+        managedIdentityService?.(),
+      ))
+    },
+    configurePreviewServer(server: PreviewServer) {
+      server.middlewares.use(createOrgmasterManagedIdentityMiddleware(
+        process.cwd(),
+        false,
+        managedIdentityService?.(),
+      ))
+    },
   }
 }
