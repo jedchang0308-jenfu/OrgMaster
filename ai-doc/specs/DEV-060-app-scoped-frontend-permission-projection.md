@@ -331,3 +331,5 @@ OrgMaster的auth mode只驗runtime target／listener／私有profile與既定cat
 2026-11-01 R12／R13 續作：正常外部 Chrome／synthetic SSO／隔離 PG 已完成交接、預覽、OrgMaster單次啟用與 FMS typed recovery confirmed／active，原 operation 為 `7cfd0bcf-5213-474a-bc2d-bf15bcd694fd`。041 view讀回一筆applied，FMS保留首次422的issuer與新issuer，只有一筆immutable confirmation。撤銷任用保留原catalog快照，驗證僅接受受publication hash與audit約束的歷史catalog；恢復任用不得沿舊目錄繞過當前角色檢查。已驗新SSO讀新目錄與revoked身分FMS入口拒絕。正式041／新目錄發布及完整DEV-068／DEV-065驗收仍待，以上不代表正式發布完成。
 
 FMS 視窗未回覆 issuance 時，OrgMaster 的15秒等待只解除介面忙碌，保留原 operation 查詢並標示未知；不宣稱伺服器拒絕、不取消已離開分頁的 FMS 寫入、不重送。等待結束後忽略晚到的 issuance，避免背景新增 OrgMaster activate；已收到 checkpoint 並送出的 activate 不受此介面計時器中止。此分支由 React／mock transport 測試驗證，尚非新增 Chrome 或正式證據。
+
+正式伺服器在 `NODE_ENV=production` 且 Cloud Run `K_SERVICE=orgmaster-prod` 時，預設使用既有 FMS canonical origin 與 formal realm；其他環境仍使用明確設定。顯式 local 或無效 override 在正式環境會拒絕，不能退回預設值掩蓋設定錯誤。此部署預設已有來源單元測試，正式 provider／整鏈證據另驗。

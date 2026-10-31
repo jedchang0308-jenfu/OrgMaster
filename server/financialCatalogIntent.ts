@@ -41,8 +41,9 @@ const FIELDS = ['schemaVersion', 'intentId', 'operationId', 'principalId', 'appl
   'artifactRef', 'contentSha256', 'artifactSha256', 'previewHash', 'expectedGovernanceRevision', 'expectedAssignmentVersion',
   'expectedCatalogBindingRevision', 'expectedGrantRevision', 'expiresAt', 'registeredReturnRouteId', 'inputHash']
 const SHA = /^[a-f0-9]{64}$/u
+const formalRuntime = (environment: NodeJS.ProcessEnv) => environment.NODE_ENV === 'production' && environment.K_SERVICE === 'orgmaster-prod'
 export function readFinancialCatalogPeerOrigin(environment: NodeJS.ProcessEnv = process.env): string | null {
-  const configured = environment.ORGMASTER_FMS_PUBLIC_ORIGIN
+  const configured = environment.ORGMASTER_FMS_PUBLIC_ORIGIN ?? (formalRuntime(environment) ? 'https://jf-fms-prod-56gnizku7q-de.a.run.app' : undefined)
   if (!configured) return null
   try {
     const url = new URL(configured), source = readFinancialCatalogHandoffSource(environment)
@@ -66,6 +67,7 @@ export function readFinancialCatalogHandoffSource(environment: NodeJS.ProcessEnv
   const configured = environment.ORGMASTER_FMS_GOVERNANCE_SOURCE
   if (configured === 'formal') return 'formal'
   if (configured === 'local_test' && environment.K_SERVICE !== 'orgmaster-prod') return 'local_test'
+  if (configured === undefined && formalRuntime(environment)) return 'formal'
   return undefined
 }
 
