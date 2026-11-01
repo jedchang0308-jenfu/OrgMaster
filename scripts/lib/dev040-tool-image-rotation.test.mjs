@@ -10,6 +10,7 @@ import { createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
 import { assertToolRotationReleaseCompatibility } from './dev040-routine-release.mjs'
 import {
   assertOrdinaryToolRotation,
+  assertAppliedToolInfrastructureBaseline,
   assertToolInfrastructureTransition,
   assertToolArtifactAssociation,
   assertToolBuildProof,
@@ -1019,6 +1020,47 @@ test('accepts the first rotation and a later source-only release reusing its imm
   } finally {
     runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
   }
+})
+
+test('validates an applied historical infra receipt as a distinct ancestor of the current rotation source', async () => {
+  const fixture = makeReceiptHarness()
+  const sourceRevision = fixture.receipt.sourceRevision
+  const infraReceiptRef = fixture.putJson('app-infra', fixture.receipt, `tool-rotations/${sourceRevision}`)
+  const appliedBaseline = { schemaVersion: 'orgmaster.applied-tool-infra-baseline.v1', sourceRevision,
+    infraReceiptRef, serviceDataBaselineIntentRef: fixture.intent.baselineIntentRef }
+  const result = await assertAppliedToolInfrastructureBaseline({ root: sourceFixture.root, profile: fixture.profile,
+    transport: fixture.transport, appliedBaseline, currentSourceRevision: sourceFixture.ordinarySourceRevision,
+    baselineIntentRef: fixture.intent.baselineIntentRef, baseline: fixture.baseline })
+  assert.deepEqual(result.ref, infraReceiptRef)
+  assert.equal(result.receipt.sourceRevision, sourceRevision)
+  assert.equal(result.summary.evidenceScope, 'OWNER_SEALED_TOOL_IMAGE_ROTATION')
+})
+
+test('applied historical infra baseline rejects wrong source, URI, service/data baseline, and non-distinct current source', async () => {
+  const make = () => {
+    const fixture = makeReceiptHarness()
+    const sourceRevision = fixture.receipt.sourceRevision
+    const infraReceiptRef = fixture.putJson('app-infra', fixture.receipt, `tool-rotations/${sourceRevision}`)
+    return { fixture, appliedBaseline: { schemaVersion: 'orgmaster.applied-tool-infra-baseline.v1', sourceRevision,
+      infraReceiptRef, serviceDataBaselineIntentRef: fixture.intent.baselineIntentRef } }
+  }
+  for (const mutate of [
+    value => { value.sourceRevision = sourceFixture.baselineSourceRevision },
+    value => { value.infraReceiptRef = { ...value.infraReceiptRef, uri: value.infraReceiptRef.uri.replace('/tool-rotations/', '/releases/') } },
+    value => { value.serviceDataBaselineIntentRef = { ...value.serviceDataBaselineIntentRef, sha256: 'f'.repeat(64) } },
+  ]) {
+    const { fixture, appliedBaseline } = make()
+    mutate(appliedBaseline)
+    await assert.rejects(() => assertAppliedToolInfrastructureBaseline({ root: sourceFixture.root, profile: fixture.profile,
+      transport: fixture.transport, appliedBaseline, currentSourceRevision: sourceFixture.ordinarySourceRevision,
+      baselineIntentRef: fixture.intent.baselineIntentRef, baseline: fixture.baseline }),
+    error => error?.code === 'TOOL_ROTATION_APPLIED_INFRA_BASELINE_INVALID')
+  }
+  const { fixture, appliedBaseline } = make()
+  await assert.rejects(() => assertAppliedToolInfrastructureBaseline({ root: sourceFixture.root, profile: fixture.profile,
+    transport: fixture.transport, appliedBaseline, currentSourceRevision: appliedBaseline.sourceRevision,
+    baselineIntentRef: fixture.intent.baselineIntentRef, baseline: fixture.baseline }),
+  error => error?.code === 'TOOL_ROTATION_APPLIED_INFRA_BASELINE_INVALID')
 })
 
 test('accepts a released application-source successor that still references an older equivalent tool receipt', async () => {
