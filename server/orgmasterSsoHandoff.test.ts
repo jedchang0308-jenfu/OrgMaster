@@ -1,5 +1,6 @@
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createOrgmasterAuthMiddleware, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
@@ -242,6 +243,7 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
       ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on',
       ORGMASTER_JENFU_SSO_BROKER_ORIGIN: localBrokerOrigin,
       JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: 'owner-nonprod@project.iam.gserviceaccount.com',
+      CLOUDSDK_CONFIG: process.cwd(),
     }
     const base = await listen(value, deps)
     const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
@@ -254,7 +256,10 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(accepted.status).toBe(303)
     expect(googleAuthMocks.getClient).toHaveBeenCalledOnce()
     expect(googleAuthMocks.getIdTokenClient).not.toHaveBeenCalled()
-    expect(googleAuthMocks.GoogleAuth).toHaveBeenCalledWith({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] })
+    expect(googleAuthMocks.GoogleAuth).toHaveBeenCalledWith({
+      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+      keyFilename: path.join(process.cwd(), 'application_default_credentials.json'),
+    })
     expect(googleAuthMocks.Impersonated).toHaveBeenCalledWith({ sourceClient: { sourceClient: true }, targetPrincipal: 'owner-nonprod@project.iam.gserviceaccount.com', targetScopes: ['https://www.googleapis.com/auth/cloud-platform'], lifetime: 300 })
     expect(googleAuthMocks.impersonatedFetchIdToken).toHaveBeenCalledWith(localBrokerOrigin)
   })
@@ -329,6 +334,7 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
   it.each([
     ['empty target', { JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: '' }, 'JENFU_SSO_IMPERSONATION_TARGET_INVALID'],
     ['Cloud Run', { K_SERVICE: 'run-service', JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: 'owner-nonprod@project.iam.gserviceaccount.com' }, 'JENFU_SSO_IMPERSONATION_CLOUD_RUN_FORBIDDEN'],
+    ['relative ADC config', { CLOUDSDK_CONFIG: 'relative/gcloud' }, 'JENFU_SSO_ADC_CONFIG_INVALID'],
   ])('rejects %s local impersonation configuration before broker exchange', async (_label, extra, _errorCode) => {
     const value = runtime()
     const localBrokerOrigin = 'http://127.0.0.1:4317'
