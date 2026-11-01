@@ -35,10 +35,19 @@ test('tool rotation CLI limits applied-source recovery to apply mode and one exa
     apply: true,
     reuseId: null,
     recoveryRevision: revision,
+    appliedInfraBaselineSource: null,
+  })
+  assert.deepEqual(parseToolRotationArgs(['--check', `--applied-infra-baseline-source=${revision}`]), {
+    apply: false, reuseId: null, recoveryRevision: null, appliedInfraBaselineSource: revision,
+  })
+  assert.deepEqual(parseToolRotationArgs(['--apply', `--applied-infra-baseline-source=${revision}`]), {
+    apply: true, reuseId: null, recoveryRevision: null, appliedInfraBaselineSource: revision,
   })
   assert.throws(() => parseToolRotationArgs(['--check', `--recover-applied-source=${revision}`]), /ARGUMENT_INVALID/u)
   assert.throws(() => parseToolRotationArgs(['--apply', '--recover-applied-source=short']), /ARGUMENT_INVALID/u)
+  assert.throws(() => parseToolRotationArgs(['--check', '--applied-infra-baseline-source=short']), /ARGUMENT_INVALID/u)
   assert.throws(() => parseToolRotationArgs(['--apply', `--recover-applied-source=${revision}`, '--reuse-build-id=12345678-1234-1234-1234-123456789abc']), /ARGUMENT_INVALID/u)
+  assert.throws(() => parseToolRotationArgs(['--apply', `--recover-applied-source=${revision}`, `--applied-infra-baseline-source=${revision}`]), /ARGUMENT_INVALID/u)
 })
 
 test('applied-source recovery reuses only the sealed proof of the exact merged ancestor and successful QC', () => {
@@ -499,6 +508,64 @@ function bindProducerAbort(h, { releaseId, infraRef }) {
   }
   return { attemptIntent, attemptRef, prepareRef, rollbackRef, terminalRef, aborted }
 }
+function bindAppliedInfrastructureBaseline(h) {
+  const source = sourceFixture.rotationSourceRevision
+  Object.assign(h.state, fullState(oldImage, source, 10))
+  const afterStateRef = h.seed(`gs://${bucket}/receipts/tool-rotations/${source}/after-state.json`, h.state)
+  const receipt = { ownerApplicationId: 'orgmaster', sourceRevision: source,
+    migrationRunnerDigest: oldImage, controllerImageDigest: controllerImage, foundationManifestSha256: FOUNDATION,
+    toolRotation: { afterStateRef } }
+  const ref = h.seed(`gs://${bucket}/receipts/tool-rotations/${source}/app-infra.json`, receipt)
+  const expected = { schemaVersion: 'orgmaster.applied-tool-infra-baseline.v1', sourceRevision: source,
+    infraReceiptRef: ref, serviceDataBaselineIntentRef: h.baselineIntentRef }
+  let validation = null
+  h.input.appliedInfraBaselineSource = source
+  h.input.validateAppliedInfraBaseline = async options => {
+    validation = options
+    assert.deepEqual(options.appliedBaseline, expected)
+    assert.equal(options.currentSourceRevision, sourceRevision)
+    assert.deepEqual(options.baselineIntentRef, h.baselineIntentRef)
+    assert.deepEqual(options.baseline, h.baseline)
+    assert.deepEqual(options.receiptRead.ref, ref)
+    assert.deepEqual(options.receiptRead.value, receipt)
+    return { ref, receipt, summary: { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION' } }
+  }
+  return { source, ref, receipt, expected, afterStateRef, validation: () => validation }
+}
+test('read-only readiness bridges an exact applied historical infra receipt without changing the RELEASED control baseline', async () => {
+  const h = harness()
+  const bridge = bindAppliedInfrastructureBaseline(h)
+  const result = await executeToolImageRotation(h.input)
+  assert.equal(result.status, 'READY_FOR_IMAGE_BUILD')
+  assert.equal(bridge.validation().readLiveJob, true)
+  assert.deepEqual(h.baseline.intent.infraReceiptRef, h.infraRef)
+  assert.notDeepEqual(bridge.ref, h.infraRef)
+  assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
+})
+test('applied historical infra bridge rejects Terraform state that no longer equals the sealed after-state', async () => {
+  const h = harness()
+  bindAppliedInfrastructureBaseline(h)
+  h.state.stateMeta.serial += 1
+  await assert.rejects(executeToolImageRotation(h.input), /RECOVERY_AFTER_STATE_CHANGED/u)
+  assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 0 })
+})
+test('applied historical infra bridge cannot be combined with a pre-activation-aborted control head', async () => {
+  const h = harness()
+  const bridge = bindAppliedInfrastructureBaseline(h)
+  bindProducerAbort(h, { releaseId: 'ORGMASTER-ABORTED-BRIDGE-DENIED', infraRef: bridge.ref })
+  await assert.rejects(executeToolImageRotation(h.input), /APPLIED_INFRA_BASELINE_CONTROL_INVALID/u)
+  assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 0 })
+})
+test('prepared current-source rotation freezes the exact applied historical infra bridge', async () => {
+  const h = harness()
+  const bridge = bindAppliedInfrastructureBaseline(h)
+  const prepared = await stopAt(h, 'prepared')
+  assert.deepEqual(prepared.appliedInfraBaseline, bridge.expected)
+  delete prepared.appliedInfraBaseline
+  h.seed(`${h.prefix}/prepared.json`, reseal(prepared))
+  await assert.rejects(executeToolImageRotation({ ...h.input, apply: true }), /PREPARED_BASELINE_CHANGED/u)
+  assert.equal(h.calls.applies, 0)
+})
 test('read-only readiness resolves an exact sealed pre-activation abort to its released predecessor', async () => {
   const h = harness()
   const abort = bindProducerAbort(h, { releaseId: 'ORGMASTER-ABORTED-ATTEMPT', infraRef: h.infraRef })

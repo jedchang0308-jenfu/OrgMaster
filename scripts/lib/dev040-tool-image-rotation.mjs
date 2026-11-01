@@ -288,6 +288,35 @@ export function assertToolRotationState({ state, infraProfile, profile, sourceRe
   return manifest
 }
 
+/**
+ * A tool rotation can be applied successfully before a later application
+ * release advances the service/data control head.  This bridge treats that
+ * immutable rotation as the infrastructure baseline only after revalidating
+ * its complete native proof and ancestry.  It never changes the RELEASED
+ * service/data baseline or synthesizes an aborted release attempt.
+ */
+export async function assertAppliedToolInfrastructureBaseline({ root, profile, transport, appliedBaseline,
+  currentSourceRevision, baselineIntentRef, baseline, readLiveJob = true, rotationDepth = 0, receiptRead = null }) {
+  assertToolOwner(profile)
+  const sourceRevision = appliedBaseline?.sourceRevision
+  const infraReceiptRef = appliedBaseline?.infraReceiptRef
+  if (appliedBaseline?.schemaVersion !== 'orgmaster.applied-tool-infra-baseline.v1'
+    || !H40.test(sourceRevision ?? '') || !H40.test(currentSourceRevision ?? '')
+    || sourceRevision === currentSourceRevision || !gitIsAncestor(root, sourceRevision, currentSourceRevision)
+    || !same(appliedBaseline.serviceDataBaselineIntentRef, baselineIntentRef)
+    || same(infraReceiptRef, baseline?.intent?.infraReceiptRef)
+    || infraReceiptRef?.uri !== `gs://${profile.artifact.releaseBucket}/receipts/tool-rotations/${sourceRevision}/app-infra.json`) {
+    fail('APPLIED_INFRA_BASELINE_INVALID')
+  }
+  assertImmutableRef(infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])
+  const read = receiptRead ?? await transport.readJson(infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])
+  if (!same(read.ref, infraReceiptRef) || read.value?.sourceRevision !== sourceRevision) fail('APPLIED_INFRA_BASELINE_INVALID')
+  const summary = await assertOrdinaryToolRotation({ root, profile, transport,
+    intent: { sourceRevision, infraReceiptRef, baselineIntentRef }, receipt: read.value, baseline,
+    readLiveJob, rotationDepth: rotationDepth + 1 })
+  return { ref: read.ref, receipt: read.value, summary }
+}
+
 /** Native prepare validates immutable evidence; the operator also reads live state before dispatch. */
 export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline, readLiveJob = true, rotationDepth = 0 }) {
   assertToolOwner(profile); assertToolSeal(receipt)
@@ -342,11 +371,20 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
   if (controlCore.result === 'RELEASED') {
     if (proof.controlAttemptIntentRef != null || proof.controlPrepareRef != null || proof.controlRollbackRef != null
       || proof.controlTerminalRef != null
-      || controlCore.sourceRevision !== originalIntent.sourceRevision || controlCore.releaseId !== originalIntent.releaseId
-      || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
-    assertToolStateSourceContinuation(root, proof.baselineSourceRevision, originalIntent.sourceRevision, receipt.sourceRevision)
+      || controlCore.sourceRevision !== originalIntent.sourceRevision || controlCore.releaseId !== originalIntent.releaseId) fail('BASELINE_INVALID')
+    if (same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) {
+      if (proof.appliedInfraBaseline != null) fail('BASELINE_INVALID')
+      assertToolStateSourceContinuation(root, proof.baselineSourceRevision, originalIntent.sourceRevision, receipt.sourceRevision)
+    } else {
+      if (proof.appliedInfraBaseline == null) fail('BASELINE_INVALID')
+      await assertAppliedToolInfrastructureBaseline({ root, profile, transport,
+        appliedBaseline: proof.appliedInfraBaseline, currentSourceRevision: receipt.sourceRevision,
+        baselineIntentRef: proof.baselineIntentRef, baseline, readLiveJob: false,
+        rotationDepth, receiptRead: priorInfraRead })
+    }
   } else {
-    if (!proof.controlAttemptIntentRef || !proof.controlPrepareRef || !proof.controlRollbackRef || !proof.controlTerminalRef) fail('BASELINE_INVALID')
+    if (proof.appliedInfraBaseline != null || !proof.controlAttemptIntentRef || !proof.controlPrepareRef
+      || !proof.controlRollbackRef || !proof.controlTerminalRef) fail('BASELINE_INVALID')
     const [attemptRead, prepareRead, rollbackRead, terminalRead] = await Promise.all([
       read(proof.controlAttemptIntentRef), read(proof.controlPrepareRef), read(proof.controlRollbackRef), read(proof.controlTerminalRef),
     ])
