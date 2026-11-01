@@ -10,6 +10,7 @@ import { buildDev014ConsumerConformance } from './dev014-consumer-conformance.mj
 import { assertDev014PrincipalLifecycleContainment } from './dev014-principal-lifecycle-release.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_RELEASE_MODE, assertDev058RolePolicyAuthority } from './dev058-role-policy-migration.mjs'
 import { DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityReleaseAuthority } from './dev059-fms-authority-migration.mjs'
+import { DEV060_MIGRATION_ENTRY_COUNT, DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationReleaseAuthority } from './dev060-fms-catalog-activation-migration.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 export { candidateTagUriMatches } from './dev012-owner-release-runtime.mjs'
 
@@ -106,6 +107,7 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
   if (!isDev013) {
     if (values.readiness?.devId === 'DEV-058') return assertDev058RolePolicyAuthority(values.readiness, values.authorization, intent)
     if (values.readiness?.devId === 'DEV-059') return assertDev059FmsAuthorityReleaseAuthority(values.readiness, values.authorization, intent)
+    if (values.readiness?.devId === 'DEV-060') return assertDev060FmsCatalogActivationReleaseAuthority(values.readiness, values.authorization, intent)
     if (isDev057) {
       const principalContract = values.readiness?.slice === '057-PRINCIPAL-CONTRACT'
       const cutoverSource = values.readiness?.slice === '057-CUTOVER-SOURCE'
@@ -391,7 +393,7 @@ async function writeStage(transport, paths, profile, intent, stage, previousRece
 
 export function assertMigrationReceipt(value, profile, intent, { historical = false, allowForward = false, forwardPlan = null } = {}) {
   if (value?.schemaVersion === 'jenfu.dev012.stage-receipt.v1') {
-    if (allowForward && (forwardPlan?.replayOnly === true || [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE].includes(forwardPlan?.releaseMode))) fail('MIGRATION_RECEIPT_INVALID')
+    if (allowForward && (forwardPlan?.replayOnly === true || [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE].includes(forwardPlan?.releaseMode))) fail('MIGRATION_RECEIPT_INVALID')
     assertStage(value, profile, intent, 'migrate')
     if (value.facts?.disposition !== 'UNCHANGED_VERIFIED' || value.facts?.manifestSha256 !== intent.migrationManifestSha256 || canonicalize(value.facts?.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)) fail('MIGRATION_RECEIPT_INVALID')
     // Legacy migration receipts remain readable for rollback, never executable.
@@ -412,16 +414,20 @@ export function assertMigrationReceipt(value, profile, intent, { historical = fa
       const lifecycleV2Remediation = forwardPlan?.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION'
       const rolePolicyAppend = forwardPlan?.releaseMode === DEV058_RELEASE_MODE
       const fmsAuthorityAppend = forwardPlan?.releaseMode === DEV059_RELEASE_MODE
-      const expectedLedgerCount = fmsAuthorityAppend ? DEV059_MIGRATION_ENTRY_COUNT : rolePolicyAppend ? DEV058_MIGRATION_ENTRY_COUNT : lifecycleV2Remediation ? 31 : employeeNumberCommandReceiptV2Remediation ? 30 : principalGrantsV4Remediation ? 29 : principalGrantsV3Remediation ? 28 : cutoverSourceRemediation ? 27 : principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const fmsCatalogActivationAppend = forwardPlan?.releaseMode === DEV060_RELEASE_MODE
+      const expectedLedgerCount = fmsCatalogActivationAppend ? DEV060_MIGRATION_ENTRY_COUNT : fmsAuthorityAppend ? DEV059_MIGRATION_ENTRY_COUNT : rolePolicyAppend ? DEV058_MIGRATION_ENTRY_COUNT : lifecycleV2Remediation ? 31 : employeeNumberCommandReceiptV2Remediation ? 30 : principalGrantsV4Remediation ? 29 : principalGrantsV3Remediation ? 28 : cutoverSourceRemediation ? 27 : principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
       if (forwardPlan?.replayOnly === true && (!lifecycleV2Remediation || forwardPlan.pendingMigrationCount !== 0)) fail('MIGRATION_RECEIPT_INVALID')
       if (forwardPlan?.replayOnly === true && (value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev','jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
-      const maximumAppliedCount = fmsAuthorityAppend ? forwardPlan.pendingMigrationCount : rolePolicyAppend ? DEV058_MIGRATION_ENTRIES.length : lifecycleV2Remediation && forwardPlan?.replayOnly === true ? 0 : lifecycleV2Remediation || employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
+      const maximumAppliedCount = fmsCatalogActivationAppend ? 1 : fmsAuthorityAppend ? forwardPlan.pendingMigrationCount : rolePolicyAppend ? DEV058_MIGRATION_ENTRIES.length : lifecycleV2Remediation && forwardPlan?.replayOnly === true ? 0 : lifecycleV2Remediation || employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
       if (rolePolicyAppend && (forwardPlan.pendingMigrationCount !== DEV058_MIGRATION_ENTRIES.length
         || value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev', 'jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
       if (fmsAuthorityAppend && (!Number.isInteger(forwardPlan.pendingMigrationCount) || forwardPlan.pendingMigrationCount < 1
         || forwardPlan.pendingMigrationCount > DEV059_MIGRATION_ENTRY_COUNT - 31
+        || value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
+        || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev', 'jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
+      if (fmsCatalogActivationAppend && (forwardPlan.pendingMigrationCount !== 1
         || value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev', 'jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
@@ -578,6 +584,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (derived.controlledEnvironmentAuthority.releaseMode === 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD' && routine.releaseMode !== 'ROUTINE_UNCHANGED_RUNTIME') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === DEV058_RELEASE_MODE && routine.releaseMode !== DEV058_RELEASE_MODE) fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === DEV059_RELEASE_MODE && routine.releaseMode !== DEV059_RELEASE_MODE) fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if (derived.controlledEnvironmentAuthority.releaseMode === DEV060_RELEASE_MODE && routine.releaseMode !== DEV060_RELEASE_MODE) fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION' && routine.releaseMode !== 'DEV014_LOGIN_FIXTURE_CORRECTION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION' && routine.releaseMode !== 'DEV057_WRITER_FENCE_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION' && routine.releaseMode !== 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
@@ -648,7 +655,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const infra = (await transport.readJson(intent.infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])).value
     let toolImageLiveReadback = null
     if (infra.toolRotation) {
-      const controlledToolMigrationAppend = [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE].includes(prepare.value.facts.routine.releaseMode)
+      const controlledToolMigrationAppend = [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE].includes(prepare.value.facts.routine.releaseMode)
         && prepare.value.facts.routine.controlledTransition?.releaseMode === prepare.value.facts.routine.releaseMode
       if ((allowForward && !controlledToolMigrationAppend) || !prepare.value.facts.routine.toolImageRotation || !verifyToolJobReadback
         || prepare.value.facts.routine.toolImageRotation.migrationRunnerDigest !== infra.migrationRunnerDigest) fail('TOOL_JOB_READBACK_REQUIRED')
@@ -667,7 +674,8 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     let receipt = existing
     if (allowForward) {
       if (!receipt) {
-        await transport.runMigrationJob({ profile, deployment: deployment.value, outputUri: paths.migrate, deadlineAt: intent.deadlineAt })
+        await transport.runMigrationJob({ profile, deployment: deployment.value, outputUri: paths.migrate, deadlineAt: intent.deadlineAt,
+          migrationMode: prepare.value.facts.routine.releaseMode === DEV060_RELEASE_MODE ? DEV060_RELEASE_MODE : null })
         receipt = await readNamedJson(transport, paths.migrate, profile)
       }
     } else receipt ??= await writeStage(transport, paths, profile, intent, 'migrate', prepare.ref, { ...prepare.value.facts.routine, ...(toolImageLiveReadback ? { toolImageLiveReadback } : {}), disposition: 'UNCHANGED_VERIFIED', manifestSha256: intent.migrationManifestSha256, migrationsExecuted: 0, dataImportsExecuted: 0 })

@@ -1,5 +1,6 @@
 import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend } from './lib/dev059-fms-authority-migration.mjs'
+import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT, DEV060_MIGRATION_PREFIX_COUNT, DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationAppend } from './lib/dev060-fms-catalog-activation-migration.mjs'
 import { assertToolRotationReleaseCompatibility } from './lib/dev040-routine-release.mjs'
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
@@ -2366,13 +2367,15 @@ function rolePolicyHarness() {
   return h
 }
 
-test('verified image rotation can precede only an exact DEV-058/059 append without combining runtime or predecessor changes', () => {
+test('verified image rotation can precede only an exact DEV-058/059/060 append without combining runtime or predecessor changes', () => {
   const rotation = { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', ddlExecuted: 0 }
   const input = { toolRotation: rotation, toolRotationPredecessor: null,
     controlledTransition: { releaseMode: DEV058_RELEASE_MODE }, repair: false, runtimeChanged: false }
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility(input))
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input,
     controlledTransition: { releaseMode: DEV059_RELEASE_MODE } }))
+  assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input,
+    controlledTransition: { releaseMode: DEV060_RELEASE_MODE } }))
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input, controlledTransition: null }))
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input, toolRotation: null,
     toolRotationPredecessor: rotation, controlledTransition: null }))
@@ -2414,6 +2417,9 @@ test('DEV-058 reuses only the verified tool rotation source for its forward infr
   assert.equal(resolveMigrationInfraReceiptSource({
     controlledTransition: { releaseMode: DEV059_RELEASE_MODE }, toolRotation: verified, intentSourceRevision: newSource,
   }), oldSource)
+  assert.equal(resolveMigrationInfraReceiptSource({
+    controlledTransition: { releaseMode: DEV060_RELEASE_MODE }, toolRotation: verified, intentSourceRevision: newSource,
+  }), oldSource)
   const receipt = attachForwardInfra(rolePolicyHarness(), oldSource)
   assert.equal(assertDev013MigrationInfraReceipt(receipt, profile, oldSource), receipt)
 
@@ -2427,6 +2433,9 @@ test('DEV-058 reuses only the verified tool rotation source for its forward infr
   assert.throws(() => resolveMigrationInfraReceiptSource({
     controlledTransition: { releaseMode: DEV059_RELEASE_MODE }, toolRotation: { ...verified, ddlExecuted: 1 }, intentSourceRevision: newSource,
   }), /DEV059_TOOL_ROTATION_SOURCE_INVALID/u)
+  assert.throws(() => resolveMigrationInfraReceiptSource({
+    controlledTransition: { releaseMode: DEV060_RELEASE_MODE }, toolRotation: { ...verified, ddlExecuted: 1 }, intentSourceRevision: newSource,
+  }), /DEV060_TOOL_ROTATION_SOURCE_INVALID/u)
 
   assert.equal(resolveMigrationInfraReceiptSource({
     controlledTransition: { releaseMode: 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION' }, toolRotation: verified, intentSourceRevision: newSource,
@@ -2548,4 +2557,58 @@ test('DEV-059 CLI binds one exact FMS authority recipe and rejects mixed modes',
   const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
   assert.equal((source.match(/\.\.\.dev059Authority/g) ?? []).length, 2)
   assert.deepEqual(DEV059_FMS_AUTHORITY_REMEDIATION.migrationEntries, newBundle.bundle.entries.slice(-DEV059_FMS_AUTHORITY_MIGRATIONS.length).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
+})
+
+function fmsCatalogActivationHarness() {
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, DEV060_MIGRATION_PREFIX_COUNT), currentBundle: { bundle: newBundle.bundle } })
+  const common = { devId: 'DEV-060', slice: '060-FMS-CATALOG-ACTIVATION', remediation: DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION }
+  h.input.values.authorization = { ...h.input.values.authorization, ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
+  h.input.values.readiness = { ...h.input.values.readiness, ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
+  attachForwardInfra(h)
+  return h
+}
+
+test('DEV-060 admits only the exact 040-to-041 catalog activation append', async () => {
+  const h = fmsCatalogActivationHarness()
+  const plan = await verifyRoutineRelease(h.input)
+  assert.equal(plan.releaseMode, DEV060_RELEASE_MODE)
+  assert.equal(plan.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(plan.pendingMigrationCount, 1)
+  assert.equal(plan.databaseVerification, 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
+  assert.equal(assertDev060FmsCatalogActivationAppend(prefixBundle(newBundle.bundle, DEV060_MIGRATION_PREFIX_COUNT), newBundle.bundle).pendingMigrationCount, 1)
+  assert.deepEqual(DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION.migrationEntries,
+    newBundle.bundle.entries.slice(-1).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
+
+  for (const count of [37, 39]) assert.throws(() => assertDev060FmsCatalogActivationAppend(prefixBundle(newBundle.bundle, count), newBundle.bundle), /DEV060_MIGRATION_APPEND_INVALID/u)
+  const changed = structuredClone(newBundle.bundle)
+  changed.entries.at(-1).sourceSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev060FmsCatalogActivationAppend(prefixBundle(newBundle.bundle, DEV060_MIGRATION_PREFIX_COUNT), changed), /DEV060_MIGRATION_APPEND_INVALID/u)
+
+  const runtimeDrift = fmsCatalogActivationHarness()
+  runtimeDrift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_SESSION_HASH_PEPPER = '2'
+  await assert.rejects(() => verifyRoutineRelease(runtimeDrift.input), /DEV060_RUNTIME_CHANGED/u)
+  const authorityDrift = fmsCatalogActivationHarness()
+  authorityDrift.input.values.authorization.remediation = DEV059_FMS_AUTHORITY_REMEDIATION
+  await assert.rejects(() => verifyRoutineRelease(authorityDrift.input), /DEV060_FMS_CATALOG_ACTIVATION_INVALID/u)
+})
+
+test('DEV-060 CLI binds one migration-041 recipe and rejects every mixed controlled mode', () => {
+  const ref = `gs://${bucket}/receipts/tool-rotations/${'c'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`
+  const args = ['--dev060-fms-catalog-activation-append', `--dev060-infra-ref=${ref}`]
+  const recoveryRef = `gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/${'d'.repeat(40)}.json#sha256=${'e'.repeat(64)}`
+  for (const mode of ['--check', '--prepare-only']) {
+    const parsed = parseDeployProductionArgs([mode, ...args])
+    assert.equal(parsed.dev060FmsCatalogActivationAppend, true)
+    assert.equal(parsed.infraOption, 'dev060')
+  }
+  for (const invalid of [
+    [args[0]], [args[1]], [...args, args[0]], [...args, '--dev058-role-policy-append'],
+    [...args, '--dev059-fms-authority-append'], [...args, '--dev014-activate'],
+    [...args, '--dev057-principal-grants-v4-remediation'], [...args, `--tool-image-rotation-ref=${ref}`],
+    [...args, '--reuse-aborted-app-artifact'], [...args, `--principal-only-recovery-ref=${recoveryRef}`],
+    [args[0], `--dev060-infra-ref=gs://${bucket}/receipts/releases/DEV060-FMS/app-infra.json#sha256=${'b'.repeat(64)}`],
+  ]) assert.throws(() => parseDeployProductionArgs(invalid))
+  const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
+  assert.equal((source.match(/\.\.\.dev060Authority/g) ?? []).length, 2)
+  assert.equal(DEV060_MIGRATION_ENTRY_COUNT, 39)
 })

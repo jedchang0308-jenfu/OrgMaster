@@ -333,3 +333,9 @@ OrgMaster的auth mode只驗runtime target／listener／私有profile與既定cat
 FMS 視窗未回覆 issuance 時，OrgMaster 的15秒等待只解除介面忙碌，保留原 operation 查詢並標示未知；不宣稱伺服器拒絕、不取消已離開分頁的 FMS 寫入、不重送。等待結束後忽略晚到的 issuance，避免背景新增 OrgMaster activate；已收到 checkpoint 並送出的 activate 不受此介面計時器中止。此分支由 React／mock transport 測試驗證，尚非新增 Chrome 或正式證據。
 
 正式伺服器在 `NODE_ENV=production` 且 Cloud Run `K_SERVICE=orgmaster-prod` 時，預設使用既有 FMS canonical origin 與 formal realm；其他環境仍使用明確設定。顯式 local 或無效 override 在正式環境會拒絕，不能退回預設值掩蓋設定錯誤。此部署預設已有來源單元測試，正式 provider／整鏈證據另驗。
+
+### 14.1 migration 041 專用正式發布 lane
+
+正式 migration 041 只能由 `deploy:production -- --dev060-fms-catalog-activation-append --dev060-infra-ref=URI#sha256=HASH` 選取。authorization／readiness 固定為 `devId=DEV-060`、`slice=060-FMS-CATALOG-ACTIVATION`，remediation 只綁 `dev060-orgmaster-041`；不得沿 DEV-059 名義、普通 tool rotation、其他 controlled mode 或任意 migration 參數執行。既有 ten-stage workflow 與單一 `releaseCapsuleRef` input 不變。
+
+DEV-060 runner mode 只接受 production ledger 已完整驗證的 38 筆（040）→39 筆（041）單筆 forward append，或完整39筆的零DDL replay。37筆或更早、foreign prefix、順序／version／name／checksum漂移均須在 `BEGIN` 或 migration SQL 前拒絕；成功收據只能是 `applied=1,replayed=38` 或 `applied=0,replayed=39`。001–040與39筆profile維持原identity，不因本lane重寫；DEV-059既有恢復範圍亦保持不變。
