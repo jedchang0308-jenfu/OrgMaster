@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import test from 'node:test'
 import { crc32cBase64 } from './lib/dev012-production-migration-runner.mjs'
 import { assertControllerImageResolutionProof, assertRuntimeConfig, buildRuntimeConfig, createOwnerTransport, sha256 } from './lib/dev012-owner-release-runtime.mjs'
+import { DEV060_RELEASE_MODE } from './lib/dev060-fms-catalog-activation-migration.mjs'
 
 const H40 = 'a'.repeat(40)
 const H64 = 'b'.repeat(64)
@@ -303,20 +304,22 @@ test('migration job readback rejects mutable target fields before jobs.run', asy
   const job = { name: jobName, template: { taskCount: 1, parallelism: 1, template: { serviceAccount: profile.migrations.serviceAccount, maxRetries: 0, timeout: '1800s', containers: [{ name: 'migration', image: `runner@sha256:${H64}`, env: Object.entries(environment).map(([name, value]) => ({ name, value })), volumeMounts: [{ name: 'cloudsql', mountPath: '/cloudsql' }] }], volumes: [{ name: 'cloudsql', cloudSqlInstance: { instances: ['jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg'] } }] } } }
   let runCalls = 0
   let listCalls = 0
-  const requestedArgs = ['--bundle-ref', `gs://${bucket}/source/migration-bundles/b.json`, '--bundle-sha256', H64, '--source-revision', H40, '--output-ref', `gs://${bucket}/receipts/migrate.json`]
+  const requestedArgs = ['--bundle-ref', `gs://${bucket}/source/migration-bundles/b.json`, '--bundle-sha256', H64, '--source-revision', H40, '--output-ref', `gs://${bucket}/receipts/migrate.json`, '--migration-mode', DEV060_RELEASE_MODE]
   const executionName = `${jobName}/executions/e1`
   const execution = { name: executionName, template: { containers: [{ name: 'migration', args: requestedArgs }] }, succeededCount: 1, failedCount: 0, completionTime: '2026-09-08T00:00:00Z', conditions: [{ type: 'Completed', state: 'CONDITION_SUCCEEDED' }] }
   const requestedUrls = []
+  let runBody = null
   const transport = createOwnerTransport({ token: 'x'.repeat(32), fetchImpl: async (url, options = {}) => {
     requestedUrls.push(String(url))
-    if (options.method === 'POST') { runCalls += 1; return json({ name: 'projects/p/locations/r/operations/run-1', done: true, response: { name: 'projects/p/locations/r/executions/e1' } }) }
+    if (options.method === 'POST') { runCalls += 1; runBody = JSON.parse(options.body); return json({ name: 'projects/p/locations/r/operations/run-1', done: true, response: { name: 'projects/p/locations/r/executions/e1' } }) }
     if (String(url).endsWith('/executions?pageSize=100')) return json({ executions: listCalls++ === 0 ? [] : [execution] })
     if (String(url).endsWith('/executions/e1')) return json(execution)
     return json(job)
   } })
   const deployment = { migrationRunnerDigest: `runner@sha256:${H64}`, migrationBundleRef: { uri: `gs://${bucket}/source/migration-bundles/b.json`, sha256: H64 }, sourceRevision: H40 }
-  await transport.runMigrationJob({ profile, deployment, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z' })
+  await transport.runMigrationJob({ profile, deployment, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z', migrationMode: DEV060_RELEASE_MODE })
   assert.equal(runCalls, 1)
+  assert.deepEqual(runBody.overrides.containerOverrides[0].args, requestedArgs)
   assert.equal(requestedUrls.some((url) => url.includes('/operations/')), false)
   const drifted = structuredClone(job)
   drifted.template.template.containers[0].env.find((row) => row.name === 'POSTGRES_DATABASE').value = 'jenfu_stg'
@@ -330,6 +333,7 @@ test('schema migration transport rejects initialization inputs before any provid
   for (const field of ['productionDataRef', 'firstPrincipalBootstrapRef']) {
     await assert.rejects(() => transport.runMigrationJob({ profile, deployment: { [field]: { uri: 'gs://old/input.json', sha256: H64 } }, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z' }), /MIGRATION_BOOTSTRAP_INPUT_DENIED/u)
   }
+  await assert.rejects(() => transport.runMigrationJob({ profile, deployment: {}, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z', migrationMode: 'FOREIGN_MODE' }), /MIGRATION_MODE_INVALID/u)
   assert.equal(calls, 0)
 })
 

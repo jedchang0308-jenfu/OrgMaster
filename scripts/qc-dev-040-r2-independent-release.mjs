@@ -117,12 +117,15 @@ const dir = path.join(root, 'output', 'dev-040-r2', 's1b', runId)
 fs.mkdirSync(dir, { recursive: true })
 const files = [
   'ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md',
+  'ai-doc/specs/DEV-040-release-recovery-reference.md',
+  'ai-doc/specs/DEV-060-app-scoped-frontend-permission-projection.md',
   'ai-doc/specs/DEV-052-managed-identity-lifecycle-producer-contract.md',
   'ai-doc/qa/DEV-040-R2-independent-production-release-validation-plan.md',
   'ai-doc/dev_task.md', 'ai-doc/documentation_map.md',
   'config/release/dev040-orgmaster-independent-production-v3.json', 'config/release/dev040-production-release-infra-plan.json',
   'scripts/lib/dev040-orgmaster-independent-release.mjs', 'scripts/dev040-orgmaster-independent-release.mjs',
-  'scripts/lib/dev058-role-policy-migration.mjs',
+  'scripts/lib/dev058-role-policy-migration.mjs', 'scripts/lib/dev059-fms-authority-migration.mjs',
+  'scripts/lib/dev060-fms-catalog-activation-migration.mjs',
   'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.mjs',
   'scripts/dev040-production-migration-runner.test.mjs', 'scripts/qc-dev-040-r2-independent-release.mjs',
   'scripts/lib/orgmaster-production-database.mjs', 'scripts/lib/orgmaster-production-database.test.mjs',

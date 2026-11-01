@@ -14,7 +14,8 @@ import {
   planMigration,
   sha256,
 } from './lib/dev012-production-migration-runner.mjs'
-import { TARGET, runMain } from './dev040-production-migration-runner.mjs'
+import { DEV060_TARGET, TARGET, parseOrgmasterRunnerArgs, runMain } from './dev040-production-migration-runner.mjs'
+import { DEV060_RELEASE_MODE } from './lib/dev060-fms-catalog-activation-migration.mjs'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 
@@ -117,6 +118,7 @@ test('DEV-058/059/060 runner entry count matches the controlled production profi
   assert.equal(TARGET.entryCount, 39)
   assert.equal(profile.migrations.baselineCount, 10)
   assert.deepEqual(TARGET.allowedExistingLedgerCounts, [31, 32, 33, 34, 35, 36, 37, 38, 39])
+  assert.deepEqual(DEV060_TARGET.allowedExistingLedgerCounts, [38, 39])
   assert.deepEqual(profile.migrations.entries.slice(31).map((entry) => entry.version), ['dev058-orgmaster-034', 'dev058-orgmaster-035', 'dev058-orgmaster-036', 'dev058-orgmaster-037', 'dev059-orgmaster-038', 'dev065-orgmaster-039', 'dev065-orgmaster-040', 'dev060-orgmaster-041'])
   const input = fixture()
   assertMigrationBundle(input.bundle, { target: TARGET, sourceRevision: H40, bundleSha256: input.bundleSha256, bytes: input.bytes })
@@ -130,8 +132,11 @@ test('S1B-21 OrgMaster runner accepts only exact production target and refs', ()
   assert.throws(() => parseGsUri('gs://jenfu-platform-prod-aipdm-release/source/migration-bundles/a.json', TARGET.releaseBucket, 'source/migration-bundles'), /GCS_REF_INVALID/)
   const args = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', 'b'.repeat(64), '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/r/migrate.json`, '--data-ref', `gs://${TARGET.releaseBucket}/source/production-data/REL-001/data.json`, '--data-sha256', 'c'.repeat(64), '--bootstrap-ref', `gs://${TARGET.releaseBucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, '--bootstrap-sha256', 'd'.repeat(64)]
   assert.equal(parseRunnerArgs(args.slice(0, 8)).sourceRevision, H40)
+  assert.equal(parseOrgmasterRunnerArgs([...args.slice(0, 8), '--migration-mode', DEV060_RELEASE_MODE]).migrationMode, DEV060_RELEASE_MODE)
   assert.throws(() => parseRunnerArgs(args.slice(0, 6)), /MIGRATION_ARGUMENT_INVALID/)
   assert.throws(() => parseRunnerArgs(args), /MIGRATION_ARGUMENT_INVALID/)
+  assert.throws(() => parseOrgmasterRunnerArgs([...args.slice(0, 8), '--migration-mode', 'DEV059_FMS_AUTHORITY_APPEND']), /MIGRATION_ARGUMENT_INVALID/)
+  assert.throws(() => parseOrgmasterRunnerArgs([...args.slice(0, 8), '--migration-mode', DEV060_RELEASE_MODE, '--migration-mode', DEV060_RELEASE_MODE]), /MIGRATION_ARGUMENT_INVALID/)
   assert.equal(crc32cBase64(Buffer.from('123456789')), '4waSgw==')
 })
 
@@ -172,6 +177,58 @@ test('OrgMaster pre-write ledger guard rejects 030/010/029/040 and invalid prefi
     await assert.rejects(() => executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(corrupt, corruptStatements), target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true }), /MIGRATION_LEDGER_PREFIX_MISMATCH/)
     assert.equal(writesStarted(corruptStatements), false, `${field} drift must fail before append SQL or ledger insert`)
   }
+})
+
+test('DEV-060 fixed runner mode applies only 38-to-39 and safely replays full 39', async () => {
+  const input = fixture()
+  for (const count of DEV060_TARGET.allowedExistingLedgerCounts) {
+    const ledger = ledgerFor(input.bundle, count)
+    const statements = []
+    const receipt = await executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(ledger, statements), target: DEV060_TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true })
+    assert.equal(receipt.ledgerCount, 39)
+    assert.equal(receipt.applied, 39 - count)
+    assert.equal(receipt.replayed, count)
+    assert.equal(statements.filter(sql => sql === 'BEGIN').length, 39 - count)
+  }
+})
+
+test('DEV-060 fixed runner rejects 37 rows, foreign prefix and checksum drift before SQL', async () => {
+  const input = fixture()
+  const cases = []
+  cases.push(ledgerFor(input.bundle, 37))
+  const foreign = ledgerFor(input.bundle, 38)
+  foreign[37].version = 'foreign-version'
+  cases.push(foreign)
+  const checksum = ledgerFor(input.bundle, 38)
+  checksum[37].checksum_sha256 = 'f'.repeat(64)
+  cases.push(checksum)
+  for (const ledger of cases) {
+    const statements = []
+    await assert.rejects(() => executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(ledger, statements), target: DEV060_TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true }), /MIGRATION_EXISTING_LEDGER_COUNT_INVALID|MIGRATION_LEDGER_PREFIX_MISMATCH/u)
+    assert.equal(writesStarted(statements), false)
+  }
+})
+
+test('DEV-060 Job entrypoint selects the fixed 38-or-39 target', async () => {
+  const input = fixture()
+  const ledger = ledgerFor(input.bundle, 37)
+  const statements = []
+  const database = fakeDatabase(ledger, statements)
+  class Client {
+    async connect() {}
+    async end() {}
+    async query(sql, values) { return database.query(sql, values) }
+  }
+  let published = false
+  const fetchImpl = async (url, options = {}) => {
+    if (String(url).startsWith('http://metadata.google.internal/')) return Response.json({ access_token: 'x'.repeat(30), expires_in: 3600 })
+    if (options.method === 'POST') { published = true; return Response.json({ generation: '2' }) }
+    return String(url).includes('alt=media') ? new Response(input.bytes) : Response.json({ generation: '1', crc32c: crc32cBase64(input.bytes) })
+  }
+  const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`, '--migration-mode', DEV060_RELEASE_MODE]
+  await assert.rejects(() => runMain({ argv, environment, Client, fetchImpl }), /MIGRATION_EXISTING_LEDGER_COUNT_INVALID/u)
+  assert.equal(writesStarted(statements), false)
+  assert.equal(published, false)
 })
 
 test('runner rejects rehashed prefix or 034-041 tampering before database construction', async () => {
