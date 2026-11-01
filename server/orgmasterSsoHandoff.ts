@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import path from 'node:path'
 import { GoogleAuth, Impersonated } from 'google-auth-library'
 import type { OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import { ORGMASTER_SESSION_MAX_AGE_SECONDS } from './orgmasterAuthConfig'
@@ -161,7 +162,15 @@ async function defaultServiceToken(audience: string, environment: NodeJS.Process
   if (environment.NODE_ENV !== 'development') throw new Error('JENFU_SSO_IMPERSONATION_DEVELOPMENT_ONLY')
   const targetPrincipal = validImpersonationTarget(configuredTarget)
   const loopbackAudience = validLoopbackAudience(audience, environment)
-  const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] })
+  // google-auth-library resolves ADC from the default gcloud directory and does
+  // not consistently honor CLOUDSDK_CONFIG. The isolated local SSO lane keeps
+  // ADC in its task-specific gcloud directory, so bind that file explicitly.
+  const configDirectory = environment.CLOUDSDK_CONFIG?.trim()
+  if (configDirectory && !path.isAbsolute(configDirectory)) throw new Error('JENFU_SSO_ADC_CONFIG_INVALID')
+  const auth = new GoogleAuth({
+    scopes: [CLOUD_PLATFORM_SCOPE],
+    ...(configDirectory ? { keyFilename: path.join(configDirectory, 'application_default_credentials.json') } : {}),
+  })
   const sourceClient = await auth.getClient()
   const impersonated = new Impersonated({ sourceClient, targetPrincipal, targetScopes: [CLOUD_PLATFORM_SCOPE], lifetime: 300 })
   return impersonated.fetchIdToken(loopbackAudience)
