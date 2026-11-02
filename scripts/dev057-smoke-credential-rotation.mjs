@@ -96,7 +96,7 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef })
   const toolRead = await transport.readJson(toolRotationRef, bucket, ['receipts/tool-rotations'])
   const toolEvidence = await assertOrdinaryToolRotation({ root, profile, transport,
-    intent: { ...baseline.intent, sourceRevision: git.sourceRevision, infraReceiptRef: toolRotationRef, baselineIntentRef },
+    intent: { ...baseline.intent, sourceRevision: git.sourceRevision, infraReceiptRef: toolRotationRef },
     receipt: toolRead.value, baseline })
   if (toolEvidence.candidateSmokeRefreshTokenSecretVersion !== previousVersion) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
   const service = await transport.getService(profile)
