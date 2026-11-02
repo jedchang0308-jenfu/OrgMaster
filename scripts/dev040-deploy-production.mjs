@@ -130,15 +130,19 @@ export function parseDeployProductionArgs(argv) {
   const dev058Mode = Number(options.dev058RolePolicyAppend)
   const dev059Mode = Number(options.dev059FmsAuthorityAppend)
   const dev060Mode = Number(options.dev060FmsCatalogActivationAppend)
+  const dev060SmokeRotationContinuation = dev060Mode === 1 && options.toolRotationRef !== null && options.smokeRotationRef !== null && options.infraOption === null
   if (dev058Mode && (controlled || dev014Mode || dev057Mode || dev059Mode || dev060Mode)) throw new Error('DEV058_CONTROLLED_TRANSITION_INPUT_INVALID')
   if ((dev058Mode === 1) !== (options.infraOption === 'dev058')) throw new Error('DEV058_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (dev059Mode && (controlled || dev014Mode || dev057Mode || dev058Mode || dev060Mode)) throw new Error('DEV059_CONTROLLED_TRANSITION_INPUT_INVALID')
   if ((dev059Mode === 1) !== (options.infraOption === 'dev059')) throw new Error('DEV059_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
-  if (dev060Mode && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || options.toolRotationRef
-    || options.smokeRotationRef || options.infraReuseRef || options.principalOnlyRecoveryRef || options.reuseAbortedAppArtifact)) throw new Error('DEV060_CONTROLLED_TRANSITION_INPUT_INVALID')
-  if ((dev060Mode === 1) !== (options.infraOption === 'dev060')) throw new Error('DEV060_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
+  if (dev060Mode && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode
+    || (options.toolRotationRef && !dev060SmokeRotationContinuation)
+    || (options.smokeRotationRef && !dev060SmokeRotationContinuation)
+    || options.infraReuseRef || options.principalOnlyRecoveryRef
+    || (options.reuseAbortedAppArtifact && !dev060SmokeRotationContinuation))) throw new Error('DEV060_CONTROLLED_TRANSITION_INPUT_INVALID')
+  if ((dev060Mode === 1) !== (options.infraOption === 'dev060' || dev060SmokeRotationContinuation)) throw new Error('DEV060_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (options.check && options.prepareOnly) throw new Error('INVALID_ARGUMENTS')
-  if (options.toolRotationRef && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || dev060Mode || options.infraReceiptRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('TOOL_ROTATION_ORDINARY_ONLY')
+  if (options.toolRotationRef && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || (dev060Mode && !dev060SmokeRotationContinuation) || options.infraReceiptRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('TOOL_ROTATION_ORDINARY_ONLY')
   if (controlled !== 0 && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && (!['off', 'on'].includes(options.handoffMode) || !['guard', 'activate', 'rollback'].includes(options.action))) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INVALID')
   if (dev014Mode > 1 || (dev014Mode === 1 && controlled !== 0)) throw new Error('DEV014_CONTROLLED_TRANSITION_INPUT_INVALID')
@@ -151,9 +155,9 @@ export function parseDeployProductionArgs(argv) {
   if ((dev057Mode === 1) !== (options.infraOption === 'dev057') && controlled === 0) throw new Error('DEV057_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && options.infraReceiptRef && options.infraOption !== 'dev013') throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (options.infraReceiptRef && controlled !== 3 && dev014Mode !== 1 && dev057Mode !== 1 && dev058Mode !== 1 && dev059Mode !== 1 && dev060Mode !== 1) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
-  if (options.smokeRotationRef && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || dev060Mode || options.infraReceiptRef || options.principalOnlyRecoveryRef)) throw new Error('SMOKE_ROTATION_ORDINARY_ONLY')
+  if (options.smokeRotationRef && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || (dev060Mode && !dev060SmokeRotationContinuation) || options.infraReceiptRef || options.principalOnlyRecoveryRef)) throw new Error('SMOKE_ROTATION_ORDINARY_ONLY')
   if (options.infraReuseRef && (controlled || (dev014Mode && !options.dev014PrincipalLifecycleEnable) || dev057Mode || dev058Mode || dev059Mode || dev060Mode || options.infraReceiptRef || options.smokeRotationRef)) throw new Error('SMOKE_REUSE_ORDINARY_ONLY')
-  if (options.reuseAbortedAppArtifact && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || dev060Mode || options.infraReceiptRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('APP_ARTIFACT_REUSE_ORDINARY_ONLY')
+  if (options.reuseAbortedAppArtifact && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || (dev060Mode && !dev060SmokeRotationContinuation) || options.infraReceiptRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('APP_ARTIFACT_REUSE_ORDINARY_ONLY')
   return options
 }
 

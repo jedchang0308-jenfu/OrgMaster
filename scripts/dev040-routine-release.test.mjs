@@ -879,6 +879,20 @@ test('DEV-057 employee number command v2 CLI mode is exclusive and requires its 
  assert.throws(()=>parseDeployProductionArgs(['--prepare-only','--dev057-employee-number-command-receipt-v2-remediation','--dev057-principal-grants-v4-remediation',`--dev057-infra-ref=${ref}`]),/DEV057_CONTROLLED_TRANSITION_INPUT_INVALID/);
 });
 
+test('DEV-060 smoke rotation continuation binds the prior tool receipt and may reuse the aborted application artifact', () => {
+ const toolRef=`gs://${bucket}/receipts/tool-rotations/${'a'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`;
+ const smokeRef=`gs://${bucket}/receipts/releases/DEV060-SMOKE-ROTATION/app-infra.json#sha256=${'c'.repeat(64)}`;
+ const options=parseDeployProductionArgs(['--check','--dev060-fms-catalog-activation-append',`--tool-image-rotation-ref=${toolRef}`,`--smoke-rotation-ref=${smokeRef}`,'--reuse-aborted-app-artifact']);
+ assert.equal(options.dev060FmsCatalogActivationAppend,true);
+ assert.equal(options.toolRotationRef.uri,toolRef.slice(0,toolRef.indexOf('#')));
+ assert.equal(options.toolRotationRef.sha256,'b'.repeat(64));
+ assert.equal(options.smokeRotationRef.uri,smokeRef.slice(0,smokeRef.indexOf('#')));
+ assert.equal(options.smokeRotationRef.sha256,'c'.repeat(64));
+ assert.equal(options.reuseAbortedAppArtifact,true);
+ assert.equal(options.infraOption,null);
+ assert.throws(()=>parseDeployProductionArgs(['--check','--dev060-fms-catalog-activation-append',`--smoke-rotation-ref=${smokeRef}`]),/DEV060_CONTROLLED_TRANSITION_INPUT_INVALID/);
+});
+
 
 function smokeContinuationHarness({ controllerImageDigest = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-abort-controller@sha256:' + '3'.repeat(64) } = {}) {
   const h = harness()

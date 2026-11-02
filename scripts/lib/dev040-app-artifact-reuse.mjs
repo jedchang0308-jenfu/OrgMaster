@@ -25,6 +25,7 @@ export const RELEASE_EXECUTOR_ONLY_PATHS = Object.freeze([
   'scripts/lib/dev040-tool-terraform.test.mjs',
   'scripts/lib/dev012-owner-stage-executor.mjs',
   'scripts/lib/dev057-smoke-rotation-continuation.mjs',
+  'scripts/dev040-routine-release.test.mjs',
 ].sort())
 
 function fail(code) { throw Object.assign(new Error(code), { code }) }

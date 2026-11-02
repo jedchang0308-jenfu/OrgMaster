@@ -813,21 +813,24 @@ export function resolveRoutineToolRotationRef(values, toolRotationRef = null) {
 // verified infra receipt before its separately authorized exact schema append.
 // A second predecessor receipt, runtime change or other controlled mode cannot
 // inherit this allowance.
-export function assertToolRotationReleaseCompatibility({ toolRotation, toolRotationPredecessor, controlledTransition, repair, runtimeChanged }) {
+export function assertToolRotationReleaseCompatibility({ toolRotation, toolRotationPredecessor, controlledTransition, repair, runtimeChanged, allowControlledSmokeRotation = false }) {
   if (!toolRotation && !toolRotationPredecessor) return
+  const controlledSmokeRotation = controlledTransition?.releaseMode === DEV060_RELEASE_MODE && allowControlledSmokeRotation === true
   if (repair || runtimeChanged || (controlledTransition
-    && (toolRotationPredecessor || ![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE].includes(controlledTransition.releaseMode)))) fail('TOOL_ROTATION_ORDINARY_ONLY')
+    && ((toolRotationPredecessor && !controlledSmokeRotation) || ![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE].includes(controlledTransition.releaseMode)))) fail('TOOL_ROTATION_ORDINARY_ONLY')
 }
 
 // DEV-058/059/060 may append their exact schema after an already verified tool-image
 // rotation.  The infra receipt remains bound to that rotation source; all
 // other forward transitions stay bound to the current release source.
-export function resolveMigrationInfraReceiptSource({ controlledTransition, toolRotation, intentSourceRevision }) {
-  if (![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE].includes(controlledTransition?.releaseMode) || toolRotation == null) return intentSourceRevision
-  if (toolRotation.evidenceScope !== 'OWNER_SEALED_TOOL_IMAGE_ROTATION' || toolRotation.ddlExecuted !== 0
-    || !H40.test(toolRotation.sourceRevision ?? '')
-    || !['VERIFIED', 'REQUIRED_AT_DEPLOYER_MIGRATE'].includes(toolRotation.liveJobReadback)) fail(controlledTransition.releaseMode === DEV060_RELEASE_MODE ? 'DEV060_TOOL_ROTATION_SOURCE_INVALID' : controlledTransition.releaseMode === DEV059_RELEASE_MODE ? 'DEV059_TOOL_ROTATION_SOURCE_INVALID' : 'DEV058_TOOL_ROTATION_SOURCE_INVALID')
-  return toolRotation.sourceRevision
+export function resolveMigrationInfraReceiptSource({ controlledTransition, toolRotation, toolRotationPredecessor = null, intentSourceRevision }) {
+  if (![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE].includes(controlledTransition?.releaseMode)) return intentSourceRevision
+  const rotation = toolRotation ?? toolRotationPredecessor?.continuationEvidence ?? null
+  if (rotation == null) return intentSourceRevision
+  if (rotation.evidenceScope !== 'OWNER_SEALED_TOOL_IMAGE_ROTATION' || rotation.ddlExecuted !== 0
+    || !H40.test(rotation.sourceRevision ?? '')
+    || !['VERIFIED', 'REQUIRED_AT_DEPLOYER_MIGRATE'].includes(rotation.liveJobReadback)) fail(controlledTransition.releaseMode === DEV060_RELEASE_MODE ? 'DEV060_TOOL_ROTATION_SOURCE_INVALID' : controlledTransition.releaseMode === DEV059_RELEASE_MODE ? 'DEV059_TOOL_ROTATION_SOURCE_INVALID' : 'DEV058_TOOL_ROTATION_SOURCE_INVALID')
+  return rotation.sourceRevision
 }
 
 export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, toolRotationRef = null, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
@@ -904,8 +907,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
       intent: { ...intent, infraReceiptRef: toolRotationRef }, receipt: read.value, baseline, readLiveJob: readLiveToolJob })
     toolRotationPredecessor = { receipt: read.value, continuationEvidence: toolRotationPredecessor, receiptRef: toolRotationRef }
   }
+  const controlledSmokeRotation = controlledTransition?.releaseMode === DEV060_RELEASE_MODE && values.infra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
   assertToolRotationReleaseCompatibility({ toolRotation, toolRotationPredecessor, controlledTransition,
-    repair: Boolean(baseline.repair), runtimeChanged: !same(runtimeConfig, baselineRuntime) })
+    repair: Boolean(baseline.repair), runtimeChanged: !same(runtimeConfig, baselineRuntime), allowControlledSmokeRotation: controlledSmokeRotation })
   const appReuseLeft = values.authorization?.appArtifactReuse ?? null
   const appReuseRight = values.readiness?.appArtifactReuse ?? null
   if (!same(appReuseLeft, appReuseRight)) fail('APP_ARTIFACT_REUSE_AUTHORITY_MISMATCH')
@@ -989,7 +993,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (migration.migrationDisposition === 'FORWARD_APPLY') {
     if (!infraChanged) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
     assertDev013MigrationInfraReceipt(values.infra, profile, resolveMigrationInfraReceiptSource({
-      controlledTransition, toolRotation, intentSourceRevision: intent.sourceRevision,
+      controlledTransition, toolRotation, toolRotationPredecessor, intentSourceRevision: intent.sourceRevision,
     }))
     if (migration.replayOnly) {
       const infraProfile = JSON.parse(readSourceFile(root, intent.sourceRevision, 'config/release/dev040-production-release-infra-plan.json'))
@@ -1005,9 +1009,13 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (!infraChanged) fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID')
     try { assertDev013MigrationInfraReceipt(values.infra, profile, values.infra?.sourceRevision) } catch { fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID') }
   } else if (infraChanged) {
-    if ((controlledTransition && !lifecycleEnable) || baseline.repair) fail('ROUTINE_INFRA_REF_CHANGED')
+    if ((controlledTransition && !lifecycleEnable && !controlledSmokeRotation) || baseline.repair) fail('ROUTINE_INFRA_REF_CHANGED')
     if (toolRotation) {
       // Full immutable plan/source proof was checked above; SQL stays unchanged.
+    } else if (controlledSmokeRotation) {
+      smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline,
+        predecessor: toolRotationPredecessor, readSourceFile, readInfrastructureTree,
+        sourceReuse: appArtifactReuse != null && values.infra.sourceRevision !== intent.sourceRevision })
     } else if (values.infra?.mutationProfile === 'APP_INFRA_REUSE') {
       smokeRotationContinuation = await assertSmokeInfraReuseContinuation({ root, profile, transport, intent, values, baseline, readSourceFile, readInfrastructureTree })
     } else {
