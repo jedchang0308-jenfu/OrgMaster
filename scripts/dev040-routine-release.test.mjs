@@ -2606,6 +2606,13 @@ test('DEV-060 admits only the exact 040-to-041 catalog activation append', async
   await assert.rejects(() => verifyRoutineRelease(authorityDrift.input), /DEV060_FMS_CATALOG_ACTIVATION_INVALID/u)
 })
 
+test('DEV-060 forward append keeps the smoke-rotation continuation in the same verification lane', () => {
+  const source = fs.readFileSync(new URL('./lib/dev040-routine-release.mjs', import.meta.url), 'utf8')
+  assert.match(source, /if \(controlledSmokeRotation && infraChanged && !smokeRotationContinuation\)/u)
+  assert.match(source, /sourceReuse: smokeRotationSourceReuse/u)
+  assert.match(source, /const smokeRotationSourceReuse = appArtifactReuse != null/u)
+})
+
 test('DEV-060 CLI binds one migration-041 recipe and rejects every mixed controlled mode', () => {
   const ref = `gs://${bucket}/receipts/tool-rotations/${'c'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`
   const args = ['--dev060-fms-catalog-activation-append', `--dev060-infra-ref=${ref}`]

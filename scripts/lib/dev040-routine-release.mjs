@@ -989,6 +989,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const infraChanged = !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
   let smokeRotationContinuation = null
   let appliedAbortInfraBaseline = null
+  const smokeRotationSourceReuse = appArtifactReuse != null
+    || (controlledSmokeRotation && values.infra?.sourceRevision !== intent.sourceRevision)
   if (!migration.replayOnly && (values.readiness?.appliedAbortInfraBaseline || values.authorization?.appliedAbortInfraBaseline)) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
   if (migration.migrationDisposition === 'FORWARD_APPLY') {
     if (!infraChanged) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
@@ -1023,8 +1025,17 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
       if (values.infra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') fail('ROUTINE_INFRA_REF_CHANGED')
       smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline,
         predecessor: toolRotationPredecessor, readSourceFile, readInfrastructureTree,
-        sourceReuse: appArtifactReuse != null && values.infra.sourceRevision !== intent.sourceRevision })
+        sourceReuse: smokeRotationSourceReuse })
     }
+  }
+  // DEV-060 combines a forward-only migration append with a previously sealed
+  // smoke-credential rotation. The FORWARD_APPLY branch above must still
+  // validate that rotation; otherwise the outer deploy verifier can only see
+  // a missing continuation after all migration checks have passed.
+  if (controlledSmokeRotation && infraChanged && !smokeRotationContinuation) {
+    smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline,
+      predecessor: toolRotationPredecessor, readSourceFile, readInfrastructureTree,
+      sourceReuse: smokeRotationSourceReuse })
   }
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]
