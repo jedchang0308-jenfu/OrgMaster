@@ -198,6 +198,7 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(location.searchParams.get('redirect_uri')).toBe(`${publicOrigin}/api/auth/jenfu-sso/callback`)
     expect(location.searchParams.get('code_challenge_method')).toBe('S256')
     const transactionCookie = start.headers.get('set-cookie')!.split(';')[0]
+    expect(start.headers.get('set-cookie')).toContain('Max-Age=900')
     const callback = new URL('/api/auth/jenfu-sso/callback', base)
     callback.searchParams.set('code', 'opaque-code')
     callback.searchParams.set('state', location.searchParams.get('state')!)
@@ -213,6 +214,36 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
       expiresAt: '2026-09-17T04:00:00.000Z',
     }))
     expect(accepted.headers.get('set-cookie')).toContain('Max-Age=3600')
+  })
+
+  it('restarts an expired 15-minute transaction without exchanging the stale code', async () => {
+    const value = runtime()
+    let clock = now
+    const deps = dependencies('on')
+    deps.now = () => clock
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start?returnTo=%2Fpositions`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const transactionCookie = start.headers.get('set-cookie')!.split(';')[0]
+    expect(start.headers.get('set-cookie')).toContain('Max-Age=900')
+
+    clock += 15 * 60_000
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.search = new URLSearchParams({
+      code: 'expired-one-time-code',
+      state: location.searchParams.get('state')!,
+      iss: `${brokerOrigin}/api/sso`,
+    }).toString()
+    const restarted = await fetch(callback, { redirect: 'manual', headers: { cookie: transactionCookie } })
+
+    expect(restarted.status).toBe(303)
+    const restartLocation = new URL(restarted.headers.get('location')!)
+    expect(restartLocation.origin).toBe(publicOrigin)
+    expect(restartLocation.pathname).toBe('/api/auth/jenfu-sso/start')
+    expect(restartLocation.searchParams.get('returnTo')).toBe('/positions')
+    expect(restarted.headers.get('set-cookie')).toContain('Max-Age=0')
+    expect(deps.fetch).not.toHaveBeenCalled()
+    expect(value.sessions!.create).not.toHaveBeenCalled()
   })
 
   it('keeps the existing getIdTokenClient path when impersonation is unset', async () => {
