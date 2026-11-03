@@ -2325,6 +2325,14 @@ test('smoke credential rotation plan admits exactly one Workflow version update 
   const result = assertSmokeCredentialRotationPlan({ root: process.cwd(), profile, sourceRevision, plan, infraProfile, previousVersion: '10', nextVersion: '11' })
   assert.equal(result.addressActions.length, 75)
   assert.equal(result.update.address, workflowAddress)
+  const chainedPlan = structuredClone(plan)
+  chainedPlan.resource_changes.find(row => row.address === workflowAddress).change.after.source_contents =
+    expectedSmokeWorkflowSource({ root: process.cwd(), profile, sourceRevision, version: '12' })
+  chainedPlan.variables.candidate_smoke_refresh_token_secret_version.value = '12'
+  assert.equal(assertSmokeCredentialRotationPlan({ root: process.cwd(), profile, sourceRevision, plan: chainedPlan,
+    infraProfile, previousVersion: '10', nextVersion: '12', versionChain: ['10', '11', '12'] }).nextVersion, '12')
+  assert.throws(() => assertSmokeCredentialRotationPlan({ root: process.cwd(), profile, sourceRevision, plan: chainedPlan,
+    infraProfile, previousVersion: '10', nextVersion: '12' }), /SMOKE_ROTATION_PLAN_INVALID/u)
   for (const mutate of [
     value => { value.resource_changes.find(row => row.address !== workflowAddress && row.mode === 'managed').change.actions = ['update'] },
     value => { value.resource_changes.find(row => row.address === workflowAddress).change.after.service_account = 'other@example.invalid' },

@@ -16,6 +16,13 @@ const REUSE_SCHEMA = 'jenfu.dev012.app-infra-reuse-receipt.v1'
 export const MAX_SMOKE_REUSE_CHAIN_DEPTH = 32
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
+function gitIsAncestor(root, ancestor, descendant) {
+  if (!/^[a-f0-9]{40}$/u.test(ancestor ?? '') || !/^[a-f0-9]{40}$/u.test(descendant ?? '')) return false
+  const result = spawnSync('git', ['merge-base', '--is-ancestor', ancestor, descendant],
+    { cwd: root, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'] })
+  if (result.error) fail('SMOKE_ROTATION_CREDENTIAL_CHAIN_SOURCE_INVALID')
+  return result.status === 0
+}
 export function readReleaseSourceFile(root, revision, file) {
   if (!/^[a-f0-9]{40}$/u.test(revision ?? '') || !/^[A-Za-z0-9._/-]+$/u.test(file ?? '') || file.includes('..')) fail('SMOKE_ROTATION_SOURCE_INVALID')
   const result = spawnSync('git', ['show', revision + ':' + file], { cwd: root, encoding: null, windowsHide: true })
@@ -268,16 +275,38 @@ async function assertAppliedSmokeRotation({ root, profile, transport, intent, va
   validateReauthReceipt(credential, { sourceRevision: rotation.sourceRevision,
     expectedPreviousVersion: credential.secret?.previousVersion,
     expectedNewVersion: rotation.candidateSmokeRefreshTokenSecretVersion, nowMs: observedAtMs })
+  const credentialPredecessorRef = rotation.smokeRotation?.credentialPredecessorRef ?? null
+  let previousVersion = credential.secret.previousVersion
+  let versionChain = [credential.secret.previousVersion, credential.secret.newVersion]
+  if (credentialPredecessorRef) {
+    assertImmutableRef(credentialPredecessorRef, EXPECTED.releaseBucket, ['receipts/credential-reauth'])
+    const predecessorRead = await transport.readJson(credentialPredecessorRef, EXPECTED.releaseBucket, ['receipts/credential-reauth'])
+    if (!same(predecessorRead.ref, credentialPredecessorRef)) fail('SMOKE_ROTATION_CREDENTIAL_CHAIN_REF_INVALID')
+    const predecessorCredential = predecessorRead.value
+    const predecessorObservedAt = Date.parse(predecessorCredential.observedAt)
+    validateReauthReceipt(predecessorCredential, { sourceRevision: predecessorCredential.sourceRevision,
+      expectedPreviousVersion: predecessorCredential.secret?.previousVersion,
+      expectedNewVersion: predecessorCredential.secret?.newVersion, nowMs: predecessorObservedAt })
+    if (!Number.isFinite(predecessorObservedAt) || predecessorObservedAt > Date.parse(credential.authenticatedAt) ||
+        !gitIsAncestor(root, predecessorCredential.sourceRevision, rotation.sourceRevision) ||
+        predecessorCredential.secret.newVersion !== credential.secret.previousVersion ||
+        predecessorCredential.identityPairSha256 !== credential.identityPairSha256 ||
+        predecessorCredential.principalId !== credential.principalId || predecessorCredential.employeeId !== credential.employeeId) {
+      fail('SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID')
+    }
+    previousVersion = predecessorCredential.secret.previousVersion
+    versionChain = [predecessorCredential.secret.previousVersion, predecessorCredential.secret.newVersion, credential.secret.newVersion]
+  }
   if (prior.candidateSmokeRefreshTokenSecretVersion != null &&
-      prior.candidateSmokeRefreshTokenSecretVersion !== credential.secret.previousVersion) fail('SMOKE_ROTATION_VERSION_INVALID')
+      prior.candidateSmokeRefreshTokenSecretVersion !== previousVersion) fail('SMOKE_ROTATION_VERSION_INVALID')
   if (rotation.smokeRotation) await assertNativeSmokeRotationProof({ root, profile, transport, intent, rotation, prior,
     rotationBaselineIntentRef: prior.rotationBaselineIntentRef ?? intent.baselineIntentRef,
-    infraProfile: afterProfile, previousVersion: credential.secret.previousVersion, nextVersion: credential.secret.newVersion,
+    infraProfile: afterProfile, credentialPredecessorRef, previousVersion, nextVersion: credential.secret.newVersion, versionChain,
     readSourceFile })
   return { evidenceScope: 'OWNER_SEALED_APPLIED_ROTATION', infraReceiptRef: intent.infraReceiptRef,
     credentialEvidenceRef: credentialRef, sourceRevision: intent.sourceRevision,
     ...(predecessor ? { toolRotationRef: predecessor.receiptRef } : {}),
-    previousVersion: credential.secret.previousVersion, newVersion: credential.secret.newVersion,
+    previousVersion, newVersion: credential.secret.newVersion,
     principalId: credential.principalId, employeeId: credential.employeeId, assuranceLevel: credential.assuranceLevel,
     appliedObservedAt: rotation.observedAt, executableInputCount: paths.length,
     terraformAddressCount: addresses.length, terraformAddressesSha256: rotation.terraformAddressesSha256,
@@ -285,11 +314,12 @@ async function assertAppliedSmokeRotation({ root, profile, transport, intent, va
 }
 
 async function assertNativeSmokeRotationProof({ root, profile, transport, intent, rotation, prior, rotationBaselineIntentRef, infraProfile,
-  previousVersion, nextVersion, readSourceFile }) {
+  credentialPredecessorRef, previousVersion, nextVersion, versionChain, readSourceFile }) {
   const proof = rotation.smokeRotation
   if (proof?.schemaVersion !== 'orgmaster.smoke-credential-rotation.v1' ||
       !same(proof.baselineIntentRef, rotationBaselineIntentRef) || !same(proof.toolRotationRef, prior.receiptRef) ||
       !same(proof.credentialEvidenceRef, rotation.credentialEvidenceRef) || proof.previousVersion !== previousVersion ||
+      !same(proof.credentialPredecessorRef ?? null, credentialPredecessorRef) ||
       proof.nextVersion !== nextVersion || proof.stateLineage !== rotation.stateLineage || !Number.isSafeInteger(proof.beforeSerial) ||
       proof.beforeSerial >= rotation.stateSerial || proof.sourceProof?.sourceRevision !== rotation.sourceRevision ||
       proof.sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED' || proof.sourceProof.branchProtected !== true ||
@@ -311,10 +341,11 @@ async function assertNativeSmokeRotationProof({ root, profile, transport, intent
   if (binary.ref.sha256 !== rotation.binaryPlanSha256 || plan.ref.sha256 !== rotation.planJsonSha256 ||
       afterState.ref.sha256 !== rotation.stateJsonSha256 || output.ref.sha256 !== rotation.outputManifestSha256) fail('SMOKE_ROTATION_NATIVE_HASH_INVALID')
   const planProof = assertSmokeCredentialRotationPlan({ root, profile, sourceRevision: rotation.sourceRevision,
-    plan: plan.value, infraProfile, previousVersion, nextVersion, readSourceFile })
+    plan: plan.value, infraProfile, previousVersion, nextVersion, versionChain, readSourceFile })
   if (!same(planProof, proof.planProof) || prepared.value?.schemaVersion !== 'orgmaster.smoke-credential-rotation-prepared.v1' ||
       prepared.value.receiptSha256 !== sha256(canonicalize(Object.fromEntries(Object.entries(prepared.value).filter(([key]) => key !== 'receiptSha256')))) ||
       !same(prepared.value.binaryPlanRef, proof.binaryPlanRef) || !same(prepared.value.planJsonRef, proof.planJsonRef) ||
+      !same(prepared.value.credentialPredecessorRef ?? null, proof.credentialPredecessorRef ?? null) ||
       !same(prepared.value.beforeStateRef, proof.beforeStateRef) || !same(prepared.value.providerWorkflowBeforeRef, proof.providerWorkflowBeforeRef) ||
       prepared.value.beforeSerial !== proof.beforeSerial || prepared.value.stateLineage !== proof.stateLineage) fail('SMOKE_ROTATION_NATIVE_PREPARED_INVALID')
   if (beforeState.value.stateMeta?.serial !== proof.beforeSerial || beforeState.value.stateMeta?.lineage !== proof.stateLineage ||
@@ -362,9 +393,12 @@ export function expectedSmokeWorkflowSource({ root, sourceRevision, profile, ver
 }
 
 export function assertSmokeCredentialRotationPlan({ root, profile, sourceRevision, plan, infraProfile, previousVersion, nextVersion,
-  readSourceFile = readReleaseSourceFile }) {
-  if (![previousVersion, nextVersion].every(value => /^[1-9][0-9]*$/u.test(value ?? '') && Number.isSafeInteger(Number(value))) ||
-      Number(nextVersion) !== Number(previousVersion) + 1 || plan?.errored === true || plan?.complete === false ||
+  versionChain = [previousVersion, nextVersion], readSourceFile = readReleaseSourceFile }) {
+  if (!Array.isArray(versionChain) || versionChain.length < 2 || versionChain.length > 8 ||
+      versionChain[0] !== previousVersion || versionChain.at(-1) !== nextVersion ||
+      !versionChain.every(value => /^[1-9][0-9]*$/u.test(value ?? '') && Number.isSafeInteger(Number(value))) ||
+      versionChain.some((value, index) => index > 0 && Number(value) !== Number(versionChain[index - 1]) + 1) ||
+      plan?.errored === true || plan?.complete === false ||
       !Array.isArray(plan?.resource_changes) || (plan.deferred_changes?.length ?? 0)) fail('SMOKE_ROTATION_PLAN_INVALID')
   const addresses = [...(infraProfile?.stageA ?? []), ...(infraProfile?.stageBAdditional ?? [])].sort()
   if (infraProfile?.ownerApplicationId !== EXPECTED.ownerApplicationId || infraProfile.projectId !== EXPECTED.projectId ||

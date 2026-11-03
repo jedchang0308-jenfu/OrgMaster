@@ -3,6 +3,7 @@ import test from 'node:test'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import fs from 'node:fs'
 import { assertOwnerProfile, assertOwnerSourceFence, createdSecretVersion, firebaseApi, githubSecretMetadataCurrent, secretVersion, verifyOldPair } from './dev057-smoke-credential-reauth.mjs'
+import { validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
 import {
   EXPECTED, REAUTH_SCHEMA, ReauthError, admitLocalRequest, assertResumeReceipt, parseResumeReceiptRef, assertFreshAuthTime, assertPlatformMe, buildReauthReceipt,
   identityPairHash, localPageSecurityHeaders, localRequestDenial, parseReauthArguments, resolveVersionBinding,
@@ -48,6 +49,32 @@ function adapter(overrides = {}) {
 test('fresh password token needs a recent auth_time', () => {
   assert.equal(assertFreshAuthTime(claims(), NOW), true)
   assert.throws(() => assertFreshAuthTime(claims({ auth_time: Math.floor(NOW / 1000) - 301 }), NOW), /PASSWORD_AUTH_TIME_STALE/u)
+})
+
+test('smoke credential chain accepts one immutable adjacent predecessor and rejects identity, source, or version discontinuity', () => {
+  const predecessor = buildReauthReceipt({ sourceRevision: 'a'.repeat(40), expected,
+    authTime: Math.floor((NOW - 30000) / 1000), authenticatedAt: new Date(NOW - 30000).toISOString(),
+    observedAt: new Date(NOW - 20000).toISOString(), principal, previousVersion: '13', newVersion: '14' })
+  const credential = buildReauthReceipt({ sourceRevision: 'b'.repeat(40), expected,
+    authTime: Math.floor((NOW - 10000) / 1000), authenticatedAt: new Date(NOW - 10000).toISOString(),
+    observedAt: new Date(NOW - 5000).toISOString(), principal, previousVersion: '14', newVersion: '15' })
+  assert.deepEqual(validateSmokeCredentialChain({ root: process.cwd(), sourceRevision: 'b'.repeat(40),
+    credential, predecessor, nowMs: NOW, isAncestor: () => true }),
+  { previousVersion: '13', nextVersion: '15', versionChain: ['13', '14', '15'] })
+  assert.throws(() => validateSmokeCredentialChain({ root: process.cwd(), sourceRevision: 'b'.repeat(40),
+    credential, predecessor, nowMs: NOW, isAncestor: () => false }), /SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID/u)
+  const wrongPrincipal = buildReauthReceipt({ sourceRevision: 'a'.repeat(40), expected,
+    authTime: Math.floor((NOW - 30000) / 1000), authenticatedAt: new Date(NOW - 30000).toISOString(),
+    observedAt: new Date(NOW - 20000).toISOString(),
+    principal: { principalId: 'principal-firebase-fedcba9876543210fedcba9876543210', employeeId: principal.employeeId },
+    previousVersion: '13', newVersion: '14' })
+  assert.throws(() => validateSmokeCredentialChain({ root: process.cwd(), sourceRevision: 'b'.repeat(40),
+    credential, predecessor: wrongPrincipal, nowMs: NOW, isAncestor: () => true }), /SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID/u)
+  const wrongVersion = buildReauthReceipt({ sourceRevision: 'a'.repeat(40), expected,
+    authTime: Math.floor((NOW - 30000) / 1000), authenticatedAt: new Date(NOW - 30000).toISOString(),
+    observedAt: new Date(NOW - 20000).toISOString(), principal, previousVersion: '12', newVersion: '13' })
+  assert.throws(() => validateSmokeCredentialChain({ root: process.cwd(), sourceRevision: 'b'.repeat(40),
+    credential, predecessor: wrongVersion, nowMs: NOW, isAncestor: () => true }), /SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID/u)
 })
 
 test('explicit version args are paired, canonical, safe and exactly consecutive while no-arg compatibility stays 7 to 8', () => {
