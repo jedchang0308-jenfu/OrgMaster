@@ -16,6 +16,19 @@ const REUSE_SCHEMA = 'jenfu.dev012.app-infra-reuse-receipt.v1'
 export const MAX_SMOKE_REUSE_CHAIN_DEPTH = 32
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
+
+export function assertPublishedSmokeRotationAdvance(publishedVersion, rotation) {
+  const nextVersion = rotation?.candidateSmokeRefreshTokenSecretVersion
+  const proof = rotation?.smokeRotation
+  if (![publishedVersion, nextVersion].every(version => /^[1-9][0-9]*$/u.test(version ?? '') &&
+      Number.isSafeInteger(Number(version)))) fail('SMOKE_REUSE_CHAIN_ROTATION_DRIFT')
+  const direct = Number(nextVersion) === Number(publishedVersion) + 1
+  const chained = Number(nextVersion) === Number(publishedVersion) + 2 &&
+    proof?.previousVersion === publishedVersion && proof.nextVersion === nextVersion &&
+    typeof proof.credentialPredecessorRef?.uri === 'string' && H64.test(proof.credentialPredecessorRef?.sha256 ?? '')
+  if (!direct && !chained) fail('SMOKE_REUSE_CHAIN_ROTATION_DRIFT')
+  return { previousVersion: publishedVersion, nextVersion, chained }
+}
 function gitIsAncestor(root, ancestor, descendant) {
   if (!/^[a-f0-9]{40}$/u.test(ancestor ?? '') || !/^[a-f0-9]{40}$/u.test(descendant ?? '')) return false
   const result = spawnSync('git', ['merge-base', '--is-ancestor', ancestor, descendant],
@@ -126,11 +139,8 @@ async function smokeRotationAppliedPredecessor({ root, profile, transport, inten
     sealedInfra(publishedRotation, profile)
     // Descend only through adjacent, strictly older numeric versions and state.
     // A sealed but cyclic/nonmonotonic history cannot trigger unbounded recursion.
-    const previousVersion = publishedRotation.candidateSmokeRefreshTokenSecretVersion
-    const nextVersion = rotation.candidateSmokeRefreshTokenSecretVersion
-    if (![previousVersion, nextVersion].every(version => /^[1-9][0-9]*$/u.test(version ?? '') &&
-        Number.isSafeInteger(Number(version))) || Number(nextVersion) !== Number(previousVersion) + 1 ||
-        !Number.isSafeInteger(rotation.stateSerial) || !Number.isSafeInteger(publishedRotation.stateSerial) ||
+    assertPublishedSmokeRotationAdvance(publishedRotation.candidateSmokeRefreshTokenSecretVersion, rotation)
+    if (!Number.isSafeInteger(rotation.stateSerial) || !Number.isSafeInteger(publishedRotation.stateSerial) ||
         rotation.stateSerial <= publishedRotation.stateSerial || rotation.stateLineage !== publishedRotation.stateLineage)
       fail('SMOKE_REUSE_CHAIN_ROTATION_DRIFT')
     await assertAppliedSmokeRotation({ root, profile, transport,

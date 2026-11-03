@@ -4,7 +4,7 @@ import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT
 import { assertToolRotationReleaseCompatibility, resolveToolRotationPredecessorBaselineRef } from './lib/dev040-routine-release.mjs'
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
-import { assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { assertPublishedSmokeRotationAdvance, assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { appArtifactSourceEquivalence, assertReusableAbortedTerminal } from './lib/dev040-app-artifact-reuse.mjs'
 import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
 import assert from 'node:assert/strict'
@@ -2421,6 +2421,22 @@ test('historical tool predecessor resolves its own immutable release baseline', 
     { toolRotation: { baselineIntentRef: { ...baselineIntentRef, sha256: 'bad' } } },
     { toolRotation: { baselineIntentRef: { ...baselineIntentRef, uri: baselineIntentRef.uri.replace('release-intent.json', 'other.json') } } },
   ]) assert.throws(() => resolveToolRotationPredecessorBaselineRef(receipt), /TOOL_ROTATION_BASELINE_REF_INVALID/u)
+})
+
+test('published smoke history accepts one exact credential predecessor hop', () => {
+  const predecessorRef = { uri: `gs://${bucket}/receipts/credential-reauth/predecessor.json`, sha256: 'b'.repeat(64) }
+  assert.deepEqual(assertPublishedSmokeRotationAdvance('13', {
+    candidateSmokeRefreshTokenSecretVersion: '15',
+    smokeRotation: { previousVersion: '13', nextVersion: '15', credentialPredecessorRef: predecessorRef },
+  }), { previousVersion: '13', nextVersion: '15', chained: true })
+  assert.equal(assertPublishedSmokeRotationAdvance('13', {
+    candidateSmokeRefreshTokenSecretVersion: '14', smokeRotation: {},
+  }).chained, false)
+  for (const rotation of [
+    { candidateSmokeRefreshTokenSecretVersion: '15', smokeRotation: { previousVersion: '13', nextVersion: '15' } },
+    { candidateSmokeRefreshTokenSecretVersion: '15', smokeRotation: { previousVersion: '12', nextVersion: '15', credentialPredecessorRef: predecessorRef } },
+    { candidateSmokeRefreshTokenSecretVersion: '16', smokeRotation: { previousVersion: '13', nextVersion: '16', credentialPredecessorRef: predecessorRef } },
+  ]) assert.throws(() => assertPublishedSmokeRotationAdvance('13', rotation), /SMOKE_REUSE_CHAIN_ROTATION_DRIFT/u)
 })
 
 test('DEV-058 uses the exact 31-prefix and full 034-037 append; subsequent ordinary release executes zero DDL', async () => {
