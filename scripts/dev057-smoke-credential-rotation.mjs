@@ -11,7 +11,7 @@ import { readRoutineBaseline, resolveRoutineControlBaseline } from './lib/dev040
 import { assertOrdinaryToolRotation } from './lib/dev040-tool-image-rotation.mjs'
 import { assertRequiredToolSourceQc } from './dev040-tool-image-rotation.mjs'
 import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
-import { assertSmokeCredentialRotationPlan, expectedSmokeWorkflowSource } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, expectedSmokeWorkflowSource } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { validateReauthReceipt } from './lib/dev057-smoke-credential-reauth.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -29,6 +29,21 @@ function assertSeal(value, schemaVersion, code) {
 export function workflowControlPlane(value) {
   const { sourceContents, revisionCreateTime, revisionId, updateTime, ...stable } = value ?? {}
   return stable
+}
+
+export function smokeRotationBaselineVersion({ toolVersion, baselineInfra = null, continuation = null }) {
+  if (!/^[1-9][0-9]*$/u.test(toolVersion ?? '') || !Number.isSafeInteger(Number(toolVersion))) {
+    fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  }
+  if (baselineInfra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') return toolVersion
+  if (baselineInfra.schemaVersion !== 'jenfu.dev012.app-infra-receipt.v1' ||
+      continuation?.evidenceScope !== 'OWNER_SEALED_APPLIED_ROTATION' ||
+      !same(continuation.infraReceiptRef, baselineInfra.receiptRef) ||
+      continuation.newVersion !== baselineInfra.candidateSmokeRefreshTokenSecretVersion ||
+      !/^[1-9][0-9]*$/u.test(continuation.newVersion ?? '') || !Number.isSafeInteger(Number(continuation.newVersion))) {
+    fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  }
+  return continuation.newVersion
 }
 
 function command(name, args) {
@@ -130,7 +145,24 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
   const toolEvidence = await assertOrdinaryToolRotation({ root, profile, transport,
     intent: { ...baseline.intent, sourceRevision: git.sourceRevision, infraReceiptRef: toolRotationRef },
     receipt: toolRead.value, baseline })
-  if (toolEvidence.candidateSmokeRefreshTokenSecretVersion !== previousVersion) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  const baselineInfraRead = await transport.readJson(baseline.intent.infraReceiptRef, bucket, ['receipts'])
+  if (!same(baselineInfraRead.ref, baseline.intent.infraReceiptRef)) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  const baselineInfra = baselineInfraRead.value
+  let continuation = null
+  if (baselineInfra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') {
+    if (!baseline.intent.baselineIntentRef) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+    const parentBaseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: baseline.intent.baselineIntentRef })
+    continuation = await assertSmokeRotationContinuation({ root, profile, transport, intent: baseline.intent,
+      values: { infra: baselineInfra }, baseline: parentBaseline,
+      sourceReuse: baselineInfra.sourceRevision !== baseline.intent.sourceRevision })
+  }
+  const baselineVersion = smokeRotationBaselineVersion({
+    toolVersion: toolEvidence.candidateSmokeRefreshTokenSecretVersion,
+    baselineInfra: baselineInfra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
+      ? { ...baselineInfra, receiptRef: baselineInfraRead.ref } : null,
+    continuation,
+  })
+  if (baselineVersion !== previousVersion) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
   const service = await transport.getService(profile)
   transport.assertServiceSettled(service); transport.assertCanonicalEntrypoint(profile, service)
   if (transport.effectiveRevision(service) !== baseline.activeRevision || [...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some(row => row.tag)) fail('SMOKE_ROTATION_SERVICE_BASELINE_INVALID')

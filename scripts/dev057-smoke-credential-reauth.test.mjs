@@ -3,7 +3,7 @@ import test from 'node:test'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import fs from 'node:fs'
 import { assertOwnerProfile, assertOwnerSourceFence, createdSecretVersion, firebaseApi, githubSecretMetadataCurrent, secretVersion, verifyOldPair } from './dev057-smoke-credential-reauth.mjs'
-import { validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
+import { smokeRotationBaselineVersion, validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
 import {
   EXPECTED, REAUTH_SCHEMA, ReauthError, admitLocalRequest, assertResumeReceipt, parseResumeReceiptRef, assertFreshAuthTime, assertPlatformMe, buildReauthReceipt,
   identityPairHash, localPageSecurityHeaders, localRequestDenial, parseReauthArguments, resolveVersionBinding,
@@ -75,6 +75,22 @@ test('smoke credential chain accepts one immutable adjacent predecessor and reje
     observedAt: new Date(NOW - 20000).toISOString(), principal, previousVersion: '12', newVersion: '13' })
   assert.throws(() => validateSmokeCredentialChain({ root: process.cwd(), sourceRevision: 'b'.repeat(40),
     credential, predecessor: wrongVersion, nowMs: NOW, isAncestor: () => true }), /SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID/u)
+})
+
+test('released smoke rotation baseline supersedes older tool state only after sealed continuation verification', () => {
+  const ref = { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-SMOKE-V13-TEST/app-infra.json',
+    sha256: 'a'.repeat(64) }
+  const baselineInfra = { schemaVersion: 'jenfu.dev012.app-infra-receipt.v1',
+    mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION', candidateSmokeRefreshTokenSecretVersion: '13', receiptRef: ref }
+  assert.equal(smokeRotationBaselineVersion({ toolVersion: '12' }), '12')
+  assert.equal(smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
+    continuation: { evidenceScope: 'OWNER_SEALED_APPLIED_ROTATION', infraReceiptRef: ref, newVersion: '13' } }), '13')
+  assert.throws(() => smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
+    continuation: { evidenceScope: 'OWNER_SEALED_APPLIED_ROTATION', infraReceiptRef: ref, newVersion: '14' } }),
+  /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
+  assert.throws(() => smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
+    continuation: { evidenceScope: 'UNVERIFIED', infraReceiptRef: ref, newVersion: '13' } }),
+  /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
 })
 
 test('explicit version args are paired, canonical, safe and exactly consecutive while no-arg compatibility stays 7 to 8', () => {
