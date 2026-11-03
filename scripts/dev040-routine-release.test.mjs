@@ -1076,9 +1076,13 @@ function historicalImagePredecessorHarness({ rawSource = 'c'.repeat(40), imageRe
       addressActions: h.addresses.map(address => [address, address === 'google_cloud_run_v2_job.migration[0]' ? 'update' : address.startsWith('data.') ? 'read' : 'no-op']),
       updates: [{ address: 'google_cloud_run_v2_job.migration[0]', before: jobTemplate(priorRunner), after: jobTemplate(nextRunner) }] }
   } else if (smokeReceipt) {
+    const toolCore = { ...rawCore, mutationProfile: 'APP_INFRA_IMAGE_ROTATION' }
+    const toolRef = h.put(`gs://${bucket}/receipts/tool-rotations/${rawSource}/app-infra.json`,
+      { ...toolCore, receiptSha256: sha256(canonicalize(toolCore)) })
     rawCore.mutationProfile = 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
     rawCore.candidateSmokeRefreshTokenSecretVersion = '7'
     rawCore.credentialEvidenceRef = { uri: `gs://${bucket}/receipts/credential-reauth/historical.json`, sha256: '9'.repeat(64) }
+    rawCore.smokeRotation = { toolRotationRef: toolRef }
   } else {
     delete rawCore.mutationProfile
     delete rawCore.imageRotation
