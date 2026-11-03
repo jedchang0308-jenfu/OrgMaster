@@ -4,7 +4,7 @@ import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT
 import { assertToolRotationReleaseCompatibility, resolveToolRotationPredecessorBaselineRef } from './lib/dev040-routine-release.mjs'
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
-import { assertPublishedSmokeRotationAdvance, assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { assertPublishedSmokeRotationAdvance, assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, readSmokeReuseProviderState, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { appArtifactSourceEquivalence, assertReusableAbortedTerminal } from './lib/dev040-app-artifact-reuse.mjs'
 import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
 import assert from 'node:assert/strict'
@@ -1334,6 +1334,29 @@ test('source-only infra reuse keeps the original rotation and expired-now creden
   h.input.transport.request = () => assert.fail('native prepare must not read Job/controller/Workflow/Secret metadata')
   h.input.terraformReader = () => assert.fail('native prepare must not execute Terraform')
   assert.equal((await verifyRoutineRelease(h.input)).pendingMigrationCount, 0)
+})
+
+test('smoke reuse compares live Terraform semantics after verifying producer artifact bytes', async () => {
+  const h = await smokeReuseHarness()
+  const afterStateRef = h.put('gs://' + bucket + '/receipts/releases/SMOKE-ROTATION-FIXTURE/after-state.json',
+    { stateJson: h.state, stateMeta: h.stateMeta, manifest: h.manifest })
+  const outputManifestRef = h.put('gs://' + bucket + '/receipts/releases/SMOKE-ROTATION-FIXTURE/output-manifest.json', h.manifest)
+  const rotation = { ...h.objects.get(h.rotationRef.uri).value, stateJsonSha256: afterStateRef.sha256,
+    outputManifestSha256: outputManifestRef.sha256, smokeRotation: { afterStateRef, outputManifestRef } }
+  const input = { root: h.input.root, profile: h.input.profile, transport: h.input.transport, rotation,
+    sourceRevision: h.sourceLock.sourceRevision, readSourceFile: h.input.readSourceFile,
+    terraformReader: h.constructorInput.terraformReader }
+  const readback = await readSmokeReuseProviderState(input)
+  assert.equal(readback.stateSerial, h.stateMeta.serial)
+  assert.notEqual(afterStateRef.sha256, sha256(canonicalize(h.state)))
+  assert.notEqual(outputManifestRef.sha256, sha256(canonicalize(h.manifest)))
+
+  const changed = structuredClone(h.state)
+  changed.values.root_module.resources.find((row) => row.address === 'google_workflows_workflow.candidate_smoke[0]').values.tags = ['drift']
+  const changedRef = h.put('gs://' + bucket + '/receipts/releases/SMOKE-ROTATION-FIXTURE/changed-after-state.json',
+    { stateJson: changed, stateMeta: h.stateMeta, manifest: h.manifest })
+  await assert.rejects(() => readSmokeReuseProviderState({ ...input, rotation: { ...rotation,
+    stateJsonSha256: changedRef.sha256, smokeRotation: { ...rotation.smokeRotation, afterStateRef: changedRef } } }), /SMOKE_REUSE_STATE_DRIFT/u)
 })
 
 test('native infra-reuse producer verifies exact clean remote source twice and writes only a new own receipt', async () => {
