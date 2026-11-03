@@ -18,6 +18,7 @@ import { DEV014_LIFECYCLE_RUNTIME_TARGET, DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIAT
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 const H40 = /^[a-f0-9]{40}$/u
+const H64 = /^[a-f0-9]{64}$/u
 
 const CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS = new Set([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -809,6 +810,14 @@ export function resolveRoutineToolRotationRef(values, toolRotationRef = null) {
   return toolRotationRef ?? authorizationRef
 }
 
+export function resolveToolRotationPredecessorBaselineRef(receipt) {
+  const ref = receipt?.toolRotation?.baselineIntentRef
+  if (typeof ref?.uri !== 'string' || !ref.uri.endsWith('/release-intent.json') || !H64.test(ref.sha256 ?? '')) {
+    fail('TOOL_ROTATION_BASELINE_REF_INVALID')
+  }
+  return ref
+}
+
 // Rotation changes only the existing Job image. DEV-058/059/060 may consume that same
 // verified infra receipt before its separately authorized exact schema append.
 // A second predecessor receipt, runtime change or other controlled mode cannot
@@ -903,8 +912,11 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     assertImmutableRef(toolRotationRef, profile.artifact.releaseBucket, ['receipts/tool-rotations'])
     const read = await transport.readJson(toolRotationRef, profile.artifact.releaseBucket, ['receipts/tool-rotations'])
     if (!same(read.ref, toolRotationRef)) fail('TOOL_ROTATION_REF_INVALID')
+    const predecessorBaselineRef = resolveToolRotationPredecessorBaselineRef(read.value)
+    const predecessorBaseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: predecessorBaselineRef })
     toolRotationPredecessor = await assertOrdinaryToolRotation({ root, profile, transport,
-      intent: { ...intent, infraReceiptRef: toolRotationRef }, receipt: read.value, baseline, readLiveJob: readLiveToolJob })
+      intent: { ...intent, baselineIntentRef: predecessorBaselineRef, previousRevision: predecessorBaseline.activeRevision,
+        infraReceiptRef: toolRotationRef }, receipt: read.value, baseline: predecessorBaseline, readLiveJob: readLiveToolJob })
     toolRotationPredecessor = { receipt: read.value, continuationEvidence: toolRotationPredecessor, receiptRef: toolRotationRef }
   }
   const controlledSmokeRotation = controlledTransition?.releaseMode === DEV060_RELEASE_MODE && values.infra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
