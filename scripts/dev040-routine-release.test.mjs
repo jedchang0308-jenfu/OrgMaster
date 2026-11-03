@@ -1057,7 +1057,7 @@ function republishSmokeContinuationBaseline(h, baselineRead, { terminalFacts = {
   return { baselineIntentRef, paths }
 }
 
-function historicalImagePredecessorHarness({ rawSource = 'c'.repeat(40), imageReceipt = true, infraDrift = false, forgedSourceLock = false } = {}) {
+function historicalImagePredecessorHarness({ rawSource = 'c'.repeat(40), imageReceipt = true, smokeReceipt = false, infraDrift = false, forgedSourceLock = false } = {}) {
   const h = smokeContinuationHarness()
   const baselineRead = h.objects.get(h.input.intent.baselineIntentRef.uri)
   const priorRef = baselineRead.value.infraReceiptRef
@@ -1075,6 +1075,10 @@ function historicalImagePredecessorHarness({ rawSource = 'c'.repeat(40), imageRe
       planJsonSha256: rawCore.planJsonSha256,
       addressActions: h.addresses.map(address => [address, address === 'google_cloud_run_v2_job.migration[0]' ? 'update' : address.startsWith('data.') ? 'read' : 'no-op']),
       updates: [{ address: 'google_cloud_run_v2_job.migration[0]', before: jobTemplate(priorRunner), after: jobTemplate(nextRunner) }] }
+  } else if (smokeReceipt) {
+    rawCore.mutationProfile = 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
+    rawCore.candidateSmokeRefreshTokenSecretVersion = '7'
+    rawCore.credentialEvidenceRef = { uri: `gs://${bucket}/receipts/credential-reauth/historical.json`, sha256: '9'.repeat(64) }
   } else {
     delete rawCore.mutationProfile
     delete rawCore.imageRotation
@@ -1111,6 +1115,14 @@ test('ordinary smoke rotation accepts a sealed historical image receipt when com
   assert.equal(h.objects.get(h.historicalRef.uri).value.sourceRevision, 'c'.repeat(40))
   assert.deepEqual(h.objects.get(h.historicalRef.uri).bytes, historicalBytes)
   assert.deepEqual(h.objects.get(h.input.intent.baselineIntentRef.uri).bytes, baselineBytes)
+})
+
+test('ordinary smoke rotation accepts a released historical smoke receipt when complete infrastructure bytes match', async () => {
+  const h = historicalImagePredecessorHarness({ imageReceipt: false, smokeReceipt: true })
+  const result = await verifyDeployProductionRelease({ options: h.options, ...h.input })
+  assert.equal(result.smokeRotationContinuation.previousVersion, '7')
+  assert.equal(result.smokeRotationContinuation.newVersion, '8')
+  assert.equal(h.requests.length, 3)
 })
 
 test('historical image source mismatch rejects a changed complete infrastructure tree', async () => {
