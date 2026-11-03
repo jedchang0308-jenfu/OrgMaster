@@ -676,6 +676,27 @@ export async function readSmokeReuseProviderState({ root, profile, transport, ro
   const state = terraformReader(root, ['show', '-json'])
   const stateMeta = terraformReader(root, ['state', 'pull'])
   const manifest = terraformReader(root, ['output', '-json', 'app_release_infra_manifest'])
+  let stateMatchesReceipt = sha256(canonicalize(state)) === rotation.stateJsonSha256
+  let manifestMatchesReceipt = sha256(canonicalize(manifest)) === rotation.outputManifestSha256
+  if (rotation.smokeRotation) {
+    const readArtifact = async (ref) => {
+      assertImmutableRef(ref, EXPECTED.releaseBucket, ['receipts'])
+      const value = await transport.readJson(ref, EXPECTED.releaseBucket, ['receipts'])
+      if (!same(value.ref, ref) || !Buffer.isBuffer(value.bytes) || sha256(value.bytes) !== ref.sha256 ||
+          !same(JSON.parse(value.bytes.toString('utf8')), value.value)) fail('SMOKE_REUSE_STATE_DRIFT')
+      return value.value
+    }
+    const [sealedState, sealedManifest] = await Promise.all([
+      readArtifact(rotation.smokeRotation.afterStateRef),
+      readArtifact(rotation.smokeRotation.outputManifestRef),
+    ])
+    if (rotation.smokeRotation.afterStateRef?.sha256 !== rotation.stateJsonSha256 ||
+        rotation.smokeRotation.outputManifestRef?.sha256 !== rotation.outputManifestSha256 ||
+        sealedState?.stateMeta?.lineage !== rotation.stateLineage || sealedState?.stateMeta?.serial !== rotation.stateSerial ||
+        !same(sealedState?.manifest, sealedManifest)) fail('SMOKE_REUSE_STATE_DRIFT')
+    stateMatchesReceipt = same(state, sealedState.stateJson)
+    manifestMatchesReceipt = same(manifest, sealedManifest)
+  }
   const resources = (module) => [...(module?.resources ?? []), ...(module?.child_modules ?? []).flatMap(resources)]
   // The frozen profile and applied receipt bind all 75 addresses, including data resources.
   const rows = resources(state?.values?.root_module)
@@ -686,7 +707,7 @@ export async function readSmokeReuseProviderState({ root, profile, transport, ro
       !same(addresses, expectedAddresses) || new Set(addresses).size !== addresses.length ||
       addresses.length !== rotation.terraformAddressCount || sha256(canonicalize(addresses)) !== rotation.terraformAddressesSha256 ||
       stateMeta.lineage !== rotation.stateLineage || stateMeta.serial !== rotation.stateSerial ||
-      sha256(canonicalize(state)) !== rotation.stateJsonSha256 || sha256(canonicalize(manifest)) !== rotation.outputManifestSha256 ||
+      !stateMatchesReceipt || !manifestMatchesReceipt ||
       !same(state.outputs?.app_release_infra_manifest?.value ?? state.values?.outputs?.app_release_infra_manifest?.value, manifest) ||
       manifest.project_id !== profile.target.projectId || manifest.region !== profile.target.region ||
       manifest.source_revision !== rotation.sourceRevision || manifest.foundation_manifest_sha256 !== rotation.foundationManifestSha256 ||
