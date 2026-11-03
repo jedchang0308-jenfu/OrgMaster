@@ -1,7 +1,7 @@
 import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend } from './lib/dev059-fms-authority-migration.mjs'
 import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT, DEV060_MIGRATION_PREFIX_COUNT, DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationAppend } from './lib/dev060-fms-catalog-activation-migration.mjs'
-import { assertToolRotationReleaseCompatibility } from './lib/dev040-routine-release.mjs'
+import { assertToolRotationReleaseCompatibility, resolveToolRotationPredecessorBaselineRef } from './lib/dev040-routine-release.mjs'
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
 import { assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
@@ -2409,6 +2409,18 @@ test('verified image rotation can precede only an exact DEV-058/059/060 append w
     { controlledTransition: { releaseMode: 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION' } },
     { controlledTransition: {} },
   ]) assert.throws(() => assertToolRotationReleaseCompatibility({ ...input, ...changes }), /TOOL_ROTATION_ORDINARY_ONLY/u)
+})
+
+test('historical tool predecessor resolves its own immutable release baseline', () => {
+  const baselineIntentRef = {
+    uri: `gs://${bucket}/receipts/releases/TOOL-HISTORICAL-BASELINE/release-intent.json`,
+    sha256: 'a'.repeat(64),
+  }
+  assert.deepEqual(resolveToolRotationPredecessorBaselineRef({ toolRotation: { baselineIntentRef } }), baselineIntentRef)
+  for (const receipt of [null, {}, { toolRotation: {} },
+    { toolRotation: { baselineIntentRef: { ...baselineIntentRef, sha256: 'bad' } } },
+    { toolRotation: { baselineIntentRef: { ...baselineIntentRef, uri: baselineIntentRef.uri.replace('release-intent.json', 'other.json') } } },
+  ]) assert.throws(() => resolveToolRotationPredecessorBaselineRef(receipt), /TOOL_ROTATION_BASELINE_REF_INVALID/u)
 })
 
 test('DEV-058 uses the exact 31-prefix and full 034-037 append; subsequent ordinary release executes zero DDL', async () => {
