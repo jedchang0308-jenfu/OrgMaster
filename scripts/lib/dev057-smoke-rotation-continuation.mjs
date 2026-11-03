@@ -179,6 +179,19 @@ async function smokeRotationAppliedPredecessor({ root, profile, transport, inten
           ? await resolveRotationBaseline(rotation.smokeRotation.baselineIntentRef, currentIntent, currentIntentRef, expectedActiveRevision)
           : fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
         : currentIntentRef
+      if (value.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') {
+        const toolRef = value.smokeRotation?.toolRotationRef
+        const currentToolRef = rotation.smokeRotation?.toolRotationRef ?? toolRef
+        if (!same(toolRef, currentToolRef) || !/^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/tool-rotations\/[a-f0-9]{40}\/app-infra\.json$/u.test(toolRef?.uri ?? '')) {
+          fail('SMOKE_ROTATION_TOOL_PREDECESSOR_INVALID')
+        }
+        const tool = await readRef(toolRef)
+        sealedInfra(tool, profile)
+        if (tool.mutationProfile !== 'APP_INFRA_IMAGE_ROTATION') fail('SMOKE_ROTATION_TOOL_PREDECESSOR_INVALID')
+        return { ...tool, receiptRef: toolRef,
+          candidateSmokeRefreshTokenSecretVersion: value.candidateSmokeRefreshTokenSecretVersion,
+          rotationBaselineIntentRef }
+      }
       return { ...value, receiptRef: ref, rotationBaselineIntentRef }
     }
     if (!sourceReuse) fail('SMOKE_ROTATION_INFRA_INVALID')
