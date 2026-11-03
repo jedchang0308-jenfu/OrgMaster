@@ -162,15 +162,15 @@ async function smokeRotationAppliedPredecessor({ root, profile, transport, inten
     const value = await readRef(ref)
     if (value.schemaVersion !== REUSE_SCHEMA) {
       sealedInfra(value, profile)
-      // A released application may retain an older applied image receipt.
-      // Its source is historical infrastructure provenance, not the released app source.
-      const historicalImageSource = value.sourceRevision !== currentIntent.sourceRevision
-        && value.mutationProfile === 'APP_INFRA_IMAGE_ROTATION'
-      if (value.sourceRevision !== currentIntent.sourceRevision && !historicalImageSource) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
-      if (depth || historicalImageSource) {
+      // A released application may retain an older applied image or smoke receipt.
+      // Its source is historical provider provenance, not the released app source.
+      const historicalProviderSource = value.sourceRevision !== currentIntent.sourceRevision &&
+        ['APP_INFRA_IMAGE_ROTATION', 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'].includes(value.mutationProfile)
+      if (value.sourceRevision !== currentIntent.sourceRevision && !historicalProviderSource) fail('SMOKE_REUSE_CHAIN_SOURCE_INVALID')
+      if (depth || historicalProviderSource) {
         const expectedTree = tree ?? readInfrastructureTree(root, intent.sourceRevision)
         if (!expectedTree.equals(readInfrastructureTree(root, value.sourceRevision))
-          || (historicalImageSource && !expectedTree.equals(readInfrastructureTree(root, currentIntent.sourceRevision)))) fail('SMOKE_REUSE_CHAIN_INPUT_DRIFT')
+          || (historicalProviderSource && !expectedTree.equals(readInfrastructureTree(root, currentIntent.sourceRevision)))) fail('SMOKE_REUSE_CHAIN_INPUT_DRIFT')
         await assertReleasedIntent(currentIntent, currentIntentRef, expectedActiveRevision)
       }
       const rotationBaselineIntentRef = rotation.smokeRotation?.baselineIntentRef &&
