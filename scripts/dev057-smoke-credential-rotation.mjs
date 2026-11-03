@@ -11,7 +11,7 @@ import { readRoutineBaseline, resolveRoutineControlBaseline } from './lib/dev040
 import { assertOrdinaryToolRotation } from './lib/dev040-tool-image-rotation.mjs'
 import { assertRequiredToolSourceQc } from './dev040-tool-image-rotation.mjs'
 import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
-import { assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, expectedSmokeWorkflowSource } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { assertSmokeCredentialRotationPlan, expectedSmokeWorkflowSource } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { validateReauthReceipt } from './lib/dev057-smoke-credential-reauth.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -37,13 +37,36 @@ export function smokeRotationBaselineVersion({ toolVersion, baselineInfra = null
   }
   if (baselineInfra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') return toolVersion
   if (baselineInfra.schemaVersion !== 'jenfu.dev012.app-infra-receipt.v1' ||
-      continuation?.evidenceScope !== 'OWNER_SEALED_APPLIED_ROTATION' ||
+      continuation?.evidenceScope !== 'OWNER_SEALED_RELEASED_ROTATION_BASELINE' ||
       !same(continuation.infraReceiptRef, baselineInfra.receiptRef) ||
       continuation.newVersion !== baselineInfra.candidateSmokeRefreshTokenSecretVersion ||
       !/^[1-9][0-9]*$/u.test(continuation.newVersion ?? '') || !Number.isSafeInteger(Number(continuation.newVersion))) {
     fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
   }
   return continuation.newVersion
+}
+
+export function assertReleasedSmokeRotationBaseline({ baselineInfra, baselineInfraRef, baselineIntent,
+  toolRotationRef, toolReceipt, currentSourceRevision, isAncestor }) {
+  const receipt = assertSeal(baselineInfra, 'jenfu.dev012.app-infra-receipt.v1', 'SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  const proof = receipt.smokeRotation
+  if (!same(baselineIntent?.infraReceiptRef, baselineInfraRef) || receipt.ownerApplicationId !== 'orgmaster' ||
+      receipt.projectId !== 'jenfu-platform-prod' || receipt.region !== 'asia-east1' ||
+      receipt.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' || receipt.status !== 'APPLIED' ||
+      receipt.releaseAuthority !== true || receipt.evidenceScope !== 'PRODUCTION_PROVIDER' ||
+      !/^[a-f0-9]{40}$/u.test(receipt.sourceRevision ?? '') || isAncestor(receipt.sourceRevision, currentSourceRevision) !== true ||
+      !/^[1-9][0-9]*$/u.test(receipt.candidateSmokeRefreshTokenSecretVersion ?? '') ||
+      !Number.isSafeInteger(Number(receipt.candidateSmokeRefreshTokenSecretVersion)) ||
+      proof?.schemaVersion !== 'orgmaster.smoke-credential-rotation.v1' || !same(proof.toolRotationRef, toolRotationRef) ||
+      !same(proof.credentialEvidenceRef, receipt.credentialEvidenceRef) || proof.nextVersion !== receipt.candidateSmokeRefreshTokenSecretVersion ||
+      !/^[1-9][0-9]*$/u.test(proof.previousVersion ?? '') || Number(proof.previousVersion) >= Number(proof.nextVersion) ||
+      proof.sourceProof?.sourceRevision !== receipt.sourceRevision || proof.sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED' ||
+      proof.sourceProof.branchProtected !== true || proof.sourceProof.requiredSourceQc !== 'SUCCESS' ||
+      ['foundationManifestSha256', 'migrationRunnerDigest', 'controllerImageDigest'].some((field) => !same(receipt[field], toolReceipt?.[field]))) {
+    fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  }
+  return { evidenceScope: 'OWNER_SEALED_RELEASED_ROTATION_BASELINE', infraReceiptRef: baselineInfraRef,
+    newVersion: receipt.candidateSmokeRefreshTokenSecretVersion }
 }
 
 function command(name, args) {
@@ -150,11 +173,11 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
   const baselineInfra = baselineInfraRead.value
   let continuation = null
   if (baselineInfra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') {
-    if (!baseline.intent.baselineIntentRef) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
-    const parentBaseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: baseline.intent.baselineIntentRef })
-    continuation = await assertSmokeRotationContinuation({ root, profile, transport, intent: baseline.intent,
-      values: { infra: baselineInfra }, baseline: parentBaseline,
-      sourceReuse: baselineInfra.sourceRevision !== baseline.intent.sourceRevision })
+    continuation = assertReleasedSmokeRotationBaseline({ baselineInfra, baselineInfraRef: baselineInfraRead.ref,
+      baselineIntent: baseline.intent, toolRotationRef, toolReceipt: toolRead.value, currentSourceRevision: git.sourceRevision,
+      isAncestor: (from, to) => {
+        try { command('git', ['merge-base', '--is-ancestor', from, to]); return true } catch { return false }
+      } })
   }
   const baselineVersion = smokeRotationBaselineVersion({
     toolVersion: toolEvidence.candidateSmokeRefreshTokenSecretVersion,

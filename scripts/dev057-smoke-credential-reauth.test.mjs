@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import fs from 'node:fs'
+import { canonicalize } from './lib/dev012-owner-release-runtime.mjs'
 import { assertOwnerProfile, assertOwnerSourceFence, createdSecretVersion, firebaseApi, githubSecretMetadataCurrent, secretVersion, verifyOldPair } from './dev057-smoke-credential-reauth.mjs'
-import { smokeRotationBaselineVersion, validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
+import { assertReleasedSmokeRotationBaseline, smokeRotationBaselineVersion, validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
 import {
   EXPECTED, REAUTH_SCHEMA, ReauthError, admitLocalRequest, assertResumeReceipt, parseResumeReceiptRef, assertFreshAuthTime, assertPlatformMe, buildReauthReceipt,
   identityPairHash, localPageSecurityHeaders, localRequestDenial, parseReauthArguments, resolveVersionBinding,
@@ -84,13 +85,43 @@ test('released smoke rotation baseline supersedes older tool state only after se
     mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION', candidateSmokeRefreshTokenSecretVersion: '13', receiptRef: ref }
   assert.equal(smokeRotationBaselineVersion({ toolVersion: '12' }), '12')
   assert.equal(smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
-    continuation: { evidenceScope: 'OWNER_SEALED_APPLIED_ROTATION', infraReceiptRef: ref, newVersion: '13' } }), '13')
+    continuation: { evidenceScope: 'OWNER_SEALED_RELEASED_ROTATION_BASELINE', infraReceiptRef: ref, newVersion: '13' } }), '13')
   assert.throws(() => smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
-    continuation: { evidenceScope: 'OWNER_SEALED_APPLIED_ROTATION', infraReceiptRef: ref, newVersion: '14' } }),
+    continuation: { evidenceScope: 'OWNER_SEALED_RELEASED_ROTATION_BASELINE', infraReceiptRef: ref, newVersion: '14' } }),
   /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
   assert.throws(() => smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
     continuation: { evidenceScope: 'UNVERIFIED', infraReceiptRef: ref, newVersion: '13' } }),
   /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
+})
+
+test('released smoke baseline requires its released ref, original tool proof and official ancestor source', () => {
+  const infraRef = { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-SMOKE-V13-TEST/app-infra.json',
+    sha256: 'a'.repeat(64) }
+  const toolRef = { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/tool-rotations/' + 'b'.repeat(40) + '/app-infra.json',
+    sha256: 'c'.repeat(64) }
+  const toolReceipt = { foundationManifestSha256: 'd'.repeat(64), migrationRunnerDigest: 'runner@sha256:' + 'e'.repeat(64),
+    controllerImageDigest: 'controller@sha256:' + 'f'.repeat(64) }
+  const core = { schemaVersion: 'jenfu.dev012.app-infra-receipt.v1', ownerApplicationId: 'orgmaster',
+    projectId: 'jenfu-platform-prod', region: 'asia-east1', sourceRevision: '1'.repeat(40),
+    foundationManifestSha256: toolReceipt.foundationManifestSha256, migrationRunnerDigest: toolReceipt.migrationRunnerDigest,
+    controllerImageDigest: toolReceipt.controllerImageDigest, mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION',
+    candidateSmokeRefreshTokenSecretVersion: '13', credentialEvidenceRef: { uri: 'credential', sha256: '2'.repeat(64) },
+    smokeRotation: { schemaVersion: 'orgmaster.smoke-credential-rotation.v1', toolRotationRef: toolRef,
+      credentialEvidenceRef: { uri: 'credential', sha256: '2'.repeat(64) }, previousVersion: '12', nextVersion: '13',
+      sourceProof: { sourceRevision: '1'.repeat(40), status: 'OFFICIAL_MERGED_PR_VERIFIED', branchProtected: true,
+        requiredSourceQc: 'SUCCESS' } },
+    status: 'APPLIED', releaseAuthority: true, evidenceScope: 'PRODUCTION_PROVIDER' }
+  const receipt = { ...core, receiptSha256: sha256(canonicalize(core)) }
+  assert.deepEqual(assertReleasedSmokeRotationBaseline({ baselineInfra: receipt, baselineInfraRef: infraRef,
+    baselineIntent: { infraReceiptRef: infraRef }, toolRotationRef: toolRef, toolReceipt,
+    currentSourceRevision: '3'.repeat(40), isAncestor: () => true }),
+  { evidenceScope: 'OWNER_SEALED_RELEASED_ROTATION_BASELINE', infraReceiptRef: infraRef, newVersion: '13' })
+  assert.throws(() => assertReleasedSmokeRotationBaseline({ baselineInfra: receipt, baselineInfraRef: infraRef,
+    baselineIntent: { infraReceiptRef: infraRef }, toolRotationRef: { ...toolRef, sha256: '0'.repeat(64) }, toolReceipt,
+    currentSourceRevision: '3'.repeat(40), isAncestor: () => true }), /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
+  assert.throws(() => assertReleasedSmokeRotationBaseline({ baselineInfra: receipt, baselineInfraRef: infraRef,
+    baselineIntent: { infraReceiptRef: infraRef }, toolRotationRef: toolRef, toolReceipt,
+    currentSourceRevision: '3'.repeat(40), isAncestor: () => false }), /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
 })
 
 test('explicit version args are paired, canonical, safe and exactly consecutive while no-arg compatibility stays 7 to 8', () => {
