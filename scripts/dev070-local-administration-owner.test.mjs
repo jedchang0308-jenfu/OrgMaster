@@ -4,7 +4,7 @@ import {mock} from 'node:test'
 import {OAuth2Client} from 'google-auth-library'
 import {readFileSync} from 'node:fs'
 import {parseLocalAdministrationOwnerArgs} from './dev070-local-administration-owner.mjs'
-import {validateLocalLedger,localOwnerHash,planLocalOwnerBridge,commitLocalOwnerBridge,OWNER_BOOTSTRAP_SIGNATURES,verifyLocalOwnerGoogleIdentity,OWNER_EMAIL,OWNER_SUBJECT,executeLocalEnrollmentIntent} from './lib/dev070-local-administration-owner.mjs'
+import {validateLocalLedger,localOwnerHash,planLocalOwnerBridge,commitLocalOwnerBridge,readLocalOwnerBridgeReceipt,OWNER_BOOTSTRAP_SIGNATURES,verifyLocalOwnerGoogleIdentity,OWNER_EMAIL,OWNER_SUBJECT,executeLocalEnrollmentIntent} from './lib/dev070-local-administration-owner.mjs'
 const entries=JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json',import.meta.url),'utf8')).migrations.entries
 const row=e=>({version:e.version,name:e.path.split('/').at(-1).replace(/^\d{3}_/u,'').replace(/\.sql$/u,''),checksum_sha256:e.appliedSha256,source_revision:'a'.repeat(40)})
 const runId='e598c60a4bc64ee5889048bb4355f7c0',database='jenfu_local_dev070_16930fa3'
@@ -30,11 +30,11 @@ function fixture(){
   if(sql.startsWith('SELECT r.rolname'))return {rows:state.roleRows}
   if(sql.includes('to_regclass'))return {rows:[{present:state.installed}]}
   if(sql.startsWith('SELECT source_path'))return {rows:[{source_path:source.localMigration.path,source_sha256:source.localMigration.sourceSha256,source_revision:source.sourceRevision}]}
-  if(sql.startsWith('SELECT plan_sha256'))return {rows:state.receipt?[{plan_sha256:plan.planSha256,response:state.receipt}]:[]}
+  if(sql.startsWith('SELECT command_id::text command_id,plan_sha256'))return {rows:state.receipt?[{command_id:plan.commandId,plan_sha256:plan.planSha256,response:state.receipt}]:[]}
   if(sql==='ISOLATED_MIGRATION'&&state.failMigration)throw new Error('isolated SQL failure')
   if(sql.startsWith('INSERT INTO orgmaster_core.schema_migrations')){state.ledger.push({version:values[0],name:values[1],checksum_sha256:values[2],source_revision:values[3]})}
   if(sql==='ISOLATED_LOCAL_DDL')state.installed=true
-  if(sql.startsWith('SELECT orgmaster_core.bind_local')){state.binderCalls++;state.bindings=state.bindings.map(b=>({...b,provider_subject:b.owner==='orgmaster'?'102985156037283277347':'117743617824418208171',db_session_user:b.owner==='orgmaster'?'dev069_orgmaster_e598c60a4bc6':'dev069_platform_e598c60a4bc6',binding_version:'2'}));state.receipt={planSha256:plan.planSha256,afterBindingsSha256:localOwnerHash(state.bindings),changedBindings:2};return {rows:[{receipt:state.receipt}]}}
+  if(sql.startsWith('SELECT orgmaster_core.bind_local')){state.binderCalls++;state.bindings=state.bindings.map(b=>({...b,provider_subject:b.owner==='orgmaster'?'102985156037283277347':'117743617824418208171',db_session_user:b.owner==='orgmaster'?'dev069_orgmaster_e598c60a4bc6':'dev069_platform_e598c60a4bc6',binding_version:'2'}));state.receipt={format:'orgmaster.local-administration-bridge-receipt.v1',commandId:plan.commandId,database,sourceRevision:source.sourceRevision,planSha256:plan.planSha256,beforeBindingsSha256:plan.beforeBindingsSha256,afterBindingsSha256:localOwnerHash(state.bindings),changedBindings:2};return {rows:[{receipt:state.receipt}]}}
   if(sql==='COMMIT'&&state.failCommit)throw new Error('connection outcome unknown')
   return {rows:[]}
  }}
@@ -77,6 +77,25 @@ test('migration failure rolls back and an unknown COMMIT requires status rather 
  const failed=fixture();failed.state.failMigration=true;await assert.rejects(failed.commit);assert.equal(failed.state.binderCalls,0);assert.equal(failed.state.queries.at(-1),'ROLLBACK')
  const unknown=fixture();unknown.state.failCommit=true;await assert.rejects(unknown.commit,/COMMIT_UNKNOWN_REQUIRES_STATUS/);assert.equal(unknown.state.binderCalls,1);assert.equal(unknown.state.queries.at(-1),'COMMIT')
  unknown.state.failCommit=false;await unknown.commit();assert.equal(unknown.state.binderCalls,1)
+})
+
+test('standard owner status reads only the original plan receipt and preserves a missing receipt as null',async()=>{
+ const f=fixture();assert.equal(await readLocalOwnerBridgeReceipt(f.client,f.plan),null)
+ const original=await f.commit();assert.deepEqual(await readLocalOwnerBridgeReceipt(f.client,f.plan),original)
+ const changed=structuredClone(f.plan);changed.reason='different plan with same command';const {planSha256,...core}=changed;changed.planSha256=localOwnerHash(core)
+ await assert.rejects(readLocalOwnerBridgeReceipt(f.client,changed),/RECEIPT_CONFLICT/);assert.equal(f.state.binderCalls,1)
+})
+test('standard owner status rejects partial or conflicting stored 046 receipt fields',async()=>{
+ const f=fixture(),original=await f.commit()
+ for(const change of [r=>delete r.format,r=>r.planSha256='0'.repeat(64),r=>r.commandId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',r=>r.database='other_database',r=>r.sourceRevision='0'.repeat(40),r=>r.beforeBindingsSha256='0'.repeat(64),r=>r.afterBindingsSha256='partial',r=>r.changedBindings=3]){
+  f.state.receipt=structuredClone(original);change(f.state.receipt);await assert.rejects(readLocalOwnerBridgeReceipt(f.client,f.plan),/RECEIPT_CONFLICT/)
+ }
+ f.state.receipt=original
+ for(const change of [r=>r.plan_sha256='0'.repeat(64),r=>r.command_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',r=>r.response=null]){
+  const stored={command_id:f.plan.commandId,plan_sha256:f.plan.planSha256,response:original};change(stored)
+  await assert.rejects(readLocalOwnerBridgeReceipt({query:async()=>({rows:[stored]})},f.plan),/RECEIPT_CONFLICT/)
+ }
+ assert.equal(f.state.binderCalls,1)
 })
 
 function enrollmentFixture(){

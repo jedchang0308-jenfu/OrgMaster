@@ -5,7 +5,7 @@ import {createHash,randomUUID} from 'node:crypto'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import pg from 'pg'
-import {localOwnerHash,planLocalOwnerBridge,LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTSTRAP_PATH,readLocalOwnerBootstrapFacts} from './lib/dev070-local-administration-owner.mjs'
+import {localOwnerHash,planLocalOwnerBridge,LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTSTRAP_PATH,readLocalOwnerBootstrapFacts,readLocalOwnerBridgeReceipt} from './lib/dev070-local-administration-owner.mjs'
 import {unwrapMigrationTransaction} from './lib/dev040-orgmaster-independent-release.mjs'
 
 // This component installs actual Org source fragments and all of local 046.
@@ -105,6 +105,9 @@ try{
  const bad={...core(plan),beforeBindingsSha256:'0'.repeat(64)}
  await assert.rejects(owner.query('SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb)',[JSON.stringify(bad)]),/BINDING_CONFLICT/u);assert.deepEqual(await bindings(),initial)
  const receipt=await apply(plan);assert.equal(receipt.changedBindings,2);assert.equal(receipt.planSha256,plan.planSha256);assert.deepEqual(await apply(plan),receipt)
+ assert.deepEqual(await readLocalOwnerBridgeReceipt(owner,plan),receipt)
+ const changedPlan={...core(plan),reason:'same command with a different plan'};changedPlan.planSha256=localOwnerHash(changedPlan)
+ await assert.rejects(readLocalOwnerBridgeReceipt(owner,changedPlan),/RECEIPT_CONFLICT/u)
  const changed=await bindings();assert.equal(changed[0].db_session_user,orgLogin);assert.equal(changed[1].db_session_user,platformLogin);assert.ok(changed.every(r=>r.binding_version==='2'&&r.enabled))
  assert.equal((await apply(await makePlan())).changedBindings,0);assert.deepEqual(await bindings(),changed)
  // An explicit rollback and a provider/session readback recover the same facts.

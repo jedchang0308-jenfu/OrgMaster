@@ -110,6 +110,18 @@ export function planLocalOwnerBridge({context,source,facts,ownerProof,commandId=
  const core={format:'orgmaster.local-administration-bridge-plan.v1',commandId,sourceRevision:source.sourceRevision,sourceSha256:source.sourceSha256,configurationSha256:context.configurationSha256,profileSha256:context.config.profileRef.sha256,sqlProfileSha256:context.config.sqlProfileRef.sha256,runId:context.runId,target:context.config.target,postmaster:context.config.postmaster,clusterRecordSha256:context.clusterRecordSha256,ownerProof,beforeLedgerSha256:facts.ledgerSha256,beforeBindingsSha256:facts.bindingsSha256,beforeRuntimeRolesSha256:facts.runtimeRolesSha256,beforeOwnership:facts.beforeOwnership,ownershipBootstrap:source.ownershipBootstrap,migrations:facts.disposition.pending.map(entry=>({version:entry.version,path:entry.path,sourceSha256:entry.sourceSha256,appliedSha256:entry.appliedSha256})),localMigration:source.localMigration,fmsRuntimeLogin:`fms_test_runtime_${context.runId.slice(0,12)}`,reason,createdAt:new Date(now).toISOString(),expiresAt:new Date(now+15*60000).toISOString()}
  return {...core,planSha256:localOwnerHash(core)}
 }
+/** Read an immutable 046 receipt only when every stored pointer matches its plan. */
+export async function readLocalOwnerBridgeReceipt(client,plan){
+ const {planSha256,...core}=plan??{}
+ if(plan?.format!=='orgmaster.local-administration-bridge-plan.v1'||!/^[a-f0-9]{64}$/u.test(planSha256??'')||!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(plan.commandId??'')||localOwnerHash(core)!==planSha256)fail('PLAN_INVALID')
+ const rows=(await client.query('SELECT command_id::text command_id,plan_sha256,response FROM orgmaster_core.administration_local_bridge_receipts_v1 WHERE command_id=$1::uuid',[plan.commandId])).rows
+ if(rows.length===0)return null
+ const row=rows[0],receipt=row?.response
+ if(rows.length!==1||row.command_id!==plan.commandId||row.plan_sha256!==planSha256||!exactKeys(receipt,['format','commandId','database','sourceRevision','planSha256','changedBindings','beforeBindingsSha256','afterBindingsSha256'])
+ ||receipt.format!=='orgmaster.local-administration-bridge-receipt.v1'||receipt.commandId!==plan.commandId||receipt.planSha256!==planSha256||receipt.database!==plan.target?.database||receipt.sourceRevision!==plan.sourceRevision||receipt.beforeBindingsSha256!==plan.beforeBindingsSha256
+ ||!Number.isSafeInteger(receipt.changedBindings)||receipt.changedBindings<0||receipt.changedBindings>2||!/^[a-f0-9]{64}$/u.test(receipt.afterBindingsSha256??''))fail('RECEIPT_CONFLICT')
+ return receipt
+}
 function assertLocalOwnerPlan({context,source,plan,ownerProof,now}){
  if(source.workingTreeClean!==true)fail('SOURCE_NOT_REVIEWABLE')
  const {planSha256,...core}=plan??{}
@@ -124,8 +136,8 @@ export async function commitLocalOwnerBridge({client,context,source,plan,ownerPr
   await client.query("SET LOCAL lock_timeout='5s';SET LOCAL statement_timeout='30s'")
   await client.query("SELECT pg_advisory_xact_lock(hashtext('dev070-local-administration-bridge'),hashtext(current_database()))")
   let facts=await readLocalOwnerFacts(client,context,source)
-  const prior=facts.installed?(await client.query('SELECT plan_sha256,response FROM orgmaster_core.administration_local_bridge_receipts_v1 WHERE command_id=$1::uuid',[plan.commandId])).rows[0]:null
-  if(prior){if(prior.plan_sha256!==planSha256||prior.response.afterBindingsSha256!==facts.bindingsSha256||facts.disposition.count!==42)fail('RECEIPT_CONFLICT');await client.query('ROLLBACK');return prior.response}
+  const prior=facts.installed?await readLocalOwnerBridgeReceipt(client,plan):null
+  if(prior){if(prior.afterBindingsSha256!==facts.bindingsSha256||facts.disposition.count!==42)fail('RECEIPT_CONFLICT');await client.query('ROLLBACK');return prior}
   if(facts.ledgerSha256!==plan.beforeLedgerSha256||facts.bindingsSha256!==plan.beforeBindingsSha256||facts.runtimeRolesSha256!==plan.beforeRuntimeRolesSha256||canonical(facts.beforeOwnership)!==canonical(plan.beforeOwnership)||canonical(source.ownershipBootstrap)!==canonical(plan.ownershipBootstrap)||canonical(facts.disposition.pending.map(e=>({version:e.version,path:e.path,sourceSha256:e.sourceSha256,appliedSha256:e.appliedSha256})))!==canonical(plan.migrations)||canonical(plan.localMigration)!==canonical(source.localMigration))fail('PLAN_CAS_CONFLICT')
   await client.query('RESET SESSION AUTHORIZATION')
   const operator=(await client.query("SELECT session_user,current_user,r.rolsuper FROM pg_roles r WHERE r.rolname=session_user")).rows[0]

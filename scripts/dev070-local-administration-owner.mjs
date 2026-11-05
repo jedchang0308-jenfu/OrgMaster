@@ -4,7 +4,7 @@ import path from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import pg from 'pg'
 import {createServer} from 'vite'
-import {readLocalOwnerSource,inspectLocalOwnerCluster,verifyLocalOwnerGoogleIdentity,readLocalOwnerFacts,planLocalOwnerBridge,commitLocalOwnerBridge,localOwnerHash,executeLocalEnrollmentIntent} from './lib/dev070-local-administration-owner.mjs'
+import {readLocalOwnerSource,inspectLocalOwnerCluster,verifyLocalOwnerGoogleIdentity,readLocalOwnerFacts,planLocalOwnerBridge,commitLocalOwnerBridge,readLocalOwnerBridgeReceipt,executeLocalEnrollmentIntent} from './lib/dev070-local-administration-owner.mjs'
 export function parseLocalAdministrationOwnerArgs(argv){
  const [action,...rest]=argv,required={plan:['config','output','reason'],commit:['config','plan'],status:['config'],'intent-plan':['config','intent','output'],'intent-admit':['config','intent'],'intent-status':['config','intent'],'intent-revoke':['config','intent']}[action]
  if(!required)throw new Error('DEV070_LOCAL_ARGUMENT_INVALID')
@@ -62,7 +62,7 @@ async function main(){
     process.stdout.write(JSON.stringify({status:'PLANNED',commandId:plan.commandId,planSha256:plan.planSha256,planPath:filename,ledgerCount:facts.disposition.count,raw042:facts.disposition.raw042,pendingMigrations:plan.migrations.map(v=>v.version)})+'\n')
    }else{
     let receipt=null
-    if(options.plan&&facts.installed){const filename=await planFile(root,options.plan),plan=JSON.parse(await readFile(filename,'utf8'));const{planSha256,...core}=plan;if(localOwnerHash(core)!==planSha256)throw new Error('DEV070_LOCAL_PLAN_INVALID');receipt=(await client.query('SELECT response FROM orgmaster_core.administration_local_bridge_receipts_v1 WHERE command_id=$1::uuid',[plan.commandId])).rows[0]?.response??null}
+    if(options.plan&&facts.installed){const filename=await planFile(root,options.plan),plan=JSON.parse(await readFile(filename,'utf8'));receipt=await readLocalOwnerBridgeReceipt(client,plan)}
     process.stdout.write(JSON.stringify({status:'READ_ONLY',ledgerCount:facts.disposition.count,raw042:facts.disposition.raw042,localBridgeInstalled:facts.installed,bindings:facts.bindings,receipt})+'\n')
    }
   }finally{await client.query('ROLLBACK')}
