@@ -2,9 +2,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { describe, expect, it, vi } from 'vitest'
 import { createOrgmasterAuthMiddleware, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import { hashSessionToken } from './orgmasterAuthCookies'
-import { withPersistencePrincipal, writePersistenceArtifacts } from './orgmasterPersistenceRepository'
+import { withPersistenceActor, withPersistencePrincipal, writePersistenceArtifacts } from './orgmasterPersistenceRepository'
 
-const writerSql = 'write_active_persistence_artifacts_with_identity_fence_v2'
+const writerSql = 'write_active_persistence_artifacts_with_identity_fence_v3'
 
 function fakeDatabase() {
   const query = vi.fn(async (sql: string, _values?: unknown[]) => {
@@ -18,6 +18,8 @@ function fakeDatabase() {
   })
   return { query }
 }
+
+const actor=(principalId:string)=>({principalId,employeeId:'employee-fixture',issuer:'fixture',subject:'fixture',bootstrap:false,sessionId:'00000000-0000-4000-8000-000000000070',principalAuthEpoch:4,authenticatedAt:new Date().toISOString(),assuranceLevel:'aal1' as const})
 
 function change(artifactKey = 'orgmaster-governance.v3.json') {
   const payload = { schemaVersion: 3, artifactKey }
@@ -40,7 +42,7 @@ function write(database: ReturnType<typeof fakeDatabase>, options: { updatedBy?:
 }
 
 describe('verified persistence principal propagation', () => {
-  it('carries the principal from a verified normal session through Auth middleware into the v2 writer', async () => {
+  it('carries the principal from a verified normal session through Auth middleware into the v3 writer', async () => {
     const database = fakeDatabase()
     const pepper = 'synthetic-session-pepper'
     const token = 'synthetic-session-token-with-sufficient-length-123456'
@@ -89,17 +91,24 @@ describe('verified persistence principal propagation', () => {
     expect(writer?.[1]?.[2]).not.toBe(session.employeeId)
   })
 
-  it('writes the verified Principal through the v2 identity-fenced writer', async () => {
+  it('writes the verified Principal through the v3 identity-fenced writer', async () => {
     const database = fakeDatabase()
     const verifiedPrincipalId = 'principal-managed:00000000-0000-4000-8000-000000000001'
-    const result = await withPersistencePrincipal(verifiedPrincipalId, () => write(database))
+    const result = await withPersistenceActor(actor(verifiedPrincipalId), () => write(database))
     const writer = database.query.mock.calls.find(([sql]) => sql.includes(writerSql))
 
     expect(writer).toBeDefined()
     expect(writer?.[0]).toContain(writerSql)
     expect(writer?.[0]).not.toContain('write_active_persistence_artifacts_with_identity_fence_v1(')
     expect(writer?.[1]?.[2]).toBe(verifiedPrincipalId)
+    expect(JSON.parse(String(writer?.[1]?.[6]))).toEqual(expect.objectContaining({kind:'principal',principalAuthEpoch:4,assuranceLevel:'aal1'}))
     expect(result.authorityVersion).toBe(7)
+  })
+
+  it('does not convert a Principal-only context into an owner workload',async()=>{
+    const database=fakeDatabase()
+    await expect(withPersistencePrincipal('principal-only',()=>write(database))).rejects.toMatchObject({code:'PERSISTENCE_WRITE_FAILED'})
+    expect(database.query.mock.calls.some(([sql])=>sql.includes(writerSql))).toBe(false)
   })
 
   it('rejects a write with no trusted actor and does not fall back to orgmaster-runtime', async () => {
@@ -115,7 +124,7 @@ describe('verified persistence principal propagation', () => {
     const database = fakeDatabase()
     const verifiedPrincipalId = 'principal-managed:00000000-0000-4000-8000-000000000001'
 
-    await expect(withPersistencePrincipal(verifiedPrincipalId, () => write(database, { updatedBy: untrustedActor })))
+    await expect(withPersistenceActor(actor(verifiedPrincipalId), () => write(database, { updatedBy: untrustedActor })))
       .rejects.toMatchObject({ code: 'PERSISTENCE_WRITE_FAILED' })
 
     expect(database.query.mock.calls.some(([sql]) => sql.includes(writerSql))).toBe(false)
@@ -136,8 +145,8 @@ describe('verified persistence principal propagation', () => {
     const principalB = 'principal-managed:00000000-0000-4000-8000-00000000000b'
 
     await Promise.all([
-      withPersistencePrincipal(principalA, async () => { await barrier(); return write(database, { operationId: 'parallel-a' }) }),
-      withPersistencePrincipal(principalB, async () => { await barrier(); return write(database, { operationId: 'parallel-b' }) }),
+      withPersistenceActor(actor(principalA), async () => { await barrier(); return write(database, { operationId: 'parallel-a' }) }),
+      withPersistenceActor(actor(principalB), async () => { await barrier(); return write(database, { operationId: 'parallel-b' }) }),
     ])
 
     const writes = database.query.mock.calls.filter(([sql]) => sql.includes(writerSql))

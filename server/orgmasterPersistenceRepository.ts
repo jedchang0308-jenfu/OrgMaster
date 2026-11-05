@@ -4,6 +4,7 @@ import { readFile, stat } from 'node:fs/promises'
 import pg from 'pg'
 import { writeVerifiedAtomicFile } from './orgmasterFileStore'
 import { closeOrgmasterDatabase, closeOrgmasterLocalSandboxDatabase, createOrgmasterDatabase, createOrgmasterLocalSandboxDatabase, isOrgmasterLocalSandboxDatabaseTarget } from './orgmasterDatabase'
+import type { GovernanceActorContext } from '../src/governance/types'
 
 export type OrgmasterPersistenceMode = 'local-json' | 'cloud-sql'
 export type PersistenceArtifactKind = 'workspace-manifest' | 'workspace-version' | 'governance' | 'management-methods'
@@ -116,6 +117,14 @@ export function warnOrgmasterLocalPersistenceDiagnostic(
   }
   try { console.warn(JSON.stringify(diagnostic)) } catch { /* logging must not alter authorization or persistence results */ }
 }
+const persistenceActor = new AsyncLocalStorage<Record<string, unknown>>()
+export function persistenceActorContext(actor: GovernanceActorContext) {
+  return { kind: 'principal', sessionId: actor.sessionId, principalAuthEpoch: actor.principalAuthEpoch, authenticatedAt: actor.authenticatedAt, assuranceLevel: actor.assuranceLevel }
+}
+export function withPersistenceActor<T>(actor: GovernanceActorContext, run: () => T): T {
+  return persistenceActor.run(persistenceActorContext(actor), () => withPersistencePrincipal(actor.principalId, run))
+}
+export function withPersistenceWorkload<T>(run: () => T): T { return persistenceActor.run({kind:'owner_workload'},run) }
 
 /** Carries the already verified security subject through normal API writes.
  * This is actor propagation, not an authentication or capability decision. */
@@ -287,6 +296,7 @@ export async function writePersistenceArtifacts(changes: PersistenceArtifactWrit
     if (authority.rowCount !== 1) throw new OrgmasterPersistenceError('PERSISTENCE_READ_FAILED')
     const sourceRevision = sha256(canonicalJson({ previousSourceRevision: String(authority.rows[0].source_revision).trim(), changes: prepared.map(({ payload: _payload, ...metadata }) => metadata) }))
     const verifiedPrincipal = persistencePrincipal.getStore()
+    if(verifiedPrincipal&&!persistenceActor.getStore())throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
     const requestedPrincipal = input?.updatedBy?.trim()
     if (verifiedPrincipal && requestedPrincipal && verifiedPrincipal !== requestedPrincipal) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
     const updatedBy = verifiedPrincipal ?? requestedPrincipal
@@ -294,8 +304,8 @@ export async function writePersistenceArtifacts(changes: PersistenceArtifactWrit
     const reasonCode = input?.reasonCode?.trim() || 'runtime_artifact_write'
     const entitlementChanges = input?.entitlementChanges ?? []
     const result = await database(input?.database).query(`SELECT authority_version, source_revision, outbox_count
-        FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v2($1::jsonb, $2, $3, $4, $5, $6::jsonb)`, [
-      JSON.stringify(prepared), sourceRevision, updatedBy, reasonCode, input?.operationId ?? `orgmaster-write-${sourceRevision.slice(0, 24)}`, JSON.stringify(entitlementChanges),
+        FROM orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v3($1::jsonb, $2, $3, $4, $5, $6::jsonb, $7::jsonb)`, [
+      JSON.stringify(prepared), sourceRevision, updatedBy, reasonCode, input?.operationId ?? `orgmaster-write-${sourceRevision.slice(0, 24)}`, JSON.stringify(entitlementChanges), JSON.stringify(persistenceActor.getStore() ?? {kind:'owner_workload'}),
     ])
     if (result.rowCount !== 1) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
     return {

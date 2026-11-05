@@ -19,6 +19,7 @@ import { managedLoginRequestDigest } from './orgmasterManagedLoginContract'
 import type { ManagedLoginIdentity } from './orgmasterManagedLoginContract'
 import { assignmentMatchesSecuritySubject, evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { isActiveAt } from '../src/governance/validation'
+import { hasAdministrativeGrant } from '../src/governance/administration'
 import { developmentPermissionForActor } from './orgmasterGovernanceIdentity'
 import { loadOrganizationSource, readExistingGovernanceStore, withActorWrite } from './orgmasterGovernanceStore'
 import { createManagedIdentityRepository, type ManagedIdentityRepositoryV1 } from './orgmasterManagedIdentityRepository'
@@ -60,6 +61,7 @@ function hasPermission(document: GovernanceDocumentV3, actor: GovernanceActorCon
 function isHumanPrivilegedActor(document: GovernanceDocumentV3, actor: GovernanceActorContext, at = new Date().toISOString()) {
   const version = document.publishedVersions.find((candidate) => candidate.id === document.activePolicyVersionId)
   if (version?.kind !== 'assignment-governance-v3' || !actor.employeeId) return false
+  if(hasAdministrativeGrant(version.policy,actor.principalId,actor.employeeId,'orgmaster',at))return true
   const links = version.policy.identityLinks.filter((value) =>
     value.principalId === actor.principalId && value.employeeId === actor.employeeId
     && value.issuer === actor.issuer && value.subject === actor.subject
@@ -88,6 +90,7 @@ function hasPublishedApplicationAccess(
     ? version.externalRoleCatalogs.find((entry) => entry.applicationId === applicationId && entry.validationState === 'valid')
     : null
   if (applicationId === 'ai-pdm' && !catalog) return false
+  if(hasAdministrativeGrant(version.policy,principalId,employeeId,applicationId,at))return true
   const roleIds = applicationId === 'orgmaster'
     ? new Set(version.policy.applicationRoles.filter((role) =>
       role.applicationId === applicationId && role.status === 'active').map((role) => role.id))

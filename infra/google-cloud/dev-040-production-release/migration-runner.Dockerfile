@@ -13,6 +13,7 @@ COPY scripts/lib/dev012-production-migration-runner.mjs scripts/lib/dev012-produ
 COPY scripts/lib/dev058-role-policy-migration.mjs scripts/lib/dev058-role-policy-migration.mjs
 COPY scripts/lib/dev059-fms-authority-migration.mjs scripts/lib/dev059-fms-authority-migration.mjs
 COPY scripts/lib/dev060-fms-catalog-activation-migration.mjs scripts/lib/dev060-fms-catalog-activation-migration.mjs
+COPY scripts/lib/dev070-administration-migration.mjs scripts/lib/dev070-administration-migration.mjs
 COPY scripts/lib/orgmaster-production-database.mjs scripts/lib/orgmaster-production-database.mjs
 COPY scripts/lib/dev012-orgmaster-production-data.mjs scripts/lib/dev012-orgmaster-production-data.mjs
 COPY scripts/lib/dev049-production-admission.mjs scripts/lib/dev049-production-admission.mjs

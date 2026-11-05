@@ -1,5 +1,13 @@
 # OrgMaster 開發任務
 
+<a id="dev-070-platform-administration"></a>
+
+## DEV-070：平台超級管理員權威與首次初始化
+
+- 狀態：`IMPLEMENTING / SOURCE + ISOLATED VALIDATION / DRAFT PR 準備 / NOT RELEASED`。最新人類授權為四專案完整實作至真實地端與正式發布；指定 Google personal／張仕杰 JFS0005，真 AAL1（接受 AAL2）、中文姓名。
+- [實作契約](specs/DEV-070-platform-super-admin-authority-contract.md)；source 含 042 中文顯示 prerequisite、044 producer/ACL、045 owner/human command/writer fence。owner-only bootstrap 與 app 管理任免依同一已發布 administration；本輪 source 自查不能替代真 Google、正式任用、merge／發布證據。
+- 2026-11-06：新 native＋無 publication 及既有 publication／draft 的隔離 PG 成功；typed lifecycle consume/ack、不可變 receipt、last-root rollback、runtime narrow projection/display ACL 通過。在途隔離測試已完成並補兩 root revoke／native quarantine 競爭、外部 Directory missing 的 typed invalidation，以及真 HTTP＋React→restricted SQL 單一整合案例；均不等於真 Google／本人驗收。前次文件收斂後已恢復同一授權工程；新增exact DEV070 append/source packaging與FMS point-only bootstrap contract（§14），有界驗證後準備draft PR，未merge/deploy/provider/primary writes。契約明列：legacy Org admin 原能力保留唯讀相容，退場須明確新 grant＋等效允許/拒絕測試＋無 caller 依賴；source profile已擴為精確42entries（新增042/044/045，043不帶入），typed append及工具packaging有界驗證完成，FMS point-only初始化proof已有Org source/PG；無Owner FMS actualadapter、closed local bridge、requiredCI／review／正式source與owner release尚待收斂，actual local worker仍關閉。尚無provider／primary DB／正式資料寫入、merge或部署。
+
 <a id="dev-060-frontend-permission-projection"></a>
 
 ## DEV-060：OrgMaster 應用內單一前端權限投影

@@ -151,7 +151,9 @@ function assertRepositoryRoot(rootValue, expectedName) {
   if (typeof rootValue !== 'string' || !path.isAbsolute(rootValue)) throw fail('DEV014_FIXTURE_REPOSITORY_ROOT_INVALID')
   const root = path.resolve(rootValue)
   assertRealDirectory(root, 'DEV014_FIXTURE_REPOSITORY_ROOT_INVALID')
-  if (path.basename(root).toLowerCase() !== expectedName.toLowerCase()) throw fail('DEV014_FIXTURE_REPOSITORY_ROOT_INVALID')
+  // Linked worktrees retain repository identity while their directory name changes.
+  const packageName = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).name
+  if (expectedName==='OrgMaster' ? packageName!=='orgmaster-canvas' : packageName!=='jenfu-management-system') throw fail('DEV014_FIXTURE_REPOSITORY_ROOT_INVALID')
   const marker = path.join(root, 'AGENTS.md')
   try {
     const stat = fs.lstatSync(marker)

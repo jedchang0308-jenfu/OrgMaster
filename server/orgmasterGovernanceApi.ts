@@ -37,6 +37,7 @@ import { resolveIdentityLinkUpsert, assertIdentityLinkStatusMutationAllowed as a
 import { recommendGovernanceEmployees } from './employeeRecommendationService'
 import { LOCAL_IDENTITY_ISSUER } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
 import { warnOrgmasterLocalPersistenceDiagnostic, withOrgmasterLocalPrincipalDiagnosticContext } from './orgmasterPersistenceRepository'
+import { handleAdministrationRequest } from './orgmasterAdministrationApi'
 
 export const API_PATH = '/api/orgmaster/governance'
 const MAX_BODY = 1024 * 1024
@@ -274,6 +275,7 @@ function financialInitialAuthorityRequest(body: Record<string, unknown>, phase: 
 
 async function handle(request: IncomingMessage, response: ServerResponse, root: string, devEnabled: boolean, accountEnrollmentEnabled: boolean) {
   const url = new URL(request.url ?? '/', 'http://orgmaster.local'); const path = url.pathname.slice(API_PATH.length) || '/';
+  if(await handleAdministrationRequest(request,response,root,path,()=>parseBody(request))) return
   if (path === '/employee-authority-switch') { sendJson(response, 410, { error: 'LEGACY_AUTHORITY_SWITCH_RETIRED' }); return }
   const actor = path.startsWith('/applications/ai-pdm/') ? aiPdmActorOrThrow(request, devEnabled) : actorOrThrow(request, devEnabled, path === '/session')
   if (path === '/applications/financial-management-system/return' && request.method === 'GET') {

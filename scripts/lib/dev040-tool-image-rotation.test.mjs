@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { gunzipSync, gzipSync } from 'node:zlib'
+import {DEV070_MIGRATION_ENTRIES,DEV070_RELEASE_MODE} from './dev070-administration-migration.mjs'
 
 import { canonicalize, sha256, releasePaths } from './dev012-owner-release-runtime.mjs'
 import { createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
@@ -80,6 +81,8 @@ function createSourceFixture() {
   }
 
   const fullProductionProfile = JSON.parse(readGitBytes(ROOT, sourceRevision, PRODUCTION_PROFILE_PATH).toString('utf8'))
+  // Historical DEV-058/059 cases keep their exact former 39-entry source.
+  fullProductionProfile.migrations.entries=fullProductionProfile.migrations.entries.slice(0,39)
   const baselineProductionProfile = structuredClone(fullProductionProfile)
   baselineProductionProfile.migrations.entries = baselineProductionProfile.migrations.entries.slice(0, 31)
   const dev058ProductionProfile = structuredClone(fullProductionProfile)
@@ -434,7 +437,7 @@ function commitNonRecipeVariant(baseRevision, mutate, message) {
   }
 }
 
-test('allows only the exact DEV-058 and DEV-059 profile appends plus existing recipe changes', () => {
+test('allows only exact known DEV-058/059/070 metadata appends for a separate image-only preparation', () => {
   const dev058Transition = assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.baselineSourceRevision, sourceFixture.dev058SourceRevision)
   assert.equal(dev058Transition.disposition, 'DEV058_ROLE_POLICY_APPEND')
@@ -455,6 +458,11 @@ test('allows only the exact DEV-058 and DEV-059 profile appends plus existing re
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.baselineSourceRevision, sourceFixture.rotationSourceRevision).disposition,
   'DEV059_FMS_AUTHORITY_APPEND')
+  const administration=commitProfileVariant(sourceFixture.appendSourceRevision,profile=>{profile.migrations.entries.push(...DEV070_MIGRATION_ENTRIES)},'append exact DEV070 metadata without running DDL')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,sourceFixture.appendSourceRevision,administration).disposition,DEV070_RELEASE_MODE)
+  const unknown=commitProfileVariant(administration,profile=>{profile.migrations.entries[40].path='db/migrations/043_unapproved.sql'},'unknown migration metadata')
+  const changedHash=commitProfileVariant(administration,profile=>{profile.migrations.entries[41].appliedSha256='0'.repeat(64)},'unreviewed DEV070 checksum')
+  for(const revision of[unknown,changedHash])assert.throws(()=>assertToolInfrastructureTransition(sourceFixture.root,sourceFixture.appendSourceRevision,revision),/SOURCE_INPUT_DRIFT/)
 
   const prefixDrift = commitProfileVariant(sourceFixture.appendSourceRevision,
     profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }, 'drift DEV-058 migration prefix')

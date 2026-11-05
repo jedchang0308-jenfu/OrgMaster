@@ -9,6 +9,7 @@ import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-releas
 import { assertAppArtifactReuse } from './dev040-app-artifact-reuse.mjs'
 import { DEV058_RELEASE_MODE, assertDev058RolePolicyAppend, assertDev058RolePolicyAuthority } from './dev058-role-policy-migration.mjs'
 import { DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend, assertDev059FmsAuthorityReleaseAuthority } from './dev059-fms-authority-migration.mjs'
+import {DEV070_RELEASE_MODE,assertDev070AdministrationAppend,assertDev070AdministrationReleaseAuthority} from './dev070-administration-migration.mjs'
 import { DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationAppend, assertDev060FmsCatalogActivationReleaseAuthority } from './dev060-fms-catalog-activation-migration.mjs'
 import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
@@ -854,11 +855,14 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const rolePolicyAppend = values.readiness?.devId === 'DEV-058'
   const fmsAuthorityAppend = values.readiness?.devId === 'DEV-059'
   const fmsCatalogActivationAppend = values.readiness?.devId === 'DEV-060'
-  if ((rolePolicyAppend || fmsAuthorityAppend || fmsCatalogActivationAppend) && !same(runtimeConfig, baselineRuntime)) fail(fmsCatalogActivationAppend ? 'DEV060_RUNTIME_CHANGED' : fmsAuthorityAppend ? 'DEV059_RUNTIME_CHANGED' : 'DEV058_RUNTIME_CHANGED')
+  const administrationAppend=values.readiness?.devId==='DEV-070'
+  if ((rolePolicyAppend || fmsAuthorityAppend || fmsCatalogActivationAppend || administrationAppend) && !same(runtimeConfig, baselineRuntime)) fail(administrationAppend?'DEV070_RUNTIME_CHANGED':fmsCatalogActivationAppend ? 'DEV060_RUNTIME_CHANGED' : fmsAuthorityAppend ? 'DEV059_RUNTIME_CHANGED' : 'DEV058_RUNTIME_CHANGED')
   const lifecycleGuard = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-V2'
   const lifecycleEnable = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-ENABLE'
   if (lifecycleGuard) assertDev014PrincipalLifecycleRuntimeGuard(profile, baselineRuntime, runtimeConfig)
-  const controlledTransition = rolePolicyAppend
+  const controlledTransition = administrationAppend
+    ? assertDev070AdministrationReleaseAuthority(values.readiness,values.authorization,intent)
+    : rolePolicyAppend
     ? assertDev058RolePolicyAuthority(values.readiness, values.authorization, intent)
     : fmsAuthorityAppend
     ? assertDev059FmsAuthorityReleaseAuthority(values.readiness, values.authorization, intent)
@@ -928,7 +932,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const appArtifactReuse = appReuseLeft == null ? null : await assertAppArtifactReuse({ root, profile, transport, intent, association: appReuseLeft })
   const infrastructureHash = lifecycleGuard
     ? (root, revision) => transitionFingerprint(root, revision, [], dev014PrincipalLifecycleInfrastructureInputs)
-    : [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE, 'DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+    : [DEV070_RELEASE_MODE, DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE, 'DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
@@ -956,6 +960,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (rolePolicyAppend) fail('DEV058_MIGRATION_APPEND_INVALID')
     if (fmsAuthorityAppend) fail('DEV059_MIGRATION_APPEND_INVALID')
     if (fmsCatalogActivationAppend) fail('DEV060_MIGRATION_APPEND_INVALID')
+    if(administrationAppend)fail('DEV070_MIGRATION_APPEND_INVALID')
     if (lifecycleGuard) {
       if (baseline.bundle.value.entries?.length !== 31 || current.bundle.entries?.length !== 31) fail('DEV014_LIFECYCLE_REPLAY_LEDGER_REQUIRED')
       // FORWARD_APPLY is the existing native Job-required disposition. Here
@@ -966,7 +971,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   } catch (error) {
     if (lifecycleEnable) throw error // enablement executes zero DDL, without append fallback
     if (!controlledTransition || error?.code !== 'ROUTINE_MIGRATION_CHANGED') throw error
-    migration = controlledTransition.releaseMode === DEV058_RELEASE_MODE
+    migration = controlledTransition.releaseMode === DEV070_RELEASE_MODE
+      ? assertDev070AdministrationAppend(baseline.bundle.value,current.bundle)
+      : controlledTransition.releaseMode === DEV058_RELEASE_MODE
       ? assertDev058RolePolicyAppend(baseline.bundle.value, current.bundle)
       : controlledTransition.releaseMode === DEV059_RELEASE_MODE
       ? assertDev059FmsAuthorityAppend(baseline.bundle.value, current.bundle)

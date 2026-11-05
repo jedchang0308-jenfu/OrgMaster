@@ -4,8 +4,9 @@ import type { OrgmasterDatabase } from './orgmasterDatabase'
 export type PrivilegedSecurityAlert = {
   alertReference: string
   commandId: string
-  operation: 'grant_system_admin' | 'revoke_system_admin'
-  actorPrincipalId: string
+  operation: 'grant_system_admin' | 'revoke_system_admin' | 'initialize_platform_administrator' | 'grant_platform_administrator' | 'revoke_platform_administrator' | 'grant_application_administrator' | 'revoke_application_administrator' | 'replace_application_administrator'
+  actorPrincipalId: string | null
+  actor?: {kind:'principal'|'owner_workload';id:string}
   employeeId: string
   targetHint: string
   auditReference: string
@@ -17,7 +18,8 @@ type AlertRow = {
   alert_reference: string
   command_id: string
   operation: PrivilegedSecurityAlert['operation']
-  actor_principal_id: string
+  actor_principal_id: string | null
+  actor?: PrivilegedSecurityAlert['actor'] | null
   employee_id: string
   target_hint: string
   audit_reference: string
@@ -33,6 +35,7 @@ function mapAlert(row: AlertRow): PrivilegedSecurityAlert {
     commandId: row.command_id,
     operation: row.operation,
     actorPrincipalId: row.actor_principal_id,
+    ...(row.actor ? {actor:row.actor} : {}),
     employeeId: row.employee_id,
     targetHint: row.target_hint,
     auditReference: row.audit_reference,
@@ -52,7 +55,7 @@ export async function dispatchPrivilegedSecurityAlerts(
   deliver: PrivilegedSecurityAlertDelivery,
   limit = 20,
 ) {
-  const claimed = await database.query<AlertRow>('SELECT * FROM orgmaster_core.claim_privileged_security_alerts_v1($1, $2, 60)', [workerId, limit])
+  const claimed = await database.query<AlertRow>('SELECT * FROM orgmaster_core.claim_privileged_security_alerts_v2($1, $2, 60)', [workerId, limit])
   const results: Array<{ alertReference: string; status: 'delivered' | 'retry_scheduled'; receiptId?: string }> = []
   for (const row of claimed.rows) {
     const alert = mapAlert(row)

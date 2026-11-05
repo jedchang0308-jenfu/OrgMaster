@@ -59,6 +59,7 @@ function validateAssignmentInput(input: FinancialRoleAssignmentInput, catalog: E
   const until = input.validUntil === null ? null : Date.parse(input.validUntil)
   if (!Number.isFinite(from) || (input.validUntil !== null && !Number.isFinite(until)) || (until !== null && from >= until)) throw new ApplicationEntitlementError('INVALID_VALIDITY')
   if (input.operation === 'upsert') {
+    if(input.stableRoleId==='role-owner'||input.stableRoleId==='role-system-admin')throw new ApplicationEntitlementError('UNSUPPORTED_SUBJECT')
     if (!input.stableRoleId?.trim()) throw new ApplicationEntitlementError('ROLE_NOT_FOUND')
     const role = catalog.roles.find((entry) => entry.stableRoleId === input.stableRoleId)
     if (!role) throw new ApplicationEntitlementError('ROLE_NOT_FOUND')

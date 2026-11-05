@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { ExternalRoleCatalogRoleV1, ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceDocumentV3 } from '../src/governance/types'
-import { validateFinancialExternalRoleCatalog } from '../src/governance/financialCatalog'
+import { validateFinancialExternalRoleCatalog,FINANCIAL_ADMINISTRATIVE_CAPABILITIES,FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH } from '../src/governance/financialCatalog'
 import { appendGovernanceAudit, commitGovernanceMutation, getGovernancePaths, readGovernanceStore } from './orgmasterGovernanceStore'
 import { readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import { assertFinancialAuthority, commandRequestHash, FINANCIAL_APPLICATION_ID, FINANCIAL_PROTECTED_OPERATIONS, publishFinancialPolicy, type FinancialManagementCapability } from './applicationEntitlementCommon'
@@ -88,6 +88,8 @@ function parseRole(value: unknown): FmsCatalogRole {
     roleDefinitionHash: hash(role.roleDefinitionHash),
   }
   if (typeof role.builtIn !== 'boolean' || !Array.isArray(role.capabilityIds) || new Set(result.capabilityIds).size !== result.capabilityIds.length || result.capabilityIds.some((id, index) => index > 0 && result.capabilityIds[index - 1] > id) || result.allowedScopeKinds.length !== 1 || result.allowedScopeKinds[0] !== 'workspace' || roleHash(result) !== result.roleDefinitionHash) throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID')
+  if(result.stableRoleId==='role-system-admin'&&(result.code!=='system-admin'||result.displayName!=='系統管理員'||!result.builtIn||result.assignmentPolicy!=='open'||result.roleDefinitionHash!==FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH||JSON.stringify(result.capabilityIds)!==JSON.stringify(FINANCIAL_ADMINISTRATIVE_CAPABILITIES)))throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID')
+  if(result.stableRoleId!=='role-system-admin'&&result.code==='system-admin')throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID')
   return result
 }
 
@@ -133,9 +135,9 @@ function snapshotFromRelease(value: unknown, publisher: GovernanceActorContext):
     validationState: 'valid',
     effectState: 'not-synchronized',
     roles: roles.map((role): ExternalRoleCatalogRoleV1 => ({
-      stableRoleId: role.stableRoleId, code: role.code, displayName: role.displayName, status: 'active', assignable: true,
-      riskLevel: 'normal', allowedScopeKinds: ['workspace'], subjectKind: 'employee', recommendationAllowed: false, delegationAllowed: false,
-      assignmentTier: 'app_admin', assignmentDisposition: role.assignmentPolicy === 'existing_only' ? 'legacy-only' : 'selectable',
+      stableRoleId: role.stableRoleId, code: role.code, displayName: role.displayName, status: 'active', assignable: role.stableRoleId!=='role-system-admin',
+      riskLevel: 'normal', allowedScopeKinds: ['workspace'], subjectKind: role.stableRoleId==='role-system-admin'?'principal':'employee', recommendationAllowed: false, delegationAllowed: false,
+      assignmentTier: 'app_admin', assignmentDisposition: role.stableRoleId==='role-system-admin'?'hidden-protected':role.assignmentPolicy === 'existing_only' ? 'legacy-only' : 'selectable',
       builtIn: role.builtIn, capabilityIds: role.capabilityIds, assignmentPolicy: role.assignmentPolicy, roleDefinitionHash: role.roleDefinitionHash,
     })),
   }

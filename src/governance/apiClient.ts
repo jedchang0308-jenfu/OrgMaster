@@ -2,6 +2,15 @@ import type { GovernanceCommandV2, GovernanceDocumentV2, GovernanceRoleAssignmen
 import type { PrivilegedAssignmentExpected, PrivilegedAssignmentRequest } from './privilegedAssignments'
 import type { GovernanceDocumentViewV2 } from './governancePresentation'
 import type { EmployeeRecommendationRequest, EmployeeRecommendationResponse } from './employeeRecommendations'
+import type { AdministrationCommand,AdministrationCatalogBindings } from './administration'
+import type { AdministrativeGrantV1 } from './types'
+export interface AdministrationWorkspace {
+ contractVersion:'orgmaster.administration-workspace.v1';governanceRevision:string;organizationRevision:string;administrationVersion:number;initialized:boolean;
+ grants:AdministrativeGrantV1[];catalogBindings:AdministrationCatalogBindings;admission:{read:boolean;mutate:boolean};correlationId:string
+ eligiblePrincipals?:Array<{principalId:string;employeeId:string;accountType:'human_personal'|'human_privileged'}>
+}
+export interface AdministrationPreview {contractVersion:'orgmaster.administration-preview.v1';commandId:string;requestHash:string;previewHash:string;expiresAt:string;diff:{grantIds:string[];result:string;operation?:string;employeeId?:string;applicationId?:keyof typeof import('./administration').ADMINISTRATIVE_ROLE_IDS|null};correlationId:string}
+export interface AdministrationCommandReceipt {commandId:string;result:'applied'|'no_change';administrationVersion:number;publishedPolicyId:string;grantIds:string[];outboxIds:string[];activation:'pending'|'acknowledged';correlationId:string}
 
 import { captureOrgMasterPermissionInvalidation } from '../auth/permissionInvalidation'
 import { isOrgMasterPermissionProjection } from '../auth/permissionContract'
@@ -116,6 +125,10 @@ export async function loadGovernanceSession(principalId: string, signal?: AbortS
   if (!isOrgMasterPermissionProjection(payload, principalId)) throw new GovernanceApiError('PERMISSION_CONTRACT_MISMATCH', 503)
   return { payload, revision: response.headers.get('X-OrgMaster-Governance-Revision') ?? '' }
 }
+export const loadAdministrationWorkspace=()=>request<AdministrationWorkspace>('/administrators')
+export const previewAdministration=(command:AdministrationCommand)=>request<AdministrationPreview>('/administrators/preview',{method:'POST',body:JSON.stringify(command)})
+export const commitAdministration=(command:AdministrationCommand)=>request<AdministrationCommandReceipt>('/administrators/commands',{method:'POST',body:JSON.stringify(command)})
+export const loadAdministrationCommand=(commandId:string)=>request<AdministrationCommandReceipt>(`/administrators/commands/${encodeURIComponent(commandId)}`)
 export async function recommendGovernanceEmployees(input: EmployeeRecommendationRequest, signal?: AbortSignal) { return request<EmployeeRecommendationResponse>('/employee-recommendations', { method: 'POST', body: JSON.stringify(input), signal }) }
 export async function linkCurrentGovernanceIdentity(revision: string, commandId: string, employeeId: string) { return request<{ status: string; document: GovernanceDocumentViewV2; revision: string }>('/identity-links/current', { method: 'POST', body: JSON.stringify({ expectedRevision: revision, commandId, employeeId }) }) }
 export async function patchGovernanceDraft(revision: string, command: GovernanceCommandV2, expectedOrganizationRevision?: string, expectedCatalog?: GovernanceExpectedCatalogV1) { return request<{ status: string; document: GovernanceDocumentViewV2; revision: string }>('/draft', { method: 'PATCH', body: JSON.stringify({ expectedRevision: revision, command, expectedOrganizationRevision, expectedCatalog }) }) }

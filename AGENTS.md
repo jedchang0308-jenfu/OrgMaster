@@ -7,7 +7,7 @@
 
 - 只擁有 `orgmaster_core`／`orgmaster_contract`。DDL 走 `db/migrations` forward-only；已套用檔案不改刪，不手改共享正式 DB、不在 `public` 建物件。改 SQL／DB boundary 才跑 `npm run check:db-boundary`。
 - 跨系統只讀 versioned `*_contract`，禁止 sibling `*_core`；breaking contract 另版並留相容窗口。runtime 無 owner／DDL／migrator 權限。
-- 人類寫入沿 verified Principal、v2 identity-fenced writer，保留 session／epoch、scope／期限／撤權、CAS、防重送與同交易 audit。業務權限依 Employee 明示任用；`system_admin` 只認 exact-Principal direct global grant，不繼承或繞過資格。
+- 人類寫入沿 verified Principal；DEV-070／045 後使用帶 verified session context 的 v3 identity-fenced writer，舊 v1/v2 runtime 不可繞入。保留 session／epoch、scope／期限／撤權、CAS、防重送與同交易 audit。業務權限依 Employee 明示任用；新 root/app-admin 只認 administration exact-Principal direct grant，既有 legacy 能力沿 DEV-070 相容窗口保留，不繼承或繞過資格。
 - workload 依實際 PostgreSQL `SESSION_USER` 的 typed owner／purpose／provider，禁 actor label、UID／email fallback 或 v1 worker；lifecycle 凍結 Principal／provider-pair，Scheduler 沿 owner 命令。完整身份與回復限制見 [DEV-057](ai-doc/specs/DEV-057-identity-and-grant-contract-boundary.md)。
 
 ## 正式發布與回復 — DEV040_R2_RELEASE_V3_DIRECT_RUN_APP

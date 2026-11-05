@@ -1499,3 +1499,12 @@ PR #134 已合併至 `ad4e6be3355305329833a83005889be61c46f6ee`。其後人類�
 目前只完成本地 source／規則修改及語法／diff 檢查。沒有新增或執行測試、build、付費 scan 或 provider 操作；行為、時間與帳單節省均未驗證，維護出口保持待驗證，正式 deploy仍須原 owner release 授權與既定證據。Release-executor 變更只補其必要 contract/recovery coverage；有效 app/build/QC 證據依實際輸入重用，不為每個 DEV 重跑同一共用 gate。
 
 API依據：[Cloud Build history tags/filter](https://docs.cloud.google.com/build/docs/view-build-results)、[regional builds list](https://docs.cloud.google.com/build/docs/api/reference/rest/v1/projects.builds/list)。持續分析 ACTIVE／stale metadata 邊界依[Artifact Analysis 文件](https://docs.cloud.google.com/artifact-analysis/docs/container-scanning-overview)；過期 metadata refresh不等同必須產生新映像。
+
+
+<a id="dev070-administration-append-20261106"></a>
+
+## 2026-11-06 DEV-070 精確 administration append
+
+[DEV-070 §14](DEV-070-platform-super-admin-authority-contract.md#14-owner-release-source精確-dev070-append) 為本切片工程契約。source profile 由原39至041，僅加042/044/045至42，舊identity/hash不變、043不帶入；typed `DEV070_ADMINISTRATION_APPEND` 沿既有 prepare→build→migrate→candidate→entrypoint→verify→decision→activate→canonical→finalize，不混bootstrap/data import/IAM/Secret/infra或smoke rotation。普通release仍UNCHANGED_VERIFIED零DDL；exact31–41 prefix／42 replay逐列驗證，未知於寫入前拒絕。獨立工具image preparation只認識該已定案metadata，不在工具rotation執行DDL，append不繼承混合rotation特例。
+
+045撤runtime舊writer後至v3-compatible新caller activation有界治理寫入42501，讀取維持；這是本次已接受的轉換影響，不能宣稱零中斷。migrate前須已有新immutable app artifact與provenance；失敗只回自身traffic/tag/entry並走v3-compatible forward repair，禁止downSQL/復活舊writer。DEV070 missingreceipt視UNKNOWN_REQUIRES_LEDGER_READBACK；rollback/terminal保留administrationRecovery與sealed source/image reference，traffic ROLLED_BACK不代表schema或舊治理write恢復。source/隔離PASS不代表此段已正式執行，正式仍需reviewed master/required CI/provider readback及既有owner workflow。

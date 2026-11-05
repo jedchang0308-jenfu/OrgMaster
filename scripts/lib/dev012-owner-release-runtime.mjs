@@ -3,6 +3,7 @@ import { canonicalize, crc32cBase64, parseGsUri, sha256 } from './dev012-product
 import { GCC_PBDS_CVE, readNativeInventoryProgram, gccPbdsOccurrenceMatches, readGccApplicabilityPolicy, assertGccApplicabilityAssessment } from './dev015-gcc-applicability.mjs'
 import { GCC_ALIGNED_NEW_CVE, readAlignedNewInspectionProgram, gccAlignedNewOccurrenceMatches, readAlignedNewApplicabilityPolicy, assertAlignedNewApplicabilityAssessment } from './dev015-gcc-aligned-new-applicability.mjs'
 import { runOrgmasterPrincipalSsoSmoke } from './dev015-orgmaster-principal-sso-smoke.mjs'
+import {DEV070_RELEASE_MODE} from './dev070-administration-migration.mjs'
 import { DEV060_RELEASE_MODE } from './dev060-fms-catalog-activation-migration.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
@@ -818,7 +819,8 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
 
   async function runMigrationJob({ profile, deployment, outputUri, deadlineAt, migrationMode = null }) {
     if (deployment.productionDataRef || deployment.firstPrincipalBootstrapRef) fail('MIGRATION_BOOTSTRAP_INPUT_DENIED')
-    if (migrationMode !== null && migrationMode !== DEV060_RELEASE_MODE) fail('MIGRATION_MODE_INVALID')
+    if (migrationMode !== null && ![DEV060_RELEASE_MODE,DEV070_RELEASE_MODE].includes(migrationMode)) fail('MIGRATION_MODE_INVALID')
+    if(migrationMode===DEV070_RELEASE_MODE&&profile.application.id!=='orgmaster')fail('MIGRATION_MODE_INVALID')
     const jobName = `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/${profile.migrations.jobName}`
     const job = await request(`https://run.googleapis.com/v2/${jobName}`)
     const container = job.template?.template?.containers?.find((item) => item.name === 'migration')

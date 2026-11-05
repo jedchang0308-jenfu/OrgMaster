@@ -11,7 +11,7 @@ export class FinancialRoleCatalogRepositoryError extends Error {
   }
 }
 
-const artifactRelativePath = 'contracts/jenfu-platform-entitlement/v2/fixtures/financial-role-catalog.v1.json'
+const artifactRelativePath = 'contracts/jenfu-platform-entitlement/v2/fixtures/financial-role-catalog.v3.json'
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value)
@@ -60,13 +60,14 @@ export async function readFinancialRoleCatalog(
       code: String(role.code),
       displayName: String(role.displayName),
       status: role.status,
-      assignable: true,
+      assignable: role.stableRoleId!=='role-system-admin',
       riskLevel: 'normal',
       allowedScopeKinds: ['workspace'],
-      subjectKind: 'employee',
+      subjectKind: role.subjectKind,
       recommendationAllowed: false,
       delegationAllowed: false,
       assignmentTier: 'app_admin',
+      ...(role.stableRoleId==='role-system-admin'?{assignmentDisposition:'hidden-protected' as const,roleDefinitionHash:String(role.roleDefinitionHash)}:{}),
     })),
   }
   if (validateFinancialExternalRoleCatalog(snapshot).length) throw new FinancialRoleCatalogRepositoryError('FINANCIAL_CATALOG_INVALID')

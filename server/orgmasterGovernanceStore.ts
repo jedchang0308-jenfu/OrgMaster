@@ -16,6 +16,7 @@ import { assertMigrationWritesAllowed } from './orgmasterMigrationGate'
 import { storedGovernanceCatalogs, isGovernanceReduction, withPublishedGovernanceHistory } from './governanceReduction'
 import { readHistoricalAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
 import { assertCurrentGovernanceWriteActor, GovernanceWriteActorError } from './orgmasterGovernanceWriteActor'
+import { administrationPolicy, administrationHash, assertAdministrativeContinuity, hasAdministrativeGrant } from '../src/governance/administration'
 
 export class GovernanceStoreError extends Error { constructor(public readonly code: string, public readonly details?: unknown) { super(code); this.name = 'GovernanceStoreError' } }
 export type GovernanceStoreDocument = GovernanceDocumentV3
@@ -55,6 +56,7 @@ function auditEventHashInput(event: Omit<GovernanceAuditEventV3, 'eventHash'> | 
     commandHash: event.commandHash,
     occurredAt: event.occurredAt,
     actorPrincipalId: event.actorPrincipalId,
+    ...(event.actor ? { actor:event.actor } : {}),
     action: event.action,
     entityType: event.entityType,
     entityId: event.entityId,
@@ -110,7 +112,8 @@ export function actorHasPolicyPermission(
     && roles.has(assignment.roleId)
     && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, now))
   const grants = policy.rolePermissionGrants.filter((grant) =>
-    assignments.some((assignment) => assignment.roleId === grant.roleId)
+    (assignments.some((assignment) => assignment.roleId === grant.roleId)
+      || 'managementGrants' in policy && grant.roleId === 'role-orgmaster-admin' && hasAdministrativeGrant(policy as GovernanceDocumentV3['draft'],actor.principalId,actor.employeeId!,'orgmaster',now))
     && grant.permissionId === permission.id)
   return !grants.some((grant) => grant.effect === 'deny') && grants.some((grant) => grant.effect === 'allow')
 }
@@ -293,7 +296,7 @@ export async function readGovernanceCommandResult(root: string, commandId: strin
 }
 
 export function assertDynamicCatalogBinding(catalog: ExternalRoleCatalogSnapshotV1, context: GovernanceWriteContext) {
-  if (catalog.publicationFormat !== 'dynamic-policy-v1') return
+  if (catalog.publicationFormat !== 'dynamic-policy-v1'&&catalog.publicationFormat!=='dynamic-policy-v2') return
   const expected = context.expectedCatalog
   if (!expected || !/^[a-f0-9]{64}$/u.test(expected.catalogSha256) ||
     expected.catalogVersion !== catalog.catalogVersion || expected.catalogSha256 !== (catalog.catalogSha256 ?? catalog.payloadHash)) {
@@ -438,6 +441,9 @@ export async function setActivePolicy(root: string, expectedRevision: string, co
     }
     if (current.revision !== expectedRevision) throw new GovernanceStoreError('REVISION_CONFLICT')
     const target = versionId ? current.document.publishedVersions.find(version => version.id === versionId) : null
+    const currentPolicy=current.document.publishedVersions.find(version=>version.id===current.document.activePolicyVersionId)
+    if(currentPolicy?.kind==='assignment-governance-v3' && administrationPolicy(currentPolicy.policy).initializedByCommandId!==null
+      && (target?.kind!=='assignment-governance-v3' || administrationHash(administrationPolicy(target.policy))!==administrationHash(administrationPolicy(currentPolicy.policy)))) throw new GovernanceStoreError('ADMINISTRATION_CONFLICT')
     if (versionId && !target) throw new GovernanceStoreError('POLICY_VERSION_NOT_FOUND')
     if (target && target.kind !== 'assignment-governance-v3') throw new GovernanceStoreError('LEGACY_POLICY_REACTIVATION_FORBIDDEN')
     const source = await loadOrganizationSource(root)

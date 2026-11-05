@@ -21,7 +21,7 @@ import {
 } from './orgmasterGovernanceIdentity'
 import { createPrincipalAdmissionRepository, PrincipalAdmissionError, type PrincipalAdmissionRepository } from './orgmasterPrincipalAdmissionRepository'
 import { readVerifiedRequestIdentity, setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
-import { withOrgmasterLocalSandboxPersistenceTarget, withPersistencePrincipal } from './orgmasterPersistenceRepository'
+import { withOrgmasterLocalSandboxPersistenceTarget, withPersistenceActor } from './orgmasterPersistenceRepository'
 import { createOrgmasterSessionRepository, type OrgmasterSession, type OrgmasterSessionRepository } from './orgmasterSessionRepository'
 import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
 import { createManagedIdentityRepository } from './orgmasterManagedIdentityRepository'
@@ -508,7 +508,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         const verified = readVerifiedRequestIdentity(request)
         if (!verified) throw new OrgmasterAuthError(401, 'auth_session_invalid')
         withOrgmasterLocalSandboxPersistenceTarget(authenticated.persistenceTargetUrl, () =>
-          withPersistencePrincipal(verified.principalId, next))
+          withPersistenceActor({principalId:verified.principalId,employeeId:verified.employeeId,issuer:verified.identityIssuer,subject:verified.identitySubject,bootstrap:false,sessionId:verified.id,principalAuthEpoch:verified.principalAuthEpoch,authenticatedAt:verified.authenticatedAt,assuranceLevel:verified.assuranceLevel}, next))
         return
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/development/profiles` && request.method === 'GET') {
@@ -601,7 +601,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
       }
       const verified = readVerifiedRequestIdentity(request)
       if (!verified) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
-      withPersistencePrincipal(verified.principalId, next)
+      withPersistenceActor({ principalId:verified.principalId,employeeId:verified.employeeId,issuer:verified.identityIssuer,subject:verified.identitySubject,bootstrap:false,sessionId:verified.id,principalAuthEpoch:verified.principalAuthEpoch,authenticatedAt:verified.authenticatedAt,assuranceLevel:verified.assuranceLevel }, next)
     }
     void handle().catch((unknownError) => {
       if (response.writableEnded) return

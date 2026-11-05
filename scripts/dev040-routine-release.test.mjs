@@ -1,3 +1,4 @@
+import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ADMINISTRATION_REMEDIATION,assertDev070AdministrationAppend} from './lib/dev070-administration-migration.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend } from './lib/dev059-fms-authority-migration.mjs'
 import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT, DEV060_MIGRATION_PREFIX_COUNT, DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationAppend } from './lib/dev060-fms-catalog-activation-migration.mjs'
@@ -2599,7 +2600,7 @@ test('DEV-058 native prepare accepts the same bound recipe with an enabled lifec
 })
 
 function fmsAuthorityHarness() {
-  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 31), currentBundle: { bundle: newBundle.bundle } })
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 31), currentBundle: { bundle: prefixBundle(newBundle.bundle,DEV059_MIGRATION_ENTRY_COUNT) } })
   const common = { devId: 'DEV-059', slice: '059-FMS-AUTHORITY', remediation: DEV059_FMS_AUTHORITY_REMEDIATION }
   h.input.values.authorization = { ...h.input.values.authorization, ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
   h.input.values.readiness = { ...h.input.values.readiness, ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
@@ -2608,6 +2609,7 @@ function fmsAuthorityHarness() {
 }
 
 test('DEV-059 admits only the exact FMS authority append through the native owner release', async () => {
+  const newBundle={bundle:prefixBundle(buildBundle(newSource).bundle,DEV059_MIGRATION_ENTRY_COUNT)}
   const h = fmsAuthorityHarness()
   const plan = await verifyRoutineRelease(h.input)
   assert.equal(plan.releaseMode, DEV059_RELEASE_MODE)
@@ -2645,11 +2647,11 @@ test('DEV-059 CLI binds one exact FMS authority recipe and rejects mixed modes',
   ]) assert.throws(() => parseDeployProductionArgs(invalid))
   const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
   assert.equal((source.match(/\.\.\.dev059Authority/g) ?? []).length, 2)
-  assert.deepEqual(DEV059_FMS_AUTHORITY_REMEDIATION.migrationEntries, newBundle.bundle.entries.slice(-DEV059_FMS_AUTHORITY_MIGRATIONS.length).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
+  assert.deepEqual(DEV059_FMS_AUTHORITY_REMEDIATION.migrationEntries, newBundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT-DEV059_FMS_AUTHORITY_MIGRATIONS.length,DEV059_MIGRATION_ENTRY_COUNT).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
 })
 
 function fmsCatalogActivationHarness() {
-  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, DEV060_MIGRATION_PREFIX_COUNT), currentBundle: { bundle: newBundle.bundle } })
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, DEV060_MIGRATION_PREFIX_COUNT), currentBundle: { bundle: prefixBundle(newBundle.bundle,DEV060_MIGRATION_ENTRY_COUNT) } })
   const common = { devId: 'DEV-060', slice: '060-FMS-CATALOG-ACTIVATION', remediation: DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION }
   h.input.values.authorization = { ...h.input.values.authorization, ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
   h.input.values.readiness = { ...h.input.values.readiness, ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
@@ -2658,6 +2660,7 @@ function fmsCatalogActivationHarness() {
 }
 
 test('DEV-060 admits only the exact 040-to-041 catalog activation append', async () => {
+  const newBundle={bundle:prefixBundle(buildBundle(newSource).bundle,DEV060_MIGRATION_ENTRY_COUNT)}
   const h = fmsCatalogActivationHarness()
   const plan = await verifyRoutineRelease(h.input)
   assert.equal(plan.releaseMode, DEV060_RELEASE_MODE)
@@ -2707,4 +2710,32 @@ test('DEV-060 CLI binds one migration-041 recipe and rejects every mixed control
   const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
   assert.equal((source.match(/\.\.\.dev060Authority/g) ?? []).length, 2)
   assert.equal(DEV060_MIGRATION_ENTRY_COUNT, 39)
+})
+
+function administrationHarness(count=39){
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,count),currentBundle:newBundle})
+ const common={devId:'DEV-070',slice:'070-ADMINISTRATION',remediation:DEV070_ADMINISTRATION_REMEDIATION}
+ h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
+ h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
+ attachForwardInfra(h)
+ return h
+}
+test('DEV070 routine planner binds the exact suffix and known baseline without changing ordinary zero-DDL release',async()=>{
+ for(const count of[31,39,40,41]){
+  const h=administrationHarness(count),plan=await verifyRoutineRelease(h.input)
+  assert.equal(plan.releaseMode,DEV070_RELEASE_MODE);assert.equal(plan.migrationDisposition,'FORWARD_APPLY')
+  assert.equal(plan.pendingMigrationCount,DEV070_MIGRATION_ENTRY_COUNT-count)
+  assert.equal(plan.databaseVerification,'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
+ }
+ const normal=await verifyRoutineRelease(harness().input)
+ assert.equal(normal.migrationDisposition,'UNCHANGED_VERIFIED');assert.equal(normal.pendingMigrationCount,0)
+ await assert.rejects(verifyRoutineRelease(harness({baselineBundle:prefixBundle(oldBundle.bundle,39)}).input),/ROUTINE_MIGRATION_CHANGED/)
+ await assert.rejects(verifyRoutineRelease(administrationHarness(42).input),/DEV070_MIGRATION_APPEND_INVALID/)
+ for(const field of['sourceRevision','releaseId','baselineIntentRef','remediation','slice','ownerApplicationId']){
+  const h=administrationHarness();h.input.values.authorization[field]='changed'
+  await assert.rejects(verifyRoutineRelease(h.input),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)
+ }
+ const drift=administrationHarness();drift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_SESSION_HASH_PEPPER='2'
+ await assert.rejects(verifyRoutineRelease(drift.input),/DEV070_RUNTIME_CHANGED/)
+ assert.throws(()=>assertToolRotationReleaseCompatibility({toolRotation:{evidenceScope:'OWNER_SEALED_TOOL_IMAGE_ROTATION'},controlledTransition:{releaseMode:DEV070_RELEASE_MODE},repair:false,runtimeChanged:false}),/TOOL_ROTATION_ORDINARY_ONLY/)
 })

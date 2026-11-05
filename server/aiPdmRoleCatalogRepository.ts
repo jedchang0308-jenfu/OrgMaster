@@ -258,14 +258,15 @@ export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmR
   try {
     const result = await database.query(
       `SELECT ${AI_PDM_ROLE_CATALOG_V2_COLUMNS}
-         FROM ai_pdm_contract.v_application_role_catalog_v2
+         FROM ai_pdm_contract.v_application_role_catalog_v3
         ORDER BY display_order`,
     )
     rows = result.rows
   } catch {
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
   }
-  return decodeDatabaseCatalogRows(rows, expectedCatalogSha256)
+  const catalog=await decodeDatabaseCatalogRows(rows,expectedCatalogSha256)
+  return {...catalog,sourcePath:'postgres:ai_pdm_contract.v_application_role_catalog_v3'}
 }
 
 /** Read one immutable publication needed to validate stored assignment provenance. */
