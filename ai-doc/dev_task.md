@@ -4,11 +4,13 @@
 
 ## DEV-070：平台超級管理員權威與首次初始化
 
-- 狀態：`IMPLEMENTING / RD Readiness Review / PR213 DRAFT / NOT RELEASED`。本回合已恢復工程並完成受影響 source／隔離檢查；先前四專案完整實作至真實地端／正式發布授權延續，指定 Google personal／張仕杰 JFS0005、真 AAL1（接受AAL2）、中文姓名。
+- 狀態：`IMPLEMENTING / RD Readiness Review / PR213 DRAFT / NOT RELEASED`。本回合聚焦開發文件與既有已授權source的有界收斂；先前四專案完整實作至真實地端／正式發布授權延續，指定 Google personal／張仕杰 JFS0005、真 AAL1（接受AAL2）、中文姓名。
 - [實作契約](specs/DEV-070-platform-super-admin-authority-contract.md) §17–20記A owner intent→正常Google完成、B admin-only native dispatcher／Platform point eligibility、C FMS fixed-role typed adoption；[既有QA計畫§18](qa/DEV-040-R2-independent-production-release-validation-plan.md#18-dev-070-administration-formal-closure)分開source／隔離／環境驗收。
-- 已提交HEAD=`6146162f73ffdf0550af794661adc7e11a6532cb`，[draft PR213](https://github.com/jedchang0308-jenfu/OrgMaster/pull/213)之required [CI42084560779](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42084560779) SUCCESS。FMS中文姓名P2已限新app-scoped三欄view；無FMS資格的root／同Employee別Principal無姓名，ordinaryviewer／新admin保有中文，042及Platform/PDM相容不變。
-- 本次A/B/C source接續同PR交付，尚未收錄新head requiredCI結果：A/B 12 unit、owner-operation7 Node／contracts總18 PASS；release Node458＋contracts18共476、新mode工具封裝3＋readback10 PASS、三cluster真HTTP/PG＋actual Platform owner consumer／typedack PASS；C focused76、restricted PG→FMS actual TSconsumer1 PASS；TypeScript PASS。均為RD隔離證據，Google／Directory／SA verifier或issuance部分採fixture boundary，不當作實際provider／本人日常入口。
-- source profile精確42entries，原39至041只加042/044/045，不帶043；新045 machinepins已隨本次delta同步。owner非互動Job sealed join／重用與新mode完整packaging已隔離驗證，實際Job與actual local closed transport、正式ledger/native/catalog／真Google／正常各app入口及新source CI／review仍待。尚無本輪merge／部署／provider或primary DB寫入。legacy原能力保留讀取消費相容；本人升級不以全員legacy退場作前置。
+- 已提交HEAD=`9dcd8d70008e498f585579f717f6fe67b6e17c24`，[draft PR213](https://github.com/jedchang0308-jenfu/OrgMaster/pull/213)之required [CI42097390030](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42097390030) SUCCESS，含A/B/C：app1346passed／7conditional skips、Node61、release458＋contracts18、toolrotation61＋26、toolpackaging3＋10、abort6、build／DBboundary與三toolimageimport。P2 scoped中文姓名、原042與Platform/PDM相容保留；新C PG在一般CI略過，前述獨立本機PG證據另列。
+- 新未提交local source增量見[§21](specs/DEV-070-platform-super-admin-authority-contract.md#21-local-trusted-composition-source-增量2026-11-06未提交未驗-primary)：own canonical側檔/rawrefs／OS postmaster／actualDB runtime資格fresh guard、private authorized-user ADC明確綁真Firebase/DWD/GoogleOIDC SDK、local固定1000/1030 transport與1010 exactpeer、Vite/AuthRuntime/normalcommand同dispatcher。受影響8files133 mocked tests、TypeScript／diffcheck PASS；無新CI，不宣稱actual OS/DB/provider／本人session驗收。
+- source profile精確42entries，原39至041只加042/044/045，不帶043；local delta無DDL／packagehash變更。actual launcher sidecar／local OIDC-nativeack／FMS ownledger-normaladoption、正式ledger/native/catalog／本人四app入口及local新source review/CI仍待。尚無本輪merge／部署／provider或primary DB寫入。legacy原能力保留讀取消費相容；本人升級不以全員legacy退場作前置。
+
+- 續接owner bridge見[§22](specs/DEV-070-platform-super-admin-authority-contract.md#22-local-owner-db-bridgeexact-owner-bootstrap2026-11-06source-待-ci)：newlocalCLI plan/status/commit、exact3 existing function owner-bootstrap、raw042 genesis preserve、原bytes44/45＋local046 exact2workload/FMScontractACL；source未提交／新CI待。受影響8files134 mocked＋contracts25／tsc PASS。本機native PG因capacity阻擋，改同requiredSourceQC ephemeralPG18 component必跑；FMS ABI-stub範圍與actualprimary/provider未驗分開。沒有實際primarycommit。
 
 <a id="dev-060-frontend-permission-projection"></a>
 

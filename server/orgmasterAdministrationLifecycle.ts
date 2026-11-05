@@ -6,7 +6,7 @@ import type {LifecycleClaimV2,LifecycleCycleControl,LifecycleReceiptV2} from './
 
 type Database=Pick<OrgmasterDatabase,'query'>
 export type AdministrationLifecycleDispatcher=ReturnType<typeof createAdministrationLifecycleDispatcher>
-export function createAdministrationLifecycleDispatcher(input:{database:Database;dispatch:(claim:LifecycleClaimV2,control:LifecycleCycleControl)=>Promise<LifecycleReceiptV2>}){
+export function createAdministrationLifecycleDispatcher(input:{database:Database;dispatch:(claim:LifecycleClaimV2,control:LifecycleCycleControl)=>Promise<LifecycleReceiptV2>;beforeQuery?:()=>Promise<void>}){
  const controllers=new Set<AbortController>();let closed=false;let running:Promise<{completed:number;pending:boolean}>|null=null
  async function cycle(resumeBlocked=false){
   if(closed)throw new Error('ADMINISTRATION_LIFECYCLE_CLOSED')
@@ -14,7 +14,7 @@ export function createAdministrationLifecycleDispatcher(input:{database:Database
   const control={signal:controller.signal,deadlineAt:performance.now()+12_000},lease=randomUUID()
   let timer:ReturnType<typeof setTimeout>|undefined
   const deadline=new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('ADMINISTRATION_LIFECYCLE_DEADLINE'))},12000)})
-  const query:Database['query']=(async(sql:unknown,values?:unknown[])=>{if(controller.signal.aborted)throw new Error('ADMINISTRATION_LIFECYCLE_DEADLINE');const result=await input.database.query(sql as string,values);if(controller.signal.aborted)throw new Error('ADMINISTRATION_LIFECYCLE_DEADLINE');return result}) as Database['query']
+  const query:Database['query']=(async(sql:unknown,values?:unknown[])=>{if(controller.signal.aborted)throw new Error('ADMINISTRATION_LIFECYCLE_DEADLINE');await input.beforeQuery?.();if(controller.signal.aborted)throw new Error('ADMINISTRATION_LIFECYCLE_DEADLINE');const result=await input.database.query(sql as string,values);if(controller.signal.aborted)throw new Error('ADMINISTRATION_LIFECYCLE_DEADLINE');return result}) as Database['query']
   let completed=0,pending=false
   const work=async()=>{try{
    const executorRows=(await query('SELECT orgmaster_core.assert_lifecycle_executor_v2(NULL) executor')).rows

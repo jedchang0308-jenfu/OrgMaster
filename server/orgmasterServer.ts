@@ -120,7 +120,7 @@ export function createOrgmasterServer(options: OrgmasterServerOptions = {}) {
     createWorkbenchPreferenceMiddleware(root),
     ...(accountRuntime ? [accountRuntime.middleware] : []),
     createOrgmasterApiMiddleware(),
-    createOrgmasterGovernanceMiddleware(root, devIdentityEnabled, accountEnrollmentEnabled),
+    createOrgmasterGovernanceMiddleware(root, devIdentityEnabled, accountEnrollmentEnabled,runtime.financialCatalogInitializationOwnerReader?{initializationOwnerReader:runtime.financialCatalogInitializationOwnerReader,handoffSource:runtime.financialCatalogHandoffSource??'formal'}:{},{lifecycle:runtime.administrationLifecycle,verifyRuntime:runtime.administrationLocalGuard}),
     createOrgmasterManagementMethodMiddleware(root, devIdentityEnabled),
   ]
   const server=createServer((request, response) => runMiddlewares(middlewares, request, response, () => { void sendStatic(root, request, response) }))

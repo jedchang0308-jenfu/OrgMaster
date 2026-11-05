@@ -17,6 +17,8 @@ const PROJECTS = {
     migrationDir: 'db/migrations',
     firstGovernedVersion: 11,
     ownedSchemas: ['orgmaster_core', 'orgmaster_contract'],
+    // DEV-070 §22: only this exact local neutral owner-bootstrap source.
+    neutralBootstrapPaths: ['db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql'],
   },
   'ai-pdm': {
     app: 'ai-pdm',
@@ -204,8 +206,9 @@ function main() {
     .filter((entry) => entry.isFile() && migrationVersion(entry.name) !== null)
     .map((entry) => normalizeRepoPath(path.posix.join(config.migrationDir, entry.name)))
 
-  const added = gitChangedPaths(root, config.migrationDir, 'A', baseRef)
-  const rewritten = gitChangedPaths(root, config.migrationDir, 'MDR', baseRef)
+  const governedRoots = [config.migrationDir, ...(config.neutralBootstrapPaths ?? [])]
+  const added = [...new Set(governedRoots.flatMap(directory => gitChangedPaths(root, directory, 'A', baseRef)))]
+  const rewritten = [...new Set(governedRoots.flatMap(directory => gitChangedPaths(root, directory, 'MDR', baseRef)))]
   const errors = []
   const warnings = []
 
@@ -222,7 +225,7 @@ function main() {
     }
   }
 
-  const governedFiles = [...new Set([...files.filter((filePath) => migrationVersion(filePath) >= config.firstGovernedVersion), ...added])]
+  const governedFiles = [...new Set([...files.filter((filePath) => migrationVersion(filePath) >= config.firstGovernedVersion), ...(config.neutralBootstrapPaths ?? []), ...added])]
     .filter((filePath) => fs.existsSync(path.join(root, ...filePath.split('/'))))
     .sort()
 

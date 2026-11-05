@@ -104,7 +104,7 @@
     "qc:dev-055:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev055",
     "qc:dev-057:contract": "node scripts/qc-dev-057-contract.mjs",
     "qc:dev-057:postgres": "node scripts/qc-dev-047-postgres.mjs --suite=dev057",
-    "test:dev-070:contracts": "node --experimental-transform-types scripts/dev070-administration-contracts.mjs --check && node scripts/dev070-bootstrap-seed.mjs --check && node scripts/dev070-fms-administration-initialization-contract.mjs --check && node scripts/dev070-enrollment-contract.mjs --check && node scripts/dev070-administration-lifecycle-contract.mjs --check && node scripts/dev070-fms-catalog-initialization-activation-contract.mjs --check && node --test scripts/dev070-administration-migration.test.mjs scripts/dev070-initialize-platform-administrator.test.mjs scripts/qc-dev070-administration-postgres.test.mjs scripts/dev070-enrollment-owner-operation.test.mjs"
+    "test:dev-070:contracts": "node --experimental-transform-types scripts/dev070-administration-contracts.mjs --check && node scripts/dev070-bootstrap-seed.mjs --check && node scripts/dev070-fms-administration-initialization-contract.mjs --check && node scripts/dev070-enrollment-contract.mjs --check && node scripts/dev070-administration-lifecycle-contract.mjs --check && node scripts/dev070-fms-catalog-initialization-activation-contract.mjs --check && node --test scripts/dev070-administration-migration.test.mjs scripts/dev070-initialize-platform-administrator.test.mjs scripts/qc-dev070-administration-postgres.test.mjs scripts/dev070-enrollment-owner-operation.test.mjs scripts/dev070-local-administration-owner.test.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "3.1.1",

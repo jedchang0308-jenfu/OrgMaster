@@ -7,7 +7,7 @@ export function createAdministrationEnrollmentMiddleware(service:AdministrationE
  return (request,response,next)=>{
   const url=new URL(request.url??'/','http://orgmaster.local')
   if(url.pathname!==ADMINISTRATION_ENROLLMENT_PATH)return next()
-  let requestId=randomUUID()
+  let requestId:string=randomUUID()
   const send=(status:number,value:unknown)=>{response.statusCode=status;response.setHeader('Content-Type','application/json; charset=utf-8');response.setHeader('Cache-Control','no-store');response.end(JSON.stringify(value))}
   const handle=async()=>{
    if(request.method!=='POST'||url.search||request.headers.origin||request.headers.cookie||!String(request.headers['content-type']).startsWith('application/json'))throw new AdministrationEnrollmentError(400,'request_invalid')

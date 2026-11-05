@@ -38,7 +38,8 @@ import { resolveIdentityLinkUpsert, assertIdentityLinkStatusMutationAllowed as a
 import { recommendGovernanceEmployees } from './employeeRecommendationService'
 import { LOCAL_IDENTITY_ISSUER } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
 import { warnOrgmasterLocalPersistenceDiagnostic, withOrgmasterLocalPrincipalDiagnosticContext } from './orgmasterPersistenceRepository'
-import { handleAdministrationRequest } from './orgmasterAdministrationApi'
+import { handleAdministrationRequest,createAdministrationRequestHandler,type AdministrationRequestOptions } from './orgmasterAdministrationApi'
+import type {OrgmasterAuthRuntime} from './orgmasterAuthApi'
 
 export const API_PATH = '/api/orgmaster/governance'
 const MAX_BODY = 1024 * 1024
@@ -275,9 +276,9 @@ function financialInitialAuthorityRequest(body: Record<string, unknown>, phase: 
     : request
 }
 
-async function handle(request: IncomingMessage, response: ServerResponse, root: string, devEnabled: boolean, accountEnrollmentEnabled: boolean, catalogOptions: FinancialCatalogActivationOptions = {}) {
+async function handle(request: IncomingMessage, response: ServerResponse, root: string, devEnabled: boolean, accountEnrollmentEnabled: boolean, catalogOptions: FinancialCatalogActivationOptions = {},administrationHandler=handleAdministrationRequest) {
   const url = new URL(request.url ?? '/', 'http://orgmaster.local'); const path = url.pathname.slice(API_PATH.length) || '/';
-  if(await handleAdministrationRequest(request,response,root,path,()=>parseBody(request))) return
+  if(await administrationHandler(request,response,root,path,()=>parseBody(request))) return
   if (path === '/employee-authority-switch') { sendJson(response, 410, { error: 'LEGACY_AUTHORITY_SWITCH_RETIRED' }); return }
   const actor = path.startsWith('/applications/ai-pdm/') ? aiPdmActorOrThrow(request, devEnabled) : actorOrThrow(request, devEnabled, path === '/session')
   if (path === '/applications/financial-management-system/return' && request.method === 'GET') {
@@ -497,6 +498,9 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
   if ((path === '/evaluate/permission' || path === '/evaluate/reviewers') && request.method === 'POST') { sendJson(response, 410, { error: 'LEGACY_GOVERNANCE_EVALUATOR_RETIRED' }); return }
   sendJson(response, 404, { error: 'ROUTE_NOT_FOUND' })
 }
-function middleware(root: string, devEnabled: boolean, accountEnrollmentEnabled = false, catalogOptions: FinancialCatalogActivationOptions = {}) { const resolvedCatalogOptions = { initializationOwnerReader: createDefaultFinancialCatalogInitializationOwnerReader(), ...catalogOptions }; return (request: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) => { if (!request.url?.startsWith(API_PATH)) return next(); void handle(request, response, root, devEnabled, accountEnrollmentEnabled, resolvedCatalogOptions).catch((error) => errorResponse(response, error)) } }
-export function createOrgmasterGovernanceMiddleware(root = process.cwd(), devEnabled = false, accountEnrollmentEnabled = false, catalogOptions: FinancialCatalogActivationOptions = {}): Connect.NextHandleFunction { return middleware(root, devEnabled, accountEnrollmentEnabled, catalogOptions) }
-export function orgmasterGovernanceApiPlugin(options: { accountEnrollmentEnabled?: boolean; catalogActivation?: FinancialCatalogActivationOptions } = {}): Plugin { return { name: 'orgmaster-local-governance-api', configureServer(server: ViteDevServer) { server.middlewares.use(middleware(server.config.root, server.config.command === 'serve' && server.config.mode === 'development', options.accountEnrollmentEnabled === true, options.catalogActivation)) }, configurePreviewServer(server: PreviewServer) { server.middlewares.use(middleware(process.cwd(), false, options.accountEnrollmentEnabled === true, options.catalogActivation)) } } }
+function middleware(root: string, devEnabled: boolean, accountEnrollmentEnabled = false, catalogOptions: FinancialCatalogActivationOptions = {},administration:AdministrationRequestOptions={}) { const resolvedCatalogOptions = { initializationOwnerReader: createDefaultFinancialCatalogInitializationOwnerReader(), ...catalogOptions },administrationHandler=createAdministrationRequestHandler(undefined,administration); return (request: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) => { if (!request.url?.startsWith(API_PATH)) return next(); void handle(request, response, root, devEnabled, accountEnrollmentEnabled, resolvedCatalogOptions,administrationHandler).catch((error) => errorResponse(response, error)) } }
+export function createOrgmasterGovernanceMiddleware(root = process.cwd(), devEnabled = false, accountEnrollmentEnabled = false, catalogOptions: FinancialCatalogActivationOptions = {},administration:AdministrationRequestOptions={}): Connect.NextHandleFunction { return middleware(root, devEnabled, accountEnrollmentEnabled, catalogOptions,administration) }
+export function orgmasterGovernanceApiPlugin(options: { accountEnrollmentEnabled?: boolean; catalogActivation?: FinancialCatalogActivationOptions;runtime?:()=>OrgmasterAuthRuntime } = {}): Plugin {
+ const install=(server:ViteDevServer|PreviewServer,root:string,development:boolean)=>{const runtime=options.runtime?.();server.middlewares.use(middleware(root,development,options.accountEnrollmentEnabled===true,{...options.catalogActivation,...(runtime?.financialCatalogInitializationOwnerReader?{initializationOwnerReader:runtime.financialCatalogInitializationOwnerReader,handoffSource:runtime.financialCatalogHandoffSource??'formal'}:{})},{lifecycle:runtime?.administrationLifecycle,verifyRuntime:runtime?.administrationLocalGuard}))}
+ return {name:'orgmaster-local-governance-api',configureServer(server){install(server,server.config.root,server.config.command==='serve'&&server.config.mode==='development')},configurePreviewServer(server){install(server,process.cwd(),false)}}
+}

@@ -136,6 +136,10 @@ const files = [
   'scripts/dev070-enrollment-owner-operation.mjs', 'scripts/dev070-production-enrollment-intent-runner.mjs', 'scripts/dev070-enrollment-owner-operation.test.mjs', 'scripts/qc-dev070-enrollment-postgres.mjs',
   'server/orgmasterAdministrationEnrollment.ts', 'server/orgmasterAdministrationEnrollmentApi.ts', 'server/orgmasterAdministrationEnrollment.test.ts',
   'server/orgmasterAdministrationLifecycle.ts', 'server/orgmasterAdministrationLifecycleApi.ts', 'server/orgmasterAuthApi.ts', 'server/orgmasterServer.ts', 'server/orgmasterAdministrationApi.ts',
+  'scripts/check-shared-database-boundary.mjs', 'scripts/dev070-local-administration-owner.mjs', 'scripts/lib/dev070-local-administration-owner.mjs', 'scripts/dev070-local-administration-owner.test.mjs', 'scripts/qc-dev070-local-administration-owner-postgres.mjs',
+  'db/migrations/local/046_dev070_local_administration_bridge_v1.sql', 'db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql',
+  'server/orgmasterLocalAdministrationRuntime.ts', 'server/orgmasterLocalAdministrationRuntime.test.ts', 'server/orgmasterLocalAdministrationComposition.test.ts',
+  'server/orgmasterPrincipalLifecycleClient.ts', 'server/orgmasterFirebaseIdentityProvider.ts', 'server/orgmasterManagedDirectoryPort.ts', 'vite.config.ts',
   'server/financialCatalogInitializationAdoption.ts', 'server/financialCatalogInitializationOwnerHttp.ts', 'server/financialCatalogActivationStore.ts',
   'src/components/GovernanceFinancialCatalogInitialization.tsx', 'src/components/FmsCatalogActivationWorkspace.tsx',
 

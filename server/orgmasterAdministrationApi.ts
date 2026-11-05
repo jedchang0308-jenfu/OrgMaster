@@ -4,14 +4,17 @@ import {productionAdministrationLifecycle} from './orgmasterAdministrationLifecy
 import { AdministrationError } from '../src/governance/administration'
 import { verifiedGovernanceActor } from './orgmasterRequestIdentity'
 import { commitAdministrationCommand, previewAdministrationCommand, readAdministrationCommand, readAdministrationWorkspace } from './orgmasterAdministrationStore'
+import type {AdministrationLifecycleDispatcher} from './orgmasterAdministrationLifecycle'
 
 export const administrationErrorStatus=(code:string)=>code==='AUTH_RECENT_REQUIRED'||code==='IDENTITY_CONTEXT_REQUIRED'?401:code==='PLATFORM_ADMIN_REQUIRED'?403:['ADMIN_TARGET_INVALID','LAST_PLATFORM_ADMIN'].includes(code)?422:code==='ADMINISTRATION_DEPENDENCY_UNAVAILABLE'?503:409
-export function createAdministrationRequestHandler(service={readAdministrationWorkspace,previewAdministrationCommand,commitAdministrationCommand,readAdministrationCommand}) {
+export type AdministrationRequestOptions={lifecycle?:AdministrationLifecycleDispatcher;verifyRuntime?:()=>Promise<void>}
+export function createAdministrationRequestHandler(service={readAdministrationWorkspace,previewAdministrationCommand,commitAdministrationCommand,readAdministrationCommand},options:AdministrationRequestOptions={}) {
 return async function handleAdministrationRequest(request:IncomingMessage,response:ServerResponse,root:string,path:string,readBody:()=>Promise<unknown>) {
  if(!path.startsWith('/administrators')) return false
  const correlationId=randomUUID()
  response.setHeader('Cache-Control','private, no-store');response.setHeader('Content-Type','application/json; charset=utf-8')
  try{
+  await options.verifyRuntime?.()
   const actor=verifiedGovernanceActor(request)
   if(!actor) throw new AdministrationError('IDENTITY_CONTEXT_REQUIRED')
   if(request.method==='POST') {
@@ -27,7 +30,7 @@ return async function handleAdministrationRequest(request:IncomingMessage,respon
    if(!match||request.method!=='GET'){response.statusCode=404;response.end(JSON.stringify({code:'ADMINISTRATION_ROUTE_NOT_FOUND',correlationId}));return true}
    result=await service.readAdministrationCommand(root,actor,decodeURIComponent(match[1]))
   }
-  if(path==='/administrators/commands'&&request.method==='POST')await productionAdministrationLifecycle()?.runOnce().catch(()=>undefined)
+  if(path==='/administrators/commands'&&request.method==='POST')await (options.lifecycle??productionAdministrationLifecycle())?.runOnce().catch(()=>undefined)
   response.statusCode=200;response.end(JSON.stringify({...result as object,correlationId}));return true
  }catch(error){
   const code=error instanceof AdministrationError?error.code:'ADMINISTRATION_DEPENDENCY_UNAVAILABLE'

@@ -1,4 +1,4 @@
-import { applicationDefault, getApps, initializeApp } from 'firebase-admin/app'
+import { applicationDefault, getApps, initializeApp, type Credential } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 
 export type VerifiedFirebaseIdentity = {
@@ -16,8 +16,10 @@ export type FirebaseIdentityProvider = {
   verifyIdToken(idToken: string): Promise<VerifiedFirebaseIdentity>
 }
 
-export function createFirebaseIdentityProvider(expectedIssuer: string, expectedAudience: string): FirebaseIdentityProvider {
-  const app = getApps()[0] ?? initializeApp({ credential: applicationDefault(), projectId: expectedAudience })
+export function createFirebaseIdentityProvider(expectedIssuer: string, expectedAudience: string, local?:{credential:Credential;appName:string}): FirebaseIdentityProvider {
+  const app = local
+    ? getApps().find(app=>app.name===local.appName)??initializeApp({credential:local.credential,projectId:expectedAudience},local.appName)
+    : getApps()[0] ?? initializeApp({ credential: applicationDefault(), projectId: expectedAudience })
   return {
     async verifyIdToken(idToken) {
       const decoded = await getAuth(app).verifyIdToken(idToken, true)

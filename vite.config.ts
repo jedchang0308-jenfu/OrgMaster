@@ -10,14 +10,11 @@ import { workbenchPreferenceApiPlugin } from './server/workbenchPreferenceApi'
 import { orgmasterManagedLoginApiPlugin } from './server/orgmasterManagedLoginApi'
 
 let managedLoginRuntime: ReturnType<typeof createOrgmasterAuthRuntime> | undefined
+const runtime=()=>managedLoginRuntime??=createOrgmasterAuthRuntime()
 
 export default defineConfig({
   cacheDir: '.codex-tmp/vite',
   plugins: [orgmasterManagedLoginApiPlugin(() => {
-    managedLoginRuntime ??= createOrgmasterAuthRuntime()
-    return { service: managedLoginRuntime.managedLoginOwner, verifier: managedLoginRuntime.managedLoginCallerVerifier }
-  }), orgmasterAuthApiPlugin(), orgmasterManagedIdentityApiPlugin(() => {
-    managedLoginRuntime ??= createOrgmasterAuthRuntime()
-    return managedLoginRuntime.managedIdentity
-  }), workbenchPreferenceApiPlugin(), orgmasterAccountEnrollmentApiPlugin(), react(), orgmasterApiPlugin(), orgmasterGovernanceApiPlugin({ accountEnrollmentEnabled: true }), orgmasterManagementMethodApiPlugin()],
+    const value=runtime();return { service:value.managedLoginOwner,verifier:value.managedLoginCallerVerifier }
+  }), orgmasterAuthApiPlugin(runtime), orgmasterManagedIdentityApiPlugin(() => runtime().managedIdentity), workbenchPreferenceApiPlugin(), orgmasterAccountEnrollmentApiPlugin(), react(), orgmasterApiPlugin(), orgmasterGovernanceApiPlugin({ accountEnrollmentEnabled: true,runtime }), orgmasterManagementMethodApiPlugin()],
 })

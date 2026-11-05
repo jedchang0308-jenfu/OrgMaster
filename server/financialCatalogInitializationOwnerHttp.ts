@@ -3,6 +3,7 @@ import { FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH } from '../src/governance/fina
 import { ApplicationEntitlementError } from './applicationEntitlementCommon'
 import type { FinancialCatalogInitializationOwnerReader } from './financialCatalogInitializationAdoption'
 import type { FmsCatalogReleaseInput } from './financialCatalogReleaseStore'
+import {localAdministrationPeer,localAdministrationServiceToken,type OrgmasterLocalAdministrationRuntime} from './orgmasterLocalAdministrationRuntime'
 
 export const FMS_INITIALIZATION_CANONICAL_ORIGIN = 'https://jf-fms-prod-56gnizku7q-de.a.run.app'
 export const FMS_INITIALIZATION_HANDOFF_PATH = '/api/administration/catalog-initialization/handoff'
@@ -61,4 +62,27 @@ export function createDefaultFinancialCatalogInitializationOwnerReader(environme
       return JSON.parse(Buffer.concat(chunks).toString('utf8'))
     } catch { return fail() } finally { clearTimeout(timeout) }
   } })
+}
+
+/** Local transport is minted only by the owner-file/OS/runtime-DB capability. */
+export function createLocalFinancialCatalogInitializationOwnerReader(runtime:OrgmasterLocalAdministrationRuntime):FinancialCatalogInitializationOwnerReader {
+  localAdministrationPeer(runtime)
+  const reader=createFinancialCatalogInitializationHttpReader({request:async(url,body)=>{
+    if(url!==FMS_INITIALIZATION_CANONICAL_ORIGIN+FMS_INITIALIZATION_HANDOFF_PATH)fail()
+    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),8000)
+    const deadline=new Promise<never>((_resolve,reject)=>controller.signal.addEventListener('abort',()=>reject(new Error('FMS_OWNER_READBACK_TIMEOUT')),{once:true}))
+    const wait=<T>(work:Promise<T>)=>Promise.race([work,deadline])
+    try{
+      await wait(runtime.verify())
+      const token=await wait(localAdministrationServiceToken(runtime,'http://localhost:1030'))
+      controller.signal.throwIfAborted()
+      const response=await wait(fetch('http://localhost:1030'+FMS_INITIALIZATION_HANDOFF_PATH,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(body),signal:controller.signal,redirect:'error',cache:'no-store'}))
+      if(!response.ok||!response.headers.get('content-type')?.startsWith('application/json'))fail()
+      const reader=response.body?.getReader();if(!reader)fail()
+      const chunks:Uint8Array[]=[];let size=0
+      try{for(;;){const chunk=await wait(reader!.read());if(chunk.done)break;size+=chunk.value.byteLength;if(size>4*1024*1024){await reader!.cancel();fail()}chunks.push(chunk.value)}}finally{reader!.releaseLock()}
+      await wait(runtime.verify());return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    }catch{return fail()}finally{clearTimeout(timeout)}
+  }})
+  return {async read(input){const result=await reader.read(input);return result?{...result,source:'local_test'}:null}}
 }

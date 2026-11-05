@@ -37,3 +37,6 @@ contracts/orgmaster-administration-lifecycle/v1/** text eol=lf
 contracts/orgmaster-fms-catalog-initialization-activation/v1/** text eol=lf
 
 contracts/fms-catalog-initialization-handoff/** text eol=lf
+
+db/migrations/local/046_dev070_local_administration_bridge_v1.sql text eol=lf
+db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql text eol=lf
