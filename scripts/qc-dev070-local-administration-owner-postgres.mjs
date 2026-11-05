@@ -11,20 +11,22 @@ import {unwrapMigrationTransaction} from './lib/dev040-orgmaster-independent-rel
 // This component installs actual Org source fragments and all of local 046.
 // FMS contract objects below are explicit ABI stubs, not a cross-owner proof.
 const env=process.env,root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
-if(process.platform!=='linux'||env.CI!=='true'||env.GITHUB_ACTIONS!=='true'||!/^\d{1,20}$/u.test(env.GITHUB_RUN_ID??'')||!/^\d{1,4}$/u.test(env.GITHUB_RUN_ATTEMPT??'')||! /^[a-f0-9]{12,64}$/u.test(env.ORGMASTER_DEV070_PG_CONTAINER_ID??'')||env.PGHOST!=='127.0.0.1'||env.PGUSER!=='postgres'||env.PGPASSWORD!=='orgmaster-dev070-ci-isolated'||!/^\d{4,5}$/u.test(env.PGPORT??''))throw new Error('DEV070_CI_DISPOSABLE_TARGET_REQUIRED')
+if(process.platform!=='linux'||env.CI!=='true'||env.GITHUB_ACTIONS!=='true'||!/^\d{1,20}$/u.test(env.GITHUB_RUN_ID??'')||!/^\d{1,4}$/u.test(env.GITHUB_RUN_ATTEMPT??'')||! /^[a-f0-9]{12,64}$/u.test(env.ORGMASTER_DEV070_PG_CONTAINER_ID??'')||env.PGHOST!=='127.0.0.1'||env.PGPORT!=='5432'||env.PGUSER!=='postgres'||env.PGPASSWORD!=='orgmaster-dev070-ci-isolated'||!/^\d{4,5}$/u.test(env.ORGMASTER_DEV070_PG_PUBLISHED_PORT??''))throw new Error('DEV070_CI_DISPOSABLE_TARGET_REQUIRED')
 const container=env.ORGMASTER_DEV070_PG_CONTAINER_ID,run=env.GITHUB_RUN_ID,marker=`orgmaster.dev070.ci-owned:${run}:${env.GITHUB_RUN_ATTEMPT}`
 const inspect=JSON.parse(execFileSync('docker',['inspect',container],{encoding:'utf8',maxBuffer:1024*1024}))[0]
 const mapping=inspect?.NetworkSettings?.Ports?.['5432/tcp']
 assert.equal(inspect?.Config?.Image,'postgres:18');assert.equal(inspect?.State?.Running,true)
 assert.equal(inspect?.Config?.Labels?.['jenfu.orgmaster.dev070.run'],run)
-assert.ok(Array.isArray(mapping)&&mapping.some(p=>Number(p.HostPort)===Number(env.PGPORT)&&['0.0.0.0','127.0.0.1'].includes(p.HostIp)))
+assert.ok(Array.isArray(mapping)&&mapping.some(p=>Number(p.HostPort)===Number(env.ORGMASTER_DEV070_PG_PUBLISHED_PORT)&&['0.0.0.0','127.0.0.1'].includes(p.HostIp)))
 assert.ok(Number.isSafeInteger(inspect.State.Pid)&&inspect.State.Pid>1)
 // Run in the exact service network namespace so actual inet_server_addr()
 // remains loopback. No SQL target exception is added for Docker's NAT address.
 const serviceNamespace=execFileSync('sudo',['-n','readlink',`/proc/${inspect.State.Pid}/ns/net`],{encoding:'utf8',maxBuffer:1024}).trim()
 if(await readlink('/proc/self/ns/net')!==serviceNamespace){
  assert.equal(process.argv.includes('--namespace-child'),false,'owned service namespace changed; no recursive retry')
- execFileSync('sudo',['-n','-E','nsenter','--target',String(inspect.State.Pid),'--net',process.execPath,fileURLToPath(import.meta.url),'--namespace-child'],{cwd:root,stdio:'inherit',env})
+ const keys=['PATH','HOME','CI','GITHUB_ACTIONS','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','ORGMASTER_DEV070_PG_CONTAINER_ID','ORGMASTER_DEV070_PG_PUBLISHED_PORT','PGHOST','PGPORT','PGUSER','PGPASSWORD']
+ assert.ok(keys.every(key=>typeof env[key]==='string'&&env[key].length>0))
+ execFileSync('sudo',['-n','/usr/bin/env','-i',...keys.map(key=>`${key}=${env[key]}`),'/usr/bin/nsenter','--target',String(inspect.State.Pid),'--net',process.execPath,fileURLToPath(import.meta.url),'--namespace-child'],{cwd:root,stdio:'inherit'})
  process.exit(0)
 }
 const serviceSystem=execFileSync('docker',['exec',container,'psql','-U','postgres','-Atc','SELECT system_identifier FROM pg_control_system()'],{encoding:'utf8',maxBuffer:4096}).trim()

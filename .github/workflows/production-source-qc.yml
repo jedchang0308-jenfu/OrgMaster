@@ -71,7 +71,8 @@ jobs:
         env:
           ORGMASTER_DEV070_PG_CONTAINER_ID: ${{ job.services['dev070-postgres'].id }}
           PGHOST: 127.0.0.1
-          PGPORT: ${{ job.services['dev070-postgres'].ports[5432] }}
+          PGPORT: 5432
+          ORGMASTER_DEV070_PG_PUBLISHED_PORT: ${{ job.services['dev070-postgres'].ports[5432] }}
           PGUSER: postgres
           PGPASSWORD: orgmaster-dev070-ci-isolated
         run: node scripts/qc-dev070-local-administration-owner-postgres.mjs

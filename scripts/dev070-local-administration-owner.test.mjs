@@ -20,7 +20,7 @@ function fixture(){
  const plan=planLocalOwnerBridge({context,source,facts:facts(),ownerProof:proof,reason:'Isolated source guard verification'})
  const client={async query(sql,values){state.queries.push(sql)
   if(sql.startsWith('SELECT current_database() database,host'))return {rows:[{...context.config.target,session_user:'jenfu_orgmaster_migrator',current_user:'jenfu_orgmaster_migrator',migrator:true,runtime:false}]}
-  if(sql.startsWith('SELECT nspname'))return {rows:[{owner:true,usage:true,create:true},{owner:true,usage:true,create:true}]}
+  if(sql.startsWith('SELECT nspname'))return {rows:[{schema_owner:true,schema_usage:true,schema_create:true},{schema_owner:true,schema_usage:true,schema_create:true}]}
   if(sql.startsWith('SELECT EXISTS'))return {rows:[{relations:false,functions:false}]}
   if(sql.startsWith('SELECT p.oid::regprocedure'))return {rows:state.beforeOwnership}
   if(sql==='SELECT session_user,current_user,r.rolsuper FROM pg_roles r WHERE r.rolname=session_user')return {rows:[{session_user:'postgres',current_user:'postgres',rolsuper:true}]}

@@ -81,8 +81,8 @@ export async function readLocalOwnerBootstrapFacts(client){
 }
 export async function readLocalOwnerFacts(client,context,source){
  await assertOwnerSession(client,context.config.target)
- const schemas=(await client.query("SELECT nspname,pg_has_role(session_user,nspowner,'USAGE') owner,has_schema_privilege(session_user,oid,'USAGE') usage,has_schema_privilege(session_user,oid,'CREATE') create FROM pg_namespace WHERE nspname IN ('orgmaster_core','orgmaster_contract') ORDER BY nspname")).rows
- if(schemas.length!==2||schemas.some(r=>r.owner!==true||r.usage!==true||r.create!==true))fail('DDL_AUTHORITY_NOT_READY')
+ const schemas=(await client.query("SELECT nspname,pg_has_role(session_user,nspowner,'USAGE') schema_owner,has_schema_privilege(session_user,oid,'USAGE') schema_usage,has_schema_privilege(session_user,oid,'CREATE') schema_create FROM pg_namespace WHERE nspname IN ('orgmaster_core','orgmaster_contract') ORDER BY nspname")).rows
+ if(schemas.length!==2||schemas.some(r=>r.schema_owner!==true||r.schema_usage!==true||r.schema_create!==true))fail('DDL_AUTHORITY_NOT_READY')
  const foreign=(await client.query(`SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('orgmaster_core','orgmaster_contract') AND NOT pg_has_role(session_user,c.relowner,'USAGE')) relations,
  EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN('orgmaster_core','orgmaster_contract') AND p.oid::regprocedure::text<>ALL($1::text[]) AND NOT pg_has_role(session_user,p.proowner,'USAGE')) functions`,[OWNER_BOOTSTRAP_SIGNATURES])).rows[0]
  if(!foreign||foreign.relations!==false||foreign.functions!==false)fail('DDL_AUTHORITY_NOT_READY')
