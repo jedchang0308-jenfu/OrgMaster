@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { GovernanceAssignmentVersionV2, GovernanceAssignmentVersionV3, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyVersionV1, PermissionEvaluationRequestV1, PermissionEvaluationResultV1 } from './types'
 import { isActiveAt, scopeMatches } from './validation'
+import { hasAdministrativeGrant } from './administration'
 
 type Options = { now?: string; receiptId?: string; timeSource?: PermissionEvaluationResultV1['timeSource'] }
 type AnyVersion = GovernancePolicyVersionV1 | GovernanceAssignmentVersionV2 | GovernanceAssignmentVersionV3
@@ -52,6 +53,8 @@ function evaluateCurrentPolicyForPrincipal(
     && assignment.scope.kind === 'global'
     && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, now))
     .map((assignment) => assignment.roleId))
+  if ('managementGrants' in policy && activeRoleIds.has('role-orgmaster-admin')
+    && hasAdministrativeGrant(policy as import('./types').GovernancePolicyDataV3, principalId, employeeId, 'orgmaster', now)) roleIds.add('role-orgmaster-admin')
   const grants = policy.rolePermissionGrants.filter((grant) =>
     roleIds.has(grant.roleId) && grant.permissionId === permission.id)
   if (grants.some((grant) => grant.effect === 'deny')) {

@@ -5,6 +5,9 @@ import { currentPublishedPolicyV3 } from '../src/governance/evaluatePermission'
 import { hasCrossAppOverride } from '../src/governance/privilegedAssignments'
 import type { GovernanceActorContext, GovernanceCommandReceiptV2, GovernanceDocumentV3, GovernanceRoleAssignmentV3, ManagementGrantV1 } from '../src/governance/types'
 import { isActiveAt } from '../src/governance/validation'
+import {administrationPolicy,hasAdministrativeGrant} from '../src/governance/administration'
+import {withAdministrativePrincipalSource} from './orgmasterAdministrationIdentity'
+import {usesCloudSqlPersistence,withPersistenceTransaction,currentPersistenceTransactionDatabase} from './orgmasterPersistenceRepository'
 import {
   ApplicationEntitlementError,
   FINANCIAL_APPLICATION_ID,
@@ -68,10 +71,15 @@ function validateOperation(operation: FinancialManagementGrantOperation, documen
   if (!Array.isArray(operation.capabilities) || operation.capabilities.length === 0 || new Set(operation.capabilities).size !== operation.capabilities.length || operation.capabilities.some((capability) => capability !== FINANCIAL_ROLE_ASSIGNMENT_MANAGE && capability !== FINANCIAL_ROLE_ASSIGNMENT_PUBLISH && !FINANCIAL_PROTECTED_OPERATIONS.includes(capability as typeof FINANCIAL_PROTECTED_OPERATIONS[number]))) throw new ApplicationEntitlementError('INVALID_COMMAND')
   const selfTargeted = operation.principalId === actor.principalId || operation.employeeId === actor.employeeId
   const bootstrap = selfTargeted && isSolePrivilegedFinancialOwnerBootstrap(operation, document, actor, new Date().toISOString())
-  if (selfTargeted && !bootstrap) throw new ApplicationEntitlementError('SELF_GRANT_FORBIDDEN')
-  const admission = activeAdmission(document, operation.principalId, operation.employeeId)
+  const policy=currentPublishedPolicyV3(document),at=new Date().toISOString(),initialized=policy&&administrationPolicy(policy).initializedByCommandId!==null
+  const catalogOperations=new Set(['financial-management-system.catalog.read','financial-management-system.catalog.edit','financial-management-system.catalog.publish','financial-management-system.catalog.import','financial-management-system.catalog.activate'])
+  const explicitRootSelf=initialized&&operation.operation==='upsert'&&operation.principalId===actor.principalId&&operation.employeeId===actor.employeeId&&hasCrossAppOverride(document,actor,at)&&hasAdministrativeGrant(policy,actor.principalId,actor.employeeId!,FINANCIAL_APPLICATION_ID,at)&&operation.capabilities.every(capability=>catalogOperations.has(capability))
+  if (selfTargeted && !bootstrap&&!explicitRootSelf) throw new ApplicationEntitlementError('SELF_GRANT_FORBIDDEN')
+  const native=source.administrativePrincipals?.filter(value=>value.principalId===operation.principalId&&value.employeeId===operation.employeeId)
+  const admission = source.administrativePrincipals!==undefined?(native?.length===1?native[0]:null):activeAdmission(document, operation.principalId, operation.employeeId)
   if (!admission) throw new ApplicationEntitlementError('PRINCIPAL_NOT_FOUND')
-  if (admission.accountType !== (bootstrap ? 'human_privileged' : 'human_personal')) throw new ApplicationEntitlementError('UNSUPPORTED_SUBJECT')
+  if (initialized?!['human_personal','human_privileged'].includes(admission.accountType):admission.accountType !== (bootstrap ? 'human_privileged' : 'human_personal')) throw new ApplicationEntitlementError('UNSUPPORTED_SUBJECT')
+  if(initialized&&operation.operation==='upsert'&&operation.capabilities.some(capability=>catalogOperations.has(capability))&&!hasAdministrativeGrant(policy,operation.principalId,operation.employeeId,FINANCIAL_APPLICATION_ID,at))throw new ApplicationEntitlementError('APP_MANAGEMENT_GRANT_REQUIRED')
   const from = Date.parse(operation.validFrom)
   const until = operation.validUntil === null ? null : Date.parse(operation.validUntil)
   if (!Number.isFinite(from) || (operation.validUntil !== null && !Number.isFinite(until)) || (until !== null && from >= until)) throw new ApplicationEntitlementError('INVALID_VALIDITY')
@@ -109,7 +117,9 @@ function applyGrantOperations(document: GovernanceDocumentV3, operations: Financ
   return grants
 }
 
-function ensureGovernorContinuity(grants: ManagementGrantV1[]) {
+function ensureGovernorContinuity(grants: ManagementGrantV1[],document?:GovernanceDocumentV3) {
+  const policy=document&&currentPublishedPolicyV3(document),at=new Date().toISOString()
+  if(policy&&administrationPolicy(policy).grants.some(grant=>grant.applicationId===FINANCIAL_APPLICATION_ID&&isActiveAt(grant.status,grant.validFrom,grant.validTo,at)))return
   const active = grants.filter((grant) => grant.applicationId === FINANCIAL_APPLICATION_ID && grant.status === 'active')
   const manage = new Set(active.filter((grant) => grant.capability === FINANCIAL_ROLE_ASSIGNMENT_MANAGE).map((grant) => `${grant.principalId}|${grant.employeeId}`))
   const publish = new Set(active.filter((grant) => grant.capability === FINANCIAL_ROLE_ASSIGNMENT_PUBLISH).map((grant) => `${grant.principalId}|${grant.employeeId}`))
@@ -123,7 +133,7 @@ function redacted(grant: ManagementGrantV1) {
 function buildPreview(document: GovernanceDocumentV3, organizationRevision: string, input: FinancialManagementGrantInput, actor: GovernanceActorContext) {
   const before = currentGrants(document)
   const after = applyGrantOperations(document, input.operations, actor)
-  ensureGovernorContinuity(after)
+  ensureGovernorContinuity(after,document)
   const { commandId: _commandId, requestHash: _requestHash, previewHash: _previewHash, ...requestCore } = input as FinancialManagementGrantPublishInput
   const requestHash = commandRequestHash({ applicationId: FINANCIAL_APPLICATION_ID, ...requestCore })
   const preview = {
@@ -144,13 +154,16 @@ export async function readFinancialManagementGrantWorkspace(root: string, actor:
 }
 
 export async function previewFinancialManagementGrant(root: string, actor: GovernanceActorContext, input: FinancialManagementGrantInput) {
+ return withPersistenceTransaction(async()=>{
   const current = await readGovernanceStore(root)
-  const source = await loadOrganizationSource(root)
+  let source = await loadOrganizationSource(root)
+  if(usesCloudSqlPersistence())source=await withAdministrativePrincipalSource(source,currentPersistenceTransactionDatabase())
   assertPrivilegedAdmin(current.document, actor)
   assertExpectedRevisions(input, current.revision, source.workspaceRevision)
   if (!Array.isArray(input.operations) || input.operations.length === 0 || input.operations.length > 16) throw new ApplicationEntitlementError('INVALID_COMMAND')
   input.operations.forEach((operation) => validateOperation(operation, current.document, source, actor))
   return buildPreview(current.document, source.workspaceRevision, input, actor)
+ })
 }
 
 function replayReceipt(document: GovernanceDocumentV3, request: FinancialManagementGrantPublishInput): GovernanceCommandReceiptV2 | null {
@@ -166,6 +179,7 @@ export async function publishFinancialManagementGrant(root: string, actor: Gover
   const replay = replayReceipt(observed.document, request)
   if (replay) return replay
   const committed = await commitGovernanceMutation(root, request.expectedGovernanceRevision, async (current, source) => {
+    if(usesCloudSqlPersistence())source=await withAdministrativePrincipalSource(source,currentPersistenceTransactionDatabase())
     assertPrivilegedAdmin(current.document, actor)
     assertExpectedRevisions(request, current.revision, source.workspaceRevision)
     if (!Array.isArray(request.operations) || request.operations.length === 0 || request.operations.length > 16) throw new ApplicationEntitlementError('INVALID_COMMAND')

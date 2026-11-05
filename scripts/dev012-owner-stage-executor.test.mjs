@@ -5,6 +5,7 @@ import { buildRuntimeConfig, canonicalize, sha256 } from './lib/dev012-owner-rel
 import { assertMigrationReceipt, assertStaleControlSafeToSupersede, candidateTagUriMatches, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE } from './lib/dev059-fms-authority-migration.mjs'
+import {DEV070_MIGRATION_ENTRY_COUNT,DEV070_RELEASE_MODE,DEV070_ADMINISTRATION_REMEDIATION} from './lib/dev070-administration-migration.mjs'
 import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT, DEV060_RELEASE_MODE } from './lib/dev060-fms-catalog-activation-migration.mjs'
 
 const H40 = 'a'.repeat(40)
@@ -153,7 +154,7 @@ async function authorizedRecordedInput(h, releaseId) {
   const foundationReceiptRef = await refFor('foundation', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod' })
   const infraReceiptRef = await refFor('infra', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod', migrationRunnerDigest })
   const runtimeConfigRef = await refFor('runtime', { ...common, status: 'VERIFIED', projectId: 'jenfu-platform-prod', ...buildRuntimeConfig(h.profile, { plainEnvironment: { NODE_ENV: 'production' }, secretVersions: { SESSION_SECRET: '1' } }) })
-  const intent = { baselineIntentRef: baselineRef, schemaVersion: 'owner.intent.v2', ownerApplicationId: 'platform', releaseId, sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
+  const intent = { baselineIntentRef: baselineRef, schemaVersion: 'owner.intent.v2', ownerApplicationId: h.profile.application.id, releaseId, sourceRevision: H40, sourceSha256: sha256(h.sourceIdentityBytes), sourceLockRef, authorizationPolicyRef, readinessReceiptRef, foundationReceiptRef, infraReceiptRef, runtimeConfigRef, migrationManifestSha256: h.migrationManifestSha256, previousRevision, deadlineAt: '2999-01-01T00:00:00.000Z' }
   const intentResult = await h.transport.putJson(`gs://${bucket}/receipts/intents/${releaseId}.json`, intent, { bucket, prefix: 'receipts' })
   return {
     intentResult,
@@ -788,18 +789,20 @@ test('DEV-059 rotated runner requires exact live digest readback before its migr
   assert.equal([...mismatched.h.objects.keys()].some(uri => uri.endsWith('/migrate.json')), false)
 })
 
-test('DEV-060 owner executor binds the fixed runner mode before migration 041', async () => {
+for(const administration of[false,true])test(`${administration?'DEV-070':'DEV-060'} owner executor binds its exact runner mode and immutable receipt`, async () => {
+  const mode=administration?DEV070_RELEASE_MODE:DEV060_RELEASE_MODE,count=administration?DEV070_MIGRATION_ENTRY_COUNT:DEV060_MIGRATION_ENTRY_COUNT,pending=administration?3:1
   const h = recordedHarness()
+  if(administration)h.profile.application.id='orgmaster' // Recorded protocol fixture; the real Org job target is tested separately.
   const { input, intentResult } = await authorizedRecordedInput(h, 'DEV060-CATALOG-ACTIVATION')
   const intent = (await h.transport.readJson(intentResult.ref)).value
   const priorInfra = (await h.transport.readJson(intent.infraReceiptRef)).value
-  const rotatedInfra = { ...priorInfra, mutationProfile: 'APP_INFRA_IMAGE_ROTATION', toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1' } }
+  const rotatedInfra = administration?priorInfra:{ ...priorInfra, mutationProfile: 'APP_INFRA_IMAGE_ROTATION', toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1' } }
   const common = {
     releaseAuthority: true, evidenceScope: 'PROVIDER', status: 'PASS', environment: 'production',
     projectId: 'jenfu-platform-prod', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z',
     ownerApplicationId: intent.ownerApplicationId, sourceRevision: intent.sourceRevision, releaseId: intent.releaseId,
-    baselineIntentRef: intent.baselineIntentRef, devId: 'DEV-060', slice: '060-FMS-CATALOG-ACTIVATION',
-    remediation: DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION,
+    baselineIntentRef: intent.baselineIntentRef, devId: administration?'DEV-070':'DEV-060', slice:administration?'070-ADMINISTRATION':'060-FMS-CATALOG-ACTIVATION',
+    remediation:administration?DEV070_ADMINISTRATION_REMEDIATION:DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION,
   }
   const authorization = await h.transport.putJson(`gs://${bucket}/receipts/prerequisites/DEV060-authorization.json`,
     { ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }, { bucket, prefix: 'receipts' })
@@ -813,9 +816,9 @@ test('DEV-060 owner executor binds the fixed runner mode before migration 041', 
   input.verifyRoutineRelease = async ({ intent: currentIntent }) => ({
     baselineIntentRef: currentIntent.baselineIntentRef,
     baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) },
-    migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1,
-    releaseMode: DEV060_RELEASE_MODE, controlledTransition: { releaseMode: DEV060_RELEASE_MODE },
-    toolImageRotation: { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', sourceRevision: currentIntent.sourceRevision, migrationRunnerDigest: rotatedInfra.migrationRunnerDigest },
+    migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount:pending,
+    releaseMode:mode, controlledTransition: { releaseMode:mode },
+    ...(!administration?{toolImageRotation: { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', sourceRevision: currentIntent.sourceRevision, migrationRunnerDigest: rotatedInfra.migrationRunnerDigest }}:{}),
   })
   await executeOwnerStage({ ...input, stage: 'prepare' })
   await executeOwnerStage({ ...input, stage: 'build' })
@@ -827,16 +830,42 @@ test('DEV-060 owner executor binds the fixed runner mode before migration 041', 
       schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: h.profile.application.id,
       sourceRevision: deployment.sourceRevision, database: 'jenfu_prod', ledger: 'orgmaster_core.schema_migrations',
       manifestSha256: h.migrationManifestSha256, baselineCount: 10, minimumLedgerCount: 10,
-      ledgerCount: DEV060_MIGRATION_ENTRY_COUNT, applied: 1, replayed: DEV060_MIGRATION_ENTRY_COUNT - 1,
+      ledgerCount:count,applied:pending,replayed:count-pending,
       crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
       boundaryStatus: 'PASS', status: 'PASS',
     }
     await h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) }, { bucket, prefix: 'receipts' })
   }
   const migration = await executeOwnerStage({ ...input, stage: 'migrate', verifyToolJobReadback: async () => ({ migrationRunnerDigest: rotatedInfra.migrationRunnerDigest, generation: '14' }) })
-  assert.equal(observedMode, DEV060_RELEASE_MODE)
-  assert.equal(migration.value.applied, 1)
-  assert.equal(migration.value.ledgerCount, DEV060_MIGRATION_ENTRY_COUNT)
+  assert.equal(observedMode,mode)
+  assert.equal(migration.value.applied,pending)
+  assert.equal(migration.value.ledgerCount,count)
+  if(administration){
+    const recovery=await executeOwnerStage({...input,stage:'rollback'})
+    assert.equal(JSON.parse(recovery.bytes).facts.databaseDisposition,'FORWARD_APPLIED')
+    assert.equal(JSON.parse(recovery.bytes).facts.administrationRecovery.legacyRevisionGovernanceWrites,'DENIED_AFTER_045')
+    assert.equal(JSON.parse(recovery.bytes).facts.administrationRecovery.schemaRollbackAllowed,false)
+    assert.equal(JSON.parse(recovery.bytes).facts.administrationRecovery.legacyWriterFallbackAllowed,false)
+    assert.equal(JSON.parse(recovery.bytes).facts.administrationRecovery.forwardRepairSourceRevision,H40)
+    assert.ok(JSON.parse(recovery.bytes).facts.administrationRecovery.forwardRepairArtifactDigest)
+  }
+})
+
+test('DEV070 missing migration receipt stays unknown and preserves a v3-compatible forward repair source',async()=>{
+ const h=recordedHarness();h.profile.application.id='orgmaster'
+ const {input,intentResult}=await authorizedRecordedInput(h,'DEV070-MISSING-MIGRATION-RECEIPT'),intent=(await h.transport.readJson(intentResult.ref)).value
+ const common={ownerApplicationId:'orgmaster',sourceRevision:H40,releaseId:intent.releaseId,baselineIntentRef:intent.baselineIntentRef,devId:'DEV-070',slice:'070-ADMINISTRATION',remediation:DEV070_ADMINISTRATION_REMEDIATION,releaseAuthority:true,evidenceScope:'PROVIDER',status:'PASS',environment:'production',projectId:'jenfu-platform-prod',remainingHumanAction:0,expiresAt:'2999-01-01T00:00:00Z'}
+ const authorization=await h.transport.putJson(`gs://${bucket}/receipts/dev070-unknown-auth.json`,{...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'},{bucket,prefix:'receipts'})
+ const readiness=await h.transport.putJson(`gs://${bucket}/receipts/dev070-unknown-ready.json`,{...common,schemaVersion:'orgmaster.routine-release-readiness.v1'},{bucket,prefix:'receipts'})
+ const capsule=await h.transport.putJson(`gs://${bucket}/receipts/intents/dev070-unknown.json`,{...intent,authorizationPolicyRef:authorization.ref,readinessReceiptRef:readiness.ref},{bucket,prefix:'receipts'})
+ input.capsuleRef=capsule.ref.uri;input.capsuleSha256=capsule.ref.sha256
+ input.verifyRoutineRelease=async({intent})=>({baselineIntentRef:intent.baselineIntentRef,baselineMigrationRef:baselineRef,migrationDisposition:'FORWARD_APPLY',pendingMigrationCount:3,releaseMode:DEV070_RELEASE_MODE,controlledTransition:{releaseMode:DEV070_RELEASE_MODE}})
+ await executeOwnerStage({...input,stage:'prepare'});await executeOwnerStage({...input,stage:'build'})
+ const result=await executeOwnerStage({...input,stage:'rollback'})
+ assert.equal(JSON.parse(result.bytes).facts.databaseDisposition,'UNKNOWN_REQUIRES_LEDGER_READBACK')
+ assert.equal(JSON.parse(result.bytes).facts.administrationRecovery.legacyRevisionGovernanceWrites,'UNKNOWN_UNTIL_LEDGER_READBACK')
+ assert.equal(JSON.parse(result.bytes).facts.administrationRecovery.requiredAction,'LEDGER_READBACK_AND_V3_COMPATIBLE_FORWARD_REPAIR')
+ assert.ok(JSON.parse(result.bytes).facts.administrationRecovery.forwardRepairArtifactDigest)
 })
 
  test('unsealed failed candidate is cleaned before a terminal abort can be sealed',async()=>{

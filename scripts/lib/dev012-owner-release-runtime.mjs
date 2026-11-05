@@ -3,6 +3,7 @@ import { canonicalize, crc32cBase64, parseGsUri, sha256 } from './dev012-product
 import { GCC_PBDS_CVE, readNativeInventoryProgram, gccPbdsOccurrenceMatches, readGccApplicabilityPolicy, assertGccApplicabilityAssessment } from './dev015-gcc-applicability.mjs'
 import { GCC_ALIGNED_NEW_CVE, readAlignedNewInspectionProgram, gccAlignedNewOccurrenceMatches, readAlignedNewApplicabilityPolicy, assertAlignedNewApplicabilityAssessment } from './dev015-gcc-aligned-new-applicability.mjs'
 import { runOrgmasterPrincipalSsoSmoke } from './dev015-orgmaster-principal-sso-smoke.mjs'
+import {DEV070_RELEASE_MODE} from './dev070-administration-migration.mjs'
 import { DEV060_RELEASE_MODE } from './dev060-fms-catalog-activation-migration.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
@@ -816,9 +817,11 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     return after
   }
 
-  async function runMigrationJob({ profile, deployment, outputUri, deadlineAt, migrationMode = null }) {
+  async function runMigrationJob({ profile, deployment, outputUri, deadlineAt, migrationMode = null, enrollmentIntentOperation = null }) {
+    if(enrollmentIntentOperation&& (migrationMode!==null||profile.application.id!=='orgmaster'||!['plan','admit','revoke','status'].includes(enrollmentIntentOperation.action)||!H64.test(enrollmentIntentOperation.ref?.sha256??'')||!enrollmentIntentOperation.ref?.uri?.startsWith('gs://jenfu-platform-prod-orgmaster-release/source/migration-bundles/enrollment-intents/')||enrollmentIntentOperation.ref.uri.includes('..')||Object.keys(enrollmentIntentOperation).sort().join(',')!=='action,ref'||Object.keys(enrollmentIntentOperation.ref??{}).sort().join(',')!=='sha256,uri'))fail('DEV070_INTENT_JOB_INPUT_INVALID')
     if (deployment.productionDataRef || deployment.firstPrincipalBootstrapRef) fail('MIGRATION_BOOTSTRAP_INPUT_DENIED')
-    if (migrationMode !== null && migrationMode !== DEV060_RELEASE_MODE) fail('MIGRATION_MODE_INVALID')
+    if (migrationMode !== null && ![DEV060_RELEASE_MODE,DEV070_RELEASE_MODE].includes(migrationMode)) fail('MIGRATION_MODE_INVALID')
+    if(migrationMode===DEV070_RELEASE_MODE&&profile.application.id!=='orgmaster')fail('MIGRATION_MODE_INVALID')
     const jobName = `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/${profile.migrations.jobName}`
     const job = await request(`https://run.googleapis.com/v2/${jobName}`)
     const container = job.template?.template?.containers?.find((item) => item.name === 'migration')
@@ -834,10 +837,11 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       POSTGRES_IAM_LOGIN: profile.migrations.serviceAccount.replace('.gserviceaccount.com', ''),
       POSTGRES_SOCKET: `/cloudsql/${connectionName}`,
     }
+    if(enrollmentIntentOperation&&((job.template?.template?.containers?.length??0)!==1||(container?.command?.length??0)!==0))fail('DEV070_INTENT_JOB_TEMPLATE_INVALID')
     const volume = job.template?.template?.volumes?.find((item) => item.name === 'cloudsql')
     const mount = container?.volumeMounts?.find((item) => item.name === 'cloudsql')
     if (job.name !== jobName || job.template?.template?.serviceAccount !== profile.migrations.serviceAccount || container?.image !== deployment.migrationRunnerDigest || canonicalize(environment) !== canonicalize(expectedEnvironment) || canonicalize(volume?.cloudSqlInstance?.instances) !== canonicalize([connectionName]) || mount?.mountPath !== '/cloudsql' || job.template?.taskCount !== 1 || job.template?.parallelism !== 1 || job.template?.template?.maxRetries !== 0 || job.template?.template?.timeout !== '1800s') fail('MIGRATION_JOB_READBACK_MISMATCH')
-    const args = ['--bundle-ref', deployment.migrationBundleRef.uri, '--bundle-sha256', deployment.migrationBundleRef.sha256, '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
+    const args = enrollmentIntentOperation?['--operation-mode','DEV070_ENROLLMENT_INTENT','--action',enrollmentIntentOperation.action,'--intent-ref',enrollmentIntentOperation.ref.uri,'--intent-sha256',enrollmentIntentOperation.ref.sha256,'--source-revision',deployment.sourceRevision,'--output-ref',outputUri]:['--bundle-ref', deployment.migrationBundleRef.uri, '--bundle-sha256', deployment.migrationBundleRef.sha256, '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
     if (migrationMode) args.push('--migration-mode', migrationMode)
     const listExecutions = async () => {
       const executions = []
@@ -860,9 +864,12 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       const executionContainer = execution?.template?.containers?.find((item) => item.name === 'migration')
       return canonicalize(executionContainer?.args) === canonicalize(args)
     }
-    const beforeNames = new Set((await listExecutions()).map((execution) => execution.name))
-    let operationRef = null
-    try {
+    const beforeExecutions=await listExecutions()
+    const beforeNames = new Set(beforeExecutions.map(execution=>execution.name))
+    const existingEnrollmentExecutions=enrollmentIntentOperation?beforeExecutions.filter(executionArgsMatch):[]
+    if(existingEnrollmentExecutions.length>1)fail('MIGRATION_EXECUTION_CARDINALITY_INVALID')
+    let operationRef = existingEnrollmentExecutions.length?'REUSED_EXACT_ENROLLMENT_EXECUTION_READBACK':null
+    if(!existingEnrollmentExecutions.length)try {
       const operation = await request(`https://run.googleapis.com/v2/${jobName}:run`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ overrides: { containerOverrides: [{ name: 'migration', args }] } }) })
       if (!operation?.name) fail('PROVIDER_OPERATION_REF_MISSING')
       operationRef = operation.name
@@ -870,7 +877,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       if (error?.code !== 'OUTCOME_UNKNOWN') throw error
       operationRef = 'OUTCOME_UNKNOWN_EXECUTION_READBACK'
     }
-    let executionName = null
+    let executionName = existingEnrollmentExecutions[0]?.name??null
     while (!executionName) {
       if (Date.now() >= Date.parse(deadlineAt)) fail('OPERATION_TIMEOUT')
       const matches = (await listExecutions()).filter((execution) => !beforeNames.has(execution.name) && executionArgsMatch(execution))

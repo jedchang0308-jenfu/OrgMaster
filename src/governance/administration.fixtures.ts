@@ -1,0 +1,9 @@
+import type {AdministrativeGrantV1,GovernanceActorContext,GovernancePolicyDataV3,GovernanceOrgSource} from './types'
+export const adminAt='2026-11-05T01:00:00.000Z'
+export function administrationFixture(){
+ const grant=(principalId:string,employeeId:string,root:boolean,id:string):AdministrativeGrantV1=>({id,principalId,employeeId,roleCode:root?'platform_super_admin':'application_system_admin',applicationId:root?null:'orgmaster',subjectKind:'principal',basis:'manual',scope:{kind:root?'platform':'global'},status:'active',validFrom:'2026-01-01T00:00:00.000Z',validTo:null,createdBy:{kind:'owner_workload',id:'owner'},reason:'首次授權',catalogBinding:root?null:{catalogVersion:'orgmaster.system-admin.v1',contentSha256:'a'.repeat(64),stableRoleId:'role-orgmaster-admin',roleDefinitionHash:'b'.repeat(64)}})
+ const policy={identityLinks:[{id:'link-a',principalId:'p-a',employeeId:'e-a',issuer:'issuer',subject:'subject-a',status:'active',validFrom:'2026-01-01T00:00:00.000Z',validTo:null}],principalAdmissions:[{id:'admission-a',identityLinkId:'link-a',accountType:'human_personal',status:'active'}],roleAssignments:[],managementGrants:[],administration:{contractVersion:'orgmaster.administration-policy.v1',version:1,initializedByCommandId:'00000000-0000-4000-8000-000000000001',grants:[grant('p-a','e-a',true,'00000000-0000-4000-8000-000000000002'),grant('p-a','e-a',false,'00000000-0000-4000-8000-000000000003')]}} as unknown as GovernancePolicyDataV3
+ const source={workspaceVersionId:'workspace',workspaceRevision:'org-r1',state:{employees:[{id:'e-a',primaryAssignmentId:null,status:'active'}],departments:[],roles:[],positions:[],assignments:[]}} as GovernanceOrgSource
+ const actor={principalId:'p-a',employeeId:'e-a',issuer:'issuer',subject:'subject-a',bootstrap:false,sessionId:'00000000-0000-4000-8000-000000000004',principalAuthEpoch:0,assuranceLevel:'aal1',authenticatedAt:adminAt} as GovernanceActorContext
+ return {policy,source,actor,grant}
+}

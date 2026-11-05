@@ -14,6 +14,8 @@ COPY scripts/dev057-production-v4-catalog-readback-runner.mjs scripts/dev057-pro
 COPY server/aiPdmRoleCatalogRepository.ts server/aiPdmRoleCatalogRepository.ts
 COPY server/aiPdmDynamicRoleCatalog.ts server/aiPdmDynamicRoleCatalog.ts
 COPY src/governance/aiPdmRoleSchema.ts src/governance/aiPdmRoleSchema.ts
+COPY contracts/ai-pdm-role-policy-catalog/v3/protected-policy-source.json contracts/ai-pdm-role-policy-catalog/v3/protected-policy-source.json
+COPY contracts/ai-pdm-role-policy-catalog/v3/editor-registry.json contracts/ai-pdm-role-policy-catalog/v3/editor-registry.json
 COPY config/catalogs/ai-pdm-role-catalog.v5.json config/catalogs/ai-pdm-role-catalog.v5.json
 COPY config/catalogs/ai-pdm-role-catalog.v6.json config/catalogs/ai-pdm-role-catalog.v6.json
 COPY config/catalogs/ai-pdm-role-catalog.v7.json config/catalogs/ai-pdm-role-catalog.v7.json

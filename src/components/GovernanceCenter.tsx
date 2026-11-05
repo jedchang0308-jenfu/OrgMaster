@@ -11,15 +11,17 @@ import { GovernanceAssignmentCheck, type GovernanceAssignmentCheckResult } from 
 import { GovernancePrivilegedAssignments } from './GovernancePrivilegedAssignments'
 import { GovernanceEmployeeRecommendations } from './GovernanceEmployeeRecommendations'
 import { GovernanceFinancialInitialAuthority } from './GovernanceFinancialInitialAuthority'
+import { GovernanceAdministrators } from './GovernanceAdministrators'
 import { employeeRecommendationAllowed, type EmployeeRecommendationRequest } from '../governance/employeeRecommendations'
 import './GovernanceCenter.css'
 import { useOrgMasterPermissions } from '../auth/OrgMasterPermissionProvider'
 import { useAuthSession } from '../auth/AuthGate'
 
-export type GovernanceSectionId = 'identity' | 'catalog' | 'assignments' | 'delegation' | 'versions' | 'audit' | 'check'
+export type GovernanceSectionId = 'identity' | 'catalog' | 'assignments' | 'delegation' | 'versions' | 'audit' | 'check' | 'administrators'
 type Props = { employees: Employee[]; departments: Department[]; roles: Role[]; currentOrganizationVersionId: string | null; currentOrganizationRevision?: string | null; visibility?: 'active' | 'hidden'; initialSection?: GovernanceSectionId; onSectionChange?: (section: GovernanceSectionId) => void; workspaceMutationAllowed?: boolean; refreshToken?: number; onChanged?: () => void; onOpenEmployee?: (employeeId: string) => void }
 type SectionId = GovernanceSectionId
 const NAV: Array<{ id: SectionId; label: string }> = [
+  {id:'administrators',label:'平台管理員'},
   { id: 'identity', label: '帳號治理' }, { id: 'catalog', label: '應用角色目錄' }, { id: 'assignments', label: '角色指派' }, { id: 'delegation', label: '角色代理' }, { id: 'versions', label: '發布版本' }, { id: 'audit', label: '稽核' }, { id: 'check', label: '指派檢查' },
 ]
 const now = () => new Date().toISOString()
@@ -92,7 +94,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const draft = snapshot?.document?.draft ?? null
   const catalogs = snapshot?.catalogs ?? []
   const catalog = catalogs.find((entry) => entry.applicationId === 'ai-pdm')
-  const expectedCatalog = catalog?.publicationFormat === 'dynamic-policy-v1'
+  const expectedCatalog = catalog&&['dynamic-policy-v1','dynamic-policy-v2'].includes(catalog.publicationFormat??'')
     ? { catalogVersion: catalog.catalogVersion, catalogSha256: catalog.catalogSha256 ?? catalog.payloadHash }
     : undefined
   const actorPrincipalId = actor.principalId
@@ -107,8 +109,9 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const identityMutationAllowed = workspaceMutationAllowed && allows('orgmaster.governance.manage') && !mobileReadOnly && !unconfirmedCommand
   const mutationAllowed = identityMutationAllowed && catalogReady
   const internalRoles = useMemo(() => draft?.applicationRoles.filter((role) => role.applicationId === 'orgmaster' && role.status === 'active') ?? [], [draft])
+  const administrationInitialized=!!draft?.administration?.initializedByCommandId
   const externalRoles = catalog?.roles.filter((role) => role.status === 'active') ?? []
-  const selectableRoles = assignmentApplicationId === 'orgmaster' ? internalRoles.map((role) => ({ id: role.id, code: role.code, name: role.name, allowedScopeKinds: ['global'] as const })) : externalRoles.filter((role) => aiPdmRoleSelectable(role) && !isSystemAdminRoleIdentity(role)).sort((a,b)=>(a.presentationOrder??99)-(b.presentationOrder??99)).map((role) => ({ id: role.stableRoleId, code: role.code, name: role.presentationName??role.displayName, allowedScopeKinds: role.allowedScopeKinds }))
+  const selectableRoles = assignmentApplicationId === 'orgmaster' ? internalRoles.filter(role=>!administrationInitialized||role.id!=='role-orgmaster-admin').map((role) => ({ id: role.id, code: role.code, name: role.name, allowedScopeKinds: ['global'] as const })) : externalRoles.filter((role) => aiPdmRoleSelectable(role) && !isSystemAdminRoleIdentity(role)).sort((a,b)=>(a.presentationOrder??99)-(b.presentationOrder??99)).map((role) => ({ id: role.stableRoleId, code: role.code, name: role.presentationName??role.displayName, allowedScopeKinds: role.allowedScopeKinds }))
   const roleAssignments = draft?.roleAssignments ?? []
   const ordinaryRoleAssignments = roleAssignments.filter((assignment) => !isPrivilegedSystemAdminAssignment(assignment))
   const matrixRoles = useMemo(() => {
@@ -116,7 +119,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     const registeredRoleTargets = new Set<string>()
     const assigned = new Set(ordinaryRoleAssignments.map((assignment) => `${assignment.applicationId}:${assignment.roleId}`))
     const addRoleTarget = (target: MatrixRoleTarget, roleCode: string) => {
-      const isAdministrator = (target.applicationId === 'orgmaster' && roleCode === 'orgmaster_admin') || (target.applicationId === 'ai-pdm' && roleCode === 'pdm_admin')
+      const isAdministrator = !administrationInitialized&&((target.applicationId === 'orgmaster' && roleCode === 'orgmaster_admin') || (target.applicationId === 'ai-pdm' && roleCode === 'pdm_admin'))
       const key = isAdministrator ? 'system-administrator' : `${target.applicationId}:${target.id}`
       const row = rows.get(key) ?? { key, name: isAdministrator ? '系統管理員' : target.name, targets: {} }
       row.targets[target.applicationId] = target
@@ -126,7 +129,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     for (const role of draft?.applicationRoles ?? []) {
       if (role.applicationId !== 'orgmaster') continue
       const key = `orgmaster:${role.id}`
-      if (role.status === 'active' || assigned.has(key)) addRoleTarget({ applicationId: 'orgmaster', id: role.id, name: role.name, allowedScopeKinds: ['global'], assignable: role.status === 'active' }, role.code)
+      if (role.status === 'active' || assigned.has(key)) addRoleTarget({ applicationId: 'orgmaster', id: role.id, name: role.name, allowedScopeKinds: ['global'], assignable: role.status === 'active'&&(!administrationInitialized||role.id!=='role-orgmaster-admin') }, role.code)
     }
     for (const roleCatalog of catalogs) for (const role of roleCatalog.roles) {
       if (roleCatalog.applicationId === 'ai-pdm' && isSystemAdminRoleIdentity(role)) continue
@@ -149,7 +152,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
       const presentation=(value:MatrixRole)=>catalogs.find(c=>c.applicationId==='ai-pdm')?.roles.find(role=>role.stableRoleId===value.targets['ai-pdm']?.id)?.presentationOrder??99
       return leftOrder - rightOrder || presentation(left)-presentation(right) || left.name.localeCompare(right.name, 'zh-Hant')
     })
-  }, [catalogs, draft?.applicationRoles, ordinaryRoleAssignments])
+  }, [catalogs, draft?.applicationRoles, ordinaryRoleAssignments,administrationInitialized])
   const matrixApplications = useMemo(() => {
     const order: GovernanceRoleAssignmentV2['applicationId'][] = ['ai-pdm', 'orgmaster', 'financial-management-system']
     const ids = new Set<GovernanceRoleAssignmentV2['applicationId']>([
@@ -370,6 +373,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   async function checkAssignment() { const value = assignmentValue(); if (!value) return; setBusy(true); clearFeedback(); try { const result = await validateGovernanceAssignment(value); setCheckResult(result.payload); if (result.payload.status === 'valid') setNotice('指派檢查通過，尚未寫入治理資料') } catch (error) { recordFailure(error) } finally { setBusy(false) } }
 
   const content = <section className="governance-center governance-center--workspace" role="region" aria-labelledby="governance-title"><h1 className="governance-visually-hidden" id="governance-title">角色指派治理</h1><div className="governance-center__body"><nav className="governance-nav" aria-label="治理區段">{NAV.map((item) => <button type="button" key={item.id} className={section === item.id ? 'is-active' : ''} onClick={() => changeSection(item.id)}>{item.label}</button>)}</nav><main className="governance-main">{mobileReadOnly && <div className="governance-readonly" role="status">手機僅供閱讀</div>}{failure && <div className="governance-error" role="alert"><span>{failure.message}</span>{failure.canReload && <button type="button" className="button" onClick={() => void refresh()}>重新載入</button>}</div>}{notice && <div className="governance-notice" role="status">{notice}</div>}{unconfirmedCommand && <div className="governance-readonly" role="status"><span>上一筆操作結果尚未確認，暫停新的變更。</span><button type="button" className="button" disabled={busy} onClick={() => { const pending = unconfirmedRef.current; if (!pending) return; setBusy(true); void confirmCommandResult(pending).finally(() => setBusy(false)) }}>查詢操作結果</button>{unconfirmedCommand.canRetry && <button type="button" className="button" disabled={busy} onClick={() => void retryUnconfirmedCommand()}>重送原操作</button>}</div>}{!draft && !failure && <div className="governance-loading" role="status">載入治理資料…</div>}
+{draft && section === 'administrators' && <GovernanceAdministrators employees={employees} onChanged={() => void refresh(false)} />}
 {draft && section === 'identity' && <section className="governance-section"><SectionHeading eyebrow="Employee identity governance" title="帳號治理" count={`${identityLinks.length} 筆`} /><p className="governance-muted">這裡是跨員工檢視與異常定位；建立或管理登入身分請回到指定員工的「登入身分」明細。</p><div className="governance-table-wrap"><table className="governance-table"><thead><tr><th>登入身分</th><th>Employee</th><th>Issuer</th><th>帳號類型</th><th>狀態</th>{identityMutationAllowed && <th>操作</th>}</tr></thead><tbody>{identityLinks.map((link) => { const admission = draft.principalAdmissions?.find((candidate) => candidate.identityLinkId === link.id && candidate.status === 'active'); const isCurrent = link.principalId === actorPrincipalId; const canStatus = identityMutationAllowed && !admission && !isCurrent; return <tr key={link.id}><td>{link.subjectHint}<small>Principal {link.principalId}</small></td><td><button type="button" className="governance-employee-link" onClick={() => onOpenEmployee?.(link.employeeId)}>{employeeName(employees, link.employeeId)}</button></td><td>{link.issuer}</td><td>{accountTypeLabel(admission?.accountType)}</td><td>{link.status === 'active' ? '有效' : '停用'}</td>{identityMutationAllowed && <td>{canStatus ? <button type="button" className="button button--quiet" disabled={busy} onClick={() => void runCommand({ type: 'SET_IDENTITY_LINK_STATUS', commandId: crypto.randomUUID(), reason: link.status === 'active' ? '停用身分連結' : '重新啟用身分連結', id: link.id, status: link.status === 'active' ? 'inactive' : 'active' }, link.status === 'active' ? '身分連結已停用' : '身分連結已重新啟用')}>{link.status === 'active' ? '停用' : '重新啟用'}</button> : <small>{admission ? '已有帳號准入' : isCurrent ? '目前登入身分' : '唯讀'}</small>}</td>}</tr> })}</tbody></table></div>{!identityLinks.length && <p className="governance-empty">尚無已連結的登入身分；請從員工明細開始建立關係。</p>}</section>}
 {draft && section === 'catalog' && <section className="governance-section"><SectionHeading eyebrow="External role catalog" title="應用角色目錄" count={`${(catalog?.roles.length ?? 0) + internalRoles.length} 筆`} /><div className="governance-source-note">AI-PDM · {catalog?.catalogVersion ?? '尚未取得'} · {catalog?.validationState === 'valid' ? '來源有效' : `來源${catalog?.validationState ?? '未知'}`} · 只讀</div><div className="governance-role-groups"><RoleGroup title="OrgMaster 自有角色" roles={internalRoles.map((role) => ({ id: role.id, name: role.name, code: role.code, risk: role.code === 'orgmaster_admin' ? 'high' : 'normal', assignable: true, scope: 'global' }))} /><RoleGroup title="AI-PDM 角色（唯讀）" roles={(catalog?.roles ?? []).map((role) => ({ id: role.stableRoleId, name: role.presentationName ?? role.displayName, code: role.code, risk: role.riskLevel, assignable: role.assignable && role.status === 'active' && (role.assignmentDisposition === undefined || role.assignmentDisposition === 'selectable'), scope: role.allowedScopeKinds.join('、') }))} /></div><p className="governance-muted">外部系統定義角色能力與權限細節；OrgMaster 只管理人員角色指派與治理狀態。</p></section>}
 {draft && section === 'assignments' && <section className="governance-section">

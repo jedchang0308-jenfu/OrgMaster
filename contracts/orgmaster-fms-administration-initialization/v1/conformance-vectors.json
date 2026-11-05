@@ -1,0 +1,71 @@
+{
+  "contractVersion": "orgmaster.fms-administration-initialization-conformance.v1",
+  "evidenceScope": "SOURCE_CONTRACT_VECTORS_NOT_PRODUCTION",
+  "cases": [
+    {
+      "id": "initialized-effective-root",
+      "input": {
+        "principalId": "principal-root",
+        "employeeId": "employee-root"
+      },
+      "state": {
+        "administrationVersion": 1,
+        "initialized": true,
+        "recoveryRequired": false
+      },
+      "expected": "one-matching-row"
+    },
+    {
+      "id": "uninitialized-ordinary-publication",
+      "state": {
+        "administrationVersion": 0,
+        "initialized": false,
+        "publishedPolicyId": "ordinary-publication"
+      },
+      "expected": "zero-rows"
+    },
+    {
+      "id": "native-barrier-pending",
+      "state": {
+        "administrationVersion": 1,
+        "initialized": true,
+        "recoveryRequired": false
+      },
+      "effectiveRoot": false,
+      "expected": "zero-rows"
+    },
+    {
+      "id": "same-employee-other-principal",
+      "input": {
+        "principalId": "principal-other",
+        "employeeId": "employee-root"
+      },
+      "expected": "zero-rows"
+    },
+    {
+      "id": "non-root-application-admin",
+      "input": {
+        "principalId": "principal-app-only",
+        "employeeId": "employee-app-only"
+      },
+      "expected": "zero-rows"
+    },
+    {
+      "id": "external-disable-recovery",
+      "state": {
+        "administrationVersion": 1,
+        "initialized": true,
+        "recoveryRequired": true
+      },
+      "expected": "zero-rows"
+    },
+    {
+      "id": "dependency-invalid",
+      "expected": "dependency-error-not-zero"
+    },
+    {
+      "id": "pdm-platform-public-or-raw-root-roster",
+      "expected": "permission-denied"
+    }
+  ]
+}

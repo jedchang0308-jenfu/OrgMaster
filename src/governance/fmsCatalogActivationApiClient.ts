@@ -3,6 +3,7 @@ import type { FinancialCatalogActivationInput, FinancialCatalogActivationPublish
 import type { FmsCatalogReleaseInput } from '../../server/financialCatalogReleaseStore'
 import type { GovernanceCommandReceiptV2 } from './types'
 import type { CatalogActivationExpected } from '../../server/financialCatalogIntent'
+import { FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH } from './financialCatalog'
 
 const API_PATH = '/api/orgmaster/governance'
 const FMS_PATH = '/applications/financial-management-system'
@@ -18,6 +19,7 @@ export type FmsCatalogActivationWorkspace = {
   assignmentVersion: string
   activeCatalog: FmsCatalogBinding
   allowedOperations: { preview: boolean; activate: boolean }
+  initializationAdoption?: { status: 'ready' | 'owner_readback_unavailable'; fixedRoleId: 'role-system-admin' } | null
 }
 
 export type FmsCatalogBinding = {
@@ -52,6 +54,7 @@ export type FmsCatalogActivationPreview = {
   alreadyActive: boolean
   organizationRevision: string
   allowedOperations: { activate: boolean }
+  initializationAdoption?: import('../../server/financialCatalogInitializationAdoption').FinancialCatalogInitializationActorProof
 }
 
 export type FmsCatalogActivationPreviewRequest = FinancialCatalogActivationInput & {
@@ -148,6 +151,17 @@ function isWorkspace(value: unknown): value is FmsCatalogActivationWorkspace {
     && isBinding(body.activeCatalog)
     && operations?.preview === true
     && typeof operations.activate === 'boolean'
+    && (body.initializationAdoption === undefined || body.initializationAdoption === null || (() => { const adoption = record(body.initializationAdoption); return adoption?.fixedRoleId === 'role-system-admin' && ['ready', 'owner_readback_unavailable'].includes(String(adoption.status)) })())
+}
+
+function isInitializationActorProof(value: unknown) {
+  const proof = record(value), uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u
+  return !!proof && Object.keys(proof).length === 8 && proof.kind === 'platform_root_catalog_initialization'
+    && typeof proof.rootGrantId === 'string' && uuid.test(proof.rootGrantId)
+    && Number.isSafeInteger(proof.administrationVersion) && Number(proof.administrationVersion) > 0
+    && proof.sourceRoleDefinitionHash === FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH && sha256(proof.receiptBodySha256)
+    && typeof proof.initializationOperationId === 'string' && uuid.test(proof.initializationOperationId)
+    && nonEmptyString(proof.initializationReceiptId) && ['formal', 'local_test'].includes(String(proof.source))
 }
 
 function isPreview(value: unknown): value is FmsCatalogActivationPreview {
@@ -171,11 +185,16 @@ function isPreview(value: unknown): value is FmsCatalogActivationPreview {
     && nonEmptyString(body.organizationRevision)
     && typeof operations?.activate === 'boolean'
     && (!operations.activate || (body.compatible && !body.alreadyActive))
+    && (body.initializationAdoption === undefined || isInitializationActorProof(body.initializationAdoption)
+      && body.addedRoles.length === 1 && body.addedRoles[0].stableRoleId === 'role-system-admin' && body.removedRoles.length === 0 && body.changedRoles.length === 0)
 }
 
 function isActivationRecord(value: unknown): value is NonNullable<GovernanceCommandReceiptV2['financialCatalogActivation']> {
   const body = record(value)
-  return body?.contractVersion === 'orgmaster.fms-catalog-activation-record.v1'
+  const authority = body?.contractVersion === 'orgmaster.fms-catalog-activation-record.v1' && textArray(body.grantIds) && body.actorProof === undefined
+    || body?.contractVersion === 'orgmaster.fms-catalog-initialization-activation-record.v1' && body.grantIds === undefined
+      && body.fmsCheckpoint === undefined && isInitializationActorProof(body.actorProof)
+  return authority
     && nonEmptyString(body.principalId)
     && nonEmptyString(body.employeeId)
     && nonEmptyString(body.catalogVersion)
@@ -188,7 +207,6 @@ function isActivationRecord(value: unknown): value is NonNullable<GovernanceComm
     && nonEmptyString(body.grantRevisionBefore)
     && nonEmptyString(body.assignmentVersionAfter)
     && sha256(body.publishedSnapshotHash)
-    && textArray(body.grantIds)
     && Number.isSafeInteger(body.authEpoch) && Number(body.authEpoch) >= 0
     && validInstant(body.authenticatedAt)
     && validInstant(body.authorityReadAt)

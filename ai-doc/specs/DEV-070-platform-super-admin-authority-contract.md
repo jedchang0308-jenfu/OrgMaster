@@ -1,0 +1,424 @@
+# DEV-070：平台超級管理員權威與首次初始化
+
+日期：2026-11-05；更新：2026-11-06（Asia/Taipei）。Native：ORGMASTER/DEV-070；來源：JENFU/DEV-022#authority-and-bootstrap。成熟度：IMPLEMENTING / RD Readiness Review；administration authority／consumer 切片已定案，所有環境的完整執行契約尚未 Ready。人類最新授權為四專案完整實作至真實地端與正式發布。A／B／C source已提交並由requiredCI驗證；本次回合聚焦開發文件與既有local source增量的有界收斂，先前完整成果授權延續。A／B／C formal closure 已定案並有本次 source／隔離證據；其正式可執行性尚未驗收。真實 Google 核身、地端／正式 schema、任用及發布尚未執行，不視為完成。
+
+總控權威契約：`C:/VIBE CODING/.worktrees/Jenfu-Platform/dev022-platform-super-admin-20261105/ai-doc/specs/DEV-022-platform-super-admin-cross-project-plan.md`（clean Platform owner root）；`C:/VIBE CODING/Jenfu-Platform` 原 root 僅作協調鏡本，不作 release source。相鄰責任沿 DEV-057 Principal／writer fencing 及 DEV-058 集中任用；不重開原驗收或替它們結案。[架構決策](../adr/ADR-007-external-role-catalog-assignment-boundary.md#platform-super-admin-20261105)。
+
+## 1. 人類決策與範圍
+
+指定 jedchang0308@jenfu.com.tw（張仕杰／JFS0005）在正式及地端取得平台超管。沿用同一 Google personal、真 AAL1、中文姓名，不另建 privileged 帳號。兩環境各自綁定 exact Principal，不複製 local UID／Employee／Principal 到 production。
+
+OrgMaster 是身分核實、root／app 管理員任免、發布及 audit 的唯一權威。Platform 處理認證／SSO／epoch 與顯示；各 app 保留能力及業務判權。root 不是 Cloud IAM、DB owner、Secret 或業務免驗證權。本輪須完成產品實作與發布；「正式沒有此 user」仍須 owner 唯讀核實，再依同一已授權 target 準備 native mapping 或重用既有 Principal。
+
+## 2. 現況與受影響 source
+
+- src/governance/privilegedAssignments.ts 分別讀 roleAssignments 與 managementGrants；hasCrossAppOverride 限 exact Principal／Employee、ai-pdm 與 orgmaster.cross_app_override，授 PDM system_admin 不會產生 root。
+- 同檔、validation.ts 與 PDM consumer 仍有 human_privileged 專用資格。fresh session 現行接受 AAL1／AAL2；AAL1 與 personal 是否適格是兩條獨立條件，須一起改正確的資格來源。
+- GovernanceCenter.tsx 把 pdm_admin 與 orgmaster_admin 合列「系統管理員」，另外顯示「特權設定」，使普通業務 profile 和系統管理資格混淆。
+- 真實核身沿 server/orgmasterManagedIdentityService.ts 的 signed Google token、googleUserId、live Directory immutable key、active Employee 與 managed link；orgmasterAccountProvisioningPort.ts 的 simulated adapter 不是正式 Google 建帳器。
+- 舊 DEV-012 production-data 要求空初始治理；DEV-057 local first-admin seed 會搬移特定 Employee／重建批次，均不得用於追加超管。
+
+工程面包括治理 types／validation／published evaluator／assignment surface、API／store／writer、managed identity、GovernanceCenter／管理表單、各 app projection，以及 db/migrations 新 producer／ACL。§7–§11 凍結本輪 current source 的資料、wire、ledger 候選、caller 及驗證；這些是本輪實作契約；下列 source 自查僅支持已列範圍。
+
+## 3. 權威模型
+
+平台管理 grant 與普通 app assignment 明確分型。新 root code 為 platform_super_admin，scope={kind:platform}、subjectKind=principal、basis=manual（直接授權、無委派），grant 與發布／command receipt 關聯。首次 root 有效期不另設自動到期，採明示撤銷；完整欄位見 §7。
+
+目標須唯一解析到 current active 個人人類 admission（human_personal 或 human_privileged）及 active Employee。shared／service／inactive／unresolved 拒絕；root 不依 Employee、職位、推薦、委派、email／domain 或同人其他 Principal 推導。不全面放寬所有 personal 使用者的特權條件。
+
+沿既有治理 snapshot、publication、receipt、audit／outbox；需要不相容欄位時另版並保留明確 reader 窗口。平台 projection 只供所需 consumer 讀 opaque Principal／Employee／role／scope／有效期與發布資料；Platform 不另存可修改的 root 名單。
+
+root 管理後續 root 及各 app 管理員任免；各 app 管理員只能管理自己系統的設定及普通業務任用。管理身份與等效管理能力不可從普通角色編輯器產生；舊 PDM system_admin 持有人不自動成 root。
+
+本次本人預覽明列 OrgMaster、PDM、FMS 的必要管理任用。FMS 依 JF-FMS/DEV-070 的管理專用定義，不能用 Owner 全財務角色代替。目錄尚未接入或版本不相容時不硬塞未知 role。
+
+FMS 管理角色使用 administration grant 派生的 v3 Principal assignment（§8）；現有普通 Employee assignment 語意保持原樣。現有 financialInitialAuthorityStore 的固定 Owner／FinanceManager 初始 role set 不能重播或代替新窄管理任用。
+
+## 4. 首位初始化的 owner 命令
+
+只追加指定對象缺少的身分、admission／必要 profile 與授權；不覆蓋治理、不清空 audit／commands、不搬移別人任用。初始化由有界 owner 執行包核實指定目標，不公開 first-login 自授入口，也不以 actor.bootstrap=true 令普通 runtime 自授。
+
+| 階段 | 契約 |
+| --- | --- |
+| plan／preview | 讀 active publication／組織 revision、平台 root 狀態與 app catalog；列 reused／created／granted 差異並鎖環境及核身 selector。 |
+| identity verified | 核實指定 Google 的 live Directory immutable key 與真實簽章 provider token。解決缺 published login access／既有 root 的循環，不能要求先完成依賴它的普通登入。 |
+| commit | environment／目標／org／governance／catalog 無漂移；共用初始化序列化與 CAS，保證首次平台 root 只有一筆結果。同 owner transaction 保存 grant、publication、audit 及 durable outbox。 |
+| readback | 固定 command ID、request hash、preview binding；相同操作回原 receipt，異 payload 拒絕；unknown commit 查原結果，不另造 operation。 |
+| activation | 逐 owner 讀回 app profile／epoch acknowledgment，必要 invalidation 後以真實重新登入確認。跨 owner 分別交易及收據，不宣稱全系統原子 transaction。 |
+
+初始化檢查新的平台 root 及操作收據。既有 app admin／舊 bootstrap 不等於新平台 root 已初始化，也不是重跑舊 bootstrap 的理由；已消耗的命令不能換人重用。兩環境分開 CAS／receipt，不接受 nonprod token 向 prod 提交。
+
+不能重跑 DEV-012 import／password wizard 或 DEV-057 local rekey/reset。Google 公司帳號既有就不重建，正式只建立缺少的環境身份；Employee 歸屬歧義只停止該寫入，不猜測。token 僅供當次核身，不存入文件、receipt 或 log。
+
+一般任免沿 authenticated root、active admission、近期真實 provider authentication、same-snapshot CAS、防重送及 audit。refresh 不更新 auth_time。禁止普通人自我升權及無替代／受控 recovery 時移除最後一位 active root；首次 owner 授權是單次明示例外，不全面取消 self-grant 保護。
+
+有效 root 計數須包含 Employee／Principal／admission 與管理入口資格。治理內停用身分、移除 root、撤關鍵 OrgMaster 管理入口須共用連續性檢查，並驗撤 grant 與停用資格競爭；不可只看 grant.status。外部 Google 停用仍 fail closed，不能假裝帳號可用；由有界 owner recovery 處理。合法 provider alias 若仍屬同一 Principal，沿既有 canonical binding；不同 Principal 即使同 Employee 也不繼承。
+
+## 5. API、UI 與相容
+
+現有治理 API 加入平台管理 workspace、preview、commit、command-result 語意，復用 request identity／write actor；首次 owner command 與一般 UI 共用純驗證及提交邏輯，但有不同的、只允許指定初始化的 admission。不得只擴大 ai-pdm override 的 applicationId allowlist。
+
+缺權拒絕、revision／hash drift 回 conflict、目標／catalog 無效回 validation、權威不可用回 dependency error。中文訊息分清未初始化、無權、不適格、草稿／未發布及未知結果；§9 固定 wire／path／error code。
+
+UI 清楚分「平台超級管理員」與每欄唯一的「某系統管理員」。尚無 root 時說明一次性初始化入口，不能只顯示「需要已有 root」；成功及 command recovery 後都有可辨識的待發布／生效下一步，不自動跳到無關面板。
+
+DDL 僅 orgmaster_core／orgmaster_contract、db/migrations forward-only，exact consumer ACL；runtime 不得取得 owner／DDL。先有相容 reader 再啟用新 publication；舊 hash／receipt／applied migration／角色歷史不改寫，正常授權始終只有一份 published authority。
+
+回復以本次 operation 的 grant/profile ID 為範圍，先查結果再由相應 owner 撤銷與 invalidation。撤 root 不代表獨立 app 任用也失效；若回復整批新增內容，須逐 owner 明示撤回。不得由舊 snapshot 復活已撤權身分、整庫還原或恢復 UID/email fallback。
+
+## 6. 必要驗收與下一階段
+
+| AC | 可判定結果 |
+| --- | --- |
+| O01 | 指定 personal＋AAL1 可初始授權；普通 personal、同 Employee 另一 Principal 不取得 root。 |
+| O02 | 已有業務治理但空 root 可追加；原資料／任用／audit 保留。沒有既有 app grant 的新正式身分也能沿受控初始核身完成。 |
+| O03 | 並發只有一次、相同 replay 不新增、衝突／unknown outcome 可查；失敗 rollback、最後 root 及 protected role 保護成立。 |
+| O04 | 普通角色不能複製管理能力；app admin 跨 app／改 root 拒絕，舊 system_admin 不自動成 root。 |
+| O05 | 正常 UI 清楚區分草稿／發布／初始化／不可用，原加入草稿及查結果後有下一步。 |
+| O06 | 真實 Google→Portal→OrgMaster／reload／管理與撤權結果符合 owner readback；isolated、地端、正式證據分層。 |
+
+本階段只查文件與引用，以上未執行。下列工程契約供後續 coding；資料／授權結果不以 UI badge／HTTP200 取代。正式 executable release package 由當次 owner workflow 產生。
+
+## 7. Administration document 與不可變條件
+
+保留 `GovernanceDocumentV3`／`GovernancePolicyDataV3`，以可選 administration extension 演進，不建立第二份 grant store 或全治理 V4：
+
+```ts
+type AdministrationPolicyV1 = {
+  contractVersion: 'orgmaster.administration-policy.v1'
+  version: number // positive safe integer; absent extension normalizes to 0
+  initializedByCommandId: string | null // UUID; once set never cleared
+  grants: AdministrativeGrantV1[]
+}
+type AdministrativeGrantV1 = {
+  id: string // UUID, immutable
+  principalId: string // existing opaque Principal ID, never an email selector
+  employeeId: string // existing environment-local Employee ID
+  roleCode: 'platform_super_admin' | 'application_system_admin'
+  applicationId: null | 'orgmaster' | 'ai-pdm' | 'financial-management-system'
+  subjectKind: 'principal'
+  basis: 'manual'
+  scope: { kind: 'platform' | 'global' }
+  status: 'active' | 'revoked'
+  validFrom: string // canonical UTC ISO instant
+  validTo: string | null // [validFrom, validTo)
+  createdBy: { kind: 'principal' | 'owner_workload'; id: string }
+  reason: string // NFC normalized, trimmed nonblank, <=240 Unicode code points
+  catalogBinding: null | {
+    catalogVersion: string
+    contentSha256: string // lowercase hex64
+    stableRoleId: string
+    roleDefinitionHash: string // lowercase hex64, owner-normalized definition
+  }
+}
+```
+
+Root 只容許 applicationId=null／platform scope／catalogBinding=null；本版 root `validTo=null`，不容許以期限屆滿繞過最後管理員保護。app-admin 只容許已列 app／global scope／該 app canonical catalog binding。OrgMaster 使用 `role-orgmaster-admin`、PDM 使用 `role-application-system-admin`、FMS 使用 `role-system-admin`；不可互換。app grant 可有有效期，但最後有效 root 的 OrgMaster entry grant 不得有早於替代入口的到期點；檢查 prospective 時間邊界，避免排程到期造成零入口。
+
+同 Principal／roleCode／applicationId 不得有重疊有效 active grant；不同角色或 app 是不同 grant。撤銷將原 id 改為 revoked，createdBy/原 reason/validFrom 保持；撤銷者、撤銷原因及時間留 command/audit。app 續期用 `replace_application_administrator` 同交易撤舊授新 id；不覆寫歷史 grant。新 version 單調加一，空 no-op 回 existing receipt／`no_change`，不新增 publication。未知欄位／型別、錯誤 role/scope 組合、grant ID 重複、invalid timestamp/hash、非唯一 active target 一律拒絕。
+
+舊 snapshot 缺 extension 讀為 version0／initializedByCommandId=null／grants=[]；不改其原 bytes、snapshotHash 或 terminal receipt。新 publication hash 使用既有 canonical sorted JSON 並包含 administration。初始化以後所有普通治理寫入、import/reduction、workspace切換、publication及歷史恢復必須保留目前 administration；不得以選舊 batch 或備份重設初始化。legacy `managementGrants`／`roleAssignments` 不保存新 root/app-admin grants。
+
+OrgMaster source-owned admin profile固定沿 `role-orgmaster-admin` 的現有管理 permission mapping；將 definition/hash 納入 protected registry。evaluator 只在 exact Principal app-admin grant 有效時派生此 role，沿既有 permission/explicit deny 計算，不加 root allow-all。管理型 stable ID、能力集合與指派入口受伺服器保護。既有 legacy OrgMaster 管理任用維持既有含義；新管理任用只走 administration。舊 PDM system_admin／cross_app_override 及 FMS Owner/protected-management-grant 寫入入口須辨認初始化狀態：初始化後新授／恢復受保護管理資格只准 root，不能由普通 governance.manage 或 app admin 繞入。舊有效任用不自動轉 root，也不批次重寫。
+
+## 8. DB／projection／ACL 與 writer fence
+
+### 8.1 Forward-only 範圍
+
+新 source 檔案為 `db/migrations/044_dev070_administration_projection_v1.sql`、`045_dev070_administration_commands_v1.sql`，尚未正式套用。clean writer base 已有 040／041，042 prerequisite 為 `042_dev057_principal_display_profiles.sql`；另有 actual local native 043，因此本 goal 不占 043。續接工程仍須核檔案／ledger／hash；已套 043 不重放或改 hash。044 僅 producer views/functions/manifests/ACL，045 是私有 receipt 與受控 writer，均限 orgmaster_core/contract。不能修改 applied 021/024/029/031/042。
+
+Producer-owned package `contracts/orgmaster-administration/v1/{contract-manifest.json,policy.schema.json,command.schema.json,errors.json,projection-signatures.json,conformance-vectors.json}` 由 OrgMaster source 生成與檢查；用既有 canonical JSON/SHA256，不手填 PASS hash。manifest 固定 SQL欄位順序、nullability、權限及版本；consumer vendor 精確 bytes/hash。沒有 identity token、email 及 raw subject。
+
+### 8.2 版本化只讀 producer
+
+| Object | wire／用途／ACL |
+| --- | --- |
+| `orgmaster_contract.read_administration_state_v1()` | 一列 `contract_version text, administration_version bigint, initialized_by_command_id uuid nullable, published_policy_id text nullable, published_at timestamptz nullable, effective_root_count bigint, recovery_required boolean`；權威缺失/損壞拋 dependency error，不能回 version0 偽裝未初始化。SELECT/EXECUTE 僅 OrgMaster runtime、Platform runtime及確切 owner verifier |
+| `v_platform_administrator_grants_v1` | `contract_version,administration_version,grant_id,principal_id,employee_id,role_code,scope_kind,status,valid_from,valid_until,published_policy_id,published_at`；只回 current published、current active identity/employee及有效時間 root；OrgMaster／Platform runtime SELECT，無其他 app SELECT |
+| `v_application_administrator_grants_v1` | `contract_version,administration_version,grant_id,application_id,principal_id,employee_id,role_code,subject_kind,target_principal_id,basis,scope_kind,scope_key,status,valid_from,valid_until,created_by_kind,created_by_id,reason,catalog_version,catalog_content_sha256,stable_role_id,role_definition_hash,published_at`；root 不入此 view；OrgMaster runtime；Platform 只讀 Portal 必要派生 view，不讀含 reason 的全 app roster |
+| `v_ai_pdm_principal_effective_grants_v5` | v4 的原 19 欄順序及 ordinary semantics，加 administration provenance 尾欄（以 PDM DEV-127 精確表為準）；app-admin row direct/無 delegation/exact Principal，舊 assignment v4 不改；只授 PDM runtime、OrgMaster verifier |
+| `ai_pdm_role_policy_manager_eligible_v2(text,text,text,text)` | 參數 Principal/Employee/issuer/subject；回 boolean；active personal或privileged＋新direct app-admin，或明列 privileged legacy direct global system_admin；與現有 authority fence 同鎖，PDM runtime 及執行 SECURITY DEFINER domain apply 的 PDM migrator EXECUTE，不能缺 v2 fallback v1 |
+| `v_fms_authority_v3` 與 v3 reader manifest | 保留 current `v_fms_authority_v2` envelope/普通assignment欄位，完整 snapshot 加新 Principal admin rows；每 assignment 加 subjectKind,basis,targetPrincipalId,sourceKind,sourceGrantId,administrativeDefinitionHash。新 admin sourceAssignmentId=sourceGrantId=grant.id，workspace/company-jenfu；v2 wire 不變，新 consumer 不雙讀重複普通列；只授 FMS runtime/owner verifier |
+
+state contract_version 固定 `orgmaster.administration-state.v1`、root 固定 `orgmaster.platform-administrator-grants.v1`、app 固定 `orgmaster.application-administrator-grants.v1`。未初始化 version0/marker=null 可以已有 ordinary current publication，published_policy_id/published_at 因此可非空；version>0 必有 initialized command UUID 與 publication id/time。root valid_until 永遠 null。Platform 同 snapshot 一次讀 state() LEFT JOIN exact Principal/Employee root projection，不讀含 reason 的 generic app roster，不寫 SSO root claim。
+
+Manager lock 使用 `orgmaster_contract.lock_ai_pdm_role_policy_authority_v2()`，與 eligible_v2 的 runtime/migrator ACL 同步；OrgMaster verifier 查 PDM v3 current/history 的 app 限定 SELECT 由 PDM owner migration096 提供。042 中文顯示既有三欄 wire／bytes 不變，Platform/PDM 繼續讀 `orgmaster_contract.v_principal_display_profiles_v1`。FMS 僅可讀新增 versioned `orgmaster_contract.v_fms_principal_display_profiles_v1`，由 `read_fms_principal_display_profiles_v1()` 窄 SECURITY DEFINER／pg_catalog search_path 提供同形 principal_id／employee_id／employee_name；只保留 current `v_fms_authority_v3` exact Principal+Employee 資格的列。FMS 不得 SELECT generic display view 或 EXECUTE generic reader，無 app 資格的 root／同 Employee 不同 Principal 不能取得姓名。每 app 以 verified Principal+Employee 查自己的列；root-only 首次初始化可無 name，來源不可用或無列保留普通 login 並顯示「員工」，不增加 SSO name 欄或另寫身份資料。
+
+Named root/app/PDM/FMS/display views 內部讀 private publication 時必由各自欄位／app 限定的 SECURITY DEFINER reader 包裝，固定 pg_catalog search_path、撤 PUBLIC 並只授 exact consumer EXECUTE/SELECT。不得把原始 publication function 的 EXECUTE 給 Platform/PDM/FMS 以修 permission denied。
+
+列中 grant_id 為 uuid、version 為 bigint（JS parser safe integer 範圍）、valid times為timestamptz、其他識別字串為text；status active、subject principal、basis manual、scope global/platform依上表；catalog hash hex64。PDM/FMS 只讀 app-specific contract，不讀其他 core 或泛用 roster。view security_barrier／固定 search_path／owner 為 OrgMaster migrator，PUBLIC 全 revoke、無 runtime DDL/owner/raw-core table權。FMS runtime exact lifecycle login沿既有owner合同解析，不手填臨時帳號名。
+
+授權時 binding 必須精確對應當前 OrgMaster 已接受的 application role catalog/version/content hash/protected role hash；PDM 來源是 current dynamic v3 projection；FMS 同樣綁已接受的 current dynamic CatalogDocument version/content SHA，static v5 entitlement source 僅固定 protected role identity／定義，active dynamic catalog 的 owner-normalized protected role hash 必須與它相同。FMS v3 envelope/current assignment catalogVersion/SHA 指當前 dynamic artifact；authoringCatalogVersion/SHA 指 issuance 時的 dynamic artifact，不混為 static v5 source pin。後續 ordinary catalog update 可延續 grant，條件是 authoring immutable artifact 仍可核其 provenance，且 current protected role definition hash 未變。不得把 authoring catalog 內舊 permissions 當 current fallback。catalog/authority row 必須同 snapshot 驗證，不容許 publication TOCTOU。既有 Portal visibility view 只 additive union 有效 app-admin 派生入口，deduplicate provider pair/app；root-only 不給其他 app，wire 不破壞舊 consumer。
+
+### 8.3 Durable 命令 ledger 與提交
+
+045 新私有 `orgmaster_core.administrative_command_receipts_v1`：`command_id uuid PRIMARY KEY, contract_version text CHECK='orgmaster.administration-command.v1', environment_key text, operation text, actor_kind text CHECK IN(principal,owner_workload), actor_id text, request_sha256 char(64), preview_sha256 char(64), target_principal_id text, target_employee_id text, result_kind text CHECK IN(applied,no_change), administration_version bigint, administration_sha256 char(64), published_policy_id text, transaction_id xid8, result jsonb, committed_at timestamptz`。除 nullable target（revoke由 grant 解析）、其他欄位 NOT NULL；hash均hex64、version為非負safe integer，operation限§9五種human命令及initialize。result 僅 redacted grant IDs、版本、outbox IDs/status，不含核身 token/subject/email。terminal row immutable；partial unique index `ON(environment_key) WHERE operation='initialize_platform_administrator'`，保證換批次或零有效 root 也不會重開首次初始化。私有 ledger是命令真相，不是權限真相；不在 legacy JSON commandReceipts 再寫一份 terminal authority。新 audit 只引用 commandId。
+
+新增 SQL interfaces（planned；不代表現存）：
+
+- `write_active_persistence_artifacts_with_identity_fence_v3(jsonb,text,text,text,text,jsonb,jsonb)`：原 v2 六參數＋verified actor context。ordinary human context `{kind:'principal',sessionId,principalAuthEpoch,authenticatedAt,assuranceLevel}` 必須對 app_sessions、current admission/provider canonical binding、epoch逐欄相等；freshness 依原操作規則，root mutation另要求0≤age≤300000ms且AAL1/2。既有合法 lifecycle worker 用 `{kind:'owner_workload'}`，須以 SESSION_USER 及現有 binding查得 identity，不接受呼叫者宣稱 actor_id。此普通 writer 拒絕任何 administration差異或初始化marker變更。
+- `apply_administration_command_v1(jsonb,jsonb)`：command envelope＋上述 human context；自己驗當前 root、session及同 snapshot revisions/catalog，構造只含 administration 的新 published policy，寫 publication/audit/outbox/ledger。runtime EXECUTE 只有此 human入口；不能傳 bootstrap=true 或 owner actor通過。
+- `prepare_administration_identity_owner_v1(jsonb)`、`initialize_administration_owner_v1(jsonb)`、`read_administration_command_owner_v1(uuid)`：只授確切 OrgMaster owner migration workload使用的DB IAM login；SESSION_USER、受控執行包 environment/command/plan hash及既有owner purpose必須匹配。prepare 只用當次真實核身結果沿 managed identity invariants追加缺少的 native mapping/admission，不能改已有衝突歸屬；initialize 共用純command驗證與private submit，但完全不要求已存在human app_session/root。
+
+owner bootstrap 不冒用humanactor或目前僅允許lifecycle的`assert_lifecycle_executor_v2`。045 對 `workload_principal_bindings` forward-only 增加 orgmaster `administration-initialize` purpose；保留目前 principal/provider subject/db_session_user/owner-purpose 唯一性，不把現有 runtime lifecycle identity 升為初始化者。新 binding 必須指向原已存在的 OrgMaster owner migration workload IAM subject/DBlogin；新增 nullable `bound_command_id uuid,bound_plan_sha256 char(64),bound_target_principal_id text,bound_target_employee_id text,bound_environment_key text,consumed_at timestamptz`，只在此purpose使用並有完整性CHECK。受控owner包讀回實際provider/SESSION_USER後啟用exactcommand/plan/target綁定；提交時同交易消耗並關閉。無新增Cloud IAM/Secret/DBlogin；既有owner無此能力時停止owner執行，不把權限下放runtime。prepared核身proof由owner process真實驗證，DB只接受此獨立owner入口及已準備的nativefacts，不以一般JSON self-assertion充當Google驗證。
+
+共同鎖順序維持031：managed_identity_admission_authority→persistence_authority→admin command checkpoint/receipt→target/session及相關catalog；READ COMMITTED，鎖後重讀 current actor/target/revisions。新增 grant 前驗 publication仍是 preview基礎、root/app資格、既有管理授權及catalog。root mutation以 `current published policy` 建構新version，不publish unrelated draft；draft只rebase administration/basePolicyVersionId，保留業務變更。若尚無published policy，bootstrap用source-owned governance seed結構、已核實的nativeidentity及新administration建立最小首次publication，不抄working draft的business assignments；原draft仍保留。metadata/audit使用discriminated actor kind（owner_workload不填成假的actorPrincipalId），event含grant diff/commandId/prev/newversion/hash。session invalidation與security alert沿既有durable outbox追加，無同步provider呼叫在DBtransaction內。
+
+private提交鏈新增僅migrator可EXECUTE的 `write_active_persistence_artifacts_with_administration_fence_v1(jsonb,text,text,text,text,jsonb)`；重用031的lock/before-facts→private v1 persistence writer→after-facts/lifecycle及managed refresh enqueue順序，actor准入在各public wrapper完成。owner不直接呼叫會拒絕它的human/lifecycle v2 wrapper，也不跳過其資料一致性邏輯。行政入口在同交易先insert完整terminalreceipt（未commit不可見），再寫精確新policy；artifact/active-batch guard只接受與`pg_current_xact_id()`、新administration hash/version/publication ID匹配的私有receipt，普通runtime不能insert receipt，亦不能用可自行set的GUC當授權。任何失敗整筆receipt/publication回滾；no_change只寫receipt、不改policy。
+
+共同private writer統一校驗prospective有效root/OrgMasterentry連續性。所有一般workspace停用、Principal/admissionwithdrawal、role removal及admin撤銷均取相同鎖；兩個並發撤/停用不能各看見另一root而同時提交。外部Directory observation確實suspended/missing時仍記錄並fail closed；不得以連續性檢查拒絕外部真實狀態，改標recovery_required。受控owner恢復只能恢復指定既有歸屬／明示替代，需另綁恢復計畫，不重啟initialize。
+
+所有 `writePersistenceArtifacts` caller改v3；撤runtime對v2及更舊writer EXECUTE，private owner/internal鏈可用。identity/lifecycle既有worker的typedcontext一起遷移，不破壞原fencing；禁止先留舊runtimewriter再依賴UI阻止adminextension被覆寫。SQL check/trigger對新/既有active批次與初始化checkpoint一致性、unrecognizedadminshape、protectedrole及administration保留做最後防護。
+
+## 9. HTTP／UI／owner CLI 固定契約
+
+以下都是新增、待實作，沿 `server/orgmasterGovernanceApi.ts` 的 `/api/orgmaster/governance` prefix；origin/CSRF、本人cookie驗證沿目前server規則，不能只信任body/headerPrincipal。
+
+| 方法／路徑 | 內容與准入 |
+| --- | --- |
+| GET `/api/orgmaster/governance/administrators` | `{contractVersion:'orgmaster.administration-workspace.v1',governanceRevision,organizationRevision,administrationVersion,initialized,grants,catalogBindings,admission:{read,mutate},correlationId}`；既有governance read／exact OrgMaster app-admin可讀，mutate只current root；不返回provider subject/token |
+| POST `/api/orgmaster/governance/administrators/preview` | command payload（無previewHash）→`{contractVersion:'orgmaster.administration-preview.v1',commandId,requestHash,previewHash,expiresAt,diff,expected,catalogBindings,correlationId}`；fresh root；5分鐘preview上限不延長auth_time |
+| POST `/api/orgmaster/governance/administrators/commands` | command＋previewHash；fresh root，200 receipt：`{contractVersion:'orgmaster.administration-receipt.v1',commandId,result:'applied'|'no_change',administrationVersion,publishedPolicyId,grantIds,outboxIds,activation:'pending'|'acknowledged',correlationId}`；DBcommitted不等於跨owneractivation已ack |
+| GET `/api/orgmaster/governance/administrators/commands/:commandId` | current root或同一原humanactor的active session可讀自己的redacted terminal receipt；查不到已提交receipt一律`COMMAND_NOT_COMMITTED`409（包含尚在提交、未曾執行或已rollback，不猜測）；依賴不可用503；owner用privateCLI查自己的receipt |
+
+command envelope固定 `{contractVersion:'orgmaster.administration-command.v1',commandId,operation,target,grantId,reason,expected:{governanceRevision,organizationRevision,administrationVersion},catalogBindings,previewHash}`。commandId UUID；operation只`grant_platform_administrator|revoke_platform_administrator|grant_application_administrator|revoke_application_administrator|replace_application_administrator`；grant target `{principalId,employeeId,applicationId,validFrom,validTo}`且grantId=null，root applicationId=null且validTo=null；revoke只grantId，target=null；replace必帶舊grantId及新target，Principal/Employee/app與舊grant相同，同交易撤舊授新。各operation多餘欄位拒絕。canonical requestHash排除previewHash/correlationId、含actor/environment及全payload；previewHash再綁same-snapshotexpected/catalog/targetfacts，commit重算。Idempotent commandId既有receipt先比requestHash/actor/environment再回原結果；payload異409，不因重試另建grant。沒有grant的新普通human呼叫者不能利用grant自己的target越權；已是root者可以明示授予自己的app管理資格，重複同資格為no_change。
+
+Receipt 的 grant/publication/hash/result 不可變；response 的 `activation` 是由該receipt引用outbox的當前readback派生，不回寫terminalreceipt或把pending改寫成applied。查無receipt時保留同commandId，最多三次有界readback後顯示未知/未提交及查結果入口；只有取得明確未提交與暫時原因才依重送規則重試，不以新的ID掩蓋未知結果。
+
+Bootstrap privateCLI才接受`initialize_platform_administrator`，無public初始化HTTP。其 envelope 為 `{contractVersion,commandId,operation,environmentKey,target:{principalId,employeeId,directoryKey,identityFactsHash},expected,catalogBindings,grants:[{roleCode,applicationId,validFrom,validTo}],plannedProtectedOperations,reason,previewHash}`；`expected/catalogBindings`沿human形狀，grants強制root＋OrgMasterappadmin、每個app最多一筆，只容已就緒catalog；實際providerpair只在ownerprocess核身，receipt僅留facts hash。`plannedProtectedOperations` 是後續FMS catalog.*明示命令清單，不在admin transaction寫managementGrants；root正常登入後各自preview/commit並讀回獨立receipt，亦只發布該操作差異、不帶出無關業務draft。
+
+plan使用公司Directoryimmutablekey作selector，email只是人類提示；verify用liveDirectory＋正確環境Firebase/Google真實簽章token及fresh auth_time，不在尚無root時要求依賴root的普通Portal登入。缺該環境provider user時由正常Googleprovider互動建立nativeuser，不建立Workspace帳號、不passwordwizard。prepare可獨立commitidentity收據但沒有admin；initialize的核身proof逾5分鐘須重驗，不刷新舊auth_time。已初始化其餘app用正常rootcommand補grant，不重跑bootstrap。
+
+Error wire `{code,correlationId,commandId?}`／private,no-store：缺/失效session401沿原sessioncodes；`PLATFORM_ADMIN_REQUIRED`403；`ADMINISTRATION_CONFLICT`409（revision/preview expired）；`ADMINISTRATION_COMMAND_CONFLICT`409（同ID異payload）；`ADMINISTRATION_ALREADY_INITIALIZED`409；`CATALOG_BINDING_CONFLICT`409；`ADMIN_TARGET_INVALID`422；`LAST_PLATFORM_ADMIN`422；`ADMINISTRATION_DEPENDENCY_UNAVAILABLE`503。`AUTH_RECENT_REQUIRED`401引導本人重新Google驗證。預期拒絕無publication/epoch副作用；unknown transport先查原command，不能自動換ID再寫。只有一次有辨識暫時原因的相同command重送；CAS drift重新preview/newcommand；DB rollback無terminalreceipt，不能補寫applied假收據。
+
+普通FMS任用沿現有 `/api/orgmaster/governance/applications/financial-management-system/role-assignments` GET、`/preview`、`/publish`、`/commands/:id`；增加exact FMSapp-admin判斷且限制ordinaryroleallowlist，Owner/system-admin不可透過此普通入口自授。FMS `management-grants` 相鄰路徑的 protected catalog read/edit/publish/import/activate 五項授權仍須分別明示。只有 root 且已有 exact FMS app-admin 者可明示給自己的對應 catalog 操作；FMS app-admin 單獨不能自授。原合法 Financial Owner 只保留既有受限相容路徑，不新增給指定目標人；workflow 等其他 protected operations 不隨 catalog 自授例外放寬。OrgMaster身份連結沿目前明示identity.link權限，保留允許personal管理員操作的人類決策；新root不自動繞過managedidentity/Employee/Directory檢查。
+
+UI在角色治理增加「平台管理員」頁與各app管理列；以preview→「確認套用管理授權」→receipt/生效進度及reload，不叫「加入草稿」後無下一步。原普通業務角色草稿仍走既有發布，pending清楚標示；administration不用業務草稿。尚未初始化只顯示需owner一次性初始化及dependency狀態，不開自授按鈕。失敗留同頁、差異及correlationId；unknown顯示查操作結果，終態再顯示已提交/尚待activation。只顯示中文姓名，缺中文名不自行翻譯或用email充姓名。
+
+## 10. 檔案與coding順序
+
+| Source surface | 必要變更 |
+| --- | --- |
+| `src/governance/types.ts`、`validation.ts`、`commands.ts`、`evaluatePermission.ts`、`assignmentSurface.ts`、`privilegedAssignments.ts` | administration schema、protectedrole/legacywriteboundaries、exactPrincipal派生、普通draft保留；不重釋legacyassignment |
+| 新 `src/governance/administration.ts`、`server/orgmasterAdministrationStore.ts`、`server/orgmasterAdministrationOwner.ts` | 純grant/continuity判斷、preview/commit/receipt、typedownerinitialization；共用驗證而不共用假humanactor |
+| `server/orgmasterGovernanceStore.ts`、`orgmasterPersistenceRepository.ts`、`orgmasterGovernanceWriteActor.ts`、`orgmasterGovernanceApi.ts` | v3writer上下文、DB/TS同步guard、adminroute、只提交admin差異、receipt及outbox |
+| `server/orgmasterManagedIdentityService.ts`、`orgmasterManagedIdentityStore.ts`、`orgmasterPrincipalAdmissionRepository.ts` | ownerprepare重用真實核身invariants；身份停用連續性guard／外部真實撤權分流 |
+| `server/financialCatalogReleaseStore.ts`、`financialInitialAuthorityStore.ts`及governance store的FMSassignment/managementgranthandlers | app-scopedordinary委派、protectedOwner/admin/rootboundary，v3manifest/hash；不重跑initialauthority |
+| `src/components/GovernanceCenter.tsx`、`src/governance/apiClient.ts`與新 `GovernanceAdministrators.tsx` | 管理員獨立UI／preview/receipt/recovery；不跳無關panel |
+| 新044/045、`contracts/orgmaster-administration/v1`、PDM/FMSproducer manifests及sourcepin檢查 | source-controlledDML/DDL/ACL、typedprojections、conformancevectors，更新直接consumer同步入口 |
+| 新 `scripts/dev070-initialize-platform-administrator.mjs`、`scripts/lib/dev070-administration-owner.mjs` | 私有plan/verify/commit/status，exactenvironment/owner/proof，redactedreceipts；非public服務 |
+
+順序：共享types/schema/fixtures→044只讀projection與appconsumer（包括protectedcatalogupgrade）→045fencedwriter/ledger/ownerprepare及全部ordinarycaller→HTTP/UI→隔離PG→真實地端。平台root初始化不等相依FMSbackend修復，但FMS不可就緒時完整驗收維持BLOCKED。正式只記releaseimpact：producer/consumer需可共存、045撤舊writer前caller已升版、catalogrole先於grant、existingIAMpurpose不擴新cloudprivilege；本文件不提供正式執行包。
+
+## 11. Fixtures、可執行驗證與readiness結論
+
+驗收 fixtures：A activehuman_personal正確本人，B同Employee不同Principal，Croot-only，Dapp-admin-only，Ebusiness-only，Flegacyhuman_privilegeddirectglobalsystem_admin，Gservice/shared/inactive，H同Principal合法provideralias。至少兩名可用root作撤權競爭；空root但有既有業務policy/customroles/未發布草稿；FMS 原六角色與保留的 custom，加 source v5 的 protected system administrator；PDM 原九 legacy 與保留的 custom，再 append protected application administrator；真AAL1及AAL2、過期/未來auth_time、缺view/wronghash。
+
+新focused測試：`src/governance/administration.test.ts`（schema/grants/continuity/到期邊界）、`server/orgmasterAdministrationStore.test.ts`（preview/CAS/replay/unknown、未發布業務draft保留）、`server/orgmasterAdministrationOwner.test.ts`（無humanroot/session、真實provideradaptercontract、typedowner拒runtime、partialprepare）、`server/orgmasterAdministrationApi.test.ts`（CSRF/session/root/appboundary/receipt/error）、`src/components/GovernanceAdministrators.test.tsx`（正常preview/確認/receipt下一步），加既有privilegedAssignments／managedidentity定向回歸。
+
+新增隔離runner `scripts/qc-dev070-administration-postgres.mjs` 及其contracttest，建task-own disposable PostgreSQL、套適用migrationmanifest並seed真實typedrow形狀（不是persistentjenfu_dev/stg/prod）。案例必含：PUBLIC/app/runtime無owner入口和rawledger權、直接舊writer拒絕；runtime假ownercontext拒絕；兩個initialize競爭只有一個成功、bootstrapcheckpoint跨batch持續；commandreplay無新publication、異payload衝突、commit後斷線查回；lockwait後freshsession/revision/target再驗；兩root並發撤/停用只允許安全結果；外部invalidations記錄且recovery_required；v5/FMSv3exactPrincipal、不fanout、缺view不fallback、catalog普通更新保留admin/hashdrift拒絕；publication/audit/outbox/receipt同transactionrollback；未發布業務draft原diff保留。
+
+以下是已存在的 source 自查入口；本次文件回合不重跑。實際已執行範圍與待補項見 §12；不得因命令列存在即視為 PASS。
+
+```powershell
+npx tsc --noEmit
+npx vitest run src/governance/administration.test.ts server/orgmasterAdministrationStore.test.ts server/orgmasterAdministrationOwner.test.ts server/orgmasterAdministrationApi.test.ts src/components/GovernanceAdministrators.test.tsx src/governance/privilegedAssignments.test.ts server/orgmasterManagedIdentityService.test.ts
+node --test scripts/dev070-initialize-platform-administrator.test.mjs
+# 由 Platform owner 提供真 consumer adapter；只准 task-owned disposable PG。
+$env:DEV070_PLATFORM_FIXTURE_MODULE="C:/VIBE CODING/.worktrees/Jenfu-Platform/dev022-platform-super-admin-20261105/scripts/lib/dev022-administration-lifecycle-fixture.mjs"
+node scripts/qc-dev070-administration-postgres.mjs
+$env:DEV070_RUN_POSTGRES="1"
+npx vitest run server/orgmasterAdministrationHttp.postgres.test.tsx
+npm run check:db-boundary
+```
+
+正常地端由authenticatedPortal入口以本人GoogleAAL1登入，OrgMaster平台管理員頁→本人及各app明示grant→preview/確認→查receipt及activation→reload/重新登入。另驗原Google連結/停用Employee提示、原加入業務草稿可看待發布與下一步；不將testfixture身份/alias當本人驗收。正式同路徑另驗，不由isolatedPG/地端推論。
+
+TL結論：資料/API/SQL fence、actor、transaction、idempotency、UI 與驗證契約已有工程定案；既有 source 已進入實作並有下列隔離自查，產品尚未正式驗收或發布；整體維持 IMPLEMENTING / RD Readiness Review，無 Owner 的 FMS 首次目錄安裝、真 local bridge、release gate 仍未閉合。本次回合聚焦文件，未實作與待複驗項明列，不把原文件階段或部分 PASS 當成整體完成。coding可決定局部命名/函式拆分/fixture寫法，不能改Principal-boundauthority、AAL1minimum、protectedrolecapabilities、只提交admin差異、oncecheckpoint/last-root或schema責任。currentledger/catalog/provider/runtime事實需實作時讀回；發現契約/constraint不相容先回TL修同文件，不繞過guard或宣稱PASS。
+
+## 12. 2026-11-06 RD source 進度與證據邊界
+
+目前工作樹 `codex/dev070-platform-super-admin-20261105` 基於正式 `origin/master@6045133`；僅移入本目標 source 與必要 042 中文顯示 prerequisite，不改已發布 040／041。新 044／045 尚未套正式資料庫。
+
+- 已實作 administration 唯一權威、private owner plan/bind/identity prepare/initialize、五種 human commands、v3 writer fence、current-publication administration delta、不可變命令收據與 audit、native lifecycle durable queue／typed acknowledgment、既有 security-alert durable queue 的 typed owner actor、平台與 app 的窄投影及中文姓名 reader。API canonical prefix 為 `/api/orgmaster/governance`；無額外 alias。
+- PostgreSQL 隔離案例已通過既有 publication＋未發布 business draft 保留、並行首次初始化去重、last-root／last-Org-entry 撤銷 rollback、no-change／異內容 replay、原 private ledger ACL、真 runtime 窄 view SELECT、typed native consumption 與 activation 衍生。新 native／無 current publication 走 source seed，applications 僅 `source-owned seed ∩ active invalidation appregistry`，不抄 draft，不隱式加入 FMS、不關 admission。完整 Org admin capabilities 與 exact Principal 正常 app session 已在隔離 fixture 驗證；unresolved 歷史 pair 明確阻擋 prepare。
+- PDM current reader 已接 v3／dynamic-policy-v2；完整 PDM owner-domain 向量保留原 custom 後 append protected administrator，Org decoder 與 snapshot 驗證通過。歷史 v1 decoder 保留。FMS static v5 只固定 protected role 定義；grant issuance 綁已接受的 dynamic CatalogDocument version/content hash，當前投影與 issuance provenance 分開，正常 catalog 更新可沿不可變歷史 artifact 驗證。
+- root／一般 Org admin 不得代替 FMS app-admin。FMS catalog read/edit/publish/import/activate 五個明示 protected operations 各自驗證；既有 Financial Owner 僅保留 legacy compatibility，不新增給目標人。
+- native event pending 時投影仍 fail-closed；若 intrinsic 資格有效且僅待本次有界 administration barrier，`recovery_required=false`。外部停用或永久無可用 root 才回 recovery。
+
+已驗範圍為 RD source／task-owned disposable PG，不是獨立 QC 或正式驗收。最新在途 runner 已安全完成：兩 root 並發撤權一筆提交、一筆 CAS conflict；root revoke 與 native quarantine 競爭不可同時移除最後可用 root；voluntary native withdrawal／quarantine rollback；外部 Directory missing 經實際 v2 worker claim/complete、typed invalidation/ack，投影失效且 recovery_required=true。首 cluster PID=43440／port=56483／database=dev014_a5700ed035b24d5fbd99，其餘 cluster 同 runner finally 關閉；所有 fixture client／task-owned cluster 已清理。
+
+另有真 HTTP server＋管理員 React component→production administration store→restricted runtime SQL 的單一整合案例 PASS：預覽、明示確認 app-admin replace、版本 2 receipt、pending→typed ack，原 epoch session 查詢回 401。此案例的 HTTP 身分入口從已驗證 session middleware 之後開始，採真 stored fixture session，不是互動 Google/provider 驗收；不以 mounted component 推論真 Chrome 或本人日常登入已通。
+
+先前完整 `npm test` 為 212 files／1302 tests PASS、6 skipped，既有 local-sandbox Node 61 PASS；之後修改過的 UI／FMS protected-operation／persistence actor 定向四檔 19 PASS，TypeScript PASS。PDM v2 decoder 27 PASS；source seed、兩 producer package hashes 與 DB-boundary 自查 PASS。這是先前波次的紀錄；後續完整應用、release executor／runner contracts與tool packaging結果見§14。跨 app catalog/app-grant 真 consumer 完整矩陣與環境驗收仍待完成，不以分波次 RD 自查宣稱整體正式 PASS。
+
+保留的有效失敗與修正：主控 cross-owner 初次 044 曾出 SQL42702 ambiguous value，隨後窄 view runtime 遇 SQL42501 private publication EXECUTE，均由後續實際 runtime query 驗證修正；fresh-native／無 publication 案例先遇 INVALIDATION_APPLICATION_SET_CHANGE_REQUIRES_ADMISSION_OFF，已改 source seed ∩ active registry；其後 employee-one 的 PRINCIPAL_ALIAS_HISTORY_UNRESOLVED 未放寬 Platform guard，改用無歷史的 employee-two 正向資料，並保留 employee-one prepare 拒絕負向案例。一次誤用 `npx vitest run` 掃到 node:test scripts 產生無 Vitest suite 的執行入口錯誤；其中三個實際 v2 persistence mock 失敗已升級為 v3/full actor 並定向通過，正式完整測試入口為 `npm test`。不刪除前次失敗或將它們改成原本就成功。
+
+真實 Google／地端／正式 target、正式 migrations、merge、部署與本人 native 使用者操作均尚無本輪 PASS。完整四專案分母保留；前次文件聚焦回合未新增非文件工程變更，先前完整成果授權延續；本次工程續接的 source／隔離驗證見§14。
+
+
+## 13. 新舊管理權威相容窗口
+
+| 對象 | 窗口內保留 | 明確禁止 |
+| --- | --- | --- |
+| 既有 legacy Org admin 指派 | 原有業務／原管理能力暫留；只讀相容既有已發布列與歷史，不自動撤除既有人權。舊列可見不代表新 authority。 | 不得新增或還原 protected legacy 指派，不得用它呼叫新 administration/bootstrap 或當 cross-app root。 |
+| 新 administration root／app-admin | 新 root/app-admin 的任免與五種 human commands 只依已發布 administration、exact Principal 與當前 native 資格判定；root 另需有效 OrgMaster entry。 | 不從 legacy Org/PDM system-admin、Employee、email、domain、職位或普通管理 capability 推導。 |
+| 既有 Financial Owner／PDM legacy business roles | 原受限業務／原判權語意及歷史 provenance 保留；正常 additive catalog upgrade 仍走 owner 的合法前置。 | 不把 Financial Owner 換成新管理員、不新增給指定目標人、不把 legacy role 改名成 root/app-admin。 |
+
+本窗口的「只讀相容」是指既有 legacy 權威列的消費相容，既有能力是否可操作仍依其原 server guard；不是把原管理者突然改成只能看畫面。普通 role editor 不得藉複製 protected permission／role、restore 或繞 v3 writer 建立新的管理資格。新 administration command 即使由既有 legacy Org admin 呼叫，仍須滿足新 root 條件。
+
+退場必須逐一完成：每位 legacy 管理者有明確且合適的新 grant、原等效允許行為及應拒絕情境已驗證、已確認沒有 runtime/UI/worker caller 依賴舊 authority。三者缺一即保留相容，不以一次 migration 全部撤權，也不把相容窗口永久當成新 grant 的替代來源。
+
+## 14. Owner release source：精確 DEV070 append
+
+source 已新增 `DEV070_ADMINISTRATION_APPEND`，正式 profile 由原 39 entries 至041，只追加 042 display prerequisite／044 administration producer（含 FMS point-only 初始化 reader）／045 command writer/ledger，為第40／41／42 entries。001–041 identity/source/applied SHA 不變；043 不在包內、不重放、不編造 ledger。這是 source 與隔離驗證，尚未正式 applied。
+
+唯一 deployer 選項為 `npm run deploy:production -- --dev070-administration-append`，保留 `--check`／`--prepare-only` 語意；不得混用其他 controlled mode、tool/smoke/infra rotation、Secret／credential、data import 或 bootstrap inputs。typed readiness/authorization 限 OrgMaster／DEV-070／070-ADMINISTRATION、精確 remediation entries、同 source/release/baseline。runner 明示接收固定 migration mode，target 仍 exact production Org migrator/jenfu_prod，無其他 DB/core schema 權。
+
+planner 只接受原 contract 已允許的31–39完整 exact prefix，以及本次 partial forward 的40／41 readback；逐項比對全部 source/applied/name/order，未知 count/row/hash 於寫入前拒絕。完整42 ledger 可由同一已綁舊 prefix 的執行包安全 replay，但 baseline 已是完整42時不得再次使用 append 宣告；其後 ordinary release 維持 `UNCHANGED_VERIFIED`／零 DDL。stage 只接受42-row receipt、合法 pending/applied/replayed 計數、同manifest/source及 jenfu_dev/stg CONNECT拒絕。
+
+migration runner image 已補新 helper COPY；獨立 PDM catalog reader tool 補 v3 pinned JSON COPY／Node import attributes，current query/sourcePath 明確為 v3，v1 history decoder保留。獨立 image-only rotation 來源檢查只新增認識已定案042/044/045 metadata（無DDL、無 resource/IAM/address放寬）；append 本身不繼承 combined tool/smoke rotation 例外。必要工具映像須先經既有獨立 rotation 及 sealed baseline/provenance；實際 baseline 若仍帶無法分離的 rotation receipt，保持明確 blocker，由主控唯讀釐清後收斂 verified reuse，不能跳過 provenance。
+
+045 會撤除 runtime v1/v2 writer EXECUTE。既定 migrate→candidate 順序保留，**045 commit 到新 v3-compatible caller activation 之間，舊 serving revision 的治理寫入會42501，讀取維持既有路徑**；採本次已接受的有界寫入中斷，不宣稱零中斷、不開舊 writer fallback。migrate 前 build stage 必須已有同 source 的 immutable app artifact/provenance；失敗不 down SQL，不以舊 revision 當作完整 schema rollback。既有 traffic→tag→entrypoint 回復順序不變。DEV070 rollback/terminal 另記 `administrationRecovery`：legacy writer denied/unknown、禁止 schema rollback/fallback、ledger readback＋v3-compatible forward repair，附已 sealed deployment/source/image（若存在）。未產migration receipt 時明列 `UNKNOWN_REQUIRES_LEDGER_READBACK`，不推論 NOT_APPLIED；ROLLED_BACK 僅指 traffic，不能作為舊治理寫入已恢復的證據。
+
+定向 source gate 六檔220項曾通過；後續 recovery source補強的兩項正反已通過。`npm run test:dev-070:contracts`（CI normal source-QC 入口內選中）核 producer packages/source seed/point-only package、migration與privateCLI；目前新增 A/B/C 後共18項通過。完整應用213 files／1303 tests PASS＋既有Node61 PASS，current catalog定向49 PASS/1skip、TypeScript/client/server build PASS。production tool hermetic staging3項及database/readback10項已用task-owned exact pg8.21.0 closure驗證，既有驗證 TEMP／lease已清理；本輪新 mode 的 exact pg8.21 closure 13項再驗通過，606,223-byte task-owned TEMP 因自動核准審查拒絕刪除而保留，lease已釋放，共享node_modules不變。最後 source 將由 draft PR 的 required `Production Source QC` 再驗；以上不替代正式 schema/Google/primary local/readback/部署。
+
+### FMS 首次目錄初始化的 point-only 契約
+
+`orgmaster_contract.read_fms_administration_initialization_v1(text,text)` 固定8欄：contract_version=`orgmaster.fms-administration-initialization.v1`、administration_version(bigint)、root_grant_id(uuid)、principal_id(text)、employee_id(text)、published_policy_id(text)、published_at(timestamptz)、read_at(timestamptz)，全非空。STABLE SECURITY DEFINER／pg_catalog search_path，同 snapshot 讀state及effective root，需initialized/nonrecovery、exactPrincipal/Employee、version/publication匹配。無資格0row、pending不可見、依賴故障拋錯；無rawpolicy/reason/roster。只fms_runtime及必要Org owner執行，FMS無rootview/app-roster SELECT。
+
+獨立 package `contracts/orgmaster-fms-administration-initialization/v1` 的 manifest raw LF SHA為 `497fc31083e70998f5d9a9d5699020a107e66c5d988c3ebbb6ac83f18054e819`，含projection-signature與conformance-vectors；不改既有administration v1（df24e788…）及FMS authority v3（0d7e8dc…）hash。此proof僅FMS owner首個source-protected catalog初始化，不冒充app assignment/protectedGrant；normal writer mode=normal保留。Org/Platform與FMS正式各自DB不同，FMS adapter每preview/execute/readback跨庫freshpoint／server-onlyproof；FMS own SQL只驗strict envelope/own facts/exactdelta，沿既有10秒admission信任邊界，不宣稱distributed atomic或SQL驗外部root，不新增crossDB鎖／加密infra。
+
+真PG已驗zero/pending/exact root/same Employee other Principal/nonroot appadmin、FMS只EXECUTE與其他runtime拒絕、private roster隔離及dependency fault不假0；仍非正式驗收。跨ownerfixture可選 `ordinaryFinancialViewer:true`，只據accepted dynamic catalog exact role-viewer/hash及現native加入readonly普通任用，不給Owner/admin/write；同Principal行政event pending時ordinary資格也依既有contract暫隱、reader可unavailable，ack後再判健康，不能假造healthy grant。
+
+### PR213 姓名投影範圍修正
+
+獨立 source review 在8ecb85d指出 FMS 可枚舉 generic active-Principal 姓名 roster（P2）。044 已撤其generic view SELECT與generic function EXECUTE，改§8.2 app-scoped新物件；042及Platform/PDM相容、原administration/FMSv3/point-only package hash皆不變。`scripts/qc-dev070-fms-display-postgres.mjs` 以explicit FMS owner已發布artifact經Org normalizer、Platform owner adapter及task-owned PG驗 ordinary readonly viewer／新 appadmin 中文名、pending／撤權失效、root-only optional name、同Employee active native clone無FMS任用不得姓名、ACL／definer與dependencyfault rollback後仍不洩globalroster。前兩次fixture先缺name、再於initialized後直接改policy被ADMINISTRATION_CONFLICT；已改pre-init安排中文／clone，未放寬production guard。affected migration source/applied/profile hashes與release checks同步；後續CI結果以PR為準。
+
+## 15. 真實地端 administration activation bridge 待定
+
+主控已唯讀確認 authenticated local profile 使用既有非正式 Google project、loopback primary DB 與各 app 的 local runtime login；該 DB 的舊 031 workload binding 仍指向正式身份，與實際非正式 SA/SESSION_USER 不合。既有 primary profile 不能冒充 task-owned disposable fixture；已存在 native Principal 時應重用，不造新 Principal 或複製他環境 ID。這些是目前診斷，不是完成 bind 或 activation 的證據。
+
+最小候選方案尚待主控收斂並補 source guard：private local-only CLI 驗 validated profile／metadata hash、固定非正式 project／issuer／audience、精確 loopback DB 與 current_database/SESSION_USER，使用既有 SA 的 keyless impersonation 及真 Google OIDC proof；主控已唯讀驗證：沿既有 private cluster operator connection 對現存 NOLOGIN `jenfu_orgmaster_migrator` 做限域 `SET SESSION AUTHORIZATION` 可用，無新增 LOGIN／role／password／持久 ACL；候選沿這個 existing group-session 入口，不預設創新 LOGIN，也不移植 migrator 權給 runtime。owner plan 仍綁 environment／command／plan hash／target，prepare/initialize 保留真 human proof 與不可變 Directory key。
+
+一次性 drain 僅容該 administration command receipt 引用的 event IDs、reason=administration_changed；固定經 validated profile 得出的 Platform loopback origin/audience，不接受任意 endpoint override。Org service OIDC subject、Platform verified consumer、實際 runtime SESSION_USER、typed registry、consumer receipt 及 Org ack 必須一致；不開常駐 Directory sync 或舊 L4 全流程。HTTP loopback 例外也只能落在已驗 development/test profile，正式 HTTPS canonical literal 不變。上述僅是 readonly 前置證據；private group-session 的 source wrapper／validated target／實際 owner proof、OIDC transport 與 consumer local target admission 尚未完整實作／驗證，不代表 primary migration或business write。
+
+**在上述 closed source guard 就緒前，不得啟用目前硬編碼正式 origin 的 worker 處理 local events。** 不修改 fixture guard 讓它接 primary、不塞 GITHUB flags、不假造 SA owner/human/session，也不把 Google IAM metadata lookup 當成已成功 impersonation。此限制只保護尚未完成的 bridge；完整真實地端與正式驗收仍是後續交付範圍。
+
+
+## 16. Readiness 未決事項與續接順序
+
+目前定案的是新 authority／consumer 邊界及上述已實作切片，並非所有環境的執行包都已 Ready。仍須收斂：
+
+1. **首次目錄完整鏈**：FMS owner root-only 初次安裝、Org strict typed adoption、新 FMS app-admin、native ack、五個明示 operation grant 是不同步驟。C 已有正常 UI／HTTP source、bounded owner handoff 與獨立 confirmation 契約（§19）；隔離 PG／實際 FMS TS consumer 已驗一個有界鏈。真實 FMS own publish ledger、Google service OIDC、generation-pinned artifact、local 與正式整鏈仍須各 owner 核對，不能以合成 issuance 替代；不給目標 Financial Owner。 FMS owner另回報容量未閉合：human root lane額外≤3 connections，前次readonly handoff每並行再+2且未有shared gate；本輪未readback後續容量修正，總上界仍須owner證據確認，不能宣稱readiness通過。
+2. **真實 local bridge**：Org production factory 保持精確正式 target，local counterpart 只可由主控的 validated local profile／真 Google OIDC／實際 SESSION_USER 注入。Org新增未提交 local composition（§21）；尚無actual profile／OS／DB／provider PASS；不將 task-owned fixture adapter 或 prod literal worker 當成 primary 支援，詳§15。
+3. **首次初始化與發布 source gate**：A owner-admitted intent＋獨立 completion、B admin-only native worker 已進 source（§17–18）；這修補 stdin／private DB 與 fullflag-off 的已知缺口，新 owner Job sealed-input/receipt、metadata/ledger join、unknown-execution readback與新 mode production-tool packaging已由隔離真runner/transport測試；實際 Job／native provider transport 與正常本人登入仍待環境驗證。PR213 `9dcd8d7` required CI42097390030 SUCCESS已覆蓋A/B/C；後續local composition是未提交新delta，不在該CI證據內。045 bytes 已變，source/applied pins 已隨工作樹同步；不得套舊執行包或誤稱正式已 applied。
+4. **相容與驗收**：本次指定本人轉換須驗 legacy 相容的允許／拒絕；不以批次遷移其他管理者或全部 caller 退場作本次前置。若之後移除兼容，才須滿足 §13 的逐位明確遷移與退場條件。完整 producer→PDM/FMS real-consumer catalog upgrade/history/app-grant/撤權矩陣、真 Google 本人各 app 正常入口、中文姓名與正式 smoke 尚待完成。已完成有界證據可重用，只刷新受影響部分。
+
+前次文件回合的完整成果授權延續；本次實際已執行source／隔離測試／commit/push/draft PR，尚未merge/deploy/provider或primary DB寫入；這是執行現況，不縮減先前完整開發至兩環境發布的授權。之後從已保留 source 與有效證據續接，不重置 dirty tree、不重跑已完成外部寫入、不縮四專案驗收分母。private CLI 目前只有 `plan / verify / commit / status`；`verify` 內部呼叫 owner identity prepare，不存在獨立 `prepare` action。
+
+
+## 17. A：owner-admitted intent → 正常 Google 完成
+
+此切片源於已查明的可執行性缺口：原 private CLI 需 human token stdin＋migrator DB，不能直接作為 Cloud Run Job／private-IP 正式入口。v1 CLI 保留診斷與既有相容；新 intent lane 不將 raw human token放進 Job args／env／Secret／檔案。
+
+- owner 非互動入口為 `scripts/dev070-enrollment-owner-operation.mjs` 的 `plan / admit / revoke / status`；只接受 nonsensitive intent file、own immutable released capsule ref。沿 clean reviewed protected source、既有 owner transport、固定 migration Job、exact sealed runner image／SA／socket／env／no-retry template、source／manifest／ledger pins；job 由 `--operation-mode DEV070_ENROLLMENT_INTENT` 分流，與 DDL append 分開，不能帶任意 SQL／bootstrap／human token。輸入沿既有 `source/migration-bundles/enrollment-intents/`、輸出沿 `receipts/administration-enrollment/`，未改 IAM／Secret／infra。此處記 source 接線，不是該 Job 已正式執行的證據。
+- SQL `admit_administration_enrollment_intent_v1` 只准 migrator，綁 actual SESSION_USER、environment／source／CAS、immutable Employee＋Directory key、可 pin 或 null 的 Principal、command ID、reason 與最多15分鐘 TTL。它只追加 private typed intent receipt，不授 root、不建 session、不偽造 Directory 觀測；runtime 不能建立、換 target 或撤回 intent。撤回另追加 tombstone；status 不重寫 terminal。
+- `POST /api/internal/administration-enrollment/v1/complete` 重用 exact Platform Google service caller verifier，禁止 browser Origin／Cookie／query。strict body 只有 contractVersion／requestId／directoryCustomerId／idToken。先真 Firebase Google crypto 驗證，以 immutable Google user ID＋customer 查 exact admitted intent；無 intent 回 `not_applicable`，不掃 Directory、不自升。命中後才檢 genuine AAL1／AAL2、auth age≤300秒、fresh Google Directory key／email／state、Employee、pair／reservation／歷史衝突。
+- verified provider pair 已有唯一 canonical Principal 時重用；Principal unresolved 只能在本次真 pair 校驗後一次 resolve。新 native 分支於 verified completion 內建立真 managed identity／present observation／native bind；已有 legacy Principal 不塞進 managed-login.v1 DTO、不 rekey／reset。global admission 不暗開：fresh 仍需原有 admission／registry readiness；未成立明確拒絕，沒有 native／root／flag side effect。
+- owner wrapper與runtime admitted-intent wrapper共用 private prepare／initialize、相同 global lock／CAS、一次 marker／typed command receipt／audit。grant actor保留實際 admitting workload；另外記 verified human，兩者不混成假 human actor。SQL只接 verified facts，raw token僅在 HTTP 記憶體，不持久化；SQL不聲稱自己驗 Google crypto。
+
+獨立 package `contracts/orgmaster-administration-enrollment/v1`，manifest raw LF SHA `01e8e82e2df133d50df4c3d16972a16a458a253f3d4ddde4f41035b5950f167f`。success union 固定 `not_applicable | activation_pending | completed`；後兩者帶 commandId／exactPrincipal／Employee／issuer／subject／同 token authenticatedAt。`activation_pending` 不得發可用 root／session；Portal 在 completed 後仍須重 resolve actualPrincipal 與 epoch，再沿正常 session issuance。 Platform Portal consumer目前只有parser/client初稿，尚未接 normal exchange或測試；本段是producer交接規則，不能寫成consumer已完成。
+
+## 18. B：administration-only native dispatch／ack
+
+既有 full lifecycle flag 預設 false，原 worker 會 enqueue／執行 Directory refresh 與泛用 native queue；本 goal 不藉此開啟已 deferred 的 full L4。新 `orgmasterAdministrationLifecycle.ts` 預設只在 exact production target composition 建立行政 lane，normal administration commit 後、admitted completion 及 private service retry route會執行有界 cycle；server close取消本任務 dispatcher，無 Directory refresh／常駐 timer。
+
+045 的 private eligibility predicate 只認 immutable `administrative_command_receipts_v1.result.outboxIds`、reason=`administration_changed` 與 exact snapshot hash；`claim_administration_lifecycle_v1` 共用它，以既有 actual workload registry／SESSION_USER、lease／generation／retry、Platform verified receipt與 `complete_principal_lifecycle_v2` 完成 ack。當前 native prepare／bind 不另產獨立 native event；若未來新增必要 prepare event，必先由同 initialization 的 immutable prepare/enrollment receipt明列 IDs，不泛收 principal_bound。無關歷史 pending 如實阻塞，不偷 ack。
+
+`POST /api/internal/administration-lifecycle/v1` 只接受既有 exact Platform service Google OIDC、空 body，無 Cookie／Origin／query；它可明示恢復這個 scoped lane 的 blocked delivery，再作 bounded claim／consume／ack。恢復只改 mutable delivery，不改 frozen event或terminal receipt、不重置其他 native／Directory queue；每個 cycle最多兩筆。正常 command／completion即使已寫入也不因 transport未知結果假造 acknowledged；依 owner receipt readback 衍生 activation，temporary outage保留 pending與正常 retry入口。
+
+供主控 closed-local receiver的獨立 point predicate：`orgmaster_contract.administration_lifecycle_event_eligible_v1(uuid,text)`→boolean，只給 Platform runtime EXECUTE，PUBLIC／Org／PDM／FMS不得呼叫；非本次行政事件或 hash不合為false，依賴壞則throw。它和producer claim用同一 SQL predicate，不以JS猜reason或另造grant store。package `contracts/orgmaster-administration-lifecycle/v1` manifest SHA `013c3e49deb78664c8d47de859cb750471d8629ffc2ca5171bb9f3a66218947b`。production HTTPS canonical不改；local只有主控 validated profile／real OIDC permit 可接，不接受自由endpoint override。
+
+Pending replay的私有 intrinsic exact-pair檢查僅略過該 initialization command自己的 native barrier；仍驗 Employee／human account／pair／Directory／admission與無關 pending。這只讓已驗 human查初始化結果，不讓公開 root/app projection 或 session提早生效。
+
+## 19. C：FMS 首次 protected catalog 的窄 typed adoption
+
+root-only 已能從 FMS owner安裝 fixed system-admin source catalog，但 Org active仍舊 catalog時，不能先取得尚不存在 profile的 app grant；也不能假造正常 catalog.import/publish/activate grant來採用。新 server-private admission僅容 first-install：fresh exact root＋Org entry、實際同 publisher、current缺 protected role、exact release/version/content/artifact hashes、原六角色及 custom normalized definitions皆原封保留，唯一新增 owner固定 `role-system-admin`。ordinary assignments、未發布業務 draft與administration保持，不能一般 root就通過所有 catalog guard。
+
+實作沿 `financialCatalogActivationStore` 原 inactive import／preview／activate／audit／immutable owner receipt；normal `assertFinancialAuthority` 未泛開root。新 `actorProof.kind=platform_root_catalog_initialization` 與 normal protected_operations區分，不填假三項grant IDs，不冒原 v1 activation wire。Org正常已驗 session衍生 actor／authenticatedAt／assurance／principal epoch；正式 default client以 existing Org runtime Google service OIDC、exact FMS canonical＋SID，呼叫 owner唯讀、op-specific committed publish ledger＋generation-pinned artifact handoff。無來源、錯 actor／epoch／op／hash／delta、逾時均fail closed；不轉cross-app Cookie、human Google token、SSO claim，service proof不冒human SDK writer proof。
+
+正常 Org 管理員 UI 已有 root first-install下一步，只有 exact preview可採用；採用後才走 normal root FMS app-admin grant→native ack→正常明示 catalog.read/edit/publish/import/activate 五權。新獨立 `read_fms_catalog_initialization_activation_v1` 七參數point-only reader核 typed receipt／audit／publication／root issuance來源與current binding；只FMSruntime EXECUTE，舊v1／24cb projection與現有administration／FMSv3 packages保持。原始 immutable issuance provenance不與之後current publication/admin version/epoch混為一體，不重寫完成terminal。
+
+package `contracts/orgmaster-fms-catalog-initialization-activation/v1` 的 `manifest.json` SHA `3ceb1923576b054e17213bffb5557f74bb1bb1042068cb4fe07aae4103ab50ad`；FMS actual readonly handoff transport另沿其owner package。local沒有closed validated profile時保留fail closed，不借production SID／origin。
+
+## 20. 本輪來源、證據與續接
+
+| 受測切片 | 實際證據 | 不支持的宣稱 |
+| --- | --- | --- |
+| 已提交 P2／既有 administration | HEAD `6146162f73ffdf0550af794661adc7e11a6532cb`、draft [PR213](https://github.com/jedchang0308-jenfu/OrgMaster/pull/213)；required [Production Source QC](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42084560779) SUCCESS；P2真PG scoped name／ACL／fault rollback | 不涵蓋其後本次A/B/C delta，不是merge／release／formal本人驗收 |
+| A/B domain／contracts／Job source | 新12項Vitest、7項owner-operation Node tests PASS；contracts共18項、release Node458項（合計476）、Job override定向3項、新 mode exact pg8.21 production-tool packaging3＋database/readback10項、TypeScript/build/boundary PASS | sealed-provider服務由隔離HTTP doubles提供，未dispatch實際Job；A/B/C已由9dcd8d7 requiredCI驗證，local新delta另見§21 |
+| A/B 真HTTP＋restricted PG＋Platform consumer | 三 task-owned clusters PASS：legacy reuse、fresh noPublication／concurrent one Principal＋one terminal receipt、globaladmissionoff／ownerrevoke；行政pending→scoped worker→actual Platform owner consumer＋typedack→completed，無token持久化；B exacthash bool／非行政拒絕、blocked scoped resume且無關queue不動 | HTTP測試從注入的Firebase／Directory／service verifier邊界開始；native consumption採Platform owner fixture adapter，不是真Google／實際正式HTTPS transport |
+| C focused／PG consumer | 12 files／76項focused與TypeScript PASS；1項HTTP→production preview/activate/audit/receipt→restricted runtime v3writer→新pointSQL→FMS actual TS confirmation consumer PASS | fixture替換minimal JSON IO，ownerHTTP提供隔離合成issuance；未驗產品raw-document parse、真Google或實際FMS ownledger |
+
+A/B/C已提交到同PR213：HEAD `9dcd8d70008e498f585579f717f6fe67b6e17c24`，required [CI42097390030](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42097390030) SUCCESS；app218files／1346passed、7conditional skips、Node61、release458＋contracts18、toolrotation61＋protocol26、packaging3＋readback10、abort6、build／DBboundary與runtime／三toolimagebuild-import均PASS。新C PostgreSQL case在一般CI略過，另有上述本機真PG證據，不混稱CI執行。該checkpoint後的local delta續接見§21–22；未merge／部署。044維持P2 source `e065b940f224589b8ed7e0c2f73abba510e40b543c6f76f0f4e53f4af0f60042`；045本輪source `2cdbd914251c8874cfafbcae108ffb4a8b8c6f8c1c8db381db2ca845802d7f7f`／applied `334c287a8f038e1b33cf934642bd724f7d3939b09c41f95c213800c82889d663`，已對齊profile/helper，原39 prefix／042 bytes與043排除不變。最初一次pin人工轉錄不符曾使contract gate `MIGRATION_CHECKSUM_MISMATCH`，已改從actual bytes機算同步並重驗18項PASS；不能用錯pin執行包。
+
+其他保留失敗：A/B最初SQL JSON operator 42725、timezone 42883已修；HTTP缺auth欄的oracle改為strict shape拒絕；fresh concurrent replay一度被自己的pending barrier拒403，後改上述私有intrinsic判定並真PG通過；C point函數current_catalog名稱撞PG內建name，已改catalog_current且consumer PG通過。這些不是正式重放或provider mutation。
+
+本回合已完成owner Job/transport/sealed evidence、unknown-output recovery、affected packaging/source-gate與12秒dispatcher deadline檢查，更新契約、直接索引與既有QA計畫。A/B/C已同PR提交／requiredCI通過，source review仍依正常流程；local增量另見§21，再由主控協調closed local counterpart、actual Google／Directory／IAM metadata／SESSION_USER／native ledger／catalog readback與各app正常本人入口；正式owner workflow與有界42501轉換／forward repair不變。完整四專案、兩環境分母與指定本人範圍保留，不批次遷移其他legacy管理者作前置。
+
+本輪固定 Job 新 mode 測試使用 actual runner 與 owner transport，GCS／metadata／Run API採隔離 doubles，涵蓋 exact sealed input、terminal/deployment/bundle/source join、actual DB SESSION_USER/42-row ledger shape、readonly plan、跨來源／非 RELEASED／runtime-as-migrator拒絕及已產output/unknown execution重用；不宣稱真 Cloud Run Job 已執行。dispatcher每cycle至多2筆且12秒有界，deadline後不開始新的 claim/dispatch。Task-owned closure保留位置：`C:/Users/user/AppData/Local/Temp/orgmaster-dev070-tool-lock-final-43bb810996384124bba0576774ef2ca8`，無active process／reparsepoint／port；清理遭自動核准審查拒絕，未改用其他工具繞過。
+
+<a id="21-local-trusted-composition-source-增量2026-11-06未提交未驗-primary"></a>
+
+## 21. Local trusted composition（2026-11-06，未驗 primary）
+
+本節記錄既有已授權source與產品邊界；本輪聚焦四份既有文件及安全在途source收斂，完整兩環境／四專案成果授權與驗收分母延續。未啟動實際local app或做primary寫入；owner只讀前置的實際證據見§22。
+
+`server/orgmasterLocalAdministrationRuntime.ts` 由 `ORGMASTER_DEV070_LOCAL_ADMINISTRATION_CONFIG` 僅選 own canonical `ownerRoot/.next/dev-local/**` 的 server-owned側檔，不接受HTTP body/header選檔或自由endpoint。exact格式為 `jenfu.dev022.local-administration-runtime.v1`、owner=`orgmaster`、project=`jenfu-platform-nonprod`、audience=`http://localhost:1010`，含profile／SQL rawref+SHA、own runtime tuple、postmaster PID/startToken/dataDirectory與exact Platform nonprod email/SID。只限development、無K_SERVICE、非prod；檔案／所有祖先不得symlink/junction，有限size、同bytes parse/hash，原始SQL URL/password與ADC不得輸出。
+
+reader核 `jenfu.dev-local-auth-profile.v1` 的own root／exactnonprod identities、privateRoot `dev069-real-nonprod-<32hex>`；SQLref固定privateRoot/private/owner-runtime-logins.json，其format/runId/tuple及apps.orgmaster URL匹配。每次行政call fresh核OS原生PID／完整FILETIME startToken／postgres.exe與exact `-D`、postmaster.pid的PID/datadir/port，再核actualDB current_database/host/port、SESSION_USER=current_user、Org runtime membership，以及非owner/migrator/super/createrole/createdb/replication/bypassrls／無schema CREATE。漂移或依賴壞throw；loader不開owner連線、不啟停cluster、不DML。所有delivery／executor的local workload registry binding、必要Org040/045／ACL與owner wrapper仍由Org owner控制；Platform只消費orgmaster_contract，不跨core代改binding。
+
+真provider source接既有privateRoot/private/google-adc/application_default_credentials.json，canonical/noLinks、authorized_user與quotaProject非prod，SDK僅記憶體使用Firebase refreshToken credential及GoogleAuth credentials；不讀失效global ADC、不新增credential、不改production拒GAC規則。Firebase仍驗真Google token，Directory仍google-admin-readonly DWD；outbound固定Org nonprodSA，沿GoogleAuth／Impersonated取得真OIDC，Platform=`http://localhost:1000`、FMS=`http://localhost:1030`。inbound固定Platform nonprod email/SID＋own audience。測試以SDK/transport doubles驗接線，沒有本輪真provider PASS。
+
+AuthRuntime組合同一guarded runtime／dispatcher給enrollment與scoped cycle；正常administrators command在commit前guard、commit後同dispatcher cycle，不能只接internal route。實際Vite plugins共用同AuthRuntime，掛兩internal ports及shutdown；獨立HTTP server同接線。FMS local readonlyhandoff重用同packet parser／8秒deadline／boundedbody／failclosed；provenance用既有 `local_test` 環境值，由server capability決定，並非HTTP flag或合成ownerreceipt；formal production HTTPS/default factory不變。
+
+local composition已提交，包含新runtime reader／tests、AuthApi／AdministrationApi／GovernanceApi／Server、Firebase／Directory／lifecycle client／FMS owner reader、Vite config及QC source snapshot。若guard跨過dispatcher deadline，恢復後不開始新SQL claim；noLinks仍拒Windows junction，保留初次file-symlink EPERM。受影響8files134 mocked tests、TypeScript／diffcheck通過；current committed CI及後續intent delta統一見§22。
+
+actual sidecar／OS／DB角色及private ADC的owner OIDC已由§22 readonly plan驗證；尚待真local app服務Google本人登入、Firebase／DWD、OIDC HTTP→Platform eligibility／consume→Orgack、FMS sameactor／ownledger handoff及normal adoption。mock與readonly前置不替代這些產品驗收；未merge／deploy／primary mutation。
+
+<a id="22-local-owner-db-bridgeexact-owner-bootstrap2026-11-06source-待-ci"></a>
+
+## 22. Local owner DB bridge／exact owner bootstrap（2026-11-06，source／CI通過，環境未驗）
+
+owner bridge與local composition已提交HEAD 78076616d893f1dc828731a1079a793021528938，同draft PR213；required CI42121234195 terminal SUCCESS。工具scripts/dev070-local-administration-owner.mjs與library scripts/lib/dev070-local-administration-owner.mjs提供schema plan／status／commit及下述intent增量。plan/status是SQL只讀，無SQL DDL／data寫入；既有neutral inspect可刷新同ownedcluster的control record metadata，plan也會create-only寫own plan output。這不改profile／SQL target、不啟停runtime或cluster；control record仍以同次讀取的actual bytes綁SHA，不新增inspect API。commit未對primary執行。本次HEAD包含local intent adapter增量，已由同required CI覆蓋，不把schema migration或intent admission當作已授root。
+
+source入口重用§21 own canonical sidecar／profile/raw SHA/noLinks／private authorized-user ADC，以及既有neutral cluster inspector（只該source及其process-ownership dependency入pin，不importPlatform app runtime）。owner另取得並crypto驗證真Google非正式migratorSA，固定email `dev010-orgmaster-migrator@jenfu-platform-nonprod.iam.gserviceaccount.com`、SID `109035753048386897825`、audience localhost:1010、fresh≤300秒；不接caller選SA／PID／SQL／URL／human token。私有operator必須是ownedcluster的actual postgres session，之後以既有NOLOGIN jenfu_orgmaster_migrator session操作，runtime不拿owner connection。
+
+實際readonly診斷：primaryDB61312／ownedpostmaster20904；Org兩schema及其relations已由migrator持有、USAGE/CREATE為true；唯三個現有函數仍owner=postgres。Org不得代修PDM或其他owner物件。只有下列固定完整signature可進owner-bootstrap：
+
+- `orgmaster_core.read_active_persistence_artifact_v1(text)`
+- `orgmaster_core.read_active_persistence_authority_v1()`
+- `orgmaster_core.write_active_persistence_artifacts_v1(jsonb,text,text,text)`
+
+exact neutral/local source路徑為 `db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql`，只允許固定三函數 `ALTER FUNCTION ... OWNER TO jenfu_orgmaster_migrator`；不改definition/body、其他owner或business data，不創角色/password／CloudIAM／Secret。plan逐一pin完整signature、owner、definition/body與各SHA、securityDefiner/config/ACL。commit CAS相同before snapshot，僅把owner及ACL內對應owner角色轉交，內容／設定／其他ACL不變；immutable `orgmaster_core.administration_local_owner_bootstrap_receipts_v1`存command/plan/source hash與before/after。未知第三方owner或這三項以外的DDL資格缺口failclosed，不擴成全schema ownership重寫。
+
+單一transaction順序：fresh target/source／ledger／runtime roles／before bindings／三函數CAS＋advisory lock → 私有original operator只執行上述exact bootstrap → 切現存NOLOGIN migrator → 套缺少的042/044/045原bytes對應renderedSQL與append-only ledger → local-only `db/migrations/local/046_dev070_local_administration_bridge_v1.sql` → 固定兩workload bind／FMS窄ACL → ledger/binding/receipt readback → COMMIT。bootstrap及後續failure全部rollback；COMMIT unknown先用同command status讀回，不自動重送、不改舊receipt。commit另要求source clean；plan綁HEAD及working inputs／兩neutral dependency SHA、profile/SQL/cluster record SHA、OS PID/startToken/datadir、actual DB/session及15分鐘expiry。
+
+ledger目前40 rows：原39至041與既有042。local042的checksum是raw source84955e…，source_revision=`LOCAL_GENESIS:16930fa3-b7cd-4c7c-947d-c3203e59178c`，不同formal rendered19e676…。wrapper只精確承認此known raw042／genesis與database suffix一致的local variant，保留原row，不重套042、不重寫checksum；formal profile及042/044/045 pins不改。local wrapper要求原39 exact prefix／已接受40–42 forward狀態，unknown version/name/hash/count拒絕。046另有immutable installation與command receipts，不塞進正式42-row profile，不帶入043。
+
+046只更新原031兩個固定workload的provider subject／actual runtime SESSION_USER pair與binding version：Org為nonprod102985156037283277347／dev069_orgmaster_<run-prefix>，Platform delivery為117743617824418208171／dev069_platform_<run-prefix>。先驗三個runtime LOGIN的exactgroup、非owner/migrator／高權及無schema CREATE，且FMS已存在restricted login為fms_test_runtime_<run-prefix>、member=fms_runtime。FMS只補v2 admission、v3 authority、scoped Chinese-name、catalog binding／normal receipt與兩個point reader所需versionedcontract ACL；不給generic roster／private publication。generic claim EXECUTE維持既有相容，full lifecycle flag仍off，僅本goal filtered admin dispatcher及Platform eligible predicate作本lane consume，不復活Directory／全queue。
+
+當前證據：78076616 required [CI42121234195](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42121234195) terminal SUCCESS，app220files／1397passed／7conditional skips、Node61、release458＋contracts31（共489）、rotation61＋26、packaging3＋10、abort6、build／DBboundary／runtime及三toolimagebuild-import通過。SourceQC必跑ephemeral PostgreSQL18 component：hash-guarded031／045片段＋完整exact3 bootstrap／046，真runtime／migrator／restricted FMS roles、body／ACL CAS、2row binding、replay／rollback、窄ACL及immutable receipts PASS；輸出bindingRows=2／terminalReceipts=2、046 source SHA9ec0aceaf3ec746ddb48bd1cc06fc827e85f0faca1a881a81711a60be719c509。FMS objects是明示ABI stubs，非完整Platform foundation／FMS reader／Windows primary／provider鏈。
+
+runner scripts/qc-dev070-local-administration-owner-postgres.mjs僅Linux/GHA exactservice，驗freshDocker label／PID／publishedport／system_identifier／create-only DB與role marker；固定own runner只進該service networknamespace。explicit env-i allowlist只傳PATH/HOME、CI/GHA run／attempt／container ID及synthetic PG參數，namespace port5432與published host port分驗，不帶整份environment／GitHub token／cloud credentials。cleanup只本次成功建立且marker/systemID吻合目標。前一checkpoint 913d431／CI42119330925 terminal SUCCESS保留；首CI42116668770因sudo -E環境遺失、SQL前DEV070_CI_DISPOSABLE_TARGET_REQUIRED的失敗；修正後同required gate真SQL通過，沒有放寬046 loopback。DB boundary僅放行本節exact db/dev-010 bootstrap path，PR/base選檔／self-test8通過；不放開整目錄。舊2欄SQLprofile mock已修成actual producer v1五欄user/password/group/url/pepper；私有檔未改寫。本機newPG容量阻擋只移交同CI，不用primary當fixture。
+
+actual readonly CLI plan已通過canonical sidecar/rawrefs、真OS ownedpostmaster、least-privilege runtime／NOLOGIN owner資格及fresh真Google非正式migrator OIDC；結果PLANNED／ledger40／raw042=true／pending044+045。首次CLI UNAVAILABLE保留，schema查詢保留字CREATE alias改schema_create後成功。當時plan綁dirty source，不能直接commit，後續必fresh plan。此證據只支持owner服務身分與只讀前置；未驗本人Google Firebase／DWD／normal session，未做primary ownership／DDL／registry／ledger／intent／grant寫入。
+
+新增local intent source：同CLI只開intent-plan／intent-admit／intent-status／intent-revoke，固定--config選own側檔，--intent只能讀own output/dev070/local-owner/*.json；plan另--output create-only，bounded JSON／noLinks，無SQL／URL／human token／grants旗標。輸入沿045完整orgmaster.administration-enrollment-intent.v1（commandId、actual environmentKey、sourceRevision、Employee、immutable DirectoryKey、knownPrincipal或null、expiresAt≤15min、reason；初始expected／admittingWorkload為null）。plan依實際CAS及真migrator proof補入expected／admittingWorkload，Directory customer固定validated profile，knownPrincipal必exact current Employee；null留待真Google pair解析，不按Employee廣播或造Principal。local envelope只封存source／profile／OS／DB／ledger／role／owner及intent hash，不是第二任用store。
+
+intent-admit／revoke要求clean exactsource、fresh相同profile／OS／owner proof、42-row ledger與046已安裝，沿045三個窄owner函數及同transaction advisory lock／CAS／readback；到期／撤銷／漂移拒絕。重送讀原immutable receipt，unknown COMMIT只報INTENT_COMMIT_UNKNOWN_REQUIRES_STATUS，不自動重播；status允許讀舊source／到期intent以定位結果，但仍驗同target／profile／OS／owner，區分ADMITTED／REVOKED／EXPIRED／ACTIVATION_PENDING／INITIALIZED，不把pending當ack。新增source已由owner Node13（原7＋新增6）、contracts31、local runtime/composition 2files51項、TypeScript／diffcheck通過，均為source/mock，已提交78076616／required CI42121234195 terminal SUCCESS。045／046與所有producer packets bytes不變，既有native SQL證據可重用。
+
+P2 status readback修正（780之後增量；原Luna reviewer delta已CLOSED，無剩餘必修P1/P2）：standard status --plan與commit replay共用readLocalOwnerBridgeReceipt，核input plan自hash、column plan_sha256、046 response.planSha256及commandId／database／sourceRevision／beforeBindingsSha256與完整response shape；samecommand換plan重算hash、partial／不一致storedreceipt回RECEIPT_CONFLICT，查無仍null。未知COMMIT先status、不重送語意維持。owner Node15／contracts33、syntax／diffcheck PASS；PG18 component已加actual046 receipt原plan讀回及變造plan拒絕，待新CI，不改044／045／046 bytes或producer package。
+
+下一步：原Luna reviewer已複核P2 delta CLOSED（無剩餘必修P1/P2）；同PR精準commit／fresh requiredCI，再由主控join local preconditions後fresh schema plan／精確owner bridge，之後才可對指定本人建立短效intent並走正常Google完成／nativeack／四app入口與FMS正常adoption。actuallocal與production產品驗收均為NOT_RUN／未完成；正式owner release、正式sealed baseline／ledger／native／catalog及本人兩環境驗收均未完成；不merge／部署或先寫primary，不縮完整四專案分母。

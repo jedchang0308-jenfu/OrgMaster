@@ -1,0 +1,265 @@
+{
+  "applications": [
+    {
+      "id": "orgmaster",
+      "name": "OrgMaster",
+      "status": "active"
+    },
+    {
+      "id": "ai-pdm",
+      "name": "AI-PDM",
+      "status": "active"
+    },
+    {
+      "id": "financial-management-system",
+      "name": "FMS",
+      "status": "active"
+    }
+  ],
+  "identityLinks": [],
+  "principalAdmissions": [],
+  "applicationRoles": [
+    {
+      "id": "role-orgmaster-admin",
+      "applicationId": "orgmaster",
+      "code": "orgmaster_admin",
+      "name": "OrgMaster 系統管理員",
+      "status": "active",
+      "systemDefined": true
+    }
+  ],
+  "permissions": [
+    {
+      "id": "permission-orgmaster-governance-manage",
+      "applicationId": "orgmaster",
+      "kind": "system",
+      "code": "orgmaster.governance.manage",
+      "name": "管理治理設定",
+      "risk": "high",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-governance-publish",
+      "applicationId": "orgmaster",
+      "kind": "system",
+      "code": "orgmaster.governance.publish",
+      "name": "發布治理政策",
+      "risk": "high",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-governance-simulate",
+      "applicationId": "orgmaster",
+      "kind": "system",
+      "code": "orgmaster.governance.simulate",
+      "name": "執行治理測試器",
+      "risk": "normal",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-identity-view",
+      "applicationId": "orgmaster",
+      "kind": "page",
+      "code": "orgmaster.identity.view",
+      "name": "查看員工登入帳號",
+      "risk": "normal",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-identity-refresh",
+      "applicationId": "orgmaster",
+      "kind": "action",
+      "code": "orgmaster.identity.refresh",
+      "name": "刷新公司登入身分狀態",
+      "risk": "high",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-employee-number-manage",
+      "applicationId": "orgmaster",
+      "kind": "action",
+      "code": "orgmaster.employee-number.manage",
+      "name": "管理 JFS 員工編號",
+      "risk": "high",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-identity-invite",
+      "applicationId": "orgmaster",
+      "kind": "action",
+      "code": "orgmaster.identity.invite",
+      "name": "邀請員工登入帳號",
+      "risk": "high",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-identity-link",
+      "applicationId": "orgmaster",
+      "kind": "action",
+      "code": "orgmaster.identity.link",
+      "name": "連結既有登入帳號",
+      "risk": "high",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-identity-invitation-manage",
+      "applicationId": "orgmaster",
+      "kind": "action",
+      "code": "orgmaster.identity.invitation.manage",
+      "name": "管理登入帳號邀請",
+      "risk": "high",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-management-method-create",
+      "applicationId": "orgmaster",
+      "kind": "action",
+      "code": "orgmaster.management_method.create",
+      "name": "建立管理辦法",
+      "risk": "normal",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-management-method-read-readable",
+      "applicationId": "orgmaster",
+      "kind": "page",
+      "code": "orgmaster.management_method.read_readable",
+      "name": "閱讀管理辦法",
+      "risk": "normal",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-management-method-read-draft",
+      "applicationId": "orgmaster",
+      "kind": "page",
+      "code": "orgmaster.management_method.read_draft",
+      "name": "閱讀管理辦法草稿",
+      "risk": "normal",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-management-method-edit-draft",
+      "applicationId": "orgmaster",
+      "kind": "action",
+      "code": "orgmaster.management_method.edit_draft",
+      "name": "編輯管理辦法草稿",
+      "risk": "normal",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-management-method-manage-readable",
+      "applicationId": "orgmaster",
+      "kind": "action",
+      "code": "orgmaster.management_method.manage_read_availability",
+      "name": "管理管理辦法閱讀狀態",
+      "risk": "high",
+      "status": "active"
+    },
+    {
+      "id": "permission-orgmaster-management-method-manage-metadata",
+      "applicationId": "orgmaster",
+      "kind": "action",
+      "code": "orgmaster.management_method.manage_metadata",
+      "name": "管理管理辦法 metadata",
+      "risk": "normal",
+      "status": "active"
+    }
+  ],
+  "rolePermissionGrants": [
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-governance-manage",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-governance-manage",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-governance-publish",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-governance-publish",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-governance-simulate",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-governance-simulate",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-identity-view",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-identity-view",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-identity-refresh",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-identity-refresh",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-employee-number-manage",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-employee-number-manage",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-identity-invite",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-identity-invite",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-identity-link",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-identity-link",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-identity-invitation-manage",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-identity-invitation-manage",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-management-method-create",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-management-method-create",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-management-method-read-readable",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-management-method-read-readable",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-management-method-read-draft",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-management-method-read-draft",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-management-method-edit-draft",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-management-method-edit-draft",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-management-method-manage-readable",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-management-method-manage-readable",
+      "effect": "allow"
+    },
+    {
+      "id": "grant-orgmaster-admin-permission-orgmaster-management-method-manage-metadata",
+      "roleId": "role-orgmaster-admin",
+      "permissionId": "permission-orgmaster-management-method-manage-metadata",
+      "effect": "allow"
+    }
+  ],
+  "roleAssignments": [],
+  "roleDelegations": [],
+  "positionRolePolicies": [],
+  "applicationPositionAdoptions": [],
+  "managementGrants": []
+}

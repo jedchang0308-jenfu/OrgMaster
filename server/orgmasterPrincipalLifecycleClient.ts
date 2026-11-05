@@ -1,6 +1,7 @@
 import { performance } from 'node:perf_hooks'
 import { GoogleAuth, JWT } from 'google-auth-library'
 import type { LifecycleClaimV2, LifecycleCycleControl, LifecycleReceiptV2 } from './orgmasterManagedIdentitySync'
+import {localAdministrationServiceToken,localAdministrationPeer,type OrgmasterLocalAdministrationRuntime} from './orgmasterLocalAdministrationRuntime'
 
 export const PLATFORM_PRINCIPAL_LIFECYCLE_ORIGIN = 'https://jenfu-platform-prod-9536592944.asia-east1.run.app'
 const PRINCIPAL_LIFECYCLE_PATH = '/api/internal/principal-lifecycle/v2'
@@ -113,10 +114,23 @@ async function readBoundedResponse(response: Response, guard: () => void, wait: 
 }
 
 export function createOrgmasterPrincipalLifecycleClient(dependencies: OrgmasterPrincipalLifecycleClientDependencies = {}) {
+  return principalLifecycleClient(PLATFORM_PRINCIPAL_LIFECYCLE_ORIGIN, dependencies)
+}
+
+export function createOrgmasterLocalAdministrationLifecycleClient(runtime:OrgmasterLocalAdministrationRuntime) {
+  localAdministrationPeer(runtime)
+  const origin='http://localhost:1000'
+  return principalLifecycleClient(origin, {
+    tokenProvider:audience=>localAdministrationServiceToken(runtime,audience),
+    fetch:async(url,init)=>{await runtime.verify();if(url!==origin+PRINCIPAL_LIFECYCLE_PATH)throw new PrincipalLifecycleClientError('dispatch_unavailable');return fetch(url,init)},
+  })
+}
+
+function principalLifecycleClient(origin:string,dependencies:OrgmasterPrincipalLifecycleClientDependencies) {
   const tokenProvider = dependencies.tokenProvider ?? defaultIdTokenProvider
   const fetchImpl = dependencies.fetch ?? fetch
   const now = dependencies.now ?? (() => performance.now())
-  const endpoint = `${PLATFORM_PRINCIPAL_LIFECYCLE_ORIGIN}${PRINCIPAL_LIFECYCLE_PATH}`
+  const endpoint = `${origin}${PRINCIPAL_LIFECYCLE_PATH}`
 
   return Object.freeze({
     async dispatch(claim: LifecycleClaimV2, control: LifecycleCycleControl): Promise<LifecycleReceiptV2> {
@@ -154,7 +168,7 @@ export function createOrgmasterPrincipalLifecycleClient(dependencies: OrgmasterP
 
       try {
         guard()
-        const token = await wait(Promise.resolve().then(() => tokenProvider(PLATFORM_PRINCIPAL_LIFECYCLE_ORIGIN)))
+        const token = await wait(Promise.resolve().then(() => tokenProvider(origin)))
         guard()
         if (typeof token !== 'string' || !/^[A-Za-z0-9._~-]+$/u.test(token)) throw new PrincipalLifecycleClientError('dispatch_unavailable')
         const body = JSON.stringify({ contractVersion: REQUEST_CONTRACT, eventId: claim.eventId, snapshotHash: claim.snapshotHash })

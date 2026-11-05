@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { canonicalJson, sha256 } from './commands'
 import { classifyAssignmentSurface } from './assignmentSurface'
 import { isActiveAt } from './validation'
+import { administrationPolicy,hasAdministrativeGrant } from './administration'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceDocumentV3, GovernanceOrgSource, GovernanceRoleAssignmentV3 } from './types'
 
 export const SYSTEM_ADMIN_APPLICATION_ID = 'ai-pdm' as const
@@ -98,6 +99,7 @@ export function assertFreshPrivilegedSession(actor: GovernanceActorContext, sess
 export function hasCrossAppOverride(document: GovernanceDocumentV3, actor: GovernanceActorContext, at = new Date().toISOString()) {
   const policy = currentPublishedPolicyV3(document)
   if (!policy || !actor.principalId || !actor.employeeId) return false
+  if(administrationPolicy(policy).initializedByCommandId!==null)return hasAdministrativeGrant(policy,actor.principalId,actor.employeeId,null,at)
   // The authenticated session already resolved the provider pair to a canonical
   // Principal/Employee.  Authorization must therefore follow that verified
   // principal binding instead of making a historical provider-pair snapshot a

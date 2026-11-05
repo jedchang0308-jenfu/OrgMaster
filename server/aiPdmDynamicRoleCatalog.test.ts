@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import vectors from '../config/catalogs/test-vectors/ai-pdm-dynamic-policy-v1.json'
 import boundaryVector from '../config/catalogs/test-vectors/ai-pdm-dynamic-policy-boundary-v1.json'
+import v2Vector from '../contracts/ai-pdm-role-policy-catalog/v3/conformance.json'
 import { decodeDynamicAiPdmRoleCatalog } from './aiPdmDynamicRoleCatalog'
 import { readHistoricalAiPdmRoleCatalogFromDatabase, readPublishedAiPdmRoleCatalog, readPublishedAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
 import { createAiPdmRoleCatalog, validateExternalRoleCatalog } from '../src/governance/aiPdmCatalog'
 
 /** Immutable synthetic handoff vectors produced by PDM's actual policy core; no sibling source imports. */
-function projection(vector= vectors[2]):Record<string,unknown>[]{
+function projection(vector: {policy: typeof vectors[number]['policy']; publishedAt:string}= vectors[2]):Record<string,unknown>[]{
   const p=vector.policy
   return p.roles.map((role,index)=>({contract_version:'jenfu.platform-entitlement.v1',application_id:'ai-pdm',
     catalog_version:p.candidateCatalogVersion,catalog_sha256:p.contentHash,published_at:vector.publishedAt,display_order:index,
@@ -21,6 +22,20 @@ function projection(vector= vectors[2]):Record<string,unknown>[]{
     presentation_order:p.roleProfiles[index].presentationOrder,assignment_disposition:p.roleProfiles[index].assignmentDisposition}))
 }
 describe('dynamic PDM catalog independent consumer',()=>{
+  it('accepts owner-domain v2 upgrade with preserved custom role before protected administrator',async()=>{
+    const baseline=await readPublishedAiPdmRoleCatalog(process.cwd(),v2Vector.baselineCatalogVersion)
+    const rows=projection(v2Vector)
+    const catalog=decodeDynamicAiPdmRoleCatalog(rows,[baseline])
+    expect(catalog.publicationFormat).toBe('dynamic-policy-v2')
+    expect(catalog.catalogSha256).toBe('016151219045963068c514611b201c09348d674101ab093da34667db322e87dc')
+    expect(catalog.roles[9]).toEqual(v2Vector.before.roles[9])
+    expect(catalog.roles[10].stableRoleId).toBe('role-application-system-admin')
+    expect(catalog.roleProfiles[9].assignmentDisposition).toBe('selectable')
+    expect(catalog.roleProfiles[10].assignmentDisposition).toBe('hidden-protected')
+    expect(validateExternalRoleCatalog(createAiPdmRoleCatalog('valid',catalog.publishedAt,catalog))).toEqual([])
+    const altered=structuredClone(rows);altered[10].assignable=true
+    expect(()=>decodeDynamicAiPdmRoleCatalog(altered,[baseline])).toThrow('EXTERNAL_CATALOG_INVALID')
+  })
   it('accepts the producer-built maximum of 64 complete identities',async()=>{
     const baseline=await readPublishedAiPdmRoleCatalog(process.cwd(),boundaryVector.baselineCatalogVersion)
     const catalog=decodeDynamicAiPdmRoleCatalog(projection(boundaryVector),[baseline])
@@ -82,12 +97,12 @@ describe('dynamic PDM catalog independent consumer',()=>{
     const rows=structuredClone(projection());mutate(rows)
     expect(()=>decodeDynamicAiPdmRoleCatalog(rows,[baseline])).toThrow('EXTERNAL_CATALOG_INVALID')
   })
-  it('reads v2 for a dynamic active pointer, with no legacy fallback on a missing v2 view',async()=>{
+  it('reads current v3 for a dynamic pointer, with no legacy fallback on a missing view',async()=>{
     const rows=projection(),queries:string[]=[]
     const db={query:async(sql:string)=>{queries.push(sql);return {rows}}}
     const catalog=await readPublishedAiPdmRoleCatalogFromDatabase(db)
     expect(catalog.publicationFormat).toBe('dynamic-policy-v1');expect(queries).toHaveLength(1)
-    expect(queries[0]).toContain('v_application_role_catalog_v2');expect(queries[0]).not.toContain('SELECT *')
+    expect(queries[0]).toContain('v_application_role_catalog_v3');expect(queries[0]).not.toContain('SELECT *')
     await expect(readPublishedAiPdmRoleCatalogFromDatabase({query:async()=>{throw new Error('missing')}})).rejects.toMatchObject({code:'EXTERNAL_CATALOG_UNAVAILABLE'})
     const changed=structuredClone(rows);changed.forEach(row=>{row.catalog_sha256='0'.repeat(64)})
     await expect(readPublishedAiPdmRoleCatalogFromDatabase({query:async()=>({rows:changed})})).rejects.toMatchObject({code:'EXTERNAL_CATALOG_INVALID'})

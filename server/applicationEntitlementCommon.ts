@@ -3,6 +3,7 @@ import { buildOrganizationSnapshot, isActiveAt } from '../src/governance/validat
 import { canonicalJson, sha256, GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
 import { currentPublishedPolicyV3 } from '../src/governance/evaluatePermission'
 import { hasCrossAppOverride } from '../src/governance/privilegedAssignments'
+import { hasAdministrativeGrant,administrationPolicy,assertRecentAdministrativeAuthentication } from '../src/governance/administration'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceAssignmentVersionV3, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV3, GovernanceRoleAssignmentV3, ManagementGrantV1 } from '../src/governance/types'
 
 export const FINANCIAL_APPLICATION_ID = 'financial-management-system' as const
@@ -120,12 +121,18 @@ export function hasFinancialManagementGrant(document: GovernanceDocumentV3, acto
 
 export function assertFinancialAuthority(document: GovernanceDocumentV3, actor: GovernanceActorContext, capability: FinancialManagementCapability, at = new Date().toISOString()) {
   if (!actor.employeeId) throw new ApplicationEntitlementError('IDENTITY_REQUIRED')
-  if (!hasFinancialOwnerRole(document, actor, at)) throw new ApplicationEntitlementError('APP_MANAGEMENT_GRANT_REQUIRED')
+  const policy=currentPublishedPolicyV3(document)
+  if(policy && [FINANCIAL_ROLE_ASSIGNMENT_MANAGE,FINANCIAL_ROLE_ASSIGNMENT_PUBLISH].includes(capability as typeof FINANCIAL_ROLE_ASSIGNMENT_MANAGE)
+    && hasAdministrativeGrant(policy,actor.principalId,actor.employeeId,FINANCIAL_APPLICATION_ID,at))return
+  const administrator=policy&&hasAdministrativeGrant(policy,actor.principalId,actor.employeeId,FINANCIAL_APPLICATION_ID,at)
+  if (!administrator&&!hasFinancialOwnerRole(document, actor, at)) throw new ApplicationEntitlementError('APP_MANAGEMENT_GRANT_REQUIRED')
   if (!hasFinancialManagementGrant(document, actor, capability, at)) throw new ApplicationEntitlementError(capability === FINANCIAL_ROLE_ASSIGNMENT_PUBLISH ? 'APP_PUBLISH_GRANT_REQUIRED' : 'APP_MANAGEMENT_GRANT_REQUIRED')
 }
 
 export function assertPrivilegedAdmin(document: GovernanceDocumentV3, actor: GovernanceActorContext, at = new Date().toISOString()) {
   if (!hasCrossAppOverride(document, actor, at)) throw new ApplicationEntitlementError('PRIVILEGED_ADMIN_REQUIRED')
+  const policy=currentPublishedPolicyV3(document)
+  if(policy&&administrationPolicy(policy).initializedByCommandId!==null)assertRecentAdministrativeAuthentication(actor,at)
 }
 
 export function policyFromDraft(document: GovernanceDocumentV3): GovernancePolicyDataV3 {
@@ -134,7 +141,15 @@ export function policyFromDraft(document: GovernanceDocumentV3): GovernancePolic
 }
 
 export function publishFinancialPolicy(document: GovernanceDocumentV3, nextDraft: GovernanceDocumentV3['draft'], catalogs: ExternalRoleCatalogSnapshotV1[], source: GovernanceOrgSource, actor: GovernanceActorContext, reason: string, at: string) {
-  const policy = policyFromDraft({ ...document, draft: nextDraft })
+  const current=currentPublishedPolicyV3(document)
+  const delta=<T extends {id:string}>(published:T[],before:T[],after:T[])=>{
+    const beforeById=new Map(before.map(value=>[value.id,value])),afterById=new Map(after.map(value=>[value.id,value]))
+    const changed=after.filter(value=>canonicalJson(value)!==canonicalJson(beforeById.get(value.id)))
+    const removed=new Set(before.filter(value=>!afterById.has(value.id)).map(value=>value.id))
+    const changedIds=new Set(changed.map(value=>value.id))
+    return [...published.filter(value=>!removed.has(value.id)&&!changedIds.has(value.id)),...changed]
+  }
+  const policy = current ? {...current,roleAssignments:delta(current.roleAssignments,document.draft.roleAssignments,nextDraft.roleAssignments),managementGrants:delta(current.managementGrants,document.draft.managementGrants,nextDraft.managementGrants)} : policyFromDraft({ ...document, draft: nextDraft })
   const versionPayload = { kind: 'assignment-governance-v3' as const, policy, externalRoleCatalogs: catalogs, organizationSnapshot: buildOrganizationSnapshot(source, at), effectState: 'not-synchronized' as const }
   const version: GovernanceAssignmentVersionV3 = {
     ...versionPayload,

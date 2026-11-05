@@ -8,6 +8,18 @@
 取代：`ai-doc/adr/ADR-004-authorization-approval-policy-boundary.md` 的外部應用角色／權限／審核政策權威條款
 保留：ADR-004 的共用 IAM `2A`、AI-PDM approval transaction／domain apply 邊界；ADR-005 的獨立治理 store 與不可變發布快照原則
 
+<a id="platform-super-admin-20261105"></a>
+
+## 2026-11-05／11-06 平台管理權威與相容窗口
+
+本目標沿 [ORGMASTER/DEV-070](../specs/DEV-070-platform-super-admin-authority-contract.md)，總控權威為 clean Platform root `C:/VIBE CODING/.worktrees/Jenfu-Platform/dev022-platform-super-admin-20261105` 的 JENFU/DEV-022，原 `C:/VIBE CODING/Jenfu-Platform` 僅協調鏡本。使用者已明示指定 jedchang0308@jenfu.com.tw／張仕杰／JFS0005，於正式與真實地端沿同一 Google personal、最低真 AAL1（接受 AAL2）、中文姓名，完整實作至部署發布。原 Documents Only 階段不是產品已實作證明，也不限制該完整目標；前次回合聚焦開發文件，完整成果授權延續；目前已恢復同一目標的source、隔離驗證與draft PR工程，不把文件聚焦當作人類取消或持續禁止完整交付。
+
+OrgMaster 已發布 administration 是新 exact-Principal root/app-admin 任免的唯一權威；root 不從 Employee/email/domain 或既有 Org/PDM system-admin 推導，沒有 public first-login 自授入口，亦不要求指定人員另建 privileged persona。各 app 保留其能力定義與最終 server 判權；root 不取得 Cloud IAM、DB owner、Secret 或自動業務免驗權。
+
+既有 legacy Org admin 原業務／原管理能力暫留，唯讀消費既有指派作相容；不得新增或還原 protected legacy 指派，不視為新 administration/bootstrap/cross-app authority。不能未經遷移一次撤除既有人權。退場須每位 legacy 管理者有明確新 grant、等效允許與拒絕測試、無 caller 依賴三條件均成立。Financial Owner 只保留原 legacy compatibility，不新增給目標人；FMS 設定需 exact app-admin 與各項明示 protected operation。
+
+目前整體為 IMPLEMENTING / RD Readiness Review：authority／consumer 切片已定案，但無 Owner FMS 首次安裝、真 local bridge 與 release gate 未閉合。source 與隔離 PG/HTTP 自查不等於合併、實際使用者核身或發布。原正式profile為39entries至041；本goal source已補精確DEV070 append042/044/045至42（不帶043）與release executor有界驗證，尚未正式apply。closed local activation bridge／worker啟用限制及剩餘owner責任見 [DEV-070 §14–§15](../specs/DEV-070-platform-super-admin-authority-contract.md#14-owner-release-source-的精確待辦)，並非所有切片已完成或正式操作。
+
 <a id="2026-10-12-b-dev058"></a>
 
 ## 2026-10-12 B 方案與動態角色協作增補

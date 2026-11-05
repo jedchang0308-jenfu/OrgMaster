@@ -14,7 +14,8 @@ import {
   planMigration,
   sha256,
 } from './lib/dev012-production-migration-runner.mjs'
-import { DEV060_TARGET, TARGET, parseOrgmasterRunnerArgs, runMain } from './dev040-production-migration-runner.mjs'
+import { DEV060_TARGET, DEV070_TARGET, TARGET, parseOrgmasterRunnerArgs, runMain } from './dev040-production-migration-runner.mjs'
+import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ACCEPTED_LEDGER_COUNTS} from './lib/dev070-administration-migration.mjs'
 import { DEV060_RELEASE_MODE } from './lib/dev060-fms-catalog-activation-migration.mjs'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
@@ -56,11 +57,12 @@ const environment = {
   CLOUD_RUN_JOB: TARGET.job,
 }
 
-function fixture() {
+function fixture({administration=false}={}) {
   const profile = JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url), 'utf8'))
   const n1c = JSON.parse(readFileSync(new URL('../config/dev-010/n1c-orgmaster.json', import.meta.url), 'utf8'))
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, readFileSync(path.join(repositoryRoot, entry.path))]))
-  return buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, H40)
+  const complete=buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, H40)
+  return administration?complete:repackBundle({...complete.bundle,entries:complete.bundle.entries.slice(0,TARGET.entryCount)})
 }
 
 function ledgerFor(bundle, count, { sourceRevision = 'prior' } = {}) {
@@ -114,15 +116,15 @@ const writesStarted = (statements) => statements.some((sql) => /^\s*(?:BEGIN\b|C
 
 test('DEV-058/059/060 runner entry count matches the controlled production profile and real bundle', () => {
   const profile = JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url), 'utf8'))
-  assert.equal(TARGET.entryCount, profile.migrations.entries.length)
+  assert.equal(DEV070_TARGET.entryCount,profile.migrations.entries.length)
   assert.equal(TARGET.entryCount, 39)
   assert.equal(profile.migrations.baselineCount, 10)
   assert.deepEqual(TARGET.allowedExistingLedgerCounts, [31, 32, 33, 34, 35, 36, 37, 38, 39])
   assert.deepEqual(DEV060_TARGET.allowedExistingLedgerCounts, [38, 39])
-  assert.deepEqual(profile.migrations.entries.slice(31).map((entry) => entry.version), ['dev058-orgmaster-034', 'dev058-orgmaster-035', 'dev058-orgmaster-036', 'dev058-orgmaster-037', 'dev059-orgmaster-038', 'dev065-orgmaster-039', 'dev065-orgmaster-040', 'dev060-orgmaster-041'])
+  assert.deepEqual(profile.migrations.entries.slice(31,TARGET.entryCount).map((entry) => entry.version), ['dev058-orgmaster-034', 'dev058-orgmaster-035', 'dev058-orgmaster-036', 'dev058-orgmaster-037', 'dev059-orgmaster-038', 'dev065-orgmaster-039', 'dev065-orgmaster-040', 'dev060-orgmaster-041'])
   const input = fixture()
   assertMigrationBundle(input.bundle, { target: TARGET, sourceRevision: H40, bundleSha256: input.bundleSha256, bytes: input.bytes })
-  assert.deepEqual(input.bundle.entries.slice(31).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })), profile.migrations.entries.slice(31))
+  assert.deepEqual(input.bundle.entries.slice(31).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })), profile.migrations.entries.slice(31,TARGET.entryCount))
 })
 
 test('S1B-21 OrgMaster runner accepts only exact production target and refs', () => {
@@ -133,6 +135,7 @@ test('S1B-21 OrgMaster runner accepts only exact production target and refs', ()
   const args = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', 'b'.repeat(64), '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/r/migrate.json`, '--data-ref', `gs://${TARGET.releaseBucket}/source/production-data/REL-001/data.json`, '--data-sha256', 'c'.repeat(64), '--bootstrap-ref', `gs://${TARGET.releaseBucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, '--bootstrap-sha256', 'd'.repeat(64)]
   assert.equal(parseRunnerArgs(args.slice(0, 8)).sourceRevision, H40)
   assert.equal(parseOrgmasterRunnerArgs([...args.slice(0, 8), '--migration-mode', DEV060_RELEASE_MODE]).migrationMode, DEV060_RELEASE_MODE)
+  assert.equal(parseOrgmasterRunnerArgs([...args.slice(0,8),'--migration-mode',DEV070_RELEASE_MODE]).migrationMode,DEV070_RELEASE_MODE)
   assert.throws(() => parseRunnerArgs(args.slice(0, 6)), /MIGRATION_ARGUMENT_INVALID/)
   assert.throws(() => parseRunnerArgs(args), /MIGRATION_ARGUMENT_INVALID/)
   assert.throws(() => parseOrgmasterRunnerArgs([...args.slice(0, 8), '--migration-mode', 'DEV059_FMS_AUTHORITY_APPEND']), /MIGRATION_ARGUMENT_INVALID/)
@@ -328,8 +331,9 @@ test('schema runner rejects bootstrap arguments before credential, network or da
   await assert.rejects(() => runMain({ argv: ['--bootstrap-ref', 'gs://irrelevant'], fetchImpl: () => assert.fail('must not fetch credentials'), Client: class { constructor() { assert.fail('must not connect') } } }), /MIGRATION_ARGUMENT_INVALID/)
 })
 
-test('schema runner entrypoint migrates and publishes without reading or importing business data', async () => {
-  const input = fixture()
+for(const administration of[false,true])test(`${administration?'DEV070':'Legacy'} schema runner entrypoint migrates and publishes without business data`, async () => {
+  const target=administration?DEV070_TARGET:TARGET
+  const input = fixture({administration})
   const requests = [], statements = []
   const ledger = ledgerFor(input.bundle, 31)
   let published
@@ -355,13 +359,14 @@ test('schema runner entrypoint migrates and publishes without reading or importi
     return String(url).includes('alt=media') ? new Response(bytes) : Response.json({ generation: bytes === input.bytes ? '1' : '2', crc32c: crc32cBase64(bytes) })
   }
   const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`]
+  if(administration)argv.push('--migration-mode',DEV070_RELEASE_MODE)
   const result = await runMain({ argv, environment, Client, fetchImpl })
-  assert.equal(result.applied, TARGET.entryCount - 31)
+  assert.equal(result.applied, target.entryCount - 31)
   assert.equal(result.productionData, undefined)
   assert.equal(result.ledgerBootstrap, undefined)
   assert.equal(requests.some((url) => /production-data|bootstrap/u.test(url)), false)
-  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, TARGET.entryCount - 31)
-  assert.equal(ledger.length, TARGET.entryCount)
+  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, target.entryCount - 31)
+  assert.equal(ledger.length, target.entryCount)
   const businessReads = statements.filter((sql) => {
     const statement = sql.trimStart()
     return /^SELECT\b/iu.test(statement) &&
@@ -396,4 +401,19 @@ test('migration runner Docker copies the migration and lifecycle readback static
   visit('scripts/dev040-production-migration-runner.mjs')
   visit('scripts/dev014-production-lifecycle-readback.mjs')
   assert.match(readFileSync(new URL('./dev040-production-migration-runner.mjs', import.meta.url), 'utf8'), /export const TARGET\s*=\s*Object\.freeze/u)
+})
+
+
+test('DEV070 runner resumes only exact 31–42 row known prefixes and refuses unknown ledger rows before writes',async()=>{
+ const input=fixture({administration:true})
+ for(const count of DEV070_ACCEPTED_LEDGER_COUNTS){
+  const ledger=ledgerFor(input.bundle,count),statements=[]
+  const receipt=await executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV070_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true})
+  assert.equal(receipt.ledgerCount,DEV070_MIGRATION_ENTRY_COUNT);assert.equal(receipt.applied,42-count);assert.equal(receipt.replayed,count)
+ }
+ for(const mutate of[rows=>rows.splice(30),rows=>rows.push({version:'unknown-043',name:'unrelated',checksum_sha256:'0'.repeat(64),source_revision:'old'}),rows=>{rows[31].checksum_sha256='0'.repeat(64)},rows=>{rows[39].name='other'},rows=>{[rows[0],rows[1]]=[rows[1],rows[0]]}]){
+  const ledger=ledgerFor(input.bundle,42),statements=[];mutate(ledger)
+  await assert.rejects(executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV070_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true}),/MIGRATION_EXISTING_LEDGER_COUNT_INVALID|MIGRATION_LEDGER_PREFIX_MISMATCH|MIGRATION_CHECKSUM_MISMATCH/)
+  assert.equal(writesStarted(statements),false)
+ }
 })

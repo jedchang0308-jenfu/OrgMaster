@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "orgmaster.fms-administration-initialization-manifest.v1",
+  "contractVersion": "orgmaster.fms-administration-initialization.v1",
+  "owner": "orgmaster",
+  "consumer": "jf-fms",
+  "purpose": "first-source-protected-catalog-initialization-only",
+  "signature": "orgmaster_contract.read_fms_administration_initialization_v1(text,text)",
+  "normalApplicationAssignment": false,
+  "protectedOperationGrant": false,
+  "wholeRootRosterAccess": false,
+  "requires": {
+    "verifiedPrincipalAndEmployee": true,
+    "currentInitializedAdministration": true,
+    "effectiveExactRoot": true,
+    "nonRecovery": true,
+    "sameSnapshotVersionAndPublication": true
+  },
+  "files": [
+    {
+      "path": "projection-signature.json",
+      "sha256": "c76486b4b442b165df086e467acd25c61729d28d70f6d8563595a3aea1d95501"
+    },
+    {
+      "path": "conformance-vectors.json",
+      "sha256": "c4585955fb1e727e1996fcf411b0b0cf2bb2ecb8125937c239cddf32fd566175"
+    }
+  ],
+  "manifestHashScope": "whole-file-utf8-bytes"
+}

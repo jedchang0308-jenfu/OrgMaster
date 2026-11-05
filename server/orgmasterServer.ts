@@ -14,6 +14,8 @@ import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './o
 import { createLocalDeterministicDirectoryPort, type LocalDirectoryFixture } from './orgmasterManagedDirectoryPort'
 import { createWorkbenchPreferenceMiddleware } from './workbenchPreferenceApi'
 import { createOrgmasterManagedLoginMiddleware } from './orgmasterManagedLoginApi'
+import {createAdministrationEnrollmentMiddleware} from './orgmasterAdministrationEnrollmentApi'
+import {createAdministrationLifecycleMiddleware} from './orgmasterAdministrationLifecycleApi'
 import { createOrgmasterManagedIdentityLifecycleMiddleware, createOrgmasterManagedIdentityLifecycleRuntime, type ManagedIdentityLifecycleRuntime } from './orgmasterManagedIdentityLifecycleApi'
 
 type Middleware = Connect.NextHandleFunction
@@ -110,16 +112,20 @@ export function createOrgmasterServer(options: OrgmasterServerOptions = {}) {
   const middlewares: Middleware[] = [
     createOrgmasterMigrationGateMiddleware(root),
     createOrgmasterManagedIdentityLifecycleMiddleware(options.managedIdentityLifecycleRuntime ?? createOrgmasterManagedIdentityLifecycleRuntime()),
+    createAdministrationEnrollmentMiddleware(runtime.administrationEnrollment,runtime.managedLoginCallerVerifier),
+    createAdministrationLifecycleMiddleware(runtime.administrationLifecycle,runtime.managedLoginCallerVerifier),
     createOrgmasterManagedLoginMiddleware(runtime.managedLoginOwner, runtime.managedLoginCallerVerifier),
     createOrgmasterAuthMiddleware(() => runtime, devIdentityEnabled),
     ...(employeeNumberManagementEnabled ? [createOrgmasterManagedIdentityMiddleware(root, devIdentityEnabled, managedIdentityService)] : []),
     createWorkbenchPreferenceMiddleware(root),
     ...(accountRuntime ? [accountRuntime.middleware] : []),
     createOrgmasterApiMiddleware(),
-    createOrgmasterGovernanceMiddleware(root, devIdentityEnabled, accountEnrollmentEnabled),
+    createOrgmasterGovernanceMiddleware(root, devIdentityEnabled, accountEnrollmentEnabled,runtime.financialCatalogInitializationOwnerReader?{initializationOwnerReader:runtime.financialCatalogInitializationOwnerReader,handoffSource:runtime.financialCatalogHandoffSource??'formal'}:{},{lifecycle:runtime.administrationLifecycle,verifyRuntime:runtime.administrationLocalGuard}),
     createOrgmasterManagementMethodMiddleware(root, devIdentityEnabled),
   ]
-  return createServer((request, response) => runMiddlewares(middlewares, request, response, () => { void sendStatic(root, request, response) }))
+  const server=createServer((request, response) => runMiddlewares(middlewares, request, response, () => { void sendStatic(root, request, response) }))
+  server.once('close',()=>runtime.administrationLifecycle?.close())
+  return server
 }
 
 export function startOrgmasterServer(environment: NodeJS.ProcessEnv = process.env) {

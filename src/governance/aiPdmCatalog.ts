@@ -4,6 +4,7 @@ import aiPdmCatalogV6Fixture from '../../config/catalogs/ai-pdm-role-catalog.v6.
 import aiPdmCatalogV7Fixture from '../../config/catalogs/ai-pdm-role-catalog.v7.json'
 import historicalAiPdmCatalogFixture from '../../contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
 import { aiPdmRoleProfiles } from './aiPdmRoleSchema'
+import administrationProtectedSource from '../../contracts/ai-pdm-role-policy-catalog/v3/protected-policy-source.json'
 
 export const AI_PDM_CATALOG_SOURCE_HASHES = {
   permissionCodes: '0560A929FDA8D9123B65CDB51577F89C65E2EBA7CCD327454F403D9E1E647362',
@@ -122,7 +123,7 @@ export const AI_PDM_ROLE_CATALOG_SOURCE_REFS = [
   { path: 'AI_PDM/db/postgres/016_number_state_flow_phase1c.sql', range: 'applied migration', sha256: '6BBEB3A283171C1E99C0F2AE50661F6F1ABC0EBC23C6281DD8F6128063E0E6F5' },
 ] as const
 
-type CatalogRoleMetadata = { stableRoleId: string; roleCode: string; displayName: string; assignable: boolean; risk: string; allowedScopeKinds: string[]; subjectKind: string; recommendationAllowed: boolean; delegationAllowed: boolean; assignmentTier: string; roleStatus?: 'active'|'inactive' }
+type CatalogRoleMetadata = { stableRoleId: string; roleCode: string; displayName: string; assignable: boolean; risk: string; allowedScopeKinds: string[]; subjectKind: string; recommendationAllowed: boolean; delegationAllowed: boolean; assignmentTier: string; roleStatus?: 'active'|'inactive'; roleDefinitionHash?:string }
 type CatalogMetadataArtifact = { catalogVersion: string; catalogSha256: string; publishedAt: string; roles: CatalogRoleMetadata[] } & Partial<Pick<ExternalRoleCatalogSnapshotV1,
   'publicationFormat'|'canonicalizationVersion'|'roleSchemaId'|'roleProfileSchemaId'|'baselineRoleIdentityHash'|'roleIdentityHash'|'protectedPolicyHash'|'registryHash'|'roleProfileHash'>>
 function metadataRoles(artifact: CatalogMetadataArtifact): ExternalRoleCatalogRoleV1[] { return artifact.roles.map((role) => ({
@@ -141,21 +142,21 @@ function metadataRoles(artifact: CatalogMetadataArtifact): ExternalRoleCatalogRo
 export const AI_PDM_ROLE_CATALOG_ROLES: readonly ExternalRoleCatalogRoleV1[] = metadataRoles(aiPdmCatalogFixture)
 
 export function createAiPdmRoleCatalog(validationState: ExternalRoleCatalogSnapshotV1['validationState'] = 'valid', capturedAt = aiPdmCatalogFixture.publishedAt, artifact: CatalogMetadataArtifact = aiPdmCatalogFixture): ExternalRoleCatalogSnapshotV1 {
-  const dynamic=artifact.publicationFormat==='dynamic-policy-v1'
+  const dynamic=artifact.publicationFormat==='dynamic-policy-v1'||artifact.publicationFormat==='dynamic-policy-v2'
   const compatiblePublication = ![aiPdmCatalogFixture.catalogVersion, aiPdmCatalogV6Fixture.catalogVersion, aiPdmCatalogV7Fixture.catalogVersion].includes(artifact.catalogVersion)
   const base = {
     applicationId: 'ai-pdm' as const,
     catalogVersion: artifact.catalogVersion,
     sourceKind: compatiblePublication ? 'application-contract' as const : 'bundled-fixture' as const,
     sourceRefs: compatiblePublication
-      ? [{ path: dynamic?'ai_pdm_contract.v_application_role_catalog_v2':'ai_pdm_contract.v_application_role_catalog_v1', range: 'verified active publication', sha256: artifact.catalogSha256 }]
+      ? [{ path: dynamic?(artifact.publicationFormat==='dynamic-policy-v2'?'ai_pdm_contract.v_application_role_catalog_v3':'ai_pdm_contract.v_application_role_catalog_v2'):'ai_pdm_contract.v_application_role_catalog_v1', range: 'verified active publication', sha256: artifact.catalogSha256 }]
       : artifact.catalogVersion === aiPdmCatalogV7Fixture.catalogVersion
       ? [{ path: 'AI_PDM/config/access-control/jenfu-role-catalog.v7.json', range: 'canonical artifact', sha256: '121ca7cd424b9d919cb9217516c0c5f6dcec3879ee389b0d676b9dd62cb0d94d' }, ...AI_PDM_ROLE_CATALOG_SOURCE_REFS.slice(1)]
       : artifact.catalogVersion === aiPdmCatalogV6Fixture.catalogVersion
       ? [{ path: 'AI_PDM/config/access-control/jenfu-role-catalog.v6.json', range: 'canonical artifact', sha256: '237e1a92814aa8fec87e878a8ffaac7f74bc9c5ce4fb6766c266970c9d509b8a' }, ...AI_PDM_ROLE_CATALOG_SOURCE_REFS.slice(1)]
       : [...AI_PDM_ROLE_CATALOG_SOURCE_REFS],
     capturedAt,
-    roles: dynamic ? metadataRoles(artifact).map((role,index)=>({...role,status:artifact.roles[index].roleStatus!,...aiPdmRoleProfiles(artifact.roles)[index]})) : metadataRoles(artifact),
+    roles: dynamic ? metadataRoles(artifact).map((role,index)=>({...role,status:artifact.roles[index].roleStatus!,...aiPdmRoleProfiles(artifact.roles)[index],...(role.stableRoleId==='role-application-system-admin'?{roleDefinitionHash:artifact.roles[index].roleDefinitionHash}:{})})) : metadataRoles(artifact),
     ...(dynamic?{publicationFormat:artifact.publicationFormat,canonicalizationVersion:artifact.canonicalizationVersion,roleSchemaId:artifact.roleSchemaId,
       roleProfileSchemaId:artifact.roleProfileSchemaId,baselineRoleIdentityHash:artifact.baselineRoleIdentityHash,
       roleIdentityHash:artifact.roleIdentityHash,protectedPolicyHash:artifact.protectedPolicyHash,registryHash:artifact.registryHash,roleProfileHash:artifact.roleProfileHash}:{}),
@@ -170,14 +171,15 @@ export function validateExternalRoleCatalog(snapshot: ExternalRoleCatalogSnapsho
     : snapshot.catalogVersion === aiPdmCatalogV7Fixture.catalogVersion ? aiPdmCatalogV7Fixture : null
   const issues: ExternalRoleCatalogValidationIssue[] = []
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
-  if(snapshot.publicationFormat==='dynamic-policy-v1'){
+  if(snapshot.publicationFormat==='dynamic-policy-v1'||snapshot.publicationFormat==='dynamic-policy-v2'){
+    const v2=snapshot.publicationFormat==='dynamic-policy-v2'
     if(snapshot.applicationId!=='ai-pdm'||snapshot.sourceKind!=='application-contract'||snapshot.validationState!=='valid'||snapshot.effectState!=='not-synchronized'||
       !/^ai-pdm\.role-policy\.[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(snapshot.catalogVersion)||
       snapshot.canonicalizationVersion!=='jenfu.canonical-json.v1'||snapshot.roleSchemaId!=='ai-pdm.role-schema.flexible.v2'||snapshot.roleProfileSchemaId!=='ai-pdm.role-profile-schema.v1'||
       snapshot.catalogSha256!==snapshot.payloadHash||[snapshot.payloadHash,snapshot.baselineRoleIdentityHash,snapshot.roleIdentityHash,snapshot.protectedPolicyHash,snapshot.registryHash,snapshot.roleProfileHash].some(value=>!value||!/^[a-f0-9]{64}$/u.test(value))||
-      !Array.isArray(snapshot.sourceRefs)||snapshot.sourceRefs.length!==1||snapshot.sourceRefs[0].path!=='ai_pdm_contract.v_application_role_catalog_v2'||snapshot.sourceRefs[0].sha256!==snapshot.payloadHash)
+      !Array.isArray(snapshot.sourceRefs)||snapshot.sourceRefs.length!==1||snapshot.sourceRefs[0].path!==(v2?'ai_pdm_contract.v_application_role_catalog_v3':'ai_pdm_contract.v_application_role_catalog_v2')||snapshot.sourceRefs[0].sha256!==snapshot.payloadHash)
       add('EXTERNAL_CATALOG_INVALID','publicationFormat','動態目錄必須經過完整 producer preimage 驗證')
-    if(!Array.isArray(snapshot.roles)||snapshot.roles.length<9||snapshot.roles.length>64){add('EXTERNAL_CATALOG_INVALID','roles','角色數量超出契約');return issues}
+    if(!Array.isArray(snapshot.roles)||snapshot.roles.length<(v2?10:9)||snapshot.roles.length>(v2?65:64)){add('EXTERNAL_CATALOG_INVALID','roles','角色數量超出契約');return issues}
     try{
       const profiles=aiPdmRoleProfiles(snapshot.roles),fixed=metadataRoles(aiPdmCatalogV7Fixture),ids=new Set<string>(),codes=new Set<string>()
       snapshot.roles.forEach((role,index)=>{
@@ -185,11 +187,13 @@ export function validateExternalRoleCatalog(snapshot: ExternalRoleCatalogSnapsho
         const profile=profiles[index]
         if(ids.has(role.stableRoleId)||codes.has(role.code)||!['active','inactive'].includes(status)||permissionRoleId!==profile.permissionRoleId||presentationName!==profile.presentationName||presentationOrder!==profile.presentationOrder||assignmentDisposition!==profile.assignmentDisposition)throw new Error('invalid role')
         ids.add(role.stableRoleId);codes.add(role.code)
-        if(index<9){const {status:_status,...expected}=fixed[index];if(Object.keys(metadata).length!==Object.keys(expected).length||Object.entries(expected).some(([key,value])=>JSON.stringify(metadata[key as keyof typeof metadata])!==JSON.stringify(value)))throw new Error('identity drift')}
+        if(v2&&role.stableRoleId==='role-application-system-admin'){const expected=administrationProtectedSource.applicationAdministratorRole;if(role.roleDefinitionHash!==expected.roleDefinitionHash||role.code!==expected.roleCode||role.displayName!==expected.displayName||role.subjectKind!=='principal'||role.assignable||role.status!=='active'||role.assignmentTier!=='app_admin'||role.recommendationAllowed||role.delegationAllowed||JSON.stringify(role.allowedScopeKinds)!=='["global"]')throw new Error('invalid administrative role')}
+        else if(index<9){const {status:_status,...expected}=fixed[index];if(Object.keys(metadata).length!==Object.keys(expected).length||Object.entries(expected).some(([key,value])=>JSON.stringify(metadata[key as keyof typeof metadata])!==JSON.stringify(value)))throw new Error('identity drift')}
         else if(!/^role-custom-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(role.stableRoleId)||role.code!=='custom_'+role.stableRoleId.slice(12).replaceAll('-','')||
           role.displayName!==role.displayName.normalize('NFC').trim()||Array.from(role.displayName).length<1||Array.from(role.displayName).length>80||
           role.subjectKind!=='employee'||!role.assignable||role.riskLevel!=='normal'||role.assignmentTier!=='app_admin'||!role.recommendationAllowed||!role.delegationAllowed||JSON.stringify(role.allowedScopeKinds)!=='["workspace"]')throw new Error('invalid custom')
       })
+      if(v2&&(snapshot.registryHash!==administrationProtectedSource.registryHash||snapshot.protectedPolicyHash!==administrationProtectedSource.protectedPolicyHash||snapshot.roles.filter(role=>role.stableRoleId==='role-application-system-admin').length!==1))throw new Error('administrative source drift')
       if(snapshot.roles[8].status!=='active'||snapshot.roles[4].status!==snapshot.roles[5].status)throw new Error('protected lifecycle')
     }catch{add('EXTERNAL_CATALOG_INVALID','roles','動態角色身份或呈現契約不符')}
     return issues

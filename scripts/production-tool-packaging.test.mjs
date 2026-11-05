@@ -23,6 +23,7 @@ const catalogSnapshots = [
 const historicalFixture = 'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
 const migrationEntries = [
   'scripts/dev040-production-migration-runner.mjs',
+  'scripts/dev070-production-enrollment-intent-runner.mjs',
   'scripts/dev014-production-lifecycle-readback.mjs',
   'scripts/dev049-production-admission-runner.mjs',
   'scripts/dev014-production-managed-link-runner.mjs',
@@ -420,7 +421,7 @@ test('isolated pg imports, entrypoint guards, lifecycle modes, v2 readback, and 
         async end() {}
         async query(sql) {
           queries++;
-          if (sql.includes('FROM ai_pdm_contract.v_application_role_catalog_v2')) return { rows };
+          if (sql.includes('FROM ai_pdm_contract.v_application_role_catalog_v3')) return { rows };
           if (sql.includes('read_active_persistence_artifact_v1')) return { rows: [{
             payload: { publishedVersions: [{ id: 'policy-v1', kind: 'assignment-governance-v3', policy: { roleAssignments: [] } }], activePolicyVersionId: 'policy-v1', draft: { roleAssignments: [] } },
             source_sha256: 'b'.repeat(64) }] };

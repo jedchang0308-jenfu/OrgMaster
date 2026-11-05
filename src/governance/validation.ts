@@ -3,6 +3,7 @@ import { validateFinancialExternalRoleCatalog } from './financialCatalog'
 import { classifyAssignmentSurface, genericV2AssignmentSurfaceIssue, isSystemAdminRoleIdentity } from './assignmentSurface'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV1, GovernancePolicyDataV2, GovernancePolicyDataV3, GovernancePolicyVersionV1, GovernanceRoleAssignmentV2, GovernanceRoleDelegationV2, GovernanceScopeV1 } from './types'
 import { isSha256, issuerFingerprintSha256, principalFingerprintSha256 } from './identityAdmission'
+import { administrationPolicySchema } from './administration'
 
 export type GovernanceValidationIssue = { code: string; path: string; message: string }
 export class GovernanceValidationError extends Error {
@@ -190,6 +191,7 @@ export function validatePolicyDataV3(data: GovernancePolicyDataV3, source?: Gove
     .filter((assignment) => !isSystemAdminRoleIdentity({ stableRoleId: assignment.roleId, code: assignment.roleCodeSnapshot }))
     .map(({ basis: _basis, subjectKind: _subjectKind, targetPrincipalId: _targetPrincipalId, sources: _sources, metadata: _metadata, createdByPrincipalId: _createdByPrincipalId, createdReason: _createdReason, ...assignment }) => assignment)
   const issues = validatePolicyDataV2({ ...data, roleAssignments: ordinaryAssignments }, source, catalogs, at)
+  if (data.administration !== undefined && !administrationPolicySchema.safeParse(data.administration).success) issues.push({ code: 'ADMINISTRATION_INVALID', path: 'administration', message: '平台管理授權格式無效' })
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
   const catalog = catalogs.find((value) => value.applicationId === 'ai-pdm')
   const admissions = data.principalAdmissions ?? []

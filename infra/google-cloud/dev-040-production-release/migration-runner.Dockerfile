@@ -13,11 +13,13 @@ COPY scripts/lib/dev012-production-migration-runner.mjs scripts/lib/dev012-produ
 COPY scripts/lib/dev058-role-policy-migration.mjs scripts/lib/dev058-role-policy-migration.mjs
 COPY scripts/lib/dev059-fms-authority-migration.mjs scripts/lib/dev059-fms-authority-migration.mjs
 COPY scripts/lib/dev060-fms-catalog-activation-migration.mjs scripts/lib/dev060-fms-catalog-activation-migration.mjs
+COPY scripts/lib/dev070-administration-migration.mjs scripts/lib/dev070-administration-migration.mjs
 COPY scripts/lib/orgmaster-production-database.mjs scripts/lib/orgmaster-production-database.mjs
 COPY scripts/lib/dev012-orgmaster-production-data.mjs scripts/lib/dev012-orgmaster-production-data.mjs
 COPY scripts/lib/dev049-production-admission.mjs scripts/lib/dev049-production-admission.mjs
 COPY scripts/lib/dev014-consumer-conformance.mjs scripts/lib/dev014-consumer-conformance.mjs
 COPY scripts/dev040-production-migration-runner.mjs scripts/dev040-production-migration-runner.mjs
+COPY scripts/dev070-production-enrollment-intent-runner.mjs scripts/dev070-production-enrollment-intent-runner.mjs
 COPY scripts/dev014-production-lifecycle-readback.mjs scripts/dev014-production-lifecycle-readback.mjs
 COPY scripts/lib/dev014-lifecycle-v2-readback.mjs scripts/lib/dev014-lifecycle-v2-readback.mjs
 COPY scripts/dev049-production-admission-runner.mjs scripts/dev049-production-admission-runner.mjs

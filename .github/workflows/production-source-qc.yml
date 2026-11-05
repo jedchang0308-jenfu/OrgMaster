@@ -14,6 +14,21 @@ jobs:
     name: Production Source QC
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      dev070-postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: orgmaster-dev070-ci-isolated
+          POSTGRES_DB: postgres
+        ports:
+          - 5432/tcp
+        options: >-
+          --label jenfu.orgmaster.dev070.run=${{ github.run_id }}
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -51,8 +66,18 @@ jobs:
       - name: Install the production tools' exact locked dependency closure
         if: steps.scope.outputs.docs_only != 'true'
         run: npm ci --prefix infra/google-cloud/dev-040-production-release/migration-runner --omit=dev --ignore-scripts
-      - name: Build and import isolated production tool images
+      - name: Verify local owner bootstrap and 046 component SQL on owned PostgreSQL 18
         if: steps.scope.outputs.docs_only != 'true'
+        env:
+          ORGMASTER_DEV070_PG_CONTAINER_ID: ${{ job.services['dev070-postgres'].id }}
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          ORGMASTER_DEV070_PG_PUBLISHED_PORT: ${{ job.services['dev070-postgres'].ports[5432] }}
+          PGUSER: postgres
+          PGPASSWORD: orgmaster-dev070-ci-isolated
+        run: node scripts/qc-dev070-local-administration-owner-postgres.mjs
+      - name: Build and import isolated production tool images
+        if: ${{ !cancelled() && steps.scope.outputs.docs_only != 'true' }}
         env:
           SOURCE_REVISION: ${{ github.sha }}
         run: |
@@ -61,7 +86,7 @@ jobs:
             docker build --build-arg SOURCE_REVISION="$SOURCE_REVISION" \
               -f "infra/google-cloud/dev-040-production-release/${tool}.Dockerfile" -t "$image" .
             case "$tool" in
-              migration-runner) modules='["dev040-production-migration-runner", "dev014-production-lifecycle-readback", "dev049-production-admission-runner", "dev014-production-managed-link-runner", "dev014-production-login-fixture-runner", "dev014-production-login-authority-switch-runner"]' ;;
+              migration-runner) modules='["dev040-production-migration-runner", "dev070-production-enrollment-intent-runner", "dev014-production-lifecycle-readback", "dev049-production-admission-runner", "dev014-production-managed-link-runner", "dev014-production-login-fixture-runner", "dev014-production-login-authority-switch-runner"]' ;;
               *) modules="[\"${tool/dev057-/dev057-production-}-runner\"]" ;;
             esac
             docker run --rm --network none --entrypoint node "$image" --experimental-transform-types \
@@ -69,4 +94,6 @@ jobs:
           done
       # QC owns contract tests, tool tests, abort tests, DB boundary, app tests and build.
       - run: npm run qc:dev-040:r2
-        if: steps.scope.outputs.docs_only != 'true'
+        if: ${{ !cancelled() && steps.scope.outputs.docs_only != 'true' }}
+        env:
+          DB_BOUNDARY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}

@@ -25,3 +25,6 @@ output/*
 .env
 .env.*
 !.env.example
+
+# Source-owned local runtime selectors; never release inputs or credentials.
+/.next/dev-local/

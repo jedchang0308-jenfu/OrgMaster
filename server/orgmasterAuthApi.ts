@@ -21,7 +21,7 @@ import {
 } from './orgmasterGovernanceIdentity'
 import { createPrincipalAdmissionRepository, PrincipalAdmissionError, type PrincipalAdmissionRepository } from './orgmasterPrincipalAdmissionRepository'
 import { readVerifiedRequestIdentity, setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
-import { withOrgmasterLocalSandboxPersistenceTarget, withPersistencePrincipal } from './orgmasterPersistenceRepository'
+import { withOrgmasterLocalSandboxPersistenceTarget, withPersistenceActor } from './orgmasterPersistenceRepository'
 import { createOrgmasterSessionRepository, type OrgmasterSession, type OrgmasterSessionRepository } from './orgmasterSessionRepository'
 import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
 import { createManagedIdentityRepository } from './orgmasterManagedIdentityRepository'
@@ -29,6 +29,14 @@ import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort, readG
 import { handleOrgmasterSsoRequest, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
 import { createGoogleManagedLoginCallerVerifier, type ManagedLoginCallerVerifier } from './orgmasterManagedLoginApi'
 import { createManagedLoginOwnerService, type ManagedLoginOwnerServiceV1 } from './orgmasterManagedLoginService'
+import {createAdministrationEnrollment,type AdministrationEnrollmentService} from './orgmasterAdministrationEnrollment'
+import {createAdministrationLifecycleDispatcher,productionAdministrationLifecycle,type AdministrationLifecycleDispatcher} from './orgmasterAdministrationLifecycle'
+import {createOrgmasterLocalAdministrationRuntime,localAdministrationPeer,localAdministrationProviders} from './orgmasterLocalAdministrationRuntime'
+import {createOrgmasterLocalAdministrationLifecycleClient} from './orgmasterPrincipalLifecycleClient'
+import {createLocalFinancialCatalogInitializationOwnerReader} from './financialCatalogInitializationOwnerHttp'
+import type {FinancialCatalogInitializationOwnerReader} from './financialCatalogInitializationAdoption'
+import {createAdministrationEnrollmentMiddleware} from './orgmasterAdministrationEnrollmentApi'
+import {createAdministrationLifecycleMiddleware} from './orgmasterAdministrationLifecycleApi'
 import { createOrgmasterLocalPrincipalSandbox, OrgmasterLocalPrincipalSandboxError, type OrgmasterLocalPrincipalSandbox } from './orgmasterLocalPrincipalSandbox'
 
 export const ORGMASTER_AUTH_API_PATH = '/api/auth'
@@ -70,6 +78,11 @@ export type OrgmasterAuthRuntime = {
   managedIdentity?: ManagedIdentityServiceV1
   managedLoginOwner?: ManagedLoginOwnerServiceV1
   managedLoginCallerVerifier?: ManagedLoginCallerVerifier
+  administrationEnrollment?: AdministrationEnrollmentService
+  administrationLifecycle?: AdministrationLifecycleDispatcher
+  administrationLocalGuard?:()=>Promise<void>
+  financialCatalogInitializationOwnerReader?:FinancialCatalogInitializationOwnerReader
+  financialCatalogHandoffSource?:'formal'|'local_test'
   managedLoginEnabled?: boolean
   employeeNumberManagementEnabled?: boolean
   ssoHandoffEnabled?: boolean
@@ -399,23 +412,34 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
   }
   const configResult = readOrgmasterAuthConfig(environment)
   if (!configResult.configured) return { configResult }
-  const database = createOrgmasterDatabase(configResult.config.postgresUrl)
+  const database = createOrgmasterDatabase(configResult.config.postgresUrl,environment)
+  const localAdministration=createOrgmasterLocalAdministrationRuntime({database,connectionString:configResult.config.postgresUrl,environment})
+  const localProviders=localAdministration?localAdministrationProviders(localAdministration):undefined
+  if(localAdministration&&(configResult.config.publicBaseUrl.origin!=='http://localhost:1010'||configResult.config.identityAudience!=='jenfu-platform-nonprod'||configResult.config.identityIssuer!=='https://securetoken.google.com/jenfu-platform-nonprod'))throw new Error('DEV070_LOCAL_ADMINISTRATION_UNAVAILABLE')
+  const administrationLifecycle=localAdministration
+    ? createAdministrationLifecycleDispatcher({database,beforeQuery:localAdministration.verify,dispatch:createOrgmasterLocalAdministrationLifecycleClient(localAdministration).dispatch})
+    : productionAdministrationLifecycle(environment)
   const directoryConfig = readGoogleDirectoryRuntimeConfig(environment)
+  if(localProviders&&directoryConfig.enabled&&['customerId','domain','delegatedSubject','serviceAccountEmail'].some(key=>directoryConfig[key as keyof typeof directoryConfig]!==localProviders.directory[key]))throw new Error('DEV070_LOCAL_ADMINISTRATION_UNAVAILABLE')
   const managedDirectory = directoryConfig.enabled
     ? createGoogleDirectoryReadOnlyPort({
         customerId: directoryConfig.customerId,
         domain: directoryConfig.domain,
-        auth: createGoogleDirectoryAuthPort({ delegatedSubject: directoryConfig.delegatedSubject, serviceAccountEmail: directoryConfig.serviceAccountEmail }),
+        auth: createGoogleDirectoryAuthPort({ delegatedSubject: directoryConfig.delegatedSubject, serviceAccountEmail: directoryConfig.serviceAccountEmail,sourceAuth:localProviders?.sourceAuth }),
       })
     : undefined
   const managedRepository = createManagedIdentityRepository({ root: environment.ORGMASTER_ROOT?.trim() || process.cwd(), devEnabled: false, database })
-  const firebase = createFirebaseIdentityProvider(configResult.config.identityIssuer, configResult.config.identityAudience)
+  const firebase = createFirebaseIdentityProvider(configResult.config.identityIssuer, configResult.config.identityAudience,localProviders?{credential:localProviders.firebaseCredential,appName:localProviders.firebaseAppName}:undefined)
   const managedLoginOwner = managedDirectory && directoryConfig.enabled
     ? createManagedLoginOwnerService({ repository: managedRepository, directory: managedDirectory, firebase, directoryCustomerId: directoryConfig.customerId })
     : undefined
-  const managedLoginCallerVerifier = environment.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL?.trim() && environment.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT?.trim()
+  const ordinaryCallerVerifier = environment.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL?.trim() && environment.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT?.trim()
     ? createGoogleManagedLoginCallerVerifier({ audience: configResult.config.publicBaseUrl.origin, expectedEmail: environment.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL, expectedSubject: environment.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT })
     : undefined
+  const localCallerVerifier=localAdministration?createGoogleManagedLoginCallerVerifier(localAdministrationPeer(localAdministration)):undefined
+  const managedLoginCallerVerifier=localAdministration&&localCallerVerifier?{async verify(token:string){await localAdministration.verify();const caller=await localCallerVerifier.verify(token);await localAdministration.verify();return caller}}:ordinaryCallerVerifier
+  const administrationDirectory=localProviders?createGoogleDirectoryReadOnlyPort({customerId:localProviders.directory.customerId,domain:localProviders.directory.domain,auth:createGoogleDirectoryAuthPort({delegatedSubject:localProviders.directory.delegatedSubject,serviceAccountEmail:localProviders.directory.serviceAccountEmail,sourceAuth:localProviders.sourceAuth})}):managedDirectory
+  const administrationFirebase=localAdministration?{async verifyIdToken(token:string){await localAdministration.verify();return firebase.verifyIdToken(token)}}:firebase
   const managedIdentity = createManagedIdentityService({
     root: environment.ORGMASTER_ROOT?.trim() || process.cwd(),
     devEnabled: false,
@@ -438,6 +462,11 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     employeeNumberManagementEnabled: Boolean(managedIdentity),
     managedLoginOwner,
     managedLoginCallerVerifier,
+    administrationLifecycle,
+    administrationLocalGuard:localAdministration?.verify,
+    financialCatalogHandoffSource:localAdministration?'local_test':undefined,
+    financialCatalogInitializationOwnerReader:localAdministration?createLocalFinancialCatalogInitializationOwnerReader(localAdministration):undefined,
+    administrationEnrollment: administrationDirectory ? createAdministrationEnrollment({database:localAdministration?.database??database,firebase:administrationFirebase,directory:administrationDirectory,directoryCustomerId:localProviders?.directory.customerId??(directoryConfig.enabled?directoryConfig.customerId:''),dispatcher:administrationLifecycle}) : undefined,
     managedLoginEnabled: directoryConfig.enabled,
     ssoHandoffEnabled: environment.ORGMASTER_JENFU_SSO_HANDOFF_MODE === 'on' && Boolean(environment.ORGMASTER_JENFU_SSO_BROKER_ORIGIN?.trim()),
   }
@@ -508,7 +537,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         const verified = readVerifiedRequestIdentity(request)
         if (!verified) throw new OrgmasterAuthError(401, 'auth_session_invalid')
         withOrgmasterLocalSandboxPersistenceTarget(authenticated.persistenceTargetUrl, () =>
-          withPersistencePrincipal(verified.principalId, next))
+          withPersistenceActor({principalId:verified.principalId,employeeId:verified.employeeId,issuer:verified.identityIssuer,subject:verified.identitySubject,bootstrap:false,sessionId:verified.id,principalAuthEpoch:verified.principalAuthEpoch,authenticatedAt:verified.authenticatedAt,assuranceLevel:verified.assuranceLevel}, next))
         return
       }
       if (pathname === `${ORGMASTER_AUTH_API_PATH}/development/profiles` && request.method === 'GET') {
@@ -601,7 +630,7 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
       }
       const verified = readVerifiedRequestIdentity(request)
       if (!verified) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
-      withPersistencePrincipal(verified.principalId, next)
+      withPersistenceActor({ principalId:verified.principalId,employeeId:verified.employeeId,issuer:verified.identityIssuer,subject:verified.identitySubject,bootstrap:false,sessionId:verified.id,principalAuthEpoch:verified.principalAuthEpoch,authenticatedAt:verified.authenticatedAt,assuranceLevel:verified.assuranceLevel }, next)
     }
     void handle().catch((unknownError) => {
       if (response.writableEnded) return
@@ -617,18 +646,22 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
   }
 }
 
-export function orgmasterAuthApiPlugin(): Plugin {
+export function orgmasterAuthApiPlugin(runtimeFactory:RuntimeFactory=()=>createOrgmasterAuthRuntime()): Plugin {
   return {
     name: 'orgmaster-auth-api',
     configureServer(server: ViteDevServer) {
-      const runtime = createOrgmasterAuthRuntime()
+      const runtime = runtimeFactory()
+      server.middlewares.use(createAdministrationEnrollmentMiddleware(runtime.administrationEnrollment,runtime.managedLoginCallerVerifier))
+      server.middlewares.use(createAdministrationLifecycleMiddleware(runtime.administrationLifecycle,runtime.managedLoginCallerVerifier))
       server.middlewares.use(createOrgmasterAuthMiddleware(() => runtime, server.config.command === 'serve' && server.config.mode === 'development'))
-      server.httpServer?.once('close', () => { void runtime.localSandbox?.close() })
+      server.httpServer?.once('close', () => { runtime.administrationLifecycle?.close();void runtime.localSandbox?.close() })
     },
     configurePreviewServer(server: PreviewServer) {
-      const runtime = createOrgmasterAuthRuntime()
+      const runtime = runtimeFactory()
+      server.middlewares.use(createAdministrationEnrollmentMiddleware(runtime.administrationEnrollment,runtime.managedLoginCallerVerifier))
+      server.middlewares.use(createAdministrationLifecycleMiddleware(runtime.administrationLifecycle,runtime.managedLoginCallerVerifier))
       server.middlewares.use(createOrgmasterAuthMiddleware(() => runtime, false))
-      server.httpServer?.once('close', () => { void runtime.localSandbox?.close() })
+      server.httpServer?.once('close', () => { runtime.administrationLifecycle?.close();void runtime.localSandbox?.close() })
     },
   }
 }

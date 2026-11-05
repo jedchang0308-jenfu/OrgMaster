@@ -4,6 +4,7 @@ import test from 'node:test'
 import { crc32cBase64 } from './lib/dev012-production-migration-runner.mjs'
 import { assertControllerImageResolutionProof, assertRuntimeConfig, buildRuntimeConfig, createOwnerTransport, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { DEV060_RELEASE_MODE } from './lib/dev060-fms-catalog-activation-migration.mjs'
+import {DEV070_RELEASE_MODE} from './lib/dev070-administration-migration.mjs'
 
 const H40 = 'a'.repeat(40)
 const H64 = 'b'.repeat(64)
@@ -335,6 +336,56 @@ test('schema migration transport rejects initialization inputs before any provid
   }
   await assert.rejects(() => transport.runMigrationJob({ profile, deployment: {}, outputUri: `gs://${bucket}/receipts/migrate.json`, deadlineAt: '2999-01-01T00:00:00.000Z', migrationMode: 'FOREIGN_MODE' }), /MIGRATION_MODE_INVALID/u)
   assert.equal(calls, 0)
+})
+
+test('DEV070 transport binds the OrgMaster job and exact append mode, rejecting a foreign owner before provider calls',async()=>{
+ const own=JSON.parse(fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json',import.meta.url))),ownBucket=own.artifact.releaseBucket
+ const jobName=`projects/${own.target.projectId}/locations/${own.target.region}/jobs/${own.migrations.jobName}`
+ const environment={OWNER_APPLICATION_ID:'orgmaster',RELEASE_BUCKET:ownBucket,GOOGLE_CLOUD_PROJECT:'jenfu-platform-prod',GOOGLE_CLOUD_REGION:'asia-east1',CLOUD_SQL_INSTANCE_CONNECTION_NAME:'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',POSTGRES_DATABASE:'jenfu_prod',POSTGRES_IAM_LOGIN:'orgmaster-prod-migrator@jenfu-platform-prod.iam',POSTGRES_SOCKET:'/cloudsql/jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg'}
+ const job={name:jobName,template:{taskCount:1,parallelism:1,template:{serviceAccount:own.migrations.serviceAccount,maxRetries:0,timeout:'1800s',containers:[{name:'migration',image:`runner@sha256:${H64}`,env:Object.entries(environment).map(([name,value])=>({name,value})),volumeMounts:[{name:'cloudsql',mountPath:'/cloudsql'}]}],volumes:[{name:'cloudsql',cloudSqlInstance:{instances:['jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg']}}]}}}
+ const args=['--bundle-ref',`gs://${ownBucket}/source/migration-bundles/a.json`,'--bundle-sha256',H64,'--source-revision',H40,'--output-ref',`gs://${ownBucket}/receipts/migrate.json`,'--migration-mode',DEV070_RELEASE_MODE]
+ const execution={name:`${jobName}/executions/e1`,template:{containers:[{name:'migration',args}]},succeededCount:1,failedCount:0,completionTime:'2026-11-06T00:00:00Z',conditions:[{type:'Completed',state:'CONDITION_SUCCEEDED'}]}
+ let lists=0,submitted
+ const transport=createOwnerTransport({token:'x'.repeat(32),fetchImpl:async(url,options={})=>{
+  if(options.method==='POST'){submitted=JSON.parse(options.body);return json({name:'projects/p/locations/r/operations/run-1',done:true,response:{name:execution.name}})}
+  if(String(url).endsWith('/executions?pageSize=100'))return json({executions:lists++? [execution]:[]})
+  if(String(url).endsWith('/executions/e1'))return json(execution)
+  return json(job)
+ }})
+ const input={profile:own,deployment:{migrationRunnerDigest:`runner@sha256:${H64}`,migrationBundleRef:{uri:args[1],sha256:H64},sourceRevision:H40},outputUri:args[7],deadlineAt:'2999-01-01T00:00:00Z',migrationMode:DEV070_RELEASE_MODE}
+ await transport.runMigrationJob(input);assert.deepEqual(submitted.overrides.containerOverrides[0].args,args)
+ let calls=0
+ const forbidden=createOwnerTransport({token:'x'.repeat(32),fetchImpl:async()=>{calls++;assert.fail('no provider call')}})
+ await assert.rejects(forbidden.runMigrationJob({...input,profile}),/MIGRATION_MODE_INVALID/);assert.equal(calls,0)
+})
+
+test('DEV070 owner intent uses only the sealed fixed Job and reuses exact execution readback after unknown submission',async()=>{
+ const own=JSON.parse(fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json',import.meta.url))),ownBucket=own.artifact.releaseBucket
+ const jobName=`projects/${own.target.projectId}/locations/${own.target.region}/jobs/${own.migrations.jobName}`
+ const environment={OWNER_APPLICATION_ID:'orgmaster',RELEASE_BUCKET:ownBucket,GOOGLE_CLOUD_PROJECT:'jenfu-platform-prod',GOOGLE_CLOUD_REGION:'asia-east1',CLOUD_SQL_INSTANCE_CONNECTION_NAME:'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',POSTGRES_DATABASE:'jenfu_prod',POSTGRES_IAM_LOGIN:'orgmaster-prod-migrator@jenfu-platform-prod.iam',POSTGRES_SOCKET:'/cloudsql/jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg'}
+ const job={name:jobName,template:{taskCount:1,parallelism:1,template:{serviceAccount:own.migrations.serviceAccount,maxRetries:0,timeout:'1800s',containers:[{name:'migration',image:`runner@sha256:${H64}`,env:Object.entries(environment).map(([name,value])=>({name,value})),volumeMounts:[{name:'cloudsql',mountPath:'/cloudsql'}]}],volumes:[{name:'cloudsql',cloudSqlInstance:{instances:['jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg']}}]}}}
+ const ref={uri:`gs://${ownBucket}/source/migration-bundles/enrollment-intents/intent.json`,sha256:H64},outputUri=`gs://${ownBucket}/receipts/administration-enrollment/result.json`
+ const args=['--operation-mode','DEV070_ENROLLMENT_INTENT','--action','admit','--intent-ref',ref.uri,'--intent-sha256',H64,'--source-revision',H40,'--output-ref',outputUri]
+ const execution={name:`${jobName}/executions/intent-1`,template:{containers:[{name:'migration',args}]},succeededCount:1,failedCount:0,completionTime:'2026-11-06T00:00:00Z',conditions:[{type:'Completed',state:'CONDITION_SUCCEEDED'}]}
+ let existing=false,posts=0
+ const transport=createOwnerTransport({token:'x'.repeat(32),fetchImpl:async(url,options={})=>{
+  if(options.method==='POST'){posts++;assert.deepEqual(JSON.parse(options.body),{overrides:{containerOverrides:[{name:'migration',args}]}});existing=true;throw new TypeError('recorded unknown response')}
+  if(String(url).endsWith('/executions?pageSize=100'))return json({executions:existing?[execution]:[]})
+  if(String(url).endsWith('/executions/intent-1'))return json(execution)
+  return json(job)
+ }})
+ const input={profile:own,deployment:{migrationRunnerDigest:`runner@sha256:${H64}`,migrationBundleRef:{uri:'unused',sha256:H64},sourceRevision:H40},outputUri,deadlineAt:'2999-01-01T00:00:00Z',enrollmentIntentOperation:{action:'admit',ref}}
+ await transport.runMigrationJob(input);assert.equal(posts,1)
+ const reused=await transport.runMigrationJob(input);assert.equal(posts,1);assert.equal(reused.providerOperationRef,'REUSED_EXACT_ENROLLMENT_EXECUTION_READBACK')
+ execution.failedCount=1;execution.succeededCount=0;execution.conditions[0].state='CONDITION_FAILED'
+ await assert.rejects(transport.runMigrationJob(input),/MIGRATION_EXECUTION_FAILED/);assert.equal(posts,1)
+ let calls=0
+ const denied=createOwnerTransport({token:'x'.repeat(32),fetchImpl:async()=>{calls++;assert.fail('no provider call')}})
+ for(const changed of[{migrationMode:DEV070_RELEASE_MODE},{profile},{enrollmentIntentOperation:{action:'sql',ref}},{enrollmentIntentOperation:{action:'admit',ref:{...ref,token:'forbidden'}}}])await assert.rejects(denied.runMigrationJob({...input,...changed}),/DEV070_INTENT_JOB_INPUT_INVALID/)
+ assert.equal(calls,0)
+ const drifted=structuredClone(job);drifted.template.template.containers[0].command=['/bin/sh']
+ const commandDenied=createOwnerTransport({token:'x'.repeat(32),fetchImpl:async()=>json(drifted)})
+ await assert.rejects(commandDenied.runMigrationJob(input),/DEV070_INTENT_JOB_TEMPLATE_INVALID/)
 })
 
 test('candidate-tag cleanup distinguishes the candidate from the active rollback target', async () => {

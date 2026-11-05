@@ -6,9 +6,10 @@ import type {
   GovernancePolicyDataV1,
   GovernancePolicyVersionV1,
   GovernanceRoleAssignmentV2,
+  AdministrationPolicyV1,
 } from './types'
 
-type GovernancePolicyDataViewV2 = Omit<GovernanceDocumentV2['draft'], 'identityLinks'> & { identityLinks: GovernanceIdentityLinkViewV1[] }
+type GovernancePolicyDataViewV2 = Omit<GovernanceDocumentV2['draft'], 'identityLinks'> & { identityLinks: GovernanceIdentityLinkViewV1[];administration?:AdministrationPolicyV1 }
 const governanceDateTime = new Intl.DateTimeFormat('zh-TW', {
   timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',

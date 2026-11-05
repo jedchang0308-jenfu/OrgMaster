@@ -1,3 +1,4 @@
+import registry from '../../contracts/ai-pdm-role-policy-catalog/v3/editor-registry.json' with {type:'json'}
 /** Consumer-owned assignment/presentation schema, not a copy of PDM's capability registry. */
 export const AI_PDM_ROLE_PROFILES = [
   ['role-rd','RD',0,'selectable','role-rd'],
@@ -14,10 +15,11 @@ export type AiPdmRoleProfile = {stableRoleId:string;permissionRoleId:string;pres
   assignmentDisposition:'selectable'|'legacy-only'|'hidden-protected'}
 export function aiPdmRoleProfiles(roles:readonly {stableRoleId:string;displayName:string}[]):AiPdmRoleProfile[]{
   return roles.map((role,index)=>{
+    if(role.stableRoleId==='role-application-system-admin')return {...registry.roleProfiles[9]} as AiPdmRoleProfile
     const fixed=AI_PDM_ROLE_PROFILES[index]
     if(fixed){if(role.stableRoleId!==fixed[0])throw new Error('EXTERNAL_CATALOG_INVALID')
       return {stableRoleId:fixed[0],presentationName:fixed[1],presentationOrder:fixed[2],assignmentDisposition:fixed[3],permissionRoleId:fixed[4]}}
-    return {stableRoleId:role.stableRoleId,permissionRoleId:role.stableRoleId,presentationName:role.displayName,presentationOrder:index-2,assignmentDisposition:'selectable'}
+    return {stableRoleId:role.stableRoleId,permissionRoleId:role.stableRoleId,presentationName:role.displayName,presentationOrder:index-2-(roles.slice(0,index).some(value=>value.stableRoleId==='role-application-system-admin')?1:0),assignmentDisposition:'selectable'}
   })
 }
 export function aiPdmRoleSelectable(role:{status:string;assignable:boolean;assignmentDisposition?:string}){

@@ -210,7 +210,7 @@ export interface ExternalRoleCatalogSnapshotV1 {
   validationState: ExternalRoleCatalogState
   effectState: 'not-synchronized'
   roles: ExternalRoleCatalogRoleV1[]
-  publicationFormat?: 'dynamic-policy-v1'
+  publicationFormat?: 'dynamic-policy-v1' | 'dynamic-policy-v2'
   canonicalizationVersion?: 'jenfu.canonical-json.v1'
   roleSchemaId?: 'ai-pdm.role-schema.flexible.v2'
   roleProfileSchemaId?: 'ai-pdm.role-profile-schema.v1'
@@ -396,10 +396,41 @@ export interface GovernanceRoleAssignmentV3 {
 }
 
 export interface GovernancePolicyDataV3 extends Omit<GovernancePolicyDataV2, 'roleAssignments'> {
+  administration?: AdministrationPolicyV1
   roleAssignments: GovernanceRoleAssignmentV3[]
   positionRolePolicies: PositionRolePolicyV1[]
   applicationPositionAdoptions: ApplicationPositionAdoptionV1[]
   managementGrants: ManagementGrantV1[]
+}
+
+export type AdministrativeApplicationId = GovernanceApplicationV1['id']
+export interface AdministrativeCatalogBindingV1 {
+  catalogVersion: string
+  contentSha256: string
+  stableRoleId: string
+  roleDefinitionHash: string
+}
+export interface AdministrativeGrantV1 {
+  id: string
+  principalId: string
+  employeeId: string
+  roleCode: 'platform_super_admin' | 'application_system_admin'
+  applicationId: AdministrativeApplicationId | null
+  subjectKind: 'principal'
+  basis: 'manual'
+  scope: { kind: 'platform' | 'global' }
+  status: 'active' | 'revoked'
+  validFrom: string
+  validTo: string | null
+  createdBy: { kind: 'principal' | 'owner_workload'; id: string }
+  reason: string
+  catalogBinding: AdministrativeCatalogBindingV1 | null
+}
+export interface AdministrationPolicyV1 {
+  contractVersion: 'orgmaster.administration-policy.v1'
+  version: number
+  initializedByCommandId: string | null
+  grants: AdministrativeGrantV1[]
 }
 
 export interface GovernanceMigrationStateV3 extends Omit<GovernanceMigrationStateV2, 'sourceSchemaVersion'> {
@@ -407,6 +438,7 @@ export interface GovernanceMigrationStateV3 extends Omit<GovernanceMigrationStat
 }
 
 export interface GovernanceAuditEventV3 extends GovernanceAuditEventV1 {
+  actor?: { kind: 'principal' | 'owner_workload'; id: string }
   hashFormat?: 'orgmaster.sorted-json.v1'
   commandHashFormat?: 'orgmaster.governance-command.v2'
   commandResult?: GovernanceCommandResultV1
@@ -492,7 +524,7 @@ export interface SessionInvalidationIntentV1 {
   id: string
   commandId: string
   targetPrincipalId: string
-  reason: 'privileged_assignment_changed'
+  reason: 'privileged_assignment_changed' | 'administration_changed'
   status: 'pending' | 'completed'
   createdAt: string
 }
@@ -513,7 +545,6 @@ export interface GovernanceCommandReceiptV2 {
   replayed: boolean
   attempt: number
   financialCatalogActivation?: {
-    contractVersion: 'orgmaster.fms-catalog-activation-record.v1'
     principalId: string
     employeeId: string
     catalogVersion: string
@@ -526,12 +557,15 @@ export interface GovernanceCommandReceiptV2 {
     grantRevisionBefore: string
     assignmentVersionAfter: string
     publishedSnapshotHash: string
-    grantIds: string[]
     authEpoch: number
     authenticatedAt: string
     authorityReadAt: string
     fmsCheckpoint?: import('../../server/financialCatalogIntent').FmsCatalogCheckpoint
-  }
+  } & ({ contractVersion: 'orgmaster.fms-catalog-activation-record.v1'; grantIds: string[]; actorProof?: never } | {
+    contractVersion: 'orgmaster.fms-catalog-initialization-activation-record.v1'
+    grantIds?: never
+    actorProof: import('../../server/financialCatalogInitializationAdoption').FinancialCatalogInitializationActorProof
+  })
 }
 
 export type GovernanceCommandV2 =
@@ -623,6 +657,7 @@ export type GovernanceCommand =
   | { type: 'SET_APPROVAL_POLICY_STATUS'; commandId: string; reason: string; id: string; status: GovernanceRecordStatus }
 
 export interface GovernanceOrgSource {
+  administrativePrincipals?: Array<{principalId:string;employeeId:string;accountType:'human_personal'|'human_privileged';status:'active'}>
   workspaceVersionId: string
   workspaceRevision: string
   sourceDataAt?: string

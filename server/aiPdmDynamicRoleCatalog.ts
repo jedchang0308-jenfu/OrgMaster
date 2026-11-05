@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import protectedSource from '../contracts/ai-pdm-role-policy-catalog/v3/protected-policy-source.json' with {type:'json'}
+import editorRegistry from '../contracts/ai-pdm-role-policy-catalog/v3/editor-registry.json' with {type:'json'}
 import { aiPdmRoleProfiles, type AiPdmRoleProfile } from '../src/governance/aiPdmRoleSchema.ts'
 import type { PublishedAiPdmRole, PublishedAiPdmRoleCatalog } from './aiPdmRoleCatalogRepository'
 
@@ -27,6 +29,16 @@ function canonical(value:unknown,depth=0):string{
 }
 const hash=(value:unknown)=>createHash('sha256').update(canonical(value),'utf8').digest('hex')
 const equal=(a:unknown,b:unknown)=>canonical(a)===canonical(b)
+// Producer registry hash covers its semantic policy inputs, not source inventory
+// and explanatory metadata. Keep the complete pinned artifact for source review.
+const registrySemantics={
+ contractVersion:editorRegistry.contractVersion,
+ roleProfiles:[...editorRegistry.roleProfiles].sort((a,b)=>order(a.stableRoleId,b.stableRoleId)),
+ defaultTemplate:{templateId:editorRegistry.defaultTemplate.templateId,grants:[...editorRegistry.defaultTemplate.grants].sort((a,b)=>order(`${a.stableRoleId}:${a.groupId}:${a.actionId}`,`${b.stableRoleId}:${b.groupId}:${b.actionId}`))},
+ businessActions:editorRegistry.businessActions.map(action=>({groupId:action.groupId,actionId:action.actionId,kind:action.kind,code:action.code,editClass:'business-role-grid',supportedScopeKinds:[...action.supportedScopeKinds].sort(order),requiredActions:[...action.requiredActions].sort(order)})).sort((a,b)=>order(`${a.groupId}:${a.actionId}`,`${b.groupId}:${b.actionId}`)),
+ legacyBindings:editorRegistry.legacyBindings.map(binding=>({kind:binding.kind,code:binding.code,disposition:binding.disposition,requiredActions:[...binding.requiredActions].sort(order)})).sort((a,b)=>order(`${a.kind}:${a.code}`,`${b.kind}:${b.code}`)),
+ protectedBindings:[...editorRegistry.protectedBindings].sort((a,b)=>order(`${a.kind}:${a.code}`,`${b.kind}:${b.code}`)),
+}
 const permissions=(role:PublishedAiPdmRole)=>role.permissions.map(({kind,code,allowed})=>({kind,code,allowed})).sort((a,b)=>order(a.kind+':'+a.code,b.kind+':'+b.code))
 const identity=(role:PublishedAiPdmRole)=>({stableRoleId:role.stableRoleId,roleCode:role.roleCode,displayName:role.displayName,
   assignable:role.assignable,risk:role.risk,subjectKind:role.subjectKind,recommendationAllowed:role.recommendationAllowed,
@@ -36,20 +48,22 @@ function protectedSystem(baseline:PublishedAiPdmRoleCatalog){
   return {...identity(baseline.roles[8]),roleStatus:'active',permissions:[...permissions(baseline.roles[8]),
     ...['drawing','part','model','transfer'].flatMap(group=>['view','download','edit','review','publish'].map(action=>({kind:'action' as const,code:`pdm.${group}.${action}`,allowed:true})))].sort((a,b)=>order(a.kind+':'+a.code,b.kind+':'+b.code))}
 }
-const protectedHash=(baseline:PublishedAiPdmRoleCatalog)=>hash({systemAdmin:protectedSystem(baseline),
+const protectedHash=(baseline:PublishedAiPdmRoleCatalog,v2=false)=>hash({...(v2?{applicationAdministrator:protectedSource.applicationAdministratorRole}:{}),systemAdmin:protectedSystem(baseline),
   frozenEntries:baseline.roles.slice(0,8).map(role=>({stableRoleId:role.stableRoleId,permissions:permissions(role)}))})
-export type DynamicCatalogMetadata={publicationFormat:'dynamic-policy-v1';canonicalizationVersion:'jenfu.canonical-json.v1';
+export type DynamicCatalogMetadata={publicationFormat:'dynamic-policy-v1'|'dynamic-policy-v2';canonicalizationVersion:'jenfu.canonical-json.v1';
   roleSchemaId:'ai-pdm.role-schema.flexible.v2';roleProfileSchemaId:'ai-pdm.role-profile-schema.v1';
   baselineRoleIdentityHash:string;roleIdentityHash:string;protectedPolicyHash:string;registryHash:string;roleProfileHash:string;
   roleProfiles:AiPdmRoleProfile[]}
 
 /** Decode the complete v2 producer preimage. No sibling source directory or capability approval table. */
 export function decodeDynamicAiPdmRoleCatalog(rows:Record<string,unknown>[],baselines:PublishedAiPdmRoleCatalog[]):PublishedAiPdmRoleCatalog&DynamicCatalogMetadata{
-  assert(Array.isArray(rows)&&rows.length>=9&&rows.length<=64)
+  const v2=rows[0]?.publication_format==='dynamic-policy-v2'
+  assert(Array.isArray(rows)&&rows.length>=(v2?10:9)&&rows.length<=(v2?65:64))
   const first=rows[0]
+  if(v2)assert(hash(registrySemantics)===protectedSource.registryHash&&first.registry_hash===protectedSource.registryHash&&first.protected_policy_hash===protectedSource.protectedPolicyHash)
   const fields=['contract_version','application_id','catalog_version','catalog_sha256','publication_format','canonicalization_version','role_schema_id',
     'role_profile_schema_id','baseline_role_identity_hash','role_identity_hash','protected_policy_hash','registry_hash','role_profile_hash','lifecycle']
-  assert(first.contract_version==='jenfu.platform-entitlement.v1'&&first.application_id==='ai-pdm'&&first.publication_format==='dynamic-policy-v1'&&
+  assert(first.contract_version==='jenfu.platform-entitlement.v1'&&first.application_id==='ai-pdm'&&['dynamic-policy-v1','dynamic-policy-v2'].includes(String(first.publication_format))&&
     first.canonicalization_version==='jenfu.canonical-json.v1'&&first.role_schema_id==='ai-pdm.role-schema.flexible.v2'&&
     first.role_profile_schema_id==='ai-pdm.role-profile-schema.v1'&&new RegExp('^ai-pdm\\.role-policy\\.'+uuidPattern+'$','u').test(String(first.catalog_version))&&
     ['active','retired'].includes(String(first.lifecycle)))
@@ -57,7 +71,7 @@ export function decodeDynamicAiPdmRoleCatalog(rows:Record<string,unknown>[],base
   const publishedAt=new Date(first.published_at as string|Date).toISOString()
   assert(rows.every((row,index)=>row.display_order===index&&fields.every(key=>equal(row[key]??null,first[key]??null))&&
     new Date(row.published_at as string|Date).toISOString()===publishedAt))
-  const baseline=baselines.find(source=>hash(source.roles.map(identity))===first.baseline_role_identity_hash&&protectedHash(source)===first.protected_policy_hash)??invalid()
+  const baseline=baselines.find(source=>hash(source.roles.map(identity))===first.baseline_role_identity_hash&&protectedHash(source,v2)===first.protected_policy_hash)??invalid()
   const ids=new Set<string>(),codes=new Set<string>(),names=new Set<string>()
   const roles=rows.map((row,index)=>{
     const role={stableRoleId:row.stable_role_id,roleCode:row.role_code,displayName:row.display_name,assignable:row.assignable,risk:row.risk,
@@ -74,14 +88,16 @@ export function decodeDynamicAiPdmRoleCatalog(rows:Record<string,unknown>[],base
         typeof permission.code==='string'&&typeof permission.allowed==='boolean'&&!seen.has(permission.kind+':'+permission.code))
       seen.add(permission.kind+':'+permission.code)
     }
-    if(index<9){
+    if(v2&&role.stableRoleId===protectedSource.applicationAdministratorRole.stableRoleId){
+      assert(index>=9&&equal(role,protectedSource.applicationAdministratorRole))
+    }else if(index<9){
       assert(equal(identity(role),identity(baseline.roles[index])))
       assert(equal(permissions(role).filter(p=>!business(p)),permissions(baseline.roles[index])))
     }else{
       const suffix=role.stableRoleId.slice('role-custom-'.length)
       assert(new RegExp('^role-custom-'+uuidPattern+'$','u').test(role.stableRoleId)&&role.displayName===role.displayName.normalize('NFC').trim()&&
         Array.from(role.displayName).length>=1&&Array.from(role.displayName).length<=80&&
-        !baseline.roles.some(original=>original.displayName===role.displayName)&&!aiPdmRoleProfiles(baseline.roles).some(p=>p.presentationName===role.displayName))
+        role.displayName!==protectedSource.applicationAdministratorRole.displayName&&!baseline.roles.some(original=>original.displayName===role.displayName)&&!aiPdmRoleProfiles(baseline.roles).some(p=>p.presentationName===role.displayName))
       assert(equal(identity(role),{stableRoleId:role.stableRoleId,roleCode:'custom_'+suffix.replaceAll('-',''),displayName:role.displayName,
         assignable:true,risk:'normal',subjectKind:'employee',recommendationAllowed:true,delegationAllowed:true,allowedScopeKinds:['workspace'],assignmentTier:'app_admin',metadata:null}))
       assert(role.permissions.every(p=>business(p)&&p.allowed))
@@ -98,18 +114,19 @@ export function decodeDynamicAiPdmRoleCatalog(rows:Record<string,unknown>[],base
   assert(baseline.roles.every(role=>role.permissions.every(p=>p.allowed)))
   const {roleDefinitionHash:_systemHash,...actualSystem}=roles[8]
   assert(equal(actualSystem,system))
-  assert(hash({systemAdmin:system,frozenEntries:baseline.roles.slice(0,8).map(role=>({stableRoleId:role.stableRoleId,permissions:permissions(role)}))})===first.protected_policy_hash)
+  if(v2)assert(roles.filter(role=>role.stableRoleId===protectedSource.applicationAdministratorRole.stableRoleId).length===1)
+  assert(hash({...(v2?{applicationAdministrator:protectedSource.applicationAdministratorRole}:{}),systemAdmin:system,frozenEntries:baseline.roles.slice(0,8).map(role=>({stableRoleId:role.stableRoleId,permissions:permissions(role)}))})===first.protected_policy_hash)
   const profiles=rows.map(row=>({stableRoleId:String(row.stable_role_id),permissionRoleId:row.permission_role_id,presentationName:row.presentation_name,
     presentationOrder:row.presentation_order,assignmentDisposition:row.assignment_disposition}))
   const expectedProfiles=aiPdmRoleProfiles(roles)
   assert(equal(profiles,expectedProfiles)&&hash(profiles)===first.role_profile_hash&&hash(roles.map(identity))===first.role_identity_hash)
-  const body={format:'dynamic-policy-v1',applicationId:'ai-pdm',candidateCatalogVersion:first.catalog_version,roleSchemaId:first.role_schema_id,
+  const body={format:v2?'dynamic-policy-v2':'dynamic-policy-v1',applicationId:'ai-pdm',candidateCatalogVersion:first.catalog_version,roleSchemaId:first.role_schema_id,
     roleProfileSchemaId:first.role_profile_schema_id,registryHash:first.registry_hash,baselineRoleIdentityHash:first.baseline_role_identity_hash,
     roleIdentityHash:first.role_identity_hash,roleProfileHash:first.role_profile_hash,protectedPolicyHash:first.protected_policy_hash,roles,roleProfiles:profiles}
   assert(hash(body)===first.catalog_sha256)
   return {contractVersion:'jenfu.platform-entitlement.v1',applicationId:'ai-pdm',catalogVersion:String(first.catalog_version),publishedAt,
-    catalogSha256:String(first.catalog_sha256),roles,sourcePath:'postgres:ai_pdm_contract.v_application_role_catalog_v2',
-    publicationFormat:'dynamic-policy-v1',canonicalizationVersion:'jenfu.canonical-json.v1',roleSchemaId:'ai-pdm.role-schema.flexible.v2',
+    catalogSha256:String(first.catalog_sha256),roles,sourcePath:v2?'postgres:ai_pdm_contract.v_application_role_catalog_v3':'postgres:ai_pdm_contract.v_application_role_catalog_v2',
+    publicationFormat:v2?'dynamic-policy-v2':'dynamic-policy-v1',canonicalizationVersion:'jenfu.canonical-json.v1',roleSchemaId:'ai-pdm.role-schema.flexible.v2',
     roleProfileSchemaId:'ai-pdm.role-profile-schema.v1',baselineRoleIdentityHash:String(first.baseline_role_identity_hash),roleIdentityHash:String(first.role_identity_hash),
     protectedPolicyHash:String(first.protected_policy_hash),registryHash:String(first.registry_hash),roleProfileHash:String(first.role_profile_hash),
     roleProfiles:expectedProfiles}
