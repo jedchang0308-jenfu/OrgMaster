@@ -61,7 +61,7 @@ jobs:
             docker build --build-arg SOURCE_REVISION="$SOURCE_REVISION" \
               -f "infra/google-cloud/dev-040-production-release/${tool}.Dockerfile" -t "$image" .
             case "$tool" in
-              migration-runner) modules='["dev040-production-migration-runner", "dev014-production-lifecycle-readback", "dev049-production-admission-runner", "dev014-production-managed-link-runner", "dev014-production-login-fixture-runner", "dev014-production-login-authority-switch-runner"]' ;;
+              migration-runner) modules='["dev040-production-migration-runner", "dev070-production-enrollment-intent-runner", "dev014-production-lifecycle-readback", "dev049-production-admission-runner", "dev014-production-managed-link-runner", "dev014-production-login-fixture-runner", "dev014-production-login-authority-switch-runner"]' ;;
               *) modules="[\"${tool/dev057-/dev057-production-}-runner\"]" ;;
             esac
             docker run --rm --network none --entrypoint node "$image" --experimental-transform-types \

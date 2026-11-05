@@ -56,6 +56,7 @@ export function parseOrgmasterRunnerArgs(argv) {
 }
 
 export async function runMain({ argv = process.argv.slice(2), environment = process.env, fetchImpl = fetch, Client = pg.Client } = {}) {
+  if(argv.includes('--operation-mode'))return (await import('./dev070-production-enrollment-intent-runner.mjs')).runEnrollmentIntentJob({argv,environment,fetchImpl,Client})
   const args = parseOrgmasterRunnerArgs(argv)
   const target = args.migrationMode === DEV070_RELEASE_MODE ? DEV070_TARGET : args.migrationMode === DEV060_RELEASE_MODE ? DEV060_TARGET : TARGET
   assertRunnerTarget(environment, target)

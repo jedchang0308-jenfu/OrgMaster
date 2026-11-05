@@ -58,6 +58,28 @@ export async function prepareAdministrationInitializationFixture({admin,connect,
  const initialize=async()=> (await owner.query('SELECT orgmaster_core.initialize_administration_owner_v1($1::jsonb) receipt',[JSON.stringify(ownerPackage)])).rows[0].receipt
  return {owner,command,package:ownerPackage,facts,document,prepareReceipt,initialize,plan:boundPlan,nativeFacts}
 }
+/** Arrange an owner-admitted intent, without preparing a native provider pair
+ * or binding an owner plan. The runtime completion must do that work itself. */
+export async function prepareAdministrationEnrollmentFixture({admin,connect,handle},{freshNative=false,noPublication=false,admissionEnabled=true}={}){
+ const sourceSeed=JSON.parse(await readFile(new URL('../../contracts/orgmaster-administration-bootstrap/v1/source-seed.json',import.meta.url),'utf8'))
+ const artifact=(await admin.query("SELECT payload FROM orgmaster_core.persistence_artifacts WHERE artifact_key='orgmaster-governance.v3.json'")).rows[0].payload
+ const publication=artifact.publishedVersions.find(value=>value.id===artifact.activePolicyVersionId)
+ publication.policy={...sourceSeed,...publication.policy,applicationRoles:[...publication.policy.applicationRoles.filter(value=>value.id!=='role-orgmaster-admin'),sourceSeed.applicationRoles[0]],permissions:sourceSeed.permissions,rolePermissionGrants:sourceSeed.rolePermissionGrants}
+ artifact.draft={...publication.policy,unpublishedBusinessMarker:'preserve-only-in-draft'}
+ if(noPublication)artifact.activePolicyVersionId=null
+ await admin.query("UPDATE orgmaster_core.persistence_artifacts SET payload=$1,canonical_sha256=orgmaster_core.administration_sha256_v1($1::jsonb) WHERE artifact_key='orgmaster-governance.v3.json'",[JSON.stringify(artifact)])
+ if(freshNative&&admissionEnabled)await enableFixtureNativeAdmission(admin)
+ const employeeId=freshNative?'employee-two':'employee-legacy'
+ const native=freshNative?{principal_issuer:'https://securetoken.google.com/isolated-native-project',principal_subject:randomUUID()}:(await admin.query("SELECT principal_issuer,principal_subject FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_id='principal-legacy'")).rows[0]
+ await admin.query('CREATE ROLE "orgmaster-enrollment-owner-fixture" LOGIN; GRANT jenfu_orgmaster_migrator TO "orgmaster-enrollment-owner-fixture"')
+ const owner=await connect('orgmaster-enrollment-owner-fixture'),runtime=await connect('orgmaster-prod-runtime@jenfu-platform-prod.iam')
+ const expected={governanceRevision:(await admin.query("SELECT trim(canonical_sha256) value FROM orgmaster_core.persistence_artifacts WHERE artifact_key='orgmaster-governance.v3.json'")).rows[0].value,organizationRevision:(await admin.query('SELECT workspace_revision FROM orgmaster_core.v_current_workspace_employees_v1 LIMIT 1')).rows[0].workspace_revision,administrationVersion:0}
+ const intent={contractVersion:'orgmaster.administration-enrollment-intent.v1',commandId:randomUUID(),environmentKey:handle.databaseName,sourceRevision:'a'.repeat(40),employeeId,directoryKey:{customerId:'fixture-customer',userId:'fixture-user'},principalId:freshNative?null:'principal-legacy',expiresAt:new Date(Date.now()+600000).toISOString(),expected,reason:'隔離首位預授權',admittingWorkload:{principalId:'principal-workload:orgmaster-administration-initialize',dbSessionUser:'orgmaster-enrollment-owner-fixture',providerSubject:'104444444444444444444'}}
+ const facts={directoryCustomerId:'fixture-customer',directoryUserId:'fixture-user',issuer:native.principal_issuer,subject:native.principal_subject,primaryEmail:'fixture@example.invalid',authenticatedAt:new Date().toISOString(),assuranceLevel:'aal1',verifiedAt:new Date().toISOString(),sourceEtag:null}
+ const admit=async(value=intent)=>(await owner.query('SELECT orgmaster_core.admit_administration_enrollment_intent_v1($1::jsonb) receipt',[JSON.stringify(value)])).rows[0].receipt
+ const complete=async(value=facts)=>(await runtime.query('SELECT orgmaster_core.complete_administration_enrollment_v1($1::uuid,$2::jsonb) result',[intent.commandId,JSON.stringify(value)])).rows[0].result
+ return {owner,runtime,intent,facts,admit,complete}
+}
 export async function drainAdministrationFixtureEvents(fixture,consumePlatformEvent){
  if(typeof consumePlatformEvent!=='function')throw new Error('DEV070_PLATFORM_OWNER_FIXTURE_ADAPTER_REQUIRED')
  const worker=await fixture.connect('orgmaster-prod-runtime@jenfu-platform-prod.iam'),leaseId=randomUUID()

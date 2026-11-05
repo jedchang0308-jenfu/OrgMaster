@@ -4,9 +4,11 @@
 
 ## DEV-070：平台超級管理員權威與首次初始化
 
-- 狀態：`IMPLEMENTING / SOURCE + ISOLATED VALIDATION / DRAFT PR 準備 / NOT RELEASED`。最新人類授權為四專案完整實作至真實地端與正式發布；指定 Google personal／張仕杰 JFS0005，真 AAL1（接受 AAL2）、中文姓名。
-- [實作契約](specs/DEV-070-platform-super-admin-authority-contract.md)；source 含 042 中文顯示 prerequisite、044 producer/ACL、045 owner/human command/writer fence。owner-only bootstrap 與 app 管理任免依同一已發布 administration；本輪 source 自查不能替代真 Google、正式任用、merge／發布證據。
-- 2026-11-06：新 native＋無 publication 及既有 publication／draft 的隔離 PG 成功；typed lifecycle consume/ack、不可變 receipt、last-root rollback、runtime narrow projection/display ACL 通過。在途隔離測試已完成並補兩 root revoke／native quarantine 競爭、外部 Directory missing 的 typed invalidation，以及真 HTTP＋React→restricted SQL 單一整合案例；均不等於真 Google／本人驗收。前次文件收斂後已恢復同一授權工程；新增exact DEV070 append/source packaging與FMS point-only bootstrap contract（§14），有界驗證後準備draft PR，未merge/deploy/provider/primary writes。契約明列：legacy Org admin 原能力保留唯讀相容，退場須明確新 grant＋等效允許/拒絕測試＋無 caller 依賴；source profile已擴為精確42entries（新增042/044/045，043不帶入），typed append及工具packaging有界驗證完成，FMS point-only初始化proof已有Org source/PG；無Owner FMS actualadapter、closed local bridge、requiredCI／review／正式source與owner release尚待收斂，actual local worker仍關閉。尚無provider／primary DB／正式資料寫入、merge或部署。
+- 狀態：`IMPLEMENTING / RD Readiness Review / PR213 DRAFT / NOT RELEASED`。本回合已恢復工程並完成受影響 source／隔離檢查；先前四專案完整實作至真實地端／正式發布授權延續，指定 Google personal／張仕杰 JFS0005、真 AAL1（接受AAL2）、中文姓名。
+- [實作契約](specs/DEV-070-platform-super-admin-authority-contract.md) §17–20記A owner intent→正常Google完成、B admin-only native dispatcher／Platform point eligibility、C FMS fixed-role typed adoption；[既有QA計畫§18](qa/DEV-040-R2-independent-production-release-validation-plan.md#18-dev-070-administration-formal-closure)分開source／隔離／環境驗收。
+- 已提交HEAD=`6146162f73ffdf0550af794661adc7e11a6532cb`，[draft PR213](https://github.com/jedchang0308-jenfu/OrgMaster/pull/213)之required [CI42084560779](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42084560779) SUCCESS。FMS中文姓名P2已限新app-scoped三欄view；無FMS資格的root／同Employee別Principal無姓名，ordinaryviewer／新admin保有中文，042及Platform/PDM相容不變。
+- 本次A/B/C source接續同PR交付，尚未收錄新head requiredCI結果：A/B 12 unit、owner-operation7 Node／contracts總18 PASS；release Node458＋contracts18共476、新mode工具封裝3＋readback10 PASS、三cluster真HTTP/PG＋actual Platform owner consumer／typedack PASS；C focused76、restricted PG→FMS actual TSconsumer1 PASS；TypeScript PASS。均為RD隔離證據，Google／Directory／SA verifier或issuance部分採fixture boundary，不當作實際provider／本人日常入口。
+- source profile精確42entries，原39至041只加042/044/045，不帶043；新045 machinepins已隨本次delta同步。owner非互動Job sealed join／重用與新mode完整packaging已隔離驗證，實際Job與actual local closed transport、正式ledger/native/catalog／真Google／正常各app入口及新source CI／review仍待。尚無本輪merge／部署／provider或primary DB寫入。legacy原能力保留讀取消費相容；本人升級不以全員legacy退場作前置。
 
 <a id="dev-060-frontend-permission-projection"></a>
 

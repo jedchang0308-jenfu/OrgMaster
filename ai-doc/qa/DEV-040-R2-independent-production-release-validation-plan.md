@@ -250,3 +250,29 @@ Failure oracle：Platform run `35579062204`／execution `platform-prod-migration
 | M17-06 | Production sequence | migration 017 APPLIED＋REPLAY後，重建fresh admission operation，依序OrgMaster APPLIED＋REPLAY、Platform APPLIED＋REPLAY，再進L4 |
 
 Migration 017的Production apply需要fresh merged source、immutable runner digest、saved plan SHA與exact migration授權；本節與local PASS不構成Production DDL授權。
+
+
+<a id="18-dev-070-administration-formal-closure"></a>
+
+## 18. DEV-070 administration formal closure
+
+權威為 [DEV-070 §8.2、13–20](../specs/DEV-070-platform-super-admin-authority-contract.md)。此為既有owner QA計畫的受影響增量，不另造驗收人員／全員legacy遷移前置。成熟度維持 `IMPLEMENTING / RD Readiness Review`；本機PASS不代表正式READY。
+
+| ID | 驗證範圍／oracle | 目前證據與待辦 |
+| --- | --- | --- |
+| D70-01 | 原39 prefix／042 bytes不變，只append042/044/045至42、排除043；source/appliedSHA、typedmode／authority／runtime／stage／Job一致，未知prefix拒絕 | 已提交P2 gate／CI green；A/B/C更新045後新pins與contracts18項、release Node458項與工具封裝13項PASS；新delta requiredCI待同PR提交後讀回 |
+| D70-02 | FMS只讀app-scoped三欄姓名view；ordinary／admin有中文，root-only／未任FMS clone無姓名，generic ACL拒絕，dependencyfault無global fallback | HEAD6146162真PG及requiredCI已通過；actual本人header／local／production未驗 |
+| D70-03 | owner-only nonsensitive intent：exacttarget/source/CAS、≤15min、immutable／revoke/status、runtime不能admit或換target；不得human token Job env/Secret/file | 新7項Node focused＋三cluster資格／ownerfence正反PASS；actual runner隔離 sealed image/metadata/ledger joins與Job override3項PASS，實際closedJob未dispatch |
+| D70-04 | 既有Platform服務OIDC入口先FirebaseGoogle crypto；無intent不查Directory；命中才fresh AAL1/2≤300s／trueDirectory／Employee／pair/reservation | 新12項unit及真HTTP fixture-boundary案例PASS；真Google／Directory／service OIDC未驗 |
+| D70-05 | legacy canonicalPID reuse、fresh Principal只verifiedcompletion建立、無publication完整source permissions、CAS／一次checkpoint／並發／rollback；globaladmission不暗開 | 三cluster真PG PASS（含fresh concurrent、globaloff／revoke）；更完整source Job＋staleCAS／provider fault／expiry矩陣仍須受影響收斂 |
+| D70-06 | B exact receipt/outbox/hash／reason SQL predicate；Platform-only bool，依賴壞throw；filteredclaim不得租無關queue，blocked recovery只本lane | 最新三cluster已驗positive／wronghash／非行政、Org runtime拒、scoped blocked恢復且無關blocked維持；其他runtime／dependencyfault新bool專項與實際localconsumer仍待主控／owner核 |
+| D70-07 | 真runtime boundeddispatch→actual registry/lease/generation→Platformtypedconsume→Orgack；pending不發session/root，舊epoch失效；fullDirectoryflag不開 | 新HTTP/PG actual Platform owner adapter＋typedack PASS；productioncanonical OIDC／localclosedtransport／normal本人entry仍待；12秒cycle deadline及scoped resume已定向驗證；不把fixture drain當部署worker證據 |
+| D70-08 | C first-install只有freshroot+同publisher+actualownerimmutablehandoff、exacthash/CAS，唯一新增fixedsystem-admin，legacy6/custom／ordinary／draft保留；不假operationgrant | 76focused＋restrictedPG/FMS TSconsumer1 PASS；ownerHTTP合成issuance、minimalJSON IOport明列，實際FMS ledger／Google transport／productparse／完整同cluster矩陣待驗；readonlyhandoff每並行+2尚無shared gate、總connection上界未閉合 |
+| D70-09 | C獨立typedreceipt／pointconfirmation，原normalreceipt相容；current資格與immutableissuance分開；adopt後normal appgrant→ack→五明示operations | source／有界consumer正反已驗；真本人正常UI、讀回及撤權／catalog更新完整鏈待驗 |
+| D70-10 | reviewed source／requiredCI／sealed baseline與工具image provenance→ownerworkflow→實際migration/runtimeactivation/smoke；045至v3activation有界42501，禁止downSQL或舊writer fallback | PR213 HEAD6146162 CI42084560779 SUCCESS；A/B/C接續同PR交付、尚未收錄新head CI結果、未merge/deploy／正式applied／primarywrites；正式provider receipts與兩環境本人驗收未執行 |
+
+本輪有效證據：A/B `server/orgmasterAdministrationEnrollment.test.ts` 12 PASS；`scripts/dev070-enrollment-owner-operation.test.mjs` 7 PASS（包括於`test:dev-070:contracts`總18，不重複加總）；`scripts/qc-dev070-enrollment-postgres.mjs` 三task-owned clusters、真Org HTTP＋restrictedSQL＋Platform owner consumer／ack PASS，Firebase／Directory／caller verifier採注入fixture。C `vitest.dev070-catalog-adoption.config.ts` 1 PG integration＋actual FMS TSconsumer PASS，12files76focused另列；minimalJSON IO與synthetic ownerissuance不是產品parse或provider證據。所有任務cluster finally清理；實際環境不得當fault／cleanup fixture。
+
+保留首次失敗：SQL42725／42883、fresh concurrent自己pending導致403、C current_catalog內建名稱衝突、一次045pin轉錄造成checksum拒絕；各有對應source／oracle修正後定向PASS，舊log不改成成功。尚未完成的positive／negative／failure／blocked分開記，不以新SHA或文件日期重跑未變範圍；required gate仍正常執行。真Google、closed local profile／OIDC、actualSQL SESSION_USER、provider/native ledger/catalog、本人四app正常入口與正式smoke按有效環境逐項補證，兩環境完整分母不縮。 Portal A consumer只有parser/client初稿，未接exchange／測試；local既有NOLOGIN owner group-session僅readonly前置，sourcewrapper及target/proof尚待，不推論已primary mutation。
+
+新 mode 補強：`test:dev-040:r2` 458＋18共476 PASS；actual fixed Job transport override／unknown execution reuse／mixing拒絕3項PASS；production-tool hermetic staging3＋database/readback10 PASS，使用task-owned exactlocked pg8.21 closure，canonical node_modules不變。GCS／metadata／Run API為隔離 doubles；source proof可支持packaging與guard，不支持實際provider執行。closure606,223 bytes清理遭自動核准審查拒絕而保留，lease已釋放，詳DEV070§20。

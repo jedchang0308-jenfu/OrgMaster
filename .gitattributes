@@ -29,3 +29,11 @@ contracts/ai-pdm-role-policy-catalog/v3/** text eol=lf
 contracts/orgmaster-fms-administration-initialization/v1/** text eol=lf
 
 db/migrations/042_dev057_principal_display_profiles.sql text eol=lf
+
+contracts/orgmaster-administration-enrollment/v1/** text eol=lf
+
+contracts/orgmaster-administration-lifecycle/v1/** text eol=lf
+
+contracts/orgmaster-fms-catalog-initialization-activation/v1/** text eol=lf
+
+contracts/fms-catalog-initialization-handoff/** text eol=lf

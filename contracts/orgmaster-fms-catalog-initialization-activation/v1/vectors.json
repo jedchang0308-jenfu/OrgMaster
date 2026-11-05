@@ -1,0 +1,7 @@
+{
+  "contractVersion": "orgmaster.fms-catalog-initialization-activation.v1",
+  "allow": ["exact original publisher/employee/initialization operation/receipt/release tuple", "historical immutable receipt after administration version or epoch changes"],
+  "deny": ["ordinary v1 grantIds/checkpoint receipt in this root-only contract", "same employee different Principal", "different initialization operation or receipt", "modified audit or published snapshot", "missing native publication", "arbitrary role edit or extra role", "raw policy or roster disclosure"],
+  "hash": "auditAfterHash = SHA256 recursively sorted JSON UTF-8 of {requestHash,previewHash,record}; arrays retain order",
+  "currentBinding": "read in the same source snapshot; independent from the original immutable receipt binding"
+}

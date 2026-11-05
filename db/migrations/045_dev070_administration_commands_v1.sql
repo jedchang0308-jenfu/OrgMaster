@@ -660,4 +660,304 @@ BEGIN
 END; $fn$;
 REVOKE ALL ON FUNCTION orgmaster_core.submit_administration_command_private_v1(jsonb,text,text,jsonb),orgmaster_core.apply_administration_command_v1(jsonb,jsonb),orgmaster_core.prepare_administration_identity_owner_v1(jsonb),orgmaster_core.initialize_administration_owner_v1(jsonb),orgmaster_core.read_administration_command_owner_v1(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION orgmaster_core.apply_administration_command_v1(jsonb,jsonb) TO jenfu_orgmaster_runtime;
+
+-- The owner admits a short-lived target, without possessing a human token.
+-- Intents and revocations are append-only typed receipts, never grant truth.
+CREATE FUNCTION orgmaster_core.admit_administration_enrollment_intent_v1(p_intent jsonb) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE prior jsonb; intent_hash text; current_revision text; workspace_revision text;
+BEGIN
+ PERFORM 1 FROM orgmaster_core.managed_identity_admission_authority WHERE singleton FOR UPDATE;
+ PERFORM 1 FROM orgmaster_core.persistence_authority WHERE singleton FOR UPDATE;
+ IF NOT pg_has_role(SESSION_USER,'jenfu_orgmaster_migrator','MEMBER') OR pg_has_role(SESSION_USER,'jenfu_orgmaster_runtime','MEMBER')
+ OR p_intent->>'environmentKey' IS DISTINCT FROM current_database() OR p_intent#>>'{admittingWorkload,dbSessionUser}' IS DISTINCT FROM SESSION_USER::text
+ OR current_database()='jenfu_prod' AND SESSION_USER::text<>'orgmaster-prod-migrator@jenfu-platform-prod.iam' THEN RAISE EXCEPTION 'PLATFORM_ADMIN_REQUIRED'; END IF;
+ IF p_intent->>'contractVersion' IS DISTINCT FROM 'orgmaster.administration-enrollment-intent.v1'
+ OR p_intent-'contractVersion'-'commandId'-'environmentKey'-'sourceRevision'-'employeeId'-'directoryKey'-'principalId'-'expiresAt'-'expected'-'reason'-'admittingWorkload'<>'{}'::jsonb
+ OR NOT(p_intent?&ARRAY['contractVersion','commandId','environmentKey','sourceRevision','employeeId','directoryKey','principalId','expiresAt','expected','reason','admittingWorkload'])
+ OR p_intent->>'sourceRevision' !~ '^[a-f0-9]{40}$' OR char_length(COALESCE(p_intent->>'reason','')) NOT BETWEEN 1 AND 240
+ OR p_intent->>'reason' IS DISTINCT FROM normalize(btrim(p_intent->>'reason'),NFC)
+ OR COALESCE(p_intent#>>'{admittingWorkload,providerSubject}','') !~ '^[0-9]{18,24}$'
+ OR p_intent#>>'{admittingWorkload,principalId}' IS DISTINCT FROM 'principal-workload:orgmaster-administration-initialize'
+ OR (p_intent->'admittingWorkload')-'principalId'-'dbSessionUser'-'providerSubject'<>'{}'::jsonb
+ OR (p_intent->'directoryKey')-'customerId'-'userId'<>'{}'::jsonb
+ OR char_length(COALESCE(p_intent#>>'{directoryKey,customerId}','')) NOT BETWEEN 1 AND 255
+ OR char_length(COALESCE(p_intent#>>'{directoryKey,userId}','')) NOT BETWEEN 1 AND 255
+ OR jsonb_typeof(p_intent->'principalId') NOT IN('null','string')
+ OR (p_intent->'expected')-'governanceRevision'-'organizationRevision'-'administrationVersion'<>'{}'::jsonb
+ OR p_intent#>>'{expected,administrationVersion}' IS DISTINCT FROM '0' THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+ PERFORM (p_intent->>'commandId')::uuid;
+ intent_hash:=orgmaster_core.administration_sha256_v1(p_intent);
+ SELECT response_payload INTO prior FROM orgmaster_core.managed_identity_command_receipts WHERE command_id=p_intent->>'commandId'||':enrollment';
+ IF FOUND THEN IF prior->>'intentHash' IS DISTINCT FROM intent_hash THEN RAISE EXCEPTION 'ADMINISTRATION_COMMAND_CONFLICT'; END IF; RETURN prior; END IF;
+ IF p_intent->>'expiresAt' IS NULL OR (p_intent->>'expiresAt')::timestamptz<=clock_timestamp() OR (p_intent->>'expiresAt')::timestamptz>clock_timestamp()+interval '15 minutes' THEN RAISE EXCEPTION 'ADMINISTRATION_INTENT_EXPIRED'; END IF;
+ IF EXISTS(SELECT 1 FROM orgmaster_core.administrative_command_receipts_v1 WHERE operation='initialize_platform_administrator') THEN RAISE EXCEPTION 'ADMINISTRATION_ALREADY_INITIALIZED'; END IF;
+ IF EXISTS(SELECT 1 FROM orgmaster_core.managed_identity_command_receipts r WHERE r.action='dev070_enrollment_intent_v1' AND (r.response_payload#>>'{intent,expiresAt}')::timestamptz>clock_timestamp()
+  AND NOT EXISTS(SELECT 1 FROM orgmaster_core.managed_identity_command_receipts revoked WHERE revoked.command_id=r.response_payload#>>'{intent,commandId}'||':enrollment-revoked')) THEN RAISE EXCEPTION 'ADMINISTRATION_COMMAND_CONFLICT'; END IF;
+ SELECT trim(a.canonical_sha256) INTO STRICT current_revision FROM orgmaster_core.persistence_artifacts a JOIN orgmaster_core.persistence_authority authority ON a.batch_id=authority.active_batch_id WHERE a.artifact_key='orgmaster-governance.v3.json' AND authority.singleton;
+ SELECT employee.workspace_revision INTO workspace_revision FROM orgmaster_core.v_current_workspace_employees_v1 employee WHERE employee.employee_id=p_intent->>'employeeId' AND employee.employee_status='active';
+ IF workspace_revision IS NULL THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+ IF current_revision IS DISTINCT FROM p_intent#>>'{expected,governanceRevision}' OR workspace_revision IS DISTINCT FROM p_intent#>>'{expected,organizationRevision}' THEN RAISE EXCEPTION 'ADMINISTRATION_CONFLICT'; END IF;
+ IF EXISTS(SELECT 1 FROM orgmaster_contract.v_principal_alias_history_v1 h WHERE h.employee_id=p_intent->>'employeeId' AND h.resolution_status='unresolved') THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+ prior:=jsonb_build_object('contractVersion','orgmaster.administration-enrollment-intent-receipt.v1','intentHash',intent_hash,'intent',p_intent,'admittedAt',clock_timestamp());
+ INSERT INTO orgmaster_core.managed_identity_command_receipts(command_id,request_hash_sha256,action,employee_id,response_payload)
+ VALUES(p_intent->>'commandId'||':enrollment',intent_hash,'dev070_enrollment_intent_v1',p_intent->>'employeeId',prior);
+ RETURN prior;
+END; $fn$;
+CREATE FUNCTION orgmaster_core.read_administration_enrollment_intent_owner_v1(p_command uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+BEGIN
+ IF NOT pg_has_role(SESSION_USER,'jenfu_orgmaster_migrator','MEMBER') OR pg_has_role(SESSION_USER,'jenfu_orgmaster_runtime','MEMBER') THEN RAISE EXCEPTION 'PLATFORM_ADMIN_REQUIRED'; END IF;
+ RETURN (SELECT jsonb_build_object('intent',r.response_payload,'revoked',EXISTS(SELECT 1 FROM orgmaster_core.managed_identity_command_receipts revoked WHERE revoked.command_id=p_command::text||':enrollment-revoked'),'receipt',(SELECT orgmaster_core.administration_receipt_response_v1(result) FROM orgmaster_core.administrative_command_receipts_v1 WHERE command_id=p_command)) FROM orgmaster_core.managed_identity_command_receipts r WHERE r.command_id=p_command::text||':enrollment');
+END; $fn$;
+CREATE FUNCTION orgmaster_core.revoke_administration_enrollment_intent_v1(p_command uuid) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE prior jsonb;
+BEGIN
+ PERFORM 1 FROM orgmaster_core.managed_identity_admission_authority WHERE singleton FOR UPDATE;
+ PERFORM 1 FROM orgmaster_core.persistence_authority WHERE singleton FOR UPDATE;
+ prior:=orgmaster_core.read_administration_enrollment_intent_owner_v1(p_command);
+ IF prior IS NULL OR prior->'receipt'<>'null'::jsonb THEN RAISE EXCEPTION 'ADMINISTRATION_COMMAND_CONFLICT'; END IF;
+ INSERT INTO orgmaster_core.managed_identity_command_receipts(command_id,request_hash_sha256,action,employee_id,response_payload)
+ VALUES(p_command::text||':enrollment-revoked',orgmaster_core.administration_sha256_v1(prior->'intent'),'dev070_enrollment_revoke_v1',prior#>>'{intent,intent,employeeId}',jsonb_build_object('commandId',p_command,'revokedBySessionUser',SESSION_USER::text,'revokedAt',clock_timestamp())) ON CONFLICT(command_id) DO NOTHING;
+ RETURN orgmaster_core.read_administration_enrollment_intent_owner_v1(p_command);
+END; $fn$;
+REVOKE ALL ON FUNCTION orgmaster_core.admit_administration_enrollment_intent_v1(jsonb),orgmaster_core.read_administration_enrollment_intent_owner_v1(uuid),orgmaster_core.revoke_administration_enrollment_intent_v1(uuid) FROM PUBLIC,jenfu_orgmaster_runtime;
+
+-- Preserve v1 owner wrappers, sharing their exact private preparation/submit
+-- implementation with the admitted runtime completion. SESSION_USER is never
+-- switched to an owner or accepted from a request.
+DO $enrollment_private$ DECLARE definition text; item record;
+BEGIN
+ FOR item IN SELECT * FROM(VALUES('prepare_administration_identity_owner_v1','prepare_administration_identity_private_v1'),('initialize_administration_owner_v1','initialize_administration_private_v1')) names(original,private) LOOP
+  definition:=pg_get_functiondef(('orgmaster_core.'||item.original||'(jsonb)')::regprocedure);
+  definition:=replace(definition,'FUNCTION orgmaster_core.'||item.original||'(p_package jsonb)','FUNCTION orgmaster_core.'||item.private||'(p_package jsonb, p_owner_principal text)');
+  definition:=replace(definition,'WHERE db_session_user=SESSION_USER::text AND owner=''orgmaster'' AND purpose=''administration-initialize'' FOR UPDATE','WHERE principal_id=p_owner_principal AND owner=''orgmaster'' AND purpose=''administration-initialize'' FOR UPDATE');
+  EXECUTE definition;
+  EXECUTE format('REVOKE ALL ON FUNCTION orgmaster_core.%I(jsonb,text) FROM PUBLIC,jenfu_orgmaster_runtime',item.private);
+  EXECUTE format('CREATE OR REPLACE FUNCTION orgmaster_core.%I(p_package jsonb) RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS %L',item.original,'DECLARE owner_principal text; BEGIN SELECT principal_id INTO STRICT owner_principal FROM orgmaster_core.workload_principal_bindings WHERE db_session_user=SESSION_USER::text AND owner=''orgmaster'' AND purpose=''administration-initialize''; RETURN orgmaster_core.'||item.private||'(p_package,owner_principal); END;');
+ END LOOP;
+END; $enrollment_private$;
+CREATE FUNCTION orgmaster_core.find_administration_enrollment_intent_v1(p_customer text,p_user text) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE result jsonb;
+BEGIN
+ PERFORM orgmaster_core.assert_lifecycle_executor_v2(NULL);
+ SELECT r.response_payload INTO result FROM orgmaster_core.managed_identity_command_receipts r WHERE r.action='dev070_enrollment_intent_v1'
+ AND r.response_payload#>>'{intent,directoryKey,customerId}'=p_customer AND r.response_payload#>>'{intent,directoryKey,userId}'=p_user
+ AND NOT EXISTS(SELECT 1 FROM orgmaster_core.managed_identity_command_receipts revoked WHERE revoked.command_id=r.response_payload#>>'{intent,commandId}'||':enrollment-revoked')
+ ORDER BY r.created_at DESC LIMIT 1;
+ RETURN result;
+END; $fn$;
+-- Intrinsic exact-pair qualification permits only this command's own barrier
+-- during replay. It never makes an authority projection or session available.
+CREATE FUNCTION orgmaster_core.administration_enrollment_pair_eligible_v1(p_principal text,p_employee text,p_issuer text,p_subject text,p_command uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+SELECT EXISTS(SELECT 1 FROM orgmaster_core.principal_ownership_reservations owner
+ JOIN orgmaster_core.principal_identity_reservations pair ON pair.principal_id=owner.principal_id AND pair.employee_id=owner.employee_id
+ JOIN orgmaster_core.v_current_workspace_employees_v1 employee ON employee.employee_id=owner.employee_id AND employee.employee_status='active'
+ WHERE owner.principal_id=p_principal AND owner.employee_id=p_employee AND owner.account_type IN('human_personal','human_privileged') AND pair.principal_issuer=p_issuer AND pair.principal_subject=p_subject
+ AND NOT EXISTS(SELECT 1 FROM orgmaster_core.managed_identity_lifecycle_outbox old WHERE old.employee_id=p_employee AND old.status<>'completed')
+ AND NOT EXISTS(SELECT 1 FROM orgmaster_contract.v_principal_lifecycle_targets_v2 target JOIN orgmaster_core.principal_lifecycle_delivery_v2 delivery ON delivery.event_id=target.event_id::uuid
+  WHERE target.principal_id=p_principal AND delivery.status<>'completed' AND NOT EXISTS(SELECT 1 FROM orgmaster_core.administrative_command_receipts_v1 receipt WHERE receipt.command_id=p_command AND receipt.result->'outboxIds' ? delivery.event_id::text))
+ AND CASE WHEN EXISTS(SELECT 1 FROM orgmaster_core.managed_daily_identities m WHERE m.principal_id=p_principal) THEN
+  EXISTS(SELECT 1 FROM orgmaster_core.managed_daily_identities m JOIN orgmaster_core.managed_identity_observations obs USING(identity_record_id)
+   JOIN orgmaster_core.managed_identity_admission_authority authority ON authority.singleton AND authority.admission_enabled
+   WHERE m.principal_id=p_principal AND m.employee_id=p_employee AND m.auth_issuer=p_issuer AND m.auth_subject=p_subject AND m.link_state='active' AND m.admission_revision IS NOT NULL
+   AND obs.directory_state='present' AND lower(obs.primary_email)=lower(m.last_verified_primary_email))
+ ELSE EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(orgmaster_core.read_administration_publication_v1()#>'{policy,identityLinks}','[]'::jsonb)) link
+  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(orgmaster_core.read_administration_publication_v1()#>'{policy,principalAdmissions}','[]'::jsonb)) admission
+  WHERE link->>'principalId'=p_principal AND link->>'employeeId'=p_employee AND link->>'issuer'=p_issuer AND link->>'subject'=p_subject AND link->>'status'='active'
+  AND(link->>'validFrom')::timestamptz<=CURRENT_TIMESTAMP AND(link->>'validTo' IS NULL OR(link->>'validTo')::timestamptz>CURRENT_TIMESTAMP)
+  AND admission->>'identityLinkId'=link->>'id' AND admission->>'status'='active' AND admission->>'accountType' IN('human_personal','human_privileged')) END);
+$fn$;
+REVOKE ALL ON FUNCTION orgmaster_core.administration_enrollment_pair_eligible_v1(text,text,text,text,uuid) FROM PUBLIC,jenfu_orgmaster_runtime;
+CREATE FUNCTION orgmaster_core.complete_administration_enrollment_v1(p_command uuid,p_verified jsonb) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE intent jsonb; owner_json jsonb; facts jsonb; plan jsonb; command jsonb; org_binding jsonb; definition jsonb; policy jsonb; receipt jsonb; resolved jsonb; account record; principal text; identity_id uuid; facts_hash text; request_hash text; target_facts jsonb; package jsonb;
+BEGIN
+ PERFORM orgmaster_core.assert_lifecycle_executor_v2(NULL);
+ PERFORM 1 FROM orgmaster_core.managed_identity_admission_authority WHERE singleton FOR UPDATE;
+ PERFORM 1 FROM orgmaster_core.persistence_authority WHERE singleton FOR UPDATE;
+ SELECT response_payload->'intent' INTO STRICT intent FROM orgmaster_core.managed_identity_command_receipts WHERE command_id=p_command::text||':enrollment' AND action='dev070_enrollment_intent_v1';
+ IF EXISTS(SELECT 1 FROM orgmaster_core.managed_identity_command_receipts WHERE command_id=p_command::text||':enrollment-revoked') THEN RAISE EXCEPTION 'ADMINISTRATION_INTENT_REVOKED'; END IF;
+ IF NOT(p_verified?&ARRAY['directoryCustomerId','directoryUserId','issuer','subject','primaryEmail','authenticatedAt','assuranceLevel','verifiedAt','sourceEtag']) OR p_verified-'directoryCustomerId'-'directoryUserId'-'issuer'-'subject'-'primaryEmail'-'authenticatedAt'-'assuranceLevel'-'verifiedAt'-'sourceEtag'<>'{}'::jsonb
+ OR p_verified->>'directoryCustomerId' IS DISTINCT FROM intent#>>'{directoryKey,customerId}' OR p_verified->>'directoryUserId' IS DISTINCT FROM intent#>>'{directoryKey,userId}'
+ OR char_length(COALESCE(p_verified->>'issuer','')) NOT BETWEEN 1 AND 255 OR char_length(COALESCE(p_verified->>'subject','')) NOT BETWEEN 1 AND 255
+ OR char_length(COALESCE(p_verified->>'primaryEmail','')) NOT BETWEEN 3 AND 255 THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+ IF COALESCE(p_verified->>'assuranceLevel','') NOT IN('aal1','aal2') OR p_verified->>'authenticatedAt' IS NULL OR p_verified->>'verifiedAt' IS NULL OR extract(epoch FROM clock_timestamp()-(p_verified->>'authenticatedAt')::timestamptz) NOT BETWEEN 0 AND 300
+ OR extract(epoch FROM clock_timestamp()-(p_verified->>'verifiedAt')::timestamptz) NOT BETWEEN 0 AND 300 THEN RAISE EXCEPTION 'AUTH_RECENT_REQUIRED'; END IF;
+ SELECT response_payload INTO resolved FROM orgmaster_core.managed_identity_command_receipts WHERE command_id=p_command::text||':enrollment-resolved';
+ IF FOUND THEN
+  IF resolved->>'issuer' IS DISTINCT FROM p_verified->>'issuer' OR resolved->>'subject' IS DISTINCT FROM p_verified->>'subject' OR resolved->>'employeeId' IS DISTINCT FROM intent->>'employeeId' THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+  IF NOT orgmaster_core.administration_enrollment_pair_eligible_v1(resolved->>'principalId',resolved->>'employeeId',p_verified->>'issuer',p_verified->>'subject',p_command) THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+  SELECT orgmaster_core.administration_receipt_response_v1(result) INTO receipt FROM orgmaster_core.administrative_command_receipts_v1 WHERE command_id=p_command;
+  IF receipt IS NULL THEN RAISE EXCEPTION 'ADMINISTRATION_DEPENDENCY_UNAVAILABLE'; END IF;
+  RETURN jsonb_build_object('commandId',p_command,'principalId',resolved->>'principalId','employeeId',resolved->>'employeeId','activation',receipt->>'activation');
+ END IF;
+ IF (intent->>'expiresAt')::timestamptz<=clock_timestamp() THEN RAISE EXCEPTION 'ADMINISTRATION_INTENT_EXPIRED'; END IF;
+ IF EXISTS(SELECT 1 FROM orgmaster_core.administrative_command_receipts_v1 WHERE operation='initialize_platform_administrator') THEN RAISE EXCEPTION 'ADMINISTRATION_ALREADY_INITIALIZED'; END IF;
+ IF(SELECT count(DISTINCT principal_id)>1 OR count(DISTINCT employee_id)>1 FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_issuer=p_verified->>'issuer' AND principal_subject=p_verified->>'subject') THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+ SELECT principal_id,min(employee_id) employee_id INTO account FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_issuer=p_verified->>'issuer' AND principal_subject=p_verified->>'subject' GROUP BY principal_id;
+ IF FOUND THEN
+  IF account.employee_id IS DISTINCT FROM intent->>'employeeId' OR intent->>'principalId' IS NOT NULL AND intent->>'principalId' IS DISTINCT FROM account.principal_id THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+  principal:=account.principal_id;
+ ELSE
+  IF NOT EXISTS(SELECT 1 FROM orgmaster_core.managed_identity_admission_authority WHERE singleton AND admission_enabled) THEN RAISE EXCEPTION 'ADMINISTRATION_ENROLLMENT_NOT_READY'; END IF;
+  IF EXISTS(SELECT 1 FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE employee_id=intent->>'employeeId') OR EXISTS(SELECT 1 FROM orgmaster_core.principal_identity_reservations WHERE principal_issuer=p_verified->>'issuer' AND principal_subject=p_verified->>'subject' AND employee_id IS DISTINCT FROM intent->>'employeeId') THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+  SELECT identity_record_id,principal_id,employee_id,auth_issuer,auth_subject INTO account FROM orgmaster_core.managed_daily_identities WHERE directory_customer_id=p_verified->>'directoryCustomerId' AND directory_user_id=p_verified->>'directoryUserId';
+  IF FOUND THEN
+   IF account.employee_id IS DISTINCT FROM intent->>'employeeId' OR account.auth_issuer IS NOT NULL AND(account.auth_issuer IS DISTINCT FROM p_verified->>'issuer' OR account.auth_subject IS DISTINCT FROM p_verified->>'subject') THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+   principal:=account.principal_id;
+  ELSE principal:=COALESCE(intent->>'principalId','principal-managed:'||gen_random_uuid()::text); END IF;
+  IF principal !~ '^principal-managed:[0-9a-f-]{36}$' OR intent->>'principalId' IS NOT NULL AND principal IS DISTINCT FROM intent->>'principalId' THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+ END IF;
+ facts:=(p_verified-'verifiedAt'-'sourceEtag')||jsonb_build_object('principalId',principal,'employeeId',intent->>'employeeId');
+ facts_hash:=orgmaster_core.administration_sha256_v1(facts-'authenticatedAt'-'assuranceLevel');
+ policy:=COALESCE(orgmaster_core.read_administration_publication_v1()->'policy',orgmaster_core.administration_bootstrap_seed_v1());
+ SELECT jsonb_build_object('stableRoleId','role-orgmaster-admin','permissionCodes',COALESCE(jsonb_agg(p->>'code' ORDER BY p->>'code'),'[]'::jsonb)) INTO definition FROM jsonb_array_elements(COALESCE(policy->'permissions','[]'::jsonb)) p WHERE p->>'applicationId'='orgmaster' AND p->>'status'='active' AND EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(policy->'rolePermissionGrants','[]'::jsonb)) g WHERE g->>'roleId'='role-orgmaster-admin' AND g->>'effect'='allow' AND g->>'permissionId'=p->>'id');
+ org_binding:=jsonb_build_object('catalogVersion','orgmaster.system-admin.v1','contentSha256',orgmaster_core.administration_sha256_v1(jsonb_build_object('catalogVersion','orgmaster.system-admin.v1','definition',definition)),'stableRoleId','role-orgmaster-admin','roleDefinitionHash',orgmaster_core.administration_sha256_v1(definition));
+ owner_json:=intent->'admittingWorkload';
+ plan:=jsonb_build_object('contractVersion','orgmaster.administration-owner-plan.v1','commandId',p_command,'environmentKey',current_database(),'owner',owner_json,
+ 'target',jsonb_build_object('principalId',principal,'employeeId',intent->>'employeeId','directoryKey',intent->'directoryKey','identityFactsHash',facts_hash),'expected',intent->'expected','catalogBindings',jsonb_build_object('orgmaster',org_binding),
+ 'grants',jsonb_build_array(jsonb_build_object('roleCode','platform_super_admin','applicationId',NULL,'validFrom',to_char(((intent->>'expiresAt')::timestamptz-interval '15 minutes') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'validTo',NULL),jsonb_build_object('roleCode','application_system_admin','applicationId','orgmaster','validFrom',to_char(((intent->>'expiresAt')::timestamptz-interval '15 minutes') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'validTo',NULL)),'plannedProtectedOperations','[]'::jsonb,'reason',intent->>'reason');
+ INSERT INTO orgmaster_core.workload_principal_bindings(principal_id,owner,purpose,provider_issuer,provider_subject,db_session_user,binding_version,enabled,bound_command_id,bound_plan_sha256,bound_target_principal_id,bound_target_employee_id,bound_environment_key)
+ VALUES(owner_json->>'principalId','orgmaster','administration-initialize','https://accounts.google.com',owner_json->>'providerSubject',owner_json->>'dbSessionUser',1,true,p_command,orgmaster_core.administration_sha256_v1(plan),principal,intent->>'employeeId',current_database());
+ command:=(plan-'owner'-'contractVersion')||jsonb_build_object('contractVersion','orgmaster.administration-command.v1','operation','initialize_platform_administrator');
+ PERFORM orgmaster_core.prepare_administration_identity_private_v1(jsonb_build_object('command',command,'planHash',orgmaster_core.administration_sha256_v1(plan),'verifiedAt',p_verified->'verifiedAt','nativeFacts',facts,'sourceEtag',p_verified->'sourceEtag'),owner_json->>'principalId');
+ SELECT jsonb_build_object('principalId',principal_id,'employeeId',min(employee_id),'accountType',min(account_type),'mappingVersion',min(mapping_version)::text) INTO target_facts FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_id=principal AND employee_id=intent->>'employeeId' GROUP BY principal_id HAVING count(DISTINCT account_type)=1;
+ IF target_facts IS NULL THEN RAISE EXCEPTION 'ADMIN_TARGET_INVALID'; END IF;
+ request_hash:=orgmaster_core.administration_sha256_v1(jsonb_build_object('actorId',owner_json->>'principalId','environmentKey',current_database(),'payload',command));
+ command:=command||jsonb_build_object('previewHash',orgmaster_core.administration_sha256_v1(jsonb_build_object('requestHash',request_hash,'expected',command->'expected','catalogBindings',command->'catalogBindings','targetFacts',target_facts,'authentication',NULL)));
+ receipt:=orgmaster_core.initialize_administration_private_v1(jsonb_build_object('command',command,'planHash',orgmaster_core.administration_sha256_v1(plan),'verifiedAt',p_verified->'verifiedAt'),owner_json->>'principalId');
+ resolved:=jsonb_build_object('commandId',p_command,'principalId',principal,'employeeId',intent->>'employeeId','issuer',p_verified->>'issuer','subject',p_verified->>'subject','intentHash',orgmaster_core.administration_sha256_v1(intent),'admittedBy',owner_json,'verifiedHuman',jsonb_build_object('principalId',principal,'authenticatedAt',p_verified->'authenticatedAt','assuranceLevel',p_verified->'assuranceLevel'),'outboxIds',receipt->'outboxIds');
+ INSERT INTO orgmaster_core.managed_identity_command_receipts(command_id,request_hash_sha256,action,employee_id,response_payload) VALUES(p_command::text||':enrollment-resolved',facts_hash,'dev070_enrollment_resolved_v1',intent->>'employeeId',resolved);
+ RETURN jsonb_build_object('commandId',p_command,'principalId',principal,'employeeId',intent->>'employeeId','activation',receipt->>'activation');
+END; $fn$;
+REVOKE ALL ON FUNCTION orgmaster_core.find_administration_enrollment_intent_v1(text,text),orgmaster_core.complete_administration_enrollment_v1(uuid,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION orgmaster_core.find_administration_enrollment_intent_v1(text,text),orgmaster_core.complete_administration_enrollment_v1(uuid,jsonb) TO jenfu_orgmaster_runtime;
+
+CREATE FUNCTION orgmaster_core.administration_lifecycle_event_eligible_v1(p_event_id uuid,p_snapshot_hash text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+ SELECT EXISTS(SELECT 1 FROM orgmaster_core.principal_lifecycle_events_v2 event
+ JOIN orgmaster_core.administrative_command_receipts_v1 receipt ON receipt.result->'outboxIds' ? event.event_id::text
+ WHERE event.event_id=p_event_id AND trim(event.snapshot_hash)=p_snapshot_hash AND event.reason_code='administration_changed');
+$fn$;
+REVOKE ALL ON FUNCTION orgmaster_core.administration_lifecycle_event_eligible_v1(uuid,text) FROM PUBLIC;
+CREATE FUNCTION orgmaster_contract.administration_lifecycle_event_eligible_v1(p_event_id uuid,p_snapshot_hash text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+ SELECT orgmaster_core.administration_lifecycle_event_eligible_v1(p_event_id,p_snapshot_hash);
+$fn$;
+REVOKE ALL ON FUNCTION orgmaster_contract.administration_lifecycle_event_eligible_v1(uuid,text) FROM PUBLIC,jenfu_orgmaster_runtime,jenfu_ai_pdm_runtime;
+GRANT EXECUTE ON FUNCTION orgmaster_contract.administration_lifecycle_event_eligible_v1(uuid,text) TO jenfu_platform_runtime;
+DO $event_eligibility_fms_acl$ BEGIN IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='fms_runtime') THEN REVOKE ALL ON FUNCTION orgmaster_contract.administration_lifecycle_event_eligible_v1(uuid,text) FROM fms_runtime; END IF; END; $event_eligibility_fms_acl$;
+-- A verified service wake-up may explicitly resume this narrow dead-letter lane.
+-- It cannot select Principals, reset another queue, or alter an immutable event.
+CREATE FUNCTION orgmaster_core.resume_administration_lifecycle_v1(p_executor text) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE count_rows integer;
+BEGIN
+ PERFORM orgmaster_core.assert_lifecycle_executor_v2(p_executor);
+ UPDATE orgmaster_core.principal_lifecycle_delivery_v2 q SET status='pending',attempt_count=0,next_attempt_at=clock_timestamp(),last_error_code=NULL,lease_id=NULL,lease_until=NULL
+ FROM orgmaster_core.principal_lifecycle_events_v2 e WHERE e.event_id=q.event_id AND(q.status='blocked' OR q.status='processing' AND q.lease_until<=clock_timestamp() AND q.attempt_count>=5)
+ AND orgmaster_core.administration_lifecycle_event_eligible_v1(e.event_id,trim(e.snapshot_hash));
+ GET DIAGNOSTICS count_rows=ROW_COUNT; RETURN count_rows;
+END; $fn$;
+REVOKE ALL ON FUNCTION orgmaster_core.resume_administration_lifecycle_v1(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION orgmaster_core.resume_administration_lifecycle_v1(text) TO jenfu_orgmaster_runtime;
+
+-- Only immutable administrative receipts select this lane. Unrelated historic
+-- lifecycle work is never leased, terminalized, or acknowledged by it.
+CREATE FUNCTION orgmaster_core.claim_administration_lifecycle_v1(p_executor text,p_lease_id uuid,p_limit integer)
+RETURNS TABLE(event_id uuid,operation_id text,source_revision text,snapshot_hash text,lease_generation bigint)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+BEGIN
+ p_executor:=orgmaster_core.assert_lifecycle_executor_v2(p_executor);
+ IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 2 OR p_lease_id IS NULL THEN RAISE EXCEPTION 'MANAGED_LIFECYCLE_CLAIM_INVALID'; END IF;
+ RETURN QUERY WITH candidates AS(
+ SELECT q.event_id FROM orgmaster_core.principal_lifecycle_delivery_v2 q JOIN orgmaster_core.principal_lifecycle_events_v2 e ON e.event_id=q.event_id
+ WHERE orgmaster_core.administration_lifecycle_event_eligible_v1(e.event_id,trim(e.snapshot_hash))
+ AND(q.status='pending' OR(q.status='processing' AND q.lease_until<=clock_timestamp())) AND q.next_attempt_at<=clock_timestamp() AND q.attempt_count<5
+ ORDER BY q.next_attempt_at,q.event_id FOR UPDATE OF q SKIP LOCKED LIMIT p_limit), claimed AS(
+ UPDATE orgmaster_core.principal_lifecycle_delivery_v2 q SET status='processing',attempt_count=q.attempt_count+1,lease_generation=q.lease_generation+1,lease_id=p_lease_id,lease_until=clock_timestamp()+interval '60 seconds'
+ FROM candidates c WHERE q.event_id=c.event_id RETURNING q.event_id,q.lease_generation)
+ SELECT e.event_id,e.operation_id,e.source_revision,trim(e.snapshot_hash),c.lease_generation FROM claimed c JOIN orgmaster_core.principal_lifecycle_events_v2 e ON e.event_id=c.event_id;
+END; $fn$;
+REVOKE ALL ON FUNCTION orgmaster_core.claim_administration_lifecycle_v1(text,uuid,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION orgmaster_core.claim_administration_lifecycle_v1(text,uuid,integer) TO jenfu_orgmaster_runtime;
+
+
+-- Independent root-initialization receipt contract. Ordinary v1 projection stays byte-for-byte unchanged.
+CREATE FUNCTION orgmaster_contract.read_fms_catalog_initialization_activation_v1(
+ p_principal text,p_employee text,p_initialization_operation_id text,p_initialization_receipt_id text,
+ p_catalog_version text,p_content_sha256 text,p_artifact_sha256 text)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE document jsonb; receipt jsonb; proof jsonb; evidence jsonb; event jsonb; publication jsonb; before_publication jsonb; active_publication jsonb; catalog_current jsonb; root jsonb; payload jsonb;
+BEGIN
+ IF p_principal IS NULL OR char_length(p_principal) NOT BETWEEN 1 AND 255 OR p_employee IS NULL OR char_length(p_employee) NOT BETWEEN 1 AND 255
+ OR p_initialization_operation_id IS NULL OR p_initialization_operation_id !~ '^[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}$'
+ OR p_initialization_receipt_id IS NULL OR char_length(p_initialization_receipt_id) NOT BETWEEN 1 AND 512
+ OR p_catalog_version IS NULL OR char_length(p_catalog_version) NOT BETWEEN 1 AND 512
+ OR p_content_sha256 IS NULL OR p_content_sha256 !~ '^[a-f0-9]{64}$' OR p_artifact_sha256 IS NULL OR p_artifact_sha256 !~ '^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'FMS_INITIALIZATION_ACTIVATION_INPUT_INVALID'; END IF;
+ SELECT artifact.payload INTO STRICT document FROM orgmaster_core.persistence_authority authority
+ JOIN orgmaster_core.persistence_batches batch ON batch.id=authority.active_batch_id AND batch.status='active'
+ JOIN orgmaster_core.persistence_artifacts artifact ON artifact.batch_id=batch.id AND artifact.artifact_kind='governance' AND artifact.artifact_key='orgmaster-governance.v3.json' WHERE authority.singleton;
+ IF document->>'schemaVersion'<>'3' OR jsonb_typeof(document->'commandReceipts')<>'array' THEN RAISE EXCEPTION 'FMS_INITIALIZATION_ACTIVATION_UNAVAILABLE'; END IF;
+ BEGIN
+  SELECT value INTO STRICT receipt FROM jsonb_array_elements(document->'commandReceipts') WHERE value#>>'{financialCatalogActivation,contractVersion}'='orgmaster.fms-catalog-initialization-activation-record.v1'
+  AND value#>>'{financialCatalogActivation,principalId}'=p_principal AND value#>>'{financialCatalogActivation,employeeId}'=p_employee
+  AND value#>>'{financialCatalogActivation,actorProof,initializationOperationId}'=p_initialization_operation_id
+  AND value#>>'{financialCatalogActivation,actorProof,initializationReceiptId}'=p_initialization_receipt_id
+  AND value#>>'{financialCatalogActivation,catalogVersion}'=p_catalog_version AND value#>>'{financialCatalogActivation,contentSha256}'=p_content_sha256 AND value#>>'{financialCatalogActivation,artifactSha256}'=p_artifact_sha256;
+ EXCEPTION WHEN no_data_found THEN RETURN NULL; END;
+ proof:=receipt->'financialCatalogActivation';evidence:=proof->'actorProof';
+ IF jsonb_typeof(proof) IS DISTINCT FROM 'object' OR jsonb_typeof(evidence) IS DISTINCT FROM 'object'
+ OR NOT(proof ?& ARRAY['contractVersion','principalId','employeeId','catalogVersion','contentSha256','artifactSha256','governanceRevisionBefore','organizationRevision','assignmentVersionBefore','catalogBindingRevisionBefore','grantRevisionBefore','assignmentVersionAfter','publishedSnapshotHash','authEpoch','authenticatedAt','authorityReadAt','actorProof'])
+ OR (SELECT count(*) FROM jsonb_object_keys(proof))<>17
+ OR NOT(evidence ?& ARRAY['kind','rootGrantId','administrationVersion','sourceRoleDefinitionHash','initializationOperationId','initializationReceiptId','receiptBodySha256','source'])
+ OR (SELECT count(*) FROM jsonb_object_keys(evidence))<>8
+ OR jsonb_typeof(evidence->'administrationVersion') IS DISTINCT FROM 'number' OR jsonb_typeof(proof->'authEpoch') IS DISTINCT FROM 'number'
+ OR EXISTS(SELECT 1 FROM jsonb_each(proof-'actorProof'-'authEpoch') item WHERE jsonb_typeof(item.value)<>'string')
+ OR EXISTS(SELECT 1 FROM jsonb_each(evidence-'administrationVersion') item WHERE jsonb_typeof(item.value)<>'string') THEN RAISE EXCEPTION 'FMS_INITIALIZATION_ACTIVATION_UNAVAILABLE'; END IF;
+ IF receipt->>'contractVersion'<>'orgmaster.governance-command-receipt.v2' OR receipt->>'receiptStatus'<>'applied'
+ OR COALESCE(receipt->>'commandId','')='' OR receipt->>'requestHash' !~ '^[a-f0-9]{64}$' OR receipt->>'previewHash' !~ '^[a-f0-9]{64}$'
+ OR proof ? 'grantIds' OR proof ? 'fmsCheckpoint' OR evidence->>'kind'<>'platform_root_catalog_initialization'
+ OR evidence->>'source' NOT IN('formal','local_test') OR current_database()='jenfu_prod' AND evidence->>'source'<>'formal' OR evidence->>'receiptBodySha256' !~ '^[a-f0-9]{64}$'
+ OR evidence->>'sourceRoleDefinitionHash'<>'2a8ab5c084e00f9cd1f9a87e193d1269ea85c80eb66fba78c1b6ab2ab467ce11'
+ OR (evidence->>'administrationVersion')::numeric NOT BETWEEN 1 AND 9007199254740991 OR (proof->>'authEpoch')::numeric NOT BETWEEN 0 AND 9007199254740991
+ OR extract(epoch FROM (proof->>'authorityReadAt')::timestamptz-(proof->>'authenticatedAt')::timestamptz) NOT BETWEEN 0 AND 300 THEN RAISE EXCEPTION 'FMS_INITIALIZATION_ACTIVATION_UNAVAILABLE'; END IF;
+ SELECT value INTO STRICT event FROM jsonb_array_elements(document->'auditEvents') WHERE value->>'id'=receipt->>'auditReference' AND value->>'commandId'=receipt->>'commandId';
+ SELECT value INTO STRICT publication FROM jsonb_array_elements(document->'publishedVersions') WHERE value->>'id'=proof->>'assignmentVersionAfter';
+ SELECT value INTO STRICT before_publication FROM jsonb_array_elements(document->'publishedVersions') WHERE value->>'id'=proof->>'assignmentVersionBefore';
+ IF event->>'action'<>'financial_catalog_activate' OR event->>'entityType'<>'financialCatalogRelease' OR event->>'entityId'<>p_catalog_version OR event->>'actorPrincipalId'<>p_principal
+ OR event->>'afterHash' IS DISTINCT FROM orgmaster_core.administration_sha256_v1(jsonb_build_object('requestHash',receipt->>'requestHash','previewHash',receipt->>'previewHash','record',proof))
+ OR publication->>'kind'<>'assignment-governance-v3' OR before_publication->>'kind'<>'assignment-governance-v3'
+ OR publication->>'snapshotHash' IS DISTINCT FROM proof->>'publishedSnapshotHash' OR publication->>'publishedByPrincipalId'<>p_principal
+ OR receipt->>'governanceRevision' IS DISTINCT FROM publication->>'id' OR receipt->>'acceptedAt' IS DISTINCT FROM publication->>'publishedAt' OR receipt->>'terminalAt' IS DISTINCT FROM publication->>'publishedAt'
+ OR before_publication#>>'{policy,administration,version}' IS DISTINCT FROM evidence->>'administrationVersion'
+ OR publication#>'{policy,administration}' IS DISTINCT FROM before_publication#>'{policy,administration}' THEN RAISE EXCEPTION 'FMS_INITIALIZATION_ACTIVATION_UNAVAILABLE'; END IF;
+ payload:=publication-'id'-'versionNumber'-'publishedAt'-'publishedByPrincipalId'-'publishReason'-'hashFormat'-'snapshotHash';
+ IF publication->>'snapshotHash' IS DISTINCT FROM orgmaster_core.administration_sha256_v1(payload) THEN RAISE EXCEPTION 'FMS_INITIALIZATION_ACTIVATION_UNAVAILABLE'; END IF;
+ SELECT value INTO STRICT root FROM jsonb_array_elements(before_publication#>'{policy,administration,grants}') WHERE value->>'id'=evidence->>'rootGrantId'
+ AND value->>'roleCode'='platform_super_admin' AND value->>'principalId'=p_principal AND value->>'employeeId'=p_employee
+ AND value->>'status'='active' AND (value->>'validFrom')::timestamptz<=(proof->>'authorityReadAt')::timestamptz AND value->'validTo'='null'::jsonb;
+ IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(before_publication#>'{policy,administration,grants}') grant_row WHERE grant_row->>'roleCode'='application_system_admin' AND grant_row->>'applicationId'='orgmaster'
+ AND grant_row->>'principalId'=p_principal AND grant_row->>'employeeId'=p_employee AND grant_row->>'status'='active' AND(grant_row->>'validFrom')::timestamptz<=(proof->>'authorityReadAt')::timestamptz
+ AND(grant_row->'validTo'='null'::jsonb OR(grant_row->>'validTo')::timestamptz>(proof->>'authorityReadAt')::timestamptz)) THEN RAISE EXCEPTION 'FMS_INITIALIZATION_ACTIVATION_UNAVAILABLE'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(publication->'externalRoleCatalogs') catalog WHERE catalog->>'applicationId'='financial-management-system'
+ AND catalog->>'sourceKind'='application-contract' AND catalog->>'catalogVersion'=p_catalog_version AND catalog->>'contentSha256'=p_content_sha256 AND catalog->>'artifactSha256'=p_artifact_sha256
+ AND catalog->>'publishedByPrincipalId'=p_principal AND catalog->>'publishedByEmployeeId'=p_employee) THEN RAISE EXCEPTION 'FMS_INITIALIZATION_ACTIVATION_UNAVAILABLE'; END IF;
+ SELECT value INTO STRICT active_publication FROM jsonb_array_elements(document->'publishedVersions') WHERE value->>'id'=document->>'activePolicyVersionId' AND value->>'kind'='assignment-governance-v3';
+ SELECT value INTO STRICT catalog_current FROM jsonb_array_elements(active_publication->'externalRoleCatalogs') WHERE value->>'applicationId'='financial-management-system' AND value->>'sourceKind'='application-contract';
+ RETURN jsonb_build_object('contractVersion','orgmaster.fms-catalog-initialization-activation.v1','manifestSha256','3ceb1923576b054e17213bffb5557f74bb1bb1042068cb4fe07aae4103ab50ad',
+ 'commandId',receipt->>'commandId','requestHash',receipt->>'requestHash','previewHash',receipt->>'previewHash','record',proof,'auditAfterHash',event->>'afterHash','publishedAt',publication->>'publishedAt',
+ 'currentBinding',jsonb_build_object('catalogVersion',catalog_current->>'catalogVersion','contentSha256',catalog_current->>'contentSha256','artifactSha256',catalog_current->>'artifactSha256','assignmentVersion',active_publication->>'id'));
+EXCEPTION WHEN no_data_found OR too_many_rows OR invalid_text_representation OR numeric_value_out_of_range OR invalid_datetime_format OR datetime_field_overflow THEN RAISE EXCEPTION 'FMS_INITIALIZATION_ACTIVATION_UNAVAILABLE';
+END; $fn$;
+ALTER FUNCTION orgmaster_contract.read_fms_catalog_initialization_activation_v1(text,text,text,text,text,text,text) OWNER TO jenfu_orgmaster_migrator;
+REVOKE ALL ON FUNCTION orgmaster_contract.read_fms_catalog_initialization_activation_v1(text,text,text,text,text,text,text) FROM PUBLIC,jenfu_orgmaster_runtime,jenfu_platform_runtime,jenfu_ai_pdm_runtime;
+DO $fms_initialization_activation_reader$ BEGIN
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='fms_runtime') THEN GRANT EXECUTE ON FUNCTION orgmaster_contract.read_fms_catalog_initialization_activation_v1(text,text,text,text,text,text,text) TO fms_runtime; END IF;
+END; $fms_initialization_activation_reader$;
+
 COMMIT;

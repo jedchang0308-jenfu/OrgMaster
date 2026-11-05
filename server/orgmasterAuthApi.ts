@@ -29,6 +29,8 @@ import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort, readG
 import { handleOrgmasterSsoRequest, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
 import { createGoogleManagedLoginCallerVerifier, type ManagedLoginCallerVerifier } from './orgmasterManagedLoginApi'
 import { createManagedLoginOwnerService, type ManagedLoginOwnerServiceV1 } from './orgmasterManagedLoginService'
+import {createAdministrationEnrollment,type AdministrationEnrollmentService} from './orgmasterAdministrationEnrollment'
+import {productionAdministrationLifecycle,type AdministrationLifecycleDispatcher} from './orgmasterAdministrationLifecycle'
 import { createOrgmasterLocalPrincipalSandbox, OrgmasterLocalPrincipalSandboxError, type OrgmasterLocalPrincipalSandbox } from './orgmasterLocalPrincipalSandbox'
 
 export const ORGMASTER_AUTH_API_PATH = '/api/auth'
@@ -70,6 +72,8 @@ export type OrgmasterAuthRuntime = {
   managedIdentity?: ManagedIdentityServiceV1
   managedLoginOwner?: ManagedLoginOwnerServiceV1
   managedLoginCallerVerifier?: ManagedLoginCallerVerifier
+  administrationEnrollment?: AdministrationEnrollmentService
+  administrationLifecycle?: AdministrationLifecycleDispatcher
   managedLoginEnabled?: boolean
   employeeNumberManagementEnabled?: boolean
   ssoHandoffEnabled?: boolean
@@ -438,6 +442,8 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     employeeNumberManagementEnabled: Boolean(managedIdentity),
     managedLoginOwner,
     managedLoginCallerVerifier,
+    administrationLifecycle: productionAdministrationLifecycle(environment),
+    administrationEnrollment: managedDirectory && directoryConfig.enabled ? createAdministrationEnrollment({database,firebase,directory:managedDirectory,directoryCustomerId:directoryConfig.customerId,dispatcher:productionAdministrationLifecycle(environment)}) : undefined,
     managedLoginEnabled: directoryConfig.enabled,
     ssoHandoffEnabled: environment.ORGMASTER_JENFU_SSO_HANDOFF_MODE === 'on' && Boolean(environment.ORGMASTER_JENFU_SSO_BROKER_ORIGIN?.trim()),
   }

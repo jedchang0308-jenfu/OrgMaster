@@ -30,8 +30,9 @@ import { ApplicationEntitlementError, type FinancialManagementCapability, type F
 import { previewFinancialRoleAssignment, publishFinancialRoleAssignment, readFinancialRoleAssignmentReceipt, readFinancialRoleAssignmentWorkspace } from './applicationRoleAssignmentStore'
 import { previewFinancialManagementGrant, publishFinancialManagementGrant, readFinancialManagementGrantReceipt, readFinancialManagementGrantWorkspace } from './applicationManagementGrantStore'
 import { FinancialCatalogReleaseError } from './financialCatalogReleaseStore'
-import { activateFinancialCatalog, previewFinancialCatalogActivation, readFinancialCatalogActivationReceipt, readFinancialCatalogActivationWorkspace } from './financialCatalogActivationStore'
+import { activateFinancialCatalog, previewFinancialCatalogActivation, readFinancialCatalogActivationReceipt, readFinancialCatalogActivationWorkspace, type FinancialCatalogActivationOptions } from './financialCatalogActivationStore'
 import { readFinancialCatalogHandoffSource } from './financialCatalogIntent'
+import { createDefaultFinancialCatalogInitializationOwnerReader } from './financialCatalogInitializationOwnerHttp'
 import { previewFinancialInitialAuthority, publishFinancialInitialAuthority, readFinancialInitialAuthorityReceipt, type FinancialInitialAuthorityInput, type FinancialInitialAuthorityPublishInput } from './financialInitialAuthorityStore'
 import { resolveIdentityLinkUpsert, assertIdentityLinkStatusMutationAllowed as assertIdentityLinkStatusMutationAllowedPolicy } from './orgmasterIdentityLinkPolicy'
 import { recommendGovernanceEmployees } from './employeeRecommendationService'
@@ -251,6 +252,7 @@ function financialCatalogReleaseRequest(body: Record<string, unknown>) {
     requestHash: String(body.requestHash ?? ''),
     previewHash: String(body.previewHash ?? ''),
     ...(Object.hasOwn(body, 'fmsCheckpoint') ? { fmsCheckpoint: body.fmsCheckpoint } : {}),
+    ...(Object.hasOwn(body, 'initializationOperationId') ? { initializationOperationId: String(body.initializationOperationId) } : {}),
   }
 }
 
@@ -273,7 +275,7 @@ function financialInitialAuthorityRequest(body: Record<string, unknown>, phase: 
     : request
 }
 
-async function handle(request: IncomingMessage, response: ServerResponse, root: string, devEnabled: boolean, accountEnrollmentEnabled: boolean) {
+async function handle(request: IncomingMessage, response: ServerResponse, root: string, devEnabled: boolean, accountEnrollmentEnabled: boolean, catalogOptions: FinancialCatalogActivationOptions = {}) {
   const url = new URL(request.url ?? '/', 'http://orgmaster.local'); const path = url.pathname.slice(API_PATH.length) || '/';
   if(await handleAdministrationRequest(request,response,root,path,()=>parseBody(request))) return
   if (path === '/employee-authority-switch') { sendJson(response, 410, { error: 'LEGACY_AUTHORITY_SWITCH_RETIRED' }); return }
@@ -289,9 +291,11 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
     sendJson(response, 200, result)
     return
   }
+  const readCurrent = path.startsWith('/applications/financial-management-system/catalog/') && catalogOptions.persistence
+    ? catalogOptions.persistence.read : readGovernanceStore
   const governanceRead = actor.issuer === LOCAL_IDENTITY_ISSUER
-    ? withOrgmasterLocalPrincipalDiagnosticContext(() => readGovernanceStore(root))
-    : readGovernanceStore(root)
+    ? withOrgmasterLocalPrincipalDiagnosticContext(() => readCurrent(root))
+    : readCurrent(root)
   const current = await governanceRead.catch(error => {
     if (path === '/session') {
       warnOrgmasterLocalPersistenceDiagnostic('governance_session_store_read', error, undefined, {
@@ -330,22 +334,22 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
   }
   if (path === '/' && request.method === 'GET') { sendJson(response, 200, { document: sanitizedDocument(document), catalogs: await displayRoleCatalogs(document, root), revision: current.revision, activeVersionId: document.activePolicyVersionId, versions: document.publishedVersions.map((version: any) => ({ id: version.id, kind: version.kind ?? 'legacy-policy-v1', versionNumber: version.versionNumber, publishedAt: version.publishedAt, publishedByPrincipalId: version.publishedByPrincipalId, publishReason: version.publishReason, snapshotHash: version.snapshotHash, organizationVersionId: version.organizationSnapshot.workspaceVersionId, effectState: version.effectState ?? 'legacy' })) }, current.revision); return }
   if (path === '/applications/financial-management-system/catalog/activation' && request.method === 'GET') {
-    const workspace = await readFinancialCatalogActivationWorkspace(root, actor)
+    const workspace = await readFinancialCatalogActivationWorkspace(root, actor, { ...catalogOptions, handoffSource: readFinancialCatalogHandoffSource() ?? catalogOptions.handoffSource })
     sendJson(response, 200, workspace, workspace.governanceRevision); return
   }
   if (path === '/applications/financial-management-system/catalog/activation/preview' && request.method === 'POST') {
     const requestData = financialCatalogReleaseRequest(await parseBody(request))
-    const preview = await previewFinancialCatalogActivation(root, actor, requestData.release, requestData)
+    const preview = await previewFinancialCatalogActivation(root, actor, requestData.release, requestData, { ...catalogOptions, handoffSource: readFinancialCatalogHandoffSource() ?? catalogOptions.handoffSource })
     sendJson(response, 200, preview, current.revision); return
   }
   if (['/applications/financial-management-system/catalog/activation/activate', '/applications/financial-management-system/catalog/releases/publish'].includes(path) && request.method === 'POST') {
     const requestData = financialCatalogReleaseRequest(await parseBody(request))
-    const receipt = await activateFinancialCatalog(root, actor, requestData.release, requestData, { handoffSource: readFinancialCatalogHandoffSource() })
+    const receipt = await activateFinancialCatalog(root, actor, requestData.release, requestData, { ...catalogOptions, handoffSource: readFinancialCatalogHandoffSource() ?? catalogOptions.handoffSource })
     sendJson(response, 200, { ...receipt, authorizationEffect: receipt.replayed ? 'replayed' : 'committed' }, receipt.governanceRevision); return
   }
   const financialCatalogCommand = path.match(/^\/applications\/financial-management-system\/catalog\/activation\/commands\/([^/]+)$/)
   if (financialCatalogCommand && request.method === 'GET') {
-    const receipt = await readFinancialCatalogActivationReceipt(root, actor, decodeURIComponent(financialCatalogCommand[1]))
+    const receipt = await readFinancialCatalogActivationReceipt(root, actor, decodeURIComponent(financialCatalogCommand[1]), catalogOptions)
     sendJson(response, receipt.receiptStatus === 'not_found' ? 404 : 200, receipt, receipt.governanceRevision); return
   }
   if (path === '/applications/financial-management-system/initial-authority/preview' && request.method === 'POST') { const body = await parseBody(request); const preview = await previewFinancialInitialAuthority(root, actor, financialInitialAuthorityRequest(body, 'preview')); sendJson(response, 200, preview, current.revision); return }
@@ -493,6 +497,6 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
   if ((path === '/evaluate/permission' || path === '/evaluate/reviewers') && request.method === 'POST') { sendJson(response, 410, { error: 'LEGACY_GOVERNANCE_EVALUATOR_RETIRED' }); return }
   sendJson(response, 404, { error: 'ROUTE_NOT_FOUND' })
 }
-function middleware(root: string, devEnabled: boolean, accountEnrollmentEnabled = false) { return (request: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) => { if (!request.url?.startsWith(API_PATH)) return next(); void handle(request, response, root, devEnabled, accountEnrollmentEnabled).catch((error) => errorResponse(response, error)) } }
-export function createOrgmasterGovernanceMiddleware(root = process.cwd(), devEnabled = false, accountEnrollmentEnabled = false): Connect.NextHandleFunction { return middleware(root, devEnabled, accountEnrollmentEnabled) }
-export function orgmasterGovernanceApiPlugin(options: { accountEnrollmentEnabled?: boolean } = {}): Plugin { return { name: 'orgmaster-local-governance-api', configureServer(server: ViteDevServer) { server.middlewares.use(middleware(server.config.root, server.config.command === 'serve' && server.config.mode === 'development', options.accountEnrollmentEnabled === true)) }, configurePreviewServer(server: PreviewServer) { server.middlewares.use(middleware(process.cwd(), false, options.accountEnrollmentEnabled === true)) } } }
+function middleware(root: string, devEnabled: boolean, accountEnrollmentEnabled = false, catalogOptions: FinancialCatalogActivationOptions = {}) { const resolvedCatalogOptions = { initializationOwnerReader: createDefaultFinancialCatalogInitializationOwnerReader(), ...catalogOptions }; return (request: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) => { if (!request.url?.startsWith(API_PATH)) return next(); void handle(request, response, root, devEnabled, accountEnrollmentEnabled, resolvedCatalogOptions).catch((error) => errorResponse(response, error)) } }
+export function createOrgmasterGovernanceMiddleware(root = process.cwd(), devEnabled = false, accountEnrollmentEnabled = false, catalogOptions: FinancialCatalogActivationOptions = {}): Connect.NextHandleFunction { return middleware(root, devEnabled, accountEnrollmentEnabled, catalogOptions) }
+export function orgmasterGovernanceApiPlugin(options: { accountEnrollmentEnabled?: boolean; catalogActivation?: FinancialCatalogActivationOptions } = {}): Plugin { return { name: 'orgmaster-local-governance-api', configureServer(server: ViteDevServer) { server.middlewares.use(middleware(server.config.root, server.config.command === 'serve' && server.config.mode === 'development', options.accountEnrollmentEnabled === true, options.catalogActivation)) }, configurePreviewServer(server: PreviewServer) { server.middlewares.use(middleware(process.cwd(), false, options.accountEnrollmentEnabled === true, options.catalogActivation)) } } }

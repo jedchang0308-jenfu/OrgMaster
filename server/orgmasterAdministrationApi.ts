@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
+import {productionAdministrationLifecycle} from './orgmasterAdministrationLifecycle'
 import { AdministrationError } from '../src/governance/administration'
 import { verifiedGovernanceActor } from './orgmasterRequestIdentity'
 import { commitAdministrationCommand, previewAdministrationCommand, readAdministrationCommand, readAdministrationWorkspace } from './orgmasterAdministrationStore'
@@ -26,6 +27,7 @@ return async function handleAdministrationRequest(request:IncomingMessage,respon
    if(!match||request.method!=='GET'){response.statusCode=404;response.end(JSON.stringify({code:'ADMINISTRATION_ROUTE_NOT_FOUND',correlationId}));return true}
    result=await service.readAdministrationCommand(root,actor,decodeURIComponent(match[1]))
   }
+  if(path==='/administrators/commands'&&request.method==='POST')await productionAdministrationLifecycle()?.runOnce().catch(()=>undefined)
   response.statusCode=200;response.end(JSON.stringify({...result as object,correlationId}));return true
  }catch(error){
   const code=error instanceof AdministrationError?error.code:'ADMINISTRATION_DEPENDENCY_UNAVAILABLE'

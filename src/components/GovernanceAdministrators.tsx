@@ -3,6 +3,7 @@ import {commitAdministration,GovernanceApiError,loadAdministrationCommand,loadAd
 import type {AdministrationCommand} from '../governance/administration'
 import type {Employee} from '../types'
 import type {AdministrativeGrantV1} from '../governance/types'
+import {GovernanceFinancialCatalogInitialization} from './GovernanceFinancialCatalogInitialization'
 const labels={orgmaster:'OrgMaster 系統管理員','ai-pdm':'PDM 系統管理員','financial-management-system':'FMS 系統管理員'}
 const localDateTime=(value:string)=>value?new Date(Date.parse(value)-new Date(value).getTimezoneOffset()*60000).toISOString().slice(0,-1):''
 export function GovernanceAdministrators({employees,onChanged}:{employees:Employee[];onChanged?:()=>void}) {
@@ -35,6 +36,7 @@ export function GovernanceAdministrators({employees,onChanged}:{employees:Employ
  {!workspace&&!error&&<p role="status">載入管理授權…</p>}
  {workspace&&!workspace.initialized&&<p role="status">平台管理員尚未初始化，需由 owner 執行一次性初始化。</p>}
  {workspace&&<><table className="governance-table"><thead><tr><th>管理身分</th><th>員工</th><th>狀態</th><th>操作</th></tr></thead><tbody>{workspace.grants.map(grant=><tr key={grant.id}><td>{grant.roleCode==='platform_super_admin'?'平台超級管理員':labels[grant.applicationId!]}</td><td>{name(grant.employeeId)}</td><td>{grant.status==='active'?'有效':'已撤銷'}</td><td>{workspace.admission.mutate&&grant.status==='active'&&<><button type="button" disabled={busy||unknown||!reason.trim()} onClick={()=>void makePreview(grant)}>預覽撤銷</button>{grant.applicationId&&<button type="button" disabled={busy||unknown} onClick={()=>editLifetime(grant)}>調整期限</button>}</>}</td></tr>)}</tbody></table>
+ {workspace.initialized&&workspace.admission.mutate&&!workspace.catalogBindings['financial-management-system']&&<GovernanceFinancialCatalogInitialization/>}
  {workspace.initialized&&workspace.admission.mutate&&<form onSubmit={event=>{event.preventDefault();void makePreview()}}>
  <label>員工<select value={employeeId} disabled={!!replacement} onChange={event=>{setEmployeeId(event.target.value);const choices=workspace.eligiblePrincipals?.filter(value=>value.employeeId===event.target.value)??[];setPrincipalId(choices.length===1?choices[0].principalId:'');setPreview(null)}} required><option value="">選擇員工</option>{employees.filter(employee=>/\p{Script=Han}/u.test(employee.name)).map(employee=><option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label>
  <label>登入身分<select value={principalId} disabled={!!replacement} onChange={event=>{setPrincipalId(event.target.value);setPreview(null)}} required><option value="">選擇登入身分</option>{workspace.eligiblePrincipals?.filter(value=>value.employeeId===employeeId).map((value,index)=><option key={value.principalId} value={value.principalId}>{value.accountType==='human_personal'?'日常帳號':'特權帳號'}{index>0?` ${index+1}`:''}</option>)}</select></label>

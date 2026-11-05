@@ -545,7 +545,6 @@ export interface GovernanceCommandReceiptV2 {
   replayed: boolean
   attempt: number
   financialCatalogActivation?: {
-    contractVersion: 'orgmaster.fms-catalog-activation-record.v1'
     principalId: string
     employeeId: string
     catalogVersion: string
@@ -558,12 +557,15 @@ export interface GovernanceCommandReceiptV2 {
     grantRevisionBefore: string
     assignmentVersionAfter: string
     publishedSnapshotHash: string
-    grantIds: string[]
     authEpoch: number
     authenticatedAt: string
     authorityReadAt: string
     fmsCheckpoint?: import('../../server/financialCatalogIntent').FmsCatalogCheckpoint
-  }
+  } & ({ contractVersion: 'orgmaster.fms-catalog-activation-record.v1'; grantIds: string[]; actorProof?: never } | {
+    contractVersion: 'orgmaster.fms-catalog-initialization-activation-record.v1'
+    grantIds?: never
+    actorProof: import('../../server/financialCatalogInitializationAdoption').FinancialCatalogInitializationActorProof
+  })
 }
 
 export type GovernanceCommandV2 =

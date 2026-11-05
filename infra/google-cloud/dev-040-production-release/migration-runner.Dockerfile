@@ -19,6 +19,7 @@ COPY scripts/lib/dev012-orgmaster-production-data.mjs scripts/lib/dev012-orgmast
 COPY scripts/lib/dev049-production-admission.mjs scripts/lib/dev049-production-admission.mjs
 COPY scripts/lib/dev014-consumer-conformance.mjs scripts/lib/dev014-consumer-conformance.mjs
 COPY scripts/dev040-production-migration-runner.mjs scripts/dev040-production-migration-runner.mjs
+COPY scripts/dev070-production-enrollment-intent-runner.mjs scripts/dev070-production-enrollment-intent-runner.mjs
 COPY scripts/dev014-production-lifecycle-readback.mjs scripts/dev014-production-lifecycle-readback.mjs
 COPY scripts/lib/dev014-lifecycle-v2-readback.mjs scripts/lib/dev014-lifecycle-v2-readback.mjs
 COPY scripts/dev049-production-admission-runner.mjs scripts/dev049-production-admission-runner.mjs
