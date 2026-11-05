@@ -4,7 +4,7 @@ import {mock} from 'node:test'
 import {OAuth2Client} from 'google-auth-library'
 import {readFileSync} from 'node:fs'
 import {parseLocalAdministrationOwnerArgs} from './dev070-local-administration-owner.mjs'
-import {validateLocalLedger,localOwnerHash,planLocalOwnerBridge,commitLocalOwnerBridge,OWNER_BOOTSTRAP_SIGNATURES,verifyLocalOwnerGoogleIdentity,OWNER_EMAIL,OWNER_SUBJECT} from './lib/dev070-local-administration-owner.mjs'
+import {validateLocalLedger,localOwnerHash,planLocalOwnerBridge,commitLocalOwnerBridge,OWNER_BOOTSTRAP_SIGNATURES,verifyLocalOwnerGoogleIdentity,OWNER_EMAIL,OWNER_SUBJECT,executeLocalEnrollmentIntent} from './lib/dev070-local-administration-owner.mjs'
 const entries=JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json',import.meta.url),'utf8')).migrations.entries
 const row=e=>({version:e.version,name:e.path.split('/').at(-1).replace(/^\d{3}_/u,'').replace(/\.sql$/u,''),checksum_sha256:e.appliedSha256,source_revision:'a'.repeat(40)})
 const runId='e598c60a4bc64ee5889048bb4355f7c0',database='jenfu_local_dev070_16930fa3'
@@ -39,7 +39,7 @@ function fixture(){
   return {rows:[]}
  }}
  const commit=()=>commitLocalOwnerBridge({client,context,source,plan,ownerProof:proof})
- return {state,context,source,plan,proof,commit}
+ return {state,context,source,plan,proof,commit,client}
 }
 test('local CLI only admits bounded plan/status/commit arguments',()=>{
  assert.equal(parseLocalAdministrationOwnerArgs(['plan','--config','own.json','--output','plan.json','--reason','reason']).action,'plan')
@@ -77,4 +77,66 @@ test('migration failure rolls back and an unknown COMMIT requires status rather 
  const failed=fixture();failed.state.failMigration=true;await assert.rejects(failed.commit);assert.equal(failed.state.binderCalls,0);assert.equal(failed.state.queries.at(-1),'ROLLBACK')
  const unknown=fixture();unknown.state.failCommit=true;await assert.rejects(unknown.commit,/COMMIT_UNKNOWN_REQUIRES_STATUS/);assert.equal(unknown.state.binderCalls,1);assert.equal(unknown.state.queries.at(-1),'COMMIT')
  unknown.state.failCommit=false;await unknown.commit();assert.equal(unknown.state.binderCalls,1)
+})
+
+function enrollmentFixture(){
+ const f=fixture(),now=Date.now(),original=f.client.query
+ f.context.directoryCustomerId='verified-customer'
+ f.state.ledger=entries.map(row);f.state.installed=true;f.state.beforeOwnership=f.state.beforeOwnership.map(r=>({...r,owner:'jenfu_orgmaster_migrator'}))
+ Object.assign(f.state,{intent:null,intentWrites:0,revokeWrites:0,governance:'7'.repeat(64),organization:'8'.repeat(64),admission:false,accounts:[{principal_id:'native-existing',employee_id:'employee-target'}],managed:[]})
+ f.client.query=async(sql,values)=>{
+  if(sql.startsWith('SELECT trim(a.canonical_sha256)'))return {rows:[{governance_revision:f.state.governance,workspace_revision:f.state.organization,admission_enabled:f.state.admission}]}
+  if(sql==='SELECT * FROM orgmaster_contract.read_administration_state_v1()')return {rows:[{administration_version:'0',initialized_by_command_id:null}]}
+  if(sql.startsWith('SELECT DISTINCT principal_id'))return {rows:f.state.accounts}
+  if(sql.startsWith('SELECT employee_id,principal_id'))return {rows:f.state.managed}
+  if(sql.startsWith('SELECT orgmaster_core.read_administration_enrollment_intent_owner'))return {rows:[{receipt:structuredClone(f.state.intent)}]}
+  if(sql.startsWith('SELECT orgmaster_core.admit_administration_enrollment_intent')){const intent=JSON.parse(values[0]);f.state.intentWrites++;f.state.intent={intent:{contractVersion:'orgmaster.administration-enrollment-intent-receipt.v1',intentHash:localOwnerHash(intent),intent,admittedAt:new Date(now).toISOString()},revoked:false,receipt:null};return {rows:[{receipt:f.state.intent.intent}]}}
+  if(sql.startsWith('SELECT orgmaster_core.revoke_administration_enrollment_intent')){f.state.revokeWrites++;f.state.intent.revoked=true;return {rows:[{receipt:structuredClone(f.state.intent)}]}}
+  return original(sql,values)
+ }
+ f.input={contractVersion:'orgmaster.administration-enrollment-intent.v1',commandId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',environmentKey:database,sourceRevision:f.source.sourceRevision,employeeId:'employee-target',directoryKey:{customerId:'verified-customer',userId:'immutable-google-user'},principalId:'native-existing',expiresAt:new Date(now+10*60000).toISOString(),expected:null,reason:'指定本人首位初始化',admittingWorkload:null}
+ f.run=(action,input=f.enrollmentPlan??f.input,clock=now)=>executeLocalEnrollmentIntent({client:f.client,context:f.context,source:f.source,input,action,ownerProof:f.proof,now:clock})
+ f.prepare=async()=>{const result=await f.run('plan',f.input);f.enrollmentPlan=result.plan;return result}
+ return f
+}
+test('local intent CLI is closed and the plan fills only the existing 045 intent wire',async()=>{
+ for(const action of ['intent-plan','intent-admit','intent-status','intent-revoke']){
+  const args=[action,'--config','own.json','--intent','intent.json',...(action==='intent-plan'?['--output','planned.json']:[])]
+  assert.equal(parseLocalAdministrationOwnerArgs(args).action,action)
+  for(const flag of ['--token','--sql','--database-url','--employee-id','--force','--plan'])assert.throws(()=>parseLocalAdministrationOwnerArgs([...args,flag,'forbidden']))
+ }
+ const f=enrollmentFixture(),result=await f.prepare()
+ assert.equal(result.status,'PLANNED');assert.equal(result.readiness.globalAdmissionEnabled,false);assert.equal(result.readiness.globalAdmissionWillNotBeChanged,true)
+ assert.equal(result.plan.intent.admittingWorkload.dbSessionUser,'jenfu_orgmaster_migrator');assert.equal(result.plan.intent.expected.administrationVersion,0);assert.equal(result.plan.intent.principalId,'native-existing');assert.equal(f.state.intentWrites,0)
+})
+test('local intent admits once, reads back, revokes once and cannot re-admit a revoked target',async()=>{
+ const f=enrollmentFixture();await f.prepare()
+ assert.equal((await f.run('admit')).status,'ADMITTED');assert.equal((await f.run('admit')).status,'ADMITTED');assert.equal(f.state.intentWrites,1)
+ assert.equal((await f.run('status')).status,'ADMITTED');assert.equal((await f.run('revoke')).status,'REVOKED');assert.equal((await f.run('revoke')).status,'REVOKED');assert.equal(f.state.revokeWrites,1)
+ await assert.rejects(f.run('admit'),/INTENT_REVOKED/);assert.equal(f.state.intentWrites,1);assert.equal(f.state.binderCalls,0)
+})
+test('local intent rejects credentials, foreign identity, expired target and unqualified known Principal before mutation',async()=>{
+ for(const change of [f=>f.input.idToken='forbidden',f=>f.input.directoryKey.idToken='forbidden',f=>f.input.environmentKey='jenfu_prod',f=>f.input.sourceRevision='0'.repeat(40),f=>f.input.expiresAt='2000-01-01T00:00:00.000Z',f=>f.state.accounts=[{principal_id:'native-existing',employee_id:'different-employee'}],f=>f.state.managed=[{employee_id:'different-employee',principal_id:'native-existing'}]]){
+  const f=enrollmentFixture();change(f);await assert.rejects(f.prepare);assert.equal(f.state.intentWrites,0)
+ }
+ const unresolved=enrollmentFixture();unresolved.input.principalId=null;const result=await unresolved.prepare();assert.equal(result.plan.intent.principalId,null);assert.equal(result.readiness.principalResolution,'verified_google_pair_required')
+})
+test('local intent source, role, immutable ownership, target and policy CAS drift fail closed',async()=>{
+ for(const change of [f=>f.source.workingTreeClean=false,f=>f.source.sourceSha256='0'.repeat(64),f=>f.context.config.target.port++,f=>f.state.roleRows[0].privileged=true,f=>f.state.beforeOwnership[0].body='drift',f=>f.state.governance='0'.repeat(64),f=>f.state.ledger[0].checksum_sha256='0'.repeat(64),f=>f.state.installed=false]){
+  const f=enrollmentFixture();await f.prepare();change(f);await assert.rejects(f.run('admit'));assert.equal(f.state.intentWrites,0)
+ }
+ const expired=enrollmentFixture();await expired.prepare();await assert.rejects(expired.run('admit',expired.enrollmentPlan,Date.parse(expired.input.expiresAt)),/INTENT_EXPIRED/)
+})
+test('local intent unknown COMMIT uses terminal readback without rewriting an intent or root',async()=>{
+ const f=enrollmentFixture();await f.prepare();f.state.failCommit=true
+ await assert.rejects(f.run('admit'),/INTENT_COMMIT_UNKNOWN_REQUIRES_STATUS/);assert.equal(f.state.intentWrites,1)
+ f.state.failCommit=false;assert.equal((await f.run('status')).status,'ADMITTED');await f.run('admit');assert.equal(f.state.intentWrites,1)
+ f.state.intent.receipt={commandId:f.input.commandId,activation:'pending'}
+ assert.equal((await f.run('status')).status,'ACTIVATION_PENDING');assert.equal((await f.run('admit')).status,'ACTIVATION_PENDING');await assert.rejects(f.run('revoke'),/INTENT_ALREADY_COMPLETED/);assert.equal(f.state.revokeWrites,0)
+ f.state.intent.receipt.activation='acknowledged';assert.equal((await f.run('status')).status,'INITIALIZED')
+})
+test('local intent status survives expiry and source advancement but never a changed immutable intent',async()=>{
+ const f=enrollmentFixture();await f.prepare();await f.run('admit');f.source.sourceRevision='f'.repeat(40)
+ assert.equal((await f.run('status',f.enrollmentPlan,Date.parse(f.input.expiresAt)+1)).status,'EXPIRED')
+ await assert.rejects(f.run('admit'));f.state.intent.intent.intent.directoryKey.userId='other-user';await assert.rejects(f.run('status'),/INTENT_RECEIPT_CONFLICT/)
 })

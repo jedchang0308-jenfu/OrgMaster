@@ -4,11 +4,13 @@ import path from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import pg from 'pg'
 import {createServer} from 'vite'
-import {readLocalOwnerSource,inspectLocalOwnerCluster,verifyLocalOwnerGoogleIdentity,readLocalOwnerFacts,planLocalOwnerBridge,commitLocalOwnerBridge,localOwnerHash} from './lib/dev070-local-administration-owner.mjs'
+import {readLocalOwnerSource,inspectLocalOwnerCluster,verifyLocalOwnerGoogleIdentity,readLocalOwnerFacts,planLocalOwnerBridge,commitLocalOwnerBridge,localOwnerHash,executeLocalEnrollmentIntent} from './lib/dev070-local-administration-owner.mjs'
 export function parseLocalAdministrationOwnerArgs(argv){
- const [action,...rest]=argv;if(!['plan','status','commit'].includes(action))throw new Error('DEV070_LOCAL_ARGUMENT_INVALID')
- const out={action};for(let i=0;i<rest.length;i+=2){if(!['--config','--plan','--output','--reason'].includes(rest[i])||!rest[i+1]||out[rest[i].slice(2)])throw new Error('DEV070_LOCAL_ARGUMENT_INVALID');out[rest[i].slice(2)]=rest[i+1]}
- if(!out.config||action==='plan'&&(!out.output||!out.reason||out.plan)||action==='commit'&&(!out.plan||out.output||out.reason)||action==='status'&&(out.output||out.reason))throw new Error('DEV070_LOCAL_ARGUMENT_INVALID')
+ const [action,...rest]=argv,required={plan:['config','output','reason'],commit:['config','plan'],status:['config'],'intent-plan':['config','intent','output'],'intent-admit':['config','intent'],'intent-status':['config','intent'],'intent-revoke':['config','intent']}[action]
+ if(!required)throw new Error('DEV070_LOCAL_ARGUMENT_INVALID')
+ const allowed=action==='status'?[...required,'plan']:required,out={action}
+ for(let i=0;i<rest.length;i+=2){const key=rest[i].startsWith('--')?rest[i].slice(2):'';if(!allowed.includes(key)||!rest[i+1]||out[key])throw new Error('DEV070_LOCAL_ARGUMENT_INVALID');out[key]=rest[i+1]}
+ if(required.some(key=>!out[key]))throw new Error('DEV070_LOCAL_ARGUMENT_INVALID')
  return out
 }
 async function planFile(root,filename,write=false){
@@ -38,6 +40,14 @@ async function main(){
   if(!operator||operator.database!==context.config.target.database||operator.host!=='127.0.0.1'||Number(operator.port)!==context.config.target.port||operator.session_user!=='postgres'||operator.current_user!=='postgres'||operator.rolsuper!==true)throw new Error('DEV070_LOCAL_OPERATOR_INVALID')
   await client.query('SET SESSION AUTHORIZATION jenfu_orgmaster_migrator')
   await runtime.verify()
+  if(options.action.startsWith('intent-')){
+   const filename=await planFile(root,options.intent),stat=await lstat(filename)
+   if(!stat.isFile()||stat.size<2||stat.size>1024*1024)throw new Error('DEV070_LOCAL_INTENT_INPUT_INVALID')
+   const input=JSON.parse(await readFile(filename,'utf8')),result=await executeLocalEnrollmentIntent({client,context,source,input,action:options.action.slice(7),ownerProof})
+   if(result.plan){const output=await planFile(root,options.output,true);await writeFile(output,JSON.stringify(result.plan,null,2)+'\n',{flag:'wx',mode:0o600});process.stdout.write(JSON.stringify({status:result.status,commandId:result.plan.intent.commandId,planSha256:result.plan.planSha256,intentSha256:result.plan.intentSha256,planPath:output,readiness:result.readiness})+'\n')}
+   else process.stdout.write(JSON.stringify(result)+'\n')
+   return
+  }
   if(options.action==='commit'){
    const filename=await planFile(root,options.plan),plan=JSON.parse(await readFile(filename,'utf8'))
    const receipt=await commitLocalOwnerBridge({client,context,source,plan,ownerProof})

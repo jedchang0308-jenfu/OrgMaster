@@ -110,10 +110,14 @@ export function planLocalOwnerBridge({context,source,facts,ownerProof,commandId=
  const core={format:'orgmaster.local-administration-bridge-plan.v1',commandId,sourceRevision:source.sourceRevision,sourceSha256:source.sourceSha256,configurationSha256:context.configurationSha256,profileSha256:context.config.profileRef.sha256,sqlProfileSha256:context.config.sqlProfileRef.sha256,runId:context.runId,target:context.config.target,postmaster:context.config.postmaster,clusterRecordSha256:context.clusterRecordSha256,ownerProof,beforeLedgerSha256:facts.ledgerSha256,beforeBindingsSha256:facts.bindingsSha256,beforeRuntimeRolesSha256:facts.runtimeRolesSha256,beforeOwnership:facts.beforeOwnership,ownershipBootstrap:source.ownershipBootstrap,migrations:facts.disposition.pending.map(entry=>({version:entry.version,path:entry.path,sourceSha256:entry.sourceSha256,appliedSha256:entry.appliedSha256})),localMigration:source.localMigration,fmsRuntimeLogin:`fms_test_runtime_${context.runId.slice(0,12)}`,reason,createdAt:new Date(now).toISOString(),expiresAt:new Date(now+15*60000).toISOString()}
  return {...core,planSha256:localOwnerHash(core)}
 }
-export async function commitLocalOwnerBridge({client,context,source,plan,ownerProof,now=Date.now()}){
+function assertLocalOwnerPlan({context,source,plan,ownerProof,now}){
  if(source.workingTreeClean!==true)fail('SOURCE_NOT_REVIEWABLE')
  const {planSha256,...core}=plan??{}
  if(localOwnerHash(core)!==planSha256||plan.format!=='orgmaster.local-administration-bridge-plan.v1'||plan.sourceRevision!==source.sourceRevision||plan.sourceSha256!==source.sourceSha256||plan.configurationSha256!==context.configurationSha256||plan.clusterRecordSha256!==context.clusterRecordSha256||plan.profileSha256!==context.config.profileRef.sha256||plan.sqlProfileSha256!==context.config.sqlProfileRef.sha256||canonical(plan.target)!==canonical(context.config.target)||canonical(plan.postmaster)!==canonical(context.config.postmaster)||canonical(plan.ownerProof)!==canonical(ownerProof)||!Number.isFinite(Date.parse(plan.expiresAt))||Date.parse(plan.expiresAt)<=now||Date.parse(plan.createdAt)>now||Date.parse(plan.expiresAt)-Date.parse(plan.createdAt)!==15*60000)fail('PLAN_STALE_OR_INVALID')
+ return {planSha256,core}
+}
+export async function commitLocalOwnerBridge({client,context,source,plan,ownerProof,now=Date.now()}){
+ const {planSha256,core}=assertLocalOwnerPlan({context,source,plan,ownerProof,now})
  let committing=false
  await client.query('BEGIN')
  try{
@@ -137,4 +141,86 @@ export async function commitLocalOwnerBridge({client,context,source,plan,ownerPr
   if(!receipt||receipt.planSha256!==planSha256||receipt.afterBindingsSha256!==facts.bindingsSha256||facts.disposition.count!==42)fail('COMMIT_READBACK_INVALID')
   committing=true;await client.query('COMMIT');return receipt
  }catch(error){if(!committing)await client.query('ROLLBACK').catch(()=>undefined);if(committing)fail('COMMIT_UNKNOWN_REQUIRES_STATUS');throw error}
+}
+
+const exactKeys=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).sort().join(',')===[...keys].sort().join(',')
+const boundedText=value=>typeof value==='string'&&value.length>=1&&value.length<=255
+function assertLocalEnrollmentIntent(intent,context,source,planning){
+ const keys=['contractVersion','commandId','environmentKey','sourceRevision','employeeId','directoryKey','principalId','expiresAt','expected','reason','admittingWorkload']
+ if(!exactKeys(intent,keys)||intent.contractVersion!=='orgmaster.administration-enrollment-intent.v1'||!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(intent.commandId??'')
+ ||intent.environmentKey!==context.config.target.database||intent.sourceRevision!==source.sourceRevision||!boundedText(intent.employeeId)||!exactKeys(intent.directoryKey,['customerId','userId'])||!boundedText(intent.directoryKey.customerId)||intent.directoryKey.customerId!==context.directoryCustomerId||!boundedText(intent.directoryKey.userId)||intent.principalId!==null&&!boundedText(intent.principalId)
+ ||typeof intent.expiresAt!=='string'||!Number.isFinite(Date.parse(intent.expiresAt))||new Date(intent.expiresAt).toISOString()!==intent.expiresAt||typeof intent.reason!=='string'||intent.reason.length<1||intent.reason.length>240||intent.reason!==intent.reason.trim().normalize('NFC')
+ ||planning&&(intent.expected!==null||intent.admittingWorkload!==null)
+ ||!planning&&(!exactKeys(intent.expected,['governanceRevision','organizationRevision','administrationVersion'])||!boundedText(intent.expected.governanceRevision)||!boundedText(intent.expected.organizationRevision)||intent.expected.administrationVersion!==0||!exactKeys(intent.admittingWorkload,['principalId','dbSessionUser','providerSubject'])||intent.admittingWorkload.principalId!=='principal-workload:orgmaster-administration-initialize'||intent.admittingWorkload.dbSessionUser!=='jenfu_orgmaster_migrator'||intent.admittingWorkload.providerSubject!==OWNER_SUBJECT))fail('INTENT_INPUT_INVALID')
+}
+async function readLocalEnrollmentReadiness(client,intent){
+ const row=(await client.query(`SELECT trim(a.canonical_sha256) governance_revision,e.workspace_revision,aa.admission_enabled FROM orgmaster_core.persistence_artifacts a JOIN orgmaster_core.persistence_authority authority ON a.batch_id=authority.active_batch_id CROSS JOIN orgmaster_core.managed_identity_admission_authority aa JOIN orgmaster_core.v_current_workspace_employees_v1 e ON e.employee_id=$1 AND e.employee_status='active' WHERE a.artifact_key='orgmaster-governance.v3.json' AND authority.singleton AND aa.singleton`,[intent.employeeId])).rows[0]
+ const state=(await client.query('SELECT * FROM orgmaster_contract.read_administration_state_v1()')).rows[0]
+ if(!row||!state||Number(state.administration_version)!==0||state.initialized_by_command_id!==null||typeof row.admission_enabled!=='boolean')fail('INTENT_PLAN_NOT_READY')
+ if(intent.principalId!==null){
+  const accounts=(await client.query('SELECT DISTINCT principal_id,employee_id FROM orgmaster_contract.v_active_principal_accounts_v1 WHERE principal_id=$1',[intent.principalId])).rows
+  if(accounts.length!==1||accounts[0].principal_id!==intent.principalId||accounts[0].employee_id!==intent.employeeId)fail('INTENT_TARGET_INVALID')
+ }
+ const managed=(await client.query('SELECT employee_id,principal_id FROM orgmaster_core.managed_daily_identities WHERE directory_customer_id=$1 AND directory_user_id=$2',[intent.directoryKey.customerId,intent.directoryKey.userId])).rows
+ if(managed.length>1||managed.some(r=>r.employee_id!==intent.employeeId||intent.principalId!==null&&r.principal_id!==intent.principalId))fail('INTENT_TARGET_INVALID')
+ return {expected:{governanceRevision:row.governance_revision,organizationRevision:row.workspace_revision,administrationVersion:0},readiness:{globalAdmissionEnabled:row.admission_enabled,globalAdmissionWillNotBeChanged:true,principalResolution:intent.principalId===null?'verified_google_pair_required':'pinned_existing_principal'}}
+}
+/** Owner-only local adapter to the existing 045 intent functions; no root writer. */
+export async function executeLocalEnrollmentIntent({client,context,source,input,action,ownerProof,now=Date.now()}){
+ if(!['plan','admit','status','revoke'].includes(action))fail('INTENT_ARGUMENT_INVALID')
+ const planning=action==='plan',write=action==='admit'||action==='revoke'
+ let basis,intent
+ if(planning){intent=input;assertLocalEnrollmentIntent(intent,context,source,true);if(Date.parse(intent.expiresAt)<=now||Date.parse(intent.expiresAt)>now+15*60000)fail('INTENT_EXPIRED')}
+ else{
+  if(!exactKeys(input,['format','basis','intent','intentSha256','planSha256'])||input.format!=='orgmaster.local-administration-enrollment-plan.v1'||!input.intent||localOwnerHash(input.intent)!==input.intentSha256)fail('INTENT_INPUT_INVALID')
+  const {planSha256,...core}=input;if(localOwnerHash(core)!==planSha256)fail('INTENT_INPUT_INVALID')
+  basis=input.basis;intent=input.intent
+  // Status may read a previous source/expired intent after an unknown outcome.
+  // It still requires the same immutable target/profile/OS/owner proof.
+  if(action==='status'){
+   const {planSha256,...core}=basis??{}
+   if(localOwnerHash(core)!==planSha256||basis.format!=='orgmaster.local-administration-bridge-plan.v1'||basis.configurationSha256!==context.configurationSha256||basis.profileSha256!==context.config.profileRef.sha256||basis.sqlProfileSha256!==context.config.sqlProfileRef.sha256||basis.clusterRecordSha256!==context.clusterRecordSha256||canonical(basis.target)!==canonical(context.config.target)||canonical(basis.postmaster)!==canonical(context.config.postmaster)||canonical(basis.ownerProof)!==canonical(ownerProof))fail('PLAN_STALE_OR_INVALID')
+   assertLocalEnrollmentIntent(intent,context,{sourceRevision:basis.sourceRevision},false)
+  }else{assertLocalOwnerPlan({context,source,plan:basis,ownerProof,now});assertLocalEnrollmentIntent(intent,context,source,false);if(Date.parse(intent.expiresAt)<=now||Date.parse(intent.expiresAt)>Date.parse(basis.expiresAt))fail('INTENT_EXPIRED')}
+  if(basis.commandId!==intent.commandId||basis.reason!==intent.reason)fail('INTENT_INPUT_INVALID')
+ }
+ if(ownerProof.email!==OWNER_EMAIL||ownerProof.subject!==OWNER_SUBJECT)fail('OWNER_IDENTITY_INVALID')
+ let committing=false
+ await client.query(write?'BEGIN':'BEGIN READ ONLY')
+ try{
+  if(write){await client.query("SET LOCAL lock_timeout='5s';SET LOCAL statement_timeout='30s'");await client.query("SELECT pg_advisory_xact_lock(hashtext('dev070-local-administration-bridge'),hashtext(current_database()))")}
+  const facts=await readLocalOwnerFacts(client,context,source)
+  if(!facts.installed||facts.disposition.count!==42||facts.beforeOwnership.some(r=>r.owner!=='jenfu_orgmaster_migrator'))fail('INTENT_BRIDGE_NOT_READY')
+  if(planning){
+   const {expected,readiness}=await readLocalEnrollmentReadiness(client,intent)
+   basis=planLocalOwnerBridge({context,source,facts,ownerProof,commandId:intent.commandId,reason:intent.reason,now})
+   intent={...intent,expected,admittingWorkload:{principalId:'principal-workload:orgmaster-administration-initialize',dbSessionUser:'jenfu_orgmaster_migrator',providerSubject:ownerProof.subject}}
+   await client.query('ROLLBACK')
+   const core={format:'orgmaster.local-administration-enrollment-plan.v1',basis,intent,intentSha256:localOwnerHash(intent)}
+   return {status:'PLANNED',plan:{...core,planSha256:localOwnerHash(core)},readiness}
+  }
+  const read=async()=>{
+   const value=(await client.query('SELECT orgmaster_core.read_administration_enrollment_intent_owner_v1($1::uuid) receipt',[intent.commandId])).rows[0]?.receipt??null
+   if(value!==null&&(!exactKeys(value,['intent','revoked','receipt'])||typeof value.revoked!=='boolean'||!exactKeys(value.intent,['contractVersion','intentHash','intent','admittedAt'])||value.intent.contractVersion!=='orgmaster.administration-enrollment-intent-receipt.v1'||value.intent.intentHash!==input.intentSha256||!exactKeys(value.intent.intent,Object.keys(intent))||value.receipt!==null&&(typeof value.receipt!=='object'||Array.isArray(value.receipt)||value.receipt.commandId!==intent.commandId||!['pending','acknowledged'].includes(value.receipt.activation))))fail('INTENT_RECEIPT_CONFLICT')
+   return value
+  }
+  const prior=await read()
+  if(prior&&localOwnerHash(prior.intent?.intent)!==input.intentSha256)fail('INTENT_RECEIPT_CONFLICT')
+  const initializedStatus=()=>prior.receipt.activation==='pending'?'ACTIVATION_PENDING':'INITIALIZED'
+  if(action==='status'){await client.query('ROLLBACK');return {status:prior===null?'NOT_FOUND':prior.receipt!==null?initializedStatus():prior.revoked?'REVOKED':Date.parse(intent.expiresAt)<=now?'EXPIRED':'ADMITTED',receipt:prior}}
+  if(prior!==null&&prior.receipt!==null){if(action==='revoke')fail('INTENT_ALREADY_COMPLETED');await client.query('ROLLBACK');return {status:initializedStatus(),receipt:prior}}
+  if(prior?.revoked){if(action==='admit')fail('INTENT_REVOKED');await client.query('ROLLBACK');return {status:'REVOKED',receipt:prior}}
+  if(facts.ledgerSha256!==basis.beforeLedgerSha256||facts.bindingsSha256!==basis.beforeBindingsSha256||facts.runtimeRolesSha256!==basis.beforeRuntimeRolesSha256||canonical(facts.beforeOwnership)!==canonical(basis.beforeOwnership))fail('PLAN_CAS_CONFLICT')
+  if(action==='admit'&&prior){await client.query('ROLLBACK');return {status:'ADMITTED',receipt:prior}}
+  if(action==='revoke'&&!prior)fail('INTENT_NOT_FOUND')
+  if(action==='admit'){
+   const readiness=await readLocalEnrollmentReadiness(client,intent)
+   if(canonical(readiness.expected)!==canonical(intent.expected))fail('PLAN_CAS_CONFLICT')
+   await client.query('SELECT orgmaster_core.admit_administration_enrollment_intent_v1($1::jsonb) receipt',[JSON.stringify(intent)])
+  }else await client.query('SELECT orgmaster_core.revoke_administration_enrollment_intent_v1($1::uuid) receipt',[intent.commandId])
+  const receipt=await read()
+  if(!receipt||localOwnerHash(receipt.intent?.intent)!==input.intentSha256||receipt.receipt!==null||receipt.revoked!==(action==='revoke'))fail('INTENT_READBACK_INVALID')
+  committing=true;await client.query('COMMIT')
+  return {status:action==='admit'?'ADMITTED':'REVOKED',receipt}
+ }catch(error){if(!committing)await client.query('ROLLBACK').catch(()=>undefined);if(committing)fail('INTENT_COMMIT_UNKNOWN_REQUIRES_STATUS');throw error}
 }

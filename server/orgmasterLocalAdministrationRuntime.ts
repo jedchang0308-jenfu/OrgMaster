@@ -129,7 +129,7 @@ export function readLocalAdministrationOwnerInput(environment:NodeJS.ProcessEnv=
   const root=realpathSync(path.resolve(fileURLToPath(new URL('../',import.meta.url))))
   if(!environment.ORGMASTER_DEV070_LOCAL_ADMINISTRATION_CONFIG||environment.ORGMASTER_ROOT&&environment.ORGMASTER_ROOT!==root)fail()
   const bound=readBound({environment,root,configPath:environment.ORGMASTER_DEV070_LOCAL_ADMINISTRATION_CONFIG as string})
-  const result={ownerRoot:root,configurationPath:environment.ORGMASTER_DEV070_LOCAL_ADMINISTRATION_CONFIG,configurationSha256:bound.configHash,config:bound.config,privateRoot:bound.privateRoot,clusterRoot:bound.clusterRoot,platformRoot:bound.platformRoot,runId:bound.runId,adcSha256:bound.adcHash}
+  const result={ownerRoot:root,configurationPath:environment.ORGMASTER_DEV070_LOCAL_ADMINISTRATION_CONFIG,configurationSha256:bound.configHash,config:bound.config,privateRoot:bound.privateRoot,clusterRoot:bound.clusterRoot,platformRoot:bound.platformRoot,runId:bound.runId,adcSha256:bound.adcHash,directoryCustomerId:bound.directory.customerId}
   Object.defineProperties(result,{runtimeUrl:{value:bound.runtimeUrl,enumerable:false},credentials:{value:bound.credentials,enumerable:false}})
   return result as typeof result&{readonly runtimeUrl:string;readonly credentials:RecordValue}
  }catch{return fail()}
