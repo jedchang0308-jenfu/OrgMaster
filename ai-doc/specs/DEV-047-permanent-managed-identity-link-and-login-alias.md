@@ -57,7 +57,7 @@ Current Phase 已依本文件固定的 I0～I6 execution boundary 完成實作�
 - Employee lifecycle 的唯一 database authority 是 active persistence batch 中 `orgmaster-workspace.v1.json.currentVersionId`所指向、`kind=document`的 current workspace artifact；governance version 內的 organization snapshot、draft workspace與Browser state都不是 principal admission authority。`012`必須建立一個 private current-workspace Employee projection，供seed、mutation guard及contract內legacy／managed兩支共用，避免舊privileged mapping在Employee停用後由舊snapshot復活。
 - 現行 entitlement outbox底層enqueue只接受`application_id='ai-pdm'`；只放寬event-kind constraint仍無法失效OrgMaster session。`012`必須在owned schema內提供multi-application enqueue／lease implementation，並保留`orgmaster_contract.claim／complete／retry_entitlement_change_outbox_v1`的既有signature作相容轉接，不得修改舊`access_governance` schema。
 - `organization.active-principal.v1`的JSON schema、欄位與version不變，因此既有`orgmaster.identity-visibility`manifest signature／payload hash也不變；新增managed row必須用DEV-047 producer fixture通過既有frozen canonical-principal schema，不能藉producer expansion重寫vendor contract lock。
-- 現行 server permission evaluator以治理文件中的 `issuer + subject`找 Employee。對已經 auth middleware 解析成功的 managed-daily session，Current Slice 新增 server-only verified-Employee evaluator；Browser／公開 permission API 不接受 Employee ID 取代登入證據，特權 mutation 仍要求 person-specific `human_privileged` link。
+- 現行 server permission evaluator以治理文件中的 `issuer + subject`找 Employee。對已經 auth middleware 解析成功的 managed-daily session，Current Slice 新增 server-only verified-Employee evaluator；Browser／公開 permission API 不接受 Employee ID 取代登入證據。員編設定／更正依明示`orgmaster.employee-number.manage`授權；provider身分link、refresh enqueue與其他特權mutation仍要求person-specific `human_privileged` link。
 - Google Workspace Licensing API 公開契約只提供 `apps.licensing` scope，沒有可供本 DEV 使用的 read-only licensing scope。為維持 OrgMaster zero provider writes，本階段不得授予該 scope，也不得宣稱 Workspace license 狀態可被權威讀取。
 
 外部技術依據：
@@ -294,11 +294,11 @@ Google Admin完成username改名後，OrgMaster只有在`readByDirectoryKey` fre
 | Permission | 能力 |
 | --- | --- |
 | `orgmaster.identity.view` | 讀取 redacted managed identity 與 projection |
-| `orgmaster.employee_number.manage` | 單筆設定／更正 JFS；不能批次 |
+| `orgmaster.employee-number.manage` | 單筆設定／更正 JFS；不能批次 |
 | `orgmaster.identity.link` | 搜尋 exact candidate 並人工確認 link |
 | `orgmaster.identity.refresh` | 要求 read-only refresh；不能改 Employee、link 或 Google |
 
-- `orgmaster.employee_number.manage`與`orgmaster.identity.link`只授予以 person-specific `human_privileged`登入的 OrgMaster 超級管理者；shared identity、一般治理管理者、主管與 daily identity 不得持有。
+- `orgmaster.employee-number.manage`以已發布的明示權限控制逐筆設定／更正員工編號；actor仍須是有效 verified human Principal，並通過既有session／epoch、scope、CAS、command receipt、tombstone與audit邊界，但不再以`human_privileged`靜態taxonomy作為額外門檻。`orgmaster.identity.link`仍只授予person-specific `human_privileged` OrgMaster超級管理者；identity refresh即使具明示permission，enqueue仍要求active `human_privileged` admission。shared／service identity不得設定員工編號，未獲明示權限者不得寫入。
 - Google Admin 權限與 OrgMaster 權限完全獨立；在 OrgMaster 是超級管理者不代表能在 Google 建立或修改帳號。
 - server 必須重新授權，不能依 UI 隱藏控制。桌面 mutation gate 仍要求至少 1024px＋hover＋fine pointer；窄版只讀。
 - audit 至少含 action、commandId、actor principal、Employee ID、old／new JFS（若適用）、Directory key fingerprint、before／after state、revision、time、result 與 sanitized reason；不得含 token、credential、raw provider payload 或 recovery data。
@@ -395,7 +395,7 @@ Current Slice 固定為 `I0 Contract guards → I1 Registry persistence → I2 D
 4. 既有 active 無號 Employee 只由一次性 legacy exemption 保持相容：可閱讀、可維持 active，但不能 link。設定合法號碼後 exemption 永久結束；不得為新 Employee 建 exemption。
 5. managed-daily link 不寫入可手動發布的 governance `identityLinks[]`，避免首次登入必須偽造管理者 publish。它由 managed identity registry 單一寫入，透過 `orgmaster_contract.v_active_principal_mappings_v1`的 additive union 成為 authentication mapping；既有 governance links 繼續承擔 `human_privileged`、legacy與其他非 daily 身分。
 6. Current Slice 不擴充 `PrincipalAccountTypeV1`。`human_daily_managed`是 managed registry 的 `identityKind`；既有 admission enum與 DEV-045 mixed-account projection不重寫。未來若 consumer 需要顯示該分類，另開 additive contract version。
-7. 一般已驗證 managed-daily session 的 OrgMaster read／ordinary action permission，以 auth middleware 已解析的 `employeeId`對 active published role assignment求值；只有 server-internal evaluator可走此路徑。治理 publish、身分 link、員編更正及其他 privileged mutation仍要求既有 `human_privileged` identity，不能用 daily identity升權。
+7. 一般已驗證 managed-daily session 的 OrgMaster read／ordinary action permission，以 auth middleware 已解析的 `employeeId`對 active published role assignment求值；只有 server-internal evaluator可走此路徑。逐筆員編設定／更正依`orgmaster.employee-number.manage`明示權限與既有write fence執行；治理publish、身分link及其他privileged mutation仍要求既有`human_privileged` identity，不能用daily identity升權。
 8. DEV-045 local account-enrollment程式與測試保留為歷史 evidence，不刪資料、不改完成結論；正常 Employee UI、Vite local composition與 DEV-047 QC 改由 managed-identity API 接管，不再 render invite／create／Email輸入。Production server既有 `accountEnrollmentEnabled=false`預設保持不變。
 9. Google adapter source可以交付並以 mocked HTTP驗證，但 production construction與 auth bridge flag預設關閉。沒有 tenant／domain／DWD receipt 時，啟用要求必須 fail closed，不得退回 local deterministic provider。
 10. `012`只擴充現行 active-principal mapping producer，不改DEV-040 application entitlement欄位或授權語意。Production activation前必須由每個in-scope consumer readback證明「managed principal → Employee → current effective role」完整成立；若任一consumer直接依賴legacy internal view或無法接受現行V1 additive rows，應另建versioned contract／cross-repo migration，不能在DEV-047內暗改consumer。
@@ -552,7 +552,7 @@ SDK流程依[Firebase Google sign-in官方文件](https://firebase.google.com/do
 
 新增pure `evaluatePermissionForEmployee(document, organizationSource, employeeId, request, options)`；`organizationSource`必須是同次server read取得的current workspace ID／revision／state，不接受caller手寫active布林，函式先確認Employee current active，再依active published policy沿用deny-overrides、scope、validity與role status規則。另新增pure `hasEffectiveOrgmasterRoleForEmployee(document, organizationSource, employeeId, now)`，只判斷第8.2節role資格，不把某一個permission grant當登入資格。兩者都不驗證身分，故前者只可由已經`readVerifiedRequestIdentity()`取得server session的authorization adapter呼叫，後者只可由server auth／alias adapter呼叫；公開governance evaluation endpoint繼續只接受issuer＋subject。
 
-`orgmaster.employee_number.manage`與`orgmaster.identity.refresh`加入 `ORGMASTER_PERMISSIONS`；OrgMaster admin seed role取得兩者。`orgmaster.identity.invite`保留為DEV-045歷史permission但DEV-047沒有route／CTA。Local profiles固定：admin有 view／employee-number.manage／link／refresh；governance-manager只有 view／refresh；method-manager與employee沒有 identity view。Production的 link與number service額外驗證 active `human_privileged` admission，不能因 admin role或 daily session單獨通過。
+`orgmaster.employee-number.manage`與`orgmaster.identity.refresh`加入 `ORGMASTER_PERMISSIONS`；OrgMaster admin seed role取得兩者。`orgmaster.identity.invite`保留為DEV-045歷史permission但DEV-047沒有route／CTA。Local profiles固定：admin有 view／employee-number.manage／link／refresh；governance-manager只有 view／refresh；method-manager與employee沒有 identity view。Production的number service依已發布`orgmaster.employee-number.manage`與既有verified human Principal write fence判定；link及refresh服務仍額外驗證active `human_privileged` admission，read projection也需與此資格一致。
 
 ## 18. Exact Repository and File Impact
 
@@ -665,8 +665,8 @@ Production activation順序固定為：先部署所有instance皆具`42883`限�
 
 ### 20.4 UI and permission
 
-- A14：超級管理者由正常 Employee 明細逐步看見正確唯一主動作；一般角色、shared identity 與窄版只有唯讀狀態。
-- A15：refresh 成功只顯示 queued／deduplicated；只有 fresh readback 改變 projection 或清除 mismatch。
+- A14：具已發布`orgmaster.employee-number.manage`的verified `human_personal`或`human_privileged`可由正常Employee明細逐筆設定／更正員編；缺少權限及shared／service identity不得寫入。Provider身分link仍只對具`orgmaster.identity.link`的person-specific `human_privileged`顯示；窄版維持唯讀。
+- A15：refresh action只投影給具`orgmaster.identity.refresh`及active `human_privileged` admission的principal；成功只顯示 queued／deduplicated，只有 fresh readback改變projection或清除mismatch。
 - A16：登入錯誤不暴露 Employee、帳號、角色或 mismatch 是否存在；管理 UI 才顯示可操作診斷。
 
 ### 20.5 Correction-review regression cases
@@ -679,6 +679,7 @@ Production activation順序固定為：先部署所有instance皆具`42883`限�
 | A20 併發及affected apps | Gate enable與new bind／application publish同時進行，新row不繞preflight；Employee停用同commit移除application，舊app仍收到event；outbox insert失敗全rollback；所有writer鎖序一致且無deadlock |
 | A21 Sync不丟事件 | Leased read途中更正JFS，舊read完成不得用舊JFS清mismatch且必有一個successor；completed60秒內domain event不得去重掉；連續crash第5次到期為dead且不重複發HTTP；rerun等待retry成功或terminal再生successor，不能自行把attempt歸零；多instance＋inline read合計60秒grant<=60 |
 | A22 恢復與舊session | Local在第一個artifact已replace後crash，所有讀取先阻擋再從journal roll-forward；第二writer拒絕。Central invalidation在mapping已移除時仍需更新曾發session的principal epoch，復職後舊session拒絕而新session可用 |
+| A23 員編與身分資格 | 有效`human_personal`且具已發布`orgmaster.employee-number.manage`者可逐筆設定／更正；缺少permission回403且不寫入，service Principal即使取得該permission仍拒絕。`identity.link`與refresh enqueue仍要求active `human_privileged` admission；所有成功員編寫入保留CAS、不可重用tombstone、冪等receipt與audit |
 
 A22的Platform語意不能只用「function存在／回200／affectedPrincipalCount=0」代替。Support attestation必須附「先發session→移除mapping→呼叫invalidation→恢復→舊epoch拒絕」證據；若Platform實際以current mapping查principal而漏失，停止production整合並交由其owner提供versioned contract修正，不在OrgMaster讀sibling core或改dispatcher target冒充完成。Mock證據僅證明本repo遵守要求，不證明Platform已相容。
 
@@ -742,7 +743,7 @@ npm run qc:dev-047:postgres
 npm run qc:dev-047:browser
 ~~~
 
-`qc:dev-047:contract`執行`scripts/qc-dev-047-contract.mjs`，檢查route、scope、write-method denylist、frozen principal schema／manifest hash、managed producer fixture、current-workspace projection、legacy／managed共同Employee＋invalidation barrier、multi-app outbox V1 wrapper、migration object／explicit grant manifest、舊writer revoke、Node與DB兩層default false、active-principal欄位映射與old account UI未被normal entry import。A17～A22各自必須列在contract／postgres／browser manifest，附fixture、command、expected／actual與證據路徑，不可因舊測試總數通過而省略。
+`qc:dev-047:contract`執行`scripts/qc-dev-047-contract.mjs`，檢查route、scope、write-method denylist、frozen principal schema／manifest hash、managed producer fixture、current-workspace projection、legacy／managed共同Employee＋invalidation barrier、multi-app outbox V1 wrapper、migration object／explicit grant manifest、舊writer revoke、Node與DB兩層default false、active-principal欄位映射與old account UI未被normal entry import。A17～A23各自必須列在contract／postgres／browser manifest，附fixture、command、expected／actual與證據路徑，不可因舊測試總數通過而省略。
 
 `qc:dev-047:postgres`只對明確提供的disposable PostgreSQL target依序套用001～012，執行managed bind／legacy publish同時競爭、legacy current＋published history與managed inactive／quarantined pair reservation、同Employee continuity、legacy與managed current workspace versus draft／old snapshot、DB gate enable／disable、gate-off quarantine、known-negative與stable-key 404、candidate miss／403 preservation、Employee inactive、multi-app support pre-registration／pending／verified／activate、舊AI-PDM event相容、outbox insert failure rollback、invalidation未完成不readmit、receipt完成後new session可建立而old epoch session拒絕、60秒sliding dedup、expired lease reclaim／old worker rejection、sequence supersede、retention safety、mapping version monotonic、舊writer42501、routine-only runtime與contract union cases；缺少isolated target時不得假裝PASS，也不得指向staging／production。`qc:dev-047:browser`使用task-owned ephemeral server／temp root，依AGENTS runtime規則記錄port、PID、purpose與cleanup，結束時關閉該process tree並確認port釋放。
 
@@ -820,6 +821,7 @@ Browser evidence固定輸出 `qa/dev-047/browser/manifest.json`及 1440x900、10
 
 ## 24. Change Log
 
+- 2026-11-05：依使用者確認，逐筆員編設定／更正改由已驗證的人員 Principal 與 active published `orgmaster.employee-number.manage` 權限授權，不再附加 `human_privileged` 分類門檻；保留 verified session／epoch、scope、CAS、冪等 receipt、永久 tombstone 與 audit。Google provider identity link、refresh enqueue 仍要求 active person-specific `human_privileged` admission，read projection 與寫入資格一致。DEV-049 與 DEV-057 身分／Principal 契約不變。
 - 2026-09-23：current-source reconciliation 發現 migration 013 bind／verify 與 migration 017 fenced governance writer 取得不同 singleton row lock，故 DEV-047 原有 A9a 實作不變量未在現行 composition 中成立。此為新發現的 source defect，非重寫 2026-09-16 的測試事實；由 `ORGMASTER/DEV-057` 以 migration 021 加入共同 `managed_identity_admission_authority` lock、published-pair reservation／collision guard及雙向隔離 PostgreSQL 競態驗證。
 
 - 2026-09-16：依 DEV-047 CAPA 完成 runner、contract checker、負向判定測試與 012 source repair；task-owned PostgreSQL 001～012、A17～A22、cleanup、targeted regression、build及DB boundary通過。CAPA三出口結案；production migration／activation／release仍gated。

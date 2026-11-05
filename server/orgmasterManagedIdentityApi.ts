@@ -4,6 +4,7 @@ import type { AssignEmployeeNumberRequestV1, ConfirmManagedIdentityLinkRequestV1
 import { verifiedGovernanceActor } from './orgmasterRequestIdentity'
 import { createManagedIdentityService, ManagedIdentityServiceError, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
 import { createLocalDeterministicDirectoryPort, createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort, readGoogleDirectoryRuntimeConfig } from './orgmasterManagedDirectoryPort'
+import { createOrgmasterDatabase } from './orgmasterDatabase'
 
 export const MANAGED_IDENTITY_API_PATH = '/api/orgmaster/employees'
 export const MANAGED_IDENTITY_NUMBERS_API_PATH = '/api/orgmaster/employee-numbers'
@@ -18,7 +19,7 @@ function sendJson(response: ServerResponse, status: number, payload: unknown) {
 
 function statusFor(code: string) {
   if (code === 'IDENTITY_CONTEXT_REQUIRED') return 401
-  if (['IDENTITY_VIEW_REQUIRED', 'IDENTITY_NUMBER_MANAGE_REQUIRED', 'IDENTITY_LINK_REQUIRED', 'IDENTITY_REFRESH_REQUIRED', 'DB_ADMISSION_DISABLED', 'HUMAN_PRIVILEGED_REQUIRED'].includes(code)) return 403
+  if (['IDENTITY_VIEW_REQUIRED', 'IDENTITY_NUMBER_MANAGE_REQUIRED', 'IDENTITY_LINK_REQUIRED', 'IDENTITY_REFRESH_REQUIRED', 'DB_ADMISSION_DISABLED', 'HUMAN_PRIVILEGED_REQUIRED', 'HUMAN_PRINCIPAL_REQUIRED'].includes(code)) return 403
   if (code === 'EMPLOYEE_NOT_FOUND') return 404
   if (['EMPLOYEE_NUMBER_INVALID', 'EMPLOYEE_NUMBER_REQUIRED', 'INVALID_REQUEST', 'MANAGED_PRIMARY_EMAIL_INVALID', 'MANAGED_PRIMARY_EMAIL_DOMAIN_NOT_ALLOWED', 'DIRECTORY_USER_INELIGIBLE'].includes(code)) return 422
   if (['EMPLOYEE_NUMBER_CONFLICT', 'EMPLOYEE_NUMBER_RETIRED', 'REVISION_CONFLICT', 'CANDIDATE_INVALID', 'IDEMPOTENCY_CONFLICT', 'DIRECTORY_CANDIDATE_MISMATCH', 'DIRECTORY_CANDIDATE_NOT_FOUND', 'DIRECTORY_IDENTITY_CONFLICT'].includes(code)) return 409
@@ -163,9 +164,13 @@ export function createOrgmasterManagedIdentityMiddleware(root = process.cwd(), d
             auth: createGoogleDirectoryAuthPort({ delegatedSubject: directoryConfig.delegatedSubject, serviceAccountEmail: directoryConfig.serviceAccountEmail }),
           })
         : undefined
+  const database = !service && !devEnabled && process.env.ORGMASTER_PERSISTENCE_MODE === 'cloud-sql' && process.env.ORGMASTER_POSTGRES_URL?.trim()
+    ? createOrgmasterDatabase(process.env.ORGMASTER_POSTGRES_URL, process.env)
+    : undefined
   const runtime = service ?? createManagedIdentityService({
     root,
     devEnabled,
+    database,
     directory,
     managedDomain: !devEnabled && directoryConfig.enabled ? directoryConfig.domain : undefined,
     directoryCustomerId: !devEnabled && directoryConfig.enabled ? directoryConfig.customerId : undefined,

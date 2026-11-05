@@ -99,6 +99,28 @@ describe('EmployeeManagedIdentitySection', () => {
     act(() => root.unmount())
   })
 
+  it('reports an employee-number write failure as a save error rather than a company-settings read error', async () => {
+    api.assignManagedEmployeeNumber.mockRejectedValueOnce(new Error('store unavailable'))
+    const { host, root } = render()
+    await flush()
+    act(() => host.querySelector<HTMLButtonElement>('button')?.click())
+    await flush()
+    const input = host.querySelector<HTMLInputElement>('input')
+    act(() => {
+      if (!input) return
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(input, 'jfs0004')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await flush()
+    const submit = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.includes('儲存編號'))
+    act(() => submit?.click())
+    await flush()
+    expect(host.textContent).toContain('目前無法儲存員工編號，請稍後再試。')
+    expect(host.textContent).not.toContain('目前無法讀取公司身分設定')
+    act(() => root.unmount())
+  })
+
   it('marks duplicate employee numbers as invalid before submit', async () => {
     const { host, root } = render()
     await flush()

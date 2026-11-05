@@ -350,12 +350,12 @@ describe('employee-number command fencing and Directory readiness', () => {
     link: 'orgmaster.identity.link',
     refresh: 'orgmaster.identity.refresh',
   }
-  function authorizedGovernance(codes: string[], humanPrivileged = true) {
+  function authorizedGovernance(codes: string[], accountType: 'human_personal' | 'human_privileged' | 'service' | null = 'human_privileged') {
     const permissions = codes.map((code) => ({ id: 'permission-' + code, applicationId: 'orgmaster', code, status: 'active' }))
     const policy = {
       applications: [{ id: 'orgmaster', status: 'active' }],
       identityLinks: [{ id: 'link-1', principalId: actor.principalId, employeeId: actor.employeeId, issuer: actor.issuer, subject: actor.subject, status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null }],
-      principalAdmissions: humanPrivileged ? [{ id: 'admission-1', identityLinkId: 'link-1', accountType: 'human_privileged', status: 'active' }] : [],
+      principalAdmissions: accountType ? [{ id: 'admission-1', identityLinkId: 'link-1', accountType, status: 'active' }] : [],
       applicationRoles: [{ id: 'role-1', applicationId: 'orgmaster', status: 'active' }],
       permissions,
       roleAssignments: [{ employeeId: 'employee-1', applicationId: 'orgmaster', roleId: 'role-1', scope: { kind: 'global' }, status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null }],
@@ -428,25 +428,21 @@ describe('employee-number command fencing and Directory readiness', () => {
     expect(repository.readEmployeeNumbers).not.toHaveBeenCalled()
   })
 
-  it.each(targetIds)('checks privileged status before reading target %s for identity writes', async employeeId => {
+  it.each(targetIds)('checks privileged status before reading target %s for provider identity writes', async employeeId => {
     vi.mocked(readExistingGovernanceStore)
-      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.manageNumber], false))
-      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.link], false))
-      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.link], false))
+      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.link], 'human_personal'))
+      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.link], 'human_personal'))
     vi.mocked(loadOrganizationSource).mockClear()
     const repository = {
-      mode: 'postgresql', assignNumberCommand: vi.fn(), readEmployeeManagedIdentity: vi.fn(),
+      mode: 'postgresql', readEmployeeManagedIdentity: vi.fn(),
       readExisting: vi.fn(), readCandidateForConfirmation: vi.fn(), createCandidate: vi.fn(),
     }
     const managedIdentityService = noDirectoryService(repository)
-    const numberRequest = { commandId: 'privileged-command', employeeNumber: 'JFS0008', expectedRegistryRevision: '0', expectedWorkspaceRevision: 'workspace-revision' }
 
-    await expect(managedIdentityService.assignNumber(employeeId, actor, numberRequest)).rejects.toMatchObject({ code: 'HUMAN_PRIVILEGED_REQUIRED' })
     await expect(managedIdentityService.findCandidate(employeeId, actor, candidateRequest)).rejects.toMatchObject({ code: 'HUMAN_PRIVILEGED_REQUIRED' })
     await expect(managedIdentityService.confirmLink(employeeId, actor, confirmationRequest)).rejects.toMatchObject({ code: 'HUMAN_PRIVILEGED_REQUIRED' })
 
     expect(loadOrganizationSource).not.toHaveBeenCalled()
-    expect(repository.assignNumberCommand).not.toHaveBeenCalled()
     expect(repository.readEmployeeManagedIdentity).not.toHaveBeenCalled()
     expect(repository.readExisting).not.toHaveBeenCalled()
     expect(repository.readCandidateForConfirmation).not.toHaveBeenCalled()
@@ -476,7 +472,7 @@ describe('employee-number command fencing and Directory readiness', () => {
   )
 
   it('keeps employee-number management available while link and refresh stay disabled without Directory', async () => {
-    vi.mocked(readExistingGovernanceStore).mockResolvedValueOnce(authorizedGovernance([permissionCodes.view, permissionCodes.manageNumber]))
+    vi.mocked(readExistingGovernanceStore).mockResolvedValueOnce(authorizedGovernance([permissionCodes.view, permissionCodes.manageNumber], 'human_personal'))
     const repository = {
       mode: 'postgresql',
       readEmployeeManagedIdentity: vi.fn(async () => readModel()),
@@ -485,6 +481,50 @@ describe('employee-number command fencing and Directory readiness', () => {
     const model = await noDirectoryService(repository).read('employee-1', actor)
 
     expect(model.capabilities).toMatchObject({ manageNumber: true, manageLink: false, refresh: false })
+  })
+
+  it('keeps refresh and provider-link capabilities disabled for a personal actor even when permissions are present', async () => {
+    vi.mocked(readExistingGovernanceStore).mockResolvedValueOnce(authorizedGovernance([
+      permissionCodes.view, permissionCodes.manageNumber, permissionCodes.link, permissionCodes.refresh,
+    ], 'human_personal'))
+    const repository = {
+      mode: 'postgresql',
+      readEmployeeManagedIdentity: vi.fn(async () => readModel()),
+    }
+    const managedIdentityService = createManagedIdentityService({
+      root: 'fixture', devEnabled: false, managedDomain: 'jenfu.com.tw', directoryCustomerId: 'customer-1',
+      directory: directory(), repository: repository as unknown as ManagedIdentityRepositoryV1,
+    })
+
+    const model = await managedIdentityService.read('employee-1', actor)
+
+    expect(model.capabilities).toMatchObject({ manageNumber: true, manageLink: false, refresh: false })
+  })
+
+  it.each([
+    ['postgresql', 'human_personal', false],
+    ['postgresql', 'human_privileged', true],
+    ['local-json', 'human_personal', false],
+    ['local-json', 'human_privileged', true],
+  ] as const)('projects provider actions consistently for %s / %s', async (mode, accountType, canUseProviderActions) => {
+    vi.mocked(readExistingGovernanceStore).mockResolvedValueOnce(authorizedGovernance([
+      permissionCodes.view, permissionCodes.manageNumber, permissionCodes.link, permissionCodes.refresh,
+    ], accountType))
+    const repository = mode === 'postgresql'
+      ? { mode, readEmployeeManagedIdentity: vi.fn(async () => readModel()) }
+      : { mode, readExisting: vi.fn(async () => ({ document: { registry: { assignments: [] }, managedDailyIdentities: [] } })) }
+    const service = createManagedIdentityService({
+      root: 'fixture', devEnabled: false, managedDomain: 'jenfu.com.tw',
+      directoryCustomerId: 'customer-1', directory: directory(), repository: repository as unknown as ManagedIdentityRepositoryV1,
+    })
+
+    const model = await service.read('employee-1', actor)
+
+    expect(model.capabilities).toMatchObject({
+      manageNumber: true,
+      manageLink: canUseProviderActions,
+      refresh: canUseProviderActions,
+    })
   })
 
   it('denies a verified Principal before reading a target employee without number permission', async () => {
@@ -509,9 +549,34 @@ describe('employee-number command fencing and Directory readiness', () => {
     expect(loadOrganizationSource).not.toHaveBeenCalled()
     expect(repository.assignNumberCommand).not.toHaveBeenCalled()
   })
+
+  it('returns 403 for a service Principal with number permission before reading or writing an employee', async () => {
+    vi.mocked(readExistingGovernanceStore).mockResolvedValueOnce(authorizedGovernance([permissionCodes.manageNumber], 'service'))
+    vi.mocked(loadOrganizationSource).mockClear()
+    const repository = { assignNumberCommand: vi.fn() }
+    const service = noDirectoryService(repository)
+    const request = Readable.from([JSON.stringify({ commandId: 'service-number-command', employeeNumber: 'JFS0008', expectedRegistryRevision: '0', expectedWorkspaceRevision: 'workspace-revision' })]) as IncomingMessage
+    request.method = 'PUT'
+    request.url = '/api/orgmaster/employees/employee-1/employee-number'
+    request.headers = { origin: 'https://orgmaster.test', host: 'orgmaster.test' }
+    setVerifiedRequestIdentity(request, {
+      ...actor, id: actor.sessionId, identityIssuer: actor.issuer, identitySubject: actor.subject,
+    } as OrgmasterSession)
+
+    const result = await new Promise<{ status: number; body: unknown }>((resolve) => {
+      const response = { statusCode: 0, setHeader: vi.fn(), end(body: string) { resolve({ status: this.statusCode, body: JSON.parse(body) }) } }
+      createOrgmasterManagedIdentityMiddleware('fixture', false, service)(request, response as unknown as ServerResponse, () => { throw new Error('Unexpected next') })
+    })
+
+    expect(result).toEqual({ status: 403, body: { error: 'HUMAN_PRINCIPAL_REQUIRED' } })
+
+    expect(loadOrganizationSource).not.toHaveBeenCalled()
+    expect(repository.assignNumberCommand).not.toHaveBeenCalled()
+  })
   it('checks refresh permission before reporting an unavailable Directory and never queues a workerless refresh', async () => {
     vi.mocked(readExistingGovernanceStore)
       .mockResolvedValueOnce(authorizedGovernance([permissionCodes.manageNumber]))
+      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.refresh], 'human_personal'))
       .mockResolvedValueOnce(authorizedGovernance([permissionCodes.refresh]))
     const repository = { enqueueRefresh: vi.fn(async () => ({ disposition: 'queued' as const, requestId: 'refresh-1' })) }
     const service = noDirectoryService(repository)
@@ -519,15 +584,17 @@ describe('employee-number command fencing and Directory readiness', () => {
     await expect(service.enqueueRefresh('employee-1', actor, 'manual', 'refresh-command-1'))
       .rejects.toMatchObject({ code: 'IDENTITY_REFRESH_REQUIRED' })
     await expect(service.enqueueRefresh('employee-1', actor, 'manual', 'refresh-command-2'))
+      .rejects.toMatchObject({ code: 'HUMAN_PRIVILEGED_REQUIRED' })
+    await expect(service.enqueueRefresh('employee-1', actor, 'manual', 'refresh-command-3'))
       .rejects.toMatchObject({ code: 'DIRECTORY_READ_UNAVAILABLE', details: { retryable: true } })
     expect(repository.enqueueRefresh).not.toHaveBeenCalled()
   })
 
-  it('passes the original command, raw CAS values, and verified principal through the write fence', async () => {
+  it('lets a non-privileged verified human with number permission pass the original command and CAS through the write fence', async () => {
     vi.mocked(readExistingGovernanceStore)
-      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.manageNumber]))
-      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.manageNumber]))
-      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.manageNumber]))
+      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.manageNumber], 'human_personal'))
+      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.manageNumber], 'human_personal'))
+      .mockResolvedValueOnce(authorizedGovernance([permissionCodes.manageNumber], 'human_personal'))
     vi.mocked(withActorWrite).mockClear()
     const repository = {
       mode: 'postgresql',

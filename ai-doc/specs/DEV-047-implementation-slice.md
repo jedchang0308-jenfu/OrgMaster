@@ -6,6 +6,8 @@
 
 改善與結案見 [PostgreSQL QC CAPA](../reports/capa-dev-047-postgres-qc-readiness-2026-09-16.md)：未另編流水號，`CA/PA Implemented / Effectiveness Verified / Closed`。既有 DEV-047 內同一修復批次已完成真實 DB 執行、目標與清理安全、結果與原因可信三個出口；既定 dev／staging／production 與 disposable 測試分工不變。
 
+2026-11-05 follow-up：員編 qualification 依最新使用者確認調整為 verified human Principal＋已發布員編管理權限，provider link／refresh enqueue 維持特權 admission。原 2026-09-16 證據只描述當時來源；本次修正的回歸結果以 DEV-047 Change Log 與目前工作樹測試結果為準。
+
 ## 本次範圍
 
 1. `JFS0001`～`JFS9999` 固定格式解析、正規化與 `jfs####@jenfu.com.tw` derived username；編號逐筆建立，變更後舊編號永久 tombstone。
@@ -20,7 +22,7 @@
    - `POST /api/orgmaster/employees/:employeeId/activation-check`
 5. Firebase Google popup first-login bridge：登入流程先解析 JFS alias，再以 verified Google identity 完成首次 bind；不提供 OrgMaster provider-write。
 6. local deterministic Directory adapter 使用 `orgmaster.test`；production adapter 僅讀取 Google Admin Directory，固定 `admin.directory.user.readonly` scope、customer/domain/DWD subject 驗證與 rate/timeout handling。
-7. local development admin profile 擁有 managed identity mutation 權限；production mutation 另外要求 active `human_privileged` admission。治理管理者在無 mutation 權限時僅可讀取。
+7. local development admin profile擁有managed identity mutation權限。Production逐筆設定／更正員編要求verified human Principal及已發布`orgmaster.employee-number.manage`，不再額外要求`human_privileged`；provider身分lookup／confirm、refresh enqueue與其他privileged mutation仍要求active `human_privileged` admission。治理管理者在無對應mutation權限時僅可讀取。
 
 ## 明確不在本切片
 

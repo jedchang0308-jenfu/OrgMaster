@@ -1055,6 +1055,7 @@ Future capsule：Google Admin 授權營運、primary Email 更名的受控恢復
 
 ### Human Decision Brief
 
+- `2026-11-05 / Human Confirmed / Employee-number qualification narrowed`：逐筆設定／更正`JFS####`仍是受治理login alias mutation，但執行資格改為有效verified human Principal具已發布`orgmaster.employee-number.manage`明示權限；不再以`human_privileged`靜態taxonomy作為員編寫入的額外門檻。既有session／epoch、scope、CAS、防重送、永久tombstone與audit不變；Google身分lookup／confirm、refresh enqueue、治理publish及其他privileged mutation仍維持person-specific `human_privileged`邊界。本決策只取代下方歷史決策中「員編必須由特權身分執行」的部分，不放寬provider identity link或shared／service identity。
 - `Human Confirmed / Superseded in part by Round 11 2A / 2026-09-07`：原決策由授權管理者在OrgMaster的Employee上下文建立並分配帳號；Round 11 `2A`已改為Google Admin先建立Cloud Identity managed user，OrgMaster只在Employee上下文搜尋、人工確認與連結。員工登入時使用員工編號作帳號名稱的要求仍有效。
 - `Guarded interpretation`：員工編號只作可輸入的login alias，不得成為Employee canonical ID、IAM principal ID、密碼或passwordless credential。Employee仍使用既有opaque canonical ID；外部身分分為Google Directory customer＋user ID與Firebase verified issuer＋UID兩個穩定鍵，由受治理bridge綁定，不以Email或假設兩種ID相等取代。
 - `1B / Superseded by Round 10 / 2026-09-07`：原決策把Google Workspace與Cloud Identity作為依工作需要選擇的managed account型態；Round 10已改為所有日常公司身分固定使用Cloud Identity基礎，Workspace只作同一principal的選配授權。個人`@gmail.com`仍不得成為預設公司帳號，`@gamil.com`亦不是有效Gmail網域；個人帳號只可走具owner、到期日與定期複核的例外流程。

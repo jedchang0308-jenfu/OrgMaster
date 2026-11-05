@@ -30,6 +30,7 @@ export type EmployeeNumberErrorCode =
   | 'MANAGED_PRIMARY_EMAIL_INVALID'
   | 'MANAGED_PRIMARY_EMAIL_DOMAIN_NOT_ALLOWED'
   | 'HUMAN_PRIVILEGED_REQUIRED'
+  | 'HUMAN_PRINCIPAL_REQUIRED'
 
 export type EmployeeNumberParseResult =
   | { ok: true; value: string }

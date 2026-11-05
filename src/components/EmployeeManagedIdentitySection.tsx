@@ -23,6 +23,15 @@ function errorMessage(error: ManagedIdentityApiError) {
   return '目前無法讀取公司身分設定，請稍後再試。'
 }
 
+function numberMutationErrorMessage(error: ManagedIdentityApiError) {
+  if (error.code === 'IDENTITY_NUMBER_MANAGE_REQUIRED') return '你沒有設定員工編號的權限。'
+  if (error.code === 'HUMAN_PRINCIPAL_REQUIRED') return '員工編號只能由已驗證的人員帳號設定。'
+  if (['EMPLOYEE_NUMBER_CONFLICT', 'EMPLOYEE_NUMBER_RETIRED', 'EMPLOYEE_NUMBER_INVALID', 'REVISION_CONFLICT'].includes(error.code)) {
+    return errorMessage(error) ?? '目前無法儲存員工編號，請稍後再試。'
+  }
+  return '目前無法儲存員工編號，請稍後再試。'
+}
+
 function NumberDialog({ employee, view, open, onClose, onSuccess }: {
   employee: Employee
   view: ManagedIdentityReadModelV1
@@ -97,7 +106,7 @@ function NumberDialog({ employee, view, open, onClose, onSuccess }: {
       onClose()
     } catch (caught) {
       const apiError = caught instanceof ManagedIdentityApiError ? caught : new ManagedIdentityApiError('MANAGED_IDENTITY_WRITE_FAILED', 503)
-      setError(errorMessage(apiError) ?? '目前無法完成設定，請稍後再試。')
+      setError(numberMutationErrorMessage(apiError))
     } finally {
       setBusy(false)
     }
