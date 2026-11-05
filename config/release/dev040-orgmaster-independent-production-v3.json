@@ -513,8 +513,8 @@
         "order": 41,
         "version": "dev070-orgmaster-044",
         "path": "db/migrations/044_dev070_administration_projection_v1.sql",
-        "sourceSha256": "399393a0e278c723168ab6c0a46c725d3e85f98f2e7476fcafed9636c4dfd19e",
-        "appliedSha256": "4b433acae889b3e1b6d3cf5eb044437ffe59d009b9d62d2557745f9217e97ebe"
+        "sourceSha256": "e065b940f224589b8ed7e0c2f73abba510e40b543c6f76f0f4e53f4af0f60042",
+        "appliedSha256": "5740964348ddab2ec834ccb17d041fde0a1e831cdf80d764c420cb13996d383f"
       },
       {
         "order": 42,

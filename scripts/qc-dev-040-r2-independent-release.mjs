@@ -131,6 +131,7 @@ const files = [
   'scripts/dev070-bootstrap-seed.mjs', 'scripts/dev070-fms-administration-initialization-contract.mjs',
   'scripts/dev070-initialize-platform-administrator.mjs', 'scripts/lib/dev070-administration-owner.mjs',
   'scripts/dev070-initialize-platform-administrator.test.mjs', 'scripts/qc-dev070-administration-postgres.test.mjs',
+  'scripts/qc-dev070-fms-display-postgres.mjs', 'scripts/qc-dev070-administration-postgres.mjs', 'scripts/lib/dev070-administration-postgres-fixture.mjs',
   'ai-doc/specs/DEV-070-platform-super-admin-authority-contract.md',
   ...['contracts/orgmaster-administration/v1', 'contracts/orgmaster-administration-bootstrap/v1', 'contracts/orgmaster-fms-authority/v3', 'contracts/orgmaster-fms-administration-initialization/v1', 'contracts/ai-pdm-role-policy-catalog/v3'].flatMap(directory => fs.readdirSync(path.join(root, directory)).filter(name => name.endsWith('.json')).map(name => `${directory}/${name}`)),
   'scripts/dev040-orgmaster-independent-release.test.mjs', 'scripts/dev040-production-migration-runner.mjs',

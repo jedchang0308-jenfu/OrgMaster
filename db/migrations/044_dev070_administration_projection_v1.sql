@@ -228,7 +228,7 @@ REVOKE ALL ON orgmaster_contract.v_fms_authority_v3 FROM PUBLIC;
 GRANT SELECT ON orgmaster_contract.v_fms_authority_v3 TO jenfu_orgmaster_runtime;
 GRANT SELECT ON orgmaster_contract.v_principal_display_profiles_v1 TO jenfu_ai_pdm_runtime;
 DO $fms_acl$ BEGIN
- IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='fms_runtime') THEN GRANT SELECT ON orgmaster_contract.v_fms_authority_v3,orgmaster_contract.v_principal_display_profiles_v1 TO fms_runtime; END IF;
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='fms_runtime') THEN GRANT SELECT ON orgmaster_contract.v_fms_authority_v3 TO fms_runtime; END IF;
 END; $fms_acl$;
 
 DO $visibility$ BEGIN
@@ -270,8 +270,33 @@ BEGIN
  EXECUTE format('GRANT EXECUTE ON FUNCTION orgmaster_contract.%I() TO %s',item.function_name,item.readers);
  EXECUTE format('CREATE OR REPLACE VIEW orgmaster_contract.%I WITH(security_barrier=true) AS SELECT * FROM orgmaster_contract.%I()',item.view_name,item.function_name);
  END LOOP;
- IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='fms_runtime') THEN GRANT EXECUTE ON FUNCTION orgmaster_contract.read_fms_authority_v3(),orgmaster_contract.read_principal_display_profiles_administration_v1() TO fms_runtime; END IF;
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='fms_runtime') THEN GRANT EXECUTE ON FUNCTION orgmaster_contract.read_fms_authority_v3() TO fms_runtime; END IF;
 END; $narrow_readers$;
+
+-- FMS may read names only for current, exact FMS-qualified Principal/Employee
+-- pairs. The generic Platform/PDM display reader is not an FMS contract.
+CREATE FUNCTION orgmaster_contract.read_fms_principal_display_profiles_v1()
+RETURNS TABLE(principal_id text,employee_id text,employee_name text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+ SELECT display.principal_id,display.employee_id,display.employee_name
+ FROM orgmaster_contract.v_principal_display_profiles_v1 display
+ WHERE EXISTS(SELECT 1 FROM orgmaster_contract.v_fms_authority_v3 authority
+  WHERE authority.principal_id=display.principal_id AND authority.employee_id=display.employee_id);
+$fn$;
+REVOKE ALL ON FUNCTION orgmaster_contract.read_fms_principal_display_profiles_v1() FROM PUBLIC;
+CREATE VIEW orgmaster_contract.v_fms_principal_display_profiles_v1 WITH(security_barrier=true) AS
+SELECT * FROM orgmaster_contract.read_fms_principal_display_profiles_v1();
+REVOKE ALL ON orgmaster_contract.v_fms_principal_display_profiles_v1 FROM PUBLIC;
+COMMENT ON VIEW orgmaster_contract.v_fms_principal_display_profiles_v1 IS
+ 'orgmaster.principal-display-profile.v1: optional display name for current exact FMS authority pairs only; never an authorization or admission source.';
+DO $fms_display_reader$ BEGIN
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='fms_runtime') THEN
+  REVOKE ALL ON orgmaster_contract.v_principal_display_profiles_v1 FROM fms_runtime;
+  REVOKE ALL ON FUNCTION orgmaster_contract.read_principal_display_profiles_administration_v1() FROM fms_runtime;
+  GRANT SELECT ON orgmaster_contract.v_fms_principal_display_profiles_v1 TO fms_runtime;
+  GRANT EXECUTE ON FUNCTION orgmaster_contract.read_fms_principal_display_profiles_v1() TO fms_runtime;
+ END IF;
+END; $fms_display_reader$;
 
 -- Point-only proof for the FMS owner's first protected catalog installation.
 -- It is neither an application assignment nor a protected-operation grant.
