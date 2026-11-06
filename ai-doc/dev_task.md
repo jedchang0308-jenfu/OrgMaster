@@ -4,13 +4,14 @@
 
 ## DEV-070：平台超級管理員權威與首次初始化
 
-- 狀態：IMPLEMENTING／分owner發布準備；PR213及PR214已protected MERGED、最新mastera669 main CI成功，正式42-row append已套用、candidate smoke失敗後PRE_ACTIVATION_ABORTED，舊revision維持100%traffic。完整四專案與真實地端／正式驗收未完成；指定同一Google personal張仕杰JFS0005，最低AAL1、接受真AAL2、只顯示中文姓名。
-- [實作契約](specs/DEV-070-platform-super-admin-authority-contract.md) §13 相容窗口、§14 exact 042／044／045 append、§17–19 A／B／C、§21–22 local composition／owner bridge／intent、§23 catalog dual-reader修復；[既有 QA 計畫§18](qa/DEV-040-R2-independent-production-release-validation-plan.md#18-dev-070-administration-formal-closure)保留完整 source／隔離／環境驗收分母。
+- 狀態：IMPLEMENTING／地端owner forward修復；主控已回報正式Org24ff019 protected RELEASED／100%，本slice不重開正式發布。local normal commit首敗DEV070_LOCAL_BOOTSTRAP_READBACK_INVALID，normal status維持40／raw042／bridgefalse／receiptnull。完整四專案與本人兩環境驗收未完成；指定同一Google personal張仕杰JFS0005，最低AAL1、接受真AAL2、只顯示中文姓名。
+- [實作契約](specs/DEV-070-platform-super-admin-authority-contract.md) §13 相容窗口、§14 exact 042／044／045 append、§17–19 A／B／C、§21–22 local composition／owner bridge／intent、§23 catalog dual-reader修復、§24 local bootstrap ACL合併修復；[既有 QA 計畫§18](qa/DEV-040-R2-independent-production-release-validation-plan.md#18-dev-070-administration-formal-closure)保留完整 source／隔離／環境驗收分母。
 - PR #213 已受保護合併：head `66c0c9e57dacff15c99edac8fa2e4d0cbe926f7f` required CI [42124604384](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42124604384) SUCCESS；merge master `26d691c572f34ab42e24819c6b1ab5a816c9d719` CI [42130394177](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42130394177) SUCCESS。15 Node／33 contracts、原完整 required CI 與 PostgreSQL 18 真 046 component 通過；FMS ABI stubs 不是真實整鏈。78076616／CI42121234195 及更早 first-fail 均保留為歷史 checkpoint。
 - P2 receipt binding 已修正：`status --plan` 不再只以 `commandId` 認 receipt，改用 `readLocalOwnerBridgeReceipt` 驗 plan SHA／target／source／046 response 等完整 binding；review CLOSED，無剩餘必修 P1／P2。
 - 工具／migration最新事實：a669正常rotation已APPLIED、migration-runner digest73c25bcc；正式release `ORGMASTER-REL-20261106014712921-A669925`／[run42146303437](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42146303437) 已套39＋042／044／045共42rows。candidate／entrypoint完成，verify因governance_session `ORGMASTER_SOURCE_UNAVAILABLE`失敗，terminal為FORWARD_APPLIED／PRE_ACTIVATION_ABORTED；045後舊writer持續拒絕，不作SQL rollback。provider servicegen398、舊e459 revision100%、candidate93aa0%、無tags。原26d／a669 check首敗及工具provenance均保留，詳spec§22–23。
 - source修復：原current reader直接查尚未部署096的PDM v3、無v2相容窗口。新增固定`to_regclass` probe：v3存在只讀v3，缺v3才讀v2；probe／ACL／內容／protected-role失效拒絕、不降版，sourcePath綁真正view，history不變。unit red及真PG18 read-only transaction `42P01→25P02`已重現；修後完整app1409＋Node61／release493、build／DBboundary／packaging通過，required CI與正式再驗待交付，詳spec§23。
-- local044／045／046、首位intent／root／app grants、本人Google核身／native ack／正常UI及正式activation仍未完成。正式42-row append已APPLIED不能標NOT_RUN；產品完整兩環境驗收仍未通過，沿同任務forward-only修復，不縮原acceptance denominator。
+- 最新local slice：保持070 raw040cdcc原檔不變，新增exact071 v2；expected ACL依真正owner change替換grantor／grantee後按privilege合併、grantable OR，與actual精確等價，body／hash／definer／config、target／CAS／receipt原規則保留。normal caller只選071、新source必fresh plan；Node16／contracts34／TypeScript／boundary PASS，13案native驗證交既有requiredPG18 service，CI待驗。詳spec§24；原失敗plan不覆寫、不重送primary。
+- local044／045／046、首位intent／root／app grants、本人Google核身／native ack／正常UI仍未完成；主控正式Org RELEASED不等於完整本人驗收，正式42-row append不得回寫NOT_RUN。沿同任務forward-only修復，不縮原acceptance denominator。
 
 <a id="dev-060-frontend-permission-projection"></a>
 
