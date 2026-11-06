@@ -552,6 +552,13 @@
         "path": "db/migrations/047_dev070_scoped_ai_pdm_principal_readers.sql",
         "sourceSha256": "b6837188519c403004c1bbbd4e70e91af35b9f366842707f115f7f6dcac251ce",
         "appliedSha256": "7dd50c0485301bf8c58a36ac630b467152fdc2a456459dc586e1e87e902974bf"
+      },
+      {
+        "order": 44,
+        "version": "dev070-orgmaster-048",
+        "path": "db/migrations/048_dev070_governance_scalar_projection.sql",
+        "sourceSha256": "75c56c01a50c9aec50c6fc6cba25d3c01993631ad48aff9300182aa23891e1c2",
+        "appliedSha256": "e817ca52e4e52c67fa3f43885fbfb99334067dc6e670ab129752933b38ea7179"
       }
     ]
   },

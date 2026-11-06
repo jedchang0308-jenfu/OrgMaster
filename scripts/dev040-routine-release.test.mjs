@@ -2807,7 +2807,7 @@ test('DEV070 native routine rejects a declared direct tool ref with missing or n
  }
 })
 test('DEV070 routine planner binds the exact suffix and known baseline without changing ordinary zero-DDL release',async()=>{
- for(const count of[31,39,40,41,42]){
+ for(const count of[31,39,40,41,42,43]){
   const h=administrationHarness(count),plan=await verifyRoutineRelease(h.input)
   assert.equal(plan.releaseMode,DEV070_RELEASE_MODE);assert.equal(plan.migrationDisposition,'FORWARD_APPLY')
   assert.equal(plan.pendingMigrationCount,DEV070_MIGRATION_ENTRY_COUNT-count)
@@ -2816,7 +2816,7 @@ test('DEV070 routine planner binds the exact suffix and known baseline without c
  const normal=await verifyRoutineRelease(harness().input)
  assert.equal(normal.migrationDisposition,'UNCHANGED_VERIFIED');assert.equal(normal.pendingMigrationCount,0)
  await assert.rejects(verifyRoutineRelease(harness({baselineBundle:prefixBundle(oldBundle.bundle,39)}).input),/ROUTINE_MIGRATION_CHANGED/)
- await assert.rejects(verifyRoutineRelease(administrationHarness(43).input),/DEV070_MIGRATION_APPEND_INVALID/)
+ await assert.rejects(verifyRoutineRelease(administrationHarness(44).input),/DEV070_MIGRATION_APPEND_INVALID/)
  for(const field of['sourceRevision','releaseId','baselineIntentRef','remediation','slice','ownerApplicationId']){
   const h=administrationHarness();h.input.values.authorization[field]='changed'
   await assert.rejects(verifyRoutineRelease(h.input),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)

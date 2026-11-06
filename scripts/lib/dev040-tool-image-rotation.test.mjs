@@ -453,7 +453,7 @@ function closedWorkflowAppendFixture() {
     profile.workflow = structuredClone(legacyWorkflow)
   }, 'exact legacy single-capsule 42-entry profile')
   const closed43 = commitProfileVariant(legacy42, profile => {
-    profile.migrations.entries.push(DEV070_MIGRATION_ENTRIES.at(-1))
+    profile.migrations.entries.push(DEV070_MIGRATION_ENTRIES.find(entry=>entry.version==='dev070-orgmaster-047'))
     profile.workflow = structuredClone(closedWorkflow)
   }, 'exact reviewed closed-mode 43-entry profile')
   return { legacy42, closed43, legacyWorkflow, closedWorkflow }
