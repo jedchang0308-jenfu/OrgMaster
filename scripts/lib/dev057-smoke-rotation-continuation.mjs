@@ -829,7 +829,7 @@ export async function buildSmokeInfraReuseReceipt({ root, profile, transport, re
   return receipt
 }
 
-export async function assertSmokeInfraReuseContinuation({ root, profile, transport, intent, values, baseline,
+export async function assertSmokeInfraReuseEvidence({ root, profile, transport, intent, values, baseline,
   readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree }) {
   const receipt = (await transport.readJson(intent.infraReceiptRef, EXPECTED.releaseBucket)).value
   if (!same(receipt, values.infra)) fail('SMOKE_REUSE_RECEIPT_INVALID')
@@ -854,8 +854,14 @@ export async function assertSmokeInfraReuseContinuation({ root, profile, transpo
       receipt.appliedObservedAt !== continuation.appliedObservedAt || receipt.reusedSourceRevision !== rotation.sourceRevision ||
       receipt.candidateSmokeRefreshTokenSecretVersion !== continuation.newVersion ||
       receipt.providerReadback.workflowSourceSha256 !== sha256(expectedSmokeWorkflowSource({ root, profile,
-        sourceRevision: intent.sourceRevision, version: continuation.newVersion, readSourceFile })) ||
-      !same(receipt.controlHead, await readSmokeReuseControl({ profile, transport, baselineIntentRef: intent.baselineIntentRef, baseline }))) fail('SMOKE_REUSE_RECEIPT_INVALID')
+        sourceRevision: intent.sourceRevision, version: continuation.newVersion, readSourceFile }))) fail('SMOKE_REUSE_RECEIPT_INVALID')
   return { ...continuation, evidenceScope: 'OWNER_SEALED_APPLIED_ROTATION_REUSE', infraReceiptRef: intent.infraReceiptRef,
     reusedInfraReceiptRef: receipt.reusedInfraReceiptRef, reusedSourceRevision: receipt.reusedSourceRevision }
+}
+
+export async function assertSmokeInfraReuseContinuation(input) {
+  const result = await assertSmokeInfraReuseEvidence(input)
+  if (!same(input.values.infra.controlHead, await readSmokeReuseControl({ profile:input.profile,transport:input.transport,
+    baselineIntentRef:input.intent.baselineIntentRef,baseline:input.baseline }))) fail('SMOKE_REUSE_RECEIPT_INVALID')
+  return result
 }

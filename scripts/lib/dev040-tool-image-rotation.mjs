@@ -8,6 +8,8 @@ import { matchGitSourceArchive } from './dev040-git-archive.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_PREFIX_SHA256 } from './dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_MIGRATION_ENTRY_COUNT } from './dev059-fms-authority-migration.mjs'
 import {DEV070_MIGRATION_ENTRIES,DEV070_RELEASE_MODE} from './dev070-administration-migration.mjs'
+import {assertSmokeInfraReuseEvidence,readSmokeReuseProviderState} from './dev057-smoke-rotation-continuation.mjs'
+import {normalizeTerraformStateMeta} from './dev040-tool-terraform.mjs'
 
 export const TOOL_RECIPES = Object.freeze([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -102,6 +104,51 @@ function gitIsAncestor(root, ancestor, descendant) {
     { cwd: root, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'] })
   if (result.error) fail('SOURCE_INVALID')
   return result.status === 0
+}
+export function assertReusableAfterStateEvidence(existing, current) {
+  const normalize = value => ({ ...value, stateMeta: normalizeTerraformStateMeta(value?.stateMeta) })
+  if (!existing || !current || !same(normalize(existing), normalize(current))) fail('RECOVERY_AFTER_STATE_CHANGED')
+  return existing
+}
+
+/** Resolve only an already-consumed reuse receipt's immutable infra anchor. */
+export async function assertToolInfrastructureBasis({root,profile,transport,baselineIntent,infraRef,infra,currentSourceRevision,
+  beforeState,readHistoricalBaseline,readLiveProvider=false,
+  readSourceFile,readInfrastructureTree,validateReuseEvidence=assertSmokeInfraReuseEvidence}){
+  if(infra?.mutationProfile!=='APP_INFRA_REUSE')return null
+  if(!same(baselineIntent?.infraReceiptRef,infraRef)||infra.sourceRevision!==baselineIntent.sourceRevision
+    ||typeof readHistoricalBaseline!=='function'||!same(infra.baselineIntentRef,baselineIntent.baselineIntentRef)
+    ||!gitIsAncestor(root,infra.sourceRevision,currentSourceRevision))fail('REUSE_BASIS_INVALID')
+  const read=async ref=>{
+    assertImmutableRef(ref,profile.artifact.releaseBucket,['receipts'])
+    const value=await transport.readJson(ref,profile.artifact.releaseBucket,['receipts'])
+    if(!same(value.ref,ref)||!Buffer.isBuffer(value.bytes)||sha256(value.bytes)!==ref.sha256||!same(JSON.parse(value.bytes),value.value))fail('REUSE_BASIS_INVALID')
+    return value
+  }
+  const [reuseRead,lockRead]=await Promise.all([read(infraRef),read(infra.sourceLockRef)])
+  if(!same(reuseRead.value,infra))fail('REUSE_BASIS_INVALID')
+  const predecessor=await readHistoricalBaseline({profile,transport,baselineIntentRef:baselineIntent.baselineIntentRef})
+  await validateReuseEvidence({root,profile,transport,intent:baselineIntent,values:{infra,sourceLock:lockRead.value},
+    baseline:predecessor,...(readSourceFile?{readSourceFile}:{}),...(readInfrastructureTree?{readInfrastructureTree}:{})})
+  const anchorRead=await read(infra.reusedInfraReceiptRef),anchor=anchorRead.value
+  if(anchor.sourceRevision!==infra.reusedSourceRevision||!gitIsAncestor(root,anchor.sourceRevision,infra.sourceRevision)
+    ||!anchor.smokeRotation?.afterStateRef||!anchor.smokeRotation?.outputManifestRef)fail('REUSE_BASIS_INVALID')
+  const [sealedState,manifest]=await Promise.all([read(anchor.smokeRotation.afterStateRef),read(anchor.smokeRotation.outputManifestRef)])
+  if(sealedState.ref.sha256!==anchor.stateJsonSha256||manifest.ref.sha256!==anchor.outputManifestSha256
+    ||!same(sealedState.value.manifest,manifest.value)||sealedState.value.manifest?.source_revision!==anchor.sourceRevision)fail('REUSE_BASIS_INVALID')
+  assertReusableAfterStateEvidence(sealedState.value,beforeState)
+  if(readLiveProvider){
+    const terraformReader=(_root,args)=>{
+      const command=args.join(' ')
+      if(command==='show -json')return beforeState.stateJson
+      if(command==='state pull')return beforeState.stateMeta
+      if(command==='output -json app_release_infra_manifest')return beforeState.manifest
+      fail('REUSE_BASIS_INVALID')
+    }
+    await readSmokeReuseProviderState({root,profile,transport,rotation:anchor,sourceRevision:infra.sourceRevision,terraformReader,
+      ...(readSourceFile?{readSourceFile}:{})})
+  }
+  return {anchorRef:anchorRead.ref,stateSourceRevision:anchor.sourceRevision,sealedAfterStateRef:sealedState.ref}
 }
 export function assertToolStateSourceContinuation(root, baselineRevision, stateRevision, currentRevision) {
   if (stateRevision === baselineRevision) return { disposition: 'EXACT_BASELINE', stateRevision }
@@ -297,7 +344,7 @@ export function assertToolRotationState({ state, infraProfile, profile, sourceRe
  * service/data baseline or synthesizes an aborted release attempt.
  */
 export async function assertAppliedToolInfrastructureBaseline({ root, profile, transport, appliedBaseline,
-  currentSourceRevision, baselineIntentRef, baseline, readLiveJob = true, rotationDepth = 0, receiptRead = null }) {
+  currentSourceRevision, baselineIntentRef, baseline, readLiveJob = true, rotationDepth = 0, receiptRead = null,readHistoricalBaseline }) {
   assertToolOwner(profile)
   const sourceRevision = appliedBaseline?.sourceRevision
   const infraReceiptRef = appliedBaseline?.infraReceiptRef
@@ -314,12 +361,12 @@ export async function assertAppliedToolInfrastructureBaseline({ root, profile, t
   if (!same(read.ref, infraReceiptRef) || read.value?.sourceRevision !== sourceRevision) fail('APPLIED_INFRA_BASELINE_INVALID')
   const summary = await assertOrdinaryToolRotation({ root, profile, transport,
     intent: { sourceRevision, infraReceiptRef, baselineIntentRef }, receipt: read.value, baseline,
-    readLiveJob, rotationDepth: rotationDepth + 1 })
+    readLiveJob, rotationDepth: rotationDepth + 1,readHistoricalBaseline })
   return { ref: read.ref, receipt: read.value, summary }
 }
 
 /** Native prepare validates immutable evidence; the operator also reads live state before dispatch. */
-export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline, readLiveJob = true, rotationDepth = 0 }) {
+export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline, readLiveJob = true, rotationDepth = 0,readHistoricalBaseline }) {
   assertToolOwner(profile); assertToolSeal(receipt)
   if (!Number.isSafeInteger(rotationDepth) || rotationDepth < 0 || rotationDepth > 8) fail('BASELINE_INVALID')
   const proof = receipt.toolRotation
@@ -381,7 +428,7 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
       await assertAppliedToolInfrastructureBaseline({ root, profile, transport,
         appliedBaseline: proof.appliedInfraBaseline, currentSourceRevision: receipt.sourceRevision,
         baselineIntentRef: proof.baselineIntentRef, baseline, readLiveJob: false,
-        rotationDepth, receiptRead: priorInfraRead })
+        rotationDepth, receiptRead: priorInfraRead,readHistoricalBaseline })
     }
   } else {
     if (proof.appliedInfraBaseline != null || !proof.controlAttemptIntentRef || !proof.controlPrepareRef
@@ -409,7 +456,7 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
       if (!same(attemptIntent.infraReceiptRef, proof.baselineInfraRef)
         || priorInfra.sourceRevision !== proof.baselineSourceRevision) fail('BASELINE_INVALID')
       await assertOrdinaryToolRotation({ root, profile, transport, intent: attemptIntent, receipt: priorInfra,
-        baseline, readLiveJob: false, rotationDepth: rotationDepth + 1 })
+        baseline, readLiveJob: false, rotationDepth: rotationDepth + 1,readHistoricalBaseline })
     }
   }
   const manifest = assertToolRotationState({ state: stateRead.value, infraProfile, profile, sourceRevision: receipt.sourceRevision,
@@ -421,6 +468,9 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
   const beforeSource = beforeStateRead.value.stateJson?.values?.outputs?.app_release_infra_manifest?.value?.source_revision
     ?? beforeStateRead.value.stateJson?.outputs?.app_release_infra_manifest?.value?.source_revision
   if (!H40.test(beforeSource ?? '')) fail('STATE_READBACK_INVALID')
+  const reusedBasis=await assertToolInfrastructureBasis({root,profile,transport,baselineIntent:originalIntent,
+    infraRef:proof.baselineInfraRef,infra:priorInfra,currentSourceRevision:receipt.sourceRevision,beforeState:beforeStateRead.value,readHistoricalBaseline})
+  if(reusedBasis&&beforeSource!==reusedBasis.stateSourceRevision)fail('STATE_READBACK_INVALID')
   assertToolRotationState({ state: beforeStateRead.value, infraProfile, profile, sourceRevision: beforeSource,
     image: proof.previousMigrationRunnerDigest, controllerImage: receipt.controllerImageDigest, foundationHash: receipt.foundationManifestSha256 })
   if (planRead.value.variables?.source_revision?.value !== receipt.sourceRevision

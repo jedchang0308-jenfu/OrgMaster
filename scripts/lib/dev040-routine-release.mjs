@@ -819,7 +819,7 @@ export function resolveToolRotationPredecessorBaselineRef(receipt) {
   return ref
 }
 
-// Rotation changes only the existing Job image. DEV-058/059/060 may consume that same
+// Rotation changes only the existing Job image. DEV-058/059/060/070 may consume that same
 // verified infra receipt before its separately authorized exact schema append.
 // A second predecessor receipt, runtime change or other controlled mode cannot
 // inherit this allowance.
@@ -827,19 +827,19 @@ export function assertToolRotationReleaseCompatibility({ toolRotation, toolRotat
   if (!toolRotation && !toolRotationPredecessor) return
   const controlledSmokeRotation = controlledTransition?.releaseMode === DEV060_RELEASE_MODE && allowControlledSmokeRotation === true
   if (repair || runtimeChanged || (controlledTransition
-    && ((toolRotationPredecessor && !controlledSmokeRotation) || ![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE].includes(controlledTransition.releaseMode)))) fail('TOOL_ROTATION_ORDINARY_ONLY')
+    && ((toolRotationPredecessor && !controlledSmokeRotation) || ![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE].includes(controlledTransition.releaseMode)))) fail('TOOL_ROTATION_ORDINARY_ONLY')
 }
 
-// DEV-058/059/060 may append their exact schema after an already verified tool-image
+// DEV-058/059/060/070 may append their exact schema after an already verified tool-image
 // rotation.  The infra receipt remains bound to that rotation source; all
 // other forward transitions stay bound to the current release source.
 export function resolveMigrationInfraReceiptSource({ controlledTransition, toolRotation, toolRotationPredecessor = null, intentSourceRevision }) {
-  if (![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE].includes(controlledTransition?.releaseMode)) return intentSourceRevision
+  if (![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE].includes(controlledTransition?.releaseMode)) return intentSourceRevision
   const rotation = toolRotation ?? toolRotationPredecessor?.continuationEvidence ?? null
   if (rotation == null) return intentSourceRevision
   if (rotation.evidenceScope !== 'OWNER_SEALED_TOOL_IMAGE_ROTATION' || rotation.ddlExecuted !== 0
     || !H40.test(rotation.sourceRevision ?? '')
-    || !['VERIFIED', 'REQUIRED_AT_DEPLOYER_MIGRATE'].includes(rotation.liveJobReadback)) fail(controlledTransition.releaseMode === DEV060_RELEASE_MODE ? 'DEV060_TOOL_ROTATION_SOURCE_INVALID' : controlledTransition.releaseMode === DEV059_RELEASE_MODE ? 'DEV059_TOOL_ROTATION_SOURCE_INVALID' : 'DEV058_TOOL_ROTATION_SOURCE_INVALID')
+    || !['VERIFIED', 'REQUIRED_AT_DEPLOYER_MIGRATE'].includes(rotation.liveJobReadback)) fail(controlledTransition.releaseMode===DEV070_RELEASE_MODE?'DEV070_TOOL_ROTATION_SOURCE_INVALID':controlledTransition.releaseMode === DEV060_RELEASE_MODE ? 'DEV060_TOOL_ROTATION_SOURCE_INVALID' : controlledTransition.releaseMode === DEV059_RELEASE_MODE ? 'DEV059_TOOL_ROTATION_SOURCE_INVALID' : 'DEV058_TOOL_ROTATION_SOURCE_INVALID')
   return rotation.sourceRevision
 }
 
@@ -909,8 +909,11 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
   toolRotationRef = resolveRoutineToolRotationRef(values, toolRotationRef)
   const toolRotation = values.infra?.toolRotation == null ? null : await assertOrdinaryToolRotation({
-    root, profile, transport, intent, receipt: values.infra, baseline, readLiveJob: readLiveToolJob,
+    root, profile, transport, intent, receipt: values.infra, baseline, readLiveJob: readLiveToolJob,readHistoricalBaseline:readRoutineBaseline,
   })
+  if(administrationAppend&&(toolRotationRef||toolRotation)&&(!toolRotation||!same(toolRotationRef,intent.infraReceiptRef)
+    ||!same(values.readiness.toolRotationRef,intent.infraReceiptRef)
+    ||!same(values.authorization.toolRotationRef,intent.infraReceiptRef)))fail('DEV070_ADMINISTRATION_AUTHORITY_INVALID')
   let toolRotationPredecessor = null
   if (toolRotationRef && !same(toolRotationRef, intent.infraReceiptRef)) {
     assertImmutableRef(toolRotationRef, profile.artifact.releaseBucket, ['receipts/tool-rotations'])
@@ -920,7 +923,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     const predecessorBaseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: predecessorBaselineRef })
     toolRotationPredecessor = await assertOrdinaryToolRotation({ root, profile, transport,
       intent: { ...intent, baselineIntentRef: predecessorBaselineRef, previousRevision: predecessorBaseline.activeRevision,
-        infraReceiptRef: toolRotationRef }, receipt: read.value, baseline: predecessorBaseline, readLiveJob: readLiveToolJob })
+        infraReceiptRef: toolRotationRef }, receipt: read.value, baseline: predecessorBaseline, readLiveJob: readLiveToolJob,readHistoricalBaseline:readRoutineBaseline })
     toolRotationPredecessor = { receipt: read.value, continuationEvidence: toolRotationPredecessor, receiptRef: toolRotationRef }
   }
   const controlledSmokeRotation = controlledTransition?.releaseMode === DEV060_RELEASE_MODE && values.infra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'

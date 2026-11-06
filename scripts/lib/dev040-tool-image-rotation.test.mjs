@@ -12,6 +12,7 @@ import { assertToolRotationReleaseCompatibility } from './dev040-routine-release
 import {
   assertOrdinaryToolRotation,
   assertAppliedToolInfrastructureBaseline,
+  assertToolInfrastructureBasis,
   assertToolInfrastructureTransition,
   assertToolArtifactAssociation,
   assertToolBuildProof,
@@ -481,7 +482,7 @@ test('allows only exact known DEV-058/059/070 metadata appends for a separate im
   }
 })
 
-test('bridges the complete native rotation proof to the DEV-058 controlled gate', async () => {
+test('bridges the complete native rotation proof to the DEV-058 and DEV-070 direct-basis gates', async () => {
   const fixture = makeReceiptHarness()
   const toolRotation = await validateRotationFixture(fixture)
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({
@@ -491,6 +492,45 @@ test('bridges the complete native rotation proof to the DEV-058 controlled gate'
     repair: false,
     runtimeChanged: false,
   }))
+  assert.doesNotThrow(()=>assertToolRotationReleaseCompatibility({toolRotation,toolRotationPredecessor:null,
+    controlledTransition:{releaseMode:DEV070_RELEASE_MODE},repair:false,runtimeChanged:false}))
+})
+
+function consumedReuseBasisFixture(){
+ const objects=new Map(),put=(name,value)=>{const bytes=Buffer.from(canonicalize(value)),uri=`gs://${BUCKET}/receipts/releases/BASIS-FIXTURE/${name}.json`,ref={uri,sha256:sha256(bytes)};objects.set(uri,{ref,bytes,value});return ref}
+ const anchorSource=sourceFixture.rotationSourceRevision,releasedSource=sourceFixture.ordinarySourceRevision
+ const beforeState={stateMeta:{serial:137,lineage:'owned-fixture',check_results:[]},stateJson:{values:{outputs:{app_release_infra_manifest:{value:{source_revision:anchorSource}}}}},manifest:{source_revision:anchorSource}}
+ const afterStateRef=put('anchor-after-state',beforeState),outputManifestRef=put('anchor-output',beforeState.manifest)
+ const anchor={sourceRevision:anchorSource,stateJsonSha256:afterStateRef.sha256,outputManifestSha256:outputManifestRef.sha256,smokeRotation:{afterStateRef,outputManifestRef}}
+ const anchorRef=put('anchor-infra',anchor),sourceLockRef=put('reuse-lock',{sourceRevision:releasedSource})
+ const priorRef=put('released-predecessor',{sourceRevision:sourceFixture.appendSourceRevision})
+ const infra={mutationProfile:'APP_INFRA_REUSE',sourceRevision:releasedSource,sourceLockRef,reusedInfraReceiptRef:anchorRef,reusedSourceRevision:anchorSource,baselineIntentRef:priorRef}
+ const infraRef=put('reuse-infra',infra),baselineIntent={sourceRevision:releasedSource,infraReceiptRef:infraRef,baselineIntentRef:priorRef}
+ let verifications=0
+ const input={root:sourceFixture.root,profile:productionProfile(),baselineIntent,infraRef,infra,currentSourceRevision:releasedSource,beforeState,
+  transport:{readJson:async ref=>{const row=objects.get(ref.uri);assert.ok(row);return row}},
+  readHistoricalBaseline:async({baselineIntentRef})=>{assert.deepEqual(baselineIntentRef,priorRef);return {intent:{sourceRevision:sourceFixture.appendSourceRevision}}},
+  // This fixture isolates reference/ancestry/state joining. The unchanged full
+  // immutable smoke verifier is exercised by the routine integration fixture.
+  validateReuseEvidence:async value=>{verifications++;assert.equal(value.intent,baselineIntent);assert.equal(value.values.infra,infra)}}
+ return {input,objects,beforeState,anchorRef,infraRef,verifications:()=>verifications}
+}
+
+test('consumed reuse resolves only its own immutable ancestor and sealed before-state for prepare and replay',async()=>{
+ const h=consumedReuseBasisFixture(),result=await assertToolInfrastructureBasis(h.input)
+ assert.deepEqual(result.anchorRef,h.anchorRef);assert.equal(result.stateSourceRevision,sourceFixture.rotationSourceRevision)
+ assert.deepEqual(await assertToolInfrastructureBasis({...h.input,beforeState:structuredClone(h.beforeState)}),result)
+ assert.equal(h.verifications(),2)
+ assert.equal(await assertToolInfrastructureBasis({...h.input,infra:{mutationProfile:'APP_INFRA_IMAGE_ROTATION'}}),null)
+})
+test('consumed reuse rejects unproven ancestry, redirected refs, missing proof and sealed state drift',async()=>{
+ for(const change of [h=>h.input.currentSourceRevision=sourceFixture.baselineSourceRevision,h=>h.input.infraRef={...h.infraRef,sha256:'0'.repeat(64)},h=>h.input.beforeState=structuredClone(h.beforeState),h=>h.input.readHistoricalBaseline=null,h=>h.input.validateReuseEvidence=async()=>{throw new Error('SEALED_NATIVE_PROOF_REJECTED')}]){
+  const h=consumedReuseBasisFixture();change(h)
+  if(h.input.beforeState!==h.beforeState)h.input.beforeState.stateMeta.serial++
+  await assert.rejects(()=>assertToolInfrastructureBasis(h.input),/REUSE_BASIS_INVALID|RECOVERY_AFTER_STATE_CHANGED|SEALED_NATIVE_PROOF_REJECTED/)
+ }
+ const h=consumedReuseBasisFixture(),stored=h.objects.get(h.anchorRef.uri);stored.bytes=Buffer.from('changed immutable bytes')
+ await assert.rejects(()=>assertToolInfrastructureBasis(h.input),/REUSE_BASIS_INVALID/)
 })
 
 test('accepts the frozen complete profile-address plan with one migration image update', () => {

@@ -796,7 +796,7 @@ for(const administration of[false,true])test(`${administration?'DEV-070':'DEV-06
   const { input, intentResult } = await authorizedRecordedInput(h, 'DEV060-CATALOG-ACTIVATION')
   const intent = (await h.transport.readJson(intentResult.ref)).value
   const priorInfra = (await h.transport.readJson(intent.infraReceiptRef)).value
-  const rotatedInfra = administration?priorInfra:{ ...priorInfra, mutationProfile: 'APP_INFRA_IMAGE_ROTATION', toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1' } }
+  const rotatedInfra = { ...priorInfra, mutationProfile: 'APP_INFRA_IMAGE_ROTATION', toolRotation: { schemaVersion: 'orgmaster.ordinary-tool-image-rotation.v1' } }
   const common = {
     releaseAuthority: true, evidenceScope: 'PROVIDER', status: 'PASS', environment: 'production',
     projectId: 'jenfu-platform-prod', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z',
@@ -818,7 +818,7 @@ for(const administration of[false,true])test(`${administration?'DEV-070':'DEV-06
     baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) },
     migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount:pending,
     releaseMode:mode, controlledTransition: { releaseMode:mode },
-    ...(!administration?{toolImageRotation: { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', sourceRevision: currentIntent.sourceRevision, migrationRunnerDigest: rotatedInfra.migrationRunnerDigest }}:{}),
+    toolImageRotation: { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', sourceRevision: currentIntent.sourceRevision, migrationRunnerDigest: rotatedInfra.migrationRunnerDigest },
   })
   await executeOwnerStage({ ...input, stage: 'prepare' })
   await executeOwnerStage({ ...input, stage: 'build' })
@@ -835,6 +835,16 @@ for(const administration of[false,true])test(`${administration?'DEV-070':'DEV-06
       boundaryStatus: 'PASS', status: 'PASS',
     }
     await h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) }, { bucket, prefix: 'receipts' })
+  }
+  if(administration){
+    await assert.rejects(()=>executeOwnerStage({...input,stage:'migrate'}),/TOOL_JOB_READBACK_REQUIRED/)
+    await assert.rejects(()=>executeOwnerStage({...input,stage:'migrate',verifyToolJobReadback:async()=>({migrationRunnerDigest:'wrong-digest'})}),/TOOL_JOB_READBACK_REQUIRED/)
+    assert.equal(observedMode,null)
+    let candidateCreates=0
+    const createCandidate=h.transport.createCandidate
+    h.transport.createCandidate=async(...args)=>{candidateCreates++;return createCandidate(...args)}
+    await assert.rejects(()=>executeOwnerStage({...input,stage:'candidate'}),error=>error.code==='MISSING')
+    assert.equal(candidateCreates,0)
   }
   const migration = await executeOwnerStage({ ...input, stage: 'migrate', verifyToolJobReadback: async () => ({ migrationRunnerDigest: rotatedInfra.migrationRunnerDigest, generation: '14' }) })
   assert.equal(observedMode,mode)
