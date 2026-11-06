@@ -23,6 +23,7 @@ import {
   MIGRATION_JOB_ADDRESS,
   rotationAddresses,
   sealToolEvidence,
+  toolInfrastructureFingerprint,
 } from './dev040-tool-image-rotation.mjs'
 
 const ROOT = process.cwd()
@@ -437,6 +438,93 @@ function commitNonRecipeVariant(baseRevision, mutate, message) {
     runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
   }
 }
+
+function closedWorkflowAppendFixture() {
+  const closedWorkflow = productionProfile().workflow
+  const legacyWorkflow = {
+    path: '.github/workflows/deploy-orgmaster-independent-production.yml',
+    onlyInput: 'releaseCapsuleRef',
+    concurrency: 'production-release-orgmaster-prod',
+    jobs: ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize'],
+    failureJobs: ['readback', 'abort-or-rollback', 'publish-terminal'],
+  }
+  const legacy42 = commitProfileVariant(sourceFixture.appendSourceRevision, profile => {
+    profile.migrations.entries.push(...DEV070_MIGRATION_ENTRIES.slice(0, 3))
+    profile.workflow = structuredClone(legacyWorkflow)
+  }, 'exact legacy single-capsule 42-entry profile')
+  const closed43 = commitProfileVariant(legacy42, profile => {
+    profile.migrations.entries.push(DEV070_MIGRATION_ENTRIES.at(-1))
+    profile.workflow = structuredClone(closedWorkflow)
+  }, 'exact reviewed closed-mode 43-entry profile')
+  return { legacy42, closed43, legacyWorkflow, closedWorkflow }
+}
+
+test('admits only the reviewed legacy five-key to closed seven-key workflow metadata alongside an approved append', () => {
+  const { legacy42, closed43 } = closedWorkflowAppendFixture()
+  const beforeFingerprint = toolInfrastructureFingerprint(sourceFixture.root, legacy42)
+  const afterFingerprint = toolInfrastructureFingerprint(sourceFixture.root, closed43)
+  assert.notEqual(beforeFingerprint, afterFingerprint)
+  assert.deepEqual(assertToolInfrastructureTransition(sourceFixture.root, legacy42, closed43), {
+    disposition: DEV070_RELEASE_MODE, beforeFingerprint, afterFingerprint,
+  })
+})
+
+test('rejects unknown workflow keys, inputs, modes and every fixed workflow value during that transition', () => {
+  const { legacy42, closed43, legacyWorkflow, closedWorkflow } = closedWorkflowAppendFixture()
+  const mutations = [
+    ['extra input', workflow => { workflow.inputs.push('stage') }],
+    ['extra mode', workflow => { workflow.executionModes.build_only = ['prepare', 'build'] }],
+    ['expanded migration mode', workflow => { workflow.executionModes.migration_only.push('candidate') }],
+    ['reordered full mode', workflow => { workflow.executionModes.full_release.reverse() }],
+    ['different default', workflow => { workflow.defaultExecutionMode = 'migration_only' }],
+    ['missing default', workflow => { delete workflow.defaultExecutionMode }],
+    ['changed jobs', workflow => { workflow.jobs.reverse() }],
+    ['changed failure jobs', workflow => { workflow.failureJobs.pop() }],
+    ['changed concurrency', workflow => { workflow.concurrency += '-other' }],
+    ['changed path', workflow => { workflow.path = '.github/workflows/other.yml' }],
+    ['unknown key', workflow => { workflow.extra = false }],
+    ['retained legacy key', workflow => { workflow.onlyInput = 'releaseCapsuleRef' }],
+  ]
+  for (const [label, mutate] of mutations) {
+    const invalid = commitProfileVariant(closed43, profile => mutate(profile.workflow), label)
+    assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, legacy42, invalid), 'SOURCE_INPUT_DRIFT')
+  }
+  const unknownLegacy = commitProfileVariant(legacy42,
+    profile => { profile.workflow.extra = false }, 'unknown legacy workflow key')
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, unknownLegacy, closed43), 'SOURCE_INPUT_DRIFT')
+
+  const closed42 = commitProfileVariant(legacy42,
+    profile => { profile.workflow = structuredClone(closedWorkflow) }, 'closed workflow without migration append')
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, legacy42, closed42), 'SOURCE_INPUT_DRIFT')
+  const legacy43 = commitProfileVariant(closed43,
+    profile => { profile.workflow = structuredClone(legacyWorkflow) }, 'reverse metadata transition with valid append')
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, closed42, legacy43), 'SOURCE_INPUT_DRIFT')
+
+  // Even a value changed identically on both sides is outside the exact tuple.
+  const changedLegacyPath = commitProfileVariant(legacy42,
+    profile => { profile.workflow.path = '.github/workflows/other.yml' }, 'other legacy workflow path')
+  const changedClosedPath = commitProfileVariant(closed43,
+    profile => { profile.workflow.path = '.github/workflows/other.yml' }, 'other closed workflow path')
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, changedLegacyPath, changedClosedPath), 'SOURCE_INPUT_DRIFT')
+})
+
+test('keeps other profile, approved migration and non-recipe infrastructure comparisons strict with closed metadata', () => {
+  const { legacy42, closed43 } = closedWorkflowAppendFixture()
+  for (const [label, mutate] of [
+    ['runtime drift', profile => { profile.runtime.timeoutSeconds += 1 }],
+    ['identity drift', profile => { profile.identities.runtimeDbLogin += '-other' }],
+    ['unknown profile key', profile => { profile.extra = false }],
+    ['migration prefix drift', profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }],
+    ['migration append drift', profile => { profile.migrations.entries.at(-1).appliedSha256 = 'f'.repeat(64) }],
+    ['unknown migration', profile => { profile.migrations.entries.push({ order: 44, version: 'unknown-044' }) }],
+  ]) {
+    const invalid = commitProfileVariant(closed43, mutate, label)
+    assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, legacy42, invalid), 'SOURCE_INPUT_DRIFT')
+  }
+  const nonRecipeDrift = commitNonRecipeVariant(closed43,
+    file => fs.appendFileSync(file, '\n# closed-mode non-recipe infrastructure drift\n'), 'non-recipe drift with closed metadata')
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, legacy42, nonRecipeDrift), 'SOURCE_INPUT_DRIFT')
+})
 
 test('allows only exact known DEV-058/059/070 metadata appends for a separate image-only preparation', () => {
   const dev058Transition = assertToolInfrastructureTransition(sourceFixture.root,

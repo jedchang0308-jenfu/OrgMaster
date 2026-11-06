@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { gunzipSync } from 'node:zlib'
-import { canonicalize, sha256, assertImmutableRef, releasePaths } from './dev012-owner-release-runtime.mjs'
+import { canonicalize, sha256, assertImmutableRef, releasePaths, OWNER_EXECUTION_MODES } from './dev012-owner-release-runtime.mjs'
 import { readGitBlob } from './dev012-owner-stage-executor.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
@@ -169,11 +169,22 @@ function nonRecipeInfrastructureEntries(root, revision) {
       return file !== PRODUCTION_PROFILE_PATH && !TOOL_RECIPES.includes(file)
     })
 }
+function reviewedClosedWorkflowTransition(before, after) {
+  const fixed = {
+    path: '.github/workflows/deploy-orgmaster-independent-production.yml',
+    concurrency: 'production-release-orgmaster-prod',
+    jobs: OWNER_EXECUTION_MODES.full_release,
+    failureJobs: ['readback', 'abort-or-rollback', 'publish-terminal'],
+  }
+  return same(before, { ...fixed, onlyInput: 'releaseCapsuleRef' })
+    && same(after, { ...fixed, inputs: ['releaseCapsuleRef', 'executionMode'],
+      defaultExecutionMode: 'full_release', executionModes: OWNER_EXECUTION_MODES })
+}
 /**
- * The baseline-to-receipt transition may carry the exact DEV-058 or DEV-059
- * migration append alongside existing tool recipe changes. Every other infrastructure
- * input, including every non-recipe tree entry and every profile field, stays
- * byte-equivalent. The receipt-to-intent check remains strict below.
+ * The baseline-to-receipt transition may carry an approved migration append
+ * alongside tool recipe changes and the exact reviewed single-capsule to closed
+ * execution-mode metadata amendment. All other profile/infrastructure inputs
+ * remain equal; raw fingerprints and receipt-to-intent checks stay strict.
  */
 export function assertToolInfrastructureTransition(root, beforeRevision, afterRevision) {
   const beforeFingerprint = toolInfrastructureFingerprint(root, beforeRevision)
@@ -206,7 +217,11 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
   } catch { fail('SOURCE_INPUT_DRIFT') }
   const { migrations: _beforeMigrations, ...beforeProfileWithoutMigrations } = beforeProfile
   const { migrations: _afterMigrations, ...afterProfileWithoutMigrations } = afterProfile
-  if (!same(beforeProfileWithoutMigrations, afterProfileWithoutMigrations)
+  const exactProfileMatch = same(beforeProfileWithoutMigrations, afterProfileWithoutMigrations)
+  const reviewedWorkflowMatch = !exactProfileMatch
+    && reviewedClosedWorkflowTransition(beforeProfile.workflow, afterProfile.workflow)
+    && same({ ...beforeProfileWithoutMigrations, workflow: afterProfile.workflow }, afterProfileWithoutMigrations)
+  if ((!exactProfileMatch && !reviewedWorkflowMatch)
     || !same(nonRecipeInfrastructureEntries(root, beforeRevision), nonRecipeInfrastructureEntries(root, afterRevision))) fail('SOURCE_INPUT_DRIFT')
   return { disposition, beforeFingerprint, afterFingerprint }
 }
