@@ -4,7 +4,7 @@ import { assertPrincipalOnlyRecoveryBinding, assertPrincipalOnlyRecoveryReadback
 import { assertSmokeInfraReuseReceipt } from './dev057-smoke-rotation-continuation.mjs'
 import { spawnSync } from 'node:child_process'
 import { gzipSync } from 'node:zlib'
-import { assertImmutableRef, assertProtectedGitHubContext, assertRuntimeConfig, candidateTagUriMatches, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
+import { assertImmutableRef, assertOwnerExecutionMode, assertProtectedGitHubContext, assertRuntimeConfig, candidateTagUriMatches, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
 import { dev013L4SequenceStep, dev013TerminalTransitionFact } from './dev013-l4-transition-sequence.mjs'
 import { buildDev014ConsumerConformance } from './dev014-consumer-conformance.mjs'
 import { assertDev014PrincipalLifecycleContainment } from './dev014-principal-lifecycle-release.mjs'
@@ -549,8 +549,54 @@ function publicBuildReceipt(build) {
   return { name: build.name, id: build.id, projectId: build.projectId, status: build.status, serviceAccount: build.serviceAccount, createTime: build.createTime, startTime: build.startTime, finishTime: build.finishTime, sourceProvenance: build.sourceProvenance, results: build.results, options: build.options }
 }
 
+// Read-only normal-CLI continuation admission. It never executes a stage,
+// publishes a receipt, extends expiry, or acquires a runtime control lease.
+export async function verifyMigrationOnlyContinuation({ capsuleRef, capsuleSha256, profile, transport,
+  validateIntent, sourceRevision, expectedSourceSha256, expectedManifestSha256, baselineIntentRef, previousRevision }) {
+  if (profile.application.id !== 'orgmaster' || !H40.test(sourceRevision ?? '') ||
+      !H64.test(expectedSourceSha256 ?? '') || !H64.test(expectedManifestSha256 ?? '')) fail('MIGRATION_CONTINUATION_INPUT_INVALID')
+  const { intent, intentRef, paths } = await readIntentAndPaths({ transport, profile, capsuleRef, capsuleSha256, validateIntent })
+  if (intent.sourceRevision !== sourceRevision || intent.sourceSha256 !== expectedSourceSha256 || intent.migrationManifestSha256 !== expectedManifestSha256 ||
+      canonicalize(intent.baselineIntentRef) !== canonicalize(baselineIntentRef) || intent.previousRevision !== previousRevision ||
+      !Number.isFinite(Date.parse(intent.deadlineAt)) || Date.parse(intent.deadlineAt) <= Date.parse(transport.now())) fail('MIGRATION_CONTINUATION_SOURCE_OR_BASELINE_MISMATCH')
+  if (await optionalNamedJson(transport, paths.candidate, profile) ||
+      await optionalNamedJson(transport, paths.terminal, profile)) fail('MIGRATION_CONTINUATION_ALREADY_STARTED')
+  const prepare = await readStage(transport, paths, profile, intent, 'prepare')
+  const build = await readStage(transport, paths, profile, intent, 'build')
+  const deployment = await readDeployment(transport, paths, profile, intent, intentRef, capsuleSha256)
+  const migration = await readNamedJson(transport, paths.migrate, profile)
+  const names = { sourceLock: 'sourceLockRef', authorization: 'authorizationPolicyRef', readiness: 'readinessReceiptRef',
+    foundation: 'foundationReceiptRef', infra: 'infraReceiptRef', runtimeConfig: 'runtimeConfigRef' }
+  const expectedRefs = Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]]))
+  if (prepare.value.releaseId !== intent.releaseId || build.value.releaseId !== intent.releaseId ||
+      prepare.value.previousReceiptRef !== null || canonicalize(prepare.value.facts.prerequisiteRefs) !== canonicalize(expectedRefs) ||
+      canonicalize(build.value.previousReceiptRef) !== canonicalize(prepare.ref) ||
+      canonicalize(deployment.value.buildReceiptRef) !== canonicalize(build.ref)) fail('MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID')
+  for (const field of ['artifactDigest', 'sourceObject', 'migrationBundleRef', 'provenanceReceiptRef', 'sbomReceiptRef', 'scanReceiptRef']) {
+    if (canonicalize(build.value.facts[field]) !== canonicalize(deployment.value[field])) fail('MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID', field)
+  }
+  const values = Object.fromEntries(await Promise.all(Object.entries(names).map(async ([name, field]) =>
+    [name, (await transport.readJson(intent[field], profile.artifact.releaseBucket, ['receipts'])).value])))
+  assertPreparePrerequisites({ intent, profile, values })
+  if (prepare.value.facts.migrationRunnerDigest !== deployment.value.migrationRunnerDigest ||
+      canonicalize(prepare.value.facts.routine?.baselineIntentRef) !== canonicalize(intent.baselineIntentRef) ||
+      !['FORWARD_APPLY', 'UNCHANGED_VERIFIED'].includes(prepare.value.facts.routine?.migrationDisposition)) fail('MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID')
+  for (const field of ['migrationBundleRef', 'provenanceReceiptRef', 'sbomReceiptRef', 'scanReceiptRef']) {
+    await transport.readJson(deployment.value[field], profile.artifact.releaseBucket, ['source', 'receipts'])
+  }
+  assertMigrationReceipt(migration.value, profile, intent, {
+    allowForward: prepare.value.facts.routine.migrationDisposition === 'FORWARD_APPLY', forwardPlan: prepare.value.facts.routine,
+  })
+  if (migration.value.schemaVersion === 'jenfu.dev012.stage-receipt.v1' &&
+      (migration.value.releaseId !== intent.releaseId || canonicalize(migration.value.previousReceiptRef) !== canonicalize(prepare.ref))) fail('MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID')
+  return { status: 'MIGRATION_APPLIED_CONTINUATION_READY', applicationReleased: false, sourceRevision,
+    releaseId: intent.releaseId, releaseCapsuleRef: `${intentRef.uri}#sha256=${intentRef.sha256}`,
+    migrationReceiptRef: migration.ref, deploymentCapsuleRef: deployment.ref, artifactDigest: deployment.value.artifactDigest }
+}
+
 export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, profile, profileSha256 = profile?.contractSha256, transport, environment = process.env, validateIntent, createSourceIdentity, createSourceArchive, buildMigrationBundle, verifyRoutineRelease, verifyToolJobReadback, reuseAppArtifact }) {
   if (!STAGES.has(stage)) fail('STAGE_DENIED')
+  assertOwnerExecutionMode(profile, environment, stage)
   const { intent, intentRef, paths } = await readIntentAndPaths({ transport, profile, capsuleRef, capsuleSha256, validateIntent })
   const fingerprint = sha256(canonicalize({ ownerApplicationId: profile.application.id, releaseId: intent.releaseId, sourceRevision: intent.sourceRevision, releaseIntentSha256: capsuleSha256 }))
 

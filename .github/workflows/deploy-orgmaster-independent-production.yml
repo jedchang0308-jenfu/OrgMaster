@@ -7,6 +7,12 @@ on:
         description: Immutable OrgMaster release-intent URI with sha256 fragment
         required: true
         type: string
+      executionMode:
+        description: Complete the owner release, or stop after the sealed migration receipt
+        required: true
+        type: choice
+        default: full_release
+        options: [full_release, migration_only]
 
 concurrency:
   group: production-release-orgmaster-prod
@@ -17,6 +23,7 @@ permissions:
 
 env:
   NODE_VERSION: "24.11.0"
+  OWNER_EXECUTION_MODE: "${{ inputs.executionMode }}"
   WIF_PROVIDER: ${{ vars.ORGMASTER_PROD_WIF_PROVIDER }}
 
 jobs:
@@ -39,9 +46,10 @@ jobs:
         run: node scripts/dev012-verify-official-source.mjs
       - id: bind
         shell: bash
-        env: { RELEASE_CAPSULE_REF: "${{ inputs.releaseCapsuleRef }}" }
+        env: { RELEASE_CAPSULE_REF: "${{ inputs.releaseCapsuleRef }}", EXECUTION_MODE: "${{ inputs.executionMode }}" }
         run: |
           set -euo pipefail
+          case "$EXECUTION_MODE" in full_release|migration_only) ;; *) exit 2 ;; esac
           capsule_uri="${RELEASE_CAPSULE_REF%%#sha256=*}"
           capsule_sha256="${RELEASE_CAPSULE_REF##*#sha256=}"
           test "$capsule_uri" != "$RELEASE_CAPSULE_REF"
@@ -108,6 +116,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage migrate --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   candidate:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, migrate]
     runs-on: ubuntu-latest
     environment: production
@@ -131,6 +140,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage candidate --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   entrypoint:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, candidate]
     runs-on: ubuntu-latest
     environment: production
@@ -154,6 +164,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage entrypoint --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   verify:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, entrypoint]
     runs-on: ubuntu-latest
     environment: production
@@ -178,6 +189,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage verify --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   decision:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, verify]
     runs-on: ubuntu-latest
     environment: production
@@ -201,6 +213,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage decision --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   activate:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, decision]
     runs-on: ubuntu-latest
     environment: production
@@ -224,6 +237,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage activate --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   canonical:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, activate]
     runs-on: ubuntu-latest
     environment: production
@@ -249,6 +263,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage canonical --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   finalize:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, canonical]
     runs-on: ubuntu-latest
     environment: production
@@ -272,7 +287,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage finalize --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   failure:
-    if: ${{ always() && needs.prepare.result == 'success' && contains(needs.*.result, 'failure') }}
+    if: ${{ always() && inputs.executionMode == 'full_release' && needs.prepare.result == 'success' && contains(needs.*.result, 'failure') }}
     needs: [prepare, build, migrate, candidate, entrypoint, verify, decision, activate, canonical, finalize]
     runs-on: ubuntu-latest
     environment: production
