@@ -2,6 +2,7 @@ import { assertSmokeRotationContinuation, assertSmokeInfraReuseContinuation, rea
 import { readPrincipalOnlyRepairBaseline } from './dev057-principal-forward-repair.mjs'
 import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
+import {normalizeCatalogPackagingResourceTree} from './dev070-catalog-packaging-inputs.mjs'
 import { assertOrdinaryToolRotation } from './dev040-tool-image-rotation.mjs'
 import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256 } from './dev012-owner-release-runtime.mjs'
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
@@ -38,7 +39,7 @@ const DEV057_CUTOVER_INFRA_BLOBS = Object.freeze({
 })
 
 export function filterControlledInfrastructureTree(bytes, additionalExcludedPaths = []) {
-  const entries = Buffer.from(bytes).toString('utf8').split('\0').filter(Boolean)
+  const entries = normalizeCatalogPackagingResourceTree(bytes).toString('utf8').split('\0').filter(Boolean)
   if (!entries.length) fail('ROUTINE_BASELINE_SOURCE_MISSING')
   const excludedPaths = new Set([...CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS, ...additionalExcludedPaths])
   const filtered = entries.filter((entry) => {
@@ -71,7 +72,7 @@ export function routineInfrastructureFingerprint(root, revision) {
   if (result.status !== 0 || !result.stdout?.length) fail('ROUTINE_BASELINE_SOURCE_MISSING')
   const config = spawnSync('git', ['show', `${revision}:config/release/dev040-orgmaster-independent-production-v3.json`], { cwd: root, encoding: 'utf8', windowsHide: true })
   if (config.status !== 0) fail('ROUTINE_BASELINE_SOURCE_MISSING')
-  return sha256(Buffer.concat([result.stdout, Buffer.from(canonicalize(releaseInfrastructureInputs(JSON.parse(config.stdout))))]))
+  return sha256(Buffer.concat([normalizeCatalogPackagingResourceTree(result.stdout), Buffer.from(canonicalize(releaseInfrastructureInputs(JSON.parse(config.stdout))))]))
 }
 
 // Historical initialization metadata is not a provisioned infrastructure input.

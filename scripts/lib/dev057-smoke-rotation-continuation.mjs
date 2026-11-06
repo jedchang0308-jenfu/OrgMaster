@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import {normalizeCatalogPackagingResourceTree} from './dev070-catalog-packaging-inputs.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { canonicalize, sha256, assertImmutableRef, assertControllerImageResolutionProof, releasePaths } from './dev012-owner-release-runtime.mjs'
@@ -501,7 +502,7 @@ export function readSmokeReuseInfrastructureTree(root, revision) {
     'config/release/dev040-orgmaster-independent-production-v3.json', 'config/dev-010/n1c-orgmaster.json'],
   { cwd: root, encoding: null, windowsHide: true })
   if (result.status !== 0 || !result.stdout?.length) fail('SMOKE_REUSE_SOURCE_INVALID')
-  return result.stdout
+  return normalizeCatalogPackagingResourceTree(result.stdout)
 }
 
 // Mutable control is read twice by the producer. Only its exact finalized owner

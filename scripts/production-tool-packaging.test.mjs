@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const tempPrefix = 'orgmaster-production-tool-packaging-'
@@ -19,6 +20,7 @@ const catalogSnapshots = [
   'config/catalogs/ai-pdm-role-catalog.v5.json',
   'config/catalogs/ai-pdm-role-catalog.v6.json',
   'config/catalogs/ai-pdm-role-catalog.v7.json',
+  'config/catalogs/ai-pdm-role-catalog.v8.json',
 ]
 const historicalFixture = 'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
 const migrationEntries = [
@@ -32,6 +34,9 @@ const migrationEntries = [
 ]
 const diagnosticEntries = ['scripts/dev057-production-principal-pair-diagnostic-runner.mjs']
 const catalogEntries = ['scripts/dev057-production-v4-catalog-readback-runner.mjs']
+const catalogSmoke = 'scripts/dev070-catalog-runtime-smoke.mjs'
+const staticHelper = 'src/governance/aiPdmStaticV8Catalog.ts'
+const staticV8 = catalogSnapshots.at(-1)
 
 function inside(parent, target) {
   const relative = path.relative(parent, target)
@@ -82,6 +87,30 @@ async function projectRecipe(recipe, stage, overrides = new Map()) {
 
 async function hasFile(root, relative) {
   try { return (await stat(path.join(root, relative))).isFile() } catch { return false }
+}
+
+// Project only the runner stage's literal catalog/contract/smoke assets. The
+// bundled SSR output still belongs to the existing full image build gate.
+async function projectApplicationCatalogAssets(stage) {
+  const dockerfile = await readFile(path.join(repo, 'Dockerfile'), 'utf8')
+  const runner = dockerfile.split('FROM scratch AS runner')[1]
+  assert.ok(runner)
+  for (const line of runner.split(/\r?\n/u).filter(line => line.startsWith('COPY '))) {
+    const parts = line.split(/\s+/u).slice(1).filter(part => !part.startsWith('--'))
+    const [source, destination] = parts
+    if (!(source.startsWith('/app/config/catalogs/') || source === '/app/contracts' || source === catalogSmoke)) continue
+    const local = source.replace(/^\/app\//u, '')
+    const target = path.resolve(stage, destination)
+    assert.ok(inside(stage, target))
+    await mkdir(path.dirname(target), { recursive: true })
+    await cp(path.join(repo, local), target, { recursive: true })
+  }
+  const command = runner.split(/\r?\n/u).find(line => line.startsWith('RUN ['))
+  assert.deepEqual(JSON.parse(command.slice(4)), ['/nodejs/bin/node', catalogSmoke])
+}
+
+function runCatalogSmoke(stage) {
+  return spawnSync(process.execPath, [catalogSmoke], { cwd: stage, env: safeEnvironment(), encoding: 'utf8', windowsHide: true })
 }
 
 async function stageImages() {
@@ -199,6 +228,7 @@ test('production tool stages are the direct projections of all three Docker COPY
       assert.equal(await hasFile(stages[name].root, neutral), true, `${name} stages the neutral database module`)
     }
     for (const snapshot of catalogSnapshots) assert.equal(await hasFile(stages.catalog.root, snapshot), true, snapshot)
+    assert.equal(await hasFile(stages.catalog.root, staticHelper), true)
     assert.equal(await hasFile(stages.catalog.root, historicalFixture), true)
     assert.equal(await hasFile(stages.diagnostic.root, 'scripts/dev040-production-migration-runner.mjs'), false,
       'diagnostic image must not contain migration-only policy')
@@ -223,7 +253,7 @@ test('production tool stages are the direct projections of all three Docker COPY
   })
 })
 
-test('catalog database reader validates staged v5/v6/v7 snapshots and fails closed when each is absent', async () => {
+test('catalog database reader validates staged v5/v6/v7/v8 snapshots and fails closed when each is absent', async () => {
   const positive = await createStage()
   try {
     await projectRecipe(recipes.catalog, positive)
@@ -242,6 +272,13 @@ test('catalog database reader validates staged v5/v6/v7 snapshots and fails clos
         delegation_allowed: role.delegationAllowed, allowed_scope_kinds: role.allowedScopeKinds,
         assignment_tier: role.assignmentTier, permissions: role.permissions, metadata: role.metadata ?? null,
         role_definition_hash: role.roleDefinitionHash,
+        ...(catalog.roles.length === 10 ? {
+          publication_format:'legacy-static-v1',canonicalization_version:null,role_schema_id:null,baseline_role_identity_hash:null,
+          role_identity_hash:null,protected_policy_hash:null,registry_hash:null,role_profile_schema_id:'ai-pdm.static-role-profiles.v1',
+          role_profile_hash:'6cbc0346701146191fca929354883eb04a758daa7a695cc22c41c7bb5dfb5fe9',role_status:'active',
+          permission_role_id:role.stableRoleId,presentation_name:display_order===9?'系統管理員':role.displayName,presentation_order:display_order,
+          assignment_disposition:display_order>=8?'hidden-protected':'selectable',lifecycle:'active',
+        } : {}),
       }));
       const { readPublishedAiPdmRoleCatalogFromDatabase } = await import(pathToFileURL(path.join(process.cwd(), 'server/aiPdmRoleCatalogRepository.ts')));
       for (const file of files) {
@@ -276,14 +313,83 @@ test('catalog database reader validates staged v5/v6/v7 snapshots and fails clos
           delegation_allowed: role.delegationAllowed, allowed_scope_kinds: role.allowedScopeKinds,
           assignment_tier: role.assignmentTier, permissions: role.permissions, metadata: role.metadata ?? null,
           role_definition_hash: role.roleDefinitionHash,
+          ...(catalog.roles.length === 10 ? {
+            publication_format:'legacy-static-v1',canonicalization_version:null,role_schema_id:null,baseline_role_identity_hash:null,
+            role_identity_hash:null,protected_policy_hash:null,registry_hash:null,role_profile_schema_id:'ai-pdm.static-role-profiles.v1',
+            role_profile_hash:'6cbc0346701146191fca929354883eb04a758daa7a695cc22c41c7bb5dfb5fe9',role_status:'active',
+            permission_role_id:role.stableRoleId,presentation_name:display_order===9?'系統管理員':role.displayName,presentation_order:display_order,
+            assignment_disposition:display_order>=8?'hidden-protected':'selectable',lifecycle:'active',
+          } : {}),
         }));
-        await rm(path.join(process.cwd(), file));
         const { readPublishedAiPdmRoleCatalogFromDatabase } = await import(pathToFileURL(path.join(process.cwd(), 'server/aiPdmRoleCatalogRepository.ts')));
+        await rm(path.join(process.cwd(), file));
         await assert.rejects(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => ({ rows: sql.includes('pg_catalog.to_regclass') ? [{ v3_exists: true }] : rows }) }), /EXTERNAL_CATALOG_UNAVAILABLE/u);
       `
       const result = runNode(stage, source, { transformTypes: true })
       assert.equal(result.status, 0, `${snapshot}: ${result.stderr || result.stdout}`)
     } finally { await removeStage(stage) }
+  }
+})
+
+test('application and catalog-tool literal assets pass the actual runtime smoke and reject missing/tampered v8', async () => {
+  for (const recipe of ['application', 'catalog']) {
+    for (const mutation of ['none', 'missing', 'tampered']) {
+      const stage = await createStage()
+      try {
+        if (recipe === 'application') await projectApplicationCatalogAssets(stage)
+        else await projectRecipe(recipes.catalog, stage)
+        if (mutation === 'missing') await rm(path.join(stage, staticV8))
+        if (mutation === 'tampered') {
+          const asset = JSON.parse(await readFile(path.join(stage, staticV8), 'utf8'))
+          asset.roles[9].permissions = []
+          await writeFile(path.join(stage, staticV8), JSON.stringify(asset))
+        }
+        const result = runCatalogSmoke(stage)
+        if (mutation === 'none') assert.equal(result.status, 0, result.stderr || result.stdout)
+        else { assert.notEqual(result.status, 0); assert.match(result.stderr, /CATALOG_RUNTIME_ASSET_INVALID/u) }
+      } finally { await removeStage(stage) }
+    }
+  }
+})
+
+test('readback native imports require the copied static helper and v8 source asset', async () => {
+  for (const missing of [staticHelper, staticV8]) {
+    const stage = await createStage()
+    try {
+      await projectRecipe(recipes.catalog, stage)
+      await rm(path.join(stage, missing))
+      const source = `
+        import assert from 'node:assert/strict';
+        await assert.rejects(import('./server/aiPdmRoleCatalogRepository.ts'),error=>
+          error?.code==='ERR_MODULE_NOT_FOUND' && error.message.includes(${JSON.stringify(path.basename(missing))}));
+      `
+      const result = runNode(stage, source, { transformTypes: true })
+      assert.equal(result.status, 0, result.stderr || result.stdout)
+    } finally { await removeStage(stage) }
+  }
+})
+
+test('committed scoped catalog attributes preserve exact v8 bytes in LF and Windows CRLF Git archives', () => {
+  for (const eol of ['lf', 'crlf']) {
+    const archive = spawnSync('git', ['-c', `core.autocrlf=${eol === 'crlf'}`, '-c', `core.eol=${eol}`,
+      'archive', '--format=tar', 'HEAD', '--', 'config/catalogs/.gitattributes', staticV8],
+    { cwd: repo, encoding: null, windowsHide: true, maxBuffer: 1024 * 1024 })
+    assert.equal(archive.status, 0, archive.stderr?.toString())
+    let found = false
+    for (let offset = 0; offset + 512 <= archive.stdout.length;) {
+      const header = archive.stdout.subarray(offset, offset + 512)
+      if (header.every(byte => byte === 0)) break
+      const name = header.subarray(0, 100).toString('utf8').replace(/\0.*$/su, '')
+      const size = Number.parseInt(header.subarray(124, 136).toString('ascii').replace(/\0.*$/su, '').trim(), 8)
+      assert.ok(Number.isSafeInteger(size) && size >= 0)
+      if (name === staticV8) {
+        found = true
+        const bytes = archive.stdout.subarray(offset + 512, offset + 512 + size)
+        assert.equal(createHash('sha256').update(bytes).digest('hex'), '799b6d138d614bd737b49818e02f6a31b1810c42e01801f845401fb7ad3146e1')
+      }
+      offset += 512 + Math.ceil(size / 512) * 512
+    }
+    assert.equal(found, true)
   }
 })
 

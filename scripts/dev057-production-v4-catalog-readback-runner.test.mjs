@@ -12,6 +12,7 @@ import {
 } from '../server/aiPdmRoleCatalogRepository.ts'
 import { TARGET } from './lib/orgmaster-production-database.mjs'
 import { parseArgs, runMain, summarizeGovernance } from './dev057-production-v4-catalog-readback-runner.mjs'
+import {AI_PDM_STATIC_V8_VERSION} from '../src/governance/aiPdmStaticV8Catalog.ts'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const current = JSON.parse(fs.readFileSync(path.join(root,
@@ -26,7 +27,7 @@ const document = (assignments) => ({ activePolicyVersionId: 'published-1',
     policy: { roleAssignments: assignments } }],
   draft: { roleAssignments: assignments } })
 const catalogVersions = [AI_PDM_ROLE_CATALOG_VERSION,
-  AI_PDM_ROLE_CATALOG_V6_VERSION, AI_PDM_ROLE_CATALOG_V7_VERSION]
+  AI_PDM_ROLE_CATALOG_V6_VERSION, AI_PDM_ROLE_CATALOG_V7_VERSION, AI_PDM_STATIC_V8_VERSION]
 
 function databaseRows(catalog) {
   return catalog.roles.map((role, displayOrder) => ({
@@ -49,6 +50,13 @@ function databaseRows(catalog) {
     permissions: role.permissions,
     metadata: role.metadata ?? null,
     role_definition_hash: role.roleDefinitionHash,
+    ...(catalog.catalogVersion===AI_PDM_STATIC_V8_VERSION?{
+      publication_format:'legacy-static-v1',canonicalization_version:null,role_schema_id:null,baseline_role_identity_hash:null,
+      role_identity_hash:null,protected_policy_hash:null,registry_hash:null,role_profile_schema_id:'ai-pdm.static-role-profiles.v1',
+      role_profile_hash:'6cbc0346701146191fca929354883eb04a758daa7a695cc22c41c7bb5dfb5fe9',role_status:'active',
+      permission_role_id:role.stableRoleId,presentation_name:displayOrder===9?'系統管理員':role.displayName,presentation_order:displayOrder,
+      assignment_disposition:displayOrder>=8?'hidden-protected':'selectable',lifecycle:'active',
+    }:{}),
   }))
 }
 
@@ -120,7 +128,7 @@ test('operator package uses locked runtime and includes every imported source', 
   assert.match(dockerfile, /SOURCE_REVISION=\$\{SOURCE_REVISION\}/u)
 })
 
-test('application and readback images package every catalog selected by the approved v5/v6/v7 reader', async () => {
+test('application and readback images package every catalog selected by the approved v5/v6/v7/v8 reader', async () => {
   for (const recipe of ['Dockerfile', 'infra/google-cloud/dev-040-production-release/dev057-v4-catalog-readback.Dockerfile']) {
     const dockerfile = fs.readFileSync(path.join(root, recipe), 'utf8')
     const copies = dockerfile.split(/\r?\n/u).filter((line) => line.startsWith('COPY '))
@@ -139,7 +147,7 @@ test('application and readback images package every catalog selected by the appr
   }
 })
 
-test('database readback validates actual v5/v6/v7 projections against the selected approved reader snapshot', async () => {
+test('database readback validates actual v5/v6/v7/v8 projections against the selected approved reader snapshot', async () => {
   for (const catalogVersion of catalogVersions) {
     const expected = await readPublishedAiPdmRoleCatalog(root, catalogVersion)
     let statement = ''

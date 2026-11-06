@@ -58,6 +58,7 @@ await withDev058Dev123Database(async ({ admin, pdmRuntime, orgRuntime, handle, p
       'scripts/dev058-dev123-native-fixtures.mjs', 'server/orgmasterGovernanceApi.ts', 'server/orgmasterGovernanceStore.ts',
       'server/orgmasterGovernanceWriteActor.ts', 'server/orgmasterPersistenceRepository.ts',
       'server/governanceReduction.ts', 'server/aiPdmRoleCatalogRepository.ts',
+      'src/governance/aiPdmStaticV8Catalog.ts', 'config/catalogs/ai-pdm-role-catalog.v8.json',
       'server/aiPdmRoleCapabilityStore.ts', 'server/privilegedAssignmentStore.ts', 'server/orgmasterWorkspaceStore.ts',
       'src/governance/aiPdmRoleCapability.ts', 'src/governance/privilegedAssignments.ts',
       'src/governance/validation.ts'].map(file => [orgRoot, 'orgmaster', file]),

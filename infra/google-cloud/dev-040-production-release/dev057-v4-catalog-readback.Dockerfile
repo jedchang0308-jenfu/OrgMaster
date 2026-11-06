@@ -14,12 +14,16 @@ COPY scripts/dev057-production-v4-catalog-readback-runner.mjs scripts/dev057-pro
 COPY server/aiPdmRoleCatalogRepository.ts server/aiPdmRoleCatalogRepository.ts
 COPY server/aiPdmDynamicRoleCatalog.ts server/aiPdmDynamicRoleCatalog.ts
 COPY src/governance/aiPdmRoleSchema.ts src/governance/aiPdmRoleSchema.ts
+COPY src/governance/aiPdmStaticV8Catalog.ts src/governance/aiPdmStaticV8Catalog.ts
 COPY contracts/ai-pdm-role-policy-catalog/v3/protected-policy-source.json contracts/ai-pdm-role-policy-catalog/v3/protected-policy-source.json
 COPY contracts/ai-pdm-role-policy-catalog/v3/editor-registry.json contracts/ai-pdm-role-policy-catalog/v3/editor-registry.json
 COPY config/catalogs/ai-pdm-role-catalog.v5.json config/catalogs/ai-pdm-role-catalog.v5.json
 COPY config/catalogs/ai-pdm-role-catalog.v6.json config/catalogs/ai-pdm-role-catalog.v6.json
 COPY config/catalogs/ai-pdm-role-catalog.v7.json config/catalogs/ai-pdm-role-catalog.v7.json
+COPY config/catalogs/ai-pdm-role-catalog.v8.json config/catalogs/ai-pdm-role-catalog.v8.json
+COPY scripts/dev070-catalog-runtime-smoke.mjs scripts/dev070-catalog-runtime-smoke.mjs
 COPY contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json
+RUN ["node","scripts/dev070-catalog-runtime-smoke.mjs"]
 
 ARG SOURCE_REVISION
 RUN echo "$SOURCE_REVISION" | grep -Eq '^[0-9a-f]{40}$'

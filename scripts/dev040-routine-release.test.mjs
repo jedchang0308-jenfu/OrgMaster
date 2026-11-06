@@ -14,6 +14,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import {routineInfrastructureFingerprint,controlledInfrastructureFingerprint} from './lib/dev040-routine-release.mjs'
+import {readSmokeReuseInfrastructureTree} from './lib/dev057-smoke-rotation-continuation.mjs'
+import {DEV070_CATALOG_PACKAGING} from './lib/dev070-catalog-packaging-inputs.mjs'
 import { assertMigrationReceipt, assertPreparePrerequisites, createGitArchive, createGitSourceIdentity, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
@@ -35,7 +38,14 @@ test('production runtime image includes every approved catalog read by governanc
   for (const catalogPath of catalogPaths) {
     const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'))
     assert.equal(catalog.applicationId, 'ai-pdm')
-    assert.equal(catalog.roles.length, 9)
+    if (catalogPath === 'config/catalogs/ai-pdm-role-catalog.v8.json') {
+      assert.equal(catalog.roles.length, 10)
+      assert.equal(catalog.catalogVersion, 'ai-pdm.role-catalog.2026-11-06.v8')
+      assert.equal(catalog.catalogSha256, '320b259f0f0b4a51f24227cff37313bcb5fa3834d7736df3c43a1e178b878a73')
+      assert.equal(sha256(fs.readFileSync(catalogPath)), '799b6d138d614bd737b49818e02f6a31b1810c42e01801f845401fb7ad3146e1')
+      assert.deepEqual(catalog.roles.slice(0, 9), JSON.parse(fs.readFileSync('config/catalogs/ai-pdm-role-catalog.v7.json', 'utf8')).roles)
+      assert.deepEqual(catalog.roles[9], JSON.parse(fs.readFileSync('contracts/ai-pdm-role-policy-catalog/v3/protected-policy-source.json', 'utf8')).applicationAdministratorRole)
+    } else assert.equal(catalog.roles.length, 9)
     if (catalogPath.startsWith('config/catalogs/')) {
       const escapedPath = catalogPath.replaceAll('.', '\\.')
       assert.match(runner, new RegExp(`^COPY --from=builder --chown=65532:65532 /app/${escapedPath} \\./${escapedPath}$`, 'mu'))
@@ -114,6 +124,52 @@ function harness({ baselineRuntime = runtime, nextRuntime = runtime, baselineBun
   const input = { root: '.', profile, transport, intent, values, service, buildMigrationBundle: async () => currentBundle, fingerprint: () => 'f'.repeat(64), transitionFingerprint: () => 't'.repeat(64) }
   return { input, objects, paths, put, revision }
 }
+
+async function withCurrentCatalogPackagingSources(work){
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'orgmaster-catalog-resource-proof-'))
+ const repo=path.resolve('.'),base='7bf7fb96a8671a44159869e0f8ca68d8427584ee',recipe=DEV070_CATALOG_PACKAGING.path
+ const git=(cwd,args,bytes=false)=>{const r=spawnSync('git',args,{cwd,encoding:bytes?null:'utf8',windowsHide:true,maxBuffer:32*1024*1024});assert.equal(r.status,0,r.stderr?.toString());return bytes?r.stdout:r.stdout.trim()}
+ try{
+  const files=git(repo,['ls-tree','-r','--name-only',base,'--','infra/google-cloud/dev-040-production-release',
+   'config/release/dev040-production-release-infra-plan.json','config/release/dev040-orgmaster-independent-production-v3.json','config/dev-010/n1c-orgmaster.json']).split(/\r?\n/u)
+  for(const file of files){const target=path.join(root,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,git(repo,['show',base+':'+file],true))}
+  git(root,['init','--quiet']);git(root,['config','user.name','Catalog Resource Fixture']);git(root,['config','user.email','fixture@example.invalid']);git(root,['config','core.autocrlf','true'])
+  const commit=()=>{git(root,['add','.']);git(root,['commit','--quiet','-m','owned packaging fixture']);return git(root,['rev-parse','HEAD'])}
+  const before=commit();assert.equal(git(root,['rev-parse',before+':'+recipe]),DEV070_CATALOG_PACKAGING.before)
+  fs.writeFileSync(path.join(root,recipe),fs.readFileSync(recipe));const after=commit()
+  assert.equal(git(root,['rev-parse',after+':'+recipe]),DEV070_CATALOG_PACKAGING.after)
+  await work({root,before,after,recipe,git:args=>git(root,args),commit,files})
+ }finally{assert.equal(path.dirname(root),path.resolve(os.tmpdir()));assert.ok(path.basename(root).startsWith('orgmaster-catalog-resource-proof-'));fs.rmSync(root,{recursive:true,force:true})}
+}
+
+test('current7bf exact diagnostic packaging keeps ordinary resource inputs equal and rejects unknown recipe, mode and Terraform drift',async()=>{
+ await withCurrentCatalogPackagingSources(async f=>{
+  for(const fingerprint of [routineInfrastructureFingerprint,controlledInfrastructureFingerprint])assert.equal(fingerprint(f.root,f.after),fingerprint(f.root,f.before))
+  assert.deepEqual(readSmokeReuseInfrastructureTree(f.root,f.after),readSmokeReuseInfrastructureTree(f.root,f.before))
+  const h=harness();h.input.fingerprint=(_root,revision)=>routineInfrastructureFingerprint(f.root,revision===newSource?f.after:f.before)
+  assert.equal((await verifyRoutineRelease(h.input)).pendingMigrationCount,0)
+  const rejected=async revision=>{h.input.fingerprint=(_root,source)=>routineInfrastructureFingerprint(f.root,source===newSource?revision:f.before);await assert.rejects(verifyRoutineRelease(h.input),/ROUTINE_INFRA_CHANGED/)}
+  fs.appendFileSync(path.join(f.root,f.recipe),'\n# unreviewed diagnostic recipe\n');await rejected(f.commit())
+  f.git(['reset','--hard',f.after]);f.git(['update-index','--chmod=+x',f.recipe]);f.git(['commit','--quiet','-m','owned mode drift']);await rejected(f.git(['rev-parse','HEAD']))
+  f.git(['reset','--hard',f.after]);const terraform=f.files.find(file=>file.endsWith('.tf'));fs.appendFileSync(path.join(f.root,terraform),'\n# unreviewed infrastructure drift\n');await rejected(f.commit())
+ })
+})
+
+test('current7bf diagnostic packaging passes ordinary continuation from a prior APP_INFRA_REUSE without replacing original provenance',async()=>{
+ await withCurrentCatalogPackagingSources(async f=>{
+  const h=await smokeReuseHarness(),candidate='d'.repeat(40)
+  const tree=(_root,revision)=>readSmokeReuseInfrastructureTree(f.root,revision===candidate?f.after:f.before)
+  h.input.readInfrastructureTree=tree;h.constructorInput.readInfrastructureTree=tree
+  h.select(await buildSmokeInfraReuseReceipt(h.constructorInput))
+  const priorBytes=Buffer.from(h.objects.get(h.input.intent.infraReceiptRef.uri).bytes)
+  const next=await advanceSmokeReuseHarness(h,candidate,1)
+  h.input.fingerprint=(_root,revision)=>routineInfrastructureFingerprint(f.root,revision===candidate?f.after:f.before)
+  const result=await verifyDeployProductionRelease({options:h.options,...h.input})
+  assert.equal(result.pendingMigrationCount,0);assert.deepEqual(result.baselineIntentRef,next.baselineIntentRef)
+  assert.deepEqual(h.objects.get(next.priorReuseRef.uri).bytes,priorBytes)
+  assert.deepEqual(h.objects.get(h.rotationRef.uri).bytes,h.original)
+ })
+})
 
 function transitionReadiness(h, { from, to, action }) {
   const previousControlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: from }
