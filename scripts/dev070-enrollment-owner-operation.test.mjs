@@ -26,7 +26,7 @@ test('intent input is nonsensitive exact target metadata and has no user-chosen 
 test('closed owner CLI exposes only plan/admit/revoke/status against an immutable own released capsule',()=>{
  const args=['--action','status','--intent-file','nonsensitive-intent.json','--release-capsule-ref',`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/DEV070/release-intent.json#sha256=${'b'.repeat(64)}`]
  assert.equal(parseEnrollmentOwnerOperationArgs(args).action,'status')
- for(const flag of['--token','--database-url','--sql','--bootstrap','--force'])assert.throws(()=>parseEnrollmentOwnerOperationArgs([...args,flag,'no']))
+ for(const flag of['--token','--database-url','--sql','--bootstrap','--force','--observation-id'])assert.throws(()=>parseEnrollmentOwnerOperationArgs([...args,flag,'no']))
 })
 test('job SQL writes are restricted to the current migrator SESSION_USER and one typed owner function',async()=>{
  const value=intent(),seen=[];const manifest={schemaVersion:'orgmaster.administration-enrollment-owner-operation.v1',ownerApplicationId:'orgmaster',action:'admit',sourceRevision:value.sourceRevision,releaseIntentRef:{},terminalRef:{},deploymentRef:{},migrationBundleRef:{},intent:value}
@@ -87,21 +87,39 @@ function sealedOwnerFixture({action='plan',mutateBundle=()=>{},baselineSource='a
  put(paths.candidate,seal('candidate',{deploymentCapsuleRef:deploymentRef,migrationReceiptRef:migrationRef,candidateRevision:'orgmaster-prod-released'}))
  put(paths.terminal,seal('terminal',{result:terminalResult,remainingHumanAction:0,candidateRevision:'orgmaster-prod-released',artifactDigest:deployment.artifactDigest}))
  const read=uri=>{const bytes=objects.get(uri);if(!bytes)throw Object.assign(new Error('MISSING'),{code:'MISSING',detail:'404'});return {bytes,ref:{uri,sha256:sha256(bytes)},value:JSON.parse(bytes)}}
- let puts=0,runs=0
+ let puts=0,runs=0,nativeResult=action==='plan'?{status:'PLANNED'}:action==='status'?null:{status:'OBSERVED'}
+ const outputUris=[]
  const transport={async readJson(ref){const row=read(ref.uri);assert.equal(row.ref.sha256,ref.sha256);return row},async readBytes(uri){return read(uri)},
   async putJson(uri,data){puts++;return read(put(uri,data).uri)},async runMigrationJob({outputUri,enrollmentIntentOperation}){
    runs++;const input=read(enrollmentIntentOperation.ref.uri).value
-   const core={sourceRevision:value.sourceRevision,commandId:value.commandId,action,inputRef:enrollmentIntentOperation.ref,status:'PASS',result:{status:action==='plan'?'PLANNED':'OBSERVED'}}
+   outputUris.push(outputUri);assert.equal(objects.has(outputUri),false,'observations must be create-only')
+   const core={sourceRevision:value.sourceRevision,commandId:value.commandId,action,inputRef:enrollmentIntentOperation.ref,status:'PASS',result:structuredClone(nativeResult)}
    put(outputUri,{...core,receiptSha256:sha256(canonicalize(core))});assert.equal(input.migrationBundleRef.sha256,bundleRef.sha256)
   }}
- return {run:()=>executeEnrollmentOwnerOperation({profile,transport,sourceRevision:value.sourceRevision,releaseIntentRef,intent:value,action}),puts:()=>puts,runs:()=>runs}
+ return {run:()=>executeEnrollmentOwnerOperation({profile,transport,sourceRevision:value.sourceRevision,releaseIntentRef,intent:value,action}),puts:()=>puts,runs:()=>runs,
+  setNativeResult:next=>{nativeResult=next},outputUris,readOutput:uri=>Buffer.from(objects.get(uri))}
 }
 
-test('owner adapter accepts the current exact43 sealed RELEASED manifest for every closed action and reuses receipts',async()=>{
- for(const action of['plan','admit','revoke','status']){
+test('owner adapter accepts the current exact43 sealed RELEASED manifest and reuses immutable plan/admit/revoke receipts',async()=>{
+ for(const action of['plan','admit','revoke']){
   const f=sealedOwnerFixture({action}),first=await f.run()
   assert.equal(first.status,'PASS');assert.equal(f.runs(),1)
   assert.deepEqual(await f.run(),first);assert.equal(f.runs(),1)
+ }
+})
+test('owner status obtains fresh native initialized/revoked observations after pending without overwriting old output',async()=>{
+ for(const state of['INITIALIZED','REVOKED']){
+  const f=sealedOwnerFixture({action:'status'}),pending=await f.run()
+  assert.equal(pending.result,null);assert.equal(f.runs(),1)
+  const oldBytes=f.readOutput(pending.receiptRef.uri)
+  f.setNativeResult({status:state,receiptId:'native-'+state.toLowerCase()})
+  const fresh=await f.run()
+  assert.deepEqual(fresh.result,{status:state,receiptId:'native-'+state.toLowerCase()});assert.equal(f.runs(),2)
+  assert.notEqual(fresh.receiptRef.uri,pending.receiptRef.uri)
+  assert.match(fresh.receiptRef.uri,/\/status-[a-f0-9]{64}-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}\.json$/)
+  assert.deepEqual(fresh.inputRef,pending.inputRef,'fresh observations must not alter the admitted operation')
+  assert.deepEqual(f.readOutput(pending.receiptRef.uri),oldBytes)
+  assert.equal(f.outputUris.length,2)
  }
 })
 test('owner rejects historical42, unknown44 and altered exact manifest identities before publishing or running a Job',async()=>{

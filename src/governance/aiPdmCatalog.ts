@@ -5,6 +5,8 @@ import aiPdmCatalogV7Fixture from '../../config/catalogs/ai-pdm-role-catalog.v7.
 import historicalAiPdmCatalogFixture from '../../contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
 import { aiPdmRoleProfiles } from './aiPdmRoleSchema'
 import administrationProtectedSource from '../../contracts/ai-pdm-role-policy-catalog/v3/protected-policy-source.json'
+import { AI_PDM_STATIC_V8_VERSION, AI_PDM_STATIC_V8_SHA256, AI_PDM_STATIC_V8_VIEW, aiPdmStaticV8Catalog,
+  aiPdmStaticV8Profiles, isExactAiPdmStaticV8Catalog, sameStaticV8Value } from './aiPdmStaticV8Catalog'
 
 export const AI_PDM_CATALOG_SOURCE_HASHES = {
   permissionCodes: '0560A929FDA8D9123B65CDB51577F89C65E2EBA7CCD327454F403D9E1E647362',
@@ -96,7 +98,8 @@ export function historicalAiPdmRoleSnapshotMatches(value: {
   const provenance = value.catalogVersion === AI_PDM_HISTORICAL_CATALOG_VERSION ? historicalAiPdmCatalogFixture
     : value.catalogVersion === AI_PDM_ROLE_CATALOG_VERSION ? aiPdmCatalogFixture
     : value.catalogVersion === aiPdmCatalogV6Fixture.catalogVersion ? aiPdmCatalogV6Fixture
-    : value.catalogVersion === aiPdmCatalogV7Fixture.catalogVersion ? aiPdmCatalogV7Fixture : null
+    : value.catalogVersion === aiPdmCatalogV7Fixture.catalogVersion ? aiPdmCatalogV7Fixture
+    : value.catalogVersion === AI_PDM_STATIC_V8_VERSION ? aiPdmStaticV8Catalog : null
   if (!provenance) {
     const snapshot = trustedHistory.find(entry => entry.applicationId === 'ai-pdm' && entry.catalogVersion === value.catalogVersion)
     if (!snapshot || validateExternalRoleCatalog(snapshot).length) return false
@@ -142,6 +145,18 @@ function metadataRoles(artifact: CatalogMetadataArtifact): ExternalRoleCatalogRo
 export const AI_PDM_ROLE_CATALOG_ROLES: readonly ExternalRoleCatalogRoleV1[] = metadataRoles(aiPdmCatalogFixture)
 
 export function createAiPdmRoleCatalog(validationState: ExternalRoleCatalogSnapshotV1['validationState'] = 'valid', capturedAt = aiPdmCatalogFixture.publishedAt, artifact: CatalogMetadataArtifact = aiPdmCatalogFixture): ExternalRoleCatalogSnapshotV1 {
+  if (artifact.catalogVersion === AI_PDM_STATIC_V8_VERSION) {
+    if (!isExactAiPdmStaticV8Catalog(artifact) || ('sourcePath' in artifact &&
+      artifact.sourcePath !== `postgres:${AI_PDM_STATIC_V8_VIEW}` && artifact.sourcePath !== 'postgres:ai_pdm_contract.v_role_policy_publications_v1')) throw new Error('EXTERNAL_CATALOG_INVALID')
+    return {
+      applicationId: 'ai-pdm', catalogVersion: AI_PDM_STATIC_V8_VERSION, sourceKind: 'application-contract',
+      sourceRefs: [{ path: AI_PDM_STATIC_V8_VIEW, range: 'verified active publication', sha256: AI_PDM_STATIC_V8_SHA256 }],
+      capturedAt, payloadHash: AI_PDM_STATIC_V8_SHA256, catalogSha256: AI_PDM_STATIC_V8_SHA256,
+      validationState, effectState: 'not-synchronized',
+      roles: metadataRoles(artifact).map((role, index) => ({ ...role, ...aiPdmStaticV8Profiles[index],
+        ...(index === 9 ? { roleDefinitionHash: aiPdmStaticV8Catalog.roles[9].roleDefinitionHash } : {}) })),
+    }
+  }
   const dynamic=artifact.publicationFormat==='dynamic-policy-v1'||artifact.publicationFormat==='dynamic-policy-v2'
   const compatiblePublication = ![aiPdmCatalogFixture.catalogVersion, aiPdmCatalogV6Fixture.catalogVersion, aiPdmCatalogV7Fixture.catalogVersion].includes(artifact.catalogVersion)
   const base = {
@@ -171,6 +186,14 @@ export function validateExternalRoleCatalog(snapshot: ExternalRoleCatalogSnapsho
     : snapshot.catalogVersion === aiPdmCatalogV7Fixture.catalogVersion ? aiPdmCatalogV7Fixture : null
   const issues: ExternalRoleCatalogValidationIssue[] = []
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
+  if (snapshot.catalogVersion === AI_PDM_STATIC_V8_VERSION) {
+    const expected = createAiPdmRoleCatalog('valid', snapshot.capturedAt, aiPdmStaticV8Catalog)
+    // A metadata snapshot never establishes live provenance by itself. Its
+    // source must remain the fixed v3 projection verified by the DB adapter.
+    if (!Number.isFinite(Date.parse(snapshot.capturedAt)) || !sameStaticV8Value(snapshot, expected))
+      add('EXTERNAL_CATALOG_INVALID', 'catalogVersion', 'static-v8 必須符合 exact source、v3 來源與原生 static profiles')
+    return issues
+  }
   if(snapshot.publicationFormat==='dynamic-policy-v1'||snapshot.publicationFormat==='dynamic-policy-v2'){
     const v2=snapshot.publicationFormat==='dynamic-policy-v2'
     if(snapshot.applicationId!=='ai-pdm'||snapshot.sourceKind!=='application-contract'||snapshot.validationState!=='valid'||snapshot.effectState!=='not-synchronized'||

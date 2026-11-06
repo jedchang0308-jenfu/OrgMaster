@@ -3,6 +3,8 @@ import { access, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { decodeDynamicAiPdmRoleCatalog, type DynamicCatalogMetadata } from './aiPdmDynamicRoleCatalog.ts'
+import { AI_PDM_STATIC_V8_VERSION, AI_PDM_STATIC_V8_RAW_SHA256, AI_PDM_STATIC_V8_PROFILE_SHA256,
+  AI_PDM_STATIC_V8_VIEW, aiPdmStaticV8Profiles, isExactAiPdmStaticV8Catalog } from '../src/governance/aiPdmStaticV8Catalog.ts'
 
 export const JENFU_ENTITLEMENT_CONTRACT_VERSION = 'jenfu.platform-entitlement.v1' as const
 export const AI_PDM_APPLICATION_ID = 'ai-pdm' as const
@@ -94,6 +96,10 @@ function canonicalCatalog(catalog: PublishedAiPdmRoleCatalog) {
 }
 
 function validateCatalog(catalog: PublishedAiPdmRoleCatalog) {
+  if (catalog.catalogVersion === AI_PDM_STATIC_V8_VERSION) {
+    if (!isExactAiPdmStaticV8Catalog(catalog)) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
+    return catalog
+  }
   const approved = APPROVED_CATALOGS[catalog.catalogVersion];
   if (catalog.contractVersion !== JENFU_ENTITLEMENT_CONTRACT_VERSION || catalog.applicationId !== AI_PDM_APPLICATION_ID || !approved || !nonBlank(catalog.publishedAt) || !Array.isArray(catalog.roles) || catalog.roles.length !== 9 || !isSha256(catalog.catalogSha256)) {
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
@@ -112,7 +118,8 @@ function validateCatalog(catalog: PublishedAiPdmRoleCatalog) {
 }
 
 export async function readPublishedAiPdmRoleCatalog(root = process.cwd(), catalogVersion: PublishedAiPdmRoleCatalog['catalogVersion'] = AI_PDM_ROLE_CATALOG_VERSION): Promise<PublishedAiPdmRoleCatalog> {
-  const approved = APPROVED_CATALOGS[catalogVersion]
+  const approved = catalogVersion === AI_PDM_STATIC_V8_VERSION
+    ? { path: 'config/catalogs/ai-pdm-role-catalog.v8.json' } : APPROVED_CATALOGS[catalogVersion]
   if (!approved) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
   const sourcePath = resolve(root, approved.path)
   let raw: string
@@ -122,6 +129,7 @@ export async function readPublishedAiPdmRoleCatalog(root = process.cwd(), catalo
   } catch {
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
   }
+  if (catalogVersion === AI_PDM_STATIC_V8_VERSION && sha256(raw) !== AI_PDM_STATIC_V8_RAW_SHA256) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
   let parsed: Partial<PublishedAiPdmRoleCatalog>
   try {
     parsed = JSON.parse(raw) as Partial<PublishedAiPdmRoleCatalog>
@@ -142,6 +150,37 @@ const AI_PDM_ROLE_CATALOG_V2_COLUMNS = `contract_version, application_id, catalo
               baseline_role_identity_hash, role_identity_hash, protected_policy_hash, registry_hash,
               role_profile_schema_id, role_profile_hash, role_status, permission_role_id,
               presentation_name, presentation_order, assignment_disposition, lifecycle`
+
+/** Closed static-v8 row shape, independent of the legacy/dynamic validators. */
+async function decodeStaticV8Rows(rows: Array<Record<string, unknown>>, expectedCatalogSha256: string | undefined, root: string) {
+  const invalid = (): never => { throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID') }
+  const source = await readPublishedAiPdmRoleCatalog(root, AI_PDM_STATIC_V8_VERSION)
+  if (expectedCatalogSha256 && expectedCatalogSha256.toLowerCase() !== source.catalogSha256) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_STALE')
+  if (rows.length !== 10 || !['active', 'retired'].includes(String(rows[0].lifecycle))) invalid()
+  const instant = (value: unknown) => {
+    if (!(value instanceof Date) && typeof value !== 'string') return invalid()
+    const date = new Date(value)
+    return Number.isFinite(date.getTime()) ? date.toISOString() : invalid()
+  }
+  const publishedAt = instant(rows[0].published_at)
+  rows.forEach((row, index) => {
+    const role = source.roles[index], profile = aiPdmStaticV8Profiles[index]
+    const expected = { contract_version: source.contractVersion, application_id: source.applicationId,
+      catalog_version: source.catalogVersion, catalog_sha256: source.catalogSha256, published_at: publishedAt,
+      display_order: index, stable_role_id: role.stableRoleId, role_code: role.roleCode, display_name: role.displayName,
+      assignable: role.assignable, risk: role.risk, subject_kind: role.subjectKind,
+      recommendation_allowed: role.recommendationAllowed, delegation_allowed: role.delegationAllowed,
+      allowed_scope_kinds: role.allowedScopeKinds, assignment_tier: role.assignmentTier,
+      permissions: role.permissions, metadata: role.metadata ?? null, role_definition_hash: role.roleDefinitionHash,
+      publication_format: 'legacy-static-v1', canonicalization_version: null, role_schema_id: null,
+      baseline_role_identity_hash: null, role_identity_hash: null, protected_policy_hash: null, registry_hash: null,
+      role_profile_schema_id: 'ai-pdm.static-role-profiles.v1', role_profile_hash: AI_PDM_STATIC_V8_PROFILE_SHA256,
+      role_status: 'active', permission_role_id: profile.permissionRoleId, presentation_name: profile.presentationName,
+      presentation_order: profile.presentationOrder, assignment_disposition: profile.assignmentDisposition, lifecycle: rows[0].lifecycle }
+    if (!isDeepStrictEqual({ ...row, published_at: instant(row.published_at) }, expected)) invalid()
+  })
+  return { ...source, publishedAt, sourcePath: `postgres:${AI_PDM_STATIC_V8_VIEW}` }
+}
 
 /** New CONTENT versions may change business capabilities, not the assignment contract. */
 function validateAssignmentCompatibleCatalog(catalog: PublishedAiPdmRoleCatalog, baseline: PublishedAiPdmRoleCatalog) {
@@ -181,6 +220,7 @@ function validateAssignmentCompatibleCatalog(catalog: PublishedAiPdmRoleCatalog,
 async function decodeDatabaseCatalogRows(rows: Array<Record<string, unknown>>, expectedCatalogSha256?: string, root = process.cwd()): Promise<PublishedAiPdmRoleCatalog> {
   if (!rows.length) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
   const first = rows[0]
+  if (first.catalog_version === AI_PDM_STATIC_V8_VERSION) return decodeStaticV8Rows(rows, expectedCatalogSha256, root)
   if (first.publication_format === 'dynamic-policy-v1' || String(first.catalog_version).startsWith('ai-pdm.role-policy.')) {
     try {
       const decoded = decodeDynamicAiPdmRoleCatalog(rows, await Promise.all(Object.keys(APPROVED_CATALOGS).map(version => readPublishedAiPdmRoleCatalog(root, version))))
@@ -271,7 +311,8 @@ export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmR
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
   }
   // The pre-096 contract cannot author the protected administrator in v2.
-  if (!v3 && rows.some(row => row.publication_format === 'dynamic-policy-v2')) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
+  if ((!v3 && rows.some(row => row.publication_format === 'dynamic-policy-v2' || row.catalog_version === AI_PDM_STATIC_V8_VERSION)) ||
+    rows.some(row => row.catalog_version === AI_PDM_STATIC_V8_VERSION && row.lifecycle !== 'active')) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
   const catalog=await decodeDatabaseCatalogRows(rows,expectedCatalogSha256)
   return {...catalog,sourcePath:v3?'postgres:ai_pdm_contract.v_application_role_catalog_v3':'postgres:ai_pdm_contract.v_application_role_catalog_v2'}
 }

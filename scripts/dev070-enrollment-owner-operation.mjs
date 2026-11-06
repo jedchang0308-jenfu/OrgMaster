@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises'
 import {resolve} from 'node:path'
 import {pathToFileURL,fileURLToPath} from 'node:url'
 import {spawnSync} from 'node:child_process'
+import {randomUUID} from 'node:crypto'
 import {readGitAuthority} from './lib/dev012-owner-prerequisite-producer.mjs'
 import {readGitBlob} from './lib/dev012-owner-stage-executor.mjs'
 import {createOwnerTransport,canonicalize,sha256} from './lib/dev012-owner-release-runtime.mjs'
@@ -28,7 +29,10 @@ export async function executeEnrollmentOwnerOperation({profile,transport,sourceR
  const manifest={schemaVersion:'orgmaster.administration-enrollment-owner-operation.v1',ownerApplicationId:'orgmaster',action,sourceRevision,releaseIntentRef,terminalRef:baseline.terminal.ref,deploymentRef:baseline.deployment.ref,migrationBundleRef:baseline.deployment.value.migrationBundleRef,intent}
  const hash=sha256(canonicalize(manifest)),bucket=profile.artifact.releaseBucket
  const input=await transport.putJson(`gs://${bucket}/source/migration-bundles/enrollment-intents/${intent.commandId}/${action}-${hash}.json`,manifest,{bucket,prefix:'source/migration-bundles',ifGenerationMatch:'0'})
- const outputUri=`gs://${bucket}/receipts/administration-enrollment/${intent.commandId}/${action}-${hash}.json`
+ // Status is a fresh observation of mutable native state. Keep its sealed
+ // input/intent unchanged while retaining each immutable output separately.
+ const observation=action==='status'?`-${randomUUID()}`:''
+ const outputUri=`gs://${bucket}/receipts/administration-enrollment/${intent.commandId}/${action}-${hash}${observation}.json`
  // The normal job guard checks its exact sealed image, SA, socket, env,
  // task count and no-retry template before dispatching these typed args.
  let receipt=await transport.readBytes(outputUri,{prefixes:['receipts']}).catch(error=>{if(error.code==='MISSING'&&error.detail==='404')return null;throw error})

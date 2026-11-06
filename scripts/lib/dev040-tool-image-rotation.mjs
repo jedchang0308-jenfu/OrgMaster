@@ -73,9 +73,11 @@ export function assertToolOwner(profile) {
     || profile.artifact.releaseBucket !== 'jenfu-platform-prod-orgmaster-release'
     || profile.state.backendKey !== 'dev-040-r2/production-release/default.tfstate') fail('OWNER_INVALID')
 }
-export function toolExecutableInputs(root, revision) {
+/** Existing rotation callers bind migration only. Audit other fixed recipes
+ * separately; this never makes a migration proof authority for another image. */
+export function toolExecutableInputs(root, revision, recipe = TOOL_RECIPES[0]) {
   if (!H40.test(revision)) fail('SOURCE_INVALID')
-  const recipe = TOOL_RECIPES[0]
+  if (!TOOL_RECIPES.includes(recipe)) fail('RECIPE_INVALID')
   const read = file => readGitBlob(root, file, revision)
   const files = [recipe, ...read(recipe).toString('utf8').split(/\r?\n/u)
     .filter(line => line.startsWith('COPY ')).flatMap(line => line.trim().split(/\s+/u).slice(1, -1))]
@@ -83,6 +85,19 @@ export function toolExecutableInputs(root, revision) {
     const exists = spawnSync('git', ['cat-file', '-e', `${revision}:${file}`], { cwd: root, windowsHide: true })
     if (exists.status === 0) files.push(file)
   }
+  // Git applies ancestor attributes while producing each copied source file.
+  const attributeFiles = new Set()
+  for (const source of files) {
+    const parts = source.split('/').slice(0, -1)
+    while (parts.length) {
+      attributeFiles.add(`${parts.join('/')}/.gitattributes`)
+      parts.pop()
+    }
+  }
+  const attributes = spawnSync('git', ['ls-tree', '-r', '--name-only', revision],
+    { cwd: root, windowsHide: true, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
+  if (attributes.error || attributes.status !== 0) fail('SOURCE_INVALID')
+  for (const file of attributes.stdout.split(/\r?\n/u).filter(Boolean)) if (attributeFiles.has(file)) files.push(file)
   if (files.some(file => !/^[A-Za-z0-9._/-]+$/u.test(file) || file.includes('..'))) fail('COPY_INVALID')
   return [...new Set(files)].sort().map(path => ({ path, sha256: sha256(read(path)) }))
 }
