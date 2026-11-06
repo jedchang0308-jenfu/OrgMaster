@@ -17,8 +17,8 @@ const PROJECTS = {
     migrationDir: 'db/migrations',
     firstGovernedVersion: 11,
     ownedSchemas: ['orgmaster_core', 'orgmaster_contract'],
-    // DEV-070 §22: only this exact local neutral owner-bootstrap source.
-    neutralBootstrapPaths: ['db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql'],
+    // DEV-070 §22/24: immutable v1 and its exact forward-only local repair.
+    neutralBootstrapPaths: ['db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql', 'db/dev-010/071_local_orgmaster_administration_owner_bootstrap_v2.sql'],
   },
   'ai-pdm': {
     app: 'ai-pdm',

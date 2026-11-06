@@ -7,7 +7,7 @@ import {GoogleAuth,Impersonated,OAuth2Client} from 'google-auth-library'
 import {assertDev070MigrationEntries} from './dev070-administration-migration.mjs'
 import {unwrapMigrationTransaction} from './dev040-orgmaster-independent-release.mjs'
 export const LOCAL_BRIDGE_PATH='db/migrations/local/046_dev070_local_administration_bridge_v1.sql'
-export const LOCAL_OWNER_BOOTSTRAP_PATH='db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql'
+export const LOCAL_OWNER_BOOTSTRAP_PATH='db/dev-010/071_local_orgmaster_administration_owner_bootstrap_v2.sql'
 export const OWNER_BOOTSTRAP_SIGNATURES=['orgmaster_core.read_active_persistence_artifact_v1(text)','orgmaster_core.read_active_persistence_authority_v1()','orgmaster_core.write_active_persistence_artifacts_v1(jsonb,text,text,text)']
 export const OWNER_EMAIL='dev010-orgmaster-migrator@jenfu-platform-nonprod.iam.gserviceaccount.com'
 export const OWNER_SUBJECT='109035753048386897825'

@@ -8,6 +8,7 @@ import pg from 'pg'
 import {localOwnerHash,planLocalOwnerBridge,LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTSTRAP_PATH,readLocalOwnerBootstrapFacts,readLocalOwnerBridgeReceipt} from './lib/dev070-local-administration-owner.mjs'
 import {unwrapMigrationTransaction} from './lib/dev040-orgmaster-independent-release.mjs'
 import {verifyAiPdmCatalogReaderCompatibility} from './lib/dev070-ai-pdm-catalog-reader-postgres-qc.mjs'
+import {verifyLocalOwnerBootstrapAcl} from './lib/dev070-local-owner-bootstrap-postgres-qc.mjs'
 
 // This component installs actual Org source fragments and all of local 046.
 // FMS contract objects below are explicit ABI stubs, not a cross-owner proof.
@@ -78,7 +79,8 @@ try{
   await setup.query(`CREATE FUNCTION orgmaster_core.${name}(${args}) RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog AS $component$ SELECT '{}'::jsonb $component$`)
   const types=args?args.split(',').map(v=>v.split(' ')[1]).join(','):''
   await setup.query(`REVOKE ALL ON FUNCTION orgmaster_core.${name}(${types}) FROM PUBLIC`)
-  await setup.query(`GRANT EXECUTE ON FUNCTION orgmaster_core.${name}(${types}) TO jenfu_orgmaster_runtime`)
+  // Match the real pre-bootstrap ACL: the writer already grants the new owner.
+  await setup.query(`GRANT EXECUTE ON FUNCTION orgmaster_core.${name}(${types}) TO ${name==='write_active_persistence_artifacts_v1'?'jenfu_orgmaster_migrator':'jenfu_orgmaster_runtime'}`)
  }
  sql=await readFile(path.join(root,LOCAL_BRIDGE_PATH),'utf8');const ownershipSql=await readFile(path.join(root,LOCAL_OWNER_BOOTSTRAP_PATH),'utf8')
  for(const [filename,bytes] of [[LOCAL_BRIDGE_PATH,sql],[LOCAL_OWNER_BOOTSTRAP_PATH,ownershipSql]]){
@@ -90,6 +92,9 @@ try{
  const source={sourceRevision:'a'.repeat(40),sourceSha256:'b'.repeat(64),localMigration:{path:LOCAL_BRIDGE_PATH,sourceSha256:localOwnerHash(sql),appliedSha256:localOwnerHash(unwrapMigrationTransaction(sql))},ownershipBootstrap:{path:LOCAL_OWNER_BOOTSTRAP_PATH,sourceSha256:localOwnerHash(ownershipSql),appliedSha256:localOwnerHash(unwrapMigrationTransaction(ownershipSql))}}
  const makePlan=async()=>planLocalOwnerBridge({context,source,facts:{ledgerSha256:'c'.repeat(64),bindingsSha256:localOwnerHash(await bindings()),runtimeRolesSha256:'d'.repeat(64),beforeOwnership:await readLocalOwnerBootstrapFacts(owner),disposition:{pending:[]}},ownerProof:{email:'dev010-orgmaster-migrator@jenfu-platform-nonprod.iam.gserviceaccount.com',subject:'109035753048386897825'},reason:'SQL_SOURCE_DOMAIN_FIXTURE_NO_PROVIDER'})
  const core=p=>{const{planSha256,...value}=p;return value},apply=async plan=>(await owner.query('SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb) receipt',[JSON.stringify(core(plan))])).rows[0].receipt
+ const legacySql=await readFile(path.join(root,'db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql'),'utf8')
+ assert.equal(localOwnerHash(legacySql),'040cdccabc25d55ac0f94efa772386ef1575fe4f11a231a99bbc9e018ca9445c')
+ process.stdout.write(JSON.stringify(await verifyLocalOwnerBootstrapAcl({admin:setup,owner,makePlan,legacySql,ownershipSql}))+'\n')
  const plan=await makePlan(),beforeFunctions=structuredClone(plan.beforeOwnership),badOwnership=structuredClone(plan)
  badOwnership.beforeOwnership[0].body+='tampered';badOwnership.planSha256=localOwnerHash(core(badOwnership))
  await setup.query('BEGIN');await setup.query("SELECT set_config('orgmaster.dev070.local_owner_plan',$1,true)",[JSON.stringify(badOwnership)])
