@@ -1,3 +1,4 @@
+import { catalogQueryResult } from './aiPdmRoleCatalogRepository.fixture'
 import { describe, expect, it } from 'vitest'
 import vectors from '../config/catalogs/test-vectors/ai-pdm-dynamic-policy-v1.json'
 import boundaryVector from '../config/catalogs/test-vectors/ai-pdm-dynamic-policy-boundary-v1.json'
@@ -97,15 +98,15 @@ describe('dynamic PDM catalog independent consumer',()=>{
     const rows=structuredClone(projection());mutate(rows)
     expect(()=>decodeDynamicAiPdmRoleCatalog(rows,[baseline])).toThrow('EXTERNAL_CATALOG_INVALID')
   })
-  it('reads current v3 for a dynamic pointer, with no legacy fallback on a missing view',async()=>{
+  it('reads current v3 for a dynamic pointer and rejects unavailable dependencies',async()=>{
     const rows=projection(),queries:string[]=[]
-    const db={query:async(sql:string)=>{queries.push(sql);return {rows}}}
+    const db={query:async(sql:string)=>{queries.push(sql);return catalogQueryResult(sql,rows)}}
     const catalog=await readPublishedAiPdmRoleCatalogFromDatabase(db)
-    expect(catalog.publicationFormat).toBe('dynamic-policy-v1');expect(queries).toHaveLength(1)
-    expect(queries[0]).toContain('v_application_role_catalog_v3');expect(queries[0]).not.toContain('SELECT *')
+    expect(catalog.publicationFormat).toBe('dynamic-policy-v1');expect(queries).toHaveLength(2)
+    expect(queries[0]).toContain('pg_catalog.to_regclass');expect(queries[1]).toContain('FROM ai_pdm_contract.v_application_role_catalog_v3');expect(queries[1]).not.toContain('SELECT *')
     await expect(readPublishedAiPdmRoleCatalogFromDatabase({query:async()=>{throw new Error('missing')}})).rejects.toMatchObject({code:'EXTERNAL_CATALOG_UNAVAILABLE'})
     const changed=structuredClone(rows);changed.forEach(row=>{row.catalog_sha256='0'.repeat(64)})
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({query:async()=>({rows:changed})})).rejects.toMatchObject({code:'EXTERNAL_CATALOG_INVALID'})
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({query:async sql=>catalogQueryResult(sql,changed)})).rejects.toMatchObject({code:'EXTERNAL_CATALOG_INVALID'})
   })
   it('reads one immutable history version through a parameterized fixed-column query',async()=>{
     const rows=projection().map(row=>({...row,lifecycle:'retired'})),queries:Array<{sql:string;values?:unknown[]}>=[]

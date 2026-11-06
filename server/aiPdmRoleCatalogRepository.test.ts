@@ -1,3 +1,4 @@
+import { catalogQueryResult } from './aiPdmRoleCatalogRepository.fixture'
 import { describe, expect, it } from 'vitest'
 import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -78,7 +79,7 @@ describe('AI-PDM published role catalog adapter', () => {
       metadata: role.metadata ?? null,
       role_definition_hash: role.roleDefinitionHash,
     }))
-    const live = await readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows }) }, fixture.catalogSha256)
+    const live = await readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows) }, fixture.catalogSha256)
     expect(live.roles.map((role) => role.stableRoleId)).toEqual(fixture.roles.map((role) => role.stableRoleId))
     expect(live.roles.find((role) => role.roleCode === 'system_admin')).toMatchObject({ stableRoleId: 'role-system-admin', assignable: true, risk: 'critical', subjectKind: 'principal', assignmentTier: 'cross_app_override', recommendationAllowed: false, delegationAllowed: false, allowedScopeKinds: ['global'] })
     const reorderedJsonb = (value: unknown): unknown => Array.isArray(value)
@@ -88,13 +89,13 @@ describe('AI-PDM published role catalog adapter', () => {
         : value
     const jsonbRows = rows.map((row) => ({ ...row,
       permissions: reorderedJsonb(row.permissions), metadata: reorderedJsonb(row.metadata) }))
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: jsonbRows }) }))
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, jsonbRows) }))
       .resolves.toMatchObject({ catalogSha256: fixture.catalogSha256 })
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: jsonbRows.map((row, index) =>
-      index === 0 ? { ...row, permissions: [{ code: 'unauthorized.permission', kind: 'action', allowed: true }] } : row) }) }))
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, jsonbRows.map((row, index) =>
+      index === 0 ? { ...row, permissions: [{ code: 'unauthorized.permission', kind: 'action', allowed: true }] } : row)) }))
       .rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: [] }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_UNAVAILABLE' })
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: rows.map((row) => ({ ...row, catalog_version: 'ai-pdm.role-catalog.retired.v1' })) }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_STALE' })
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: rows.map((row, index) => index === 0 ? { ...row, display_name: 'tampered' } : row) }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, []) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_UNAVAILABLE' })
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows.map((row) => ({ ...row, catalog_version: 'ai-pdm.role-catalog.retired.v1' }))) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_STALE' })
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows.map((row, index) => index === 0 ? { ...row, display_name: 'tampered' } : row)) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
   })
 })

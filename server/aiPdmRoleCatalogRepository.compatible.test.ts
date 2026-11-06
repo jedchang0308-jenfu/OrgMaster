@@ -1,3 +1,5 @@
+import { catalogRows } from './aiPdmRoleCatalogRepository.fixture'
+import { catalogQueryResult } from './aiPdmRoleCatalogRepository.fixture'
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import pg from 'pg'
@@ -31,16 +33,6 @@ export async function compatibleCatalog(version = 8) {
   if (version === 8) catalog.roles[0].permissions = catalog.roles[0].permissions.filter(value => value.code !== 'numbering.drawings.view')
   return rehash(catalog)
 }
-export function catalogRows(catalog: PublishedAiPdmRoleCatalog) {
-  return catalog.roles.map((role, index) => ({ contract_version: catalog.contractVersion,
-    application_id: catalog.applicationId, catalog_version: catalog.catalogVersion, published_at: catalog.publishedAt,
-    catalog_sha256: catalog.catalogSha256, display_order: index, stable_role_id: role.stableRoleId,
-    role_code: role.roleCode, display_name: role.displayName, assignable: role.assignable, risk: role.risk,
-    subject_kind: role.subjectKind, recommendation_allowed: role.recommendationAllowed,
-    delegation_allowed: role.delegationAllowed, allowed_scope_kinds: role.allowedScopeKinds,
-    assignment_tier: role.assignmentTier, permissions: role.permissions, metadata: role.metadata ?? null,
-    role_definition_hash: role.roleDefinitionHash }))
-}
 const reorder = (value: unknown): unknown => Array.isArray(value) ? value.map(reorder) :
   value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, reorder(child)])) : value
 
@@ -49,7 +41,7 @@ describe('DEV-058 assignment-compatible content publications', () => {
     const historical = await readPublishedAiPdmRoleCatalog(process.cwd(), 'ai-pdm.role-catalog.2026-09-03.v3')
     const importedAt = '2026-09-03T05:14:23.111Z'
     const decoded = await readHistoricalAiPdmRoleCatalogFromDatabase(
-      { query: async () => ({ rows: catalogRows(historical).map(row => ({ ...row, published_at: importedAt })) }) }, historical.catalogVersion, historical.catalogSha256,
+      { query: async sql => catalogQueryResult(sql, catalogRows(historical).map(row => ({ ...row, published_at: importedAt }))) }, historical.catalogVersion, historical.catalogSha256,
     )
     expect(decoded).toMatchObject({ catalogVersion: historical.catalogVersion,
       catalogSha256: historical.catalogSha256, publishedAt: importedAt, roles: expect.arrayContaining([
@@ -67,7 +59,7 @@ describe('DEV-058 assignment-compatible content publications', () => {
     for (const version of [8, 9]) {
       const expected = await compatibleCatalog(version)
       const rows = reorder(catalogRows(expected)) as ReturnType<typeof catalogRows>
-      const catalog = await readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows }) })
+      const catalog = await readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows) })
       expect(catalog.catalogSha256).toBe(expected.catalogSha256)
       expect(catalog.catalogVersion).toBe(expected.catalogVersion)
       expect(validateExternalRoleCatalog(createAiPdmRoleCatalog('valid', catalog.publishedAt, catalog))).toEqual([])
@@ -81,17 +73,17 @@ describe('DEV-058 assignment-compatible content publications', () => {
     if (field === 'protected') catalog.roles.find(value => value.roleCode === 'system_admin')!.permissions.pop()
     if (field === 'order') catalog.roles.reverse()
     rehash(catalog)
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: catalogRows(catalog) }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, catalogRows(catalog)) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
   })
   it('rejects content tampering, mixed headers and an exact stale caller binding', async () => {
     const catalog = await compatibleCatalog()
     const rows = catalogRows(catalog)
     rows[0].permissions[0].allowed = !rows[0].permissions[0].allowed
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
     rows[0].permissions[0].allowed = !rows[0].permissions[0].allowed
     rows[1].catalog_version = 'mixed'
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: catalogRows(catalog) }) }, '0'.repeat(64))).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_STALE' })
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, catalogRows(catalog)) }, '0'.repeat(64))).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_STALE' })
   })
   it('keeps A-version assignment provenance under B only with a supplied trusted history snapshot', async () => {
     const a = createAiPdmRoleCatalog('valid', '2026-10-19T00:00:00.000Z', await compatibleCatalog(8))

@@ -145,6 +145,7 @@ test('database readback validates actual v5/v6/v7 projections against the select
     let statement = ''
     const actual = await readPublishedAiPdmRoleCatalogFromDatabase({
       query: async (sql) => {
+        if (sql.includes('pg_catalog.to_regclass')) return { rows: [{ v3_exists: true }] }
         statement = sql
         return { rows: databaseRows(expected) }
       },

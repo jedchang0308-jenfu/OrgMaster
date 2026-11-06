@@ -247,7 +247,7 @@ test('catalog database reader validates staged v5/v6/v7 snapshots and fails clos
       for (const file of files) {
         const catalog = JSON.parse(await readFile(path.join(process.cwd(), file), 'utf8'));
         const rows = asRows(catalog);
-        const actual = await readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows }) });
+        const actual = await readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => ({ rows: sql.includes('pg_catalog.to_regclass') ? [{ v3_exists: true }] : rows }) });
         assert.equal(actual.catalogSha256, catalog.catalogSha256);
         assert.equal(actual.catalogVersion, catalog.catalogVersion);
       }
@@ -279,7 +279,7 @@ test('catalog database reader validates staged v5/v6/v7 snapshots and fails clos
         }));
         await rm(path.join(process.cwd(), file));
         const { readPublishedAiPdmRoleCatalogFromDatabase } = await import(pathToFileURL(path.join(process.cwd(), 'server/aiPdmRoleCatalogRepository.ts')));
-        await assert.rejects(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows }) }), /EXTERNAL_CATALOG_UNAVAILABLE/u);
+        await assert.rejects(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => ({ rows: sql.includes('pg_catalog.to_regclass') ? [{ v3_exists: true }] : rows }) }), /EXTERNAL_CATALOG_UNAVAILABLE/u);
       `
       const result = runNode(stage, source, { transformTypes: true })
       assert.equal(result.status, 0, `${snapshot}: ${result.stderr || result.stdout}`)
@@ -421,6 +421,7 @@ test('isolated pg imports, entrypoint guards, lifecycle modes, v2 readback, and 
         async end() {}
         async query(sql) {
           queries++;
+          if (sql.includes('pg_catalog.to_regclass')) return { rows: [{ v3_exists: true }] };
           if (sql.includes('FROM ai_pdm_contract.v_application_role_catalog_v3')) return { rows };
           if (sql.includes('read_active_persistence_artifact_v1')) return { rows: [{
             payload: { publishedVersions: [{ id: 'policy-v1', kind: 'assignment-governance-v3', policy: { roleAssignments: [] } }], activePolicyVersionId: 'policy-v1', draft: { roleAssignments: [] } },
