@@ -113,7 +113,6 @@
   },
   "workflow": {
     "path": ".github/workflows/deploy-orgmaster-independent-production.yml",
-    "onlyInput": "releaseCapsuleRef",
     "concurrency": "production-release-orgmaster-prod",
     "jobs": [
       "prepare",
@@ -131,7 +130,31 @@
       "readback",
       "abort-or-rollback",
       "publish-terminal"
-    ]
+    ],
+    "inputs": [
+      "releaseCapsuleRef",
+      "executionMode"
+    ],
+    "defaultExecutionMode": "full_release",
+    "executionModes": {
+      "full_release": [
+        "prepare",
+        "build",
+        "migrate",
+        "candidate",
+        "entrypoint",
+        "verify",
+        "decision",
+        "activate",
+        "canonical",
+        "finalize"
+      ],
+      "migration_only": [
+        "prepare",
+        "build",
+        "migrate"
+      ]
+    }
   },
   "environment": {
     "requiredPlainEnvironmentNames": [

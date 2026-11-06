@@ -1,5 +1,7 @@
 # OrgMaster 文件地圖
 
+047 delivery current：core已交PR217／f41；追加原workflow closed migration-only／same-capsule resume executor source，保留full10stage與exact-head Source QC。047／R5不變，無正式寫入，完整Node required套件466/466＋contracts34/34已通過；見[DEV070 §26](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-migration-only-continuation)。
+
 本輪 current：047 scoped Principal reader source已實作，review／required CI／owner發布待續；保留舊42-row收據與全部applied bytes。24-case PG18.4差分380＋NULL4通過，效能為隔離樣本，未取得正式CPU／capacity PASS。詳[DEV070 §25](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-scoped-principal-readers)。
 
 - DEV-070 current：主控已回報Org24ff019 protected RELEASED／100%；本slice修地端normal owner commit的ACL readback首敗。原070 bytes保留，新增exact071 v2及正常caller，grantor／grantee／privilege合併與grant-option OR須exact readback，其餘body／CAS／receipt不變；Node／contracts／typecheck／boundary通過，requiredPG18 native13案待CI。primary status仍40／raw042／bridgefalse／receiptnull，沒有本slice primary write。詳[DEV070 §24](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-local-bootstrap-acl-v2)；原[§23 reader修復](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-catalog-reader-compatibility-repair)與正式42-row first-failure收據保留。

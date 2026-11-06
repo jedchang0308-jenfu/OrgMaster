@@ -580,3 +580,25 @@ test('required source QC runs the existing verification through one owner entry 
   assert.match(workflow, /docker build --target runtime-smoke/u)
   assert.match(workflow, /docker run --rm --network none/u)
 })
+
+test('closed workflow modes cannot add stages, inputs or rollback authority', () => {
+  const source = fs.readFileSync(new URL('../.github/workflows/deploy-orgmaster-independent-production.yml', import.meta.url), 'utf8')
+  for (const mutate of [
+    value => value.replace('options: [full_release, migration_only]', 'options: [full_release, migration_only, candidate]'),
+    value => value.replace('default: full_release', 'default: migration_only'),
+    value => value.replace("  candidate:\n    if: ${{ inputs.executionMode == 'full_release' }}", '  candidate:\n    if: ${{ always() }}'),
+    value => value.replace("always() && inputs.executionMode == 'full_release' && needs.prepare.result", 'always() && needs.prepare.result'),
+    value => value.replace('      executionMode:', '      target:\n        type: string\n      executionMode:'),
+  ]) assert.throws(() => assertDev040WorkflowSource(mutate(source.replace(/\r\n/gu, '\n'))), /WORKFLOW_INPUT_DRIFT|WORKFLOW_EXECUTION_MODE_DRIFT|WORKFLOW_MIGRATION_ONLY_BOUNDARY_DRIFT/)
+  for (const mutate of [
+    value => value.workflow.inputs.push('stage'),
+    value => value.workflow.executionModes.migration_only.push('candidate'),
+    value => value.workflow.executionModes.full_release.pop(),
+    value => { value.workflow.defaultExecutionMode = 'migration_only' },
+    value => { value.workflow.onlyInput = 'releaseCapsuleRef' },
+    value => { value.workflow.path = '.github/workflows/foreign.yml' },
+  ]) {
+    const changed = structuredClone(profile); mutate(changed)
+    assert.throws(() => assertDev040V3Profile(changed, n1c), /WORKFLOW_CONTRACT_MISMATCH/)
+  }
+})

@@ -500,3 +500,13 @@ source自查：完整app221files／1409passed／7conditional skips，local sandb
 500人口隔離EXPLAIN（非production CPU結論）：original inner 1,800,122 row×loops／maxLoops1002，scoped 1,068／2，shared legacy 527,069／1002。該次時間1047.134／7.579／519.058ms；public invocation另一輪為938.507／17.358／508.921ms。accounts shared view的row×loops1550→2052、shared hits60→40、2.558→2.626ms，因此沒有宣稱accounts latency改善。真Cloud Insights top1 grants占73.094%、三個accounts SELECT合計26.865%，是execution time而非純CPU。正式CPU／Insights效果與capacity PASS仍須normal owner發布後native量測；原capacity CPU FAIL保留。
 
 本機原22-case `.codex-work/scoped-qc-r4.log` 保留（SHA-256 `4a637bd7b3cfbfdc8ea0c3a412106d695e9393040db3e25993435b73e5af68aa`）；補兩個position_adoption案例後，以create-only `.codex-work/scoped-qc-r5.log` 實跑24-case／380比較＋NULL4（SHA-256 `74e4258f64cde41fb1d68492a4a0a2a5d03fd0aa6d6e16b3c091630ce8f67f4c`）。合法案在pre047 oracle先assert非空且scope正確，到期assignment案先assert拒絕，再對typed／legacy比對。`scoped-reader-inner-plans-r1.json`及原43／34／127／22 checks、lint／typecheck證據因SQL／runtime未變而重用；這是RD自查。完整owner差分沿現有Windows disposable harness執行；現有required Linux PG18 ABI／local bootstrap lane與source checks仍照常，未建立跨repo CI框架或放寬local min18。Provider先review／required CI／protected normal owner migration，再由AI-PDM部署typed consumer；本source slice未執行正式DDL、grant、Job或traffic mutation。
+
+
+<a id="dev070-migration-only-continuation"></a>
+## 26. 047 normal migration-only 與同capsule full接續（2026-11-06）
+
+047核心source／applied hash及R5 oracle不變。為先由provider047改善legacy PDM讀取，再做fresh capacity量測，本slice追加既有Org owner執行器必要修正，詳[DEV040 normal migration-only amendment](DEV-040-jenfu-platform-entitlement-user-integration.md#dev040-normal-migration-only)。原workflow_ref/WIF／SA／concurrency不變，closed migration_only只執行prepare→build→migrate；不建立任何candidate、不寫runtime／traffic／control／terminal、不rollback，也不把MIGRATION_APPLIED稱RELEASED。
+
+Normal CLI沿exact DEV070 append gate／manifest43／tool proof準備新protected source capsule；既有master/source QC不可省。三階段封存後，full continuation只收同immutable capsule，重新驗official source＋exact-head latest Source QC SUCCESS、原4h expiry、source identity／manifest／baseline及sealed chain，才dispatch原full。新run重用sealed build與migration，candidate階段才取得原control lease與執行完整後續gates。缺receipt／source漂移／expired／已有candidate或terminal均拒，不能手呼stage或改capsule冒normal CLI。migration-only失敗不證明DB未commit，unknown先native readonly readback再依正常runner處理。
+
+原capacity CPU FAIL保持；source／mock／Node PASS不代表正式047已套、fresh31 PASS或PDM新consumer已deploy。執行由coordinator沿既有goal與各owner normal flow完成，沒有新增人工approval gate。CI42213054164首輪458/460及兩個舊42假設保留；本次runner修正prefix31–43／pending12，以真unknown-044 row證明44拒絕且零write；routine42→047合法、43無append拒絕，不以slice fixture另宣稱routine44-row證據。不修改任何applied migration或舊正式收據。

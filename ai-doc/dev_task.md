@@ -4,6 +4,8 @@
 
 ## DEV-070：平台超級管理員權威與首次初始化
 
+047 delivery current：core已交PR217／f41；追加原workflow closed migration-only／same-capsule resume executor source，保留full10stage與exact-head Source QC。047／R5不變，無正式寫入，完整Node required套件466/466＋contracts34/34已通過；見[DEV070 §26](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-migration-only-continuation)。
+
 本輪 current：047 scoped Principal reader source已實作，review／required CI／owner發布待續；保留舊42-row收據與全部applied bytes。24-case PG18.4差分380＋NULL4通過，效能為隔離樣本，未取得正式CPU／capacity PASS。詳[DEV070 §25](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-scoped-principal-readers)。
 
 - 狀態：IMPLEMENTING／地端owner forward修復；主控已回報正式Org24ff019 protected RELEASED／100%，本slice不重開正式發布。local normal commit首敗DEV070_LOCAL_BOOTSTRAP_READBACK_INVALID，normal status維持40／raw042／bridgefalse／receiptnull。完整四專案與本人兩環境驗收未完成；指定同一Google personal張仕杰JFS0005，最低AAL1、接受真AAL2、只顯示中文姓名。

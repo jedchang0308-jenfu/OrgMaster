@@ -120,7 +120,26 @@ export function assertControllerImageResolutionProof({ profile, parentImage, ser
   return proof
 }
 
+export const OWNER_EXECUTION_MODES = Object.freeze({
+  full_release: Object.freeze(['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']),
+  migration_only: Object.freeze(['prepare', 'build', 'migrate']),
+})
+
+export function assertOwnerExecutionMode(profile, environment, stage = null) {
+  const mode = environment.OWNER_EXECUTION_MODE ?? 'full_release'
+  if (typeof mode !== 'string' || !Object.hasOwn(OWNER_EXECUTION_MODES, mode)) fail('OWNER_EXECUTION_MODE_INVALID')
+  if (profile.workflow?.executionModes !== undefined &&
+      canonicalize(profile.workflow.executionModes) !== canonicalize(OWNER_EXECUTION_MODES)) fail('OWNER_EXECUTION_PROFILE_INVALID')
+  if (mode === 'migration_only') {
+    if (profile.application.id !== 'orgmaster' ||
+        canonicalize(profile.workflow?.executionModes) !== canonicalize(OWNER_EXECUTION_MODES)) fail('OWNER_EXECUTION_PROFILE_INVALID')
+    if (stage !== null && !OWNER_EXECUTION_MODES.migration_only.includes(stage)) fail('MIGRATION_ONLY_STAGE_DENIED')
+  }
+  return mode
+}
+
 export function assertProtectedGitHubContext(profile, intent, environment) {
+  assertOwnerExecutionMode(profile, environment)
   const expectedRef = `refs/heads/${profile.application.branch}`
   const expectedWorkflowRef = `${profile.application.repository}/${profile.workflow.path}@${expectedRef}`
   if (environment.GITHUB_ACTIONS !== 'true' || !environment.ACTIONS_ID_TOKEN_REQUEST_URL || !environment.GOOGLE_OAUTH_ACCESS_TOKEN) fail('PROTECTED_WORKFLOW_REQUIRED')

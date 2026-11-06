@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { gunzipSync } from 'node:zlib'
-import { buildRuntimeConfig, canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
-import { assertMigrationReceipt, assertStaleControlSafeToSupersede, candidateTagUriMatches, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
+import { buildRuntimeConfig, canonicalize, OWNER_EXECUTION_MODES, releasePaths, sha256, stageReceipt } from './lib/dev012-owner-release-runtime.mjs'
+import { assertMigrationReceipt, assertStaleControlSafeToSupersede, candidateTagUriMatches, executeOwnerStage, verifyMigrationOnlyContinuation } from './lib/dev012-owner-stage-executor.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE } from './lib/dev059-fms-authority-migration.mjs'
 import {DEV070_MIGRATION_ENTRY_COUNT,DEV070_RELEASE_MODE,DEV070_ADMINISTRATION_REMEDIATION} from './lib/dev070-administration-migration.mjs'
 import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT, DEV060_RELEASE_MODE } from './lib/dev060-fms-catalog-activation-migration.mjs'
+import { resumeDeployProductionRelease } from './dev040-deploy-production.mjs'
+import { assertRequiredToolSourceQc } from './dev040-tool-image-rotation.mjs'
 
 const H40 = 'a'.repeat(40)
 const baselineRef = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/baseline.json', sha256: 'e'.repeat(64) }
@@ -893,4 +895,144 @@ test('DEV070 missing migration receipt stays unknown and preserves a v3-compatib
   assert.equal(patches.length,1);assert.deepEqual(patches[0].traffic,[{revision:previousRevision,percent:100}])
   assert.equal(JSON.parse((await h.transport.readBytes(terminal.ref.uri)).bytes).facts.result,'PRE_ACTIVATION_ABORTED')
   assert.equal(JSON.parse(h.objects.get('gs://'+bucket+'/control/active.json').bytes).state,'FINALIZED')
+})
+
+async function migrationOnlyRecordedInput() {
+  const h = recordedHarness()
+  h.profile.application.id = 'orgmaster'
+  h.profile.workflow.executionModes = OWNER_EXECUTION_MODES
+  h.environment.OWNER_EXECUTION_MODE = 'migration_only'
+  const { input, intentResult } = await authorizedRecordedInput(h, 'MIGRATION-ONLY-CONTINUATION')
+  input.verifyRoutineRelease = async ({ intent }) => ({ baselineIntentRef: intent.baselineIntentRef,
+    baselineMigrationRef: baselineRef, migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 4 })
+  let jobs = 0, builds = 0
+  const createBuild = h.transport.createBuild.bind(h.transport)
+  h.transport.createBuild = async (...args) => {
+    builds++
+    const value = await createBuild(...args)
+    return { ...value, build: { ...value.build, createTime: '2026-09-18T00:00:00Z',
+      startTime: '2026-09-18T00:00:01Z', finishTime: '2026-09-18T00:00:02Z' } }
+  }
+  h.transport.runMigrationJob = async ({ deployment, outputUri }) => {
+    jobs++
+    const core = { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster',
+      sourceRevision: deployment.sourceRevision, database: 'jenfu_prod', ledger: 'orgmaster_core.schema_migrations',
+      manifestSha256: h.migrationManifestSha256, baselineCount: 10, minimumLedgerCount: 10,
+      ledgerCount: 15, applied: 4, replayed: 11,
+      crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
+      boundaryStatus: 'PASS', status: 'PASS' }
+    await h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) }, { bucket, prefix: 'receipts' })
+  }
+  const intent = JSON.parse(intentResult.bytes)
+  const paths = releasePaths(h.profile, intent, intentResult.ref.sha256)
+  const continuationInput = { ...input, sourceRevision: H40, expectedSourceSha256: sha256(h.sourceIdentityBytes),
+    expectedManifestSha256: h.migrationManifestSha256, baselineIntentRef: baselineRef, previousRevision }
+  return { h, input, intent, paths, continuationInput, counts: () => ({ jobs, builds }) }
+}
+
+test('migration-only seals the three stages without service/control/terminal writes, then full new-run continuation replays them', async () => {
+  const c = await migrationOnlyRecordedInput(), beforeService = c.h.service()
+  for (const stage of ['prepare', 'build', 'migrate']) await executeOwnerStage({ ...c.input, stage })
+  assert.deepEqual(c.counts(), { jobs: 1, builds: 1 })
+  assert.deepEqual(c.h.service(), beforeService)
+  assert.equal(c.h.objects.has(c.paths.control), false)
+  assert.equal(c.h.objects.has(c.paths.terminal), false)
+  const objectCount = c.h.objects.size
+  const admitted = await verifyMigrationOnlyContinuation(c.continuationInput)
+  assert.equal(admitted.applicationReleased, false)
+  assert.equal(admitted.status, 'MIGRATION_APPLIED_CONTINUATION_READY')
+  assert.equal(c.h.objects.size, objectCount)
+  c.input.environment = { ...c.h.environment, OWNER_EXECUTION_MODE: 'full_release', GITHUB_RUN_ID: '456' }
+  for (const stage of ['prepare', 'build', 'migrate']) await executeOwnerStage({ ...c.input, stage })
+  assert.deepEqual(c.counts(), { jobs: 1, builds: 1 })
+  assert.equal(c.h.objects.size, objectCount)
+  await executeOwnerStage({ ...c.input, stage: 'candidate' })
+  const control = JSON.parse(c.h.objects.get(c.paths.control).bytes)
+  assert.equal(control.state, 'CANDIDATE_CREATED')
+  assert.equal(control.ownerRunRef.endsWith('/456'), true)
+})
+
+test('migration-only denies every runtime/rollback stage and unknown modes before any provider read or write', async () => {
+  const c = await migrationOnlyRecordedInput()
+  c.h.transport.readJson = async () => assert.fail('mode denial must precede provider access')
+  for (const stage of ['candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize', 'rollback']) {
+    await assert.rejects(executeOwnerStage({ ...c.input, stage }), /MIGRATION_ONLY_STAGE_DENIED/)
+  }
+  for (const mode of ['', 'prepare', 'full', 'migration_only,full_release']) {
+    await assert.rejects(executeOwnerStage({ ...c.input, stage: 'prepare',
+      environment: { ...c.h.environment, OWNER_EXECUTION_MODE: mode } }), /OWNER_EXECUTION_MODE_INVALID/)
+  }
+})
+
+test('continuation rejects missing or re-sealed foreign receipts, changed source/manifest/baseline and expiry without writes', async () => {
+  const c = await migrationOnlyRecordedInput()
+  for (const stage of ['prepare', 'build', 'migrate']) await executeOwnerStage({ ...c.input, stage })
+  const snapshot = structuredClone(c.h.objects), originalService = c.h.service()
+  const reset = () => { c.h.objects.clear(); for (const [key, value] of snapshot) c.h.objects.set(key, { ...value, bytes: Buffer.from(value.bytes) }) }
+  for (const path of [c.paths.prepare, c.paths.build, c.paths.deployment, c.paths.migrate]) {
+    reset(); c.h.objects.delete(path)
+    await assert.rejects(verifyMigrationOnlyContinuation(c.continuationInput), /MISSING/)
+  }
+  for (const change of [
+    { sourceRevision: 'b'.repeat(40) }, { expectedSourceSha256: 'b'.repeat(64) },
+    { expectedManifestSha256: 'b'.repeat(64) }, { previousRevision: 'foreign-revision' },
+    { baselineIntentRef: { ...baselineRef, sha256: 'b'.repeat(64) } },
+  ]) {
+    reset(); await assert.rejects(verifyMigrationOnlyContinuation({ ...c.continuationInput, ...change }), /MIGRATION_CONTINUATION_SOURCE_OR_BASELINE_MISMATCH/)
+  }
+  for (const stage of ['prepare', 'build']) {
+    reset()
+    const row = c.h.objects.get(c.paths[stage]), value = JSON.parse(row.bytes)
+    const { receiptSha256: _, ...core } = value
+    core.releaseId = 'FOREIGN-SEALED-RELEASE'
+    row.bytes = Buffer.from(canonicalize({ ...core, receiptSha256: sha256(canonicalize(core)) }) + '\n')
+    await assert.rejects(verifyMigrationOnlyContinuation(c.continuationInput), /MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID/)
+  }
+  reset()
+  await assert.rejects(verifyMigrationOnlyContinuation({ ...c.continuationInput,
+    transport: { ...c.h.transport, now: () => '2999-01-02T00:00:00.000Z' } }), /MIGRATION_CONTINUATION_SOURCE_OR_BASELINE_MISMATCH/)
+  reset(); c.h.objects.set(c.paths.candidate, { bytes: Buffer.from('{}'), generation: 999 })
+  await assert.rejects(verifyMigrationOnlyContinuation(c.continuationInput), /MIGRATION_CONTINUATION_ALREADY_STARTED/)
+  assert.deepEqual(c.h.service(), originalService)
+  assert.deepEqual(c.counts(), { jobs: 1, builds: 1 })
+})
+
+test('normal resume requires exact-head latest successful QC and complete sealed receipts before any dispatch', async () => {
+  const c = await migrationOnlyRecordedInput()
+  for (const stage of ['prepare', 'build', 'migrate']) await executeOwnerStage({ ...c.input, stage })
+  let dispatches = 0
+  const events = []
+  const good = { id: 1, name: 'Production Source QC', app: { id: 15368 }, head_sha: H40, status: 'completed', conclusion: 'success' }
+  const invoke = (checks, overrides = {}) => resumeDeployProductionRelease({
+    options: { resumeCapsuleRef: { uri: c.input.capsuleRef, sha256: c.input.capsuleSha256 }, check: false },
+    git: { sourceRevision: H40 }, profile: c.h.profile, transport: c.h.transport, service: c.h.service(),
+    baselineIntentRef: baselineRef, previousRevision, sourceIdentitySha256: sha256(c.h.sourceIdentityBytes),
+    buildMigrationBundle: c.input.buildMigrationBundle,
+    verifySource: async () => { events.push('official-source'); events.push('exact-head-qc'); assertRequiredToolSourceQc(checks, H40) },
+    dispatch: async args => { events.push('dispatch'); dispatches++; assert.ok(args.includes('executionMode=full_release')) },
+    ...overrides,
+  })
+  for (const checks of [{ check_runs: [] }, { check_runs: [good, { ...good, id: 2, conclusion: 'failure' }] },
+    { check_runs: [{ ...good, head_sha: 'b'.repeat(40) }] }, { check_runs: [{ ...good, status: 'in_progress', conclusion: null }] }]) {
+    await assert.rejects(invoke(checks), /REQUIRED_SOURCE_QC_MISSING/)
+    assert.equal(dispatches, 0)
+  }
+  await assert.rejects(invoke({ check_runs: [good] }, { verifySource: async () => { throw new Error('OFFICIAL_SOURCE_DENIED') } }), /OFFICIAL_SOURCE_DENIED/)
+  assert.equal(dispatches, 0)
+  const migration = c.h.objects.get(c.paths.migrate)
+  c.h.objects.delete(c.paths.migrate)
+  await assert.rejects(invoke({ check_runs: [good] }), /MISSING/)
+  assert.equal(dispatches, 0)
+  c.h.objects.set(c.paths.migrate, migration)
+  const objectCount = c.h.objects.size
+  const check = await invoke({ check_runs: [good] }, { options: { resumeCapsuleRef: {
+    uri: c.input.capsuleRef, sha256: c.input.capsuleSha256 }, check: true } })
+  assert.equal(check.status, 'CONTINUATION_READY'); assert.equal(dispatches, 0)
+  events.length = 0
+  const result = await invoke({ check_runs: [good] })
+  assert.equal(result.status, 'DISPATCHED')
+  assert.deepEqual(events, ['official-source', 'exact-head-qc', 'dispatch'])
+  assert.equal(dispatches, 1)
+  assert.equal(c.h.objects.size, objectCount)
+  assert.deepEqual(c.counts(), { jobs: 1, builds: 1 })
 })

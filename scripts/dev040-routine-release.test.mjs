@@ -3,7 +3,7 @@ import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMED
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend } from './lib/dev059-fms-authority-migration.mjs'
 import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT, DEV060_MIGRATION_PREFIX_COUNT, DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationAppend } from './lib/dev060-fms-catalog-activation-migration.mjs'
 import { assertToolRotationReleaseCompatibility, resolveToolRotationPredecessorBaselineRef } from './lib/dev040-routine-release.mjs'
-import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
+import { ownerWorkflowDispatchArgs, parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
 import { assertPublishedSmokeRotationAdvance, assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, assertSmokeInfraReuseEvidence,assertSmokeInfraReuseContinuation,buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, readSmokeReuseProviderState, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { appArtifactSourceEquivalence, assertReusableAbortedTerminal } from './lib/dev040-app-artifact-reuse.mjs'
@@ -2751,7 +2751,7 @@ test('DEV070 native routine rejects a declared direct tool ref with missing or n
  }
 })
 test('DEV070 routine planner binds the exact suffix and known baseline without changing ordinary zero-DDL release',async()=>{
- for(const count of[31,39,40,41]){
+ for(const count of[31,39,40,41,42]){
   const h=administrationHarness(count),plan=await verifyRoutineRelease(h.input)
   assert.equal(plan.releaseMode,DEV070_RELEASE_MODE);assert.equal(plan.migrationDisposition,'FORWARD_APPLY')
   assert.equal(plan.pendingMigrationCount,DEV070_MIGRATION_ENTRY_COUNT-count)
@@ -2760,7 +2760,7 @@ test('DEV070 routine planner binds the exact suffix and known baseline without c
  const normal=await verifyRoutineRelease(harness().input)
  assert.equal(normal.migrationDisposition,'UNCHANGED_VERIFIED');assert.equal(normal.pendingMigrationCount,0)
  await assert.rejects(verifyRoutineRelease(harness({baselineBundle:prefixBundle(oldBundle.bundle,39)}).input),/ROUTINE_MIGRATION_CHANGED/)
- await assert.rejects(verifyRoutineRelease(administrationHarness(42).input),/DEV070_MIGRATION_APPEND_INVALID/)
+ await assert.rejects(verifyRoutineRelease(administrationHarness(43).input),/DEV070_MIGRATION_APPEND_INVALID/)
  for(const field of['sourceRevision','releaseId','baselineIntentRef','remediation','slice','ownerApplicationId']){
   const h=administrationHarness();h.input.values.authorization[field]='changed'
   await assert.rejects(verifyRoutineRelease(h.input),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)
@@ -2768,4 +2768,26 @@ test('DEV070 routine planner binds the exact suffix and known baseline without c
  const drift=administrationHarness();drift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_SESSION_HASH_PEPPER='2'
  await assert.rejects(verifyRoutineRelease(drift.input),/DEV070_RUNTIME_CHANGED/)
  assert.throws(()=>assertToolRotationReleaseCompatibility({toolRotation:{evidenceScope:'OWNER_SEALED_TOOL_IMAGE_ROTATION'},toolRotationPredecessor:{evidenceScope:'OWNER_SEALED_TOOL_IMAGE_ROTATION'},controlledTransition:{releaseMode:DEV070_RELEASE_MODE},repair:false,runtimeChanged:false}),/TOOL_ROTATION_ORDINARY_ONLY/)
+})
+
+test('normal CLI exposes only closed migration-only and sealed full-continuation selections', () => {
+  const capsule = `gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261106/release-intent.json#sha256=${'a'.repeat(64)}`
+  assert.equal(parseDeployProductionArgs(['--migration-only', '--dev070-administration-append']).migrationOnly, true)
+  assert.equal(parseDeployProductionArgs(['--check', '--migration-only']).check, true)
+  assert.equal(parseDeployProductionArgs([`--resume-capsule-ref=${capsule}`]).resumeCapsuleRef.sha256, 'a'.repeat(64))
+  for (const flag of ['--migration-only', '--prepare-only', '--dev070-administration-append', '--reuse-aborted-app-artifact',
+    `--resume-capsule-ref=${capsule}`, `--tool-image-rotation-ref=gs://jenfu-platform-prod-orgmaster-release/receipts/tool-rotations/${'a'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`]) {
+    assert.throws(() => parseDeployProductionArgs([`--resume-capsule-ref=${capsule}`, flag]))
+  }
+  for (const ref of [capsule.replace('orgmaster-release', 'aipdm-release'), capsule.replace('/release-intent.json', '/deployment.json'),
+    capsule.replace('/ORGMASTER-REL-20261106/', '/../../'), capsule.replace('#sha256=', '#hash=')]) {
+    assert.throws(() => parseDeployProductionArgs([`--resume-capsule-ref=${ref}`]), /MIGRATION_CONTINUATION_REF_INVALID/)
+  }
+  assert.throws(() => parseDeployProductionArgs(['--migration-only', '--dev014-principal-lifecycle-v2-remediation']), /MIGRATION_ONLY_RUNTIME_ACTION_DENIED/)
+  for (const flag of ['--stage=migrate', '--sql=SELECT 1', '--target=foreign', '--execution-mode=unknown']) assert.throws(() => parseDeployProductionArgs([flag]))
+  const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json', 'utf8'))
+  const args = ownerWorkflowDispatchArgs(profile, capsule, 'migration_only')
+  assert.deepEqual(args, ['workflow', 'run', '.github/workflows/deploy-orgmaster-independent-production.yml', '--repo',
+    'jedchang0308-jenfu/OrgMaster', '--ref', 'master', '-f', `releaseCapsuleRef=${capsule}`, '-f', 'executionMode=migration_only'])
+  assert.throws(() => ownerWorkflowDispatchArgs(profile, capsule, 'arbitrary'), /OWNER_EXECUTION_MODE_INVALID/)
 })
