@@ -15,17 +15,17 @@ const files=new Map(profile.migrations.entries.map(entry=>[entry.path,readFileSy
 const after=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c,root),files,source).bundle
 const before=count=>({...after,sourceRevision:'b'.repeat(40),manifestSha256:'c'.repeat(64),entries:after.entries.slice(0,count)})
 
-test('DEV070 exact reviewed source packages only 042/044/045 after immutable 001–041 identity',()=>{
+test('DEV070 exact reviewed source packages only 042/044/045/047 after immutable 001–041 identity',()=>{
  assertDev040V3Profile(profile,n1c);assertDev070MigrationEntries(after.entries)
  assertDev059MigrationEntries(after.entries.slice(0,39))
- assert.equal(after.entries.length,42)
+ assert.equal(after.entries.length,43)
  assert.deepEqual(after.entries.slice(39).map(row=>row.path),DEV070_MIGRATION_ENTRIES.map(row=>row.path))
  assert.equal(after.entries.some(row=>row.path.includes('/043_')),false)
  for(const entry of DEV070_MIGRATION_ENTRIES){assert.equal(sourceSha256(files.get(entry.path)),entry.sourceSha256);assert.equal(sourceSha256(unwrapMigrationTransaction(files.get(entry.path))),entry.appliedSha256)}
 })
 test('DEV070 planner admits only previously known exact prefixes and source-controlled partial append readback',()=>{
- for(let count=31;count<42;count++)assert.equal(assertDev070AdministrationAppend(before(count),after).pendingMigrationCount,42-count)
- for(const count of[0,10,30,42,43])assert.throws(()=>assertDev070AdministrationAppend(before(count),after),/DEV070_MIGRATION_APPEND_INVALID/)
+ for(let count=31;count<43;count++)assert.equal(assertDev070AdministrationAppend(before(count),after).pendingMigrationCount,43-count)
+ for(const count of[0,10,30,43,44])assert.throws(()=>assertDev070AdministrationAppend(before(count),after),/DEV070_MIGRATION_APPEND_INVALID/)
  for(const mutate of[
   bundle=>{bundle.entries[30].appliedSha256='0'.repeat(64)},bundle=>{bundle.entries[39].sourceSha256='0'.repeat(64)},
   bundle=>{bundle.entries[40].path='db/migrations/043_unrelated.sql'},bundle=>{bundle.entries.pop()},
@@ -55,9 +55,9 @@ test('DEV070 normal deploy CLI selects one exact append and rejects mixed operat
 })
 test('DEV070 stage receipt requires exact source manifest, count/progress and cross-database denials',()=>{
  const intent={sourceRevision:source,migrationManifestSha256:after.manifestSha256},owner={application:{id:'orgmaster'}}
- const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:source,manifestSha256:after.manifestSha256,status:'PASS',boundaryStatus:'PASS',database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',baselineCount:10,minimumLedgerCount:10,ledgerCount:42,applied:3,replayed:39,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
- const check=(value,plan={releaseMode:DEV070_RELEASE_MODE,pendingMigrationCount:3})=>assertMigrationReceipt({...value,receiptSha256:sha256(canonicalize(value))},owner,intent,{allowForward:true,forwardPlan:plan})
- assert.doesNotThrow(()=>check(core));assert.doesNotThrow(()=>check({...core,applied:0,replayed:42}))
- for(const changed of[{ledgerCount:41},{applied:4,replayed:38},{sourceRevision:'0'.repeat(40)},{manifestSha256:'0'.repeat(64)},{database:'jenfu_stg'},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true}]},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_dev',denied:true}]}])assert.throws(()=>check({...core,...changed}),/MIGRATION_RECEIPT_INVALID/)
- for(const pendingMigrationCount of[0,12,-1,1.5])assert.throws(()=>check(core,{releaseMode:DEV070_RELEASE_MODE,pendingMigrationCount}),/MIGRATION_RECEIPT_INVALID/)
+ const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:source,manifestSha256:after.manifestSha256,status:'PASS',boundaryStatus:'PASS',database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',baselineCount:10,minimumLedgerCount:10,ledgerCount:43,applied:1,replayed:42,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
+ const check=(value,plan={releaseMode:DEV070_RELEASE_MODE,pendingMigrationCount:1})=>assertMigrationReceipt({...value,receiptSha256:sha256(canonicalize(value))},owner,intent,{allowForward:true,forwardPlan:plan})
+ assert.doesNotThrow(()=>check(core));assert.doesNotThrow(()=>check({...core,applied:0,replayed:43}))
+ for(const changed of[{ledgerCount:42},{applied:2,replayed:41},{sourceRevision:'0'.repeat(40)},{manifestSha256:'0'.repeat(64)},{database:'jenfu_stg'},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true}]},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_dev',denied:true}]}])assert.throws(()=>check({...core,...changed}),/MIGRATION_RECEIPT_INVALID/)
+ for(const pendingMigrationCount of[0,13,-1,1.5])assert.throws(()=>check(core,{releaseMode:DEV070_RELEASE_MODE,pendingMigrationCount}),/MIGRATION_RECEIPT_INVALID/)
 })

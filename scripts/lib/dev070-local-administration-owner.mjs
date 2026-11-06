@@ -17,7 +17,7 @@ export const localOwnerHash=value=>createHash('sha256').update(typeof value==='s
 const fail=code=>{throw Object.assign(new Error('DEV070_LOCAL_'+code),{code:'DEV070_LOCAL_'+code})}
 export function validateLocalLedger(entries,rows,database){
  assertDev070MigrationEntries(entries)
- if(!Array.isArray(rows)||![39,40,41,42].includes(rows.length)||new Set(rows.map(r=>r.version)).size!==rows.length)fail('LEDGER_UNKNOWN')
+ if(!Array.isArray(rows)||![39,40,41,42,43].includes(rows.length)||new Set(rows.map(r=>r.version)).size!==rows.length)fail('LEDGER_UNKNOWN')
  const byVersion=new Map(rows.map(r=>[r.version,r]))
  for(const entry of entries.slice(0,rows.length)){
   const row=byVersion.get(entry.version),name=entry.path.split('/').at(-1).replace(/^\d{3}_/u,'').replace(/\.sql$/u,'')
@@ -137,7 +137,7 @@ export async function commitLocalOwnerBridge({client,context,source,plan,ownerPr
   await client.query("SELECT pg_advisory_xact_lock(hashtext('dev070-local-administration-bridge'),hashtext(current_database()))")
   let facts=await readLocalOwnerFacts(client,context,source)
   const prior=facts.installed?await readLocalOwnerBridgeReceipt(client,plan):null
-  if(prior){if(prior.afterBindingsSha256!==facts.bindingsSha256||facts.disposition.count!==42)fail('RECEIPT_CONFLICT');await client.query('ROLLBACK');return prior}
+  if(prior){if(prior.afterBindingsSha256!==facts.bindingsSha256||facts.disposition.count!==source.entries.length)fail('RECEIPT_CONFLICT');await client.query('ROLLBACK');return prior}
   if(facts.ledgerSha256!==plan.beforeLedgerSha256||facts.bindingsSha256!==plan.beforeBindingsSha256||facts.runtimeRolesSha256!==plan.beforeRuntimeRolesSha256||canonical(facts.beforeOwnership)!==canonical(plan.beforeOwnership)||canonical(source.ownershipBootstrap)!==canonical(plan.ownershipBootstrap)||canonical(facts.disposition.pending.map(e=>({version:e.version,path:e.path,sourceSha256:e.sourceSha256,appliedSha256:e.appliedSha256})))!==canonical(plan.migrations)||canonical(plan.localMigration)!==canonical(source.localMigration))fail('PLAN_CAS_CONFLICT')
   await client.query('RESET SESSION AUTHORIZATION')
   const operator=(await client.query("SELECT session_user,current_user,r.rolsuper FROM pg_roles r WHERE r.rolname=session_user")).rows[0]
@@ -150,7 +150,7 @@ export async function commitLocalOwnerBridge({client,context,source,plan,ownerPr
   if(!facts.installed){await client.query(source.localSql);await client.query('INSERT INTO orgmaster_core.administration_local_bridge_installations_v1(singleton,source_path,source_sha256,source_revision) VALUES(true,$1,$2,$3)',[LOCAL_BRIDGE_PATH,source.localMigration.sourceSha256,source.sourceRevision])}
   const receipt=(await client.query('SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb) receipt',[JSON.stringify(core)])).rows[0]?.receipt
   facts=await readLocalOwnerFacts(client,context,source)
-  if(!receipt||receipt.planSha256!==planSha256||receipt.afterBindingsSha256!==facts.bindingsSha256||facts.disposition.count!==42)fail('COMMIT_READBACK_INVALID')
+  if(!receipt||receipt.planSha256!==planSha256||receipt.afterBindingsSha256!==facts.bindingsSha256||facts.disposition.count!==source.entries.length)fail('COMMIT_READBACK_INVALID')
   committing=true;await client.query('COMMIT');return receipt
  }catch(error){if(!committing)await client.query('ROLLBACK').catch(()=>undefined);if(committing)fail('COMMIT_UNKNOWN_REQUIRES_STATUS');throw error}
 }
@@ -202,7 +202,7 @@ export async function executeLocalEnrollmentIntent({client,context,source,input,
  try{
   if(write){await client.query("SET LOCAL lock_timeout='5s';SET LOCAL statement_timeout='30s'");await client.query("SELECT pg_advisory_xact_lock(hashtext('dev070-local-administration-bridge'),hashtext(current_database()))")}
   const facts=await readLocalOwnerFacts(client,context,source)
-  if(!facts.installed||facts.disposition.count!==42||facts.beforeOwnership.some(r=>r.owner!=='jenfu_orgmaster_migrator'))fail('INTENT_BRIDGE_NOT_READY')
+  if(!facts.installed||facts.disposition.count!==source.entries.length||facts.beforeOwnership.some(r=>r.owner!=='jenfu_orgmaster_migrator'))fail('INTENT_BRIDGE_NOT_READY')
   if(planning){
    const {expected,readiness}=await readLocalEnrollmentReadiness(client,intent)
    basis=planLocalOwnerBridge({context,source,facts,ownerProof,commandId:intent.commandId,reason:intent.reason,now})

@@ -1,5 +1,7 @@
 # OrgMaster 文件地圖
 
+本輪 current：047 scoped Principal reader source已實作，review／required CI／owner發布待續；保留舊42-row收據與全部applied bytes。24-case PG18.4差分380＋NULL4通過，效能為隔離樣本，未取得正式CPU／capacity PASS。詳[DEV070 §25](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-scoped-principal-readers)。
+
 - DEV-070 current：主控已回報Org24ff019 protected RELEASED／100%；本slice修地端normal owner commit的ACL readback首敗。原070 bytes保留，新增exact071 v2及正常caller，grantor／grantee／privilege合併與grant-option OR須exact readback，其餘body／CAS／receipt不變；Node／contracts／typecheck／boundary通過，requiredPG18 native13案待CI。primary status仍40／raw042／bridgefalse／receiptnull，沒有本slice primary write。詳[DEV070 §24](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-local-bootstrap-acl-v2)；原[§23 reader修復](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-catalog-reader-compatibility-repair)與正式42-row first-failure收據保留。
 
 - [DEV-070 平台超級管理員權威與首次初始化](specs/DEV-070-platform-super-admin-authority-contract.md)：[任務入口](dev_task.md#dev-070-platform-administration)與[QA §18](qa/DEV-040-R2-independent-production-release-validation-plan.md#18-dev-070-administration-formal-closure)維持完整分母。formal42不含local046；localDDL／首位intent／grant、本人Google／native ack／UI尚未完成；正式Org activation已由主控完成。保留原check／candidate first-failure與sealed receipts，不把source修復標正式PASS。

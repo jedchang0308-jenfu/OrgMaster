@@ -522,6 +522,13 @@
         "path": "db/migrations/045_dev070_administration_commands_v1.sql",
         "sourceSha256": "2cdbd914251c8874cfafbcae108ffb4a8b8c6f8c1c8db381db2ca845802d7f7f",
         "appliedSha256": "334c287a8f038e1b33cf934642bd724f7d3939b09c41f95c213800c82889d663"
+      },
+      {
+        "order": 43,
+        "version": "dev070-orgmaster-047",
+        "path": "db/migrations/047_dev070_scoped_ai_pdm_principal_readers.sql",
+        "sourceSha256": "b6837188519c403004c1bbbd4e70e91af35b9f366842707f115f7f6dcac251ce",
+        "appliedSha256": "7dd50c0485301bf8c58a36ac630b467152fdc2a456459dc586e1e87e902974bf"
       }
     ]
   },

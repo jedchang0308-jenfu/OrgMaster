@@ -55,7 +55,7 @@ export async function runEnrollmentIntentJob({argv=process.argv.slice(2),environ
  const database=new Client(databaseOptions(environment,token));await database.connect()
  try{
   const ledger=await readMigrationLedger(database,'orgmaster_core.schema_migrations')
-  if(ledger.length!==42||ledger.some((row,index)=>row.version!==bundle.entries[index].version||row.name!==bundle.entries[index].name||row.checksum_sha256!==bundle.entries[index].appliedSha256))fail('DEV070_INTENT_LEDGER_INVALID')
+  if(ledger.length!==bundle.entries.length||ledger.some((row,index)=>row.version!==bundle.entries[index].version||row.name!==bundle.entries[index].name||row.checksum_sha256!==bundle.entries[index].appliedSha256))fail('DEV070_INTENT_LEDGER_INVALID')
   const previous=await readGcsObject({uri:args.outputRef,expectedBucket:TARGET.releaseBucket,expectedPrefix:'receipts',token,fetchImpl}).catch(error=>{if(error.code==='MIGRATION_GCS_METADATA_FAILED'&&error.message==='MIGRATION_GCS_METADATA_FAILED:404')return null;throw error})
   if(previous){const receipt=JSON.parse(previous.bytes),{receiptSha256,...core}=receipt;if(receiptSha256!==sha256(canonicalize(core))||receipt.status!=='PASS'||receipt.sourceRevision!==args.sourceRevision||receipt.action!==args.action||receipt.commandId!==manifest.intent.commandId||canonicalize(receipt.inputRef)!==canonicalize({uri:args.intentRef,sha256:args.intentSha256})||canonicalize(receipt.releaseIntentRef)!==canonicalize(manifest.releaseIntentRef))fail('DEV070_INTENT_EXISTING_RECEIPT_INVALID');return receipt}
   const result=await executeEnrollmentIntentOperation({database,manifest,action:args.action,sourceRevision:args.sourceRevision})
