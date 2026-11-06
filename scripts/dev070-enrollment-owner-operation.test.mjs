@@ -2,14 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
 import {parseEnrollmentIntentJobArgs,assertEnrollmentIntentInput,executeEnrollmentIntentOperation} from './dev070-production-enrollment-intent-runner.mjs'
-import {parseEnrollmentOwnerOperationArgs} from './dev070-enrollment-owner-operation.mjs'
+import {parseEnrollmentOwnerOperationArgs,executeEnrollmentOwnerOperation} from './dev070-enrollment-owner-operation.mjs'
 import {runEnrollmentIntentJob} from './dev070-production-enrollment-intent-runner.mjs'
 import {readFileSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
 import {buildOrgmasterPackage} from './dev010-n1c-orgmaster-package.mjs'
 import {buildDev040MigrationBundle} from './lib/dev040-orgmaster-independent-release.mjs'
 import {canonicalize,crc32cBase64,sha256} from './lib/dev012-production-migration-runner.mjs'
-import {stageReceipt} from './lib/dev012-owner-release-runtime.mjs'
+import {releasePaths,stageReceipt} from './lib/dev012-owner-release-runtime.mjs'
 const intent=()=>({contractVersion:'orgmaster.administration-enrollment-intent.v1',commandId:randomUUID(),environmentKey:'jenfu_prod',sourceRevision:'a'.repeat(40),employeeId:'employee-target',directoryKey:{customerId:'customer',userId:'immutable-user'},principalId:null,expiresAt:new Date(Date.now()+600000).toISOString(),expected:{governanceRevision:'b'.repeat(64),organizationRevision:'c'.repeat(64),administrationVersion:0},reason:'首位初始化',admittingWorkload:{principalId:'principal-workload:orgmaster-administration-initialize',dbSessionUser:'orgmaster-prod-migrator@jenfu-platform-prod.iam',providerSubject:'109999999999999999999'}})
 test('intent job accepts one closed operation and rejects human-credential/SQL/bootstrap arguments',()=>{
  const args=['--operation-mode','DEV070_ENROLLMENT_INTENT','--action','admit','--intent-ref','gs://jenfu-platform-prod-orgmaster-release/source/migration-bundles/enrollment-intents/intent.json','--intent-sha256','b'.repeat(64),'--source-revision','a'.repeat(40),'--output-ref','gs://jenfu-platform-prod-orgmaster-release/receipts/intent.json']
@@ -70,6 +70,61 @@ function sealedJobFixture({action='admit'}={}){
  const argv=()=>['--operation-mode','DEV070_ENROLLMENT_INTENT','--action',action,'--intent-ref',inputRef.uri,'--intent-sha256',inputRef.sha256,'--source-revision',source,'--output-ref',outputUri]
  return {manifest,terminal,deployment,claims,ledger,identityRow,objects,queries,inputUri,outputUri,put,refresh(){inputRef=put(inputUri,manifest)},run:()=>runEnrollmentIntentJob({argv:argv(),environment,fetchImpl,Client}),writes:()=>writes,connections:()=>connections}
 }
+function sealedOwnerFixture({action='plan',mutateBundle=()=>{},baselineSource='a'.repeat(40),terminalResult='RELEASED'}={}){
+ const f=sealedJobFixture({action}),{objects,put}=f,profile=JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json',import.meta.url)))
+ const bucket=profile.artifact.releaseBucket,value=intent(),bundle=JSON.parse(objects.get(f.manifest.migrationBundleRef.uri))
+ bundle.sourceRevision=baselineSource;mutateBundle(bundle)
+ const {manifestSha256,...bundleCore}=bundle;bundle.manifestSha256=sha256(canonicalize(bundleCore))
+ const receipt=(name,data)=>put(`gs://${bucket}/receipts/owner-fixture/${name}.json`,data)
+ const released={schemaVersion:profile.schemas.releaseIntent,ownerApplicationId:'orgmaster',releaseId:'DEV070-OWNER-TEST',sourceRevision:baselineSource,sourceSha256:'e'.repeat(64),
+  sourceLockRef:receipt('source',{}),authorizationPolicyRef:receipt('auth',{}),readinessReceiptRef:receipt('readiness',{}),foundationReceiptRef:receipt('foundation',{}),
+  infraReceiptRef:receipt('infra',{}),runtimeConfigRef:receipt('runtime',{}),migrationManifestSha256:bundle.manifestSha256,previousRevision:'orgmaster-prod-previous',deadlineAt:'2026-11-06T00:00:00.000Z'}
+ const releaseIntentRef=receipt('intent',released),paths=releasePaths(profile,released,releaseIntentRef.sha256)
+ const bundleRef=put(`gs://${bucket}/source/migration-bundles/owner-fixture.json`,bundle)
+ const deployment={sourceRevision:baselineSource,releaseIntentRef,migrationBundleRef:bundleRef,artifactDigest:`${profile.artifact.uri}@sha256:${'d'.repeat(64)}`}
+ const deploymentRef=put(paths.deployment,deployment),migrationRef=put(paths.migrate,{schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:baselineSource,manifestSha256:bundle.manifestSha256,status:'PASS',boundaryStatus:'PASS'})
+ const seal=(stage,facts)=>stageReceipt({profile,intent:released,stage,facts,observedAt:'2026-11-06T00:00:00.000Z'})
+ put(paths.candidate,seal('candidate',{deploymentCapsuleRef:deploymentRef,migrationReceiptRef:migrationRef,candidateRevision:'orgmaster-prod-released'}))
+ put(paths.terminal,seal('terminal',{result:terminalResult,remainingHumanAction:0,candidateRevision:'orgmaster-prod-released',artifactDigest:deployment.artifactDigest}))
+ const read=uri=>{const bytes=objects.get(uri);if(!bytes)throw Object.assign(new Error('MISSING'),{code:'MISSING',detail:'404'});return {bytes,ref:{uri,sha256:sha256(bytes)},value:JSON.parse(bytes)}}
+ let puts=0,runs=0
+ const transport={async readJson(ref){const row=read(ref.uri);assert.equal(row.ref.sha256,ref.sha256);return row},async readBytes(uri){return read(uri)},
+  async putJson(uri,data){puts++;return read(put(uri,data).uri)},async runMigrationJob({outputUri,enrollmentIntentOperation}){
+   runs++;const input=read(enrollmentIntentOperation.ref.uri).value
+   const core={sourceRevision:value.sourceRevision,commandId:value.commandId,action,inputRef:enrollmentIntentOperation.ref,status:'PASS',result:{status:action==='plan'?'PLANNED':'OBSERVED'}}
+   put(outputUri,{...core,receiptSha256:sha256(canonicalize(core))});assert.equal(input.migrationBundleRef.sha256,bundleRef.sha256)
+  }}
+ return {run:()=>executeEnrollmentOwnerOperation({profile,transport,sourceRevision:value.sourceRevision,releaseIntentRef,intent:value,action}),puts:()=>puts,runs:()=>runs}
+}
+
+test('owner adapter accepts the current exact43 sealed RELEASED manifest for every closed action and reuses receipts',async()=>{
+ for(const action of['plan','admit','revoke','status']){
+  const f=sealedOwnerFixture({action}),first=await f.run()
+  assert.equal(first.status,'PASS');assert.equal(f.runs(),1)
+  assert.deepEqual(await f.run(),first);assert.equal(f.runs(),1)
+ }
+})
+test('owner rejects historical42, unknown44 and altered exact manifest identities before publishing or running a Job',async()=>{
+ const cases=[
+  bundle=>{bundle.entries.pop()},
+  bundle=>{const entry={...bundle.entries.at(-1),order:44,version:'dev070-orgmaster-048',path:'db/migrations/048_unknown.sql',name:'unknown'};bundle.entries.push(entry)},
+  bundle=>{bundle.entries[0].sourceSha256='0'.repeat(64)},
+  bundle=>{bundle.entries.at(-1).sourceSha256='0'.repeat(64)},
+  bundle=>{bundle.entries.at(-1).path='db/migrations/047_foreign.sql'},
+  bundle=>{const entry=bundle.entries.at(-1);entry.sqlBase64=Buffer.from('SELECT 1;').toString('base64');entry.appliedSha256=sha256(Buffer.from('SELECT 1;'))},
+ ]
+ for(const [index,mutateBundle] of cases.entries()){
+  const f=sealedOwnerFixture({mutateBundle})
+  await assert.rejects(f.run(),index===2?/MIGRATION_PREFIX_001_031_DRIFT/:/DEV070_MIGRATION_APPEND_INVALID/)
+  assert.equal(f.puts(),0);assert.equal(f.runs(),0)
+ }
+})
+test('owner preserves same-source and RELEASED evidence requirements before any enrollment artifact or Job',async()=>{
+ for(const options of[{baselineSource:'b'.repeat(40)},{terminalResult:'FORWARD_APPLIED'}]){
+  const f=sealedOwnerFixture(options);await assert.rejects(f.run(),/(?:RELEASE_NOT_READY|BASELINE_NOT_RELEASED)/);assert.equal(f.puts(),0);assert.equal(f.runs(),0)
+ }
+})
+
 test('actual runner joins sealed owner receipts, metadata identity and exact live ledger before writing intent, then reuses output',async()=>{
  const fixture=sealedJobFixture();const first=await fixture.run();assert.equal(first.status,'PASS');assert.equal(fixture.writes(),1)
  assert.equal(first.result.admitted,true);assert.deepEqual(await fixture.run(),first);assert.equal(fixture.writes(),1)

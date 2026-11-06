@@ -9,6 +9,7 @@ import {createOwnerTransport,canonicalize,sha256} from './lib/dev012-owner-relea
 import {readRoutineBaseline} from './lib/dev040-routine-release.mjs'
 import {verifyOfficialMergedSource} from './lib/dev012-official-source-review.mjs'
 import {assertEnrollmentIntentInput} from './dev070-production-enrollment-intent-runner.mjs'
+import {assertDev070MigrationEntries} from './lib/dev070-administration-migration.mjs'
 export function parseEnrollmentOwnerOperationArgs(argv){
  const keys=['--action','--intent-file','--release-capsule-ref'],options={}
  for(let index=0;index<argv.length;index+=2){if(!keys.includes(argv[index])||!argv[index+1]||options[argv[index]])throw new Error('DEV070_OWNER_INTENT_ARGUMENT_INVALID');options[argv[index]]=argv[index+1]}
@@ -22,7 +23,8 @@ export async function executeEnrollmentOwnerOperation({profile,transport,sourceR
  if(Object.keys(intent??{}).sort().join(',')!==allowed.join(',')||intent.contractVersion!=='orgmaster.administration-enrollment-intent.v1'||intent.sourceRevision!==sourceRevision||intent.environmentKey!=='jenfu_prod')throw new Error('DEV070_OWNER_INTENT_INPUT_INVALID')
  assertEnrollmentIntentInput(intent,action)
  const baseline=await readRoutineBaseline({profile,transport,baselineIntentRef:releaseIntentRef})
- if(baseline.repair||baseline.intent.sourceRevision!==sourceRevision||baseline.bundle.value.entries.length!==42||baseline.terminal.value.facts.result!=='RELEASED')throw new Error('DEV070_OWNER_INTENT_RELEASE_NOT_READY')
+ if(baseline.repair||baseline.intent.sourceRevision!==sourceRevision||baseline.terminal.value.facts.result!=='RELEASED')throw new Error('DEV070_OWNER_INTENT_RELEASE_NOT_READY')
+ assertDev070MigrationEntries(baseline.bundle.value.entries)
  const manifest={schemaVersion:'orgmaster.administration-enrollment-owner-operation.v1',ownerApplicationId:'orgmaster',action,sourceRevision,releaseIntentRef,terminalRef:baseline.terminal.ref,deploymentRef:baseline.deployment.ref,migrationBundleRef:baseline.deployment.value.migrationBundleRef,intent}
  const hash=sha256(canonicalize(manifest)),bucket=profile.artifact.releaseBucket
  const input=await transport.putJson(`gs://${bucket}/source/migration-bundles/enrollment-intents/${intent.commandId}/${action}-${hash}.json`,manifest,{bucket,prefix:'source/migration-bundles',ifGenerationMatch:'0'})
