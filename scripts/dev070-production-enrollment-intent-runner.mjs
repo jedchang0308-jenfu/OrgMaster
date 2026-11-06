@@ -20,6 +20,26 @@ export function parseEnrollmentIntentJobArgs(argv){
  return {action:out['--action'],intentRef:out['--intent-ref'],intentSha256:out['--intent-sha256'],sourceRevision:out['--source-revision'],outputRef:out['--output-ref']}
 }
 function sealed(value){const {receiptSha256,...core}=value??{};if(!H64.test(receiptSha256??'')||receiptSha256!==sha256(canonicalize(core)))fail('DEV070_INTENT_RELEASE_EVIDENCE_INVALID')}
+async function readEnrollmentStatusWithObservation(database,commandId){
+ await database.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+ try{
+  const result=(await database.query('SELECT orgmaster_core.read_administration_enrollment_intent_owner_v1($1::uuid) receipt',[commandId])).rows[0]?.receipt??null
+  if(result===null)return null
+  await database.query('SAVEPOINT dev070_capacity_observation')
+  let observations
+  try{
+   const {rows}=await database.query(`SELECT pg_catalog.current_setting('jit') owner_session_jit_setting,pg_catalog.pg_jit_available() owner_session_jit_available,pg_catalog.jsonb_array_length(artifact.payload->'publishedVersions') governance_published_version_count,pg_catalog.octet_length(artifact.payload::text) governance_payload_logical_bytes,pg_catalog.pg_column_size(artifact.payload) governance_payload_column_bytes FROM orgmaster_core.persistence_authority authority JOIN orgmaster_core.persistence_artifacts artifact ON artifact.batch_id=authority.active_batch_id AND artifact.artifact_key='orgmaster-governance.v3.json' AND artifact.artifact_kind='governance' WHERE authority.singleton`)
+   const row=rows?.[0],counts=['governance_published_version_count','governance_payload_logical_bytes','governance_payload_column_bytes']
+   if(rows?.length!==1||!exact(row,['owner_session_jit_setting','owner_session_jit_available',...counts])||!['on','off'].includes(row.owner_session_jit_setting)||typeof row.owner_session_jit_available!=='boolean'||counts.some(key=>!Number.isSafeInteger(row[key])||row[key]<0))fail('DEV070_STATUS_CAPACITY_OBSERVATION_INVALID')
+   observations={status:'AVAILABLE',scope:'owner_session',ownerSessionJitSetting:row.owner_session_jit_setting,ownerSessionJitAvailable:row.owner_session_jit_available,governancePublishedVersionCount:row.governance_published_version_count,governancePayloadLogicalBytes:row.governance_payload_logical_bytes,governancePayloadColumnBytes:row.governance_payload_column_bytes}
+  }catch{
+   await database.query('ROLLBACK TO SAVEPOINT dev070_capacity_observation')
+   observations={status:'UNAVAILABLE',code:'DEV070_STATUS_CAPACITY_OBSERVATION_UNAVAILABLE'}
+  }
+  await database.query('RELEASE SAVEPOINT dev070_capacity_observation')
+  return {...result,observations}
+ }finally{await database.query('ROLLBACK')}
+}
 export async function executeEnrollmentIntentOperation({database,manifest,action,sourceRevision}){
  if(!exact(manifest,['schemaVersion','ownerApplicationId','action','sourceRevision','releaseIntentRef','terminalRef','deploymentRef','migrationBundleRef','intent'])||manifest.schemaVersion!=='orgmaster.administration-enrollment-owner-operation.v1'||manifest.ownerApplicationId!=='orgmaster'||manifest.action!==action||manifest.sourceRevision!==sourceRevision||manifest.intent.sourceRevision!==sourceRevision)fail('DEV070_INTENT_MANIFEST_INVALID')
  assertEnrollmentIntentInput(manifest.intent,action)
@@ -31,6 +51,7 @@ export async function executeEnrollmentIntentOperation({database,manifest,action
   if(!row||!state||Number(state.administration_version)!==0||state.initialized_by_command_id!==null)fail('DEV070_INTENT_PLAN_NOT_READY')
   return {status:'PLANNED',commandId:manifest.intent.commandId,intent:{...manifest.intent,expected:{governanceRevision:row.governance_revision,organizationRevision:row.workspace_revision,administrationVersion:0}},readiness:{globalAdmissionEnabled:row.admission_enabled,globalAdmissionWillNotBeChanged:true}}
  }
+ if(action==='status')return readEnrollmentStatusWithObservation(database,manifest.intent.commandId)
  const sql=action==='admit'?'SELECT orgmaster_core.admit_administration_enrollment_intent_v1($1::jsonb) receipt':action==='revoke'?'SELECT orgmaster_core.revoke_administration_enrollment_intent_v1($1::uuid) receipt':'SELECT orgmaster_core.read_administration_enrollment_intent_owner_v1($1::uuid) receipt'
  return (await database.query(sql,[action==='admit'?JSON.stringify(manifest.intent):manifest.intent.commandId])).rows[0]?.receipt??null
 }

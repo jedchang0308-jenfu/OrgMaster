@@ -51,12 +51,14 @@ function sealedJobFixture({action='admit'}={}){
  const terminalRef=put(`gs://${bucket}/receipts/releases/DEV070/terminal.json`,terminal)
  const manifest={schemaVersion:'orgmaster.administration-enrollment-owner-operation.v1',ownerApplicationId:'orgmaster',action,sourceRevision:source,releaseIntentRef,terminalRef,deploymentRef,migrationBundleRef:bundleRef,intent:value}
  const inputUri=`gs://${bucket}/source/migration-bundles/enrollment-intents/input.json`,outputUri=`gs://${bucket}/receipts/administration-enrollment/result.json`
- let inputRef=put(inputUri,manifest),writes=0,connections=0;const queries=[]
+ let inputRef=put(inputUri,manifest),writes=0,connections=0,ends=0,queryFailure=null;const queries=[]
  const environment={OWNER_APPLICATION_ID:'orgmaster',RELEASE_BUCKET:bucket,GOOGLE_CLOUD_PROJECT:'jenfu-platform-prod',GOOGLE_CLOUD_REGION:'asia-east1',CLOUD_SQL_INSTANCE_CONNECTION_NAME:'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',POSTGRES_DATABASE:'jenfu_prod',POSTGRES_IAM_LOGIN:value.admittingWorkload.dbSessionUser,POSTGRES_SOCKET:'/cloudsql/jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg',CLOUD_RUN_JOB:'orgmaster-prod-migration-runner'}
  const claims={iss:'https://accounts.google.com',aud:'https://run.googleapis.com/dev070-enrollment-intent',email:'orgmaster-prod-migrator@jenfu-platform-prod.iam.gserviceaccount.com',email_verified:true,sub:value.admittingWorkload.providerSubject}
  const identityRow={session_user:value.admittingWorkload.dbSessionUser,database:'jenfu_prod',migrator:true,runtime:false}
+ const capacityRows=[{owner_session_jit_setting:'on',owner_session_jit_available:true,governance_published_version_count:20,governance_payload_logical_bytes:123456,governance_payload_column_bytes:12000}]
+ let statusResult={intent:{contractVersion:'orgmaster.administration-enrollment-intent-receipt.v1',intentHash:'d'.repeat(64),intent:structuredClone(value),admittedAt:'2026-11-06T00:00:00.000Z'},revoked:false,receipt:null}
  const ledger=bundle.entries.map(row=>({version:row.version,name:row.name,checksum_sha256:row.appliedSha256,source_revision:source}))
- class Client{async connect(){connections++}async end(){}async query(sql,parameters){queries.push({sql,parameters});if(sql.includes('schema_migrations'))return {rows:ledger};if(sql.includes('SESSION_USER'))return {rows:[identityRow]};if(sql.includes('admit_administration')){writes++;return {rows:[{receipt:{admitted:true}}]}};if(sql.includes('governance_revision'))return {rows:[{governance_revision:'b'.repeat(64),workspace_revision:'c'.repeat(64),admission_enabled:true}]};if(sql.includes('read_administration_state'))return {rows:[{administration_version:'0',initialized_by_command_id:null}]};return {rows:[{receipt:{found:true}}]}}}
+ class Client{async connect(){connections++}async end(){ends++}async query(sql,parameters){queries.push({sql,parameters});if(queryFailure?.(sql))throw new Error('NATIVE_READ_FAILED: private SQL detail must not be emitted');if(sql.includes('schema_migrations'))return {rows:ledger};if(sql.includes('SESSION_USER'))return {rows:[identityRow]};if(sql.includes('admit_administration')){writes++;return {rows:[{receipt:{admitted:true}}]}};if(sql.includes('read_administration_enrollment_intent_owner'))return {rows:[{receipt:structuredClone(statusResult)}]};if(sql.includes('governance_revision'))return {rows:[{governance_revision:'b'.repeat(64),workspace_revision:'c'.repeat(64),admission_enabled:true}]};if(sql.includes('read_administration_state'))return {rows:[{administration_version:'0',initialized_by_command_id:null}]};if(sql.includes('owner_session_jit_setting'))return {rows:capacityRows};return {rows:[{receipt:{found:true}}]}}}
  const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json'}})
  const fetchImpl=async(uri,options={})=>{
   const url=new URL(uri)
@@ -68,7 +70,7 @@ function sealedJobFixture({action='admit'}={}){
   return url.searchParams.get('alt')==='media'?new Response(bytes):json({generation:'1',crc32c:crc32cBase64(bytes)})
  }
  const argv=()=>['--operation-mode','DEV070_ENROLLMENT_INTENT','--action',action,'--intent-ref',inputRef.uri,'--intent-sha256',inputRef.sha256,'--source-revision',source,'--output-ref',outputUri]
- return {manifest,terminal,deployment,claims,ledger,identityRow,objects,queries,inputUri,outputUri,put,refresh(){inputRef=put(inputUri,manifest)},run:()=>runEnrollmentIntentJob({argv:argv(),environment,fetchImpl,Client}),writes:()=>writes,connections:()=>connections}
+ return {manifest,terminal,deployment,claims,ledger,identityRow,capacityRows,objects,queries,inputUri,outputUri,put,refresh(){inputRef=put(inputUri,manifest)},setStatusResult:value=>{statusResult=structuredClone(value)},failQueryWhen:predicate=>{queryFailure=predicate},run:()=>runEnrollmentIntentJob({argv:argv(),environment,fetchImpl,Client}),writes:()=>writes,connections:()=>connections,ends:()=>ends}
 }
 function sealedOwnerFixture({action='plan',mutateBundle=()=>{},baselineSource='a'.repeat(40),terminalResult='RELEASED'}={}){
  const f=sealedJobFixture({action}),{objects,put}=f,profile=JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json',import.meta.url)))
@@ -151,6 +153,74 @@ test('actual runner joins sealed owner receipts, metadata identity and exact liv
 test('actual runner readonly plan fills source CAS without creating an intent',async()=>{
  const fixture=sealedJobFixture({action:'plan'});fixture.manifest.intent.expected=null;fixture.manifest.intent.admittingWorkload=null;fixture.refresh()
  const result=await fixture.run();assert.equal(result.result.status,'PLANNED');assert.equal(result.result.intent.expected.administrationVersion,0);assert.equal(fixture.writes(),0)
+})
+
+test('status preserves pending, initialized and revoked native results while adding one optional readonly observation',async()=>{
+ for(const native of [{intent:{intentHash:'d'.repeat(64)},revoked:false,receipt:null},{intent:{intentHash:'d'.repeat(64)},revoked:false,receipt:{commandId:'native-command',administrationVersion:1}},{intent:{intentHash:'d'.repeat(64)},revoked:true,receipt:null}]){
+  const fixture=sealedJobFixture({action:'status'});fixture.setStatusResult(native)
+  const input=structuredClone(fixture.manifest.intent),result=await fixture.run()
+  assert.deepEqual(result.result,{...native,observations:{status:'AVAILABLE',scope:'owner_session',ownerSessionJitSetting:'on',ownerSessionJitAvailable:true,governancePublishedVersionCount:20,governancePayloadLogicalBytes:123456,governancePayloadColumnBytes:12000}})
+  assert.deepEqual(fixture.manifest.intent,input);assert.equal(fixture.writes(),0);assert.equal(fixture.ends(),1)
+  const snapshot=fixture.queries.slice(2)
+  assert.equal(snapshot[0].sql,'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+  assert.equal(snapshot[2].sql,'SAVEPOINT dev070_capacity_observation')
+  assert.equal(snapshot.at(-2).sql,'RELEASE SAVEPOINT dev070_capacity_observation');assert.equal(snapshot.at(-1).sql,'ROLLBACK')
+  assert.equal(snapshot.length,6)
+  assert.deepEqual(await fixture.run(),result,'the same output reference is an immutable observation')
+  assert.equal(fixture.queries.filter(row=>row.sql.startsWith('BEGIN')).length,1)
+ }
+})
+
+test('status unknown command remains null and does not attempt optional metadata',async()=>{
+ const fixture=sealedJobFixture({action:'status'});fixture.setStatusResult(null)
+ fixture.failQueryWhen(sql=>sql.includes('owner_session_jit_setting')||sql.startsWith('SAVEPOINT'))
+ const result=await fixture.run()
+ assert.equal(result.result,null);assert.equal(fixture.writes(),0);assert.equal(fixture.ends(),1)
+ assert.equal(fixture.queries.at(-1).sql,'ROLLBACK');assert.equal(fixture.queries.length,5)
+})
+
+test('status accepts typed zero and unavailable JIT without inventing missing measurements',async()=>{
+ const fixture=sealedJobFixture({action:'status'})
+ Object.assign(fixture.capacityRows[0],{owner_session_jit_setting:'off',owner_session_jit_available:false,governance_published_version_count:0,governance_payload_logical_bytes:0,governance_payload_column_bytes:0})
+ const {observations}= (await fixture.run()).result
+ assert.deepEqual(observations,{status:'AVAILABLE',scope:'owner_session',ownerSessionJitSetting:'off',ownerSessionJitAvailable:false,governancePublishedVersionCount:0,governancePayloadLogicalBytes:0,governancePayloadColumnBytes:0})
+})
+
+test('optional metadata SQL and typed-projection failures preserve valid status and roll back to the savepoint',async()=>{
+ const setups=[
+  f=>{f.failQueryWhen(sql=>sql.includes('owner_session_jit_setting'))},
+  f=>{f.capacityRows.length=0},f=>{f.capacityRows.push({...f.capacityRows[0]})},
+  f=>{f.capacityRows[0].unexpected=true},f=>{delete f.capacityRows[0].owner_session_jit_setting},
+  f=>{f.capacityRows[0].owner_session_jit_setting='auto'},f=>{f.capacityRows[0].owner_session_jit_available=null},f=>{f.capacityRows[0].owner_session_jit_available='true'},
+  ...['governance_published_version_count','governance_payload_logical_bytes','governance_payload_column_bytes'].flatMap(key=>[undefined,null,'1',-1,0.5,Number.MAX_SAFE_INTEGER+1,Infinity,NaN].map(value=>f=>{f.capacityRows[0][key]=value})),
+ ]
+ for(const setup of setups){
+  const fixture=sealedJobFixture({action:'status'}),native={intent:{intentHash:'native'},revoked:true,receipt:{administrationVersion:3}}
+  fixture.setStatusResult(native);setup(fixture)
+  const result=await fixture.run()
+  assert.deepEqual(result.result,{...native,observations:{status:'UNAVAILABLE',code:'DEV070_STATUS_CAPACITY_OBSERVATION_UNAVAILABLE'}})
+  assert.deepEqual(fixture.queries.slice(-3).map(row=>row.sql),['ROLLBACK TO SAVEPOINT dev070_capacity_observation','RELEASE SAVEPOINT dev070_capacity_observation','ROLLBACK'])
+  assert.equal(fixture.writes(),0);assert.equal(fixture.ends(),1)
+  assert.equal(JSON.stringify(result).includes('private SQL detail'),false)
+ }
+})
+
+test('native status failure remains a failure with rollback and no output instead of an unavailable observation',async()=>{
+ const fixture=sealedJobFixture({action:'status'});fixture.failQueryWhen(sql=>sql.includes('read_administration_enrollment_intent_owner'))
+ await assert.rejects(fixture.run(),/NATIVE_READ_FAILED/)
+ assert.equal(fixture.queries.at(-1).sql,'ROLLBACK');assert.equal(fixture.ends(),1)
+ assert.equal(fixture.objects.has(fixture.outputUri),false)
+})
+
+test('plan, admit and revoke retain their existing results and do not run status-only diagnostics',async()=>{
+ for(const action of ['plan','admit','revoke']){
+  const fixture=sealedJobFixture({action});fixture.failQueryWhen(sql=>sql.startsWith('BEGIN')||sql.includes('owner_session_jit_setting'))
+  const result=await fixture.run()
+  assert.equal(result.status,'PASS');assert.equal(fixture.ends(),1)
+  assert.equal(Object.hasOwn(result.result,'observations'),false)
+  if(action==='plan')assert.deepEqual(result.result.readiness,{globalAdmissionEnabled:true,globalAdmissionWillNotBeChanged:true})
+  assert.equal(fixture.queries.length,action==='plan'?4:3)
+ }
 })
 test('actual runner rejects unsealed/foreign/source-drifted release evidence before any database mutation',async()=>{
  for(const mutate of[

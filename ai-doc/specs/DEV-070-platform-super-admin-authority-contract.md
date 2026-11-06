@@ -1,6 +1,6 @@
 # DEV-070：平台超級管理員權威與首次初始化
 
-日期：2026-11-05；更新：2026-11-06（Asia/Taipei）。Native：ORGMASTER/DEV-070；來源：JENFU/DEV-022#authority-and-bootstrap。成熟度：IMPLEMENTING／完整本人驗收待續。主控已回報正式 Org `7bf7fb96a8671a44159869e0f8ca68d8427584ee`（PR #219）經 normal full run `42239426560` RELEASED，native generation414／revision suffix `76c30fd1c715`／traffic100%；047 actual ledger43。Primary-local Org43及local046、PDM local096／097已正常 installed，local catalog仍v7。本節新增static-v8 reader與fresh enrollment-status source尚未發布；正式PDM既有dynamic publication不變。指定 Google personal／張仕杰 JFS0005，最低 AAL1、AAL2亦接受、中文姓名不變；首位intent已admit但已過期，尚未確認本人Google actiontime、root／app-admin grants、native ack或UI完成，不把admit或source測試當初始化成功。人類四專案完整實作至真實地端與正式發布的授權及完整驗收分母維持；既有capacity CPU FAIL與所有歷史首敗保留。
+日期：2026-11-05；更新：2026-11-07（Asia/Taipei）。Native：ORGMASTER/DEV-070；來源：JENFU/DEV-022#authority-and-bootstrap。成熟度：IMPLEMENTING／完整本人驗收待續。主控已回報正式 Org `ace11d7058dea105dbcce303760a228d8aafd0a5`（PR #220）已 normal RELEASED，047 actual ledger43；static-v8 reader與fresh enrollment-status已隨該source發布。Primary-local Org43及local046、PDM local096／097已正常 installed，local catalog仍v7。§28新增optional status metadata已完成source審查，尚未發布。指定 Google personal／張仕杰 JFS0005，最低 AAL1、AAL2亦接受、中文姓名不變；正式root的人類同意仍有效，Google manual handoff目前受阻／視窗逾時，本人Google完成、root／app-admin grants、native ack或UI完成仍未驗證，不把admit或source測試當初始化成功。人類四專案完整實作至真實地端與正式發布的授權及完整驗收分母維持；既有capacity CPU FAIL與所有歷史首敗保留。
 
 總控權威契約：`C:/VIBE CODING/.worktrees/Jenfu-Platform/dev022-platform-super-admin-20261105/ai-doc/specs/DEV-022-platform-super-admin-cross-project-plan.md`（Platform owner 開發 root；發布使用獨立 clean source checkout）；`C:/VIBE CODING/Jenfu-Platform` 原 root 僅作協調鏡本，不作 release source。相鄰責任沿 DEV-057 Principal／writer fencing 及 DEV-058 集中任用；不重開原驗收或替它們結案。[架構決策](../adr/ADR-007-external-role-catalog-assignment-boundary.md#platform-super-admin-20261105)。
 
@@ -548,3 +548,19 @@ App runner與readback recipe現明列COPY v8資產，readback另補新helper及�
 Ordinary release與APP_INFRA_REUSE原resource tree會因這個非provisioned diagnostic recipe改動而漂移。僅允固定Git blob `fd44c040271d74ac370c61746b5d4d73c4313b77` → `a00ab7ae4c128acf2fe518d3cd268c71d585dbb1` 的resource-equivalence：共同helper只把該path／100644 mode／exact AFTER entry映至BEFORE供resource fingerprint比較；source blob讀取、原manifest／archive／build provenance及分recipe executable inputs仍保留原bytes。Unknown recipe、mode或任何`.tf`／profile drift不在例外內；既有66ce→4645歷史Principal切片不改。Pure tests從actual7bf tracked infra建立task-owned Git fixture，加入exact R2 recipe後驗普通full routine planner與prior APP_INFRA_REUSE接續，並拒unknown recipe／mode／Terraform drift，不跑provider或替代正式release gates。
 
 本機獨立的full pg-entrypoint staging若缺tool lock的pg8.21.0仍標前置不足（現有app依賴8.23.0），保留first failure，不改lock／install／stub／skip；既有CI先安裝該exact tool closure再build/import三image的required gate保持。這輪沒有PG、SQL、IAM／Secret、provider或人類grant操作，沒有native history量測／capacity PASS或本人UI結論。
+
+## 28. Status 的 optional capacity metadata observation（2026-11-07）
+
+本切片只在既有 `status` action 的已知native結果追加 `observations`，保留原 `intent`、`revoked`、`receipt` 內容及未知command的 `null`。它不依賴current administrationVersion仍為0；原admitted intent／expected CAS輸入、15分鐘TTL、strict43 ledger、same-source RELEASED、固定Job／target／SESSION_USER與auth guards不變。未採用的plan metadata測試WIP已另存private patch與原檔副本；bootstrap plan及readiness gate沒有新增欄位或條件。
+
+`observations` 為封閉union：成功固定 `status=AVAILABLE`、`scope=owner_session` 及下列五欄；SQL／投影驗型失敗則只有 `status=UNAVAILABLE`、`code=DEV070_STATUS_CAPACITY_OBSERVATION_UNAVAILABLE`，不回原生error／SQL內容、不以0補未知。
+
+- `ownerSessionJitSetting`：`pg_catalog.current_setting('jit')`，只接受字串 `on`／`off`。
+- `ownerSessionJitAvailable`：`pg_catalog.pg_jit_available()`，只接受boolean。依[PostgreSQL 17官方定義](https://www.postgresql.org/docs/17/functions-info.html)，須JIT擴充可用且本session的jit為on才為true；false不單獨證明LLVM缺失。
+- `governancePublishedVersionCount`：active `orgmaster-governance.v3.json` 的 `jsonb_array_length(payload->'publishedVersions')`，包括該array中的歷史版本。
+- `governancePayloadLogicalBytes`：同一active payload的 `octet_length(payload::text)`，是PostgreSQL JSONB文字表示的bytes，不是JS canonical JSON大小。
+- `governancePayloadColumnBytes`：同一active payload的 `pg_column_size(payload)`；依[官方datum size定義](https://www.postgresql.org/docs/17/functions-admin.html)，反映該column datum的儲存大小／壓縮，不是整表或完整TOAST overhead。後三欄皆要求原生number、非負safe integer；NULL、字串、缺欄、分數、非有限或越界數字及非單列結果均為UNAVAILABLE。
+
+Status先在 `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` 內查原owner function；已知結果才建立固定savepoint，從同snapshot的active authority/artifact直接回五項純aggregate／session metadata，不傳出payload。Optional SQL或typing error先 `ROLLBACK TO SAVEPOINT`，再返回原status附UNAVAILABLE；成功及失敗皆在finally執行整個transaction的ROLLBACK。原status／身份或release guard失敗仍為失敗，不被diagnostic catch吞掉；unknown command不查metadata。原create-only observation output／unknown execution readback保持，新的host status呼叫仍取fresh output，不覆寫舊觀察。Plan／admit／revoke的SQL、結果與immutable replay不變，不增加action、flag、target、自由SQL或權限。
+
+五欄只反映此Org owner Job的session及active artifact，不能推成PDM actual runtime session的JIT設定、特定query實際使用JIT或CPU根因；[JIT是否啟用於查詢也取決於planning時的成本門檻](https://www.postgresql.org/docs/17/jit-decision.html)。本機focused Node以actual runner＋provider/DB doubles驗known/null／AVAILABLE／UNAVAILABLE／rollback與其他actions保持，沒有PG或provider實測，也未取得native數值或capacity PASS。此次runner檔位於既有migration image literal COPY closure，後續須正常新runner build及APP_INFRA_IMAGE_ROTATION，再沿current gate正常app build／full owner release；不加artifact reuse例外、不重用舊image冒稱新source。本切片尚未build／rotation／deploy，主線ACE登入流程source保持穩定。
