@@ -9,12 +9,13 @@ import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-e
 import { verifyOfficialMergedSource } from './lib/dev012-official-source-review.mjs'
 import { readRoutineBaseline, resolveRoutineControlBaseline } from './lib/dev040-routine-release.mjs'
 import { buildMigrationToolImage, reuseMigrationToolImage } from './lib/dev040-tool-image-build.mjs'
-import { createToolTerraform, normalizeTerraformStateMeta, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
+import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
 import { assertDev040ReleaseIntent } from './lib/dev040-orgmaster-independent-release.mjs'
 import { assertToolOwner, assertToolRotationPlan, assertToolRotationState, sealToolEvidence,
   assertToolInfrastructureTransition, rotationAddresses, assertOrdinaryToolRotation, assertToolSeal, assertToolBuildProof,
   assertToolArtifactAssociation, assertToolPreActivationAbortControl, assertToolStateSourceContinuation,
-  assertAppliedToolInfrastructureBaseline } from './lib/dev040-tool-image-rotation.mjs'
+  assertAppliedToolInfrastructureBaseline,assertReusableAfterStateEvidence,assertToolInfrastructureBasis } from './lib/dev040-tool-image-rotation.mjs'
+export {assertReusableAfterStateEvidence} from './lib/dev040-tool-image-rotation.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 function fail(code) { throw Object.assign(new Error(`TOOL_ROTATION_${code}`), { code: `TOOL_ROTATION_${code}` }) }
@@ -56,11 +57,6 @@ export function assertAppliedRecoverySourceProof({ preparedSourceProof, currentS
     || preparedSourceProof.mergedAt !== merged[0].merged_at || preparedSourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED'
     || preparedSourceProof.requiredSourceQc !== 'SUCCESS' || check.conclusion !== 'success') fail('RECOVERY_SOURCE_INVALID')
   return preparedSourceProof
-}
-export function assertReusableAfterStateEvidence(existing, current) {
-  const normalize = value => ({ ...value, stateMeta: normalizeTerraformStateMeta(value?.stateMeta) })
-  if (!existing || !current || !same(normalize(existing), normalize(current))) fail('RECOVERY_AFTER_STATE_CHANGED')
-  return existing
 }
 export async function readHistoricalToolBuildSource({ root, profile, sourceRevision, providerBuild, readGithub }) {
   const revisions = providerBuild?.steps?.[0]?.args?.filter(value => value.startsWith('SOURCE_REVISION=')) ?? []
@@ -142,14 +138,14 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
       serviceDataBaselineIntentRef: baselineIntentRef }
     const validated = await validateAppliedInfraBaseline({ root, profile, transport, appliedBaseline: appliedInfraBaseline,
       currentSourceRevision: git.sourceRevision, baselineIntentRef, baseline, readLiveJob: !existing,
-      receiptRead: appliedRead })
+      receiptRead: appliedRead,readHistoricalBaseline:readBaseline })
     previousInfraRef = validated.ref
     previousInfra = validated.receipt
   }
   if (controlAttemptIntent && !same(controlAttemptIntent.infraReceiptRef, previousInfraRef)) {
     const appliedRotation = await transport.readJson(controlAttemptIntent.infraReceiptRef, bucket, ['receipts'])
     await validateExistingRotation({ root, profile, transport, intent: controlAttemptIntent,
-      receipt: appliedRotation.value, baseline, readLiveJob: !existing })
+      receipt: appliedRotation.value, baseline, readLiveJob: !existing,readHistoricalBaseline:readBaseline })
     previousInfraRef = appliedRotation.ref
     previousInfra = appliedRotation.value
   }
@@ -173,7 +169,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   }
   if (existing) {
     await assertOrdinaryToolRotation({ root, profile, transport, intent: { sourceRevision: git.sourceRevision,
-      infraReceiptRef: existing.ref, baselineIntentRef }, receipt: existing.value, baseline })
+      infraReceiptRef: existing.ref, baselineIntentRef }, receipt: existing.value, baseline,readHistoricalBaseline:readBaseline })
     if (appliedInfraBaseline && !same(existing.value.toolRotation?.appliedInfraBaseline, appliedInfraBaseline)) {
       fail('APPLIED_INFRA_BASELINE_CHANGED')
     }
@@ -199,7 +195,9 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   } else {
     const beforeState = await terraform.read()
     const manifest = beforeState.manifest
-    assertToolStateSourceContinuation(root, previousInfra.sourceRevision, manifest.source_revision, git.sourceRevision)
+    const reusedBasis=await assertToolInfrastructureBasis({root,profile,transport,baselineIntent:baseline.intent,
+      infraRef:previousInfraRef,infra:previousInfra,currentSourceRevision:git.sourceRevision,beforeState,readHistoricalBaseline:readBaseline,readLiveProvider:true})
+    if(!reusedBasis)assertToolStateSourceContinuation(root, previousInfra.sourceRevision, manifest.source_revision, git.sourceRevision)
     if (manifest.migration_runner_digest !== previousImage || manifest.controller_image_digest !== controllerImage
       || manifest.foundation_manifest_sha256 !== previousInfra.foundationManifestSha256) fail('STATE_BASELINE_CHANGED')
     if (appliedInfraBaseline) {
@@ -247,6 +245,11 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
       beforeSerial: beforeState.stateMeta.serial, stateLineage: beforeState.stateMeta.lineage, observedAt: now() })
     await put('prepared', prepared)
   }
+  if(previousInfra.mutationProfile==='APP_INFRA_REUSE'){
+    const recordedBefore=await transport.readJson(prepared.beforeStateRef,bucket,['receipts'])
+    await assertToolInfrastructureBasis({root,profile,transport,baselineIntent:baseline.intent,infraRef:previousInfraRef,
+      infra:previousInfra,currentSourceRevision:git.sourceRevision,beforeState:recordedBefore.value,readHistoricalBaseline:readBaseline})
+  }
   if (!apply) return { status: 'PREPARED', releaseAuthority: false, sourceRevision: git.sourceRevision }
   const fence = await optionalJson(transport, `${prefix}/apply-attempt.json`, bucket)
   if (fence && (fence.value.sourceRevision !== git.sourceRevision || !same(fence.value.binaryPlanRef, prepared.binaryPlanRef)
@@ -269,6 +272,8 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     await sameControl()
     const state = await terraform.read()
     if (state.stateMeta.serial !== prepared.beforeSerial || state.stateMeta.lineage !== prepared.stateLineage) fail('STATE_CAS_CHANGED')
+    await assertToolInfrastructureBasis({root,profile,transport,baselineIntent:baseline.intent,infraRef:previousInfraRef,
+      infra:previousInfra,currentSourceRevision:git.sourceRevision,beforeState:state,readHistoricalBaseline:readBaseline,readLiveProvider:true})
     const beforeJob = await transport.readJson(prepared.providerJobBeforeRef, bucket, ['receipts'])
     if (!same(await readJob(), beforeJob.value)) fail('LIVE_JOB_BASELINE_CHANGED')
     const bytes = (await transport.readBytes(prepared.binaryPlanRef.uri, { prefixes: ['receipts'], expectedSha256: prepared.binaryPlanRef.sha256 })).bytes
@@ -321,7 +326,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   // Re-run the same consumer before publishing APPLIED; an invalid proof cannot
   // be upgraded into an owner release prerequisite by an operator-only shortcut.
   await assertOrdinaryToolRotation({ root, profile, transport, intent: { sourceRevision: git.sourceRevision,
-    infraReceiptRef: { uri: `${prefix}/app-infra.json`, sha256: sha256(Buffer.from(`${canonicalize(receipt)}\n`)) }, baselineIntentRef }, receipt, baseline })
+    infraReceiptRef: { uri: `${prefix}/app-infra.json`, sha256: sha256(Buffer.from(`${canonicalize(receipt)}\n`)) }, baselineIntentRef }, receipt, baseline,readHistoricalBaseline:readBaseline })
   const result = await put('app-infra', receipt)
   return { status: 'APPLIED', ref: result.ref, migrationRunnerDigest: receipt.migrationRunnerDigest, ddlExecuted: 0 }
 }

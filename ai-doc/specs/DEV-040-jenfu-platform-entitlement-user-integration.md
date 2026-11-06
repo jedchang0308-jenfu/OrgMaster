@@ -1454,6 +1454,8 @@ PR #134 已合併至 `ad4e6be3355305329833a83005889be61c46f6ee`。其後人類�
 
 行為與反向案例由 `npm run test:dev-040:tool-rotation` 加入既有 required Source QC 與 owner QC；owner／abort／DB boundary／app gates 依實際變動保留。實際正式結果另記 dated owner evidence；本契約本身不宣稱發布成功。
 
+2026-11-06 consumed-reuse basis 修正：若目前 RELEASED intent 已正常消費 `APP_INFRA_REUSE`，工具 rotation 的 service／data baseline 仍是該 intent；實際 infrastructure anchor 只能由同一 immutable reuse receipt 的 `reusedInfraReceiptRef` 推導，沒有新增 caller 可選 anchor/source 入口。prepare／prepared resume／apply 前 fence／APPLIED receipt replay 共用 resolver，以該 reuse 自己的 source-lock、原 intent 與歷史 predecessor 驗完整既有 immutable reuse／smoke proof、Git ancestry、source tree／executable、foundation／image／75-address／version／sealed state及output manifest。before-state須逐值相同，只保留既有 check-results 排序正規化；prepare／apply前另fresh provider Job／controller讀回，已提交fence的未知結果仍只readback、不重送apply。不可把歷史control head冒充目前control；新rotation自身仍綁當前RELEASED control CAS與新source transition。direct APP_INFRA原路徑不變，依賴缺漏、ancestry或state漂移均拒絕，不改寫歷史receipt／control或擴IAM／Secret／resource例外。
+
 <a id="release-proof-composition-20261018"></a>
 ### 2026-10-18 發布證據組合與 Workflow credential version rotation
 
@@ -1506,5 +1508,7 @@ API依據：[Cloud Build history tags/filter](https://docs.cloud.google.com/buil
 ## 2026-11-06 DEV-070 精確 administration append
 
 [DEV-070 §14](DEV-070-platform-super-admin-authority-contract.md#14-owner-release-source精確-dev070-append) 為本切片工程契約。source profile 由原39至041，僅加042/044/045至42，舊identity/hash不變、043不帶入；typed `DEV070_ADMINISTRATION_APPEND` 沿既有 prepare→build→migrate→candidate→entrypoint→verify→decision→activate→canonical→finalize，不混bootstrap/data import/IAM/Secret/infra或smoke rotation。普通release仍UNCHANGED_VERIFIED零DDL；exact31–41 prefix／42 replay逐列驗證，未知於寫入前拒絕。獨立工具image preparation只認識該已定案metadata，不在工具rotation執行DDL，append不繼承混合rotation特例。
+
+DEV070可由既有 `--tool-image-rotation-ref` 消費事先獨立 APPLIED 的 direct `OWNER_SEALED_TOOL_IMAGE_ROTATION`：readiness／authorization／intent須同ref、source／release／baseline；native routine宣告tool ref時必須有verified typed toolRotation，raw APPLIED infra即使放在canonical tool URI仍拒絕，不得以缺漏／null proof跳過native Job readback。完整sealed proof與source transition不放寬。migrate沿原deployer fresh readback同Job UID／generation／template／digest，missing／drift在runMigrationJob／candidate前拒絕；不得用tool predecessor、smoke組合、runtime drift或repair替代。消費既有工具證據與執行append是分開的workflow，沒有新增rotation mode或修改歷史收據。
 
 045撤runtime舊writer後至v3-compatible新caller activation有界治理寫入42501，讀取維持；這是本次已接受的轉換影響，不能宣稱零中斷。migrate前須已有新immutable app artifact與provenance；失敗只回自身traffic/tag/entry並走v3-compatible forward repair，禁止downSQL/復活舊writer。DEV070 missingreceipt視UNKNOWN_REQUIRES_LEDGER_READBACK；rollback/terminal保留administrationRecovery與sealed source/image reference，traffic ROLLED_BACK不代表schema或舊治理write恢復。source/隔離PASS不代表此段已正式執行，正式仍需reviewed master/required CI/provider readback及既有owner workflow。

@@ -34,19 +34,24 @@ test('DEV070 planner admits only previously known exact prefixes and source-cont
  const changed=before(39);changed.entries=structuredClone(changed.entries);changed.entries[10].sourceSha256='0'.repeat(64)
  assert.throws(()=>assertDev070AdministrationAppend(changed,after),/DEV070_MIGRATION_APPEND_INVALID/)
 })
-test('DEV070 human release authority binds exact owner/source/baseline/recipe without bootstrap or rotation authority',()=>{
+test('DEV070 authority binds only a separately applied direct tool basis without bootstrap or rotation execution authority',()=>{
  const intent={ownerApplicationId:'orgmaster',sourceRevision:source,releaseId:'DEV070-SOURCE-ONLY',baselineIntentRef:{uri:'gs://jenfu-platform-prod-orgmaster-release/intents/baseline.json',sha256:'b'.repeat(64)}}
  const common={...intent,devId:'DEV-070',slice:'070-ADMINISTRATION',remediation:DEV070_ADMINISTRATION_REMEDIATION}
  const readiness={...common,schemaVersion:'orgmaster.routine-release-readiness.v1'},authorization={...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
  assert.equal(assertDev070AdministrationReleaseAuthority(readiness,authorization,intent).releaseMode,DEV070_RELEASE_MODE)
  for(const key of['ownerApplicationId','sourceRevision','releaseId','baselineIntentRef','remediation','slice','devId'])assert.throws(()=>assertDev070AdministrationReleaseAuthority(readiness,{...authorization,[key]:'changed'},intent),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)
  for(const key of['toolRotationRef','appArtifactReuse'])assert.throws(()=>assertDev070AdministrationReleaseAuthority(readiness,{...authorization,[key]:{}},intent),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)
+ const ref={uri:`gs://jenfu-platform-prod-orgmaster-release/receipts/tool-rotations/${source}/app-infra.json`,sha256:'c'.repeat(64)}
+ assert.equal(assertDev070AdministrationReleaseAuthority({...readiness,toolRotationRef:ref},{...authorization,toolRotationRef:ref},{...intent,infraReceiptRef:ref}).releaseMode,DEV070_RELEASE_MODE)
+ for(const changed of [{...ref,sha256:'d'.repeat(64)},{...ref,uri:ref.uri.replace('tool-rotations','other')},{}])assert.throws(()=>assertDev070AdministrationReleaseAuthority({...readiness,toolRotationRef:ref},{...authorization,toolRotationRef:changed},{...intent,infraReceiptRef:ref}),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)
+ assert.throws(()=>assertDev070AdministrationReleaseAuthority({...readiness,toolRotationRef:ref},{...authorization,toolRotationRef:ref},{...intent,infraReceiptRef:{...ref,sha256:'d'.repeat(64)}}),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)
  assert.throws(()=>assertDev070AdministrationReleaseAuthority(readiness,authorization,{...intent,baselineIntentRef:null}),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)
 })
 test('DEV070 normal deploy CLI selects one exact append and rejects mixed operation/infra/credential inputs',()=>{
  for(const mode of['--check','--prepare-only'])assert.equal(parseDeployProductionArgs([mode,'--dev070-administration-append']).dev070AdministrationAppend,true)
  const rotation=`gs://jenfu-platform-prod-orgmaster-release/receipts/tool-rotations/${'c'.repeat(40)}/app-infra.json#sha256=${'d'.repeat(64)}`
- for(const flag of['--dev070-administration-append','--dev058-role-policy-append','--dev059-fms-authority-append','--dev060-fms-catalog-activation-append','--dev014-activate','--dev057-writer-fence-remediation','--reuse-aborted-app-artifact',`--tool-image-rotation-ref=${rotation}`,`--dev060-infra-ref=${rotation}`,'--migration-mode=arbitrary','--sql=SELECT-1'])assert.throws(()=>parseDeployProductionArgs(['--dev070-administration-append',flag]))
+ assert.equal(parseDeployProductionArgs(['--dev070-administration-append',`--tool-image-rotation-ref=${rotation}`]).toolRotationRef.uri,rotation.split('#')[0])
+ for(const flag of['--dev070-administration-append','--dev058-role-policy-append','--dev059-fms-authority-append','--dev060-fms-catalog-activation-append','--dev014-activate','--dev057-writer-fence-remediation','--reuse-aborted-app-artifact',`--dev060-infra-ref=${rotation}`,'--migration-mode=arbitrary','--sql=SELECT-1'])assert.throws(()=>parseDeployProductionArgs(['--dev070-administration-append',flag]))
 })
 test('DEV070 stage receipt requires exact source manifest, count/progress and cross-database denials',()=>{
  const intent={sourceRevision:source,migrationManifestSha256:after.manifestSha256},owner={application:{id:'orgmaster'}}

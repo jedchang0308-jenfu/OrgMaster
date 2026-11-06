@@ -134,7 +134,7 @@ export function parseDeployProductionArgs(argv) {
   const dev059Mode = Number(options.dev059FmsAuthorityAppend)
   const dev060Mode = Number(options.dev060FmsCatalogActivationAppend)
   const dev070Mode=Number(options.dev070AdministrationAppend)
-  if(dev070Mode&&(controlled||dev014Mode||dev057Mode||dev058Mode||dev059Mode||dev060Mode||options.toolRotationRef||options.smokeRotationRef||options.infraReceiptRef||options.infraReuseRef||options.principalOnlyRecoveryRef||options.reuseAbortedAppArtifact))throw new Error('DEV070_CONTROLLED_TRANSITION_INPUT_INVALID')
+  if(dev070Mode&&(controlled||dev014Mode||dev057Mode||dev058Mode||dev059Mode||dev060Mode||options.smokeRotationRef||options.infraReceiptRef||options.infraReuseRef||options.principalOnlyRecoveryRef||options.reuseAbortedAppArtifact))throw new Error('DEV070_CONTROLLED_TRANSITION_INPUT_INVALID')
   const dev060SmokeRotationContinuation = dev060Mode === 1 && options.toolRotationRef !== null && options.smokeRotationRef !== null && options.infraOption === null
   if (dev058Mode && (controlled || dev014Mode || dev057Mode || dev059Mode || dev060Mode)) throw new Error('DEV058_CONTROLLED_TRANSITION_INPUT_INVALID')
   if ((dev058Mode === 1) !== (options.infraOption === 'dev058')) throw new Error('DEV058_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')

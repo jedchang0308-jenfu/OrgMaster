@@ -35,10 +35,13 @@ export function assertDev070AdministrationAppend(before,after){
  return{migrationDisposition:'FORWARD_APPLY',pendingMigrationCount:DEV070_MIGRATION_ENTRY_COUNT-count,migrationInputsSha256:sha256(canonicalize(migrationInputs(after)))}
 }
 export function assertDev070AdministrationReleaseAuthority(readiness,authorization,intent=null){
+ const toolRef=readiness?.toolRotationRef??null
+ if(!same(toolRef,authorization?.toolRotationRef??null)||toolRef&&(!intent||!same(toolRef,intent.infraReceiptRef)
+  ||Object.keys(toolRef).sort().join(',')!=='sha256,uri'||!/^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/tool-rotations\/[a-f0-9]{40}\/app-infra\.json$/u.test(toolRef.uri??'')||!/^[a-f0-9]{64}$/u.test(toolRef.sha256??'')))fail('DEV070_ADMINISTRATION_AUTHORITY_INVALID')
  if(readiness?.schemaVersion!=='orgmaster.routine-release-readiness.v1'||authorization?.schemaVersion!=='orgmaster.routine-release-authorization.v1'
   ||authorization.authorizationBasis!=='OPERATOR_INVOKED_DEPLOY_PRODUCTION'
   ||[readiness,authorization].some(row=>row.ownerApplicationId!=='orgmaster'||row.devId!=='DEV-070'||row.slice!=='070-ADMINISTRATION'
-   ||!same(row.remediation,DEV070_ADMINISTRATION_REMEDIATION)||row.toolRotationRef||row.appArtifactReuse
+   ||!same(row.remediation,DEV070_ADMINISTRATION_REMEDIATION)||row.appArtifactReuse
    ||(intent&&(row.sourceRevision!==intent.sourceRevision||row.releaseId!==intent.releaseId||!intent.baselineIntentRef||!same(row.baselineIntentRef,intent.baselineIntentRef)))))fail('DEV070_ADMINISTRATION_AUTHORITY_INVALID')
  return{releaseMode:DEV070_RELEASE_MODE,remediation:DEV070_ADMINISTRATION_REMEDIATION}
 }

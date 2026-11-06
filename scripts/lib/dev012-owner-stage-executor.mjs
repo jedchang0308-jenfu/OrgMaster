@@ -660,7 +660,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const infra = (await transport.readJson(intent.infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])).value
     let toolImageLiveReadback = null
     if (infra.toolRotation) {
-      const controlledToolMigrationAppend = [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE].includes(prepare.value.facts.routine.releaseMode)
+      const controlledToolMigrationAppend = [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE].includes(prepare.value.facts.routine.releaseMode)
         && prepare.value.facts.routine.controlledTransition?.releaseMode === prepare.value.facts.routine.releaseMode
       if ((allowForward && !controlledToolMigrationAppend) || !prepare.value.facts.routine.toolImageRotation || !verifyToolJobReadback
         || prepare.value.facts.routine.toolImageRotation.migrationRunnerDigest !== infra.migrationRunnerDigest) fail('TOOL_JOB_READBACK_REQUIRED')

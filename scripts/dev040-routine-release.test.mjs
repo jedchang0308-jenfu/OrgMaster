@@ -5,7 +5,7 @@ import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT
 import { assertToolRotationReleaseCompatibility, resolveToolRotationPredecessorBaselineRef } from './lib/dev040-routine-release.mjs'
 import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
-import { assertPublishedSmokeRotationAdvance, assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, readSmokeReuseProviderState, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { assertPublishedSmokeRotationAdvance, assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, assertSmokeInfraReuseEvidence,assertSmokeInfraReuseContinuation,buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, readSmokeReuseProviderState, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { appArtifactSourceEquivalence, assertReusableAbortedTerminal } from './lib/dev040-app-artifact-reuse.mjs'
 import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
 import assert from 'node:assert/strict'
@@ -1337,6 +1337,16 @@ test('source-only infra reuse keeps the original rotation and expired-now creden
   assert.equal((await verifyRoutineRelease(h.input)).pendingMigrationCount, 0)
 })
 
+test('consumed reuse keeps immutable evidence valid while ordinary continuation still enforces its current control CAS',async()=>{
+ const h=await smokeReuseHarness(),input={...h.input,baseline:h.constructorInput.baseline}
+ assert.equal((await assertSmokeInfraReuseEvidence(input)).reusedSourceRevision,newSource)
+ h.objects.get(h.controlUri).metadata.generation='18'
+ assert.equal((await assertSmokeInfraReuseEvidence(input)).reusedSourceRevision,newSource)
+ await assert.rejects(()=>assertSmokeInfraReuseContinuation(input),/SMOKE_REUSE_RECEIPT_INVALID/)
+ const changed=structuredClone(h.reuse);changed.reusedSourceRevision='d'.repeat(40);h.select(changed,true)
+ await assert.rejects(()=>assertSmokeInfraReuseEvidence({...h.input,baseline:h.constructorInput.baseline}),/SMOKE_REUSE_RECEIPT_INVALID/)
+})
+
 test('smoke reuse compares live Terraform semantics after verifying producer artifact bytes', async () => {
   const h = await smokeReuseHarness()
   const afterStateRef = h.put('gs://' + bucket + '/receipts/releases/SMOKE-ROTATION-FIXTURE/after-state.json',
@@ -2429,7 +2439,7 @@ function rolePolicyHarness() {
   return h
 }
 
-test('verified image rotation can precede only an exact DEV-058/059/060 append without combining runtime or predecessor changes', () => {
+test('verified image rotation can precede an exact DEV-058/059/060/070 append without combining runtime or predecessor changes', () => {
   const rotation = { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', ddlExecuted: 0 }
   const input = { toolRotation: rotation, toolRotationPredecessor: null,
     controlledTransition: { releaseMode: DEV058_RELEASE_MODE }, repair: false, runtimeChanged: false }
@@ -2438,6 +2448,8 @@ test('verified image rotation can precede only an exact DEV-058/059/060 append w
     controlledTransition: { releaseMode: DEV059_RELEASE_MODE } }))
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input,
     controlledTransition: { releaseMode: DEV060_RELEASE_MODE } }))
+  assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input,
+    controlledTransition: { releaseMode: DEV070_RELEASE_MODE } }))
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input, controlledTransition: null }))
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input, toolRotation: null,
     toolRotationPredecessor: rotation, controlledTransition: null }))
@@ -2449,6 +2461,10 @@ test('verified image rotation can precede only an exact DEV-058/059/060 append w
     { controlledTransition: { releaseMode: 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION' } },
     { controlledTransition: {} },
   ]) assert.throws(() => assertToolRotationReleaseCompatibility({ ...input, ...changes }), /TOOL_ROTATION_ORDINARY_ONLY/u)
+  const basis={...rotation,sourceRevision:'a'.repeat(40),liveJobReadback:'REQUIRED_AT_DEPLOYER_MIGRATE'}
+  assert.equal(resolveMigrationInfraReceiptSource({controlledTransition:{releaseMode:DEV070_RELEASE_MODE},toolRotation:basis,intentSourceRevision:'b'.repeat(40)}),'a'.repeat(40))
+  for(const bad of [{...basis,ddlExecuted:1},{...basis,evidenceScope:'OPERATOR_LABEL'},{...basis,liveJobReadback:'SKIPPED'}])assert.throws(()=>resolveMigrationInfraReceiptSource({controlledTransition:{releaseMode:DEV070_RELEASE_MODE},toolRotation:bad,intentSourceRevision:'b'.repeat(40)}),/DEV070_TOOL_ROTATION_SOURCE_INVALID/)
+  for(const changes of [{repair:true},{runtimeChanged:true},{toolRotationPredecessor:basis}])assert.throws(()=>assertToolRotationReleaseCompatibility({...input,controlledTransition:{releaseMode:DEV070_RELEASE_MODE},...changes}),/TOOL_ROTATION_ORDINARY_ONLY/)
 })
 
 test('historical tool predecessor resolves its own immutable release baseline', () => {
@@ -2720,6 +2736,20 @@ function administrationHarness(count=39){
  attachForwardInfra(h)
  return h
 }
+test('DEV070 native routine rejects a declared direct tool ref with missing or null tool proof',async()=>{
+ for(const proof of[undefined,null]){
+  const h=administrationHarness(39)
+  const {receiptSha256:_seal,...core}=h.input.values.infra
+  if(proof===null)core.toolRotation=null
+  const rawInfra={...core,receiptSha256:sha256(canonicalize(core))}
+  const toolRef=h.put(`gs://${bucket}/receipts/tool-rotations/${newSource}/app-infra.json`,rawInfra)
+  h.input.values.infra=rawInfra
+  h.input.intent.infraReceiptRef=toolRef
+  h.input.values.readiness.toolRotationRef=toolRef
+  h.input.values.authorization.toolRotationRef=toolRef
+  await assert.rejects(()=>verifyRoutineRelease(h.input),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)
+ }
+})
 test('DEV070 routine planner binds the exact suffix and known baseline without changing ordinary zero-DDL release',async()=>{
  for(const count of[31,39,40,41]){
   const h=administrationHarness(count),plan=await verifyRoutineRelease(h.input)
@@ -2737,5 +2767,5 @@ test('DEV070 routine planner binds the exact suffix and known baseline without c
  }
  const drift=administrationHarness();drift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_SESSION_HASH_PEPPER='2'
  await assert.rejects(verifyRoutineRelease(drift.input),/DEV070_RUNTIME_CHANGED/)
- assert.throws(()=>assertToolRotationReleaseCompatibility({toolRotation:{evidenceScope:'OWNER_SEALED_TOOL_IMAGE_ROTATION'},controlledTransition:{releaseMode:DEV070_RELEASE_MODE},repair:false,runtimeChanged:false}),/TOOL_ROTATION_ORDINARY_ONLY/)
+ assert.throws(()=>assertToolRotationReleaseCompatibility({toolRotation:{evidenceScope:'OWNER_SEALED_TOOL_IMAGE_ROTATION'},toolRotationPredecessor:{evidenceScope:'OWNER_SEALED_TOOL_IMAGE_ROTATION'},controlledTransition:{releaseMode:DEV070_RELEASE_MODE},repair:false,runtimeChanged:false}),/TOOL_ROTATION_ORDINARY_ONLY/)
 })

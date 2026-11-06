@@ -165,7 +165,7 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     attempt: { ...attemptedIntent, value: JSON.parse(attemptedIntent.bytes.toString('utf8')) } })
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef })
   const toolRead = await transport.readJson(toolRotationRef, bucket, ['receipts/tool-rotations'])
-  const toolEvidence = await assertOrdinaryToolRotation({ root, profile, transport,
+  const toolEvidence = await assertOrdinaryToolRotation({ root, profile, transport,readHistoricalBaseline:readRoutineBaseline,
     intent: { ...baseline.intent, sourceRevision: git.sourceRevision, infraReceiptRef: toolRotationRef },
     receipt: toolRead.value, baseline })
   const baselineInfraRead = await transport.readJson(baseline.intent.infraReceiptRef, bucket, ['receipts'])
