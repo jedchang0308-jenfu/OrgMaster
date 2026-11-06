@@ -17,7 +17,7 @@ export const localOwnerHash=value=>createHash('sha256').update(typeof value==='s
 const fail=code=>{throw Object.assign(new Error('DEV070_LOCAL_'+code),{code:'DEV070_LOCAL_'+code})}
 export function validateLocalLedger(entries,rows,database){
  assertDev070MigrationEntries(entries)
- if(!Array.isArray(rows)||![39,40,41,42,43].includes(rows.length)||new Set(rows.map(r=>r.version)).size!==rows.length)fail('LEDGER_UNKNOWN')
+ if(!Array.isArray(rows)||![39,40,41,42,43,44].includes(rows.length)||new Set(rows.map(r=>r.version)).size!==rows.length)fail('LEDGER_UNKNOWN')
  const byVersion=new Map(rows.map(r=>[r.version,r]))
  for(const entry of entries.slice(0,rows.length)){
   const row=byVersion.get(entry.version),name=entry.path.split('/').at(-1).replace(/^\d{3}_/u,'').replace(/\.sql$/u,'')

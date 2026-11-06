@@ -370,12 +370,12 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-031 prefix plus DEV-058/FMS and exact DEV-070 042/044/045/047 production migration bytes', () => {
+test('OrgMaster exact 001-031 prefix plus DEV-058/FMS and exact DEV-070 042/044/045/047/048 production migration bytes', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
   assert.equal(bundle.bundle.entries.length, DEV070_MIGRATION_ENTRY_COUNT)
-  assert.equal(bundle.bundle.entries.at(-1).version,'dev070-orgmaster-047')
+  assert.equal(bundle.bundle.entries.at(-1).version,'dev070-orgmaster-048')
   assertDev070MigrationEntries(bundle.bundle.entries)
   assert.deepEqual(bundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity),DEV070_MIGRATION_ENTRIES.map(migrationIdentity))
   assertDev059MigrationEntries(bundle.bundle.entries.slice(0,DEV059_MIGRATION_ENTRY_COUNT))

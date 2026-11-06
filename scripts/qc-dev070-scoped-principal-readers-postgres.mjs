@@ -5,6 +5,7 @@ import { withAdministrationPostgresFixture } from './lib/dev070-administration-p
 // The existing manager creates and fingerprints loopback-only disposable
 // clusters. No caller-selected connection string or persistent DB is accepted.
 const migration = 'db/migrations/047_dev070_scoped_ai_pdm_principal_readers.sql'
+const scalarMigration = 'db/migrations/048_dev070_governance_scalar_projection.sql'
 const platformRoot = process.env.DEV070_PLATFORM_FIXTURE_ROOT ?? 'C:/VIBE CODING/Jenfu-Platform'
 const binding = {catalogVersion:'fixture-admin-v1',contentSha256:'a'.repeat(64),
  stableRoleId:'role-application-system-admin',roleDefinitionHash:'b'.repeat(64)}
@@ -68,6 +69,13 @@ await withAdministrationPostgresFixture(async ({admin,handle,connect})=>{
    scoped:'SELECT * FROM orgmaster_contract.read_ai_pdm_active_principal_accounts_v1($1)'},
   {name:'managed-grants',params:[managedPrincipal,managedEmployee],old:'SELECT * FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v5 WHERE principal_id=$1 AND employee_id=$2',
    scoped:'SELECT * FROM orgmaster_contract.read_ai_pdm_principal_effective_grants_v5($1,$2)'}
+ ]
+ const publicationCases=[
+  {name:'publication-active-id-null',edit:d=>{d.activePolicyVersionId=null}},
+  {name:'publication-active-id-missing',edit:d=>{delete d.activePolicyVersionId}},
+  {name:'publication-active-id-unresolved',edit:d=>{d.activePolicyVersionId='no-such-publication'}},
+  {name:'publication-active-duplicate',edit:d=>{d.publishedVersions.push(structuredClone(publication(d)))}},
+  {name:'publication-array-invalid',edit:d=>{d.publishedVersions={invalid:true}}},
  ]
  const positionAdoption=d=>{
   const assignment=publication(d).policy.roleAssignments.find(g=>g.applicationId==='ai-pdm')
@@ -146,10 +154,13 @@ await withAdministrationPostgresFixture(async ({admin,handle,connect})=>{
   catch(error){return {error:error.code,message:error.message}}
   finally {await admin.query('ROLLBACK TO SAVEPOINT observation')}
  }
- const baseline=new Map(),plans=[]
- let nullValidationChecks=0,exactComparisons=0
+ const baseline=new Map(),plans=[],phaseResults=[],publication047Oracle=new Map()
+ const literalResult=result=>result.error?{error:result.error,message:result.message}:{rows:result.rows.map(row=>JSON.stringify(row,(_key,value)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.keys(value).sort().map(key=>[key,value[key]])):value)).sort()}
+ let nullValidationChecks=0,exactComparisons=0,literal047Comparisons=0
  async function runPhase(phase){
-  for(const c of cases){
+  const summary={phase,originalCases:cases.length,originalComparisons:0,originalNullValidationChecks:0,publicationCases:publicationCases.length,publicationComparisons:0,publicationNullValidationChecks:0}
+  for(const c of [...cases,...publicationCases]){
+   const edge=publicationCases.includes(c)
    await admin.query('BEGIN')
    try {
     const d=structuredClone(base);c.edit?.(d);await store(d);await c.sql?.()
@@ -171,6 +182,13 @@ await withAdministrationPostgresFixture(async ({admin,handle,connect})=>{
      }
      for(const [abi,sql] of [['scoped',q.scoped],['legacy',q.old]]){
       const actual=await observe(sql,q.params),expected=baseline.get(key)
+      if(edge&&phase==='scoped')publication047Oracle.set(`${key}:${abi}`,structuredClone(actual))
+      if(edge&&phase==='scalar'){
+       const prior=publication047Oracle.get(`${key}:${abi}`)
+       assert.ok(prior,`${key}:${abi} published047 oracle missing`)
+       assert.deepEqual(literalResult(actual),literalResult(prior),`${key}:${abi} literal047 rows/error`)
+       literal047Comparisons++
+      }
       if(q.name==='null-grants'&&abi==='scoped'&&!expected.error&&actual.error){
        // SQL NULL equality can suppress the original SRF entirely. The typed
        // API deliberately still enforces complete publication validation.
@@ -178,10 +196,11 @@ await withAdministrationPostgresFixture(async ({admin,handle,connect})=>{
        assert.equal(actual.error,global.error)
        assert.equal(actual.message,global.message)
        nullValidationChecks++
+       summary[edge?'publicationNullValidationChecks':'originalNullValidationChecks']++
        continue
       }
       assert.equal(actual.error,expected.error,`${key}:${abi} error code`)
-      if(expected.error){assert.equal(actual.message,expected.message,`${key}:${abi} error`);exactComparisons++;continue}
+      if(expected.error){assert.equal(actual.message,expected.message,`${key}:${abi} error`);exactComparisons++;summary[edge?'publicationComparisons':'originalComparisons']++;continue}
       const n=q.params.length+1
       const diff=await admin.query(`WITH actual AS (SELECT to_jsonb(row) value FROM (${sql}) row),
        expected AS (SELECT value FROM jsonb_array_elements($${n}::jsonb)),
@@ -190,20 +209,51 @@ await withAdministrationPostgresFixture(async ({admin,handle,connect})=>{
        [...q.params,JSON.stringify(expected.rows)])
       assert.equal(diff.rows[0].count,0,`${key}:${abi} EXCEPT ALL`)
       exactComparisons++
+      summary[edge?'publicationComparisons':'originalComparisons']++
      }
     }
    } finally {await admin.query('ROLLBACK')}
+  }
+  if(phase!=='baseline'){
+   assert.equal(summary.originalComparisons,380)
+   assert.equal(summary.originalNullValidationChecks,4)
+   phaseResults.push(summary)
   }
   const sql=phase==='baseline'?queries[2].old:queries[2].scoped
   for(const [abi,query] of phase==='baseline'?[['original',sql]]:[['scoped',sql],['legacy',queries[2].old]]){
    const plan=(await admin.query(`EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) ${query}`,[principal,employee])).rows[0]['QUERY PLAN'][0]
    const nodes=[];const visit=n=>{nodes.push({node:n['Node Type'],rows:n['Actual Rows'],loops:n['Actual Loops'],removed:n['Rows Removed by Filter']??0,sharedHits:n['Shared Hit Blocks']??0});for(const child of n.Plans??[])visit(child)};visit(plan.Plan)
-   plans.push({abi,executionMs:plan['Execution Time'],planningMs:plan['Planning Time'],nodes})
+   plans.push({phase,abi,executionMs:plan['Execution Time'],planningMs:plan['Planning Time'],nodes})
   }
  }
  await runPhase('baseline')
  await admin.query(await readFile(migration,'utf8'))
  await runPhase('scoped')
+ const signatures=['orgmaster_core.read_administration_publication_v1()',
+  'orgmaster_core.read_ai_pdm_principal_accounts_v1(text,text,text,boolean)',
+  'orgmaster_core.read_ai_pdm_principal_grants_v5(text,text,boolean)',
+  'orgmaster_contract.read_ai_pdm_active_principal_accounts_v1(text)',
+  'orgmaster_contract.read_ai_pdm_active_principal_identity_v1(text,text)',
+  'orgmaster_contract.read_ai_pdm_principal_effective_grants_v5(text,text)',
+  'orgmaster_contract.read_ai_pdm_principal_effective_grants_v5()']
+ const functionFacts=async()=>(await admin.query(`SELECT p.oid::regprocedure::text identity,
+  p.proowner::regrole::text owner,p.proacl::text acl,p.prosecdef security_definer,
+  p.provolatile volatility,p.proisstrict strict,p.proparallel parallel,p.proconfig config,
+  pg_get_function_arguments(p.oid) arguments,pg_get_function_result(p.oid) result,
+  p.proretset returns_set,l.lanname language,p.prosrc body
+  FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang
+  WHERE p.oid=ANY($1::regprocedure[]) ORDER BY 1`,[signatures])).rows
+ const beforeFunctions=await functionFacts()
+ assert.equal(beforeFunctions.length,signatures.length)
+ await admin.query(await readFile(scalarMigration,'utf8'))
+ const afterFunctions=await functionFacts()
+ const metadata=rows=>rows.map(({body,...facts})=>facts)
+ assert.deepEqual(metadata(afterFunctions),metadata(beforeFunctions),'048 owner/ACL/config/signature/default/security drift')
+ const changedFunctions=afterFunctions.filter(after=>after.body!==beforeFunctions.find(before=>before.identity===after.identity).body).map(row=>row.identity).sort()
+ assert.deepEqual(changedFunctions,[signatures[0],signatures[1]].sort(),'048 changes exactly two helper bodies')
+ await runPhase('scalar')
+ assert.equal(publication047Oracle.size,publicationCases.length*queries.length*2)
+ assert.equal(literal047Comparisons,publication047Oracle.size)
  for(const [fn,types] of [['read_ai_pdm_active_principal_accounts_v1','text'],['read_ai_pdm_active_principal_identity_v1','text,text'],['read_ai_pdm_principal_effective_grants_v5','text,text']]){
   const acl=(await admin.query(`SELECT has_function_privilege('jenfu_ai_pdm_runtime',$1,'EXECUTE') pdm,
    has_function_privilege('jenfu_platform_runtime',$1,'EXECUTE') platform,
@@ -213,6 +263,6 @@ await withAdministrationPostgresFixture(async ({admin,handle,connect})=>{
  assert.equal((await admin.query(`SELECT has_function_privilege('jenfu_ai_pdm_runtime',
   'orgmaster_core.read_ai_pdm_principal_grants_v5(text,text,boolean)','EXECUTE') allowed`)).rows[0].allowed,false)
  console.log(JSON.stringify({status:'PASS',cases:cases.length,queriesPerCase:queries.length,
-  comparisons:exactComparisons,nullValidationChecks,oracle:'PRE_MIGRATION_ROWS_AND_ERRORS',method:'BIDIRECTIONAL_EXCEPT_ALL',version,jit:'off',plans,
+  comparisons:exactComparisons,nullValidationChecks,phaseResults,literal047Comparisons,publication047Oracle:Object.fromEntries(publication047Oracle),changedFunctions,functionMetadataInvariant:true,oracle:'PRE_MIGRATION_ROWS_AND_ERRORS_PLUS_PUBLICATION_EDGES_LITERAL_PUBLISHED047_PER_ABI',method:'BIDIRECTIONAL_EXCEPT_ALL_AND_DUPLICATE_PRESERVING_CANONICAL_ROW_MULTISET',version,jit:'off',plans,
   productionCpuConclusion:'NOT_MEASURED',productionReleaseAuthority:false}))
-},{platformRoot,capacityPopulation:500})
+},{platformRoot,capacityPopulation:500,includeScopedReaders:false})
