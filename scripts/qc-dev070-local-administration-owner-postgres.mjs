@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url'
 import pg from 'pg'
 import {localOwnerHash,planLocalOwnerBridge,LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTSTRAP_PATH,readLocalOwnerBootstrapFacts,readLocalOwnerBridgeReceipt} from './lib/dev070-local-administration-owner.mjs'
 import {unwrapMigrationTransaction} from './lib/dev040-orgmaster-independent-release.mjs'
+import {verifyAiPdmCatalogReaderCompatibility} from './lib/dev070-ai-pdm-catalog-reader-postgres-qc.mjs'
 
 // This component installs actual Org source fragments and all of local 046.
 // FMS contract objects below are explicit ABI stubs, not a cross-owner proof.
@@ -26,7 +27,7 @@ if(await readlink('/proc/self/ns/net')!==serviceNamespace){
  assert.equal(process.argv.includes('--namespace-child'),false,'owned service namespace changed; no recursive retry')
  const keys=['PATH','HOME','CI','GITHUB_ACTIONS','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','ORGMASTER_DEV070_PG_CONTAINER_ID','ORGMASTER_DEV070_PG_PUBLISHED_PORT','PGHOST','PGPORT','PGUSER','PGPASSWORD']
  assert.ok(keys.every(key=>typeof env[key]==='string'&&env[key].length>0))
- execFileSync('sudo',['-n','/usr/bin/env','-i',...keys.map(key=>`${key}=${env[key]}`),'/usr/bin/nsenter','--target',String(inspect.State.Pid),'--net',process.execPath,fileURLToPath(import.meta.url),'--namespace-child'],{cwd:root,stdio:'inherit'})
+ execFileSync('sudo',['-n','/usr/bin/env','-i',...keys.map(key=>`${key}=${env[key]}`),'/usr/bin/nsenter','--target',String(inspect.State.Pid),'--net',process.execPath,'--experimental-transform-types',fileURLToPath(import.meta.url),'--namespace-child'],{cwd:root,stdio:'inherit'})
  process.exit(0)
 }
 const serviceSystem=execFileSync('docker',['exec',container,'psql','-U','postgres','-Atc','SELECT system_identifier FROM pg_control_system()'],{encoding:'utf8',maxBuffer:4096}).trim()
@@ -101,6 +102,7 @@ try{
  await owner.query(sql)
  await owner.query('INSERT INTO orgmaster_core.administration_local_bridge_installations_v1(singleton,source_path,source_sha256,source_revision) VALUES(true,$1,$2,$3)',[LOCAL_BRIDGE_PATH,localOwnerHash(sql),'a'.repeat(40)])
  const runtime=await connect(orgLogin),fms=await connect(fmsLogin),platform=await connect(platformLogin)
+ process.stdout.write(JSON.stringify(await verifyAiPdmCatalogReaderCompatibility({admin:setup,runtime}))+'\n')
  await deny(runtime,'SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb)',[JSON.stringify(core(plan))]);await deny(platform,'SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb)',[JSON.stringify(core(plan))]);await deny(fms,'SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb)',[JSON.stringify(core(plan))])
  const bad={...core(plan),beforeBindingsSha256:'0'.repeat(64)}
  await assert.rejects(owner.query('SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb)',[JSON.stringify(bad)]),/BINDING_CONFLICT/u);assert.deepEqual(await bindings(),initial)

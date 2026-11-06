@@ -252,21 +252,28 @@ async function decodeDatabaseCatalogRows(rows: Array<Record<string, unknown>>, e
  * live-source provenance; the coordinator must supply its actual SQL readback. */
 export { decodeDatabaseCatalogRows as decodePublishedAiPdmRoleCatalogRows }
 
-/** Read exactly one current producer projection. The producer owns the active pointer. */
+/** Prefer v3; only a producer that has not installed v3 may use v2. Probe
+ * before SELECT so a missing relation cannot abort the caller's transaction. */
 export async function readPublishedAiPdmRoleCatalogFromDatabase(database: AiPdmRoleCatalogQueryable, expectedCatalogSha256?: string): Promise<PublishedAiPdmRoleCatalog> {
   let rows: Array<Record<string, unknown>>
+  let v3: boolean
   try {
+    const probe = await database.query("SELECT pg_catalog.to_regclass('ai_pdm_contract.v_application_role_catalog_v3') IS NOT NULL AS v3_exists")
+    if (probe.rows.length !== 1 || typeof probe.rows[0].v3_exists !== 'boolean') throw new Error('invalid catalog relation probe')
+    v3 = probe.rows[0].v3_exists
     const result = await database.query(
       `SELECT ${AI_PDM_ROLE_CATALOG_V2_COLUMNS}
-         FROM ai_pdm_contract.v_application_role_catalog_v3
+         FROM ${v3 ? 'ai_pdm_contract.v_application_role_catalog_v3' : 'ai_pdm_contract.v_application_role_catalog_v2'}
         ORDER BY display_order`,
     )
     rows = result.rows
   } catch {
     throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_UNAVAILABLE')
   }
+  // The pre-096 contract cannot author the protected administrator in v2.
+  if (!v3 && rows.some(row => row.publication_format === 'dynamic-policy-v2')) throw new AiPdmRoleCatalogRepositoryError('EXTERNAL_CATALOG_INVALID')
   const catalog=await decodeDatabaseCatalogRows(rows,expectedCatalogSha256)
-  return {...catalog,sourcePath:'postgres:ai_pdm_contract.v_application_role_catalog_v3'}
+  return {...catalog,sourcePath:v3?'postgres:ai_pdm_contract.v_application_role_catalog_v3':'postgres:ai_pdm_contract.v_application_role_catalog_v2'}
 }
 
 /** Read one immutable publication needed to validate stored assignment provenance. */

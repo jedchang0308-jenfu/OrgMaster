@@ -1,6 +1,6 @@
 # DEV-070：平台超級管理員權威與首次初始化
 
-日期：2026-11-05；更新：2026-11-06（Asia/Taipei）。Native：ORGMASTER/DEV-070；來源：JENFU/DEV-022#authority-and-bootstrap。成熟度：IMPLEMENTING / RD Readiness Review（PR #213 owner source 已合併；完整環境驗收與正式發布尚未完成）；administration authority／consumer 切片已定案，完整四專案執行契約及實際可執行性尚未驗收。人類最新授權為四專案完整實作至真實地端與正式發布。A／B／C 契約與 source 切片已有來源／隔離證據，不代表整鏈正式可執行。指定 Google personal／張仕杰 JFS0005，最低 AAL1、AAL2 亦接受、中文姓名不變。地端／正式 primary 寫入與正式 migration 尚未執行；local bridge 044／045／046 未套用，正式 profile 仍為原 39＋042／044／045 共 42 rows，不含 043／046。本人 Google 核身、任用、native ack、runtime、traffic 及發布均尚未執行，不視為完成。
+日期：2026-11-05；更新：2026-11-06（Asia/Taipei）。Native：ORGMASTER/DEV-070；來源：JENFU/DEV-022#authority-and-bootstrap。成熟度：IMPLEMENTING / RD Readiness Review（PR #213及工具接續修正PR #214已合併；完整環境驗收與正式發布尚未完成）；administration authority／consumer 切片已定案，完整四專案執行契約及實際可執行性尚未驗收。人類最新授權為四專案完整實作至真實地端與正式發布。A／B／C 契約與 source 切片已有來源／隔離證據，不代表整鏈正式可執行。指定 Google personal／張仕杰 JFS0005，最低 AAL1、AAL2 亦接受、中文姓名不變。地端／正式 primary 寫入與正式 migration 尚未執行；local bridge 044／045／046 未套用，正式 profile 仍為原 39＋042／044／045 共 42 rows，不含 043／046。本人 Google 核身、任用、native ack、runtime、traffic 及發布均尚未執行，不視為完成。
 
 總控權威契約：`C:/VIBE CODING/.worktrees/Jenfu-Platform/dev022-platform-super-admin-20261105/ai-doc/specs/DEV-022-platform-super-admin-cross-project-plan.md`（Platform owner 開發 root；發布使用獨立 clean source checkout）；`C:/VIBE CODING/Jenfu-Platform` 原 root 僅作協調鏡本，不作 release source。相鄰責任沿 DEV-057 Principal／writer fencing 及 DEV-058 集中任用；不重開原驗收或替它們結案。[架構決策](../adr/ADR-007-external-role-catalog-assignment-boundary.md#platform-super-admin-20261105)。
 
@@ -238,6 +238,8 @@ TL結論：資料/API/SQL fence、actor、transaction、idempotency、UI 與驗�
 
 ## 12. 2026-11-06 RD source 進度與證據邊界
 
+本節保留當時設計／施工 checkpoint；其中未提交、待CI、待merge等進度不代表現況。最新source與實際owner準備以§22末尾為準，完整產品驗收仍未完成；既有安全與相容限制繼續適用。
+
 目前工作樹 `codex/dev070-platform-super-admin-20261105` 基於正式 `origin/master@6045133`；僅移入本目標 source 與必要 042 中文顯示 prerequisite，不改已發布 040／041。新 044／045 尚未套正式資料庫。
 
 - 已實作 administration 唯一權威、private owner plan/bind/identity prepare/initialize、五種 human commands、v3 writer fence、current-publication administration delta、不可變命令收據與 audit、native lifecycle durable queue／typed acknowledgment、既有 security-alert durable queue 的 typed owner actor、平台與 app 的窄投影及中文姓名 reader。API canonical prefix 為 `/api/orgmaster/governance`；無額外 alias。
@@ -297,6 +299,8 @@ migration runner image 已補新 helper COPY；獨立 PDM catalog reader tool �
 
 ## 15. 真實地端 administration activation bridge 待定
 
+本節保留當時設計／施工 checkpoint；其中未提交、待CI、待merge等進度不代表現況。最新source與實際owner準備以§22末尾為準，完整產品驗收仍未完成；既有安全與相容限制繼續適用。
+
 主控已唯讀確認 authenticated local profile 使用既有非正式 Google project、loopback primary DB 與各 app 的 local runtime login；該 DB 的舊 031 workload binding 仍指向正式身份，與實際非正式 SA/SESSION_USER 不合。既有 primary profile 不能冒充 task-owned disposable fixture；已存在 native Principal 時應重用，不造新 Principal 或複製他環境 ID。這些是目前診斷，不是完成 bind 或 activation 的證據。
 
 最小候選方案尚待主控收斂並補 source guard：private local-only CLI 驗 validated profile／metadata hash、固定非正式 project／issuer／audience、精確 loopback DB 與 current_database/SESSION_USER，使用既有 SA 的 keyless impersonation 及真 Google OIDC proof；主控已唯讀驗證：沿既有 private cluster operator connection 對現存 NOLOGIN `jenfu_orgmaster_migrator` 做限域 `SET SESSION AUTHORIZATION` 可用，無新增 LOGIN／role／password／持久 ACL；候選沿這個 existing group-session 入口，不預設創新 LOGIN，也不移植 migrator 權給 runtime。owner plan 仍綁 environment／command／plan hash／target，prepare/initialize 保留真 human proof 與不可變 Directory key。
@@ -307,6 +311,8 @@ migration runner image 已補新 helper COPY；獨立 PDM catalog reader tool �
 
 
 ## 16. Readiness 未決事項與續接順序
+
+本節保留當時設計／施工 checkpoint；其中未提交、待CI、待merge等進度不代表現況。最新source與實際owner準備以§22末尾為準，完整產品驗收仍未完成；既有安全與相容限制繼續適用。
 
 目前定案的是新 authority／consumer 邊界及上述已實作切片，並非所有環境的執行包都已 Ready。仍須收斂：
 
@@ -353,6 +359,8 @@ root-only 已能從 FMS owner安裝 fixed system-admin source catalog，但 Org 
 package `contracts/orgmaster-fms-catalog-initialization-activation/v1` 的 `manifest.json` SHA `3ceb1923576b054e17213bffb5557f74bb1bb1042068cb4fe07aae4103ab50ad`；FMS actual readonly handoff transport另沿其owner package。local沒有closed validated profile時保留fail closed，不借production SID／origin。
 
 ## 20. 本輪來源、證據與續接
+
+本節保留當時設計／施工 checkpoint；其中未提交、待CI、待merge等進度不代表現況。最新source與實際owner準備以§22末尾為準，完整產品驗收仍未完成；既有安全與相容限制繼續適用。
 
 | 受測切片 | 實際證據 | 不支持的宣稱 |
 | --- | --- | --- |
@@ -425,12 +433,37 @@ intent-admit／revoke要求clean exactsource、fresh相同profile／OS／owner p
 
 歷史續接計畫（780 checkpoint）：原 Luna reviewer 複核 P2 delta CLOSED；當時計畫為同 PR fresh CI、主控 join local preconditions、fresh schema plan、精確 owner bridge，再處理指定本人短效 intent／正常 Google 完成／native ack／四 app 入口與 FMS normal adoption。
 
-### 合併後最新 checkpoint（2026-11-06）
+### 合併後 source 與 owner 準備 checkpoint（2026-11-06）
 
 PR [#213](https://github.com/jedchang0308-jenfu/OrgMaster/pull/213) 已受保護合併。修正後 PR head `66c0c9e57dacff15c99edac8fa2e4d0cbe926f7f` 的 required CI [42124604384](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42124604384) 與合併後 master `26d691c572f34ab42e24819c6b1ab5a816c9d719` 的 CI [42130394177](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42130394177) 均 terminal SUCCESS。P2 reviewer review 已 CLOSED，沒有剩餘必修 P1／P2。`status --plan` 只依 `commandId` 尋找 receipt 的缺陷已修正；標準讀回使用 `readLocalOwnerBridgeReceipt` 驗證 plan SHA、target、source、046 response 與完整 receipt binding。Node 15／contracts 33、原完整 required CI 及真實 046 PostgreSQL component 均成功。046 測試中的外部 FMS ABI stubs 不代表完整 FMS／Platform 整鏈或地端正式驗收。
 
-release clone `C:/VIBE CODING/.worktrees/OrgMaster/release-dev070-production-20261106` 保持 clean master `26d691c572f34ab42e24819c6b1ab5a816c9d719`。首次缺 `pg` 的 `ERR_MODULE_NOT_FOUND` 保留；其後已驗 canonical 永久 dependency provider 並建立 junction。normal producer 已建立並讀回歷史 immutable release `ORGMASTER-DEV070-20261106001657361-26D691C5`：`gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-DEV070-20261106001657361-26D691C5/source-lock.json` SHA `73f8132d31f0818c15735fe391c7debc5cbc192626b3b8f66da54d3bd7cdc1d9`，同 prefix `runtime-config.json` SHA `42d0106d7b98d9c19ae5eb325504181b52aa96e62ed9fbaf8c3c6541e6325432`。未建立新 intent／infra receipt，未 build／apply；此後 source 修正不得覆寫兩份歷史 artifact。
+release clone `C:/VIBE CODING/.worktrees/OrgMaster/release-dev070-production-20261106` 已更新為clean master `a66992509746c0d6e628936410e05e3cfdf48086`。首次缺pg的`ERR_MODULE_NOT_FOUND`保留；canonical永久依賴junction已核。原26d release `ORGMASTER-DEV070-20261106001657361-26D691C5` 的source-lock SHA `73f8132d31f0818c15735fe391c7debc5cbc192626b3b8f66da54d3bd7cdc1d9`及runtime-config SHA `42d0106d7b98d9c19ae5eb325504181b52aa96e62ed9fbaf8c3c6541e6325432`為歷史immutable準備物，保留不覆寫；新source另有新freeze見下文。
 
-正常 append check 首敗 `SMOKE_REUSE_RECEIPT_INVALID`；獨立 tool rotation check 首敗 `TOOL_ROTATION_STATE_BASELINE_CHANGED`。actual released service／data source 為6045133，已消費 `APP_INFRA_REUSE` 的 immutable anchor 是4f6429b；native state 仍是該 sealed after-state。工具 executable closure20→22、6項變動，不能重用舊runner。release correction 在 branch `codex/dev070-tool-rotation-reuse-basis-20261106` 收斂：prepare／resume／apply fence／receipt replay 共用 resolver，只能由原 reuse ref 推導 anchor；以原 source lock／歷史 baseline 驗完整 immutable smoke-reuse 證據、Git ancestry、75-address state／manifest／封存 bytes，prepare 另驗 fresh provider。service／data baseline 不改寫，沒有任意 anchor/source 選項；direct APP_INFRA 原路徑保留。獨立 delta review 隨後重現 P2：canonical tool ref 若實體只是 APPLIED raw infra、缺少／null toolRotation，native routine 曾通過而漏掉 live Job gate；直接 native probe 的修前失敗已保留。修正要求 DEV070 宣告 ref 或出現 proof 時必有 verified toolRotation，並核 resolved ref／readiness／authorization／intent 雙向 join；無 ref 的既有 raw infra lane 保留。修後 routine／native stage／authority三檔154項、syntax／diffcheck PASS；修前 R2 459＋contracts33與未變 tool library63＋protocol26有效範圍保留，不把重疊案例加總。新 source 尚未提交或由 provider 執行，P2 delta source複核CLOSED（無剩餘P1／P2），新required CI仍待；隔離結果不證明 tool rotation 已 APPLIED，之後仍須新 protected ref／fresh freeze，再走正常 owner preparation。
+正常 append check 首敗 `SMOKE_REUSE_RECEIPT_INVALID`；獨立 tool rotation check 首敗 `TOOL_ROTATION_STATE_BASELINE_CHANGED`。actual released service／data source 為6045133，已消費 `APP_INFRA_REUSE` 的 immutable anchor 是4f6429b；native state 仍是該 sealed after-state。工具 executable closure20→22、6項變動，不能重用舊runner。release correction 在 branch `codex/dev070-tool-rotation-reuse-basis-20261106` 收斂：prepare／resume／apply fence／receipt replay 共用 resolver，只能由原 reuse ref 推導 anchor；以原 source lock／歷史 baseline 驗完整 immutable smoke-reuse 證據、Git ancestry、75-address state／manifest／封存 bytes，prepare 另驗 fresh provider。service／data baseline 不改寫，沒有任意 anchor/source 選項；direct APP_INFRA 原路徑保留。獨立 delta review 隨後重現 P2：canonical tool ref 若實體只是 APPLIED raw infra、缺少／null toolRotation，native routine 曾通過而漏掉 live Job gate；直接 native probe 的修前失敗已保留。修正要求 DEV070 宣告 ref 或出現 proof 時必有 verified toolRotation，並核 resolved ref／readiness／authorization／intent 雙向 join；無 ref 的既有 raw infra lane 保留。修後 routine／native stage／authority三檔154項、syntax／diffcheck PASS；修前 R2 459＋contracts33與未變 tool library63＋protocol26有效範圍保留，不把重疊案例加總。修正版commit `42a120bdc79c2efb2db5403ca3383957f30e8fa0`已由[PR214](https://github.com/jedchang0308-jenfu/OrgMaster/pull/214)正常protected merge為master `a66992509746c0d6e628936410e05e3cfdf48086`；PR CI42140408887及[main CI42141287180](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42141287180)均terminal SUCCESS。P2 delta source複核CLOSED（無剩餘P1／P2）；source／CI不證明tool rotation已APPLIED。
 
 local bridge 044／045／046 與正式原39＋042／044／045 append均未執行；046限local，不進formal profile。intent、root／app grant、本人 Google 核身、native ack、正常 UI、正式 migration、runtime 與 traffic亦未執行；兩環境產品驗收仍是 NOT_RUN。下一步須沿原 owner workflow 完成必要 tool rotation，取得 fresh source-bound inputs 並重跑正常 release check，local則fresh owner plan與exact bridge，再依原完整四專案驗收分母續行；本節的 CI／readonly preflight 不取代那些驗收。
+
+#### a669 正常 owner 準備（2026-11-06；尚未 apply）
+
+新release `ORGMASTER-DEV070-20261106010830187-A6699250`，共同prefix `gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-DEV070-20261106010830187-A6699250/`。normal producer已建立並provider讀回 `source-lock.json` SHA `faed1404d5d0e0a7496fdc8e090b634ff8c7a9e177618ed0a51db94cfe1df949`／generation1793927312744459，以及 `runtime-config.json` SHA `f05f2782c627d2b905e560ec161bebcab161064a15bf8bdcb08afe7261e259e6`／generation1793927323592306。driver首次把stage誤作object名的404保留，之後只讀正確source-lock，未覆寫物件。
+
+正常tool `--check`實際PASS：READY_FOR_IMAGE_BUILD、75 addresses、DDL0、releaseAuthority=false；604 service/data baseline→4f sealed consumed-reuse anchor及fresh provider已通過修正版原gate。log：release clone的 `output/dev-012/inputs/dev070-a669-tool-check.log`。其後沿既有standalone normal builder完成 exact a669來源／CI與provider artifact／scan／SBOM／provenance驗證，build `189027fd-1ab5-4e78-aec0-b3e4b39d5e08`，runner digest `73c25bcc29c060a3ebc0902d40380edb004287911023573ec39f72b83d866988`；proof位於該clone的 `output/tool-rotation-native/a66992509746c0d6e628936410e05e3cfdf48086/standalone-normal-build-proof.json`。
+
+既有exported builder／Terraform plan產生review-only saved plan（不改source）：`output/tool-rotation-native/a66992509746c0d6e628936410e05e3cfdf48086/review-plan/review-plan.json`，SHA `fdafc7d10592592edf8aa5f4faa09beb2e73d7f9b2c5e18e2dabea1b421a34bc`；75actions僅migration Job image update、其餘74no-op，releaseAuthority=false。state serial137／lineage5034b410-f6e4-812b-d9a6-b096bee8e1f8及fresh provider／source-control CAS已核。最後provider readback確認normal prepared／apply fence／APPLIED均MISSING，Job仍gen276／舊digest6af3、service仍gen395／e459。
+
+normal CLI的`--check`在image build前返回，`--apply`才走build／sealed plan／fence／apply，不能把獨立build或review-only plan當normal PREPARED／APPLIED收據；未新增prepare-only source seam或改fence。未apply Org Job／service／traffic、未SQL migration／首位intent／root／app grants。下一步沿既有normal流程取得必要rotation APPLIED／fresh Job readback，再接DEV070 append；本輪只更新文件，完整本人兩環境驗收NOT_RUN。
+
+
+<a id="dev070-catalog-reader-compatibility-repair"></a>
+
+## 23. Candidate smoke失敗後的catalog reader相容修復（2026-11-06）
+
+本節接續並更新§22末段當時的NOT_APPLIED狀態。主控已provider讀回正常tool rotation APPLIED（a669 app-infra SHA `d84ebf900af4181c98b974938ea78c6874b1136b58c0d7f2733865429e502595`）、runner digest `73c25bcc29c060a3ebc0902d40380edb004287911023573ec39f72b83d866988`。正式normal release `ORGMASTER-REL-20261106014712921-A669925`／[run42146303437](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/42146303437)，capsule SHA `6d924397295708f69545895b5678d6183e4fd1200a00b550b9fd498560ae909a`，migration Job `orgmaster-prod-migration-runner-qkl56`成功、ledger42／manifest SHA `a54dd092ff0b79977823346aa7765e05deddb686f79c32ac27480ea46bb546db`。candidate及entrypoint完成，verify `INTERNAL_CANDIDATE_SMOKE_FAILED`；workflow execution `010157b6-ccea-411e-b9a4-cb57d2416ba9`的governance_session回`ORGMASTER_SOURCE_UNAVAILABLE`。terminal recovery SHA `d59ce6a56590e20bf230a964202c1b3ed477dcc7153b153daf6af4ab9bd025b7`記FORWARD_APPLIED／PRE_ACTIVATION_ABORTED／legacy writes DENIED_AFTER045／noSQLrollback。provider servicegen398、舊e459100%／candidate93aa0%／無tags。以上是主控實際收據與provider facts，不是本source writer重新dispatch所得。
+
+直接失效機制：a669 current PDM reader只查`ai_pdm_contract.v_application_role_catalog_v3`，PDM正式096尚未部署、僅合法v2。原unit多為無條件回catalog rows，沒有模擬relation不存在；現行必跑PG18 component只證046 ABI，未涵蓋此pre096讀取。新增pre096 unit先重現EXTERNAL_CATALOG_UNAVAILABLE，真PG18中直接舊v3 SQL產42P01、同BEGIN READ ONLY後續SELECT產25P02，證明不能catch缺表後在同交易降版。
+
+修復固定由`pg_catalog.to_regclass`探測完整v3 relation名。probe必須一筆boolean；只有不存在才查固定v2 view，存在即嚴格只讀固定v3。不接受caller SQL/path或根據任何SELECT／decode error降版；probe／schema ACL／dependency、v3 ACL／缺資料／hash／wrong application／protected role不符均failclosed。v2 view不得承接dynamic-policy-v2，history reader與v3 current active-pointer／新protected app administrator守門保留；sourcePath綁實際被選view。這是Org先dual-reader、再由PDM096／catalog-v2部署的相容窗口；只有PDM正式v3與跨owner原完整驗收成立、受支援producer不再需v2時才可移除fallback，不以反轉部署順序掩蓋缺口。
+
+新增`scripts/lib/dev070-ai-pdm-catalog-reader-postgres-qc.mjs`接同一required Source QC的既有owned PG18 service，使用canonical owner向量與真SQL v2/v3投影、runtime SELECT ACL、BEGIN READ ONLY及後續SELECT。10案含原42P01／25P02、v2-only可續交易、v3優先且protected admin存在、empty／hash／wrong-app／protected異常、v3與probe schema42501不降版、v2拒接新格式。明列projection-shaped SQL contract fixture，**非完整PDM producer DDL、真人或正式驗收**；既有跨owner／PDM096／真本人兩環境分母未縮。本機一次使用既有disposable manager執行10案PASS，finally已清理並由主控唯讀確認PID／port釋放；後續只交既有GHAservice，不碰primary。
+
+source自查：完整app221files／1409passed／7conditional skips，local sandbox Node61；release Node460＋contracts33；TypeScript／app build／DBboundary與tool packaging3＋readback/database10通過。Packaging首輪失敗保留：兩處無條件query mock未識別probe、以及本地缺exact pg8.21 dependency closure；修正mocks並只在此worktree工具prefix裝locked closure後重跑通過。required CI／review及正常continuation的正式candidate smoke尚未完成；本slice只commit／push／draft PR；未merge、正式release或更動provider／primary SQL／Job／runtime／traffic／IAM／Secret。app reader TS改變需新app artifact；migration-runner closure未受此TS影響時沿既有gate驗證73c provenance重用，catalog-readback工具自身COPY closure包含reader，依其實際使用需要判定，不把不同工具closure混同。
