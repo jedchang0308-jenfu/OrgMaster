@@ -1528,3 +1528,14 @@ Migration-only成功只保留原source-bound sealed prepare/build/deployment/mig
 Full新run重新讀同capsule，prepare/build/migrate按原sealed receipt replay而不再build／Job／SQL；candidate才以新runId走原CAS/control lease及完整candidate／verify／decision／activate／canonical／finalize。source／expiry／baseline或sealed refs不再合格就fail closed，不偷偷換新attempt。另起normal attempt時仍沿既有artifact／ledger reuse契約，不能重標舊artifact或receipt來源。
 
 本次source自查包含原CI42213054164兩個舊42-row假設的修正：runner接受exact31–43 prefix（31起最大pending12），以真unknown-044 row驗44／unknown row／hash錯仍在write前拒；routine42合法append047，43無append拒絕；routine的slice fixture不另宣稱44-row證據。新增protocol tests覆蓋migration-only零service/control/terminal、unknown/poststage早拒、samecapsule/newrun零重建與零重跑SQL、來源／expiry／stage/ref／manifest錯誤拒續、exact-head QC缺失／失敗／in-progress／wrong-head零dispatch、mode/input/profile/YAML邊界及原full/recovery。047 SQL b683及既有R5 PG18.4證據不變。本節是source contract，正式migration／capacity／app release成果另由normal native receipts支持。
+
+<a id="dev040-tool-workflow-metadata-transition"></a>
+## Tool rotation 的精確 workflow metadata 相容修正（2026-11-06）
+
+PR217 合併後，normal tool rotation `--check` 在 build／Job／SQL 前因 `TOOL_ROTATION_SOURCE_INPUT_DRIFT` 停止；原始失敗保留。原因是 infra source guard 將 baseline 的 single-capsule metadata 與上節已封閉的 execution-mode metadata 全值比較。本修正只在既有 approved migration append 判定通過後，允許下列單向 exact tuple，不排除整個 workflow 或任意欄位：
+
+- Before 必須只有五個 key：`path,onlyInput,concurrency,jobs,failureJobs`；`onlyInput` 必須為 `releaseCapsuleRef`。
+- After 必須只有七個 key：`path,inputs,defaultExecutionMode,executionModes,concurrency,jobs,failureJobs`；inputs 順序固定 `releaseCapsuleRef,executionMode`，default 固定 `full_release`，executionModes 必須逐值等於既有 `OWNER_EXECUTION_MODES` 的完整十階段／前三階段。
+- 兩側 path 固定 `.github/workflows/deploy-orgmaster-independent-production.yml`，concurrency 固定 `production-release-orgmaster-prod`，jobs 固定完整十階段，failureJobs 固定 `readback,abort-or-rollback,publish-terminal`。未知 key、額外 input／mode、default／順序／路徑／concurrency 改動、反向轉換與沒有 migration append 的 metadata-only 轉換均拒絕。
+
+其他 profile 欄位、migration prefix／approved suffix／checksum 及 non-recipe infrastructure 原比較全部保留；不改 Terraform plan、identity、IAM／Secret、SQL、stage executor 或 workflow。回傳仍使用原 disposition 與各自真實的 before／after raw infrastructure fingerprint，不將不同來源偽造成相同 fingerprint，也不放寬後續 receipt-to-intent 綁定。source 自查以 Git fixture 驗合法轉換及拒絕邊界，另以實際 ca979ce9 的42-entry profile 至 5b3203e6 的43-entry protected source 做 pure source replay；這些結果不代表正式 tool rotation、migration 或容量 PASS。
