@@ -54,6 +54,8 @@ test('known local raw 042 genesis is preserved as its own exact ledger variant',
 
 test('source selects forward bootstrap 071 and a rehashed old 070 plan cannot authorize writes',async()=>{
  assert.equal(LOCAL_OWNER_BOOTSTRAP_PATH,'db/dev-010/071_local_orgmaster_administration_owner_bootstrap_v2.sql')
+ assert.equal(readFileSync(new URL('../'+LOCAL_OWNER_BOOTSTRAP_PATH,import.meta.url)).includes(13),false,'071 raw source must remain LF on Windows too')
+ assert.ok(readFileSync(new URL('../.gitattributes',import.meta.url),'utf8').split(/\r?\n/u).includes(LOCAL_OWNER_BOOTSTRAP_PATH+' text eol=lf'))
  assert.equal(localOwnerHash(readFileSync(new URL('../db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql',import.meta.url))),'040cdccabc25d55ac0f94efa772386ef1575fe4f11a231a99bbc9e018ca9445c')
  const f=fixture();f.plan.ownershipBootstrap={...f.plan.ownershipBootstrap,path:'db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql'}
  const {planSha256,...core}=f.plan;f.plan.planSha256=localOwnerHash(core)
