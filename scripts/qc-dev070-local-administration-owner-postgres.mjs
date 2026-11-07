@@ -9,6 +9,7 @@ import {localOwnerHash,planLocalOwnerBridge,LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTST
 import {unwrapMigrationTransaction} from './lib/dev040-orgmaster-independent-release.mjs'
 import {verifyAiPdmCatalogReaderCompatibility} from './lib/dev070-ai-pdm-catalog-reader-postgres-qc.mjs'
 import {verifyLocalOwnerBootstrapAcl} from './lib/dev070-local-owner-bootstrap-postgres-qc.mjs'
+import {verifyPdmManagerEligibility} from './lib/dev070-pdm-manager-postgres-qc.mjs'
 
 // This component installs actual Org source fragments and all of local 046.
 // FMS contract objects below are explicit ABI stubs, not a cross-owner proof.
@@ -48,7 +49,7 @@ try{
  await admin.query(`CREATE DATABASE ${ident(database)}`);created=true
  await admin.query(`COMMENT ON DATABASE ${ident(database)} IS '${marker}'`)
  const setup=await connect(),runId=createHash('sha256').update(marker).digest('hex').slice(0,32),orgLogin=`dev069_orgmaster_${runId.slice(0,12)}`,platformLogin=`dev069_platform_${runId.slice(0,12)}`,fmsLogin=`fms_test_runtime_${runId.slice(0,12)}`
- for(const role of ['jenfu_orgmaster_migrator','jenfu_orgmaster_runtime','jenfu_platform_runtime','jenfu_ai_pdm_runtime','fms_runtime',orgLogin,platformLogin,fmsLogin]){
+ for(const role of ['jenfu_orgmaster_migrator','jenfu_orgmaster_runtime','jenfu_platform_runtime','jenfu_ai_pdm_runtime','jenfu_ai_pdm_migrator','fms_runtime',orgLogin,platformLogin,fmsLogin]){
   assert.equal((await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[role])).rows.length,0)
   await admin.query(`CREATE ROLE ${ident(role)} ${[orgLogin,platformLogin,fmsLogin].includes(role)?"LOGIN PASSWORD 'orgmaster-dev070-ci-isolated'":'NOLOGIN'}`);ownedRoles.push(role)
   await admin.query(`COMMENT ON ROLE ${ident(role)} IS '${marker}'`)
@@ -124,6 +125,7 @@ try{
  assert.equal((await fms.query('SELECT * FROM orgmaster_contract.v_fms_principal_display_profiles_v1')).rows.length,0)
  assert.equal((await fms.query('SELECT * FROM orgmaster_contract.read_fms_administration_initialization_v1($1,$2)',['no-qualified-principal','no-qualified-employee'])).rows.length,0)
  await assert.rejects(owner.query('UPDATE orgmaster_core.administration_local_bridge_receipts_v1 SET response=response'),/LIFECYCLE_PAYLOAD_IMMUTABLE/u)
+ process.stdout.write(JSON.stringify(await verifyPdmManagerEligibility({admin:setup,owner,root}))+'\n')
  const stat=(await owner.query('SELECT count(*)::int count FROM orgmaster_core.administration_local_bridge_receipts_v1')).rows[0];assert.equal(stat.count,2)
  process.stdout.write(JSON.stringify({scope:'DEV070_046_COMPONENT_SQL_ABI_STUBS_NO_PROVIDER',status:'PASS',postgres:18,source031Sha256:localOwnerHash(source031),source045Sha256:localOwnerHash(source045),source046Sha256:localOwnerHash(sql),bindingRows:2,terminalReceipts:2,claimsOfFullFoundationOrRealFms:false})+'\n')
 }catch(error){
