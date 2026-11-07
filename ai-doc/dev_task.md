@@ -4,6 +4,8 @@
 
 ## DEV-070：平台超級管理員權威與首次初始化
 
+- 2026-11-07 正式接續：`master@9621f29f3689980e592782d738c79496467c6bc6` 已由 owner run `42376362230` 完成十階段 `RELEASED`，revision `orgmaster-prod-14a059783cff` 承接 100% 流量；候選驗證與 canonical/finalize 均成功。FMS 本人回讀顯示固定管理角色已發布；OrgMaster 預覽只新增 `role-system-admin`、保留既有角色與四筆任用。首次中央採用暴露「同一 root 另具一般 catalog grants 時誤走 checkpoint 流程」缺陷，原操作未取得 FMS 回覆且 receipt readback 為不存在，未重送。修正分支 `codex/dev070-initialization-adoption-priority-20261107` 以明示 `initializationOperationId` 優先走 owner-bound root adoption，普通／partial grants 路徑不變；相關 61／61、DEV-070 contracts 48／48及 build 已通過，protected PR／required CI／正式再發布與採用重試待續。詳 §30。
+
 047 delivery current：core已交PR217／f41；追加原workflow closed migration-only／same-capsule resume executor source，保留full10stage與exact-head Source QC。047／R5不變，無正式寫入，完整Node required套件466/466＋contracts34/34已通過；見[DEV070 §26](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-migration-only-continuation)。
 
 本輪 current：047 scoped Principal reader source已實作，review／required CI／owner發布待續；保留舊42-row收據與全部applied bytes。24-case PG18.4差分380＋NULL4通過，效能為隔離樣本，未取得正式CPU／capacity PASS。詳[DEV070 §25](specs/DEV-070-platform-super-admin-authority-contract.md#dev070-scoped-principal-readers)。

@@ -32,6 +32,12 @@ function assertCatalogReader(document: GovernanceDocumentV3, source: GovernanceO
 }
 async function initializationProof(document: GovernanceDocumentV3, source: GovernanceOrgSource, actor: GovernanceActorContext,
   candidate: ExternalRoleCatalogSnapshotV1, options: FinancialCatalogActivationOptions, operationId?: string) {
+  // A source-bound first initialization remains an initialization adoption even
+  // when the same root principal also holds ordinary catalog operations.  The
+  // initialization page cannot issue the normal FMS activation checkpoint, and
+  // the operation id is independently bound to the immutable owner receipt.
+  if (operationId) return createFinancialCatalogInitializationAdoptionProof({ document, source, actor, currentCatalog: currentCatalog(document),
+    candidate, ownerReader: options.initializationOwnerReader, handoffSource: options.handoffSource, operationId })
   if (normalActivation(document, actor)) { assertActivationAuthority(document, actor); return undefined }
   return createFinancialCatalogInitializationAdoptionProof({ document, source, actor, currentCatalog: currentCatalog(document),
     candidate, ownerReader: options.initializationOwnerReader, handoffSource: options.handoffSource, operationId })
@@ -131,7 +137,9 @@ export async function previewFinancialCatalogActivation(root: string, actor: Gov
   assertCatalogReader(current.document, source, actor)
   assertExpectedRevisions(request, current.revision, source.workspaceRevision)
   const candidate = validateAndNormalizeFinancialCatalogRelease(release, actor)
-  const rootProof = hasFinancialManagementGrant(current.document, actor, OPERATIONS[0]) ? undefined : await initializationProof(current.document, source, actor, candidate, options, request.initializationOperationId)
+  const rootProof = request.initializationOperationId || !hasFinancialManagementGrant(current.document, actor, OPERATIONS[0])
+    ? await initializationProof(current.document, source, actor, candidate, options, request.initializationOperationId)
+    : undefined
   // Legacy users may preview without all three grants, but a root-only preview needs the owner proof.
   return preview(current.document, source.workspaceRevision, candidate, actor, request, rootProof?.actorProof)
 }

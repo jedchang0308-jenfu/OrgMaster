@@ -588,6 +588,16 @@ Boundary首檢確認header須列出RETURNS SETOF引用的own orgmaster_contract�
 
 Org 3d395ab 的正常 owner release 已套用048、正式 ledger44。AI-PDM 5d23ab5 在 2026-11-07 02:41:59Z 的本人「流程」workspace GET 回503，request latency 8.31秒，同一登入另讀到安全碼 ROLE_POLICY_DEPENDENCY_UNAVAILABLE。正式 Cloud SQL 在 02:42:08Z 記錄同一 AI-PDM runtime backend 的 statement timeout、context 的 read_ai_pdm_principal_effective_grants_v5 與 ai_pdm_role_policy_manager_eligible_v2，及同一 statement 呼叫 manager v2。正式 DEV127 f19 catalog 已有 ACTIVE 與後續 ALREADY_CURRENT 收據。無 PDM 任用仍按原政策拒絕，不能以補任用來處理 SQL timeout。
 
+<a id="dev070-initialization-adoption-priority"></a>
+
+## 30. 首次 FMS 目錄採用的明示 operation 優先序（2026-11-07）
+
+正式 `master@9621f29f3689980e592782d738c79496467c6bc6` 已由 owner run `42376362230` 全十階段 RELEASED，provider revision `orgmaster-prod-14a059783cff` 為 Ready／100% traffic。更新後正常本人 session 已可讀 FMS handoff；預覽結果為新增固定 `role-system-admin`、移除0、修改0，四筆既有任用全部保留。FMS own status 亦回讀既有 committed publication，不重建或重寫初始化收據。
+
+實際首次中央採用仍暴露一個 source 缺陷：同一 root principal 同時持有一般 FMS `catalog.import/publish/activate` grants 時，preview 先以一般 grant 分流，忽略 request 已帶的 source-bound `initializationOperationId`；UI 因而要求 normal FMS checkpoint，而初始化頁只支援 owner-bound root adoption，15秒後轉 unknown。原 command receipt readback 為不存在，故沒有 catalog activation 寫入，依 unknown-write規則不重送。
+
+修正只調整 admission 優先序：帶 `initializationOperationId` 必須先驗 owner handoff、同 operation、同 publisher、固定 additive release及 root point，產生 `platform_root_catalog_initialization` actor proof；沒有 operation id 的普通／partial-grant activation維持原 grant與checkpoint路徑。這不讓一般 root 繞過 normal catalog guard，也不建立 Owner、app grant或五項 protected operation grant。新增同 actor 已有 ordinary grants 的回歸，並保留缺 publish／activate grant的既有反向案例；相關 FMS activation/handoff/UI 61／61、DEV-070 contracts 48／48及 client/server build PASS。正式採用仍以 protected merge、required CI、owner release及同 operation readback為準。
+
 044 manager v2 直接讀取 v_ai_pdm_principal_effective_grants_v5 view。該 view 經044既有 narrow-reader 建立步驟指向無參數函式，047把無參數函式移到共用計算後仍以 p_all=true 掃描全部 grants。048只替換兩個 helper 並保留此路徑。049只以同簽章 CREATE OR REPLACE manager v2，把內層 grants 改由既有二參數 v5 reader 依 exact Principal／Employee 查詢。保留 outer account、issuer／subject、active human、direct／global、protected app-admin 或 privileged legacy system_admin 條件。Typed reader 保留全域 administration publication／eligible catalog 檢查。原 SECURITY DEFINER、STABLE、search_path、owner 與 exact PDM runtime／migrator EXECUTE 權限保持。PDM GET／create／save／apply 沿同一 ABI，原 session／epoch、lifecycle、AAL、讀寫隔離、鎖與稽核維持。
 
 正式 profile／DEV070 validator 固定 order45、version dev070-orgmaster-049、source ae4f3730525417b638cb65175606f7d6d8589c1a89cf61125ffbdd629f4f0e9b、applied 3c4a56696e2f224a7911fd45d2e2d3579657a8a941ac9de39c20c87f4f2212f1。正常44→45 append 保留全部原已套用 bytes；完整45可依原 ordinary／enrollment gate 讀回，未知46拒絕；local39–45 exact ledger 仍保留 raw042 與既有 owner bridge。049 後續依正常 source-bound runner build／image-only rotation、required CI 及 owner release；不採用擴大權限、提高 timeout、降低授權重驗頻率或跳過 catalog 驗證。隔離 fixture 比較已安裝048／049行為，不能作本人授權、正式延遲或共用容量驗收。
