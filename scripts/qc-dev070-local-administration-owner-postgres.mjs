@@ -9,6 +9,7 @@ import {localOwnerHash,planLocalOwnerBridge,LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTST
 import {unwrapMigrationTransaction} from './lib/dev040-orgmaster-independent-release.mjs'
 import {verifyAiPdmCatalogReaderCompatibility} from './lib/dev070-ai-pdm-catalog-reader-postgres-qc.mjs'
 import {verifyLocalOwnerBootstrapAcl} from './lib/dev070-local-owner-bootstrap-postgres-qc.mjs'
+import {verifyPdmManagerEligibility,verifyPdmManagerWithScopedReaders} from './lib/dev070-pdm-manager-postgres-qc.mjs'
 
 // This component installs actual Org source fragments and all of local 046.
 // FMS contract objects below are explicit ABI stubs, not a cross-owner proof.
@@ -34,21 +35,25 @@ if(await readlink('/proc/self/ns/net')!==serviceNamespace){
 const serviceSystem=execFileSync('docker',['exec',container,'psql','-U','postgres','-Atc','SELECT system_identifier FROM pg_control_system()'],{encoding:'utf8',maxBuffer:4096}).trim()
 assert.match(serviceSystem,/^[1-9][0-9]{10,30}$/u)
 const config={host:'127.0.0.1',port:5432,user:'postgres',password:env.PGPASSWORD,connectionTimeoutMillis:3000,statement_timeout:10000,query_timeout:12000,application_name:'orgmaster-dev070-046-component-ci'}
-const admin=new pg.Client({...config,database:'postgres'}),database=`jenfu_local_dev070_ci_${run}_${env.GITHUB_RUN_ATTEMPT}`,ownedRoles=[],clients=[]
-let created=false,sql
+const admin=new pg.Client({...config,database:'postgres'}),database=`jenfu_local_dev070_ci_${run}_${env.GITHUB_RUN_ATTEMPT}`,ownedRoles=[],ownedDatabases=[],clients=[]
+let sql
 const ident=v=>{assert.match(v,/^[a-z][a-z0-9_]{1,62}$/u);return '"'+v+'"'}
-async function connect(user){const actualLogin=user&&user!=='jenfu_orgmaster_migrator'?user:'postgres',client=new pg.Client({...config,database,user:actualLogin});await client.connect();clients.push(client);if(user==='jenfu_orgmaster_migrator')await client.query('SET SESSION AUTHORIZATION jenfu_orgmaster_migrator');return client}
+async function connect(user,target=database){assert.ok(ownedDatabases.includes(target));const actualLogin=user&&user!=='jenfu_orgmaster_migrator'?user:'postgres',client=new pg.Client({...config,database:target,user:actualLogin});await client.connect();clients.push(client);if(user==='jenfu_orgmaster_migrator')await client.query('SET SESSION AUTHORIZATION jenfu_orgmaster_migrator');return client}
+async function createDatabase(name){
+ assert.equal((await admin.query('SELECT 1 FROM pg_database WHERE datname=$1',[name])).rows.length,0)
+ await admin.query('CREATE DATABASE '+ident(name))
+ ownedDatabases.push(name)
+ await admin.query('COMMENT ON DATABASE '+ident(name)+" IS '"+marker+"'")
+}
 async function deny(client,query,params=[]){await assert.rejects(client.query(query,params),error=>error.code==='42501')}
 function fn(source,name){const start=source.indexOf(`CREATE FUNCTION orgmaster_core.${name}`);assert.ok(start>=0);assert.equal(source.indexOf(`CREATE FUNCTION orgmaster_core.${name}`,start+1),-1);const end=source.indexOf('$fn$;',start);assert.ok(end>start);return source.slice(start,end+6)}
 try{
  await admin.connect()
  const actual=(await admin.query('SELECT current_database() database,host(inet_server_addr()) host,inet_server_port() port,session_user,current_user,version(),system_identifier::text FROM pg_control_system()')).rows[0]
  assert.equal(actual.database,'postgres');assert.equal(actual.host,'127.0.0.1');assert.equal(actual.port,5432);assert.equal(actual.session_user,'postgres');assert.equal(actual.current_user,'postgres');assert.match(actual.version,/PostgreSQL 18\./u);assert.equal(actual.system_identifier,serviceSystem)
- assert.equal((await admin.query('SELECT 1 FROM pg_database WHERE datname=$1',[database])).rows.length,0)
- await admin.query(`CREATE DATABASE ${ident(database)}`);created=true
- await admin.query(`COMMENT ON DATABASE ${ident(database)} IS '${marker}'`)
+ await createDatabase(database)
  const setup=await connect(),runId=createHash('sha256').update(marker).digest('hex').slice(0,32),orgLogin=`dev069_orgmaster_${runId.slice(0,12)}`,platformLogin=`dev069_platform_${runId.slice(0,12)}`,fmsLogin=`fms_test_runtime_${runId.slice(0,12)}`
- for(const role of ['jenfu_orgmaster_migrator','jenfu_orgmaster_runtime','jenfu_platform_runtime','jenfu_ai_pdm_runtime','fms_runtime',orgLogin,platformLogin,fmsLogin]){
+ for(const role of ['jenfu_orgmaster_migrator','jenfu_orgmaster_runtime','jenfu_platform_runtime','jenfu_ai_pdm_runtime','jenfu_ai_pdm_migrator','fms_runtime',orgLogin,platformLogin,fmsLogin]){
   assert.equal((await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[role])).rows.length,0)
   await admin.query(`CREATE ROLE ${ident(role)} ${[orgLogin,platformLogin,fmsLogin].includes(role)?"LOGIN PASSWORD 'orgmaster-dev070-ci-isolated'":'NOLOGIN'}`);ownedRoles.push(role)
   await admin.query(`COMMENT ON ROLE ${ident(role)} IS '${marker}'`)
@@ -124,14 +129,25 @@ try{
  assert.equal((await fms.query('SELECT * FROM orgmaster_contract.v_fms_principal_display_profiles_v1')).rows.length,0)
  assert.equal((await fms.query('SELECT * FROM orgmaster_contract.read_fms_administration_initialization_v1($1,$2)',['no-qualified-principal','no-qualified-employee'])).rows.length,0)
  await assert.rejects(owner.query('UPDATE orgmaster_core.administration_local_bridge_receipts_v1 SET response=response'),/LIFECYCLE_PAYLOAD_IMMUTABLE/u)
+ process.stdout.write(JSON.stringify(await verifyPdmManagerEligibility({admin:setup,owner,root}))+'\n')
  const stat=(await owner.query('SELECT count(*)::int count FROM orgmaster_core.administration_local_bridge_receipts_v1')).rows[0];assert.equal(stat.count,2)
  process.stdout.write(JSON.stringify({scope:'DEV070_046_COMPONENT_SQL_ABI_STUBS_NO_PROVIDER',status:'PASS',postgres:18,source031Sha256:localOwnerHash(source031),source045Sha256:localOwnerHash(source045),source046Sha256:localOwnerHash(sql),bindingRows:2,terminalReceipts:2,claimsOfFullFoundationOrRealFms:false})+'\n')
+ const managerDatabase=database+'_049'
+ await createDatabase(managerDatabase)
+ const managerAdmin=await connect(undefined,managerDatabase),managerOwner=await connect('jenfu_orgmaster_migrator',managerDatabase)
+ process.stdout.write(JSON.stringify(await verifyPdmManagerWithScopedReaders({
+  admin:managerAdmin,owner:managerOwner,root,database:managerDatabase}))+'\n')
 }catch(error){
- process.stderr.write(JSON.stringify({scope:'DEV070_046_COMPONENT_FIRST_FAILURE',code:typeof error.code==='string'?error.code:'ASSERTION',message:error.message})+'\n')
+ process.stderr.write(JSON.stringify({scope:'DEV070_POSTGRES_COMPONENT_FIRST_FAILURE',code:typeof error.code==='string'?error.code:'ASSERTION',message:error.message})+'\n')
  throw error
 }finally{
  await Promise.allSettled(clients.map(c=>c.end()))
- if(created){const current=(await admin.query('SELECT shobj_description(oid,\'pg_database\') marker FROM pg_database WHERE datname=$1',[database])).rows[0];assert.equal(current?.marker,marker);assert.equal((await admin.query('SELECT system_identifier::text FROM pg_control_system()')).rows[0].system_identifier,serviceSystem);await admin.query(`DROP DATABASE ${ident(database)}`)}
+ for(const name of ownedDatabases.reverse()){
+  const current=(await admin.query('SELECT shobj_description(oid,\'pg_database\') marker FROM pg_database WHERE datname=$1',[name])).rows[0]
+  assert.equal(current?.marker,marker)
+  assert.equal((await admin.query('SELECT system_identifier::text FROM pg_control_system()')).rows[0].system_identifier,serviceSystem)
+  await admin.query('DROP DATABASE '+ident(name))
+ }
  for(const role of ownedRoles.reverse()){assert.equal((await admin.query("SELECT shobj_description(oid,'pg_authid') marker FROM pg_roles WHERE rolname=$1",[role])).rows[0]?.marker,marker);await admin.query(`DROP ROLE ${ident(role)}`)}
  await admin.end()
 }

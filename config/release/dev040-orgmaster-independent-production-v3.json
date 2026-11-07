@@ -559,6 +559,13 @@
         "path": "db/migrations/048_dev070_governance_scalar_projection.sql",
         "sourceSha256": "75c56c01a50c9aec50c6fc6cba25d3c01993631ad48aff9300182aa23891e1c2",
         "appliedSha256": "e817ca52e4e52c67fa3f43885fbfb99334067dc6e670ab129752933b38ea7179"
+      },
+      {
+        "order": 45,
+        "version": "dev070-orgmaster-049",
+        "path": "db/migrations/049_dev070_scoped_pdm_role_policy_manager.sql",
+        "sourceSha256": "ae4f3730525417b638cb65175606f7d6d8589c1a89cf61125ffbdd629f4f0e9b",
+        "appliedSha256": "3c4a56696e2f224a7911fd45d2e2d3579657a8a941ac9de39c20c87f4f2212f1"
       }
     ]
   },

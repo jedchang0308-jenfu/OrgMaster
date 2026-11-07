@@ -13,6 +13,7 @@ import { readApplicationRoleCatalogs, readActiveAiPdmRoleCatalog } from './appli
 import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceAuditEventV1, GovernanceAuditEventV3, GovernanceCommandV2, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceExpectedCatalogV1, GovernanceOrgSource, GovernancePolicyDataV1, GovernanceRoleAssignmentV2, GovernanceCommandResultV1, GovernanceCommandQueryResultV1 } from '../src/governance/types'
 import { OrgmasterPersistenceError, currentPersistenceTransactionDatabase, withPersistenceTransaction, persistenceArtifactExists, readPersistenceArtifact, usesCloudSqlPersistence, warnOrgmasterLocalPersistenceDiagnostic, writePersistenceArtifacts, type OrgmasterLocalPersistenceDiagnosticStage, type PersistenceEntitlementChange } from './orgmasterPersistenceRepository'
 import { assertMigrationWritesAllowed } from './orgmasterMigrationGate'
+import { recordGovernanceSessionReadFailure, type GovernanceSessionReadStage } from './orgmasterGovernanceReadDiagnostic'
 import { storedGovernanceCatalogs, isGovernanceReduction, withPublishedGovernanceHistory } from './governanceReduction'
 import { readHistoricalAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
 import { assertCurrentGovernanceWriteActor, GovernanceWriteActorError } from './orgmasterGovernanceWriteActor'
@@ -180,7 +181,7 @@ export async function loadOrganizationSource(root = process.cwd()): Promise<Gove
 function validationSource(source: GovernanceOrgSource): GovernanceOrgSource | undefined { return source.workspaceVersionId === 'test-current' ? undefined : source }
 async function readV2Raw(root: string) { const path = getGovernancePaths(root).legacyV2; try { const stored = await readPersistenceArtifact({ localPath: path, artifactKey: 'orgmaster-governance.v2.json', artifactKind: 'governance' }); const document = stored.payload as unknown as GovernanceDocumentV2; validateAuditChain(document); if (document.app !== 'OrgMaster' || document.schemaVersion !== 2) throw new GovernanceStoreError('GOVERNANCE_SCHEMA_UNSUPPORTED'); return { raw: stored.raw, document, revision: stored.revision } } catch (error) { if (error instanceof GovernanceStoreError) throw error; throw new GovernanceStoreError('GOVERNANCE_READ_FAILED') } }
 async function readV3Raw(root: string): Promise<GovernanceStoreRead> {
-  let stage: OrgmasterLocalPersistenceDiagnosticStage = 'governance_v3_artifact_read'
+  let stage: OrgmasterLocalPersistenceDiagnosticStage & GovernanceSessionReadStage = 'governance_v3_artifact_read'
   try {
     const stored = await readPersistenceArtifact({ localPath: getGovernancePaths(root).current,
       artifactKey: 'orgmaster-governance.v3.json', artifactKind: 'governance' })
@@ -197,13 +198,18 @@ async function readV3Raw(root: string): Promise<GovernanceStoreRead> {
       catalogs = ownedCatalogs
     } else {
       stage = 'governance_v3_catalog_history_read'
-      catalogs = await governanceCatalogsWithHistory(document, await readApplicationRoleCatalogs(root))
+      const activeCatalogs = await readApplicationRoleCatalogs(root).catch(error => {
+        recordGovernanceSessionReadFailure('governance_v3_active_catalog_read', error)
+        throw error
+      })
+      catalogs = await governanceCatalogsWithHistory(document, activeCatalogs)
     }
     stage = 'governance_v3_document_validate'
     const issues = validateDocumentV3(document, source, catalogs)
     if (issues.length) throw new GovernanceStoreError('GOVERNANCE_READ_FAILED', issues)
     return { raw: stored.raw, document, revision: stored.revision }
   } catch (error) {
+    recordGovernanceSessionReadFailure(stage, error)
     warnOrgmasterLocalPersistenceDiagnostic(stage, error, 'orgmaster-governance.v3.json', {
       validationIssues: error instanceof GovernanceStoreError ? error.details : undefined,
     })
@@ -256,7 +262,48 @@ export async function commitGovernanceMutation(root: string, expectedRevision: s
 function migrateAndAudit(v1: GovernanceDocumentV1, sourceRevision: string, catalog: ExternalRoleCatalogSnapshotV1) { const migrated = migrateGovernanceV1ToV2(v1, sourceRevision, [catalog]); const actor: GovernanceActorContext = { principalId: 'system', issuer: 'system', subject: 'system', employeeId: null, bootstrap: true }; return appendAudit(migrated, { commandId: `system-migrate-v1-to-v2-${sourceRevision.slice(0, 16)}`, reason: 'V1 governance store 非破壞遷移', type: 'GOVERNANCE_MIGRATED_V1_TO_V2' }, actor, { action: 'GOVERNANCE_MIGRATED_V1_TO_V2', entityType: 'governance', entityId: null, beforeHash: sha256(canonicalJson(v1)), afterHash: sha256(canonicalJson(migrated.draft)) }) }
 function migrateV2AndAudit(v2: GovernanceDocumentV2, sourceRevision: string, catalog: ExternalRoleCatalogSnapshotV1) { const migrated = migrateGovernanceV2ToV3(v2, sourceRevision, catalog); const actor: GovernanceActorContext = { principalId: 'system', issuer: 'system', subject: 'system', employeeId: null, bootstrap: true }; return appendAudit(migrated, { commandId: `system-migrate-v2-to-v3-${sourceRevision.slice(0, 16)}`, reason: 'V2 governance store 非破壞遷移；V2只保留為歷史證據', type: 'GOVERNANCE_MIGRATED_V2_TO_V3' }, actor, { action: 'GOVERNANCE_MIGRATED_V2_TO_V3', entityType: 'governance', entityId: null, beforeHash: sha256(canonicalJson(v2.draft)), afterHash: sha256(canonicalJson(migrated.draft)) }) }
 async function readV1(root: string, path: string) { try { const raw = await readFile(path, 'utf8'); const document = JSON.parse(raw) as GovernanceDocumentV1; if (document.schemaVersion !== 1) throw new GovernanceStoreError('GOVERNANCE_SCHEMA_UNSUPPORTED'); validateAuditChain(document); if (validateDocument(document).length) throw new GovernanceStoreError('GOVERNANCE_READ_FAILED'); return { raw, document, revision: documentRevision(raw) } } catch (error) { if (error instanceof GovernanceStoreError) throw error; throw new GovernanceStoreError('GOVERNANCE_READ_FAILED') } }
-export async function ensureGovernanceStore(root = process.cwd()) { return withLock(root, async () => { const paths = getGovernancePaths(root); if (await persistenceArtifactExists(paths.current, 'orgmaster-governance.v3.json')) { const current = await readV3Raw(root); const synced = syncOrgMasterSystemCatalog(current.document); if (synced === current.document) return current; const source = await loadOrganizationSource(root); return persistV3(root, current, synced, source, { reasonCode: 'orgmaster_system_catalog_sync', updatedBy: 'system:catalog-sync' }) } if (usesCloudSqlPersistence()) throw new GovernanceStoreError('GOVERNANCE_V3_MIGRATION_REQUIRED'); const catalog = await readActiveAiPdmRoleCatalog(root); let v2: GovernanceDocumentV2; let sourceRevision: string; if (await persistenceArtifactExists(paths.legacyV2, 'orgmaster-governance.v2.json')) { const legacy = await readV2Raw(root); v2 = legacy.document; sourceRevision = legacy.revision } else if (await exists(paths.legacyV1)) { const legacy = await readV1(root, paths.legacyV1); v2 = migrateAndAudit(legacy.document, legacy.revision, catalog); sourceRevision = sha256(canonicalJson(v2)) } else { const seed = createSeedDocumentV2(); const actor: GovernanceActorContext = { principalId: 'system', issuer: 'system', subject: 'system', employeeId: null, bootstrap: true }; v2 = appendAudit(seed, { commandId: 'system-init-v2', reason: '建立本機治理 V2 migration source', type: 'GOVERNANCE_INITIALIZED' }, actor, { action: 'GOVERNANCE_INITIALIZED', entityType: 'governance', entityId: null, beforeHash: null, afterHash: sha256(canonicalJson(seed.draft)) }); sourceRevision = sha256(canonicalJson(v2)) } const migrated = migrateV2AndAudit(v2, sourceRevision, catalog); const raw = `${JSON.stringify(migrated, null, 2)}\n`; validateAuditChain(migrated); await writeAtomic(paths.current, raw); return readV3Raw(root) }) }
+export async function ensureGovernanceStore(root = process.cwd()) {
+  return withLock(root, async () => {
+    let stage: GovernanceSessionReadStage = 'governance_v3_artifact_exists'
+    try {
+      const paths = getGovernancePaths(root)
+      if (await persistenceArtifactExists(paths.current, 'orgmaster-governance.v3.json')) {
+        const current = await readV3Raw(root)
+        stage = 'governance_system_catalog_sync'
+        const synced = syncOrgMasterSystemCatalog(current.document)
+        if (synced === current.document) return current
+        const source = await loadOrganizationSource(root)
+        return await persistV3(root, current, synced, source, { reasonCode: 'orgmaster_system_catalog_sync', updatedBy: 'system:catalog-sync' })
+      }
+      if (usesCloudSqlPersistence()) throw new GovernanceStoreError('GOVERNANCE_V3_MIGRATION_REQUIRED')
+      const catalog = await readActiveAiPdmRoleCatalog(root)
+      let v2: GovernanceDocumentV2
+      let sourceRevision: string
+      if (await persistenceArtifactExists(paths.legacyV2, 'orgmaster-governance.v2.json')) {
+        const legacy = await readV2Raw(root)
+        v2 = legacy.document
+        sourceRevision = legacy.revision
+      } else if (await exists(paths.legacyV1)) {
+        const legacy = await readV1(root, paths.legacyV1)
+        v2 = migrateAndAudit(legacy.document, legacy.revision, catalog)
+        sourceRevision = sha256(canonicalJson(v2))
+      } else {
+        const seed = createSeedDocumentV2()
+        const actor: GovernanceActorContext = { principalId: 'system', issuer: 'system', subject: 'system', employeeId: null, bootstrap: true }
+        v2 = appendAudit(seed, { commandId: 'system-init-v2', reason: '建立本機治理 V2 migration source', type: 'GOVERNANCE_INITIALIZED' }, actor, { action: 'GOVERNANCE_INITIALIZED', entityType: 'governance', entityId: null, beforeHash: null, afterHash: sha256(canonicalJson(seed.draft)) })
+        sourceRevision = sha256(canonicalJson(v2))
+      }
+      const migrated = migrateV2AndAudit(v2, sourceRevision, catalog)
+      const raw = `${JSON.stringify(migrated, null, 2)}\n`
+      validateAuditChain(migrated)
+      await writeAtomic(paths.current, raw)
+      return await readV3Raw(root)
+    } catch (error) {
+      recordGovernanceSessionReadFailure(stage, error)
+      throw error
+    }
+  })
+}
 export async function readGovernanceStore(root = process.cwd()) { return ensureGovernanceStore(root) }
 /** Additive pure read used by account enrollment. Never seeds or migrates a missing store. */
 export async function readExistingGovernanceStore(root = process.cwd()) { return readV3Raw(root) }
