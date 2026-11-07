@@ -76,7 +76,7 @@ export async function verifyLocalOwnerBootstrapAcl({admin,owner,makePlan,legacyS
    ['extra-acl',`GRANT EXECUTE ON FUNCTION ${reader} TO jenfu_platform_runtime;`],
    ['lost-acl',`REVOKE EXECUTE ON FUNCTION ${reader} FROM jenfu_orgmaster_runtime;`],
    ['grant-option',`GRANT EXECUTE ON FUNCTION ${reader} TO jenfu_orgmaster_runtime WITH GRANT OPTION;`],
-   ['body',`CREATE OR REPLACE FUNCTION orgmaster_core.read_active_persistence_artifact_v1(a text) RETURNS TABLE(artifact_key text,artifact_kind text,payload jsonb,canonical_sha256 text,source_sha256 text,source_bytes bigint,source_revision text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS 'SELECT ''tampered'',''governance'',''{}''::jsonb,repeat(''a'',64),repeat(''b'',64),1::bigint,repeat(''c'',64)';`],
+   ['body',`CREATE OR REPLACE FUNCTION orgmaster_core.read_active_persistence_artifact_v1(p_artifact_key text) RETURNS TABLE(artifact_key text,artifact_kind text,payload jsonb,canonical_sha256 text,source_sha256 text,source_bytes bigint,source_revision text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS 'SELECT ''tampered'',''governance'',''{}''::jsonb,repeat(''a'',64),repeat(''b'',64),1::bigint,repeat(''c'',64)';`],
   ]){
    await rolledBack(async()=>{
     const plan=await fresh()
