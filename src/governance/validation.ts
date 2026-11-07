@@ -1,5 +1,5 @@
 import { historicalAiPdmRoleSnapshotMatches, validateExternalRoleCatalog } from './aiPdmCatalog'
-import { validateFinancialExternalRoleCatalog } from './financialCatalog'
+import { historicalFinancialRoleSnapshotMatches, validateFinancialExternalRoleCatalog } from './financialCatalog'
 import { classifyAssignmentSurface, genericV2AssignmentSurfaceIssue, isSystemAdminRoleIdentity } from './assignmentSurface'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV1, GovernancePolicyDataV2, GovernancePolicyDataV3, GovernancePolicyVersionV1, GovernanceRoleAssignmentV2, GovernanceRoleDelegationV2, GovernanceScopeV1 } from './types'
 import { isSha256, issuerFingerprintSha256, principalFingerprintSha256 } from './identityAdmission'
@@ -148,8 +148,10 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
         if (!catalogRole.allowedScopeKinds.includes(assignment.scope.kind)) add('EXTERNAL_SCOPE_UNSUPPORTED', `roleAssignments[${index}].scope`, '外部 role 不允許此 scope')
         const currentSnapshot = assignment.catalogVersion === catalog?.catalogVersion &&
           assignment.roleCodeSnapshot === catalogRole.code && assignment.roleNameSnapshot === catalogRole.displayName
-        const historicalSnapshot = assignment.applicationId === 'ai-pdm' &&
-          historicalAiPdmRoleSnapshotMatches(assignment, catalogRole, catalogs)
+        const historicalSnapshot = assignment.applicationId === 'ai-pdm'
+          ? historicalAiPdmRoleSnapshotMatches(assignment, catalogRole, catalogs)
+          : assignment.applicationId === 'financial-management-system'
+            && historicalFinancialRoleSnapshotMatches(assignment, catalogRole, catalogs)
         if ((!currentSnapshot && !historicalSnapshot) || assignment.effectState !== 'not-synchronized') add('EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID', `roleAssignments[${index}]`, '外部 role snapshot 與 catalog 不一致')
       }
     }
