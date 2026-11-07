@@ -103,7 +103,7 @@ export async function verifyPdmManagerWithScopedReaders({ admin, owner, root, da
   const broad = fn(sql047, 'CREATE OR REPLACE FUNCTION orgmaster_contract.read_ai_pdm_principal_effective_grants_v5()', '$reader$;')
   const columns = broad.match(/RETURNS TABLE\(([\s\S]+?)\)\nLANGUAGE sql/u)[1].split(',').map(column => {
     const [name, type] = column.trim().split(/\s+/u)
-    assert.match(name, /^[a-z_]+$/u)
+    assert.match(name, /^[a-z_][a-z0-9_]*$/u)
     assert.ok(['text', 'bigint', 'timestamptz'].includes(type))
     return 'NULL::' + type + ' AS ' + name
   })
