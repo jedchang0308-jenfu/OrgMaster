@@ -201,7 +201,7 @@ describe('FMS catalog activation workspace', () => {
     await mount(); await preparePreview()
     mocks.receipt.mockRejectedValue(new Error('not observed'))
     vi.useFakeTimers()
-    await click('啟用此版本')
+    await click('採用此版本')
     await act(async () => { vi.advanceTimersByTime(15_000) })
     expect(host.textContent).toContain('尚未取得 FMS 回覆')
     expect(host.textContent).not.toContain('處理中…')
@@ -224,7 +224,7 @@ describe('FMS catalog activation workspace', () => {
       checkpoint,
     })
 
-    expect(host.textContent).toContain('請從 FMS 的角色設定開啟此頁。')
+    expect(host.textContent).toContain('目前沒有待採用版本。請由 FMS 角色設定發起。')
     expect(host.querySelector('button')).toBeNull()
     expect(mocks.loadWorkspace).toHaveBeenCalledTimes(1)
     expect(mocks.preview).not.toHaveBeenCalled()
@@ -232,6 +232,17 @@ describe('FMS catalog activation workspace', () => {
     expect(storageWrites).not.toHaveBeenCalled()
     expect(sessionStorage.length).toBe(0)
     expect(localStorage.length).toBe(0)
+  })
+
+  it('shows a catalog status error without leaving the loading message visible', async () => {
+    mocks.loadWorkspace.mockRejectedValueOnce(new Error('unavailable'))
+
+    await mount()
+    await settle()
+
+    expect(host.textContent).toContain('角色目錄狀態讀取失敗，請稍後重試。')
+    expect(host.textContent).not.toContain('正在讀取角色目錄狀態…')
+    expect(host.querySelector('[role="alert"]')).not.toBeNull()
   })
 
   it('rejects init messages from the wrong origin or source and malformed nonces', async () => {
@@ -243,7 +254,7 @@ describe('FMS catalog activation workspace', () => {
     await sendMessage({ ...init, nonce: 'not-a-uuid' })
 
     expect(host.querySelector('button')).toBeNull()
-    expect(host.textContent).toContain('請從 FMS 的角色設定開啟此頁。')
+    expect(host.textContent).toContain('目前沒有待採用版本。請由 FMS 角色設定發起。')
     expect(mocks.preview).not.toHaveBeenCalled()
     expect(mocks.activate).not.toHaveBeenCalled()
   })
@@ -256,7 +267,7 @@ describe('FMS catalog activation workspace', () => {
 
     expect(mocks.preview).toHaveBeenCalledWith({
       release,
-      reason: '啟用 FMS 角色目錄',
+      reason: '採用 FMS 角色目錄',
       expectedGovernanceRevision: 'gov-r2',
       expectedOrganizationRevision: 'org-r2',
     })
@@ -265,7 +276,7 @@ describe('FMS catalog activation workspace', () => {
     expect(messagesOfType('issue')).toHaveLength(0)
     expect(mocks.activate).not.toHaveBeenCalled()
 
-    await click('啟用此版本')
+    await click('採用此版本')
 
     expect(messagesOfType('issue')).toEqual([{
       protocol: PROTOCOL,
@@ -294,7 +305,7 @@ describe('FMS catalog activation workspace', () => {
       .mockResolvedValueOnce(appliedReceipt())
     await mount()
     await preparePreview()
-    await click('啟用此版本')
+    await click('採用此版本')
 
     const issued = { protocol: PROTOCOL, type: 'issued', nonce: NONCE, operationId: COMMAND_ID, checkpoint }
     await sendMessage(issued, { origin: 'https://attacker.example.test' })
@@ -312,7 +323,7 @@ describe('FMS catalog activation workspace', () => {
     expect(mocks.activate).toHaveBeenCalledTimes(1)
     expect(mocks.activate).toHaveBeenCalledWith({
       release,
-      reason: '啟用 FMS 角色目錄',
+      reason: '採用 FMS 角色目錄',
       expectedGovernanceRevision: 'gov-r1',
       expectedOrganizationRevision: 'org-r1',
       commandId: COMMAND_ID,
@@ -320,7 +331,7 @@ describe('FMS catalog activation workspace', () => {
       previewHash: PREVIEW_HASH,
       fmsCheckpoint: checkpoint,
     })
-    expect(host.textContent).toContain('啟用結果尚待確認')
+    expect(host.textContent).toContain('採用結果尚待確認')
     expect(mocks.receipt).not.toHaveBeenCalled()
     expect(messagesOfType('issue')).toHaveLength(1)
 
@@ -329,13 +340,13 @@ describe('FMS catalog activation workspace', () => {
 
     await click('查詢原操作')
     expect(mocks.receipt).toHaveBeenNthCalledWith(1, COMMAND_ID)
-    expect(host.textContent).toContain('尚未查到已完成的啟用紀錄')
-    expect(host.textContent).not.toContain('角色目錄已啟用。')
+    expect(host.textContent).toContain('尚未查到已完成的採用紀錄')
+    expect(host.textContent).not.toContain('角色目錄已採用。')
 
     await click('查詢原操作')
     expect(mocks.receipt).toHaveBeenNthCalledWith(2, COMMAND_ID)
     expect(mocks.receipt.mock.calls).toEqual([[COMMAND_ID], [COMMAND_ID]])
-    expect(host.textContent).toContain('角色目錄已啟用。')
+    expect(host.textContent).toContain('角色目錄已採用。')
     expect(mocks.activate).toHaveBeenCalledTimes(1)
     expect(messagesOfType('issue')).toHaveLength(1)
     expect(storageWrites).not.toHaveBeenCalled()
@@ -352,7 +363,7 @@ describe('FMS catalog activation workspace', () => {
     })
     await mount()
     await preparePreview()
-    await click('啟用此版本')
+    await click('採用此版本')
     const issued = { protocol: PROTOCOL, type: 'issued', nonce: NONCE, operationId: COMMAND_ID, checkpoint }
     await sendMessage(issued)
 
@@ -377,6 +388,6 @@ describe('FMS catalog activation workspace', () => {
 
     expect(mocks.activate).toHaveBeenCalledTimes(1)
     expect(messagesOfType('observe')).toHaveLength(0)
-    expect(host.textContent).not.toContain('角色目錄已啟用。')
+    expect(host.textContent).not.toContain('角色目錄已採用。')
   })
 })

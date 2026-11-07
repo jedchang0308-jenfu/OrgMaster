@@ -21,7 +21,7 @@ export function FmsCatalogActivationWorkspace() {
   const [handoff, setHandoff] = useState<Handoff | null>(null)
   const handoffRef = useRef<Handoff | null>(null)
   const peer = useRef<Window | null>(window.opener)
-  const [reason, setReason] = useState('啟用 FMS 角色目錄')
+  const [reason, setReason] = useState('採用 FMS 角色目錄')
   const [preview, setPreview] = useState<FmsCatalogActivationPreview | null>(null)
   const previewRequest = useRef<FmsCatalogActivationPreviewRequest | null>(null)
   const pending = useRef<Pending | null>(null)
@@ -43,7 +43,7 @@ export function FmsCatalogActivationWorkspace() {
     if (principal) void loadFmsCatalogActivationWorkspace().then(value => {
       if (!current || identity.current !== owner) return
       setWorkspace(value)
-    }).catch(() => { if (current) setError('目前無法讀取角色目錄，請稍後重試。') })
+    }).catch(() => { if (current) setError('角色目錄狀態讀取失敗，請稍後重試。') })
     return () => { current = false; clearIssueTimer() }
   }, [sessionIdentity])
   useEffect(() => {
@@ -67,7 +67,7 @@ export function FmsCatalogActivationWorkspace() {
       if (data.type === 'issue-failed') {
         clearIssueTimer()
         awaitingIssue.current = false
-        setError('尚未取得啟用請求；請回 FMS 查詢原操作結果。'); setBusy(false); setUnknown(true); return
+        setError('尚未取得採用請求；請回 FMS 查詢原操作結果。'); setBusy(false); setUnknown(true); return
       }
       if (data.type !== 'issued' || !awaitingIssue.current || data.operationId !== pending.current.commandId || !object(data.checkpoint)) return
       clearIssueTimer()
@@ -77,11 +77,11 @@ export function FmsCatalogActivationWorkspace() {
       void activateFmsCatalog({ ...original.request, commandId: original.commandId, requestHash: original.requestHash,
         previewHash: original.previewHash, fmsCheckpoint: data.checkpoint }).then(receipt => {
         if (identity.current !== owner) return
-        setMessage(receipt.replayed ? '此版本已啟用。' : '角色目錄已啟用。'); setUnknown(false)
+        setMessage(receipt.replayed ? '此版本已採用。' : '角色目錄已採用。'); setUnknown(false)
         send({ type: 'observe', operationId: original.commandId })
       }).catch(() => {
         if (identity.current !== owner) return
-        pending.current = original; setUnknown(true); setError('啟用結果尚待確認，請查詢原操作。')
+        pending.current = original; setUnknown(true); setError('採用結果尚待確認，請查詢原操作。')
         send({ type: 'observe', operationId: original.commandId })
       }).finally(() => { if (identity.current === owner) setBusy(false) })
     }
@@ -137,16 +137,16 @@ export function FmsCatalogActivationWorkspace() {
       const receipt = await loadFmsCatalogActivationReceipt(original.commandId)
       if (identity.current !== owner) return
       if (receipt.requestHash !== original.requestHash || receipt.previewHash !== original.previewHash || receipt.receiptStatus !== 'applied') throw new Error('RECEIPT_MISMATCH')
-      setMessage(original.request.initializationOperationId ? 'FMS 固定管理目錄已採用，請回平台管理員頁授予 FMS 系統管理員，並等待系統生效。' : '角色目錄已啟用。'); setUnknown(false); pending.current = null
-    } catch { if (identity.current === owner) setError('尚未查到已完成的啟用紀錄；請回 FMS 查詢原操作。') }
+      setMessage(original.request.initializationOperationId ? 'FMS 固定管理目錄已採用，請回平台管理員頁授予 FMS 系統管理員，並等待系統生效。' : '角色目錄已採用。'); setUnknown(false); pending.current = null
+    } catch { if (identity.current === owner) setError('尚未查到已完成的採用紀錄；請回 FMS 查詢原操作。') }
     finally { if (identity.current === owner) {
       send(original.request.initializationOperationId ? { type: 'initialization-adopted', initializationOperationId: original.request.initializationOperationId, orgCommandId: original.commandId } : { type: 'observe', operationId: original.commandId }); setBusy(false)
     } }
   }
   return <main className="fms-role-assignment">
-    <header className="fms-role-assignment__header"><h1>啟用 FMS 角色目錄</h1></header>
-    {!handoff ? <p role="status">{workspace ? '請從 FMS 的角色設定開啟此頁。' : '正在讀取角色目錄…'}</p> : <>
-      <section><h2>待啟用版本</h2><p>發布於 {new Date(handoff.release.createdAt).toLocaleString('zh-TW')}</p><label htmlFor="catalog-reason">變更原因</label>
+    <header className="fms-role-assignment__header"><h1>採用 FMS 角色目錄</h1></header>
+    {!handoff && !error ? <p role="status">{workspace ? '目前沒有待採用版本。請由 FMS 角色設定發起。' : '正在讀取角色目錄狀態…'}</p> : handoff ? <>
+      <section><h2>待採用版本</h2><p>發布於 {new Date(handoff.release.createdAt).toLocaleString('zh-TW')}</p><label htmlFor="catalog-reason">變更原因</label>
         <input id="catalog-reason" value={reason} maxLength={240} disabled={busy || unknown || !!message}
           onChange={event => { setReason(event.target.value); setPreview(null) }} />
         {!unknown && !message && <button disabled={busy || !reason.trim()} onClick={() => void inspect()}>預覽影響</button>}
@@ -157,11 +157,11 @@ export function FmsCatalogActivationWorkspace() {
           {preview.removedRoles.map(role => <li key={'remove-' + role.stableRoleId}>移除：{role.displayName}</li>)}
           {preview.changedRoles.map(role => <li key={role.stableRoleId}>{role.displayName}：新增能力 {role.addedCapabilities.length} 個、移除能力 {role.removedCapabilities.length} 個{role.renamed ? '，名稱變更' : ''}{role.assignmentPolicyChanged ? '，任用規則變更' : ''}</li>)}</ul>
         {!preview.compatible && <p role="alert">仍有任用使用將移除的角色，請先調整任用。</p>}
-        {preview.alreadyActive && <p role="status">此版本已啟用。</p>}
-        {!message && !unknown && <button disabled={busy || !preview.allowedOperations.activate} onClick={activate}>啟用此版本</button>}
+        {preview.alreadyActive && <p role="status">此版本已採用。</p>}
+        {!message && !unknown && <button disabled={busy || !preview.allowedOperations.activate} onClick={activate}>採用此版本</button>}
       </section>}
       {unknown && <button disabled={busy} onClick={() => void observe()}>查詢原操作</button>}
-    </>}
+    </> : null}
     {workspace?.initializationAdoption?.status === 'owner_readback_unavailable' && <p role="status">FMS 首次管理目錄尚待 owner 來源驗證連線，請待連線就緒後再採用。</p>}
     {busy && <p role="status">處理中…</p>}{error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
   </main>
