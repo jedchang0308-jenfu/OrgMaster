@@ -594,4 +594,4 @@ Org 3d395ab 的正常 owner release 已套用048、正式 ledger44。AI-PDM 5d23
 
 同一正式來源另觀察到本人 `GET /api/orgmaster/governance/session` 503，與上述 PDM SQL timeout 分開保留。相同 revision 的 current workspace 讀取成功，隔離 native root 寫入／JS 讀取證明可在有效目錄下成功；正式失敗階段尚未定位。本次只為已驗證的非沙盒 session GET 加入有界診斷，每次失敗一筆，僅含固定 stage、錯誤分類及固定驗證代碼，不記錄身分、資料、路徑、SQL、message 或 stack。既有 503 回應、判權、資料及寫入流程不變。
 
-本機 owner Node 與 tool rotation regression、DB boundary、上述診斷 middleware regression 及 TypeScript 檢查已通過。此機隔離 PostgreSQL fixture 在啟動前被容量保護拒絕；未放寬門檻。既有 required CI 的 disposable PG18 步驟另執行實際 044／049 SQL、11 組資格案例與 ACL metadata 比較；上游 account／grant 投影是明示 ABI fixture。包含真實上游 reader 的 048／049 較大 fixture 與效能觀察仍待另行執行。049 尚未套用正式，也未重新初始化本人或寫入新授權。
+本機 owner Node 與 tool rotation regression、DB boundary、上述診斷 middleware regression 及 TypeScript 檢查已通過。此機隔離 PostgreSQL fixture 在啟動前被容量保護拒絕；未放寬門檻。既有 required CI 的 disposable PG18 步驟另執行實際 044／049 SQL、11 組資格案例與 ACL metadata 比較；上游 account／grant 投影是明示 ABI fixture。同一既有 CI service 的另一個明確標記 DB 另安裝完整 047／048／049 reader，並以固定上游資料／PDM 合約 fixture 驗 13 組 048→049 授權及錯誤結果、ACL 和 metadata；不是正式效能或真實跨 App 資料驗收。較大本機 fixture 與效能觀察保持未執行。049 尚未套用正式，也未重新初始化本人或寫入新授權。
