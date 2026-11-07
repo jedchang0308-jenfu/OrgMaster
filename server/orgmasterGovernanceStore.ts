@@ -14,7 +14,7 @@ import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceA
 import { OrgmasterPersistenceError, currentPersistenceTransactionDatabase, withPersistenceTransaction, persistenceArtifactExists, readPersistenceArtifact, usesCloudSqlPersistence, warnOrgmasterLocalPersistenceDiagnostic, writePersistenceArtifacts, type OrgmasterLocalPersistenceDiagnosticStage, type PersistenceEntitlementChange } from './orgmasterPersistenceRepository'
 import { assertMigrationWritesAllowed } from './orgmasterMigrationGate'
 import { recordGovernanceSessionReadFailure, type GovernanceSessionReadStage } from './orgmasterGovernanceReadDiagnostic'
-import { storedGovernanceCatalogs, isGovernanceReduction, withPublishedGovernanceHistory } from './governanceReduction'
+import { storedGovernanceCatalogs, isGovernanceReduction, sameGovernancePolicy, withPublishedGovernanceHistory } from './governanceReduction'
 import { readHistoricalAiPdmRoleCatalogFromDatabase } from './aiPdmRoleCatalogRepository'
 import { assertCurrentGovernanceWriteActor, GovernanceWriteActorError } from './orgmasterGovernanceWriteActor'
 import { administrationPolicy, administrationHash, assertAdministrativeContinuity, hasAdministrativeGrant } from '../src/governance/administration'
@@ -217,11 +217,11 @@ async function readV3Raw(root: string): Promise<GovernanceStoreRead> {
     throw new GovernanceStoreError('GOVERNANCE_READ_FAILED')
   }
 }
-function governanceCatalogsWithHistory(document: GovernanceDocumentV3, catalogs: ExternalRoleCatalogSnapshotV1[]) {
+function governanceCatalogsWithHistory(document: GovernanceDocumentV3, catalogs: ExternalRoleCatalogSnapshotV1[], preferCurrentApplications: readonly string[] = []) {
   return withPersistenceTransaction(() => withPublishedGovernanceHistory(document, catalogs, usesCloudSqlPersistence() ? async version => {
     const history = await readHistoricalAiPdmRoleCatalogFromDatabase(currentPersistenceTransactionDatabase(), version)
     return createAiPdmRoleCatalog('valid', history.publishedAt, history)
-  } : undefined))
+  } : undefined, { preferCurrentApplications }))
 }
 export function syncOrgMasterSystemCatalog(document: GovernanceDocumentV3, now = new Date().toISOString()) {
   const permissions = [...document.draft.permissions]
@@ -344,6 +344,10 @@ export async function readGovernanceCommandResult(root: string, commandId: strin
 
 export function assertDynamicCatalogBinding(catalog: ExternalRoleCatalogSnapshotV1, context: GovernanceWriteContext) {
   if (catalog.publicationFormat !== 'dynamic-policy-v1'&&catalog.publicationFormat!=='dynamic-policy-v2') return
+  assertExactCatalogBinding(catalog, context)
+}
+
+function assertExactCatalogBinding(catalog: ExternalRoleCatalogSnapshotV1, context: GovernanceWriteContext) {
   const expected = context.expectedCatalog
   if (!expected || !/^[a-f0-9]{64}$/u.test(expected.catalogSha256) ||
     expected.catalogVersion !== catalog.catalogVersion || expected.catalogSha256 !== (catalog.catalogSha256 ?? catalog.payloadHash)) {
@@ -449,11 +453,23 @@ export async function publishGovernance(root: string, expectedRevision: string, 
     if (!actorHasDraftPermission(current.document, actor, 'orgmaster.governance.publish', now)) throw new GovernanceStoreError('GOVERNANCE_PUBLISH_REQUIRED')
     if (!actorHasDraftPermission(current.document, actor, 'orgmaster.governance.manage', now)) throw new GovernanceStoreError('GOVERNANCE_ADMIN_CONTINUITY_REQUIRED')
     const active = current.document.publishedVersions.find(version => version.id === current.document.activePolicyVersionId)
+    const policyUnchanged = active?.kind === 'assignment-governance-v3' && sameGovernancePolicy(active.policy, current.document.draft)
     const reduction = active?.kind === 'assignment-governance-v3' && isGovernanceReduction(active.policy, current.document.draft)
-    const ownedCatalogs = reduction ? storedGovernanceCatalogs(current.document) : null
-    const catalogs = await governanceCatalogsWithHistory(current.document, ownedCatalogs ?? [await readActiveAiPdmRoleCatalog(root)])
-    const currentAiPdmCatalog = catalogs.find(value => value.applicationId === 'ai-pdm')
-    if (!reduction && currentAiPdmCatalog && current.document.draft.roleAssignments.some(value => value.applicationId === 'ai-pdm' && value.status === 'active')) assertDynamicCatalogBinding(currentAiPdmCatalog, context)
+    let catalogs: ExternalRoleCatalogSnapshotV1[]
+    if (policyUnchanged && context.expectedCatalog) {
+      const currentAiPdmCatalog = await readActiveAiPdmRoleCatalog(root)
+      assertExactCatalogBinding(currentAiPdmCatalog, context)
+      const storedCatalogs = storedGovernanceCatalogs(current.document) ?? []
+      catalogs = await governanceCatalogsWithHistory(current.document, [
+        currentAiPdmCatalog,
+        ...storedCatalogs.filter(value => value.applicationId !== 'ai-pdm'),
+      ], ['ai-pdm'])
+    } else {
+      const ownedCatalogs = reduction ? storedGovernanceCatalogs(current.document) : null
+      catalogs = await governanceCatalogsWithHistory(current.document, ownedCatalogs ?? [await readActiveAiPdmRoleCatalog(root)])
+      const currentAiPdmCatalog = catalogs.find(value => value.applicationId === 'ai-pdm')
+      if (!reduction && currentAiPdmCatalog && current.document.draft.roleAssignments.some(value => value.applicationId === 'ai-pdm' && value.status === 'active')) assertDynamicCatalogBinding(currentAiPdmCatalog, context)
+    }
     const issues = validateDocumentV3(current.document, source, catalogs)
     if (issues.length) throw new GovernanceValidationError(issues)
     if (current.document.migration.unresolvedAssignments.length || current.document.migration.unresolvedDelegations.length) throw new GovernanceStoreError('LEGACY_MIGRATION_UNRESOLVED')

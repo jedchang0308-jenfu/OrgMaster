@@ -613,3 +613,15 @@ Org 3d395ab 的正常 owner release 已套用048、正式 ledger44。AI-PDM 5d23
 唯一新增來源 `db/dev-010/072_local_orgmaster_persistence_compatibility.sql` 為 neutral local bootstrap。normal owner plan 的 `ownershipBootstrap.compatibility` 綁 exact path、raw 與 unwrapped SHA，既有計畫及收據仍由原 plan SHA 驗證。沿原本 verified local owner、loopback 目標、OS postmaster、ledger、runtime 及 advisory lock，在原交易內先執行未變更的 071 並讀到本次 owner bootstrap 收據，再執行 072。072 校驗本次 plan／收據、三支既有 wrapper 的 owner、委派內容與固定 search path。只補 NOLOGIN migrator 對既有相容 schema 的 USAGE 和三支必要函式的 EXECUTE，同時撤回 runtime／PUBLIC 對兩支舊寫入函式的 EXECUTE，讀回當前 runtime login 的實際拒絕結果。既有 core reader、v3 writer、函式內容與歷史 owner 保持，未新增 runtime 授權或搬移資料。
 
 072 不列正式 migration manifest、不改 070／071／046 或已套用 ledger。失敗由正常 owner 交易整體回復，未知 COMMIT 沿原 immutable receipt status 讀回。隔離 Windows PostgreSQL 18.4 已用實際 071／072 source 與明示 fixture 通過八項對照，涵蓋正常 runtime 讀取、兩支 legacy writer 從可用到拒絕、ABI 漂移、NOLOGIN 及未觸及的 ACL／owner。這次驗證未寫入任務原資料庫。既有 v3 writer 契約仍由原 DEV-070 原生項目驗證，正式 503 依原 owner release 路徑獨立追查。
+
+## 32. 角色目錄與管理授權治理精簡（2026-11-07）
+
+正常人員流程只保留兩個責任不同的動作：先在「發布版本」採用已驗證的應用角色目錄並發布，再於「平台管理員」授予該應用的 `application_system_admin`。目錄版本／內容雜湊／受保護角色定義雜湊仍是必要安全不變條件；管理授權仍須預覽、recent-auth、既有 root continuity 與 commit readback。不得把兩者合成無預覽的 allow-all，也不得讓 app-admin 取得財務業務角色。
+
+目錄採用不再依賴 FMS 專屬的使用者「安裝」關卡。首次 FMS owner handoff／activation API 保留為既有環境 bootstrap 與收據相容路徑，由 owner／release workflow 負責，不再出現在一般平台管理員正常操作中；當中央尚未接受 FMS 目錄時，管理頁只明示「尚未由系統發布流程採用」，不把安裝工作轉交使用者。待所有受支援環境均由 owner workflow 自動產生 accepted binding、且沒有未完成的舊 handoff／receipt 後，刪除該相容 UI 與專屬 activation endpoint；在此之前不得建立第二套 binding 或重寫舊收據。
+
+通用發布頁把「角色指派差異」與「目前 producer 目錄相對 active publication 的差異」合成一個待發布清單。完全相同 policy 但帶精確 `expectedCatalog` 時，只替換該 producer 的 current catalog；其他應用目錄沿 active audit-bound snapshot，仍保留被草稿引用的歷史版本。真實撤權／縮權維持 producer 離線可發布，不讀 current catalog；沒有精確 tuple 的相同 policy 發布不採用新目錄。UI 不得再把 catalog drift 顯示成「0 筆變更」。
+
+本節有意收斂 §151「同 snapshot／不容 publication TOCTOU」的適用範圍：一次採用必須把實際讀到的 immutable catalog version、內容雜湊、protected role definition hash 與發布快照綁在同一 OrgMaster transaction，不能把 UI 傳入值當成 catalog 內容；但不要求以跨 owner 鎖把 producer 的 active pointer 凍結到 OrgMaster commit。active pointer 在讀取後前進，只代表下一個待採用更新，不能改寫或污染本次已驗證 artifact；強制 commit 瞬間仍為 producer current 無法提供持續不變條件，卻會新增跨專案鎖與失敗耦合，因此不是發布 gate。
+
+既有 FMS 五項 `catalog.read/edit/publish/import/activate` 管理 grant 若已有效則重用，不因新 app-admin 再授一次；其長期用途限於舊 FMS 目錄維護相容。新的管理資格以 application admin grant 及受保護角色定義為唯一權威。AI-PDM 與 FMS 對同一 Principal 的兩項 app-admin 可共用一次人類 action-time 確認，但仍各自產生可讀回的 app owner acknowledgment；任何一項失敗不得被另一項成功掩蓋。
