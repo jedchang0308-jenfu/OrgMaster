@@ -1,4 +1,4 @@
-import type { ExternalRoleCatalogSnapshotV1 } from './types'
+import type { ExternalRoleCatalogRoleV1, ExternalRoleCatalogSnapshotV1 } from './types'
 
 export const FINANCIAL_APPLICATION_ID = 'financial-management-system' as const
 export const FINANCIAL_CATALOG_VERSION = 'financial-management-system.role-catalog.2026-11-05.v5' as const
@@ -6,6 +6,27 @@ export const FINANCIAL_CATALOG_SHA256 = '7ba0b947b596ad90bc6078febff979b3204545c
 export const FINANCIAL_ROLE_IDS = ['role-owner', 'role-finance-manager', 'role-finance-staff', 'role-sales', 'role-procurement', 'role-viewer','role-system-admin'] as const
 export const FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH='2a8ab5c084e00f9cd1f9a87e193d1269ea85c80eb66fba78c1b6ab2ab467ce11'
 export const FINANCIAL_ADMINISTRATIVE_CAPABILITIES=['finance.capability_catalog.view','finance.role_assignment.manage','finance.users.manage'] as const
+
+/**
+ * A trusted old FMS catalog proves only the immutable snapshot recorded on an
+ * existing assignment. The current catalog still decides whether the stable
+ * role is active, assignable and compatible with the assignment scope.
+ */
+export function historicalFinancialRoleSnapshotMatches(value: {
+  catalogVersion: string | null; roleId: string; roleCodeSnapshot: string;
+  roleNameSnapshot: string; scope: { kind: string }
+}, currentRole: ExternalRoleCatalogRoleV1 | undefined, trustedHistory: ExternalRoleCatalogSnapshotV1[] = []) {
+  if (!currentRole || !value.catalogVersion) return false
+  const snapshot = trustedHistory.find(entry => entry.applicationId === FINANCIAL_APPLICATION_ID
+    && entry.catalogVersion === value.catalogVersion)
+  if (!snapshot || validateFinancialExternalRoleCatalog(snapshot).length) return false
+  const historicalRole = snapshot.roles.find(entry => entry.stableRoleId === value.roleId)
+  return !!historicalRole
+    && historicalRole.code === value.roleCodeSnapshot
+    && historicalRole.displayName === value.roleNameSnapshot
+    && historicalRole.allowedScopeKinds.includes(value.scope.kind as 'workspace' | 'project' | 'global')
+    && currentRole.allowedScopeKinds.includes(value.scope.kind as 'workspace' | 'project' | 'global')
+}
 
 export function validateFinancialExternalRoleCatalog(snapshot: ExternalRoleCatalogSnapshotV1) {
   const issues: Array<{ code: string; path: string; message: string }> = []
