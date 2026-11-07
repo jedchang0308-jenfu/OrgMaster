@@ -4,7 +4,7 @@ import { generateKeyPairSync, sign } from 'node:crypto'
 import fs from 'node:fs'
 import { canonicalize } from './lib/dev012-owner-release-runtime.mjs'
 import { assertOwnerProfile, assertOwnerSourceFence, createdSecretVersion, firebaseApi, githubSecretMetadataCurrent, secretVersion, verifyOldPair } from './dev057-smoke-credential-reauth.mjs'
-import { assertReleasedSmokeRotationBaseline, smokeRotationBaselineVersion, validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
+import { assertReleasedSmokeRotationBaseline, smokeRotationBaselineVersion, smokeRotationToolAdmissionIntent, validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
 import {
   EXPECTED, REAUTH_SCHEMA, ReauthError, admitLocalRequest, assertResumeReceipt, parseResumeReceiptRef, assertFreshAuthTime, assertPlatformMe, buildReauthReceipt,
   identityPairHash, localPageSecurityHeaders, localRequestDenial, parseReauthArguments, resolveVersionBinding,
@@ -92,6 +92,21 @@ test('released smoke rotation baseline supersedes older tool state only after se
   assert.throws(() => smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
     continuation: { evidenceScope: 'UNVERIFIED', infraReceiptRef: ref, newVersion: '13' } }),
   /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
+})
+
+test('smoke rotation joins the resolved service baseline instead of its older predecessor', () => {
+  const predecessor = { uri: 'gs://bucket/receipts/releases/PREV/release-intent.json', sha256: 'a'.repeat(64) }
+  const resolved = { uri: 'gs://bucket/receipts/releases/ACTIVE/release-intent.json', sha256: 'b'.repeat(64) }
+  const tool = { uri: 'gs://bucket/receipts/tool-rotations/source/app-infra.json', sha256: 'c'.repeat(64) }
+  const intent = smokeRotationToolAdmissionIntent({
+    baselineIntent: { baselineIntentRef: predecessor, infraReceiptRef: { uri: 'old', sha256: 'd'.repeat(64) } },
+    baselineIntentRef: resolved,
+    sourceRevision: 'e'.repeat(40),
+    toolRotationRef: tool,
+  })
+  assert.deepEqual(intent.baselineIntentRef, resolved)
+  assert.deepEqual(intent.infraReceiptRef, tool)
+  assert.equal(intent.sourceRevision, 'e'.repeat(40))
 })
 
 test('released smoke baseline requires its released ref, original tool proof and official ancestor source', () => {
