@@ -595,3 +595,11 @@ Org 3d395ab 的正常 owner release 已套用048、正式 ledger44。AI-PDM 5d23
 同一正式來源另觀察到本人 `GET /api/orgmaster/governance/session` 503，與上述 PDM SQL timeout 分開保留。相同 revision 的 current workspace 讀取成功，隔離 native root 寫入／JS 讀取證明可在有效目錄下成功；正式失敗階段尚未定位。本次只為已驗證的非沙盒 session GET 加入有界診斷，每次失敗一筆，僅含固定 stage、錯誤分類及固定驗證代碼，不記錄身分、資料、路徑、SQL、message 或 stack。既有 503 回應、判權、資料及寫入流程不變。
 
 本機 owner Node 與 tool rotation regression、DB boundary、上述診斷 middleware regression 及 TypeScript 檢查已通過。此機隔離 PostgreSQL fixture 在啟動前被容量保護拒絕；未放寬門檻。既有 required CI 的 disposable PG18 步驟另執行實際 044／049 SQL、11 組資格案例與 ACL metadata 比較；上游 account／grant 投影是明示 ABI fixture。同一既有 CI service 的另一個明確標記 DB 另安裝完整 047／048／049 reader，並以固定上游資料／PDM 合約 fixture 驗 13 組 048→049 授權及錯誤結果、ACL 和 metadata；不是正式效能或真實跨 App 資料驗收。較大本機 fixture 與效能觀察保持未執行。049 尚未套用正式，也未重新初始化本人或寫入新授權。
+
+## 31. 地端持久化相容 ACL（forward072）
+
+原任務地端 PostgreSQL 上，4acfcf7 的 runtime 身分沿 `readExistingGovernanceStore` 讀取既存治理文件時，在 `persistence_artifact_read` 失敗。read-only native transaction 另證實治理及組織 workspace 的同一 wrapper 均回 `42501 permission denied for schema orgmaster`。071 已將三支 `orgmaster_core` wrapper 交予 `jenfu_orgmaster_migrator`，該角色沒有歷史 `orgmaster` 相容 schema 的 USAGE 與三支被委派函式的 EXECUTE。地端舊兩支寫入函式也仍可由 runtime 直接執行，繞開 045 指定的 v3 actor fence。地端 readback 僅記 ABI 與權限布林值，未擷取文件或執行寫入。正式原 revision 的管理頁 503 仍需獨立定位。
+
+唯一新增來源 `db/dev-010/072_local_orgmaster_persistence_compatibility.sql` 為 neutral local bootstrap。normal owner plan 的 `ownershipBootstrap.compatibility` 綁 exact path、raw 與 unwrapped SHA，既有計畫及收據仍由原 plan SHA 驗證。沿原本 verified local owner、loopback 目標、OS postmaster、ledger、runtime 及 advisory lock，在原交易內先執行未變更的 071 並讀到本次 owner bootstrap 收據，再執行 072。072 校驗本次 plan／收據、三支既有 wrapper 的 owner、委派內容與固定 search path。只補 NOLOGIN migrator 對既有相容 schema 的 USAGE 和三支必要函式的 EXECUTE，同時撤回 runtime／PUBLIC 對兩支舊寫入函式的 EXECUTE，讀回當前 runtime login 的實際拒絕結果。既有 core reader、v3 writer、函式內容與歷史 owner 保持，未新增 runtime 授權或搬移資料。
+
+072 不列正式 migration manifest、不改 070／071／046 或已套用 ledger。失敗由正常 owner 交易整體回復，未知 COMMIT 沿原 immutable receipt status 讀回。隔離 Windows PostgreSQL 18.4 已用實際 071／072 source 與明示 fixture 通過八項對照，涵蓋正常 runtime 讀取、兩支 legacy writer 從可用到拒絕、ABI 漂移、NOLOGIN 及未觸及的 ACL／owner。這次驗證未寫入任務原資料庫。既有 v3 writer 契約仍由原 DEV-070 原生項目驗證，正式 503 依原 owner release 路徑獨立追查。

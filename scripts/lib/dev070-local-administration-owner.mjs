@@ -8,6 +8,7 @@ import {assertDev070MigrationEntries} from './dev070-administration-migration.mj
 import {unwrapMigrationTransaction} from './dev040-orgmaster-independent-release.mjs'
 export const LOCAL_BRIDGE_PATH='db/migrations/local/046_dev070_local_administration_bridge_v1.sql'
 export const LOCAL_OWNER_BOOTSTRAP_PATH='db/dev-010/071_local_orgmaster_administration_owner_bootstrap_v2.sql'
+export const LOCAL_PERSISTENCE_COMPATIBILITY_PATH='db/dev-010/072_local_orgmaster_persistence_compatibility.sql'
 export const OWNER_BOOTSTRAP_SIGNATURES=['orgmaster_core.read_active_persistence_artifact_v1(text)','orgmaster_core.read_active_persistence_authority_v1()','orgmaster_core.write_active_persistence_artifacts_v1(jsonb,text,text,text)']
 export const OWNER_EMAIL='dev010-orgmaster-migrator@jenfu-platform-nonprod.iam.gserviceaccount.com'
 export const OWNER_SUBJECT='109035753048386897825'
@@ -38,15 +39,18 @@ export async function readLocalOwnerSource(context){
  }
  const localBytes=await readFile(path.join(root,LOCAL_BRIDGE_PATH)),localSql=unwrapMigrationTransaction(localBytes)
  const bootstrapBytes=await readFile(path.join(root,LOCAL_OWNER_BOOTSTRAP_PATH)),ownershipSql=unwrapMigrationTransaction(bootstrapBytes)
+ const compatibilityBytes=await readFile(path.join(root,LOCAL_PERSISTENCE_COMPATIBILITY_PATH))
+ const compatibilitySql=unwrapMigrationTransaction(compatibilityBytes)
+ const compatibility={path:LOCAL_PERSISTENCE_COMPATIBILITY_PATH,sourceSha256:localOwnerHash(compatibilityBytes),appliedSha256:localOwnerHash(compatibilitySql)}
  const git=args=>execFileSync('git',args,{cwd:root,encoding:'utf8',windowsHide:true,maxBuffer:8*1024*1024})
  const sourceRevision=git(['rev-parse','HEAD']).trim(),dirty=git(['diff','--binary','HEAD'])
  if(!/^[a-f0-9]{40}$/u.test(sourceRevision))fail('SOURCE_MISMATCH')
- const ownPaths=['scripts/dev070-local-administration-owner.mjs','scripts/lib/dev070-local-administration-owner.mjs','server/orgmasterLocalAdministrationRuntime.ts',LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTSTRAP_PATH]
+ const ownPaths=['scripts/dev070-local-administration-owner.mjs','scripts/lib/dev070-local-administration-owner.mjs','server/orgmasterLocalAdministrationRuntime.ts',LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTSTRAP_PATH,LOCAL_PERSISTENCE_COMPATIBILITY_PATH]
  const inputs=await Promise.all(ownPaths.map(async p=>[p,localOwnerHash(await readFile(path.join(root,p)))]))
  const neutralPaths=['scripts/lib/dev021-local-postgres-cluster.mjs','scripts/lib/dev-local-process-ownership.mjs']
  const neutral=await Promise.all(neutralPaths.map(async p=>{const filename=path.join(context.platformRoot,p);if((await lstat(filename)).isSymbolicLink()||await realpath(filename)!==filename)fail('NEUTRAL_SOURCE_INVALID');return [p,localOwnerHash(await readFile(filename))]}))
  const sourceSha256=localOwnerHash({sourceRevision,dirty,inputs,neutral,migrations:migrations.map(({sql,...v})=>v)})
- return {sourceRevision,sourceSha256,workingTreeClean:git(['status','--porcelain','-uall']).trim()==='',entries,migrations,localMigration:{path:LOCAL_BRIDGE_PATH,sourceSha256:localOwnerHash(localBytes),appliedSha256:localOwnerHash(localSql)},ownershipBootstrap:{path:LOCAL_OWNER_BOOTSTRAP_PATH,sourceSha256:localOwnerHash(bootstrapBytes),appliedSha256:localOwnerHash(ownershipSql)},ownershipSql,localSql,neutral}
+ return {sourceRevision,sourceSha256,workingTreeClean:git(['status','--porcelain','-uall']).trim()==='',entries,migrations,localMigration:{path:LOCAL_BRIDGE_PATH,sourceSha256:localOwnerHash(localBytes),appliedSha256:localOwnerHash(localSql)},ownershipBootstrap:{path:LOCAL_OWNER_BOOTSTRAP_PATH,sourceSha256:localOwnerHash(bootstrapBytes),appliedSha256:localOwnerHash(ownershipSql),compatibility},ownershipSql,compatibilitySql,localSql,neutral}
 }
 /** Only the explicitly selected existing neutral cluster inspector is imported. */
 export async function inspectLocalOwnerCluster(context,source){
@@ -144,6 +148,7 @@ export async function commitLocalOwnerBridge({client,context,source,plan,ownerPr
   if(!operator||operator.session_user!=='postgres'||operator.current_user!=='postgres'||operator.rolsuper!==true)fail('OPERATOR_INVALID')
   await client.query("SELECT set_config('orgmaster.dev070.local_owner_plan',$1,true)",[JSON.stringify(plan)])
   await client.query(source.ownershipSql)
+  await client.query(source.compatibilitySql)
   await client.query('SET SESSION AUTHORIZATION jenfu_orgmaster_migrator')
   await assertOwnerSession(client,context.config.target)
   for(const entry of facts.disposition.pending){const migration=source.migrations.find(e=>e.version===entry.version);if(!migration)fail('MIGRATION_UNAVAILABLE');await client.query(migration.sql);await client.query('INSERT INTO orgmaster_core.schema_migrations(version,name,checksum_sha256,source_revision) VALUES($1,$2,$3,$4)',[migration.version,migration.name,migration.appliedSha256,source.sourceRevision])}
