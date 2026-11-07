@@ -94,8 +94,12 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const draft = snapshot?.document?.draft ?? null
   const catalogs = snapshot?.catalogs ?? []
   const catalog = catalogs.find((entry) => entry.applicationId === 'ai-pdm')
-  const expectedCatalog = catalog&&['dynamic-policy-v1','dynamic-policy-v2'].includes(catalog.publicationFormat??'')
+  const catalogReady = catalog?.validationState === 'valid'
+  const publicationCatalog = catalogReady
     ? { catalogVersion: catalog.catalogVersion, catalogSha256: catalog.catalogSha256 ?? catalog.payloadHash }
+    : undefined
+  const expectedCatalog = catalog && ['dynamic-policy-v1', 'dynamic-policy-v2'].includes(catalog.publicationFormat ?? '')
+    ? publicationCatalog
     : undefined
   const actorPrincipalId = actor.principalId
   currentActorRef.current = actorPrincipalId
@@ -105,7 +109,6 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     setUnconfirmedCommand(null)
   }, [actorPrincipalId])
   const identityLinks = draft?.identityLinks ?? []
-  const catalogReady = catalog?.validationState === 'valid'
   const identityMutationAllowed = workspaceMutationAllowed && allows('orgmaster.governance.manage') && !mobileReadOnly && !unconfirmedCommand
   const mutationAllowed = identityMutationAllowed && catalogReady
   const internalRoles = useMemo(() => draft?.applicationRoles.filter((role) => role.applicationId === 'orgmaster' && role.status === 'active') ?? [], [draft])
@@ -182,6 +185,13 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   const publishedPolicy = snapshot?.document.publishedVersions.find((version) => version.id === document.activePolicyVersionId)
   const assignmentComparisonAvailable = Boolean(publishedPolicy && publishedPolicy.kind !== 'legacy-policy-v1' && currentGovernanceVersion)
   const pendingAssignmentChanges = draft && assignmentComparisonAvailable ? governanceAssignmentChanges(draft.roleAssignments, publishedPolicy!.policy.roleAssignments) : []
+  const publishedAiPdmCatalog = publishedPolicy && publishedPolicy.kind !== 'legacy-policy-v1'
+    ? (publishedPolicy as typeof publishedPolicy & { externalRoleCatalogs: ExternalRoleCatalogSnapshotV1[] })
+      .externalRoleCatalogs.find((entry) => entry.applicationId === 'ai-pdm')
+    : undefined
+  const catalogUpdatePending = Boolean(publicationCatalog && (!publishedAiPdmCatalog ||
+    publishedAiPdmCatalog.catalogVersion !== publicationCatalog.catalogVersion ||
+    (publishedAiPdmCatalog.catalogSha256 ?? publishedAiPdmCatalog.payloadHash) !== publicationCatalog.catalogSha256))
   const recommendationRole = externalRoles.find(role => role.stableRoleId === assignmentRoleId)
   const recommendationRequest = useMemo<EmployeeRecommendationRequest | null>(() => {
     const from = Date.parse(assignmentValidFrom), to = assignmentValidTo ? Date.parse(assignmentValidTo) : null
@@ -344,7 +354,7 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
     if (commandPendingRef.current || unconfirmedRef.current) return
     if (!currentOrganizationVersionId || !publishReason.trim() || publishBlockers.length) { recordFailure({ code: publishBlockers.length ? 'GOVERNANCE_VALIDATION_FAILED' : 'ORGANIZATION_VERSION_INVALID', issues: publishBlockers.map(blocker => ({ code: blocker.code, message: blocker.message })) }); return }
     const commandId = crypto.randomUUID()
-    const boundCatalog = expectedCatalog ? { ...expectedCatalog } : undefined
+    const boundCatalog = publicationCatalog ? { ...publicationCatalog } : undefined
     const send = () => publishGovernancePolicy(revision, commandId, publishReason.trim(), currentOrganizationVersionId, currentOrganizationRevision ?? undefined, boundCatalog)
     const pending = { commandId, actorPrincipalId, operation: 'PUBLISH_ASSIGNMENTS', retrySend: send }
     commandPendingRef.current = true; setBusy(true); clearFeedback()
@@ -456,10 +466,11 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
 {draft && section === 'delegation' && <section className="governance-section"><SectionHeading eyebrow="Role delegation" title="角色代理" count={`${draft.roleDelegations.length} 筆`} />{mutationAllowed && <div className="governance-assignment-form"><label>來源指派<select value={delegationSourceId} onChange={(event) => { setDelegationSourceId(event.target.value); setDelegationToEmployeeId('') }} disabled={busy}><option value="">選擇外部角色指派</option>{delegationSourceAssignments.map((assignment) => <option key={assignment.id} value={assignment.id}>{employeeName(employees, assignment.employeeId)} · {roleLabel(catalogs, draft, assignment)}</option>)}</select></label><label>代理員工<select value={delegationToEmployeeId} onChange={(event) => setDelegationToEmployeeId(event.target.value)} disabled={busy || !delegationSource}><option value="">選擇員工</option>{delegationRecipients.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label><label>代理截止<input type="datetime-local" value={delegationValidTo} onChange={(event) => setDelegationValidTo(event.target.value)} disabled={busy || !delegationSource} /></label><label>原因<input value={delegationReason} onChange={(event) => setDelegationReason(event.target.value)} maxLength={240} disabled={busy || !delegationSource} /></label><button type="button" className="button button--primary" onClick={submitDelegation} disabled={busy || !delegationSource}>建立代理</button></div>}{draft.roleDelegations.length ? <div className="governance-card-grid">{draft.roleDelegations.map((delegation) => <article className="governance-card" key={delegation.id}><strong>{employeeName(employees, delegation.fromEmployeeId)} → {employeeName(employees, delegation.toEmployeeId)}</strong><small>{roleLabel(catalogs, draft, { ...delegation, roleCodeSnapshot: '', roleNameSnapshot: '', employeeId: delegation.fromEmployeeId, status: delegation.status } as GovernanceRoleAssignmentV2)} · {scopeLabel(delegation.scope)}</small><span>{delegation.validFrom.slice(0, 10)} ～ {delegation.validTo.slice(0, 10)} · 尚未同步</span></article>)}</div> : <p className="governance-empty">尚無角色代理</p>}</section>}
 {draft && section === 'versions' && <section className="governance-section">
   <SectionHeading eyebrow="角色指派發布紀錄 · 台北時間" title="發布版本" count={versions.length + ' 筆'} />
-  <section className="governance-version-draft" aria-label="待發布角色指派">
-    <h3>待發布角色指派{assignmentComparisonAvailable && <span>{pendingAssignmentChanges.length} 筆變更</span>}</h3>
+  <section className="governance-version-draft" aria-label="待發布變更">
+    <h3>待發布變更{assignmentComparisonAvailable && <span>{pendingAssignmentChanges.length + (catalogUpdatePending ? 1 : 0)} 項</span>}</h3>
+    {catalogUpdatePending && <p className="governance-muted" role="status">AI-PDM 角色目錄待採用更新：{publishedAiPdmCatalog?.catalogVersion ?? '尚未採用'} → {catalog?.catalogVersion}</p>}
     {(!assignmentComparisonAvailable || pendingAssignmentChanges.length > 0) && <p className="governance-muted">新增設定先保存為草稿；發布新版本後，才能在該版本查看。</p>}
-    {assignmentComparisonAvailable ? pendingAssignmentChanges.length ? <AssignmentPreview employees={employees} departments={departments} entries={pendingAssignmentChanges} /> : <p className="governance-empty">角色指派與目前使用的版本相同。</p> : <>
+    {assignmentComparisonAvailable ? pendingAssignmentChanges.length ? <AssignmentPreview employees={employees} departments={departments} entries={pendingAssignmentChanges} /> : !catalogUpdatePending && <p className="governance-empty">角色指派與角色目錄皆和目前使用的版本相同。</p> : <>
       <p className="governance-muted">{document.activePolicyVersionId ? publishedPolicy?.kind === 'legacy-policy-v1' ? '目前使用的是舊版紀錄，以下僅列草稿，無法直接比對指派變更。' : '目前版本的指派內容未完整載入，以下僅列草稿，暫時無法判斷變更。' : '尚未選用發布版本，以下為草稿中的角色指派。'}</p>
       <AssignmentPreview employees={employees} departments={departments} entries={draft.roleAssignments.map((assignment) => ({ kind: '草稿', assignment }))} />
     </>}
@@ -473,8 +484,8 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
   </div> : <p className="governance-empty">尚未選用發布版本</p>}
   <p className="governance-muted">外部系統的實際權限需至該系統確認。</p>
   {publishMutationAllowed && <div className="governance-publish-box">
-    <label>發布原因<input value={publishReason} onChange={(event) => setPublishReason(event.target.value)} maxLength={240} placeholder="說明這次角色指派變更" /></label>
-    <button type="button" className="button button--primary" onClick={() => void publish()} disabled={busy || publishBlockers.length > 0 || !publishReason.trim()}>發布新版本</button>
+    <label>發布原因<input value={publishReason} onChange={(event) => setPublishReason(event.target.value)} maxLength={240} placeholder="說明這次角色指派或角色目錄變更" /></label>
+    <button type="button" className="button button--primary" onClick={() => void publish()} disabled={busy || publishBlockers.length > 0 || !publishReason.trim()}>{catalogUpdatePending ? '採用目錄並發布' : '發布新版本'}</button>
   </div>}
   {publishMutationAllowed && publishBlockers.length > 0 && <button type="button" className="governance-publish-readiness" onClick={() => changeSection(publishBlockers[0].section)}>
     <AlertTriangle size={14} />發布前還有 {publishBlockers.length} 項設定

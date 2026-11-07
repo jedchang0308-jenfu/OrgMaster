@@ -266,14 +266,15 @@ describe('governance command recovery', () => {
     mocks.loadGovernanceCommandResult.mockImplementation(async (commandId: string) => commandResponse(commandId, 'PUBLISH_ASSIGNMENTS'))
 
     await mount('versions')
-    const reason = host.querySelector<HTMLInputElement>('input[placeholder="說明這次角色指派變更"]')!
+    const reason = host.querySelector<HTMLInputElement>('input[placeholder="說明這次角色指派或角色目錄變更"]')!
     await act(async () => {
       const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
       setValue?.call(reason, '測試發布')
       reason.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    expect(( [...host.querySelectorAll('button')].find((node) => node.textContent === '發布新版本') as HTMLButtonElement).disabled).toBe(false)
-    await clickButton('發布新版本')
+    const publishButton = host.querySelector<HTMLButtonElement>('.governance-publish-box button')!
+    expect(publishButton.disabled).toBe(false)
+    await act(async () => publishButton.click())
 
     const commandId = mocks.publishGovernancePolicy.mock.calls[0][1] as string
     expect(mocks.publishGovernancePolicy).toHaveBeenCalledTimes(1)

@@ -3,35 +3,67 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
+import v2Vector from '../contracts/ai-pdm-role-policy-catalog/v3/conformance.json'
+import { createAiPdmRoleCatalog, readAiPdmRoleCatalog } from '../src/governance/aiPdmCatalog'
 import { createSeedDocumentV2 } from '../src/governance/migrateGovernanceV1ToV2'
 import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2ToV3'
 import { isGovernanceReduction, storedGovernanceCatalogs, withPublishedGovernanceHistory, withStoredGovernanceHistory } from './governanceReduction'
 import { writeSyntheticWorkspaceFixture } from './syntheticWorkspaceFixture'
 import { applyDraftCommand, getGovernancePaths, loadOrganizationSource, publishGovernance, readGovernanceStore } from './orgmasterGovernanceStore'
+import { decodeDynamicAiPdmRoleCatalog } from './aiPdmDynamicRoleCatalog'
+import { readPublishedAiPdmRoleCatalog } from './aiPdmRoleCatalogRepository'
+import { acceptedAdministrativeCatalogBindings } from './orgmasterAdministrationStore'
 import { createOrgmasterGovernanceMiddleware } from './orgmasterGovernanceApi'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
 import { canonicalJson, sha256, GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash } from '../src/governance/commands'
+import type { ExternalRoleCatalogSnapshotV1 } from '../src/governance/types'
 
-const fault = vi.hoisted(() => ({ offline: false, reads: 0 }))
+const fault = vi.hoisted(() => ({ offline: false, reads: 0, currentCatalog: undefined as ExternalRoleCatalogSnapshotV1 | undefined }))
 vi.mock('./applicationRoleCatalogRegistry', async importOriginal => {
   const original = await importOriginal<typeof import('./applicationRoleCatalogRegistry')>()
   return { ...original,
     readActiveAiPdmRoleCatalog: async (...args: Parameters<typeof original.readActiveAiPdmRoleCatalog>) => {
       fault.reads++; if (fault.offline) throw new Error('TEST_ONLY_PDM_OFFLINE')
-      return original.readActiveAiPdmRoleCatalog(...args)
+      return fault.currentCatalog ?? original.readActiveAiPdmRoleCatalog(...args)
     },
     readApplicationRoleCatalogs: async (...args: Parameters<typeof original.readApplicationRoleCatalogs>) => {
       fault.reads++; if (fault.offline) throw new Error('TEST_ONLY_PDM_OFFLINE')
-      return original.readApplicationRoleCatalogs(...args)
+      const catalogs = await original.readApplicationRoleCatalogs(...args)
+      return fault.currentCatalog
+        ? [fault.currentCatalog, ...catalogs.filter(value => value.applicationId !== 'ai-pdm')]
+        : catalogs
     },
   }
 })
 
 const roots: string[] = []
-beforeEach(() => { fault.offline = false; fault.reads = 0; vi.stubEnv('ORGMASTER_PERSISTENCE_MODE', 'local-json') })
-afterEach(async () => { fault.offline = false; vi.unstubAllEnvs(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
+beforeEach(() => { fault.offline = false; fault.reads = 0; fault.currentCatalog = undefined; vi.stubEnv('ORGMASTER_PERSISTENCE_MODE', 'local-json') })
+afterEach(async () => { fault.offline = false; fault.currentCatalog = undefined; vi.unstubAllEnvs(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
+
+async function dynamicV2Catalog() {
+  const policy = v2Vector.policy
+  const rows = policy.roles.map((role, index) => ({
+    contract_version: 'jenfu.platform-entitlement.v1', application_id: 'ai-pdm',
+    catalog_version: policy.candidateCatalogVersion, catalog_sha256: policy.contentHash,
+    published_at: v2Vector.publishedAt, display_order: index, stable_role_id: role.stableRoleId,
+    role_code: role.roleCode, display_name: role.displayName, assignable: role.assignable,
+    risk: role.risk, subject_kind: role.subjectKind, recommendation_allowed: role.recommendationAllowed,
+    delegation_allowed: role.delegationAllowed, allowed_scope_kinds: role.allowedScopeKinds,
+    assignment_tier: role.assignmentTier, metadata: role.metadata, permissions: role.permissions,
+    role_definition_hash: role.roleDefinitionHash, role_status: role.roleStatus, lifecycle: 'active',
+    publication_format: policy.format, canonicalization_version: 'jenfu.canonical-json.v1',
+    role_schema_id: policy.roleSchemaId, role_profile_schema_id: policy.roleProfileSchemaId,
+    baseline_role_identity_hash: policy.baselineRoleIdentityHash, role_identity_hash: policy.roleIdentityHash,
+    registry_hash: policy.registryHash, protected_policy_hash: policy.protectedPolicyHash,
+    role_profile_hash: policy.roleProfileHash, permission_role_id: policy.roleProfiles[index].permissionRoleId,
+    presentation_name: policy.roleProfiles[index].presentationName, presentation_order: policy.roleProfiles[index].presentationOrder,
+    assignment_disposition: policy.roleProfiles[index].assignmentDisposition,
+  }))
+  const baseline = await readPublishedAiPdmRoleCatalog(process.cwd(), v2Vector.baselineCatalogVersion)
+  const artifact = decodeDynamicAiPdmRoleCatalog(rows, [baseline])
+  return createAiPdmRoleCatalog('valid', artifact.publishedAt, artifact)
+}
 
 async function fixture(withRevokedDelegation = false) {
   const root = await mkdtemp(join(tmpdir(), 'orgmaster-dev058-reduction-')); roots.push(root)
@@ -64,6 +96,71 @@ async function fixture(withRevokedDelegation = false) {
 }
 
 describe('DEV-058 catalog-independent reduction', () => {
+  it('publishes an exact catalog-only AI-PDM update while preserving required history', async () => {
+    const { root, source, actor, published } = await fixture()
+    const previous = storedGovernanceCatalogs(published.document)!.find(value => value.applicationId === 'ai-pdm')!
+    const previousFinancial = storedGovernanceCatalogs(published.document)!.find(value => value.applicationId === 'financial-management-system')!
+    const previousActive = published.document.publishedVersions.find(version => version.id === published.document.activePolicyVersionId)
+    if (previousActive?.kind !== 'assignment-governance-v3') throw Error('missing previous publication')
+    const current = await dynamicV2Catalog()
+    fault.currentCatalog = current
+
+    const result = await publishGovernance(root, published.revision, 'catalog-only-update', 'adopt current AI-PDM catalog',
+      source.workspaceVersionId, actor, { expectedOrganizationRevision: source.workspaceRevision, expectedCatalog: {
+        catalogVersion: current.catalogVersion, catalogSha256: current.catalogSha256 ?? current.payloadHash,
+      } })
+    const active = result.document.publishedVersions.find(version => version.id === result.versionId)
+    if (active?.kind !== 'assignment-governance-v3') throw Error('missing catalog-only publication')
+    const aiPdmVersions = active.externalRoleCatalogs.filter(value => value.applicationId === 'ai-pdm').map(value => value.catalogVersion)
+    expect(aiPdmVersions[0]).toBe(current.catalogVersion)
+    expect(aiPdmVersions).toContain(previous.catalogVersion)
+    expect(active.externalRoleCatalogs[0].roles).toContainEqual(expect.objectContaining({
+      stableRoleId: 'role-application-system-admin', code: 'application_system_admin', assignmentDisposition: 'hidden-protected',
+    }))
+    expect(active.externalRoleCatalogs.find(value => value.applicationId === 'financial-management-system')).toEqual(previousFinancial)
+    expect(active.policy).toEqual(previousActive.policy)
+    expect(active.snapshotHash).toBe(publicationSnapshotHash({
+      kind: active.kind, policy: active.policy, externalRoleCatalogs: active.externalRoleCatalogs,
+      organizationSnapshot: active.organizationSnapshot, effectState: active.effectState,
+    }))
+    expect(acceptedAdministrativeCatalogBindings(result.document)['ai-pdm']).toMatchObject({
+      catalogVersion: current.catalogVersion,
+      contentSha256: current.contentSha256 ?? current.payloadHash,
+      stableRoleId: 'role-application-system-admin',
+    })
+  })
+
+  it('rejects a catalog-only publication whose expected tuple does not match current owner output', async () => {
+    const { root, source, actor, published } = await fixture()
+    const current = await dynamicV2Catalog()
+    fault.currentCatalog = current
+    const before = await readFile(getGovernancePaths(root).current, 'utf8')
+
+    for (const [commandId, expectedCatalog] of [
+      ['catalog-only-stale-version', { catalogVersion: `${current.catalogVersion}.stale`, catalogSha256: current.catalogSha256 ?? current.payloadHash }],
+      ['catalog-only-stale-hash', { catalogVersion: current.catalogVersion, catalogSha256: '0'.repeat(64) }],
+    ] as const) {
+      await expect(publishGovernance(root, published.revision, commandId, 'must reject stale catalog binding',
+        source.workspaceVersionId, actor, { expectedOrganizationRevision: source.workspaceRevision, expectedCatalog }))
+        .rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_VERSION_CONFLICT' })
+    }
+    expect(await readFile(getGovernancePaths(root).current, 'utf8')).toBe(before)
+  })
+
+  it('keeps the active snapshot and performs no producer read when an unchanged policy omits the expected tuple', async () => {
+    const { root, source, actor, published } = await fixture()
+    const previous = storedGovernanceCatalogs(published.document)!.find(value => value.applicationId === 'ai-pdm')!
+    fault.currentCatalog = await dynamicV2Catalog()
+    fault.reads = 0
+
+    const result = await publishGovernance(root, published.revision, 'catalog-not-requested', 'publish without catalog adoption',
+      source.workspaceVersionId, actor, { expectedOrganizationRevision: source.workspaceRevision })
+    const active = result.document.publishedVersions.find(version => version.id === result.versionId)
+    if (active?.kind !== 'assignment-governance-v3') throw Error('missing unchanged publication')
+    expect(active.externalRoleCatalogs.find(value => value.applicationId === 'ai-pdm')).toEqual(previous)
+    expect(fault.reads).toBe(0)
+  })
+
   it('retains audit-bound provenance after jsonb reorders nested object keys', async () => {
     const { root, source, actor, published } = await fixture()
     const reordered = (value: unknown): unknown => {
@@ -219,9 +316,13 @@ describe('DEV-058 catalog-independent reduction', () => {
     const draft = await applyDraftCommand(root, current.revision, command, actor)
     expect(draft.document.draft.roleAssignments.find(value => value.id === 'rd')?.status).toBe('revoked')
     expect((await applyDraftCommand(root, published.revision, command, actor)).status).toBe('replayed')
-    const result = await publishGovernance(root, draft.revision, 'publish-revoke', 'publish withdrawal', source.workspaceVersionId, actor)
+    const boundCatalog = storedGovernanceCatalogs(draft.document)!.find(value => value.applicationId === 'ai-pdm')!
+    const context = { expectedOrganizationRevision: source.workspaceRevision, expectedCatalog: {
+      catalogVersion: boundCatalog.catalogVersion, catalogSha256: boundCatalog.catalogSha256 ?? boundCatalog.payloadHash,
+    } }
+    const result = await publishGovernance(root, draft.revision, 'publish-revoke', 'publish withdrawal', source.workspaceVersionId, actor, context)
     expect(result.document.publishedVersions).toHaveLength(published.document.publishedVersions.length + 1)
-    expect((await publishGovernance(root, draft.revision, 'publish-revoke', 'publish withdrawal', source.workspaceVersionId, actor)).status).toBe('replayed')
+    expect((await publishGovernance(root, draft.revision, 'publish-revoke', 'publish withdrawal', source.workspaceVersionId, actor, context)).status).toBe('replayed')
     expect((await readGovernanceStore(root)).document.auditEvents.filter(event => event.commandId === 'revoke')).toHaveLength(1)
     expect(fault.reads).toBe(0)
     await expect(applyDraftCommand(root, result.revision, { ...command, reason: 'different request' }, actor)).rejects.toMatchObject({ code: 'COMMAND_ID_REUSED' })

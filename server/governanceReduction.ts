@@ -4,6 +4,12 @@ import type { ExternalRoleCatalogSnapshotV1, GovernanceDocumentV3, GovernancePol
 
 const same = (left: unknown, right: unknown) => canonicalJson(left) === canonicalJson(right)
 
+export function sameGovernancePolicy(left: GovernancePolicyDataV3, right: GovernancePolicyDataV3) {
+  const { basePolicyVersionId: _leftBase, updatedAt: _leftUpdated, ...leftPolicy } = left as GovernanceDocumentV3['draft']
+  const { basePolicyVersionId: _rightBase, updatedAt: _rightUpdated, ...rightPolicy } = right as GovernanceDocumentV3['draft']
+  return same(leftPolicy, rightPolicy)
+}
+
 /** Only immutable, audit-bound owner publications may supply offline references. */
 export function storedGovernanceCatalogs(document: GovernanceDocumentV3, versionId = document.activePolicyVersionId) {
   const version = document.publishedVersions.find(value => value.id === versionId)
@@ -43,14 +49,20 @@ export async function withPublishedGovernanceHistory(
   document: GovernanceDocumentV3,
   current: ExternalRoleCatalogSnapshotV1[],
   loadHistorical?: (catalogVersion: string) => Promise<ExternalRoleCatalogSnapshotV1>,
+  options: { preferCurrentApplications?: readonly string[] } = {},
 ) {
   // The active, audit-bound publication is the authoritative current catalog.
   // A registry fixture may still be needed for applications absent from that
   // publication, but it must not replace a newly published application catalog.
   const storedCurrent = storedGovernanceCatalogs(document)
   const storedApplications = new Set(storedCurrent?.map(value => value.applicationId) ?? [])
+  const preferredApplications = new Set(options.preferCurrentApplications ?? [])
   const authoritativeCurrent = storedCurrent
-    ? [...storedCurrent, ...current.filter(value => !storedApplications.has(value.applicationId))]
+    ? [
+        ...current.filter(value => preferredApplications.has(value.applicationId)),
+        ...storedCurrent.filter(value => !preferredApplications.has(value.applicationId)),
+        ...current.filter(value => !preferredApplications.has(value.applicationId) && !storedApplications.has(value.applicationId)),
+      ]
     : current
   const result = withStoredGovernanceHistory(document, authoritativeCurrent)
   if (!loadHistorical) return result
