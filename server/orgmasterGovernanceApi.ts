@@ -5,6 +5,7 @@ import { ORGMASTER_PERMISSIONS } from '../src/governance/aiPdmCatalog'
 import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite'
 import { applyDraftCommand, publishGovernance, readGovernanceAudit, readGovernanceCommandResult, readGovernanceStore, setActivePolicy, validateAssignmentCandidate, GovernanceStoreError } from './orgmasterGovernanceStore'
 import { developmentPermissionForActor, resolveDevelopmentIdentity } from './orgmasterGovernanceIdentity'
+import { withGovernanceSessionReadDiagnostic } from './orgmasterGovernanceReadDiagnostic'
 import { evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { GovernanceValidationError } from '../src/governance/validation'
 import { ensureCommandShape } from '../src/governance/commands'
@@ -294,9 +295,12 @@ async function handle(request: IncomingMessage, response: ServerResponse, root: 
   }
   const readCurrent = path.startsWith('/applications/financial-management-system/catalog/') && catalogOptions.persistence
     ? catalogOptions.persistence.read : readGovernanceStore
+  const readStore = () => readCurrent(root)
   const governanceRead = actor.issuer === LOCAL_IDENTITY_ISSUER
-    ? withOrgmasterLocalPrincipalDiagnosticContext(() => readCurrent(root))
-    : readCurrent(root)
+    ? withOrgmasterLocalPrincipalDiagnosticContext(readStore)
+    : path === '/session' && request.method === 'GET' && readVerifiedRequestIdentity(request)
+      ? withGovernanceSessionReadDiagnostic(readStore)
+      : readStore()
   const current = await governanceRead.catch(error => {
     if (path === '/session') {
       warnOrgmasterLocalPersistenceDiagnostic('governance_session_store_read', error, undefined, {

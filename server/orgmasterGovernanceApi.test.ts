@@ -11,6 +11,7 @@ import { ORGMASTER_PERMISSIONS, readAiPdmRoleCatalog } from '../src/governance/a
 import { GovernanceStoreError } from './orgmasterGovernanceStore'
 import { ensureGovernanceStore, getGovernancePaths, readGovernanceStore } from './orgmasterGovernanceStore'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import * as persistence from './orgmasterPersistenceRepository'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
 import { LOCAL_IDENTITY_ISSUER } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
 describe('governance API boundary', () => { it('registers the plugin and accepts only the fixed loopback dev identity', () => { expect(orgmasterGovernanceApiPlugin().name).toBe('orgmaster-local-governance-api'); const request = { socket: { remoteAddress: '127.0.0.1' }, headers: { 'x-orgmaster-dev-issuer': DEV_ISSUER, 'x-orgmaster-dev-subject': DEV_SUBJECT } } as any; expect(resolveDevelopmentIdentity(request, true)?.principalId).toBe('dev-principal-local-admin'); expect(resolveDevelopmentIdentity(request, false)).toBeNull() }) })
@@ -155,6 +156,95 @@ describe('QA058-07 mounted actor boundary', () => {
       expect(afterDenied.auditEvents.some(event => event.commandId === 'qa07-forged-body-actor')).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('DEV-070 verified governance session read diagnostics', () => {
+  const verifiedSession: OrgmasterSession = {
+    id: 'private-fixture-session', identityIssuer: 'fixture-issuer', identitySubject: 'private-fixture-subject',
+    principalId: 'private-fixture-principal', employeeId: 'private-fixture-employee', authEpoch: 0,
+    sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 1,
+    issuedAt: '2026-10-29T00:00:00.000Z', authenticatedAt: '2026-10-29T00:00:00.000Z',
+    expiresAt: '2099-01-01T00:00:00.000Z', revokedAt: null, assuranceLevel: 'aal1',
+  }
+
+  function call(session: OrgmasterSession | null, dev = false) {
+    const request = {
+      url: '/api/orgmaster/governance/session', method: 'GET',
+      headers: dev ? { 'x-orgmaster-dev-issuer': DEV_ISSUER, 'x-orgmaster-dev-subject': DEV_SUBJECT } : {},
+      socket: { remoteAddress: '127.0.0.1' },
+    }
+    if (session) setVerifiedRequestIdentity(request as never, session)
+    return new Promise<{ status: number; body: unknown }>((resolve, reject) => {
+      const response = {
+        statusCode: 0,
+        setHeader: vi.fn(),
+        end: (value: string) => resolve({ status: response.statusCode, body: JSON.parse(value) }),
+      }
+      createOrgmasterGovernanceMiddleware('unused-governance-diagnostic-fixture', dev)(
+        request as never, response as never, () => reject(new Error('UNHANDLED_SESSION_ROUTE')),
+      )
+    })
+  }
+
+  it('logs only a closed stage and error projection from the original verified read failure', async () => {
+    const failure = Object.assign(new GovernanceStoreError('GOVERNANCE_READ_FAILED', [
+      { code: 'ADMINISTRATION_INVALID', path: 'draft.private_fixture_path', message: 'private-fixture-issue-message' },
+      { code: 'PRIVATE_FIXTURE_UNRECOGNIZED_CODE', path: 'private-fixture-path', message: 'private-fixture-issue' },
+      { code: 'ADMINISTRATION_INVALID', path: 'private-fixture-duplicate' },
+    ]), {
+      message: 'private-fixture-error-message', stack: 'private-fixture-stack',
+      query: 'SELECT private_fixture_business_row', rows: [{ secret: 'private-fixture-raw-row' }],
+      cause: new Error('private-fixture-cause'), path: 'C:/private-fixture-file',
+    })
+    const exists = vi.spyOn(persistence, 'persistenceArtifactExists').mockResolvedValue(true)
+    const read = vi.spyOn(persistence, 'readPersistenceArtifact').mockRejectedValue(failure)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      expect(await call(verifiedSession)).toEqual({ status: 503, body: { error: 'ORGMASTER_SOURCE_UNAVAILABLE' } })
+      expect(read).toHaveBeenCalledTimes(1)
+      expect(warning.mock.calls.map(([value]) => JSON.parse(String(value)))).toEqual([{
+        event: 'orgmaster_governance_session_read_failed', stage: 'governance_v3_artifact_read',
+        code: 'GOVERNANCE_READ_FAILED', issueCodes: ['ADMINISTRATION_INVALID'],
+      }])
+      expect(JSON.stringify([...warning.mock.calls, ...error.mock.calls])).not.toMatch(/private[-_]fixture|PRIVATE_FIXTURE/u)
+    } finally {
+      exists.mockRestore()
+      read.mockRestore()
+      warning.mockRestore()
+      error.mockRestore()
+    }
+  })
+
+  it('keeps unauthenticated, dev-header and local diagnostics separate from verified request classification', async () => {
+    const exists = vi.spyOn(persistence, 'persistenceArtifactExists').mockRejectedValue(new Error('private-fixture-dev-failure'))
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      expect(await call(null)).toEqual({ status: 401, body: { error: 'IDENTITY_CONTEXT_REQUIRED' } })
+      expect(exists).not.toHaveBeenCalled()
+      expect(await call(null, true)).toEqual({ status: 503, body: { error: 'ORGMASTER_SOURCE_UNAVAILABLE' } })
+      expect(exists).toHaveBeenCalledTimes(1)
+      expect(warning).not.toHaveBeenCalled()
+
+      expect(await call(verifiedSession)).toEqual({ status: 503, body: { error: 'ORGMASTER_SOURCE_UNAVAILABLE' } })
+      expect(warning.mock.calls.map(([value]) => JSON.parse(String(value)))).toEqual([{
+        event: 'orgmaster_governance_session_read_failed', stage: 'governance_v3_artifact_exists', code: 'UNCLASSIFIED',
+      }])
+
+      warning.mockClear()
+      expect(await call({ ...verifiedSession, identityIssuer: LOCAL_IDENTITY_ISSUER })).toEqual({
+        status: 503, body: { error: 'ORGMASTER_SOURCE_UNAVAILABLE' },
+      })
+      expect(warning.mock.calls.map(([value]) => JSON.parse(String(value)).event)).toEqual([
+        'orgmaster_local_persistence_read_failed',
+      ])
+    } finally {
+      exists.mockRestore()
+      warning.mockRestore()
+      error.mockRestore()
     }
   })
 })

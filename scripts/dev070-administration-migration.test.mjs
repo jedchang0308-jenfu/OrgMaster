@@ -15,17 +15,17 @@ const files=new Map(profile.migrations.entries.map(entry=>[entry.path,readFileSy
 const after=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c,root),files,source).bundle
 const before=count=>({...after,sourceRevision:'b'.repeat(40),manifestSha256:'c'.repeat(64),entries:after.entries.slice(0,count)})
 
-test('DEV070 exact reviewed source packages only 042/044/045/047/048 after immutable 001–041 identity',()=>{
+test('DEV070 exact reviewed source packages only 042/044/045/047/048/049 after immutable 001–041 identity',()=>{
  assertDev040V3Profile(profile,n1c);assertDev070MigrationEntries(after.entries)
  assertDev059MigrationEntries(after.entries.slice(0,39))
- assert.equal(after.entries.length,44)
+ assert.equal(after.entries.length,45)
  assert.deepEqual(after.entries.slice(39).map(row=>row.path),DEV070_MIGRATION_ENTRIES.map(row=>row.path))
  assert.equal(after.entries.some(row=>row.path.includes('/043_')),false)
  for(const entry of DEV070_MIGRATION_ENTRIES){assert.equal(sourceSha256(files.get(entry.path)),entry.sourceSha256);assert.equal(sourceSha256(unwrapMigrationTransaction(files.get(entry.path))),entry.appliedSha256)}
 })
 test('DEV070 planner admits only previously known exact prefixes and source-controlled partial append readback',()=>{
- for(let count=31;count<44;count++)assert.equal(assertDev070AdministrationAppend(before(count),after).pendingMigrationCount,44-count)
- for(const count of[0,10,30,44,45])assert.throws(()=>assertDev070AdministrationAppend(before(count),after),/DEV070_MIGRATION_APPEND_INVALID/)
+ for(let count=31;count<45;count++)assert.equal(assertDev070AdministrationAppend(before(count),after).pendingMigrationCount,45-count)
+ for(const count of[0,10,30,45,46])assert.throws(()=>assertDev070AdministrationAppend(before(count),after),/DEV070_MIGRATION_APPEND_INVALID/)
  for(const mutate of[
   bundle=>{bundle.entries[30].appliedSha256='0'.repeat(64)},bundle=>{bundle.entries[39].sourceSha256='0'.repeat(64)},
   bundle=>{bundle.entries[40].path='db/migrations/043_unrelated.sql'},bundle=>{bundle.entries.pop()},
@@ -55,11 +55,11 @@ test('DEV070 normal deploy CLI selects one exact append and rejects mixed operat
 })
 test('DEV070 stage receipt requires exact source manifest, count/progress and cross-database denials',()=>{
  const intent={sourceRevision:source,migrationManifestSha256:after.manifestSha256},owner={application:{id:'orgmaster'}}
- const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:source,manifestSha256:after.manifestSha256,status:'PASS',boundaryStatus:'PASS',database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',baselineCount:10,minimumLedgerCount:10,ledgerCount:44,applied:1,replayed:43,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
+ const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:source,manifestSha256:after.manifestSha256,status:'PASS',boundaryStatus:'PASS',database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',baselineCount:10,minimumLedgerCount:10,ledgerCount:45,applied:1,replayed:44,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
  const check=(value,plan={releaseMode:DEV070_RELEASE_MODE,pendingMigrationCount:1})=>assertMigrationReceipt({...value,receiptSha256:sha256(canonicalize(value))},owner,intent,{allowForward:true,forwardPlan:plan})
- assert.doesNotThrow(()=>check(core));assert.doesNotThrow(()=>check({...core,applied:0,replayed:44}))
- for(const changed of[{ledgerCount:43},{ledgerCount:45},{applied:2,replayed:42},{sourceRevision:'0'.repeat(40)},{manifestSha256:'0'.repeat(64)},{database:'jenfu_stg'},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true}]},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_dev',denied:true}]}])assert.throws(()=>check({...core,...changed}),/MIGRATION_RECEIPT_INVALID/)
- for(const pendingMigrationCount of[0,14,-1,1.5])assert.throws(()=>check(core,{releaseMode:DEV070_RELEASE_MODE,pendingMigrationCount}),/MIGRATION_RECEIPT_INVALID/)
+ assert.doesNotThrow(()=>check(core));assert.doesNotThrow(()=>check({...core,applied:0,replayed:45}))
+ for(const changed of[{ledgerCount:44},{ledgerCount:46},{applied:2,replayed:43},{sourceRevision:'0'.repeat(40)},{manifestSha256:'0'.repeat(64)},{database:'jenfu_stg'},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true}]},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_dev',denied:true}]}])assert.throws(()=>check({...core,...changed}),/MIGRATION_RECEIPT_INVALID/)
+ for(const pendingMigrationCount of[0,15,-1,1.5])assert.throws(()=>check(core,{releaseMode:DEV070_RELEASE_MODE,pendingMigrationCount}),/MIGRATION_RECEIPT_INVALID/)
 })
 
 
@@ -77,6 +77,22 @@ test('048 changes only the two reviewed scalar projections while preserving comp
  let accounts=extract(sql,'CREATE OR REPLACE FUNCTION orgmaster_core.read_ai_pdm_principal_accounts_v1(','$accounts$;').replace('CREATE OR REPLACE FUNCTION','CREATE FUNCTION')
  accounts=accounts.replace("  SELECT artifact.payload, artifact.payload->>'activePolicyVersionId' AS active_policy_id, artifact.payload->'publishedVersions' AS published_versions\n",'  SELECT artifact.payload\n').replaceAll('governance.published_versions',"governance.payload->'publishedVersions'").replace('governance.active_policy_id',"governance.payload->>'activePolicyVersionId'")
  assert.equal(accounts,extract(text('db/migrations/047_dev070_scoped_ai_pdm_principal_readers.sql'),'CREATE FUNCTION orgmaster_core.read_ai_pdm_principal_accounts_v1(','$accounts$;'))
- const extra=structuredClone(after);extra.entries.push({...extra.entries.at(-1),order:45,version:'unknown-049',path:'db/migrations/049_unknown.sql'})
+ const extra=structuredClone(after);extra.entries.push({...extra.entries.at(-1),order:46,version:'unknown-050',path:'db/migrations/050_unknown.sql'})
  assert.throws(()=>assertDev070MigrationEntries(extra.entries),/DEV070_MIGRATION_APPEND_INVALID/)
+})
+
+
+test('049 keeps the existing manager function and all policy predicates, targeting only its effective grants lookup',()=>{
+ const sqlPath='db/migrations/049_dev070_scoped_pdm_role_policy_manager.sql'
+ const text=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8').replaceAll('\r\n','\n')
+ const sql=text(sqlPath)
+ const original=text('db/migrations/044_dev070_administration_projection_v1.sql')
+  .match(/^CREATE FUNCTION orgmaster_contract\.ai_pdm_role_policy_manager_eligible_v2\([^\n]+\n[\s\S]*?^\$fn\$;$/m)[0]
+ const candidate=sql.match(/^CREATE OR REPLACE FUNCTION [^\n]+\n[\s\S]*?^\$fn\$;$/m)[0]
+ assert.equal(candidate.replace('CREATE OR REPLACE FUNCTION','CREATE FUNCTION')
+  .replace('FROM orgmaster_contract.read_ai_pdm_principal_effective_grants_v5(p_principal,p_employee) effective',
+   'FROM orgmaster_contract.v_ai_pdm_principal_effective_grants_v5 effective'),original)
+ assert.equal((sql.match(/CREATE OR REPLACE FUNCTION/g)??[]).length,1)
+ assert.doesNotMatch(sql,/\b(?:ALTER|DROP|GRANT|REVOKE|INSERT|UPDATE|DELETE)\b/)
+ assert.ok(text('.gitattributes').split('\n').includes(sqlPath+' text eol=lf'))
 })

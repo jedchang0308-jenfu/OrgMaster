@@ -48,7 +48,7 @@ test('local CLI only admits bounded plan/status/commit arguments',()=>{
 })
 test('known local raw 042 genesis is preserved as its own exact ledger variant',()=>{
  const f=fixture(),result=validateLocalLedger(entries,f.state.ledger,database)
- assert.equal(result.raw042,true);assert.equal(result.count,40);assert.deepEqual(result.pending.map(e=>e.version),['dev070-orgmaster-044','dev070-orgmaster-045','dev070-orgmaster-047','dev070-orgmaster-048'])
+ assert.equal(result.raw042,true);assert.equal(result.count,40);assert.deepEqual(result.pending.map(e=>e.version),['dev070-orgmaster-044','dev070-orgmaster-045','dev070-orgmaster-047','dev070-orgmaster-048','dev070-orgmaster-049'])
  for(const change of [rows=>rows[39].checksum_sha256='0'.repeat(64),rows=>rows[39].source_revision='LOCAL_GENESIS:99999999-b7cd-4c7c-947d-c3203e59178c',rows=>rows[0].name='foreign',rows=>rows.push({...rows[0],version:'unknown'})]){const rows=structuredClone(f.state.ledger);change(rows);assert.throws(()=>validateLocalLedger(entries,rows,database),/LEDGER_UNKNOWN/)}
 })
 
@@ -64,7 +64,7 @@ test('source selects forward bootstrap 071 and a rehashed old 070 plan cannot au
 })
 test('local bridge appends only missing owner migrations and reuses one terminal receipt',async()=>{
  const f=fixture(),original042=structuredClone(f.state.ledger[39]);const receipt=await f.commit()
- assert.equal(receipt.changedBindings,2);assert.equal(f.state.ledger.length,44);assert.deepEqual(f.state.ledger[39],original042);assert.equal(f.state.binderCalls,1)
+ assert.equal(receipt.changedBindings,2);assert.equal(f.state.ledger.length,45);assert.deepEqual(f.state.ledger[39],original042);assert.equal(f.state.binderCalls,1)
  assert.deepEqual(await f.commit(),receipt);assert.equal(f.state.binderCalls,1)
  assert.equal(f.state.queries.filter(q=>q==='COMMIT').length,1)
 })
@@ -172,10 +172,10 @@ test('local intent status survives expiry and source advancement but never a cha
 })
 
 
-test('local current44 ledger accepts exact installed rows and only the known43-to44 forward append',()=>{
+test('local current45 ledger accepts exact installed rows and only the known44-to45 forward append',()=>{
  const current=entries.map(row)
  assert.deepEqual(validateLocalLedger(entries,current,database).pending,[])
- assert.equal(validateLocalLedger(entries,current,database).count,44)
- assert.deepEqual(validateLocalLedger(entries,current.slice(0,43),database).pending.map(e=>e.version),['dev070-orgmaster-048'])
- assert.throws(()=>validateLocalLedger(entries,[...current,{...current.at(-1),version:'unknown-045'}],database),/LEDGER_UNKNOWN/)
+ assert.equal(validateLocalLedger(entries,current,database).count,45)
+ assert.deepEqual(validateLocalLedger(entries,current.slice(0,44),database).pending.map(e=>e.version),['dev070-orgmaster-049'])
+ assert.throws(()=>validateLocalLedger(entries,[...current,{...current.at(-1),version:'unknown-046'}],database),/LEDGER_UNKNOWN/)
 })

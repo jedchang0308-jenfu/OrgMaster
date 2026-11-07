@@ -6,6 +6,7 @@ import { withAdministrationPostgresFixture } from './lib/dev070-administration-p
 // clusters. No caller-selected connection string or persistent DB is accepted.
 const migration = 'db/migrations/047_dev070_scoped_ai_pdm_principal_readers.sql'
 const scalarMigration = 'db/migrations/048_dev070_governance_scalar_projection.sql'
+const managerMigration = 'db/migrations/049_dev070_scoped_pdm_role_policy_manager.sql'
 const platformRoot = process.env.DEV070_PLATFORM_FIXTURE_ROOT ?? 'C:/VIBE CODING/Jenfu-Platform'
 const binding = {catalogVersion:'fixture-admin-v1',contentSha256:'a'.repeat(64),
  stableRoleId:'role-application-system-admin',roleDefinitionHash:'b'.repeat(64)}
@@ -235,7 +236,8 @@ await withAdministrationPostgresFixture(async ({admin,handle,connect})=>{
   'orgmaster_contract.read_ai_pdm_active_principal_accounts_v1(text)',
   'orgmaster_contract.read_ai_pdm_active_principal_identity_v1(text,text)',
   'orgmaster_contract.read_ai_pdm_principal_effective_grants_v5(text,text)',
-  'orgmaster_contract.read_ai_pdm_principal_effective_grants_v5()']
+  'orgmaster_contract.read_ai_pdm_principal_effective_grants_v5()',
+  'orgmaster_contract.ai_pdm_role_policy_manager_eligible_v2(text,text,text,text)']
  const functionFacts=async()=>(await admin.query(`SELECT p.oid::regprocedure::text identity,
   p.proowner::regrole::text owner,p.proacl::text acl,p.prosecdef security_definer,
   p.provolatile volatility,p.proisstrict strict,p.proparallel parallel,p.proconfig config,
@@ -262,7 +264,77 @@ await withAdministrationPostgresFixture(async ({admin,handle,connect})=>{
  }
  assert.equal((await admin.query(`SELECT has_function_privilege('jenfu_ai_pdm_runtime',
   'orgmaster_core.read_ai_pdm_principal_grants_v5(text,text,boolean)','EXECUTE') allowed`)).rows[0].allowed,false)
+
+ const managerSql='SELECT orgmaster_contract.ai_pdm_role_policy_manager_eligible_v2($1,$2,$3,$4) AS eligible'
+ const managerArgs=[principal,employee,legacyIdentity.issuer,legacyIdentity.subject]
+ const choose=name=>cases.find(c=>c.name===name)
+ const legacyManager=d=>{
+  const policy=publication(d).policy
+  const assignment=policy.roleAssignments.find(g=>g.applicationId==='ai-pdm')
+  Object.assign(assignment,{roleId:'role-system-admin',roleCodeSnapshot:'system_admin',
+   subjectKind:'principal',targetPrincipalId:principal,scope:{kind:'global'}})
+  policy.principalAdmissions.find(a=>a.identityLinkId===legacyIdentity.id).accountType='human_privileged'
+ }
+ // The ordinary fixture has only the RD v1 role. Add the narrow legacy
+ // protected role projection used by the manager's compatibility branch.
+ const legacyDefinition=(await admin.query("SELECT pg_get_viewdef('ai_pdm_contract.v_application_role_catalog_v1'::regclass) AS definition")).rows[0].definition.replace(/;\s*$/u,'')
+ await admin.query('CREATE OR REPLACE VIEW ai_pdm_contract.v_application_role_catalog_v1 AS '+legacyDefinition+
+  " UNION ALL SELECT contract_version, application_id, catalog_version, published_at, catalog_sha256,"+
+  " 1, 'role-system-admin', 'system_admin', 'Legacy system administrator fixture', true, 'critical',"+
+  " 'principal', false, false, '{\"global\":true}'::jsonb, 'standard', permissions, metadata, role_definition_hash"+
+  " FROM ("+legacyDefinition+") rd")
+ const managerCases=[
+  ...['active-legacy','active-administrator','revoked-administrator','expired-administrator','catalog-drift',
+   'disabled-identity','pending-lifecycle'].map(name=>({...choose(name),expected:name==='active-administrator'})),
+  ...['unrelated-invalid-administration','unrelated-eligible-catalog-unavailable'].map(name=>({...choose(name),
+   expected:{error:'P0001',message:name==='unrelated-invalid-administration'?'ADMINISTRATION_DEPENDENCY_UNAVAILABLE':'SCOPED_CATALOG_UNAVAILABLE'}})),
+  {name:'root-only',edit:d=>withAdmin(d,[adminGrant({roleCode:'platform_super_admin',applicationId:null,
+   scope:{kind:'platform'},catalogBinding:null})]),expected:false},
+  {name:'wrong-employee',edit:d=>withAdmin(d),params:[principal,'employee-two',...managerArgs.slice(2)],expected:false},
+  {name:'wrong-alias',edit:d=>withAdmin(d),params:[...managerArgs.slice(0,3),'wrong-subject'],expected:false},
+  {name:'null-principal',edit:d=>withAdmin(d),params:[null,...managerArgs.slice(1)],expected:false},
+  {name:'legacy-privileged',edit:legacyManager,expected:true},
+  {name:'legacy-personal',edit:d=>{legacyManager(d);publication(d).policy.principalAdmissions[0].accountType='human_personal'},expected:false},
+  {name:'legacy-wrong-scope',edit:d=>{legacyManager(d);publication(d).policy.roleAssignments.find(g=>g.applicationId==='ai-pdm').scope={kind:'workspace',value:'company-jenfu'}},expected:false},
+ ]
+ const managerRead=async()=>{
+  const observations={}
+  for(const c of managerCases){
+   await admin.query('BEGIN')
+   try {
+    const d=structuredClone(base);c.edit?.(d);await store(d);await c.sql?.()
+    await admin.query("SET LOCAL ROLE jenfu_ai_pdm_runtime; SET LOCAL statement_timeout='5s'")
+    const observation=await observe(managerSql,c.params??managerArgs)
+    observations[c.name]=observation.error?observation:observation.rows[0].eligible
+    assert.deepEqual(observations[c.name],c.expected,c.name)
+   } finally {await admin.query('ROLLBACK')}
+  }
+  await admin.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+  try {
+   await admin.query("SET LOCAL ROLE jenfu_ai_pdm_runtime; SET LOCAL statement_timeout='5s'")
+   const executionMs=[]
+   for(let i=0;i<4;i++){
+    const plan=(await admin.query('EXPLAIN (ANALYZE, FORMAT JSON) '+managerSql,managerArgs)).rows[0]['QUERY PLAN'][0]
+    if(i>0)executionMs.push(plan['Execution Time'])
+   }
+   return {observations,executionMs}
+  } finally {await admin.query('ROLLBACK')}
+ }
+ const managerBefore=await managerRead()
+ await admin.query(await readFile(managerMigration,'utf8'))
+ const managerAfterFunctions=await functionFacts()
+ assert.deepEqual(metadata(managerAfterFunctions),metadata(afterFunctions),'049 owner/ACL/config/signature/default/security drift')
+ assert.deepEqual(managerAfterFunctions.filter(after=>after.body!==afterFunctions.find(before=>before.identity===after.identity).body)
+  .map(row=>row.identity),[signatures.at(-1)],'049 changes only the manager eligibility body')
+ const managerAfter=await managerRead()
+ assert.deepEqual(managerAfter.observations,managerBefore.observations,'049 manager eligibility compared to literal installed 048')
+ const managerAcl=(await admin.query("SELECT has_function_privilege('jenfu_ai_pdm_runtime',$1,'EXECUTE') AS pdm,"+
+  " has_function_privilege('jenfu_ai_pdm_migrator',$1,'EXECUTE') AS pdm_migrator,"+
+  " has_function_privilege('jenfu_platform_runtime',$1,'EXECUTE') AS platform,"+
+  " has_function_privilege('fms_runtime',$1,'EXECUTE') AS fms",[signatures.at(-1)])).rows[0]
+ assert.deepEqual(managerAcl,{pdm:true,pdm_migrator:true,platform:false,fms:false})
  console.log(JSON.stringify({status:'PASS',cases:cases.length,queriesPerCase:queries.length,
   comparisons:exactComparisons,nullValidationChecks,phaseResults,literal047Comparisons,publication047Oracle:Object.fromEntries(publication047Oracle),changedFunctions,functionMetadataInvariant:true,oracle:'PRE_MIGRATION_ROWS_AND_ERRORS_PLUS_PUBLICATION_EDGES_LITERAL_PUBLISHED047_PER_ABI',method:'BIDIRECTIONAL_EXCEPT_ALL_AND_DUPLICATE_PRESERVING_CANONICAL_ROW_MULTISET',version,jit:'off',plans,
-  productionCpuConclusion:'NOT_MEASURED',productionReleaseAuthority:false}))
+  manager049:{before:managerBefore,after:managerAfter,acl:managerAcl},
+   productionCpuConclusion:'NOT_MEASURED',productionReleaseAuthority:false}))
 },{platformRoot,capacityPopulation:500,includeScopedReaders:false})

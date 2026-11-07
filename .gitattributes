@@ -44,3 +44,4 @@ db/dev-010/071_local_orgmaster_administration_owner_bootstrap_v2.sql text eol=lf
 
 db/migrations/047_dev070_scoped_ai_pdm_principal_readers.sql text eol=lf
 db/migrations/048_dev070_governance_scalar_projection.sql text eol=lf
+db/migrations/049_dev070_scoped_pdm_role_policy_manager.sql text eol=lf
