@@ -141,7 +141,8 @@ const files = [
   'server/orgmasterLocalAdministrationRuntime.ts', 'server/orgmasterLocalAdministrationRuntime.test.ts', 'server/orgmasterLocalAdministrationComposition.test.ts',
   'server/orgmasterPrincipalLifecycleClient.ts', 'server/orgmasterFirebaseIdentityProvider.ts', 'server/orgmasterManagedDirectoryPort.ts', 'vite.config.ts',
   'server/financialCatalogInitializationAdoption.ts', 'server/financialCatalogInitializationOwnerHttp.ts', 'server/financialCatalogActivationStore.ts',
-  'src/components/GovernanceFinancialCatalogInitialization.tsx', 'src/components/FmsCatalogActivationWorkspace.tsx',
+  'server/governanceReduction.ts', 'server/orgmasterGovernanceStore.ts',
+  'src/components/GovernanceAdministrators.tsx', 'src/components/GovernanceCenter.tsx', 'src/components/FmsCatalogActivationWorkspace.tsx',
 
   'ai-doc/specs/DEV-070-platform-super-admin-authority-contract.md',
   ...['contracts/orgmaster-administration/v1', 'contracts/orgmaster-administration-bootstrap/v1', 'contracts/orgmaster-fms-authority/v3', 'contracts/orgmaster-fms-administration-initialization/v1', 'contracts/ai-pdm-role-policy-catalog/v3', 'contracts/orgmaster-administration-enrollment/v1', 'contracts/orgmaster-administration-lifecycle/v1', 'contracts/orgmaster-fms-catalog-initialization-activation/v1', 'contracts/fms-catalog-initialization-handoff/v1'].flatMap(directory => fs.readdirSync(path.join(root, directory)).filter(name => name.endsWith('.json')).map(name => `${directory}/${name}`)),
