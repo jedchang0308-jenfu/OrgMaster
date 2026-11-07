@@ -46,6 +46,10 @@ export function smokeRotationBaselineVersion({ toolVersion, baselineInfra = null
   return continuation.newVersion
 }
 
+export function smokeRotationToolAdmissionIntent({ baselineIntent, baselineIntentRef, sourceRevision, toolRotationRef }) {
+  return { ...baselineIntent, sourceRevision, infraReceiptRef: toolRotationRef, baselineIntentRef }
+}
+
 export function assertReleasedSmokeRotationBaseline({ baselineInfra, baselineInfraRef, baselineIntent,
   toolRotationRef, toolReceipt, currentSourceRevision, isAncestor }) {
   const receipt = assertSeal(baselineInfra, 'jenfu.dev012.app-infra-receipt.v1', 'SMOKE_ROTATION_VERSION_BASELINE_INVALID')
@@ -166,7 +170,8 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef })
   const toolRead = await transport.readJson(toolRotationRef, bucket, ['receipts/tool-rotations'])
   const toolEvidence = await assertOrdinaryToolRotation({ root, profile, transport,readHistoricalBaseline:readRoutineBaseline,
-    intent: { ...baseline.intent, sourceRevision: git.sourceRevision, infraReceiptRef: toolRotationRef },
+    intent: smokeRotationToolAdmissionIntent({ baselineIntent: baseline.intent, baselineIntentRef,
+      sourceRevision: git.sourceRevision, toolRotationRef }),
     receipt: toolRead.value, baseline })
   const baselineInfraRead = await transport.readJson(baseline.intent.infraReceiptRef, bucket, ['receipts'])
   if (!same(baselineInfraRead.ref, baseline.intent.infraReceiptRef)) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
