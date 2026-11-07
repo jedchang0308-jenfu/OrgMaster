@@ -29,6 +29,29 @@ describe('root-only exact immutable FMS catalog adoption', () => {
     const workspace = await readFinancialCatalogActivationWorkspace(root, actor, options)
     expect(workspace.initializationAdoption).toBeNull()
   })
+  it('keeps an explicit first-initialization operation on the root adoption path when the root also has ordinary catalog grants', async () => {
+    const { root, actor, release, request, options } = await setup()
+    const current = await readGovernanceStore(root)
+    const capabilities = ['financial-management-system.catalog.import', 'financial-management-system.catalog.publish',
+      'financial-management-system.catalog.activate'] as const
+    current.document.draft.managementGrants.push(...capabilities.map((capability, index) => ({
+      id: `existing-catalog-grant-${index}`, principalId: actor.principalId, employeeId: actor.employeeId!, applicationId: 'financial-management-system' as const,
+      capability, status: 'active' as const, validFrom: '2026-01-01T00:00:00.000Z', validTo: null,
+      grantedByPrincipalId: actor.principalId, reason: 'existing ordinary catalog authority',
+    })))
+    const orgmasterAdministrator = current.document.draft.administration!.grants.find(grant => grant.applicationId === 'orgmaster')!
+    current.document.draft.administration!.grants.push({ ...orgmasterAdministrator, id: '20000000-0000-4000-8000-000000000070',
+      applicationId: 'financial-management-system', reason: 'existing FMS application administrator',
+      catalogBinding: { catalogVersion: release.version, contentSha256: release.contentSha256, stableRoleId: 'role-system-admin', roleDefinitionHash: 'a'.repeat(64) } })
+    await persistInitializationFixture(root, current.document)
+    const freshRequest = { ...request, expectedGovernanceRevision: (await readGovernanceStore(root)).revision }
+    const preview = await previewFinancialCatalogActivation(root, actor, release, freshRequest, options)
+    expect(preview.initializationAdoption).toMatchObject({ kind: 'platform_root_catalog_initialization' })
+    const receipt = await activateFinancialCatalog(root, actor, release, { ...freshRequest, commandId: 'root-with-ordinary-grants',
+      requestHash: preview.requestHash, previewHash: preview.previewHash }, options)
+    expect(receipt.financialCatalogActivation).toMatchObject({ actorProof: { kind: 'platform_root_catalog_initialization' } })
+    expect(receipt.financialCatalogActivation).not.toHaveProperty('fmsCheckpoint')
+  })
   it('preserves unpublished ordinary and management drafts instead of publishing them along with the catalog', async () => {
     const fixture = await setup(), { root, actor, release, request, options } = fixture
     const current = await readGovernanceStore(root)
