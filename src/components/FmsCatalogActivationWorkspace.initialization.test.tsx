@@ -27,7 +27,7 @@ async function prepare() {
 }
 it('uses the exact initialization preview and normal activate endpoint without issuing import grants or an intent', async () => {
   await prepare(); expect(host.textContent).toContain('明示授予 FMS 管理資格')
-  await click('啟用此版本')
+  await click('採用此版本')
   expect(api.previewFmsCatalogActivation).toHaveBeenCalledWith(expect.objectContaining({ initializationOperationId: operationId }))
   expect(api.activateFmsCatalog).toHaveBeenCalledWith(expect.objectContaining({ initializationOperationId: operationId, commandId: 'org-command-1' }))
   expect(api.activateFmsCatalog.mock.calls[0][0]).not.toHaveProperty('fmsCheckpoint')
@@ -38,7 +38,7 @@ it('uses the exact initialization preview and normal activate endpoint without i
 it('recovers the original activation command after an unknown result without resending', async () => {
   api.activateFmsCatalog.mockRejectedValue(new TypeError('unknown write result'))
   api.loadFmsCatalogActivationReceipt.mockResolvedValue({ receiptStatus: 'applied', requestHash: 'a'.repeat(64), previewHash: 'b'.repeat(64) })
-  await prepare(); await click('啟用此版本'); expect(host.textContent).toContain('採用結果尚待確認')
+  await prepare(); await click('採用此版本'); expect(host.textContent).toContain('採用結果尚待確認')
   await click('查詢原操作')
   expect(api.loadFmsCatalogActivationReceipt).toHaveBeenCalledWith('org-command-1')
   expect(api.activateFmsCatalog).toHaveBeenCalledTimes(1)
