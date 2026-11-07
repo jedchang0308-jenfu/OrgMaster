@@ -5,10 +5,10 @@ import {createHash,randomUUID} from 'node:crypto'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import pg from 'pg'
-import {localOwnerHash,planLocalOwnerBridge,LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTSTRAP_PATH,readLocalOwnerBootstrapFacts,readLocalOwnerBridgeReceipt} from './lib/dev070-local-administration-owner.mjs'
+import {localOwnerHash,planLocalOwnerBridge,LOCAL_BRIDGE_PATH,LOCAL_OWNER_BOOTSTRAP_PATH,LOCAL_PERSISTENCE_COMPATIBILITY_PATH,readLocalOwnerBootstrapFacts,readLocalOwnerBridgeReceipt} from './lib/dev070-local-administration-owner.mjs'
 import {unwrapMigrationTransaction} from './lib/dev040-orgmaster-independent-release.mjs'
 import {verifyAiPdmCatalogReaderCompatibility} from './lib/dev070-ai-pdm-catalog-reader-postgres-qc.mjs'
-import {verifyLocalOwnerBootstrapAcl} from './lib/dev070-local-owner-bootstrap-postgres-qc.mjs'
+import {verifyLocalOwnerBootstrapAcl,verifyLocalPersistenceCompatibility} from './lib/dev070-local-owner-bootstrap-postgres-qc.mjs'
 import {verifyPdmManagerEligibility,verifyPdmManagerWithScopedReaders} from './lib/dev070-pdm-manager-postgres-qc.mjs'
 
 // This component installs actual Org source fragments and all of local 046.
@@ -59,8 +59,8 @@ try{
   await admin.query(`COMMENT ON ROLE ${ident(role)} IS '${marker}'`)
  }
  await admin.query(`GRANT jenfu_orgmaster_runtime TO ${ident(orgLogin)};GRANT jenfu_platform_runtime TO ${ident(platformLogin)};GRANT fms_runtime TO ${ident(fmsLogin)}`)
- await setup.query('CREATE EXTENSION pgcrypto;CREATE SCHEMA orgmaster_core AUTHORIZATION jenfu_orgmaster_migrator;CREATE SCHEMA orgmaster_contract AUTHORIZATION jenfu_orgmaster_migrator')
- await setup.query('REVOKE CREATE ON SCHEMA public FROM PUBLIC;REVOKE ALL ON SCHEMA orgmaster_core,orgmaster_contract FROM PUBLIC;GRANT USAGE ON SCHEMA orgmaster_core TO jenfu_orgmaster_runtime')
+ await setup.query('CREATE EXTENSION pgcrypto;CREATE SCHEMA orgmaster AUTHORIZATION postgres;CREATE SCHEMA organization AUTHORIZATION postgres;CREATE SCHEMA access_governance AUTHORIZATION postgres;CREATE SCHEMA orgmaster_core AUTHORIZATION jenfu_orgmaster_migrator;CREATE SCHEMA orgmaster_contract AUTHORIZATION jenfu_orgmaster_migrator')
+ await setup.query('REVOKE CREATE ON SCHEMA public FROM PUBLIC;REVOKE ALL ON SCHEMA orgmaster,organization,access_governance,orgmaster_core,orgmaster_contract FROM PUBLIC;GRANT USAGE ON SCHEMA orgmaster TO jenfu_orgmaster_runtime;GRANT USAGE ON SCHEMA orgmaster_core TO jenfu_orgmaster_runtime')
  const profile=JSON.parse(await readFile(path.join(root,'config/release/dev040-orgmaster-independent-production-v3.json'),'utf8'))
  const source031=await readFile(path.join(root,'db/migrations/031_dev014_principal_lifecycle_v2.sql'))
  const source045=await readFile(path.join(root,'db/migrations/045_dev070_administration_commands_v1.sql'))
@@ -80,21 +80,53 @@ try{
   await owner.query(`CREATE FUNCTION ${schema}.${name}(${args}) RETURNS SETOF text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS 'SELECT NULL::text WHERE false'`)
   await owner.query(`REVOKE ALL ON FUNCTION ${schema}.${name}(${types}) FROM PUBLIC`)
  }
- for(const [name,args] of [['read_active_persistence_artifact_v1','a text'],['read_active_persistence_authority_v1',''],['write_active_persistence_artifacts_v1','a jsonb,b text,c text,d text']]){
-  await setup.query(`CREATE FUNCTION orgmaster_core.${name}(${args}) RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog AS $component$ SELECT '{}'::jsonb $component$`)
-  const types=args?args.split(',').map(v=>v.split(' ')[1]).join(','):''
-  await setup.query(`REVOKE ALL ON FUNCTION orgmaster_core.${name}(${types}) FROM PUBLIC`)
-  // Match the real pre-bootstrap ACL: the writer already grants the new owner.
-  await setup.query(`GRANT EXECUTE ON FUNCTION orgmaster_core.${name}(${types}) TO ${name==='write_active_persistence_artifacts_v1'?'jenfu_orgmaster_migrator':'jenfu_orgmaster_runtime'}`)
- }
- sql=await readFile(path.join(root,LOCAL_BRIDGE_PATH),'utf8');const ownershipSql=await readFile(path.join(root,LOCAL_OWNER_BOOTSTRAP_PATH),'utf8')
+ await setup.query(`
+  CREATE FUNCTION orgmaster.read_active_persistence_artifact_v1(p_artifact_key text)
+   RETURNS TABLE(artifact_key text,artifact_kind text,payload jsonb,canonical_sha256 text,source_sha256 text,source_bytes bigint,source_revision text)
+   LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog
+   AS $legacy$ SELECT p_artifact_key,'governance','{"fixture":"dev070-local-compatibility"}'::jsonb,repeat('a',64),repeat('b',64),42::bigint,repeat('c',64) $legacy$;
+  CREATE FUNCTION orgmaster.read_active_persistence_authority_v1()
+   RETURNS TABLE(authority_version bigint,source_revision text)
+   LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog
+   AS $legacy$ SELECT 7::bigint,repeat('d',64) $legacy$;
+  CREATE FUNCTION orgmaster.write_active_persistence_artifacts_v1(p_changes jsonb,p_source_revision text,p_updated_by text,p_reason_code text)
+   RETURNS TABLE(authority_version bigint,source_revision text)
+   LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog
+   AS $legacy$ SELECT 8::bigint,p_source_revision $legacy$;
+  CREATE FUNCTION orgmaster.write_active_persistence_artifacts_with_entitlement_outbox_v1(p_changes jsonb,p_source_revision text,p_updated_by text,p_reason_code text,p_entitlement_changes jsonb)
+   RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog
+   AS $legacy$ BEGIN RETURN; END; $legacy$;
+  CREATE FUNCTION orgmaster_core.read_active_persistence_artifact_v1(p_artifact_key text)
+   RETURNS TABLE(artifact_key text,artifact_kind text,payload jsonb,canonical_sha256 text,source_sha256 text,source_bytes bigint,source_revision text)
+   LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog
+   AS 'SELECT * FROM orgmaster.read_active_persistence_artifact_v1(p_artifact_key);';
+  CREATE FUNCTION orgmaster_core.read_active_persistence_authority_v1()
+   RETURNS TABLE(authority_version bigint,source_revision text)
+   LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog
+   AS 'SELECT * FROM orgmaster.read_active_persistence_authority_v1();';
+  CREATE FUNCTION orgmaster_core.write_active_persistence_artifacts_v1(p_changes jsonb,p_source_revision text,p_updated_by text,p_reason_code text)
+   RETURNS TABLE(authority_version bigint,source_revision text)
+   LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog
+   AS 'SELECT * FROM orgmaster.write_active_persistence_artifacts_v1(p_changes, p_source_revision, p_updated_by, p_reason_code);';
+  REVOKE ALL ON FUNCTION orgmaster.read_active_persistence_artifact_v1(text),orgmaster.read_active_persistence_authority_v1(),orgmaster.write_active_persistence_artifacts_v1(jsonb,text,text,text),orgmaster.write_active_persistence_artifacts_with_entitlement_outbox_v1(jsonb,text,text,text,jsonb) FROM PUBLIC,jenfu_orgmaster_migrator,jenfu_orgmaster_runtime,jenfu_platform_runtime,jenfu_ai_pdm_runtime;
+  REVOKE ALL ON FUNCTION orgmaster_core.read_active_persistence_artifact_v1(text),orgmaster_core.read_active_persistence_authority_v1(),orgmaster_core.write_active_persistence_artifacts_v1(jsonb,text,text,text) FROM PUBLIC;
+  GRANT EXECUTE ON FUNCTION orgmaster.write_active_persistence_artifacts_v1(jsonb,text,text,text),orgmaster.write_active_persistence_artifacts_with_entitlement_outbox_v1(jsonb,text,text,text,jsonb) TO jenfu_orgmaster_runtime;
+  GRANT EXECUTE ON FUNCTION orgmaster_core.read_active_persistence_artifact_v1(text),orgmaster_core.read_active_persistence_authority_v1() TO jenfu_orgmaster_runtime;
+  GRANT EXECUTE ON FUNCTION orgmaster_core.write_active_persistence_artifacts_v1(jsonb,text,text,text) TO jenfu_orgmaster_migrator;
+ `)
+  sql=await readFile(path.join(root,LOCAL_BRIDGE_PATH),'utf8');const ownershipSql=await readFile(path.join(root,LOCAL_OWNER_BOOTSTRAP_PATH),'utf8')
+  const compatibilityBytes=await readFile(path.join(root,LOCAL_PERSISTENCE_COMPATIBILITY_PATH)),compatibilityText=compatibilityBytes.toString('utf8'),compatibilitySql=unwrapMigrationTransaction(compatibilityBytes)
+  assert.equal(compatibilityBytes.includes(13),false,'072 raw source must remain LF on Windows too')
+  const compatibilityBlob=execFileSync('git',['show',`HEAD:${LOCAL_PERSISTENCE_COMPATIBILITY_PATH}`],{cwd:root,maxBuffer:1024*1024})
+  assert.equal(localOwnerHash(compatibilityBytes),localOwnerHash(compatibilityBlob))
+  assert.equal((compatibilityText.match(/^BEGIN;/gmu)??[]).length,1);assert.equal((compatibilityText.match(/^COMMIT;/gmu)??[]).length,1)
  for(const [filename,bytes] of [[LOCAL_BRIDGE_PATH,sql],[LOCAL_OWNER_BOOTSTRAP_PATH,ownershipSql]]){
   assert.equal(localOwnerHash(Buffer.from(bytes)),localOwnerHash(execFileSync('git',['show',`HEAD:${filename}`],{cwd:root,maxBuffer:1024*1024})))
   assert.equal((bytes.match(/^BEGIN;/gmu)??[]).length,1);assert.equal((bytes.match(/^COMMIT;/gmu)??[]).length,1)
  }
  const bindings=async()=> (await owner.query('SELECT principal_id,owner,purpose,provider_issuer,provider_subject,db_session_user,binding_version::text binding_version,enabled FROM orgmaster_core.workload_principal_bindings ORDER BY principal_id')).rows
  const initial=await bindings(),context={configurationSha256:'1'.repeat(64),clusterRecordSha256:'2'.repeat(64),runId,config:{target:{host:'127.0.0.1',port:5432,database,sessionUser:orgLogin},postmaster:{pid:123,startToken:'133000000000000001',dataDirectory:'/ci-owned-component'},profileRef:{sha256:'3'.repeat(64)},sqlProfileRef:{sha256:'4'.repeat(64)}}}
- const source={sourceRevision:'a'.repeat(40),sourceSha256:'b'.repeat(64),localMigration:{path:LOCAL_BRIDGE_PATH,sourceSha256:localOwnerHash(sql),appliedSha256:localOwnerHash(unwrapMigrationTransaction(sql))},ownershipBootstrap:{path:LOCAL_OWNER_BOOTSTRAP_PATH,sourceSha256:localOwnerHash(ownershipSql),appliedSha256:localOwnerHash(unwrapMigrationTransaction(ownershipSql))}}
+  const source={sourceRevision:'a'.repeat(40),sourceSha256:'b'.repeat(64),localMigration:{path:LOCAL_BRIDGE_PATH,sourceSha256:localOwnerHash(sql),appliedSha256:localOwnerHash(unwrapMigrationTransaction(sql))},ownershipBootstrap:{path:LOCAL_OWNER_BOOTSTRAP_PATH,sourceSha256:localOwnerHash(ownershipSql),appliedSha256:localOwnerHash(unwrapMigrationTransaction(ownershipSql)),compatibility:{path:LOCAL_PERSISTENCE_COMPATIBILITY_PATH,sourceSha256:localOwnerHash(compatibilityBytes),appliedSha256:localOwnerHash(compatibilitySql)}}}
  const makePlan=async()=>planLocalOwnerBridge({context,source,facts:{ledgerSha256:'c'.repeat(64),bindingsSha256:localOwnerHash(await bindings()),runtimeRolesSha256:'d'.repeat(64),beforeOwnership:await readLocalOwnerBootstrapFacts(owner),disposition:{pending:[]}},ownerProof:{email:'dev010-orgmaster-migrator@jenfu-platform-nonprod.iam.gserviceaccount.com',subject:'109035753048386897825'},reason:'SQL_SOURCE_DOMAIN_FIXTURE_NO_PROVIDER'})
  const core=p=>{const{planSha256,...value}=p;return value},apply=async plan=>(await owner.query('SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb) receipt',[JSON.stringify(core(plan))])).rows[0].receipt
  const legacySql=await readFile(path.join(root,'db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql'),'utf8')
@@ -111,7 +143,9 @@ try{
  for(const after of afterFunctions){const before=beforeFunctions.find(v=>v.signature===after.signature);assert.equal(after.owner,'jenfu_orgmaster_migrator');assert.equal(after.definitionSha256,before.definitionSha256);assert.equal(after.bodySha256,before.bodySha256)}
  await owner.query(sql)
  await owner.query('INSERT INTO orgmaster_core.administration_local_bridge_installations_v1(singleton,source_path,source_sha256,source_revision) VALUES(true,$1,$2,$3)',[LOCAL_BRIDGE_PATH,localOwnerHash(sql),'a'.repeat(40)])
- const runtime=await connect(orgLogin),fms=await connect(fmsLogin),platform=await connect(platformLogin)
+  const runtime=await connect(orgLogin)
+  process.stdout.write(JSON.stringify(await verifyLocalPersistenceCompatibility({admin:setup,runtime,plan,compatibilitySql}))+'\n')
+  const fms=await connect(fmsLogin),platform=await connect(platformLogin)
  process.stdout.write(JSON.stringify(await verifyAiPdmCatalogReaderCompatibility({admin:setup,runtime}))+'\n')
  await deny(runtime,'SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb)',[JSON.stringify(core(plan))]);await deny(platform,'SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb)',[JSON.stringify(core(plan))]);await deny(fms,'SELECT orgmaster_core.bind_local_administration_workloads_v1($1::jsonb)',[JSON.stringify(core(plan))])
  const bad={...core(plan),beforeBindingsSha256:'0'.repeat(64)}

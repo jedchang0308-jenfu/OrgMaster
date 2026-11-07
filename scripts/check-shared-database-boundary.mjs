@@ -17,8 +17,8 @@ const PROJECTS = {
     migrationDir: 'db/migrations',
     firstGovernedVersion: 11,
     ownedSchemas: ['orgmaster_core', 'orgmaster_contract'],
-    // DEV-070 §22/24: immutable v1 and its exact forward-only local repair.
-    neutralBootstrapPaths: ['db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql', 'db/dev-010/071_local_orgmaster_administration_owner_bootstrap_v2.sql'],
+    // DEV-070: exact local owner and compatibility steps.
+    neutralBootstrapPaths: ['db/dev-010/070_local_orgmaster_administration_owner_bootstrap_v1.sql', 'db/dev-010/071_local_orgmaster_administration_owner_bootstrap_v2.sql', 'db/dev-010/072_local_orgmaster_persistence_compatibility.sql'],
   },
   'ai-pdm': {
     app: 'ai-pdm',
