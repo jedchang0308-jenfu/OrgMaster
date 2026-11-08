@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react'
 import {commitAdministration,GovernanceApiError,loadAdministrationCommand,loadAdministrationWorkspace,previewAdministration,type AdministrationCommandReceipt,type AdministrationPreview,type AdministrationWorkspace} from '../governance/apiClient'
-import {ADMINISTRATION_BATCH_COMMAND_CONTRACT,ADMINISTRATION_COMMAND_CONTRACT,ADMINISTRATIVE_APPLICATION_IDS,type AdministrationCommand} from '../governance/administration'
+import {ADMINISTRATION_BATCH_COMMAND_CONTRACT,ADMINISTRATION_COMMAND_CONTRACT,ADMINISTRATIVE_APPLICATION_IDS} from '../governance/administrationContract'
+import type {AdministrationCommand} from '../governance/administration'
 import type {Employee} from '../types'
 import type {AdministrativeGrantV1} from '../governance/types'
 const labels={orgmaster:'OrgMaster 系統管理員','ai-pdm':'PDM 系統管理員','financial-management-system':'FMS 系統管理員'}
