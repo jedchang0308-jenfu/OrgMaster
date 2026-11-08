@@ -429,7 +429,7 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
       })
     : undefined
   const managedRepository = createManagedIdentityRepository({ root: environment.ORGMASTER_ROOT?.trim() || process.cwd(), devEnabled: false, database })
-  const firebase = createFirebaseIdentityProvider(configResult.config.identityIssuer, configResult.config.identityAudience,localProviders?{credential:localProviders.firebaseCredential,appName:localProviders.firebaseAppName}:undefined)
+  const firebase = createFirebaseIdentityProvider(configResult.config.identityIssuer, configResult.config.identityAudience,localProviders?{credential:localProviders.firebaseCredential,appName:localProviders.firebaseAppName,userAdc:{projectId:configResult.config.identityAudience,sourceAuth:localProviders.sourceAuth}}:undefined)
   const managedLoginOwner = managedDirectory && directoryConfig.enabled
     ? createManagedLoginOwnerService({ repository: managedRepository, directory: managedDirectory, firebase, directoryCustomerId: directoryConfig.customerId })
     : undefined
