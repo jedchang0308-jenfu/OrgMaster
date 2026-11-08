@@ -118,7 +118,7 @@ import {
   upsertRoleCombinationRiskRule,
 } from './roleCombinationRisks'
 import type { ChildrenAxis, Employee, HierarchyNode, OrganizationLevel, OrgDirectoryState, OrgMember, Point, PositionView, Role } from './types'
-import type { OrgWorkspaceIndex, OrgWorkspaceVersionSummary, WorkspaceMode } from './versionWorkspace'
+import { currentWorkspaceVersion, type OrgWorkspaceIndex, type OrgWorkspaceVersionSummary, type WorkspaceMode } from './versionWorkspace'
 import { WorkspaceShell } from './components/workspace/WorkspaceShell'
 import { WorkspaceOverlayProvider, WorkspacePortal } from './components/workspace/WorkspaceOverlayHosts'
 import { WorkspaceLauncher } from './components/workspace/WorkspaceLauncher'
@@ -3261,7 +3261,7 @@ function ProtectedApp() {
         departments={departments}
         roles={roles}
         currentOrganizationVersionId={workspaceIndex?.currentVersionId ?? null}
-        currentOrganizationRevision={isDirty ? null : serverRevision ?? activeWorkspaceVersion?.revision ?? null}
+        currentOrganizationRevision={isDirty ? null : currentWorkspaceVersion(workspaceIndex)?.revision ?? null}
         visibility={visibility}
         workspaceMutationAllowed={workspaceMutationAllowed}
         refreshToken={governanceRefreshToken}
