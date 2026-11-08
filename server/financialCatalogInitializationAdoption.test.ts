@@ -8,6 +8,7 @@ import { isolatedCatalogRelease, persistInitializationFixture, setupCatalogIniti
 import { validateAndNormalizeFinancialCatalogRelease } from './financialCatalogReleaseStore'
 import { createOrgmasterGovernanceMiddleware } from './orgmasterGovernanceApi'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import { administrativeDefinitionBindings } from '../src/governance/administrativeDefinitions'
 const roots: string[] = []
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
 async function setup() { const value = await setupCatalogInitializationFixture(); roots.push(value.root); return value }
@@ -42,7 +43,7 @@ describe('root-only exact immutable FMS catalog adoption', () => {
     const orgmasterAdministrator = current.document.draft.administration!.grants.find(grant => grant.applicationId === 'orgmaster')!
     current.document.draft.administration!.grants.push({ ...orgmasterAdministrator, id: '20000000-0000-4000-8000-000000000070',
       applicationId: 'financial-management-system', reason: 'existing FMS application administrator',
-      catalogBinding: { catalogVersion: release.version, contentSha256: release.contentSha256, stableRoleId: 'role-system-admin', roleDefinitionHash: 'a'.repeat(64) } })
+      catalogBinding: administrativeDefinitionBindings['financial-management-system'] })
     await persistInitializationFixture(root, current.document)
     const freshRequest = { ...request, expectedGovernanceRevision: (await readGovernanceStore(root)).revision }
     const preview = await previewFinancialCatalogActivation(root, actor, release, freshRequest, options)
