@@ -1,5 +1,21 @@
 # DEV-070：平台超級管理員權威與首次初始化
 
+## 0. 行政權限 v2 producer 契約（2026-11-08；優先於本文舊流程）
+
+OrgMaster 是唯一可寫入的行政授權權威。它保存兩種且只有兩種管理資格：平台範圍 platform_super_admin，以及精確 applicationId 的 application_system_admin。兩者都綁 exact active human Principal／Employee、manual basis、有效期／撤銷、authority epoch、command receipt 與 audit；不得由 email、職位、同人另一 Principal、Platform UI badge、app business role 或 SSO claim 推導。
+
+各 app 另提供固定、版本化、不可由一般角色編輯器變更的 AdministrativeCapabilityDefinition。OrgMaster 只採用已由該 app release 發布並通過 hash/readback 的 definition，將 applicationId + definitionVersion + definitionSha256 綁入 app-admin grant；不再把 dynamic business catalog version/hash 當行政 grant 的存在條件。business catalog 更新不迫使管理員重授；只有 administrative definition 不相容變更才需明示遷移。
+
+新增單一 batch command：一次 preview/commit 可對同一 exact Principal 授予或撤銷多個 app-admin grant。命令必須綁 environment、target Principal／Employee、governance／administration revision、每個 app definition tuple、reason、commandId、requestHash；CAS、idempotency、durable receipt、provider readback 及 unknown-outcome 規則沿既有 writer。某 app definition 未就緒時只拒絕該 batch，不得建立未知或 partial 隱式 grant；重送先讀原 receipt。
+
+preview/status 只要求有效的 Platform／OrgMaster session。commit 是高風險管理寫入，要求近期真實 AAL1 session並接受 AAL2；不要求使用者在 FMS／PDM 另開 Google popup，也不把每個操作的 auth_time 小於五分鐘套到只讀查詢。首位超管仍由受控 owner recovery/bootstrap 建立，但建立後所有 app-admin 都走同一正常 batch command，不再重跑首次初始化。
+
+projection 必須是 app-scoped、版本化、唯讀並包含 exact Principal／Employee、grant id/status、applicationId、definition tuple、authority epoch/revision 及 revocation facts。consumer 不得讀 OrgMaster core，也不得取得其他 app roster。Platform DEV-013 SSO 只建立 app session；OrgMaster projection 才是 app 管理授權來源。
+
+FMS 不再向 OrgMaster handoff dynamic catalog，也不需要本人安裝 FMS 角色目錄。FMS release 自己安裝「完整目錄管理」administrative definition；OrgMaster 對指定人員只建立 application_system_admin(financial-management-system) grant。這項 grant不產生 Financial Owner、Finance Manager、付款、銀行、會計、審核或任何其他財務業務 assignment。
+
+遷移順序為 producer/projection v2 → app dual-reader → app definition publication/readback → exact grant batch migration → consumer v2-only → 退休舊 FMS catalog adoption/bootstrap 契約。相容窗口內舊 projection 只服務既有 caller，不得作新 grant fallback。正式與地端均須驗 exact readback、撤銷／epoch fail-closed、AAL1、中文姓名，以及 no-finance-business-role 不變式。
+
 日期：2026-11-05；更新：2026-11-07（Asia/Taipei）。Native：ORGMASTER/DEV-070；來源：JENFU/DEV-022#authority-and-bootstrap。成熟度：IMPLEMENTING／完整本人驗收待續。主控已回報正式 Org `d81eda07e789a50c229b977aea258467583b229e`（PR #221）已經 normal full run `42269131015` RELEASED，047 actual ledger43；static-v8 reader與fresh enrollment-status已隨該source發布。Primary-local Org43及local046、PDM local096／097已正常 installed，local catalog仍v7。§28 optional status metadata已隨D81發布；§29 scalar projection source尚未發布。指定 Google personal／張仕杰 JFS0005，最低 AAL1、AAL2亦接受、中文姓名不變；正式root的人類同意仍有效，Google manual handoff目前受阻／視窗逾時，本人Google完成、root／app-admin grants、native ack或UI完成仍未驗證，不把admit或source測試當初始化成功。人類四專案完整實作至真實地端與正式發布的授權及完整驗收分母維持；既有capacity CPU FAIL與所有歷史首敗保留。
 
 總控權威契約：`C:/VIBE CODING/.worktrees/Jenfu-Platform/dev022-platform-super-admin-20261105/ai-doc/specs/DEV-022-platform-super-admin-cross-project-plan.md`（Platform owner 開發 root；發布使用獨立 clean source checkout）；`C:/VIBE CODING/Jenfu-Platform` 原 root 僅作協調鏡本，不作 release source。相鄰責任沿 DEV-057 Principal／writer fencing 及 DEV-058 集中任用；不重開原驗收或替它們結案。[架構決策](../adr/ADR-007-external-role-catalog-assignment-boundary.md#platform-super-admin-20261105)。
