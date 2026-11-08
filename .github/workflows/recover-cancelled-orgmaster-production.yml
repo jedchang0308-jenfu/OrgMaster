@@ -1,0 +1,54 @@
+name: Recover cancelled OrgMaster production release
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseCapsuleRef:
+        description: Immutable capsule of the cancelled OrgMaster owner run
+        required: true
+        type: string
+      ownerRunId:
+        description: Cancelled owner workflow run id bound by the active control head
+        required: true
+        type: string
+
+concurrency:
+  group: production-release-orgmaster-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.ORGMASTER_PROD_WIF_PROVIDER }}
+          service_account: orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - name: Verify exact stopped cancelled attempt
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/dev040-cancelled-release-recovery.mjs --capsule-ref "${{ inputs.releaseCapsuleRef }}" --owner-run-id "${{ inputs.ownerRunId }}"
+      - name: Seal pre-activation abort with existing owner rollback
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          OWNER_EXECUTION_MODE: full_release
+        run: |
+          ref="${{ inputs.releaseCapsuleRef }}"
+          node scripts/dev040-orgmaster-independent-release.mjs --stage rollback --capsule-ref "${ref%%#sha256=*}" --capsule-sha256 "${ref##*#sha256=}"
+      - name: Verify finalized control readback
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/dev040-cancelled-release-recovery.mjs --verify-final --capsule-ref "${{ inputs.releaseCapsuleRef }}" --owner-run-id "${{ inputs.ownerRunId }}"

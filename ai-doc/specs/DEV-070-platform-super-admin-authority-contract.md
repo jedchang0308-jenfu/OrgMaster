@@ -641,3 +641,11 @@ Org 3d395ab 的正常 owner release 已套用048、正式 ledger44。AI-PDM 5d23
 本節有意收斂 §151「同 snapshot／不容 publication TOCTOU」的適用範圍：一次採用必須把實際讀到的 immutable catalog version、內容雜湊、protected role definition hash 與發布快照綁在同一 OrgMaster transaction，不能把 UI 傳入值當成 catalog 內容；但不要求以跨 owner 鎖把 producer 的 active pointer 凍結到 OrgMaster commit。active pointer 在讀取後前進，只代表下一個待採用更新，不能改寫或污染本次已驗證 artifact；強制 commit 瞬間仍為 producer current 無法提供持續不變條件，卻會新增跨專案鎖與失敗耦合，因此不是發布 gate。
 
 既有 FMS 五項 `catalog.read/edit/publish/import/activate` 管理 grant 若已有效則重用，不因新 app-admin 再授一次；其長期用途限於舊 FMS 目錄維護相容。新的管理資格以 application admin grant 及受保護角色定義為唯一權威。AI-PDM 與 FMS 對同一 Principal 的兩項 app-admin 可共用一次人類 action-time 確認，但仍各自產生可讀回的 app owner acknowledgment；任何一項失敗不得被另一項成功掩蓋。
+
+## 33. Owner workflow 取消後的單向復原（2026-11-09）
+
+GitHub Actions 的 `cancelled` 不是 `failure`。若 owner run 在 `CANDIDATE_CREATED`、`ENTRYPOINT_CONFIGURED` 或 `CANDIDATE_VERIFIED` 被人工取消，原 workflow 的 failure job 不會取得執行機會；重新執行該 job 會連同相依 build／migrate／candidate 工作重播，不能作為復原入口。這是 release executor 的控制流缺口，不應要求使用者重登、重建 capsule、手改 GCS 收據或讓舊 candidate 先取得流量再回復。
+
+新增 `.github/workflows/recover-cancelled-orgmaster-production.yml`，只在 GitHub `production` environment 內由明示 dispatch 執行。輸入固定為原 immutable `releaseCapsuleRef` 與原 `ownerRunId`。執行前必須同時證明：原 run 屬於本 repository、event 為 `workflow_dispatch`、status 已 `completed` 且 conclusion 是 `cancelled`；active control 的 owner／service／bucket 正確、`ownerRunRef` 精確指向該 run、state 尚未 `FINALIZED`、lease 已過期、source revision 與原 run head 相同。任一條件不成立即停止且零 provider mutation。
+
+通過 preflight 後僅以既有 OrgMaster deployer WIF 呼叫 `dev040-orgmaster-independent-release.mjs --stage rollback`。rollback 依既有 provider readback、etag、前版 revision、tag cleanup、entrypoint baseline、immutable receipt 與 control CAS 執行；migration 已套用時只記 forward-applied/readback，不 down migrate。此入口不得執行 prepare、build、migrate、candidate、decision、activate、canonical 或 finalize，也不新增 IAM、Secret、credential、資料權限或 sibling authority。完成後必須讀回 control=`FINALIZED`、result=`PRE_ACTIVATION_ABORTED|ROLLED_BACK`、正式 traffic 仍為前版 100%，再允許新 protected source 建立下一個 release。
