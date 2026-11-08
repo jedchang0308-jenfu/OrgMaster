@@ -4,6 +4,7 @@
 
 ## DEV-070：平台超級管理員權威與首次初始化
 
+- 2026-11-09 cancelled-release recovery：正式 owner run 在 candidate 已驗證、尚未切流量時被人工取消，GitHub 將後續 job 標成 `cancelled`，原本只接受 `failure` 的 rollback job 不會執行。新增獨立的 production-environment recovery workflow，只接受同一 immutable capsule、已停止的原 owner run、已過期 lease 與尚未 finalized 的 control head；入口僅能呼叫既有 `rollback` stage，封存 `PRE_ACTIVATION_ABORTED`、移除 candidate tag 並復原 entrypoint，不得 build、migrate、decision、activate 或 canonical。詳契約 §33。
 - 2026-11-08 current：改採[行政權限 v2 producer](specs/DEV-070-platform-super-admin-authority-contract.md#0-行政權限-v2-producer-契約2026-11-08優先於本文舊流程)。OrgMaster 以固定 app administrative definition tuple 發行 exact Principal app-admin grants，新增單一 batch preview/commit/readback；不再依賴 FMS dynamic catalog adoption 或 app 內 Google popup。狀態為文件已同步、producer／projection／遷移及兩環境部署進行中。
 - 2026-11-07 正式接續：`master@9621f29f3689980e592782d738c79496467c6bc6` 已由 owner run `42376362230` 完成十階段 `RELEASED`，revision `orgmaster-prod-14a059783cff` 承接 100% 流量；候選驗證與 canonical/finalize 均成功。FMS 本人回讀顯示固定管理角色已發布；OrgMaster 預覽只新增 `role-system-admin`、保留既有角色與四筆任用。首次中央採用暴露「同一 root 另具一般 catalog grants 時誤走 checkpoint 流程」缺陷，原操作未取得 FMS 回覆且 receipt readback 為不存在，未重送。修正分支 `codex/dev070-initialization-adoption-priority-20261107` 以明示 `initializationOperationId` 優先走 owner-bound root adoption，普通／partial grants 路徑不變；相關 61／61、DEV-070 contracts 48／48及 build 已通過，protected PR／required CI／正式再發布與採用重試待續。詳 §30。
 

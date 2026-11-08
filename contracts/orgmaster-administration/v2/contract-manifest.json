@@ -4,7 +4,7 @@
   "batchCommandContract": "orgmaster.administration-batch-command.v2",
   "definitions": {
     "path": "administrative-definitions.json",
-    "sha256": "685a1be28b92bb3f9a7f91374d50abb4aa20636489b2c6a522efc2ee23a8d333"
+    "sha256": "8d0f05216d1c2f095d59807f9b05444a9382128aa9bc4a8a34590a854441ebb1"
   },
   "files": {
     "batch-command.schema.json": "d92b023a489c378055b1476344e503c6b96f6d3da17a177b72c6493f921d31df",
