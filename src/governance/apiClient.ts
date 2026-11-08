@@ -9,7 +9,7 @@ export interface AdministrationWorkspace {
  grants:AdministrativeGrantV1[];catalogBindings:AdministrationCatalogBindings;admission:{read:boolean;mutate:boolean};correlationId:string
  eligiblePrincipals?:Array<{principalId:string;employeeId:string;accountType:'human_personal'|'human_privileged'}>
 }
-export interface AdministrationPreview {contractVersion:'orgmaster.administration-preview.v1';commandId:string;requestHash:string;previewHash:string;expiresAt:string;diff:{grantIds:string[];result:string;operation?:string;employeeId?:string;applicationId?:keyof typeof import('./administration').ADMINISTRATIVE_ROLE_IDS|null};correlationId:string}
+export interface AdministrationPreview {contractVersion:'orgmaster.administration-preview.v1';commandId:string;requestHash:string;previewHash:string;expiresAt:string;diff:{grantIds:string[];result:string;operation?:string;employeeId?:string;applicationId?:keyof typeof import('./administration').ADMINISTRATIVE_ROLE_IDS|null;applicationIds?:Array<keyof typeof import('./administration').ADMINISTRATIVE_ROLE_IDS>};correlationId:string}
 export interface AdministrationCommandReceipt {commandId:string;result:'applied'|'no_change';administrationVersion:number;publishedPolicyId:string;grantIds:string[];outboxIds:string[];activation:'pending'|'acknowledged';correlationId:string}
 
 import { captureOrgMasterPermissionInvalidation } from '../auth/permissionInvalidation'

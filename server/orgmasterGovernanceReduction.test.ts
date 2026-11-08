@@ -13,6 +13,7 @@ import { applyDraftCommand, getGovernancePaths, loadOrganizationSource, publishG
 import { decodeDynamicAiPdmRoleCatalog } from './aiPdmDynamicRoleCatalog'
 import { readPublishedAiPdmRoleCatalog } from './aiPdmRoleCatalogRepository'
 import { acceptedAdministrativeCatalogBindings } from './orgmasterAdministrationStore'
+import { administrativeDefinitionBindings } from '../src/governance/administrativeDefinitions'
 import { createOrgmasterGovernanceMiddleware } from './orgmasterGovernanceApi'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
@@ -123,11 +124,7 @@ describe('DEV-058 catalog-independent reduction', () => {
       kind: active.kind, policy: active.policy, externalRoleCatalogs: active.externalRoleCatalogs,
       organizationSnapshot: active.organizationSnapshot, effectState: active.effectState,
     }))
-    expect(acceptedAdministrativeCatalogBindings(result.document)['ai-pdm']).toMatchObject({
-      catalogVersion: current.catalogVersion,
-      contentSha256: current.contentSha256 ?? current.payloadHash,
-      stableRoleId: 'role-application-system-admin',
-    })
+    expect(acceptedAdministrativeCatalogBindings(result.document)['ai-pdm']).toEqual(administrativeDefinitionBindings['ai-pdm'])
   })
 
   it('rejects a catalog-only publication whose expected tuple does not match current owner output', async () => {

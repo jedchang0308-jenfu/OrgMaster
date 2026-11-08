@@ -1,0 +1,9 @@
+{
+  "contractVersion": "orgmaster.administration-conformance.v2",
+  "minimumAal": "aal1",
+  "previewRequiresRecentAuthentication": false,
+  "commitRequiresRecentAuthentication": true,
+  "subjectKind": "principal",
+  "batchAtomicity": "single-orgmaster-transaction",
+  "businessRoleImplication": false
+}

@@ -10,9 +10,10 @@ export const DEV070_MIGRATION_ENTRIES=Object.freeze([
  Object.freeze({"order":43,"version":"dev070-orgmaster-047","path":"db/migrations/047_dev070_scoped_ai_pdm_principal_readers.sql","sourceSha256":"b6837188519c403004c1bbbd4e70e91af35b9f366842707f115f7f6dcac251ce","appliedSha256":"7dd50c0485301bf8c58a36ac630b467152fdc2a456459dc586e1e87e902974bf"}),
  Object.freeze({"order":44,"version":"dev070-orgmaster-048","path":"db/migrations/048_dev070_governance_scalar_projection.sql","sourceSha256":"75c56c01a50c9aec50c6fc6cba25d3c01993631ad48aff9300182aa23891e1c2","appliedSha256":"e817ca52e4e52c67fa3f43885fbfb99334067dc6e670ab129752933b38ea7179"}),
  Object.freeze({"order":45,"version":"dev070-orgmaster-049","path":"db/migrations/049_dev070_scoped_pdm_role_policy_manager.sql","sourceSha256":"ae4f3730525417b638cb65175606f7d6d8589c1a89cf61125ffbdd629f4f0e9b","appliedSha256":"3c4a56696e2f224a7911fd45d2e2d3579657a8a941ac9de39c20c87f4f2212f1"}),
+ Object.freeze({"order":46,"version":"dev070-orgmaster-050","path":"db/migrations/050_dev070_administrative_definitions_v2.sql","sourceSha256":"82a68daa71d4afcf97a687055e5a4cbe95dafd60e3c4af10fd2dee1dc6bb3cfd","appliedSha256":"3e892993172277ac4caf6694a52948839d99c257f4e6e1888de86d190fd116db"}),
 ])
 export const DEV070_MIGRATION_ENTRY_COUNT=DEV070_MIGRATION_PREFIX_COUNT+DEV070_MIGRATION_ENTRIES.length
-// 31–39 are the previously accepted DEV-059 exact ledger prefixes. 40–45
+// 31–39 are the previously accepted DEV-059 exact ledger prefixes. 40–46
 // permit readback/retry after a partial forward append, with every row/hash
 // still checked by the shared runner. No unknown ledger layout is admitted.
 export const DEV070_ACCEPTED_LEDGER_COUNTS=Object.freeze(Array.from({length:DEV070_MIGRATION_ENTRY_COUNT-30},(_,index)=>index+31))

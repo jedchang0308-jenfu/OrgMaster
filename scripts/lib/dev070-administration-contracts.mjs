@@ -19,7 +19,7 @@ export async function generateAdministrationContracts(root, check = false) {
   const runtime = await import('../../src/governance/administration.ts')
   const payloads = {
     'policy.schema.json': z.toJSONSchema(runtime.administrationPolicySchema),
-    'command.schema.json': z.toJSONSchema(runtime.administrationCommandSchema),
+    'command.schema.json': z.toJSONSchema(runtime.administrationCommandV1Schema),
     'errors.json': errors,
     'projection-signatures.json': projections,
     'conformance-vectors.json': { contractVersion: 'orgmaster.administration-conformance.v1', rootScope: 'platform', rootValidUntil: null, appScope: 'global', subjectKind: 'principal', basis: 'manual', allowedHumanAccountTypes: ['human_personal', 'human_privileged'], minimumAal: 'aal1', aliasSemantics: 'same-principal-only', ordinaryWriterMayChangeAdministration: false },
@@ -33,6 +33,28 @@ export async function generateAdministrationContracts(root, check = false) {
     if (check) { if (await readFile(path, 'utf8') !== value) throw new Error(`ADMINISTRATION_CONTRACT_DRIFT:${name}`) }
     else await writeFile(path, value)
   }
+  const definitionsPath=resolve(root,'contracts/orgmaster-administration/v2/administrative-definitions.json')
+  const definitionsBytes=await readFile(definitionsPath,'utf8')
+  const definitions=JSON.parse(definitionsBytes)
+  const v2Projections={...projections,
+    pdm:{...projections.pdm,contractVersion:'jenfu.orgmaster.ai-pdm-principal-grants.v6',view:undefined,function:'orgmaster_contract.read_ai_pdm_principal_effective_grants_v6(text,text)'},
+    fms:{...projections.fms,contractVersion:'jenfu.orgmaster.fms-authority.v4',view:'orgmaster_contract.v_fms_authority_v4'},
+    administrativeDefinitions:definitions,
+  }
+  const v2Payloads={
+    'batch-command.schema.json':z.toJSONSchema(runtime.administrationBatchCommandSchema),
+    'projection-signatures.json':v2Projections,
+    'conformance-vectors.json':{contractVersion:'orgmaster.administration-conformance.v2',minimumAal:'aal1',previewRequiresRecentAuthentication:false,commitRequiresRecentAuthentication:true,subjectKind:'principal',batchAtomicity:'single-orgmaster-transaction',businessRoleImplication:false},
+  }
+  const v2Bytes=Object.fromEntries(Object.entries(v2Payloads).map(([name,value])=>[name,`${JSON.stringify(value,null,2)}\n`]))
+  v2Bytes['contract-manifest.json']=`${JSON.stringify({contractVersion:'orgmaster.administration-manifest.v2',owner:'orgmaster',batchCommandContract:runtime.ADMINISTRATION_BATCH_COMMAND_CONTRACT,definitions:{path:'administrative-definitions.json',sha256:sha256(definitionsBytes)},files:Object.fromEntries(Object.entries(v2Bytes).map(([name,value])=>[name,sha256(value)])),projections:v2Projections,ddl:['050_dev070_administrative_definitions_v2.sql']},null,2)}\n`
+  const v2Destination=resolve(root,'contracts/orgmaster-administration/v2')
+  if(!check)await mkdir(v2Destination,{recursive:true})
+  for(const [name,value] of Object.entries(v2Bytes)){
+    const path=resolve(v2Destination,name)
+    if(check){if(await readFile(path,'utf8')!==value)throw new Error(`ADMINISTRATION_V2_CONTRACT_DRIFT:${name}`)}
+    else await writeFile(path,value)
+  }
   const fmsManifest=JSON.parse(await readFile(resolve(root,'contracts/orgmaster-fms-authority/v2/contract-manifest.json'),'utf8'))
   Object.assign(fmsManifest,{schemaVersion:'orgmaster.fms-authority-manifest.v3',contractVersion:'jenfu.orgmaster.fms-authority.v3',authorityView:'orgmaster_contract.v_fms_authority_v3',candidateView:'orgmaster_contract.v_fms_principal_candidates_v2',admissionView:'orgmaster_contract.v_fms_principal_admissions_v2'})
   fmsManifest.assignmentKeys.push('subjectKind','basis','targetPrincipalId','sourceKind','sourceGrantId','administrativeDefinitionHash')
@@ -40,5 +62,5 @@ export async function generateAdministrationContracts(root, check = false) {
   const fmsBytes=`${JSON.stringify(fmsManifest,null,2)}\n`,fmsPath=resolve(root,'contracts/orgmaster-fms-authority/v3/contract-manifest.json')
   if(check){if(await readFile(fmsPath,'utf8')!==fmsBytes)throw new Error('FMS_V3_MANIFEST_DRIFT')}
   else {await mkdir(resolve(root,'contracts/orgmaster-fms-authority/v3'),{recursive:true});await writeFile(fmsPath,fmsBytes)}
-  return { path: destination, manifestSha256: sha256(bytes['contract-manifest.json']),fmsManifestSha256:sha256(fmsBytes) }
+  return { path: destination, manifestSha256: sha256(bytes['contract-manifest.json']),v2ManifestSha256:sha256(v2Bytes['contract-manifest.json']),fmsManifestSha256:sha256(fmsBytes) }
 }

@@ -21,6 +21,13 @@ export const FINANCIAL_PROTECTED_OPERATIONS = [
   'financial-management-system.workflow.activate',
   'financial-management-system.workflow.reassign',
 ] as const
+const FINANCIAL_ADMINISTRATOR_OPERATIONS = new Set<FinancialManagementCapability>([
+  'financial-management-system.catalog.read',
+  'financial-management-system.catalog.edit',
+  'financial-management-system.catalog.publish',
+  'financial-management-system.catalog.import',
+  'financial-management-system.catalog.activate',
+])
 export type FinancialManagementCapability = typeof FINANCIAL_ROLE_ASSIGNMENT_MANAGE | typeof FINANCIAL_ROLE_ASSIGNMENT_PUBLISH | typeof FINANCIAL_PROTECTED_OPERATIONS[number]
 
 export type FinancialApplicationErrorCode =
@@ -122,9 +129,8 @@ export function hasFinancialManagementGrant(document: GovernanceDocumentV3, acto
 export function assertFinancialAuthority(document: GovernanceDocumentV3, actor: GovernanceActorContext, capability: FinancialManagementCapability, at = new Date().toISOString()) {
   if (!actor.employeeId) throw new ApplicationEntitlementError('IDENTITY_REQUIRED')
   const policy=currentPublishedPolicyV3(document)
-  if(policy && [FINANCIAL_ROLE_ASSIGNMENT_MANAGE,FINANCIAL_ROLE_ASSIGNMENT_PUBLISH].includes(capability as typeof FINANCIAL_ROLE_ASSIGNMENT_MANAGE)
-    && hasAdministrativeGrant(policy,actor.principalId,actor.employeeId,FINANCIAL_APPLICATION_ID,at))return
   const administrator=policy&&hasAdministrativeGrant(policy,actor.principalId,actor.employeeId,FINANCIAL_APPLICATION_ID,at)
+  if (administrator && FINANCIAL_ADMINISTRATOR_OPERATIONS.has(capability)) return
   if (!administrator&&!hasFinancialOwnerRole(document, actor, at)) throw new ApplicationEntitlementError('APP_MANAGEMENT_GRANT_REQUIRED')
   if (!hasFinancialManagementGrant(document, actor, capability, at)) throw new ApplicationEntitlementError(capability === FINANCIAL_ROLE_ASSIGNMENT_PUBLISH ? 'APP_PUBLISH_GRANT_REQUIRED' : 'APP_MANAGEMENT_GRANT_REQUIRED')
 }

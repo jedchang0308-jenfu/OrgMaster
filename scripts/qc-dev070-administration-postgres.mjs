@@ -18,7 +18,7 @@ await withAdministrationPostgresFixture(async fixture=>{
  await assert.rejects(platform.query('SELECT orgmaster_core.read_administration_publication_v1()'),/permission denied/)
  await assert.rejects(platform.query('SELECT * FROM orgmaster_contract.v_application_administrator_grants_v1'),/permission denied/)
  await runtime.query('SELECT * FROM orgmaster_contract.v_application_administrator_grants_v1')
- const fms=await connect('fms_runtime');await fms.query('SELECT * FROM orgmaster_contract.v_fms_authority_v3')
+ const fms=await connect('fms_runtime');await fms.query('SELECT * FROM orgmaster_contract.v_fms_authority_v3');await fms.query('SELECT * FROM orgmaster_contract.v_fms_authority_v4')
  const fmsInitialization=(principalId,employeeId)=>fms.query('SELECT * FROM orgmaster_contract.read_fms_administration_initialization_v1($1,$2)',[principalId,employeeId])
  assert.equal((await fmsInitialization('principal-legacy','employee-legacy')).rows.length,0)
  await assert.rejects(fms.query('SELECT * FROM orgmaster_contract.v_platform_administrator_grants_v1'),/permission denied/)

@@ -566,6 +566,13 @@
         "path": "db/migrations/049_dev070_scoped_pdm_role_policy_manager.sql",
         "sourceSha256": "ae4f3730525417b638cb65175606f7d6d8589c1a89cf61125ffbdd629f4f0e9b",
         "appliedSha256": "3c4a56696e2f224a7911fd45d2e2d3579657a8a941ac9de39c20c87f4f2212f1"
+      },
+      {
+        "order": 46,
+        "version": "dev070-orgmaster-050",
+        "path": "db/migrations/050_dev070_administrative_definitions_v2.sql",
+        "sourceSha256": "82a68daa71d4afcf97a687055e5a4cbe95dafd60e3c4af10fd2dee1dc6bb3cfd",
+        "appliedSha256": "3e892993172277ac4caf6694a52948839d99c257f4e6e1888de86d190fd116db"
       }
     ]
   },
