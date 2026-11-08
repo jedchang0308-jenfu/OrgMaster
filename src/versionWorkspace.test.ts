@@ -3,6 +3,7 @@ import {
   archiveDraftEntry,
   createDraftEntry,
   createWorkspaceManifest,
+  currentWorkspaceVersion,
   renameDraftEntry,
   restoreDraftEntry,
   validateWorkspaceManifest,
@@ -11,6 +12,19 @@ import {
 const manifest = createWorkspaceManifest('current-1', '2026-08-16T00:00:00.000Z')
 
 describe('version workspace domain', () => {
+  it('binds governance to the current version instead of the active draft revision', () => {
+    expect(currentWorkspaceVersion({
+      app: 'OrgMaster',
+      workspaceVersion: 1,
+      currentVersionId: 'current-1',
+      manifestRevision: 'manifest-revision',
+      versions: [
+        { ...manifest.entries[0], updatedAt: '2026-08-16T00:00:00.000Z', revision: 'current-revision' },
+        { id: 'draft-a', name: '方案 A', kind: 'draft', status: 'active', basedOnVersionId: 'current-1', createdAt: '2026-08-16T00:01:00.000Z', archivedAt: null, updatedAt: '2026-08-16T00:02:00.000Z', revision: 'draft-revision' },
+      ],
+    })?.revision).toBe('current-revision')
+  })
+
   it('creates an isolated named draft from an active source', () => {
     const result = createDraftEntry(manifest, 'current-1', '方案 A', 'draft-a', '2026-08-16T00:01:00.000Z')
     expect(result).toEqual({

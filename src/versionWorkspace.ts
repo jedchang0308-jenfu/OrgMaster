@@ -37,6 +37,11 @@ export interface OrgWorkspaceIndex {
   versions: OrgWorkspaceVersionSummary[]
 }
 
+export function currentWorkspaceVersion(index: OrgWorkspaceIndex | null | undefined) {
+  if (!index) return null
+  return index.versions.find((version) => version.id === index.currentVersionId && version.kind === 'current') ?? null
+}
+
 export type WorkspaceValidationCode =
   | 'WORKSPACE_INVALID'
   | 'WORKSPACE_DUPLICATE_ID'
