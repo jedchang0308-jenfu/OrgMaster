@@ -32,7 +32,7 @@ jobs:
     environment: production
     permissions: { contents: read, id-token: write }
     outputs:
-      recovered: ${{ steps.probe.outputs.eligible }}
+      handled: ${{ steps.probe.outputs.handled }}
     steps:
       - uses: actions/checkout@v4
         with: { persist-credentials: false, fetch-depth: 1 }
@@ -60,13 +60,13 @@ jobs:
           ref="${{ inputs.releaseCapsuleRef }}"
           node scripts/dev040-orgmaster-independent-release.mjs --stage rollback --capsule-ref "${ref%%#sha256=*}" --capsule-sha256 "${ref##*#sha256=}"
       - name: Verify finalized control readback
-        if: ${{ steps.probe.outputs.eligible == 'true' }}
+        if: ${{ steps.probe.outputs.handled == 'true' }}
         env:
           GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
-        run: node scripts/dev040-cancelled-release-recovery.mjs --verify-final --capsule-ref "${{ inputs.releaseCapsuleRef }}" --owner-run-id "${{ steps.probe.outputs.owner_run_id }}"
+        run: node scripts/dev040-cancelled-release-recovery.mjs --verify-final --capsule-ref "${{ inputs.releaseCapsuleRef }}"
 
   prepare:
-    if: ${{ needs.cancelled-recovery.outputs.recovered != 'true' }}
+    if: ${{ needs.cancelled-recovery.outputs.handled != 'true' }}
     needs: cancelled-recovery
     runs-on: ubuntu-latest
     environment: production
