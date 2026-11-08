@@ -27,7 +27,47 @@ env:
   WIF_PROVIDER: ${{ vars.ORGMASTER_PROD_WIF_PROVIDER }}
 
 jobs:
+  cancelled-recovery:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, id-token: write }
+    outputs:
+      recovered: ${{ steps.probe.outputs.eligible }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - id: probe
+        name: Detect an exact stopped cancelled attempt
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/dev040-cancelled-release-recovery.mjs --probe --capsule-ref "${{ inputs.releaseCapsuleRef }}"
+      - name: Seal pre-activation abort with existing owner rollback
+        if: ${{ steps.probe.outputs.eligible == 'true' }}
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          OWNER_EXECUTION_MODE: full_release
+        run: |
+          ref="${{ inputs.releaseCapsuleRef }}"
+          node scripts/dev040-orgmaster-independent-release.mjs --stage rollback --capsule-ref "${ref%%#sha256=*}" --capsule-sha256 "${ref##*#sha256=}"
+      - name: Verify finalized control readback
+        if: ${{ steps.probe.outputs.eligible == 'true' }}
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/dev040-cancelled-release-recovery.mjs --verify-final --capsule-ref "${{ inputs.releaseCapsuleRef }}" --owner-run-id "${{ steps.probe.outputs.owner_run_id }}"
+
   prepare:
+    if: ${{ needs.cancelled-recovery.outputs.recovered != 'true' }}
+    needs: cancelled-recovery
     runs-on: ubuntu-latest
     environment: production
     permissions: { contents: read, pull-requests: read, id-token: write }

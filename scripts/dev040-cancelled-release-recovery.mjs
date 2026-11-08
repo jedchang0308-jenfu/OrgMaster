@@ -19,13 +19,18 @@ function fail(code) {
   throw error
 }
 
-export function assertCancelledRecoveryPreflight({ profile, intent, control, run, ownerRunId, nowMs = Date.now(), final = false }) {
-  const expectedRunRef = `https://api.github.com/repos/${profile.application.repository}/actions/runs/${ownerRunId}`
+function assertRecoveryControlShape(profile, control) {
   if (Object.keys(control ?? {}).sort().join('\n') !== CONTROL_KEYS.join('\n')) fail('RECOVERY_CONTROL_INVALID')
   const { controlSha256, ...core } = control ?? {}
   if (control?.schemaVersion !== 'jenfu.dev012.owner-control-head.v1' || control.ownerApplicationId !== profile.application.id ||
       control.service !== profile.target.serviceName || control.controlBucket !== profile.artifact.releaseBucket ||
       !H64.test(controlSha256 ?? '') || sha256(canonicalize(core)) !== controlSha256) fail('RECOVERY_CONTROL_INVALID')
+  return control
+}
+
+export function assertCancelledRecoveryPreflight({ profile, intent, control, run, ownerRunId, nowMs = Date.now(), final = false }) {
+  const expectedRunRef = `https://api.github.com/repos/${profile.application.repository}/actions/runs/${ownerRunId}`
+  assertRecoveryControlShape(profile, control)
   if (control.releaseId !== intent.releaseId || control.sourceRevision !== intent.sourceRevision ||
       control.ownerRunRef !== expectedRunRef || String(run?.id ?? '') !== ownerRunId || run.headSha !== intent.sourceRevision ||
       run.event !== 'workflow_dispatch' || run.status !== 'completed' || run.conclusion !== 'cancelled') fail('RECOVERY_OWNER_RUN_INVALID')
@@ -39,16 +44,22 @@ export function assertCancelledRecoveryPreflight({ profile, intent, control, run
 }
 
 function parseArgs(argv) {
-  const result = { final: false }
+  const result = { final: false, probe: false }
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--verify-final') result.final = true
+    else if (argv[index] === '--probe') result.probe = true
     else if (argv[index] === '--capsule-ref') result.capsuleRef = argv[++index]
     else if (argv[index] === '--owner-run-id') result.ownerRunId = argv[++index]
     else fail('RECOVERY_ARGUMENT_INVALID')
   }
   const match = /^(gs:\/\/[^#]+\.json)#sha256=([a-f0-9]{64})$/u.exec(result.capsuleRef ?? '')
-  if (!match || !/^[1-9][0-9]*$/u.test(result.ownerRunId ?? '')) fail('RECOVERY_ARGUMENT_INVALID')
+  if (!match || (result.final && result.probe) || (!result.probe && !/^[1-9][0-9]*$/u.test(result.ownerRunId ?? ''))) fail('RECOVERY_ARGUMENT_INVALID')
   return { ...result, capsuleUri: match[1], capsuleSha256: match[2] }
+}
+
+async function writeProbeOutputs(eligible, ownerRunId = '') {
+  if (!process.env.GITHUB_OUTPUT) fail('RECOVERY_OUTPUT_UNAVAILABLE')
+  await fs.appendFile(process.env.GITHUB_OUTPUT, `eligible=${eligible ? 'true' : 'false'}\nowner_run_id=${ownerRunId}\n`)
 }
 
 async function main() {
@@ -63,9 +74,18 @@ async function main() {
   let control
   try { control = JSON.parse(controlRead.bytes.toString('utf8')) } catch { fail('RECOVERY_CONTROL_INVALID') }
   const intent = assertDev040ReleaseIntent(capsule.value, profile)
+  assertRecoveryControlShape(profile, control)
+  if (args.probe && (control.releaseId !== intent.releaseId || control.sourceRevision !== intent.sourceRevision || control.state === 'FINALIZED')) {
+    await writeProbeOutputs(false)
+    process.stdout.write(`${JSON.stringify({ status: 'PASS', mode: 'probe', eligible: false })}\n`)
+    return
+  }
+  const ownerRunId = args.ownerRunId ?? new RegExp(`^https://api\\.github\\.com/repos/${profile.application.repository.replace('/', '\\/')}/actions/runs/([1-9][0-9]*)$`, 'u').exec(control.ownerRunRef ?? '')?.[1]
+  if (!ownerRunId) fail('RECOVERY_OWNER_RUN_INVALID')
   const run = await transport.readOwnerRun(profile, control.ownerRunRef)
-  const result = assertCancelledRecoveryPreflight({ profile, intent, control, run, ownerRunId: args.ownerRunId, final: args.final })
-  process.stdout.write(`${JSON.stringify({ status: 'PASS', mode: args.final ? 'final' : 'preflight', ...result })}\n`)
+  const result = assertCancelledRecoveryPreflight({ profile, intent, control, run, ownerRunId, final: args.final })
+  if (args.probe) await writeProbeOutputs(true, ownerRunId)
+  process.stdout.write(`${JSON.stringify({ status: 'PASS', mode: args.probe ? 'probe' : (args.final ? 'final' : 'preflight'), ...(args.probe ? { eligible: true } : {}), ...result })}\n`)
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
