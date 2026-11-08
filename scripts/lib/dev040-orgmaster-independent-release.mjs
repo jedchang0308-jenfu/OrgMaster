@@ -169,7 +169,7 @@ export function assertDev040WorkflowSource(source) {
   if (!source.includes('group: production-release-orgmaster-prod')) fail('WORKFLOW_CONCURRENCY_DRIFT')
   for (const job of ['prepare:', 'build:', 'migrate:', 'candidate:', 'entrypoint:', 'verify:', 'decision:', 'activate:', 'canonical:', 'finalize:', 'failure:']) if (!source.includes(`\n  ${job}`)) fail('WORKFLOW_JOB_MISSING', job)
   if (/CAPSULE_PROVIDER_FETCH_REQUIRED|run:\s*echo\s/iu.test(source)) fail('PROVIDER_PLACEHOLDER_ACTIVE')
-  if ((source.match(/^    environment: production$/gmu) ?? []).length !== 11 || (source.match(/DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN:/gu) ?? []).length !== 1 || (source.match(/DEV012_ORGMASTER_FIREBASE_API_KEY:/gu) ?? []).length !== 2 || source.includes('DEV012_ORGMASTER_FIREBASE_ID_TOKEN')) fail('WORKFLOW_AUTH_PREFLIGHT_DRIFT')
+  if ((source.match(/^    environment: production$/gmu) ?? []).length !== 12 || (source.match(/DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN:/gu) ?? []).length !== 1 || (source.match(/DEV012_ORGMASTER_FIREBASE_API_KEY:/gu) ?? []).length !== 2 || source.includes('DEV012_ORGMASTER_FIREBASE_ID_TOKEN')) fail('WORKFLOW_AUTH_PREFLIGHT_DRIFT')
   for (const block of source.split(/^  (?=[a-z][a-z-]+:)/gmu).filter((value) => value.includes('google-github-actions/auth@v3'))) if (block.indexOf('actions/checkout@v4') < 0 || block.indexOf('actions/checkout@v4') > block.indexOf('google-github-actions/auth@v3')) fail('WORKFLOW_AUTH_ORDER_DRIFT')
   if (/\.\.\/Jenlkbz|\.\.\/Jenfu-Platform|\.\.\/AI_PDM|checkout[^\n]+repository:/i.test(source)) fail('SIBLING_CHECKOUT_DENIED')
   return true

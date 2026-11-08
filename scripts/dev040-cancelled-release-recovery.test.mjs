@@ -31,12 +31,16 @@ test('final readback accepts only a sealed abort or rollback', () => {
   assert.throws(() => assertCancelledRecoveryPreflight({ profile, intent, control: control(), run, ownerRunId: run.id, final: true }))
 })
 
-test('recovery workflow exposes only the exact rollback stage', async () => {
-  const workflow = await readFile(new URL('../.github/workflows/recover-cancelled-orgmaster-production.yml', import.meta.url), 'utf8')
-  assert.equal((workflow.match(/--stage rollback/gu) ?? []).length, 1)
+test('trusted owner workflow integrates only the exact cancelled rollback stage', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/deploy-orgmaster-independent-production.yml', import.meta.url), 'utf8')
+  const recovery = workflow.split(/^  cancelled-recovery:\s*$/mu)[1]?.split(/^  prepare:\s*$/mu)[0] ?? ''
+  assert.equal((recovery.match(/--stage rollback/gu) ?? []).length, 1)
   for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'decision', 'activate', 'canonical', 'finalize']) {
-    assert.equal(workflow.includes(`--stage ${stage}`), false)
+    assert.equal(recovery.includes(`--stage ${stage}`), false)
   }
-  assert.match(workflow, /environment: production/u)
+  assert.match(recovery, /environment: production/u)
+  assert.match(recovery, /service_account: orgmaster-prod-deployer/u)
+  assert.match(workflow, /needs\.cancelled-recovery\.outputs\.recovered != 'true'/u)
   assert.match(workflow, /cancel-in-progress: false/u)
+  await assert.rejects(readFile(new URL('../.github/workflows/recover-cancelled-orgmaster-production.yml', import.meta.url), 'utf8'), { code: 'ENOENT' })
 })
