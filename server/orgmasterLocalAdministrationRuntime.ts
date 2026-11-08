@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
 import {GoogleAuth,Impersonated} from 'google-auth-library'
-import {refreshToken,type Credential} from 'firebase-admin/app'
+import type {Credential} from 'firebase-admin/app'
 import type {OrgmasterDatabase} from './orgmasterDatabase'
 
 const PROJECT='jenfu-platform-nonprod',AUDIENCE='http://localhost:1010'
@@ -113,7 +113,16 @@ export function createOrgmasterLocalAdministrationRuntime(input:{database:Orgmas
 /** SDK credentials remain in memory; neither URLs nor refresh tokens are part of the public capability. */
 export function localAdministrationProviders(runtime:OrgmasterLocalAdministrationRuntime):{firebaseCredential:Credential;firebaseAppName:string;sourceAuth:GoogleAuth;directory:Record<string,string>}{
  try{const state=stateFor(runtime),bound=readBound(state)
- return {firebaseCredential:refreshToken(bound.credentials),firebaseAppName:`dev070-local-${bound.adcHash.slice(0,16)}`,sourceAuth:new GoogleAuth({credentials:bound.credentials,projectId:PROJECT,scopes:['https://www.googleapis.com/auth/cloud-platform']}),directory:bound.directory}}catch{return fail()}
+ const sourceAuth=new GoogleAuth({credentials:bound.credentials,projectId:PROJECT,scopes:['https://www.googleapis.com/auth/cloud-platform']})
+ const firebaseCredential:Credential={async getAccessToken(){
+  await runtime.verify()
+  const client=await sourceAuth.getClient(),result=await client.getAccessToken()
+  const accessToken=typeof result==='string'?result:result?.token
+  const validatedAccessToken=text(accessToken)?accessToken:fail()
+  await runtime.verify()
+  return {access_token:validatedAccessToken,expires_in:300}
+ }}
+ return {firebaseCredential,firebaseAppName:`dev070-local-${bound.adcHash.slice(0,16)}`,sourceAuth,directory:bound.directory}}catch{return fail()}
 }
 export async function localAdministrationServiceToken(runtime:OrgmasterLocalAdministrationRuntime,audience:string){
  const state=stateFor(runtime);if(!['http://localhost:1000','http://localhost:1030'].includes(audience))fail()

@@ -96,9 +96,13 @@ describe('owner-local administration capability',()=>{
  it.each(['type','quota_project_id'])('rejects foreign or service-account ADC: %s',key=>{
   const f=fixture();Object.assign(f.adc,{[key]:key==='type'?'service_account':'jenfu-platform-prod'});f.json(f.adcPath,f.adc);expect(f.load).toThrow('UNAVAILABLE')
  })
- it('builds real SDK credentials only from the bound private authorized-user ADC',()=>{
-  const f=fixture(),runtime=f.load(),providers=localAdministrationProviders(runtime)
+ it('builds real SDK credentials through the bound GoogleAuth seam and rechecks the owner capability',async()=>{
+  const f=fixture(),runtime=f.load(),getAccessToken=vi.fn(async()=>({token:'isolated-access-token'}))
+  vi.spyOn(GoogleAuth.prototype,'getClient').mockResolvedValue({getAccessToken} as never)
+  const providers=localAdministrationProviders(runtime)
   expect(providers.sourceAuth).toBeInstanceOf(GoogleAuth);expect(providers.firebaseCredential.getAccessToken).toBeTypeOf('function');expect(providers.firebaseAppName).toMatch(/^dev070-local-[a-f0-9]{16}$/u)
+  await expect(providers.firebaseCredential.getAccessToken()).resolves.toEqual({access_token:'isolated-access-token',expires_in:300})
+  expect(getAccessToken).toHaveBeenCalledOnce();expect(f.query).toHaveBeenCalledTimes(2)
   expect(providers.directory.customerId).toBe('customer');expect(JSON.stringify(runtime)).not.toContain('isolated-refresh-token')
  })
  it('pins genuine impersonation to two nonproduction audiences, without a free endpoint override',async()=>{
