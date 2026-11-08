@@ -3,9 +3,9 @@ import type { OrgmasterDatabase } from './orgmasterDatabase'
 import { loadOrganizationSource, readExistingGovernanceStore } from './orgmasterGovernanceStore'
 import { currentPersistenceTransactionDatabase, persistenceActorContext, usesCloudSqlPersistence, withPersistenceTransaction } from './orgmasterPersistenceRepository'
 import { evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
-import { ADMINISTRATIVE_ROLE_IDS, AdministrationError, administrationHash, administrationPolicy, administrationRequestHash, applyAdministrativeGrantCommand, assertPlatformAdministrator, assertRecentAdministrativeAuthentication, parseAdministrationCommand, publishedAdministrationPolicy, type AdministrationCatalogBindings, type AdministrationCommand } from '../src/governance/administration'
+import { AdministrationError, administrationHash, administrationPolicy, administrationRequestHash, applyAdministrativeGrantBatchCommand, applyAdministrativeGrantCommand, assertPlatformAdministrator, parseAdministrationCommand, publishedAdministrationPolicy, type AdministrationCatalogBindings, type AdministrationCommand } from '../src/governance/administration'
 import type { GovernanceActorContext, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV3 } from '../src/governance/types'
-import {FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH} from '../src/governance/financialCatalog'
+import { administrativeDefinitionBindings } from '../src/governance/administrativeDefinitions'
 import {withAdministrativePrincipalSource} from './orgmasterAdministrationIdentity'
 
 type Database = Pick<OrgmasterDatabase,'query'>
@@ -15,26 +15,13 @@ export interface AdministrationReceipt {
  publishedPolicyId:string;grantIds:string[];outboxIds:string[];activation:'pending'|'acknowledged';correlationId?:string
 }
 export function orgmasterAdministrativeCatalogBinding(policy:GovernancePolicyDataV3) {
- const ids=new Set(policy.rolePermissionGrants.filter(grant=>grant.roleId==='role-orgmaster-admin' && grant.effect==='allow').map(grant=>grant.permissionId))
- const definition={stableRoleId:'role-orgmaster-admin',permissionCodes:policy.permissions.filter(permission=>permission.applicationId==='orgmaster' && permission.status==='active' && ids.has(permission.id)).map(permission=>permission.code).sort()}
- const roleDefinitionHash=administrationHash(definition)
- return {catalogVersion:'orgmaster.system-admin.v1',contentSha256:administrationHash({catalogVersion:'orgmaster.system-admin.v1',definition}),stableRoleId:'role-orgmaster-admin',roleDefinitionHash}
+ void policy
+ return administrativeDefinitionBindings.orgmaster
 }
 export function acceptedAdministrativeCatalogBindings(document:GovernanceDocumentV3):AdministrationCatalogBindings {
  const version=document.publishedVersions.find(value=>value.id===document.activePolicyVersionId)
  if(version?.kind!=='assignment-governance-v3') return {}
- const result:AdministrationCatalogBindings={orgmaster:orgmasterAdministrativeCatalogBinding(version.policy)}
- for(const catalog of version.externalRoleCatalogs) {
-  if(catalog.applicationId!=='ai-pdm' && catalog.applicationId!=='financial-management-system') continue
-  const role=catalog.roles.find(role=>role.stableRoleId===ADMINISTRATIVE_ROLE_IDS[catalog.applicationId] && role.status==='active')
-  if(!role || !role.roleDefinitionHash || !/^[a-f0-9]{64}$/.test(role.roleDefinitionHash)) continue
-  if(catalog.applicationId==='financial-management-system'){
-   if(catalog.sourceKind!=='application-contract'||role.roleDefinitionHash!==FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH)continue
-   result[catalog.applicationId]={catalogVersion:catalog.catalogVersion,contentSha256:catalog.contentSha256??catalog.payloadHash,stableRoleId:role.stableRoleId,roleDefinitionHash:role.roleDefinitionHash};continue
-  }
-  result[catalog.applicationId]={catalogVersion:catalog.catalogVersion,contentSha256:catalog.contentSha256??catalog.payloadHash,stableRoleId:role.stableRoleId,roleDefinitionHash:role.roleDefinitionHash}
- }
- return result
+ return { ...administrativeDefinitionBindings }
 }
 function activePolicy(snapshot:AdministrationSnapshot) {
  const policy=publishedAdministrationPolicy(snapshot.document)
@@ -53,15 +40,17 @@ export function createAdministrationStore(input:{database:Database;readSnapshot:
  async function preview(actor:GovernanceActorContext,value:unknown) {
   const command=parseAdministrationCommand(value)
   const snapshot=await input.readSnapshot();const policy=activePolicy(snapshot);const at=now()
-  assertRecentAdministrativeAuthentication(actor,at);assertPlatformAdministrator(policy,snapshot.source,actor,at)
+  assertPlatformAdministrator(policy,snapshot.source,actor,at)
   const expected={governanceRevision:snapshot.revision,organizationRevision:snapshot.source.workspaceRevision,administrationVersion:administrationPolicy(policy).version}
   if(administrationHash(expected)!==administrationHash(command.expected)) throw new AdministrationError('ADMINISTRATION_CONFLICT')
-  const change=applyAdministrativeGrantCommand(policy,snapshot.source,command,{kind:'principal',id:actor.principalId},snapshot.catalogBindings,at)
+  const change=command.operation==='grant_application_administrators_batch'
+   ?applyAdministrativeGrantBatchCommand(policy,snapshot.source,command,{kind:'principal',id:actor.principalId},snapshot.catalogBindings,at)
+   :applyAdministrativeGrantCommand(policy,snapshot.source,command,{kind:'principal',id:actor.principalId},snapshot.catalogBindings,at)
   const requestHash=administrationRequestHash(command,actor.principalId,snapshot.environmentKey)
   const facts=await targetFacts(command)
   const previewHash=administrationHash({requestHash,expected:command.expected,catalogBindings:command.catalogBindings,targetFacts:facts,authentication:persistenceActorContext(actor)})
   const existing=command.grantId?administrationPolicy(policy).grants.find(value=>value.id===command.grantId):null
-  return {contractVersion:'orgmaster.administration-preview.v1' as const,commandId:command.commandId,requestHash,previewHash,expiresAt:new Date(Math.min(Date.parse(at)+300000,Date.parse(actor.authenticatedAt!)+300000)).toISOString(),diff:{grantIds:change.grantIds,result:change.noChange?'no_change':'applied',operation:command.operation,employeeId:command.target?.employeeId??existing?.employeeId,applicationId:command.target?.applicationId??existing?.applicationId??null},expected,catalogBindings:command.catalogBindings,correlationId:randomUUID()}
+  return {contractVersion:'orgmaster.administration-preview.v1' as const,commandId:command.commandId,requestHash,previewHash,expiresAt:new Date(Date.parse(at)+300000).toISOString(),diff:{grantIds:change.grantIds,result:change.noChange?'no_change':'applied',operation:command.operation,employeeId:command.target?.employeeId??existing?.employeeId,applicationId:command.target?.applicationId??existing?.applicationId??null,applicationIds:command.operation==='grant_application_administrators_batch'?command.applications:undefined},expected,catalogBindings:command.catalogBindings,correlationId:randomUUID()}
  }
  async function commit(actor:GovernanceActorContext,value:unknown):Promise<AdministrationReceipt> {
   const command=parseAdministrationCommand(value)

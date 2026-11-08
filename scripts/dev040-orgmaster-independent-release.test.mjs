@@ -375,7 +375,7 @@ test('OrgMaster exact 001-031 prefix plus DEV-058/FMS and exact DEV-070 042/044/
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
   assert.equal(bundle.bundle.entries.length, DEV070_MIGRATION_ENTRY_COUNT)
-  assert.equal(bundle.bundle.entries.at(-1).version,'dev070-orgmaster-049')
+  assert.equal(bundle.bundle.entries.at(-1).version,'dev070-orgmaster-050')
   assertDev070MigrationEntries(bundle.bundle.entries)
   assert.deepEqual(bundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity),DEV070_MIGRATION_ENTRIES.map(migrationIdentity))
   assertDev059MigrationEntries(bundle.bundle.entries.slice(0,DEV059_MIGRATION_ENTRY_COUNT))

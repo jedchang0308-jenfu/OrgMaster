@@ -4,8 +4,10 @@ import type { AdministrativeApplicationId, AdministrativeCatalogBindingV1, Admin
 
 export const ADMINISTRATION_POLICY_CONTRACT = 'orgmaster.administration-policy.v1' as const
 export const ADMINISTRATION_COMMAND_CONTRACT = 'orgmaster.administration-command.v1' as const
+export const ADMINISTRATION_BATCH_COMMAND_CONTRACT = 'orgmaster.administration-batch-command.v2' as const
+export const ADMINISTRATIVE_APPLICATION_IDS = ['orgmaster', 'ai-pdm', 'financial-management-system'] as const
 export const ADMINISTRATIVE_ROLE_IDS = {
-  orgmaster: 'role-orgmaster-admin', 'ai-pdm': 'role-application-system-admin', 'financial-management-system': 'role-system-admin',
+  orgmaster: 'role-orgmaster-admin', 'ai-pdm': 'role-application-system-admin', 'financial-management-system': 'fms-full-catalog-administration',
 } as const
 export class AdministrationError extends Error {
   constructor(public readonly code: string) { super(code); this.name = 'AdministrationError' }
@@ -14,7 +16,7 @@ const opaque = z.string().trim().min(1).max(255)
 const hash = z.string().regex(/^[a-f0-9]{64}$/u)
 const instant = z.string().refine(value => Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value)
 const reason = z.string().refine(value => value === value.normalize('NFC').trim() && [...value].length > 0 && [...value].length <= 240)
-const app = z.enum(['orgmaster', 'ai-pdm', 'financial-management-system'])
+const app = z.enum(ADMINISTRATIVE_APPLICATION_IDS)
 export const administrativeCatalogBindingSchema = z.strictObject({ catalogVersion: opaque, contentSha256: hash, stableRoleId: opaque, roleDefinitionHash: hash })
 export const administrativeGrantSchema = z.strictObject({
   id: z.uuid(), principalId: opaque, employeeId: opaque,
@@ -98,7 +100,7 @@ export function assertAdministrativeContinuity(before: GovernancePolicyDataV3, a
 }
 export const administrationExpectedSchema = z.strictObject({ governanceRevision: opaque, organizationRevision: opaque, administrationVersion: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) })
 const targetSchema = z.strictObject({ principalId: opaque, employeeId: opaque, applicationId: app.nullable(), validFrom: instant, validTo: instant.nullable() })
-export const administrationCommandSchema = z.strictObject({
+export const administrationCommandV1Schema = z.strictObject({
   contractVersion: z.literal(ADMINISTRATION_COMMAND_CONTRACT), commandId: z.uuid(),
   operation: z.enum(['grant_platform_administrator', 'revoke_platform_administrator', 'grant_application_administrator', 'revoke_application_administrator', 'replace_application_administrator']),
   target: targetSchema.nullable(), grantId: z.uuid().nullable(), reason, expected: administrationExpectedSchema,
@@ -109,6 +111,15 @@ export const administrationCommandSchema = z.strictObject({
   if (revoke ? !value.grantId || value.target !== null : !value.target || (replace ? !value.grantId : value.grantId !== null)) context.addIssue({ code: 'custom', message: 'ADMIN_TARGET_INVALID' })
   if (value.target && (root ? value.target.applicationId !== null || value.target.validTo !== null : value.target.applicationId === null)) context.addIssue({ code: 'custom', message: 'ADMIN_TARGET_INVALID' })
 })
+export const administrationBatchCommandSchema = z.strictObject({
+  contractVersion: z.literal(ADMINISTRATION_BATCH_COMMAND_CONTRACT), commandId: z.uuid(),
+  operation: z.literal('grant_application_administrators_batch'), target: targetSchema,
+  grantId: z.null(), applications: z.array(app).min(1).max(3), reason, expected: administrationExpectedSchema,
+  catalogBindings: z.partialRecord(app, administrativeCatalogBindingSchema), previewHash: hash.optional(),
+}).superRefine((value, context) => {
+  if (value.target.applicationId !== null || new Set(value.applications).size !== value.applications.length) context.addIssue({ code: 'custom', message: 'ADMIN_TARGET_INVALID' })
+})
+export const administrationCommandSchema = z.union([administrationCommandV1Schema,administrationBatchCommandSchema])
 export type AdministrationCommand = z.infer<typeof administrationCommandSchema>
 export type AdministrationCatalogBindings = Partial<Record<AdministrativeApplicationId, AdministrativeCatalogBindingV1>>
 export function parseAdministrationCommand(value: unknown) {
@@ -148,4 +159,34 @@ export function applyAdministrativeGrantCommand(policy: GovernancePolicyDataV3, 
   if (!administrationPolicySchema.safeParse(administration).success) throw new AdministrationError('ADMIN_TARGET_INVALID')
   assertAdministrativeContinuity(policy, { ...policy, administration }, source, at)
   return { administration, grantIds: revoke ? [old!.id] : old ? [old.id, newId] : [newId], noChange: false }
+}
+
+export function applyAdministrativeGrantBatchCommand(policy: GovernancePolicyDataV3, source: GovernanceOrgSource, command: AdministrationCommand, createdBy: AdministrativeGrantV1['createdBy'], catalogs: AdministrationCatalogBindings, at: string, newId = randomUUID) {
+  if (command.operation !== 'grant_application_administrators_batch' || !command.target || !command.applications) throw new AdministrationError('ADMIN_TARGET_INVALID')
+  if (!administrativeTargetEligible(policy, source, command.target.principalId, command.target.employeeId, at)) throw new AdministrationError('ADMIN_TARGET_INVALID')
+  const current = administrationPolicy(policy)
+  const grants = structuredClone(current.grants)
+  const grantIds: string[] = []
+  let changed = false
+  for (const applicationId of command.applications) {
+    const binding = catalogs[applicationId]
+    if (!binding || administrationHash(binding) !== administrationHash(command.catalogBindings[applicationId])
+      || binding.stableRoleId !== ADMINISTRATIVE_ROLE_IDS[applicationId]) throw new AdministrationError('CATALOG_BINDING_CONFLICT')
+    const existing = grants.find(grant => grant.principalId === command.target!.principalId
+      && grant.employeeId === command.target!.employeeId && grant.applicationId === applicationId && grant.status === 'active'
+      && grant.validFrom <= command.target!.validFrom
+      && (command.target!.validTo === null ? grant.validTo === null : grant.validTo === null || grant.validTo >= command.target!.validTo))
+    if (existing) { grantIds.push(existing.id); continue }
+    const id = newId()
+    grantIds.push(id); changed = true
+    grants.push({ id, principalId: command.target.principalId, employeeId: command.target.employeeId,
+      roleCode: 'application_system_admin', applicationId, subjectKind: 'principal', basis: 'manual', scope: { kind: 'global' },
+      status: 'active', validFrom: command.target.validFrom, validTo: command.target.validTo,
+      createdBy, reason: command.reason, catalogBinding: binding })
+  }
+  if (!changed) return { administration: current, grantIds, noChange: true }
+  const administration = { ...current, version: current.version + 1, grants }
+  if (!administrationPolicySchema.safeParse(administration).success) throw new AdministrationError('ADMIN_TARGET_INVALID')
+  assertAdministrativeContinuity(policy, { ...policy, administration }, source, at)
+  return { administration, grantIds, noChange: false }
 }

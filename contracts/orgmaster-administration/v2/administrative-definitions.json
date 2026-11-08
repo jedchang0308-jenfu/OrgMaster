@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "orgmaster.administrative-definitions.v2",
+  "definitions": [
+    {
+      "applicationId": "orgmaster",
+      "definitionVersion": "orgmaster.administration.2026-11-08.v1",
+      "definitionSha256": "aa36accdbe620b9cc8f11db51fa8fde94417b33ac4007c436d2dc7b20201737b",
+      "profileId": "role-orgmaster-admin"
+    },
+    {
+      "applicationId": "ai-pdm",
+      "definitionVersion": "ai-pdm.administration.2026-11-08.v1",
+      "definitionSha256": "a1f299753dc62591eafef37d49db692ab75bda808211bb3389d1a8933a5c6959",
+      "profileId": "role-application-system-admin"
+    },
+    {
+      "applicationId": "financial-management-system",
+      "definitionVersion": "financial-management-system.administration.2026-11-08.v1",
+      "definitionSha256": "c7c3f66834213b986dd02b9eb6c785c1c4a9d27f7df1d41c8481bcfd116a392d",
+      "profileId": "fms-full-catalog-administration"
+    }
+  ]
+}
