@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { ADMINISTRATION_BATCH_COMMAND_CONTRACT, ADMINISTRATION_COMMAND_CONTRACT, ADMINISTRATION_POLICY_CONTRACT, ADMINISTRATIVE_APPLICATION_IDS, ADMINISTRATIVE_ROLE_IDS } from './administrationContract'
+import { ADMINISTRATION_BATCH_COMMAND_CONTRACT, ADMINISTRATION_COMMAND_CONTRACT, ADMINISTRATION_POLICY_CONTRACT, ADMINISTRATIVE_APPLICATION_IDS, ADMINISTRATIVE_ROLE_IDS } from './administrationContract.ts'
 import type { AdministrativeApplicationId, AdministrativeCatalogBindingV1, AdministrativeGrantV1, AdministrationPolicyV1, GovernanceActorContext, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV3 } from './types'
 
-export { ADMINISTRATION_BATCH_COMMAND_CONTRACT, ADMINISTRATION_COMMAND_CONTRACT, ADMINISTRATION_POLICY_CONTRACT, ADMINISTRATIVE_APPLICATION_IDS, ADMINISTRATIVE_ROLE_IDS } from './administrationContract'
+export { ADMINISTRATION_BATCH_COMMAND_CONTRACT, ADMINISTRATION_COMMAND_CONTRACT, ADMINISTRATION_POLICY_CONTRACT, ADMINISTRATIVE_APPLICATION_IDS, ADMINISTRATIVE_ROLE_IDS } from './administrationContract.ts'
 export class AdministrationError extends Error {
   constructor(public readonly code: string) { super(code); this.name = 'AdministrationError' }
 }
