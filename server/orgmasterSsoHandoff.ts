@@ -239,6 +239,8 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
   if (setup.phase !== 'on') { error(response, 404, 'sso_request_invalid', id); return true }
   if (url.pathname.endsWith('/start')) {
     if (request.method !== 'GET') { error(response, 405, 'sso_request_invalid', id); return true }
+    const reauth = url.searchParams.get('reauth')
+    if (reauth !== null && reauth !== '1') { error(response, 400, 'sso_request_invalid', id); return true }
     const returnToRaw = url.searchParams.get('returnTo') ?? '/'
     let returnTo = returnToRaw
     try { const parsed = decodeURIComponent(returnToRaw); if (parsed.startsWith('/') && !parsed.startsWith('//') && !parsed.startsWith('/login') && !parsed.startsWith('/api/auth/') && !parsed.includes('\\') && !/[\u0000-\u001f\u007f]/u.test(parsed) && parsed.length <= MAX_RETURN_TO) returnTo = parsed; else returnTo = '/' } catch { returnTo = '/' }
@@ -247,6 +249,7 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     const callback = `${setup.config.publicBaseUrl.origin}/api/auth/jenfu-sso/callback`
     const authorize = new URL('/api/sso/authorize', setup.brokerOrigin)
     for (const [key, value] of [['response_type', 'code'], ['client_id', 'orgmaster'], ['redirect_uri', callback], ['state', state], ['code_challenge', createHash('sha256').update(verifier, 'ascii').digest('base64url')], ['code_challenge_method', 'S256']] as const) authorize.searchParams.set(key, value)
+    if (reauth === '1') authorize.searchParams.set('prompt', 'login')
     const tx: Tx = { state, verifier, returnTo, issuer: setup.issuer, clientId: 'orgmaster', expiresAt: now() + SSO_TRANSACTION_TTL_MS }
     response.statusCode = 303
     response.setHeader('Location', authorize.toString())
