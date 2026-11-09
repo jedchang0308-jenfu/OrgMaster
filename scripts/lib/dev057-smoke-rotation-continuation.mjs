@@ -7,6 +7,7 @@ import { canonicalize, sha256, assertImmutableRef, assertControllerImageResoluti
 import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { validateReauthReceipt, EXPECTED } from './dev057-smoke-credential-reauth.mjs'
+import { validateSharedSmokeCredentialEvidence } from './dev057-shared-smoke-credential-evidence.mjs'
 
 const H64 = /^[a-f0-9]{64}$/u
 const INFRA_PROFILE = 'config/release/dev040-production-release-infra-plan.json'
@@ -262,6 +263,7 @@ async function assertAppliedSmokeRotation({ root, profile, transport, intent, va
     'migrationRunnerDigest', 'controllerImageDigest', 'terraformAddressCount', 'terraformAddressesSha256', 'binaryPlanSha256',
     'planJsonSha256', 'stateLineage', 'stateSerial', 'stateJsonSha256', 'outputManifestSha256', 'mutationProfile',
     'candidateSmokeRefreshTokenSecretVersion', 'credentialEvidenceRef', 'status', 'releaseAuthority', 'evidenceScope', 'observedAt', 'receiptSha256']
+  if (rotation.platformCredentialRef) rotationKeys.push('platformCredentialRef')
   if (rotation.smokeRotation) rotationKeys.push('smokeRotation')
   if (!same(Object.keys(rotation).sort(), rotationKeys.sort())) fail('SMOKE_ROTATION_INFRA_SHAPE_INVALID')
   if (!same(rotation, values.infra) || (!sourceReuse && rotation.sourceRevision !== intent.sourceRevision) ||
@@ -292,17 +294,34 @@ async function assertAppliedSmokeRotation({ root, profile, transport, intent, va
   if (!same(paths, executablePaths(oldRead)) || !same(paths, executablePaths(priorRead)) || !same(paths, executablePaths(rotationRead)) ||
       paths.some((file) => !oldRead(file).equals(newRead(file)) || !priorRead(file).equals(newRead(file)) || !rotationRead(file).equals(newRead(file)))) fail('SMOKE_ROTATION_EXECUTABLE_CHANGED')
   const credentialRef = rotation.credentialEvidenceRef
-  assertImmutableRef(credentialRef, EXPECTED.releaseBucket, ['receipts/credential-reauth'])
-  const credential = (await transport.readJson(credentialRef, EXPECTED.releaseBucket, ['receipts/credential-reauth'])).value
+  const platformCredentialRef = rotation.platformCredentialRef ?? rotation.smokeRotation?.platformCredentialRef ?? null
+  if (rotation.smokeRotation && !same(rotation.smokeRotation.platformCredentialRef ?? null, platformCredentialRef)) {
+    fail('SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID')
+  }
+  const sharedCredential = platformCredentialRef !== null
+  assertImmutableRef(credentialRef, EXPECTED.releaseBucket,
+    [sharedCredential ? 'receipts/identity' : 'receipts/credential-reauth'])
+  const credential = (await transport.readJson(credentialRef, EXPECTED.releaseBucket,
+    [sharedCredential ? 'receipts/identity' : 'receipts/credential-reauth'])).value
+  let sharedEvidence = null
+  if (sharedCredential) {
+    assertImmutableRef(platformCredentialRef, 'jenfu-platform-prod-platform-release', ['receipts/credential-reauth'])
+    const platformCredential = (await transport.readJson(platformCredentialRef,
+      'jenfu-platform-prod-platform-release', ['receipts/credential-reauth'])).value
+    sharedEvidence = validateSharedSmokeCredentialEvidence({ identity: credential, platformCredential, nowMs })
+  }
   const observedAtMs = Date.parse(rotation.observedAt)
   if (!Number.isFinite(observedAtMs) || observedAtMs > nowMs + 30000 || observedAtMs < Date.parse(credential.observedAt)) fail('SMOKE_ROTATION_APPLY_TIME_INVALID')
-  // Revalidate the original completed mutation, not permission for another mutation now.
-  validateReauthReceipt(credential, { sourceRevision: rotation.sourceRevision,
+  // Revalidate the original completed mutation or the single shared identity synchronization,
+  // not permission for another credential mutation now.
+  if (!sharedCredential) validateReauthReceipt(credential, { sourceRevision: rotation.sourceRevision,
     expectedPreviousVersion: credential.secret?.previousVersion,
     expectedNewVersion: rotation.candidateSmokeRefreshTokenSecretVersion, nowMs: observedAtMs })
   const credentialPredecessorRef = rotation.smokeRotation?.credentialPredecessorRef ?? null
-  let previousVersion = credential.secret.previousVersion
-  let versionChain = [credential.secret.previousVersion, credential.secret.newVersion]
+  if (sharedCredential && credentialPredecessorRef) fail('SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID')
+  let previousVersion = sharedCredential ? sharedEvidence.previousVersion : credential.secret.previousVersion
+  let nextVersion = sharedCredential ? sharedEvidence.nextVersion : credential.secret.newVersion
+  let versionChain = sharedCredential ? sharedEvidence.versionChain : [credential.secret.previousVersion, credential.secret.newVersion]
   if (credentialPredecessorRef) {
     assertImmutableRef(credentialPredecessorRef, EXPECTED.releaseBucket, ['receipts/credential-reauth'])
     const predecessorRead = await transport.readJson(credentialPredecessorRef, EXPECTED.releaseBucket, ['receipts/credential-reauth'])
@@ -326,24 +345,28 @@ async function assertAppliedSmokeRotation({ root, profile, transport, intent, va
       prior.candidateSmokeRefreshTokenSecretVersion !== previousVersion) fail('SMOKE_ROTATION_VERSION_INVALID')
   if (rotation.smokeRotation) await assertNativeSmokeRotationProof({ root, profile, transport, intent, rotation, prior,
     rotationBaselineIntentRef: prior.rotationBaselineIntentRef ?? intent.baselineIntentRef,
-    infraProfile: afterProfile, credentialPredecessorRef, previousVersion, nextVersion: credential.secret.newVersion, versionChain,
+    infraProfile: afterProfile, platformCredentialRef, credentialPredecessorRef, previousVersion, nextVersion, versionChain,
     readSourceFile })
   return { evidenceScope: 'OWNER_SEALED_APPLIED_ROTATION', infraReceiptRef: intent.infraReceiptRef,
     credentialEvidenceRef: credentialRef, sourceRevision: intent.sourceRevision,
     ...(predecessor ? { toolRotationRef: predecessor.receiptRef } : {}),
-    previousVersion, newVersion: credential.secret.newVersion,
-    principalId: credential.principalId, employeeId: credential.employeeId, assuranceLevel: credential.assuranceLevel,
+    ...(platformCredentialRef ? { platformCredentialRef } : {}),
+    previousVersion, newVersion: nextVersion,
+    principalId: sharedCredential ? sharedEvidence.principalId : credential.principalId,
+    employeeId: sharedCredential ? sharedEvidence.employeeId : credential.employeeId,
+    assuranceLevel: sharedCredential ? sharedEvidence.assuranceLevel : credential.assuranceLevel,
     appliedObservedAt: rotation.observedAt, executableInputCount: paths.length,
     terraformAddressCount: addresses.length, terraformAddressesSha256: rotation.terraformAddressesSha256,
     providerCurrentReadback: false, credentialMaterialPresent: false }
 }
 
 async function assertNativeSmokeRotationProof({ root, profile, transport, intent, rotation, prior, rotationBaselineIntentRef, infraProfile,
-  credentialPredecessorRef, previousVersion, nextVersion, versionChain, readSourceFile }) {
+  platformCredentialRef, credentialPredecessorRef, previousVersion, nextVersion, versionChain, readSourceFile }) {
   const proof = rotation.smokeRotation
   if (proof?.schemaVersion !== 'orgmaster.smoke-credential-rotation.v1' ||
       !same(proof.baselineIntentRef, rotationBaselineIntentRef) || !same(proof.toolRotationRef, prior.receiptRef) ||
       !same(proof.credentialEvidenceRef, rotation.credentialEvidenceRef) || proof.previousVersion !== previousVersion ||
+      !same(proof.platformCredentialRef ?? null, platformCredentialRef) ||
       !same(proof.credentialPredecessorRef ?? null, credentialPredecessorRef) ||
       proof.nextVersion !== nextVersion || proof.stateLineage !== rotation.stateLineage || !Number.isSafeInteger(proof.beforeSerial) ||
       proof.beforeSerial >= rotation.stateSerial || proof.sourceProof?.sourceRevision !== rotation.sourceRevision ||
@@ -373,6 +396,7 @@ async function assertNativeSmokeRotationProof({ root, profile, transport, intent
   if (!same(planProof, proof.planProof) || prepared.value?.schemaVersion !== 'orgmaster.smoke-credential-rotation-prepared.v1' ||
       prepared.value.receiptSha256 !== sha256(canonicalize(Object.fromEntries(Object.entries(prepared.value).filter(([key]) => key !== 'receiptSha256')))) ||
       !same(prepared.value.binaryPlanRef, proof.binaryPlanRef) || !same(prepared.value.planJsonRef, proof.planJsonRef) ||
+      !same(prepared.value.platformCredentialRef ?? null, proof.platformCredentialRef ?? null) ||
       !same(prepared.value.credentialPredecessorRef ?? null, proof.credentialPredecessorRef ?? null) ||
       (prepared.value.workflowBaselineSourceRevision ?? prepared.value.sourceRevision) !== workflowBaselineSourceRevision ||
       !same(prepared.value.beforeStateRef, proof.beforeStateRef) || !same(prepared.value.providerWorkflowBeforeRef, proof.providerWorkflowBeforeRef) ||
@@ -771,7 +795,12 @@ export function assertSmokeInfraReuseReceipt({ receipt, profile, sourceLock, int
   for (const field of refs) assertImmutableRef(receipt[field], EXPECTED.releaseBucket, ['receipts'])
   if (receipt.reusedInfraReceiptRef.uri === receipt.sourceLockRef.uri ||
       !/^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/[A-Z0-9][A-Z0-9-]{5,63}\/app-infra\.json$/u.test(receipt.reusedInfraReceiptRef.uri)) fail('SMOKE_REUSE_RECEIPT_INVALID')
-  assertImmutableRef(receipt.credentialEvidenceRef, EXPECTED.releaseBucket, ['receipts/credential-reauth'])
+  const sharedCredential = receipt.credentialEvidenceRef?.uri?.includes('/receipts/identity/shared-sync-') === true
+  assertImmutableRef(receipt.credentialEvidenceRef, EXPECTED.releaseBucket,
+    [sharedCredential ? 'receipts/identity' : 'receipts/credential-reauth'])
+  if (sharedCredential) assertImmutableRef(receipt.platformCredentialRef,
+    'jenfu-platform-prod-platform-release', ['receipts/credential-reauth'])
+  else if (receipt.platformCredentialRef != null) fail('SMOKE_REUSE_RECEIPT_INVALID')
   const provider = receipt.providerReadback
   if (!provider || provider.evidenceScope !== 'OPERATOR_PROVIDER_CURRENT_METADATA' || provider.exactNumericVersion !== receipt.candidateSmokeRefreshTokenSecretVersion ||
       !/^([1-9][0-9]*)$/u.test(provider.exactNumericVersion ?? '') || !Number.isSafeInteger(Number(provider.exactNumericVersion)) || provider.secretState !== 'ENABLED' || provider.secretId !== EXPECTED.secretId ||
@@ -831,6 +860,7 @@ export async function buildSmokeInfraReuseReceipt({ root, profile, transport, re
     foundationManifestSha256: rotation.foundationManifestSha256, migrationRunnerDigest: rotation.migrationRunnerDigest,
     controllerImageDigest: rotation.controllerImageDigest, candidateSmokeRefreshTokenSecretVersion: continuation.newVersion,
     credentialEvidenceRef: continuation.credentialEvidenceRef, appliedObservedAt: continuation.appliedObservedAt,
+    ...(continuation.platformCredentialRef ? { platformCredentialRef: continuation.platformCredentialRef } : {}),
     executableInputCount: executable.length, executableInputsSha256: sha256(canonicalize(executable)),
     infrastructureInputsSha256: sha256(tree), ...after.providerState, controlHead: after.controlHead,
     providerReadback: after.providerReadback, mutationProfile: 'APP_INFRA_REUSE',
@@ -857,6 +887,7 @@ export async function assertSmokeInfraReuseEvidence({ root, profile, transport, 
     'terraformAddressesSha256', 'stateLineage', 'stateSerial', 'stateJsonSha256', 'outputManifestSha256', 'credentialEvidenceRef']) {
     if (!same(receipt[field], rotation[field])) fail('SMOKE_REUSE_RECEIPT_INVALID')
   }
+  if (!same(receipt.platformCredentialRef ?? null, continuation.platformCredentialRef ?? null)) fail('SMOKE_REUSE_RECEIPT_INVALID')
   const tree = readInfrastructureTree(root, intent.sourceRevision)
   if (sha256(tree) !== receipt.infrastructureInputsSha256 || ![baseline.intent.sourceRevision, rotation.sourceRevision]
     .every((revision) => tree.equals(readInfrastructureTree(root, revision)))) fail('SMOKE_REUSE_INFRA_CHANGED')
