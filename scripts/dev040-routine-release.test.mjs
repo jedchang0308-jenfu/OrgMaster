@@ -4,7 +4,7 @@ import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_FMS_AUTHORITY_REMEDIATION, DEV0
 import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT, DEV060_MIGRATION_PREFIX_COUNT, DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationAppend } from './lib/dev060-fms-catalog-activation-migration.mjs'
 import { assertToolRotationReleaseCompatibility, resolveToolRotationPredecessorBaselineRef } from './lib/dev040-routine-release.mjs'
 import { ownerWorkflowDispatchArgs, parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
-import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
+import { buildReauthReceipt, EXPECTED, identityPairHash } from './lib/dev057-smoke-credential-reauth.mjs'
 import { assertPublishedSmokeRotationAdvance, assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, assertSmokeInfraReuseEvidence,assertSmokeInfraReuseContinuation,buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, readSmokeReuseProviderState, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { appArtifactSourceEquivalence, assertReusableAbortedTerminal } from './lib/dev040-app-artifact-reuse.mjs'
 import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
@@ -1034,6 +1034,45 @@ function smokeContinuationHarness({ controllerImageDigest = 'asia-east1-docker.p
   update()
   return Object.assign(h, { update, requests, workflow, secret, sourceEdits, addresses, rotationUri })
 }
+
+test('shared Platform receipt is consumed by OrgMaster continuation without a second credential receipt', async () => {
+  const h = smokeContinuationHarness()
+  const subject = 'synthetic-provider-subject-001'
+  const platformCore = {
+    schemaVersion: 'jenfu.dev015.smoke-credential-reauth.v1', ownerApplicationId: 'platform', projectId: 'jenfu-platform-prod',
+    sourceRevision: 'a'.repeat(40), identityIssuer: EXPECTED.issuer, identityPairSha256: identityPairHash(EXPECTED.issuer, subject),
+    principalId: 'principal-firebase-b71682bf0d7cc5596b48dfad991e4096', employeeId: 'employee-shijie',
+    passwordAuthenticated: true, emailVerified: true, assuranceLevel: 'aal1', authTime: Math.floor(Date.parse('2026-09-23T07:59:00Z') / 1000),
+    authenticatedAt: '2026-09-23T07:59:10.000Z', sessionReloaded: true, logoutRevoked: true,
+    results: { providerPairVerified: true, accountEnabled: true, sessionCreated: true, principalReloaded: true, logoutRevoked: true },
+    secret: { id: 'platform-prod-smoke-firebase-refresh-token', previousVersion: '11', newVersion: '12', state: 'ENABLED' },
+    github: { repository: 'jedchang0308-jenfu/Jenfu-Platform', environment: 'production', secretName: 'DEV012_PLATFORM_FIREBASE_REFRESH_TOKEN', configured: true },
+    status: 'PASS', releaseAuthority: false, evidenceScope: 'APP_SMOKE_CREDENTIAL_REAUTH', credentialMaterialPresent: false,
+    observedAt: '2026-09-23T07:59:30.000Z',
+  }
+  const identityCore = {
+    schemaVersion: 'jenfu.dev012.firebase-identity-readback.v1', status: 'PASS', releaseAuthority: true,
+    evidenceScope: 'PRODUCTION_PROVIDER', projectId: 'jenfu-platform-prod', issuer: EXPECTED.issuer, uid: subject,
+    emailSha256: 'e'.repeat(64), emailVerified: true, firstFactor: 'password', mfaEnrolled: false, mfaFactor: null,
+    assuranceLevel: 'aal1', assuranceEvidence: 'SIGNED_ID_TOKEN_AFTER_PASSWORD_SIGNIN', firebaseUserCount: 1,
+    smokeRefreshTokenSecretVersions: { platform: '12', 'ai-pdm': '15', orgmaster: '8' },
+    githubProductionEnvironmentSecrets: { platform: true, 'ai-pdm': true, orgmaster: true }, credentialMaterialPresent: false,
+    observedAt: '2026-09-23T08:00:00.000Z',
+  }
+  const platformRef = h.put('gs://jenfu-platform-prod-platform-release/receipts/credential-reauth/shared.json',
+    { ...platformCore, receiptSha256: sha256(canonicalize(platformCore)) })
+  const identityRef = h.put('gs://' + bucket + '/receipts/identity/shared-sync-shared.json',
+    { ...identityCore, receiptSha256: sha256(JSON.stringify(identityCore)) })
+  h.update({ rotation: { credentialEvidenceRef: identityRef, platformCredentialRef: platformRef } })
+  const baselineRead = h.objects.get(h.input.intent.baselineIntentRef.uri)
+  const result = await assertSmokeRotationContinuation({ root: h.input.root, profile: h.input.profile, transport: h.input.transport,
+    intent: h.input.intent, values: h.input.values, baseline: { intent: baselineRead.value, activeRevision: h.input.intent.previousRevision },
+    readSourceFile: h.input.readSourceFile, readInfrastructureTree: () => Buffer.from('synthetic identical complete infrastructure tree'), sourceReuse: true,
+    nowMs: Date.parse('2026-09-23T08:02:00.000Z') })
+  assert.equal(result.newVersion, '8')
+  assert.deepEqual(result.platformCredentialRef, platformRef)
+  assert.equal(result.principalId, 'principal-firebase-b71682bf0d7cc5596b48dfad991e4096')
+})
 
 test('app artifact reuse may bind a prior-source smoke receipt only when infrastructure and executable inputs are identical', async () => {
   const h = smokeContinuationHarness()

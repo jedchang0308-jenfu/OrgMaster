@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import { canonicalize } from './lib/dev012-owner-release-runtime.mjs'
 import { assertOwnerProfile, assertOwnerSourceFence, createdSecretVersion, firebaseApi, githubSecretMetadataCurrent, secretVersion, verifyOldPair } from './dev057-smoke-credential-reauth.mjs'
 import { assertReleasedSmokeRotationBaseline, smokeRotationBaselineVersion, smokeRotationToolAdmissionIntent, validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
+import { validateSharedSmokeCredentialEvidence } from './lib/dev057-shared-smoke-credential-evidence.mjs'
 import {
   EXPECTED, REAUTH_SCHEMA, ReauthError, admitLocalRequest, assertResumeReceipt, parseResumeReceiptRef, assertFreshAuthTime, assertPlatformMe, buildReauthReceipt,
   identityPairHash, localPageSecurityHeaders, localRequestDenial, parseReauthArguments, resolveVersionBinding,
@@ -50,6 +51,49 @@ function adapter(overrides = {}) {
 test('fresh password token needs a recent auth_time', () => {
   assert.equal(assertFreshAuthTime(claims(), NOW), true)
   assert.throws(() => assertFreshAuthTime(claims({ auth_time: Math.floor(NOW / 1000) - 301 }), NOW), /PASSWORD_AUTH_TIME_STALE/u)
+})
+
+function sharedCredentialFixture() {
+  const platformCore = {
+    schemaVersion: 'jenfu.dev015.smoke-credential-reauth.v1', ownerApplicationId: 'platform',
+    projectId: 'jenfu-platform-prod', sourceRevision: 'a'.repeat(40), identityIssuer: EXPECTED.issuer,
+    identityPairSha256: identityPairHash(EXPECTED.issuer, SUBJECT),
+    principalId: 'principal-firebase-b71682bf0d7cc5596b48dfad991e4096', employeeId: 'employee-shijie',
+    passwordAuthenticated: true, emailVerified: true, assuranceLevel: 'aal1', authTime: Math.floor((NOW - 40000) / 1000),
+    authenticatedAt: new Date(NOW - 40000).toISOString(), sessionReloaded: true, logoutRevoked: true,
+    results: { providerPairVerified: true, accountEnabled: true, sessionCreated: true, principalReloaded: true, logoutRevoked: true },
+    secret: { id: 'platform-prod-smoke-firebase-refresh-token', previousVersion: '11', newVersion: '12', state: 'ENABLED' },
+    github: { repository: 'jedchang0308-jenfu/Jenfu-Platform', environment: 'production',
+      secretName: 'DEV012_PLATFORM_FIREBASE_REFRESH_TOKEN', configured: true },
+    status: 'PASS', releaseAuthority: false, evidenceScope: 'APP_SMOKE_CREDENTIAL_REAUTH',
+    credentialMaterialPresent: false, observedAt: new Date(NOW - 30000).toISOString(),
+  }
+  const identityCore = {
+    schemaVersion: 'jenfu.dev012.firebase-identity-readback.v1', status: 'PASS', releaseAuthority: true,
+    evidenceScope: 'PRODUCTION_PROVIDER', projectId: 'jenfu-platform-prod', issuer: EXPECTED.issuer, uid: SUBJECT,
+    emailSha256: 'e'.repeat(64), emailVerified: true, firstFactor: 'password', mfaEnrolled: false, mfaFactor: null,
+    assuranceLevel: 'aal1', assuranceEvidence: 'SIGNED_ID_TOKEN_AFTER_PASSWORD_SIGNIN', firebaseUserCount: 1,
+    smokeRefreshTokenSecretVersions: { platform: '12', 'ai-pdm': '15', orgmaster: '19' },
+    githubProductionEnvironmentSecrets: { platform: true, 'ai-pdm': true, orgmaster: true },
+    credentialMaterialPresent: false, observedAt: new Date(NOW - 20000).toISOString(),
+  }
+  return {
+    platformCredential: { ...platformCore, receiptSha256: sha256(platformCore) },
+    identity: { ...identityCore, receiptSha256: sha256(JSON.stringify(identityCore)) },
+  }
+}
+
+test('single Platform reauthentication evidence authorizes the already-synced OrgMaster version without another password', () => {
+  const fixture = sharedCredentialFixture()
+  assert.deepEqual(validateSharedSmokeCredentialEvidence({ ...fixture, nowMs: NOW }), {
+    previousVersion: '18', nextVersion: '19', versionChain: ['18', '19'],
+    principalId: 'principal-firebase-b71682bf0d7cc5596b48dfad991e4096', employeeId: 'employee-shijie', assuranceLevel: 'aal1',
+  })
+  for (const change of [
+    { identity: { ...fixture.identity, smokeRefreshTokenSecretVersions: { ...fixture.identity.smokeRefreshTokenSecretVersions, orgmaster: '20' } } },
+    { platformCredential: { ...fixture.platformCredential, principalId: 'principal-other' } },
+    { identity: { ...fixture.identity, uid: 'foreign-subject-0123456789' } },
+  ]) assert.throws(() => validateSharedSmokeCredentialEvidence({ ...fixture, ...change, nowMs: NOW }))
 })
 
 test('smoke credential chain accepts one immutable adjacent predecessor and rejects identity, source, or version discontinuity', () => {
