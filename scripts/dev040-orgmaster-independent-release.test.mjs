@@ -511,6 +511,9 @@ test('OrgMaster custom Cloud Build service account can act only as itself', () =
   assert.match(invokerV2, /role\s+= "roles\/workflows\.invoker"[\s\S]*google_service_account\.verifier\.email/u)
   assert.doesNotMatch(invokerV2, /condition|builder|deployer|controller|smoke\.email/u)
   assert.ok(infraPlan.stageBAdditional.includes('google_project_iam_member.verifier_candidate_smoke_invoker_v2[0]'))
+  assert.match(candidateSmoke, /platform_login_intent[\s\S]*\/api\/auth\/login-intents/u)
+  assert.match(candidateSmoke, /platform_login_intent_id[\s\S]*intentId[\s\S]*platform_login_csrf[\s\S]*csrfToken/u)
+  assert.match(candidateSmoke, /Sec-Fetch-Site:\s+"same-origin"[\s\S]*Cookie:\s+\$\$\{text\.split\(platform_login_intent_cookie_header/u)
 })
 test('OrgMaster owner prepare binds DEV-057 human business grant v4 source', () => {
   const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames

@@ -848,12 +848,14 @@ test('real routine verifier and baseline resolver repair a sealed Principal-only
   await assert.rejects(() => verifyRoutineRelease(h.input), /ROUTINE_REPAIR_RUNTIME_CHANGED/)
 })
 
-test('DEV-057 cookie correction seals historical and Principal-only source transitions', () => {
+test('DEV-057 smoke corrections seal the historical, cookie, and managed-login transitions', () => {
   const historical = '1add0e6508568d591faa190cabf64e2470fb620c'
   const principal = 'b8d6b8a92a044bcd59e11efd8a6c0f7f2e319b55'
   const corrected = 'b9c6bfeca843c6ef551d95834b59f5471c097abc'
+  const managedLogin = '1d5ee4a8bd0958ef59ebe8db05a19e24b1837851'
   for (const before of [historical, principal]) assertDev057PrincipalSmokeBlobTransition(before, corrected)
-  for (const [before, after] of [[corrected, principal], [corrected, historical], [principal, historical], [principal, 'a'.repeat(40)], [null, corrected]]) {
+  assertDev057PrincipalSmokeBlobTransition(corrected, managedLogin)
+  for (const [before, after] of [[corrected, principal], [corrected, historical], [managedLogin, corrected], [principal, historical], [principal, 'a'.repeat(40)], [null, corrected]]) {
     assert.throws(() => assertDev057PrincipalSmokeBlobTransition(before, after), /PRINCIPAL_SMOKE_INFRA_DELTA_INVALID/u)
   }
 })
@@ -2000,7 +2002,7 @@ test('immutable-ref corruption or provider transport fault fails closed and neve
 
 test('Workflow source renderer reproduces the sealed existing Org numeric-7 source bytes', () => {
   const value = expectedSmokeWorkflowSource({ root: '.', sourceRevision: newSource, profile, version: '7', readSourceFile: (_root, _revision, file) => fs.readFileSync(file) })
-  assert.equal(sha256(value), '9ba919ee180f6b5d7a7cc068dc1b402271c9dfeff61a7a3e5d9b9f048e15a559')
+  assert.equal(sha256(value), '29e0f61b5d617f76d4c075018d8d2d60db9f7e6837385f3dca75593de9dbb162')
 })
 
 

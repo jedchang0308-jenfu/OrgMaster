@@ -118,6 +118,28 @@ resource "google_workflows_workflow" "candidate_smoke" {
             switch:
               - condition: $${id_token == null or len(id_token) < 100}
                 next: reject_token
+        - platform_login_intent:
+            call: http.post
+            args:
+              url: "https://jenfu-platform-prod-9536592944.asia-east1.run.app/api/auth/login-intents"
+              headers:
+                Origin: "https://jenfu-platform-prod-9536592944.asia-east1.run.app"
+                Sec-Fetch-Site: "same-origin"
+                Content-Type: "application/json"
+              body:
+                mode: "google"
+                returnTo: "/"
+              timeout: 20
+            result: platform_login_intent_response
+        - bind_platform_login_intent:
+            assign:
+              - platform_login_intent_cookie_header: $${default(map.get(platform_login_intent_response.headers, "set-cookie"), map.get(platform_login_intent_response.headers, "Set-Cookie"))}
+              - platform_login_intent_id: $${map.get(platform_login_intent_response.body, "intentId")}
+              - platform_login_csrf: $${map.get(platform_login_intent_response.body, "csrfToken")}
+        - validate_platform_login_intent:
+            switch:
+              - condition: $${platform_login_intent_response.code != 201 or platform_login_intent_cookie_header == null or not(text.match_regex(platform_login_intent_cookie_header, "^__Host-portal_login_intent=[^;]+")) or not(text.match_regex(platform_login_intent_id, "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")) or not(text.match_regex(platform_login_csrf, "^[A-Za-z0-9_-]{43}$"))}
+                next: reject_session
         - auth_mode:
             call: http.get
             args:
@@ -132,9 +154,13 @@ resource "google_workflows_workflow" "candidate_smoke" {
               url: "https://jenfu-platform-prod-9536592944.asia-east1.run.app/api/auth/firebase/session"
               headers:
                 Origin: "https://jenfu-platform-prod-9536592944.asia-east1.run.app"
+                Sec-Fetch-Site: "same-origin"
+                Cookie: $${text.split(platform_login_intent_cookie_header, ";")[0]}
                 Content-Type: "application/json"
               body:
                 idToken: $${id_token}
+                intentId: $${platform_login_intent_id}
+                csrfToken: $${platform_login_csrf}
               timeout: 20
             result: platform_session_response
         - bind_platform_cookie:
