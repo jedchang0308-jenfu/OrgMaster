@@ -131,6 +131,13 @@ async function readWorkflow(transport, profile) {
   return workflow
 }
 
+export function assertSharedSmokeWorkflowBaseline({ root, profile, sourceRevision, previousVersion, workflow }) {
+  const expectedSource = expectedSmokeWorkflowSource({ root, profile, sourceRevision, version: previousVersion })
+  if (workflow?.state !== 'ACTIVE' || typeof workflow.revisionId !== 'string' || !workflow.revisionId ||
+      workflow.sourceContents !== expectedSource) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  return { sourceRevision, previousVersion, revisionId: workflow.revisionId }
+}
+
 export async function submitSmokeRotationApplyOnce({ fenceRead, expectedFence, beforeSubmit, readBaseline,
   assertBaseline, readBinaryPlan, putFence, applyPlan }) {
   if (fenceRead && !same(fenceRead.value, expectedFence)) fail('SMOKE_ROTATION_APPLY_FENCE_INVALID')
@@ -195,13 +202,18 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
         try { command('git', ['merge-base', '--is-ancestor', from, to]); return true } catch { return false }
       } })
   }
-  const baselineVersion = smokeRotationBaselineVersion({
+  let baselineVersion = smokeRotationBaselineVersion({
     toolVersion: toolEvidence.candidateSmokeRefreshTokenSecretVersion,
     baselineInfra: baselineInfra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
       ? { ...baselineInfra, receiptRef: baselineInfraRead.ref } : null,
     continuation,
   })
-  if (baselineVersion !== previousVersion) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  if (baselineVersion !== previousVersion) {
+    if (!sharedCredential) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+    assertSharedSmokeWorkflowBaseline({ root, profile, sourceRevision: workflowBaselineSourceRevision,
+      previousVersion, workflow: await readWorkflow(transport, profile) })
+    baselineVersion = previousVersion
+  }
   const service = await transport.getService(profile)
   transport.assertServiceSettled(service); transport.assertCanonicalEntrypoint(profile, service)
   if (transport.effectiveRevision(service) !== baseline.activeRevision || [...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some(row => row.tag)) fail('SMOKE_ROTATION_SERVICE_BASELINE_INVALID')
