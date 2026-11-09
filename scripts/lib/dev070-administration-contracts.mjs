@@ -13,6 +13,7 @@ export const projections = {
   fms: { contractVersion: 'jenfu.orgmaster.fms-authority.v3', view: 'orgmaster_contract.v_fms_authority_v3', readers: ['financial-management-system', 'orgmaster-owner-verifier'] },
 }
 export const errors = { AUTH_RECENT_REQUIRED: 401, PLATFORM_ADMIN_REQUIRED: 403, ADMINISTRATION_CONFLICT: 409, ADMINISTRATION_COMMAND_CONFLICT: 409, ADMINISTRATION_ALREADY_INITIALIZED: 409, CATALOG_BINDING_CONFLICT: 409, COMMAND_NOT_COMMITTED: 409, ADMIN_TARGET_INVALID: 422, LAST_PLATFORM_ADMIN: 422, ADMINISTRATION_DEPENDENCY_UNAVAILABLE: 503 }
+const normalizeLineEndings = value => value.replace(/\r\n/g, '\n')
 export async function generateAdministrationContracts(root, check = false) {
   // JSON schemas are generated from the exact runtime validators, never hand-maintained copies.
   const { z } = await import('zod')
@@ -30,7 +31,7 @@ export async function generateAdministrationContracts(root, check = false) {
   if (!check) await mkdir(destination, { recursive: true })
   for (const [name, value] of Object.entries(bytes)) {
     const path = resolve(destination, name)
-    if (check) { if (await readFile(path, 'utf8') !== value) throw new Error(`ADMINISTRATION_CONTRACT_DRIFT:${name}`) }
+    if (check) { if (normalizeLineEndings(await readFile(path, 'utf8')) !== value) throw new Error(`ADMINISTRATION_CONTRACT_DRIFT:${name}`) }
     else await writeFile(path, value)
   }
   const definitionsPath=resolve(root,'contracts/orgmaster-administration/v2/administrative-definitions.json')
@@ -52,7 +53,7 @@ export async function generateAdministrationContracts(root, check = false) {
   if(!check)await mkdir(v2Destination,{recursive:true})
   for(const [name,value] of Object.entries(v2Bytes)){
     const path=resolve(v2Destination,name)
-    if(check){if(await readFile(path,'utf8')!==value)throw new Error(`ADMINISTRATION_V2_CONTRACT_DRIFT:${name}`)}
+    if(check){if(normalizeLineEndings(await readFile(path,'utf8'))!==value)throw new Error(`ADMINISTRATION_V2_CONTRACT_DRIFT:${name}`)}
     else await writeFile(path,value)
   }
   const fmsManifest=JSON.parse(await readFile(resolve(root,'contracts/orgmaster-fms-authority/v2/contract-manifest.json'),'utf8'))
@@ -60,7 +61,7 @@ export async function generateAdministrationContracts(root, check = false) {
   fmsManifest.assignmentKeys.push('subjectKind','basis','targetPrincipalId','sourceKind','sourceGrantId','administrativeDefinitionHash')
   fmsManifest.sourceRules.administration='exact Principal administration grant; sourceKind=administrative_grant, sourceAssignmentId=sourceGrantId=grant UUID; workspace/company-jenfu; current protected dynamic definition hash; no Employee fan-out'
   const fmsBytes=`${JSON.stringify(fmsManifest,null,2)}\n`,fmsPath=resolve(root,'contracts/orgmaster-fms-authority/v3/contract-manifest.json')
-  if(check){if(await readFile(fmsPath,'utf8')!==fmsBytes)throw new Error('FMS_V3_MANIFEST_DRIFT')}
+  if(check){if(normalizeLineEndings(await readFile(fmsPath,'utf8'))!==fmsBytes)throw new Error('FMS_V3_MANIFEST_DRIFT')}
   else {await mkdir(resolve(root,'contracts/orgmaster-fms-authority/v3'),{recursive:true});await writeFile(fmsPath,fmsBytes)}
   return { path: destination, manifestSha256: sha256(bytes['contract-manifest.json']),v2ManifestSha256:sha256(v2Bytes['contract-manifest.json']),fmsManifestSha256:sha256(fmsBytes) }
 }
