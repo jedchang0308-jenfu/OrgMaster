@@ -110,9 +110,10 @@ async function request<T>(path: string, init: RequestInit = {}) {
   const response = await fetch(`${GOVERNANCE_API_PATH}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
-    if (response.status === 401) invalidate('unauthenticated')
+    const code = payload.code ?? payload.error ?? 'GOVERNANCE_REQUEST_FAILED'
+    if (response.status === 401 && code !== 'AUTH_RECENT_REQUIRED') invalidate('unauthenticated')
     else if (response.status === 403) invalidate('forbidden')
-    throw new GovernanceApiError(payload.code ?? payload.error ?? 'GOVERNANCE_REQUEST_FAILED', response.status, payload.issues)
+    throw new GovernanceApiError(code, response.status, payload.issues)
   }
   if (init.method === 'POST' && (path === '/versions' || path === '/active-version')) invalidate('permissions-changed')
   return { payload: payload as T, revision: response.headers.get('X-OrgMaster-Governance-Revision') ?? '' }

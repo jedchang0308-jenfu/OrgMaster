@@ -11,7 +11,7 @@ export function GovernanceAdministrators({employees,onChanged}:{employees:Employ
  const [principalId,setPrincipalId]=useState(''),[employeeId,setEmployeeId]=useState(''),[application,setApplication]=useState('orgmaster'),[reason,setReason]=useState('')
  const [pending,setPending]=useState<AdministrationCommand|null>(null),[preview,setPreview]=useState<AdministrationPreview|null>(null),[receipt,setReceipt]=useState<AdministrationCommandReceipt|null>(null),[unknown,setUnknown]=useState(false)
  const [replacement,setReplacement]=useState<AdministrativeGrantV1|null>(null),[validFrom,setValidFrom]=useState(''),[validTo,setValidTo]=useState('')
- const report=(error:unknown)=>setError(error instanceof GovernanceApiError?`${error.code}：${error.code==='AUTH_RECENT_REQUIRED'?'請重新透過 Google 驗證。':'請重新載入或查詢原操作結果。'}`:'平台管理授權目前無法讀取。')
+ const report=(error:unknown)=>setError(error instanceof GovernanceApiError?`${error.code}：${error.code==='AUTH_RECENT_REQUIRED'?'請回鉦富管理平台重新驗證一次，再返回完成確認。':'請重新載入或查詢原操作結果。'}`:'平台管理授權目前無法讀取。')
  async function refresh(){try{setWorkspace((await loadAdministrationWorkspace()).payload)}catch(error){report(error)}}
  useEffect(()=>{void refresh()},[])
  const name=(id:string)=>{const value=employees.find(employee=>employee.id===id)?.name;return value&&/\p{Script=Han}/u.test(value)?value:'員工'}
