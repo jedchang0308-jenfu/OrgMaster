@@ -4,11 +4,15 @@
 
 OrgMaster 是唯一可寫入的行政授權權威。它保存兩種且只有兩種管理資格：平台範圍 platform_super_admin，以及精確 applicationId 的 application_system_admin。兩者都綁 exact active human Principal／Employee、manual basis、有效期／撤銷、authority epoch、command receipt 與 audit；不得由 email、職位、同人另一 Principal、Platform UI badge、app business role 或 SSO claim 推導。
 
+Platform 是唯一的人類互動核身及 smoke credential issuance authority。跨 owner 核發或續接流程中，人類只在 Platform 以 password 或 Google 完成一次 AAL1 核身；Platform 隨後提供不可變、可驗 hash 的 multi-owner identity/readback receipt，供各 owner 驗證各自的 exact human Principal／Employee identity readback、AAL1 assurance 與核身時間。Receipt 不含 password 或 credential bytes。OrgMaster 消費並驗證這份 receipt，不在自己的 loopback CLI 再要求輸入密碼、不另行核身，也不自行核發人類核身證明。
+
+OrgMaster 仍保有並操作自己的 owner-specific numeric Secret、對應 GitHub production environment secret、既有 Terraform Workflow numeric-version binding，以及 OrgMaster 自己的 immutable owner receipt。它依 Platform receipt 驗證本 owner 的身分 readback 後，沿現有 owner workflow 更新／同步自己的 Secret 版本與 Workflow 綁定；Platform receipt 不取代或改寫 OrgMaster owner receipt，不授予跨 owner Secret 寫入權。現有 freshness、版本配對、unknown-outcome provider readback 與重送限制均維持；不新增 IAM、不推導任何財務業務權限，指定中文姓名保持不變。
+
 各 app 另提供固定、版本化、不可由一般角色編輯器變更的 AdministrativeCapabilityDefinition。OrgMaster 只採用已由該 app release 發布並通過 hash/readback 的 definition，將 applicationId + definitionVersion + definitionSha256 綁入 app-admin grant；不再把 dynamic business catalog version/hash 當行政 grant 的存在條件。business catalog 更新不迫使管理員重授；只有 administrative definition 不相容變更才需明示遷移。
 
 新增單一 batch command：一次 preview/commit 可對同一 exact Principal 授予或撤銷多個 app-admin grant。命令必須綁 environment、target Principal／Employee、governance／administration revision、每個 app definition tuple、reason、commandId、requestHash；CAS、idempotency、durable receipt、provider readback 及 unknown-outcome 規則沿既有 writer。某 app definition 未就緒時只拒絕該 batch，不得建立未知或 partial 隱式 grant；重送先讀原 receipt。
 
-preview/status 只要求有效的 Platform／OrgMaster session。commit 是高風險管理寫入，要求近期真實 AAL1 session並接受 AAL2；不要求使用者在 FMS／PDM 另開 Google popup，也不把每個操作的 auth_time 小於五分鐘套到只讀查詢。首位超管仍由受控 owner recovery/bootstrap 建立，但建立後所有 app-admin 都走同一正常 batch command，不再重跑首次初始化。
+preview/status 只要求有效的 Platform／OrgMaster session。commit 是高風險管理寫入，要求近期 Platform 核身所建立的真實 AAL1 session並接受 AAL2；OrgMaster 驗證該 Platform session／receipt，不直接向人類索取另一組密碼。不要求使用者在 FMS／PDM 另開 Google popup，也不把每個操作的 auth_time 小於五分鐘套到只讀查詢。首位超管仍由受控 owner recovery/bootstrap 建立，但建立後所有 app-admin 都走同一正常 batch command，不再重跑首次初始化。
 
 projection 必須是 app-scoped、版本化、唯讀並包含 exact Principal／Employee、grant id/status、applicationId、definition tuple、authority epoch/revision 及 revocation facts。consumer 不得讀 OrgMaster core，也不得取得其他 app roster。Platform DEV-013 SSO 只建立 app session；OrgMaster projection 才是 app 管理授權來源。
 
@@ -16,7 +20,7 @@ FMS 不再向 OrgMaster handoff dynamic catalog，也不需要本人安裝 FMS �
 
 遷移順序為 producer/projection v2 → app dual-reader → app definition publication/readback → exact grant batch migration → consumer v2-only → 退休舊 FMS catalog adoption/bootstrap 契約。相容窗口內舊 projection 只服務既有 caller，不得作新 grant fallback。正式與地端均須驗 exact readback、撤銷／epoch fail-closed、AAL1、中文姓名，以及 no-finance-business-role 不變式。
 
-日期：2026-11-05；更新：2026-11-07（Asia/Taipei）。Native：ORGMASTER/DEV-070；來源：JENFU/DEV-022#authority-and-bootstrap。成熟度：IMPLEMENTING／完整本人驗收待續。主控已回報正式 Org `d81eda07e789a50c229b977aea258467583b229e`（PR #221）已經 normal full run `42269131015` RELEASED，047 actual ledger43；static-v8 reader與fresh enrollment-status已隨該source發布。Primary-local Org43及local046、PDM local096／097已正常 installed，local catalog仍v7。§28 optional status metadata已隨D81發布；§29 scalar projection source尚未發布。指定 Google personal／張仕杰 JFS0005，最低 AAL1、AAL2亦接受、中文姓名不變；正式root的人類同意仍有效，Google manual handoff目前受阻／視窗逾時，本人Google完成、root／app-admin grants、native ack或UI完成仍未驗證，不把admit或source測試當初始化成功。人類四專案完整實作至真實地端與正式發布的授權及完整驗收分母維持；既有capacity CPU FAIL與所有歷史首敗保留。
+日期：2026-11-05；更新：2026-11-09（Asia/Taipei；補 Platform 唯一人類核身／smoke credential issuance 與 owner receipt 定界，文件變更不代表程式、核發或發布已完成）。Native：ORGMASTER/DEV-070；來源：JENFU/DEV-022#authority-and-bootstrap。成熟度：IMPLEMENTING／完整本人驗收待續。主控已回報正式 Org `d81eda07e789a50c229b977aea258467583b229e`（PR #221）已經 normal full run `42269131015` RELEASED，047 actual ledger43；static-v8 reader與fresh enrollment-status已隨該source發布。Primary-local Org43及local046、PDM local096／097已正常 installed，local catalog仍v7。§28 optional status metadata已隨D81發布；§29 scalar projection source尚未發布。指定 Google personal／張仕杰 JFS0005，最低 AAL1、AAL2亦接受、中文姓名不變；正式root的人類同意仍有效，Google manual handoff目前受阻／視窗逾時，本人Google完成、root／app-admin grants、native ack或UI完成仍未驗證，不把admit或source測試當初始化成功。人類四專案完整實作至真實地端與正式發布的授權及完整驗收分母維持；既有capacity CPU FAIL與所有歷史首敗保留。
 
 總控權威契約：`C:/VIBE CODING/.worktrees/Jenfu-Platform/dev022-platform-super-admin-20261105/ai-doc/specs/DEV-022-platform-super-admin-cross-project-plan.md`（Platform owner 開發 root；發布使用獨立 clean source checkout）；`C:/VIBE CODING/Jenfu-Platform` 原 root 僅作協調鏡本，不作 release source。相鄰責任沿 DEV-057 Principal／writer fencing 及 DEV-058 集中任用；不重開原驗收或替它們結案。[架構決策](../adr/ADR-007-external-role-catalog-assignment-boundary.md#platform-super-admin-20261105)。
 
@@ -24,7 +28,7 @@ FMS 不再向 OrgMaster handoff dynamic catalog，也不需要本人安裝 FMS �
 
 指定 jedchang0308@jenfu.com.tw（張仕杰／JFS0005）在正式及地端取得平台超管。沿用同一 Google personal；最低接受 AAL1，AAL2 亦接受，中文姓名不變，不另建 privileged 帳號。兩環境各自綁定 exact Principal，不複製 local UID／Employee／Principal 到 production。
 
-OrgMaster 是身分核實、root／app 管理員任免、發布及 audit 的唯一權威。Platform 處理認證／SSO／epoch 與顯示；各 app 保留能力及業務判權。root 不是 Cloud IAM、DB owner、Secret 或業務免驗證權。本輪須完成產品實作與發布；「正式沒有此 user」仍須 owner 唯讀核實，再依同一已授權 target 準備 native mapping 或重用既有 Principal。
+OrgMaster 是 root／app 管理員任免、行政授權發布及 audit 的唯一權威；Platform 是人類核身／SSO／epoch 與 smoke credential issuance 的唯一權威，並提供跨 owner identity/readback receipt。各 app 保留能力及業務判權。root 不是 Cloud IAM、DB owner、Secret 或業務免驗證權。本輪須完成產品實作與發布；「正式沒有此 user」仍須 owner 唯讀核實，再依同一已授權 target 準備 native mapping 或重用既有 Principal。
 
 ## 2. 現況與受影響 source
 
@@ -57,14 +61,14 @@ FMS 管理角色使用 administration grant 派生的 v3 Principal assignment（
 | 階段 | 契約 |
 | --- | --- |
 | plan／preview | 讀 active publication／組織 revision、平台 root 狀態與 app catalog；列 reused／created／granted 差異並鎖環境及核身 selector。 |
-| identity verified | 核實指定 Google 的 live Directory immutable key 與真實簽章 provider token。解決缺 published login access／既有 root 的循環，不能要求先完成依賴它的普通登入。 |
+| identity verified | 驗證 Platform 發出的 immutable multi-owner identity/readback receipt，並確認本環境的 exact human Principal／Employee 與核身時間／AAL1 綁定。若須檢查 Google Directory immutable key 與 provider proof，由 Platform 核身路徑完成；OrgMaster loopback 不收集人類密碼或重做 provider 登入。解決缺 published login access／既有 root 的循環，不能要求先完成依賴它的普通登入。 |
 | commit | environment／目標／org／governance／catalog 無漂移；共用初始化序列化與 CAS，保證首次平台 root 只有一筆結果。同 owner transaction 保存 grant、publication、audit 及 durable outbox。 |
 | readback | 固定 command ID、request hash、preview binding；相同操作回原 receipt，異 payload 拒絕；unknown commit 查原結果，不另造 operation。 |
 | activation | 逐 owner 讀回 app profile／epoch acknowledgment，必要 invalidation 後以真實重新登入確認。跨 owner 分別交易及收據，不宣稱全系統原子 transaction。 |
 
 初始化檢查新的平台 root 及操作收據。既有 app admin／舊 bootstrap 不等於新平台 root 已初始化，也不是重跑舊 bootstrap 的理由；已消耗的命令不能換人重用。兩環境分開 CAS／receipt，不接受 nonprod token 向 prod 提交。
 
-不能重跑 DEV-012 import／password wizard 或 DEV-057 local rekey/reset。Google 公司帳號既有就不重建，正式只建立缺少的環境身份；Employee 歸屬歧義只停止該寫入，不猜測。token 僅供當次核身，不存入文件、receipt 或 log。
+不能重跑 DEV-012 import／password wizard 或 DEV-057 local rekey/reset。Google 公司帳號既有就不重建，正式只建立缺少的環境身份；Employee 歸屬歧義只停止該寫入，不猜測。人類密碼及 provider token 僅由 Platform 核身流程使用，不存入 OrgMaster 文件、receipt 或 log；OrgMaster receipt 只保存可驗證的核身／readback 參照及自己的 owner operation 結果。
 
 一般任免沿 authenticated root、active admission、近期真實 provider authentication、same-snapshot CAS、防重送及 audit。refresh 不更新 auth_time。禁止普通人自我升權及無替代／受控 recovery 時移除最後一位 active root；首次 owner 授權是單次明示例外，不全面取消 self-grant 保護。
 
