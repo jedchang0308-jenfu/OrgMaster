@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { generateKeyPairSync, sign } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import { canonicalize } from './lib/dev012-owner-release-runtime.mjs'
 import { assertOwnerProfile, assertOwnerSourceFence, createdSecretVersion, firebaseApi, githubSecretMetadataCurrent, secretVersion, verifyOldPair } from './dev057-smoke-credential-reauth.mjs'
-import { assertReleasedSmokeRotationBaseline, smokeRotationBaselineVersion, smokeRotationToolAdmissionIntent, validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
+import { assertReleasedSmokeRotationBaseline, assertSharedSmokeWorkflowBaseline, smokeRotationBaselineVersion, smokeRotationToolAdmissionIntent, validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
 import { validateSharedSmokeCredentialEvidence } from './lib/dev057-shared-smoke-credential-evidence.mjs'
+import { expectedSmokeWorkflowSource } from './lib/dev057-smoke-rotation-continuation.mjs'
 import {
   EXPECTED, REAUTH_SCHEMA, ReauthError, admitLocalRequest, assertResumeReceipt, parseResumeReceiptRef, assertFreshAuthTime, assertPlatformMe, buildReauthReceipt,
   identityPairHash, localPageSecurityHeaders, localRequestDenial, parseReauthArguments, resolveVersionBinding,
@@ -135,6 +137,22 @@ test('released smoke rotation baseline supersedes older tool state only after se
   /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
   assert.throws(() => smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
     continuation: { evidenceScope: 'UNVERIFIED', infraReceiptRef: ref, newVersion: '13' } }),
+  /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
+})
+
+test('shared smoke baseline accepts stale tool state only when provider workflow proves the adjacent prior version', () => {
+  const root = process.cwd()
+  const profile = JSON.parse(fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url), 'utf8'))
+  const sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+  const source = expectedSmokeWorkflowSource({ root, profile, sourceRevision, version: '18' })
+  assert.deepEqual(assertSharedSmokeWorkflowBaseline({ root: process.cwd(), profile: {
+    ...profile,
+  }, sourceRevision, previousVersion: '18', workflow: { state: 'ACTIVE', revisionId: '000017-16b', sourceContents: source } }),
+  { sourceRevision, previousVersion: '18', revisionId: '000017-16b' })
+  assert.throws(() => assertSharedSmokeWorkflowBaseline({ root: process.cwd(), profile: {
+    ...profile,
+  }, sourceRevision, previousVersion: '18',
+  workflow: { state: 'ACTIVE', revisionId: '000017-16b', sourceContents: 'workflow-source-v17' } }),
   /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
 })
 
