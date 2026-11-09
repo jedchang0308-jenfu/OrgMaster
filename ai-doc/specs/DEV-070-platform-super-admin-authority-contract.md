@@ -14,6 +14,8 @@ OrgMaster 仍保有並操作自己的 owner-specific numeric Secret、對應 Git
 
 preview/status 只要求有效的 Platform／OrgMaster session。commit 是高風險管理寫入，要求近期 Platform 核身所建立的真實 AAL1 session並接受 AAL2；OrgMaster 驗證該 Platform session／receipt，不直接向人類索取另一組密碼。不要求使用者在 FMS／PDM 另開 Google popup，也不把每個操作的 auth_time 小於五分鐘套到只讀查詢。首位超管仍由受控 owner recovery/bootstrap 建立，但建立後所有 app-admin 都走同一正常 batch command，不再重跑首次初始化。
 
+若 commit 回傳 `AUTH_RECENT_REQUIRED`，UI 保存同一筆 pending command／preview hash 於目前 app session 的 sessionStorage，提供回 Platform 的一次性 reauthentication SSO 入口；Platform 以新 provider `auth_time` 完成 AAL1 核身後返回原頁。返回後仍由 OrgMaster 重新以現行 revision、CAS、preview hash 及 exact Principal／Employee 驗證，不能以保存的預覽直接繞過授權或改用新的 commandId 重送未知結果。
+
 projection 必須是 app-scoped、版本化、唯讀並包含 exact Principal／Employee、grant id/status、applicationId、definition tuple、authority epoch/revision 及 revocation facts。consumer 不得讀 OrgMaster core，也不得取得其他 app roster。Platform DEV-013 SSO 只建立 app session；OrgMaster projection 才是 app 管理授權來源。
 
 FMS 不再向 OrgMaster handoff dynamic catalog，也不需要本人安裝 FMS 角色目錄。FMS release 自己安裝「完整目錄管理」administrative definition；OrgMaster 對指定人員只建立 application_system_admin(financial-management-system) grant。這項 grant不產生 Financial Owner、Finance Manager、付款、銀行、會計、審核或任何其他財務業務 assignment。

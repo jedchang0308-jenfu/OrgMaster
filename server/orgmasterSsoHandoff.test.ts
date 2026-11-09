@@ -216,6 +216,25 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(accepted.headers.get('set-cookie')).toContain('Max-Age=3600')
   })
 
+  it('adds a one-shot login prompt for the shared reauthentication flow', async () => {
+    const value = runtime()
+    const base = await listen(value, dependencies('on'))
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start?reauth=1&returnTo=%2Fgovernance`, { redirect: 'manual' })
+    expect(start.status).toBe(303)
+    const location = new URL(start.headers.get('location')!)
+    expect(location.searchParams.get('prompt')).toBe('login')
+    expect(location.searchParams.get('client_id')).toBe('orgmaster')
+    expect(location.searchParams.get('redirect_uri')).toBe(`${publicOrigin}/api/auth/jenfu-sso/callback`)
+  })
+
+  it('rejects malformed reauthentication requests before creating a transaction', async () => {
+    const value = runtime()
+    const base = await listen(value, dependencies('on'))
+    const response = await fetch(`${base}/api/auth/jenfu-sso/start?reauth=yes`, { redirect: 'manual' })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ code: 'sso_request_invalid' })
+  })
+
   it('restarts an expired 15-minute transaction without exchanging the stale code', async () => {
     const value = runtime()
     let clock = now
