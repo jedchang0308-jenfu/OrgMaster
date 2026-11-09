@@ -34,7 +34,7 @@ export async function generateAdministrationContracts(root, check = false) {
     else await writeFile(path, value)
   }
   const definitionsPath=resolve(root,'contracts/orgmaster-administration/v2/administrative-definitions.json')
-  const definitionsBytes=await readFile(definitionsPath,'utf8')
+  const definitionsBytes=(await readFile(definitionsPath,'utf8')).replace(/\r\n/g,'\n')
   const definitions=JSON.parse(definitionsBytes)
   const v2Projections={...projections,
     pdm:{...projections.pdm,contractVersion:'jenfu.orgmaster.ai-pdm-principal-grants.v6',view:undefined,function:'orgmaster_contract.read_ai_pdm_principal_effective_grants_v6(text,text)'},
