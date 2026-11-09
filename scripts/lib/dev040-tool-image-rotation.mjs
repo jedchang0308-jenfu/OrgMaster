@@ -50,10 +50,17 @@ export function assertToolPreActivationAbortControl({ profile, attemptIntent, at
   const rollback = assertToolControlStage(rollbackRead.value, profile, attemptIntent, 'rollback')
   const terminal = assertToolControlStage(terminalRead.value, profile, attemptIntent, 'terminal')
   const rollbackFacts = rollback.facts, terminalFacts = terminal.facts
+  // A historical rollback executor wrote the already-cleaned candidate
+  // revision into the finalized abort head.  Accept that legacy shape only
+  // when the sealed abort receipts and the provider baseline prove that the
+  // candidate was removed; every unrelated/non-owned revision still fails.
+  const candidateRevisionValid = control.candidateRevision === null
+    || (typeof control.candidateRevision === 'string'
+      && control.candidateRevision.startsWith(`${profile.target.serviceName}-`))
   if (prepareRead.ref.uri !== paths.prepare || rollbackRead.ref.uri !== paths.rollback || terminalRead.ref.uri !== paths.terminal
     || control.releaseId !== attemptIntent.releaseId || control.sourceRevision !== attemptIntent.sourceRevision
     || control.sourceLockSha256 !== attemptIntent.sourceLockRef.sha256 || control.previousRevision !== baselineActiveRevision
-    || control.candidateRevision !== null || !same(attemptIntent.baselineIntentRef, baselineIntentRef)
+    || !candidateRevisionValid || !same(attemptIntent.baselineIntentRef, baselineIntentRef)
     || !same(attemptIntent.infraReceiptRef, infraRef) || attemptIntent.previousRevision !== baselineActiveRevision
     || !same(prepare.facts?.prerequisiteRefs?.infra, infraRef)
     || prepare.facts?.migrationRunnerDigest !== priorInfra.migrationRunnerDigest

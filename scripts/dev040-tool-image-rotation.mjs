@@ -97,7 +97,6 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   const { controlSha256, ...controlCore } = control
   if (controlSha256 !== sha256(canonicalize(controlCore)) || control.state !== 'FINALIZED'
     || !['RELEASED', 'PRE_ACTIVATION_ABORTED'].includes(control.result)
-    || (control.result === 'PRE_ACTIVATION_ABORTED' && control.candidateRevision !== null)
     || control.ownerApplicationId !== 'orgmaster' || control.service !== 'orgmaster-prod') fail('CONTROL_NOT_RELEASED')
   const intentRead = await transport.readBytes(`gs://${bucket}/receipts/releases/${control.releaseId}/release-intent.json`, { prefixes: ['receipts'] })
   const controlIntent = JSON.parse(intentRead.bytes.toString('utf8'))

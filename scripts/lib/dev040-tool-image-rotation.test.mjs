@@ -1497,6 +1497,31 @@ test('requires the hash-bound finalized control head and accepts an exact sealed
   ])
 })
 
+test('accepts the legacy finalized abort head only when the candidate revision is owned and the abort proof is complete', async () => {
+  const legacy = makeReceiptHarness()
+  const abort = bindPreActivationAbort(legacy)
+  const legacyControlCore = { ...abort.control, candidateRevision: 'orgmaster-prod-legacy-candidate' }
+  delete legacyControlCore.controlSha256
+  const legacyControlRef = replaceJsonObject(legacy, abort.controlRef,
+    { ...legacyControlCore, controlSha256: sha256(canonicalize(legacyControlCore)) })
+  legacy.receipt.toolRotation.controlSnapshotRef = legacyControlRef
+  legacy.receipt.toolRotation.controlBaseline.sha256 = legacyControlRef.sha256
+  resealReceipt(legacy)
+  const accepted = await validateRotationFixture(legacy)
+  assert.equal(accepted.migrationRunnerDigest, NEXT_IMAGE)
+
+  const foreign = makeReceiptHarness()
+  const foreignAbort = bindPreActivationAbort(foreign)
+  const foreignControlCore = { ...foreignAbort.control, candidateRevision: 'pdm-prod-foreign-candidate' }
+  delete foreignControlCore.controlSha256
+  const foreignControlRef = replaceJsonObject(foreign, foreignAbort.controlRef,
+    { ...foreignControlCore, controlSha256: sha256(canonicalize(foreignControlCore)) })
+  foreign.receipt.toolRotation.controlSnapshotRef = foreignControlRef
+  foreign.receipt.toolRotation.controlBaseline.sha256 = foreignControlRef.sha256
+  resealReceipt(foreign)
+  await assert.rejects(() => validateRotationFixture(foreign), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID')
+})
+
 test('retains a sealed abort-backed tool rotation after a later application-only release', async () => {
   const retained = makeReceiptHarness({ baselineUsesRotation: true })
   bindPreActivationAbort(retained)
