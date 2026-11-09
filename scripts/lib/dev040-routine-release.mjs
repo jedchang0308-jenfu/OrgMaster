@@ -144,13 +144,16 @@ function principalSmokeInfrastructureInputs(profile) {
   return value
 }
 
-// Sealed historical transition and its cookie-only corrective cycle.
+// Sealed historical transition, cookie-contract correction, and the managed
+// login-intent correction required by the current Platform session contract.
 export function assertDev057PrincipalSmokeBlobTransition(before, after) {
   const historical = '1add0e6508568d591faa190cabf64e2470fb620c'
   const principal = 'b8d6b8a92a044bcd59e11efd8a6c0f7f2e319b55'
   const corrected = 'b9c6bfeca843c6ef551d95834b59f5471c097abc'
+  const managedLogin = '1d5ee4a8bd0958ef59ebe8db05a19e24b1837851'
   if (!((before === historical && [principal, corrected].includes(after))
-    || (before === principal && after === corrected))) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
+    || (before === principal && after === corrected)
+    || (before === corrected && after === managedLogin))) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
 }
 
 // This read-only operator recipe correction changes only the packaged pinned
