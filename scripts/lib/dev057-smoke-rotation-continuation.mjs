@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import {normalizeCatalogPackagingResourceTree} from './dev070-catalog-packaging-inputs.mjs'
+import { DEV057_PRINCIPAL_SMOKE_RECIPE, gitBlobOid, isDev057PrincipalSmokeBlobTransition } from './dev057-principal-smoke-transition.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { canonicalize, sha256, assertImmutableRef, assertControllerImageResolutionProof, releasePaths } from './dev012-owner-release-runtime.mjs'
@@ -364,12 +365,16 @@ async function assertNativeSmokeRotationProof({ root, profile, transport, intent
   const binary = await transport.readBytes(proof.binaryPlanRef.uri, { prefixes: ['receipts'], expectedSha256: proof.binaryPlanRef.sha256 })
   if (binary.ref.sha256 !== rotation.binaryPlanSha256 || plan.ref.sha256 !== rotation.planJsonSha256 ||
       afterState.ref.sha256 !== rotation.stateJsonSha256 || output.ref.sha256 !== rotation.outputManifestSha256) fail('SMOKE_ROTATION_NATIVE_HASH_INVALID')
+  const workflowBaselineSourceRevision = proof.workflowBaselineSourceRevision ?? rotation.sourceRevision
+  if (workflowBaselineSourceRevision !== prior.sourceRevision) fail('SMOKE_ROTATION_NATIVE_PROOF_INVALID')
   const planProof = assertSmokeCredentialRotationPlan({ root, profile, sourceRevision: rotation.sourceRevision,
+    previousSourceRevision: workflowBaselineSourceRevision,
     plan: plan.value, infraProfile, previousVersion, nextVersion, versionChain, readSourceFile })
   if (!same(planProof, proof.planProof) || prepared.value?.schemaVersion !== 'orgmaster.smoke-credential-rotation-prepared.v1' ||
       prepared.value.receiptSha256 !== sha256(canonicalize(Object.fromEntries(Object.entries(prepared.value).filter(([key]) => key !== 'receiptSha256')))) ||
       !same(prepared.value.binaryPlanRef, proof.binaryPlanRef) || !same(prepared.value.planJsonRef, proof.planJsonRef) ||
       !same(prepared.value.credentialPredecessorRef ?? null, proof.credentialPredecessorRef ?? null) ||
+      (prepared.value.workflowBaselineSourceRevision ?? prepared.value.sourceRevision) !== workflowBaselineSourceRevision ||
       !same(prepared.value.beforeStateRef, proof.beforeStateRef) || !same(prepared.value.providerWorkflowBeforeRef, proof.providerWorkflowBeforeRef) ||
       prepared.value.beforeSerial !== proof.beforeSerial || prepared.value.stateLineage !== proof.stateLineage) fail('SMOKE_ROTATION_NATIVE_PREPARED_INVALID')
   if (beforeState.value.stateMeta?.serial !== proof.beforeSerial || beforeState.value.stateMeta?.lineage !== proof.stateLineage ||
@@ -379,7 +384,7 @@ async function assertNativeSmokeRotationProof({ root, profile, transport, intent
       output.value.foundation_manifest_sha256 !== rotation.foundationManifestSha256 || output.value.source_revision !== rotation.sourceRevision) {
     fail('SMOKE_ROTATION_NATIVE_STATE_INVALID')
   }
-  const expectedBefore = expectedSmokeWorkflowSource({ root, profile, sourceRevision: rotation.sourceRevision, version: previousVersion, readSourceFile })
+  const expectedBefore = expectedSmokeWorkflowSource({ root, profile, sourceRevision: workflowBaselineSourceRevision, version: previousVersion, readSourceFile })
   const expectedAfter = expectedSmokeWorkflowSource({ root, profile, sourceRevision: rotation.sourceRevision, version: nextVersion, readSourceFile })
   if (workflowBefore.value.name !== workflowAfter.value.name || workflowBefore.value.serviceAccount !== workflowAfter.value.serviceAccount ||
       workflowBefore.value.revisionId === workflowAfter.value.revisionId || workflowBefore.value.sourceContents !== expectedBefore ||
@@ -416,7 +421,7 @@ export function expectedSmokeWorkflowSource({ root, sourceRevision, profile, ver
   return body
 }
 
-export function assertSmokeCredentialRotationPlan({ root, profile, sourceRevision, plan, infraProfile, previousVersion, nextVersion,
+export function assertSmokeCredentialRotationPlan({ root, profile, sourceRevision, previousSourceRevision = sourceRevision, plan, infraProfile, previousVersion, nextVersion,
   versionChain = [previousVersion, nextVersion], readSourceFile = readReleaseSourceFile }) {
   if (!Array.isArray(versionChain) || versionChain.length < 2 || versionChain.length > 8 ||
       versionChain[0] !== previousVersion || versionChain.at(-1) !== nextVersion ||
@@ -451,7 +456,12 @@ export function assertSmokeCredentialRotationPlan({ root, profile, sourceRevisio
   }
   const workflow = rows.find(row => row.address === workflowAddress)
   const before = structuredClone(workflow.change.before), after = structuredClone(workflow.change.after)
-  const expectedBefore = expectedSmokeWorkflowSource({ root, profile, sourceRevision, version: previousVersion, readSourceFile })
+  if (previousSourceRevision !== sourceRevision) {
+    const beforeBlob = gitBlobOid(readSourceFile(root, previousSourceRevision, DEV057_PRINCIPAL_SMOKE_RECIPE))
+    const afterBlob = gitBlobOid(readSourceFile(root, sourceRevision, DEV057_PRINCIPAL_SMOKE_RECIPE))
+    if (!isDev057PrincipalSmokeBlobTransition(beforeBlob, afterBlob)) fail('SMOKE_ROTATION_WORKFLOW_INVALID')
+  }
+  const expectedBefore = expectedSmokeWorkflowSource({ root, profile, sourceRevision: previousSourceRevision, version: previousVersion, readSourceFile })
   const expectedAfter = expectedSmokeWorkflowSource({ root, profile, sourceRevision, version: nextVersion, readSourceFile })
   if (before?.project !== EXPECTED.projectId || before.region !== profile.target.region || before.name !== profile.verification.candidateWorkflowName ||
       after?.project !== before.project || after.region !== before.region || after.name !== before.name ||
@@ -464,6 +474,7 @@ export function assertSmokeCredentialRotationPlan({ root, profile, sourceRevisio
   return { schemaVersion: 'orgmaster.smoke-credential-rotation-plan.v1',
     addressActions: rows.map(row => [row.address, row.change.actions[0]]).sort((left, right) => left[0].localeCompare(right[0])),
     update: { address: workflowAddress, before: workflow.change.before, after: workflow.change.after },
+    ...(previousSourceRevision === sourceRevision ? {} : { previousSourceRevision }),
     previousVersion, nextVersion }
 }
 

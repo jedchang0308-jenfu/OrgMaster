@@ -3,6 +3,7 @@ import { readPrincipalOnlyRepairBaseline } from './dev057-principal-forward-repa
 import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
 import {normalizeCatalogPackagingResourceTree} from './dev070-catalog-packaging-inputs.mjs'
+import { isDev057PrincipalSmokeBlobTransition } from './dev057-principal-smoke-transition.mjs'
 import { assertOrdinaryToolRotation } from './dev040-tool-image-rotation.mjs'
 import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256 } from './dev012-owner-release-runtime.mjs'
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
@@ -147,13 +148,7 @@ function principalSmokeInfrastructureInputs(profile) {
 // Sealed historical transition, cookie-contract correction, and the managed
 // login-intent correction required by the current Platform session contract.
 export function assertDev057PrincipalSmokeBlobTransition(before, after) {
-  const historical = '1add0e6508568d591faa190cabf64e2470fb620c'
-  const principal = 'b8d6b8a92a044bcd59e11efd8a6c0f7f2e319b55'
-  const corrected = 'b9c6bfeca843c6ef551d95834b59f5471c097abc'
-  const managedLogin = '1d5ee4a8bd0958ef59ebe8db05a19e24b1837851'
-  if (!((before === historical && [principal, corrected].includes(after))
-    || (before === principal && after === corrected)
-    || (before === corrected && after === managedLogin))) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
+  if (!isDev057PrincipalSmokeBlobTransition(before, after)) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
 }
 
 // This read-only operator recipe correction changes only the packaged pinned

@@ -9,6 +9,7 @@ import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_MIGRATIO
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_MIGRATION_ENTRY_COUNT } from './dev059-fms-authority-migration.mjs'
 import {DEV070_MIGRATION_ENTRIES,DEV070_RELEASE_MODE} from './dev070-administration-migration.mjs'
 import {assertSmokeInfraReuseEvidence,readSmokeReuseProviderState} from './dev057-smoke-rotation-continuation.mjs'
+import { DEV057_PRINCIPAL_SMOKE_RECIPE, isDev057PrincipalSmokeBlobTransition } from './dev057-principal-smoke-transition.mjs'
 import {normalizeTerraformStateMeta} from './dev040-tool-terraform.mjs'
 
 export const TOOL_RECIPES = Object.freeze([
@@ -184,11 +185,19 @@ export function assertToolStateSourceContinuation(root, baselineRevision, stateR
 function readProductionProfile(root, revision) {
   try { return JSON.parse(readGitBlob(root, PRODUCTION_PROFILE_PATH, revision).toString('utf8')) } catch { fail('SOURCE_INVALID') }
 }
-function nonRecipeInfrastructureEntries(root, revision) {
+function revisionBlob(root, revision, file) {
+  if (!H40.test(revision)) fail('SOURCE_INVALID')
+  const result = spawnSync('git', ['rev-parse', '--verify', `${revision}:${file}`], {
+    cwd: root, encoding: 'utf8', windowsHide: true,
+  })
+  return result.status === 0 ? result.stdout.trim() : null
+}
+function nonRecipeInfrastructureEntries(root, revision, additionalExcludedPaths = []) {
+  const excludedPaths = new Set(additionalExcludedPaths)
   return infrastructureTreeEntries(root, revision)
     .filter(entry => {
       const file = entry.split('\t').at(-1)
-      return file !== PRODUCTION_PROFILE_PATH && !TOOL_RECIPES.includes(file)
+      return file !== PRODUCTION_PROFILE_PATH && !TOOL_RECIPES.includes(file) && !excludedPaths.has(file)
     })
 }
 function reviewedClosedWorkflowTransition(before, after) {
@@ -246,6 +255,25 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
   if ((!exactProfileMatch && !reviewedWorkflowMatch)
     || !same(nonRecipeInfrastructureEntries(root, beforeRevision), nonRecipeInfrastructureEntries(root, afterRevision))) fail('SOURCE_INPUT_DRIFT')
   return { disposition, beforeFingerprint, afterFingerprint }
+}
+
+/** Reuse an immutable migration-tool receipt across an application successor.
+ * The Workflow source remains governed by its own smoke-rotation producer. */
+export function assertToolReceiptSourceSuccessor(root, receiptRevision, currentRevision) {
+  if (!gitIsAncestor(root, receiptRevision, currentRevision)
+    || !same(toolExecutableInputs(root, receiptRevision), toolExecutableInputs(root, currentRevision))) fail('SOURCE_INPUT_DRIFT')
+  const beforeFingerprint = toolInfrastructureFingerprint(root, receiptRevision)
+  const afterFingerprint = toolInfrastructureFingerprint(root, currentRevision)
+  if (beforeFingerprint === afterFingerprint) return { disposition: 'UNCHANGED', beforeFingerprint, afterFingerprint }
+  if (!isDev057PrincipalSmokeBlobTransition(
+    revisionBlob(root, receiptRevision, DEV057_PRINCIPAL_SMOKE_RECIPE),
+    revisionBlob(root, currentRevision, DEV057_PRINCIPAL_SMOKE_RECIPE),
+  ) || !same(readProductionProfile(root, receiptRevision), readProductionProfile(root, currentRevision))
+    || !same(
+      nonRecipeInfrastructureEntries(root, receiptRevision, [DEV057_PRINCIPAL_SMOKE_RECIPE]),
+      nonRecipeInfrastructureEntries(root, currentRevision, [DEV057_PRINCIPAL_SMOKE_RECIPE]),
+    )) fail('SOURCE_INPUT_DRIFT')
+  return { disposition: 'DEV057_PRINCIPAL_SMOKE_SUCCESSOR', beforeFingerprint, afterFingerprint }
 }
 export function assertToolArtifactAssociation({ root, profile, sourceRevision, buildSourceRevision, proof }) {
   if (sourceRevision === buildSourceRevision) {
@@ -515,8 +543,10 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || planRead.value.variables?.controller_image_digest?.value !== receipt.controllerImageDigest
     || planRead.value.variables?.foundation_manifest_sha256?.value !== receipt.foundationManifestSha256) fail('PLAN_PROOF_INVALID')
   assertToolInfrastructureTransition(root, proof.baselineSourceRevision, receipt.sourceRevision)
-  if (toolInfrastructureFingerprint(root, receipt.sourceRevision) !== toolInfrastructureFingerprint(root, intent.sourceRevision)
-    || !same(toolExecutableInputs(root, receipt.sourceRevision), toolExecutableInputs(root, intent.sourceRevision))) fail('SOURCE_INPUT_DRIFT')
+  // A current release may reuse an immutable tool-image receipt when only the
+  // separately governed candidate-smoke workflow changed. The shared exact
+  // transition authority rejects every unrelated infrastructure delta.
+  assertToolReceiptSourceSuccessor(root, receipt.sourceRevision, intent.sourceRevision)
   const before = beforeJobRead.value, after = afterJobRead.value
   if (before.name !== after.name || before.uid !== after.uid || before.uid !== proof.jobUid
     || after.name !== `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/orgmaster-prod-migration-runner`

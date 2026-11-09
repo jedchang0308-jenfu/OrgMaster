@@ -14,6 +14,7 @@ import {
   assertAppliedToolInfrastructureBaseline,
   assertToolInfrastructureBasis,
   assertToolInfrastructureTransition,
+  assertToolReceiptSourceSuccessor,
   assertToolArtifactAssociation,
   assertToolBuildProof,
   assertToolJobLiveReadback,
@@ -30,6 +31,7 @@ const ROOT = process.cwd()
 const INFRA_PROFILE_PATH = 'config/release/dev040-production-release-infra-plan.json'
 const PRODUCTION_PROFILE_PATH = 'config/release/dev040-orgmaster-independent-production-v3.json'
 const RUNNER_RECIPE = 'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile'
+const CANDIDATE_SMOKE_RECIPE = 'infra/google-cloud/dev-040-production-release/candidate-smoke.tf'
 const INFRA_ROOT = 'infra/google-cloud/dev-040-production-release'
 const BUCKET = 'jenfu-platform-prod-orgmaster-release'
 const RUNNER_URI = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-migration-runner'
@@ -58,6 +60,18 @@ function runGit(cwd, args, { bytes = false } = {}) {
 
 function readGitBytes(cwd, revision, file) {
   return runGit(cwd, ['show', `${revision}:${file}`], { bytes: true })
+}
+
+function correctedCookieSmokeBytes(managedBytes) {
+  const managed = managedBytes.toString('utf8')
+  const loginIntentBlock = /        - platform_login_intent:\r?\n[\s\S]*?                next: reject_session\r?\n/u
+  const corrected = managed.replace(loginIntentBlock, '')
+    .replace(/                Sec-Fetch-Site: "same-origin"\r?\n/u, '')
+    .replace(/                Cookie: \$\$\{text\.split\(platform_login_intent_cookie_header, ";"\)\[0\]\}\r?\n/u, '')
+    .replace(/                intentId: \$\$\{platform_login_intent_id\}\r?\n/u, '')
+    .replace(/                csrfToken: \$\$\{platform_login_csrf\}\r?\n/u, '')
+  assert.notEqual(corrected, managed)
+  return Buffer.from(corrected)
 }
 
 function createSourceFixture() {
@@ -126,6 +140,20 @@ function createSourceFixture() {
   const ordinarySourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
   runGit(root, ['checkout', '--quiet', '--detach', ordinarySourceRevision])
+  fs.writeFileSync(path.join(root, ...CANDIDATE_SMOKE_RECIPE.split('/')),
+    correctedCookieSmokeBytes(readGitBytes(ROOT, sourceRevision, CANDIDATE_SMOKE_RECIPE)))
+  runGit(root, ['add', CANDIDATE_SMOKE_RECIPE])
+  runGit(root, ['commit', '--quiet', '-m', 'restore corrected cookie smoke source'])
+  const correctedSmokeSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+  assert.equal(runGit(root, ['rev-parse', `${correctedSmokeSourceRevision}:${CANDIDATE_SMOKE_RECIPE}`]),
+    'b9c6bfeca843c6ef551d95834b59f5471c097abc')
+  fs.writeFileSync(path.join(root, ...CANDIDATE_SMOKE_RECIPE.split('/')),
+    readGitBytes(ROOT, sourceRevision, CANDIDATE_SMOKE_RECIPE))
+  runGit(root, ['add', CANDIDATE_SMOKE_RECIPE])
+  runGit(root, ['commit', '--quiet', '-m', 'use managed login smoke source'])
+  const managedSmokeSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+
+  runGit(root, ['checkout', '--quiet', '--detach', ordinarySourceRevision])
   const changedCopyInput = 'scripts/lib/dev012-production-migration-runner.mjs'
   fs.appendFileSync(path.join(root, ...changedCopyInput.split('/')), '\n// changed after historical tool build\n')
   runGit(root, ['add', changedCopyInput])
@@ -155,6 +183,7 @@ function createSourceFixture() {
   return {
     root, baselineSourceRevision, partialAppendSourceRevision, dev058SourceRevision,
     appendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
+    correctedSmokeSourceRevision, managedSmokeSourceRevision,
     copyInputDriftSourceRevision, toolInputDriftSourceRevision, driftSourceRevision,
     sourceIdentitySha256, sourceArchive, sourceArchiveBytes, sourceArchiveSha256,
     sourceArchiveObject: `source/archives/${sourceArchiveSha256}/source.tar.gz`,
@@ -439,6 +468,20 @@ function commitNonRecipeVariant(baseRevision, mutate, message) {
   }
 }
 
+function commitCandidateSmokeVariant(baseRevision, mutate, message) {
+  const priorHead = runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
+  try {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', baseRevision])
+    const file = path.join(sourceFixture.root, ...CANDIDATE_SMOKE_RECIPE.split('/'))
+    mutate(file)
+    runGit(sourceFixture.root, ['add', CANDIDATE_SMOKE_RECIPE])
+    runGit(sourceFixture.root, ['commit', '--quiet', '-m', message])
+    return runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
+  } finally {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
+  }
+}
+
 function closedWorkflowAppendFixture() {
   const closedWorkflow = productionProfile().workflow
   const legacyWorkflow = {
@@ -568,6 +611,42 @@ test('allows only exact known DEV-058/059/070 metadata appends for a separate im
     assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
       sourceFixture.baselineSourceRevision, revision), 'SOURCE_INPUT_DRIFT')
   }
+})
+
+test('reuses the immutable tool receipt for the exact managed-login smoke transition only', async () => {
+  const beforeFingerprint = toolInfrastructureFingerprint(sourceFixture.root, sourceFixture.correctedSmokeSourceRevision)
+  const afterFingerprint = toolInfrastructureFingerprint(sourceFixture.root, sourceFixture.managedSmokeSourceRevision)
+  assert.notEqual(beforeFingerprint, afterFingerprint)
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.correctedSmokeSourceRevision, sourceFixture.managedSmokeSourceRevision), 'SOURCE_INPUT_DRIFT')
+  assert.deepEqual(assertToolReceiptSourceSuccessor(sourceFixture.root,
+    sourceFixture.correctedSmokeSourceRevision, sourceFixture.managedSmokeSourceRevision), {
+    disposition: 'DEV057_PRINCIPAL_SMOKE_SUCCESSOR', beforeFingerprint, afterFingerprint,
+  })
+
+  const fixture = makeReceiptHarness({
+    baselineToolSourceRevision: sourceFixture.correctedSmokeSourceRevision,
+    baselineReleaseSourceRevision: sourceFixture.correctedSmokeSourceRevision,
+    receiptSourceRevision: sourceFixture.correctedSmokeSourceRevision,
+    intentSourceRevision: sourceFixture.managedSmokeSourceRevision,
+  })
+  const accepted = await validateRotationFixture(fixture)
+  assert.equal(accepted.sourceRevision, sourceFixture.correctedSmokeSourceRevision)
+
+  const unknownSmoke = commitNonRecipeVariant(sourceFixture.managedSmokeSourceRevision,
+    file => fs.appendFileSync(file, '\n# unrelated infrastructure drift\n'), 'drift after managed smoke transition')
+  const profileDrift = commitProfileVariant(sourceFixture.managedSmokeSourceRevision,
+    profile => { profile.runtime.timeoutSeconds += 1 }, 'profile drift after managed smoke transition')
+  const unknownCandidate = commitCandidateSmokeVariant(sourceFixture.correctedSmokeSourceRevision,
+    file => fs.appendFileSync(file, '\n# unknown candidate smoke source\n'), 'unknown candidate smoke transition')
+  for (const [before, after] of [
+    [sourceFixture.correctedSmokeSourceRevision, unknownSmoke],
+    [sourceFixture.correctedSmokeSourceRevision, profileDrift],
+    [sourceFixture.correctedSmokeSourceRevision, unknownCandidate],
+    [sourceFixture.managedSmokeSourceRevision, sourceFixture.correctedSmokeSourceRevision],
+    [sourceFixture.correctedSmokeSourceRevision, sourceFixture.copyInputDriftSourceRevision],
+    [sourceFixture.correctedSmokeSourceRevision, sourceFixture.toolInputDriftSourceRevision],
+  ]) assertRotationCode(() => assertToolReceiptSourceSuccessor(sourceFixture.root, before, after), 'SOURCE_INPUT_DRIFT')
 })
 
 test('bridges the complete native rotation proof to the DEV-058 and DEV-070 direct-basis gates', async () => {

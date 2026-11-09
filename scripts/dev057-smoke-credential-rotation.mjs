@@ -173,6 +173,7 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     intent: smokeRotationToolAdmissionIntent({ baselineIntent: baseline.intent, baselineIntentRef,
       sourceRevision: git.sourceRevision, toolRotationRef }),
     receipt: toolRead.value, baseline })
+  const workflowBaselineSourceRevision = toolRead.value.sourceRevision
   const baselineInfraRead = await transport.readJson(baseline.intent.infraReceiptRef, bucket, ['receipts'])
   if (!same(baselineInfraRead.ref, baseline.intent.infraReceiptRef)) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
   const baselineInfra = baselineInfraRead.value
@@ -244,9 +245,11 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
         !savedControl.bytes.equals(controlRead.bytes)) fail('SMOKE_ROTATION_PREPARED_REF_INVALID')
     beforeState = savedState.value; beforeWorkflow = savedWorkflow.value; manifest = beforeState.manifest
     planProof = assertSmokeCredentialRotationPlan({ root, profile, sourceRevision: git.sourceRevision,
+      previousSourceRevision: workflowBaselineSourceRevision,
       plan: savedPlan.value, infraProfile, previousVersion, nextVersion, versionChain })
-    const expectedBeforeSource = expectedSmokeWorkflowSource({ root, profile, sourceRevision: git.sourceRevision, version: previousVersion })
+    const expectedBeforeSource = expectedSmokeWorkflowSource({ root, profile, sourceRevision: workflowBaselineSourceRevision, version: previousVersion })
     if (!same(planProof, prepared.planProof) || beforeState.stateMeta.serial !== prepared.beforeSerial ||
+        (prepared.workflowBaselineSourceRevision ?? prepared.sourceRevision) !== workflowBaselineSourceRevision ||
         beforeState.stateMeta.lineage !== prepared.stateLineage || beforeWorkflow.sourceContents !== expectedBeforeSource ||
         manifest.migration_runner_digest !== toolRead.value.migrationRunnerDigest ||
         manifest.controller_image_digest !== toolRead.value.controllerImageDigest ||
@@ -262,9 +265,10 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     if (variables.candidate_smoke_refresh_token_secret_version !== nextVersion) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
     const planResult = await terraform.plan({ variables })
     planProof = assertSmokeCredentialRotationPlan({ root, profile, sourceRevision: git.sourceRevision,
+      previousSourceRevision: workflowBaselineSourceRevision,
       plan: planResult.plan, infraProfile, previousVersion, nextVersion, versionChain })
     beforeWorkflow = await readWorkflow(transport, profile)
-    const expectedBeforeSource = expectedSmokeWorkflowSource({ root, profile, sourceRevision: git.sourceRevision, version: previousVersion })
+    const expectedBeforeSource = expectedSmokeWorkflowSource({ root, profile, sourceRevision: workflowBaselineSourceRevision, version: previousVersion })
     if (beforeWorkflow.sourceContents !== expectedBeforeSource) fail('SMOKE_ROTATION_WORKFLOW_BASELINE_INVALID')
     await sameControl()
     if (!apply) return { status: 'READY', releaseAuthority: false, sourceRevision: git.sourceRevision,
@@ -278,6 +282,7 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     ])
     prepared = seal({ schemaVersion: 'orgmaster.smoke-credential-rotation-prepared.v1', ownerApplicationId: 'orgmaster',
       sourceRevision: git.sourceRevision, releaseId, baselineIntentRef, toolRotationRef, credentialEvidenceRef: credentialRef,
+      ...(workflowBaselineSourceRevision === git.sourceRevision ? {} : { workflowBaselineSourceRevision }),
       ...(predecessorCredentialRef ? { credentialPredecessorRef: predecessorCredentialRef } : {}),
       previousVersion, nextVersion, sourceProof, controlBaseline: controlRead.ref, controlSnapshotRef: controlSnapshot.ref,
       controlGeneration: String(controlRead.metadata.generation), beforeSerial: beforeState.stateMeta.serial,
@@ -329,6 +334,7 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
   const addresses = [...infraProfile.stageA, ...infraProfile.stageBAdditional].sort()
   const proof = { schemaVersion: 'orgmaster.smoke-credential-rotation.v1', baselineIntentRef, toolRotationRef,
     credentialEvidenceRef: credentialRef, sourceProof, controlBaseline: controlRead.ref, controlSnapshotRef: prepared.controlSnapshotRef,
+    ...(workflowBaselineSourceRevision === git.sourceRevision ? {} : { workflowBaselineSourceRevision }),
     ...(predecessorCredentialRef ? { credentialPredecessorRef: predecessorCredentialRef } : {}),
     controlGeneration: String(controlRead.metadata.generation), previousVersion, nextVersion, preparedRef: preparedRef.ref,
     binaryPlanRef: prepared.binaryPlanRef, planJsonRef: prepared.planJsonRef, beforeStateRef: prepared.beforeStateRef,
