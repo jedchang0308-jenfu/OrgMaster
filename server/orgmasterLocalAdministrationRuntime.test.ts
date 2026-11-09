@@ -57,6 +57,11 @@ describe('owner-local administration capability',()=>{
   expect(f.query.mock.calls.some(([sql])=>/\b(?:INSERT|UPDATE|DELETE|ALTER|CREATE)\b/u.test(sql.replaceAll("'CREATE'",'')))).toBe(false)
   expect(JSON.stringify(runtime)).not.toContain('password')
  })
+ it('binds the runtime checkout through the sidecar while leaving credential-profile source roots descriptive',()=>{
+  const f=fixture();f.pointer.roots.orgmaster=path.join(f.root,'previous-orgmaster-source');f.json(f.profilePath,f.pointer)
+  f.config.profileRef.sha256=digest(readFileSync(f.profilePath));f.writeConfig()
+  expect(f.load()).toBeDefined()
+ })
  it.each(['K_SERVICE','GOOGLE_APPLICATION_CREDENTIALS','google_application_credentials','NODE_ENV','GOOGLE_CLOUD_PROJECT'])('denies an invalid environment %s',key=>{
   const f=fixture();Object.assign(f.environment,{[key]:key==='NODE_ENV'?'production':key==='GOOGLE_CLOUD_PROJECT'?'jenfu-platform-prod':'forbidden'})
   expect(f.load).toThrow('UNAVAILABLE')
