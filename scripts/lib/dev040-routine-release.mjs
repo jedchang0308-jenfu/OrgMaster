@@ -1,4 +1,4 @@
-import { assertSmokeRotationContinuation, assertSmokeInfraReuseContinuation, readReleaseSourceFile, readSmokeReuseInfrastructureTree } from './dev057-smoke-rotation-continuation.mjs'
+import { assertSmokeRotationContinuation, assertSmokeInfraReuseContinuation, assertSmokeWorkflowContractCorrectionContinuation, SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE, readReleaseSourceFile, readSmokeReuseInfrastructureTree } from './dev057-smoke-rotation-continuation.mjs'
 import { readPrincipalOnlyRepairBaseline } from './dev057-principal-forward-repair.mjs'
 import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
@@ -1046,6 +1046,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
         sourceReuse: appArtifactReuse != null && values.infra.sourceRevision !== intent.sourceRevision })
     } else if (values.infra?.mutationProfile === 'APP_INFRA_REUSE') {
       smokeRotationContinuation = await assertSmokeInfraReuseContinuation({ root, profile, transport, intent, values, baseline, readSourceFile, readInfrastructureTree })
+    } else if (!controlledTransition && values.infra?.mutationProfile === SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE) {
+      smokeRotationContinuation = await assertSmokeWorkflowContractCorrectionContinuation({ root, profile, transport, intent, values, baseline, readSourceFile })
     } else {
       if (lifecycleEnable) fail('DEV014_LIFECYCLE_ENABLEMENT_INFRA_REUSE_REQUIRED')
       if (values.infra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') fail('ROUTINE_INFRA_REF_CHANGED')

@@ -4,6 +4,12 @@
 
 現行模式以 [DEV-040](DEV-040-jenfu-platform-entitlement-user-integration.md)、[release profile](../../config/release/dev040-orgmaster-independent-production-v3.json) 與對應執行器為準；歷史安裝與舊例外不得套用成普通發布。原始收據、失敗與 applied migration 不改寫。
 
+## 候選 smoke 來源回復
+
+若已套用的候選 Workflow 仍送 Google managed-login intent，而既有 smoke 憑證是 Firebase password provider，使用 `node scripts/dev057-smoke-credential-rotation.mjs --check --correct-workflow-from=URI#sha256=HASH` 驗證上一份已套用的輪替收據、現行 released baseline、正式 Workflow 與完整 75-address Terraform 計畫。通過後用同一指令的 `--apply` 套用凍結的計畫。只允許已審查的 managed-login → password-provider Workflow source 變更，沿用同一個已啟用的數字 Secret 版本與原憑證證據。未知套用結果先回讀，既有 apply fence 禁止重送。
+
+使用結果的 `APP_INFRA_SMOKE_WORKFLOW_CONTRACT_CORRECTION` 收據作為 `npm run deploy:production -- --smoke-rotation-ref=URI#sha256=HASH` 的參照，仍由原發布流程執行候選 smoke 與切換。這個修正不屬於新憑證輪替。
+
 ## 原始精確限制（2026-10-22 移存）
 
 ## Shared database boundary — DEV010_DB_RULESET_V1

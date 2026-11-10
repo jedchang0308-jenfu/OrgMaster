@@ -203,6 +203,10 @@ export async function verifyDeployProductionRelease({ options, ...input }) {
   if (options.smokeRotationRef || options.infraReuseRef) {
     if (!verification.smokeRotationContinuation) throw new Error('SMOKE_ROTATION_CONTINUATION_MISSING')
     verification.operatorSmokeRotationReadback = await readSmokeRotationProvider({ ...input, continuation: verification.smokeRotationContinuation })
+    const expectedWorkflowRevision = verification.smokeRotationContinuation.workflowRevisionId
+    if (expectedWorkflowRevision && verification.operatorSmokeRotationReadback.workflowRevisionId !== expectedWorkflowRevision) {
+      throw new Error('SMOKE_WORKFLOW_CORRECTION_WORKFLOW_DRIFT')
+    }
   }
   if (options.infraReuseRef) {
     if (verification.smokeRotationContinuation.evidenceScope !== 'OWNER_SEALED_APPLIED_ROTATION_REUSE') throw new Error('SMOKE_REUSE_RECEIPT_INVALID')
