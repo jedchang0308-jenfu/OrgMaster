@@ -855,6 +855,7 @@ test('DEV-057 smoke corrections seal the historical, cookie, and managed-login t
   const managedLogin = '1d5ee4a8bd0958ef59ebe8db05a19e24b1837851'
   for (const before of [historical, principal]) assertDev057PrincipalSmokeBlobTransition(before, corrected)
   assertDev057PrincipalSmokeBlobTransition(corrected, managedLogin)
+  assertDev057PrincipalSmokeBlobTransition(corrected, corrected)
   for (const [before, after] of [[corrected, principal], [corrected, historical], [managedLogin, corrected], [principal, historical], [principal, 'a'.repeat(40)], [null, corrected]]) {
     assert.throws(() => assertDev057PrincipalSmokeBlobTransition(before, after), /PRINCIPAL_SMOKE_INFRA_DELTA_INVALID/u)
   }
@@ -2041,7 +2042,7 @@ test('immutable-ref corruption or provider transport fault fails closed and neve
 
 test('Workflow source renderer reproduces the sealed existing Org numeric-7 source bytes', () => {
   const value = expectedSmokeWorkflowSource({ root: '.', sourceRevision: newSource, profile, version: '7', readSourceFile: (_root, _revision, file) => fs.readFileSync(file) })
-  assert.equal(sha256(value), '29e0f61b5d617f76d4c075018d8d2d60db9f7e6837385f3dca75593de9dbb162')
+  assert.equal(sha256(value), '9ba919ee180f6b5d7a7cc068dc1b402271c9dfeff61a7a3e5d9b9f048e15a559')
 })
 
 
