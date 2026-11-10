@@ -2480,6 +2480,18 @@ test('smoke credential rotation plan admits exactly one Workflow version update 
   const combined = assertSmokeCredentialRotationPlan({ root: process.cwd(), profile, sourceRevision,
     previousSourceRevision: correctedSourceRevision, plan: combinedPlan, infraProfile, previousVersion: '10', nextVersion: '11' })
   assert.equal(combined.previousSourceRevision, correctedSourceRevision)
+  const managedRevision = 'd22ea63172e1755ebc9893cbb9eb82504cb959ce'
+  const correctionPlan = structuredClone(plan)
+  const workflow = correctionPlan.resource_changes.find(row => row.address === workflowAddress)
+  workflow.change.before.source_contents =
+    expectedSmokeWorkflowSource({ root: process.cwd(), profile, sourceRevision: managedRevision, version: '11' })
+  const correction = { root: process.cwd(), profile, sourceRevision, previousSourceRevision: managedRevision,
+    plan: correctionPlan, infraProfile, previousVersion: '11', nextVersion: '11' }
+  assert.throws(() => assertSmokeCredentialRotationPlan(correction), /SMOKE_ROTATION_PLAN_INVALID/u)
+  assert.equal(assertSmokeCredentialRotationPlan({ ...correction, contractCorrection: true }).addressActions.length, 75)
+  workflow.change.after.service_account = 'other@example.invalid'
+  assert.throws(() => assertSmokeCredentialRotationPlan({ ...correction, contractCorrection: true }),
+    /SMOKE_ROTATION_NON_VERSION_CHANGE_DENIED/u)
   assert.throws(() => assertSmokeCredentialRotationPlan({ root: process.cwd(), profile,
     sourceRevision: correctedSourceRevision, previousSourceRevision: sourceRevision, plan: combinedPlan,
     infraProfile, previousVersion: '10', nextVersion: '11' }), /SMOKE_ROTATION_(WORKFLOW|VARIABLE)_INVALID/u)

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import {normalizeCatalogPackagingResourceTree} from './dev070-catalog-packaging-inputs.mjs'
-import { DEV057_PRINCIPAL_SMOKE_RECIPE, gitBlobOid, isDev057PrincipalSmokeBlobTransition } from './dev057-principal-smoke-transition.mjs'
+import { DEV057_PRINCIPAL_SMOKE_BLOBS, DEV057_PRINCIPAL_SMOKE_RECIPE, gitBlobOid, isDev057PrincipalSmokeBlobTransition } from './dev057-principal-smoke-transition.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { canonicalize, sha256, assertImmutableRef, assertControllerImageResolutionProof, releasePaths } from './dev012-owner-release-runtime.mjs'
@@ -16,6 +16,7 @@ const CONTROLLER_ROOT = 'tools/dev-040/abort-controller'
 const RECIPE = 'infra/google-cloud/dev-040-production-release/candidate-smoke.tf'
 const INFRA_ROOT = 'infra/google-cloud/dev-040-production-release'
 const REUSE_SCHEMA = 'jenfu.dev012.app-infra-reuse-receipt.v1'
+export const SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE = 'APP_INFRA_SMOKE_WORKFLOW_CONTRACT_CORRECTION'
 export const MAX_SMOKE_REUSE_CHAIN_DEPTH = 32
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
@@ -430,6 +431,117 @@ export async function assertSmokeRotationContinuation(input) {
   return assertAppliedSmokeRotation({ ...input, sourceReuse: input.sourceReuse === true })
 }
 
+// Source repair and credential rotation share the same complete-address plan check.
+export async function readSmokeWorkflowCorrectionBaseline({ root, profile, transport, priorRef, baselineIntentRef,
+  baseline, sourceRevision, readSourceFile = readReleaseSourceFile }) {
+  assertOwner(profile)
+  const bucket = profile.artifact.releaseBucket
+  assertImmutableRef(priorRef, bucket, ['receipts/releases'])
+  const prior = (await transport.readJson(priorRef, bucket, ['receipts/releases'])).value
+  sealedInfra(prior, profile)
+  const proof = prior.smokeRotation
+  const version = prior.candidateSmokeRefreshTokenSecretVersion
+  if (prior.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' ||
+      proof?.schemaVersion !== 'orgmaster.smoke-credential-rotation.v1' ||
+      !same(proof.baselineIntentRef, baselineIntentRef) || !same(proof.toolRotationRef, baseline.intent.infraReceiptRef) ||
+      !same(prior.credentialEvidenceRef, proof.credentialEvidenceRef) || proof.nextVersion !== version ||
+      !/^[1-9][0-9]*$/u.test(version ?? '') || !Number.isSafeInteger(Number(version)) ||
+      proof.sourceProof?.sourceRevision !== prior.sourceRevision || proof.sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED' ||
+      proof.sourceProof.branchProtected !== true || proof.sourceProof.requiredSourceQc !== 'SUCCESS' ||
+      !gitIsAncestor(root, prior.sourceRevision, sourceRevision)) fail('SMOKE_WORKFLOW_CORRECTION_BASELINE_INVALID')
+  const previousTree = readSmokeReuseInfrastructureTree(root, prior.sourceRevision).toString('utf8').split('\0')
+  const nextTree = readSmokeReuseInfrastructureTree(root, sourceRevision).toString('utf8').split('\0')
+  const withoutRecipe = rows => rows.filter(row => !row.endsWith('\t' + RECIPE))
+  if (!same(withoutRecipe(previousTree), withoutRecipe(nextTree))) fail('SMOKE_WORKFLOW_CORRECTION_INFRA_DRIFT')
+  const beforeBlob = gitBlobOid(readSourceFile(root, prior.sourceRevision, RECIPE))
+  const afterBlob = gitBlobOid(readSourceFile(root, sourceRevision, RECIPE))
+  if (beforeBlob !== DEV057_PRINCIPAL_SMOKE_BLOBS.managedLogin ||
+      afterBlob !== DEV057_PRINCIPAL_SMOKE_BLOBS.corrected) fail('SMOKE_WORKFLOW_CORRECTION_SOURCE_INVALID')
+  assertImmutableRef(proof.providerWorkflowAfterRef, bucket, ['receipts/releases'])
+  const before = (await transport.readJson(proof.providerWorkflowAfterRef, bucket, ['receipts/releases'])).value
+  assertCorrectionWorkflow(profile, before, expectedSmokeWorkflowSource({ root, profile,
+    sourceRevision: prior.sourceRevision, version, readSourceFile }))
+  return { prior, before, version }
+}
+
+function assertCorrectionWorkflow(profile, workflow, source) {
+  const project = 'projects/' + profile.target.projectId
+  if (workflow?.name !== project + '/locations/' + profile.target.region + '/workflows/' + profile.verification.candidateWorkflowName ||
+      workflow.serviceAccount !== project + '/serviceAccounts/' + profile.identities.smoke ||
+      workflow.state !== 'ACTIVE' || typeof workflow.revisionId !== 'string' || !workflow.revisionId ||
+      workflow.sourceContents !== source) fail('SMOKE_WORKFLOW_CORRECTION_WORKFLOW_INVALID')
+}
+
+export function assertSmokeWorkflowCorrectionReadback({ root, profile, before, after, sourceRevision, version,
+  readSourceFile = readReleaseSourceFile }) {
+  assertCorrectionWorkflow(profile, after, expectedSmokeWorkflowSource({ root, profile, sourceRevision, version, readSourceFile }))
+  const stable = ({ sourceContents, revisionId, updateTime, revisionCreateTime, ...fields }) => fields
+  if (before.revisionId === after.revisionId || before.sourceContents === after.sourceContents ||
+      !same(stable(before), stable(after))) fail('SMOKE_WORKFLOW_CORRECTION_WORKFLOW_INVALID')
+}
+
+export function assertSmokeWorkflowCorrectionState({ state, prior, beforeSerial, sourceRevision, workflow }) {
+  const resources = state.stateJson?.values?.root_module?.resources
+  const addresses = Array.isArray(resources) ? resources.map(row => row.address).sort() : []
+  const deployed = resources?.find(row => row.address === 'google_workflows_workflow.candidate_smoke[0]')?.values
+  if (state.stateMeta?.lineage !== prior.stateLineage || !Number.isSafeInteger(state.stateMeta?.serial) ||
+      state.stateMeta.serial <= beforeSerial || state.manifest?.source_revision !== sourceRevision ||
+      state.manifest.migration_runner_digest !== prior.migrationRunnerDigest ||
+      state.manifest.controller_image_digest !== prior.controllerImageDigest ||
+      state.manifest.foundation_manifest_sha256 !== prior.foundationManifestSha256 ||
+      addresses.length !== prior.terraformAddressCount || sha256(canonicalize(addresses)) !== prior.terraformAddressesSha256 ||
+      deployed?.id !== workflow.name || deployed.source_contents !== workflow.sourceContents ||
+      deployed.revision_id !== workflow.revisionId) fail('SMOKE_WORKFLOW_CORRECTION_STATE_INVALID')
+}
+
+export async function assertSmokeWorkflowContractCorrectionContinuation({ root, profile, transport, intent, values, baseline,
+  readSourceFile = readReleaseSourceFile }) {
+  const bucket = profile.artifact.releaseBucket
+  assertImmutableRef(intent.infraReceiptRef, bucket, ['receipts/releases'])
+  const receipt = (await transport.readJson(intent.infraReceiptRef, bucket, ['receipts/releases'])).value
+  sealedInfra(receipt, profile)
+  const proof = receipt.workflowContractCorrection
+  if (receipt.mutationProfile !== SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE || !same(receipt, values.infra) ||
+      receipt.sourceRevision !== intent.sourceRevision || proof?.schemaVersion !== 'orgmaster.smoke-workflow-contract-correction.v1' ||
+      !same(proof.baselineIntentRef, intent.baselineIntentRef) ||
+      proof.sourceProof?.sourceRevision !== intent.sourceRevision || proof.sourceProof?.branch !== profile.application.branch ||
+      proof.sourceProof?.status !== 'OFFICIAL_MERGED_PR_VERIFIED' || proof.sourceProof?.branchProtected !== true ||
+      proof.sourceProof?.requiredSourceQc !== 'SUCCESS') fail('SMOKE_WORKFLOW_CORRECTION_PROOF_INVALID')
+  const { prior, before, version } = await readSmokeWorkflowCorrectionBaseline({ root, profile, transport,
+    priorRef: proof.priorRef, baselineIntentRef: intent.baselineIntentRef, baseline, sourceRevision: intent.sourceRevision, readSourceFile })
+  const unchanged = ['candidateSmokeRefreshTokenSecretVersion', 'credentialEvidenceRef', 'platformCredentialRef',
+    'stateLineage', 'terraformAddressCount', 'terraformAddressesSha256', 'foundationManifestSha256', 'migrationRunnerDigest', 'controllerImageDigest']
+  if (unchanged.some(key => !same(receipt[key] ?? null, prior[key] ?? null)) ||
+      !Number.isSafeInteger(proof.beforeSerial) || proof.beforeSerial < prior.stateSerial ||
+      !Number.isSafeInteger(receipt.stateSerial) || receipt.stateSerial <= proof.beforeSerial) fail('SMOKE_WORKFLOW_CORRECTION_DRIFT')
+  const read = async ref => {
+    assertImmutableRef(ref, bucket, ['receipts/releases'])
+    return (await transport.readJson(ref, bucket, ['receipts/releases'])).value
+  }
+  const [plan, after, afterState, manifest] = await Promise.all([
+    read(proof.planRef), read(proof.workflowRef), read(proof.stateRef), read(proof.manifestRef),
+  ])
+  assertImmutableRef(proof.binaryPlanRef, bucket, ['receipts/releases'])
+  if (receipt.binaryPlanSha256 !== proof.binaryPlanRef.sha256 || receipt.planJsonSha256 !== proof.planRef.sha256 ||
+      receipt.stateJsonSha256 !== proof.stateRef.sha256 || receipt.outputManifestSha256 !== proof.manifestRef.sha256 ||
+      afterState.stateMeta?.serial !== receipt.stateSerial ||
+      !same(afterState.manifest, manifest)) fail('SMOKE_WORKFLOW_CORRECTION_STATE_INVALID')
+  const infraProfile = JSON.parse(readSourceFile(root, intent.sourceRevision, INFRA_PROFILE))
+  const planProof = assertSmokeCredentialRotationPlan({ root, profile, sourceRevision: intent.sourceRevision,
+    previousSourceRevision: prior.sourceRevision, plan, infraProfile, previousVersion: version, nextVersion: version,
+    contractCorrection: true, readSourceFile })
+  const addresses = planProof.addressActions.map(([address]) => address).sort()
+  if (addresses.length !== receipt.terraformAddressCount || receipt.terraformAddressesSha256 !== sha256(canonicalize(addresses))) {
+    fail('SMOKE_WORKFLOW_CORRECTION_ADDRESS_SET_INVALID')
+  }
+  assertSmokeWorkflowCorrectionReadback({ root, profile, before, after, sourceRevision: intent.sourceRevision, version, readSourceFile })
+  assertSmokeWorkflowCorrectionState({ state: afterState, prior, beforeSerial: proof.beforeSerial,
+    sourceRevision: intent.sourceRevision, workflow: after })
+  return { evidenceScope: 'OWNER_SEALED_APPLIED_WORKFLOW_CONTRACT_CORRECTION', infraReceiptRef: intent.infraReceiptRef,
+    sourceRevision: intent.sourceRevision, previousVersion: version, newVersion: version,
+    workflowRevisionId: after.revisionId, credentialMaterialPresent: false }
+}
+
 export function expectedSmokeWorkflowSource({ root, sourceRevision, profile, version, readSourceFile = readReleaseSourceFile }) {
   assertOwner(profile)
   const recipe = readSourceFile(root, sourceRevision, RECIPE).toString('utf8').replaceAll('\r\n', '\n')
@@ -452,11 +564,12 @@ export function expectedSmokeWorkflowSource({ root, sourceRevision, profile, ver
 }
 
 export function assertSmokeCredentialRotationPlan({ root, profile, sourceRevision, previousSourceRevision = sourceRevision, plan, infraProfile, previousVersion, nextVersion,
-  versionChain = [previousVersion, nextVersion], readSourceFile = readReleaseSourceFile }) {
+  versionChain = [previousVersion, nextVersion], contractCorrection = false, readSourceFile = readReleaseSourceFile }) {
   if (!Array.isArray(versionChain) || versionChain.length < 2 || versionChain.length > 8 ||
       versionChain[0] !== previousVersion || versionChain.at(-1) !== nextVersion ||
       !versionChain.every(value => /^[1-9][0-9]*$/u.test(value ?? '') && Number.isSafeInteger(Number(value))) ||
-      versionChain.some((value, index) => index > 0 && Number(value) !== Number(versionChain[index - 1]) + 1) ||
+      (contractCorrection ? (versionChain.length !== 2 || previousVersion !== nextVersion || previousSourceRevision === sourceRevision)
+        : versionChain.some((value, index) => index > 0 && Number(value) !== Number(versionChain[index - 1]) + 1)) ||
       plan?.errored === true || plan?.complete === false ||
       !Array.isArray(plan?.resource_changes) || (plan.deferred_changes?.length ?? 0)) fail('SMOKE_ROTATION_PLAN_INVALID')
   const addresses = [...(infraProfile?.stageA ?? []), ...(infraProfile?.stageBAdditional ?? [])].sort()
@@ -493,6 +606,7 @@ export function assertSmokeCredentialRotationPlan({ root, profile, sourceRevisio
   }
   const expectedBefore = expectedSmokeWorkflowSource({ root, profile, sourceRevision: previousSourceRevision, version: previousVersion, readSourceFile })
   const expectedAfter = expectedSmokeWorkflowSource({ root, profile, sourceRevision, version: nextVersion, readSourceFile })
+  if (contractCorrection && expectedBefore === expectedAfter) fail('SMOKE_ROTATION_WORKFLOW_INVALID')
   if (before?.project !== EXPECTED.projectId || before.region !== profile.target.region || before.name !== profile.verification.candidateWorkflowName ||
       after?.project !== before.project || after.region !== before.region || after.name !== before.name ||
       before.source_contents !== expectedBefore || after.source_contents !== expectedAfter) fail('SMOKE_ROTATION_WORKFLOW_INVALID')
