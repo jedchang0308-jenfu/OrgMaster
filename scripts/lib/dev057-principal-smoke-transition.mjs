@@ -12,8 +12,7 @@ export const DEV057_PRINCIPAL_SMOKE_BLOBS = Object.freeze({
 /** One authority for the exact reviewed candidate-smoke source transitions. */
 export function isDev057PrincipalSmokeBlobTransition(before, after) {
   const blobs = DEV057_PRINCIPAL_SMOKE_BLOBS
-  return before === after
-    || (before === blobs.historical && [blobs.principal, blobs.corrected].includes(after))
+  return (before === blobs.historical && [blobs.principal, blobs.corrected].includes(after))
     || (before === blobs.principal && after === blobs.corrected)
     || (before === blobs.corrected && after === blobs.managedLogin)
 }

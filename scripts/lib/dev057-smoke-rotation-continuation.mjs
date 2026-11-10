@@ -489,7 +489,7 @@ export function assertSmokeCredentialRotationPlan({ root, profile, sourceRevisio
   if (previousSourceRevision !== sourceRevision) {
     const beforeBlob = gitBlobOid(readSourceFile(root, previousSourceRevision, DEV057_PRINCIPAL_SMOKE_RECIPE))
     const afterBlob = gitBlobOid(readSourceFile(root, sourceRevision, DEV057_PRINCIPAL_SMOKE_RECIPE))
-    if (!isDev057PrincipalSmokeBlobTransition(beforeBlob, afterBlob)) fail('SMOKE_ROTATION_WORKFLOW_INVALID')
+    if (beforeBlob !== afterBlob && !isDev057PrincipalSmokeBlobTransition(beforeBlob, afterBlob)) fail('SMOKE_ROTATION_WORKFLOW_INVALID')
   }
   const expectedBefore = expectedSmokeWorkflowSource({ root, profile, sourceRevision: previousSourceRevision, version: previousVersion, readSourceFile })
   const expectedAfter = expectedSmokeWorkflowSource({ root, profile, sourceRevision, version: nextVersion, readSourceFile })

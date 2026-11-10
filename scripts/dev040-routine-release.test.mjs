@@ -855,7 +855,6 @@ test('DEV-057 smoke corrections seal the historical, cookie, and managed-login t
   const managedLogin = '1d5ee4a8bd0958ef59ebe8db05a19e24b1837851'
   for (const before of [historical, principal]) assertDev057PrincipalSmokeBlobTransition(before, corrected)
   assertDev057PrincipalSmokeBlobTransition(corrected, managedLogin)
-  assertDev057PrincipalSmokeBlobTransition(corrected, corrected)
   for (const [before, after] of [[corrected, principal], [corrected, historical], [managedLogin, corrected], [principal, historical], [principal, 'a'.repeat(40)], [null, corrected]]) {
     assert.throws(() => assertDev057PrincipalSmokeBlobTransition(before, after), /PRINCIPAL_SMOKE_INFRA_DELTA_INVALID/u)
   }
