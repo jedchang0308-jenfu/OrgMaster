@@ -502,13 +502,20 @@ export async function assertSmokeWorkflowContractCorrectionContinuation({ root, 
   sealedInfra(receipt, profile)
   const proof = receipt.workflowContractCorrection
   if (receipt.mutationProfile !== SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE || !same(receipt, values.infra) ||
-      receipt.sourceRevision !== intent.sourceRevision || proof?.schemaVersion !== 'orgmaster.smoke-workflow-contract-correction.v1' ||
+      proof?.schemaVersion !== 'orgmaster.smoke-workflow-contract-correction.v1' ||
       !same(proof.baselineIntentRef, intent.baselineIntentRef) ||
-      proof.sourceProof?.sourceRevision !== intent.sourceRevision || proof.sourceProof?.branch !== profile.application.branch ||
+      proof.sourceProof?.sourceRevision !== receipt.sourceRevision || proof.sourceProof?.branch !== profile.application.branch ||
       proof.sourceProof?.status !== 'OFFICIAL_MERGED_PR_VERIFIED' || proof.sourceProof?.branchProtected !== true ||
       proof.sourceProof?.requiredSourceQc !== 'SUCCESS') fail('SMOKE_WORKFLOW_CORRECTION_PROOF_INVALID')
+  if (receipt.sourceRevision !== intent.sourceRevision) {
+    const from = file => readSourceFile(root, receipt.sourceRevision, file)
+    const to = file => readSourceFile(root, intent.sourceRevision, file)
+    if (!gitIsAncestor(root, receipt.sourceRevision, intent.sourceRevision) ||
+        !readSmokeReuseInfrastructureTree(root, receipt.sourceRevision).equals(readSmokeReuseInfrastructureTree(root, intent.sourceRevision)) ||
+        executablePaths(from).some(file => !from(file).equals(to(file)))) fail('SMOKE_WORKFLOW_CORRECTION_SOURCE_DRIFT')
+  }
   const { prior, before, version } = await readSmokeWorkflowCorrectionBaseline({ root, profile, transport,
-    priorRef: proof.priorRef, baselineIntentRef: intent.baselineIntentRef, baseline, sourceRevision: intent.sourceRevision, readSourceFile })
+    priorRef: proof.priorRef, baselineIntentRef: intent.baselineIntentRef, baseline, sourceRevision: receipt.sourceRevision, readSourceFile })
   const unchanged = ['candidateSmokeRefreshTokenSecretVersion', 'credentialEvidenceRef', 'platformCredentialRef',
     'stateLineage', 'terraformAddressCount', 'terraformAddressesSha256', 'foundationManifestSha256', 'migrationRunnerDigest', 'controllerImageDigest']
   if (unchanged.some(key => !same(receipt[key] ?? null, prior[key] ?? null)) ||
@@ -526,17 +533,17 @@ export async function assertSmokeWorkflowContractCorrectionContinuation({ root, 
       receipt.stateJsonSha256 !== proof.stateRef.sha256 || receipt.outputManifestSha256 !== proof.manifestRef.sha256 ||
       afterState.stateMeta?.serial !== receipt.stateSerial ||
       !same(afterState.manifest, manifest)) fail('SMOKE_WORKFLOW_CORRECTION_STATE_INVALID')
-  const infraProfile = JSON.parse(readSourceFile(root, intent.sourceRevision, INFRA_PROFILE))
-  const planProof = assertSmokeCredentialRotationPlan({ root, profile, sourceRevision: intent.sourceRevision,
+  const infraProfile = JSON.parse(readSourceFile(root, receipt.sourceRevision, INFRA_PROFILE))
+  const planProof = assertSmokeCredentialRotationPlan({ root, profile, sourceRevision: receipt.sourceRevision,
     previousSourceRevision: prior.sourceRevision, plan, infraProfile, previousVersion: version, nextVersion: version,
     contractCorrection: true, readSourceFile })
   const addresses = planProof.addressActions.map(([address]) => address).sort()
   if (addresses.length !== receipt.terraformAddressCount || receipt.terraformAddressesSha256 !== sha256(canonicalize(addresses))) {
     fail('SMOKE_WORKFLOW_CORRECTION_ADDRESS_SET_INVALID')
   }
-  assertSmokeWorkflowCorrectionReadback({ root, profile, before, after, sourceRevision: intent.sourceRevision, version, readSourceFile })
+  assertSmokeWorkflowCorrectionReadback({ root, profile, before, after, sourceRevision: receipt.sourceRevision, version, readSourceFile })
   assertSmokeWorkflowCorrectionState({ state: afterState, prior, beforeSerial: proof.beforeSerial,
-    sourceRevision: intent.sourceRevision, workflow: after })
+    sourceRevision: receipt.sourceRevision, workflow: after })
   return { evidenceScope: 'OWNER_SEALED_APPLIED_WORKFLOW_CONTRACT_CORRECTION', infraReceiptRef: intent.infraReceiptRef,
     sourceRevision: intent.sourceRevision, previousVersion: version, newVersion: version,
     workflowRevisionId: after.revisionId, credentialMaterialPresent: false }

@@ -32,23 +32,12 @@ export async function runOrgmasterPrincipalSsoSmoke({
   const canonical = exactOrigin(canonicalOrigin)
   if (typeof idToken !== 'string' || idToken.length < 100 || !Array.isArray(authenticatedProbes) || !Array.isArray(negativeProbes)) fail('SSO_SMOKE_INPUT_INVALID')
   const call = async (url, options = {}) => fetchImpl(url, { redirect: 'manual', signal: AbortSignal.timeout(20_000), ...options })
-  // Google identities must use Platform's managed-login intent contract.  The
-  // bare firebase/session path is intentionally reserved for non-Google
-  // identities and now rejects this production smoke credential.
-  const loginIntent = await call(broker + '/api/auth/login-intents', {
-    method: 'POST',
-    headers: { Origin: broker, 'Sec-Fetch-Site': 'same-origin', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode: 'google', returnTo: '/' }),
-  })
-  if (loginIntent.status !== 201) fail('SSO_SMOKE_LOGIN_INTENT_FAILED')
-  const loginIntentBody = await loginIntent.json()
-  const loginIntentCookie = cookie(loginIntent, '__Host-portal_login_intent')
-  if (typeof loginIntentBody?.intentId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(loginIntentBody.intentId)
-    || typeof loginIntentBody?.csrfToken !== 'string' || !/^[A-Za-z0-9_-]{43}$/u.test(loginIntentBody.csrfToken)) fail('SSO_SMOKE_LOGIN_INTENT_INVALID')
+  // The dedicated owner smoke credential uses Firebase password sign-in.
+  // Match candidate-smoke.tf and let Platform verify the signed token and session.
   const source = await call(broker + '/api/auth/firebase/session', {
     method: 'POST',
-    headers: { Origin: broker, 'Sec-Fetch-Site': 'same-origin', 'Content-Type': 'application/json', Cookie: loginIntentCookie },
-    body: JSON.stringify({ idToken, intentId: loginIntentBody.intentId, csrfToken: loginIntentBody.csrfToken }),
+    headers: { Origin: broker, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken }),
   })
   if (source.status !== 200) fail('SSO_SMOKE_PLATFORM_SESSION_FAILED')
   const platformCookie = cookie(source, 'jenfu_portal_session')
