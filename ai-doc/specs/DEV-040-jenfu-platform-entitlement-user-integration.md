@@ -1436,6 +1436,8 @@ DEV-014 lifecycle readback、DEV-049 admission、DEV-057 Principal pair diagnost
 
 `npm run test:production-tools` 驗證設定相容、拒絕行為與由三份實際 Dockerfile COPY 所組出的隔離 package，包含延遲路徑。required `Production Source QC` 保持同一 job：只有 `AGENTS.md`／`ai-doc/**/*.md` 變更時執行 diff check；任何其他檔案、空或無法判定的 diff 均走原 source 檢查，建置三個工具映像並在禁止網路的容器匯入 entrypoints，既有 owner／abort／lifecycle／app／database-boundary 驗證由同一次 `qc:dev-040:r2` 執行，不再另跑一遍。branch protection、正式來源／artifact／回復驗證不變；此層證據不宣稱正式資料庫連線或 production PASS。
 
+正式 `prepare` 以既有 GitHub 來源驗證讀取同一個受保護 `master` merge SHA 的最新 `Production Source QC`。只接受 GitHub Actions integration 15368 的 completed/success，記錄 check ID，缺失或較新的非成功結果時停止。來源測試統一由 required Source QC 依原文件／程式範圍執行，發布不再重跑同一套 `test:dev-040:r2`。候選、正式入口、資料與回滾的 provider 驗證照常執行。
+
 PR #134 已合併至 `ad4e6be3355305329833a83005889be61c46f6ee`。其後人類明確授權僅 OrgMaster 補齊受控映像 rotation／一般發布路徑、完成 PR／required CI／merge／正式發布與發布後驗證；不擴張正式資料、grant、IAM／Secret 或跨專案責任。第一個一般發布 preflight 的 `SMOKE_REUSE_RECEIPT_INVALID` 保留為原失敗，不能套用歷史 lifecycle remediation 例外來略過。
 
 <a id="ordinary-tool-image-rotation-20261018"></a>

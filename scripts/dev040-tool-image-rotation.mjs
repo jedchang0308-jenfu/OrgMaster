@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { canonicalize, sha256, createOwnerTransport, releasePaths } from './lib/dev012-owner-release-runtime.mjs'
 import { readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
 import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
-import { verifyOfficialMergedSource } from './lib/dev012-official-source-review.mjs'
+import { latestSuccessfulProductionSourceQc, verifyOfficialMergedSource } from './lib/dev012-official-source-review.mjs'
 import { readRoutineBaseline, resolveRoutineControlBaseline } from './lib/dev040-routine-release.mjs'
 import { buildMigrationToolImage, reuseMigrationToolImage } from './lib/dev040-tool-image-build.mjs'
 import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
@@ -36,9 +36,8 @@ async function optionalJson(transport, uri, bucket) {
   }
 }
 export function assertRequiredToolSourceQc(checks, revision) {
-  const latest = (checks.check_runs ?? []).filter(check => check.name === 'Production Source QC'
-    && check.app?.id === 15368 && check.head_sha === revision).sort((a, b) => b.id - a.id)[0]
-  if (!Number.isSafeInteger(latest?.id) || latest.id < 1 || latest.status !== 'completed' || latest.conclusion !== 'success') fail('REQUIRED_SOURCE_QC_MISSING')
+  const latest = latestSuccessfulProductionSourceQc(checks, revision)
+  if (!latest) fail('REQUIRED_SOURCE_QC_MISSING')
   return latest
 }
 export function assertAppliedRecoverySourceProof({ preparedSourceProof, currentSourceProof, revision, sourceTree, commit, pulls, checks }) {

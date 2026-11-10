@@ -4,9 +4,18 @@ const BRANCH = /^[A-Za-z0-9._/-]+$/u
 
 function fail(code) { throw new Error(`DEV012_OFFICIAL_SOURCE_REVIEW_${code}`) }
 
+export function latestSuccessfulProductionSourceQc(checks, revision) {
+  const runs = checks?.check_runs
+  if (!Array.isArray(runs) || checks.total_count > runs.length) return null
+  const latest = runs.filter(check => check.name === 'Production Source QC' &&
+    check.app?.id === 15368 && check.head_sha === revision).sort((a, b) => b.id - a.id)[0]
+  return Number.isSafeInteger(latest?.id) && latest.id > 0 &&
+    latest.status === 'completed' && latest.conclusion === 'success' ? latest : null
+}
+
 /** Provider readback for the owner workflow's exact official merge commit. */
 export async function verifyOfficialMergedSource({ repository, branch, revision,
-  sourceTree, token, rulesetId = null, fetchImpl = fetch }) {
+  sourceTree, token, rulesetId = null, requireSourceQc = false, fetchImpl = fetch }) {
   if (!REPOSITORY.test(repository ?? '') || !BRANCH.test(branch ?? '') ||
       !REVISION.test(revision ?? '') || !REVISION.test(sourceTree ?? '') ||
       typeof token !== 'string' || token.length < 20) fail('INPUT_INVALID')
@@ -60,6 +69,11 @@ export async function verifyOfficialMergedSource({ repository, branch, revision,
     Number.isInteger(pull?.number) && pull.number > 0 &&
     Number.isFinite(Date.parse(pull?.merged_at)))
   if (matches.length !== 1) fail('MERGED_PR_NOT_UNIQUE')
+  let sourceQc = null
+  if (requireSourceQc) {
+    sourceQc = latestSuccessfulProductionSourceQc(await read(`commits/${revision}/check-runs?filter=all&per_page=100`), revision)
+    if (!sourceQc) fail('REQUIRED_SOURCE_QC_MISSING')
+  }
   return { schemaVersion: 'jenfu.dev012.official-merged-source.v1',
     repository, branch, sourceRevision: revision, sourceTree,
     branchProtected: true,
@@ -69,5 +83,6 @@ export async function verifyOfficialMergedSource({ repository, branch, revision,
     pullRequestNumber: matches[0].number,
     pullRequestUrl: matches[0].html_url,
     mergedAt: matches[0].merged_at,
+    ...(sourceQc ? { requiredSourceQc: 'SUCCESS', requiredSourceQcCheckId: sourceQc.id } : {}),
     status: 'OFFICIAL_MERGED_PR_VERIFIED' }
 }
