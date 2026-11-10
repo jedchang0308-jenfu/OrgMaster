@@ -15,6 +15,10 @@ export function isDev057PrincipalSmokeBlobTransition(before, after) {
   return (before === blobs.historical && [blobs.principal, blobs.corrected].includes(after))
     || (before === blobs.principal && after === blobs.corrected)
     || (before === blobs.corrected && after === blobs.managedLogin)
+    // The managed-login source was deployed while the smoke credential remained
+    // a Firebase password provider. Restore the already-reviewed bare session
+    // contract with no other workflow or infrastructure field change.
+    || (before === blobs.managedLogin && after === blobs.corrected)
 }
 
 export function gitBlobOid(bytes) {
