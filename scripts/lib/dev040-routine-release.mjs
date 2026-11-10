@@ -943,7 +943,10 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (!values.infra || same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)) fail('ROUTINE_INFRA_CHANGED')
     if (controlledTransition?.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION') cutoverInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
     else if (controlledTransition?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION') principalSmokeInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
-    else if (!toolRotation && !toolRotationPredecessor) fail('ROUTINE_INFRA_CHANGED')
+    else if (!toolRotation && !toolRotationPredecessor &&
+      !(values.infra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' && values.infra?.smokeRotation?.toolRotationRef)) {
+      fail('ROUTINE_INFRA_CHANGED')
+    }
   }
   if (baseline.repair) {
     if (!intent.principalOnlyRecovery || !same(runtimeConfig, baselineRuntime)) fail('ROUTINE_REPAIR_RUNTIME_CHANGED')
