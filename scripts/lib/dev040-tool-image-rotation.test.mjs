@@ -5,6 +5,7 @@ import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import {DEV070_MIGRATION_ENTRIES,DEV070_RELEASE_MODE} from './dev070-administration-migration.mjs'
+import { DEV057_PRINCIPAL_SMOKE_BLOBS } from './dev057-principal-smoke-transition.mjs'
 
 import { canonicalize, sha256, releasePaths } from './dev012-owner-release-runtime.mjs'
 import { createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
@@ -62,6 +63,15 @@ function readGitBytes(cwd, revision, file) {
   return runGit(cwd, ['show', `${revision}:${file}`], { bytes: true })
 }
 
+function findRevisionByBlob(file, blob) {
+  const revisions = runGit(ROOT, ['log', '--format=%H', '--all', '--', file])
+    .split(/\r?\n/u).filter(Boolean)
+  for (const revision of revisions) {
+    if (runGit(ROOT, ['rev-parse', `${revision}:${file}`]) === blob) return revision
+  }
+  throw new Error(`HISTORICAL_SMOKE_SOURCE_NOT_FOUND:${file}:${blob}`)
+}
+
 function correctedCookieSmokeBytes(managedBytes) {
   const managed = managedBytes.toString('utf8')
   const loginIntentBlock = /        - platform_login_intent:\r?\n[\s\S]*?                next: reject_session\r?\n/u
@@ -76,7 +86,11 @@ function correctedCookieSmokeBytes(managedBytes) {
 
 function createSourceFixture() {
   const root = fs.mkdtempSync(path.join(ROOT, '.dev040-tool-image-rotation-'))
-  const sourceRevision = runGit(ROOT, ['rev-parse', 'HEAD'])
+  // The current source is already the reviewed corrected blob. Keep this
+  // fixture's managed-login baseline historical so the successor test covers
+  // the exact approved transition without treating the corrected source as
+  // both sides of the transition.
+  const sourceRevision = findRevisionByBlob(CANDIDATE_SMOKE_RECIPE, DEV057_PRINCIPAL_SMOKE_BLOBS.managedLogin)
   const trackedPaths = runGit(ROOT, [
     'ls-tree', '-r', '--name-only', sourceRevision, '--',
     INFRA_ROOT,
