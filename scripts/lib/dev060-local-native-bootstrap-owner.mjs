@@ -6,6 +6,10 @@ const OWNER = 'orgmaster'
 const MIGRATOR = 'jenfu_orgmaster_migrator'
 const HASH = /^[a-f0-9]{64}$/u
 const LOCAL_ISSUER = 'urn:jenfu:local-principal-sandbox'
+const ADMINISTRATION_PROJECTION_V1 = Object.freeze({
+  version: 'dev070-orgmaster-044',
+  path: 'db/migrations/044_dev070_administration_projection_v1.sql',
+})
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const fail = code => Object.assign(new Error('LOCAL_NATIVE_ORGMASTER_' + code), { code: 'LOCAL_NATIVE_ORGMASTER_' + code })
 const LEDGER_COLUMNS = Object.freeze([
@@ -36,6 +40,17 @@ async function assertTableColumns(client, table, expected, errorCode) {
   if (!valid) throw fail(errorCode)
 }
 function migrationPath(entry) { return typeof entry?.path === 'string' ? entry.path : undefined }
+function migrationSearchPath(entry) {
+  // Migration 044 deparses contract views into SECURITY DEFINER readers whose
+  // own search_path is pg_catalog. Deparse under the same path so PostgreSQL
+  // preserves every application schema qualifier. The published migration
+  // bytes remain immutable; other native/local migrations keep public for the
+  // legacy pgcrypto extension calls they still own.
+  return entry?.version === ADMINISTRATION_PROJECTION_V1.version &&
+    entry?.path === ADMINISTRATION_PROJECTION_V1.path
+    ? 'pg_catalog'
+    : 'pg_catalog, orgmaster_core, orgmaster_contract, public'
+}
 function isSafeLocalSourcePath(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= 512 &&
     value.startsWith('db/migrations/local/') && value.endsWith('.sql') &&
@@ -89,7 +104,7 @@ export async function executeMigration(client, entry, sourceRevision, options = 
     // Another owner may have left a session-level search_path while installing
     // its legacy package. OrgMaster's unqualified pgcrypto calls must resolve
     // through the neutral, non-writable public extension schema every time.
-    await client.query('SET LOCAL search_path TO pg_catalog, orgmaster_core, orgmaster_contract, public')
+    await client.query('SET LOCAL search_path TO ' + migrationSearchPath(entry))
     if (entry.localOnly === true) {
       await ensureLocalReceiptTable(client)
       const existing = await client.query(`SELECT source_path, btrim(source_sha256) AS source_sha256,
