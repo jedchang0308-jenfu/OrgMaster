@@ -1015,6 +1015,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   let appliedAbortInfraBaseline = null
   const smokeRotationSourceReuse = appArtifactReuse != null
     || (controlledSmokeRotation && values.infra?.sourceRevision !== intent.sourceRevision)
+    || (values.infra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' && toolRotationPredecessor &&
+      values.infra?.sourceRevision !== intent.sourceRevision)
   if (!migration.replayOnly && (values.readiness?.appliedAbortInfraBaseline || values.authorization?.appliedAbortInfraBaseline)) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
   if (migration.migrationDisposition === 'FORWARD_APPLY') {
     if (!infraChanged) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
