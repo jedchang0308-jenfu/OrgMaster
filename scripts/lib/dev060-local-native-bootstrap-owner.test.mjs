@@ -52,6 +52,7 @@ class FakeClient {
     }
     if (normalized === 'BEGIN' || normalized.startsWith('BEGIN ISOLATION LEVEL ') || normalized === 'COMMIT' || normalized === 'ROLLBACK' ||
         normalized === 'SET LOCAL ROLE jenfu_orgmaster_migrator' ||
+        normalized === 'SET LOCAL search_path TO pg_catalog' ||
         normalized === 'SET LOCAL search_path TO pg_catalog, orgmaster_core, orgmaster_contract, public') return { rows: [] }
     if (normalized.startsWith('CREATE TABLE IF NOT EXISTS orgmaster_core.schema_migrations') ||
         normalized.startsWith('CREATE TABLE IF NOT EXISTS orgmaster_core.local_native_bootstrap_receipts') ||
@@ -129,6 +130,11 @@ function localEntry() {
     appliedSha256: sha256(MIGRATION_SQL), sql: MIGRATION_SQL }
 }
 
+function administrationProjectionEntry() {
+  return { ...nativeEntry(), version: 'dev070-orgmaster-044',
+    path: 'db/migrations/044_dev070_administration_projection_v1.sql' }
+}
+
 test('an owner migration resolves neutral extensions independently of an inherited sibling search path', async () => {
   const client = new FakeClient()
   const query = client.query.bind(client)
@@ -142,6 +148,17 @@ test('an owner migration resolves neutral extensions independently of an inherit
   }
   assert.equal((await executeMigration(client, nativeEntry(), REVISION)).reused, false)
   assert.equal(client.ledgerRows.length, 1)
+})
+
+test('administration projection deparses reader views under its SECURITY DEFINER search path', async () => {
+  const client = new FakeClient()
+  const result = await executeMigration(client, administrationProjectionEntry(), REVISION)
+  assert.deepEqual(result, { reused: false })
+  const searchPathIndex = client.calls.findIndex(call => call.sql === 'SET LOCAL search_path TO pg_catalog')
+  const migrationIndex = client.calls.findIndex(call => call.sql === MIGRATION_SQL)
+  assert.ok(searchPathIndex >= 0 && migrationIndex > searchPathIndex)
+  assert.equal(client.calls.some(call => call.sql ===
+    'SET LOCAL search_path TO pg_catalog, orgmaster_core, orgmaster_contract, public'), false)
 })
 
 test('createLedger uses IF NOT EXISTS and accepts only the expected ledger column shape', async () => {
