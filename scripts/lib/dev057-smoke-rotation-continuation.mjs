@@ -342,7 +342,13 @@ async function assertAppliedSmokeRotation({ root, profile, transport, intent, va
     versionChain = [predecessorCredential.secret.previousVersion, predecessorCredential.secret.newVersion, credential.secret.newVersion]
   }
   if (prior.candidateSmokeRefreshTokenSecretVersion != null &&
-      prior.candidateSmokeRefreshTokenSecretVersion !== previousVersion) fail('SMOKE_ROTATION_VERSION_INVALID')
+      prior.candidateSmokeRefreshTokenSecretVersion !== previousVersion) {
+    const providerBoundPrevious = rotation.smokeRotation?.previousVersion
+    if (!rotation.smokeRotation || providerBoundPrevious !== previousVersion ||
+        !same(rotation.smokeRotation.toolRotationRef, prior.receiptRef)) {
+      fail('SMOKE_ROTATION_VERSION_INVALID')
+    }
+  }
   if (rotation.smokeRotation) await assertNativeSmokeRotationProof({ root, profile, transport, intent, rotation, prior,
     rotationBaselineIntentRef: prior.rotationBaselineIntentRef ?? intent.baselineIntentRef,
     infraProfile: afterProfile, platformCredentialRef, credentialPredecessorRef, previousVersion, nextVersion, versionChain,
