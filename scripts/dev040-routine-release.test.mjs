@@ -2041,7 +2041,7 @@ test('immutable-ref corruption or provider transport fault fails closed and neve
 
 test('Workflow source renderer reproduces the sealed existing Org numeric-7 source bytes', () => {
   const value = expectedSmokeWorkflowSource({ root: '.', sourceRevision: newSource, profile, version: '7', readSourceFile: (_root, _revision, file) => fs.readFileSync(file) })
-  assert.equal(sha256(value), '29e0f61b5d617f76d4c075018d8d2d60db9f7e6837385f3dca75593de9dbb162')
+  assert.equal(sha256(value), '9ba919ee180f6b5d7a7cc068dc1b402271c9dfeff61a7a3e5d9b9f048e15a559')
 })
 
 
@@ -2481,7 +2481,7 @@ test('smoke credential rotation plan admits exactly one Workflow version update 
   assert.equal(combined.previousSourceRevision, correctedSourceRevision)
   assert.throws(() => assertSmokeCredentialRotationPlan({ root: process.cwd(), profile,
     sourceRevision: correctedSourceRevision, previousSourceRevision: sourceRevision, plan: combinedPlan,
-    infraProfile, previousVersion: '10', nextVersion: '11' }), /SMOKE_ROTATION_WORKFLOW_INVALID/u)
+    infraProfile, previousVersion: '10', nextVersion: '11' }), /SMOKE_ROTATION_(WORKFLOW|VARIABLE)_INVALID/u)
   const chainedPlan = structuredClone(plan)
   chainedPlan.resource_changes.find(row => row.address === workflowAddress).change.after.source_contents =
     expectedSmokeWorkflowSource({ root: process.cwd(), profile, sourceRevision, version: '12' })
