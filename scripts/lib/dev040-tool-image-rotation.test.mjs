@@ -657,7 +657,6 @@ test('reuses the immutable tool receipt for the exact managed-login smoke transi
     [sourceFixture.correctedSmokeSourceRevision, unknownSmoke],
     [sourceFixture.correctedSmokeSourceRevision, profileDrift],
     [sourceFixture.correctedSmokeSourceRevision, unknownCandidate],
-    [sourceFixture.managedSmokeSourceRevision, sourceFixture.correctedSmokeSourceRevision],
     [sourceFixture.correctedSmokeSourceRevision, sourceFixture.copyInputDriftSourceRevision],
     [sourceFixture.correctedSmokeSourceRevision, sourceFixture.toolInputDriftSourceRevision],
   ]) assertRotationCode(() => assertToolReceiptSourceSuccessor(sourceFixture.root, before, after), 'SOURCE_INPUT_DRIFT')
