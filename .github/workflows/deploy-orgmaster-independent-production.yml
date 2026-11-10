@@ -70,7 +70,7 @@ jobs:
     needs: cancelled-recovery
     runs-on: ubuntu-latest
     environment: production
-    permissions: { contents: read, pull-requests: read, id-token: write }
+    permissions: { contents: read, pull-requests: read, checks: read, id-token: write }
     outputs:
       capsule_uri: ${{ steps.bind.outputs.capsule_uri }}
       capsule_sha256: ${{ steps.bind.outputs.capsule_sha256 }}
@@ -80,8 +80,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "24.11.0", cache: npm }
       - run: npm ci
-      - run: npm run test:dev-040:r2
-      - name: Verify official merged source
+      - name: Verify official merged source and required Source QC
         env: { GITHUB_TOKEN: "${{ github.token }}" }
         run: node scripts/dev012-verify-official-source.mjs
       - id: bind

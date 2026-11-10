@@ -577,6 +577,12 @@ test('required source QC runs the existing verification through one owner entry 
     assert.ok(!workflow.includes(`run: ${command}\n`), `${command} must run once through QC`)
   }
   assert.ok(!workflow.includes('run: npm run test:dev-040:r2\n'))
+  const ownerDeploy = fs.readFileSync('.github/workflows/deploy-orgmaster-independent-production.yml', 'utf8')
+  const sourceReview = fs.readFileSync('scripts/dev012-verify-official-source.mjs', 'utf8')
+  assert.doesNotMatch(ownerDeploy, /run:\s*npm run test:dev-040:r2/u)
+  assert.match(ownerDeploy, /checks: read/u)
+  assert.match(ownerDeploy, /run: node scripts\/dev012-verify-official-source\.mjs/u)
+  assert.match(sourceReview, /requireSourceQc: true/u)
   assert.doesNotMatch(qc, /pass [0-9]+\\b/u)
   assert.match(workflow, /name: Production Source QC/u)
   assert.match(workflow, /docker build --target runtime-smoke/u)
