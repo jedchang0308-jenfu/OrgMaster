@@ -186,9 +186,9 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(await start.json()).toMatchObject({ code: 'sso_request_invalid' })
   })
 
-  it('starts with exact callback and completes callback using auth-state v2 and original auth time', async () => {
+  it.each([[1, 1], [8, 8], [16, 16], [20, 16]])('bounds the callback session from %i source hours to %i hours and keeps the original auth time', async (sourceHours, targetHours) => {
     const value = runtime()
-    const deps = dependencies('on')
+    const deps = dependencies('on', { ...handoff(), sourceSessionExpiresAt: new Date(now + sourceHours * 60 * 60 * 1000).toISOString() })
     const base = await listen(value, deps)
     const start = await fetch(`${base}/api/auth/jenfu-sso/start?returnTo=%2F`, { redirect: 'manual' })
     expect(start.status).toBe(303)
@@ -211,9 +211,9 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(value.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({
       authEpoch: 0, sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 7,
       authenticatedAt: '2026-09-17T02:55:00.000Z',
-      expiresAt: '2026-09-17T04:00:00.000Z',
+      expiresAt: new Date(now + targetHours * 60 * 60 * 1000).toISOString(),
     }))
-    expect(accepted.headers.get('set-cookie')).toContain('Max-Age=3600')
+    expect(accepted.headers.get('set-cookie')).toContain('Max-Age=' + targetHours * 60 * 60)
   })
 
   it('adds a one-shot login prompt for the shared reauthentication flow', async () => {
