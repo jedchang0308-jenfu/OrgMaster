@@ -404,7 +404,7 @@ test('migration runner Docker copies the migration and lifecycle readback static
 })
 
 
-test('DEV070 runner resumes only exact 31–47 row known prefixes and refuses unknown ledger rows before writes',async()=>{
+test('DEV070 runner resumes only known ledger prefixes and refuses unknown ledger rows before writes',async()=>{
  const input=fixture({administration:true})
  for(const count of DEV070_ACCEPTED_LEDGER_COUNTS){
   const ledger=ledgerFor(input.bundle,count),statements=[]
