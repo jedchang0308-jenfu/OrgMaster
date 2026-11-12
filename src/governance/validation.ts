@@ -1,4 +1,4 @@
-import { historicalAiPdmRoleSnapshotMatches, validateExternalRoleCatalog } from './aiPdmCatalog'
+import { historicalAiPdmRoleSnapshotMatches, ORGMASTER_WORKSPACE_VIEWER_ROLE, validateExternalRoleCatalog } from './aiPdmCatalog'
 import { historicalFinancialRoleSnapshotMatches, validateFinancialExternalRoleCatalog } from './financialCatalog'
 import { classifyAssignmentSurface, genericV2AssignmentSurfaceIssue, isSystemAdminRoleIdentity } from './assignmentSurface'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV1, GovernancePolicyDataV2, GovernancePolicyDataV3, GovernancePolicyVersionV1, GovernanceRoleAssignmentV2, GovernanceRoleDelegationV2, GovernanceScopeV1 } from './types'
@@ -82,6 +82,15 @@ export function validateGenericV2AssignmentSurface(assignment: GovernanceRoleAss
 export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: GovernanceOrgSource, catalogs: ExternalRoleCatalogSnapshotV1[] = [], at = new Date().toISOString()): GovernanceValidationIssue[] {
   const issues: GovernanceValidationIssue[] = []
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
+  const viewerRoleId = ORGMASTER_WORKSPACE_VIEWER_ROLE.id
+  if (data.rolePermissionGrants.some(grant => grant.roleId === viewerRoleId && grant.effect === 'allow')) {
+    add('WORKSPACE_VIEWER_PERMISSION_INVALID', 'rolePermissionGrants', '工作區唯讀角色不可授予其他操作權限')
+  }
+  for (const [index, assignment] of data.roleAssignments.entries()) {
+    if (assignment.roleId === viewerRoleId && assignment.validTo === null) {
+      add('EFFECTIVE_PERIOD_INVALID', `roleAssignments[${index}].validTo`, '工作區唯讀指派必須設定截止時間')
+    }
+  }
   const ids = <T extends { id: string }>(items: T[], path: string) => { const seen = new Set<string>(); items.forEach((item, index) => { if (!item.id || seen.has(item.id)) add('DUPLICATE_ID', `${path}[${index}].id`, 'id 必須唯一'); seen.add(item.id) }) }
   ids(data.applications, 'applications'); ids(data.identityLinks, 'identityLinks'); ids(data.applicationRoles, 'applicationRoles'); ids(data.permissions, 'permissions'); ids(data.rolePermissionGrants, 'rolePermissionGrants'); ids(data.roleAssignments, 'roleAssignments'); ids(data.roleDelegations, 'roleDelegations'); ids(data.principalAdmissions ?? [], 'principalAdmissions')
   const identityById = new Map(data.identityLinks.map((link) => [link.id, link]))

@@ -42,6 +42,8 @@
 - Position、部門、組織圖與任職是組織主資料，不因存在某職位就自動產生 App grant。
 - Provider 只投影 applicationId=orgmaster 的已發布 permission；不得回傳 AI-PDM、FMS、ProJED 或其他 App 的 capability。
 - UI 可用 projection 決定顯示、停用與說明；route／API／mutation 必須重新驗證當下 verified session、scope 與 resource。
+- 組織工作區的索引與版本文件每次讀取都要求目前已發布且仍有效的 OrgMaster 全域角色。AI-PDM 等其他任用可維持身分驗證，但不授予組織工作區讀取權。建立草稿、儲存版本與變更版本清單另外要求 `orgmaster.governance.manage`，Cloud SQL 寫入在既有持久化交易提交前重查授權。
+- 「OrgMaster 工作區唯讀」沿既有角色目錄、指派與治理發布生效。此角色不得加入操作權限，指派必須設定截止時間。到期或撤銷後，仍持有有效登入工作階段也無法再次讀取工作區。
 - Snapshot 不含 role assignment 明細、Position、subject、token、cookie 或其他 App grant；只傳最小 permission boolean 與追蹤欄位。
 
 ## 4. API contract

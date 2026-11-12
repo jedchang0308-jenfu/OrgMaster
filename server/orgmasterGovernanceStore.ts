@@ -25,6 +25,17 @@ export type GovernanceStoreRead = { raw: string; document: GovernanceDocumentV3;
 function governanceDataRoot(rootDirectory: string) { return process.env.ORGMASTER_GOVERNANCE_DATA_DIR ? resolve(process.env.ORGMASTER_GOVERNANCE_DATA_DIR) : resolve(rootDirectory, 'data') }
 export function getGovernancePaths(rootDirectory = process.cwd()) { const data = governanceDataRoot(rootDirectory); return { current: resolve(data, 'orgmaster-governance.v3.json'), previous: resolve(data, 'orgmaster-governance.v3.previous.json'), legacyV2: resolve(data, 'orgmaster-governance.v2.json'), legacyV2Previous: resolve(data, 'orgmaster-governance.v2.previous.json'), legacyV1: resolve(data, 'orgmaster-governance.v1.json'), legacyV1Previous: resolve(data, 'orgmaster-governance.v1.previous.json') } }
 export function documentRevision(raw: string) { return sha256(raw) }
+
+/** Read the current stored policy without bootstrapping or syncing governance. */
+export async function readStoredGovernanceDocument(root: string) {
+  const stored = await readPersistenceArtifact({ localPath: getGovernancePaths(root).current,
+    artifactKey: 'orgmaster-governance.v3.json', artifactKind: 'governance' })
+  const document = stored.payload as unknown as GovernanceDocumentV3
+  if (document.schemaVersion !== 3 || !Array.isArray(document.publishedVersions)) {
+    throw new GovernanceStoreError('GOVERNANCE_READ_FAILED')
+  }
+  return { ...stored, document }
+}
 const locks = new Map<string, Promise<void>>()
 async function withLock<T>(root: string, fn: () => Promise<T>) { const key = resolve(root); const previous = locks.get(key) ?? Promise.resolve(); let release!: () => void; const current = new Promise<void>((resolveRelease) => { release = resolveRelease }); const queued = previous.then(() => current); locks.set(key, queued); await previous; try { return await fn() } finally { release(); if (locks.get(key) === queued) locks.delete(key) } }
 export async function withGovernanceLock<T>(root: string, fn: () => Promise<T>) { return withLock(root, fn) }
@@ -183,9 +194,8 @@ async function readV2Raw(root: string) { const path = getGovernancePaths(root).l
 async function readV3Raw(root: string): Promise<GovernanceStoreRead> {
   let stage: OrgmasterLocalPersistenceDiagnosticStage & GovernanceSessionReadStage = 'governance_v3_artifact_read'
   try {
-    const stored = await readPersistenceArtifact({ localPath: getGovernancePaths(root).current,
-      artifactKey: 'orgmaster-governance.v3.json', artifactKind: 'governance' })
-    const document = stored.payload as unknown as GovernanceDocumentV3
+    const stored = await readStoredGovernanceDocument(root)
+    const { document } = stored
     stage = 'governance_v3_audit_chain_validate'
     validateAuditChain(document)
     stage = 'governance_workspace_source_read'
