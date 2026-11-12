@@ -119,7 +119,7 @@ export function createOrgmasterServer(options: OrgmasterServerOptions = {}) {
     ...(employeeNumberManagementEnabled ? [createOrgmasterManagedIdentityMiddleware(root, devIdentityEnabled, managedIdentityService)] : []),
     createWorkbenchPreferenceMiddleware(root),
     ...(accountRuntime ? [accountRuntime.middleware] : []),
-    createOrgmasterApiMiddleware(),
+    createOrgmasterApiMiddleware(root),
     createOrgmasterGovernanceMiddleware(root, devIdentityEnabled, accountEnrollmentEnabled,runtime.financialCatalogInitializationOwnerReader?{initializationOwnerReader:runtime.financialCatalogInitializationOwnerReader,handoffSource:runtime.financialCatalogHandoffSource??'formal'}:{},{lifecycle:runtime.administrationLifecycle,verifyRuntime:runtime.administrationLocalGuard}),
     createOrgmasterManagementMethodMiddleware(root, devIdentityEnabled),
   ]

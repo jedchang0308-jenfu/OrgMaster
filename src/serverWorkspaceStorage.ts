@@ -22,6 +22,12 @@ async function readJson(response: Response) {
 
 function failure(response: Response, payload: Record<string, unknown>, fallback: string): WorkspaceClientResult<never> {
   const code = typeof payload.error === 'string' ? payload.error : fallback
+  if (code === 'WORKSPACE_ACCESS_FORBIDDEN') {
+    return { status: 'failed', message: '目前帳號沒有有效的 OrgMaster 工作區權限。', statusCode: response.status, code }
+  }
+  if (code === 'WORKSPACE_WRITE_FORBIDDEN') {
+    return { status: 'failed', message: '目前帳號只能查看 OrgMaster 工作區。', statusCode: response.status, code }
+  }
   const reason = typeof payload.reason === 'string' && payload.reason.trim() ? payload.reason.trim() : code
   return { status: 'failed', message: `版本工作區無法完成操作：${reason}`, statusCode: response.status, code }
 }

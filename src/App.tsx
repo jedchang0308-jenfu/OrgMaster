@@ -368,6 +368,7 @@ function findDirectoryDataElement(attribute: string, value: string) {
 
 function ProtectedApp() {
   const { allows: permissionAllows } = useOrgMasterPermissions()
+  const workspaceWriteAllowed = permissionAllows('orgmaster.governance.manage')
   const managedIdentityEnabled = useAuthSession()?.managedIdentityEnabled === true
   const initialState = screenshotOrganizationState
   const [serverReady, setServerReady] = useState(false)
@@ -698,7 +699,8 @@ function ProtectedApp() {
   activeVersionIdRef.current = activeVersionId
   workspaceModeRef.current = workspaceMode
   workspaceIndexRef.current = workspaceIndex
-  const versionEditingEnabled = (workspaceMode === 'draft-edit' || workspaceMode === 'current-maintenance')
+  const versionEditingEnabled = workspaceWriteAllowed
+    && (workspaceMode === 'draft-edit' || workspaceMode === 'current-maintenance')
     && serverReady
     && workspaceHydration.kind === 'ready'
   editingEnabledRef.current = versionEditingEnabled
@@ -727,8 +729,8 @@ function ProtectedApp() {
   })
   const masterDataEditingEnabled = editingEnabled
   const organizationEditingEnabled = masterDataEditingEnabled && !dutyConfigurationActive
-  const workspaceMutationAllowed = resolveModuleCapability('organization', workspaceEnvironment, { canRead: true, canMutate: true }).canMutate
-  const versionMutationAllowed = isDesktopMutationEnvironment(workspaceEnvironment)
+  const workspaceMutationAllowed = resolveModuleCapability('organization', workspaceEnvironment, { canRead: true, canMutate: workspaceWriteAllowed }).canMutate
+  const versionMutationAllowed = workspaceWriteAllowed && isDesktopMutationEnvironment(workspaceEnvironment)
   const accountMutationEnvironmentAllowed = isDesktopMutationEnvironment(workspaceEnvironment)
   const workspaceCompositionCapability = resolveWorkspaceCompositionCapability(workspaceEnvironment)
   workspaceMutationAllowedRef.current = workspaceMutationAllowed

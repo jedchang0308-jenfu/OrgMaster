@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { dirname, resolve } from 'node:path'
 import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite'
 import { parseOrgDocument, type OrgDocumentFile } from '../src/documentStorage'
+import { evaluateVerifiedPrincipalPermission, hasEffectiveOrgmasterWorkspaceRole } from '../src/governance/evaluatePermission'
 import {
   createWorkspaceDraft,
   getWorkspaceIndex,
@@ -12,8 +13,10 @@ import {
   WorkspaceStoreError,
   getWorkspacePaths,
 } from './orgmasterWorkspaceStore'
-import { persistenceArtifactExists, usesCloudSqlPersistence } from './orgmasterPersistenceRepository'
-import { readVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import { persistenceArtifactExists, usesCloudSqlPersistence, withPersistenceTransaction } from './orgmasterPersistenceRepository'
+import { readVerifiedRequestIdentity, verifiedGovernanceActor } from './orgmasterRequestIdentity'
+import { DEV_ISSUER, developmentPermissionForActor } from './orgmasterGovernanceIdentity'
+import { readStoredGovernanceDocument } from './orgmasterGovernanceStore'
 
 const API_PATH = '/api/orgmaster/document'
 const WORKSPACE_PATH = '/api/orgmaster/workspace'
@@ -148,13 +151,21 @@ function handleMountedApiRequest(request: IncomingMessage, response: ServerRespo
   handleDocumentRequest(request, response, next)
 }
 
-export function createOrgmasterApiMiddleware(): Connect.NextHandleFunction {
+export function createOrgmasterApiMiddleware(root = process.cwd()): Connect.NextHandleFunction {
   return (request, response, next) => {
-    handleWorkspaceRequest(request, response, () => handleApiRequest(request, response, next))
+    handleWorkspaceRequest(root, request, response, () => handleApiRequest(request, response, next))
   }
 }
 
+class WorkspaceAccessError extends Error {
+  constructor(readonly status: number, readonly code: string) { super(code) }
+}
+
 function workspaceError(response: ServerResponse, error: unknown) {
+  if (error instanceof WorkspaceAccessError) {
+    sendJson(response, error.status, { error: error.code })
+    return
+  }
   if (!(error instanceof WorkspaceStoreError)) {
     sendJson(response, 500, { error: 'WORKSPACE_INTERNAL_ERROR' })
     return
@@ -170,18 +181,48 @@ function workspaceError(response: ServerResponse, error: unknown) {
   })
 }
 
-function workspaceMutationActor(request: IncomingMessage, response: ServerResponse) {
+async function authorizeWorkspace(root: string, request: IncomingMessage, write: boolean) {
   const session = readVerifiedRequestIdentity(request)
-  const principalId = session?.sessionSchemaVersion === 2 && session.epochKind === 'principal' &&
-    typeof session.principalAuthEpoch === 'number' && Number.isSafeInteger(session.principalAuthEpoch) &&
-    session.principalAuthEpoch >= 0 && Boolean(session.authenticatedAt)
-    ? session.principalId.trim() || undefined
-    : undefined
-  if (usesCloudSqlPersistence() && !principalId) {
-    sendJson(response, 401, { error: 'WORKSPACE_ACTOR_REQUIRED' })
-    return null
+  const actor = verifiedGovernanceActor(request)
+  if (!usesCloudSqlPersistence()) {
+    if (write && actor?.issuer === DEV_ISSUER && developmentPermissionForActor(actor, 'orgmaster.governance.manage') !== true) {
+      throw new WorkspaceAccessError(403, 'WORKSPACE_WRITE_FORBIDDEN')
+    }
+    return undefined
   }
-  return principalId
+  if (!actor?.principalId.trim() || session?.sessionSchemaVersion !== 2 || session.epochKind !== 'principal'
+    || !Number.isSafeInteger(session.principalAuthEpoch) || session.principalAuthEpoch === null
+    || session.principalAuthEpoch < 0 || !session.authenticatedAt) {
+    throw new WorkspaceAccessError(401, 'WORKSPACE_ACTOR_REQUIRED')
+  }
+
+  let canRead: boolean
+  let canWrite: boolean
+  try {
+    const { document } = await readStoredGovernanceDocument(root)
+    const now = new Date().toISOString()
+    canRead = hasEffectiveOrgmasterWorkspaceRole(document, actor, now)
+    canWrite = write && canRead
+      && evaluateVerifiedPrincipalPermission(document, actor, 'orgmaster.governance.manage', { now }).status === 'allowed'
+  } catch {
+    throw new WorkspaceAccessError(503, 'WORKSPACE_AUTHORITY_UNAVAILABLE')
+  }
+  if (!canRead) throw new WorkspaceAccessError(403, 'WORKSPACE_ACCESS_FORBIDDEN')
+  if (write && !canWrite) throw new WorkspaceAccessError(403, 'WORKSPACE_WRITE_FORBIDDEN')
+  return actor.principalId
+}
+
+async function workspaceWrite<T>(root: string, request: IncomingMessage,
+  run: (body: Record<string, unknown>, actor: string | undefined) => Promise<T>) {
+  const actor = await authorizeWorkspace(root, request, true)
+  const body = await parseJsonBody(request)
+  return withPersistenceTransaction(async () => {
+    const result = await run(body, actor)
+    // The native writer holds the persistence lock through commit. Read back
+    // current policy under that lock before exposing the result.
+    if (usesCloudSqlPersistence()) await authorizeWorkspace(root, request, true)
+    return result
+  })
 }
 
 async function parseJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
@@ -194,67 +235,60 @@ function workspaceVersionId(url: string) {
   return url.startsWith(prefix) ? decodeURIComponent(url.slice(prefix.length).split('/')[0]) : null
 }
 
-function handleWorkspaceRequest(request: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) {
+function handleWorkspaceRequest(root: string, request: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) {
   const pathname = request.url?.split('?')[0] ?? ''
   if (pathname.startsWith('/api/orgmaster/duty-plans')) {
     sendJson(response, 404, { error: 'DUTY_PLAN_API_REMOVED' })
     return
   }
   if (pathname === WORKSPACE_PATH && request.method === 'GET') {
-    void getWorkspaceIndex().then((index) => sendJson(response, 200, index)).catch((error) => workspaceError(response, error))
+    void authorizeWorkspace(root, request, false).then(() => getWorkspaceIndex(root))
+      .then((index) => sendJson(response, 200, index)).catch((error) => workspaceError(response, error))
     return
   }
   if (pathname === `${WORKSPACE_PATH}/versions` && request.method === 'POST') {
-    const actorPrincipalId = workspaceMutationActor(request, response)
-    if (actorPrincipalId === null) return
-    void parseJsonBody(request).then(async (body) => {
-      const result = await createWorkspaceDraft(
-        process.cwd(),
+    void workspaceWrite(root, request, (body, actorPrincipalId) => {
+      return createWorkspaceDraft(
+        root,
         String(body.sourceVersionId ?? ''),
         String(body.name ?? ''),
         String(body.expectedManifestRevision ?? request.headers['x-orgmaster-manifest-revision'] ?? ''),
         actorPrincipalId,
       )
-      sendJson(response, 201, result)
-    }).catch((error) => workspaceError(response, error))
+    }).then((result) => sendJson(response, 201, result)).catch((error) => workspaceError(response, error))
     return
   }
   const versionId = workspaceVersionId(pathname)
   if (versionId && request.method === 'GET') {
-    void getWorkspaceVersion(process.cwd(), versionId).then((result) => sendJson(response, 200, result, result.version.revision)).catch((error) => workspaceError(response, error))
+    void authorizeWorkspace(root, request, false).then(() => getWorkspaceVersion(root, versionId))
+      .then((result) => sendJson(response, 200, result, result.version.revision)).catch((error) => workspaceError(response, error))
     return
   }
   if (versionId && request.method === 'PUT') {
-    const actorPrincipalId = workspaceMutationActor(request, response)
-    if (actorPrincipalId === null) return
-    void parseJsonBody(request).then(async (body) => {
-      const result = await saveWorkspaceVersion(
-        process.cwd(),
+    void workspaceWrite(root, request, (body, actorPrincipalId) => {
+      return saveWorkspaceVersion(
+        root,
         versionId,
         body.document as OrgDocumentFile,
         String(body.expectedVersionRevision ?? request.headers['x-orgmaster-revision'] ?? ''),
         body.mode === 'current-maintenance' ? 'current-maintenance' : 'draft-edit',
         actorPrincipalId,
       )
-      sendJson(response, 200, result, result.version.revision)
-    }).catch((error) => workspaceError(response, error))
+    }).then((result) => sendJson(response, 200, result, result.version.revision)).catch((error) => workspaceError(response, error))
     return
   }
   if (versionId && request.method === 'PATCH') {
-    const actorPrincipalId = workspaceMutationActor(request, response)
-    if (actorPrincipalId === null) return
-    void parseJsonBody(request).then(async (body) => {
+    void workspaceWrite(root, request, (body, actorPrincipalId) => {
       const action = body.action === 'archive' || body.action === 'restore' ? body.action : 'rename'
-      const result = await updateWorkspaceEntry(
-        process.cwd(),
+      return updateWorkspaceEntry(
+        root,
         versionId,
         action,
         typeof body.name === 'string' ? body.name : undefined,
         String(body.expectedManifestRevision ?? request.headers['x-orgmaster-manifest-revision'] ?? ''),
         actorPrincipalId,
       )
-      sendJson(response, 200, result)
-    }).catch((error) => workspaceError(response, error))
+    }).then((result) => sendJson(response, 200, result)).catch((error) => workspaceError(response, error))
     return
   }
   if (pathname.startsWith(`${WORKSPACE_PATH}/`)) {
@@ -268,13 +302,11 @@ export function orgmasterApiPlugin(): Plugin {
   return {
     name: 'orgmaster-local-document-api',
     configureServer(server: ViteDevServer) {
-      server.middlewares.use(handleWorkspaceRequest)
-      server.middlewares.use(handleApiRequest)
+      server.middlewares.use(createOrgmasterApiMiddleware(server.config.root))
       server.middlewares.use(API_PATH, handleMountedApiRequest)
     },
     configurePreviewServer(server: PreviewServer) {
-      server.middlewares.use(handleWorkspaceRequest)
-      server.middlewares.use(handleApiRequest)
+      server.middlewares.use(createOrgmasterApiMiddleware(server.config.root))
       server.middlewares.use(API_PATH, handleMountedApiRequest)
     },
   }
