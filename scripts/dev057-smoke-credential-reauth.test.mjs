@@ -98,6 +98,25 @@ test('single Platform reauthentication evidence authorizes the already-synced Or
   ]) assert.throws(() => validateSharedSmokeCredentialEvidence({ ...fixture, ...change, nowMs: NOW }))
 })
 
+test('late shared readback needs the exact original Platform receipt and signed authentication time', () => {
+  const { identity, platformCredential } = sharedCredentialFixture()
+  const { receiptSha256: _, ...original } = identity
+  const late = { ...original, observedAt: new Date(NOW + 240000).toISOString() }
+  const seal = core => ({ ...core, receiptSha256: sha256(JSON.stringify(core)) })
+  const nowMs = NOW + 250000
+  assert.throws(() => validateSharedSmokeCredentialEvidence({ identity: seal(late), platformCredential, nowMs }),
+    /SHARED_SMOKE_IDENTITY_EVIDENCE_INVALID/u)
+  const binding = { receiptSha256: platformCredential.receiptSha256, authTime: platformCredential.authTime }
+  const linked = seal({ ...late, platformCredentialBinding: binding })
+  assert.equal(validateSharedSmokeCredentialEvidence({ identity: linked, platformCredential, nowMs }).nextVersion, '19')
+  for (const platformCredentialBinding of [null, { ...binding, authTime: binding.authTime + 1 },
+    { ...binding, receiptSha256: 'b'.repeat(64) }]) {
+    assert.throws(() => validateSharedSmokeCredentialEvidence({
+      identity: seal({ ...late, platformCredentialBinding }), platformCredential, nowMs,
+    }), /SHARED_SMOKE_IDENTITY_EVIDENCE_INVALID/u)
+  }
+})
+
 test('smoke credential chain accepts one immutable adjacent predecessor and rejects identity, source, or version discontinuity', () => {
   const predecessor = buildReauthReceipt({ sourceRevision: 'a'.repeat(40), expected,
     authTime: Math.floor((NOW - 30000) / 1000), authenticatedAt: new Date(NOW - 30000).toISOString(),
