@@ -84,6 +84,13 @@ export function validateSharedSmokeCredentialEvidence({ identity, platformCreden
   const observedAt = Date.parse(identity?.observedAt)
   const versions = identity?.smokeRefreshTokenSecretVersions
   const github = identity?.githubProductionEnvironmentSecrets
+  const hasBinding = Object.hasOwn(identity ?? {}, 'platformCredentialBinding')
+  const binding = identity?.platformCredentialBinding
+  if (hasBinding) {
+    if (keys(binding) !== 'authTime,receiptSha256' || binding.receiptSha256 !== platformCredential.receiptSha256 ||
+        binding.authTime !== platformCredential.authTime) fail('SHARED_SMOKE_IDENTITY_EVIDENCE_INVALID')
+    producerCore.platformCredentialBinding = { receiptSha256: binding.receiptSha256, authTime: binding.authTime }
+  }
   if (identity?.schemaVersion !== 'jenfu.dev012.firebase-identity-readback.v1' || identity.status !== 'PASS' ||
       identity.releaseAuthority !== true || identity.evidenceScope !== 'PRODUCTION_PROVIDER' ||
       identity.projectId !== EXPECTED.projectId || identity.issuer !== EXPECTED.issuer || !UID.test(identity.uid ?? '') ||
@@ -91,7 +98,7 @@ export function validateSharedSmokeCredentialEvidence({ identity, platformCreden
       identity.mfaEnrolled !== false || identity.mfaFactor !== null || identity.assuranceLevel !== 'aal1' ||
       identity.assuranceEvidence !== 'SIGNED_ID_TOKEN_AFTER_PASSWORD_SIGNIN' || identity.firebaseUserCount !== 1 ||
       identity.credentialMaterialPresent !== false || !Number.isFinite(observedAt) || observedAt > nowMs + 30000 ||
-      observedAt < platform.observedAt || observedAt - platform.observedAt > 180000 ||
+      observedAt < platform.observedAt || (!hasBinding && observedAt - platform.observedAt > 180000) ||
       !['platform', 'orgmaster', 'ai-pdm'].every(id => VERSION.test(versions?.[id] ?? '') && github?.[id] === true) ||
       versions.platform !== platformCredential.secret.newVersion ||
       identityPairHash(identity.issuer, identity.uid) !== platformCredential.identityPairSha256 ||
@@ -99,7 +106,7 @@ export function validateSharedSmokeCredentialEvidence({ identity, platformCreden
       keys(identity) !== ['assuranceEvidence', 'assuranceLevel', 'credentialMaterialPresent', 'emailSha256', 'emailVerified',
         'evidenceScope', 'firebaseUserCount', 'firstFactor', 'githubProductionEnvironmentSecrets', 'issuer', 'mfaEnrolled',
         'mfaFactor', 'observedAt', 'projectId', 'receiptSha256', 'releaseAuthority', 'schemaVersion',
-        'smokeRefreshTokenSecretVersions', 'status', 'uid'].sort().join(',')) {
+        'smokeRefreshTokenSecretVersions', 'status', 'uid', ...(hasBinding ? ['platformCredentialBinding'] : [])].sort().join(',')) {
     fail('SHARED_SMOKE_IDENTITY_EVIDENCE_INVALID')
   }
   const nextVersion = versions.orgmaster
