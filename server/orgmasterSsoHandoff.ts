@@ -69,6 +69,11 @@ function exactObject(value: unknown, keys: readonly string[]) {
   return Object.keys(object).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(object, key))
 }
 
+function isActiveSession(session: { expiresAt: string; revokedAt: string | null }, nowMs: number) {
+  const expiresAt = Date.parse(session.expiresAt)
+  return !session.revokedAt && Number.isFinite(expiresAt) && expiresAt > nowMs
+}
+
 function callbackFailure(errorValue: unknown) {
   if (errorValue instanceof BrokerExchangeFailure) return { status: errorValue.status, code: errorValue.publicCode }
   const code = errorValue instanceof Error ? errorValue.message : ''
@@ -293,7 +298,7 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     const existingToken = readSessionToken(request.headers.cookie)
     if (existingToken) {
       const existing = await setup.sessions.findByHash(hashSessionToken(setup.config.sessionHashPepper, existingToken))
-      if (existing && !existing.revokedAt && existing.principalId !== handoff.identity.principalId) { error(response, 409, 'sso_account_conflict', id, [clearCookie(setup.config.secureCookie)]); return true }
+      if (existing && isActiveSession(existing, now()) && existing.principalId !== handoff.identity.principalId) { error(response, 409, 'sso_account_conflict', id, [clearCookie(setup.config.secureCookie)]); return true }
     }
     const nowMs = now()
     const maxExpiry = Math.min(nowMs + ORGMASTER_SESSION_MAX_AGE_SECONDS * 1000, Date.parse(handoff.sourceSessionExpiresAt))
