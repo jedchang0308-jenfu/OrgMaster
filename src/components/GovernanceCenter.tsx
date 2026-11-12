@@ -321,7 +321,18 @@ export function GovernanceCenter({ employees, departments, roles: _roles, curren
       effectState: 'not-synchronized',
     }
   }
-  async function submitAssignment() { const value = assignmentValue(); if (!value) { recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: [{ code: 'EXTERNAL_ROLE_UNKNOWN', message: '請選擇有效角色。' }] }); return } setBusy(true); clearFeedback(); try { const checked = await validateGovernanceAssignment(value); if (checked.payload.status !== 'valid') { recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: checked.payload.issues }); return } const ok = await runCommand({ type: 'UPSERT_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: value.applicationId === 'ai-pdm' ? '建立外部應用角色指派' : '建立 OrgMaster 治理角色指派', value }, '角色指派已加入草稿，尚未發布。'); if (ok) { setCheckResult(checked.payload); setAssignmentDialog(null) } } catch (error) { recordFailure(error) } finally { setBusy(false) } }
+  async function submitAssignment() {
+    const from = Date.parse(assignmentValidFrom)
+    const to = assignmentValidTo ? Date.parse(assignmentValidTo) : null
+    const isWorkspaceViewer = assignmentApplicationId === 'orgmaster' && assignmentRoleId === ORGMASTER_WORKSPACE_VIEWER_ROLE.id
+    if (!Number.isFinite(from) || (to !== null && (!Number.isFinite(to) || to <= from)) || (isWorkspaceViewer && to === null)) {
+      recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: [{ code: 'EFFECTIVE_PERIOD_INVALID', message: isWorkspaceViewer ? '工作區唯讀指派必須設定截止時間' : '有效期間設定不正確。' }] })
+      return
+    }
+    const value = assignmentValue()
+    if (!value) { recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: [{ code: 'EXTERNAL_ROLE_UNKNOWN', message: '請選擇有效角色。' }] }); return }
+    setBusy(true); clearFeedback(); try { const checked = await validateGovernanceAssignment(value); if (checked.payload.status !== 'valid') { recordFailure({ code: 'GOVERNANCE_VALIDATION_FAILED', issues: checked.payload.issues }); return } const ok = await runCommand({ type: 'UPSERT_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: value.applicationId === 'ai-pdm' ? '建立外部應用角色指派' : '建立 OrgMaster 治理角色指派', value }, '角色指派已加入草稿，尚未發布。'); if (ok) { setCheckResult(checked.payload); setAssignmentDialog(null) } } catch (error) { recordFailure(error) } finally { setBusy(false) }
+  }
   async function revokeAssignment(value: GovernanceRoleAssignmentV2) { if (!identityMutationAllowed || value.status !== 'active') return false; const ok = await runCommand({ type: 'REVOKE_ROLE_ASSIGNMENT', commandId: crypto.randomUUID(), reason: '撤銷角色指派', id: value.id }, '角色指派已撤銷'); if (ok) setAssignmentDialog(null); return ok }
   function assignmentRestoreBlocked(assignment: GovernanceRoleAssignmentV2) {
     if(assignment.validTo!==null&&Date.parse(assignment.validTo)<=clockNow)return '指派已到期，請新增有效期間的指派'
@@ -616,7 +627,7 @@ function AssignmentForm({ employees, departments, applicationId, onApplicationCh
       <input value={scopeValue} onChange={(event) => onScopeValueChange(event.target.value)} disabled={busy} required />
     </label>}
     <label>生效時間<input type="datetime-local" value={validFrom} onChange={(event) => onValidFrom(event.target.value)} disabled={busy} required /></label>
-    <label>截止時間（可選）<input type="datetime-local" value={validTo} onChange={(event) => onValidTo(event.target.value)} disabled={busy} /></label>
+    <label>{applicationId === 'orgmaster' && roleId === ORGMASTER_WORKSPACE_VIEWER_ROLE.id ? '截止時間（必填）' : '截止時間（可選）'}<input type="datetime-local" value={validTo} onChange={(event) => onValidTo(event.target.value)} disabled={busy} required={applicationId === 'orgmaster' && roleId === ORGMASTER_WORKSPACE_VIEWER_ROLE.id} /></label>
     <button type="submit" className="button button--primary" disabled={busy || !employeeId || !roleId}>加入草稿</button>
   </form>
 }
