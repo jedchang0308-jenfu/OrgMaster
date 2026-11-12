@@ -102,7 +102,7 @@ function sealedOwnerFixture({action='plan',mutateBundle=()=>{},baselineSource='a
   setNativeResult:next=>{nativeResult=next},outputUris,readOutput:uri=>Buffer.from(objects.get(uri))}
 }
 
-test('owner adapter accepts the current exact45 sealed RELEASED manifest and reuses immutable plan/admit/revoke receipts',async()=>{
+test('owner adapter accepts the current exact sealed RELEASED manifest and reuses immutable plan/admit/revoke receipts',async()=>{
  for(const action of['plan','admit','revoke']){
   const f=sealedOwnerFixture({action}),first=await f.run()
   assert.equal(first.status,'PASS');assert.equal(f.runs(),1)
@@ -124,15 +124,17 @@ test('owner status obtains fresh native initialized/revoked observations after p
   assert.equal(f.outputUris.length,2)
  }
 })
-test('owner rejects historical42–45, unknown47 and altered exact manifest identities before publishing or running a Job',async()=>{
+test('owner rejects older prefixes, unapproved appends and altered exact manifest identities before publishing or running a Job',async()=>{
  const cases=[
   bundle=>{bundle.entries.pop()},
-  bundle=>{const entry={...bundle.entries.at(-1),order:47,version:'dev070-orgmaster-051',path:'db/migrations/051_unknown.sql',name:'unknown'};bundle.entries.push(entry)},
+  bundle=>{
+   const order=bundle.entries.length+1
+   bundle.entries.push({...bundle.entries.at(-1),order,version:`dev070-unapproved-fixture-${order}`,path:'db/migrations/999_unapproved_fixture.sql',name:'unapproved_fixture'})
+  },
   bundle=>{bundle.entries[0].sourceSha256='0'.repeat(64)},
   bundle=>{bundle.entries.at(-1).sourceSha256='0'.repeat(64)},
-  bundle=>{bundle.entries.splice(42)},
-  bundle=>{bundle.entries.splice(43)},
-  bundle=>{bundle.entries.at(-1).path='db/migrations/050_foreign.sql'},
+  ...[42,43,44,45].map(count=>bundle=>{bundle.entries.splice(count)}),
+  bundle=>{bundle.entries.at(-1).path='db/migrations/999_foreign_fixture.sql'},
   bundle=>{const entry=bundle.entries.at(-1);entry.sqlBase64=Buffer.from('SELECT 1;').toString('base64');entry.appliedSha256=sha256(Buffer.from('SELECT 1;'))},
  ]
  for(const [index,mutateBundle] of cases.entries()){
