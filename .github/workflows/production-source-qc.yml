@@ -66,7 +66,7 @@ jobs:
       - name: Install the production tools' exact locked dependency closure
         if: steps.scope.outputs.docs_only != 'true'
         run: npm ci --prefix infra/google-cloud/dev-040-production-release/migration-runner --omit=dev --ignore-scripts
-      - name: Verify catalog reader compatibility and local 046 SQL on owned PostgreSQL 18
+      - name: Verify catalog readers, OrgMaster Portal visibility and local 046 on owned PostgreSQL 18
         if: steps.scope.outputs.docs_only != 'true'
         env:
           ORGMASTER_DEV070_PG_CONTAINER_ID: ${{ job.services['dev070-postgres'].id }}

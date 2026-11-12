@@ -1091,7 +1091,12 @@ function resealReceiptValue(value) {
   return sealToolEvidence(core)
 }
 
-function bindPreActivationAbort(fixture) {
+function bindPreActivationAbort(fixture, { rolledBack = false, entrypointChanged = false } = {}) {
+  const result = rolledBack ? 'ROLLED_BACK' : 'PRE_ACTIVATION_ABORTED'
+  const recovery = { result, previousRevision: fixture.baseline.activeRevision,
+    entrypointRecovery: { changed: entrypointChanged,
+      result: entrypointChanged ? 'BASELINE_RESTORED' : rolledBack ? 'BASELINE_ALREADY_ACTIVE' : 'NOT_REQUIRED' },
+    databaseDisposition: rolledBack ? 'UNCHANGED_VERIFIED' : 'NOT_APPLIED' }
   const attemptIntent = {
     schemaVersion: fixture.profile.schemas.releaseIntent,
     ownerApplicationId: 'orgmaster',
@@ -1123,9 +1128,7 @@ function bindPreActivationAbort(fixture) {
     schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
     releaseId: attemptIntent.releaseId, sourceRevision: attemptIntent.sourceRevision,
     stage: 'rollback', status: 'PASS', previousReceiptRef: null,
-    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: fixture.baseline.activeRevision,
-      recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'],
-      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' },
+    facts: { ...recovery, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'] },
     observedAt: '2026-10-18T00:31:00.000Z',
   })
   const rollbackRef = fixture.putJson('rollback', rollback, `releases/${attemptIntent.releaseId}/${attemptRef.sha256}`)
@@ -1135,8 +1138,7 @@ function bindPreActivationAbort(fixture) {
     releaseId: attemptIntent.releaseId,
     sourceRevision: attemptIntent.sourceRevision,
     stage: 'terminal', status: 'PASS', previousReceiptRef: rollbackRef,
-    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: fixture.baseline.activeRevision,
-      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' },
+    facts: recovery,
     observedAt: '2026-10-18T00:32:00.000Z',
   })
   const terminalRef = fixture.putJson('terminal', terminal, `releases/${attemptIntent.releaseId}/${attemptRef.sha256}`)
@@ -1144,14 +1146,14 @@ function bindPreActivationAbort(fixture) {
   const controlCore = {
     schemaVersion: 'jenfu.dev012.owner-control-head.v1',
     state: 'FINALIZED',
-    result: 'PRE_ACTIVATION_ABORTED',
+    result,
     ownerApplicationId: 'orgmaster',
     service: 'orgmaster-prod',
     releaseId: attemptIntent.releaseId,
     sourceRevision: attemptIntent.sourceRevision,
     sourceLockSha256: attemptIntent.sourceLockRef.sha256,
     previousRevision: fixture.baseline.activeRevision,
-    candidateRevision: null,
+    candidateRevision: rolledBack ? 'orgmaster-prod-rollback-candidate' : null,
   }
   const control = { ...controlCore, controlSha256: sha256(canonicalize(controlCore)) }
   const controlRef = fixture.putJson('control-head-aborted', control, `releases/${attemptIntent.releaseId}`)
@@ -1587,6 +1589,16 @@ test('requires the hash-bound finalized control head and accepts an exact sealed
     assert.rejects(() => validateRotationFixture(badPrepare), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
     assert.rejects(() => validateRotationFixture(badRollback), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID'),
   ])
+})
+
+test('checks sealed runtime rollback evidence when verifying a saved rotation', async () => {
+  const safe = makeReceiptHarness()
+  bindPreActivationAbort(safe, { rolledBack: true })
+  assert.equal((await validateRotationFixture(safe)).migrationRunnerDigest, NEXT_IMAGE)
+
+  const changed = makeReceiptHarness()
+  bindPreActivationAbort(changed, { rolledBack: true, entrypointChanged: true })
+  await assert.rejects(() => validateRotationFixture(changed), /TOOL_ROTATION_BASELINE_INVALID/u)
 })
 
 test('accepts the legacy finalized abort head only when the candidate revision is owned and the abort proof is complete', async () => {

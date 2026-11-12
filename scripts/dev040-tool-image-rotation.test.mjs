@@ -477,7 +477,11 @@ test('state source continuation keeps runner, controller and foundation bindings
     assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 0 })
   }
 })
-function bindProducerAbort(h, { releaseId, infraRef }) {
+function bindProducerAbort(h, { releaseId, infraRef, rolledBack = false, databaseDisposition } ) {
+  const result = rolledBack ? 'ROLLED_BACK' : 'PRE_ACTIVATION_ABORTED'
+  const recovery = { result, previousRevision: h.baseline.activeRevision,
+    entrypointRecovery: { changed: false, result: rolledBack ? 'BASELINE_ALREADY_ACTIVE' : 'NOT_REQUIRED' },
+    databaseDisposition: databaseDisposition ?? (rolledBack ? 'UNCHANGED_VERIFIED' : 'NOT_APPLIED') }
   const attemptIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster',
     releaseId, sourceRevision, sourceSha256: '4'.repeat(64), sourceLockRef: h.infraRef,
     authorizationPolicyRef: h.infraRef, readinessReceiptRef: h.infraRef, foundationReceiptRef: h.infraRef,
@@ -491,17 +495,14 @@ function bindProducerAbort(h, { releaseId, infraRef }) {
     facts: { prerequisiteRefs: { infra: infraRef }, migrationRunnerDigest: oldImage }, observedAt: NOW }))
   const rollbackRef = h.seed(paths.rollback, sealToolEvidence({ schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
     releaseId: attemptIntent.releaseId, sourceRevision, stage: 'rollback', status: 'PASS', previousReceiptRef: null,
-    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: h.baseline.activeRevision,
-      recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'],
-      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' }, observedAt: NOW }))
+    facts: { ...recovery, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'] }, observedAt: NOW }))
   const terminalRef = h.seed(paths.terminal, sealToolEvidence({ schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
     releaseId: attemptIntent.releaseId, sourceRevision, stage: 'terminal', status: 'PASS', previousReceiptRef: rollbackRef,
-    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: h.baseline.activeRevision,
-      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' }, observedAt: NOW }))
-  const abortedCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result: 'PRE_ACTIVATION_ABORTED',
+    facts: recovery, observedAt: NOW }))
+  const abortedCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result,
     ownerApplicationId: 'orgmaster', service: 'orgmaster-prod', releaseId: attemptIntent.releaseId,
     sourceRevision: attemptIntent.sourceRevision, sourceLockSha256: attemptIntent.sourceLockRef.sha256,
-    previousRevision: h.baseline.activeRevision, candidateRevision: null }
+    previousRevision: h.baseline.activeRevision, candidateRevision: rolledBack ? 'orgmaster-prod-rollback-candidate' : null }
   const aborted = { ...abortedCore, controlSha256: sha256(canonicalize(abortedCore)) }
   h.seed(h.controlUri, aborted)
   h.input.resolveControlBaseline = async ({ control, attempt }) => {
@@ -576,6 +577,20 @@ test('read-only readiness resolves an exact sealed pre-activation abort to its r
   assert.deepEqual(result.baselineIntentRef, h.baselineIntentRef)
   for (const ref of [abort.prepareRef, abort.rollbackRef, abort.terminalRef]) assert.ok(h.trace.includes(`read:${ref.uri}`))
   assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
+})
+test('read-only readiness accepts a verified runtime rollback and rejects a database-changing rollback', async () => {
+  const safe = harness()
+  const rollback = bindProducerAbort(safe, { releaseId: 'ORGMASTER-ROLLBACK-ATTEMPT', infraRef: safe.infraRef, rolledBack: true })
+  const prepared = await stopAt(safe, 'prepared')
+  assert.deepEqual(prepared.controlAttemptIntentRef, rollback.attemptRef)
+  assert.deepEqual(prepared.controlRollbackRef, rollback.rollbackRef)
+  assert.equal(safe.calls.applies, 0)
+
+  const unsafe = harness()
+  bindProducerAbort(unsafe, { releaseId: 'ORGMASTER-ROLLBACK-CHANGED-DB', infraRef: unsafe.infraRef,
+    rolledBack: true, databaseDisposition: 'FORWARD_APPLIED' })
+  await assert.rejects(executeToolImageRotation(unsafe.input), /BASELINE_INVALID/u)
+  assert.deepEqual(unsafe.calls, { builds: 0, applies: 0, puts: 0, plans: 0 })
 })
 test('applied tool recovery after an abort accepts a released source that reused the exact older infra receipt', async () => {
   const h = harness({ releasedSourceSuccessor: true })

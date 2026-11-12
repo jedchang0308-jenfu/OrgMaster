@@ -44,7 +44,9 @@ function assertToolControlStage(value, profile, intent, stage) {
     || receiptSha256 !== sha256(canonicalize(core))) fail('BASELINE_INVALID')
   return value
 }
-export function assertToolPreActivationAbortControl({ profile, attemptIntent, attemptRef, baselineIntentRef,
+export const TOOL_ROTATION_FINAL_CONTROL_RESULTS = Object.freeze(['RELEASED', 'PRE_ACTIVATION_ABORTED', 'ROLLED_BACK'])
+
+export function assertToolRecoveredControl({ profile, attemptIntent, attemptRef, baselineIntentRef,
   infraRef, priorInfra, baselineActiveRevision, control, prepareRead, rollbackRead, terminalRead }) {
   const paths = releasePaths(profile, attemptIntent, attemptRef.sha256)
   const prepare = assertToolControlStage(prepareRead.value, profile, attemptIntent, 'prepare')
@@ -55,19 +57,26 @@ export function assertToolPreActivationAbortControl({ profile, attemptIntent, at
   // revision into the finalized abort head.  Accept that legacy shape only
   // when the sealed abort receipts and the provider baseline prove that the
   // candidate was removed; every unrelated/non-owned revision still fails.
-  const candidateRevisionValid = control.candidateRevision === null
-    || (typeof control.candidateRevision === 'string'
-      && control.candidateRevision.startsWith(`${profile.target.serviceName}-`))
+  const serviceCandidate = typeof control.candidateRevision === 'string'
+    && control.candidateRevision.startsWith(`${profile.target.serviceName}-`)
+  const aborted = control.result === 'PRE_ACTIVATION_ABORTED'
+  const verifiedRecovery = aborted
+    ? (control.candidateRevision === null || serviceCandidate)
+      && ['NOT_APPLIED', 'UNCHANGED_VERIFIED'].includes(rollbackFacts?.databaseDisposition)
+    : control.result === 'ROLLED_BACK' && !attemptIntent.principalOnlyRecovery
+      && serviceCandidate && control.candidateRevision !== baselineActiveRevision
+      && rollbackFacts?.databaseDisposition === 'UNCHANGED_VERIFIED'
+      && rollbackFacts.entrypointRecovery?.result === 'BASELINE_ALREADY_ACTIVE'
+      && !rollbackFacts.administrationRecovery && !terminalFacts?.administrationRecovery
   if (prepareRead.ref.uri !== paths.prepare || rollbackRead.ref.uri !== paths.rollback || terminalRead.ref.uri !== paths.terminal
     || control.releaseId !== attemptIntent.releaseId || control.sourceRevision !== attemptIntent.sourceRevision
     || control.sourceLockSha256 !== attemptIntent.sourceLockRef.sha256 || control.previousRevision !== baselineActiveRevision
-    || !candidateRevisionValid || !same(attemptIntent.baselineIntentRef, baselineIntentRef)
+    || !verifiedRecovery || !same(attemptIntent.baselineIntentRef, baselineIntentRef)
     || !same(attemptIntent.infraReceiptRef, infraRef) || attemptIntent.previousRevision !== baselineActiveRevision
     || !same(prepare.facts?.prerequisiteRefs?.infra, infraRef)
     || prepare.facts?.migrationRunnerDigest !== priorInfra.migrationRunnerDigest
-    || rollbackFacts?.result !== 'PRE_ACTIVATION_ABORTED' || terminalFacts?.result !== 'PRE_ACTIVATION_ABORTED'
+    || rollbackFacts?.result !== control.result || terminalFacts?.result !== control.result
     || rollbackFacts.previousRevision !== baselineActiveRevision || terminalFacts.previousRevision !== baselineActiveRevision
-    || !['NOT_APPLIED', 'UNCHANGED_VERIFIED'].includes(rollbackFacts.databaseDisposition)
     || terminalFacts.databaseDisposition !== rollbackFacts.databaseDisposition
     || rollbackFacts.entrypointRecovery?.changed !== false
     || !same(terminalFacts.entrypointRecovery, rollbackFacts.entrypointRecovery)
@@ -479,7 +488,7 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || priorInfra.foundationManifestSha256 !== receipt.foundationManifestSha256) fail('BASELINE_INVALID')
   const { controlSha256, ...controlCore } = controlRead.value
   if (controlRead.ref.sha256 !== proof.controlBaseline?.sha256 || controlSha256 !== sha256(canonicalize(controlCore))
-    || controlCore.state !== 'FINALIZED' || !['RELEASED', 'PRE_ACTIVATION_ABORTED'].includes(controlCore.result)
+    || controlCore.state !== 'FINALIZED' || !TOOL_ROTATION_FINAL_CONTROL_RESULTS.includes(controlCore.result)
     || controlCore.ownerApplicationId !== 'orgmaster' || controlCore.service !== 'orgmaster-prod') fail('BASELINE_INVALID')
   if (controlCore.result === 'RELEASED') {
     if (proof.controlAttemptIntentRef != null || proof.controlPrepareRef != null || proof.controlRollbackRef != null
@@ -511,7 +520,7 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     if (historicalTerminalBytes.ref?.uri !== historicalTerminalUri || historicalTerminal.facts?.result !== 'RELEASED'
       || typeof historicalActiveRevision !== 'string' || !historicalActiveRevision
       || (same(intent.baselineIntentRef, proof.baselineIntentRef) && baseline.activeRevision !== historicalActiveRevision)) fail('BASELINE_INVALID')
-    assertToolPreActivationAbortControl({ profile, attemptIntent, attemptRef: attemptRead.ref,
+    assertToolRecoveredControl({ profile, attemptIntent, attemptRef: attemptRead.ref,
       baselineIntentRef: proof.baselineIntentRef, infraRef: proof.baselineInfraRef, priorInfra,
       baselineActiveRevision: historicalActiveRevision, control: controlCore, prepareRead, rollbackRead, terminalRead })
     if (same(attemptIntent.infraReceiptRef, originalIntent.infraReceiptRef)) {
