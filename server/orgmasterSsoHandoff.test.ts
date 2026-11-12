@@ -174,6 +174,19 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(value.sessions!.create).not.toHaveBeenCalled()
     if (failure === 'state' || failure === 'service-proof') expect(deps.fetch).not.toHaveBeenCalled()
   })
+
+  it('replaces an expired local session when the new SSO principal differs', async () => {
+    const value = runtime()
+    vi.mocked(value.sessions!.findByHash).mockResolvedValue({ id: 'expired-session', identityIssuer: 'issuer', identitySubject: 'subject', principalId: 'different-principal', employeeId: 'employee-2', authEpoch: 0, sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 7, issuedAt: '2026-09-17T01:00:00.000Z', authenticatedAt: '2026-09-17T01:00:00.000Z', expiresAt: '2026-09-17T02:59:59.000Z', revokedAt: null, assuranceLevel: 'aal1' })
+    const base = await listen(value, dependencies('on'))
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.search = new URLSearchParams({ code: 'fixture-code', state: location.searchParams.get('state')!, iss: `${brokerOrigin}/api/sso` }).toString()
+    const accepted = await fetch(callback, { redirect: 'manual', headers: { cookie: `${start.headers.get('set-cookie')!.split(';')[0]}; orgmaster_session=expired-fixture` } })
+    expect(accepted.status).toBe(303)
+    expect(value.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({ principalId: 'principal-1' }))
+  })
   it('keeps health available and direct start fail-closed while mode is off', async () => {
     const value = runtime()
     value.ssoHandoffEnabled = false
