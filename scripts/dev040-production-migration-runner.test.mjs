@@ -404,7 +404,7 @@ test('migration runner Docker copies the migration and lifecycle readback static
 })
 
 
-test('DEV070 runner resumes only exact 31–45 row known prefixes and refuses unknown ledger rows before writes',async()=>{
+test('DEV070 runner resumes only exact 31–47 row known prefixes and refuses unknown ledger rows before writes',async()=>{
  const input=fixture({administration:true})
  for(const count of DEV070_ACCEPTED_LEDGER_COUNTS){
   const ledger=ledgerFor(input.bundle,count),statements=[]
@@ -412,7 +412,7 @@ test('DEV070 runner resumes only exact 31–45 row known prefixes and refuses un
   assert.equal(receipt.ledgerCount,DEV070_MIGRATION_ENTRY_COUNT);assert.equal(receipt.applied,DEV070_MIGRATION_ENTRY_COUNT-count);assert.equal(receipt.replayed,count)
  }
  for(const mutate of[rows=>rows.splice(30),rows=>rows.push({version:'unknown-046',name:'unrelated',checksum_sha256:'0'.repeat(64),source_revision:'old'}),rows=>{rows[31].checksum_sha256='0'.repeat(64)},rows=>{rows[39].name='other'},rows=>{[rows[0],rows[1]]=[rows[1],rows[0]]}]){
-  const ledger=ledgerFor(input.bundle,45),statements=[];mutate(ledger)
+  const ledger=ledgerFor(input.bundle,46),statements=[];mutate(ledger)
   await assert.rejects(executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV070_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true}),/MIGRATION_EXISTING_LEDGER_COUNT_INVALID|MIGRATION_LEDGER_PREFIX_MISMATCH|MIGRATION_CHECKSUM_MISMATCH/)
   assert.equal(writesStarted(statements),false)
  }

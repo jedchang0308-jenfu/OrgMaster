@@ -271,7 +271,45 @@ export async function verifyPdmManagerWithScopedReaders({ admin, owner, root, da
   assert.equal((await observe({}, 'jenfu_platform_runtime')).code, '42501')
   assert.equal((await admin.query(`SELECT has_function_privilege('jenfu_ai_pdm_runtime',
     'orgmaster_core.read_ai_pdm_principal_grants_v5(text,text,boolean)','EXECUTE') AS allowed`)).rows[0].allowed, false)
+  const portalPath = 'db/migrations/051_dev070_scoped_portal_orgmaster_visibility.sql'
+  const portalSql = await readFile(path.join(root, portalPath))
+  assert.equal(createHash('sha256').update(portalSql).digest('hex'),
+    profile.migrations.entries.find(entry => entry.path === portalPath).sourceSha256)
+  // Install the exact 050 rename prerequisite in this component fixture.
+  const definitions = await readFile(path.join(root, 'db/migrations/050_dev070_administrative_definitions_v2.sql'), 'utf8')
+  const legacyRename = definitions.match(/^ALTER FUNCTION orgmaster_core\.administrative_catalog_current_v1\(text,jsonb\)\r?\n RENAME TO administrative_catalog_current_legacy_v1;$/mu)
+  assert.ok(legacyRename)
+  await owner.query(legacyRename[0])
+  await admin.query(portalSql.toString('utf8'))
+  const portalQuery = 'SELECT * FROM orgmaster_contract.read_portal_orgmaster_visibility_v1($1,$2)'
+  const portalPolicy = {
+    identityLinks: [{ id: 'target-link', principalId: principal, employeeId: employee, issuer, subject, status: 'active', validFrom: past }],
+    principalAdmissions: [{ identityLinkId: 'target-link', accountType: 'human_personal', status: 'active' }],
+    applicationRoles: [{ id: 'orgmaster-fixture-role', applicationId: 'orgmaster', status: 'active' }],
+    roleAssignments: [{ applicationId: 'orgmaster', employeeId: employee, roleId: 'orgmaster-fixture-role',
+      subjectKind: 'principal', targetPrincipalId: principal, status: 'active', validFrom: past }],
+  }
+  const publishPortalPolicy = () => owner.query(`UPDATE orgmaster_core.persistence_artifacts SET payload=$1::jsonb
+    WHERE artifact_key='orgmaster-governance.v3.json'`, [JSON.stringify({ schemaVersion: 3, activePolicyVersionId: 'current',
+    publishedVersions: [{ id: 'current', kind: 'assignment-governance-v3', versionNumber: 1, publishedAt: past, policy: portalPolicy }] })])
+  const readPortalAs = async (role, pair) => {
+    assert.ok(['jenfu_platform_runtime', 'jenfu_ai_pdm_runtime'].includes(role))
+    await admin.query('BEGIN READ ONLY')
+    try {
+      await admin.query('SET LOCAL ROLE ' + role)
+      return (await admin.query(portalQuery, pair)).rows
+    } finally { await admin.query('ROLLBACK') }
+  }
+  await publishPortalPolicy()
+  assert.deepEqual(await readPortalAs('jenfu_platform_runtime', [issuer, subject]),
+    [{ application_id: 'orgmaster', assignment_version: '1', visibility_state: 'visible' }])
+  assert.deepEqual(await readPortalAs('jenfu_platform_runtime', ['wrong-issuer', subject]), [])
+  await assert.rejects(readPortalAs('jenfu_ai_pdm_runtime', [issuer, subject]), error => error.code === '42501')
+  portalPolicy.roleAssignments[0].validTo = '2001-01-01T00:00:00.000Z'
+  await publishPortalPolicy()
+  assert.deepEqual(await readPortalAs('jenfu_platform_runtime', [issuer, subject]), [])
   return { scope: 'DEV070_048_049_ACTUAL_TYPED_READERS_WITH_PREREQUISITE_PROJECTION_FIXTURES', status: 'PASS',
     postgres: 18, cases: tests.length, observations: tests.length * 2, metadataPreserved: true,
+    scopedPortal051: { exactPair: 'PASS', issuerMismatch: 'PASS', expired: 'PASS', otherRuntimeDenied: 'PASS' },
     fixtureBoundaries: ['upstream-storage-shapes', 'sibling-catalog-projections'], nativeCapacityMeasured: false }
 }

@@ -13,7 +13,7 @@ import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-t
 import { assertDev040ReleaseIntent } from './lib/dev040-orgmaster-independent-release.mjs'
 import { assertToolOwner, assertToolRotationPlan, assertToolRotationState, sealToolEvidence,
   assertToolInfrastructureTransition, rotationAddresses, assertOrdinaryToolRotation, assertToolSeal, assertToolBuildProof,
-  assertToolArtifactAssociation, assertToolPreActivationAbortControl, assertToolStateSourceContinuation,
+  assertToolArtifactAssociation, assertToolRecoveredControl, assertToolStateSourceContinuation, TOOL_ROTATION_FINAL_CONTROL_RESULTS,
   assertAppliedToolInfrastructureBaseline,assertReusableAfterStateEvidence,assertToolInfrastructureBasis } from './lib/dev040-tool-image-rotation.mjs'
 export {assertReusableAfterStateEvidence} from './lib/dev040-tool-image-rotation.mjs'
 
@@ -95,7 +95,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   const control = JSON.parse(head.bytes.toString('utf8'))
   const { controlSha256, ...controlCore } = control
   if (controlSha256 !== sha256(canonicalize(controlCore)) || control.state !== 'FINALIZED'
-    || !['RELEASED', 'PRE_ACTIVATION_ABORTED'].includes(control.result)
+    || !TOOL_ROTATION_FINAL_CONTROL_RESULTS.includes(control.result)
     || control.ownerApplicationId !== 'orgmaster' || control.service !== 'orgmaster-prod') fail('CONTROL_NOT_RELEASED')
   const intentRead = await transport.readBytes(`gs://${bucket}/receipts/releases/${control.releaseId}/release-intent.json`, { prefixes: ['receipts'] })
   const controlIntent = JSON.parse(intentRead.bytes.toString('utf8'))
@@ -103,11 +103,11 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   const baselineIntentRef = control.result === 'RELEASED'
     ? intentRead.ref
     : await resolveControlBaseline({ profile, transport, control, attempt })
-  const controlAttemptIntent = control.result === 'PRE_ACTIVATION_ABORTED'
+  const controlAttemptIntent = control.result !== 'RELEASED'
     ? assertDev040ReleaseIntent(controlIntent, profile)
     : null
   let controlPrepareRead = null, controlRollbackRead = null, controlTerminalRead = null
-  if (control.result === 'PRE_ACTIVATION_ABORTED') {
+  if (controlAttemptIntent) {
     const paths = releasePaths(profile, controlIntent, intentRead.ref.sha256)
     ;[controlPrepareRead, controlRollbackRead, controlTerminalRead] = await Promise.all([
       transport.readBytes(paths.prepare, { prefixes: ['receipts'] }),
@@ -118,7 +118,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   const baseline = await readBaseline({ profile, transport, baselineIntentRef })
   if ((control.result === 'RELEASED'
     && (baseline.intent.sourceRevision !== control.sourceRevision || baseline.activeRevision !== control.candidateRevision))
-    || (control.result === 'PRE_ACTIVATION_ABORTED' && baseline.activeRevision !== control.previousRevision)) fail('BASELINE_INVALID')
+    || (controlAttemptIntent && baseline.activeRevision !== control.previousRevision)) fail('BASELINE_INVALID')
   const service = await transport.getService(profile)
   transport.assertServiceSettled(service); transport.assertCanonicalEntrypoint(profile, service)
   if (transport.effectiveRevision(service) !== baseline.activeRevision || [...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some(row => row.tag)) fail('BASELINE_INVALID')
@@ -149,7 +149,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
   }
   if (controlAttemptIntent) {
     const stageRead = read => ({ ...read, value: JSON.parse(read.bytes.toString('utf8')) })
-    assertToolPreActivationAbortControl({ profile, attemptIntent: controlAttemptIntent, attemptRef: intentRead.ref,
+    assertToolRecoveredControl({ profile, attemptIntent: controlAttemptIntent, attemptRef: intentRead.ref,
       baselineIntentRef, infraRef: previousInfraRef, priorInfra: previousInfra,
       baselineActiveRevision: baseline.activeRevision, control: controlCore,
       prepareRead: stageRead(controlPrepareRead), rollbackRead: stageRead(controlRollbackRead), terminalRead: stageRead(controlTerminalRead) })
@@ -182,7 +182,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     if (prepared.schemaVersion !== 'orgmaster.tool-image-rotation-prepared.v1'
       || prepared.sourceRevision !== git.sourceRevision || !same(prepared.baselineIntentRef, baselineIntentRef)
       || !same(prepared.baselineInfraRef, previousInfraRef)
-      || !same(prepared.controlAttemptIntentRef ?? null, control.result === 'PRE_ACTIVATION_ABORTED' ? intentRead.ref : null)
+      || !same(prepared.controlAttemptIntentRef ?? null, controlAttemptIntent ? intentRead.ref : null)
       || !same(prepared.controlPrepareRef ?? null, controlPrepareRead?.ref ?? null)
       || !same(prepared.controlRollbackRef ?? null, controlRollbackRead?.ref ?? null)
       || !same(prepared.controlTerminalRef ?? null, controlTerminalRead?.ref ?? null)
@@ -233,7 +233,7 @@ export async function executeToolImageRotation({ root, profile, git, sourceProof
     prepared = sealToolEvidence({ schemaVersion: 'orgmaster.tool-image-rotation-prepared.v1', sourceRevision: git.sourceRevision,
       baselineIntentRef, baselineInfraRef: previousInfraRef, baselineSourceRevision: previousInfra.sourceRevision,
       ...(appliedInfraBaseline ? { appliedInfraBaseline } : {}),
-      ...(control.result === 'PRE_ACTIVATION_ABORTED' ? { controlAttemptIntentRef: intentRead.ref,
+      ...(controlAttemptIntent ? { controlAttemptIntentRef: intentRead.ref,
         controlPrepareRef: controlPrepareRead.ref, controlRollbackRef: controlRollbackRead.ref, controlTerminalRef: controlTerminalRead.ref } : {}),
       controlBaseline: head.ref, controlSnapshotRef: controlSnapshot.ref, controlGeneration: String(head.metadata.generation), sourceProof,
       ...(reuseBuild ? { artifactSourceProof: reuseBuild.sourceProof } : {}),
