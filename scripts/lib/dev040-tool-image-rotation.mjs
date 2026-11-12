@@ -515,8 +515,8 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
       baselineIntentRef: proof.baselineIntentRef, infraRef: proof.baselineInfraRef, priorInfra,
       baselineActiveRevision: historicalActiveRevision, control: controlCore, prepareRead, rollbackRead, terminalRead })
     if (same(attemptIntent.infraReceiptRef, originalIntent.infraReceiptRef)) {
-      if (originalIntent.sourceRevision !== proof.baselineSourceRevision
-        || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
+      if (!same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
+      assertToolStateSourceContinuation(root, proof.baselineSourceRevision, originalIntent.sourceRevision, receipt.sourceRevision)
     } else {
       if (!same(attemptIntent.infraReceiptRef, proof.baselineInfraRef)
         || priorInfra.sourceRevision !== proof.baselineSourceRevision) fail('BASELINE_INVALID')
