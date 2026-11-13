@@ -58,3 +58,8 @@ Formal manifest order 49 appends to the unchanged 48-entry predecessor.
   workspace and FMS catalog facts. A published catalog may have zero qualified
   principals. JF-FMS distinguishes that case from missing or ambiguous
   publication without enumerating other principals.
+
+> Migration 055 adds an optional self-display reader for a unique active
+  issuer/subject and matching Principal/Employee pair. JF-FMS authenticates
+  the cookie and checks Platform revocation before invoking it. The lookup
+  reads name metadata without evaluating financial assignments or grants.

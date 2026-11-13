@@ -15,7 +15,7 @@ const files=new Map(profile.migrations.entries.map(entry=>[entry.path,readFileSy
 const after=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c,root),files,source).bundle
 const before=count=>({...after,sourceRevision:'b'.repeat(40),manifestSha256:'c'.repeat(64),entries:after.entries.slice(0,count)})
 
-test('DEV070 exact reviewed source packages only 042/044/045/047/048/049/050/051/052/053/054 after immutable 001–041 identity',()=>{
+test('DEV070 exact reviewed source packages only 042/044/045/047/048/049/050/051/052/053/054/055 after immutable 001–041 identity',()=>{
  assertDev040V3Profile(profile,n1c);assertDev070MigrationEntries(after.entries)
  assertDev059MigrationEntries(after.entries.slice(0,39))
  assert.equal(after.entries.length,DEV070_MIGRATION_ENTRY_COUNT)
@@ -77,7 +77,7 @@ test('048 changes only the two reviewed scalar projections while preserving comp
  let accounts=extract(sql,'CREATE OR REPLACE FUNCTION orgmaster_core.read_ai_pdm_principal_accounts_v1(','$accounts$;').replace('CREATE OR REPLACE FUNCTION','CREATE FUNCTION')
  accounts=accounts.replace("  SELECT artifact.payload, artifact.payload->>'activePolicyVersionId' AS active_policy_id, artifact.payload->'publishedVersions' AS published_versions\n",'  SELECT artifact.payload\n').replaceAll('governance.published_versions',"governance.payload->'publishedVersions'").replace('governance.active_policy_id',"governance.payload->>'activePolicyVersionId'")
  assert.equal(accounts,extract(text('db/migrations/047_dev070_scoped_ai_pdm_principal_readers.sql'),'CREATE FUNCTION orgmaster_core.read_ai_pdm_principal_accounts_v1(','$accounts$;'))
- const extra=structuredClone(after);extra.entries.push({...extra.entries.at(-1),order:DEV070_MIGRATION_ENTRY_COUNT+1,version:'unknown-055',path:'db/migrations/055_unknown.sql'})
+ const extra=structuredClone(after);extra.entries.push({...extra.entries.at(-1),order:DEV070_MIGRATION_ENTRY_COUNT+1,version:'unknown-056',path:'db/migrations/056_unknown.sql'})
  assert.throws(()=>assertDev070MigrationEntries(extra.entries),/DEV070_MIGRATION_APPEND_INVALID/)
 })
 

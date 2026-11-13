@@ -51,3 +51,4 @@ db/migrations/051_dev070_scoped_portal_orgmaster_visibility.sql text eol=lf
 db/migrations/052_dev070_fms_authority_point_v4.sql text eol=lf
 db/migrations/053_dev070_fms_indexed_authority.sql text eol=lf
 db/migrations/054_dev070_fms_authority_publication_status.sql text eol=lf
+db/migrations/055_dev070_fms_session_display_profile.sql text eol=lf

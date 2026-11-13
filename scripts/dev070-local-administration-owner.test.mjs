@@ -48,7 +48,7 @@ test('local CLI only admits bounded plan/status/commit arguments',()=>{
 })
 test('known local raw 042 genesis is preserved as its own exact ledger variant',()=>{
  const f=fixture(),result=validateLocalLedger(entries,f.state.ledger,database)
- assert.equal(result.raw042,true);assert.equal(result.count,40);assert.deepEqual(result.pending.map(e=>e.version),['dev070-orgmaster-044','dev070-orgmaster-045','dev070-orgmaster-047','dev070-orgmaster-048','dev070-orgmaster-049','dev070-orgmaster-050','dev070-orgmaster-051','dev070-orgmaster-052','dev070-orgmaster-053','dev070-orgmaster-054'])
+ assert.equal(result.raw042,true);assert.equal(result.count,40);assert.deepEqual(result.pending.map(e=>e.version),['dev070-orgmaster-044','dev070-orgmaster-045','dev070-orgmaster-047','dev070-orgmaster-048','dev070-orgmaster-049','dev070-orgmaster-050','dev070-orgmaster-051','dev070-orgmaster-052','dev070-orgmaster-053','dev070-orgmaster-054','dev070-orgmaster-055'])
  for(const change of [rows=>rows[39].checksum_sha256='0'.repeat(64),rows=>rows[39].source_revision='LOCAL_GENESIS:99999999-b7cd-4c7c-947d-c3203e59178c',rows=>rows[0].name='foreign',rows=>rows.push({...rows[0],version:'unknown'})]){const rows=structuredClone(f.state.ledger);change(rows);assert.throws(()=>validateLocalLedger(entries,rows,database),/LEDGER_UNKNOWN/)}
 })
 
@@ -188,6 +188,6 @@ test('local current ledger accepts exact installed rows and the known forward ap
  const current=entries.map(row)
  assert.deepEqual(validateLocalLedger(entries,current,database).pending,[])
  assert.equal(validateLocalLedger(entries,current,database).count,entries.length)
- assert.deepEqual(validateLocalLedger(entries,current.slice(0,-1),database).pending.map(e=>e.version),['dev070-orgmaster-054'])
+ assert.deepEqual(validateLocalLedger(entries,current.slice(0,-1),database).pending.map(e=>e.version),['dev070-orgmaster-055'])
  assert.throws(()=>validateLocalLedger(entries,[...current,{...current.at(-1),version:'unknown-049'}],database),/LEDGER_UNKNOWN/)
 })

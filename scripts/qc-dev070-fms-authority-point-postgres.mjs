@@ -52,6 +52,7 @@ const pointSql = 'SELECT * FROM orgmaster_contract.read_fms_authority_for_princi
 const previousPointSql = 'SELECT * FROM orgmaster_contract.read_fms_authority_for_principal_baseline_v4($1,$2) LIMIT 2'
 const admissionSql = 'SELECT * FROM orgmaster_contract.read_fms_principal_admission_v2($1,$2) LIMIT 2'
 const displaySql = 'SELECT * FROM orgmaster_contract.read_fms_principal_display_profile_v1($1,$2) LIMIT 2'
+const sessionDisplaySql = 'SELECT * FROM orgmaster_contract.read_fms_session_display_profile_v1($1,$2,$3,$4) LIMIT 2'
 const publicationStatusSql = 'SELECT orgmaster_contract.is_fms_authority_publication_ready_v1() AS ready'
 
 async function installPointReader({ admin, handle }) {
@@ -68,6 +69,7 @@ async function installPointReader({ admin, handle }) {
   await admin.query('REVOKE ALL ON FUNCTION orgmaster_contract.read_fms_authority_for_principal_baseline_v4(text,text) FROM PUBLIC; GRANT EXECUTE ON FUNCTION orgmaster_contract.read_fms_authority_for_principal_baseline_v4(text,text) TO fms_runtime')
   await admin.query(await readFile(new URL('../db/migrations/053_dev070_fms_indexed_authority.sql', import.meta.url), 'utf8'))
   await admin.query(await readFile(new URL('../db/migrations/054_dev070_fms_authority_publication_status.sql', import.meta.url), 'utf8'))
+  await admin.query(await readFile(new URL('../db/migrations/055_dev070_fms_session_display_profile.sql', import.meta.url), 'utf8'))
   console.log(JSON.stringify({ scope: 'LOCAL_SYNTHETIC_ONLY', pid: handle.process.pid, port: handle.port }))
 }
 
@@ -137,6 +139,7 @@ await withAdministrationPostgresFixture(async fixture => {
   await assert.rejects(unrelated.query(pointSql, [principalId, applicationId]), { code: '42501' })
   await assert.rejects(unrelated.query(admissionSql, ['issuer-fms-authority-peer', 'subject-fms-authority-peer']), { code: '42501' })
   await assert.rejects(unrelated.query(displaySql, [principalId, employeeId]), { code: '42501' })
+  await assert.rejects(unrelated.query(sessionDisplaySql, [principalId, employeeId, 'issuer', 'subject']), { code: '42501' })
   await assert.rejects(fms.query('SELECT 1 FROM orgmaster_core.persistence_artifacts LIMIT 1'), { code: '42501' })
   await assert.rejects(fms.query('SELECT 1 FROM orgmaster_core.fms_artifact_facts LIMIT 1'), { code: '42501' })
 
@@ -179,6 +182,12 @@ await withAdministrationPostgresFixture(async fixture => {
   }
   assert.equal((await fms.query(displaySql, [principalId, employeeId])).rowCount, 0)
 
+  const peerDisplay = [sameEmployeePrincipal, employeeId, ...peer]
+  assert.equal((await fms.query(sessionDisplaySql, peerDisplay)).rows[0]?.employee_name, employeeName)
+  assert.equal((await fms.query(sessionDisplaySql, [principalId, employeeId, ...peer])).rowCount, 0)
+  assert.equal((await fms.query(sessionDisplaySql, [sameEmployeePrincipal, 'employee-two', ...peer])).rowCount, 0)
+  assert.equal((await fms.query(sessionDisplaySql, [sameEmployeePrincipal, employeeId, peer[0], 'other-subject'])).rowCount, 0)
+
   const human = await createAdministrativeHumanFixture(fixture)
   const receipt = await human.commit(await human.command('grant_application_administrator', {
     target: { principalId, employeeId, applicationId, validFrom, validTo: null },
@@ -219,7 +228,12 @@ await withAdministrationPostgresFixture(async fixture => {
   await drainAdministrationFixtureEvents(fixture, dispatch)
   await compareReads(fms, principalId, 0)
   assert.equal((await fms.query(displaySql, [principalId, employeeId])).rowCount, 0)
-  console.log('PASS FMS exact Principal catalog grant, no business assignments, same-Employee isolation, and committed revocation on next read')
+  assert.equal((await fms.query(sessionDisplaySql, peerDisplay)).rows[0]?.employee_name, employeeName)
+  await editPublishedFixture(admin, ({ policy }) => {
+    policy.identityLinks.find(link => link.principalId === sameEmployeePrincipal).status = 'inactive'
+  })
+  assert.equal((await fms.query(sessionDisplaySql, peerDisplay)).rowCount, 0)
+  console.log('PASS FMS catalog grant and committed revocation; self-display ignores financial grants and rejects mismatched or withdrawn identity')
 }, { platformRoot })
 
 await withAdministrationPostgresFixture(async fixture => {

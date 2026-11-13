@@ -1,6 +1,6 @@
 -- DB-CHANGE
 -- owner: orgmaster
--- schemas: orgmaster_contract
+-- schemas: orgmaster_core, orgmaster_contract
 -- contract-impact: FMS authority publication availability
 -- compatibility: additive
 -- governance-review: DEV-070
