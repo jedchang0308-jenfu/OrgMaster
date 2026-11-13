@@ -587,6 +587,13 @@
         "path": "db/migrations/052_dev070_fms_authority_point_v4.sql",
         "sourceSha256": "39dda03076fe2b7a42ab661efdd40c2e0cded6565a6be79b8d116021d4ef5df0",
         "appliedSha256": "22043040a65c436e1782afdb2c141677f8270cb17baf93421144a1d9759923ee"
+      },
+      {
+        "order": 49,
+        "version": "dev070-orgmaster-053",
+        "path": "db/migrations/053_dev070_fms_indexed_authority.sql",
+        "sourceSha256": "1de121b3661076463e0c08e44dc7f3e69f839dfe5e5f1e5d6b5d44ec5cabddf7",
+        "appliedSha256": "2e7641f09bb66455368ee9a3d652312a01305ceb4f04a3540e0aefa69bcbe327"
       }
     ]
   },

@@ -2871,7 +2871,7 @@ test('DEV070 native routine rejects a declared direct tool ref with missing or n
  }
 })
 test('DEV070 routine planner binds the exact suffix and known baseline without changing ordinary zero-DDL release',async()=>{
- for(const count of[31,39,40,41,42,43,44,45,46,47]){
+ for(const count of[31,39,40,41,42,43,44,45,46,47,48]){
   const h=administrationHarness(count),plan=await verifyRoutineRelease(h.input)
   assert.equal(plan.releaseMode,DEV070_RELEASE_MODE);assert.equal(plan.migrationDisposition,'FORWARD_APPLY')
   assert.equal(plan.pendingMigrationCount,DEV070_MIGRATION_ENTRY_COUNT-count)
