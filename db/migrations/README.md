@@ -53,3 +53,8 @@ FMS-qualified exact pair. The existing enumeration, admission and display
 views remain available. The active artifact publication and its indexed facts
 commit together. Reads still evaluate expiry and lifecycle delivery state.
 Formal manifest order 49 appends to the unchanged 48-entry predecessor.
+
+> Migration 054 adds a restricted publication status check over the active
+  workspace and FMS catalog facts. A published catalog may have zero qualified
+  principals. JF-FMS distinguishes that case from missing or ambiguous
+  publication without enumerating other principals.

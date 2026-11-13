@@ -52,6 +52,7 @@ const pointSql = 'SELECT * FROM orgmaster_contract.read_fms_authority_for_princi
 const previousPointSql = 'SELECT * FROM orgmaster_contract.read_fms_authority_for_principal_baseline_v4($1,$2) LIMIT 2'
 const admissionSql = 'SELECT * FROM orgmaster_contract.read_fms_principal_admission_v2($1,$2) LIMIT 2'
 const displaySql = 'SELECT * FROM orgmaster_contract.read_fms_principal_display_profile_v1($1,$2) LIMIT 2'
+const publicationStatusSql = 'SELECT orgmaster_contract.is_fms_authority_publication_ready_v1() AS ready'
 
 async function installPointReader({ admin, handle }) {
   assert.equal(handle.targetClass, 'task-owned-local')
@@ -66,6 +67,7 @@ async function installPointReader({ admin, handle }) {
   await admin.query(definition.replace('read_fms_authority_for_principal_v4', 'read_fms_authority_for_principal_baseline_v4'))
   await admin.query('REVOKE ALL ON FUNCTION orgmaster_contract.read_fms_authority_for_principal_baseline_v4(text,text) FROM PUBLIC; GRANT EXECUTE ON FUNCTION orgmaster_contract.read_fms_authority_for_principal_baseline_v4(text,text) TO fms_runtime')
   await admin.query(await readFile(new URL('../db/migrations/053_dev070_fms_indexed_authority.sql', import.meta.url), 'utf8'))
+  await admin.query(await readFile(new URL('../db/migrations/054_dev070_fms_authority_publication_status.sql', import.meta.url), 'utf8'))
   console.log(JSON.stringify({ scope: 'LOCAL_SYNTHETIC_ONLY', pid: handle.process.pid, port: handle.port }))
 }
 
@@ -131,6 +133,7 @@ await withAdministrationPostgresFixture(async fixture => {
   const platform = await connect('platform-prod-runtime@jenfu-platform-prod.iam')
   await admin.query('CREATE ROLE fms_authority_unrelated_fixture LOGIN; GRANT USAGE ON SCHEMA orgmaster_contract TO fms_authority_unrelated_fixture')
   const unrelated = await connect('fms_authority_unrelated_fixture')
+  await assert.rejects(unrelated.query(publicationStatusSql), { code: '42501' })
   await assert.rejects(unrelated.query(pointSql, [principalId, applicationId]), { code: '42501' })
   await assert.rejects(unrelated.query(admissionSql, ['issuer-fms-authority-peer', 'subject-fms-authority-peer']), { code: '42501' })
   await assert.rejects(unrelated.query(displaySql, [principalId, employeeId]), { code: '42501' })
@@ -306,6 +309,19 @@ await withAdministrationPostgresFixture(async fixture => {
     assignment.validTo = new Date(now - 60_000).toISOString()
   })
   await compareReads(fms, denied.principal_id, 0)
+  await editPublishedFixture(admin, publication => {
+    publication.policy.roleAssignments = []
+  })
+  assert.equal((await fms.query(pointSql, [allowed.principal_id, applicationId])).rowCount, 0)
+  assert.equal((await fms.query(publicationStatusSql)).rows[0].ready, true)
+  await editPublishedFixture(admin, publication => {
+    publication.externalRoleCatalogs = [businessCatalog, { ...businessCatalog, catalogVersion: 'duplicate-catalog' }]
+  })
+  assert.equal((await fms.query(publicationStatusSql)).rows[0].ready, false)
+  await editPublishedFixture(admin, publication => {
+    publication.externalRoleCatalogs = []
+  })
+  assert.equal((await fms.query(publicationStatusSql)).rows[0].ready, false)
   console.log(JSON.stringify({
     result: 'PASS',
     workMem: (await fms.query('SHOW work_mem')).rows[0].work_mem,
