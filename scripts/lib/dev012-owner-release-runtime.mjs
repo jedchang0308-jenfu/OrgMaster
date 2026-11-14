@@ -836,7 +836,12 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     return after
   }
 
-  async function runMigrationJob({ profile, deployment, outputUri, deadlineAt, migrationMode = null, enrollmentIntentOperation = null }) {
+  async function runMigrationJob({ profile, deployment, outputUri, deadlineAt, migrationMode = null, enrollmentIntentOperation = null, pdmPublicationControlRef = null }) {
+    if (pdmPublicationControlRef) {
+      if (profile.application.id !== 'orgmaster' || migrationMode || enrollmentIntentOperation ||
+          !/^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/pdm-publication-control\/[a-f0-9]{40}\/[a-f0-9]{64}\.json$/u.test(outputUri)) fail('PDM_PUBLICATION_CONTROL_JOB_INPUT_INVALID')
+      assertImmutableRef(pdmPublicationControlRef, profile.artifact.releaseBucket, ['source/migration-bundles/pdm-publication-control'])
+    }
     if(enrollmentIntentOperation&& (migrationMode!==null||profile.application.id!=='orgmaster'||!['plan','admit','revoke','status'].includes(enrollmentIntentOperation.action)||!H64.test(enrollmentIntentOperation.ref?.sha256??'')||!enrollmentIntentOperation.ref?.uri?.startsWith('gs://jenfu-platform-prod-orgmaster-release/source/migration-bundles/enrollment-intents/')||enrollmentIntentOperation.ref.uri.includes('..')||Object.keys(enrollmentIntentOperation).sort().join(',')!=='action,ref'||Object.keys(enrollmentIntentOperation.ref??{}).sort().join(',')!=='sha256,uri'))fail('DEV070_INTENT_JOB_INPUT_INVALID')
     if (deployment.productionDataRef || deployment.firstPrincipalBootstrapRef) fail('MIGRATION_BOOTSTRAP_INPUT_DENIED')
     if (migrationMode !== null && ![DEV060_RELEASE_MODE,DEV070_RELEASE_MODE].includes(migrationMode)) fail('MIGRATION_MODE_INVALID')
@@ -856,11 +861,23 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       POSTGRES_IAM_LOGIN: profile.migrations.serviceAccount.replace('.gserviceaccount.com', ''),
       POSTGRES_SOCKET: `/cloudsql/${connectionName}`,
     }
-    if(enrollmentIntentOperation&&((job.template?.template?.containers?.length??0)!==1||(container?.command?.length??0)!==0))fail('DEV070_INTENT_JOB_TEMPLATE_INVALID')
+    if((enrollmentIntentOperation || pdmPublicationControlRef)&&((job.template?.template?.containers?.length??0)!==1||(container?.command?.length??0)!==0))fail('DEV070_INTENT_JOB_TEMPLATE_INVALID')
     const volume = job.template?.template?.volumes?.find((item) => item.name === 'cloudsql')
     const mount = container?.volumeMounts?.find((item) => item.name === 'cloudsql')
     if (job.name !== jobName || job.template?.template?.serviceAccount !== profile.migrations.serviceAccount || container?.image !== deployment.migrationRunnerDigest || canonicalize(environment) !== canonicalize(expectedEnvironment) || canonicalize(volume?.cloudSqlInstance?.instances) !== canonicalize([connectionName]) || mount?.mountPath !== '/cloudsql' || job.template?.taskCount !== 1 || job.template?.parallelism !== 1 || job.template?.template?.maxRetries !== 0 || job.template?.template?.timeout !== '1800s') fail('MIGRATION_JOB_READBACK_MISMATCH')
-    const args = enrollmentIntentOperation?['--operation-mode','DEV070_ENROLLMENT_INTENT','--action',enrollmentIntentOperation.action,'--intent-ref',enrollmentIntentOperation.ref.uri,'--intent-sha256',enrollmentIntentOperation.ref.sha256,'--source-revision',deployment.sourceRevision,'--output-ref',outputUri]:['--bundle-ref', deployment.migrationBundleRef.uri, '--bundle-sha256', deployment.migrationBundleRef.sha256, '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
+    let args
+    if (pdmPublicationControlRef) {
+      args = ['--operation-mode', 'DEV057_PDM_PUBLICATION_CONTROL',
+        '--operation-ref', pdmPublicationControlRef.uri, '--operation-sha256', pdmPublicationControlRef.sha256,
+        '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
+    } else if (enrollmentIntentOperation) {
+      args = ['--operation-mode', 'DEV070_ENROLLMENT_INTENT', '--action', enrollmentIntentOperation.action,
+        '--intent-ref', enrollmentIntentOperation.ref.uri, '--intent-sha256', enrollmentIntentOperation.ref.sha256,
+        '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
+    } else {
+      args = ['--bundle-ref', deployment.migrationBundleRef.uri, '--bundle-sha256', deployment.migrationBundleRef.sha256,
+        '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
+    }
     if (migrationMode) args.push('--migration-mode', migrationMode)
     const listExecutions = async () => {
       const executions = []
@@ -885,7 +902,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     }
     const beforeExecutions=await listExecutions()
     const beforeNames = new Set(beforeExecutions.map(execution=>execution.name))
-    const existingEnrollmentExecutions=enrollmentIntentOperation?beforeExecutions.filter(executionArgsMatch):[]
+    const existingEnrollmentExecutions=(enrollmentIntentOperation || pdmPublicationControlRef)?beforeExecutions.filter(executionArgsMatch):[]
     if(existingEnrollmentExecutions.length>1)fail('MIGRATION_EXECUTION_CARDINALITY_INVALID')
     let operationRef = existingEnrollmentExecutions.length?'REUSED_EXACT_ENROLLMENT_EXECUTION_READBACK':null
     if(!existingEnrollmentExecutions.length)try {

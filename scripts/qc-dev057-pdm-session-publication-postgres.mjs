@@ -285,7 +285,21 @@ await withAdministrationPostgresFixture(async fixture => {
     operation:quarantine, database:writer, pdmPublicationEnabled:true,
   })
   assert.equal((await admin.query('SELECT orgmaster_core.pdm_session_publication_enabled_v1() AS enabled')).rows[0].enabled, false)
-  await admin.query('UPDATE orgmaster_core.pdm_session_publication_control_v1 SET enabled=true')
+  const changeControl = (expected, enabled, digest) => admin.query(
+    "SELECT orgmaster_core.transition_pdm_session_publication_v1($1,$2,$3,clock_timestamp()+interval '1 minute') AS state",
+    [expected, enabled, digest],
+  ).then(result => result.rows[0].state)
+  const enableHash = 'a'.repeat(64)
+  await assert.rejects(org.query(
+    "SELECT orgmaster_core.transition_pdm_session_publication_v1(0,true,$1,clock_timestamp()+interval '1 minute')",
+    [enableHash],
+  ), { code: '42501' })
+  const activated = await changeControl(0, true, enableHash)
+  assert.deepEqual(await changeControl(0, true, enableHash), activated)
+  assert.equal(activated.revision, '1')
+  await assert.rejects(changeControl(0, false, 'b'.repeat(64)), /PDM_PUBLICATION_CONTROL_CONFLICT/)
+  await assert.rejects(org.query("SELECT orgmaster_core.apply_administration_command_v1('{}','{}')"),
+    /PDM_PUBLICATION_WRITER_REQUIRED/)
   await assert.rejects(writer.query(
     'SELECT orgmaster_core.quarantine_managed_identity_v1($1,$2,$3,$4,$5)',
     [managed.identityId, quarantine.expectedRevision, quarantine.incidentRef, quarantine.operationId, quarantine.reasonCode],
@@ -293,6 +307,7 @@ await withAdministrationPostgresFixture(async fixture => {
   phaseHook = null
   const baseOwner = await version()
   await assert.rejects(quarantineCommand(), /PDM_PUBLICATION_PENDING/)
+  await assert.rejects(changeControl(1, false, 'b'.repeat(64)), /PDM_PUBLICATION_CONTROL_PENDING_DELIVERY/)
   assert.equal((await identity()).link_state, 'active')
   assert.equal(await version(), baseOwner)
   assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
@@ -329,6 +344,10 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.equal((await readAdmission()).admission_enabled, false)
   assert.equal((await admissionCommand()).disposition, 'REPLAY')
   assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
-  console.log('DEV-057 PDM publication: administrative HTTP, Directory suspension, owner quarantine and admission withdrawal PASS')
+  const deactivated = await changeControl(1, false, 'b'.repeat(64))
+  assert.equal(deactivated.revision, '2')
+  assert.equal(deactivated.enabled, false)
+  await assert.rejects(changeControl(0, true, enableHash), /PDM_PUBLICATION_CONTROL_CONFLICT/)
+  console.log('DEV-057 PDM publication: administrative HTTP, Directory suspension, owner maintenance and activation/drain/recovery PASS')
 })
 } finally { await vite.close() }

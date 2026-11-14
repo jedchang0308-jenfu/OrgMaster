@@ -22,6 +22,15 @@
 
 PDM 本地角色能力政策由 AI-PDM owner 負責。OrgMaster 的舊角色能力工作區寫入的是本機規劃資料，PDM 授權以正式 v6 指派投影為準。
 
+### 正式切換與回復
+
+1. OrgMaster 以既有 DEV-040 owner 入口部署 056、057 及同源 runtime／migration runner。若先只交付 SQL，使用既有 migration-only 與同 capsule 續行。發布控制初始為關閉、revision 為 `0`。AI-PDM 接收撤銷並保留一般請求的中央檢查。Platform 接通 relay 與雙階段全域登出後，才執行 OrgMaster 啟用。
+2. 主控以完整候選驗收及 owner 階段輸出準備 `jenfu.pdm-session-rollout-acceptance.v1`。同一份 JSON 只含 `schemaVersion`、`status`（`PASS`）、`action`（`enable` 或 `disable`）、`evidenceSha256`（主控驗收或回復證據的原始 SHA-256）和 `sources`。`sources` 的 `orgmaster`、`platform`、`ai-pdm` 各用 `sourceRevision` 與完整不可變 `artifactDigest` 綁定正式候選。把該摘要放入現有 OrgMaster 私有 release bucket 的 `receipts/pdm-session-acceptance/`，用原始 bytes SHA-256 傳入。只有原有受權 operator 使用該 bucket。
+3. 在乾淨且已通過所需 CI 的正式 `master` 執行 `npm run pdm-publication:production -- enable --expected-revision=0 "--acceptance-ref=URI#sha256=HASH"`。可加 `--check` 唯讀檢查 provider 前置。入口核對 3 個 owner 的封存 release、canonical 100% traffic、artifact、開關及 Scheduler 綁定和 3 分鐘內在同一 revision 的 HTTP 200。以既有 migration Job 的固定模式重讀 056/057 ledger 並按 revision 做 DB CAS；SQL 持有發布 writer 已使用的鎖，切換後舊 runtime 的有效寫入會在 DB 拒絕。
+4. 啟用成功收據包含 DB 控制 revision 與封存驗收 ref，交主控綁定後續 PDM 快照切換。主控先讀回相符的 receipt、Scheduler 與服務狀態再放行快照。切換期間保持三套 owner 發布序列，若發現服務或排程在提交附近漂移，入口報錯並保留已知的控制收據。未知結果沿原接受 ref、source 和 expected revision 重跑，由 DB 讀回同操作，過期輸入可更新截止時間。既有收據不會被覆寫。
+5. 回復由 AI-PDM owner 先把流量切回能辨識既有撤銷紀錄、保留接收與中央檢查的相容版本。保留 Platform relay 及 OrgMaster Scheduler，等所有 OrgMaster 待交付事件取得終態回執。以該回復基線封存 `disable` evidence，再用同入口及目前控制 revision 執行 `disable`。CAS 會拒絕仍有待送事件的關閉。取得相符的關閉收據後才續行上游回復。沿原 owner 流程修復或前向部署，保留已套 migration、PDM 撤銷紀錄與 operation 回執。
+
+現有 release runner 與產品 Scheduler 沿用原身分；跨 owner 的 release/traffic、Scheduler 與 Logging 讀回使用既有 operator 權限。OrgMaster 入口可攔住不符順序的 OrgMaster 切換，PDM／Platform 後續動作仍由各 owner 入口與主控無並行切換的發布序列執行。
 
 <a id="architecture-final"></a>
 

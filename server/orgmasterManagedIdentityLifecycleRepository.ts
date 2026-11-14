@@ -23,7 +23,7 @@ export function createPostgresManagedIdentityLifecycleRepository(input: {
   pool: Pick<Pool, 'connect'>
   now?: () => number
   pdmPublicationDatabase?: Pick<Pool, 'query'>
-  pdmPublicationEnabled?: () => Promise<boolean>
+  pdmPublicationEnabled?: (database: Pick<Pool, 'query'>) => Promise<boolean>
 }): ManagedIdentityLifecycleRepositoryV2 {
   const now = input.now ?? (() => performance.now())
   const guard = (control: LifecycleCycleControl) => {
@@ -101,12 +101,11 @@ export function createPostgresManagedIdentityLifecycleRepository(input: {
     async completeRefresh(executor, leaseId, claim, observation, control) {
       const write = () => result(control, 'SELECT orgmaster_core.complete_managed_identity_refresh_v2($1,$2::uuid,$3::uuid,$4,$5,$6,$7) AS result', [executor.principalId, leaseId, claim.requestId, claim.leaseGeneration, observation.directoryState, observation.primaryEmail, observation.sourceEtag])
       const deliveryDatabase = input.pdmPublicationDatabase
-      const enabled = deliveryDatabase && await (input.pdmPublicationEnabled?.() ?? true)
-      const outcome = !enabled ? await write() : await publishAfterOrgmasterPdmRevocation({
+      const outcome = !deliveryDatabase ? await write() : await publishAfterOrgmasterPdmRevocation({
         actor: executor.principalId,
         commandKey: `managed-refresh:${claim.requestId}:${claim.leaseGeneration}`,
         request: { requestId: claim.requestId, generation: claim.leaseGeneration, observation },
-        enabled: true,
+        enabled: input.pdmPublicationEnabled ?? true,
         advanceLifecycleVersion: true,
         transaction: run => transaction(control, client => publicationClient.run(client, run)),
         database: () => publicationClient.getStore()!,

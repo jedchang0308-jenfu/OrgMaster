@@ -117,7 +117,7 @@ export function createOrgmasterManagedIdentityLifecycleRuntime(environment: Node
   }
   const pool=createOrgmasterDatabase(environment.ORGMASTER_POSTGRES_URL,environment) as Pool
   const repository=createPostgresManagedIdentityLifecycleRepository({
-    pool, pdmPublicationDatabase: pool, pdmPublicationEnabled: () => readOrgmasterPdmPublicationControl(pool),
+    pool, pdmPublicationDatabase: pool, pdmPublicationEnabled: readOrgmasterPdmPublicationControl,
   })
   const directory=createGoogleDirectoryReadOnlyPort({customerId:directoryConfig.customerId,domain:directoryConfig.domain,
     auth:createGoogleDirectoryAuthPort({delegatedSubject:directoryConfig.delegatedSubject,serviceAccountEmail:directoryConfig.serviceAccountEmail})})

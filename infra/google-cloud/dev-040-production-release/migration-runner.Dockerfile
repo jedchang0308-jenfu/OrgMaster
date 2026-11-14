@@ -20,6 +20,8 @@ COPY scripts/lib/dev049-production-admission.mjs scripts/lib/dev049-production-a
 COPY scripts/lib/orgmaster-pdm-publication.mts scripts/lib/orgmaster-pdm-revocation-wire.mts scripts/lib/
 COPY scripts/lib/dev014-consumer-conformance.mjs scripts/lib/dev014-consumer-conformance.mjs
 COPY scripts/dev040-production-migration-runner.mjs scripts/dev040-production-migration-runner.mjs
+COPY scripts/dev057-production-pdm-publication-runner.mjs scripts/dev057-production-pdm-publication-runner.mjs
+COPY scripts/lib/dev057-pdm-publication-control.mjs scripts/lib/dev057-pdm-publication-control.mjs
 COPY scripts/dev070-production-enrollment-intent-runner.mjs scripts/dev070-production-enrollment-intent-runner.mjs
 COPY scripts/dev014-production-lifecycle-readback.mjs scripts/dev014-production-lifecycle-readback.mjs
 COPY scripts/lib/dev014-lifecycle-v2-readback.mjs scripts/lib/dev014-lifecycle-v2-readback.mjs

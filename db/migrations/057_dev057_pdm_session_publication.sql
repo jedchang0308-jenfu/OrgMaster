@@ -11,7 +11,10 @@ SET LOCAL ROLE jenfu_orgmaster_migrator;
 
 CREATE TABLE orgmaster_core.pdm_session_publication_control_v1 (
   singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
-  enabled boolean NOT NULL DEFAULT false
+  enabled boolean NOT NULL DEFAULT false,
+  revision bigint NOT NULL DEFAULT 0,
+  operation_sha256 text,
+  changed_at timestamptz
 );
 INSERT INTO orgmaster_core.pdm_session_publication_control_v1 DEFAULT VALUES;
 REVOKE ALL ON orgmaster_core.pdm_session_publication_control_v1 FROM PUBLIC;
@@ -99,6 +102,38 @@ $advance$;
 REVOKE ALL ON FUNCTION orgmaster_core.advance_pdm_lifecycle_publication_v1(bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION orgmaster_core.advance_pdm_lifecycle_publication_v1(bigint) TO jenfu_orgmaster_runtime;
 
+-- Serialize mode changes with the same locks as effective permission writes.
+-- Credentials, evidence and provider checks are handled by the owner operator.
+CREATE FUNCTION orgmaster_core.transition_pdm_session_publication_v1(
+  p_expected bigint, p_enabled boolean, p_operation_sha256 text, p_deadline timestamptz
+) RETURNS jsonb LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog AS $transition$
+DECLARE state orgmaster_core.pdm_session_publication_control_v1%ROWTYPE;
+BEGIN
+  PERFORM orgmaster_core.lock_pdm_session_publication_v1();
+  IF p_expected IS NULL OR p_enabled IS NULL OR p_deadline IS NULL OR p_deadline <= clock_timestamp()
+     OR p_operation_sha256 IS NULL OR p_operation_sha256 !~ '^[a-f0-9]{64}$' THEN
+    RAISE EXCEPTION 'PDM_PUBLICATION_CONTROL_INPUT_INVALID';
+  END IF;
+  SELECT * INTO STRICT state FROM orgmaster_core.pdm_session_publication_control_v1 WHERE singleton FOR UPDATE;
+  IF state.operation_sha256 IS DISTINCT FROM p_operation_sha256 THEN
+    IF state.revision <> p_expected OR state.enabled = p_enabled THEN
+      RAISE EXCEPTION 'PDM_PUBLICATION_CONTROL_CONFLICT';
+    END IF;
+    IF EXISTS (SELECT 1 FROM orgmaster_core.pdm_session_publication_v1 WHERE terminal_receipt IS NULL) THEN
+      RAISE EXCEPTION 'PDM_PUBLICATION_CONTROL_PENDING_DELIVERY';
+    END IF;
+    UPDATE orgmaster_core.pdm_session_publication_control_v1 SET enabled=p_enabled,
+      revision=state.revision+1, operation_sha256=p_operation_sha256, changed_at=clock_timestamp()
+      WHERE singleton RETURNING * INTO STRICT state;
+  ELSIF state.revision <> p_expected+1 OR state.enabled <> p_enabled THEN
+    RAISE EXCEPTION 'PDM_PUBLICATION_CONTROL_CONFLICT';
+  END IF;
+  RETURN jsonb_build_object('enabled',state.enabled,'revision',state.revision::text,
+    'operationSha256',state.operation_sha256,'changedAt',state.changed_at);
+END;
+$transition$;
+REVOKE ALL ON FUNCTION orgmaster_core.transition_pdm_session_publication_v1(bigint,boolean,text,timestamptz) FROM PUBLIC;
+
 -- Direct maintenance entrypoints retain their original signatures. Once
 -- enabled, keep the older runner and ad-hoc calls out of the publication path.
 DO $maintenance$
@@ -124,6 +159,41 @@ BEGIN
   END LOOP;
 END;
 $maintenance$;
+
+-- Older revisions must fail closed if they start an effective writer after
+-- the activation fence. Draft workspace writes and other artifacts may proceed.
+DO $writers$
+DECLARE entry regprocedure; definition text; condition text; marker text;
+BEGIN
+  FOREACH entry IN ARRAY ARRAY[
+    'orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v3(jsonb,text,text,text,text,jsonb,jsonb)'::regprocedure,
+    'orgmaster_core.apply_administration_command_v1(jsonb,jsonb)'::regprocedure,
+    'orgmaster_core.initialize_administration_private_v1(jsonb,text)'::regprocedure,
+    'orgmaster_core.complete_managed_identity_refresh_v2(text,uuid,uuid,bigint,text,text,text)'::regprocedure
+  ] LOOP
+    definition := pg_get_functiondef(entry);
+    marker := 'PERFORM 1 FROM orgmaster_core.persistence_authority WHERE singleton FOR UPDATE;';
+    IF strpos(definition,marker) = 0 THEN RAISE EXCEPTION 'PDM_WRITER_PREDECESSOR_DRIFT: %', entry; END IF;
+    condition := CASE entry::oid
+      WHEN 'orgmaster_core.write_active_persistence_artifacts_with_identity_fence_v3(jsonb,text,text,text,text,jsonb,jsonb)'::regprocedure::oid
+        THEN 'EXISTS (SELECT 1 FROM jsonb_array_elements(p_changes) artifact
+          WHERE (artifact->>''artifactKind'' = ''workspace-version'' AND artifact#>>''{payload,kind}'' = ''document'')
+             OR (artifact->>''artifactKey'' = ''orgmaster-governance.v3.json'' AND NOT EXISTS (
+               SELECT 1 FROM orgmaster_core.persistence_authority authority
+               JOIN orgmaster_core.persistence_artifacts previous ON previous.batch_id=authority.active_batch_id
+               WHERE authority.singleton AND previous.artifact_key=artifact->>''artifactKey''
+                 AND previous.payload->''activePolicyVersionId'' = artifact#>''{payload,activePolicyVersionId}''
+                 AND previous.payload->''publishedVersions'' = artifact#>''{payload,publishedVersions}'')))'
+      WHEN 'orgmaster_core.initialize_administration_private_v1(jsonb,text)'::regprocedure::oid
+        THEN 'EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(p_package#>''{command,grants}'',''[]''::jsonb)) grant_row WHERE grant_row->>''applicationId'' = ''ai-pdm'')'
+      ELSE 'true' END;
+    EXECUTE replace(definition, marker, marker || E'\n IF ' || condition
+      || ' AND orgmaster_core.pdm_session_publication_enabled_v1() AND '
+      || 'current_setting(''orgmaster.pdm_publication_writer'',true) IS DISTINCT FROM ''coordinated'' '
+      || 'THEN RAISE EXCEPTION ''PDM_PUBLICATION_WRITER_REQUIRED''; END IF;');
+  END LOOP;
+END;
+$writers$;
 
 -- Effective PDM grants, including exact administrative bindings, plus the
 -- admitted provider pairs. Publication/assignment audit identifiers do not

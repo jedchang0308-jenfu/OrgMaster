@@ -111,7 +111,7 @@ export type PdmPublicationOptions<T> = {
   actor: string
   commandKey: string
   request: unknown
-  enabled: boolean
+  enabled: boolean | ((database: Database) => Promise<boolean>)
   transaction: <V>(run: () => Promise<V>) => Promise<V>
   database: () => Database
   deliveryDatabase: () => Database
@@ -125,7 +125,6 @@ export type PdmPublicationOptions<T> = {
 export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicationOptions<T>): Promise<T> {
   if (!options.enabled) return options.write()
   const client = options.client
-  if (!client && !options.ownerDelivery) throw pending()
   const requestHash = publicationHash(options.request)
   const inTransaction = <V,>(fn: (database: Database) => Promise<V>) =>
     options.transaction(() => fn(options.database()))
@@ -138,6 +137,11 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
   }
   const prepare = await inTransaction<{ result: T } | { row: Operation }>(async database => {
     const baseline = await lockVersion(database)
+    if (typeof options.enabled === 'function' && !await options.enabled(database)) {
+      return { result: await options.write() }
+    }
+    if (!client && !options.ownerDelivery) throw pending()
+    await database.query("SET LOCAL orgmaster.pdm_publication_writer = 'coordinated'")
     const existing = await load(database)
     if (existing) {
       if (existing.expired && existing.decision === null) {
@@ -191,6 +195,7 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
   try {
     outcome = await inTransaction(async database => {
       const baseline = await lockVersion(database)
+      await database.query("SET LOCAL orgmaster.pdm_publication_writer = 'coordinated'")
       const current = await load(database)
       if (!current || current.operation_id !== row.operation_id || current.decision === 'cancelled') throw conflict()
       if (current.decision === 'published') return { replay: true }

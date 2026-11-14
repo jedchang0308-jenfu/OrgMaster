@@ -25,6 +25,7 @@ const catalogSnapshots = [
 const historicalFixture = 'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json'
 const migrationEntries = [
   'scripts/dev040-production-migration-runner.mjs',
+  'scripts/dev057-production-pdm-publication-runner.mjs',
   'scripts/dev070-production-enrollment-intent-runner.mjs',
   'scripts/dev014-production-lifecycle-readback.mjs',
   'scripts/dev049-production-admission-runner.mjs',
