@@ -32,6 +32,8 @@ PDM 本地角色能力政策由 AI-PDM owner 負責。OrgMaster 的舊角色能�
 
 現有 release runner 與產品 Scheduler 沿用原身分；跨 owner 的 release/traffic、Scheduler 與 Logging 讀回使用既有 operator 權限。OrgMaster 入口可攔住不符順序的 OrgMaster 切換，PDM／Platform 後續動作仍由各 owner 入口與主控無並行切換的發布序列執行。
 
+相容發布就須把現有 Scheduler 接到 Platform 的全域登出補送端點，早於 Platform 開始產生待送事件。Scheduler 每輪以原 workload OIDC 呼叫 `POST /api/internal/pdm-session-revocation/v1/reconcile`，同輪依 OrgMaster 自有開關決定是否處理改權發布。既有 Platform 版本沒有該路由（404），或候選明示 `503 pdm_revocation_relay_disabled`，在 OrgMaster 發布關閉期間視為相容狀態，排程可回 200。平台部分完成、組態或認證錯誤及連線故障回 503；兩條補送和既有 lifecycle 可各自繼續。OrgMaster 關閉發布之後仍呼叫 Platform 恢復待送全域登出。啟用／回復不得讓未排空全域事件的 Platform 回到缺路由或 relay 關閉的版本。
+
 <a id="architecture-final"></a>
 
 ## 唯一施工入口

@@ -16,6 +16,7 @@
 - 發布控制預設為 `false`／revision `0`。既有 `npm run deploy:production -- --dev070-administration-append` 以來源綁定的 runner rotation 帶入關閉狀態。單一 owner 入口 `npm run pdm-publication:production` 支援 `enable`、`disable`、`--check`，沿同源 migration Job、三方 release 與既有 Scheduler 讀回，並以 DB CAS 保護切換和終態排空。完整參數、主控證據及回復順序見[正式切換與回復](specs/DEV-057-identity-and-grant-contract-boundary.md#正式切換與回復)。正式查證與執行等待三方候選驗收，本次未寫入正式設定。
 - [本專案開發契約](specs/DEV-057-identity-and-grant-contract-boundary.md#pdm-session-revocation)
 - PDM 首次開通 SQL 由 `jenfu_ai_pdm_migrator` 擁有，其 `SECURITY DEFINER` 共用登入權威函式。056 只授予既有 PDM runtime／migrator 該函式的 `EXECUTE`，驗證其他 owner runtime、Platform migrator、FMS 與 verifier 均被拒絕。
+- 既有 Scheduler 的 Platform 全域登出補送已獨立於 OrgMaster 改權發布控制，須隨預設關閉的 OrgMaster runtime 部署，早於 Platform 產生全域待送事件。隔離 HTTP 驗證發布關閉時舊 Platform 路由缺席／relay 明示關閉維持排程 200，部分完成回 503，下一輪取得成功後復原。自有控制讀取失敗也會嘗試補送 Platform。重跑 `npx vitest run server/orgmasterManagedIdentityLifecycleApi.test.ts`。另以 Platform 三方元件腳本的隔離副本接真實 owner 交易與 OrgMaster Scheduler HTTP，注入終態派送中斷，確認舊 session 已撤銷、新登入被擋，下一輪排程保存原操作的持久回執、新登入恢復，中央 epoch 只前進一次。此輪使用合成 OIDC。
 
 
 <a id="dev-070-platform-administration"></a>

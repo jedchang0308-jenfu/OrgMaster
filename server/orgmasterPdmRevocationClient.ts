@@ -10,7 +10,7 @@ const UNAVAILABLE = 'PDM_REVOCATION_DISPATCH_UNAVAILABLE'
 export { pdmRevocationCommand }
 type Command = ReturnType<typeof pdmRevocationCommand>
 
-async function readReceipt(response: Response, command: Command) {
+async function readBoundedJson(response: Response) {
   if (response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json'
     || !response.body) throw new Error(INVALID)
   const chunks: Uint8Array[] = []
@@ -27,7 +27,7 @@ async function readReceipt(response: Response, command: Command) {
       }
       chunks.push(value)
     }
-    return parsePdmRevocationReceipt(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))), command)
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))) as unknown
   } catch {
     throw new Error(INVALID)
   } finally {
@@ -67,14 +67,26 @@ export function createOrgmasterPdmRevocationClient(dependencies: {
     const response = await post(PATH + (readback ? '/readback' : ''), JSON.stringify(command))
     if (readback && response.status === 404) return null
     if (response.status !== 200) throw new Error(response.status === 409 ? 'PDM_REVOCATION_EVENT_CONFLICT' : UNAVAILABLE)
-    return readReceipt(response, command)
+    return parsePdmRevocationReceipt(await readBoundedJson(response), command)
   }
 
   return {
     async reconcileGlobalLogout() {
       const response = await post(PATH + '/reconcile')
-      await response.body?.cancel()
-      if (response.status !== 200) throw new Error(UNAVAILABLE)
+      if (response.status === 404) {
+        await response.body?.cancel()
+        return 'route-absent' as const
+      }
+      const body = await readBoundedJson(response)
+      if (body && typeof body === 'object') {
+        if (response.status === 503 && 'code' in body && body.code === 'pdm_revocation_relay_disabled') {
+          return 'relay-disabled' as const
+        }
+        if (response.status === 200 && 'selected' in body && 'completed' in body &&
+            typeof body.selected === 'number' && Number.isSafeInteger(body.selected) &&
+            body.selected >= 0 && body.selected === body.completed) return 'ready' as const
+      }
+      throw new Error(UNAVAILABLE)
     },
     readback(command: Command) { return request(command, true) },
     async dispatch(command: Command) {
