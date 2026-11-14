@@ -1,5 +1,6 @@
+import { administrationHash } from '../src/governance/administration'
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { createHash } from 'node:crypto'
+
 import type { OrgmasterDatabase } from './orgmasterDatabase'
 import {
   createOrgmasterPdmRevocationClient,
@@ -35,7 +36,7 @@ export class PdmPublicationError extends Error {
 
 const conflict = () => new PdmPublicationError('PDM_PUBLICATION_CONFLICT')
 const pending = () => new PdmPublicationError('PDM_PUBLICATION_PENDING')
-const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+
 
 const configuredClient = new AsyncLocalStorage<Client>()
 export function withOrgmasterPdmRevocationClient<T>(client: Client, run: () => T): T {
@@ -103,11 +104,12 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
   database: () => Database
   deliveryDatabase: () => Database
   write: () => Promise<T>
+  replay?: () => Promise<T>
   client?: Client
 }): Promise<T> {
   if (!options.enabled) return options.write()
   const client = options.client ?? configuredClient.getStore() ?? createOrgmasterPdmRevocationClient()
-  const requestHash = digest(options.request)
+  const requestHash = administrationHash(options.request)
   const inTransaction = <V>(fn: (database: Database) => Promise<V>) =>
     options.transaction(() => fn(options.database()))
   const load = async (database: Database) => {
@@ -145,7 +147,7 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
       (operation_id, actor_principal_id, command_key, request_hash, baseline_version,
        publication_version, principal_ids, impact_hash, expires_at)
       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::text[], $7, clock_timestamp()+interval '60 seconds')
-      RETURNING ${columns}`, [options.actor, options.commandKey, requestHash, baseline, publicationVersion, principalIds, digest(impact)])
+      RETURNING ${columns}`, [options.actor, options.commandKey, requestHash, baseline, publicationVersion, principalIds, administrationHash(impact)])
     command(inserted.rows[0], 'prepare')
     return { row: inserted.rows[0] } as const
   })
@@ -154,7 +156,7 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
   if (row.decision) {
     await finish(options.deliveryDatabase(), client, row).catch(() => undefined)
     if (row.decision === 'cancelled') throw conflict()
-    return options.write()
+    return (options.replay ?? options.write)()
   }
   let receipt: PdmRevocationReceipt
   try { receipt = await client.dispatch(command(row, 'prepare')) }
@@ -165,7 +167,7 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
       const baseline = await lockVersion(database)
       const current = await load(database)
       if (!current || current.operation_id !== row.operation_id || current.decision === 'cancelled') throw conflict()
-      if (current.decision === 'published') return { result: await options.write() }
+      if (current.decision === 'published') return { result: await (options.replay ?? options.write)() }
       if (baseline !== row.baseline_version || current.expires_at.getTime() <= Date.now()) {
         await cancel(database, row.operation_id)
         return { cancelled: true }
@@ -174,7 +176,7 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
       await database.query('SAVEPOINT pdm_publication_apply')
       const result = await options.write()
       const impact = changesBetween(before, await readImpact(database))
-      if (digest(impact) !== row.impact_hash || await lockVersion(database) !== row.publication_version) {
+      if (administrationHash(impact) !== row.impact_hash || await lockVersion(database) !== row.publication_version) {
         await database.query('ROLLBACK TO SAVEPOINT pdm_publication_apply')
         await cancel(database, row.operation_id)
         return { cancelled: true }
@@ -194,7 +196,7 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
       }
       throw error
     }
-    outcome = { result: await options.write() }
+    outcome = { result: await (options.replay ?? options.write)() }
   }
   const observed = await inTransaction(load).catch(() => undefined)
   if (observed) await finish(options.deliveryDatabase(), client, observed).catch(() => undefined)

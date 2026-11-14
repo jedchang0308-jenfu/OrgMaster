@@ -218,12 +218,12 @@ export function orgmasterPdmPublicationEnabled() {
   return usesCloudSqlPersistence() && process.env.ORGMASTER_PDM_SESSION_REVOCATION_ENABLED === 'true'
 }
 
-export function withOrgmasterPdmPublication<T>(actor: string, commandKey: string, request: unknown, run: () => Promise<T>) {
+export function withOrgmasterPdmPublication<T>(actor: string, commandKey: string, request: unknown, run: () => Promise<T>, replay?: () => Promise<T>) {
   const enabled = orgmasterPdmPublicationEnabled()
   if (enabled && transactionDatabase.getStore()) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
   return publishAfterOrgmasterPdmRevocation({
     actor, commandKey, request, enabled, transaction: withPersistenceTransaction,
-    database: currentPersistenceTransactionDatabase, deliveryDatabase: poolForRuntime, write: run,
+    database: currentPersistenceTransactionDatabase, deliveryDatabase: poolForRuntime, write: run, replay,
   })
 }
 

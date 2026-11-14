@@ -218,7 +218,7 @@ async function authorizeWorkspace(root: string, request: IncomingMessage, write:
 }
 
 async function workspaceWrite<T>(root: string, request: IncomingMessage,
-  run: (body: Record<string, unknown>, actor: string | undefined) => Promise<T>, publication?: (body: Record<string, unknown>) => string | null) {
+  run: (body: Record<string, unknown>, actor: string | undefined) => Promise<T>, publication?: { key: (body: Record<string, unknown>) => string | null; replay: () => Promise<T> }) {
   const actor = await authorizeWorkspace(root, request, true)
   const body = await parseJsonBody(request)
   const write = () => withPersistenceTransaction(async () => {
@@ -228,8 +228,8 @@ async function workspaceWrite<T>(root: string, request: IncomingMessage,
     if (usesCloudSqlPersistence()) await authorizeWorkspace(root, request, true)
     return result
   })
-  const key = publication?.(body)
-  return key && actor ? withOrgmasterPdmPublication(actor, key, body, write) : write()
+  const key = publication?.key(body)
+  return key && actor ? withOrgmasterPdmPublication(actor, key, body, write, publication?.replay) : write()
 }
 
 async function parseJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
@@ -281,8 +281,14 @@ function handleWorkspaceRequest(root: string, request: IncomingMessage, response
         body.mode === 'current-maintenance' ? 'current-maintenance' : 'draft-edit',
         actorPrincipalId,
       )
-    }, body => body.mode === 'current-maintenance' ? 'workspace:' + versionId + ':' +
-      String(body.expectedVersionRevision ?? request.headers['x-orgmaster-revision'] ?? '') : null)
+    }, {
+      key: body => body.mode === 'current-maintenance' ? 'workspace:' + versionId + ':' +
+        String(body.expectedVersionRevision ?? request.headers['x-orgmaster-revision'] ?? '') : null,
+      replay: async () => {
+        await authorizeWorkspace(root, request, true)
+        return getWorkspaceVersion(root, versionId)
+      },
+    })
       .then((result) => sendJson(response, 200, result, result.version.revision)).catch((error) => workspaceError(response, error))
     return
   }
