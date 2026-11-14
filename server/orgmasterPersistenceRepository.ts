@@ -1,3 +1,4 @@
+import { publishAfterOrgmasterPdmRevocation } from './orgmasterPdmPublication'
 import { createHash } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { readFile, stat } from 'node:fs/promises'
@@ -211,6 +212,19 @@ export async function withPersistenceTransaction<T>(run: () => Promise<T>): Prom
   } finally {
     client.release()
   }
+}
+
+export function orgmasterPdmPublicationEnabled() {
+  return usesCloudSqlPersistence() && process.env.ORGMASTER_PDM_SESSION_REVOCATION_ENABLED === 'true'
+}
+
+export function withOrgmasterPdmPublication<T>(actor: string, commandKey: string, request: unknown, run: () => Promise<T>) {
+  const enabled = orgmasterPdmPublicationEnabled()
+  if (enabled && transactionDatabase.getStore()) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
+  return publishAfterOrgmasterPdmRevocation({
+    actor, commandKey, request, enabled, transaction: withPersistenceTransaction,
+    database: currentPersistenceTransactionDatabase, deliveryDatabase: poolForRuntime, write: run,
+  })
 }
 
 export function currentPersistenceTransactionDatabase(): Queryable {

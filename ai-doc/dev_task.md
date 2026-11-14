@@ -1,5 +1,19 @@
 # OrgMaster 開發任務
 
+<a id="pdm-session-revocation"></a>
+
+## DEV-057：PDM 有效權限異動先撤銷再發布
+
+- 狀態：`OrgMaster 候選實作中／未啟用／三系統隔離驗收未執行`。
+- 主控：Jenfu-Platform 專案 session（`JENFU/DEV-015#pdm-session-revocation`）。
+- 下一步：盤點 PDM 指派、政策切換、範圍、時間與行政任用的正式寫入入口，設計可讀回的待發布事件與生效交易，沿既有發送／回執路徑交付。
+- 候選分支 `codex/orgmaster-pdm-session-revocation`，基底 `9057702`；工作樹 `C:/Users/user/.codex/visualizations/2026/11/14/01a1d9a5-b432-78f1-a3c8-1acb1acef017/OrgMaster-pdm-revocation`。
+- 登入前置 `053_dev057_ai_pdm_session_authority.sql` 提供 `orgmaster_contract.read_ai_pdm_session_authority_v1(text,text)`。從同一交易快照回傳 `contract_version`（`orgmaster.ai-pdm-session-authority.v1`）、`source_version`（OrgMaster 持久批次世代十進位字串）、`evaluated_at`、`next_boundary`、`accounts` 及 `grants`（沿 V6 SQL 欄名與形狀）。即使沒有授權列也會回傳版本與時間邊界。每個陣列保留現有超限偵測（帳號上限哨兵 3，授權上限哨兵 33）。隔離入口 `node scripts/qc-dev057-pdm-session-authority-postgres.mjs` 已通過 V6 等價、目前／空授權、預定生效與執行角色隔離。
+- 發布候選 `054_dev057_pdm_session_publication.sql` 提供 `orgmaster_contract.read_ai_pdm_session_publication_v1(uuid,text)`。PDM 以 operation ID 與十進位 publication version 讀回精確提交證據，即使 OrgMaster 已有後續批次。OrgMaster 以 `ORGMASTER_PDM_SESSION_REVOCATION_ENABLED=true` 接通相同 v1 wire，預設關閉；隔離環境沿受驗證的 localhost Platform 身分。正常候選涵蓋治理發布／active 切換、PDM legacy privileged、DEV-070 行政任用與現行工作區維護。既有 Scheduler 入口負責到期取消及發布回執補送。
+- `node scripts/qc-dev057-pdm-session-publication-postgres.mjs` 在隔離 PostgreSQL 測到無回執不發布、重疊防護、重送同事件、原子發布證明、終態補送與無差異不派送。該腳本以合成寫入與模擬回執隔離測試交易協定。既有 HTTP／store 回歸 94 項、遷移／發布執行器 41 項通過。獨立受管身分背景停用及 owner 直接維護命令、正常改權入口完整競態、三方隔離驗收仍待完成。
+- [本專案開發契約](specs/DEV-057-identity-and-grant-contract-boundary.md#pdm-session-revocation)
+
+
 <a id="dev-070-platform-administration"></a>
 
 ## DEV-070：平台超級管理員權威與首次初始化

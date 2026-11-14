@@ -13,9 +13,11 @@ export const DEV070_MIGRATION_ENTRIES=Object.freeze([
  Object.freeze({"order":46,"version":"dev070-orgmaster-050","path":"db/migrations/050_dev070_administrative_definitions_v2.sql","sourceSha256":"82a68daa71d4afcf97a687055e5a4cbe95dafd60e3c4af10fd2dee1dc6bb3cfd","appliedSha256":"3e892993172277ac4caf6694a52948839d99c257f4e6e1888de86d190fd116db"}),
  Object.freeze({order:47,version:'dev070-orgmaster-051',path:'db/migrations/051_dev070_scoped_portal_orgmaster_visibility.sql',sourceSha256:'c65540b4e7b97e7a3d91aa6c3f8b95bdd47f067addea90b6226312178a2c913a',appliedSha256:'4b77e7f4d07c08be67709e9c6bcc06e177f44fe8951adc91b342084b16c9776d'}),
  Object.freeze({order:48,version:'dev070-orgmaster-052',path:'db/migrations/052_dev070_fms_authority_point_v4.sql',sourceSha256:'39dda03076fe2b7a42ab661efdd40c2e0cded6565a6be79b8d116021d4ef5df0',appliedSha256:'22043040a65c436e1782afdb2c141677f8270cb17baf93421144a1d9759923ee'}),
+ Object.freeze({"order":49,"version":"dev057-orgmaster-053","path":"db/migrations/053_dev057_ai_pdm_session_authority.sql","sourceSha256":"8879d2403145816d0188c166d27541f7242279f0069c46f7cb82927a4d554f43","appliedSha256":"3dccfac9b267d06b5eabb3219e21f5aff788fbce43affc6c6c5fe4e755962703"}),
+ Object.freeze({"order":50,"version":"dev057-orgmaster-054","path":"db/migrations/054_dev057_pdm_session_publication.sql","sourceSha256":"3123cae59f5936cc98e56ae397c3da1c7dec2fd50331eb8947b9f92e63300c0f","appliedSha256":"9a98bdf60c628e6a2bb0c51ee3a2b90130a71d0dafa2e4b38ddb495df40fad70"}),
 ])
 export const DEV070_MIGRATION_ENTRY_COUNT=DEV070_MIGRATION_PREFIX_COUNT+DEV070_MIGRATION_ENTRIES.length
-// 31–39 are the previously accepted DEV-059 exact ledger prefixes. 40–48
+// 31–39 are the previously accepted DEV-059 exact ledger prefixes. 40–50
 // permit readback/retry after a partial forward append, with every row/hash
 // still checked by the shared runner. No unknown ledger layout is admitted.
 export const DEV070_ACCEPTED_LEDGER_COUNTS=Object.freeze(Array.from({length:DEV070_MIGRATION_ENTRY_COUNT-30},(_,index)=>index+31))

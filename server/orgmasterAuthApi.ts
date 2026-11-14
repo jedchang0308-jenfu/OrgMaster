@@ -1,3 +1,5 @@
+import { createOrgmasterPdmRevocationClient } from './orgmasterPdmRevocationClient'
+import { withOrgmasterPdmRevocationClient } from './orgmasterPdmPublication'
 import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite'
@@ -31,7 +33,7 @@ import { createGoogleManagedLoginCallerVerifier, type ManagedLoginCallerVerifier
 import { createManagedLoginOwnerService, type ManagedLoginOwnerServiceV1 } from './orgmasterManagedLoginService'
 import {createAdministrationEnrollment,type AdministrationEnrollmentService} from './orgmasterAdministrationEnrollment'
 import {createAdministrationLifecycleDispatcher,productionAdministrationLifecycle,type AdministrationLifecycleDispatcher} from './orgmasterAdministrationLifecycle'
-import {createOrgmasterLocalAdministrationRuntime,localAdministrationPeer,localAdministrationProviders} from './orgmasterLocalAdministrationRuntime'
+import {createOrgmasterLocalAdministrationRuntime,localAdministrationPeer,localAdministrationProviders,localAdministrationServiceToken} from './orgmasterLocalAdministrationRuntime'
 import {createOrgmasterLocalAdministrationLifecycleClient} from './orgmasterPrincipalLifecycleClient'
 import {createLocalFinancialCatalogInitializationOwnerReader} from './financialCatalogInitializationOwnerHttp'
 import type {FinancialCatalogInitializationOwnerReader} from './financialCatalogInitializationAdoption'
@@ -81,6 +83,7 @@ export type OrgmasterAuthRuntime = {
   administrationEnrollment?: AdministrationEnrollmentService
   administrationLifecycle?: AdministrationLifecycleDispatcher
   administrationLocalGuard?:()=>Promise<void>
+  pdmRevocationClient?: ReturnType<typeof createOrgmasterPdmRevocationClient>
   financialCatalogInitializationOwnerReader?:FinancialCatalogInitializationOwnerReader
   financialCatalogHandoffSource?:'formal'|'local_test'
   managedLoginEnabled?: boolean
@@ -464,6 +467,10 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     managedLoginCallerVerifier,
     administrationLifecycle,
     administrationLocalGuard:localAdministration?.verify,
+    pdmRevocationClient: localAdministration ? createOrgmasterPdmRevocationClient({
+      local: true,
+      tokenProvider: audience => localAdministrationServiceToken(localAdministration, audience),
+    }) : undefined,
     financialCatalogHandoffSource:localAdministration?'local_test':undefined,
     financialCatalogInitializationOwnerReader:localAdministration?createLocalFinancialCatalogInitializationOwnerReader(localAdministration):undefined,
     administrationEnrollment: administrationDirectory ? createAdministrationEnrollment({database:localAdministration?.database??database,firebase:administrationFirebase,directory:administrationDirectory,directoryCustomerId:localProviders?.directory.customerId??(directoryConfig.enabled?directoryConfig.customerId:''),dispatcher:administrationLifecycle}) : undefined,
@@ -630,7 +637,8 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
       }
       const verified = readVerifiedRequestIdentity(request)
       if (!verified) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
-      withPersistenceActor({ principalId:verified.principalId,employeeId:verified.employeeId,issuer:verified.identityIssuer,subject:verified.identitySubject,bootstrap:false,sessionId:verified.id,principalAuthEpoch:verified.principalAuthEpoch,authenticatedAt:verified.authenticatedAt,assuranceLevel:verified.assuranceLevel }, next)
+      withPersistenceActor({ principalId:verified.principalId,employeeId:verified.employeeId,issuer:verified.identityIssuer,subject:verified.identitySubject,bootstrap:false,sessionId:verified.id,principalAuthEpoch:verified.principalAuthEpoch,authenticatedAt:verified.authenticatedAt,assuranceLevel:verified.assuranceLevel },
+      () => runtime.pdmRevocationClient ? withOrgmasterPdmRevocationClient(runtime.pdmRevocationClient, next) : next())
     }
     void handle().catch((unknownError) => {
       if (response.writableEnded) return

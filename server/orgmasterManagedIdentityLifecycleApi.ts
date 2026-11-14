@@ -1,3 +1,5 @@
+import { createOrgmasterPdmRevocationClient } from './orgmasterPdmRevocationClient'
+import { reconcileOrgmasterPdmPublications } from './orgmasterPdmPublication'
 import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { OAuth2Client } from 'google-auth-library'
@@ -14,6 +16,7 @@ export const MANAGED_LIFECYCLE_ORIGIN = 'https://orgmaster-prod-9536592944.asia-
 type Caller = Readonly<{ issuer: string; audience: string; subject: string }>
 export type ManagedIdentityLifecycleRuntime = Readonly<{
   worker: ManagedIdentitySyncWorker
+  reconcilePdmPublications?: () => Promise<{ selected: number; completed: number }>
   verify(token: string): Promise<Caller>
   resolveCaller(subject: string): Promise<ManagedIdentityWorkloadExecutor | null>
 }>
@@ -83,7 +86,10 @@ export function createOrgmasterManagedIdentityLifecycleMiddleware(runtime?: Mana
       if(!principal) throw new LifecycleHttpError(403,'lifecycle_caller_denied')
       const report=await runtime.worker.runOnce(principal)
       if(report.executorPrincipalId!==principal.principalId) throw new LifecycleHttpError(503,'lifecycle_executor_mismatch')
-      send(response,200,{contractVersion:'orgmaster.managed-identity-lifecycle-cycle.v2',correlationId:id,...report},id)
+      const pdmPublications = await runtime.reconcilePdmPublications?.()
+      send(response, pdmPublications && pdmPublications.selected !== pdmPublications.completed ? 503 : 200,
+        {contractVersion:'orgmaster.managed-identity-lifecycle-cycle.v2',correlationId:id,...report,
+          ...(pdmPublications ? { pdmPublications } : {})}, id)
     }
     void run().catch(error=>{
       request.resume()
@@ -113,6 +119,17 @@ export function createOrgmasterManagedIdentityLifecycleRuntime(environment: Node
   const verifier=new OAuth2Client()
   return {
     worker,
+    ...(environment.ORGMASTER_PDM_SESSION_REVOCATION_ENABLED === 'true'
+      ? { async reconcilePdmPublications() {
+          const revocation = createOrgmasterPdmRevocationClient()
+          const [publication, logout] = await Promise.allSettled([
+            reconcileOrgmasterPdmPublications(pool, revocation),
+            revocation.reconcileGlobalLogout(),
+          ])
+          if (publication.status === 'rejected') throw publication.reason
+          const { selected, completed } = publication.value
+          return { selected: selected + 1, completed: completed + (logout.status === 'fulfilled' ? 1 : 0) }
+        } } : {}),
     async verify(token) {
       const ticket=await verifier.verifyIdToken({idToken:token,audience:MANAGED_LIFECYCLE_ORIGIN})
       const payload=ticket.getPayload()

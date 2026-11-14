@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
@@ -11,7 +12,7 @@ import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2To
 import { assignmentMatchesSecuritySubject, evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { readApplicationRoleCatalogs, readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceAuditEventV1, GovernanceAuditEventV3, GovernanceCommandV2, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceExpectedCatalogV1, GovernanceOrgSource, GovernancePolicyDataV1, GovernanceRoleAssignmentV2, GovernanceCommandResultV1, GovernanceCommandQueryResultV1 } from '../src/governance/types'
-import { OrgmasterPersistenceError, currentPersistenceTransactionDatabase, withPersistenceTransaction, persistenceArtifactExists, readPersistenceArtifact, usesCloudSqlPersistence, warnOrgmasterLocalPersistenceDiagnostic, writePersistenceArtifacts, type OrgmasterLocalPersistenceDiagnosticStage, type PersistenceEntitlementChange } from './orgmasterPersistenceRepository'
+import { OrgmasterPersistenceError, currentPersistenceTransactionDatabase, withPersistenceTransaction, orgmasterPdmPublicationEnabled, withOrgmasterPdmPublication, persistenceArtifactExists, readPersistenceArtifact, usesCloudSqlPersistence, warnOrgmasterLocalPersistenceDiagnostic, writePersistenceArtifacts, type OrgmasterLocalPersistenceDiagnosticStage, type PersistenceEntitlementChange } from './orgmasterPersistenceRepository'
 import { assertMigrationWritesAllowed } from './orgmasterMigrationGate'
 import { recordGovernanceSessionReadFailure, type GovernanceSessionReadStage } from './orgmasterGovernanceReadDiagnostic'
 import { storedGovernanceCatalogs, isGovernanceReduction, sameGovernancePolicy, withPublishedGovernanceHistory } from './governanceReduction'
@@ -37,7 +38,14 @@ export async function readStoredGovernanceDocument(root: string) {
   return { ...stored, document }
 }
 const locks = new Map<string, Promise<void>>()
-async function withLock<T>(root: string, fn: () => Promise<T>) { const key = resolve(root); const previous = locks.get(key) ?? Promise.resolve(); let release!: () => void; const current = new Promise<void>((resolveRelease) => { release = resolveRelease }); const queued = previous.then(() => current); locks.set(key, queued); await previous; try { return await fn() } finally { release(); if (locks.get(key) === queued) locks.delete(key) } }
+const heldPublicationLock = new AsyncLocalStorage<string>()
+async function withLock<T>(root: string, fn: () => Promise<T>) { const key = resolve(root); if (heldPublicationLock.getStore() === key) return fn(); const previous = locks.get(key) ?? Promise.resolve(); let release!: () => void; const current = new Promise<void>((resolveRelease) => { release = resolveRelease }); const queued = previous.then(() => current); locks.set(key, queued); await previous; try { return await fn() } finally { release(); if (locks.get(key) === queued) locks.delete(key) } }
+export function withGovernancePdmPublication<T>(root: string, actor: string, commandId: string, request: unknown, run: () => Promise<T>) {
+  if (!orgmasterPdmPublicationEnabled()) return run()
+  return withLock(root, () => heldPublicationLock.run(resolve(root),
+    () => withOrgmasterPdmPublication(actor, commandId, request, run)))
+}
+
 export async function withGovernanceLock<T>(root: string, fn: () => Promise<T>) { return withLock(root, fn) }
 export async function withActorWrite<T>(root: string, actor: GovernanceActorContext, run: (authorizeBeforeCommit: (check: () => void) => void) => Promise<T>) {
   return withLock(root, () => withPersistenceTransaction(async () => {
@@ -441,7 +449,8 @@ export async function validateAssignmentCandidate(root: string, value: Partial<G
   return validateAssignmentCandidateWithCatalogs(current.document, value, catalog, catalogs, validationSource(source))
 }
 export async function publishGovernance(root: string, expectedRevision: string, commandId: string, reason: string, organizationVersionId: string, actor: GovernanceActorContext, context: GovernanceWriteContext = {}) {
-  return withActorWrite(root, actor, async authorizeBeforeCommit => {
+  return withGovernancePdmPublication(root, actor.principalId, commandId, { expectedRevision, commandId, reason, organizationVersionId, context }, () =>
+    withActorWrite(root, actor, async authorizeBeforeCommit => {
     const current = await readV3Raw(root)
     authorizeBeforeCommit(() => assertCurrentPublicationAuthority(current.document, actor))
     assertCurrentPublicationAuthority(current.document, actor)
@@ -497,10 +506,11 @@ export async function publishGovernance(root: string, expectedRevision: string, 
       entityType: 'assignmentVersion', entityId: version.id, beforeHash: null, afterHash: version.snapshotHash, commandHashFormat: GOVERNANCE_COMMAND_HASH_FORMAT,
       commandResult: { operation: 'PUBLISH_ASSIGNMENTS', outcome: 'published', entityType: 'assignmentVersion', entityId: version.id, versionId: version.id } }, now)
     return { ...await persistV3(root, current, audited, source, undefined, catalogs), versionId: version.id }
-  })
+  }))
 }
 export async function setActivePolicy(root: string, expectedRevision: string, commandId: string, reason: string, versionId: string | null, actor: GovernanceActorContext, context: GovernanceWriteContext = {}) {
-  return withActorWrite(root, actor, async authorizeBeforeCommit => {
+  return withGovernancePdmPublication(root, actor.principalId, commandId, { expectedRevision, commandId, reason, versionId, context }, () =>
+    withActorWrite(root, actor, async authorizeBeforeCommit => {
     const current = await readV3Raw(root)
     authorizeBeforeCommit(() => assertCurrentPublicationAuthority(current.document, actor))
     assertCurrentPublicationAuthority(current.document, actor)
@@ -542,6 +552,6 @@ export async function setActivePolicy(root: string, expectedRevision: string, co
     // This proves draft readability only; target activation was checked above.
     return persistV3(root, current, audited, source, undefined,
       targetCatalogs ? await governanceCatalogsWithHistory(current.document, targetCatalogs) : undefined)
-  })
+  }))
 }
 export async function readGovernanceAudit(root = process.cwd(), limit = 50, cursor = 0) { const current = await readV3Raw(root); const items = [...current.document.auditEvents].reverse(); const start = Math.max(0, Number(cursor) || 0); const page = items.slice(start, start + Math.max(1, Math.min(100, limit))); return { items: page, nextCursor: start + page.length < items.length ? String(start + page.length) : null, revision: current.revision } }

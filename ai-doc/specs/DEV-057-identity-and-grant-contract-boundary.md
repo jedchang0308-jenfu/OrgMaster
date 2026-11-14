@@ -1,5 +1,17 @@
 # DEV-057：Principal 身分與角色發布（現行契約）
 
+<a id="pdm-session-revocation"></a>
+
+## PDM 有效權限異動先撤銷再發布
+
+整合主控為 Jenfu-Platform 專案的 session，依 `JENFU/DEV-015#pdm-session-revocation` 定義跨系統順序與驗收。PDM 接收由 `AIPDM/DEV-121#pdm-session-revocation` 負責。[主控契約](../../../Jenfu-Platform/ai-doc/specs/DEV-015-authentication-authorization-boundary-refactor.md#pdm-session-revocation)
+
+- 沿用政策發布、active version 切換、有效指派與 lifecycle 事件／回執模式。既有行政異動派送可作參考，不能視為一般角色發布已接通 PDM。盤點並涵蓋影響 PDM 的任用新增、變更、撤銷、公司／專案範圍、委派、行政任用、身分停用及政策切換／回復。從變更前後的有效權限確定受影響 Principal，不依 email 或只依角色名稱。
+- 凍結基線及預期發布版本，保存待發布事件與精確影響範圍，再通知 Platform。草稿、預覽及無有效差異的提交不觸發。加上對生效中或將來會改變快照的有效期資訊，供 PDM 登入選定上限。
+- 對須消除撤權空窗的異動，依主控契約等待 PDM 的持久化撤銷回執，再在發布交易比對基線與影響範圍。若基線漂移，停止原操作的生效並重新準備；未能確定原操作結果時先按原 ID 讀回。發布成功後送出正式版本證據，供 PDM 安全恢復登入。跨服務傳送不持有長資料庫交易。
+- 隔離驗收以正常產品入口走過新增／撤銷、共用政策切換、舊版本回復、無差異、到期、同範圍競爭和通知故障。證明缺 PDM 回執時待變更不生效、事件重送不再發布第二版、確認取消不留下無主登入阻擋。DEV-070 正式行政任用若影響 PDM，作為本切片的呼叫端納入，沿原 owner 契約。
+
+
 <a id="architecture-final"></a>
 
 ## 唯一施工入口

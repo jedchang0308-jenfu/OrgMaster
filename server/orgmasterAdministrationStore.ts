@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { OrgmasterDatabase } from './orgmasterDatabase'
 import { loadOrganizationSource, readExistingGovernanceStore } from './orgmasterGovernanceStore'
-import { currentPersistenceTransactionDatabase, persistenceActorContext, usesCloudSqlPersistence, withPersistenceTransaction } from './orgmasterPersistenceRepository'
+import { currentPersistenceTransactionDatabase, persistenceActorContext, usesCloudSqlPersistence, withPersistenceTransaction, withOrgmasterPdmPublication } from './orgmasterPersistenceRepository'
 import { evaluateVerifiedPrincipalPermission } from '../src/governance/evaluatePermission'
 import { AdministrationError, administrationHash, administrationPolicy, administrationRequestHash, applyAdministrativeGrantBatchCommand, applyAdministrativeGrantCommand, assertPlatformAdministrator, parseAdministrationCommand, publishedAdministrationPolicy, type AdministrationCatalogBindings, type AdministrationCommand } from '../src/governance/administration'
 import type { GovernanceActorContext, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV3 } from '../src/governance/types'
@@ -94,5 +94,9 @@ async function runStore<T>(root:string,run:(store:ReturnType<typeof createAdmini
 }
 export const readAdministrationWorkspace=(root:string,actor:GovernanceActorContext)=>runStore(root,store=>store.workspace(actor))
 export const previewAdministrationCommand=(root:string,actor:GovernanceActorContext,value:unknown)=>runStore(root,store=>store.preview(actor,value))
-export const commitAdministrationCommand=(root:string,actor:GovernanceActorContext,value:unknown)=>runStore(root,store=>store.commit(actor,value))
+export function commitAdministrationCommand(root: string, actor: GovernanceActorContext, value: unknown) {
+  const command = parseAdministrationCommand(value)
+  return withOrgmasterPdmPublication(actor.principalId, command.commandId, command,
+    () => runStore(root, store => store.commit(actor, command)))
+}
 export const readAdministrationCommand=(root:string,actor:GovernanceActorContext,id:string)=>runStore(root,store=>store.status(actor,id))

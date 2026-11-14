@@ -1,3 +1,4 @@
+import { PdmPublicationError } from './orgmasterPdmPublication'
 import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { dirname, resolve } from 'node:path'
@@ -13,7 +14,7 @@ import {
   WorkspaceStoreError,
   getWorkspacePaths,
 } from './orgmasterWorkspaceStore'
-import { persistenceArtifactExists, usesCloudSqlPersistence, withPersistenceTransaction } from './orgmasterPersistenceRepository'
+import { persistenceArtifactExists, usesCloudSqlPersistence, withOrgmasterPdmPublication, withPersistenceTransaction } from './orgmasterPersistenceRepository'
 import { readVerifiedRequestIdentity, verifiedGovernanceActor } from './orgmasterRequestIdentity'
 import { DEV_ISSUER, developmentPermissionForActor } from './orgmasterGovernanceIdentity'
 import { readStoredGovernanceDocument } from './orgmasterGovernanceStore'
@@ -162,6 +163,10 @@ class WorkspaceAccessError extends Error {
 }
 
 function workspaceError(response: ServerResponse, error: unknown) {
+  if (error instanceof PdmPublicationError) {
+    sendJson(response, error.code === 'PDM_PUBLICATION_PENDING' ? 503 : 409, { error: error.code })
+    return
+  }
   if (error instanceof WorkspaceAccessError) {
     sendJson(response, error.status, { error: error.code })
     return
@@ -213,16 +218,18 @@ async function authorizeWorkspace(root: string, request: IncomingMessage, write:
 }
 
 async function workspaceWrite<T>(root: string, request: IncomingMessage,
-  run: (body: Record<string, unknown>, actor: string | undefined) => Promise<T>) {
+  run: (body: Record<string, unknown>, actor: string | undefined) => Promise<T>, publication?: (body: Record<string, unknown>) => string | null) {
   const actor = await authorizeWorkspace(root, request, true)
   const body = await parseJsonBody(request)
-  return withPersistenceTransaction(async () => {
+  const write = () => withPersistenceTransaction(async () => {
     const result = await run(body, actor)
     // The native writer holds the persistence lock through commit. Read back
     // current policy under that lock before exposing the result.
     if (usesCloudSqlPersistence()) await authorizeWorkspace(root, request, true)
     return result
   })
+  const key = publication?.(body)
+  return key && actor ? withOrgmasterPdmPublication(actor, key, body, write) : write()
 }
 
 async function parseJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
@@ -274,7 +281,9 @@ function handleWorkspaceRequest(root: string, request: IncomingMessage, response
         body.mode === 'current-maintenance' ? 'current-maintenance' : 'draft-edit',
         actorPrincipalId,
       )
-    }).then((result) => sendJson(response, 200, result, result.version.revision)).catch((error) => workspaceError(response, error))
+    }, body => body.mode === 'current-maintenance' ? 'workspace:' + versionId + ':' +
+      String(body.expectedVersionRevision ?? request.headers['x-orgmaster-revision'] ?? '') : null)
+      .then((result) => sendJson(response, 200, result, result.version.revision)).catch((error) => workspaceError(response, error))
     return
   }
   if (versionId && request.method === 'PATCH') {

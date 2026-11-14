@@ -587,6 +587,20 @@
         "path": "db/migrations/052_dev070_fms_authority_point_v4.sql",
         "sourceSha256": "39dda03076fe2b7a42ab661efdd40c2e0cded6565a6be79b8d116021d4ef5df0",
         "appliedSha256": "22043040a65c436e1782afdb2c141677f8270cb17baf93421144a1d9759923ee"
+      },
+      {
+        "order": 49,
+        "version": "dev057-orgmaster-053",
+        "path": "db/migrations/053_dev057_ai_pdm_session_authority.sql",
+        "sourceSha256": "8879d2403145816d0188c166d27541f7242279f0069c46f7cb82927a4d554f43",
+        "appliedSha256": "3dccfac9b267d06b5eabb3219e21f5aff788fbce43affc6c6c5fe4e755962703"
+      },
+      {
+        "order": 50,
+        "version": "dev057-orgmaster-054",
+        "path": "db/migrations/054_dev057_pdm_session_publication.sql",
+        "sourceSha256": "3123cae59f5936cc98e56ae397c3da1c7dec2fd50331eb8947b9f92e63300c0f",
+        "appliedSha256": "9a98bdf60c628e6a2bb0c51ee3a2b90130a71d0dafa2e4b38ddb495df40fad70"
       }
     ]
   },

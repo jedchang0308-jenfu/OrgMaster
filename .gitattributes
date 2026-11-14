@@ -49,3 +49,5 @@ db/migrations/049_dev070_scoped_pdm_role_policy_manager.sql text eol=lf
 db/migrations/050_dev070_administrative_definitions_v2.sql text eol=lf
 db/migrations/051_dev070_scoped_portal_orgmaster_visibility.sql text eol=lf
 db/migrations/052_dev070_fms_authority_point_v4.sql text eol=lf
+db/migrations/053_dev057_ai_pdm_session_authority.sql text eol=lf
+db/migrations/054_dev057_pdm_session_publication.sql text eol=lf

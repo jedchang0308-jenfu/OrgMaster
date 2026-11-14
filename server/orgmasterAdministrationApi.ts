@@ -1,3 +1,4 @@
+import { PdmPublicationError } from './orgmasterPdmPublication'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import {productionAdministrationLifecycle} from './orgmasterAdministrationLifecycle'
@@ -33,6 +34,11 @@ return async function handleAdministrationRequest(request:IncomingMessage,respon
   if(path==='/administrators/commands'&&request.method==='POST')await (options.lifecycle??productionAdministrationLifecycle())?.runOnce().catch(()=>undefined)
   response.statusCode=200;response.end(JSON.stringify({...result as object,correlationId}));return true
  }catch(error){
+  if (error instanceof PdmPublicationError) {
+    response.statusCode = error.code === 'PDM_PUBLICATION_PENDING' ? 503 : 409
+    response.end(JSON.stringify({ code: error.code, correlationId }))
+    return true
+  }
   const code=error instanceof AdministrationError?error.code:'ADMINISTRATION_DEPENDENCY_UNAVAILABLE'
   response.statusCode=administrationErrorStatus(code);response.end(JSON.stringify({code,correlationId}));return true
  }
