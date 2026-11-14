@@ -49,6 +49,11 @@ const businessCatalog = {
 const baselineSql = `SELECT * FROM orgmaster_contract.v_fms_authority_v4
   WHERE principal_id=$1 AND application_id=$2 LIMIT 2`
 const pointSql = 'SELECT * FROM orgmaster_contract.read_fms_authority_for_principal_v4($1,$2) LIMIT 2'
+const previousPointSql = 'SELECT * FROM orgmaster_contract.read_fms_authority_for_principal_baseline_v4($1,$2) LIMIT 2'
+const admissionSql = 'SELECT * FROM orgmaster_contract.read_fms_principal_admission_v2($1,$2) LIMIT 2'
+const displaySql = 'SELECT * FROM orgmaster_contract.read_fms_principal_display_profile_v1($1,$2) LIMIT 2'
+const sessionDisplaySql = 'SELECT * FROM orgmaster_contract.read_fms_session_display_profile_v1($1,$2,$3,$4) LIMIT 2'
+const publicationStatusSql = 'SELECT orgmaster_contract.is_fms_authority_publication_ready_v1() AS ready'
 
 async function installPointReader({ admin, handle }) {
   assert.equal(handle.targetClass, 'task-owned-local')
@@ -57,7 +62,31 @@ async function installPointReader({ admin, handle }) {
   for (const migration of ['051_dev070_scoped_portal_orgmaster_visibility.sql', '052_dev070_fms_authority_point_v4.sql']) {
     await admin.query(await readFile(new URL('../db/migrations/' + migration, import.meta.url), 'utf8'))
   }
+  const { rows: [{ definition }] } = await admin.query(`SELECT pg_get_functiondef(
+    'orgmaster_contract.read_fms_authority_for_principal_v4(text,text)'::regprocedure
+  ) AS definition`)
+  await admin.query(definition.replace('read_fms_authority_for_principal_v4', 'read_fms_authority_for_principal_baseline_v4'))
+  await admin.query('REVOKE ALL ON FUNCTION orgmaster_contract.read_fms_authority_for_principal_baseline_v4(text,text) FROM PUBLIC; GRANT EXECUTE ON FUNCTION orgmaster_contract.read_fms_authority_for_principal_baseline_v4(text,text) TO fms_runtime')
+  await admin.query(await readFile(new URL('../db/migrations/053_dev070_fms_indexed_authority.sql', import.meta.url), 'utf8'))
+  await admin.query(await readFile(new URL('../db/migrations/054_dev070_fms_authority_publication_status.sql', import.meta.url), 'utf8'))
+  await admin.query(await readFile(new URL('../db/migrations/055_dev070_fms_session_display_profile.sql', import.meta.url), 'utf8'))
   console.log(JSON.stringify({ scope: 'LOCAL_SYNTHETIC_ONLY', pid: handle.process.pid, port: handle.port }))
+}
+
+async function nameFixtureEmployee(admin, employeeId, name) {
+  const source = await admin.query(`SELECT artifact.batch_id,artifact.artifact_key,artifact.payload
+    FROM orgmaster_core.v_fms_fact_source_v1 current
+    JOIN orgmaster_core.persistence_artifacts artifact ON artifact.batch_id=current.batch_id
+      AND artifact.artifact_key=current.workspace_artifact_key`)
+  assert.equal(source.rowCount, 1)
+  const { batch_id: batchId, artifact_key: artifactKey, payload } = source.rows[0]
+  const employee = payload.state.employees.find(row => row.id === employeeId)
+  assert.ok(employee)
+  employee.name = name
+  const update = await admin.query(`UPDATE orgmaster_core.persistence_artifacts
+    SET payload=$1, canonical_sha256=orgmaster_core.administration_sha256_v1($1::jsonb)
+    WHERE batch_id=$2 AND artifact_key=$3`, [JSON.stringify(payload), batchId, artifactKey])
+  assert.equal(update.rowCount, 1)
 }
 
 async function editPublishedFixture(admin, edit) {
@@ -80,14 +109,19 @@ async function compareReads(client, targetPrincipal, expectedCount, targetApplic
     const started = performance.now()
     const point = await client.query(pointSql, values)
     const pointMs = performance.now() - started
+    const previousStarted = performance.now()
+    const previous = await client.query(previousPointSql, values)
+    const previousPointMs = performance.now() - previousStarted
     const baselineStarted = performance.now()
     const baseline = await client.query(baselineSql, values)
     const baselineMs = performance.now() - baselineStarted
     const columns = result => result.fields.map(field => [field.name, field.dataTypeID])
+    assert.deepEqual(columns(point), columns(previous))
     assert.deepEqual(columns(point), columns(baseline))
+    assert.deepEqual(point.rows, previous.rows)
     assert.equal(baseline.rows.length, expectedCount)
     assert.deepEqual(point.rows, baseline.rows)
-    return { rows: point.rows, pointMs: Math.round(pointMs), baselineMs: Math.round(baselineMs) }
+    return { rows: point.rows, pointMs: Number(pointMs.toFixed(2)), previousPointMs: Number(previousPointMs.toFixed(2)), baselineMs: Math.round(baselineMs) }
   } finally {
     await client.query('ROLLBACK')
   }
@@ -101,8 +135,13 @@ await withAdministrationPostgresFixture(async fixture => {
   const platform = await connect('platform-prod-runtime@jenfu-platform-prod.iam')
   await admin.query('CREATE ROLE fms_authority_unrelated_fixture LOGIN; GRANT USAGE ON SCHEMA orgmaster_contract TO fms_authority_unrelated_fixture')
   const unrelated = await connect('fms_authority_unrelated_fixture')
+  await assert.rejects(unrelated.query(publicationStatusSql), { code: '42501' })
   await assert.rejects(unrelated.query(pointSql, [principalId, applicationId]), { code: '42501' })
+  await assert.rejects(unrelated.query(admissionSql, ['issuer-fms-authority-peer', 'subject-fms-authority-peer']), { code: '42501' })
+  await assert.rejects(unrelated.query(displaySql, [principalId, employeeId]), { code: '42501' })
+  await assert.rejects(unrelated.query(sessionDisplaySql, [principalId, employeeId, 'issuer', 'subject']), { code: '42501' })
   await assert.rejects(fms.query('SELECT 1 FROM orgmaster_core.persistence_artifacts LIMIT 1'), { code: '42501' })
+  await assert.rejects(fms.query('SELECT 1 FROM orgmaster_core.fms_artifact_facts LIMIT 1'), { code: '42501' })
 
   await editPublishedFixture(admin, ({ policy }) => {
     const link = {
@@ -127,6 +166,27 @@ await withAdministrationPostgresFixture(async fixture => {
     WHERE principal_id=$1 AND employee_status='active' AND account_type='human_personal'`, [sameEmployeePrincipal])
   assert.deepEqual(typedPeer.rows, [{ employee_id: employeeId }])
   await compareReads(fms, principalId, 0)
+  const employeeName = 'FMS Display Fixture'
+  await nameFixtureEmployee(admin, employeeId, '  ' + employeeName + '  ')
+  const peer = ['issuer-fms-authority-peer', 'subject-fms-authority-peer']
+  await fms.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+  try {
+    const admission = await fms.query(admissionSql, peer)
+    const previous = await fms.query(`SELECT * FROM orgmaster_contract.v_fms_principal_admissions_v2
+      WHERE identity_issuer=$1 AND identity_subject=$2`, peer)
+    assert.deepEqual(admission.fields.map(field => [field.name, field.dataTypeID]), previous.fields.map(field => [field.name, field.dataTypeID]))
+    assert.equal(admission.rowCount, 1)
+    assert.deepEqual(admission.rows, previous.rows)
+  } finally {
+    await fms.query('ROLLBACK')
+  }
+  assert.equal((await fms.query(displaySql, [principalId, employeeId])).rowCount, 0)
+
+  const peerDisplay = [sameEmployeePrincipal, employeeId, ...peer]
+  assert.equal((await fms.query(sessionDisplaySql, peerDisplay)).rows[0]?.employee_name, employeeName)
+  assert.equal((await fms.query(sessionDisplaySql, [principalId, employeeId, ...peer])).rowCount, 0)
+  assert.equal((await fms.query(sessionDisplaySql, [sameEmployeePrincipal, 'employee-two', ...peer])).rowCount, 0)
+  assert.equal((await fms.query(sessionDisplaySql, [sameEmployeePrincipal, employeeId, peer[0], 'other-subject'])).rowCount, 0)
 
   const human = await createAdministrativeHumanFixture(fixture)
   const receipt = await human.commit(await human.command('grant_application_administrator', {
@@ -150,6 +210,13 @@ await withAdministrationPostgresFixture(async fixture => {
     validFrom,
     validUntil: null,
   })))
+  const display = await fms.query(displaySql, [principalId, employeeId])
+  assert.deepEqual(display.fields.map(field => field.name), ['principal_id', 'employee_id', 'employee_name'])
+  assert.equal(display.rowCount, 1)
+  assert.equal(display.rows[0].employee_id, employeeId)
+  assert.equal(display.rows[0].employee_name, employeeName)
+  assert.equal((await fms.query(displaySql, [sameEmployeePrincipal, employeeId])).rowCount, 0)
+  assert.equal((await fms.query(displaySql, [principalId, 'employee-two'])).rowCount, 0)
   await compareReads(fms, sameEmployeePrincipal, 0)
   await compareReads(fms, 'principal-fms-authority-missing', 0)
   await compareReads(fms, principalId, 0, 'ai-pdm')
@@ -160,7 +227,13 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.deepEqual(revoke.grantIds, [grantId])
   await drainAdministrationFixtureEvents(fixture, dispatch)
   await compareReads(fms, principalId, 0)
-  console.log('PASS FMS exact Principal catalog grant, no business assignments, same-Employee isolation, and committed revocation on next read')
+  assert.equal((await fms.query(displaySql, [principalId, employeeId])).rowCount, 0)
+  assert.equal((await fms.query(sessionDisplaySql, peerDisplay)).rows[0]?.employee_name, employeeName)
+  await editPublishedFixture(admin, ({ policy }) => {
+    policy.identityLinks.find(link => link.principalId === sameEmployeePrincipal).status = 'inactive'
+  })
+  assert.equal((await fms.query(sessionDisplaySql, peerDisplay)).rowCount, 0)
+  console.log('PASS FMS catalog grant and committed revocation; self-display ignores financial grants and rejects mismatched or withdrawn identity')
 }, { platformRoot })
 
 await withAdministrationPostgresFixture(async fixture => {
@@ -197,6 +270,18 @@ await withAdministrationPostgresFixture(async fixture => {
     })
   })
   await admin.query('ANALYZE')
+  const allowed = eligible[0]
+  await admin.query('BEGIN')
+  try {
+    await editPublishedFixture(admin, ({ policy }) => {
+      policy.roleAssignments.find(assignment => assignment.employeeId === allowed.employee_id).status = 'revoked'
+    })
+    assert.equal((await admin.query(pointSql, [allowed.principal_id, applicationId])).rowCount, 0)
+    assert.equal((await fms.query(pointSql, [allowed.principal_id, applicationId])).rowCount, 1)
+  } finally {
+    await admin.query('ROLLBACK')
+  }
+  assert.equal((await fms.query(pointSql, [allowed.principal_id, applicationId])).rowCount, 1)
 
   const allowedTimings = []
   for (const row of [eligible[0], eligible[1], eligible.at(-1)]) {
@@ -209,6 +294,48 @@ await withAdministrationPostgresFixture(async fixture => {
   }
   const { rows: deniedRows, ...deniedTiming } = await compareReads(fms, denied.principal_id, 0)
   assert.deepEqual(deniedRows, [])
+  const benchmark = { projected: [], previous: [] }
+  for (let repeat = 0; repeat < 10; repeat += 1) {
+    const calls = [['projected', pointSql], ['previous', previousPointSql]]
+    if (repeat % 2) calls.reverse()
+    for (const [key, sql] of calls) {
+      const started = performance.now()
+      const result = await fms.query(sql, [allowed.principal_id, applicationId])
+      benchmark[key].push(performance.now() - started)
+      assert.equal(result.rowCount, 1)
+    }
+  }
+  const summarize = samples => {
+    const sorted = samples.toSorted((left, right) => left - right)
+    return { sampleCount: sorted.length, medianMs: Number(((sorted[4] + sorted[5]) / 2).toFixed(2)),
+      maxMs: Number(sorted.at(-1).toFixed(2)) }
+  }
+  const now = Date.now()
+  await editPublishedFixture(admin, ({ policy }) => {
+    const assignment = policy.roleAssignments.find(row => row.employeeId === denied.employee_id)
+    assignment.status = 'active'
+    assignment.validFrom = new Date(now + 86_400_000).toISOString()
+  })
+  await compareReads(fms, denied.principal_id, 0)
+  await editPublishedFixture(admin, ({ policy }) => {
+    const assignment = policy.roleAssignments.find(row => row.employeeId === denied.employee_id)
+    assignment.validFrom = validFrom
+    assignment.validTo = new Date(now - 60_000).toISOString()
+  })
+  await compareReads(fms, denied.principal_id, 0)
+  await editPublishedFixture(admin, publication => {
+    publication.policy.roleAssignments = []
+  })
+  assert.equal((await fms.query(pointSql, [allowed.principal_id, applicationId])).rowCount, 0)
+  assert.equal((await fms.query(publicationStatusSql)).rows[0].ready, true)
+  await editPublishedFixture(admin, publication => {
+    publication.externalRoleCatalogs = [businessCatalog, { ...businessCatalog, catalogVersion: 'duplicate-catalog' }]
+  })
+  assert.equal((await fms.query(publicationStatusSql)).rows[0].ready, false)
+  await editPublishedFixture(admin, publication => {
+    publication.externalRoleCatalogs = []
+  })
+  assert.equal((await fms.query(publicationStatusSql)).rows[0].ready, false)
   console.log(JSON.stringify({
     result: 'PASS',
     workMem: (await fms.query('SHOW work_mem')).rows[0].work_mem,
@@ -218,5 +345,6 @@ await withAdministrationPostgresFixture(async fixture => {
     unrelatedAssignments: principals.length - eligible.length - 1,
     allowed: allowedTimings,
     denied: deniedTiming,
+    warmAllowed: { projected: summarize(benchmark.projected), previous: summarize(benchmark.previous) },
   }))
 }, { platformRoot, capacityPopulation: 500 })

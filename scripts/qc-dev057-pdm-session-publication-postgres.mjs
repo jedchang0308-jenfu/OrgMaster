@@ -28,7 +28,7 @@ const platformRoot = process.env.DEV070_PLATFORM_FIXTURE_ROOT ?? 'C:/VIBE CODING
 const platformFixture = await import(pathToFileURL(resolve(platformRoot, 'scripts/lib/dev022-administration-lifecycle-fixture.mjs')).href)
 await withAdministrationPostgresFixture(async fixture => {
   const { admin, connect, handle } = fixture
-  for (const file of ['053_dev057_ai_pdm_session_authority.sql', '054_dev057_pdm_session_publication.sql']) {
+  for (const file of ['056_dev057_ai_pdm_session_authority.sql', '057_dev057_pdm_session_publication.sql']) {
     await admin.query(await readFile(new URL('../db/migrations/' + file, import.meta.url), 'utf8'))
   }
   const version = async () => (await admin.query(

@@ -44,3 +44,22 @@ Migration 026 corrects the published-policy path used by the v2 OrgMaster sessio
 Migration 028 is a local DEV-057 candidate for `orgmaster_contract.v_ai_pdm_principal_effective_grants_v3`. It retains the published governance, typed account, ownership, scope, delegation and validity fences of v2 while removing the per-employee `v_ai_pdm_entitlement_authority_v1` join and `authority_version` output. It creates a new versioned manifest row and leaves v2 and all historical authority data intact. Disposable PostgreSQL producer QC passes; the AI-PDM consumer, exact owner release profile and Production readback are still pending, so 028 is not yet an executable Production release package.
 
 Migration 047 adds typed AI-PDM Principal readers and shares the live V1/V5 projection without removing the legacy ABI, validation, or request freshness. It is formal manifest order 43; local046/bootstrap071 remain separate. See DEV-070 §25.
+
+Migration 053 keeps the existing FMS v4 point reader signature and adds
+`orgmaster_contract.read_fms_principal_admission_v2(text,text)` (issuer,
+subject) and `orgmaster_contract.read_fms_principal_display_profile_v1(text,text)`
+(Principal, Employee). The latter returns an optional name for a currently
+FMS-qualified exact pair. The existing enumeration, admission and display
+views remain available. The active artifact publication and its indexed facts
+commit together. Reads still evaluate expiry and lifecycle delivery state.
+Formal manifest order 49 appends to the unchanged 48-entry predecessor.
+
+> Migration 054 adds a restricted publication status check over the active
+  workspace and FMS catalog facts. A published catalog may have zero qualified
+  principals. JF-FMS distinguishes that case from missing or ambiguous
+  publication without enumerating other principals.
+
+> Migration 055 adds an optional self-display reader for a unique active
+  issuer/subject and matching Principal/Employee pair. JF-FMS authenticates
+  the cookie and checks Platform revocation before invoking it. The lookup
+  reads name metadata without evaluating financial assignments or grants.

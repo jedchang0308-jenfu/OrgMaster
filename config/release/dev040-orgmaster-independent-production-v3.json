@@ -590,15 +590,36 @@
       },
       {
         "order": 49,
-        "version": "dev057-orgmaster-053",
-        "path": "db/migrations/053_dev057_ai_pdm_session_authority.sql",
+        "version": "dev070-orgmaster-053",
+        "path": "db/migrations/053_dev070_fms_indexed_authority.sql",
+        "sourceSha256": "1de121b3661076463e0c08e44dc7f3e69f839dfe5e5f1e5d6b5d44ec5cabddf7",
+        "appliedSha256": "2e7641f09bb66455368ee9a3d652312a01305ceb4f04a3540e0aefa69bcbe327"
+      },
+      {
+        "order": 50,
+        "version": "dev070-orgmaster-054",
+        "path": "db/migrations/054_dev070_fms_authority_publication_status.sql",
+        "sourceSha256": "c588d52616f3be5dc436dc189e8e5c1ac9d3ae37adc6a6f1b5d58a7087f3d0d4",
+        "appliedSha256": "82ba01163be41b4b950462bc9840a0bf583eb6ec37886b4c7bc284a8c49aa0fe"
+      },
+      {
+        "order": 51,
+        "version": "dev070-orgmaster-055",
+        "path": "db/migrations/055_dev070_fms_session_display_profile.sql",
+        "sourceSha256": "fbc312828f6a820e666d7ea116877a5f6f597f76bd97dcbf6028fdec48f21fda",
+        "appliedSha256": "8a3c452c8b4bd353f1adcfac6bc84cd35eb9c4f05e7a0e56a36fe95310492bea"
+      },
+      {
+        "order": 52,
+        "version": "dev057-orgmaster-056",
+        "path": "db/migrations/056_dev057_ai_pdm_session_authority.sql",
         "sourceSha256": "8879d2403145816d0188c166d27541f7242279f0069c46f7cb82927a4d554f43",
         "appliedSha256": "3dccfac9b267d06b5eabb3219e21f5aff788fbce43affc6c6c5fe4e755962703"
       },
       {
-        "order": 50,
-        "version": "dev057-orgmaster-054",
-        "path": "db/migrations/054_dev057_pdm_session_publication.sql",
+        "order": 53,
+        "version": "dev057-orgmaster-057",
+        "path": "db/migrations/057_dev057_pdm_session_publication.sql",
         "sourceSha256": "c5f22d066a2c4d4b2629db88afd2baa4d0bedb259b743e9c3609fac545f85fee",
         "appliedSha256": "646062e6f86bf976e1d7f0447321c191480fe869269104d76553766535028a6f"
       }

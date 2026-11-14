@@ -7,9 +7,9 @@ const employee = 'employee-legacy'
 
 await withAdministrationPostgresFixture(async fixture => {
   const { admin, connect } = fixture
-  const sql = await readFile(new URL('../db/migrations/053_dev057_ai_pdm_session_authority.sql', import.meta.url), 'utf8')
+  const sql = await readFile(new URL('../db/migrations/056_dev057_ai_pdm_session_authority.sql', import.meta.url), 'utf8')
   await admin.query(sql)
-  await admin.query(await readFile(new URL('../db/migrations/054_dev057_pdm_session_publication.sql', import.meta.url), 'utf8'))
+  await admin.query(await readFile(new URL('../db/migrations/057_dev057_pdm_session_publication.sql', import.meta.url), 'utf8'))
   assert.ok((await admin.query('SELECT * FROM orgmaster_core.read_pdm_session_impact_v1()')).rowCount >= 1)
   await admin.query('CREATE ROLE pdm_session_qc LOGIN; GRANT jenfu_ai_pdm_runtime TO pdm_session_qc')
   const pdm = await connect('pdm_session_qc')
