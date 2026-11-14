@@ -1,5 +1,6 @@
 import { canonicalize, sha256 } from './dev012-production-migration-runner.mjs'
 import { TARGET } from './orgmaster-production-database.mjs'
+import { publishAfterOrgmasterPdmRevocation } from './orgmaster-pdm-publication.mts'
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
@@ -99,85 +100,154 @@ export function assertOrgMasterAdmissionOperation(value, { bytes, operationSha25
   return value
 }
 
+export function assertOrgMasterQuarantineOperation(value, { bytes, operationSha256, sourceRevision, now = new Date() }) {
+  if (!Buffer.isBuffer(bytes) || !H64.test(operationSha256 ?? '') || sha256(bytes) !== operationSha256) fail('DEV049_OPERATION_SHA256_MISMATCH')
+  exactKeys(value, ['schemaVersion', 'ownerApplicationId', 'operationId', 'sourceRevision', 'target',
+    'identityRecordId', 'expectedRevision', 'incidentRef', 'reasonCode', 'deadlineAt', 'manifestSha256'], 'DEV049_OPERATION_KEYS_INVALID')
+  if (value.schemaVersion !== 'jenfu.dev049.orgmaster-production-quarantine-operation.v1' ||
+    value.ownerApplicationId !== 'orgmaster' || !OPERATION_ID.test(value.operationId ?? '') ||
+    !H40.test(value.sourceRevision ?? '') || value.sourceRevision !== sourceRevision ||
+    !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(value.identityRecordId ?? '') ||
+    typeof value.incidentRef !== 'string' || !/^[A-Za-z0-9._:/-]{1,255}$/u.test(value.incidentRef) ||
+    typeof value.reasonCode !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(value.reasonCode) ||
+    !integerString(value.expectedRevision) || !Number.isFinite(Date.parse(value.deadlineAt)) ||
+    Date.parse(value.deadlineAt) <= now.getTime()) fail('DEV049_OPERATION_IDENTITY_INVALID')
+  const expectedTarget = Object.fromEntries(Object.entries(ORGMASTER_ADMISSION_TARGET)
+    .filter(([key]) => ['projectId', 'projectNumber', 'region', 'instance', 'database', 'jobName'].includes(key)))
+  if (canonicalize(value.target) !== canonicalize(expectedTarget)) fail('DEV049_OPERATION_TARGET_INVALID')
+  const { manifestSha256, ...core } = value
+  if (!H64.test(manifestSha256 ?? '') || sha256(canonicalize(core)) !== manifestSha256) fail('DEV049_OPERATION_MANIFEST_INVALID')
+  return value
+}
+
 function observedRequiredConsumers(applications) {
   return [...new Set(['platform', 'orgmaster', ...applications.filter((row) => row.status === 'active').map((row) => row.applicationId)])].sort()
 }
 
-export async function executeOrgMasterAdmission({ operation, database }) {
+export async function executeOrgMasterAdmission({ operation, database, pdmPublicationEnabled = false }) {
+  return publishOwnerMaintenance({
+    operation, database, pdmPublicationEnabled, commandKey: operation.operationId,
+    write: () => applyAdmission({ operation, database }),
+  })
+}
+
+async function publishOwnerMaintenance({ operation, database, pdmPublicationEnabled, commandKey, write }) {
+  const transaction = async run => {
+    await database.query('BEGIN')
+    try {
+      await database.query('SET LOCAL ROLE jenfu_orgmaster_migrator')
+      if (pdmPublicationEnabled) await database.query("SET LOCAL orgmaster.pdm_owner_maintenance = 'coordinated'")
+      const result = await run()
+      await database.query('COMMIT')
+      return result
+    } catch (error) {
+      await database.query('ROLLBACK').catch(() => undefined)
+      throw error
+    }
+  }
+  return publishAfterOrgmasterPdmRevocation({
+    actor: TARGET.login,
+    commandKey,
+    request: operation,
+    enabled: pdmPublicationEnabled,
+    advanceLifecycleVersion: true,
+    ownerDelivery: true,
+    transaction,
+    database: () => database,
+    deliveryDatabase: () => database,
+    write: pdmPublicationEnabled ? write : () => transaction(write),
+    replay: () => transaction(write),
+  })
+}
+
+export async function executeOrgMasterQuarantine({ operation, database, pdmPublicationEnabled = false }) {
+  const { operationId, identityRecordId, expectedRevision, incidentRef, reasonCode } = operation
+  const write = async () => {
+    const prior = await database.query(`
+      SELECT revision::text, link_state FROM orgmaster_core.managed_daily_identities
+      WHERE identity_record_id=$1 AND updated_by=$2 AND link_state='conflict'
+    `, [identityRecordId, operationId])
+    if (prior.rowCount === 1 && BigInt(prior.rows[0].revision) === BigInt(expectedRevision) + 1n) {
+      return { disposition: 'REPLAY', state: prior.rows[0].link_state, revision: prior.rows[0].revision }
+    }
+    const result = await database.query(
+      'SELECT orgmaster_core.quarantine_managed_identity_v1($1,$2,$3,$4,$5) AS applied',
+      [identityRecordId, expectedRevision, incidentRef, operationId, reasonCode],
+    )
+    if (result.rows[0]?.applied !== true) fail('DEV049_QUARANTINE_FAILED')
+    return { disposition: 'APPLIED', state: 'conflict', revision: (BigInt(expectedRevision) + 1n).toString() }
+  }
+  return publishOwnerMaintenance({
+    operation, database, pdmPublicationEnabled, commandKey: 'quarantine:' + operationId, write,
+  })
+}
+
+async function applyAdmission({ operation, database }) {
   const desiredEnabled = operation.action === 'activate'
   const reasonCode = desiredEnabled ? 'dev014-managed-login-activate' : 'dev014-managed-login-rollback'
-  await database.query('BEGIN')
-  try {
-    await database.query('SET LOCAL ROLE jenfu_orgmaster_migrator')
-    const authorityResult = await database.query(`
-      SELECT admission_enabled, revision::text, updated_by, reason_code
-      FROM orgmaster_core.managed_identity_admission_authority
-      WHERE singleton = true
-      FOR UPDATE
-    `)
-    if (authorityResult.rows.length !== 1) fail('DEV049_ADMISSION_ROW_MISSING')
-    const before = authorityRow(authorityResult.rows[0])
-    const applicationResult = await database.query(`
-      SELECT application_id, status, support_state, support_revision::text, support_evidence_ref
-      FROM orgmaster_core.managed_identity_invalidation_applications
-      ORDER BY application_id
-      FOR UPDATE
-    `)
-    const applications = applicationResult.rows.map(applicationRow)
-    const required = observedRequiredConsumers(applications)
-    if (canonicalize(required) !== canonicalize(operation.consumers.map(({ applicationId }) => applicationId))) fail('DEV049_ACTIVE_CONSUMER_SET_MISMATCH')
-    const byId = new Map(applications.map((row) => [row.applicationId, row]))
-    if (before.enabled === desiredEnabled && before.updatedBy === operation.operationId && before.reasonCode === reasonCode) {
-      if (desiredEnabled) {
-        for (const consumer of operation.consumers) {
-          const observed = byId.get(consumer.applicationId)
-          if (!observed || observed.supportState !== 'verified' || observed.supportEvidenceRef !== evidenceValue(consumer)) fail('DEV049_SUPPORT_REPLAY_MISMATCH')
-        }
-      }
-      await database.query('COMMIT')
-      return { before, after: before, supports: applications, disposition: 'REPLAY', affectedIdentityCount: 0, outboxCount: 0 }
-    }
-    if (before.enabled !== operation.expected.enabled || before.revision !== operation.expected.admissionRevision) fail('DEV049_ADMISSION_PRECONDITION_MISMATCH')
-    const supports = []
+  const authorityResult = await database.query(`
+    SELECT admission_enabled, revision::text, updated_by, reason_code
+    FROM orgmaster_core.managed_identity_admission_authority
+    WHERE singleton = true
+    FOR UPDATE
+  `)
+  if (authorityResult.rows.length !== 1) fail('DEV049_ADMISSION_ROW_MISSING')
+  const before = authorityRow(authorityResult.rows[0])
+  const applicationResult = await database.query(`
+    SELECT application_id, status, support_state, support_revision::text, support_evidence_ref
+    FROM orgmaster_core.managed_identity_invalidation_applications
+    ORDER BY application_id
+    FOR UPDATE
+  `)
+  const applications = applicationResult.rows.map(applicationRow)
+  const required = observedRequiredConsumers(applications)
+  if (canonicalize(required) !== canonicalize(operation.consumers.map(({ applicationId }) => applicationId))) fail('DEV049_ACTIVE_CONSUMER_SET_MISMATCH')
+  const byId = new Map(applications.map((row) => [row.applicationId, row]))
+  if (before.enabled === desiredEnabled && before.updatedBy === operation.operationId && before.reasonCode === reasonCode) {
     if (desiredEnabled) {
       for (const consumer of operation.consumers) {
         const observed = byId.get(consumer.applicationId)
-        if ((observed?.supportRevision ?? '0') !== consumer.expectedSupportRevision) fail('DEV049_SUPPORT_REVISION_MISMATCH', consumer.applicationId)
-        const result = await database.query(`
-          SELECT application_id, support_revision::text, support_state
-          FROM orgmaster_core.attest_managed_identity_invalidation_support_v1($1, $2::bigint, $3, $4)
-        `, [consumer.applicationId, consumer.expectedSupportRevision, evidenceValue(consumer), operation.operationId])
-        if (result.rows.length !== 1 || result.rows[0].support_state !== 'verified') fail('DEV049_SUPPORT_ATTESTATION_FAILED', consumer.applicationId)
-        supports.push({
-          applicationId: String(result.rows[0].application_id),
-          supportRevision: String(result.rows[0].support_revision),
-          supportState: String(result.rows[0].support_state),
-          evidenceRef: evidenceValue(consumer),
-        })
+        if (!observed || observed.supportState !== 'verified' || observed.supportEvidenceRef !== evidenceValue(consumer)) fail('DEV049_SUPPORT_REPLAY_MISMATCH')
       }
     }
-    const changed = await database.query(`
-      SELECT revision::text, admission_enabled, affected_identity_count, outbox_count
-      FROM orgmaster_core.set_managed_identity_admission_v1($1::bigint, $2, $3, $4)
-    `, [operation.expected.admissionRevision, desiredEnabled, operation.operationId, reasonCode])
-    if (changed.rows.length !== 1 || changed.rows[0].admission_enabled !== desiredEnabled) fail('DEV049_ADMISSION_CHANGE_FAILED')
-    const after = {
-      enabled: changed.rows[0].admission_enabled === true,
-      revision: String(changed.rows[0].revision),
-      updatedBy: operation.operationId,
-      reasonCode,
+    return { before, after: before, supports: applications, disposition: 'REPLAY', affectedIdentityCount: 0, outboxCount: 0 }
+  }
+  if (before.enabled !== operation.expected.enabled || before.revision !== operation.expected.admissionRevision) fail('DEV049_ADMISSION_PRECONDITION_MISMATCH')
+  const supports = []
+  if (desiredEnabled) {
+    for (const consumer of operation.consumers) {
+      const observed = byId.get(consumer.applicationId)
+      if ((observed?.supportRevision ?? '0') !== consumer.expectedSupportRevision) fail('DEV049_SUPPORT_REVISION_MISMATCH', consumer.applicationId)
+      const result = await database.query(`
+        SELECT application_id, support_revision::text, support_state
+        FROM orgmaster_core.attest_managed_identity_invalidation_support_v1($1, $2::bigint, $3, $4)
+      `, [consumer.applicationId, consumer.expectedSupportRevision, evidenceValue(consumer), operation.operationId])
+      if (result.rows.length !== 1 || result.rows[0].support_state !== 'verified') fail('DEV049_SUPPORT_ATTESTATION_FAILED', consumer.applicationId)
+      supports.push({
+        applicationId: String(result.rows[0].application_id),
+        supportRevision: String(result.rows[0].support_revision),
+        supportState: String(result.rows[0].support_state),
+        evidenceRef: evidenceValue(consumer),
+      })
     }
-    await database.query('COMMIT')
-    return {
-      before,
-      after,
-      supports,
-      disposition: 'APPLIED',
-      affectedIdentityCount: Number(changed.rows[0].affected_identity_count),
-      outboxCount: Number(changed.rows[0].outbox_count),
-    }
-  } catch (error) {
-    await database.query('ROLLBACK').catch(() => undefined)
-    throw error
+  }
+  const changed = await database.query(`
+    SELECT revision::text, admission_enabled, affected_identity_count, outbox_count
+    FROM orgmaster_core.set_managed_identity_admission_v1($1::bigint, $2, $3, $4)
+  `, [operation.expected.admissionRevision, desiredEnabled, operation.operationId, reasonCode])
+  if (changed.rows.length !== 1 || changed.rows[0].admission_enabled !== desiredEnabled) fail('DEV049_ADMISSION_CHANGE_FAILED')
+  const after = {
+    enabled: changed.rows[0].admission_enabled === true,
+    revision: String(changed.rows[0].revision),
+    updatedBy: operation.operationId,
+    reasonCode,
+  }
+  return {
+    before,
+    after,
+    supports,
+    disposition: 'APPLIED',
+    affectedIdentityCount: Number(changed.rows[0].affected_identity_count),
+    outboxCount: Number(changed.rows[0].outbox_count),
   }
 }

@@ -21,6 +21,7 @@ import type { GovernanceActorContext, GovernanceCommandReceiptV2, GovernanceDocu
 import {
   appendGovernanceAudit,
   commitGovernanceMutation,
+  withGovernancePdmPublication,
   loadOrganizationSource,
   readGovernanceStore,
 } from './orgmasterGovernanceStore'

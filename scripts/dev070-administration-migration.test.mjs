@@ -15,7 +15,7 @@ const files=new Map(profile.migrations.entries.map(entry=>[entry.path,readFileSy
 const after=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c,root),files,source).bundle
 const before=count=>({...after,sourceRevision:'b'.repeat(40),manifestSha256:'c'.repeat(64),entries:after.entries.slice(0,count)})
 
-test('DEV070 exact reviewed source packages only 042/044/045/047/048/049/050/051/052/053/054/055 after immutable 001–041 identity',()=>{
+test('DEV070 exact reviewed source packages only 042/044/045/047/048/049/050/051/052/053/054/055/056/057 after immutable 001–041 identity',()=>{
  assertDev040V3Profile(profile,n1c);assertDev070MigrationEntries(after.entries)
  assertDev059MigrationEntries(after.entries.slice(0,39))
  assert.equal(after.entries.length,DEV070_MIGRATION_ENTRY_COUNT)

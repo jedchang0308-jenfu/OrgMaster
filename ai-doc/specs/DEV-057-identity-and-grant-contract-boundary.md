@@ -1,5 +1,46 @@
 # DEV-057：Principal 身分與角色發布（現行契約）
 
+<a id="pdm-session-revocation"></a>
+
+## PDM 有效權限異動先撤銷再發布
+
+整合主控為 Jenfu-Platform 專案的 session，依 `JENFU/DEV-015#pdm-session-revocation` 定義跨系統順序與驗收。PDM 接收由 `AIPDM/DEV-121#pdm-session-revocation` 負責。[主控契約](../../../Jenfu-Platform/ai-doc/specs/DEV-015-authentication-authorization-boundary-refactor.md#pdm-session-revocation)
+
+- 沿用政策發布、active version 切換、有效指派與 lifecycle 事件／回執模式。既有行政異動派送可作參考，不能視為一般角色發布已接通 PDM。盤點並涵蓋影響 PDM 的任用新增、變更、撤銷、公司／專案範圍、委派、行政任用、身分停用及政策切換／回復。從變更前後的有效權限確定受影響 Principal，不依 email 或只依角色名稱。
+- 凍結基線及預期發布版本，保存待發布事件與精確影響範圍，再通知 Platform。草稿、預覽及無有效差異的提交不觸發。加上對生效中或將來會改變快照的有效期資訊，供 PDM 登入選定上限。
+- 對須消除撤權空窗的異動，依主控契約等待 PDM 的持久化撤銷回執，再在發布交易比對基線與影響範圍。若基線漂移，停止原操作的生效並重新準備；未能確定原操作結果時先按原 ID 讀回。發布成功後送出正式版本證據，供 PDM 安全恢復登入。跨服務傳送不持有長資料庫交易。
+- 隔離驗收以正常產品入口走過新增／撤銷、共用政策切換、舊版本回復、無差異、到期、同範圍競爭和通知故障。證明缺 PDM 回執時待變更不生效、事件重送不再發布第二版、確認取消不留下無主登入阻擋。DEV-070 正式行政任用若影響 PDM，作為本切片的呼叫端納入，沿原 owner 契約。
+
+| PDM 權限來源 | OrgMaster 入口與處理 |
+| --- | --- |
+| 發布一般任用、委派、公司／專案 scope，以及啟用或回復治理政策 | 沿用治理 `/versions` 與 `/active-version`。對照同一份 v6 原生投影與下一個時間邊界後，只有有效差異需要撤銷回執。 |
+| 現行職位或員工狀態 | `current-maintenance` 沿工作區 CAS；透過 v6 投影辨識來源職位失效及受影響 Principal。 |
+| 舊 PDM 系統管理員及 DEV-070 行政任用 | 各自沿既有 verified Principal 命令、預覽、稽核與回執；PDM 屏障與既有行政 lifecycle 同時保留。 |
+| Directory 停用或 owner 隔離、停用 managed admission | Directory 觀察沿 lifecycle v2。Owner 維護以封存操作、既有 migrator、同一發布世代與回執進行，排程沿既有 runtime workload 驗證。 |
+| 首次 bind 或首次平台管理員初始化 | 正常 bind 只消耗 pending 身分，不能把 conflict 恢復成 active。首次 Portal 初始化只給 Platform／OrgMaster 管理權。首包若帶 PDM 管理任用，須在快照正式啟用前完成，後續 PDM 管理異動走正常 DEV-070 命令。 |
+| 自然生效與到期 | 登入讀取同一 SQL 快照中的 `next_boundary`，涵蓋未來任用、委派來源、職位來源、受管範圍內的身分連結與行政任用。 |
+
+PDM 本地角色能力政策由 AI-PDM owner 負責。OrgMaster 的舊角色能力工作區寫入的是本機規劃資料，PDM 授權以正式 v6 指派投影為準。
+
+### 審核候選來源
+
+- 初始讀取與終態增量使用同一組 OrgMaster 授權區間。區間左閉右開，以既有 v6 的身分、授權、catalog、範圍及原生行政定義判定為基礎。交會點包含任用、委派及來源任用、職位任用、行政授權及舊身分連結。PDM 以本地已開通帳戶對應 Principal／員工，再以現行 catalog、角色優先序、拒絕、案件要求及禁止自審選人。各角色資料及其多重性須保留，避免扁平化後意外放行。
+- 初始分頁須固定 OrgMaster source version 和評估時間，漂移即重建。增量以已提交的 operation ID／publication version 取得精確受影響 Principal 與完整替換區間。已確認無候選以空集合表示，缺少操作、版號不符或資料不完整維持阻擋。增量讀取可重播封存資料，取消沒有替換生效資料。沿現有 prepare／published／cancelled，派送 wire 沿用 v1。
+- 對外 ABI 沿 [Platform DEV-015 審核候選投影 SQL v1](../../../Jenfu-Platform/ai-doc/specs/DEV-015-authentication-authorization-boundary-refactor.md#審核候選投影-sql-v1)，由 `read_ai_pdm_reviewer_snapshot_v1(text,timestamptz,text,integer)` 和 `read_ai_pdm_reviewer_publication_v1(uuid,text)` 供既有 PDM runtime 讀取。provider pair 只留在內部異動指紋。專用讀取與原登入讀取獨立，首次登入的 PDM migrator 仍只沿原登入函式。
+- 內部時間指紋會比較完整的有效區間，包括尚未生效的角色／scope。準備及套用使用同一時間錨點。完成發布時在同一交易封存完整的受影響資料，並拒絕改寫已封存區間。原生 lifecycle 待確認時，初始載入回零列，已提交的終態保留原精確讀回。OrgMaster 待受影響的原生 lifecycle 回執確認，再由既有派送／補送送出 PDM 終態。這使本地候選不會因短暫的原生封鎖永久失格，也不會提前恢復資格。
+
+### 正式切換與回復
+
+1. OrgMaster 以既有 DEV-040 owner 入口部署 056、057 及同源 runtime／migration runner。若先只交付 SQL，使用既有 migration-only 與同 capsule 續行。發布控制初始為關閉、revision 為 `0`。AI-PDM 接收撤銷並保留一般請求的中央檢查。Platform 接通 relay 與雙階段全域登出後，才執行 OrgMaster 啟用。
+2. 主控以完整候選驗收及 owner 階段輸出準備 `jenfu.pdm-session-rollout-acceptance.v1`。同一份 JSON 只含 `schemaVersion`、`status`（`PASS`）、`action`（`enable` 或 `disable`）、`evidenceSha256`（主控驗收或回復證據的原始 SHA-256）和 `sources`。`sources` 的 `orgmaster`、`platform`、`ai-pdm` 各用 `sourceRevision` 與完整不可變 `artifactDigest` 綁定正式候選。把該摘要放入現有 OrgMaster 私有 release bucket 的 `receipts/pdm-session-acceptance/`，用原始 bytes SHA-256 傳入。只有原有受權 operator 使用該 bucket。
+3. 在乾淨且已通過所需 CI 的正式 `master` 執行 `npm run pdm-publication:production -- enable --expected-revision=0 "--acceptance-ref=URI#sha256=HASH"`。可加 `--check` 唯讀檢查 provider 前置。入口核對 3 個 owner 的封存 release、canonical 100% traffic、artifact、開關及 Scheduler 綁定和 3 分鐘內在同一 revision 的 HTTP 200。以既有 migration Job 的固定模式重讀 056/057 ledger 並按 revision 做 DB CAS；SQL 持有發布 writer 已使用的鎖，切換後舊 runtime 的有效寫入會在 DB 拒絕。
+4. 啟用成功收據包含 DB 控制 revision 與封存驗收 ref，交主控綁定後續 PDM 快照切換。主控先讀回相符的 receipt、Scheduler 與服務狀態再放行快照。切換期間保持三套 owner 發布序列，若發現服務或排程在提交附近漂移，入口報錯並保留已知的控制收據。未知結果沿原接受 ref、source 和 expected revision 重跑，由 DB 讀回同操作，過期輸入可更新截止時間。既有收據不會被覆寫。
+5. 回復由 AI-PDM owner 先把流量切回能辨識既有撤銷紀錄、保留接收與中央檢查的相容版本。保留 Platform relay 及 OrgMaster Scheduler，等所有 OrgMaster 待交付事件取得終態回執。以該回復基線封存 `disable` evidence，再用同入口及目前控制 revision 執行 `disable`。CAS 會拒絕仍有待送事件的關閉。取得相符的關閉收據後才續行上游回復。沿原 owner 流程修復或前向部署，保留已套 migration、PDM 撤銷紀錄與 operation 回執。
+
+現有 release runner 與產品 Scheduler 沿用原身分；跨 owner 的 release/traffic、Scheduler 與 Logging 讀回使用既有 operator 權限。OrgMaster 入口可攔住不符順序的 OrgMaster 切換，PDM／Platform 後續動作仍由各 owner 入口與主控無並行切換的發布序列執行。
+
+相容發布就須把現有 Scheduler 接到 Platform 的全域登出補送端點，早於 Platform 開始產生待送事件。Scheduler 每輪以原 workload OIDC 呼叫 `POST /api/internal/pdm-session-revocation/v1/reconcile`，同輪依 OrgMaster 自有開關決定是否處理改權發布。既有 Platform 版本沒有該路由（404），或候選明示 `503 pdm_revocation_relay_disabled`，在 OrgMaster 發布關閉期間視為相容狀態，排程可回 200。平台部分完成、組態或認證錯誤及連線故障回 503；兩條補送和既有 lifecycle 可各自繼續。OrgMaster 關閉發布之後仍呼叫 Platform 恢復待送全域登出。啟用／回復不得讓未排空全域事件的 Platform 回到缺路由或 relay 關閉的版本。
+
 <a id="architecture-final"></a>
 
 ## 唯一施工入口

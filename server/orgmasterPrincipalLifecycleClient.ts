@@ -27,7 +27,7 @@ export type OrgmasterPrincipalLifecycleClientDependencies = Readonly<{
   now?: () => number
 }>
 
-async function defaultIdTokenProvider(audience: string): Promise<string> {
+export async function defaultIdTokenProvider(audience: string): Promise<string> {
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim() || process.env.google_application_credentials?.trim()) {
     throw new PrincipalLifecycleClientError('dispatch_unavailable')
   }

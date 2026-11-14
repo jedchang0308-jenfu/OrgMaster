@@ -1,3 +1,7 @@
+import { createOrgmasterPdmRevocationClient } from './orgmasterPdmRevocationClient'
+import { reconcileOrgmasterPdmPublications } from './orgmasterPdmPublication'
+import type { Database } from '../scripts/lib/orgmaster-pdm-publication.mts'
+import { readOrgmasterPdmPublicationControl } from './orgmasterPersistenceRepository'
 import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { OAuth2Client } from 'google-auth-library'
@@ -12,8 +16,14 @@ import { createOrgmasterPrincipalLifecycleClient } from './orgmasterPrincipalLif
 export const MANAGED_LIFECYCLE_API_PATH = '/api/internal/managed-identity-lifecycle/v2'
 export const MANAGED_LIFECYCLE_ORIGIN = 'https://orgmaster-prod-9536592944.asia-east1.run.app'
 type Caller = Readonly<{ issuer: string; audience: string; subject: string }>
+type PublicationCounts = { selected: number; completed: number }
+type GlobalLogoutReconciliation = 'ready' | 'route-absent' | 'relay-disabled'
 export type ManagedIdentityLifecycleRuntime = Readonly<{
   worker: ManagedIdentitySyncWorker
+  reconcilePdm?: () => Promise<{
+    publications: PublicationCounts | null
+    globalLogout: GlobalLogoutReconciliation | 'unavailable'
+  }>
   verify(token: string): Promise<Caller>
   resolveCaller(subject: string): Promise<ManagedIdentityWorkloadExecutor | null>
 }>
@@ -81,9 +91,20 @@ export function createOrgmasterManagedIdentityLifecycleMiddleware(runtime?: Mana
       await body
       const principal=await withAdmissionDeadline(()=>runtime.resolveCaller(caller.subject))
       if(!principal) throw new LifecycleHttpError(403,'lifecycle_caller_denied')
-      const report=await runtime.worker.runOnce(principal)
+      const reconciliation = runtime.reconcilePdm?.()
+      const [worker, pdm] = await Promise.allSettled([runtime.worker.runOnce(principal), reconciliation])
+      if (worker.status === 'rejected') throw worker.reason
+      if (pdm.status === 'rejected') throw pdm.reason
+      const report = worker.value
       if(report.executorPrincipalId!==principal.principalId) throw new LifecycleHttpError(503,'lifecycle_executor_mismatch')
-      send(response,200,{contractVersion:'orgmaster.managed-identity-lifecycle-cycle.v2',correlationId:id,...report},id)
+      const pdmResult = pdm.value
+      const publications = pdmResult?.publications
+      const pdmUnavailable = pdmResult?.globalLogout === 'unavailable' ||
+        (publications && (publications.selected !== publications.completed || pdmResult?.globalLogout !== 'ready'))
+      send(response, pdmUnavailable ? 503 : 200,
+        {contractVersion:'orgmaster.managed-identity-lifecycle-cycle.v2',correlationId:id,...report,
+          ...(publications ? { pdmPublications: publications } : {}),
+          ...(pdmResult ? { pdmGlobalLogout: pdmResult.globalLogout } : {})}, id)
     }
     void run().catch(error=>{
       request.resume()
@@ -91,6 +112,20 @@ export function createOrgmasterManagedIdentityLifecycleMiddleware(runtime?: Mana
       const code=error instanceof LifecycleHttpError ? error.code : 'lifecycle_cycle_unavailable'
       send(response,status,{code,correlationId:id},id)
     })
+  }
+}
+
+// Platform can produce durable logout work before OrgMaster enables publication,
+// and still owns that work after OrgMaster disables publication during recovery.
+export function createLifecyclePdmReconciler(database: Database, revocation = createOrgmasterPdmRevocationClient()) {
+  return async () => {
+    const [publication, logout] = await Promise.allSettled([
+      readOrgmasterPdmPublicationControl(database).then(enabled =>
+        enabled ? reconcileOrgmasterPdmPublications(database, revocation) : null),
+      revocation.reconcileGlobalLogout(),
+    ])
+    if (publication.status === 'rejected') throw publication.reason
+    return { publications: publication.value, globalLogout: logout.status === 'fulfilled' ? logout.value : 'unavailable' as const }
   }
 }
 
@@ -105,7 +140,9 @@ export function createOrgmasterManagedIdentityLifecycleRuntime(environment: Node
     throw new Error('MANAGED_LIFECYCLE_RUNTIME_CONFIG_INVALID')
   }
   const pool=createOrgmasterDatabase(environment.ORGMASTER_POSTGRES_URL,environment) as Pool
-  const repository=createPostgresManagedIdentityLifecycleRepository({pool})
+  const repository=createPostgresManagedIdentityLifecycleRepository({
+    pool, pdmPublicationDatabase: pool, pdmPublicationEnabled: readOrgmasterPdmPublicationControl,
+  })
   const directory=createGoogleDirectoryReadOnlyPort({customerId:directoryConfig.customerId,domain:directoryConfig.domain,
     auth:createGoogleDirectoryAuthPort({delegatedSubject:directoryConfig.delegatedSubject,serviceAccountEmail:directoryConfig.serviceAccountEmail})})
   const client=createOrgmasterPrincipalLifecycleClient()
@@ -113,6 +150,7 @@ export function createOrgmasterManagedIdentityLifecycleRuntime(environment: Node
   const verifier=new OAuth2Client()
   return {
     worker,
+    reconcilePdm: createLifecyclePdmReconciler(pool),
     async verify(token) {
       const ticket=await verifier.verifyIdToken({idToken:token,audience:MANAGED_LIFECYCLE_ORIGIN})
       const payload=ticket.getPayload()

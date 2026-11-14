@@ -9,10 +9,13 @@ import { createOrgmasterServer } from './orgmasterServer'
 import {
   createOrgmasterManagedIdentityLifecycleMiddleware,
   createOrgmasterManagedIdentityLifecycleRuntime,
+  createLifecyclePdmReconciler,
   MANAGED_LIFECYCLE_API_PATH,
   MANAGED_LIFECYCLE_ORIGIN,
   type ManagedIdentityLifecycleRuntime,
 } from './orgmasterManagedIdentityLifecycleApi'
+import { createOrgmasterPdmRevocationClient } from './orgmasterPdmRevocationClient'
+import type { Database } from '../scripts/lib/orgmaster-pdm-publication.mts'
 import {
   createManagedIdentitySyncWorker,
   type LifecycleClaimV2,
@@ -173,6 +176,70 @@ function configuredHumanAuthRuntime(): OrgmasterAuthRuntime {
 }
 
 describe('OrgMaster managed identity lifecycle internal route', () => {
+  it('repairs an interrupted Platform logout through the Scheduler with OrgMaster publication off', async () => {
+    const { runtime, runOnce } = makeRuntime()
+    const readControl = vi.fn().mockResolvedValue({ rows: [{ enabled: false }] })
+    const database = { query: readControl } as unknown as Database
+    let reply = new Response('legacy route absent', { status: 404 })
+    const tokenProvider = vi.fn(async () => 'synthetic-platform-workload')
+    const outbound = vi.fn<typeof fetch>(async () => reply)
+    const revocation = createOrgmasterPdmRevocationClient({ local: true, tokenProvider, fetch: outbound })
+    const { base } = await listen(createOrgmasterManagedIdentityLifecycleMiddleware({
+      ...runtime, reconcilePdm: createLifecyclePdmReconciler(database, revocation),
+    }))
+    const run = () => fetch(base + MANAGED_LIFECYCLE_API_PATH, {
+      method: 'POST', headers: { Authorization: 'Bearer synthetic-oidc-token' },
+    })
+    const expectCycle = async (status: number, globalLogout: string) => {
+      const response = await run()
+      expect(response.status).toBe(status)
+      const body = await response.json()
+      expect(body.pdmGlobalLogout).toBe(globalLogout)
+      expect(body).not.toHaveProperty('pdmPublications')
+    }
+    await expectCycle(200, 'route-absent')
+    reply = Response.json({ code: 'pdm_revocation_relay_disabled' }, { status: 503 })
+    await expectCycle(200, 'relay-disabled')
+    // A durable Platform operation remains incomplete during a PDM outage.
+    // The next Scheduler tick asks Platform to retry its existing operation.
+    reply = Response.json({ selected: 1, completed: 0 }, { status: 503 })
+    await expectCycle(503, 'unavailable')
+    reply = Response.json({ selected: 1, completed: 1 })
+    await expectCycle(200, 'ready')
+    reply = Response.json({ code: 'pdm_revocation_config_invalid' }, { status: 503 })
+    await expectCycle(503, 'unavailable')
+    reply = Response.json({ selected: 1, completed: 0 })
+    await expectCycle(503, 'unavailable')
+    expect(runOnce).toHaveBeenCalledTimes(6)
+    expect(readControl.mock.calls).toEqual(Array.from({ length: 6 }, () =>
+      ['SELECT orgmaster_core.pdm_session_publication_enabled_v1() AS enabled']))
+    expect(tokenProvider).toHaveBeenCalledWith('http://localhost:1000')
+    expect(outbound).toHaveBeenCalledWith('http://localhost:1000/api/internal/pdm-session-revocation/v1/reconcile',
+      expect.objectContaining({ method: 'POST', body: undefined, redirect: 'error',
+        headers: expect.objectContaining({ Authorization: 'Bearer synthetic-platform-workload' }) }))
+
+    readControl.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('pdm_session_publication_enabled_v1') ? [{ enabled: true }] : [],
+    }))
+    reply = Response.json({ code: 'pdm_revocation_relay_disabled' }, { status: 503 })
+    const enabledCycle = await run()
+    expect(enabledCycle.status).toBe(503)
+    expect(await enabledCycle.json()).toMatchObject({
+      pdmGlobalLogout: 'relay-disabled', pdmPublications: { selected: 0, completed: 0 },
+    })
+  })
+
+  it('still asks Platform to reconcile if OrgMaster cannot read its own publication control', async () => {
+    const database = { query: vi.fn().mockRejectedValue(new Error('database unavailable')) } as unknown as Database
+    const revocation = createOrgmasterPdmRevocationClient({
+      local: true, tokenProvider: async () => 'fixture-token',
+      fetch: vi.fn<typeof fetch>(async () => Response.json({ selected: 1, completed: 1 })),
+    })
+    const reconcile = vi.spyOn(revocation, 'reconcileGlobalLogout')
+    await expect(createLifecyclePdmReconciler(database, revocation)()).rejects.toThrow('database unavailable')
+    expect(reconcile).toHaveBeenCalledOnce()
+  })
+
   it('admits a valid OIDC request without a human cookie before the normal session gate', async () => {
     const workerFixture = boundedWorker()
     const testRuntime = makeRuntime({ worker: workerFixture.worker })

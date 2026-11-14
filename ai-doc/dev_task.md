@@ -1,5 +1,25 @@
 # OrgMaster 開發任務
 
+<a id="pdm-session-revocation"></a>
+
+## DEV-057：PDM 有效權限異動先撤銷再發布
+
+- 狀態：`OrgMaster 候選實作中／未啟用／三系統隔離驗收未執行`。
+- 主控：Jenfu-Platform 專案 session（`JENFU/DEV-015#pdm-session-revocation`）。
+- 下一步：盤點 PDM 指派、政策切換、範圍、時間與行政任用的正式寫入入口，設計可讀回的待發布事件與生效交易，沿既有發送／回執路徑交付。
+- 候選分支 `codex/orgmaster-pdm-session-revocation`，基底已同步 `9c78a13`；工作樹 `C:/Users/user/.codex/visualizations/2026/11/14/01a1d9a5-b432-78f1-a3c8-1acb1acef017/OrgMaster-pdm-revocation`。
+- 登入前置 `056_dev057_ai_pdm_session_authority.sql` 提供 `orgmaster_contract.read_ai_pdm_session_authority_v1(text,text)`。從同一交易快照回傳 `contract_version`（`orgmaster.ai-pdm-session-authority.v1`）、`source_version`（OrgMaster 持久批次世代十進位字串）、`evaluated_at`、`next_boundary`、`accounts` 及 `grants`（沿 V6 SQL 欄名與形狀）。即使沒有授權列也會回傳版本與時間邊界。每個陣列保留現有超限偵測（帳號上限哨兵 3，授權上限哨兵 33）。隔離入口 `node scripts/qc-dev057-pdm-session-authority-postgres.mjs` 已通過 V6 等價、目前／空授權、預定生效、委派來源提前到期與執行角色隔離。
+- 發布候選 `057_dev057_pdm_session_publication.sql` 提供 `orgmaster_contract.read_ai_pdm_session_publication_v1(uuid,text)`。PDM 以 operation ID 與十進位 publication version 讀回精確提交證據，即使 OrgMaster 已有後續批次。OrgMaster 以 `ORGMASTER_PDM_SESSION_REVOCATION_ENABLED=true` 接通相同 v1 wire，預設關閉；隔離環境沿受驗證的 localhost Platform 身分。正常候選涵蓋治理發布／active 切換、PDM legacy privileged、DEV-070 行政任用與現行工作區維護。既有 Scheduler 入口負責到期取消及發布回執補送。
+- `node scripts/qc-dev057-pdm-session-publication-postgres.mjs` 在隔離 PostgreSQL 測到無回執不發布、重疊防護、重送同事件、原子發布證明、終態補送與無差異不派送。同腳本走正常 DEV-070 行政命令 HTTP 與 PostgreSQL 寫入，驗證無 PDM 回執不會提交行政收據，以及回執後同命令重送只保留一份收據。傳輸使用模擬 PDM 回執。隔離 PostgreSQL 另以實際 worker repository 驗證 Directory 停用先保留 active，收到回執後同交易改成 conflict、發布新世代，重送不再改版。三方正常登入和改權的完整驗收仍待主控完成。
+- [OrgMaster 草稿 PR #270](https://github.com/jedchang0308-jenfu/OrgMaster/pull/270)；正式啟用前須確認直接 owner 命令、受管身分停用、現行其他應用的行政失效語意，以及只允許相容的回復版本。
+- Owner 維護沿 `dev049-production-admission-runner.mjs` 的封存操作及既有 migration Job。停用 managed admission 與單 Principal quarantine 都由 Job 保存意圖，現有 lifecycle Scheduler 以原服務身分派送 prepare 並保存回執，重跑同一封存命令才提交；Scheduler 補送終態。隔離重跑 `node scripts/qc-dev057-pdm-session-publication-postgres.mjs`，已證明兩支 owner 命令缺回執不提交、重送只套用一次、新舊入口切換及終態補送。原生歷史治理、工作區、受管身分與 DEV-070 路徑盤點見契約。
+- 發布控制預設為 `false`／revision `0`。既有 `npm run deploy:production -- --dev070-administration-append` 以來源綁定的 runner rotation 帶入關閉狀態。單一 owner 入口 `npm run pdm-publication:production` 支援 `enable`、`disable`、`--check`，沿同源 migration Job、三方 release 與既有 Scheduler 讀回，並以 DB CAS 保護切換和終態排空。完整參數、主控證據及回復順序見[正式切換與回復](specs/DEV-057-identity-and-grant-contract-boundary.md#正式切換與回復)。正式查證與執行等待三方候選驗收，本次未寫入正式設定。
+- [本專案開發契約](specs/DEV-057-identity-and-grant-contract-boundary.md#pdm-session-revocation)
+- PDM 首次開通 SQL 由 `jenfu_ai_pdm_migrator` 擁有，其 `SECURITY DEFINER` 共用登入權威函式。056 只授予既有 PDM runtime／migrator 該函式的 `EXECUTE`，驗證其他 owner runtime、Platform migrator、FMS 與 verifier 均被拒絕。
+- 既有 Scheduler 的 Platform 全域登出補送已獨立於 OrgMaster 改權發布控制，須隨預設關閉的 OrgMaster runtime 部署，早於 Platform 產生全域待送事件。隔離 HTTP 驗證發布關閉時舊 Platform 路由缺席／relay 明示關閉維持排程 200，部分完成回 503，下一輪取得成功後復原。自有控制讀取失敗也會嘗試補送 Platform。重跑 `npx vitest run server/orgmasterManagedIdentityLifecycleApi.test.ts`。另以 Platform 三方元件腳本的隔離副本接真實 owner 交易與 OrgMaster Scheduler HTTP，注入終態派送中斷，確認舊 session 已撤銷、新登入被擋，下一輪排程保存原操作的持久回執、新登入恢復，中央 epoch 只前進一次。此輪使用合成 OIDC。
+- 審核候選 ABI 依 Platform `a2cf8698` 實作兩個 versioned SQL 讀取。隔離 PostgreSQL 由實際 PDM runtime 角色驗初載分頁、微秒錨點、過期游標與版號、未來 scope、委派、精確終態重播與撤銷空區間。只有 PDM runtime 具兩個新函式的執行權。真正的行政授權會封存提交後區間，PDM 終態由既有補送等待原生 lifecycle 回執後完成。正式控制維持關閉，待固定候選三方驗證。
+
+
 <a id="dev-070-platform-administration"></a>
 
 ## DEV-070：平台超級管理員權威與首次初始化
