@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 import { createServer as createHttpServer } from 'node:http'
 import { performance } from 'node:perf_hooks'
 import pg from 'pg'
+import { executeOrgMasterAdmission, executeOrgMasterQuarantine } from './lib/dev049-production-admission.mjs'
 import { randomUUID } from 'node:crypto'
 import {
   withAdministrationPostgresFixture, prepareAdministrationInitializationFixture,
@@ -271,6 +272,63 @@ await withAdministrationPostgresFixture(async fixture => {
   } finally {
     await pool.end()
   }
-  console.log('DEV-057 PDM publication: missing receipt, overlap, stable retry, atomic readback, terminal recovery, cancellation, no-op, normal administrative HTTP and Directory suspension PASS')
+  const managed = await createAdditionalAdministrationTargetFixture(fixture, { employeeId:'employee-three' })
+  const identity = async () => (await admin.query(
+    'SELECT revision::text, link_state FROM orgmaster_core.managed_daily_identities WHERE identity_record_id=$1',
+    [managed.identityId],
+  )).rows[0]
+  const quarantine = {
+    operationId:'DEV049-ISOLATED-QUARANTINE', identityRecordId:managed.identityId,
+    expectedRevision:(await identity()).revision, incidentRef:'isolated/incident', reasonCode:'fixture',
+  }
+  const quarantineCommand = () => executeOrgMasterQuarantine({
+    operation:quarantine, database:writer, pdmPublicationEnabled:true,
+  })
+  assert.equal((await admin.query('SELECT orgmaster_core.pdm_session_publication_enabled_v1() AS enabled')).rows[0].enabled, false)
+  await admin.query('UPDATE orgmaster_core.pdm_session_publication_control_v1 SET enabled=true')
+  await assert.rejects(writer.query(
+    'SELECT orgmaster_core.quarantine_managed_identity_v1($1,$2,$3,$4,$5)',
+    [managed.identityId, quarantine.expectedRevision, quarantine.incidentRef, quarantine.operationId, quarantine.reasonCode],
+  ), /PDM_OWNER_PUBLICATION_REQUIRED/)
+  phaseHook = null
+  const baseOwner = await version()
+  await assert.rejects(quarantineCommand(), /PDM_PUBLICATION_PENDING/)
+  assert.equal((await identity()).link_state, 'active')
+  assert.equal(await version(), baseOwner)
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
+  assert.equal(calls.at(-1).phase, 'prepare')
+  assert.deepEqual(calls.at(-1).principalIds, [managed.principalId])
+  assert.equal((await identity()).link_state, 'active')
+  assert.equal((await quarantineCommand()).disposition, 'APPLIED')
+  assert.equal((await identity()).link_state, 'conflict')
+  assert.equal(await version(), (BigInt(baseOwner)+1n).toString())
+  assert.equal((await quarantineCommand()).disposition, 'REPLAY')
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
+  assert.equal(calls.at(-1).phase, 'published')
+
+  const remaining = await createAdditionalAdministrationTargetFixture(fixture, { employeeId:'employee-four' })
+  const readAdmission = async () => (await admin.query(
+    'SELECT revision::text, admission_enabled FROM orgmaster_core.managed_identity_admission_authority',
+  )).rows[0]
+  const activeConsumers = (await admin.query(
+    "SELECT application_id FROM orgmaster_core.managed_identity_invalidation_applications WHERE status='active'",
+  )).rows.map(row => row.application_id)
+  const admission = {
+    operationId:'DEV049-ISOLATED-ADMISSION', action:'deactivate',
+    expected:{ enabled:true, admissionRevision:(await readAdmission()).revision },
+    consumers:[...new Set(['platform','orgmaster', ...activeConsumers])].sort().map(applicationId => ({ applicationId })),
+  }
+  const admissionCommand = () => executeOrgMasterAdmission({
+    operation:admission, database:writer, pdmPublicationEnabled:true,
+  })
+  await assert.rejects(admissionCommand(), /PDM_PUBLICATION_PENDING/)
+  assert.equal((await readAdmission()).admission_enabled, true)
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
+  assert.deepEqual(calls.at(-1).principalIds, [remaining.principalId])
+  assert.equal((await admissionCommand()).disposition, 'APPLIED')
+  assert.equal((await readAdmission()).admission_enabled, false)
+  assert.equal((await admissionCommand()).disposition, 'REPLAY')
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
+  console.log('DEV-057 PDM publication: administrative HTTP, Directory suspension, owner quarantine and admission withdrawal PASS')
 })
 } finally { await vite.close() }

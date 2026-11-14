@@ -215,16 +215,27 @@ export async function withPersistenceTransaction<T>(run: () => Promise<T>): Prom
 }
 
 export function orgmasterPdmPublicationEnabled() {
-  return usesCloudSqlPersistence() && process.env.ORGMASTER_PDM_SESSION_REVOCATION_ENABLED === 'true'
+  return usesCloudSqlPersistence() && (process.env.ORGMASTER_DEPLOYMENT_ENV === 'production' ||
+    process.env.ORGMASTER_PDM_SESSION_REVOCATION_ENABLED === 'true')
 }
 
-export function withOrgmasterPdmPublication<T>(actor: string, commandKey: string, request: unknown, run: () => Promise<T>, replay?: () => Promise<T>) {
-  const enabled = orgmasterPdmPublicationEnabled()
-  if (enabled && transactionDatabase.getStore()) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
+export async function withOrgmasterPdmPublication<T>(actor: string, commandKey: string, request: unknown, run: () => Promise<T>, replay?: () => Promise<T>) {
+  if (!orgmasterPdmPublicationEnabled()) return run()
+  if (transactionDatabase.getStore()) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
+  const enabled = process.env.ORGMASTER_DEPLOYMENT_ENV !== 'production' ||
+    await readOrgmasterPdmPublicationControl(poolForRuntime())
   return publishAfterOrgmasterPdmRevocation({
     actor, commandKey, request, enabled, transaction: withPersistenceTransaction,
     database: currentPersistenceTransactionDatabase, deliveryDatabase: poolForRuntime, write: run, replay,
   })
+}
+
+export async function readOrgmasterPdmPublicationControl(database: Queryable) {
+  const { rows } = await database.query<{enabled: boolean}>(
+    'SELECT orgmaster_core.pdm_session_publication_enabled_v1() AS enabled',
+  )
+  if (rows.length !== 1 || typeof rows[0].enabled !== 'boolean') throw new OrgmasterPersistenceError('PERSISTENCE_READ_FAILED')
+  return rows[0].enabled
 }
 
 export function currentPersistenceTransactionDatabase(): Queryable {

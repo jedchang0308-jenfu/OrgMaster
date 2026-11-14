@@ -9,6 +9,20 @@ SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 SET LOCAL ROLE jenfu_orgmaster_migrator;
 
+CREATE TABLE orgmaster_core.pdm_session_publication_control_v1 (
+  singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+  enabled boolean NOT NULL DEFAULT false
+);
+INSERT INTO orgmaster_core.pdm_session_publication_control_v1 DEFAULT VALUES;
+REVOKE ALL ON orgmaster_core.pdm_session_publication_control_v1 FROM PUBLIC;
+
+CREATE FUNCTION orgmaster_core.pdm_session_publication_enabled_v1()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $enabled$
+  SELECT enabled FROM orgmaster_core.pdm_session_publication_control_v1 WHERE singleton;
+$enabled$;
+REVOKE ALL ON FUNCTION orgmaster_core.pdm_session_publication_enabled_v1() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION orgmaster_core.pdm_session_publication_enabled_v1() TO jenfu_orgmaster_runtime;
+
 CREATE TABLE orgmaster_core.pdm_session_publication_v1 (
   operation_id uuid PRIMARY KEY,
   actor_principal_id text NOT NULL,
@@ -22,6 +36,7 @@ CREATE TABLE orgmaster_core.pdm_session_publication_v1 (
   terminal_event_id uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
   prepared_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   expires_at timestamptz NOT NULL,
+  owner_delivery boolean NOT NULL DEFAULT false,
   prepare_receipt jsonb,
   decision text CHECK (decision IN ('published', 'cancelled')),
   decided_at timestamptz,
@@ -84,6 +99,32 @@ $advance$;
 REVOKE ALL ON FUNCTION orgmaster_core.advance_pdm_lifecycle_publication_v1(bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION orgmaster_core.advance_pdm_lifecycle_publication_v1(bigint) TO jenfu_orgmaster_runtime;
 
+-- Direct maintenance entrypoints retain their original signatures. Once
+-- enabled, keep the older runner and ad-hoc calls out of the publication path.
+DO $maintenance$
+DECLARE entry regprocedure; definition text; guard text;
+BEGIN
+  guard := E'\n IF orgmaster_core.pdm_session_publication_enabled_v1() AND '
+    || E'current_setting(''orgmaster.pdm_owner_maintenance'',true) IS DISTINCT FROM ''coordinated'' THEN '
+    || E'RAISE EXCEPTION ''PDM_OWNER_PUBLICATION_REQUIRED''; END IF;';
+  FOREACH entry IN ARRAY ARRAY[
+    'orgmaster_core.set_managed_identity_admission_v1(bigint,boolean,text,text)'::regprocedure,
+    'orgmaster_core.quarantine_managed_identity_v1(uuid,bigint,text,text,text)'::regprocedure
+  ] LOOP
+    definition := pg_get_functiondef(entry);
+    IF strpos(definition,E'BEGIN\n PERFORM 1 FROM orgmaster_core.managed_identity_admission_authority') = 0 THEN
+      RAISE EXCEPTION 'PDM_OWNER_MAINTENANCE_PREDECESSOR_DRIFT';
+    END IF;
+    -- Read the activation control after the same admission lock as the writer.
+    definition := replace(definition,
+      E'BEGIN\n PERFORM 1 FROM orgmaster_core.managed_identity_admission_authority WHERE singleton FOR UPDATE;',
+      E'BEGIN\n PERFORM 1 FROM orgmaster_core.managed_identity_admission_authority WHERE singleton FOR UPDATE;'
+       || guard);
+    EXECUTE definition;
+  END LOOP;
+END;
+$maintenance$;
+
 -- Effective PDM grants, including exact administrative bindings, plus the
 -- admitted provider pairs. Publication/assignment audit identifiers do not
 -- change access. Multiplicity is retained because V6 rejects duplicate grants.
@@ -130,7 +171,7 @@ REVOKE ALL ON FUNCTION orgmaster_core.lock_pdm_session_publication_v1(), orgmast
 GRANT EXECUTE ON FUNCTION orgmaster_core.lock_pdm_session_publication_v1(), orgmaster_core.read_pdm_session_impact_v1() TO jenfu_orgmaster_runtime;
 GRANT SELECT ON orgmaster_core.pdm_session_publication_v1 TO jenfu_orgmaster_runtime;
 GRANT INSERT (operation_id, actor_principal_id, command_key, request_hash, baseline_version,
-  publication_version, principal_ids, impact_hash, expires_at)
+  publication_version, principal_ids, impact_hash, expires_at, owner_delivery)
   ON orgmaster_core.pdm_session_publication_v1 TO jenfu_orgmaster_runtime;
 GRANT UPDATE (prepare_receipt, decision, decided_at, terminal_receipt)
   ON orgmaster_core.pdm_session_publication_v1 TO jenfu_orgmaster_runtime;

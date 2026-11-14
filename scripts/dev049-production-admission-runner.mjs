@@ -13,7 +13,9 @@ import {
 import { assertDev014ConsumerEvidenceBytes } from './lib/dev014-consumer-conformance.mjs'
 import {
   assertOrgMasterAdmissionOperation,
+  assertOrgMasterQuarantineOperation,
   executeOrgMasterAdmission,
+  executeOrgMasterQuarantine,
   ORGMASTER_ADMISSION_TARGET,
 } from './lib/dev049-production-admission.mjs'
 import { databaseOptions } from './lib/orgmaster-production-database.mjs'
@@ -52,30 +54,39 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
   })
   let value
   try { value = JSON.parse(object.bytes.toString('utf8')) } catch { throw new Error('DEV049_OPERATION_JSON_INVALID') }
-  const operation = assertOrgMasterAdmissionOperation(value, { bytes: object.bytes, operationSha256: args.operationSha256, sourceRevision: args.sourceRevision, now: new Date() })
-  for (const consumer of operation.consumers) {
+  const quarantine = value?.schemaVersion === 'jenfu.dev049.orgmaster-production-quarantine-operation.v1'
+  const validate = quarantine ? assertOrgMasterQuarantineOperation : assertOrgMasterAdmissionOperation
+  const operation = validate(value, { bytes: object.bytes, operationSha256: args.operationSha256, sourceRevision: args.sourceRevision, now: new Date() })
+  for (const consumer of operation.consumers ?? []) {
     const evidenceObject = await readGcsObject({ uri: consumer.evidenceRef, expectedBucket: ORGMASTER_ADMISSION_TARGET.releaseBucket, expectedPrefix: 'source/production-data/dev014/admission/evidence', token, fetchImpl })
     assertDev014ConsumerEvidenceBytes(consumer, evidenceObject.bytes)
   }
   const database = new Client(databaseOptions(environment, token))
   await database.connect()
   try {
-    const result = await executeOrgMasterAdmission({ operation, database })
+    const control = await database.query(
+      "SELECT to_regprocedure('orgmaster_core.pdm_session_publication_enabled_v1()') IS NOT NULL AS installed",
+    )
+    const pdmPublicationEnabled = control.rows[0]?.installed === true &&
+      (await database.query('SELECT orgmaster_core.pdm_session_publication_enabled_v1() AS enabled')).rows[0]?.enabled === true
+    const execute = quarantine ? executeOrgMasterQuarantine : executeOrgMasterAdmission
+    const result = await execute({ operation, database, pdmPublicationEnabled })
     const receipt = {
-      schemaVersion: 'jenfu.dev049.orgmaster-production-admission-receipt.v1',
+      schemaVersion: quarantine
+        ? 'jenfu.dev049.orgmaster-production-quarantine-receipt.v1'
+        : 'jenfu.dev049.orgmaster-production-admission-receipt.v1',
       ownerApplicationId: 'orgmaster',
       operationId: operation.operationId,
       sourceRevision: operation.sourceRevision,
       operationRef: args.operationRef,
       operationSha256: args.operationSha256,
-      action: operation.action,
+      action: quarantine ? 'quarantine' : operation.action,
       status: 'PASS',
       disposition: result.disposition,
-      before: result.before,
-      after: result.after,
-      supports: result.supports,
-      affectedIdentityCount: result.affectedIdentityCount,
-      outboxCount: result.outboxCount,
+      ...(quarantine ? { state: result.state, revision: result.revision } : {
+        before: result.before, after: result.after, supports: result.supports,
+        affectedIdentityCount: result.affectedIdentityCount, outboxCount: result.outboxCount,
+      }),
       database: ORGMASTER_ADMISSION_TARGET.database,
       completedAt: new Date().toISOString(),
     }

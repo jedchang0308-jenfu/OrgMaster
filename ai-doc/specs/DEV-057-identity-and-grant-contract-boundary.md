@@ -11,6 +11,17 @@
 - 對須消除撤權空窗的異動，依主控契約等待 PDM 的持久化撤銷回執，再在發布交易比對基線與影響範圍。若基線漂移，停止原操作的生效並重新準備；未能確定原操作結果時先按原 ID 讀回。發布成功後送出正式版本證據，供 PDM 安全恢復登入。跨服務傳送不持有長資料庫交易。
 - 隔離驗收以正常產品入口走過新增／撤銷、共用政策切換、舊版本回復、無差異、到期、同範圍競爭和通知故障。證明缺 PDM 回執時待變更不生效、事件重送不再發布第二版、確認取消不留下無主登入阻擋。DEV-070 正式行政任用若影響 PDM，作為本切片的呼叫端納入，沿原 owner 契約。
 
+| PDM 權限來源 | OrgMaster 入口與處理 |
+| --- | --- |
+| 發布一般任用、委派、公司／專案 scope，以及啟用或回復治理政策 | 沿用治理 `/versions` 與 `/active-version`。對照同一份 v6 原生投影與下一個時間邊界後，只有有效差異需要撤銷回執。 |
+| 現行職位或員工狀態 | `current-maintenance` 沿工作區 CAS；透過 v6 投影辨識來源職位失效及受影響 Principal。 |
+| 舊 PDM 系統管理員及 DEV-070 行政任用 | 各自沿既有 verified Principal 命令、預覽、稽核與回執；PDM 屏障與既有行政 lifecycle 同時保留。 |
+| Directory 停用或 owner 隔離、停用 managed admission | Directory 觀察沿 lifecycle v2。Owner 維護以封存操作、既有 migrator、同一發布世代與回執進行，排程沿既有 runtime workload 驗證。 |
+| 首次 bind 或首次平台管理員初始化 | 正常 bind 只消耗 pending 身分，不能把 conflict 恢復成 active。首次 Portal 初始化只給 Platform／OrgMaster 管理權。首包若帶 PDM 管理任用，須在快照正式啟用前完成，後續 PDM 管理異動走正常 DEV-070 命令。 |
+| 自然生效與到期 | 登入讀取同一 SQL 快照中的 `next_boundary`，涵蓋未來任用、委派來源、職位來源、受管範圍內的身分連結與行政任用。 |
+
+PDM 本地角色能力政策由 AI-PDM owner 負責。OrgMaster 的舊角色能力工作區寫入的是本機規劃資料，PDM 授權以正式 v6 指派投影為準。
+
 
 <a id="architecture-final"></a>
 

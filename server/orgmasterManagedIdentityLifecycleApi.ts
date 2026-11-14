@@ -1,5 +1,6 @@
 import { createOrgmasterPdmRevocationClient } from './orgmasterPdmRevocationClient'
 import { reconcileOrgmasterPdmPublications } from './orgmasterPdmPublication'
+import { readOrgmasterPdmPublicationControl } from './orgmasterPersistenceRepository'
 import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { OAuth2Client } from 'google-auth-library'
@@ -84,9 +85,13 @@ export function createOrgmasterManagedIdentityLifecycleMiddleware(runtime?: Mana
       await body
       const principal=await withAdmissionDeadline(()=>runtime.resolveCaller(caller.subject))
       if(!principal) throw new LifecycleHttpError(403,'lifecycle_caller_denied')
-      const report=await runtime.worker.runOnce(principal)
+      const reconciliation = runtime.reconcilePdmPublications?.()
+      const [worker, pdm] = await Promise.allSettled([runtime.worker.runOnce(principal), reconciliation])
+      if (worker.status === 'rejected') throw worker.reason
+      if (pdm.status === 'rejected') throw pdm.reason
+      const report = worker.value
       if(report.executorPrincipalId!==principal.principalId) throw new LifecycleHttpError(503,'lifecycle_executor_mismatch')
-      const pdmPublications = await runtime.reconcilePdmPublications?.()
+      const pdmPublications = pdm.value
       send(response, pdmPublications && pdmPublications.selected !== pdmPublications.completed ? 503 : 200,
         {contractVersion:'orgmaster.managed-identity-lifecycle-cycle.v2',correlationId:id,...report,
           ...(pdmPublications ? { pdmPublications } : {})}, id)
@@ -111,9 +116,8 @@ export function createOrgmasterManagedIdentityLifecycleRuntime(environment: Node
     throw new Error('MANAGED_LIFECYCLE_RUNTIME_CONFIG_INVALID')
   }
   const pool=createOrgmasterDatabase(environment.ORGMASTER_POSTGRES_URL,environment) as Pool
-  const pdmPublicationEnabled = environment.ORGMASTER_PDM_SESSION_REVOCATION_ENABLED === 'true'
   const repository=createPostgresManagedIdentityLifecycleRepository({
-    pool, pdmPublicationDatabase: pdmPublicationEnabled ? pool : undefined,
+    pool, pdmPublicationDatabase: pool, pdmPublicationEnabled: () => readOrgmasterPdmPublicationControl(pool),
   })
   const directory=createGoogleDirectoryReadOnlyPort({customerId:directoryConfig.customerId,domain:directoryConfig.domain,
     auth:createGoogleDirectoryAuthPort({delegatedSubject:directoryConfig.delegatedSubject,serviceAccountEmail:directoryConfig.serviceAccountEmail})})
@@ -122,17 +126,17 @@ export function createOrgmasterManagedIdentityLifecycleRuntime(environment: Node
   const verifier=new OAuth2Client()
   return {
     worker,
-    ...(pdmPublicationEnabled
-      ? { async reconcilePdmPublications() {
-          const revocation = createOrgmasterPdmRevocationClient()
-          const [publication, logout] = await Promise.allSettled([
-            reconcileOrgmasterPdmPublications(pool, revocation),
-            revocation.reconcileGlobalLogout(),
-          ])
-          if (publication.status === 'rejected') throw publication.reason
-          const { selected, completed } = publication.value
-          return { selected: selected + 1, completed: completed + (logout.status === 'fulfilled' ? 1 : 0) }
-        } } : {}),
+    async reconcilePdmPublications() {
+      if (!await readOrgmasterPdmPublicationControl(pool)) return { selected: 0, completed: 0 }
+      const revocation = createOrgmasterPdmRevocationClient()
+      const [publication, logout] = await Promise.allSettled([
+        reconcileOrgmasterPdmPublications(pool, revocation),
+        revocation.reconcileGlobalLogout(),
+      ])
+      if (publication.status === 'rejected') throw publication.reason
+      const { selected, completed } = publication.value
+      return { selected: selected + 1, completed: completed + (logout.status === 'fulfilled' ? 1 : 0) }
+    },
     async verify(token) {
       const ticket=await verifier.verifyIdToken({idToken:token,audience:MANAGED_LIFECYCLE_ORIGIN})
       const payload=ticket.getPayload()

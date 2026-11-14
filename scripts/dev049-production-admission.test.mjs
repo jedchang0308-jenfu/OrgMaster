@@ -5,6 +5,7 @@ import { canonicalize, sha256 } from './lib/dev012-production-migration-runner.m
 import { assertDev014ConsumerEvidenceBytes, buildDev014ConsumerConformance } from './lib/dev014-consumer-conformance.mjs'
 import {
   assertOrgMasterAdmissionOperation,
+  assertOrgMasterQuarantineOperation,
   evidenceValue,
   executeOrgMasterAdmission,
   ORGMASTER_ADMISSION_TARGET,
@@ -105,7 +106,29 @@ test('DEV-049 admission runner is present in the immutable migration image', () 
   assert.match(dockerfile, /COPY scripts\/lib\/dev049-production-admission\.mjs/u)
   assert.match(dockerfile, /COPY scripts\/dev049-production-admission-runner\.mjs/u)
   assert.match(dockerfile, /COPY scripts\/lib\/dev014-consumer-conformance\.mjs/u)
+  assert.match(dockerfile, /COPY scripts\/lib\/orgmaster-pdm-publication\.mts scripts\/lib\/orgmaster-pdm-revocation-wire\.mts/u)
   assert.doesNotMatch(operator, /(?:platform|ai_pdm)_core/u)
+})
+
+test('Owner quarantine binds exactly one identity, revision and immutable source', () => {
+  const initial = operation()
+  const core = {
+    schemaVersion: 'jenfu.dev049.orgmaster-production-quarantine-operation.v1',
+    ownerApplicationId: 'orgmaster', operationId: initial.operationId,
+    sourceRevision: initial.sourceRevision, target: initial.target,
+    identityRecordId: '00000000-0000-4000-8000-000000000001',
+    expectedRevision: '41', incidentRef: 'ops/incident-41', reasonCode: 'operator_quarantine',
+    deadlineAt: initial.deadlineAt,
+  }
+  function validate(input) {
+    const value = { ...input, manifestSha256: sha256(canonicalize(input)) }
+    const bytes = bytesFor(value)
+    return assertOrgMasterQuarantineOperation(value, { bytes, operationSha256: sha256(bytes), sourceRevision: initial.sourceRevision })
+  }
+  assert.equal(validate(core).expectedRevision, '41')
+  assert.throws(() => validate({ ...core, target: { ...core.target, database: 'jenfu_stg' } }), /OPERATION_TARGET_INVALID/u)
+  assert.throws(() => validate({ ...core, identityRecordId: '*' }), /OPERATION_IDENTITY_INVALID/u)
+  assert.throws(() => validate({ ...core, expectedRevision: '0' }), /OPERATION_IDENTITY_INVALID/u)
 })
 
 test('DEV-049 admission accepts only exact raw consumer evidence', () => {
