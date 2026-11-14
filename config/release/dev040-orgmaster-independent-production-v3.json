@@ -587,6 +587,27 @@
         "path": "db/migrations/052_dev070_fms_authority_point_v4.sql",
         "sourceSha256": "39dda03076fe2b7a42ab661efdd40c2e0cded6565a6be79b8d116021d4ef5df0",
         "appliedSha256": "22043040a65c436e1782afdb2c141677f8270cb17baf93421144a1d9759923ee"
+      },
+      {
+        "order": 49,
+        "version": "dev070-orgmaster-053",
+        "path": "db/migrations/053_dev070_fms_indexed_authority.sql",
+        "sourceSha256": "1de121b3661076463e0c08e44dc7f3e69f839dfe5e5f1e5d6b5d44ec5cabddf7",
+        "appliedSha256": "2e7641f09bb66455368ee9a3d652312a01305ceb4f04a3540e0aefa69bcbe327"
+      },
+      {
+        "order": 50,
+        "version": "dev070-orgmaster-054",
+        "path": "db/migrations/054_dev070_fms_authority_publication_status.sql",
+        "sourceSha256": "c588d52616f3be5dc436dc189e8e5c1ac9d3ae37adc6a6f1b5d58a7087f3d0d4",
+        "appliedSha256": "82ba01163be41b4b950462bc9840a0bf583eb6ec37886b4c7bc284a8c49aa0fe"
+      },
+      {
+        "order": 51,
+        "version": "dev070-orgmaster-055",
+        "path": "db/migrations/055_dev070_fms_session_display_profile.sql",
+        "sourceSha256": "fbc312828f6a820e666d7ea116877a5f6f597f76bd97dcbf6028fdec48f21fda",
+        "appliedSha256": "8a3c452c8b4bd353f1adcfac6bc84cd35eb9c4f05e7a0e56a36fe95310492bea"
       }
     ]
   },

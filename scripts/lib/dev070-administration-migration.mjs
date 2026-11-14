@@ -13,9 +13,12 @@ export const DEV070_MIGRATION_ENTRIES=Object.freeze([
  Object.freeze({"order":46,"version":"dev070-orgmaster-050","path":"db/migrations/050_dev070_administrative_definitions_v2.sql","sourceSha256":"82a68daa71d4afcf97a687055e5a4cbe95dafd60e3c4af10fd2dee1dc6bb3cfd","appliedSha256":"3e892993172277ac4caf6694a52948839d99c257f4e6e1888de86d190fd116db"}),
  Object.freeze({order:47,version:'dev070-orgmaster-051',path:'db/migrations/051_dev070_scoped_portal_orgmaster_visibility.sql',sourceSha256:'c65540b4e7b97e7a3d91aa6c3f8b95bdd47f067addea90b6226312178a2c913a',appliedSha256:'4b77e7f4d07c08be67709e9c6bcc06e177f44fe8951adc91b342084b16c9776d'}),
  Object.freeze({order:48,version:'dev070-orgmaster-052',path:'db/migrations/052_dev070_fms_authority_point_v4.sql',sourceSha256:'39dda03076fe2b7a42ab661efdd40c2e0cded6565a6be79b8d116021d4ef5df0',appliedSha256:'22043040a65c436e1782afdb2c141677f8270cb17baf93421144a1d9759923ee'}),
+ Object.freeze({"order":49,"version":"dev070-orgmaster-053","path":"db/migrations/053_dev070_fms_indexed_authority.sql","sourceSha256":"1de121b3661076463e0c08e44dc7f3e69f839dfe5e5f1e5d6b5d44ec5cabddf7","appliedSha256":"2e7641f09bb66455368ee9a3d652312a01305ceb4f04a3540e0aefa69bcbe327"}),
+ Object.freeze({"order":50,"version":"dev070-orgmaster-054","path":"db/migrations/054_dev070_fms_authority_publication_status.sql","sourceSha256":"c588d52616f3be5dc436dc189e8e5c1ac9d3ae37adc6a6f1b5d58a7087f3d0d4","appliedSha256":"82ba01163be41b4b950462bc9840a0bf583eb6ec37886b4c7bc284a8c49aa0fe"}),
+ Object.freeze({"order":51,"version":"dev070-orgmaster-055","path":"db/migrations/055_dev070_fms_session_display_profile.sql","sourceSha256":"fbc312828f6a820e666d7ea116877a5f6f597f76bd97dcbf6028fdec48f21fda","appliedSha256":"8a3c452c8b4bd353f1adcfac6bc84cd35eb9c4f05e7a0e56a36fe95310492bea"}),
 ])
 export const DEV070_MIGRATION_ENTRY_COUNT=DEV070_MIGRATION_PREFIX_COUNT+DEV070_MIGRATION_ENTRIES.length
-// 31–39 are the previously accepted DEV-059 exact ledger prefixes. 40–48
+// 31–39 are the previously accepted DEV-059 exact ledger prefixes. 40–51
 // permit readback/retry after a partial forward append, with every row/hash
 // still checked by the shared runner. No unknown ledger layout is admitted.
 export const DEV070_ACCEPTED_LEDGER_COUNTS=Object.freeze(Array.from({length:DEV070_MIGRATION_ENTRY_COUNT-30},(_,index)=>index+31))

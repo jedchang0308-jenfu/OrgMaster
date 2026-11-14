@@ -15,17 +15,17 @@ const files=new Map(profile.migrations.entries.map(entry=>[entry.path,readFileSy
 const after=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c,root),files,source).bundle
 const before=count=>({...after,sourceRevision:'b'.repeat(40),manifestSha256:'c'.repeat(64),entries:after.entries.slice(0,count)})
 
-test('DEV070 exact reviewed source packages only 042/044/045/047/048/049/050/051/052 after immutable 001–041 identity',()=>{
+test('DEV070 exact reviewed source packages only 042/044/045/047/048/049/050/051/052/053/054/055 after immutable 001–041 identity',()=>{
  assertDev040V3Profile(profile,n1c);assertDev070MigrationEntries(after.entries)
  assertDev059MigrationEntries(after.entries.slice(0,39))
- assert.equal(after.entries.length,48)
+ assert.equal(after.entries.length,DEV070_MIGRATION_ENTRY_COUNT)
  assert.deepEqual(after.entries.slice(39).map(row=>row.path),DEV070_MIGRATION_ENTRIES.map(row=>row.path))
  assert.equal(after.entries.some(row=>row.path.includes('/043_')),false)
  for(const entry of DEV070_MIGRATION_ENTRIES){assert.equal(sourceSha256(files.get(entry.path)),entry.sourceSha256);assert.equal(sourceSha256(unwrapMigrationTransaction(files.get(entry.path))),entry.appliedSha256)}
 })
 test('DEV070 planner admits only previously known exact prefixes and source-controlled partial append readback',()=>{
- for(let count=31;count<48;count++)assert.equal(assertDev070AdministrationAppend(before(count),after).pendingMigrationCount,48-count)
- for(const count of[0,10,30,48,49])assert.throws(()=>assertDev070AdministrationAppend(before(count),after),/DEV070_MIGRATION_APPEND_INVALID/)
+ for(let count=31;count<DEV070_MIGRATION_ENTRY_COUNT;count++)assert.equal(assertDev070AdministrationAppend(before(count),after).pendingMigrationCount,DEV070_MIGRATION_ENTRY_COUNT-count)
+ for(const count of[0,10,30,DEV070_MIGRATION_ENTRY_COUNT,DEV070_MIGRATION_ENTRY_COUNT+1])assert.throws(()=>assertDev070AdministrationAppend(before(count),after),/DEV070_MIGRATION_APPEND_INVALID/)
  for(const mutate of[
   bundle=>{bundle.entries[30].appliedSha256='0'.repeat(64)},bundle=>{bundle.entries[39].sourceSha256='0'.repeat(64)},
   bundle=>{bundle.entries[40].path='db/migrations/043_unrelated.sql'},bundle=>{bundle.entries.pop()},
@@ -55,11 +55,11 @@ test('DEV070 normal deploy CLI selects one exact append and rejects mixed operat
 })
 test('DEV070 stage receipt requires exact source manifest, count/progress and cross-database denials',()=>{
  const intent={sourceRevision:source,migrationManifestSha256:after.manifestSha256},owner={application:{id:'orgmaster'}}
- const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:source,manifestSha256:after.manifestSha256,status:'PASS',boundaryStatus:'PASS',database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',baselineCount:10,minimumLedgerCount:10,ledgerCount:48,applied:1,replayed:47,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
+ const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:source,manifestSha256:after.manifestSha256,status:'PASS',boundaryStatus:'PASS',database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',baselineCount:10,minimumLedgerCount:10,ledgerCount:DEV070_MIGRATION_ENTRY_COUNT,applied:1,replayed:DEV070_MIGRATION_ENTRY_COUNT-1,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
  const check=(value,plan={releaseMode:DEV070_RELEASE_MODE,pendingMigrationCount:1})=>assertMigrationReceipt({...value,receiptSha256:sha256(canonicalize(value))},owner,intent,{allowForward:true,forwardPlan:plan})
- assert.doesNotThrow(()=>check(core));assert.doesNotThrow(()=>check({...core,applied:0,replayed:48}))
- for(const changed of[{ledgerCount:47},{ledgerCount:49},{applied:2,replayed:46},{sourceRevision:'0'.repeat(40)},{manifestSha256:'0'.repeat(64)},{database:'jenfu_stg'},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true}]},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_dev',denied:true}]}])assert.throws(()=>check({...core,...changed}),/MIGRATION_RECEIPT_INVALID/)
- for(const pendingMigrationCount of[0,18,-1,1.5])assert.throws(()=>check(core,{releaseMode:DEV070_RELEASE_MODE,pendingMigrationCount}),/MIGRATION_RECEIPT_INVALID/)
+ assert.doesNotThrow(()=>check(core));assert.doesNotThrow(()=>check({...core,applied:0,replayed:DEV070_MIGRATION_ENTRY_COUNT}))
+ for(const changed of[{ledgerCount:DEV070_MIGRATION_ENTRY_COUNT-1},{ledgerCount:DEV070_MIGRATION_ENTRY_COUNT+1},{applied:2,replayed:DEV070_MIGRATION_ENTRY_COUNT-2},{sourceRevision:'0'.repeat(40)},{manifestSha256:'0'.repeat(64)},{database:'jenfu_stg'},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true}]},{crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_dev',denied:true}]}])assert.throws(()=>check({...core,...changed}),/MIGRATION_RECEIPT_INVALID/)
+ for(const pendingMigrationCount of[0,DEV070_MIGRATION_ENTRY_COUNT-30,-1,1.5])assert.throws(()=>check(core,{releaseMode:DEV070_RELEASE_MODE,pendingMigrationCount}),/MIGRATION_RECEIPT_INVALID/)
 })
 
 
@@ -77,7 +77,7 @@ test('048 changes only the two reviewed scalar projections while preserving comp
  let accounts=extract(sql,'CREATE OR REPLACE FUNCTION orgmaster_core.read_ai_pdm_principal_accounts_v1(','$accounts$;').replace('CREATE OR REPLACE FUNCTION','CREATE FUNCTION')
  accounts=accounts.replace("  SELECT artifact.payload, artifact.payload->>'activePolicyVersionId' AS active_policy_id, artifact.payload->'publishedVersions' AS published_versions\n",'  SELECT artifact.payload\n').replaceAll('governance.published_versions',"governance.payload->'publishedVersions'").replace('governance.active_policy_id',"governance.payload->>'activePolicyVersionId'")
  assert.equal(accounts,extract(text('db/migrations/047_dev070_scoped_ai_pdm_principal_readers.sql'),'CREATE FUNCTION orgmaster_core.read_ai_pdm_principal_accounts_v1(','$accounts$;'))
- const extra=structuredClone(after);extra.entries.push({...extra.entries.at(-1),order:49,version:'unknown-053',path:'db/migrations/053_unknown.sql'})
+ const extra=structuredClone(after);extra.entries.push({...extra.entries.at(-1),order:DEV070_MIGRATION_ENTRY_COUNT+1,version:'unknown-056',path:'db/migrations/056_unknown.sql'})
  assert.throws(()=>assertDev070MigrationEntries(extra.entries),/DEV070_MIGRATION_APPEND_INVALID/)
 })
 
