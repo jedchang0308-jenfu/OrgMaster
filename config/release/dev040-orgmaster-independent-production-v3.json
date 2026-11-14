@@ -613,8 +613,8 @@
         "order": 52,
         "version": "dev057-orgmaster-056",
         "path": "db/migrations/056_dev057_ai_pdm_session_authority.sql",
-        "sourceSha256": "8879d2403145816d0188c166d27541f7242279f0069c46f7cb82927a4d554f43",
-        "appliedSha256": "3dccfac9b267d06b5eabb3219e21f5aff788fbce43affc6c6c5fe4e755962703"
+        "sourceSha256": "b4d6417ee204e46d742387890e5e4f2bda89c820512bb678d739115cbec07ccd",
+        "appliedSha256": "b3b20950b25d8960a491b8dae2601b5d252909b0a39cef901eedd458b199cb32"
       },
       {
         "order": 53,

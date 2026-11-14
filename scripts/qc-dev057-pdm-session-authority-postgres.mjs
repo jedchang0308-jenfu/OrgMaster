@@ -79,12 +79,19 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.equal(delegationExpiry.grants[0].grant_kind, 'delegated')
   assert.equal(new Date(delegationExpiry.grants[0].valid_until).toISOString(), delegateEnds)
   assert.equal(delegationExpiry.next_boundary.toISOString(), sourceEnds)
-  await assert.rejects(
-    admin.query(`
-      SET ROLE jenfu_platform_runtime;
-      SELECT * FROM orgmaster_contract.read_ai_pdm_session_authority_v1('principal-legacy','employee-legacy')
-    `),
-    error => error.code === '42501',
-  )
+  const nativeReader = 'SELECT * FROM orgmaster_contract.read_ai_pdm_session_authority_v1($1,$2)'
+  await admin.query('CREATE ROLE pdm_first_login_owner_qc LOGIN; GRANT jenfu_ai_pdm_migrator TO pdm_first_login_owner_qc')
+  const firstLoginOwner = await connect('pdm_first_login_owner_qc')
+  await firstLoginOwner.query('SET ROLE jenfu_ai_pdm_migrator')
+  assert.deepEqual((await firstLoginOwner.query(nativeReader, [principal, employee])).rows[0].grants, directExpiry.grants)
+  for (const role of ['jenfu_platform_runtime', 'jenfu_platform_migrator', 'jenfu_orgmaster_runtime', 'jenfu_r1_verifier', 'fms_runtime']) {
+    await admin.query('BEGIN')
+    try {
+      await admin.query(`SET LOCAL ROLE ${role}`)
+      await assert.rejects(admin.query(nativeReader, [principal, employee]), error => error.code === '42501', role)
+    } finally {
+      await admin.query('ROLLBACK')
+    }
+  }
   console.log('DEV-057 PDM login authority SQL: V6 equivalence, current/empty grants, future activation, delegated-source expiry and runtime isolation PASS')
 })

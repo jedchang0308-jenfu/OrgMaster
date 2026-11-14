@@ -135,7 +135,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $reader$
 $reader$;
 
 REVOKE ALL ON FUNCTION orgmaster_contract.read_ai_pdm_session_authority_v1(text,text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION orgmaster_contract.read_ai_pdm_session_authority_v1(text,text) TO jenfu_ai_pdm_runtime;
+-- PDM's first-login SECURITY DEFINER is owned by its existing migration role.
+GRANT EXECUTE ON FUNCTION orgmaster_contract.read_ai_pdm_session_authority_v1(text,text)
+  TO jenfu_ai_pdm_runtime, jenfu_ai_pdm_migrator;
 COMMENT ON FUNCTION orgmaster_contract.read_ai_pdm_session_authority_v1(text,text) IS
   'Scoped consistent V6 login source and conservative next source validity boundary. Empty grant sets retain version and boundary metadata.';
 COMMIT;

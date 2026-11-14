@@ -15,6 +15,7 @@
 - Owner 維護沿 `dev049-production-admission-runner.mjs` 的封存操作及既有 migration Job。停用 managed admission 與單 Principal quarantine 都由 Job 保存意圖，現有 lifecycle Scheduler 以原服務身分派送 prepare 並保存回執，重跑同一封存命令才提交；Scheduler 補送終態。隔離重跑 `node scripts/qc-dev057-pdm-session-publication-postgres.mjs`，已證明兩支 owner 命令缺回執不提交、重送只套用一次、新舊入口切換及終態補送。原生歷史治理、工作區、受管身分與 DEV-070 路徑盤點見契約。
 - 正式啟用由 `orgmaster_core.pdm_session_publication_control_v1` 維持預設 `false`，應用與新 Job 都讀同一個控制值。既有 `npm run deploy:production -- --dev070-administration-append` 可帶入關閉狀態的 forward append；本次有 migration runner COPY 差異，沿既有來源綁定的 runner image rotation。開啟控制仍須在三方候選驗收後接受保護的單一 owner 啟用操作，並驗候選版本和原 lifecycle Scheduler readiness；本次未寫入正式設定。
 - [本專案開發契約](specs/DEV-057-identity-and-grant-contract-boundary.md#pdm-session-revocation)
+- PDM 首次開通 SQL 由 `jenfu_ai_pdm_migrator` 擁有，其 `SECURITY DEFINER` 共用登入權威函式。056 只授予既有 PDM runtime／migrator 該函式的 `EXECUTE`，驗證其他 owner runtime、Platform migrator、FMS 與 verifier 均被拒絕。
 
 
 <a id="dev-070-platform-administration"></a>
