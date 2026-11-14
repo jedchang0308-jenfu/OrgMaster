@@ -112,9 +112,17 @@ await withAdministrationPostgresFixture(async fixture => {
     [calls[0].operationId, calls[0].publicationVersion],
   )).rows[0]
   assert.equal(proof.publication_version, calls[0].publicationVersion)
+  const sealedTimeline = async () => (await admin.query(
+    'SELECT authority_timeline FROM orgmaster_core.pdm_session_publication_v1 WHERE operation_id=$1',
+    [calls[0].operationId],
+  )).rows[0].authority_timeline
+  const firstTimeline = await sealedTimeline()
+  assert.deepEqual(firstTimeline.map(([principal]) => principal), calls[0].principalIds)
+  assert.deepEqual(firstTimeline[0][1][0][3], [], 'Removal seals the empty replacement grant set')
   failure = null
   assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
   assert.equal(calls[3].eventId, calls[2].eventId, 'Terminal retry keeps the sealed event ID')
+  assert.deepEqual(await sealedTimeline(), firstTimeline)
   const beforeNoop = calls.length
   await publishAfterOrgmasterPdmRevocation({ ...options, commandKey:'already-removed' })
   assert.equal(calls.length, beforeNoop, 'Effective no-op does not dispatch')
@@ -138,6 +146,7 @@ await withAdministrationPostgresFixture(async fixture => {
     FROM orgmaster_core.pdm_session_publication_v1 WHERE command_key='cancel-on-baseline-drift'`)).rows[0]
   assert.equal(cancelled.decision, 'cancelled')
   assert.equal(cancelled.terminal_receipt.phase, 'cancelled')
+  assert.deepEqual(await sealedTimeline(), firstTimeline, 'A later operation with a different source version cannot change the original evidence')
   assert.equal((await admin.query('SELECT * FROM orgmaster_contract.read_ai_pdm_session_publication_v1($1,$2)',
     [cancelled.operation_id, cancelled.publication_version])).rowCount, 0)
   assert.equal((await admin.query(`SELECT * FROM orgmaster_contract.read_ai_pdm_principal_effective_grants_v6()

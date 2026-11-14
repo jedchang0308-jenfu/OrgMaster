@@ -14,6 +14,7 @@ type Operation = {
   publication_version: string
   principal_ids: string[]
   impact_hash: string
+  impact_at: string
   prepare_event_id: string
   terminal_event_id: string
   expired: boolean
@@ -24,7 +25,7 @@ type Operation = {
 }
 
 const columns = `operation_id, request_hash, baseline_version::text, publication_version::text,
-  principal_ids, impact_hash, prepare_event_id, terminal_event_id, (expires_at <= clock_timestamp()) AS expired,
+  principal_ids, impact_hash, impact_at::text, prepare_event_id, terminal_event_id, (expires_at <= clock_timestamp()) AS expired,
   prepare_receipt, owner_delivery, decision, terminal_receipt`
 function publicationHash(value: unknown) {
   const sorted = (item: unknown): unknown => Array.isArray(item) ? item.map(sorted) : item && typeof item === 'object'
@@ -42,9 +43,10 @@ const conflict = () => new PdmPublicationError('PDM_PUBLICATION_CONFLICT')
 const pending = () => new PdmPublicationError('PDM_PUBLICATION_PENDING')
 
 
-async function readImpact(database: Database) {
+async function readImpact(database: Database, at?: string) {
   const { rows } = await database.query<{ principal_id: string; effect: unknown }>(
-    'SELECT * FROM orgmaster_core.read_pdm_session_impact_v1() ORDER BY principal_id COLLATE "C"',
+    'SELECT * FROM orgmaster_core.read_pdm_session_impact_v1(COALESCE($1::timestamptz,transaction_timestamp())) ORDER BY principal_id COLLATE "C"',
+    [at ?? null],
   )
   return new Map(rows.map(row => [row.principal_id, row.effect]))
 }
@@ -203,10 +205,10 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
         await cancel(database, row.operation_id)
         return { cancelled: true }
       }
-      const before = await readImpact(database)
+      const before = await readImpact(database, row.impact_at)
       await database.query('SAVEPOINT pdm_publication_apply')
       const result = await options.write()
-      const impact = changesBetween(before, await readImpact(database))
+      const impact = changesBetween(before, await readImpact(database, row.impact_at))
       if (publicationHash(impact) !== row.impact_hash) {
         await database.query('ROLLBACK TO SAVEPOINT pdm_publication_apply')
         await cancel(database, row.operation_id)
@@ -226,8 +228,9 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
         await cancel(database, row.operation_id)
         return { cancelled: true }
       }
-      await database.query(`UPDATE ${table} SET prepare_receipt=$2, decision='published', decided_at=clock_timestamp()
-        WHERE operation_id=$1`, [row.operation_id, JSON.stringify(receipt)])
+      await database.query(`UPDATE ${table} SET prepare_receipt=$2, decision='published', decided_at=clock_timestamp(),
+        authority_timeline=$3 WHERE operation_id=$1`, [row.operation_id, JSON.stringify(receipt),
+        JSON.stringify(impact.map(([principal, , after]) => [principal, after]))])
       await database.query('RELEASE SAVEPOINT pdm_publication_apply')
       return { result }
     })

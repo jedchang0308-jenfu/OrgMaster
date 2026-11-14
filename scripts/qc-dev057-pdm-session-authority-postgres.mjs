@@ -32,6 +32,14 @@ await withAdministrationPostgresFixture(async fixture => {
     ORDER BY stable_role_id, assignment_id
   `, [principal, employee])).rows.map(row => row.grant)
   assert.deepEqual(before.grants, legacy)
+  const readAt = async (p, e, at) => (await admin.query(
+    'SELECT * FROM orgmaster_core.read_ai_pdm_principal_grants_at_v1($1,$2,false,$3)', [p,e,at],
+  )).rows
+  const impactAt = async (p, at) => (await admin.query(
+    'SELECT effect FROM orgmaster_core.read_pdm_session_impact_v1($1) WHERE principal_id=$2', [at,p],
+  )).rows[0]?.effect
+  assert.deepEqual((await readAt(principal, employee, before.evaluated_at)).map(row => row.assignment_id),
+    legacy.map(row => row.assignment_id))
   const absent = await read('unknown-principal', 'unknown-employee')
   assert.deepEqual(absent.accounts, [])
   assert.deepEqual(absent.grants, [])
@@ -57,6 +65,30 @@ await withAdministrationPostgresFixture(async fixture => {
   const scheduled = await read()
   assert.equal(scheduled.next_boundary.toISOString(), next)
   assert.deepEqual(scheduled.grants, [])
+  assert.deepEqual(await readAt(principal, employee, '2099-01-31T23:59:59.999Z'), [])
+  assert.equal((await readAt(principal, employee, next))[0].assignment_id, role.id)
+  const horizon = '2098-01-01T00:00:00.000Z'
+  const initialSchedule = await impactAt(principal, horizon)
+  assert.deepEqual(initialSchedule[0][3], [])
+  assert.equal(new Date(initialSchedule[1][0]).toISOString(), next)
+  const writeDocument = () => admin.query(`
+    UPDATE orgmaster_core.persistence_artifacts artifact SET payload=$1::jsonb
+    FROM orgmaster_core.persistence_authority owner
+    WHERE owner.active_batch_id = artifact.batch_id AND artifact.artifact_key = 'orgmaster-governance.v3.json'
+  `, [JSON.stringify(document)])
+  const secondRole = { ...role, id: 'scheduled-later-role', validFrom: '2099-04-01T00:00:00.000Z',
+    scope: { kind: 'workspace', value: 'scheduled-company' } }
+  publication.policy.roleAssignments.push(secondRole)
+  await writeDocument()
+  const firstBoundary = (await read()).next_boundary
+  const scopeBefore = await impactAt(principal, horizon)
+  secondRole.scope = { ...secondRole.scope, value: 'changed-scheduled-company' }
+  await writeDocument()
+  assert.equal((await read()).next_boundary.toISOString(), firstBoundary.toISOString())
+  assert.notDeepEqual(await impactAt(principal, horizon), scopeBefore, 'Future scope changes even with the same next boundary')
+  assert.equal((await readAt(principal, employee, secondRole.validFrom)).find(row => row.assignment_id === secondRole.id).scope_key,
+    'changed-scheduled-company')
+  publication.policy.roleAssignments.pop()
   const delegate = await createAdditionalAdministrationTargetFixture(fixture)
   const sourceEnds = '2099-01-01T00:00:00.000Z'
   const delegateEnds = '2099-03-01T00:00:00.000Z'
@@ -79,6 +111,24 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.equal(delegationExpiry.grants[0].grant_kind, 'delegated')
   assert.equal(new Date(delegationExpiry.grants[0].valid_until).toISOString(), delegateEnds)
   assert.equal(delegationExpiry.next_boundary.toISOString(), sourceEnds)
+  const delegateTimeline = await impactAt(delegate.principalId, horizon)
+  assert.equal(new Date(delegateTimeline[0][1]).toISOString(), sourceEnds)
+  assert.equal(delegateTimeline[0][3][0][8], 'delegated')
+  assert.deepEqual(delegateTimeline[1][3], [])
+  assert.equal((await readAt(delegate.principalId, delegate.employeeId, '2098-12-31T23:59:59.999Z')).length, 1)
+  assert.deepEqual(await readAt(delegate.principalId, delegate.employeeId, sourceEnds), [])
+  const mapping = publication.policy.identityLinks.find(link => link.principalId === principal)
+  mapping.validFrom = next
+  mapping.validTo = delegateEnds
+  role.validTo = null
+  await writeDocument()
+  assert.deepEqual(await readAt(principal, employee, '2099-01-31T23:59:59.999Z'), [])
+  assert.equal((await readAt(principal, employee, next)).length, 1)
+  assert.deepEqual(await readAt(principal, employee, delegateEnds), [])
+  mapping.validFrom = '2000-01-01T00:00:00.000Z'
+  mapping.validTo = null
+  role.validTo = sourceEnds
+  await writeDocument()
   const nativeReader = 'SELECT * FROM orgmaster_contract.read_ai_pdm_session_authority_v1($1,$2)'
   await admin.query('CREATE ROLE pdm_first_login_owner_qc LOGIN; GRANT jenfu_ai_pdm_migrator TO pdm_first_login_owner_qc')
   const firstLoginOwner = await connect('pdm_first_login_owner_qc')
@@ -93,5 +143,5 @@ await withAdministrationPostgresFixture(async fixture => {
       await admin.query('ROLLBACK')
     }
   }
-  console.log('DEV-057 PDM login authority SQL: V6 equivalence, current/empty grants, future activation, delegated-source expiry and runtime isolation PASS')
+  console.log('DEV-057 PDM authority SQL: current V6 parity, future identity/grants, future scope fingerprint, delegated-source expiry and runtime isolation PASS')
 })

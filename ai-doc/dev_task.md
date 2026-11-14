@@ -17,6 +17,7 @@
 - [本專案開發契約](specs/DEV-057-identity-and-grant-contract-boundary.md#pdm-session-revocation)
 - PDM 首次開通 SQL 由 `jenfu_ai_pdm_migrator` 擁有，其 `SECURITY DEFINER` 共用登入權威函式。056 只授予既有 PDM runtime／migrator 該函式的 `EXECUTE`，驗證其他 owner runtime、Platform migrator、FMS 與 verifier 均被拒絕。
 - 既有 Scheduler 的 Platform 全域登出補送已獨立於 OrgMaster 改權發布控制，須隨預設關閉的 OrgMaster runtime 部署，早於 Platform 產生全域待送事件。隔離 HTTP 驗證發布關閉時舊 Platform 路由缺席／relay 明示關閉維持排程 200，部分完成回 503，下一輪取得成功後復原。自有控制讀取失敗也會嘗試補送 Platform。重跑 `npx vitest run server/orgmasterManagedIdentityLifecycleApi.test.ts`。另以 Platform 三方元件腳本的隔離副本接真實 owner 交易與 OrgMaster Scheduler HTTP，注入終態派送中斷，確認舊 session 已撤銷、新登入被擋，下一輪排程保存原操作的持久回執、新登入恢復，中央 epoch 只前進一次。此輪使用合成 OIDC。
+- 審核候選內部時間投影沿 v6 授權分段，含未來有效的專屬範圍、委派來源交集、身分與任用時間。發布比較以同一時間錨點重算並封存精確增量。隔離 PostgreSQL 已驗未到起始／起始生效、委派來源先到期、下一邊界不變時仍偵測未來 scope 改變，以及終態重送取同一證據。沿原兩個 `qc-dev057-pdm-session-*-postgres.mjs`。三方初始分頁與終態讀回欄位待定版，正式控制維持關閉。
 
 
 <a id="dev-070-platform-administration"></a>

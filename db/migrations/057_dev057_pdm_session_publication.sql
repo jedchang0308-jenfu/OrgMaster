@@ -35,6 +35,8 @@ CREATE TABLE orgmaster_core.pdm_session_publication_v1 (
   publication_version bigint NOT NULL CHECK (publication_version = baseline_version + 1),
   principal_ids text[] NOT NULL CHECK (cardinality(principal_ids) BETWEEN 1 AND 4096),
   impact_hash text NOT NULL CHECK (impact_hash ~ '^[a-f0-9]{64}$'),
+  impact_at timestamptz NOT NULL DEFAULT transaction_timestamp(),
+  authority_timeline jsonb,
   prepare_event_id uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
   terminal_event_id uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
   prepared_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -46,6 +48,7 @@ CREATE TABLE orgmaster_core.pdm_session_publication_v1 (
   terminal_receipt jsonb,
   CHECK (expires_at > prepared_at),
   CHECK ((decision IS NULL) = (decided_at IS NULL)),
+  CHECK ((decision IS NOT DISTINCT FROM 'published') = (authority_timeline IS NOT NULL)),
   CHECK (decision IS DISTINCT FROM 'published' OR prepare_receipt IS NOT NULL),
   CHECK (terminal_receipt IS NULL OR decision IS NOT NULL),
   UNIQUE (actor_principal_id, command_key)
@@ -195,12 +198,130 @@ BEGIN
 END;
 $writers$;
 
--- Effective PDM grants, including exact administrative bindings, plus the
--- admitted provider pairs. Publication/assignment audit identifiers do not
--- change access. Multiplicity is retained because V6 rejects duplicate grants.
-CREATE FUNCTION orgmaster_core.read_pdm_session_impact_v1()
+-- Keep the temporal projection on the same eligibility rules as the scoped
+-- V6 readers. Reuse the installed definitions and bind only their time source
+-- and the dependent account/mapping reads. Live reader signatures stay intact.
+DO $temporal_readers$
+DECLARE definition text; needle text; marker text;
+BEGIN
+  definition := pg_get_viewdef('orgmaster_contract.v_active_principal_mappings_v1'::regclass, true);
+  IF length(definition)-length(replace(definition,'CURRENT_TIMESTAMP','')) <> 2*length('CURRENT_TIMESTAMP') THEN
+    RAISE EXCEPTION 'PDM_TEMPORAL_MAPPING_PREDECESSOR_DRIFT';
+  END IF;
+  EXECUTE 'CREATE FUNCTION orgmaster_core.read_ai_pdm_mappings_at_v1(p_at timestamptz)
+    RETURNS SETOF orgmaster_contract.v_active_principal_mappings_v1
+    LANGUAGE sql STABLE SET search_path=pg_catalog AS ' ||
+    quote_literal(replace(definition,'CURRENT_TIMESTAMP','p_at'));
+
+  definition := pg_get_functiondef('orgmaster_core.read_ai_pdm_principal_accounts_v1(text,text,text,boolean)'::regprocedure);
+  needle := 'read_ai_pdm_principal_accounts_v1(p_principal_id text, p_issuer text, p_subject text, p_all boolean DEFAULT false)';
+  IF strpos(definition,needle)=0
+     OR length(definition)-length(replace(definition,'CURRENT_TIMESTAMP','')) <> 2*length('CURRENT_TIMESTAMP') THEN
+    RAISE EXCEPTION 'PDM_TEMPORAL_ACCOUNT_PREDECESSOR_DRIFT';
+  END IF;
+  definition := replace(definition,needle,'read_ai_pdm_principal_accounts_at_v1(p_principal_id text, p_issuer text, p_subject text, p_all boolean, p_at timestamptz)');
+  EXECUTE replace(definition,'CURRENT_TIMESTAMP','p_at');
+
+  definition := pg_get_functiondef('orgmaster_core.read_ai_pdm_principal_grants_v5(text,text,boolean)'::regprocedure);
+  needle := 'read_ai_pdm_principal_grants_v5(p_principal_id text, p_employee_id text, p_all boolean)';
+  marker := 'FROM orgmaster_contract.v_active_principal_mappings_v1 mapping';
+  IF strpos(definition,needle)=0 OR strpos(definition,marker)=0
+     OR length(definition)-length(replace(definition,'CURRENT_TIMESTAMP','')) <> 12*length('CURRENT_TIMESTAMP') THEN
+    RAISE EXCEPTION 'PDM_TEMPORAL_GRANT_PREDECESSOR_DRIFT';
+  END IF;
+  definition := replace(definition,needle,'read_ai_pdm_principal_grants_at_v1(p_principal_id text, p_employee_id text, p_all boolean, p_at timestamptz)');
+  definition := replace(definition,marker,'FROM orgmaster_core.read_ai_pdm_mappings_at_v1(p_at) mapping');
+  definition := replace(definition,'read_ai_pdm_principal_accounts_v1(candidate_grant->>''principalId'',NULL,NULL)',
+    'read_ai_pdm_principal_accounts_at_v1(candidate_grant->>''principalId'',NULL,NULL,false,p_at)');
+  definition := replace(definition,'read_ai_pdm_principal_accounts_v1(p_principal_id,NULL,NULL,p_all)',
+    'read_ai_pdm_principal_accounts_at_v1(p_principal_id,NULL,NULL,p_all,p_at)');
+  IF strpos(definition,'read_ai_pdm_principal_accounts_v1')<>0 THEN
+    RAISE EXCEPTION 'PDM_TEMPORAL_GRANT_ACCOUNT_PREDECESSOR_DRIFT';
+  END IF;
+  EXECUTE replace(definition,'CURRENT_TIMESTAMP','p_at');
+END;
+$temporal_readers$;
+REVOKE ALL ON FUNCTION orgmaster_core.read_ai_pdm_mappings_at_v1(timestamptz),
+  orgmaster_core.read_ai_pdm_principal_accounts_at_v1(text,text,text,boolean,timestamptz),
+  orgmaster_core.read_ai_pdm_principal_grants_at_v1(text,text,boolean,timestamptz) FROM PUBLIC;
+
+-- The published grant evaluator is piecewise constant over these source
+-- boundaries. Evaluate only the selected Principal's points and coalesce
+-- adjacent equal facts so unrelated timestamps cannot change its fingerprint.
+CREATE FUNCTION orgmaster_core.read_pdm_authority_timeline_v1(
+  p_principal_id text, p_employee_id text, p_at timestamptz, p_publication jsonb, p_workspace jsonb
+) RETURNS TABLE(valid_from timestamptz, valid_until timestamptz, accounts jsonb, grants jsonb)
+LANGUAGE sql STABLE SET search_path=pg_catalog AS $timeline$
+  WITH assignments AS MATERIALIZED (
+    SELECT value AS payload FROM jsonb_array_elements(COALESCE(p_publication#>'{policy,roleAssignments}','[]'))
+    WHERE value->>'applicationId'='ai-pdm' AND value->>'status'='active'
+  ), delegations AS MATERIALIZED (
+    SELECT d.value AS payload, a.payload AS source
+    FROM jsonb_array_elements(COALESCE(p_publication#>'{policy,roleDelegations}','[]')) d
+    JOIN assignments a ON a.payload->>'id'=d.value->>'sourceAssignmentId'
+      AND a.payload->>'employeeId'=d.value->>'fromEmployeeId'
+      AND a.payload->>'roleId'=d.value->>'roleId'
+      AND a.payload->>'catalogVersion'=d.value->>'catalogVersion'
+      AND a.payload->'scope'=d.value->'scope'
+    WHERE d.value->>'status'='active' AND d.value->>'toEmployeeId'=p_employee_id
+  ), relevant AS MATERIALIZED (
+    SELECT payload FROM assignments WHERE payload->>'employeeId'=p_employee_id
+      AND (payload->>'subjectKind'='employee' OR payload->>'targetPrincipalId'=p_principal_id)
+    UNION ALL SELECT source FROM delegations
+  ), sources AS (
+    SELECT payload FROM relevant
+    UNION ALL SELECT payload FROM delegations
+    UNION ALL
+    SELECT appointment.value
+    FROM relevant a
+    CROSS JOIN LATERAL jsonb_array_elements(COALESCE(a.payload->'sources','[]')) source
+    JOIN LATERAL jsonb_array_elements(COALESCE(p_workspace#>'{state,assignments}','[]')) appointment
+      ON appointment.value->>'id'=source.value->>'positionAssignmentId'
+      AND appointment.value->>'positionId'=source.value->>'positionId'
+      AND appointment.value->>'employeeId'=a.payload->>'employeeId'
+    WHERE a.payload->>'basis'='position_adoption'
+    UNION ALL
+    SELECT value FROM jsonb_array_elements(COALESCE(p_publication#>'{policy,administration,grants}','[]'))
+    WHERE value->>'applicationId'='ai-pdm' AND value->>'status'='active'
+      AND value->>'principalId'=p_principal_id AND value->>'employeeId'=p_employee_id
+    UNION ALL
+    SELECT value FROM jsonb_array_elements(COALESCE(p_publication#>'{policy,identityLinks}','[]'))
+    WHERE value->>'principalId'=p_principal_id AND value->>'status'='active'
+  ), points AS (
+    SELECT p_at AS instant
+    UNION
+    SELECT boundary.instant FROM sources
+    CROSS JOIN LATERAL (VALUES ((payload->>'validFrom')::timestamptz),
+      ((payload->>'validTo')::timestamptz)) boundary(instant)
+    WHERE boundary.instant>p_at
+  ), facts AS MATERIALIZED (
+    SELECT instant,
+      COALESCE((SELECT jsonb_agg(fact ORDER BY fact)
+        FROM orgmaster_core.read_ai_pdm_principal_accounts_at_v1(p_principal_id,NULL,NULL,false,instant) a
+        CROSS JOIN LATERAL (SELECT jsonb_build_array(a.employee_id,a.account_type,a.principal_issuer,a.principal_subject) AS fact) signature
+      ), '[]'::jsonb) AS accounts,
+      COALESCE((SELECT jsonb_agg(fact ORDER BY fact)
+        FROM orgmaster_core.read_ai_pdm_principal_grants_at_v1(p_principal_id,p_employee_id,false,instant) g
+        CROSS JOIN LATERAL (SELECT jsonb_build_array(g.employee_id,g.subject_kind,g.target_principal_id,g.stable_role_id,
+          g.role_code,g.catalog_version,g.scope_kind,g.scope_key,g.grant_kind,
+          g.admin_catalog_sha256,g.role_definition_hash) AS fact) signature
+      ), '[]'::jsonb) AS grants
+    FROM points
+  ), changes AS (
+    SELECT *, lag(accounts) OVER chronological AS prior_accounts, lag(grants) OVER chronological AS prior_grants
+    FROM facts WINDOW chronological AS (ORDER BY instant)
+  )
+  SELECT instant, lead(instant) OVER (ORDER BY instant), accounts, grants
+  FROM changes WHERE accounts IS DISTINCT FROM prior_accounts OR grants IS DISTINCT FROM prior_grants
+  ORDER BY instant;
+$timeline$;
+REVOKE ALL ON FUNCTION orgmaster_core.read_pdm_authority_timeline_v1(text,text,timestamptz,jsonb,jsonb) FROM PUBLIC;
+
+-- Null first lower bound means the start of the frozen scan/operation.
+-- Future boundaries and role multiplicity are retained in the fingerprint.
+CREATE FUNCTION orgmaster_core.read_pdm_session_impact_v1(p_at timestamptz DEFAULT transaction_timestamp())
 RETURNS TABLE(principal_id text, effect jsonb)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $impact$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog SET timezone = 'UTC' AS $impact$
   WITH publication AS MATERIALIZED (
     SELECT orgmaster_core.read_administration_publication_v1() AS payload
   ), workspace AS MATERIALIZED (
@@ -213,37 +334,27 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $impact$
      AND document.artifact_key = 'orgmaster-versions/' || (manifest.payload->>'currentVersionId') || '.json'
      AND document.payload->>'kind' = 'document'
     WHERE owner.singleton
-  ), accounts AS MATERIALIZED (
-    SELECT account.principal_id, min(account.employee_id) AS employee_id, jsonb_agg(jsonb_build_array(
-      account.employee_id, account.account_type, account.principal_issuer, account.principal_subject
-    ) ORDER BY account.employee_id COLLATE "C", account.account_type COLLATE "C",
-      account.principal_issuer COLLATE "C", account.principal_subject COLLATE "C") AS account_signatures
-    FROM orgmaster_core.read_ai_pdm_principal_accounts_v1(NULL, NULL, NULL, true) account
-    GROUP BY account.principal_id
-  ), grants AS (
-    SELECT grant_row.principal_id, jsonb_agg(signature ORDER BY signature) AS grant_signatures
-    FROM orgmaster_contract.read_ai_pdm_principal_effective_grants_v6() grant_row
-    CROSS JOIN LATERAL (SELECT jsonb_build_array(grant_row.employee_id, grant_row.stable_role_id,
-      grant_row.role_code, grant_row.catalog_version, grant_row.scope_kind, grant_row.scope_key,
-      grant_row.valid_until, grant_row.admin_catalog_sha256, grant_row.role_definition_hash
-    ) AS signature) AS grant_signature
-    GROUP BY grant_row.principal_id
   )
-  SELECT accounts.principal_id, jsonb_build_array(accounts.account_signatures, COALESCE(grants.grant_signatures, '[]'::jsonb),
-    orgmaster_core.read_ai_pdm_next_session_boundary_v1(accounts.principal_id, accounts.employee_id,
-      (SELECT payload FROM publication), (SELECT payload FROM workspace)))
-  FROM accounts LEFT JOIN grants USING (principal_id)
-  WHERE EXISTS (SELECT 1 FROM orgmaster_core.principal_ownership_reservations owner
-                WHERE owner.principal_id = accounts.principal_id AND owner.account_type IN ('human_personal','human_privileged'));
+  SELECT owner.principal_id, timeline.effect
+  FROM orgmaster_core.principal_ownership_reservations owner
+  CROSS JOIN LATERAL (
+    SELECT jsonb_agg(jsonb_build_array(
+      CASE WHEN fact.valid_from=p_at THEN NULL ELSE fact.valid_from END,
+      fact.valid_until, fact.accounts, fact.grants) ORDER BY fact.valid_from) AS effect
+    FROM orgmaster_core.read_pdm_authority_timeline_v1(owner.principal_id,owner.employee_id,p_at,
+      (SELECT payload FROM publication), (SELECT payload FROM workspace)) fact
+    HAVING bool_or(fact.accounts<>'[]'::jsonb OR fact.grants<>'[]'::jsonb)
+  ) timeline
+  WHERE owner.account_type IN ('human_personal','human_privileged');
 $impact$;
 
-REVOKE ALL ON FUNCTION orgmaster_core.lock_pdm_session_publication_v1(), orgmaster_core.read_pdm_session_impact_v1() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION orgmaster_core.lock_pdm_session_publication_v1(), orgmaster_core.read_pdm_session_impact_v1() TO jenfu_orgmaster_runtime;
+REVOKE ALL ON FUNCTION orgmaster_core.lock_pdm_session_publication_v1(), orgmaster_core.read_pdm_session_impact_v1(timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION orgmaster_core.lock_pdm_session_publication_v1(), orgmaster_core.read_pdm_session_impact_v1(timestamptz) TO jenfu_orgmaster_runtime;
 GRANT SELECT ON orgmaster_core.pdm_session_publication_v1 TO jenfu_orgmaster_runtime;
 GRANT INSERT (operation_id, actor_principal_id, command_key, request_hash, baseline_version,
   publication_version, principal_ids, impact_hash, expires_at, owner_delivery)
   ON orgmaster_core.pdm_session_publication_v1 TO jenfu_orgmaster_runtime;
-GRANT UPDATE (prepare_receipt, decision, decided_at, terminal_receipt)
+GRANT UPDATE (prepare_receipt, decision, decided_at, terminal_receipt, authority_timeline)
   ON orgmaster_core.pdm_session_publication_v1 TO jenfu_orgmaster_runtime;
 
 CREATE INDEX pdm_session_publication_pending_delivery_v1

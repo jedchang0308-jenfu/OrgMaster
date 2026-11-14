@@ -620,8 +620,8 @@
         "order": 53,
         "version": "dev057-orgmaster-057",
         "path": "db/migrations/057_dev057_pdm_session_publication.sql",
-        "sourceSha256": "0b98e82d6c05c4dbef07050c72de0c0d0f758d77c34df30b37738c29b96ba463",
-        "appliedSha256": "b6ee7c977ec5fb1258bb354598e72c384f967cd386913dbf8b37db7542b93daa"
+        "sourceSha256": "3e959df29f40188d0ff11c940d90a0c60d0dccdfa36debcf2bbc789e903d44a0",
+        "appliedSha256": "28d6b2d5b67cc3e053cd6e3f438f1a79f97991383611bf3628d9d6e75e9f24cc"
       }
     ]
   },
