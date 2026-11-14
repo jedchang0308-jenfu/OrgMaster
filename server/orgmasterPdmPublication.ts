@@ -105,6 +105,7 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
   deliveryDatabase: () => Database
   write: () => Promise<T>
   replay?: () => Promise<T>
+  advanceLifecycleVersion?: boolean
   client?: Client
 }): Promise<T> {
   if (!options.enabled) return options.write()
@@ -133,7 +134,7 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
       await database.query('RELEASE SAVEPOINT pdm_publication_plan')
       return { result } as const
     }
-    const publicationVersion = await lockVersion(database)
+    const publicationVersion = options.advanceLifecycleVersion ? (BigInt(baseline) + 1n).toString() : await lockVersion(database)
     await database.query('ROLLBACK TO SAVEPOINT pdm_publication_plan')
     await database.query('RELEASE SAVEPOINT pdm_publication_plan')
     if (BigInt(publicationVersion) !== BigInt(baseline) + 1n) throw conflict()
@@ -176,7 +177,17 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
       await database.query('SAVEPOINT pdm_publication_apply')
       const result = await options.write()
       const impact = changesBetween(before, await readImpact(database))
-      if (administrationHash(impact) !== row.impact_hash || await lockVersion(database) !== row.publication_version) {
+      if (administrationHash(impact) !== row.impact_hash) {
+        await database.query('ROLLBACK TO SAVEPOINT pdm_publication_apply')
+        await cancel(database, row.operation_id)
+        return { cancelled: true }
+      }
+      const version = options.advanceLifecycleVersion
+        ? (await database.query<{ version: string }>(
+          'SELECT orgmaster_core.advance_pdm_lifecycle_publication_v1($1)::text AS version', [baseline],
+        )).rows[0].version
+        : await lockVersion(database)
+      if (version !== row.publication_version) {
         await database.query('ROLLBACK TO SAVEPOINT pdm_publication_apply')
         await cancel(database, row.operation_id)
         return { cancelled: true }

@@ -63,6 +63,27 @@ BEGIN
 END;
 $lock$;
 
+-- A managed Directory observation can change effective PDM authority without
+-- replacing an artifact batch. Keep the same active payload and advance its
+-- monotonic authority version under the existing owner workload and CAS.
+CREATE FUNCTION orgmaster_core.advance_pdm_lifecycle_publication_v1(p_expected bigint)
+RETURNS bigint LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog AS $advance$
+DECLARE published bigint;
+BEGIN
+  PERFORM orgmaster_core.assert_lifecycle_executor_v2(NULL);
+  IF orgmaster_core.lock_pdm_session_publication_v1() <> p_expected THEN
+    RAISE EXCEPTION 'PDM_PUBLICATION_CONFLICT';
+  END IF;
+  UPDATE orgmaster_core.persistence_authority
+    SET authority_version=p_expected+1, updated_at=clock_timestamp()
+    WHERE singleton RETURNING authority_version INTO STRICT published;
+  RETURN published;
+END;
+$advance$;
+
+REVOKE ALL ON FUNCTION orgmaster_core.advance_pdm_lifecycle_publication_v1(bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION orgmaster_core.advance_pdm_lifecycle_publication_v1(bigint) TO jenfu_orgmaster_runtime;
+
 -- Effective PDM grants, including exact administrative bindings, plus the
 -- admitted provider pairs. Publication/assignment audit identifiers do not
 -- change access. Multiplicity is retained because V6 rejects duplicate grants.

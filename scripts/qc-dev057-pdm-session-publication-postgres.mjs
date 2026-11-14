@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { pathToFileURL } from 'node:url'
+import { resolve } from 'node:path'
+import { createServer as createHttpServer } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { withAdministrationPostgresFixture } from './lib/dev070-administration-postgres-fixture.mjs'
+import {
+  withAdministrationPostgresFixture, prepareAdministrationInitializationFixture,
+  createAdministrativeHumanFixture, createAdditionalAdministrationTargetFixture,
+  drainAdministrationFixtureEvents,
+} from './lib/dev070-administration-postgres-fixture.mjs'
 
 // Node's test CLI loads compiled TypeScript via this repository's Vite.
 import { createServer } from 'vite'
@@ -9,7 +16,15 @@ const vite = await createServer({ configFile: false, server: { middlewareMode: t
 try {
 const { publishAfterOrgmasterPdmRevocation, reconcileOrgmasterPdmPublications } =
   await vite.ssrLoadModule('/server/orgmasterPdmPublication.ts')
-await withAdministrationPostgresFixture(async ({ admin, connect }) => {
+const { withOrgmasterPdmRevocationClient } = await vite.ssrLoadModule('/server/orgmasterPdmPublication.ts')
+const { createAdministrationRequestHandler } = await vite.ssrLoadModule('/server/orgmasterAdministrationApi.ts')
+const { setVerifiedRequestIdentity } = await vite.ssrLoadModule('/server/orgmasterRequestIdentity.ts')
+const { closeOrgmasterPersistencePool } = await vite.ssrLoadModule('/server/orgmasterPersistenceRepository.ts')
+const { administrativeDefinitionBindings } = await vite.ssrLoadModule('/src/governance/administrativeDefinitions.ts')
+const platformRoot = process.env.DEV070_PLATFORM_FIXTURE_ROOT ?? 'C:/VIBE CODING/Jenfu-Platform'
+const platformFixture = await import(pathToFileURL(resolve(platformRoot, 'scripts/lib/dev022-administration-lifecycle-fixture.mjs')).href)
+await withAdministrationPostgresFixture(async fixture => {
+  const { admin, connect, handle } = fixture
   for (const file of ['053_dev057_ai_pdm_session_authority.sql', '054_dev057_pdm_session_publication.sql']) {
     await admin.query(await readFile(new URL('../db/migrations/' + file, import.meta.url), 'utf8'))
   }
@@ -100,6 +115,104 @@ await withAdministrationPostgresFixture(async ({ admin, connect }) => {
   await publishAfterOrgmasterPdmRevocation({ ...options, commandKey:'already-removed' })
   assert.equal(calls.length, beforeNoop, 'Effective no-op does not dispatch')
   assert.equal((await org.query('SELECT * FROM orgmaster_core.pdm_session_publication_v1')).rowCount, 1)
-  console.log('DEV-057 PDM publication: missing receipt, overlap, stable retry, atomic readback, terminal recovery and no-op PASS')
+  const cancelPolicy = async () => {
+    const document = structuredClone(definition)
+    const affected = (await writer.query('SELECT active_batch_id AS id FROM orgmaster_core.persistence_authority')).rows[0]
+    await writer.query(`UPDATE orgmaster_core.persistence_artifacts SET payload=$1::jsonb
+      WHERE batch_id=$2 AND artifact_key='orgmaster-governance.v3.json'`, [JSON.stringify(document), affected.id])
+    await writer.query('UPDATE orgmaster_core.persistence_authority SET authority_version = authority_version + 1')
+  }
+  phaseHook = async command => {
+    if (command.phase === 'prepare') await admin.query(
+      'UPDATE orgmaster_core.persistence_authority SET authority_version = authority_version + 1',
+    )
+  }
+  await assert.rejects(publishAfterOrgmasterPdmRevocation({
+    ...options, commandKey:'cancel-on-baseline-drift', request:{ action:'restore' }, write:cancelPolicy,
+  }), /PDM_PUBLICATION_CONFLICT/)
+  const cancelled = (await org.query(`SELECT operation_id, publication_version, decision, terminal_receipt
+    FROM orgmaster_core.pdm_session_publication_v1 WHERE command_key='cancel-on-baseline-drift'`)).rows[0]
+  assert.equal(cancelled.decision, 'cancelled')
+  assert.equal(cancelled.terminal_receipt.phase, 'cancelled')
+  assert.equal((await admin.query('SELECT * FROM orgmaster_contract.read_ai_pdm_session_publication_v1($1,$2)',
+    [cancelled.operation_id, cancelled.publication_version])).rowCount, 0)
+  assert.equal((await admin.query(`SELECT * FROM orgmaster_contract.read_ai_pdm_principal_effective_grants_v6()
+    WHERE assignment_id=$1`, [grant.id])).rowCount, 0)
+  const initialization = await prepareAdministrationInitializationFixture(fixture)
+  await initialization.initialize()
+  const platform = await connect('platform-prod-runtime@jenfu-platform-prod.iam')
+  const dispatchLifecycle = platformFixture.createAdministrationLifecycleFixtureDispatch({ database: platform, handle })
+  await drainAdministrationFixtureEvents(fixture, dispatchLifecycle)
+  await platformFixture.initializePrincipalForAdministrationFixture({ database: platform, handle, principalId: 'principal-legacy' })
+  const human = await createAdministrativeHumanFixture(fixture)
+  const target = await createAdditionalAdministrationTargetFixture(fixture)
+  const administrativeGrant = await human.command('grant_application_administrator', {
+    target: { principalId:target.principalId, employeeId:target.employeeId,
+      applicationId:'ai-pdm', validFrom:'2026-01-01T00:00:00.000Z', validTo:null },
+    catalogBindings: { 'ai-pdm': administrativeDefinitionBindings['ai-pdm'] },
+  })
+  const session = (await admin.query('SELECT * FROM orgmaster_core.app_sessions WHERE id=$1', [human.sessionId])).rows[0]
+  const handler = createAdministrationRequestHandler(undefined, { lifecycle: { async runOnce() {} } })
+  const server = createHttpServer(async (request, response) => {
+    setVerifiedRequestIdentity(request, {
+      id:human.sessionId, principalId:human.principalId, employeeId:human.employeeId,
+      identityIssuer:session.identity_issuer, identitySubject:session.identity_subject,
+      authenticatedAt:session.authenticated_at.toISOString(), assuranceLevel:session.assurance_level,
+      principalAuthEpoch:Number(session.principal_auth_epoch), sessionSchemaVersion:2, epochKind:'principal',
+    })
+    const readBody = async () => {
+      let body = ''
+      for await (const chunk of request) body += chunk
+      return JSON.parse(body)
+    }
+    await withOrgmasterPdmRevocationClient(client, () =>
+      handler(request, response, process.cwd(), '/administrators/commands', readBody))
+  })
+  const settings = {
+    ORGMASTER_PERSISTENCE_MODE:'cloud-sql',
+    ORGMASTER_POSTGRES_URL:`postgresql://${encodeURIComponent('orgmaster-prod-runtime@jenfu-platform-prod.iam')}@127.0.0.1:${handle.port}/${handle.databaseName}?sslmode=disable`,
+    ORGMASTER_PDM_SESSION_REVOCATION_ENABLED:'true',
+  }
+  const priorEnv = Object.fromEntries(Object.keys(settings).map(key => [key, process.env[key]]))
+  Object.assign(process.env, settings)
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    const httpCommit = () => fetch(origin + '/api/orgmaster/governance/administrators/commands', {
+      method:'POST', headers:{ origin, 'content-type':'application/json' }, body:JSON.stringify(administrativeGrant),
+    })
+    const countCommands = async () => (await admin.query(
+      'SELECT 1 FROM orgmaster_core.administrative_command_receipts_v1 WHERE command_id=$1', [administrativeGrant.commandId],
+    )).rowCount
+    failure = 'prepare'
+    phaseHook = null
+    const denied = await httpCommit()
+    assert.equal(denied.status, 503, JSON.stringify(await denied.json()))
+    assert.equal(await countCommands(), 0)
+    failure = null
+    phaseHook = async command => {
+      if (command.phase === 'prepare') {
+        assert.deepEqual(command.principalIds, [target.principalId])
+        assert.equal(await countCommands(), 0)
+      } else if (command.phase === 'published') {
+        assert.equal(await countCommands(), 1)
+      }
+    }
+    const applied = await httpCommit()
+    const receipt = await applied.json()
+    assert.equal(applied.status, 200, JSON.stringify(receipt))
+    assert.equal(receipt.result, 'applied')
+    assert.equal(await countCommands(), 1)
+    assert.equal((await httpCommit()).status, 200)
+    assert.equal(await countCommands(), 1)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+    await closeOrgmasterPersistencePool()
+    for (const [key, value] of Object.entries(priorEnv)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+  console.log('DEV-057 PDM publication: missing receipt, overlap, stable retry, atomic readback, terminal recovery, cancellation, no-op and normal administrative HTTP PASS')
 })
 } finally { await vite.close() }

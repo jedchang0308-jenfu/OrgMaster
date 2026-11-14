@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { publishAfterOrgmasterPdmRevocation } from './orgmasterPdmPublication'
 import type { Pool, PoolClient, QueryResultRow } from 'pg'
 import { performance } from 'node:perf_hooks'
 import type { LifecycleCycleControl, ManagedIdentityLifecycleRepositoryV2 } from './orgmasterManagedIdentitySync'
@@ -20,12 +22,14 @@ function integer(row: Record<string, unknown>, name: string) {
 export function createPostgresManagedIdentityLifecycleRepository(input: {
   pool: Pick<Pool, 'connect'>
   now?: () => number
+  pdmPublicationDatabase?: Pick<Pool, 'query'>
 }): ManagedIdentityLifecycleRepositoryV2 {
   const now = input.now ?? (() => performance.now())
   const guard = (control: LifecycleCycleControl) => {
     if (control.signal.aborted || now() >= control.deadlineAt) throw new Error('MANAGED_LIFECYCLE_DEADLINE')
   }
-  async function query<Row extends QueryResultRow>(control: LifecycleCycleControl, sql: string, values: unknown[] = []) {
+  const publicationClient = new AsyncLocalStorage<PoolClient>()
+  async function transaction<T>(control: LifecycleCycleControl, run: (client: PoolClient) => Promise<T>) {
     guard(control)
     const client: PoolClient = await input.pool.connect()
     let begun = false
@@ -37,16 +41,24 @@ export function createPostgresManagedIdentityLifecycleRepository(input: {
       const remaining = Math.max(1, Math.min(5_000, Math.floor(control.deadlineAt - now())))
       await client.query("SELECT set_config('statement_timeout',$1,true),set_config('lock_timeout',$1,true)", [String(remaining)])
       guard(control)
-      const result = await client.query<Row>(sql, values)
+      const result = await run(client)
       guard(control)
       await client.query('COMMIT')
       begun = false
       guard(control)
-      return result.rows
+      return result
     } catch (error) {
       if (begun) await client.query('ROLLBACK').catch(() => undefined)
       throw error
     } finally { client.release() }
+  }
+  async function query<Row extends QueryResultRow>(control: LifecycleCycleControl, sql: string, values: unknown[] = []) {
+    const existing = publicationClient.getStore()
+    if (existing) {
+      guard(control)
+      return (await existing.query<Row>(sql, values)).rows
+    }
+    return transaction(control, async client => (await client.query<Row>(sql, values)).rows)
   }
   async function result(control: LifecycleCycleControl, sql: string, values: unknown[]) {
     const rows = await query<{ result: string }>(control, sql, values)
@@ -86,7 +98,20 @@ export function createPostgresManagedIdentityLifecycleRepository(input: {
       return { terminalized, claims, retryAfterMilliseconds }
     },
     async completeRefresh(executor, leaseId, claim, observation, control) {
-      const outcome = await result(control, 'SELECT orgmaster_core.complete_managed_identity_refresh_v2($1,$2::uuid,$3::uuid,$4,$5,$6,$7) AS result', [executor.principalId, leaseId, claim.requestId, claim.leaseGeneration, observation.directoryState, observation.primaryEmail, observation.sourceEtag])
+      const write = () => result(control, 'SELECT orgmaster_core.complete_managed_identity_refresh_v2($1,$2::uuid,$3::uuid,$4,$5,$6,$7) AS result', [executor.principalId, leaseId, claim.requestId, claim.leaseGeneration, observation.directoryState, observation.primaryEmail, observation.sourceEtag])
+      const deliveryDatabase = input.pdmPublicationDatabase
+      const outcome = !deliveryDatabase ? await write() : await publishAfterOrgmasterPdmRevocation({
+        actor: executor.principalId,
+        commandKey: `managed-refresh:${claim.requestId}:${claim.leaseGeneration}`,
+        request: { requestId: claim.requestId, generation: claim.leaseGeneration, observation },
+        enabled: true,
+        advanceLifecycleVersion: true,
+        transaction: run => transaction(control, client => publicationClient.run(client, run)),
+        database: () => publicationClient.getStore()!,
+        deliveryDatabase: () => deliveryDatabase,
+        write,
+        replay: async () => 'applied',
+      })
       if (outcome !== 'applied' && outcome !== 'superseded') throw new Error('MANAGED_REFRESH_COMPLETION_INVALID')
       return outcome
     },

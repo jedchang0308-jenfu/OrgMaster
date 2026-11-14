@@ -111,7 +111,10 @@ export function createOrgmasterManagedIdentityLifecycleRuntime(environment: Node
     throw new Error('MANAGED_LIFECYCLE_RUNTIME_CONFIG_INVALID')
   }
   const pool=createOrgmasterDatabase(environment.ORGMASTER_POSTGRES_URL,environment) as Pool
-  const repository=createPostgresManagedIdentityLifecycleRepository({pool})
+  const pdmPublicationEnabled = environment.ORGMASTER_PDM_SESSION_REVOCATION_ENABLED === 'true'
+  const repository=createPostgresManagedIdentityLifecycleRepository({
+    pool, pdmPublicationDatabase: pdmPublicationEnabled ? pool : undefined,
+  })
   const directory=createGoogleDirectoryReadOnlyPort({customerId:directoryConfig.customerId,domain:directoryConfig.domain,
     auth:createGoogleDirectoryAuthPort({delegatedSubject:directoryConfig.delegatedSubject,serviceAccountEmail:directoryConfig.serviceAccountEmail})})
   const client=createOrgmasterPrincipalLifecycleClient()
@@ -119,7 +122,7 @@ export function createOrgmasterManagedIdentityLifecycleRuntime(environment: Node
   const verifier=new OAuth2Client()
   return {
     worker,
-    ...(environment.ORGMASTER_PDM_SESSION_REVOCATION_ENABLED === 'true'
+    ...(pdmPublicationEnabled
       ? { async reconcilePdmPublications() {
           const revocation = createOrgmasterPdmRevocationClient()
           const [publication, logout] = await Promise.allSettled([
