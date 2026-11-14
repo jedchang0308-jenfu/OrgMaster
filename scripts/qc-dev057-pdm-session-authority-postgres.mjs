@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import { withAdministrationPostgresFixture } from './lib/dev070-administration-postgres-fixture.mjs'
+import { withAdministrationPostgresFixture, createAdditionalAdministrationTargetFixture } from './lib/dev070-administration-postgres-fixture.mjs'
 
 const principal = 'principal-legacy'
 const employee = 'employee-legacy'
 
-await withAdministrationPostgresFixture(async ({ admin, connect }) => {
+await withAdministrationPostgresFixture(async fixture => {
+  const { admin, connect } = fixture
   const sql = await readFile(new URL('../db/migrations/053_dev057_ai_pdm_session_authority.sql', import.meta.url), 'utf8')
   await admin.query(sql)
   await admin.query(await readFile(new URL('../db/migrations/054_dev057_pdm_session_publication.sql', import.meta.url), 'utf8'))
@@ -56,6 +57,28 @@ await withAdministrationPostgresFixture(async ({ admin, connect }) => {
   const scheduled = await read()
   assert.equal(scheduled.next_boundary.toISOString(), next)
   assert.deepEqual(scheduled.grants, [])
+  const delegate = await createAdditionalAdministrationTargetFixture(fixture)
+  const sourceEnds = '2099-01-01T00:00:00.000Z'
+  const delegateEnds = '2099-03-01T00:00:00.000Z'
+  role.validFrom = '2000-01-01T00:00:00.000Z'
+  role.validTo = sourceEnds
+  publication.policy.roleDelegations = [{
+    id: 'scheduled-source-delegation', sourceAssignmentId: role.id, status: 'active',
+    fromEmployeeId: employee, toEmployeeId: delegate.employeeId, roleId: role.roleId,
+    catalogVersion: role.catalogVersion, scope: role.scope,
+    validFrom: role.validFrom, validTo: delegateEnds,
+  }]
+  await admin.query(`
+    UPDATE orgmaster_core.persistence_artifacts artifact SET payload=$1::jsonb
+    FROM orgmaster_core.persistence_authority owner
+    WHERE owner.active_batch_id=artifact.batch_id AND artifact.artifact_key='orgmaster-governance.v3.json'
+  `, [JSON.stringify(document)])
+  const directExpiry = await read()
+  const delegationExpiry = await read(delegate.principalId, delegate.employeeId)
+  assert.equal(directExpiry.next_boundary.toISOString(), sourceEnds)
+  assert.equal(delegationExpiry.grants[0].grant_kind, 'delegated')
+  assert.equal(new Date(delegationExpiry.grants[0].valid_until).toISOString(), delegateEnds)
+  assert.equal(delegationExpiry.next_boundary.toISOString(), sourceEnds)
   await assert.rejects(
     admin.query(`
       SET ROLE jenfu_platform_runtime;
@@ -63,5 +86,5 @@ await withAdministrationPostgresFixture(async ({ admin, connect }) => {
     `),
     error => error.code === '42501',
   )
-  console.log('DEV-057 PDM login authority SQL: V6 equivalence, current/empty grants, future activation and runtime isolation PASS')
+  console.log('DEV-057 PDM login authority SQL: V6 equivalence, current/empty grants, future activation, delegated-source expiry and runtime isolation PASS')
 })

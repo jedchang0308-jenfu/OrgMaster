@@ -19,14 +19,14 @@ type Operation = {
   impact_hash: string
   prepare_event_id: string
   terminal_event_id: string
-  expires_at: Date
+  expired: boolean
   prepare_receipt: PdmRevocationReceipt | null
   decision: 'published' | 'cancelled' | null
   terminal_receipt: PdmRevocationReceipt | null
 }
 
 const columns = `operation_id, request_hash, baseline_version::text, publication_version::text,
-  principal_ids, impact_hash, prepare_event_id, terminal_event_id, expires_at,
+  principal_ids, impact_hash, prepare_event_id, terminal_event_id, (expires_at <= clock_timestamp()) AS expired,
   prepare_receipt, decision, terminal_receipt`
 const table = 'orgmaster_core.pdm_session_publication_v1'
 
@@ -109,7 +109,9 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
   client?: Client
 }): Promise<T> {
   if (!options.enabled) return options.write()
-  const client = options.client ?? configuredClient.getStore() ?? createOrgmasterPdmRevocationClient()
+  const client = options.client ?? configuredClient.getStore() ??
+    (process.env.ORGMASTER_DEPLOYMENT_ENV === 'production' ? createOrgmasterPdmRevocationClient() : undefined)
+  if (!client) throw pending()
   const requestHash = administrationHash(options.request)
   const inTransaction = <V>(fn: (database: Database) => Promise<V>) =>
     options.transaction(() => fn(options.database()))
@@ -169,7 +171,7 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: {
       const current = await load(database)
       if (!current || current.operation_id !== row.operation_id || current.decision === 'cancelled') throw conflict()
       if (current.decision === 'published') return { result: await (options.replay ?? options.write)() }
-      if (baseline !== row.baseline_version || current.expires_at.getTime() <= Date.now()) {
+      if (baseline !== row.baseline_version || current.expired) {
         await cancel(database, row.operation_id)
         return { cancelled: true }
       }

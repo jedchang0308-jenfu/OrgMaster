@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { createServer as createHttpServer } from 'node:http'
+import { performance } from 'node:perf_hooks'
+import pg from 'pg'
 import { randomUUID } from 'node:crypto'
 import {
   withAdministrationPostgresFixture, prepareAdministrationInitializationFixture,
@@ -19,6 +21,7 @@ const { publishAfterOrgmasterPdmRevocation, reconcileOrgmasterPdmPublications } 
 const { withOrgmasterPdmRevocationClient } = await vite.ssrLoadModule('/server/orgmasterPdmPublication.ts')
 const { createAdministrationRequestHandler } = await vite.ssrLoadModule('/server/orgmasterAdministrationApi.ts')
 const { setVerifiedRequestIdentity } = await vite.ssrLoadModule('/server/orgmasterRequestIdentity.ts')
+const { createPostgresManagedIdentityLifecycleRepository } = await vite.ssrLoadModule('/server/orgmasterManagedIdentityLifecycleRepository.ts')
 const { closeOrgmasterPersistencePool } = await vite.ssrLoadModule('/server/orgmasterPersistenceRepository.ts')
 const { administrativeDefinitionBindings } = await vite.ssrLoadModule('/src/governance/administrativeDefinitions.ts')
 const platformRoot = process.env.DEV070_PLATFORM_FIXTURE_ROOT ?? 'C:/VIBE CODING/Jenfu-Platform'
@@ -213,6 +216,61 @@ await withAdministrationPostgresFixture(async fixture => {
       else process.env[key] = value
     }
   }
-  console.log('DEV-057 PDM publication: missing receipt, overlap, stable retry, atomic readback, terminal recovery, cancellation, no-op and normal administrative HTTP PASS')
+  await drainAdministrationFixtureEvents(fixture, dispatchLifecycle)
+  const scope = (await admin.query(
+    'SELECT role_code FROM orgmaster_contract.read_ai_pdm_principal_effective_grants_v6($1,$2)',
+    [target.principalId, target.employeeId],
+  )).rows
+  assert.ok(scope.some(grant => grant.role_code === 'application_system_admin'))
+  const pool = new pg.Pool({
+    connectionString: settings.ORGMASTER_POSTGRES_URL, max: 4, ssl: false,
+    options: '-c jit=off',
+  })
+  try {
+    const lease = randomUUID()
+    const queued = (await admin.query(`INSERT INTO orgmaster_core.managed_identity_refresh_outbox (
+        identity_record_id, trigger, state, request_sequence, attempt_count, available_at,
+        lease_version, lease_worker_id, lease_until
+      ) VALUES ($1,'periodic','leased',nextval('orgmaster_core.managed_identity_refresh_request_seq'),
+        1,clock_timestamp(),1,$2,clock_timestamp()+interval '60 seconds')
+      ON CONFLICT (identity_record_id) WHERE state IN ('queued','leased','retry') DO UPDATE
+      SET state='leased', lease_worker_id=$2, lease_until=clock_timestamp()+interval '60 seconds',
+          lease_version=orgmaster_core.managed_identity_refresh_outbox.lease_version+1,
+          rerun_requested=false
+      RETURNING request_id, lease_version`, [target.identityId, lease])).rows[0]
+    const repository = createPostgresManagedIdentityLifecycleRepository({ pool, pdmPublicationDatabase:pool })
+    const control = { signal:new AbortController().signal, deadlineAt:performance.now()+30_000 }
+    const executor = await repository.resolveExecutor(control)
+    const claim = { requestId:queued.request_id, leaseGeneration:Number(queued.lease_version) }
+    const state = () => admin.query(`SELECT link_state FROM orgmaster_core.managed_daily_identities
+      WHERE identity_record_id=$1`, [target.identityId]).then(result => result.rows[0].link_state)
+    const complete = () => withOrgmasterPdmRevocationClient(client, () => repository.completeRefresh(
+      executor, lease, claim, { directoryState:'suspended', primaryEmail:'second@example.invalid', sourceEtag:null },
+      control,
+    ))
+    failure = 'prepare'
+    phaseHook = null
+    const prior = await version()
+    await assert.rejects(complete(), /PDM_PUBLICATION_PENDING/)
+    assert.equal(await state(), 'active')
+    assert.equal(await version(), prior)
+    failure = null
+    phaseHook = async command => {
+      if (command.phase === 'prepare') {
+        assert.deepEqual(command.principalIds, [target.principalId])
+        assert.equal(await state(), 'active')
+      } else if (command.phase === 'published') {
+        assert.equal(await state(), 'conflict')
+      }
+    }
+    assert.equal(await complete(), 'applied')
+    assert.equal(await state(), 'conflict')
+    assert.equal(await version(), (BigInt(prior)+1n).toString())
+    assert.equal(await complete(), 'applied')
+    assert.equal(await version(), (BigInt(prior)+1n).toString())
+  } finally {
+    await pool.end()
+  }
+  console.log('DEV-057 PDM publication: missing receipt, overlap, stable retry, atomic readback, terminal recovery, cancellation, no-op, normal administrative HTTP and Directory suspension PASS')
 })
 } finally { await vite.close() }
