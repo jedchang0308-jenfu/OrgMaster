@@ -26,7 +26,8 @@ PDM 本地角色能力政策由 AI-PDM owner 負責。OrgMaster 的舊角色能�
 
 - 初始讀取與終態增量使用同一組 OrgMaster 授權區間。區間左閉右開，以既有 v6 的身分、授權、catalog、範圍及原生行政定義判定為基礎。交會點包含任用、委派及來源任用、職位任用、行政授權及舊身分連結。PDM 以本地已開通帳戶對應 Principal／員工，再以現行 catalog、角色優先序、拒絕、案件要求及禁止自審選人。各角色資料及其多重性須保留，避免扁平化後意外放行。
 - 初始分頁須固定 OrgMaster source version 和評估時間，漂移即重建。增量以已提交的 operation ID／publication version 取得精確受影響 Principal 與完整替換區間。已確認無候選以空集合表示，缺少操作、版號不符或資料不完整維持阻擋。增量讀取可重播封存資料，取消沒有替換生效資料。沿現有 prepare／published／cancelled，派送 wire 沿用 v1。
-- 內部時間指紋會比較完整的有效區間，包括尚未生效的角色／scope。準備及套用使用同一時間錨點。完成發布時在同一交易封存受影響資料，供精確操作讀回。初始分頁和終態 reader 的對外 ABI 待三方確認。v1 登入 reader 維持原契約。
+- 對外 ABI 沿 [Platform DEV-015 審核候選投影 SQL v1](../../../Jenfu-Platform/ai-doc/specs/DEV-015-authentication-authorization-boundary-refactor.md#審核候選投影-sql-v1)，由 `read_ai_pdm_reviewer_snapshot_v1(text,timestamptz,text,integer)` 和 `read_ai_pdm_reviewer_publication_v1(uuid,text)` 供既有 PDM runtime 讀取。provider pair 只留在內部異動指紋。專用讀取與原登入讀取獨立，首次登入的 PDM migrator 仍只沿原登入函式。
+- 內部時間指紋會比較完整的有效區間，包括尚未生效的角色／scope。準備及套用使用同一時間錨點。完成發布時在同一交易封存完整的受影響資料，並拒絕改寫已封存區間。原生 lifecycle 待確認時，初始載入回零列，已提交的終態保留原精確讀回。OrgMaster 待受影響的原生 lifecycle 回執確認，再由既有派送／補送送出 PDM 終態。這使本地候選不會因短暫的原生封鎖永久失格，也不會提前恢復資格。
 
 ### 正式切換與回復
 

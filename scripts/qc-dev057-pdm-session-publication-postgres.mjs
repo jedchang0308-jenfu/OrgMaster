@@ -43,6 +43,11 @@ await withAdministrationPostgresFixture(async fixture => {
   const policy = definition.publishedVersions.find(row => row.id === definition.activePolicyVersionId)
   const grant = policy.policy.roleAssignments.find(row => row.applicationId === 'ai-pdm')
   const org = await connect('orgmaster-prod-runtime@jenfu-platform-prod.iam')
+  await admin.query('CREATE ROLE pdm_reviewer_qc LOGIN; GRANT jenfu_ai_pdm_runtime TO pdm_reviewer_qc')
+  const pdmReviewer = await connect('pdm_reviewer_qc')
+  const terminalSql = `SELECT contract_version,operation_id,source_version,as_of::text,principals
+    FROM orgmaster_contract.read_ai_pdm_reviewer_publication_v1($1,$2)`
+  const reviewerPublication = command => pdmReviewer.query(terminalSql, [command.operationId, command.publicationVersion])
   const writer = await connect('postgres')
   await writer.query('SET jit=off')
   await org.query('SET jit=off')
@@ -98,6 +103,7 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.equal(await version(), base, 'Failed dispatch leaves existing publication in effect')
   assert.equal((await org.query('SELECT * FROM orgmaster_core.pdm_session_publication_v1')).rowCount, 1)
   assert.deepEqual(calls[0].principalIds, ['principal-legacy'])
+  assert.equal((await reviewerPublication(calls[0])).rowCount, 0, 'Prepared operation has no published reviewer data')
   await assert.rejects(publishAfterOrgmasterPdmRevocation({ ...options, commandKey:'overlap' }), /PDM_PUBLICATION_PENDING/)
   assert.equal(calls.length, 1, 'Overlapping operation never dispatches a second prepare')
   failure = 'published'
@@ -119,10 +125,22 @@ await withAdministrationPostgresFixture(async fixture => {
   const firstTimeline = await sealedTimeline()
   assert.deepEqual(firstTimeline.map(([principal]) => principal), calls[0].principalIds)
   assert.deepEqual(firstTimeline[0][1][0][3], [], 'Removal seals the empty replacement grant set')
+  const readback = (await reviewerPublication(calls[0])).rows[0]
+  assert.equal(readback.contract_version, 'orgmaster.ai-pdm-reviewer-authority.v1')
+  assert.equal(readback.operation_id, calls[0].operationId)
+  assert.equal(readback.source_version, calls[0].publicationVersion)
+  assert.deepEqual(readback.principals.map(row => row.principal_id), calls[0].principalIds)
+  assert.deepEqual(readback.principals[0].intervals[0].grants, [])
+  assert.equal(Date.parse(readback.principals[0].intervals[0].valid_from), Date.parse(readback.as_of))
+  assert.equal((await reviewerPublication({ ...calls[0], publicationVersion:base })).rowCount, 0)
+  assert.equal((await reviewerPublication({ ...calls[0], publicationVersion:'0'+readback.source_version })).rowCount, 0)
   failure = null
   assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
   assert.equal(calls[3].eventId, calls[2].eventId, 'Terminal retry keeps the sealed event ID')
   assert.deepEqual(await sealedTimeline(), firstTimeline)
+  assert.deepEqual((await reviewerPublication(calls[0])).rows[0], readback)
+  await assert.rejects(org.query(`UPDATE orgmaster_core.pdm_session_publication_v1
+    SET authority_timeline='[]'::jsonb WHERE operation_id=$1`, [calls[0].operationId]), /PDM_REVIEWER_TIMELINE_IMMUTABLE/)
   const beforeNoop = calls.length
   await publishAfterOrgmasterPdmRevocation({ ...options, commandKey:'already-removed' })
   assert.equal(calls.length, beforeNoop, 'Effective no-op does not dispatch')
@@ -146,6 +164,9 @@ await withAdministrationPostgresFixture(async fixture => {
     FROM orgmaster_core.pdm_session_publication_v1 WHERE command_key='cancel-on-baseline-drift'`)).rows[0]
   assert.equal(cancelled.decision, 'cancelled')
   assert.equal(cancelled.terminal_receipt.phase, 'cancelled')
+  assert.equal((await reviewerPublication({ operationId:cancelled.operation_id,
+    publicationVersion:cancelled.publication_version })).rowCount, 0)
+  assert.deepEqual((await reviewerPublication(calls[0])).rows[0], readback, 'Later source version preserves original ABI payload')
   assert.deepEqual(await sealedTimeline(), firstTimeline, 'A later operation with a different source version cannot change the original evidence')
   assert.equal((await admin.query('SELECT * FROM orgmaster_contract.read_ai_pdm_session_publication_v1($1,$2)',
     [cancelled.operation_id, cancelled.publication_version])).rowCount, 0)
@@ -209,6 +230,9 @@ await withAdministrationPostgresFixture(async fixture => {
         assert.equal(await countCommands(), 0)
       } else if (command.phase === 'published') {
         assert.equal(await countCommands(), 1)
+        const projected = (await reviewerPublication(command)).rows[0]
+        assert.ok(projected.principals[0].intervals[0]?.grants.some(grant =>
+          grant.role_code === 'application_system_admin'), 'Committed administrative grant reaches reviewer projection')
       }
     }
     const applied = await httpCommit()
@@ -216,6 +240,8 @@ await withAdministrationPostgresFixture(async fixture => {
     assert.equal(applied.status, 200, JSON.stringify(receipt))
     assert.equal(receipt.result, 'applied')
     assert.equal(await countCommands(), 1)
+    assert.equal(calls.at(-1).phase, 'prepare', 'Native lifecycle acknowledgement gates terminal delivery')
+    assert.equal((await pdmReviewer.query(`SELECT * FROM orgmaster_contract.read_ai_pdm_reviewer_snapshot_v1(NULL,NULL,NULL,128)`)).rowCount, 0)
     assert.equal((await httpCommit()).status, 200)
     assert.equal(await countCommands(), 1)
   } finally {
@@ -227,6 +253,10 @@ await withAdministrationPostgresFixture(async fixture => {
     }
   }
   await drainAdministrationFixtureEvents(fixture, dispatchLifecycle)
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
+  assert.equal(calls.at(-1).phase, 'published')
+  assert.ok((await reviewerPublication(calls.at(-1))).rows[0].principals[0].intervals[0].grants.some(grant =>
+    grant.role_code === 'application_system_admin'))
   const scope = (await admin.query(
     'SELECT role_code FROM orgmaster_contract.read_ai_pdm_principal_effective_grants_v6($1,$2)',
     [target.principalId, target.employeeId],
@@ -278,6 +308,8 @@ await withAdministrationPostgresFixture(async fixture => {
     assert.equal(await version(), (BigInt(prior)+1n).toString())
     assert.equal(await complete(), 'applied')
     assert.equal(await version(), (BigInt(prior)+1n).toString())
+    await drainAdministrationFixtureEvents(fixture, dispatchLifecycle)
+    assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
   } finally {
     await pool.end()
   }
@@ -327,6 +359,9 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.equal((await identity()).link_state, 'conflict')
   assert.equal(await version(), (BigInt(baseOwner)+1n).toString())
   assert.equal((await quarantineCommand()).disposition, 'REPLAY')
+  const quarantineTerminal = (await reviewerPublication(calls.at(-1))).rows[0]
+  assert.deepEqual(quarantineTerminal.principals, [{ principal_id:managed.principalId, intervals:[] }])
+  await drainAdministrationFixtureEvents(fixture, dispatchLifecycle)
   assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
   assert.equal(calls.at(-1).phase, 'published')
 
@@ -352,6 +387,7 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.equal((await admissionCommand()).disposition, 'APPLIED')
   assert.equal((await readAdmission()).admission_enabled, false)
   assert.equal((await admissionCommand()).disposition, 'REPLAY')
+  await drainAdministrationFixtureEvents(fixture, dispatchLifecycle)
   assert.deepEqual(await reconcileOrgmasterPdmPublications(org, client), { selected:1, completed:1 })
   const deactivated = await changeControl(1, false, 'b'.repeat(64))
   assert.equal(deactivated.revision, '2')

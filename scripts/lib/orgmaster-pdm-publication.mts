@@ -66,6 +66,12 @@ function command(row: Operation, phase: 'prepare' | 'published' | 'cancelled') {
 
 async function finish(database: Database, client: Client, row: Operation) {
   if (!row.decision || row.terminal_receipt) return
+  if (row.decision === 'published') {
+    const { rows } = await database.query<{ clear: boolean }>(
+      'SELECT orgmaster_core.pdm_reviewer_delivery_clear_v1($1::text[]) AS clear', [row.principal_ids],
+    )
+    if (rows[0]?.clear !== true) throw pending()
+  }
   // Terminal commands require a prepare receipt in PDM. Ensure the exact
   // prepare can be reconciled even if the owner cancelled during a lost reply.
   if (!row.prepare_receipt) {
@@ -230,7 +236,7 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
       }
       await database.query(`UPDATE ${table} SET prepare_receipt=$2, decision='published', decided_at=clock_timestamp(),
         authority_timeline=$3 WHERE operation_id=$1`, [row.operation_id, JSON.stringify(receipt),
-        JSON.stringify(impact.map(([principal, , after]) => [principal, after]))])
+        JSON.stringify(impact.map(([principal, , after]) => [principal, after ?? []]))])
       await database.query('RELEASE SAVEPOINT pdm_publication_apply')
       return { result }
     })

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { withAdministrationPostgresFixture, createAdditionalAdministrationTargetFixture } from './lib/dev070-administration-postgres-fixture.mjs'
 
@@ -14,6 +15,15 @@ await withAdministrationPostgresFixture(async fixture => {
   await admin.query('CREATE ROLE pdm_session_qc LOGIN; GRANT jenfu_ai_pdm_runtime TO pdm_session_qc')
   const pdm = await connect('pdm_session_qc')
   await pdm.query('SET jit=off')
+  const snapshotSql = `SELECT contract_version,source_version,as_of::text,next_after_principal_id,principals
+    FROM orgmaster_contract.read_ai_pdm_reviewer_snapshot_v1($1,$2,$3,$4)`
+  const terminalSql = 'SELECT * FROM orgmaster_contract.read_ai_pdm_reviewer_publication_v1($1,$2)'
+  const snapshot = (version = null, at = null, cursor = null, limit = 128) => pdm.query(snapshotSql,
+    [version, at, cursor, limit])
+  const empty = await snapshot()
+  assert.equal(empty.rowCount, 1)
+  assert.equal(empty.rows[0].contract_version, 'orgmaster.ai-pdm-reviewer-authority.v1')
+  assert.equal(empty.rows[0].next_after_principal_id, null)
   const read = async (p = principal, e = employee) => {
     const result = await pdm.query(
       'SELECT * FROM orgmaster_contract.read_ai_pdm_session_authority_v1($1,$2)', [p, e],
@@ -117,6 +127,34 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.deepEqual(delegateTimeline[1][3], [])
   assert.equal((await readAt(delegate.principalId, delegate.employeeId, '2098-12-31T23:59:59.999Z')).length, 1)
   assert.deepEqual(await readAt(delegate.principalId, delegate.employeeId, sourceEnds), [])
+  const first = (await snapshot(null, null, null, 1)).rows[0]
+  assert.ok(first.next_after_principal_id)
+  assert.equal(first.next_after_principal_id, first.principals[0].principal_id)
+  const second = (await snapshot(first.source_version, first.as_of, first.next_after_principal_id, 1)).rows[0]
+  assert.equal(second.as_of, first.as_of, 'PostgreSQL microseconds round-trip as text')
+  assert.equal(second.source_version, first.source_version)
+  assert.ok(second.principals[0].principal_id > first.principals[0].principal_id)
+  const full = (await snapshot(first.source_version, first.as_of)).rows[0]
+  const delegateIntervals = full.principals.find(row => row.principal_id === delegate.principalId).intervals
+  assert.equal(new Date(delegateIntervals[0].valid_until).toISOString(), sourceEnds)
+  assert.deepEqual(delegateIntervals[0].accounts, [{ employee_id:delegate.employeeId, account_type:'human_personal' }])
+  assert.equal(delegateIntervals[0].grants[0].grant_kind, 'delegated')
+  assert.deepEqual(delegateIntervals[1].grants, [])
+  assert.equal(delegateIntervals[1].valid_from, delegateIntervals[0].valid_until)
+  assert.equal(delegateIntervals.at(-1).valid_until, null)
+  assert.ok(!JSON.stringify(full.principals).includes('issuer-legacy'))
+  assert.equal((await snapshot(null, null, first.next_after_principal_id)).rowCount, 0, 'Unbound cursor rejected')
+  assert.equal((await snapshot(first.source_version, first.as_of, 'unknown-cursor')).rowCount, 0)
+  assert.equal((await snapshot(first.source_version, first.as_of, '非法游標')).rowCount, 0)
+  assert.equal((await snapshot('0' + first.source_version, first.as_of, first.next_after_principal_id)).rowCount, 0)
+  assert.equal((await snapshot(null, null, null, 129)).rowCount, 0)
+  await admin.query('UPDATE orgmaster_core.persistence_authority SET authority_version=authority_version+1 WHERE singleton')
+  assert.equal((await snapshot(first.source_version, first.as_of, first.next_after_principal_id)).rowCount, 0, 'Old version cannot resume')
+  assert.equal((await snapshot(first.source_version, first.as_of)).rowCount, 0, 'Final snapshot recheck also detects drift')
+  const newest = (await snapshot()).rows[0]
+  assert.notEqual(newest.source_version, first.source_version)
+  assert.deepEqual((await snapshot(newest.source_version, newest.as_of, newest.principals.at(-1).principal_id)).rows[0].principals, [])
+  assert.equal((await pdm.query(terminalSql, [randomUUID(), newest.source_version])).rowCount, 0)
   const mapping = publication.policy.identityLinks.find(link => link.principalId === principal)
   mapping.validFrom = next
   mapping.validTo = delegateEnds
@@ -134,7 +172,8 @@ await withAdministrationPostgresFixture(async fixture => {
   const firstLoginOwner = await connect('pdm_first_login_owner_qc')
   await firstLoginOwner.query('SET ROLE jenfu_ai_pdm_migrator')
   assert.deepEqual((await firstLoginOwner.query(nativeReader, [principal, employee])).rows[0].grants, directExpiry.grants)
-  for (const role of ['jenfu_platform_runtime', 'jenfu_platform_migrator', 'jenfu_orgmaster_runtime', 'jenfu_r1_verifier', 'fms_runtime']) {
+  const deniedRoles = ['jenfu_platform_runtime', 'jenfu_platform_migrator', 'jenfu_orgmaster_runtime', 'jenfu_r1_verifier', 'fms_runtime']
+  for (const role of deniedRoles) {
     await admin.query('BEGIN')
     try {
       await admin.query(`SET LOCAL ROLE ${role}`)
@@ -143,5 +182,20 @@ await withAdministrationPostgresFixture(async fixture => {
       await admin.query('ROLLBACK')
     }
   }
-  console.log('DEV-057 PDM authority SQL: current V6 parity, future identity/grants, future scope fingerprint, delegated-source expiry and runtime isolation PASS')
+  const reviewerSignatures = ['orgmaster_contract.read_ai_pdm_reviewer_snapshot_v1(text,timestamptz,text,integer)',
+    'orgmaster_contract.read_ai_pdm_reviewer_publication_v1(uuid,text)']
+  for (const signature of reviewerSignatures) {
+    const { rows } = await admin.query(`
+      SELECT rolname, has_function_privilege(rolname,$1,'EXECUTE') AS allowed FROM pg_roles
+      WHERE rolname=ANY($2::text[])`, [signature,['jenfu_ai_pdm_runtime','jenfu_ai_pdm_migrator', ...deniedRoles]])
+    assert.equal(rows.length, deniedRoles.length+2)
+    assert.deepEqual(rows.filter(row => row.allowed).map(row => row.rolname), ['jenfu_ai_pdm_runtime'])
+    const { rows: publicAcl } = await admin.query(`SELECT 1 FROM pg_proc p
+      CROSS JOIN LATERAL aclexplode(p.proacl) acl
+      WHERE p.oid=$1::regprocedure AND acl.grantee=0 AND acl.privilege_type='EXECUTE'`, [signature])
+    assert.deepEqual(publicAcl, [])
+  }
+  await assert.rejects(firstLoginOwner.query(snapshotSql,[null,null,null,1]), { code:'42501' })
+  await assert.rejects(firstLoginOwner.query(terminalSql,[randomUUID(),'0']), { code:'42501' })
+  console.log('DEV-057 PDM authority SQL: V6 parity, intervals, pagination, stale cursor/versions and exact runtime ACL PASS')
 })

@@ -1,7 +1,7 @@
 -- DB-CHANGE
 -- owner: orgmaster
 -- schemas: orgmaster_core, orgmaster_contract
--- contract-impact: additive orgmaster_contract.read_ai_pdm_session_publication_v1(uuid,text)
+-- contract-impact: additive PDM session publication and reviewer authority v1
 -- compatibility: backward-compatible
 -- governance-review: DEV-057
 BEGIN;
@@ -53,6 +53,33 @@ CREATE TABLE orgmaster_core.pdm_session_publication_v1 (
   CHECK (terminal_receipt IS NULL OR decision IS NOT NULL),
   UNIQUE (actor_principal_id, command_key)
 );
+
+CREATE FUNCTION orgmaster_core.guard_pdm_reviewer_timeline_v1()
+RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $guard$
+BEGIN
+  IF OLD.authority_timeline IS NOT NULL AND NEW.authority_timeline IS DISTINCT FROM OLD.authority_timeline THEN
+    RAISE EXCEPTION 'PDM_REVIEWER_TIMELINE_IMMUTABLE';
+  END IF;
+  IF OLD.authority_timeline IS NULL AND NEW.authority_timeline IS NOT NULL THEN
+    IF jsonb_typeof(NEW.authority_timeline) <> 'array'
+      OR EXISTS (SELECT 1 FROM jsonb_array_elements(NEW.authority_timeline) entry
+        WHERE jsonb_typeof(entry->0) IS DISTINCT FROM 'string'
+           OR jsonb_typeof(entry->1) IS DISTINCT FROM 'array'
+           OR jsonb_array_length(entry) <> 2)
+      OR NEW.principal_ids IS DISTINCT FROM ARRAY(
+        SELECT entry->>0 FROM jsonb_array_elements(NEW.authority_timeline) WITH ORDINALITY parts(entry,ordinal)
+        ORDER BY ordinal
+      ) THEN
+      RAISE EXCEPTION 'PDM_REVIEWER_TIMELINE_SCOPE_INVALID';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$guard$;
+REVOKE ALL ON FUNCTION orgmaster_core.guard_pdm_reviewer_timeline_v1() FROM PUBLIC;
+CREATE TRIGGER pdm_reviewer_timeline_guard_v1 BEFORE UPDATE OF authority_timeline
+  ON orgmaster_core.pdm_session_publication_v1 FOR EACH ROW
+  EXECUTE FUNCTION orgmaster_core.guard_pdm_reviewer_timeline_v1();
 
 -- The source version in the wire identifies the exact committed publication.
 -- Newer unrelated publications must not erase proof needed by the PDM relay.
@@ -202,25 +229,31 @@ $writers$;
 -- V6 readers. Reuse the installed definitions and bind only their time source
 -- and the dependent account/mapping reads. Live reader signatures stay intact.
 DO $temporal_readers$
-DECLARE definition text; needle text; marker text;
+DECLARE definition text; needle text; marker text; blocked_delivery text;
 BEGIN
+  -- Lifecycle v2 blocks live re-admission until Platform acknowledges the
+  -- exact event. Store the durable post-change facts before that acknowledgement.
+  -- The publication sender separately waits for outstanding affected events.
+  blocked_delivery := 'delivery\.status\s*(<>\s*''completed''(?:::text)?)';
   definition := pg_get_viewdef('orgmaster_contract.v_active_principal_mappings_v1'::regclass, true);
-  IF length(definition)-length(replace(definition,'CURRENT_TIMESTAMP','')) <> 2*length('CURRENT_TIMESTAMP') THEN
+  IF length(definition)-length(replace(definition,'CURRENT_TIMESTAMP','')) <> 2*length('CURRENT_TIMESTAMP')
+    OR regexp_count(definition,blocked_delivery)<>2 THEN
     RAISE EXCEPTION 'PDM_TEMPORAL_MAPPING_PREDECESSOR_DRIFT';
   END IF;
   EXECUTE 'CREATE FUNCTION orgmaster_core.read_ai_pdm_mappings_at_v1(p_at timestamptz)
     RETURNS SETOF orgmaster_contract.v_active_principal_mappings_v1
     LANGUAGE sql STABLE SET search_path=pg_catalog AS ' ||
-    quote_literal(replace(definition,'CURRENT_TIMESTAMP','p_at'));
+    quote_literal(replace(regexp_replace(definition,blocked_delivery,'false','g'),'CURRENT_TIMESTAMP','p_at'));
 
   definition := pg_get_functiondef('orgmaster_core.read_ai_pdm_principal_accounts_v1(text,text,text,boolean)'::regprocedure);
   needle := 'read_ai_pdm_principal_accounts_v1(p_principal_id text, p_issuer text, p_subject text, p_all boolean DEFAULT false)';
   IF strpos(definition,needle)=0
-     OR length(definition)-length(replace(definition,'CURRENT_TIMESTAMP','')) <> 2*length('CURRENT_TIMESTAMP') THEN
+     OR length(definition)-length(replace(definition,'CURRENT_TIMESTAMP','')) <> 2*length('CURRENT_TIMESTAMP')
+     OR regexp_count(definition,blocked_delivery)<>2 THEN
     RAISE EXCEPTION 'PDM_TEMPORAL_ACCOUNT_PREDECESSOR_DRIFT';
   END IF;
   definition := replace(definition,needle,'read_ai_pdm_principal_accounts_at_v1(p_principal_id text, p_issuer text, p_subject text, p_all boolean, p_at timestamptz)');
-  EXECUTE replace(definition,'CURRENT_TIMESTAMP','p_at');
+  EXECUTE replace(regexp_replace(definition,blocked_delivery,'false','g'),'CURRENT_TIMESTAMP','p_at');
 
   definition := pg_get_functiondef('orgmaster_core.read_ai_pdm_principal_grants_v5(text,text,boolean)'::regprocedure);
   needle := 'read_ai_pdm_principal_grants_v5(p_principal_id text, p_employee_id text, p_all boolean)';
@@ -319,7 +352,9 @@ REVOKE ALL ON FUNCTION orgmaster_core.read_pdm_authority_timeline_v1(text,text,t
 
 -- Null first lower bound means the start of the frozen scan/operation.
 -- Future boundaries and role multiplicity are retained in the fingerprint.
-CREATE FUNCTION orgmaster_core.read_pdm_session_impact_v1(p_at timestamptz DEFAULT transaction_timestamp())
+CREATE FUNCTION orgmaster_core.read_pdm_session_impact_v1(
+  p_at timestamptz DEFAULT transaction_timestamp(), p_principal_ids text[] DEFAULT NULL
+)
 RETURNS TABLE(principal_id text, effect jsonb)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog SET timezone = 'UTC' AS $impact$
   WITH publication AS MATERIALIZED (
@@ -345,11 +380,109 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog SET timezone =
       (SELECT payload FROM publication), (SELECT payload FROM workspace)) fact
     HAVING bool_or(fact.accounts<>'[]'::jsonb OR fact.grants<>'[]'::jsonb)
   ) timeline
-  WHERE owner.account_type IN ('human_personal','human_privileged');
+  WHERE p_principal_ids IS NULL OR owner.principal_id=ANY(p_principal_ids);
 $impact$;
 
-REVOKE ALL ON FUNCTION orgmaster_core.lock_pdm_session_publication_v1(), orgmaster_core.read_pdm_session_impact_v1(timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION orgmaster_core.lock_pdm_session_publication_v1(), orgmaster_core.read_pdm_session_impact_v1(timestamptz) TO jenfu_orgmaster_runtime;
+-- Render both sources with the same wire shape. The private fingerprint
+-- includes provider pairs; the reviewer reader only needs typed ownership.
+CREATE FUNCTION orgmaster_core.pdm_reviewer_authority_json_v1(p_at timestamptz, p_effect jsonb)
+RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path=pg_catalog SET timezone='UTC' AS $projection$
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'valid_from', COALESCE((interval.value->>0)::timestamptz,p_at),
+    'valid_until', (interval.value->>1)::timestamptz,
+    'accounts', (SELECT COALESCE(jsonb_agg(account ORDER BY account),'[]'::jsonb)
+      FROM (SELECT DISTINCT jsonb_build_object('employee_id',value->>0,'account_type',value->>1) AS account
+        FROM jsonb_array_elements(interval.value->2)
+        WHERE value->>1 IN ('human_personal','human_privileged')) typed),
+    'grants', (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+      'employee_id',value->>0,'subject_kind',value->>1,'target_principal_id',value->>2,
+      'stable_role_id',value->>3,'role_code',value->>4,'catalog_version',value->>5,
+      'scope_kind',value->>6,'scope_key',value->>7,'grant_kind',value->>8,
+      'admin_catalog_sha256',value->>9,'role_definition_hash',value->>10
+    ) ORDER BY ordinal),'[]'::jsonb)
+    FROM jsonb_array_elements(interval.value->3) WITH ORDINALITY grant_row(value,ordinal))
+  ) ORDER BY interval.ordinal),'[]'::jsonb)
+  FROM jsonb_array_elements(p_effect) WITH ORDINALITY interval(value,ordinal);
+$projection$;
+REVOKE ALL ON FUNCTION orgmaster_core.pdm_reviewer_authority_json_v1(timestamptz,jsonb) FROM PUBLIC;
+
+CREATE FUNCTION orgmaster_core.pdm_reviewer_delivery_clear_v1(p_principal_ids text[])
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $delivery$
+  SELECT NOT EXISTS (
+    SELECT 1 FROM orgmaster_core.principal_lifecycle_delivery_v2 delivery
+    JOIN orgmaster_core.principal_lifecycle_events_v2 event ON event.event_id=delivery.event_id
+    WHERE delivery.status<>'completed' AND (p_principal_ids IS NULL OR EXISTS (
+      SELECT 1 FROM jsonb_array_elements(event.snapshot_text::jsonb->'principals') target
+      WHERE target->>'principalId'=ANY(p_principal_ids)
+    ))
+  );
+$delivery$;
+REVOKE ALL ON FUNCTION orgmaster_core.pdm_reviewer_delivery_clear_v1(text[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION orgmaster_core.pdm_reviewer_delivery_clear_v1(text[]) TO jenfu_orgmaster_runtime;
+
+CREATE FUNCTION orgmaster_contract.read_ai_pdm_reviewer_snapshot_v1(
+  p_source_version text, p_as_of timestamptz, p_after_principal_id text, p_limit integer
+) RETURNS TABLE(contract_version text, source_version text, as_of timestamptz,
+  next_after_principal_id text, principals jsonb)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog SET timezone='UTC' AS $snapshot$
+DECLARE observed_version text; observed_at timestamptz; page_ids text[];
+BEGIN
+  IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 128 THEN RETURN; END IF;
+  IF p_source_version IS NULL AND p_as_of IS NULL AND p_after_principal_id IS NULL THEN
+    observed_at := transaction_timestamp();
+  ELSIF p_source_version IS NOT NULL AND p_as_of IS NOT NULL AND isfinite(p_as_of)
+    AND p_as_of<=transaction_timestamp()
+    AND (p_after_principal_id IS NULL OR p_after_principal_id COLLATE "C" ~ '^[A-Za-z0-9._:@/-]{1,255}$') THEN
+    observed_at := p_as_of;
+  ELSE RETURN;
+  END IF;
+  SELECT owner.authority_version::text INTO observed_version
+  FROM orgmaster_core.persistence_authority owner WHERE owner.singleton;
+  IF NOT FOUND OR (p_source_version IS NOT NULL AND p_source_version<>observed_version)
+    OR NOT orgmaster_core.pdm_reviewer_delivery_clear_v1(NULL) THEN RETURN; END IF;
+  IF p_after_principal_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM orgmaster_core.principal_ownership_reservations owner WHERE owner.principal_id=p_after_principal_id
+  ) THEN RETURN; END IF;
+  IF EXISTS (SELECT 1 FROM orgmaster_core.principal_ownership_reservations owner
+    WHERE owner.principal_id COLLATE "C" !~ '^[A-Za-z0-9._:@/-]{1,255}$') THEN
+    RAISE EXCEPTION 'PDM_REVIEWER_PRINCIPAL_ID_INVALID';
+  END IF;
+  SELECT ARRAY(
+    SELECT owner.principal_id FROM orgmaster_core.principal_ownership_reservations owner
+    WHERE p_after_principal_id IS NULL OR owner.principal_id COLLATE "C">p_after_principal_id COLLATE "C"
+    ORDER BY owner.principal_id COLLATE "C" LIMIT p_limit+1
+  ) INTO page_ids;
+  RETURN QUERY SELECT 'orgmaster.ai-pdm-reviewer-authority.v1'::text, observed_version, observed_at,
+    CASE WHEN cardinality(page_ids)>p_limit THEN page_ids[p_limit] END,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('principal_id', page.id,
+      'intervals', orgmaster_core.pdm_reviewer_authority_json_v1(observed_at,impact.effect)) ORDER BY page.ordinal)
+      FROM unnest(page_ids[1:p_limit]) WITH ORDINALITY page(id,ordinal)
+      LEFT JOIN orgmaster_core.read_pdm_session_impact_v1(observed_at,page_ids[1:p_limit]) impact
+        ON impact.principal_id=page.id),'[]'::jsonb);
+END;
+$snapshot$;
+
+CREATE FUNCTION orgmaster_contract.read_ai_pdm_reviewer_publication_v1(
+  p_operation_id uuid, p_publication_version text
+) RETURNS TABLE(contract_version text, operation_id uuid, source_version text, as_of timestamptz, principals jsonb)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog SET timezone='UTC' AS $reviewer_publication$
+  SELECT 'orgmaster.ai-pdm-reviewer-authority.v1', published.operation_id,
+    published.publication_version::text, published.impact_at,
+    (SELECT jsonb_agg(jsonb_build_object('principal_id',entry.value->>0,
+      'intervals',orgmaster_core.pdm_reviewer_authority_json_v1(published.impact_at,entry.value->1))
+      ORDER BY (entry.value->>0) COLLATE "C")
+     FROM jsonb_array_elements(published.authority_timeline) entry)
+  FROM orgmaster_core.pdm_session_publication_v1 published
+  WHERE published.operation_id=p_operation_id AND published.publication_version::text=p_publication_version
+    AND published.decision='published';
+$reviewer_publication$;
+REVOKE ALL ON FUNCTION orgmaster_contract.read_ai_pdm_reviewer_snapshot_v1(text,timestamptz,text,integer),
+  orgmaster_contract.read_ai_pdm_reviewer_publication_v1(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION orgmaster_contract.read_ai_pdm_reviewer_snapshot_v1(text,timestamptz,text,integer),
+  orgmaster_contract.read_ai_pdm_reviewer_publication_v1(uuid,text) TO jenfu_ai_pdm_runtime;
+
+REVOKE ALL ON FUNCTION orgmaster_core.lock_pdm_session_publication_v1(), orgmaster_core.read_pdm_session_impact_v1(timestamptz,text[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION orgmaster_core.lock_pdm_session_publication_v1(), orgmaster_core.read_pdm_session_impact_v1(timestamptz,text[]) TO jenfu_orgmaster_runtime;
 GRANT SELECT ON orgmaster_core.pdm_session_publication_v1 TO jenfu_orgmaster_runtime;
 GRANT INSERT (operation_id, actor_principal_id, command_key, request_hash, baseline_version,
   publication_version, principal_ids, impact_hash, expires_at, owner_delivery)
