@@ -54,6 +54,8 @@ const admissionSql = 'SELECT * FROM orgmaster_contract.read_fms_principal_admiss
 const displaySql = 'SELECT * FROM orgmaster_contract.read_fms_principal_display_profile_v1($1,$2) LIMIT 2'
 const sessionDisplaySql = 'SELECT * FROM orgmaster_contract.read_fms_session_display_profile_v1($1,$2,$3,$4) LIMIT 2'
 const publicationStatusSql = 'SELECT orgmaster_contract.is_fms_authority_publication_ready_v1() AS ready'
+const sessionBoundarySql = 'SELECT * FROM orgmaster_contract.read_fms_authority_session_boundary_v1($1,$2,$3,$4,$5)'
+const boundaryInput = row => [row.principal_id, row.employee_id, row.principal_binding_version, row.governance_revision, row.read_at]
 
 async function installPointReader({ admin, handle }) {
   assert.equal(handle.targetClass, 'task-owned-local')
@@ -70,6 +72,10 @@ async function installPointReader({ admin, handle }) {
   await admin.query(await readFile(new URL('../db/migrations/053_dev070_fms_indexed_authority.sql', import.meta.url), 'utf8'))
   await admin.query(await readFile(new URL('../db/migrations/054_dev070_fms_authority_publication_status.sql', import.meta.url), 'utf8'))
   await admin.query(await readFile(new URL('../db/migrations/055_dev070_fms_session_display_profile.sql', import.meta.url), 'utf8'))
+  for (const migration of ['056_dev057_ai_pdm_session_authority.sql', '057_dev057_pdm_session_publication.sql',
+    '058_dev059_fms_authority_session_boundary.sql']) {
+    await admin.query(await readFile(new URL('../db/migrations/' + migration, import.meta.url), 'utf8'))
+  }
   console.log(JSON.stringify({ scope: 'LOCAL_SYNTHETIC_ONLY', pid: handle.process.pid, port: handle.port }))
 }
 
@@ -282,6 +288,39 @@ await withAdministrationPostgresFixture(async fixture => {
     await admin.query('ROLLBACK')
   }
   assert.equal((await fms.query(pointSql, [allowed.principal_id, applicationId])).rowCount, 1)
+
+  const { rows: [unbounded] } = await fms.query(pointSql, [allowed.principal_id, applicationId])
+  assert.deepEqual((await fms.query(sessionBoundarySql, boundaryInput(unbounded))).rows, [{
+    contract_version: 'jenfu.orgmaster.fms-authority-session-boundary.v1',
+    governance_revision: unbounded.governance_revision,
+    next_transition_at: null,
+  }])
+  const futureFrom = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  const laterUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+  await editPublishedFixture(admin, ({ policy }) => {
+    const assignment = policy.roleAssignments.find(row => row.employeeId === allowed.employee_id)
+    assignment.validTo = laterUntil
+    policy.roleAssignments.push({ ...assignment, id: assignment.id + '-scheduled', validFrom: futureFrom, validTo: null })
+  })
+  const { rows: [bounded] } = await fms.query(pointSql, [allowed.principal_id, applicationId])
+  assert.equal(bounded.assignments.length, 1, 'scheduled assignment is not yet effective')
+  const { rows: [bound] } = await fms.query(sessionBoundarySql, boundaryInput(bounded))
+  assert.equal(bound.next_transition_at.toISOString(), futureFrom)
+  assert.equal((await fms.query(sessionBoundarySql, boundaryInput(unbounded))).rowCount, 0, 'drift invalidates the login snapshot')
+  assert.equal((await fms.query(sessionBoundarySql, [bounded.principal_id, denied.employee_id, ...boundaryInput(bounded).slice(2)])).rowCount, 0)
+  assert.equal((await fms.query(sessionBoundarySql, [...boundaryInput(bounded).slice(0, 4), new Date(0)])).rowCount, 0)
+  await admin.query('BEGIN')
+  try {
+    await admin.query('CREATE ROLE dev059_boundary_unprivileged NOLOGIN; GRANT USAGE ON SCHEMA orgmaster_contract TO dev059_boundary_unprivileged; SET LOCAL ROLE dev059_boundary_unprivileged')
+    await assert.rejects(admin.query(sessionBoundarySql, boundaryInput(bounded)), { code: '42501' })
+  } finally {
+    await admin.query('ROLLBACK')
+  }
+  await editPublishedFixture(admin, ({ policy }) => {
+    policy.roleAssignments = policy.roleAssignments.filter(row => !row.id.endsWith('-scheduled'))
+    policy.roleAssignments.find(row => row.employeeId === allowed.employee_id).validTo = null
+  })
+  console.log('PASS FMS sign-in boundary uses the next scheduled assignment and rejects drift, wrong employee, stale snapshot, and unauthorized database callers')
 
   const allowedTimings = []
   for (const row of [eligible[0], eligible[1], eligible.at(-1)]) {
