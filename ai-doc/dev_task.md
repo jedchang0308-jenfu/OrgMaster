@@ -97,6 +97,7 @@
 ### DEV-068 接入：FMS 登入有效期
 
 - `058_dev059_fms_authority_session_boundary.sql` 新增只供 FMS runtime 的版本化讀取。沿既有 v4 授權快照的 Principal、員工、綁定版本、治理版本與觀測時間核對來源，回傳下一個排程生效或到期時點。只有匹配且有效的來源可回傳「無排程邊界」；來源漂移、不完整、過期或身分不符均不返回證據。
+- 配合 `JFFMS/DEV-068`，`059_dev059_fms_revocation_platform_caller.sql` 提供 FMS runtime 專用的布林查核，依既有 Platform lifecycle workload 的精確 Google subject、email 與啟用狀態判定，無需讀取整張服務身分表。隔離 PostgreSQL 已驗正確組合、不同 workload、混配、停用及資料庫 ACL。正式遷移與改權發布流程尚待整合驗收。
 - 隔離 PG18 沿既有 056 → 057 → 058 順序驗證，501 位合成 Principal 的既有 v4 點查回歸與排程生效、來源漂移、錯誤員工、過期快照、未授權 SQL 呼叫皆通過。新遷移已綁定現行發布清單，基線位元組與已安裝 057 的前進檢查通過。
 - 案件發布、撤銷回執與 FMS 審核資格讀回仍依 `JF-FMS/DEV-068` 接續。此處是隔離證據，尚未進入正式發布。
 

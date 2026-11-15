@@ -55,6 +55,7 @@ const displaySql = 'SELECT * FROM orgmaster_contract.read_fms_principal_display_
 const sessionDisplaySql = 'SELECT * FROM orgmaster_contract.read_fms_session_display_profile_v1($1,$2,$3,$4) LIMIT 2'
 const publicationStatusSql = 'SELECT orgmaster_contract.is_fms_authority_publication_ready_v1() AS ready'
 const sessionBoundarySql = 'SELECT * FROM orgmaster_contract.read_fms_authority_session_boundary_v1($1,$2,$3,$4,$5)'
+const revocationCallerSql = 'SELECT orgmaster_contract.is_fms_revocation_platform_caller_v1($1,$2) AS admitted'
 const boundaryInput = row => [row.principal_id, row.employee_id, row.principal_binding_version, row.governance_revision, row.read_at]
 
 async function installPointReader({ admin, handle }) {
@@ -73,7 +74,7 @@ async function installPointReader({ admin, handle }) {
   await admin.query(await readFile(new URL('../db/migrations/054_dev070_fms_authority_publication_status.sql', import.meta.url), 'utf8'))
   await admin.query(await readFile(new URL('../db/migrations/055_dev070_fms_session_display_profile.sql', import.meta.url), 'utf8'))
   for (const migration of ['056_dev057_ai_pdm_session_authority.sql', '057_dev057_pdm_session_publication.sql',
-    '058_dev059_fms_authority_session_boundary.sql']) {
+    '058_dev059_fms_authority_session_boundary.sql', '059_dev059_fms_revocation_platform_caller.sql']) {
     await admin.query(await readFile(new URL('../db/migrations/' + migration, import.meta.url), 'utf8'))
   }
   console.log(JSON.stringify({ scope: 'LOCAL_SYNTHETIC_ONLY', pid: handle.process.pid, port: handle.port }))
@@ -321,6 +322,28 @@ await withAdministrationPostgresFixture(async fixture => {
     policy.roleAssignments.find(row => row.employeeId === allowed.employee_id).validTo = null
   })
   console.log('PASS FMS sign-in boundary uses the next scheduled assignment and rejects drift, wrong employee, stale snapshot, and unauthorized database callers')
+
+  const { rows: workloads } = await admin.query(`SELECT owner, provider_subject, db_session_user || '.gserviceaccount.com' AS email
+    FROM orgmaster_core.workload_principal_bindings WHERE purpose IN ('managed-identity-lifecycle','principal-lifecycle-invalidation') ORDER BY owner`)
+  const [orgCaller, platformCaller] = workloads
+  assert.deepEqual(workloads.map(row => row.owner), ['orgmaster', 'platform'])
+  const platformBinding = [platformCaller.provider_subject, platformCaller.email]
+  assert.deepEqual((await fms.query(revocationCallerSql, platformBinding)).rows, [{ admitted: true }])
+  assert.deepEqual((await fms.query(revocationCallerSql, [platformCaller.provider_subject, orgCaller.email])).rows, [{ admitted: false }])
+  assert.deepEqual((await fms.query(revocationCallerSql, [orgCaller.provider_subject, orgCaller.email])).rows, [{ admitted: false }])
+  await admin.query('BEGIN')
+  try {
+    await admin.query(`UPDATE orgmaster_core.workload_principal_bindings SET enabled=false
+      WHERE owner='platform' AND purpose='principal-lifecycle-invalidation'`)
+    await admin.query('SET LOCAL ROLE fms_runtime')
+    assert.deepEqual((await admin.query(revocationCallerSql, platformBinding)).rows, [{ admitted: false }])
+    await admin.query('RESET ROLE')
+    await admin.query('CREATE ROLE dev059_caller_unprivileged NOLOGIN; GRANT USAGE ON SCHEMA orgmaster_contract TO dev059_caller_unprivileged; SET LOCAL ROLE dev059_caller_unprivileged')
+    await assert.rejects(admin.query(revocationCallerSql, platformBinding), { code: '42501' })
+  } finally {
+    await admin.query('ROLLBACK')
+  }
+  console.log('PASS only FMS runtime can test the active and exact Platform service caller binding')
 
   const allowedTimings = []
   for (const row of [eligible[0], eligible[1], eligible.at(-1)]) {
