@@ -99,7 +99,9 @@
 - `058_dev059_fms_authority_session_boundary.sql` 新增只供 FMS runtime 的版本化讀取。沿既有 v4 授權快照的 Principal、員工、綁定版本、治理版本與觀測時間核對來源，回傳下一個排程生效或到期時點。只有匹配且有效的來源可回傳「無排程邊界」；來源漂移、不完整、過期或身分不符均不返回證據。
 - 配合 `JFFMS/DEV-068`，`059_dev059_fms_revocation_platform_caller.sql` 提供 FMS runtime 專用的布林查核，依既有 Platform lifecycle workload 的精確 Google subject、email 與啟用狀態判定，無需讀取整張服務身分表。隔離 PostgreSQL 已驗正確組合、不同 workload、混配、停用及資料庫 ACL。正式遷移與改權發布流程尚待整合驗收。
 - 隔離 PG18 沿既有 056 → 057 → 058 順序驗證，501 位合成 Principal 的既有 v4 點查回歸與排程生效、來源漂移、錯誤員工、過期快照、未授權 SQL 呼叫皆通過。新遷移已綁定現行發布清單，基線位元組與已安裝 057 的前進檢查通過。
-- 案件發布、撤銷回執與 FMS 審核資格讀回仍依 `JF-FMS/DEV-068` 接續。此處是隔離證據，尚未進入正式發布。
+- `060_dev059_fms_publication_impact.sql` 讓既有 v4 點查和發布影響評估共用同一套授權判定。OrgMaster runtime 可比較指定時間起目前及排程生效的有效權限，忽略歷程版本號等無效差異。隔離 PG18 驗證 501 位合成 Principal、精確撤權及回滾、未生效的角色和未受影響帳號。首次驗證以資料庫群組連線被拒，改用既有測試 runtime login 後通過，驗證資源已釋放。
+- OrgMaster 使用既有 Platform lifecycle origin 送出 FMS 撤銷，回應遺失後以同一事件讀回。三方派送與接收程式以注入身分和記憶體回執串接，兩段回應均遺失時只建立一筆準備事件。FMS/PDM 傳輸及既有 Scheduler 相關測試 21 項、異動範圍嚴格 TypeScript、來源與發布測試 33 項通過。真實 OIDC、owner 提交順序及付款流程尚未驗收。
+- 下一步把影響評估與撤銷回執接到同一份持久的中央發布操作。在正式治理寫入提交前核對已凍結的時間、版本及各受影響應用的回執，並獨立讀回終態及 FMS 審核資格。此處是隔離證據，尚未進入正式發布。
 
 <a id="dev040-production-release-20261019"></a>
 

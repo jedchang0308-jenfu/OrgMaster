@@ -56,6 +56,7 @@ const sessionDisplaySql = 'SELECT * FROM orgmaster_contract.read_fms_session_dis
 const publicationStatusSql = 'SELECT orgmaster_contract.is_fms_authority_publication_ready_v1() AS ready'
 const sessionBoundarySql = 'SELECT * FROM orgmaster_contract.read_fms_authority_session_boundary_v1($1,$2,$3,$4,$5)'
 const revocationCallerSql = 'SELECT orgmaster_contract.is_fms_revocation_platform_caller_v1($1,$2) AS admitted'
+const sessionImpactSql = 'SELECT * FROM orgmaster_core.read_fms_session_impact_v1($1,$2)'
 const boundaryInput = row => [row.principal_id, row.employee_id, row.principal_binding_version, row.governance_revision, row.read_at]
 
 async function installPointReader({ admin, handle }) {
@@ -74,7 +75,8 @@ async function installPointReader({ admin, handle }) {
   await admin.query(await readFile(new URL('../db/migrations/054_dev070_fms_authority_publication_status.sql', import.meta.url), 'utf8'))
   await admin.query(await readFile(new URL('../db/migrations/055_dev070_fms_session_display_profile.sql', import.meta.url), 'utf8'))
   for (const migration of ['056_dev057_ai_pdm_session_authority.sql', '057_dev057_pdm_session_publication.sql',
-    '058_dev059_fms_authority_session_boundary.sql', '059_dev059_fms_revocation_platform_caller.sql']) {
+    '058_dev059_fms_authority_session_boundary.sql', '059_dev059_fms_revocation_platform_caller.sql',
+    '060_dev059_fms_publication_impact.sql']) {
     await admin.query(await readFile(new URL('../db/migrations/' + migration, import.meta.url), 'utf8'))
   }
   console.log(JSON.stringify({ scope: 'LOCAL_SYNTHETIC_ONLY', pid: handle.process.pid, port: handle.port }))
@@ -278,6 +280,14 @@ await withAdministrationPostgresFixture(async fixture => {
   })
   await admin.query('ANALYZE')
   const allowed = eligible[0]
+  const impactAt = new Date()
+  const orgRuntime = await connect('orgmaster-prod-runtime@jenfu-platform-prod.iam')
+  const impact = async (database = orgRuntime, ids = null) => (await database.query(sessionImpactSql, [impactAt, ids])).rows
+  const baselineImpact = await impact()
+  assert.deepEqual(new Set(baselineImpact.map(row => row.principal_id)), assigned)
+  assert.deepEqual(await impact(orgRuntime, [allowed.principal_id, denied.principal_id]),
+    baselineImpact.filter(row => row.principal_id === allowed.principal_id))
+  await assert.rejects(impact(fms), { code: '42501' })
   await admin.query('BEGIN')
   try {
     await editPublishedFixture(admin, ({ policy }) => {
@@ -285,6 +295,8 @@ await withAdministrationPostgresFixture(async fixture => {
     })
     assert.equal((await admin.query(pointSql, [allowed.principal_id, applicationId])).rowCount, 0)
     assert.equal((await fms.query(pointSql, [allowed.principal_id, applicationId])).rowCount, 1)
+    assert.deepEqual(await impact(admin), baselineImpact.filter(row => row.principal_id !== allowed.principal_id))
+    assert.deepEqual(await impact(), baselineImpact)
   } finally {
     await admin.query('ROLLBACK')
   }
@@ -298,6 +310,18 @@ await withAdministrationPostgresFixture(async fixture => {
   }])
   const futureFrom = new Date(Date.now() + 60 * 60 * 1000).toISOString()
   const laterUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+  await admin.query('BEGIN')
+  try {
+    await editPublishedFixture(admin, publication => {
+      publication.versionNumber += 1
+      publication.publishedAt = new Date().toISOString()
+      const assignment = publication.policy.roleAssignments.find(row => row.employeeId === allowed.employee_id)
+      publication.policy.roleAssignments.push({ ...assignment, id: 'non-effective-future', roleId: 'role-never-defined', validFrom: futureFrom })
+    })
+    assert.deepEqual(await impact(admin), baselineImpact, 'audit counters and a never-effective role do not revoke')
+  } finally {
+    await admin.query('ROLLBACK')
+  }
   await editPublishedFixture(admin, ({ policy }) => {
     const assignment = policy.roleAssignments.find(row => row.employeeId === allowed.employee_id)
     assignment.validTo = laterUntil
@@ -307,6 +331,13 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.equal(bounded.assignments.length, 1, 'scheduled assignment is not yet effective')
   const { rows: [bound] } = await fms.query(sessionBoundarySql, boundaryInput(bounded))
   assert.equal(bound.next_transition_at.toISOString(), futureFrom)
+  const scheduledImpact = await impact()
+  const changedPrincipalIds = scheduledImpact.filter((row, index) => JSON.stringify(row) !== JSON.stringify(baselineImpact[index]))
+    .map(row => row.principal_id)
+  assert.deepEqual(changedPrincipalIds, [allowed.principal_id])
+  const { effect: timeline } = scheduledImpact.find(row => row.principal_id === allowed.principal_id)
+  assert.equal(new Date(timeline[0][1]).toISOString(), futureFrom)
+  assert.equal(new Date(timeline[1][1]).toISOString(), laterUntil)
   assert.equal((await fms.query(sessionBoundarySql, boundaryInput(unbounded))).rowCount, 0, 'drift invalidates the login snapshot')
   assert.equal((await fms.query(sessionBoundarySql, [bounded.principal_id, denied.employee_id, ...boundaryInput(bounded).slice(2)])).rowCount, 0)
   assert.equal((await fms.query(sessionBoundarySql, [...boundaryInput(bounded).slice(0, 4), new Date(0)])).rowCount, 0)
@@ -322,6 +353,8 @@ await withAdministrationPostgresFixture(async fixture => {
     policy.roleAssignments.find(row => row.employeeId === allowed.employee_id).validTo = null
   })
   console.log('PASS FMS sign-in boundary uses the next scheduled assignment and rejects drift, wrong employee, stale snapshot, and unauthorized database callers')
+  assert.deepEqual(await impact(), baselineImpact)
+  console.log('PASS FMS publication impact matches exact active and scheduled changes, respects rollback, and excludes unrelated/non-effective changes')
 
   const { rows: workloads } = await admin.query(`SELECT owner, provider_subject, db_session_user || '.gserviceaccount.com' AS email
     FROM orgmaster_core.workload_principal_bindings WHERE purpose IN ('managed-identity-lifecycle','principal-lifecycle-invalidation') ORDER BY owner`)

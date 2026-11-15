@@ -636,6 +636,13 @@
         "path": "db/migrations/059_dev059_fms_revocation_platform_caller.sql",
         "sourceSha256": "064107b3c36ef3c43f202c5e52744465e8f8f60862adf95f669f19c63b89604d",
         "appliedSha256": "a130db8b489a2ce3adf994cea19572b46b594b3f6e1972bf5021fc2473af770b"
+      },
+      {
+        "order": 56,
+        "version": "dev059-orgmaster-060",
+        "path": "db/migrations/060_dev059_fms_publication_impact.sql",
+        "sourceSha256": "eb2644f86325fe951e94f588a61cb4a939ebc5661202ed691e8e643f4a06926b",
+        "appliedSha256": "339989fcd1dbb7ff7ef8b2def1e24bb9698fcae41b9702f42ac5b4144a1fe819"
       }
     ]
   },
