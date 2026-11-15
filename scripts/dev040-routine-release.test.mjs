@@ -1,4 +1,4 @@
-import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ADMINISTRATION_REMEDIATION,assertDev070AdministrationAppend} from './lib/dev070-administration-migration.mjs'
+import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ADMINISTRATION_REMEDIATION,ORGMASTER_FMS_DELIVERY_FLAG,assertDev070AdministrationAppend} from './lib/dev070-administration-migration.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend } from './lib/dev059-fms-authority-migration.mjs'
 import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT, DEV060_MIGRATION_PREFIX_COUNT, DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationAppend } from './lib/dev060-fms-catalog-activation-migration.mjs'
@@ -2848,14 +2848,37 @@ test('DEV-060 CLI binds one migration-041 recipe and rejects every mixed control
   assert.equal(DEV060_MIGRATION_ENTRY_COUNT, 39)
 })
 
-function administrationHarness(count=39){
- const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,count),currentBundle:newBundle})
+function administrationHarness(count=39, runtimes={}){
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,count),currentBundle:newBundle,...runtimes})
  const common={devId:'DEV-070',slice:'070-ADMINISTRATION',remediation:DEV070_ADMINISTRATION_REMEDIATION}
  h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
  h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
  attachForwardInfra(h)
  return h
 }
+
+test('DEV070 from 057 admits the FMS delivery flag with an otherwise unchanged runtime', async () => {
+  const flag = ORGMASTER_FMS_DELIVERY_FLAG
+  const historicalProfile = structuredClone(profile)
+  delete historicalProfile.environment.fixedValues[flag]
+  historicalProfile.environment.requiredPlainEnvironmentNames = historicalProfile.environment.requiredPlainEnvironmentNames.filter(name => name !== flag)
+  const { [flag]: _deliveryFlag, ...historicalPlain } = plain
+  const baselineRuntime = buildRuntimeConfig(historicalProfile, {
+    plainEnvironment: historicalPlain, secretVersions: runtime.secretVersions,
+  })
+  const setup = (count, nextRuntime = runtime) => administrationHarness(count, { baselineRuntime, nextRuntime }).input
+  const plan = await verifyRoutineRelease(setup(53))
+  assert.equal(plan.releaseMode, DEV070_RELEASE_MODE)
+  assert.equal(plan.pendingMigrationCount, 7)
+  await assert.rejects(verifyRoutineRelease(setup(52)), /DEV070_RUNTIME_CHANGED/)
+  const disabled = structuredClone(runtime)
+  disabled.plainEnvironment[flag] = 'false'
+  await assert.rejects(verifyRoutineRelease(setup(53, disabled)), /DEV070_RUNTIME_CHANGED/)
+  const secretDrift = buildRuntimeConfig(profile, {
+    plainEnvironment: plain, secretVersions: { ...runtime.secretVersions, ORGMASTER_SESSION_HASH_PEPPER: '2' },
+  })
+  await assert.rejects(verifyRoutineRelease(setup(53, secretDrift)), /DEV070_RUNTIME_CHANGED/)
+})
 test('DEV070 native routine rejects a declared direct tool ref with missing or null tool proof',async()=>{
  for(const proof of[undefined,null]){
   const h=administrationHarness(39)

@@ -1513,6 +1513,8 @@ API依據：[Cloud Build history tags/filter](https://docs.cloud.google.com/buil
 
 DEV070可由既有 `--tool-image-rotation-ref` 消費事先獨立 APPLIED 的 direct `OWNER_SEALED_TOOL_IMAGE_ROTATION`：readiness／authorization／intent須同ref、source／release／baseline；native routine宣告tool ref時必須有verified typed toolRotation，raw APPLIED infra即使放在canonical tool URI仍拒絕，不得以缺漏／null proof跳過native Job readback。完整sealed proof與source transition不放寬。migrate沿原deployer fresh readback同Job UID／generation／template／digest，missing／drift在runMigrationJob／candidate前拒絕；不得用tool predecessor、smoke組合、runtime drift或repair替代。消費既有工具證據與執行append是分開的workflow，沒有新增rotation mode或修改歷史收據。
 
+JF-FMS DEV-068 的工具輪替可由精確 057 前進至核准的 064，並同批新增固定應用旗標 `ORGMASTER_FMS_SESSION_REVOCATION_ENABLED=true`。工具輪替先核對原遷移紀錄與新附加項的雜湊，再核對其餘應用環境、工作流程及基礎設施來源。上述旗標由後續應用發布帶入，工具輪替沿用 Job 映像變更與唯讀核對。中央發布仍由資料庫控制啟用。
+
 045撤runtime舊writer後至v3-compatible新caller activation有界治理寫入42501，讀取維持；這是本次已接受的轉換影響，不能宣稱零中斷。migrate前須已有新immutable app artifact與provenance；失敗只回自身traffic/tag/entry並走v3-compatible forward repair，禁止downSQL/復活舊writer。DEV070 missingreceipt視UNKNOWN_REQUIRES_LEDGER_READBACK；rollback/terminal保留administrationRecovery與sealed source/image reference，traffic ROLLED_BACK不代表schema或舊治理write恢復。source/隔離PASS不代表此段已正式執行，正式仍需reviewed master/required CI/provider readback及既有owner workflow。
 
 

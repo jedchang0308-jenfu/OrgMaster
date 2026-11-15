@@ -627,6 +627,30 @@ test('allows only exact known DEV-058/059/070 metadata appends for a separate im
   }
 })
 
+test('native FMS publication accepts only its exact forward migrations and runtime flag', () => {
+  const through057 = DEV070_MIGRATION_ENTRIES.findIndex(entry => entry.version === 'dev057-orgmaster-057') + 1
+  assert.ok(through057 > 0)
+  const baseline = commitProfileVariant(sourceFixture.appendSourceRevision, profile => {
+    profile.migrations.entries.push(...DEV070_MIGRATION_ENTRIES.slice(0, through057))
+  }, 'exact owner baseline through 057')
+  const flag = 'ORGMASTER_FMS_SESSION_REVOCATION_ENABLED'
+  const append = (profile, enabled = 'true') => {
+    profile.migrations.entries.push(...DEV070_MIGRATION_ENTRIES.slice(through057))
+    profile.environment.requiredPlainEnvironmentNames.push(flag)
+    profile.environment.fixedValues[flag] = enabled
+  }
+  const intended = commitProfileVariant(baseline, append, 'exact FMS publications and delivery flag')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root, baseline, intended).disposition, DEV070_RELEASE_MODE)
+  const disabled = commitProfileVariant(baseline, profile => append(profile, 'false'), 'unapproved flag value')
+  const extra = commitProfileVariant(baseline, profile => {
+    append(profile)
+    profile.environment.requiredPlainEnvironmentNames.push('UNRELATED_SETTING')
+    profile.environment.fixedValues.UNRELATED_SETTING = 'true'
+  }, 'unrelated environment drift')
+  for (const revision of [disabled, extra]) assertRotationCode(
+    () => assertToolInfrastructureTransition(sourceFixture.root, baseline, revision), 'SOURCE_INPUT_DRIFT')
+})
+
 test('reuses the immutable tool receipt for the exact managed-login smoke transition only', async () => {
   const beforeFingerprint = toolInfrastructureFingerprint(sourceFixture.root, sourceFixture.correctedSmokeSourceRevision)
   const afterFingerprint = toolInfrastructureFingerprint(sourceFixture.root, sourceFixture.managedSmokeSourceRevision)

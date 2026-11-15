@@ -11,7 +11,7 @@ import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-releas
 import { assertAppArtifactReuse } from './dev040-app-artifact-reuse.mjs'
 import { DEV058_RELEASE_MODE, assertDev058RolePolicyAppend, assertDev058RolePolicyAuthority } from './dev058-role-policy-migration.mjs'
 import { DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend, assertDev059FmsAuthorityReleaseAuthority } from './dev059-fms-authority-migration.mjs'
-import {DEV070_RELEASE_MODE,assertDev070AdministrationAppend,assertDev070AdministrationReleaseAuthority} from './dev070-administration-migration.mjs'
+import {DEV070_RELEASE_MODE,ORGMASTER_FMS_DELIVERY_FLAG,assertDev070AdministrationAppend,assertDev070AdministrationReleaseAuthority,isFmsDeliveryAppend} from './dev070-administration-migration.mjs'
 import { DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationAppend, assertDev060FmsCatalogActivationReleaseAuthority } from './dev060-fms-catalog-activation-migration.mjs'
 import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
@@ -612,6 +612,18 @@ function assertHistoricalRuntimeReadback(profile, runtimeConfig, revision) {
   return true
 }
 
+function matchesFmsDeliveryRuntimeAppend(profile, baseline, next) {
+  const flag = ORGMASTER_FMS_DELIVERY_FLAG
+  if (Object.hasOwn(baseline.plainEnvironment, flag) || next.plainEnvironment?.[flag] !== 'true') return false
+  assertRuntimeConfig(profile, next)
+  const normalized = structuredClone(next)
+  delete normalized.plainEnvironment[flag]
+  const app = normalized.template.containers.find(row => row.name === profile.runtime.containerName)
+  app.env = app.env.filter(row => row.name !== flag)
+  normalized.serviceTemplateSha256 = sha256(canonicalize(normalized.template))
+  return same(normalized, baseline)
+}
+
 function assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, readiness, authorization) {
   const field = 'ORGMASTER_JENFU_SSO_HANDOFF_MODE'
   const previousPlain = baselineRuntime?.plainEnvironment
@@ -855,7 +867,10 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const fmsAuthorityAppend = values.readiness?.devId === 'DEV-059'
   const fmsCatalogActivationAppend = values.readiness?.devId === 'DEV-060'
   const administrationAppend=values.readiness?.devId==='DEV-070'
-  if ((rolePolicyAppend || fmsAuthorityAppend || fmsCatalogActivationAppend || administrationAppend) && !same(runtimeConfig, baselineRuntime)) fail(administrationAppend?'DEV070_RUNTIME_CHANGED':fmsCatalogActivationAppend ? 'DEV060_RUNTIME_CHANGED' : fmsAuthorityAppend ? 'DEV059_RUNTIME_CHANGED' : 'DEV058_RUNTIME_CHANGED')
+  const fmsDeliveryRuntimeAppend = administrationAppend && isFmsDeliveryAppend(baseline.bundle.value.entries, profile)
+    && matchesFmsDeliveryRuntimeAppend(profile, baselineRuntime, runtimeConfig)
+  const runtimeChanged = !same(runtimeConfig, baselineRuntime) && !fmsDeliveryRuntimeAppend
+  if ((rolePolicyAppend || fmsAuthorityAppend || fmsCatalogActivationAppend || administrationAppend) && runtimeChanged) fail(administrationAppend?'DEV070_RUNTIME_CHANGED':fmsCatalogActivationAppend ? 'DEV060_RUNTIME_CHANGED' : fmsAuthorityAppend ? 'DEV059_RUNTIME_CHANGED' : 'DEV058_RUNTIME_CHANGED')
   const lifecycleGuard = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-V2'
   const lifecycleEnable = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-ENABLE'
   if (lifecycleGuard) assertDev014PrincipalLifecycleRuntimeGuard(profile, baselineRuntime, runtimeConfig)
@@ -927,7 +942,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   }
   const controlledSmokeRotation = controlledTransition?.releaseMode === DEV060_RELEASE_MODE && values.infra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
   assertToolRotationReleaseCompatibility({ toolRotation, toolRotationPredecessor, controlledTransition,
-    repair: Boolean(baseline.repair), runtimeChanged: !same(runtimeConfig, baselineRuntime), allowControlledSmokeRotation: controlledSmokeRotation })
+    repair: Boolean(baseline.repair), runtimeChanged, allowControlledSmokeRotation: controlledSmokeRotation })
   const appReuseLeft = values.authorization?.appArtifactReuse ?? null
   const appReuseRight = values.readiness?.appArtifactReuse ?? null
   if (!same(appReuseLeft, appReuseRight)) fail('APP_ARTIFACT_REUSE_AUTHORITY_MISMATCH')

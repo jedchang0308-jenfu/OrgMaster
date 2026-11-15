@@ -2,6 +2,7 @@ import {canonicalize,sha256} from './dev012-production-migration-runner.mjs'
 import {DEV059_MIGRATION_ENTRY_COUNT,assertDev059MigrationEntries} from './dev059-fms-authority-migration.mjs'
 
 export const DEV070_RELEASE_MODE='DEV070_ADMINISTRATION_APPEND'
+export const ORGMASTER_FMS_DELIVERY_FLAG = 'ORGMASTER_FMS_SESSION_REVOCATION_ENABLED'
 export const DEV070_MIGRATION_PREFIX_COUNT=DEV059_MIGRATION_ENTRY_COUNT
 export const DEV070_MIGRATION_ENTRIES=Object.freeze([
  Object.freeze({order:40,version:'dev057-orgmaster-042',path:'db/migrations/042_dev057_principal_display_profiles.sql',sourceSha256:'84955e2aa6f5223c3f8559335204742b034d45cb857823bbf97d75713de75ada',appliedSha256:'19e676787f9b6cc2f0cd0eb603b0271b36a7f6c52c406337b2f579146df39cf9'}),
@@ -35,6 +36,17 @@ export const DEV070_ADMINISTRATION_REMEDIATION=Object.freeze({kind:'PLATFORM_ADM
 const identity=({order,version,path,sourceSha256,appliedSha256})=>({order,version,path,sourceSha256,appliedSha256})
 const same=(a,b)=>canonicalize(a)===canonicalize(b)
 const fail=code=>{throw Object.assign(new Error(code),{code})}
+
+export function isFmsDeliveryAppend(previousEntries, profile) {
+ const nextEntries = profile.migrations.entries
+ const environment = profile.environment
+ return previousEntries?.length === DEV070_MIGRATION_ENTRY_COUNT - 7
+  && previousEntries.at(-1)?.version === 'dev057-orgmaster-057'
+  && nextEntries.length === DEV070_MIGRATION_ENTRY_COUNT
+  && nextEntries.at(-1)?.version === 'dev059-orgmaster-064'
+  && environment.fixedValues?.[ORGMASTER_FMS_DELIVERY_FLAG] === 'true'
+  && environment.requiredPlainEnvironmentNames?.filter(name => name === ORGMASTER_FMS_DELIVERY_FLAG).length === 1
+}
 
 export function assertDev070MigrationEntries(entries){
  if(!Array.isArray(entries)||entries.length!==DEV070_MIGRATION_ENTRY_COUNT)fail('DEV070_MIGRATION_APPEND_INVALID')

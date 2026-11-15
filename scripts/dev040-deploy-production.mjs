@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { DEV058_ROLE_POLICY_REMEDIATION } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_REMEDIATION } from './lib/dev059-fms-authority-migration.mjs'
-import {DEV070_ADMINISTRATION_REMEDIATION} from './lib/dev070-administration-migration.mjs'
+import {DEV070_ADMINISTRATION_REMEDIATION,ORGMASTER_FMS_DELIVERY_FLAG,isFmsDeliveryAppend} from './lib/dev070-administration-migration.mjs'
 import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION } from './lib/dev060-fms-catalog-activation-migration.mjs'
 import { assertPrincipalOnlyRecoveryReadback } from './lib/dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
@@ -304,6 +304,9 @@ async function main() {
   const previousRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
   const previousMode = previousRuntime.plainEnvironment?.ORGMASTER_JENFU_SSO_HANDOFF_MODE ?? null
   let plainEnvironment = options.dev014Activate || options.dev014PrincipalLifecycleV2Remediation ? resolvePlainEnvironment(profile, previousRuntime.plainEnvironment, {}) : previousRuntime.plainEnvironment
+  if (options.dev070AdministrationAppend && isFmsDeliveryAppend(baseline.bundle.value.entries, profile)) {
+    plainEnvironment = { ...plainEnvironment, [ORGMASTER_FMS_DELIVERY_FLAG]: 'true' }
+  }
   let lifecycleEnablement = null
   if (options.dev014PrincipalLifecycleEnable) {
     const sourceProof = await verifyOfficialMergedSource({repository:profile.application.repository,
