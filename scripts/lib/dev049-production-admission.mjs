@@ -124,14 +124,14 @@ function observedRequiredConsumers(applications) {
   return [...new Set(['platform', 'orgmaster', ...applications.filter((row) => row.status === 'active').map((row) => row.applicationId)])].sort()
 }
 
-export async function executeOrgMasterAdmission({ operation, database, pdmPublicationEnabled = false }) {
+export async function executeOrgMasterAdmission({ operation, database, pdmPublicationEnabled = false, fmsPublicationInstalled = false }) {
   return publishOwnerMaintenance({
-    operation, database, pdmPublicationEnabled, commandKey: operation.operationId,
+    operation, database, pdmPublicationEnabled, fmsPublicationInstalled, commandKey: operation.operationId,
     write: () => applyAdmission({ operation, database }),
   })
 }
 
-async function publishOwnerMaintenance({ operation, database, pdmPublicationEnabled, commandKey, write }) {
+async function publishOwnerMaintenance({ operation, database, pdmPublicationEnabled, fmsPublicationInstalled, commandKey, write }) {
   const transaction = async run => {
     await database.query('BEGIN')
     try {
@@ -150,17 +150,22 @@ async function publishOwnerMaintenance({ operation, database, pdmPublicationEnab
     commandKey,
     request: operation,
     enabled: pdmPublicationEnabled,
+    fms: fmsPublicationInstalled ? {
+      enabled: async locked => (await locked.query(
+        'SELECT orgmaster_core.fms_session_publication_enabled_v1() AS enabled',
+      )).rows[0]?.enabled === true,
+    } : undefined,
     advanceLifecycleVersion: true,
     ownerDelivery: true,
     transaction,
     database: () => database,
     deliveryDatabase: () => database,
-    write: pdmPublicationEnabled ? write : () => transaction(write),
+    write: pdmPublicationEnabled || fmsPublicationInstalled ? write : () => transaction(write),
     replay: () => transaction(write),
   })
 }
 
-export async function executeOrgMasterQuarantine({ operation, database, pdmPublicationEnabled = false }) {
+export async function executeOrgMasterQuarantine({ operation, database, pdmPublicationEnabled = false, fmsPublicationInstalled = false }) {
   const { operationId, identityRecordId, expectedRevision, incidentRef, reasonCode } = operation
   const write = async () => {
     const prior = await database.query(`
@@ -178,7 +183,7 @@ export async function executeOrgMasterQuarantine({ operation, database, pdmPubli
     return { disposition: 'APPLIED', state: 'conflict', revision: (BigInt(expectedRevision) + 1n).toString() }
   }
   return publishOwnerMaintenance({
-    operation, database, pdmPublicationEnabled, commandKey: 'quarantine:' + operationId, write,
+    operation, database, pdmPublicationEnabled, fmsPublicationInstalled, commandKey: 'quarantine:' + operationId, write,
   })
 }
 

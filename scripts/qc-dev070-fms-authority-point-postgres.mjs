@@ -5,11 +5,13 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   createAdministrativeHumanFixture,
+  createAdditionalAdministrationTargetFixture,
   drainAdministrationFixtureEvents,
   prepareAdministrationInitializationFixture,
   withAdministrationPostgresFixture,
 } from './lib/dev070-administration-postgres-fixture.mjs'
 import { publishAfterOrgmasterPdmRevocation, reconcileOrgmasterPdmPublications } from './lib/orgmaster-pdm-publication.mts'
+import { executeOrgMasterAdmission, executeOrgMasterQuarantine } from './lib/dev049-production-admission.mjs'
 
 const platformRoot = resolve(process.env.DEV070_PLATFORM_ROOT ?? 'C:/VIBE CODING/Jenfu-Platform')
 const {
@@ -154,6 +156,7 @@ await withAdministrationPostgresFixture(async fixture => {
   await assert.rejects(unrelated.query(admissionSql, ['issuer-fms-authority-peer', 'subject-fms-authority-peer']), { code: '42501' })
   await assert.rejects(unrelated.query(displaySql, [principalId, employeeId]), { code: '42501' })
   await assert.rejects(unrelated.query(sessionDisplaySql, [principalId, employeeId, 'issuer', 'subject']), { code: '42501' })
+  await unrelated.end()
   await assert.rejects(fms.query('SELECT 1 FROM orgmaster_core.persistence_artifacts LIMIT 1'), { code: '42501' })
   await assert.rejects(fms.query('SELECT 1 FROM orgmaster_core.fms_artifact_facts LIMIT 1'), { code: '42501' })
 
@@ -214,12 +217,13 @@ await withAdministrationPostgresFixture(async fixture => {
     'SELECT 1 FROM orgmaster_core.administrative_command_receipts_v1 WHERE command_id=$1', [id])).rowCount
   const fmsReceipts = new Map()
   let failPrepare = true
+  let expectedAffectedPrincipal = principalId
   const phases = []
   const fmsClient = {
     async readback(command) { return fmsReceipts.get(command.digest) ?? null },
     async dispatch(command) {
       phases.push(command)
-      assert.deepEqual(command.principalIds, [principalId])
+      assert.deepEqual(command.principalIds, [expectedAffectedPrincipal])
       if (command.phase === 'prepare' && failPrepare) throw new Error('isolated FMS unreachable')
       if (command.phase !== 'prepare') {
         const read = await fms.query(fmsPublicationSql, [command.operationId, command.eventId])
@@ -248,6 +252,9 @@ await withAdministrationPostgresFixture(async fixture => {
     database: () => actor.runtime, deliveryDatabase: () => delivery,
     write: () => actor.commit(request), replay: () => actor.status(request.commandId),
   })
+  const managed = await createAdditionalAdministrationTargetFixture(fixture)
+  const remaining = await createAdditionalAdministrationTargetFixture(fixture, { employeeId: 'employee-three' })
+  await drainAdministrationFixtureEvents(fixture, dispatch)
   await admin.query('UPDATE orgmaster_core.fms_session_publication_control_v1 SET enabled=true')
   await assert.rejects(human.commit(grant), /FMS_PUBLICATION_WRITER_REQUIRED/)
   await assert.rejects(coordinate(human, grant), /PDM_PUBLICATION_PENDING/)
@@ -272,6 +279,7 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.deepEqual(reviewerBaseline.principal_ids, [principalId])
   assert.equal(reviewerBaseline.source_version, phases.at(-1).targetVersion)
   assert.deepEqual(reviewerBaseline.authority_timeline[0].intervals[0].authorities[0].assignments, [])
+  await human.runtime.end()
   const refreshed = await createAdministrativeHumanFixture(fixture)
   assert.equal((await coordinate(refreshed, grant)).grantIds[0], grantId)
   assert.equal(await commandCount(grant.commandId), 1)
@@ -304,6 +312,7 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.deepEqual(revoke.grantIds, [grantId])
   await drainAdministrationFixtureEvents(fixture, dispatch)
   assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  await refreshed.runtime.end()
   console.log('PASS the native OrgMaster administration writer requires the FMS prepare receipt, rejects direct writes, and exposes the committed terminal once')
   await compareReads(fms, principalId, 0)
   assert.equal((await fms.query(displaySql, [principalId, employeeId])).rowCount, 0)
@@ -313,6 +322,75 @@ await withAdministrationPostgresFixture(async fixture => {
   })
   assert.equal((await fms.query(sessionDisplaySql, peerDisplay)).rowCount, 0)
   console.log('PASS FMS catalog grant and committed revocation; self-display ignores financial grants and rejects mismatched or withdrawn identity')
+
+  expectedAffectedPrincipal = managed.principalId
+  const maintainer = await createAdministrativeHumanFixture(fixture)
+  const managedGrant = await maintainer.command('grant_application_administrator', {
+    ...grantOptions, target: { ...grantOptions.target, principalId: managed.principalId, employeeId: managed.employeeId },
+  })
+  assert.equal((await coordinate(maintainer, managedGrant)).result, 'applied')
+  await drainAdministrationFixtureEvents(fixture, dispatch)
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  await compareReads(fms, managed.principalId, 1)
+  const identity = async () => (await admin.query(
+    'SELECT revision::text, link_state FROM orgmaster_core.managed_daily_identities WHERE identity_record_id=$1',
+    [managed.identityId],
+  )).rows[0]
+  const quarantine = { operationId: 'DEV049-ISOLATED-FMS-QUARANTINE', identityRecordId: managed.identityId,
+    expectedRevision: (await identity()).revision, incidentRef: 'isolated/fms-publication', reasonCode: 'fixture' }
+  const writer = await connect('postgres')
+  const executeQuarantine = () => executeOrgMasterQuarantine({
+    operation: quarantine, database: writer, fmsPublicationInstalled: true,
+  })
+  await assert.rejects(executeQuarantine(), /PDM_PUBLICATION_PENDING/)
+  assert.equal((await identity()).link_state, 'active')
+  const prepareCount = phases.length
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  assert.equal(phases.length, prepareCount + 1)
+  assert.equal(phases.at(-1).phase, 'prepare')
+  assert.equal((await identity()).link_state, 'active')
+  assert.equal((await executeQuarantine()).disposition, 'APPLIED')
+  assert.equal((await identity()).link_state, 'conflict')
+  await compareReads(fms, managed.principalId, 0)
+  assert.equal((await executeQuarantine()).disposition, 'REPLAY')
+  await drainAdministrationFixtureEvents(fixture, dispatch)
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  assert.equal(phases.at(-1).phase, 'published')
+  console.log('PASS OrgMaster owner quarantine waits for the existing scheduler to deliver the FMS receipt, then applies once')
+
+  expectedAffectedPrincipal = remaining.principalId
+  const remainingGrant = await maintainer.command('grant_application_administrator', {
+    ...grantOptions, target: { ...grantOptions.target, principalId: remaining.principalId, employeeId: remaining.employeeId },
+  })
+  assert.equal((await coordinate(maintainer, remainingGrant)).result, 'applied')
+  await drainAdministrationFixtureEvents(fixture, dispatch)
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  await compareReads(fms, remaining.principalId, 1)
+  const admissionState = async () => (await admin.query(
+    'SELECT revision::text, admission_enabled FROM orgmaster_core.managed_identity_admission_authority',
+  )).rows[0]
+  const { rows: activeConsumers } = await admin.query(
+    "SELECT application_id FROM orgmaster_core.managed_identity_invalidation_applications WHERE status='active'",
+  )
+  const admission = { operationId: 'DEV049-ISOLATED-FMS-ADMISSION', action: 'deactivate',
+    expected: { enabled: true, admissionRevision: (await admissionState()).revision },
+    consumers: [...new Set(['platform', 'orgmaster', ...activeConsumers.map(row => row.application_id)])].sort()
+      .map(applicationId => ({ applicationId })) }
+  const executeAdmission = () => executeOrgMasterAdmission({
+    operation: admission, database: writer, fmsPublicationInstalled: true,
+  })
+  await assert.rejects(executeAdmission(), /PDM_PUBLICATION_PENDING/)
+  assert.equal((await admissionState()).admission_enabled, true)
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  assert.equal(phases.at(-1).phase, 'prepare')
+  assert.equal((await admissionState()).admission_enabled, true)
+  assert.equal((await executeAdmission()).disposition, 'APPLIED')
+  assert.equal((await admissionState()).admission_enabled, false)
+  assert.equal((await executeAdmission()).disposition, 'REPLAY')
+  await drainAdministrationFixtureEvents(fixture, dispatch)
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  assert.equal(phases.at(-1).phase, 'published')
+  console.log('PASS OrgMaster admission control waits for the original FMS prepare, then commits and replays safely')
 }, { platformRoot })
 
 await withAdministrationPostgresFixture(async fixture => {

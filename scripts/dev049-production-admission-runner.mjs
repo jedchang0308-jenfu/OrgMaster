@@ -69,8 +69,12 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
     )
     const pdmPublicationEnabled = control.rows[0]?.installed === true &&
       (await database.query('SELECT orgmaster_core.pdm_session_publication_enabled_v1() AS enabled')).rows[0]?.enabled === true
+    const fmsControl = await database.query(
+      "SELECT to_regprocedure('orgmaster_core.fms_session_publication_enabled_v1()') IS NOT NULL AS installed",
+    )
     const execute = quarantine ? executeOrgMasterQuarantine : executeOrgMasterAdmission
-    const result = await execute({ operation, database, pdmPublicationEnabled })
+    const result = await execute({ operation, database, pdmPublicationEnabled,
+      fmsPublicationInstalled: fmsControl.rows[0]?.installed === true })
     const receipt = {
       schemaVersion: quarantine
         ? 'jenfu.dev049.orgmaster-production-quarantine-receipt.v1'
