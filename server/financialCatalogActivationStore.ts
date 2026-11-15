@@ -257,7 +257,8 @@ export async function activateFinancialCatalog(root: string, actor: GovernanceAc
       governanceRevision: published.id, replayed: false, attempt: 1, financialCatalogActivation: activation }
     return { document: { ...document, commandReceipts: [...document.commandReceipts, receipt] },
       reasonCode: ACTIVATE, updatedBy: actor.principalId, validationCatalogs }
-  }, actor, document => normalActivation(document, actor) ? assertActivationAuthority(document, actor) : catalogInitializationRoot(document, observedSource, actor))
+  }, actor, document => normalActivation(document, actor) ? assertActivationAuthority(document, actor) : catalogInitializationRoot(document, observedSource, actor),
+  { commandId: request.commandId, request: { request, release } })
   const receipt = ownReceipt(committed.document, request.commandId, actor)
   if (!receipt) throw new ApplicationEntitlementError('COMMAND_NOT_OBSERVED')
   return receipt

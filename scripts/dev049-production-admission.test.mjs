@@ -106,7 +106,7 @@ test('DEV-049 admission runner is present in the immutable migration image', () 
   assert.match(dockerfile, /COPY scripts\/lib\/dev049-production-admission\.mjs/u)
   assert.match(dockerfile, /COPY scripts\/dev049-production-admission-runner\.mjs/u)
   assert.match(dockerfile, /COPY scripts\/lib\/dev014-consumer-conformance\.mjs/u)
-  assert.match(dockerfile, /COPY scripts\/lib\/orgmaster-pdm-publication\.mts scripts\/lib\/orgmaster-pdm-revocation-wire\.mts/u)
+  assert.match(dockerfile, /COPY scripts\/lib\/orgmaster-pdm-publication\.mts scripts\/lib\/orgmaster-pdm-revocation-wire\.mts scripts\/lib\/orgmaster-fms-publication\.mts scripts\/lib\/orgmaster-fms-revocation-wire\.mts scripts\/lib\//u)
   assert.doesNotMatch(operator, /(?:platform|ai_pdm)_core/u)
 })
 

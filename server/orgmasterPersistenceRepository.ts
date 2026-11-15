@@ -1,4 +1,4 @@
-import { publishAfterOrgmasterPdmRevocation } from './orgmasterPdmPublication'
+import { orgmasterFmsPublicationConfigured, publishAfterOrgmasterPdmRevocation } from './orgmasterPdmPublication'
 import { createHash } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { readFile, stat } from 'node:fs/promises'
@@ -220,9 +220,10 @@ export function orgmasterPdmPublicationEnabled() {
 }
 
 export async function withOrgmasterPdmPublication<T>(actor: string, commandKey: string, request: unknown, run: () => Promise<T>, replay?: () => Promise<T>) {
-  if (!orgmasterPdmPublicationEnabled()) return run()
+  const pdm = orgmasterPdmPublicationEnabled()
+  if (!(pdm || usesCloudSqlPersistence() && orgmasterFmsPublicationConfigured())) return run()
   if (transactionDatabase.getStore()) throw new OrgmasterPersistenceError('PERSISTENCE_WRITE_FAILED')
-  const enabled = process.env.ORGMASTER_DEPLOYMENT_ENV !== 'production' || readOrgmasterPdmPublicationControl
+  const enabled = pdm && (process.env.ORGMASTER_DEPLOYMENT_ENV !== 'production' || readOrgmasterPdmPublicationControl)
   return publishAfterOrgmasterPdmRevocation({
     actor, commandKey, request, enabled, transaction: withPersistenceTransaction,
     database: currentPersistenceTransactionDatabase, deliveryDatabase: poolForRuntime, write: run, replay,

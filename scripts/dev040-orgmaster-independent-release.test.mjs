@@ -370,13 +370,13 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact baseline and all forward owner migrations through 060', () => {
+test('OrgMaster exact baseline and all forward owner migrations through 061', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
   assert.equal(bundle.bundle.entries.length, DEV070_MIGRATION_ENTRY_COUNT)
-  assert.deepEqual(bundle.bundle.entries.slice(-6).map(entry=>entry.version),
-    ['dev070-orgmaster-055','dev057-orgmaster-056','dev057-orgmaster-057','dev059-orgmaster-058','dev059-orgmaster-059','dev059-orgmaster-060'])
+  assert.deepEqual(bundle.bundle.entries.slice(-7).map(entry=>entry.version),
+    ['dev070-orgmaster-055','dev057-orgmaster-056','dev057-orgmaster-057','dev059-orgmaster-058','dev059-orgmaster-059','dev059-orgmaster-060','dev059-orgmaster-061'])
   assertDev070MigrationEntries(bundle.bundle.entries)
   assert.deepEqual(bundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity),DEV070_MIGRATION_ENTRIES.map(migrationIdentity))
   assertDev059MigrationEntries(bundle.bundle.entries.slice(0,DEV059_MIGRATION_ENTRY_COUNT))

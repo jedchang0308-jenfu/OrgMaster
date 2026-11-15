@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -8,6 +9,7 @@ import {
   prepareAdministrationInitializationFixture,
   withAdministrationPostgresFixture,
 } from './lib/dev070-administration-postgres-fixture.mjs'
+import { publishAfterOrgmasterPdmRevocation, reconcileOrgmasterPdmPublications } from './lib/orgmaster-pdm-publication.mts'
 
 const platformRoot = resolve(process.env.DEV070_PLATFORM_ROOT ?? 'C:/VIBE CODING/Jenfu-Platform')
 const {
@@ -57,6 +59,7 @@ const publicationStatusSql = 'SELECT orgmaster_contract.is_fms_authority_publica
 const sessionBoundarySql = 'SELECT * FROM orgmaster_contract.read_fms_authority_session_boundary_v1($1,$2,$3,$4,$5)'
 const revocationCallerSql = 'SELECT orgmaster_contract.is_fms_revocation_platform_caller_v1($1,$2) AS admitted'
 const sessionImpactSql = 'SELECT * FROM orgmaster_core.read_fms_session_impact_v1($1,$2)'
+const fmsPublicationSql = 'SELECT * FROM orgmaster_contract.read_fms_session_publication_v1($1,$2)'
 const boundaryInput = row => [row.principal_id, row.employee_id, row.principal_binding_version, row.governance_revision, row.read_at]
 
 async function installPointReader({ admin, handle }) {
@@ -76,7 +79,7 @@ async function installPointReader({ admin, handle }) {
   await admin.query(await readFile(new URL('../db/migrations/055_dev070_fms_session_display_profile.sql', import.meta.url), 'utf8'))
   for (const migration of ['056_dev057_ai_pdm_session_authority.sql', '057_dev057_pdm_session_publication.sql',
     '058_dev059_fms_authority_session_boundary.sql', '059_dev059_fms_revocation_platform_caller.sql',
-    '060_dev059_fms_publication_impact.sql']) {
+    '060_dev059_fms_publication_impact.sql', '061_dev059_fms_publication_receipts.sql']) {
     await admin.query(await readFile(new URL('../db/migrations/' + migration, import.meta.url), 'utf8'))
   }
   console.log(JSON.stringify({ scope: 'LOCAL_SYNTHETIC_ONLY', pid: handle.process.pid, port: handle.port }))
@@ -198,14 +201,71 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.equal((await fms.query(sessionDisplaySql, [sameEmployeePrincipal, employeeId, peer[0], 'other-subject'])).rowCount, 0)
 
   const human = await createAdministrativeHumanFixture(fixture)
-  const receipt = await human.commit(await human.command('grant_application_administrator', {
+  const grantOptions = {
     target: { principalId, employeeId, applicationId, validFrom, validTo: null },
     catalogBindings: { [applicationId]: catalogBinding },
-  }))
+  }
+  const grant = await human.command('grant_application_administrator', grantOptions)
+  const delivery = await connect('orgmaster-prod-runtime@jenfu-platform-prod.iam')
+  const commandCount = async id => (await admin.query(
+    'SELECT 1 FROM orgmaster_core.administrative_command_receipts_v1 WHERE command_id=$1', [id])).rowCount
+  const fmsReceipts = new Map()
+  let failPrepare = true
+  const phases = []
+  const fmsClient = {
+    async readback(command) { return fmsReceipts.get(command.digest) ?? null },
+    async dispatch(command) {
+      phases.push(command)
+      assert.deepEqual(command.principalIds, [principalId])
+      if (command.phase === 'prepare' && failPrepare) throw new Error('isolated FMS unreachable')
+      if (command.phase !== 'prepare') {
+        const read = await fms.query(fmsPublicationSql, [command.operationId, command.eventId])
+        if (!read.rowCount) throw new Error('FMS owner terminal not yet visible')
+        assert.deepEqual(read.rows[0].principal_ids, command.principalIds)
+        assert.equal(read.rows[0].decision, command.phase)
+        assert.equal(read.rows[0].prepare_receipt_id, command.prepareReceiptId)
+        assert.equal(read.rows[0].observed_version, command.phase === 'published' ? command.targetVersion : command.baselineVersion)
+      }
+      const result = fmsReceipts.get(command.digest) ?? { operationId: command.operationId, eventId: command.eventId,
+        phase: command.phase, digest: command.digest, receiptId: randomUUID(), appliedAt: new Date().toISOString(),
+        contractVersion: 'jf-fms.session-revocation-receipt.v1' }
+      fmsReceipts.set(command.digest, result)
+      return result
+    },
+  }
+  const pdmClient = { async readback() { assert.fail('unexpected PDM readback') }, async dispatch() { assert.fail('unexpected PDM dispatch') } }
+  const coordinate = (actor, request) => publishAfterOrgmasterPdmRevocation({
+    actor: actor.principalId, commandKey: request.commandId, request, enabled: true, client: pdmClient,
+    fms: { enabled: true, client: fmsClient },
+    async transaction(run) {
+      await actor.runtime.query('BEGIN')
+      try { const result = await run(); await actor.runtime.query('COMMIT'); return result }
+      catch (error) { await actor.runtime.query('ROLLBACK'); throw error }
+    },
+    database: () => actor.runtime, deliveryDatabase: () => delivery,
+    write: () => actor.commit(request), replay: () => actor.status(request.commandId),
+  })
+  await admin.query('UPDATE orgmaster_core.fms_session_publication_control_v1 SET enabled=true')
+  await assert.rejects(human.commit(grant), /FMS_PUBLICATION_WRITER_REQUIRED/)
+  await assert.rejects(coordinate(human, grant), /PDM_PUBLICATION_PENDING/)
+  assert.equal(await commandCount(grant.commandId), 0)
+  assert.equal((await fms.query(fmsPublicationSql, [phases[0].operationId, phases[0].terminalEventId])).rowCount, 0)
+  const competing = await human.command('grant_application_administrator', grantOptions)
+  await assert.rejects(coordinate(human, competing), /PDM_PUBLICATION_PENDING/)
+  assert.equal(phases.length, 1, 'an overlapping operation cannot dispatch a second prepare')
+  assert.equal(await commandCount(competing.commandId), 0)
+  failPrepare = false
+  const receipt = await coordinate(human, grant)
+  assert.equal(phases[0].eventId, phases[1].eventId)
+  assert.equal(await commandCount(grant.commandId), 1)
   assert.equal(receipt.result, 'applied')
   assert.equal(receipt.grantIds.length, 1)
   const [grantId] = receipt.grantIds
   await drainAdministrationFixtureEvents(fixture, dispatch)
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  const refreshed = await createAdministrativeHumanFixture(fixture)
+  assert.equal((await coordinate(refreshed, grant)).grantIds[0], grantId)
+  assert.equal(await commandCount(grant.commandId), 1)
 
   const { rows: [administrator] } = await compareReads(fms, principalId, 1)
   assert.equal(administrator.employee_id, employeeId)
@@ -230,11 +290,12 @@ await withAdministrationPostgresFixture(async fixture => {
   await compareReads(fms, 'principal-fms-authority-missing', 0)
   await compareReads(fms, principalId, 0, 'ai-pdm')
 
-  const refreshed = await createAdministrativeHumanFixture(fixture)
-  const revoke = await refreshed.commit(await refreshed.command('revoke_application_administrator', { grantId }))
+  const revoke = await coordinate(refreshed, await refreshed.command('revoke_application_administrator', { grantId }))
   assert.equal(revoke.result, 'applied')
   assert.deepEqual(revoke.grantIds, [grantId])
   await drainAdministrationFixtureEvents(fixture, dispatch)
+  assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  console.log('PASS the native OrgMaster administration writer requires the FMS prepare receipt, rejects direct writes, and exposes the committed terminal once')
   await compareReads(fms, principalId, 0)
   assert.equal((await fms.query(displaySql, [principalId, employeeId])).rowCount, 0)
   assert.equal((await fms.query(sessionDisplaySql, peerDisplay)).rows[0]?.employee_name, employeeName)
