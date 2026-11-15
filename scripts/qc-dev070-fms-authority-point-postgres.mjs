@@ -242,9 +242,9 @@ await withAdministrationPostgresFixture(async fixture => {
     },
   }
   const pdmClient = { async readback() { assert.fail('unexpected PDM readback') }, async dispatch() { assert.fail('unexpected PDM dispatch') } }
-  const coordinate = (actor, request) => publishAfterOrgmasterPdmRevocation({
+  const coordinate = (actor, request, client = fmsClient) => publishAfterOrgmasterPdmRevocation({
     actor: actor.principalId, commandKey: request.commandId, request, enabled: true, client: pdmClient,
-    fms: { enabled: true, client: fmsClient },
+    fms: { enabled: true, client },
     async transaction(run) {
       await actor.runtime.query('BEGIN')
       try { const result = await run(); await actor.runtime.query('COMMIT'); return result }
@@ -326,11 +326,21 @@ await withAdministrationPostgresFixture(async fixture => {
   await compareReads(fms, 'principal-fms-authority-missing', 0)
   await compareReads(fms, principalId, 0, 'ai-pdm')
 
-  const revoke = await coordinate(refreshed, await refreshed.command('revoke_application_administrator', { grantId }))
-  assert.equal(revoke.result, 'applied')
-  assert.deepEqual(revoke.grantIds, [grantId])
-  await drainAdministrationFixtureEvents(fixture, dispatch)
-  assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  const revokeRequest = await refreshed.command('revoke_application_administrator', { grantId })
+  const revokeAndReconcile = async client => {
+    const revoke = await coordinate(refreshed, revokeRequest, client)
+    assert.equal(revoke.result, 'applied')
+    assert.deepEqual(revoke.grantIds, [grantId])
+    assert.equal(await commandCount(revokeRequest.commandId), 1)
+    await drainAdministrationFixtureEvents(fixture, dispatch)
+    assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, client), { selected: 1, completed: 1 })
+  }
+  if (process.env.DEV068_FMS_ROOT) {
+    const { withNativeFmsRevocation } = await import('./lib/dev068-native-fms-revocation-fixture.mjs')
+    await withNativeFmsRevocation({ fixture, ownerDatabase: fms, platformDatabase: platform,
+      fmsRoot: resolve(process.env.DEV068_FMS_ROOT), platformRoot,
+      affected: { principalId, employeeId }, unaffected: { principalId: sameEmployeePrincipal, employeeId } }, revokeAndReconcile)
+  } else await revokeAndReconcile(fmsClient)
   await refreshed.runtime.end()
   console.log('PASS the native OrgMaster administration writer requires the FMS prepare receipt, rejects direct writes, and exposes the committed terminal once')
   await compareReads(fms, principalId, 0)
