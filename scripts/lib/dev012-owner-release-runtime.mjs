@@ -5,6 +5,7 @@ import { GCC_ALIGNED_NEW_CVE, readAlignedNewInspectionProgram, gccAlignedNewOccu
 import { runOrgmasterPrincipalSsoSmoke } from './dev015-orgmaster-principal-sso-smoke.mjs'
 import {DEV070_RELEASE_MODE} from './dev070-administration-migration.mjs'
 import { DEV060_RELEASE_MODE } from './dev060-fms-catalog-activation-migration.mjs'
+import { fmsPublicationControl, pdmPublicationControl } from './dev057-pdm-publication-control.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
@@ -836,11 +837,18 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     return after
   }
 
-  async function runMigrationJob({ profile, deployment, outputUri, deadlineAt, migrationMode = null, enrollmentIntentOperation = null, pdmPublicationControlRef = null }) {
-    if (pdmPublicationControlRef) {
+  async function runMigrationJob({ profile, deployment, outputUri, deadlineAt, migrationMode = null,
+    enrollmentIntentOperation = null, pdmPublicationControlRef = null, fmsPublicationControlRef = null }) {
+    const publicationRef = fmsPublicationControlRef ?? pdmPublicationControlRef
+    const publication = fmsPublicationControlRef ? fmsPublicationControl : pdmPublicationControl
+    if (publicationRef) {
+      const output = parseGsUri(outputUri, 'jenfu-platform-prod-orgmaster-release', publication.receiptPrefix)
       if (profile.application.id !== 'orgmaster' || migrationMode || enrollmentIntentOperation ||
-          !/^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/pdm-publication-control\/[a-f0-9]{40}\/[a-f0-9]{64}\.json$/u.test(outputUri)) fail('PDM_PUBLICATION_CONTROL_JOB_INPUT_INVALID')
-      assertImmutableRef(pdmPublicationControlRef, profile.artifact.releaseBucket, ['source/migration-bundles/pdm-publication-control'])
+          fmsPublicationControlRef && pdmPublicationControlRef || !H40.test(deployment.sourceRevision ?? '') ||
+          !/^[a-f0-9]{64}\.json$/u.test(outputUri.split('/').at(-1) ?? '') ||
+          outputUri !== `gs://${output.bucket}/${publication.receiptPrefix}/${deployment.sourceRevision}/${outputUri.split('/').at(-1)}`)
+        fail('PDM_PUBLICATION_CONTROL_JOB_INPUT_INVALID')
+      assertImmutableRef(publicationRef, profile.artifact.releaseBucket, [publication.inputPrefix])
     }
     if(enrollmentIntentOperation&& (migrationMode!==null||profile.application.id!=='orgmaster'||!['plan','admit','revoke','status'].includes(enrollmentIntentOperation.action)||!H64.test(enrollmentIntentOperation.ref?.sha256??'')||!enrollmentIntentOperation.ref?.uri?.startsWith('gs://jenfu-platform-prod-orgmaster-release/source/migration-bundles/enrollment-intents/')||enrollmentIntentOperation.ref.uri.includes('..')||Object.keys(enrollmentIntentOperation).sort().join(',')!=='action,ref'||Object.keys(enrollmentIntentOperation.ref??{}).sort().join(',')!=='sha256,uri'))fail('DEV070_INTENT_JOB_INPUT_INVALID')
     if (deployment.productionDataRef || deployment.firstPrincipalBootstrapRef) fail('MIGRATION_BOOTSTRAP_INPUT_DENIED')
@@ -861,14 +869,14 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       POSTGRES_IAM_LOGIN: profile.migrations.serviceAccount.replace('.gserviceaccount.com', ''),
       POSTGRES_SOCKET: `/cloudsql/${connectionName}`,
     }
-    if((enrollmentIntentOperation || pdmPublicationControlRef)&&((job.template?.template?.containers?.length??0)!==1||(container?.command?.length??0)!==0))fail('DEV070_INTENT_JOB_TEMPLATE_INVALID')
+    if((enrollmentIntentOperation || publicationRef)&&((job.template?.template?.containers?.length??0)!==1||(container?.command?.length??0)!==0))fail('DEV070_INTENT_JOB_TEMPLATE_INVALID')
     const volume = job.template?.template?.volumes?.find((item) => item.name === 'cloudsql')
     const mount = container?.volumeMounts?.find((item) => item.name === 'cloudsql')
     if (job.name !== jobName || job.template?.template?.serviceAccount !== profile.migrations.serviceAccount || container?.image !== deployment.migrationRunnerDigest || canonicalize(environment) !== canonicalize(expectedEnvironment) || canonicalize(volume?.cloudSqlInstance?.instances) !== canonicalize([connectionName]) || mount?.mountPath !== '/cloudsql' || job.template?.taskCount !== 1 || job.template?.parallelism !== 1 || job.template?.template?.maxRetries !== 0 || job.template?.template?.timeout !== '1800s') fail('MIGRATION_JOB_READBACK_MISMATCH')
     let args
-    if (pdmPublicationControlRef) {
-      args = ['--operation-mode', 'DEV057_PDM_PUBLICATION_CONTROL',
-        '--operation-ref', pdmPublicationControlRef.uri, '--operation-sha256', pdmPublicationControlRef.sha256,
+    if (publicationRef) {
+      args = ['--operation-mode', publication.mode,
+        '--operation-ref', publicationRef.uri, '--operation-sha256', publicationRef.sha256,
         '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
     } else if (enrollmentIntentOperation) {
       args = ['--operation-mode', 'DEV070_ENROLLMENT_INTENT', '--action', enrollmentIntentOperation.action,
@@ -902,7 +910,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     }
     const beforeExecutions=await listExecutions()
     const beforeNames = new Set(beforeExecutions.map(execution=>execution.name))
-    const existingEnrollmentExecutions=(enrollmentIntentOperation || pdmPublicationControlRef)?beforeExecutions.filter(executionArgsMatch):[]
+    const existingEnrollmentExecutions=(enrollmentIntentOperation || publicationRef)?beforeExecutions.filter(executionArgsMatch):[]
     if(existingEnrollmentExecutions.length>1)fail('MIGRATION_EXECUTION_CARDINALITY_INVALID')
     let operationRef = existingEnrollmentExecutions.length?'REUSED_EXACT_ENROLLMENT_EXECUTION_READBACK':null
     if(!existingEnrollmentExecutions.length)try {

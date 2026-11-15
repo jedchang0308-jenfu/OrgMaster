@@ -3,7 +3,10 @@ import test from 'node:test'
 import { canonicalize, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { LIFECYCLE_SCHEDULER_NAME } from './lib/dev014-lifecycle-scheduler-contract.mjs'
 import { parseArgs, publishedOwner, schedulerReady } from './dev057-pdm-publication-owner.mjs'
-import { assertAcceptance, assertControlOperation, controlIdentity, owners, pathsForControl } from './lib/dev057-pdm-publication-control.mjs'
+import { assertAcceptance, assertControlOperation, controlIdentity, executePublicationControl,
+  fmsPublicationControl, owners, pathsForControl } from './lib/dev057-pdm-publication-control.mjs'
+import { DEV070_MIGRATION_ENTRIES } from './lib/dev070-administration-migration.mjs'
+import { TARGET } from './lib/orgmaster-production-database.mjs'
 
 const sourceRevision = 'a'.repeat(40)
 const hash = 'b'.repeat(64)
@@ -93,6 +96,83 @@ test('activation and OrgMaster recovery require PDM receiver in live-authority m
   await publishedOwner({ ...state, action: 'disable' })
   state.active.containers[0].image = 'unexpected'
   await assert.rejects(publishedOwner({ ...state, action: 'disable' }), /OWNER_ARTIFACT_INVALID/)
+})
+
+test('FMS owner evidence binds release, image, database and serving compatibility revision', async () => {
+  const config = fmsPublicationControl.owners['jf-fms']
+  const releaseId = 'FMS-DEV068-COMPATIBILITY'
+  const artifactDigest = `asia-east1-docker.pkg.dev/jenfu-platform-prod/${config.image}@sha256:${hash}`
+  const expected = { sourceRevision, artifactDigest, releaseId, databaseReleaseSha256: hash }
+  const sources = { orgmaster: expectedFor('orgmaster'), platform: expectedFor('platform'), 'jf-fms': expected }
+  const evidence = { schemaVersion: fmsPublicationControl.acceptanceSchema, status: 'PASS', action: 'enable', evidenceSha256: hash, sources }
+  const reference = `--acceptance-ref=gs://${owners.orgmaster.bucket}/${fmsPublicationControl.acceptancePrefix}/test.json#sha256=${hash}`
+  assert.equal(parseArgs(['--fms', 'enable', '--expected-revision=0', reference, '--check']).control, fmsPublicationControl)
+  assert.doesNotThrow(() => assertAcceptance(evidence, 'enable', fmsPublicationControl))
+  assert.throws(() => assertAcceptance(evidence, 'enable'), /ACCEPTANCE_INVALID/)
+  assert.throws(() => assertAcceptance({ ...evidence, sources: { ...sources, 'jf-fms': { ...expected, databaseReleaseSha256: 'bad' } } },
+    'enable', fmsPublicationControl), /ACCEPTANCE_INVALID/)
+  const fmsHash = value => sha256(JSON.stringify(JSON.parse(canonicalize(value)), null, 2) + '\n')
+  const revision = `${config.service}-tested`
+  const target = { project: 'jenfu-platform-prod', region: 'asia-east1', service: config.service, serviceUid: 'fms-uid', canonicalUrl: config.origin }
+  const candidate = { revision, image: artifactDigest, uid: 'revision-uid' }
+  const source = { candidateSource: sourceRevision }
+  const plan = { format: 'fms.dev070.owner-release-plan.v1', releaseId, target, source, candidate }
+  const terminal = { format: 'fms.dev070.owner-release-terminal.v1', releaseId, status: 'ACTIVATED',
+    planSha256: fmsHash(plan), target, source, candidate }
+  const traffic = [{ revision, percent: 100 }]
+  const service = { name: `projects/jenfu-platform-prod/locations/asia-east1/services/${config.service}`, uid: target.serviceUid,
+    urls: [config.origin], etag: 'service-etag', traffic, trafficStatuses: traffic }
+  const env = [
+    { name: 'FMS_SESSION_REVOCATION_ENABLED', value: '1' },
+    { name: 'FMS_SESSION_AUTHORIZATION_ENABLED', value: '0' },
+    { name: 'FMS_DATABASE_RELEASE_SHA256', value: hash },
+  ]
+  const transport = {
+    async readBytes(uri) {
+      const body = uri.endsWith('/plan.json') ? { ...plan, planSha256: fmsHash(plan) } : { ...terminal, receiptSha256: fmsHash(terminal) }
+      return { bytes: Buffer.from(JSON.stringify(body)), ref: { uri, sha256: fmsHash(body) } }
+    },
+    assertServiceSettled: value => value, effectiveRevision: () => revision, getService: async () => service,
+    getRevision: async () => ({ uid: candidate.uid, conditions: [{ type: 'Ready', state: 'CONDITION_SUCCEEDED' }],
+      containers: [{ name: config.container, image: artifactDigest, env }] }),
+  }
+  const request = { owner: 'jf-fms', expected, transport, control: fmsPublicationControl, action: 'enable' }
+  assert.equal((await publishedOwner(request)).revision, revision)
+  env[1].value = '1'
+  await assert.rejects(publishedOwner({ ...request, action: 'disable' }), /FMS_COMPATIBILITY_MODE_REQUIRED/)
+  env[1].value = '0'
+  env[2].value = 'c'.repeat(64)
+  await assert.rejects(publishedOwner(request), /FMS_COMPATIBILITY_MODE_REQUIRED/)
+  env[2].value = hash
+  terminal.status = 'CANDIDATE'
+  await assert.rejects(publishedOwner(request), /OWNER_RELEASE_EVIDENCE_INVALID/)
+})
+
+test('FMS control calls its own transition only after validating the complete FMS ledger suffix', async () => {
+  const calls = []
+  const expected = DEV070_MIGRATION_ENTRIES.filter(row => row.order >= 54)
+  let ledger = expected.map(row => ({ version: row.version, checksum: row.appliedSha256 }))
+  const state = { enabled: true, revision: '1', operationSha256: hash }
+  const database = { async query(sql, params) {
+    calls.push(sql)
+    if (sql.includes('SESSION_USER')) return { rows: [{ login: TARGET.login, db: 'jenfu_prod', migrator: true, runtime: false }] }
+    if (sql.includes('schema_migrations')) {
+      assert.deepEqual(params, [expected.map(row => row.version)])
+      return { rows: ledger }
+    }
+    if (sql.includes('transition_fms_session_publication_v1')) return { rows: [{ state }] }
+    assert.doesNotMatch(sql, /transition_pdm/)
+    return { rows: [] }
+  } }
+  const request = { database, operation: { expectedRevision: '0', action: 'enable', deadlineAt: 'test' },
+    operationSha256: hash, control: fmsPublicationControl }
+  assert.deepEqual(await executePublicationControl(request), state)
+  assert.equal(calls.at(-1), 'COMMIT')
+  calls.length = 0
+  ledger = ledger.slice(0, -1)
+  await assert.rejects(executePublicationControl(request), /LEDGER_INVALID/)
+  assert.equal(calls.at(-1), 'ROLLBACK')
+  assert.equal(calls.some(sql => sql.includes('transition_fms')), false)
 })
 
 test('scheduler must be enabled and recently succeed on the serving OrgMaster revision', async () => {

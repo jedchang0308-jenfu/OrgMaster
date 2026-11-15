@@ -231,7 +231,7 @@ export async function publishFinancialCatalog(root: string, actor: GovernanceAct
     assertFinancialAuthority(document, actor, 'financial-management-system.catalog.import')
     assertFinancialAuthority(document, actor, 'financial-management-system.catalog.publish')
     assertFinancialAuthority(document, actor, 'financial-management-system.catalog.activate')
-  })
+  }, { commandId: request.commandId, request: { request, releaseValue } })
   return { status: 'applied' as const, revision: committed.revision, catalogVersion: catalog.catalogVersion, catalogSha256: catalog.contentSha256 }
 }
 

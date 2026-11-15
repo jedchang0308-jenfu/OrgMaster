@@ -94,6 +94,23 @@
 - 執行邊界：僅限本次指定的 JF-FMS／Jenfu-Platform／OrgMaster FMS 接入工作樹；其他跨專案、正式發布／正式資料、IAM／Secret／credential／billing 均不在授權內。
 - 驗證：production profile migration 001～038、authority／candidate／admission、FMS runtime read-only ACL、peer runtime view denial 與 manifest pin 7/7 PASS；release runner 33/33、focused owner tests 14/14、typecheck、routine 3/3 與 DB boundary PASS。task-owned PostgreSQL 已停止，port／temp root 已釋放。
 
+### DEV-068 接入：FMS 登入有效期
+
+- `058_dev059_fms_authority_session_boundary.sql` 新增只供 FMS runtime 的版本化讀取。沿既有 v4 授權快照的 Principal、員工、綁定版本、治理版本與觀測時間核對來源，回傳下一個排程生效或到期時點。只有匹配且有效的來源可回傳「無排程邊界」；來源漂移、不完整、過期或身分不符均不返回證據。
+- 配合 `JFFMS/DEV-068`，`059_dev059_fms_revocation_platform_caller.sql` 提供 FMS runtime 專用的布林查核，依既有 Platform lifecycle workload 的精確 Google subject、email 與啟用狀態判定，無需讀取整張服務身分表。隔離 PostgreSQL 已驗正確組合、不同 workload、混配、停用及資料庫 ACL。正式遷移與改權發布流程尚待整合驗收。
+- 隔離 PG18 沿既有 056 → 057 → 058 順序驗證，501 位合成 Principal 的既有 v4 點查回歸與排程生效、來源漂移、錯誤員工、過期快照、未授權 SQL 呼叫皆通過。新遷移已綁定現行發布清單，基線位元組與已安裝 057 的前進檢查通過。
+- `060_dev059_fms_publication_impact.sql` 讓既有 v4 點查和發布影響評估共用同一套授權判定。OrgMaster runtime 可比較指定時間起目前及排程生效的有效權限，忽略歷程版本號等無效差異。隔離 PG18 驗證 501 位合成 Principal、精確撤權及回滾、未生效的角色和未受影響帳號。首次驗證以資料庫群組連線被拒，改用既有測試 runtime login 後通過，驗證資源已釋放。
+- OrgMaster 使用既有 Platform lifecycle origin 送出 FMS 撤銷，回應遺失後以同一事件讀回。三方派送與接收程式以注入身分和記憶體回執串接，兩段回應均遺失時只建立一筆準備事件。FMS/PDM 傳輸及既有 Scheduler 相關測試 21 項、異動範圍嚴格 TypeScript、來源與發布測試 33 項通過。真實 OIDC、owner 提交順序及付款流程尚未驗收。
+- `061_dev059_fms_publication_receipts.sql` 與既有發布交易共用同一筆 owner 操作，分開保存 FMS 與 PDM 的範圍、事件和回執。任何受影響應用尚未準備完成時，操作不可提交。隔離 PostgreSQL 用原生 FMS 管理員授權及撤權命令驗證直寫拒絕、派送失敗未提交、重疊操作無第二次派送、提交後獨立證據、待身分同步後補送，以及新工作階段重送只讀回一筆。既有 PDM 行政 HTTP、Directory 停用、owner 維護與回復的隔離回歸通過。
+- `062_dev059_fms_reviewer_snapshot.sql` 提供 FMS 一次性全量審核資格，綁定同一讀取快照的發布版本及時點。FMS 未啟用撤權發布、權限資料尚未就緒或仍有未完成派送時，契約不提供基線。原生 PG18 已驗證只授權 FMS 消費端、準備中及終態尚未送達時拒絕提供資料，送達後核對發布版本與 501 位合成 Principal 的有效／預定審核資格。
+- DEV-049 帳號隔離與准入維護共用 OrgMaster 發布協調。隔離 PostgreSQL 驗證兩個正常 Job 命令都先保留原操作，既有 Scheduler 取得受影響 Principal 的 FMS 準備回執後才能提交，重試回讀既有結果。13 項發布工具與封裝檢查通過。測試使用合成 FMS 回執，正式啟用與三方正常入口驗收仍待完成。
+- `063_dev059_fms_publication_control.sql` 已納入既有向前遷移。隔離 PostgreSQL 證實只有遷移角色可啟停，過期或版本不符的操作會被拒絕，重跑回讀原紀錄。已準備或已發布但未送達終態的 FMS 撤銷會阻擋停用。
+- 064 的啟用版本唯讀契約只供 FMS runtime 使用。FMS 只在本地授權啟動時核對此版本。隔離驗收覆蓋其他應用角色遭拒、停用時回空值，以及重新啟用後版本由 1 前進至 3。
+- 同一隔離 PostgreSQL 叢集已驗證實際 OrgMaster 管理授權撤銷，經 Platform HTTP relay 到 FMS 寫入撤權並讀回原回執。準備回應遺失時，上游發布尚不存在，FMS 舊工作階段與寫入均遭拒，另一個 Principal 的工作階段仍有效。之後 OrgMaster 只提交一次，FMS 從 OrgMaster 唯讀契約取得終態，保存與原準備相連的唯一回執。測試由 `DEV068_FMS_ROOT` 綁定 FMS 候選，簽章驗證使用合成憑證，身分與終態查詢經資料庫真實權限執行。
+- 既有發布工具 `scripts/dev057-pdm-publication-owner.mjs --fms` 核對三方正式收據及流量、FMS 相容模式與資料庫繫結後，才會交由既有 Job 驗證 OrgMaster 058–063，並呼叫 FMS 專用的啟停程序。來源工具測試 61 項通過。正式發布設定已固定 FMS 派送旗標，資料庫控制預設關閉。Platform 中央控制 Job 及三方正常入口仍待驗收。
+- 開發驗證曾見原生預演與正式寫入各自配置 grant ID，導致同一效果被誤判為衝突。影響比較排除新分配的識別碼，終態仍保存實際提交的記錄。管理員自授權後舊工作階段也確實遭拒，重試改由相同 Principal 的新工作階段驗證。
+- 預設未啟用。仍需完成 FMS 啟動端身分與終態讀取、審核資格初載與增量、本地財務路徑與正式 owner 維護／停止回復、Platform 中央撤銷及全域登出。隔離證據尚未進入正式發布。
+
 <a id="dev040-production-release-20261019"></a>
 
 ## DEV-040／DEV-057：PR134 正式發布與證據收尾（2026-10-19）

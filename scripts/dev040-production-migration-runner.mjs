@@ -7,6 +7,7 @@ import { TARGET as PRODUCTION_TARGET, databaseOptions } from './lib/orgmaster-pr
 import { DEV059_MIGRATION_ENTRY_COUNT, assertDev059MigrationEntries } from './lib/dev059-fms-authority-migration.mjs'
 import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ACCEPTED_LEDGER_COUNTS,assertDev070MigrationEntries} from './lib/dev070-administration-migration.mjs'
 import { DEV060_RELEASE_MODE, assertDev060MigrationEntries } from './lib/dev060-fms-catalog-activation-migration.mjs'
+import { publicationControlForMode } from './lib/dev057-pdm-publication-control.mjs'
 import {
   ProductionMigrationError,
   assertMigrationBundle,
@@ -56,7 +57,7 @@ export function parseOrgmasterRunnerArgs(argv) {
 }
 
 export async function runMain({ argv = process.argv.slice(2), environment = process.env, fetchImpl = fetch, Client = pg.Client } = {}) {
-  if (argv[0] === '--operation-mode' && argv[1] === 'DEV057_PDM_PUBLICATION_CONTROL') {
+  if (argv[0] === '--operation-mode' && publicationControlForMode(argv[1])) {
     return (await import('./dev057-production-pdm-publication-runner.mjs')).runPdmPublicationControlJob({ argv, environment, fetchImpl, Client })
   }
   if(argv.includes('--operation-mode'))return (await import('./dev070-production-enrollment-intent-runner.mjs')).runEnrollmentIntentJob({argv,environment,fetchImpl,Client})

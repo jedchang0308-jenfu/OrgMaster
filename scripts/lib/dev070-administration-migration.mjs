@@ -18,9 +18,16 @@ export const DEV070_MIGRATION_ENTRIES=Object.freeze([
  Object.freeze({"order":51,"version":"dev070-orgmaster-055","path":"db/migrations/055_dev070_fms_session_display_profile.sql","sourceSha256":"fbc312828f6a820e666d7ea116877a5f6f597f76bd97dcbf6028fdec48f21fda","appliedSha256":"8a3c452c8b4bd353f1adcfac6bc84cd35eb9c4f05e7a0e56a36fe95310492bea"}),
  Object.freeze({"order":52,"version":"dev057-orgmaster-056","path":"db/migrations/056_dev057_ai_pdm_session_authority.sql","sourceSha256":"b4d6417ee204e46d742387890e5e4f2bda89c820512bb678d739115cbec07ccd","appliedSha256":"b3b20950b25d8960a491b8dae2601b5d252909b0a39cef901eedd458b199cb32"}),
  Object.freeze({"order":53,"version":"dev057-orgmaster-057","path":"db/migrations/057_dev057_pdm_session_publication.sql","sourceSha256":"c58ad73d940dd1a13b50c14e09076a37d45016b0ca8c664af38a46f40cf6078e","appliedSha256":"cf6483689047ff30b37ce60f91e3a3f75914794597d7bdf274a5ffe830e3571a"}),
+ Object.freeze({"order":54,"version":"dev059-orgmaster-058","path":"db/migrations/058_dev059_fms_authority_session_boundary.sql","sourceSha256":"e4bbe1895a20a13335c65f1c1a0ae4415374d8a8a134370674b1ea58ed2c4a25","appliedSha256":"52c3b794ccac96a30b3c0d6cf1e554321575fdc575667ef6f62242ee6b71ddd5"}),
+ Object.freeze({order:55,version:'dev059-orgmaster-059',path:'db/migrations/059_dev059_fms_revocation_platform_caller.sql',sourceSha256:'064107b3c36ef3c43f202c5e52744465e8f8f60862adf95f669f19c63b89604d',appliedSha256:'a130db8b489a2ce3adf994cea19572b46b594b3f6e1972bf5021fc2473af770b'}),
+ Object.freeze({order:56,version:'dev059-orgmaster-060',path:'db/migrations/060_dev059_fms_publication_impact.sql',sourceSha256:'eb2644f86325fe951e94f588a61cb4a939ebc5661202ed691e8e643f4a06926b',appliedSha256:'339989fcd1dbb7ff7ef8b2def1e24bb9698fcae41b9702f42ac5b4144a1fe819'}),
+ Object.freeze({order:57,version:'dev059-orgmaster-061',path:'db/migrations/061_dev059_fms_publication_receipts.sql',sourceSha256:'e4a9ac830443eaa2eeef96e41ee1291606693c59c48f6a65ea40669a172fbac0',appliedSha256:'6afffafba39fbfedbc2d6ea98eae86724c7e7f1f94a495078fba36ad31265302'}),
+ Object.freeze({order:58,version:'dev059-orgmaster-062',path:'db/migrations/062_dev059_fms_reviewer_snapshot.sql',sourceSha256:'fcfbe2497dff1929560f81982aec0463cc2889c8f585e4ada080857a7c91a065',appliedSha256:'3579c6f34119f9bbf89b96f4371ea5c7eec8df09d4feff5c485e62523734f5e0'}),
+ Object.freeze({order:59,version:'dev059-orgmaster-063',path:'db/migrations/063_dev059_fms_publication_control.sql',sourceSha256:'2fd87cff12eed6307cffcd690a1909d98f79dbae623f155ab8342260a56c8b99',appliedSha256:'19da465f3ba80433eb9a084fd4264f3edf68278054c0c82a44541138dd09f22c'}),
+ Object.freeze({order:60,version:'dev059-orgmaster-064',path:'db/migrations/064_dev059_fms_session_publication_epoch.sql',sourceSha256:'02e95d479b1bc958ebbd6942d57311304d79c4776228d16260fb916266964255',appliedSha256:'e8ff5fa9275537159242da550f24913daac552c8ea1b1d709a2508de9a4e8606'}),
 ])
 export const DEV070_MIGRATION_ENTRY_COUNT=DEV070_MIGRATION_PREFIX_COUNT+DEV070_MIGRATION_ENTRIES.length
-// 31–39 are the previously accepted DEV-059 exact ledger prefixes. 40–53
+// 31–39 are the previously accepted DEV-059 exact ledger prefixes. 40 onward
 // permit readback/retry after a partial forward append, with every row/hash
 // still checked by the shared runner. No unknown ledger layout is admitted.
 export const DEV070_ACCEPTED_LEDGER_COUNTS=Object.freeze(Array.from({length:DEV070_MIGRATION_ENTRY_COUNT-30},(_,index)=>index+31))

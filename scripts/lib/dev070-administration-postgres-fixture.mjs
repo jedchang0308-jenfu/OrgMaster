@@ -84,17 +84,21 @@ export async function drainAdministrationFixtureEvents(fixture,consumePlatformEv
  if(typeof consumePlatformEvent!=='function')throw new Error('DEV070_PLATFORM_OWNER_FIXTURE_ADAPTER_REQUIRED')
  const worker=await fixture.connect('orgmaster-prod-runtime@jenfu-platform-prod.iam'),leaseId=randomUUID()
  const executor='principal-workload:orgmaster-managed-identity-lifecycle',outcomes=[]
- for(let round=0;round<4;round++){
-  const claims=(await worker.query('SELECT * FROM orgmaster_core.claim_principal_lifecycle_v2($1,$2::uuid,2)',[executor,leaseId])).rows
-  if(!claims.length)return outcomes
-  for(const claim of claims){
-   const consumed=await consumePlatformEvent({eventId:claim.event_id,snapshotHash:claim.snapshot_hash,deliveryPrincipalId:executor})
-   if(!consumed?.receiptId)throw new Error('DEV070_PLATFORM_OWNER_RECEIPT_REQUIRED')
-   await worker.query('SELECT orgmaster_core.complete_principal_lifecycle_v2($1,$2::uuid,$3::uuid,$4,$5::uuid)',[executor,leaseId,claim.event_id,claim.lease_generation,consumed.receiptId])
-   outcomes.push({eventId:claim.event_id,status:'completed',receiptId:consumed.receiptId})
+ try {
+  for(let round=0;round<4;round++){
+   const claims=(await worker.query('SELECT * FROM orgmaster_core.claim_principal_lifecycle_v2($1,$2::uuid,2)',[executor,leaseId])).rows
+   if(!claims.length)return outcomes
+   for(const claim of claims){
+    const consumed=await consumePlatformEvent({eventId:claim.event_id,snapshotHash:claim.snapshot_hash,deliveryPrincipalId:executor})
+    if(!consumed?.receiptId)throw new Error('DEV070_PLATFORM_OWNER_RECEIPT_REQUIRED')
+    await worker.query('SELECT orgmaster_core.complete_principal_lifecycle_v2($1,$2::uuid,$3::uuid,$4,$5::uuid)',[executor,leaseId,claim.event_id,claim.lease_generation,consumed.receiptId])
+    outcomes.push({eventId:claim.event_id,status:'completed',receiptId:consumed.receiptId})
+   }
   }
+  throw new Error('DEV070_FIXTURE_DRAIN_BOUND_EXCEEDED')
+ } finally {
+  await worker.end()
  }
- throw new Error('DEV070_FIXTURE_DRAIN_BOUND_EXCEEDED')
 }
 export async function createAdministrativeHumanFixture(fixture,{principalId='principal-legacy',assuranceLevel='aal1'}={}){
  const {admin,connect,handle}=fixture,runtime=await connect('orgmaster-prod-runtime@jenfu-platform-prod.iam')

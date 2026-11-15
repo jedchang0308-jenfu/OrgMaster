@@ -206,7 +206,8 @@ export async function publishPrivilegedAssignment(
       updatedBy: actor.principalId,
       entitlementChanges: [{ operationId: request.commandId, employeeId: target.employeeId, applicationId: 'ai-pdm' as const, eventKind: 'role_assignment_changed' as const, actor: actor.principalId, reasonCode: 'privileged_assignment_changed' }],
     }
-  }, actor, (document) => { assertFreshPrivilegedSession(actor, session); assertOverride(document, actor, new Date().toISOString()) })
+  }, actor, (document) => { assertFreshPrivilegedSession(actor, session); assertOverride(document, actor, new Date().toISOString()) },
+  { commandId: request.commandId, request })
   const receipt = committed.document.commandReceipts.find((value) => value.commandId === request.commandId)
   if (!receipt) throw new PrivilegedAssignmentError('COMMAND_NOT_OBSERVED')
   return receipt

@@ -1,13 +1,16 @@
 import { createHash } from 'node:crypto'
 import type { Pool } from 'pg'
 import { pdmRevocationCommand, parsePdmRevocationReceipt, type PdmRevocationReceipt } from './orgmaster-pdm-revocation-wire.mts'
+import { finishFmsPublication, fmsPublicationColumns, fmsPublicationCommand, fmsPublicationEffect, fmsPublicationPendingReceipt,
+  prepareFmsPublication, readFmsPublicationImpact, type FmsPublicationClient, type FmsPublicationFields,
+  type FmsPublicationOptions } from './orgmaster-fms-publication.mts'
 
 export type Database = Pick<Pool, 'query'>
 export type Client = {
   readback(command: ReturnType<typeof pdmRevocationCommand>): Promise<PdmRevocationReceipt | null>
   dispatch(command: ReturnType<typeof pdmRevocationCommand>): Promise<PdmRevocationReceipt>
 }
-type Operation = {
+type Operation = Partial<FmsPublicationFields> & {
   operation_id: string
   request_hash: string
   baseline_version: string
@@ -33,6 +36,7 @@ function publicationHash(value: unknown) {
   return createHash('sha256').update(JSON.stringify(sorted(value))).digest('hex')
 }
 const table = 'orgmaster_core.pdm_session_publication_v1'
+const pdmPendingReceipt = '(cardinality(principal_ids)>0 AND terminal_receipt IS NULL)'
 
 export class PdmPublicationError extends Error {
   readonly code: 'PDM_PUBLICATION_PENDING' | 'PDM_PUBLICATION_CONFLICT'
@@ -51,10 +55,15 @@ async function readImpact(database: Database, at?: string) {
   return new Map(rows.map(row => [row.principal_id, row.effect]))
 }
 
-function changesBetween(before: Map<string, unknown>, after: Map<string, unknown>) {
+function changesBetween(before: Map<string, unknown>, after: Map<string, unknown>, project = (value: unknown) => value) {
   return [...new Set([...before.keys(), ...after.keys()])].sort()
-    .filter(id => JSON.stringify(before.get(id)) !== JSON.stringify(after.get(id)))
+    .filter(id => JSON.stringify(project(before.get(id))) !== JSON.stringify(project(after.get(id))))
     .map(id => [id, before.get(id) ?? null, after.get(id) ?? null] as const)
+}
+
+function fmsImpactHash(impact: ReturnType<typeof changesBetween>) {
+  return impact.length ? publicationHash(impact.map(([id, before, after]) =>
+    [id, fmsPublicationEffect(before), fmsPublicationEffect(after)])) : null
 }
 
 function command(row: Operation, phase: 'prepare' | 'published' | 'cancelled') {
@@ -65,7 +74,7 @@ function command(row: Operation, phase: 'prepare' | 'published' | 'cancelled') {
 }
 
 async function finish(database: Database, client: Client, row: Operation) {
-  if (!row.decision || row.terminal_receipt) return
+  if (!row.principal_ids.length || !row.decision || row.terminal_receipt) return
   if (row.decision === 'published') {
     const { rows } = await database.query<{ clear: boolean }>(
       'SELECT orgmaster_core.pdm_reviewer_delivery_clear_v1($1::text[]) AS clear', [row.principal_ids],
@@ -88,23 +97,36 @@ async function finish(database: Database, client: Client, row: Operation) {
   [row.operation_id, JSON.stringify(terminal), row.decision])
 }
 
-export async function reconcileOrgmasterPdmPublications(database: Database, client: Client) {
+async function finishPublication(database: Database, row: Operation, pdm?: Client, fms?: FmsPublicationClient) {
+  await Promise.all([pdm && finish(database, pdm, row), fms && finishFmsPublication(database, fms, row)])
+}
+
+async function preparePdmPublication(row: Operation, client?: Client) {
+  if (!row.principal_ids.length) return null
+  const prepare = command(row, 'prepare')
+  return parsePdmRevocationReceipt(row.prepare_receipt ?? await client?.dispatch(prepare), prepare)
+}
+
+export async function reconcileOrgmasterPdmPublications(database: Database, client: Client, fms?: FmsPublicationClient) {
+  const appColumns = columns + (fms ? fmsPublicationColumns : '')
   await database.query(`UPDATE ${table} SET decision='cancelled', decided_at=clock_timestamp()
     WHERE decision IS NULL AND expires_at <= clock_timestamp()`)
-  const { rows } = await database.query<Operation>(`SELECT ${columns} FROM ${table}
-    WHERE decision IS NOT NULL AND terminal_receipt IS NULL ORDER BY decided_at, operation_id LIMIT 2`)
-  const preparations = await database.query<Operation>(`SELECT ${columns} FROM ${table}
-    WHERE owner_delivery AND decision IS NULL AND prepare_receipt IS NULL
+  const { rows } = await database.query<Operation>(`SELECT ${appColumns} FROM ${table}
+    WHERE decision IS NOT NULL AND (${pdmPendingReceipt}${fms ? ` OR ${fmsPublicationPendingReceipt}` : ''})
+    ORDER BY decided_at, operation_id LIMIT 2`)
+  const preparations = await database.query<Operation>(`SELECT ${appColumns} FROM ${table}
+    WHERE owner_delivery AND decision IS NULL AND ((cardinality(principal_ids)>0 AND prepare_receipt IS NULL)
+      ${fms ? 'OR (cardinality(fms_principal_ids)>0 AND fms_prepare_receipt IS NULL)' : ''})
       AND expires_at > clock_timestamp()
     ORDER BY prepared_at, operation_id LIMIT 2`)
   const outcomes = await Promise.allSettled([
-    ...rows.map(row => finish(database, client, row)),
+    ...rows.map(row => finishPublication(database, row, client, fms)),
     ...preparations.rows.map(async row => {
-      const prepare = command(row, 'prepare')
-      const receipt = parsePdmRevocationReceipt(await client.dispatch(prepare), prepare)
-      await database.query(`UPDATE ${table} SET prepare_receipt=$2
-        WHERE operation_id=$1 AND decision IS NULL AND prepare_receipt IS NULL`,
-      [row.operation_id, JSON.stringify(receipt)])
+      const [pdmReceipt, fmsReceipt] = await Promise.all([preparePdmPublication(row, client), prepareFmsPublication(row, fms)])
+      await database.query(`UPDATE ${table} SET prepare_receipt=COALESCE(prepare_receipt,$2::jsonb)
+        ${fms ? ', fms_prepare_receipt=COALESCE(fms_prepare_receipt,$3::jsonb)' : ''}
+        WHERE operation_id=$1 AND decision IS NULL`,
+      [row.operation_id, pdmReceipt && JSON.stringify(pdmReceipt), ...(fms ? [fmsReceipt && JSON.stringify(fmsReceipt)] : [])])
     }),
   ])
   return { selected: outcomes.length, completed: outcomes.filter(result => result.status === 'fulfilled').length }
@@ -128,16 +150,30 @@ export type PdmPublicationOptions<T> = {
   advanceLifecycleVersion?: boolean
   ownerDelivery?: boolean
   client?: Client
+  fms?: FmsPublicationOptions
 }
 
 export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicationOptions<T>): Promise<T> {
-  if (!options.enabled) return options.write()
-  const client = options.client
+  if (!options.enabled && !options.fms?.enabled) return options.write()
+  const { client, fms } = options
+  const appColumns = columns + (fms ? fmsPublicationColumns : '')
   const requestHash = publicationHash(options.request)
+  const finish = (row: Operation) => finishPublication(options.deliveryDatabase(), row, client, fms?.client)
   const inTransaction = <V,>(fn: (database: Database) => Promise<V>) =>
     options.transaction(() => fn(options.database()))
+  const activeAt = async (database: Database) => {
+    const pdm = typeof options.enabled === 'function' ? await options.enabled(database) : options.enabled
+    const financial = typeof fms?.enabled === 'function' ? await fms.enabled(database) : Boolean(fms?.enabled)
+    if (pdm) await database.query("SET LOCAL orgmaster.pdm_publication_writer = 'coordinated'")
+    if (financial) await database.query("SET LOCAL orgmaster.fms_publication_writer = 'coordinated'")
+    return { pdm, financial }
+  }
+  const impactAt = async (database: Database, active: Awaited<ReturnType<typeof activeAt>>, at?: string) => ({
+    pdm: active.pdm ? await readImpact(database, at) : new Map<string, unknown>(),
+    fms: active.financial ? await readFmsPublicationImpact(database, at) : new Map<string, unknown>(),
+  })
   const load = async (database: Database) => {
-    const { rows } = await database.query<Operation>(`SELECT ${columns} FROM ${table}
+    const { rows } = await database.query<Operation>(`SELECT ${appColumns} FROM ${table}
       WHERE actor_principal_id=$1 AND command_key=$2 FOR UPDATE`, [options.actor, options.commandKey])
     const row = rows[0]
     if (row && (row.request_hash !== requestHash || row.owner_delivery !== Boolean(options.ownerDelivery))) throw conflict()
@@ -145,11 +181,11 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
   }
   const prepare = await inTransaction<{ result: T } | { row: Operation }>(async database => {
     const baseline = await lockVersion(database)
-    if (typeof options.enabled === 'function' && !await options.enabled(database)) {
+    const active = await activeAt(database)
+    if (!active.pdm && !active.financial) {
       return { result: await options.write() }
     }
-    if (!client && !options.ownerDelivery) throw pending()
-    await database.query("SET LOCAL orgmaster.pdm_publication_writer = 'coordinated'")
+    if (active.pdm && !client && !options.ownerDelivery) throw pending()
     const existing = await load(database)
     if (existing) {
       if (existing.expired && existing.decision === null) {
@@ -159,12 +195,13 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
       return { row: existing } as const
     }
 
-    const before = await readImpact(database)
+    const before = await impactAt(database, active)
     await database.query('SAVEPOINT pdm_publication_plan')
     const result = await options.write()
-    const after = await readImpact(database)
-    const impact = changesBetween(before, after)
-    if (!impact.length) {
+    const after = await impactAt(database, active)
+    const impact = changesBetween(before.pdm, after.pdm)
+    const fmsImpact = changesBetween(before.fms, after.fms, fmsPublicationEffect)
+    if (!impact.length && !fmsImpact.length) {
       await database.query('RELEASE SAVEPOINT pdm_publication_plan')
       return { result } as const
     }
@@ -173,37 +210,45 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
     await database.query('RELEASE SAVEPOINT pdm_publication_plan')
     if (BigInt(publicationVersion) !== BigInt(baseline) + 1n) throw conflict()
     const principalIds = impact.map(entry => entry[0])
-    if (principalIds.length > 4096) throw conflict()
+    const fmsPrincipalIds = fmsImpact.map(entry => entry[0])
+    if (principalIds.length > 4096 || fmsPrincipalIds.length > 4096) throw conflict()
     // Serializing preparation under the existing authority row lock prevents
     // an overlapping operation from acquiring a second barrier.
     if ((await database.query(`SELECT 1 FROM ${table}
-        WHERE terminal_receipt IS NULL AND principal_ids && $1::text[] LIMIT 1`, [principalIds])).rowCount) throw pending()
+        WHERE (${pdmPendingReceipt} AND principal_ids && $1::text[])
+        ${fms ? `OR (${fmsPublicationPendingReceipt} AND fms_principal_ids && $2::text[])` : ''} LIMIT 1`,
+      [principalIds, ...(fms ? [fmsPrincipalIds] : [])])).rowCount) throw pending()
     const inserted = await database.query<Operation>(`INSERT INTO ${table}
       (operation_id, actor_principal_id, command_key, request_hash, baseline_version,
-       publication_version, principal_ids, impact_hash, expires_at, owner_delivery)
+       publication_version, principal_ids, impact_hash, expires_at, owner_delivery
+       ${fms ? ', fms_principal_ids, fms_impact_hash, fms_prepare_event_id, fms_terminal_event_id' : ''})
       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::text[], $7,
-        clock_timestamp()+CASE WHEN $8 THEN interval '5 minutes' ELSE interval '60 seconds' END, $8)
-      RETURNING ${columns}`, [options.actor, options.commandKey, requestHash, baseline, publicationVersion,
-      principalIds, publicationHash(impact), Boolean(options.ownerDelivery)])
-    command(inserted.rows[0], 'prepare')
+        clock_timestamp()+CASE WHEN $8 THEN interval '5 minutes' ELSE interval '60 seconds' END, $8
+        ${fms ? `, $9::text[], $10, CASE WHEN cardinality($9::text[])>0 THEN gen_random_uuid() END,
+          CASE WHEN cardinality($9::text[])>0 THEN gen_random_uuid() END` : ''})
+      RETURNING ${appColumns}`, [options.actor, options.commandKey, requestHash, baseline, publicationVersion,
+      principalIds, publicationHash(impact), Boolean(options.ownerDelivery),
+      ...(fms ? [fmsPrincipalIds, fmsImpactHash(fmsImpact)] : [])])
+    if (principalIds.length) command(inserted.rows[0], 'prepare')
+    if (fmsPrincipalIds.length) fmsPublicationCommand(inserted.rows[0], 'prepare', null)
     return { row: inserted.rows[0] } as const
   })
   if ('result' in prepare) return prepare.result
   const row = prepare.row
   if (row.decision) {
-    if (client) await finish(options.deliveryDatabase(), client, row).catch(() => undefined)
+    if (client || fms?.client) await finish(row).catch(() => undefined)
     if (row.decision === 'cancelled') throw conflict()
     return (options.replay ?? options.write)()
   }
-  let receipt: PdmRevocationReceipt
-  const prepareCommand = command(row, 'prepare')
-  try { receipt = parsePdmRevocationReceipt(row.prepare_receipt ?? await client?.dispatch(prepareCommand), prepareCommand) }
+  let receipt: Awaited<ReturnType<typeof preparePdmPublication>>
+  let fmsReceipt: Awaited<ReturnType<typeof prepareFmsPublication>>
+  try { [receipt, fmsReceipt] = await Promise.all([preparePdmPublication(row, client), prepareFmsPublication(row, fms?.client)]) }
   catch { throw pending() }
   let outcome: { result: T } | { cancelled: true } | { replay: true }
   try {
     outcome = await inTransaction(async database => {
       const baseline = await lockVersion(database)
-      await database.query("SET LOCAL orgmaster.pdm_publication_writer = 'coordinated'")
+      const active = await activeAt(database)
       const current = await load(database)
       if (!current || current.operation_id !== row.operation_id || current.decision === 'cancelled') throw conflict()
       if (current.decision === 'published') return { replay: true }
@@ -211,11 +256,14 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
         await cancel(database, row.operation_id)
         return { cancelled: true }
       }
-      const before = await readImpact(database, row.impact_at)
+      const before = await impactAt(database, active, row.impact_at)
       await database.query('SAVEPOINT pdm_publication_apply')
       const result = await options.write()
-      const impact = changesBetween(before, await readImpact(database, row.impact_at))
-      if (publicationHash(impact) !== row.impact_hash) {
+      const after = await impactAt(database, active, row.impact_at)
+      const impact = changesBetween(before.pdm, after.pdm)
+      const fmsImpact = changesBetween(before.fms, after.fms, fmsPublicationEffect)
+      const fmsHash = fmsImpactHash(fmsImpact)
+      if (publicationHash(impact) !== row.impact_hash || fmsHash !== (row.fms_impact_hash ?? null)) {
         await database.query('ROLLBACK TO SAVEPOINT pdm_publication_apply')
         await cancel(database, row.operation_id)
         return { cancelled: true }
@@ -235,8 +283,11 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
         return { cancelled: true }
       }
       await database.query(`UPDATE ${table} SET prepare_receipt=$2, decision='published', decided_at=clock_timestamp(),
-        authority_timeline=$3 WHERE operation_id=$1`, [row.operation_id, JSON.stringify(receipt),
-        JSON.stringify(impact.map(([principal, , after]) => [principal, after ?? []]))])
+        authority_timeline=$3${fms ? ', fms_prepare_receipt=$4, fms_authority_timeline=$5' : ''} WHERE operation_id=$1`,
+      [row.operation_id, receipt && JSON.stringify(receipt),
+        JSON.stringify(impact.map(([principal, , value]) => [principal, value ?? []])),
+        ...(fms ? [fmsReceipt && JSON.stringify(fmsReceipt),
+          fmsImpact.length ? JSON.stringify(fmsImpact.map(([principal, , value]) => [principal, value ?? []])) : null] : [])])
       await database.query('RELEASE SAVEPOINT pdm_publication_apply')
       return { result }
     })
@@ -245,15 +296,15 @@ export async function publishAfterOrgmasterPdmRevocation<T>(options: PdmPublicat
     // infer cancellation from an exception or replace the operation ID.
     const observed = await inTransaction(load).catch(() => undefined)
     if (observed?.decision !== 'published') {
-      if (client && observed?.decision === 'cancelled') {
-        await finish(options.deliveryDatabase(), client, observed).catch(() => undefined)
+      if ((client || fms?.client) && observed?.decision === 'cancelled') {
+        await finish(observed).catch(() => undefined)
       }
       throw error
     }
     outcome = { replay: true }
   }
   const observed = await inTransaction(load).catch(() => undefined)
-  if (client && observed) await finish(options.deliveryDatabase(), client, observed).catch(() => undefined)
+  if ((client || fms?.client) && observed) await finish(observed).catch(() => undefined)
   if ('cancelled' in outcome) throw conflict()
   if ('replay' in outcome) return (options.replay ?? options.write)()
   return outcome.result

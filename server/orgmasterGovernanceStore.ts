@@ -13,6 +13,7 @@ import { assignmentMatchesSecuritySubject, evaluateVerifiedPrincipalPermission }
 import { readApplicationRoleCatalogs, readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceAuditEventV1, GovernanceAuditEventV3, GovernanceCommandV2, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceExpectedCatalogV1, GovernanceOrgSource, GovernancePolicyDataV1, GovernanceRoleAssignmentV2, GovernanceCommandResultV1, GovernanceCommandQueryResultV1 } from '../src/governance/types'
 import { OrgmasterPersistenceError, currentPersistenceTransactionDatabase, withPersistenceTransaction, orgmasterPdmPublicationEnabled, withOrgmasterPdmPublication, persistenceArtifactExists, readPersistenceArtifact, usesCloudSqlPersistence, warnOrgmasterLocalPersistenceDiagnostic, writePersistenceArtifacts, type OrgmasterLocalPersistenceDiagnosticStage, type PersistenceEntitlementChange } from './orgmasterPersistenceRepository'
+import { orgmasterFmsPublicationConfigured } from './orgmasterPdmPublication'
 import { assertMigrationWritesAllowed } from './orgmasterMigrationGate'
 import { recordGovernanceSessionReadFailure, type GovernanceSessionReadStage } from './orgmasterGovernanceReadDiagnostic'
 import { storedGovernanceCatalogs, isGovernanceReduction, sameGovernancePolicy, withPublishedGovernanceHistory } from './governanceReduction'
@@ -40,10 +41,10 @@ export async function readStoredGovernanceDocument(root: string) {
 const locks = new Map<string, Promise<void>>()
 const heldPublicationLock = new AsyncLocalStorage<string>()
 async function withLock<T>(root: string, fn: () => Promise<T>) { const key = resolve(root); if (heldPublicationLock.getStore() === key) return fn(); const previous = locks.get(key) ?? Promise.resolve(); let release!: () => void; const current = new Promise<void>((resolveRelease) => { release = resolveRelease }); const queued = previous.then(() => current); locks.set(key, queued); await previous; try { return await fn() } finally { release(); if (locks.get(key) === queued) locks.delete(key) } }
-export function withGovernancePdmPublication<T>(root: string, actor: string, commandId: string, request: unknown, run: () => Promise<T>) {
-  if (!orgmasterPdmPublicationEnabled()) return run()
+export function withGovernancePdmPublication<T>(root: string, actor: string, commandId: string, request: unknown, run: () => Promise<T>, replay?: () => Promise<T>) {
+  if (!orgmasterPdmPublicationEnabled() && !(usesCloudSqlPersistence() && orgmasterFmsPublicationConfigured())) return run()
   return withLock(root, () => heldPublicationLock.run(resolve(root),
-    () => withOrgmasterPdmPublication(actor, commandId, request, run)))
+    () => withOrgmasterPdmPublication(actor, commandId, request, run, replay)))
 }
 
 export async function withGovernanceLock<T>(root: string, fn: () => Promise<T>) { return withLock(root, fn) }
@@ -276,7 +277,37 @@ export function syncOrgMasterSystemCatalog(document: GovernanceDocumentV3, now =
   return appendAudit({ ...document, draft }, { commandId: `system-catalog-sync-v3-${syncIdentity}`, reason: 'DEV-056 OrgMaster system permission catalog compatible sync', type: 'ORGMASTER_SYSTEM_CATALOG_SYNCED' }, actor, { action: 'ORGMASTER_SYSTEM_CATALOG_SYNCED', entityType: 'permissionCatalog', entityId: 'orgmaster.system-permissions', beforeHash: sha256(canonicalJson(document.draft)), afterHash: sha256(canonicalJson(draft)) }, now)
 }
 async function persistV3(root: string, current: GovernanceStoreRead, document: GovernanceDocumentV3, source?: GovernanceOrgSource, input?: { reasonCode?: string; updatedBy?: string; entitlementChanges?: PersistenceEntitlementChange[] }, catalogs?: ExternalRoleCatalogSnapshotV1[]) { await assertMigrationWritesAllowed(root); if (source) { const validationCatalogs = await governanceCatalogsWithHistory(document, catalogs ?? await readApplicationRoleCatalogs(root)); const issues = validateDocumentV3(document, validationSource(source), validationCatalogs); if (issues.length) throw new GovernanceValidationError(issues) } validateAuditChain(document); const paths = getGovernancePaths(root); const raw = `${JSON.stringify(document, null, 2)}\n`; try { if (!usesCloudSqlPersistence()) await writeAtomic(paths.previous, current.raw); await writePersistenceArtifacts([{ artifactKey: 'orgmaster-governance.v3.json', artifactKind: 'governance', localPath: paths.current, payload: document as unknown as Record<string, unknown>, raw, expectedRevision: current.revision }], { reasonCode: input?.reasonCode ?? 'governance_v3_write', updatedBy: input?.updatedBy, entitlementChanges: input?.entitlementChanges }); if (source && usesCloudSqlPersistence()) { const freshSource = await loadOrganizationSource(root); if (freshSource.workspaceVersionId !== source.workspaceVersionId || freshSource.workspaceRevision !== source.workspaceRevision) throw new GovernanceStoreError('ORGANIZATION_REVISION_CONFLICT') } return { status: 'applied' as const, ...(await readV3Raw(root)) } } catch (error) { if (error instanceof OrgmasterPersistenceError && error.code === 'PERSISTENCE_REVISION_CONFLICT') throw new GovernanceStoreError('REVISION_CONFLICT'); throw error } }
-export async function commitGovernanceMutation(root: string, expectedRevision: string, mutate: (current: GovernanceStoreRead, source: GovernanceOrgSource) => Promise<{ document: GovernanceDocumentV3; reasonCode: string; updatedBy: string; entitlementChanges?: PersistenceEntitlementChange[]; validationCatalogs?: ExternalRoleCatalogSnapshotV1[] }> | { document: GovernanceDocumentV3; reasonCode: string; updatedBy: string; entitlementChanges?: PersistenceEntitlementChange[]; validationCatalogs?: ExternalRoleCatalogSnapshotV1[] }, actor: GovernanceActorContext, authorize: (document: GovernanceDocumentV3) => void) { return withActorWrite(root, actor, async (authorizeBeforeCommit) => { const current = await readV3Raw(root); authorizeBeforeCommit(() => authorize(current.document)); if (current.revision !== expectedRevision) throw new GovernanceStoreError('REVISION_CONFLICT'); const source = await loadOrganizationSource(root); assertActorEmployeeActive(source, actor); authorize(current.document); const mutation = await mutate(current, source); const result = await persistV3(root, current, mutation.document, source, mutation, mutation.validationCatalogs); return result }) }
+type GovernanceMutation = {
+  document: GovernanceDocumentV3
+  reasonCode: string
+  updatedBy: string
+  entitlementChanges?: PersistenceEntitlementChange[]
+  validationCatalogs?: ExternalRoleCatalogSnapshotV1[]
+}
+
+export async function commitGovernanceMutation(root: string, expectedRevision: string,
+  mutate: (current: GovernanceStoreRead, source: GovernanceOrgSource) => Promise<GovernanceMutation> | GovernanceMutation,
+  actor: GovernanceActorContext, authorize: (document: GovernanceDocumentV3) => void,
+  publication?: { commandId: string; request: unknown }) {
+  const write = () => withActorWrite(root, actor, async authorizeBeforeCommit => {
+    const current = await readV3Raw(root)
+    authorizeBeforeCommit(() => authorize(current.document))
+    if (current.revision !== expectedRevision) throw new GovernanceStoreError('REVISION_CONFLICT')
+    const source = await loadOrganizationSource(root)
+    assertActorEmployeeActive(source, actor)
+    authorize(current.document)
+    const mutation = await mutate(current, source)
+    return persistV3(root, current, mutation.document, source, mutation, mutation.validationCatalogs)
+  })
+  if (!publication || !orgmasterFmsPublicationConfigured()) return write()
+  const replay = () => withActorWrite(root, actor, async authorizeBeforeCommit => {
+    const current = await readV3Raw(root)
+    authorize(current.document)
+    authorizeBeforeCommit(() => authorize(current.document))
+    return { status: 'applied' as const, ...current }
+  })
+  return withGovernancePdmPublication(root, actor.principalId, publication.commandId, publication.request, write, replay)
+}
 function migrateAndAudit(v1: GovernanceDocumentV1, sourceRevision: string, catalog: ExternalRoleCatalogSnapshotV1) { const migrated = migrateGovernanceV1ToV2(v1, sourceRevision, [catalog]); const actor: GovernanceActorContext = { principalId: 'system', issuer: 'system', subject: 'system', employeeId: null, bootstrap: true }; return appendAudit(migrated, { commandId: `system-migrate-v1-to-v2-${sourceRevision.slice(0, 16)}`, reason: 'V1 governance store 非破壞遷移', type: 'GOVERNANCE_MIGRATED_V1_TO_V2' }, actor, { action: 'GOVERNANCE_MIGRATED_V1_TO_V2', entityType: 'governance', entityId: null, beforeHash: sha256(canonicalJson(v1)), afterHash: sha256(canonicalJson(migrated.draft)) }) }
 function migrateV2AndAudit(v2: GovernanceDocumentV2, sourceRevision: string, catalog: ExternalRoleCatalogSnapshotV1) { const migrated = migrateGovernanceV2ToV3(v2, sourceRevision, catalog); const actor: GovernanceActorContext = { principalId: 'system', issuer: 'system', subject: 'system', employeeId: null, bootstrap: true }; return appendAudit(migrated, { commandId: `system-migrate-v2-to-v3-${sourceRevision.slice(0, 16)}`, reason: 'V2 governance store 非破壞遷移；V2只保留為歷史證據', type: 'GOVERNANCE_MIGRATED_V2_TO_V3' }, actor, { action: 'GOVERNANCE_MIGRATED_V2_TO_V3', entityType: 'governance', entityId: null, beforeHash: sha256(canonicalJson(v2.draft)), afterHash: sha256(canonicalJson(migrated.draft)) }) }
 async function readV1(root: string, path: string) { try { const raw = await readFile(path, 'utf8'); const document = JSON.parse(raw) as GovernanceDocumentV1; if (document.schemaVersion !== 1) throw new GovernanceStoreError('GOVERNANCE_SCHEMA_UNSUPPORTED'); validateAuditChain(document); if (validateDocument(document).length) throw new GovernanceStoreError('GOVERNANCE_READ_FAILED'); return { raw, document, revision: documentRevision(raw) } } catch (error) { if (error instanceof GovernanceStoreError) throw error; throw new GovernanceStoreError('GOVERNANCE_READ_FAILED') } }

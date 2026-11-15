@@ -1,5 +1,5 @@
 import { createOrgmasterPdmRevocationClient } from './orgmasterPdmRevocationClient'
-import { reconcileOrgmasterPdmPublications } from './orgmasterPdmPublication'
+import { orgmasterFmsPublicationConfigured, reconcileOrgmasterPdmPublications } from './orgmasterPdmPublication'
 import type { Database } from '../scripts/lib/orgmaster-pdm-publication.mts'
 import { readOrgmasterPdmPublicationControl } from './orgmasterPersistenceRepository'
 import { randomUUID } from 'node:crypto'
@@ -121,7 +121,7 @@ export function createLifecyclePdmReconciler(database: Database, revocation = cr
   return async () => {
     const [publication, logout] = await Promise.allSettled([
       readOrgmasterPdmPublicationControl(database).then(enabled =>
-        enabled ? reconcileOrgmasterPdmPublications(database, revocation) : null),
+        enabled || orgmasterFmsPublicationConfigured() ? reconcileOrgmasterPdmPublications(database, revocation) : null),
       revocation.reconcileGlobalLogout(),
     ])
     if (publication.status === 'rejected') throw publication.reason
