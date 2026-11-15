@@ -7,7 +7,7 @@ import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
 import { matchGitSourceArchive } from './dev040-git-archive.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_PREFIX_SHA256 } from './dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_MIGRATION_ENTRY_COUNT } from './dev059-fms-authority-migration.mjs'
-import {DEV070_MIGRATION_ENTRIES,DEV070_RELEASE_MODE} from './dev070-administration-migration.mjs'
+import {DEV070_MIGRATION_ENTRIES,DEV070_RELEASE_MODE,ORGMASTER_FMS_DELIVERY_FLAG,isFmsDeliveryAppend} from './dev070-administration-migration.mjs'
 import {assertSmokeInfraReuseEvidence,readSmokeReuseProviderState} from './dev057-smoke-rotation-continuation.mjs'
 import { DEV057_PRINCIPAL_SMOKE_RECIPE, isDev057PrincipalSmokeBlobTransition } from './dev057-principal-smoke-transition.mjs'
 import {normalizeTerraformStateMeta} from './dev040-tool-terraform.mjs'
@@ -220,6 +220,20 @@ function reviewedClosedWorkflowTransition(before, after) {
     && same(after, { ...fixed, inputs: ['releaseCapsuleRef', 'executionMode'],
       defaultExecutionMode: 'full_release', executionModes: OWNER_EXECUTION_MODES })
 }
+
+function reviewedFmsRevocationProfileAppend(before, after) {
+  const flag = ORGMASTER_FMS_DELIVERY_FLAG
+  if (!isFmsDeliveryAppend(before.migrations.entries, after)) return false
+  const { migrations: _oldMigrations, environment: oldEnvironment, ...oldProfile } = before
+  const { migrations: _newMigrations, environment: newEnvironment, ...newProfile } = after
+  if (!same(oldProfile, newProfile) || !Array.isArray(oldEnvironment?.requiredPlainEnvironmentNames) ||
+      !Array.isArray(newEnvironment?.requiredPlainEnvironmentNames) || !oldEnvironment.fixedValues || !newEnvironment.fixedValues ||
+      oldEnvironment.requiredPlainEnvironmentNames.includes(flag) || Object.hasOwn(oldEnvironment.fixedValues, flag)) return false
+  const { [flag]: _enabled, ...remainingValues } = newEnvironment.fixedValues
+  return same(oldEnvironment, {
+    ...newEnvironment, fixedValues: remainingValues, requiredPlainEnvironmentNames: newEnvironment.requiredPlainEnvironmentNames.filter(name => name !== flag),
+  })
+}
 /**
  * The baseline-to-receipt transition may carry an approved migration append
  * alongside tool recipe changes and the exact reviewed single-capsule to closed
@@ -261,7 +275,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
   const reviewedWorkflowMatch = !exactProfileMatch
     && reviewedClosedWorkflowTransition(beforeProfile.workflow, afterProfile.workflow)
     && same({ ...beforeProfileWithoutMigrations, workflow: afterProfile.workflow }, afterProfileWithoutMigrations)
-  if ((!exactProfileMatch && !reviewedWorkflowMatch)
+  if ((!exactProfileMatch && !reviewedWorkflowMatch && !reviewedFmsRevocationProfileAppend(beforeProfile, afterProfile))
     || !same(nonRecipeInfrastructureEntries(root, beforeRevision), nonRecipeInfrastructureEntries(root, afterRevision))) fail('SOURCE_INPUT_DRIFT')
   return { disposition, beforeFingerprint, afterFingerprint }
 }
