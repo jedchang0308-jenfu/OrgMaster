@@ -650,6 +650,13 @@
         "path": "db/migrations/061_dev059_fms_publication_receipts.sql",
         "sourceSha256": "e4a9ac830443eaa2eeef96e41ee1291606693c59c48f6a65ea40669a172fbac0",
         "appliedSha256": "6afffafba39fbfedbc2d6ea98eae86724c7e7f1f94a495078fba36ad31265302"
+      },
+      {
+        "order": 58,
+        "version": "dev059-orgmaster-062",
+        "path": "db/migrations/062_dev059_fms_reviewer_snapshot.sql",
+        "sourceSha256": "fcfbe2497dff1929560f81982aec0463cc2889c8f585e4ada080857a7c91a065",
+        "appliedSha256": "3579c6f34119f9bbf89b96f4371ea5c7eec8df09d4feff5c485e62523734f5e0"
       }
     ]
   },

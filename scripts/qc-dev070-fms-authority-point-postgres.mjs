@@ -60,6 +60,7 @@ const sessionBoundarySql = 'SELECT * FROM orgmaster_contract.read_fms_authority_
 const revocationCallerSql = 'SELECT orgmaster_contract.is_fms_revocation_platform_caller_v1($1,$2) AS admitted'
 const sessionImpactSql = 'SELECT * FROM orgmaster_core.read_fms_session_impact_v1($1,$2)'
 const fmsPublicationSql = 'SELECT * FROM orgmaster_contract.read_fms_session_publication_v1($1,$2)'
+const reviewerSnapshotSql = 'SELECT * FROM orgmaster_contract.read_fms_reviewer_snapshot_v1()'
 const boundaryInput = row => [row.principal_id, row.employee_id, row.principal_binding_version, row.governance_revision, row.read_at]
 
 async function installPointReader({ admin, handle }) {
@@ -79,7 +80,7 @@ async function installPointReader({ admin, handle }) {
   await admin.query(await readFile(new URL('../db/migrations/055_dev070_fms_session_display_profile.sql', import.meta.url), 'utf8'))
   for (const migration of ['056_dev057_ai_pdm_session_authority.sql', '057_dev057_pdm_session_publication.sql',
     '058_dev059_fms_authority_session_boundary.sql', '059_dev059_fms_revocation_platform_caller.sql',
-    '060_dev059_fms_publication_impact.sql', '061_dev059_fms_publication_receipts.sql']) {
+    '060_dev059_fms_publication_impact.sql', '061_dev059_fms_publication_receipts.sql', '062_dev059_fms_reviewer_snapshot.sql']) {
     await admin.query(await readFile(new URL('../db/migrations/' + migration, import.meta.url), 'utf8'))
   }
   console.log(JSON.stringify({ scope: 'LOCAL_SYNTHETIC_ONLY', pid: handle.process.pid, port: handle.port }))
@@ -148,6 +149,7 @@ await withAdministrationPostgresFixture(async fixture => {
   await admin.query('CREATE ROLE fms_authority_unrelated_fixture LOGIN; GRANT USAGE ON SCHEMA orgmaster_contract TO fms_authority_unrelated_fixture')
   const unrelated = await connect('fms_authority_unrelated_fixture')
   await assert.rejects(unrelated.query(publicationStatusSql), { code: '42501' })
+  await assert.rejects(unrelated.query(reviewerSnapshotSql), { code: '42501' })
   await assert.rejects(unrelated.query(pointSql, [principalId, applicationId]), { code: '42501' })
   await assert.rejects(unrelated.query(admissionSql, ['issuer-fms-authority-peer', 'subject-fms-authority-peer']), { code: '42501' })
   await assert.rejects(unrelated.query(displaySql, [principalId, employeeId]), { code: '42501' })
@@ -206,6 +208,7 @@ await withAdministrationPostgresFixture(async fixture => {
     catalogBindings: { [applicationId]: catalogBinding },
   }
   const grant = await human.command('grant_application_administrator', grantOptions)
+  assert.equal((await fms.query(reviewerSnapshotSql)).rowCount, 0, 'cannot seed while owner publication control is off')
   const delivery = await connect('orgmaster-prod-runtime@jenfu-platform-prod.iam')
   const commandCount = async id => (await admin.query(
     'SELECT 1 FROM orgmaster_core.administrative_command_receipts_v1 WHERE command_id=$1', [id])).rowCount
@@ -248,6 +251,7 @@ await withAdministrationPostgresFixture(async fixture => {
   await admin.query('UPDATE orgmaster_core.fms_session_publication_control_v1 SET enabled=true')
   await assert.rejects(human.commit(grant), /FMS_PUBLICATION_WRITER_REQUIRED/)
   await assert.rejects(coordinate(human, grant), /PDM_PUBLICATION_PENDING/)
+  assert.equal((await fms.query(reviewerSnapshotSql)).rowCount, 0, 'cannot seed while an owner operation is pending')
   assert.equal(await commandCount(grant.commandId), 0)
   assert.equal((await fms.query(fmsPublicationSql, [phases[0].operationId, phases[0].terminalEventId])).rowCount, 0)
   const competing = await human.command('grant_application_administrator', grantOptions)
@@ -262,7 +266,12 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.equal(receipt.grantIds.length, 1)
   const [grantId] = receipt.grantIds
   await drainAdministrationFixtureEvents(fixture, dispatch)
+  assert.equal((await fms.query(reviewerSnapshotSql)).rowCount, 0, 'cannot seed while terminal delivery is outstanding')
   assert.deepEqual(await reconcileOrgmasterPdmPublications(delivery, pdmClient, fmsClient), { selected: 1, completed: 1 })
+  const { rows: [reviewerBaseline] } = await fms.query(reviewerSnapshotSql)
+  assert.deepEqual(reviewerBaseline.principal_ids, [principalId])
+  assert.equal(reviewerBaseline.source_version, phases.at(-1).targetVersion)
+  assert.deepEqual(reviewerBaseline.authority_timeline[0].intervals[0].authorities[0].assignments, [])
   const refreshed = await createAdministrativeHumanFixture(fixture)
   assert.equal((await coordinate(refreshed, grant)).grantIds[0], grantId)
   assert.equal(await commandCount(grant.commandId), 1)
@@ -399,6 +408,12 @@ await withAdministrationPostgresFixture(async fixture => {
   const { effect: timeline } = scheduledImpact.find(row => row.principal_id === allowed.principal_id)
   assert.equal(new Date(timeline[0][1]).toISOString(), futureFrom)
   assert.equal(new Date(timeline[1][1]).toISOString(), laterUntil)
+  await admin.query('UPDATE orgmaster_core.fms_session_publication_control_v1 SET enabled=true')
+  const { rows: [reviewerBaseline] } = await fms.query(reviewerSnapshotSql)
+  assert.deepEqual(new Set(reviewerBaseline.principal_ids), assigned)
+  assert.equal(reviewerBaseline.authority_timeline.length, assigned.size)
+  const scheduledReviewer = reviewerBaseline.authority_timeline.find(row => row.principal_id === allowed.principal_id)
+  assert.equal(new Date(scheduledReviewer.intervals[1].valid_from).toISOString(), futureFrom)
   assert.equal((await fms.query(sessionBoundarySql, boundaryInput(unbounded))).rowCount, 0, 'drift invalidates the login snapshot')
   assert.equal((await fms.query(sessionBoundarySql, [bounded.principal_id, denied.employee_id, ...boundaryInput(bounded).slice(2)])).rowCount, 0)
   assert.equal((await fms.query(sessionBoundarySql, [...boundaryInput(bounded).slice(0, 4), new Date(0)])).rowCount, 0)
