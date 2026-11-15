@@ -83,7 +83,7 @@ async function installPointReader({ admin, handle }) {
   for (const migration of ['056_dev057_ai_pdm_session_authority.sql', '057_dev057_pdm_session_publication.sql',
     '058_dev059_fms_authority_session_boundary.sql', '059_dev059_fms_revocation_platform_caller.sql',
     '060_dev059_fms_publication_impact.sql', '061_dev059_fms_publication_receipts.sql', '062_dev059_fms_reviewer_snapshot.sql',
-    '063_dev059_fms_publication_control.sql']) {
+    '063_dev059_fms_publication_control.sql','064_dev059_fms_session_publication_epoch.sql']) {
     await admin.query(await readFile(new URL('../db/migrations/' + migration, import.meta.url), 'utf8'))
   }
   console.log(JSON.stringify({ scope: 'LOCAL_SYNTHETIC_ONLY', pid: handle.process.pid, port: handle.port }))
@@ -257,6 +257,10 @@ await withAdministrationPostgresFixture(async fixture => {
   const remaining = await createAdditionalAdministrationTargetFixture(fixture, { employeeId: 'employee-three' })
   await drainAdministrationFixtureEvents(fixture, dispatch)
   const controlSql = `SELECT orgmaster_core.transition_fms_session_publication_v1($1,$2,$3,$4) AS state`
+  const readControlSql = 'SELECT orgmaster_contract.read_fms_session_publication_epoch_v1() AS epoch'
+  const readControl = async () => (await fms.query(readControlSql)).rows[0].epoch
+  assert.equal(await readControl(), null)
+  await assert.rejects(delivery.query(readControlSql), { code: '42501' })
   const enableHash = 'a'.repeat(64)
   const disableHash = 'b'.repeat(64)
   const control = async (expected, enabled, operation, deadline = new Date(Date.now() + 60_000)) =>
@@ -267,6 +271,7 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.equal(activated.revision, '1')
   assert.equal(activated.enabled, true)
   assert.deepEqual(await control(0, true, enableHash), activated)
+  assert.equal(await readControl(), '1')
   await assert.rejects(control(0, false, disableHash), /FMS_PUBLICATION_CONTROL_CONFLICT/)
   await assert.rejects(human.commit(grant), /FMS_PUBLICATION_WRITER_REQUIRED/)
   await assert.rejects(coordinate(human, grant), /PDM_PUBLICATION_PENDING/)
@@ -411,6 +416,9 @@ await withAdministrationPostgresFixture(async fixture => {
   assert.deepEqual(await control(1, false, disableHash), disabled)
   await assert.rejects(control(0, true, enableHash), /FMS_PUBLICATION_CONTROL_CONFLICT/)
   assert.equal((await fms.query(reviewerSnapshotSql)).rowCount, 0)
+  assert.equal(await readControl(), null)
+  await control(2, true, 'c'.repeat(64))
+  assert.equal(await readControl(), '3')
   console.log('PASS OrgMaster publication transition restricts access and drains pending FMS revocations before disabling')
 }, { platformRoot })
 
