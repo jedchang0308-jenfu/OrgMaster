@@ -437,7 +437,7 @@ export function createOrgmasterLocalPrincipalSandbox({
 
   async function readPdmCatalog(database: Queryable, profile: OrgmasterLocalRuntimeProfile) {
     let catalog: PublishedAiPdmRoleCatalog
-    try { catalog = await readPublishedAiPdmRoleCatalogFromDatabase(database, profile.catalogBinding.catalogSha256) }
+    try { catalog = await readPublishedAiPdmRoleCatalogFromDatabase(database, profile.catalogBinding.catalogSha256, { localV7: true }) }
     catch { return unavailable() }
     comparePdmBinding(profile, catalog)
     return catalog

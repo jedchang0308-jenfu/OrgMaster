@@ -150,15 +150,19 @@ test('an owner migration resolves neutral extensions independently of an inherit
   assert.equal(client.ledgerRows.length, 1)
 })
 
-test('administration projection deparses reader views under its SECURITY DEFINER search path', async () => {
-  const client = new FakeClient()
-  const result = await executeMigration(client, administrationProjectionEntry(), REVISION)
-  assert.deepEqual(result, { reused: false })
-  const searchPathIndex = client.calls.findIndex(call => call.sql === 'SET LOCAL search_path TO pg_catalog')
-  const migrationIndex = client.calls.findIndex(call => call.sql === MIGRATION_SQL)
-  assert.ok(searchPathIndex >= 0 && migrationIndex > searchPathIndex)
-  assert.equal(client.calls.some(call => call.sql ===
-    'SET LOCAL search_path TO pg_catalog, orgmaster_core, orgmaster_contract, public'), false)
+test('view-derived readers deparse with the same search path they use at runtime', async () => {
+  const pdmPublication = { ...nativeEntry(), version: 'dev057-orgmaster-057',
+    path: 'db/migrations/057_dev057_pdm_session_publication.sql' }
+  for (const entry of [administrationProjectionEntry(), pdmPublication]) {
+    const client = new FakeClient()
+    const result = await executeMigration(client, entry, REVISION)
+    assert.deepEqual(result, { reused: false })
+    const searchPathIndex = client.calls.findIndex(call => call.sql === 'SET LOCAL search_path TO pg_catalog')
+    const migrationIndex = client.calls.findIndex(call => call.sql === MIGRATION_SQL)
+    assert.ok(searchPathIndex >= 0 && migrationIndex > searchPathIndex, entry.path)
+    assert.equal(client.calls.some(call => call.sql ===
+      'SET LOCAL search_path TO pg_catalog, orgmaster_core, orgmaster_contract, public'), false)
+  }
 })
 
 test('createLedger uses IF NOT EXISTS and accepts only the expected ledger column shape', async () => {

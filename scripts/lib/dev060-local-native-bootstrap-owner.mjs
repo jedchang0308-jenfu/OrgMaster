@@ -41,15 +41,14 @@ async function assertTableColumns(client, table, expected, errorCode) {
 }
 function migrationPath(entry) { return typeof entry?.path === 'string' ? entry.path : undefined }
 function migrationSearchPath(entry) {
-  // Migration 044 deparses contract views into SECURITY DEFINER readers whose
-  // own search_path is pg_catalog. Deparse under the same path so PostgreSQL
-  // preserves every application schema qualifier. The published migration
-  // bytes remain immutable; other native/local migrations keep public for the
-  // legacy pgcrypto extension calls they still own.
-  return entry?.version === ADMINISTRATION_PROJECTION_V1.version &&
+  // Migrations 044 and 057 extract view definitions for readers whose own
+  // search_path is pg_catalog. Deparse with that same path to retain qualifiers
+  // such as orgmaster_core.persistence_authority in the generated SQL.
+  const administrationProjection = entry?.version === ADMINISTRATION_PROJECTION_V1.version &&
     entry?.path === ADMINISTRATION_PROJECTION_V1.path
-    ? 'pg_catalog'
-    : 'pg_catalog, orgmaster_core, orgmaster_contract, public'
+  const pdmPublication = entry?.version === 'dev057-orgmaster-057' &&
+    entry?.path === 'db/migrations/057_dev057_pdm_session_publication.sql'
+  return administrationProjection || pdmPublication ? 'pg_catalog' : 'pg_catalog, orgmaster_core, orgmaster_contract, public'
 }
 function isSafeLocalSourcePath(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= 512 &&

@@ -341,3 +341,16 @@ FMS 視窗未回覆 issuance 時，OrgMaster 的15秒等待只解除介面忙碌
 正式 migration 041 只能由 `deploy:production -- --dev060-fms-catalog-activation-append --dev060-infra-ref=URI#sha256=HASH` 選取。authorization／readiness 固定為 `devId=DEV-060`、`slice=060-FMS-CATALOG-ACTIVATION`，remediation 只綁 `dev060-orgmaster-041`；不得沿 DEV-059 名義、普通 tool rotation、其他 controlled mode 或任意 migration 參數執行。既有 ten-stage workflow 與單一 `releaseCapsuleRef` input 不變。
 
 DEV-060 runner mode 只接受 production ledger 已完整驗證的 38 筆（040）→39 筆（041）單筆 forward append，或完整39筆的零DDL replay。37筆或更早、foreign prefix、順序／version／name／checksum漂移均須在 `BEGIN` 或 migration SQL 前拒絕；成功收據只能是 `applied=1,replayed=38` 或 `applied=0,replayed=39`。001–040與39筆profile維持原identity，不因本lane重寫；DEV-059既有恢復範圍亦保持不變。
+
+<a id="daily-local-test-binding"></a>
+
+## 1010 日常地端測試接入（2026-11-16）
+
+沿 `JENFU/DEV-021#daily-local-test-binding`，由本次 Platform Codex session 主控四系統整合，本任務負責 OrgMaster 啟動、虛構 Principal／Employee 與任用 fixture，以及自有 DB schema 和版本化 contracts。
+
+- `scripts/dev-local.mjs` 的整合模式使用主控一次保存的工作樹、1010 loopback origin 與 OrgMaster runtime DB 設定。啟動後核對綁定的本機 PostgreSQL 與 role，沿現有 sandbox adapter／native session 入口。日常整合不以 JSON 工作區作替代來源；獨立 JSON 預覽仍由明確入口使用既有工作區。
+- 四系統整合啟動與重開讀同一 PG target，OrgMaster 自有 schema 及 runtime 最小權限不變。一次初始化由 owner 流程準備虛構身分與任用，日常重開從已保存狀態讀回。
+- 隔離候選驗收涵蓋 Portal 正常 SSO、既有任用讀回、允許與拒絕，以及錯誤 DB／非 loopback 綁定在啟動階段拒絕。結果與候選版本回填既有任務或 PR。2026-11-16 固定 `1010` 由 Platform 與 FMS 兩入口冷啟動均 ready，訪客的受保護 API 回 `401`。既有日常 `active` 合成身分只具 PDM／FMS 任用，OrgMaster 在 Portal 如預期呈 `no_access`。在 12000／12010 隔離候選，具 OrgMaster 任用的合成身分已從 Portal 正常 SSO 並讀回 OrgMaster 原生 session 200。新候選的 158 步初始化與 postnative 五階段均通過。保留兩個首次失敗：地端 057 的搜尋路徑造成 persistence_authority 無法解析，以及 SSO 嘗試用 v3 檢視比對 v2 綁定。修正原生執行器的 057 搜尋路徑與地端 reader 固定讀取已綁定 v2，現行真實環境的 v3 優先策略維持原樣。候選埠及候選 PG 已釋放，日常資料與 OrgMaster 任用範圍維持原設定。
+
+- 後續依使用者授權，`jf-fms-daily` 的 `active` 合成測試身分新增 `role-orgmaster-admin` 任用，發布版本為 `assignment-policy-local-jf-fms-daily-orgmaster-r2`。從 Platform 日常登入點 OrgMaster 卡片可進入 `http://localhost:1010/`，原生 session 及重整後均回 `200`，訪客回 `401`。此變更沿用原工作樹、資料庫與設定路徑。
+- 2026-11-16 後續由同一 Platform 日常入口驗證 OrgMaster `1010`、AI-PDM `1020`、FMS `1030` 均可進入，三個 native session 首次及重整後均回 `200`，訪客三端均回 `401`。1020 由 `AI_PDM-formal-runtime` 的獨立程序交回固定 Platform 啟動器後，四個日常埠以已綁定工作樹啟動。FMS 的 207 個業務資料關聯指紋保持 `1eff95bb7468a109bfef29d056aa8e253874c14c3a8935efe675882450e9c742`，1,007 筆原始應收、付款任務、資金群組和銀行帳戶讀回通過。
