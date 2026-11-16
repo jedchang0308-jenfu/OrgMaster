@@ -80,6 +80,13 @@ describe('AI-PDM published role catalog adapter', () => {
       role_definition_hash: role.roleDefinitionHash,
     }))
     const live = await readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows) }, fixture.catalogSha256)
+    const pinnedQueries: string[] = []
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async (sql) => {
+      pinnedQueries.push(sql)
+      return catalogQueryResult(sql, rows)
+    } }, fixture.catalogSha256, { localV7: true })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_STALE' })
+    expect(pinnedQueries).toHaveLength(1)
+    expect(pinnedQueries[0]).toContain('FROM ai_pdm_contract.v_application_role_catalog_v2')
     expect(live.roles.map((role) => role.stableRoleId)).toEqual(fixture.roles.map((role) => role.stableRoleId))
     expect(live.roles.find((role) => role.roleCode === 'system_admin')).toMatchObject({ stableRoleId: 'role-system-admin', assignable: true, risk: 'critical', subjectKind: 'principal', assignmentTier: 'cross_app_override', recommendationAllowed: false, delegationAllowed: false, allowedScopeKinds: ['global'] })
     const reorderedJsonb = (value: unknown): unknown => Array.isArray(value)

@@ -202,7 +202,7 @@ async function waitForStartup(port, hasExited, refresh = async () => {}) {
 function openBrowser(port, platform = process.platform) {
   const url = `http://localhost:${port}`
   const command = platform === 'win32' ? 'cmd.exe' : platform === 'darwin' ? 'open' : 'xdg-open'
-  const args = platform === 'win32' ? ['/d', '/c', 'start', '', url] : [url]
+  const args = platform === 'win32' ? ['/d', '/c', 'start', '', `microsoft-edge:${url}`] : [url]
   const browser = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true })
   browser.on('error', () => {})
   browser.unref()
