@@ -6,11 +6,11 @@ import test from 'node:test'
 import { buildOrgmasterPackage } from '../dev010-n1c-orgmaster-package.mjs'
 import {
   buildDev040MigrationBundle,
-  assertReviewedOrgmasterMigrationEntries,
   sourceSha256,
   unwrapMigrationTransaction,
 } from './dev040-orgmaster-independent-release.mjs'
 import {
+  assertReviewedOrgmasterMigrationEntries,
   assertDev057ProjedAppend,
   assertDev057ProjedMigrationEntries,
   assertDev057ProjedReleaseAuthority,

@@ -6,6 +6,8 @@
 
 CI `44556790088` 的有效失敗保留：DEV-070 的行政任用／本機owner與PDM publication共用讀取仍固定60-entry，拒絕新完整63-entry。已集中為 `assertReviewedOrgmasterMigrationEntries`，只接受兩個已審核完整世代60／63；各append recipe仍維持自身exact bounds，不接受61／62部分bundle、未知追加或hash漂移。DEV-070歷史fixture明確切60份，現行local pending清單列065–067；修正後consumer相關54/54及runner18/18 PASS。未刪required案例、未放寬release來源或正式寫入授權。
 
+CI `44557909267` 保留工具映像與isolated packaging的相同缺模組失敗：reader最初位於未封裝的完整release模組。已移到映像原有的輕量 `dev057-projed-principal-migration.mjs`，未擴張Docker依賴；既有closure測試補實際enrollment Job入口，consumer／runner65/65 PASS。本機packaging 6/7，完整import案例因本機未安裝lock指定的pg8.21.0 closure而未通過；不替換fixture或放寬版本，交現行required CI既有精確依賴安裝／image import重驗。這些修正未改動d48f435 native受測的SQL、server、fixture或lockfile，原生證據沿其原來源保留。
+
 <a id="pdm-session-revocation"></a>
 
 ## PDM 有效權限異動先撤銷再發布

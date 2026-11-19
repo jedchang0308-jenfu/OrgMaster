@@ -10,7 +10,7 @@ import {createOwnerTransport,canonicalize,sha256} from './lib/dev012-owner-relea
 import {readRoutineBaseline} from './lib/dev040-routine-release.mjs'
 import {verifyOfficialMergedSource} from './lib/dev012-official-source-review.mjs'
 import {assertEnrollmentIntentInput} from './dev070-production-enrollment-intent-runner.mjs'
-import {assertReviewedOrgmasterMigrationEntries} from './lib/dev040-orgmaster-independent-release.mjs'
+import {assertReviewedOrgmasterMigrationEntries} from './lib/dev057-projed-principal-migration.mjs'
 export function parseEnrollmentOwnerOperationArgs(argv){
  const keys=['--action','--intent-file','--release-capsule-ref'],options={}
  for(let index=0;index<argv.length;index+=2){if(!keys.includes(argv[index])||!argv[index+1]||options[argv[index]])throw new Error('DEV070_OWNER_INTENT_ARGUMENT_INVALID');options[argv[index]]=argv[index+1]}

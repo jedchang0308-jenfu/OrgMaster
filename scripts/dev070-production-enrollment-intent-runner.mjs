@@ -1,7 +1,7 @@
 import pg from 'pg'
 import {canonicalize,sha256,assertRunnerTarget,metadataAccessToken,readGcsObject,publishGcsJson,readMigrationLedger} from './lib/dev012-production-migration-runner.mjs'
 import {TARGET,databaseOptions} from './lib/orgmaster-production-database.mjs'
-import {assertReviewedOrgmasterMigrationEntries} from './lib/dev040-orgmaster-independent-release.mjs'
+import {assertReviewedOrgmasterMigrationEntries} from './lib/dev057-projed-principal-migration.mjs'
 const H40=/^[a-f0-9]{40}$/,H64=/^[a-f0-9]{64}$/
 const exact=(value,keys)=>value&&typeof value==='object'&&Object.keys(value).sort().join(',')===[...keys].sort().join(',')
 const fail=code=>{throw new Error(code)}

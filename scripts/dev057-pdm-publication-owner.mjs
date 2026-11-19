@@ -7,7 +7,7 @@ import { verifyOfficialMergedSource } from './lib/dev012-official-source-review.
 import { readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 import { assertImmutableRef, canonicalize, createOwnerTransport, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { readRoutineBaseline } from './lib/dev040-routine-release.mjs'
-import {assertReviewedOrgmasterMigrationEntries} from './lib/dev040-orgmaster-independent-release.mjs'
+import {assertReviewedOrgmasterMigrationEntries} from './lib/dev057-projed-principal-migration.mjs'
 import { assertLifecycleSchedulerReadback, lifecycleSchedulerSnapshot, LIFECYCLE_SCHEDULER_NAME } from './lib/dev014-lifecycle-scheduler-contract.mjs'
 import { assertAcceptance, controlIdentity, fmsPublicationControl, pdmPublicationControl,
   fail, pathsForControl, same, validControlRevision } from './lib/dev057-pdm-publication-control.mjs'

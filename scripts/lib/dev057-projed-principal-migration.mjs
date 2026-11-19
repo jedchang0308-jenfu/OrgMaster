@@ -41,6 +41,14 @@ const same = (a, b) => canonicalize(a) === canonicalize(b)
 
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 
+// Released owner operations may consume either reviewed complete generation.
+// This does not admit partial bundles or change either append recipe's bounds.
+export function assertReviewedOrgmasterMigrationEntries(entries) {
+  return entries?.length === DEV057_PROJED_MIGRATION_ENTRY_COUNT
+    ? assertDev057ProjedMigrationEntries(entries)
+    : assertDev070MigrationEntries(entries)
+}
+
 export function assertDev057ProjedMigrationEntries(entries) {
   if (!Array.isArray(entries) || entries.length !== DEV057_PROJED_MIGRATION_ENTRY_COUNT
     || DEV070_MIGRATION_ENTRY_COUNT !== DEV057_PROJED_BASELINE_COUNT) fail('MIGRATION_SET_DRIFT')

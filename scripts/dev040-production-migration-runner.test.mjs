@@ -443,6 +443,7 @@ test('migration runner Docker copies the migration and lifecycle readback static
 
   visit('scripts/dev040-production-migration-runner.mjs')
   visit('scripts/dev014-production-lifecycle-readback.mjs')
+  visit('scripts/dev070-production-enrollment-intent-runner.mjs')
   assert.match(readFileSync(new URL('./dev040-production-migration-runner.mjs', import.meta.url), 'utf8'), /export const TARGET\s*=\s*Object\.freeze/u)
 })
 

@@ -3,20 +3,13 @@ import { assertPrincipalOnlyRecoveryBinding } from './dev057-principal-only-rele
 import { createHash } from 'node:crypto'
 import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { DEV058_MIGRATION_ENTRIES } from './dev058-role-policy-migration.mjs'
-import { DEV070_MIGRATION_ENTRIES, assertDev070MigrationEntries } from './dev070-administration-migration.mjs'
-import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_MIGRATION_ENTRY_COUNT,assertDev057ProjedMigrationEntries } from './dev057-projed-principal-migration.mjs'
+import { DEV070_MIGRATION_ENTRIES } from './dev070-administration-migration.mjs'
+import { DEV057_PROJED_MIGRATIONS,assertDev057ProjedMigrationEntries } from './dev057-projed-principal-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS } from './dev059-fms-authority-migration.mjs'
 import { OWNER_EXECUTION_MODES } from './dev012-owner-release-runtime.mjs'
 
 const H40 = /^[a-f0-9]{40}$/
 
-// Released owner operations may consume either reviewed complete generation.
-// This does not admit partial bundles or change either append recipe's bounds.
-export function assertReviewedOrgmasterMigrationEntries(entries) {
-  return entries?.length === DEV057_PROJED_MIGRATION_ENTRY_COUNT
-    ? assertDev057ProjedMigrationEntries(entries)
-    : assertDev070MigrationEntries(entries)
-}
 const H64 = /^[a-f0-9]{64}$/
 const V3_CONTRACT_SHA256 = '857f8a94ab13f63071156f85e76e5c675b348588b1126c147e0e54b431b6e8c5'
 const DEV057_MIGRATION_PREFIX_001_029_SHA256 = 'c5548028cbf44d474d23666aed1723fe5c55f614d7ddc280e5aa725cb5257376'
