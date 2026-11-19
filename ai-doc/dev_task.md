@@ -50,6 +50,8 @@
 
 ## DEV-060：OrgMaster 應用內單一前端權限投影
 
+- 2026-11-17 日常地端環境由 Jenfu Platform 主控，固定工作樹為 `C:\VIBE CODING\Jenfu-Platform`、`C:\VIBE CODING\OrgMaster`、`C:\VIBE CODING\AI_PDM`、`C:\VIBE CODING\JF-FMS-daily`。Platform `npm run dev:local` 啟動 1000／1010／1020／1030，四個應用共用 `jenfu_local_shared_daily`，各 owner 保留自己的 schema、migration、runtime role 與資料責任。原 1030 內容納入一般地端測試資料；正常 Portal SSO、重啟後資料讀回與實際受測版本由 Platform 主控紀錄。
+
 - 2026-11-16 1010 日常整合與固定路徑的 owner 交接見[日常地端測試與固定路徑](specs/DEV-060-app-scoped-frontend-permission-projection.md#daily-local-test-binding)。
 
 - 2026-11-01 R12／R13 本機原生進展：外部 Chrome 經正常 Platform SSO，FMS 已發布版本交接 OrgMaster preview／activate，再由 FMS 透過 041 typed owner view 查原 operation `7cfd0bcf-5213-474a-bc2d-bf15bcd694fd`，回覆 confirmed／active。隔離 PG 讀回一筆 OrgMaster applied receipt、兩筆 FMS issued（保留第一筆 422）與一筆 immutable confirmation；未停用寫入／不可變 guard。首次啟用因兩筆 revoked assignment 舊目錄快照被驗證器誤拒，已改為核對受 audit 約束的歷史 catalog，原撤銷列不改寫、恢復任用仍驗現行目錄。之後 local fixture metadata pin 造成權限刷新拒絕，已同步 Platform／OrgMaster canonical owner-publication：僅 exact immutable fixture grant 可隨較新 FMS publication 前進目錄 metadata，role hash／company／scope／效期／撤權仍固定。相關 32 項治理回歸、17 項 Node 契約及 TypeScript 通過；新 SSO 可讀新任用版本，revoked 身分的 FMS 入口仍拒絕。這是隔離 synthetic／native／Chrome 證據；正式 041、完整異常矩陣、其餘 DEV-068／DEV-065 與正式發布仍未完成。

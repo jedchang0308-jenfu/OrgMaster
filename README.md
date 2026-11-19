@@ -4,27 +4,33 @@
 
 ## 本機啟動
 
+四系統日常測試由 Jenfu Platform 主控。在 `C:\VIBE CODING\Jenfu-Platform` 執行下列命令，Windows 排程會在背景啟動四個固定工作樹。OrgMaster 由 `http://localhost:1000/login` 進入 1010，共用 `127.0.0.1:51870/jenfu_local_shared_daily`。關閉終端後可繼續使用。Platform 同一入口的 `--status` 查詢狀態，`--stop-all` 完整停止四系統、獨立 PDM 和 PostgreSQL 並保留測試資料；桌面同名啟停捷徑沿用這兩個入口。
+
 ```powershell
-npm install
+cd "C:\VIBE CODING\Jenfu-Platform"
 npm run dev:local
 ```
 
-預設本機網址：[http://localhost:1010](http://localhost:1010)。入口會檢查 loopback port 與 HTTP health；若 port 已被其他或無法辨識的程序占用，會回報 PID／所有權狀態並停止，不會終止該程序。
+已綁定的機器上，OrgMaster 專案內的預設入口也會轉呼叫 Platform。單站開發請指定隔離埠 12010。
 
 ```powershell
-# 檢查預設 port，不啟動服務
-npm run dev:local -- --check-only
+npm install
+npm run dev:local -- --port 12010 --no-browser
+```
+
+單站網址：[http://localhost:12010](http://localhost:12010)。入口會檢查 loopback port 與 HTTP health，回報占用程序的 PID 和所有權。
+
+```powershell
+# 檢查單站埠，不啟動服務
+npm run dev:local -- --port 12010 --no-browser --check-only
 
 # 查詢目前服務、PID 與 worktree 所有權
-npm run dev:local -- --status
-
-# 檢查本 session 的替代 port，不啟動服務
-npm run dev:local -- --port 12010 --no-browser --check-only
+npm run dev:local -- --port 12010 --status
 ```
 
 若從檔案總管或其他會自動回收終端視窗的啟動器開啟，請改用 `npm run dev:local:window`，或雙擊 `scripts\\dev-local.cmd`。它會另開一個 PowerShell 視窗持續執行；若服務因錯誤停止，視窗會保留錯誤訊息，不會一閃即逝。
 
-組織架構會由 `localhost:1010` 的本機服務管理版本工作區：`data/orgmaster-workspace.v1.json` 保存現行版／草稿清單，`data/orgmaster-versions/<versionId>.json` 保存各版本的 V5 文件。首次啟動會由既有 V4／V3／V2 文件建立現行版並在讀取時升級；原始來源不會被覆寫或刪除。同一台電腦上的不同 Chrome 視窗會共用版本工作區，草稿自動保存並以版本修訂避免舊視窗覆蓋新內容。
+單站模式的組織架構由 `localhost:12010` 的本機服務管理版本工作區。`data/orgmaster-workspace.v1.json` 保存現行版／草稿清單，`data/orgmaster-versions/<versionId>.json` 保存各版本的 V5 文件。四系統日常模式使用 Platform 綁定的 `jenfu_local_shared_daily`，沿 OrgMaster 自有 schema 與 runtime role 讀寫。首次啟動會由既有 V4／V3／V2 文件建立現行版並在讀取時升級；原始來源不會被覆寫或刪除。同一台電腦上的不同 Chrome 視窗會共用版本工作區，草稿自動保存並以版本修訂避免舊視窗覆蓋新內容。
 
 ## 核心操作
 
