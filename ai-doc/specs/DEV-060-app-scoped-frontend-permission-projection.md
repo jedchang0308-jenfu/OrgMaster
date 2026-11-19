@@ -348,6 +348,8 @@ DEV-060 runner mode 只接受 production ledger 已完整驗證的 38 筆（040�
 
 沿 `JENFU/DEV-021#daily-local-test-binding`，由本次 Platform Codex session 主控四系統整合，本任務負責 OrgMaster 啟動、虛構 Principal／Employee 與任用 fixture，以及自有 DB schema 和版本化 contracts。
 
+- 2026-11-17 日常綁定收斂為 Jenfu 共用地端測試環境。Platform 的 `npm run dev:local` 固定啟動 `C:\VIBE CODING\Jenfu-Platform`、`C:\VIBE CODING\OrgMaster`、`C:\VIBE CODING\AI_PDM`、`C:\VIBE CODING\JF-FMS-daily`，四個應用共用 `jenfu_local_shared_daily`。OrgMaster 僅使用 `orgmaster_core`／`orgmaster_contract` 與自己的 runtime role，migration、資料與回復責任仍由本專案持有。原 1030 內容作為一般地端測試資料，日常重啟保留共用測試狀態；重建時依各 owner 的 fixture／migration 重新產生。
+
 - `scripts/dev-local.mjs` 的整合模式使用主控一次保存的工作樹、1010 loopback origin 與 OrgMaster runtime DB 設定。啟動後核對綁定的本機 PostgreSQL 與 role，沿現有 sandbox adapter／native session 入口。日常整合不以 JSON 工作區作替代來源；獨立 JSON 預覽仍由明確入口使用既有工作區。
 - 四系統整合啟動與重開讀同一 PG target，OrgMaster 自有 schema 及 runtime 最小權限不變。一次初始化由 owner 流程準備虛構身分與任用，日常重開從已保存狀態讀回。
 - 隔離候選驗收涵蓋 Portal 正常 SSO、既有任用讀回、允許與拒絕，以及錯誤 DB／非 loopback 綁定在啟動階段拒絕。結果與候選版本回填既有任務或 PR。2026-11-16 固定 `1010` 由 Platform 與 FMS 兩入口冷啟動均 ready，訪客的受保護 API 回 `401`。既有日常 `active` 合成身分只具 PDM／FMS 任用，OrgMaster 在 Portal 如預期呈 `no_access`。在 12000／12010 隔離候選，具 OrgMaster 任用的合成身分已從 Portal 正常 SSO 並讀回 OrgMaster 原生 session 200。新候選的 158 步初始化與 postnative 五階段均通過。保留兩個首次失敗：地端 057 的搜尋路徑造成 persistence_authority 無法解析，以及 SSO 嘗試用 v3 檢視比對 v2 綁定。修正原生執行器的 057 搜尋路徑與地端 reader 固定讀取已綁定 v2，現行真實環境的 v3 優先策略維持原樣。候選埠及候選 PG 已釋放，日常資料與 OrgMaster 任用範圍維持原設定。
