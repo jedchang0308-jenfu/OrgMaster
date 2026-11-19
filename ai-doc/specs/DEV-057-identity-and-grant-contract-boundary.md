@@ -1,6 +1,8 @@
 # DEV-057：Principal 身分與角色發布（現行契約）
 
-> ProJED／DEV-139 同步修訂（2026-11-19）：本分支整合 `master@a8830e9fefb0c805eaa35dec2c10fa412f408f89`。master 既有 60-entry release prefix、001–064 SQL 與 PDM／FMS／行政權限流程保留；未發布的 ProJED draft 041／042／043 僅改名為 **065／066／067**，SQL bytes 未變。現行 profile 共 **63 entries**，ProJED 專用 `DEV057_PROJED_PRINCIPAL_APPEND` 僅接受 60／61／62／63 exact ledger prefix，普通發布仍零 DDL。舊段落中的 38→41 與 041–043 是歷史來源證據，不能用於本版正式套用。現階段僅 source integration，正式 migration、runtime／traffic、IAM／Secret 變更均未執行；required CI 與最新原生資料庫證據待本版跑完回填。
+> ProJED／DEV-139 同步修訂（2026-11-19）：本分支整合 `master@a8830e9fefb0c805eaa35dec2c10fa412f408f89`。master 既有 60-entry release prefix、001–064 SQL 與 PDM／FMS／行政權限流程保留；未發布的 ProJED draft 041／042／043 僅改名為 **065／066／067**，SQL bytes 未變。Git blob 已核對全部62份 master SQL、60-entry profile prefix 與三份 draft 內容不變。現行 profile 共 **63 entries**，ProJED 專用 `DEV057_PROJED_PRINCIPAL_APPEND` 僅接受 60／61／62／63 exact ledger prefix，普通發布仍零 DDL。舊段落中的 38→41 與 041–043 是歷史來源證據，不能用於本版正式套用。現階段僅 source integration，正式 migration、runtime／traffic、IAM／Secret 變更均未執行；required CI 與最新原生資料庫證據待本版跑完回填。
+
+本輪 RD 自查：release／migration／owner-stage／tool rotation **243/243 PASS**，Principal HTTP／service／repository 與原登入 **63/63 PASS**、TypeScript、DB boundary `--base=origin/master` PASS。首次 release 207項有5項失敗：一項測試錯用錯誤碼、兩項歷史 master fixture 未切60-entry、兩項 sandbox Git讀取受限；已修正fixture／錯誤碼，取得執行核准後整批通過，未刪案例或放寬oracle。首次 HTTP loopback EACCES 後同案例取得 sandbox 核准再通過。這些是本機合成自查，未宣稱獨立 QC、真provider或正式驗收。
 
 <a id="pdm-session-revocation"></a>
 
