@@ -54,6 +54,7 @@ test('known local raw 042 genesis is preserved as its own exact ledger variant',
   'dev070-orgmaster-050','dev070-orgmaster-051','dev070-orgmaster-052','dev070-orgmaster-053','dev070-orgmaster-054','dev070-orgmaster-055',
   'dev057-orgmaster-056','dev057-orgmaster-057','dev059-orgmaster-058','dev059-orgmaster-059','dev059-orgmaster-060',
   'dev059-orgmaster-061','dev059-orgmaster-062','dev059-orgmaster-063','dev059-orgmaster-064',
+  'dev057-orgmaster-065','dev057-orgmaster-066','dev057-orgmaster-067',
  ])
  for(const change of [rows=>rows[39].checksum_sha256='0'.repeat(64),rows=>rows[39].source_revision='LOCAL_GENESIS:99999999-b7cd-4c7c-947d-c3203e59178c',rows=>rows[0].name='foreign',rows=>rows.push({...rows[0],version:'unknown'})]){const rows=structuredClone(f.state.ledger);change(rows);assert.throws(()=>validateLocalLedger(entries,rows,database),/LEDGER_UNKNOWN/)}
 })
@@ -197,7 +198,8 @@ test('local current ledger accepts exact installed rows and the known forward ap
  const installedThrough058=entries.findIndex(e=>e.version==='dev059-orgmaster-058')+1
  assert.deepEqual(validateLocalLedger(entries,current.slice(0,installedThrough058),database).pending.map(e=>e.version),[
   'dev059-orgmaster-059','dev059-orgmaster-060','dev059-orgmaster-061','dev059-orgmaster-062','dev059-orgmaster-063','dev059-orgmaster-064',
+  'dev057-orgmaster-065','dev057-orgmaster-066','dev057-orgmaster-067',
  ])
- assert.deepEqual(validateLocalLedger(entries,current.slice(0,-1),database).pending.map(e=>e.version),['dev059-orgmaster-064'])
+ assert.deepEqual(validateLocalLedger(entries,current.slice(0,-1),database).pending.map(e=>e.version),['dev057-orgmaster-067'])
  assert.throws(()=>validateLocalLedger(entries,[...current,{...current.at(-1),version:'unknown-049'}],database),/LEDGER_UNKNOWN/)
 })

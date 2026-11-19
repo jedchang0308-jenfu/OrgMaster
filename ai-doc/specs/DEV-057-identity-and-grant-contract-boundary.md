@@ -4,6 +4,8 @@
 
 本輪 RD 自查：release／migration／owner-stage／tool rotation **243/243 PASS**，Principal HTTP／service／repository 與原登入 **63/63 PASS**、TypeScript、DB boundary `--base=origin/master` PASS。首次 release 207項有5項失敗：一項測試錯用錯誤碼、兩項歷史 master fixture 未切60-entry、兩項 sandbox Git讀取受限；已修正fixture／錯誤碼，取得執行核准後整批通過，未刪案例或放寬oracle。首次 HTTP loopback EACCES 後同案例取得 sandbox 核准再通過。這些是本機合成自查，未宣稱獨立 QC、真provider或正式驗收。
 
+CI `44556790088` 的有效失敗保留：DEV-070 的行政任用／本機owner與PDM publication共用讀取仍固定60-entry，拒絕新完整63-entry。已集中為 `assertReviewedOrgmasterMigrationEntries`，只接受兩個已審核完整世代60／63；各append recipe仍維持自身exact bounds，不接受61／62部分bundle、未知追加或hash漂移。DEV-070歷史fixture明確切60份，現行local pending清單列065–067；修正後consumer相關54/54及runner18/18 PASS。未刪required案例、未放寬release來源或正式寫入授權。
+
 <a id="pdm-session-revocation"></a>
 
 ## PDM 有效權限異動先撤銷再發布

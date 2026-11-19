@@ -139,7 +139,7 @@ test('owner rejects older prefixes, unapproved appends and altered exact manifes
  ]
  for(const [index,mutateBundle] of cases.entries()){
   const f=sealedOwnerFixture({mutateBundle})
-  await assert.rejects(f.run(),index===2?/MIGRATION_PREFIX_001_031_DRIFT/:/DEV070_MIGRATION_APPEND_INVALID/)
+  await assert.rejects(f.run(),index===2?/MIGRATION_PREFIX_001_031_DRIFT/:[3,8,9].includes(index)?/DEV057_PROJED_MIGRATION_APPEND_INVALID/:/DEV070_MIGRATION_APPEND_INVALID/)
   assert.equal(f.puts(),0);assert.equal(f.runs(),0)
  }
 })

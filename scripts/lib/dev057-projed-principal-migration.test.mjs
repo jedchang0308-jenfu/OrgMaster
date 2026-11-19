@@ -6,6 +6,7 @@ import test from 'node:test'
 import { buildOrgmasterPackage } from '../dev010-n1c-orgmaster-package.mjs'
 import {
   buildDev040MigrationBundle,
+  assertReviewedOrgmasterMigrationEntries,
   sourceSha256,
   unwrapMigrationTransaction,
 } from './dev040-orgmaster-independent-release.mjs'
@@ -64,6 +65,17 @@ test('DEV-057 ProJED suffix matches exact source and applied migration bytes', (
     assert.equal(sourceSha256(applied), migration.appliedSha256, `${migration.path} applied hash`)
   }
   assert.equal(assertDev057ProjedMigrationEntries(after.entries), after.entries)
+})
+
+test('released owner consumers accept only exact reviewed complete generations and keep both prefixes immutable', () => {
+  for (const entries of [before.entries, after.entries]) assert.equal(assertReviewedOrgmasterMigrationEntries(entries), entries)
+  for (const count of [0, 39, 59, 61, 62]) assert.throws(() => assertReviewedOrgmasterMigrationEntries(after.entries.slice(0, count)))
+  assert.throws(() => assertReviewedOrgmasterMigrationEntries([...after.entries, {...after.entries.at(-1), order: 64}]))
+  for (const index of [0, 59, 60, 61, 62]) {
+    const entries = structuredClone(after.entries)
+    entries[index].appliedSha256 = '0'.repeat(64)
+    assert.throws(() => assertReviewedOrgmasterMigrationEntries(entries))
+  }
 })
 
 test('migration entries reject hash changes, altered prefixes, unknown suffixes, and partial release sets', () => {
