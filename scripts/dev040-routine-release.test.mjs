@@ -1,10 +1,12 @@
 import { DEV057_PROJED_REMEDIATION, DEV057_PROJED_RELEASE_MODE } from './lib/dev057-projed-principal-migration.mjs'
+import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ADMINISTRATION_REMEDIATION,ORGMASTER_FMS_DELIVERY_FLAG,assertDev070AdministrationAppend} from './lib/dev070-administration-migration.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
-import { DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend } from './lib/dev059-fms-authority-migration.mjs'
-import { assertToolRotationReleaseCompatibility } from './lib/dev040-routine-release.mjs'
-import { parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
-import { buildReauthReceipt, EXPECTED } from './lib/dev057-smoke-credential-reauth.mjs'
-import { assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend } from './lib/dev059-fms-authority-migration.mjs'
+import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT, DEV060_MIGRATION_PREFIX_COUNT, DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationAppend } from './lib/dev060-fms-catalog-activation-migration.mjs'
+import { assertToolRotationReleaseCompatibility, resolveToolRotationPredecessorBaselineRef } from './lib/dev040-routine-release.mjs'
+import { ownerWorkflowDispatchArgs, parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
+import { buildReauthReceipt, EXPECTED, identityPairHash } from './lib/dev057-smoke-credential-reauth.mjs'
+import { assertPublishedSmokeRotationAdvance, assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, assertSmokeInfraReuseEvidence,assertSmokeInfraReuseContinuation,buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, readSmokeReuseProviderState, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { appArtifactSourceEquivalence, assertReusableAbortedTerminal } from './lib/dev040-app-artifact-reuse.mjs'
 import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
 import assert from 'node:assert/strict'
@@ -13,6 +15,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import {routineInfrastructureFingerprint,controlledInfrastructureFingerprint} from './lib/dev040-routine-release.mjs'
+import {readSmokeReuseInfrastructureTree} from './lib/dev057-smoke-rotation-continuation.mjs'
+import {DEV070_CATALOG_PACKAGING} from './lib/dev070-catalog-packaging-inputs.mjs'
 import { assertMigrationReceipt, assertPreparePrerequisites, createGitArchive, createGitSourceIdentity, executeOwnerStage } from './lib/dev012-owner-stage-executor.mjs'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
@@ -34,7 +39,14 @@ test('production runtime image includes every approved catalog read by governanc
   for (const catalogPath of catalogPaths) {
     const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'))
     assert.equal(catalog.applicationId, 'ai-pdm')
-    assert.equal(catalog.roles.length, 9)
+    if (catalogPath === 'config/catalogs/ai-pdm-role-catalog.v8.json') {
+      assert.equal(catalog.roles.length, 10)
+      assert.equal(catalog.catalogVersion, 'ai-pdm.role-catalog.2026-11-06.v8')
+      assert.equal(catalog.catalogSha256, '320b259f0f0b4a51f24227cff37313bcb5fa3834d7736df3c43a1e178b878a73')
+      assert.equal(sha256(fs.readFileSync(catalogPath)), '799b6d138d614bd737b49818e02f6a31b1810c42e01801f845401fb7ad3146e1')
+      assert.deepEqual(catalog.roles.slice(0, 9), JSON.parse(fs.readFileSync('config/catalogs/ai-pdm-role-catalog.v7.json', 'utf8')).roles)
+      assert.deepEqual(catalog.roles[9], JSON.parse(fs.readFileSync('contracts/ai-pdm-role-policy-catalog/v3/protected-policy-source.json', 'utf8')).applicationAdministratorRole)
+    } else assert.equal(catalog.roles.length, 9)
     if (catalogPath.startsWith('config/catalogs/')) {
       const escapedPath = catalogPath.replaceAll('.', '\\.')
       assert.match(runner, new RegExp(`^COPY --from=builder --chown=65532:65532 /app/${escapedPath} \\./${escapedPath}$`, 'mu'))
@@ -113,6 +125,52 @@ function harness({ baselineRuntime = runtime, nextRuntime = runtime, baselineBun
   const input = { root: '.', profile, transport, intent, values, service, buildMigrationBundle: async () => currentBundle, fingerprint: () => 'f'.repeat(64), transitionFingerprint: () => 't'.repeat(64) }
   return { input, objects, paths, put, revision }
 }
+
+async function withCurrentCatalogPackagingSources(work){
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'orgmaster-catalog-resource-proof-'))
+ const repo=path.resolve('.'),base='7bf7fb96a8671a44159869e0f8ca68d8427584ee',recipe=DEV070_CATALOG_PACKAGING.path
+ const git=(cwd,args,bytes=false)=>{const r=spawnSync('git',args,{cwd,encoding:bytes?null:'utf8',windowsHide:true,maxBuffer:32*1024*1024});assert.equal(r.status,0,r.stderr?.toString());return bytes?r.stdout:r.stdout.trim()}
+ try{
+  const files=git(repo,['ls-tree','-r','--name-only',base,'--','infra/google-cloud/dev-040-production-release',
+   'config/release/dev040-production-release-infra-plan.json','config/release/dev040-orgmaster-independent-production-v3.json','config/dev-010/n1c-orgmaster.json']).split(/\r?\n/u)
+  for(const file of files){const target=path.join(root,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,git(repo,['show',base+':'+file],true))}
+  git(root,['init','--quiet']);git(root,['config','user.name','Catalog Resource Fixture']);git(root,['config','user.email','fixture@example.invalid']);git(root,['config','core.autocrlf','true'])
+  const commit=()=>{git(root,['add','.']);git(root,['commit','--quiet','-m','owned packaging fixture']);return git(root,['rev-parse','HEAD'])}
+  const before=commit();assert.equal(git(root,['rev-parse',before+':'+recipe]),DEV070_CATALOG_PACKAGING.before)
+  fs.writeFileSync(path.join(root,recipe),fs.readFileSync(recipe));const after=commit()
+  assert.equal(git(root,['rev-parse',after+':'+recipe]),DEV070_CATALOG_PACKAGING.after)
+  await work({root,before,after,recipe,git:args=>git(root,args),commit,files})
+ }finally{assert.equal(path.dirname(root),path.resolve(os.tmpdir()));assert.ok(path.basename(root).startsWith('orgmaster-catalog-resource-proof-'));fs.rmSync(root,{recursive:true,force:true})}
+}
+
+test('current7bf exact diagnostic packaging keeps ordinary resource inputs equal and rejects unknown recipe, mode and Terraform drift',async()=>{
+ await withCurrentCatalogPackagingSources(async f=>{
+  for(const fingerprint of [routineInfrastructureFingerprint,controlledInfrastructureFingerprint])assert.equal(fingerprint(f.root,f.after),fingerprint(f.root,f.before))
+  assert.deepEqual(readSmokeReuseInfrastructureTree(f.root,f.after),readSmokeReuseInfrastructureTree(f.root,f.before))
+  const h=harness();h.input.fingerprint=(_root,revision)=>routineInfrastructureFingerprint(f.root,revision===newSource?f.after:f.before)
+  assert.equal((await verifyRoutineRelease(h.input)).pendingMigrationCount,0)
+  const rejected=async revision=>{h.input.fingerprint=(_root,source)=>routineInfrastructureFingerprint(f.root,source===newSource?revision:f.before);await assert.rejects(verifyRoutineRelease(h.input),/ROUTINE_INFRA_CHANGED/)}
+  fs.appendFileSync(path.join(f.root,f.recipe),'\n# unreviewed diagnostic recipe\n');await rejected(f.commit())
+  f.git(['reset','--hard',f.after]);f.git(['update-index','--chmod=+x',f.recipe]);f.git(['commit','--quiet','-m','owned mode drift']);await rejected(f.git(['rev-parse','HEAD']))
+  f.git(['reset','--hard',f.after]);const terraform=f.files.find(file=>file.endsWith('.tf'));fs.appendFileSync(path.join(f.root,terraform),'\n# unreviewed infrastructure drift\n');await rejected(f.commit())
+ })
+})
+
+test('current7bf diagnostic packaging passes ordinary continuation from a prior APP_INFRA_REUSE without replacing original provenance',async()=>{
+ await withCurrentCatalogPackagingSources(async f=>{
+  const h=await smokeReuseHarness(),candidate='d'.repeat(40)
+  const tree=(_root,revision)=>readSmokeReuseInfrastructureTree(f.root,revision===candidate?f.after:f.before)
+  h.input.readInfrastructureTree=tree;h.constructorInput.readInfrastructureTree=tree
+  h.select(await buildSmokeInfraReuseReceipt(h.constructorInput))
+  const priorBytes=Buffer.from(h.objects.get(h.input.intent.infraReceiptRef.uri).bytes)
+  const next=await advanceSmokeReuseHarness(h,candidate,1)
+  h.input.fingerprint=(_root,revision)=>routineInfrastructureFingerprint(f.root,revision===candidate?f.after:f.before)
+  const result=await verifyDeployProductionRelease({options:h.options,...h.input})
+  assert.equal(result.pendingMigrationCount,0);assert.deepEqual(result.baselineIntentRef,next.baselineIntentRef)
+  assert.deepEqual(h.objects.get(next.priorReuseRef.uri).bytes,priorBytes)
+  assert.deepEqual(h.objects.get(h.rotationRef.uri).bytes,h.original)
+ })
+})
 
 function transitionReadiness(h, { from, to, action }) {
   const previousControlledEnvironment = { ORGMASTER_JENFU_SSO_HANDOFF_MODE: from }
@@ -791,11 +849,14 @@ test('real routine verifier and baseline resolver repair a sealed Principal-only
   await assert.rejects(() => verifyRoutineRelease(h.input), /ROUTINE_REPAIR_RUNTIME_CHANGED/)
 })
 
-test('DEV-057 cookie correction seals historical and Principal-only source transitions', () => {
+test('DEV-057 smoke corrections seal the historical, cookie, managed-login, and bare-session transitions', () => {
   const historical = '1add0e6508568d591faa190cabf64e2470fb620c'
   const principal = 'b8d6b8a92a044bcd59e11efd8a6c0f7f2e319b55'
   const corrected = 'b9c6bfeca843c6ef551d95834b59f5471c097abc'
+  const managedLogin = '1d5ee4a8bd0958ef59ebe8db05a19e24b1837851'
   for (const before of [historical, principal]) assertDev057PrincipalSmokeBlobTransition(before, corrected)
+  assertDev057PrincipalSmokeBlobTransition(corrected, managedLogin)
+  assertDev057PrincipalSmokeBlobTransition(managedLogin, corrected)
   for (const [before, after] of [[corrected, principal], [corrected, historical], [principal, historical], [principal, 'a'.repeat(40)], [null, corrected]]) {
     assert.throws(() => assertDev057PrincipalSmokeBlobTransition(before, after), /PRINCIPAL_SMOKE_INFRA_DELTA_INVALID/u)
   }
@@ -877,6 +938,20 @@ test('DEV-057 employee number command v2 CLI mode is exclusive and requires its 
  assert.equal(options.infraOption,'dev057');
  assert.throws(()=>parseDeployProductionArgs(['--prepare-only','--dev057-employee-number-command-receipt-v2-remediation']),/DEV057_CONTROLLED_TRANSITION_INPUT_INCOMPLETE/);
  assert.throws(()=>parseDeployProductionArgs(['--prepare-only','--dev057-employee-number-command-receipt-v2-remediation','--dev057-principal-grants-v4-remediation',`--dev057-infra-ref=${ref}`]),/DEV057_CONTROLLED_TRANSITION_INPUT_INVALID/);
+});
+
+test('DEV-060 smoke rotation continuation binds the prior tool receipt and may reuse the aborted application artifact', () => {
+ const toolRef=`gs://${bucket}/receipts/tool-rotations/${'a'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`;
+ const smokeRef=`gs://${bucket}/receipts/releases/DEV060-SMOKE-ROTATION/app-infra.json#sha256=${'c'.repeat(64)}`;
+ const options=parseDeployProductionArgs(['--check','--dev060-fms-catalog-activation-append',`--tool-image-rotation-ref=${toolRef}`,`--smoke-rotation-ref=${smokeRef}`,'--reuse-aborted-app-artifact']);
+ assert.equal(options.dev060FmsCatalogActivationAppend,true);
+ assert.equal(options.toolRotationRef.uri,toolRef.slice(0,toolRef.indexOf('#')));
+ assert.equal(options.toolRotationRef.sha256,'b'.repeat(64));
+ assert.equal(options.smokeRotationRef.uri,smokeRef.slice(0,smokeRef.indexOf('#')));
+ assert.equal(options.smokeRotationRef.sha256,'c'.repeat(64));
+ assert.equal(options.reuseAbortedAppArtifact,true);
+ assert.equal(options.infraOption,null);
+ assert.throws(()=>parseDeployProductionArgs(['--check','--dev060-fms-catalog-activation-append',`--smoke-rotation-ref=${smokeRef}`]),/DEV060_CONTROLLED_TRANSITION_INPUT_INVALID/);
 });
 
 
@@ -962,6 +1037,45 @@ function smokeContinuationHarness({ controllerImageDigest = 'asia-east1-docker.p
   return Object.assign(h, { update, requests, workflow, secret, sourceEdits, addresses, rotationUri })
 }
 
+test('shared Platform receipt is consumed by OrgMaster continuation without a second credential receipt', async () => {
+  const h = smokeContinuationHarness()
+  const subject = 'synthetic-provider-subject-001'
+  const platformCore = {
+    schemaVersion: 'jenfu.dev015.smoke-credential-reauth.v1', ownerApplicationId: 'platform', projectId: 'jenfu-platform-prod',
+    sourceRevision: 'a'.repeat(40), identityIssuer: EXPECTED.issuer, identityPairSha256: identityPairHash(EXPECTED.issuer, subject),
+    principalId: 'principal-firebase-b71682bf0d7cc5596b48dfad991e4096', employeeId: 'employee-shijie',
+    passwordAuthenticated: true, emailVerified: true, assuranceLevel: 'aal1', authTime: Math.floor(Date.parse('2026-09-23T07:59:00Z') / 1000),
+    authenticatedAt: '2026-09-23T07:59:10.000Z', sessionReloaded: true, logoutRevoked: true,
+    results: { providerPairVerified: true, accountEnabled: true, sessionCreated: true, principalReloaded: true, logoutRevoked: true },
+    secret: { id: 'platform-prod-smoke-firebase-refresh-token', previousVersion: '11', newVersion: '12', state: 'ENABLED' },
+    github: { repository: 'jedchang0308-jenfu/Jenfu-Platform', environment: 'production', secretName: 'DEV012_PLATFORM_FIREBASE_REFRESH_TOKEN', configured: true },
+    status: 'PASS', releaseAuthority: false, evidenceScope: 'APP_SMOKE_CREDENTIAL_REAUTH', credentialMaterialPresent: false,
+    observedAt: '2026-09-23T07:59:30.000Z',
+  }
+  const identityCore = {
+    schemaVersion: 'jenfu.dev012.firebase-identity-readback.v1', status: 'PASS', releaseAuthority: true,
+    evidenceScope: 'PRODUCTION_PROVIDER', projectId: 'jenfu-platform-prod', issuer: EXPECTED.issuer, uid: subject,
+    emailSha256: 'e'.repeat(64), emailVerified: true, firstFactor: 'password', mfaEnrolled: false, mfaFactor: null,
+    assuranceLevel: 'aal1', assuranceEvidence: 'SIGNED_ID_TOKEN_AFTER_PASSWORD_SIGNIN', firebaseUserCount: 1,
+    smokeRefreshTokenSecretVersions: { platform: '12', 'ai-pdm': '15', orgmaster: '8' },
+    githubProductionEnvironmentSecrets: { platform: true, 'ai-pdm': true, orgmaster: true }, credentialMaterialPresent: false,
+    observedAt: '2026-09-23T08:00:00.000Z',
+  }
+  const platformRef = h.put('gs://jenfu-platform-prod-platform-release/receipts/credential-reauth/shared.json',
+    { ...platformCore, receiptSha256: sha256(canonicalize(platformCore)) })
+  const identityRef = h.put('gs://' + bucket + '/receipts/identity/shared-sync-shared.json',
+    { ...identityCore, receiptSha256: sha256(JSON.stringify(identityCore)) })
+  h.update({ rotation: { credentialEvidenceRef: identityRef, platformCredentialRef: platformRef } })
+  const baselineRead = h.objects.get(h.input.intent.baselineIntentRef.uri)
+  const result = await assertSmokeRotationContinuation({ root: h.input.root, profile: h.input.profile, transport: h.input.transport,
+    intent: h.input.intent, values: h.input.values, baseline: { intent: baselineRead.value, activeRevision: h.input.intent.previousRevision },
+    readSourceFile: h.input.readSourceFile, readInfrastructureTree: () => Buffer.from('synthetic identical complete infrastructure tree'), sourceReuse: true,
+    nowMs: Date.parse('2026-09-23T08:02:00.000Z') })
+  assert.equal(result.newVersion, '8')
+  assert.deepEqual(result.platformCredentialRef, platformRef)
+  assert.equal(result.principalId, 'principal-firebase-b71682bf0d7cc5596b48dfad991e4096')
+})
+
 test('app artifact reuse may bind a prior-source smoke receipt only when infrastructure and executable inputs are identical', async () => {
   const h = smokeContinuationHarness()
   const currentSource = 'c'.repeat(40)
@@ -1043,7 +1157,7 @@ function republishSmokeContinuationBaseline(h, baselineRead, { terminalFacts = {
   return { baselineIntentRef, paths }
 }
 
-function historicalImagePredecessorHarness({ rawSource = 'c'.repeat(40), imageReceipt = true, infraDrift = false, forgedSourceLock = false } = {}) {
+function historicalImagePredecessorHarness({ rawSource = 'c'.repeat(40), imageReceipt = true, smokeReceipt = false, infraDrift = false, forgedSourceLock = false } = {}) {
   const h = smokeContinuationHarness()
   const baselineRead = h.objects.get(h.input.intent.baselineIntentRef.uri)
   const priorRef = baselineRead.value.infraReceiptRef
@@ -1061,6 +1175,14 @@ function historicalImagePredecessorHarness({ rawSource = 'c'.repeat(40), imageRe
       planJsonSha256: rawCore.planJsonSha256,
       addressActions: h.addresses.map(address => [address, address === 'google_cloud_run_v2_job.migration[0]' ? 'update' : address.startsWith('data.') ? 'read' : 'no-op']),
       updates: [{ address: 'google_cloud_run_v2_job.migration[0]', before: jobTemplate(priorRunner), after: jobTemplate(nextRunner) }] }
+  } else if (smokeReceipt) {
+    const toolCore = { ...rawCore, mutationProfile: 'APP_INFRA_IMAGE_ROTATION' }
+    const toolRef = h.put(`gs://${bucket}/receipts/tool-rotations/${rawSource}/app-infra.json`,
+      { ...toolCore, receiptSha256: sha256(canonicalize(toolCore)) })
+    rawCore.mutationProfile = 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
+    rawCore.candidateSmokeRefreshTokenSecretVersion = '7'
+    rawCore.credentialEvidenceRef = { uri: `gs://${bucket}/receipts/credential-reauth/historical.json`, sha256: '9'.repeat(64) }
+    rawCore.smokeRotation = { toolRotationRef: toolRef }
   } else {
     delete rawCore.mutationProfile
     delete rawCore.imageRotation
@@ -1097,6 +1219,14 @@ test('ordinary smoke rotation accepts a sealed historical image receipt when com
   assert.equal(h.objects.get(h.historicalRef.uri).value.sourceRevision, 'c'.repeat(40))
   assert.deepEqual(h.objects.get(h.historicalRef.uri).bytes, historicalBytes)
   assert.deepEqual(h.objects.get(h.input.intent.baselineIntentRef.uri).bytes, baselineBytes)
+})
+
+test('ordinary smoke rotation accepts a released historical smoke receipt when complete infrastructure bytes match', async () => {
+  const h = historicalImagePredecessorHarness({ imageReceipt: false, smokeReceipt: true })
+  const result = await verifyDeployProductionRelease({ options: h.options, ...h.input })
+  assert.equal(result.smokeRotationContinuation.previousVersion, '7')
+  assert.equal(result.smokeRotationContinuation.newVersion, '8')
+  assert.equal(h.requests.length, 3)
 })
 
 test('historical image source mismatch rejects a changed complete infrastructure tree', async () => {
@@ -1304,6 +1434,39 @@ test('source-only infra reuse keeps the original rotation and expired-now creden
   h.input.transport.request = () => assert.fail('native prepare must not read Job/controller/Workflow/Secret metadata')
   h.input.terraformReader = () => assert.fail('native prepare must not execute Terraform')
   assert.equal((await verifyRoutineRelease(h.input)).pendingMigrationCount, 0)
+})
+
+test('consumed reuse keeps immutable evidence valid while ordinary continuation still enforces its current control CAS',async()=>{
+ const h=await smokeReuseHarness(),input={...h.input,baseline:h.constructorInput.baseline}
+ assert.equal((await assertSmokeInfraReuseEvidence(input)).reusedSourceRevision,newSource)
+ h.objects.get(h.controlUri).metadata.generation='18'
+ assert.equal((await assertSmokeInfraReuseEvidence(input)).reusedSourceRevision,newSource)
+ await assert.rejects(()=>assertSmokeInfraReuseContinuation(input),/SMOKE_REUSE_RECEIPT_INVALID/)
+ const changed=structuredClone(h.reuse);changed.reusedSourceRevision='d'.repeat(40);h.select(changed,true)
+ await assert.rejects(()=>assertSmokeInfraReuseEvidence({...h.input,baseline:h.constructorInput.baseline}),/SMOKE_REUSE_RECEIPT_INVALID/)
+})
+
+test('smoke reuse compares live Terraform semantics after verifying producer artifact bytes', async () => {
+  const h = await smokeReuseHarness()
+  const afterStateRef = h.put('gs://' + bucket + '/receipts/releases/SMOKE-ROTATION-FIXTURE/after-state.json',
+    { stateJson: h.state, stateMeta: h.stateMeta, manifest: h.manifest })
+  const outputManifestRef = h.put('gs://' + bucket + '/receipts/releases/SMOKE-ROTATION-FIXTURE/output-manifest.json', h.manifest)
+  const rotation = { ...h.objects.get(h.rotationRef.uri).value, stateJsonSha256: afterStateRef.sha256,
+    outputManifestSha256: outputManifestRef.sha256, smokeRotation: { afterStateRef, outputManifestRef } }
+  const input = { root: h.input.root, profile: h.input.profile, transport: h.input.transport, rotation,
+    sourceRevision: h.sourceLock.sourceRevision, readSourceFile: h.input.readSourceFile,
+    terraformReader: h.constructorInput.terraformReader }
+  const readback = await readSmokeReuseProviderState(input)
+  assert.equal(readback.stateSerial, h.stateMeta.serial)
+  assert.notEqual(afterStateRef.sha256, sha256(canonicalize(h.state)))
+  assert.notEqual(outputManifestRef.sha256, sha256(canonicalize(h.manifest)))
+
+  const changed = structuredClone(h.state)
+  changed.values.root_module.resources.find((row) => row.address === 'google_workflows_workflow.candidate_smoke[0]').values.tags = ['drift']
+  const changedRef = h.put('gs://' + bucket + '/receipts/releases/SMOKE-ROTATION-FIXTURE/changed-after-state.json',
+    { stateJson: changed, stateMeta: h.stateMeta, manifest: h.manifest })
+  await assert.rejects(() => readSmokeReuseProviderState({ ...input, rotation: { ...rotation,
+    stateJsonSha256: changedRef.sha256, smokeRotation: { ...rotation.smokeRotation, afterStateRef: changedRef } } }), /SMOKE_REUSE_STATE_DRIFT/u)
 })
 
 test('native infra-reuse producer verifies exact clean remote source twice and writes only a new own receipt', async () => {
@@ -2311,6 +2474,36 @@ test('smoke credential rotation plan admits exactly one Workflow version update 
   const result = assertSmokeCredentialRotationPlan({ root: process.cwd(), profile, sourceRevision, plan, infraProfile, previousVersion: '10', nextVersion: '11' })
   assert.equal(result.addressActions.length, 75)
   assert.equal(result.update.address, workflowAddress)
+  const correctedSourceRevision = 'bb96bc6274478d80aafd47c772ccc64c07b7a769'
+  const combinedPlan = structuredClone(plan)
+  combinedPlan.resource_changes.find(row => row.address === workflowAddress).change.before.source_contents =
+    expectedSmokeWorkflowSource({ root: process.cwd(), profile, sourceRevision: correctedSourceRevision, version: '10' })
+  const combined = assertSmokeCredentialRotationPlan({ root: process.cwd(), profile, sourceRevision,
+    previousSourceRevision: correctedSourceRevision, plan: combinedPlan, infraProfile, previousVersion: '10', nextVersion: '11' })
+  assert.equal(combined.previousSourceRevision, correctedSourceRevision)
+  const managedRevision = 'd22ea63172e1755ebc9893cbb9eb82504cb959ce'
+  const correctionPlan = structuredClone(plan)
+  const workflow = correctionPlan.resource_changes.find(row => row.address === workflowAddress)
+  workflow.change.before.source_contents =
+    expectedSmokeWorkflowSource({ root: process.cwd(), profile, sourceRevision: managedRevision, version: '11' })
+  const correction = { root: process.cwd(), profile, sourceRevision, previousSourceRevision: managedRevision,
+    plan: correctionPlan, infraProfile, previousVersion: '11', nextVersion: '11' }
+  assert.throws(() => assertSmokeCredentialRotationPlan(correction), /SMOKE_ROTATION_PLAN_INVALID/u)
+  assert.equal(assertSmokeCredentialRotationPlan({ ...correction, contractCorrection: true }).addressActions.length, 75)
+  workflow.change.after.service_account = 'other@example.invalid'
+  assert.throws(() => assertSmokeCredentialRotationPlan({ ...correction, contractCorrection: true }),
+    /SMOKE_ROTATION_NON_VERSION_CHANGE_DENIED/u)
+  assert.throws(() => assertSmokeCredentialRotationPlan({ root: process.cwd(), profile,
+    sourceRevision: correctedSourceRevision, previousSourceRevision: sourceRevision, plan: combinedPlan,
+    infraProfile, previousVersion: '10', nextVersion: '11' }), /SMOKE_ROTATION_(WORKFLOW|VARIABLE)_INVALID/u)
+  const chainedPlan = structuredClone(plan)
+  chainedPlan.resource_changes.find(row => row.address === workflowAddress).change.after.source_contents =
+    expectedSmokeWorkflowSource({ root: process.cwd(), profile, sourceRevision, version: '12' })
+  chainedPlan.variables.candidate_smoke_refresh_token_secret_version.value = '12'
+  assert.equal(assertSmokeCredentialRotationPlan({ root: process.cwd(), profile, sourceRevision, plan: chainedPlan,
+    infraProfile, previousVersion: '10', nextVersion: '12', versionChain: ['10', '11', '12'] }).nextVersion, '12')
+  assert.throws(() => assertSmokeCredentialRotationPlan({ root: process.cwd(), profile, sourceRevision, plan: chainedPlan,
+    infraProfile, previousVersion: '10', nextVersion: '12' }), /SMOKE_ROTATION_PLAN_INVALID/u)
   for (const mutate of [
     value => { value.resource_changes.find(row => row.address !== workflowAddress && row.mode === 'managed').change.actions = ['update'] },
     value => { value.resource_changes.find(row => row.address === workflowAddress).change.after.service_account = 'other@example.invalid' },
@@ -2367,13 +2560,17 @@ function rolePolicyHarness() {
   return h
 }
 
-test('verified image rotation can precede only an exact DEV-058/059 append without combining runtime or predecessor changes', () => {
+test('verified image rotation can precede an exact DEV-058/059/060/070 append without combining runtime or predecessor changes', () => {
   const rotation = { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION', ddlExecuted: 0 }
   const input = { toolRotation: rotation, toolRotationPredecessor: null,
     controlledTransition: { releaseMode: DEV058_RELEASE_MODE }, repair: false, runtimeChanged: false }
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility(input))
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input,
     controlledTransition: { releaseMode: DEV059_RELEASE_MODE } }))
+  assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input,
+    controlledTransition: { releaseMode: DEV060_RELEASE_MODE } }))
+  assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input,
+    controlledTransition: { releaseMode: DEV070_RELEASE_MODE } }))
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input, controlledTransition: null }))
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({ ...input, toolRotation: null,
     toolRotationPredecessor: rotation, controlledTransition: null }))
@@ -2385,6 +2582,38 @@ test('verified image rotation can precede only an exact DEV-058/059 append witho
     { controlledTransition: { releaseMode: 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION' } },
     { controlledTransition: {} },
   ]) assert.throws(() => assertToolRotationReleaseCompatibility({ ...input, ...changes }), /TOOL_ROTATION_ORDINARY_ONLY/u)
+  const basis={...rotation,sourceRevision:'a'.repeat(40),liveJobReadback:'REQUIRED_AT_DEPLOYER_MIGRATE'}
+  assert.equal(resolveMigrationInfraReceiptSource({controlledTransition:{releaseMode:DEV070_RELEASE_MODE},toolRotation:basis,intentSourceRevision:'b'.repeat(40)}),'a'.repeat(40))
+  for(const bad of [{...basis,ddlExecuted:1},{...basis,evidenceScope:'OPERATOR_LABEL'},{...basis,liveJobReadback:'SKIPPED'}])assert.throws(()=>resolveMigrationInfraReceiptSource({controlledTransition:{releaseMode:DEV070_RELEASE_MODE},toolRotation:bad,intentSourceRevision:'b'.repeat(40)}),/DEV070_TOOL_ROTATION_SOURCE_INVALID/)
+  for(const changes of [{repair:true},{runtimeChanged:true},{toolRotationPredecessor:basis}])assert.throws(()=>assertToolRotationReleaseCompatibility({...input,controlledTransition:{releaseMode:DEV070_RELEASE_MODE},...changes}),/TOOL_ROTATION_ORDINARY_ONLY/)
+})
+
+test('historical tool predecessor resolves its own immutable release baseline', () => {
+  const baselineIntentRef = {
+    uri: `gs://${bucket}/receipts/releases/TOOL-HISTORICAL-BASELINE/release-intent.json`,
+    sha256: 'a'.repeat(64),
+  }
+  assert.deepEqual(resolveToolRotationPredecessorBaselineRef({ toolRotation: { baselineIntentRef } }), baselineIntentRef)
+  for (const receipt of [null, {}, { toolRotation: {} },
+    { toolRotation: { baselineIntentRef: { ...baselineIntentRef, sha256: 'bad' } } },
+    { toolRotation: { baselineIntentRef: { ...baselineIntentRef, uri: baselineIntentRef.uri.replace('release-intent.json', 'other.json') } } },
+  ]) assert.throws(() => resolveToolRotationPredecessorBaselineRef(receipt), /TOOL_ROTATION_BASELINE_REF_INVALID/u)
+})
+
+test('published smoke history accepts one exact credential predecessor hop', () => {
+  const predecessorRef = { uri: `gs://${bucket}/receipts/credential-reauth/predecessor.json`, sha256: 'b'.repeat(64) }
+  assert.deepEqual(assertPublishedSmokeRotationAdvance('13', {
+    candidateSmokeRefreshTokenSecretVersion: '15',
+    smokeRotation: { previousVersion: '13', nextVersion: '15', credentialPredecessorRef: predecessorRef },
+  }), { previousVersion: '13', nextVersion: '15', chained: true })
+  assert.equal(assertPublishedSmokeRotationAdvance('13', {
+    candidateSmokeRefreshTokenSecretVersion: '14', smokeRotation: {},
+  }).chained, false)
+  for (const rotation of [
+    { candidateSmokeRefreshTokenSecretVersion: '15', smokeRotation: { previousVersion: '13', nextVersion: '15' } },
+    { candidateSmokeRefreshTokenSecretVersion: '15', smokeRotation: { previousVersion: '12', nextVersion: '15', credentialPredecessorRef: predecessorRef } },
+    { candidateSmokeRefreshTokenSecretVersion: '16', smokeRotation: { previousVersion: '13', nextVersion: '16', credentialPredecessorRef: predecessorRef } },
+  ]) assert.throws(() => assertPublishedSmokeRotationAdvance('13', rotation), /SMOKE_REUSE_CHAIN_ROTATION_DRIFT/u)
 })
 
 test('DEV-058 uses the exact 31-prefix and full 034-037 append; subsequent ordinary release executes zero DDL', async () => {
@@ -2416,7 +2645,7 @@ test('DEV-058 reuses only the verified tool rotation source for its forward infr
     controlledTransition: { releaseMode: DEV059_RELEASE_MODE }, toolRotation: verified, intentSourceRevision: newSource,
   }), oldSource)
   assert.equal(resolveMigrationInfraReceiptSource({
-    controlledTransition: { releaseMode: DEV057_PROJED_RELEASE_MODE }, toolRotation: verified, intentSourceRevision: newSource,
+    controlledTransition: { releaseMode: DEV060_RELEASE_MODE }, toolRotation: verified, intentSourceRevision: newSource,
   }), oldSource)
   const receipt = attachForwardInfra(rolePolicyHarness(), oldSource)
   assert.equal(assertDev013MigrationInfraReceipt(receipt, profile, oldSource), receipt)
@@ -2431,6 +2660,9 @@ test('DEV-058 reuses only the verified tool rotation source for its forward infr
   assert.throws(() => resolveMigrationInfraReceiptSource({
     controlledTransition: { releaseMode: DEV059_RELEASE_MODE }, toolRotation: { ...verified, ddlExecuted: 1 }, intentSourceRevision: newSource,
   }), /DEV059_TOOL_ROTATION_SOURCE_INVALID/u)
+  assert.throws(() => resolveMigrationInfraReceiptSource({
+    controlledTransition: { releaseMode: DEV060_RELEASE_MODE }, toolRotation: { ...verified, ddlExecuted: 1 }, intentSourceRevision: newSource,
+  }), /DEV060_TOOL_ROTATION_SOURCE_INVALID/u)
 
   assert.equal(resolveMigrationInfraReceiptSource({
     controlledTransition: { releaseMode: 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION' }, toolRotation: verified, intentSourceRevision: newSource,
@@ -2505,7 +2737,7 @@ test('DEV-058 native prepare accepts the same bound recipe with an enabled lifec
 })
 
 function fmsAuthorityHarness() {
-  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 31), currentBundle: { bundle: prefixBundle(newBundle.bundle, DEV059_MIGRATION_ENTRY_COUNT) } })
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 31), currentBundle: { bundle: prefixBundle(newBundle.bundle,DEV059_MIGRATION_ENTRY_COUNT) } })
   const common = { devId: 'DEV-059', slice: '059-FMS-AUTHORITY', remediation: DEV059_FMS_AUTHORITY_REMEDIATION }
   h.input.values.authorization = { ...h.input.values.authorization, ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
   h.input.values.readiness = { ...h.input.values.readiness, ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
@@ -2514,6 +2746,7 @@ function fmsAuthorityHarness() {
 }
 
 test('DEV-059 admits only the exact FMS authority append through the native owner release', async () => {
+  const newBundle={bundle:prefixBundle(buildBundle(newSource).bundle,DEV059_MIGRATION_ENTRY_COUNT)}
   const h = fmsAuthorityHarness()
   const plan = await verifyRoutineRelease(h.input)
   assert.equal(plan.releaseMode, DEV059_RELEASE_MODE)
@@ -2551,11 +2784,162 @@ test('DEV-059 CLI binds one exact FMS authority recipe and rejects mixed modes',
   ]) assert.throws(() => parseDeployProductionArgs(invalid))
   const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
   assert.equal((source.match(/\.\.\.dev059Authority/g) ?? []).length, 2)
-  assert.deepEqual(DEV059_FMS_AUTHORITY_REMEDIATION.migrationEntries, newBundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT - 3, DEV059_MIGRATION_ENTRY_COUNT).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
+  assert.deepEqual(DEV059_FMS_AUTHORITY_REMEDIATION.migrationEntries, newBundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT-DEV059_FMS_AUTHORITY_MIGRATIONS.length,DEV059_MIGRATION_ENTRY_COUNT).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
+})
+
+function fmsCatalogActivationHarness() {
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, DEV060_MIGRATION_PREFIX_COUNT), currentBundle: { bundle: prefixBundle(newBundle.bundle,DEV060_MIGRATION_ENTRY_COUNT) } })
+  const common = { devId: 'DEV-060', slice: '060-FMS-CATALOG-ACTIVATION', remediation: DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION }
+  h.input.values.authorization = { ...h.input.values.authorization, ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
+  h.input.values.readiness = { ...h.input.values.readiness, ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
+  attachForwardInfra(h)
+  return h
+}
+
+test('DEV-060 admits only the exact 040-to-041 catalog activation append', async () => {
+  const newBundle={bundle:prefixBundle(buildBundle(newSource).bundle,DEV060_MIGRATION_ENTRY_COUNT)}
+  const h = fmsCatalogActivationHarness()
+  const plan = await verifyRoutineRelease(h.input)
+  assert.equal(plan.releaseMode, DEV060_RELEASE_MODE)
+  assert.equal(plan.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(plan.pendingMigrationCount, 1)
+  assert.equal(plan.databaseVerification, 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
+  assert.equal(assertDev060FmsCatalogActivationAppend(prefixBundle(newBundle.bundle, DEV060_MIGRATION_PREFIX_COUNT), newBundle.bundle).pendingMigrationCount, 1)
+  assert.deepEqual(DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION.migrationEntries,
+    newBundle.bundle.entries.slice(-1).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })))
+
+  for (const count of [37, 39]) assert.throws(() => assertDev060FmsCatalogActivationAppend(prefixBundle(newBundle.bundle, count), newBundle.bundle), /DEV060_MIGRATION_APPEND_INVALID/u)
+  const changed = structuredClone(newBundle.bundle)
+  changed.entries.at(-1).sourceSha256 = '0'.repeat(64)
+  assert.throws(() => assertDev060FmsCatalogActivationAppend(prefixBundle(newBundle.bundle, DEV060_MIGRATION_PREFIX_COUNT), changed), /DEV060_MIGRATION_APPEND_INVALID/u)
+
+  const runtimeDrift = fmsCatalogActivationHarness()
+  runtimeDrift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_SESSION_HASH_PEPPER = '2'
+  await assert.rejects(() => verifyRoutineRelease(runtimeDrift.input), /DEV060_RUNTIME_CHANGED/u)
+  const authorityDrift = fmsCatalogActivationHarness()
+  authorityDrift.input.values.authorization.remediation = DEV059_FMS_AUTHORITY_REMEDIATION
+  await assert.rejects(() => verifyRoutineRelease(authorityDrift.input), /DEV060_FMS_CATALOG_ACTIVATION_INVALID/u)
+})
+
+test('DEV-060 forward append keeps the smoke-rotation continuation in the same verification lane', () => {
+  const source = fs.readFileSync(new URL('./lib/dev040-routine-release.mjs', import.meta.url), 'utf8')
+  assert.match(source, /if \(controlledSmokeRotation && infraChanged && !smokeRotationContinuation\)/u)
+  assert.match(source, /sourceReuse: smokeRotationSourceReuse/u)
+  assert.match(source, /const smokeRotationSourceReuse = appArtifactReuse != null/u)
+})
+
+test('DEV-060 CLI binds one migration-041 recipe and rejects every mixed controlled mode', () => {
+  const ref = `gs://${bucket}/receipts/tool-rotations/${'c'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`
+  const args = ['--dev060-fms-catalog-activation-append', `--dev060-infra-ref=${ref}`]
+  const recoveryRef = `gs://${bucket}/receipts/releases/DEV057-PRINCIPAL-ONLY-RECOVERY/${'d'.repeat(40)}.json#sha256=${'e'.repeat(64)}`
+  for (const mode of ['--check', '--prepare-only']) {
+    const parsed = parseDeployProductionArgs([mode, ...args])
+    assert.equal(parsed.dev060FmsCatalogActivationAppend, true)
+    assert.equal(parsed.infraOption, 'dev060')
+  }
+  for (const invalid of [
+    [args[0]], [args[1]], [...args, args[0]], [...args, '--dev058-role-policy-append'],
+    [...args, '--dev059-fms-authority-append'], [...args, '--dev014-activate'],
+    [...args, '--dev057-principal-grants-v4-remediation'], [...args, `--tool-image-rotation-ref=${ref}`],
+    [...args, '--reuse-aborted-app-artifact'], [...args, `--principal-only-recovery-ref=${recoveryRef}`],
+    [args[0], `--dev060-infra-ref=gs://${bucket}/receipts/releases/DEV060-FMS/app-infra.json#sha256=${'b'.repeat(64)}`],
+  ]) assert.throws(() => parseDeployProductionArgs(invalid))
+  const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
+  assert.equal((source.match(/\.\.\.dev060Authority/g) ?? []).length, 2)
+  assert.equal(DEV060_MIGRATION_ENTRY_COUNT, 39)
+})
+
+function administrationHarness(count=39, runtimes={}){
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,count),currentBundle:{bundle:prefixBundle(newBundle.bundle,DEV070_MIGRATION_ENTRY_COUNT)},...runtimes})
+ h.input.profile=structuredClone(profile)
+ h.input.profile.migrations.entries=h.input.profile.migrations.entries.slice(0,DEV070_MIGRATION_ENTRY_COUNT)
+ const common={devId:'DEV-070',slice:'070-ADMINISTRATION',remediation:DEV070_ADMINISTRATION_REMEDIATION}
+ h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
+ h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
+ attachForwardInfra(h)
+ return h
+}
+
+test('DEV070 from 057 admits the FMS delivery flag with an otherwise unchanged runtime', async () => {
+  const flag = ORGMASTER_FMS_DELIVERY_FLAG
+  const historicalProfile = structuredClone(profile)
+  delete historicalProfile.environment.fixedValues[flag]
+  historicalProfile.environment.requiredPlainEnvironmentNames = historicalProfile.environment.requiredPlainEnvironmentNames.filter(name => name !== flag)
+  const { [flag]: _deliveryFlag, ...historicalPlain } = plain
+  const baselineRuntime = buildRuntimeConfig(historicalProfile, {
+    plainEnvironment: historicalPlain, secretVersions: runtime.secretVersions,
+  })
+  const setup = (count, nextRuntime = runtime) => administrationHarness(count, { baselineRuntime, nextRuntime }).input
+  const plan = await verifyRoutineRelease(setup(53))
+  assert.equal(plan.releaseMode, DEV070_RELEASE_MODE)
+  assert.equal(plan.pendingMigrationCount, 7)
+  await assert.rejects(verifyRoutineRelease(setup(52)), /DEV070_RUNTIME_CHANGED/)
+  const disabled = structuredClone(runtime)
+  disabled.plainEnvironment[flag] = 'false'
+  await assert.rejects(verifyRoutineRelease(setup(53, disabled)), /DEV070_RUNTIME_CHANGED/)
+  const secretDrift = buildRuntimeConfig(profile, {
+    plainEnvironment: plain, secretVersions: { ...runtime.secretVersions, ORGMASTER_SESSION_HASH_PEPPER: '2' },
+  })
+  await assert.rejects(verifyRoutineRelease(setup(53, secretDrift)), /DEV070_RUNTIME_CHANGED/)
+})
+test('DEV070 native routine rejects a declared direct tool ref with missing or null tool proof',async()=>{
+ for(const proof of[undefined,null]){
+  const h=administrationHarness(39)
+  const {receiptSha256:_seal,...core}=h.input.values.infra
+  if(proof===null)core.toolRotation=null
+  const rawInfra={...core,receiptSha256:sha256(canonicalize(core))}
+  const toolRef=h.put(`gs://${bucket}/receipts/tool-rotations/${newSource}/app-infra.json`,rawInfra)
+  h.input.values.infra=rawInfra
+  h.input.intent.infraReceiptRef=toolRef
+  h.input.values.readiness.toolRotationRef=toolRef
+  h.input.values.authorization.toolRotationRef=toolRef
+  await assert.rejects(()=>verifyRoutineRelease(h.input),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)
+ }
+})
+test('DEV070 routine planner binds the exact suffix and known baseline without changing ordinary zero-DDL release',async()=>{
+ for(const count of[31,39,40,41,42,43,44,45,46,47,48]){
+  const h=administrationHarness(count),plan=await verifyRoutineRelease(h.input)
+  assert.equal(plan.releaseMode,DEV070_RELEASE_MODE);assert.equal(plan.migrationDisposition,'FORWARD_APPLY')
+  assert.equal(plan.pendingMigrationCount,DEV070_MIGRATION_ENTRY_COUNT-count)
+  assert.equal(plan.databaseVerification,'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
+ }
+ const normal=await verifyRoutineRelease(harness().input)
+ assert.equal(normal.migrationDisposition,'UNCHANGED_VERIFIED');assert.equal(normal.pendingMigrationCount,0)
+ await assert.rejects(verifyRoutineRelease(harness({baselineBundle:prefixBundle(oldBundle.bundle,39)}).input),/ROUTINE_MIGRATION_CHANGED/)
+ await assert.rejects(verifyRoutineRelease(administrationHarness(DEV070_MIGRATION_ENTRY_COUNT).input),/DEV070_MIGRATION_APPEND_INVALID/)
+ for(const field of['sourceRevision','releaseId','baselineIntentRef','remediation','slice','ownerApplicationId']){
+  const h=administrationHarness();h.input.values.authorization[field]='changed'
+  await assert.rejects(verifyRoutineRelease(h.input),/DEV070_ADMINISTRATION_AUTHORITY_INVALID/)
+ }
+ const drift=administrationHarness();drift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_SESSION_HASH_PEPPER='2'
+ await assert.rejects(verifyRoutineRelease(drift.input),/DEV070_RUNTIME_CHANGED/)
+ assert.throws(()=>assertToolRotationReleaseCompatibility({toolRotation:{evidenceScope:'OWNER_SEALED_TOOL_IMAGE_ROTATION'},toolRotationPredecessor:{evidenceScope:'OWNER_SEALED_TOOL_IMAGE_ROTATION'},controlledTransition:{releaseMode:DEV070_RELEASE_MODE},repair:false,runtimeChanged:false}),/TOOL_ROTATION_ORDINARY_ONLY/)
+})
+
+test('normal CLI exposes only closed migration-only and sealed full-continuation selections', () => {
+  const capsule = `gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261106/release-intent.json#sha256=${'a'.repeat(64)}`
+  assert.equal(parseDeployProductionArgs(['--migration-only', '--dev070-administration-append']).migrationOnly, true)
+  assert.equal(parseDeployProductionArgs(['--check', '--migration-only']).check, true)
+  assert.equal(parseDeployProductionArgs([`--resume-capsule-ref=${capsule}`]).resumeCapsuleRef.sha256, 'a'.repeat(64))
+  for (const flag of ['--migration-only', '--prepare-only', '--dev070-administration-append', '--reuse-aborted-app-artifact',
+    `--resume-capsule-ref=${capsule}`, `--tool-image-rotation-ref=gs://jenfu-platform-prod-orgmaster-release/receipts/tool-rotations/${'a'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`]) {
+    assert.throws(() => parseDeployProductionArgs([`--resume-capsule-ref=${capsule}`, flag]))
+  }
+  for (const ref of [capsule.replace('orgmaster-release', 'aipdm-release'), capsule.replace('/release-intent.json', '/deployment.json'),
+    capsule.replace('/ORGMASTER-REL-20261106/', '/../../'), capsule.replace('#sha256=', '#hash=')]) {
+    assert.throws(() => parseDeployProductionArgs([`--resume-capsule-ref=${ref}`]), /MIGRATION_CONTINUATION_REF_INVALID/)
+  }
+  assert.throws(() => parseDeployProductionArgs(['--migration-only', '--dev014-principal-lifecycle-v2-remediation']), /MIGRATION_ONLY_RUNTIME_ACTION_DENIED/)
+  for (const flag of ['--stage=migrate', '--sql=SELECT 1', '--target=foreign', '--execution-mode=unknown']) assert.throws(() => parseDeployProductionArgs([flag]))
+  const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json', 'utf8'))
+  const args = ownerWorkflowDispatchArgs(profile, capsule, 'migration_only')
+  assert.deepEqual(args, ['workflow', 'run', '.github/workflows/deploy-orgmaster-independent-production.yml', '--repo',
+    'jedchang0308-jenfu/OrgMaster', '--ref', 'master', '-f', `releaseCapsuleRef=${capsule}`, '-f', 'executionMode=migration_only'])
+  assert.throws(() => ownerWorkflowDispatchArgs(profile, capsule, 'arbitrary'), /OWNER_EXECUTION_MODE_INVALID/)
 })
 
 function projedPrincipalHarness() {
-  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 38), currentBundle: { bundle: newBundle.bundle } })
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 60), currentBundle: { bundle: newBundle.bundle } })
   const common = { devId: 'DEV-057', slice: '057-PROJED-PRINCIPAL', remediation: DEV057_PROJED_REMEDIATION }
   h.input.values.authorization = { ...h.input.values.authorization, ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
   h.input.values.readiness = { ...h.input.values.readiness, ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
@@ -2563,7 +2947,7 @@ function projedPrincipalHarness() {
   return h
 }
 
-test('ProJED publication uses only the exact 38-to-41 owner append and leaves runtime unchanged', async () => {
+test('ProJED publication uses only the exact 60-to-63 owner append and leaves runtime unchanged', async () => {
   const h = projedPrincipalHarness()
   const plan = await verifyRoutineRelease(h.input)
   assert.equal(plan.releaseMode, DEV057_PROJED_RELEASE_MODE)

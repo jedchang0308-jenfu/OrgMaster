@@ -32,8 +32,12 @@ export async function runOrgmasterPrincipalSsoSmoke({
   const canonical = exactOrigin(canonicalOrigin)
   if (typeof idToken !== 'string' || idToken.length < 100 || !Array.isArray(authenticatedProbes) || !Array.isArray(negativeProbes)) fail('SSO_SMOKE_INPUT_INVALID')
   const call = async (url, options = {}) => fetchImpl(url, { redirect: 'manual', signal: AbortSignal.timeout(20_000), ...options })
+  // The dedicated owner smoke credential uses Firebase password sign-in.
+  // Match candidate-smoke.tf and let Platform verify the signed token and session.
   const source = await call(broker + '/api/auth/firebase/session', {
-    method: 'POST', headers: { Origin: broker, 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }),
+    method: 'POST',
+    headers: { Origin: broker, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken }),
   })
   if (source.status !== 200) fail('SSO_SMOKE_PLATFORM_SESSION_FAILED')
   const platformCookie = cookie(source, 'jenfu_portal_session')

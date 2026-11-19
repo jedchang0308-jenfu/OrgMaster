@@ -1,3 +1,4 @@
+import { catalogQueryResult } from './aiPdmRoleCatalogRepository.fixture'
 import { describe, expect, it } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -24,7 +25,7 @@ async function publishedRows() {
 describe('DEV-057 active AI-PDM v7 catalog compatibility', () => {
   it('accepts the exact producer publication and exposes RD drawings without approval authority', async () => {
     const rows = await publishedRows()
-    const catalog = await readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows }) }, hash)
+    const catalog = await readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows) }, hash)
     expect(catalog).toMatchObject({ catalogVersion: version, catalogSha256: hash })
     expect(catalog.roles).toHaveLength(9)
     const rd = catalog.roles.find(role => role.roleCode === 'rd')!
@@ -45,13 +46,13 @@ describe('DEV-057 active AI-PDM v7 catalog compatibility', () => {
     if (field === 'identity') rows[0].subject_kind = 'principal'
     if (field === 'order') rows[0].display_order = 2
     if (field === 'publication') rows[0].published_at = '2026-10-11T00:00:00.000Z'
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_INVALID' })
   })
 
   it('rejects an unapproved publication and a stale caller hash without fallback', async () => {
     const rows = await publishedRows()
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows }) }, '0'.repeat(64))).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_STALE' })
-    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => ({ rows: rows.map(row => ({ ...row, catalog_version: 'ai-pdm.role-catalog.unapproved.v8' })) }) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_STALE' })
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows) }, '0'.repeat(64))).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_STALE' })
+    await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async sql => catalogQueryResult(sql, rows.map(row => ({ ...row, catalog_version: 'ai-pdm.role-catalog.unapproved.v8' }))) })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_STALE' })
     await expect(readPublishedAiPdmRoleCatalogFromDatabase({ query: async () => { throw Error('dependency unavailable') } })).rejects.toMatchObject({ code: 'EXTERNAL_CATALOG_UNAVAILABLE' })
   })
 })

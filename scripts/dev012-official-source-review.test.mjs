@@ -9,7 +9,7 @@ const sourceTree = 'b'.repeat(40)
 const input = { repository, branch, revision, sourceTree, token: 'x'.repeat(25),
   rulesetId: 24077876 }
 
-function provider({ officialChange = {}, rulesChange = null, commitChange = {}, pullsChange = null,
+function provider({ officialChange = {}, rulesChange = null, commitChange = {}, pullsChange = null, checks = {},
   status = 200 } = {}) {
   let requests = 0
   const fetchImpl = async (url, options) => {
@@ -43,6 +43,7 @@ function provider({ officialChange = {}, rulesChange = null, commitChange = {}, 
         base: { repo: { full_name: repository }, ref: branch },
         merge_commit_sha: revision, merged_at: '2026-09-27T11:38:10Z',
         html_url: 'https://github.com/jedchang0308-jenfu/OrgMaster/pull/64' }] ))
+    if (url.endsWith(`/commits/${revision}/check-runs?filter=all&per_page=100`)) return new Response(JSON.stringify(checks))
     throw new Error('UNEXPECTED_PROVIDER_URL')
   }
   return { fetchImpl, requests: () => requests }
@@ -56,6 +57,25 @@ test('accepts an exact merged PR on the protected official branch', async () => 
   assert.equal(result.pullRequestNumber, 64)
   assert.equal(result.reviewMode, 'SOLO_MAINTAINER_NO_HUMAN_APPROVAL_REQUIRED')
   assert.equal(fake.requests(), 4)
+})
+
+test('prepare reuses only the latest successful required check for the exact reviewed source', async () => {
+  const required = { id: 101, name: 'Production Source QC', app: { id: 15368 }, head_sha: revision,
+    status: 'completed', conclusion: 'success' }
+  const fake = provider({ checks: { total_count: 1, check_runs: [required] } })
+  const accepted = await verifyOfficialMergedSource({ ...input, requireSourceQc: true, fetchImpl: fake.fetchImpl })
+  assert.equal(accepted.requiredSourceQc, 'SUCCESS')
+  assert.equal(accepted.requiredSourceQcCheckId, required.id)
+  assert.equal(fake.requests(), 5)
+  for (const checks of [
+    { check_runs: [] },
+    { total_count: 2, check_runs: [required] },
+    { check_runs: [{ ...required, head_sha: 'c'.repeat(40) }] },
+    { check_runs: [{ ...required, app: { id: 1 } }] },
+    { check_runs: [required, { ...required, id: 102, conclusion: 'failure' }] },
+    { check_runs: [required, { ...required, id: 102, status: 'queued', conclusion: null }] },
+  ]) await assert.rejects(verifyOfficialMergedSource({ ...input, requireSourceQc: true,
+    fetchImpl: provider({ checks }).fetchImpl }), /REQUIRED_SOURCE_QC_MISSING/u)
 })
 
 test('rejects incomplete or wrong ruleset', async () => {

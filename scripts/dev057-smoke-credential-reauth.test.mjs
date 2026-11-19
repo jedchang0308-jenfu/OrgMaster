@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { generateKeyPairSync, sign } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
+import { canonicalize } from './lib/dev012-owner-release-runtime.mjs'
 import { assertOwnerProfile, assertOwnerSourceFence, createdSecretVersion, firebaseApi, githubSecretMetadataCurrent, secretVersion, verifyOldPair } from './dev057-smoke-credential-reauth.mjs'
+import { assertReleasedSmokeRotationBaseline, assertSharedSmokeWorkflowBaseline, smokeRotationBaselineVersion, smokeRotationToolAdmissionIntent, validateSmokeCredentialChain } from './dev057-smoke-credential-rotation.mjs'
+import { validateSharedSmokeCredentialEvidence } from './lib/dev057-shared-smoke-credential-evidence.mjs'
+import { expectedSmokeWorkflowSource } from './lib/dev057-smoke-rotation-continuation.mjs'
 import {
   EXPECTED, REAUTH_SCHEMA, ReauthError, admitLocalRequest, assertResumeReceipt, parseResumeReceiptRef, assertFreshAuthTime, assertPlatformMe, buildReauthReceipt,
   identityPairHash, localPageSecurityHeaders, localRequestDenial, parseReauthArguments, resolveVersionBinding,
@@ -48,6 +53,171 @@ function adapter(overrides = {}) {
 test('fresh password token needs a recent auth_time', () => {
   assert.equal(assertFreshAuthTime(claims(), NOW), true)
   assert.throws(() => assertFreshAuthTime(claims({ auth_time: Math.floor(NOW / 1000) - 301 }), NOW), /PASSWORD_AUTH_TIME_STALE/u)
+})
+
+function sharedCredentialFixture() {
+  const platformCore = {
+    schemaVersion: 'jenfu.dev015.smoke-credential-reauth.v1', ownerApplicationId: 'platform',
+    projectId: 'jenfu-platform-prod', sourceRevision: 'a'.repeat(40), identityIssuer: EXPECTED.issuer,
+    identityPairSha256: identityPairHash(EXPECTED.issuer, SUBJECT),
+    principalId: 'principal-firebase-b71682bf0d7cc5596b48dfad991e4096', employeeId: 'employee-shijie',
+    passwordAuthenticated: true, emailVerified: true, assuranceLevel: 'aal1', authTime: Math.floor((NOW - 40000) / 1000),
+    authenticatedAt: new Date(NOW - 40000).toISOString(), sessionReloaded: true, logoutRevoked: true,
+    results: { providerPairVerified: true, accountEnabled: true, sessionCreated: true, principalReloaded: true, logoutRevoked: true },
+    secret: { id: 'platform-prod-smoke-firebase-refresh-token', previousVersion: '11', newVersion: '12', state: 'ENABLED' },
+    github: { repository: 'jedchang0308-jenfu/Jenfu-Platform', environment: 'production',
+      secretName: 'DEV012_PLATFORM_FIREBASE_REFRESH_TOKEN', configured: true },
+    status: 'PASS', releaseAuthority: false, evidenceScope: 'APP_SMOKE_CREDENTIAL_REAUTH',
+    credentialMaterialPresent: false, observedAt: new Date(NOW - 30000).toISOString(),
+  }
+  const identityCore = {
+    schemaVersion: 'jenfu.dev012.firebase-identity-readback.v1', status: 'PASS', releaseAuthority: true,
+    evidenceScope: 'PRODUCTION_PROVIDER', projectId: 'jenfu-platform-prod', issuer: EXPECTED.issuer, uid: SUBJECT,
+    emailSha256: 'e'.repeat(64), emailVerified: true, firstFactor: 'password', mfaEnrolled: false, mfaFactor: null,
+    assuranceLevel: 'aal1', assuranceEvidence: 'SIGNED_ID_TOKEN_AFTER_PASSWORD_SIGNIN', firebaseUserCount: 1,
+    smokeRefreshTokenSecretVersions: { platform: '12', 'ai-pdm': '15', orgmaster: '19' },
+    githubProductionEnvironmentSecrets: { platform: true, 'ai-pdm': true, orgmaster: true },
+    credentialMaterialPresent: false, observedAt: new Date(NOW - 20000).toISOString(),
+  }
+  return {
+    platformCredential: { ...platformCore, receiptSha256: sha256(platformCore) },
+    identity: { ...identityCore, receiptSha256: sha256(JSON.stringify(identityCore)) },
+  }
+}
+
+test('single Platform reauthentication evidence authorizes the already-synced OrgMaster version without another password', () => {
+  const fixture = sharedCredentialFixture()
+  assert.deepEqual(validateSharedSmokeCredentialEvidence({ ...fixture, nowMs: NOW }), {
+    previousVersion: '18', nextVersion: '19', versionChain: ['18', '19'],
+    principalId: 'principal-firebase-b71682bf0d7cc5596b48dfad991e4096', employeeId: 'employee-shijie', assuranceLevel: 'aal1',
+  })
+  for (const change of [
+    { identity: { ...fixture.identity, smokeRefreshTokenSecretVersions: { ...fixture.identity.smokeRefreshTokenSecretVersions, orgmaster: '20' } } },
+    { platformCredential: { ...fixture.platformCredential, principalId: 'principal-other' } },
+    { identity: { ...fixture.identity, uid: 'foreign-subject-0123456789' } },
+  ]) assert.throws(() => validateSharedSmokeCredentialEvidence({ ...fixture, ...change, nowMs: NOW }))
+})
+
+test('late shared readback needs the exact original Platform receipt and signed authentication time', () => {
+  const { identity, platformCredential } = sharedCredentialFixture()
+  const { receiptSha256: _, ...original } = identity
+  const late = { ...original, observedAt: new Date(NOW + 240000).toISOString() }
+  const seal = core => ({ ...core, receiptSha256: sha256(JSON.stringify(core)) })
+  const nowMs = NOW + 250000
+  assert.throws(() => validateSharedSmokeCredentialEvidence({ identity: seal(late), platformCredential, nowMs }),
+    /SHARED_SMOKE_IDENTITY_EVIDENCE_INVALID/u)
+  const binding = { receiptSha256: platformCredential.receiptSha256, authTime: platformCredential.authTime }
+  const linked = seal({ ...late, platformCredentialBinding: binding })
+  assert.equal(validateSharedSmokeCredentialEvidence({ identity: linked, platformCredential, nowMs }).nextVersion, '19')
+  for (const platformCredentialBinding of [null, { ...binding, authTime: binding.authTime + 1 },
+    { ...binding, receiptSha256: 'b'.repeat(64) }]) {
+    assert.throws(() => validateSharedSmokeCredentialEvidence({
+      identity: seal({ ...late, platformCredentialBinding }), platformCredential, nowMs,
+    }), /SHARED_SMOKE_IDENTITY_EVIDENCE_INVALID/u)
+  }
+})
+
+test('smoke credential chain accepts one immutable adjacent predecessor and rejects identity, source, or version discontinuity', () => {
+  const predecessor = buildReauthReceipt({ sourceRevision: 'a'.repeat(40), expected,
+    authTime: Math.floor((NOW - 30000) / 1000), authenticatedAt: new Date(NOW - 30000).toISOString(),
+    observedAt: new Date(NOW - 20000).toISOString(), principal, previousVersion: '13', newVersion: '14' })
+  const credential = buildReauthReceipt({ sourceRevision: 'b'.repeat(40), expected,
+    authTime: Math.floor((NOW - 10000) / 1000), authenticatedAt: new Date(NOW - 10000).toISOString(),
+    observedAt: new Date(NOW - 5000).toISOString(), principal, previousVersion: '14', newVersion: '15' })
+  assert.deepEqual(validateSmokeCredentialChain({ root: process.cwd(), sourceRevision: 'b'.repeat(40),
+    credential, predecessor, nowMs: NOW, isAncestor: () => true }),
+  { previousVersion: '13', nextVersion: '15', versionChain: ['13', '14', '15'] })
+  assert.throws(() => validateSmokeCredentialChain({ root: process.cwd(), sourceRevision: 'b'.repeat(40),
+    credential, predecessor, nowMs: NOW, isAncestor: () => false }), /SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID/u)
+  const wrongPrincipal = buildReauthReceipt({ sourceRevision: 'a'.repeat(40), expected,
+    authTime: Math.floor((NOW - 30000) / 1000), authenticatedAt: new Date(NOW - 30000).toISOString(),
+    observedAt: new Date(NOW - 20000).toISOString(),
+    principal: { principalId: 'principal-firebase-fedcba9876543210fedcba9876543210', employeeId: principal.employeeId },
+    previousVersion: '13', newVersion: '14' })
+  assert.throws(() => validateSmokeCredentialChain({ root: process.cwd(), sourceRevision: 'b'.repeat(40),
+    credential, predecessor: wrongPrincipal, nowMs: NOW, isAncestor: () => true }), /SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID/u)
+  const wrongVersion = buildReauthReceipt({ sourceRevision: 'a'.repeat(40), expected,
+    authTime: Math.floor((NOW - 30000) / 1000), authenticatedAt: new Date(NOW - 30000).toISOString(),
+    observedAt: new Date(NOW - 20000).toISOString(), principal, previousVersion: '12', newVersion: '13' })
+  assert.throws(() => validateSmokeCredentialChain({ root: process.cwd(), sourceRevision: 'b'.repeat(40),
+    credential, predecessor: wrongVersion, nowMs: NOW, isAncestor: () => true }), /SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID/u)
+})
+
+test('released smoke rotation baseline supersedes older tool state only after sealed continuation verification', () => {
+  const ref = { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-SMOKE-V13-TEST/app-infra.json',
+    sha256: 'a'.repeat(64) }
+  const baselineInfra = { schemaVersion: 'jenfu.dev012.app-infra-receipt.v1',
+    mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION', candidateSmokeRefreshTokenSecretVersion: '13', receiptRef: ref }
+  assert.equal(smokeRotationBaselineVersion({ toolVersion: '12' }), '12')
+  assert.equal(smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
+    continuation: { evidenceScope: 'OWNER_SEALED_RELEASED_ROTATION_BASELINE', infraReceiptRef: ref, newVersion: '13' } }), '13')
+  assert.throws(() => smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
+    continuation: { evidenceScope: 'OWNER_SEALED_RELEASED_ROTATION_BASELINE', infraReceiptRef: ref, newVersion: '14' } }),
+  /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
+  assert.throws(() => smokeRotationBaselineVersion({ toolVersion: '12', baselineInfra,
+    continuation: { evidenceScope: 'UNVERIFIED', infraReceiptRef: ref, newVersion: '13' } }),
+  /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
+})
+
+test('shared smoke baseline accepts stale tool state only when provider workflow proves the adjacent prior version', () => {
+  const root = process.cwd()
+  const profile = JSON.parse(fs.readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url), 'utf8'))
+  const sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+  const source = expectedSmokeWorkflowSource({ root, profile, sourceRevision, version: '18' })
+  assert.deepEqual(assertSharedSmokeWorkflowBaseline({ root: process.cwd(), profile: {
+    ...profile,
+  }, sourceRevision, previousVersion: '18', workflow: { state: 'ACTIVE', revisionId: '000017-16b', sourceContents: source } }),
+  { sourceRevision, previousVersion: '18', revisionId: '000017-16b' })
+  assert.throws(() => assertSharedSmokeWorkflowBaseline({ root: process.cwd(), profile: {
+    ...profile,
+  }, sourceRevision, previousVersion: '18',
+  workflow: { state: 'ACTIVE', revisionId: '000017-16b', sourceContents: 'workflow-source-v17' } }),
+  /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
+})
+
+test('smoke rotation joins the resolved service baseline instead of its older predecessor', () => {
+  const predecessor = { uri: 'gs://bucket/receipts/releases/PREV/release-intent.json', sha256: 'a'.repeat(64) }
+  const resolved = { uri: 'gs://bucket/receipts/releases/ACTIVE/release-intent.json', sha256: 'b'.repeat(64) }
+  const tool = { uri: 'gs://bucket/receipts/tool-rotations/source/app-infra.json', sha256: 'c'.repeat(64) }
+  const intent = smokeRotationToolAdmissionIntent({
+    baselineIntent: { baselineIntentRef: predecessor, infraReceiptRef: { uri: 'old', sha256: 'd'.repeat(64) } },
+    baselineIntentRef: resolved,
+    sourceRevision: 'e'.repeat(40),
+    toolRotationRef: tool,
+  })
+  assert.deepEqual(intent.baselineIntentRef, resolved)
+  assert.deepEqual(intent.infraReceiptRef, tool)
+  assert.equal(intent.sourceRevision, 'e'.repeat(40))
+})
+
+test('released smoke baseline requires its released ref, original tool proof and official ancestor source', () => {
+  const infraRef = { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-SMOKE-V13-TEST/app-infra.json',
+    sha256: 'a'.repeat(64) }
+  const toolRef = { uri: 'gs://jenfu-platform-prod-orgmaster-release/receipts/tool-rotations/' + 'b'.repeat(40) + '/app-infra.json',
+    sha256: 'c'.repeat(64) }
+  const toolReceipt = { foundationManifestSha256: 'd'.repeat(64), migrationRunnerDigest: 'runner@sha256:' + 'e'.repeat(64),
+    controllerImageDigest: 'controller@sha256:' + 'f'.repeat(64) }
+  const core = { schemaVersion: 'jenfu.dev012.app-infra-receipt.v1', ownerApplicationId: 'orgmaster',
+    projectId: 'jenfu-platform-prod', region: 'asia-east1', sourceRevision: '1'.repeat(40),
+    foundationManifestSha256: toolReceipt.foundationManifestSha256, migrationRunnerDigest: toolReceipt.migrationRunnerDigest,
+    controllerImageDigest: toolReceipt.controllerImageDigest, mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION',
+    candidateSmokeRefreshTokenSecretVersion: '13', credentialEvidenceRef: { uri: 'credential', sha256: '2'.repeat(64) },
+    smokeRotation: { schemaVersion: 'orgmaster.smoke-credential-rotation.v1', toolRotationRef: toolRef,
+      credentialEvidenceRef: { uri: 'credential', sha256: '2'.repeat(64) }, previousVersion: '12', nextVersion: '13',
+      sourceProof: { sourceRevision: '1'.repeat(40), status: 'OFFICIAL_MERGED_PR_VERIFIED', branchProtected: true,
+        requiredSourceQc: 'SUCCESS' } },
+    status: 'APPLIED', releaseAuthority: true, evidenceScope: 'PRODUCTION_PROVIDER' }
+  const receipt = { ...core, receiptSha256: sha256(canonicalize(core)) }
+  assert.deepEqual(assertReleasedSmokeRotationBaseline({ baselineInfra: receipt, baselineInfraRef: infraRef,
+    baselineIntent: { infraReceiptRef: infraRef }, toolRotationRef: toolRef, toolReceipt,
+    currentSourceRevision: '3'.repeat(40), isAncestor: () => true }),
+  { evidenceScope: 'OWNER_SEALED_RELEASED_ROTATION_BASELINE', infraReceiptRef: infraRef, newVersion: '13' })
+  assert.throws(() => assertReleasedSmokeRotationBaseline({ baselineInfra: receipt, baselineInfraRef: infraRef,
+    baselineIntent: { infraReceiptRef: infraRef }, toolRotationRef: { ...toolRef, sha256: '0'.repeat(64) }, toolReceipt,
+    currentSourceRevision: '3'.repeat(40), isAncestor: () => true }), /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
+  assert.throws(() => assertReleasedSmokeRotationBaseline({ baselineInfra: receipt, baselineInfraRef: infraRef,
+    baselineIntent: { infraReceiptRef: infraRef }, toolRotationRef: toolRef, toolReceipt,
+    currentSourceRevision: '3'.repeat(40), isAncestor: () => false }), /SMOKE_ROTATION_VERSION_BASELINE_INVALID/u)
 })
 
 test('explicit version args are paired, canonical, safe and exactly consecutive while no-arg compatibility stays 7 to 8', () => {

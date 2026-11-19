@@ -3,8 +3,10 @@ import { assertPrincipalOnlyRecoveryBinding } from './dev057-principal-only-rele
 import { createHash } from 'node:crypto'
 import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { DEV058_MIGRATION_ENTRIES } from './dev058-role-policy-migration.mjs'
+import { DEV070_MIGRATION_ENTRIES } from './dev070-administration-migration.mjs'
+import { DEV057_PROJED_MIGRATIONS,assertDev057ProjedMigrationEntries } from './dev057-projed-principal-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS } from './dev059-fms-authority-migration.mjs'
-import { DEV057_PROJED_MIGRATIONS, assertDev057ProjedMigrationEntries } from './dev057-projed-principal-migration.mjs'
+import { OWNER_EXECUTION_MODES } from './dev012-owner-release-runtime.mjs'
 
 const H40 = /^[a-f0-9]{40}$/
 const H64 = /^[a-f0-9]{64}$/
@@ -22,7 +24,7 @@ const REQUIRED_PLAIN_ENV = [
   'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN', 'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
   'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
   'ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL', 'ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT',
-  'ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED', ...Object.keys(DEV014_LIFECYCLE_RUNTIME_TARGET),
+  'ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED', 'ORGMASTER_FMS_SESSION_REVOCATION_ENABLED', ...Object.keys(DEV014_LIFECYCLE_RUNTIME_TARGET),
 ]
 const REQUIRED_SECRET_ENV = ['ORGMASTER_POSTGRES_URL', 'ORGMASTER_SESSION_HASH_PEPPER']
 const PRODUCTION_MIGRATION_PATHS = [
@@ -59,6 +61,7 @@ const PRODUCTION_MIGRATION_PATHS = [
   'db/migrations/031_dev014_principal_lifecycle_v2.sql',
   ...DEV058_MIGRATION_ENTRIES.map(entry => entry.path),
   ...DEV059_FMS_AUTHORITY_MIGRATIONS.map(entry => entry.path),
+  ...DEV070_MIGRATION_ENTRIES.map(entry => entry.path),
   ...DEV057_PROJED_MIGRATIONS.map(entry => entry.path),
 ]
 
@@ -94,7 +97,12 @@ export function assertDev040V3Profile(profile, n1c) {
   if (runtime.containerName !== 'orgmaster' || runtime.cpu !== '1' || runtime.memory !== '512Mi' || runtime.port !== 8080 || runtime.concurrency !== 20 || runtime.timeoutSeconds !== 60 || runtime.maxInstances !== 1 || runtime.poolMax !== 6 || runtime.startupProbePath !== '/api/auth/mode' || runtime.cloudSqlConnectionName !== 'jenfu-platform-prod:asia-east1:jenfu-platform-prod-pg' || runtime.cloudSqlProxyContainer !== 'cloud-sql-proxy' || runtime.cloudSqlProxyImage !== 'gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0@sha256:fa4c7308245407157c5e9c4e16f1c0f1113899d6f29dc8f8be3e30efae86467f' || runtime.cloudSqlProxyPort !== 5432 || runtime.cloudSqlProxyMaximumConnections !== 24 || runtime.network !== 'jenfu-platform-prod-vpc' || runtime.subnet !== 'jenfu-platform-prod-runtime' || profile.artifact?.releaseBucket !== 'jenfu-platform-prod-orgmaster-release' || profile.state?.backendKey !== 'dev-040-r2/production-release/default.tfstate') fail('RUNTIME_OR_STATE_MISMATCH')
   if (profile.identities?.smoke !== 'orgmaster-prod-smoke@jenfu-platform-prod.iam.gserviceaccount.com') fail('RUNTIME_OR_STATE_MISMATCH')
   if (profile.schemas?.releaseIntent !== 'jenfu.dev040.orgmaster-release-intent.v2' || profile.schemas?.deploymentCapsule !== 'jenfu.dev040.orgmaster-deployment-capsule.v2') fail('SCHEMA_PROFILE_MISMATCH')
-  if (profile.workflow?.onlyInput !== 'releaseCapsuleRef' || profile.workflow?.concurrency !== 'production-release-orgmaster-prod') fail('WORKFLOW_CONTRACT_MISMATCH')
+  if (profile.workflow?.path !== '.github/workflows/deploy-orgmaster-independent-production.yml'
+    || JSON.stringify(profile.workflow.inputs) !== JSON.stringify(['releaseCapsuleRef', 'executionMode'])
+    || profile.workflow.defaultExecutionMode !== 'full_release'
+    || JSON.stringify(profile.workflow.executionModes) !== JSON.stringify(OWNER_EXECUTION_MODES)
+    || Object.hasOwn(profile.workflow, 'onlyInput')
+    || profile.workflow.concurrency !== 'production-release-orgmaster-prod') fail('WORKFLOW_CONTRACT_MISMATCH')
   if (JSON.stringify(profile.workflow.jobs) !== JSON.stringify(['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize'])) fail('WORKFLOW_CONTRACT_MISMATCH')
   if (profile.artifact?.migrationRunnerUri !== 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-migration-runner' || profile.artifact?.migrationBundlePrefix !== 'source/migration-bundles') fail('MIGRATION_ARTIFACT_MISMATCH')
   if (profile.build?.dockerBuilderImage !== 'gcr.io/cloud-builders/docker@sha256:3d00b6c1a9b862621c30fc74d4f2abfc62bcbdee631ed3febd31e7edbdf6252c' || profile.build?.dockerfile !== 'Dockerfile' || profile.build?.dockerTarget !== 'runner' || profile.build?.sourceArchiveFormat !== 'tar.gz' || profile.build?.requestedVerifyOption !== 'VERIFIED' || profile.build?.maximumAllowedSeverity !== 'MEDIUM' || !Number.isFinite(Date.parse(profile.build?.builderDigestObservedAt))) fail('BUILD_PROFILE_MISMATCH')
@@ -112,6 +120,7 @@ export function assertDev040V3Profile(profile, n1c) {
     || fixed.VITE_JENFU_FIREBASE_PROJECT_ID !== target.projectId
     || fixed.ORGMASTER_JENFU_SSO_BROKER_ORIGIN !== 'https://jenfu-platform-prod-9536592944.asia-east1.run.app'
     || fixed.ORGMASTER_MANAGED_IDENTITY_ENABLED !== 'true'
+    || fixed.ORGMASTER_FMS_SESSION_REVOCATION_ENABLED !== 'true'
     || fixed.ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID !== 'C015t4buc'
     || fixed.ORGMASTER_GOOGLE_DIRECTORY_DOMAIN !== 'jenfu.com.tw'
     || fixed.ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT !== 'jedchang0308@jenfu.com.tw'
@@ -146,12 +155,24 @@ export function verifyDev040MigrationBytes(profile, files) {
 export function assertDev040WorkflowSource(source) {
   const inputBlock = source.match(/workflow_dispatch:[^\S\r\n]*\r?\n\s*inputs:[^\S\r\n]*\r?\n([\s\S]*?)\r?\n\s*concurrency:/)?.[1] || ''
   const keys = [...inputBlock.matchAll(/^\s{6}([A-Za-z0-9_-]+):/gm)].map((match) => match[1])
-  if (JSON.stringify(keys) !== JSON.stringify(['releaseCapsuleRef'])) fail('WORKFLOW_INPUT_DRIFT')
+  if (JSON.stringify(keys) !== JSON.stringify(['releaseCapsuleRef', 'executionMode'])) fail('WORKFLOW_INPUT_DRIFT')
+  const modeBlock = inputBlock.split(/^      executionMode:\s*\r?\n/mu)[1] ?? ''
+  const modeKeys = [...modeBlock.matchAll(/^ {8}([A-Za-z0-9_-]+):/gmu)].map(match => match[1])
+  if (JSON.stringify(modeKeys) !== JSON.stringify(['description', 'required', 'type', 'default', 'options']) ||
+      !/^ {8}required: true\r?$/mu.test(modeBlock) || !/^ {8}type: choice\r?$/mu.test(modeBlock) ||
+      !/^ {8}default: full_release\r?$/mu.test(modeBlock) ||
+      !/^ {8}options: \[full_release, migration_only\]\r?$/mu.test(modeBlock) ||
+      !source.includes('OWNER_EXECUTION_MODE: "${{ inputs.executionMode }}"')) fail('WORKFLOW_EXECUTION_MODE_DRIFT')
+  const jobBlock = job => source.split(new RegExp(`^  ${job}:\\s*\\r?\\n`, 'mu'))[1]?.split(/^  [a-z][a-z-]*:\s*\r?$/mu)[0] ?? ''
+  for (const job of ['candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']) {
+    if (!/^ {4}if: \$\{\{ inputs\.executionMode == 'full_release' \}\}\r?$/mu.test(jobBlock(job))) fail('WORKFLOW_MIGRATION_ONLY_BOUNDARY_DRIFT', job)
+  }
+  if (!/^ {4}if: \$\{\{ always\(\) && inputs\.executionMode == 'full_release' && needs\.prepare\.result == 'success' && contains\(needs\.\*\.result, 'failure'\) \}\}\r?$/mu.test(jobBlock('failure'))) fail('WORKFLOW_MIGRATION_ONLY_BOUNDARY_DRIFT', 'failure')
   for (const forbidden of ['product_owner_decision:', 'artifact_receipt_ref:', 'candidate_receipt_ref:', 'stage:', 'approve:', 'skip:']) if (source.includes(forbidden)) fail('HISTORICAL_INPUT_ACTIVE', forbidden)
   if (!source.includes('group: production-release-orgmaster-prod')) fail('WORKFLOW_CONCURRENCY_DRIFT')
   for (const job of ['prepare:', 'build:', 'migrate:', 'candidate:', 'entrypoint:', 'verify:', 'decision:', 'activate:', 'canonical:', 'finalize:', 'failure:']) if (!source.includes(`\n  ${job}`)) fail('WORKFLOW_JOB_MISSING', job)
   if (/CAPSULE_PROVIDER_FETCH_REQUIRED|run:\s*echo\s/iu.test(source)) fail('PROVIDER_PLACEHOLDER_ACTIVE')
-  if ((source.match(/^    environment: production$/gmu) ?? []).length !== 11 || (source.match(/DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN:/gu) ?? []).length !== 1 || (source.match(/DEV012_ORGMASTER_FIREBASE_API_KEY:/gu) ?? []).length !== 2 || source.includes('DEV012_ORGMASTER_FIREBASE_ID_TOKEN')) fail('WORKFLOW_AUTH_PREFLIGHT_DRIFT')
+  if ((source.match(/^    environment: production$/gmu) ?? []).length !== 12 || (source.match(/DEV012_ORGMASTER_FIREBASE_REFRESH_TOKEN:/gu) ?? []).length !== 1 || (source.match(/DEV012_ORGMASTER_FIREBASE_API_KEY:/gu) ?? []).length !== 2 || source.includes('DEV012_ORGMASTER_FIREBASE_ID_TOKEN')) fail('WORKFLOW_AUTH_PREFLIGHT_DRIFT')
   for (const block of source.split(/^  (?=[a-z][a-z-]+:)/gmu).filter((value) => value.includes('google-github-actions/auth@v3'))) if (block.indexOf('actions/checkout@v4') < 0 || block.indexOf('actions/checkout@v4') > block.indexOf('google-github-actions/auth@v3')) fail('WORKFLOW_AUTH_ORDER_DRIFT')
   if (/\.\.\/Jenlkbz|\.\.\/Jenfu-Platform|\.\.\/AI_PDM|checkout[^\n]+repository:/i.test(source)) fail('SIBLING_CHECKOUT_DENIED')
   return true

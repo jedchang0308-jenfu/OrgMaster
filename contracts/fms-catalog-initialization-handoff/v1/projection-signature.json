@@ -1,0 +1,60 @@
+{
+  "requestVersion": "fms.catalog-initialization-handoff-request.v1",
+  "responseVersion": "fms.catalog-initialization-handoff.v1",
+  "path": "/api/administration/catalog-initialization/handoff",
+  "method": "POST",
+  "requestKeys": [
+    "schemaVersion",
+    "operationId",
+    "actor",
+    "selectors"
+  ],
+  "actorKeys": [
+    "principalId",
+    "employeeId",
+    "authenticatedAt",
+    "aal",
+    "authEpoch"
+  ],
+  "selectorKeys": [
+    "version",
+    "contentSha256",
+    "artifactSha256",
+    "sourceDraftId",
+    "sourceDraftRevision"
+  ],
+  "responseKeys": [
+    "schemaVersion",
+    "operationId",
+    "initializationReceiptId",
+    "receiptBodySha256",
+    "principalId",
+    "employeeId",
+    "sourceRoleDefinitionHash",
+    "issuance",
+    "release",
+    "previousRelease"
+  ],
+  "issuanceKeys": [
+    "rootGrantId",
+    "administrationVersion",
+    "publishedPolicyId",
+    "publishedAt"
+  ],
+  "releaseKeys": [
+    "applicationId",
+    "version",
+    "contentSha256",
+    "artifactSha256",
+    "artifactUtf8",
+    "sourceDraftId",
+    "sourceDraftRevision",
+    "createdBy",
+    "createdAt"
+  ],
+  "authentication": "exact Google service OIDC issuer/audience/email/registered subject, then current root point and Platform auth epoch; no writer AdmissionProof",
+  "authority": "operation-owned committed normal catalog.publish ledger + generation-pinned immutable release and issuance baseline",
+  "maxRequestBytes": 4096,
+  "maxResponseBytes": 4194304,
+  "timeoutMilliseconds": 30000
+}

@@ -34,7 +34,10 @@ async function main() {
     verifyToolJobReadback: (receipt) => assertToolJobLiveReadback({ profile, transport, receipt }),
     reuseAppArtifact: reuseAppArtifactBuild,
   })
-  process.stdout.write(`${JSON.stringify({ stage: args.stage, ref: result.ref, generation: String(result.metadata.generation), status: 'PASS' })}\n`)
+  const migrationOnly = process.env.OWNER_EXECUTION_MODE === 'migration_only'
+  process.stdout.write(`${JSON.stringify({ stage: args.stage, ref: result.ref, generation: String(result.metadata.generation), status: 'PASS',
+    ...(migrationOnly ? { executionMode: 'migration_only', applicationReleased: false,
+      ...(args.stage === 'migrate' ? { result: 'MIGRATION_APPLIED' } : {}) } : {}) })}\n`)
 }
 
 main().catch((error) => { process.stderr.write(`${error.code ?? error.message}\n`); process.exitCode = 1 })

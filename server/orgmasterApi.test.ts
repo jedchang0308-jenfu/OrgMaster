@@ -8,8 +8,12 @@ import { createOrgDocumentFile } from '../src/documentStorage'
 import { screenshotOrganizationState } from '../src/screenshotData'
 import { getOrgMasterDocumentPaths, readStoredDocument, writeStoredDocument, createOrgmasterApiMiddleware } from './orgmasterApi'
 import * as workspaceStore from './orgmasterWorkspaceStore'
+import * as governanceStore from './orgmasterGovernanceStore'
+import * as persistence from './orgmasterPersistenceRepository'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
+import { createSeedDocumentV2 } from '../src/governance/migrateGovernanceV1ToV2'
+import { migrateGovernanceV2ToV3 } from '../src/governance/migrateGovernanceV2ToV3'
 
 const temporaryRoots: string[] = []
 
@@ -20,6 +24,7 @@ async function temporaryRoot() {
 }
 
 afterEach(async () => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
@@ -31,6 +36,30 @@ function principalSession(): OrgmasterSession {
     issuedAt: '2026-10-05T00:00:00.000Z', authenticatedAt: '2026-10-05T00:00:00.000Z', expiresAt: '2026-10-05T08:00:00.000Z',
     revokedAt: null, assuranceLevel: 'aal1',
   }
+}
+
+function publishedWorkspaceRole({ write = false, validTo = null }: { write?: boolean; validTo?: string | null } = {}) {
+  const document = migrateGovernanceV2ToV3(createSeedDocumentV2('2026-10-05T00:00:00.000Z'), 'fixture')
+  const role = { id: 'role-workspace-reader', applicationId: 'orgmaster', code: 'workspace_reader',
+    name: 'Workspace reader', status: 'active' as const, systemDefined: false }
+  const policy = structuredClone(document.draft)
+  policy.applicationRoles.push(role)
+  policy.roleAssignments.push({
+    id: 'workspace-grant', applicationId: 'orgmaster', roleId: role.id,
+    roleCodeSnapshot: role.code, roleNameSnapshot: role.name, catalogVersion: null,
+    employeeId: 'employee-1', scope: { kind: 'global' }, status: 'active',
+    validFrom: '2026-10-05T00:00:00.000Z', validTo, effectState: 'orgmaster-enforced',
+    subjectKind: 'principal', targetPrincipalId: 'principal-verified', basis: 'manual',
+  } as typeof policy.roleAssignments[number])
+  if (write) policy.rolePermissionGrants.push({
+    id: 'workspace-write-grant', roleId: role.id, permissionId: 'permission-orgmaster-governance-manage', effect: 'allow',
+  })
+  document.activePolicyVersionId = 'published'
+  document.publishedVersions.push({
+    id: 'published', kind: 'assignment-governance-v3', policy,
+    organizationSnapshot: { workspaceVersionId: 'workspace', workspaceRevision: 'revision' },
+  } as typeof document.publishedVersions[number])
+  return { document } as Awaited<ReturnType<typeof governanceStore.readStoredGovernanceDocument>>
 }
 
 async function withPersistenceMode<T>(mode: 'local-json' | 'cloud-sql', run: () => Promise<T>) {
@@ -115,6 +144,8 @@ describe('OrgMaster local document file compatibility', () => {
 
 describe('workspace writer actor plumbing', () => {
   it('uses only the verified Principal for cloud-SQL create, save, and metadata actions', async () => {
+    vi.spyOn(governanceStore, 'readStoredGovernanceDocument').mockResolvedValue(publishedWorkspaceRole({ write: true }))
+    vi.spyOn(persistence, 'withPersistenceTransaction').mockImplementation(run => run())
     const create = vi.spyOn(workspaceStore, 'createWorkspaceDraft').mockResolvedValue({ workspace: {} as never, createdVersionId: 'draft-1' })
     const save = vi.spyOn(workspaceStore, 'saveWorkspaceVersion').mockResolvedValue({ version: { revision: 'revision-next' } } as never)
     const update = vi.spyOn(workspaceStore, 'updateWorkspaceEntry').mockResolvedValue({} as never)
@@ -138,6 +169,53 @@ describe('workspace writer actor plumbing', () => {
     expect(create).toHaveBeenCalledWith(process.cwd(), 'current-1', 'Draft A', 'manifest-1', 'principal-verified')
     expect(save).toHaveBeenCalledWith(process.cwd(), 'current-1', {}, 'version-1', 'current-maintenance', 'principal-verified')
     expect(update).toHaveBeenCalledWith(process.cwd(), 'draft-1', 'rename', 'Draft B', 'manifest-2', 'principal-verified')
+  })
+
+  it('reads as a temporary viewer, rejects writes before the store, and refuses the same session at expiry', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-05T00:05:00.000Z'))
+    const deadline = '2026-10-05T00:10:00.000Z'
+    const fixture = publishedWorkspaceRole({ validTo: deadline })
+    const readAuthority = vi.spyOn(governanceStore, 'readStoredGovernanceDocument').mockResolvedValue(fixture)
+    const index = vi.spyOn(workspaceStore, 'getWorkspaceIndex').mockResolvedValue({ currentVersionId: 'current-1' } as never)
+    const read = vi.spyOn(workspaceStore, 'getWorkspaceVersion').mockResolvedValue({ version: { revision: 'current' } } as never)
+    const create = vi.spyOn(workspaceStore, 'createWorkspaceDraft')
+    const save = vi.spyOn(workspaceStore, 'saveWorkspaceVersion')
+    const update = vi.spyOn(workspaceStore, 'updateWorkspaceEntry')
+    const session = principalSession()
+    const path = '/api/orgmaster/workspace'
+
+    await withPersistenceMode('cloud-sql', async () => {
+      expect((await dispatchWorkspaceRequest('GET', path, {}, session)).statusCode).toBe(200)
+      expect((await dispatchWorkspaceRequest('GET', path + '/versions/current-1', {}, session)).statusCode).toBe(200)
+      for (const [method, resource] of [['POST', '/versions'], ['PUT', '/versions/current-1'], ['PATCH', '/versions/current-1']]) {
+        expect(await dispatchWorkspaceRequest(method, path + resource, {}, session))
+          .toMatchObject({ statusCode: 403, body: expect.stringContaining('WORKSPACE_WRITE_FORBIDDEN') })
+      }
+      vi.setSystemTime(new Date(deadline))
+      expect(await dispatchWorkspaceRequest('GET', path, {}, session))
+        .toMatchObject({ statusCode: 403, body: expect.stringContaining('WORKSPACE_ACCESS_FORBIDDEN') })
+      expect((await dispatchWorkspaceRequest('GET', path + '/versions/current-1', {}, session)).statusCode).toBe(403)
+      readAuthority.mockRejectedValueOnce(new Error('authority unavailable'))
+      expect((await dispatchWorkspaceRequest('GET', path, {}, session)).statusCode).toBe(503)
+    })
+    expect(index).toHaveBeenCalledTimes(1)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(create).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('rejects an in-flight write when the final authority check no longer allows it', async () => {
+    vi.spyOn(persistence, 'withPersistenceTransaction').mockImplementation(run => run())
+    vi.spyOn(governanceStore, 'readStoredGovernanceDocument')
+      .mockResolvedValueOnce(publishedWorkspaceRole({ write: true }))
+      .mockResolvedValueOnce(publishedWorkspaceRole())
+    vi.spyOn(workspaceStore, 'saveWorkspaceVersion').mockResolvedValue({ version: { revision: 'pending' } } as never)
+    await withPersistenceMode('cloud-sql', async () => {
+      expect(await dispatchWorkspaceRequest('PUT', '/api/orgmaster/workspace/versions/current-1', {}, principalSession()))
+        .toMatchObject({ statusCode: 403, body: expect.stringContaining('WORKSPACE_WRITE_FORBIDDEN') })
+    })
   })
 
   it('rejects cloud-SQL writes without a verified human Principal before calling the store', async () => {

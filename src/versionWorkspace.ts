@@ -37,6 +37,11 @@ export interface OrgWorkspaceIndex {
   versions: OrgWorkspaceVersionSummary[]
 }
 
+export function currentWorkspaceVersion(index: OrgWorkspaceIndex | null | undefined) {
+  if (!index) return null
+  return index.versions.find((version) => version.id === index.currentVersionId && version.kind === 'current') ?? null
+}
+
 export type WorkspaceValidationCode =
   | 'WORKSPACE_INVALID'
   | 'WORKSPACE_DUPLICATE_ID'
@@ -262,7 +267,7 @@ function parseWorkspaceVersionSummary(value: unknown): OrgWorkspaceVersionSummar
     || typeof item.updatedAt !== 'string'
     || !isIsoDate(item.updatedAt)
     || typeof item.revision !== 'string'
-    || item.revision.length < 1
+    || (item.revision.length < 1 && item.loadStatus !== 'failed')
     || (item.loadStatus !== undefined && item.loadStatus !== 'ready' && item.loadStatus !== 'failed')
     || (item.failureCode !== undefined && typeof item.failureCode !== 'string')
   ) return null
@@ -274,7 +279,7 @@ function parseWorkspaceVersionSummary(value: unknown): OrgWorkspaceVersionSummar
 
 export function validateWorkspaceVersionSummary(value: unknown) {
   const summary = parseWorkspaceVersionSummary(value)
-  return summary
+  return summary?.revision
     ? { ok: true as const, value: summary }
     : { ok: false as const, code: 'WORKSPACE_ENTRY_INVALID' as const }
 }

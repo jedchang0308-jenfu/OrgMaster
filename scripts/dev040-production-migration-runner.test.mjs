@@ -14,7 +14,10 @@ import {
   planMigration,
   sha256,
 } from './lib/dev012-production-migration-runner.mjs'
-import { TARGET, runMain } from './dev040-production-migration-runner.mjs'
+import { DEV057_PROJED_TARGET, DEV060_TARGET, DEV070_TARGET, TARGET, parseOrgmasterRunnerArgs, runMain } from './dev040-production-migration-runner.mjs'
+import { DEV057_PROJED_RELEASE_MODE } from './lib/dev057-projed-principal-migration.mjs'
+import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ACCEPTED_LEDGER_COUNTS} from './lib/dev070-administration-migration.mjs'
+import { DEV060_RELEASE_MODE } from './lib/dev060-fms-catalog-activation-migration.mjs'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 
@@ -55,11 +58,12 @@ const environment = {
   CLOUD_RUN_JOB: TARGET.job,
 }
 
-function fixture() {
+function fixture({administration=false, projed=false}={}) {
   const profile = JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url), 'utf8'))
   const n1c = JSON.parse(readFileSync(new URL('../config/dev-010/n1c-orgmaster.json', import.meta.url), 'utf8'))
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, readFileSync(path.join(repositoryRoot, entry.path))]))
-  return buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, H40)
+  const complete=buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, H40)
+  return projed ? complete : repackBundle({...complete.bundle,entries:complete.bundle.entries.slice(0,administration ? DEV070_MIGRATION_ENTRY_COUNT : TARGET.entryCount)})
 }
 
 function ledgerFor(bundle, count, { sourceRevision = 'prior' } = {}) {
@@ -74,7 +78,7 @@ function repackBundle(bundle) {
   return { bundle: value, bytes, bundleSha256: sha256(bytes) }
 }
 
-async function assertRunnerRejectsBundle(input, pattern) {
+async function assertRunnerRejectsBundle(input, pattern, migrationMode = null) {
   let clientConstructed = false
   class Client {
     constructor() {
@@ -89,6 +93,7 @@ async function assertRunnerRejectsBundle(input, pattern) {
       : Response.json({ generation: '1', crc32c: crc32cBase64(input.bytes) })
   }
   const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`]
+  if (migrationMode) argv.push('--migration-mode', migrationMode)
   await assert.rejects(() => runMain({ argv, environment, Client, fetchImpl }), pattern)
   assert.equal(clientConstructed, false, 'invalid bundle must be rejected before database construction')
 }
@@ -111,16 +116,39 @@ function fakeDatabase(ledger, statements, { missingLedger = false } = {}) {
 
 const writesStarted = (statements) => statements.some((sql) => /^\s*(?:BEGIN\b|CREATE\b|ALTER\b|DROP\b|INSERT\b|UPDATE\b|DELETE\b|GRANT\b|REVOKE\b)/imu.test(sql))
 
-test('DEV-057 runner entry count matches the controlled production profile and real bundle', () => {
+test('ProJED fixed runner resumes only the exact 60-to-63 prefix and refuses older or corrupted ledgers before writes', async () => {
+  const input = fixture({projed: true})
+  for (const count of [60, 61, 62, 63]) {
+    const ledger = ledgerFor(input.bundle, count), statements = []
+    const receipt = await executeProductionMigration({bundle: input.bundle, database: fakeDatabase(ledger, statements), target: DEV057_PROJED_TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true})
+    assert.equal(receipt.ledgerCount, 63)
+    assert.equal(receipt.applied, 63 - count)
+  }
+  for (const count of [10, 31, 39, 59, 64]) {
+    const ledger = ledgerFor(input.bundle, Math.min(count, 63)), statements = []
+    if (count === 64) ledger.push({...ledger.at(-1), version: 'unknown'})
+    await assert.rejects(() => executeProductionMigration({bundle: input.bundle, database: fakeDatabase(ledger, statements), target: DEV057_PROJED_TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true}), /MIGRATION_EXISTING_LEDGER_COUNT_INVALID/)
+    assert.equal(writesStarted(statements), false)
+  }
+  const ledger = ledgerFor(input.bundle, 61), statements = []
+  ledger[60].checksum_sha256 = 'f'.repeat(64)
+  await assert.rejects(() => executeProductionMigration({bundle: input.bundle, database: fakeDatabase(ledger, statements), target: DEV057_PROJED_TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true}), /MIGRATION_LEDGER_PREFIX_MISMATCH/)
+  assert.equal(writesStarted(statements), false)
+})
+
+test('DEV-058/059/060 runner entry count matches the controlled production profile and real bundle', () => {
   const profile = JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url), 'utf8'))
-  assert.equal(TARGET.entryCount, profile.migrations.entries.length)
-  assert.equal(TARGET.entryCount, 41)
+  assert.equal(DEV057_PROJED_TARGET.entryCount,profile.migrations.entries.length)
+  assert.equal(DEV070_TARGET.entryCount,60)
+  assert.deepEqual(DEV057_PROJED_TARGET.allowedExistingLedgerCounts, [60, 61, 62, 63])
+  assert.equal(TARGET.entryCount, 39)
   assert.equal(profile.migrations.baselineCount, 10)
-  assert.deepEqual(TARGET.allowedExistingLedgerCounts, [38, 39, 40, 41])
-  assert.deepEqual(profile.migrations.entries.slice(31).map((entry) => entry.version), ['dev058-orgmaster-034', 'dev058-orgmaster-035', 'dev058-orgmaster-036', 'dev058-orgmaster-037', 'dev059-orgmaster-038', 'dev065-orgmaster-039', 'dev065-orgmaster-040', 'dev057-orgmaster-041', 'dev057-orgmaster-042', 'dev057-orgmaster-043'])
+  assert.deepEqual(TARGET.allowedExistingLedgerCounts, [31, 32, 33, 34, 35, 36, 37, 38, 39])
+  assert.deepEqual(DEV060_TARGET.allowedExistingLedgerCounts, [38, 39])
+  assert.deepEqual(profile.migrations.entries.slice(31,TARGET.entryCount).map((entry) => entry.version), ['dev058-orgmaster-034', 'dev058-orgmaster-035', 'dev058-orgmaster-036', 'dev058-orgmaster-037', 'dev059-orgmaster-038', 'dev065-orgmaster-039', 'dev065-orgmaster-040', 'dev060-orgmaster-041'])
   const input = fixture()
   assertMigrationBundle(input.bundle, { target: TARGET, sourceRevision: H40, bundleSha256: input.bundleSha256, bytes: input.bytes })
-  assert.deepEqual(input.bundle.entries.slice(31).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })), profile.migrations.entries.slice(31))
+  assert.deepEqual(input.bundle.entries.slice(31).map(({ order, version, path, sourceSha256, appliedSha256 }) => ({ order, version, path, sourceSha256, appliedSha256 })), profile.migrations.entries.slice(31,TARGET.entryCount))
 })
 
 test('S1B-21 OrgMaster runner accepts only exact production target and refs', () => {
@@ -130,38 +158,38 @@ test('S1B-21 OrgMaster runner accepts only exact production target and refs', ()
   assert.throws(() => parseGsUri('gs://jenfu-platform-prod-aipdm-release/source/migration-bundles/a.json', TARGET.releaseBucket, 'source/migration-bundles'), /GCS_REF_INVALID/)
   const args = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', 'b'.repeat(64), '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/r/migrate.json`, '--data-ref', `gs://${TARGET.releaseBucket}/source/production-data/REL-001/data.json`, '--data-sha256', 'c'.repeat(64), '--bootstrap-ref', `gs://${TARGET.releaseBucket}/receipts/releases/REL-001/first-principal-bootstrap.json`, '--bootstrap-sha256', 'd'.repeat(64)]
   assert.equal(parseRunnerArgs(args.slice(0, 8)).sourceRevision, H40)
+  assert.equal(parseOrgmasterRunnerArgs([...args.slice(0, 8), '--migration-mode', DEV060_RELEASE_MODE]).migrationMode, DEV060_RELEASE_MODE)
+  assert.equal(parseOrgmasterRunnerArgs([...args.slice(0,8),'--migration-mode',DEV070_RELEASE_MODE]).migrationMode,DEV070_RELEASE_MODE)
   assert.throws(() => parseRunnerArgs(args.slice(0, 6)), /MIGRATION_ARGUMENT_INVALID/)
   assert.throws(() => parseRunnerArgs(args), /MIGRATION_ARGUMENT_INVALID/)
+  assert.throws(() => parseOrgmasterRunnerArgs([...args.slice(0, 8), '--migration-mode', 'DEV059_FMS_AUTHORITY_APPEND']), /MIGRATION_ARGUMENT_INVALID/)
+  assert.throws(() => parseOrgmasterRunnerArgs([...args.slice(0, 8), '--migration-mode', DEV060_RELEASE_MODE, '--migration-mode', DEV060_RELEASE_MODE]), /MIGRATION_ARGUMENT_INVALID/)
   assert.equal(crc32cBase64(Buffer.from('123456789')), '4waSgw==')
 })
 
-test('OrgMaster runner applies only the exact DEV-057 three-row append from verified 38-41 row prefixes', async () => {
+test('OrgMaster runner applies the full DEV-058/059/060 suffix and resumes only verified 31-39 row prefixes', async () => {
   const input = fixture()
-  for (const count of [38, 39, 40, 41]) {
+  for (const count of TARGET.allowedExistingLedgerCounts) {
     const ledger = ledgerFor(input.bundle, count)
     assert.deepEqual(planMigration(input.bundle, ledger).map((entry) => entry.version), input.bundle.entries.slice(count).map((entry) => entry.version))
     const statements = []
     const receipt = await executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(ledger, statements), target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true, now: () => '2026-09-08T00:00:00.000Z' })
     assert.equal(receipt.status, 'PASS')
-    assert.equal(receipt.applied, 41 - count)
+    assert.equal(receipt.applied, TARGET.entryCount - count)
     assert.equal(receipt.replayed, count)
-    assert.equal(receipt.ledgerCount, 41)
-    assert.equal(ledger.length, 41)
-    assert.equal(statements.filter((value) => value === 'BEGIN').length, 41 - count)
-    if (count === 38) assert.deepEqual(planMigration(input.bundle, ledgerFor(input.bundle, count)).map(({ version }) => version), ['dev057-orgmaster-041', 'dev057-orgmaster-042', 'dev057-orgmaster-043'])
-    if (count === 39) assert.deepEqual(planMigration(input.bundle, ledgerFor(input.bundle, count)).map(({ version }) => version), ['dev057-orgmaster-042', 'dev057-orgmaster-043'])
-    if (count === 40) assert.deepEqual(planMigration(input.bundle, ledgerFor(input.bundle, count)).map(({ version }) => version), ['dev057-orgmaster-043'])
-    if (count === 41) assert.deepEqual(planMigration(input.bundle, ledgerFor(input.bundle, count)), [])
+    assert.equal(receipt.ledgerCount, TARGET.entryCount)
+    assert.equal(ledger.length, TARGET.entryCount)
+    assert.equal(statements.filter((value) => value === 'BEGIN').length, TARGET.entryCount - count)
   }
-  const missing = ledgerFor(input.bundle, 41).slice(1)
+  const missing = ledgerFor(input.bundle, TARGET.entryCount).slice(1)
   assert.throws(() => planMigration(input.bundle, missing), /LEDGER_PREFIX_MISMATCH|BASELINE_INCOMPLETE/)
 })
 
-test('OrgMaster pre-write ledger guard rejects pre-DEV-057 counts, row 42 and wrong prefixes before writes', async () => {
+test('OrgMaster pre-write ledger guard rejects 030/010/029/040 and invalid prefix fields', async () => {
   const input = fixture()
-  for (const count of [10, 29, 30, 31, 32, 33, 34, 35, 36, 37, 42]) {
-    const ledger = ledgerFor(input.bundle, Math.min(count, 41))
-    if (count === 42) ledger.push({ version: 'unexpected-extra', name: 'unexpected', checksum_sha256: 'f'.repeat(64), source_revision: 'prior' })
+  for (const count of [30, 10, 29, 40]) {
+    const ledger = ledgerFor(input.bundle, Math.min(count, TARGET.entryCount))
+    if (count === 40) ledger.push({ version: 'unexpected-extra', name: 'unexpected', checksum_sha256: 'f'.repeat(64), source_revision: 'prior' })
     const statements = []
     await assert.rejects(() => executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(ledger, statements), target: TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true }), /MIGRATION_EXISTING_LEDGER_COUNT_INVALID/)
     assert.equal(writesStarted(statements), false, `count ${count} must be rejected before any write`)
@@ -178,7 +206,59 @@ test('OrgMaster pre-write ledger guard rejects pre-DEV-057 counts, row 42 and wr
   }
 })
 
-test('runner rejects rehashed prefix or 034-043 tampering before database construction', async () => {
+test('DEV-060 fixed runner mode applies only 38-to-39 and safely replays full 39', async () => {
+  const input = fixture()
+  for (const count of DEV060_TARGET.allowedExistingLedgerCounts) {
+    const ledger = ledgerFor(input.bundle, count)
+    const statements = []
+    const receipt = await executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(ledger, statements), target: DEV060_TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true })
+    assert.equal(receipt.ledgerCount, 39)
+    assert.equal(receipt.applied, 39 - count)
+    assert.equal(receipt.replayed, count)
+    assert.equal(statements.filter(sql => sql === 'BEGIN').length, 39 - count)
+  }
+})
+
+test('DEV-060 fixed runner rejects 37 rows, foreign prefix and checksum drift before SQL', async () => {
+  const input = fixture()
+  const cases = []
+  cases.push(ledgerFor(input.bundle, 37))
+  const foreign = ledgerFor(input.bundle, 38)
+  foreign[37].version = 'foreign-version'
+  cases.push(foreign)
+  const checksum = ledgerFor(input.bundle, 38)
+  checksum[37].checksum_sha256 = 'f'.repeat(64)
+  cases.push(checksum)
+  for (const ledger of cases) {
+    const statements = []
+    await assert.rejects(() => executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(ledger, statements), target: DEV060_TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true }), /MIGRATION_EXISTING_LEDGER_COUNT_INVALID|MIGRATION_LEDGER_PREFIX_MISMATCH/u)
+    assert.equal(writesStarted(statements), false)
+  }
+})
+
+test('DEV-060 Job entrypoint selects the fixed 38-or-39 target', async () => {
+  const input = fixture()
+  const ledger = ledgerFor(input.bundle, 37)
+  const statements = []
+  const database = fakeDatabase(ledger, statements)
+  class Client {
+    async connect() {}
+    async end() {}
+    async query(sql, values) { return database.query(sql, values) }
+  }
+  let published = false
+  const fetchImpl = async (url, options = {}) => {
+    if (String(url).startsWith('http://metadata.google.internal/')) return Response.json({ access_token: 'x'.repeat(30), expires_in: 3600 })
+    if (options.method === 'POST') { published = true; return Response.json({ generation: '2' }) }
+    return String(url).includes('alt=media') ? new Response(input.bytes) : Response.json({ generation: '1', crc32c: crc32cBase64(input.bytes) })
+  }
+  const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`, '--migration-mode', DEV060_RELEASE_MODE]
+  await assert.rejects(() => runMain({ argv, environment, Client, fetchImpl }), /MIGRATION_EXISTING_LEDGER_COUNT_INVALID/u)
+  assert.equal(writesStarted(statements), false)
+  assert.equal(published, false)
+})
+
+test('runner rejects rehashed prefix or 034-041 tampering before database construction', async () => {
   const input = fixture()
   const prefixEntries = input.bundle.entries.map((entry) => ({ ...entry }))
   const prefixSql = Buffer.concat([Buffer.from(prefixEntries[30].sqlBase64, 'base64'), Buffer.from('\n-- prefix tamper\n')])
@@ -190,35 +270,36 @@ test('runner rejects rehashed prefix or 034-043 tampering before database constr
     entries[index] = { ...entries[index], path: entries[index].path.replace('.sql', '-tampered.sql'), sqlBase64: sql.toString('base64'), sourceSha256: sha256(sql), appliedSha256: sha256(sql) }
     await assertRunnerRejectsBundle(repackBundle({ ...input.bundle, entries }), /DEV058_MIGRATION_APPEND_INVALID/)
   }
-  for (const index of [35, 36, 37]) {
+  for (const index of [35, 36, 37, 38]) {
     const entries = input.bundle.entries.map((entry) => ({ ...entry }))
     const sql = Buffer.concat([Buffer.from(entries[index].sqlBase64, 'base64'), Buffer.from(`\n-- suffix ${index + 1} tamper\n`)])
     entries[index] = { ...entries[index], path: entries[index].path.replace('.sql', '-tampered.sql'), sqlBase64: sql.toString('base64'), sourceSha256: sha256(sql), appliedSha256: sha256(sql) }
     await assertRunnerRejectsBundle(repackBundle({ ...input.bundle, entries }), /DEV059_MIGRATION_APPEND_INVALID/)
   }
-  for (const index of [38, 39, 40]) {
-    const entries = input.bundle.entries.map((entry) => ({ ...entry }))
+  const projedInput = fixture({projed: true})
+  for (const index of [60, 61, 62]) {
+    const entries = projedInput.bundle.entries.map((entry) => ({ ...entry }))
     const sql = Buffer.concat([Buffer.from(entries[index].sqlBase64, 'base64'), Buffer.from(`\n-- suffix ${index + 1} tamper\n`)])
     entries[index] = { ...entries[index], path: entries[index].path.replace('.sql', '-tampered.sql'), sqlBase64: sql.toString('base64'), sourceSha256: sha256(sql), appliedSha256: sha256(sql) }
-    await assertRunnerRejectsBundle(repackBundle({ ...input.bundle, entries }), /DEV057_PROJED_MIGRATION_APPEND_INVALID/)
+    await assertRunnerRejectsBundle(repackBundle({ ...projedInput.bundle, entries }), /DEV057_PROJED_MIGRATION_APPEND_INVALID/, DEV057_PROJED_RELEASE_MODE)
   }
-  const unknownSuffix = input.bundle.entries.map((entry) => ({ ...entry }))
-  unknownSuffix.push({ ...unknownSuffix.at(-1), order: 42, version: 'dev057-orgmaster-044', name: 'unknown_migration', path: 'db/migrations/044_unknown_migration.sql' })
-  await assertRunnerRejectsBundle(repackBundle({ ...input.bundle, entries: unknownSuffix }), /MIGRATION_SET_DRIFT/)
+  const unknownSuffix = projedInput.bundle.entries.map((entry) => ({ ...entry }))
+  unknownSuffix.push({ ...unknownSuffix.at(-1), order: 64, version: 'dev057-orgmaster-068', name: 'unknown_migration', path: 'db/migrations/068_unknown_migration.sql' })
+  await assertRunnerRejectsBundle(repackBundle({ ...projedInput.bundle, entries: unknownSuffix }), /MIGRATION_SET_DRIFT/, DEV057_PROJED_RELEASE_MODE)
   for (const index of [0, 30, 31, 32, 33, 34]) {
     const entries = input.bundle.entries.map(entry => ({ ...entry }))
     entries[index].name = 'wrong-ledger-name'
     await assertRunnerRejectsBundle(repackBundle({ ...input.bundle, entries }), /DEV058_MIGRATION_NAME_INVALID/)
   }
-  for (const index of [35, 36, 37]) {
+  for (const index of [35, 36, 37, 38]) {
     const entries = input.bundle.entries.map(entry => ({ ...entry }))
     entries[index].name = 'wrong-ledger-name'
     await assertRunnerRejectsBundle(repackBundle({ ...input.bundle, entries }), /DEV059_MIGRATION_NAME_INVALID/)
   }
-  for (const index of [38, 39, 40]) {
-    const entries = input.bundle.entries.map(entry => ({ ...entry }))
+  for (const index of [60, 61, 62]) {
+    const entries = projedInput.bundle.entries.map(entry => ({ ...entry }))
     entries[index].name = 'wrong-ledger-name'
-    await assertRunnerRejectsBundle(repackBundle({ ...input.bundle, entries }), /DEV057_PROJED_MIGRATION_NAME_INVALID/)
+    await assertRunnerRejectsBundle(repackBundle({ ...projedInput.bundle, entries }), /DEV057_PROJED_MIGRATION_NAME_INVALID/, DEV057_PROJED_RELEASE_MODE)
   }
 })
 
@@ -228,8 +309,8 @@ test('generic migration callers without the optional exact-count policy keep bas
   const ledger = input.bundle.entries.slice(0, target.baselineCount).map((entry) => ({ version: entry.version, name: entry.name, checksum_sha256: entry.appliedSha256, source_revision: 'prior' }))
   const statements = []
   const receipt = await executeProductionMigration({ bundle: input.bundle, database: fakeDatabase(ledger, statements), target, sourceRevision: H40, denyDatabaseConnect: async () => true })
-  assert.equal(receipt.applied, 31)
-  assert.equal(receipt.ledgerCount, 41)
+  assert.equal(receipt.applied, TARGET.entryCount - TARGET.baselineCount)
+  assert.equal(receipt.ledgerCount, TARGET.entryCount)
 })
 
 test('OrgMaster Job entrypoint forwards the exact-count policy and blocks a ten-row catch-up before publication', async () => {
@@ -289,10 +370,14 @@ test('schema runner rejects bootstrap arguments before credential, network or da
   await assert.rejects(() => runMain({ argv: ['--bootstrap-ref', 'gs://irrelevant'], fetchImpl: () => assert.fail('must not fetch credentials'), Client: class { constructor() { assert.fail('must not connect') } } }), /MIGRATION_ARGUMENT_INVALID/)
 })
 
-test('schema runner entrypoint migrates and publishes without reading or importing business data', async () => {
-  const input = fixture()
+for(const mode of ['legacy', 'administration', 'projed'])test(`${mode} schema runner entrypoint migrates and publishes without business data`, async () => {
+  const administration = mode === 'administration'
+  const projed = mode === 'projed'
+  const baselineCount = projed ? 60 : 31
+  const target=projed ? DEV057_PROJED_TARGET : administration?DEV070_TARGET:TARGET
+  const input = fixture({administration, projed})
   const requests = [], statements = []
-  const ledger = ledgerFor(input.bundle, 38)
+  const ledger = ledgerFor(input.bundle, baselineCount)
   let published
   class Client {
     constructor(options) { this.options = options }
@@ -316,13 +401,15 @@ test('schema runner entrypoint migrates and publishes without reading or importi
     return String(url).includes('alt=media') ? new Response(bytes) : Response.json({ generation: bytes === input.bytes ? '1' : '2', crc32c: crc32cBase64(bytes) })
   }
   const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`]
+  if(administration)argv.push('--migration-mode',DEV070_RELEASE_MODE)
+  if(projed)argv.push('--migration-mode',DEV057_PROJED_RELEASE_MODE)
   const result = await runMain({ argv, environment, Client, fetchImpl })
-  assert.equal(result.applied, 3)
+  assert.equal(result.applied, target.entryCount - baselineCount)
   assert.equal(result.productionData, undefined)
   assert.equal(result.ledgerBootstrap, undefined)
   assert.equal(requests.some((url) => /production-data|bootstrap/u.test(url)), false)
-  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, 3)
-  assert.equal(ledger.length, 41)
+  assert.equal(statements.filter((sql) => sql.startsWith('INSERT INTO')).length, target.entryCount - baselineCount)
+  assert.equal(ledger.length, target.entryCount)
   const businessReads = statements.filter((sql) => {
     const statement = sql.trimStart()
     return /^SELECT\b/iu.test(statement) &&
@@ -357,4 +444,19 @@ test('migration runner Docker copies the migration and lifecycle readback static
   visit('scripts/dev040-production-migration-runner.mjs')
   visit('scripts/dev014-production-lifecycle-readback.mjs')
   assert.match(readFileSync(new URL('./dev040-production-migration-runner.mjs', import.meta.url), 'utf8'), /export const TARGET\s*=\s*Object\.freeze/u)
+})
+
+
+test('DEV070 runner resumes only known ledger prefixes and refuses unknown ledger rows before writes',async()=>{
+ const input=fixture({administration:true})
+ for(const count of DEV070_ACCEPTED_LEDGER_COUNTS){
+  const ledger=ledgerFor(input.bundle,count),statements=[]
+  const receipt=await executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV070_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true})
+  assert.equal(receipt.ledgerCount,DEV070_MIGRATION_ENTRY_COUNT);assert.equal(receipt.applied,DEV070_MIGRATION_ENTRY_COUNT-count);assert.equal(receipt.replayed,count)
+ }
+ for(const mutate of[rows=>rows.splice(30),rows=>rows.push({version:'unknown-046',name:'unrelated',checksum_sha256:'0'.repeat(64),source_revision:'old'}),rows=>{rows[31].checksum_sha256='0'.repeat(64)},rows=>{rows[39].name='other'},rows=>{[rows[0],rows[1]]=[rows[1],rows[0]]}]){
+  const ledger=ledgerFor(input.bundle,46),statements=[];mutate(ledger)
+  await assert.rejects(executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV070_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true}),/MIGRATION_EXISTING_LEDGER_COUNT_INVALID|MIGRATION_LEDGER_PREFIX_MISMATCH|MIGRATION_CHECKSUM_MISMATCH/)
+  assert.equal(writesStarted(statements),false)
+ }
 })

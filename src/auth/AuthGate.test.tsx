@@ -50,7 +50,6 @@ describe('AuthGate', () => {
     await act(async () => root.render(<AuthGate><SessionProbe /></AuthGate>))
     expect(container.textContent).toContain('員工 employee-a')
     expect(container.textContent).not.toContain('選擇測試角色')
-    expect(api.getDevelopmentAuthMode).not.toHaveBeenCalled()
     expect(api.loginDevelopmentProfile).not.toHaveBeenCalled()
   })
   it('does not mount protected content before session verification completes', async () => {
@@ -118,6 +117,21 @@ describe('AuthGate', () => {
     expect(container.textContent).toContain('Platform 單一登入尚未啟用')
     expect(container.querySelector('form')).toBeNull()
     expect(container.textContent).not.toContain('protected organization data')
+    expect(api.exchangeFirebaseToken).not.toHaveBeenCalled()
+  })
+
+  it('offers only the native local principal sandbox entry when the server reports local mode', async () => {
+    api.getCurrentSession.mockRejectedValue(new AuthApiError(401, 'auth_session_invalid'))
+    api.getAuthMode.mockResolvedValue({ authMode: 'local_principal_sandbox', localSandboxEnabled: true, correlationId: 'local-mode' })
+    await act(async () => {
+      root.render(<AuthGate><div>protected organization data</div></AuthGate>)
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    })
+    expect(container.textContent).toContain('使用本機測試身分登入')
+    expect(container.querySelector('button')?.textContent).toBe('使用本機測試身分登入')
+    expect(container.querySelector('form')).toBeNull()
+    expect(container.textContent).not.toContain('protected organization data')
+    expect(api.loginDevelopmentProfile).not.toHaveBeenCalled()
     expect(api.exchangeFirebaseToken).not.toHaveBeenCalled()
   })
 

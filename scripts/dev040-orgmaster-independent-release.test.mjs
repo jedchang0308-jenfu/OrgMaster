@@ -11,6 +11,7 @@ import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION } from './lib/dev014-principa
 import { DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_MIGRATION_PREFIX_COUNT, assertDev058MigrationEntries } from './lib/dev058-role-policy-migration.mjs'
+import {DEV070_MIGRATION_ENTRY_COUNT,DEV070_MIGRATION_ENTRIES,assertDev070MigrationEntries} from './lib/dev070-administration-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_MIGRATION_ENTRY_COUNT, assertDev059MigrationEntries } from './lib/dev059-fms-authority-migration.mjs'
 import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_MIGRATION_ENTRY_COUNT, assertDev057ProjedMigrationEntries } from './lib/dev057-projed-principal-migration.mjs'
 
@@ -370,14 +371,17 @@ test('DEV-040 OrgMaster WIF provider display name fits provider limit', () => {
   assert.ok(displayName.length <= 32)
 })
 
-test('OrgMaster exact 001-031 prefix plus DEV-058 034-037, FMS 038-040 and ProJED 041-043 production migration bytes', () => {
+test('OrgMaster exact baseline and all forward owner migrations through 067', () => {
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   assert.equal(verifyDev040MigrationBytes(profile, files), true)
   const bundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40))
   assert.equal(bundle.bundle.entries.length, DEV057_PROJED_MIGRATION_ENTRY_COUNT)
-  assert.equal(bundle.bundle.entries.length, 41)
-  assertDev059MigrationEntries(bundle.bundle.entries.slice(0, DEV059_MIGRATION_ENTRY_COUNT))
+  assert.deepEqual(bundle.bundle.entries.slice(DEV070_MIGRATION_ENTRY_COUNT - 10, DEV070_MIGRATION_ENTRY_COUNT).map(entry=>entry.version),
+    ['dev070-orgmaster-055','dev057-orgmaster-056','dev057-orgmaster-057','dev059-orgmaster-058','dev059-orgmaster-059','dev059-orgmaster-060','dev059-orgmaster-061','dev059-orgmaster-062','dev059-orgmaster-063','dev059-orgmaster-064'])
   assertDev057ProjedMigrationEntries(bundle.bundle.entries)
+  assertDev070MigrationEntries(bundle.bundle.entries.slice(0, DEV070_MIGRATION_ENTRY_COUNT))
+  assert.deepEqual(bundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT, DEV070_MIGRATION_ENTRY_COUNT).map(migrationIdentity),DEV070_MIGRATION_ENTRIES.map(migrationIdentity))
+  assertDev059MigrationEntries(bundle.bundle.entries.slice(0,DEV059_MIGRATION_ENTRY_COUNT))
   assertDev058MigrationEntries(bundle.bundle.entries.slice(0, DEV058_MIGRATION_ENTRY_COUNT))
   assert.deepEqual(
     bundle.bundle.entries.slice(DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_ENTRY_COUNT).map(migrationIdentity),
@@ -387,9 +391,7 @@ test('OrgMaster exact 001-031 prefix plus DEV-058 034-037, FMS 038-040 and ProJE
     profile.migrations.entries.slice(DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_ENTRY_COUNT).map(migrationIdentity),
     DEV058_MIGRATION_ENTRIES.map(migrationIdentity),
   )
-  assert.deepEqual(bundle.bundle.entries.slice(DEV058_MIGRATION_ENTRY_COUNT, DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity), DEV059_FMS_AUTHORITY_MIGRATIONS.map(migrationIdentity))
-  assert.deepEqual(bundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity), DEV057_PROJED_MIGRATIONS.map(migrationIdentity))
-  assert.deepEqual(profile.migrations.entries.slice(0, DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity), bundle.bundle.entries.slice(0, DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity))
+  assert.deepEqual(bundle.bundle.entries.slice(DEV059_MIGRATION_ENTRY_COUNT-DEV059_FMS_AUTHORITY_MIGRATIONS.length,DEV059_MIGRATION_ENTRY_COUNT).map(migrationIdentity), DEV059_FMS_AUTHORITY_MIGRATIONS.map(migrationIdentity))
   assert.equal(profile.migrations.entries.some(({ path }) => path.startsWith('db/migrations/032_') || path.startsWith('db/migrations/033_')), false)
   assert.equal(bundle.bundle.entries[10].version, 'dev040-r2-orgmaster-011')
   assert.equal(bundle.bundle.entries[11].version, 'dev047-orgmaster-012')
@@ -438,7 +440,7 @@ test('OrgMaster exact 001-031 prefix plus DEV-058 034-037, FMS 038-040 and ProJE
   }
 
   for (const [index, entry] of DEV057_PROJED_MIGRATIONS.entries()) {
-    const migrationIndex = DEV059_MIGRATION_ENTRY_COUNT + index
+    const migrationIndex = DEV070_MIGRATION_ENTRY_COUNT + index
     const missing = structuredClone(profile)
     missing.migrations.entries.splice(migrationIndex, 1)
     assert.throws(() => assertDev040V3Profile(missing, n1c), /MIGRATION_MANIFEST_DRIFT/u, `missing ${entry.path}`)
@@ -523,6 +525,8 @@ test('OrgMaster custom Cloud Build service account can act only as itself', () =
   assert.match(invokerV2, /role\s+= "roles\/workflows\.invoker"[\s\S]*google_service_account\.verifier\.email/u)
   assert.doesNotMatch(invokerV2, /condition|builder|deployer|controller|smoke\.email/u)
   assert.ok(infraPlan.stageBAdditional.includes('google_project_iam_member.verifier_candidate_smoke_invoker_v2[0]'))
+  assert.match(candidateSmoke, /url:\s+"https:\/\/jenfu-platform-prod-9536592944\.asia-east1\.run\.app\/api\/auth\/firebase\/session"[\s\S]*body:\s*\n\s+idToken:\s+\$\$\{id_token\}/u)
+  assert.doesNotMatch(candidateSmoke, /\/api\/auth\/login-intents|intentId:|csrfToken:|platform_login_intent_cookie_header/u)
 })
 test('OrgMaster owner prepare binds DEV-057 human business grant v4 source', () => {
   const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames
@@ -587,8 +591,36 @@ test('required source QC runs the existing verification through one owner entry 
     assert.ok(!workflow.includes(`run: ${command}\n`), `${command} must run once through QC`)
   }
   assert.ok(!workflow.includes('run: npm run test:dev-040:r2\n'))
+  const ownerDeploy = fs.readFileSync('.github/workflows/deploy-orgmaster-independent-production.yml', 'utf8')
+  const sourceReview = fs.readFileSync('scripts/dev012-verify-official-source.mjs', 'utf8')
+  assert.doesNotMatch(ownerDeploy, /run:\s*npm run test:dev-040:r2/u)
+  assert.match(ownerDeploy, /checks: read/u)
+  assert.match(ownerDeploy, /run: node scripts\/dev012-verify-official-source\.mjs/u)
+  assert.match(sourceReview, /requireSourceQc: true/u)
   assert.doesNotMatch(qc, /pass [0-9]+\\b/u)
   assert.match(workflow, /name: Production Source QC/u)
   assert.match(workflow, /docker build --target runtime-smoke/u)
   assert.match(workflow, /docker run --rm --network none/u)
+})
+
+test('closed workflow modes cannot add stages, inputs or rollback authority', () => {
+  const source = fs.readFileSync(new URL('../.github/workflows/deploy-orgmaster-independent-production.yml', import.meta.url), 'utf8')
+  for (const mutate of [
+    value => value.replace('options: [full_release, migration_only]', 'options: [full_release, migration_only, candidate]'),
+    value => value.replace('default: full_release', 'default: migration_only'),
+    value => value.replace("  candidate:\n    if: ${{ inputs.executionMode == 'full_release' }}", '  candidate:\n    if: ${{ always() }}'),
+    value => value.replace("always() && inputs.executionMode == 'full_release' && needs.prepare.result", 'always() && needs.prepare.result'),
+    value => value.replace('      executionMode:', '      target:\n        type: string\n      executionMode:'),
+  ]) assert.throws(() => assertDev040WorkflowSource(mutate(source.replace(/\r\n/gu, '\n'))), /WORKFLOW_INPUT_DRIFT|WORKFLOW_EXECUTION_MODE_DRIFT|WORKFLOW_MIGRATION_ONLY_BOUNDARY_DRIFT/)
+  for (const mutate of [
+    value => value.workflow.inputs.push('stage'),
+    value => value.workflow.executionModes.migration_only.push('candidate'),
+    value => value.workflow.executionModes.full_release.pop(),
+    value => { value.workflow.defaultExecutionMode = 'migration_only' },
+    value => { value.workflow.onlyInput = 'releaseCapsuleRef' },
+    value => { value.workflow.path = '.github/workflows/foreign.yml' },
+  ]) {
+    const changed = structuredClone(profile); mutate(changed)
+    assert.throws(() => assertDev040V3Profile(changed, n1c), /WORKFLOW_CONTRACT_MISMATCH/)
+  }
 })

@@ -117,7 +117,7 @@ try {
     GRANT SELECT ON platform_contract.v_principal_lifecycle_receipts_v2 TO jenfu_orgmaster_migrator;`)
 
   const profile = JSON.parse(fs.readFileSync(path.join(root, 'config/release/dev040-orgmaster-independent-production-v3.json'), 'utf8'))
-  assert.equal(profile.migrations.entries.length, 38)
+  assert.equal(profile.migrations.entries.length, 39)
   let ownerStateSeeded = false
   for (const entry of profile.migrations.entries.slice(0, -1)) {
     if (!ownerStateSeeded && entry.path.startsWith('db/migrations/012_')) {
@@ -133,9 +133,9 @@ try {
   }
   assert.equal(ownerStateSeeded, true)
   const finalEntry = profile.migrations.entries.at(-1)
-  assert.equal(finalEntry.version, 'dev065-orgmaster-040')
+  assert.equal(finalEntry.version, 'dev060-orgmaster-041')
   await admin.query(fs.readFileSync(path.join(root, finalEntry.path), 'utf8'))
-  pass('production-profile-migrations-001-through-040')
+  pass('production-profile-migrations-001-through-041')
 
   const legacyAuthority = await admin.query(`SELECT principal_id, assignments, protected_grants, manifest_hash FROM orgmaster_contract.v_fms_authority_v1 ORDER BY principal_id`)
   assert.deepEqual(legacyAuthority.rows.map((row) => row.principal_id), ['principal-one', 'principal-three', 'principal-two'])

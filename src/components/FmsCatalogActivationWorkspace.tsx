@@ -1,0 +1,168 @@
+import { useEffect, useRef, useState } from 'react'
+import { useAuthSession } from '../auth/AuthGate'
+import { activateFmsCatalog, loadFmsCatalogActivationReceipt, loadFmsCatalogActivationWorkspace, previewFmsCatalogActivation,
+  type FmsCatalogActivationPreview, type FmsCatalogActivationPreviewRequest, type FmsCatalogActivationWorkspace as Workspace } from '../governance/fmsCatalogActivationApiClient'
+import type { FmsCatalogReleaseInput } from '../../server/financialCatalogReleaseStore'
+import './FmsRoleAssignmentWorkspace.css'
+
+const PROTOCOL = 'jenfu.fms-catalog-handoff.v1'
+const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
+type Handoff = { nonce: string; release: FmsCatalogReleaseInput; initializationOperationId?: string }
+type Pending = { commandId: string; requestHash: string; previewHash: string; request: FmsCatalogActivationPreviewRequest }
+
+/** Both applications retain their own verified session. postMessage carries data, never authority. */
+export function FmsCatalogActivationWorkspace() {
+  const auth = useAuthSession(), principal = auth?.session.user.principalId ?? ''
+  const sessionIdentity = JSON.stringify([principal, auth?.session.user.employeeId, auth?.session.session?.expiresAt])
+  const priorIdentity = useRef(sessionIdentity), generation = useRef(0)
+  if (priorIdentity.current !== sessionIdentity) { priorIdentity.current = sessionIdentity; generation.current += 1 }
+  const identity = useRef(''); identity.current = sessionIdentity + ':' + generation.current
+  const [workspace, setWorkspace] = useState<Workspace | null>(null)
+  const [handoff, setHandoff] = useState<Handoff | null>(null)
+  const handoffRef = useRef<Handoff | null>(null)
+  const peer = useRef<Window | null>(window.opener)
+  const [reason, setReason] = useState('採用 FMS 角色目錄')
+  const [preview, setPreview] = useState<FmsCatalogActivationPreview | null>(null)
+  const previewRequest = useRef<FmsCatalogActivationPreviewRequest | null>(null)
+  const pending = useRef<Pending | null>(null)
+  const awaitingIssue = useRef(false)
+  const issueTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearIssueTimer = () => { if (issueTimer.current !== null) clearTimeout(issueTimer.current); issueTimer.current = null }
+  const [busy, setBusy] = useState(false), [unknown, setUnknown] = useState(false)
+  const [message, setMessage] = useState<string | null>(null), [error, setError] = useState<string | null>(null)
+  const send = (data: Record<string, unknown>) => {
+    if (workspace?.fmsOrigin && peer.current && handoffRef.current)
+      peer.current.postMessage({ protocol: PROTOCOL, nonce: handoffRef.current.nonce, ...data }, workspace.fmsOrigin)
+  }
+  useEffect(() => {
+    let current = true
+    const owner = identity.current
+    handoffRef.current = null; pending.current = null; previewRequest.current = null; awaitingIssue.current = false
+    peer.current = window.opener
+    setWorkspace(null); setHandoff(null); setPreview(null); setUnknown(false); setBusy(false); setMessage(null); setError(null)
+    if (principal) void loadFmsCatalogActivationWorkspace().then(value => {
+      if (!current || identity.current !== owner) return
+      setWorkspace(value)
+    }).catch(() => { if (current) setError('角色目錄狀態讀取失敗，請稍後重試。') })
+    return () => { current = false; clearIssueTimer() }
+  }, [sessionIdentity])
+  useEffect(() => {
+    if (!workspace?.fmsOrigin) return
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== workspace.fmsOrigin || !event.source || peer.current && event.source !== peer.current ||
+        !object(event.data) || event.data.protocol !== PROTOCOL) return
+      const data = event.data
+      if (data.type === 'init' && !handoffRef.current && typeof data.nonce === 'string' && /^[a-f0-9-]{36}$/u.test(data.nonce) && object(data.release)) {
+        if (data.initializationOperationId !== undefined && (typeof data.initializationOperationId !== 'string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(data.initializationOperationId))) return
+        const next = { nonce: data.nonce, release: data.release as unknown as FmsCatalogReleaseInput,
+          ...(typeof data.initializationOperationId === 'string' ? { initializationOperationId: data.initializationOperationId } : {}) }
+        // An opener-less browser may still deliver the configured FMS window's direct message.
+        // Bind that single source once; later messages must keep both source and nonce.
+        peer.current = event.source as Window
+        handoffRef.current = next; setHandoff(next)
+        peer.current.postMessage({ protocol: PROTOCOL, type: 'received', nonce: next.nonce }, workspace.fmsOrigin)
+        return
+      }
+      if (!handoffRef.current || data.nonce !== handoffRef.current.nonce || !pending.current) return
+      if (data.type === 'issue-failed') {
+        clearIssueTimer()
+        awaitingIssue.current = false
+        setError('尚未取得採用請求；請回 FMS 查詢原操作結果。'); setBusy(false); setUnknown(true); return
+      }
+      if (data.type !== 'issued' || !awaitingIssue.current || data.operationId !== pending.current.commandId || !object(data.checkpoint)) return
+      clearIssueTimer()
+      const original = pending.current, owner = identity.current
+      // Exactly one issuance response may trigger the already requested activation.
+      pending.current = null; awaitingIssue.current = false
+      void activateFmsCatalog({ ...original.request, commandId: original.commandId, requestHash: original.requestHash,
+        previewHash: original.previewHash, fmsCheckpoint: data.checkpoint }).then(receipt => {
+        if (identity.current !== owner) return
+        setMessage(receipt.replayed ? '此版本已採用。' : '角色目錄已採用。'); setUnknown(false)
+        send({ type: 'observe', operationId: original.commandId })
+      }).catch(() => {
+        if (identity.current !== owner) return
+        pending.current = original; setUnknown(true); setError('採用結果尚待確認，請查詢原操作。')
+        send({ type: 'observe', operationId: original.commandId })
+      }).finally(() => { if (identity.current === owner) setBusy(false) })
+    }
+    window.addEventListener('message', receive)
+    if (peer.current) peer.current.postMessage({ protocol: PROTOCOL, type: 'ready' }, workspace.fmsOrigin)
+    return () => window.removeEventListener('message', receive)
+  }, [workspace, sessionIdentity])
+  const inspect = async () => {
+    if (!handoff || busy || unknown) return
+    const owner = identity.current; setBusy(true); setError(null); setMessage(null); setPreview(null)
+    try {
+      const current = await loadFmsCatalogActivationWorkspace()
+      const request = { release: handoff.release, reason, expectedGovernanceRevision: current.governanceRevision,
+        expectedOrganizationRevision: current.organizationRevision, ...(handoff.initializationOperationId ? { initializationOperationId: handoff.initializationOperationId } : {}) }
+      const result = await previewFmsCatalogActivation(request)
+      if (identity.current !== owner) return
+      setWorkspace(current); previewRequest.current = request; setPreview(result)
+    } catch { if (identity.current === owner) setError('無法預覽此版本；請確認發布者與目錄版本，或重新開啟。') }
+    finally { if (identity.current === owner) setBusy(false) }
+  }
+  const activate = () => {
+    if (!preview?.allowedOperations.activate || !previewRequest.current || busy || unknown || message) return
+    const commandId = crypto.randomUUID()
+    pending.current = { commandId, requestHash: preview.requestHash, previewHash: preview.previewHash, request: previewRequest.current }
+    if (preview.initializationAdoption) {
+      const original = pending.current, owner = identity.current
+      setBusy(true); setError(null)
+      void activateFmsCatalog({ ...original.request, commandId, requestHash: original.requestHash, previewHash: original.previewHash }).then(() => {
+        if (identity.current !== owner) return
+        setMessage('FMS 固定管理目錄已採用，請回平台管理員頁授予 FMS 系統管理員，並等待系統生效。'); setUnknown(false); pending.current = null
+        send({ type: 'initialization-adopted', initializationOperationId: handoff!.initializationOperationId, orgCommandId: commandId })
+      }).catch(() => { if (identity.current === owner) { setUnknown(true); setError('採用結果尚待確認，請查詢原操作。') } })
+        .finally(() => { if (identity.current === owner) setBusy(false) })
+      return
+    }
+    awaitingIssue.current = true
+    setBusy(true); setError(null)
+    const original = pending.current, owner = identity.current
+    clearIssueTimer()
+    issueTimer.current = setTimeout(() => {
+      issueTimer.current = null
+      if (identity.current !== owner || pending.current !== original || !awaitingIssue.current) return
+      awaitingIssue.current = false; setBusy(false); setUnknown(true)
+      setError('尚未取得 FMS 回覆；請回 FMS 查詢原操作，勿重複送出。')
+    }, 15_000)
+    send({ type: 'issue', selection: { operationId: commandId, version: handoff!.release.version, previewHash: preview.previewHash, expected: preview.expected } })
+  }
+  const observe = async () => {
+    const original = pending.current, owner = identity.current
+    if (!original || busy) return
+    setBusy(true); setError(null)
+    try {
+      const receipt = await loadFmsCatalogActivationReceipt(original.commandId)
+      if (identity.current !== owner) return
+      if (receipt.requestHash !== original.requestHash || receipt.previewHash !== original.previewHash || receipt.receiptStatus !== 'applied') throw new Error('RECEIPT_MISMATCH')
+      setMessage(original.request.initializationOperationId ? 'FMS 固定管理目錄已採用，請回平台管理員頁授予 FMS 系統管理員，並等待系統生效。' : '角色目錄已採用。'); setUnknown(false); pending.current = null
+    } catch { if (identity.current === owner) setError('尚未查到已完成的採用紀錄；請回 FMS 查詢原操作。') }
+    finally { if (identity.current === owner) {
+      send(original.request.initializationOperationId ? { type: 'initialization-adopted', initializationOperationId: original.request.initializationOperationId, orgCommandId: original.commandId } : { type: 'observe', operationId: original.commandId }); setBusy(false)
+    } }
+  }
+  return <main className="fms-role-assignment">
+    <header className="fms-role-assignment__header"><h1>採用 FMS 角色目錄</h1></header>
+    {!handoff && !error ? <p role="status">{workspace ? '目前沒有待採用版本。請由 FMS 角色設定發起。' : '正在讀取角色目錄狀態…'}</p> : handoff ? <>
+      <section><h2>待採用版本</h2><p>發布於 {new Date(handoff.release.createdAt).toLocaleString('zh-TW')}</p><label htmlFor="catalog-reason">變更原因</label>
+        <input id="catalog-reason" value={reason} maxLength={240} disabled={busy || unknown || !!message}
+          onChange={event => { setReason(event.target.value); setPreview(null) }} />
+        {!unknown && !message && <button disabled={busy || !reason.trim()} onClick={() => void inspect()}>預覽影響</button>}
+      </section>
+      {preview && <section><h2>角色變更</h2><p>新增 {preview.addedRoles.length} 個、移除 {preview.removedRoles.length} 個、修改 {preview.changedRoles.length} 個；影響 {preview.affectedAssignmentCount} 筆任用。</p>
+        {preview.initializationAdoption && <p>首次採用僅新增固定「系統管理員」，保留既有角色與任用。採用後請回平台管理員頁明示授予 FMS 管理資格，再設定五項目錄操作權限。</p>}
+        <ul>{preview.addedRoles.map(role => <li key={'add-' + role.stableRoleId}>新增：{role.displayName}</li>)}
+          {preview.removedRoles.map(role => <li key={'remove-' + role.stableRoleId}>移除：{role.displayName}</li>)}
+          {preview.changedRoles.map(role => <li key={role.stableRoleId}>{role.displayName}：新增能力 {role.addedCapabilities.length} 個、移除能力 {role.removedCapabilities.length} 個{role.renamed ? '，名稱變更' : ''}{role.assignmentPolicyChanged ? '，任用規則變更' : ''}</li>)}</ul>
+        {!preview.compatible && <p role="alert">仍有任用使用將移除的角色，請先調整任用。</p>}
+        {preview.alreadyActive && <p role="status">此版本已採用。</p>}
+        {!message && !unknown && <button disabled={busy || !preview.allowedOperations.activate} onClick={activate}>採用此版本</button>}
+      </section>}
+      {unknown && <button disabled={busy} onClick={() => void observe()}>查詢原操作</button>}
+    </> : null}
+    {workspace?.initializationAdoption?.status === 'owner_readback_unavailable' && <p role="status">FMS 首次管理目錄尚待 owner 來源驗證連線，請待連線就緒後再採用。</p>}
+    {busy && <p role="status">處理中…</p>}{error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
+  </main>
+}

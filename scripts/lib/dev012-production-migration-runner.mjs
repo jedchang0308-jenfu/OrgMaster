@@ -200,6 +200,8 @@ async function readLedger(database, ledger) {
   }
 }
 
+export {readLedger as readMigrationLedger}
+
 async function readDatabaseBoundary(database, target) {
   const identity = (await database.query("SELECT current_database() AS database, current_user AS user, current_setting('server_version_num')::integer / 10000 AS \"postgresMajor\", pg_has_role(current_user, $1, 'MEMBER') AS \"migratorMember\", has_schema_privilege($2, $3, 'CREATE') AS \"runtimeCanCreateCore\"", [target.migratorRole, target.runtimeRole, target.coreSchema])).rows[0]
   const sibling = (await database.query("SELECT schema_name, CASE WHEN to_regnamespace(schema_name) IS NULL THEN false ELSE has_schema_privilege(current_user, schema_name, 'USAGE') END AS can_use FROM unnest($1::text[]) AS schema_name ORDER BY schema_name", [target.siblingCoreSchemas])).rows

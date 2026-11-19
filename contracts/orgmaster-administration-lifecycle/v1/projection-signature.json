@@ -1,0 +1,22 @@
+{
+  "function": "orgmaster_contract.administration_lifecycle_event_eligible_v1",
+  "arguments": [
+    {
+      "name": "p_event_id",
+      "type": "uuid"
+    },
+    {
+      "name": "p_snapshot_hash",
+      "type": "text"
+    }
+  ],
+  "returns": "boolean",
+  "volatility": "STABLE",
+  "security": "DEFINER",
+  "searchPath": "pg_catalog",
+  "executeReaders": [
+    "jenfu_platform_runtime"
+  ],
+  "unqualified": false,
+  "dependencyFailure": "throw"
+}

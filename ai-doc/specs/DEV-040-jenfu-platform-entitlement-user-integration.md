@@ -1436,6 +1436,8 @@ DEV-014 lifecycle readback、DEV-049 admission、DEV-057 Principal pair diagnost
 
 `npm run test:production-tools` 驗證設定相容、拒絕行為與由三份實際 Dockerfile COPY 所組出的隔離 package，包含延遲路徑。required `Production Source QC` 保持同一 job：只有 `AGENTS.md`／`ai-doc/**/*.md` 變更時執行 diff check；任何其他檔案、空或無法判定的 diff 均走原 source 檢查，建置三個工具映像並在禁止網路的容器匯入 entrypoints，既有 owner／abort／lifecycle／app／database-boundary 驗證由同一次 `qc:dev-040:r2` 執行，不再另跑一遍。branch protection、正式來源／artifact／回復驗證不變；此層證據不宣稱正式資料庫連線或 production PASS。
 
+正式 `prepare` 以既有 GitHub 來源驗證讀取同一個受保護 `master` merge SHA 的最新 `Production Source QC`。只接受 GitHub Actions integration 15368 的 completed/success，記錄 check ID，缺失或較新的非成功結果時停止。來源測試統一由 required Source QC 依原文件／程式範圍執行，發布不再重跑同一套 `test:dev-040:r2`。候選、正式入口、資料與回滾的 provider 驗證照常執行。
+
 PR #134 已合併至 `ad4e6be3355305329833a83005889be61c46f6ee`。其後人類明確授權僅 OrgMaster 補齊受控映像 rotation／一般發布路徑、完成 PR／required CI／merge／正式發布與發布後驗證；不擴張正式資料、grant、IAM／Secret 或跨專案責任。第一個一般發布 preflight 的 `SMOKE_REUSE_RECEIPT_INVALID` 保留為原失敗，不能套用歷史 lifecycle remediation 例外來略過。
 
 <a id="ordinary-tool-image-rotation-20261018"></a>
@@ -1450,7 +1452,11 @@ PR #134 已合併至 `ad4e6be3355305329833a83005889be61c46f6ee`。其後人類�
 - Git archive 輸出須明確指定 export profile，不依主機的全域 `core.autocrlf`。新的 source producer 固定 `core.autocrlf=false,core.eol=lf,tar.umask=0002`，且保留既有 clean/exact-source freeze。讀回既有工具 archive 時仍先驗原始 compressed SHA／generation／CRC／provenance；解壓內容只能逐 byte 等於同一 committed revision 由 Git 產生的 canonical LF profile，或固定 `core.autocrlf=true,core.eol=crlf,tar.umask=0002` 的 legacy profile。兩者均遵循 committed `.gitattributes`，完整 tar header／path／mode／內容／padding 必須相同，不允許任意 line-ending normalization、逐檔忽略、改寫舊 archive／receipt 或以新 build 代替來源證明。prepare 明記實際匹配的 `archiveExportProfile`；required CI 以實際歷史來源與固定 tar hash重現跨主機相容性，另測 content/header/extra-byte 拒絕。
 - 一般發布由 `npm run deploy:production -- --tool-image-rotation-ref=<own immutable receipt>` 接入原 ten-stage workflow。Operator 先做 live Job readback；prepare verifier 重新驗證同一份完整封存證據與來源，明記 `REQUIRED_AT_DEPLOYER_MIGRATE`，不提升 verifier 的 IAM。既有 migrate 階段使用原 deployer 的 exact-job Viewer 權限重讀 Job，核對 sealed after snapshot 的 UID／generation／template／image，缺漏或漂移在寫 migrate receipt／建立 candidate 前停止。維持相同 foundation／runtime／31-row bundle、`migrate=UNCHANGED_VERIFIED`、零 Job 執行、零 DDL／import／bootstrap。此 lane 不與歷史 remediation／runtime enablement／smoke credential exception 混用，也不新增人類步驟、身分或弱化 required CI。
 
+- 若有效 tool rotation 已由 historical protected source 套用，但 service／data control 仍停在更早的 RELEASED source，current source 可明示使用 `--applied-infra-baseline-source=<historical SHA>`。此 bridge 僅接受 own canonical `receipts/tool-rotations/<SHA>/app-infra.json`、strict ancestor、完整 source／build／saved-plan／before-after state／provider Job 證據；並要求 live Terraform state（只容許 check-result 排序正規化）逐值等於該 receipt 的 sealed after-state，且 live Job 仍是相同 UID／template／image。通過後 historical receipt 只成為下一次 current-source image rotation 的 infra baseline；RELEASED service／data intent、active revision 與 control generation 保持原值。不得與 `PRE_ACTIVATION_ABORTED`、`--recover-applied-source`、build reuse 合併，不得手改 state／control、製造假 abort、重播舊 apply，或放寬其他 resource／field。`--check` 只讀驗證此 bridge；`--apply` 仍只可建置 current source 並套用新的完整 image-only saved plan。
+
 行為與反向案例由 `npm run test:dev-040:tool-rotation` 加入既有 required Source QC 與 owner QC；owner／abort／DB boundary／app gates 依實際變動保留。實際正式結果另記 dated owner evidence；本契約本身不宣稱發布成功。
+
+2026-11-06 consumed-reuse basis 修正：若目前 RELEASED intent 已正常消費 `APP_INFRA_REUSE`，工具 rotation 的 service／data baseline 仍是該 intent；實際 infrastructure anchor 只能由同一 immutable reuse receipt 的 `reusedInfraReceiptRef` 推導，沒有新增 caller 可選 anchor/source 入口。prepare／prepared resume／apply 前 fence／APPLIED receipt replay 共用 resolver，以該 reuse 自己的 source-lock、原 intent 與歷史 predecessor 驗完整既有 immutable reuse／smoke proof、Git ancestry、source tree／executable、foundation／image／75-address／version／sealed state及output manifest。before-state須逐值相同，只保留既有 check-results 排序正規化；prepare／apply前另fresh provider Job／controller讀回，已提交fence的未知結果仍只readback、不重送apply。不可把歷史control head冒充目前control；新rotation自身仍綁當前RELEASED control CAS與新source transition。direct APP_INFRA原路徑不變，依賴缺漏、ancestry或state漂移均拒絕，不改寫歷史receipt／control或擴IAM／Secret／resource例外。
 
 <a id="release-proof-composition-20261018"></a>
 ### 2026-10-18 發布證據組合與 Workflow credential version rotation
@@ -1497,3 +1503,43 @@ PR #134 已合併至 `ad4e6be3355305329833a83005889be61c46f6ee`。其後人類�
 目前只完成本地 source／規則修改及語法／diff 檢查。沒有新增或執行測試、build、付費 scan 或 provider 操作；行為、時間與帳單節省均未驗證，維護出口保持待驗證，正式 deploy仍須原 owner release 授權與既定證據。Release-executor 變更只補其必要 contract/recovery coverage；有效 app/build/QC 證據依實際輸入重用，不為每個 DEV 重跑同一共用 gate。
 
 API依據：[Cloud Build history tags/filter](https://docs.cloud.google.com/build/docs/view-build-results)、[regional builds list](https://docs.cloud.google.com/build/docs/api/reference/rest/v1/projects.builds/list)。持續分析 ACTIVE／stale metadata 邊界依[Artifact Analysis 文件](https://docs.cloud.google.com/artifact-analysis/docs/container-scanning-overview)；過期 metadata refresh不等同必須產生新映像。
+
+
+<a id="dev070-administration-append-20261106"></a>
+
+## 2026-11-06 DEV-070 精確 administration append
+
+[DEV-070 §14](DEV-070-platform-super-admin-authority-contract.md#14-owner-release-source精確-dev070-append) 為本切片工程契約。source profile 由原39至041，僅加042/044/045至42，舊identity/hash不變、043不帶入；typed `DEV070_ADMINISTRATION_APPEND` 沿既有 prepare→build→migrate→candidate→entrypoint→verify→decision→activate→canonical→finalize，不混bootstrap/data import/IAM/Secret/infra或smoke rotation。普通release仍UNCHANGED_VERIFIED零DDL；exact31–41 prefix／42 replay逐列驗證，未知於寫入前拒絕。獨立工具image preparation只認識該已定案metadata，不在工具rotation執行DDL，append不繼承混合rotation特例。
+
+DEV070可由既有 `--tool-image-rotation-ref` 消費事先獨立 APPLIED 的 direct `OWNER_SEALED_TOOL_IMAGE_ROTATION`：readiness／authorization／intent須同ref、source／release／baseline；native routine宣告tool ref時必須有verified typed toolRotation，raw APPLIED infra即使放在canonical tool URI仍拒絕，不得以缺漏／null proof跳過native Job readback。完整sealed proof與source transition不放寬。migrate沿原deployer fresh readback同Job UID／generation／template／digest，missing／drift在runMigrationJob／candidate前拒絕；不得用tool predecessor、smoke組合、runtime drift或repair替代。消費既有工具證據與執行append是分開的workflow，沒有新增rotation mode或修改歷史收據。
+
+JF-FMS DEV-068 的工具輪替可由精確 057 前進至核准的 064，並同批新增固定應用旗標 `ORGMASTER_FMS_SESSION_REVOCATION_ENABLED=true`。工具輪替先核對原遷移紀錄與新附加項的雜湊，再核對其餘應用環境、工作流程及基礎設施來源。上述旗標由後續應用發布帶入，工具輪替沿用 Job 映像變更與唯讀核對。中央發布仍由資料庫控制啟用。
+
+045撤runtime舊writer後至v3-compatible新caller activation有界治理寫入42501，讀取維持；這是本次已接受的轉換影響，不能宣稱零中斷。migrate前須已有新immutable app artifact與provenance；失敗只回自身traffic/tag/entry並走v3-compatible forward repair，禁止downSQL/復活舊writer。DEV070 missingreceipt視UNKNOWN_REQUIRES_LEDGER_READBACK；rollback/terminal保留administrationRecovery與sealed source/image reference，traffic ROLLED_BACK不代表schema或舊治理write恢復。source/隔離PASS不代表此段已正式執行，正式仍需reviewed master/required CI/provider readback及既有owner workflow。
+
+
+<a id="dev040-normal-migration-only"></a>
+## Normal owner migration-only／sealed continuation forward amendment（2026-11-06）
+
+本節前向收斂舊節「workflow只有一個input」的敘述：immutable資料授權仍只有一個`releaseCapsuleRef`，原`.github/workflows/deploy-orgmaster-independent-production.yml`另接受封閉操作選擇`executionMode=full_release|migration_only`（default full_release）。profile的exact inputs、default、兩組固定stage清單與source validator同步；禁止自由stage／SQL／target／receipt body／skip／approve override。原full的`prepare→build→migrate→candidate→entrypoint→verify→decision→activate→canonical→finalize`與failure recovery不降gate。workflow_ref、production environment、既有builder／deployer／verifier與`production-release-orgmaster-prod` concurrency均不變；不新增WIF path／IAM／Secret。IaC source只允原workflow exact ref，本source沒有宣稱已取得新的native WIF readback。
+
+唯一normal CLI維持`npm run deploy:production`。`--migration-only`沿原完整source/prerequisite/baseline/tool/manifest與既有forward-append驗證建立immutable capsule，dispatch原workflow；只有prepare/build/migrate三job會執行。所有post-migrate job及failure/rollback各自只允full_release，executor在任何provider access之前另驗mode/stage白名單，unknown mode或migration_only的candidate／entrypoint／verify／decision／activate／canonical／finalize／rollback一律拒絕。CLI特別拒絕把此模式與會直接quiesce runtime的DEV014 lifecycle V2旗標混合；不能用模式縮減既有必要隔離。沒有新增migrator能力或普通zero-DDL到自由SQL的轉換。047仍只能由DEV070 exact manifest43及既有normal tool/source gate發布。
+
+Migration-only成功只保留原source-bound sealed prepare/build/deployment/migrate receipts；migrate的PASS／MIGRATION_APPLIED不表示app RELEASED。不寫service／traffic、owner control head、app terminal或incident rollback，不取得candidate control lease。三stage沿既有workflow全域concurrency序列化；control lease仍從full candidate首寫開始。Job／commit結果unknown先沿native Job/execution／原ledger／receipt readonly readback，缺完整成功收據時不能當完成或直接續candidate；不修改舊收據、不以down migration恢復。
+
+`npm run deploy:production -- --resume-capsule-ref=gs://jenfu-platform-prod-orgmaster-release/receipts/releases/<releaseId>/release-intent.json#sha256=<hash>`是窄化的同capsule full continuation；可另加`--check`純讀，不能混`--migration-only`、prepare-only、remediation、rotation、recovery或其他變更選項。CLI先驗clean official master／merged PR與branch rules view，以及**exact SHA latest app15368 Production Source QC completed/success**；operator依既有契約另外確認admin enforcement／zero bypass等admin-only fields，CLI不宣稱已讀取那些欄位。再核原4h expiry、同source SHA／Git identity hash／manifest、目前baseline/revision、sealed三stage與deployment/ref chain、原prerequisite refs及artifact evidence hashes。已出現candidate或terminal則拒絕此入口。僅通過後dispatch原full workflow；不在本機呼內部stage、不改capsule body、不延長expiry、不假造GITHUB_SHA。
+
+Full新run重新讀同capsule，prepare/build/migrate按原sealed receipt replay而不再build／Job／SQL；candidate才以新runId走原CAS/control lease及完整candidate／verify／decision／activate／canonical／finalize。source／expiry／baseline或sealed refs不再合格就fail closed，不偷偷換新attempt。另起normal attempt時仍沿既有artifact／ledger reuse契約，不能重標舊artifact或receipt來源。
+
+本次source自查包含原CI42213054164兩個舊42-row假設的修正：runner接受exact31–43 prefix（31起最大pending12），以真unknown-044 row驗44／unknown row／hash錯仍在write前拒；routine42合法append047，43無append拒絕；routine的slice fixture不另宣稱44-row證據。新增protocol tests覆蓋migration-only零service/control/terminal、unknown/poststage早拒、samecapsule/newrun零重建與零重跑SQL、來源／expiry／stage/ref／manifest錯誤拒續、exact-head QC缺失／失敗／in-progress／wrong-head零dispatch、mode/input/profile/YAML邊界及原full/recovery。047 SQL b683及既有R5 PG18.4證據不變。本節是source contract，正式migration／capacity／app release成果另由normal native receipts支持。
+
+<a id="dev040-tool-workflow-metadata-transition"></a>
+## Tool rotation 的精確 workflow metadata 相容修正（2026-11-06）
+
+PR217 合併後，normal tool rotation `--check` 在 build／Job／SQL 前因 `TOOL_ROTATION_SOURCE_INPUT_DRIFT` 停止；原始失敗保留。原因是 infra source guard 將 baseline 的 single-capsule metadata 與上節已封閉的 execution-mode metadata 全值比較。本修正只在既有 approved migration append 判定通過後，允許下列單向 exact tuple，不排除整個 workflow 或任意欄位：
+
+- Before 必須只有五個 key：`path,onlyInput,concurrency,jobs,failureJobs`；`onlyInput` 必須為 `releaseCapsuleRef`。
+- After 必須只有七個 key：`path,inputs,defaultExecutionMode,executionModes,concurrency,jobs,failureJobs`；inputs 順序固定 `releaseCapsuleRef,executionMode`，default 固定 `full_release`，executionModes 必須逐值等於既有 `OWNER_EXECUTION_MODES` 的完整十階段／前三階段。
+- 兩側 path 固定 `.github/workflows/deploy-orgmaster-independent-production.yml`，concurrency 固定 `production-release-orgmaster-prod`，jobs 固定完整十階段，failureJobs 固定 `readback,abort-or-rollback,publish-terminal`。未知 key、額外 input／mode、default／順序／路徑／concurrency 改動、反向轉換與沒有 migration append 的 metadata-only 轉換均拒絕。
+
+其他 profile 欄位、migration prefix／approved suffix／checksum 及 non-recipe infrastructure 原比較全部保留；不改 Terraform plan、identity、IAM／Secret、SQL、stage executor 或 workflow。回傳仍使用原 disposition 與各自真實的 before／after raw infrastructure fingerprint，不將不同來源偽造成相同 fingerprint，也不放寬後續 receipt-to-intent 綁定。source 自查以 Git fixture 驗合法轉換及拒絕邊界，另以實際 ca979ce9 的42-entry profile 至 5b3203e6 的43-entry protected source 做 pure source replay；這些結果不代表正式 tool rotation、migration 或容量 PASS。

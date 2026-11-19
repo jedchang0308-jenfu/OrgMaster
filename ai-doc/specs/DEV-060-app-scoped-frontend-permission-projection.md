@@ -1,7 +1,9 @@
 # DEV-060：OrgMaster 地端 SSO 與應用內單一前端權限投影
 
-- 文件成熟度：Source / Local Acceptance Complete；原契約驗收範圍保持不變。
-- 執行狀態：RD Self-check Passed / Local Acceptance Passed / PR Review Pending；真實 non-production activation DEFERRED。
+- 現行切片（2026-10-30）：§13的local Principal sandbox仍在進行；主責回報真 PostgreSQL forward batch `5425902e-efca-4e9f-b8ec-f3a8d1364963` 已 audit-bound、舊批次保留 retired、fixture hash 不變，session GET 200。Chrome 組織圖／員工／職位各一筆 projection request 均 200。此證據限於已跑案例，不代表 lifecycle、完整 allow/deny、PR／CI 或 release 完成；§12的既有成果維持前階段範圍。
+
+- 文件成熟度（§12 前階段）：Source / Local Acceptance Complete；原契約驗收範圍保持不變。
+- 執行狀態（§12 前階段）：RD Self-check Passed / Local Acceptance Passed / PR Review Pending；真實 non-production activation DEFERRED。
 - Native task：ORGMASTER/DEV-060#frontend-permission-projection。
 - 跨專案主控：JENFU/DEV-021。
 - 建立日期：2026-10-28（Asia/Taipei）。
@@ -40,6 +42,8 @@
 - Position、部門、組織圖與任職是組織主資料，不因存在某職位就自動產生 App grant。
 - Provider 只投影 applicationId=orgmaster 的已發布 permission；不得回傳 AI-PDM、FMS、ProJED 或其他 App 的 capability。
 - UI 可用 projection 決定顯示、停用與說明；route／API／mutation 必須重新驗證當下 verified session、scope 與 resource。
+- 組織工作區的索引與版本文件每次讀取都要求目前已發布且仍有效的 OrgMaster 全域角色。AI-PDM 等其他任用可維持身分驗證，但不授予組織工作區讀取權。建立草稿、儲存版本與變更版本清單另外要求 `orgmaster.governance.manage`，Cloud SQL 寫入在既有持久化交易提交前重查授權。
+- 「OrgMaster 工作區唯讀」沿既有角色目錄、指派與治理發布生效。此角色不得加入操作權限，指派必須設定截止時間。到期或撤銷後，仍持有有效登入工作階段也無法再次讀取工作區。
 - Snapshot 不含 role assignment 明細、Position、subject、token、cookie 或其他 App grant；只傳最小 permission boolean 與追蹤欄位。
 
 ## 4. API contract
@@ -255,3 +259,100 @@ Browser evidence 為 **LOCAL_SIMULATED**：既有 administrator／employee devel
 使用者已明確決定 Principal 撤權案例待補：目前 Firebase A／B 不具有 managed-identity lifecycle 資料，現行 owner API 禁止直接停用 active admission；未用登出、app-grant withdrawal 或偽造 AAL2 代替。其餘本輪 P5 項目已完成；Cloud SQL IAM、Google Workspace 端登入及完整業務流程不在本次通過聲明內。
 
 本任務 Chrome、三個 App 與 PG15432 已按指紋停止，12000／12010／12020／15432 釋放；12 個尚待釋放的 runtime registry records 已核銷，capacity lease 釋放、session ended。資料／私密設定與 ignored 證據保留供後續，未入 Git。最新 required CI／merge 狀態以 PR #186 provider 為準，沒有 production 變更。
+
+<a id="local-synthetic-fixtures"></a>
+
+## 13. 現行切片：版本化虛構身分與生命週期fixture（2026-10-29）
+
+Native=`ORGMASTER/DEV-060#local-synthetic-fixtures`；跨專案來源=`JENFU/DEV-021#local-principal-sandbox`。共用契約與A～J任務鏈唯一維護於Platform `ai-doc/specs/DEV-021-platform-app-permission-projection-contract.md` §14，本文只定義OrgMaster責任。參與者是Platform DEV-021、PDM DEV-126與FMS DEV-069；DEV-057不重開，DEV-059保留既有正式FMS producer來源。
+
+### 13.1 Fixture owner與版本join
+
+OrgMaster提供版本化synthetic Principal／Employee／company／role assignment／scope／grant及其lifecycle資料，供Platform local issuer與App server透過typed contracts消費。OrgMaster不簽發共用session；App capability由各App定義。正式canonical人員資料與原writer保護維持既有責任，日常fixture不讀取或複製正式任用、provider session、密碼或credential。
+
+fixture manifest至少含common contract version、fixtureVersion／既有規則下的內容hash、sandboxId／generation、catalog version／catalogSha256／roleDefinitionHash、來源定義版本；每個scenario含虛構Principal／Employee、identityIssuer／subject、company、有效scope／role／grant、期限、authEpoch、accountLifecycleVersion／profileVersion及預期狀態。case可有意配置invalid／expired／revoked，但不得把缺失資料自動補成active。
+
+PDM定義沿`ai-pdm.role-catalog.2026-10-10.v7`九角色；owner檔為`config/catalogs/ai-pdm-role-catalog.v7.json`，reader在`server/aiPdmRoleCatalogRepository.ts`。FMS沿自己的版本catalog／protected grants。只同步定義與已審查版本，不同步正式人員任用，也不藉管理職位自動配權。檔案raw SHA與catalogSha256是不同欄位，沿現有validator驗證，不能拿其中一個覆蓋另一個。
+
+fixture importer／bootstrap僅寫task-owned OrgMaster資料，維持typed Principal、scope／期限、CAS、audit及runtime非owner限制；透過版本contract供其他App讀取，不能直接寫PDM／FMS core。需要schema時用`db/migrations`新forward-only migration；若純fixture可沿現有factory完成，不為文件新增DDL。
+
+### 13.2 交付切片與驗收
+
+| 待辦 | 依賴與交付 | 完成證據 |
+|---|---|---|
+| O60-A 來源／定義收斂 | Platform共用profile；核對專屬writer、現有v7及FMS版本、typed readers／fixture factory | 記錄來源與版本join；未混入既有dirty server差異 |
+| O60-B 虛構fixture | active／無grant／wrong company／wrong scope／expired／revoked／disabled scenarios，正反資料完整 | parser／owner factory測試及隔離PG typed readback |
+| O60-C lifecycle | lifecycle變更傳回Platform權威更新epoch／撤銷，App下次protected request失效；reset與generation一致 | 停用／撤權／期限、CAS、舊session拒絕；故障不產生半套active grant |
+| O60-D OrgMaster consumer | 自身AuthGate／App session adapter接common profile，保留唯一OrgMasterPermissionProvider與resource projections | 正常OrgMaster三視圖、換帳號／late response、401／denied／unavailable分流 |
+| O60-E PR／CI／地端交付 | 合併本owner切片；可與其他repo獨立交付 | focused tests、typecheck／受影響build、SQL變更時DB boundary；provider required CI與protected master merge；1010／12010交付 |
+| O60-F 真實鏈／發布準備 | 若正式producer／consumer受本次影響，驗證真實非正式owner publication及相容性 | 真實身分／授權／撤權獨立證據；local fixture PASS不代填 |
+| O60-G 發布／結案 | 自有正式範圍沿DEV-040及`npm run deploy:production`；common任務鏈H～J | 自有source／artifact／native receipt與served version；正式拒絕sandbox、正常OrgMaster權限及受影響FMS contract readback；回復與資源交接 |
+
+現行（2026-10-30）：O60-A已建立獨立writer並核對官方基線。O60-B／D仍為`IN_PROGRESS`：native materializer已加入可驗hash-chain的publication audit event；主責回報真 PostgreSQL forward batch=`5425902e-efca-4e9f-b8ec-f3a8d1364963`、source revision=`99682eed…35a458`、fixture hash不變、舊批次保留為retired、`audit_bound=true`。`/api/orgmaster/governance/session` 回應200；Chrome組織圖、員工、職位各僅發出一次permission projection request且均回應200、無permission error。OrgMaster source範圍50項focused tests與strict TypeScript通過；另一child的7項fake-SQL測試屬合成證據，與主責真PG證據分開。
+
+本輪補充的隔離合成profile lifecycle證據見[Platform DEV-021 R1 JSON](<C:/VIBE CODING/.worktrees/Jenfu-Platform/dev021-local-principal-sandbox-20261029/ai-doc/qa/evidence/DEV021-LOCAL-PROFILE-LIFECYCLE-20261030-R1.json>)：`profile_changed` event=`5f7a9290-7ae1-42ea-8a62-ed6d594e5d75`，lifecycle version 1→2，central auth epoch=3；錯 generation／fixture hash、stale／future version及foreign Principal投影均被拒絕，完全相同的native projection／event重播未再次變更或增加epoch。四個舊App session均401；首輪fresh PDM login的401失敗保留，修復後四個App readback均200。這只證明該isolated synthetic profile、source及runtime；不證明reset／generation完整一致、真實managed Principal、production、IAM或Secret。O60-C lifecycle因此仍為部分進行中；reset與generation案例待驗，真實managed-identity lifecycle撤權沿§12既有決定維持`DEFERRED / NOT_RUN`。
+
+External-specialist來源修正採新增`orgmaster.local-principal-fixtures.2026-10-30.v2`，common envelope仍是`jenfu.local-principal-fixtures.v1`。V2 factory以同一個`createdAt`產生90天project grant；native materializer將有效的內部active sponsor寫入`sponsorEmployeeId`，並設`reviewDueAt = validUntil - 30 days`，同時保留external Employee無department／position／assignment anchor。原v1 builder與既有hash `a4d2ab8fa27246339d8bed2a7a5bc5cd5b27fcb8fc4f4007248f55d87905505f`固定不變；本輪未改寫immutable envelope、既有manifest或generated data。未來若需更新sandbox，應以單一新`createdAt`呼叫`buildLocalPrincipalSandboxFixtureV2({ createdAt })`，將同一時間交給native materializer，並建立新的sandboxId、generation及profile；只發布新的versioned fixture/hash，不覆寫舊生成物。Fixture／native／profile及OrgMaster callback focused tests共27項通過；callback測試使用mock client／pool，只證明v2 fixtureVersion/hash傳入token-proof API，不是live API或DB驗證。本輪未執行build、DB、runtime／cloud或production操作。
+
+O60-C reset／generation、完整allow/deny、PR／required CI及release仍未完成；上述source與隔離lifecycle證據不代填未跑案例，也不結案。共用cluster狀態見Platform DEV-021 §14.14。
+
+### 13.3 Conformance與交付條件
+
+common／fixture／catalog版本hash不符、Principal或Employee停用、grant過期／撤銷、company／scope不符應明確拒絕。fixture endpoint、bootstrap、lifecycle及reset控制面同時要求development＋loopback＋explicit flag；正式／非loopback不可啟用，不能用dev cookie／headers覆寫正式Principal。中央session authority不可用時回unavailable，不自動採用固定角色。
+
+隔離PG需證明typed owner資料實際持久化、contract view／runtime ACL正確、peer core不可讀、lifecycle與audit一致；Chrome證據另證明正常使用入口及單一投影。日常sandbox、真PG、真實Google／owner publication、production各按原證據層記錄。
+
+正式發布輸入不帶fixture資料或local key；需要發布的owner先維持新舊contract相容，consumer就緒才啟用。自有發布失敗依DEV-040既定traffic→tag→entry recovery，不能回退資料或跨改其他App。未受影響正式artifact只需有效相容證據，無需為參與整合重部署。
+
+DEV-060新增切片只有在O60-A～G適用工作完成且主責收到可追溯結果時結案；若已部署但必要功能／撤權未驗，標`DEPLOYED / ACCEPTANCE_PENDING`。正式target或外部身分條件缺少只阻塞相依階段，source／隔離驗證可繼續。現行source／隔離runtime進度沿§13.2及Platform DEV-021 §14.14記錄，正式操作尚未執行。
+
+## 14. FMS 人員任用的 owner workspace
+
+角色版本啟用沿同一OrgMaster own-session writer。正常API以`/applications/financial-management-system/catalog/activation`讀現行版本，`/preview`只讀相容差異，`/activate`帶原requestHash／previewHash／commandId提交，`/commands/{commandId}`查原結果；前綴均為`/api/orgmaster/governance`。舊`catalog/releases/publish` HTTP入口使用相同preview-proof啟用handler，不保留可繞過正常preview的平行HTTP寫入。import准入只允許讀預覽；正式套用須分別持有import、publish、activate三項具名權限，cached replay亦須當下仍有三權。角色缺失若影響任何active-status任用即拒絕，退役仍保留既有任用與authoring catalog lineage；並行版本由原CAS決定唯一成功者。收據與publication／audit原子提交，附加record的完整內容、requestHash與previewHash進同一audit hash；泛用治理讀取不回傳此proof，原Principal仍需catalog.read資格才可查原命令。上述source不是FMS normalized owner receipt或跨系統已啟用證據；尚需FMS server-owned immutable intent、accepted typed owner reader與正常UI交接驗證，完成前保持IN_PROGRESS。
+
+FMS `/admin/users` 由正常 Platform OrgMaster launch 進入 `/fms/role-assignments`。治理操作在 OrgMaster 自有已驗證 session 內完成；不轉貼 FMS actor、不沿用本地 users 或開發身分 headers。普通 FMS 判權仍讀原 Tier-0 投影。
+
+- `GET /api/orgmaster/governance/applications/financial-management-system/employees` 是 `orgmaster.fms-employee-directory.v1`：沿現有 FMS workspace owner role 加 exact-Principal `role_assignment.manage`；只回 employeeId、displayName、未具名權威提供時為null的employeeNumber、active／assignable，以及 directoryRevision、governanceRevision、readAt／cursor。搜尋 q 最多80字，預設20／上限50；cursor綁搜尋與版本。不得回整份組織資料、聯絡或財務個資。
+- 既有 role-assignments workspace 回傳目前任用、canonical可指派roles及原preview／publish權限決策。新增任用需在職Employee且角色可指派；撤銷使用既有assignmentId與其Employee／scope／role，停用Employee仍可撤銷既有任用，不藉此開啟新任用。目標與角色均需明確選擇，不預選owner角色。
+- preview／publish／commands收據沿原OrgMaster API與CAS、目錄綁定、原子audit及Principal v2 session／epoch fence。收據讀取要求既有FMS任用管理權限，且只解析此App任用namespace；重播仍驗當下publish權限。
+- 結果未知時，原commandId／requestHash／previewHash按Principal存於分頁sessionStorage；不存憑證或任用輸入。重新載入後仍先查原收據，not_found不冒稱拒絕或清除；`COMMAND_NOT_OBSERVED`等不確定結果不得改發新命令。資料版本衝突提供重新載入／預覽，不能靠使用者反覆F5。
+- 工作區返回入口 `/api/orgmaster/governance/applications/financial-management-system/return` 只使用已設定SSO broker（或明確local sandbox平台origin）組固定Platform FMS launch；不接受request提供目的地。回到FMS後由其原權限provider明確刷新一次。
+
+此接法重用OrgMaster的人類session與寫入權威，不新增delegated-human-session、IAM或Secret。來源、隔離Chrome、真實SSO與正式發布分開驗證，進度只回填原DEV-060／JF-FMS DEV-069與DEV-068。
+
+隔離native initializer可由顯式`fixtureSource.fmsManagement={scenarioId,capabilities}`建立管理測試資料，預設不建立。OrgMaster只接受既有active `human_personal`虛構身分，原fixture的公司只接受固定FMS業務ID `jenfu-machinery`／共同隔離ID `company-jenfu`，原fixture與native policy均須有company-jenfu workspace有效`role-owner`；capabilities只限原FMS任用兩項及十項protected operations，逐項明列、不得重複。grant綁其exact Principal／Employee及原任用期限，納入同一policy publication／audit與artifact source hash；不由HTTP／runtime呼叫，不更新既有publication，不授予PDM override或system_admin。非owner、錯公司／scope、停用或不支援capability拒絕。一般財務身分的403案例保留，新增管理fixture只供允許案例。
+
+Platform地端runtime的fixture readiness與bootstrap精確驗證分開：bootstrap仍以原publication／grantVersion逐欄比對；runtime可接受較新native publication中語意完全相同的任用。grantVersion對齊已驗證的現行出版版本；OrgMaster自身虛擬catalog的id／整份policy hash可隨新版更新。FMS catalog version／content hash也可隨較新publication前進，但舊grant必須逐欄符合immutable scenario fixture（僅grantVersion可對齊原版本）；再與現行owner grant完整比對。角色definition hash、公司／scope、status與有效期、Principal／Employee、lifecycle／epoch仍固定；任用撤銷、新增／改角色、偽造舊catalog hash或同版本漂移不得取得fixture准入。其他外部App catalog檢查不變，不重寫fixture、已套用publication或舊收據消除差異。
+
+OrgMaster的auth mode只驗runtime target／listener／私有profile與既定catalog配置，不逐一讀全部scenario的任用資格；單一Principal無任用或已停用不使其他人登入入口關閉。每次session仍驗native Principal／Employee／epoch、immutable fixture identity與lifecycle/session binding、有效owner publication及中央introspection。業務權限由原生current owner projection／每次操作writer判定，不能以初始fixture grant等同登入服務配置。中央明確401／403拒絕映射為該session失效；真正authority／target不可用仍503。bootstrap精確內容驗證保留。
+
+2026-11-01 續作：已接收並保存 FMS 原始 checkpoint（intentId／operationId／inputHash、身分、來源與四項 expected revision），新收據封存採 orgmaster.sorted-json.v1，避免 jsonb 鍵順序影響讀回。一般 migration 041 提供僅供 FMS runtime SELECT 的 versioned receipt／current-binding views；manifest 以完整檔案 bytes SHA 綁定。新增正常 catalog-activation 畫面，只接受伺服器配置的 FMS origin 與原 opener／nonce，仍由 OrgMaster 自己的 verified session writer 寫入。10 分鐘只限制新 intent 准入；原命令逾期後仍可唯讀恢復。此切片的 source／unit 檢查已完成；原生 PG、Chrome 整鏈、CI 與正式啟用尚待完成，DEV-060 保持 IN_PROGRESS。
+
+中央啟用交接允許瀏覽器未保留 opener：FMS 只向自己建立的固定 OrgMaster origin 視窗傳送資料；OrgMaster 首次 init 綁定唯一來源視窗與 nonce，後續不得更換。此通道不傳遞人類憑證或授權，實際寫入仍由 OrgMaster verified session／三項 protected grants 判定。FMS capabilityIds 的完整空陣列表示不授予能力，接收端須原樣保留；缺欄位或 null 仍拒絕，不補預設能力。原生驗證首次 422 已保留，修正後整鏈讀回尚待完成。
+
+2026-11-01 R12／R13 續作：正常外部 Chrome／synthetic SSO／隔離 PG 已完成交接、預覽、OrgMaster單次啟用與 FMS typed recovery confirmed／active，原 operation 為 `7cfd0bcf-5213-474a-bc2d-bf15bcd694fd`。041 view讀回一筆applied，FMS保留首次422的issuer與新issuer，只有一筆immutable confirmation。撤銷任用保留原catalog快照，驗證僅接受受publication hash與audit約束的歷史catalog；恢復任用不得沿舊目錄繞過當前角色檢查。已驗新SSO讀新目錄與revoked身分FMS入口拒絕。正式041／新目錄發布及完整DEV-068／DEV-065驗收仍待，以上不代表正式發布完成。
+
+FMS 視窗未回覆 issuance 時，OrgMaster 的15秒等待只解除介面忙碌，保留原 operation 查詢並標示未知；不宣稱伺服器拒絕、不取消已離開分頁的 FMS 寫入、不重送。等待結束後忽略晚到的 issuance，避免背景新增 OrgMaster activate；已收到 checkpoint 並送出的 activate 不受此介面計時器中止。此分支由 React／mock transport 測試驗證，尚非新增 Chrome 或正式證據。
+
+正式伺服器在 `NODE_ENV=production` 且 Cloud Run `K_SERVICE=orgmaster-prod` 時，預設使用既有 FMS canonical origin 與 formal realm；其他環境仍使用明確設定。顯式 local 或無效 override 在正式環境會拒絕，不能退回預設值掩蓋設定錯誤。此部署預設已有來源單元測試，正式 provider／整鏈證據另驗。
+
+### 14.1 migration 041 專用正式發布 lane
+
+正式 migration 041 只能由 `deploy:production -- --dev060-fms-catalog-activation-append --dev060-infra-ref=URI#sha256=HASH` 選取。authorization／readiness 固定為 `devId=DEV-060`、`slice=060-FMS-CATALOG-ACTIVATION`，remediation 只綁 `dev060-orgmaster-041`；不得沿 DEV-059 名義、普通 tool rotation、其他 controlled mode 或任意 migration 參數執行。既有 ten-stage workflow 與單一 `releaseCapsuleRef` input 不變。
+
+DEV-060 runner mode 只接受 production ledger 已完整驗證的 38 筆（040）→39 筆（041）單筆 forward append，或完整39筆的零DDL replay。37筆或更早、foreign prefix、順序／version／name／checksum漂移均須在 `BEGIN` 或 migration SQL 前拒絕；成功收據只能是 `applied=1,replayed=38` 或 `applied=0,replayed=39`。001–040與39筆profile維持原identity，不因本lane重寫；DEV-059既有恢復範圍亦保持不變。
+
+<a id="daily-local-test-binding"></a>
+
+## 1010 日常地端測試接入（2026-11-16）
+
+沿 `JENFU/DEV-021#daily-local-test-binding`，由本次 Platform Codex session 主控四系統整合，本任務負責 OrgMaster 啟動、虛構 Principal／Employee 與任用 fixture，以及自有 DB schema 和版本化 contracts。
+
+- 2026-11-17 日常綁定收斂為 Jenfu 共用地端測試環境。Platform 的 `npm run dev:local` 固定啟動 `C:\VIBE CODING\Jenfu-Platform`、`C:\VIBE CODING\OrgMaster`、`C:\VIBE CODING\AI_PDM`、`C:\VIBE CODING\JF-FMS-daily`，四個應用共用 `jenfu_local_shared_daily`。OrgMaster 僅使用 `orgmaster_core`／`orgmaster_contract` 與自己的 runtime role，migration、資料與回復責任仍由本專案持有。原 1030 內容作為一般地端測試資料，日常重啟保留共用測試狀態；重建時依各 owner 的 fixture／migration 重新產生。
+
+- `scripts/dev-local.mjs` 的整合模式使用主控一次保存的工作樹、1010 loopback origin 與 OrgMaster runtime DB 設定。啟動後核對綁定的本機 PostgreSQL 與 role，沿現有 sandbox adapter／native session 入口。日常整合不以 JSON 工作區作替代來源；獨立 JSON 預覽仍由明確入口使用既有工作區。
+- 四系統整合啟動與重開讀同一 PG target，OrgMaster 自有 schema 及 runtime 最小權限不變。一次初始化由 owner 流程準備虛構身分與任用，日常重開從已保存狀態讀回。
+- 隔離候選驗收涵蓋 Portal 正常 SSO、既有任用讀回、允許與拒絕，以及錯誤 DB／非 loopback 綁定在啟動階段拒絕。結果與候選版本回填既有任務或 PR。2026-11-16 固定 `1010` 由 Platform 與 FMS 兩入口冷啟動均 ready，訪客的受保護 API 回 `401`。既有日常 `active` 合成身分只具 PDM／FMS 任用，OrgMaster 在 Portal 如預期呈 `no_access`。在 12000／12010 隔離候選，具 OrgMaster 任用的合成身分已從 Portal 正常 SSO 並讀回 OrgMaster 原生 session 200。新候選的 158 步初始化與 postnative 五階段均通過。保留兩個首次失敗：地端 057 的搜尋路徑造成 persistence_authority 無法解析，以及 SSO 嘗試用 v3 檢視比對 v2 綁定。修正原生執行器的 057 搜尋路徑與地端 reader 固定讀取已綁定 v2，現行真實環境的 v3 優先策略維持原樣。候選埠及候選 PG 已釋放，日常資料與 OrgMaster 任用範圍維持原設定。
+
+- 後續依使用者授權，`jf-fms-daily` 的 `active` 合成測試身分新增 `role-orgmaster-admin` 任用，發布版本為 `assignment-policy-local-jf-fms-daily-orgmaster-r2`。從 Platform 日常登入點 OrgMaster 卡片可進入 `http://localhost:1010/`，原生 session 及重整後均回 `200`，訪客回 `401`。此變更沿用原工作樹、資料庫與設定路徑。
+- 2026-11-16 後續由同一 Platform 日常入口驗證 OrgMaster `1010`、AI-PDM `1020`、FMS `1030` 均可進入，三個 native session 首次及重整後均回 `200`，訪客三端均回 `401`。1020 由 `AI_PDM-formal-runtime` 的獨立程序交回固定 Platform 啟動器後，四個日常埠以已綁定工作樹啟動。FMS 的 207 個業務資料關聯指紋保持 `1eff95bb7468a109bfef29d056aa8e253874c14c3a8935efe675882450e9c742`，1,007 筆原始應收、付款任務、資金群組和銀行帳戶讀回通過。

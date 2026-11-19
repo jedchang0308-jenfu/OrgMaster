@@ -1,0 +1,10 @@
+import {createHash} from 'node:crypto'
+import {readFile,mkdir,writeFile} from 'node:fs/promises'
+import {resolve} from 'node:path'
+const directory=resolve(process.cwd(),'contracts/orgmaster-administration-lifecycle/v1')
+const signature={function:'orgmaster_contract.administration_lifecycle_event_eligible_v1',arguments:[{name:'p_event_id',type:'uuid'},{name:'p_snapshot_hash',type:'text'}],returns:'boolean',volatility:'STABLE',security:'DEFINER',searchPath:'pg_catalog',executeReaders:['jenfu_platform_runtime'],unqualified:false,dependencyFailure:'throw'}
+const manifest={contractVersion:'orgmaster.administration-lifecycle.v1',producer:'orgmaster',consumer:'platform',eligibility:signature,scope:'exact immutable administrative terminal receipt outboxIds AND administration_changed AND exact snapshot hash; shared with producer filtered claim',nativePreparation:'current native bind creates no separate lifecycle event; any future required prepare event needs explicit immutable enrollment receipt ownership before eligibility',wakeEndpoint:'/api/internal/administration-lifecycle/v1',wakeAuthentication:'existing exact Platform Google service OIDC caller; no cookie/origin/body/query',wakeEffect:'bounded claim/consume/ack; explicit authenticated wake may resume only this scoped blocked delivery; never modifies frozen events or terminal receipts',fullLifecycleFlag:'unchanged; no Directory refresh or generic lifecycle claim'}
+const files={'contract-manifest.json':manifest,'projection-signature.json':signature},bytes=value=>JSON.stringify(value,null,2)+'\n'
+await mkdir(directory,{recursive:true})
+for(const[path,value]of Object.entries(files)){const target=resolve(directory,path),expected=bytes(value);if(process.argv.includes('--check')){if(await readFile(target,'utf8')!==expected)throw new Error('DEV070_ADMINISTRATION_LIFECYCLE_CONTRACT_DRIFT')}else await writeFile(target,expected,'utf8')}
+console.log(JSON.stringify({directory,manifestSha256:createHash('sha256').update(bytes(manifest)).digest('hex')}))

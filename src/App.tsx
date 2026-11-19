@@ -17,6 +17,8 @@ import '@xyflow/react/dist/style.css'
 import { AlertTriangle, Check, MousePointerClick, Trash2, UserRoundPlus } from 'lucide-react'
 import { AuthGate, useAuthSession } from './auth/AuthGate'
 import { OrgMasterPermissionProvider, useOrgMasterPermissions } from './auth/OrgMasterPermissionProvider'
+import { FmsRoleAssignmentWorkspace } from './components/FmsRoleAssignmentWorkspace'
+import { FmsCatalogActivationWorkspace } from './components/FmsCatalogActivationWorkspace'
 import { createUuidV7 } from './employeeIdentity'
 import { screenshotOrganizationState } from './screenshotData'
 import { removeEmployeeFromDirectory, updateDepartmentInDirectory, updateEmployeeInDirectory } from './directories'
@@ -116,7 +118,7 @@ import {
   upsertRoleCombinationRiskRule,
 } from './roleCombinationRisks'
 import type { ChildrenAxis, Employee, HierarchyNode, OrganizationLevel, OrgDirectoryState, OrgMember, Point, PositionView, Role } from './types'
-import type { OrgWorkspaceIndex, OrgWorkspaceVersionSummary, WorkspaceMode } from './versionWorkspace'
+import { currentWorkspaceVersion, type OrgWorkspaceIndex, type OrgWorkspaceVersionSummary, type WorkspaceMode } from './versionWorkspace'
 import { WorkspaceShell } from './components/workspace/WorkspaceShell'
 import { WorkspaceOverlayProvider, WorkspacePortal } from './components/workspace/WorkspaceOverlayHosts'
 import { WorkspaceLauncher } from './components/workspace/WorkspaceLauncher'
@@ -366,6 +368,7 @@ function findDirectoryDataElement(attribute: string, value: string) {
 
 function ProtectedApp() {
   const { allows: permissionAllows } = useOrgMasterPermissions()
+  const workspaceWriteAllowed = permissionAllows('orgmaster.governance.manage')
   const managedIdentityEnabled = useAuthSession()?.managedIdentityEnabled === true
   const initialState = screenshotOrganizationState
   const [serverReady, setServerReady] = useState(false)
@@ -696,7 +699,8 @@ function ProtectedApp() {
   activeVersionIdRef.current = activeVersionId
   workspaceModeRef.current = workspaceMode
   workspaceIndexRef.current = workspaceIndex
-  const versionEditingEnabled = (workspaceMode === 'draft-edit' || workspaceMode === 'current-maintenance')
+  const versionEditingEnabled = workspaceWriteAllowed
+    && (workspaceMode === 'draft-edit' || workspaceMode === 'current-maintenance')
     && serverReady
     && workspaceHydration.kind === 'ready'
   editingEnabledRef.current = versionEditingEnabled
@@ -725,8 +729,8 @@ function ProtectedApp() {
   })
   const masterDataEditingEnabled = editingEnabled
   const organizationEditingEnabled = masterDataEditingEnabled && !dutyConfigurationActive
-  const workspaceMutationAllowed = resolveModuleCapability('organization', workspaceEnvironment, { canRead: true, canMutate: true }).canMutate
-  const versionMutationAllowed = isDesktopMutationEnvironment(workspaceEnvironment)
+  const workspaceMutationAllowed = resolveModuleCapability('organization', workspaceEnvironment, { canRead: true, canMutate: workspaceWriteAllowed }).canMutate
+  const versionMutationAllowed = workspaceWriteAllowed && isDesktopMutationEnvironment(workspaceEnvironment)
   const accountMutationEnvironmentAllowed = isDesktopMutationEnvironment(workspaceEnvironment)
   const workspaceCompositionCapability = resolveWorkspaceCompositionCapability(workspaceEnvironment)
   workspaceMutationAllowedRef.current = workspaceMutationAllowed
@@ -3259,7 +3263,7 @@ function ProtectedApp() {
         departments={departments}
         roles={roles}
         currentOrganizationVersionId={workspaceIndex?.currentVersionId ?? null}
-        currentOrganizationRevision={isDirty ? null : serverRevision ?? activeWorkspaceVersion?.revision ?? null}
+        currentOrganizationRevision={isDirty ? null : currentWorkspaceVersion(workspaceIndex)?.revision ?? null}
         visibility={visibility}
         workspaceMutationAllowed={workspaceMutationAllowed}
         refreshToken={governanceRefreshToken}
@@ -3456,5 +3460,10 @@ function ProtectedApp() {
 }
 
 export default function App() {
-  return <AuthGate><OrgMasterPermissionProvider><ProtectedApp /></OrgMasterPermissionProvider></AuthGate>
+  const content = typeof window !== 'undefined' && window.location.pathname === '/fms/role-assignments'
+    ? <FmsRoleAssignmentWorkspace />
+    : typeof window !== 'undefined' && window.location.pathname === '/fms/catalog-activation'
+      ? <FmsCatalogActivationWorkspace />
+    : <ProtectedApp />
+  return <AuthGate><OrgMasterPermissionProvider>{content}</OrgMasterPermissionProvider></AuthGate>
 }

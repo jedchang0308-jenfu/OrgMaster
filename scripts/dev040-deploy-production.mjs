@@ -2,6 +2,8 @@
 import { DEV058_ROLE_POLICY_REMEDIATION } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_REMEDIATION } from './lib/dev059-fms-authority-migration.mjs'
 import { DEV057_PROJED_REMEDIATION } from './lib/dev057-projed-principal-migration.mjs'
+import {DEV070_ADMINISTRATION_REMEDIATION,ORGMASTER_FMS_DELIVERY_FLAG,isFmsDeliveryAppend} from './lib/dev070-administration-migration.mjs'
+import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION } from './lib/dev060-fms-catalog-activation-migration.mjs'
 import { assertPrincipalOnlyRecoveryReadback } from './lib/dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
@@ -9,9 +11,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
 import { buildReleaseIntent, buildRuntimeConfigReceipt, buildSourceFreeze, readGitAuthority } from './lib/dev012-owner-prerequisite-producer.mjs'
-import { createGitSourceIdentity, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
+import { createGitSourceIdentity, readGitBlob, verifyMigrationOnlyContinuation } from './lib/dev012-owner-stage-executor.mjs'
 import { readSmokeRotationProvider, readSmokeReuseProviderState } from './lib/dev057-smoke-rotation-continuation.mjs'
-import { canonicalize, createOwnerTransport, resolvePlainEnvironment, sha256 } from './lib/dev012-owner-release-runtime.mjs'
+import { assertOwnerExecutionMode, canonicalize, createOwnerTransport, resolvePlainEnvironment, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { assertDev013PredecessorReceipt, readRoutineBaseline, resolveRoutineControlBaseline, verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
 import { dev013L4SequenceStep } from './lib/dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './lib/dev057-principal-contract-release.mjs'
@@ -43,7 +45,11 @@ export function parseDeployProductionArgs(argv) {
   options.dev058RolePolicyAppend = false
   options.dev059FmsAuthorityAppend = false
   options.dev057ProjedPrincipalAppend = false
+  options.dev060FmsCatalogActivationAppend = false
+  options.dev070AdministrationAppend = false
   options.toolRotationRef = null
+  options.migrationOnly = false
+  options.resumeCapsuleRef = null
   for (const arg of argv) {
     if (arg.startsWith('--tool-image-rotation-ref=') && options.toolRotationRef === null) {
       const match = /^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/tool-rotations\/[a-f0-9]{40}\/app-infra\.json#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--tool-image-rotation-ref='.length))
@@ -53,12 +59,19 @@ export function parseDeployProductionArgs(argv) {
       const match = /^(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/DEV057-PRINCIPAL-ONLY-RECOVERY\/[a-f0-9]{40}(?:-[a-f0-9]{12})?\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--principal-only-recovery-ref='.length))
       if (!match) throw new Error('DEV057_RECOVERY_REF_INVALID')
       options.principalOnlyRecoveryRef = { ...match.groups }
-    } else if (arg === '--check' && !options.check) options.check = true
+    } else if (arg.startsWith('--resume-capsule-ref=') && options.resumeCapsuleRef === null) {
+      const match = /^(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/[A-Z0-9][A-Z0-9-]{5,63}\/release-intent\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--resume-capsule-ref='.length))
+      if (!match) throw new Error('MIGRATION_CONTINUATION_REF_INVALID')
+      options.resumeCapsuleRef = { ...match.groups }
+    } else if (arg === '--migration-only' && !options.migrationOnly) options.migrationOnly = true
+    else if (arg === '--check' && !options.check) options.check = true
     else if (arg === '--prepare-only' && !options.prepareOnly) options.prepareOnly = true
     else if (arg === '--reuse-aborted-app-artifact' && !options.reuseAbortedAppArtifact) options.reuseAbortedAppArtifact = true
     else if (arg === '--dev057-projed-principal-append' && !options.dev057ProjedPrincipalAppend) options.dev057ProjedPrincipalAppend = true
     else if (arg === '--dev058-role-policy-append' && !options.dev058RolePolicyAppend) options.dev058RolePolicyAppend = true
     else if (arg === '--dev059-fms-authority-append' && !options.dev059FmsAuthorityAppend) options.dev059FmsAuthorityAppend = true
+    else if(arg==='--dev070-administration-append'&&!options.dev070AdministrationAppend)options.dev070AdministrationAppend=true
+    else if (arg === '--dev060-fms-catalog-activation-append' && !options.dev060FmsCatalogActivationAppend) options.dev060FmsCatalogActivationAppend = true
     else if (arg === '--dev014-principal-lifecycle-v2-remediation' && !options.dev014PrincipalLifecycleV2Remediation) options.dev014PrincipalLifecycleV2Remediation = true
     else if (arg === '--dev014-principal-lifecycle-enable' && !options.dev014PrincipalLifecycleEnable) options.dev014PrincipalLifecycleEnable = true
     else if (arg === '--dev014-activate' && !options.dev014Activate) options.dev014Activate = true
@@ -111,25 +124,43 @@ export function parseDeployProductionArgs(argv) {
       if (!match) throw new Error('DEV059_INFRA_REF_INVALID')
       options.infraReceiptRef = match.groups
       options.infraOption = 'dev059'
+    } else if (arg.startsWith('--dev060-infra-ref=') && options.infraReceiptRef === null) {
+      const match = /^(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/tool-rotations\/[a-f0-9]{40}\/app-infra\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--dev060-infra-ref='.length))
+      if (!match) throw new Error('DEV060_INFRA_REF_INVALID')
+      options.infraReceiptRef = match.groups
+      options.infraOption = 'dev060'
     } else if (arg.startsWith('--dev057-infra-ref=') && options.infraReceiptRef === null) {
       const value = arg.slice('--dev057-infra-ref='.length)
       const match = /^(?<uri>\S+)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(value)
       if (!match) throw new Error('DEV057_INFRA_REF_INVALID')
       options.infraReceiptRef = match.groups
       options.infraOption = 'dev057'
-    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--tool-image-rotation-ref=URI#sha256=HASH --smoke-rotation-ref=URI#sha256=HASH --reuse-aborted-app-artifact] [--dev014-principal-lifecycle-v2-remediation|--dev014-activate|--dev014-contract-remediation|--dev014-application-registration-remediation|--dev014-activation-contract-remediation|--dev014-projection-contract-remediation|--dev014-managed-principal-projection-remediation|--dev014-login-fixture-correction --dev014-infra-ref=URI#sha256=HASH] [--dev057-projed-principal-append|--dev057-writer-fence-remediation|--dev057-principal-contract-remediation|--dev057-cutover-source-remediation|--dev057-principal-grants-v3-remediation|--dev057-principal-grants-v4-remediation|--dev057-employee-number-command-receipt-v2-remediation --dev057-infra-ref=URI#sha256=HASH] [--dev058-role-policy-append --dev058-infra-ref=URI#sha256=HASH] [--dev059-fms-authority-append --dev059-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
+    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--tool-image-rotation-ref=URI#sha256=HASH --smoke-rotation-ref=URI#sha256=HASH --reuse-aborted-app-artifact] [--dev014-principal-lifecycle-v2-remediation|--dev014-activate|--dev014-contract-remediation|--dev014-application-registration-remediation|--dev014-activation-contract-remediation|--dev014-projection-contract-remediation|--dev014-managed-principal-projection-remediation|--dev014-login-fixture-correction --dev014-infra-ref=URI#sha256=HASH] [--dev057-projed-principal-append|--dev057-writer-fence-remediation|--dev057-principal-contract-remediation|--dev057-cutover-source-remediation|--dev057-principal-grants-v3-remediation|--dev057-principal-grants-v4-remediation|--dev057-employee-number-command-receipt-v2-remediation --dev057-infra-ref=URI#sha256=HASH] [--dev058-role-policy-append --dev058-infra-ref=URI#sha256=HASH] [--dev059-fms-authority-append --dev059-infra-ref=URI#sha256=HASH] [--dev060-fms-catalog-activation-append --dev060-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
   }
+  if (options.resumeCapsuleRef && Object.entries(options).some(([key, value]) =>
+    !['check', 'resumeCapsuleRef'].includes(key) && value !== false && value !== null)) throw new Error('MIGRATION_CONTINUATION_OPTIONS_INVALID')
+  if (options.migrationOnly && options.dev014PrincipalLifecycleV2Remediation) throw new Error('MIGRATION_ONLY_RUNTIME_ACTION_DENIED')
   const controlled = [options.handoffMode, options.action, options.predecessorReceiptRef].filter((value) => value !== null).length
   const dev014Mode = Number(options.dev014PrincipalLifecycleEnable) + Number(options.dev014PrincipalLifecycleV2Remediation) + Number(options.dev014Activate) + Number(options.dev014ContractRemediation) + Number(options.dev014ApplicationRegistrationRemediation) + Number(options.dev014ActivationContractRemediation) + Number(options.dev014ProjectionContractRemediation) + Number(options.dev014ManagedPrincipalProjectionRemediation) + Number(options.dev014LoginFixtureCorrection)
   const dev057Mode = Number(options.dev057ProjedPrincipalAppend) + Number(options.dev057WriterFenceRemediation) + Number(options.dev057PrincipalContractRemediation) + Number(options.dev057CutoverSourceRemediation) + Number(options.dev057PrincipalGrantsV3Remediation) + Number(options.dev057PrincipalGrantsV4Remediation) + Number(options.dev057EmployeeNumberCommandReceiptV2Remediation)
   const dev058Mode = Number(options.dev058RolePolicyAppend)
   const dev059Mode = Number(options.dev059FmsAuthorityAppend)
-  if (dev058Mode && (controlled || dev014Mode || dev057Mode || dev059Mode)) throw new Error('DEV058_CONTROLLED_TRANSITION_INPUT_INVALID')
+  const dev060Mode = Number(options.dev060FmsCatalogActivationAppend)
+  const dev070Mode=Number(options.dev070AdministrationAppend)
+  if(dev070Mode&&(controlled||dev014Mode||dev057Mode||dev058Mode||dev059Mode||dev060Mode||options.smokeRotationRef||options.infraReceiptRef||options.infraReuseRef||options.principalOnlyRecoveryRef||options.reuseAbortedAppArtifact))throw new Error('DEV070_CONTROLLED_TRANSITION_INPUT_INVALID')
+  const dev060SmokeRotationContinuation = dev060Mode === 1 && options.toolRotationRef !== null && options.smokeRotationRef !== null && options.infraOption === null
+  if (dev058Mode && (controlled || dev014Mode || dev057Mode || dev059Mode || dev060Mode)) throw new Error('DEV058_CONTROLLED_TRANSITION_INPUT_INVALID')
   if ((dev058Mode === 1) !== (options.infraOption === 'dev058')) throw new Error('DEV058_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
-  if (dev059Mode && (controlled || dev014Mode || dev057Mode || dev058Mode)) throw new Error('DEV059_CONTROLLED_TRANSITION_INPUT_INVALID')
+  if (dev059Mode && (controlled || dev014Mode || dev057Mode || dev058Mode || dev060Mode)) throw new Error('DEV059_CONTROLLED_TRANSITION_INPUT_INVALID')
   if ((dev059Mode === 1) !== (options.infraOption === 'dev059')) throw new Error('DEV059_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
+  if (dev060Mode && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode
+    || (options.toolRotationRef && !dev060SmokeRotationContinuation)
+    || (options.smokeRotationRef && !dev060SmokeRotationContinuation)
+    || options.infraReuseRef || options.principalOnlyRecoveryRef
+    || (options.reuseAbortedAppArtifact && !dev060SmokeRotationContinuation))) throw new Error('DEV060_CONTROLLED_TRANSITION_INPUT_INVALID')
+  if ((dev060Mode === 1) !== (options.infraOption === 'dev060' || dev060SmokeRotationContinuation)) throw new Error('DEV060_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (options.check && options.prepareOnly) throw new Error('INVALID_ARGUMENTS')
-  if (options.toolRotationRef && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || options.infraReceiptRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('TOOL_ROTATION_ORDINARY_ONLY')
+  if (options.toolRotationRef && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || (dev060Mode && !dev060SmokeRotationContinuation) || options.infraReceiptRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('TOOL_ROTATION_ORDINARY_ONLY')
   if (controlled !== 0 && controlled !== 3) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && (!['off', 'on'].includes(options.handoffMode) || !['guard', 'activate', 'rollback'].includes(options.action))) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INVALID')
   if (dev014Mode > 1 || (dev014Mode === 1 && controlled !== 0)) throw new Error('DEV014_CONTROLLED_TRANSITION_INPUT_INVALID')
@@ -141,10 +172,10 @@ export function parseDeployProductionArgs(argv) {
   } else if ((dev014Mode === 1) !== (options.infraOption === 'dev014') && controlled === 0) throw new Error('DEV014_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if ((dev057Mode === 1) !== (options.infraOption === 'dev057') && controlled === 0) throw new Error('DEV057_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
   if (controlled === 3 && options.infraReceiptRef && options.infraOption !== 'dev013') throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
-  if (options.infraReceiptRef && controlled !== 3 && dev014Mode !== 1 && dev057Mode !== 1 && dev058Mode !== 1 && dev059Mode !== 1) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
-  if (options.smokeRotationRef && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || options.infraReceiptRef || options.principalOnlyRecoveryRef)) throw new Error('SMOKE_ROTATION_ORDINARY_ONLY')
-  if (options.infraReuseRef && (controlled || (dev014Mode && !options.dev014PrincipalLifecycleEnable) || dev057Mode || dev058Mode || dev059Mode || options.infraReceiptRef || options.smokeRotationRef)) throw new Error('SMOKE_REUSE_ORDINARY_ONLY')
-  if (options.reuseAbortedAppArtifact && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || options.infraReceiptRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('APP_ARTIFACT_REUSE_ORDINARY_ONLY')
+  if (options.infraReceiptRef && controlled !== 3 && dev014Mode !== 1 && dev057Mode !== 1 && dev058Mode !== 1 && dev059Mode !== 1 && dev060Mode !== 1) throw new Error('DEV013_CONTROLLED_TRANSITION_INPUT_INCOMPLETE')
+  if (options.smokeRotationRef && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || (dev060Mode && !dev060SmokeRotationContinuation) || options.infraReceiptRef || options.principalOnlyRecoveryRef)) throw new Error('SMOKE_ROTATION_ORDINARY_ONLY')
+  if (options.infraReuseRef && (controlled || (dev014Mode && !options.dev014PrincipalLifecycleEnable) || dev057Mode || dev058Mode || dev059Mode || dev060Mode || options.infraReceiptRef || options.smokeRotationRef)) throw new Error('SMOKE_REUSE_ORDINARY_ONLY')
+  if (options.reuseAbortedAppArtifact && (controlled || dev014Mode || dev057Mode || dev058Mode || dev059Mode || (dev060Mode && !dev060SmokeRotationContinuation) || options.infraReceiptRef || options.infraReuseRef || options.principalOnlyRecoveryRef)) throw new Error('APP_ARTIFACT_REUSE_ORDINARY_ONLY')
   return options
 }
 
@@ -175,6 +206,10 @@ export async function verifyDeployProductionRelease({ options, ...input }) {
   if (options.smokeRotationRef || options.infraReuseRef) {
     if (!verification.smokeRotationContinuation) throw new Error('SMOKE_ROTATION_CONTINUATION_MISSING')
     verification.operatorSmokeRotationReadback = await readSmokeRotationProvider({ ...input, continuation: verification.smokeRotationContinuation })
+    const expectedWorkflowRevision = verification.smokeRotationContinuation.workflowRevisionId
+    if (expectedWorkflowRevision && verification.operatorSmokeRotationReadback.workflowRevisionId !== expectedWorkflowRevision) {
+      throw new Error('SMOKE_WORKFLOW_CORRECTION_WORKFLOW_DRIFT')
+    }
   }
   if (options.infraReuseRef) {
     if (verification.smokeRotationContinuation.evidenceScope !== 'OWNER_SEALED_APPLIED_ROTATION_REUSE') throw new Error('SMOKE_REUSE_RECEIPT_INVALID')
@@ -188,6 +223,27 @@ export async function verifyDeployProductionRelease({ options, ...input }) {
       .some((field) => canonicalize(current[field]) !== canonicalize(recorded[field]))) throw new Error('SMOKE_REUSE_PROVIDER_CAS_CHANGED')
   }
   return verification
+}
+
+export function ownerWorkflowDispatchArgs(profile, releaseCapsuleRef, executionMode) {
+  assertOwnerExecutionMode(profile, { OWNER_EXECUTION_MODE: executionMode })
+  return ['workflow', 'run', profile.workflow.path, '--repo', profile.application.repository, '--ref', profile.application.branch,
+    '-f', `releaseCapsuleRef=${releaseCapsuleRef}`, '-f', `executionMode=${executionMode}`]
+}
+
+export async function resumeDeployProductionRelease({ options, git, profile, transport, service, baselineIntentRef,
+  previousRevision, sourceIdentitySha256, buildMigrationBundle, verifySource, dispatch }) {
+  if (!options.resumeCapsuleRef || options.migrationOnly || options.prepareOnly) throw new Error('MIGRATION_CONTINUATION_OPTIONS_INVALID')
+  await verifySource()
+  transport.assertServiceSettled(service, 'MIGRATION_CONTINUATION_BASELINE_MISMATCH')
+  if (transport.effectiveRevision(service) !== previousRevision) throw new Error('MIGRATION_CONTINUATION_BASELINE_MISMATCH')
+  const migration = await buildMigrationBundle(git.sourceRevision)
+  const continuation = await verifyMigrationOnlyContinuation({ profile, transport, validateIntent: assertDev040ReleaseIntent,
+    capsuleRef: options.resumeCapsuleRef.uri, capsuleSha256: options.resumeCapsuleRef.sha256,
+    sourceRevision: git.sourceRevision, expectedSourceSha256: sourceIdentitySha256, expectedManifestSha256: migration.bundle.manifestSha256,
+    baselineIntentRef, previousRevision })
+  if (!options.check) await dispatch(ownerWorkflowDispatchArgs(profile, continuation.releaseCapsuleRef, 'full_release'))
+  return { ...continuation, status: options.check ? 'CONTINUATION_READY' : 'DISPATCHED', executionMode: 'full_release', releaseAuthority: false }
 }
 
 async function main() {
@@ -217,6 +273,20 @@ async function main() {
   if ((baseline.repair || principalPreActivation || options.dev014PrincipalLifecycleV2Remediation) && !options.principalOnlyRecoveryRef) throw new Error('PRINCIPAL_ONLY_RECOVERY_REQUIRED')
   const service = await transport.getService(profile)
   const buildMigrationBundle = async (revision) => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), new Map(profile.migrations.entries.map((entry) => [entry.path, readGitBlob(root, entry.path, revision)])), revision)
+  if (options.resumeCapsuleRef) {
+    const result = await resumeDeployProductionRelease({ options, git, profile, transport, service, baselineIntentRef,
+      previousRevision, sourceIdentitySha256: sha256(createGitSourceIdentity(root, git.sourceRevision)), buildMigrationBundle,
+      verifySource: async () => {
+        const proof = await verifyOfficialMergedSource({ repository: profile.application.repository, branch: profile.application.branch,
+          revision: git.sourceRevision, sourceTree: git.sourceTree, token: process.env.GITHUB_TOKEN || command('gh', ['auth', 'token']), rulesetId: 24077876 })
+        const checks = JSON.parse(command('gh', ['api', `repos/${profile.application.repository}/commits/${git.sourceRevision}/check-runs?per_page=100`]))
+        assertRequiredToolSourceQc(checks, git.sourceRevision)
+        return proof
+      },
+      dispatch: args => command('gh', args) })
+    process.stdout.write(`${JSON.stringify(result)}\n`)
+    return
+  }
   const observedAt = new Date().toISOString()
   const releaseId = `ORGMASTER-REL-${observedAt.replace(/[^0-9]/gu, '')}-${git.sourceRevision.slice(0, 7).toUpperCase()}`
   const deadlineAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
@@ -237,6 +307,9 @@ async function main() {
   const previousRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
   const previousMode = previousRuntime.plainEnvironment?.ORGMASTER_JENFU_SSO_HANDOFF_MODE ?? null
   let plainEnvironment = options.dev014Activate || options.dev014PrincipalLifecycleV2Remediation ? resolvePlainEnvironment(profile, previousRuntime.plainEnvironment, {}) : previousRuntime.plainEnvironment
+  if (options.dev070AdministrationAppend && isFmsDeliveryAppend(baseline.bundle.value.entries, profile)) {
+    plainEnvironment = { ...plainEnvironment, [ORGMASTER_FMS_DELIVERY_FLAG]: 'true' }
+  }
   let lifecycleEnablement = null
   if (options.dev014PrincipalLifecycleEnable) {
     const sourceProof = await verifyOfficialMergedSource({repository:profile.application.repository,
@@ -341,10 +414,12 @@ async function main() {
   const dev058Authority = options.dev058RolePolicyAppend ? { devId: 'DEV-058', slice: '058-ROLE-POLICY', remediation: DEV058_ROLE_POLICY_REMEDIATION } : {}
   const dev059Authority = options.dev059FmsAuthorityAppend ? { devId: 'DEV-059', slice: '059-FMS-AUTHORITY', remediation: DEV059_FMS_AUTHORITY_REMEDIATION } : {}
   const dev057ProjedAuthority = options.dev057ProjedPrincipalAppend ? { devId: 'DEV-057', slice: '057-PROJED-PRINCIPAL', remediation: DEV057_PROJED_REMEDIATION } : {}
-  const authorization = bindDeployToolRotationAuthority(options, { ...authority, ...lifecycleV2Authority, ...dev058Authority, ...dev059Authority, ...dev057ProjedAuthority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', ...(appArtifactReuse ? { appArtifactReuse } : {}), ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014ManagedPrincipalProjectionRemediation ? { devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation: dev014ManagedPrincipalProjectionRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}), ...(dev057WriterFenceRemediation ? { devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation: dev057WriterFenceRemediation } : {}), ...(dev057PrincipalContractRemediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation: dev057PrincipalContractRemediation } : {}), ...(dev057CutoverSourceRemediation ? { devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation: dev057CutoverSourceRemediation } : {}), ...(dev057PrincipalGrantsV3Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation: dev057PrincipalGrantsV3Remediation } : {}), ...(dev057PrincipalGrantsV4Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation: dev057PrincipalGrantsV4Remediation } : {}), ...(dev057EmployeeNumberCommandReceiptV2Remediation ? { devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation: dev057EmployeeNumberCommandReceiptV2Remediation } : {}) })
+  const dev070Authority=options.dev070AdministrationAppend?{devId:'DEV-070',slice:'070-ADMINISTRATION',remediation:DEV070_ADMINISTRATION_REMEDIATION}:{}
+  const dev060Authority = options.dev060FmsCatalogActivationAppend ? { devId: 'DEV-060', slice: '060-FMS-CATALOG-ACTIVATION', remediation: DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION } : {}
+  const authorization = bindDeployToolRotationAuthority(options, { ...authority, ...lifecycleV2Authority, ...dev058Authority, ...dev059Authority, ...dev060Authority, ...dev070Authority, ...dev057ProjedAuthority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', ...(appArtifactReuse ? { appArtifactReuse } : {}), ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014ManagedPrincipalProjectionRemediation ? { devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation: dev014ManagedPrincipalProjectionRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}), ...(dev057WriterFenceRemediation ? { devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation: dev057WriterFenceRemediation } : {}), ...(dev057PrincipalContractRemediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation: dev057PrincipalContractRemediation } : {}), ...(dev057CutoverSourceRemediation ? { devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation: dev057CutoverSourceRemediation } : {}), ...(dev057PrincipalGrantsV3Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation: dev057PrincipalGrantsV3Remediation } : {}), ...(dev057PrincipalGrantsV4Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation: dev057PrincipalGrantsV4Remediation } : {}), ...(dev057EmployeeNumberCommandReceiptV2Remediation ? { devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation: dev057EmployeeNumberCommandReceiptV2Remediation } : {}) })
   const readiness = bindDeployToolRotationAuthority(options, transition
     ? { ...authority, schemaVersion: 'jenfu.dev013.l4-owner-transition-readiness.v2', devId: 'DEV-013', slice: '013-R1', sequenceRoot: predecessorEvidence.sequenceRoot, sequenceStep, previousControlledEnvironment, controlledEnvironment, transition }
-    : { ...authority, ...lifecycleV2Authority, ...dev058Authority, ...dev059Authority, ...dev057ProjedAuthority, schemaVersion: 'orgmaster.routine-release-readiness.v1', ...(appArtifactReuse ? { appArtifactReuse } : {}), ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014ManagedPrincipalProjectionRemediation ? { devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation: dev014ManagedPrincipalProjectionRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}), ...(dev057WriterFenceRemediation ? { devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation: dev057WriterFenceRemediation } : {}), ...(dev057PrincipalContractRemediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation: dev057PrincipalContractRemediation } : {}), ...(dev057CutoverSourceRemediation ? { devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation: dev057CutoverSourceRemediation } : {}), ...(dev057PrincipalGrantsV3Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation: dev057PrincipalGrantsV3Remediation } : {}), ...(dev057PrincipalGrantsV4Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation: dev057PrincipalGrantsV4Remediation } : {}), ...(dev057EmployeeNumberCommandReceiptV2Remediation ? { devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation: dev057EmployeeNumberCommandReceiptV2Remediation } : {}) })
+    : { ...authority, ...lifecycleV2Authority, ...dev058Authority, ...dev059Authority, ...dev060Authority, ...dev070Authority, ...dev057ProjedAuthority, schemaVersion: 'orgmaster.routine-release-readiness.v1', ...(appArtifactReuse ? { appArtifactReuse } : {}), ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014ManagedPrincipalProjectionRemediation ? { devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation: dev014ManagedPrincipalProjectionRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}), ...(dev057WriterFenceRemediation ? { devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation: dev057WriterFenceRemediation } : {}), ...(dev057PrincipalContractRemediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation: dev057PrincipalContractRemediation } : {}), ...(dev057CutoverSourceRemediation ? { devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation: dev057CutoverSourceRemediation } : {}), ...(dev057PrincipalGrantsV3Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation: dev057PrincipalGrantsV3Remediation } : {}), ...(dev057PrincipalGrantsV4Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation: dev057PrincipalGrantsV4Remediation } : {}), ...(dev057EmployeeNumberCommandReceiptV2Remediation ? { devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation: dev057EmployeeNumberCommandReceiptV2Remediation } : {}) })
   const infraReceiptRef = selectDeployInfrastructureRef(options, baseline)
   const values = { sourceLock, runtimeConfig, authorization, readiness,
     foundation: (await transport.readJson(baseline.intent.foundationReceiptRef, profile.artifact.releaseBucket)).value,
@@ -364,7 +439,7 @@ async function main() {
   const intent = buildReleaseIntent({ profile, releaseId, input, sourceLock, prerequisiteValues: values, validateIntent: assertDev040ReleaseIntent })
   const verification = await verifyDeployProductionRelease({ options, root, profile, transport, intent, values, service, buildMigrationBundle })
   if (options.check) {
-    process.stdout.write(`${JSON.stringify({ status: 'READY', releaseAuthority: false, sourceRevision: git.sourceRevision, previousRevision: intent.previousRevision, verification })}\n`)
+    process.stdout.write(`${JSON.stringify({ status: 'READY', releaseAuthority: false, executionMode: options.migrationOnly ? 'migration_only' : 'full_release', sourceRevision: git.sourceRevision, previousRevision: intent.previousRevision, verification })}\n`)
     return
   }
   for (const [name, value] of [['source-lock', sourceLock], ['runtime-config', runtimeConfig], ['owner-authorization', authorization], ['owner-readiness', readiness]]) await transport.putJson(uri(name), value, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
@@ -377,8 +452,8 @@ async function main() {
     await executePrincipalLifecycleQuiescence({ profile, intent, values, sourceProof,
       controlReadback: head, transport })
   }
-  // This is the existing protected ten-stage workflow, not a local deployment bypass.
-  if (!options.prepareOnly) command('gh', ['workflow', 'run', profile.workflow.path, '--repo', profile.application.repository, '--ref', profile.application.branch, '-f', `releaseCapsuleRef=${releaseCapsuleRef}`])
-  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: verification.migrationDisposition, controlledTransition: (options.dev057ProjedPrincipalAppend ? DEV057_PROJED_REMEDIATION : null) ?? (options.dev058RolePolicyAppend ? DEV058_ROLE_POLICY_REMEDIATION : null) ?? (options.dev059FmsAuthorityAppend ? DEV059_FMS_AUTHORITY_REMEDIATION : null) ?? transition ?? dev014PrincipalLifecycleV2Remediation ?? dev014Activation ?? dev014Remediation ?? dev014ApplicationRegistrationRemediation ?? dev014ActivationContractRemediation ?? dev014ProjectionContractRemediation ?? dev014ManagedPrincipalProjectionRemediation ?? dev014LoginFixtureCorrection ?? dev057WriterFenceRemediation ?? dev057PrincipalContractRemediation ?? dev057CutoverSourceRemediation ?? dev057PrincipalGrantsV3Remediation ?? dev057PrincipalGrantsV4Remediation ?? dev057EmployeeNumberCommandReceiptV2Remediation })}\n`)
+  const executionMode = options.migrationOnly ? 'migration_only' : 'full_release'
+  if (!options.prepareOnly) command('gh', ownerWorkflowDispatchArgs(profile, releaseCapsuleRef, executionMode))
+  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', executionMode, releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: verification.migrationDisposition, controlledTransition: (options.dev057ProjedPrincipalAppend ? DEV057_PROJED_REMEDIATION : null) ?? (options.dev058RolePolicyAppend ? DEV058_ROLE_POLICY_REMEDIATION : null) ?? (options.dev059FmsAuthorityAppend ? DEV059_FMS_AUTHORITY_REMEDIATION : null) ?? (options.dev060FmsCatalogActivationAppend ? DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION : null) ?? (options.dev070AdministrationAppend?DEV070_ADMINISTRATION_REMEDIATION:null) ?? transition ?? dev014PrincipalLifecycleV2Remediation ?? dev014Activation ?? dev014Remediation ?? dev014ApplicationRegistrationRemediation ?? dev014ActivationContractRemediation ?? dev014ProjectionContractRemediation ?? dev014ManagedPrincipalProjectionRemediation ?? dev014LoginFixtureCorrection ?? dev057WriterFenceRemediation ?? dev057PrincipalContractRemediation ?? dev057CutoverSourceRemediation ?? dev057PrincipalGrantsV3Remediation ?? dev057PrincipalGrantsV4Remediation ?? dev057EmployeeNumberCommandReceiptV2Remediation })}\n`)
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main().catch((error) => { process.stderr.write(`${error.code ?? error.message}\n`); process.exitCode = 1 })

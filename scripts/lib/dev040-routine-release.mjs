@@ -1,7 +1,9 @@
-import { assertSmokeRotationContinuation, assertSmokeInfraReuseContinuation, readReleaseSourceFile, readSmokeReuseInfrastructureTree } from './dev057-smoke-rotation-continuation.mjs'
+import { assertSmokeRotationContinuation, assertSmokeInfraReuseContinuation, assertSmokeWorkflowContractCorrectionContinuation, SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE, readReleaseSourceFile, readSmokeReuseInfrastructureTree } from './dev057-smoke-rotation-continuation.mjs'
 import { readPrincipalOnlyRepairBaseline } from './dev057-principal-forward-repair.mjs'
 import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
 import { spawnSync } from 'node:child_process'
+import {normalizeCatalogPackagingResourceTree} from './dev070-catalog-packaging-inputs.mjs'
+import { isDev057PrincipalSmokeBlobTransition } from './dev057-principal-smoke-transition.mjs'
 import { assertOrdinaryToolRotation } from './dev040-tool-image-rotation.mjs'
 import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256 } from './dev012-owner-release-runtime.mjs'
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
@@ -10,6 +12,8 @@ import { assertAppArtifactReuse } from './dev040-app-artifact-reuse.mjs'
 import { DEV058_RELEASE_MODE, assertDev058RolePolicyAppend, assertDev058RolePolicyAuthority } from './dev058-role-policy-migration.mjs'
 import { DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend, assertDev059FmsAuthorityReleaseAuthority } from './dev059-fms-authority-migration.mjs'
 import { DEV057_PROJED_RELEASE_MODE, assertDev057ProjedAppend, assertDev057ProjedReleaseAuthority } from './dev057-projed-principal-migration.mjs'
+import {DEV070_RELEASE_MODE,ORGMASTER_FMS_DELIVERY_FLAG,assertDev070AdministrationAppend,assertDev070AdministrationReleaseAuthority,isFmsDeliveryAppend} from './dev070-administration-migration.mjs'
+import { DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationAppend, assertDev060FmsCatalogActivationReleaseAuthority } from './dev060-fms-catalog-activation-migration.mjs'
 import { assertDev013L4Predecessor, dev013L4SequenceStep } from './dev013-l4-transition-sequence.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 
@@ -18,6 +22,7 @@ import { DEV014_LIFECYCLE_RUNTIME_TARGET, DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIAT
 function fail(code) { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
 const H40 = /^[a-f0-9]{40}$/u
+const H64 = /^[a-f0-9]{64}$/u
 
 const CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS = new Set([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -36,7 +41,7 @@ const DEV057_CUTOVER_INFRA_BLOBS = Object.freeze({
 })
 
 export function filterControlledInfrastructureTree(bytes, additionalExcludedPaths = []) {
-  const entries = Buffer.from(bytes).toString('utf8').split('\0').filter(Boolean)
+  const entries = normalizeCatalogPackagingResourceTree(bytes).toString('utf8').split('\0').filter(Boolean)
   if (!entries.length) fail('ROUTINE_BASELINE_SOURCE_MISSING')
   const excludedPaths = new Set([...CONTROLLED_IMAGE_ROTATION_SOURCE_PATHS, ...additionalExcludedPaths])
   const filtered = entries.filter((entry) => {
@@ -69,7 +74,7 @@ export function routineInfrastructureFingerprint(root, revision) {
   if (result.status !== 0 || !result.stdout?.length) fail('ROUTINE_BASELINE_SOURCE_MISSING')
   const config = spawnSync('git', ['show', `${revision}:config/release/dev040-orgmaster-independent-production-v3.json`], { cwd: root, encoding: 'utf8', windowsHide: true })
   if (config.status !== 0) fail('ROUTINE_BASELINE_SOURCE_MISSING')
-  return sha256(Buffer.concat([result.stdout, Buffer.from(canonicalize(releaseInfrastructureInputs(JSON.parse(config.stdout))))]))
+  return sha256(Buffer.concat([normalizeCatalogPackagingResourceTree(result.stdout), Buffer.from(canonicalize(releaseInfrastructureInputs(JSON.parse(config.stdout))))]))
 }
 
 // Historical initialization metadata is not a provisioned infrastructure input.
@@ -141,13 +146,10 @@ function principalSmokeInfrastructureInputs(profile) {
   return value
 }
 
-// Sealed historical transition and its cookie-only corrective cycle.
+// Sealed historical transition, cookie-contract correction, and the managed
+// login-intent correction required by the current Platform session contract.
 export function assertDev057PrincipalSmokeBlobTransition(before, after) {
-  const historical = '1add0e6508568d591faa190cabf64e2470fb620c'
-  const principal = 'b8d6b8a92a044bcd59e11efd8a6c0f7f2e319b55'
-  const corrected = 'b9c6bfeca843c6ef551d95834b59f5471c097abc'
-  if (!((before === historical && [principal, corrected].includes(after))
-    || (before === principal && after === corrected))) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
+  if (!isDev057PrincipalSmokeBlobTransition(before, after)) fail('DEV057_PRINCIPAL_SMOKE_INFRA_DELTA_INVALID')
 }
 
 // This read-only operator recipe correction changes only the packaged pinned
@@ -611,6 +613,18 @@ function assertHistoricalRuntimeReadback(profile, runtimeConfig, revision) {
   return true
 }
 
+function matchesFmsDeliveryRuntimeAppend(profile, baseline, next) {
+  const flag = ORGMASTER_FMS_DELIVERY_FLAG
+  if (Object.hasOwn(baseline.plainEnvironment, flag) || next.plainEnvironment?.[flag] !== 'true') return false
+  assertRuntimeConfig(profile, next)
+  const normalized = structuredClone(next)
+  delete normalized.plainEnvironment[flag]
+  const app = normalized.template.containers.find(row => row.name === profile.runtime.containerName)
+  app.env = app.env.filter(row => row.name !== flag)
+  normalized.serviceTemplateSha256 = sha256(canonicalize(normalized.template))
+  return same(normalized, baseline)
+}
+
 function assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, readiness, authorization) {
   const field = 'ORGMASTER_JENFU_SSO_HANDOFF_MODE'
   const previousPlain = baselineRuntime?.plainEnvironment
@@ -809,25 +823,36 @@ export function resolveRoutineToolRotationRef(values, toolRotationRef = null) {
   return toolRotationRef ?? authorizationRef
 }
 
-// Rotation changes only the existing Job image. DEV-058/059 and the ProJED append may consume that same
+export function resolveToolRotationPredecessorBaselineRef(receipt) {
+  const ref = receipt?.toolRotation?.baselineIntentRef
+  if (typeof ref?.uri !== 'string' || !ref.uri.endsWith('/release-intent.json') || !H64.test(ref.sha256 ?? '')) {
+    fail('TOOL_ROTATION_BASELINE_REF_INVALID')
+  }
+  return ref
+}
+
+// Rotation changes only the existing Job image. DEV-058/059/060/070 may consume that same
 // verified infra receipt before its separately authorized exact schema append.
 // A second predecessor receipt, runtime change or other controlled mode cannot
 // inherit this allowance.
-export function assertToolRotationReleaseCompatibility({ toolRotation, toolRotationPredecessor, controlledTransition, repair, runtimeChanged }) {
+export function assertToolRotationReleaseCompatibility({ toolRotation, toolRotationPredecessor, controlledTransition, repair, runtimeChanged, allowControlledSmokeRotation = false }) {
   if (!toolRotation && !toolRotationPredecessor) return
+  const controlledSmokeRotation = controlledTransition?.releaseMode === DEV060_RELEASE_MODE && allowControlledSmokeRotation === true
   if (repair || runtimeChanged || (controlledTransition
-    && (toolRotationPredecessor || ![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE].includes(controlledTransition.releaseMode)))) fail('TOOL_ROTATION_ORDINARY_ONLY')
+    && ((toolRotationPredecessor && !controlledSmokeRotation) || ![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE].includes(controlledTransition.releaseMode)))) fail('TOOL_ROTATION_ORDINARY_ONLY')
 }
 
-// DEV-058/059 and the ProJED append may append their exact schema after an already verified tool-image
+// DEV-058/059/060/070 may append their exact schema after an already verified tool-image
 // rotation.  The infra receipt remains bound to that rotation source; all
 // other forward transitions stay bound to the current release source.
-export function resolveMigrationInfraReceiptSource({ controlledTransition, toolRotation, intentSourceRevision }) {
-  if (![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE].includes(controlledTransition?.releaseMode) || toolRotation == null) return intentSourceRevision
-  if (toolRotation.evidenceScope !== 'OWNER_SEALED_TOOL_IMAGE_ROTATION' || toolRotation.ddlExecuted !== 0
-    || !H40.test(toolRotation.sourceRevision ?? '')
-    || !['VERIFIED', 'REQUIRED_AT_DEPLOYER_MIGRATE'].includes(toolRotation.liveJobReadback)) fail(controlledTransition.releaseMode === DEV057_PROJED_RELEASE_MODE ? 'DEV057_PROJED_TOOL_ROTATION_SOURCE_INVALID' : controlledTransition.releaseMode === DEV059_RELEASE_MODE ? 'DEV059_TOOL_ROTATION_SOURCE_INVALID' : 'DEV058_TOOL_ROTATION_SOURCE_INVALID')
-  return toolRotation.sourceRevision
+export function resolveMigrationInfraReceiptSource({ controlledTransition, toolRotation, toolRotationPredecessor = null, intentSourceRevision }) {
+  if (![DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE].includes(controlledTransition?.releaseMode)) return intentSourceRevision
+  const rotation = toolRotation ?? toolRotationPredecessor?.continuationEvidence ?? null
+  if (rotation == null) return intentSourceRevision
+  if (rotation.evidenceScope !== 'OWNER_SEALED_TOOL_IMAGE_ROTATION' || rotation.ddlExecuted !== 0
+    || !H40.test(rotation.sourceRevision ?? '')
+    || !['VERIFIED', 'REQUIRED_AT_DEPLOYER_MIGRATE'].includes(rotation.liveJobReadback)) fail(controlledTransition.releaseMode===DEV057_PROJED_RELEASE_MODE?'DEV057_PROJED_TOOL_ROTATION_SOURCE_INVALID':controlledTransition.releaseMode===DEV070_RELEASE_MODE?'DEV070_TOOL_ROTATION_SOURCE_INVALID':controlledTransition.releaseMode === DEV060_RELEASE_MODE ? 'DEV060_TOOL_ROTATION_SOURCE_INVALID' : controlledTransition.releaseMode === DEV059_RELEASE_MODE ? 'DEV059_TOOL_ROTATION_SOURCE_INVALID' : 'DEV058_TOOL_ROTATION_SOURCE_INVALID')
+  return rotation.sourceRevision
 }
 
 export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, toolRotationRef = null, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
@@ -842,16 +867,25 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const rolePolicyAppend = values.readiness?.devId === 'DEV-058'
   const fmsAuthorityAppend = values.readiness?.devId === 'DEV-059'
   const projedPrincipalAppend = values.readiness?.devId === 'DEV-057' && values.readiness?.slice === '057-PROJED-PRINCIPAL'
-  if ((rolePolicyAppend || fmsAuthorityAppend || projedPrincipalAppend) && !same(runtimeConfig, baselineRuntime)) fail(projedPrincipalAppend ? 'DEV057_PROJED_RUNTIME_CHANGED' : fmsAuthorityAppend ? 'DEV059_RUNTIME_CHANGED' : 'DEV058_RUNTIME_CHANGED')
+  const fmsCatalogActivationAppend = values.readiness?.devId === 'DEV-060'
+  const administrationAppend=values.readiness?.devId==='DEV-070'
+  const fmsDeliveryRuntimeAppend = administrationAppend && isFmsDeliveryAppend(baseline.bundle.value.entries, profile)
+    && matchesFmsDeliveryRuntimeAppend(profile, baselineRuntime, runtimeConfig)
+  const runtimeChanged = !same(runtimeConfig, baselineRuntime) && !fmsDeliveryRuntimeAppend
+  if ((rolePolicyAppend || fmsAuthorityAppend || fmsCatalogActivationAppend || administrationAppend || projedPrincipalAppend) && runtimeChanged) fail(projedPrincipalAppend ? 'DEV057_PROJED_RUNTIME_CHANGED' : administrationAppend?'DEV070_RUNTIME_CHANGED':fmsCatalogActivationAppend ? 'DEV060_RUNTIME_CHANGED' : fmsAuthorityAppend ? 'DEV059_RUNTIME_CHANGED' : 'DEV058_RUNTIME_CHANGED')
   const lifecycleGuard = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-V2'
   const lifecycleEnable = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-ENABLE'
   if (lifecycleGuard) assertDev014PrincipalLifecycleRuntimeGuard(profile, baselineRuntime, runtimeConfig)
   const controlledTransition = projedPrincipalAppend
     ? assertDev057ProjedReleaseAuthority(values.readiness, values.authorization, intent)
+    : administrationAppend
+    ? assertDev070AdministrationReleaseAuthority(values.readiness,values.authorization,intent)
     : rolePolicyAppend
     ? assertDev058RolePolicyAuthority(values.readiness, values.authorization, intent)
     : fmsAuthorityAppend
     ? assertDev059FmsAuthorityReleaseAuthority(values.readiness, values.authorization, intent)
+    : fmsCatalogActivationAppend
+    ? assertDev060FmsCatalogActivationReleaseAuthority(values.readiness, values.authorization, intent)
     : lifecycleEnable
     ? assertDev014PrincipalLifecycleEnablement({profile,intent,readiness:values.readiness,authorization:values.authorization,before:baselineRuntime,after:runtimeConfig})
     : lifecycleGuard
@@ -893,26 +927,33 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
       : assertDev013ControlledRuntimeTransition(profile, baselineRuntime, runtimeConfig, values.readiness, values.authorization)
   toolRotationRef = resolveRoutineToolRotationRef(values, toolRotationRef)
   const toolRotation = values.infra?.toolRotation == null ? null : await assertOrdinaryToolRotation({
-    root, profile, transport, intent, receipt: values.infra, baseline, readLiveJob: readLiveToolJob,
+    root, profile, transport, intent, receipt: values.infra, baseline, readLiveJob: readLiveToolJob,readHistoricalBaseline:readRoutineBaseline,
   })
+  if(administrationAppend&&(toolRotationRef||toolRotation)&&(!toolRotation||!same(toolRotationRef,intent.infraReceiptRef)
+    ||!same(values.readiness.toolRotationRef,intent.infraReceiptRef)
+    ||!same(values.authorization.toolRotationRef,intent.infraReceiptRef)))fail('DEV070_ADMINISTRATION_AUTHORITY_INVALID')
   let toolRotationPredecessor = null
   if (toolRotationRef && !same(toolRotationRef, intent.infraReceiptRef)) {
     assertImmutableRef(toolRotationRef, profile.artifact.releaseBucket, ['receipts/tool-rotations'])
     const read = await transport.readJson(toolRotationRef, profile.artifact.releaseBucket, ['receipts/tool-rotations'])
     if (!same(read.ref, toolRotationRef)) fail('TOOL_ROTATION_REF_INVALID')
+    const predecessorBaselineRef = resolveToolRotationPredecessorBaselineRef(read.value)
+    const predecessorBaseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: predecessorBaselineRef })
     toolRotationPredecessor = await assertOrdinaryToolRotation({ root, profile, transport,
-      intent: { ...intent, infraReceiptRef: toolRotationRef }, receipt: read.value, baseline, readLiveJob: readLiveToolJob })
+      intent: { ...intent, baselineIntentRef: predecessorBaselineRef, previousRevision: predecessorBaseline.activeRevision,
+        infraReceiptRef: toolRotationRef }, receipt: read.value, baseline: predecessorBaseline, readLiveJob: readLiveToolJob,readHistoricalBaseline:readRoutineBaseline })
     toolRotationPredecessor = { receipt: read.value, continuationEvidence: toolRotationPredecessor, receiptRef: toolRotationRef }
   }
+  const controlledSmokeRotation = controlledTransition?.releaseMode === DEV060_RELEASE_MODE && values.infra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
   assertToolRotationReleaseCompatibility({ toolRotation, toolRotationPredecessor, controlledTransition,
-    repair: Boolean(baseline.repair), runtimeChanged: !same(runtimeConfig, baselineRuntime) })
+    repair: Boolean(baseline.repair), runtimeChanged, allowControlledSmokeRotation: controlledSmokeRotation })
   const appReuseLeft = values.authorization?.appArtifactReuse ?? null
   const appReuseRight = values.readiness?.appArtifactReuse ?? null
   if (!same(appReuseLeft, appReuseRight)) fail('APP_ARTIFACT_REUSE_AUTHORITY_MISMATCH')
   const appArtifactReuse = appReuseLeft == null ? null : await assertAppArtifactReuse({ root, profile, transport, intent, association: appReuseLeft })
   const infrastructureHash = lifecycleGuard
     ? (root, revision) => transitionFingerprint(root, revision, [], dev014PrincipalLifecycleInfrastructureInputs)
-    : [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE, 'DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
+    : [DEV057_PROJED_RELEASE_MODE, DEV070_RELEASE_MODE, DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE, 'DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
   const infrastructureSha256 = infrastructureHash(root, intent.sourceRevision)
   const infrastructureBaselineRevision = controlledTransition?.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION'
     ? values.infra?.sourceRevision
@@ -921,7 +962,10 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (!values.infra || same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)) fail('ROUTINE_INFRA_CHANGED')
     if (controlledTransition?.releaseMode === 'DEV057_CUTOVER_SOURCE_REMEDIATION') cutoverInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
     else if (controlledTransition?.releaseMode === 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION') principalSmokeInfraTransition(root, infrastructureBaselineRevision, intent.sourceRevision)
-    else if (!toolRotation && !toolRotationPredecessor) fail('ROUTINE_INFRA_CHANGED')
+    else if (!toolRotation && !toolRotationPredecessor &&
+      !(values.infra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' && values.infra?.smokeRotation?.toolRotationRef)) {
+      fail('ROUTINE_INFRA_CHANGED')
+    }
   }
   if (baseline.repair) {
     if (!intent.principalOnlyRecovery || !same(runtimeConfig, baselineRuntime)) fail('ROUTINE_REPAIR_RUNTIME_CHANGED')
@@ -940,6 +984,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (rolePolicyAppend) fail('DEV058_MIGRATION_APPEND_INVALID')
     if (fmsAuthorityAppend) fail('DEV059_MIGRATION_APPEND_INVALID')
     if (projedPrincipalAppend) fail('DEV057_PROJED_MIGRATION_APPEND_INVALID')
+    if (fmsCatalogActivationAppend) fail('DEV060_MIGRATION_APPEND_INVALID')
+    if(administrationAppend)fail('DEV070_MIGRATION_APPEND_INVALID')
     if (lifecycleGuard) {
       if (baseline.bundle.value.entries?.length !== 31 || current.bundle.entries?.length !== 31) fail('DEV014_LIFECYCLE_REPLAY_LEDGER_REQUIRED')
       // FORWARD_APPLY is the existing native Job-required disposition. Here
@@ -952,10 +998,14 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (!controlledTransition || error?.code !== 'ROUTINE_MIGRATION_CHANGED') throw error
     migration = controlledTransition.releaseMode === DEV057_PROJED_RELEASE_MODE
       ? assertDev057ProjedAppend(baseline.bundle.value, current.bundle)
+      : controlledTransition.releaseMode === DEV070_RELEASE_MODE
+      ? assertDev070AdministrationAppend(baseline.bundle.value,current.bundle)
       : controlledTransition.releaseMode === DEV058_RELEASE_MODE
       ? assertDev058RolePolicyAppend(baseline.bundle.value, current.bundle)
       : controlledTransition.releaseMode === DEV059_RELEASE_MODE
       ? assertDev059FmsAuthorityAppend(baseline.bundle.value, current.bundle)
+      : controlledTransition.releaseMode === DEV060_RELEASE_MODE
+      ? assertDev060FmsCatalogActivationAppend(baseline.bundle.value, current.bundle)
       : controlledTransition.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION'
       ? assertDev014PrincipalLifecycleV2Append(baseline.bundle.value, current.bundle)
       : controlledTransition.releaseMode === 'DEV014_PRODUCER_CONTRACT_REMEDIATION'
@@ -985,11 +1035,15 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const infraChanged = !same(intent.infraReceiptRef, baseline.intent.infraReceiptRef)
   let smokeRotationContinuation = null
   let appliedAbortInfraBaseline = null
+  const smokeRotationSourceReuse = appArtifactReuse != null
+    || (controlledSmokeRotation && values.infra?.sourceRevision !== intent.sourceRevision)
+    || (values.infra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' && toolRotationPredecessor &&
+      values.infra?.sourceRevision !== intent.sourceRevision)
   if (!migration.replayOnly && (values.readiness?.appliedAbortInfraBaseline || values.authorization?.appliedAbortInfraBaseline)) fail('DEV014_ABORT_INFRA_BASELINE_INVALID')
   if (migration.migrationDisposition === 'FORWARD_APPLY') {
     if (!infraChanged) fail('DEV013_MIGRATION_INFRA_RECEIPT_INVALID')
     assertDev013MigrationInfraReceipt(values.infra, profile, resolveMigrationInfraReceiptSource({
-      controlledTransition, toolRotation, intentSourceRevision: intent.sourceRevision,
+      controlledTransition, toolRotation, toolRotationPredecessor, intentSourceRevision: intent.sourceRevision,
     }))
     if (migration.replayOnly) {
       const infraProfile = JSON.parse(readSourceFile(root, intent.sourceRevision, 'config/release/dev040-production-release-infra-plan.json'))
@@ -1005,18 +1059,33 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (!infraChanged) fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID')
     try { assertDev013MigrationInfraReceipt(values.infra, profile, values.infra?.sourceRevision) } catch { fail('DEV014_LOGIN_FIXTURE_INFRA_RECEIPT_INVALID') }
   } else if (infraChanged) {
-    if ((controlledTransition && !lifecycleEnable) || baseline.repair) fail('ROUTINE_INFRA_REF_CHANGED')
+    if ((controlledTransition && !lifecycleEnable && !controlledSmokeRotation) || baseline.repair) fail('ROUTINE_INFRA_REF_CHANGED')
     if (toolRotation) {
       // Full immutable plan/source proof was checked above; SQL stays unchanged.
+    } else if (controlledSmokeRotation) {
+      smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline,
+        predecessor: toolRotationPredecessor, readSourceFile, readInfrastructureTree,
+        sourceReuse: appArtifactReuse != null && values.infra.sourceRevision !== intent.sourceRevision })
     } else if (values.infra?.mutationProfile === 'APP_INFRA_REUSE') {
       smokeRotationContinuation = await assertSmokeInfraReuseContinuation({ root, profile, transport, intent, values, baseline, readSourceFile, readInfrastructureTree })
+    } else if (!controlledTransition && values.infra?.mutationProfile === SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE) {
+      smokeRotationContinuation = await assertSmokeWorkflowContractCorrectionContinuation({ root, profile, transport, intent, values, baseline, readSourceFile })
     } else {
       if (lifecycleEnable) fail('DEV014_LIFECYCLE_ENABLEMENT_INFRA_REUSE_REQUIRED')
       if (values.infra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') fail('ROUTINE_INFRA_REF_CHANGED')
       smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline,
         predecessor: toolRotationPredecessor, readSourceFile, readInfrastructureTree,
-        sourceReuse: appArtifactReuse != null && values.infra.sourceRevision !== intent.sourceRevision })
+        sourceReuse: smokeRotationSourceReuse })
     }
+  }
+  // DEV-060 combines a forward-only migration append with a previously sealed
+  // smoke-credential rotation. The FORWARD_APPLY branch above must still
+  // validate that rotation; otherwise the outer deploy verifier can only see
+  // a missing continuation after all migration checks have passed.
+  if (controlledSmokeRotation && infraChanged && !smokeRotationContinuation) {
+    smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline,
+      predecessor: toolRotationPredecessor, readSourceFile, readInfrastructureTree,
+      sourceReuse: smokeRotationSourceReuse })
   }
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]

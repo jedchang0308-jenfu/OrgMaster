@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { ExternalRoleCatalogRoleV1, ExternalRoleCatalogSnapshotV1, GovernanceActorContext, GovernanceDocumentV3 } from '../src/governance/types'
-import { validateFinancialExternalRoleCatalog } from '../src/governance/financialCatalog'
+import { validateFinancialExternalRoleCatalog,FINANCIAL_ADMINISTRATIVE_CAPABILITIES,FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH } from '../src/governance/financialCatalog'
 import { appendGovernanceAudit, commitGovernanceMutation, getGovernancePaths, readGovernanceStore } from './orgmasterGovernanceStore'
 import { readActiveAiPdmRoleCatalog } from './applicationRoleCatalogRegistry'
 import { assertFinancialAuthority, commandRequestHash, FINANCIAL_APPLICATION_ID, FINANCIAL_PROTECTED_OPERATIONS, publishFinancialPolicy, type FinancialManagementCapability } from './applicationEntitlementCommon'
@@ -87,7 +87,9 @@ function parseRole(value: unknown): FmsCatalogRole {
     assignmentPolicy: role.assignmentPolicy === 'existing_only' ? 'existing_only' : role.assignmentPolicy === 'open' ? 'open' : (() => { throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID') })(),
     roleDefinitionHash: hash(role.roleDefinitionHash),
   }
-  if (typeof role.builtIn !== 'boolean' || !result.capabilityIds.length || new Set(result.capabilityIds).size !== result.capabilityIds.length || result.capabilityIds.some((id, index) => index > 0 && result.capabilityIds[index - 1] > id) || result.allowedScopeKinds.length !== 1 || result.allowedScopeKinds[0] !== 'workspace' || roleHash(result) !== result.roleDefinitionHash) throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID')
+  if (typeof role.builtIn !== 'boolean' || !Array.isArray(role.capabilityIds) || new Set(result.capabilityIds).size !== result.capabilityIds.length || result.capabilityIds.some((id, index) => index > 0 && result.capabilityIds[index - 1] > id) || result.allowedScopeKinds.length !== 1 || result.allowedScopeKinds[0] !== 'workspace' || roleHash(result) !== result.roleDefinitionHash) throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID')
+  if(result.stableRoleId==='role-system-admin'&&(result.code!=='system-admin'||result.displayName!=='系統管理員'||!result.builtIn||result.assignmentPolicy!=='open'||result.roleDefinitionHash!==FINANCIAL_ADMINISTRATIVE_DEFINITION_HASH||JSON.stringify(result.capabilityIds)!==JSON.stringify(FINANCIAL_ADMINISTRATIVE_CAPABILITIES)))throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID')
+  if(result.stableRoleId!=='role-system-admin'&&result.code==='system-admin')throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_INVALID')
   return result
 }
 
@@ -133,9 +135,9 @@ function snapshotFromRelease(value: unknown, publisher: GovernanceActorContext):
     validationState: 'valid',
     effectState: 'not-synchronized',
     roles: roles.map((role): ExternalRoleCatalogRoleV1 => ({
-      stableRoleId: role.stableRoleId, code: role.code, displayName: role.displayName, status: 'active', assignable: true,
-      riskLevel: 'normal', allowedScopeKinds: ['workspace'], subjectKind: 'employee', recommendationAllowed: false, delegationAllowed: false,
-      assignmentTier: 'app_admin', assignmentDisposition: role.assignmentPolicy === 'existing_only' ? 'legacy-only' : 'selectable',
+      stableRoleId: role.stableRoleId, code: role.code, displayName: role.displayName, status: 'active', assignable: role.stableRoleId!=='role-system-admin',
+      riskLevel: 'normal', allowedScopeKinds: ['workspace'], subjectKind: role.stableRoleId==='role-system-admin'?'principal':'employee', recommendationAllowed: false, delegationAllowed: false,
+      assignmentTier: 'app_admin', assignmentDisposition: role.stableRoleId==='role-system-admin'?'hidden-protected':role.assignmentPolicy === 'existing_only' ? 'legacy-only' : 'selectable',
       builtIn: role.builtIn, capabilityIds: role.capabilityIds, assignmentPolicy: role.assignmentPolicy, roleDefinitionHash: role.roleDefinitionHash,
     })),
   }
@@ -166,7 +168,7 @@ async function readPublishedFinancialCatalog(root: string): Promise<ExternalRole
 
 export async function readActiveFinancialRoleCatalog(root = process.cwd()) { return readPublishedFinancialCatalog(root) }
 
-function rebaseAssignments(document: GovernanceDocumentV3, catalog: ExternalRoleCatalogSnapshotV1) {
+export function rebaseFinancialCatalogAssignments(document: GovernanceDocumentV3, catalog: ExternalRoleCatalogSnapshotV1) {
   const roles = new Map(catalog.roles.map((role) => [role.stableRoleId, role]))
   const priorCatalogHash = (version: GovernanceDocumentV3['publishedVersions'][number]) => version.kind === 'assignment-governance-v3'
     ? version.externalRoleCatalogs.find((entry) => entry.applicationId === FINANCIAL_APPLICATION_ID)
@@ -192,6 +194,9 @@ export async function publishFinancialCatalog(root: string, actor: GovernanceAct
   const releaseRequestHash = commandRequestHash({ applicationId: FINANCIAL_APPLICATION_ID, version: catalog.catalogVersion, contentSha256: catalog.contentSha256, artifactSha256: catalog.artifactSha256, sourceDraftId: catalog.sourceDraftId, sourceDraftRevision: catalog.sourceDraftRevision })
   const auditType = `financial_catalog_release_publish:${releaseRequestHash}`
   const observed = await readGovernanceStore(root)
+  assertFinancialAuthority(observed.document, actor, 'financial-management-system.catalog.import')
+  assertFinancialAuthority(observed.document, actor, 'financial-management-system.catalog.publish')
+  assertFinancialAuthority(observed.document, actor, 'financial-management-system.catalog.activate')
   const replay = observed.document.auditEvents.find((event) => event.commandId === request.commandId)
   if (replay) {
     if (replay.commandHash !== commandRequestHash({ commandId: request.commandId, reason: request.reason.trim(), type: auditType })) throw new FinancialCatalogReleaseError('FINANCIAL_CATALOG_RELEASE_CONFLICT')
@@ -213,7 +218,8 @@ export async function publishFinancialCatalog(root: string, actor: GovernanceAct
   const committed = await commitGovernanceMutation(root, request.expectedGovernanceRevision, async (current, source) => {
     assertFinancialAuthority(current.document, actor, 'financial-management-system.catalog.import')
     assertFinancialAuthority(current.document, actor, 'financial-management-system.catalog.publish')
-    const nextDraft = { ...current.document.draft, roleAssignments: rebaseAssignments(current.document, catalog), updatedAt: new Date().toISOString() }
+    assertFinancialAuthority(current.document, actor, 'financial-management-system.catalog.activate')
+    const nextDraft = { ...current.document.draft, roleAssignments: rebaseFinancialCatalogAssignments(current.document, catalog), updatedAt: new Date().toISOString() }
     const aiPdm = await readActiveAiPdmRoleCatalog(root)
     let document = publishFinancialPolicy(current.document, nextDraft, [aiPdm, catalog], source, actor, request.reason, new Date().toISOString())
     document = appendGovernanceAudit(document, { commandId: request.commandId, reason: request.reason.trim(), type: auditType }, actor, { action: 'financial_catalog_release_publish', entityType: 'financialCatalogRelease', entityId: catalog.catalogVersion, beforeHash: current.document.activePolicyVersionId, afterHash: document.publishedVersions.at(-1)?.snapshotHash ?? null })
@@ -221,7 +227,11 @@ export async function publishFinancialCatalog(root: string, actor: GovernanceAct
     document = appendGovernanceAudit(document, { commandId: randomUUID(), reason: request.reason.trim(), type: 'PUBLISH_ASSIGNMENTS' }, actor,
       { action: 'PUBLISH_ASSIGNMENTS', entityType: 'assignmentVersion', entityId: publishedVersion.id, beforeHash: null, afterHash: publishedVersion.snapshotHash })
     return { document, reasonCode: 'financial_catalog_release_publish', updatedBy: actor.principalId, validationCatalogs: [aiPdm, catalog] }
-  }, actor, (document) => assertFinancialAuthority(document, actor, 'financial-management-system.catalog.publish'))
+  }, actor, (document) => {
+    assertFinancialAuthority(document, actor, 'financial-management-system.catalog.import')
+    assertFinancialAuthority(document, actor, 'financial-management-system.catalog.publish')
+    assertFinancialAuthority(document, actor, 'financial-management-system.catalog.activate')
+  }, { commandId: request.commandId, request: { request, releaseValue } })
   return { status: 'applied' as const, revision: committed.revision, catalogVersion: catalog.catalogVersion, catalogSha256: catalog.contentSha256 }
 }
 

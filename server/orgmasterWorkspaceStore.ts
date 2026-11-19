@@ -27,6 +27,7 @@ import { assertMigrationWritesAllowed } from './orgmasterMigrationGate'
 import {
   OrgmasterPersistenceError,
   persistenceArtifactExists,
+  orgmasterPdmPublicationEnabled,
   readPersistenceArtifact,
   usesCloudSqlPersistence,
   writePersistenceArtifacts,
@@ -218,7 +219,8 @@ export async function saveWorkspaceVersion(
 ) {
   const updatedBy = workspaceWriterPrincipal(actorPrincipalId)
   await assertMigrationWritesAllowed(rootDirectory)
-  return withOrgMasterRootLock(rootDirectory, () => saveWorkspaceVersionUnlocked(rootDirectory, versionId, document, expectedVersionRevision, mode, updatedBy))
+  const save = () => saveWorkspaceVersionUnlocked(rootDirectory, versionId, document, expectedVersionRevision, mode, updatedBy)
+  return orgmasterPdmPublicationEnabled() && mode === 'current-maintenance' ? save() : withOrgMasterRootLock(rootDirectory, save)
 }
 
 export async function saveWorkspaceVersionUnlocked(

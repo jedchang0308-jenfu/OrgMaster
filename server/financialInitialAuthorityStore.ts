@@ -192,7 +192,7 @@ export async function publishFinancialInitialAuthority(root: string, actor: Gove
     }
     document = { ...document, commandReceipts: [...document.commandReceipts, receipt] }
     return { document, reasonCode: 'financial_initial_authority_bootstrap', updatedBy: actor.principalId, validationCatalogs: [aiPdm, catalog] }
-  }, actor, (document) => assertPrivilegedAdmin(document, actor))
+  }, actor, (document) => assertPrivilegedAdmin(document, actor), { commandId: request.commandId, request })
   const receipt = committed.document.commandReceipts.find((entry) => entry.commandId === request.commandId)
   if (!receipt) throw new ApplicationEntitlementError('COMMAND_NOT_OBSERVED')
   return { ...receipt, governanceRevision: committed.revision }

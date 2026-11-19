@@ -4,13 +4,15 @@ import { assertPrincipalOnlyRecoveryBinding, assertPrincipalOnlyRecoveryReadback
 import { assertSmokeInfraReuseReceipt } from './dev057-smoke-rotation-continuation.mjs'
 import { spawnSync } from 'node:child_process'
 import { gzipSync } from 'node:zlib'
-import { assertImmutableRef, assertProtectedGitHubContext, assertRuntimeConfig, candidateTagUriMatches, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
+import { assertImmutableRef, assertOwnerExecutionMode, assertProtectedGitHubContext, assertRuntimeConfig, candidateTagUriMatches, canonicalize, releasePaths, sha256, stageReceipt } from './dev012-owner-release-runtime.mjs'
 import { dev013L4SequenceStep, dev013TerminalTransitionFact } from './dev013-l4-transition-sequence.mjs'
 import { buildDev014ConsumerConformance } from './dev014-consumer-conformance.mjs'
 import { assertDev014PrincipalLifecycleContainment } from './dev014-principal-lifecycle-release.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_RELEASE_MODE, assertDev058RolePolicyAuthority } from './dev058-role-policy-migration.mjs'
 import { DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityReleaseAuthority } from './dev059-fms-authority-migration.mjs'
-import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_MIGRATION_ENTRY_COUNT, DEV057_PROJED_RELEASE_MODE, assertDev057ProjedReleaseAuthority } from './dev057-projed-principal-migration.mjs'
+import { DEV057_PROJED_MIGRATION_ENTRY_COUNT, DEV057_PROJED_MIGRATIONS, DEV057_PROJED_RELEASE_MODE, assertDev057ProjedReleaseAuthority } from './dev057-projed-principal-migration.mjs'
+import {DEV070_MIGRATION_ENTRY_COUNT,DEV070_RELEASE_MODE,assertDev070AdministrationReleaseAuthority} from './dev070-administration-migration.mjs'
+import { DEV060_MIGRATION_ENTRY_COUNT, DEV060_RELEASE_MODE, assertDev060FmsCatalogActivationReleaseAuthority } from './dev060-fms-catalog-activation-migration.mjs'
 import { DEV057_CUTOVER_SOURCE_REMEDIATION, DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION, DEV057_PRINCIPAL_CONTRACT_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION, DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION } from './dev057-principal-contract-release.mjs'
 export { candidateTagUriMatches } from './dev012-owner-release-runtime.mjs'
 
@@ -107,8 +109,10 @@ function assertControlledEnvironmentAuthority({ intent, profile, values, runtime
   if (!isDev013) {
     if (values.readiness?.devId === 'DEV-058') return assertDev058RolePolicyAuthority(values.readiness, values.authorization, intent)
     if (values.readiness?.devId === 'DEV-059') return assertDev059FmsAuthorityReleaseAuthority(values.readiness, values.authorization, intent)
-    if (isDev057 && values.readiness?.slice === '057-PROJED-PRINCIPAL') return assertDev057ProjedReleaseAuthority(values.readiness, values.authorization, intent)
+    if(values.readiness?.devId==='DEV-070')return assertDev070AdministrationReleaseAuthority(values.readiness,values.authorization,intent)
+    if (values.readiness?.devId === 'DEV-060') return assertDev060FmsCatalogActivationReleaseAuthority(values.readiness, values.authorization, intent)
     if (isDev057) {
+      if (values.readiness?.slice === '057-PROJED-PRINCIPAL') return assertDev057ProjedReleaseAuthority(values.readiness, values.authorization, intent)
       const principalContract = values.readiness?.slice === '057-PRINCIPAL-CONTRACT'
       const cutoverSource = values.readiness?.slice === '057-CUTOVER-SOURCE'
       const principalGrantsV4 = values.readiness?.slice === '057-PRINCIPAL-GRANTS-V4'
@@ -393,7 +397,7 @@ async function writeStage(transport, paths, profile, intent, stage, previousRece
 
 export function assertMigrationReceipt(value, profile, intent, { historical = false, allowForward = false, forwardPlan = null } = {}) {
   if (value?.schemaVersion === 'jenfu.dev012.stage-receipt.v1') {
-    if (allowForward && (forwardPlan?.replayOnly === true || [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE].includes(forwardPlan?.releaseMode))) fail('MIGRATION_RECEIPT_INVALID')
+    if (allowForward && (forwardPlan?.replayOnly === true || [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE].includes(forwardPlan?.releaseMode))) fail('MIGRATION_RECEIPT_INVALID')
     assertStage(value, profile, intent, 'migrate')
     if (value.facts?.disposition !== 'UNCHANGED_VERIFIED' || value.facts?.manifestSha256 !== intent.migrationManifestSha256 || canonicalize(value.facts?.baselineIntentRef) !== canonicalize(intent.baselineIntentRef)) fail('MIGRATION_RECEIPT_INVALID')
     // Legacy migration receipts remain readable for rollback, never executable.
@@ -415,11 +419,13 @@ export function assertMigrationReceipt(value, profile, intent, { historical = fa
       const rolePolicyAppend = forwardPlan?.releaseMode === DEV058_RELEASE_MODE
       const fmsAuthorityAppend = forwardPlan?.releaseMode === DEV059_RELEASE_MODE
       const projedPrincipalAppend = forwardPlan?.releaseMode === DEV057_PROJED_RELEASE_MODE
-      const expectedLedgerCount = projedPrincipalAppend ? DEV057_PROJED_MIGRATION_ENTRY_COUNT : fmsAuthorityAppend ? DEV059_MIGRATION_ENTRY_COUNT : rolePolicyAppend ? DEV058_MIGRATION_ENTRY_COUNT : lifecycleV2Remediation ? 31 : employeeNumberCommandReceiptV2Remediation ? 30 : principalGrantsV4Remediation ? 29 : principalGrantsV3Remediation ? 28 : cutoverSourceRemediation ? 27 : principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
+      const fmsCatalogActivationAppend = forwardPlan?.releaseMode === DEV060_RELEASE_MODE
+      const administrationAppend=forwardPlan?.releaseMode===DEV070_RELEASE_MODE
+      const expectedLedgerCount = projedPrincipalAppend ? DEV057_PROJED_MIGRATION_ENTRY_COUNT : administrationAppend?DEV070_MIGRATION_ENTRY_COUNT:fmsCatalogActivationAppend ? DEV060_MIGRATION_ENTRY_COUNT : fmsAuthorityAppend ? DEV059_MIGRATION_ENTRY_COUNT : rolePolicyAppend ? DEV058_MIGRATION_ENTRY_COUNT : lifecycleV2Remediation ? 31 : employeeNumberCommandReceiptV2Remediation ? 30 : principalGrantsV4Remediation ? 29 : principalGrantsV3Remediation ? 28 : cutoverSourceRemediation ? 27 : principalContractRemediation ? 26 : writerFenceRemediation ? 21 : projectionContractRemediation ? 20 : activationContractRemediation ? 19 : applicationRegistrationRemediation ? 17 : producerContractRemediation ? 16 : 15
       if (forwardPlan?.replayOnly === true && (!lifecycleV2Remediation || forwardPlan.pendingMigrationCount !== 0)) fail('MIGRATION_RECEIPT_INVALID')
       if (forwardPlan?.replayOnly === true && (value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev','jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
-      const maximumAppliedCount = projedPrincipalAppend ? DEV057_PROJED_MIGRATIONS.length : fmsAuthorityAppend ? forwardPlan.pendingMigrationCount : rolePolicyAppend ? DEV058_MIGRATION_ENTRIES.length : lifecycleV2Remediation && forwardPlan?.replayOnly === true ? 0 : lifecycleV2Remediation || employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
+      const maximumAppliedCount = projedPrincipalAppend ? DEV057_PROJED_MIGRATIONS.length : administrationAppend?forwardPlan.pendingMigrationCount:fmsCatalogActivationAppend ? 1 : fmsAuthorityAppend ? forwardPlan.pendingMigrationCount : rolePolicyAppend ? DEV058_MIGRATION_ENTRIES.length : lifecycleV2Remediation && forwardPlan?.replayOnly === true ? 0 : lifecycleV2Remediation || employeeNumberCommandReceiptV2Remediation || principalGrantsV4Remediation || principalGrantsV3Remediation || cutoverSourceRemediation ? 1 : principalContractRemediation ? 5 : producerContractRemediation || applicationRegistrationRemediation || activationContractRemediation || projectionContractRemediation || writerFenceRemediation ? 1 : 4
       if (rolePolicyAppend && (forwardPlan.pendingMigrationCount !== DEV058_MIGRATION_ENTRIES.length
         || value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev', 'jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
@@ -427,7 +433,11 @@ export function assertMigrationReceipt(value, profile, intent, { historical = fa
         || forwardPlan.pendingMigrationCount > DEV059_MIGRATION_ENTRY_COUNT - 31
         || value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev', 'jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
+      if(administrationAppend&&(!Number.isInteger(forwardPlan.pendingMigrationCount)||forwardPlan.pendingMigrationCount<1||forwardPlan.pendingMigrationCount>DEV070_MIGRATION_ENTRY_COUNT-31||value.database!=='jenfu_prod'||value.ledger!=='orgmaster_core.schema_migrations'||!Array.isArray(value.crossDatabaseDenials)||canonicalize(value.crossDatabaseDenials.map(row=>row.database).sort())!==canonicalize(['jenfu_dev','jenfu_stg'])))fail('MIGRATION_RECEIPT_INVALID')
       if (projedPrincipalAppend && (forwardPlan.pendingMigrationCount !== DEV057_PROJED_MIGRATIONS.length
+        || value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
+        || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev', 'jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
+      if (fmsCatalogActivationAppend && (forwardPlan.pendingMigrationCount !== 1
         || value.database !== 'jenfu_prod' || value.ledger !== 'orgmaster_core.schema_migrations'
         || !Array.isArray(value.crossDatabaseDenials) || canonicalize(value.crossDatabaseDenials.map(row => row.database).sort()) !== canonicalize(['jenfu_dev', 'jenfu_stg']))) fail('MIGRATION_RECEIPT_INVALID')
       const recoveryCountsValid = Number.isInteger(value.applied) && value.applied >= 0 && value.applied <= maximumAppliedCount && value.replayed === expectedLedgerCount - value.applied
@@ -545,8 +555,54 @@ function publicBuildReceipt(build) {
   return { name: build.name, id: build.id, projectId: build.projectId, status: build.status, serviceAccount: build.serviceAccount, createTime: build.createTime, startTime: build.startTime, finishTime: build.finishTime, sourceProvenance: build.sourceProvenance, results: build.results, options: build.options }
 }
 
+// Read-only normal-CLI continuation admission. It never executes a stage,
+// publishes a receipt, extends expiry, or acquires a runtime control lease.
+export async function verifyMigrationOnlyContinuation({ capsuleRef, capsuleSha256, profile, transport,
+  validateIntent, sourceRevision, expectedSourceSha256, expectedManifestSha256, baselineIntentRef, previousRevision }) {
+  if (profile.application.id !== 'orgmaster' || !H40.test(sourceRevision ?? '') ||
+      !H64.test(expectedSourceSha256 ?? '') || !H64.test(expectedManifestSha256 ?? '')) fail('MIGRATION_CONTINUATION_INPUT_INVALID')
+  const { intent, intentRef, paths } = await readIntentAndPaths({ transport, profile, capsuleRef, capsuleSha256, validateIntent })
+  if (intent.sourceRevision !== sourceRevision || intent.sourceSha256 !== expectedSourceSha256 || intent.migrationManifestSha256 !== expectedManifestSha256 ||
+      canonicalize(intent.baselineIntentRef) !== canonicalize(baselineIntentRef) || intent.previousRevision !== previousRevision ||
+      !Number.isFinite(Date.parse(intent.deadlineAt)) || Date.parse(intent.deadlineAt) <= Date.parse(transport.now())) fail('MIGRATION_CONTINUATION_SOURCE_OR_BASELINE_MISMATCH')
+  if (await optionalNamedJson(transport, paths.candidate, profile) ||
+      await optionalNamedJson(transport, paths.terminal, profile)) fail('MIGRATION_CONTINUATION_ALREADY_STARTED')
+  const prepare = await readStage(transport, paths, profile, intent, 'prepare')
+  const build = await readStage(transport, paths, profile, intent, 'build')
+  const deployment = await readDeployment(transport, paths, profile, intent, intentRef, capsuleSha256)
+  const migration = await readNamedJson(transport, paths.migrate, profile)
+  const names = { sourceLock: 'sourceLockRef', authorization: 'authorizationPolicyRef', readiness: 'readinessReceiptRef',
+    foundation: 'foundationReceiptRef', infra: 'infraReceiptRef', runtimeConfig: 'runtimeConfigRef' }
+  const expectedRefs = Object.fromEntries(Object.entries(names).map(([name, field]) => [name, intent[field]]))
+  if (prepare.value.releaseId !== intent.releaseId || build.value.releaseId !== intent.releaseId ||
+      prepare.value.previousReceiptRef !== null || canonicalize(prepare.value.facts.prerequisiteRefs) !== canonicalize(expectedRefs) ||
+      canonicalize(build.value.previousReceiptRef) !== canonicalize(prepare.ref) ||
+      canonicalize(deployment.value.buildReceiptRef) !== canonicalize(build.ref)) fail('MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID')
+  for (const field of ['artifactDigest', 'sourceObject', 'migrationBundleRef', 'provenanceReceiptRef', 'sbomReceiptRef', 'scanReceiptRef']) {
+    if (canonicalize(build.value.facts[field]) !== canonicalize(deployment.value[field])) fail('MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID', field)
+  }
+  const values = Object.fromEntries(await Promise.all(Object.entries(names).map(async ([name, field]) =>
+    [name, (await transport.readJson(intent[field], profile.artifact.releaseBucket, ['receipts'])).value])))
+  assertPreparePrerequisites({ intent, profile, values })
+  if (prepare.value.facts.migrationRunnerDigest !== deployment.value.migrationRunnerDigest ||
+      canonicalize(prepare.value.facts.routine?.baselineIntentRef) !== canonicalize(intent.baselineIntentRef) ||
+      !['FORWARD_APPLY', 'UNCHANGED_VERIFIED'].includes(prepare.value.facts.routine?.migrationDisposition)) fail('MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID')
+  for (const field of ['migrationBundleRef', 'provenanceReceiptRef', 'sbomReceiptRef', 'scanReceiptRef']) {
+    await transport.readJson(deployment.value[field], profile.artifact.releaseBucket, ['source', 'receipts'])
+  }
+  assertMigrationReceipt(migration.value, profile, intent, {
+    allowForward: prepare.value.facts.routine.migrationDisposition === 'FORWARD_APPLY', forwardPlan: prepare.value.facts.routine,
+  })
+  if (migration.value.schemaVersion === 'jenfu.dev012.stage-receipt.v1' &&
+      (migration.value.releaseId !== intent.releaseId || canonicalize(migration.value.previousReceiptRef) !== canonicalize(prepare.ref))) fail('MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID')
+  return { status: 'MIGRATION_APPLIED_CONTINUATION_READY', applicationReleased: false, sourceRevision,
+    releaseId: intent.releaseId, releaseCapsuleRef: `${intentRef.uri}#sha256=${intentRef.sha256}`,
+    migrationReceiptRef: migration.ref, deploymentCapsuleRef: deployment.ref, artifactDigest: deployment.value.artifactDigest }
+}
+
 export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, profile, profileSha256 = profile?.contractSha256, transport, environment = process.env, validateIntent, createSourceIdentity, createSourceArchive, buildMigrationBundle, verifyRoutineRelease, verifyToolJobReadback, reuseAppArtifact }) {
   if (!STAGES.has(stage)) fail('STAGE_DENIED')
+  assertOwnerExecutionMode(profile, environment, stage)
   const { intent, intentRef, paths } = await readIntentAndPaths({ transport, profile, capsuleRef, capsuleSha256, validateIntent })
   const fingerprint = sha256(canonicalize({ ownerApplicationId: profile.application.id, releaseId: intent.releaseId, sourceRevision: intent.sourceRevision, releaseIntentSha256: capsuleSha256 }))
 
@@ -584,6 +640,8 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (derived.controlledEnvironmentAuthority.releaseMode === 'ROUTINE_CONTROLLED_ENVIRONMENT_CARRY_FORWARD' && routine.releaseMode !== 'ROUTINE_UNCHANGED_RUNTIME') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === DEV058_RELEASE_MODE && routine.releaseMode !== DEV058_RELEASE_MODE) fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === DEV059_RELEASE_MODE && routine.releaseMode !== DEV059_RELEASE_MODE) fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if(derived.controlledEnvironmentAuthority.releaseMode===DEV070_RELEASE_MODE&&routine.releaseMode!==DEV070_RELEASE_MODE)fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
+    if (derived.controlledEnvironmentAuthority.releaseMode === DEV060_RELEASE_MODE && routine.releaseMode !== DEV060_RELEASE_MODE) fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === DEV057_PROJED_RELEASE_MODE && routine.releaseMode !== DEV057_PROJED_RELEASE_MODE) fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV014_LOGIN_FIXTURE_CORRECTION' && routine.releaseMode !== 'DEV014_LOGIN_FIXTURE_CORRECTION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
     if (derived.controlledEnvironmentAuthority.releaseMode === 'DEV057_WRITER_FENCE_REMEDIATION' && routine.releaseMode !== 'DEV057_WRITER_FENCE_REMEDIATION') fail('CONTROLLED_ENVIRONMENT_BASELINE_MISMATCH')
@@ -655,7 +713,7 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     const infra = (await transport.readJson(intent.infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])).value
     let toolImageLiveReadback = null
     if (infra.toolRotation) {
-      const controlledToolMigrationAppend = [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE].includes(prepare.value.facts.routine.releaseMode)
+      const controlledToolMigrationAppend = [DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE,DEV070_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE].includes(prepare.value.facts.routine.releaseMode)
         && prepare.value.facts.routine.controlledTransition?.releaseMode === prepare.value.facts.routine.releaseMode
       if ((allowForward && !controlledToolMigrationAppend) || !prepare.value.facts.routine.toolImageRotation || !verifyToolJobReadback
         || prepare.value.facts.routine.toolImageRotation.migrationRunnerDigest !== infra.migrationRunnerDigest) fail('TOOL_JOB_READBACK_REQUIRED')
@@ -674,7 +732,8 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     let receipt = existing
     if (allowForward) {
       if (!receipt) {
-        await transport.runMigrationJob({ profile, deployment: deployment.value, outputUri: paths.migrate, deadlineAt: intent.deadlineAt })
+        await transport.runMigrationJob({ profile, deployment: deployment.value, outputUri: paths.migrate, deadlineAt: intent.deadlineAt,
+          migrationMode: [DEV060_RELEASE_MODE,DEV070_RELEASE_MODE,DEV057_PROJED_RELEASE_MODE].includes(prepare.value.facts.routine.releaseMode)?prepare.value.facts.routine.releaseMode:null })
         receipt = await readNamedJson(transport, paths.migrate, profile)
       }
     } else receipt ??= await writeStage(transport, paths, profile, intent, 'migrate', prepare.ref, { ...prepare.value.facts.routine, ...(toolImageLiveReadback ? { toolImageLiveReadback } : {}), disposition: 'UNCHANGED_VERIFIED', manifestSha256: intent.migrationManifestSha256, migrationsExecuted: 0, dataImportsExecuted: 0 })
@@ -788,8 +847,15 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
   // A failed Job or missing receipt does not prove that its transaction never
   // committed. The next lifecycle attempt must inspect/replay the exact ledger.
   const lifecycleV2Remediation = prepare?.value?.facts?.routine?.releaseMode === 'DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION'
+  const administrationAppend=prepare?.value?.facts?.routine?.releaseMode===DEV070_RELEASE_MODE
   const databaseDisposition = migration ? (migration.value.facts?.disposition ?? 'FORWARD_APPLIED')
-    : lifecycleV2Remediation ? 'UNKNOWN_REQUIRES_LEDGER_READBACK' : 'NOT_APPLIED'
+    : lifecycleV2Remediation||administrationAppend ? 'UNKNOWN_REQUIRES_LEDGER_READBACK' : 'NOT_APPLIED'
+  let administrationRecovery=null
+  if(administrationAppend){
+    const deployment=await optionalNamedJson(transport,paths.deployment,profile)
+    if(deployment)assertDeployment(deployment.value,profile,intent,intentRef,capsuleSha256)
+    administrationRecovery={schemaRollbackAllowed:false,legacyWriterFallbackAllowed:false,legacyRevisionGovernanceWrites:migration?'DENIED_AFTER_045':'UNKNOWN_UNTIL_LEDGER_READBACK',requiredAction:'LEDGER_READBACK_AND_V3_COMPATIBLE_FORWARD_REPAIR',forwardRepairSourceRevision:intent.sourceRevision,forwardRepairDeploymentCapsuleRef:deployment?.ref??null,forwardRepairArtifactDigest:deployment?.value?.artifactDigest??null}
+  }
   const rollbackRevision = principalOnlyRollbackRevision(intent)
   let disposition = 'PRE_ACTIVATION_ABORTED'
   let entrypointRecovery = { changed: false, result: 'NOT_REQUIRED' }
@@ -827,8 +893,8 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     maintenanceRecovery = { revision: rollbackRevision, providerOperationRef: restored.operationRef, status: 'PRINCIPAL_ONLY_MAINTENANCE_READ_BACK' }
     disposition = 'ROLLED_BACK'
   }
-  const rollback = await writeStage(transport, paths, profile, intent, 'rollback', entrypoint?.ref ?? candidate?.ref ?? migration?.ref ?? null, { result: disposition, previousRevision: rollbackRevision, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'], entrypointRecovery, databaseDisposition, ...(maintenanceRecovery ? { maintenanceRecovery } : {}) })
-  const terminal = stageReceipt({ profile, intent, stage: 'terminal', previousReceiptRef: rollback.ref, facts: { result: disposition, previousRevision: rollbackRevision, entrypointRecovery, databaseDisposition }, observedAt: transport.now() })
+  const rollback = await writeStage(transport, paths, profile, intent, 'rollback', entrypoint?.ref ?? candidate?.ref ?? migration?.ref ?? null, { result: disposition, previousRevision: rollbackRevision, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'], entrypointRecovery, databaseDisposition, ...(administrationRecovery?{administrationRecovery}:{}), ...(maintenanceRecovery ? { maintenanceRecovery } : {}) })
+  const terminal = stageReceipt({ profile, intent, stage: 'terminal', previousReceiptRef: rollback.ref, facts: { result: disposition, previousRevision: rollbackRevision, entrypointRecovery, databaseDisposition,...(administrationRecovery?{administrationRecovery}:{}) }, observedAt: transport.now() })
   const terminalResult = await transport.putJson(paths.terminal, terminal, { bucket: profile.artifact.releaseBucket, prefix: 'receipts' })
   await transport.publishIncident(profile, { correlationId: `${intent.releaseId}-${environment.GITHUB_RUN_ATTEMPT ?? '1'}`, ownerApplicationId: profile.application.id, sourceLockSha256: intent.sourceLockRef.sha256, eventRef: terminalResult.ref, occurredAt: transport.now() })
   await writeControl({ transport, paths, profile, intent, fingerprint, candidate: candidate?.value?.facts ?? null, state: 'FINALIZED', result: disposition, environment })

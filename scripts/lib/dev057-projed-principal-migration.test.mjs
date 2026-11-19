@@ -28,7 +28,7 @@ const migrationFiles = new Map(profile.migrations.entries.map(entry => [
   fs.readFileSync(path.join(repoRoot, entry.path)),
 ]))
 const sourceBundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), migrationFiles, 'a'.repeat(40)).bundle
-const before = { ...sourceBundle, entries: sourceBundle.entries.slice(0, 38) }
+const before = { ...sourceBundle, entries: sourceBundle.entries.slice(0, 60) }
 const after = sourceBundle
 
 const ref = { uri: 'gs://orgmaster-release/receipts/baseline-intent.json', sha256: 'c'.repeat(64) }
@@ -53,8 +53,8 @@ const authorization = {
 
 test('DEV-057 ProJED suffix matches exact source and applied migration bytes', () => {
   assert.equal(DEV057_PROJED_RELEASE_MODE, 'DEV057_PROJED_PRINCIPAL_APPEND')
-  assert.equal(DEV057_PROJED_MIGRATION_ENTRY_COUNT, 41)
-  assert.equal(before.entries.length, 38)
+  assert.equal(DEV057_PROJED_MIGRATION_ENTRY_COUNT, 63)
+  assert.equal(before.entries.length, 60)
   assert.equal(after.entries.length, DEV057_PROJED_MIGRATION_ENTRY_COUNT)
   assert.equal(sourceBundle.baselineCount, 10)
   for (const migration of DEV057_PROJED_MIGRATIONS) {
@@ -68,7 +68,7 @@ test('DEV-057 ProJED suffix matches exact source and applied migration bytes', (
 
 test('migration entries reject hash changes, altered prefixes, unknown suffixes, and partial release sets', () => {
   for (const field of ['sourceSha256', 'appliedSha256']) {
-    for (const index of [38, 39, 40]) {
+    for (const index of [60, 61, 62]) {
       const changedHash = structuredClone(after.entries)
       changedHash[index][field] = '0'.repeat(64)
       assert.throws(() => assertDev057ProjedMigrationEntries(changedHash))
@@ -79,17 +79,17 @@ test('migration entries reject hash changes, altered prefixes, unknown suffixes,
   changedPrefix[12].appliedSha256 = '0'.repeat(64)
   assert.throws(() => assertDev057ProjedMigrationEntries(changedPrefix))
 
-  for (const count of [38, 39, 40]) assert.throws(() => assertDev057ProjedMigrationEntries(after.entries.slice(0, count)))
-  assert.throws(() => assertDev057ProjedMigrationEntries([...after.entries, { order: 42, version: 'unknown', path: 'unknown.sql' }]))
+  for (const count of [60, 61, 62]) assert.throws(() => assertDev057ProjedMigrationEntries(after.entries.slice(0, count)))
+  assert.throws(() => assertDev057ProjedMigrationEntries([...after.entries, { order: 64, version: 'unknown', path: 'unknown.sql' }]))
 })
 
-test('append accepts only the unchanged 38-row baseline to exact 41-row suffix', () => {
+test('append accepts only the unchanged 60-row baseline to exact 63-row suffix', () => {
   const result = assertDev057ProjedAppend(before, after)
   assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
   assert.equal(result.pendingMigrationCount, 3)
   assert.match(result.migrationInputsSha256, /^[0-9a-f]{64}$/u)
 
-  const partialBefore = { ...before, entries: [...before.entries, after.entries[38]] }
+  const partialBefore = { ...before, entries: [...before.entries, after.entries[60]] }
   assert.throws(() => assertDev057ProjedAppend(partialBefore, after), /DEV057_PROJED_MIGRATION_APPEND_INVALID/u)
   const changedPrefix = structuredClone(before)
   changedPrefix.entries[7].sourceSha256 = '0'.repeat(64)

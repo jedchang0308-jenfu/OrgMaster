@@ -7,6 +7,12 @@ on:
         description: Immutable OrgMaster release-intent URI with sha256 fragment
         required: true
         type: string
+      executionMode:
+        description: Complete the owner release, or stop after the sealed migration receipt
+        required: true
+        type: choice
+        default: full_release
+        options: [full_release, migration_only]
 
 concurrency:
   group: production-release-orgmaster-prod
@@ -17,13 +23,54 @@ permissions:
 
 env:
   NODE_VERSION: "24.11.0"
+  OWNER_EXECUTION_MODE: "${{ inputs.executionMode }}"
   WIF_PROVIDER: ${{ vars.ORGMASTER_PROD_WIF_PROVIDER }}
 
 jobs:
-  prepare:
+  cancelled-recovery:
     runs-on: ubuntu-latest
     environment: production
-    permissions: { contents: read, pull-requests: read, id-token: write }
+    permissions: { contents: read, id-token: write }
+    outputs:
+      handled: ${{ steps.probe.outputs.handled }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, fetch-depth: 1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24.11.0", cache: npm }
+      - run: npm ci
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: orgmaster-prod-deployer@jenfu-platform-prod.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+      - id: probe
+        name: Detect an exact stopped cancelled attempt
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/dev040-cancelled-release-recovery.mjs --probe --capsule-ref "${{ inputs.releaseCapsuleRef }}"
+      - name: Seal pre-activation abort with existing owner rollback
+        if: ${{ steps.probe.outputs.eligible == 'true' }}
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          OWNER_EXECUTION_MODE: full_release
+        run: |
+          ref="${{ inputs.releaseCapsuleRef }}"
+          node scripts/dev040-orgmaster-independent-release.mjs --stage rollback --capsule-ref "${ref%%#sha256=*}" --capsule-sha256 "${ref##*#sha256=}"
+      - name: Verify finalized control readback
+        if: ${{ steps.probe.outputs.handled == 'true' }}
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/dev040-cancelled-release-recovery.mjs --verify-final --capsule-ref "${{ inputs.releaseCapsuleRef }}"
+
+  prepare:
+    if: ${{ needs.cancelled-recovery.outputs.handled != 'true' }}
+    needs: cancelled-recovery
+    runs-on: ubuntu-latest
+    environment: production
+    permissions: { contents: read, pull-requests: read, checks: read, id-token: write }
     outputs:
       capsule_uri: ${{ steps.bind.outputs.capsule_uri }}
       capsule_sha256: ${{ steps.bind.outputs.capsule_sha256 }}
@@ -33,15 +80,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "24.11.0", cache: npm }
       - run: npm ci
-      - run: npm run test:dev-040:r2
-      - name: Verify official merged source
+      - name: Verify official merged source and required Source QC
         env: { GITHUB_TOKEN: "${{ github.token }}" }
         run: node scripts/dev012-verify-official-source.mjs
       - id: bind
         shell: bash
-        env: { RELEASE_CAPSULE_REF: "${{ inputs.releaseCapsuleRef }}" }
+        env: { RELEASE_CAPSULE_REF: "${{ inputs.releaseCapsuleRef }}", EXECUTION_MODE: "${{ inputs.executionMode }}" }
         run: |
           set -euo pipefail
+          case "$EXECUTION_MODE" in full_release|migration_only) ;; *) exit 2 ;; esac
           capsule_uri="${RELEASE_CAPSULE_REF%%#sha256=*}"
           capsule_sha256="${RELEASE_CAPSULE_REF##*#sha256=}"
           test "$capsule_uri" != "$RELEASE_CAPSULE_REF"
@@ -108,6 +155,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage migrate --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   candidate:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, migrate]
     runs-on: ubuntu-latest
     environment: production
@@ -131,6 +179,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage candidate --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   entrypoint:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, candidate]
     runs-on: ubuntu-latest
     environment: production
@@ -154,6 +203,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage entrypoint --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   verify:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, entrypoint]
     runs-on: ubuntu-latest
     environment: production
@@ -178,6 +228,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage verify --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   decision:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, verify]
     runs-on: ubuntu-latest
     environment: production
@@ -201,6 +252,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage decision --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   activate:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, decision]
     runs-on: ubuntu-latest
     environment: production
@@ -224,6 +276,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage activate --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   canonical:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, activate]
     runs-on: ubuntu-latest
     environment: production
@@ -249,6 +302,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage canonical --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   finalize:
+    if: ${{ inputs.executionMode == 'full_release' }}
     needs: [prepare, canonical]
     runs-on: ubuntu-latest
     environment: production
@@ -272,7 +326,7 @@ jobs:
         run: node scripts/dev040-orgmaster-independent-release.mjs --stage finalize --capsule-ref "${{ needs.prepare.outputs.capsule_uri }}" --capsule-sha256 "${{ needs.prepare.outputs.capsule_sha256 }}"
 
   failure:
-    if: ${{ always() && needs.prepare.result == 'success' && contains(needs.*.result, 'failure') }}
+    if: ${{ always() && inputs.executionMode == 'full_release' && needs.prepare.result == 'success' && contains(needs.*.result, 'failure') }}
     needs: [prepare, build, migrate, candidate, entrypoint, verify, decision, activate, canonical, finalize]
     runs-on: ubuntu-latest
     environment: production

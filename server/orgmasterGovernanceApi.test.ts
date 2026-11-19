@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,9 @@ import { ORGMASTER_PERMISSIONS, readAiPdmRoleCatalog } from '../src/governance/a
 import { GovernanceStoreError } from './orgmasterGovernanceStore'
 import { ensureGovernanceStore, getGovernancePaths, readGovernanceStore } from './orgmasterGovernanceStore'
 import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import * as persistence from './orgmasterPersistenceRepository'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
+import { LOCAL_IDENTITY_ISSUER } from '../contracts/local-principal-sandbox/v1/protocol.mjs'
 describe('governance API boundary', () => { it('registers the plugin and accepts only the fixed loopback dev identity', () => { expect(orgmasterGovernanceApiPlugin().name).toBe('orgmaster-local-governance-api'); const request = { socket: { remoteAddress: '127.0.0.1' }, headers: { 'x-orgmaster-dev-issuer': DEV_ISSUER, 'x-orgmaster-dev-subject': DEV_SUBJECT } } as any; expect(resolveDevelopmentIdentity(request, true)?.principalId).toBe('dev-principal-local-admin'); expect(resolveDevelopmentIdentity(request, false)).toBeNull() }) })
 
 describe('governance API failure mapping', () => {
@@ -158,14 +160,157 @@ describe('QA058-07 mounted actor boundary', () => {
   })
 })
 
+describe('DEV-070 verified governance session read diagnostics', () => {
+  const verifiedSession: OrgmasterSession = {
+    id: 'private-fixture-session', identityIssuer: 'fixture-issuer', identitySubject: 'private-fixture-subject',
+    principalId: 'private-fixture-principal', employeeId: 'private-fixture-employee', authEpoch: 0,
+    sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 1,
+    issuedAt: '2026-10-29T00:00:00.000Z', authenticatedAt: '2026-10-29T00:00:00.000Z',
+    expiresAt: '2099-01-01T00:00:00.000Z', revokedAt: null, assuranceLevel: 'aal1',
+  }
+
+  function call(session: OrgmasterSession | null, dev = false) {
+    const request = {
+      url: '/api/orgmaster/governance/session', method: 'GET',
+      headers: dev ? { 'x-orgmaster-dev-issuer': DEV_ISSUER, 'x-orgmaster-dev-subject': DEV_SUBJECT } : {},
+      socket: { remoteAddress: '127.0.0.1' },
+    }
+    if (session) setVerifiedRequestIdentity(request as never, session)
+    return new Promise<{ status: number; body: unknown }>((resolve, reject) => {
+      const response = {
+        statusCode: 0,
+        setHeader: vi.fn(),
+        end: (value: string) => resolve({ status: response.statusCode, body: JSON.parse(value) }),
+      }
+      createOrgmasterGovernanceMiddleware('unused-governance-diagnostic-fixture', dev)(
+        request as never, response as never, () => reject(new Error('UNHANDLED_SESSION_ROUTE')),
+      )
+    })
+  }
+
+  it('logs only a closed stage and error projection from the original verified read failure', async () => {
+    const failure = Object.assign(new GovernanceStoreError('GOVERNANCE_READ_FAILED', [
+      { code: 'ADMINISTRATION_INVALID', path: 'draft.private_fixture_path', message: 'private-fixture-issue-message' },
+      { code: 'PRIVATE_FIXTURE_UNRECOGNIZED_CODE', path: 'private-fixture-path', message: 'private-fixture-issue' },
+      { code: 'ADMINISTRATION_INVALID', path: 'private-fixture-duplicate' },
+    ]), {
+      message: 'private-fixture-error-message', stack: 'private-fixture-stack',
+      query: 'SELECT private_fixture_business_row', rows: [{ secret: 'private-fixture-raw-row' }],
+      cause: new Error('private-fixture-cause'), path: 'C:/private-fixture-file',
+    })
+    const exists = vi.spyOn(persistence, 'persistenceArtifactExists').mockResolvedValue(true)
+    const read = vi.spyOn(persistence, 'readPersistenceArtifact').mockRejectedValue(failure)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      expect(await call(verifiedSession)).toEqual({ status: 503, body: { error: 'ORGMASTER_SOURCE_UNAVAILABLE' } })
+      expect(read).toHaveBeenCalledTimes(1)
+      expect(warning.mock.calls.map(([value]) => JSON.parse(String(value)))).toEqual([{
+        event: 'orgmaster_governance_session_read_failed', stage: 'governance_v3_artifact_read',
+        code: 'GOVERNANCE_READ_FAILED', issueCodes: ['ADMINISTRATION_INVALID'],
+      }])
+      expect(JSON.stringify([...warning.mock.calls, ...error.mock.calls])).not.toMatch(/private[-_]fixture|PRIVATE_FIXTURE/u)
+    } finally {
+      exists.mockRestore()
+      read.mockRestore()
+      warning.mockRestore()
+      error.mockRestore()
+    }
+  })
+
+  it('keeps unauthenticated, dev-header and local diagnostics separate from verified request classification', async () => {
+    const exists = vi.spyOn(persistence, 'persistenceArtifactExists').mockRejectedValue(new Error('private-fixture-dev-failure'))
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      expect(await call(null)).toEqual({ status: 401, body: { error: 'IDENTITY_CONTEXT_REQUIRED' } })
+      expect(exists).not.toHaveBeenCalled()
+      expect(await call(null, true)).toEqual({ status: 503, body: { error: 'ORGMASTER_SOURCE_UNAVAILABLE' } })
+      expect(exists).toHaveBeenCalledTimes(1)
+      expect(warning).not.toHaveBeenCalled()
+
+      expect(await call(verifiedSession)).toEqual({ status: 503, body: { error: 'ORGMASTER_SOURCE_UNAVAILABLE' } })
+      expect(warning.mock.calls.map(([value]) => JSON.parse(String(value)))).toEqual([{
+        event: 'orgmaster_governance_session_read_failed', stage: 'governance_v3_artifact_exists', code: 'UNCLASSIFIED',
+      }])
+
+      warning.mockClear()
+      expect(await call({ ...verifiedSession, identityIssuer: LOCAL_IDENTITY_ISSUER })).toEqual({
+        status: 503, body: { error: 'ORGMASTER_SOURCE_UNAVAILABLE' },
+      })
+      expect(warning.mock.calls.map(([value]) => JSON.parse(String(value)).event)).toEqual([
+        'orgmaster_local_persistence_read_failed',
+      ])
+    } finally {
+      exists.mockRestore()
+      warning.mockRestore()
+      error.mockRestore()
+    }
+  })
+})
+
 describe('DEV-060 app permission projection HTTP contract', () => {
+  it('keeps the source-unavailable response while logging only sanitized local read diagnostics', async () => {
+    vi.stubEnv('ORGMASTER_PERSISTENCE_MODE', 'local-json')
+    vi.stubEnv('ORGMASTER_POSTGRES_URL', '')
+    const root = await mkdtemp(join(tmpdir(), 'dev060-local-source-diagnostic-'))
+    const governancePath = getGovernancePaths(root).current
+    await mkdir(join(root, 'data'), { recursive: true })
+    await writeFile(governancePath, '{"sensitive-source-fragment": invalid')
+    const session: OrgmasterSession = {
+      id: 'local-source-diagnostic-session', identityIssuer: LOCAL_IDENTITY_ISSUER, identitySubject: 'local-diagnostic',
+      principalId: 'local-diagnostic-principal', employeeId: 'employee-local-diagnostic', authEpoch: 0,
+      sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 0,
+      issuedAt: '2026-10-29T00:00:00.000Z', authenticatedAt: '2026-10-29T00:00:00.000Z',
+      expiresAt: '2099-01-01T00:00:00.000Z', revokedAt: null, assuranceLevel: 'aal1',
+    }
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const middleware = createOrgmasterGovernanceMiddleware(root, false)
+    const server = createServer((request, response) => {
+      setVerifiedRequestIdentity(request, session)
+      middleware(request, response, () => { response.statusCode = 404; response.end() })
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('address_missing')
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/orgmaster/governance/session`)
+      expect(response.status).toBe(503)
+      expect(await response.json()).toEqual({ error: 'ORGMASTER_SOURCE_UNAVAILABLE' })
+      const diagnostics = warning.mock.calls.map(([value]) => JSON.parse(String(value)))
+      expect(diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          event: 'orgmaster_local_persistence_read_failed', stage: 'persistence_artifact_read',
+          persistenceTargetActive: false, artifactKey: 'orgmaster-governance.v3.json', errorName: 'SyntaxError',
+        }),
+        expect.objectContaining({
+          event: 'orgmaster_local_persistence_read_failed', stage: 'governance_v3_artifact_read',
+          persistenceTargetActive: false, artifactKey: 'orgmaster-governance.v3.json', errorName: 'SyntaxError',
+        }),
+        expect.objectContaining({
+          event: 'orgmaster_local_persistence_read_failed', stage: 'governance_session_store_read',
+          persistenceTargetActive: false, errorName: 'GovernanceStoreError', errorCode: 'GOVERNANCE_READ_FAILED',
+        }),
+      ]))
+      const output = JSON.stringify(diagnostics)
+      expect(output).not.toContain('sensitive-source-fragment')
+      expect(output).not.toContain('invalid')
+      expect(output).not.toContain('message')
+    } finally {
+      warning.mockRestore()
+      await new Promise<void>(resolve => server.close(() => resolve()))
+      await rm(root, { recursive: true, force: true })
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('evaluates verified published grants, ignores positions/draft grants and reflects revocation immediately', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dev060-published-'))
     const actorSession: OrgmasterSession = { id: 'session-a', identityIssuer: 'issuer-a', identitySubject: 'subject-a', principalId: 'principal-a', employeeId: 'employee-a', authEpoch: 0, sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 7, issuedAt: '2026-01-01T00:00:00Z', authenticatedAt: '2026-01-01T00:00:00Z', expiresAt: '2099-01-01T00:00:00Z', revokedAt: null, assuranceLevel: 'aal1' }
     const initial = await ensureGovernanceStore(root)
     const document = initial.document
     const policy = structuredClone(document.draft)
-    policy.roleAssignments = [{ id: 'assignment-a', employeeId: 'employee-a', applicationId: 'orgmaster', roleId: 'role-orgmaster-admin', roleCodeSnapshot: 'orgmaster_admin', roleNameSnapshot: 'OrgMaster 管理者', catalogVersion: null, scope: { kind: 'global' }, status: 'active', validFrom: '2026-01-01T00:00:00Z', validTo: null, effectState: 'orgmaster-enforced', basis: 'manual', sources: [], subjectKind: 'employee', targetPrincipalId: null, createdByPrincipalId: 'principal-admin' }]
+    policy.roleAssignments = [{ id: 'assignment-a', employeeId: 'employee-a', applicationId: 'orgmaster', roleId: 'role-orgmaster-admin', roleCodeSnapshot: 'orgmaster_admin', roleNameSnapshot: 'OrgMaster 管理者', catalogVersion: null, scope: { kind: 'global' }, status: 'active', validFrom: '2026-01-01T00:00:00Z', validTo: null, effectState: 'orgmaster-enforced', basis: 'manual', sources: [], subjectKind: 'employee', targetPrincipalId: null, metadata: { sponsorEmployeeId: null, reviewDueAt: null }, createdByPrincipalId: 'principal-admin', createdReason: 'fixture' }]
     document.activePolicyVersionId = 'published-a'
     document.publishedVersions = [{ kind: 'assignment-governance-v3', id: 'published-a', versionNumber: 1, publishedAt: '2026-01-01T00:00:00Z', publishedByPrincipalId: 'principal-admin', publishReason: 'fixture', snapshotHash: 'fixture-hash', effectState: 'not-synchronized', policy, externalRoleCatalogs: [], organizationSnapshot: { workspaceVersionId: 'workspace-a', workspaceRevision: 'workspace-revision', capturedAt: '2026-01-01T00:00:00Z', employees: [{ id: 'employee-a', primaryAssignmentId: 'position-a' }], departments: [], organizationRoles: [], positions: [], assignments: [] } }]
     const middleware = createOrgmasterGovernanceMiddleware(root, false)

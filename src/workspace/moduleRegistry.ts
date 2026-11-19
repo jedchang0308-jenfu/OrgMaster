@@ -27,6 +27,7 @@ const dutyLanes = new Set<DutyConfigurationExactLane>(['primary-execute', 'colla
 const dutyStatuses = ['no-executor', 'missing-primary-executor', 'pending-reassignment'] as const satisfies readonly DutyPlanningStatusFilter[]
 const dutyStatusSet = new Set<string>(dutyStatuses)
 const governanceSections = new Set<WorkspaceModuleContextMap['governance']['section']>([
+  'administrators',
   'identity',
   'catalog',
   'assignments',

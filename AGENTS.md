@@ -7,7 +7,7 @@
 
 - 只擁有 `orgmaster_core`／`orgmaster_contract`。DDL 走 `db/migrations` forward-only；已套用檔案不改刪，不手改共享正式 DB、不在 `public` 建物件。改 SQL／DB boundary 才跑 `npm run check:db-boundary`。
 - 跨系統只讀 versioned `*_contract`，禁止 sibling `*_core`；breaking contract 另版並留相容窗口。runtime 無 owner／DDL／migrator 權限。
-- 人類寫入沿 verified Principal、v2 identity-fenced writer，保留 session／epoch、scope／期限／撤權、CAS、防重送與同交易 audit。業務權限依 Employee 明示任用；`system_admin` 只認 exact-Principal direct global grant，不繼承或繞過資格。
+- 人類寫入沿 verified Principal；DEV-070／045 後使用帶 verified session context 的 v3 identity-fenced writer，舊 v1/v2 runtime 不可繞入。保留 session／epoch、scope／期限／撤權、CAS、防重送與同交易 audit。業務權限依 Employee 明示任用；新 root/app-admin 只認 administration exact-Principal direct grant，既有 legacy 能力沿 DEV-070 相容窗口保留，不繼承或繞過資格。
 - workload 依實際 PostgreSQL `SESSION_USER` 的 typed owner／purpose／provider，禁 actor label、UID／email fallback 或 v1 worker；lifecycle 凍結 Principal／provider-pair，Scheduler 沿 owner 命令。完整身份與回復限制見 [DEV-057](ai-doc/specs/DEV-057-identity-and-grant-contract-boundary.md)。
 
 ## 正式發布與回復 — DEV040_R2_RELEASE_V3_DIRECT_RUN_APP
@@ -15,4 +15,5 @@
 - 須有人類對正式環境與動作的既有授權；本文件不授權正式 migration、部署、資料、IAM／Secret 或跨專案操作。
 - 只限 `orgmaster-prod` 自有 schema／release 資源；DB=`jenfu-platform-prod / asia-east1 / jenfu-platform-prod-pg / jenfu_prod`，runtime／migrator 分離，不碰 sibling／共享 foundation。入口用 provider 驗證的 `run.app`，保留未用 edge 資產。
 - 唯一普通入口 `npm run deploy:production`（`-- --check` 只讀）；保留 clean exact `master` PR merge、review／QC、required `Production Source QC` 與 provider branch protection（admin enforced、零 bypass、禁 force-push／刪除）。沿 immutable capsule、concurrency 與先前 RELEASED baseline；普通發布 `UNCHANGED_VERIFIED`，零 DDL／import／bootstrap。
+- 原 owner workflow 只接受 immutable `releaseCapsuleRef` 與封閉 `executionMode=full_release|migration_only`；後者只收窄為 prepare→build→migrate，不授予自由 stage／SQL／target override，不執行 candidate、runtime／traffic、control／terminal 或 rollback。正常 CLI `--migration-only` 保留全部來源與既有 append gate。`--resume-capsule-ref=URI#sha256=HASH` 只續行同 source 的已封存三階段，重新驗 official merged source、exact-head latest `Production Source QC` SUCCESS、原 expiry／baseline／source／manifest 與完整 sealed refs，再 dispatch 原 full workflow；不延長 capsule、不重建或重跑已封存 build／migration。MIGRATION_APPLIED 不是 RELEASED。詳 [DEV-040 normal migration-only amendment](ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md#dev040-normal-migration-only)。
 - 未知寫入先 readback；回復限自身 traffic → candidate tag → entry baseline，維持 Principal-only，不 down migration／改寫正式資料。特殊 migration／工具 rotation／復原沿 [DEV-040](ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md)、[profile](config/release/dev040-orgmaster-independent-production-v3.json) 與 [回復參考](ai-doc/specs/DEV-040-release-recovery-reference.md)，不略過既有執行器。release executor 改變才補相關測試；required CI 的純文件分支只查 diff，其餘沿原 QC，不加第二人核准或等待。

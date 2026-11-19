@@ -4,6 +4,7 @@ import { genericV2AssignmentSurfaceIssue } from './assignmentSurface'
 import { aiPdmRoleSelectable } from './aiPdmRoleSchema'
 import { historicalAiPdmRoleSnapshotMatches } from './aiPdmCatalog'
 import { assertValidDocument, GovernanceValidationError, validatePolicyData, validatePolicyDataV2, validatePolicyDataV3 } from './validation'
+import { administrationPolicy, assertAdministrativeContinuity, hasAdministrativeGrant } from './administration'
 
 export function canonicalJson(value: unknown) { return JSON.stringify(value) }
 export function sha256(value: string) { return createHash('sha256').update(value).digest('hex') }
@@ -192,6 +193,22 @@ export function applyGovernanceCommandV3(
   catalogs: Parameters<typeof validatePolicyDataV3>[2] = [],
 ): CommandApplyResultV3 {
   if (!actorPrincipalId.trim()) throw new GovernanceValidationError([{ code: 'IDENTITY_CONTEXT_REQUIRED', path: 'actorPrincipalId', message: '治理命令需要已驗 Principal' }])
+  if (administrationPolicy(document.draft).initializedByCommandId !== null) {
+    const protectedRoleIds = new Set(['role-orgmaster-admin', 'role-application-system-admin', 'role-system-admin'])
+    const value = 'value' in command ? command.value as unknown as Record<string, unknown> : null
+    const roleId = value?.roleId ?? value?.id ?? ('roleId' in command ? command.roleId : 'id' in command ? command.id : null)
+    const touchesDefinition = ['UPSERT_APPLICATION_ROLE','SET_APPLICATION_ROLE_STATUS','SET_ROLE_PERMISSION_GRANT','REMOVE_ROLE_PERMISSION_GRANT'].includes(command.type)
+    const protectedPermissionIds=new Set(document.draft.rolePermissionGrants.filter(grant=>grant.roleId==='role-orgmaster-admin').map(grant=>grant.permissionId))
+    if(['UPSERT_PERMISSION','SET_PERMISSION_STATUS'].includes(command.type)&&typeof roleId==='string'&&protectedPermissionIds.has(roleId))throw new GovernanceValidationError([{code:'PROTECTED_ADMINISTRATIVE_CAPABILITY',path:'permissions',message:'管理能力定義由系統保護'}])
+    if (touchesDefinition && typeof roleId === 'string' && protectedRoleIds.has(roleId)) throw new GovernanceValidationError([{ code: 'PROTECTED_ADMINISTRATIVE_ROLE', path: 'applicationRoles', message: '管理角色定義由系統保護' }])
+    if (command.type === 'UPSERT_ROLE_ASSIGNMENT' && protectedRoleIds.has(command.value.roleId)
+      || command.type === 'RESTORE_ROLE_ASSIGNMENT' && protectedRoleIds.has(document.draft.roleAssignments.find(value => value.id === command.id)?.roleId ?? '')) throw new GovernanceValidationError([{ code: 'ADMINISTRATION_COMMAND_REQUIRED', path: 'roleAssignments', message: '管理資格請使用平台管理員頁' }])
+    // An ordinary role may not acquire the protected administrative permission set.
+    if (command.type === 'SET_ROLE_PERMISSION_GRANT' && command.value.effect === 'allow') {
+      const protectedPermission = document.draft.permissions.some(permission=>permission.id===command.value.permissionId&&permission.applicationId==='orgmaster'&&['high','critical'].includes(permission.risk))&&document.draft.rolePermissionGrants.some(grant => grant.roleId === 'role-orgmaster-admin' && grant.permissionId === command.value.permissionId && grant.effect === 'allow')
+      if (protectedPermission) throw new GovernanceValidationError([{ code: 'PROTECTED_ADMINISTRATIVE_CAPABILITY', path: 'rolePermissionGrants', message: '管理能力不可複製到普通角色' }])
+    }
+  }
   assertAssignmentLifecycleCommand(document, command, source, catalogs)
   if (command.type === 'UPSERT_ROLE_ASSIGNMENT' && 'basis' in command.value) {
     throw new GovernanceValidationError([{ code: 'ASSIGNMENT_OWNER_COMMAND_REQUIRED', path: 'roleAssignments', message: 'V3 指派只能使用專用 owner 命令' }])
@@ -247,6 +264,7 @@ export function applyGovernanceCommandV3(
   const [entityType, entityId] = v3EntityInfo(command)
   if (canonicalJson(stripTimestamp(document.draft)) === canonicalJson(stripTimestamp(nextDraftBase))) return { status: 'noop', document, entityType, entityId, beforeHash: sha256(before), afterHash: sha256(before) }
   const nextDraft = { ...nextDraftBase, updatedAt: new Date().toISOString() }
+  if (source) assertAdministrativeContinuity(document.draft, nextDraft, source, nextDraft.updatedAt)
   const issues = validatePolicyDataV3(nextDraft, source, catalogs)
   if (issues.length) throw new GovernanceValidationError(issues)
   return { status: 'applied', document: { ...document, draft: nextDraft }, entityType, entityId, beforeHash: sha256(before), afterHash: sha256(canonicalJson(nextDraft)) }

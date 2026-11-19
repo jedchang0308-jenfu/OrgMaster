@@ -35,10 +35,19 @@ test('tool rotation CLI limits applied-source recovery to apply mode and one exa
     apply: true,
     reuseId: null,
     recoveryRevision: revision,
+    appliedInfraBaselineSource: null,
+  })
+  assert.deepEqual(parseToolRotationArgs(['--check', `--applied-infra-baseline-source=${revision}`]), {
+    apply: false, reuseId: null, recoveryRevision: null, appliedInfraBaselineSource: revision,
+  })
+  assert.deepEqual(parseToolRotationArgs(['--apply', `--applied-infra-baseline-source=${revision}`]), {
+    apply: true, reuseId: null, recoveryRevision: null, appliedInfraBaselineSource: revision,
   })
   assert.throws(() => parseToolRotationArgs(['--check', `--recover-applied-source=${revision}`]), /ARGUMENT_INVALID/u)
   assert.throws(() => parseToolRotationArgs(['--apply', '--recover-applied-source=short']), /ARGUMENT_INVALID/u)
+  assert.throws(() => parseToolRotationArgs(['--check', '--applied-infra-baseline-source=short']), /ARGUMENT_INVALID/u)
   assert.throws(() => parseToolRotationArgs(['--apply', `--recover-applied-source=${revision}`, '--reuse-build-id=12345678-1234-1234-1234-123456789abc']), /ARGUMENT_INVALID/u)
+  assert.throws(() => parseToolRotationArgs(['--apply', `--recover-applied-source=${revision}`, `--applied-infra-baseline-source=${revision}`]), /ARGUMENT_INVALID/u)
 })
 
 test('applied-source recovery reuses only the sealed proof of the exact merged ancestor and successful QC', () => {
@@ -179,7 +188,7 @@ function fullState(image, revision, serial) {
     stateJson: { values: { root_module: { resources }, outputs: structuredClone(outputs) }, outputs: structuredClone(outputs) }, manifest }
 }
 
-function harness({ unknownApply = false } = {}) {
+function harness({ unknownApply = false, releasedSourceSuccessor = false } = {}) {
   const git = { clean: true, branch: 'master', sourceRevision, sourceTree: sourceFixture.sourceTree, remoteRevision: sourceRevision }
   const sourceProof = { schemaVersion: 'jenfu.dev012.official-merged-source.v1', sourceRevision, sourceTree: git.sourceTree,
     repository: profile.application.repository, branch: 'master', branchProtected: true,
@@ -187,9 +196,11 @@ function harness({ unknownApply = false } = {}) {
     requiredChecks: ['Production Source QC'], requiredSourceQc: 'SUCCESS', pullRequestNumber: 999,
     pullRequestUrl: `https://github.com/${profile.application.repository}/pull/999`, mergedAt: NOW,
     status: 'OFFICIAL_MERGED_PR_VERIFIED' }
+  const infraSourceRevision = releasedSourceSuccessor ? sourceFixture.rotationSourceRevision : sourceFixture.baselineRevision
+  const releasedSourceRevision = releasedSourceSuccessor ? sourceFixture.stateSuccessorRevision : infraSourceRevision
   const controlCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result: 'RELEASED',
     ownerApplicationId: 'orgmaster', service: 'orgmaster-prod', releaseId: 'ORGMASTER-BASELINE',
-    sourceRevision: sourceFixture.baselineRevision, candidateRevision: 'orgmaster-prod-baseline' }
+    sourceRevision: releasedSourceRevision, candidateRevision: 'orgmaster-prod-baseline' }
   const control = { ...controlCore, controlSha256: sha256(canonicalize(controlCore)) }
   const store = new Map(), generations = new Map(), trace = []
   const calls = { builds: 0, applies: 0, puts: 0, plans: 0 }
@@ -203,15 +214,15 @@ function harness({ unknownApply = false } = {}) {
     return { uri, sha256: sha256(content) }
   }
   const originalInfra = { schemaVersion: 'jenfu.dev012.app-infra-receipt.v1', ownerApplicationId: 'orgmaster',
-    sourceRevision: sourceFixture.baselineRevision, migrationRunnerDigest: oldImage,
+    sourceRevision: infraSourceRevision, migrationRunnerDigest: oldImage,
     controllerImageDigest: controllerImage, foundationManifestSha256: FOUNDATION, status: 'APPLIED' }
   const infraRef = seed(`gs://${bucket}/receipts/releases/${control.releaseId}/app-infra.json`, originalInfra)
   const originalIntent = { ownerApplicationId: 'orgmaster', releaseId: control.releaseId,
-    sourceRevision: sourceFixture.baselineRevision, infraReceiptRef: infraRef }
+    sourceRevision: releasedSourceRevision, infraReceiptRef: infraRef }
   const baselineIntentRef = seed(`gs://${bucket}/receipts/releases/${control.releaseId}/release-intent.json`, originalIntent)
   seed(controlUri, control)
   const baseline = { intent: originalIntent, activeRevision: control.candidateRevision }
-  const state = fullState(oldImage, sourceFixture.baselineRevision, 10)
+  const state = fullState(oldImage, infraSourceRevision, 10)
   const afterState = fullState(newImage, sourceRevision, 11)
   const plan = { errored: false, complete: true, deferred_changes: [], resource_changes: rotationAddresses(infraProfile).map(address => ({ address,
     mode: address.startsWith('data.') ? 'data' : 'managed', change: { actions: ['no-op'],
@@ -466,7 +477,11 @@ test('state source continuation keeps runner, controller and foundation bindings
     assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 0 })
   }
 })
-function bindProducerAbort(h, { releaseId, infraRef }) {
+function bindProducerAbort(h, { releaseId, infraRef, rolledBack = false, databaseDisposition } ) {
+  const result = rolledBack ? 'ROLLED_BACK' : 'PRE_ACTIVATION_ABORTED'
+  const recovery = { result, previousRevision: h.baseline.activeRevision,
+    entrypointRecovery: { changed: false, result: rolledBack ? 'BASELINE_ALREADY_ACTIVE' : 'NOT_REQUIRED' },
+    databaseDisposition: databaseDisposition ?? (rolledBack ? 'UNCHANGED_VERIFIED' : 'NOT_APPLIED') }
   const attemptIntent = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster',
     releaseId, sourceRevision, sourceSha256: '4'.repeat(64), sourceLockRef: h.infraRef,
     authorizationPolicyRef: h.infraRef, readinessReceiptRef: h.infraRef, foundationReceiptRef: h.infraRef,
@@ -480,17 +495,14 @@ function bindProducerAbort(h, { releaseId, infraRef }) {
     facts: { prerequisiteRefs: { infra: infraRef }, migrationRunnerDigest: oldImage }, observedAt: NOW }))
   const rollbackRef = h.seed(paths.rollback, sealToolEvidence({ schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
     releaseId: attemptIntent.releaseId, sourceRevision, stage: 'rollback', status: 'PASS', previousReceiptRef: null,
-    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: h.baseline.activeRevision,
-      recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'],
-      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' }, observedAt: NOW }))
+    facts: { ...recovery, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'] }, observedAt: NOW }))
   const terminalRef = h.seed(paths.terminal, sealToolEvidence({ schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
     releaseId: attemptIntent.releaseId, sourceRevision, stage: 'terminal', status: 'PASS', previousReceiptRef: rollbackRef,
-    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: h.baseline.activeRevision,
-      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' }, observedAt: NOW }))
-  const abortedCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result: 'PRE_ACTIVATION_ABORTED',
+    facts: recovery, observedAt: NOW }))
+  const abortedCore = { schemaVersion: 'jenfu.dev012.owner-control-head.v1', state: 'FINALIZED', result,
     ownerApplicationId: 'orgmaster', service: 'orgmaster-prod', releaseId: attemptIntent.releaseId,
     sourceRevision: attemptIntent.sourceRevision, sourceLockSha256: attemptIntent.sourceLockRef.sha256,
-    previousRevision: h.baseline.activeRevision, candidateRevision: null }
+    previousRevision: h.baseline.activeRevision, candidateRevision: rolledBack ? 'orgmaster-prod-rollback-candidate' : null }
   const aborted = { ...abortedCore, controlSha256: sha256(canonicalize(abortedCore)) }
   h.seed(h.controlUri, aborted)
   h.input.resolveControlBaseline = async ({ control, attempt }) => {
@@ -499,6 +511,64 @@ function bindProducerAbort(h, { releaseId, infraRef }) {
   }
   return { attemptIntent, attemptRef, prepareRef, rollbackRef, terminalRef, aborted }
 }
+function bindAppliedInfrastructureBaseline(h) {
+  const source = sourceFixture.rotationSourceRevision
+  Object.assign(h.state, fullState(oldImage, source, 10))
+  const afterStateRef = h.seed(`gs://${bucket}/receipts/tool-rotations/${source}/after-state.json`, h.state)
+  const receipt = { ownerApplicationId: 'orgmaster', sourceRevision: source,
+    migrationRunnerDigest: oldImage, controllerImageDigest: controllerImage, foundationManifestSha256: FOUNDATION,
+    toolRotation: { afterStateRef } }
+  const ref = h.seed(`gs://${bucket}/receipts/tool-rotations/${source}/app-infra.json`, receipt)
+  const expected = { schemaVersion: 'orgmaster.applied-tool-infra-baseline.v1', sourceRevision: source,
+    infraReceiptRef: ref, serviceDataBaselineIntentRef: h.baselineIntentRef }
+  let validation = null
+  h.input.appliedInfraBaselineSource = source
+  h.input.validateAppliedInfraBaseline = async options => {
+    validation = options
+    assert.deepEqual(options.appliedBaseline, expected)
+    assert.equal(options.currentSourceRevision, sourceRevision)
+    assert.deepEqual(options.baselineIntentRef, h.baselineIntentRef)
+    assert.deepEqual(options.baseline, h.baseline)
+    assert.deepEqual(options.receiptRead.ref, ref)
+    assert.deepEqual(options.receiptRead.value, receipt)
+    return { ref, receipt, summary: { evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION' } }
+  }
+  return { source, ref, receipt, expected, afterStateRef, validation: () => validation }
+}
+test('read-only readiness bridges an exact applied historical infra receipt without changing the RELEASED control baseline', async () => {
+  const h = harness()
+  const bridge = bindAppliedInfrastructureBaseline(h)
+  const result = await executeToolImageRotation(h.input)
+  assert.equal(result.status, 'READY_FOR_IMAGE_BUILD')
+  assert.equal(bridge.validation().readLiveJob, true)
+  assert.deepEqual(h.baseline.intent.infraReceiptRef, h.infraRef)
+  assert.notDeepEqual(bridge.ref, h.infraRef)
+  assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
+})
+test('applied historical infra bridge rejects Terraform state that no longer equals the sealed after-state', async () => {
+  const h = harness()
+  bindAppliedInfrastructureBaseline(h)
+  h.state.stateMeta.serial += 1
+  await assert.rejects(executeToolImageRotation(h.input), /RECOVERY_AFTER_STATE_CHANGED/u)
+  assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 0 })
+})
+test('applied historical infra bridge cannot be combined with a pre-activation-aborted control head', async () => {
+  const h = harness()
+  const bridge = bindAppliedInfrastructureBaseline(h)
+  bindProducerAbort(h, { releaseId: 'ORGMASTER-ABORTED-BRIDGE-DENIED', infraRef: bridge.ref })
+  await assert.rejects(executeToolImageRotation(h.input), /APPLIED_INFRA_BASELINE_CONTROL_INVALID/u)
+  assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 0 })
+})
+test('prepared current-source rotation freezes the exact applied historical infra bridge', async () => {
+  const h = harness()
+  const bridge = bindAppliedInfrastructureBaseline(h)
+  const prepared = await stopAt(h, 'prepared')
+  assert.deepEqual(prepared.appliedInfraBaseline, bridge.expected)
+  delete prepared.appliedInfraBaseline
+  h.seed(`${h.prefix}/prepared.json`, reseal(prepared))
+  await assert.rejects(executeToolImageRotation({ ...h.input, apply: true }), /PREPARED_BASELINE_CHANGED/u)
+  assert.equal(h.calls.applies, 0)
+})
 test('read-only readiness resolves an exact sealed pre-activation abort to its released predecessor', async () => {
   const h = harness()
   const abort = bindProducerAbort(h, { releaseId: 'ORGMASTER-ABORTED-ATTEMPT', infraRef: h.infraRef })
@@ -507,6 +577,36 @@ test('read-only readiness resolves an exact sealed pre-activation abort to its r
   assert.deepEqual(result.baselineIntentRef, h.baselineIntentRef)
   for (const ref of [abort.prepareRef, abort.rollbackRef, abort.terminalRef]) assert.ok(h.trace.includes(`read:${ref.uri}`))
   assert.deepEqual(h.calls, { builds: 0, applies: 0, puts: 0, plans: 1 })
+})
+test('read-only readiness accepts a verified runtime rollback and rejects a database-changing rollback', async () => {
+  const safe = harness()
+  const rollback = bindProducerAbort(safe, { releaseId: 'ORGMASTER-ROLLBACK-ATTEMPT', infraRef: safe.infraRef, rolledBack: true })
+  const prepared = await stopAt(safe, 'prepared')
+  assert.deepEqual(prepared.controlAttemptIntentRef, rollback.attemptRef)
+  assert.deepEqual(prepared.controlRollbackRef, rollback.rollbackRef)
+  assert.equal(safe.calls.applies, 0)
+
+  const unsafe = harness()
+  bindProducerAbort(unsafe, { releaseId: 'ORGMASTER-ROLLBACK-CHANGED-DB', infraRef: unsafe.infraRef,
+    rolledBack: true, databaseDisposition: 'FORWARD_APPLIED' })
+  await assert.rejects(executeToolImageRotation(unsafe.input), /BASELINE_INVALID/u)
+  assert.deepEqual(unsafe.calls, { builds: 0, applies: 0, puts: 0, plans: 0 })
+})
+test('applied tool recovery after an abort accepts a released source that reused the exact older infra receipt', async () => {
+  const h = harness({ releasedSourceSuccessor: true })
+  const released = h.baseline.intent
+  const releasedPaths = releasePaths(profile, released, h.baselineIntentRef.sha256)
+  h.seed(releasedPaths.terminal, sealToolEvidence({ schemaVersion: 'jenfu.dev012.stage-receipt.v1',
+    ownerApplicationId: 'orgmaster', releaseId: released.releaseId, sourceRevision: released.sourceRevision,
+    stage: 'terminal', status: 'PASS', facts: { result: 'RELEASED', candidateRevision: h.baseline.activeRevision } }))
+  bindProducerAbort(h, { releaseId: 'ORGMASTER-ABORT-REUSED-INFRA', infraRef: h.infraRef })
+  await stopAt(h, 'fence')
+  h.markApplied()
+  const result = await executeToolImageRotation({ ...h.input, apply: true })
+  assert.equal(result.status, 'APPLIED')
+  assert.equal(h.json('app-infra').toolRotation.baselineSourceRevision, sourceFixture.rotationSourceRevision)
+  assert.equal(h.calls.builds, 1)
+  assert.equal(h.calls.applies, 0)
 })
 test('read-only readiness uses an already-applied rotation from the sealed aborted attempt as the live infrastructure baseline', async () => {
   const h = harness()

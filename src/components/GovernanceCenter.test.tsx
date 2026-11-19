@@ -22,6 +22,18 @@ function fixture(activeId: string | null = 'version-7'): GovernanceApiSnapshot {
   document.draft.roleAssignments.push({ id: 'operator-admin', applicationId: 'orgmaster', employeeId: 'employee-operator', roleId: 'role-orgmaster-admin', roleCodeSnapshot: 'orgmaster_admin', roleNameSnapshot: '管理者', catalogVersion: null, scope: { kind: 'global' }, status: 'active', validFrom: '2026-01-01T00:00:00.000Z', validTo: null, effectState: 'orgmaster-enforced' })
   return { document: { ...document, draft: { ...document.draft, identityLinks: [] }, publishedVersions: [] }, catalogs: [readAiPdmRoleCatalog()], revision: 'governance-revision', activeVersionId: activeId, versions: [version(6, 'assignment-governance-v2'), version(7), version(9), version(8)] }
 }
+function withPublishedCatalog(snapshot: GovernanceApiSnapshot, catalog = readAiPdmRoleCatalog()) {
+  snapshot.document.publishedVersions = [{
+    kind: 'assignment-governance-v2', id: 'version-7', versionNumber: 7,
+    publishedAt: '2026-10-04T23:06:30.062Z', publishedByPrincipalId: 'principal-operator',
+    publishReason: '既有發布', snapshotHash: 'published-snapshot', effectState: 'not-synchronized',
+    policy: snapshot.document.draft, externalRoleCatalogs: [catalog], organizationSnapshot: {
+      workspaceVersionId: 'organization-current', workspaceRevision: 'organization-revision',
+      capturedAt: '2026-10-04T23:06:30.062Z', employees: [], departments: [], organizationRoles: [], positions: [], assignments: [],
+    },
+  } as unknown as GovernanceApiSnapshot['document']['publishedVersions'][number]]
+  return snapshot
+}
 const mounted: Array<{ host: HTMLElement; root: ReturnType<typeof createRoot> }> = []
 
 async function render(snapshot: GovernanceApiSnapshot, canPublish = false, _runtimeMode = 'verified-session') {
@@ -41,6 +53,27 @@ beforeEach(() => {
 afterEach(() => { for (const { root, host } of mounted.splice(0)) { act(() => root.unmount()); host.remove() } })
 
 describe('governance version presentation', () => {
+  it('shows a catalog-only update as a pending change instead of zero assignment changes', async () => {
+    const oldCatalog = structuredClone(readAiPdmRoleCatalog())
+    oldCatalog.catalogVersion = 'ai-pdm.role-catalog.previous'
+    oldCatalog.payloadHash = '1'.repeat(64)
+    oldCatalog.catalogSha256 = '1'.repeat(64)
+    const host = await render(withPublishedCatalog(fixture(), oldCatalog), true)
+    const pending = host.querySelector('[aria-label="待發布變更"]')
+    expect(pending?.textContent).toContain('1 項')
+    expect(pending?.textContent).toContain('AI-PDM 角色目錄待採用更新')
+    expect(pending?.textContent).toContain(`${oldCatalog.catalogVersion} → ${readAiPdmRoleCatalog().catalogVersion}`)
+    expect(pending?.textContent).not.toContain('角色指派與角色目錄皆和目前使用的版本相同')
+    expect([...host.querySelectorAll('button')].some(node => node.textContent === '採用目錄並發布')).toBe(true)
+  })
+
+  it('shows one source of truth when assignments and catalog are both unchanged', async () => {
+    const host = await render(withPublishedCatalog(fixture()), true)
+    const pending = host.querySelector('[aria-label="待發布變更"]')
+    expect(pending?.textContent).toContain('0 項')
+    expect(pending?.textContent).toContain('角色指派與角色目錄皆和目前使用的版本相同')
+  })
+
   it('does not hide withdrawal publication merely because the external catalog is unavailable', async () => {
     const snapshot = fixture()
     snapshot.catalogs[0].validationState = 'unavailable'
@@ -84,7 +117,7 @@ describe('governance version presentation', () => {
   it('keeps existing publish gates and exact-version reactivation with no action on older schemas', async () => {
     mocks.setActiveGovernanceVersion.mockResolvedValue({ payload: { activePolicyVersionId: 'version-8' } })
     const host = await render(fixture(), true)
-    const publish = [...host.querySelectorAll('button')].find((node) => node.textContent === '發布新版本')!
+    const publish = host.querySelector<HTMLButtonElement>('.governance-publish-box button')!
     expect(publish.disabled).toBe(true)
     expect([...host.querySelectorAll('button')].some((node) => node.textContent === '改用第6版')).toBe(false)
     const switchVersion = [...host.querySelectorAll('button')].find((node) => node.textContent === '改用第8版')!

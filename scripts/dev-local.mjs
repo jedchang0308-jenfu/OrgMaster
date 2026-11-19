@@ -202,7 +202,7 @@ async function waitForStartup(port, hasExited, refresh = async () => {}) {
 function openBrowser(port, platform = process.platform) {
   const url = `http://localhost:${port}`
   const command = platform === 'win32' ? 'cmd.exe' : platform === 'darwin' ? 'open' : 'xdg-open'
-  const args = platform === 'win32' ? ['/d', '/c', 'start', '', url] : [url]
+  const args = platform === 'win32' ? ['/d', '/c', 'start', '', `microsoft-edge:${url}`] : [url]
   const browser = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true })
   browser.on('error', () => {})
   browser.unref()
@@ -326,7 +326,21 @@ export async function run(args = process.argv.slice(2), dependencies = {}) {
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
-  run().then((exitCode) => { process.exitCode = exitCode }).catch((error) => {
+  const args = process.argv.slice(2)
+  const start = async () => {
+    const options = parseArgs(args)
+    const platform = path.resolve(fileURLToPath(new URL('../../Jenfu-Platform/', import.meta.url)))
+    const binding = path.join(platform, '.dev-local-daily.local.json')
+    if (options.help || !existsSync(binding) || process.env.ORGMASTER_JENFU_SSO_HANDOFF_MODE === 'on') return run(args)
+    if (options.port === DEFAULT_PORT) {
+      const { runDailyLocal } = await import(pathToFileURL(path.join(platform, 'scripts', 'dev-local-daily.mjs')).href)
+      await runDailyLocal(options.status || options.checkOnly ? ['--status'] : [], platform)
+      return 0
+    }
+    if ([1000, 1020, 1030].includes(options.port)) throw new Error('Use port 12010 for standalone OrgMaster. Daily ports belong to Platform.')
+    return run(args)
+  }
+  start().then((exitCode) => { process.exitCode = exitCode }).catch((error) => {
     console.error(error instanceof Error ? error.message : String(error))
     process.exitCode = 1
   })

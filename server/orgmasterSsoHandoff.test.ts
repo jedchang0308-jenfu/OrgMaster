@@ -1,5 +1,6 @@
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createOrgmasterAuthMiddleware, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
@@ -173,6 +174,19 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(value.sessions!.create).not.toHaveBeenCalled()
     if (failure === 'state' || failure === 'service-proof') expect(deps.fetch).not.toHaveBeenCalled()
   })
+
+  it('replaces an expired local session when the new SSO principal differs', async () => {
+    const value = runtime()
+    vi.mocked(value.sessions!.findByHash).mockResolvedValue({ id: 'expired-session', identityIssuer: 'issuer', identitySubject: 'subject', principalId: 'different-principal', employeeId: 'employee-2', authEpoch: 0, sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 7, issuedAt: '2026-09-17T01:00:00.000Z', authenticatedAt: '2026-09-17T01:00:00.000Z', expiresAt: '2026-09-17T02:59:59.000Z', revokedAt: null, assuranceLevel: 'aal1' })
+    const base = await listen(value, dependencies('on'))
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.search = new URLSearchParams({ code: 'fixture-code', state: location.searchParams.get('state')!, iss: `${brokerOrigin}/api/sso` }).toString()
+    const accepted = await fetch(callback, { redirect: 'manual', headers: { cookie: `${start.headers.get('set-cookie')!.split(';')[0]}; orgmaster_session=expired-fixture` } })
+    expect(accepted.status).toBe(303)
+    expect(value.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({ principalId: 'principal-1' }))
+  })
   it('keeps health available and direct start fail-closed while mode is off', async () => {
     const value = runtime()
     value.ssoHandoffEnabled = false
@@ -185,9 +199,9 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(await start.json()).toMatchObject({ code: 'sso_request_invalid' })
   })
 
-  it('starts with exact callback and completes callback using auth-state v2 and original auth time', async () => {
+  it.each([[1, 1], [8, 8], [16, 16], [20, 16]])('bounds the callback session from %i source hours to %i hours and keeps the original auth time', async (sourceHours, targetHours) => {
     const value = runtime()
-    const deps = dependencies('on')
+    const deps = dependencies('on', { ...handoff(), sourceSessionExpiresAt: new Date(now + sourceHours * 60 * 60 * 1000).toISOString() })
     const base = await listen(value, deps)
     const start = await fetch(`${base}/api/auth/jenfu-sso/start?returnTo=%2F`, { redirect: 'manual' })
     expect(start.status).toBe(303)
@@ -197,6 +211,7 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(location.searchParams.get('redirect_uri')).toBe(`${publicOrigin}/api/auth/jenfu-sso/callback`)
     expect(location.searchParams.get('code_challenge_method')).toBe('S256')
     const transactionCookie = start.headers.get('set-cookie')!.split(';')[0]
+    expect(start.headers.get('set-cookie')).toContain('Max-Age=900')
     const callback = new URL('/api/auth/jenfu-sso/callback', base)
     callback.searchParams.set('code', 'opaque-code')
     callback.searchParams.set('state', location.searchParams.get('state')!)
@@ -209,9 +224,58 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(value.sessions!.create).toHaveBeenCalledWith(expect.objectContaining({
       authEpoch: 0, sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 7,
       authenticatedAt: '2026-09-17T02:55:00.000Z',
-      expiresAt: '2026-09-17T04:00:00.000Z',
+      expiresAt: new Date(now + targetHours * 60 * 60 * 1000).toISOString(),
     }))
-    expect(accepted.headers.get('set-cookie')).toContain('Max-Age=3600')
+    expect(accepted.headers.get('set-cookie')).toContain('Max-Age=' + targetHours * 60 * 60)
+  })
+
+  it('adds a one-shot login prompt for the shared reauthentication flow', async () => {
+    const value = runtime()
+    const base = await listen(value, dependencies('on'))
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start?reauth=1&returnTo=%2Fgovernance`, { redirect: 'manual' })
+    expect(start.status).toBe(303)
+    const location = new URL(start.headers.get('location')!)
+    expect(location.searchParams.get('prompt')).toBe('login')
+    expect(location.searchParams.get('client_id')).toBe('orgmaster')
+    expect(location.searchParams.get('redirect_uri')).toBe(`${publicOrigin}/api/auth/jenfu-sso/callback`)
+  })
+
+  it('rejects malformed reauthentication requests before creating a transaction', async () => {
+    const value = runtime()
+    const base = await listen(value, dependencies('on'))
+    const response = await fetch(`${base}/api/auth/jenfu-sso/start?reauth=yes`, { redirect: 'manual' })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ code: 'sso_request_invalid' })
+  })
+
+  it('restarts an expired 15-minute transaction without exchanging the stale code', async () => {
+    const value = runtime()
+    let clock = now
+    const deps = dependencies('on')
+    deps.now = () => clock
+    const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start?returnTo=%2Fpositions`, { redirect: 'manual' })
+    const location = new URL(start.headers.get('location')!)
+    const transactionCookie = start.headers.get('set-cookie')!.split(';')[0]
+    expect(start.headers.get('set-cookie')).toContain('Max-Age=900')
+
+    clock += 15 * 60_000
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.search = new URLSearchParams({
+      code: 'expired-one-time-code',
+      state: location.searchParams.get('state')!,
+      iss: `${brokerOrigin}/api/sso`,
+    }).toString()
+    const restarted = await fetch(callback, { redirect: 'manual', headers: { cookie: transactionCookie } })
+
+    expect(restarted.status).toBe(303)
+    const restartLocation = new URL(restarted.headers.get('location')!)
+    expect(restartLocation.origin).toBe(publicOrigin)
+    expect(restartLocation.pathname).toBe('/api/auth/jenfu-sso/start')
+    expect(restartLocation.searchParams.get('returnTo')).toBe('/positions')
+    expect(restarted.headers.get('set-cookie')).toContain('Max-Age=0')
+    expect(deps.fetch).not.toHaveBeenCalled()
+    expect(value.sessions!.create).not.toHaveBeenCalled()
   })
 
   it('keeps the existing getIdTokenClient path when impersonation is unset', async () => {
@@ -242,6 +306,7 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
       ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on',
       ORGMASTER_JENFU_SSO_BROKER_ORIGIN: localBrokerOrigin,
       JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: 'owner-nonprod@project.iam.gserviceaccount.com',
+      CLOUDSDK_CONFIG: process.cwd(),
     }
     const base = await listen(value, deps)
     const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
@@ -254,7 +319,10 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
     expect(accepted.status).toBe(303)
     expect(googleAuthMocks.getClient).toHaveBeenCalledOnce()
     expect(googleAuthMocks.getIdTokenClient).not.toHaveBeenCalled()
-    expect(googleAuthMocks.GoogleAuth).toHaveBeenCalledWith({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] })
+    expect(googleAuthMocks.GoogleAuth).toHaveBeenCalledWith({
+      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+      keyFilename: path.join(process.cwd(), 'application_default_credentials.json'),
+    })
     expect(googleAuthMocks.Impersonated).toHaveBeenCalledWith({ sourceClient: { sourceClient: true }, targetPrincipal: 'owner-nonprod@project.iam.gserviceaccount.com', targetScopes: ['https://www.googleapis.com/auth/cloud-platform'], lifetime: 300 })
     expect(googleAuthMocks.impersonatedFetchIdToken).toHaveBeenCalledWith(localBrokerOrigin)
   })
@@ -329,6 +397,7 @@ describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
   it.each([
     ['empty target', { JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: '' }, 'JENFU_SSO_IMPERSONATION_TARGET_INVALID'],
     ['Cloud Run', { K_SERVICE: 'run-service', JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT: 'owner-nonprod@project.iam.gserviceaccount.com' }, 'JENFU_SSO_IMPERSONATION_CLOUD_RUN_FORBIDDEN'],
+    ['relative ADC config', { CLOUDSDK_CONFIG: 'relative/gcloud' }, 'JENFU_SSO_ADC_CONFIG_INVALID'],
   ])('rejects %s local impersonation configuration before broker exchange', async (_label, extra, _errorCode) => {
     const value = runtime()
     const localBrokerOrigin = 'http://127.0.0.1:4317'

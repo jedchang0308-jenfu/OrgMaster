@@ -1,0 +1,71 @@
+{
+  "function": "orgmaster_contract.read_fms_administration_initialization_v1(text,text)",
+  "arguments": [
+    {
+      "name": "p_principal_id",
+      "type": "text"
+    },
+    {
+      "name": "p_employee_id",
+      "type": "text"
+    }
+  ],
+  "columns": [
+    {
+      "name": "contract_version",
+      "type": "text",
+      "nullable": false
+    },
+    {
+      "name": "administration_version",
+      "type": "bigint",
+      "nullable": false
+    },
+    {
+      "name": "root_grant_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "name": "principal_id",
+      "type": "text",
+      "nullable": false
+    },
+    {
+      "name": "employee_id",
+      "type": "text",
+      "nullable": false
+    },
+    {
+      "name": "published_policy_id",
+      "type": "text",
+      "nullable": false
+    },
+    {
+      "name": "published_at",
+      "type": "timestamptz",
+      "nullable": false
+    },
+    {
+      "name": "read_at",
+      "type": "timestamptz",
+      "nullable": false
+    }
+  ],
+  "cardinality": "zero-or-one",
+  "contractVersion": "orgmaster.fms-administration-initialization.v1",
+  "securityDefiner": true,
+  "searchPath": [
+    "pg_catalog"
+  ],
+  "readers": [
+    "fms_runtime",
+    "orgmaster-owner-verifier"
+  ],
+  "forbiddenReaders": [
+    "PUBLIC",
+    "platform-runtime",
+    "ai-pdm-runtime",
+    "orgmaster-runtime"
+  ]
+}

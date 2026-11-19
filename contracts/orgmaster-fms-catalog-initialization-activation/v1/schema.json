@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orgmaster.fms-catalog-initialization-activation.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "manifestSha256", "commandId", "requestHash", "previewHash", "record", "auditAfterHash", "publishedAt", "currentBinding"],
+  "properties": {
+    "contractVersion": { "const": "orgmaster.fms-catalog-initialization-activation.v1" },
+    "manifestSha256": { "$ref": "#/$defs/hash" },
+    "commandId": { "type": "string", "minLength": 1 },
+    "requestHash": { "$ref": "#/$defs/hash" },
+    "previewHash": { "$ref": "#/$defs/hash" },
+    "auditAfterHash": { "$ref": "#/$defs/hash" },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "record": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contractVersion", "principalId", "employeeId", "catalogVersion", "contentSha256", "artifactSha256", "governanceRevisionBefore", "organizationRevision", "assignmentVersionBefore", "catalogBindingRevisionBefore", "grantRevisionBefore", "assignmentVersionAfter", "publishedSnapshotHash", "authEpoch", "authenticatedAt", "authorityReadAt", "actorProof"],
+      "properties": {
+        "contractVersion": { "const": "orgmaster.fms-catalog-initialization-activation-record.v1" },
+        "principalId": { "type": "string", "minLength": 1 }, "employeeId": { "type": "string", "minLength": 1 },
+        "catalogVersion": { "type": "string", "minLength": 1 },
+        "contentSha256": { "$ref": "#/$defs/hash" }, "artifactSha256": { "$ref": "#/$defs/hash" },
+        "governanceRevisionBefore": { "type": "string", "minLength": 1 }, "organizationRevision": { "type": "string", "minLength": 1 },
+        "assignmentVersionBefore": { "type": "string", "minLength": 1 }, "catalogBindingRevisionBefore": { "type": "string", "minLength": 1 },
+        "grantRevisionBefore": { "type": "string", "minLength": 1 }, "assignmentVersionAfter": { "type": "string", "minLength": 1 },
+        "publishedSnapshotHash": { "$ref": "#/$defs/hash" },
+        "authEpoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "authenticatedAt": { "type": "string", "format": "date-time" }, "authorityReadAt": { "type": "string", "format": "date-time" },
+        "actorProof": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "rootGrantId", "administrationVersion", "sourceRoleDefinitionHash", "initializationOperationId", "initializationReceiptId", "receiptBodySha256", "source"],
+          "properties": {
+            "kind": { "const": "platform_root_catalog_initialization" }, "rootGrantId": { "type": "string", "format": "uuid" },
+            "administrationVersion": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+            "sourceRoleDefinitionHash": { "const": "2a8ab5c084e00f9cd1f9a87e193d1269ea85c80eb66fba78c1b6ab2ab467ce11" },
+            "initializationOperationId": { "type": "string", "format": "uuid" }, "initializationReceiptId": { "type": "string", "minLength": 1 },
+            "receiptBodySha256": { "$ref": "#/$defs/hash" }, "source": { "enum": ["formal", "local_test"] }
+          }
+        }
+      }
+    },
+    "currentBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["catalogVersion", "contentSha256", "artifactSha256", "assignmentVersion"],
+      "properties": { "catalogVersion": { "type": "string", "minLength": 1 }, "contentSha256": { "$ref": "#/$defs/hash" }, "artifactSha256": { "$ref": "#/$defs/hash" }, "assignmentVersion": { "type": "string", "minLength": 1 } }
+    }
+  },
+  "$defs": { "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" } }
+}

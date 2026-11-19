@@ -3,6 +3,9 @@ import { canonicalize, crc32cBase64, parseGsUri, sha256 } from './dev012-product
 import { GCC_PBDS_CVE, readNativeInventoryProgram, gccPbdsOccurrenceMatches, readGccApplicabilityPolicy, assertGccApplicabilityAssessment } from './dev015-gcc-applicability.mjs'
 import { GCC_ALIGNED_NEW_CVE, readAlignedNewInspectionProgram, gccAlignedNewOccurrenceMatches, readAlignedNewApplicabilityPolicy, assertAlignedNewApplicabilityAssessment } from './dev015-gcc-aligned-new-applicability.mjs'
 import { runOrgmasterPrincipalSsoSmoke } from './dev015-orgmaster-principal-sso-smoke.mjs'
+import {DEV070_RELEASE_MODE} from './dev070-administration-migration.mjs'
+import { DEV060_RELEASE_MODE } from './dev060-fms-catalog-activation-migration.mjs'
+import { fmsPublicationControl, pdmPublicationControl } from './dev057-pdm-publication-control.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
@@ -118,7 +121,26 @@ export function assertControllerImageResolutionProof({ profile, parentImage, ser
   return proof
 }
 
+export const OWNER_EXECUTION_MODES = Object.freeze({
+  full_release: Object.freeze(['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']),
+  migration_only: Object.freeze(['prepare', 'build', 'migrate']),
+})
+
+export function assertOwnerExecutionMode(profile, environment, stage = null) {
+  const mode = environment.OWNER_EXECUTION_MODE ?? 'full_release'
+  if (typeof mode !== 'string' || !Object.hasOwn(OWNER_EXECUTION_MODES, mode)) fail('OWNER_EXECUTION_MODE_INVALID')
+  if (profile.workflow?.executionModes !== undefined &&
+      canonicalize(profile.workflow.executionModes) !== canonicalize(OWNER_EXECUTION_MODES)) fail('OWNER_EXECUTION_PROFILE_INVALID')
+  if (mode === 'migration_only') {
+    if (profile.application.id !== 'orgmaster' ||
+        canonicalize(profile.workflow?.executionModes) !== canonicalize(OWNER_EXECUTION_MODES)) fail('OWNER_EXECUTION_PROFILE_INVALID')
+    if (stage !== null && !OWNER_EXECUTION_MODES.migration_only.includes(stage)) fail('MIGRATION_ONLY_STAGE_DENIED')
+  }
+  return mode
+}
+
 export function assertProtectedGitHubContext(profile, intent, environment) {
+  assertOwnerExecutionMode(profile, environment)
   const expectedRef = `refs/heads/${profile.application.branch}`
   const expectedWorkflowRef = `${profile.application.repository}/${profile.workflow.path}@${expectedRef}`
   if (environment.GITHUB_ACTIONS !== 'true' || !environment.ACTIONS_ID_TOKEN_REQUEST_URL || !environment.GOOGLE_OAUTH_ACCESS_TOKEN) fail('PROTECTED_WORKFLOW_REQUIRED')
@@ -815,8 +837,23 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     return after
   }
 
-  async function runMigrationJob({ profile, deployment, outputUri, deadlineAt }) {
+  async function runMigrationJob({ profile, deployment, outputUri, deadlineAt, migrationMode = null,
+    enrollmentIntentOperation = null, pdmPublicationControlRef = null, fmsPublicationControlRef = null }) {
+    const publicationRef = fmsPublicationControlRef ?? pdmPublicationControlRef
+    const publication = fmsPublicationControlRef ? fmsPublicationControl : pdmPublicationControl
+    if (publicationRef) {
+      const output = parseGsUri(outputUri, 'jenfu-platform-prod-orgmaster-release', publication.receiptPrefix)
+      if (profile.application.id !== 'orgmaster' || migrationMode || enrollmentIntentOperation ||
+          fmsPublicationControlRef && pdmPublicationControlRef || !H40.test(deployment.sourceRevision ?? '') ||
+          !/^[a-f0-9]{64}\.json$/u.test(outputUri.split('/').at(-1) ?? '') ||
+          outputUri !== `gs://${output.bucket}/${publication.receiptPrefix}/${deployment.sourceRevision}/${outputUri.split('/').at(-1)}`)
+        fail('PDM_PUBLICATION_CONTROL_JOB_INPUT_INVALID')
+      assertImmutableRef(publicationRef, profile.artifact.releaseBucket, [publication.inputPrefix])
+    }
+    if(enrollmentIntentOperation&& (migrationMode!==null||profile.application.id!=='orgmaster'||!['plan','admit','revoke','status'].includes(enrollmentIntentOperation.action)||!H64.test(enrollmentIntentOperation.ref?.sha256??'')||!enrollmentIntentOperation.ref?.uri?.startsWith('gs://jenfu-platform-prod-orgmaster-release/source/migration-bundles/enrollment-intents/')||enrollmentIntentOperation.ref.uri.includes('..')||Object.keys(enrollmentIntentOperation).sort().join(',')!=='action,ref'||Object.keys(enrollmentIntentOperation.ref??{}).sort().join(',')!=='sha256,uri'))fail('DEV070_INTENT_JOB_INPUT_INVALID')
     if (deployment.productionDataRef || deployment.firstPrincipalBootstrapRef) fail('MIGRATION_BOOTSTRAP_INPUT_DENIED')
+    if (migrationMode !== null && ![DEV060_RELEASE_MODE,DEV070_RELEASE_MODE].includes(migrationMode)) fail('MIGRATION_MODE_INVALID')
+    if(migrationMode===DEV070_RELEASE_MODE&&profile.application.id!=='orgmaster')fail('MIGRATION_MODE_INVALID')
     const jobName = `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/${profile.migrations.jobName}`
     const job = await request(`https://run.googleapis.com/v2/${jobName}`)
     const container = job.template?.template?.containers?.find((item) => item.name === 'migration')
@@ -832,10 +869,24 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       POSTGRES_IAM_LOGIN: profile.migrations.serviceAccount.replace('.gserviceaccount.com', ''),
       POSTGRES_SOCKET: `/cloudsql/${connectionName}`,
     }
+    if((enrollmentIntentOperation || publicationRef)&&((job.template?.template?.containers?.length??0)!==1||(container?.command?.length??0)!==0))fail('DEV070_INTENT_JOB_TEMPLATE_INVALID')
     const volume = job.template?.template?.volumes?.find((item) => item.name === 'cloudsql')
     const mount = container?.volumeMounts?.find((item) => item.name === 'cloudsql')
     if (job.name !== jobName || job.template?.template?.serviceAccount !== profile.migrations.serviceAccount || container?.image !== deployment.migrationRunnerDigest || canonicalize(environment) !== canonicalize(expectedEnvironment) || canonicalize(volume?.cloudSqlInstance?.instances) !== canonicalize([connectionName]) || mount?.mountPath !== '/cloudsql' || job.template?.taskCount !== 1 || job.template?.parallelism !== 1 || job.template?.template?.maxRetries !== 0 || job.template?.template?.timeout !== '1800s') fail('MIGRATION_JOB_READBACK_MISMATCH')
-    const args = ['--bundle-ref', deployment.migrationBundleRef.uri, '--bundle-sha256', deployment.migrationBundleRef.sha256, '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
+    let args
+    if (publicationRef) {
+      args = ['--operation-mode', publication.mode,
+        '--operation-ref', publicationRef.uri, '--operation-sha256', publicationRef.sha256,
+        '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
+    } else if (enrollmentIntentOperation) {
+      args = ['--operation-mode', 'DEV070_ENROLLMENT_INTENT', '--action', enrollmentIntentOperation.action,
+        '--intent-ref', enrollmentIntentOperation.ref.uri, '--intent-sha256', enrollmentIntentOperation.ref.sha256,
+        '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
+    } else {
+      args = ['--bundle-ref', deployment.migrationBundleRef.uri, '--bundle-sha256', deployment.migrationBundleRef.sha256,
+        '--source-revision', deployment.sourceRevision, '--output-ref', outputUri]
+    }
+    if (migrationMode) args.push('--migration-mode', migrationMode)
     const listExecutions = async () => {
       const executions = []
       let pageToken = ''
@@ -857,9 +908,12 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       const executionContainer = execution?.template?.containers?.find((item) => item.name === 'migration')
       return canonicalize(executionContainer?.args) === canonicalize(args)
     }
-    const beforeNames = new Set((await listExecutions()).map((execution) => execution.name))
-    let operationRef = null
-    try {
+    const beforeExecutions=await listExecutions()
+    const beforeNames = new Set(beforeExecutions.map(execution=>execution.name))
+    const existingEnrollmentExecutions=(enrollmentIntentOperation || publicationRef)?beforeExecutions.filter(executionArgsMatch):[]
+    if(existingEnrollmentExecutions.length>1)fail('MIGRATION_EXECUTION_CARDINALITY_INVALID')
+    let operationRef = existingEnrollmentExecutions.length?'REUSED_EXACT_ENROLLMENT_EXECUTION_READBACK':null
+    if(!existingEnrollmentExecutions.length)try {
       const operation = await request(`https://run.googleapis.com/v2/${jobName}:run`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ overrides: { containerOverrides: [{ name: 'migration', args }] } }) })
       if (!operation?.name) fail('PROVIDER_OPERATION_REF_MISSING')
       operationRef = operation.name
@@ -867,7 +921,7 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
       if (error?.code !== 'OUTCOME_UNKNOWN') throw error
       operationRef = 'OUTCOME_UNKNOWN_EXECUTION_READBACK'
     }
-    let executionName = null
+    let executionName = existingEnrollmentExecutions[0]?.name??null
     while (!executionName) {
       if (Date.now() >= Date.parse(deadlineAt)) fail('OPERATION_TIMEOUT')
       const matches = (await listExecutions()).filter((execution) => !beforeNames.has(execution.name) && executionArgsMatch(execution))

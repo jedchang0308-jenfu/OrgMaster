@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadFinancialInitialAuthorityReceipt, loadGovernanceCommandResult, patchGovernanceDraft, previewFinancialInitialAuthority, previewPrivilegedAssignment, publishFinancialInitialAuthority, publishGovernancePolicy, publishPrivilegedAssignment, setActiveGovernanceVersion, type FinancialInitialAuthorityRequest } from './apiClient'
+import { commitAdministration, loadFinancialInitialAuthorityReceipt, loadGovernanceCommandResult, patchGovernanceDraft, previewFinancialInitialAuthority, previewPrivilegedAssignment, publishFinancialInitialAuthority, publishGovernancePolicy, publishPrivilegedAssignment, setActiveGovernanceVersion, type FinancialInitialAuthorityRequest } from './apiClient'
+import { subscribeOrgMasterPermissionInvalidation } from '../auth/permissionInvalidation'
 import type { PrivilegedAssignmentRequest } from './privilegedAssignments'
 
 const request: PrivilegedAssignmentRequest = {
@@ -12,6 +13,32 @@ const request: PrivilegedAssignmentRequest = {
 }
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('DEV-070 administration authentication errors', () => {
+  it('keeps a valid application session when only recent authentication is required', async () => {
+    const reasons: string[] = []
+    const unsubscribe = subscribeOrgMasterPermissionInvalidation(reason => reasons.push(reason))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 'AUTH_RECENT_REQUIRED' }), {
+      status: 401, headers: { 'content-type': 'application/json' },
+    })))
+
+    await expect(commitAdministration({} as never)).rejects.toMatchObject({ code: 'AUTH_RECENT_REQUIRED', status: 401 })
+    unsubscribe()
+    expect(reasons).toEqual([])
+  })
+
+  it('still invalidates the application session for an ordinary unauthenticated response', async () => {
+    const reasons: string[] = []
+    const unsubscribe = subscribeOrgMasterPermissionInvalidation(reason => reasons.push(reason))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 'UNAUTHENTICATED' }), {
+      status: 401, headers: { 'content-type': 'application/json' },
+    })))
+
+    await expect(commitAdministration({} as never)).rejects.toMatchObject({ code: 'UNAUTHENTICATED', status: 401 })
+    unsubscribe()
+    expect(reasons).toEqual(['unauthenticated'])
+  })
+})
 
 describe('DEV-058 dynamic assignment version/hash binding', () => {
   it('uses the same two-field producer binding for draft, publish and restore requests', async () => {

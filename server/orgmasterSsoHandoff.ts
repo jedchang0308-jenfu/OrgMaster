@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import path from 'node:path'
 import { GoogleAuth, Impersonated } from 'google-auth-library'
 import type { OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import { ORGMASTER_SESSION_MAX_AGE_SECONDS } from './orgmasterAuthConfig'
@@ -10,6 +11,8 @@ const COOKIE = '__Host-jenfu_sso_tx'
 // Keep local applications distinct because cookies do not isolate by port.
 function transactionCookieName(secure: boolean) { return secure ? COOKIE : 'orgmaster_sso_tx' }
 const MAX_RETURN_TO = 1024
+const SSO_TRANSACTION_TTL_MS = 15 * 60_000
+const SSO_TRANSACTION_TTL_SECONDS = SSO_TRANSACTION_TTL_MS / 1000
 const IMPERSONATE_SERVICE_ACCOUNT_ENV = 'JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT'
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
 
@@ -66,6 +69,11 @@ function exactObject(value: unknown, keys: readonly string[]) {
   return Object.keys(object).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(object, key))
 }
 
+function isActiveSession(session: { expiresAt: string; revokedAt: string | null }, nowMs: number) {
+  const expiresAt = Date.parse(session.expiresAt)
+  return !session.revokedAt && Number.isFinite(expiresAt) && expiresAt > nowMs
+}
+
 function callbackFailure(errorValue: unknown) {
   if (errorValue instanceof BrokerExchangeFailure) return { status: errorValue.status, code: errorValue.publicCode }
   const code = errorValue instanceof Error ? errorValue.message : ''
@@ -96,6 +104,12 @@ function cookieValue(header: string | undefined, secure: boolean) {
   try { return decodeURIComponent(item.slice(name.length + 1)) } catch { return null }
 }
 
+function transactionCookiePresent(header: string | undefined, secure: boolean) {
+  const names = [transactionCookieName(secure), secure ? 'orgmaster_sso_tx' : COOKIE]
+  return header?.split(';').map((value) => value.trim())
+    .some((value) => names.some((name) => value.startsWith(`${name}=`))) ?? false
+}
+
 function sign(value: string, secret: string) {
   return createHmac('sha256', secret).update('jenfu-sso-transaction-v1\0').update(value).digest('base64url')
 }
@@ -105,7 +119,7 @@ function encodeTx(tx: Tx, secret: string) {
   return `${payload}.${sign(payload, secret)}`
 }
 
-function decodeTx(value: string | null, secret: string, now: number): Tx | null {
+function decodeTx(value: string | null, secret: string, now: number): { tx: Tx; expired: boolean } | null {
   if (!value) return null
   const separator = value.lastIndexOf('.')
   if (separator <= 0) return null
@@ -115,14 +129,26 @@ function decodeTx(value: string | null, secret: string, now: number): Tx | null 
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null
   try {
     const tx = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Tx
-    if (tx.clientId !== 'orgmaster' || !/^[A-Za-z0-9_-]{22,256}$/u.test(tx.state) || !/^[A-Za-z0-9_-]{43,128}$/u.test(tx.verifier) || !Number.isSafeInteger(tx.expiresAt) || tx.expiresAt < now) return null
+    if (tx.clientId !== 'orgmaster' || !/^[A-Za-z0-9_-]{22,256}$/u.test(tx.state) || !/^[A-Za-z0-9_-]{43,128}$/u.test(tx.verifier) || !Number.isSafeInteger(tx.expiresAt)) return null
     if (!tx.returnTo.startsWith('/') || tx.returnTo.startsWith('//') || tx.returnTo.includes('\\') || tx.returnTo.length > MAX_RETURN_TO) return null
-    return tx
+    return { tx, expired: tx.expiresAt <= now }
   } catch { return null }
 }
 
 function clearCookie(secure: boolean) { return `${transactionCookieName(secure)}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
-function transactionCookie(value: string, secure: boolean, maxAge = 300) { return `${transactionCookieName(secure)}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
+function transactionCookie(value: string, secure: boolean, maxAge = SSO_TRANSACTION_TTL_SECONDS) { return `${transactionCookieName(secure)}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
+
+function restartTransaction(response: ServerResponse, publicOrigin: string, returnTo: string, id: string, secure: boolean) {
+  const target = new URL('/api/auth/jenfu-sso/start', publicOrigin)
+  target.searchParams.set('returnTo', returnTo)
+  response.statusCode = 303
+  response.setHeader('Location', target.toString())
+  response.setHeader('Cache-Control', 'no-store')
+  response.setHeader('Referrer-Policy', 'no-referrer')
+  response.setHeader('X-Correlation-Id', id)
+  response.setHeader('Set-Cookie', clearCookie(secure))
+  response.end()
+}
 
 function baseConfig(runtime: OrgmasterAuthRuntime, environment: NodeJS.ProcessEnv) {
   if (!runtime.configResult.configured || !runtime.epochs || !runtime.principals || !runtime.sessions) throw new Error('not configured')
@@ -161,7 +187,15 @@ async function defaultServiceToken(audience: string, environment: NodeJS.Process
   if (environment.NODE_ENV !== 'development') throw new Error('JENFU_SSO_IMPERSONATION_DEVELOPMENT_ONLY')
   const targetPrincipal = validImpersonationTarget(configuredTarget)
   const loopbackAudience = validLoopbackAudience(audience, environment)
-  const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] })
+  // google-auth-library resolves ADC from the default gcloud directory and does
+  // not consistently honor CLOUDSDK_CONFIG. The isolated local SSO lane keeps
+  // ADC in its task-specific gcloud directory, so bind that file explicitly.
+  const configDirectory = environment.CLOUDSDK_CONFIG?.trim()
+  if (configDirectory && !path.isAbsolute(configDirectory)) throw new Error('JENFU_SSO_ADC_CONFIG_INVALID')
+  const auth = new GoogleAuth({
+    scopes: [CLOUD_PLATFORM_SCOPE],
+    ...(configDirectory ? { keyFilename: path.join(configDirectory, 'application_default_credentials.json') } : {}),
+  })
   const sourceClient = await auth.getClient()
   const impersonated = new Impersonated({ sourceClient, targetPrincipal, targetScopes: [CLOUD_PLATFORM_SCOPE], lifetime: 300 })
   return impersonated.fetchIdToken(loopbackAudience)
@@ -210,6 +244,8 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
   if (setup.phase !== 'on') { error(response, 404, 'sso_request_invalid', id); return true }
   if (url.pathname.endsWith('/start')) {
     if (request.method !== 'GET') { error(response, 405, 'sso_request_invalid', id); return true }
+    const reauth = url.searchParams.get('reauth')
+    if (reauth !== null && reauth !== '1') { error(response, 400, 'sso_request_invalid', id); return true }
     const returnToRaw = url.searchParams.get('returnTo') ?? '/'
     let returnTo = returnToRaw
     try { const parsed = decodeURIComponent(returnToRaw); if (parsed.startsWith('/') && !parsed.startsWith('//') && !parsed.startsWith('/login') && !parsed.startsWith('/api/auth/') && !parsed.includes('\\') && !/[\u0000-\u001f\u007f]/u.test(parsed) && parsed.length <= MAX_RETURN_TO) returnTo = parsed; else returnTo = '/' } catch { returnTo = '/' }
@@ -218,7 +254,8 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     const callback = `${setup.config.publicBaseUrl.origin}/api/auth/jenfu-sso/callback`
     const authorize = new URL('/api/sso/authorize', setup.brokerOrigin)
     for (const [key, value] of [['response_type', 'code'], ['client_id', 'orgmaster'], ['redirect_uri', callback], ['state', state], ['code_challenge', createHash('sha256').update(verifier, 'ascii').digest('base64url')], ['code_challenge_method', 'S256']] as const) authorize.searchParams.set(key, value)
-    const tx: Tx = { state, verifier, returnTo, issuer: setup.issuer, clientId: 'orgmaster', expiresAt: now() + 300_000 }
+    if (reauth === '1') authorize.searchParams.set('prompt', 'login')
+    const tx: Tx = { state, verifier, returnTo, issuer: setup.issuer, clientId: 'orgmaster', expiresAt: now() + SSO_TRANSACTION_TTL_MS }
     response.statusCode = 303
     response.setHeader('Location', authorize.toString())
     response.setHeader('Cache-Control', 'no-store')
@@ -229,11 +266,26 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     return true
   }
   if (request.method !== 'GET') { error(response, 405, 'sso_request_invalid', id); return true }
-  const tx = decodeTx(cookieValue(request.headers.cookie, setup.config.secureCookie), setup.config.sessionHashPepper, now())
+  const rawTransaction = cookieValue(request.headers.cookie, setup.config.secureCookie)
+  const decoded = decodeTx(rawTransaction, setup.config.sessionHashPepper, now())
   const state = url.searchParams.get('state')
   const code = url.searchParams.get('code')
   const issuer = url.searchParams.get('iss')
-  if (!tx || !state || state !== tx.state || issuer !== tx.issuer || !code || url.searchParams.getAll('state').length !== 1 || url.searchParams.getAll('code').length !== 1) { error(response, 400, 'sso_request_invalid', id, [clearCookie(setup.config.secureCookie)]); return true }
+  const exactCallback = [...url.searchParams.keys()].every((key) => ['code', 'state', 'iss'].includes(key))
+    && ['code', 'state', 'iss'].every((key) => url.searchParams.getAll(key).length === 1)
+    && !!state && /^[A-Za-z0-9_-]{22,256}$/u.test(state) && !!code && code.length <= 4096 && issuer === setup.issuer
+  if (!exactCallback) { error(response, 400, 'sso_request_invalid', id, [clearCookie(setup.config.secureCookie)]); return true }
+  if (!decoded) {
+    if (transactionCookiePresent(request.headers.cookie, setup.config.secureCookie)) { error(response, 400, 'sso_request_invalid', id, [clearCookie(setup.config.secureCookie)]); return true }
+    restartTransaction(response, setup.config.publicBaseUrl.origin, '/', id, setup.config.secureCookie)
+    return true
+  }
+  const { tx, expired } = decoded
+  if (state !== tx.state || issuer !== tx.issuer) { error(response, 400, 'sso_request_invalid', id, [clearCookie(setup.config.secureCookie)]); return true }
+  if (expired) {
+    restartTransaction(response, setup.config.publicBaseUrl.origin, tx.returnTo, id, setup.config.secureCookie)
+    return true
+  }
   try {
     const token = await getServiceToken(setup.brokerOrigin)
     const body = new URLSearchParams({ grant_type: 'authorization_code', code, client_id: 'orgmaster', redirect_uri: `${setup.config.publicBaseUrl.origin}/api/auth/jenfu-sso/callback`, code_verifier: tx.verifier })
@@ -246,7 +298,7 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     const existingToken = readSessionToken(request.headers.cookie)
     if (existingToken) {
       const existing = await setup.sessions.findByHash(hashSessionToken(setup.config.sessionHashPepper, existingToken))
-      if (existing && !existing.revokedAt && existing.principalId !== handoff.identity.principalId) { error(response, 409, 'sso_account_conflict', id, [clearCookie(setup.config.secureCookie)]); return true }
+      if (existing && isActiveSession(existing, now()) && existing.principalId !== handoff.identity.principalId) { error(response, 409, 'sso_account_conflict', id, [clearCookie(setup.config.secureCookie)]); return true }
     }
     const nowMs = now()
     const maxExpiry = Math.min(nowMs + ORGMASTER_SESSION_MAX_AGE_SECONDS * 1000, Date.parse(handoff.sourceSessionExpiresAt))

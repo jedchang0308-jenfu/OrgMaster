@@ -1,0 +1,12 @@
+{
+  "contractVersion": "orgmaster.fms-catalog-initialization-activation.v1",
+  "recordVersion": "orgmaster.fms-catalog-initialization-activation-record.v1",
+  "producer": "orgmaster",
+  "consumer": "financial-management-system",
+  "transport": "point-only SQL SECURITY DEFINER; exact fms_runtime EXECUTE",
+  "files": {
+    "schema.json": "7945636ea08e7b76028a95289e9247bbbd4b46f79ed9f3d4d4507fcf5ae1f1b1",
+    "signature.json": "f60b5a73e2edcade10845f86c58ef1382d761188452a34fe95c4459b268d3d09",
+    "vectors.json": "21a201209fb4757eb190ce2da13cae4189d5af88b0ab2b4b3ec1afdd4b41c426"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "contractVersion": "orgmaster.administration-lifecycle.v1",
+  "producer": "orgmaster",
+  "consumer": "platform",
+  "eligibility": {
+    "function": "orgmaster_contract.administration_lifecycle_event_eligible_v1",
+    "arguments": [
+      {
+        "name": "p_event_id",
+        "type": "uuid"
+      },
+      {
+        "name": "p_snapshot_hash",
+        "type": "text"
+      }
+    ],
+    "returns": "boolean",
+    "volatility": "STABLE",
+    "security": "DEFINER",
+    "searchPath": "pg_catalog",
+    "executeReaders": [
+      "jenfu_platform_runtime"
+    ],
+    "unqualified": false,
+    "dependencyFailure": "throw"
+  },
+  "scope": "exact immutable administrative terminal receipt outboxIds AND administration_changed AND exact snapshot hash; shared with producer filtered claim",
+  "nativePreparation": "current native bind creates no separate lifecycle event; any future required prepare event needs explicit immutable enrollment receipt ownership before eligibility",
+  "wakeEndpoint": "/api/internal/administration-lifecycle/v1",
+  "wakeAuthentication": "existing exact Platform Google service OIDC caller; no cookie/origin/body/query",
+  "wakeEffect": "bounded claim/consume/ack; explicit authenticated wake may resume only this scoped blocked delivery; never modifies frozen events or terminal receipts",
+  "fullLifecycleFlag": "unchanged; no Directory refresh or generic lifecycle claim"
+}

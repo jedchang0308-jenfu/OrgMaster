@@ -33,6 +33,8 @@ export type OrgmasterProductionTarget = {
 
 let runtimePool: pg.Pool | null = null
 let runtimeSignature = ''
+let localSandboxPool: pg.Pool | null = null
+let localSandboxPoolUrl = ''
 
 function positiveInteger(value: string | undefined, fallback: number, name: string) {
   const normalized = value?.trim()
@@ -125,6 +127,53 @@ export function createOrgmasterDatabase(connectionString: string, environment: N
   })
   runtimeSignature = signature
   return runtimePool
+}
+
+/** A separately cached loopback-only pool used by the explicit local sandbox request scope. */
+export function isOrgmasterLocalSandboxDatabaseTarget(connectionString: string) {
+  try {
+    const target = new URL(connectionString)
+    const host = target.hostname.replace(/^\[|\]$/gu, '').toLowerCase()
+    const port = Number(target.port || '5432')
+    const runtimeRole = decodeURIComponent(target.username)
+    // The exact sandbox id, database name, generation, runtime role, and live server port
+    // are verified by localSandbox.verify before this request-scoped URL reaches this guard.
+    return ['postgres:', 'postgresql:'].includes(target.protocol) &&
+      host === '127.0.0.1' && Number.isInteger(port) && port >= 1024 && port <= 65535 &&
+      /^\/jenfu_local_[a-z][a-z0-9_]{2,50}$/u.test(target.pathname) &&
+      /^[a-z][a-z0-9_]{2,62}$/u.test(runtimeRole) && Boolean(target.password) &&
+      !target.search && !target.hash
+  } catch {
+    return false
+  }
+}
+
+export function createOrgmasterLocalSandboxDatabase(connectionString: string): OrgmasterDatabase {
+  if (!isOrgmasterLocalSandboxDatabaseTarget(connectionString)) {
+    throw new Error('ORGMASTER_LOCAL_SANDBOX_TARGET_INVALID')
+  }
+  if (localSandboxPool && localSandboxPoolUrl !== connectionString) {
+    void localSandboxPool.end().catch(() => undefined)
+    localSandboxPool = null
+  }
+  localSandboxPool ??= new pg.Pool({
+    application_name: 'orgmaster-local-sandbox-persistence',
+    connectionString,
+    connectionTimeoutMillis: 2500,
+    idleTimeoutMillis: 30_000,
+    max: 4,
+    query_timeout: 5000,
+    statement_timeout: 5000,
+  })
+  localSandboxPoolUrl = connectionString
+  return localSandboxPool
+}
+
+export async function closeOrgmasterLocalSandboxDatabase() {
+  const pool = localSandboxPool
+  localSandboxPool = null
+  localSandboxPoolUrl = ''
+  await pool?.end()
 }
 
 export async function closeOrgmasterDatabase() {

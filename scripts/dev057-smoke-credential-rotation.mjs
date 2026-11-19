@@ -11,8 +11,11 @@ import { readRoutineBaseline, resolveRoutineControlBaseline } from './lib/dev040
 import { assertOrdinaryToolRotation } from './lib/dev040-tool-image-rotation.mjs'
 import { assertRequiredToolSourceQc } from './dev040-tool-image-rotation.mjs'
 import { createToolTerraform, terraformVariablesFromState } from './lib/dev040-tool-terraform.mjs'
-import { assertSmokeCredentialRotationPlan, expectedSmokeWorkflowSource } from './lib/dev057-smoke-rotation-continuation.mjs'
+import { assertSmokeCredentialRotationPlan, expectedSmokeWorkflowSource, readSmokeReuseControl,
+  readSmokeWorkflowCorrectionBaseline, assertSmokeWorkflowCorrectionReadback, assertSmokeWorkflowContractCorrectionContinuation,
+  assertSmokeWorkflowCorrectionState, SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE } from './lib/dev057-smoke-rotation-continuation.mjs'
 import { validateReauthReceipt } from './lib/dev057-smoke-credential-reauth.mjs'
+import { validateSharedSmokeCredentialEvidence } from './lib/dev057-shared-smoke-credential-evidence.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const H64 = /^[a-f0-9]{64}$/u
@@ -31,10 +34,81 @@ export function workflowControlPlane(value) {
   return stable
 }
 
+export function smokeRotationBaselineVersion({ toolVersion, baselineInfra = null, continuation = null }) {
+  if (!/^[1-9][0-9]*$/u.test(toolVersion ?? '') || !Number.isSafeInteger(Number(toolVersion))) {
+    fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  }
+  if (baselineInfra?.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') return toolVersion
+  if (baselineInfra.schemaVersion !== 'jenfu.dev012.app-infra-receipt.v1' ||
+      continuation?.evidenceScope !== 'OWNER_SEALED_RELEASED_ROTATION_BASELINE' ||
+      !same(continuation.infraReceiptRef, baselineInfra.receiptRef) ||
+      continuation.newVersion !== baselineInfra.candidateSmokeRefreshTokenSecretVersion ||
+      !/^[1-9][0-9]*$/u.test(continuation.newVersion ?? '') || !Number.isSafeInteger(Number(continuation.newVersion))) {
+    fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  }
+  return continuation.newVersion
+}
+
+export function smokeRotationToolAdmissionIntent({ baselineIntent, baselineIntentRef, sourceRevision, toolRotationRef }) {
+  return { ...baselineIntent, sourceRevision, infraReceiptRef: toolRotationRef, baselineIntentRef }
+}
+
+export function assertReleasedSmokeRotationBaseline({ baselineInfra, baselineInfraRef, baselineIntent,
+  toolRotationRef, toolReceipt, currentSourceRevision, isAncestor }) {
+  const receipt = assertSeal(baselineInfra, 'jenfu.dev012.app-infra-receipt.v1', 'SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  const proof = receipt.smokeRotation
+  if (!same(baselineIntent?.infraReceiptRef, baselineInfraRef) || receipt.ownerApplicationId !== 'orgmaster' ||
+      receipt.projectId !== 'jenfu-platform-prod' || receipt.region !== 'asia-east1' ||
+      receipt.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' || receipt.status !== 'APPLIED' ||
+      receipt.releaseAuthority !== true || receipt.evidenceScope !== 'PRODUCTION_PROVIDER' ||
+      !/^[a-f0-9]{40}$/u.test(receipt.sourceRevision ?? '') || isAncestor(receipt.sourceRevision, currentSourceRevision) !== true ||
+      !/^[1-9][0-9]*$/u.test(receipt.candidateSmokeRefreshTokenSecretVersion ?? '') ||
+      !Number.isSafeInteger(Number(receipt.candidateSmokeRefreshTokenSecretVersion)) ||
+      proof?.schemaVersion !== 'orgmaster.smoke-credential-rotation.v1' || !same(proof.toolRotationRef, toolRotationRef) ||
+      !same(proof.credentialEvidenceRef, receipt.credentialEvidenceRef) || proof.nextVersion !== receipt.candidateSmokeRefreshTokenSecretVersion ||
+      !/^[1-9][0-9]*$/u.test(proof.previousVersion ?? '') || Number(proof.previousVersion) >= Number(proof.nextVersion) ||
+      proof.sourceProof?.sourceRevision !== receipt.sourceRevision || proof.sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED' ||
+      proof.sourceProof.branchProtected !== true || proof.sourceProof.requiredSourceQc !== 'SUCCESS' ||
+      ['foundationManifestSha256', 'migrationRunnerDigest', 'controllerImageDigest'].some((field) => !same(receipt[field], toolReceipt?.[field]))) {
+    fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  }
+  return { evidenceScope: 'OWNER_SEALED_RELEASED_ROTATION_BASELINE', infraReceiptRef: baselineInfraRef,
+    newVersion: receipt.candidateSmokeRefreshTokenSecretVersion }
+}
+
 function command(name, args) {
   const result = spawnSync(name, args, { cwd: root, encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
   if (result.error || result.status !== 0) fail('SMOKE_ROTATION_COMMAND_FAILED')
   return result.stdout.trim()
+}
+
+function gitIsAncestor(root, ancestor, descendant) {
+  if (!/^[a-f0-9]{40}$/u.test(ancestor ?? '') || !/^[a-f0-9]{40}$/u.test(descendant ?? '')) return false
+  const result = spawnSync('git', ['merge-base', '--is-ancestor', ancestor, descendant],
+    { cwd: root, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'] })
+  if (result.error) fail('SMOKE_ROTATION_CREDENTIAL_CHAIN_SOURCE_INVALID')
+  return result.status === 0
+}
+
+export function validateSmokeCredentialChain({ root, sourceRevision, credential, predecessor = null,
+  nowMs = Date.now(), isAncestor = (ancestor, descendant) => gitIsAncestor(root, ancestor, descendant) }) {
+  validateReauthReceipt(credential, { sourceRevision,
+    expectedPreviousVersion: credential?.secret?.previousVersion, expectedNewVersion: credential?.secret?.newVersion, nowMs })
+  if (!predecessor) return { previousVersion: credential.secret.previousVersion,
+    nextVersion: credential.secret.newVersion, versionChain: [credential.secret.previousVersion, credential.secret.newVersion] }
+  const predecessorObservedAt = Date.parse(predecessor.observedAt)
+  validateReauthReceipt(predecessor, { sourceRevision: predecessor.sourceRevision,
+    expectedPreviousVersion: predecessor?.secret?.previousVersion, expectedNewVersion: predecessor?.secret?.newVersion,
+    nowMs: predecessorObservedAt })
+  if (!Number.isFinite(predecessorObservedAt) || predecessorObservedAt > Date.parse(credential.authenticatedAt) ||
+      isAncestor(predecessor.sourceRevision, sourceRevision) !== true ||
+      predecessor.secret.newVersion !== credential.secret.previousVersion ||
+      predecessor.identityPairSha256 !== credential.identityPairSha256 ||
+      predecessor.principalId !== credential.principalId || predecessor.employeeId !== credential.employeeId) {
+    fail('SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID')
+  }
+  return { previousVersion: predecessor.secret.previousVersion, nextVersion: credential.secret.newVersion,
+    versionChain: [predecessor.secret.previousVersion, predecessor.secret.newVersion, credential.secret.newVersion] }
 }
 
 function parseRef(value, expression, code) {
@@ -59,6 +133,13 @@ async function readWorkflow(transport, profile) {
   return workflow
 }
 
+export function assertSharedSmokeWorkflowBaseline({ root, profile, sourceRevision, previousVersion, workflow }) {
+  const expectedSource = expectedSmokeWorkflowSource({ root, profile, sourceRevision, version: previousVersion })
+  if (workflow?.state !== 'ACTIVE' || typeof workflow.revisionId !== 'string' || !workflow.revisionId ||
+      workflow.sourceContents !== expectedSource) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  return { sourceRevision, previousVersion, revisionId: workflow.revisionId }
+}
+
 export async function submitSmokeRotationApplyOnce({ fenceRead, expectedFence, beforeSubmit, readBaseline,
   assertBaseline, readBinaryPlan, putFence, applyPlan }) {
   if (fenceRead && !same(fenceRead.value, expectedFence)) fail('SMOKE_ROTATION_APPLY_FENCE_INVALID')
@@ -74,17 +155,29 @@ export async function submitSmokeRotationApplyOnce({ fenceRead, expectedFence, b
 }
 
 export async function executeSmokeCredentialRotation({ root, profile, git, sourceProof, transport, terraform,
-  credentialRef, toolRotationRef, apply = false, now = () => new Date().toISOString(),
+  credentialRef, platformCredentialRef = null, predecessorCredentialRef = null, toolRotationRef, apply = false,
+  now = () => new Date().toISOString(),
   verifySource = () => readGitAuthority(root, profile) }) {
   const bucket = profile.artifact.releaseBucket
   if (git.clean !== true || git.branch !== 'master' || sourceProof?.sourceRevision !== git.sourceRevision ||
       sourceProof.status !== 'OFFICIAL_MERGED_PR_VERIFIED' || sourceProof.requiredSourceQc !== 'SUCCESS') fail('SMOKE_ROTATION_OFFICIAL_SOURCE_REQUIRED')
-  const credentialRead = await transport.readJson(credentialRef, bucket, ['receipts/credential-reauth'])
+  if (platformCredentialRef && predecessorCredentialRef) fail('SMOKE_ROTATION_CREDENTIAL_CHAIN_INVALID')
+  const sharedCredential = platformCredentialRef !== null
+  const credentialRead = await transport.readJson(credentialRef, bucket,
+    [sharedCredential ? 'receipts/identity' : 'receipts/credential-reauth'])
   const credential = credentialRead.value
-  validateReauthReceipt(credential, { sourceRevision: git.sourceRevision,
-    expectedPreviousVersion: credential.secret?.previousVersion, expectedNewVersion: credential.secret?.newVersion,
-    nowMs: Number.isInteger(credential.authTime) ? credential.authTime * 1000 : Number.NaN })
-  const previousVersion = credential.secret.previousVersion, nextVersion = credential.secret.newVersion
+  const platformCredentialRead = sharedCredential
+    ? await transport.readJson(platformCredentialRef, 'jenfu-platform-prod-platform-release', ['receipts/credential-reauth'])
+    : null
+  const predecessorRead = predecessorCredentialRef
+    ? await transport.readJson(predecessorCredentialRef, bucket, ['receipts/credential-reauth']) : null
+  if (predecessorRead && !same(predecessorRead.ref, predecessorCredentialRef)) fail('SMOKE_ROTATION_CREDENTIAL_CHAIN_REF_INVALID')
+  const validateCredentialChain = (nowMs = Date.now()) => sharedCredential
+    ? validateSharedSmokeCredentialEvidence({ identity: credential, platformCredential: platformCredentialRead.value, nowMs })
+    : validateSmokeCredentialChain({ root, sourceRevision: git.sourceRevision,
+      credential, predecessor: predecessorRead?.value ?? null, nowMs })
+  const { previousVersion, nextVersion, versionChain } = validateCredentialChain(sharedCredential
+    ? Date.now() : Number.isInteger(credential.authTime) ? credential.authTime * 1000 : Number.NaN)
   const controlRead = await transport.readBytes(`gs://${bucket}/control/active.json`, { prefixes: ['control'] })
   const control = JSON.parse(controlRead.bytes.toString('utf8'))
   const { controlSha256, ...controlCore } = control
@@ -95,10 +188,34 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     attempt: { ...attemptedIntent, value: JSON.parse(attemptedIntent.bytes.toString('utf8')) } })
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef })
   const toolRead = await transport.readJson(toolRotationRef, bucket, ['receipts/tool-rotations'])
-  const toolEvidence = await assertOrdinaryToolRotation({ root, profile, transport,
-    intent: { ...baseline.intent, sourceRevision: git.sourceRevision, infraReceiptRef: toolRotationRef, baselineIntentRef },
+  const toolEvidence = await assertOrdinaryToolRotation({ root, profile, transport,readHistoricalBaseline:readRoutineBaseline,
+    intent: smokeRotationToolAdmissionIntent({ baselineIntent: baseline.intent, baselineIntentRef,
+      sourceRevision: git.sourceRevision, toolRotationRef }),
     receipt: toolRead.value, baseline })
-  if (toolEvidence.candidateSmokeRefreshTokenSecretVersion !== previousVersion) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  const workflowBaselineSourceRevision = toolRead.value.sourceRevision
+  const baselineInfraRead = await transport.readJson(baseline.intent.infraReceiptRef, bucket, ['receipts'])
+  if (!same(baselineInfraRead.ref, baseline.intent.infraReceiptRef)) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+  const baselineInfra = baselineInfraRead.value
+  let continuation = null
+  if (baselineInfra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION') {
+    continuation = assertReleasedSmokeRotationBaseline({ baselineInfra, baselineInfraRef: baselineInfraRead.ref,
+      baselineIntent: baseline.intent, toolRotationRef, toolReceipt: toolRead.value, currentSourceRevision: git.sourceRevision,
+      isAncestor: (from, to) => {
+        try { command('git', ['merge-base', '--is-ancestor', from, to]); return true } catch { return false }
+      } })
+  }
+  let baselineVersion = smokeRotationBaselineVersion({
+    toolVersion: toolEvidence.candidateSmokeRefreshTokenSecretVersion,
+    baselineInfra: baselineInfra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
+      ? { ...baselineInfra, receiptRef: baselineInfraRead.ref } : null,
+    continuation,
+  })
+  if (baselineVersion !== previousVersion) {
+    if (!sharedCredential) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
+    assertSharedSmokeWorkflowBaseline({ root, profile, sourceRevision: workflowBaselineSourceRevision,
+      previousVersion, workflow: await readWorkflow(transport, profile) })
+    baselineVersion = previousVersion
+  }
   const service = await transport.getService(profile)
   transport.assertServiceSettled(service); transport.assertCanonicalEntrypoint(profile, service)
   if (transport.effectiveRevision(service) !== baseline.activeRevision || [...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some(row => row.tag)) fail('SMOKE_ROTATION_SERVICE_BASELINE_INVALID')
@@ -117,6 +234,9 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
         receipt.mutationProfile !== 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION' || receipt.status !== 'APPLIED' ||
         receipt.releaseAuthority !== true || receipt.candidateSmokeRefreshTokenSecretVersion !== nextVersion ||
         !same(receipt.credentialEvidenceRef, credentialRef) || !same(receipt.smokeRotation?.toolRotationRef, toolRotationRef) ||
+        !same(receipt.platformCredentialRef ?? null, platformCredentialRef) ||
+        !same(receipt.smokeRotation?.platformCredentialRef ?? null, platformCredentialRef) ||
+        !same(receipt.smokeRotation?.credentialPredecessorRef ?? null, predecessorCredentialRef ?? null) ||
         !same(receipt.smokeRotation?.credentialEvidenceRef, credentialRef) || !same(receipt.smokeRotation?.sourceProof, sourceProof)) {
       fail('SMOKE_ROTATION_RECEIPT_INVALID')
     }
@@ -131,14 +251,15 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     preparedRef = preparedRead
     if (prepared.ownerApplicationId !== 'orgmaster' || prepared.sourceRevision !== git.sourceRevision || prepared.releaseId !== releaseId ||
         !same(prepared.baselineIntentRef, baselineIntentRef) || !same(prepared.toolRotationRef, toolRotationRef) ||
-        !same(prepared.credentialEvidenceRef, credentialRef) || prepared.previousVersion !== previousVersion ||
+        !same(prepared.credentialEvidenceRef, credentialRef) ||
+        !same(prepared.platformCredentialRef ?? null, platformCredentialRef) ||
+        !same(prepared.credentialPredecessorRef ?? null, predecessorCredentialRef ?? null) || prepared.previousVersion !== previousVersion ||
         prepared.nextVersion !== nextVersion || !same(prepared.sourceProof, sourceProof) ||
         !same(prepared.controlBaseline, controlRead.ref) || prepared.controlGeneration !== String(controlRead.metadata.generation) ||
         prepared.applyClaimAt !== prepared.observedAt || !Number.isFinite(Date.parse(prepared.applyClaimAt))) {
       fail('SMOKE_ROTATION_PREPARED_BASELINE_CHANGED')
     }
-    validateReauthReceipt(credential, { sourceRevision: git.sourceRevision, expectedPreviousVersion: previousVersion,
-      expectedNewVersion: nextVersion, nowMs: Date.parse(prepared.applyClaimAt) })
+    validateCredentialChain(Date.parse(prepared.applyClaimAt))
     const [savedPlan, savedState, savedWorkflow, savedControl] = await Promise.all([
       transport.readJson(prepared.planJsonRef, bucket, ['receipts']),
       transport.readJson(prepared.beforeStateRef, bucket, ['receipts']),
@@ -151,9 +272,11 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
         !savedControl.bytes.equals(controlRead.bytes)) fail('SMOKE_ROTATION_PREPARED_REF_INVALID')
     beforeState = savedState.value; beforeWorkflow = savedWorkflow.value; manifest = beforeState.manifest
     planProof = assertSmokeCredentialRotationPlan({ root, profile, sourceRevision: git.sourceRevision,
-      plan: savedPlan.value, infraProfile, previousVersion, nextVersion })
-    const expectedBeforeSource = expectedSmokeWorkflowSource({ root, profile, sourceRevision: git.sourceRevision, version: previousVersion })
+      previousSourceRevision: workflowBaselineSourceRevision,
+      plan: savedPlan.value, infraProfile, previousVersion, nextVersion, versionChain })
+    const expectedBeforeSource = expectedSmokeWorkflowSource({ root, profile, sourceRevision: workflowBaselineSourceRevision, version: previousVersion })
     if (!same(planProof, prepared.planProof) || beforeState.stateMeta.serial !== prepared.beforeSerial ||
+        (prepared.workflowBaselineSourceRevision ?? prepared.sourceRevision) !== workflowBaselineSourceRevision ||
         beforeState.stateMeta.lineage !== prepared.stateLineage || beforeWorkflow.sourceContents !== expectedBeforeSource ||
         manifest.migration_runner_digest !== toolRead.value.migrationRunnerDigest ||
         manifest.controller_image_digest !== toolRead.value.controllerImageDigest ||
@@ -169,16 +292,16 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     if (variables.candidate_smoke_refresh_token_secret_version !== nextVersion) fail('SMOKE_ROTATION_VERSION_BASELINE_INVALID')
     const planResult = await terraform.plan({ variables })
     planProof = assertSmokeCredentialRotationPlan({ root, profile, sourceRevision: git.sourceRevision,
-      plan: planResult.plan, infraProfile, previousVersion, nextVersion })
+      previousSourceRevision: workflowBaselineSourceRevision,
+      plan: planResult.plan, infraProfile, previousVersion, nextVersion, versionChain })
     beforeWorkflow = await readWorkflow(transport, profile)
-    const expectedBeforeSource = expectedSmokeWorkflowSource({ root, profile, sourceRevision: git.sourceRevision, version: previousVersion })
+    const expectedBeforeSource = expectedSmokeWorkflowSource({ root, profile, sourceRevision: workflowBaselineSourceRevision, version: previousVersion })
     if (beforeWorkflow.sourceContents !== expectedBeforeSource) fail('SMOKE_ROTATION_WORKFLOW_BASELINE_INVALID')
     await sameControl()
     if (!apply) return { status: 'READY', releaseAuthority: false, sourceRevision: git.sourceRevision,
       previousVersion, nextVersion, addressCount: planProof.addressActions.length, imageBuilds: 0, ddlExecuted: 0 }
     const observedAt = now()
-    validateReauthReceipt(credential, { sourceRevision: git.sourceRevision, expectedPreviousVersion: previousVersion,
-      expectedNewVersion: nextVersion, nowMs: Date.parse(observedAt) })
+    validateCredentialChain(Date.parse(observedAt))
     const [binaryPlan, planJson, beforeStateRef, beforeWorkflowRef, controlSnapshot] = await Promise.all([
       transport.putBytes(`${prefix}/plan.bin`, planResult.binaryPlan, { bucket, prefix: 'receipts', contentType: 'application/octet-stream' }),
       put('plan', planResult.plan), put('before-state', beforeState), put('provider-workflow-before', beforeWorkflow),
@@ -186,6 +309,9 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     ])
     prepared = seal({ schemaVersion: 'orgmaster.smoke-credential-rotation-prepared.v1', ownerApplicationId: 'orgmaster',
       sourceRevision: git.sourceRevision, releaseId, baselineIntentRef, toolRotationRef, credentialEvidenceRef: credentialRef,
+      ...(platformCredentialRef ? { platformCredentialRef } : {}),
+      ...(workflowBaselineSourceRevision === git.sourceRevision ? {} : { workflowBaselineSourceRevision }),
+      ...(predecessorCredentialRef ? { credentialPredecessorRef: predecessorCredentialRef } : {}),
       previousVersion, nextVersion, sourceProof, controlBaseline: controlRead.ref, controlSnapshotRef: controlSnapshot.ref,
       controlGeneration: String(controlRead.metadata.generation), beforeSerial: beforeState.stateMeta.serial,
       stateLineage: beforeState.stateMeta.lineage, binaryPlanRef: binaryPlan.ref, planJsonRef: planJson.ref,
@@ -194,8 +320,7 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     preparedRef = await put('prepared', prepared)
   }
   if (!apply) {
-    validateReauthReceipt(credential, { sourceRevision: git.sourceRevision, expectedPreviousVersion: previousVersion,
-      expectedNewVersion: nextVersion })
+    validateCredentialChain()
     return { status: 'PREPARED', releaseAuthority: false, sourceRevision: git.sourceRevision,
       previousVersion, nextVersion, addressCount: planProof.addressActions.length, imageBuilds: 0, ddlExecuted: 0 }
   }
@@ -205,8 +330,7 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     preparedRef: preparedRef.ref, preparedReceiptSha256: prepared.receiptSha256, binaryPlanRef: prepared.binaryPlanRef,
     expectedStateSerial: prepared.beforeSerial, submittedAt: prepared.applyClaimAt }
   await submitSmokeRotationApplyOnce({ fenceRead, expectedFence, beforeSubmit: async () => {
-    validateReauthReceipt(credential, { sourceRevision: git.sourceRevision, expectedPreviousVersion: previousVersion,
-      expectedNewVersion: nextVersion })
+    validateCredentialChain()
     await sameControl()
   },
     readBaseline: async () => {
@@ -238,6 +362,9 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
   const addresses = [...infraProfile.stageA, ...infraProfile.stageBAdditional].sort()
   const proof = { schemaVersion: 'orgmaster.smoke-credential-rotation.v1', baselineIntentRef, toolRotationRef,
     credentialEvidenceRef: credentialRef, sourceProof, controlBaseline: controlRead.ref, controlSnapshotRef: prepared.controlSnapshotRef,
+    ...(platformCredentialRef ? { platformCredentialRef } : {}),
+    ...(workflowBaselineSourceRevision === git.sourceRevision ? {} : { workflowBaselineSourceRevision }),
+    ...(predecessorCredentialRef ? { credentialPredecessorRef: predecessorCredentialRef } : {}),
     controlGeneration: String(controlRead.metadata.generation), previousVersion, nextVersion, preparedRef: preparedRef.ref,
     binaryPlanRef: prepared.binaryPlanRef, planJsonRef: prepared.planJsonRef, beforeStateRef: prepared.beforeStateRef,
     afterStateRef: afterStateRef.ref, outputManifestRef: outputManifestRef.ref,
@@ -251,21 +378,137 @@ export async function executeSmokeCredentialRotation({ root, profile, git, sourc
     planJsonSha256: prepared.planJsonRef.sha256, stateLineage: afterState.stateMeta.lineage, stateSerial: afterState.stateMeta.serial,
     stateJsonSha256: afterStateRef.ref.sha256, outputManifestSha256: outputManifestRef.ref.sha256,
     mutationProfile: 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION', candidateSmokeRefreshTokenSecretVersion: nextVersion,
-    credentialEvidenceRef: credentialRef, smokeRotation: proof, status: 'APPLIED', releaseAuthority: true,
+    credentialEvidenceRef: credentialRef, ...(platformCredentialRef ? { platformCredentialRef } : {}),
+    smokeRotation: proof, status: 'APPLIED', releaseAuthority: true,
     evidenceScope: 'PRODUCTION_PROVIDER', observedAt: prepared.applyClaimAt })
-  if (!H64.test(receipt.receiptSha256) || receipt.credentialEvidenceRef.sha256 !== credentialRead.ref.sha256) fail('SMOKE_ROTATION_RECEIPT_INVALID')
+  if (!H64.test(receipt.receiptSha256) || receipt.credentialEvidenceRef.sha256 !== credentialRead.ref.sha256 ||
+      (platformCredentialRead && platformCredentialRead.ref.sha256 !== platformCredentialRef.sha256)) fail('SMOKE_ROTATION_RECEIPT_INVALID')
   const result = await put('app-infra', receipt)
   return { status: 'APPLIED', ref: result.ref, previousVersion, nextVersion, imageBuilds: 0, ddlExecuted: 0 }
 }
 
-async function main() {
-  const args = process.argv.slice(2)
-  if (args.length !== 3 || !['--check', '--apply'].includes(args[0])) fail('SMOKE_ROTATION_ARGUMENT_INVALID')
-  if (!args[1].startsWith('--credential-ref=') || !args[2].startsWith('--tool-image-rotation-ref=')) fail('SMOKE_ROTATION_ARGUMENT_INVALID')
-  const credentialRef = parseRef(args[1].slice('--credential-ref='.length),
-    /^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/credential-reauth\/[A-Za-z0-9_.-]+\.json#sha256=(?<sha256>[a-f0-9]{64})$/u, 'SMOKE_ROTATION_CREDENTIAL_REF_INVALID')
-  const toolRotationRef = parseRef(args[2].slice('--tool-image-rotation-ref='.length),
-    /^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/tool-rotations\/[a-f0-9]{40}\/app-infra\.json#sha256=(?<sha256>[a-f0-9]{64})$/u, 'SMOKE_ROTATION_TOOL_REF_INVALID')
+async function executeSmokeWorkflowCorrection({ root, profile, git, sourceProof, transport, terraform, priorRef, apply }) {
+  const bucket = profile.artifact.releaseBucket
+  const head = await transport.readBytes(`gs://${bucket}/control/active.json`, { prefixes: ['control'] })
+  const control = JSON.parse(head.bytes.toString('utf8'))
+  if (!/^[A-Z0-9][A-Z0-9-]{5,63}$/u.test(control.releaseId ?? '')) fail('SMOKE_WORKFLOW_CORRECTION_CONTROL_INVALID')
+  const attempted = await transport.readBytes(`gs://${bucket}/receipts/releases/${control.releaseId}/release-intent.json`, { prefixes: ['receipts'] })
+  const baselineIntentRef = await resolveRoutineControlBaseline({ profile, transport, control,
+    attempt: { ...attempted, value: JSON.parse(attempted.bytes.toString('utf8')) } })
+  const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef })
+  const controlProof = await readSmokeReuseControl({ profile, transport, baselineIntentRef, baseline })
+  if (!same(controlProof.ref, head.ref)) fail('SMOKE_WORKFLOW_CORRECTION_CONTROL_INVALID')
+  const { prior, before, version } = await readSmokeWorkflowCorrectionBaseline({ root, profile, transport, priorRef,
+    baselineIntentRef, baseline, sourceRevision: git.sourceRevision })
+  const prefix = `gs://${bucket}/receipts/releases/ORGMASTER-SMOKE-FIX-V${version}-${git.sourceRevision.slice(0, 12).toUpperCase()}`
+  const put = (name, value) => transport.putJson(`${prefix}/${name}.json`, value, { bucket, prefix: 'receipts' })
+  const get = name => optionalJson(transport, `${prefix}/${name}.json`, bucket)
+  const boundSource = { sourceRevision: git.sourceRevision, baselineIntentRef }
+  const verifyReceipt = ({ ref, value }) => assertSmokeWorkflowContractCorrectionContinuation({
+    root, profile, transport, intent: { ...boundSource, infraReceiptRef: ref }, values: { infra: value }, baseline,
+  })
+  const assertCurrentBoundary = async () => {
+    if (!same(readGitAuthority(root, profile), git) ||
+        !same(await readSmokeReuseControl({ profile, transport, baselineIntentRef, baseline }), controlProof)) {
+      fail('SMOKE_WORKFLOW_CORRECTION_CONTROL_CHANGED')
+    }
+    const service = await transport.getService(profile)
+    transport.assertServiceSettled(service)
+    transport.assertCanonicalEntrypoint(profile, service)
+    if (transport.effectiveRevision(service) !== baseline.activeRevision ||
+        [...(service.traffic ?? []), ...(service.trafficStatuses ?? [])].some(row => row.tag)) fail('SMOKE_WORKFLOW_CORRECTION_SERVICE_DRIFT')
+    const secretBase = `projects/${profile.target.projectNumber}/secrets/${profile.verification.candidateRefreshTokenSecretId}/versions/`
+    for (const selector of [version, 'latest']) {
+      const metadata = await transport.request('https://secretmanager.googleapis.com/v1/' + secretBase + selector)
+      if (metadata.name !== secretBase + version || metadata.state !== 'ENABLED') fail('SMOKE_WORKFLOW_CORRECTION_SECRET_DRIFT')
+    }
+  }
+  await assertCurrentBoundary()
+  const previous = await get('app-infra')
+  if (previous) {
+    const result = await verifyReceipt(previous)
+    const live = await readWorkflow(transport, profile)
+    if (live.revisionId !== result.workflowRevisionId || !same(live, (await get('provider-workflow-after'))?.value)) {
+      fail('SMOKE_WORKFLOW_CORRECTION_WORKFLOW_DRIFT')
+    }
+    return { status: 'APPLIED', ref: previous.ref, reused: true }
+  }
+  await terraform.initialize()
+  const infraProfile = JSON.parse(readGitBlob(root, 'config/release/dev040-production-release-infra-plan.json', git.sourceRevision))
+  const checkPlan = plan => assertSmokeCredentialRotationPlan({ root, profile, sourceRevision: git.sourceRevision,
+    previousSourceRevision: prior.sourceRevision, plan, infraProfile, previousVersion: version, nextVersion: version,
+    contractCorrection: true })
+  const checkBefore = async state => {
+    if (state.stateMeta.lineage !== prior.stateLineage || state.stateMeta.serial < prior.stateSerial ||
+        state.manifest.source_revision !== prior.sourceRevision ||
+        state.manifest.migration_runner_digest !== prior.migrationRunnerDigest ||
+        state.manifest.controller_image_digest !== prior.controllerImageDigest ||
+        state.manifest.foundation_manifest_sha256 !== prior.foundationManifestSha256 ||
+        !same(await readWorkflow(transport, profile), before)) fail('SMOKE_WORKFLOW_CORRECTION_BASELINE_DRIFT')
+  }
+  const priorPrepared = await get('prepared')
+  let prepared = priorPrepared?.value
+  let preparedRef = priorPrepared?.ref
+  if (prepared) {
+    assertSeal(prepared, 'orgmaster.smoke-workflow-contract-correction-prepared.v1', 'SMOKE_WORKFLOW_CORRECTION_PREPARED_INVALID')
+    if (!same(prepared.boundSource, boundSource) || !same(prepared.priorRef, priorRef) ||
+        !same(prepared.controlProof, controlProof)) fail('SMOKE_WORKFLOW_CORRECTION_PREPARED_INVALID')
+    checkPlan((await transport.readJson(prepared.planRef, bucket, ['receipts/releases'])).value)
+  } else {
+    const state = await terraform.read()
+    await checkBefore(state)
+    const variables = terraformVariablesFromState({ state: state.stateMeta, profile, sourceRevision: git.sourceRevision,
+      candidateSmokeRefreshTokenSecretVersion: version })
+    const plan = await terraform.plan({ variables })
+    const planProof = checkPlan(plan.plan)
+    if (!apply) return { status: 'READY', sourceRevision: git.sourceRevision, version, addressCount: planProof.addressActions.length }
+    const [planRead, binaryPlan] = await Promise.all([put('plan', plan.plan),
+      transport.putBytes(`${prefix}/plan.bin`, plan.binaryPlan, { bucket, prefix: 'receipts', contentType: 'application/octet-stream' })])
+    prepared = seal({ schemaVersion: 'orgmaster.smoke-workflow-contract-correction-prepared.v1',
+      boundSource, priorRef, controlProof, beforeSerial: state.stateMeta.serial,
+      planRef: planRead.ref, binaryPlanRef: binaryPlan.ref, observedAt: new Date().toISOString() })
+    preparedRef = (await put('prepared', prepared)).ref
+  }
+  if (!apply) return { status: 'PREPARED', sourceRevision: git.sourceRevision, version }
+  const fence = await get('apply-attempt')
+  await submitSmokeRotationApplyOnce({ fenceRead: fence,
+    expectedFence: { schemaVersion: 'orgmaster.smoke-workflow-contract-correction-apply.v1', preparedRef },
+    beforeSubmit: assertCurrentBoundary,
+    readBaseline: async () => {
+      const state = await terraform.read()
+      await checkBefore(state)
+      return state
+    },
+    assertBaseline: state => {
+      if (state.stateMeta.serial !== prepared.beforeSerial) fail('SMOKE_WORKFLOW_CORRECTION_STATE_DRIFT')
+    },
+    readBinaryPlan: () => transport.readBytes(prepared.binaryPlanRef.uri,
+      { prefixes: ['receipts/releases'], expectedSha256: prepared.binaryPlanRef.sha256 }),
+    putFence: value => put('apply-attempt', value),
+    applyPlan: binary => terraform.apply({ binaryPlan: binary.bytes, binaryPlanSha256: prepared.binaryPlanRef.sha256 }),
+  })
+  const [state, workflow] = await Promise.all([terraform.read(), readWorkflow(transport, profile)])
+  assertSmokeWorkflowCorrectionReadback({ root, profile, before, after: workflow, sourceRevision: git.sourceRevision, version })
+  assertSmokeWorkflowCorrectionState({ state, prior, beforeSerial: prepared.beforeSerial, sourceRevision: git.sourceRevision, workflow })
+  await assertCurrentBoundary()
+  const [stateRead, manifestRead, workflowRead] = await Promise.all([
+    put('after-state', state), put('output-manifest', state.manifest), put('provider-workflow-after', workflow),
+  ])
+  const { receiptSha256, smokeRotation, ...priorCore } = prior
+  const receipt = seal({ ...priorCore, sourceRevision: git.sourceRevision, stateSerial: state.stateMeta.serial,
+    mutationProfile: SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE, observedAt: prepared.observedAt,
+    binaryPlanSha256: prepared.binaryPlanRef.sha256, planJsonSha256: prepared.planRef.sha256,
+    stateJsonSha256: stateRead.ref.sha256, outputManifestSha256: manifestRead.ref.sha256,
+    workflowContractCorrection: { schemaVersion: 'orgmaster.smoke-workflow-contract-correction.v1', priorRef,
+      baselineIntentRef, sourceProof, beforeSerial: prepared.beforeSerial, planRef: prepared.planRef,
+      binaryPlanRef: prepared.binaryPlanRef, stateRef: stateRead.ref, manifestRef: manifestRead.ref, workflowRef: workflowRead.ref },
+  })
+  const ref = (await put('app-infra', receipt)).ref
+  await verifyReceipt({ ref, value: receipt })
+  return { status: 'APPLIED', ref, version, workflowRevisionId: workflow.revisionId }
+}
+
+async function operatorInputs(outputKind) {
   const profile = JSON.parse(readGitBlob(root, 'config/release/dev040-orgmaster-independent-production-v3.json'))
   const git = readGitAuthority(root, profile)
   const githubToken = process.env.GITHUB_TOKEN || command('gh', ['auth', 'token'])
@@ -277,11 +520,49 @@ async function main() {
   const token = process.env.GOOGLE_OAUTH_ACCESS_TOKEN || command(process.platform === 'win32' ? 'pwsh' : 'gcloud',
     process.platform === 'win32' ? ['-NoProfile', '-Command', 'gcloud auth print-access-token'] : ['auth', 'print-access-token'])
   const transport = createOwnerTransport({ token })
-  const outputDirectory = path.join(root, 'output', 'smoke-credential-rotation', git.sourceRevision)
+  const outputDirectory = path.join(root, 'output', outputKind, git.sourceRevision)
   await fs.mkdir(outputDirectory, { recursive: true })
   const terraform = createToolTerraform({ root, outputDirectory, environment: { ...process.env, GOOGLE_OAUTH_ACCESS_TOKEN: token } })
-  const result = await executeSmokeCredentialRotation({ root, profile, git, sourceProof, transport, terraform,
-    credentialRef, toolRotationRef, apply: args[0] === '--apply' })
+  return { root, profile, git, sourceProof, transport, terraform }
+}
+
+async function main() {
+  const args = process.argv.slice(2)
+  const priorPrefix = '--correct-workflow-from='
+  if (args.length === 2 && ['--check', '--apply'].includes(args[0]) && args[1].startsWith(priorPrefix)) {
+    const priorRef = parseRef(args[1].slice(priorPrefix.length),
+      /^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/[A-Z0-9][A-Z0-9-]{5,63}\/app-infra\.json#sha256=(?<sha256>[a-f0-9]{64})$/u,
+      'SMOKE_WORKFLOW_CORRECTION_REF_INVALID')
+    const result = await executeSmokeWorkflowCorrection({ ...await operatorInputs('smoke-workflow-correction'),
+      priorRef, apply: args[0] === '--apply' })
+    process.stdout.write(`${JSON.stringify(result)}\n`)
+    return
+  }
+  if (![3, 4, 5].includes(args.length) || !['--check', '--apply'].includes(args[0])) fail('SMOKE_ROTATION_ARGUMENT_INVALID')
+  if (!args[1].startsWith('--credential-ref=') || !args[2].startsWith('--tool-image-rotation-ref=')) fail('SMOKE_ROTATION_ARGUMENT_INVALID')
+  const credentialRef = parseRef(args[1].slice('--credential-ref='.length),
+    /^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/(?:credential-reauth\/[A-Za-z0-9_.-]+|identity\/shared-sync-[A-Za-z0-9_.-]+)\.json#sha256=(?<sha256>[a-f0-9]{64})$/u,
+    'SMOKE_ROTATION_CREDENTIAL_REF_INVALID')
+  const toolRotationRef = parseRef(args[2].slice('--tool-image-rotation-ref='.length),
+    /^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/tool-rotations\/[a-f0-9]{40}\/app-infra\.json#sha256=(?<sha256>[a-f0-9]{64})$/u, 'SMOKE_ROTATION_TOOL_REF_INVALID')
+  const optional = args.slice(3)
+  const predecessorArgument = optional.find(value => value.startsWith('--predecessor-credential-ref='))
+  const platformArgument = optional.find(value => value.startsWith('--platform-credential-ref='))
+  if (optional.length !== Number(Boolean(predecessorArgument)) + Number(Boolean(platformArgument))) fail('SMOKE_ROTATION_ARGUMENT_INVALID')
+  const predecessorCredentialRef = predecessorArgument
+    ? parseRef(predecessorArgument.slice('--predecessor-credential-ref='.length),
+      /^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/credential-reauth\/[A-Za-z0-9_.-]+\.json#sha256=(?<sha256>[a-f0-9]{64})$/u,
+      'SMOKE_ROTATION_PREDECESSOR_CREDENTIAL_REF_INVALID')
+    : null
+  const platformCredentialRef = platformArgument
+    ? parseRef(platformArgument.slice('--platform-credential-ref='.length),
+      /^gs:\/\/jenfu-platform-prod-platform-release\/receipts\/credential-reauth\/[A-Za-z0-9_.-]+\.json#sha256=(?<sha256>[a-f0-9]{64})$/u,
+      'SMOKE_ROTATION_PLATFORM_CREDENTIAL_REF_INVALID')
+    : null
+  if (credentialRef.uri.includes('/receipts/identity/') !== Boolean(platformCredentialRef) ||
+      (platformCredentialRef && predecessorCredentialRef)) fail('SMOKE_ROTATION_ARGUMENT_INVALID')
+  const result = await executeSmokeCredentialRotation({ ...await operatorInputs('smoke-credential-rotation'),
+    credentialRef, platformCredentialRef, predecessorCredentialRef, toolRotationRef, apply: args[0] === '--apply' })
   process.stdout.write(`${JSON.stringify(result)}\n`)
 }
 

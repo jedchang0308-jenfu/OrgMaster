@@ -1,0 +1,11 @@
+{
+  "contractVersion": "fms.catalog-initialization-handoff.v1",
+  "owner": "financial-management-system",
+  "consumers": [
+    "orgmaster"
+  ],
+  "files": {
+    "projection-signature.json": "98ad13e46b91f84186411731056bc6d9f37095fab344567acbaf42a7880e62f0"
+  },
+  "compatibility": "Independent read-only initialization issuance contract; existing FmsCatalogReleaseInput and normal governance-intent v1 unchanged."
+}

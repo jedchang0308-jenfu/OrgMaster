@@ -1,0 +1,24 @@
+{
+  "contractVersion": "orgmaster.administration-enrollment.v1",
+  "producer": "orgmaster",
+  "consumer": "platform",
+  "endpoint": "/api/internal/administration-enrollment/v1/complete",
+  "method": "POST",
+  "serviceAuthentication": "existing Platform Google OIDC caller verifier; no cookies or browser-origin requests",
+  "humanProof": "idToken only in HTTP memory; Firebase Google crypto verification, owner-admitted immutable Directory key, fresh AAL1 or AAL2 <=300s",
+  "requestSchema": {
+    "path": "request.schema.json",
+    "sha256": "25e6a36e22fe01bbe7d08bdf2905afac5bae01aec11e6b8ff7398ce6fc4861e2"
+  },
+  "responseSchema": {
+    "path": "response.schema.json",
+    "sha256": "5b05384cd6c998f7dac1bd0739798b70b3851c37ce584e292a1f18c9bb39fb74"
+  },
+  "statuses": [
+    "not_applicable",
+    "activation_pending",
+    "completed"
+  ],
+  "principalResolution": "verified provider pair to canonical exact Principal; never Employee broadcast or managed-login DTO synthesis",
+  "sessionIssuance": "consumer resolves actual Principal and epoch again after completed; activation_pending is never root/session authority"
+}

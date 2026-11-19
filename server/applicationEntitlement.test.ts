@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -8,7 +8,7 @@ import { readFinancialRoleCatalog } from './financialRoleCatalogRepository'
 import { appendGovernanceAudit, ensureGovernanceStore, getGovernancePaths, loadOrganizationSource, publishGovernance, readGovernanceCommandResult, readGovernanceStore, setActivePolicy } from './orgmasterGovernanceStore'
 import { GOVERNANCE_PUBLICATION_HASH_FORMAT, publicationSnapshotHash, sha256 } from '../src/governance/commands'
 import { previewFinancialManagementGrant, publishFinancialManagementGrant } from './applicationManagementGrantStore'
-import { previewFinancialRoleAssignment, publishFinancialRoleAssignment } from './applicationRoleAssignmentStore'
+import { previewFinancialRoleAssignment, publishFinancialRoleAssignment, readFinancialRoleAssignmentReceipt } from './applicationRoleAssignmentStore'
 import { assertFinancialAuthority, FINANCIAL_PROTECTED_OPERATIONS, FINANCIAL_ROLE_ASSIGNMENT_MANAGE, FINANCIAL_ROLE_ASSIGNMENT_PUBLISH } from './applicationEntitlementCommon'
 import { FINANCIAL_CATALOG_VERSION } from '../src/governance/financialCatalog'
 import { readApplicationRoleCatalogs } from './applicationRoleCatalogRegistry'
@@ -107,6 +107,27 @@ describe('DEV-039 generic Financial entitlement v2', () => {
       .rejects.toMatchObject({ code: 'COMMAND_ID_REUSED' })
     expect((await readGovernanceStore(root)).revision).toBe(latest.revision)
     await expect(previewFinancialRoleAssignment(root, actor, { ...input, expectedGovernanceRevision: latest.revision, expectedCatalogPayloadHash: 'f'.repeat(64) })).rejects.toMatchObject({ code: 'CATALOG_BINDING_CONFLICT' })
+
+    // Revocation must still commit through the native store after the target
+    // Employee is disabled; excluding them from new grants is not enough.
+    const sourcePath = join(root, 'data', 'orgmaster-versions', `${source.workspaceVersionId}.json`)
+    const organization = JSON.parse(await readFile(sourcePath, 'utf8'))
+    organization.state.employees.find((employee: { id: string }) => employee.id === targetEmployeeId).status = 'inactive'
+    await writeFile(sourcePath, `${JSON.stringify(organization, null, 2)}\n`)
+    const inactiveSource = await loadOrganizationSource(root)
+    const beforeRevoke = await readGovernanceStore(root)
+    const assignment = beforeRevoke.document.draft.roleAssignments.find(row => row.employeeId === targetEmployeeId && row.roleId === input.stableRoleId)!
+    const revoke = { ...input, operation: 'revoke' as const, assignmentId: assignment.id,
+      reason: 'DEV-060 revoke inactive Employee assignment',
+      expectedGovernanceRevision: beforeRevoke.revision, expectedOrganizationRevision: inactiveSource.workspaceRevision }
+    const revokePreview = await previewFinancialRoleAssignment(root, actor, revoke)
+    const revokeCommand = { ...revoke, commandId: 'dev060-inactive-revoke',
+      requestHash: revokePreview.requestHash, previewHash: revokePreview.previewHash }
+    const revoked = await publishFinancialRoleAssignment(root, actor, revokeCommand)
+    expect(revoked.receiptStatus).toBe('applied')
+    expect((await readGovernanceStore(root)).document.draft.roleAssignments.find(row => row.id === assignment.id)?.status).toBe('revoked')
+    expect(await readFinancialRoleAssignmentReceipt(root, revoked.commandId, actor)).toMatchObject({ receiptStatus: 'applied', auditReference: revoked.auditReference })
+    expect((await publishFinancialRoleAssignment(root, actor, revokeCommand)).replayed).toBe(true)
   })
 
   it('allows only exact privileged admins to establish a Financial management grant and preserves a governor', async () => {

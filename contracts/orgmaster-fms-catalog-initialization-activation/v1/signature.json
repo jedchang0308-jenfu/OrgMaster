@@ -1,0 +1,7 @@
+{
+  "function": "orgmaster_contract.read_fms_catalog_initialization_activation_v1",
+  "arguments": ["principal text", "employee text", "initialization_operation_id text", "initialization_receipt_id text", "catalog_version text", "content_sha256 text", "artifact_sha256 text"],
+  "returns": "jsonb nullable",
+  "security": "SECURITY DEFINER; search_path=pg_catalog; exact fms_runtime EXECUTE; no PUBLIC or sibling runtime access",
+  "effects": "read-only; exact immutable operation receipt plus current FMS catalog binding; no root roster or raw policy"
+}

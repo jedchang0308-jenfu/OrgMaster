@@ -2,10 +2,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getWorkspacePaths, getWorkspaceIndex, getWorkspaceVersion, createWorkspaceDraft, saveWorkspaceVersion, saveWorkspaceVersionUnlocked, updateWorkspaceEntry, WorkspaceStoreError } from './orgmasterWorkspaceStore'
+import { getWorkspacePaths, getWorkspaceVersionPath, getWorkspaceIndex, getWorkspaceVersion, createWorkspaceDraft, saveWorkspaceVersion, saveWorkspaceVersionUnlocked, updateWorkspaceEntry, WorkspaceStoreError } from './orgmasterWorkspaceStore'
 import * as persistenceRepository from './orgmasterPersistenceRepository'
 import { createOrgDocumentFile } from '../src/documentStorage'
 import { screenshotOrganizationState } from '../src/screenshotData'
+import { validateWorkspaceIndex, validateWorkspaceVersionSummary } from '../src/versionWorkspace'
 
 const roots: string[] = []
 async function root() {
@@ -104,6 +105,25 @@ describe('workspace disk store', () => {
     await mkdir(join(path, 'data'), { recursive: true })
     await writeFile(paths.manifest, JSON.stringify({ app: 'OrgMaster', workspaceVersion: 1, currentVersionId: 'missing', entries: [] }), 'utf8')
     await expect(getWorkspaceIndex(path)).rejects.toBeInstanceOf(WorkspaceStoreError)
+  })
+
+  it('keeps the workspace index readable when one stored draft fails to load', async () => {
+    const path = await root()
+    const legacyPath = join(path, 'data', 'orgmaster-document.v4.json')
+    await mkdir(join(path, 'data'), { recursive: true })
+    await writeFile(legacyPath, JSON.stringify(createOrgDocumentFile(screenshotOrganizationState, 'document')), 'utf8')
+    const index = await getWorkspaceIndex(path)
+    const { createdVersionId } = await createWorkspaceDraft(path, index.currentVersionId, '損壞草稿', index.manifestRevision)
+    await writeFile(getWorkspaceVersionPath(path, createdVersionId), '{}', 'utf8')
+
+    const result = await getWorkspaceIndex(path)
+    const [current, failedDraft] = result.versions
+    expect(current).toMatchObject({ id: index.currentVersionId, loadStatus: 'ready' })
+    expect(failedDraft).toMatchObject({ id: createdVersionId, loadStatus: 'failed', revision: '', failureCode: 'VERSION_INVALID' })
+    expect(validateWorkspaceIndex(result)).toEqual({ ok: true, value: result })
+    expect(validateWorkspaceIndex({ ...result, versions: [{ ...current, revision: '' }, failedDraft] })).toEqual({ ok: false, code: 'WORKSPACE_ENTRY_INVALID' })
+    expect(validateWorkspaceIndex({ ...result, versions: [current, { ...failedDraft, failureCode: '' }] })).toEqual({ ok: false, code: 'WORKSPACE_ENTRY_INVALID' })
+    expect(validateWorkspaceVersionSummary(failedDraft)).toEqual({ ok: false, code: 'WORKSPACE_ENTRY_INVALID' })
   })
 
   it('requires a Principal actor for cloud-SQL workspace writers before reading state', async () => {

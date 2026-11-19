@@ -152,6 +152,7 @@ export function createGoogleDirectoryAuthPort(input: {
   transport?: GoogleDirectoryCredentialTransport
   now?: () => number
   timeoutMs?: number
+  sourceAuth?: Pick<GoogleAuth,'getClient'>
 }): GoogleDirectoryAuthPort {
   const delegatedSubject = normalizedEmail(input.delegatedSubject)
   const serviceAccountEmail = normalizedServiceAccountEmail(input.serviceAccountEmail)
@@ -160,7 +161,7 @@ export function createGoogleDirectoryAuthPort(input: {
 
   const transport = input.transport ?? defaultCredentialTransport()
   const now = input.now ?? Date.now
-  const sourceAuth = new GoogleAuth({ scopes: [GOOGLE_IAM_CREDENTIALS_SCOPE] })
+  const sourceAuth = input.sourceAuth ?? new GoogleAuth({ scopes: [GOOGLE_IAM_CREDENTIALS_SCOPE] })
   let cachedToken: { value: string; expiresAt: number } | undefined
   let tokenRefresh: Promise<string> | undefined
 

@@ -1,8 +1,9 @@
-import { historicalAiPdmRoleSnapshotMatches, validateExternalRoleCatalog } from './aiPdmCatalog'
-import { validateFinancialExternalRoleCatalog } from './financialCatalog'
+import { historicalAiPdmRoleSnapshotMatches, ORGMASTER_WORKSPACE_VIEWER_ROLE, validateExternalRoleCatalog } from './aiPdmCatalog'
+import { historicalFinancialRoleSnapshotMatches, validateFinancialExternalRoleCatalog } from './financialCatalog'
 import { classifyAssignmentSurface, genericV2AssignmentSurfaceIssue, isSystemAdminRoleIdentity } from './assignmentSurface'
 import type { ExternalRoleCatalogSnapshotV1, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyDataV1, GovernancePolicyDataV2, GovernancePolicyDataV3, GovernancePolicyVersionV1, GovernanceRoleAssignmentV2, GovernanceRoleDelegationV2, GovernanceScopeV1 } from './types'
 import { isSha256, issuerFingerprintSha256, principalFingerprintSha256 } from './identityAdmission'
+import { administrationPolicySchema } from './administration'
 
 export type GovernanceValidationIssue = { code: string; path: string; message: string }
 export class GovernanceValidationError extends Error {
@@ -81,6 +82,15 @@ export function validateGenericV2AssignmentSurface(assignment: GovernanceRoleAss
 export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: GovernanceOrgSource, catalogs: ExternalRoleCatalogSnapshotV1[] = [], at = new Date().toISOString()): GovernanceValidationIssue[] {
   const issues: GovernanceValidationIssue[] = []
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
+  const viewerRoleId = ORGMASTER_WORKSPACE_VIEWER_ROLE.id
+  if (data.rolePermissionGrants.some(grant => grant.roleId === viewerRoleId && grant.effect === 'allow')) {
+    add('WORKSPACE_VIEWER_PERMISSION_INVALID', 'rolePermissionGrants', '工作區唯讀角色不可授予其他操作權限')
+  }
+  for (const [index, assignment] of data.roleAssignments.entries()) {
+    if (assignment.roleId === viewerRoleId && assignment.validTo === null) {
+      add('EFFECTIVE_PERIOD_INVALID', `roleAssignments[${index}].validTo`, '工作區唯讀指派必須設定截止時間')
+    }
+  }
   const ids = <T extends { id: string }>(items: T[], path: string) => { const seen = new Set<string>(); items.forEach((item, index) => { if (!item.id || seen.has(item.id)) add('DUPLICATE_ID', `${path}[${index}].id`, 'id 必須唯一'); seen.add(item.id) }) }
   ids(data.applications, 'applications'); ids(data.identityLinks, 'identityLinks'); ids(data.applicationRoles, 'applicationRoles'); ids(data.permissions, 'permissions'); ids(data.rolePermissionGrants, 'rolePermissionGrants'); ids(data.roleAssignments, 'roleAssignments'); ids(data.roleDelegations, 'roleDelegations'); ids(data.principalAdmissions ?? [], 'principalAdmissions')
   const identityById = new Map(data.identityLinks.map((link) => [link.id, link]))
@@ -119,7 +129,15 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
   }
   const activeAssignments = new Map<string, GovernanceRoleAssignmentV2>()
   for (const [index, assignment] of data.roleAssignments.entries()) {
-    const role = roles.get(assignment.roleId); const catalog = assignment.applicationId === 'ai-pdm' || assignment.applicationId === 'financial-management-system' ? catalogByApp.get(assignment.applicationId) : undefined; const catalogRole = catalog?.roles.find((entry) => entry.stableRoleId === assignment.roleId)
+    const role = roles.get(assignment.roleId)
+    const currentCatalog = assignment.applicationId === 'ai-pdm' || assignment.applicationId === 'financial-management-system' ? catalogByApp.get(assignment.applicationId) : undefined
+    // Revoked FMS rows retain their original owner-published snapshot. They do
+    // not grant access, and restoring them must still use the current catalog.
+    const historicalFinancialCatalog = assignment.applicationId === 'financial-management-system' && assignment.status === 'revoked'
+      ? catalogs.find(entry => entry.applicationId === assignment.applicationId && entry.catalogVersion === assignment.catalogVersion
+        && !validateFinancialExternalRoleCatalog(entry).length) : undefined
+    const catalog = historicalFinancialCatalog ?? currentCatalog
+    const catalogRole = catalog?.roles.find((entry) => entry.stableRoleId === assignment.roleId)
     if (source && !employeeIds.has(assignment.employeeId)) add('EMPLOYEE_NOT_FOUND', `roleAssignments[${index}].employeeId`, 'employee 不存在')
     if (!role && assignment.applicationId === 'orgmaster') add('REFERENCE_NOT_FOUND', `roleAssignments[${index}].roleId`, 'OrgMaster role 不存在')
     if (!isScopeValid(assignment.scope)) add('SCOPE_INVALID', `roleAssignments[${index}].scope`, 'scope 無效')
@@ -139,8 +157,10 @@ export function validatePolicyDataV2(data: GovernancePolicyDataV2, source?: Gove
         if (!catalogRole.allowedScopeKinds.includes(assignment.scope.kind)) add('EXTERNAL_SCOPE_UNSUPPORTED', `roleAssignments[${index}].scope`, '外部 role 不允許此 scope')
         const currentSnapshot = assignment.catalogVersion === catalog?.catalogVersion &&
           assignment.roleCodeSnapshot === catalogRole.code && assignment.roleNameSnapshot === catalogRole.displayName
-        const historicalSnapshot = assignment.applicationId === 'ai-pdm' &&
-          historicalAiPdmRoleSnapshotMatches(assignment, catalogRole, catalogs)
+        const historicalSnapshot = assignment.applicationId === 'ai-pdm'
+          ? historicalAiPdmRoleSnapshotMatches(assignment, catalogRole, catalogs)
+          : assignment.applicationId === 'financial-management-system'
+            && historicalFinancialRoleSnapshotMatches(assignment, catalogRole, catalogs)
         if ((!currentSnapshot && !historicalSnapshot) || assignment.effectState !== 'not-synchronized') add('EXTERNAL_ASSIGNMENT_SNAPSHOT_INVALID', `roleAssignments[${index}]`, '外部 role snapshot 與 catalog 不一致')
       }
     }
@@ -182,6 +202,7 @@ export function validatePolicyDataV3(data: GovernancePolicyDataV3, source?: Gove
     .filter((assignment) => !isSystemAdminRoleIdentity({ stableRoleId: assignment.roleId, code: assignment.roleCodeSnapshot }))
     .map(({ basis: _basis, subjectKind: _subjectKind, targetPrincipalId: _targetPrincipalId, sources: _sources, metadata: _metadata, createdByPrincipalId: _createdByPrincipalId, createdReason: _createdReason, ...assignment }) => assignment)
   const issues = validatePolicyDataV2({ ...data, roleAssignments: ordinaryAssignments }, source, catalogs, at)
+  if (data.administration !== undefined && !administrationPolicySchema.safeParse(data.administration).success) issues.push({ code: 'ADMINISTRATION_INVALID', path: 'administration', message: '平台管理授權格式無效' })
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message })
   const catalog = catalogs.find((value) => value.applicationId === 'ai-pdm')
   const admissions = data.principalAdmissions ?? []

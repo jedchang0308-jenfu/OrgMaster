@@ -1,13 +1,13 @@
 import { createServer } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createOrgmasterAuthMiddleware, isAllowedOrgmasterRequestOrigin, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
+import { createOrgmasterAuthMiddleware, createOrgmasterAuthRuntime, isAllowedOrgmasterRequestOrigin, type OrgmasterAuthRuntime } from './orgmasterAuthApi'
 import type { OrgmasterAuthConfig } from './orgmasterAuthConfig'
 import { hashSessionToken } from './orgmasterAuthCookies'
 import type { OrgmasterSession } from './orgmasterSessionRepository'
 import { PrincipalAdmissionError } from './orgmasterPrincipalAdmissionRepository'
 
 const openServers: Array<ReturnType<typeof createServer>> = []
-afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(openServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
+afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await Promise.all(openServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))) })
 
 function configuredRuntime(overrides: Partial<OrgmasterAuthRuntime> = {}) {
   const config: OrgmasterAuthConfig = {
@@ -46,6 +46,63 @@ async function listen(runtime: OrgmasterAuthRuntime, businessRead: () => void = 
 }
 
 describe('OrgMaster auth middleware', () => {
+  it('keeps local principal sandbox requests on native session middleware and hides synthetic development profiles', async () => {
+    vi.stubEnv('ORGMASTER_PERSISTENCE_MODE', '')
+    vi.stubEnv('ORGMASTER_POSTGRES_URL', '')
+    const session: OrgmasterSession = {
+      id: 'local-session-row', identityIssuer: 'urn:jenfu:local-principal-sandbox', identitySubject: 'local-scenario',
+      principalId: 'local-principal', employeeId: 'employee-local-principal', authEpoch: 3,
+      sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 3,
+      issuedAt: new Date().toISOString(), authenticatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
+    }
+    const localSandbox = {
+      enabledCandidate: true,
+      mode: vi.fn(async (correlationId: string) => ({ authMode: 'local_principal_sandbox' as const, localSandboxEnabled: true as const, correlationId })),
+      start: vi.fn(async () => ({ location: 'http://127.0.0.1:8000/api/local-sandbox/authorize?clientId=orgmaster&redirectUri=http%3A%2F%2F127.0.0.1%3A5173%2Fapi%2Fauth%2Flocal-sandbox%2Fcallback', cookie: 'orgmaster_local_tx_test=transaction; Path=/api/auth/local-sandbox/callback' })),
+      callback: vi.fn(async () => ({ location: '/', cookie: 'orgmaster_local_session_test=token; Path=/', clearTransactionCookie: 'orgmaster_local_tx_test=; Max-Age=0' })),
+      verify: vi.fn(async () => ({ session, profile: {} as never, persistenceTargetUrl: 'postgres://sandbox_runtime:synthetic@127.0.0.1:53761/jenfu_local_orgmaster_test' })),
+      logout: vi.fn(async () => ({ cookies: ['orgmaster_local_session_test=; Max-Age=0'] })),
+      clearSessionCookie: vi.fn(async () => 'orgmaster_local_session_test=; Max-Age=0'),
+      close: vi.fn(async () => undefined),
+    }
+    const runtime: OrgmasterAuthRuntime = {
+      configResult: { configured: false, missing: [], reason: 'local test mode' },
+      localSandbox: localSandbox as unknown as NonNullable<OrgmasterAuthRuntime['localSandbox']>,
+    }
+    const base = await listen(runtime, () => undefined, true)
+    const mode = await fetch(`${base}/api/auth/mode`)
+    expect(mode.status).toBe(200)
+    expect(await mode.json()).toMatchObject({ authMode: 'local_principal_sandbox', localSandboxEnabled: true })
+    expect((await fetch(`${base}/api/auth/development/profiles`)).status).toBe(404)
+    expect((await fetch(`${base}/api/auth/firebase/session`, { method: 'POST' })).status).toBe(410)
+
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start`, { redirect: 'manual' })
+    expect(start.status).toBe(302)
+    expect(start.headers.get('location')).toContain('%2Fapi%2Fauth%2Flocal-sandbox%2Fcallback')
+    expect(start.headers.get('set-cookie')).toContain('orgmaster_local_tx_test')
+
+    expect((await fetch(`${base}/api/protected`)).status).toBe(200)
+    expect((await fetch(`${base}/api/protected`)).status).toBe(200)
+    expect(localSandbox.verify).toHaveBeenCalledTimes(2)
+    const logout = await fetch(`${base}/api/auth/logout`, {
+      method: 'POST', headers: { origin: base, 'content-type': 'application/json' }, body: '{}',
+    })
+    expect(logout.status).toBe(200)
+    expect(localSandbox.logout).toHaveBeenCalledTimes(1)
+    expect(runtime.firebase).toBeUndefined()
+  })
+
+  it('selects local-only runtime before reading formal Firebase or Google configuration', () => {
+    const environment = { NODE_ENV: 'development', JENFU_LOCAL_SANDBOX_ENABLED: '1' } as NodeJS.ProcessEnv
+    const runtime = createOrgmasterAuthRuntime(environment)
+    expect(runtime.localSandbox?.enabledCandidate).toBe(true)
+    expect(runtime.firebase).toBeUndefined()
+    expect(runtime.principals).toBeUndefined()
+    expect(runtime.sessions).toBeUndefined()
+    return runtime.localSandbox?.close()
+  })
+
   it.each(['runtime', 'environment'] as const)('disables dev profiles, cookies and headers when SSO is enabled by %s', async authority => {
     if (authority === 'environment') vi.stubEnv('ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'on')
     const { runtime } = configuredRuntime({ ssoHandoffEnabled: authority === 'runtime' })
@@ -210,6 +267,107 @@ describe('OrgMaster auth middleware', () => {
     const second = await fetch(`${base}/api/protected`, { headers: { cookie: `orgmaster_session=${token}` } })
     expect(second.status).toBe(401)
     expect(await second.json()).toMatchObject({ code: 'auth_epoch_stale' })
+  })
+
+  it('emits local-only sanitized diagnostics for the failing session auth stage', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    const { runtime } = configuredRuntime()
+    const token = 'diagnostic-session-token-that-must-not-be-logged'
+    const secretMessage = `private-error ${token} sentinel`
+    const lookupError = Object.assign(new Error(secretMessage), { code: '08006' })
+    runtime.sessions!.findByHash = vi.fn(async () => { throw lookupError })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const base = await listen(runtime)
+
+    const response = await fetch(`${base}/api/protected`, {
+      headers: { cookie: `orgmaster_session=${token}`, 'x-correlation-id': 'local-auth-diag-001' },
+    })
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ code: 'auth_server_not_configured' })
+    expect(log).toHaveBeenCalledOnce()
+    expect(log.mock.calls[0]?.[0]).toBe('ORGMASTER_AUTH_DIAGNOSTIC')
+    const diagnostic = JSON.parse(String(log.mock.calls[0]?.[1])) as Record<string, unknown>
+    expect(diagnostic).toMatchObject({
+      event: 'orgmaster_auth_failure',
+      correlationId: 'local-auth-diag-001',
+      stage: 'session_lookup',
+      errorName: 'Error',
+      errorCode: '08006',
+    })
+    expect(Array.isArray(diagnostic.stackFrames)).toBe(true)
+    expect((diagnostic.stackFrames as string[]).length).toBeLessThanOrEqual(3)
+    expect(JSON.stringify(diagnostic)).not.toContain(secretMessage)
+    expect(JSON.stringify(diagnostic)).not.toContain(token)
+  })
+
+  it('identifies principal resolution and principal state failures without exposing error messages', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const token = 'diagnostic-principal-stage-token-that-must-not-be-logged'
+    const cases = [
+      { stage: 'principal_resolution', fail: (runtime: OrgmasterAuthRuntime) => {
+        runtime.principals!.resolveActivePrincipal = vi.fn(async () => { throw new PrincipalAdmissionError('principal_directory_unavailable') })
+      } },
+      { stage: 'principal_state', fail: (runtime: OrgmasterAuthRuntime) => {
+        runtime.epochs!.readPrincipalState = vi.fn(async () => { throw new Error(`private-state-message ${token}`) })
+      } },
+    ] as const
+
+    for (const [index, testCase] of cases.entries()) {
+      const { runtime, config, sessions } = configuredRuntime()
+      sessions.set(hashSessionToken(config.sessionHashPepper, token), {
+        id: `diagnostic-session-${index}`, identityIssuer: config.identityIssuer, identitySubject: 'uid-1',
+        principalId: 'principal-1', employeeId: 'employee-1', authEpoch: 0,
+        sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 0,
+        issuedAt: new Date().toISOString(), authenticatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(), revokedAt: null, assuranceLevel: 'aal1',
+      })
+      testCase.fail(runtime)
+      const base = await listen(runtime)
+      const response = await fetch(`${base}/api/protected`, { headers: { cookie: `orgmaster_session=${token}` } })
+
+      expect(response.status).toBe(503)
+      const entries = log.mock.calls.map((call) => JSON.parse(String(call[1])) as Record<string, unknown>)
+      expect(entries.at(-1)).toMatchObject({ stage: testCase.stage })
+      expect(JSON.stringify(entries.at(-1))).not.toContain(token)
+      expect((entries.at(-1)?.stackFrames as string[]).length).toBeLessThanOrEqual(3)
+    }
+  })
+
+  it('does not emit auth diagnostics for production mode or a nonlocal runtime URL', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { runtime: productionRuntime } = configuredRuntime()
+    productionRuntime.sessions!.findByHash = vi.fn(async () => { throw new Error('private failure') })
+    vi.stubEnv('NODE_ENV', 'production')
+    const productionBase = await listen(productionRuntime)
+    const productionResponse = await fetch(`${productionBase}/api/protected`, { headers: { cookie: 'orgmaster_session=opaque-token-value' } })
+    expect(productionResponse.status).toBe(503)
+    expect(log).not.toHaveBeenCalled()
+
+    vi.stubEnv('NODE_ENV', 'development')
+    const { runtime: remoteRuntime } = configuredRuntime()
+    if (remoteRuntime.configResult.configured) remoteRuntime.configResult.config.publicBaseUrl = new URL('https://orgmaster.example.test')
+    remoteRuntime.sessions!.findByHash = vi.fn(async () => { throw new Error('private failure') })
+    const remoteBase = await listen(remoteRuntime)
+    const remoteResponse = await fetch(`${remoteBase}/api/protected`, { headers: { cookie: 'orgmaster_session=another-opaque-token' } })
+    expect(remoteResponse.status).toBe(503)
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  it('diagnoses missing runtime dependencies on local development requests', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('ORGMASTER_PUBLIC_BASE_URL', 'http://127.0.0.1:5173')
+    const runtime: OrgmasterAuthRuntime = { configResult: { configured: false, missing: ['ORGMASTER_POSTGRES_URL'], reason: 'test' } }
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const base = await listen(runtime)
+
+    const response = await fetch(`${base}/api/protected`)
+
+    expect(response.status).toBe(503)
+    expect(log).toHaveBeenCalledOnce()
+    const diagnostic = JSON.parse(String(log.mock.calls[0]?.[1])) as Record<string, unknown>
+    expect(diagnostic).toMatchObject({ stage: 'runtime_dependencies', errorCode: 'auth_server_not_configured' })
   })
 
   it('allows the development identity only for exact headers on loopback', async () => {

@@ -79,3 +79,8 @@ QA 入口：管理者正常 SSO → 員工明細 → 員工編號與登入身分
 - 本節僅為本機修正出口；required CI、exact master來源、新owner release及正式行為readback仍須取得實際證據。
 
 - PR105首輪required CI `37259004603`：runtime container、完整257 owner tests、catalog測試及boundary均PASS；QC固定子集合實際214/214 PASS，但入口仍要求舊207分母，故在app tests/build之前退出1。不是測試失敗，也未發布。依該精確log將原固定分母同步至214，保留固定完整分母／fail0要求，在同PR續修；不直接重跑原提交或跳過CI。證據`JENFU/output/dev-012/inputs/dev057-rotation-pr105-ci-failure.log`。
+
+## DEV060 managed-identity route wiring follow-up（2026-10-31）
+
+- OrgMaster DEV060 branch `0146fb3986d888bc3bc3de62909cf67ec8c954f3` 的 managed-identity API 在 Vite serve／preview 共用 configured auth runtime 的 service；focused tests 67/67、TypeScript PASS（主控回報）。這是 route wiring／source 驗證，不是本文件 DEV-057 的正式驗收結果。
+- 主控回報非正式 Firebase C（與 A 共用 Employee、既有角色不變）沿正常員工編號→真 Directory candidate→confirm 三步，均 HTTP 200，最終 `directory_linked_pending_auth`；該時點 admission 關閉，私有證據 `google-normal-enrollment-r3.json`。其後僅隔離資料庫准入已沿真實中央 epoch 證據啟用。首次正常 Google 登入尚未通過：Platform `managed_login_intents` insert 遇 migration 007 HTTPS-only origin constraint（23514），與 owner-config 已允許的 HTTP loopback 不一致；等待 Platform forward migration。此處不宣稱登入、managed lifecycle 或正式驗收 PASS。

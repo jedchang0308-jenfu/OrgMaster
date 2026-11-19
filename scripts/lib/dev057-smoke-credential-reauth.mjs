@@ -144,8 +144,9 @@ export function assertExpectedPair(claims, expected) {
 }
 export function assertFreshAuthTime(claims, nowMs = Date.now(), maxAgeSeconds = EXPECTED.maxAuthAgeSeconds) {
   const nowSeconds = Math.floor(nowMs / 1000)
+  const authAgeSeconds = nowSeconds - claims?.auth_time
   if (!Number.isInteger(claims?.auth_time) || claims.auth_time > nowSeconds + 30 ||
-      nowSeconds - claims.auth_time < 0 || nowSeconds - claims.auth_time > maxAgeSeconds) fail('PASSWORD_AUTH_TIME_STALE')
+      authAgeSeconds < -30 || authAgeSeconds > maxAgeSeconds) fail('PASSWORD_AUTH_TIME_STALE')
   return true
 }
 export function assertAccountLookup(account, expectedSubject) {

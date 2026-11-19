@@ -2,6 +2,8 @@
 
 This directory owns the OrgMaster portion of the DEV-010 shared PostgreSQL database.
 
+ProJED source candidate (2026-11-19): the unchanged master release prefix contains 60 entries through 064. Unpublished ProJED drafts were renamed to 065–067 with unchanged SQL bytes; their dedicated append mode accepts only the exact 60–63 ledger prefixes. The current profile has 63 entries. These files have not been applied to production.
+
 ## Boundary
 
 - Owned schemas: `orgmaster_core`, `orgmaster_contract`.
@@ -43,16 +45,23 @@ Migration 026 corrects the published-policy path used by the v2 OrgMaster sessio
 
 Migration 028 is a local DEV-057 candidate for `orgmaster_contract.v_ai_pdm_principal_effective_grants_v3`. It retains the published governance, typed account, ownership, scope, delegation and validity fences of v2 while removing the per-employee `v_ai_pdm_entitlement_authority_v1` join and `authority_version` output. It creates a new versioned manifest row and leaves v2 and all historical authority data intact. Disposable PostgreSQL producer QC passes; the AI-PDM consumer, exact owner release profile and Production readback are still pending, so 028 is not yet an executable Production release package.
 
-Migration 042 is a source-only DEV-057 forward grant for the Platform-owned SECURITY DEFINER ProJED state reader. It grants the existing `jenfu_platform_migrator` SELECT on `orgmaster_contract.v_projed_principal_admissions_v1`; it grants no direct core or runtime access and adds no workload identity, IAM binding, or business permission. It has not been applied to a persistent environment or included in a formal release package.
+Migration 047 adds typed AI-PDM Principal readers and shares the live V1/V5 projection without removing the legacy ABI, validation, or request freshness. It is formal manifest order 43; local046/bootstrap071 remain separate. See DEV-070 §25.
 
-## DEV-057 ProJED principal append — source candidate only
+Migration 053 keeps the existing FMS v4 point reader signature and adds
+`orgmaster_contract.read_fms_principal_admission_v2(text,text)` (issuer,
+subject) and `orgmaster_contract.read_fms_principal_display_profile_v1(text,text)`
+(Principal, Employee). The latter returns an optional name for a currently
+FMS-qualified exact pair. The existing enumeration, admission and display
+views remain available. The active artifact publication and its indexed facts
+commit together. Reads still evaluate expiry and lifecycle delivery state.
+Formal manifest order 49 appends to the unchanged 48-entry predecessor.
 
-The protected release profile before this candidate contains 38 entries: migrations 001–031 and 034–040. It intentionally excludes 032／033. Some local full-baseline fixtures do include 032／033; those fixtures are not the formal profile. The candidate keeps the first 38 entries and hashes unchanged, then appends existing SQL migrations 041 and 042 at entries 39 and 40. Neither migration SQL file was changed for this release-preparation source.
+> Migration 054 adds a restricted publication status check over the active
+  workspace and FMS catalog facts. A published catalog may have zero qualified
+  principals. JF-FMS distinguishes that case from missing or ambiguous
+  publication without enumerating other principals.
 
-The append mode is `DEV057_PROJED_PRINCIPAL_APPEND`, selected with `--dev057-projed-principal-append --dev057-infra-ref=ownImmutableRef`. The ordinary owner path remains `UNCHANGED_VERIFIED`. For the exact 40-entry bundle, an exact 38-row ledger applies only 041／042, 39 rows applies only 042, and 40 rows replays. The runner recognizes only existing counts 38, 39 and 40 and rejects 41, unknown versions, checksum changes and non-prefix ledgers before migration writes. The candidate receipt is owner-DB／source-revision／manifest bound, allows applied=0–2 with two pending migrations, and retains both `jenfu_dev` and `jenfu_stg` connection-denial probes.
-
-The local evidence remains separated by its original runner reports: existing R2 `439/439`; migration-module `4`, profile `22`, runner `11`, owner-stage `26`, and tool-focus `2` are separate result counts and are not added into a new total. The initial `132/134` failure is retained; its two failures were older DEV-059 fixtures using the new 40-entry profile. They now use the historical 38-entry slice, and the focused correction passed `5/5` without rewriting the first result. The existing 18 OrgMaster checks, six ProJED source-flow cases and five legacy Platform login cases remain bound to their original bundle/source hashes because 041／042 SQL did not change.
-
-The source recipe and Docker `COPY` inputs are prepared, but the immutable migration-tool image has not been built. PR187 CI `40746503064` passed for package commit `617eddfec37d81908ae084f0463905d851fcc249`. The later pre-write bound to ledger 38/39/40 has targeted runner/module/profile/owner-stage PASS; its latest CI is still required. No formal tool execution, persistent DDL, Cloud operation, IAM／Secret change or traffic change has occurred. This documentation does not add a required gate or mark the release package deployed.
-
-The current 40-entry runner accepts only ledger counts 38, 39 and 40: two authorized appends, partial-attempt recovery, or exact replay. Counts 31-37 now require their own earlier source-bound release instead of executing extra migrations under this two-append recipe. Unknown/older ledgers fail before DDL; historical source and receipts are not rewritten.
+> Migration 055 adds an optional self-display reader for a unique active
+  issuer/subject and matching Principal/Employee pair. JF-FMS authenticates
+  the cookie and checks Platform revocation before invoking it. The lookup
+  reads name metadata without evaluating financial assignments or grants.

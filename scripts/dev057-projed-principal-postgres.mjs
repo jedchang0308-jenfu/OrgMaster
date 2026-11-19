@@ -20,13 +20,14 @@ let runtime
 let cleanup = null
 let firstFailure = null
 let migrationSha256 = null
-let migration043Sha256 = null
+let migration066Sha256 = null
+let migration067Sha256 = null
 let migrationCounts = null
 const currentBaselineMigrations = []
 let legacyBaseline = null
 let governorRuntime = null
 let sourceInputs = null
-const expectedChecks = 21
+const expectedChecks = 22
 
 function registerRuntime() {
   if (!governorSession) return
@@ -308,7 +309,7 @@ function fixtureMigrationCounts(fixture) {
 try {
   sourceInputs = { orgmaster: root, platform: platformRoot }
   handle = await startDisposablePostgres({
-    purpose: 'DEV-057 ProJED Principal publication migrations 041 and 043 isolated PostgreSQL regression',
+    purpose: 'DEV-057 ProJED Principal publication migrations 065-067 isolated PostgreSQL regression',
   })
   registerRuntime()
   await check('fixture-rejects-wrong-project-root', async () => {
@@ -330,10 +331,10 @@ try {
   if (!fixtureOk) throw Object.assign(new Error('Required lifecycle fixture baseline did not match'), { code: 'DEV057_FIXTURE_BASELINE_INVALID' })
 
   const owner = handle.client
-  const currentBaselineOk = await check('current-orgmaster-001-040-baseline-applied', async () => {
+  const currentBaselineOk = await check('current-orgmaster-001-064-baseline-applied', async () => {
     const paths = fs.readdirSync(path.join(root, 'db/migrations'))
-      .filter((name) => /^(03[2-9]|040)_.*\.sql$/u.test(name)).sort()
-    assert.equal(paths.length, 9, 'Expected the current 032-040 source baseline')
+      .filter((name) => /^\d{3}_.*\.sql$/u.test(name) && Number(name.slice(0, 3)) >= 32 && Number(name.slice(0, 3)) <= 64).sort()
+    assert.equal(paths.length, 31, 'Expected all current 032-064 migrations, including historical list-width migrations')
     for (const name of paths) {
       const file = path.join(root, 'db/migrations', name)
       assert.ok(fs.lstatSync(file).isFile() && !fs.lstatSync(file).isSymbolicLink())
@@ -345,12 +346,12 @@ try {
   })
   if (!currentBaselineOk) throw Object.assign(new Error('Current OrgMaster baseline did not apply'), { code: 'DEV057_CURRENT_BASELINE_INVALID' })
   legacyBaseline = await legacySnapshot(owner)
-  const migrationPath = path.join(root, 'db/migrations/041_dev057_projed_principal_publication.sql')
+  const migrationPath = path.join(root, 'db/migrations/065_dev057_projed_principal_publication.sql')
   const migration = fs.readFileSync(migrationPath)
   migrationSha256 = createHash('sha256').update(migration).digest('hex')
   await owner.query(migration.toString('utf8'))
 
-  const migrationOk = await check('041-additive-migration-preserves-employee-v1-state', async () => {
+  const migrationOk = await check('065-additive-migration-preserves-employee-v1-state', async () => {
     const after = await legacySnapshot(owner)
     assertLegacyUnchanged(legacyBaseline, after)
     const permission = await owner.query(`
@@ -366,22 +367,37 @@ try {
     assert.equal(permission.rowCount, 1, 'Expected one enabled purpose permission for the existing OrgMaster workload binding')
     assert.equal(permission.rows[0].db_session_user, runtimeLogin)
   })
-  if (!migrationOk) throw Object.assign(new Error('Migration 041 baseline check failed'), { code: 'DEV057_MIGRATION_BASELINE_INVALID' })
+  if (!migrationOk) throw Object.assign(new Error('Migration 065 baseline check failed'), { code: 'DEV057_MIGRATION_BASELINE_INVALID' })
 
-  const migration043Path = path.join(root, 'db/migrations/043_dev057_projed_employee_private_admission.sql')
-  const migration043 = fs.readFileSync(migration043Path)
-  migration043Sha256 = createHash('sha256').update(migration043).digest('hex')
-  const migration043Ok = await check('043-forward-view-and-publisher-preserve-employee-v1-contract', async () => {
-    assert.ok(fs.lstatSync(migration043Path).isFile() && !fs.lstatSync(migration043Path).isSymbolicLink())
-    assert.equal(fs.realpathSync(migration043Path), migration043Path)
-    await owner.query(migration043.toString('utf8'))
+  const readerOk = await check('066-state-reader-grant-preserves-runtime-core-isolation', async () => {
+    const file = path.join(root, 'db/migrations/066_dev057_projed_principal_state_reader.sql')
+    assert.ok(fs.lstatSync(file).isFile() && !fs.lstatSync(file).isSymbolicLink())
+    assert.equal(fs.realpathSync(file), file)
+    const bytes = fs.readFileSync(file)
+    migration066Sha256 = createHash('sha256').update(bytes).digest('hex')
+    await owner.query(bytes.toString('utf8'))
+    const grants = await owner.query(`SELECT
+      has_table_privilege('jenfu_platform_migrator','orgmaster_contract.v_projed_principal_admissions_v1','SELECT') AS contract_reader,
+      has_table_privilege('jenfu_platform_runtime','orgmaster_core.principal_owners_v2','SELECT') AS runtime_core`)
+    assert.deepEqual(grants.rows, [{contract_reader: true, runtime_core: false}])
+    assertLegacyUnchanged(legacyBaseline, await legacySnapshot(owner))
+  })
+  if (!readerOk) throw Object.assign(new Error('Migration 066 reader boundary failed'), {code: 'DEV057_MIGRATION_066_INVALID'})
+
+  const migration067Path = path.join(root, 'db/migrations/067_dev057_projed_employee_private_admission.sql')
+  const migration067 = fs.readFileSync(migration067Path)
+  migration067Sha256 = createHash('sha256').update(migration067).digest('hex')
+  const migration067Ok = await check('067-forward-view-and-publisher-preserve-employee-v1-contract', async () => {
+    assert.ok(fs.lstatSync(migration067Path).isFile() && !fs.lstatSync(migration067Path).isSymbolicLink())
+    assert.equal(fs.realpathSync(migration067Path), migration067Path)
+    await owner.query(migration067.toString('utf8'))
     assertLegacyUnchanged(legacyBaseline, await legacySnapshot(owner))
     const view = await owner.query(`
       SELECT count(*)::int AS count FROM orgmaster_contract.v_projed_principal_admissions_v1 WHERE false
     `)
     assert.equal(view.rows[0].count, 0)
   })
-  if (!migration043Ok) throw Object.assign(new Error('Migration 043 candidate did not preserve existing contracts'), { code: 'DEV057_MIGRATION_043_INVALID' })
+  if (!migration067Ok) throw Object.assign(new Error('Migration 067 candidate did not preserve existing contracts'), { code: 'DEV057_MIGRATION_067_INVALID' })
 
   runtime = await connectOrgmasterRuntime()
   await check('publisher-uses-actual-session-user-and-existing-purpose-binding', async () => {
@@ -1054,7 +1070,7 @@ try {
     status,
     scope: 'LOCAL_SYNTHETIC_PG_ONLY; Google/Firebase token verification and HTTP session flow are not exercised',
     production: false,
-    source: { migration041Sha256: migrationSha256, migration043Sha256, fixtureInputs: sourceInputs },
+    source: { migration065Sha256: migrationSha256, migration066Sha256, migration067Sha256, fixtureInputs: sourceInputs },
     fixture: migrationCounts,
     currentBaselineMigrations,
     checks,

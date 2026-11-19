@@ -4,6 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { gunzipSync, gzipSync } from 'node:zlib'
+import {DEV070_MIGRATION_ENTRIES,DEV070_RELEASE_MODE} from './dev070-administration-migration.mjs'
+import { DEV057_PRINCIPAL_SMOKE_BLOBS } from './dev057-principal-smoke-transition.mjs'
 
 import { canonicalize, sha256, releasePaths } from './dev012-owner-release-runtime.mjs'
 import { createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
@@ -11,7 +13,10 @@ import { assertToolRotationReleaseCompatibility } from './dev040-routine-release
 import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_RELEASE_MODE } from './dev057-projed-principal-migration.mjs'
 import {
   assertOrdinaryToolRotation,
+  assertAppliedToolInfrastructureBaseline,
+  assertToolInfrastructureBasis,
   assertToolInfrastructureTransition,
+  assertToolReceiptSourceSuccessor,
   assertToolArtifactAssociation,
   assertToolBuildProof,
   assertToolJobLiveReadback,
@@ -21,12 +26,14 @@ import {
   MIGRATION_JOB_ADDRESS,
   rotationAddresses,
   sealToolEvidence,
+  toolInfrastructureFingerprint,
 } from './dev040-tool-image-rotation.mjs'
 
 const ROOT = process.cwd()
 const INFRA_PROFILE_PATH = 'config/release/dev040-production-release-infra-plan.json'
 const PRODUCTION_PROFILE_PATH = 'config/release/dev040-orgmaster-independent-production-v3.json'
 const RUNNER_RECIPE = 'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile'
+const CANDIDATE_SMOKE_RECIPE = 'infra/google-cloud/dev-040-production-release/candidate-smoke.tf'
 const INFRA_ROOT = 'infra/google-cloud/dev-040-production-release'
 const BUCKET = 'jenfu-platform-prod-orgmaster-release'
 const RUNNER_URI = 'asia-east1-docker.pkg.dev/jenfu-platform-prod/orgmaster-release/orgmaster-migration-runner'
@@ -57,9 +64,34 @@ function readGitBytes(cwd, revision, file) {
   return runGit(cwd, ['show', `${revision}:${file}`], { bytes: true })
 }
 
+function findRevisionByBlob(file, blob) {
+  const revisions = runGit(ROOT, ['log', '--format=%H', '--all', '--', file])
+    .split(/\r?\n/u).filter(Boolean)
+  for (const revision of revisions) {
+    if (runGit(ROOT, ['rev-parse', `${revision}:${file}`]) === blob) return revision
+  }
+  throw new Error(`HISTORICAL_SMOKE_SOURCE_NOT_FOUND:${file}:${blob}`)
+}
+
+function correctedCookieSmokeBytes(managedBytes) {
+  const managed = managedBytes.toString('utf8')
+  const loginIntentBlock = /        - platform_login_intent:\r?\n[\s\S]*?                next: reject_session\r?\n/u
+  const corrected = managed.replace(loginIntentBlock, '')
+    .replace(/                Sec-Fetch-Site: "same-origin"\r?\n/u, '')
+    .replace(/                Cookie: \$\$\{text\.split\(platform_login_intent_cookie_header, ";"\)\[0\]\}\r?\n/u, '')
+    .replace(/                intentId: \$\$\{platform_login_intent_id\}\r?\n/u, '')
+    .replace(/                csrfToken: \$\$\{platform_login_csrf\}\r?\n/u, '')
+  assert.notEqual(corrected, managed)
+  return Buffer.from(corrected)
+}
+
 function createSourceFixture() {
   const root = fs.mkdtempSync(path.join(ROOT, '.dev040-tool-image-rotation-'))
-  const sourceRevision = runGit(ROOT, ['rev-parse', 'HEAD'])
+  // The current source is already the reviewed corrected blob. Keep this
+  // fixture's managed-login baseline historical so the successor test covers
+  // the exact approved transition without treating the corrected source as
+  // both sides of the transition.
+  const sourceRevision = findRevisionByBlob(CANDIDATE_SMOKE_RECIPE, DEV057_PRINCIPAL_SMOKE_BLOBS.managedLogin)
   const trackedPaths = runGit(ROOT, [
     'ls-tree', '-r', '--name-only', sourceRevision, '--',
     INFRA_ROOT,
@@ -80,11 +112,11 @@ function createSourceFixture() {
   }
 
   const fullProductionProfile = JSON.parse(readGitBytes(ROOT, sourceRevision, PRODUCTION_PROFILE_PATH).toString('utf8'))
-  const fmsProductionProfile = structuredClone(fullProductionProfile)
-  fmsProductionProfile.migrations.entries = fmsProductionProfile.migrations.entries.slice(0, 38)
-  const baselineProductionProfile = structuredClone(fmsProductionProfile)
+  // Historical DEV-058/059 cases keep their exact former 39-entry source.
+  fullProductionProfile.migrations.entries=fullProductionProfile.migrations.entries.slice(0,39)
+  const baselineProductionProfile = structuredClone(fullProductionProfile)
   baselineProductionProfile.migrations.entries = baselineProductionProfile.migrations.entries.slice(0, 31)
-  const dev058ProductionProfile = structuredClone(fmsProductionProfile)
+  const dev058ProductionProfile = structuredClone(fullProductionProfile)
   dev058ProductionProfile.migrations.entries = dev058ProductionProfile.migrations.entries.slice(0, 35)
   fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(baselineProductionProfile, null, 2)}\n`)
 
@@ -95,7 +127,7 @@ function createSourceFixture() {
   runGit(root, ['commit', '--quiet', '-m', 'baseline infrastructure source'])
   const baselineSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
-  const partialProductionProfile = structuredClone(fmsProductionProfile)
+  const partialProductionProfile = structuredClone(fullProductionProfile)
   partialProductionProfile.migrations.entries = partialProductionProfile.migrations.entries.slice(0, 34)
   fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(partialProductionProfile, null, 2)}\n`)
   runGit(root, ['add', PRODUCTION_PROFILE_PATH])
@@ -107,13 +139,19 @@ function createSourceFixture() {
   runGit(root, ['commit', '--quiet', '-m', 'append DEV-058 migration profile'])
   const dev058SourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
-  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(fmsProductionProfile, null, 2)}\n`)
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(fullProductionProfile, null, 2)}\n`)
   runGit(root, ['add', PRODUCTION_PROFILE_PATH])
   runGit(root, ['commit', '--quiet', '-m', 'append DEV-059 migration profile'])
   const appendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
-  const projedProductionProfile = structuredClone(fmsProductionProfile)
-  projedProductionProfile.migrations.entries = [...fmsProductionProfile.migrations.entries, ...DEV057_PROJED_MIGRATIONS]
+  const administrationProductionProfile = structuredClone(fullProductionProfile)
+  administrationProductionProfile.migrations.entries.push(...DEV070_MIGRATION_ENTRIES)
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(administrationProductionProfile, null, 2)}\n`)
+  runGit(root, ['add', PRODUCTION_PROFILE_PATH])
+  runGit(root, ['commit', '--quiet', '-m', 'append current administration migration profile'])
+  const administrationAppendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+  const projedProductionProfile = structuredClone(administrationProductionProfile)
+  projedProductionProfile.migrations.entries.push(...DEV057_PROJED_MIGRATIONS)
   fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(projedProductionProfile, null, 2)}\n`)
   runGit(root, ['add', PRODUCTION_PROFILE_PATH])
   runGit(root, ['commit', '--quiet', '-m', 'append ProJED principal migrations'])
@@ -130,6 +168,20 @@ function createSourceFixture() {
   runGit(root, ['add', 'application-only-change.txt'])
   runGit(root, ['commit', '--quiet', '-m', 'ordinary source-only change'])
   const ordinarySourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+
+  runGit(root, ['checkout', '--quiet', '--detach', ordinarySourceRevision])
+  fs.writeFileSync(path.join(root, ...CANDIDATE_SMOKE_RECIPE.split('/')),
+    correctedCookieSmokeBytes(readGitBytes(ROOT, sourceRevision, CANDIDATE_SMOKE_RECIPE)))
+  runGit(root, ['add', CANDIDATE_SMOKE_RECIPE])
+  runGit(root, ['commit', '--quiet', '-m', 'restore corrected cookie smoke source'])
+  const correctedSmokeSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+  assert.equal(runGit(root, ['rev-parse', `${correctedSmokeSourceRevision}:${CANDIDATE_SMOKE_RECIPE}`]),
+    'b9c6bfeca843c6ef551d95834b59f5471c097abc')
+  fs.writeFileSync(path.join(root, ...CANDIDATE_SMOKE_RECIPE.split('/')),
+    readGitBytes(ROOT, sourceRevision, CANDIDATE_SMOKE_RECIPE))
+  runGit(root, ['add', CANDIDATE_SMOKE_RECIPE])
+  runGit(root, ['commit', '--quiet', '-m', 'use managed login smoke source'])
+  const managedSmokeSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
   runGit(root, ['checkout', '--quiet', '--detach', ordinarySourceRevision])
   const changedCopyInput = 'scripts/lib/dev012-production-migration-runner.mjs'
@@ -160,7 +212,8 @@ function createSourceFixture() {
 
   return {
     root, baselineSourceRevision, partialAppendSourceRevision, dev058SourceRevision,
-    appendSourceRevision, projedAppendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
+    appendSourceRevision, administrationAppendSourceRevision, projedAppendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
+    correctedSmokeSourceRevision, managedSmokeSourceRevision,
     copyInputDriftSourceRevision, toolInputDriftSourceRevision, driftSourceRevision,
     sourceIdentitySha256, sourceArchive, sourceArchiveBytes, sourceArchiveSha256,
     sourceArchiveObject: `source/archives/${sourceArchiveSha256}/source.tar.gz`,
@@ -445,7 +498,108 @@ function commitNonRecipeVariant(baseRevision, mutate, message) {
   }
 }
 
-test('allows only the exact DEV-058 and DEV-059 profile appends plus existing recipe changes', () => {
+function commitCandidateSmokeVariant(baseRevision, mutate, message) {
+  const priorHead = runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
+  try {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', baseRevision])
+    const file = path.join(sourceFixture.root, ...CANDIDATE_SMOKE_RECIPE.split('/'))
+    mutate(file)
+    runGit(sourceFixture.root, ['add', CANDIDATE_SMOKE_RECIPE])
+    runGit(sourceFixture.root, ['commit', '--quiet', '-m', message])
+    return runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
+  } finally {
+    runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
+  }
+}
+
+function closedWorkflowAppendFixture() {
+  const closedWorkflow = productionProfile().workflow
+  const legacyWorkflow = {
+    path: '.github/workflows/deploy-orgmaster-independent-production.yml',
+    onlyInput: 'releaseCapsuleRef',
+    concurrency: 'production-release-orgmaster-prod',
+    jobs: ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize'],
+    failureJobs: ['readback', 'abort-or-rollback', 'publish-terminal'],
+  }
+  const legacy42 = commitProfileVariant(sourceFixture.appendSourceRevision, profile => {
+    profile.migrations.entries.push(...DEV070_MIGRATION_ENTRIES.slice(0, 3))
+    profile.workflow = structuredClone(legacyWorkflow)
+  }, 'exact legacy single-capsule 42-entry profile')
+  const closed43 = commitProfileVariant(legacy42, profile => {
+    profile.migrations.entries.push(DEV070_MIGRATION_ENTRIES.find(entry=>entry.version==='dev070-orgmaster-047'))
+    profile.workflow = structuredClone(closedWorkflow)
+  }, 'exact reviewed closed-mode 43-entry profile')
+  return { legacy42, closed43, legacyWorkflow, closedWorkflow }
+}
+
+test('admits only the reviewed legacy five-key to closed seven-key workflow metadata alongside an approved append', () => {
+  const { legacy42, closed43 } = closedWorkflowAppendFixture()
+  const beforeFingerprint = toolInfrastructureFingerprint(sourceFixture.root, legacy42)
+  const afterFingerprint = toolInfrastructureFingerprint(sourceFixture.root, closed43)
+  assert.notEqual(beforeFingerprint, afterFingerprint)
+  assert.deepEqual(assertToolInfrastructureTransition(sourceFixture.root, legacy42, closed43), {
+    disposition: DEV070_RELEASE_MODE, beforeFingerprint, afterFingerprint,
+  })
+})
+
+test('rejects unknown workflow keys, inputs, modes and every fixed workflow value during that transition', () => {
+  const { legacy42, closed43, legacyWorkflow, closedWorkflow } = closedWorkflowAppendFixture()
+  const mutations = [
+    ['extra input', workflow => { workflow.inputs.push('stage') }],
+    ['extra mode', workflow => { workflow.executionModes.build_only = ['prepare', 'build'] }],
+    ['expanded migration mode', workflow => { workflow.executionModes.migration_only.push('candidate') }],
+    ['reordered full mode', workflow => { workflow.executionModes.full_release.reverse() }],
+    ['different default', workflow => { workflow.defaultExecutionMode = 'migration_only' }],
+    ['missing default', workflow => { delete workflow.defaultExecutionMode }],
+    ['changed jobs', workflow => { workflow.jobs.reverse() }],
+    ['changed failure jobs', workflow => { workflow.failureJobs.pop() }],
+    ['changed concurrency', workflow => { workflow.concurrency += '-other' }],
+    ['changed path', workflow => { workflow.path = '.github/workflows/other.yml' }],
+    ['unknown key', workflow => { workflow.extra = false }],
+    ['retained legacy key', workflow => { workflow.onlyInput = 'releaseCapsuleRef' }],
+  ]
+  for (const [label, mutate] of mutations) {
+    const invalid = commitProfileVariant(closed43, profile => mutate(profile.workflow), label)
+    assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, legacy42, invalid), 'SOURCE_INPUT_DRIFT')
+  }
+  const unknownLegacy = commitProfileVariant(legacy42,
+    profile => { profile.workflow.extra = false }, 'unknown legacy workflow key')
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, unknownLegacy, closed43), 'SOURCE_INPUT_DRIFT')
+
+  const closed42 = commitProfileVariant(legacy42,
+    profile => { profile.workflow = structuredClone(closedWorkflow) }, 'closed workflow without migration append')
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, legacy42, closed42), 'SOURCE_INPUT_DRIFT')
+  const legacy43 = commitProfileVariant(closed43,
+    profile => { profile.workflow = structuredClone(legacyWorkflow) }, 'reverse metadata transition with valid append')
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, closed42, legacy43), 'SOURCE_INPUT_DRIFT')
+
+  // Even a value changed identically on both sides is outside the exact tuple.
+  const changedLegacyPath = commitProfileVariant(legacy42,
+    profile => { profile.workflow.path = '.github/workflows/other.yml' }, 'other legacy workflow path')
+  const changedClosedPath = commitProfileVariant(closed43,
+    profile => { profile.workflow.path = '.github/workflows/other.yml' }, 'other closed workflow path')
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, changedLegacyPath, changedClosedPath), 'SOURCE_INPUT_DRIFT')
+})
+
+test('keeps other profile, approved migration and non-recipe infrastructure comparisons strict with closed metadata', () => {
+  const { legacy42, closed43 } = closedWorkflowAppendFixture()
+  for (const [label, mutate] of [
+    ['runtime drift', profile => { profile.runtime.timeoutSeconds += 1 }],
+    ['identity drift', profile => { profile.identities.runtimeDbLogin += '-other' }],
+    ['unknown profile key', profile => { profile.extra = false }],
+    ['migration prefix drift', profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }],
+    ['migration append drift', profile => { profile.migrations.entries.at(-1).appliedSha256 = 'f'.repeat(64) }],
+    ['unknown migration', profile => { profile.migrations.entries.push({ order: 44, version: 'unknown-044' }) }],
+  ]) {
+    const invalid = commitProfileVariant(closed43, mutate, label)
+    assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, legacy42, invalid), 'SOURCE_INPUT_DRIFT')
+  }
+  const nonRecipeDrift = commitNonRecipeVariant(closed43,
+    file => fs.appendFileSync(file, '\n# closed-mode non-recipe infrastructure drift\n'), 'non-recipe drift with closed metadata')
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, legacy42, nonRecipeDrift), 'SOURCE_INPUT_DRIFT')
+})
+
+test('allows only exact known DEV-058/059/070 metadata appends for a separate image-only preparation', () => {
   const dev058Transition = assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.baselineSourceRevision, sourceFixture.dev058SourceRevision)
   assert.equal(dev058Transition.disposition, 'DEV058_ROLE_POLICY_APPEND')
@@ -466,6 +620,11 @@ test('allows only the exact DEV-058 and DEV-059 profile appends plus existing re
   assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
     sourceFixture.baselineSourceRevision, sourceFixture.rotationSourceRevision).disposition,
   'DEV059_FMS_AUTHORITY_APPEND')
+  const administration=commitProfileVariant(sourceFixture.appendSourceRevision,profile=>{profile.migrations.entries.push(...DEV070_MIGRATION_ENTRIES)},'append exact DEV070 metadata without running DDL')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,sourceFixture.appendSourceRevision,administration).disposition,DEV070_RELEASE_MODE)
+  const unknown=commitProfileVariant(administration,profile=>{profile.migrations.entries[40].path='db/migrations/043_unapproved.sql'},'unknown migration metadata')
+  const changedHash=commitProfileVariant(administration,profile=>{profile.migrations.entries[41].appliedSha256='0'.repeat(64)},'unreviewed DEV070 checksum')
+  for(const revision of[unknown,changedHash])assert.throws(()=>assertToolInfrastructureTransition(sourceFixture.root,sourceFixture.appendSourceRevision,revision),/SOURCE_INPUT_DRIFT/)
 
   const prefixDrift = commitProfileVariant(sourceFixture.appendSourceRevision,
     profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }, 'drift DEV-058 migration prefix')
@@ -484,35 +643,66 @@ test('allows only the exact DEV-058 and DEV-059 profile appends plus existing re
   }
 })
 
-test('accepts the exact DEV-057 ProJED profile append from 38 to 41 and rejects drift', () => {
-  const transition = assertToolInfrastructureTransition(sourceFixture.root,
-    sourceFixture.appendSourceRevision, sourceFixture.projedAppendSourceRevision)
-  assert.equal(transition.disposition, DEV057_PROJED_RELEASE_MODE)
-  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
-    sourceFixture.baselineSourceRevision, sourceFixture.projedAppendSourceRevision).disposition, DEV057_PROJED_RELEASE_MODE)
-
-  const firstMigrationHashDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
-    profile => { profile.migrations.entries[38].sourceSha256 = 'f'.repeat(64) }, 'drift ProJED 041 source hash')
-  const secondMigrationHashDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
-    profile => { profile.migrations.entries[39].appliedSha256 = 'f'.repeat(64) }, 'drift ProJED 042 applied hash')
-  const prefixDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
-    profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }, 'drift ProJED inherited prefix')
-  const unexpectedFourthMigration = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
-    profile => { profile.migrations.entries.push({ order: 42, version: 'dev057-orgmaster-044', path: 'db/migrations/044_unapproved.sql', sourceSha256: 'a'.repeat(64), appliedSha256: 'b'.repeat(64) }) },
-    'append unexpected ProJED migration')
-  const runtimeDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
-    profile => { profile.runtime.timeoutSeconds += 1 }, 'drift ProJED runtime profile')
-  const nonRecipeDrift = commitNonRecipeVariant(sourceFixture.projedAppendSourceRevision,
-    file => fs.appendFileSync(file, '\n# ProJED non-recipe infrastructure drift fixture\n'), 'drift ProJED non-recipe infrastructure')
-
-  for (const revision of [firstMigrationHashDrift, secondMigrationHashDrift, prefixDrift,
-    unexpectedFourthMigration, runtimeDrift, nonRecipeDrift]) {
-    assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
-      sourceFixture.appendSourceRevision, revision), 'SOURCE_INPUT_DRIFT')
+test('native FMS publication accepts only its exact forward migrations and runtime flag', () => {
+  const through057 = DEV070_MIGRATION_ENTRIES.findIndex(entry => entry.version === 'dev057-orgmaster-057') + 1
+  assert.ok(through057 > 0)
+  const baseline = commitProfileVariant(sourceFixture.appendSourceRevision, profile => {
+    profile.migrations.entries.push(...DEV070_MIGRATION_ENTRIES.slice(0, through057))
+  }, 'exact owner baseline through 057')
+  const flag = 'ORGMASTER_FMS_SESSION_REVOCATION_ENABLED'
+  const append = (profile, enabled = 'true') => {
+    profile.migrations.entries.push(...DEV070_MIGRATION_ENTRIES.slice(through057))
+    profile.environment.requiredPlainEnvironmentNames.push(flag)
+    profile.environment.fixedValues[flag] = enabled
   }
+  const intended = commitProfileVariant(baseline, append, 'exact FMS publications and delivery flag')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root, baseline, intended).disposition, DEV070_RELEASE_MODE)
+  const disabled = commitProfileVariant(baseline, profile => append(profile, 'false'), 'unapproved flag value')
+  const extra = commitProfileVariant(baseline, profile => {
+    append(profile)
+    profile.environment.requiredPlainEnvironmentNames.push('UNRELATED_SETTING')
+    profile.environment.fixedValues.UNRELATED_SETTING = 'true'
+  }, 'unrelated environment drift')
+  for (const revision of [disabled, extra]) assertRotationCode(
+    () => assertToolInfrastructureTransition(sourceFixture.root, baseline, revision), 'SOURCE_INPUT_DRIFT')
 })
 
-test('bridges the complete native rotation proof to the DEV-058 controlled gate', async () => {
+test('reuses the immutable tool receipt for the exact managed-login smoke transition only', async () => {
+  const beforeFingerprint = toolInfrastructureFingerprint(sourceFixture.root, sourceFixture.correctedSmokeSourceRevision)
+  const afterFingerprint = toolInfrastructureFingerprint(sourceFixture.root, sourceFixture.managedSmokeSourceRevision)
+  assert.notEqual(beforeFingerprint, afterFingerprint)
+  assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.correctedSmokeSourceRevision, sourceFixture.managedSmokeSourceRevision), 'SOURCE_INPUT_DRIFT')
+  assert.deepEqual(assertToolReceiptSourceSuccessor(sourceFixture.root,
+    sourceFixture.correctedSmokeSourceRevision, sourceFixture.managedSmokeSourceRevision), {
+    disposition: 'DEV057_PRINCIPAL_SMOKE_SUCCESSOR', beforeFingerprint, afterFingerprint,
+  })
+
+  const fixture = makeReceiptHarness({
+    baselineToolSourceRevision: sourceFixture.correctedSmokeSourceRevision,
+    baselineReleaseSourceRevision: sourceFixture.correctedSmokeSourceRevision,
+    receiptSourceRevision: sourceFixture.correctedSmokeSourceRevision,
+    intentSourceRevision: sourceFixture.managedSmokeSourceRevision,
+  })
+  const accepted = await validateRotationFixture(fixture)
+  assert.equal(accepted.sourceRevision, sourceFixture.correctedSmokeSourceRevision)
+
+  const unknownSmoke = commitNonRecipeVariant(sourceFixture.managedSmokeSourceRevision,
+    file => fs.appendFileSync(file, '\n# unrelated infrastructure drift\n'), 'drift after managed smoke transition')
+  const profileDrift = commitProfileVariant(sourceFixture.managedSmokeSourceRevision,
+    profile => { profile.runtime.timeoutSeconds += 1 }, 'profile drift after managed smoke transition')
+  const unknownCandidate = commitCandidateSmokeVariant(sourceFixture.correctedSmokeSourceRevision,
+    file => fs.appendFileSync(file, '\n# unknown candidate smoke source\n'), 'unknown candidate smoke transition')
+  for (const [before, after] of [
+    [sourceFixture.correctedSmokeSourceRevision, unknownSmoke],
+    [sourceFixture.correctedSmokeSourceRevision, profileDrift],
+    [sourceFixture.correctedSmokeSourceRevision, unknownCandidate],
+    [sourceFixture.correctedSmokeSourceRevision, sourceFixture.copyInputDriftSourceRevision],
+    [sourceFixture.correctedSmokeSourceRevision, sourceFixture.toolInputDriftSourceRevision],
+  ]) assertRotationCode(() => assertToolReceiptSourceSuccessor(sourceFixture.root, before, after), 'SOURCE_INPUT_DRIFT')
+})
+
+test('bridges the complete native rotation proof to the DEV-058 and DEV-070 direct-basis gates', async () => {
   const fixture = makeReceiptHarness()
   const toolRotation = await validateRotationFixture(fixture)
   assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({
@@ -522,6 +712,45 @@ test('bridges the complete native rotation proof to the DEV-058 controlled gate'
     repair: false,
     runtimeChanged: false,
   }))
+  assert.doesNotThrow(()=>assertToolRotationReleaseCompatibility({toolRotation,toolRotationPredecessor:null,
+    controlledTransition:{releaseMode:DEV070_RELEASE_MODE},repair:false,runtimeChanged:false}))
+})
+
+function consumedReuseBasisFixture(){
+ const objects=new Map(),put=(name,value)=>{const bytes=Buffer.from(canonicalize(value)),uri=`gs://${BUCKET}/receipts/releases/BASIS-FIXTURE/${name}.json`,ref={uri,sha256:sha256(bytes)};objects.set(uri,{ref,bytes,value});return ref}
+ const anchorSource=sourceFixture.rotationSourceRevision,releasedSource=sourceFixture.ordinarySourceRevision
+ const beforeState={stateMeta:{serial:137,lineage:'owned-fixture',check_results:[]},stateJson:{values:{outputs:{app_release_infra_manifest:{value:{source_revision:anchorSource}}}}},manifest:{source_revision:anchorSource}}
+ const afterStateRef=put('anchor-after-state',beforeState),outputManifestRef=put('anchor-output',beforeState.manifest)
+ const anchor={sourceRevision:anchorSource,stateJsonSha256:afterStateRef.sha256,outputManifestSha256:outputManifestRef.sha256,smokeRotation:{afterStateRef,outputManifestRef}}
+ const anchorRef=put('anchor-infra',anchor),sourceLockRef=put('reuse-lock',{sourceRevision:releasedSource})
+ const priorRef=put('released-predecessor',{sourceRevision:sourceFixture.appendSourceRevision})
+ const infra={mutationProfile:'APP_INFRA_REUSE',sourceRevision:releasedSource,sourceLockRef,reusedInfraReceiptRef:anchorRef,reusedSourceRevision:anchorSource,baselineIntentRef:priorRef}
+ const infraRef=put('reuse-infra',infra),baselineIntent={sourceRevision:releasedSource,infraReceiptRef:infraRef,baselineIntentRef:priorRef}
+ let verifications=0
+ const input={root:sourceFixture.root,profile:productionProfile(),baselineIntent,infraRef,infra,currentSourceRevision:releasedSource,beforeState,
+  transport:{readJson:async ref=>{const row=objects.get(ref.uri);assert.ok(row);return row}},
+  readHistoricalBaseline:async({baselineIntentRef})=>{assert.deepEqual(baselineIntentRef,priorRef);return {intent:{sourceRevision:sourceFixture.appendSourceRevision}}},
+  // This fixture isolates reference/ancestry/state joining. The unchanged full
+  // immutable smoke verifier is exercised by the routine integration fixture.
+  validateReuseEvidence:async value=>{verifications++;assert.equal(value.intent,baselineIntent);assert.equal(value.values.infra,infra)}}
+ return {input,objects,beforeState,anchorRef,infraRef,verifications:()=>verifications}
+}
+
+test('consumed reuse resolves only its own immutable ancestor and sealed before-state for prepare and replay',async()=>{
+ const h=consumedReuseBasisFixture(),result=await assertToolInfrastructureBasis(h.input)
+ assert.deepEqual(result.anchorRef,h.anchorRef);assert.equal(result.stateSourceRevision,sourceFixture.rotationSourceRevision)
+ assert.deepEqual(await assertToolInfrastructureBasis({...h.input,beforeState:structuredClone(h.beforeState)}),result)
+ assert.equal(h.verifications(),2)
+ assert.equal(await assertToolInfrastructureBasis({...h.input,infra:{mutationProfile:'APP_INFRA_IMAGE_ROTATION'}}),null)
+})
+test('consumed reuse rejects unproven ancestry, redirected refs, missing proof and sealed state drift',async()=>{
+ for(const change of [h=>h.input.currentSourceRevision=sourceFixture.baselineSourceRevision,h=>h.input.infraRef={...h.infraRef,sha256:'0'.repeat(64)},h=>h.input.beforeState=structuredClone(h.beforeState),h=>h.input.readHistoricalBaseline=null,h=>h.input.validateReuseEvidence=async()=>{throw new Error('SEALED_NATIVE_PROOF_REJECTED')}]){
+  const h=consumedReuseBasisFixture();change(h)
+  if(h.input.beforeState!==h.beforeState)h.input.beforeState.stateMeta.serial++
+  await assert.rejects(()=>assertToolInfrastructureBasis(h.input),/REUSE_BASIS_INVALID|RECOVERY_AFTER_STATE_CHANGED|SEALED_NATIVE_PROOF_REJECTED/)
+ }
+ const h=consumedReuseBasisFixture(),stored=h.objects.get(h.anchorRef.uri);stored.bytes=Buffer.from('changed immutable bytes')
+ await assert.rejects(()=>assertToolInfrastructureBasis(h.input),/REUSE_BASIS_INVALID/)
 })
 
 test('accepts the frozen complete profile-address plan with one migration image update', () => {
@@ -902,7 +1131,12 @@ function resealReceiptValue(value) {
   return sealToolEvidence(core)
 }
 
-function bindPreActivationAbort(fixture) {
+function bindPreActivationAbort(fixture, { rolledBack = false, entrypointChanged = false } = {}) {
+  const result = rolledBack ? 'ROLLED_BACK' : 'PRE_ACTIVATION_ABORTED'
+  const recovery = { result, previousRevision: fixture.baseline.activeRevision,
+    entrypointRecovery: { changed: entrypointChanged,
+      result: entrypointChanged ? 'BASELINE_RESTORED' : rolledBack ? 'BASELINE_ALREADY_ACTIVE' : 'NOT_REQUIRED' },
+    databaseDisposition: rolledBack ? 'UNCHANGED_VERIFIED' : 'NOT_APPLIED' }
   const attemptIntent = {
     schemaVersion: fixture.profile.schemas.releaseIntent,
     ownerApplicationId: 'orgmaster',
@@ -934,9 +1168,7 @@ function bindPreActivationAbort(fixture) {
     schemaVersion: 'jenfu.dev012.stage-receipt.v1', ownerApplicationId: 'orgmaster',
     releaseId: attemptIntent.releaseId, sourceRevision: attemptIntent.sourceRevision,
     stage: 'rollback', status: 'PASS', previousReceiptRef: null,
-    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: fixture.baseline.activeRevision,
-      recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'],
-      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' },
+    facts: { ...recovery, recoveryOrder: ['TRAFFIC_ROLLBACK', 'TAG_CLEANUP', 'ENTRYPOINT_BASELINE_RESTORE'] },
     observedAt: '2026-10-18T00:31:00.000Z',
   })
   const rollbackRef = fixture.putJson('rollback', rollback, `releases/${attemptIntent.releaseId}/${attemptRef.sha256}`)
@@ -946,8 +1178,7 @@ function bindPreActivationAbort(fixture) {
     releaseId: attemptIntent.releaseId,
     sourceRevision: attemptIntent.sourceRevision,
     stage: 'terminal', status: 'PASS', previousReceiptRef: rollbackRef,
-    facts: { result: 'PRE_ACTIVATION_ABORTED', previousRevision: fixture.baseline.activeRevision,
-      entrypointRecovery: { changed: false, result: 'NOT_REQUIRED' }, databaseDisposition: 'NOT_APPLIED' },
+    facts: recovery,
     observedAt: '2026-10-18T00:32:00.000Z',
   })
   const terminalRef = fixture.putJson('terminal', terminal, `releases/${attemptIntent.releaseId}/${attemptRef.sha256}`)
@@ -955,14 +1186,14 @@ function bindPreActivationAbort(fixture) {
   const controlCore = {
     schemaVersion: 'jenfu.dev012.owner-control-head.v1',
     state: 'FINALIZED',
-    result: 'PRE_ACTIVATION_ABORTED',
+    result,
     ownerApplicationId: 'orgmaster',
     service: 'orgmaster-prod',
     releaseId: attemptIntent.releaseId,
     sourceRevision: attemptIntent.sourceRevision,
     sourceLockSha256: attemptIntent.sourceLockRef.sha256,
     previousRevision: fixture.baseline.activeRevision,
-    candidateRevision: null,
+    candidateRevision: rolledBack ? 'orgmaster-prod-rollback-candidate' : null,
   }
   const control = { ...controlCore, controlSha256: sha256(canonicalize(controlCore)) }
   const controlRef = fixture.putJson('control-head-aborted', control, `releases/${attemptIntent.releaseId}`)
@@ -1059,6 +1290,47 @@ test('accepts the first rotation and a later source-only release reusing its imm
   } finally {
     runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
   }
+})
+
+test('validates an applied historical infra receipt as a distinct ancestor of the current rotation source', async () => {
+  const fixture = makeReceiptHarness()
+  const sourceRevision = fixture.receipt.sourceRevision
+  const infraReceiptRef = fixture.putJson('app-infra', fixture.receipt, `tool-rotations/${sourceRevision}`)
+  const appliedBaseline = { schemaVersion: 'orgmaster.applied-tool-infra-baseline.v1', sourceRevision,
+    infraReceiptRef, serviceDataBaselineIntentRef: fixture.intent.baselineIntentRef }
+  const result = await assertAppliedToolInfrastructureBaseline({ root: sourceFixture.root, profile: fixture.profile,
+    transport: fixture.transport, appliedBaseline, currentSourceRevision: sourceFixture.ordinarySourceRevision,
+    baselineIntentRef: fixture.intent.baselineIntentRef, baseline: fixture.baseline })
+  assert.deepEqual(result.ref, infraReceiptRef)
+  assert.equal(result.receipt.sourceRevision, sourceRevision)
+  assert.equal(result.summary.evidenceScope, 'OWNER_SEALED_TOOL_IMAGE_ROTATION')
+})
+
+test('applied historical infra baseline rejects wrong source, URI, service/data baseline, and non-distinct current source', async () => {
+  const make = () => {
+    const fixture = makeReceiptHarness()
+    const sourceRevision = fixture.receipt.sourceRevision
+    const infraReceiptRef = fixture.putJson('app-infra', fixture.receipt, `tool-rotations/${sourceRevision}`)
+    return { fixture, appliedBaseline: { schemaVersion: 'orgmaster.applied-tool-infra-baseline.v1', sourceRevision,
+      infraReceiptRef, serviceDataBaselineIntentRef: fixture.intent.baselineIntentRef } }
+  }
+  for (const mutate of [
+    value => { value.sourceRevision = sourceFixture.baselineSourceRevision },
+    value => { value.infraReceiptRef = { ...value.infraReceiptRef, uri: value.infraReceiptRef.uri.replace('/tool-rotations/', '/releases/') } },
+    value => { value.serviceDataBaselineIntentRef = { ...value.serviceDataBaselineIntentRef, sha256: 'f'.repeat(64) } },
+  ]) {
+    const { fixture, appliedBaseline } = make()
+    mutate(appliedBaseline)
+    await assert.rejects(() => assertAppliedToolInfrastructureBaseline({ root: sourceFixture.root, profile: fixture.profile,
+      transport: fixture.transport, appliedBaseline, currentSourceRevision: sourceFixture.ordinarySourceRevision,
+      baselineIntentRef: fixture.intent.baselineIntentRef, baseline: fixture.baseline }),
+    error => error?.code === 'TOOL_ROTATION_APPLIED_INFRA_BASELINE_INVALID')
+  }
+  const { fixture, appliedBaseline } = make()
+  await assert.rejects(() => assertAppliedToolInfrastructureBaseline({ root: sourceFixture.root, profile: fixture.profile,
+    transport: fixture.transport, appliedBaseline, currentSourceRevision: appliedBaseline.sourceRevision,
+    baselineIntentRef: fixture.intent.baselineIntentRef, baseline: fixture.baseline }),
+  error => error?.code === 'TOOL_ROTATION_APPLIED_INFRA_BASELINE_INVALID')
 })
 
 test('accepts a released application-source successor that still references an older equivalent tool receipt', async () => {
@@ -1359,6 +1631,41 @@ test('requires the hash-bound finalized control head and accepts an exact sealed
   ])
 })
 
+test('checks sealed runtime rollback evidence when verifying a saved rotation', async () => {
+  const safe = makeReceiptHarness()
+  bindPreActivationAbort(safe, { rolledBack: true })
+  assert.equal((await validateRotationFixture(safe)).migrationRunnerDigest, NEXT_IMAGE)
+
+  const changed = makeReceiptHarness()
+  bindPreActivationAbort(changed, { rolledBack: true, entrypointChanged: true })
+  await assert.rejects(() => validateRotationFixture(changed), /TOOL_ROTATION_BASELINE_INVALID/u)
+})
+
+test('accepts the legacy finalized abort head only when the candidate revision is owned and the abort proof is complete', async () => {
+  const legacy = makeReceiptHarness()
+  const abort = bindPreActivationAbort(legacy)
+  const legacyControlCore = { ...abort.control, candidateRevision: 'orgmaster-prod-legacy-candidate' }
+  delete legacyControlCore.controlSha256
+  const legacyControlRef = replaceJsonObject(legacy, abort.controlRef,
+    { ...legacyControlCore, controlSha256: sha256(canonicalize(legacyControlCore)) })
+  legacy.receipt.toolRotation.controlSnapshotRef = legacyControlRef
+  legacy.receipt.toolRotation.controlBaseline.sha256 = legacyControlRef.sha256
+  resealReceipt(legacy)
+  const accepted = await validateRotationFixture(legacy)
+  assert.equal(accepted.migrationRunnerDigest, NEXT_IMAGE)
+
+  const foreign = makeReceiptHarness()
+  const foreignAbort = bindPreActivationAbort(foreign)
+  const foreignControlCore = { ...foreignAbort.control, candidateRevision: 'pdm-prod-foreign-candidate' }
+  delete foreignControlCore.controlSha256
+  const foreignControlRef = replaceJsonObject(foreign, foreignAbort.controlRef,
+    { ...foreignControlCore, controlSha256: sha256(canonicalize(foreignControlCore)) })
+  foreign.receipt.toolRotation.controlSnapshotRef = foreignControlRef
+  foreign.receipt.toolRotation.controlBaseline.sha256 = foreignControlRef.sha256
+  resealReceipt(foreign)
+  await assert.rejects(() => validateRotationFixture(foreign), error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID')
+})
+
 test('retains a sealed abort-backed tool rotation after a later application-only release', async () => {
   const retained = makeReceiptHarness({ baselineUsesRotation: true })
   bindPreActivationAbort(retained)
@@ -1377,4 +1684,32 @@ test('retains a sealed abort-backed tool rotation after a later application-only
   }))
   await assert.rejects(() => validateRotationFixture(tampered),
     error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID')
+})
+
+test('accepts the exact DEV-057 ProJED profile append from 60 to 63 and rejects drift', () => {
+  const transition = assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.administrationAppendSourceRevision, sourceFixture.projedAppendSourceRevision)
+  assert.equal(transition.disposition, DEV057_PROJED_RELEASE_MODE)
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.baselineSourceRevision, sourceFixture.projedAppendSourceRevision).disposition, DEV057_PROJED_RELEASE_MODE)
+
+  const firstMigrationHashDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries[60].sourceSha256 = 'f'.repeat(64) }, 'drift ProJED 065 source hash')
+  const secondMigrationHashDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries[61].appliedSha256 = 'f'.repeat(64) }, 'drift ProJED 066 applied hash')
+  const prefixDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }, 'drift ProJED inherited prefix')
+  const unexpectedFourthMigration = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries.push({ order: 64, version: 'dev057-orgmaster-068', path: 'db/migrations/068_unapproved.sql', sourceSha256: 'a'.repeat(64), appliedSha256: 'b'.repeat(64) }) },
+    'append unexpected ProJED migration')
+  const runtimeDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.runtime.timeoutSeconds += 1 }, 'drift ProJED runtime profile')
+  const nonRecipeDrift = commitNonRecipeVariant(sourceFixture.projedAppendSourceRevision,
+    file => fs.appendFileSync(file, '\n# ProJED non-recipe infrastructure drift fixture\n'), 'drift ProJED non-recipe infrastructure')
+
+  for (const revision of [firstMigrationHashDrift, secondMigrationHashDrift, prefixDrift,
+    unexpectedFourthMigration, runtimeDrift, nonRecipeDrift]) {
+    assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
+      sourceFixture.appendSourceRevision, revision), 'SOURCE_INPUT_DRIFT')
+  }
 })

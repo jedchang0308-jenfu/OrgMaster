@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { GovernanceAssignmentVersionV2, GovernanceAssignmentVersionV3, GovernanceDocumentV1, GovernanceDocumentV2, GovernanceDocumentV3, GovernanceOrgSource, GovernancePolicyVersionV1, PermissionEvaluationRequestV1, PermissionEvaluationResultV1 } from './types'
 import { isActiveAt, scopeMatches } from './validation'
+import { hasAdministrativeGrant } from './administration'
 
 type Options = { now?: string; receiptId?: string; timeSource?: PermissionEvaluationResultV1['timeSource'] }
 type AnyVersion = GovernancePolicyVersionV1 | GovernanceAssignmentVersionV2 | GovernanceAssignmentVersionV3
@@ -42,6 +43,24 @@ function evaluateCurrentPolicyForPrincipal(
   const permission = policy.permissions.find((value) =>
     value.applicationId === 'orgmaster' && value.code === request.permissionCode && value.status === 'active')
   if (!permission) return { ...result, reason: 'PERMISSION_UNKNOWN' }
+  const roleIds = effectiveOrgmasterRoleIds(policy, principalId, employeeId, now)
+  const grants = policy.rolePermissionGrants.filter((grant) =>
+    roleIds.has(grant.roleId) && grant.permissionId === permission.id)
+  if (grants.some((grant) => grant.effect === 'deny')) {
+    return { ...result, reason: 'EXPLICIT_DENY', principalId, matchedRoleIds: [...roleIds] }
+  }
+  if (grants.some((grant) => grant.effect === 'allow')) {
+    return { ...result, status: 'allowed', reason: 'ALLOWED_ROLE', principalId, matchedRoleIds: [...roleIds] }
+  }
+  return { ...result, reason: 'NO_MATCHING_ROLE', principalId, matchedRoleIds: [...roleIds] }
+}
+
+function effectiveOrgmasterRoleIds(
+  policy: (GovernanceAssignmentVersionV2 | GovernanceAssignmentVersionV3)['policy'],
+  principalId: string,
+  employeeId: string,
+  now: string,
+) {
   const activeRoleIds = new Set(policy.applicationRoles.filter((role) =>
     role.applicationId === 'orgmaster' && role.status === 'active').map((role) => role.id))
   const roleIds = new Set(policy.roleAssignments.filter((assignment) =>
@@ -52,15 +71,9 @@ function evaluateCurrentPolicyForPrincipal(
     && assignment.scope.kind === 'global'
     && isActiveAt(assignment.status, assignment.validFrom, assignment.validTo, now))
     .map((assignment) => assignment.roleId))
-  const grants = policy.rolePermissionGrants.filter((grant) =>
-    roleIds.has(grant.roleId) && grant.permissionId === permission.id)
-  if (grants.some((grant) => grant.effect === 'deny')) {
-    return { ...result, reason: 'EXPLICIT_DENY', principalId, matchedRoleIds: [...roleIds] }
-  }
-  if (grants.some((grant) => grant.effect === 'allow')) {
-    return { ...result, status: 'allowed', reason: 'ALLOWED_ROLE', principalId, matchedRoleIds: [...roleIds] }
-  }
-  return { ...result, reason: 'NO_MATCHING_ROLE', principalId, matchedRoleIds: [...roleIds] }
+  if ('managementGrants' in policy && activeRoleIds.has('role-orgmaster-admin')
+    && hasAdministrativeGrant(policy as import('./types').GovernancePolicyDataV3, principalId, employeeId, 'orgmaster', now)) roleIds.add('role-orgmaster-admin')
+  return roleIds
 }
 
 function evaluateV2(document: GovernanceDocumentV2 | GovernanceDocumentV3, request: PermissionEvaluationRequestV1, options: Options, now: string, version: GovernanceAssignmentVersionV2 | GovernanceAssignmentVersionV3 | null): PermissionEvaluationResultV1 {
@@ -81,6 +94,17 @@ function evaluateV2(document: GovernanceDocumentV2 | GovernanceDocumentV3, reque
 export function currentPublishedPolicyV3(document: GovernanceDocumentV3) {
   const version = document.publishedVersions.find(candidate => candidate.id === document.activePolicyVersionId)
   return version?.kind === 'assignment-governance-v3' ? version.policy : null
+}
+
+export function hasEffectiveOrgmasterWorkspaceRole(
+  document: GovernanceDocumentV3,
+  actor: { principalId: string; employeeId: string | null },
+  now: string,
+) {
+  if (!actor.principalId || !actor.employeeId) return false
+  const policy = currentPublishedPolicyV3(document)
+  return policy !== null && policy.applications.some(application => application.id === 'orgmaster' && application.status === 'active')
+    && effectiveOrgmasterRoleIds(policy, actor.principalId, actor.employeeId, now).size > 0
 }
 
 /** Runtime management authorization starts with the verified session principal.

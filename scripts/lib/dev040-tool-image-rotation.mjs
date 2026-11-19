@@ -1,13 +1,17 @@
 import { spawnSync } from 'node:child_process'
 import { gunzipSync } from 'node:zlib'
-import { canonicalize, sha256, assertImmutableRef, releasePaths } from './dev012-owner-release-runtime.mjs'
+import { canonicalize, sha256, assertImmutableRef, releasePaths, OWNER_EXECUTION_MODES } from './dev012-owner-release-runtime.mjs'
 import { readGitBlob } from './dev012-owner-stage-executor.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
 import { matchGitSourceArchive } from './dev040-git-archive.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_PREFIX_SHA256 } from './dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_MIGRATION_ENTRY_COUNT } from './dev059-fms-authority-migration.mjs'
+import {DEV070_MIGRATION_ENTRIES,DEV070_MIGRATION_ENTRY_COUNT,DEV070_RELEASE_MODE,ORGMASTER_FMS_DELIVERY_FLAG,isFmsDeliveryAppend} from './dev070-administration-migration.mjs'
 import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_RELEASE_MODE } from './dev057-projed-principal-migration.mjs'
+import {assertSmokeInfraReuseEvidence,readSmokeReuseProviderState} from './dev057-smoke-rotation-continuation.mjs'
+import { DEV057_PRINCIPAL_SMOKE_RECIPE, isDev057PrincipalSmokeBlobTransition } from './dev057-principal-smoke-transition.mjs'
+import {normalizeTerraformStateMeta} from './dev040-tool-terraform.mjs'
 
 export const TOOL_RECIPES = Object.freeze([
   'infra/google-cloud/dev-040-production-release/migration-runner.Dockerfile',
@@ -41,23 +45,39 @@ function assertToolControlStage(value, profile, intent, stage) {
     || receiptSha256 !== sha256(canonicalize(core))) fail('BASELINE_INVALID')
   return value
 }
-export function assertToolPreActivationAbortControl({ profile, attemptIntent, attemptRef, baselineIntentRef,
+export const TOOL_ROTATION_FINAL_CONTROL_RESULTS = Object.freeze(['RELEASED', 'PRE_ACTIVATION_ABORTED', 'ROLLED_BACK'])
+
+export function assertToolRecoveredControl({ profile, attemptIntent, attemptRef, baselineIntentRef,
   infraRef, priorInfra, baselineActiveRevision, control, prepareRead, rollbackRead, terminalRead }) {
   const paths = releasePaths(profile, attemptIntent, attemptRef.sha256)
   const prepare = assertToolControlStage(prepareRead.value, profile, attemptIntent, 'prepare')
   const rollback = assertToolControlStage(rollbackRead.value, profile, attemptIntent, 'rollback')
   const terminal = assertToolControlStage(terminalRead.value, profile, attemptIntent, 'terminal')
   const rollbackFacts = rollback.facts, terminalFacts = terminal.facts
+  // A historical rollback executor wrote the already-cleaned candidate
+  // revision into the finalized abort head.  Accept that legacy shape only
+  // when the sealed abort receipts and the provider baseline prove that the
+  // candidate was removed; every unrelated/non-owned revision still fails.
+  const serviceCandidate = typeof control.candidateRevision === 'string'
+    && control.candidateRevision.startsWith(`${profile.target.serviceName}-`)
+  const aborted = control.result === 'PRE_ACTIVATION_ABORTED'
+  const verifiedRecovery = aborted
+    ? (control.candidateRevision === null || serviceCandidate)
+      && ['NOT_APPLIED', 'UNCHANGED_VERIFIED'].includes(rollbackFacts?.databaseDisposition)
+    : control.result === 'ROLLED_BACK' && !attemptIntent.principalOnlyRecovery
+      && serviceCandidate && control.candidateRevision !== baselineActiveRevision
+      && rollbackFacts?.databaseDisposition === 'UNCHANGED_VERIFIED'
+      && rollbackFacts.entrypointRecovery?.result === 'BASELINE_ALREADY_ACTIVE'
+      && !rollbackFacts.administrationRecovery && !terminalFacts?.administrationRecovery
   if (prepareRead.ref.uri !== paths.prepare || rollbackRead.ref.uri !== paths.rollback || terminalRead.ref.uri !== paths.terminal
     || control.releaseId !== attemptIntent.releaseId || control.sourceRevision !== attemptIntent.sourceRevision
     || control.sourceLockSha256 !== attemptIntent.sourceLockRef.sha256 || control.previousRevision !== baselineActiveRevision
-    || control.candidateRevision !== null || !same(attemptIntent.baselineIntentRef, baselineIntentRef)
+    || !verifiedRecovery || !same(attemptIntent.baselineIntentRef, baselineIntentRef)
     || !same(attemptIntent.infraReceiptRef, infraRef) || attemptIntent.previousRevision !== baselineActiveRevision
     || !same(prepare.facts?.prerequisiteRefs?.infra, infraRef)
     || prepare.facts?.migrationRunnerDigest !== priorInfra.migrationRunnerDigest
-    || rollbackFacts?.result !== 'PRE_ACTIVATION_ABORTED' || terminalFacts?.result !== 'PRE_ACTIVATION_ABORTED'
+    || rollbackFacts?.result !== control.result || terminalFacts?.result !== control.result
     || rollbackFacts.previousRevision !== baselineActiveRevision || terminalFacts.previousRevision !== baselineActiveRevision
-    || !['NOT_APPLIED', 'UNCHANGED_VERIFIED'].includes(rollbackFacts.databaseDisposition)
     || terminalFacts.databaseDisposition !== rollbackFacts.databaseDisposition
     || rollbackFacts.entrypointRecovery?.changed !== false
     || !same(terminalFacts.entrypointRecovery, rollbackFacts.entrypointRecovery)
@@ -71,9 +91,11 @@ export function assertToolOwner(profile) {
     || profile.artifact.releaseBucket !== 'jenfu-platform-prod-orgmaster-release'
     || profile.state.backendKey !== 'dev-040-r2/production-release/default.tfstate') fail('OWNER_INVALID')
 }
-export function toolExecutableInputs(root, revision) {
+/** Existing rotation callers bind migration only. Audit other fixed recipes
+ * separately; this never makes a migration proof authority for another image. */
+export function toolExecutableInputs(root, revision, recipe = TOOL_RECIPES[0]) {
   if (!H40.test(revision)) fail('SOURCE_INVALID')
-  const recipe = TOOL_RECIPES[0]
+  if (!TOOL_RECIPES.includes(recipe)) fail('RECIPE_INVALID')
   const read = file => readGitBlob(root, file, revision)
   const files = [recipe, ...read(recipe).toString('utf8').split(/\r?\n/u)
     .filter(line => line.startsWith('COPY ')).flatMap(line => line.trim().split(/\s+/u).slice(1, -1))]
@@ -81,6 +103,19 @@ export function toolExecutableInputs(root, revision) {
     const exists = spawnSync('git', ['cat-file', '-e', `${revision}:${file}`], { cwd: root, windowsHide: true })
     if (exists.status === 0) files.push(file)
   }
+  // Git applies ancestor attributes while producing each copied source file.
+  const attributeFiles = new Set()
+  for (const source of files) {
+    const parts = source.split('/').slice(0, -1)
+    while (parts.length) {
+      attributeFiles.add(`${parts.join('/')}/.gitattributes`)
+      parts.pop()
+    }
+  }
+  const attributes = spawnSync('git', ['ls-tree', '-r', '--name-only', revision],
+    { cwd: root, windowsHide: true, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
+  if (attributes.error || attributes.status !== 0) fail('SOURCE_INVALID')
+  for (const file of attributes.stdout.split(/\r?\n/u).filter(Boolean)) if (attributeFiles.has(file)) files.push(file)
   if (files.some(file => !/^[A-Za-z0-9._/-]+$/u.test(file) || file.includes('..'))) fail('COPY_INVALID')
   return [...new Set(files)].sort().map(path => ({ path, sha256: sha256(read(path)) }))
 }
@@ -103,6 +138,51 @@ function gitIsAncestor(root, ancestor, descendant) {
   if (result.error) fail('SOURCE_INVALID')
   return result.status === 0
 }
+export function assertReusableAfterStateEvidence(existing, current) {
+  const normalize = value => ({ ...value, stateMeta: normalizeTerraformStateMeta(value?.stateMeta) })
+  if (!existing || !current || !same(normalize(existing), normalize(current))) fail('RECOVERY_AFTER_STATE_CHANGED')
+  return existing
+}
+
+/** Resolve only an already-consumed reuse receipt's immutable infra anchor. */
+export async function assertToolInfrastructureBasis({root,profile,transport,baselineIntent,infraRef,infra,currentSourceRevision,
+  beforeState,readHistoricalBaseline,readLiveProvider=false,
+  readSourceFile,readInfrastructureTree,validateReuseEvidence=assertSmokeInfraReuseEvidence}){
+  if(infra?.mutationProfile!=='APP_INFRA_REUSE')return null
+  if(!same(baselineIntent?.infraReceiptRef,infraRef)||infra.sourceRevision!==baselineIntent.sourceRevision
+    ||typeof readHistoricalBaseline!=='function'||!same(infra.baselineIntentRef,baselineIntent.baselineIntentRef)
+    ||!gitIsAncestor(root,infra.sourceRevision,currentSourceRevision))fail('REUSE_BASIS_INVALID')
+  const read=async ref=>{
+    assertImmutableRef(ref,profile.artifact.releaseBucket,['receipts'])
+    const value=await transport.readJson(ref,profile.artifact.releaseBucket,['receipts'])
+    if(!same(value.ref,ref)||!Buffer.isBuffer(value.bytes)||sha256(value.bytes)!==ref.sha256||!same(JSON.parse(value.bytes),value.value))fail('REUSE_BASIS_INVALID')
+    return value
+  }
+  const [reuseRead,lockRead]=await Promise.all([read(infraRef),read(infra.sourceLockRef)])
+  if(!same(reuseRead.value,infra))fail('REUSE_BASIS_INVALID')
+  const predecessor=await readHistoricalBaseline({profile,transport,baselineIntentRef:baselineIntent.baselineIntentRef})
+  await validateReuseEvidence({root,profile,transport,intent:baselineIntent,values:{infra,sourceLock:lockRead.value},
+    baseline:predecessor,...(readSourceFile?{readSourceFile}:{}),...(readInfrastructureTree?{readInfrastructureTree}:{})})
+  const anchorRead=await read(infra.reusedInfraReceiptRef),anchor=anchorRead.value
+  if(anchor.sourceRevision!==infra.reusedSourceRevision||!gitIsAncestor(root,anchor.sourceRevision,infra.sourceRevision)
+    ||!anchor.smokeRotation?.afterStateRef||!anchor.smokeRotation?.outputManifestRef)fail('REUSE_BASIS_INVALID')
+  const [sealedState,manifest]=await Promise.all([read(anchor.smokeRotation.afterStateRef),read(anchor.smokeRotation.outputManifestRef)])
+  if(sealedState.ref.sha256!==anchor.stateJsonSha256||manifest.ref.sha256!==anchor.outputManifestSha256
+    ||!same(sealedState.value.manifest,manifest.value)||sealedState.value.manifest?.source_revision!==anchor.sourceRevision)fail('REUSE_BASIS_INVALID')
+  assertReusableAfterStateEvidence(sealedState.value,beforeState)
+  if(readLiveProvider){
+    const terraformReader=(_root,args)=>{
+      const command=args.join(' ')
+      if(command==='show -json')return beforeState.stateJson
+      if(command==='state pull')return beforeState.stateMeta
+      if(command==='output -json app_release_infra_manifest')return beforeState.manifest
+      fail('REUSE_BASIS_INVALID')
+    }
+    await readSmokeReuseProviderState({root,profile,transport,rotation:anchor,sourceRevision:infra.sourceRevision,terraformReader,
+      ...(readSourceFile?{readSourceFile}:{})})
+  }
+  return {anchorRef:anchorRead.ref,stateSourceRevision:anchor.sourceRevision,sealedAfterStateRef:sealedState.ref}
+}
 export function assertToolStateSourceContinuation(root, baselineRevision, stateRevision, currentRevision) {
   if (stateRevision === baselineRevision) return { disposition: 'EXACT_BASELINE', stateRevision }
   if (!gitIsAncestor(root, baselineRevision, stateRevision) || !gitIsAncestor(root, stateRevision, currentRevision)
@@ -115,18 +195,51 @@ export function assertToolStateSourceContinuation(root, baselineRevision, stateR
 function readProductionProfile(root, revision) {
   try { return JSON.parse(readGitBlob(root, PRODUCTION_PROFILE_PATH, revision).toString('utf8')) } catch { fail('SOURCE_INVALID') }
 }
-function nonRecipeInfrastructureEntries(root, revision) {
+function revisionBlob(root, revision, file) {
+  if (!H40.test(revision)) fail('SOURCE_INVALID')
+  const result = spawnSync('git', ['rev-parse', '--verify', `${revision}:${file}`], {
+    cwd: root, encoding: 'utf8', windowsHide: true,
+  })
+  return result.status === 0 ? result.stdout.trim() : null
+}
+function nonRecipeInfrastructureEntries(root, revision, additionalExcludedPaths = []) {
+  const excludedPaths = new Set(additionalExcludedPaths)
   return infrastructureTreeEntries(root, revision)
     .filter(entry => {
       const file = entry.split('\t').at(-1)
-      return file !== PRODUCTION_PROFILE_PATH && !TOOL_RECIPES.includes(file)
+      return file !== PRODUCTION_PROFILE_PATH && !TOOL_RECIPES.includes(file) && !excludedPaths.has(file)
     })
 }
+function reviewedClosedWorkflowTransition(before, after) {
+  const fixed = {
+    path: '.github/workflows/deploy-orgmaster-independent-production.yml',
+    concurrency: 'production-release-orgmaster-prod',
+    jobs: OWNER_EXECUTION_MODES.full_release,
+    failureJobs: ['readback', 'abort-or-rollback', 'publish-terminal'],
+  }
+  return same(before, { ...fixed, onlyInput: 'releaseCapsuleRef' })
+    && same(after, { ...fixed, inputs: ['releaseCapsuleRef', 'executionMode'],
+      defaultExecutionMode: 'full_release', executionModes: OWNER_EXECUTION_MODES })
+}
+
+function reviewedFmsRevocationProfileAppend(before, after) {
+  const flag = ORGMASTER_FMS_DELIVERY_FLAG
+  if (!isFmsDeliveryAppend(before.migrations.entries, after)) return false
+  const { migrations: _oldMigrations, environment: oldEnvironment, ...oldProfile } = before
+  const { migrations: _newMigrations, environment: newEnvironment, ...newProfile } = after
+  if (!same(oldProfile, newProfile) || !Array.isArray(oldEnvironment?.requiredPlainEnvironmentNames) ||
+      !Array.isArray(newEnvironment?.requiredPlainEnvironmentNames) || !oldEnvironment.fixedValues || !newEnvironment.fixedValues ||
+      oldEnvironment.requiredPlainEnvironmentNames.includes(flag) || Object.hasOwn(oldEnvironment.fixedValues, flag)) return false
+  const { [flag]: _enabled, ...remainingValues } = newEnvironment.fixedValues
+  return same(oldEnvironment, {
+    ...newEnvironment, fixedValues: remainingValues, requiredPlainEnvironmentNames: newEnvironment.requiredPlainEnvironmentNames.filter(name => name !== flag),
+  })
+}
 /**
- * The baseline-to-receipt transition may carry the exact DEV-058, DEV-059 or DEV-057 ProJED
- * migration append alongside existing tool recipe changes. Every other infrastructure
- * input, including every non-recipe tree entry and every profile field, stays
- * byte-equivalent. The receipt-to-intent check remains strict below.
+ * The baseline-to-receipt transition may carry an approved migration append
+ * alongside tool recipe changes and the exact reviewed single-capsule to closed
+ * execution-mode metadata amendment. All other profile/infrastructure inputs
+ * remain equal; raw fingerprints and receipt-to-intent checks stay strict.
  */
 export function assertToolInfrastructureTransition(root, beforeRevision, afterRevision) {
   const beforeFingerprint = toolInfrastructureFingerprint(root, beforeRevision)
@@ -143,7 +256,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
     const beforeEntries = beforeMigrations.entries
     const afterEntries = afterMigrations.entries
     const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
-    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, ...DEV059_FMS_AUTHORITY_MIGRATIONS, ...DEV057_PROJED_MIGRATIONS].map(identity)
+    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, ...DEV059_FMS_AUTHORITY_MIGRATIONS,...DEV070_MIGRATION_ENTRIES, ...DEV057_PROJED_MIGRATIONS].map(identity)
     if (!Array.isArray(beforeEntries) || !Array.isArray(afterEntries)
       || beforeMigrations.baselineCount !== 10 || afterMigrations.baselineCount !== 10
       || !same(staticInputs(beforeMigrations), staticInputs(afterMigrations))
@@ -153,17 +266,38 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
       || !same(beforeEntries, afterEntries.slice(0, beforeEntries.length))
       || !same(beforeEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, beforeEntries.length - DEV058_MIGRATION_PREFIX_COUNT))
       || !same(afterEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, afterEntries.length - DEV058_MIGRATION_PREFIX_COUNT))) fail('SOURCE_INPUT_DRIFT')
-    disposition = afterEntries.length > DEV059_MIGRATION_ENTRY_COUNT
-      ? DEV057_PROJED_RELEASE_MODE
-      : afterEntries.length > DEV058_MIGRATION_ENTRY_COUNT
+    disposition = afterEntries.length > DEV070_MIGRATION_ENTRY_COUNT ? DEV057_PROJED_RELEASE_MODE : afterEntries.length>DEV059_MIGRATION_ENTRY_COUNT?DEV070_RELEASE_MODE:afterEntries.length > DEV058_MIGRATION_ENTRY_COUNT
       ? 'DEV059_FMS_AUTHORITY_APPEND'
       : 'DEV058_ROLE_POLICY_APPEND'
   } catch { fail('SOURCE_INPUT_DRIFT') }
   const { migrations: _beforeMigrations, ...beforeProfileWithoutMigrations } = beforeProfile
   const { migrations: _afterMigrations, ...afterProfileWithoutMigrations } = afterProfile
-  if (!same(beforeProfileWithoutMigrations, afterProfileWithoutMigrations)
+  const exactProfileMatch = same(beforeProfileWithoutMigrations, afterProfileWithoutMigrations)
+  const reviewedWorkflowMatch = !exactProfileMatch
+    && reviewedClosedWorkflowTransition(beforeProfile.workflow, afterProfile.workflow)
+    && same({ ...beforeProfileWithoutMigrations, workflow: afterProfile.workflow }, afterProfileWithoutMigrations)
+  if ((!exactProfileMatch && !reviewedWorkflowMatch && !reviewedFmsRevocationProfileAppend(beforeProfile, afterProfile))
     || !same(nonRecipeInfrastructureEntries(root, beforeRevision), nonRecipeInfrastructureEntries(root, afterRevision))) fail('SOURCE_INPUT_DRIFT')
   return { disposition, beforeFingerprint, afterFingerprint }
+}
+
+/** Reuse an immutable migration-tool receipt across an application successor.
+ * The Workflow source remains governed by its own smoke-rotation producer. */
+export function assertToolReceiptSourceSuccessor(root, receiptRevision, currentRevision) {
+  if (!gitIsAncestor(root, receiptRevision, currentRevision)
+    || !same(toolExecutableInputs(root, receiptRevision), toolExecutableInputs(root, currentRevision))) fail('SOURCE_INPUT_DRIFT')
+  const beforeFingerprint = toolInfrastructureFingerprint(root, receiptRevision)
+  const afterFingerprint = toolInfrastructureFingerprint(root, currentRevision)
+  if (beforeFingerprint === afterFingerprint) return { disposition: 'UNCHANGED', beforeFingerprint, afterFingerprint }
+  if (!isDev057PrincipalSmokeBlobTransition(
+    revisionBlob(root, receiptRevision, DEV057_PRINCIPAL_SMOKE_RECIPE),
+    revisionBlob(root, currentRevision, DEV057_PRINCIPAL_SMOKE_RECIPE),
+  ) || !same(readProductionProfile(root, receiptRevision), readProductionProfile(root, currentRevision))
+    || !same(
+      nonRecipeInfrastructureEntries(root, receiptRevision, [DEV057_PRINCIPAL_SMOKE_RECIPE]),
+      nonRecipeInfrastructureEntries(root, currentRevision, [DEV057_PRINCIPAL_SMOKE_RECIPE]),
+    )) fail('SOURCE_INPUT_DRIFT')
+  return { disposition: 'DEV057_PRINCIPAL_SMOKE_SUCCESSOR', beforeFingerprint, afterFingerprint }
 }
 export function assertToolArtifactAssociation({ root, profile, sourceRevision, buildSourceRevision, proof }) {
   if (sourceRevision === buildSourceRevision) {
@@ -291,8 +425,37 @@ export function assertToolRotationState({ state, infraProfile, profile, sourceRe
   return manifest
 }
 
+/**
+ * A tool rotation can be applied successfully before a later application
+ * release advances the service/data control head.  This bridge treats that
+ * immutable rotation as the infrastructure baseline only after revalidating
+ * its complete native proof and ancestry.  It never changes the RELEASED
+ * service/data baseline or synthesizes an aborted release attempt.
+ */
+export async function assertAppliedToolInfrastructureBaseline({ root, profile, transport, appliedBaseline,
+  currentSourceRevision, baselineIntentRef, baseline, readLiveJob = true, rotationDepth = 0, receiptRead = null,readHistoricalBaseline }) {
+  assertToolOwner(profile)
+  const sourceRevision = appliedBaseline?.sourceRevision
+  const infraReceiptRef = appliedBaseline?.infraReceiptRef
+  if (appliedBaseline?.schemaVersion !== 'orgmaster.applied-tool-infra-baseline.v1'
+    || !H40.test(sourceRevision ?? '') || !H40.test(currentSourceRevision ?? '')
+    || sourceRevision === currentSourceRevision || !gitIsAncestor(root, sourceRevision, currentSourceRevision)
+    || !same(appliedBaseline.serviceDataBaselineIntentRef, baselineIntentRef)
+    || same(infraReceiptRef, baseline?.intent?.infraReceiptRef)
+    || infraReceiptRef?.uri !== `gs://${profile.artifact.releaseBucket}/receipts/tool-rotations/${sourceRevision}/app-infra.json`) {
+    fail('APPLIED_INFRA_BASELINE_INVALID')
+  }
+  assertImmutableRef(infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])
+  const read = receiptRead ?? await transport.readJson(infraReceiptRef, profile.artifact.releaseBucket, ['receipts'])
+  if (!same(read.ref, infraReceiptRef) || read.value?.sourceRevision !== sourceRevision) fail('APPLIED_INFRA_BASELINE_INVALID')
+  const summary = await assertOrdinaryToolRotation({ root, profile, transport,
+    intent: { sourceRevision, infraReceiptRef, baselineIntentRef }, receipt: read.value, baseline,
+    readLiveJob, rotationDepth: rotationDepth + 1,readHistoricalBaseline })
+  return { ref: read.ref, receipt: read.value, summary }
+}
+
 /** Native prepare validates immutable evidence; the operator also reads live state before dispatch. */
-export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline, readLiveJob = true, rotationDepth = 0 }) {
+export async function assertOrdinaryToolRotation({ root, profile, transport, intent, receipt, baseline, readLiveJob = true, rotationDepth = 0,readHistoricalBaseline }) {
   assertToolOwner(profile); assertToolSeal(receipt)
   if (!Number.isSafeInteger(rotationDepth) || rotationDepth < 0 || rotationDepth > 8) fail('BASELINE_INVALID')
   const proof = receipt.toolRotation
@@ -340,16 +503,25 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || priorInfra.foundationManifestSha256 !== receipt.foundationManifestSha256) fail('BASELINE_INVALID')
   const { controlSha256, ...controlCore } = controlRead.value
   if (controlRead.ref.sha256 !== proof.controlBaseline?.sha256 || controlSha256 !== sha256(canonicalize(controlCore))
-    || controlCore.state !== 'FINALIZED' || !['RELEASED', 'PRE_ACTIVATION_ABORTED'].includes(controlCore.result)
+    || controlCore.state !== 'FINALIZED' || !TOOL_ROTATION_FINAL_CONTROL_RESULTS.includes(controlCore.result)
     || controlCore.ownerApplicationId !== 'orgmaster' || controlCore.service !== 'orgmaster-prod') fail('BASELINE_INVALID')
   if (controlCore.result === 'RELEASED') {
     if (proof.controlAttemptIntentRef != null || proof.controlPrepareRef != null || proof.controlRollbackRef != null
       || proof.controlTerminalRef != null
-      || controlCore.sourceRevision !== originalIntent.sourceRevision || controlCore.releaseId !== originalIntent.releaseId
-      || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
-    assertToolStateSourceContinuation(root, proof.baselineSourceRevision, originalIntent.sourceRevision, receipt.sourceRevision)
+      || controlCore.sourceRevision !== originalIntent.sourceRevision || controlCore.releaseId !== originalIntent.releaseId) fail('BASELINE_INVALID')
+    if (same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) {
+      if (proof.appliedInfraBaseline != null) fail('BASELINE_INVALID')
+      assertToolStateSourceContinuation(root, proof.baselineSourceRevision, originalIntent.sourceRevision, receipt.sourceRevision)
+    } else {
+      if (proof.appliedInfraBaseline == null) fail('BASELINE_INVALID')
+      await assertAppliedToolInfrastructureBaseline({ root, profile, transport,
+        appliedBaseline: proof.appliedInfraBaseline, currentSourceRevision: receipt.sourceRevision,
+        baselineIntentRef: proof.baselineIntentRef, baseline, readLiveJob: false,
+        rotationDepth, receiptRead: priorInfraRead,readHistoricalBaseline })
+    }
   } else {
-    if (!proof.controlAttemptIntentRef || !proof.controlPrepareRef || !proof.controlRollbackRef || !proof.controlTerminalRef) fail('BASELINE_INVALID')
+    if (proof.appliedInfraBaseline != null || !proof.controlAttemptIntentRef || !proof.controlPrepareRef
+      || !proof.controlRollbackRef || !proof.controlTerminalRef) fail('BASELINE_INVALID')
     const [attemptRead, prepareRead, rollbackRead, terminalRead] = await Promise.all([
       read(proof.controlAttemptIntentRef), read(proof.controlPrepareRef), read(proof.controlRollbackRef), read(proof.controlTerminalRef),
     ])
@@ -363,17 +535,17 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     if (historicalTerminalBytes.ref?.uri !== historicalTerminalUri || historicalTerminal.facts?.result !== 'RELEASED'
       || typeof historicalActiveRevision !== 'string' || !historicalActiveRevision
       || (same(intent.baselineIntentRef, proof.baselineIntentRef) && baseline.activeRevision !== historicalActiveRevision)) fail('BASELINE_INVALID')
-    assertToolPreActivationAbortControl({ profile, attemptIntent, attemptRef: attemptRead.ref,
+    assertToolRecoveredControl({ profile, attemptIntent, attemptRef: attemptRead.ref,
       baselineIntentRef: proof.baselineIntentRef, infraRef: proof.baselineInfraRef, priorInfra,
       baselineActiveRevision: historicalActiveRevision, control: controlCore, prepareRead, rollbackRead, terminalRead })
     if (same(attemptIntent.infraReceiptRef, originalIntent.infraReceiptRef)) {
-      if (originalIntent.sourceRevision !== proof.baselineSourceRevision
-        || !same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
+      if (!same(originalIntent.infraReceiptRef, proof.baselineInfraRef)) fail('BASELINE_INVALID')
+      assertToolStateSourceContinuation(root, proof.baselineSourceRevision, originalIntent.sourceRevision, receipt.sourceRevision)
     } else {
       if (!same(attemptIntent.infraReceiptRef, proof.baselineInfraRef)
         || priorInfra.sourceRevision !== proof.baselineSourceRevision) fail('BASELINE_INVALID')
       await assertOrdinaryToolRotation({ root, profile, transport, intent: attemptIntent, receipt: priorInfra,
-        baseline, readLiveJob: false, rotationDepth: rotationDepth + 1 })
+        baseline, readLiveJob: false, rotationDepth: rotationDepth + 1,readHistoricalBaseline })
     }
   }
   const manifest = assertToolRotationState({ state: stateRead.value, infraProfile, profile, sourceRevision: receipt.sourceRevision,
@@ -385,6 +557,9 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
   const beforeSource = beforeStateRead.value.stateJson?.values?.outputs?.app_release_infra_manifest?.value?.source_revision
     ?? beforeStateRead.value.stateJson?.outputs?.app_release_infra_manifest?.value?.source_revision
   if (!H40.test(beforeSource ?? '')) fail('STATE_READBACK_INVALID')
+  const reusedBasis=await assertToolInfrastructureBasis({root,profile,transport,baselineIntent:originalIntent,
+    infraRef:proof.baselineInfraRef,infra:priorInfra,currentSourceRevision:receipt.sourceRevision,beforeState:beforeStateRead.value,readHistoricalBaseline})
+  if(reusedBasis&&beforeSource!==reusedBasis.stateSourceRevision)fail('STATE_READBACK_INVALID')
   assertToolRotationState({ state: beforeStateRead.value, infraProfile, profile, sourceRevision: beforeSource,
     image: proof.previousMigrationRunnerDigest, controllerImage: receipt.controllerImageDigest, foundationHash: receipt.foundationManifestSha256 })
   if (planRead.value.variables?.source_revision?.value !== receipt.sourceRevision
@@ -392,8 +567,10 @@ export async function assertOrdinaryToolRotation({ root, profile, transport, int
     || planRead.value.variables?.controller_image_digest?.value !== receipt.controllerImageDigest
     || planRead.value.variables?.foundation_manifest_sha256?.value !== receipt.foundationManifestSha256) fail('PLAN_PROOF_INVALID')
   assertToolInfrastructureTransition(root, proof.baselineSourceRevision, receipt.sourceRevision)
-  if (toolInfrastructureFingerprint(root, receipt.sourceRevision) !== toolInfrastructureFingerprint(root, intent.sourceRevision)
-    || !same(toolExecutableInputs(root, receipt.sourceRevision), toolExecutableInputs(root, intent.sourceRevision))) fail('SOURCE_INPUT_DRIFT')
+  // A current release may reuse an immutable tool-image receipt when only the
+  // separately governed candidate-smoke workflow changed. The shared exact
+  // transition authority rejects every unrelated infrastructure delta.
+  assertToolReceiptSourceSuccessor(root, receipt.sourceRevision, intent.sourceRevision)
   const before = beforeJobRead.value, after = afterJobRead.value
   if (before.name !== after.name || before.uid !== after.uid || before.uid !== proof.jobUid
     || after.name !== `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/orgmaster-prod-migration-runner`

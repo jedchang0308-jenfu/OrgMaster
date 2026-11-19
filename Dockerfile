@@ -86,7 +86,9 @@ COPY --from=builder --chown=65532:65532 /app/contracts ./contracts
 COPY --from=builder --chown=65532:65532 /app/config/catalogs/ai-pdm-role-catalog.v5.json ./config/catalogs/ai-pdm-role-catalog.v5.json
 COPY --from=builder --chown=65532:65532 /app/config/catalogs/ai-pdm-role-catalog.v6.json ./config/catalogs/ai-pdm-role-catalog.v6.json
 COPY --from=builder --chown=65532:65532 /app/config/catalogs/ai-pdm-role-catalog.v7.json ./config/catalogs/ai-pdm-role-catalog.v7.json
-RUN ["/nodejs/bin/node","-e","for(const v of ['v5','v6','v7']){const c=JSON.parse(require('node:fs').readFileSync('config/catalogs/ai-pdm-role-catalog.'+v+'.json','utf8'));if(c.applicationId!=='ai-pdm'||c.roles?.length!==9||!c.catalogVersion?.endsWith('.'+v)||!/^[a-f0-9]{64}$/.test(c.catalogSha256))throw Error('CATALOG_RUNTIME_ASSET_INVALID')}"]
+COPY --from=builder --chown=65532:65532 /app/config/catalogs/ai-pdm-role-catalog.v8.json ./config/catalogs/ai-pdm-role-catalog.v8.json
+COPY --chown=65532:65532 scripts/dev070-catalog-runtime-smoke.mjs ./scripts/dev070-catalog-runtime-smoke.mjs
+RUN ["/nodejs/bin/node","scripts/dev070-catalog-runtime-smoke.mjs"]
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/nodejs/bin/node"]
