@@ -1,3 +1,4 @@
+import { DEV057_EXTERNAL_RELEASE_MODE } from './lib/dev057-projed-external-migration.mjs'
 import { DEV057_PROJED_MIGRATION_ENTRY_COUNT, DEV057_PROJED_RELEASE_MODE, DEV057_PROJED_REMEDIATION } from './lib/dev057-projed-principal-migration.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -1165,4 +1166,15 @@ test('DEV-057 ProJED fresh prepare binds exact recipe and migrate requires live 
   assert.equal(wrongDigestJobs, 0)
   assert.equal(wrongDigest.h.objects.size, objectsBefore)
   assert.equal([...wrongDigest.h.objects.keys()].some(uri => uri.endsWith('/migrate.json')), false)
+})
+
+
+test('external owner migration receipt binds exact 65 rows and at most the single 069 append',()=>{
+ const profile={application:{id:'orgmaster'}}
+ const intent={sourceRevision:H40,migrationManifestSha256:'b'.repeat(64)}
+ const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:H40,manifestSha256:intent.migrationManifestSha256,status:'PASS',boundaryStatus:'PASS',database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',baselineCount:10,minimumLedgerCount:10,ledgerCount:65,applied:1,replayed:64,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
+ const check=(value,plan={releaseMode:DEV057_EXTERNAL_RELEASE_MODE,pendingMigrationCount:1})=>assertMigrationReceipt({...value,receiptSha256:sha256(canonicalize(value))},profile,intent,{allowForward:true,forwardPlan:plan})
+ assert.doesNotThrow(()=>check(core));assert.doesNotThrow(()=>check({...core,applied:0,replayed:65}))
+ for(const changes of[{ledgerCount:64},{ledgerCount:66},{applied:2,replayed:63},{database:'jenfu_stg'},{ownerApplicationId:'platform'},{crossDatabaseDenials:[]}])assert.throws(()=>check({...core,...changes}),/MIGRATION_RECEIPT_INVALID/)
+ assert.throws(()=>check(core,{releaseMode:DEV057_EXTERNAL_RELEASE_MODE,pendingMigrationCount:4}),/MIGRATION_RECEIPT_INVALID/)
 })

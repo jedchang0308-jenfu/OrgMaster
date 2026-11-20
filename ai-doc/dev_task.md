@@ -973,6 +973,8 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## DEV-057：身分與權限發布契約邊界
 
+- 2026-11-20 / ProJED DEV-139 §4.2.1：069 外部申請、先審核後 provider-pair 綁定、管理頁核准／拒絕／停用恢復、版本化只讀 consumer 與獨立64→65發布recipe，沿[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-dev-139-external-qualification-producer--2026-11-20)。本輪為 source／isolated 交付，未正式啟用。
+
 - 主責／來源：ORGMASTER/DEV-057；來源JENFU/DEV-015；consumer AIPDM/DEV-121。
 - 節點：既有DEV-057本輪Principal-only授權出口已完成；架構／高風險交易責任維持原契約，業務延期由AIPDM/DEV-122獨立追溯。
 - 施工及驗收：[唯一現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md)；正常授權不保留bridge、雙軌、legacy authority、本機ACL或逐人marker。人類與管理員依真實AAL1及有效grant/scope工作。

@@ -1,3 +1,4 @@
+import { createProjedExternalMiddleware } from './orgmasterProjedExternalApi'
 import { readFile, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, resolve, sep } from 'node:path'
@@ -117,7 +118,9 @@ export function createOrgmasterServer(options: OrgmasterServerOptions = {}) {
     createAdministrationLifecycleMiddleware(runtime.administrationLifecycle,runtime.managedLoginCallerVerifier),
     createOrgmasterManagedLoginMiddleware(runtime.managedLoginOwner, runtime.managedLoginCallerVerifier),
     createOrgmasterProjedPrincipalMiddleware(runtime.projedPrincipalOwner, runtime.managedLoginCallerVerifier),
+    createProjedExternalMiddleware(runtime.projedExternal, runtime.projedExternalCallerVerifier, 'internal'),
     createOrgmasterAuthMiddleware(() => runtime, devIdentityEnabled),
+    createProjedExternalMiddleware(runtime.projedExternal, runtime.projedExternalCallerVerifier),
     ...(employeeNumberManagementEnabled ? [createOrgmasterManagedIdentityMiddleware(root, devIdentityEnabled, managedIdentityService)] : []),
     createWorkbenchPreferenceMiddleware(root),
     ...(accountRuntime ? [accountRuntime.middleware] : []),

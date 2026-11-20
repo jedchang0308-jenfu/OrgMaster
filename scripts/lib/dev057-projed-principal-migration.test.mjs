@@ -28,7 +28,8 @@ const migrationFiles = new Map(profile.migrations.entries.map(entry => [
   entry.path,
   fs.readFileSync(path.join(repoRoot, entry.path)),
 ]))
-const sourceBundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), migrationFiles, 'a'.repeat(40)).bundle
+const completeSourceBundle = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), migrationFiles, 'a'.repeat(40)).bundle
+const sourceBundle = {...completeSourceBundle,entries:completeSourceBundle.entries.slice(0,64)}
 const before = { ...sourceBundle, entries: sourceBundle.entries.slice(0, 60) }
 const after = sourceBundle
 

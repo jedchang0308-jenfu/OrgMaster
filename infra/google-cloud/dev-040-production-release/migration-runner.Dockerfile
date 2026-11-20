@@ -12,6 +12,7 @@ RUN npm ci --omit=dev --ignore-scripts \
 COPY scripts/lib/dev012-production-migration-runner.mjs scripts/lib/dev012-production-migration-runner.mjs
 COPY scripts/lib/dev058-role-policy-migration.mjs scripts/lib/dev058-role-policy-migration.mjs
 COPY scripts/lib/dev059-fms-authority-migration.mjs scripts/lib/dev059-fms-authority-migration.mjs
+COPY scripts/lib/dev057-projed-external-migration.mjs scripts/lib/dev057-projed-external-migration.mjs
 COPY scripts/lib/dev057-projed-principal-migration.mjs scripts/lib/dev057-projed-principal-migration.mjs
 COPY scripts/lib/dev060-fms-catalog-activation-migration.mjs scripts/lib/dev060-fms-catalog-activation-migration.mjs
 COPY scripts/lib/dev070-administration-migration.mjs scripts/lib/dev070-administration-migration.mjs

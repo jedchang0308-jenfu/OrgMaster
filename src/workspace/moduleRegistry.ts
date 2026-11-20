@@ -28,6 +28,7 @@ const dutyStatuses = ['no-executor', 'missing-primary-executor', 'pending-reassi
 const dutyStatusSet = new Set<string>(dutyStatuses)
 const governanceSections = new Set<WorkspaceModuleContextMap['governance']['section']>([
   'administrators',
+  'external',
   'identity',
   'catalog',
   'assignments',

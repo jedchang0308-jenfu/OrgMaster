@@ -1,3 +1,4 @@
+import { DEV057_EXTERNAL_MIGRATION, DEV057_EXTERNAL_RELEASE_MODE } from './dev057-projed-external-migration.mjs'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -1712,4 +1713,12 @@ test('accepts the exact DEV-057 ProJED profile append from 60 to 63 and rejects 
     assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
       sourceFixture.appendSourceRevision, revision), 'SOURCE_INPUT_DRIFT')
   }
+})
+
+
+test('external tool source permits only the exact 64-to-65 qualification suffix',()=>{
+ const successor=commitProfileVariant(sourceFixture.projedAppendSourceRevision,profile=>{profile.migrations.entries.push(DEV057_EXTERNAL_MIGRATION)},'append reviewed external qualification')
+ assert.equal(assertToolInfrastructureTransition(sourceFixture.root,sourceFixture.projedAppendSourceRevision,successor).disposition,DEV057_EXTERNAL_RELEASE_MODE)
+ const drift=commitProfileVariant(successor,profile=>{profile.migrations.entries[64].appliedSha256='f'.repeat(64)},'reject altered external qualification')
+ assertRotationCode(()=>assertToolInfrastructureTransition(sourceFixture.root,sourceFixture.projedAppendSourceRevision,drift),'SOURCE_INPUT_DRIFT')
 })

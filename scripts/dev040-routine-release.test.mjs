@@ -1,3 +1,4 @@
+import { DEV057_EXTERNAL_REMEDIATION, DEV057_EXTERNAL_RELEASE_MODE } from './lib/dev057-projed-external-migration.mjs'
 import { DEV057_PROJED_REMEDIATION, DEV057_PROJED_RELEASE_MODE } from './lib/dev057-projed-principal-migration.mjs'
 import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ADMINISTRATION_REMEDIATION,ORGMASTER_FMS_DELIVERY_FLAG,assertDev070AdministrationAppend} from './lib/dev070-administration-migration.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
@@ -2939,7 +2940,7 @@ test('normal CLI exposes only closed migration-only and sealed full-continuation
 })
 
 function projedPrincipalHarness() {
-  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 60), currentBundle: { bundle: newBundle.bundle } })
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 60), currentBundle: { bundle: prefixBundle(newBundle.bundle,64) } })
   const common = { devId: 'DEV-057', slice: '057-PROJED-PRINCIPAL', remediation: DEV057_PROJED_REMEDIATION }
   h.input.values.authorization = { ...h.input.values.authorization, ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
   h.input.values.readiness = { ...h.input.values.readiness, ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
@@ -2984,4 +2985,21 @@ test('ProJED append CLI seals one recipe and rejects mixed modes or wrong own in
   }))
   assert.equal(DEV057_PROJED_REMEDIATION.consumerApplicationId, 'platform')
   assert.equal(DEV057_PROJED_REMEDIATION.applicationId, 'projed')
+})
+
+
+test('external release uses a separate 64-to-65 recipe and rejects mixed CLI scopes', async()=>{
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,64),currentBundle:{bundle:newBundle.bundle}})
+ const common={devId:'DEV-057',slice:'057-PROJED-EXTERNAL',remediation:DEV057_EXTERNAL_REMEDIATION}
+ h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
+ h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
+ attachForwardInfra(h)
+ const plan=await verifyRoutineRelease(h.input)
+ assert.equal(plan.releaseMode,DEV057_EXTERNAL_RELEASE_MODE);assert.equal(plan.pendingMigrationCount,1)
+ const ref=`gs://${bucket}/receipts/tool-rotations/${'c'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`
+ const args=['--dev057-projed-external-append',`--dev057-infra-ref=${ref}`]
+ assert.equal(parseDeployProductionArgs(['--check',...args]).dev057ProjedExternalAppend,true)
+ assert.throws(()=>parseDeployProductionArgs([...args,'--dev057-projed-principal-append']))
+ assert.throws(()=>parseDeployProductionArgs([...args,'--dev070-administration-append']))
+ assert.throws(()=>parseDeployProductionArgs([args[0]]))
 })
