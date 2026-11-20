@@ -54,7 +54,7 @@ const authorization = {
 
 test('DEV-057 ProJED suffix matches exact source and applied migration bytes', () => {
   assert.equal(DEV057_PROJED_RELEASE_MODE, 'DEV057_PROJED_PRINCIPAL_APPEND')
-  assert.equal(DEV057_PROJED_MIGRATION_ENTRY_COUNT, 63)
+  assert.equal(DEV057_PROJED_MIGRATION_ENTRY_COUNT, 64)
   assert.equal(before.entries.length, 60)
   assert.equal(after.entries.length, DEV057_PROJED_MIGRATION_ENTRY_COUNT)
   assert.equal(sourceBundle.baselineCount, 10)
@@ -69,9 +69,9 @@ test('DEV-057 ProJED suffix matches exact source and applied migration bytes', (
 
 test('released owner consumers accept only exact reviewed complete generations and keep both prefixes immutable', () => {
   for (const entries of [before.entries, after.entries]) assert.equal(assertReviewedOrgmasterMigrationEntries(entries), entries)
-  for (const count of [0, 39, 59, 61, 62]) assert.throws(() => assertReviewedOrgmasterMigrationEntries(after.entries.slice(0, count)))
+  for (const count of [0, 39, 59, 61, 62, 63]) assert.throws(() => assertReviewedOrgmasterMigrationEntries(after.entries.slice(0, count)))
   assert.throws(() => assertReviewedOrgmasterMigrationEntries([...after.entries, {...after.entries.at(-1), order: 64}]))
-  for (const index of [0, 59, 60, 61, 62]) {
+  for (const index of [0, 59, 60, 61, 62, 63]) {
     const entries = structuredClone(after.entries)
     entries[index].appliedSha256 = '0'.repeat(64)
     assert.throws(() => assertReviewedOrgmasterMigrationEntries(entries))
@@ -80,7 +80,7 @@ test('released owner consumers accept only exact reviewed complete generations a
 
 test('migration entries reject hash changes, altered prefixes, unknown suffixes, and partial release sets', () => {
   for (const field of ['sourceSha256', 'appliedSha256']) {
-    for (const index of [60, 61, 62]) {
+    for (const index of [60, 61, 62, 63]) {
       const changedHash = structuredClone(after.entries)
       changedHash[index][field] = '0'.repeat(64)
       assert.throws(() => assertDev057ProjedMigrationEntries(changedHash))
@@ -91,14 +91,14 @@ test('migration entries reject hash changes, altered prefixes, unknown suffixes,
   changedPrefix[12].appliedSha256 = '0'.repeat(64)
   assert.throws(() => assertDev057ProjedMigrationEntries(changedPrefix))
 
-  for (const count of [60, 61, 62]) assert.throws(() => assertDev057ProjedMigrationEntries(after.entries.slice(0, count)))
+  for (const count of [60, 61, 62, 63]) assert.throws(() => assertDev057ProjedMigrationEntries(after.entries.slice(0, count)))
   assert.throws(() => assertDev057ProjedMigrationEntries([...after.entries, { order: 64, version: 'unknown', path: 'unknown.sql' }]))
 })
 
-test('append accepts only the unchanged 60-row baseline to exact 63-row suffix', () => {
+test('append accepts only the unchanged 60-row baseline to exact 64-row suffix', () => {
   const result = assertDev057ProjedAppend(before, after)
   assert.equal(result.migrationDisposition, 'FORWARD_APPLY')
-  assert.equal(result.pendingMigrationCount, 3)
+  assert.equal(result.pendingMigrationCount, 4)
   assert.match(result.migrationInputsSha256, /^[0-9a-f]{64}$/u)
 
   const partialBefore = { ...before, entries: [...before.entries, after.entries[60]] }

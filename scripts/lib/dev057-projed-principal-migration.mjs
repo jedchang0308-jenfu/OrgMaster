@@ -23,6 +23,7 @@ export const DEV057_PROJED_MIGRATIONS = Object.freeze([
     sourceSha256: '2e5db34d47a81b2a4e3bd9465373e4fcf29d8148af183e6bb8a7e4cbe6276ad6',
     appliedSha256: '7fad572cd77370c5e7b230bcef9b9319c1f3d287226eed57cb61c7d37842b7af',
   }),
+  Object.freeze({order:64,version:'dev057-orgmaster-068',path:'db/migrations/068_dev057_projed_central_revocation.sql',sourceSha256:'85d36aa0f36045405b29ce401fc5df7494a2ebf9ed530ee6f08e86aec8478b64',appliedSha256:'f6bcc2f6cf21721fc53825ace00ccdeda93f0e81267a834567d7343e065f42d8'}),
 ])
 
 export const DEV057_PROJED_RELEASE_MODE = 'DEV057_PROJED_PRINCIPAL_APPEND'
@@ -58,7 +59,7 @@ export function assertDev057ProjedMigrationEntries(entries) {
     fail('DEV057_PROJED_MIGRATION_APPEND_INVALID')
   }
 
-  const expectedNames = ['dev057_projed_principal_publication', 'dev057_projed_principal_state_reader', 'dev057_projed_employee_private_admission']
+  const expectedNames = ['dev057_projed_principal_publication', 'dev057_projed_principal_state_reader', 'dev057_projed_employee_private_admission', 'dev057_projed_central_revocation']
   if (entries.slice(DEV057_PROJED_BASELINE_COUNT).some((entry, index) => Object.hasOwn(entry ?? {}, 'sqlBase64')
     && entry.name !== expectedNames[index])) fail('DEV057_PROJED_MIGRATION_NAME_INVALID')
   return entries

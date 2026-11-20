@@ -21,6 +21,7 @@ let cleanup = null
 let firstFailure = null
 let migrationSha256 = null
 let migration066Sha256 = null
+let migration068Sha256
 let migration067Sha256 = null
 let migrationCounts = null
 const currentBaselineMigrations = []
@@ -398,6 +399,10 @@ try {
     assert.equal(view.rows[0].count, 0)
   })
   if (!migration067Ok) throw Object.assign(new Error('Migration 067 candidate did not preserve existing contracts'), { code: 'DEV057_MIGRATION_067_INVALID' })
+  const migration068=fs.readFileSync(path.join(root,'db/migrations/068_dev057_projed_central_revocation.sql'))
+  migration068Sha256=createHash('sha256').update(migration068).digest('hex')
+  await owner.query(migration068.toString('utf8'))
+
 
   runtime = await connectOrgmasterRuntime()
   await check('publisher-uses-actual-session-user-and-existing-purpose-binding', async () => {
@@ -1070,7 +1075,7 @@ try {
     status,
     scope: 'LOCAL_SYNTHETIC_PG_ONLY; Google/Firebase token verification and HTTP session flow are not exercised',
     production: false,
-    source: { migration065Sha256: migrationSha256, migration066Sha256, migration067Sha256, fixtureInputs: sourceInputs },
+    source: { migration065Sha256: migrationSha256, migration066Sha256, migration067Sha256, migration068Sha256, fixtureInputs: sourceInputs },
     fixture: migrationCounts,
     currentBaselineMigrations,
     checks,
