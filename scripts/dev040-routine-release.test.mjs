@@ -2947,12 +2947,12 @@ function projedPrincipalHarness() {
   return h
 }
 
-test('ProJED publication uses only the exact 60-to-63 owner append and leaves runtime unchanged', async () => {
+test('ProJED publication uses only the exact 60-to-64 owner append and leaves runtime unchanged', async () => {
   const h = projedPrincipalHarness()
   const plan = await verifyRoutineRelease(h.input)
   assert.equal(plan.releaseMode, DEV057_PROJED_RELEASE_MODE)
   assert.equal(plan.migrationDisposition, 'FORWARD_APPLY')
-  assert.equal(plan.pendingMigrationCount, 3)
+  assert.equal(plan.pendingMigrationCount, 4)
   assert.equal(plan.databaseVerification, 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
   const drift = projedPrincipalHarness()
   drift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_SESSION_HASH_PEPPER = '2'

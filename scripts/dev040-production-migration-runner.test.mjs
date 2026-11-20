@@ -116,17 +116,17 @@ function fakeDatabase(ledger, statements, { missingLedger = false } = {}) {
 
 const writesStarted = (statements) => statements.some((sql) => /^\s*(?:BEGIN\b|CREATE\b|ALTER\b|DROP\b|INSERT\b|UPDATE\b|DELETE\b|GRANT\b|REVOKE\b)/imu.test(sql))
 
-test('ProJED fixed runner resumes only the exact 60-to-63 prefix and refuses older or corrupted ledgers before writes', async () => {
+test('ProJED fixed runner resumes only the exact 60-to-64 prefix and refuses older or corrupted ledgers before writes', async () => {
   const input = fixture({projed: true})
-  for (const count of [60, 61, 62, 63]) {
+  for (const count of [60, 61, 62, 63, 64]) {
     const ledger = ledgerFor(input.bundle, count), statements = []
     const receipt = await executeProductionMigration({bundle: input.bundle, database: fakeDatabase(ledger, statements), target: DEV057_PROJED_TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true})
-    assert.equal(receipt.ledgerCount, 63)
-    assert.equal(receipt.applied, 63 - count)
+    assert.equal(receipt.ledgerCount, 64)
+    assert.equal(receipt.applied, 64 - count)
   }
-  for (const count of [10, 31, 39, 59, 64]) {
-    const ledger = ledgerFor(input.bundle, Math.min(count, 63)), statements = []
-    if (count === 64) ledger.push({...ledger.at(-1), version: 'unknown'})
+  for (const count of [10, 31, 39, 59, 65]) {
+    const ledger = ledgerFor(input.bundle, Math.min(count, 64)), statements = []
+    if (count === 65) ledger.push({...ledger.at(-1), version: 'unknown'})
     await assert.rejects(() => executeProductionMigration({bundle: input.bundle, database: fakeDatabase(ledger, statements), target: DEV057_PROJED_TARGET, sourceRevision: H40, denyDatabaseConnect: async () => true}), /MIGRATION_EXISTING_LEDGER_COUNT_INVALID/)
     assert.equal(writesStarted(statements), false)
   }
@@ -140,7 +140,7 @@ test('DEV-058/059/060 runner entry count matches the controlled production profi
   const profile = JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url), 'utf8'))
   assert.equal(DEV057_PROJED_TARGET.entryCount,profile.migrations.entries.length)
   assert.equal(DEV070_TARGET.entryCount,60)
-  assert.deepEqual(DEV057_PROJED_TARGET.allowedExistingLedgerCounts, [60, 61, 62, 63])
+  assert.deepEqual(DEV057_PROJED_TARGET.allowedExistingLedgerCounts, [60, 61, 62, 63, 64])
   assert.equal(TARGET.entryCount, 39)
   assert.equal(profile.migrations.baselineCount, 10)
   assert.deepEqual(TARGET.allowedExistingLedgerCounts, [31, 32, 33, 34, 35, 36, 37, 38, 39])
@@ -277,14 +277,14 @@ test('runner rejects rehashed prefix or 034-041 tampering before database constr
     await assertRunnerRejectsBundle(repackBundle({ ...input.bundle, entries }), /DEV059_MIGRATION_APPEND_INVALID/)
   }
   const projedInput = fixture({projed: true})
-  for (const index of [60, 61, 62]) {
+  for (const index of [60, 61, 62, 63]) {
     const entries = projedInput.bundle.entries.map((entry) => ({ ...entry }))
     const sql = Buffer.concat([Buffer.from(entries[index].sqlBase64, 'base64'), Buffer.from(`\n-- suffix ${index + 1} tamper\n`)])
     entries[index] = { ...entries[index], path: entries[index].path.replace('.sql', '-tampered.sql'), sqlBase64: sql.toString('base64'), sourceSha256: sha256(sql), appliedSha256: sha256(sql) }
     await assertRunnerRejectsBundle(repackBundle({ ...projedInput.bundle, entries }), /DEV057_PROJED_MIGRATION_APPEND_INVALID/, DEV057_PROJED_RELEASE_MODE)
   }
   const unknownSuffix = projedInput.bundle.entries.map((entry) => ({ ...entry }))
-  unknownSuffix.push({ ...unknownSuffix.at(-1), order: 64, version: 'dev057-orgmaster-068', name: 'unknown_migration', path: 'db/migrations/068_unknown_migration.sql' })
+  unknownSuffix.push({ ...unknownSuffix.at(-1), order: 65, version: 'dev057-orgmaster-069', name: 'unknown_migration', path: 'db/migrations/069_unknown_migration.sql' })
   await assertRunnerRejectsBundle(repackBundle({ ...projedInput.bundle, entries: unknownSuffix }), /MIGRATION_SET_DRIFT/, DEV057_PROJED_RELEASE_MODE)
   for (const index of [0, 30, 31, 32, 33, 34]) {
     const entries = input.bundle.entries.map(entry => ({ ...entry }))
@@ -296,7 +296,7 @@ test('runner rejects rehashed prefix or 034-041 tampering before database constr
     entries[index].name = 'wrong-ledger-name'
     await assertRunnerRejectsBundle(repackBundle({ ...input.bundle, entries }), /DEV059_MIGRATION_NAME_INVALID/)
   }
-  for (const index of [60, 61, 62]) {
+  for (const index of [60, 61, 62, 63]) {
     const entries = projedInput.bundle.entries.map(entry => ({ ...entry }))
     entries[index].name = 'wrong-ledger-name'
     await assertRunnerRejectsBundle(repackBundle({ ...projedInput.bundle, entries }), /DEV057_PROJED_MIGRATION_NAME_INVALID/, DEV057_PROJED_RELEASE_MODE)
