@@ -153,10 +153,40 @@ REVOKE ALL ON orgmaster_core.projed_external_requests_v1,orgmaster_core.projed_e
 REVOKE ALL ON FUNCTION orgmaster_core.projed_external_json_v1(orgmaster_core.projed_external_requests_v1),orgmaster_core.notify_projed_external_request_v1(jsonb),orgmaster_core.manage_projed_external_request_v1(jsonb,jsonb),orgmaster_contract.read_projed_external_qualification_v1(text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION orgmaster_core.notify_projed_external_request_v1(jsonb),orgmaster_core.manage_projed_external_request_v1(jsonb,jsonb) TO jenfu_orgmaster_runtime;
 GRANT EXECUTE ON FUNCTION orgmaster_contract.read_projed_external_qualification_v1(text,text) TO jenfu_orgmaster_runtime,jenfu_platform_runtime,jenfu_platform_migrator;
+
+-- A machine Calendar bearer has no human Session. Point-read the immutable
+-- Google owner and current app admission without enumerating identities or
+-- inventing a Principal for a legacy feed that has never enrolled.
+CREATE FUNCTION orgmaster_contract.read_projed_calendar_principal_v1(p_google_subject text)
+RETURNS TABLE(contract_version text,google_subject text,principal_id text,principal_kind text,status text)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
+DECLARE pair orgmaster_core.principal_subjects_v2%ROWTYPE;
+ admitted orgmaster_core.projed_principal_admissions%ROWTYPE;
+BEGIN
+ IF p_google_subject IS NULL OR p_google_subject<>btrim(p_google_subject)
+  OR length(p_google_subject) NOT BETWEEN 1 AND 255 OR p_google_subject~'[[:cntrl:]]'
+ THEN RAISE EXCEPTION 'PROJED_IDENTITY_INVALID'; END IF;
+ contract_version:='orgmaster.projed-calendar-principal.v1'; google_subject:=p_google_subject;
+ SELECT * INTO pair FROM orgmaster_core.principal_subjects_v2 source
+  WHERE source.principal_issuer='https://accounts.google.com' AND source.principal_subject=p_google_subject;
+ IF NOT FOUND THEN status:='UNREGISTERED'; RETURN NEXT; RETURN; END IF;
+ principal_id:=pair.principal_id; principal_kind:=pair.principal_kind;
+ IF pair.principal_id IS NULL THEN status:='UNAVAILABLE'; RETURN NEXT; RETURN; END IF;
+ SELECT * INTO admitted FROM orgmaster_core.projed_principal_admissions source WHERE source.principal_id=pair.principal_id;
+ IF NOT FOUND THEN status:='UNREGISTERED'; RETURN NEXT; RETURN; END IF;
+ IF admitted.google_subject IS DISTINCT FROM p_google_subject THEN status:='UNAVAILABLE'; RETURN NEXT; RETURN; END IF;
+ IF admitted.status<>'active' OR NOT EXISTS(SELECT 1 FROM orgmaster_contract.v_projed_principal_admissions_v1 active
+  WHERE active.principal_id=pair.principal_id AND active.google_subject=p_google_subject)
+ THEN status:='INACTIVE'; ELSE status:='ACTIVE'; END IF;
+ RETURN NEXT;
+END; $$;
+REVOKE ALL ON FUNCTION orgmaster_contract.read_projed_calendar_principal_v1(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION orgmaster_contract.read_projed_calendar_principal_v1(text) TO jenfu_orgmaster_runtime;
 DO $$ BEGIN
  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='projed_runtime_disposable') THEN
   GRANT USAGE ON SCHEMA orgmaster_contract TO projed_runtime_disposable;
   GRANT EXECUTE ON FUNCTION orgmaster_contract.read_projed_external_qualification_v1(text,text) TO projed_runtime_disposable;
+  GRANT EXECUTE ON FUNCTION orgmaster_contract.read_projed_calendar_principal_v1(text) TO projed_runtime_disposable;
  END IF;
 END; $$;
 COMMIT;

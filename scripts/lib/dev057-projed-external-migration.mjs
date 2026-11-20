@@ -6,8 +6,8 @@ export const DEV057_EXTERNAL_BASELINE_COUNT = 64
 export const DEV057_EXTERNAL_ENTRY_COUNT = 65
 export const DEV057_EXTERNAL_MIGRATION = Object.freeze({
   order: 65, version: 'dev057-orgmaster-069', path: 'db/migrations/069_dev057_projed_external_qualification.sql',
-  sourceSha256: 'b38613efeede89b3e6b39b1a3fd4e74c9c94b85381ee540f104e77c1c94a1169',
-  appliedSha256: 'b7e389cafdbb693244300725fd080270f54f2b20da8f9c1003c9ef1a774eb641',
+  sourceSha256: '29b4a30ade5acf43dc610470fd7a06e5da60a47c4bf1a9577be5e0997169205e',
+  appliedSha256: '1cc94d206d8f2c59b5a8ae8cf4588a960135ca366117362c07bca7a5b75b6df2',
 })
 export const DEV057_EXTERNAL_REMEDIATION = Object.freeze({
   kind: 'PROJED_EXTERNAL_QUALIFICATION', migrationEntries: Object.freeze([DEV057_EXTERNAL_MIGRATION]),

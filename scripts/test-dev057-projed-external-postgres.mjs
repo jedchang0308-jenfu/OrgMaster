@@ -20,6 +20,11 @@ await withAdministrationPostgresFixture(async fixture => {
   async function check(id, run) { await run(); passed++; console.log(`PASS ${id}`) }
   const notify = async request => (await runtime.query('SELECT orgmaster_core.notify_projed_external_request_v1($1::jsonb) result', [JSON.stringify(request)])).rows[0].result
   const read = async (invite, principal) => (await consumer.query('SELECT * FROM orgmaster_contract.read_projed_external_qualification_v1($1,$2)', [invite, principal])).rows
+  const calendarPrincipal = async subject => (await consumer.query('SELECT * FROM orgmaster_contract.read_projed_calendar_principal_v1($1)', [subject])).rows
+  await check('calendar-unregistered-owner-is-explicit-without-creating-a-principal', async () => {
+    const rows = await calendarPrincipal('never-enrolled-' + randomUUID())
+    assert.equal(rows.length, 1); assert.equal(rows[0].status, 'UNREGISTERED'); assert.equal(rows[0].principal_id, null)
+  })
   const request = { contractVersion: 'orgmaster.projed-external-qualification.v1', action: 'submit', requestId: randomUUID(), invitationId: randomUUID(), inviterPrincipalId: 'principal-legacy', boardId: 'board-fixture', role: 'member', expiresAt: new Date(Date.now() + 3600000).toISOString(), contactEmail: 'external@example.invalid', company: '', note: '' }
   let row = await notify(request)
   await check('pending-notification-and-exact-replay', async () => {
@@ -63,6 +68,8 @@ await withAdministrationPostgresFixture(async fixture => {
     const result = await read(request.invitationId, publication.principalId)
     assert.equal(result.length, 1); assert.equal(result[0].status, 'ACTIVE'); assert.equal(result[0].board_id, request.boardId)
     assert.deepEqual(await read(request.invitationId, 'another-principal'), [])
+    assert.equal((await calendarPrincipal(googleSubject))[0].principal_id, publication.principalId)
+    assert.equal((await calendarPrincipal(googleSubject))[0].status, 'ACTIVE')
   })
   await check('real-session-epoch-fence', async () => {
     await assert.rejects(runtime.query('SELECT orgmaster_core.manage_projed_external_request_v1($1,NULL)', [JSON.stringify({ ...actor, principalAuthEpoch: actor.principalAuthEpoch + 1 })]), /IDENTITY_CONTEXT_REQUIRED/)
@@ -88,6 +95,7 @@ await withAdministrationPostgresFixture(async fixture => {
     await admin.query("UPDATE orgmaster_core.projed_external_requests_v1 SET expires_at=clock_timestamp()-interval '1 second' WHERE request_id=$1", [row.requestId])
     row = await manage(command('disable'))
     assert.equal(row.status, 'INACTIVE')
+    assert.equal((await calendarPrincipal(googleSubject))[0].status, 'INACTIVE')
     assert.equal((await admin.query('SELECT count(*) count FROM projed_contract.fixture_revocations')).rows[0].count, '1')
     assert.equal((await read(request.invitationId, publication.principalId))[0].status, 'INACTIVE')
     assert.equal((await admin.query('SELECT status FROM orgmaster_core.projed_principal_admissions WHERE principal_id=$1', [publication.principalId])).rows[0].status, 'inactive')
