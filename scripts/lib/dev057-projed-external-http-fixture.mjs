@@ -55,5 +55,5 @@ export async function createProjedExternalHttpFixture({ admin, runtime, platform
       return { email: 'projed-fixture@example.invalid', subject: 'projed-external-caller-fixture' }
     } },
   }
-  return { authRuntime, adminCookie: `orgmaster_session=${token}` }
+  return { authRuntime, adminCookie: `orgmaster_session=${token}`, adminPrincipalId: human.principalId }
 }
