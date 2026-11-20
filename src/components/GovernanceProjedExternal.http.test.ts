@@ -17,7 +17,7 @@ afterEach(async () => {
   server = undefined
 })
 
-async function fixture() {
+async function fixture(uncertain = false) {
   let record = { requestId, invitationId: requestId, boardId: 'board-local-fixture', role: 'viewer',
     inviterPrincipalId: 'inviter-local-fixture', contactEmail: 'local-fixture@example.invalid',
     principalId: null, googleSubject: null, company: '', note: '', status: 'PENDING', decision: 'PENDING',
@@ -32,6 +32,9 @@ async function fixture() {
     if (request.method === 'GET') { response.end(JSON.stringify({ requests: [record] })); return }
     let body = ''; for await (const chunk of request) body += chunk
     const command = JSON.parse(body)
+    if (uncertain) {
+      response.writeHead(503); response.end(JSON.stringify({ code: 'EXTERNAL_QUALIFICATION_UNAVAILABLE' })); return
+    }
     if (command.requestId !== requestId || command.expectedRevision !== record.revision || record.status !== 'PENDING') {
       response.writeHead(409); response.end(JSON.stringify({ code: 'EXTERNAL_REVISION_CONFLICT' })); return
     }
@@ -71,4 +74,12 @@ it('shows the late CAS denial and reloads the withdrawn terminal state through t
 it('rejects a non-loopback owner before installing the operator surface', async () => {
   await expect(openProjedExternalOperator({ origin: 'https://orgmaster.example.test', adminCookie, principalId: 'admin' }))
     .rejects.toThrow('PROJED_EXTERNAL_OPERATOR_FIXTURE_TARGET_INVALID')
+})
+
+it('preserves a real 503 as an uncertain operation instead of hiding it behind an idle timeout', async () => {
+  const { operator } = await fixture(true)
+  await operator.click({ boardId: 'board-local-fixture', contactEmail: 'local-fixture@example.invalid', label: '核准' })
+  expect(operator.requests[1].status).toBe(503)
+  expect(operator.text()).toContain('操作結果尚未確認')
+  expect(operator.text()).toContain('查詢並重送原操作')
 })

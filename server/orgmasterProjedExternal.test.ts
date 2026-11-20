@@ -1,5 +1,6 @@
 import { createServer } from 'node:http'
 import { once } from 'node:events'
+import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createProjedExternalService, parseProjedExternalDecision, parseProjedExternalNotification } from './orgmasterProjedExternal'
 import { createProjedExternalMiddleware, PROJED_EXTERNAL_NOTIFICATION_PATH as path } from './orgmasterProjedExternalApi'
@@ -32,6 +33,13 @@ describe('ProJED external qualification owner', () => {
     const service = createProjedExternalService({ query: vi.fn().mockRejectedValue(new Error(message)) })
     await expect(service.notify(submit)).rejects.toMatchObject({ status })
   })
+  it.each([['EXTERNAL_CONFLICT', 409], ['EXTERNAL_ADMIN_REQUIRED', 403], ['unexpected SQL details', 503]])('maps trusted database %s from a different adapter realm', async (message, status) => {
+    const failure = runInNewContext('new Error(message)', { message })
+    expect(failure instanceof Error).toBe(false)
+    const service = createProjedExternalService({ query: vi.fn().mockRejectedValue(failure) })
+    await expect(service.notify(submit)).rejects.toMatchObject({ status,
+      code: status === 503 ? 'EXTERNAL_QUALIFICATION_UNAVAILABLE' : message })
+  })
 })
 
 const servers: ReturnType<typeof createServer>[] = []
@@ -44,6 +52,13 @@ async function http(service = { notify: vi.fn().mockResolvedValue({ status: 'PEN
   return { url: `http://127.0.0.1:${address.port}${path}`, service, verify }
 }
 describe('ProJED external workload HTTP boundary', () => {
+  it.each([['EXTERNAL_CONFLICT', 409, 409], ['private SQL details', 409, 503], ['EXTERNAL_CONFLICT', 200, 503]])('preserves only exact typed owner errors across compiled service ports: %s/%s', async (code, status, expectedStatus) => {
+    const failure = runInNewContext('Object.assign(new Error(code), { code, status })', { code, status })
+    const test = await http({ notify: vi.fn().mockRejectedValue(failure), manage: vi.fn() })
+    const response = await fetch(test.url, { method: 'POST', headers: { Authorization: 'Bearer fixture', 'Content-Type': 'application/json' }, body: JSON.stringify(submit) })
+    expect(response.status).toBe(expectedStatus)
+    expect(await response.json()).toEqual({ code: expectedStatus === 503 ? 'EXTERNAL_QUALIFICATION_UNAVAILABLE' : code })
+  })
   it('authenticates the caller before passing exact request', async () => {
     const test = await http()
     const response = await fetch(test.url, { method: 'POST', headers: { Authorization: 'Bearer fixture', 'Content-Type': 'application/json' }, body: JSON.stringify(submit) })

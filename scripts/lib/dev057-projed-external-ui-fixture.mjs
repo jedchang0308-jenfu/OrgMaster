@@ -53,7 +53,10 @@ export async function openProjedExternalOperator({ origin, adminCookie, principa
   const idle = async () => {
     for (let attempt = 0; attempt < 250; attempt++) {
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
-      if (inFlight === 0 && ![...host.querySelectorAll('button')].some(button => button.disabled)) return
+      // Other row actions deliberately stay disabled while an uncertain command
+      // awaits readback/retry. The reload control follows actual network busy.
+      const reload = [...host.querySelectorAll('button')].find(button => button.textContent === '重新載入')
+      if (inFlight === 0 && reload && !reload.disabled) return
     }
     throw new Error('PROJED_EXTERNAL_OPERATOR_DID_NOT_SETTLE')
   }

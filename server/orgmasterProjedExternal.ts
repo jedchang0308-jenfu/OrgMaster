@@ -40,7 +40,10 @@ export function createProjedExternalService(database: Pick<OrgmasterDatabase, 'q
       if (result.rows.length !== 1 || !result.rows[0].result) throw new Error('missing')
       return result.rows[0].result
     } catch (error) {
-      const message = error instanceof Error ? error.message : ''
+      // Database adapters can originate in another realm. Match only the
+      // existing closed SQL error vocabulary; never expose arbitrary details.
+      const message = error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+        ? error.message : ''
       if (['EXTERNAL_CONFLICT', 'EXTERNAL_IDENTITY_CONFLICT'].includes(message)) throw new ProjedExternalError(409, message)
       if (message === 'EXTERNAL_REQUEST_INVALID') throw new ProjedExternalError(400, message)
       if (message === 'EXTERNAL_NOT_FOUND') throw new ProjedExternalError(404, message)

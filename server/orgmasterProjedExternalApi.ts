@@ -21,6 +21,20 @@ function send(response: ServerResponse, status: number, value: unknown) {
   response.statusCode = status; response.setHeader('Content-Type', 'application/json; charset=utf-8')
   response.setHeader('Cache-Control', 'private, no-store'); response.end(JSON.stringify(value))
 }
+const ownerErrorStatuses: Record<string, number> = {
+  EXTERNAL_REQUEST_INVALID: 400, EXTERNAL_CALLER_INVALID: 401, IDENTITY_CONTEXT_REQUIRED: 401,
+  EXTERNAL_ADMIN_REQUIRED: 403, EXTERNAL_ORIGIN_INVALID: 403, EXTERNAL_NOT_FOUND: 404,
+  METHOD_NOT_ALLOWED: 405, EXTERNAL_CONFLICT: 409, EXTERNAL_IDENTITY_CONFLICT: 409,
+  EXTERNAL_QUALIFICATION_UNAVAILABLE: 503,
+}
+function ownerFailure(error: unknown) {
+  // An injected owner service and a compiled HTTP server need not share a class
+  // constructor. Preserve only exact code/status pairs from the owner protocol.
+  if (error && typeof error === 'object' && 'code' in error && 'status' in error
+    && typeof error.code === 'string' && Object.hasOwn(ownerErrorStatuses, error.code)
+    && error.status === ownerErrorStatuses[error.code]) return { status: error.status, code: error.code }
+  return { status: 503, code: 'EXTERNAL_QUALIFICATION_UNAVAILABLE' }
+}
 export function createProjedExternalMiddleware(service?: ProjedExternalService, verifier?: ManagedLoginCallerVerifier, mode: 'internal' | 'management' = 'management'): Connect.NextHandleFunction {
   return (request, response, next) => {
     const url = new URL(request.url ?? '/', 'http://orgmaster.local')
@@ -48,7 +62,8 @@ export function createProjedExternalMiddleware(service?: ProjedExternalService, 
     }
     void handle().then(value => send(response, 200, value)).catch(error => {
       request.resume()
-      send(response, error instanceof ProjedExternalError ? error.status : 503, { code: error instanceof ProjedExternalError ? error.code : 'EXTERNAL_QUALIFICATION_UNAVAILABLE' })
+      const failure = ownerFailure(error)
+      send(response, failure.status, { code: failure.code })
     })
   }
 }
