@@ -1,3 +1,4 @@
+import { projedExternalApiPlugin } from './server/orgmasterProjedExternalApi'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { orgmasterApiPlugin } from './server/orgmasterApi'
@@ -8,6 +9,7 @@ import { orgmasterAccountEnrollmentApiPlugin } from './server/orgmasterAccountEn
 import { orgmasterManagedIdentityApiPlugin } from './server/orgmasterManagedIdentityApi'
 import { workbenchPreferenceApiPlugin } from './server/workbenchPreferenceApi'
 import { orgmasterManagedLoginApiPlugin } from './server/orgmasterManagedLoginApi'
+import { orgmasterProjedPrincipalApiPlugin } from './server/orgmasterProjedPrincipalApi'
 
 let managedLoginRuntime: ReturnType<typeof createOrgmasterAuthRuntime> | undefined
 const runtime=()=>managedLoginRuntime??=createOrgmasterAuthRuntime()
@@ -16,5 +18,7 @@ export default defineConfig({
   cacheDir: '.codex-tmp/vite',
   plugins: [orgmasterManagedLoginApiPlugin(() => {
     const value=runtime();return { service:value.managedLoginOwner,verifier:value.managedLoginCallerVerifier }
-  }), orgmasterAuthApiPlugin(runtime), orgmasterManagedIdentityApiPlugin(() => runtime().managedIdentity), workbenchPreferenceApiPlugin(), orgmasterAccountEnrollmentApiPlugin(), react(), orgmasterApiPlugin(), orgmasterGovernanceApiPlugin({ accountEnrollmentEnabled: true,runtime }), orgmasterManagementMethodApiPlugin()],
+  }), orgmasterProjedPrincipalApiPlugin(() => {
+    const value=runtime();return {service:value.projedPrincipalOwner,verifier:value.managedLoginCallerVerifier}
+  }), projedExternalApiPlugin('internal', runtime), orgmasterAuthApiPlugin(runtime), projedExternalApiPlugin('management', runtime), orgmasterManagedIdentityApiPlugin(() => runtime().managedIdentity), workbenchPreferenceApiPlugin(), orgmasterAccountEnrollmentApiPlugin(), react(), orgmasterApiPlugin(), orgmasterGovernanceApiPlugin({ accountEnrollmentEnabled: true,runtime }), orgmasterManagementMethodApiPlugin()],
 })

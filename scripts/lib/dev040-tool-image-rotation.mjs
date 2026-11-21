@@ -1,3 +1,4 @@
+import { DEV057_EXTERNAL_MIGRATION, DEV057_EXTERNAL_ENTRY_COUNT, DEV057_EXTERNAL_RELEASE_MODE } from './dev057-projed-external-migration.mjs'
 import { spawnSync } from 'node:child_process'
 import { gunzipSync } from 'node:zlib'
 import { canonicalize, sha256, assertImmutableRef, releasePaths, OWNER_EXECUTION_MODES } from './dev012-owner-release-runtime.mjs'
@@ -7,7 +8,8 @@ import { assertMigrationToolBuildEvidence } from './dev040-tool-image-build.mjs'
 import { matchGitSourceArchive } from './dev040-git-archive.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_MIGRATION_PREFIX_COUNT, DEV058_MIGRATION_PREFIX_SHA256 } from './dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_MIGRATION_ENTRY_COUNT } from './dev059-fms-authority-migration.mjs'
-import {DEV070_MIGRATION_ENTRIES,DEV070_RELEASE_MODE,ORGMASTER_FMS_DELIVERY_FLAG,isFmsDeliveryAppend} from './dev070-administration-migration.mjs'
+import {DEV070_MIGRATION_ENTRIES,DEV070_MIGRATION_ENTRY_COUNT,DEV070_RELEASE_MODE,ORGMASTER_FMS_DELIVERY_FLAG,isFmsDeliveryAppend} from './dev070-administration-migration.mjs'
+import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_RELEASE_MODE } from './dev057-projed-principal-migration.mjs'
 import {assertSmokeInfraReuseEvidence,readSmokeReuseProviderState} from './dev057-smoke-rotation-continuation.mjs'
 import { DEV057_PRINCIPAL_SMOKE_RECIPE, isDev057PrincipalSmokeBlobTransition } from './dev057-principal-smoke-transition.mjs'
 import {normalizeTerraformStateMeta} from './dev040-tool-terraform.mjs'
@@ -255,7 +257,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
     const beforeEntries = beforeMigrations.entries
     const afterEntries = afterMigrations.entries
     const staticInputs = ({ sourceRevision, manifestSha256, entries, ...inputs }) => inputs
-    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, ...DEV059_FMS_AUTHORITY_MIGRATIONS,...DEV070_MIGRATION_ENTRIES].map(identity)
+    const approvedSuffix = [...DEV058_MIGRATION_ENTRIES, ...DEV059_FMS_AUTHORITY_MIGRATIONS,...DEV070_MIGRATION_ENTRIES, ...DEV057_PROJED_MIGRATIONS, DEV057_EXTERNAL_MIGRATION].map(identity)
     if (!Array.isArray(beforeEntries) || !Array.isArray(afterEntries)
       || beforeMigrations.baselineCount !== 10 || afterMigrations.baselineCount !== 10
       || !same(staticInputs(beforeMigrations), staticInputs(afterMigrations))
@@ -265,7 +267,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
       || !same(beforeEntries, afterEntries.slice(0, beforeEntries.length))
       || !same(beforeEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, beforeEntries.length - DEV058_MIGRATION_PREFIX_COUNT))
       || !same(afterEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, afterEntries.length - DEV058_MIGRATION_PREFIX_COUNT))) fail('SOURCE_INPUT_DRIFT')
-    disposition = afterEntries.length>DEV059_MIGRATION_ENTRY_COUNT?DEV070_RELEASE_MODE:afterEntries.length > DEV058_MIGRATION_ENTRY_COUNT
+    disposition = afterEntries.length === DEV057_EXTERNAL_ENTRY_COUNT ? DEV057_EXTERNAL_RELEASE_MODE : afterEntries.length > DEV070_MIGRATION_ENTRY_COUNT ? DEV057_PROJED_RELEASE_MODE : afterEntries.length>DEV059_MIGRATION_ENTRY_COUNT?DEV070_RELEASE_MODE:afterEntries.length > DEV058_MIGRATION_ENTRY_COUNT
       ? 'DEV059_FMS_AUTHORITY_APPEND'
       : 'DEV058_ROLE_POLICY_APPEND'
   } catch { fail('SOURCE_INPUT_DRIFT') }

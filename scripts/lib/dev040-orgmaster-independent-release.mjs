@@ -1,13 +1,16 @@
+import { DEV057_EXTERNAL_MIGRATION, assertDev057ExternalMigrationEntries } from './dev057-projed-external-migration.mjs'
 import { DEV014_LIFECYCLE_RUNTIME_TARGET } from './dev014-principal-lifecycle-release.mjs'
 import { assertPrincipalOnlyRecoveryBinding } from './dev057-principal-only-release.mjs'
 import { createHash } from 'node:crypto'
 import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { DEV058_MIGRATION_ENTRIES } from './dev058-role-policy-migration.mjs'
-import { DEV070_MIGRATION_ENTRIES,assertDev070MigrationEntries } from './dev070-administration-migration.mjs'
+import { DEV070_MIGRATION_ENTRIES } from './dev070-administration-migration.mjs'
+import { DEV057_PROJED_MIGRATIONS,assertDev057ProjedMigrationEntries } from './dev057-projed-principal-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS } from './dev059-fms-authority-migration.mjs'
 import { OWNER_EXECUTION_MODES } from './dev012-owner-release-runtime.mjs'
 
 const H40 = /^[a-f0-9]{40}$/
+
 const H64 = /^[a-f0-9]{64}$/
 const V3_CONTRACT_SHA256 = '857f8a94ab13f63071156f85e76e5c675b348588b1126c147e0e54b431b6e8c5'
 const DEV057_MIGRATION_PREFIX_001_029_SHA256 = 'c5548028cbf44d474d23666aed1723fe5c55f614d7ddc280e5aa725cb5257376'
@@ -61,6 +64,8 @@ const PRODUCTION_MIGRATION_PATHS = [
   ...DEV058_MIGRATION_ENTRIES.map(entry => entry.path),
   ...DEV059_FMS_AUTHORITY_MIGRATIONS.map(entry => entry.path),
   ...DEV070_MIGRATION_ENTRIES.map(entry => entry.path),
+  ...DEV057_PROJED_MIGRATIONS.map(entry => entry.path),
+  DEV057_EXTERNAL_MIGRATION.path,
 ]
 
 function fail(code, detail = '') {
@@ -135,7 +140,7 @@ export function assertDev040V3Profile(profile, n1c) {
   if (immutablePrefixSha256 !== DEV057_MIGRATION_PREFIX_001_029_SHA256) fail('MIGRATION_PREFIX_001_029_DRIFT')
   const prefix30Sha256 = createHash('sha256').update(JSON.stringify(profile.migrations.entries.slice(0, 30).map(({ order: entryOrder, version, path, sourceSha256, appliedSha256 }) => [entryOrder, version, path, sourceSha256, appliedSha256]))).digest('hex')
   if (prefix30Sha256 !== 'd02cb50e2d77a7c1b3e72a8e82e44677af17beae4eb7e0e81fc1816ed8e8e062') fail('MIGRATION_PREFIX_001_030_DRIFT')
-  assertDev070MigrationEntries(profile.migrations.entries)
+  assertDev057ExternalMigrationEntries(profile.migrations.entries)
   if (Object.values(profile.sideEffects || {}).some((value) => value !== 'DISABLED')) fail('SIDE_EFFECT_ENABLED')
   if (profile.operations?.CONFIGURE_ENTRYPOINT !== 'run.projects.locations.services.patch?updateMask=ingress,defaultUriDisabled,invokerIamDisabled') fail('ENTRYPOINT_OPERATION_MISSING')
   if (JSON.stringify(profile.edge) !== JSON.stringify({ servingDependency: false, rollbackDependency: false, ordinaryReleaseMutations: 0, disposition: 'RETAINED_UNUSED_EDGE' })) fail('EDGE_BOUNDARY_DRIFT')

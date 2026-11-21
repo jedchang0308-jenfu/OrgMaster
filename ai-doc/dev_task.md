@@ -308,6 +308,22 @@ R13真實PG24案及實際catalog/workspace2案完成：無local manifest正向�
 
 Principal-only 身分／授權仍以 [current contract](specs/DEV-057-identity-and-grant-contract-boundary.md) 為施工入口並維持原驗收分母；DEV-014 有效員工編號義務沿 OrgMaster/DEV-057 的 [employee-number 030 historical prerequisite](specs/DEV-057-identity-and-grant-contract-boundary.md#employee-number-command-v2-current) 收束，不新增任務或改寫 Principal-only 完成結論。DEV-014 lifecycle v2 是另一個 DEV-057 source slice，尚未發布，見 [current lifecycle section](#dev-057-dev014-principal-lifecycle-v2)。歷史原文／階段在 [HISTORY_ONLY任務快照](dev_task-history-2026-10-03.md)，不讀為當前命令。各層證據只證明本機／整合／正式實測流程，不以文件成熟度或總 PASS 數改算完成率。
 
+<a id="dev-057-projed-principal-publication-2026-10-28"></a>
+
+### DEV-057 ProJED 最小 Principal publication（2026-10-28；本機 DB slice）
+
+2026-11-20 目前：新增068，在admission變更同交易同步推進ProJED原UUID的guard；重播／rollback／啟用不復活舊Session，無sibling core grants。現行64-entry profile與60–64 exact-prefix append／receipt已對齊；不改原60-entry prefix。程式6190897 required Source QC44671976947與三方native44670325280均SUCCESS，原Employee／私人使用及既有PDM／FMS保護保留。正式owner發布／Session及資料移轉仍計入ProJED DEV-139；下方W23／041–043為原來源歷史，不作目前未完成結論。
+
+沿[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-minimum-principal-publication-2026-10-28)，新增 `orgmaster.projed-principal.v1` publisher：`POST /api/internal/projed-principals/v1`。personal Principal 使用 `employeeId=null`，不建立假 Employee、不授予 business grant；既有 Employee v1 mapping／writer 保持相容。Server 只採用驗證後的 Firebase issuer/subject、Google subject 與 authentication time；資料庫 writer 綁定實際 `SESSION_USER`、既有 OrgMaster workload identity 及 enabled typed purpose，owner/provider-pair ownership 不可重綁。相同 request/proof 可重播原 receipt，改 proof 拒絕；admission revision 變更會使舊 receipt 失效。
+
+原生入口 `npm run test:dev-057:projed-principal:postgres` 的最新本機結果為 [18/18 PASS](../output/qa/dev-057/projed-principal/2026-10-28T16-39-12-377Z-3b64190a/result.json)，disposable PG／port／temp cleanup 全部成功。先用既有 31 OrgMaster + 11 Platform fixture，再套用未修改的 OrgMaster 032–040 與新 041；目前已覆蓋 OrgMaster 完整 001–040 baseline，未聲稱 Platform 012–013、真實 Firebase／OIDC／Session 或正式 ledger 已驗證。非 sibling 工作樹以 `ORGMASTER_DEV057_PLATFORM_ROOT` 指定已登錄的 Platform root；舊 [17-check run](../output/qa/dev-057/projed-principal/2026-10-28T16-23-46-139Z-dd452805/result.json) 保留原較窄分母。前兩次失敗均保留：[第一次 migration 001 byte-source drift](../output/qa/dev-057/projed-principal/2026-10-28T16-20-39-564Z-daed5d18/result.json)，fixture 對齊已驗證的 worktree/package/Git root 後重跑；[第二次 runtime 直接查 core binding 遭 42501](../output/qa/dev-057/projed-principal/2026-10-28T16-22-34-342Z-a068699d/result.json)，runner 改讀既有 `v_workload_principals_v1`，未擴張 core table ACL。Root 自查：`test:dev-057:projed-principal` 54/54、fixture helper 14/14、TypeScript 與 client/server build PASS（既有 chunk-size warning 保留）。此處記錄建立時，041 尚未接入 formal migration manifest／tool capsule，未部署；本紀錄不新增 required gate，亦不改寫 DEV-057 整體結案狀態。
+
+042 是供 Platform-owned SECURITY DEFINER state reader 使用的前向 grant，只授予既有 `jenfu_platform_migrator` 對 `orgmaster_contract.v_projed_principal_admissions_v1` 的 SELECT；不增加 runtime／core ACL、workload identity、IAM 或業務授權。042 目前只有 source，尚未套用或納入正式 release package；上列 18/18 證據仍只涵蓋 041。
+
+W23 current source candidate（2026-11-19）：整合 master `a8830e9`，既有 60-entry formal prefix 與 SQL 不變。未發布 ProJED draft 僅改名為065／066／067，SQL bytes 不變，以 order61–63 exact append；專用 runner mode 接受60–63 verified ledger prefixes，普通發布仍UNCHANGED_VERIFIED。TypeScript 與 Principal HTTP／service／repository 自查63/63 PASS；首次 loopback EACCES 已保留，取得 sandbox 執行核准後同案例通過。release 回歸與 required CI、最新完整基線原生 PG 證據待回填；歷史來源證據保留，不能宣稱正式套用。current source、PR／required CI與native邊界見 [DEV-057 source candidate contract](specs/DEV-057-identity-and-grant-contract-boundary.md#dev057-projed-append-source-candidate)。
+
+043 Employee private-admission correction（source candidate）：Employee 已 inactive 時，只要 immutable Google provider pair 已解析至同一 Employee Principal，且當次 server-verified proof 相符，即可首次建立最小 ProJED admission 並由 typed publisher 綁定既存／新 Firebase alias；不要求先前 ProJED receipt。無 Google-owner pair 的 inactive reservation、既有 ProJED admission disabled、provider／owner pair 衝突或 proof 不符仍拒絕，不 re-enable；舊 v1／公司 grant projection 不變。native runner 已增「未曾 ProJED 的 inactive Employee」與「已 admission 後 inactive」隔離案例，但本輪未啟 PostgreSQL，故沒有 043 PASS 或新 migration-package／formal-release 證據；原 18/18 僅證明 041。Platform 014 目前仍以 active Employee account 作登入初始化前置，因此此 OrgMaster source candidate 尚未證明 inactive Employee 可完成 end-to-end Session login。依[現行 DEV-057 契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-minimum-principal-publication-2026-10-28)續接，正式 profile／release recipe 需另由 owner flow 評估，不在本次修改範圍。
+
 共同根因、F01–F10狀態及下一可驗交付依 [JENFU既有盤點](../../Jenfu-Platform/ai-doc/qa/DEV-015-principal-only-authorization-inventory-2026-09-29.md)；下方舊DEV-012／013與其他native任務保留原追溯，不重開其發布队列。
 
 **DEV-057 current checkpoint（2026-10-05，Principal-only正式授權出口完成／文件收尾）：** 本輪範圍依 `JENFU/DEV-015#identity-grants`，原生owner為 `ORGMASTER/DEV-057`；[owner安全結案投影](qa/DEV-057-principal-authorization-production-closure-2026-10-05.json)固定[共同安全結案](../../Jenfu-Platform/ai-doc/qa/DEV-015-principal-authorization-production-closure-2026-10-05.json) raw SHA `c0121bde7b1fabfad4aa1b27158d9890a7dbd32f50ab7202ec1061ba291e882d`。共同production authorization accepted=true，當時root goalComplete=false僅待文件QC／protected documentation PR；不由文件自行增加驗收分母或重做Production操作。
@@ -956,6 +972,8 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 [規格與雙方責任](specs/DEV-058-federated-role-catalog-central-assignment.md)／[24項目的、狀態與證據](qa/DEV-058-dynamic-role-assignment-validation-plan.md)。任用人控、系統提醒；授權／資料安全／回復控制保留。r14／r15組合支持本機24目的PASS；r16完成代理來源資格修正；R17完成公司Google正常代理、PDM判權及legacy planning讀回，臨時IAM／localhost／私有ADC／runtime均清理。R18由AI-PDM以合法SLDPRT＋STEP完成QA50 multipleBindings；R19補齊model-basis及baseline create／release的Principal、必要能力AND、company fence與同交易audit，25個隔離HTTP案例PASS，QA50本機工程判定PASS。DEV-058為RD Implementation Complete／Local QA PASS／Not Released；正式reader／writer未完成，正式migration、部署及正式業務資料寫入仍排除。
 
 ## DEV-057：身分與權限發布契約邊界
+
+- 2026-11-20 / ProJED DEV-139 §4.2.1：069 外部申請、先審核後 provider-pair 綁定、管理頁核准／拒絕／停用恢復、版本化只讀 consumer 與獨立64→65發布recipe，沿[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-dev-139-external-qualification-producer--2026-11-20)。本輪為 source／isolated 交付，未正式啟用。
 
 - 主責／來源：ORGMASTER/DEV-057；來源JENFU/DEV-015；consumer AIPDM/DEV-121。
 - 節點：既有DEV-057本輪Principal-only授權出口已完成；架構／高風險交易責任維持原契約，業務延期由AIPDM/DEV-122獨立追溯。

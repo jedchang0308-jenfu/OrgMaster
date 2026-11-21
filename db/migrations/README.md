@@ -2,6 +2,8 @@
 
 This directory owns the OrgMaster portion of the DEV-010 shared PostgreSQL database.
 
+ProJED source candidate (2026-11-19): the unchanged master release prefix contains 60 entries through 064. Unpublished ProJED drafts were renamed to 065–067 with unchanged SQL bytes; their dedicated append mode accepts only the exact 60–63 ledger prefixes. The current profile has 63 entries. These files have not been applied to production.
+
 ## Boundary
 
 - Owned schemas: `orgmaster_core`, `orgmaster_contract`.

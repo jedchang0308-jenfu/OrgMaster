@@ -1,3 +1,4 @@
+import { DEV057_EXTERNAL_MIGRATION, DEV057_EXTERNAL_RELEASE_MODE } from './dev057-projed-external-migration.mjs'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -10,6 +11,7 @@ import { DEV057_PRINCIPAL_SMOKE_BLOBS } from './dev057-principal-smoke-transitio
 import { canonicalize, sha256, releasePaths } from './dev012-owner-release-runtime.mjs'
 import { createGitSourceIdentity } from './dev012-owner-stage-executor.mjs'
 import { assertToolRotationReleaseCompatibility } from './dev040-routine-release.mjs'
+import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_RELEASE_MODE } from './dev057-projed-principal-migration.mjs'
 import {
   assertOrdinaryToolRotation,
   assertAppliedToolInfrastructureBaseline,
@@ -143,6 +145,21 @@ function createSourceFixture() {
   runGit(root, ['commit', '--quiet', '-m', 'append DEV-059 migration profile'])
   const appendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
 
+  const administrationProductionProfile = structuredClone(fullProductionProfile)
+  administrationProductionProfile.migrations.entries.push(...DEV070_MIGRATION_ENTRIES)
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(administrationProductionProfile, null, 2)}\n`)
+  runGit(root, ['add', PRODUCTION_PROFILE_PATH])
+  runGit(root, ['commit', '--quiet', '-m', 'append current administration migration profile'])
+  const administrationAppendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+  const projedProductionProfile = structuredClone(administrationProductionProfile)
+  projedProductionProfile.migrations.entries.push(...DEV057_PROJED_MIGRATIONS)
+  fs.writeFileSync(path.join(root, ...PRODUCTION_PROFILE_PATH.split('/')), `${JSON.stringify(projedProductionProfile, null, 2)}\n`)
+  runGit(root, ['add', PRODUCTION_PROFILE_PATH])
+  runGit(root, ['commit', '--quiet', '-m', 'append ProJED principal migrations'])
+  const projedAppendSourceRevision = runGit(root, ['rev-parse', 'HEAD'])
+
+  runGit(root, ['checkout', '--quiet', '--detach', appendSourceRevision])
+
   fs.appendFileSync(path.join(root, ...RUNNER_RECIPE.split('/')), '\n# source-bound image rotation fixture\n')
   runGit(root, ['add', RUNNER_RECIPE])
   runGit(root, ['commit', '--quiet', '-m', 'rotate migration runner recipe'])
@@ -196,7 +213,7 @@ function createSourceFixture() {
 
   return {
     root, baselineSourceRevision, partialAppendSourceRevision, dev058SourceRevision,
-    appendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
+    appendSourceRevision, administrationAppendSourceRevision, projedAppendSourceRevision, rotationSourceRevision, ordinarySourceRevision,
     correctedSmokeSourceRevision, managedSmokeSourceRevision,
     copyInputDriftSourceRevision, toolInputDriftSourceRevision, driftSourceRevision,
     sourceIdentitySha256, sourceArchive, sourceArchiveBytes, sourceArchiveSha256,
@@ -1668,4 +1685,40 @@ test('retains a sealed abort-backed tool rotation after a later application-only
   }))
   await assert.rejects(() => validateRotationFixture(tampered),
     error => error?.code === 'TOOL_ROTATION_BASELINE_INVALID')
+})
+
+test('accepts the exact DEV-057 ProJED profile append from 60 to 63 and rejects drift', () => {
+  const transition = assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.administrationAppendSourceRevision, sourceFixture.projedAppendSourceRevision)
+  assert.equal(transition.disposition, DEV057_PROJED_RELEASE_MODE)
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root,
+    sourceFixture.baselineSourceRevision, sourceFixture.projedAppendSourceRevision).disposition, DEV057_PROJED_RELEASE_MODE)
+
+  const firstMigrationHashDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries[60].sourceSha256 = 'f'.repeat(64) }, 'drift ProJED 065 source hash')
+  const secondMigrationHashDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries[61].appliedSha256 = 'f'.repeat(64) }, 'drift ProJED 066 applied hash')
+  const prefixDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries[0].sourceSha256 = 'f'.repeat(64) }, 'drift ProJED inherited prefix')
+  const unexpectedFourthMigration = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.migrations.entries.push({ order: 64, version: 'dev057-orgmaster-068', path: 'db/migrations/068_unapproved.sql', sourceSha256: 'a'.repeat(64), appliedSha256: 'b'.repeat(64) }) },
+    'append unexpected ProJED migration')
+  const runtimeDrift = commitProfileVariant(sourceFixture.projedAppendSourceRevision,
+    profile => { profile.runtime.timeoutSeconds += 1 }, 'drift ProJED runtime profile')
+  const nonRecipeDrift = commitNonRecipeVariant(sourceFixture.projedAppendSourceRevision,
+    file => fs.appendFileSync(file, '\n# ProJED non-recipe infrastructure drift fixture\n'), 'drift ProJED non-recipe infrastructure')
+
+  for (const revision of [firstMigrationHashDrift, secondMigrationHashDrift, prefixDrift,
+    unexpectedFourthMigration, runtimeDrift, nonRecipeDrift]) {
+    assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root,
+      sourceFixture.appendSourceRevision, revision), 'SOURCE_INPUT_DRIFT')
+  }
+})
+
+
+test('external tool source permits only the exact 64-to-65 qualification suffix',()=>{
+ const successor=commitProfileVariant(sourceFixture.projedAppendSourceRevision,profile=>{profile.migrations.entries.push(DEV057_EXTERNAL_MIGRATION)},'append reviewed external qualification')
+ assert.equal(assertToolInfrastructureTransition(sourceFixture.root,sourceFixture.projedAppendSourceRevision,successor).disposition,DEV057_EXTERNAL_RELEASE_MODE)
+ const drift=commitProfileVariant(successor,profile=>{profile.migrations.entries[64].appliedSha256='f'.repeat(64)},'reject altered external qualification')
+ assertRotationCode(()=>assertToolInfrastructureTransition(sourceFixture.root,sourceFixture.projedAppendSourceRevision,drift),'SOURCE_INPUT_DRIFT')
 })

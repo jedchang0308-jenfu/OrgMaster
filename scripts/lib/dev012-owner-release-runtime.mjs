@@ -1,3 +1,5 @@
+import { DEV057_EXTERNAL_RELEASE_MODE } from './dev057-projed-external-migration.mjs'
+import { DEV057_PROJED_RELEASE_MODE } from './dev057-projed-principal-migration.mjs'
 import { principalOnlyActivationRequest, assertPrincipalOnlyActivationReadback, assertPrincipalOnlyRecoveryReadback, assertRecoveryProofReadback, principalOnlyQuiescenceRequest, assertPrincipalOnlyQuiescenceReadback, principalOnlyMaintenanceRequest, assertPrincipalOnlyMaintenanceReadback } from './dev057-principal-only-release.mjs'
 import { canonicalize, crc32cBase64, parseGsUri, sha256 } from './dev012-production-migration-runner.mjs'
 import { GCC_PBDS_CVE, readNativeInventoryProgram, gccPbdsOccurrenceMatches, readGccApplicabilityPolicy, assertGccApplicabilityAssessment } from './dev015-gcc-applicability.mjs'
@@ -852,8 +854,8 @@ export function createOwnerTransport({ token, fetchImpl = fetch, sleep = sleepDe
     }
     if(enrollmentIntentOperation&& (migrationMode!==null||profile.application.id!=='orgmaster'||!['plan','admit','revoke','status'].includes(enrollmentIntentOperation.action)||!H64.test(enrollmentIntentOperation.ref?.sha256??'')||!enrollmentIntentOperation.ref?.uri?.startsWith('gs://jenfu-platform-prod-orgmaster-release/source/migration-bundles/enrollment-intents/')||enrollmentIntentOperation.ref.uri.includes('..')||Object.keys(enrollmentIntentOperation).sort().join(',')!=='action,ref'||Object.keys(enrollmentIntentOperation.ref??{}).sort().join(',')!=='sha256,uri'))fail('DEV070_INTENT_JOB_INPUT_INVALID')
     if (deployment.productionDataRef || deployment.firstPrincipalBootstrapRef) fail('MIGRATION_BOOTSTRAP_INPUT_DENIED')
-    if (migrationMode !== null && ![DEV060_RELEASE_MODE,DEV070_RELEASE_MODE].includes(migrationMode)) fail('MIGRATION_MODE_INVALID')
-    if(migrationMode===DEV070_RELEASE_MODE&&profile.application.id!=='orgmaster')fail('MIGRATION_MODE_INVALID')
+    if (migrationMode !== null && ![DEV060_RELEASE_MODE,DEV070_RELEASE_MODE,DEV057_PROJED_RELEASE_MODE,DEV057_EXTERNAL_RELEASE_MODE].includes(migrationMode)) fail('MIGRATION_MODE_INVALID')
+    if([DEV070_RELEASE_MODE,DEV057_PROJED_RELEASE_MODE,DEV057_EXTERNAL_RELEASE_MODE].includes(migrationMode)&&profile.application.id!=='orgmaster')fail('MIGRATION_MODE_INVALID')
     const jobName = `projects/${profile.target.projectId}/locations/${profile.target.region}/jobs/${profile.migrations.jobName}`
     const job = await request(`https://run.googleapis.com/v2/${jobName}`)
     const container = job.template?.template?.containers?.find((item) => item.name === 'migration')

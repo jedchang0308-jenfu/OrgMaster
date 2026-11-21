@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { DEV057_EXTERNAL_RELEASE_MODE, DEV057_EXTERNAL_ENTRY_COUNT, assertDev057ExternalMigrationEntries } from './lib/dev057-projed-external-migration.mjs'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -7,6 +8,7 @@ import { TARGET as PRODUCTION_TARGET, databaseOptions } from './lib/orgmaster-pr
 import { DEV059_MIGRATION_ENTRY_COUNT, assertDev059MigrationEntries } from './lib/dev059-fms-authority-migration.mjs'
 import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ACCEPTED_LEDGER_COUNTS,assertDev070MigrationEntries} from './lib/dev070-administration-migration.mjs'
 import { DEV060_RELEASE_MODE, assertDev060MigrationEntries } from './lib/dev060-fms-catalog-activation-migration.mjs'
+import { DEV057_PROJED_BASELINE_COUNT, DEV057_PROJED_MIGRATION_ENTRY_COUNT, DEV057_PROJED_RELEASE_MODE, assertDev057ProjedMigrationEntries } from './lib/dev057-projed-principal-migration.mjs'
 import { publicationControlForMode } from './lib/dev057-pdm-publication-control.mjs'
 import {
   ProductionMigrationError,
@@ -39,6 +41,14 @@ export const DEV060_TARGET = Object.freeze({
 
 export const DEV070_TARGET=Object.freeze({...TARGET,entryCount:DEV070_MIGRATION_ENTRY_COUNT,allowedExistingLedgerCounts:DEV070_ACCEPTED_LEDGER_COUNTS})
 
+export const DEV057_PROJED_TARGET = Object.freeze({
+  ...TARGET,
+  entryCount: DEV057_PROJED_MIGRATION_ENTRY_COUNT,
+  allowedExistingLedgerCounts: Object.freeze(Array.from({ length: DEV057_PROJED_MIGRATION_ENTRY_COUNT - DEV057_PROJED_BASELINE_COUNT + 1 }, (_, index) => DEV057_PROJED_BASELINE_COUNT + index)),
+})
+
+export const DEV057_EXTERNAL_TARGET = Object.freeze({ ...TARGET, entryCount: DEV057_EXTERNAL_ENTRY_COUNT, allowedExistingLedgerCounts: Object.freeze([64, 65]) })
+
 export function parseOrgmasterRunnerArgs(argv) {
   const baseArgs = []
   let migrationMode = null
@@ -46,7 +56,7 @@ export function parseOrgmasterRunnerArgs(argv) {
     const key = argv[index]
     const value = argv[index + 1]
     if (key === '--migration-mode') {
-      if (migrationMode !== null || ![DEV060_RELEASE_MODE,DEV070_RELEASE_MODE].includes(value)) throw new ProductionMigrationError('MIGRATION_ARGUMENT_INVALID', key)
+      if (migrationMode !== null || ![DEV060_RELEASE_MODE,DEV070_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE].includes(value)) throw new ProductionMigrationError('MIGRATION_ARGUMENT_INVALID', key)
       migrationMode = value
     } else {
       baseArgs.push(key, value)
@@ -62,7 +72,7 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
   }
   if(argv.includes('--operation-mode'))return (await import('./dev070-production-enrollment-intent-runner.mjs')).runEnrollmentIntentJob({argv,environment,fetchImpl,Client})
   const args = parseOrgmasterRunnerArgs(argv)
-  const target = args.migrationMode === DEV070_RELEASE_MODE ? DEV070_TARGET : args.migrationMode === DEV060_RELEASE_MODE ? DEV060_TARGET : TARGET
+  const target = args.migrationMode === DEV057_EXTERNAL_RELEASE_MODE ? DEV057_EXTERNAL_TARGET : args.migrationMode === DEV057_PROJED_RELEASE_MODE ? DEV057_PROJED_TARGET : args.migrationMode === DEV070_RELEASE_MODE ? DEV070_TARGET : args.migrationMode === DEV060_RELEASE_MODE ? DEV060_TARGET : TARGET
   assertRunnerTarget(environment, target)
   parseGsUri(args.bundleRef, target.releaseBucket, 'source/migration-bundles')
   parseGsUri(args.outputRef, target.releaseBucket, 'receipts')
@@ -73,7 +83,9 @@ export async function runMain({ argv = process.argv.slice(2), environment = proc
     value = JSON.parse(object.bytes.toString('utf8'))
   } catch { throw new Error('MIGRATION_INPUT_JSON_INVALID') }
   const bundle = assertMigrationBundle(value, { target, sourceRevision: args.sourceRevision, bundleSha256: args.bundleSha256, bytes: object.bytes })
-  if(args.migrationMode===DEV070_RELEASE_MODE)assertDev070MigrationEntries(bundle.entries)
+  if (args.migrationMode === DEV057_EXTERNAL_RELEASE_MODE) assertDev057ExternalMigrationEntries(bundle.entries)
+  else if (args.migrationMode === DEV057_PROJED_RELEASE_MODE) assertDev057ProjedMigrationEntries(bundle.entries)
+  else if(args.migrationMode===DEV070_RELEASE_MODE)assertDev070MigrationEntries(bundle.entries)
   else if (args.migrationMode === DEV060_RELEASE_MODE) assertDev060MigrationEntries(bundle.entries)
   else assertDev059MigrationEntries(bundle.entries)
   const database = new Client(databaseOptions(environment, token))

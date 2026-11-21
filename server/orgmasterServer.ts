@@ -1,3 +1,4 @@
+import { createProjedExternalMiddleware } from './orgmasterProjedExternalApi'
 import { readFile, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, resolve, sep } from 'node:path'
@@ -14,6 +15,7 @@ import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './o
 import { createLocalDeterministicDirectoryPort, type LocalDirectoryFixture } from './orgmasterManagedDirectoryPort'
 import { createWorkbenchPreferenceMiddleware } from './workbenchPreferenceApi'
 import { createOrgmasterManagedLoginMiddleware } from './orgmasterManagedLoginApi'
+import { createOrgmasterProjedPrincipalMiddleware } from './orgmasterProjedPrincipalApi'
 import {createAdministrationEnrollmentMiddleware} from './orgmasterAdministrationEnrollmentApi'
 import {createAdministrationLifecycleMiddleware} from './orgmasterAdministrationLifecycleApi'
 import { createOrgmasterManagedIdentityLifecycleMiddleware, createOrgmasterManagedIdentityLifecycleRuntime, type ManagedIdentityLifecycleRuntime } from './orgmasterManagedIdentityLifecycleApi'
@@ -115,7 +117,10 @@ export function createOrgmasterServer(options: OrgmasterServerOptions = {}) {
     createAdministrationEnrollmentMiddleware(runtime.administrationEnrollment,runtime.managedLoginCallerVerifier),
     createAdministrationLifecycleMiddleware(runtime.administrationLifecycle,runtime.managedLoginCallerVerifier),
     createOrgmasterManagedLoginMiddleware(runtime.managedLoginOwner, runtime.managedLoginCallerVerifier),
+    createOrgmasterProjedPrincipalMiddleware(runtime.projedPrincipalOwner, runtime.managedLoginCallerVerifier),
+    createProjedExternalMiddleware(runtime.projedExternal, runtime.projedExternalCallerVerifier, 'internal'),
     createOrgmasterAuthMiddleware(() => runtime, devIdentityEnabled),
+    createProjedExternalMiddleware(runtime.projedExternal, runtime.projedExternalCallerVerifier),
     ...(employeeNumberManagementEnabled ? [createOrgmasterManagedIdentityMiddleware(root, devIdentityEnabled, managedIdentityService)] : []),
     createWorkbenchPreferenceMiddleware(root),
     ...(accountRuntime ? [accountRuntime.middleware] : []),

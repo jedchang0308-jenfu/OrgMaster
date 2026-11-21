@@ -673,6 +673,41 @@
         "path": "db/migrations/064_dev059_fms_session_publication_epoch.sql",
         "sourceSha256": "02e95d479b1bc958ebbd6942d57311304d79c4776228d16260fb916266964255",
         "appliedSha256": "e8ff5fa9275537159242da550f24913daac552c8ea1b1d709a2508de9a4e8606"
+      },
+      {
+        "order": 61,
+        "version": "dev057-orgmaster-065",
+        "path": "db/migrations/065_dev057_projed_principal_publication.sql",
+        "sourceSha256": "09d6438673cdea17d41fd3a86b7032aae6d0bc9810bf19f2ae09531964e7153d",
+        "appliedSha256": "2ffbca8c2b87407dc420cec5f675addd73470055e4305c5c4f84c6320cbed49f"
+      },
+      {
+        "order": 62,
+        "version": "dev057-orgmaster-066",
+        "path": "db/migrations/066_dev057_projed_principal_state_reader.sql",
+        "sourceSha256": "2d098555162ef1cdbbc86126df4974171754b959ed4611877f99105f4e42597f",
+        "appliedSha256": "4f2b0e7b005f319175dae1b7d624f8da378e0d8c27b851296efeb61ac6265963"
+      },
+      {
+        "order": 63,
+        "version": "dev057-orgmaster-067",
+        "path": "db/migrations/067_dev057_projed_employee_private_admission.sql",
+        "sourceSha256": "2e5db34d47a81b2a4e3bd9465373e4fcf29d8148af183e6bb8a7e4cbe6276ad6",
+        "appliedSha256": "7fad572cd77370c5e7b230bcef9b9319c1f3d287226eed57cb61c7d37842b7af"
+      },
+      {
+        "order": 64,
+        "version": "dev057-orgmaster-068",
+        "path": "db/migrations/068_dev057_projed_central_revocation.sql",
+        "sourceSha256": "85d36aa0f36045405b29ce401fc5df7494a2ebf9ed530ee6f08e86aec8478b64",
+        "appliedSha256": "f6bcc2f6cf21721fc53825ace00ccdeda93f0e81267a834567d7343e065f42d8"
+      },
+      {
+        "order": 65,
+        "version": "dev057-orgmaster-069",
+        "path": "db/migrations/069_dev057_projed_external_qualification.sql",
+        "sourceSha256": "29b4a30ade5acf43dc610470fd7a06e5da60a47c4bf1a9577be5e0997169205e",
+        "appliedSha256": "1cc94d206d8f2c59b5a8ae8cf4588a960135ca366117362c07bca7a5b75b6df2"
       }
     ]
   },

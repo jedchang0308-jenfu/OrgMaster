@@ -1,3 +1,4 @@
+import { createProjedExternalService, type ProjedExternalService } from './orgmasterProjedExternal'
 import { createOrgmasterPdmRevocationClient } from './orgmasterPdmRevocationClient'
 import { withOrgmasterPdmRevocationClient } from './orgmasterPdmPublication'
 import { randomUUID } from 'node:crypto'
@@ -31,6 +32,8 @@ import { createGoogleDirectoryAuthPort, createGoogleDirectoryReadOnlyPort, readG
 import { handleOrgmasterSsoRequest, type OrgmasterSsoHandoffDependencies } from './orgmasterSsoHandoff'
 import { createGoogleManagedLoginCallerVerifier, type ManagedLoginCallerVerifier } from './orgmasterManagedLoginApi'
 import { createManagedLoginOwnerService, type ManagedLoginOwnerServiceV1 } from './orgmasterManagedLoginService'
+import { createProjedPrincipalRepository } from './orgmasterProjedPrincipalRepository'
+import { createProjedPrincipalService, type ProjedPrincipalService } from './orgmasterProjedPrincipalService'
 import {createAdministrationEnrollment,type AdministrationEnrollmentService} from './orgmasterAdministrationEnrollment'
 import {createAdministrationLifecycleDispatcher,productionAdministrationLifecycle,type AdministrationLifecycleDispatcher} from './orgmasterAdministrationLifecycle'
 import {createOrgmasterLocalAdministrationRuntime,localAdministrationPeer,localAdministrationProviders,localAdministrationServiceToken} from './orgmasterLocalAdministrationRuntime'
@@ -80,6 +83,9 @@ export type OrgmasterAuthRuntime = {
   managedIdentity?: ManagedIdentityServiceV1
   managedLoginOwner?: ManagedLoginOwnerServiceV1
   managedLoginCallerVerifier?: ManagedLoginCallerVerifier
+  projedExternal?: ProjedExternalService
+  projedExternalCallerVerifier?: ManagedLoginCallerVerifier
+  projedPrincipalOwner?: ProjedPrincipalService
   administrationEnrollment?: AdministrationEnrollmentService
   administrationLifecycle?: AdministrationLifecycleDispatcher
   administrationLocalGuard?:()=>Promise<void>
@@ -465,6 +471,10 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     employeeNumberManagementEnabled: Boolean(managedIdentity),
     managedLoginOwner,
     managedLoginCallerVerifier,
+    projedExternal: createProjedExternalService(database, localAdministration?.verify),
+    projedExternalCallerVerifier: environment.ORGMASTER_PROJED_CALLER_EMAIL?.trim() && environment.ORGMASTER_PROJED_CALLER_SUBJECT?.trim()
+      ? createGoogleManagedLoginCallerVerifier({ audience: configResult.config.publicBaseUrl.origin, expectedEmail: environment.ORGMASTER_PROJED_CALLER_EMAIL, expectedSubject: environment.ORGMASTER_PROJED_CALLER_SUBJECT }) : undefined,
+    projedPrincipalOwner: createProjedPrincipalService({ firebase, repository: createProjedPrincipalRepository(database) }),
     administrationLifecycle,
     administrationLocalGuard:localAdministration?.verify,
     pdmRevocationClient: localAdministration ? createOrgmasterPdmRevocationClient({

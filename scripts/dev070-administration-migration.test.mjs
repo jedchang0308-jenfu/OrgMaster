@@ -12,7 +12,10 @@ import {canonicalize,sha256} from './lib/dev012-production-migration-runner.mjs'
 const root=fileURLToPath(new URL('../',import.meta.url)),read=path=>JSON.parse(readFileSync(new URL(`../${path}`,import.meta.url),'utf8'))
 const profile=read('config/release/dev040-orgmaster-independent-production-v3.json'),n1c=read('config/dev-010/n1c-orgmaster.json'),source='a'.repeat(40)
 const files=new Map(profile.migrations.entries.map(entry=>[entry.path,readFileSync(new URL(`../${entry.path}`,import.meta.url))]))
-const after=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c,root),files,source).bundle
+const complete=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c,root),files,source).bundle
+const {manifestSha256:_currentManifest,...historicalCore}=complete
+historicalCore.entries=complete.entries.slice(0,DEV070_MIGRATION_ENTRY_COUNT)
+const after={...historicalCore,manifestSha256:sha256(canonicalize(historicalCore))}
 const before=count=>({...after,sourceRevision:'b'.repeat(40),manifestSha256:'c'.repeat(64),entries:after.entries.slice(0,count)})
 
 test('DEV070 exact reviewed source packages only 042/044/045/047/048/049/050/051/052/053/054/055/056/057 after immutable 001–041 identity',()=>{

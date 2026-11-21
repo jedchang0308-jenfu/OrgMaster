@@ -1,7 +1,7 @@
 import pg from 'pg'
 import {canonicalize,sha256,assertRunnerTarget,metadataAccessToken,readGcsObject,publishGcsJson,readMigrationLedger} from './lib/dev012-production-migration-runner.mjs'
 import {TARGET,databaseOptions} from './lib/orgmaster-production-database.mjs'
-import {assertDev070MigrationEntries} from './lib/dev070-administration-migration.mjs'
+import {assertReviewedOrgmasterMigrationEntries} from './lib/dev057-projed-principal-migration.mjs'
 const H40=/^[a-f0-9]{40}$/,H64=/^[a-f0-9]{64}$/
 const exact=(value,keys)=>value&&typeof value==='object'&&Object.keys(value).sort().join(',')===[...keys].sort().join(',')
 const fail=code=>{throw new Error(code)}
@@ -66,7 +66,7 @@ export async function runEnrollmentIntentJob({argv=process.argv.slice(2),environ
  const intent=await read(manifest.releaseIntentRef),terminal=await read(manifest.terminalRef),deployment=await read(manifest.deploymentRef),bundle=await read(manifest.migrationBundleRef,'source/migration-bundles')
  sealed(terminal)
  if(terminal.stage!=='terminal'||terminal.ownerApplicationId!=='orgmaster'||terminal.sourceRevision!==args.sourceRevision||terminal.facts?.result!=='RELEASED'||terminal.facts?.remainingHumanAction!==0||deployment.sourceRevision!==args.sourceRevision||intent.sourceRevision!==args.sourceRevision||canonicalize(deployment.releaseIntentRef)!==canonicalize(manifest.releaseIntentRef)||canonicalize(deployment.migrationBundleRef)!==canonicalize(manifest.migrationBundleRef)||terminal.facts.artifactDigest!==deployment.artifactDigest)fail('DEV070_INTENT_RELEASE_EVIDENCE_INVALID')
- assertDev070MigrationEntries(bundle.entries)
+ assertReviewedOrgmasterMigrationEntries(bundle.entries)
  if(bundle.sourceRevision!==args.sourceRevision||bundle.manifestSha256!==intent.migrationManifestSha256)fail('DEV070_INTENT_RELEASE_EVIDENCE_INVALID')
  const identity=await fetchImpl('http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=https%3A%2F%2Frun.googleapis.com%2Fdev070-enrollment-intent&format=full',{headers:{'Metadata-Flavor':'Google'},signal:AbortSignal.timeout(10000)})
  if(!identity.ok)fail('DEV070_INTENT_METADATA_IDENTITY_INVALID')

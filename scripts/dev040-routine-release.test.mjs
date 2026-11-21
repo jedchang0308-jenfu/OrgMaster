@@ -1,3 +1,5 @@
+import { DEV057_EXTERNAL_REMEDIATION, DEV057_EXTERNAL_RELEASE_MODE } from './lib/dev057-projed-external-migration.mjs'
+import { DEV057_PROJED_REMEDIATION, DEV057_PROJED_RELEASE_MODE } from './lib/dev057-projed-principal-migration.mjs'
 import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ADMINISTRATION_REMEDIATION,ORGMASTER_FMS_DELIVERY_FLAG,assertDev070AdministrationAppend} from './lib/dev070-administration-migration.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_FMS_AUTHORITY_REMEDIATION, DEV059_MIGRATION_ENTRY_COUNT, DEV059_RELEASE_MODE, assertDev059FmsAuthorityAppend } from './lib/dev059-fms-authority-migration.mjs'
@@ -2754,8 +2756,8 @@ test('DEV-059 admits only the exact FMS authority append through the native owne
   assert.equal(plan.databaseVerification, 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
 
   const installedDev058 = prefixBundle(newBundle.bundle, DEV059_MIGRATION_ENTRY_COUNT - 1)
-  assert.equal(assertDev059FmsAuthorityAppend(installedDev058, newBundle.bundle).pendingMigrationCount, 1)
-  const changed = structuredClone(newBundle.bundle)
+  assert.equal(assertDev059FmsAuthorityAppend(installedDev058, prefixBundle(newBundle.bundle, DEV059_MIGRATION_ENTRY_COUNT)).pendingMigrationCount, 1)
+  const changed = structuredClone(prefixBundle(newBundle.bundle, DEV059_MIGRATION_ENTRY_COUNT))
   changed.entries.at(-1).sourceSha256 = '0'.repeat(64)
   assert.throws(() => assertDev059FmsAuthorityAppend(installedDev058, changed), /DEV059_MIGRATION_APPEND_INVALID/u)
 
@@ -2849,7 +2851,9 @@ test('DEV-060 CLI binds one migration-041 recipe and rejects every mixed control
 })
 
 function administrationHarness(count=39, runtimes={}){
- const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,count),currentBundle:newBundle,...runtimes})
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,count),currentBundle:{bundle:prefixBundle(newBundle.bundle,DEV070_MIGRATION_ENTRY_COUNT)},...runtimes})
+ h.input.profile=structuredClone(profile)
+ h.input.profile.migrations.entries=h.input.profile.migrations.entries.slice(0,DEV070_MIGRATION_ENTRY_COUNT)
  const common={devId:'DEV-070',slice:'070-ADMINISTRATION',remediation:DEV070_ADMINISTRATION_REMEDIATION}
  h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
  h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
@@ -2933,4 +2937,69 @@ test('normal CLI exposes only closed migration-only and sealed full-continuation
   assert.deepEqual(args, ['workflow', 'run', '.github/workflows/deploy-orgmaster-independent-production.yml', '--repo',
     'jedchang0308-jenfu/OrgMaster', '--ref', 'master', '-f', `releaseCapsuleRef=${capsule}`, '-f', 'executionMode=migration_only'])
   assert.throws(() => ownerWorkflowDispatchArgs(profile, capsule, 'arbitrary'), /OWNER_EXECUTION_MODE_INVALID/)
+})
+
+function projedPrincipalHarness() {
+  const h = harness({ baselineBundle: prefixBundle(oldBundle.bundle, 60), currentBundle: { bundle: prefixBundle(newBundle.bundle,64) } })
+  const common = { devId: 'DEV-057', slice: '057-PROJED-PRINCIPAL', remediation: DEV057_PROJED_REMEDIATION }
+  h.input.values.authorization = { ...h.input.values.authorization, ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }
+  h.input.values.readiness = { ...h.input.values.readiness, ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }
+  attachForwardInfra(h)
+  return h
+}
+
+test('ProJED publication uses only the exact 60-to-64 owner append and leaves runtime unchanged', async () => {
+  const h = projedPrincipalHarness()
+  const plan = await verifyRoutineRelease(h.input)
+  assert.equal(plan.releaseMode, DEV057_PROJED_RELEASE_MODE)
+  assert.equal(plan.migrationDisposition, 'FORWARD_APPLY')
+  assert.equal(plan.pendingMigrationCount, 4)
+  assert.equal(plan.databaseVerification, 'OWNER_MIGRATION_JOB_REQUIRED_BEFORE_CANDIDATE')
+  const drift = projedPrincipalHarness()
+  drift.input.values.runtimeConfig.runtimeConfig.secretVersions.ORGMASTER_SESSION_HASH_PEPPER = '2'
+  await assert.rejects(() => verifyRoutineRelease(drift.input), /DEV057_PROJED_RUNTIME_CHANGED/u)
+  const wrong = projedPrincipalHarness()
+  wrong.input.values.authorization.remediation = { kind: 'UNRELATED' }
+  await assert.rejects(() => verifyRoutineRelease(wrong.input), /DEV057_PROJED_PRINCIPAL_AUTHORITY_INVALID/u)
+})
+
+test('ProJED append CLI seals one recipe and rejects mixed modes or wrong own infra references', () => {
+  const ref = `gs://${bucket}/receipts/tool-rotations/${'c'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`
+  const args = ['--dev057-projed-principal-append', `--dev057-infra-ref=${ref}`]
+  for (const mode of ['--check', '--prepare-only']) {
+    const parsed = parseDeployProductionArgs([mode, ...args])
+    assert.equal(parsed.dev057ProjedPrincipalAppend, true)
+    assert.equal(parsed.infraOption, 'dev057')
+  }
+  for (const invalid of [
+    [args[0]], [args[1]], [...args, args[0]], [...args, '--dev058-role-policy-append'],
+    [...args, '--dev059-fms-authority-append'], [...args, '--dev014-activate'],
+    [...args, '--dev057-principal-grants-v4-remediation'],
+    [args[0], `--dev059-infra-ref=${ref}`], [...args, '--reuse-aborted-app-artifact'],
+    [...args, `--tool-image-rotation-ref=${ref}`],
+  ]) assert.throws(() => parseDeployProductionArgs(invalid))
+  const source = fs.readFileSync(new URL('./dev040-deploy-production.mjs', import.meta.url), 'utf8')
+  assert.equal((source.match(/\.\.\.dev057ProjedAuthority/g) ?? []).length, 2)
+  assert.doesNotThrow(() => assertToolRotationReleaseCompatibility({
+    toolRotation: { migrationRunnerDigest: 'verified-fixture' }, controlledTransition: { releaseMode: DEV057_PROJED_RELEASE_MODE }, runtimeChanged: false,
+  }))
+  assert.equal(DEV057_PROJED_REMEDIATION.consumerApplicationId, 'platform')
+  assert.equal(DEV057_PROJED_REMEDIATION.applicationId, 'projed')
+})
+
+
+test('external release uses a separate 64-to-65 recipe and rejects mixed CLI scopes', async()=>{
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,64),currentBundle:{bundle:newBundle.bundle}})
+ const common={devId:'DEV-057',slice:'057-PROJED-EXTERNAL',remediation:DEV057_EXTERNAL_REMEDIATION}
+ h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
+ h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
+ attachForwardInfra(h)
+ const plan=await verifyRoutineRelease(h.input)
+ assert.equal(plan.releaseMode,DEV057_EXTERNAL_RELEASE_MODE);assert.equal(plan.pendingMigrationCount,1)
+ const ref=`gs://${bucket}/receipts/tool-rotations/${'c'.repeat(40)}/app-infra.json#sha256=${'b'.repeat(64)}`
+ const args=['--dev057-projed-external-append',`--dev057-infra-ref=${ref}`]
+ assert.equal(parseDeployProductionArgs(['--check',...args]).dev057ProjedExternalAppend,true)
+ assert.throws(()=>parseDeployProductionArgs([...args,'--dev057-projed-principal-append']))
+ assert.throws(()=>parseDeployProductionArgs([...args,'--dev070-administration-append']))
+ assert.throws(()=>parseDeployProductionArgs([args[0]]))
 })

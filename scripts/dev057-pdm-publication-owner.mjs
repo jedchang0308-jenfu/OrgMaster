@@ -7,7 +7,7 @@ import { verifyOfficialMergedSource } from './lib/dev012-official-source-review.
 import { readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 import { assertImmutableRef, canonicalize, createOwnerTransport, sha256 } from './lib/dev012-owner-release-runtime.mjs'
 import { readRoutineBaseline } from './lib/dev040-routine-release.mjs'
-import { assertDev070MigrationEntries } from './lib/dev070-administration-migration.mjs'
+import {assertReviewedOrgmasterMigrationEntries} from './lib/dev057-projed-principal-migration.mjs'
 import { assertLifecycleSchedulerReadback, lifecycleSchedulerSnapshot, LIFECYCLE_SCHEDULER_NAME } from './lib/dev014-lifecycle-scheduler-contract.mjs'
 import { assertAcceptance, controlIdentity, fmsPublicationControl, pdmPublicationControl,
   fail, pathsForControl, same, validControlRevision } from './lib/dev057-pdm-publication-control.mjs'
@@ -168,7 +168,7 @@ export async function executeOwnerOperation({ profile, transport, sourceRevision
       baseline.intent.sourceLockRef.sha256 !== observed.orgmaster.sourceLockSha256 ||
       baseline.deployment.value.artifactDigest !== acceptance.sources.orgmaster.artifactDigest ||
       !same(baseline.terminal.ref, terminalRef)) fail('SOURCE_NOT_RELEASED')
-  assertDev070MigrationEntries(baseline.bundle.value.entries)
+  assertReviewedOrgmasterMigrationEntries(baseline.bundle.value.entries)
   const recheck = async () => {
     if (!same(observed, await readOwners())) fail('OWNERS_CHANGED')
     if (!scheduler) return

@@ -126,7 +126,7 @@ test('owner status obtains fresh native initialized/revoked observations after p
 })
 test('owner rejects older prefixes, unapproved appends and altered exact manifest identities before publishing or running a Job',async()=>{
  const cases=[
-  bundle=>{bundle.entries.pop()},
+  bundle=>{bundle.entries.splice(63)},
   bundle=>{
    const order=bundle.entries.length+1
    bundle.entries.push({...bundle.entries.at(-1),order,version:`dev070-unapproved-fixture-${order}`,path:'db/migrations/999_unapproved_fixture.sql',name:'unapproved_fixture'})
@@ -139,7 +139,7 @@ test('owner rejects older prefixes, unapproved appends and altered exact manifes
  ]
  for(const [index,mutateBundle] of cases.entries()){
   const f=sealedOwnerFixture({mutateBundle})
-  await assert.rejects(f.run(),index===2?/MIGRATION_PREFIX_001_031_DRIFT/:/DEV070_MIGRATION_APPEND_INVALID/)
+  await assert.rejects(f.run(),index===2?/MIGRATION_PREFIX_001_031_DRIFT/:[3,8,9].includes(index)?/DEV057_EXTERNAL_MIGRATION_APPEND_INVALID/:/DEV070_MIGRATION_APPEND_INVALID/)
   assert.equal(f.puts(),0);assert.equal(f.runs(),0)
  }
 })
