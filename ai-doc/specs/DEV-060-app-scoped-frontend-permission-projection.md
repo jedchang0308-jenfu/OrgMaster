@@ -121,7 +121,7 @@ JENFU_SSO_IMPERSONATE_SERVICE_ACCOUNT=<orgmaster-nonprod-service-account>
 
 未來 activation 使用 12010／12000 的 exact origin；一次驗收不得混用 localhost 與 127.0.0.1。Local service token 使用 ADC impersonation，不接受 key file；production／Cloud Run 仍禁止 development impersonation path。本次以 injected token provider／handoff fixture 驗證相同 handler，不以 fixture 宣稱真實 SSO。
 
-npm run dev:local 預設 1010；本 session 入口需支援 node scripts/dev-local.mjs --port 12010 --no-browser 與 check-only。Windows child process 使用 npm.cmd 或等效可執行入口，避免 spawn EINVAL。只停止已驗證屬於本工作樹的 PID。
+`npm run dev:local` 使用目前工作樹的單機 1011 入口；整合 1010 由 Platform 啟動。工程入口保留 `node scripts/dev-local.mjs --port 12010 --no-browser` 與 check-only。Windows child process 使用 npm.cmd 或等效可執行入口，避免 spawn EINVAL。只停止已驗證屬於本工作樹的 PID。
 
 OrgMaster runtime 只使用 disposable／task-owned data；不得把 production 或 persistent staging database 當 fixture。SSO callback 建立 App-local session 後，permission endpoint 不應依賴 Platform runtime 持續在線。
 
@@ -130,7 +130,7 @@ OrgMaster runtime 只使用 disposable／task-owned data；不得把 production 
 | 檔案／模組 | 修改目的 |
 |---|---|
 | .env.example | 預設 origin 改為 1010，補 local SSO／impersonation 說明但不放真實 identity |
-| package.json、scripts/dev-local.mjs、既有 scripts/dev-local.ps1/cmd | daily entrypoint、port override、status／PID ownership；保留單一入口 |
+| package.json、啟動本系統.bat、停止本系統.bat、scripts/local-sandbox-client.mjs | 單機 1011 與 Platform 整合 1010 入口；scripts/dev-local.mjs／dev-local-processes.mjs 保留工程呼叫與 PID ownership |
 | server/orgmasterGovernanceApi.ts | 將既有 /session 回應升級為 typed app projection；沿現行 actor／published permission evaluator |
 | src/governance/apiClient.ts | 定義 v1 contract、runtime shape validation 與錯誤分類 |
 | src/auth/OrgMasterPermissionProvider.tsx | provider、selector、dedupe、invalidation、late-response guard |

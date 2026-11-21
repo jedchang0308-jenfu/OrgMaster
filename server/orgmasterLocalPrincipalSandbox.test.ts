@@ -9,6 +9,8 @@ import { AI_PDM_ROLE_CATALOG_V7_SHA256, AI_PDM_ROLE_CATALOG_V7_VERSION, LOCAL_PR
 import * as catalogRepository from './aiPdmRoleCatalogRepository'
 import {
   createOrgmasterLocalPrincipalSandbox,
+  localSessionCookieName,
+  transactionCookieName,
   verifyOrgmasterLocalIntrospection,
   verifyOrgmasterLocalLifecycleAssertion,
   verifyOrgmasterLocalLifecycleSessionBinding,
@@ -354,5 +356,28 @@ describe('OrgMaster local principal sandbox runtime gates', () => {
     const assurancePolicyHash = 'd'.repeat(64)
     const aal2Expectation = await captureTokenExpectation(testProfile({ allowSyntheticAal2: true, assurancePolicyHash }))
     expect(aal2Expectation).toMatchObject({ allowSyntheticAal2: true, assurancePolicyHash })
+  })
+})
+
+describe('dual-mode local cookie boundaries', () => {
+  it('clears only the selected session and PKCE cookies', async () => {
+    const names = new Set<string>()
+    for (const [mode, offset] of [['integrated', 0], ['standalone', 1]] as const) {
+      const environment = { ...testEnvironment('unused-local-root'), JENFU_LOCAL_SANDBOX_MODE: mode,
+        JENFU_LOCAL_SANDBOX_ORIGIN: `http://localhost:${1010 + offset}`,
+        JENFU_LOCAL_SANDBOX_PLATFORM_ORIGIN: `http://localhost:${1000 + offset}` }
+      const sandbox = createOrgmasterLocalPrincipalSandbox({ environment })
+      const sessionName = localSessionCookieName('orgmaster-test', mode)
+      const stateName = transactionCookieName('orgmaster-test', mode)
+      expect(names.has(sessionName)).toBe(false)
+      expect(names.has(stateName)).toBe(false)
+      names.add(sessionName); names.add(stateName)
+      expect(await sandbox.clearSessionCookie()).toEqual([
+        `${sessionName}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax`,
+        `${stateName}=; Max-Age=0; Path=/api/auth/local-sandbox/callback; HttpOnly; SameSite=Lax`,
+      ])
+      await sandbox.close()
+    }
+    expect(names.size).toBe(4)
   })
 })

@@ -161,8 +161,8 @@ function statusOf(error: unknown) {
   return error && typeof error === 'object' && 'status' in error ? Number((error as { status?: unknown }).status) : 0
 }
 
-function localSessionCookieName(sandboxId: string) { return `orgmaster_local_session_${sandboxId}` }
-function transactionCookieName(sandboxId: string) { return `orgmaster_local_tx_${sandboxId}` }
+export function localSessionCookieName(sandboxId: string, mode?: LocalSandboxConfig['mode']) { return `orgmaster_local_session_${sandboxId}${mode ? '_' + mode : ''}` }
+export function transactionCookieName(sandboxId: string, mode?: LocalSandboxConfig['mode']) { return `orgmaster_local_tx_${sandboxId}${mode ? '_' + mode : ''}` }
 function cookieHeader(request: IncomingMessage, name: string) {
   for (const part of (request.headers.cookie ?? '').split(';')) {
     const separator = part.indexOf('=')
@@ -496,8 +496,8 @@ export function createOrgmasterLocalPrincipalSandbox({
 
     async clearSessionCookie() {
       const config = readLocalSandboxConfig(environment, 'orgmaster')
-      return [clearCookie(localSessionCookieName(config.sandboxId), config),
-        clearCookie(transactionCookieName(config.sandboxId), config, CALLBACK_PATH)]
+      return [clearCookie(localSessionCookieName(config.sandboxId, config.mode), config),
+        clearCookie(transactionCookieName(config.sandboxId, config.mode), config, CALLBACK_PATH)]
     },
 
     async mode(correlationId: string) {
@@ -523,7 +523,7 @@ export function createOrgmasterLocalPrincipalSandbox({
         authorize.search = new URLSearchParams({ response_type: 'code', client_id: 'orgmaster',
           redirect_uri: callbackUri, state, code_challenge: challenge, code_challenge_method: 'S256' }).toString()
         const tx = Buffer.from(JSON.stringify({ state, verifier, returnTo })).toString('base64url')
-        return { location: authorize.href, cookie: setCookie(transactionCookieName(value.config.sandboxId), tx, value.config, 120, CALLBACK_PATH) }
+        return { location: authorize.href, cookie: setCookie(transactionCookieName(value.config.sandboxId, value.config.mode), tx, value.config, 120, CALLBACK_PATH) }
       } finally { await endContext(value) }
     },
 
@@ -532,7 +532,7 @@ export function createOrgmasterLocalPrincipalSandbox({
       try {
         const url = new URL(request.url ?? '/', value.config.origin)
         const expectedIssuer = `${value.config.platformOrigin}/api/local-sandbox`
-        const txValue = cookieHeader(request, transactionCookieName(value.config.sandboxId))
+        const txValue = cookieHeader(request, transactionCookieName(value.config.sandboxId, value.config.mode))
         let tx: { state: string; verifier: string; returnTo: string } | null = null
         try {
           const parsed = JSON.parse(Buffer.from(txValue ?? '', 'base64url').toString('utf8'))
@@ -708,8 +708,8 @@ export function createOrgmasterLocalPrincipalSandbox({
           token: rawToken,
           session,
           profile: value.profile,
-          cookie: setCookie(localSessionCookieName(value.profile.sandboxId), rawToken, value.config, ORGMASTER_SESSION_MAX_AGE_SECONDS),
-          clearTransactionCookie: clearCookie(transactionCookieName(value.profile.sandboxId), value.config, CALLBACK_PATH),
+          cookie: setCookie(localSessionCookieName(value.profile.sandboxId, value.config.mode), rawToken, value.config, ORGMASTER_SESSION_MAX_AGE_SECONDS),
+          clearTransactionCookie: clearCookie(transactionCookieName(value.profile.sandboxId, value.config.mode), value.config, CALLBACK_PATH),
         }
       } catch (error) {
         console.warn('[orgmaster-local-sandbox] callback dependency failure', {
@@ -734,7 +734,7 @@ export function createOrgmasterLocalPrincipalSandbox({
       }
       let diagnosticStage: LocalSandboxAuthStage = 'session_lookup'
       try {
-        const token = cookieHeader(request, localSessionCookieName(value.profile.sandboxId))
+        const token = cookieHeader(request, localSessionCookieName(value.profile.sandboxId, value.config.mode))
         if (!token || token.length > 256) authInvalid(true)
         const hash = hashSessionToken(value.profile.key, token)
         const sessions = createOrgmasterSessionRepository(value.client as never)
@@ -794,7 +794,7 @@ export function createOrgmasterLocalPrincipalSandbox({
     async logout(request: IncomingMessage) {
       const value = await context(request, true)
       try {
-        const token = cookieHeader(request, localSessionCookieName(value.profile.sandboxId))
+        const token = cookieHeader(request, localSessionCookieName(value.profile.sandboxId, value.config.mode))
         if (token) {
           const hash = hashSessionToken(value.profile.key, token)
           const sessions = createOrgmasterSessionRepository(value.client as never)
@@ -830,7 +830,7 @@ export function createOrgmasterLocalPrincipalSandbox({
             }
           }
         }
-        return { cookies: [clearCookie(localSessionCookieName(value.profile.sandboxId), value.config), clearCookie(transactionCookieName(value.profile.sandboxId), value.config, CALLBACK_PATH)] }
+        return { cookies: [clearCookie(localSessionCookieName(value.profile.sandboxId, value.config.mode), value.config), clearCookie(transactionCookieName(value.profile.sandboxId, value.config.mode), value.config, CALLBACK_PATH)] }
       } finally { await endContext(value) }
     },
 
