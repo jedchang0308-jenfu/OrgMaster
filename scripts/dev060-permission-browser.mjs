@@ -4,7 +4,7 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawnSync, execFileSync } from 'node:child_process'
 import { chromium } from 'playwright'
-import { inspectPortOwnership } from './dev-local.mjs'
+import { inspectPortOwnership } from './dev-local-processes.mjs'
 
 const root = process.cwd()
 const base = process.argv[2]

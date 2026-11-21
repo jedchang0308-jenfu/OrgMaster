@@ -4,9 +4,9 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 const expected = {
-  "protocol.mjs": "541bd7bd7d75f0fa3a62004abfbe0d25b4c3a10e2920ce3644f6a5673432187e",
-  "protocol.d.mts": "947939f8279af5d8e96b2846bf2c3be04e6e5f991464a57b40d5ae0ccb1cb8f9",
-  "client.mjs": "f89ff8fc333521fb8dea386f17829ae8d3c15046e8edd8bc12c60d69f1d76115",
+  "protocol.mjs": "c610d3a1c110517256d02ad1db91f97c99a65b1c3429c80aa1f6b90db59301c5",
+  "protocol.d.mts": "108faf0e220b6dc99987c71de607fc8d2b51db810129d2a666943a5c41e025e0",
+  "client.mjs": "d9b3eb10e4b6ac5e2a8bbbf8a872e221390bb31a6ef02e3cb7a130f57e52ee54",
   "client.d.mts": "175cc455926cd93ad5ebb446b6ca4df88f24614665e6f508dda2c1286d9431a8",
   "owner-publication.mjs": "32bc9ba9276542c01bbfaf5016b200adf897bd17005cb3fba16f215e93a66015",
   "owner-publication.d.mts": "0bc034cc7f805ea7363a44279b50b2999cb123bfdcc8873216317e918c88f52a"

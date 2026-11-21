@@ -1,4 +1,118 @@
 import { spawnSync } from 'node:child_process'
+import net from 'node:net'
+import path from 'node:path'
+
+const HEALTH_TIMEOUT_MS = 1_500
+
+export function parsePort(value) {
+  if (!/^\d+$/u.test(String(value))) throw new Error('--port requires a number from 1 to 65535')
+  const port = Number(value)
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('--port requires a number from 1 to 65535')
+  return port
+}
+
+export async function probeLoopbackPort(port) {
+  const checkedPort = parsePort(port)
+  const probe = host => new Promise((resolve, reject) => {
+    const server = net.createServer()
+    server.once('error', (error) => {
+      if (error.code === 'EADDRINUSE') resolve(false)
+      else if (host === '::1' && ['EAFNOSUPPORT', 'EADDRNOTAVAIL'].includes(error.code)) resolve(true)
+      else reject(error)
+    })
+    server.listen({ host, port: checkedPort, exclusive: true, ipv6Only: host === '::1' }, () => {
+      server.close((error) => error ? reject(error) : resolve(true))
+    })
+  })
+  const results = await Promise.all([probe('127.0.0.1'), probe('::1')])
+  return results.every(Boolean)
+}
+
+export async function checkLoopbackHealth(port, { timeoutMs = HEALTH_TIMEOUT_MS, fetchImpl = fetch } = {}) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetchImpl(`http://127.0.0.1:${parsePort(port)}/`, {
+      signal: controller.signal,
+      redirect: 'manual',
+    })
+    return { ok: response.status >= 200 && response.status < 300, status: response.status }
+  } catch {
+    return { ok: false, status: null }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function listPortOwnersWindows(port) {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `$portNumber = ${parsePort(port)}`,
+    '$ownerPids = @(Get-NetTCPConnection -State Listen -LocalPort $portNumber -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)',
+    '$rows = foreach ($ownerPid in $ownerPids) { $processInfo = Get-CimInstance -ClassName Win32_Process -Filter ("ProcessId = " + [int]$ownerPid); if ($processInfo) { [PSCustomObject]@{ pid = [int]$processInfo.ProcessId; name = [string]$processInfo.Name; commandLine = [string]$processInfo.CommandLine } } }',
+    "if ($null -eq $rows) { '[]' } else { ConvertTo-Json -InputObject @($rows) -Compress }",
+  ].join('; ')
+  const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8', windowsHide: true, timeout: 15_000,
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) throw new Error('Could not query the Windows listener PID.')
+  const output = result.stdout.trim()
+  if (!output) return []
+  const decoded = JSON.parse(output)
+  return (Array.isArray(decoded) ? decoded : [decoded]).map((owner) => ({
+    pid: Number(owner.pid),
+    name: String(owner.name ?? 'unknown process'),
+    commandLine: String(owner.commandLine ?? ''),
+  }))
+}
+
+export function listPortOwners(port, platform = process.platform) {
+  if (platform === 'win32') return listPortOwnersWindows(port)
+  throw new Error('PID ownership lookup is currently supported on Windows only.')
+}
+
+function normalizedPath(value) {
+  return path.resolve(value).replace(/[\\/]+/gu, '\\').toLowerCase()
+}
+
+export function isViteOwnedByWorktree(owner, projectRoot) {
+  const commandLine = String(owner?.commandLine ?? '')
+  if (!commandLine) return false
+  const normalizedCommandLine = commandLine.replace(/[\\/]+/gu, '\\').toLowerCase()
+  const normalizedRoot = normalizedPath(projectRoot)
+  const escapedRoot = normalizedRoot.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  const mentionsRoot = new RegExp(`(?:^|[\\s"'=])${escapedRoot}(?=$|[\\s"'])`, 'u').test(normalizedCommandLine)
+  const mentionsVite = /(?:^|[\\/])vite(?:\.js)?(?:[\\/\s]|$)/iu.test(commandLine)
+  return mentionsRoot && mentionsVite
+}
+
+export async function inspectPortOwnership({
+  port,
+  projectRoot,
+  probe = probeLoopbackPort,
+  listOwners = listPortOwners,
+  health = checkLoopbackHealth,
+}) {
+  const checkedPort = parsePort(port)
+  if (await probe(checkedPort)) return { state: 'available', port: checkedPort, owners: [] }
+
+  let owners
+  try {
+    owners = await listOwners(checkedPort)
+  } catch (error) {
+    return { state: 'blocked', port: checkedPort, owners: [], reason: 'owner_lookup_failed', error }
+  }
+  if (!owners.length) return { state: 'blocked', port: checkedPort, owners: [], reason: 'owner_not_found' }
+
+  if (owners.length === 1 && isViteOwnedByWorktree(owners[0], projectRoot)) {
+    const result = await health(checkedPort)
+    return result.ok
+      ? { state: 'running', port: checkedPort, owner: owners[0], health: result }
+      : { state: 'unhealthy', port: checkedPort, owner: owners[0], health: result }
+  }
+  return { state: 'blocked', port: checkedPort, owners, reason: 'worktree_ownership_unverified' }
+}
 
 // PID alone is not an ownership proof. Hold a native Process handle while
 // reading its creation time/path, and compare the same fields before killing.

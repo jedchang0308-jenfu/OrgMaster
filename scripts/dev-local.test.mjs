@@ -11,14 +11,12 @@ import {
   DEFAULT_PORT,
   buildNpmInvocation,
   formatStatus,
-  inspectPortOwnership,
-  isViteOwnedByWorktree,
   parseArgs,
   resolveNpmCliPath,
-  probeLoopbackPort,
   run,
 } from './dev-local.mjs'
-import { createProcessGuard, extendOwnedTree, snapshotWindowsTree, stopWindowsProcesses } from './dev-local-processes.mjs'
+import { createProcessGuard, extendOwnedTree, inspectPortOwnership, isViteOwnedByWorktree,
+  probeLoopbackPort, snapshotWindowsTree, stopWindowsProcesses } from './dev-local-processes.mjs'
 
 const worktree = path.resolve('C:/VIBE CODING/.worktrees/OrgMaster/dev060-app-permission-provider-20261028')
 
