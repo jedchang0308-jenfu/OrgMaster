@@ -58,9 +58,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Build and verify the patched runtime
+      - name: Build and verify the base and application runtimes
         if: steps.scope.outputs.docs_only != 'true'
-        run: docker build --target runtime-smoke --progress=plain .
+        run: |
+          docker build --target runtime-smoke --progress=plain .
+          docker build --target runner --progress=plain .
       - run: npm ci
         if: steps.scope.outputs.docs_only != 'true'
       - name: Install the production tools' exact locked dependency closure

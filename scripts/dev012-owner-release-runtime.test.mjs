@@ -175,7 +175,7 @@ test('controller OCI resolution rejects wrong size, ambiguous or foreign platfor
   await assert.rejects(() => nested.transport.readControllerImageResolution(nested.owner, nested.parentImage, nested.servingImage), /CONTROLLER_IMAGE_RESOLUTION_INVALID/u)
 })
 
-test('production runner is pinned, non-root, and removes the unused vulnerable OS zlib', () => {
+test('production runner removes the exact unused OS libraries and probes the final application as non-root', () => {
   const dockerfile = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8')
   const runtimeImage = 'gcr.io/distroless/nodejs24-debian13:nonroot-amd64@sha256:7924c53f56526359d0f491c22517306d8d92f1b285656a6094398e2c55bbaeca'
   const sanitizerImage = 'alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce'
@@ -191,6 +191,28 @@ test('production runner is pinned, non-root, and removes the unused vulnerable O
   assert.match(dockerfile, /USER 65532:65532/u)
   assert.match(dockerfile, /ENTRYPOINT \["\/nodejs\/bin\/node"\]/u)
   assert.doesNotMatch(dockerfile.split('AS runner')[1] ?? '', /groupadd|useradd|\/usr\/local\/lib\/node_modules\/npm/u)
+  assert.doesNotMatch(dockerfile, /runtime-security-packages|apt-get|libssl3t64=/u)
+  const sanitizer = dockerfile.split('AS runtime-sanitizer')[1].split('FROM scratch AS runtime-smoke')[0]
+  for (const file of [
+    'usr/lib/x86_64-linux-gnu/libssl.so.3', 'usr/lib/x86_64-linux-gnu/libcrypto.so.3',
+    'usr/lib/x86_64-linux-gnu/engines-3/afalg.so', 'usr/lib/x86_64-linux-gnu/engines-3/loader_attic.so',
+    'usr/lib/x86_64-linux-gnu/engines-3/padlock.so', 'var/lib/dpkg/status.d/libssl3t64',
+    'var/lib/dpkg/status.d/libssl3t64.md5sums',
+  ]) {
+    assert.ok(sanitizer.split('&& test')[0].includes(`/rootfs/${file}`), `physical removal missing: ${file}`)
+    assert.ok(sanitizer.includes(`&& test ! -e /rootfs/${file}`), `absence assertion missing: ${file}`)
+  }
+  const base = dockerfile.split('FROM scratch AS runtime-smoke')[1].split('FROM scratch AS runner')[0]
+  assert.match(base, /COPY scripts\/dev015-runtime-security-smoke\.mjs scripts\/dev015-aligned-new-loader-inspection\.cjs \/runtime-probes\//u)
+  assert.match(base, /"--base-runtime"/u)
+  const final = dockerfile.split('FROM scratch AS runner')[1]
+  const appCopy = final.indexOf('/app/dist-server ./dist-server')
+  const smokeCopy = final.indexOf('scripts/dev015-runtime-security-smoke.mjs scripts/dev015-aligned-new-loader-inspection.cjs ./scripts/')
+  const user = final.indexOf('USER 65532:65532')
+  const smokeRun = final.indexOf('RUN ["/nodejs/bin/node", "scripts/dev015-runtime-security-smoke.mjs"]')
+  assert.ok(appCopy >= 0 && appCopy < smokeCopy && smokeCopy < user && user < smokeRun,
+    'full app and existing native loader must be present before the non-root final-image probe')
+  assert.doesNotMatch(final, /--base-runtime/u)
 })
 
 test('owner transport reads a generation-bound object from any explicitly allowed prefix', async () => {

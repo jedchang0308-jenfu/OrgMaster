@@ -116,6 +116,7 @@ const runId = `DEV040-R2-S1B-${new Date().toISOString().replace(/[-:.]/g, '')}-$
 const dir = path.join(root, 'output', 'dev-040-r2', 's1b', runId)
 fs.mkdirSync(dir, { recursive: true })
 const files = [
+  'Dockerfile',
   'ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md',
   'ai-doc/specs/DEV-040-release-recovery-reference.md',
   'ai-doc/specs/DEV-060-app-scoped-frontend-permission-projection.md',
@@ -171,7 +172,7 @@ const files = [
   'scripts/lib/dev014-lifecycle-v2-readback.mjs',
   'scripts/dev057-production-principal-pair-diagnostic-runner.mjs', 'scripts/dev057-production-principal-pair-diagnostic-runner.test.mjs',
   'server/aiPdmRoleCatalogRepository.ts', 'server/aiPdmDynamicRoleCatalog.ts', 'src/governance/aiPdmRoleSchema.ts',
-  'src/governance/aiPdmStaticV8Catalog.ts', 'scripts/dev070-catalog-runtime-smoke.mjs',
+  'src/governance/aiPdmStaticV8Catalog.ts', 'scripts/dev070-catalog-runtime-smoke.mjs', 'scripts/dev015-runtime-security-smoke.mjs',
   'config/catalogs/.gitattributes', '.github/workflows/production-source-qc.yml',
   ...['v5', 'v6', 'v7', 'v8'].map(version => `config/catalogs/ai-pdm-role-catalog.${version}.json`),
   'contracts/jenfu-platform-entitlement/v1/fixtures/application-role-catalog.sample.json',

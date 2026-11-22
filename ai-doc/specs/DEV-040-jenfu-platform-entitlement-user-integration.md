@@ -1543,3 +1543,9 @@ PR217 合併後，normal tool rotation `--check` 在 build／Job／SQL 前因 `T
 - 兩側 path 固定 `.github/workflows/deploy-orgmaster-independent-production.yml`，concurrency 固定 `production-release-orgmaster-prod`，jobs 固定完整十階段，failureJobs 固定 `readback,abort-or-rollback,publish-terminal`。未知 key、額外 input／mode、default／順序／路徑／concurrency 改動、反向轉換與沒有 migration append 的 metadata-only 轉換均拒絕。
 
 其他 profile 欄位、migration prefix／approved suffix／checksum 及 non-recipe infrastructure 原比較全部保留；不改 Terraform plan、identity、IAM／Secret、SQL、stage executor 或 workflow。回傳仍使用原 disposition 與各自真實的 before／after raw infrastructure fingerprint，不將不同來源偽造成相同 fingerprint，也不放寬後續 receipt-to-intent 綁定。source 自查以 Git fixture 驗合法轉換及拒絕邊界，另以實際 ca979ce9 的42-entry profile 至 5b3203e6 的43-entry protected source 做 pure source replay；這些結果不代表正式 tool rotation、migration 或容量 PASS。
+
+## 2026-11-22 Unused OS OpenSSL runtime packaging
+
+2026-11-22 unused OS OpenSSL runtime correction：source597bf5a的app build `2b489c6b-50b4-4c0a-91bd-54de4c90bfdd`成功後，exact digest `6d0db0adf425645c50aeab440d846bdc0bade89f3f943fdb53df5531ed90b64c`因三個Debian OpenSSL effective HIGH在owner build gate停止，migration未執行。完整static ELF及raw artifact-only inspection `e97f90f2-1f73-4e6e-be74-fe601630d7b8`的四檢查成功：Node無OS OpenSSL DT_NEEDED、package外引用0、native addon0，nonroot TLS/crypto/sharedObjects沒有載入OS libssl/libcrypto/engines。沿同一pinned scratch sanitizer移除exact兩庫、afalg/loader_attic/padlock三engine及libssl3t64兩dpkg metadata；刪除已無用途的Debian security-overlay stage，保留CA與Node自身crypto。base probe及app COPY後的nonroot final probe都必須驗路徑確實不存在、TLS/CA、AES-GCM、RSA與實際sharedObjects/maps無OS OpenSSL；final另用既有collectNativeModules驗全部app addons可載，缺app或load失敗即build失敗。既有required CI與新artifact fresh scan仍有效，不加CVE waiver、不降severity、不用舊artifact診斷冒稱改後image通過，也不將Org證據當其他owner的完整app驗收。
+
+既有required Source QC的runtime步驟先建base runtime-smoke，再建含完整app的runner target，使final COPY後的nonroot probe實際執行；只通過base不能替代完整app image驗證。
