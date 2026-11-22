@@ -5,12 +5,13 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
-import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle } from './lib/dev040-orgmaster-independent-release.mjs'
+import { assertDev040ReleaseIntent, assertDev040V3Profile, buildDev040MigrationBundle, buildDev040MigrationBundleForIntent } from './lib/dev040-orgmaster-independent-release.mjs'
 import { createOwnerTransport } from './lib/dev012-owner-release-runtime.mjs'
 import { verifyRoutineRelease } from './lib/dev040-routine-release.mjs'
 import { assertToolJobLiveReadback } from './lib/dev040-tool-image-rotation.mjs'
 import { createGitArchive, createGitSourceIdentity, executeOwnerStage, parseOwnerStageArgs, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 import { reuseAppArtifactBuild } from './lib/dev040-app-artifact-reuse.mjs'
+import { DEV057_PROJED_RELEASE_MODE } from './lib/dev057-projed-principal-migration.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const profilePath = 'config/release/dev040-orgmaster-independent-production-v3.json'
@@ -21,16 +22,27 @@ async function main() {
   assertDev040V3Profile(profile, n1c)
   const args = parseOwnerStageArgs(process.argv.slice(2), profile.artifact.releaseBucket)
   const transport = createOwnerTransport({ token: process.env.GOOGLE_OAUTH_ACCESS_TOKEN ?? '' })
-  const buildMigrationBundle = async (sourceRevision) => {
-    const files = new Map(profile.migrations.entries.map((entry) => [entry.path, readGitBlob(root, entry.path, sourceRevision)]))
-    return buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, sourceRevision)
+  const sourceFiles = sourceRevision => new Map(profile.migrations.entries.map(entry => [entry.path, readGitBlob(root, entry.path, sourceRevision)]))
+  const buildMigrationBundle = (sourceRevision, context = {}) => {
+    const files = sourceFiles(sourceRevision)
+    return buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, sourceRevision,
+      { releaseMode: context.releaseMode === DEV057_PROJED_RELEASE_MODE ? context.releaseMode : null,
+        executionMode: context.executionMode,
+        expectedManifestSha256: context.expectedManifestSha256 })
   }
   const result = await executeOwnerStage({
-    ...args, profile, profileSha256: createHash('sha256').update(readGitBlob(root, profilePath)).digest('hex'), transport, validateIntent: assertDev040ReleaseIntent,
+    ...args, profile, profileSha256: createHash('sha256').update(readGitBlob(root, profilePath)).digest('hex'), transport,
+    validateIntent: (intent, ownerProfile) => {
+      assertDev040ReleaseIntent(intent, ownerProfile)
+      if (args.stage !== 'rollback') buildDev040MigrationBundleForIntent(profile, buildOrgmasterPackage(n1c),
+        sourceFiles(intent.sourceRevision), intent, process.env.OWNER_EXECUTION_MODE ?? 'full_release')
+      return intent
+    },
     createSourceIdentity: async (sourceRevision) => createGitSourceIdentity(root, sourceRevision),
     createSourceArchive: async (sourceRevision) => createGitArchive(root, sourceRevision),
     buildMigrationBundle,
-    verifyRoutineRelease: (input) => verifyRoutineRelease({ ...input, root, profile, transport, buildMigrationBundle, readLiveToolJob: false }),
+    verifyRoutineRelease: (input) => verifyRoutineRelease({ ...input, root, profile, transport, buildMigrationBundle,
+      executionMode: process.env.OWNER_EXECUTION_MODE ?? 'full_release', readLiveToolJob: false }),
     verifyToolJobReadback: (receipt) => assertToolJobLiveReadback({ profile, transport, receipt }),
     reuseAppArtifact: reuseAppArtifactBuild,
   })

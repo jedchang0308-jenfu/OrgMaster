@@ -348,6 +348,7 @@ export function assertPreparePrerequisites({ intent, profile, values }) {
   const revision = values.sourceLock.sourceRevision ?? values.sourceLock.headRevision ?? values.sourceLock.head
   const clean = values.sourceLock.clean ?? values.sourceLock.workingTree?.isClean
   if (!acceptedStatus(values.sourceLock, ['PASS', 'SOURCE_FROZEN']) || revision !== intent.sourceRevision || clean !== true) fail('SOURCE_LOCK_NOT_RELEASE_AUTHORITY')
+  if (values.sourceLock.migrationManifestSha256 != null && values.sourceLock.migrationManifestSha256 !== intent.migrationManifestSha256) fail('SOURCE_LOCK_MIGRATION_MANIFEST_MISMATCH')
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]
     if (!acceptedStatus(value, ['PASS', 'READY']) || value.environment !== 'production' || value.remainingHumanAction !== 0 || !Number.isFinite(Date.parse(value.expiresAt)) || Date.parse(value.expiresAt) <= Date.now()) fail('PREPARE_PREREQUISITE_INVALID', name)
@@ -562,11 +563,12 @@ function publicBuildReceipt(build) {
 // Read-only normal-CLI continuation admission. It never executes a stage,
 // publishes a receipt, extends expiry, or acquires a runtime control lease.
 export async function verifyMigrationOnlyContinuation({ capsuleRef, capsuleSha256, profile, transport,
-  validateIntent, sourceRevision, expectedSourceSha256, expectedManifestSha256, baselineIntentRef, previousRevision }) {
+  validateIntent, sourceRevision, expectedSourceSha256, expectedManifestSha256, buildMigrationBundle, baselineIntentRef, previousRevision }) {
   if (profile.application.id !== 'orgmaster' || !H40.test(sourceRevision ?? '') ||
-      !H64.test(expectedSourceSha256 ?? '') || !H64.test(expectedManifestSha256 ?? '')) fail('MIGRATION_CONTINUATION_INPUT_INVALID')
+      !H64.test(expectedSourceSha256 ?? '') || (typeof buildMigrationBundle !== 'function' && !H64.test(expectedManifestSha256 ?? ''))) fail('MIGRATION_CONTINUATION_INPUT_INVALID')
   const { intent, intentRef, paths } = await readIntentAndPaths({ transport, profile, capsuleRef, capsuleSha256, validateIntent })
-  if (intent.sourceRevision !== sourceRevision || intent.sourceSha256 !== expectedSourceSha256 || intent.migrationManifestSha256 !== expectedManifestSha256 ||
+  if (intent.sourceRevision !== sourceRevision || intent.sourceSha256 !== expectedSourceSha256 ||
+      (expectedManifestSha256 != null && intent.migrationManifestSha256 !== expectedManifestSha256) ||
       canonicalize(intent.baselineIntentRef) !== canonicalize(baselineIntentRef) || intent.previousRevision !== previousRevision ||
       !Number.isFinite(Date.parse(intent.deadlineAt)) || Date.parse(intent.deadlineAt) <= Date.parse(transport.now())) fail('MIGRATION_CONTINUATION_SOURCE_OR_BASELINE_MISMATCH')
   if (await optionalNamedJson(transport, paths.candidate, profile) ||
@@ -587,7 +589,22 @@ export async function verifyMigrationOnlyContinuation({ capsuleRef, capsuleSha25
   }
   const values = Object.fromEntries(await Promise.all(Object.entries(names).map(async ([name, field]) =>
     [name, (await transport.readJson(intent[field], profile.artifact.releaseBucket, ['receipts'])).value])))
-  assertPreparePrerequisites({ intent, profile, values })
+  const derived = assertPreparePrerequisites({ intent, profile, values })
+  if ([DEV057_PROJED_RELEASE_MODE, DEV057_EXTERNAL_RELEASE_MODE].includes(derived.controlledEnvironmentAuthority.releaseMode)
+    && (prepare.value.facts.routine?.releaseMode !== derived.controlledEnvironmentAuthority.releaseMode
+      || prepare.value.facts.routine?.controlledTransition?.releaseMode !== derived.controlledEnvironmentAuthority.releaseMode)) fail('MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID')
+  if (typeof buildMigrationBundle === 'function') {
+    // Resume selection comes from the immutable authorization/readiness, never
+    // from a new CLI flag or the latest profile's entry count.
+    const rebuilt = await buildMigrationBundle(sourceRevision, {
+      releaseMode: derived.controlledEnvironmentAuthority.releaseMode,
+      executionMode: 'full_release',
+      expectedManifestSha256: intent.migrationManifestSha256,
+    })
+    if (rebuilt.bundle?.manifestSha256 !== intent.migrationManifestSha256
+      || sha256(rebuilt.bytes) !== rebuilt.bundleSha256
+      || deployment.value.migrationBundleRef.sha256 !== rebuilt.bundleSha256) fail('MIGRATION_CONTINUATION_SOURCE_OR_BASELINE_MISMATCH')
+  }
   if (prepare.value.facts.migrationRunnerDigest !== deployment.value.migrationRunnerDigest ||
       canonicalize(prepare.value.facts.routine?.baselineIntentRef) !== canonicalize(intent.baselineIntentRef) ||
       !['FORWARD_APPLY', 'UNCHANGED_VERIFIED'].includes(prepare.value.facts.routine?.migrationDisposition)) fail('MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID')
@@ -678,9 +695,13 @@ export async function executeOwnerStage({ stage, capsuleRef, capsuleSha256, prof
     if (!Buffer.isBuffer(sourceBytes) || sourceBytes.length === 0) fail('SOURCE_ARCHIVE_FAILED')
     const sourceArchive = gzipSync(sourceBytes, { level: 9 })
     const sourceUri = `gs://${profile.artifact.releaseBucket}/source/archives/${sha256(sourceArchive)}/source.tar.gz`
-    const source = await transport.putBytes(sourceUri, sourceArchive, { bucket: profile.artifact.releaseBucket, prefix: 'source', contentType: 'application/gzip' })
-    const migration = await buildMigrationBundle(intent.sourceRevision)
+    const migration = await buildMigrationBundle(intent.sourceRevision, {
+      releaseMode: prepare.value.facts.routine?.releaseMode ?? null,
+      executionMode: environment.OWNER_EXECUTION_MODE ?? 'full_release',
+      expectedManifestSha256: intent.migrationManifestSha256,
+    })
     if (migration.bundle?.manifestSha256 !== intent.migrationManifestSha256 || sha256(migration.bytes) !== migration.bundleSha256) fail('MIGRATION_MANIFEST_MISMATCH')
+    const source = await transport.putBytes(sourceUri, sourceArchive, { bucket: profile.artifact.releaseBucket, prefix: 'source', contentType: 'application/gzip' })
     const bundleUri = `gs://${profile.artifact.releaseBucket}/${profile.artifact.migrationBundlePrefix}/${intent.sourceRevision}/${migration.bundle.manifestSha256}.json`
     const bundle = await transport.putBytes(bundleUri, migration.bytes, { bucket: profile.artifact.releaseBucket, prefix: profile.artifact.migrationBundlePrefix, contentType: 'application/json' })
     const appArtifactReuse = prepare.value.facts.routine?.appArtifactReuse ?? null

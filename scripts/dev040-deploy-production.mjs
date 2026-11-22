@@ -2,7 +2,7 @@
 import { DEV057_EXTERNAL_REMEDIATION } from './lib/dev057-projed-external-migration.mjs'
 import { DEV058_ROLE_POLICY_REMEDIATION } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_REMEDIATION } from './lib/dev059-fms-authority-migration.mjs'
-import { DEV057_PROJED_REMEDIATION } from './lib/dev057-projed-principal-migration.mjs'
+import { DEV057_PROJED_REMEDIATION, DEV057_PROJED_RELEASE_MODE } from './lib/dev057-projed-principal-migration.mjs'
 import {DEV070_ADMINISTRATION_REMEDIATION,ORGMASTER_FMS_DELIVERY_FLAG,isFmsDeliveryAppend} from './lib/dev070-administration-migration.mjs'
 import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION } from './lib/dev060-fms-catalog-activation-migration.mjs'
 import { assertPrincipalOnlyRecoveryReadback } from './lib/dev057-principal-only-release.mjs'
@@ -205,7 +205,8 @@ export async function verifyDeployProductionRelease({ options, ...input }) {
   if (options.smokeRotationRef && canonicalize(options.smokeRotationRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_ROTATION_REF_MISMATCH')
   if (options.infraReuseRef && canonicalize(options.infraReuseRef) !== canonicalize(input.intent.infraReceiptRef)) throw new Error('SMOKE_REUSE_REF_MISMATCH')
   if (input.values.infra?.mutationProfile === 'APP_INFRA_REUSE' && !options.infraReuseRef) throw new Error('SMOKE_REUSE_REF_REQUIRED')
-  const verification = await verifyRoutineRelease({ ...input, toolRotationRef: options.toolRotationRef })
+  const verification = await verifyRoutineRelease({ ...input, toolRotationRef: options.toolRotationRef,
+    executionMode: options.migrationOnly ? 'migration_only' : 'full_release' })
   if (options.smokeRotationRef || options.infraReuseRef) {
     if (!verification.smokeRotationContinuation) throw new Error('SMOKE_ROTATION_CONTINUATION_MISSING')
     verification.operatorSmokeRotationReadback = await readSmokeRotationProvider({ ...input, continuation: verification.smokeRotationContinuation })
@@ -240,10 +241,9 @@ export async function resumeDeployProductionRelease({ options, git, profile, tra
   await verifySource()
   transport.assertServiceSettled(service, 'MIGRATION_CONTINUATION_BASELINE_MISMATCH')
   if (transport.effectiveRevision(service) !== previousRevision) throw new Error('MIGRATION_CONTINUATION_BASELINE_MISMATCH')
-  const migration = await buildMigrationBundle(git.sourceRevision)
   const continuation = await verifyMigrationOnlyContinuation({ profile, transport, validateIntent: assertDev040ReleaseIntent,
     capsuleRef: options.resumeCapsuleRef.uri, capsuleSha256: options.resumeCapsuleRef.sha256,
-    sourceRevision: git.sourceRevision, expectedSourceSha256: sourceIdentitySha256, expectedManifestSha256: migration.bundle.manifestSha256,
+    sourceRevision: git.sourceRevision, expectedSourceSha256: sourceIdentitySha256, buildMigrationBundle,
     baselineIntentRef, previousRevision })
   if (!options.check) await dispatch(ownerWorkflowDispatchArgs(profile, continuation.releaseCapsuleRef, 'full_release'))
   return { ...continuation, status: options.check ? 'CONTINUATION_READY' : 'DISPATCHED', executionMode: 'full_release', releaseAuthority: false }
@@ -254,6 +254,7 @@ async function main() {
   const profile = JSON.parse(readGitBlob(root, 'config/release/dev040-orgmaster-independent-production-v3.json'))
   const n1c = JSON.parse(readGitBlob(root, 'config/dev-010/n1c-orgmaster.json'))
   assertDev040V3Profile(profile, n1c)
+  if (options.dev057ProjedPrincipalAppend && !options.migrationOnly) throw new Error('DEV057_PROJED_PRINCIPAL_MIGRATION_ONLY_REQUIRED')
   const git = readGitAuthority(root, profile)
   // Capture credentials in memory only. No runtime secrets or refresh tokens are read locally.
   const token = process.env.GOOGLE_OAUTH_ACCESS_TOKEN || (process.platform === 'win32'
@@ -275,7 +276,11 @@ async function main() {
     ? JSON.parse(previousIntent.bytes).previousRevision : control.previousRevision)) throw new Error('ROUTINE_CONTROL_JOIN_INVALID')
   if ((baseline.repair || principalPreActivation || options.dev014PrincipalLifecycleV2Remediation) && !options.principalOnlyRecoveryRef) throw new Error('PRINCIPAL_ONLY_RECOVERY_REQUIRED')
   const service = await transport.getService(profile)
-  const buildMigrationBundle = async (revision) => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), new Map(profile.migrations.entries.map((entry) => [entry.path, readGitBlob(root, entry.path, revision)])), revision)
+  const buildMigrationBundle = async (revision, context = {}) => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c),
+    new Map(profile.migrations.entries.map((entry) => [entry.path, readGitBlob(root, entry.path, revision)])), revision,
+    { releaseMode: context.releaseMode === DEV057_PROJED_RELEASE_MODE ? context.releaseMode : null,
+      executionMode: context.executionMode,
+      expectedManifestSha256: context.expectedManifestSha256 })
   if (options.resumeCapsuleRef) {
     const result = await resumeDeployProductionRelease({ options, git, profile, transport, service, baselineIntentRef,
       previousRevision, sourceIdentitySha256: sha256(createGitSourceIdentity(root, git.sourceRevision)), buildMigrationBundle,
@@ -293,7 +298,11 @@ async function main() {
   const observedAt = new Date().toISOString()
   const releaseId = `ORGMASTER-REL-${observedAt.replace(/[^0-9]/gu, '')}-${git.sourceRevision.slice(0, 7).toUpperCase()}`
   const deadlineAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-  const sourceLock = buildSourceFreeze({ profile, releaseId, observedAt, git, sourceIdentityBytes: createGitSourceIdentity(root, git.sourceRevision), migrationBundle: await buildMigrationBundle(git.sourceRevision) })
+  const sourceLock = buildSourceFreeze({ profile, releaseId, observedAt, git, sourceIdentityBytes: createGitSourceIdentity(root, git.sourceRevision),
+    migrationBundle: await buildMigrationBundle(git.sourceRevision, {
+      releaseMode: options.dev057ProjedPrincipalAppend ? DEV057_PROJED_RELEASE_MODE : null,
+      executionMode: options.migrationOnly ? 'migration_only' : 'full_release',
+    }) })
   let appArtifactReuse = null
   if (options.reuseAbortedAppArtifact) {
     if (control.result !== 'PRE_ACTIVATION_ABORTED') throw new Error('APP_ARTIFACT_REUSE_ABORT_REQUIRED')

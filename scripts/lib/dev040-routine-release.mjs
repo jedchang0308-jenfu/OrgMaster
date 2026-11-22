@@ -856,7 +856,7 @@ export function resolveMigrationInfraReceiptSource({ controlledTransition, toolR
   return rotation.sourceRevision
 }
 
-export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, toolRotationRef = null, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
+export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, executionMode = 'full_release', toolRotationRef = null, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
   transport.assertServiceSettled(service)
@@ -979,7 +979,11 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (controlledTransition) assertHistoricalRuntimeReadback(profile, baselineRuntime, revision)
     else assertRoutineRuntimeReadback(profile, runtimeConfig, revision)
   }
-  const current = await buildMigrationBundle(intent.sourceRevision)
+  const current = await buildMigrationBundle(intent.sourceRevision, {
+    releaseMode: controlledTransition?.releaseMode ?? null,
+    executionMode,
+    expectedManifestSha256: intent.migrationManifestSha256,
+  })
   if (current.bundle.manifestSha256 !== intent.migrationManifestSha256) fail('MIGRATION_MANIFEST_MISMATCH')
   let migration
   if (lifecycleEnable && (baseline.bundle.value.entries?.length !== 31 || current.bundle.entries?.length !== 31)) fail('DEV014_LIFECYCLE_ENABLEMENT_LEDGER_REQUIRED')

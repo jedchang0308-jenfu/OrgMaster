@@ -2950,7 +2950,18 @@ function projedPrincipalHarness() {
 
 test('ProJED publication uses only the exact 60-to-64 owner append and leaves runtime unchanged', async () => {
   const h = projedPrincipalHarness()
+  const selected = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, newSource,
+    { releaseMode: DEV057_PROJED_RELEASE_MODE, executionMode: 'migration_only' })
+  h.input.executionMode = 'migration_only'
+  h.input.intent.migrationManifestSha256 = selected.bundle.manifestSha256
+  let selectedContext
+  h.input.buildMigrationBundle = async (revision, context) => {
+    selectedContext = context
+    return buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, revision, context)
+  }
   const plan = await verifyRoutineRelease(h.input)
+  assert.deepEqual(selectedContext, { releaseMode: DEV057_PROJED_RELEASE_MODE, executionMode: 'migration_only', expectedManifestSha256: selected.bundle.manifestSha256 })
+  await assert.rejects(verifyRoutineRelease({ ...h.input, executionMode: 'full_release' }), /DEV057_PROJED_PRINCIPAL_MIGRATION_ONLY_REQUIRED/)
   assert.equal(plan.releaseMode, DEV057_PROJED_RELEASE_MODE)
   assert.equal(plan.migrationDisposition, 'FORWARD_APPLY')
   assert.equal(plan.pendingMigrationCount, 4)
