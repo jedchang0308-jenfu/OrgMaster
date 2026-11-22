@@ -11,6 +11,9 @@ import {DEV070_MIGRATION_ENTRY_COUNT,DEV070_RELEASE_MODE,DEV070_ADMINISTRATION_R
 import { DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION, DEV060_MIGRATION_ENTRY_COUNT, DEV060_RELEASE_MODE } from './lib/dev060-fms-catalog-activation-migration.mjs'
 import { resumeDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { assertRequiredToolSourceQc } from './dev040-tool-image-rotation.mjs'
+import fs from 'node:fs'
+import { buildDev040MigrationBundle, buildDev040MigrationBundleForIntent } from './lib/dev040-orgmaster-independent-release.mjs'
+import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
 
 const H40 = 'a'.repeat(40)
 const baselineRef = { uri: 'gs://jenfu-platform-prod-platform-release/receipts/baseline.json', sha256: 'e'.repeat(64) }
@@ -152,7 +155,7 @@ function recordedHarness(ownerApplicationId = 'platform') {
 async function authorizedRecordedInput(h, releaseId) {
   const refFor = async (name, value) => (await h.transport.putJson(`gs://${bucket}/receipts/prerequisites/${releaseId}-${name}.json`, value, { bucket, prefix: 'receipts' })).ref
   const common = { releaseAuthority: true, evidenceScope: 'PROVIDER' }
-  const sourceLockRef = await refFor('source-lock', { ...common, status: 'SOURCE_FROZEN', sourceRevision: H40, clean: true })
+  const sourceLockRef = await refFor('source-lock', { ...common, status: 'SOURCE_FROZEN', sourceRevision: H40, clean: true, migrationManifestSha256: h.migrationManifestSha256 })
   const authorizationPolicyRef = await refFor('authorization', { ...common, status: 'PASS', environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z' })
   const readinessReceiptRef = await refFor('readiness', { ...common, status: 'PASS', environment: 'production', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z', projectId: 'jenfu-platform-prod' })
   const foundationReceiptRef = await refFor('foundation', { ...common, status: 'APPLIED', projectId: 'jenfu-platform-prod' })
@@ -1074,10 +1077,31 @@ test('DEV-057 ProJED principal append requires exact 64-row native receipt and f
   assert.throws(() => assertMigrationReceipt(stageReceipt, profile, intent, { allowForward: true, forwardPlan }), /MIGRATION_RECEIPT_INVALID/u)
 })
 
-test('DEV-057 ProJED fresh prepare binds exact recipe and migrate requires live runner digest readback', async () => {
-  async function projedInput(releaseId, remediation = DEV057_PROJED_REMEDIATION) {
+async function projedInput(releaseId, remediation = DEV057_PROJED_REMEDIATION, actualBundle = false) {
     const h = recordedHarness('orgmaster')
+    let rebuild, guard
+    if (actualBundle) {
+      const read = name => JSON.parse(fs.readFileSync(name, 'utf8'))
+      const sourceProfile = read('config/release/dev040-orgmaster-independent-production-v3.json')
+      const n1c = read('config/dev-010/n1c-orgmaster.json')
+      const files = new Map(sourceProfile.migrations.entries.map(entry => [entry.path, fs.readFileSync(entry.path)]))
+      rebuild = (revision, context = {}) => buildDev040MigrationBundle(sourceProfile, buildOrgmasterPackage(n1c), files, revision,
+        { releaseMode: context.releaseMode === DEV057_PROJED_RELEASE_MODE ? context.releaseMode : null,
+          executionMode: context.executionMode,
+          expectedManifestSha256: context.expectedManifestSha256 })
+      guard = (intent, executionMode) => buildDev040MigrationBundleForIntent(sourceProfile, buildOrgmasterPackage(n1c), files, intent, executionMode)
+      const selected = rebuild(H40, { releaseMode: DEV057_PROJED_RELEASE_MODE, executionMode: 'migration_only' })
+      h.migrationBytes = selected.bytes
+      h.migrationManifestSha256 = selected.bundle.manifestSha256
+      const createBuild = h.transport.createBuild.bind(h.transport)
+      h.transport.createBuild = async (...args) => {
+        const result = await createBuild(...args)
+        return { ...result, build: { ...result.build, createTime: '2026-11-22T00:00:00Z',
+          startTime: '2026-11-22T00:00:01Z', finishTime: '2026-11-22T00:00:02Z' } }
+      }
+    }
     const { input, intentResult } = await authorizedRecordedInput(h, releaseId)
+    if (rebuild) input.buildMigrationBundle = async (...args) => rebuild(...args)
     const intent = (await h.transport.readJson(intentResult.ref)).value
     const priorInfra = (await h.transport.readJson(intent.infraReceiptRef)).value
     const rotatedInfra = {
@@ -1112,9 +1136,10 @@ test('DEV-057 ProJED fresh prepare binds exact recipe and migrate requires live 
         migrationRunnerDigest: rotatedInfra.migrationRunnerDigest,
       },
     })
-    return { h, input, intent, infra: rotatedInfra }
-  }
+    return { h, input, intent: revisedIntent, infra: rotatedInfra, rebuild, guard }
+}
 
+test('DEV-057 ProJED fresh prepare binds exact recipe and migrate requires live runner digest readback', async () => {
   const accepted = await projedInput('DEV057-PROJED-PREPARE-EXACT')
   const firstPrepare = await executeOwnerStage({ ...accepted.input, stage: 'prepare' })
   const sameAuthorityPrepare = await executeOwnerStage({ ...accepted.input, stage: 'prepare' })
@@ -1166,6 +1191,77 @@ test('DEV-057 ProJED fresh prepare binds exact recipe and migrate requires live 
   assert.equal(wrongDigestJobs, 0)
   assert.equal(wrongDigest.h.objects.size, objectsBefore)
   assert.equal([...wrongDigest.h.objects.keys()].some(uri => uri.endsWith('/migrate.json')), false)
+})
+
+test('current source Principal bundle stays at 64 for migration-only and rejects every full stage or resume', async () => {
+  const c = await projedInput('DEV057-PROJED-SELECTED-64', DEV057_PROJED_REMEDIATION, true)
+  c.h.profile.workflow.executionModes = OWNER_EXECUTION_MODES
+  c.input.environment = { ...c.input.environment, OWNER_EXECUTION_MODE: 'migration_only' }
+  c.input.validateIntent = intent => { c.guard(intent, 'migration_only'); return intent }
+  c.input.verifyToolJobReadback = async () => ({ migrationRunnerDigest: c.infra.migrationRunnerDigest })
+  let jobs = 0
+  c.h.transport.runMigrationJob = async ({ deployment, outputUri, migrationMode }) => {
+    jobs++
+    assert.equal(migrationMode, DEV057_PROJED_RELEASE_MODE)
+    const bundle = (await c.h.transport.readJson(deployment.migrationBundleRef)).value
+    assert.equal(bundle.entries.length, 64)
+    assert.equal(bundle.manifestSha256, c.intent.migrationManifestSha256)
+    const core = { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster',
+      sourceRevision: H40, database: 'jenfu_prod', ledger: 'orgmaster_core.schema_migrations',
+      manifestSha256: bundle.manifestSha256, baselineCount: 10, minimumLedgerCount: 10, ledgerCount: 64, applied: 4, replayed: 60,
+      crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }], boundaryStatus: 'PASS', status: 'PASS' }
+    await c.h.transport.putJson(outputUri, { ...core, receiptSha256: sha256(canonicalize(core)) })
+  }
+  const beforeService = c.h.service()
+  await executeOwnerStage({ ...c.input, stage: 'prepare' })
+  const beforeBadBuild = c.h.objects.size
+  await assert.rejects(executeOwnerStage({ ...c.input, stage: 'build', buildMigrationBundle: async () => c.rebuild(H40) }), /MIGRATION_MANIFEST_MISMATCH/)
+  assert.equal(c.h.objects.size, beforeBadBuild, 'wrong 65-entry rebuild must fail before an upload/build')
+  for (const stage of ['build', 'migrate']) await executeOwnerStage({ ...c.input, stage })
+  assert.equal(jobs, 1)
+  assert.deepEqual(c.h.service(), beforeService)
+  const paths = releasePaths(c.h.profile, c.intent, c.input.capsuleSha256)
+  assert.equal(c.h.objects.has(paths.control), false)
+  assert.equal(c.h.objects.has(paths.terminal), false)
+  let dispatches = 0
+  const continuation = { options: { resumeCapsuleRef: { uri: c.input.capsuleRef, sha256: c.input.capsuleSha256 }, check: false },
+    git: { sourceRevision: H40 }, profile: c.h.profile, transport: c.h.transport, service: c.h.service(),
+    baselineIntentRef: c.intent.baselineIntentRef, previousRevision: c.intent.previousRevision,
+    sourceIdentitySha256: sha256(c.h.sourceIdentityBytes), buildMigrationBundle: c.input.buildMigrationBundle,
+    verifySource: async () => {}, dispatch: async () => { dispatches++ } }
+  const objectCount = c.h.objects.size
+  await assert.rejects(resumeDeployProductionRelease({ ...continuation, buildMigrationBundle: async () => c.rebuild(H40) }), /MIGRATION_CONTINUATION_SOURCE_OR_BASELINE_MISMATCH/)
+  assert.equal(dispatches, 0)
+  await assert.rejects(resumeDeployProductionRelease(continuation), /DEV057_PROJED_PRINCIPAL_MIGRATION_ONLY_REQUIRED/)
+  assert.equal(dispatches, 0)
+  assert.equal(jobs, 1)
+  assert.equal(c.h.objects.size, objectCount, 'denied full resume must not write artifacts or rerun migration')
+  for (const stage of ['prepare', 'build', 'migrate', 'candidate', 'entrypoint', 'verify', 'decision', 'activate', 'canonical', 'finalize']) {
+    await assert.rejects(executeOwnerStage({ ...c.input, stage,
+      environment: { ...c.input.environment, OWNER_EXECUTION_MODE: 'full_release' },
+      validateIntent: intent => { c.guard(intent, 'full_release'); return intent },
+    }), /DEV057_PROJED_PRINCIPAL_MIGRATION_ONLY_REQUIRED/)
+  }
+  assert.equal(c.h.objects.size, objectCount)
+  assert.equal(jobs, 1)
+
+  const wrongLock = await projedInput('DEV057-PROJED-WRONG-LOCK')
+  const wrongLockIntent = { ...wrongLock.intent }
+  const lockRead = await wrongLock.h.transport.readJson(wrongLockIntent.sourceLockRef)
+  const changedLock = await wrongLock.h.transport.putJson(lockRead.ref.uri.replace(/\.json$/u, '-manifest-drift.json'),
+    { ...lockRead.value, migrationManifestSha256: 'f'.repeat(64) })
+  wrongLockIntent.sourceLockRef = changedLock.ref
+  const changedIntent = await wrongLock.h.transport.putJson(wrongLock.input.capsuleRef.replace(/\.json$/u, '-manifest-drift.json'), wrongLockIntent)
+  await assert.rejects(executeOwnerStage({ ...wrongLock.input, stage: 'prepare', capsuleRef: changedIntent.ref.uri,
+    capsuleSha256: changedIntent.ref.sha256 }), /SOURCE_LOCK_MIGRATION_MANIFEST_MISMATCH/)
+
+  const original = c.h.objects.get(paths.prepare)
+  const value = JSON.parse(original.bytes)
+  value.facts.routine.releaseMode = DEV057_EXTERNAL_RELEASE_MODE
+  const { receiptSha256: ignored, ...changed } = value
+  c.h.objects.set(paths.prepare, { ...original, bytes: Buffer.from(canonicalize({ ...changed, receiptSha256: sha256(canonicalize(changed)) }) + '\n') })
+  await assert.rejects(resumeDeployProductionRelease(continuation), /MIGRATION_CONTINUATION_RECEIPT_JOIN_INVALID/)
+  assert.equal(dispatches, 0)
 })
 
 

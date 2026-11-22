@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import test, { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { buildOrgmasterPackage } from './dev010-n1c-orgmaster-package.mjs'
-import { assertDev040ReleaseIntent, assertDev040V3Profile, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
+import { assertDev040ReleaseIntent, assertDev040V3Profile, assertDev040WorkflowSource, buildDev040CandidateTag, buildDev040MigrationBundle, buildDev040MigrationBundleForIntent, buildDev040Mutation, verifyDev040MigrationBytes } from './lib/dev040-orgmaster-independent-release.mjs'
 import { assertRuntimeConfig, buildRuntimeConfig, resolvePlainEnvironment } from './lib/dev012-owner-release-runtime.mjs'
 import { assertPreparePrerequisites, readGitBlob } from './lib/dev012-owner-stage-executor.mjs'
 import { DEV014_PRINCIPAL_LIFECYCLE_V2_REMEDIATION } from './lib/dev014-principal-lifecycle-release.mjs'
@@ -15,6 +15,8 @@ import { DEV058_MIGRATION_ENTRIES, DEV058_MIGRATION_ENTRY_COUNT, DEV058_MIGRATIO
 import {DEV070_MIGRATION_ENTRY_COUNT,DEV070_MIGRATION_ENTRIES,assertDev070MigrationEntries} from './lib/dev070-administration-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS, DEV059_MIGRATION_ENTRY_COUNT, assertDev059MigrationEntries } from './lib/dev059-fms-authority-migration.mjs'
 import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_MIGRATION_ENTRY_COUNT, assertDev057ProjedMigrationEntries } from './lib/dev057-projed-principal-migration.mjs'
+import { DEV057_PROJED_RELEASE_MODE } from './lib/dev057-projed-principal-migration.mjs'
+import { buildSourceFreeze } from './lib/dev012-owner-prerequisite-producer.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const read = (file) => JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))
@@ -464,6 +466,55 @@ test('OrgMaster exact baseline and all forward owner migrations through 069', ()
     mixed.migrations.entries[DEV058_MIGRATION_PREFIX_COUNT + index].path = path
     assert.throws(() => assertDev040V3Profile(mixed, n1c), /MIGRATION_MANIFEST_DRIFT/u, `mixed unauthorized ${path}`)
   }
+})
+
+test('current 65-entry source freezes only the reviewed 64-entry Principal generation when explicitly selected', () => {
+  const files = new Map(profile.migrations.entries.map(entry => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
+  const sourceRevision = 'a'.repeat(40)
+  const build = selection => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, sourceRevision, selection)
+  const principalSelection = { releaseMode: DEV057_PROJED_RELEASE_MODE, executionMode: 'migration_only' }
+  const full = build(), selected = build(principalSelection)
+  assert.equal(profile.migrations.entries.length, 65)
+  assert.equal(full.bundle.entries.length, 65)
+  assert.equal(selected.bundle.entries.length, 64)
+  assert.deepEqual(selected.bundle.entries, full.bundle.entries.slice(0, 64))
+  assertDev057ProjedMigrationEntries(selected.bundle.entries)
+  assert.notEqual(selected.bundle.manifestSha256, full.bundle.manifestSha256)
+  assert.notEqual(selected.bundleSha256, full.bundleSha256)
+  assert.equal(selected.bundleSha256, sha256(selected.bytes))
+  const lock = buildSourceFreeze({ profile, releaseId: 'DEV057-SELECTED-BUNDLE', observedAt: '2026-11-22T00:00:00.000Z',
+    git: { clean: true, branch: 'master', sourceRevision, sourceTree: 'b'.repeat(40), remoteRevision: sourceRevision },
+    sourceIdentityBytes: Buffer.from('full-current-source-tree'), migrationBundle: selected })
+  assert.equal(lock.schemaVersion, 'jenfu.dev012.owner-source-lock.v1')
+  assert.equal(lock.sourceRevision, sourceRevision)
+  assert.equal(lock.sourceSha256, sha256(Buffer.from('full-current-source-tree')))
+  assert.equal(lock.migrationManifestSha256, selected.bundle.manifestSha256)
+  assert.deepEqual(build({ ...principalSelection, expectedManifestSha256: lock.migrationManifestSha256 }), selected)
+  const intent = { sourceRevision, migrationManifestSha256: selected.bundle.manifestSha256 }
+  assert.deepEqual(buildDev040MigrationBundleForIntent(profile, buildOrgmasterPackage(n1c), files, intent, 'migration_only'), selected)
+  for (const executionMode of [undefined, 'full_release']) {
+    assert.throws(() => build({ releaseMode: DEV057_PROJED_RELEASE_MODE, executionMode }), /DEV057_PROJED_PRINCIPAL_MIGRATION_ONLY_REQUIRED/)
+    assert.throws(() => buildDev040MigrationBundleForIntent(profile, buildOrgmasterPackage(n1c), files, intent, executionMode), /DEV057_PROJED_PRINCIPAL_MIGRATION_ONLY_REQUIRED/)
+  }
+  assert.deepEqual(buildDev040MigrationBundleForIntent(profile, buildOrgmasterPackage(n1c), files,
+    { sourceRevision, migrationManifestSha256: full.bundle.manifestSha256 }, 'full_release'), full)
+  for (const invalid of [
+    { entryCount: 63 }, { releaseMode: 'unreviewed-prefix' },
+    { ...principalSelection, expectedManifestSha256: full.bundle.manifestSha256 },
+    { expectedManifestSha256: selected.bundle.manifestSha256 },
+  ]) assert.throws(() => build(invalid), /MIGRATION_(SELECTION_INVALID|MANIFEST_MISMATCH)/)
+  const missingSuffix = new Map(files); missingSuffix.delete(profile.migrations.entries[64].path)
+  assert.throws(() => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), missingSuffix, sourceRevision,
+    principalSelection), /MIGRATION_SET_DRIFT/)
+  const corruptSuffix = new Map(files); corruptSuffix.set(profile.migrations.entries[64].path, Buffer.from('corrupted deferred migration'))
+  assert.throws(() => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), corruptSuffix, sourceRevision,
+    principalSelection), /MIGRATION_CHECKSUM_MISMATCH/)
+  const shortProfile = structuredClone(profile); shortProfile.migrations.entries.pop()
+  assert.throws(() => buildDev040MigrationBundle(shortProfile, buildOrgmasterPackage(n1c), files, sourceRevision,
+    principalSelection), /MIGRATION_SET_DRIFT/)
+  const changedSuffix = structuredClone(profile); changedSuffix.migrations.entries[64].appliedSha256 = '0'.repeat(64)
+  assert.throws(() => buildDev040MigrationBundle(changedSuffix, buildOrgmasterPackage(n1c), files, sourceRevision,
+    principalSelection), /DEV057_EXTERNAL_MIGRATION_APPEND_INVALID/)
 })
 
 test('S1B-21 OrgMaster release intent is exact, owner-bound and immutable', () => {

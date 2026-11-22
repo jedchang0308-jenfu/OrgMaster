@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 import { createMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { DEV058_MIGRATION_ENTRIES } from './dev058-role-policy-migration.mjs'
 import { DEV070_MIGRATION_ENTRIES } from './dev070-administration-migration.mjs'
-import { DEV057_PROJED_MIGRATIONS,assertDev057ProjedMigrationEntries } from './dev057-projed-principal-migration.mjs'
+import { DEV057_PROJED_MIGRATIONS, DEV057_PROJED_RELEASE_MODE, DEV057_PROJED_MIGRATION_ENTRY_COUNT, assertDev057ProjedMigrationEntries } from './dev057-projed-principal-migration.mjs'
 import { DEV059_FMS_AUTHORITY_MIGRATIONS } from './dev059-fms-authority-migration.mjs'
 import { OWNER_EXECUTION_MODES } from './dev012-owner-release-runtime.mjs'
 
@@ -229,7 +229,16 @@ export function unwrapMigrationTransaction(bytes) {
   return `${envelope.groups?.leading ?? ''}${envelope.groups?.body ?? ''}\n`
 }
 
-export function buildDev040MigrationBundle(profile, n1cPackage, files, sourceRevision) {
+export function buildDev040MigrationBundle(profile, n1cPackage, files, sourceRevision, selection = {}) {
+  if (!selection || typeof selection !== 'object' || Array.isArray(selection)
+    || Object.keys(selection).some(key => !['releaseMode', 'expectedManifestSha256', 'executionMode'].includes(key))
+    || ![undefined, null, DEV057_PROJED_RELEASE_MODE].includes(selection.releaseMode)
+    || ![undefined, 'full_release', 'migration_only'].includes(selection.executionMode)
+    || (selection.expectedManifestSha256 != null && !H64.test(selection.expectedManifestSha256))) fail('MIGRATION_SELECTION_INVALID')
+  if (selection.releaseMode === DEV057_PROJED_RELEASE_MODE && selection.executionMode !== 'migration_only') fail('DEV057_PROJED_PRINCIPAL_MIGRATION_ONLY_REQUIRED')
+  // Validate the entire current generation, including the deferred 069 SQL.
+  // A selected release must never hide an unreviewed or corrupted suffix.
+  assertDev057ExternalMigrationEntries(profile.migrations.entries)
   verifyDev040MigrationBytes(profile, files)
   if (!Array.isArray(n1cPackage?.entries) || n1cPackage.entries.length !== profile.migrations.baselineCount) fail('MIGRATION_PACKAGE_INVALID')
   const entries = profile.migrations.entries.map((authority, index) => {
@@ -242,5 +251,24 @@ export function buildDev040MigrationBundle(profile, n1cPackage, files, sourceRev
     if (sourceSha256(sql) !== authority.appliedSha256) fail('MIGRATION_PACKAGE_INVALID', authority.path)
     return { order: authority.order, version: authority.version, name: authority.path.split('/').at(-1).replace(/^\d{3}_/u, '').replace(/\.sql$/u, ''), path: authority.path, sourceSha256: authority.sourceSha256, appliedSha256: authority.appliedSha256, sqlBase64: Buffer.from(sql, 'utf8').toString('base64') }
   })
-  return createMigrationBundle({ target: { ownerApplicationId: 'orgmaster', ledger: profile.migrations.ledger, baselineCount: profile.migrations.baselineCount }, sourceRevision, entries })
+  assertDev057ExternalMigrationEntries(entries)
+  const selected = selection.releaseMode === DEV057_PROJED_RELEASE_MODE
+    ? assertDev057ProjedMigrationEntries(entries.slice(0, DEV057_PROJED_MIGRATION_ENTRY_COUNT))
+    : entries
+  const result = createMigrationBundle({ target: { ownerApplicationId: 'orgmaster', ledger: profile.migrations.ledger, baselineCount: profile.migrations.baselineCount }, sourceRevision, entries: selected })
+  if (selection.expectedManifestSha256 != null && result.bundle.manifestSha256 !== selection.expectedManifestSha256) fail('MIGRATION_MANIFEST_MISMATCH')
+  return result
+}
+
+// The current source also contains the external 069 application endpoints.
+// Its reviewed 64-entry generation is safe only for the three migration jobs,
+// never for candidate creation/full continuation of that newer application.
+export function buildDev040MigrationBundleForIntent(profile, n1cPackage, files, intent, executionMode = 'full_release') {
+  const full = buildDev040MigrationBundle(profile, n1cPackage, files, intent.sourceRevision)
+  if (full.bundle.manifestSha256 === intent.migrationManifestSha256) return full
+  const principal = buildDev040MigrationBundle(profile, n1cPackage, files, intent.sourceRevision,
+    { releaseMode: DEV057_PROJED_RELEASE_MODE, executionMode: 'migration_only' })
+  if (principal.bundle.manifestSha256 !== intent.migrationManifestSha256) fail('MIGRATION_MANIFEST_MISMATCH')
+  if (executionMode !== 'migration_only') fail('DEV057_PROJED_PRINCIPAL_MIGRATION_ONLY_REQUIRED')
+  return principal
 }
