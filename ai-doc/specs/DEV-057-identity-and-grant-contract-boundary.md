@@ -49,6 +49,20 @@ PDM 本地角色能力政策由 AI-PDM owner 負責。OrgMaster 的舊角色能�
 
 相容發布就須把現有 Scheduler 接到 Platform 的全域登出補送端點，早於 Platform 開始產生待送事件。Scheduler 每輪以原 workload OIDC 呼叫 `POST /api/internal/pdm-session-revocation/v1/reconcile`，同輪依 OrgMaster 自有開關決定是否處理改權發布。既有 Platform 版本沒有該路由（404），或候選明示 `503 pdm_revocation_relay_disabled`，在 OrgMaster 發布關閉期間視為相容狀態，排程可回 200。平台部分完成、組態或認證錯誤及連線故障回 503；兩條補送和既有 lifecycle 可各自繼續。OrgMaster 關閉發布之後仍呼叫 Platform 恢復待送全域登出。啟用／回復不得讓未排空全域事件的 Platform 回到缺路由或 relay 關閉的版本。
 
+<a id="dev-057-pdm-session-revocation-formal-evidence-2026-11-15"></a>
+
+### 正式發布與三方驗收（2026-11-15）
+
+OrgMaster owner PR #270 受保護合併，source `263d4bb4683526d2bc29a6bd5c6cfbd4d2771ec6`；必要 CI 與 merge-head Production Source QC 通過。正式 owner workflow [43603769821](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/43603769821) 完成十階段，release `ORGMASTER-REL-20261114141335001-263D4BB` 為 `FINALIZED / RELEASED`，正式服務 `orgmaster-prod-92e871c4a0c8` Ready 並承接 100% 流量。正式 `/api/auth/mode` 回 200，未登入的 governance session 回 401；canonical smoke 收據 PASS。
+
+正式 migration bundle manifest SHA-256 為 `87f1b944d112d531ccb833b2f5198a7af23e0e16d9519cf13334c1eb8bcf3ed1`，共 53 筆。056 `dev057-orgmaster-056` source checksum `b4d6417ee204e46d742387890e5e4f2bda89c820512bb678d739115cbec07ccd`、applied checksum `b3b20950b25d8960a491b8dae2601b5d252909b0a39cef901eedd458b199cb32`。057 `dev057-orgmaster-057` source checksum `c58ad73d940dd1a13b50c14e09076a37d45016b0ca8c664af38a46f40cf6078e`、applied checksum `cf6483689047ff30b37ce60f91e3a3f75914794597d7bdf274a5ffe830e3571a`。正式 migration 收據 `gs://jenfu-platform-prod-orgmaster-release/receipts/releases/ORGMASTER-REL-20261114141335001-263D4BB/6bfc03926b09bfbe598bf35b62d4e699810dba247aaaaaeefdafbc345b378400/migrate.json` 回報 `PASS`、`applied=2`、`replayed=51`、`ledgerCount=53`、`boundaryStatus=PASS`，且對 `jenfu_dev`、`jenfu_stg` 的跨資料庫存取都拒絕。057 初始化 `enabled=false`、revision `0`，隨後以既有 owner migration Job 執行 CAS 啟用。
+
+啟用操作完成時間為 `2026-11-14T15:43:33.951455+00:00`。正式啟用回執 `gs://jenfu-platform-prod-orgmaster-release/receipts/pdm-publication-control/263d4bb4683526d2bc29a6bd5c6cfbd4d2771ec6/e9d4ae85f062b062a74894c4de0bff46e1e4cacb082ce0ca0e283b615e51b6c9.json`，SHA-256 `75b7feecf3b6ed26c89e22ea3085275868de228cb0b6d21e1931a59ad8437f3c`，回讀 `PASS / enabled=true / revision=1` 並綁定 acceptance 收據。原 OrgMaster revision 承接 100% 流量；啟用後同一 revision 的 Scheduler 請求回 HTTP 200。Scheduler 維持原 OIDC 身分、每分鐘排程與 Asia/Taipei 設定。
+
+主控三方驗收收據位於 `gs://jenfu-platform-prod-orgmaster-release/receipts/pdm-session-acceptance/dev015-61680ed836608e0555ca41935ea9c814ad4c9b8a0b31556872e3cd7dbefb91cb.json`，SHA-256 `b317764b8e906eb8db7b640a3652265a07c1dd97a7af57e42c4f76c46602f556`，驗收 evidence SHA-256 `45fe8cb54b4a299c8c62cc707ad179e20ff438602451138b338f99f7978f4759`。該收據分別綁定 OrgMaster source `263d4bb4683526d2bc29a6bd5c6cfbd4d2771ec6`、Platform source `5c54686e113913a1c86cc3addaf3f9cb0e52f253`、AI-PDM 接收 source `69db926c3ee3b6e9c1141236fefbc5592b9efcd2` 與各自 immutable artifact。正式終態分別為 OrgMaster `orgmaster-prod-92e871c4a0c8`、Platform `jenfu-platform-prod-87adc61bf43a`、AI-PDM 接收版 `ai-pdm-prod-c92e4574ee8d`。Platform relay 與 global logout flags 讀回為 true；AI-PDM revocation、reviewer authority、permission snapshot flags 讀回為啟用。審核資格快照另由 AI-PDM PR #616 的 source `f9cecfed2eb4c64177a8d3d8e94e3e483f7f0d13` 發布，正式 revision `ai-pdm-prod-c922471168f0` 承接 100% 流量。接收版 reviewer-bootstrap 初載 HTTP 200 後，受保護唯讀診斷確認 AI-PDM 儲存版本與 OrgMaster reader 版本皆為 `302`，才接續快照切換。
+
+**隔離環境驗證**涵蓋權限新增／撤銷與通知、等待持久撤銷回執後才發布、重送與並行登入、兩裝置舊 session 在全域登出後均遭拒、正常登入每次只計算一次權限，以及圖號／料號切頁、權限 API、已驗證送審與決策皆零上游查詢。**正式環境讀回**涵蓋三方 immutable release／terminal receipts、各自 100% 流量、OrgMaster 啟用收據與 DB revision、Scheduler 在新版上成功呼叫、PDM reviewer 初載及 302 版本一致、切流後 Portal SSO、料號工作台及登出。正式環境未修改員工權限，也未重跑業務送審；隔離 SQL 查詢計數不作正式資料庫查詢計數宣稱。AI-PDM 首次接收候選因 reviewer-bootstrap 路由漏登，在切流前以 `PRE_ACTIVATION_ABORTED` 終止，舊 revision 持續承接 100% 流量；補正後接收版完成正式發布。
+
 <a id="architecture-final"></a>
 
 ## 唯一施工入口
