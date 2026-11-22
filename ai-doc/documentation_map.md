@@ -1,6 +1,6 @@
 # OrgMaster 文件地圖
 
-- PDM 有效權限異動先撤銷再發布：[任務入口](dev_task.md#pdm-session-revocation) · [開發契約](specs/DEV-057-identity-and-grant-contract-boundary.md#pdm-session-revocation)。
+- DEV-057 PDM 權限異動先撤銷再發布已正式部署並完成三方驗收：[任務入口／正式收據與證據分層](dev_task.md#pdm-session-revocation) · [契約及 056／057 migration、啟用收據、隔離與正式證據](specs/DEV-057-identity-and-grant-contract-boundary.md#dev-057-pdm-session-revocation-formal-evidence-2026-11-15)。
 
 
 - DEV-070 current：受保護 `master@320a93c` 已發布至 `orgmaster-prod-e7a22862cc3f`（100%）；張仕杰／JFS0005 的正式 batch grant command 已回 HTTP 200，禁止重送。本人 fresh session、各 app projection 與正常 UI 尚待已合併的 [Platform PR #198](https://github.com/jedchang0308-jenfu/Jenfu-Platform/pull/198) 正式發布後讀回；維持 AAL1、中文姓名，且本批次不新增 FMS 財務業務角色。命令成功與 UI 驗收分層見[任務入口](dev_task.md#dev-070-platform-administration)及[DEV-070 §0](specs/DEV-070-platform-super-admin-authority-contract.md#0-行政權限-v2-producer-契約2026-11-08優先於本文舊流程)。
