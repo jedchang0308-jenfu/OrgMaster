@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { planDev057CallerEnvironment } from './lib/dev057-projed-caller-profile.mjs'
 import { DEV057_EXTERNAL_REMEDIATION, assertDev057SchemaPredecessorRef } from './lib/dev057-projed-external-migration.mjs'
 import { DEV058_ROLE_POLICY_REMEDIATION } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_REMEDIATION } from './lib/dev059-fms-authority-migration.mjs'
@@ -325,6 +326,11 @@ async function main() {
   const previousRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
   const previousMode = previousRuntime.plainEnvironment?.ORGMASTER_JENFU_SSO_HANDOFF_MODE ?? null
   let plainEnvironment = options.dev014Activate || options.dev014PrincipalLifecycleV2Remediation ? resolvePlainEnvironment(profile, previousRuntime.plainEnvironment, {}) : previousRuntime.plainEnvironment
+  if (options.migrationOnly && options.dev057ProjedExternalAppend && options.schemaPredecessorRef) {
+    // The capsule freezes the future candidate target. Provider readback still
+    // verifies the unchanged RELEASED runtime, including its missing caller pins.
+    plainEnvironment = planDev057CallerEnvironment(profile, plainEnvironment)
+  }
   if (options.dev070AdministrationAppend && isFmsDeliveryAppend(baseline.bundle.value.entries, profile)) {
     plainEnvironment = { ...plainEnvironment, [ORGMASTER_FMS_DELIVERY_FLAG]: 'true' }
   }

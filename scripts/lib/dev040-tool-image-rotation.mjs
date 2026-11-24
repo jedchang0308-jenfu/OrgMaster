@@ -1,3 +1,4 @@
+import { isDev057CallerProfileAppend } from './dev057-projed-caller-profile.mjs'
 import { DEV057_EXTERNAL_MIGRATION, DEV057_EXTERNAL_ENTRY_COUNT, DEV057_EXTERNAL_RELEASE_MODE } from './dev057-projed-external-migration.mjs'
 import { spawnSync } from 'node:child_process'
 import { gunzipSync } from 'node:zlib'
@@ -249,8 +250,10 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
 
   const beforeProfile = readProductionProfile(root, beforeRevision)
   const afterProfile = readProductionProfile(root, afterRevision)
+  const callerProfileAppend = isDev057CallerProfileAppend(beforeProfile, afterProfile)
   let disposition
-  try {
+  if (callerProfileAppend) disposition = 'DEV057_PROJED_CALLER_PROFILE_APPEND'
+  else try {
     const beforeMigrations = beforeProfile.migrations
     const afterMigrations = afterProfile.migrations
     const identity = ({ order, version, path, sourceSha256, appliedSha256 }) => [order, version, path, sourceSha256, appliedSha256]
@@ -277,7 +280,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
   const reviewedWorkflowMatch = !exactProfileMatch
     && reviewedClosedWorkflowTransition(beforeProfile.workflow, afterProfile.workflow)
     && same({ ...beforeProfileWithoutMigrations, workflow: afterProfile.workflow }, afterProfileWithoutMigrations)
-  if ((!exactProfileMatch && !reviewedWorkflowMatch && !reviewedFmsRevocationProfileAppend(beforeProfile, afterProfile))
+  if ((!exactProfileMatch && !reviewedWorkflowMatch && !reviewedFmsRevocationProfileAppend(beforeProfile, afterProfile) && !callerProfileAppend)
     || !same(nonRecipeInfrastructureEntries(root, beforeRevision), nonRecipeInfrastructureEntries(root, afterRevision))) fail('SOURCE_INPUT_DRIFT')
   return { disposition, beforeFingerprint, afterFingerprint }
 }

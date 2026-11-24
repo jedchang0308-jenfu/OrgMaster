@@ -1,4 +1,5 @@
-import { DEV057_EXTERNAL_RELEASE_MODE } from './lib/dev057-projed-external-migration.mjs'
+import { DEV057_EXTERNAL_RELEASE_MODE, DEV057_EXTERNAL_REMEDIATION } from './lib/dev057-projed-external-migration.mjs'
+import { DEV057_PROJED_CALLER_PINS } from './lib/dev057-projed-caller-profile.mjs'
 import { DEV057_PROJED_MIGRATION_ENTRY_COUNT, DEV057_PROJED_RELEASE_MODE, DEV057_PROJED_REMEDIATION } from './lib/dev057-projed-principal-migration.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -1077,7 +1078,7 @@ test('DEV-057 ProJED principal append requires exact 64-row native receipt and f
   assert.throws(() => assertMigrationReceipt(stageReceipt, profile, intent, { allowForward: true, forwardPlan }), /MIGRATION_RECEIPT_INVALID/u)
 })
 
-async function projedInput(releaseId, remediation = DEV057_PROJED_REMEDIATION, actualBundle = false) {
+async function projedInput(releaseId, remediation = DEV057_PROJED_REMEDIATION, actualBundle = false, external = false) {
     const h = recordedHarness('orgmaster')
     let rebuild, guard
     if (actualBundle) {
@@ -1090,7 +1091,7 @@ async function projedInput(releaseId, remediation = DEV057_PROJED_REMEDIATION, a
           executionMode: context.executionMode,
           expectedManifestSha256: context.expectedManifestSha256 })
       guard = (intent, executionMode) => buildDev040MigrationBundleForIntent(sourceProfile, buildOrgmasterPackage(n1c), files, intent, executionMode)
-      const selected = rebuild(H40, { releaseMode: DEV057_PROJED_RELEASE_MODE, executionMode: 'migration_only' })
+      const selected = rebuild(H40, { releaseMode: external ? null : DEV057_PROJED_RELEASE_MODE, executionMode: 'migration_only' })
       h.migrationBytes = selected.bytes
       h.migrationManifestSha256 = selected.bundle.manifestSha256
       const createBuild = h.transport.createBuild.bind(h.transport)
@@ -1113,7 +1114,7 @@ async function projedInput(releaseId, remediation = DEV057_PROJED_REMEDIATION, a
       releaseAuthority: true, evidenceScope: 'PROVIDER', status: 'PASS', environment: 'production',
       projectId: 'jenfu-platform-prod', remainingHumanAction: 0, expiresAt: '2999-01-01T00:00:00.000Z',
       ownerApplicationId: intent.ownerApplicationId, sourceRevision: intent.sourceRevision, releaseId: intent.releaseId,
-      baselineIntentRef: intent.baselineIntentRef, devId: 'DEV-057', slice: '057-PROJED-PRINCIPAL', remediation,
+      baselineIntentRef: intent.baselineIntentRef, devId: 'DEV-057', slice: external ? '057-PROJED-EXTERNAL' : '057-PROJED-PRINCIPAL', remediation,
     }
     const authorization = await h.transport.putJson(`gs://${bucket}/receipts/prerequisites/${releaseId}-projed-authorization.json`,
       { ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }, { bucket, prefix: 'receipts' })
@@ -1127,9 +1128,9 @@ async function projedInput(releaseId, remediation = DEV057_PROJED_REMEDIATION, a
     input.verifyRoutineRelease = async ({ intent: currentIntent }) => ({
       baselineIntentRef: currentIntent.baselineIntentRef,
       baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) },
-      migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 4,
-      releaseMode: DEV057_PROJED_RELEASE_MODE,
-      controlledTransition: { releaseMode: DEV057_PROJED_RELEASE_MODE },
+      migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: external ? 1 : 4,
+      releaseMode: external ? DEV057_EXTERNAL_RELEASE_MODE : DEV057_PROJED_RELEASE_MODE,
+      controlledTransition: { releaseMode: external ? DEV057_EXTERNAL_RELEASE_MODE : DEV057_PROJED_RELEASE_MODE },
       toolImageRotation: {
         evidenceScope: 'OWNER_SEALED_TOOL_IMAGE_ROTATION',
         sourceRevision: currentIntent.sourceRevision,
@@ -1273,4 +1274,46 @@ test('external owner migration receipt binds exact 65 rows and at most the singl
  assert.doesNotThrow(()=>check(core));assert.doesNotThrow(()=>check({...core,applied:0,replayed:65}))
  for(const changes of[{ledgerCount:64},{ledgerCount:66},{applied:2,replayed:63},{database:'jenfu_stg'},{ownerApplicationId:'platform'},{crossDatabaseDenials:[]}])assert.throws(()=>check({...core,...changes}),/MIGRATION_RECEIPT_INVALID/)
  assert.throws(()=>check(core,{releaseMode:DEV057_EXTERNAL_RELEASE_MODE,pendingMigrationCount:4}),/MIGRATION_RECEIPT_INVALID/)
+})
+
+test('external migration-only capsule retains the planned caller target and resumes full without another schema execution', async () => {
+ const c=await projedInput('DEV057-EXTERNAL-PLANNED-CALLER',DEV057_EXTERNAL_REMEDIATION,true,true),h=c.h
+ h.profile.workflow.executionModes=OWNER_EXECUTION_MODES
+ h.profile.environment.fixedValues??={}
+ for(const [name,value] of Object.entries(DEV057_PROJED_CALLER_PINS)){
+  if(!h.profile.environment.requiredPlainEnvironmentNames.includes(name))h.profile.environment.requiredPlainEnvironmentNames.push(name)
+  h.profile.environment.fixedValues[name]=value
+ }
+ const runtimeRow=await h.transport.readJson(c.intent.runtimeConfigRef),old=runtimeRow.value.runtimeConfig??runtimeRow.value
+ const target=buildRuntimeConfig(h.profile,{plainEnvironment:{...old.plainEnvironment,...DEV057_PROJED_CALLER_PINS},secretVersions:old.secretVersions})
+ const runtimeRef=(await h.transport.putJson(c.intent.runtimeConfigRef.uri.replace('.json','-planned-caller.json'),{...runtimeRow.value,runtimeConfig:target})).ref
+ const schemaRef={uri:'gs://jenfu-platform-prod-orgmaster-release/receipts/releases/SCHEMA-PREVIOUS/release-intent.json',sha256:'d'.repeat(64)}
+ const updates={runtimeConfigRef:runtimeRef}
+ for(const field of ['authorizationPolicyRef','readinessReceiptRef']){
+  const row=await h.transport.readJson(c.intent[field])
+  updates[field]=(await h.transport.putJson(row.ref.uri.replace('.json','-schema.json'),{...row.value,schemaPredecessorRef:schemaRef})).ref
+ }
+ const intent={...c.intent,...updates},capsule=await h.transport.putJson(c.input.capsuleRef.replace('.json','-planned-caller.json'),intent)
+ const input={...c.input,capsuleRef:capsule.ref.uri,capsuleSha256:capsule.ref.sha256,environment:{...c.input.environment,OWNER_EXECUTION_MODE:'migration_only'},verifyToolJobReadback:async()=>({migrationRunnerDigest:c.infra.migrationRunnerDigest})}
+ let jobs=0
+ h.transport.runMigrationJob=async({deployment,outputUri,migrationMode})=>{
+  jobs++;assert.equal(migrationMode,DEV057_EXTERNAL_RELEASE_MODE)
+  const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:H40,database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',manifestSha256:intent.migrationManifestSha256,baselineCount:10,minimumLedgerCount:10,ledgerCount:65,applied:1,replayed:64,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}],boundaryStatus:'PASS',status:'PASS'}
+  await h.transport.putJson(outputUri,{...core,receiptSha256:sha256(canonicalize(core))})
+ }
+ const before=h.service()
+ for(const stage of ['prepare','build','migrate'])await executeOwnerStage({...input,stage})
+ assert.equal(jobs,1);assert.deepEqual(h.service(),before)
+ const paths=releasePaths(h.profile,intent,capsule.ref.sha256),count=h.objects.size
+ assert.equal(h.objects.has(paths.control),false);assert.equal(h.objects.has(paths.candidate),false)
+ let dispatch
+ const resumed=await resumeDeployProductionRelease({options:{resumeCapsuleRef:capsule.ref,check:false},git:{sourceRevision:H40},profile:h.profile,transport:h.transport,service:h.service(),baselineIntentRef:intent.baselineIntentRef,previousRevision:intent.previousRevision,sourceIdentitySha256:sha256(h.sourceIdentityBytes),buildMigrationBundle:input.buildMigrationBundle,verifySource:async()=>{},dispatch:async args=>{dispatch=args}})
+ assert.equal(resumed.executionMode,'full_release');assert.equal(dispatch.at(-1),'executionMode=full_release');assert.equal(h.objects.size,count)
+ const full={...input,environment:{...input.environment,OWNER_EXECUTION_MODE:'full_release',GITHUB_RUN_ID:'987'}}
+ for(const stage of ['prepare','build','migrate'])await executeOwnerStage({...full,stage})
+ assert.equal(jobs,1);assert.equal(h.objects.size,count)
+ await executeOwnerStage({...full,stage:'candidate'})
+ assert.equal(jobs,1);assert.equal(h.objects.has(paths.candidate),true)
+ const frozen=(await h.transport.readJson(runtimeRef)).value.runtimeConfig
+ for(const [name,value]of Object.entries(DEV057_PROJED_CALLER_PINS))assert.equal(frozen.plainEnvironment[name],value)
 })
