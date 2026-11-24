@@ -1,3 +1,4 @@
+import { dev057PreCallerRuntimeProfile, isDev057CallerEnvironmentAppend } from './dev057-projed-caller-profile.mjs'
 import { DEV057_EXTERNAL_RELEASE_MODE, assertDev057ExternalAppend, assertDev057ExternalReleaseAuthority, assertDev057SchemaPredecessorRef } from './dev057-projed-external-migration.mjs'
 import { assertSmokeRotationContinuation, assertSmokeInfraReuseContinuation, assertSmokeWorkflowContractCorrectionContinuation, SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE, readReleaseSourceFile, readSmokeReuseInfrastructureTree } from './dev057-smoke-rotation-continuation.mjs'
 import { readPrincipalOnlyRepairBaseline } from './dev057-principal-forward-repair.mjs'
@@ -6,7 +7,7 @@ import { spawnSync } from 'node:child_process'
 import {normalizeCatalogPackagingResourceTree} from './dev070-catalog-packaging-inputs.mjs'
 import { isDev057PrincipalSmokeBlobTransition } from './dev057-principal-smoke-transition.mjs'
 import { assertOrdinaryToolRotation } from './dev040-tool-image-rotation.mjs'
-import { assertImmutableRef, assertRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256 } from './dev012-owner-release-runtime.mjs'
+import { assertImmutableRef, assertRuntimeConfig, buildRuntimeConfig, canonicalize, releasePaths, resolvePlainEnvironment, sha256 } from './dev012-owner-release-runtime.mjs'
 import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
 import { assertDev040ReleaseIntent } from './dev040-orgmaster-independent-release.mjs'
 import { assertAppArtifactReuse } from './dev040-app-artifact-reuse.mjs'
@@ -954,6 +955,13 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const rolePolicyAppend = values.readiness?.devId === 'DEV-058'
   const fmsAuthorityAppend = values.readiness?.devId === 'DEV-059'
   const projedExternalAppend = values.readiness?.devId === 'DEV-057' && values.readiness?.slice === '057-PROJED-EXTERNAL'
+  const plannedCallerAppend = projedExternalAppend && executionMode === 'migration_only' && values.readiness?.schemaPredecessorRef
+    && isDev057CallerEnvironmentAppend(profile, baselineRuntime.plainEnvironment, runtimeConfig.plainEnvironment)
+  if (plannedCallerAppend) {
+    assertRuntimeConfig(dev057PreCallerRuntimeProfile(profile), baselineRuntime)
+    const expected = buildRuntimeConfig(profile, { plainEnvironment: runtimeConfig.plainEnvironment, secretVersions: baselineRuntime.secretVersions })
+    if (!same(expected, runtimeConfig)) fail('DEV057_CALLER_RUNTIME_CHANGED')
+  }
   if ((values.readiness?.schemaPredecessorRef !== undefined || values.authorization?.schemaPredecessorRef !== undefined)
     && (!projedExternalAppend || executionMode !== 'migration_only')) fail('DEV057_SCHEMA_PREDECESSOR_MODE_INVALID')
   const projedPrincipalAppend = values.readiness?.devId === 'DEV-057' && values.readiness?.slice === '057-PROJED-PRINCIPAL'
@@ -961,7 +969,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const administrationAppend=values.readiness?.devId==='DEV-070'
   const fmsDeliveryRuntimeAppend = administrationAppend && isFmsDeliveryAppend(baseline.bundle.value.entries, profile)
     && matchesFmsDeliveryRuntimeAppend(profile, baselineRuntime, runtimeConfig)
-  const runtimeChanged = !same(runtimeConfig, baselineRuntime) && !fmsDeliveryRuntimeAppend
+  const runtimeChanged = !same(runtimeConfig, baselineRuntime) && !fmsDeliveryRuntimeAppend && !plannedCallerAppend
   if ((rolePolicyAppend || fmsAuthorityAppend || fmsCatalogActivationAppend || administrationAppend || projedPrincipalAppend || projedExternalAppend) && runtimeChanged) fail(projedPrincipalAppend ? 'DEV057_PROJED_RUNTIME_CHANGED' : administrationAppend?'DEV070_RUNTIME_CHANGED':fmsCatalogActivationAppend ? 'DEV060_RUNTIME_CHANGED' : fmsAuthorityAppend ? 'DEV059_RUNTIME_CHANGED' : 'DEV058_RUNTIME_CHANGED')
   const lifecycleGuard = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-V2'
   const lifecycleEnable = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-ENABLE'
@@ -1192,6 +1200,10 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (schemaPredecessor) {
     const { bundle, ...evidence } = schemaPredecessor
     migration.schemaPredecessor = { ...evidence, sourceRevision: bundle.value.sourceRevision, manifestSha256: bundle.value.manifestSha256 }
+  }
+  if (plannedCallerAppend) migration.plannedRuntimeCallerAppend = {
+    disposition: 'PLANNED_NOT_APPLIED', currentRuntimeConfigRef: baseline.intent.runtimeConfigRef,
+    candidateRuntimeConfigRef: intent.runtimeConfigRef,
   }
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]

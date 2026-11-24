@@ -1,4 +1,6 @@
 import { DEV057_EXTERNAL_REMEDIATION, DEV057_EXTERNAL_RELEASE_MODE } from './lib/dev057-projed-external-migration.mjs'
+import { DEV057_PROJED_CALLER_PINS, dev057PreCallerRuntimeProfile, planDev057CallerEnvironment } from './lib/dev057-projed-caller-profile.mjs'
+import { assertRuntimeConfig } from './lib/dev012-owner-release-runtime.mjs'
 import { readDev057ExternalSchemaPredecessor } from './lib/dev040-routine-release.mjs'
 import { DEV057_PROJED_REMEDIATION, DEV057_PROJED_RELEASE_MODE } from './lib/dev057-projed-principal-migration.mjs'
 import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ADMINISTRATION_REMEDIATION,ORGMASTER_FMS_DELIVERY_FLAG,assertDev070AdministrationAppend} from './lib/dev070-administration-migration.mjs'
@@ -3086,4 +3088,29 @@ test('schema predecessor rejects altered ownership, source, prefix, receipt join
  }
  const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,60)}),f=sealedSchemaPredecessor(h,{sourceRevision:'0'.repeat(40)})
  await assert.rejects(readDev057ExternalSchemaPredecessor({...f.input,readSourceIdentity:undefined}),/DEV057_SCHEMA_PREDECESSOR_SOURCE_UNKNOWN/)
+})
+
+test('migration-only plans exact caller pins while validating the unchanged pre-caller runtime snapshot', async () => {
+ const oldProfile=dev057PreCallerRuntimeProfile(profile),oldPlain={...plain}
+ for(const name of Object.keys(DEV057_PROJED_CALLER_PINS))delete oldPlain[name]
+ const previous=buildRuntimeConfig(oldProfile,{plainEnvironment:oldPlain,secretVersions:runtime.secretVersions})
+ const planned=buildRuntimeConfig(profile,{plainEnvironment:planDev057CallerEnvironment(profile,oldPlain),secretVersions:runtime.secretVersions})
+ const h=harness({baselineRuntime:previous,nextRuntime:planned,baselineBundle:prefixBundle(oldBundle.bundle,60),currentBundle:newBundle})
+ const predecessor=sealedSchemaPredecessor(h)
+ const common={devId:'DEV-057',slice:'057-PROJED-EXTERNAL',remediation:DEV057_EXTERNAL_REMEDIATION,schemaPredecessorRef:predecessor.ref}
+ h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
+ h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
+ attachForwardInfra(h);h.input.executionMode='migration_only';h.input.readSchemaPredecessorSourceIdentity=predecessor.input.readSourceIdentity
+ const before=structuredClone(h.input.service),count=h.objects.size
+ const plan=await verifyRoutineRelease(h.input)
+ assert.equal(plan.pendingMigrationCount,1);assert.equal(plan.plannedRuntimeCallerAppend.disposition,'PLANNED_NOT_APPLIED')
+ assert.deepEqual(h.input.service,before);assert.equal(h.objects.size,count)
+ assert.throws(()=>assertRuntimeConfig(profile,previous),/RUNTIME_CONFIG_READBACK_MISMATCH/)
+ assert.doesNotThrow(()=>assertRuntimeConfig(profile,planned))
+ await assert.rejects(verifyRoutineRelease({...h.input,executionMode:'full_release'}),/DEV057_SCHEMA_PREDECESSOR_MODE_INVALID/)
+ const changed=structuredClone(planned);changed.secretVersions[profile.environment.requiredSecretNames[0]]='99'
+ await assert.rejects(verifyRoutineRelease({...h.input,values:{...h.input.values,runtimeConfig:{runtimeConfig:changed}}}),/DEV057_CALLER_RUNTIME_CHANGED/)
+ const realGet=h.input.transport.getRevision
+ h.input.transport.getRevision=async(...args)=>{const revision=await realGet(...args);revision.containers[0].env.push({name:'ORGMASTER_PROJED_CALLER_SUBJECT',value:DEV057_PROJED_CALLER_PINS.ORGMASTER_PROJED_CALLER_SUBJECT});return revision}
+ await assert.rejects(verifyRoutineRelease(h.input),/ROUTINE_RUNTIME_DRIFT/)
 })

@@ -1,3 +1,4 @@
+import { DEV057_PROJED_CALLER_PINS, dev057PreCallerRuntimeProfile, isDev057CallerProfileAppend, planDev057CallerEnvironment } from './dev057-projed-caller-profile.mjs'
 import { DEV057_EXTERNAL_MIGRATION, DEV057_EXTERNAL_RELEASE_MODE } from './dev057-projed-external-migration.mjs'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
@@ -484,6 +485,25 @@ function commitProfileVariant(baseRevision, mutate, message) {
     runGit(sourceFixture.root, ['checkout', '--quiet', '--detach', priorHead])
   }
 }
+
+test('caller-only tool source transition preserves the exact migrations and every other infrastructure input', () => {
+  const current = JSON.parse(fs.readFileSync(PRODUCTION_PROFILE_PATH, 'utf8'))
+  const beforeProfile = dev057PreCallerRuntimeProfile(current)
+  const before = commitProfileVariant(sourceFixture.rotationSourceRevision, p => { for (const k of Object.keys(p)) delete p[k]; Object.assign(p, beforeProfile) }, 'historical pre-caller profile')
+  const after = commitProfileVariant(before, p => { for (const k of Object.keys(p)) delete p[k]; Object.assign(p, current) }, 'exact approved ProJED caller profile')
+  assert.equal(assertToolInfrastructureTransition(sourceFixture.root, before, after).disposition, 'DEV057_PROJED_CALLER_PROFILE_APPEND')
+  for (const mutate of [p => { p.environment.fixedValues.ORGMASTER_PROJED_CALLER_SUBJECT = 'unknown' },
+    p => { delete p.environment.fixedValues.ORGMASTER_PROJED_CALLER_EMAIL },
+    p => { p.runtime.maxInstances++ }, p => { p.migrations.entries[64].appliedSha256 = '0'.repeat(64) }]) {
+    const invalid = commitProfileVariant(after, mutate, 'unapproved caller transition drift')
+    assertRotationCode(() => assertToolInfrastructureTransition(sourceFixture.root, before, invalid), 'SOURCE_INPUT_DRIFT')
+  }
+  assert.equal(isDev057CallerProfileAppend(beforeProfile, current), true)
+  const old = { EXISTING: 'unchanged' }, planned = planDev057CallerEnvironment(current, old)
+  assert.deepEqual(old, { EXISTING: 'unchanged' }); assert.deepEqual(planned, { ...old, ...DEV057_PROJED_CALLER_PINS })
+  for (const partial of [{ ...old, ORGMASTER_PROJED_CALLER_EMAIL: DEV057_PROJED_CALLER_PINS.ORGMASTER_PROJED_CALLER_EMAIL },
+    { ...old, ...DEV057_PROJED_CALLER_PINS, ORGMASTER_PROJED_CALLER_SUBJECT: 'wrong' }]) assert.throws(() => planDev057CallerEnvironment(current, partial), /DEV057_CALLER_PROFILE_INVALID/)
+})
 
 function commitNonRecipeVariant(baseRevision, mutate, message) {
   const priorHead = runGit(sourceFixture.root, ['rev-parse', 'HEAD'])
