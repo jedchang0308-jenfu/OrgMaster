@@ -1041,7 +1041,7 @@ function smokeContinuationHarness({ controllerImageDigest = 'asia-east1-docker.p
   return Object.assign(h, { update, requests, workflow, secret, sourceEdits, addresses, rotationUri })
 }
 
-test('shared Platform receipt is consumed by OrgMaster continuation without a second credential receipt', async () => {
+for (const includeAipdm of [true, false]) test(`shared Platform receipt is consumed by OrgMaster continuation without a second credential receipt (${includeAipdm ? 'three owners' : 'two owners'})`, async () => {
   const h = smokeContinuationHarness()
   const subject = 'synthetic-provider-subject-001'
   const platformCore = {
@@ -1061,8 +1061,8 @@ test('shared Platform receipt is consumed by OrgMaster continuation without a se
     evidenceScope: 'PRODUCTION_PROVIDER', projectId: 'jenfu-platform-prod', issuer: EXPECTED.issuer, uid: subject,
     emailSha256: 'e'.repeat(64), emailVerified: true, firstFactor: 'password', mfaEnrolled: false, mfaFactor: null,
     assuranceLevel: 'aal1', assuranceEvidence: 'SIGNED_ID_TOKEN_AFTER_PASSWORD_SIGNIN', firebaseUserCount: 1,
-    smokeRefreshTokenSecretVersions: { platform: '12', 'ai-pdm': '15', orgmaster: '8' },
-    githubProductionEnvironmentSecrets: { platform: true, 'ai-pdm': true, orgmaster: true }, credentialMaterialPresent: false,
+    smokeRefreshTokenSecretVersions: { platform: '12', ...(includeAipdm ? { 'ai-pdm': '15' } : {}), orgmaster: '8' },
+    githubProductionEnvironmentSecrets: { platform: true, ...(includeAipdm ? { 'ai-pdm': true } : {}), orgmaster: true }, credentialMaterialPresent: false,
     observedAt: '2026-09-23T08:00:00.000Z',
   }
   const platformRef = h.put('gs://jenfu-platform-prod-platform-release/receipts/credential-reauth/shared.json',

@@ -98,6 +98,67 @@ test('single Platform reauthentication evidence authorizes the already-synced Or
   ]) assert.throws(() => validateSharedSmokeCredentialEvidence({ ...fixture, ...change, nowMs: NOW }))
 })
 
+test('explicit Platform and OrgMaster shared scope needs no AI-PDM claim or repeated password proof', () => {
+  const fixture = sharedCredentialFixture()
+  const { receiptSha256: _, ...core } = fixture.identity
+  core.smokeRefreshTokenSecretVersions = { platform: '12', orgmaster: '19' }
+  core.githubProductionEnvironmentSecrets = { platform: true, orgmaster: true }
+  core.platformCredentialBinding = {
+    receiptSha256: fixture.platformCredential.receiptSha256, authTime: fixture.platformCredential.authTime,
+  }
+  const identity = { ...core, receiptSha256: sha256(JSON.stringify(core)) }
+  assert.deepEqual(validateSharedSmokeCredentialEvidence({ ...fixture, identity, nowMs: NOW + 86400000 }), {
+    previousVersion: '18', nextVersion: '19', versionChain: ['18', '19'],
+    principalId: 'principal-firebase-b71682bf0d7cc5596b48dfad991e4096', employeeId: 'employee-shijie', assuranceLevel: 'aal1',
+  })
+  assert.deepEqual(Object.keys(identity.smokeRefreshTokenSecretVersions), ['platform', 'orgmaster'])
+})
+
+test('shared scope rejects mismatched, missing or unknown owner sets and invalid versions', () => {
+  const fixture = sharedCredentialFixture()
+  const { receiptSha256: _, ...original } = fixture.identity
+  const versions = { platform: '12', orgmaster: '19' }
+  const github = { platform: true, orgmaster: true }
+  for (const [smokeRefreshTokenSecretVersions, githubProductionEnvironmentSecrets] of [
+    [{ platform: '12' }, { platform: true }],
+    [{ 'ai-pdm': '15' }, { 'ai-pdm': true }],
+    [{ orgmaster: '19' }, { orgmaster: true }],
+    [versions, { ...github, 'ai-pdm': true }],
+    [{ ...versions, 'ai-pdm': '15' }, github],
+    [{ ...versions, other: '1' }, { ...github, other: true }],
+    [{ ...versions, orgmaster: '0' }, github],
+    [{ ...versions, platform: '13' }, github],
+    [versions, { ...github, orgmaster: false }],
+  ]) {
+    const core = { ...original, smokeRefreshTokenSecretVersions, githubProductionEnvironmentSecrets }
+    const identity = { ...core, receiptSha256: sha256(JSON.stringify(core)) }
+    assert.throws(() => validateSharedSmokeCredentialEvidence({ ...fixture, identity, nowMs: NOW }),
+      /SHARED_SMOKE_IDENTITY_EVIDENCE_INVALID/u)
+  }
+})
+
+test('two-owner scope preserves owner, source, hash and original authentication checks', () => {
+  const fixture = sharedCredentialFixture()
+  const { receiptSha256: _, ...original } = fixture.identity
+  const core = { ...original, smokeRefreshTokenSecretVersions: { platform: '12', orgmaster: '19' },
+    githubProductionEnvironmentSecrets: { platform: true, orgmaster: true } }
+  const sealIdentity = value => ({ ...value, receiptSha256: sha256(JSON.stringify(value)) })
+  const identity = sealIdentity(core)
+  for (const change of [
+    { identity: { ...identity, receiptSha256: '0'.repeat(64) } },
+    { identity: sealIdentity({ ...core, uid: 'foreign-subject-0123456789' }) },
+    ...[
+      { ownerApplicationId: 'orgmaster' }, { sourceRevision: 'unknown' },
+      { authenticatedAt: new Date(NOW + 1).toISOString() },
+      { authTime: fixture.platformCredential.authTime - 301 },
+    ].map(change => {
+      const { receiptSha256: _hash, ...platformCore } = fixture.platformCredential
+      Object.assign(platformCore, change)
+      return { platformCredential: { ...platformCore, receiptSha256: sha256(platformCore) } }
+    }),
+  ]) assert.throws(() => validateSharedSmokeCredentialEvidence({ ...fixture, identity, ...change, nowMs: NOW }))
+})
+
 test('late shared readback needs the exact original Platform receipt and signed authentication time', () => {
   const { identity, platformCredential } = sharedCredentialFixture()
   const { receiptSha256: _, ...original } = identity
