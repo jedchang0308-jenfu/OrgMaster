@@ -975,6 +975,7 @@ R33 task-owned PostgreSQL18.4 整鏈通過，驗證 AI-PDM actual075 static acti
 
 ## DEV-057：身分與權限發布契約邊界
 
+- 2026-11-24 / ProJED DEV-139 scope 1 source preparation：owner v3 profile binds the exact `projed-prod-runtime` caller email／UID for the existing OIDC verifier; audience remains the OrgMaster public origin. Source only; no runtime deployment, IAM／Secret, role, private-content access, or mapping change.
 - 2026-11-20 / ProJED DEV-139 §4.2.1：069 外部申請、先審核後 provider-pair 綁定、管理頁核准／拒絕／停用恢復、版本化只讀 consumer 與獨立64→65發布recipe，沿[現行契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-dev-139-external-qualification-producer--2026-11-20)。本輪為 source／isolated 交付，未正式啟用。
 
 - 主責／來源：ORGMASTER/DEV-057；來源JENFU/DEV-015；consumer AIPDM/DEV-121。

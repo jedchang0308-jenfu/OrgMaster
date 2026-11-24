@@ -1,4 +1,5 @@
 import { DEV057_EXTERNAL_REMEDIATION, DEV057_EXTERNAL_RELEASE_MODE } from './lib/dev057-projed-external-migration.mjs'
+import { readDev057ExternalSchemaPredecessor } from './lib/dev040-routine-release.mjs'
 import { DEV057_PROJED_REMEDIATION, DEV057_PROJED_RELEASE_MODE } from './lib/dev057-projed-principal-migration.mjs'
 import {DEV070_RELEASE_MODE,DEV070_MIGRATION_ENTRY_COUNT,DEV070_ADMINISTRATION_REMEDIATION,ORGMASTER_FMS_DELIVERY_FLAG,assertDev070AdministrationAppend} from './lib/dev070-administration-migration.mjs'
 import { DEV058_MIGRATION_ENTRIES, DEV058_RELEASE_MODE, DEV058_ROLE_POLICY_REMEDIATION, assertDev058RolePolicyAppend } from './lib/dev058-role-policy-migration.mjs'
@@ -135,7 +136,7 @@ async function withCurrentCatalogPackagingSources(work){
   const files=git(repo,['ls-tree','-r','--name-only',base,'--','infra/google-cloud/dev-040-production-release',
    'config/release/dev040-production-release-infra-plan.json','config/release/dev040-orgmaster-independent-production-v3.json','config/dev-010/n1c-orgmaster.json']).split(/\r?\n/u)
   for(const file of files){const target=path.join(root,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,git(repo,['show',base+':'+file],true))}
-  git(root,['init','--quiet']);git(root,['config','user.name','Catalog Resource Fixture']);git(root,['config','user.email','fixture@example.invalid']);git(root,['config','core.autocrlf','true'])
+  git(root,['init','--quiet']);git(root,['config','user.name','Catalog Resource Fixture']);git(root,['config','user.email','fixture@example.invalid']);git(root,['config','core.autocrlf','true']);git(root,['config','core.longpaths','true'])
   const commit=()=>{git(root,['add','.']);git(root,['commit','--quiet','-m','owned packaging fixture']);return git(root,['rev-parse','HEAD'])}
   const before=commit();assert.equal(git(root,['rev-parse',before+':'+recipe]),DEV070_CATALOG_PACKAGING.before)
   fs.writeFileSync(path.join(root,recipe),fs.readFileSync(recipe));const after=commit()
@@ -3013,4 +3014,76 @@ test('external release uses a separate 64-to-65 recipe and rejects mixed CLI sco
  assert.throws(()=>parseDeployProductionArgs([...args,'--dev057-projed-principal-append']))
  assert.throws(()=>parseDeployProductionArgs([...args,'--dev070-administration-append']))
  assert.throws(()=>parseDeployProductionArgs([args[0]]))
+})
+
+// Reuse the existing runtime harness. Only the historical schema receipt graph
+// is synthetic; no database, provider, runtime mutation or SQL execution occurs.
+function sealedSchemaPredecessor(h, change = {}) {
+ const readBytes=h.input.transport.readBytes
+ h.input.transport.readBytes=async(...args)=>{try{return await readBytes(...args)}catch(error){if(error.message==='MISSING')error.code='MISSING';throw error}}
+ const sourceRevision=change.sourceRevision??oldSource, releaseId='SCHEMA-PREVIOUS', deadlineAt='2020-01-02T00:00:00Z'
+ const identity={bytes:Buffer.from('synthetic sealed Git tree'),tree:'7'.repeat(40)}
+ const sourceBundle=prefixBundle({...oldBundle.bundle,sourceRevision},64)
+ if(change.prefix)sourceBundle.entries=sourceBundle.entries.map((e,i)=>i===0?{...e,sourceSha256:'0'.repeat(64)}:e)
+ const {manifestSha256:ignored,...bundleCore}=sourceBundle;sourceBundle.manifestSha256=sha256(canonicalize(bundleCore))
+ const row=(name,value)=>h.put(`gs://${bucket}/receipts/schema-predecessor/${name}.json`,value)
+ const common={ownerApplicationId:'orgmaster',projectId:profile.target.projectId,sourceRevision,releaseId,environment:'production',
+  baselineIntentRef:h.input.intent.baselineIntentRef,expiresAt:deadlineAt,observedAt:'2020-01-01T00:00:00Z',status:'PASS',releaseAuthority:true,evidenceScope:'PRODUCTION_BOUND',remainingHumanAction:0,
+  devId:'DEV-057',slice:'057-PROJED-PRINCIPAL',remediation:DEV057_PROJED_REMEDIATION}
+ const sourceLockRef=row('source',{schemaVersion:'jenfu.dev012.owner-source-lock.v1',ownerApplicationId:'orgmaster',repository:profile.application.repository,branch:profile.application.branch,
+  releaseId,sourceRevision:change.sourceLockRevision??sourceRevision,sourceTree:identity.tree,sourceSha256:sha256(identity.bytes),migrationManifestSha256:sourceBundle.manifestSha256,
+  clean:true,remoteRef:'refs/heads/'+profile.application.branch,remoteRevision:sourceRevision,status:'SOURCE_FROZEN',releaseAuthority:true,evidenceScope:'PRODUCTION_BOUND',observedAt:common.observedAt})
+ const runner=`${profile.artifact.migrationRunnerUri}@sha256:${'4'.repeat(64)}`
+ const previous={schemaVersion:profile.schemas.releaseIntent,ownerApplicationId:'orgmaster',releaseId,sourceRevision,sourceSha256:sha256(identity.bytes),sourceLockRef,
+  authorizationPolicyRef:row('auth',{...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}),
+  readinessReceiptRef:row('readiness',{...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}),
+  foundationReceiptRef:h.input.intent.foundationReceiptRef,infraReceiptRef:row('infra',{migrationRunnerDigest:runner}),runtimeConfigRef:row('runtime',{}),
+  migrationManifestSha256:sourceBundle.manifestSha256,previousRevision:h.input.intent.previousRevision,baselineIntentRef:h.input.intent.baselineIntentRef,deadlineAt}
+ const ref=h.put(`gs://${bucket}/receipts/releases/${releaseId}/release-intent.json`,previous),paths=releasePaths(profile,previous,ref.sha256)
+ const names={sourceLock:'sourceLockRef',authorization:'authorizationPolicyRef',readiness:'readinessReceiptRef',foundation:'foundationReceiptRef',infra:'infraReceiptRef',runtimeConfig:'runtimeConfigRef'}
+ const {sourceRevision:ignoredSource,manifestSha256:ignoredManifest,...migrationInputs}=sourceBundle
+ const routine={releaseMode:DEV057_PROJED_RELEASE_MODE,controlledTransition:{releaseMode:DEV057_PROJED_RELEASE_MODE},migrationDisposition:'FORWARD_APPLY',pendingMigrationCount:4,migrationInputsSha256:sha256(canonicalize(migrationInputs)),previousRevision:previous.previousRevision,baselineIntentRef:previous.baselineIntentRef}
+ const prepare=h.put(paths.prepare,stageReceipt({profile,intent:previous,stage:'prepare',observedAt:'2020-01-01T00:00:01Z',facts:{routine,migrationRunnerDigest:runner,prerequisiteRefs:Object.fromEntries(Object.entries(names).map(([k,v])=>[k,previous[v]]))}}))
+ const facts={artifactDigest:`${profile.artifact.uri}@sha256:${'d'.repeat(64)}`,sourceObject:{uri:`gs://${bucket}/source/fixture.tar.gz`,sha256:'e'.repeat(64),generation:'1',crc32c:'fixture'},
+  migrationBundleRef:h.put(`gs://${bucket}/source/migration-bundles/schema64.json`,sourceBundle),provenanceReceiptRef:row('provenance',{}),sbomReceiptRef:row('sbom',{}),scanReceiptRef:row('scan',{})}
+ const build=h.put(paths.build,stageReceipt({profile,intent:previous,stage:'build',previousReceiptRef:change.join?{...prepare,sha256:'0'.repeat(64)}:prepare,observedAt:'2020-01-01T00:00:02Z',facts}))
+ h.put(paths.deployment,{schemaVersion:profile.schemas.deploymentCapsule,ownerApplicationId:'orgmaster',sourceRevision,releaseIntentRef:ref,releaseIntentSha256:ref.sha256,deadlineAt,buildReceiptRef:build,migrationRunnerDigest:runner,...facts})
+ const receipt={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:change.owner??'orgmaster',sourceRevision,database:change.database??'jenfu_prod',ledger:'orgmaster_core.schema_migrations',manifestSha256:sourceBundle.manifestSha256,
+  baselineCount:10,minimumLedgerCount:10,ledgerCount:change.ledgerCount??64,applied:4,replayed:60,crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}],boundaryStatus:'PASS',status:'PASS',startedAt:'2020-01-01T00:00:03Z',completedAt:change.completedAt??'2020-01-01T00:00:04Z'}
+ h.put(paths.migrate,{...receipt,receiptSha256:sha256(canonicalize(receipt))})
+ if(change.candidate)h.put(paths.candidate,{unexpected:true})
+ if(change.missing)h.objects.delete(paths[change.missing])
+ const readSourceIdentity=(_root,revision)=>{assert.equal(revision,sourceRevision);return identity}
+ const input={root:'.',profile,transport:h.input.transport,ref,intent:h.input.intent,baseline:{activeRevision:previous.previousRevision,bundle:{value:prefixBundle(oldBundle.bundle,60)}},readSourceIdentity}
+ return {ref,input,identity,paths}
+}
+
+test('sealed schema64 feeds external65 while the RELEASED runtime baseline stays60',async()=>{
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,60),currentBundle:newBundle})
+ const predecessor=sealedSchemaPredecessor(h)
+ assert.ok(Date.parse(h.objects.get(predecessor.ref.uri).value.deadlineAt)<Date.now(),'completed schema evidence remains usable after its original capsule expires')
+ const common={devId:'DEV-057',slice:'057-PROJED-EXTERNAL',remediation:DEV057_EXTERNAL_REMEDIATION,schemaPredecessorRef:predecessor.ref}
+ h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
+ h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
+ attachForwardInfra(h)
+ h.input.executionMode='migration_only';h.input.readSchemaPredecessorSourceIdentity=predecessor.input.readSourceIdentity
+ const before=structuredClone(h.input.intent),size=h.objects.size
+ const plan=await verifyRoutineRelease(h.input)
+ assert.equal(plan.pendingMigrationCount,1);assert.equal(plan.releaseMode,DEV057_EXTERNAL_RELEASE_MODE)
+ assert.equal(plan.schemaPredecessor.applicationReleased,false);assert.deepEqual(plan.baselineIntentRef,before.baselineIntentRef)
+ assert.deepEqual(h.input.intent,before);assert.equal(h.objects.size,size)
+ await assert.rejects(verifyRoutineRelease({...h.input,executionMode:'full_release'}),/DEV057_SCHEMA_PREDECESSOR_MODE_INVALID/)
+})
+
+test('schema predecessor rejects altered ownership, source, prefix, receipt joins, incomplete stages and runtime-started history',async()=>{
+ for(const [change,expected] of [[{owner:'platform'},/MIGRATION_RECEIPT_INVALID/],[{database:'jenfu_stg'},/MIGRATION_RECEIPT_INVALID/],
+  [{sourceLockRevision:newSource},/DEV057_SCHEMA_PREDECESSOR_INVALID/],[{prefix:true},/MIGRATION_PREFIX_001_031_DRIFT/],
+  [{join:true},/DEV057_SCHEMA_PREDECESSOR_INVALID/],[{ledgerCount:63},/MIGRATION_RECEIPT_INVALID/],
+  [{completedAt:'2020-01-03T00:00:00Z'},/DEV057_SCHEMA_PREDECESSOR_INVALID/],[{candidate:true},/DEV057_SCHEMA_PREDECESSOR_RUNTIME_STARTED/],
+  [{missing:'build'},/MISSING/],[{missing:'migrate'},/MISSING/]]){
+  const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,60)}),f=sealedSchemaPredecessor(h,change),before=h.objects.size
+  await assert.rejects(readDev057ExternalSchemaPredecessor(f.input),expected);assert.equal(h.objects.size,before)
+ }
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,60)}),f=sealedSchemaPredecessor(h,{sourceRevision:'0'.repeat(40)})
+ await assert.rejects(readDev057ExternalSchemaPredecessor({...f.input,readSourceIdentity:undefined}),/DEV057_SCHEMA_PREDECESSOR_SOURCE_UNKNOWN/)
 })

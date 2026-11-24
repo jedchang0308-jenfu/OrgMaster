@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { DEV057_EXTERNAL_REMEDIATION } from './lib/dev057-projed-external-migration.mjs'
+import { DEV057_EXTERNAL_REMEDIATION, assertDev057SchemaPredecessorRef } from './lib/dev057-projed-external-migration.mjs'
 import { DEV058_ROLE_POLICY_REMEDIATION } from './lib/dev058-role-policy-migration.mjs'
 import { DEV059_FMS_AUTHORITY_REMEDIATION } from './lib/dev059-fms-authority-migration.mjs'
 import { DEV057_PROJED_REMEDIATION, DEV057_PROJED_RELEASE_MODE } from './lib/dev057-projed-principal-migration.mjs'
@@ -44,6 +44,7 @@ export function parseDeployProductionArgs(argv) {
   const options = { check: false, prepareOnly: false, reuseAbortedAppArtifact: false, dev014Activate: false, dev014PrincipalLifecycleV2Remediation: false, dev014ContractRemediation: false, dev014ApplicationRegistrationRemediation: false, dev014ActivationContractRemediation: false, dev014ProjectionContractRemediation: false, dev014ManagedPrincipalProjectionRemediation: false, dev014LoginFixtureCorrection: false, dev057WriterFenceRemediation: false, dev057PrincipalContractRemediation: false, dev057CutoverSourceRemediation: false, dev057PrincipalGrantsV3Remediation: false, dev057PrincipalGrantsV4Remediation: false, dev057EmployeeNumberCommandReceiptV2Remediation: false, handoffMode: null, action: null, predecessorReceiptRef: null, infraReceiptRef: null, infraOption: null, smokeRotationRef: null, infraReuseRef: null, principalOnlyRecoveryRef: null }
   options.dev014PrincipalLifecycleEnable = false
   options.dev058RolePolicyAppend = false
+  options.schemaPredecessorRef = null
   options.dev059FmsAuthorityAppend = false
   options.dev057ProjedExternalAppend = false
   options.dev057ProjedPrincipalAppend = false
@@ -65,6 +66,10 @@ export function parseDeployProductionArgs(argv) {
       const match = /^(?<uri>gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/[A-Z0-9][A-Z0-9-]{5,63}\/release-intent\.json)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--resume-capsule-ref='.length))
       if (!match) throw new Error('MIGRATION_CONTINUATION_REF_INVALID')
       options.resumeCapsuleRef = { ...match.groups }
+    } else if (arg.startsWith('--dev057-schema-predecessor-ref=') && options.schemaPredecessorRef === null) {
+      const match = /^(?<uri>\S+)#sha256=(?<sha256>[a-f0-9]{64})$/u.exec(arg.slice('--dev057-schema-predecessor-ref='.length))
+      if (!match) throw new Error('DEV057_SCHEMA_PREDECESSOR_REF_INVALID')
+      options.schemaPredecessorRef = assertDev057SchemaPredecessorRef({ ...match.groups })
     } else if (arg === '--migration-only' && !options.migrationOnly) options.migrationOnly = true
     else if (arg === '--check' && !options.check) options.check = true
     else if (arg === '--prepare-only' && !options.prepareOnly) options.prepareOnly = true
@@ -143,6 +148,7 @@ export function parseDeployProductionArgs(argv) {
   if (options.resumeCapsuleRef && Object.entries(options).some(([key, value]) =>
     !['check', 'resumeCapsuleRef'].includes(key) && value !== false && value !== null)) throw new Error('MIGRATION_CONTINUATION_OPTIONS_INVALID')
   if (options.migrationOnly && options.dev014PrincipalLifecycleV2Remediation) throw new Error('MIGRATION_ONLY_RUNTIME_ACTION_DENIED')
+  if (options.schemaPredecessorRef && (!options.migrationOnly || !options.dev057ProjedExternalAppend)) throw new Error('DEV057_SCHEMA_PREDECESSOR_MODE_INVALID')
   const controlled = [options.handoffMode, options.action, options.predecessorReceiptRef].filter((value) => value !== null).length
   const dev014Mode = Number(options.dev014PrincipalLifecycleEnable) + Number(options.dev014PrincipalLifecycleV2Remediation) + Number(options.dev014Activate) + Number(options.dev014ContractRemediation) + Number(options.dev014ApplicationRegistrationRemediation) + Number(options.dev014ActivationContractRemediation) + Number(options.dev014ProjectionContractRemediation) + Number(options.dev014ManagedPrincipalProjectionRemediation) + Number(options.dev014LoginFixtureCorrection)
   const dev057Mode = Number(options.dev057ProjedExternalAppend) + Number(options.dev057ProjedPrincipalAppend) + Number(options.dev057WriterFenceRemediation) + Number(options.dev057PrincipalContractRemediation) + Number(options.dev057CutoverSourceRemediation) + Number(options.dev057PrincipalGrantsV3Remediation) + Number(options.dev057PrincipalGrantsV4Remediation) + Number(options.dev057EmployeeNumberCommandReceiptV2Remediation)
@@ -425,7 +431,8 @@ async function main() {
     : dev014PrincipalLifecycleV2Remediation ? { devId: 'DEV-014', slice: '014-PRINCIPAL-LIFECYCLE-V2', remediation: dev014PrincipalLifecycleV2Remediation, ...(appliedAbortInfraBaseline ? {appliedAbortInfraBaseline} : {}) } : {}
   const dev058Authority = options.dev058RolePolicyAppend ? { devId: 'DEV-058', slice: '058-ROLE-POLICY', remediation: DEV058_ROLE_POLICY_REMEDIATION } : {}
   const dev059Authority = options.dev059FmsAuthorityAppend ? { devId: 'DEV-059', slice: '059-FMS-AUTHORITY', remediation: DEV059_FMS_AUTHORITY_REMEDIATION } : {}
-  const dev057ProjedAuthority = options.dev057ProjedExternalAppend ? { devId: 'DEV-057', slice: '057-PROJED-EXTERNAL', remediation: DEV057_EXTERNAL_REMEDIATION } : options.dev057ProjedPrincipalAppend ? { devId: 'DEV-057', slice: '057-PROJED-PRINCIPAL', remediation: DEV057_PROJED_REMEDIATION } : {}
+  const dev057ProjedAuthority = options.dev057ProjedExternalAppend ? { devId: 'DEV-057', slice: '057-PROJED-EXTERNAL', remediation: DEV057_EXTERNAL_REMEDIATION,
+    ...(options.schemaPredecessorRef ? { schemaPredecessorRef: options.schemaPredecessorRef } : {}) } : options.dev057ProjedPrincipalAppend ? { devId: 'DEV-057', slice: '057-PROJED-PRINCIPAL', remediation: DEV057_PROJED_REMEDIATION } : {}
   const dev070Authority=options.dev070AdministrationAppend?{devId:'DEV-070',slice:'070-ADMINISTRATION',remediation:DEV070_ADMINISTRATION_REMEDIATION}:{}
   const dev060Authority = options.dev060FmsCatalogActivationAppend ? { devId: 'DEV-060', slice: '060-FMS-CATALOG-ACTIVATION', remediation: DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION } : {}
   const authorization = bindDeployToolRotationAuthority(options, { ...authority, ...lifecycleV2Authority, ...dev058Authority, ...dev059Authority, ...dev060Authority, ...dev070Authority, ...dev057ProjedAuthority, schemaVersion: transition ? 'jenfu.dev013.l4-owner-transition-authorization.v1' : 'orgmaster.routine-release-authorization.v1', authorizationBasis: transition ? 'OPERATOR_INVOKED_DEV013_L4' : 'OPERATOR_INVOKED_DEPLOY_PRODUCTION', ...(appArtifactReuse ? { appArtifactReuse } : {}), ...(dev014Activation ? { devId: 'DEV-014', slice: '014-LOGIN', activation: dev014Activation } : {}), ...(dev014Remediation ? { devId: 'DEV-014', slice: '014-PRODUCER-CONTRACT', remediation: dev014Remediation } : {}), ...(dev014ApplicationRegistrationRemediation ? { devId: 'DEV-014', slice: '014-APPLICATION-REGISTRATION', remediation: dev014ApplicationRegistrationRemediation } : {}), ...(dev014ActivationContractRemediation ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CONTRACT', remediation: dev014ActivationContractRemediation } : {}), ...(dev014ProjectionContractRemediation ? { devId: 'DEV-014', slice: '014-PROJECTION-CONTRACT', remediation: dev014ProjectionContractRemediation } : {}), ...(dev014ManagedPrincipalProjectionRemediation ? { devId: 'DEV-014', slice: '014-MANAGED-PRINCIPAL-PROJECTION', remediation: dev014ManagedPrincipalProjectionRemediation } : {}), ...(dev014LoginFixtureCorrection ? { devId: 'DEV-014', slice: '014-LOGIN-FIXTURE-CORRECTION', correction: dev014LoginFixtureCorrection } : {}), ...(dev057WriterFenceRemediation ? { devId: 'DEV-057', slice: '057-WRITER-FENCE', remediation: dev057WriterFenceRemediation } : {}), ...(dev057PrincipalContractRemediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-CONTRACT', remediation: dev057PrincipalContractRemediation } : {}), ...(dev057CutoverSourceRemediation ? { devId: 'DEV-057', slice: '057-CUTOVER-SOURCE', remediation: dev057CutoverSourceRemediation } : {}), ...(dev057PrincipalGrantsV3Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V3', remediation: dev057PrincipalGrantsV3Remediation } : {}), ...(dev057PrincipalGrantsV4Remediation ? { devId: 'DEV-057', slice: '057-PRINCIPAL-GRANTS-V4', remediation: dev057PrincipalGrantsV4Remediation } : {}), ...(dev057EmployeeNumberCommandReceiptV2Remediation ? { devId: 'DEV-057', slice: '057-EMPLOYEE-NUMBER-COMMAND-RECEIPT-V2', remediation: dev057EmployeeNumberCommandReceiptV2Remediation } : {}) })

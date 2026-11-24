@@ -106,9 +106,20 @@ test('S1B-21 OrgMaster v3 direct-run profile preserves staging boundary', () => 
   assert.equal(profile.environment.fixedValues.ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL, 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com')
   assert.equal(profile.environment.fixedValues.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL, 'platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com')
   assert.equal(profile.environment.fixedValues.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT, '101029748006912113815')
+  assert.equal(profile.environment.fixedValues.ORGMASTER_PROJED_CALLER_EMAIL, 'projed-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com')
+  assert.equal(profile.environment.fixedValues.ORGMASTER_PROJED_CALLER_SUBJECT, '109317730993775447820')
+  const wrongProjedCaller = structuredClone(profile)
+  wrongProjedCaller.environment.fixedValues.ORGMASTER_PROJED_CALLER_SUBJECT = '101029748006912113815'
+  assert.throws(() => assertDev040V3Profile(wrongProjedCaller, n1c), /ENVIRONMENT_VALUE_DRIFT/u)
+  const wrongProjedEmail = structuredClone(profile)
+  wrongProjedEmail.environment.fixedValues.ORGMASTER_PROJED_CALLER_EMAIL = 'orgmaster-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com'
+  assert.throws(() => assertDev040V3Profile(wrongProjedEmail, n1c), /ENVIRONMENT_VALUE_DRIFT/u)
+  const missingProjedCaller = structuredClone(profile)
+  missingProjedCaller.environment.requiredPlainEnvironmentNames = missingProjedCaller.environment.requiredPlainEnvironmentNames.filter((name) => name !== 'ORGMASTER_PROJED_CALLER_EMAIL')
+  assert.throws(() => assertDev040V3Profile(missingProjedCaller, n1c), /ENVIRONMENT_SET_DRIFT/u)
 })
 
-test('S1B-21 OrgMaster runtime keeps credentials out of plain environment', () => {
+test('S1B-21 OrgMaster runtime keeps credentials out of plain environment and binds ProJED caller', () => {
   const priorPlainEnvironment = Object.fromEntries(profile.environment.requiredPlainEnvironmentNames.filter((name) => !['ORGMASTER_JENFU_SSO_HANDOFF_MODE', 'ORGMASTER_JENFU_SSO_BROKER_ORIGIN'].includes(name) && !Object.hasOwn(profile.environment.controlledValues, name)).map((name) => [name, profile.environment.fixedValues[name] ?? `plain-${name}`]))
   const plainEnvironment = resolvePlainEnvironment(profile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'on' })
   const secretVersions = Object.fromEntries(profile.environment.requiredSecretNames.map((name) => [name, '1']))
@@ -119,6 +130,8 @@ test('S1B-21 OrgMaster runtime keeps credentials out of plain environment', () =
   assert.equal(runtime.template.containers[0].env.find((row) => row.name === 'ORGMASTER_POSTGRES_URL').valueSource.secretKeyRef.secret, 'orgmaster-prod-postgres-url')
   assert.equal(runtime.plainEnvironment.ORGMASTER_JENFU_SSO_HANDOFF_MODE, 'on')
   assert.equal(runtime.plainEnvironment.ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED, 'false')
+  assert.equal(runtime.plainEnvironment.ORGMASTER_PROJED_CALLER_EMAIL, 'projed-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com')
+  assert.equal(runtime.plainEnvironment.ORGMASTER_PROJED_CALLER_SUBJECT, '109317730993775447820')
   assert.throws(() => resolvePlainEnvironment(profile, priorPlainEnvironment, { ORGMASTER_JENFU_SSO_HANDOFF_MODE: 'launch' }), /RUNTIME_CONFIG_READBACK_MISMATCH/u)
   assert.equal(assertRuntimeConfig(profile, runtime).containers.length, 2)
 })

@@ -15,6 +15,12 @@ export const DEV057_EXTERNAL_REMEDIATION = Object.freeze({
 })
 const fail = code => { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => canonicalize(a) === canonicalize(b)
+export function assertDev057SchemaPredecessorRef(ref) {
+  if (!ref || Object.keys(ref).sort().join(',') !== 'sha256,uri'
+    || !/^gs:\/\/jenfu-platform-prod-orgmaster-release\/receipts\/releases\/[A-Z0-9][A-Z0-9-]{5,63}\/release-intent\.json$/u.test(ref.uri ?? '')
+    || !/^[a-f0-9]{64}$/u.test(ref.sha256 ?? '')) fail('DEV057_SCHEMA_PREDECESSOR_REF_INVALID')
+  return ref
+}
 export function assertDev057ExternalMigrationEntries(entries) {
   if (!Array.isArray(entries) || entries.length !== DEV057_EXTERNAL_ENTRY_COUNT) fail('MIGRATION_SET_DRIFT')
   assertDev057ProjedMigrationEntries(entries.slice(0, DEV057_EXTERNAL_BASELINE_COUNT))
@@ -41,5 +47,11 @@ export function assertDev057ExternalReleaseAuthority(readiness, authorization, i
     || [readiness, authorization].some(row => row.devId !== 'DEV-057' || row.slice !== '057-PROJED-EXTERNAL' || !same(row.remediation, DEV057_EXTERNAL_REMEDIATION)
       || intent && (row.ownerApplicationId !== 'orgmaster' || row.ownerApplicationId !== intent.ownerApplicationId || !intent.baselineIntentRef
         || row.sourceRevision !== intent.sourceRevision || row.releaseId !== intent.releaseId || !same(row.baselineIntentRef, intent.baselineIntentRef)))) fail('DEV057_EXTERNAL_AUTHORITY_INVALID')
-  return { releaseMode: DEV057_EXTERNAL_RELEASE_MODE, remediation: DEV057_EXTERNAL_REMEDIATION }
+  const predecessor = readiness.schemaPredecessorRef
+  if (predecessor !== undefined || authorization.schemaPredecessorRef !== undefined) {
+    assertDev057SchemaPredecessorRef(predecessor)
+    if (!same(predecessor, authorization.schemaPredecessorRef)) fail('DEV057_EXTERNAL_AUTHORITY_INVALID')
+  }
+  return { releaseMode: DEV057_EXTERNAL_RELEASE_MODE, remediation: DEV057_EXTERNAL_REMEDIATION,
+    ...(predecessor === undefined ? {} : { schemaPredecessorRef: predecessor }) }
 }
