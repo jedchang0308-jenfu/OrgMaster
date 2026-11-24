@@ -11,6 +11,7 @@ const SCHEMA = 'orgmaster.release-executor-only-app-artifact-reuse.v1'
 export const RELEASE_EXECUTOR_ONLY_PATHS = Object.freeze([
   'AGENTS.md',
   'ai-doc/specs/DEV-040-jenfu-platform-entitlement-user-integration.md',
+  'ai-doc/specs/DEV-057-identity-and-grant-contract-boundary.md',
   'scripts/dev012-owner-stage-executor.test.mjs',
   'scripts/dev040-deploy-production.mjs',
   'scripts/dev040-orgmaster-independent-release.mjs',
@@ -18,6 +19,7 @@ export const RELEASE_EXECUTOR_ONLY_PATHS = Object.freeze([
   'scripts/dev040-tool-image-rotation.test.mjs',
   'scripts/qc-dev-040-r2-independent-release.mjs',
   'scripts/dev057-smoke-credential-rotation.mjs',
+  'scripts/dev057-smoke-credential-reauth.test.mjs',
   'scripts/lib/dev040-app-artifact-reuse.mjs',
   'scripts/lib/dev040-routine-release.mjs',
   'scripts/lib/dev040-tool-image-rotation.mjs',
@@ -25,6 +27,7 @@ export const RELEASE_EXECUTOR_ONLY_PATHS = Object.freeze([
   'scripts/lib/dev040-tool-terraform.test.mjs',
   'scripts/lib/dev012-owner-stage-executor.mjs',
   'scripts/lib/dev057-smoke-rotation-continuation.mjs',
+  'scripts/lib/dev057-shared-smoke-credential-evidence.mjs',
   'scripts/dev040-routine-release.test.mjs',
 ].sort())
 

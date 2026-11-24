@@ -2528,14 +2528,23 @@ test('app artifact reuse accepts only the fixed release-executor path set', () =
       fs.writeFileSync(path.join(directory, file), `${file}-baseline\n`)
     }
     run(['add', '.']); run(['commit', '-m', 'baseline']); const baseline = run(['rev-parse', 'HEAD'])
-    fs.mkdirSync(path.join(directory, 'scripts'), { recursive: true })
-    fs.writeFileSync(path.join(directory, 'scripts', 'dev040-deploy-production.mjs'), 'release-only\n')
+    const operatorPaths = ['scripts/dev040-deploy-production.mjs', 'scripts/lib/dev040-app-artifact-reuse.mjs',
+      'ai-doc/specs/DEV-057-identity-and-grant-contract-boundary.md',
+      'scripts/dev057-smoke-credential-reauth.test.mjs', 'scripts/lib/dev057-shared-smoke-credential-evidence.mjs']
+    for (const file of operatorPaths) {
+      fs.mkdirSync(path.dirname(path.join(directory, file)), { recursive: true })
+      fs.writeFileSync(path.join(directory, file), 'release-only\n')
+    }
     run(['add', '.']); run(['commit', '-m', 'release executor']); const release = run(['rev-parse', 'HEAD'])
     const proof = appArtifactSourceEquivalence(directory, baseline, release)
-    assert.deepEqual(proof.changedPaths.map(row => row.path), ['scripts/dev040-deploy-production.mjs'])
-    fs.writeFileSync(path.join(directory, 'Dockerfile'), 'runtime-change\n')
-    run(['add', '.']); run(['commit', '-m', 'runtime change']); const changed = run(['rev-parse', 'HEAD'])
-    assert.throws(() => appArtifactSourceEquivalence(directory, baseline, changed), /APP_ARTIFACT_REUSE_RUNTIME_INPUT_CHANGED/u)
+    assert.deepEqual(proof.changedPaths.map(row => row.path), [...operatorPaths].sort())
+    for (const file of ['server/orgmasterAuthApi.ts', 'db/migrations/999_unreviewed.sql', 'Dockerfile', 'package.json', 'scripts/unknown-release-helper.mjs']) {
+      run(['checkout', '--detach', release])
+      fs.mkdirSync(path.dirname(path.join(directory, file)), { recursive: true })
+      fs.writeFileSync(path.join(directory, file), 'runtime-change\n')
+      run(['add', '.']); run(['commit', '-m', 'runtime change']); const changed = run(['rev-parse', 'HEAD'])
+      assert.throws(() => appArtifactSourceEquivalence(directory, baseline, changed), /APP_ARTIFACT_REUSE_RUNTIME_INPUT_CHANGED/u)
+    }
   } finally { fs.rmSync(directory, { recursive: true, force: true }) }
 })
 
