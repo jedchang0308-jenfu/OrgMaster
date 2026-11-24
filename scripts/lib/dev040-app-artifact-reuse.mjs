@@ -1,5 +1,9 @@
 import { spawnSync } from 'node:child_process'
 import { assertImmutableRef, canonicalize, releasePaths, sha256 } from './dev012-owner-release-runtime.mjs'
+import { assertRuntimeConfig, buildRuntimeConfig } from './dev012-owner-release-runtime.mjs'
+import { assertMigrationBundle } from './dev012-production-migration-runner.mjs'
+import { DEV057_EXTERNAL_RELEASE_MODE, assertDev057ExternalAppend, assertDev057ExternalReleaseAuthority } from './dev057-projed-external-migration.mjs'
+import { dev057PreCallerRuntimeProfile, isDev057CallerEnvironmentAppend } from './dev057-projed-caller-profile.mjs'
 
 const H40 = /^[a-f0-9]{40}$/u
 const H64 = /^[a-f0-9]{64}$/u
@@ -89,20 +93,105 @@ function assertStageReceipt(value, profile, intent, stage) {
       value.status !== 'PASS' || receiptSha256 !== sha256(canonicalize(core))) fail('APP_ARTIFACT_REUSE_STAGE_INVALID')
 }
 
-export function assertReusableAbortedTerminal(value, attemptedIntent) {
+function assertAbortRecovery(value, attemptedIntent) {
   const facts = value?.facts
   const recovery = facts?.entrypointRecovery
   const recoveryShapeValid = recovery && typeof recovery.changed === 'boolean' &&
     ['NOT_REQUIRED', 'BASELINE_ALREADY_ACTIVE', 'BASELINE_RESTORED'].includes(recovery.result) &&
     (recovery.result === 'BASELINE_RESTORED' ? recovery.changed === true : recovery.changed === false)
   if (facts?.result !== 'PRE_ACTIVATION_ABORTED' || facts.previousRevision !== attemptedIntent?.previousRevision ||
-      !['NOT_APPLIED', 'UNCHANGED_VERIFIED'].includes(facts.databaseDisposition) || !recoveryShapeValid ||
+      !recoveryShapeValid ||
       (facts.remainingHumanAction != null && facts.remainingHumanAction !== 0)) fail('APP_ARTIFACT_REUSE_EVIDENCE_INVALID')
   return facts
 }
 
+export function assertReusableAbortedTerminal(value, attemptedIntent) {
+  const facts = assertAbortRecovery(value, attemptedIntent)
+  if (!['NOT_APPLIED', 'UNCHANGED_VERIFIED'].includes(facts.databaseDisposition)) fail('APP_ARTIFACT_REUSE_EVIDENCE_INVALID')
+  return facts
+}
+
+// A completed DEV-057 schema append is historical schema evidence, not RELEASED.
+// Keep the runtime baseline and validate the entire sealed 60 -> 64 -> 65 chain.
+async function readAppliedSchemaAbort({ root, profile, transport, attemptedIntent: attempt, attemptedIntentRef, deployment, build, terminal, readSourceIdentity }) {
+  const facts = assertAbortRecovery(terminal.value, attempt)
+  if (facts.databaseDisposition !== 'FORWARD_APPLIED' || profile.application.id !== 'orgmaster'
+    || profile.target.projectId !== 'jenfu-platform-prod' || attempt.productionDataRef || attempt.firstPrincipalBootstrapRef) fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  const { readRoutineBaseline, readDev057ExternalSchemaPredecessor, readSchemaPredecessorGitIdentity } = await import('./dev040-routine-release.mjs')
+  const { assertMigrationReceipt } = await import('./dev012-owner-stage-executor.mjs')
+  const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: attempt.baselineIntentRef })
+  if (baseline.activeRevision !== attempt.previousRevision || baseline.bundle.value.entries.length !== 60
+    || !same(attempt.foundationReceiptRef, baseline.intent.foundationReceiptRef)) fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  const paths = releasePaths(profile, attempt, attemptedIntentRef.sha256)
+  const named = async uri => readExact(transport, profile, (await transport.readBytes(uri, { prefixes: ['receipts'] })).ref)
+  const [prepare, migration, bundle, target] = await Promise.all([
+    named(paths.prepare), named(paths.migrate), readExact(transport, profile, deployment.value.migrationBundleRef, [profile.artifact.migrationBundlePrefix]),
+    readExact(transport, profile, attempt.runtimeConfigRef),
+  ])
+  assertStageReceipt(prepare.value, profile, attempt, 'prepare')
+  const names = { sourceLock: 'sourceLockRef', authorization: 'authorizationPolicyRef', readiness: 'readinessReceiptRef',
+    foundation: 'foundationReceiptRef', infra: 'infraReceiptRef', runtimeConfig: 'runtimeConfigRef' }
+  const values = Object.fromEntries(await Promise.all(Object.entries(names).map(async ([name, field]) =>
+    [name, (await readExact(transport, profile, attempt[field])).value])))
+  const authority = assertDev057ExternalReleaseAuthority(values.readiness, values.authorization, attempt)
+  const routine = prepare.value.facts.routine
+  if (prepare.value.previousReceiptRef !== null || !same(build.value.previousReceiptRef, prepare.ref)
+    || deployment.value.schemaVersion !== profile.schemas.deploymentCapsule || deployment.value.ownerApplicationId !== 'orgmaster'
+    || deployment.value.releaseIntentSha256 !== attemptedIntentRef.sha256 || deployment.value.deadlineAt !== attempt.deadlineAt
+    || !same(deployment.value.buildReceiptRef, build.ref) || deployment.value.productionDataRef || deployment.value.firstPrincipalBootstrapRef
+    || !same(prepare.value.facts.prerequisiteRefs, Object.fromEntries(Object.entries(names).map(([name, field]) => [name, attempt[field]])))
+    || authority.releaseMode !== DEV057_EXTERNAL_RELEASE_MODE || !authority.schemaPredecessorRef
+    || !same(routine?.controlledTransition, authority) || routine.migrationDisposition !== 'FORWARD_APPLY'
+    || routine.releaseMode !== DEV057_EXTERNAL_RELEASE_MODE || routine.pendingMigrationCount !== 1
+    || routine.previousRevision !== baseline.activeRevision || !same(routine.baselineIntentRef, attempt.baselineIntentRef)
+    || values.infra.migrationRunnerDigest !== deployment.value.migrationRunnerDigest
+    || prepare.value.facts.migrationRunnerDigest !== deployment.value.migrationRunnerDigest
+    || prepare.value.facts.previousRevision !== baseline.activeRevision || prepare.value.facts.runtimeServiceAccount !== profile.target.runtimeServiceAccount
+    || !deployment.value.migrationRunnerDigest?.startsWith(`${profile.artifact.migrationRunnerUri}@sha256:`)) fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  for (const field of ['artifactDigest', 'sourceObject', 'migrationBundleRef', 'provenanceReceiptRef', 'sbomReceiptRef', 'scanReceiptRef']) {
+    if (!same(build.value.facts[field], deployment.value[field])) fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  }
+  const source = values.sourceLock
+  const identity = (readSourceIdentity ?? readSchemaPredecessorGitIdentity)(root, attempt.sourceRevision)
+  if (source.ownerApplicationId !== 'orgmaster' || source.repository !== profile.application.repository || source.branch !== profile.application.branch
+    || source.remoteRef !== `refs/heads/${profile.application.branch}` || source.remoteRevision !== attempt.sourceRevision
+    || source.releaseId !== attempt.releaseId || source.sourceRevision !== attempt.sourceRevision || source.sourceTree !== identity.tree || !H40.test(source.sourceTree ?? '')
+    || source.sourceSha256 !== attempt.sourceSha256 || source.sourceSha256 !== sha256(identity.bytes)
+    || source.migrationManifestSha256 !== attempt.migrationManifestSha256 || source.status !== 'SOURCE_FROZEN'
+    || source.clean !== true || source.releaseAuthority !== true || source.evidenceScope !== 'PRODUCTION_BOUND') fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  const times = [source.observedAt, prepare.value.observedAt, build.value.observedAt, migration.value.startedAt, migration.value.completedAt, terminal.value.observedAt].map(Date.parse)
+  const deadline = Date.parse(attempt.deadlineAt)
+  if (!Number.isFinite(deadline) || times.some((time, index) => !Number.isFinite(time) || time > deadline || index > 0 && time < times[index - 1])) fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  for (const row of [values.authorization, values.readiness]) {
+    if (row.environment !== 'production' || row.projectId !== profile.target.projectId || row.releaseAuthority !== true
+      || row.evidenceScope !== 'PRODUCTION_BOUND' || row.status !== 'PASS' || row.remainingHumanAction !== 0
+      || !Number.isFinite(Date.parse(row.expiresAt)) || Date.parse(row.expiresAt) < times[4]) fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  }
+  assertMigrationBundle(bundle.value, { target: { ownerApplicationId: 'orgmaster', ledger: profile.migrations.ledger, baselineCount: 10 },
+    sourceRevision: attempt.sourceRevision, bytes: bundle.bytes, bundleSha256: bundle.ref.sha256 })
+  if (bundle.value.manifestSha256 !== attempt.migrationManifestSha256) fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  const predecessor = await readDev057ExternalSchemaPredecessor({ root, profile, transport, ref: authority.schemaPredecessorRef,
+    intent: attempt, baseline, readSourceIdentity })
+  const append = assertDev057ExternalAppend(predecessor.bundle.value, bundle.value)
+  if (routine.migrationInputsSha256 !== append.migrationInputsSha256 || !same(routine.schemaPredecessor?.migrationReceiptRef, predecessor.migrationReceiptRef)) fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  assertMigrationReceipt(migration.value, profile, attempt, { allowForward: true, forwardPlan: routine })
+  const priorRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
+  const candidateRuntime = target.value.runtimeConfig ?? target.value
+  if (target.value.schemaVersion !== 'jenfu.dev012.owner-runtime-config-receipt.v1' || target.value.ownerApplicationId !== 'orgmaster'
+    || target.value.projectId !== profile.target.projectId || target.value.sourceRevision !== attempt.sourceRevision
+    || target.value.releaseId !== attempt.releaseId || target.value.status !== 'VERIFIED' || target.value.releaseAuthority !== true
+    || target.value.evidenceScope !== 'PRODUCTION_BOUND') fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  assertRuntimeConfig(dev057PreCallerRuntimeProfile(profile), priorRuntime)
+  assertRuntimeConfig(profile, candidateRuntime)
+  if (!isDev057CallerEnvironmentAppend(profile, priorRuntime.plainEnvironment, candidateRuntime.plainEnvironment)
+    || !same(buildRuntimeConfig(profile, { plainEnvironment: candidateRuntime.plainEnvironment, secretVersions: priorRuntime.secretVersions }), candidateRuntime)) fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
+  return { prepareRef: prepare.ref, migrationReceiptRef: migration.ref, migrationBundleRef: bundle.ref,
+    runtimeConfigRef: target.ref, sourceRevision: attempt.sourceRevision, manifestSha256: attempt.migrationManifestSha256,
+    migrationInputsSha256: append.migrationInputsSha256, ledgerCount: migration.value.ledgerCount, applicationReleased: false }
+}
+
 export async function buildAbortedAppArtifactReuse({ root, profile, transport, releaseSourceRevision,
-  attemptedIntent, attemptedIntentRef, sourceProof }) {
+  attemptedIntent, attemptedIntentRef, sourceProof, readSourceIdentity }) {
   const intentRead = await readExact(transport, profile, attemptedIntentRef)
   if (!same(intentRead.value, attemptedIntent) || !attemptedIntent.baselineIntentRef || attemptedIntent.sourceRevision === releaseSourceRevision) {
     fail('APP_ARTIFACT_REUSE_ATTEMPT_INVALID')
@@ -118,7 +207,9 @@ export async function buildAbortedAppArtifactReuse({ root, profile, transport, r
   ])
   assertStageReceipt(build.value, profile, attemptedIntent, 'build')
   assertStageReceipt(terminal.value, profile, attemptedIntent, 'terminal')
-  assertReusableAbortedTerminal(terminal.value, attemptedIntent)
+  const appliedSchema = terminal.value.facts?.databaseDisposition === 'FORWARD_APPLIED'
+    ? await readAppliedSchemaAbort({ root, profile, transport, attemptedIntent, attemptedIntentRef, deployment, build, terminal, readSourceIdentity })
+    : (assertReusableAbortedTerminal(terminal.value, attemptedIntent), null)
   const artifactDigest = deployment.value.artifactDigest
   const sourceObject = deployment.value.sourceObject
   if (deployment.value.sourceRevision !== attemptedIntent.sourceRevision || !same(deployment.value.releaseIntentRef, attemptedIntentRef) ||
@@ -143,11 +234,12 @@ export async function buildAbortedAppArtifactReuse({ root, profile, transport, r
     cloudBuildId: provenance.value.cloudBuild.id, sourceEquivalence, sourceProof,
     deploymentRef: deployment.ref, buildReceiptRef: build.ref, provenanceReceiptRef: provenance.ref,
     sbomReceiptRef: sbom.ref, scanReceiptRef: scan.ref, terminalRef: terminal.ref,
+    ...(appliedSchema ? { appliedSchema } : {}),
     status: 'PASS', releaseAuthority: false, evidenceScope: 'PROVIDER_PROVEN_RELEASE_EXECUTOR_ONLY_REUSE',
   }
 }
 
-export async function assertAppArtifactReuse({ root, profile, transport, intent, association }) {
+export async function assertAppArtifactReuse({ root, profile, transport, intent, association, readSourceIdentity }) {
   if (association?.schemaVersion !== SCHEMA || association.ownerApplicationId !== profile.application.id ||
       association.projectId !== profile.target.projectId || association.releaseSourceRevision !== intent.sourceRevision ||
       association.status !== 'PASS' || association.releaseAuthority !== false ||
@@ -166,6 +258,11 @@ export async function assertAppArtifactReuse({ root, profile, transport, intent,
   ])
   assertStageReceipt(build.value, profile, attempt.value, 'build')
   assertStageReceipt(terminal.value, profile, attempt.value, 'terminal')
+  const appliedSchema = terminal.value.facts?.databaseDisposition === 'FORWARD_APPLIED'
+    ? await readAppliedSchemaAbort({ root, profile, transport, attemptedIntent: attempt.value, attemptedIntentRef: attempt.ref,
+      deployment, build, terminal, readSourceIdentity })
+    : (assertReusableAbortedTerminal(terminal.value, attempt.value), null)
+  if (!same(appliedSchema, association.appliedSchema ?? null)) fail('APP_ARTIFACT_REUSE_SCHEMA_DRIFT')
   if (attempt.value.sourceRevision !== association.artifactSourceRevision || !same(attempt.value.baselineIntentRef, association.baselineIntentRef) ||
       attempt.value.previousRevision !== association.previousRevision || deployment.value.artifactDigest !== association.artifactDigest ||
       !same(deployment.value.sourceObject, association.artifactSourceObject) || build.value.facts?.artifactDigest !== association.artifactDigest ||

@@ -11,7 +11,7 @@ import { assertToolRotationReleaseCompatibility, resolveToolRotationPredecessorB
 import { ownerWorkflowDispatchArgs, parseDeployProductionArgs, selectDeployInfrastructureRef, verifyDeployProductionRelease } from './dev040-deploy-production.mjs'
 import { buildReauthReceipt, EXPECTED, identityPairHash } from './lib/dev057-smoke-credential-reauth.mjs'
 import { assertPublishedSmokeRotationAdvance, assertSmokeCredentialRotationPlan, assertSmokeRotationContinuation, assertSmokeInfraReuseEvidence,assertSmokeInfraReuseContinuation,buildSmokeInfraReuseReceipt, expectedSmokeWorkflowSource, MAX_SMOKE_REUSE_CHAIN_DEPTH, readSmokeReuseProviderState, smokeInfraTemplateProjection } from './lib/dev057-smoke-rotation-continuation.mjs'
-import { appArtifactSourceEquivalence, assertReusableAbortedTerminal } from './lib/dev040-app-artifact-reuse.mjs'
+import { appArtifactSourceEquivalence, assertReusableAbortedTerminal, buildAbortedAppArtifactReuse } from './lib/dev040-app-artifact-reuse.mjs'
 import { buildSourceFreeze, executePrerequisiteProducer, parsePrerequisiteProducerArgs } from './lib/dev012-owner-prerequisite-producer.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -3122,4 +3122,163 @@ test('migration-only plans exact caller pins while validating the unchanged pre-
  const realGet=h.input.transport.getRevision
  h.input.transport.getRevision=async(...args)=>{const revision=await realGet(...args);revision.containers[0].env.push({name:'ORGMASTER_PROJED_CALLER_SUBJECT',value:DEV057_PROJED_CALLER_PINS.ORGMASTER_PROJED_CALLER_SUBJECT});return revision}
  await assert.rejects(verifyRoutineRelease(h.input),/ROUTINE_RUNTIME_DRIFT/)
+})
+
+
+// Reproduce the 06edd0c migration-only -> failed full-resume state with synthetic
+// receipts. Git source identity/equivalence use the real historical commit;
+// every provider value and transport remains isolated and synthetic.
+function appliedSchemaAbortHarness(change = {}) {
+  const beforeProfile = dev057PreCallerRuntimeProfile(profile)
+  const beforePlain = { ...plain }
+  for (const name of Object.keys(DEV057_PROJED_CALLER_PINS)) delete beforePlain[name]
+  const beforeRuntime = buildRuntimeConfig(beforeProfile, { plainEnvironment: beforePlain, secretVersions: runtime.secretVersions })
+  const sourceRevision = '06edd0c97d9af2f7b29c1589cadc4a5766ad0522'
+  const releaseSourceRevision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim()
+  const currentBundle = buildBundle(releaseSourceRevision)
+  const h = harness({ baselineRuntime: beforeRuntime, nextRuntime: runtime, baselineBundle: prefixBundle(oldBundle.bundle, 60), currentBundle })
+  const schema64 = sealedSchemaPredecessor(h, change.schema64)
+  const identity = { tree: spawnSync('git', ['rev-parse', sourceRevision + '^{tree}'], { encoding: 'utf8' }).stdout.trim(),
+    bytes: spawnSync('git', ['ls-tree', '-r', '-z', '--full-tree', sourceRevision]).stdout }
+  const sourceBundle = buildBundle(sourceRevision).bundle
+  const releaseId = 'ORGMASTER-REL-20261124022543167-06EDD0C'
+  const observedAt = '2026-11-24T02:25:43.168Z', deadlineAt = '2026-11-24T06:25:43.168Z'
+  const row = (name, value) => h.put(`gs://${bucket}/receipts/applied-abort/${name}.json`, value)
+  const common = { ownerApplicationId: 'orgmaster', projectId: profile.target.projectId, sourceRevision, releaseId,
+    environment: 'production', baselineIntentRef: h.input.intent.baselineIntentRef, expiresAt: deadlineAt, observedAt,
+    status: 'PASS', releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', remainingHumanAction: 0,
+    devId: 'DEV-057', slice: '057-PROJED-EXTERNAL', remediation: DEV057_EXTERNAL_REMEDIATION, schemaPredecessorRef: schema64.ref }
+  const runner = `${profile.artifact.migrationRunnerUri}@sha256:${'4'.repeat(64)}`
+  const sourceLockRef = row('source', { schemaVersion: 'jenfu.dev012.owner-source-lock.v1', ownerApplicationId: 'orgmaster',
+    repository: profile.application.repository, branch: profile.application.branch, releaseId, sourceRevision,
+    sourceTree: identity.tree, sourceSha256: sha256(identity.bytes), migrationManifestSha256: sourceBundle.manifestSha256,
+    clean: true, remoteRef: 'refs/heads/master', remoteRevision: sourceRevision, status: 'SOURCE_FROZEN',
+    releaseAuthority: true, evidenceScope: 'PRODUCTION_BOUND', observedAt, ...change.source })
+  const attempt = { schemaVersion: profile.schemas.releaseIntent, ownerApplicationId: 'orgmaster', releaseId, sourceRevision,
+    sourceSha256: sha256(identity.bytes), sourceLockRef,
+    authorizationPolicyRef: row('auth', { ...common, schemaVersion: 'orgmaster.routine-release-authorization.v1', authorizationBasis: 'OPERATOR_INVOKED_DEPLOY_PRODUCTION' }),
+    readinessReceiptRef: row('readiness', { ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }),
+    foundationReceiptRef: change.foundation ? row('foreign-foundation', { projectId: 'foreign' }) : h.input.intent.foundationReceiptRef,
+    infraReceiptRef: row('infra', { migrationRunnerDigest: runner }),
+    runtimeConfigRef: row('target-runtime', { ...common, schemaVersion: 'jenfu.dev012.owner-runtime-config-receipt.v1', status: 'VERIFIED', runtimeConfig: change.targetRuntime ?? runtime, ...change.targetMetadata }),
+    migrationManifestSha256: sourceBundle.manifestSha256, previousRevision: h.input.intent.previousRevision,
+    baselineIntentRef: h.input.intent.baselineIntentRef, deadlineAt }
+  const attemptedIntentRef = h.put(`gs://${bucket}/receipts/releases/${releaseId}/release-intent.json`, attempt)
+  const paths = releasePaths(profile, attempt, attemptedIntentRef.sha256)
+  const names = { sourceLock: 'sourceLockRef', authorization: 'authorizationPolicyRef', readiness: 'readinessReceiptRef', foundation: 'foundationReceiptRef', infra: 'infraReceiptRef', runtimeConfig: 'runtimeConfigRef' }
+  const { sourceRevision: _source, manifestSha256: _manifest, ...inputs } = sourceBundle
+  const schema64Migration = h.objects.get(schema64.paths.migrate).ref
+  const routine = { releaseMode: DEV057_EXTERNAL_RELEASE_MODE,
+    controlledTransition: { releaseMode: DEV057_EXTERNAL_RELEASE_MODE, remediation: DEV057_EXTERNAL_REMEDIATION, schemaPredecessorRef: schema64.ref },
+    migrationDisposition: 'FORWARD_APPLY', pendingMigrationCount: 1, migrationInputsSha256: sha256(canonicalize(inputs)),
+    previousRevision: attempt.previousRevision, baselineIntentRef: attempt.baselineIntentRef, schemaPredecessor: { migrationReceiptRef: schema64Migration } }
+  const prepare = h.put(paths.prepare, stageReceipt({ profile, intent: attempt, stage: 'prepare', observedAt,
+    facts: { routine, migrationRunnerDigest: runner, previousRevision: attempt.previousRevision, runtimeServiceAccount: profile.target.runtimeServiceAccount,
+      prerequisiteRefs: Object.fromEntries(Object.entries(names).map(([key, field]) => [key, attempt[field]])) } }))
+  const artifactDigest = `${profile.artifact.uri}@sha256:${'d'.repeat(64)}`
+  const sourceObject = { uri: `gs://${bucket}/source/fixture.tar.gz`, sha256: 'e'.repeat(64), generation: '1', crc32c: 'synthetic' }
+  const provenanceReceiptRef = h.put(paths.provenance, { schemaVersion: 'jenfu.dev012.build-provenance-receipt.v1', status: 'PASS', sourceRevision,
+    artifactDigest, cloudBuild: { status: 'SUCCESS', id: 'synthetic-build' }, buildDisposition: 'BUILT', artifactSourceRevision: sourceRevision,
+    sourceObject, sourceArchiveSha256: sourceObject.sha256, buildInputSha256: 'f'.repeat(64) })
+  const facts = { artifactDigest, sourceObject, migrationBundleRef: h.put(`gs://${bucket}/source/migration-bundles/applied65.json`, sourceBundle),
+    provenanceReceiptRef, sbomReceiptRef: h.put(paths.sbom, { status: 'PASS', artifactDigest }), scanReceiptRef: h.put(paths.scan, { status: 'PASS', artifactDigest, blockingVulnerabilityCount: 0 }) }
+  const build = h.put(paths.build, stageReceipt({ profile, intent: attempt, stage: 'build', previousReceiptRef: change.buildJoin ? { ...prepare, sha256: '0'.repeat(64) } : prepare,
+    observedAt: '2026-11-24T02:33:00.000Z', facts }))
+  h.put(paths.deployment, { schemaVersion: profile.schemas.deploymentCapsule, ownerApplicationId: 'orgmaster', sourceRevision,
+    releaseIntentRef: attemptedIntentRef, releaseIntentSha256: attemptedIntentRef.sha256, deadlineAt, buildReceiptRef: build, migrationRunnerDigest: runner, ...facts })
+  const migration = { schemaVersion: 'jenfu.dev012.migration-receipt.v1', ownerApplicationId: 'orgmaster', sourceRevision,
+    database: 'jenfu_prod', ledger: 'orgmaster_core.schema_migrations', manifestSha256: sourceBundle.manifestSha256,
+    baselineCount: 10, minimumLedgerCount: 10, ledgerCount: 65, applied: 1, replayed: 64,
+    crossDatabaseDenials: [{ database: 'jenfu_dev', denied: true }, { database: 'jenfu_stg', denied: true }],
+    boundaryStatus: 'PASS', status: 'PASS', startedAt: '2026-11-24T02:34:00.000Z', completedAt: '2026-11-24T02:34:23.836Z', ...change.migration }
+  const migrationRef = h.put(paths.migrate, { ...migration, receiptSha256: sha256(canonicalize(migration)) })
+  h.put(paths.terminal, stageReceipt({ profile, intent: attempt, stage: 'terminal', observedAt: '2026-11-24T02:49:06.428Z',
+    facts: { result: 'PRE_ACTIVATION_ABORTED', databaseDisposition: 'FORWARD_APPLIED', previousRevision: attempt.previousRevision,
+      entrypointRecovery: { changed: false, result: 'BASELINE_ALREADY_ACTIVE' }, ...change.terminal } }))
+  if (change.missing) h.objects.delete(paths[change.missing])
+  const readSourceIdentity = (root, revision) => revision === sourceRevision ? identity : schema64.input.readSourceIdentity(root, revision)
+  Object.assign(h.input.intent, { sourceRevision: releaseSourceRevision, migrationManifestSha256: currentBundle.bundle.manifestSha256,
+    runtimeConfigRef: row('new-target-runtime', { runtimeConfig: runtime }) })
+  for (const name of ['authorization', 'readiness']) h.input.values[name].sourceRevision = releaseSourceRevision
+  h.input.readSchemaPredecessorSourceIdentity = readSourceIdentity
+  const sourceProof = { sourceRevision: releaseSourceRevision, repository: profile.application.repository, branch: profile.application.branch,
+    status: 'OFFICIAL_MERGED_PR_VERIFIED', branchProtected: true, requiredSourceQc: 'SUCCESS' }
+  return { h, paths, attempt, migrationRef, args: { root: '.', profile, transport: h.input.transport, releaseSourceRevision,
+    attemptedIntent: attempt, attemptedIntentRef, sourceProof, readSourceIdentity } }
+}
+
+test('06 applied65 abort is reused by a new full release while the real runtime baseline stays60', async () => {
+  const { h, args, migrationRef } = appliedSchemaAbortHarness()
+  const association = await buildAbortedAppArtifactReuse(args)
+  assert.equal(association.appliedSchema.ledgerCount, 65)
+  assert.equal(association.appliedSchema.applicationReleased, false)
+  for (const name of ['authorization', 'readiness']) h.input.values[name].appArtifactReuse = association
+  const before = h.objects.size
+  const result = await verifyRoutineRelease(h.input)
+  assert.equal(result.migrationDisposition, 'UNCHANGED_VERIFIED')
+  assert.equal(result.pendingMigrationCount, 0)
+  assert.deepEqual(result.baselineMigrationRef, h.objects.get(h.paths.migrate).ref)
+  assert.deepEqual(result.appliedSchemaReuse.migrationReceiptRef, migrationRef)
+  assert.deepEqual(result.baselineIntentRef, h.input.intent.baselineIntentRef)
+  assert.equal(result.plannedRuntimeCallerAppend.disposition, 'PLANNED_NOT_APPLIED')
+  assert.equal(h.objects.size, before)
+  const originalRuntime = h.input.values.runtimeConfig.runtimeConfig
+  for (const next of [beforeRuntimeForRecovery(), { ...runtime, plainEnvironment: { ...plain, ORGMASTER_PROJED_CALLER_EMAIL: 'foreign' } },
+    buildRuntimeConfig(profile, { plainEnvironment: plain, secretVersions: { ...runtime.secretVersions, [profile.environment.requiredSecretNames[0]]: '2' } })]) {
+    h.input.values.runtimeConfig.runtimeConfig = next
+    await assert.rejects(verifyRoutineRelease(h.input), /APP_ARTIFACT_REUSE_SCHEMA_MODE_INVALID|RUNTIME_CONFIG_READBACK_MISMATCH|DEV057_CALLER_RUNTIME_CHANGED/)
+  }
+  h.input.values.runtimeConfig.runtimeConfig = originalRuntime
+  const observedEnv = h.revision.containers[0].env
+  h.revision.containers[0].env = observedEnv.slice(1)
+  await assert.rejects(verifyRoutineRelease(h.input), /ROUTINE_RUNTIME_DRIFT/)
+  h.revision.containers[0].env = observedEnv
+  const tampered = structuredClone(association)
+  tampered.appliedSchema.ledgerCount = 64
+  for (const name of ['authorization', 'readiness']) h.input.values[name].appArtifactReuse = tampered
+  await assert.rejects(verifyRoutineRelease(h.input), /APP_ARTIFACT_REUSE_SCHEMA_DRIFT/)
+  for (const name of ['authorization', 'readiness']) h.input.values[name].appArtifactReuse = association
+  await assert.rejects(verifyRoutineRelease({ ...h.input, executionMode: 'migration_only' }), /APP_ARTIFACT_REUSE_SCHEMA_MODE_INVALID/)
+  const prior = h.input.values.readiness.appArtifactReuse
+  delete h.input.values.readiness.appArtifactReuse
+  await assert.rejects(verifyRoutineRelease(h.input), /APP_ARTIFACT_REUSE_AUTHORITY_MISMATCH/)
+  h.input.values.readiness.appArtifactReuse = prior
+})
+
+function beforeRuntimeForRecovery() {
+  const environment = { ...plain }
+  for (const name of Object.keys(DEV057_PROJED_CALLER_PINS)) delete environment[name]
+  return buildRuntimeConfig(dev057PreCallerRuntimeProfile(profile), { plainEnvironment: environment, secretVersions: runtime.secretVersions })
+}
+
+test('applied65 abort reuse refuses incomplete, foreign or altered schema and recovery facts', async () => {
+  for (const [change, error] of [
+    [{ migration: { ownerApplicationId: 'platform' } }, /MIGRATION_RECEIPT_INVALID/],
+    [{ migration: { database: 'jenfu_stg' } }, /MIGRATION_RECEIPT_INVALID/],
+    [{ migration: { ledgerCount: 64, replayed: 63 } }, /MIGRATION_RECEIPT_INVALID/],
+    [{ migration: { applied: 2, replayed: 63 } }, /MIGRATION_RECEIPT_INVALID/],
+    [{ migration: { sourceRevision: '0'.repeat(40) } }, /MIGRATION_RECEIPT_INVALID/],
+    [{ migration: { manifestSha256: '0'.repeat(64) } }, /MIGRATION_RECEIPT_INVALID/],
+    [{ migration: { completedAt: '2026-11-25T00:00:00Z' } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+    [{ source: { sourceTree: '0'.repeat(40) } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+    [{ source: { ownerApplicationId: 'platform' } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+    [{ source: { sourceRevision: '0'.repeat(40) } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+    [{ source: { sourceSha256: '0'.repeat(64) } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+    [{ migration: { ledger: 'platform_core.schema_migrations' } }, /MIGRATION_RECEIPT_INVALID/],
+    [{ schema64: { prefix: true } }, /MIGRATION_PREFIX_001_031_DRIFT/],
+    [{ foundation: true }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+    [{ buildJoin: true }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+    [{ missing: 'migrate' }, /MISSING/], [{ missing: 'prepare' }, /MISSING/],
+    [{ terminal: { previousRevision: 'foreign-revision' } }, /APP_ARTIFACT_REUSE_EVIDENCE_INVALID/],
+    [{ terminal: { entrypointRecovery: { changed: true, result: 'BASELINE_ALREADY_ACTIVE' } } }, /APP_ARTIFACT_REUSE_EVIDENCE_INVALID/],
+    [{ targetRuntime: { ...runtime, plainEnvironment: { ...plain, ORGMASTER_PROJED_CALLER_EMAIL: 'foreign' } } }, /RUNTIME_CONFIG_READBACK_MISMATCH/],
+    [{ targetMetadata: { ownerApplicationId: 'platform' } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+    [{ targetMetadata: { sourceRevision: '0'.repeat(40) } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+    [{ targetMetadata: { status: 'PASS' } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+  ]) {
+    const { args, h } = appliedSchemaAbortHarness(change)
+    const before = h.objects.size
+    await assert.rejects(buildAbortedAppArtifactReuse(args), error)
+    assert.equal(h.objects.size, before)
+  }
 })

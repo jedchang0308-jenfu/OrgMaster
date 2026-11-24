@@ -196,11 +196,13 @@ test('release-executor-only continuation reuses the provider build and never sub
   const artifactSourceObject = { uri: `gs://${bucket}/source/archives/${'b'.repeat(64)}/source.tar.gz`, sha256: 'b'.repeat(64), generation: '7', crc32c: 'old-crc32c' }
   const association = { schemaVersion: 'orgmaster.release-executor-only-app-artifact-reuse.v1',
     releaseSourceRevision: intent.sourceRevision, artifactSourceRevision,
-    artifactDigest: `${h.profile.artifact.uri}@sha256:${'d'.repeat(64)}` }
+    artifactDigest: `${h.profile.artifact.uri}@sha256:${'d'.repeat(64)}`,
+    appliedSchema: { migrationReceiptRef: { uri: `gs://${bucket}/receipts/sealed65-migrate.json`, sha256: 'e'.repeat(64) }, ledgerCount: 65, applicationReleased: false } }
   input.verifyRoutineRelease = async () => ({ baselineIntentRef: intent.baselineIntentRef,
-    baselineMigrationRef: { uri: `gs://${bucket}/receipts/baseline-migrate.json`, sha256: 'e'.repeat(64) },
-    migrationDisposition: 'UNCHANGED_VERIFIED', appArtifactReuse: association })
+    baselineMigrationRef: { uri: `gs://${bucket}/receipts/released60-migrate.json`, sha256: 'f'.repeat(64) },
+    migrationDisposition: 'UNCHANGED_VERIFIED', pendingMigrationCount: 0, appliedSchemaReuse: association.appliedSchema, appArtifactReuse: association })
   h.transport.createBuild = async () => assert.fail('cross-source continuation must not submit or select a current-source build')
+  h.transport.runMigrationJob = async () => assert.fail('sealed schema65 reuse must not execute migration 069 or any DB Job')
   let observedEvidenceSource = null
   const originalEvidence = h.transport.waitArtifactEvidence
   h.transport.waitArtifactEvidence = async inputValue => { observedEvidenceSource = inputValue.sourceRevision; return originalEvidence.call(h.transport, inputValue) }
@@ -221,6 +223,13 @@ test('release-executor-only continuation reuses the provider build and never sub
   assert.deepEqual(deployment.artifactSourceObject, artifactSourceObject)
   assert.deepEqual(deployment.appArtifactReuse, association)
   assert.equal(observedEvidenceSource, artifactSourceRevision)
+  const migrated = await executeOwnerStage({ ...input, stage: 'migrate' })
+  const receipt = (await h.transport.readJson(migrated.ref)).value
+  assert.equal(receipt.facts.disposition, 'UNCHANGED_VERIFIED')
+  assert.equal(receipt.facts.migrationsExecuted, 0)
+  assert.equal(receipt.facts.dataImportsExecuted, 0)
+  assert.deepEqual(receipt.facts.appliedSchemaReuse, association.appliedSchema)
+  assert.equal(receipt.facts.baselineMigrationRef.uri, `gs://${bucket}/receipts/released60-migrate.json`)
 })
 
 test('native rotation prepare seals the summary and migrate requires exact live Job readback before any candidate', async () => {
