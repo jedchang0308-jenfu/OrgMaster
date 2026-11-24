@@ -730,7 +730,7 @@ export async function readRoutineBaseline({ profile, transport, baselineIntentRe
 // A completed schema-only predecessor is historical fact, never a RELEASED
 // runtime or renewed authority. Only the sealed Principal 60->64 recipe may
 // supply the schema prefix for the independently authorized external 64->65.
-function readSchemaPredecessorGitIdentity(root, sourceRevision) {
+export function readSchemaPredecessorGitIdentity(root, sourceRevision) {
   const run = args => {
     const result = spawnSync('git', args, { cwd: root, windowsHide: true, maxBuffer: 256 * 1024 * 1024 })
     if (result.error || result.status !== 0 || !result.stdout?.length) fail('DEV057_SCHEMA_PREDECESSOR_SOURCE_UNKNOWN')
@@ -952,12 +952,20 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (!same(intent.foundationReceiptRef, baseline.intent.foundationReceiptRef)) fail('ROUTINE_INFRA_REF_CHANGED')
   const runtimeConfig = values.runtimeConfig.runtimeConfig ?? values.runtimeConfig
   const baselineRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
+  const appReuseLeft = values.authorization?.appArtifactReuse ?? null
+  const appReuseRight = values.readiness?.appArtifactReuse ?? null
+  if (!same(appReuseLeft, appReuseRight)) fail('APP_ARTIFACT_REUSE_AUTHORITY_MISMATCH')
+  const appArtifactReuse = appReuseLeft == null ? null : await assertAppArtifactReuse({ root, profile, transport, intent,
+    association: appReuseLeft, readSourceIdentity: readSchemaPredecessorSourceIdentity })
+  const recoveredCallerAppend = appArtifactReuse?.appliedSchema && executionMode === 'full_release'
+    && isDev057CallerEnvironmentAppend(profile, baselineRuntime.plainEnvironment, runtimeConfig.plainEnvironment)
+  if (appArtifactReuse?.appliedSchema && !recoveredCallerAppend) fail('APP_ARTIFACT_REUSE_SCHEMA_MODE_INVALID')
   const rolePolicyAppend = values.readiness?.devId === 'DEV-058'
   const fmsAuthorityAppend = values.readiness?.devId === 'DEV-059'
   const projedExternalAppend = values.readiness?.devId === 'DEV-057' && values.readiness?.slice === '057-PROJED-EXTERNAL'
   const plannedCallerAppend = projedExternalAppend && executionMode === 'migration_only' && values.readiness?.schemaPredecessorRef
     && isDev057CallerEnvironmentAppend(profile, baselineRuntime.plainEnvironment, runtimeConfig.plainEnvironment)
-  if (plannedCallerAppend) {
+  if (plannedCallerAppend || recoveredCallerAppend) {
     assertRuntimeConfig(dev057PreCallerRuntimeProfile(profile), baselineRuntime)
     const expected = buildRuntimeConfig(profile, { plainEnvironment: runtimeConfig.plainEnvironment, secretVersions: baselineRuntime.secretVersions })
     if (!same(expected, runtimeConfig)) fail('DEV057_CALLER_RUNTIME_CHANGED')
@@ -969,7 +977,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const administrationAppend=values.readiness?.devId==='DEV-070'
   const fmsDeliveryRuntimeAppend = administrationAppend && isFmsDeliveryAppend(baseline.bundle.value.entries, profile)
     && matchesFmsDeliveryRuntimeAppend(profile, baselineRuntime, runtimeConfig)
-  const runtimeChanged = !same(runtimeConfig, baselineRuntime) && !fmsDeliveryRuntimeAppend && !plannedCallerAppend
+  const runtimeChanged = !same(runtimeConfig, baselineRuntime) && !fmsDeliveryRuntimeAppend && !plannedCallerAppend && !recoveredCallerAppend
   if ((rolePolicyAppend || fmsAuthorityAppend || fmsCatalogActivationAppend || administrationAppend || projedPrincipalAppend || projedExternalAppend) && runtimeChanged) fail(projedPrincipalAppend ? 'DEV057_PROJED_RUNTIME_CHANGED' : administrationAppend?'DEV070_RUNTIME_CHANGED':fmsCatalogActivationAppend ? 'DEV060_RUNTIME_CHANGED' : fmsAuthorityAppend ? 'DEV059_RUNTIME_CHANGED' : 'DEV058_RUNTIME_CHANGED')
   const lifecycleGuard = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-V2'
   const lifecycleEnable = values.readiness?.devId === 'DEV-014' && values.readiness?.slice === '014-PRINCIPAL-LIFECYCLE-ENABLE'
@@ -990,7 +998,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     ? assertDev014PrincipalLifecycleEnablement({profile,intent,readiness:values.readiness,authorization:values.authorization,before:baselineRuntime,after:runtimeConfig})
     : lifecycleGuard
     ? assertDev014PrincipalLifecycleV2Remediation(values.readiness, values.authorization)
-    : same(runtimeConfig, baselineRuntime)
+    : same(runtimeConfig, baselineRuntime) || recoveredCallerAppend
     ? values.readiness?.devId === 'DEV-057'
       ? values.readiness?.slice === '057-WRITER-FENCE'
         ? assertDev057WriterFenceRemediation(values.readiness, values.authorization)
@@ -1047,10 +1055,6 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const controlledSmokeRotation = controlledTransition?.releaseMode === DEV060_RELEASE_MODE && values.infra?.mutationProfile === 'APP_INFRA_SMOKE_CREDENTIAL_ROTATION'
   assertToolRotationReleaseCompatibility({ toolRotation, toolRotationPredecessor, controlledTransition,
     repair: Boolean(baseline.repair), runtimeChanged, allowControlledSmokeRotation: controlledSmokeRotation })
-  const appReuseLeft = values.authorization?.appArtifactReuse ?? null
-  const appReuseRight = values.readiness?.appArtifactReuse ?? null
-  if (!same(appReuseLeft, appReuseRight)) fail('APP_ARTIFACT_REUSE_AUTHORITY_MISMATCH')
-  const appArtifactReuse = appReuseLeft == null ? null : await assertAppArtifactReuse({ root, profile, transport, intent, association: appReuseLeft })
   const infrastructureHash = lifecycleGuard
     ? (root, revision) => transitionFingerprint(root, revision, [], dev014PrincipalLifecycleInfrastructureInputs)
     : [DEV057_EXTERNAL_RELEASE_MODE, DEV057_PROJED_RELEASE_MODE, DEV070_RELEASE_MODE, DEV058_RELEASE_MODE, DEV059_RELEASE_MODE, DEV060_RELEASE_MODE, 'DEV013_CONTROLLED_ENVIRONMENT', 'DEV014_PRODUCER_CONTRACT_REMEDIATION', 'DEV014_APPLICATION_REGISTRATION_REMEDIATION', 'DEV014_ACTIVATION_CONTRACT_REMEDIATION', 'DEV014_PROJECTION_CONTRACT_REMEDIATION', 'DEV014_MANAGED_PRINCIPAL_PROJECTION_REMEDIATION', 'DEV057_WRITER_FENCE_REMEDIATION', 'DEV057_PRINCIPAL_CONTRACT_REMEDIATION', 'DEV057_CUTOVER_SOURCE_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V3_REMEDIATION', 'DEV057_PRINCIPAL_GRANTS_V4_REMEDIATION', 'DEV057_EMPLOYEE_NUMBER_COMMAND_RECEIPT_V2_REMEDIATION'].includes(controlledTransition?.releaseMode) ? transitionFingerprint : fingerprint
@@ -1072,7 +1076,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   } else {
     const revision = await transport.getRevision(profile, intent.previousRevision)
     transport.assertRevisionReady(profile, revision, baseline.deployment.value.artifactDigest, baseline.candidate.value.facts.cloudSqlProxyResolvedImage)
-    if (controlledTransition) assertHistoricalRuntimeReadback(profile, baselineRuntime, revision)
+    if (controlledTransition || recoveredCallerAppend) assertHistoricalRuntimeReadback(profile, baselineRuntime, revision)
     else assertRoutineRuntimeReadback(profile, runtimeConfig, revision)
   }
   const current = await buildMigrationBundle(intent.sourceRevision, {
@@ -1083,7 +1087,9 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   if (current.bundle.manifestSha256 !== intent.migrationManifestSha256) fail('MIGRATION_MANIFEST_MISMATCH')
   const schemaPredecessor = controlledTransition?.schemaPredecessorRef
     ? await readDev057ExternalSchemaPredecessor({ root, profile, transport, ref: controlledTransition.schemaPredecessorRef, intent, baseline, readSourceIdentity: readSchemaPredecessorSourceIdentity }) : null
-  const migrationBaseline = schemaPredecessor?.bundle.value ?? baseline.bundle.value
+  const appliedSchemaBundle = appArtifactReuse?.appliedSchema
+    ? await transport.readJson(appArtifactReuse.appliedSchema.migrationBundleRef, profile.artifact.releaseBucket, [profile.artifact.migrationBundlePrefix]) : null
+  const migrationBaseline = appliedSchemaBundle?.value ?? schemaPredecessor?.bundle.value ?? baseline.bundle.value
   let migration
   if (lifecycleEnable && (baseline.bundle.value.entries?.length !== 31 || current.bundle.entries?.length !== 31)) fail('DEV014_LIFECYCLE_ENABLEMENT_LEDGER_REQUIRED')
   try {
@@ -1201,7 +1207,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     const { bundle, ...evidence } = schemaPredecessor
     migration.schemaPredecessor = { ...evidence, sourceRevision: bundle.value.sourceRevision, manifestSha256: bundle.value.manifestSha256 }
   }
-  if (plannedCallerAppend) migration.plannedRuntimeCallerAppend = {
+  if (appArtifactReuse?.appliedSchema) migration.appliedSchemaReuse = appArtifactReuse.appliedSchema
+  if (plannedCallerAppend || recoveredCallerAppend) migration.plannedRuntimeCallerAppend = {
     disposition: 'PLANNED_NOT_APPLIED', currentRuntimeConfigRef: baseline.intent.runtimeConfigRef,
     candidateRuntimeConfigRef: intent.runtimeConfigRef,
   }

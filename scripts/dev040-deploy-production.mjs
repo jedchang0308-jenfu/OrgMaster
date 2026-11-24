@@ -326,7 +326,8 @@ async function main() {
   const previousRuntime = baseline.runtime.value.runtimeConfig ?? baseline.runtime.value
   const previousMode = previousRuntime.plainEnvironment?.ORGMASTER_JENFU_SSO_HANDOFF_MODE ?? null
   let plainEnvironment = options.dev014Activate || options.dev014PrincipalLifecycleV2Remediation ? resolvePlainEnvironment(profile, previousRuntime.plainEnvironment, {}) : previousRuntime.plainEnvironment
-  if (options.migrationOnly && options.dev057ProjedExternalAppend && options.schemaPredecessorRef) {
+  if ((options.migrationOnly && options.dev057ProjedExternalAppend && options.schemaPredecessorRef)
+    || appArtifactReuse?.appliedSchema) {
     // The capsule freezes the future candidate target. Provider readback still
     // verifies the unchanged RELEASED runtime, including its missing caller pins.
     plainEnvironment = planDev057CallerEnvironment(profile, plainEnvironment)
