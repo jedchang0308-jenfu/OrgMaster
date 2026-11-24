@@ -1041,7 +1041,7 @@ function smokeContinuationHarness({ controllerImageDigest = 'asia-east1-docker.p
   return Object.assign(h, { update, requests, workflow, secret, sourceEdits, addresses, rotationUri })
 }
 
-test('shared Platform receipt is consumed by OrgMaster continuation without a second credential receipt', async () => {
+for (const includeAipdm of [true, false]) test(`shared Platform receipt is consumed by OrgMaster continuation without a second credential receipt (${includeAipdm ? 'three owners' : 'two owners'})`, async () => {
   const h = smokeContinuationHarness()
   const subject = 'synthetic-provider-subject-001'
   const platformCore = {
@@ -1061,8 +1061,8 @@ test('shared Platform receipt is consumed by OrgMaster continuation without a se
     evidenceScope: 'PRODUCTION_PROVIDER', projectId: 'jenfu-platform-prod', issuer: EXPECTED.issuer, uid: subject,
     emailSha256: 'e'.repeat(64), emailVerified: true, firstFactor: 'password', mfaEnrolled: false, mfaFactor: null,
     assuranceLevel: 'aal1', assuranceEvidence: 'SIGNED_ID_TOKEN_AFTER_PASSWORD_SIGNIN', firebaseUserCount: 1,
-    smokeRefreshTokenSecretVersions: { platform: '12', 'ai-pdm': '15', orgmaster: '8' },
-    githubProductionEnvironmentSecrets: { platform: true, 'ai-pdm': true, orgmaster: true }, credentialMaterialPresent: false,
+    smokeRefreshTokenSecretVersions: { platform: '12', ...(includeAipdm ? { 'ai-pdm': '15' } : {}), orgmaster: '8' },
+    githubProductionEnvironmentSecrets: { platform: true, ...(includeAipdm ? { 'ai-pdm': true } : {}), orgmaster: true }, credentialMaterialPresent: false,
     observedAt: '2026-09-23T08:00:00.000Z',
   }
   const platformRef = h.put('gs://jenfu-platform-prod-platform-release/receipts/credential-reauth/shared.json',
@@ -2528,14 +2528,23 @@ test('app artifact reuse accepts only the fixed release-executor path set', () =
       fs.writeFileSync(path.join(directory, file), `${file}-baseline\n`)
     }
     run(['add', '.']); run(['commit', '-m', 'baseline']); const baseline = run(['rev-parse', 'HEAD'])
-    fs.mkdirSync(path.join(directory, 'scripts'), { recursive: true })
-    fs.writeFileSync(path.join(directory, 'scripts', 'dev040-deploy-production.mjs'), 'release-only\n')
+    const operatorPaths = ['scripts/dev040-deploy-production.mjs', 'scripts/lib/dev040-app-artifact-reuse.mjs',
+      'ai-doc/specs/DEV-057-identity-and-grant-contract-boundary.md',
+      'scripts/dev057-smoke-credential-reauth.test.mjs', 'scripts/lib/dev057-shared-smoke-credential-evidence.mjs']
+    for (const file of operatorPaths) {
+      fs.mkdirSync(path.dirname(path.join(directory, file)), { recursive: true })
+      fs.writeFileSync(path.join(directory, file), 'release-only\n')
+    }
     run(['add', '.']); run(['commit', '-m', 'release executor']); const release = run(['rev-parse', 'HEAD'])
     const proof = appArtifactSourceEquivalence(directory, baseline, release)
-    assert.deepEqual(proof.changedPaths.map(row => row.path), ['scripts/dev040-deploy-production.mjs'])
-    fs.writeFileSync(path.join(directory, 'Dockerfile'), 'runtime-change\n')
-    run(['add', '.']); run(['commit', '-m', 'runtime change']); const changed = run(['rev-parse', 'HEAD'])
-    assert.throws(() => appArtifactSourceEquivalence(directory, baseline, changed), /APP_ARTIFACT_REUSE_RUNTIME_INPUT_CHANGED/u)
+    assert.deepEqual(proof.changedPaths.map(row => row.path), [...operatorPaths].sort())
+    for (const file of ['server/orgmasterAuthApi.ts', 'db/migrations/999_unreviewed.sql', 'Dockerfile', 'package.json', 'scripts/unknown-release-helper.mjs']) {
+      run(['checkout', '--detach', release])
+      fs.mkdirSync(path.dirname(path.join(directory, file)), { recursive: true })
+      fs.writeFileSync(path.join(directory, file), 'runtime-change\n')
+      run(['add', '.']); run(['commit', '-m', 'runtime change']); const changed = run(['rev-parse', 'HEAD'])
+      assert.throws(() => appArtifactSourceEquivalence(directory, baseline, changed), /APP_ARTIFACT_REUSE_RUNTIME_INPUT_CHANGED/u)
+    }
   } finally { fs.rmSync(directory, { recursive: true, force: true }) }
 })
 

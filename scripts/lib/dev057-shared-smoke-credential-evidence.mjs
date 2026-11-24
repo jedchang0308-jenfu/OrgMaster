@@ -51,6 +51,13 @@ function validatePlatformCredential(receipt, nowMs) {
 
 export function validateSharedSmokeCredentialEvidence({ identity, platformCredential, nowMs = Date.now() }) {
   const platform = validatePlatformCredential(platformCredential, nowMs)
+  const versions = identity?.smokeRefreshTokenSecretVersions
+  const github = identity?.githubProductionEnvironmentSecrets
+  const ownerKeys = keys(versions)
+  if (!['orgmaster,platform', 'ai-pdm,orgmaster,platform'].includes(ownerKeys) || keys(github) !== ownerKeys) {
+    fail('SHARED_SMOKE_IDENTITY_EVIDENCE_INVALID')
+  }
+  const owners = ownerKeys === 'orgmaster,platform' ? ['platform', 'orgmaster'] : ['platform', 'ai-pdm', 'orgmaster']
   const receiptSha256 = identity?.receiptSha256
   const producerCore = {
     schemaVersion: identity?.schemaVersion,
@@ -68,22 +75,12 @@ export function validateSharedSmokeCredentialEvidence({ identity, platformCreden
     assuranceLevel: identity?.assuranceLevel,
     assuranceEvidence: identity?.assuranceEvidence,
     firebaseUserCount: identity?.firebaseUserCount,
-    smokeRefreshTokenSecretVersions: {
-      platform: identity?.smokeRefreshTokenSecretVersions?.platform,
-      'ai-pdm': identity?.smokeRefreshTokenSecretVersions?.['ai-pdm'],
-      orgmaster: identity?.smokeRefreshTokenSecretVersions?.orgmaster,
-    },
-    githubProductionEnvironmentSecrets: {
-      platform: identity?.githubProductionEnvironmentSecrets?.platform,
-      'ai-pdm': identity?.githubProductionEnvironmentSecrets?.['ai-pdm'],
-      orgmaster: identity?.githubProductionEnvironmentSecrets?.orgmaster,
-    },
+    smokeRefreshTokenSecretVersions: Object.fromEntries(owners.map(id => [id, versions[id]])),
+    githubProductionEnvironmentSecrets: Object.fromEntries(owners.map(id => [id, github[id]])),
     credentialMaterialPresent: identity?.credentialMaterialPresent,
     observedAt: identity?.observedAt,
   }
   const observedAt = Date.parse(identity?.observedAt)
-  const versions = identity?.smokeRefreshTokenSecretVersions
-  const github = identity?.githubProductionEnvironmentSecrets
   const hasBinding = Object.hasOwn(identity ?? {}, 'platformCredentialBinding')
   const binding = identity?.platformCredentialBinding
   if (hasBinding) {
@@ -99,7 +96,7 @@ export function validateSharedSmokeCredentialEvidence({ identity, platformCreden
       identity.assuranceEvidence !== 'SIGNED_ID_TOKEN_AFTER_PASSWORD_SIGNIN' || identity.firebaseUserCount !== 1 ||
       identity.credentialMaterialPresent !== false || !Number.isFinite(observedAt) || observedAt > nowMs + 30000 ||
       observedAt < platform.observedAt || (!hasBinding && observedAt - platform.observedAt > 180000) ||
-      !['platform', 'orgmaster', 'ai-pdm'].every(id => VERSION.test(versions?.[id] ?? '') && github?.[id] === true) ||
+      !owners.every(id => VERSION.test(versions[id] ?? '') && github[id] === true) ||
       versions.platform !== platformCredential.secret.newVersion ||
       identityPairHash(identity.issuer, identity.uid) !== platformCredential.identityPairSha256 ||
       receiptSha256 !== sha256(JSON.stringify(producerCore)) ||
