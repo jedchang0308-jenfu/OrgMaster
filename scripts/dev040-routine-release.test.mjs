@@ -3160,7 +3160,7 @@ function appliedSchemaAbortHarness(change = {}) {
     readinessReceiptRef: row('readiness', { ...common, schemaVersion: 'orgmaster.routine-release-readiness.v1' }),
     foundationReceiptRef: change.foundation ? row('foreign-foundation', { projectId: 'foreign' }) : h.input.intent.foundationReceiptRef,
     infraReceiptRef: row('infra', { migrationRunnerDigest: runner }),
-    runtimeConfigRef: row('target-runtime', { ...common, schemaVersion: 'jenfu.dev012.owner-runtime-config-receipt.v1', runtimeConfig: change.targetRuntime ?? runtime, ...change.targetMetadata }),
+    runtimeConfigRef: row('target-runtime', { ...common, schemaVersion: 'jenfu.dev012.owner-runtime-config-receipt.v1', status: 'VERIFIED', runtimeConfig: change.targetRuntime ?? runtime, ...change.targetMetadata }),
     migrationManifestSha256: sourceBundle.manifestSha256, previousRevision: h.input.intent.previousRevision,
     baselineIntentRef: h.input.intent.baselineIntentRef, deadlineAt }
   const attemptedIntentRef = h.put(`gs://${bucket}/receipts/releases/${releaseId}/release-intent.json`, attempt)
@@ -3274,6 +3274,7 @@ test('applied65 abort reuse refuses incomplete, foreign or altered schema and re
     [{ targetRuntime: { ...runtime, plainEnvironment: { ...plain, ORGMASTER_PROJED_CALLER_EMAIL: 'foreign' } } }, /RUNTIME_CONFIG_READBACK_MISMATCH/],
     [{ targetMetadata: { ownerApplicationId: 'platform' } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
     [{ targetMetadata: { sourceRevision: '0'.repeat(40) } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
+    [{ targetMetadata: { status: 'PASS' } }, /APP_ARTIFACT_REUSE_SCHEMA_INVALID/],
   ]) {
     const { args, h } = appliedSchemaAbortHarness(change)
     const before = h.objects.size

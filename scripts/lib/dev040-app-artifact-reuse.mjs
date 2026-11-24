@@ -179,7 +179,7 @@ async function readAppliedSchemaAbort({ root, profile, transport, attemptedInten
   const candidateRuntime = target.value.runtimeConfig ?? target.value
   if (target.value.schemaVersion !== 'jenfu.dev012.owner-runtime-config-receipt.v1' || target.value.ownerApplicationId !== 'orgmaster'
     || target.value.projectId !== profile.target.projectId || target.value.sourceRevision !== attempt.sourceRevision
-    || target.value.releaseId !== attempt.releaseId || target.value.status !== 'PASS' || target.value.releaseAuthority !== true
+    || target.value.releaseId !== attempt.releaseId || target.value.status !== 'VERIFIED' || target.value.releaseAuthority !== true
     || target.value.evidenceScope !== 'PRODUCTION_BOUND') fail('APP_ARTIFACT_REUSE_SCHEMA_INVALID')
   assertRuntimeConfig(dev057PreCallerRuntimeProfile(profile), priorRuntime)
   assertRuntimeConfig(profile, candidateRuntime)
