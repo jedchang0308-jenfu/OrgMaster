@@ -1,4 +1,4 @@
-import { DEV057_EXTERNAL_RELEASE_MODE, assertDev057ExternalAppend, assertDev057ExternalReleaseAuthority } from './dev057-projed-external-migration.mjs'
+import { DEV057_EXTERNAL_RELEASE_MODE, assertDev057ExternalAppend, assertDev057ExternalReleaseAuthority, assertDev057SchemaPredecessorRef } from './dev057-projed-external-migration.mjs'
 import { assertSmokeRotationContinuation, assertSmokeInfraReuseContinuation, assertSmokeWorkflowContractCorrectionContinuation, SMOKE_WORKFLOW_CONTRACT_CORRECTION_PROFILE, readReleaseSourceFile, readSmokeReuseInfrastructureTree } from './dev057-smoke-rotation-continuation.mjs'
 import { readPrincipalOnlyRepairBaseline } from './dev057-principal-forward-repair.mjs'
 import { principalOnlyRollbackRevision } from './dev057-principal-only-release.mjs'
@@ -726,6 +726,92 @@ export async function readRoutineBaseline({ profile, transport, baselineIntentRe
   return { intent, terminal, deployment, migration, candidate, bundle, runtime, repair, activeRevision: repair?.activeRevision ?? candidate.value.facts.candidateRevision }
 }
 
+// A completed schema-only predecessor is historical fact, never a RELEASED
+// runtime or renewed authority. Only the sealed Principal 60->64 recipe may
+// supply the schema prefix for the independently authorized external 64->65.
+function readSchemaPredecessorGitIdentity(root, sourceRevision) {
+  const run = args => {
+    const result = spawnSync('git', args, { cwd: root, windowsHide: true, maxBuffer: 256 * 1024 * 1024 })
+    if (result.error || result.status !== 0 || !result.stdout?.length) fail('DEV057_SCHEMA_PREDECESSOR_SOURCE_UNKNOWN')
+    return result.stdout
+  }
+  return { bytes: run(['ls-tree', '-r', '-z', '--full-tree', sourceRevision]),
+    tree: run(['rev-parse', `${sourceRevision}^{tree}`]).toString('utf8').trim() }
+}
+export async function readDev057ExternalSchemaPredecessor({ root, profile, transport, ref, intent, baseline, readSourceIdentity }) {
+  assertDev057SchemaPredecessorRef(ref)
+  if (profile.application.id !== 'orgmaster' || profile.target.projectId !== 'jenfu-platform-prod'
+    || profile.artifact.releaseBucket !== 'jenfu-platform-prod-orgmaster-release') fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+  const bucket = profile.artifact.releaseBucket
+  const previous = (await transport.readJson(ref, bucket, ['receipts'])).value
+  assertDev040ReleaseIntent(previous, profile) // Historical expiry does not renew the old capsule.
+  if (!same(previous.baselineIntentRef, intent.baselineIntentRef) || previous.previousRevision !== baseline.activeRevision
+    || intent.previousRevision !== baseline.activeRevision) fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+  const paths = releasePaths(profile, previous, ref.sha256)
+  const read = async uri => {
+    const result = await transport.readBytes(uri, { prefixes: ['receipts'] })
+    if (result.ref.uri !== uri || result.ref.sha256 !== sha256(result.bytes)) fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+    return { ...result, value: JSON.parse(result.bytes.toString('utf8')) }
+  }
+  const [prepare, build, deployment, migration] = await Promise.all([read(paths.prepare), read(paths.build), read(paths.deployment), read(paths.migrate)])
+  assertSealedStage(prepare.value, profile, previous, 'prepare')
+  assertSealedStage(build.value, profile, previous, 'build')
+  const d = deployment.value, routine = prepare.value.facts.routine
+  if (d.schemaVersion !== profile.schemas.deploymentCapsule || d.ownerApplicationId !== 'orgmaster'
+    || d.sourceRevision !== previous.sourceRevision || !same(d.releaseIntentRef, ref) || d.releaseIntentSha256 !== ref.sha256
+    || d.deadlineAt !== previous.deadlineAt || !same(d.buildReceiptRef, build.ref)
+    || prepare.value.previousReceiptRef !== null || !same(build.value.previousReceiptRef, prepare.ref)
+    || d.productionDataRef || d.firstPrincipalBootstrapRef
+    || routine?.releaseMode !== DEV057_PROJED_RELEASE_MODE || routine.controlledTransition?.releaseMode !== DEV057_PROJED_RELEASE_MODE
+    || routine.migrationDisposition !== 'FORWARD_APPLY' || routine.pendingMigrationCount !== 4
+    || routine.previousRevision !== baseline.activeRevision || !same(routine.baselineIntentRef, intent.baselineIntentRef)
+    || prepare.value.facts.migrationRunnerDigest !== d.migrationRunnerDigest
+    || !d.migrationRunnerDigest?.startsWith(`${profile.artifact.migrationRunnerUri}@sha256:`)) fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+  for (const field of ['artifactDigest', 'sourceObject', 'migrationBundleRef', 'provenanceReceiptRef', 'sbomReceiptRef', 'scanReceiptRef']) {
+    if (!same(build.value.facts[field], d[field])) fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+  }
+  const names = { sourceLock: 'sourceLockRef', authorization: 'authorizationPolicyRef', readiness: 'readinessReceiptRef',
+    foundation: 'foundationReceiptRef', infra: 'infraReceiptRef', runtimeConfig: 'runtimeConfigRef' }
+  if (!same(prepare.value.facts.prerequisiteRefs, Object.fromEntries(Object.entries(names).map(([name, field]) => [name, previous[field]])))) fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+  const values = Object.fromEntries(await Promise.all(Object.entries(names).map(async ([name, field]) =>
+    [name, (await transport.readJson(previous[field], bucket, ['receipts'])).value])))
+  assertDev057ProjedReleaseAuthority(values.readiness, values.authorization, previous)
+  const source = values.sourceLock
+  const { assertMigrationReceipt } = await import('./dev012-owner-stage-executor.mjs')
+  const identity = (readSourceIdentity ?? readSchemaPredecessorGitIdentity)(root, previous.sourceRevision)
+  if (source.ownerApplicationId !== 'orgmaster' || source.repository !== profile.application.repository || source.branch !== profile.application.branch
+    || source.remoteRef !== `refs/heads/${profile.application.branch}` || source.remoteRevision !== previous.sourceRevision
+    || !/^[a-f0-9]{40}$/u.test(source.sourceTree ?? '') || source.sourceRevision !== previous.sourceRevision
+    || source.sourceTree !== identity.tree || source.sourceSha256 !== previous.sourceSha256 || source.sourceSha256 !== sha256(identity.bytes) || source.migrationManifestSha256 !== previous.migrationManifestSha256
+    || source.status !== 'SOURCE_FROZEN' || source.clean !== true || source.releaseAuthority !== true || source.evidenceScope !== 'PRODUCTION_BOUND'
+    || values.infra.migrationRunnerDigest !== d.migrationRunnerDigest) fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+  const completed = Date.parse(migration.value.completedAt), deadline = Date.parse(previous.deadlineAt)
+  for (const row of [values.authorization, values.readiness]) {
+    if (row.environment !== 'production' || row.projectId !== profile.target.projectId || row.releaseAuthority !== true
+      || row.evidenceScope !== 'PRODUCTION_BOUND' || row.status !== 'PASS' || row.remainingHumanAction !== 0
+      || !Number.isFinite(Date.parse(row.expiresAt)) || Date.parse(row.expiresAt) < completed) fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+  }
+  const timestamps = [source.observedAt, prepare.value.observedAt, build.value.observedAt, migration.value.startedAt, migration.value.completedAt].map(Date.parse)
+  if (!Number.isFinite(deadline) || timestamps.some((time, index) => !Number.isFinite(time) || time > deadline || index > 0 && time < timestamps[index - 1])) fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+  const bundle = await transport.readJson(d.migrationBundleRef, bucket, [profile.artifact.migrationBundlePrefix])
+  assertMigrationBundle(bundle.value, { target: { ownerApplicationId: 'orgmaster', ledger: profile.migrations.ledger, baselineCount: 10 },
+    sourceRevision: previous.sourceRevision, bytes: bundle.bytes, bundleSha256: d.migrationBundleRef.sha256 })
+  if (bundle.value.manifestSha256 !== previous.migrationManifestSha256) fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+  const previousAppend = assertDev057ProjedAppend(baseline.bundle.value, bundle.value)
+  if (routine.migrationInputsSha256 !== previousAppend.migrationInputsSha256) fail('DEV057_SCHEMA_PREDECESSOR_INVALID')
+  assertMigrationReceipt(migration.value, profile, previous, { allowForward: true, forwardPlan: routine })
+  for (const field of ['provenanceReceiptRef', 'sbomReceiptRef', 'scanReceiptRef']) {
+    await transport.readJson(d[field], bucket, ['receipts'])
+  }
+  for (const stage of ['candidate', 'terminal']) {
+    try { await transport.readBytes(paths[stage], { prefixes: ['receipts'] }) }
+    catch (error) { if (error.code === 'MISSING') continue; throw error }
+    fail('DEV057_SCHEMA_PREDECESSOR_RUNTIME_STARTED')
+  }
+  return { bundle, schemaPredecessorRef: ref, prepareRef: prepare.ref, buildRef: build.ref,
+    deploymentCapsuleRef: deployment.ref, migrationReceiptRef: migration.ref, applicationReleased: false }
+}
+
 // A safely finalized failed attempt is an audit record, not the new production
 // baseline. Resolve its explicitly recorded prior intent; never guess a revision.
 export async function resolveRoutineControlBaseline({ profile, transport, control, attempt }) {
@@ -856,7 +942,7 @@ export function resolveMigrationInfraReceiptSource({ controlledTransition, toolR
   return rotation.sourceRevision
 }
 
-export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, executionMode = 'full_release', toolRotationRef = null, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true }) {
+export async function verifyRoutineRelease({ root, profile, transport, intent, values, service, buildMigrationBundle, executionMode = 'full_release', toolRotationRef = null, fingerprint = routineInfrastructureFingerprint, transitionFingerprint = controlledInfrastructureFingerprint, cutoverInfraTransition = assertDev057CutoverInfraTransition, principalSmokeInfraTransition = assertDev057PrincipalSmokeInfraTransition, readSourceFile = readReleaseSourceFile, readInfrastructureTree = readSmokeReuseInfrastructureTree, readLiveToolJob = true, readSchemaPredecessorSourceIdentity }) {
   const baseline = await readRoutineBaseline({ profile, transport, baselineIntentRef: intent.baselineIntentRef })
   if (baseline.activeRevision !== intent.previousRevision || transport.effectiveRevision(service) !== intent.previousRevision) fail('ROUTINE_BASELINE_NOT_ACTIVE')
   transport.assertServiceSettled(service)
@@ -868,6 +954,8 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
   const rolePolicyAppend = values.readiness?.devId === 'DEV-058'
   const fmsAuthorityAppend = values.readiness?.devId === 'DEV-059'
   const projedExternalAppend = values.readiness?.devId === 'DEV-057' && values.readiness?.slice === '057-PROJED-EXTERNAL'
+  if ((values.readiness?.schemaPredecessorRef !== undefined || values.authorization?.schemaPredecessorRef !== undefined)
+    && (!projedExternalAppend || executionMode !== 'migration_only')) fail('DEV057_SCHEMA_PREDECESSOR_MODE_INVALID')
   const projedPrincipalAppend = values.readiness?.devId === 'DEV-057' && values.readiness?.slice === '057-PROJED-PRINCIPAL'
   const fmsCatalogActivationAppend = values.readiness?.devId === 'DEV-060'
   const administrationAppend=values.readiness?.devId==='DEV-070'
@@ -985,10 +1073,13 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     expectedManifestSha256: intent.migrationManifestSha256,
   })
   if (current.bundle.manifestSha256 !== intent.migrationManifestSha256) fail('MIGRATION_MANIFEST_MISMATCH')
+  const schemaPredecessor = controlledTransition?.schemaPredecessorRef
+    ? await readDev057ExternalSchemaPredecessor({ root, profile, transport, ref: controlledTransition.schemaPredecessorRef, intent, baseline, readSourceIdentity: readSchemaPredecessorSourceIdentity }) : null
+  const migrationBaseline = schemaPredecessor?.bundle.value ?? baseline.bundle.value
   let migration
   if (lifecycleEnable && (baseline.bundle.value.entries?.length !== 31 || current.bundle.entries?.length !== 31)) fail('DEV014_LIFECYCLE_ENABLEMENT_LEDGER_REQUIRED')
   try {
-    migration = { migrationDisposition: 'UNCHANGED_VERIFIED', pendingMigrationCount: 0, migrationInputsSha256: assertRoutineMigrationUnchanged(baseline.bundle.value, current.bundle) }
+    migration = { migrationDisposition: 'UNCHANGED_VERIFIED', pendingMigrationCount: 0, migrationInputsSha256: assertRoutineMigrationUnchanged(migrationBaseline, current.bundle) }
     if (rolePolicyAppend) fail('DEV058_MIGRATION_APPEND_INVALID')
     if (fmsAuthorityAppend) fail('DEV059_MIGRATION_APPEND_INVALID')
     if (projedExternalAppend) fail('DEV057_EXTERNAL_MIGRATION_APPEND_INVALID')
@@ -1006,7 +1097,7 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     if (lifecycleEnable) throw error // enablement executes zero DDL, without append fallback
     if (!controlledTransition || error?.code !== 'ROUTINE_MIGRATION_CHANGED') throw error
     migration = controlledTransition.releaseMode === DEV057_EXTERNAL_RELEASE_MODE
-      ? assertDev057ExternalAppend(baseline.bundle.value, current.bundle)
+      ? assertDev057ExternalAppend(migrationBaseline, current.bundle)
       : controlledTransition.releaseMode === DEV057_PROJED_RELEASE_MODE
       ? assertDev057ProjedAppend(baseline.bundle.value, current.bundle)
       : controlledTransition.releaseMode === DEV070_RELEASE_MODE
@@ -1097,6 +1188,10 @@ export async function verifyRoutineRelease({ root, profile, transport, intent, v
     smokeRotationContinuation = await assertSmokeRotationContinuation({ root, profile, transport, intent, values, baseline,
       predecessor: toolRotationPredecessor, readSourceFile, readInfrastructureTree,
       sourceReuse: smokeRotationSourceReuse })
+  }
+  if (schemaPredecessor) {
+    const { bundle, ...evidence } = schemaPredecessor
+    migration.schemaPredecessor = { ...evidence, sourceRevision: bundle.value.sourceRevision, manifestSha256: bundle.value.manifestSha256 }
   }
   for (const name of ['authorization', 'readiness']) {
     const value = values[name]

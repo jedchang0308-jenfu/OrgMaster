@@ -26,6 +26,7 @@ const REQUIRED_PLAIN_ENV = [
   'ORGMASTER_GOOGLE_DIRECTORY_DOMAIN', 'ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT',
   'ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL',
   'ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL', 'ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT',
+  'ORGMASTER_PROJED_CALLER_EMAIL', 'ORGMASTER_PROJED_CALLER_SUBJECT',
   'ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED', 'ORGMASTER_FMS_SESSION_REVOCATION_ENABLED', ...Object.keys(DEV014_LIFECYCLE_RUNTIME_TARGET),
 ]
 const REQUIRED_SECRET_ENV = ['ORGMASTER_POSTGRES_URL', 'ORGMASTER_SESSION_HASH_PEPPER']
@@ -130,6 +131,8 @@ export function assertDev040V3Profile(profile, n1c) {
     || fixed.ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL !== 'orgmaster-prod-directory-dwd@jenfu-platform-prod.iam.gserviceaccount.com'
     || fixed.ORGMASTER_PLATFORM_LOGIN_CALLER_EMAIL !== 'platform-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com'
     || fixed.ORGMASTER_PLATFORM_LOGIN_CALLER_SUBJECT !== '101029748006912113815'
+    || fixed.ORGMASTER_PROJED_CALLER_EMAIL !== 'projed-prod-runtime@jenfu-platform-prod.iam.gserviceaccount.com'
+    || fixed.ORGMASTER_PROJED_CALLER_SUBJECT !== '109317730993775447820'
     || profile.environment.candidateOriginEnvironmentName !== 'ORGMASTER_RELEASE_CANDIDATE_ORIGIN') fail('ENVIRONMENT_VALUE_DRIFT')
   if (JSON.stringify(profile.environment.controlledValues) !== JSON.stringify({ ORGMASTER_JENFU_SSO_HANDOFF_MODE: { defaultValue: 'on', allowedValues: ['on'] }, ORGMASTER_PRINCIPAL_LIFECYCLE_ENABLED: { defaultValue: 'false', allowedValues: ['false', 'true'] } })) fail('ENVIRONMENT_VALUE_DRIFT')
   if (profile.environment.allowedSecretIds?.ORGMASTER_POSTGRES_URL !== 'orgmaster-prod-postgres-url' || profile.environment.allowedSecretIds?.ORGMASTER_SESSION_HASH_PEPPER !== 'orgmaster-prod-session-pepper' || profile.environment.numericVersionsRequired !== true) fail('SECRET_BOUNDARY_DRIFT')
