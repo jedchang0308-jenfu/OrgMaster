@@ -3286,16 +3286,18 @@ test('applied65 abort reuse refuses incomplete, foreign or altered schema and re
 })
 
 
-test('user directory plans only its own 65-to-67 append with unchanged runtime',async()=>{
- const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,65),currentBundle:newBundle})
+test('user directory plans only its own 65/66/67-to-68 append with unchanged runtime',async()=>{
+ for(const count of [65,66,67]) {
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,count),currentBundle:newBundle})
  const common={devId:'DEV-057',slice:'057-PROJED-USERS',remediation:DEV057_USERS_REMEDIATION}
  h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
  h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
  attachForwardInfra(h)
  const plan=await verifyRoutineRelease(h.input)
- assert.equal(plan.releaseMode,DEV057_USERS_RELEASE_MODE);assert.equal(plan.pendingMigrationCount,2)
+ assert.equal(plan.releaseMode,DEV057_USERS_RELEASE_MODE);assert.equal(plan.pendingMigrationCount,68-count)
  h.input.values.readiness.remediation=DEV057_EXTERNAL_REMEDIATION
  await assert.rejects(verifyRoutineRelease(h.input),/DEV057_USERS_AUTHORITY_INVALID/)
+ }
 })
 
 
