@@ -14,7 +14,7 @@ const PLATFORM_EMAIL=`dev010-platform-runtime@${PROJECT}.iam.gserviceaccount.com
 const HASH=/^[a-f0-9]{64}$/u
 type RecordValue=Record<string,unknown>
 type Reference={path:string;sha256:string}
-type Config={format:string;owner:string;projectId:string;ownerRoot:string;profileRef:Reference;sqlProfileRef:Reference;target:{host:string;port:number;database:string;sessionUser:string};postmaster:{pid:number;startToken:string;dataDirectory:string};audience:string;producer:{email:string;subject:string}}
+type Config={format:string;owner:string;projectId:string;ownerRoot:string;profileRef:Reference;sqlProfileRef:Reference;target:{host:string;port:number;database:string;sessionUser:string};postmaster:{pid:number;startToken:string;dataDirectory:string};audience:string;producer:{email:string;subject:string};candidateRef?:Reference}
 type ProcessSnapshot={pid:number;startToken:string;executablePath:string;commandLine:string}
 type Pointer={format:string;privateRoot:string;clusterRoot:string;roots:Record<string,string>;identities:Record<string,{email:string;subject:string}>;directory:Record<string,string>;supportEmail:string}
 type SqlProfile={format:string;runId:string;host:string;port:number;database:string;apps:Record<string,{user:string;password:string;group:string;url:string;pepper:string}>}
@@ -39,38 +39,61 @@ function bytesFile(filename:string,limit:number){
  try{const before=fstatSync(fd);if(!before.isFile()||before.size<1||before.size>limit)fail();const bytes=readFileSync(fd),after=fstatSync(fd);if(bytes.length!==before.size||after.size!==before.size||after.mtimeMs!==before.mtimeMs)fail();canonical(filename,false);return bytes}finally{closeSync(fd)}
 }
 function jsonFile(filename:string,limit:number){const bytes=bytesFile(filename,limit);return {value:JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)) as unknown,hash:hash(bytes)}}
-function environmentValid(env:NodeJS.ProcessEnv){if(env.NODE_ENV!=='development'||Object.hasOwn(env,'K_SERVICE')||env.GOOGLE_CLOUD_PROJECT!==PROJECT||env.GOOGLE_APPLICATION_CREDENTIALS||env.google_application_credentials||env.JENFU_LOCAL_SANDBOX_ENABLED==='1')fail()}
+function environmentValid(env:NodeJS.ProcessEnv){if(env.NODE_ENV!=='development'||Object.hasOwn(env,'K_SERVICE')||env.GOOGLE_CLOUD_PROJECT!==PROJECT||env.JENFU_LOCAL_SANDBOX_ENABLED==='1')fail()}
 function reference(v:unknown):v is Reference{return exact(v,['path','sha256'])&&text(v.path)&&typeof v.sha256==='string'&&HASH.test(v.sha256)}
+type Candidate={ownerRoots:{platform:string;orgmaster:string};origins:{platform:string;orgmaster:string;fms:string};profileRef:Reference;sqlProfileRef:Reference;postmaster:Config['postmaster']&{port:number};adcRef:Reference}
+function readCandidate(config:Config,root:string,environment:NodeJS.ProcessEnv):Candidate|null{
+ if(!config.candidateRef)return null
+ const file=jsonFile(config.candidateRef.path,16*1024),v=file.value
+ if(file.hash!==config.candidateRef.sha256||!exact(v,['format','projectId','ownerRoots','origins','profileRef','sqlProfileRef','postmaster','adcRef'])||v.format!=='jenfu.dev022.local-administration-candidate.v1'||v.projectId!==PROJECT
+ ||!exact(v.ownerRoots,['platform','orgmaster'])||!Object.values(v.ownerRoots).every(text)||v.ownerRoots.orgmaster!==root
+ ||!inside(path.join(v.ownerRoots.platform as string,'.next','dev-local','local-administration-runtime'),config.candidateRef.path)
+ ||!exact(v.origins,['platform','orgmaster','fms'])||new Set(Object.values(v.origins)).size!==3
+ ||Object.values(v.origins).some(value=>{try{const u=new URL(value as string);return u.origin!==value||u.protocol!=='http:'||u.hostname!=='localhost'||!u.port||u.username||u.password||u.search||u.hash||u.pathname!=='/'}catch{return true}})
+ ||!reference(v.profileRef)||v.profileRef.path!==config.profileRef.path||v.profileRef.sha256!==config.profileRef.sha256
+ ||!reference(v.sqlProfileRef)||v.sqlProfileRef.path!==config.sqlProfileRef.path||v.sqlProfileRef.sha256!==config.sqlProfileRef.sha256
+ ||!exact(v.postmaster,['pid','startToken','dataDirectory','port'])||v.postmaster.pid!==config.postmaster.pid||v.postmaster.startToken!==config.postmaster.startToken||v.postmaster.dataDirectory!==config.postmaster.dataDirectory||v.postmaster.port!==config.target.port
+ ||v.origins.orgmaster!==config.audience||!reference(v.adcRef))fail()
+ const c=v as unknown as Candidate;canonical(c.ownerRoots.platform,true)
+ const selected=environment.GOOGLE_APPLICATION_CREDENTIALS?.trim(),alias=environment.google_application_credentials?.trim()
+ if(selected!==c.adcRef.path||alias&&alias!==selected)fail()
+ return c
+}
 function readBound(state:Omit<State,'configHash'|'adcHash'|'inspectProcess'|'database'>&{configHash?:string;adcHash?:string},connectionString?:string){
  environmentValid(state.environment);canonical(state.root,true)
  if(!inside(path.join(state.root,'.next','dev-local'),state.configPath))fail()
  const file=jsonFile(state.configPath,16*1024),v=file.value
+ const v2=!!v&&typeof v==='object'&&(v as RecordValue).format==='jenfu.dev022.local-administration-runtime.v2'
  if(state.configHash&&state.configHash!==file.hash)fail()
- if(!exact(v,['format','owner','projectId','ownerRoot','profileRef','sqlProfileRef','target','postmaster','audience','producer'])||v.format!=='jenfu.dev022.local-administration-runtime.v1'||v.owner!=='orgmaster'||v.projectId!==PROJECT||v.ownerRoot!==state.root||v.audience!==AUDIENCE||!reference(v.profileRef)||!reference(v.sqlProfileRef)||!exact(v.target,['host','port','database','sessionUser'])||v.target.host!=='127.0.0.1'||!Number.isSafeInteger(v.target.port)||Number(v.target.port)<1024||Number(v.target.port)>65535||!text(v.target.database)||!/^jenfu_local_[a-z0-9_]{1,80}$/u.test(v.target.database)||!text(v.target.sessionUser)||/owner|migrator/iu.test(v.target.sessionUser)||!exact(v.postmaster,['pid','startToken','dataDirectory'])||!Number.isSafeInteger(v.postmaster.pid)||Number(v.postmaster.pid)<1||typeof v.postmaster.startToken!=='string'||!/^[1-9][0-9]{0,19}$/u.test(v.postmaster.startToken)||BigInt(v.postmaster.startToken)>18446744073709551615n||!text(v.postmaster.dataDirectory)||!exact(v.producer,['email','subject'])||v.producer.email!==PLATFORM_EMAIL||v.producer.subject!==PLATFORM_SUBJECT)fail()
- const config=v as unknown as Config,profile=jsonFile(config.profileRef.path,64*1024),pointer=profile.value as Pointer
+ if(!exact(v,['format','owner','projectId','ownerRoot','profileRef','sqlProfileRef','target','postmaster','audience','producer',...(v2?['candidateRef']:[])])||(!v2&&v.format!=='jenfu.dev022.local-administration-runtime.v1')||v.owner!=='orgmaster'||v.projectId!==PROJECT||v.ownerRoot!==state.root||(!v2&&v.audience!==AUDIENCE)||(v2&&!reference(v.candidateRef))||!reference(v.profileRef)||!reference(v.sqlProfileRef)||!exact(v.target,['host','port','database','sessionUser'])||v.target.host!=='127.0.0.1'||!Number.isSafeInteger(v.target.port)||Number(v.target.port)<1024||Number(v.target.port)>65535||!text(v.target.database)||!/^jenfu_local_[a-z0-9_]{1,80}$/u.test(v.target.database)||!text(v.target.sessionUser)||/owner|migrator/iu.test(v.target.sessionUser)||!exact(v.postmaster,['pid','startToken','dataDirectory'])||!Number.isSafeInteger(v.postmaster.pid)||Number(v.postmaster.pid)<1||typeof v.postmaster.startToken!=='string'||!/^[1-9][0-9]{0,19}$/u.test(v.postmaster.startToken)||BigInt(v.postmaster.startToken)>18446744073709551615n||!text(v.postmaster.dataDirectory)||!exact(v.producer,['email','subject'])||v.producer.email!==PLATFORM_EMAIL||v.producer.subject!==PLATFORM_SUBJECT)fail()
+ const config=v as unknown as Config,candidate=readCandidate(config,state.root,state.environment),profile=jsonFile(config.profileRef.path,64*1024),pointer=profile.value as Pointer
+ if(!candidate&&(state.environment.GOOGLE_APPLICATION_CREDENTIALS||state.environment.google_application_credentials))fail()
  if(profile.hash!==config.profileRef.sha256||!exact(pointer,['format','privateRoot','clusterRoot','roots','identities','directory','supportEmail'])||pointer.format!=='jenfu.dev-local-auth-profile.v1'||!text(pointer.privateRoot)||!text(pointer.clusterRoot)||!exact(pointer.roots,['platformSandbox','orgmaster','aiPdm','fms','projed'])||!Object.values(pointer.roots).every(text)||!exact(pointer.identities,['platform','orgmaster','aiPdm','fms'])||!exact(pointer.directory,['customerId','domain','delegatedSubject','serviceAccountEmail'])||!Object.values(pointer.directory).every(text)||!text(pointer.supportEmail))fail()
  for(const identity of Object.values(pointer.identities)){if(!exact(identity,['email','subject'])||!text(identity.email)||!identity.email.endsWith(`@${PROJECT}.iam.gserviceaccount.com`)||typeof identity.subject!=='string'||!/^[1-9][0-9]{9,29}$/u.test(identity.subject))fail()}
  const org=pointer.identities.orgmaster as RecordValue,platform=pointer.identities.platform as RecordValue
  if(org.email!==ORG_EMAIL||org.subject!==ORG_SUBJECT||platform.email!==PLATFORM_EMAIL||platform.subject!==PLATFORM_SUBJECT||!(pointer.directory.serviceAccountEmail as string).endsWith(`@${PROJECT}.iam.gserviceaccount.com`))fail()
  const run=/^dev069-real-nonprod-([a-f0-9]{32})$/u.exec(path.basename(pointer.privateRoot));if(!run)fail()
  canonical(pointer.privateRoot,true);canonical(pointer.clusterRoot,true)
- if(config.sqlProfileRef.path!==path.join(pointer.privateRoot,'private','owner-runtime-logins.json')||config.postmaster.dataDirectory!==path.join(pointer.clusterRoot,'data'))fail()
+ if(config.sqlProfileRef.path!==path.join(pointer.privateRoot,'private','owner-runtime-logins.json')||!candidate&&config.postmaster.dataDirectory!==path.join(pointer.clusterRoot,'data'))fail()
  canonical(config.postmaster.dataDirectory,true)
  const sqlFile=jsonFile(config.sqlProfileRef.path,128*1024),sql=sqlFile.value as SqlProfile
- if(sqlFile.hash!==config.sqlProfileRef.sha256||!exact(sql,['format','runId','host','port','database','apps'])||sql.format!=='dev069.real-nonproduction-runtime-logins.v1'||sql.runId!==run![1]||sql.host!==config.target.host||sql.port!==config.target.port||sql.database!==config.target.database||!exact(sql.apps,['platform','orgmaster','aipdm']))fail()
+ if(sqlFile.hash!==config.sqlProfileRef.sha256||!exact(sql,['format','runId','host','port','database','apps'])||sql.format!=='dev069.real-nonproduction-runtime-logins.v1'||sql.runId!==run![1]||sql.host!==config.target.host||!Number.isSafeInteger(sql.port)||(!candidate&&sql.port!==config.target.port)||sql.database!==config.target.database||!exact(sql.apps,['platform','orgmaster','aipdm']))fail()
  const groups={platform:'jenfu_platform_runtime',orgmaster:'jenfu_orgmaster_runtime',aipdm:'jenfu_ai_pdm_runtime'}
  for(const [key,app] of Object.entries(sql.apps)){
   if(!exact(app,['user','password','group','url','pepper'])||!Object.values(app).every(text)||app.group!==groups[key as keyof typeof groups])fail()
   const parsed=new URL(app.url)
-  if(!['postgres:','postgresql:'].includes(parsed.protocol)||parsed.hostname!==config.target.host||Number(parsed.port||'5432')!==config.target.port||decodeURIComponent(parsed.pathname.slice(1))!==config.target.database||decodeURIComponent(parsed.username)!==app.user||decodeURIComponent(parsed.password)!==app.password||parsed.search||parsed.hash)fail()
+  if(!['postgres:','postgresql:'].includes(parsed.protocol)||parsed.hostname!==config.target.host||Number(parsed.port||'5432')!==sql.port||decodeURIComponent(parsed.pathname.slice(1))!==config.target.database||decodeURIComponent(parsed.username)!==app.user||decodeURIComponent(parsed.password)!==app.password||parsed.search||parsed.hash)fail()
  }
  const url=new URL((sql.apps.orgmaster as RecordValue).url as string)
- if(!['postgres:','postgresql:'].includes(url.protocol)||url.hostname!==config.target.host||Number(url.port||'5432')!==config.target.port||decodeURIComponent(url.pathname.slice(1))!==config.target.database||decodeURIComponent(url.username)!==config.target.sessionUser||url.search||url.hash||!url.password||connectionString!==undefined&&connectionString!==url.toString())fail()
- const adcFile=jsonFile(path.join(pointer.privateRoot,'private','google-adc','application_default_credentials.json'),16*1024),adc=adcFile.value
+ const sourcePort=url.port
+ if(candidate)url.port=String(config.target.port)
+ if(!['postgres:','postgresql:'].includes(url.protocol)||url.hostname!==config.target.host||Number(sourcePort||'5432')!==sql.port||decodeURIComponent(url.pathname.slice(1))!==config.target.database||decodeURIComponent(url.username)!==config.target.sessionUser||url.search||url.hash||!url.password||connectionString!==undefined&&connectionString!==url.toString())fail()
+ const adcFile=jsonFile(candidate?.adcRef.path??path.join(pointer.privateRoot,'private','google-adc','application_default_credentials.json'),16*1024),adc=adcFile.value
+ if(candidate&&adcFile.hash!==candidate.adcRef.sha256)fail()
  if(state.adcHash&&state.adcHash!==adcFile.hash||!adc||typeof adc!=='object'||Array.isArray(adc))fail()
  const credentials=adc as RecordValue
- if(credentials.type!=='authorized_user'||credentials.quota_project_id!==PROJECT||!text(credentials.client_id)||!text(credentials.client_secret)||!text(credentials.refresh_token)||Object.hasOwn(credentials,'private_key'))fail()
- return {config,configHash:file.hash,adcHash:adcFile.hash,credentials,directory:pointer.directory as Record<string,string>,privateRoot:pointer.privateRoot,clusterRoot:pointer.clusterRoot,platformRoot:pointer.roots.platformSandbox,runId:run![1],runtimeUrl:url.toString()}
+ if(credentials.type!=='authorized_user'||credentials.quota_project_id!==PROJECT||!text(credentials.client_id)||!text(credentials.client_secret)||!text(credentials.refresh_token)||['private_key','private_key_id','client_email'].some(key=>Object.hasOwn(credentials,key)))fail()
+ return {config,configHash:file.hash,adcHash:adcFile.hash,credentials,directory:pointer.directory as Record<string,string>,privateRoot:pointer.privateRoot,clusterRoot:pointer.clusterRoot,platformRoot:candidate?.ownerRoots.platform??pointer.roots.platformSandbox,origins:candidate?.origins??{platform:'http://localhost:1000',orgmaster:AUDIENCE,fms:'http://localhost:1030'},runId:run![1],runtimeUrl:url.toString()}
 }
 const execute=promisify(execFile)
 async function inspectWindowsPostmaster(pid:number):Promise<ProcessSnapshot>{
@@ -125,12 +148,13 @@ export function localAdministrationProviders(runtime:OrgmasterLocalAdministratio
  return {firebaseCredential,firebaseAppName:`dev070-local-${bound.adcHash.slice(0,16)}`,sourceAuth,directory:bound.directory}}catch{return fail()}
 }
 export async function localAdministrationServiceToken(runtime:OrgmasterLocalAdministrationRuntime,audience:string){
- const state=stateFor(runtime);if(!['http://localhost:1000','http://localhost:1030'].includes(audience))fail()
+ const state=stateFor(runtime),origins=readBound(state).origins;if(![origins.platform,origins.fms].includes(audience))fail()
  await runtime.verify();const {sourceAuth}=localAdministrationProviders(runtime),sourceClient=await sourceAuth.getClient()
  const client=new Impersonated({sourceClient,targetPrincipal:ORG_EMAIL,targetScopes:['https://www.googleapis.com/auth/cloud-platform'],lifetime:300})
  const token=await client.fetchIdToken(audience);await runtime.verify();return token
 }
-export function localAdministrationPeer(runtime:OrgmasterLocalAdministrationRuntime){stateFor(runtime);return {audience:AUDIENCE,expectedEmail:PLATFORM_EMAIL,expectedSubject:PLATFORM_SUBJECT}}
+export function localAdministrationOrigins(runtime:OrgmasterLocalAdministrationRuntime){return Object.freeze({...readBound(stateFor(runtime)).origins})}
+export function localAdministrationPeer(runtime:OrgmasterLocalAdministrationRuntime){return {audience:localAdministrationOrigins(runtime).orgmaster,expectedEmail:PLATFORM_EMAIL,expectedSubject:PLATFORM_SUBJECT}}
 
 /** Private owner CLI input, never composed into an HTTP/runtime capability. */
 export function readLocalAdministrationOwnerInput(environment:NodeJS.ProcessEnv=process.env){

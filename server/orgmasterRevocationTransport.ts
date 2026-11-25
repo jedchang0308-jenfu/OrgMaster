@@ -1,9 +1,11 @@
 import { PLATFORM_PRINCIPAL_LIFECYCLE_ORIGIN, defaultIdTokenProvider } from './orgmasterPrincipalLifecycleClient'
+import {localAdministrationOrigins,type OrgmasterLocalAdministrationRuntime} from './orgmasterLocalAdministrationRuntime'
 
 export type RevocationTransportDependencies = {
   tokenProvider?: (audience: string) => Promise<string>
   fetch?: typeof fetch
   local?: boolean
+  localRuntime?: OrgmasterLocalAdministrationRuntime
 }
 
 export function createOrgmasterRevocationTransport<Command, Receipt>(options: {
@@ -14,8 +16,9 @@ export function createOrgmasterRevocationTransport<Command, Receipt>(options: {
   parseReceipt: (value: unknown, command: Command) => Receipt
 }, dependencies: RevocationTransportDependencies) {
   const { path, invalidReceipt, unavailable, conflict, parseReceipt } = options
-  if (dependencies.local && !dependencies.tokenProvider) throw new Error(unavailable)
-  const origin = dependencies.local ? 'http://localhost:1000' : PLATFORM_PRINCIPAL_LIFECYCLE_ORIGIN
+  if ((dependencies.local || dependencies.localRuntime) && !dependencies.tokenProvider) throw new Error(unavailable)
+  const origin = dependencies.localRuntime ? localAdministrationOrigins(dependencies.localRuntime).platform
+    : dependencies.local ? 'http://localhost:1000' : PLATFORM_PRINCIPAL_LIFECYCLE_ORIGIN
   const tokenProvider = dependencies.tokenProvider ?? defaultIdTokenProvider
   const fetchImpl = dependencies.fetch ?? fetch
 
