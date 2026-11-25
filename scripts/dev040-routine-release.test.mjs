@@ -3135,7 +3135,8 @@ function appliedSchemaAbortHarness(change = {}) {
   for (const name of Object.keys(DEV057_PROJED_CALLER_PINS)) delete beforePlain[name]
   const beforeRuntime = buildRuntimeConfig(beforeProfile, { plainEnvironment: beforePlain, secretVersions: runtime.secretVersions })
   const sourceRevision = '06edd0c97d9af2f7b29c1589cadc4a5766ad0522'
-  const releaseSourceRevision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim()
+  // Historical executor-only continuation; current application changes are a separate denial case.
+  const releaseSourceRevision = change.releaseSourceRevision ?? '3683cac1c2705d0c01a344f30ea81b6ec5308c21'
   const currentBundle = {bundle:prefixBundle(buildBundle(releaseSourceRevision).bundle,65)}
   const h = harness({ baselineRuntime: beforeRuntime, nextRuntime: runtime, baselineBundle: prefixBundle(oldBundle.bundle, 60), currentBundle })
   const schema64 = sealedSchemaPredecessor(h, change.schema64)
@@ -3295,4 +3296,11 @@ test('user directory plans only its own 65-to-66 append with unchanged runtime',
  assert.equal(plan.releaseMode,DEV057_USERS_RELEASE_MODE);assert.equal(plan.pendingMigrationCount,1)
  h.input.values.readiness.remediation=DEV057_EXTERNAL_REMEDIATION
  await assert.rejects(verifyRoutineRelease(h.input),/DEV057_USERS_AUTHORITY_INVALID/)
+})
+
+
+test('new user-directory runtime cannot reuse the historical applied65 application image',async()=>{
+ const releaseSourceRevision=spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).stdout.trim()
+ const {args}=appliedSchemaAbortHarness({releaseSourceRevision})
+ await assert.rejects(buildAbortedAppArtifactReuse(args),/APP_ARTIFACT_REUSE_RUNTIME_INPUT_CHANGED/)
 })
