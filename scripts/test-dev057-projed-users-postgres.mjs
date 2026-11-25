@@ -83,6 +83,23 @@ await withAdministrationPostgresFixture(async fixture => {
    assert.deepEqual((await admin.query(query, args)).rows, originalGrants[index]);
   }
  });
+ await check('one active publication projection preserves mappings, session admission and directory', async () => {
+  const queries = [
+   ['SELECT to_jsonb(m) AS row FROM orgmaster_contract.v_active_principal_mappings_v1 m ORDER BY to_jsonb(m)', []],
+   ['SELECT to_jsonb(m) AS row FROM orgmaster_contract.v_orgmaster_session_principals_v2 m ORDER BY to_jsonb(m)', []],
+   ['SELECT orgmaster_core.read_user_directory_v1($1::jsonb) AS result', [JSON.stringify(actor)]],
+   ["SELECT oid,relowner,relacl,reloptions FROM pg_class WHERE oid='orgmaster_contract.v_active_principal_mappings_v1'::regclass", []],
+  ];
+  const read = async () => {
+   const rows = [];
+   for (const [sql, args] of queries) rows.push((await admin.query(sql, args)).rows);
+   return rows;
+  };
+  const before = await read();
+  assert.ok(before[0].length > 0 && before[1].length > 0);
+  await admin.query(await readFile('db/migrations/074_dev057_materialize_active_principal_publication.sql','utf8'));
+  assert.deepEqual(await read(), before);
+ });
  await check('legacy-account-visible-before-first-platform-enrollment-without-private-content', async () => {
   for(const entry of ['main','quick'])assert.equal(await actorValid(entry,'1'),true);
   const row=await get();assert.equal(row.identityStatus,'UNREGISTERED');assert.equal(row.enabled,true);assert.equal(row.email,'legacy-personal@example.invalid')
