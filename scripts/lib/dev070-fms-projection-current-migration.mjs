@@ -2,12 +2,13 @@ import {canonicalize,sha256} from './dev012-production-migration-runner.mjs'
 import {assertDev057UsersMigrationEntries} from './dev057-projed-users-migration.mjs'
 
 // A separate reviewed owner forward, never an extension of PROJED_USERS.
-export const FMS_PROJECTION_CURRENT = Object.freeze({order:69,version:'dev070-orgmaster-073',path:'db/migrations/073_dev070_fms_administrative_projection_current.sql',sourceSha256:'fc9e25f992cb89d33407529310bec66517954d253afde9a37cb9d782c5f905d4',appliedSha256:'a69451fc36c82d081dbbc4c171d5417cec41beb01e89d3fc8909372b47703e55'})
+export const FMS_PROJECTION_CURRENT = Object.freeze({order:71,version:'dev070-orgmaster-073',path:'db/migrations/073_dev070_fms_administrative_projection_current.sql',sourceSha256:'fc9e25f992cb89d33407529310bec66517954d253afde9a37cb9d782c5f905d4',appliedSha256:'a69451fc36c82d081dbbc4c171d5417cec41beb01e89d3fc8909372b47703e55'})
 export function assertFmsProjectionCurrentEntries(entries) {
- if(!Array.isArray(entries)||entries.length!==69)throw Object.assign(new Error('MIGRATION_SET_DRIFT'),{code:'MIGRATION_SET_DRIFT'})
- assertDev057UsersMigrationEntries(entries.slice(0,68))
- const {order,version,path,sourceSha256,appliedSha256}=entries[68]
- if(canonicalize({order,version,path,sourceSha256,appliedSha256})!==canonicalize(FMS_PROJECTION_CURRENT))throw new Error('FMS_PROJECTION_FORWARD_ENTRIES_INVALID')
+ if(!Array.isArray(entries)||![69,71].includes(entries.length))throw Object.assign(new Error('MIGRATION_SET_DRIFT'),{code:'MIGRATION_SET_DRIFT'})
+ const prefix=entries.length-1
+ assertDev057UsersMigrationEntries(entries.slice(0,prefix),prefix===68)
+ const {order,version,path,sourceSha256,appliedSha256}=entries[prefix]
+ if(canonicalize({order,version,path,sourceSha256,appliedSha256})!==canonicalize({...FMS_PROJECTION_CURRENT,order:entries.length}))throw new Error('FMS_PROJECTION_FORWARD_ENTRIES_INVALID')
  return entries
 }
 export const FMS_PROJECTION_CURRENT_RELEASE_MODE='DEV070_FMS_PROJECTION_CURRENT_APPEND'
@@ -15,7 +16,7 @@ export const FMS_PROJECTION_CURRENT_REMEDIATION=Object.freeze({kind:'FMS_ADMINIS
 export function assertFmsProjectionCurrentAppend(before,after) {
  assertDev057UsersMigrationEntries(before?.entries);assertFmsProjectionCurrentEntries(after?.entries)
  const inputs=({sourceRevision,manifestSha256,entries,...rest})=>rest
- if(before.baselineCount!==10||canonicalize(inputs(before))!==canonicalize(inputs(after))||canonicalize(before.entries)!==canonicalize(after.entries.slice(0,68)))throw new Error('FMS_PROJECTION_FORWARD_APPEND_INVALID')
+ if(before.baselineCount!==10||canonicalize(inputs(before))!==canonicalize(inputs(after))||canonicalize(before.entries)!==canonicalize(after.entries.slice(0,70)))throw new Error('FMS_PROJECTION_FORWARD_APPEND_INVALID')
  const {sourceRevision,manifestSha256,...body}=after
  return {migrationDisposition:'FORWARD_APPLY',pendingMigrationCount:1,migrationInputsSha256:sha256(canonicalize(body))}
 }
@@ -29,7 +30,7 @@ export function assertFmsProjectionCurrentReleaseAuthority(readiness,authorizati
  return {releaseMode:FMS_PROJECTION_CURRENT_RELEASE_MODE,remediation:FMS_PROJECTION_CURRENT_REMEDIATION}
 }
 export function buildFmsProjectionCurrentForward({predecessorEntries,sourceRevision,sqlBytes}) {
- assertDev057UsersMigrationEntries(predecessorEntries)
+ assertDev057UsersMigrationEntries(predecessorEntries,predecessorEntries?.length===68)
  if(!/^[a-f0-9]{40}$/u.test(sourceRevision??'')||!Buffer.isBuffer(sqlBytes)||sqlBytes.includes(13)
   ||sha256(sqlBytes)!==FMS_PROJECTION_CURRENT.sourceSha256)throw new Error('FMS_PROJECTION_FORWARD_SOURCE_INVALID')
  // This exact migration's envelope is source pinned above. Avoid importing
@@ -38,9 +39,9 @@ export function buildFmsProjectionCurrentForward({predecessorEntries,sourceRevis
  if(!envelope)throw new Error('FMS_PROJECTION_FORWARD_APPLIED_INVALID')
  const sql=`${envelope.groups.leading}${envelope.groups.body}\n`
  if(sha256(sql)!==FMS_PROJECTION_CURRENT.appliedSha256)throw new Error('FMS_PROJECTION_FORWARD_APPLIED_INVALID')
- const entry={...FMS_PROJECTION_CURRENT,owner:'orgmaster',name:'dev070_fms_administrative_projection_current',sql}
+ const entry={...FMS_PROJECTION_CURRENT,order:predecessorEntries.length+1,owner:'orgmaster',name:'dev070_fms_administrative_projection_current',sql}
  const body={format:'orgmaster.fms-administrative-projection-forward.v1',owner:'orgmaster',sourceRevision,
-  predecessorEntriesSha256:sha256(canonicalize(predecessorEntries)),predecessorVersion:'dev057-orgmaster-072',
+  predecessorEntriesSha256:sha256(canonicalize(predecessorEntries)),predecessorVersion:predecessorEntries.at(-1).version,
   ledger:'orgmaster_core.schema_migrations',entry}
  return Object.freeze({...body,manifestSha256:sha256(canonicalize(body))})
 }

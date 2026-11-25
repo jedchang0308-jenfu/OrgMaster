@@ -48,9 +48,9 @@ function fail(code) { throw Object.assign(new Error(code), { code }) }
 // Released owner operations may consume either reviewed complete generation.
 // This does not admit partial bundles or change either append recipe's bounds.
 export function assertReviewedOrgmasterMigrationEntries(entries) {
-  if (entries?.length === 69) return assertFmsProjectionCurrentEntries(entries)
+  if (entries?.length === 71 || entries?.length === 69 && entries.at(-1)?.version === 'dev070-orgmaster-073') return assertFmsProjectionCurrentEntries(entries)
   if (entries?.length === DEV057_USERS_ENTRY_COUNT) return assertDev057UsersMigrationEntries(entries)
-  if ([66,67].includes(entries?.length)) return assertDev057UsersMigrationEntries(entries, true)
+  if ([66,67,68,69].includes(entries?.length)) return assertDev057UsersMigrationEntries(entries, true)
   if (entries?.length === DEV057_EXTERNAL_ENTRY_COUNT) return assertDev057ExternalMigrationEntries(entries)
   return entries?.length === DEV057_PROJED_MIGRATION_ENTRY_COUNT
     ? assertDev057ProjedMigrationEntries(entries)

@@ -18,22 +18,26 @@ const canonical=value=>JSON.stringify(value,(_key,v)=>v&&typeof v==='object'&&!A
 export const localOwnerHash=value=>createHash('sha256').update(typeof value==='string'||Buffer.isBuffer(value)?value:canonical(value)).digest('hex')
 const fail=code=>{throw Object.assign(new Error('DEV070_LOCAL_'+code),{code:'DEV070_LOCAL_'+code})}
 export function validateLocalLedger(entries,rows,database){
- if(entries?.length===69)assertFmsProjectionCurrentEntries(entries)
+ if(entries?.length===71||entries?.length===69&&entries.at(-1)?.version==='dev070-orgmaster-073')assertFmsProjectionCurrentEntries(entries)
  else assertReviewedOrgmasterMigrationEntries(entries)
  if(!Array.isArray(rows)||rows.length<39||rows.length>entries.length||new Set(rows.map(r=>r.version)).size!==rows.length)fail('LEDGER_UNKNOWN')
  const byVersion=new Map(rows.map(r=>[r.version,r]))
- for(const entry of entries.slice(0,rows.length)){
+ // A reviewed FMS forward may already precede later DEV057 query-only appends.
+ // Accept only that exact known historical layout; unknown/missing rows still fail.
+ const installed=entries.length===71&&[69,70].includes(rows.length)&&byVersion.has('dev070-orgmaster-073')
+  ?[...entries.slice(0,rows.length-1),entries.at(-1)]:entries.slice(0,rows.length)
+ for(const entry of installed){
   const row=byVersion.get(entry.version),name=entry.path.split('/').at(-1).replace(/^\d{3}_/u,'').replace(/\.sql$/u,'')
   const raw042=entry.version==='dev057-orgmaster-042'&&row?.checksum_sha256===entry.sourceSha256&&/^LOCAL_GENESIS:[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(row.source_revision)&&database.endsWith('_'+row.source_revision.slice(14,22))
   if(!row||row.name!==name||row.checksum_sha256!==entry.appliedSha256&&!raw042||!raw042&&!/^[a-f0-9]{40}$/u.test(row.source_revision))fail('LEDGER_UNKNOWN')
  }
- return {count:rows.length,raw042:rows.find(r=>r.version==='dev057-orgmaster-042')?.checksum_sha256===entries[39].sourceSha256,pending:entries.slice(rows.length)}
+ return {count:rows.length,raw042:rows.find(r=>r.version==='dev057-orgmaster-042')?.checksum_sha256===entries[39].sourceSha256,pending:entries.filter(entry=>!byVersion.has(entry.version))}
 }
 export async function readLocalOwnerSource(context){
  const root=context.ownerRoot,profile=JSON.parse(await readFile(path.join(root,'config/release/dev040-orgmaster-independent-production-v3.json'),'utf8'))
  assertReviewedOrgmasterMigrationEntries(profile.migrations.entries)
- // Current local status/bootstrap knows the separate 073 forward without
- // relabelling the immutable 68-entry PROJED_USERS release generation.
+ // Current local status/bootstrap knows the separate FMS 073 forward without
+ // relabelling the immutable reviewed DEV057 release generations.
  const entries=profile.migrations.entries
  const migrations=[]
  for(const entry of entries.slice(39)){

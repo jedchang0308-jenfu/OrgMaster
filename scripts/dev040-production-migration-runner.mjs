@@ -49,8 +49,8 @@ export const DEV057_PROJED_TARGET = Object.freeze({
   allowedExistingLedgerCounts: Object.freeze(Array.from({ length: DEV057_PROJED_MIGRATION_ENTRY_COUNT - DEV057_PROJED_BASELINE_COUNT + 1 }, (_, index) => DEV057_PROJED_BASELINE_COUNT + index)),
 })
 
-export const FMS_PROJECTION_CURRENT_TARGET=Object.freeze({...TARGET,entryCount:69,allowedExistingLedgerCounts:Object.freeze([68,69])})
-export const DEV057_USERS_TARGET = Object.freeze({...TARGET,entryCount:DEV057_USERS_ENTRY_COUNT,allowedExistingLedgerCounts:Object.freeze([65,66,67,DEV057_USERS_ENTRY_COUNT])})
+export const FMS_PROJECTION_CURRENT_TARGET=Object.freeze({...TARGET,entryCount:71,allowedExistingLedgerCounts:Object.freeze([70,71])})
+export const DEV057_USERS_TARGET = Object.freeze({...TARGET,entryCount:DEV057_USERS_ENTRY_COUNT,allowedExistingLedgerCounts:Object.freeze([65,66,67,68,69,DEV057_USERS_ENTRY_COUNT])})
 
 export const DEV057_EXTERNAL_TARGET = Object.freeze({ ...TARGET, entryCount: DEV057_EXTERNAL_ENTRY_COUNT, allowedExistingLedgerCounts: Object.freeze([64, 65]) })
 

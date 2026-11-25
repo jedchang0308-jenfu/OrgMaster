@@ -11,35 +11,35 @@ import {parseOrgmasterRunnerArgs,FMS_PROJECTION_CURRENT_TARGET} from '../dev040-
 import {assertMigrationReceipt} from './dev012-owner-stage-executor.mjs'
 const profile=JSON.parse(readFileSync('config/release/dev040-orgmaster-independent-production-v3.json','utf8'))
 const bytes=readFileSync(FMS_PROJECTION_CURRENT.path)
-test('073 is an independently pinned owner forward after the unchanged reviewed 68-entry generation',()=>{
- const input={predecessorEntries:profile.migrations.entries.slice(0,68),sourceRevision:'a'.repeat(40),sqlBytes:bytes}
+test('073 is an independently pinned owner forward after the reviewed DEV057 generation',()=>{
+ const input={predecessorEntries:profile.migrations.entries.slice(0,70),sourceRevision:'a'.repeat(40),sqlBytes:bytes}
  const bundle=buildFmsProjectionCurrentForward(input)
- assert.equal(bundle.entry.version,'dev070-orgmaster-073');assert.equal(bundle.predecessorVersion,'dev057-orgmaster-072')
+ assert.equal(bundle.entry.version,'dev070-orgmaster-073');assert.equal(bundle.predecessorVersion,'dev057-orgmaster-074')
  assert.equal(bundle.ledger,'orgmaster_core.schema_migrations');assert.equal(bundle.entry.owner,'orgmaster')
- assert.equal(profile.migrations.entries.length,69)
- for(const delta of [{sourceRevision:'bad'},{sqlBytes:Buffer.concat([bytes,Buffer.from(' ')] )},{predecessorEntries:profile.migrations.entries.slice(0,68).slice(0,67)}])assert.throws(()=>buildFmsProjectionCurrentForward({...input,...delta}))
+ assert.equal(profile.migrations.entries.length,71)
+ for(const delta of [{sourceRevision:'bad'},{sqlBytes:Buffer.concat([bytes,Buffer.from(' ')] )},{predecessorEntries:profile.migrations.entries.slice(0,70).slice(0,67)}])assert.throws(()=>buildFmsProjectionCurrentForward({...input,...delta}))
  const changed=structuredClone(profile.migrations.entries);changed[67].appliedSha256='0'.repeat(64)
  assert.throws(()=>buildFmsProjectionCurrentForward({...input,predecessorEntries:changed}))
 })
 
-test('normal current owner bundle contains 073 and only its distinct 68-to-69 recipe can append it',()=>{
+test('normal current owner bundle contains 073 and only its distinct 70-to-71 recipe can append it',()=>{
  const n1c=JSON.parse(readFileSync('config/dev-010/n1c-orgmaster.json','utf8')),files=new Map(profile.migrations.entries.map(row=>[row.path,readFileSync(row.path)])),source='a'.repeat(40)
  const after=buildDev040MigrationBundle(profile,buildOrgmasterPackage(n1c),files,source,{releaseMode:FMS_PROJECTION_CURRENT_RELEASE_MODE}).bundle
- const before=createMigrationBundle({target:{ownerApplicationId:'orgmaster',ledger:profile.migrations.ledger,baselineCount:10},sourceRevision:source,entries:after.entries.slice(0,68)}).bundle
+ const before=createMigrationBundle({target:{ownerApplicationId:'orgmaster',ledger:profile.migrations.ledger,baselineCount:10},sourceRevision:source,entries:after.entries.slice(0,70)}).bundle
  assertFmsProjectionCurrentEntries(after.entries);assertDev057UsersMigrationEntries(before.entries)
  assert.throws(()=>assertDev057UsersMigrationEntries(after.entries))
  assert.equal(assertFmsProjectionCurrentAppend(before,after).pendingMigrationCount,1)
  assert.deepEqual(planMigration(after,before.entries.map(row=>({version:row.version,name:row.name,checksum_sha256:row.appliedSha256}))).map(row=>row.version),['dev070-orgmaster-073'])
- for(const delta of [{entries:before.entries.slice(0,67)},{entries:after.entries},{ledger:'other.schema_migrations'}])assert.throws(()=>assertFmsProjectionCurrentAppend({...before,...delta},after))
- const changed=structuredClone(after);changed.entries[68].appliedSha256='0'.repeat(64);assert.throws(()=>assertFmsProjectionCurrentEntries(changed.entries))
- assert.deepEqual(FMS_PROJECTION_CURRENT_TARGET.allowedExistingLedgerCounts,[68,69]);assert.equal(FMS_PROJECTION_CURRENT_TARGET.entryCount,69)
+ for(const delta of [{entries:before.entries.slice(0,69)},{entries:after.entries},{ledger:'other.schema_migrations'}])assert.throws(()=>assertFmsProjectionCurrentAppend({...before,...delta},after))
+ const changed=structuredClone(after);changed.entries[70].appliedSha256='0'.repeat(64);assert.throws(()=>assertFmsProjectionCurrentEntries(changed.entries))
+ assert.deepEqual(FMS_PROJECTION_CURRENT_TARGET.allowedExistingLedgerCounts,[70,71]);assert.equal(FMS_PROJECTION_CURRENT_TARGET.entryCount,71)
  const args=['--bundle-ref','gs://jenfu-platform-prod-orgmaster-release/source/migration-bundles/source.json','--bundle-sha256','b'.repeat(64),'--source-revision',source,'--output-ref','gs://jenfu-platform-prod-orgmaster-release/receipts/test.json','--migration-mode',FMS_PROJECTION_CURRENT_RELEASE_MODE]
  assert.equal(parseOrgmasterRunnerArgs(args).migrationMode,FMS_PROJECTION_CURRENT_RELEASE_MODE)
  const intent={ownerApplicationId:'orgmaster',sourceRevision:source,releaseId:'FMS-PROJECTION-073',migrationManifestSha256:after.manifestSha256,baselineIntentRef:{uri:'gs://fixture/baseline',sha256:'b'.repeat(64)}}
- const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:source,manifestSha256:after.manifestSha256,status:'PASS',boundaryStatus:'PASS',applied:1,replayed:68,ledgerCount:69,baselineCount:10,minimumLedgerCount:10,database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
+ const core={schemaVersion:'jenfu.dev012.migration-receipt.v1',ownerApplicationId:'orgmaster',sourceRevision:source,manifestSha256:after.manifestSha256,status:'PASS',boundaryStatus:'PASS',applied:1,replayed:70,ledgerCount:71,baselineCount:10,minimumLedgerCount:10,database:'jenfu_prod',ledger:'orgmaster_core.schema_migrations',crossDatabaseDenials:[{database:'jenfu_dev',denied:true},{database:'jenfu_stg',denied:true}]}
  const seal=value=>({...value,receiptSha256:sha256(canonicalize(value))}),options={allowForward:true,forwardPlan:{releaseMode:FMS_PROJECTION_CURRENT_RELEASE_MODE,pendingMigrationCount:1}}
  assert.doesNotThrow(()=>assertMigrationReceipt(seal(core),profile,intent,options))
- for(const delta of [{ledgerCount:68},{applied:2,replayed:67},{crossDatabaseDenials:[]},{database:'jenfu_dev'}])assert.throws(()=>assertMigrationReceipt(seal({...core,...delta}),profile,intent,options))
+ for(const delta of [{ledgerCount:70},{applied:2,replayed:69},{crossDatabaseDenials:[]},{database:'jenfu_dev'}])assert.throws(()=>assertMigrationReceipt(seal({...core,...delta}),profile,intent,options))
 })
 
 test('normal CLI and authority keep the new recipe exclusive without extending historical USERS authority',()=>{

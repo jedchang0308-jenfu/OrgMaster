@@ -272,7 +272,7 @@ export function assertToolInfrastructureTransition(root, beforeRevision, afterRe
       || !same(beforeEntries, afterEntries.slice(0, beforeEntries.length))
       || !same(beforeEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, beforeEntries.length - DEV058_MIGRATION_PREFIX_COUNT))
       || !same(afterEntries.slice(DEV058_MIGRATION_PREFIX_COUNT).map(identity), approvedSuffix.slice(0, afterEntries.length - DEV058_MIGRATION_PREFIX_COUNT))) fail('SOURCE_INPUT_DRIFT')
-    disposition = afterEntries.length === 69 ? FMS_PROJECTION_CURRENT_RELEASE_MODE : afterEntries.length === DEV057_USERS_ENTRY_COUNT ? DEV057_USERS_RELEASE_MODE : afterEntries.length === DEV057_EXTERNAL_ENTRY_COUNT ? DEV057_EXTERNAL_RELEASE_MODE : afterEntries.length > DEV070_MIGRATION_ENTRY_COUNT ? DEV057_PROJED_RELEASE_MODE : afterEntries.length>DEV059_MIGRATION_ENTRY_COUNT?DEV070_RELEASE_MODE:afterEntries.length > DEV058_MIGRATION_ENTRY_COUNT
+    disposition = afterEntries.length === 71 ? FMS_PROJECTION_CURRENT_RELEASE_MODE : afterEntries.length === DEV057_USERS_ENTRY_COUNT ? DEV057_USERS_RELEASE_MODE : afterEntries.length === DEV057_EXTERNAL_ENTRY_COUNT ? DEV057_EXTERNAL_RELEASE_MODE : afterEntries.length > DEV070_MIGRATION_ENTRY_COUNT ? DEV057_PROJED_RELEASE_MODE : afterEntries.length>DEV059_MIGRATION_ENTRY_COUNT?DEV070_RELEASE_MODE:afterEntries.length > DEV058_MIGRATION_ENTRY_COUNT
       ? 'DEV059_FMS_AUTHORITY_APPEND'
       : 'DEV058_ROLE_POLICY_APPEND'
   } catch { fail('SOURCE_INPUT_DRIFT') }

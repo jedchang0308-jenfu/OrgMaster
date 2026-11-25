@@ -736,6 +736,20 @@
       },
       {
         "order": 69,
+        "version": "dev057-orgmaster-073",
+        "path": "db/migrations/073_dev057_bulk_principal_mapping_counts.sql",
+        "sourceSha256": "d50d40ac401b4cc0137d760374972c89f1da4383862ede9fd1f1c6d189dcbf45",
+        "appliedSha256": "e9d12647d530e3b7b8166fa95662b677a64b94afa474787240feb2ad85743ff9"
+      },
+      {
+        "order": 70,
+        "version": "dev057-orgmaster-074",
+        "path": "db/migrations/074_dev057_materialize_active_principal_publication.sql",
+        "sourceSha256": "07edbcd4e68e8494c9c7a59ef25bc6b45c9f53ba6e632f6414e672e56bbc27a4",
+        "appliedSha256": "747c54177b55d1e6135534059d35b75b8e3c06b226db67ab9da9dc74b04fef15"
+      },
+      {
+        "order": 71,
         "version": "dev070-orgmaster-073",
         "path": "db/migrations/073_dev070_fms_administrative_projection_current.sql",
         "sourceSha256": "fc9e25f992cb89d33407529310bec66517954d253afde9a37cb9d782c5f905d4",

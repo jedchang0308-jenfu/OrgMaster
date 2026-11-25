@@ -51,15 +51,15 @@ test('local CLI only admits bounded plan/status/commit arguments',()=>{
  assert.throws(()=>parseLocalAdministrationOwnerArgs(['commit','--config','own.json']))
 })
 
-test('current local status recognizes the pinned 073 suffix while historical 68 remains exact',()=>{
- const historical=entries.slice(0,68),current=entries,ledger=current.map(row)
- assert.equal(validateLocalLedger(current,ledger,database).count,69)
+test('current local status recognizes the pinned 073 suffix while historical generations remain exact',()=>{
+ const historical=entries.slice(0,70),current=entries,ledger=current.map(row)
+ assert.equal(validateLocalLedger(current,ledger,database).count,71)
  assert.deepEqual(validateLocalLedger(current,ledger,database).pending,[])
- assert.equal(validateLocalLedger(historical,historical.map(row),database).count,68)
+ assert.equal(validateLocalLedger(historical,historical.map(row),database).count,70)
  assert.throws(()=>validateLocalLedger(historical,ledger,database),/LEDGER_UNKNOWN/)
- const changed=structuredClone(ledger);changed[68].checksum_sha256='0'.repeat(64)
+ const changed=structuredClone(ledger);changed[70].checksum_sha256='0'.repeat(64)
  assert.throws(()=>validateLocalLedger(current,changed,database),/LEDGER_UNKNOWN/)
- const unknown=structuredClone(current);unknown[68].version='unknown'
+ const unknown=structuredClone(current);unknown[70].version='unknown'
  assert.throws(()=>validateLocalLedger(unknown,ledger,database))
 })
 test('known local raw 042 genesis is preserved as its own exact ledger variant',()=>{
@@ -218,4 +218,11 @@ test('local current ledger accepts exact installed rows and the known forward ap
  ])
  assert.deepEqual(validateLocalLedger(entries,current.slice(0,-1),database).pending.map(e=>e.version),[FMS_PROJECTION_CURRENT.version])
  assert.throws(()=>validateLocalLedger(entries,[...current,{...current.at(-1),version:'unknown-049'}],database),/LEDGER_UNKNOWN/)
+})
+
+test('current local status accepts only the exact historical FMS-before-query-append layout',()=>{
+ const current=entries.map(row),prior=[...current.slice(0,68),current.at(-1)]
+ assert.deepEqual(validateLocalLedger(entries,prior,database).pending.map(e=>e.version),['dev057-orgmaster-073','dev057-orgmaster-074'])
+ assert.deepEqual(validateLocalLedger(entries,[...prior,current[68]],database).pending.map(e=>e.version),['dev057-orgmaster-074'])
+ for(const invalid of [[...prior.slice(1),current[69]],[...prior,{...current[68],checksum_sha256:'0'.repeat(64)}],[...prior,current[69]]])assert.throws(()=>validateLocalLedger(entries,invalid,database),/LEDGER_UNKNOWN/)
 })

@@ -56,3 +56,6 @@ db/migrations/056_dev057_ai_pdm_session_authority.sql text eol=lf
 db/migrations/057_dev057_pdm_session_publication.sql text eol=lf
 
 db/migrations/073_dev070_fms_administrative_projection_current.sql text eol=lf
+
+db/migrations/073_dev057_bulk_principal_mapping_counts.sql text eol=lf
+db/migrations/074_dev057_materialize_active_principal_publication.sql text eol=lf
