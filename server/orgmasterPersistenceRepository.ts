@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { readFile, stat } from 'node:fs/promises'
 import pg from 'pg'
 import { writeVerifiedAtomicFile } from './orgmasterFileStore'
-import { closeOrgmasterDatabase, closeOrgmasterLocalSandboxDatabase, createOrgmasterDatabase, createOrgmasterLocalSandboxDatabase, isOrgmasterLocalSandboxDatabaseTarget } from './orgmasterDatabase'
+import { closeOrgmasterDatabase, closeOrgmasterLocalSandboxDatabase, createOrgmasterDatabase, createOrgmasterLocalSandboxDatabase, isOrgmasterLocalSandboxDatabaseTarget, type OrgmasterDatabase } from './orgmasterDatabase'
 import type { GovernanceActorContext } from '../src/governance/types'
 
 export type OrgmasterPersistenceMode = 'local-json' | 'cloud-sql'
@@ -144,6 +144,13 @@ export function withOrgmasterLocalSandboxPersistenceTarget<T>(databaseUrl: strin
     throw new OrgmasterPersistenceError('PERSISTENCE_NOT_CONFIGURED')
   }
   return localSandboxPersistenceTarget.run(databaseUrl, run)
+}
+
+/** Only the authenticated sandbox middleware may establish this request scope. */
+export function requireOrgmasterLocalSandboxDatabase(): OrgmasterDatabase {
+  const target = localSandboxPersistenceTarget.getStore()
+  if (!target) throw new OrgmasterPersistenceError('PERSISTENCE_NOT_CONFIGURED')
+  return createOrgmasterLocalSandboxDatabase(target)
 }
 
 export class OrgmasterPersistenceError extends Error {

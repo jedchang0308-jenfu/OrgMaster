@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { DEV057_USERS_REMEDIATION } from './lib/dev057-projed-users-migration.mjs'
 import { planDev057CallerEnvironment } from './lib/dev057-projed-caller-profile.mjs'
 import { DEV057_EXTERNAL_REMEDIATION, assertDev057SchemaPredecessorRef } from './lib/dev057-projed-external-migration.mjs'
 import { DEV058_ROLE_POLICY_REMEDIATION } from './lib/dev058-role-policy-migration.mjs'
@@ -47,6 +48,7 @@ export function parseDeployProductionArgs(argv) {
   options.dev058RolePolicyAppend = false
   options.schemaPredecessorRef = null
   options.dev059FmsAuthorityAppend = false
+  options.dev057ProjedUsersAppend = false
   options.dev057ProjedExternalAppend = false
   options.dev057ProjedPrincipalAppend = false
   options.dev060FmsCatalogActivationAppend = false
@@ -75,6 +77,7 @@ export function parseDeployProductionArgs(argv) {
     else if (arg === '--check' && !options.check) options.check = true
     else if (arg === '--prepare-only' && !options.prepareOnly) options.prepareOnly = true
     else if (arg === '--reuse-aborted-app-artifact' && !options.reuseAbortedAppArtifact) options.reuseAbortedAppArtifact = true
+    else if (arg === '--dev057-projed-users-append' && !options.dev057ProjedUsersAppend) options.dev057ProjedUsersAppend = true
     else if (arg === '--dev057-projed-external-append' && !options.dev057ProjedExternalAppend) options.dev057ProjedExternalAppend = true
     else if (arg === '--dev057-projed-principal-append' && !options.dev057ProjedPrincipalAppend) options.dev057ProjedPrincipalAppend = true
     else if (arg === '--dev058-role-policy-append' && !options.dev058RolePolicyAppend) options.dev058RolePolicyAppend = true
@@ -144,7 +147,7 @@ export function parseDeployProductionArgs(argv) {
       if (!match) throw new Error('DEV057_INFRA_REF_INVALID')
       options.infraReceiptRef = match.groups
       options.infraOption = 'dev057'
-    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--tool-image-rotation-ref=URI#sha256=HASH --smoke-rotation-ref=URI#sha256=HASH --reuse-aborted-app-artifact] [--dev014-principal-lifecycle-v2-remediation|--dev014-activate|--dev014-contract-remediation|--dev014-application-registration-remediation|--dev014-activation-contract-remediation|--dev014-projection-contract-remediation|--dev014-managed-principal-projection-remediation|--dev014-login-fixture-correction --dev014-infra-ref=URI#sha256=HASH] [--dev057-projed-external-append|--dev057-projed-principal-append|--dev057-writer-fence-remediation|--dev057-principal-contract-remediation|--dev057-cutover-source-remediation|--dev057-principal-grants-v3-remediation|--dev057-principal-grants-v4-remediation|--dev057-employee-number-command-receipt-v2-remediation --dev057-infra-ref=URI#sha256=HASH] [--dev058-role-policy-append --dev058-infra-ref=URI#sha256=HASH] [--dev059-fms-authority-append --dev059-infra-ref=URI#sha256=HASH] [--dev060-fms-catalog-activation-append --dev060-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
+    } else throw new Error('USAGE:npm run deploy:production [-- --check|--prepare-only] [--tool-image-rotation-ref=URI#sha256=HASH --smoke-rotation-ref=URI#sha256=HASH --reuse-aborted-app-artifact] [--dev014-principal-lifecycle-v2-remediation|--dev014-activate|--dev014-contract-remediation|--dev014-application-registration-remediation|--dev014-activation-contract-remediation|--dev014-projection-contract-remediation|--dev014-managed-principal-projection-remediation|--dev014-login-fixture-correction --dev014-infra-ref=URI#sha256=HASH] [--dev057-projed-users-append|--dev057-projed-external-append|--dev057-projed-principal-append|--dev057-writer-fence-remediation|--dev057-principal-contract-remediation|--dev057-cutover-source-remediation|--dev057-principal-grants-v3-remediation|--dev057-principal-grants-v4-remediation|--dev057-employee-number-command-receipt-v2-remediation --dev057-infra-ref=URI#sha256=HASH] [--dev058-role-policy-append --dev058-infra-ref=URI#sha256=HASH] [--dev059-fms-authority-append --dev059-infra-ref=URI#sha256=HASH] [--dev060-fms-catalog-activation-append --dev060-infra-ref=URI#sha256=HASH] [--dev013-handoff-mode=off|on --dev013-action=guard|activate|rollback --dev013-predecessor-ref=URI#sha256=HASH --dev013-infra-ref=URI#sha256=HASH]')
   }
   if (options.resumeCapsuleRef && Object.entries(options).some(([key, value]) =>
     !['check', 'resumeCapsuleRef'].includes(key) && value !== false && value !== null)) throw new Error('MIGRATION_CONTINUATION_OPTIONS_INVALID')
@@ -152,7 +155,7 @@ export function parseDeployProductionArgs(argv) {
   if (options.schemaPredecessorRef && (!options.migrationOnly || !options.dev057ProjedExternalAppend)) throw new Error('DEV057_SCHEMA_PREDECESSOR_MODE_INVALID')
   const controlled = [options.handoffMode, options.action, options.predecessorReceiptRef].filter((value) => value !== null).length
   const dev014Mode = Number(options.dev014PrincipalLifecycleEnable) + Number(options.dev014PrincipalLifecycleV2Remediation) + Number(options.dev014Activate) + Number(options.dev014ContractRemediation) + Number(options.dev014ApplicationRegistrationRemediation) + Number(options.dev014ActivationContractRemediation) + Number(options.dev014ProjectionContractRemediation) + Number(options.dev014ManagedPrincipalProjectionRemediation) + Number(options.dev014LoginFixtureCorrection)
-  const dev057Mode = Number(options.dev057ProjedExternalAppend) + Number(options.dev057ProjedPrincipalAppend) + Number(options.dev057WriterFenceRemediation) + Number(options.dev057PrincipalContractRemediation) + Number(options.dev057CutoverSourceRemediation) + Number(options.dev057PrincipalGrantsV3Remediation) + Number(options.dev057PrincipalGrantsV4Remediation) + Number(options.dev057EmployeeNumberCommandReceiptV2Remediation)
+  const dev057Mode = Number(options.dev057ProjedUsersAppend) + Number(options.dev057ProjedExternalAppend) + Number(options.dev057ProjedPrincipalAppend) + Number(options.dev057WriterFenceRemediation) + Number(options.dev057PrincipalContractRemediation) + Number(options.dev057CutoverSourceRemediation) + Number(options.dev057PrincipalGrantsV3Remediation) + Number(options.dev057PrincipalGrantsV4Remediation) + Number(options.dev057EmployeeNumberCommandReceiptV2Remediation)
   const dev058Mode = Number(options.dev058RolePolicyAppend)
   const dev059Mode = Number(options.dev059FmsAuthorityAppend)
   const dev060Mode = Number(options.dev060FmsCatalogActivationAppend)
@@ -307,7 +310,7 @@ async function main() {
   const deadlineAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
   const sourceLock = buildSourceFreeze({ profile, releaseId, observedAt, git, sourceIdentityBytes: createGitSourceIdentity(root, git.sourceRevision),
     migrationBundle: await buildMigrationBundle(git.sourceRevision, {
-      releaseMode: options.dev057ProjedPrincipalAppend ? DEV057_PROJED_RELEASE_MODE : null,
+      releaseMode: options.dev057ProjedPrincipalAppend ? DEV057_PROJED_RELEASE_MODE : options.dev057ProjedExternalAppend ? 'DEV057_PROJED_EXTERNAL_APPEND' : null,
       executionMode: options.migrationOnly ? 'migration_only' : 'full_release',
     }) })
   let appArtifactReuse = null
@@ -438,7 +441,7 @@ async function main() {
     : dev014PrincipalLifecycleV2Remediation ? { devId: 'DEV-014', slice: '014-PRINCIPAL-LIFECYCLE-V2', remediation: dev014PrincipalLifecycleV2Remediation, ...(appliedAbortInfraBaseline ? {appliedAbortInfraBaseline} : {}) } : {}
   const dev058Authority = options.dev058RolePolicyAppend ? { devId: 'DEV-058', slice: '058-ROLE-POLICY', remediation: DEV058_ROLE_POLICY_REMEDIATION } : {}
   const dev059Authority = options.dev059FmsAuthorityAppend ? { devId: 'DEV-059', slice: '059-FMS-AUTHORITY', remediation: DEV059_FMS_AUTHORITY_REMEDIATION } : {}
-  const dev057ProjedAuthority = options.dev057ProjedExternalAppend ? { devId: 'DEV-057', slice: '057-PROJED-EXTERNAL', remediation: DEV057_EXTERNAL_REMEDIATION,
+  const dev057ProjedAuthority = options.dev057ProjedUsersAppend ? {devId:'DEV-057',slice:'057-PROJED-USERS',remediation:DEV057_USERS_REMEDIATION} : options.dev057ProjedExternalAppend ? { devId: 'DEV-057', slice: '057-PROJED-EXTERNAL', remediation: DEV057_EXTERNAL_REMEDIATION,
     ...(options.schemaPredecessorRef ? { schemaPredecessorRef: options.schemaPredecessorRef } : {}) } : options.dev057ProjedPrincipalAppend ? { devId: 'DEV-057', slice: '057-PROJED-PRINCIPAL', remediation: DEV057_PROJED_REMEDIATION } : {}
   const dev070Authority=options.dev070AdministrationAppend?{devId:'DEV-070',slice:'070-ADMINISTRATION',remediation:DEV070_ADMINISTRATION_REMEDIATION}:{}
   const dev060Authority = options.dev060FmsCatalogActivationAppend ? { devId: 'DEV-060', slice: '060-FMS-CATALOG-ACTIVATION', remediation: DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION } : {}
@@ -480,6 +483,6 @@ async function main() {
   }
   const executionMode = options.migrationOnly ? 'migration_only' : 'full_release'
   if (!options.prepareOnly) command('gh', ownerWorkflowDispatchArgs(profile, releaseCapsuleRef, executionMode))
-  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', executionMode, releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: verification.migrationDisposition, controlledTransition: (options.dev057ProjedExternalAppend ? DEV057_EXTERNAL_REMEDIATION : null) ?? (options.dev057ProjedPrincipalAppend ? DEV057_PROJED_REMEDIATION : null) ?? (options.dev058RolePolicyAppend ? DEV058_ROLE_POLICY_REMEDIATION : null) ?? (options.dev059FmsAuthorityAppend ? DEV059_FMS_AUTHORITY_REMEDIATION : null) ?? (options.dev060FmsCatalogActivationAppend ? DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION : null) ?? (options.dev070AdministrationAppend?DEV070_ADMINISTRATION_REMEDIATION:null) ?? transition ?? dev014PrincipalLifecycleV2Remediation ?? dev014Activation ?? dev014Remediation ?? dev014ApplicationRegistrationRemediation ?? dev014ActivationContractRemediation ?? dev014ProjectionContractRemediation ?? dev014ManagedPrincipalProjectionRemediation ?? dev014LoginFixtureCorrection ?? dev057WriterFenceRemediation ?? dev057PrincipalContractRemediation ?? dev057CutoverSourceRemediation ?? dev057PrincipalGrantsV3Remediation ?? dev057PrincipalGrantsV4Remediation ?? dev057EmployeeNumberCommandReceiptV2Remediation })}\n`)
+  process.stdout.write(`${JSON.stringify({ status: options.prepareOnly ? 'PREPARED' : 'DISPATCHED', executionMode, releaseId, sourceRevision: git.sourceRevision, releaseCapsuleRef, databaseAction: verification.migrationDisposition, controlledTransition: (options.dev057ProjedUsersAppend ? DEV057_USERS_REMEDIATION : null) ?? (options.dev057ProjedExternalAppend ? DEV057_EXTERNAL_REMEDIATION : null) ?? (options.dev057ProjedPrincipalAppend ? DEV057_PROJED_REMEDIATION : null) ?? (options.dev058RolePolicyAppend ? DEV058_ROLE_POLICY_REMEDIATION : null) ?? (options.dev059FmsAuthorityAppend ? DEV059_FMS_AUTHORITY_REMEDIATION : null) ?? (options.dev060FmsCatalogActivationAppend ? DEV060_FMS_CATALOG_ACTIVATION_REMEDIATION : null) ?? (options.dev070AdministrationAppend?DEV070_ADMINISTRATION_REMEDIATION:null) ?? transition ?? dev014PrincipalLifecycleV2Remediation ?? dev014Activation ?? dev014Remediation ?? dev014ApplicationRegistrationRemediation ?? dev014ActivationContractRemediation ?? dev014ProjectionContractRemediation ?? dev014ManagedPrincipalProjectionRemediation ?? dev014LoginFixtureCorrection ?? dev057WriterFenceRemediation ?? dev057PrincipalContractRemediation ?? dev057CutoverSourceRemediation ?? dev057PrincipalGrantsV3Remediation ?? dev057PrincipalGrantsV4Remediation ?? dev057EmployeeNumberCommandReceiptV2Remediation })}\n`)
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main().catch((error) => { process.stderr.write(`${error.code ?? error.message}\n`); process.exitCode = 1 })

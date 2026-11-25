@@ -3,9 +3,11 @@ import type { Connect, Plugin } from 'vite'
 import type { ManagedLoginCallerVerifier } from './orgmasterManagedLoginApi'
 import { verifiedGovernanceActor } from './orgmasterRequestIdentity'
 import { ProjedExternalError, type ProjedExternalService } from './orgmasterProjedExternal'
+import type { createProjedUsersService } from './orgmasterProjedUsers'
 
 export const PROJED_EXTERNAL_NOTIFICATION_PATH = '/api/internal/projed-external-requests/v1'
 export const PROJED_EXTERNAL_MANAGEMENT_PATH = '/api/orgmaster/projed-external-requests/v1'
+export const PROJED_USERS_MANAGEMENT_PATH = '/api/orgmaster/projed-users/v1'
 async function body(request: IncomingMessage) {
   if (String(request.headers['content-type']).split(';')[0].trim() !== 'application/json') throw new ProjedExternalError(400, 'EXTERNAL_REQUEST_INVALID')
   let size = 0; const chunks: Buffer[] = []
@@ -26,6 +28,8 @@ const ownerErrorStatuses: Record<string, number> = {
   EXTERNAL_ADMIN_REQUIRED: 403, EXTERNAL_ORIGIN_INVALID: 403, EXTERNAL_NOT_FOUND: 404,
   METHOD_NOT_ALLOWED: 405, EXTERNAL_CONFLICT: 409, EXTERNAL_IDENTITY_CONFLICT: 409,
   EXTERNAL_QUALIFICATION_UNAVAILABLE: 503,
+  PROJED_USER_REQUEST_INVALID: 400, PROJED_USER_ADMIN_REQUIRED: 403, PROJED_USER_NOT_FOUND: 404,
+  PROJED_USER_CONFLICT: 409, PROJED_USER_DIRECTORY_UNAVAILABLE: 503,
 }
 function ownerFailure(error: unknown) {
   // An injected owner service and a compiled HTTP server need not share a class
@@ -35,10 +39,10 @@ function ownerFailure(error: unknown) {
     && error.status === ownerErrorStatuses[error.code]) return { status: error.status, code: error.code }
   return { status: 503, code: 'EXTERNAL_QUALIFICATION_UNAVAILABLE' }
 }
-export function createProjedExternalMiddleware(service?: ProjedExternalService, verifier?: ManagedLoginCallerVerifier, mode: 'internal' | 'management' = 'management'): Connect.NextHandleFunction {
+export function createProjedExternalMiddleware(service?: ProjedExternalService | ReturnType<typeof createProjedUsersService>, verifier?: ManagedLoginCallerVerifier, mode: 'internal' | 'management' | 'users' = 'management'): Connect.NextHandleFunction {
   return (request, response, next) => {
     const url = new URL(request.url ?? '/', 'http://orgmaster.local')
-    if (url.pathname !== (mode === 'internal' ? PROJED_EXTERNAL_NOTIFICATION_PATH : PROJED_EXTERNAL_MANAGEMENT_PATH)) return next()
+    if (url.pathname !== (mode === 'internal' ? PROJED_EXTERNAL_NOTIFICATION_PATH : mode === 'users' ? PROJED_USERS_MANAGEMENT_PATH : PROJED_EXTERNAL_MANAGEMENT_PATH)) return next()
     const handle = async () => {
       if (!service) throw new ProjedExternalError(503, 'EXTERNAL_QUALIFICATION_UNAVAILABLE')
       if (url.search) throw new ProjedExternalError(400, 'EXTERNAL_REQUEST_INVALID')
@@ -48,6 +52,7 @@ export function createProjedExternalMiddleware(service?: ProjedExternalService, 
         const authorization = request.headers.authorization
         if (!authorization?.startsWith('Bearer ') || authorization.length > 16384) throw new ProjedExternalError(401, 'EXTERNAL_CALLER_INVALID')
         await verifier.verify(authorization.slice(7)).catch(() => { throw new ProjedExternalError(401, 'EXTERNAL_CALLER_INVALID') })
+        if (!('notify' in service)) throw new ProjedExternalError(503, 'EXTERNAL_QUALIFICATION_UNAVAILABLE')
         return service.notify(await body(request))
       }
       const actor = verifiedGovernanceActor(request)
@@ -67,9 +72,9 @@ export function createProjedExternalMiddleware(service?: ProjedExternalService, 
     })
   }
 }
-export function projedExternalApiPlugin(mode: 'internal' | 'management', runtime: () => { projedExternal?: ProjedExternalService; projedExternalCallerVerifier?: ManagedLoginCallerVerifier }): Plugin {
+export function projedExternalApiPlugin(mode: 'internal' | 'management' | 'users', runtime: () => { projedExternal?: ProjedExternalService; projedUsers?: ReturnType<typeof createProjedUsersService>; projedExternalCallerVerifier?: ManagedLoginCallerVerifier }): Plugin {
   const use = (server: { middlewares: { use: (middleware: Connect.NextHandleFunction) => unknown } }) => {
-    const value = runtime(); server.middlewares.use(createProjedExternalMiddleware(value.projedExternal, value.projedExternalCallerVerifier, mode))
+    const value = runtime(); server.middlewares.use(createProjedExternalMiddleware(mode === 'users' ? value.projedUsers : value.projedExternal, value.projedExternalCallerVerifier, mode))
   }
   return { name: `orgmaster-projed-external-${mode}-api`, configureServer: use, configurePreviewServer: use }
 }
