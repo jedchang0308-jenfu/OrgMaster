@@ -21,6 +21,16 @@ OrgMaster consumes Platform `jenfu.sso-handoff.v1` for the fixed `orgmaster` aud
 
 ## Implemented surface
 
+<a id="dev015-sso-error-return"></a>
+
+### Platform DEV-015 單次操作登入：拒絕／取消返回（2026-11-25，source candidate）
+
+`/api/auth/jenfu-sso/callback` 相容兩種互斥格式：`code,state,iss`，或僅 `error,state,iss`；後者只接受 `access_denied`／`temporarily_unavailable`。必須先驗證唯一交易 cookie 的簽章、原 state、issuer 與 15 分鐘期限，才清除交易 cookie 並返回 `/login`，保留原交易的 `returnTo`。錯 state、無／重複 cookie、過期、混合 code/error、重複或額外 query 均拒絕，不承認取消、不重啟 broker、不建立／撤銷本地 session。
+
+登入頁分別顯示「登入未完成或目前沒有權限」與暫時不可用，保留目的頁供重試；「改用其他 Google 帳號」走既有 `reauth=1 → prompt=login`。未變更身份映射、權限或 SSO 成功 handoff 版本。驗證：`orgmasterSsoHandoff.test.ts`、`AuthGate.test.tsx` 共 63/63，TypeScript 通過；原 sandbox localhost EACCES 後於允許 localhost 的 host 重跑同範圍通過。尚未跨 owner 整鏈、真實 Google 或正式發布。
+
+此任務 worktree 保留於 `C:/VIBE CODING/Jenfu-Platform/.local/dev015-consumers/OrgMaster` 供 Platform 主控整鏈驗收；主控完成或不再需要此候選後檢查保存與清理，不發布正式環境。
+
 - `server/orgmasterSsoHandoff.ts`: signed transaction cookie, exact callback／state／PKCE validation, attached service identity exchange, stale principal／epoch guard, account conflict handling, and local session creation.
 - `server/orgmasterAuthApi.ts`／`orgmasterAuthEpochRepository.ts`: `authState v2` on direct Firebase exchange and every protected request; SSO mode discovery remains default-off.
 - `src/auth/AuthGate.tsx`／`authApiClient.ts`: when the owner mode is enabled, show only the Platform login entry and preserve local／development modes otherwise.

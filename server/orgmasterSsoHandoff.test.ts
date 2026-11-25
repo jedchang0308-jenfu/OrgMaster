@@ -88,6 +88,44 @@ function dependencies(mode: 'off' | 'on', exchange = handoff()): OrgmasterSsoHan
 }
 
 describe('DEV-013 OrgMaster startup, health, direct start and callback', () => {
+  it.each(['access_denied', 'temporarily_unavailable'])('returns a verified %s to local login with the original destination and no session', async refusal => {
+    const value = runtime(); const deps = dependencies('on'); const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start?returnTo=${encodeURIComponent('/people?tab=active')}`, { redirect: 'manual' })
+    const authorize = new URL(start.headers.get('location')!)
+    const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.search = new URLSearchParams({ error: refusal, state: authorize.searchParams.get('state')!, iss: `${brokerOrigin}/api/sso` }).toString()
+    const response = await fetch(callback, { redirect: 'manual', headers: { cookie: start.headers.get('set-cookie')!.split(';')[0] } })
+    expect(response.status).toBe(303)
+    const login = new URL(response.headers.get('location')!)
+    expect(login.origin).toBe(publicOrigin); expect(login.pathname).toBe('/login')
+    expect(login.searchParams.get('auth_error')).toBe(refusal === 'access_denied' ? 'sso_access_denied' : 'sso_dependency_unavailable')
+    expect(login.searchParams.get('returnTo')).toBe('/people?tab=active')
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+    expect(deps.fetch).not.toHaveBeenCalled(); expect(deps.serviceToken).not.toHaveBeenCalled()
+    expect(value.sessions!.create).not.toHaveBeenCalled()
+  })
+
+  it.each(['state', 'issuer', 'missing-cookie', 'duplicate-cookie', 'expired', 'mixed', 'duplicate-error', 'unknown-error', 'extra'])('rejects %s refusal callbacks without accepting cancellation or restarting SSO', async defect => {
+    const value = runtime(); const deps = dependencies('on'); const base = await listen(value, deps)
+    const start = await fetch(`${base}/api/auth/jenfu-sso/start?returnTo=%2Fpeople`, { redirect: 'manual' })
+    const authorize = new URL(start.headers.get('location')!); const callback = new URL('/api/auth/jenfu-sso/callback', base)
+    callback.search = new URLSearchParams({ error: 'access_denied', state: authorize.searchParams.get('state')!, iss: `${brokerOrigin}/api/sso` }).toString()
+    let cookie = start.headers.get('set-cookie')!.split(';')[0]
+    if (defect === 'state') callback.searchParams.set('state', 'x'.repeat(22))
+    if (defect === 'issuer') callback.searchParams.set('iss', 'https://foreign.example/api/sso')
+    if (defect === 'missing-cookie') cookie = ''
+    if (defect === 'duplicate-cookie') cookie += '; ' + cookie
+    if (defect === 'expired') deps.now = () => now + 15 * 60_000
+    if (defect === 'mixed') callback.searchParams.set('code', 'untrusted-code')
+    if (defect === 'duplicate-error') callback.searchParams.append('error', 'access_denied')
+    if (defect === 'unknown-error') callback.searchParams.set('error', 'login_required')
+    if (defect === 'extra') callback.searchParams.set('returnTo', 'https://foreign.example')
+    const response = await fetch(callback, { redirect: 'manual', headers: { cookie } })
+    expect(response.status).toBe(400); expect(await response.json()).toMatchObject({ code: 'sso_request_invalid' })
+    expect(response.headers.get('location')).toBeNull()
+    expect(deps.fetch).not.toHaveBeenCalled(); expect(value.sessions!.create).not.toHaveBeenCalled()
+  })
+
   it.each([1010, 12010])('completes local v2 handoff, app-local read and logout for A/B at localhost:%i', async port => {
     const value = runtime()
     if (!value.configResult.configured) throw new Error('fixture config missing')

@@ -43,6 +43,19 @@ afterEach(async () => {
 })
 
 describe('AuthGate', () => {
+  it('keeps the refused login on the app and preserves the original destination for changing account', async () => {
+    window.history.replaceState({}, '', '/login?auth_error=sso_access_denied&returnTo=%2Fpeople%3Ftab%3Dactive')
+    api.getAuthMode.mockResolvedValue({ ssoHandoffEnabled: true })
+    await act(async () => { root.render(<AuthGate><div>protected data</div></AuthGate>) })
+    expect(container.textContent).toContain('登入未完成')
+    expect(container.textContent).not.toContain('protected data')
+    const link = container.querySelector('a')!
+    expect(link.textContent).toBe('改用其他 Google 帳號')
+    const start = new URL(link.href)
+    expect(start.searchParams.get('reauth')).toBe('1')
+    expect(start.searchParams.get('returnTo')).toBe('/people?tab=active')
+  })
+
   it('resumes a real local SSO Principal before an empty development role chooser can intercept it', async () => {
     api.getCurrentSession.mockResolvedValue({ user: { principalId: 'principal-dev021-p5-a', employeeId: 'employee-a' }, session: { expiresAt: '2099-01-01T00:00:00Z' }, assuranceLevel: 'aal1', correlationId: 'real-local-session' })
     api.getAuthMode.mockResolvedValue({ ssoHandoffEnabled: true, managedLoginEnabled: false })

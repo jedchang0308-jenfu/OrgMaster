@@ -12,6 +12,21 @@ export interface AuthSessionContextValue {
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null)
 
+function ssoLoginReturnTo() {
+  if (window.location.pathname !== '/login') return window.location.pathname + window.location.search
+  const candidate = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
+  return candidate.startsWith('/') && !candidate.startsWith('//') && !candidate.startsWith('/login')
+    && !candidate.startsWith('/api/auth/') && !candidate.includes('\\') && !/[\u0000-\u001f\u007f]/u.test(candidate)
+    && candidate.length <= 1024 ? candidate : '/'
+}
+
+function ssoLoginMessage() {
+  const code = new URLSearchParams(window.location.search).get('auth_error')
+  if (code === 'sso_access_denied') return '登入未完成，或此帳號目前沒有 OrgMaster 的使用權限。可重新登入或改用其他 Google 帳號。'
+  if (code === 'sso_dependency_unavailable') return '登入服務暫時無法使用，請稍後重試。'
+  return undefined
+}
+
 export function useAuthSession() {
   return useContext(AuthSessionContext)
 }
@@ -78,7 +93,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           }
           try {
             const mode = await getAuthMode()
-            if (active) setState({ kind: 'login', mode, message: error.code === 'auth_epoch_stale' ? '登入已失效，請重新登入。' : undefined })
+            if (active) setState({ kind: 'login', mode, message: ssoLoginMessage() ?? (error.code === 'auth_epoch_stale' ? '登入已失效，請重新登入。' : undefined) })
           } catch (modeError) {
             if (active) setState(blockedState(modeError))
           }
@@ -203,7 +218,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     <section className="auth-login auth-login--managed" aria-labelledby="sso-login-title">
       <div><p className="auth-login__eyebrow">鉦富管理平台</p><h1 id="sso-login-title">使用平台登入</h1><p>登入一次即可進入你有權限的 Jenfu 系統。</p></div>
       {state.message && <p className="auth-login__error" role="alert">{state.message}</p>}
-      <button type="button" disabled={busy} onClick={() => { window.location.assign(`/api/auth/jenfu-sso/start?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`) }}>{busy ? '準備登入…' : '使用鉦富平台登入'}</button>
+      <button type="button" disabled={busy} onClick={() => { window.location.assign(`/api/auth/jenfu-sso/start?returnTo=${encodeURIComponent(ssoLoginReturnTo())}`) }}>{busy ? '準備登入…' : '使用鉦富平台登入'}</button>
+      {ssoLoginMessage() && <a href={`/api/auth/jenfu-sso/start?reauth=1&returnTo=${encodeURIComponent(ssoLoginReturnTo())}`}>改用其他 Google 帳號</a>}
     </section>
   </main>
   return <main className="auth-gate"><h1>登入服務暫時無法使用</h1><p>Platform 單一登入尚未啟用，請稍後再試。</p></main>
