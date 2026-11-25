@@ -29,6 +29,8 @@ const dutyStatusSet = new Set<string>(dutyStatuses)
 const governanceSections = new Set<WorkspaceModuleContextMap['governance']['section']>([
   'administrators',
   'external',
+  'projed-users',
+  'users',
   'identity',
   'catalog',
   'assignments',

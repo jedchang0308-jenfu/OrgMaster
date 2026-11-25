@@ -1,4 +1,6 @@
 import { createProjedExternalService, type ProjedExternalService } from './orgmasterProjedExternal'
+import { createProjedUsersService } from './orgmasterProjedUsers'
+import { createUsersService } from './orgmasterUsers'
 import { createOrgmasterPdmRevocationClient } from './orgmasterPdmRevocationClient'
 import { withOrgmasterPdmRevocationClient } from './orgmasterPdmPublication'
 import { randomUUID } from 'node:crypto'
@@ -24,7 +26,7 @@ import {
 } from './orgmasterGovernanceIdentity'
 import { createPrincipalAdmissionRepository, PrincipalAdmissionError, type PrincipalAdmissionRepository } from './orgmasterPrincipalAdmissionRepository'
 import { readVerifiedRequestIdentity, setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
-import { withOrgmasterLocalSandboxPersistenceTarget, withPersistenceActor } from './orgmasterPersistenceRepository'
+import { requireOrgmasterLocalSandboxDatabase, withOrgmasterLocalSandboxPersistenceTarget, withPersistenceActor } from './orgmasterPersistenceRepository'
 import { createOrgmasterSessionRepository, type OrgmasterSession, type OrgmasterSessionRepository } from './orgmasterSessionRepository'
 import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
 import { createManagedIdentityRepository } from './orgmasterManagedIdentityRepository'
@@ -84,6 +86,8 @@ export type OrgmasterAuthRuntime = {
   managedLoginOwner?: ManagedLoginOwnerServiceV1
   managedLoginCallerVerifier?: ManagedLoginCallerVerifier
   projedExternal?: ProjedExternalService
+  projedUsers?: ReturnType<typeof createProjedUsersService>
+  users?: ReturnType<typeof createUsersService>
   projedExternalCallerVerifier?: ManagedLoginCallerVerifier
   projedPrincipalOwner?: ProjedPrincipalService
   administrationEnrollment?: AdministrationEnrollmentService
@@ -417,6 +421,8 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     return {
       configResult: { configured: false, missing: [], reason: 'Local principal sandbox runtime is active.' },
       localSandbox: createOrgmasterLocalPrincipalSandbox({ environment }),
+      projedUsers: createProjedUsersService(requireOrgmasterLocalSandboxDatabase),
+      users: createUsersService(requireOrgmasterLocalSandboxDatabase),
     }
   }
   const configResult = readOrgmasterAuthConfig(environment)
@@ -472,6 +478,8 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
     managedLoginOwner,
     managedLoginCallerVerifier,
     projedExternal: createProjedExternalService(database, localAdministration?.verify),
+    projedUsers: createProjedUsersService(database, localAdministration?.verify),
+    users: createUsersService(database, localAdministration?.verify),
     projedExternalCallerVerifier: environment.ORGMASTER_PROJED_CALLER_EMAIL?.trim() && environment.ORGMASTER_PROJED_CALLER_SUBJECT?.trim()
       ? createGoogleManagedLoginCallerVerifier({ audience: configResult.config.publicBaseUrl.origin, expectedEmail: environment.ORGMASTER_PROJED_CALLER_EMAIL, expectedSubject: environment.ORGMASTER_PROJED_CALLER_SUBJECT }) : undefined,
     projedPrincipalOwner: createProjedPrincipalService({ firebase, repository: createProjedPrincipalRepository(database) }),

@@ -1,3 +1,4 @@
+import { DEV057_USERS_REMEDIATION, DEV057_USERS_RELEASE_MODE } from './lib/dev057-projed-users-migration.mjs'
 import { DEV057_EXTERNAL_REMEDIATION, DEV057_EXTERNAL_RELEASE_MODE } from './lib/dev057-projed-external-migration.mjs'
 import { DEV057_PROJED_CALLER_PINS, dev057PreCallerRuntimeProfile, planDev057CallerEnvironment } from './lib/dev057-projed-caller-profile.mjs'
 import { assertRuntimeConfig } from './lib/dev012-owner-release-runtime.mjs'
@@ -3012,7 +3013,7 @@ test('ProJED append CLI seals one recipe and rejects mixed modes or wrong own in
 
 
 test('external release uses a separate 64-to-65 recipe and rejects mixed CLI scopes', async()=>{
- const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,64),currentBundle:{bundle:newBundle.bundle}})
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,64),currentBundle:{bundle:prefixBundle(newBundle.bundle,65)}})
  const common={devId:'DEV-057',slice:'057-PROJED-EXTERNAL',remediation:DEV057_EXTERNAL_REMEDIATION}
  h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
  h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
@@ -3070,7 +3071,7 @@ function sealedSchemaPredecessor(h, change = {}) {
 }
 
 test('sealed schema64 feeds external65 while the RELEASED runtime baseline stays60',async()=>{
- const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,60),currentBundle:newBundle})
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,60),currentBundle:{bundle:prefixBundle(newBundle.bundle,65)}})
  const predecessor=sealedSchemaPredecessor(h)
  assert.ok(Date.parse(h.objects.get(predecessor.ref.uri).value.deadlineAt)<Date.now(),'completed schema evidence remains usable after its original capsule expires')
  const common={devId:'DEV-057',slice:'057-PROJED-EXTERNAL',remediation:DEV057_EXTERNAL_REMEDIATION,schemaPredecessorRef:predecessor.ref}
@@ -3104,7 +3105,7 @@ test('migration-only plans exact caller pins while validating the unchanged pre-
  for(const name of Object.keys(DEV057_PROJED_CALLER_PINS))delete oldPlain[name]
  const previous=buildRuntimeConfig(oldProfile,{plainEnvironment:oldPlain,secretVersions:runtime.secretVersions})
  const planned=buildRuntimeConfig(profile,{plainEnvironment:planDev057CallerEnvironment(profile,oldPlain),secretVersions:runtime.secretVersions})
- const h=harness({baselineRuntime:previous,nextRuntime:planned,baselineBundle:prefixBundle(oldBundle.bundle,60),currentBundle:newBundle})
+ const h=harness({baselineRuntime:previous,nextRuntime:planned,baselineBundle:prefixBundle(oldBundle.bundle,60),currentBundle:{bundle:prefixBundle(newBundle.bundle,65)}})
  const predecessor=sealedSchemaPredecessor(h)
  const common={devId:'DEV-057',slice:'057-PROJED-EXTERNAL',remediation:DEV057_EXTERNAL_REMEDIATION,schemaPredecessorRef:predecessor.ref}
  h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
@@ -3134,13 +3135,14 @@ function appliedSchemaAbortHarness(change = {}) {
   for (const name of Object.keys(DEV057_PROJED_CALLER_PINS)) delete beforePlain[name]
   const beforeRuntime = buildRuntimeConfig(beforeProfile, { plainEnvironment: beforePlain, secretVersions: runtime.secretVersions })
   const sourceRevision = '06edd0c97d9af2f7b29c1589cadc4a5766ad0522'
-  const releaseSourceRevision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim()
-  const currentBundle = buildBundle(releaseSourceRevision)
+  // Historical executor-only continuation; current application changes are a separate denial case.
+  const releaseSourceRevision = change.releaseSourceRevision ?? '3683cac1c2705d0c01a344f30ea81b6ec5308c21'
+  const currentBundle = {bundle:prefixBundle(buildBundle(releaseSourceRevision).bundle,65)}
   const h = harness({ baselineRuntime: beforeRuntime, nextRuntime: runtime, baselineBundle: prefixBundle(oldBundle.bundle, 60), currentBundle })
   const schema64 = sealedSchemaPredecessor(h, change.schema64)
   const identity = { tree: spawnSync('git', ['rev-parse', sourceRevision + '^{tree}'], { encoding: 'utf8' }).stdout.trim(),
     bytes: spawnSync('git', ['ls-tree', '-r', '-z', '--full-tree', sourceRevision]).stdout }
-  const sourceBundle = buildBundle(sourceRevision).bundle
+  const sourceBundle = prefixBundle(buildBundle(sourceRevision).bundle,65)
   const releaseId = 'ORGMASTER-REL-20261124022543167-06EDD0C'
   const observedAt = '2026-11-24T02:25:43.168Z', deadlineAt = '2026-11-24T06:25:43.168Z'
   const row = (name, value) => h.put(`gs://${bucket}/receipts/applied-abort/${name}.json`, value)
@@ -3281,4 +3283,26 @@ test('applied65 abort reuse refuses incomplete, foreign or altered schema and re
     await assert.rejects(buildAbortedAppArtifactReuse(args), error)
     assert.equal(h.objects.size, before)
   }
+})
+
+
+test('user directory plans only its own 65/66/67-to-68 append with unchanged runtime',async()=>{
+ for(const count of [65,66,67]) {
+ const h=harness({baselineBundle:prefixBundle(oldBundle.bundle,count),currentBundle:newBundle})
+ const common={devId:'DEV-057',slice:'057-PROJED-USERS',remediation:DEV057_USERS_REMEDIATION}
+ h.input.values.authorization={...h.input.values.authorization,...common,schemaVersion:'orgmaster.routine-release-authorization.v1',authorizationBasis:'OPERATOR_INVOKED_DEPLOY_PRODUCTION'}
+ h.input.values.readiness={...h.input.values.readiness,...common,schemaVersion:'orgmaster.routine-release-readiness.v1'}
+ attachForwardInfra(h)
+ const plan=await verifyRoutineRelease(h.input)
+ assert.equal(plan.releaseMode,DEV057_USERS_RELEASE_MODE);assert.equal(plan.pendingMigrationCount,68-count)
+ h.input.values.readiness.remediation=DEV057_EXTERNAL_REMEDIATION
+ await assert.rejects(verifyRoutineRelease(h.input),/DEV057_USERS_AUTHORITY_INVALID/)
+ }
+})
+
+
+test('new user-directory runtime cannot reuse the historical applied65 application image',async()=>{
+ const releaseSourceRevision=spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).stdout.trim()
+ const {args}=appliedSchemaAbortHarness({releaseSourceRevision})
+ await assert.rejects(buildAbortedAppArtifactReuse(args),/APP_ARTIFACT_REUSE_RUNTIME_INPUT_CHANGED/)
 })

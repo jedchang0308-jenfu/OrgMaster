@@ -139,10 +139,18 @@ test('owner rejects older prefixes, unapproved appends and altered exact manifes
  ]
  for(const [index,mutateBundle] of cases.entries()){
   const f=sealedOwnerFixture({mutateBundle})
-  await assert.rejects(f.run(),index===2?/MIGRATION_PREFIX_001_031_DRIFT/:[3,8,9].includes(index)?/DEV057_EXTERNAL_MIGRATION_APPEND_INVALID/:/DEV070_MIGRATION_APPEND_INVALID/)
+  await assert.rejects(f.run(),index===2?/MIGRATION_PREFIX_001_031_DRIFT/:[3,8,9].includes(index)?/DEV057_USERS_MIGRATION_APPEND_INVALID/:/DEV070_MIGRATION_APPEND_INVALID/)
   assert.equal(f.puts(),0);assert.equal(f.runs(),0)
  }
 })
+test('the preceding external generation stays independently pinned before user directory append',async()=>{
+ for(const mutateBundle of [
+  bundle=>{bundle.entries[64].sourceSha256='0'.repeat(64)},
+  bundle=>{bundle.entries[64].path='db/migrations/999_foreign_fixture.sql'},
+  bundle=>{const entry=bundle.entries[64];entry.sqlBase64=Buffer.from('SELECT 1;').toString('base64');entry.appliedSha256=sha256(Buffer.from('SELECT 1;'))},
+ ]){const f=sealedOwnerFixture({mutateBundle});await assert.rejects(f.run(),/DEV057_EXTERNAL_MIGRATION_APPEND_INVALID/);assert.equal(f.puts(),0);assert.equal(f.runs(),0)}
+})
+
 test('owner preserves same-source and RELEASED evidence requirements before any enrollment artifact or Job',async()=>{
  for(const options of[{baselineSource:'b'.repeat(40)},{terminalResult:'FORWARD_APPLIED'}]){
   const f=sealedOwnerFixture(options);await assert.rejects(f.run(),/(?:RELEASE_NOT_READY|BASELINE_NOT_RELEASED)/);assert.equal(f.puts(),0);assert.equal(f.runs(),0)

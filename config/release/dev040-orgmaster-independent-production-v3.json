@@ -712,6 +712,27 @@
         "path": "db/migrations/069_dev057_projed_external_qualification.sql",
         "sourceSha256": "29b4a30ade5acf43dc610470fd7a06e5da60a47c4bf1a9577be5e0997169205e",
         "appliedSha256": "1cc94d206d8f2c59b5a8ae8cf4588a960135ca366117362c07bca7a5b75b6df2"
+      },
+      {
+        "order": 66,
+        "version": "dev057-orgmaster-070",
+        "path": "db/migrations/070_dev057_projed_user_directory.sql",
+        "sourceSha256": "ffe38fc3b9f91e01ae985df779d1c9a32b6eff7f6d3ac540944be77d0692cbf0",
+        "appliedSha256": "5592206cd44737811eea35c9a1695efa1e11acd52b664c7d53ca144a8e0587ce"
+      },
+      {
+        "order": 67,
+        "version": "dev057-orgmaster-071",
+        "path": "db/migrations/071_dev057_all_user_directory.sql",
+        "sourceSha256": "1d62ade3e30a487d4b22439c10dd6a67db59291ccca2f1eefd5a8b9c1d55144d",
+        "appliedSha256": "da4bd59644f1bd66f71fe75f878bc08c274d74db451776915e2bba9fa5cfa9d4"
+      },
+      {
+        "order": 68,
+        "version": "dev057-orgmaster-072",
+        "path": "db/migrations/072_dev057_user_directory_optimized_grants.sql",
+        "sourceSha256": "30557828dc97ea11ac74a55dfd7b51dde01f7f09016bfca43a3c931164c246b9",
+        "appliedSha256": "c2d6d66989f23b9ce149fce104e985a4c31212e88b089d844d560f3fd1e6f08d"
       }
     ]
   },

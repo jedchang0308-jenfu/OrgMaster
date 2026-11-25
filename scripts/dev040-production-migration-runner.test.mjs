@@ -1,3 +1,5 @@
+import { DEV057_USERS_TARGET } from './dev040-production-migration-runner.mjs'
+import { DEV057_USERS_RELEASE_MODE } from './lib/dev057-projed-users-migration.mjs'
 import { DEV057_EXTERNAL_TARGET } from './dev040-production-migration-runner.mjs'
 import { DEV057_EXTERNAL_RELEASE_MODE } from './lib/dev057-projed-external-migration.mjs'
 import assert from 'node:assert/strict'
@@ -60,12 +62,12 @@ const environment = {
   CLOUD_RUN_JOB: TARGET.job,
 }
 
-function fixture({administration=false, projed=false, external=false}={}) {
+function fixture({administration=false, projed=false, external=false, users=false}={}) {
   const profile = JSON.parse(readFileSync(new URL('../config/release/dev040-orgmaster-independent-production-v3.json', import.meta.url), 'utf8'))
   const n1c = JSON.parse(readFileSync(new URL('../config/dev-010/n1c-orgmaster.json', import.meta.url), 'utf8'))
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, readFileSync(path.join(repositoryRoot, entry.path))]))
   const complete=buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, H40)
-  return external ? complete : repackBundle({...complete.bundle,entries:complete.bundle.entries.slice(0,projed ? 64 : administration ? DEV070_MIGRATION_ENTRY_COUNT : TARGET.entryCount)})
+  return repackBundle({...complete.bundle,entries:complete.bundle.entries.slice(0,users ? 68 : external ? 65 : projed ? 64 : administration ? DEV070_MIGRATION_ENTRY_COUNT : TARGET.entryCount)})
 }
 
 function ledgerFor(bundle, count, { sourceRevision = 'prior' } = {}) {
@@ -372,13 +374,14 @@ test('schema runner rejects bootstrap arguments before credential, network or da
   await assert.rejects(() => runMain({ argv: ['--bootstrap-ref', 'gs://irrelevant'], fetchImpl: () => assert.fail('must not fetch credentials'), Client: class { constructor() { assert.fail('must not connect') } } }), /MIGRATION_ARGUMENT_INVALID/)
 })
 
-for(const mode of ['legacy', 'administration', 'projed', 'external'])test(`${mode} schema runner entrypoint migrates and publishes without business data`, async () => {
+for(const mode of ['legacy', 'administration', 'projed', 'external', 'users'])test(`${mode} schema runner entrypoint migrates and publishes without business data`, async () => {
+  const users = mode === 'users'
   const external = mode === 'external'
   const administration = mode === 'administration'
   const projed = mode === 'projed'
-  const baselineCount = external ? 64 : projed ? 60 : 31
-  const target=external ? DEV057_EXTERNAL_TARGET : projed ? DEV057_PROJED_TARGET : administration?DEV070_TARGET:TARGET
-  const input = fixture({administration, projed, external})
+  const baselineCount = users ? 65 : external ? 64 : projed ? 60 : 31
+  const target=users ? DEV057_USERS_TARGET : external ? DEV057_EXTERNAL_TARGET : projed ? DEV057_PROJED_TARGET : administration?DEV070_TARGET:TARGET
+  const input = fixture({administration, projed, external, users})
   const requests = [], statements = []
   const ledger = ledgerFor(input.bundle, baselineCount)
   let published
@@ -405,6 +408,7 @@ for(const mode of ['legacy', 'administration', 'projed', 'external'])test(`${mod
   }
   const argv = ['--bundle-ref', `gs://${TARGET.releaseBucket}/source/migration-bundles/a.json`, '--bundle-sha256', input.bundleSha256, '--source-revision', H40, '--output-ref', `gs://${TARGET.releaseBucket}/receipts/schema.json`]
   if(administration)argv.push('--migration-mode',DEV070_RELEASE_MODE)
+  if(users)argv.push('--migration-mode',DEV057_USERS_RELEASE_MODE)
   if(external)argv.push('--migration-mode',DEV057_EXTERNAL_RELEASE_MODE)
   if(projed)argv.push('--migration-mode',DEV057_PROJED_RELEASE_MODE)
   const result = await runMain({ argv, environment, Client, fetchImpl })
@@ -481,4 +485,11 @@ test('external fixed runner applies only 64-to-65 or verified replay and rejects
   await assert.rejects(()=>executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV057_EXTERNAL_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true}),/MIGRATION_EXISTING_LEDGER_COUNT_INVALID/)
   assert.equal(statements.some(sql=>/^(BEGIN|CREATE|ALTER|INSERT|UPDATE|DELETE)/u.test(sql)),false)
  }
+})
+
+
+test('user-directory fixed runner accepts only exact 65-or-66-or-67-to-68 and replay',async()=>{
+ const input=fixture({users:true});assert.deepEqual(DEV057_USERS_TARGET.allowedExistingLedgerCounts,[65,66,67,68]);
+ for(const count of [65,66,67,68]){const statements=[],ledger=ledgerFor(input.bundle,count);const result=await executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV057_USERS_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true});assert.equal(result.ledgerCount,68);assert.equal(result.applied,68-count)}
+ for(const count of [0,31,60,64,69]){const statements=[],ledger=ledgerFor(input.bundle,Math.min(count,68));if(count===69)ledger.push({...ledger[66],version:'unknown'});await assert.rejects(executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV057_USERS_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true}),/MIGRATION_EXISTING_LEDGER_COUNT_INVALID/);assert.equal(writesStarted(statements),false)}
 })
