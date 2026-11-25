@@ -48,7 +48,7 @@ function fail(code) { throw Object.assign(new Error(code), { code }) }
 // This does not admit partial bundles or change either append recipe's bounds.
 export function assertReviewedOrgmasterMigrationEntries(entries) {
   if (entries?.length === DEV057_USERS_ENTRY_COUNT) return assertDev057UsersMigrationEntries(entries)
-  if ([66,67].includes(entries?.length)) return assertDev057UsersMigrationEntries(entries, true)
+  if ([66,67,68].includes(entries?.length)) return assertDev057UsersMigrationEntries(entries, true)
   if (entries?.length === DEV057_EXTERNAL_ENTRY_COUNT) return assertDev057ExternalMigrationEntries(entries)
   return entries?.length === DEV057_PROJED_MIGRATION_ENTRY_COUNT
     ? assertDev057ProjedMigrationEntries(entries)

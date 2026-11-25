@@ -58,6 +58,31 @@ await withAdministrationPostgresFixture(async fixture => {
   await assert.rejects(runtime.query('SELECT orgmaster_core.read_user_directory_v1($1::jsonb)',[JSON.stringify({...nonAdmin.actor,principalId:nonAdmin.principalId})]),/USER_DIRECTORY_ADMIN_REQUIRED/);
   console.log(JSON.stringify({comparison:'same-isolated-actor-data',oldMs:Math.round(oldMs),newMs:Math.round(newMs),users:after.users.length}));
  });
+ await check('bulk mapping counts preserve directory, grant membership, and function boundary', async () => {
+  const sql = 'SELECT orgmaster_core.read_user_directory_v1($1::jsonb) AS result';
+  const bindings = [JSON.stringify(actor)];
+  const grantReads = [
+   ['SELECT * FROM orgmaster_contract.read_ai_pdm_principal_effective_grants_v5() ORDER BY principal_id, assignment_id', []],
+   ['SELECT * FROM orgmaster_contract.read_ai_pdm_principal_effective_grants_v5($1,$2) ORDER BY principal_id, assignment_id', [human.principalId, human.actor.employeeId]],
+  ];
+  const boundary = async () => (await admin.query(`
+   SELECT oid, proowner, proacl, prosecdef, provolatile, proconfig, prorettype
+   FROM pg_proc
+   WHERE oid = 'orgmaster_core.read_ai_pdm_principal_grants_v5(text,text,boolean)'::regprocedure
+  `)).rows;
+  const originalBoundary = await boundary();
+  const originalDirectory = (await runtime.query(sql, bindings)).rows;
+  const originalGrants = [];
+  for (const [query, args] of grantReads) originalGrants.push((await admin.query(query, args)).rows);
+
+  await admin.query(await readFile('db/migrations/073_dev057_bulk_principal_mapping_counts.sql','utf8'));
+
+  assert.deepEqual(await boundary(), originalBoundary);
+  assert.deepEqual((await runtime.query(sql, bindings)).rows, originalDirectory);
+  for (const [index, [query, args]] of grantReads.entries()) {
+   assert.deepEqual((await admin.query(query, args)).rows, originalGrants[index]);
+  }
+ });
  await check('legacy-account-visible-before-first-platform-enrollment-without-private-content', async () => {
   for(const entry of ['main','quick'])assert.equal(await actorValid(entry,'1'),true);
   const row=await get();assert.equal(row.identityStatus,'UNREGISTERED');assert.equal(row.enabled,true);assert.equal(row.email,'legacy-personal@example.invalid')

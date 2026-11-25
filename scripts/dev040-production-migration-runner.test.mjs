@@ -67,7 +67,7 @@ function fixture({administration=false, projed=false, external=false, users=fals
   const n1c = JSON.parse(readFileSync(new URL('../config/dev-010/n1c-orgmaster.json', import.meta.url), 'utf8'))
   const files = new Map(profile.migrations.entries.map((entry) => [entry.path, readFileSync(path.join(repositoryRoot, entry.path))]))
   const complete=buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, H40)
-  return repackBundle({...complete.bundle,entries:complete.bundle.entries.slice(0,users ? 68 : external ? 65 : projed ? 64 : administration ? DEV070_MIGRATION_ENTRY_COUNT : TARGET.entryCount)})
+  return repackBundle({...complete.bundle,entries:complete.bundle.entries.slice(0,users ? 69 : external ? 65 : projed ? 64 : administration ? DEV070_MIGRATION_ENTRY_COUNT : TARGET.entryCount)})
 }
 
 function ledgerFor(bundle, count, { sourceRevision = 'prior' } = {}) {
@@ -488,8 +488,8 @@ test('external fixed runner applies only 64-to-65 or verified replay and rejects
 })
 
 
-test('user-directory fixed runner accepts only exact 65-or-66-or-67-to-68 and replay',async()=>{
- const input=fixture({users:true});assert.deepEqual(DEV057_USERS_TARGET.allowedExistingLedgerCounts,[65,66,67,68]);
- for(const count of [65,66,67,68]){const statements=[],ledger=ledgerFor(input.bundle,count);const result=await executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV057_USERS_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true});assert.equal(result.ledgerCount,68);assert.equal(result.applied,68-count)}
- for(const count of [0,31,60,64,69]){const statements=[],ledger=ledgerFor(input.bundle,Math.min(count,68));if(count===69)ledger.push({...ledger[66],version:'unknown'});await assert.rejects(executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV057_USERS_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true}),/MIGRATION_EXISTING_LEDGER_COUNT_INVALID/);assert.equal(writesStarted(statements),false)}
+test('user-directory fixed runner accepts only exact 65/66/67/68-to-69 and replay',async()=>{
+ const input=fixture({users:true});assert.deepEqual(DEV057_USERS_TARGET.allowedExistingLedgerCounts,[65,66,67,68,69]);
+ for(const count of [65,66,67,68,69]){const statements=[],ledger=ledgerFor(input.bundle,count);const result=await executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV057_USERS_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true});assert.equal(result.ledgerCount,69);assert.equal(result.applied,69-count)}
+ for(const count of [0,31,60,64,70]){const statements=[],ledger=ledgerFor(input.bundle,Math.min(count,69));if(count===70)ledger.push({...ledger[66],version:'unknown'});await assert.rejects(executeProductionMigration({bundle:input.bundle,database:fakeDatabase(ledger,statements),target:DEV057_USERS_TARGET,sourceRevision:H40,denyDatabaseConnect:async()=>true}),/MIGRATION_EXISTING_LEDGER_COUNT_INVALID/);assert.equal(writesStarted(statements),false)}
 })
