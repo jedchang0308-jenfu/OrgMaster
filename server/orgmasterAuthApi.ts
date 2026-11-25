@@ -25,7 +25,7 @@ import {
   type PublicDevelopmentAuthProfile,
 } from './orgmasterGovernanceIdentity'
 import { createPrincipalAdmissionRepository, PrincipalAdmissionError, type PrincipalAdmissionRepository } from './orgmasterPrincipalAdmissionRepository'
-import { readVerifiedRequestIdentity, setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import { readVerifiedRequestIdentity, setVerifiedRequestIdentity, setTrustedRequestIdentityRevalidator } from './orgmasterRequestIdentity'
 import { requireOrgmasterLocalSandboxDatabase, withOrgmasterLocalSandboxPersistenceTarget, withPersistenceActor } from './orgmasterPersistenceRepository'
 import { createOrgmasterSessionRepository, type OrgmasterSession, type OrgmasterSessionRepository } from './orgmasterSessionRepository'
 import { createManagedIdentityService, type ManagedIdentityServiceV1 } from './orgmasterManagedIdentityService'
@@ -501,6 +501,10 @@ export function createOrgmasterAuthRuntime(environment: NodeJS.ProcessEnv = proc
 export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = () => createOrgmasterAuthRuntime(), devEnabled = false, ssoDependencies: OrgmasterSsoHandoffDependencies = {}): Connect.NextHandleFunction {
   const runtime = runtimeFactory()
   devEnabled = !runtime.localSandbox?.enabledCandidate && isDevelopmentAuthEnabled(devEnabled, ssoDependencies.environment ?? process.env) && runtime.ssoHandoffEnabled !== true
+  const bindRevalidator = (request: IncomingMessage, run: () => Promise<OrgmasterSession>) =>
+    setTrustedRequestIdentityRevalidator(request, async () => {
+      try { return await run() } catch (error) { throw asAuthError(error) }
+    })
   const rateLimit = createRateLimiter()
   return (request, response, next) => {
     const pathname = new URL(request.url ?? '/', 'http://orgmaster.local').pathname
@@ -556,6 +560,11 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         }
         const authenticated = await runtime.localSandbox.verify(request, id)
         setVerifiedRequestIdentity(request, authenticated.session)
+        bindRevalidator(request, async () => {
+          const fresh = await runtime.localSandbox!.verify(request, id)
+          if (fresh.persistenceTargetUrl !== authenticated.persistenceTargetUrl) throw new OrgmasterAuthError(401, 'auth_session_invalid')
+          return fresh.session
+        })
         if (pathname === `${ORGMASTER_AUTH_API_PATH}/me`) {
           sendJson(response, 200, publicSession(authenticated.session, id), id)
           return
@@ -654,6 +663,16 @@ export function createOrgmasterAuthMiddleware(runtimeFactory: RuntimeFactory = (
         if (devEnabled && isLoopback(request) && !runtime.configResult.configured) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
         await verifySession(request, runtime, id)
       }
+      if (development) {
+        const original = { ...development.session }
+        bindRevalidator(request, async () => {
+          const fresh = developmentSession(request, devEnabled)
+          if (!fresh) throw new OrgmasterAuthError(401, 'auth_session_invalid')
+          // This adapter has a stateless synthetic profile, not a native DB session.
+          // Preserve the original synthetic lifetime instead of minting a new one.
+          return { ...fresh.session, issuedAt: original.issuedAt, authenticatedAt: original.authenticatedAt, expiresAt: original.expiresAt }
+        })
+      } else bindRevalidator(request, () => verifySession(request, runtime, id))
       const verified = readVerifiedRequestIdentity(request)
       if (!verified) throw new OrgmasterAuthError(401, 'auth_session_invalid', true)
       withPersistenceActor({ principalId:verified.principalId,employeeId:verified.employeeId,issuer:verified.identityIssuer,subject:verified.identitySubject,bootstrap:false,sessionId:verified.id,principalAuthEpoch:verified.principalAuthEpoch,authenticatedAt:verified.authenticatedAt,assuranceLevel:verified.assuranceLevel },

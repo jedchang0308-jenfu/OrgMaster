@@ -104,11 +104,17 @@ describe('DEV-071 department duties', () => {
 
   it('projects no employee or position data and preserves exact selected version metadata', () => {
     const state = createDutyMapSeed(structuredClone(screenshotOrganizationState))
+    Object.assign(state.departments[0], { employees: [{ id: 'legacy-private-employee', name: '不應隨職掌圖輸出的姓名' }] })
+    Object.assign(state.duties[0], { assignedPositionIds: ['legacy-private-position'] })
     const projection = buildDutyMapProjection(state, { versionId: 'draft-one', versionName: '規劃草稿', versionKind: 'draft', revision: 'revision-one' }, [], false)
     expect(projection.versionId).toBe('draft-one')
     expect(projection.revision).toBe('revision-one')
     expect(projection).not.toHaveProperty('employees')
     expect(projection).not.toHaveProperty('positions')
+    expect(projection.departments[0]).not.toHaveProperty('employees')
+    expect(projection.duties[0]).not.toHaveProperty('assignedPositionIds')
+    expect(JSON.stringify(projection)).not.toContain('legacy-private-employee')
+    expect(JSON.stringify(projection)).not.toContain('legacy-private-position')
     expect(projection.duties).toHaveLength(116)
     projection.map!.groups[0].title = '只改投影'
     expect(state.dutyMap!.groups[0].title).not.toBe('只改投影')

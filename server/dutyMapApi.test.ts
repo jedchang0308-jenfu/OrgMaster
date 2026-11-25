@@ -17,7 +17,7 @@ import { screenshotOrganizationState } from '../src/screenshotData'
 import type { WorkspaceDocumentResult } from '../src/versionWorkspace'
 import { createOrgmasterDutyMapMiddleware, mapDutyMapError, type DutyMapApiDependencies, type AuthorizeDutyMapWorkspace } from './dutyMapApi'
 import * as governance from './orgmasterGovernanceStore'
-import { setVerifiedRequestIdentity } from './orgmasterRequestIdentity'
+import { setVerifiedRequestIdentity, readVerifiedRequestIdentity, setTrustedRequestIdentityRevalidator } from './orgmasterRequestIdentity'
 import { createWorkspaceManifest } from '../src/versionWorkspace'
 
 const timestamp = '2026-01-01T00:00:00.000Z'
@@ -64,7 +64,7 @@ function mockGovernance(document: GovernanceDocumentV3) {
 }
 
 type Reply = { status: number; headers: Map<string, string>; body: any }
-function invoke(dependencies: DutyMapApiDependencies, input: { root?: string; path?: string; method?: string; body?: unknown; identity?: boolean; headers?: Record<string, string> } = {},
+function invoke(dependencies: DutyMapApiDependencies, input: { root?: string; path?: string; method?: string; body?: unknown; identity?: boolean; revalidator?: boolean; headers?: Record<string, string> } = {},
   authorizeWorkspace: AuthorizeDutyMapWorkspace = async () => 'principal-1') {
   const request = Readable.from(input.body === undefined ? [] : [Buffer.from(typeof input.body === 'string' ? input.body : JSON.stringify(input.body))]) as IncomingMessage
   request.url = input.path ?? '/api/orgmaster/duty-map?versionId=draft-1'
@@ -74,6 +74,9 @@ function invoke(dependencies: DutyMapApiDependencies, input: { root?: string; pa
     id: 'session', principalId: 'principal-1', employeeId: 'employee-1', identityIssuer: 'https://verified.example', identitySubject: 'subject', authEpoch: 1,
     sessionSchemaVersion: 2, epochKind: 'principal', principalAuthEpoch: 1, issuedAt: timestamp, authenticatedAt: timestamp, expiresAt: '2027-01-01T00:00:00Z', revokedAt: null, assuranceLevel: 'aal1',
   })
+  if (input.identity !== false && input.revalidator !== false) {
+    setTrustedRequestIdentityRevalidator(request, async () => ({ ...readVerifiedRequestIdentity(request)! }))
+  }
   const headers = new Map<string, string>()
   const response = new EventEmitter() as ServerResponse
   let complete!: (reply: Reply) => void
@@ -265,6 +268,13 @@ describe('DEV-071 duty map API RD self-check', () => {
   it('passes unrelated routes and returns safe sanitized errors', async () => {
     expect((await invoke({}, { path: '/api/orgmaster/duty-map-unrelated', identity: false }).finished).status).toBe(0)
     expect(mapDutyMapError(new Error('secret-provider-key'))).toEqual({ status: 503, code: 'DUTY_MAP_UNAVAILABLE' })
+  })
+
+  it('fails closed when an attached identity has no trusted request revalidator', async () => {
+    const f = setup()
+    const reply = await invoke(f.dependencies, { revalidator: false, method: 'POST', path: '/api/orgmaster/duty-map/reviews', body: f.body }).finished
+    expect(reply).toMatchObject({ status: 503, body: { error: 'IDENTITY_REVALIDATOR_UNAVAILABLE' } })
+    expect(f.generate).not.toHaveBeenCalled()
   })
 
   it('uses actual isolated workspace reads and never persists AI results or changes the draft or current version', async () => {

@@ -10,7 +10,7 @@ import { getManagementMethodPaths, readManagementMethodStore } from './managemen
 import { developmentPermissionForActor } from './orgmasterGovernanceIdentity'
 import { readStoredGovernanceDocument } from './orgmasterGovernanceStore'
 import { persistenceArtifactExists } from './orgmasterPersistenceRepository'
-import { verifiedGovernanceActor } from './orgmasterRequestIdentity'
+import { verifiedGovernanceActor, revalidateVerifiedRequestIdentity, RequestIdentityRevalidationError } from './orgmasterRequestIdentity'
 import { getWorkspacePaths, getWorkspaceVersion, WorkspaceStoreError } from './orgmasterWorkspaceStore'
 import { DutyMapError, dutyMapReviewInputSchema, reviewDutyMap, type DutyMapReviewDependencies } from './dutyMapReviewService'
 
@@ -51,6 +51,7 @@ function send(response: ServerResponse, status: number, payload: unknown) {
 }
 export function mapDutyMapError(error: unknown): { status: number; code: string } {
   if (error instanceof DutyMapError) return { status: error.status, code: error.code }
+  if (error instanceof RequestIdentityRevalidationError) return { status: error.status, code: error.code }
   if (error instanceof WorkspaceStoreError) {
     return error.code === 'WORKSPACE_ENTRY_NOT_FOUND' ? { status: 404, code: 'WORKSPACE_ENTRY_NOT_FOUND' }
       : { status: 503, code: 'DUTY_MAP_SOURCE_UNAVAILABLE' }
@@ -166,6 +167,7 @@ export function createOrgmasterDutyMapMiddleware(root: string, authorizeWorkspac
             try {
               await authorize()
               projection = await projectionFor(parsed.data.versionId, false)
+              await revalidateVerifiedRequestIdentity(request)
             } catch (error) {
               const mapped = mapDutyMapError(error)
               throw new DutyMapError(mapped.status, mapped.code)

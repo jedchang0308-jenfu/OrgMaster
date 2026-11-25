@@ -160,7 +160,9 @@ OrgMaster 為各筆有效 finding 產生當次 ID，回應外層帶 `requestId, 
 
 同一讀者在一次盤點完成前沿用進行中狀態，前端連點共用同一請求。服務端限制同一 Principal 的重複進行中請求並回報忙碌狀態，模型 SDK 關閉自動重試。採既有可中止的模型呼叫方式，單次等待上限為 60 秒。供應商支援時使用既有 `store: false` 選項。應用程式將回覆留在當次畫面記憶體中。
 
-結果回來前核對原組織 revision 及本次資格。前端同時比對 `requestId`、`versionId` 與 `revision`，切換版本、關閉結果或離開畫面時取消請求並清除當次結果。晚回結果保留其原請求歸屬。主管重新開啟時可自行發起新分析。這份服務沿用推薦服務的呼叫技術，分析流程依本節的按需 AI 契約處理。[既有模型呼叫與引用驗證](../../server/employeeRecommendationService.ts)
+送模型前及結果回來時，服務端重新核對原組織 revision、完整閱讀權與盤點資格，並由認證層綁定的 request 專屬可信函式重驗原 Principal、Employee、session 與 epoch。等待期間登出、撤銷、停用、逾期或換成其他 session 時不交付結果；身分權威不可用或缺少可信重驗函式時回報未完成。沿用既有正式、本機 sandbox 與明示開啟的測試認證介面，不接受前端宣告已重驗。
+
+前端同時比對 `requestId`、`versionId` 與 `revision`，切換版本、關閉結果或離開畫面時取消請求並清除當次結果。晚回結果保留其原請求歸屬。主管重新開啟時可自行發起新分析。這份服務沿用推薦服務的呼叫技術，分析流程依本節的按需 AI 契約處理。[既有模型呼叫與引用驗證](../../server/employeeRecommendationService.ts)
 
 模型供應商及模型名稱沿用部署環境設定。實際主管的任用與權限沿既有管理流程維護，實際辦法依第 7.1 節在首輪試用核對。
 
@@ -217,7 +219,7 @@ API 的輸入錯誤回 400、缺少有效登入回 401、資格不足回 403。�
 | 驗證層 | 可重用的入口 | 支持的判定 |
 | --- | --- | --- |
 | 資料與版本 | `src/dutyMap.test.ts`、`src/dutyMapDraft.test.ts`、`src/dutyMapRoute.test.ts`、`server/orgmasterWorkspaceStore.test.ts` | 基準數量、ID 重用、來源衝突、序列化、舊客戶端保留資料及 CAS。 |
-| API、權限與模型 | `server/dutyMapApi.test.ts`、`server/dutyMapReviewService.test.ts`、`server/dutyMapServer.test.ts` | 真實 handler 的正反權限、完整版本輸入、模型回覆驗證、逾時／取消／晚回及不保存結果。模型測試回覆只支持流程與引用驗證。 |
+| API、權限與模型 | `server/dutyMapApi.test.ts`、`server/dutyMapReviewService.test.ts`、`server/dutyMapServer.test.ts`、`server/dutyMapIdentityRevalidation.test.ts` | 真實 handler 的正反權限、完整版本輸入、模型回覆驗證、逾時／取消／晚回及不保存結果；HTTP 等待中的登出、撤權、停用與 session 替換。身分 repository 與模型替身只支持隔離流程判定，不表示已驗正式身分權威或模型品質。 |
 | 元件與排版 | `src/components/DutyMindMap.test.tsx`、`src/dutyMapLayout.test.ts`、`src/dutyMapClient.test.ts` | 篩選、往返曲線、定位、閱讀分組與檢視還原。正常工作台整合仍須以下一列核對。 |
 | 正常工作台走讀 | `node scripts/qc-dev071-browser.mjs` | 使用隔離資料、明示啟用的本機測試身分與無視窗 Edge，從工作台建草稿、查辦法、看飛輪、盤點與還原，核對窄螢幕。沿第 8 節記錄實際覆蓋與未覆蓋項。 |
 | 型別與建置 | `npm run build` | 前後端編譯。required CI 沿既有 `Production Source QC`，不以建置代替業務情境。 |

@@ -9,15 +9,16 @@
 
 - **分類／目標**　OrgMaster 產品交付點。在既有職掌工作台，以單張可篩選心智圖查閱部門職掌、管理辦法對應、成長飛輪及主管按需發起的 AI 盤點。
 - **有效契約**　[開發規格](specs/DEV-071-duty-chapter-mind-map.md) 保存首版範圍、資料與權限、API、四個工作切片及原 A01～A26。六部門、33 大項、116 細項與原驗收文字均已核對保留。
-- **現況與證據**　程式已實作，交付仍待權限範圍定案。已整合 `master@061052f`，沿原分支提交至[草稿 PR #288](https://github.com/jedchang0308-jenfu/OrgMaster/pull/288)。候選 `a6c5d00` 的 [Production Source QC](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/45657826197) 已成功，含 runtime／tool images、PG18 及完整來源 QC。本機同版 `qc:dev-040:r2` 通過，應用 1741 PASS／9 skip、sandbox 64 PASS、型別與前後端 build 通過；兩項新增 opt-in PostgreSQL 案例另以真實 v3 writer/fence 實跑 2/2，確認發布前、department scope、撤權、偽造 admin grant 與錯誤 epoch 拒絕，admin definition/hash 不變。後續補強 A15 的具名採購移轉、A19 的三種盤點結果與 A20 的付款歸章／60 秒逾時，UI 19 項通過，API 反查、封存可讀性 6 個選定案例與型別亦通過，尚待推送同 PR 之最新 CI。
+- **現況**　程式已實作，交付仍待單部門限閱範圍定案。已整合 `master@061052f`，沿原分支維持[草稿 PR #288](https://github.com/jedchang0308-jenfu/OrgMaster/pull/288)。required CI 以 [PR 最新檢查](https://github.com/jedchang0308-jenfu/OrgMaster/pull/288/checks)所綁定的來源為準，歷史成功不代表未提交修改已通過。
+- **自查與 CI 證據**　`a6c5d00` 的 [Source QC](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/45657826197)及驗收補強後 `7c549b5` 的 [Source QC](https://github.com/jedchang0308-jenfu/OrgMaster/actions/runs/45663081634)均成功，含 runtime／tool images、PG18 與來源 QC。本機整合套件 1741 PASS／9 skip、sandbox 64 PASS；兩項新增 opt-in PG 案例另以真實 v3 writer/fence 實跑 2/2，涵蓋發布前、department scope、撤權、偽造 admin grant、錯誤 epoch 及原 admin definition/hash 保留。UI 19 項包含具名採購跨版本、三種盤點結果、付款歸章及精確 60 秒逾時。最後的身分重驗 HTTP／API／Auth 66 項與投影資料 8 項、TypeScript 及前後端 build 通過；身分 repository、sandbox verifier 與模型仍使用隔離替身，來源與限制見 `output/dev071/identity-revalidation/rd-evidence.json`。
 - **正常入口證據**　`output/dev071/browser/result.json` 與同目錄畫面記錄 12 組隔離 Edge 操作，包含功能導覽進入、UI 建草稿、6／33／116、四份示例辦法及五筆連結、共通／專項／其他細項的繼承差異、付款兩部門反查、規劃標記、完整模型輸入、無效引用、檢視還原、窄螢幕與唯讀零業務寫入。記錄前端檔案及 server bundle hash；屬 RD 合成資料自查。走讀先用正常 API 準備既有空工作區，不涵蓋併發 legacy 初始化。未用真實模型評估品質，未匯入正式資料或正式發布。
-- **已修正的失敗**　保留首輪應用的兩個反查失敗、bootstrap drift 與原生走讀失敗紀錄於工具輸出及工作樹 `output/dev071/`。已修正回應版本核對、ordinary business action 與 frozen 15 項 admin／前端 V1 分離、無變更保存引起的 revision 漂移、改名後 seed 重試，以及窄畫面清除篩選後的空白視野。source seed checker 與後續正常入口均通過。
-- **下一步**　沿原 PR 推送本輪驗收補強與版本可讀性修正，等待最新 required CI。單部門限閱與現有整份版本權限之間的邊界已提出使用者選擇，待回覆後處理 A05／A14 的限閱變體；目前不自行擴張登入或工作區資料權限，亦不宣稱整體驗收完成。真實公司辦法核對與模型品質依首輪示例之後的試用另行確認。
+- **已修正的失敗**　保留首輪兩個反查失敗、bootstrap drift 與走讀失敗紀錄於工具輸出及 `output/dev071/`。已修正回應版本核對、ordinary business action 與 frozen 15 項 admin／前端 V1 分離、無變更保存造成的 revision 漂移、改名後 seed 重試、窄畫面清除篩選後的空白視野。盤點送出前及釋出前另重驗原身分，拒絕等待期間登出、停用或 session／epoch 改變；投影明列必要欄位，避免舊資料夾帶人員／職位。source seed checker 與最後正常入口 12 組均通過。
+- **下一步／待決策**　待使用者選擇：首版沿用現有整份組織版本閱讀權限、部門選單只作篩選，或新增單部門限閱及登入／工作區資料隔離。依回覆處理 A05／A14 的限閱變體；目前不自行擴張權限，亦不宣稱整體驗收完成。真實公司辦法核對與模型品質依「先用示例」之後的試用另行確認。
 - **關聯契約**　DEV-020 組織版本、DEV-032 管理辦法、DEV-039 工作台、DEV-056／070 權限目錄與行政能力。ProJED 幾何與 Platform 章目為重用來源。首版不分配職位、人員或工作量。
 
 ### DEV-071 驗收逐項核對
 
-本表記錄實際覆蓋，原規格保留完整 26 項條件。證據入口為[原生走讀](../scripts/qc-dev071-browser.mjs)、[圖形元件](../src/components/DutyMindMap.test.tsx)、[排版](../src/dutyMapLayout.test.ts)、[資料與 seed](../src/dutyMap.test.ts)、[草稿](../src/dutyMapDraft.test.ts)、[API](../server/dutyMapApi.test.ts)、[模型服務](../server/dutyMapReviewService.test.ts)、[真實 HTTP](../server/dutyMapServer.test.ts)、[反查面板](../src/components/managementMethods/ManagementMethodDutyDrawer.test.tsx)及[隔離 PG writer](../server/orgmasterBusinessPermission.postgres.test.ts)。下列通過結論限於所列合成資料、來源與測試層。
+本表記錄實際覆蓋，原規格保留完整 26 項條件。證據入口為[原生走讀](../scripts/qc-dev071-browser.mjs)、[圖形元件](../src/components/DutyMindMap.test.tsx)、[排版](../src/dutyMapLayout.test.ts)、[資料與 seed](../src/dutyMap.test.ts)、[草稿](../src/dutyMapDraft.test.ts)、[API](../server/dutyMapApi.test.ts)、[模型服務](../server/dutyMapReviewService.test.ts)、[真實 HTTP](../server/dutyMapServer.test.ts)、[身分重驗 HTTP](../server/dutyMapIdentityRevalidation.test.ts)、[反查面板](../src/components/managementMethods/ManagementMethodDutyDrawer.test.tsx)及[隔離 PG writer](../server/orgmasterBusinessPermission.postgres.test.ts)。下列通過結論限於所列合成資料、來源與測試層。
 
 | 案例 | 已核對的結果 | 剩餘範圍 |
 | --- | --- | --- |
@@ -34,7 +35,7 @@
 | A11 | 原生第 04 章呈現四部門；排版測試覆蓋交集、無結果與清除。 | 無。 |
 | A12 | 讀圖及篩選時模型呼叫為零；明確手動啟動才送出。 | 無。 |
 | A13 | 財務篩選下仍送 6／33／116 與 12 章，跨部門引用可定位。 | 無。 |
-| A14 | 普通讀者拒絕；普通主管業務角色須登錄、全域任用及發布，PG 驗證撤權。 | 具單部門閱讀資格者的看圖範圍待選擇。 |
+| A14 | 普通讀者拒絕；普通主管業務角色須登錄、全域任用及發布，PG 驗證撤權。HTTP 驗證等待期間登出、Principal 停用、epoch／session 改變均不回傳結果，缺少可信重驗函式則不呼叫模型。 | 具單部門閱讀資格者的看圖範圍待選擇。 |
 | A15 | API 具名採購在現行版與草稿分屬管理／生產，模型輸入與 metadata 各自綁定；UI 切版取消與晚回隔離。 | 無。 |
 | A16 | 原生換讀者與重開無舊標記；API 比對文件及檔案不持久保存結果；無專用複製或截圖功能。 | 無。 |
 | A17 | 原生與元件定位維修、技術文件兩端，明細顯示同一發現及原路徑。 | 無。 |
@@ -45,7 +46,7 @@
 | A22 | 橘色往返方向與交付分開，排版測試確認標籤不重合，底層九筆交接保留。 | 無。 |
 | A23 | 排版測試保留側別、順序、壓縮空間及還原；原生清除後公司節點仍可見。 | 無。 |
 | A24 | 原生 320／390／768px 鍵盤操作、頁籤不截斷，元件預覽章名可讀，清除篩選後畫布可達。 | 無。 |
-| A25 | 改名沿 ID 定位與重試、版本隔離、讀取失敗／無資料及原權限拒絕均已測；真實隔離檔案驗證有權封存草稿可讀／反查／盤點而不改狀態與內容，缺權 403、不存在 404。 | 無。 |
+| A25 | 改名沿 ID 定位與重試、版本隔離、讀取失敗／無資料及原權限拒絕均已測；真實隔離檔案驗證有權封存草稿可讀／反查／盤點而不改狀態與內容，缺權 403、不存在 404。投影白名單測試排除舊資料內的額外人員／職位欄位。 | 無。 |
 | A26 | 一般讀者及可編輯者的看圖狀態只改 context；原生觀察零職掌／歸章／飛輪業務寫入。 | 無。 |
 
 ## DEV-057：所有使用者與子系統資格清單（2026-11-25）

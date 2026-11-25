@@ -178,10 +178,10 @@ export function buildDutyMapProjection(
   if (!validation.ok) throw new Error(validation.message)
   return {
     ...meta, canReview, chapterCatalogVersion: DUTY_CHAPTER_CATALOG_VERSION,
-    departments: state.departments.map(value => ({ ...value })),
-    duties: state.duties.map(value => ({ ...value })),
+    departments: state.departments.map(({ id, name, parentId }) => ({ id, name, parentId })),
+    duties: state.duties.map(({ id, title, description }) => ({ id, title, description })),
     map: state.dutyMap ? structuredClone(state.dutyMap) : null,
     chapters: DUTY_CHAPTERS.map(value => ({ ...value })),
-    methods: methods.map(value => ({ ...value })),
+    methods: methods.map(({ id, code, title }) => ({ id, code, title })),
   }
 }
