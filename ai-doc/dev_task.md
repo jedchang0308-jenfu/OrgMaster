@@ -1,6 +1,7 @@
 # OrgMaster 開發任務
 
 - 2026-11-25 Platform DEV-015 consumer source candidate：[SSO 拒絕／取消返回及原目的頁恢復](specs/DEV-013-orgmaster-sso-consumer.md#dev015-sso-error-return)。63 focused tests／typecheck PASS；留獨立 worktree 給 Platform 整鏈，未發布。
+- 同日來源同步：以 merge `c78adb4` 納入 `origin/master@de4009cb`，保留原候選／失敗紀錄；受影響 SSO HTTP＋AuthApi 補驗 71/71 與型別 PASS，未變的 AuthGate 13 項沿用，詳上列契約。無 rebase／force push／provider／發布。
 
 ## DEV-057：所有使用者與子系統資格清單（2026-11-25）
 

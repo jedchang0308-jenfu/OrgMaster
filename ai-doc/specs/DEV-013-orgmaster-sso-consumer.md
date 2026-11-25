@@ -31,6 +31,8 @@ OrgMaster consumes Platform `jenfu.sso-handoff.v1` for the fixed `orgmaster` aud
 
 此任務 worktree 保留於 `C:/VIBE CODING/Jenfu-Platform/.local/dev015-consumers/OrgMaster` 供 Platform 主控整鏈驗收；主控完成或不再需要此候選後檢查保存與清理，不發布正式環境。
 
+2026-11-25 來源同步追加：原候選 `254702365f1b8437c246ad29916bd18d64b24795` 基於 `3683cac1c2705d0c01a344f30ea81b6ec5308c21`；fetch 後將 `origin/master@de4009cb3ec85bdfc276fcf93a9984cb05dec498` merge 進同一功能分支，merge commit 為 `c78adb4be6944e490634f03908bc2f5f2fb07187`，沒有 rebase／force push。唯一衝突是 `dev_task.md` 頂部的獨立新增索引，兩邊條目均保留；原失敗與 63/63 證據不改寫。上游增加使用者清單服務的 auth runtime／Vite composition，因此在該 merge source 補驗 SSO HTTP 與 AuthApi **71/71 PASS**、TypeScript PASS；SSO handler、AuthGate、兩者原測試與 dependency lock 均與原候選相同，原 13 個 AuthGate 案例沿用。此後只追加本來源與證據說明，不改 executable inputs；未重跑全套、執行 migration、啟用中央 redirect opt-in、修改 provider 或發布。
+
 - `server/orgmasterSsoHandoff.ts`: signed transaction cookie, exact callback／state／PKCE validation, attached service identity exchange, stale principal／epoch guard, account conflict handling, and local session creation.
 - `server/orgmasterAuthApi.ts`／`orgmasterAuthEpochRepository.ts`: `authState v2` on direct Firebase exchange and every protected request; SSO mode discovery remains default-off.
 - `src/auth/AuthGate.tsx`／`authApiClient.ts`: when the owner mode is enabled, show only the Platform login entry and preserve local／development modes otherwise.
