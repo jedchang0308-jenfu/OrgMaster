@@ -733,6 +733,13 @@
         "path": "db/migrations/072_dev057_user_directory_optimized_grants.sql",
         "sourceSha256": "30557828dc97ea11ac74a55dfd7b51dde01f7f09016bfca43a3c931164c246b9",
         "appliedSha256": "c2d6d66989f23b9ce149fce104e985a4c31212e88b089d844d560f3fd1e6f08d"
+      },
+      {
+        "order": 69,
+        "version": "dev057-orgmaster-073",
+        "path": "db/migrations/073_dev057_bulk_principal_mapping_counts.sql",
+        "sourceSha256": "d50d40ac401b4cc0137d760374972c89f1da4383862ede9fd1f1c6d189dcbf45",
+        "appliedSha256": "e9d12647d530e3b7b8166fa95662b677a64b94afa474787240feb2ad85743ff9"
       }
     ]
   },
