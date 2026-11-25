@@ -483,14 +483,14 @@ test('OrgMaster exact baseline and all forward owner migrations through 070', ()
   }
 })
 
-test('current 69-entry source freezes only the reviewed 64-entry Principal generation when explicitly selected', () => {
+test('current 70-entry source freezes only the reviewed 64-entry Principal generation when explicitly selected', () => {
   const files = new Map(profile.migrations.entries.map(entry => [entry.path, fs.readFileSync(new URL(`../${entry.path}`, import.meta.url))]))
   const sourceRevision = 'a'.repeat(40)
   const build = selection => buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, sourceRevision, selection)
   const principalSelection = { releaseMode: DEV057_PROJED_RELEASE_MODE, executionMode: 'migration_only' }
   const full = build(), selected = build(principalSelection)
-  assert.equal(profile.migrations.entries.length, 69)
-  assert.equal(full.bundle.entries.length, 69)
+  assert.equal(profile.migrations.entries.length, 70)
+  assert.equal(full.bundle.entries.length, 70)
   assert.equal(selected.bundle.entries.length, 64)
   assert.deepEqual(selected.bundle.entries, full.bundle.entries.slice(0, 64))
   assertDev057ProjedMigrationEntries(selected.bundle.entries)
