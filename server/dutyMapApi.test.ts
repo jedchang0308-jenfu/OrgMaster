@@ -136,6 +136,9 @@ describe('DEV-071 duty map API RD self-check', () => {
     expect(reply.body.links.every((link: any) => link.departmentName && link.groupTitle && link.title)).toBe(true)
     f.selected.document.state.dutyMap!.methodLinks.shift()
     expect((await invoke(f.dependencies, { path: '/api/orgmaster/duty-map/method-links?versionId=draft-1&methodId=readable' }).finished).body.links).toHaveLength(1)
+    const updatedMap = (await invoke(f.dependencies).finished).body
+    expect(updatedMap.map.methodLinks).toHaveLength(1)
+    expect(updatedMap.map.methodLinks[0].id).toBe('special-link')
   })
 
   it.each(['stopped', 'restricted', 'unknown'])('protects unavailable method %s using the existing unreadable response', async methodId => {
@@ -202,22 +205,30 @@ describe('DEV-071 duty map API RD self-check', () => {
     expect((await invoke(f.dependencies, { method: 'POST', path: '/api/orgmaster/duty-map/reviews', body: f.body }).finished).status).toBe(403)
   })
 
-  it('analyzes the selected draft and current version independently and binds server metadata', async () => {
+  it('analyzes procurement in each selected version without mixing department ownership', async () => {
     const f = setup()
     const current = version('current-1', 'current')
-    current.document.state.duties[0].description = '現行版承接內容'
-    const draftDuty = f.selected.document.state.duties[0]
-    draftDuty.description = '草稿移轉至其他部門'
-    f.selected.document.state.dutyMap!.memberships[0].groupId = f.selected.document.state.dutyMap!.groups.at(-1)!.id
+    const purchase = current.document.state.duties.find(duty => duty.title === '採購訂單與交期管理')!
+    const administration = current.document.state.departments.find(department => department.name === '管理部')!
+    const adminGroup = current.document.state.dutyMap!.groups.find(group => group.departmentId === administration.id)!
+    current.document.state.dutyMap!.memberships.find(member => member.dutyId === purchase.id)!.groupId = adminGroup.id
+    purchase.description = '現行版由管理部承接'
+    f.selected.document.state.duties.find(duty => duty.id === purchase.id)!.description = '草稿轉由生產部承接'
     f.dependencies.readVersion = async (_root, id) => structuredClone(id === 'current-1' ? current : f.selected)
     const draft = await invoke(f.dependencies, { method: 'POST', path: '/api/orgmaster/duty-map/reviews', body: f.body }).finished
     const present = await invoke(f.dependencies, { method: 'POST', path: '/api/orgmaster/duty-map/reviews', body: { ...f.body, versionId: 'current-1', expectedVersionRevision: current.version.revision, requestId: 'request-2' } }).finished
     expect(draft.body).toMatchObject({ versionId: 'draft-1', versionName: '規劃草稿', versionKind: 'draft', requestId: 'request-1' })
     expect(present.body).toMatchObject({ versionId: 'current-1', versionKind: 'current', requestId: 'request-2' })
     const [draftInput, currentInput] = f.generate.mock.calls.map(call => (call as unknown[])[0] as any)
-    expect(draftInput.duties[0].description).toBe('草稿移轉至其他部門')
-    expect(currentInput.duties[0].description).toBe('現行版承接內容')
-    expect(draftInput.memberships[0].groupId).not.toBe(currentInput.memberships[0].groupId)
+    const departmentFor = (input: any) => {
+      const membership = input.memberships.find((member: any) => member.dutyId === purchase.id)
+      const group = input.groups.find((value: any) => value.id === membership.groupId)
+      return input.departments.find((department: any) => department.id === group.departmentId).name
+    }
+    expect(departmentFor(draftInput)).toBe('生產部')
+    expect(departmentFor(currentInput)).toBe('管理部')
+    expect(draftInput.duties.find((duty: any) => duty.id === purchase.id).description).toBe('草稿轉由生產部承接')
+    expect(currentInput.duties.find((duty: any) => duty.id === purchase.id).description).toBe('現行版由管理部承接')
     expect(f.generate).toHaveBeenCalledTimes(2)
   })
 
@@ -282,6 +293,57 @@ describe('DEV-071 duty map API RD self-check', () => {
     expect(reply).toMatchObject({ status: 200, body: { versionId: 'draft-1', findings: [] } })
     for (const [file, raw] of stored) expect(await readFile(join(data, file), 'utf8')).toBe(raw)
     expect((await readdir(data, { recursive: true })).sort()).toEqual(before)
+  })
+
+  it('reads and reviews an authorized archived draft without changing status, while denying missing access and nonexistent versions', async () => {
+    vi.stubEnv('ORGMASTER_PERSISTENCE_MODE', 'local-json')
+    const root = await mkdtemp(join(tmpdir(), 'orgmaster-duty-map-rd-'))
+    roots.push(root)
+    const draft = version()
+    draft.version.status = 'archived'
+    draft.version.archivedAt = timestamp
+    const current = version('current-1', 'current')
+    const manifest = createWorkspaceManifest(current.version.id, timestamp)
+    manifest.entries.push(draft.version)
+    const data = join(root, 'data')
+    await mkdir(join(data, 'orgmaster-versions'), { recursive: true })
+    const stored = [
+      ['orgmaster-workspace.v1.json', JSON.stringify(manifest)],
+      ['orgmaster-versions/draft-1.json', JSON.stringify(draft.document)],
+      ['orgmaster-versions/current-1.json', JSON.stringify(current.document)],
+    ]
+    for (const [file, raw] of stored) await writeFile(join(data, file), raw)
+    const generate = vi.fn(async () => ({ findings: [] }))
+    const dependencies: DutyMapApiDependencies = { canReview: async () => true, readMethods: async () => [method('readable')],
+      canReadMethod: async () => true, review: { generate } }
+    const graph = await invoke(dependencies, { root }).finished
+    expect(graph.status).toBe(200)
+    const inputs = (id: string) => [
+      { root, path: '/api/orgmaster/duty-map?versionId=' + id },
+      { root, path: '/api/orgmaster/duty-map/method-links?versionId=' + id + '&methodId=readable' },
+      { root, method: 'POST', path: '/api/orgmaster/duty-map/reviews', body: {
+        versionId: id, expectedVersionRevision: graph.body.revision, chapterCatalogVersion: graph.body.chapterCatalogVersion, requestId: 'archived-request',
+      } },
+    ]
+    const authorize = vi.fn(async () => 'principal-1')
+    for (const input of inputs('draft-1')) {
+      const reply = await invoke(dependencies, input, authorize).finished
+      expect(reply.status).toBe(200)
+      expect(reply.body).toMatchObject({ versionId: 'draft-1', revision: graph.body.revision })
+      expect(reply.headers.get('Cache-Control')).toBe('no-store')
+      if (input.method === 'POST') expect(reply.body).toMatchObject({ versionKind: 'draft', versionName: draft.version.name, findings: [] })
+      if (input.path.includes('method-links')) expect(reply.body.links).toHaveLength(2)
+      const denied = await invoke(dependencies, input, async () => { throw { status: 403, code: 'WORKSPACE_ACCESS_FORBIDDEN' } }).finished
+      expect(denied).toMatchObject({ status: 403, body: { error: 'WORKSPACE_ACCESS_FORBIDDEN' } })
+    }
+    for (const input of inputs('nonexistent-version')) {
+      expect(await invoke(dependencies, input).finished).toMatchObject({ status: 404, body: { error: 'WORKSPACE_ENTRY_NOT_FOUND' } })
+    }
+    expect(generate).toHaveBeenCalledTimes(1)
+    expect(authorize.mock.calls.every(call => (call as unknown[])[1] === false)).toBe(true)
+    for (const [file, raw] of stored) expect(await readFile(join(data, file), 'utf8')).toBe(raw)
+    const readback = JSON.parse(await readFile(join(data, 'orgmaster-workspace.v1.json'), 'utf8'))
+    expect(readback.entries.find((entry: any) => entry.id === 'draft-1')).toMatchObject({ status: 'archived', archivedAt: timestamp })
   })
 
   it('does not bootstrap a missing workspace during an advisory read', async () => {

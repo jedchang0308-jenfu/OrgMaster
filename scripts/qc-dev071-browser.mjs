@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { join, resolve, sep } from 'node:path'
@@ -136,12 +136,11 @@ try {
   })
   const requests = []
   page.on('request', request => { if (request.url().startsWith(base + '/api/')) requests.push({ method: request.method(), url: request.url().slice(base.length) }) })
-  await page.goto(base, { waitUntil: 'domcontentloaded' })
-  const login = await page.evaluate(async () => {
-    const result = await fetch('/api/auth/development/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileId: 'administrator' }) })
-    return result.status
-  })
-  assert.equal(login, 200)
+  // Prepare the ordinary workspace prerequisite before the first React mount.
+  const login = await context.request.post(base + '/api/auth/development/session', { headers: { Origin: base }, data: { profileId: 'administrator' } })
+  assert.equal(login.status(), 200, await login.text())
+  const readyWorkspace = await context.request.get(base + '/api/orgmaster/workspace')
+  assert.equal(readyWorkspace.status(), 200, await readyWorkspace.text())
   const mapUrl = base + '/?panels=duties&focus=duties&details=none&dutyView=map'
   await page.goto(base, { waitUntil: 'networkidle' })
   await page.getByRole('button', { name: '工作職掌', exact: true }).click()
@@ -149,6 +148,10 @@ try {
   const closeOrganization = page.getByRole('button', { name: '關閉組織架構圖', exact: true })
   if (await closeOrganization.count()) await closeOrganization.click()
   const graph = page.locator('.duty-mind-map')
+  const expandGroup = async title => {
+    const toggle = graph.locator('.duty-mind-map__node--group').filter({ hasText: title }).locator('.duty-mind-map__node-title')
+    if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
+  }
   const beforeWorkspace = await page.evaluate(async () => (await fetch('/api/orgmaster/workspace')).json())
   const beforeCurrent = JSON.parse(await readFile(join(root, 'data/orgmaster-versions', beforeWorkspace.currentVersionId + '.json'), 'utf8'))
   await page.getByRole('button', { name: '建立職掌規劃草稿', exact: true }).click()
@@ -253,11 +256,38 @@ try {
   await page.reload({ waitUntil: 'networkidle' })
   await page.getByLabel('切換組織版本', { exact: true }).selectOption(draft.id)
   await expectCount(graph.locator('.duty-mind-map__node--group'), 33)
+  await check('A08-A09 purchasing common method opens from its unassigned child duty', async () => {
+    await expandGroup('生產採購、委外與供應商管理')
+    await graph.locator('.duty-mind-map__node--duty').filter({ hasText: '委外加工與外部服務交付管理' }).locator('.duty-mind-map__node-title').click()
+    await graph.getByRole('button', { name: /採購與委外作業辦法/ }).click()
+    await page.locator('.management-method-reader').getByText(/發包時交代適用圖面、工作範圍/).waitFor()
+    await page.getByRole('button', { name: '職掌對照', exact: true }).click()
+    const drawer = page.locator('.management-method-duty-drawer')
+    await expectCount(drawer.locator('.management-method-duty-drawer__rows > div'), 1)
+    await drawer.getByText('生產採購、委外與供應商管理', { exact: true }).waitFor()
+    assert((await drawer.innerText()).includes('生產部 · 職掌大項'))
+    await page.getByRole('button', { name: '關閉職掌對照', exact: true }).click()
+    await page.locator('#workspace-tab-duties').click()
+  })
   await check('A04 A06-A09 explicit specialized and common method lookup', async () => {
-    await graph.locator('.duty-mind-map__node--group').filter({ hasText: '品質策劃、檢驗與放行' }).locator('.duty-mind-map__node-title').click()
+    await expandGroup('品質策劃、檢驗與放行')
     await graph.locator('.duty-mind-map__node--duty').filter({ hasText: '進料與委外品質驗收' }).locator('.duty-mind-map__node-title').click()
     await expectCount(graph.getByRole('button', { name: /水槽焊接委外驗收作業說明/ }), 1)
     await expectCount(graph.getByRole('button', { name: /品質檢驗與放行辦法/ }), 1)
+    await graph.locator('.duty-mind-map__node--duty').filter({ hasText: '量測設備適用性與失準影響管理' }).locator('.duty-mind-map__node-title').click()
+    await expectCount(graph.getByRole('button', { name: /水槽焊接委外驗收作業說明/ }), 0)
+    await expectCount(graph.getByRole('button', { name: /品質檢驗與放行辦法/ }), 1)
+    await graph.locator('.duty-mind-map__node--duty').filter({ hasText: '進料與委外品質驗收' }).locator('.duty-mind-map__node-title').click()
+    await expectCount(graph.getByRole('button', { name: /水槽焊接委外驗收作業說明/ }), 1)
+    await graph.getByRole('button', { name: /品質檢驗與放行辦法/ }).click()
+    await page.locator('.management-method-reader').getByText(/檢驗須有適用依據與可回查的結果/).waitFor()
+    await page.getByRole('button', { name: '職掌對照', exact: true }).click()
+    const commonDrawer = page.locator('.management-method-duty-drawer')
+    await expectCount(commonDrawer.locator('.management-method-duty-drawer__rows > div'), 1)
+    await commonDrawer.getByText('品質策劃、檢驗與放行', { exact: true }).waitFor()
+    assert((await commonDrawer.innerText()).includes('研發部 · 職掌大項'))
+    await page.getByRole('button', { name: '關閉職掌對照', exact: true }).click()
+    await page.locator('#workspace-tab-duties').click()
     await graph.getByRole('button', { name: /水槽焊接委外驗收作業說明/ }).click()
     await page.getByRole('button', { name: '職掌對照', exact: true }).waitFor()
     assert.equal(new URL(page.url()).searchParams.get('methodView'), 'readable')
@@ -271,7 +301,7 @@ try {
   await check('A05 A09 shared handoff method reverse-links production and finance', async () => {
     await page.getByRole('button', { name: '關閉職掌對照', exact: true }).click()
     await page.locator('#workspace-tab-duties').click()
-    await graph.locator('.duty-mind-map__node--group').filter({ hasText: '生產採購、委外與供應商管理' }).locator('.duty-mind-map__node-title').click()
+    await expandGroup('生產採購、委外與供應商管理')
     await graph.locator('.duty-mind-map__node--duty').filter({ hasText: '採購對帳與付款資料交接' }).locator('.duty-mind-map__node-title').click()
     await graph.getByRole('button', { name: /委外對帳與付款交接辦法/ }).click()
     await page.getByRole('button', { name: '職掌對照', exact: true }).click()
@@ -298,7 +328,7 @@ try {
     await page.getByLabel('切換組織版本', { exact: true }).selectOption(draft.id)
     await expectCount(graph.locator('.duty-mind-map__node--group'), 33)
     await expectCount(graph.getByText('中長期規劃', { exact: true }), 0)
-    await graph.locator('.duty-mind-map__node--group').filter({ hasText: '品質策劃、檢驗與放行' }).locator('.duty-mind-map__node-title').click()
+    await expandGroup('品質策劃、檢驗與放行')
     await graph.locator('.duty-mind-map__node--duty').filter({ hasText: '品質系統建置與技術經驗標準化' }).locator('.duty-mind-map__node-title').click()
     await graph.getByText('中長期規劃', { exact: true }).waitFor()
     const reviewResponse = page.waitForResponse(response => response.url().endsWith('/api/orgmaster/duty-map/reviews') && response.request().method() === 'POST')
@@ -360,9 +390,11 @@ try {
   })
   assert.deepEqual(errors, [])
   const bundle = await readFile(join(project, 'dist-server/server.mjs'))
+  const clientFiles = ['index.html', ...(await readdir(join(project, 'dist/assets'))).filter(name => /\.(?:js|css)$/.test(name)).sort().map(name => 'assets/' + name)]
+  const clientArtifacts = await Promise.all(clientFiles.map(async path => ({ path, sha256: hash(await readFile(join(project, 'dist', path))) })))
   await writeFile(join(evidence, 'result.json'), JSON.stringify({
     evidenceKind: 'RD_SELF_CHECK_SYNTHETIC_LOCAL', checks, browserPageErrors: errors,
-    serverBundleSha256: hash(bundle), apiResponses, modelInputs: modelInputs.map(input => ({ versionId: input.versionId, departments: input.departments.length, groups: input.groups.length, duties: input.duties.length, chapters: input.chapters.length })),
+    serverBundleSha256: hash(bundle), clientArtifacts, apiResponses, modelInputs: modelInputs.map(input => ({ versionId: input.versionId, departments: input.departments.length, groups: input.groups.length, duties: input.duties.length, chapters: input.chapters.length })),
   }, null, 2))
   console.log(JSON.stringify({ result: 'PASS', checks: checks.length, evidence }, null, 2))
 } catch (error) {

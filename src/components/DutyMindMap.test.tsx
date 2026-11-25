@@ -2,7 +2,7 @@
 import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Root } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildDutyMapProjection, DEFAULT_DUTY_MAP_VIEW } from '../dutyMap'
 import type { DutyMapProjection, DutyMapReviewResult, DutyMapViewState } from '../dutyMap'
 import { dutyMapClient } from '../dutyMapClient'
@@ -12,7 +12,8 @@ import { DutyMindMap } from './DutyMindMap'
 import { renderWorkspacePanel } from './workspace/WorkspaceModuleSurfaces'
 
 const mounts: Array<{ root: Root; host: HTMLDivElement }> = []
-afterEach(() => { for (const { root, host } of mounts.splice(0)) { act(() => root.unmount()); host.remove() }; vi.restoreAllMocks(); vi.unstubAllGlobals() })
+beforeEach(() => vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true))
+afterEach(() => { for (const { root, host } of mounts.splice(0)) { act(() => root.unmount()); host.remove() }; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function fixture() {
   let id = 0
   const state = createDutyMapSeed({ ...screenshotOrganizationState, departments: [], duties: [], dutyPositionRelations: [], dutyMap: undefined }, () => 'fixture-' + ++id)
@@ -107,10 +108,10 @@ describe('DutyMindMap RD UI checks', () => {
     vi.spyOn(dutyMapClient, 'review').mockImplementation((input, received) => { requestId = input.requestId; signal = received; return new Promise(resolve => { finish = resolve }) })
     const { host, switchVersion, root } = await mount(p)
     click(button(host, '請 AI 盤點'))
-    vi.mocked(dutyMapClient.get).mockResolvedValue({ ...p, versionId: 'v2', versionName: '下一版本' })
+    vi.mocked(dutyMapClient.get).mockResolvedValue({ ...p, versionId: 'v2', versionName: '下一版本', versionKind: 'current' })
     await switchVersion('v2'); expect(signal?.aborted).toBe(true)
     await act(async () => finish(reviewResult(p, requestId))); await flush()
-    expect(host.textContent).toContain('下一版本'); expect(host.querySelectorAll('.duty-mind-map__ai-mark')).toHaveLength(0)
+    expect(host.textContent).toContain('現行版 · 下一版本'); expect(host.querySelectorAll('.duty-mind-map__ai-mark')).toHaveLength(0)
     click(button(host, '請 AI 盤點')); act(() => root.unmount()); expect(signal?.aborted).toBe(true)
     mounts.splice(mounts.findIndex(m => m.root === root), 1); host.remove()
   })
@@ -123,6 +124,30 @@ describe('DutyMindMap RD UI checks', () => {
     const reader = await mount({ ...p, canReview: false })
     expect([...reader.host.querySelectorAll('button')].some(b => b.textContent === '請 AI 盤點')).toBe(false)
   })
+
+  it('preserves the filtered reading view at the 60-second deadline and ignores a late timed-out result', async () => {
+    const p = fixture(), finance = p.departments.find(department => department.name === '財務部')!
+    const group = p.map!.groups.find(value => value.departmentId === finance.id)!
+    let finish!: (result: DutyMapReviewResult) => void, requestId = '', signal: AbortSignal | undefined
+    vi.spyOn(dutyMapClient, 'review').mockImplementation((input, nextSignal) => {
+      requestId = input.requestId; signal = nextSignal
+      return new Promise(resolve => { finish = resolve })
+    })
+    const initial = { ...DEFAULT_DUTY_MAP_VIEW, departmentId: finance.id, expandedGroupIds: [group.id] }
+    const { host, current } = await mount(p, initial)
+    vi.useFakeTimers()
+    click(button(host, '請 AI 盤點'))
+    expect(current()).toEqual(initial)
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(signal?.aborted).toBe(true)
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('本次 AI 盤點未完成')
+    expect(current()).toEqual(initial)
+    expect(host.querySelectorAll('.duty-mind-map__node--department')).toHaveLength(1)
+    await act(async () => finish(reviewResult(p, requestId))); await flush()
+    expect(current()).toEqual(initial)
+    expect(host.querySelectorAll('.duty-mind-map__ai-mark')).toHaveLength(0)
+    expect((button(host, '請 AI 盤點') as HTMLButtonElement).disabled).toBe(false)
+  })
   it('marks chapter-only empty findings, supports AI filters, and does not add formal relations', async () => {
     const p = fixture(); p.map!.chapterLinks = p.map!.chapterLinks.filter(l => l.chapterId !== '04')
     const before = structuredClone(p.map)
@@ -134,6 +159,59 @@ describe('DutyMindMap RD UI checks', () => {
     select(host, '篩選 AI 盤點結果', 'duty-unmapped'); expect(host.textContent).toContain('本次沒有此類發現')
     expect(p.map).toEqual(before)
   })
+  it('shows a payment collaboration suggestion beside the original finance mapping without editing it', async () => {
+    const p = fixture()
+    const payment = p.duties.find(duty => duty.title === '付款排程與支付對象核實')!
+    p.map!.chapterLinks = p.map!.chapterLinks.filter(link => link.target.kind !== 'duty' || link.target.id !== payment.id || link.chapterId === '11')
+    const before = structuredClone(p.map)
+    vi.spyOn(dutyMapClient, 'review').mockImplementation(async input => ({ ...reviewResult(p, input.requestId), findings: [{
+      id: 'payment-suggestion', kind: 'mapping-suggestion', nodeRefs: [{ kind: 'duty', id: payment.id }], chapterIds: ['04'], relationshipIds: [],
+      summary: '付款補充採購交接對應', observed: '本次資料只有會計財務的主要歸章', suggestion: '請主管核對是否補充採購付款的跨章協作', reason: '供應商對帳與付款之間仍須核對交付依據',
+    }] }))
+    const { host } = await mount(p)
+    click(button(host, '請 AI 盤點')); await flush()
+    const detail = host.querySelector('[aria-label="AI 盤點理由"]')?.textContent
+    expect(detail).toContain('歸章建議')
+    expect(detail).toContain('會計、財務與稅務管理')
+    expect(detail).toContain('供應商、採購與付款管理')
+    expect(detail).toContain('供應商對帳與付款之間仍須核對交付依據')
+    expect(p.map).toEqual(before)
+    click(button(host, '關閉 AI 結果'))
+    expect(p.map).toEqual(before)
+    expect(host.querySelectorAll('.duty-mind-map__ai-mark')).toHaveLength(0)
+  })
+
+  it('locates unmapped work, collaboration-only and empty chapters from the same transient AI result', async () => {
+    const p = fixture(), payment = p.duties.find(duty => duty.title === '付款排程與支付對象核實')!
+    p.map!.chapterLinks = p.map!.chapterLinks.filter(link => !(link.target.kind === 'duty' && link.target.id === payment.id)
+      && link.chapterId !== '08' && !(link.chapterId === '04' && link.kind === 'primary'))
+    const before = structuredClone(p.map)
+    vi.spyOn(dutyMapClient, 'review').mockImplementation(async input => ({ ...reviewResult(p, input.requestId), findings: [
+      { id: 'unmapped-payment', kind: 'duty-unmapped', nodeRefs: [{ kind: 'duty', id: payment.id }], chapterIds: [], relationshipIds: [], summary: '付款工作待歸章', observed: '本次未登錄這項工作的章節', suggestion: '核對主要歸章', reason: '仍保留財務部的原職掌路徑' },
+      { id: 'collaboration-chapter', kind: 'chapter-collaboration-only', nodeRefs: [], chapterIds: ['04'], relationshipIds: [], summary: '採購章只有協作對應', observed: '本次仍有跨章交接', suggestion: '核對交付與承接', reason: '協作對象依本次明示連結顯示' },
+      { id: 'empty-chapter', kind: 'chapter-no-duty', nodeRefs: [], chapterIds: ['08'], relationshipIds: [], summary: '人力章未見職掌對應', observed: '本次未提供本章關聯', suggestion: '請主管確認完整性', reason: '判讀限於這次完整版本的提供資料' },
+    ] }))
+    const { host } = await mount(p)
+    click(button(host, '請 AI 盤點')); await flush()
+    select(host, '篩選 AI 盤點結果', 'duty-unmapped')
+    click(button(host, '待歸章 · 付款工作待歸章'))
+    expect(host.querySelector('[aria-label="AI 盤點理由"]')?.textContent).toContain('財務部 › 支出核算與資金支付 › 付款排程與支付對象核實')
+    select(host, '篩選 AI 盤點結果', 'chapter-collaboration-only')
+    click(button(host, '僅有跨章協作 · 採購章只有協作對應'))
+    const collaboration = host.querySelector('[aria-label="AI 盤點理由"]')?.textContent
+    expect(collaboration).toContain('研發部')
+    expect(collaboration).toContain('管理部')
+    expect(collaboration).toContain('協作對象依本次明示連結顯示')
+    select(host, '篩選 AI 盤點結果', 'chapter-no-duty')
+    click(button(host, '尚無對應職掌 · 人力章未見職掌對應'))
+    expect(host.querySelector('[aria-label="本次 AI 盤點"]')?.textContent).toContain('全公司')
+    expect(host.querySelector('[aria-label="AI 盤點理由"]')?.textContent).toContain('人力、職能與薪工管理')
+    expect(host.querySelector('[aria-label="AI 盤點理由"]')?.textContent).toContain('判讀限於這次完整版本的提供資料')
+    expect(p.map).toEqual(before)
+    click(button(host, '關閉 AI 結果'))
+    expect(p.map).toEqual(before)
+  })
+
   it('separates legacy empty maps and load failure, and only supplied creation action is rendered', async () => {
     const p = fixture(), create = vi.fn().mockResolvedValue(undefined)
     const empty = await mount({ ...p, map: null })

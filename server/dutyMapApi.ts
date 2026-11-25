@@ -129,7 +129,6 @@ export function createOrgmasterDutyMapMiddleware(root: string, authorizeWorkspac
       const url = new URL(request.url ?? '/', 'http://orgmaster.local')
       const projectionFor = async (versionId: string, includeMethods: boolean) => {
         const selected = await loadVersion(root, versionId)
-        if (selected.version.status !== 'active') throw new DutyMapError(404, 'WORKSPACE_ENTRY_NOT_FOUND')
         const reviewAllowed = await mayReview(root, actor)
         const methods = includeMethods ? await loadMethods(root) : []
         const readable = []
