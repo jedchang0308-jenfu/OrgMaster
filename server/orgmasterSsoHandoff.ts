@@ -137,6 +137,18 @@ function decodeTx(value: string | null, secret: string, now: number): { tx: Tx; 
 }
 
 function clearCookie(secure: boolean) { return `${transactionCookieName(secure)}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
+function returnToLogin(response: ServerResponse, origin: string, returnTo: string, code: string, id: string, secure: boolean) {
+  const target = new URL('/login', origin)
+  target.searchParams.set('auth_error', code)
+  target.searchParams.set('returnTo', returnTo)
+  response.statusCode = 303
+  response.setHeader('Location', target.toString())
+  response.setHeader('Cache-Control', 'no-store')
+  response.setHeader('Referrer-Policy', 'no-referrer')
+  response.setHeader('X-Correlation-Id', id)
+  response.setHeader('Set-Cookie', clearCookie(secure))
+  response.end()
+}
 function transactionCookie(value: string, secure: boolean, maxAge = SSO_TRANSACTION_TTL_SECONDS) { return `${transactionCookieName(secure)}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}` }
 
 function restartTransaction(response: ServerResponse, publicOrigin: string, returnTo: string, id: string, secure: boolean) {
@@ -292,16 +304,7 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     return true
   }
   if (refusal !== null) {
-    const target = new URL('/login', setup.config.publicBaseUrl.origin)
-    target.searchParams.set('auth_error', refusal === 'access_denied' ? 'sso_access_denied' : 'sso_dependency_unavailable')
-    target.searchParams.set('returnTo', tx.returnTo)
-    response.statusCode = 303
-    response.setHeader('Location', target.toString())
-    response.setHeader('Cache-Control', 'no-store')
-    response.setHeader('Referrer-Policy', 'no-referrer')
-    response.setHeader('X-Correlation-Id', id)
-    response.setHeader('Set-Cookie', clearCookie(setup.config.secureCookie))
-    response.end()
+    returnToLogin(response, setup.config.publicBaseUrl.origin, tx.returnTo, refusal === 'access_denied' ? 'sso_access_denied' : 'sso_dependency_unavailable', id, setup.config.secureCookie)
     return true
   }
   try {
@@ -333,6 +336,10 @@ export async function handleOrgmasterSsoRequest(request: IncomingMessage, respon
     response.end()
   } catch (errorValue) {
     const failure = callbackFailure(errorValue)
+    if (failure.status >= 500) {
+      returnToLogin(response, setup.config.publicBaseUrl.origin, tx.returnTo, 'sso_dependency_unavailable', id, setup.config.secureCookie)
+      return true
+    }
     error(response, failure.status, failure.code, id, [clearCookie(setup.config.secureCookie)])
   }
   return true

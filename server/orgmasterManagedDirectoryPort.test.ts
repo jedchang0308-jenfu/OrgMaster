@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { Compute, GoogleAuth, JWT, UserRefreshClient } from 'google-auth-library'
 import {
   GOOGLE_DIRECTORY_READ_SCOPE,
@@ -38,6 +41,24 @@ describe('Google Directory read-only adapter', () => {
 })
 
 describe('keyless Google Directory domain-wide delegation', () => {
+  it('admits explicit user ADC only in the existing nonproduction local lane and keeps production/key files rejected', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'orgmaster-dev015-adc-'))
+    const filename = path.join(directory, 'adc.json')
+    const adc = { type: 'authorized_user', quota_project_id: 'jenfu-platform-nonprod', client_id: 'fixture', client_secret: 'fixture', refresh_token: 'fixture' }
+    const environment = { NODE_ENV: 'development', DEV058_FIREBASE_USER_ADC_PROJECT: 'jenfu-platform-nonprod', JENFU_FIREBASE_PROJECT_ID: 'jenfu-platform-nonprod', GOOGLE_APPLICATION_CREDENTIALS: filename,
+      ORGMASTER_MANAGED_IDENTITY_ENABLED: 'true', ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID: 'C012345', ORGMASTER_GOOGLE_DIRECTORY_DOMAIN: 'jenfu.com.tw', ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT: 'admin@jenfu.com.tw', ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL: 'directory@jenfu-platform-nonprod.iam.gserviceaccount.com' }
+    try {
+      writeFileSync(filename, JSON.stringify(adc))
+      expect(readGoogleDirectoryRuntimeConfig(environment)).toMatchObject({ enabled: true })
+      for (const rejected of [{ NODE_ENV: 'production' }, { K_SERVICE: 'cloud' }, { DEV058_FIREBASE_USER_ADC_PROJECT: 'jenfu-platform-prod' }, { JENFU_FIREBASE_PROJECT_ID: 'jenfu-platform-prod' }]) {
+        expect(readGoogleDirectoryRuntimeConfig({ ...environment, ...rejected })).toEqual({ enabled: false, state: 'invalid' })
+      }
+      for (const rejected of [{ ...adc, type: 'service_account', private_key: 'fixture' }, { ...adc, quota_project_id: 'jenfu-platform-prod' }, { ...adc, private_key: 'fixture' }]) {
+        writeFileSync(filename, JSON.stringify(rejected))
+        expect(readGoogleDirectoryRuntimeConfig(environment)).toEqual({ enabled: false, state: 'invalid' })
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }) }
+  })
   it('accepts only the five canonical runtime keys and ignores legacy aliases', () => {
     const canonical = readGoogleDirectoryRuntimeConfig({
       ORGMASTER_MANAGED_IDENTITY_ENABLED: 'true',

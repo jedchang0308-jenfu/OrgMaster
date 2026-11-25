@@ -31,6 +31,8 @@ OrgMaster consumes Platform `jenfu.sso-handoff.v1` for the fixed `orgmaster` aud
 
 原生隔離旅程發現登入入口仍顯示 Platform 名稱；已改為「登入 OrgMaster」與「使用 Google 登入」，保持原 returnTo／SSO 路由。AuthGate 13/13 與 TypeScript 通過；首輪舊測試仍期待舊 CTA 文案而失敗，已同步新產品文案重驗，未更改行為斷言。真實 Google 首輪與 ADC 阻塞由 Platform 主控統一記錄，這些 focused 結果不代表整鏈已通過。
 
+真實隔離旅程追加差額：consumer 取 service token 時會優先讀 `CLOUDSDK_CONFIG`，native launcher 必須與 explicit `GOOGLE_APPLICATION_CREDENTIALS` 綁到同一份 task ADC，且依原 suite 覆寫成各 owner 既有 impersonation。Directory config 僅於既有 DEV058 development/test 非 Cloud lane、Firebase/DWD/ADC quota project 均為 nonprod、實際檔案為 `authorized_user` ADC 且無 service-account key 欄位時允許 explicit ADC；production、Cloud runtime、service-account/private-key、錯 project 保持拒絕。已驗原交易的 callback 遇 5xx 依賴失敗時回本地 `/login` 短原因並保存 returnTo；無效 state／cookie、過期及身份衝突不因此放寬，不建立 session 或自動循環。Directory／SSO HTTP／AuthGate／permission recovery focused 90/90、TypeScript PASS；主控保留此前 native callback JSON 首敗與 ADC 首敗，未改寫成通過。
+
 此任務 worktree 保留於 `C:/VIBE CODING/Jenfu-Platform/.local/dev015-consumers/OrgMaster` 供 Platform 主控整鏈驗收；主控完成或不再需要此候選後檢查保存與清理，不發布正式環境。
 
 2026-11-25 來源同步追加：原候選 `254702365f1b8437c246ad29916bd18d64b24795` 基於 `3683cac1c2705d0c01a344f30ea81b6ec5308c21`；fetch 後將 `origin/master@de4009cb3ec85bdfc276fcf93a9984cb05dec498` merge 進同一功能分支，merge commit 為 `c78adb4be6944e490634f03908bc2f5f2fb07187`，沒有 rebase／force push。唯一衝突是 `dev_task.md` 頂部的獨立新增索引，兩邊條目均保留；原失敗與 63/63 證據不改寫。上游增加使用者清單服務的 auth runtime／Vite composition，因此在該 merge source 補驗 SSO HTTP 與 AuthApi **71/71 PASS**、TypeScript PASS；SSO handler、AuthGate、兩者原測試與 dependency lock 均與原候選相同，原 13 個 AuthGate 案例沿用。此後只追加本來源與證據說明，不改 executable inputs；未重跑全套、執行 migration、啟用中央 redirect opt-in、修改 provider 或發布。

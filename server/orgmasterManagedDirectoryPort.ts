@@ -1,4 +1,6 @@
 import { GoogleAuth, JWT } from 'google-auth-library'
+import { lstatSync, readFileSync, realpathSync } from 'node:fs'
+import path from 'node:path'
 import type { DirectoryState } from '../src/managedIdentity/types'
 
 export const GOOGLE_DIRECTORY_READ_SCOPE = 'https://www.googleapis.com/auth/admin.directory.user.readonly' as const
@@ -121,9 +123,27 @@ function validDomain(value: string) {
   return value.includes('.') && !value.includes('@') && !/[\s/:]/.test(value)
 }
 
+function isNonproductionUserAdc(environment: NodeJS.ProcessEnv, filename: string) {
+  if (!['development', 'test'].includes(environment.NODE_ENV ?? '') || environment.K_SERVICE || environment.K_REVISION || environment.CLOUD_RUN_JOB
+    || environment.DEV058_FIREBASE_USER_ADC_PROJECT !== 'jenfu-platform-nonprod'
+    || environment.JENFU_FIREBASE_PROJECT_ID !== 'jenfu-platform-nonprod'
+    || !environment.ORGMASTER_GOOGLE_DIRECTORY_DWD_SERVICE_ACCOUNT_EMAIL?.endsWith('@jenfu-platform-nonprod.iam.gserviceaccount.com')
+    || !path.isAbsolute(filename)) return false
+  try {
+    const stat = lstatSync(filename)
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 1 || stat.size > 128 * 1024
+      || realpathSync(filename).toLowerCase() !== path.resolve(filename).toLowerCase()) return false
+    const adc = JSON.parse(readFileSync(filename, 'utf8'))
+    return adc?.type === 'authorized_user' && adc.quota_project_id === 'jenfu-platform-nonprod'
+      && ['client_id', 'client_secret', 'refresh_token'].every(key => typeof adc[key] === 'string' && adc[key].length > 0)
+      && !['private_key', 'private_key_id', 'client_email'].some(key => Object.hasOwn(adc, key))
+  } catch { return false }
+}
+
 export function readGoogleDirectoryRuntimeConfig(environment: NodeJS.ProcessEnv): GoogleDirectoryRuntimeConfig {
   if (environment.ORGMASTER_MANAGED_IDENTITY_ENABLED !== 'true') return { enabled: false, state: 'disabled' }
-  if (environment.GOOGLE_APPLICATION_CREDENTIALS?.trim() || environment.google_application_credentials?.trim()) return { enabled: false, state: 'invalid' }
+  const explicitAdc = environment.GOOGLE_APPLICATION_CREDENTIALS?.trim()
+  if (environment.google_application_credentials?.trim() || explicitAdc && !isNonproductionUserAdc(environment, explicitAdc)) return { enabled: false, state: 'invalid' }
   const customerId = environment.ORGMASTER_GOOGLE_DIRECTORY_CUSTOMER_ID?.trim() ?? ''
   const domain = normalizedDomain(environment.ORGMASTER_GOOGLE_DIRECTORY_DOMAIN ?? '')
   const delegatedSubject = normalizedEmail(environment.ORGMASTER_GOOGLE_DIRECTORY_DELEGATED_SUBJECT ?? '')
