@@ -29,6 +29,8 @@ OrgMaster consumes Platform `jenfu.sso-handoff.v1` for the fixed `orgmaster` aud
 
 登入頁分別顯示「登入未完成或目前沒有權限」與暫時不可用，保留目的頁供重試；「改用其他 Google 帳號」走既有 `reauth=1 → prompt=login`。未變更身份映射、權限或 SSO 成功 handoff 版本。驗證：`orgmasterSsoHandoff.test.ts`、`AuthGate.test.tsx` 共 63/63，TypeScript 通過；原 sandbox localhost EACCES 後於允許 localhost 的 host 重跑同範圍通過。尚未跨 owner 整鏈、真實 Google 或正式發布。
 
+原生隔離旅程發現登入入口仍顯示 Platform 名稱；已改為「登入 OrgMaster」與「使用 Google 登入」，保持原 returnTo／SSO 路由。AuthGate 13/13 與 TypeScript 通過；首輪舊測試仍期待舊 CTA 文案而失敗，已同步新產品文案重驗，未更改行為斷言。真實 Google 首輪與 ADC 阻塞由 Platform 主控統一記錄，這些 focused 結果不代表整鏈已通過。
+
 此任務 worktree 保留於 `C:/VIBE CODING/Jenfu-Platform/.local/dev015-consumers/OrgMaster` 供 Platform 主控整鏈驗收；主控完成或不再需要此候選後檢查保存與清理，不發布正式環境。
 
 2026-11-25 來源同步追加：原候選 `254702365f1b8437c246ad29916bd18d64b24795` 基於 `3683cac1c2705d0c01a344f30ea81b6ec5308c21`；fetch 後將 `origin/master@de4009cb3ec85bdfc276fcf93a9984cb05dec498` merge 進同一功能分支，merge commit 為 `c78adb4be6944e490634f03908bc2f5f2fb07187`，沒有 rebase／force push。唯一衝突是 `dev_task.md` 頂部的獨立新增索引，兩邊條目均保留；原失敗與 63/63 證據不改寫。上游增加使用者清單服務的 auth runtime／Vite composition，因此在該 merge source 補驗 SSO HTTP 與 AuthApi **71/71 PASS**、TypeScript PASS；SSO handler、AuthGate、兩者原測試與 dependency lock 均與原候選相同，原 13 個 AuthGate 案例沿用。此後只追加本來源與證據說明，不改 executable inputs；未重跑全套、執行 migration、啟用中央 redirect opt-in、修改 provider 或發布。

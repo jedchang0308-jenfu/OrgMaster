@@ -216,9 +216,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   </main>
   if (state.mode.ssoHandoffEnabled) return <main className="auth-gate">
     <section className="auth-login auth-login--managed" aria-labelledby="sso-login-title">
-      <div><p className="auth-login__eyebrow">鉦富管理平台</p><h1 id="sso-login-title">使用平台登入</h1><p>登入一次即可進入你有權限的 Jenfu 系統。</p></div>
+      <div><p className="auth-login__eyebrow">OrgMaster</p><h1 id="sso-login-title">登入 OrgMaster</h1><p>使用公司 Google 帳號登入後，回到原本的頁面。</p></div>
       {state.message && <p className="auth-login__error" role="alert">{state.message}</p>}
-      <button type="button" disabled={busy} onClick={() => { window.location.assign(`/api/auth/jenfu-sso/start?returnTo=${encodeURIComponent(ssoLoginReturnTo())}`) }}>{busy ? '準備登入…' : '使用鉦富平台登入'}</button>
+      <button type="button" disabled={busy} onClick={() => { window.location.assign(`/api/auth/jenfu-sso/start?returnTo=${encodeURIComponent(ssoLoginReturnTo())}`) }}>{busy ? '準備登入…' : '使用 Google 登入'}</button>
       {ssoLoginMessage() && <a href={`/api/auth/jenfu-sso/start?reauth=1&returnTo=${encodeURIComponent(ssoLoginReturnTo())}`}>改用其他 Google 帳號</a>}
     </section>
   </main>

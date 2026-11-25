@@ -48,6 +48,8 @@ describe('AuthGate', () => {
     api.getAuthMode.mockResolvedValue({ ssoHandoffEnabled: true })
     await act(async () => { root.render(<AuthGate><div>protected data</div></AuthGate>) })
     expect(container.textContent).toContain('登入未完成')
+    expect(container.textContent).toContain('登入 OrgMaster')
+    expect(container.querySelector('button')?.textContent).toBe('使用 Google 登入')
     expect(container.textContent).not.toContain('protected data')
     const link = container.querySelector('a')!
     expect(link.textContent).toBe('改用其他 Google 帳號')
@@ -156,7 +158,7 @@ describe('AuthGate', () => {
       root.render(<AuthGate><div>protected organization data</div></AuthGate>)
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
     })
-    expect(container.textContent).toContain('使用鉦富平台登入')
+    expect(container.textContent).toContain('使用 Google 登入')
     expect(container.textContent).not.toContain('首次連結公司身分')
     expect(container.querySelector('form')).toBeNull()
   })
