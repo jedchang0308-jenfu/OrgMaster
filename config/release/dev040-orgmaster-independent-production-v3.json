@@ -712,6 +712,13 @@
         "path": "db/migrations/069_dev057_projed_external_qualification.sql",
         "sourceSha256": "29b4a30ade5acf43dc610470fd7a06e5da60a47c4bf1a9577be5e0997169205e",
         "appliedSha256": "1cc94d206d8f2c59b5a8ae8cf4588a960135ca366117362c07bca7a5b75b6df2"
+      },
+      {
+        "order": 66,
+        "version": "dev057-orgmaster-070",
+        "path": "db/migrations/070_dev057_projed_user_directory.sql",
+        "sourceSha256": "ffe38fc3b9f91e01ae985df779d1c9a32b6eff7f6d3ac540944be77d0692cbf0",
+        "appliedSha256": "5592206cd44737811eea35c9a1695efa1e11acd52b664c7d53ca144a8e0587ce"
       }
     ]
   },

@@ -121,6 +121,7 @@ export function createOrgmasterServer(options: OrgmasterServerOptions = {}) {
     createProjedExternalMiddleware(runtime.projedExternal, runtime.projedExternalCallerVerifier, 'internal'),
     createOrgmasterAuthMiddleware(() => runtime, devIdentityEnabled),
     createProjedExternalMiddleware(runtime.projedExternal, runtime.projedExternalCallerVerifier),
+    createProjedExternalMiddleware(runtime.projedUsers, undefined, 'users'),
     ...(employeeNumberManagementEnabled ? [createOrgmasterManagedIdentityMiddleware(root, devIdentityEnabled, managedIdentityService)] : []),
     createWorkbenchPreferenceMiddleware(root),
     ...(accountRuntime ? [accountRuntime.middleware] : []),

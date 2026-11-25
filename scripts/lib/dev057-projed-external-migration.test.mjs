@@ -10,7 +10,7 @@ import { parseDeployProductionArgs } from '../dev040-deploy-production.mjs'
 const profile = JSON.parse(fs.readFileSync('config/release/dev040-orgmaster-independent-production-v3.json', 'utf8'))
 const n1c = JSON.parse(fs.readFileSync('config/dev-010/n1c-orgmaster.json', 'utf8'))
 const files = new Map(profile.migrations.entries.map(row => [row.path, fs.readFileSync(path.resolve(row.path))]))
-const after = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40)).bundle
+const after = buildDev040MigrationBundle(profile, buildOrgmasterPackage(n1c), files, 'a'.repeat(40), {releaseMode:'DEV057_PROJED_EXTERNAL_APPEND',executionMode:'migration_only'}).bundle
 const before = { ...after, sourceRevision: 'b'.repeat(40), entries: after.entries.slice(0, 64) }
 test('external generation pins exact source and applied SQL after the immutable 64-entry predecessor', () => {
   const bytes = files.get(DEV057_EXTERNAL_MIGRATION.path)

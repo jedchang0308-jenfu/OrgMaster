@@ -1,3 +1,4 @@
+import { assertDev057UsersMigrationEntries, DEV057_USERS_ENTRY_COUNT } from './dev057-projed-users-migration.mjs'
 import { assertDev057ExternalMigrationEntries, DEV057_EXTERNAL_ENTRY_COUNT } from './dev057-projed-external-migration.mjs'
 import { canonicalize, sha256 } from './dev012-production-migration-runner.mjs'
 import { DEV070_MIGRATION_ENTRY_COUNT, assertDev070MigrationEntries } from './dev070-administration-migration.mjs'
@@ -46,6 +47,7 @@ function fail(code) { throw Object.assign(new Error(code), { code }) }
 // Released owner operations may consume either reviewed complete generation.
 // This does not admit partial bundles or change either append recipe's bounds.
 export function assertReviewedOrgmasterMigrationEntries(entries) {
+  if (entries?.length === DEV057_USERS_ENTRY_COUNT) return assertDev057UsersMigrationEntries(entries)
   if (entries?.length === DEV057_EXTERNAL_ENTRY_COUNT) return assertDev057ExternalMigrationEntries(entries)
   return entries?.length === DEV057_PROJED_MIGRATION_ENTRY_COUNT
     ? assertDev057ProjedMigrationEntries(entries)

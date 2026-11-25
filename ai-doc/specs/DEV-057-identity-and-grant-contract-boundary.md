@@ -1,5 +1,21 @@
 # DEV-057：Principal 身分與角色發布（現行契約）
 
+
+<a id="projed-user-directory"></a>
+## ProJED 使用者清單與停用／恢復（2026-11-25）
+
+本切片沿 ORGMASTER/DEV-057，對應 ProJED/DEV-139。治理中心新增「ProJED 使用者」；搜尋 Email／名稱／Principal、篩選個人／外部與啟用狀態，顯示登入資格、最小身分登錄狀態與外部協作資格。既有已遷移、尚未在新平台首登的帳號也須可見、可停用；未綁定的待審邀請仍在原外部資格頁，不視為已存在的帳號。
+
+- 維持現有註冊方式；本清單不新增管理員核准註冊條件。Google subject 是精確帳號鍵，Email 僅查詢顯示。個人身分與外部資格分開，登入資格不等於可存取公司／他人看板。
+- `GET/POST /api/orgmaster/projed-users/v1` 使用 verified OrgMaster Session；讀取與操作均限現行 exact-Principal OrgMaster app-admin direct grant。沿現有手機唯讀政策，不用 Employee／電子郵件推導管理權，無額外 IAM 或 provider API。
+- 只讀 ProJED 提供的 versioned contract metadata，回傳帳號 ID、Google subject、Principal、Email、顯示名稱、啟用狀態、版本與資格狀態；不含 workspace／board／task ID、名稱或內容。公司管理員不因此取得私人內容。主站／Quick 的帳號、PWA、本機草稿和既有資料不改。
+- 停用只影響 ProJED：原子更新其 account guard 並前進 revision，主站／Quick 舊 Session 立即失效；不刪資料、不全域停用其他 App。恢復前進新 revision，須重新登入；不復活舊 Session 或已停用／撤回的外部邀請。Employee／上游身分本身失效時，仍顯示不具登入資格。
+- 命令採 UUID commandId、Google subject、opaque expectedRevision 與 disable/restore；verified actor 由伺服器提供。CAS、防並行覆寫、同交易 audit／receipt、防重送沿既有機制；首登與管理共用 subject lock，連尚不存在的 admission 也須序列化。未知結果先讀回，再以原 commandId 核對既有收據並回傳當前清單；不建立第二個命令或宣稱未知結果成功。
+
+Schema 順序為 ProJED `0052_orgmaster_user_directory_v1.sql`，再 OrgMaster `070_dev057_projed_user_directory.sql`。前者只授既有 OrgMaster owner/migrator 限定 metadata contract；OrgMaster runtime 不得直接讀 ProJED core 或調用該 contract，僅可執行經 Session／admin 驗證的自有管理函式。070 append 封閉為已驗證 65 → 66 筆（或完整重播），正常入口 `npm run deploy:production -- --dev057-projed-users-append --dev057-infra-ref=…`；保留舊 064／065 recipe 的 migration-only 相容性、required Source QC／來源保護及既有恢復。這是來源接線，不是正式執行授權。
+
+必要驗證重用現有自查：`npm run test:dev-057:projed-users`；`ORGMASTER_DEV057_PLATFORM_ROOT` 與 `ORGMASTER_DEV057_PROJED_ROOT` 指定受測來源後跑 `npm run test:dev-057:projed-users:postgres`；UI 用 `node scripts/verify-dev057-projed-users-ui.mjs`。隔離 PostgreSQL 套用兩方實際 SQL，涵蓋首登前停用、非 admin／失效 Session 拒絕、跨 owner 隔離、CAS／重送、並行、主站／Quick 撤銷／恢復 fence、外部邀請不復活及 rollback。UI 使用實際元件與合成 API，含桌面／390px；不宣稱正式端對端驗收。不新增 required gate。正式 migration／runtime 發布另依人類指定的環境與動作執行，本輪未部署。
+
 > ProJED／DEV-139 同步修訂（2026-11-19）：本分支整合 `master@a8830e9fefb0c805eaa35dec2c10fa412f408f89`。master 既有 60-entry release prefix、001–064 SQL 與 PDM／FMS／行政權限流程保留；未發布的 ProJED draft 041／042／043 僅改名為 **065／066／067**，SQL bytes 未變。Git blob 已核對全部62份 master SQL、60-entry profile prefix 與三份 draft 內容不變。現行 profile 共 **63 entries**，ProJED 專用 `DEV057_PROJED_PRINCIPAL_APPEND` 僅接受 60／61／62／63 exact ledger prefix，普通發布仍零 DDL。舊段落中的 38→41 與 041–043 是歷史來源證據，不能用於本版正式套用。現階段僅 source integration，正式 migration、runtime／traffic、IAM／Secret 變更均未執行；required CI 與最新原生資料庫證據待本版跑完回填。
 
 本輪 RD 自查：release／migration／owner-stage／tool rotation **243/243 PASS**，Principal HTTP／service／repository 與原登入 **63/63 PASS**、TypeScript、DB boundary `--base=origin/master` PASS。首次 release 207項有5項失敗：一項測試錯用錯誤碼、兩項歷史 master fixture 未切60-entry、兩項 sandbox Git讀取受限；已修正fixture／錯誤碼，取得執行核准後整批通過，未刪案例或放寬oracle。首次 HTTP loopback EACCES 後同案例取得 sandbox 核准再通過。這些是本機合成自查，未宣稱獨立 QC、真provider或正式驗收。

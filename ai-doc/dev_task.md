@@ -1,5 +1,12 @@
 # OrgMaster 開發任務
 
+
+## DEV-057：ProJED 使用者清單（2026-11-25）
+
+- 狀態：來源實作／隔離自查完成，正式未部署。治理中心清單包含既有未首登帳號、個人及已綁定外部帳號，可查資格並停用／恢復；不讀私人內容，不改註冊方式。
+- 對應 ProJED/DEV-139 metadata contract 0052；OrgMaster forward-only 070，正常來源發布接線保留 65→66 exact append 與既有 required CI。驗證及操作邊界見[本切片契約](specs/DEV-057-identity-and-grant-contract-boundary.md#projed-user-directory)。
+- RD 自查：應用與 API focused 51 PASS、隔離跨 owner PostgreSQL 9 組 PASS（含有效非 admin 拒絕）、桌面與390px真元件／合成API操作 PASS、型別與前後端 build PASS。來源 CI 結果另依 PR；不將本機證據計為正式使用者驗收。
+
 <a id="pdm-session-revocation"></a>
 
 ## DEV-057：PDM 有效權限異動先撤銷再發布
